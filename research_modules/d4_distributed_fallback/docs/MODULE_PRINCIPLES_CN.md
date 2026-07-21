@@ -7,6 +7,8 @@
 
 **当前事实增量**：main-owned scalable 3D 质点模块栈已接入单一二级、多二级区域 owner 和中心/二级连续失效后的 distributed D3 plan；D7 依据 owner、plan version、epoch、lease、commit 与 fault generation fence 恢复导引。此前定向集成测试 8/8 passed，仅是质点接口证据。D4 同时具备默认 disabled/shadow 的区域资源学习建议层，以及 `d4-region-resource-advisory-v1` 后投影消费合同；它只建议区域配额和邻区转移，下一轮消费必须重验 current snapshot/authority，确定性 D4 安全状态机继续拥有健康检测、leader、epoch/lease、ACK/commit 和最终降级裁决。2026-07-21 新增独立动作覆盖补充课程，100 个 seed 的 300 帧中已形成 hold、request-replan、非零 quota 和 transfer 正类；该课程 reward/outcome 全部不可用，未改变正式 900 episode、PPO、assist 或在线裁决状态。
 
+**运行时证据增量**：D4 的只读验证器已升级为 `d4-region-resource-runtime-ack-evidence-v2`。执行签名发生变化时，验证器要求严格更新的 plan ID/version、完整 owner/epoch/lease 和 D3-D7-main 绑定，输出 `new_execution_plan_applied`。执行签名不变时，只允许显式 refresh-only 元数据，并要求前序 D3 source-plan envelope 与当前资源、全局航迹、联盟标识/版本、成员角色、区域 owner 和未分配集合一致，输出 `evaluation_refresh_applied`。后者只证明建议经过同代评估并被采纳；D3 ACK 缺省 epoch/lease 时仍由 D4 advisory 的有效 authority fence 限定，不能推导新执行权限。5v5 seed 41 的真实 main 质点链路及篡改负例为 5/5，运行时专项合计 33/33，D4 全量 430/430。两类确认都不等于联盟成员确认、物理结果或策略回报，也不授予 PPO、assist 或正式 authority。冻结 900 episode 不含这条证据链。
+
 ## 1. 模块定位与问题定义
 
 ### 1.1 模块定位

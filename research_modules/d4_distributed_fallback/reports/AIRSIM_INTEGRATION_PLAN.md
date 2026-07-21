@@ -12,6 +12,8 @@ AirSim episode clock 只提供统一的仿真时间基准。已通过的 delay/l
 
 该证据没有运行二级或完全分布式接管，故真实 secondary/distributed 多 seed 仍为 P1。后续 AirSim 集成必须构造与中心负对照配对的故障 case，并让 D4 从 D1/D2/D3/D5 摘要得出动作，不得由 `collision_stop` 标签直接注入动作。
 
+2026-07-21，D4 的 main-independent 区域建议运行时确认验证器升级为 v2。AirSim 或质点 runtime 启用区域建议时，main 必须保存 `modules.d4.region_resource_consumption`、当前 `modules.d3.assignment_plan`、同周期 `modules.d7.guidance_commands` 和 `runtime.assignment_plan_ack`。执行签名变化时仍必须发布严格更新的新计划并携带完整 owner/epoch/lease。同 plan ID/version 的评估刷新还必须保存 advisory 对应的前序 D3 plan envelope；D4 只在 refresh-only flags、时间、绑定集合、coalition/version、source sequence 与 payload SHA 全部一致时输出 `evaluation_refresh_applied`。5v5 seed 41 质点集成与篡改专项 5/5，运行时专项合计 33/33，D4 全量 430/430。该结果不是 AirSim 证据；冻结历史 episode 仍不能回填，验证器也不改变 AirSim 控制、D3 计划或 D7 gate。
+
 D4 当前具备两层 AirSim episode 接口、一个已接入 main 质点模块栈的 scalable3d 区域接口，以及一个默认 disabled/shadow 的区域资源建议接口：
 
 - `d4_airsim_episode_communication_v1`：main 按严格递增的 episode timestamp 逐 tick 输入 heartbeat、消息 delay/drop、ACK、partition、digest、恢复授权，以及按 secondary node keyed 的 `SecondaryReadinessEvidence`。readiness DTO 必须显式携带 current time、lease epoch/expiry、heartbeat/cue/communication 时间、gimbal、coverage/full-view 和 sustained window；heartbeat 单独存在不得 propose secondary owner。
@@ -43,7 +45,7 @@ main/runtime 已按 AirSim episode clock 对以下六类场景各运行 10 seeds
 
 30% loss 场景中，7 个缺 ACK case 保守阻断，只有 3 个完整 ACK case 执行。该结果关闭 episode-clock 多 seed 安全矩阵缺口，不关闭真实网络 P1。
 
-2026-07-15 的 280/280 回归关闭了公开 secondary plan helper 的 readiness/source/epoch/time 缺失门控，更早 278/278 不再作为全部入口证据。区域合同阶段为 303/303，建议管线阶段 335/335，next-cycle 消费合同阶段 350/350，课程阶段为 387/387；2026-07-21 增加全样本准入专项后，当前 D4 全量为 397/397。全样本审计不改变任何 AirSim 接口、场景或在线门控，也不提供新的 AirSim、真实网络或硬件证据。main 既有质点模块栈定向 8/8 覆盖单一二级、多二级区域 owner、连续失效后的 distributed D3 plan，以及 D7 owner/epoch/lease/commit/fault fence。正式 development checkpoint 强制 shadow-only；规则教师 target 和 projected recommendation 都不能解释为运行时 ACK，真实 ACK/outcome/reward 仍 unavailable，PPO、assist 和 authority 继续关闭。
+2026-07-15 的 280/280 回归关闭了公开 secondary plan helper 的 readiness/source/epoch/time 缺失门控，更早 278/278 不再作为全部入口证据。区域合同阶段为 303/303，建议管线阶段 335/335，next-cycle 消费合同阶段 350/350，课程阶段为 387/387，全样本准入阶段为 397/397；2026-07-21 增加运行时确认专项后，当前 D4 全量为 430/430。全样本审计和确认接口不改变任何 AirSim 控制、场景或在线门控，也不提供新的 AirSim、真实网络或硬件证据。main 既有质点模块栈定向 8/8 覆盖单一二级、多二级区域 owner、连续失效后的 distributed D3 plan，以及 D7 owner/epoch/lease/commit/fault fence。正式 development checkpoint 强制 shadow-only；规则教师 target 和 projected recommendation 都不能解释为运行时 ACK，冻结数据中的真实 ACK/outcome/reward 仍 unavailable，PPO、assist 和 authority 继续关闭。
 
 ## 3. 状态与所有权规则
 

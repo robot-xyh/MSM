@@ -4,7 +4,7 @@
 
 本报告覆盖两类离线降级逻辑：中心节点失效后的被动降级连续性仿真，以及中心节点未失效但局部不确定性升高时的主动降级仲裁规则测试。节点通过内存网络交换粗粒度摘要，不涉及真实无线通信、火控参数、毁伤逻辑、实机飞控、硬件驱动、自动处置或绕过人工授权的流程。
 
-2026-07-15 AirSim 证据严格限定为已完成的 20 个真实 M5N2 case。2026-07-20 D4-owned 证据包括区域 authority、区域资源建议和 next-cycle advisory 消费合同测试；main-owned scalable 3D 定向接口测试为 8/8。2026-07-21 增加正式数据审计、共享切分和区域动作覆盖课程。新增课程是确定性纯 Python 离线证据，不是 AirSim、真实网络、硬件或长时运行结果。本轮没有启动新 AirSim episode。终止命令生效前额外完成的 `png_ttc_2v2_seed001` 不纳入 M5N2 聚合；其余 tuned case 未执行，dropout case 完成数为 0，缺失项保持 unavailable。
+2026-07-15 AirSim 证据严格限定为已完成的 20 个真实 M5N2 case。2026-07-20 D4-owned 证据包括区域 authority、区域资源建议和 next-cycle advisory 消费合同测试；main-owned scalable 3D 定向接口测试为 8/8。2026-07-21 增加正式数据审计、共享切分、区域动作覆盖课程和区域建议运行时确认接口。新增证据均为确定性纯 Python 合同验证，不是 AirSim、真实网络、硬件或长时运行结果。本轮没有启动新 AirSim episode。终止命令生效前额外完成的 `png_ttc_2v2_seed001` 不纳入 M5N2 聚合；其余 tuned case 未执行，dropout case 完成数为 0，缺失项保持 unavailable。
 
 ## 2. 实验目的
 
@@ -113,7 +113,7 @@ paired evaluator 的合成 19-seed case 按门槛拒绝 assist；合成 20-seed 
 
 ### 4.6 2026-07-20 区域学习 episode 数据合同验证
 
-`tests/test_region_resource_dataset.py` 当前 15 个 pytest case，结果 **15/15 passed**；`test_region_resource_advisor.py` 当前 **51/51 passed**，二者合计 **66/66**。增加 4.8 的共享切分 12 项后，该历史阶段 D4 全量为 **381/381 passed**，验收门限均为零失败。加入 4.9 的动作覆盖课程 6 项后为 **387/387 passed**；再加入 4.10 的全样本准入专项 10 项后，2026-07-21 当前全量为 **397/397 passed**。版本固定为 `d4-region-learning-dataset-v1` 和 `d4-region-resource-model-bundle-v2`。
+`tests/test_region_resource_dataset.py` 当前 15 个 pytest case，结果 **15/15 passed**；`test_region_resource_advisor.py` 当前 **51/51 passed**，二者合计 **66/66**。增加 4.8 的共享切分 12 项后，该历史阶段 D4 全量为 **381/381 passed**，验收门限均为零失败。加入 4.9 的动作覆盖课程 6 项后为 **387/387 passed**；再加入 4.10 的全样本准入专项 10 项后为 **397/397 passed**。4.11 的运行时确认专项加入后，2026-07-21 当前全量为 **430/430 passed**。版本固定为 `d4-region-learning-dataset-v1` 和 `d4-region-resource-model-bundle-v2`。
 
 高基数正例仍为 96 episode/192 frame，正序和逆序输入得到相同 manifest，同数值 seed 不跨 split。复核新增：训练 target 重新验证 projector、owner/plan/version/epoch/lease、备用和 edge/quota 证明；中心、二级、distributed owner 序列化回读；manifest availability 与可重放 split 对 episode inventory 的一致性；truth/object/global-track key 变体拒绝；区域图规模增加到 200。BC/PPO 缺值仍失败关闭。
 
@@ -147,7 +147,7 @@ paired evaluator 的合成 19-seed case 按门槛拒绝 assist；合成 20-seed 
 
 数据集 SHA256 为 `b06d741bd22a0cd84ef1e47a48a0b8cd81ceb7e4ea294eeeb38b892e69d36158`；原 split SHA256 为 `18a2c60097fefe05cb70ed811d28faf90c51bbbba0bbe984e07f23fb12f8d7f0`；源 registry SHA256 为 `2ab928a476a4430b99326f245222f058bc5be5025158134ba89b01b3dec7815f`；共享 registry content SHA256 为 `29eb6895c4aa570b068f15141cbbbfede3041519117852d1ad48e848a25af146`，assignment SHA256 为 `31c6a3fc265d088d9958f44d579d8098e2aeab06b0daa60c68452ae4c6d46ab5`。
 
-审计前后正式 D4 dataset 目录树 SHA256 均为 `8cde5cace4bd8106e35801f6179775ae39298592f3b556f712ea857b9c496bc1`。原 manifest 和 900 个 episode 文件未改写。新增 12 项测试覆盖成功映射、BC 显式选择、哈希篡改、漏/多 seed、保留 seed 和源 SHA 不匹配；该共享切分阶段 D4 全量为 381/381。该结果只证明跨模块数据切分治理可用。PPO 仍不可用，assist 仍关闭，行为克隆性能不因重新分桶自动更新；加入课程专项后为 387/387，加入全样本审计专项后当前为 397/397。
+审计前后正式 D4 dataset 目录树 SHA256 均为 `8cde5cace4bd8106e35801f6179775ae39298592f3b556f712ea857b9c496bc1`。原 manifest 和 900 个 episode 文件未改写。新增 12 项测试覆盖成功映射、BC 显式选择、哈希篡改、漏/多 seed、保留 seed 和源 SHA 不匹配；该共享切分阶段 D4 全量为 381/381。该结果只证明跨模块数据切分治理可用。PPO 仍不可用，assist 仍关闭，行为克隆性能不因重新分桶自动更新；加入课程专项后为 387/387，加入全样本审计专项后为 397/397，加入运行时确认专项后当前为 430/430。
 
 ### 4.9 区域动作覆盖补充课程
 
@@ -183,7 +183,13 @@ canonical 视图为 60/20/20 seed，对应 180/60/60 frame。训练桶含 hold 6
 
 `target.kind=rule` 仅表示规则教师标签，`target` 字段名不属于真值泄漏。`recommendation.projected=true` 仅说明建议通过离线确定性安全投影，不能解释为 runtime applied ACK。当前数据没有显式投影前 action mask、被拒旧 plan/epoch/lease 候选、真实 `CoalitionMemberAck`、observed outcome、可归因 reward 或同 seed paired shadow；这些证据均标为 unavailable/pending。模块内正式、补充和联合全样本状态为 complete，D6 外部准入仍 pending。
 
-审计专项 10/10、D4 全量 397/397 通过。审计内容 SHA256 为 `94f4f4bf914dde9fee0ce1d92ac491902019dd7388502fbee5f96c4edfac3e7f`，tracked JSON 文件带外 SHA256 为 `4245f1db36f1af47259554f0770e75a3fe97fcc5e9b75c1b04c83d5bfb5c9e46`。D6 需按显式 JSON 路径和该带外哈希独立复核。复核完成、真实 ACK/outcome/reward 与 paired shadow 形成前，确定性规则、lease/epoch 和安全投影仍是唯一可执行路径。
+审计专项 10/10、当时 D4 全量 397/397 通过。审计内容 SHA256 为 `94f4f4bf914dde9fee0ce1d92ac491902019dd7388502fbee5f96c4edfac3e7f`，tracked JSON 文件带外 SHA256 为 `4245f1db36f1af47259554f0770e75a3fe97fcc5e9b75c1b04c83d5bfb5c9e46`。D6 需按显式 JSON 路径和该带外哈希独立复核。复核完成、真实 ACK/outcome/reward 与 paired shadow 形成前，确定性规则、lease/epoch 和安全投影仍是唯一可执行路径。
+
+### 4.11 区域建议运行时确认接口
+
+2026-07-21，运行时确认输出升级为 `d4-region-resource-runtime-ack-evidence-v2`。原合同专项 28/28；新增真实 main 质点集成 5/5，运行时专项合计 33/33，D4 全量 430/430。集成正例直接运行 5v5、seed 41、duration 1.2 s、assist `RegionResourceAdvisor`：source D3 seq=10，current D3 seq=94，consumption seq=96，D7 seq=99，ACK seq=100。初次计划在 0.25 s 发布，同 plan ID/version v1 在 1.0 s 以 `evaluation_refresh_only=true`、`execution_signature_changed=false` 完成区域建议评估刷新；payload SHA 和 binding 完整，验证器输出 `available=true`、`adoption_kind=evaluation_refresh_applied`。
+
+四项集成负例分别篡改 refresh flags、在同版本中改变 coalition version、声明 `execution_signature_changed=true` 却不提升 plan generation，以及移除前序 source-plan envelope，均按稳定 code 失败关闭。手工 fixture 仍覆盖严格更新的新执行计划路径。该质点正例只证明建议在同执行方案下被重新评估和采纳；不证明新执行计划、物理结果或 reward。冻结 900 episode 没有这些 runtime 字段，`CoalitionMemberAck`、物理 outcome、可归因 reward、paired shadow、PPO、assist 和 authority 状态未改变。
 
 ## 5. 默认被动降级场景
 

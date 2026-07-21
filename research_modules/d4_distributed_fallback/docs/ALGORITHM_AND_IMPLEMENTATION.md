@@ -6,7 +6,7 @@
 
 **适用范围**：Python 科研仿真、AirSim 单次试验时钟接线和离线故障回放
 
-**当前集成事实**：main-owned scalable 3D 质点模块栈已接入单一二级、多二级区域 owner 和中心/二级连续失效后的 distributed D3 plan，D7 按 owner/epoch/lease/commit/fault fence 门控。本轮定向集成测试 8/8 passed；该证据不是 AirSim、真实网络或实飞验证。新增区域资源学习能力只提供默认 disabled/shadow 的聚合建议，不能替代本文的确定性状态机与安全合同。
+**当前集成事实**：main-owned scalable 3D 质点模块栈已接入单一二级、多二级区域 owner 和中心/二级连续失效后的 distributed D3 plan，D7 按 owner/epoch/lease/commit/fault fence 门控。本轮定向集成测试 8/8 passed；该证据不是 AirSim、真实网络或实飞验证。新增区域资源学习能力只提供默认 disabled/shadow 的聚合建议，不能替代本文的确定性状态机与安全合同。D4 已实现独立运行时确认验证器，专项 33/33、模块全量 430/430；冻结正式数据仍没有对应 runtime episode 证据。
 
 ## 1. 文档目的与模块边界
 
@@ -491,6 +491,23 @@ epoch_{new}>epoch_{old}\quad\land\quad planVersion_{new}>planVersion_{old}.
 
 `validate_for_consumption()` 在下一轮 planning boundary 对 current snapshot 和可选 current formal verdict 重验。旧 snapshot/plan/epoch、严格 lease 到期、非 projected、ACK 不完整、fault fence、formal commit 数变化、总量或逐区 transfer delta 不守恒、reserve/committed 保护失败，以及未知、非邻接、不可用、partition 或超 capacity edge 均为拒绝。`RegionResourceAdvisoryGate` 在首次成功后记录 `advisory_id`，同一进程内再次消费返回 `advisory_already_consumed`；跨进程 ledger 由 main 持久化。`consumable=true` 仅允许 main 将区域聚合建议作为下一轮 D3 输入，D4 不创建或修改 `AssignmentPlan`。
 
+#### 10.5.1 运行时应用确认
+
+`RegionResourceRuntimeAckParser` 解决“建议通过消费门”和“建议在运行时被采纳”之间的证据缺口。它不导入 main、D3 或 D7，只读取冻结对象、`to_dict()` 结果或版本化 envelope。输入包括 D4 advisory/result、main 区域消费记录、main 计划运行时确认、当前 D3 计划与 D7 导引源 envelope；同代刷新还必须提供 advisory 对应的前序 D3 source-plan envelope。
+
+运行时确认条件写为：
+
+\[
+ACK_{D4}=C_{main}\land A_{D3}\land (N_{plan}\lor R_{eval})\land B_{D7}
+\land V_{authority}\land H_{source}.
+\]
+
+其中，`C_main` 要求消费记录为 `consumable=true`、无 rejection/bridge reason，且内嵌 advisory 与 D4 原合同逐字段一致；`A_D3` 要求 considered/applied/rejected 严格为 `true/true/false`，建议 ID、建议版本和 source plan 与 D4 合同一致；`N_plan` 要求执行签名变化、plan ID 改变、版本严格增加且创建时间不早于消费时间；`R_eval` 要求 plan ID/version 与 source plan 相同、`execution_signature_changed=false`、两个 refresh-only 标志中恰有一个为真、评估/消费/确认时间一致，并逐项比较前序和当前的资源-航迹 binding、coalition ID/version、member role、区域 owner 字段和未分配目标集合。`B_D7` 要求当前 D3 assignment、D7 command 和 ACK binding 完全一致；`H_source` 要求 ACK 中的当前 D3/D7 bus sequence 与 envelope 一致，并复算 payload SHA256。新执行计划的 `V_authority` 要求 D3/ACK 的 owner/layer、epoch 和 lease 与 D4 source authority 一致；同代评估刷新只允许 D3/ACK 同时缺省 epoch/lease，并继续以 D4 advisory 中未到期的 authority fence 约束证据范围。
+
+验证器按 `(advisory_id, advisory_version)` 记录成功消费。重复确认、缺失前序计划、refresh 标志矛盾、同版本 binding 变化、执行签名变化但未提升代次、旧 epoch、到期 lease、非有限时间、schema/source/hash 错误或部分 binding 都返回稳定拒绝 code。v2 输出的 `adoption_kind` 仅取 `evaluation_refresh_applied` 或 `new_execution_plan_applied`。它不修改 formal D4 authority、D3 plan 或 D7 gate；`CoalitionMemberAck`、物理 outcome、可归因 reward、paired shadow、PPO、assist 和 authority 字段固定为不可用/不允许。
+
+冻结 900 episode 生成于该合同之前，没有 main consumption、D3/D7 source envelope 和运行时确认字段，不能离线补造 applied ACK。新的 5v5 seed 41 质点 episode 已证明真实 main 的同代评估刷新可被识别；单独在旧 plan 上回填 `regional_hint_applied=true`、缺少 source-plan envelope、改变 binding 或声明执行签名变化仍会失败关闭。
+
 `SharedRegionGraphActorCritic` 对任意节点数使用同一 node encoder、edge encoder、message network、node/edge actor 和 pooled value/confidence head，不写死 8 区或 200 架资源。行为克隆以规则投影建议为 teacher，连续动作使用均方误差，hold/replan 使用二元交叉熵。原生 clipped PPO 对每个变长图计算联合高斯 log probability：
 
 \[
@@ -611,6 +628,7 @@ D4 只决定协调权和计划状态，不决定比例导引或视觉导引公�
 | `coalition_safety.py` | 多成员计划、联盟版本、ACK、时期、租约和摘要安全门控 |
 | `regional_failover.py` | scalable3d 场景元数据适配、逐区域唯一 authority、机动高空二级覆盖接管、主动证据和受约束原子 fallback |
 | `region_resource.py` | truth-free 区域资源快照、动作、规则基线、安全投影、版本化限时 advisory、一次性消费门、reward、scenario/seed 划分和 paired evaluator |
+| `region_resource_runtime_ack.py` | main-independent 的 advisory 消费、D3 新计划、D7 binding、authority、sequence 和 payload SHA 运行时证据验证；只产只读 ACK 证据 |
 | `region_resource_learning.py` | 共享区域图 actor-critic、BC、原生 clipped PPO、manifest/state_dict/SHA、OOD 与 advisor 回退 |
 | `region_resource_cli.py`、`scripts/run_region_resource_advisor.py` | 默认 shadow 的建议和 paired evaluator CLI |
 | `network.py` | 内存丢包和延迟模型、消息数量和估计字节统计 |
@@ -758,7 +776,7 @@ D4 main-bus 阶段 timing 样本的 mean/P95/max 约为 `5.59/6.70/94.10 ms`。�
 
 本轮新增 `d4-regional-failover-v1`。输入由 `RegionalScenarioMetadata`、区域 definition、逐任务 D1/D2/D3/D5 evidence、机动高空二级节点逐区域 readiness、fallback member 和 coalition ACK 组成；输出逐区域 `selected_layer`、唯一 ownership、action、risk、candidate assignment、commit 和 reject reason。中心未 `failed` 时风险证据不会转移 owner；中心 `failed` 后只选择覆盖当前区域且 readiness/lease epoch 完整的 `mobile_high_recon`；二级也不可用时才形成 distributed candidate。
 
-测试样本为 23 个确定性 pytest case，无随机 seed。规模参数覆盖 5、20、50、100、200 个 region，每档同时构造同数量 active task 与 resource metadata；验收门限为每档 region/task count 完整、全部 region 只有中心 active owner、无数组或固定规模假设，并拒绝超过 scenario 声明的 resource/recon summaries。故障与边界测试覆盖中心失效后二级接管、二级失效后 distributed、双区域 coverage 隔离、中心/二级/distributed 完整 ACK 原子 `committed`、缺 ACK `aborted`、旧 ACK epoch、中心健康及 fallback 分区闭锁、旧 authority epoch/plan version、最早 task/authority lease、旧 secondary lease epoch、D5 member hold、单成员多能力和跨区域 capacity。23/23 新测试及当时 303/303 全量均通过，当前全量为 397/397。
+测试样本为 23 个确定性 pytest case，无随机 seed。规模参数覆盖 5、20、50、100、200 个 region，每档同时构造同数量 active task 与 resource metadata；验收门限为每档 region/task count 完整、全部 region 只有中心 active owner、无数组或固定规模假设，并拒绝超过 scenario 声明的 resource/recon summaries。故障与边界测试覆盖中心失效后二级接管、二级失效后 distributed、双区域 coverage 隔离、中心/二级/distributed 完整 ACK 原子 `committed`、缺 ACK `aborted`、旧 ACK epoch、中心健康及 fallback 分区闭锁、旧 authority epoch/plan version、最早 task/authority lease、旧 secondary lease epoch、D5 member hold、单成员多能力和跨区域 capacity。23/23 新测试及当时 303/303 全量均通过，当前全量为 430/430。
 
 该 23 项验证只关闭 D4 模块内的区域 metadata、authority 顺序和安全门控缺口。main 后续已把合同接入 scalable 3D 质点模块栈：单一二级、多二级区域 owner 和连续失效后的 distributed D3 plan 均有接口测试，D7 对 owner/epoch/lease/commit/fault fence 保持闭锁。本轮定向 `test_module_stack.py` 为 8/8 passed。它仍不是 AirSim、真实网络、硬件、实飞或长时 200v200 多 seed 证据。distributed member formation 是按 region、跨区域 capacity、capability 和 D5 member evidence 的 bounded deterministic bid selection；没有 CBBA 多轮通信/收敛证明、CCBBA 耦合时序、全局组合最优性、reserve 激活、补位/缩编或整盟重构。
 
@@ -772,7 +790,7 @@ paired evaluator 的 19 个未见 seed 负例不推荐 assist，20 个未见 see
 
 ### 16.8 2026-07-20 区域学习 episode 数据合同验证
 
-`tests/test_region_resource_dataset.py` 共 15 项，全部通过。高基数用例仍为单 dataset 96 episode/192 frame；新增负例拒绝伪造 `projected=true`、旧 epoch/lease、低备用和未知边，拒绝 actor/object/global-track/evaluator/offline-truth key 变体，并重验 manifest availability/split inventory；中心、二级、distributed owner 的 plan/version/epoch/lease 回读保持一致。正式审计和训练准入回归还验证外部保留 seed 隔离、D6 availability、无权重文本发布和 shadow-only bundle。建议/消费合同文件当前 51/51；两文件合计 66/66，加共享切分 12 项后，该历史阶段 D4 全量为 381/381；加入动作覆盖课程 6 项后为 387/387，再加入全样本审计专项后当前为 397/397，门限均为零失败。
+`tests/test_region_resource_dataset.py` 共 15 项，全部通过。高基数用例仍为单 dataset 96 episode/192 frame；新增负例拒绝伪造 `projected=true`、旧 epoch/lease、低备用和未知边，拒绝 actor/object/global-track/evaluator/offline-truth key 变体，并重验 manifest availability/split inventory；中心、二级、distributed owner 的 plan/version/epoch/lease 回读保持一致。正式审计和训练准入回归还验证外部保留 seed 隔离、D6 availability、无权重文本发布和 shadow-only bundle。建议/消费合同文件当前 51/51；两文件合计 66/66，加共享切分 12 项后，该历史阶段 D4 全量为 381/381；加入动作覆盖课程 6 项后为 387/387，再加入全样本审计专项后为 397/397；运行时确认原合同 28 项和真实集成 5 项加入后当前为 430/430，门限均为零失败。
 
 上述 96 episode 是程序构造的确定性合同样本，只用于 16.8 的接口回归，不能替代 16.9 的正式数据和开发 checkpoint。它本身没有模型收益、至少 20 个真实未见 seed、AirSim 或网络性能结论。main 的正式 writer 应继续构造公开 source/frame DTO，episode 完成后调用 stage，批次结束调用 finalize；不得只写 frame_index/timestamp/snapshot/recommendation，也不得解析 D4 私有文件结构。
 
@@ -786,7 +804,7 @@ D6 外部审计记录 898/1798 帧无归因相邻状态转移，reward、causal�
 
 ### 16.10 2026-07-21 共享切分只读审计
 
-`tests/test_canonical_seed_split.py` 新增 12 项。正例覆盖 100 个 seed 的 D3 兼容 60/20/20 映射、BC 显式切换和源数据零修改；负例覆盖 schema/policy 变化、content/assignment 哈希篡改、registry 或 dataset 漏/多 seed、保留 seed 和源 registry SHA 不匹配。共享切分专项 12/12，当时 D4 全量为 381/381；加入动作覆盖课程专项后为 387/387，加入全样本审计专项后当前为 397/397，新增/修改 Python 入口编译通过。
+`tests/test_canonical_seed_split.py` 新增 12 项。正例覆盖 100 个 seed 的 D3 兼容 60/20/20 映射、BC 显式切换和源数据零修改；负例覆盖 schema/policy 变化、content/assignment 哈希篡改、registry 或 dataset 漏/多 seed、保留 seed 和源 registry SHA 不匹配。共享切分专项 12/12，当时 D4 全量为 381/381；加入动作覆盖课程专项后为 387/387，加入全样本审计专项后为 397/397，运行时确认专项后当前为 430/430，新增/修改 Python 入口编译通过。
 
 正式 registry 审计的 dataset SHA 为 `b06d741bd22a0cd84ef1e47a48a0b8cd81ceb7e4ea294eeeb38b892e69d36158`，原 split SHA 为 `18a2c60097fefe05cb70ed811d28faf90c51bbbba0bbe984e07f23fb12f8d7f0`，源 registry SHA 为 `2ab928a476a4430b99326f245222f058bc5be5025158134ba89b01b3dec7815f`，共享 registry content SHA 为 `29eb6895c4aa570b068f15141cbbbfede3041519117852d1ad48e848a25af146`。这组哈希和计数是数据切分证据，不替代 16.9 的模型准入结论。
 
@@ -805,6 +823,12 @@ clean 课程的 `behavior_cloning_manifest_available=true`，canonical BC 只读
 正式数据和 clean supplemental 课程的全样本状态均为 complete。正式数据为 900 episode/1798 sample/14384 action，补充课程为 100 episode/300 sample/1200 action；规范 60/20/20 切分和全部 episode SHA256 均通过。审计内容 SHA256 为 `94f4f4bf914dde9fee0ce1d92ac491902019dd7388502fbee5f96c4edfac3e7f`。tracked JSON 文件的带外 SHA256 为 `4245f1db36f1af47259554f0770e75a3fe97fcc5e9b75c1b04c83d5bfb5c9e46`，D6 尚未完成外部复核。
 
 该结果不提供运行时成员 ACK、执行结果、策略回报、中心/二级接管效果或网络分区效果。无法从当前字段证明的能力保持 unavailable；确定性区域规则、lease/epoch 和安全投影继续是唯一可执行路径。
+
+### 16.13 2026-07-21 区域建议运行时确认
+
+`tests/test_region_resource_runtime_ack.py` 的原合同专项为 28/28。`tests/test_region_resource_runtime_ack_integration.py` 直接运行 `IntegratedScalableModuleStack` 的 5v5 seed 41、1.2 s assist 场景，真实同代评估刷新正例和四项失败关闭用例为 5/5；运行时确认专项合计 33/33，D4 全量为 430/430。负例明确覆盖 refresh flags 篡改、同版本 coalition binding 变化、`execution_signature_changed=true` 但没有版本提升，以及缺失 advisory source-plan envelope。
+
+测试没有启动 AirSim，也没有修改冻结 900 episode。手工 fixture 继续验证“旧 source plan -> 严格更新的新 D3 plan”；真实 main 集成测试验证“同 source plan ID/version -> evaluation-only refresh -> 同周期 D7 与 accepted ACK”。该质点 episode 只提供评估采纳证据。冻结数据中的 runtime applied ACK、`CoalitionMemberAck`、物理 outcome、可归因 reward 和 paired shadow 仍为 unavailable，PPO、assist 和 authority 均为 false。
 
 ## 17. 真实网络限制与后续实施
 
