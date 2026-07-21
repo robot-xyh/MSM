@@ -8,10 +8,15 @@ source observation 的离线来源链，可靠补标为 0；99 条边继续 unav
 正/负/未标注为 `57292/187740/0`。truth 只存在于图构建后的独立 evaluator lineage。
 
 formal + supplemental detached 视图共 4,972 帧和 245,040 条边，现有数据量、标签完整性、候选
-召回分母与场景双类覆盖门全部通过。该结果只闭合 producer 和数据支持。当前 supplemental manifest
-记录 dirty source，training readiness 继续失败关闭；没有训练模型、没有 `.pt`、没有开放 G1 或
-assist。main 后续在提交后的 clean worktree 复生数据并做第二次准入，D5 不在本轮改 Git 或提前
-宣告训练闭合。新增专项 `12 passed in 5.49s`，全量 `498 passed in 124.90s`。
+召回分母与场景双类覆盖门全部通过。main 又基于 clean commit
+`79b2550ce2ef407c7cfcc653ce04a80fe2226c06` 同配置复生，supplemental source dirty=false，数据支持和
+`training_readiness` 均 pass，原 provenance blocker 关闭。clean supplemental manifest/view SHA 为
+`4b9875fee86b5c425f683a6da23e6af1308bcf2383d3633d4fd6207fe2f25a32` 和
+`11e8acbdbe268574ead402f2be5c9aa8e3459a7e4147a18e0570df3402892415`。
+
+该结果只闭合 producer、来源和训练数据支持。没有训练模型、没有 `.pt`、没有开放 G1 或 assist；
+保留 seed 独立评估和 shadow 仍待完成。clean 制品严格复载通过，专项 `12 passed in 5.40s`；此前
+全量回归为 `498 passed in 124.90s`。
 
 ## 2026-07-21 Supplemental BC 全样本准入复核
 

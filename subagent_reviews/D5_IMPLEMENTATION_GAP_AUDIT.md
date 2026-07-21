@@ -2,7 +2,7 @@
 
 ## 2026-07-21 Tracklet 困难样本 GAP 状态
 
-**困难样本 producer 和数据支持子项已闭合；训练与 G1 未闭合。** 冻结正式语料 99 条未标注边的
+**困难样本 producer、clean 数据来源和训练数据支持子项已闭合；模型与 G1 未闭合。** 冻结正式语料 99 条未标注边的
 194 个缺失端点均没有可精确证明的 offline observation lineage，可靠回填为 0，全部继续
 `unavailable`。独立 supplemental producer 实际生成 4,500 帧、66,726 节点和 245,032 条默认几何门
 候选边，正/负/未标注为 `57292/187740/0`，标签可用率 100%，正式源重复违规和保留 seed 泄漏均为
@@ -13,11 +13,16 @@ detached 组合视图选入 472 个完整正式帧和 4,500 个补充帧。train
 `50103/16683/16698`，标签可用率和双类 cell 比例均为 100%。既有数据门全部通过，未降低时间、
 视场、极线、射线、重投影、协方差或度数门。
 
-当前制品绑定 commit `087a568c71a0c1004653d0e4175b156856b2e34b` 的未提交工作区，
-`supplemental_source_repository_dirty=true`，因此 training readiness 按合同 `fail_closed`。该项仍是
-开放 P1；main 需提交代码后在 detached clean worktree 复生数据并二次准入。模型训练、保留 seed
-独立评估、影子对照和 promotion 尚未开始，G1/assist/在线控制继续关闭。D5 本轮不得把“数据支持
-通过”写成“训练可用”或“模型晋级”。专项 `12 passed`，D5 全量 `498 passed`。
+main 已基于 clean commit `79b2550ce2ef407c7cfcc653ce04a80fe2226c06` 在 detached worktree 完成
+同配置复生。补充 manifest/view SHA 为
+`4b9875fee86b5c425f683a6da23e6af1308bcf2383d3633d4fd6207fe2f25a32` 和
+`11e8acbdbe268574ead402f2be5c9aa8e3459a7e4147a18e0570df3402892415`；dirty=false，数据支持与
+`training_readiness` 均 pass，原 provenance blocker 关闭。
+
+该 pass 只表示数据可进入后续训练，不表示模型已经存在。模型训练、`.pt` 生成、保留 seed 独立
+评估、同 seed 影子对照和 promotion 尚未开始，仍是开放 P1；G1/assist/在线与相机控制权限继续
+关闭。clean 制品和组合视图已严格复载，专项 `12 passed in 5.40s`；此前 D5 全量
+`498 passed in 124.90s`。正式源全树指纹复载前后不变。
 
 ## 2026-07-21 Supplemental BC 全样本 GAP 关闭证据
 

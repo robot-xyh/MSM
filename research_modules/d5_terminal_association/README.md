@@ -23,12 +23,18 @@ detached formal + supplemental 组合视图按共享 seed registry 原子形成 
 `112314/37694/37734`，可评价同目标候选 pair 为 `50103/16683/16698`，各分割双类场景规模 cell
 比例均为 100%。现有数据量与标签门全部通过。
 
-本轮只闭合困难样本 producer 和数据支持。制品来源为未提交工作区
-`087a568c71a0c1004653d0e4175b156856b2e34b`，manifest 明示
-`supplemental_source_repository_dirty=true`，因此总体训练准入按合同
-`fail_closed`。没有训练模型、没有生成 `.pt`，G1、assist 和在线控制权限均保持关闭。main 后续先
-提交实现，再在 detached clean worktree 对该提交复生数据并执行第二次准入。专项测试 `12 passed
-in 5.49s`，D5 全量回归 `498 passed in 124.90s`。
+main 已在 detached clean worktree 基于提交
+`79b2550ce2ef407c7cfcc653ce04a80fe2226c06` 同配置复生，并将 clean output 保存为
+`outputs/tracklet_graph_supplemental_curriculum_20260721_clean_79b2550_r2`。补充 manifest 为
+`4b9875fee86b5c425f683a6da23e6af1308bcf2383d3633d4fd6207fe2f25a32`，组合 admission view 为
+`11e8acbdbe268574ead402f2be5c9aa8e3459a7e4147a18e0570df3402892415`。来源 dirty=false，数据支持和
+JSON 字段 `training_readiness` 均为 `pass`，原 dirty provenance blocker 已关闭。
+
+这里的 `training_readiness=pass` 只表示 formal + supplemental 训练数据满足来源、数量、标签、切分
+和完整性门。没有训练新模型、没有生成 `.pt`，promotion 状态仍为
+`awaiting_new_model_evidence`，G1、assist 和在线/相机控制权限均保持关闭。保留 seed 独立模型评估
+和同 seed shadow 尚未完成。clean supplemental 与 composite view 已在主工作区严格复载，专项测试为
+`12 passed in 5.40s`；此前 D5 全量回归为 `498 passed in 124.90s`。
 
 ## 2026-07-21 Supplemental BC 全样本 clean 审计
 

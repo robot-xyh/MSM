@@ -25,10 +25,15 @@ hash 漂移、候选门变化或 evaluator 负边伪造均失败关闭。
 阈值。视图文件仅保存来源绑定和选择清单，不复制或改写图与标签。
 
 实际运行生成 4,500 帧、66,726 节点、245,032 边，正/负/未标注为
-`57292/187740/0`。组合视图选入正式 472 帧和补充 4,500 帧，全部数据支持门通过。来源
-`087a568c71a0c1004653d0e4175b156856b2e34b` 的工作区 dirty 标志为真，因此 training readiness 的
-唯一失败原因是 `supplemental_source_repository_dirty`。CLI 没有训练入口，本轮未生成 `.pt`，
-promotion、G1 和 assist 均保持关闭。
+`57292/187740/0`。组合视图选入正式 472 帧和补充 4,500 帧，全部数据支持门通过。main 在提交
+`79b2550ce2ef407c7cfcc653ce04a80fe2226c06` 的 detached clean worktree 同配置复生后，supplemental
+manifest 记录 dirty=false；`training_readiness` 从 dirty 失败关闭转为 pass，失败原因列表为空。
+
+clean supplemental manifest SHA-256 为
+`4b9875fee86b5c425f683a6da23e6af1308bcf2383d3633d4fd6207fe2f25a32`，dataset manifest 为
+`4c49aebae8040f8a7dace329b5d1769739e2e40d811c3ad5eb733f302ebd8f6f`，composite view 为
+`11e8acbdbe268574ead402f2be5c9aa8e3459a7e4147a18e0570df3402892415`。CLI 没有训练入口，本轮未生成
+`.pt`；promotion 状态仍为 `awaiting_new_model_evidence`，G1 和 assist 均保持关闭。
 
 ## 2026-07-21 Supplemental BC 全样本审计实施
 

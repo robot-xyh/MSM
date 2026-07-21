@@ -6,12 +6,12 @@
       "file_sha256": "59d63560eccb443b09a868c7eb6abc159fea10ea823f6aee0378f3d3c0be85b6"
     },
     "supplemental": {
-      "content_sha256": "a549db017cb3444262283caf01eff6c0f77cf4fba29a974b6e26046b8529518f",
+      "content_sha256": "f6a168dbdb2f8849b38693ed13cda2fc3975211afc5ab8eb678f6fc5a2c29131",
       "file": "tracklet_graph_composite_admission_view_20260721.supplemental.json",
-      "file_sha256": "b2bf6582652ae2dcb94749df83f9cad9180636b9e73e603e1536728fd928c2f9"
+      "file_sha256": "c1542cf80ea46ba259cdce8dbdff5f405178f03ad7978aee00f2c682908207d5"
     }
   },
-  "content_sha256": "5236f897a5f968a94ae076dabe2292f8321ee083ba13acaa8404e0aba14e252f",
+  "content_sha256": "b7f8283c120b8b59663f71cd2c91ac6d45d16beb0fac32a5d6f51b9b9db478ae",
   "duplicate_audit": {
     "formal_edge_content_fingerprint_overlap": [],
     "formal_episode_uid_overlap": [],
@@ -224,7 +224,7 @@
       "model_training_performed": false,
       "passed": false,
       "pt_generated": false,
-      "status": "fail_closed"
+      "status": "awaiting_new_model_evidence"
     },
     "schema_version": "d5.tracklet-composite-admission-readiness.v1",
     "selected_corpus": {
@@ -246,9 +246,9 @@
     "sources": {
       "formal_manifest_sha256": "d9a84007995fe94918483bd5cb5ddc38f60f61d819bea27137dfa2619bf75426",
       "formal_source_modified": false,
-      "supplemental_manifest_sha256": "77d117ba7a0d6cdbddf4ce9fcccd63455e2b28a916c6526d97e17857bfb9ad90",
+      "supplemental_manifest_sha256": "4b9875fee86b5c425f683a6da23e6af1308bcf2383d3633d4fd6207fe2f25a32",
       "supplemental_source_modified": false,
-      "supplemental_source_repository_dirty": true
+      "supplemental_source_repository_dirty": false
     },
     "split_summaries": {
       "test": {
@@ -286,11 +286,9 @@
       }
     },
     "training_readiness": {
-      "failure_reasons": [
-        "supplemental_source_repository_dirty"
-      ],
-      "passed": false,
-      "status": "fail_closed"
+      "failure_reasons": [],
+      "passed": true,
+      "status": "pass"
     }
   },
   "schema_version": "d5.tracklet-composite-admission-view.v1",
@@ -326,8 +324,8 @@
   "sources": {
     "formal_manifest_sha256": "d9a84007995fe94918483bd5cb5ddc38f60f61d819bea27137dfa2619bf75426",
     "formal_source_modified": false,
-    "supplemental_manifest_sha256": "77d117ba7a0d6cdbddf4ce9fcccd63455e2b28a916c6526d97e17857bfb9ad90",
+    "supplemental_manifest_sha256": "4b9875fee86b5c425f683a6da23e6af1308bcf2383d3633d4fd6207fe2f25a32",
     "supplemental_source_modified": false,
-    "supplemental_source_repository_dirty": true
+    "supplemental_source_repository_dirty": false
   }
 }

@@ -8,10 +8,10 @@
 187,740 条，未标注边为 0。该数据补足的是跨视角候选分类监督，不能替代 M 对 N 运行时相机覆盖、
 中心绑定、联盟执行或 AirSim 可见性证据。
 
-组合视图的数据支持门已通过，但来源工作区 dirty，训练准入保持 `fail_closed`。本轮没有训练图
-模型，不形成 G1/assist 权限，也不改变中心 Hungarian 绑定、同相机互斥或 `global_track_id` 所有权。
-main 将在 clean commit 上复生后再做训练准入；后续即使 clean 数据门通过，仍需保留 seed 模型评估
-和 M 对 N 影子对照，才能讨论在线辅助。
+main 已在 clean commit `79b2550ce2ef407c7cfcc653ce04a80fe2226c06` 上完成同配置复生。组合视图
+的数据支持和 `training_readiness` 均 pass，dirty provenance blocker 已关闭。该 pass 只适用于训练
+数据；本轮没有训练图模型，不形成 G1/assist 权限，也不改变中心 Hungarian 绑定、同相机互斥或
+`global_track_id` 所有权。仍需保留 seed 模型评估和 M 对 N 影子对照，才能讨论在线辅助。
 
 ## 2026-07-21 Supplemental BC 全样本审计对 M 对 N 的边界
 

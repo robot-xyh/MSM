@@ -17,20 +17,23 @@ train/validation/test 中为 `65/19/15`，涉及 194 个缺失端点；95 条边
 | 重复与 seed | 正式源重复违规 0；canonical seed `60/20/20`；保留 seed 重叠 0 | 通过 |
 | 组合视图 | 正式 472 + 补充 4,500 = 4,972 帧，245,040 边 | 通过 |
 | 数据支持门 | 各 split 无边率 `8.68%/10.34%/10.45%`，全部既有门通过 | 通过 |
-| 训练准入 | `supplemental_source_repository_dirty=true` | 失败关闭 |
+| 训练数据准入 | clean commit `79b2550...`，`repository_dirty=false`，失败原因 0 | 通过 |
 | 模型权限 | 未训练、无 `.pt`、G1/assist=false | 保持关闭 |
 
 补充 manifest SHA-256 为
-`77d117ba7a0d6cdbddf4ce9fcccd63455e2b28a916c6526d97e17857bfb9ad90`，dataset manifest 为
-`ec2708477332416be83e12f1458cc2dff72a2c5196d1fdb58fbb074a85660ee4`，evaluator lineage 为
+`4b9875fee86b5c425f683a6da23e6af1308bcf2383d3633d4fd6207fe2f25a32`，dataset manifest 为
+`4c49aebae8040f8a7dace329b5d1769739e2e40d811c3ad5eb733f302ebd8f6f`，evaluator lineage 为
 `587a05927a00f795ab5b1828f0443f41297b79ae1d115dcc1193f35164b77c49`。组合准入报告 JSON/Markdown
-SHA-256 为 `338709926cbaafefbdd62f8c0ebfbddb699d1b76c26f5e21b56baccfc20200c0` 和
-`c612b6c38e78146e5078019717d76775702ffe2d8dfe9be5bdae17f085f85f0a`。专项测试
-`12 passed in 5.49s`，D5 全量 `498 passed in 124.90s`。
+SHA-256 为 `d13df9973ea35829938b792e068b121f1f0aef12a3f6d19e237f63cfbcd3fbc8` 和
+`0af24a89580dadedd7c0da413ddd8694d211eb7b10d51c3c34d274d86bf0da13`，composite view SHA-256 为
+`11e8acbdbe268574ead402f2be5c9aa8e3459a7e4147a18e0570df3402892415`。主工作区严格复载通过，专项
+测试 `12 passed in 5.40s`；此前 D5 全量回归为 `498 passed in 124.90s`。正式源全树 SHA-256 在
+复载前后均为 `1f28b0e04486555c7849e8a887de0fea3fb0f6ce6b3d11857646dfb035682197`。
 
-结论限定为困难样本 producer 与数据支持闭合。当前制品绑定 dirty 工作区，训练 readiness 仍关闭；
-main 将在代码提交后的 detached clean worktree 复生同配置数据并做第二次准入。本轮没有训练模型、
-没有运行 AirSim，也没有改变在线关联或 `global_track_id` 合同。
+结论限定为困难样本 producer、clean 数据来源和训练数据支持闭合。JSON 字段
+`training_readiness=pass` 不表示已有模型；当前未训练、未生成 `.pt`，保留 seed 独立评估和同 seed
+shadow 未完成，promotion、G1、assist 和 authority 仍关闭。本轮没有运行 AirSim，也没有改变在线
+关联或 `global_track_id` 合同。
 
 ## 2026-07-21 Supplemental BC 全样本 clean 审计
 

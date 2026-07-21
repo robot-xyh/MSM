@@ -1,5 +1,5 @@
 {
-  "content_sha256": "5493874e87901a9550357984a8d168a58671dd4ae14c8a659d75374819bca23a",
+  "content_sha256": "70649fed5d02c4f85ecb168204e61e33d829b1ae6aa92892a512f18208dc9ae2",
   "criteria": {
     "maximum_edge_free_ratio": 0.9,
     "maximum_p95_inference_latency_ms": 100.0,
@@ -199,7 +199,7 @@
     "model_training_performed": false,
     "passed": false,
     "pt_generated": false,
-    "status": "fail_closed"
+    "status": "awaiting_new_model_evidence"
   },
   "schema_version": "d5.tracklet-composite-admission-readiness.v1",
   "selected_corpus": {
@@ -221,9 +221,9 @@
   "sources": {
     "formal_manifest_sha256": "d9a84007995fe94918483bd5cb5ddc38f60f61d819bea27137dfa2619bf75426",
     "formal_source_modified": false,
-    "supplemental_manifest_sha256": "77d117ba7a0d6cdbddf4ce9fcccd63455e2b28a916c6526d97e17857bfb9ad90",
+    "supplemental_manifest_sha256": "4b9875fee86b5c425f683a6da23e6af1308bcf2383d3633d4fd6207fe2f25a32",
     "supplemental_source_modified": false,
-    "supplemental_source_repository_dirty": true
+    "supplemental_source_repository_dirty": false
   },
   "split_summaries": {
     "test": {
@@ -261,12 +261,10 @@
     }
   },
   "training_readiness": {
-    "failure_reasons": [
-      "supplemental_source_repository_dirty"
-    ],
-    "passed": false,
-    "status": "fail_closed"
+    "failure_reasons": [],
+    "passed": true,
+    "status": "pass"
   },
-  "view_content_sha256": "5236f897a5f968a94ae076dabe2292f8321ee083ba13acaa8404e0aba14e252f",
-  "view_manifest_sha256": "ce868abb7c8c9912565c0536d44f0f2cbf389a5a6b9c0b0b17d79e7b4e030115"
+  "view_content_sha256": "b7f8283c120b8b59663f71cd2c91ac6d45d16beb0fac32a5d6f51b9b9db478ae",
+  "view_manifest_sha256": "11e8acbdbe268574ead402f2be5c9aa8e3459a7e4147a18e0570df3402892415"
 }

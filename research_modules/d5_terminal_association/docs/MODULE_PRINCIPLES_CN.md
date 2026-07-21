@@ -17,8 +17,13 @@ camera-local tracklet、双时间戳、像素量测、协方差和几何特征�
 准入分为数据支持、训练和模型晋级三层。formal + supplemental 只读视图以完整 numeric seed 为原子
 按共享 registry 切分，并复核保留 seed、source hash、标签完整性、边支持、candidate recall 分母和
 双类场景覆盖。实际 4,500 帧补充语料含 245,032 条边，正/负/未标注为
-`57292/187740/0`；组合视图 4,972 帧的全部数据门通过。当前来源工作区为 dirty，因此只关闭 producer
-和数据支持；训练 readiness 继续失败关闭。没有模型训练或 `.pt`，G1/assist/在线权限不开放。
+`57292/187740/0`；组合视图 4,972 帧的全部数据门通过。main 随后基于 clean commit
+`79b2550ce2ef407c7cfcc653ce04a80fe2226c06` 同配置复生，来源 dirty=false，数据支持和
+`training_readiness` 均 pass。该状态只关闭 producer、数据来源和训练数据支持。
+
+训练数据准入与模型晋级保持分层。当前没有模型训练或 `.pt`，promotion 仍等待新模型证据，保留
+seed 独立评估和同 seed shadow 未完成。G1、assist 和在线/相机控制权限继续关闭，中心
+`global_track_id` 所有权及既有几何、安全门不变。
 
 ## Supplemental BC 全样本审计原则
 

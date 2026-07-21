@@ -20,11 +20,18 @@
 - [x] 本轮明确只闭合 producer 与数据支持，不训练新模型、不生成 `.pt`、不开放 G1/assist，D5 不
   创建、改写或换绑 `global_track_id`。专项 `12 passed in 5.49s`，全量 D5
   `498 passed in 124.90s`。
-- [ ] 当前全量制品绑定未提交工作区 commit `087a568c71a0c1004653d0e4175b156856b2e34b` 且
-  `repository_dirty=true`，总体训练准入正确保持 `fail_closed`。main 提交代码后，在 detached clean
-  worktree 对该提交复生数据并执行第二次准入；clean provenance 通过前不得关闭训练 readiness。
-- [ ] clean 数据支持通过后仍需单独训练、保留 seed 独立评估和同 seed 影子对照，才可讨论模型
-  promotion。G1、assist 和在线控制权限当前均为 false。
+- [x] main 已基于 clean commit `79b2550ce2ef407c7cfcc653ce04a80fe2226c06` 在 detached worktree
+  同配置复生。clean output 已归档到
+  `outputs/tracklet_graph_supplemental_curriculum_20260721_clean_79b2550_r2`；补充 manifest/view SHA
+  为 `4b9875fee86b5c425f683a6da23e6af1308bcf2383d3633d4fd6207fe2f25a32` 和
+  `11e8acbdbe268574ead402f2be5c9aa8e3459a7e4147a18e0570df3402892415`。dirty=false，数据支持与
+  `training_readiness` 均 pass，dirty provenance blocker 关闭。
+- [ ] 当前 pass 只适用于训练数据来源和数据支持。仍需单独训练新模型、使用保留 seed 做独立评估
+  并完成同 seed 影子对照，才可讨论 model promotion。当前没有 `.pt`，G1、assist 和在线/相机控制
+  权限均为 false。
+- [x] 主工作区严格复载 clean supplemental 与 composite view，实测 manifest/view SHA 命中、
+  `data_support=pass`、`training_readiness=pass`、promotion 等待模型证据；专项测试
+  `12 passed in 5.40s`。正式源全树指纹复载前后不变。
 
 ## 2026-07-21 Supplemental BC 全样本准入审计
 

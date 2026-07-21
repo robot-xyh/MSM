@@ -18,8 +18,8 @@
     "positive_candidate_edges": 57292,
     "unlabeled_candidate_edges": 0
   },
-  "content_sha256": "da23e9856cdfaa208d93588cc8342d89dfc6fc00f8ce1f7212460798ebb8e398",
-  "dataset_manifest_sha256": "ec2708477332416be83e12f1458cc2dff72a2c5196d1fdb58fbb074a85660ee4",
+  "content_sha256": "83993a2fe48f3d17ee82672bbc02ac7b18aa311cb4690b30f61167409f835b1a",
+  "dataset_manifest_sha256": "4c49aebae8040f8a7dace329b5d1769739e2e40d811c3ad5eb733f302ebd8f6f",
   "duplicate_violation_count": 0,
   "episode_count": 4500,
   "evaluator_lineage_sha256": "587a05927a00f795ab5b1828f0443f41297b79ae1d115dcc1193f35164b77c49",
@@ -36,11 +36,11 @@
   },
   "formal_manifest_sha256": "d9a84007995fe94918483bd5cb5ddc38f60f61d819bea27137dfa2619bf75426",
   "label_availability_ratio": 1.0,
-  "manifest_sha256": "77d117ba7a0d6cdbddf4ce9fcccd63455e2b28a916c6526d97e17857bfb9ad90",
+  "manifest_sha256": "4b9875fee86b5c425f683a6da23e6af1308bcf2383d3633d4fd6207fe2f25a32",
   "node_count": 66726,
   "scenario_scale_cell_count": 45,
   "schema_version": "d5.tracklet-supplemental-summary.v1",
-  "source_git_commit": "087a568c71a0c1004653d0e4175b156856b2e34b",
-  "source_repository_dirty": true,
+  "source_git_commit": "79b2550ce2ef407c7cfcc653ce04a80fe2226c06",
+  "source_repository_dirty": false,
   "unique_seed_count": 100
 }

@@ -8,12 +8,12 @@
 
 ## 数据来源
 
-- supplemental manifest SHA-256：`77d117ba7a0d6cdbddf4ce9fcccd63455e2b28a916c6526d97e17857bfb9ad90`
-- dataset manifest SHA-256：`ec2708477332416be83e12f1458cc2dff72a2c5196d1fdb58fbb074a85660ee4`
+- supplemental manifest SHA-256：`4b9875fee86b5c425f683a6da23e6af1308bcf2383d3633d4fd6207fe2f25a32`
+- dataset manifest SHA-256：`4c49aebae8040f8a7dace329b5d1769739e2e40d811c3ad5eb733f302ebd8f6f`
 - evaluator lineage SHA-256：`587a05927a00f795ab5b1828f0443f41297b79ae1d115dcc1193f35164b77c49`
 - 正式源 manifest SHA-256：`d9a84007995fe94918483bd5cb5ddc38f60f61d819bea27137dfa2619bf75426`
-- 源 Git 提交：`087a568c71a0c1004653d0e4175b156856b2e34b`
-- 源工作区 dirty：`true`
+- 源 Git 提交：`79b2550ce2ef407c7cfcc653ce04a80fe2226c06`
+- 源工作区 dirty：`false`
 
 ## 覆盖
 
