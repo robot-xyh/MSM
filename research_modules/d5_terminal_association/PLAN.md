@@ -10,10 +10,13 @@
   counterfactual/causal label 只存在于物理独立 `offline/*.offline.json`，并在 episode 结束后按
   `sample_key + observation_key` 精确连接。
 - [x] offline staging 改为 SHA+逐行 contract audit，只保留一个当前 snapshot 和紧凑 key/index；
-  不调用完整 record loader。校验 episode UID、source identity、对象哈希/引用、完整 sample 合同，
-  online 字节篡改以 `online_sha_mismatch` 失败关闭。
-- [x] finalize 的 staged/final audit 改为逐 episode `materialize=False`，不调用兼容全量 dataset loader，
-  不跨 episode 累积 record/sample；公共 lazy handle 提供逐 split 的 episode、BC 和 PPO iterator。
+  不调用完整 record loader。非物化 sample 使用合同摘要校验，不再重复遍历共享 snapshot；episode UID、
+  source identity、对象哈希/引用、动作/版本/反馈/ACK 和 sample join 仍完整校验，online 字节篡改以
+  `online_sha_mismatch` 失败关闭。
+- [x] finalize 的 staged audit 改为逐 episode `materialize=False`，不调用兼容全量 dataset loader，
+  不跨 episode 累积 record/sample；同一次 finalization 的最终结构复核复用仍匹配文件指纹的 stream/
+  SHA 证据，避免二次解压、反序列化和哈希。公共 lazy/audit API 不接受内部证据，仍从磁盘独立完整
+  复核。公共 lazy handle 提供逐 split 的 episode、BC 和 PPO iterator。
   BC 只物化当前 online 规则示范，PPO 只物化当前 episode 并逐项核验离线 reward availability。
 - [x] reward 固定 `[-1,1]` 并带 availability/provenance；无 outcome 时 reward 为 unavailable/null，
   无 outcome+counterfactual 时 causal label 为 unavailable/null，禁止用 `0` 伪装缺失值。
@@ -36,8 +39,12 @@
 - [x] 2026-07-20：16→64 camera fixture 的旧嵌套字节 `302709→4336869`，v2 去重解压
   `59617→234721`，gzip `3995→13084`；200-camera/400-track 单 snapshot 为
   `731412/37004` 字节（解压/gzip）。12 episode × 48 camera × 96 track 回归共 `576` samples，
-  finalize/audit 的完整 record/dataset loader 调用为 0。数据管线 `14 passed in 20.56s`、tracklet
-  `14 passed`、匿名稀疏图 `19 passed in 5.41s`、D5 全量 `396 passed in 30.02s`，接受阈值为零失败。
+  finalize/audit 的完整 record/dataset loader 调用为 0。
+- [x] 2026-07-20 开销收敛：6 episode × 48 camera × 96 track 的确定性计数中，finalize stream/offline
+  parse 从 `12/12` 降至 `6/6`，SHA256 从 `67` 降至 `20`，20 个制品各哈希一次；独立 public audit
+  仍另做 `6/6` 次 parse 和每制品一次哈希。200-camera/400-track 合成 stream audit 辅助墙钟约
+  `9.81→0.37 s`；已有 nominal/dense 200v200 文件独立 audit 约 `2.08/2.21 s`。墙钟不是硬门。
+  数据管线 `16 passed`、D5 全量 `398 passed in 15.75s`，接受阈值为零失败。
 - [x] main 容量复测：nominal seed 91、每档 2 s 的 5/20/50/100/200v200 总制品约
   `0.086/0.295/0.733/1.543/2.884 MB`；200v200 online/offline 为 `1.064/1.818 MB`、`3536`
   samples、RSS 约 `1.04 GB`、online truth=0。该结果关闭单 episode 去重容量门。

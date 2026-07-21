@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import Counter
 from dataclasses import replace
 import gzip
 import json
@@ -562,6 +563,92 @@ def test_multi_episode_finalize_and_audit_never_materialize_complete_records(
     assert not any(stream_materialization_modes)
 
 
+def test_finalize_reuses_stream_and_digest_evidence_but_public_audit_is_independent(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_path / "counted-finalization"
+    episode_count = 6
+    _stage_records(root, episode_count)
+
+    phase = {"name": "finalize"}
+    counts: Counter[tuple[str, str]] = Counter()
+    hash_paths: Counter[tuple[str, str]] = Counter()
+    original_stream_reader = episode_dataset_module._read_episode_record_stream
+    original_offline_reader = episode_dataset_module._load_offline_labels_for_join
+    original_sha256_file = episode_dataset_module.sha256_file
+    original_public_audit = episode_dataset_module.audit_active_vision_episode_dataset
+
+    def tracked_stream_reader(path: Path, *, materialize: bool) -> object:
+        counts[(phase["name"], "stream_read")] += 1
+        counts[(phase["name"], f"stream_materialize_{materialize}")] += 1
+        return original_stream_reader(path, materialize=materialize)
+
+    def tracked_offline_reader(*args: object, **kwargs: object) -> object:
+        counts[(phase["name"], "offline_join_parse")] += 1
+        return original_offline_reader(*args, **kwargs)
+
+    def tracked_sha256_file(path: str | Path) -> str:
+        artifact = Path(path).resolve().relative_to(root.resolve()).as_posix()
+        counts[(phase["name"], "sha256_file")] += 1
+        hash_paths[(phase["name"], artifact)] += 1
+        return original_sha256_file(path)
+
+    def tracked_public_audit(*args: object, **kwargs: object) -> object:
+        counts[(phase["name"], "public_dataset_audit")] += 1
+        return original_public_audit(*args, **kwargs)
+
+    monkeypatch.setattr(
+        episode_dataset_module,
+        "_read_episode_record_stream",
+        tracked_stream_reader,
+    )
+    monkeypatch.setattr(
+        episode_dataset_module,
+        "_load_offline_labels_for_join",
+        tracked_offline_reader,
+    )
+    monkeypatch.setattr(episode_dataset_module, "sha256_file", tracked_sha256_file)
+    monkeypatch.setattr(
+        episode_dataset_module,
+        "audit_active_vision_episode_dataset",
+        tracked_public_audit,
+    )
+
+    finalize_active_vision_episode_dataset(root, minimum_unseen_seed_count=1)
+
+    artifact_count = sum(
+        1
+        for path in root.rglob("*")
+        if path.is_file() and path.name != "SHA256SUMS"
+    )
+    assert counts[("finalize", "stream_read")] == episode_count
+    assert counts[("finalize", "stream_materialize_False")] == episode_count
+    assert counts[("finalize", "offline_join_parse")] == episode_count
+    assert counts[("finalize", "sha256_file")] == artifact_count
+    assert counts[("finalize", "public_dataset_audit")] == 0
+    assert all(
+        count == 1
+        for (counted_phase, _), count in hash_paths.items()
+        if counted_phase == "finalize"
+    )
+
+    phase["name"] = "public_audit"
+    audit = episode_dataset_module.audit_active_vision_episode_dataset(root)
+
+    assert audit["episode_count"] == episode_count
+    assert counts[("public_audit", "public_dataset_audit")] == 1
+    assert counts[("public_audit", "stream_read")] == episode_count
+    assert counts[("public_audit", "stream_materialize_False")] == episode_count
+    assert counts[("public_audit", "offline_join_parse")] == episode_count
+    assert counts[("public_audit", "sha256_file")] == artifact_count
+    assert all(
+        count == 1
+        for (counted_phase, _), count in hash_paths.items()
+        if counted_phase == "public_audit"
+    )
+
+
 def test_lazy_training_iterators_materialize_only_the_current_episode(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -856,9 +943,10 @@ def test_online_loader_rejects_truth_unknown_center_and_local_rewrite(tmp_path: 
             sample["effective_action"]["target_global_track_id"] = other_center_id
             expected = "global_track_id_local_rewrite"
         _write_online_rows(online_path, rows)
-        with pytest.raises(ActiveVisionDatasetValidationError) as exc_info:
-            load_active_vision_episode_record(online_path)
-        assert exc_info.value.code == expected
+        for reader in (audit_active_vision_episode_record, load_active_vision_episode_record):
+            with pytest.raises(ActiveVisionDatasetValidationError) as exc_info:
+                reader(online_path)
+            assert exc_info.value.code == expected
 
 
 def test_dataset_hash_tamper_fails_closed(tmp_path: Path) -> None:
@@ -872,3 +960,18 @@ def test_dataset_hash_tamper_fails_closed(tmp_path: Path) -> None:
     with pytest.raises(ActiveVisionDatasetValidationError) as exc_info:
         load_active_vision_episode_dataset(root)
     assert exc_info.value.code == "artifact_sha_mismatch"
+
+
+def test_digest_evidence_fails_closed_if_artifact_changes_during_one_audit(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "artifact.bin"
+    path.write_bytes(b"first-version")
+    evidence = {}
+    episode_dataset_module._file_digest_once(path, evidence)
+
+    path.write_bytes(b"changed-version-with-different-size")
+
+    with pytest.raises(ActiveVisionDatasetValidationError) as exc_info:
+        episode_dataset_module._file_digest_once(path, evidence)
+    assert exc_info.value.code == "artifact_changed_during_audit"

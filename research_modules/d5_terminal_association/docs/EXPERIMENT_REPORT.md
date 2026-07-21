@@ -18,10 +18,13 @@ main/AirSim；容量数值只证明单 seed 数据生成，不是训练、checkp
 | 去重体量 | 16/64 camera，track 数为 camera 两倍；另有 200 camera/400 track | 旧嵌套 `302709/4336869` B；v2 解压 `59617/234721` B；gzip `3995/13084` B；200 camera 为 `731412/37004` B | 4 倍输入下 v2 解压和 gzip 增长 `<6x`；200 camera snapshot count=1 | 通过 |
 | main nominal 容量复测 | seed 91、每档 2 s、5/20/50/100/200v200 | 总制品约 `0.086/0.295/0.733/1.543/2.884 MB`；200v200 online/offline `1.064/1.818 MB`、`3536` samples、RSS约 `1.04 GB` | online truth=0；去重容量门 | 通过，非 corpus/模型性能 |
 | 多 episode finalize/audit | 6 个唯一 seed × 2 scenario、每 episode 48 camera/96 track，共 12 episode/576 samples | 完整 record、staged materialize、全量 dataset loader 均设为一调用即失败；所有 online audit 均为 `materialize=False` | 全量物化调用=0；episode/sample count 精确 | 通过 |
+| finalization 调用计数 | 6 episode × 48 camera × 96 track；相同 fixture 对照修改前后 | online stream parse `12→6`；offline join parse `12→6`；`sha256_file` `67→20`，20 个实际制品各一次；finalize 内 public audit 调用=0 | 每 episode 内容审计=1；每制品哈希=1；物化=0 | 通过 |
+| 公开 audit 独立性 | 上述 finalized dataset，计数清零后单独调用 public audit | 重新产生 6 次 stream parse、6 次 offline join、20 次 SHA256；truth/未知中心/局部换绑在非物化路径仍拒绝 | 不复用 finalize 内存证据；全部合同独立复核 | 通过 |
+| 非物化 stream profile | 200 camera/400 track 合成共享 snapshot；另取既有 nominal/dense 200v200 gzip | 合成辅助墙钟约 `9.81→0.37 s`；`1.066/1.134 MB`、`3536/3744` sample 实际文件独立 audit 约 `2.08/2.21 s` | 硬门只采用调用计数和零失败；墙钟仅作辅助 | 通过软件门，非正式吞吐验收 |
 | lazy BC/PPO | 8 episode；逐次推进 iterator | lazy handle 创建加载 episode=0；BC/PPO 每次 `next()` 只加载当前 episode；BC 不读 offline label | 跨 episode 累积=0；PPO reward 均为 `0.5` | 通过 |
 | 最终合同复核 | 相对 dataset root、伪造 fallback effective action、truth-like resource/camera ID | 相对 staging/finalize/load 成功；伪造动作和污染命名全部拒绝 | 误拒合法路径=0；错误动作/身份接受=0 | 通过 |
-| 新数据管线专项 | 14 项测试 | `14 passed in 20.56s` | 零失败 | 通过 |
-| D5 全量回归 | 全部 D5 tests | `396 passed in 30.02s` | 零失败 | 通过 |
+| 新数据管线专项 | 16 项测试 | `16 passed` | 零失败 | 通过 |
+| D5 全量回归 | 全部 D5 tests | `398 passed in 15.75s` | 零失败 | 通过 |
 
 共享 seed 原子 split 将 learning dataset 升为 v2；去重磁盘合同将 episode dataset 升为 v3、
 record/descriptor/sample 升为 v2，bundle 升为 `d5.active-vision-model-bundle.v4` 并绑定 episode
@@ -33,6 +36,13 @@ seed 的非合成非退化证据。
 下一步不是从本表推导收益，而是由 main 用实际 Git/config identity 与独立 evaluator 构建约
 900 episode 正式 corpus，实测 finalize/lazy 训练峰值 RSS、吞吐和恢复，再执行正式 split、BC/PPO、
 paired shadow 和准入审查。当前单 seed nominal 容量通过不能代替该验收。
+
+本轮未改变磁盘 schema、公开 DTO、采样频率、训练特征、真值物理隔离、whole-seed split、
+SHA256SUMS 或只读合同。用户提供的 clean-tree 证据显示 200v200 单 episode 在线 gzip 约
+`0.66-1.07 MB`、主动视觉写入时间戳跨度约 `27-45 s`，三 seed nominal 整体 staging 约
+`74-76 s`、批次 finalization 约 `116.6 s`。这些时间包含 main 生成、其他模块 staging、文件系统和
+D5 路径，不能全部归因于 D5。本次只消除了 D5 内已由调用计数证明的重复反序列化与哈希；正式
+900-episode clean-tree profile 仍需 main 复跑后分段归因。
 
 ## 2026-07-20 统一三维 episode 主动视觉接口冒烟
 

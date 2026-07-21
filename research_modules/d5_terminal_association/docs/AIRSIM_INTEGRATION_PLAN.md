@@ -21,8 +21,10 @@ group 切分，并把共享同一数值 seed 的所有 scenario/scale group 原�
 record/descriptor/sample v2，后续训练 bundle 使用 v4；snapshot/action/feedback/ACK/offline-label
 保持 v1。旧 v1 嵌套 record 不兼容读取。
 
-finalize 和 audit 现在逐 episode 流式检查 online record，并在处理完当前 offline 文件后释放对象；
-不再调用 `load_active_vision_episode_dataset()` 累积全部 episode。正式训练应使用
+finalize 现在逐 episode 流式检查一次 online record/offline join，并在处理完当前 episode 后释放
+对象；最终结构复核在文件指纹不变时复用同一调用内的 stream/SHA 证据。公开 audit 每次仍独立
+读盘、复算全部 SHA256 并逐 episode 检查，不接受 finalize 内存证据。不再调用
+`load_active_vision_episode_dataset()` 累积全部 episode。正式训练应使用
 `load_active_vision_episode_dataset_lazy()` 及其 split/BC/PPO iterator；兼容全量 loader 只用于
 明确有界的小数据。该 API 变化不改变 v3 磁盘合同，故不再升版。
 
@@ -33,8 +35,10 @@ launcher/reset/episode order，也不形成新的 AirSim 执行证据。
 main 已用新格式完成 nominal seed 91、每档 2 s 容量复测：5/20/50/100/200v200 总制品约
 `0.086/0.295/0.733/1.543/2.884 MB`；200v200 online/offline `1.064/1.818 MB`、`3536` samples、
 RSS约 `1.04 GB`、online truth=0。该结果关闭单 episode 去重容量门，不关闭约 900 episode corpus
-的 finalize/训练峰值与吞吐验收。D5 数据管线 `14 passed in 20.56s`、全量
-`396 passed in 30.02s`；12 episode/576 sample 回归确认 finalize/audit 全量物化调用为 0。
+的 finalize/训练峰值与吞吐验收。D5 数据管线 `16 passed`、全量
+`398 passed in 15.75s`；6-episode 计数确认 finalize 每 episode 一次 stream/offline parse、每制品
+一次 SHA256，独立 audit 另做完整一轮。该变化只影响离线数据处理开销，不改变 AirSim 相机、
+detector、云台命令、reset 或 episode order。
 本轮 D5 未修改 launcher/reset/episode order；没有新增 AirSim 云台、正式 BC/PPO、20-seed 性能
 或 assist 准入结论。
 

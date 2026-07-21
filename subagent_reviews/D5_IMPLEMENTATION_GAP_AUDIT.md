@@ -1,5 +1,23 @@
 # D5 实现差距审计
 
+## 2026-07-20 主动视觉 staging/finalization 开销 GAP 状态
+
+**D5-owned 重复工作子项已关闭：** 非物化 stream audit 不再为每条 sample 构造并递归扫描共享
+snapshot，只保留完成动作、版本、反馈、ACK、中心引用和顺序校验所需的摘要。同一次 finalize 对
+每个 episode 只做一次 online/offline 内容审计，并在文件设备号、inode、大小和修改时间未变化时
+复用实际 SHA256 与 episode 审计证据。公开 audit 不接受内部证据，仍从磁盘独立完整复核。
+
+**确定性证据：** 6 episode × 48 camera × 96 track 的计数回归中，finalize online/offline parse
+由 `12/12` 降至 `6/6`，SHA256 调用由 `67` 降至 `20`，20 个实际制品各一次；独立 public audit
+另执行 `6/6` 次 parse 和每制品一次哈希。200-camera/400-track 合成 stream audit 辅助墙钟约
+`9.81→0.37 s`，已有 nominal/dense 200v200 gzip 独立 audit 约 `2.08/2.21 s`。数据专项
+`16 passed`，D5 全量 `398 passed in 15.75s`。墙钟不是硬门。
+
+**合同状态：** schema/version、采样频率、训练特征、online truth-free、离线标签物理隔离、
+SHA256SUMS、只读制品、whole-seed split 和 fail-closed 均未改变。缓存期间文件变化新增稳定
+`artifact_changed_during_audit` 拒绝。正式约 900 episode clean-tree staging/finalize 峰值、吞吐、
+故障恢复及跨模块归因仍是 P1；用户提供的整 staging 时间不能全部归因于 D5。
+
 ## 2026-07-20 主动视觉整 episode 容量与流式训练 GAP 状态
 
 **D5-owned 软件阻塞已关闭：** `active_vision_episode_dataset.py` 的 online record v2 使用确定性
@@ -13,8 +31,9 @@ sample 保存引用以及完整规则示范、requested/effective action、三�
 source identity、对象 key/引用、完整 sample 合同和 join key，使用 `materialize=False`，不重建完整
 record。未知中心引用、局部换绑、中心版本/时间回退和篡改均失败关闭。
 
-**跨 episode 内存阻塞已关闭：** finalizer 的 staged 与最终审计都逐 episode 调用流式 reader，
-不调用兼容全量 dataset loader，也不跨 episode 累积 record/sample。新增
+**跨 episode 内存阻塞已关闭：** finalizer 的 staged 内容审计逐 episode 调用流式 reader，最终
+结构复核复用同一次调用内仍有效的审计证据；不调用兼容全量 dataset loader，也不跨 episode 累积
+record/sample。新增
 `load_active_vision_episode_dataset_lazy()` 与 `LazyActiveVisionEpisodeDataset`；BC/PPO/完整 episode
 均可按 split 迭代，每次只物化当前 episode。BC 不读取 offline label，PPO 每 episode 对任一 reward
 unavailable/null 立即拒绝。旧 `load_active_vision_episode_dataset()` 仅保留小数据兼容。

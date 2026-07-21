@@ -28,8 +28,17 @@ assignment、中心候选、对象 key/引用、版本单调性和中心 track v
 offline JSON 仅通过 `sample_key + observation_key` 连接。offline staging 先验证 descriptor 中的
 online SHA、episode UID、source identity、sample/object count，再以
 `_read_episode_record_stream(..., materialize=False)` 完成 truth-free、对象引用和 sample 合同审计，
-不重新构造完整 online record。finalize 的 staged 审计和写完 `manifest.json + SHA256SUMS` 后的最终
-审计使用同一路径；内存中只保留当前 episode 的紧凑在线索引和离线标签，不累计跨 episode DTO。
+不重新构造完整 online record。非物化 reader 对唯一 snapshot 行只构造和检查一次共享对象；每条
+sample 行改用轻量合同摘要，仍检查 rule/requested/effective action、中心 ID、三个版本、有限动作集、
+相机反馈、runtime ACK、时间和版本单调性，不再构造会递归扫描共享 snapshot 的完整 sample DTO。
+物化 record loader 保持原完整对象构造路径。
+
+finalize 在 staged audit 中为每个 episode 生成 `_StagedEpisodeAudit`，并用 `_FileDigestEvidence` 保存
+实际 SHA256 及设备号、inode、大小、修改时间。写完 `manifest.json + SHA256SUMS` 和只读位后，内部
+最终结构校验复用这些证据；文件指纹变化时返回 `artifact_changed_during_audit`。公共 lazy/audit
+入口不接收内部证据，每次独立哈希全部制品并逐 episode 重新执行 stream/offline join。writer 复用
+首次生成并审计的 snapshot/feedback payload，避免压缩写入前重复转换。上述优化不改变采样、特征、
+行格式、manifest 字段或 schema version。
 
 reward 合同固定 `[-1,1]`。`reward_available=true` 要求离线 outcome 与 provenance；否则 value 和
 provenance 必须为 null。counterfactual 独立带 availability；causal label 只有 outcome 和
@@ -69,13 +78,15 @@ admission 检查不变；版本升级不等于模型准入。
 `731412/37004` 字节（解压/gzip）。main 的 nominal seed 91、2 s 新格式复测中，200v200 总制品
 `2.884 MB`，online/offline `1.064/1.818 MB`、`3536` samples、RSS 约 `1.04 GB`、online truth=0。
 
-2026-07-20 验证为数据管线 `14 passed in 20.56s`、匿名稀疏图 `19 passed in 5.41s`、D5 全量
-`396 passed in 30.02s`。新增
-12 episode × 48 camera × 96 track、共 `576` samples 的回归同时 monkeypatch 完整 record、全量
-dataset 和 staged materialize loader，finalize/audit 全程只观察到 `materialize=False`；lazy BC/PPO
-在 handle 创建时加载 episode 数为 0，每次 `next()` 只增加 1。该证据关闭 D5-owned 容量/加载软件
-阻塞，但尚未执行 900-episode 正式 corpus、正式 BC/PPO、20 个未见 seed 的性能、AirSim 或模型
-准入。本轮没有修改 main/runtime。
+2026-07-20 当前验证为数据管线 `16 passed`、D5 全量 `398 passed in 15.75s`。6 episode ×
+48 camera × 96 track 的可复现计数回归中，finalize 的 stream/offline parse 为 `6/6`，旧路径为
+`12/12`；`sha256_file` 为 20 个制品各一次，旧路径共 `67` 次。单独 public audit 会再次独立产生
+`6/6` 次 parse 和每制品一次 SHA256。200-camera/400-track 合成 stream audit 本机辅助墙钟从约
+`9.81 s` 降至 `0.37 s`；两个既有 200v200 gzip（`3536/3744` samples）独立 audit 约
+`2.08/2.21 s`。测试还覆盖完整 record/dataset loader 零调用、流审计 `materialize=False`、缓存期间
+文件变化失败关闭，以及 truth/未知中心/局部换绑在非物化和物化路径均拒绝。该证据关闭 D5-owned
+重复审计开销子项，但尚未执行 900-episode 正式 corpus、正式 BC/PPO、20 个未见 seed 的性能、
+AirSim 或模型准入。本轮没有修改 main/runtime。
 
 ## 2026-07-20 主动视觉 BC/PPO 与安全执行实现
 

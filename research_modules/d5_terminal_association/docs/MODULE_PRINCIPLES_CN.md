@@ -37,9 +37,13 @@ offline-label 保持 v1，且仍需正式 paired shadow admission 才能 assist�
 bundle 同步升为 v2，同一数值 seed 的所有 scenario/scale graph 必须进入同一 split。
 
 finalize 和 dataset audit 必须逐 episode 流式审计，不能调用兼容全量 loader 或跨 episode 保留
-record/sample。`LazyActiveVisionEpisodeDataset` 只在 iterator 前进时物化当前 episode；BC iterator
-不读取 offline label，PPO iterator 逐 episode 检查 reward availability。兼容全量 loader 只适用于
-明确有界的小数据集。
+record/sample。同一次 finalize 只允许每个 episode 做一次内容审计；该次审计形成在线合同、离线
+连接和实际 SHA256 证据，最终结构复核只能在文件设备号、inode、大小和修改时间未变化时复用。
+文件变化必须失败关闭。公开 audit 不接受 finalize 的内存证据，每次仍从磁盘独立复算 SHA256、
+解压 online stream 并核对 offline join。非物化 stream reader 校验原始 sample、feedback、snapshot
+行和全部动作/版本/ACK 关系，只保存紧凑 key/index，不得为每个 sample 重复扫描共享 snapshot。
+`LazyActiveVisionEpisodeDataset` 只在 iterator 前进时物化当前 episode；BC iterator 不读取 offline
+label，PPO iterator 逐 episode 检查 reward availability。兼容全量 loader 只适用于明确有界的小数据集。
 
 落盘证据必须忠实反映 controller 的规则回退：所有非 assist effective mode 的 effective action
 必须与同 tick rule action 完全一致；assist 只有在 requested/effective action 一致且无 fallback 时
@@ -48,11 +52,13 @@ track ID 都不得携带 truth/actor/object-like 标识。
 
 2026-07-20 main 容量实测为 nominal seed 91、每档 2 s：5/20/50/100/200v200 总制品约
 `0.086/0.295/0.733/1.543/2.884 MB`；200v200 online/offline `1.064/1.818 MB`、`3536` samples、
-RSS 约 `1.04 GB`、online truth=0，单 episode 容量门通过。D5 代码证据为数据管线
-`14 passed in 20.56s`、匿名稀疏图 `19 passed in 5.41s`、全量 `396 passed in 30.02s`；12 episode ×
-48 camera × 96 track 回归确认
-finalize/audit 的物化调用为 0。尚未运行 900-episode 正式集、正式训练、20-unseen-seed 性能或
-模型准入；本轮未修改 main/runtime。
+RSS 约 `1.04 GB`、online truth=0，单 episode 容量门通过。D5 当前代码证据为数据管线
+`16 passed`、全量 `398 passed in 15.75s`。6 episode × 48 camera × 96 track 的确定性计数中，
+finalize 的 online/offline parse 从 `12/12` 降为 `6/6`，SHA256 调用从 `67` 降为 `20`，每个实际
+制品一次；独立 public audit 仍重新执行一轮。200-camera/400-track 合成 stream audit 辅助墙钟约
+`9.81→0.37 s`，墙钟不作为验收门。磁盘 schema、在线真值隔离、离线标签分离、whole-seed split、
+SHA256 和只读语义均未改变。尚未运行 900-episode 正式集、正式训练、20-unseen-seed 性能或模型
+准入；本轮未修改 main/runtime。
 
 ## 2026-07-20 主动视觉最小权限与安全回退原则
 

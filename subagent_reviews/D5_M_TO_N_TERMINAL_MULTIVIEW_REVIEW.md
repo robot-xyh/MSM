@@ -1,5 +1,13 @@
 # D5 M 对 N 末端多视角配准与协同定位调研
 
+## 2026-07-20 M 对 N 数据终结开销复核
+
+优化按 episode 和实际 camera 数量工作，不引入 N 的固定上限。非物化审计不再为每个 camera sample
+重复扫描共享 snapshot；同一次 finalize 复用一次 stream/offline audit 和实际文件 SHA256，公开
+audit 仍独立复核。6-episode 计数中 parse `12/12→6/6`、SHA256 `67→20`；D5 全量
+`398 passed in 15.75s`。磁盘 schema、全部训练特征、真值隔离、整 seed 切分及中心 ID 所有权不变。
+正式 900-episode M 对 N corpus 的 clean-tree 吞吐和恢复仍需 main 复测。
+
 ## 2026-07-20 M 对 N 主动视觉容量与流式数据复核
 
 episode dataset 按实际 camera、target 和 resource 数组工作，不假设 2v2、5v5 或 200v200。
@@ -9,8 +17,9 @@ reward/outcome/counterfactual/causal label 仍只在 episode 结束后通过
 `sample_key + observation_key` 连接，与 online 文件物理分离。
 
 复核确认流式/物化 loader 都拒绝 truth/actor/object identity、未知中心 `global_track_id`、局部换绑、
-版本回退、SHA/schema/source identity/label join 错误。finalize 和 audit 逐 episode 使用
-`materialize=False`，不再跨 episode 累积 record。lazy dataset 的 episode/BC/PPO iterator 每次只
+版本回退、SHA/schema/source identity/label join 错误。finalize 每 episode 执行一次
+`materialize=False` 内容审计，并在最终结构复核复用证据；独立 audit 仍逐 episode 重新执行。
+两者都不跨 episode 累积 record。lazy dataset 的 episode/BC/PPO iterator 每次只
 物化当前 episode；BC 不读 offline label，PPO 对 reward unavailable/null 失败关闭。
 
 完整 `(scenario_version, seed)` group 及共享数值 seed 跨 scenario/scale 原子进入同一 split，test

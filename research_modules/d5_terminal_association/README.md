@@ -49,12 +49,23 @@ identity、truth-free 边界、对象 key、引用、完整 sample 合同及 joi
 `reward_available=false/value=null`，不能用 `0` 补位；causal label 还要求 factual outcome 与
 counterfactual 同时可用。
 
-`finalize_active_vision_episode_dataset()` 的 staged 与最终审计均逐 episode 调用
-`_read_episode_record_stream(..., materialize=False)`，不再调用全量 dataset loader 或保留跨 episode
-record。公共 `load_active_vision_episode_dataset_lazy()` 返回
+`finalize_active_vision_episode_dataset()` 只对每个 staged episode 调用一次
+`_read_episode_record_stream(..., materialize=False)`。该次调用生成在线合同、离线连接与实际文件
+SHA256 证据；写完 manifest、checksum 和只读位后，同一次 finalization 的最终结构复核只复用仍与
+设备号、inode、大小和修改时间匹配的证据，不再重复解压或哈希。文件在操作中变化时返回
+`artifact_changed_during_audit` 并失败关闭。公共 `audit_active_vision_episode_dataset()` 和
+`load_active_vision_episode_dataset_lazy()` 不接受该内部证据，每次调用都从磁盘独立完成一次逐文件
+SHA256、逐 episode 流式合同与离线连接复核。后者返回
 `LazyActiveVisionEpisodeDataset`：`iter_episodes()`、`iter_behavior_cloning_episodes()` 和
 `iter_ppo_episodes()` 仅在迭代推进时物化当前 episode；其中 BC 不读取 offline label，PPO 逐 episode
 核验 reward availability。原 `load_active_vision_episode_dataset()` 保留为小数据兼容全量路径。
+
+非物化流审计不再为每条 sample 构造含共享 snapshot 的完整样本对象。原始 sample JSON 行、引用的
+camera feedback 行和唯一 snapshot 行仍分别执行递归 truth-free 审计；随后轻量路径完整检查动作、
+中心 ID 引用、plan/coalition/communication version、有限动作集、相机反馈、ACK、时间和版本单调性，
+只保留 sample key/index 摘要。`materialize=True` 的公开 record loader 保持原对象构造和复核路径。
+writer 同时复用已经生成并审计的 snapshot/feedback payload，避免写入时再次转换同一对象；字段、
+采样频率和压缩格式均未改变。
 
 `finalize_active_vision_episode_dataset()` 保持完整 `(scenario_version, seed)` group 不可分，并先以
 唯一数值 seed 做确定性分配：共享同一 seed 的所有 scenario/scale group 必须原子进入同一
@@ -86,13 +97,16 @@ schema；loader 复算并拒绝跨场景 seed 泄漏。
 effective action 必须保持同 tick 规则动作；匿名 tracklet 的 resource、camera 和 local ID 均拒绝
 truth/actor/object-like 命名。
 
-2026-07-20 最终验证：数据管线 `14 passed in 20.56s`、tracklet 管线 `14 passed`、匿名稀疏图
-`19 passed in 5.41s`、D5 全量 `396 passed in 30.02s`，接受阈值为零失败。新增 12 episode ×
-48 camera × 96 track（`576`
-samples）回归在 finalize 与独立 audit 中拦截所有完整 record/dataset loader，并确认在线流读取的
-`materialize` 始终为 false；lazy BC/PPO 测试确认 handle 创建不物化 episode，迭代每推进一次才
-加载一个 episode。既有动态数量、ACK 可选、真值分流、未知/换绑中心 ID、SHA 篡改、reward null、
-共享 seed 原子 split 和不足样本失败关闭回归均保留。D5 本轮没有修改 main/runtime；尚未执行
+2026-07-20 当前验证：数据管线 `16 passed`、D5 全量 `398 passed in 15.75s`，接受阈值为零失败。
+确定性 6-episode/48-camera/96-track 计数微基准中，finalize 在线解压/解析由 `12` 次降至 `6` 次，
+offline join 解析由 `12` 次降至 `6` 次，`sha256_file` 调用由 `67` 次降至 `20` 次；20 个实际制品
+各哈希一次，finalize 内部公开 audit 调用为 0。随后单独调用公开 audit 时再次产生 `6` 次在线流
+解析、`6` 次 offline join 和每制品一次 SHA256，证明公开复核保持独立。200-camera/400-track 合成
+stream audit 的本机辅助墙钟由约 `9.81 s` 降至约 `0.37 s`；已有 nominal/dense 200v200 gzip
+（`1.066/1.134 MB`、`3536/3744` samples）独立审计约 `2.08/2.21 s`。墙钟不作为测试门，正式门是
+重复调用计数、零物化、篡改失败关闭和零测试失败。既有动态数量、ACK 可选、真值分流、未知/换绑
+中心 ID、SHA 篡改、reward null、共享 seed 原子 split 和不足样本失败关闭回归均保留。磁盘和公开
+DTO schema/version 全部保持不变。D5 本轮没有修改 main/runtime；尚未执行
 900-episode 正式集峰值/吞吐、正式 BC/PPO、20-unseen-seed 性能、checkpoint 或 paired shadow
 准入。main 后续仍需以真实 source Git/config identity 和独立 outcome/counterfactual 生成正式集。
 

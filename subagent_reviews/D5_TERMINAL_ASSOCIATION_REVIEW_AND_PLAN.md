@@ -1,5 +1,16 @@
 # D5 末端视觉配准与协同身份认证综述及子方案
 
+## 2026-07-20 主动视觉数据开销复核
+
+本轮只收敛 D5 数据写入与终结开销，不改变末端关联算法或运行时接口。非物化 reader 现在对共享
+snapshot 只做一次对象审计，每条 sample 使用轻量合同摘要；finalize 每 episode 只做一次 online/
+offline 内容审计，并在文件指纹不变时复用 SHA256 和连接证据。公共 audit 始终独立读盘复核。
+
+6-episode 确定性计数由 stream/offline parse `12/12` 降为 `6/6`，SHA256 `67→20`，每制品一次；
+独立 audit 仍重新执行一轮。合成 200-camera/400-track stream audit 辅助墙钟约 `9.81→0.37 s`。
+数据专项 `16 passed`、全量 `398 passed in 15.75s`。schema、采样、特征、真值隔离、whole-seed
+split、哈希、只读和失败关闭语义保持。正式 900-episode clean-tree 吞吐与恢复仍开放。
+
 ## 2026-07-20 主动视觉整 episode 容量与 lazy 数据合同审查
 
 审查接受 record v2 的确定性 gzip JSONL 为 D5 正式 online 存储。每个唯一 snapshot/camera
@@ -13,8 +24,9 @@ snapshot。offline staging 与 finalize 核对 online 文件 SHA、episode/sourc
 完整 sample 合同、中心 ID 只读引用和 join 完整性；未知引用、局部换绑、版本/时间回退和篡改均
 失败关闭。
 
-跨 episode 内存审查通过：finalize 的 staged/final audit 与独立 dataset audit 均逐 episode 使用
-`materialize=False`，不调用 `load_active_vision_episode_dataset()`，也不保留整个 dataset 的 record。
+跨 episode 内存审查通过：finalize 的 staged audit 与独立 dataset audit 均逐 episode 使用
+`materialize=False`；同一次 finalize 的最终结构复核复用 staged 证据，不再次解压。两条路径都不
+调用 `load_active_vision_episode_dataset()`，也不保留整个 dataset 的 record。
 新增 `load_active_vision_episode_dataset_lazy()`；其 `iter_episodes()`、BC 和 PPO iterator 每推进一次
 仅物化当前 episode。BC 不读 offline label；PPO 对任一 reward unavailable/null 立即失败关闭。
 兼容全量 loader 仍可用于小数据，但不作为正式 900-episode 训练入口。
