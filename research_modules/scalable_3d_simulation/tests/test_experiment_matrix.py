@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import csv
 from dataclasses import replace
 import json
 from pathlib import Path
@@ -13,6 +14,7 @@ from research_modules.scalable_3d_simulation.experiment_matrix import (
     _validate_resolved_variant,
     load_training_seeds,
     paired_exogenous_config_sha256,
+    run_experiment_matrix,
     runtime_options_for_variant,
     validate_required_bundles,
 )
@@ -149,3 +151,38 @@ def test_paired_exogenous_hash_ignores_algorithm_identity_but_not_sensor_schedul
     assert paired_exogenous_config_sha256(base) != paired_exogenous_config_sha256(
         replace(base, sensor_random_schedule_version="sequential_v1")
     )
+
+
+def test_r0_matrix_persists_fixed_random_schedule_and_pairing_hash(
+    tmp_path: Path,
+) -> None:
+    plan = ExperimentMatrixPlan(
+        variants=("R0",),
+        scenarios=("nominal",),
+        scales=(1,),
+        seeds=(17,),
+        duration_s=0.05,
+    )
+    paths = run_experiment_matrix(
+        root=Path(__file__).resolve().parents[3],
+        output_dir=tmp_path / "matrix",
+        base_config=ScenarioConfig(
+            target_count=1,
+            resource_count=1,
+            recon_count=0,
+            duration_s=0.05,
+        ),
+        plan=plan,
+        bundles=ModelBundlePaths(),
+        write_d6_report=False,
+    )
+
+    manifest = json.loads(paths["manifest"].read_text(encoding="utf-8"))
+    with paths["cells"].open(newline="", encoding="utf-8") as stream:
+        rows = list(csv.DictReader(stream))
+    assert manifest["paired_random_schedule_version"] == "entity_fixed_v1"
+    assert manifest["paired_exogenous_config_count"] == 1
+    assert manifest["paired_exogenous_configuration_consistent"] is True
+    assert len(rows) == 1
+    assert rows[0]["sensor_random_schedule_version"] == "entity_fixed_v1"
+    assert len(rows[0]["paired_exogenous_config_sha256"]) == 64
