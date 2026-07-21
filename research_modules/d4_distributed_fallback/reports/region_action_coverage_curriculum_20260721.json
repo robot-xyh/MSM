@@ -42,7 +42,7 @@
     }
   },
   "admission": {
-    "behavior_cloning_manifest_available": false,
+    "behavior_cloning_manifest_available": true,
     "clean_source_required_for_behavior_cloning": true,
     "formal_900_episode_dataset_modified": false,
     "offline_shadow_evaluation_only": true,
@@ -85,8 +85,8 @@
       "schema": "d4-canonical-region-seed-split-view-v1",
       "shared_registry_content_sha256": "29eb6895c4aa570b068f15141cbbbfede3041519117852d1ad48e848a25af146",
       "shared_registry_file_sha256": "68608d29d1f733beea87f1faf06464fededb68a9c2972c51c10cd4c2160f032f",
-      "source_dataset_manifest_file_sha256": "d3c816c8cc2fe606d3ca155de88534d933c9e0ca14d02cd9a13a53d2c3a875cf",
-      "source_dataset_sha256": "b3739fefa6f082713af4ecf6a5dcb72cd73fd6dfb39d32cdf40c272cab2390ef",
+      "source_dataset_manifest_file_sha256": "82819c2470505e61da753d0d24ddf910e154435cd8d2cbd0a979dfb3dd643904",
+      "source_dataset_sha256": "7e17aba7911602c1b9e9f5b917aea97f1eeec478f03963b119fbcfc8de299e72",
       "source_dataset_split_sha256": "b413fa810ae426ad143b713afac2c7a3366fae123e397054dbb9b0449d7b0c16",
       "split_seed": 20260720,
       "test_seeds": [
@@ -196,7 +196,7 @@
         90,
         91
       ],
-      "view_sha256": "aa92705a308a1387648731f10c8380dcac614301b8f298202ec2902e08beebae"
+      "view_sha256": "9aa28765bc6e09fd912b2899716e8f0b046d538a0cb96da610519963784cc8de"
     },
     "canonical_split": {
       "episode_counts": {
@@ -220,7 +220,7 @@
     },
     "readiness": {
       "assist_eligible": false,
-      "behavior_cloning_view_available": false,
+      "behavior_cloning_view_available": true,
       "development_data_governance_only": true,
       "model_performance_evidence": false,
       "ppo_available": false
@@ -249,12 +249,12 @@
     "schema": "d4-region-action-coverage-curriculum-v1",
     "version": "v1"
   },
-  "content_sha256": "851a678701cc73015f992b5e26b97b557165db620ca0509395555a349639b9a5",
-  "created_at_utc": "2026-07-21T12:00:00Z",
+  "content_sha256": "360f7a2110d16c8c84bd7065080b45e53b0cc1c6351588f161cc49e556505401",
+  "created_at_utc": "2026-07-21T15:30:00Z",
   "curriculum_schema": "d4-region-action-coverage-curriculum-v1",
   "dataset": {
-    "dataset_sha256": "b3739fefa6f082713af4ecf6a5dcb72cd73fd6dfb39d32cdf40c272cab2390ef",
-    "dirty_episode_count": 100,
+    "dataset_sha256": "7e17aba7911602c1b9e9f5b917aea97f1eeec478f03963b119fbcfc8de299e72",
+    "dirty_episode_count": 0,
     "episode_count": 100,
     "frame_count": 300,
     "native_split_sha256": "b413fa810ae426ad143b713afac2c7a3366fae123e397054dbb9b0449d7b0c16",

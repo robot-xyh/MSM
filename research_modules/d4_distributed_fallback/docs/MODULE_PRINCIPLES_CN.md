@@ -198,7 +198,7 @@ canonical view 是冻结内存覆盖层。它保存每个 episode 的原 split �
 
 本次配置为 4 个区域、17 份聚合资源、100 个 seed、每 seed 3 帧。结果含 hold 100、request-replan 200、非零 quota action 200、transfer 100。canonical 训练、验证、测试桶为 60/20/20 seed，每个桶都有四类动作。硬约束违规、在线真值字段和保留 seed 泄漏均为 0。
 
-课程没有动作执行后的真实结果。300 帧 reward 和 outcome 全部显式 unavailable，因此只能用于行为克隆 teacher 覆盖和离线 shadow。当前实际制品来自 dirty worktree，默认行为克隆加载器会拒绝；clean fixture 已验证 canonical 训练桶 180 帧可加载，PPO loader 因 reward unavailable 失败关闭。该结果关闭 producer 和标签覆盖接口缺口，不关闭策略有效性、因果归因、外部保留 seed 性能或在线准入。
+课程没有动作执行后的真实结果。300 帧 reward 和 outcome 全部显式 unavailable，因此只能用于行为克隆 teacher 覆盖和离线 shadow。main 已在 detached clean worktree commit `9445ed6` 上生成 dirty episode 为 0 的课程，canonical 训练桶 180 帧可由行为克隆只读 view 加载；PPO loader 仍因 reward unavailable 失败关闭，assist 和 authority 不开放。首次 dirty 产物只保留为开发历史。该结果关闭 producer、标签覆盖和 clean BC 数据准入缺口，不关闭策略有效性、因果归因、外部保留 seed 性能或在线准入。
 
 ## 4. 数学模型与核心公式
 
@@ -681,7 +681,7 @@ main/runtime 负责 AirSim 启停与 episode 顺序、故障注入时间轴、D3
 - 更早的 D4 P1 合同层正负例中，二级协调者和完全分布式对等节点都以 3/3 ACK 进入 `executing`，缺 ACK 场景以 2/3 进入 `aborted`（已中止）并保持复核。
 - 区域化合同验证为 23 个确定性单元 test case，无随机 seed；它关闭 D4 模块内 metadata/authority/安全门控。main 后续质点接线的定向 `test_module_stack.py` 为 8/8 passed，覆盖单二级、多二级 owner、distributed D3 plan 和 D7 fencing；二者均不构成 AirSim、真实网络、硬件或长时 200v200 多 seed 证据。
 - 区域资源学习已形成正式数据审计和离线开发 checkpoint。内部测试只有 15 个 seed，14384 个动作标签没有 quota/transfer/hold/replan 正样本；D6 审计中 898/1798 帧只有无归因相邻状态转移，reward/causal/counterfactual 可用数均为 0。bundle 固化动作多样性不足和策略能力声明禁止，外部 20-seed paired 结果与真实网络收益仍缺失，因此 assist 资格不可用。
-- 独立补充课程已提供四类规则 teacher 正样本，但实际制品为 dirty source，且没有 outcome/reward。它不能覆盖正式数据的状态分布，也不能把现有 development bundle 重新分类为可推荐策略。
+- 独立补充课程已提供四类规则 teacher 正样本，clean 数据及 canonical BC 只读 view 已可用，但仍没有 outcome/reward。它不能覆盖正式数据的状态分布，也不能把现有 development bundle 重新分类为可推荐策略。
 
 这些结果验证的是单次试验时间轴上的顺序接管、版本/租约/ACK 门控和唯一所有者，不代表真实 RF、真实吞吐带宽、节点时钟漂移、网络设备或硬件故障已经验证。
 

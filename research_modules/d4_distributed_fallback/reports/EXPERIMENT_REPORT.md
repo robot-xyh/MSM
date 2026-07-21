@@ -151,7 +151,7 @@ paired evaluator 的合成 19-seed case 按门槛拒绝 assist；合成 20-seed 
 
 ### 4.9 区域动作覆盖补充课程
 
-2026-07-21 使用正式训练 seed 注册表和共享切分注册表生成独立课程。配置为 4 个区域、17 份聚合资源、100 个数值 seed，每 seed 生成保持、请求重规划和跨区转移三帧，共 100 episode/300 frame。正式 900 episode 目录及两个 registry 文件哈希在生成前后保持不变。
+2026-07-21 使用正式训练 seed 注册表和共享切分注册表生成独立课程。main 在 detached clean worktree commit `9445ed6` 上完成当前证据生成。配置为 4 个区域、17 份聚合资源、100 个数值 seed，每 seed 生成保持、请求重规划和跨区转移三帧，共 100 episode/300 frame。正式 900 episode 目录及两个 registry 文件哈希在生成前后保持不变。
 
 | 指标 | 结果 | 验收门限 |
 |---|---:|---:|
@@ -166,9 +166,9 @@ paired evaluator 的合成 19-seed case 按门槛拒绝 assist；合成 20-seed 
 | PPO available | 否 | 必须为否 |
 | online assist available | 否 | 必须为否 |
 
-canonical 视图为 60/20/20 seed，对应 180/60/60 frame。训练桶含 hold 60、request-replan 120、非零 quota 120、transfer 60；验证和测试桶各含 20、40、40、20。数据集 SHA256 为 `b3739fefa6f082713af4ecf6a5dcb72cd73fd6dfb39d32cdf40c272cab2390ef`。
+canonical 视图为 60/20/20 seed，对应 180/60/60 frame。训练桶含 hold 60、request-replan 120、非零 quota 120、transfer 60；验证和测试桶各含 20、40、40、20。clean 数据集 SHA256 为 `7e17aba7911602c1b9e9f5b917aea97f1eeec478f03963b119fbcfc8de299e72`，view SHA256 为 `9aa28765bc6e09fd912b2899716e8f0b046d538a0cb96da610519963784cc8de`。
 
-专项测试 6/6、D4 全量 387/387 通过。clean fixture 的 180 个 canonical 训练样本可由 BC loader 消费；PPO loader 因 reward unavailable 拒绝。实际生成时工作区含并行未提交改动，100 个 episode 均标记 dirty，故实际产物不满足默认 BC clean-source 门。该课程只补规则 teacher 动作覆盖，不构成模型收益或 AirSim 策略证据。
+专项测试 6/6、D4 全量 387/387 通过。clean 课程的 dirty episode 数为 0，180 个 canonical 训练样本可由 BC 只读 view 消费，`behavior_cloning_manifest_available=true`；PPO loader 因 reward unavailable 拒绝，assist 和 authority 仍关闭。首次 dirty 课程只保留为开发期结构审计历史。该课程只补规则 teacher 动作覆盖，不构成模型收益或 AirSim 策略证据。
 
 ## 5. 默认被动降级场景
 
@@ -227,6 +227,6 @@ python3 research_modules/d4_distributed_fallback/scripts/run_failover_simulation
 
 D4 当前适合作为“中心节点、机动高空二级侦察节点、完全分布式”三级被动降级链路，以及“中心未失效但局部证据冲突”的主动降级仲裁框架。区域 authority、secondary resource、plan、owner、epoch/version/lease 和 `k>1` 原子 ACK 已执行 fail-closed，但 bounded bid selection 不是完整 CCBBA，该模块结果也不是 AirSim/scalable3d 物理闭环或自主成员补位证明。系统应继续通过 D3/D5/D6 的统一合同传递 `plan_id/version/authorization_state`、`global_track_id`、`risk_factors` 和 `terminal_consistent`。
 
-区域学习 dataset-v1 已形成正式 900 episode 数据和可复现的 development checkpoint。独立补充课程已提供四类规则 teacher 正样本，但实际产物为 dirty source，且没有动作执行结果或 reward。证据仍只支持训练、投影和课程生成管线可运行；回报归因、外部保留种子和成对收益不足以支持策略能力结论。bundle-v2 继续强制 shadow-only，其 manifest/SHA 溯源不能替代 paired 性能报告，也不改变 D4 主动/被动降级控制逻辑。
+区域学习 dataset-v1 已形成正式 900 episode 数据和可复现的 development checkpoint。独立补充课程已提供四类规则 teacher 正样本，commit `9445ed6` 的 clean 数据及 canonical BC 只读 view 已可用，但仍没有动作执行结果或 reward。证据仍只支持训练、投影和课程生成管线可运行；回报归因、外部保留种子和成对收益不足以支持策略能力结论。bundle-v2 继续强制 shadow-only，其 manifest/SHA 溯源不能替代 paired 性能报告，也不改变 D4 主动/被动降级控制逻辑。
 
 M5N2 中心负对照已完成 20/20，但 coalition 和第二 primary 5 m 均为 0/20；这说明物理协同闭环仍开放，不说明 D4 fallback 失败。本批未执行二级或完全分布式接管，真实 secondary/distributed 多 seed 继续列为 P1。后续必须补 collision object，并运行同 seeds 的中心失效、中心与二级连续失效和可审计主动风险 paired case。

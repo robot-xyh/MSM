@@ -6,7 +6,7 @@
 
 本次开发产物包含 100 个数值 seed、100 个 episode 和 300 帧。四类稀缺标签均已覆盖：保持 100 个，请求重规划 200 个，非零配额动作 200 个，跨区转移 100 个。硬约束违规、在线真值字段和保留 seed 泄漏均为 0。
 
-课程没有真实可观测任务结果。300 帧 reward 和 outcome 全部标记为 unavailable。PPO、在线 assist 和 authority 准入保持关闭。当前工作区包含并行未提交改动，实际课程的 100 个 episode 均标记为 dirty，只能用于结构审计；main 在代码合并后的 clean worktree 中重新生成，才能交给默认行为克隆加载器。
+课程没有真实可观测任务结果。300 帧 reward 和 outcome 全部标记为 unavailable。PPO、在线 assist 和 authority 准入保持关闭。main 已在 detached clean worktree 的 commit `9445ed6` 上重新生成课程，100 个 episode 的 dirty 计数为 0，canonical 行为克隆只读视图现已可用。首次 dirty 产物只保留为开发期结构审计历史，不作为当前证据或训练准入来源。
 
 ## 课程构造
 
@@ -31,7 +31,7 @@
 | 测试 | 20 | 20 | 60 | 20 | 40 | 40 | 20 |
 | 合计 | 100 | 100 | 300 | 100 | 200 | 200 | 100 |
 
-课程数据集 SHA256 为 `b3739fefa6f082713af4ecf6a5dcb72cd73fd6dfb39d32cdf40c272cab2390ef`。canonical view SHA256 为 `aa92705a308a1387648731f10c8380dcac614301b8f298202ec2902e08beebae`。结果摘要保存在同目录的 JSON 文件中。
+clean 课程数据集 SHA256 为 `7e17aba7911602c1b9e9f5b917aea97f1eeec478f03963b119fbcfc8de299e72`。canonical view SHA256 为 `9aa28765bc6e09fd912b2899716e8f0b046d538a0cb96da610519963784cc8de`。可跟踪结果摘要保存在同目录的 JSON 文件中，不记录 ignored output 的绝对本地路径。
 
 ## 安全审计
 
@@ -54,7 +54,7 @@
 
 专项测试共 6 项，覆盖动作分布、真值隔离、确定性、安全投影、60/20/20 canonical 切分、保留 seed 隔离、reward unavailable、行为克隆加载和 PPO 失败关闭，结果为 6/6 通过。D4 全量回归为 387/387 通过。
 
-clean fixture 中 canonical 训练桶可加载 180 个行为克隆样本。PPO loader 因 reward unavailable 按预期拒绝。实际开发产物因来源 dirty，`behavior_cloning_manifest_available=false`；该状态是来源治理门，不是课程内容错误。
+commit `9445ed6` 的 clean 课程中，canonical 训练桶包含 180 个行为克隆样本，`behavior_cloning_manifest_available=true`。这只表示来源和目标满足行为克隆只读加载条件，不代表已经重训模型或取得策略收益。PPO loader 仍因 reward unavailable 按预期拒绝，online assist 和 authority 继续关闭。
 
 复核命令：
 
@@ -74,7 +74,6 @@ python3 -m d4_distributed_fallback.region_resource_curriculum_cli \
 
 ## 剩余工作
 
-1. main 合并 D4 后在 clean worktree 重生课程，并固定生成提交和结果 SHA256。
-2. 将课程作为补充 teacher 数据，与正式观测分布分开报告。训练报告必须给出两类数据的采样比例，避免模型只学习人为构造状态。
-3. D6 仍需从真实 episode 提供可归因 outcome、reward、causal 和 counterfactual 证据。缺少这些字段时继续禁止 PPO。
-4. 使用保留 seed `1000-1019` 运行规则基线与候选模型的成对 shadow 评估。安全、积压、通信、转移耗时或计划抖动退化时不得进入 assist。
+1. 将课程作为补充 teacher 数据，与正式观测分布分开报告。训练报告必须给出两类数据的采样比例，避免模型只学习人为构造状态。
+2. D6 仍需从真实 episode 提供可归因 outcome、reward、causal 和 counterfactual 证据。缺少这些字段时继续禁止 PPO。
+3. 使用保留 seed `1000-1019` 运行规则基线与候选模型的成对 shadow 评估。安全、积压、通信、转移耗时或计划抖动退化时不得进入 assist。

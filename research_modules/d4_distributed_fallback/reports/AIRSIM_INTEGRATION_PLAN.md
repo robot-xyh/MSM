@@ -43,7 +43,7 @@ main/runtime 已按 AirSim episode clock 对以下六类场景各运行 10 seeds
 
 30% loss 场景中，7 个缺 ACK case 保守阻断，只有 3 个完整 ACK case 执行。该结果关闭 episode-clock 多 seed 安全矩阵缺口，不关闭真实网络 P1。
 
-2026-07-15 的 280/280 回归关闭了公开 secondary plan helper 的 readiness/source/epoch/time 缺失门控，更早 278/278 不再作为全部入口证据。区域合同阶段为 303/303，建议管线阶段 335/335，next-cycle 消费合同阶段 350/350；2026-07-21 增加共享切分和动作覆盖课程测试后，当前 D4 全量为 387/387。main 既有质点模块栈定向 8/8 覆盖单一二级、多二级区域 owner、连续失效后的 distributed D3 plan，以及 D7 owner/epoch/lease/commit/fault fence。正式 900-episode development checkpoint 已生成并强制 shadow-only；独立课程提供 hold/replan/quota/transfer teacher 正类，但 reward/outcome unavailable，且当前实际产物为 dirty source。本轮没有启动 AirSim，也没有新增 AirSim 多 seed、真实网络或硬件证据，接口、场景和安全门控均未改变。
+2026-07-15 的 280/280 回归关闭了公开 secondary plan helper 的 readiness/source/epoch/time 缺失门控，更早 278/278 不再作为全部入口证据。区域合同阶段为 303/303，建议管线阶段 335/335，next-cycle 消费合同阶段 350/350；2026-07-21 增加共享切分和动作覆盖课程测试后，当前 D4 全量为 387/387。main 既有质点模块栈定向 8/8 覆盖单一二级、多二级区域 owner、连续失效后的 distributed D3 plan，以及 D7 owner/epoch/lease/commit/fault fence。正式 900-episode development checkpoint 已生成并强制 shadow-only；commit `9445ed6` 的 clean 独立课程提供 hold/replan/quota/transfer teacher 正类和可用的 canonical BC 只读 view，但 reward/outcome unavailable，PPO、assist 和 authority 仍关闭。本轮没有启动 AirSim，也没有新增 AirSim 多 seed、真实网络或硬件证据，接口、场景和安全门控均未改变。
 
 ## 3. 状态与所有权规则
 
@@ -126,7 +126,7 @@ D4 每个 tick 输出：
 5. 区域资源学习建议先在 shadow 中运行至少 20 个未见 seed，paired 报告 backlog、transfer、churn、communication、fail-closed、安全违规和 P50/P95 latency。未满足门槛前不进入 assist；即使满足也不绕过正式 D4/D3/D7 gate。
 6. main 如在 AirSim planning loop 消费区域资源建议，只接受 `d4-region-resource-advisory-v1`，在每个 D3 planning boundary 使用 current snapshot/formal verdict 重验，并跨进程持久化 consumed advisory ID。不得直接消费 raw/non-projected recommendation；D4 不修改 main/D3-owned 实现。
 7. main 的逐 episode region-learning writer 改为调用 D4 公开 API：episode 开始固化 `RegionLearningEpisodeSource`（scenario/version/scale、seed、episode ID、Git commit/dirty、config SHA），逐帧构造带显式 target/reward availability 的 `RegionLearningFrame`，episode 完成后 stage，批次完成后 finalize。旧 JSONL 只有 frame_index/timestamp/snapshot/recommendation，不满足正式训练合同；main 不应解析 D4 私有 artifact。
-8. 动作覆盖课程保持离线独立。main 不把课程 frame 注入 AirSim episode bus，也不把规则 teacher 当作实际 D4 运行结果。代码合并后可在 clean worktree 重生课程，并在训练配置中单独记录正式 episode 与课程样本比例；缺真实 outcome 时仍不得启动 PPO。
+8. 动作覆盖课程保持离线独立。main 不把课程 frame 注入 AirSim episode bus，也不把规则 teacher 当作实际 D4 运行结果。clean worktree 重生已经完成；后续训练配置仍须单独记录正式 episode 与课程样本比例，缺真实 outcome 时不得启动 PPO。
 
 以下项目仍为 P1，不能由当前 episode-clock 结果替代：
 

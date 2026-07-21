@@ -541,9 +541,9 @@ B_s=A_s-C_s-\max(R_s,R_{min},\lceil \rho_{min}A_s\rceil),
 
 dataset 先由既有 stage/finalize API 写到新的原子输出目录，再使用共享 registry 建立只读 canonical view。生成前检查训练/保留 seed 列表，生成后由 canonical loader 核对完整 seed 集、60/20/20 assignment、source/registry/content SHA 和保留 seed 隔离。reward 使用 `supplemental_curriculum_has_no_observed_outcome` 原因显式 unavailable；没有 outcome 时不调用 `compute_region_resource_reward()`，也不把缺值填为零。
 
-2026-07-21 实际开发课程为 4 区域、17 聚合资源、100 seed、100 episode、300 frame。动作总计 1200 个，含 hold 100、request-replan 200、非零 quota 200、transfer 100；训练/验证/测试三个 canonical 桶均有四类正样本。硬约束违规、在线真值字段和保留 seed 泄漏均为 0。实际输出的 100 个 episode 因并行 dirty worktree 标记为 dirty，不能进入默认 BC；clean fixture 中 180 个 canonical train frame 可加载，PPO 因 300/300 reward unavailable 失败关闭。
+2026-07-21 clean 课程在 detached worktree commit `9445ed6` 上生成，配置为 4 区域、17 聚合资源、100 seed、100 episode、300 frame。动作总计 1200 个，含 hold 100、request-replan 200、非零 quota 200、transfer 100；训练/验证/测试三个 canonical 桶均有四类正样本。硬约束违规、在线真值字段、保留 seed 泄漏和 dirty episode 均为 0。canonical train 的 180 帧可由行为克隆只读 view 加载；PPO 因 300/300 reward unavailable 失败关闭，assist 和 authority 不开放。首次 dirty 产物只保留为开发期结构审计历史。
 
-该课程只补 teacher 动作覆盖。它没有真实状态转移结果、回报、因果标签、反事实基线或策略收益，也没有改变正式 900 episode 和现有模型 bundle。clean 重生、正式数据与课程采样比例、外部 1000-1019 paired shadow 和 D6 outcome 绑定完成前，PPO 与 assist 保持关闭。
+该课程只补 teacher 动作覆盖。它没有真实状态转移结果、回报、因果标签、反事实基线或策略收益，也没有改变正式 900 episode 和现有模型 bundle。clean 重生已经完成；正式数据与课程采样比例、外部 1000-1019 paired shadow 和 D6 outcome 绑定完成前，PPO 与 assist 保持关闭。
 
 ## 11. 中心恢复与双轨校验
 
@@ -784,9 +784,9 @@ D6 外部审计记录 898/1798 帧无归因相邻状态转移，reward、causal�
 
 `tests/test_region_resource_curriculum.py` 共 6 项，结果 6/6 通过；D4 全量为 387/387。专项覆盖四类动作、非等量区域/资源规模、完整生成内容确定性、每个 canonical 桶的正类、在线真值隔离、保留 seed 拒绝、advisory 安全投影、reward unavailable、BC clean-source 正例和 PPO 缺 reward 负例。
 
-实际课程为 100 episode/300 frame，canonical 60/20/20 seed 对应 180/60/60 frame。总动作分布为 hold 100、request-replan 200、nonzero quota 200、transfer 100，转移资源总量 300；`hard_constraint_violation_count=0`，在线真值字段数和保留 seed 出现数均为 0。dataset SHA256 为 `b3739fefa6f082713af4ecf6a5dcb72cd73fd6dfb39d32cdf40c272cab2390ef`，view SHA256 为 `aa92705a308a1387648731f10c8380dcac614301b8f298202ec2902e08beebae`。
+clean 课程为 100 episode/300 frame，canonical 60/20/20 seed 对应 180/60/60 frame。总动作分布为 hold 100、request-replan 200、nonzero quota 200、transfer 100，转移资源总量 300；`hard_constraint_violation_count=0`，在线真值字段数、保留 seed 出现数和 dirty episode 数均为 0。dataset SHA256 为 `7e17aba7911602c1b9e9f5b917aea97f1eeec478f03963b119fbcfc8de299e72`，view SHA256 为 `9aa28765bc6e09fd912b2899716e8f0b046d538a0cb96da610519963784cc8de`。
 
-实际课程来源为 dirty，`behavior_cloning_manifest_available=false`；这份输出只作结构与动作覆盖审计。课程报告和机器可读摘要分别位于 `reports/D4_REGION_ACTION_COVERAGE_CURRICULUM_20260721.md` 与 `reports/region_action_coverage_curriculum_20260721.json`。本轮未运行 AirSim、PPO、在线 assist 或新的模型训练。
+clean 课程的 `behavior_cloning_manifest_available=true`，canonical BC 只读 view 已可用；这不表示已运行新的模型训练或获得策略收益。首次 dirty 输出只作结构与动作覆盖开发历史。课程报告和机器可读摘要分别位于 `reports/D4_REGION_ACTION_COVERAGE_CURRICULUM_20260721.md` 与 `reports/region_action_coverage_curriculum_20260721.json`。本轮未运行 AirSim、PPO、在线 assist 或新的模型训练。
 
 ## 17. 真实网络限制与后续实施
 

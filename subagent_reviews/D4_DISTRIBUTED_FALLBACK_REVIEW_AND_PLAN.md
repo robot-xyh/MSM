@@ -3,7 +3,7 @@
 **模块定位**：D4 负责中心 C2 异常、二级节点接管、主动降级仲裁和完全无中心协商的离线科研仿真方案。
 **核心边界**：本文只讨论摘要交换、状态机、故障注入、降级协同和评估日志；不包含真实通信链路、飞控控制、火控参数、毁伤逻辑、自动处置或授权绕过。
 
-**2026-07-21 区域动作覆盖课程更新**：D4 已实现独立、truth-free、确定性的区域课程 producer。它按共享 registry 的 100 个训练 seed 生成 100 episode/300 frame，动作分布为 hold 100、request-replan 200、nonzero quota 200、transfer 100；60/20/20 三个 canonical 桶均覆盖四类动作，硬约束违规、在线真值字段和保留 seed 泄漏均为 0。reward/outcome 300/300 unavailable，PPO、assist 和 authority 不开放。实际课程来自 dirty worktree，不能直接进入默认行为克隆；clean fixture 已验证训练桶 180 个样本可加载。该增量关闭动作覆盖 producer 和审计接口缺口，不关闭正式状态分布、策略收益、D6 因果回报或外部保留 seed 评估。课程专项 6/6，当前 D4 全量 **387/387 passed**。
+**2026-07-21 区域动作覆盖课程更新**：D4 已实现独立、truth-free、确定性的区域课程 producer。它按共享 registry 的 100 个训练 seed 生成 100 episode/300 frame，动作分布为 hold 100、request-replan 200、nonzero quota 200、transfer 100；60/20/20 三个 canonical 桶均覆盖四类动作，硬约束违规、在线真值字段和保留 seed 泄漏均为 0。main 已在 detached clean worktree commit `9445ed6` 上重生当前证据，dirty episode 数为 0，dataset SHA256 为 `7e17aba...9e72`，canonical view SHA256 为 `9aa28765...cc8de`，行为克隆只读 view 可用。首次 dirty 产物只保留为开发历史。reward/outcome 300/300 unavailable，PPO、assist 和 authority 不开放。该增量关闭动作覆盖 producer、审计接口和 clean BC 数据准入缺口，不关闭正式状态分布、策略收益、D6 因果回报或外部保留 seed 评估。课程专项 6/6，当前 D4 全量 **387/387 passed**。
 
 **2026-07-21 共享 seed 切分更新**：D4 已增加 source-external shared registry 的独立消费者。它严格核对 `scalable3d-shared-seed-split-registry-v1` 的 schema/policy、D3 兼容排序、content/assignment SHA、源 training-seed-registry SHA，以及 100 个 dataset seed 的完整覆盖和 1000-1019 保留集隔离。原 900-episode dataset 和 70/15/15 split 不改写；显式只读视图映射为 60/20/20 seed、540/180/180 episode、1079/359/360 frame。BC loader 默认仍使用模块内 split，只有调用方传入 canonical view 才切换。正式审计前后源数据目录树哈希一致。共享切分阶段为 381/381；新增课程后当前 D4 全量为 **387/387 passed**。该更新只关闭 D4 的跨模块数据切分消费缺口，不提供策略收益、PPO 或 assist 证据。
 

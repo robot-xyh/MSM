@@ -5,8 +5,9 @@
 - **P1 producer 缺口部分关闭**：D4 已在 owned paths 内增加独立 `d4-region-action-coverage-curriculum-v1` producer/CLI。它复用现有 `RegionResourceSnapshot`、`RuleRegionResourcePolicy`、`DeterministicResourceProjector`、dataset-v1 和 shared canonical registry，不修改 main/scalable3d 或正式 `learning_generation_v1_multibatchfix`。
 - **覆盖结果**：正式注册表的 100 个训练 seed 各生成 hold、request-replan、transfer 三帧，共 100 episode/300 frame/1200 action。动作分布为 hold 100、request-replan 200、nonzero quota action 200、transfer 100；canonical 60/20/20 三桶均有四类正样本。
 - **安全与隔离**：`hard_constraint_violation_count=0`、在线 truth key 数 0、保留 seed 1000-1019 出现数 0。训练 seed registry 和 shared registry 文件 SHA256 仍为 `2ab928a4...15f`、`68608d29...320f`，正式 900 episode 未写入。
-- **reward 与准入**：300/300 reward 和 outcome 显式 unavailable，PPO、online assist 和 authority 保持关闭。实际生成时存在并行 dirty worktree，100 个 episode 均为 dirty，默认 BC loader 不准入；clean fixture 已验证 canonical train 的 180 个样本可加载，PPO loader 因 reward 缺失失败关闭。
-- **剩余 P1**：main 合并后 clean 重生；冻结正式 episode 与补充课程采样比例；由 D6 提供版本化、可归因 outcome/reward/causal/counterfactual 和制品 SHA；使用保留 seed 1000-1019 完成 paired shadow。完成前不得启动 PPO、评审 assist 或宣称学习策略优于规则。
+- **clean 准入证据**：main 已在 detached clean worktree commit `9445ed6` 上重生课程。dirty episode 数为 0，dataset SHA256 为 `7e17aba...9e72`，canonical view SHA256 为 `9aa28765...cc8de`，`behavior_cloning_manifest_available=true`，canonical train 的 180 个样本可由 BC 只读 view 加载。首次 dirty 产物只保留为开发历史。
+- **reward 与准入边界**：300/300 reward 和 outcome 显式 unavailable，PPO、online assist 和 authority 保持关闭。clean BC 数据准入不等于模型收益或在线策略准入，PPO loader 继续因 reward 缺失失败关闭。
+- **剩余 P1**：冻结正式 episode 与补充课程采样比例；由 D6 提供版本化、可归因 outcome/reward/causal/counterfactual 和制品 SHA；使用保留 seed 1000-1019 完成 paired shadow。完成前不得启动 PPO、评审 assist 或宣称学习策略优于规则。
 - **验收**：课程专项 6/6，D4 全量 **387/387 passed**；新增入口编译和 D4 owned-path diff 检查在本轮末统一执行。
 
 ## 2026-07-21 共享 seed 切分消费端闭合
@@ -25,7 +26,7 @@
 - **D6 回报边界**：D6 正式审计确认 898/1798 帧只有无归因相邻状态转移，reward、causal、counterfactual 可用数均为 0。D4 未伪造 reward，也未把规则 target 或相邻状态变化改写成回报；PPO loader 继续失败关闭。D6 审计制品 SHA256 尚未绑定。
 - **开发训练结果**：固定 seed `20260720` 完成 66 epoch，最佳 epoch 54，内部测试 loss `0.071545`；2026-07-21 准入复跑耗时 66.02 秒、推理 P95 `0.7774 ms`，权重 SHA256 `3da0360be8788f3ffeb8e9f9eba3e0d5369ec0bdf9e05729dfb1db07d71d5f62` 与首次训练一致。结果只证明训练、加载、推理和确定性投影管线可运行。
 - **bundle admission**：manifest 与 model readiness 固化 `lifecycle_stage=development`、`maximum_advisor_mode=shadow`、`action_diversity_sufficient=false`、`strategy_capability_claim_allowed=false`、`reward_evidence_available=false` 及全部动作计数；即使调用方声明 20 个 unseen seed 也不能进入 assist。当前严格结论为“管线可用但动作多样性不足，shadow-only”。
-- **仍开放的 P1**：独立 producer 已生成 quota/transfer/hold/replan 规则 teacher 正样本，但该课程不是正式状态分布，当前实际制品又因 dirty source 未准入。仍需 clean 重生、正式/课程混合策略、D6 版本化 outcome/reward/causal/counterfactual 字段与审计制品 SHA256，以及外部 1000-1019 paired shadow。上述项目未完成前，不启动 PPO，不评审 assist，不宣称 learned policy 优于规则。
+- **仍开放的 P1**：独立 producer 已生成 quota/transfer/hold/replan 规则 teacher 正样本，clean 课程及 canonical BC 只读 view 已准入，但该课程不是正式状态分布。仍需正式/课程混合策略、D6 版本化 outcome/reward/causal/counterfactual 字段与审计制品 SHA256，以及外部 1000-1019 paired shadow。上述项目未完成前，不启动 PPO，不评审 assist，不宣称 learned policy 优于规则。
 - **版本与验收**：权重和完整 bundle 位于 ignored `outputs/`，当前无 Git LFS；可跟踪结果只含配置、命令、指标、准备度、权重 SHA256 和本地定位。2026-07-21 区域建议/学习/消费与准入 51/51、episode 数据/正式审计/训练发布 15/15、共享切分 12/12、动作覆盖课程 6/6，D4 全量 **387/387 passed**。
 
 ## 2026-07-20 区域资源建议与 main 质点接线同步
@@ -93,7 +94,7 @@ D4 所属 P1 合同层已闭合。最新验证中 ComputerVision 总体验收为
 | 层级 | 状态 | 审计边界 |
 |---|---|---|
 | scalable3d 区域合同与质点接线 | **D4 合同及 main 质点接口已完成** | 区域阶段 23/23、main 定向 8/8；覆盖单二级、多二级 owner、distributed D3 plan 和 D7 fencing。不等于 AirSim、真实网络、长时 200v200、多 seed、全局组合最优或完整 CCBBA |
-| 区域资源建议、episode 数据、开发训练与 next-cycle 消费合同 | **D4 接口、补充课程和 development checkpoint 已实现，main-D3 接线及 assist 未验收** | 课程专项 6/6、D4 全量 387/387；补充课程有四类规则 teacher 正样本，但正式 900 数据仍缺正类，实际课程 dirty，D6 reward/causal/counterfactual 为 0 available，bundle 强制 shadow-only，不改变 formal D4/D3/D7 裁决 |
+| 区域资源建议、episode 数据、开发训练与 next-cycle 消费合同 | **D4 接口、clean 补充课程和 development checkpoint 已实现，main-D3 接线及 assist 未验收** | 课程专项 6/6、D4 全量 387/387；补充课程有四类规则 teacher 正样本且 canonical BC 只读 view 可用，但正式 900 数据仍缺正类，D6 reward/causal/counterfactual 为 0 available，bundle 强制 shadow-only，不改变 formal D4/D3/D7 裁决 |
 | P1 合同层 | **已完成** | 已关闭 secondary/peer 3/3 ACK `executing` 正例和 missing ACK 2/3 `aborted` fail-closed；不等于自主成员形成或物理执行完成 |
 | P1 扰动合同矩阵 | **模块 replay 已完成** | `d4_p1_failover_disturbance_replay_v1` 九场景 9/9 通过，覆盖正常中心、secondary takeover、missing ACK、member replacement、partition recovery、stale epoch、expired lease、digest conflict 和 center recovery dual-track audit；不生成 `AssignmentPlan`，不降低外部 gate |
 | P1 episode-time 批量验收 | **已完成** | `d4_airsim_episode_communication_v1` 支持逐 tick 输入；2026-07-13 六类、10-seed、60-case 矩阵为 60/60 safety outcome，误降级、重复 owner 和 split-brain prevention failure 均为 0。该结果仅覆盖 AirSim episode clock 故障注入 |
