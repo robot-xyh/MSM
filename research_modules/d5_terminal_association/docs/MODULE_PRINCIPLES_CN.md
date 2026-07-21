@@ -4,6 +4,23 @@
 
 **适用范围：** 本文描述第五研究模块（D5）当前代码、测试和主运行链路已经具备的能力。文中将默认主线、已实现但非默认的辅助/离线能力、尚未实现能力严格分开。计划项不能据此解释为已上线能力。
 
+## 2026-07-20 双时间戳与 OOSM 原则
+
+`measurement_timestamp` 表示图像形成时刻，`arrival_timestamp` 表示批次到达 D5 的时刻。通信延迟
+和抖动允许 arrival 顺序中的 measurement 回退。D5 不得为了维持表面单调而按量测时间重排到达流，
+也不得覆盖任一时间戳。
+
+每个相机流维护最近已接收 arrival 和最近已写入状态的 measurement 高水位。arrival 必须严格推进；
+相同 arrival 是重复输入，较小 arrival 是接收顺序错误，两者都失败关闭。measurement 高于高水位
+时正常更新；等于高水位时判为重复量测并拒绝；低于高水位时判为合法 OOSM。由于当前匿名 tracker
+没有固定时滞历史，OOSM 只保留批次、几何和诊断，不更新或老化当前状态。该规则避免利用未来状态
+反推过去，也避免后到旧框覆盖当前框。
+
+OOSM 批次的 `status=oosm_ignored`，metadata 记录 temporal status、状态更新标志、累计 OOSM 数和
+双高水位。它不产生新的局部 ID 或中心绑定，因而不改变 truth-free 与 `global_track_id` 只读原则。
+2026-07-20 定向 `24 passed`、D5 全量 `403 passed in 9.74s`。原失败输出没有 paused checkpoint，
+正式验证需由 main 在修复后的 clean revision 新跑 45-cell，再以同一 revision resume 下一分块。
+
 ## 2026-07-20 主动视觉数据写入性能
 
 主动视觉 episode 中，一个时刻的完整快照由同批相机样本共享。原实现虽然在磁盘上只保存一次

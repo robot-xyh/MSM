@@ -1,5 +1,16 @@
 # D5 M 对 N 末端多视角配准与协同定位调研
 
+## 2026-07-20 M 对 N 通信乱序处理
+
+200v200 通信退化场景中，不同相机流及同一相机的不同扫描会因链路抖动形成 arrival 顺序与
+measurement 顺序不一致。D5 现在按 `(resource_id, camera_id)` 独立维护双高水位，动态 M/N 数量
+不影响时序判断。合法 OOSM 被显式计数并禁止回退 camera-local MOT；重复或回退 arrival 失败关闭。
+
+该处理保留每个批次的 measurement/arrival 时间、相机几何、动态相机数量和匿名命名空间，且不把
+后到帧绑定到 truth 或中心 ID。定向 `24 passed`、D5 全量 `403 passed in 9.74s`。原失败目录缺少
+paused checkpoint；main 尚未在修复后的 clean revision 新跑完整 45-cell 并 resume 下一分块，因此
+这里只关闭 D5 代码阻塞，不关闭正式 M 对 N 数据生成验收。
+
 ## 2026-07-20 200v200 M 对 N 数据链 clean-tree postopt2 复测
 
 nominal 200v200、2 s、seed 930-932 在提交

@@ -4,6 +4,37 @@
 
 **适用范围：** 本文依据第五研究模块（D5）的当前代码、README、PLAN、模块原理文档和系统总汇总，同步说明算法原理、数据合同、代码实施路径与验证结果。文中严格区分默认在线主线、已实现但非默认的辅助/离线能力，以及尚未实现能力；计划项不能据此解释为已上线能力。
 
+## 2026-07-20 camera-local OOSM 实施
+
+原 `_AnonymousCameraTracker` 只保存一个 `_last_timestamp`，它实际记录 measurement 时间。
+`adapt_batches()` 在提交前要求该值单调，`update()` 又用它计算速度并覆盖当前状态。通信抖动下，
+较新的帧可先到、较旧的帧后到；直接拒绝会中断 episode，直接放行则会把 tracker 状态回退。
+
+实现将单值拆成：
+
+- `_last_arrival_timestamp`：该 camera stream 已接收批次的到达高水位；
+- `_latest_measurement_timestamp`：已实际更新 MOT 状态的量测高水位；
+- `_oosm_measurement_ignored_count`：合法 OOSM 的累计保守忽略数。
+
+`adapt_batches()` 仍先完成所有 truth-free、source observation 唯一性和 stream 唯一性检查，再对每个
+已有 tracker 进行无副作用时序预检，最后按输入 arrival 顺序提交。单流判定为：
+
+```text
+arrival < last_arrival       -> fail closed: arrival regression
+arrival == last_arrival      -> fail closed: duplicate delivery
+measurement == latest_state  -> fail closed: duplicate measurement
+measurement < latest_state   -> accept as OOSM, no tracker state update
+measurement > latest_state   -> normal deterministic MOT update
+```
+
+OOSM 分支只推进 arrival 高水位并增加计数，不执行匹配、ID 分配、命中/漏帧、中心/边界框、速度、
+尺度变化或 measurement 高水位更新。适配结果保留输入双时间戳和该时刻相机几何，tracklet 为空，状态
+为 `oosm_ignored`。下一正常帧继续相对于最后一个有效 measurement 状态计算运动量，避免负时间差或
+旧框污染。重复与回退错误均在状态变化前抛出稳定异常。
+
+该实现是没有历史缓冲条件下的保守最小方案。它没有实现固定时滞 OOSM 重放，也不声称利用了迟到
+帧的信息增益。在线真值隔离、匿名 local ID、中心 ID 只读和普通顺序匹配公式均未改变。
+
 ## 2026-07-20 主动视觉 staging 实施
 
 性能剖析把 active-vision staging 拆为快照/样本构造、online writer、offline join、物化加载、公共

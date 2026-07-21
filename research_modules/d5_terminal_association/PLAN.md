@@ -1,5 +1,23 @@
 # D5 终端视觉配准与身份认证计划
 
+## 2026-07-20 通信退化 OOSM 修复与正式 resume
+
+- [x] 定位 sequence 29 失败：main 已按 arrival 顺序交付，D5 camera-local tracker 错把 measurement
+  时间作为流接收顺序，并在更新时覆盖当前状态时间。
+- [x] 按 camera stream 分离 arrival 高水位和 measurement 高水位。合法 OOSM 保留双时间戳并以
+  `oosm_ignored` 接收，但不回退、创建、老化或更新 tracker 状态；累计计数随批次 metadata 输出。
+- [x] 对 arrival 回退、重复 arrival 和同 measurement 重传在状态变化前失败关闭；不排序、不改写
+  时间戳、不使用 truth ID、不创建或改写 `global_track_id`。
+- [x] 新增 arrival 单调/measurement 乱序正例，以及 arrival 回退、原样重复和同 measurement 重传
+  负例。2026-07-20 定向 `24 passed`、D5 全量 `403 passed in 9.74s`，零失败。
+- [ ] 原 `learning_generation_v1` 仅保留为 2bf8f85 失败证据：它缺少 paused checkpoint，且新提交
+  不能通过 revision-pinned resume。main 在修复后的 clean commit 使用新输出目录完整运行首个
+  45-episode 分块，确认 sequence 29 对应 cell 通过、online truth use=0、状态有限且 progress 连续。
+- [ ] main 在上述新目录和同一 clean commit 上执行一次真正的 `--resume`，确认 paused checkpoint、
+  generation plan、seed registry、Git revision 和下一分块进度连续；不得把两版代码混入同一正式集。
+- [ ] 正式分块结束后统计 `oosm_measurement_ignored_count`。若 OOSM 占比或信息损失不可接受，再单独
+  设计有界固定时滞历史与确定性重放；当前不以未验证回放替代保守失败关闭路径。
+
 ## 2026-07-20 200v200 clean-tree 复测与下一热点
 
 - [x] main 在提交 `4052d9411363c39d52100c0e3a4f60ee88443cab` 上完成 nominal 200v200、

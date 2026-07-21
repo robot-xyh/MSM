@@ -1,5 +1,21 @@
 # D5 末端视觉配准与协同身份认证综述及子方案
 
+## 2026-07-20 通信退化视觉时序复核
+
+正式分块在 `communication_degraded` 200v200 暴露了 camera-local tracker 的时钟语义错误。传输层
+按 arrival 时间交付，旧 measurement 后到是合法 OOSM；D5 原实现却要求 measurement 单调，并会在
+取消检查后产生状态回退风险。
+
+修复后每个相机流以 arrival 严格推进作为接收合同，以 measurement 高水位决定是否允许 MOT 状态
+更新。迟到 measurement 仍按真实到达顺序接收并保留双时间戳，但只输出 `oosm_ignored` 诊断和相机
+几何，不生成局部轨迹证据，不改当前状态。重复 measurement、重复 arrival 和 arrival 回退均在
+提交前拒绝。该策略没有引入 truth ID，也不接触中心 `global_track_id` 所有权。
+
+2026-07-20 定向 `24 passed`、D5 全量 `403 passed in 9.74s`。代码级 OOSM 阻塞关闭。原失败目录
+没有 paused checkpoint，且绑定旧 revision，不能在修复提交后直接正式 resume。main 需在新目录
+重跑首个 45-cell，再在同一 clean revision 上 resume 下一分块。本轮没有证明 OOSM 信息利用率、
+跨视角精度或实时收益；固定时滞回放仅在后续统计证明有必要时设计。
+
 ## 2026-07-20 clean-tree 200v200 postopt2 性能复核
 
 main 在提交 `45b36500dc3c6935b1f116614993e291041eb12d` 上完成 nominal 200v200、2 s、

@@ -2,6 +2,30 @@
 
 科研模块，用于把末端相机视场中的本地视觉轨迹保守关联到中心分配的 `global_track_id`。模块可在统一三维 episode 中在线运行；训练标签和真值评分仍保持离线。D5 只输出视觉关联与相机观察意图，不修改、重写或重新分配任何全局轨迹 ID。
 
+## 2026-07-20 通信退化场景的视觉 OOSM 处理
+
+正式 45-episode 分块在前 29 个 cell 完成后，于 `communication_degraded` 200v200 的 sequence 29
+进入 D5 时失败。批次已经按 `arrival_timestamp` 到达，但相机本地跟踪器要求
+`measurement_timestamp` 单调。通信延迟和抖动使旧量测晚于新量测到达，这属于合法的乱序量测
+（Out-of-Sequence Measurement，OOSM），不能通过重排或改写时间戳消除。
+
+每个 `(resource_id, camera_id)` tracker 现在分别维护到达时间和量测时间高水位。规则为：
+
+- 到达时间必须严格推进；回退和相同到达时间的重复输入在任何状态变化前失败关闭；
+- 量测时间高于高水位时按原路径更新局部轨迹；
+- 量测时间等于高水位时判为重复帧并失败关闭；
+- 量测时间低于高水位但到达时间合法时，保留原始双时间戳和相机几何，输出
+  `status=oosm_ignored`，不创建 ID、不更新中心/框/速度、不增加命中或漏帧、不老化当前轨迹；
+- 批次 metadata 记录 `temporal_status`、是否更新状态、累计 OOSM 忽略数及两个时间高水位。
+
+当前轻量 tracker 没有固定时滞回放历史，因此忽略 OOSM 的状态更新比把当前状态回退到过去更
+保守。在线 payload 仍不含 truth/actor/object identity，`global_track_id` 所有权和只读规则不变。
+2026-07-20 定向适配器测试 `24 passed`，D5 全量 `403 passed in 9.74s`，接受阈值为零失败。
+这关闭 D5 代码级 OOSM 阻塞。原失败目录只有 29 条 progress，没有 paused
+`generation_checkpoint.json`，且 runner 要求 resume 的 Git revision 不变；修复提交后不能把原目录
+直接 `--resume` 成正式数据。main 应保留原目录作故障证据，在修复后的 clean commit 新建输出并
+完整运行首个 45-episode 分块，再在同一提交上 resume 下一分块。当前没有该系统级复跑证据。
+
 ## 2026-07-20 active-vision staging 性能修复
 
 D5 owner 对 200 camera、400 center track、1 个共享 snapshot、200 个 camera sample 的确定性

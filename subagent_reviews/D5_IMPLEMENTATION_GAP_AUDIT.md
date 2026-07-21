@@ -1,5 +1,27 @@
 # D5 实现差距审计
 
+## 2026-07-20 通信退化 OOSM P1 状态
+
+**根因：** 正式 45-episode 分块在 sequence 29 的 `communication_degraded` 200v200 进入
+`Scalable3DTerminalAdapter` 后，camera-local tracker 对 measurement 时间执行单调检查。main 的
+批次已按 arrival 时间释放；通信抖动造成旧 measurement 后到属于合法 OOSM。原合同混淆了量测
+时钟与接收时钟，直接抛出 `camera scan timestamps must be monotonic within an episode`。
+
+**D5 代码级 P1 已关闭：** tracker 以 arrival 为接收顺序，以 measurement 高水位保护当前状态。
+合法 OOSM 不再抛错，也不回退运动学、框、命中、漏帧或 ID 状态；批次保留双时间戳并以
+`oosm_ignored`、累计计数和高水位诊断显式输出。重复 measurement、重复 arrival 和 arrival 回退均
+在提交前失败关闭。没有排序或改写时间戳，没有 truth ID 输入，没有 `global_track_id` 创建或换绑。
+
+**代码证据：** arrival 单调/measurement 乱序正例验证 OOSM 不更新状态且下一正常帧保持局部 ID、
+命中数和速度基准；三个负例验证 arrival 回退、原样重复及同 measurement 重传不污染 tracker。
+2026-07-20 定向 `24 passed`，D5 全量 `403 passed in 9.74s`，接受阈值为零失败。
+
+**系统级 P1 仍开放：** 本轮没有修改或运行 scalable main。原 `learning_generation_v1` 在异常前
+没有写 paused checkpoint，且其 revision 为 2bf8f85；修复提交后不能直接正式 resume。main 必须在
+新 clean revision 和新输出目录重跑完整首个 45-cell，验证 sequence 29 对应 cell、有限状态、online
+truth use=0 与 progress/checkpoint 连续性；随后在同一 revision 上 resume 下一分块。当前策略保守
+丢弃 OOSM 对 MOT 状态的更新；若正式统计显示信息损失过高，有界固定时滞重放仍是后续研究项。
+
 ## 2026-07-20 clean-tree 200v200 postopt2 后的 P1 判定
 
 main 使用 nominal 200v200、2 s、seed 930-932，在提交

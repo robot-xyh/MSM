@@ -1,5 +1,26 @@
 # D5 末端视觉配准与身份认证实验报告
 
+## 2026-07-20 通信乱序单元验证
+
+测试针对正式分块 sequence 29 暴露的时序边界，不运行或伪造 scalable main resume。接受阈值为
+定向测试和 D5 全量测试零失败，合法 OOSM 不回退状态，非法到达与重复输入在状态变化前拒绝。
+
+| 用例 | 输入 | 实测结果 | 判定 |
+| --- | --- | --- | --- |
+| arrival 单调、measurement 乱序 | 有效帧 `m=1.0/1.2` 后接收 `m=1.1`，arrival 为 `1.10/1.25/1.35` | 后到帧保留 `m=1.1,a=1.35`，`status=oosm_ignored`，无 tracklet，累计计数为 1 | 通过 |
+| OOSM 后恢复 | 随后接收 `m=1.3,a=1.45` | local ID 保持，history 为 3 而非 4，速度相对 `m=1.2` 状态计算 | 通过 |
+| arrival 回退 | 已接收 `a=2.20` 后输入 `a=2.15` | 提交前稳定拒绝；下一合法帧 history 仅增加 1 | 通过 |
+| 原样重复 | 同一批次以相同 arrival 再次输入 | `duplicate camera scan arrival timestamp`，状态不变 | 通过 |
+| 同 measurement 重传 | 同量测时间以更晚 arrival 输入 | `duplicate camera scan measurement timestamp`，状态不变 | 通过 |
+| 普通顺序回归 | 既有 D5 全部测试 | `403 passed in 9.74s` | 通过 |
+
+定向 `test_scalable_3d_adapter.py` 为 `24 passed in 1.72s`。测试未使用 truth ID，未创建或改写
+`global_track_id`。当前证据关闭 D5 代码级阻塞，不证明 sequence 29 已经恢复，也不证明忽略 OOSM
+对跨视角召回没有影响。原输出目录没有 paused checkpoint，且绑定旧 Git revision，不能直接形成
+正式 resume。main 应在修复后的 clean revision 新建输出，验证 sequence 29 对应 cell、完整
+45-cell、finite state、online truth use=0 和 checkpoint/progress 连续性；随后在同一 revision 上
+resume 下一分块，并汇总 OOSM 计数。
+
 ## 2026-07-20 clean-tree 200v200 postopt2 系统复测
 
 main 在提交 `45b36500dc3c6935b1f116614993e291041eb12d` 上，以 nominal 200v200、2 s、
