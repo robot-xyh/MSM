@@ -94,6 +94,23 @@ commit。
 9. 由 D6 完成多 seed 统计、图表、动画和中文报告。
 10. 完成 20 个未见 seed 的最终验收及全部文档同步。
 
+### 2026-07-21 当前状态
+
+- 正式学习数据已完成 900/900 episode，覆盖 9 类场景、5 档规模、100 个训练 seed；每个
+  场景/规模 cell 为 20 episode。来源提交干净，在线真值使用为 0，保留 seed
+  `1000-1019` 未进入数据集。此前 209/900 的失败目录不参与训练。
+- D3 已完成完整数据行为克隆，当前为 development/shadow-only。D4 已完成行为克隆，但
+  正式规则动作缺少 quota、hold、replan 和 transfer 正样本。D5 跨视角图已完成数据审计
+  和开发训练，但 97.52% 图帧无候选边且困难负样本不足。三者均未获得 assist 准入。
+- D6 已完成正式数据 outcome/reward 分层和 detached sidecar。D4、D5 有相邻观测结果，
+  但缺版本化动作采用/运行 ACK，reward 均为 0 条可用；PPO、反事实和因果训练保持关闭。
+- main 已新增 `scalable3d-shared-seed-split-registry-v1`。100 个训练 seed 使用与 D3 v2
+  一致的确定性 `60/20/20` 映射，并绑定原训练 seed 注册表 SHA。原 D4/D5 数据不改写；
+  它们需要建立源外 canonical view 并通过 D6 审计后，C1 联合训练才可开始。
+- main scalable 测试当前为 `80 passed`。下一阶段先关闭 shared split、D4 动作覆盖、D5
+  重叠视场/困难负样本和主动视觉 ACK producer 缺口，再运行 R0/G1/A1/A2/A3/C1/F1 及
+  seed `1000-1019` 验收。
+
 ### 2026-07-20 阶段状态
 
 - 阶段 1-3 已完成，世界、传感器、真值隔离和集成合同由当前 72 项测试覆盖。

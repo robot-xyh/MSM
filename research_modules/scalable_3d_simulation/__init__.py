@@ -78,6 +78,15 @@ from .learning_runtime import (
     ResolvedLearningRuntime,
     resolve_learning_runtime,
 )
+from .shared_seed_split import (
+    SHARED_SEED_SPLIT_POLICY_VERSION,
+    SHARED_SEED_SPLIT_SCHEMA_VERSION,
+    SharedSeedSplitError,
+    assign_shared_seed_splits,
+    build_shared_seed_split_registry,
+    load_shared_seed_split_registry,
+    write_shared_seed_split_registry,
+)
 from .world import ProximityInterceptEvent, VectorizedPointMassWorld
 from .animation import write_trajectory_animation
 
@@ -126,6 +135,8 @@ __all__ = [
     "RuntimeStepInput",
     "RuntimeStepOutput",
     "ResolvedLearningRuntime",
+    "SHARED_SEED_SPLIT_POLICY_VERSION",
+    "SHARED_SEED_SPLIT_SCHEMA_VERSION",
     "SCENARIO_SCHEMA_VERSION",
     "SCENARIO_CATALOG_VERSION",
     "Scalable3DEpisodeRunner",
@@ -137,10 +148,14 @@ __all__ = [
     "VersionedEnvelope",
     "WORLD_SCHEMA_VERSION",
     "WorldSnapshot",
+    "SharedSeedSplitError",
+    "assign_shared_seed_splits",
     "assert_online_payload_truth_free",
+    "build_shared_seed_split_registry",
     "build_episode_manifest",
     "look_at_rotation_ned_to_camera",
     "load_training_seeds",
+    "load_shared_seed_split_registry",
     "make_curriculum_scenario",
     "project_points",
     "resolve_learning_runtime",
@@ -150,4 +165,5 @@ __all__ = [
     "validate_required_bundles",
     "write_trajectory_animation",
     "write_episode_learning_artifacts",
+    "write_shared_seed_split_registry",
 ]

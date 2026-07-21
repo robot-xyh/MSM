@@ -15,6 +15,37 @@ D5 主动视觉已接入同一 episode 状态机。main 持久化每个拦截/�
 独立 ACK；过期、过时版本、资源不一致和退化指向均由 main 拒绝。该路径不创建分配，也不
 改写 `global_track_id`。
 
+## 2026-07-21 正式数据与开发训练状态
+
+修复逐 episode checkpoint 和 D5 同流多批次边界后，新的正式生成目录已经完成全部
+900 episode。数据覆盖 9 类场景、5 档规模和 100 个训练 seed，每个场景/规模 cell 为
+20 episode；seed `1000-1019` 保留给最终验收。episode index 连续且唯一，在线真值字段
+使用总数为 0，来源提交为干净的 `39b097e72487567ac915c2297eaa27eed49ef76b`。正式数据约
+2.03 GB，未因后续标签或训练工作原地改写。
+
+D3 已在完整数据上完成行为克隆开发训练，内部测试边排序一致性为 `0.803085`，计划完全
+一致率为 `0.677019`，推理 P95 为 `2.554 ms`；bundle 保持 `development/shadow-only`，
+未启动近端策略优化。D4 行为克隆内部测试 loss 为 `0.071545`、推理 P95 为 `0.7774 ms`，
+但 14384 个区域动作没有非零 quota、hold、replan 或 transfer，因而同样不能进入 assist，
+近端策略优化不可用。D5 跨视角图共有 12851 个图帧，其中 97.52% 没有候选边，负边只有
+19 条；当前高 F1 来自极弱的负样本分母，G1 和 assist 均失败关闭。
+
+D6 对正式数据生成了源外标签 sidecar。D4 仅有 `898/1798` 帧具备无动作归因的相邻状态
+结果；D5 主动视觉有 `1,063,214/1,153,242` 条相邻观测结果。两者可归因 reward 均为 0
+条，D5 runtime ACK 为 0，因此只能开展规则示范行为克隆，不能开展近端策略优化或因果
+训练。
+
+跨模块切分现由 detached `scalable3d-shared-seed-split-registry-v1` 统一管理。100 个训练
+seed 固定为 `60/20/20`，映射与现有 D3 正式开发数据逐项一致，保留 seed 未进入任一桶。
+原 D4、D5 manifest 仍保留各自历史切分；在它们完成源外 canonical view 并通过 D6 一致性
+审计前，C1 联合训练保持关闭。生成命令为：
+
+```bash
+python3 research_modules/scalable_3d_simulation/run_shared_seed_split.py \
+  <formal-output>/training_seed_registry.json \
+  <formal-output>/shared_seed_split_registry_v1/registry.json
+```
+
 ## 运行
 
 ```bash
@@ -90,15 +121,11 @@ staging 已通过校验时恢复“进度领先旧 checkpoint”的崩溃窗口�
 5 档规模，避免首个分块只运行单一场景或单一规模。
 
 正式预检要求完整 45 个场景/规模组合且每个组合至少 20 个 seed，同时记录 schedule SHA256。
-九场景存储门、三 seed 批次最终化门和代表分块启动门已经通过。D5 主动视觉仍占最新
+九场景存储门、三 seed 批次最终化门和代表分块启动门已经通过。D5 主动视觉仍占代表性
 200v200 staging 的 96.8%，但三 seed 只需 12.04 秒，写入与最终化合计低于 episode 计算，
-不再形成系统级阻塞。2026-07-20 已完成两个 45-episode 正式分块，90/90 均为有限状态、
-干净提交且在线真值使用为 0。随后连续运行完成到 209/900，在下一项
-`communication_degraded 200v200 seed 64` 暴露 D5 同一相机流单次收到多个批次的边界问题。
-该批次尚未最终化，不能作为训练集；修复后必须在新提交上重新生成，禁止混合不同提交的 episode。
-修复后的脏工作树开发回归已单独运行同一 `communication_degraded 200v200 seed 64`：状态有限、
-在线真值使用为 0，episode 运行 27.4 秒、写入 3.9 秒，并以 checkpoint v2 在 1/3 边界正常暂停。
-该结果只证明原异常单元可通过和恢复点可写，不替代干净提交上的正式重跑。
+不再形成系统级阻塞。2026-07-20 的第一次正式运行曾在 209/900 后暴露 D5 同流多批次边界
+问题；该未最终化目录只保留作故障证据。修复后使用干净提交从零生成的新目录已完成
+900/900，旧、新 episode 没有拼接。
 
 学习模型默认关闭。显式研究运行可增加下列参数；bundle 缺失、校验失败、分布外、低置信或
 超时均保留规则路径：
@@ -169,7 +196,7 @@ D4 区域策略、A3 主动视觉、C1 学习组合和 F1 故障/高威胁完整
 
 ## 当前验证
 
-2026-07-20 的 main 集成回归为 **72/72 passed**。其中 5v5、seed 7、1.2 秒场景形成
+2026-07-21 的 main 集成回归为 **80/80 passed**。其中 5v5、seed 7、1.2 秒场景形成
 5 条 D1 航迹、5 条 D2 中心航迹、5 项 D3 分配和 5 路 D7 中段指令，在线真值字段使用为
 0。200v200、seed 17、0.25 秒雷达烟测形成 200 条 D1/D2 航迹和 200 项分配；D3 从
 40000 个完整 pair 中保留 6400 条候选边，D7 输出 `(200, 3)` 有限加速度。
@@ -224,13 +251,12 @@ seed 17 复测：
 航迹。D2 没有继续放大 D1 速度均值，200 条航迹和 ID 集保持稳定。上面的原 0.25 秒表是
 稀疏分配优化前的历史短测，仅保留作性能演进参照。
 
-当前尚未完成至少 20 个未见 seed 的 NIS/NEES、门控率和长期速度 coverage，也未完成
-200-camera 图构建。D3 已具备整 seed 数据集、行为克隆、原生近端策略优化、bundle 和
-paired shadow evaluator；D4 已具备变长区域图、规则基线、行为克隆、近端策略优化和安全
-投影；D5 已具备真值物理隔离的数据集、原生图网络训练、校准和校验加载；D6 已能离线消费
-规模化 episode 并输出逐 seed、聚合、中文报告和曲线。上述结果只证明研究管线和回退机制，
-没有独立验证 checkpoint，也没有模型准入结论。D5 主动视觉的正式训练数据、模型权重和
-至少 20 个未见 seed 的联合验收仍未完成。
+当前尚未完成保留 seed `1000-1019` 上的 NIS/NEES、门控率、长期速度 coverage 和最终
+20-seed 验收，也未完成满足困难负样本门限的 200-camera 图数据。D3、D4 和 D5 已具备
+模块内数据集、训练、bundle 与规则回退管线，并完成首轮开发训练；现有 bundle 均未获得
+assist 准入。D6 已能离线消费规模化 episode 并输出逐 seed、聚合、中文报告和曲线。当前
+剩余条件是统一跨模块 split、补足 D4 动作多样性和 D5 重叠视场困难负样本、形成可归因运行
+ACK/reward，再进行 paired shadow、联合训练和保留 seed 验收。
 
 同日完成主动视觉运行时接线后，5v5、1.4 秒开发冒烟发出并确认 84 条相机命令，拒绝数为
 0。200v200、seed 17、1.2 秒开发诊断发出并确认 1872 条命令，主动视觉 9 次调用累计约
@@ -284,8 +310,8 @@ runner 的 checkpoint 已升级为逐 episode 原子推进并兼容严格校验�
 - D4 区域策略：`d4-region-resource-rule-v1` 或带权重 SHA256 的显式模型版本
 - 学习导出：`scalable3d-learning-export-v2`
 - 学习生成计划：`scalable3d-learning-generation-plan-v1`
-- D5 主动视觉数据集：`d5.active-vision-episode-dataset.v2`
-- D5 主动视觉模型 bundle：`d5.active-vision-model-bundle.v3`
+- D5 主动视觉数据集：`d5.active-vision-episode-dataset.v3`
+- D5 主动视觉模型 bundle：按 D5 当前代码和权重 manifest 记录，不从目录名推断
 - 主动视觉快照/动作：`d5.active-vision-snapshot.v1` / `d5.active-vision-action.v1`
 - 主动视觉策略：`d5-active-vision-rule-v1` 或模型语义版本加权重指纹
 - 相机命令确认：`scalable3d-camera-command-ack-v1`
@@ -293,6 +319,7 @@ runner 的 checkpoint 已升级为逐 episode 原子推进并兼容严格校验�
 - D1 离线一致性清单：`scalable3d-offline-consistency-evaluation-manifest-v1`
 - D2 身份评估清单：`scalable3d-offline-identity-evaluation-manifest-v1`
 - D6 真值隔离清单：`scalable3d-d6-truth-isolated-manifest-v1`
+- 跨模块共享 seed 切分：`scalable3d-shared-seed-split-registry-v1`
 
 每个 episode 的 `manifest.json` 记录上述版本、Git commit、配置 SHA256、seed、模型版本和
 阈值版本。在线总线拒绝任何包含 truth/actor/object identity 字段的观测负载。

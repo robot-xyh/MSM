@@ -45,6 +45,7 @@ main
 | 学习生成计划 | `scalable3d-learning-generation-plan-v1` | 场景、规模、seed、正式预检或保留评估 seed 规则改变 |
 | 学习生成检查点 | `scalable3d-learning-generation-checkpoint-v2` | 暂停/恢复状态、累计调用计时、计划哈希或完成序号语义改变；v2 在每个完整 episode 后原子推进，并记录严格校验后的旧检查点滞后恢复 |
 | 训练 seed 注册表 | `scalable3d-training-seed-registry-v1` | 训练/保留评估 seed 身份、来源或隔离规则改变 |
+| 共享 seed 切分注册表 | `scalable3d-shared-seed-split-registry-v1` | D3/D4/D5 联合训练的数值 seed 分桶、比例、来源哈希或保留集规则改变 |
 | 实验矩阵 | `scalable3d-experiment-matrix-v1` | 变体语义、配对键或正式准入条件改变 |
 | D1 一致性评估清单 | `scalable3d-offline-consistency-evaluation-manifest-v1` | 在线证据、真值状态、D2 映射或哈希绑定改变 |
 | D2 身份评估清单 | `scalable3d-offline-identity-evaluation-manifest-v1` | 谱系映射、身份指标或来源校验改变 |
@@ -112,6 +113,16 @@ checkpoint 领先、staging 领先或来源提交改变仍拒绝恢复。不同 
 规模、至少 20 个测试 seed 和训练 seed 注册表摘要。测试 seed 与训练 seed 有交集、模型
 bundle 未加载、assist 未准入或运行时回退规则时，相关学习变体不得进入正式比较。矩阵
 manifest 只记录版本和摘要，不记录 bundle 的本地绝对路径。
+
+跨模块学习另使用源外 `scalable3d-shared-seed-split-registry-v1`。注册表绑定冻结的
+`training_seed_registry.json` 文件 SHA256，以数值 seed 为不可分单元，统一采用
+`60%/20%/20%` 的 train/validation/test 划分，并保持与 D3
+`d3_numeric_seed_atomic_split_v2` 的排序兼容。它不修改 D3/D4/D5 原 dataset。任一模块的
+seed 缺失、增加、错桶，或 source/assignment/content SHA 不一致时，C1 联合训练失败关闭。
+正式 900-episode 数据对应的 detached 注册表文件 SHA256 为
+`68608d29d1f733beea87f1faf06464fededb68a9c2972c51c10cd4c2160f032f`；其来源训练 seed 注册表
+SHA256 为 `2ab928a476a4430b99326f245222f058bc5be5025158134ba89b01b3dec7815f`。保留 seed
+`1000-1019` 不出现在三个训练桶中。
 
 每个持久化 episode 的 D1、D2 和 D6 子目录分别保存独立 manifest。D1 结果必须绑定在线
 总线、离线真值状态和 D2 规范映射；D2 结果必须绑定原始 D1/D2 记录、观测真值标签和身份
