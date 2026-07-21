@@ -12,6 +12,8 @@ from research_modules.scalable_3d_simulation.run_learning_dataset import (
     TRAINING_SEED_REGISTRY_SCHEMA_VERSION,
     _active_vision_test_seed_count,
     _build_training_seed_registry,
+    _directory_size_bytes,
+    _generation_timing_summary,
     _load_schedule,
     _load_schedule_plan,
     _prepare_fresh_output,
@@ -148,6 +150,31 @@ def test_prepare_fresh_output_accepts_existing_empty_directory(tmp_path) -> None
     (existing / "record.json").write_text("{}", encoding="utf-8")
     with pytest.raises(FileExistsError, match="not empty"):
         _prepare_fresh_output(existing)
+
+
+def test_generation_timing_summary_and_directory_size(tmp_path) -> None:
+    nested = tmp_path / "nested"
+    nested.mkdir()
+    (tmp_path / "first.bin").write_bytes(b"abc")
+    (nested / "second.bin").write_bytes(b"de")
+
+    summary = _generation_timing_summary(
+        (
+            {"episode_run_wall_s": 0.75, "artifact_stage_wall_s": 1.25},
+            {"episode_run_wall_s": 1.25, "artifact_stage_wall_s": 1.75},
+        ),
+        finalization_wall_s=4.0,
+        generation_wall_s=10.0,
+    )
+
+    assert _directory_size_bytes(tmp_path) == 5
+    assert summary == {
+        "episode_run_wall_s": 2.0,
+        "artifact_stage_wall_s": 3.0,
+        "finalization_wall_s": 4.0,
+        "generation_wall_s": 10.0,
+        "other_or_preflight_wall_s": 1.0,
+    }
 
 
 def test_committed_balanced_schedule_meets_formal_preflight() -> None:

@@ -11,6 +11,7 @@ from pathlib import Path
 import shutil
 import subprocess
 import sys
+import time
 from typing import Any, Iterable, Mapping
 
 
@@ -65,6 +66,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 
 def main(argv: list[str] | None = None) -> int:
+    generation_started = time.perf_counter()
     args = parse_args(argv)
     if args.duration <= 0.0:
         raise ValueError("--duration must be positive")
@@ -167,13 +169,17 @@ def main(argv: list[str] | None = None) -> int:
             LearningRuntimeOptions(),
             stack_config=IntegratedStackConfig(capture_learning_artifacts=True),
         )
+        episode_started = time.perf_counter()
         result = run_episode(resolved.config, module_stack=resolved.stack)
+        episode_run_wall_s = time.perf_counter() - episode_started
+        staging_started = time.perf_counter()
         episode_row = writer.stage_episode(
             config=result.config,
             manifest=result.manifest,
             artifacts=resolved.stack.learning_artifacts(),
             offline_truth_labels=result.offline_truth_labels,
         )
+        artifact_stage_wall_s = time.perf_counter() - staging_started
         row = {
             "sequence": index,
             "scenario": scenario,
@@ -183,6 +189,11 @@ def main(argv: list[str] | None = None) -> int:
             "finite_state": bool(result.summary["finite_state"]),
             "online_truth_use_count": int(result.summary["online_truth_use_count"]),
             "real_time_factor": float(result.summary["real_time_factor"]),
+            "episode_run_wall_s": episode_run_wall_s,
+            "artifact_stage_wall_s": artifact_stage_wall_s,
+            "episode_and_stage_wall_s": (
+                episode_run_wall_s + artifact_stage_wall_s
+            ),
             "repository_dirty": bool(result.manifest.repository_dirty),
             **dict(episode_row),
         }
@@ -195,10 +206,13 @@ def main(argv: list[str] | None = None) -> int:
         rows.append(row)
         print(
             f"[{index + 1}/{len(cells)}] scenario={scenario} scale={scale} "
-            f"seed={seed} rtf={row['real_time_factor']:.3f}"
+            f"seed={seed} rtf={row['real_time_factor']:.3f} "
+            f"run={episode_run_wall_s:.1f}s stage={artifact_stage_wall_s:.1f}s"
         )
 
+    finalization_started = time.perf_counter()
     paths = writer.finalize()
+    finalization_wall_s = time.perf_counter() - finalization_started
     summary = json.loads(paths["summary"].read_text(encoding="utf-8"))
     if args.formal:
         required = (
@@ -215,6 +229,12 @@ def main(argv: list[str] | None = None) -> int:
                 f"{summary.get('d5_active_vision_dataset_finalization_reason')}"
             )
     _write_progress_csv(output / "episode_progress.csv", rows)
+    generation_wall_s = time.perf_counter() - generation_started
+    timing_summary = _generation_timing_summary(
+        rows,
+        finalization_wall_s=finalization_wall_s,
+        generation_wall_s=generation_wall_s,
+    )
     _write_json(
         output / "generation_summary.json",
         {
@@ -225,6 +245,11 @@ def main(argv: list[str] | None = None) -> int:
                 output / "training_seed_registry.json"
             ),
             "learning_export_summary": summary,
+            "timing_summary": timing_summary,
+            "learning_dataset_size_bytes": _directory_size_bytes(
+                output / "learning_dataset"
+            ),
+            "free_space_bytes_after_finalization": shutil.disk_usage(output).free,
         },
     )
     print(f"learning_summary={paths['summary']}")
@@ -412,6 +437,40 @@ def _require_free_space(path: Path, minimum_free_gb: float) -> None:
         raise RuntimeError(
             f"insufficient free space: {free_bytes / 1024**3:.2f} GiB < {minimum_free_gb:.2f} GiB"
         )
+
+
+def _generation_timing_summary(
+    rows: Iterable[Mapping[str, Any]],
+    *,
+    finalization_wall_s: float,
+    generation_wall_s: float,
+) -> dict[str, float]:
+    items = tuple(rows)
+    episode_run_wall_s = sum(float(row["episode_run_wall_s"]) for row in items)
+    artifact_stage_wall_s = sum(
+        float(row["artifact_stage_wall_s"]) for row in items
+    )
+    accounted_wall_s = (
+        episode_run_wall_s + artifact_stage_wall_s + float(finalization_wall_s)
+    )
+    return {
+        "episode_run_wall_s": episode_run_wall_s,
+        "artifact_stage_wall_s": artifact_stage_wall_s,
+        "finalization_wall_s": float(finalization_wall_s),
+        "generation_wall_s": float(generation_wall_s),
+        "other_or_preflight_wall_s": max(
+            0.0,
+            float(generation_wall_s) - accounted_wall_s,
+        ),
+    }
+
+
+def _directory_size_bytes(path: Path) -> int:
+    return sum(
+        item.stat().st_size
+        for item in path.rglob("*")
+        if item.is_file()
+    )
 
 
 def _repository_dirty() -> bool:
