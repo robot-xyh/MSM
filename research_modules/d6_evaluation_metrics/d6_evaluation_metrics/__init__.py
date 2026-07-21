@@ -238,6 +238,20 @@ from .runtime_plan_outcome_join import (
     render_runtime_plan_outcome_join_markdown,
     write_runtime_plan_outcome_join_report,
 )
+from .d5_clean_graph_evidence import (
+    D5_CLEAN_GRAPH_CRITERIA,
+    D5_CLEAN_GRAPH_EVIDENCE_DATE,
+    D5_CLEAN_GRAPH_EVIDENCE_SCHEMA_VERSION,
+    D5_CLEAN_GRAPH_INPUT_SCHEMA_VERSION,
+    D5_GRAPH_MODEL_REPORT_SCHEMA_VERSION,
+    D5CleanGraphArtifact,
+    D5CleanGraphEvidenceError,
+    D5CleanGraphEvidenceInputs,
+    audit_d5_clean_graph_evidence,
+    load_d5_clean_graph_evidence_inputs,
+    render_d5_clean_graph_evidence_markdown,
+    write_d5_clean_graph_evidence_report,
+)
 
 __all__ = [
     "CANONICAL_SEED_SPLIT_READINESS_SCHEMA_VERSION",
@@ -398,6 +412,14 @@ __all__ = [
     "D6_TRUTH_ISOLATED_EVALUATION_DATE",
     "D4_LABEL_SCHEMA_VERSION",
     "D5_LABEL_SCHEMA_VERSION",
+    "D5_CLEAN_GRAPH_CRITERIA",
+    "D5_CLEAN_GRAPH_EVIDENCE_DATE",
+    "D5_CLEAN_GRAPH_EVIDENCE_SCHEMA_VERSION",
+    "D5_CLEAN_GRAPH_INPUT_SCHEMA_VERSION",
+    "D5_GRAPH_MODEL_REPORT_SCHEMA_VERSION",
+    "D5CleanGraphArtifact",
+    "D5CleanGraphEvidenceError",
+    "D5CleanGraphEvidenceInputs",
     "DEFAULT_TRUTH_ISOLATED_BOOTSTRAP_RESAMPLES",
     "DEFAULT_TRUTH_ISOLATED_BOOTSTRAP_RNG_SEED",
     "PublicMetricEvidence",
@@ -416,6 +438,7 @@ __all__ = [
     "aggregate_truth_isolated_episode_records",
     "audit_learning_label_readiness",
     "audit_learning_label_sidecar_bundle",
+    "audit_d5_clean_graph_evidence",
     "build_truth_isolated_episode_record",
     "render_truth_isolated_markdown",
     "render_cross_module_learning_data_admission_markdown",
@@ -434,6 +457,9 @@ __all__ = [
     "RuntimePlanOutcomeJoinInputs",
     "evaluate_runtime_plan_outcomes",
     "load_runtime_plan_outcome_join_inputs",
+    "load_d5_clean_graph_evidence_inputs",
+    "render_d5_clean_graph_evidence_markdown",
     "render_runtime_plan_outcome_join_markdown",
+    "write_d5_clean_graph_evidence_report",
     "write_runtime_plan_outcome_join_report",
 ]

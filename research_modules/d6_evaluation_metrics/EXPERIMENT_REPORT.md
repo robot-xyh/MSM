@@ -1,5 +1,20 @@
 # D6 系统级评估指标实验报告
 
+## 2.8 2026-07-21 D5 clean 图数据分层验收
+
+本次验收只读消费 D5 显式登记的 clean summary、composite admission/view、canonical subview 和正式/
+补充 manifest。八项文件及输入清单均由调用方提供 SHA-256。实际 composite 包含 4,972 episode、
+245,040 条候选边，其中正边 57,298、负边 187,742、未标注 0；100 个 seed 按 60/20/20 划分，
+`1000-1019` 重叠为 0，场景规模单元为 45，来源 dirty 和改写标志均为 false。
+
+实际输出中，数据支持和训练来源为 `complete`；模型内部测试、保留 seed 和同 seed 配对影子为
+`unavailable`。G1、assist、authority、模型 promotion 和正式 PPO reward 均为 false，规则回退为
+true。测试中的完整模型报告仅用于验证未来输入合同，不构成当前模型证据。
+
+专项 14 项全部通过，覆盖正常审计与 CLI、清单/文件哈希篡改、dirty source、来源改写、保留 seed
+泄漏、未标注边、门限降低、部分 bundle、缺少 45 cell 的模型报告、伪造权限字段，以及“内部测试通过
+仍不开放外部门”的边界。D6 全量为 `437 passed`；仅有既有 Matplotlib `Axes3D` 环境 warning。
+
 ## 2.7 2026-07-21 运行时计划确认与离线结果联接验收
 
 本次验收面向 D6 新增的严格离线消费者。输入按 11 类文件拆分，全部由调用方提供 SHA-256。测试同时

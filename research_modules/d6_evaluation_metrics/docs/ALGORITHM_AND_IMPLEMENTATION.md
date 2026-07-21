@@ -1,5 +1,29 @@
 # D6 系统级离线评估：算法原理与实施说明
 
+## D5 clean 图数据严格消费者（2026-07-21）
+
+### 输入和完整性
+
+`D5CleanGraphEvidenceInputs` 固定接收八类数据制品。每项路径由调用方给出，并携带独立 SHA-256；输入
+清单本身由 CLI 再校验一次带外 SHA-256。JSON 制品同时复算去除 `content_sha256` 后的规范内容摘要。
+文件摘要、内容摘要、来源 manifest 或 canonical subview 任一不一致即停止评估。
+
+审计器逐 episode 重建 seed 到 split 的映射，要求 60 个训练、20 个验证、20 个内部测试 seed，且
+`1000-1019` 不得进入任何集合。候选边总数必须等于正边、负边和未标注边之和；三个 split 都必须有
+正负样本，未标注总数为 0。composite view、admission 和 supplemental manifest 必须共同声明来源
+未改写、工作树干净、规则回退和身份门控不变。
+
+### 模型合同和权限
+
+模型证据采用全有或全无的三文件 bundle：报告、权重和配置。报告内的三个 SHA 必须分别绑定实际权重、
+实际配置和已核验训练视图；测试 seed 必须等于 canonical test split。聚合指标、45 个唯一 cell 指标
+和设备时延字段缺一即失败关闭。内部阈值通过只把 `internal_model_test` 标为 `complete`，不会自动开放
+held-out、paired shadow、G1、assist 或 authority。
+
+当前无模型 bundle 时，模型内部测试、保留 seed 和 paired shadow 均输出 `null/unavailable+reason`。
+审计结果固定声明正式 PPO reward、因果和反事实不可用，并记录没有修改现有 runtime outcome
+diagnostic。报告器只在 D6 指定输出目录原子写入 JSON 和中文 Markdown。
+
 ## 运行时计划确认到离线结果的严格联接（2026-07-21）
 
 ### 输入合同

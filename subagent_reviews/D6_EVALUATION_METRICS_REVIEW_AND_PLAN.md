@@ -1,5 +1,20 @@
 # D6 系统评估指标综述及子方案
 
+## 2026-07-21 D5 clean 跨视角图证据复核
+
+D6 已提供显式、只读、带外 SHA-256 约束的 D5 clean 数据消费者。复核覆盖 supplemental summary、
+composite admission/view、formal/supplemental canonical view、supplemental manifest/dataset 和 formal
+source manifest。实现不搜索 D5 ignored output，不修改来源，也不改变既有 runtime outcome
+diagnostic。
+
+当前 4,972 episode、245,040 条候选边的 composite 数据通过数据支持和训练来源门；未标注边为 0，
+seed 为 60/20/20，保留 seed 无重叠，45 个场景规模单元和 clean source 合同成立。没有真实模型内部
+测试、保留 seed 或 paired shadow 证据，三层保持 unavailable。G1、assist、authority 和 PPO 均关闭，
+规则回退继续启用。专项 `14 passed`，D6 全量 `437 passed`，仅有既有 Matplotlib warning。
+
+下一步由 D5/训练流程产生完整模型 bundle，由 main 组织保留 seed 和同 seed paired formal shadow。
+D6 只复核证据，不把 synthetic contract fixture 或 clean data pass 写成模型 promotion。
+
 ## 2026-07-21 运行时计划结果联接复核
 
 ### 复核结论

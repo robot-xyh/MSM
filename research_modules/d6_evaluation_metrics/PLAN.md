@@ -1,5 +1,19 @@
 # D6 Evaluation Metrics Plan
 
+## 2026-07-21 D5 clean 图数据准入状态
+
+- [x] 新增八类显式 D5 数据制品及逐文件带外 SHA-256 合同；禁止隐式发现 ignored output。
+- [x] 复核内部 content SHA、正式/补充来源绑定、60/20/20 seed、保留 seed 零重叠、正负边、未标注
+  0、45 个场景规模单元、dirty=false 和来源未改写。
+- [x] 将数据支持、训练来源、模型内部测试、保留 seed、paired shadow 分层输出；数据通过不触发
+  G1、assist、authority 或正式 PPO reward。
+- [x] 为未来模型报告固定权重 SHA、配置 SHA、训练来源 SHA、测试指标、45 cell 指标和 latency
+  合同；缺项、伪造字段和门限降低均失败关闭。
+- [x] 提供包级公开 API、带外清单哈希 CLI、JSON/中文 Markdown 报告和 14 项专项回归。D6 全量为
+  `437 passed`，仅有既有 Matplotlib `Axes3D` warning。
+- [ ] 训练并登记真实模型内部测试证据；完成后再以保留 seed `1000-1019` 和同 seed paired formal
+  shadow 独立验收。当前三项保持 `unavailable`，G1/assist/authority 保持 false。
+
 ## 2026-07-21 运行时 ACK 到离线结果联接状态
 
 - [x] 新增 D6-owned `RuntimePlanOutcomeJoinInputs`，固定 11 类显式文件路径与调用方带外 SHA-256；不

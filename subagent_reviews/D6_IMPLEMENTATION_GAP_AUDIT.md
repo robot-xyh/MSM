@@ -1,5 +1,27 @@
 # D6 实现差距审计
 
+## 2026-07-21 D5 clean 图数据分层准入 GAP
+
+### 已关闭的 D6-owned P1
+
+1. 已实现八类显式 D5 clean 制品和逐文件带外 SHA-256 消费，输入清单也要求独立 SHA-256；不依赖
+   ignored output 的隐式路径。
+2. 已复核文件/内容摘要、formal/supplemental 来源、60/20/20 seed、保留 seed 零重叠、正负边、
+   未标注 0、45 cell、dirty=false 和来源未改写。篡改、泄漏、门限降低和伪模型报告均失败关闭。
+3. 已形成数据支持、训练来源、模型内部测试、保留 seed、paired shadow 五层输出。当前真实证据只让
+   前两层 complete，后三层 unavailable；G1、assist、authority、正式 PPO reward 继续关闭。
+4. 未来模型 bundle 已固定权重 SHA、配置 SHA、训练来源 SHA、测试指标、45 cell 和 latency 合同。
+   内部测试通过也不能越过保留 seed 和 paired shadow 门。
+5. 2026-07-21 专项 `14 passed`、D6 全量 `437 passed`，仅有既有 Matplotlib warning。
+
+### 仍开放的 P1
+
+1. 缺真实训练权重及完整内部模型测试报告，`internal_model_test=unavailable`。
+2. 缺保留 seed `1000-1019` 的独立模型验收，`held_out_seed=unavailable`。
+3. 缺相同 seed、冻结配置下规则与模型的 paired formal shadow，`paired_shadow=unavailable`。
+4. 上述证据形成并通过正式门限前，G1、assist、authority 和模型 promotion 不得开放；规则回退保持
+   强制。D6 不补造模型结果、奖励、因果或反事实证据。
+
 ## 2026-07-21 运行时结果联接 GAP 更新
 
 ### 当前判断

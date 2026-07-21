@@ -1,5 +1,23 @@
 # D6 Evaluation Metrics
 
+## 2026-07-21 D5 干净跨视角图数据分层审计
+
+`d5_clean_graph_evidence.py` 是 D6 对 D5 tracked clean 数据的只读入口。调用方必须显式提供补充数据
+summary、composite admission/view、两份 canonical subview、补充 manifest/dataset manifest 和正式源
+manifest，并为每个文件提供带外 SHA-256。实现不搜索 D5 ignored output，不修改来源文件；60/20/20
+seed、保留 seed `1000-1019` 零重叠、正负边、未标注边为 0、45 个场景规模单元、dirty 状态和来源未
+改写任一不满足时均失败关闭。
+
+输出分为数据支持、训练数据来源、模型内部测试、保留 seed、同 seed 配对影子五层。2026-07-21 对
+当前 D5 clean 制品的核验结果为：composite 4,972 episode、245,040 条候选边，其中正边 57,298、
+负边 187,742、未标注 0；前两层为 `complete`，后三层为 `unavailable`。G1、assist、authority 和
+正式 PPO reward 均为 false，规则回退保持启用。完整模型 bundle 即使通过内部测试合同，也不能替代
+保留 seed 和 paired shadow。
+
+公开接口为 `D5CleanGraphEvidenceInputs`、`load_d5_clean_graph_evidence_inputs()`、
+`audit_d5_clean_graph_evidence()` 和 `write_d5_clean_graph_evidence_report()`。CLI 为
+`scripts/run_d5_clean_graph_evidence.py`，其输入清单自身也必须提供带外 SHA-256。
+
 ## 2026-07-21 运行时计划确认与离线观测结果联接
 
 `runtime_plan_outcome_join.py` 提供 D6 只读严格消费者。调用方必须显式给出 11 类输入文件及各自
