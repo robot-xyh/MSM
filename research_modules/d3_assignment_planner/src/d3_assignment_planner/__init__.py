@@ -172,6 +172,15 @@ from .learning_training import (
     train_behavior_cloning,
     train_native_ppo,
 )
+from .shared_seed_registry import (
+    SHARED_SEED_SPLIT_BINDING_SCHEMA_VERSION,
+    SHARED_SEED_SPLIT_POLICY_VERSION,
+    SHARED_SEED_SPLIT_SCHEMA_VERSION,
+    TRAINING_SEED_REGISTRY_SCHEMA_VERSION,
+    SharedSeedSplitBinding,
+    SharedSeedSplitBindingError,
+    validate_shared_seed_split_binding,
+)
 from .native_ppo import (
     ADVICE_ACTIONS,
     SHARED_EDGE_ACTOR_CRITIC_POLICY_V1,
@@ -337,11 +346,16 @@ __all__ = [
     "SolverResult",
     "SharedCandidateEdgeResidualPolicy",
     "SHARED_EDGE_ACTOR_CRITIC_POLICY_V1",
+    "SHARED_SEED_SPLIT_BINDING_SCHEMA_VERSION",
+    "SHARED_SEED_SPLIT_POLICY_VERSION",
+    "SHARED_SEED_SPLIT_SCHEMA_VERSION",
     "SHADOW_EVALUATION_SCHEMA_V1",
     "SHADOW_EVALUATION_SCHEMA_V2",
     "ShadowEvaluationReport",
     "ShadowFrameMetrics",
     "SharedEdgeActorCriticPolicy",
+    "SharedSeedSplitBinding",
+    "SharedSeedSplitBindingError",
     "SparsePolicyAction",
     "ClippedPPOTrainer",
     "PPOTransition",
@@ -353,6 +367,7 @@ __all__ = [
     "TERMINAL_AUTHORIZATION_PER_PRIMARY",
     "TerminalFeedbackWriteback",
     "TERMINAL_FEEDBACK_PROFILE_SCHEMA_V1",
+    "TRAINING_SEED_REGISTRY_SCHEMA_VERSION",
     "ThreatScoreBaseline",
     "adapt_airsim_global_tracks",
     "adapt_airsim_resource_states",
@@ -401,6 +416,7 @@ __all__ = [
     "unavailable_promotion_manifest",
     "update_bundle_promotion_manifest",
     "validate_split_integrity",
+    "validate_shared_seed_split_binding",
     "write_learning_dataset",
     "write_shadow_report",
 ]

@@ -1073,7 +1073,14 @@ def write_learning_dataset(
 
 def load_learning_dataset(
     input_dir: str | Path,
+    *,
+    shared_seed_registry_path: str | Path | None = None,
+    training_seed_registry_path: str | Path | None = None,
 ) -> tuple[LearningDatasetManifest, tuple[LearningFrameRecord, ...]]:
+    if (shared_seed_registry_path is None) != (training_seed_registry_path is None):
+        raise ValueError(
+            "shared_seed_registry_path and training_seed_registry_path must be provided together"
+        )
     input_path = Path(input_dir)
     with (input_path / DATASET_MANIFEST_FILENAME).open(encoding="utf-8") as stream:
         raw_manifest = json.load(stream)
@@ -1145,6 +1152,17 @@ def load_learning_dataset(
         raise ValueError("dataset split episode counts do not match manifest")
     if actual_seed_values != dict(manifest.split_seed_values):
         raise ValueError("dataset split seed values do not match manifest")
+    if shared_seed_registry_path is not None:
+        # Lazy import avoids coupling the default module-local loader to the
+        # detached main-owned registry contract.
+        from .shared_seed_registry import validate_shared_seed_split_binding
+
+        validate_shared_seed_split_binding(
+            manifest,
+            items,
+            registry_path=shared_seed_registry_path,
+            training_seed_registry_path=training_seed_registry_path,
+        )
     return manifest, items
 
 

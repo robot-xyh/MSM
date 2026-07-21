@@ -23,6 +23,9 @@ from d3_assignment_planner.learning_bundle import (
 from d3_assignment_planner.learning_data import load_learning_dataset
 from d3_assignment_planner.learning_training import train_behavior_cloning
 from d3_assignment_planner.native_ppo import SharedEdgeActorCriticPolicy, torch
+from d3_assignment_planner.shared_seed_registry import (
+    validate_shared_seed_split_binding,
+)
 
 
 DEFAULT_HOLDOUT_SEEDS = tuple(range(1000, 1020))
@@ -41,6 +44,16 @@ def build_parser() -> argparse.ArgumentParser:
         help="ignored local output directory; must be outside the tracked report directory",
     )
     parser.add_argument("--repository-git-commit", required=True)
+    parser.add_argument(
+        "--shared-seed-registry",
+        type=Path,
+        help="detached main-owned shared numeric-seed split registry",
+    )
+    parser.add_argument(
+        "--training-seed-registry",
+        type=Path,
+        help="frozen source registry referenced by the shared split registry",
+    )
     parser.add_argument("--training-date", default="2026-07-20")
     parser.add_argument("--epochs", type=int, default=12)
     parser.add_argument("--mini-batch-frames", type=int, default=8)
@@ -64,6 +77,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     dataset = args.dataset.resolve()
     output = args.output.resolve()
     bundle_dir = args.bundle_output.resolve()
+    if (args.shared_seed_registry is None) != (
+        args.training_seed_registry is None
+    ):
+        raise SystemExit(
+            "--shared-seed-registry and --training-seed-registry must be provided together"
+        )
     if dataset == output or dataset in output.parents:
         raise SystemExit("output must not be inside the read-only formal dataset")
     if (
@@ -84,7 +103,21 @@ def main(argv: Sequence[str] | None = None) -> int:
     bundle_dir.parent.mkdir(parents=True, exist_ok=True)
     started = perf_counter()
 
-    manifest, records = load_learning_dataset(dataset)
+    manifest, records = load_learning_dataset(
+        dataset,
+        shared_seed_registry_path=args.shared_seed_registry,
+        training_seed_registry_path=args.training_seed_registry,
+    )
+    shared_binding = (
+        None
+        if args.shared_seed_registry is None
+        else validate_shared_seed_split_binding(
+            manifest,
+            records,
+            registry_path=args.shared_seed_registry,
+            training_seed_registry_path=args.training_seed_registry,
+        ).to_dict()
+    )
     audit = audit_formal_learning_dataset(
         dataset,
         manifest,
@@ -143,6 +176,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         "optimizer": "Adam",
         "training_kind": "behavior_cloning",
         "ppo_started": False,
+        "shared_seed_registry_required": shared_binding is not None,
     }
     training_results = {
         "behavior_cloning": training_result.to_dict(),
@@ -155,6 +189,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         "admission_statement": (
             "development_shadow_only_external_holdout_1000_1019_not_evaluated"
         ),
+        "shared_seed_registry_binding": shared_binding,
     }
     bundle = save_model_bundle(
         bundle_dir,
@@ -185,6 +220,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         "schema_version": "d3_formal_bc_development_run_v1",
         "training_date": str(args.training_date),
         "dataset_audit": audit,
+        "shared_seed_registry_binding": shared_binding,
         "configuration": configuration,
         "training_result": training_result.to_dict(),
         "development_evaluation": evaluation,
@@ -214,6 +250,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     }
     report_path = output / "development_evaluation.json"
     _write_json(report_path, report)
+    if shared_binding is not None:
+        _write_json(output / "shared_seed_registry_binding.json", shared_binding)
     markdown_path = output / "TRAINING_REPORT_CN.md"
     markdown_path.write_text(_render_markdown(report), encoding="utf-8")
     command_path = output / "training_command.txt"
@@ -223,15 +261,18 @@ def main(argv: Sequence[str] | None = None) -> int:
         _render_model_location(bundle_dir, bundle.state_dict_sha256),
         encoding="utf-8",
     )
+    tracked_artifact_names = [
+        "dataset_audit.json",
+        "development_evaluation.json",
+        "TRAINING_REPORT_CN.md",
+        "training_command.txt",
+        "MODEL_ARTIFACT_LOCATION.md",
+    ]
+    if shared_binding is not None:
+        tracked_artifact_names.append("shared_seed_registry_binding.json")
     tracked_artifact_hashes = {
         relative: _file_sha256(output / relative)
-        for relative in (
-            "dataset_audit.json",
-            "development_evaluation.json",
-            "TRAINING_REPORT_CN.md",
-            "training_command.txt",
-            "MODEL_ARTIFACT_LOCATION.md",
-        )
+        for relative in tracked_artifact_names
     }
     artifact_hashes = {
         "tracked_artifacts": tracked_artifact_hashes,
@@ -269,6 +310,7 @@ def _source_digest() -> str:
         root / "src/d3_assignment_planner/learning_data.py",
         root / "src/d3_assignment_planner/learning_training.py",
         root / "src/d3_assignment_planner/native_ppo.py",
+        root / "src/d3_assignment_planner/shared_seed_registry.py",
         root / "src/d3_assignment_planner/solver.py",
     )
     digest = sha256()
@@ -302,6 +344,11 @@ def _render_markdown(report: dict[str, Any]) -> str:
         f"- frames SHA256：`{audit['frames_sha256']}`",
         f"- split hash：`{audit['split_hash']}`",
         f"- 1000-1019 与当前数据交集：{audit['external_holdout']['overlap']}",
+        (
+            "- 共享 seed registry：未请求；该运行不可作为 C1 联合训练切分证据"
+            if report["shared_seed_registry_binding"] is None
+            else "- 共享 seed registry：已验证；file/content/assignment SHA256 已写入 sidecar 和 bundle training_results"
+        ),
         "",
         "## 训练配置",
         "",

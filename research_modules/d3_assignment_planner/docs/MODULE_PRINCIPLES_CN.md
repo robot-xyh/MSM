@@ -1053,3 +1053,16 @@ hash 对照，不能直接替换默认持久化合同。本批全量结果为 `2
 `e3da9fd5b54451da83358405b6051991e0c78bcf9f538b350d459b05faf8e0b2`，只作为开发 shadow
 模型。PPO 未启动，AirSim 和物理闭环均未由本轮验证。
 对应全量回归为 `257 passed, 1 skipped`，skip 仅 optional OR-Tools。
+
+## 27. 联合训练先绑定共享 Seed，再读取样本（2026-07-21）
+
+模块内数据切分解决单个数据集的泄漏问题，跨模块训练还需要共同的 seed 注册表。D3 在
+C1 路径中先验证 main 提供的 detached registry，再允许训练入口消费样本。验证顺序包括
+schema 和 policy、registry content 与 assignment 哈希、源 training registry 文件哈希、
+完整 seed 集合、逐 seed split，以及保留 seed 排除。任一条件不成立即停止，不采用局部
+重算结果继续训练。
+
+共享注册表只描述数据分割，不取得规划权。它不能改变 Hungarian、需求槽、硬拒绝、迟滞、
+计划版本或 D7 binding，也不能证明学习模型优于规则模型。新 bundle 可以记录已验证 binding；
+旧 bundle 保留开发兼容，但没有 binding 时不能作为 C1 联合训练产物。正式 100-seed 数据
+已与共享映射逐项一致，现有 BC 仍为 `development/shadow-only`，PPO 未启动。

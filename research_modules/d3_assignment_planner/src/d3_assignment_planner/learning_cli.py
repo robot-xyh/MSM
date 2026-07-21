@@ -21,6 +21,7 @@ from .learning_data import (
 )
 from .learning_training import train_behavior_cloning, train_native_ppo
 from .native_ppo import SharedEdgeActorCriticPolicy
+from .shared_seed_registry import validate_shared_seed_split_binding
 from .shadow_evaluation import (
     evaluate_shadow_pairs,
     update_bundle_promotion_manifest,
@@ -54,6 +55,7 @@ def build_parser() -> argparse.ArgumentParser:
     bc.add_argument("--seed", type=int, default=0)
     bc.add_argument("--positive-class-weight-cap", type=float, default=1.0)
     _add_guardrail_arguments(bc)
+    _add_shared_registry_arguments(bc)
 
     ppo = subparsers.add_parser("train-ppo", help="train native clipped PPO bundle")
     ppo.add_argument("--dataset", type=Path, required=True)
@@ -67,6 +69,7 @@ def build_parser() -> argparse.ArgumentParser:
     ppo.add_argument("--hidden-size", type=int, default=64)
     ppo.add_argument("--seed", type=int, default=0)
     _add_guardrail_arguments(ppo)
+    _add_shared_registry_arguments(ppo)
 
     shadow = subparsers.add_parser(
         "shadow-eval", help="run same-seed paired rule/shadow evaluation"
@@ -86,6 +89,7 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="do not attach the promotion decision to the bundle manifest",
     )
+    _add_shared_registry_arguments(shadow)
     return parser
 
 
@@ -104,7 +108,27 @@ def main(argv: Sequence[str] | None = None) -> int:
         _print_json(manifest.to_dict())
         return 0
 
-    dataset_manifest, records = load_learning_dataset(args.dataset)
+    if (args.shared_seed_registry is None) != (
+        args.training_seed_registry is None
+    ):
+        raise SystemExit(
+            "--shared-seed-registry and --training-seed-registry must be provided together"
+        )
+    dataset_manifest, records = load_learning_dataset(
+        args.dataset,
+        shared_seed_registry_path=args.shared_seed_registry,
+        training_seed_registry_path=args.training_seed_registry,
+    )
+    shared_binding = (
+        None
+        if args.shared_seed_registry is None
+        else validate_shared_seed_split_binding(
+            dataset_manifest,
+            records,
+            registry_path=args.shared_seed_registry,
+            training_seed_registry_path=args.training_seed_registry,
+        ).to_dict()
+    )
     if args.command == "train-bc":
         training_records = tuple(
             item for item in records if item.split in {"train", "validation"}
@@ -119,6 +143,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             seed=args.seed,
             positive_class_weight_cap=args.positive_class_weight_cap,
         )
+        training_results = result.to_dict()
+        if shared_binding is not None:
+            training_results["shared_seed_registry_binding"] = shared_binding
         bundle = save_model_bundle(
             args.bundle,
             policy,
@@ -128,7 +155,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             split_policy_version=dataset_manifest.split_policy_version,
             normalization_mean=result.normalization_mean,
             normalization_scale=result.normalization_scale,
-            training_results=result.to_dict(),
+            training_results=training_results,
             alpha=args.alpha,
             min_confidence=args.min_confidence,
             ood_z_threshold=args.ood_z_threshold,
@@ -139,6 +166,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "command": args.command,
                 "bundle": str(args.bundle),
                 "state_dict_sha256": bundle.state_dict_sha256,
+                "shared_seed_registry_binding": shared_binding,
                 **result.to_dict(),
             }
         )
@@ -164,6 +192,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             mean = loaded.manifest.normalization_mean
             scale = loaded.manifest.normalization_scale
             prior_results = dict(loaded.manifest.training_results)
+            if shared_binding is not None and prior_results.get(
+                "shared_seed_registry_binding"
+            ) != shared_binding:
+                raise SystemExit(
+                    "input bundle is not bound to the requested shared seed registry"
+                )
         else:
             policy = SharedEdgeActorCriticPolicy(hidden_size=args.hidden_size)
         policy, result = train_native_ppo(
@@ -184,6 +218,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "warm_start": prior_results,
                 "ppo": result.to_dict(),
             }
+        if shared_binding is not None:
+            training_results["shared_seed_registry_binding"] = shared_binding
         bundle = save_model_bundle(
             args.bundle,
             policy,
@@ -204,6 +240,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "command": args.command,
                 "bundle": str(args.bundle),
                 "state_dict_sha256": bundle.state_dict_sha256,
+                "shared_seed_registry_binding": shared_binding,
                 **result.to_dict(),
             }
         )
@@ -221,6 +258,12 @@ def main(argv: Sequence[str] | None = None) -> int:
                 f"shadow bundle unavailable: {loaded.fallback_reason or 'unknown'}"
             )
         manifest = loaded.manifest
+        if shared_binding is not None and manifest.training_results.get(
+            "shared_seed_registry_binding"
+        ) != shared_binding:
+            raise SystemExit(
+                "shadow bundle is not bound to the requested shared seed registry"
+            )
         predictor = NormalizedPolicyPredictor(
             loaded.policy,
             manifest.normalization_mean,
@@ -256,6 +299,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             {
                 "command": args.command,
                 "output": str(args.output),
+                "shared_seed_registry_binding": shared_binding,
                 **report.to_dict(include_frames=False),
             }
         )
@@ -268,6 +312,19 @@ def _add_guardrail_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--min-confidence", type=float, default=0.6)
     parser.add_argument("--ood-z-threshold", type=float, default=6.0)
     parser.add_argument("--deadline-s", type=float, default=0.05)
+
+
+def _add_shared_registry_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--shared-seed-registry",
+        type=Path,
+        help="detached main-owned shared numeric-seed split registry",
+    )
+    parser.add_argument(
+        "--training-seed-registry",
+        type=Path,
+        help="frozen source registry referenced by the shared split registry",
+    )
 
 
 def _print_json(value: object) -> None:

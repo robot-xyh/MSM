@@ -539,3 +539,27 @@ settings、actor、camera、control 或 episode 合同。M-to-N 算法和成员�
 OR-Tools。`AIRSIM_INTEGRATION_PLAN.md` 已检查，本轮没有改变 AirSim adapter、settings、
 actor、episode 或控制接口，无需更新。M-to-N 专项 review 已检查，需求槽、角色和时序合同
 未变化，无需更新。
+
+## 28. C1 共享 Seed 注册表 GAP 更新（2026-07-21）
+
+| GAP/能力 | 当前状态 | 证据与剩余边界 |
+|---|---|---|
+| D3 与跨模块 split 映射歧义 | D3-owned closed | 正式 100 seed 的 60/20/20 映射与 main detached registry 逐项相同 |
+| registry schema/policy | fail-closed closed | 只接受 shared schema/policy v1 和 D3 v2 ordering compatibility |
+| registry 完整性 | fail-closed closed | file/content/assignment/source 四类 SHA 均验证；自洽篡改仍须通过 D3 算法重算 |
+| seed 全集与原子性 | fail-closed closed | manifest 与 records 必须完整覆盖 source 100 seed，无缺失/增加；同 seed 不跨 split |
+| 保留 seed 隔离 | fail-closed closed | 1000-1019 不允许进入 manifest 或 records；正式交集为 0 |
+| 原数据和旧 bundle 兼容 | closed | 验证只读；默认 loader 和旧非联合开发 bundle 路径不变，无原地迁移 |
+| 新 bundle/report provenance | implemented | 启用 registry 后写入 bundle `training_results`；正式入口另写 binding sidecar |
+| D3 当前 BC 准入 | unchanged/open | 仍为 development/shadow-only；共享 split 一致不关闭外部 20-seed 非退化门 |
+| C1 联合训练 | cross-module P1 open | D4/D5 尚需同 registry、可用 label/ACK/reward、join schema 和联合保留 seed 证据 |
+
+正式只读验证覆盖 900 episode、1604 帧和 100 个训练 seed。registry file/content/
+assignment/source SHA 分别为 `68608d29...032f`、`29eb6895...f146`、
+`31c6a3fc...6ab5`、`2ab928a4...15f`，四个输入文件前后 SHA 相同。新增负例覆盖 schema、
+policy、content、assignment、源 SHA、缺 seed、多 seed、保留 seed、跨 split 和参数成对
+要求。D3 全量结果为 `269 passed, 1 skipped`。
+
+本项不修改 Hungarian、`C_final=C_rule+alpha*tanh(delta_C)`、硬门控、迟滞、计划版本
+或 D7 binding。PPO 未启动，现有 bundle 未晋级。D3-owned P1 split ambiguity 已关闭；
+C1 是否可启动由 main 汇总 D4/D5 数据条件后决定。

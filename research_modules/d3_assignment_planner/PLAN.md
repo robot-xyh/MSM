@@ -957,3 +957,35 @@ OR-Tools，零失败满足门限。
    在线或反事实回报，后续需由 D6 明确 reward availability 与因果口径后另行评审。
 5. 长期保留权重使用 Git LFS 或独立制品存储。main 需在全局 `VERSIONING.md` 中记录本机
    `git-lfs` 不可用状态；D3 不跨模块修改该文件。
+
+## 29. C1 共享 Seed 切分绑定（2026-07-21）
+
+### 已完成
+
+1. 增加 `d3_shared_seed_split_binding_v1` 只读验证器。验证器固定接受
+   `scalable3d-shared-seed-split-registry-v1` 和
+   `scalable3d-numeric-seed-atomic-split-v1`，并要求 ordering compatibility 为
+   `d3_numeric_seed_atomic_split_v2`。
+2. 同时验证 registry 文件 SHA、去除自哈希字段后的 content SHA、assignment SHA 和
+   source training registry 文件 SHA。source schema、Git 提交、工作树状态和 schedule
+   SHA 必须与 detached registry 的 provenance 相同。
+3. 以 source registry 为全集，核对 dataset manifest 和全部 records 的 seed 完整覆盖、
+   60/20/20 映射、逐数值 seed 原子性及 1000-1019 排除。映射还必须由 D3 v2 算法使用
+   registry 参数独立重算得到。
+4. `load_learning_dataset()` 新增成对可选参数。默认不启用共享验证，保留旧开发数据和旧
+   bundle 兼容；启用时任何差异失败关闭。验证过程不写 dataset、manifest、registry 或
+   bundle。
+5. 通用 BC/PPO/shadow CLI 和正式 BC 入口接入同一验证器。启用共享 registry 后，新 bundle
+   将 binding 写入 `training_results`；正式报告另写 sidecar 并纳入 artifact hash。PPO
+   入口只获得验证能力，本任务没有启动 PPO。
+6. 正式 900 episode/1604 frame/100-seed 数据验证通过，文件前后 SHA 相同。D3 全量回归
+   `269 passed, 1 skipped`，skip 仍为 optional OR-Tools。
+
+### 开放条件
+
+1. D3 的 split ambiguity 已关闭，但 C1 联合训练仍需 main 让 D4、D5 使用同一 registry，
+   并冻结跨模块样本 join、label availability 和 sidecar provenance。
+2. 当前 BC bundle 保持 `development/shadow-only`。共享映射一致不等于模型非退化，也不
+   允许 assist；外部 seed 1000-1019 仍需独立验收。
+3. D4/D5 的动作多样性、奖励/运行时确认和图候选负样本不足未由 D3 解决。条件闭合前不
+   启动 C1 或 PPO，也不修改 Hungarian、代价残差公式、安全外壳、计划版本和 D7 binding。

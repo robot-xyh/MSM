@@ -851,3 +851,38 @@ test 是开发集内的独立切分，不是最终 20 个保留 seed 准入。ma
 权重运行 seed 1000-1019，并由 D6 独立汇总安全非退化、成本、需求满足、抖动、回退和时延。
 新增正式审计、v3 bundle、加权 BC 与开发评估测试后，D3 全量收集 258 项，结果为
 `257 passed, 1 skipped`；唯一 skip 仍是 optional OR-Tools installed-only case。
+
+## 2026-07-21 共享 Seed 切分注册表绑定
+
+D3 增加只读共享切分验证边界，用于 C1 跨模块联合训练前的 seed 对齐。默认
+`load_learning_dataset(path)` 行为保持不变；只有同时传入 `shared_seed_registry_path` 和
+`training_seed_registry_path` 时，loader 才验证 main-owned detached registry。只传一个
+路径、schema/policy 不匹配、registry content/assignment SHA 不匹配、源 registry 文件
+SHA 不匹配、seed 缺失或增加、保留 seed 混入、同一数值 seed 跨 split，均失败关闭。
+
+正式 900-episode 数据只读验证结果如下：
+
+| 项目 | 结果 |
+|---|---|
+| 训练 seed | 100，train/validation/internal-test 为 60/20/20 |
+| 保留 seed | 1000-1019，与数据交集为 0 |
+| registry file SHA256 | `68608d29d1f733beea87f1faf06464fededb68a9c2972c51c10cd4c2160f032f` |
+| registry content SHA256 | `29eb6895c4aa570b068f15141cbbbfede3041519117852d1ad48e848a25af146` |
+| assignment SHA256 | `31c6a3fc265d088d9958f44d579d8098e2aeab06b0daa60c68452ae4c6d46ab5` |
+| source registry SHA256 | `2ab928a476a4430b99326f245222f058bc5be5025158134ba89b01b3dec7815f` |
+| 原文件变化 | dataset manifest、frames、共享 registry、源 registry 前后哈希相同 |
+
+通用学习命令和正式行为克隆入口均接受以下参数：
+
+```bash
+--shared-seed-registry \
+  research_modules/scalable_3d_simulation/outputs/learning_generation_v1_multibatchfix/shared_seed_split_registry_v1/registry.json \
+--training-seed-registry \
+  research_modules/scalable_3d_simulation/outputs/learning_generation_v1_multibatchfix/training_seed_registry.json
+```
+
+启用后，新 bundle 的 `training_results` 和正式训练报告记录
+`d3_shared_seed_split_binding_v1`；正式入口另写只读 provenance sidecar。旧 v2/v3 bundle
+仍可走非联合开发路径加载，现有正式 BC bundle 和原数据没有原地修改。本项只消除 D3
+切分歧义，不构成 assist 晋级证据；状态仍为 `development/shadow-only`，PPO 未启动。
+D3 全量回归为 `269 passed, 1 skipped`。

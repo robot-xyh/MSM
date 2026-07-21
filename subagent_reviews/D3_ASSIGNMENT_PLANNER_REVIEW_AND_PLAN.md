@@ -810,3 +810,28 @@ Hungarian、计划版本或 D7 binding。
 
 D3 全量回归收集 258 项，结果 `257 passed, 1 skipped`；唯一 skip 为 optional OR-Tools。
 AirSim 集成计划和 M-to-N 专项 review 均已检查，本次离线 BC 开发任务未改变其合同。
+
+## 31. Detached 共享 Seed 切分复核（2026-07-21）
+
+### 复核结论
+
+D3 正式数据原有 `d3_numeric_seed_atomic_split_v2` 映射与 main 的 detached
+`scalable3d-shared-seed-split-registry-v1` 完全一致。100 个训练 seed 按 60/20/20 分配，
+1000-1019 未进入。该结论来自 registry 哈希重算、D3 policy 重放、manifest 比对和全部
+1604 帧检查，不是按配置值推断。
+
+### 实施判断
+
+- 共享 registry 保持 main-owned。D3 只读取和验证，不复制一份可独立漂移的映射，也不
+  修改正式 dataset/manifest。
+- loader 的默认路径继续使用模块 v2 合同。C1 调用必须同时提供共享 registry 和其冻结
+  source registry；缺一项或任一哈希、seed、split 不一致立即停止。
+- 新训练产物将 binding 写入 bundle `training_results` 或正式 sidecar。旧 bundle 可用于
+  非联合开发回放，不可在没有 shared binding 的情况下冒充 C1 产物。
+- 这次改动只提供数据分割证明。当前 BC 仍轻微成本退化且内部 test 有较多 OOD 回退，
+  因此 `assist_authorized=false` 保持不变；PPO 不启动。
+
+正式验证的 registry file/content/assignment/source SHA 为
+`68608d29...032f`、`29eb6895...f146`、`31c6a3fc...6ab5`、`2ab928a4...15f`。输入文件
+前后哈希相同。D3 全量回归 `269 passed, 1 skipped`。C1 下一步由 main 核对 D4、D5 的
+同 registry binding、跨模块 join 和 label availability，再决定是否建立联合训练视图。

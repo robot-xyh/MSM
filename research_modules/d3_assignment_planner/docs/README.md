@@ -70,3 +70,8 @@ bundle 使用 `d3_learning_model_bundle_v3`，状态固定为 `development/shado
 test 只作开发诊断，不是最终准入证据。行为克隆训练、分档时延和 rule-only/BC shadow
 对照见 `EXPERIMENT_REPORT.md`。assist promotion、外部 20-seed 验收、AirSim 收益和 PPO
 仍开放。
+
+2026-07-21 增加 C1 detached shared seed registry 只读绑定。算法和哈希链见
+`ALGORITHM_AND_IMPLEMENTATION.md` 第 36 节，正式 900-episode 映射验证见
+`EXPERIMENT_REPORT.md` 第 17 节。该工作只关闭 D3 切分歧义，现有 BC 仍为
+`development/shadow-only`。

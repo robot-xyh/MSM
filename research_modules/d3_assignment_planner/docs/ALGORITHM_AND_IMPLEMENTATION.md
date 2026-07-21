@@ -1538,3 +1538,70 @@ Git LFS，长期归档需 main 使用 Git LFS 可用环境或独立制品存储�
 保证。PPO 没有启动；内部 test 不作为 1000-1019 最终准入；本轮没有 AirSim 或物理收益。
 新增功能纳入 D3 全量回归后结果为 `257 passed, 1 skipped`，唯一 skip 是 optional
 OR-Tools installed-only case。
+
+## 36. Detached 共享 Seed 注册表验证（2026-07-21）
+
+### 36.1 验证对象
+
+共享注册表 schema 为 `scalable3d-shared-seed-split-registry-v1`，策略为
+`scalable3d-numeric-seed-atomic-split-v1`。D3 要求其 ordering compatibility 明确等于
+`d3_numeric_seed_atomic_split_v2`。注册表引用冻结的
+`scalable3d-training-seed-registry-v1`，源文件给出训练 seed、保留 seed、生成提交和
+schedule SHA。
+
+### 36.2 哈希链
+
+验证器读取文件后执行四层检查：
+
+```text
+shared registry file bytes
+  -> registry_file_sha256
+  -> remove content_sha256 and canonical JSON hash
+  -> canonical assignments list hash
+  -> source training registry file sha256
+```
+
+content hash 防止字段或 provenance 被修改；assignment hash 单独绑定逐 seed 映射；source
+文件 SHA 防止 registry 被移接到另一份训练 seed 清单。即使同步重算前两项，D3 仍使用
+`assign_seed_splits()` 按 registry 参数重放 v2 算法，映射不同会以
+`assignment_policy_reproduction_mismatch` 失败。
+
+### 36.3 数据绑定
+
+source training seed 是全集。验证器要求 registry assignments、三个 split seed list、
+D3 manifest 和全部 frame records 覆盖同一集合，不能有缺失或额外 seed。每个数值 seed
+只能对应一个 split；scenario、scale、episode 和 frame 不参与切分身份。source 中的保留
+seed 不允许出现在 manifest 或 records。manifest 的 split seed、validation/test fraction
+和最小 test seed 数也必须与 registry 一致。
+
+`load_learning_dataset()` 的两个新参数是可选且必须成对出现：
+
+```python
+manifest, records = load_learning_dataset(
+    dataset_path,
+    shared_seed_registry_path=shared_registry_path,
+    training_seed_registry_path=source_registry_path,
+)
+```
+
+默认调用不启用跨模块验证，保持旧数据和旧 bundle 的开发兼容。C1 联合路径必须显式传入
+两个文件。验证器不提供写接口，不修改原 dataset、manifest、registry 或 bundle。
+
+### 36.4 产物绑定
+
+启用共享 registry 的新 BC/PPO bundle 在 `training_results` 中保存
+`d3_shared_seed_split_binding_v1`。字段包括 registry file/content/assignment SHA、source
+registry SHA、dataset split/frame SHA、seed 数量和保留 seed。正式 BC 入口还写独立
+`shared_seed_registry_binding.json`，并把 sidecar 纳入 tracked artifact hash。shadow 或
+PPO 从已有 bundle 继续时，若请求 shared registry，bundle 中 binding 必须完全相同。
+
+这只是训练输入合同。PPO CLI 获得验证能力不代表本轮启动 PPO。模型输出、Hungarian、
+安全投影、迟滞、plan version 和 D7 binding 没有变化；当前 BC admission 仍只允许 shadow。
+
+### 36.5 正式验证
+
+2026-07-21 对 900 episode、1604 frame 的正式 D3 数据执行只读验证。100 个训练 seed 的
+split 为 60/20/20，保留 seed 1000-1019 交集为 0。registry file/content/assignment/
+source SHA 依次为 `68608d29...032f`、`29eb6895...f146`、`31c6a3fc...6ab5` 和
+`2ab928a4...15f`。dataset manifest、frames 和两个 registry 文件的验证前后 SHA 相同。
+全量模块测试为 `269 passed, 1 skipped`。

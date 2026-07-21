@@ -659,3 +659,35 @@ SHA256 绑定。权重保存在 ignored `outputs/`，tracked results 不含 `.pt
 
 代码验收执行 D3 全量测试，收集 258 项，结果 `257 passed, 1 skipped`。唯一 skip 为未
 安装 optional OR-Tools 的 installed-only benchmark；正式训练入口和修改文件语法检查通过。
+
+## 17. 共享 Seed 注册表只读验证（2026-07-21）
+
+### 输入
+
+本次复用第 16 节的正式 900-episode D3 数据，不重新生成样本、不训练模型，也不运行
+AirSim。额外输入为 main detached shared split registry 及其 source training seed
+registry。验证前记录 dataset manifest、frames 和两个 registry 文件的 SHA256。
+
+### 结果
+
+| 检查项 | 结果 |
+|---|---:|
+| episode/frame | 900/1604 |
+| 训练 seed | 100 |
+| train/validation/internal-test seed | 60/20/20 |
+| 保留 seed 1000-1019 重叠 | 0 |
+| schema/policy | 通过 |
+| content/assignment/source SHA | 通过 |
+| D3 v2 policy 独立重放 | 逐 seed 完全一致 |
+| 输入文件前后 SHA | 完全一致 |
+
+registry file SHA 为 `68608d29...032f`，content SHA 为 `29eb6895...f146`，assignment SHA
+为 `31c6a3fc...6ab5`，source registry SHA 为 `2ab928a4...15f`。dataset frame SHA 和
+split hash 仍为 `6761d35d...fdb59a2` 与 `679a9051...70a2`。
+
+新增 12 个测试覆盖正确 fixture、schema/policy 篡改、content/assignment 篡改、有效自哈希
+但映射变化、source SHA 不同、缺 seed、多 seed、保留 seed、跨 split、路径参数成对、原
+文件零修改和新 bundle binding。D3 全量为 `269 passed, 1 skipped`。
+
+该结果关闭 D3 对 C1 shared split 的验证缺口，不改变第 16 节的模型结论。现有权重未重训、
+未改写，仍是 `development/shadow-only`。外部保留 seed 没有参与模型评估，PPO 未启动。
