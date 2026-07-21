@@ -8,6 +8,7 @@ import pytest
 from research_modules.scalable_3d_simulation.run_learning_dataset import (
     D5_ACTIVE_VISION_MINIMUM_UNSEEN_SEEDS,
     FORMAL_MINIMUM_SEEDS_PER_SCENARIO_SCALE,
+    GENERATION_CHECKPOINT_SCHEMA_VERSION,
     GENERATION_PLAN_SCHEMA_VERSION,
     TRAINING_SEED_REGISTRY_SCHEMA_VERSION,
     _active_vision_test_seed_count,
@@ -18,6 +19,7 @@ from research_modules.scalable_3d_simulation.run_learning_dataset import (
     _load_schedule_plan,
     _prepare_fresh_output,
     _validate_generation_plan,
+    main as run_learning_dataset_main,
 )
 from research_modules.scalable_3d_simulation.scenarios import AVAILABLE_SCENARIOS
 
@@ -240,3 +242,81 @@ def test_training_seed_registry_is_separate_versioned_and_disjoint() -> None:
             repository_dirty=False,
             schedule_sha256=None,
         )
+
+
+def test_learning_generation_pauses_and_resumes_at_episode_boundary(
+    tmp_path: Path,
+) -> None:
+    output = tmp_path / "resumable_generation"
+    common = [
+        "--output",
+        str(output),
+        "--scenarios",
+        "nominal",
+        "--scales",
+        "2",
+        "--seeds",
+        "71",
+        "72",
+        "73",
+        "--duration",
+        "0.25",
+        "--minimum-free-gb",
+        "0",
+        "--allow-dirty",
+    ]
+
+    assert run_learning_dataset_main([*common, "--max-episodes-per-run", "1"]) == 0
+
+    paused = json.loads(
+        (output / "generation_checkpoint.json").read_text(encoding="utf-8")
+    )
+    assert paused["schema_version"] == GENERATION_CHECKPOINT_SCHEMA_VERSION
+    assert paused["state"] == "paused"
+    assert paused["completed_episode_count"] == 1
+    assert paused["remaining_episode_count"] == 2
+    assert paused["invocation_count"] == 1
+    assert not (output / "generation_summary.json").exists()
+
+    plan_path = output / "generation_plan.json"
+    original_plan = plan_path.read_bytes()
+    tampered_plan = json.loads(original_plan)
+    tampered_plan["cells"][0]["seed"] = 999
+    plan_path.write_text(json.dumps(tampered_plan), encoding="utf-8")
+    with pytest.raises(RuntimeError, match="stored plan"):
+        run_learning_dataset_main([*common, "--resume"])
+    plan_path.write_bytes(original_plan)
+
+    episode_index = output / "learning_dataset" / "_staging" / "episodes.jsonl"
+    original_index = episode_index.read_bytes()
+    episode_index.write_bytes(original_index + original_index)
+    with pytest.raises(RuntimeError, match="duplicate episode IDs"):
+        run_learning_dataset_main([*common, "--resume"])
+    episode_index.write_bytes(original_index)
+
+    assert (
+        run_learning_dataset_main(
+            [*common, "--resume", "--max-episodes-per-run", "2"]
+        )
+        == 0
+    )
+
+    summary = json.loads(
+        (output / "generation_summary.json").read_text(encoding="utf-8")
+    )
+    finalized = json.loads(
+        (output / "generation_checkpoint.json").read_text(encoding="utf-8")
+    )
+    progress = [
+        json.loads(line)
+        for line in (output / "episode_progress.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+    assert summary["completed_episode_count"] == 3
+    assert summary["invocation_count"] == 2
+    assert finalized["state"] == "finalized"
+    assert finalized["completed_episode_count"] == 3
+    assert finalized["remaining_episode_count"] == 0
+    assert [row["sequence"] for row in progress] == [0, 1, 2]
+    assert (output / "learning_dataset" / "episodes.jsonl").is_file()

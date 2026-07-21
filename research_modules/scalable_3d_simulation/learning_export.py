@@ -21,25 +21,112 @@ LEARNING_EXPORT_SCHEMA_VERSION = "scalable3d-learning-export-v2"
 class BatchLearningArtifactWriter:
     """Stage whole episodes and finalize split-safe multi-seed learning datasets."""
 
-    def __init__(self, output_dir: str | Path, *, formal: bool = False) -> None:
+    def __init__(
+        self,
+        output_dir: str | Path,
+        *,
+        formal: bool = False,
+        resume: bool = False,
+    ) -> None:
         self.root = Path(output_dir)
         self.root.mkdir(parents=True, exist_ok=True)
         self._formal = bool(formal)
         self._staging_root = self.root / "_staging"
-        self._staging_root.mkdir(parents=True, exist_ok=True)
         self._d3_staging_path = self._staging_root / "d3_frames.jsonl"
         self._d4_staging_root = self._staging_root / "d4_region_episodes"
         self._episode_index_path = self._staging_root / "episodes.jsonl"
-        if self._d3_staging_path.exists() or self._episode_index_path.exists():
-            raise FileExistsError(
-                "batch learning output already contains staging files; use a fresh output"
-            )
+        self._episode_rows: list[Mapping[str, Any]] = []
+        self._episode_ids: set[str] = set()
         self._episode_count = 0
         self._d3_frame_count = 0
         self._d4_frame_count = 0
         self._d5_frame_count = 0
         self._d5_active_vision_frame_count = 0
         self._seed_groups: set[tuple[str, int]] = set()
+        if resume:
+            self._restore_staging_state()
+            return
+        self._staging_root.mkdir(parents=True, exist_ok=True)
+        if self._d3_staging_path.exists() or self._episode_index_path.exists():
+            raise FileExistsError(
+                "batch learning output already contains staging files; use a fresh output"
+            )
+
+    @property
+    def episode_rows(self) -> tuple[Mapping[str, Any], ...]:
+        """Return the indexed, fully staged episodes in durable order."""
+
+        return tuple(dict(row) for row in self._episode_rows)
+
+    def _restore_staging_state(self) -> None:
+        if not self._staging_root.is_dir() or not self._episode_index_path.is_file():
+            raise FileNotFoundError(
+                "resumable batch output is missing _staging/episodes.jsonl"
+            )
+        if (self.root / "episodes.jsonl").exists() or (
+            self.root / "batch_learning_export_summary.json"
+        ).exists():
+            raise RuntimeError("batch learning output is already finalized")
+        rows = _read_jsonl_objects(self._episode_index_path)
+        if not rows:
+            raise RuntimeError("resumable batch staging contains no indexed episodes")
+        required = {
+            "episode_id",
+            "scenario_version",
+            "seed",
+            "d3_exported_frame_count",
+            "d4_captured_frame_count",
+            "d5_staged_frame_count",
+            "d5_active_vision_staged_frame_count",
+        }
+        for row in rows:
+            if not required.issubset(row):
+                raise RuntimeError("staged episode index is missing required fields")
+            episode_id = str(row["episode_id"])
+            if not episode_id or episode_id in self._episode_ids:
+                raise RuntimeError("staged episode index contains duplicate episode IDs")
+            self._episode_ids.add(episode_id)
+            self._episode_rows.append(dict(row))
+            self._episode_count += 1
+            self._d3_frame_count += int(row["d3_exported_frame_count"])
+            self._d4_frame_count += int(row["d4_captured_frame_count"])
+            self._d5_frame_count += int(row["d5_staged_frame_count"])
+            self._d5_active_vision_frame_count += int(
+                row["d5_active_vision_staged_frame_count"]
+            )
+            self._seed_groups.add(
+                (str(row["scenario_version"]), int(row["seed"]))
+            )
+        self._audit_staging_counts()
+
+    def _audit_staging_counts(self) -> None:
+        actual_d3 = _line_count(self._d3_staging_path)
+        actual_d4 = len(tuple(self._d4_staging_root.rglob("*.jsonl")))
+        actual_d5 = len(
+            tuple((self.root / "d5_tracklet_graph" / "episodes").glob("*.episode.json"))
+        )
+        actual_active = len(
+            tuple((self.root / "d5_active_vision" / "episodes").glob("*.episode.json"))
+        )
+        expected_active = sum(
+            int(row["d5_active_vision_staged_frame_count"]) > 0
+            for row in self._episode_rows
+        )
+        expected = (
+            self._d3_frame_count,
+            sum(
+                int(row["d4_captured_frame_count"]) > 0
+                for row in self._episode_rows
+            ),
+            self._d5_frame_count,
+            expected_active,
+        )
+        actual = (actual_d3, actual_d4, actual_d5, actual_active)
+        if actual != expected:
+            raise RuntimeError(
+                "batch staging contains unindexed or incomplete episode artifacts: "
+                f"expected={expected}, actual={actual}"
+            )
 
     def stage_episode(
         self,
@@ -50,6 +137,9 @@ class BatchLearningArtifactWriter:
         offline_truth_labels: Iterable[OfflineTruthLabel],
     ) -> Mapping[str, Any]:
         """Append one complete episode without splitting frames across datasets."""
+
+        if manifest.episode_id in self._episode_ids:
+            raise ValueError(f"episode is already staged: {manifest.episode_id}")
 
         d3_started = time.perf_counter()
         records, unavailable = _build_d3_records(
@@ -121,6 +211,8 @@ class BatchLearningArtifactWriter:
                 json.dumps(episode_row, ensure_ascii=False, sort_keys=True) + "\n"
             )
         self._episode_count += 1
+        self._episode_ids.add(manifest.episode_id)
+        self._episode_rows.append(dict(episode_row))
         self._d3_frame_count += len(records)
         self._d4_frame_count += int(d4_summary["captured_frame_count"])
         self._d5_frame_count += int(d5_summary["staged_frame_count"])
@@ -727,6 +819,28 @@ def _write_json(path: Path, payload: Any) -> None:
         json.dumps(jsonable(payload), ensure_ascii=False, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
+
+
+def _read_jsonl_objects(path: Path) -> list[Mapping[str, Any]]:
+    rows: list[Mapping[str, Any]] = []
+    with path.open(encoding="utf-8") as stream:
+        for line_number, line in enumerate(stream, start=1):
+            if not line.strip():
+                raise RuntimeError(f"blank JSONL row in {path} at line {line_number}")
+            payload = json.loads(line)
+            if not isinstance(payload, Mapping):
+                raise RuntimeError(
+                    f"JSONL row is not an object in {path} at line {line_number}"
+                )
+            rows.append(payload)
+    return rows
+
+
+def _line_count(path: Path) -> int:
+    if not path.exists():
+        return 0
+    with path.open("rb") as stream:
+        return sum(1 for _ in stream)
 
 
 def _utc_now() -> str:

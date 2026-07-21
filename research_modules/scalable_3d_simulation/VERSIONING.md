@@ -43,6 +43,7 @@ main
 | 离线真值 | `scalable3d-offline-truth-v1` | 标签结构或评分口径改变 |
 | 学习导出 | `scalable3d-learning-export-v2` | D3/D4/D5 训练制品布局或真值隔离规则改变；v2 增加 D5 主动视觉整 episode 在线记录与独立离线标签 |
 | 学习生成计划 | `scalable3d-learning-generation-plan-v1` | 场景、规模、seed、正式预检或保留评估 seed 规则改变 |
+| 学习生成检查点 | `scalable3d-learning-generation-checkpoint-v1` | 暂停/恢复状态、累计调用计时、计划哈希或完成序号语义改变 |
 | 训练 seed 注册表 | `scalable3d-training-seed-registry-v1` | 训练/保留评估 seed 身份、来源或隔离规则改变 |
 | 实验矩阵 | `scalable3d-experiment-matrix-v1` | 变体语义、配对键或正式准入条件改变 |
 | D1 一致性评估清单 | `scalable3d-offline-consistency-evaluation-manifest-v1` | 在线证据、真值状态、D2 映射或哈希绑定改变 |
@@ -88,6 +89,12 @@ bundle 的本地绝对路径不写入 manifest。解析成功后记录语义版�
 正式学习数据生成必须在启动 episode 前验证训练 seed 与保留评估 seed 零重叠，并验证
 D5 主动视觉默认 20% 测试切分可提供至少 20 个唯一未见 seed。生成过程中逐 episode 检查
 剩余磁盘；容量不足时停止，不删除或覆盖既有制品。
+
+长批次可以通过 `--max-episodes-per-run` 在完整 episode 边界暂停，并以 `--resume` 继续。
+恢复必须保持生成计划、训练 seed 注册表、Git 提交和计划 SHA256 不变，并逐项核对连续
+progress 与 batch episode index。未索引、重复或不完整 staging 失败关闭；只有全部 cell
+完成后才执行统一数据集最终化。正式标签仍绑定最终生成摘要和冻结 schedule，不以单个分块
+替代完整批次证据。
 
 批次学习导出在成功最终化后把 episode 索引固化为根目录 `episodes.jsonl`，并删除已经转换
 为正式 D3 数据集的重复 staging。任一 finalizer 异常时保留尚未消费的 staging；D4 因 seed
