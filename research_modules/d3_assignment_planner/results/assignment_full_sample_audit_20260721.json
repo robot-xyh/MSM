@@ -1,0 +1,360 @@
+{
+  "acceptance_thresholds": {
+    "action_label_count": 3658815,
+    "actual_episode_counts": {
+      "test": 180,
+      "train": 540,
+      "validation": 180
+    },
+    "actual_frame_counts": {
+      "test": 322,
+      "train": 962,
+      "validation": 320
+    },
+    "audit_violation_count_maximum": 0,
+    "candidate_edge_count": 3658815,
+    "canonical_episode_counts": {
+      "test": 20,
+      "train": 60,
+      "validation": 20
+    },
+    "constraint_violation_count_maximum": 0,
+    "decision_sample_count": 1604,
+    "dirty_episode_count_maximum": 0,
+    "episode_count": 900,
+    "global_track_id_illegal_field_count_maximum": 0,
+    "online_truth_use_count_maximum": 0,
+    "reserved_seed_overlap_maximum": 0,
+    "selected_action_count": 117304
+  },
+  "action_and_constraint_audit": {
+    "action_index_violation_count": 0,
+    "candidate_edge_count": 3658815,
+    "capacity_violation_count": 0,
+    "constraint_checked_frame_count": 1604,
+    "demand_slot_violation_count": 0,
+    "hard_reject_reason_counts": {
+      "candidate_pruned_sparse": 12991262,
+      "intercept_time_exceeded": 1038,
+      "intercept_unreachable_3d": 11540
+    },
+    "resource_target_action_label_count": 3658815,
+    "selected_resource_target_action_count": 117304
+  },
+  "actual_bindings": {
+    "batch_export_summary_sha256": "c77069096e3ca74742dc49ac869b3623e63fa13dcc59ddccb89133375be68126",
+    "dataset_frames_sha256": "6761d35d6b48639a5eb4f3306f7b3f12ca72352a1028296a0c39a4b90fdb59a2",
+    "dataset_manifest_sha256": "816fe6e965d4f8d790e89a00a7c90e28bb8cd08a257fe685790669ab774a9089",
+    "dataset_split_hash": "679a9051e8637fad38d935eb685f09dd8abc8d43043a28264dab64b077ac70a2",
+    "episode_progress_sha256": "7e209e0e357dd1835c13288fb5153155f5123ebbf15427e1f130855660bbb120",
+    "generation_summary_sha256": "f639eea692eb09e88ed07a9fa5913381669b47217e78545b77e80b36122cb7c5",
+    "shared_registry_assignment_sha256": "31c6a3fc265d088d9958f44d579d8098e2aeab06b0daa60c68452ae4c6d46ab5",
+    "shared_registry_content_sha256": "29eb6895c4aa570b068f15141cbbbfede3041519117852d1ad48e848a25af146",
+    "shared_registry_declared_assignment_sha256": "31c6a3fc265d088d9958f44d579d8098e2aeab06b0daa60c68452ae4c6d46ab5",
+    "shared_registry_sha256": "68608d29d1f733beea87f1faf06464fededb68a9c2972c51c10cd4c2160f032f",
+    "source_git_commit": "39b097e72487567ac915c2297eaa27eed49ef76b",
+    "source_schedule_sha256": "5bb79b3f5cca264033fc5ca3d643e5c84241e7db9c3754d2277b78ebd4002c81",
+    "training_registry_sha256": "2ab928a476a4430b99326f245222f058bc5be5025158134ba89b01b3dec7815f"
+  },
+  "admission": {
+    "assignment_full_sample_structural_audit": "complete",
+    "assist": false,
+    "model_training_performed": false,
+    "online_authority": false,
+    "overall_status": "partial",
+    "ppo": false,
+    "rule_cost_and_hungarian_default": true,
+    "rule_fallback_required": true,
+    "runtime_plan_binding_evidence": "partial",
+    "weights_written": false
+  },
+  "artifact_integrity": {
+    "dataset_manifest_frames_binding_valid": true,
+    "formal_source_data_modified": false,
+    "source_artifact_set_sha256": "ed6b4a9528dca752f6f2a5ec9ab26f67dfcea6ce80e48831f120b8b7208d7d26",
+    "source_artifacts_unchanged": true,
+    "source_file_count": 7,
+    "source_hashes_after": {
+      "batch_export_summary": "c77069096e3ca74742dc49ac869b3623e63fa13dcc59ddccb89133375be68126",
+      "dataset_frames": "6761d35d6b48639a5eb4f3306f7b3f12ca72352a1028296a0c39a4b90fdb59a2",
+      "dataset_manifest": "816fe6e965d4f8d790e89a00a7c90e28bb8cd08a257fe685790669ab774a9089",
+      "episode_progress": "7e209e0e357dd1835c13288fb5153155f5123ebbf15427e1f130855660bbb120",
+      "generation_summary": "f639eea692eb09e88ed07a9fa5913381669b47217e78545b77e80b36122cb7c5",
+      "shared_registry": "68608d29d1f733beea87f1faf06464fededb68a9c2972c51c10cd4c2160f032f",
+      "training_registry": "2ab928a476a4430b99326f245222f058bc5be5025158134ba89b01b3dec7815f"
+    },
+    "source_hashes_before": {
+      "batch_export_summary": "c77069096e3ca74742dc49ac869b3623e63fa13dcc59ddccb89133375be68126",
+      "dataset_frames": "6761d35d6b48639a5eb4f3306f7b3f12ca72352a1028296a0c39a4b90fdb59a2",
+      "dataset_manifest": "816fe6e965d4f8d790e89a00a7c90e28bb8cd08a257fe685790669ab774a9089",
+      "episode_progress": "7e209e0e357dd1835c13288fb5153155f5123ebbf15427e1f130855660bbb120",
+      "generation_summary": "f639eea692eb09e88ed07a9fa5913381669b47217e78545b77e80b36122cb7c5",
+      "shared_registry": "68608d29d1f733beea87f1faf06464fededb68a9c2972c51c10cd4c2160f032f",
+      "training_registry": "2ab928a476a4430b99326f245222f058bc5be5025158134ba89b01b3dec7815f"
+    }
+  },
+  "audit": {
+    "passed": true,
+    "status": "partial",
+    "violation_count": 0,
+    "violation_details_truncated": false,
+    "violations": []
+  },
+  "binding_checks": {
+    "batch_export_summary_sha256": {
+      "actual": "c77069096e3ca74742dc49ac869b3623e63fa13dcc59ddccb89133375be68126",
+      "expected": "c77069096e3ca74742dc49ac869b3623e63fa13dcc59ddccb89133375be68126",
+      "passed": true
+    },
+    "dataset_frames_sha256": {
+      "actual": "6761d35d6b48639a5eb4f3306f7b3f12ca72352a1028296a0c39a4b90fdb59a2",
+      "expected": "6761d35d6b48639a5eb4f3306f7b3f12ca72352a1028296a0c39a4b90fdb59a2",
+      "passed": true
+    },
+    "dataset_manifest_sha256": {
+      "actual": "816fe6e965d4f8d790e89a00a7c90e28bb8cd08a257fe685790669ab774a9089",
+      "expected": "816fe6e965d4f8d790e89a00a7c90e28bb8cd08a257fe685790669ab774a9089",
+      "passed": true
+    },
+    "dataset_split_hash": {
+      "actual": "679a9051e8637fad38d935eb685f09dd8abc8d43043a28264dab64b077ac70a2",
+      "expected": "679a9051e8637fad38d935eb685f09dd8abc8d43043a28264dab64b077ac70a2",
+      "passed": true
+    },
+    "episode_progress_sha256": {
+      "actual": "7e209e0e357dd1835c13288fb5153155f5123ebbf15427e1f130855660bbb120",
+      "expected": "7e209e0e357dd1835c13288fb5153155f5123ebbf15427e1f130855660bbb120",
+      "passed": true
+    },
+    "generation_summary_sha256": {
+      "actual": "f639eea692eb09e88ed07a9fa5913381669b47217e78545b77e80b36122cb7c5",
+      "expected": "f639eea692eb09e88ed07a9fa5913381669b47217e78545b77e80b36122cb7c5",
+      "passed": true
+    },
+    "shared_registry_content_sha256": {
+      "actual": "29eb6895c4aa570b068f15141cbbbfede3041519117852d1ad48e848a25af146",
+      "expected": "29eb6895c4aa570b068f15141cbbbfede3041519117852d1ad48e848a25af146",
+      "passed": true
+    },
+    "shared_registry_sha256": {
+      "actual": "68608d29d1f733beea87f1faf06464fededb68a9c2972c51c10cd4c2160f032f",
+      "expected": "68608d29d1f733beea87f1faf06464fededb68a9c2972c51c10cd4c2160f032f",
+      "passed": true
+    },
+    "source_git_commit": {
+      "actual": "39b097e72487567ac915c2297eaa27eed49ef76b",
+      "expected": "39b097e72487567ac915c2297eaa27eed49ef76b",
+      "passed": true
+    },
+    "source_schedule_sha256": {
+      "actual": "5bb79b3f5cca264033fc5ca3d643e5c84241e7db9c3754d2277b78ebd4002c81",
+      "expected": "5bb79b3f5cca264033fc5ca3d643e5c84241e7db9c3754d2277b78ebd4002c81",
+      "passed": true
+    },
+    "training_registry_sha256": {
+      "actual": "2ab928a476a4430b99326f245222f058bc5be5025158134ba89b01b3dec7815f",
+      "expected": "2ab928a476a4430b99326f245222f058bc5be5025158134ba89b01b3dec7815f",
+      "passed": true
+    }
+  },
+  "content_sha256": "954f3e96d563412644ec88d1b621e2a58c781af8af99de79b859d22079fc1867",
+  "coverage": {
+    "actual_episode_counts": {
+      "test": 180,
+      "train": 540,
+      "validation": 180
+    },
+    "actual_episode_split_unit": "scenario_scale_episode",
+    "actual_frame_counts": {
+      "test": 322,
+      "train": 962,
+      "validation": 320
+    },
+    "anonymous_resource_record_count": 120080,
+    "anonymous_target_record_count": 118109,
+    "candidate_edge_count": 3658815,
+    "canonical_episode_counts": {
+      "test": 20,
+      "train": 60,
+      "validation": 20
+    },
+    "canonical_split_unit": "numeric_seed_episode_identity",
+    "decision_sample_count": 1604,
+    "edge_label_split_unit": "candidate_resource_target_edge",
+    "edge_sample_count": 3658815,
+    "episode_count": 900,
+    "feature_value_count": 43905780,
+    "frame_count": 1604,
+    "resource_target_action_label_count": 3658815,
+    "sample_split_unit": "decision_frame",
+    "selected_resource_target_action_count": 117304,
+    "split_action_label_counts": {
+      "test": 708188,
+      "train": 2229182,
+      "validation": 721445
+    },
+    "split_candidate_edge_counts": {
+      "test": 708188,
+      "train": 2229182,
+      "validation": 721445
+    },
+    "split_selected_action_counts": {
+      "test": 22732,
+      "train": 71425,
+      "validation": 23147
+    },
+    "training_seed_count": 100
+  },
+  "evidence_availability": {
+    "causal_or_counterfactual_reward": "unavailable",
+    "offline_rule_teacher_reward_component_frame_count": 1604,
+    "real_runtime_applied_ack": "unavailable",
+    "real_runtime_outcome_attribution": "unavailable",
+    "same_seed_paired_shadow_non_degradation": "unavailable",
+    "zero_padding_used_for_unavailable_evidence": false
+  },
+  "expected_bindings": {
+    "batch_export_summary_sha256": "c77069096e3ca74742dc49ac869b3623e63fa13dcc59ddccb89133375be68126",
+    "dataset_frames_sha256": "6761d35d6b48639a5eb4f3306f7b3f12ca72352a1028296a0c39a4b90fdb59a2",
+    "dataset_manifest_sha256": "816fe6e965d4f8d790e89a00a7c90e28bb8cd08a257fe685790669ab774a9089",
+    "dataset_split_hash": "679a9051e8637fad38d935eb685f09dd8abc8d43043a28264dab64b077ac70a2",
+    "episode_progress_sha256": "7e209e0e357dd1835c13288fb5153155f5123ebbf15427e1f130855660bbb120",
+    "generation_summary_sha256": "f639eea692eb09e88ed07a9fa5913381669b47217e78545b77e80b36122cb7c5",
+    "shared_registry_content_sha256": "29eb6895c4aa570b068f15141cbbbfede3041519117852d1ad48e848a25af146",
+    "shared_registry_sha256": "68608d29d1f733beea87f1faf06464fededb68a9c2972c51c10cd4c2160f032f",
+    "source_git_commit": "39b097e72487567ac915c2297eaa27eed49ef76b",
+    "source_schedule_sha256": "5bb79b3f5cca264033fc5ca3d643e5c84241e7db9c3754d2277b78ebd4002c81",
+    "training_registry_sha256": "2ab928a476a4430b99326f245222f058bc5be5025158134ba89b01b3dec7815f"
+  },
+  "generation_evidence": {
+    "dirty_episode_count": 0,
+    "episode_count": 900,
+    "exported_frame_count": 1604,
+    "feedback_and_hysteresis_value_type": "string",
+    "feedback_result_counts": {
+      "none": 1604
+    },
+    "finite_episode_count": 900,
+    "hysteresis_result_counts": {
+      "accepted": 900,
+      "held_by_coalition_membership_hysteresis": 24,
+      "held_by_hysteresis": 66,
+      "replan_ack_no_change": 231,
+      "replan_applied": 221,
+      "unchanged": 162
+    },
+    "online_truth_use_count": 0,
+    "scale_counts": {
+      "100": 180,
+      "20": 180,
+      "200": 180,
+      "5": 180,
+      "50": 180
+    },
+    "scenario_counts": {
+      "center_failure": 100,
+      "communication_degraded": 100,
+      "delayed_noisy": 100,
+      "dense_crossing": 100,
+      "evasive_multilevel": 100,
+      "formation_split": 100,
+      "high_threat_m_to_n": 100,
+      "nominal": 100,
+      "secondary_failure": 100
+    },
+    "unavailable_frame_count": 194,
+    "unavailable_frame_reason_counts": {
+      "authority_generation_fence_has_no_cost_frame": 120,
+      "published_plan_has_no_matching_cost_frame": 74
+    }
+  },
+  "purpose": "formal_assignment_behavior_cloning_full_sample_admission",
+  "remaining_gates": [
+    "real_runtime_assignment_applied_ack",
+    "real_runtime_outcome_attribution",
+    "causal_or_counterfactual_reward",
+    "same_seed_paired_rule_vs_learning_shadow_non_degradation",
+    "current_plan_owner_and_current_version_runtime_binding",
+    "ppo_assist_and_authority_remain_closed"
+  ],
+  "schema_and_numeric_audit": {
+    "all_validated_numeric_features_finite": true,
+    "candidate_dimension_mismatch_count": 0,
+    "dataset_schema_version": "d3_learning_dataset_v2",
+    "feature_value_count": 43905780,
+    "nonfinite_numeric_value_count": 0,
+    "split_policy_version": "d3_numeric_seed_atomic_split_v2",
+    "validated_frame_count": 1604
+  },
+  "schema_version": "d3.assignment-full-sample-audit.v1",
+  "source_files": {
+    "batch_export_summary": "/home/linux/Documents/MSM/research_modules/scalable_3d_simulation/outputs/learning_generation_v1_multibatchfix/learning_dataset/batch_learning_export_summary.json",
+    "dataset_frames": "/home/linux/Documents/MSM/research_modules/scalable_3d_simulation/outputs/learning_generation_v1_multibatchfix/learning_dataset/d3_assignment/frames.jsonl",
+    "dataset_manifest": "/home/linux/Documents/MSM/research_modules/scalable_3d_simulation/outputs/learning_generation_v1_multibatchfix/learning_dataset/d3_assignment/dataset_manifest.json",
+    "episode_progress": "/home/linux/Documents/MSM/research_modules/scalable_3d_simulation/outputs/learning_generation_v1_multibatchfix/episode_progress.csv",
+    "generation_summary": "/home/linux/Documents/MSM/research_modules/scalable_3d_simulation/outputs/learning_generation_v1_multibatchfix/generation_summary.json",
+    "shared_registry": "/home/linux/Documents/MSM/research_modules/scalable_3d_simulation/outputs/learning_generation_v1_multibatchfix/shared_seed_split_registry_v1/registry.json",
+    "training_registry": "/home/linux/Documents/MSM/research_modules/scalable_3d_simulation/outputs/learning_generation_v1_multibatchfix/training_seed_registry.json"
+  },
+  "split_and_provenance_audit": {
+    "actual_decision_sample_counts": {
+      "test": 322,
+      "train": 962,
+      "validation": 320
+    },
+    "actual_source_episode_counts": {
+      "test": 180,
+      "train": 540,
+      "validation": 180
+    },
+    "canonical_episode_identity_counts": {
+      "test": 20,
+      "train": 60,
+      "validation": 20
+    },
+    "dirty_episode_count": 0,
+    "finite_episode_count": 900,
+    "online_truth_use_count": 0,
+    "repository_dirty": false,
+    "reserved_evaluation_seeds": [
+      1000,
+      1001,
+      1002,
+      1003,
+      1004,
+      1005,
+      1006,
+      1007,
+      1008,
+      1009,
+      1010,
+      1011,
+      1012,
+      1013,
+      1014,
+      1015,
+      1016,
+      1017,
+      1018,
+      1019
+    ],
+    "reserved_seed_overlap": [],
+    "source_git_commit": "39b097e72487567ac915c2297eaa27eed49ef76b",
+    "source_schedule_sha256": "5bb79b3f5cca264033fc5ca3d643e5c84241e7db9c3754d2277b78ebd4002c81"
+  },
+  "validation_date": "2026-07-21",
+  "version_and_identity_audit": {
+    "anonymous_ordinal_identity_checked_frame_count": 1604,
+    "current_plan_owner_binding": "unavailable",
+    "current_plan_version_binding": "unavailable",
+    "explanation": "formal learning frames intentionally contain anonymous ordinal tokens and previous_plan_version only; current owner/version and runtime stale-rejection records are not present",
+    "frame_sequence_violation_count": 0,
+    "global_track_id_created_or_rewritten": false,
+    "global_track_id_illegal_field_count": 0,
+    "online_identity_field_occurrence_count": 0,
+    "previous_plan_version_regression_count": 0,
+    "stale_plan_runtime_rejection_evidence": "unavailable",
+    "timestamp_sequence_violation_count": 0,
+    "version_checked_frame_count": 1604
+  }
+}

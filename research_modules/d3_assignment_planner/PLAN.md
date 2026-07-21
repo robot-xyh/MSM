@@ -989,3 +989,35 @@ OR-Tools，零失败满足门限。
    允许 assist；外部 seed 1000-1019 仍需独立验收。
 3. D4/D5 的动作多样性、奖励/运行时确认和图候选负样本不足未由 D3 解决。条件闭合前不
    启动 C1 或 PPO，也不修改 Hungarian、代价残差公式、安全外壳、计划版本和 D7 binding。
+
+## 30. 正式分配数据全样本准入审计（2026-07-21）
+
+### 已完成
+
+1. 对正式 900-episode D3 数据建立独立流式审计入口。输入绑定
+   `dataset_manifest.json`、`frames.jsonl`、训练 seed 注册表、共享切分注册表、生成摘要、
+   episode 进度和批量导出摘要。7 个源文件均有冻结 SHA256，审计前后再次复算；输出
+   写入 D3 自有 `results/` 和 `reports/`，禁止写回正式数据根目录。
+2. 逐行解析 883 MiB 帧文件，不把 1604 帧物化成完整 tuple。每帧重新执行 v2 字段白名单、
+   匿名实体和有限数值检查，并复核候选边、动作标签、成本矩阵、动作索引、资源容量、
+   目标需求槽、seed/episode 原子切分、规范排序、连续帧号、时间递增和前序版本不回退。
+3. 计数口径分层保存。规范 episode 身份按 100 个数值 seed 为 60/20/20；900 个实际场景
+   episode 为 540/180/180；1604 个决策帧为 962/320/322。候选边和动作标签均为
+   3658815，规则选中动作 117304。任何报告不得把 seed、episode、frame 或 edge 比例混写。
+4. episode 进度与帧集合逐项绑定。900 个 episode 全部为有限状态，脏 episode 和在线
+   truth 使用均为 0。194 个未导出帧原因保留为权威代次围栏或计划-成本帧不匹配，禁止
+   使用旧帧填充。
+5. 正式审计为 0 违规，数据结构状态 `complete`。专项 10 项和 D3 全量 280 项通过，结果
+   为 `279 passed, 1 skipped`；skip 仅可选 OR-Tools。
+
+### 保持关闭的条件
+
+1. 数据只携带匿名 token 和 `previous_plan_version`。当前计划 owner、当前 plan version、
+   运行时 stale 接受/拒绝不在 schema 中，状态为 `unavailable`，不能从帧序号推断。
+2. `reward_components` 只用于规则教师诊断。真实 applied ACK、outcome 归因、因果或反事实
+   reward、同 seed 规则/学习 shadow 非退化均未闭合。
+3. 总体准入保持 `partial`。本项不训练 BC 或 PPO，不生成 `.pt`，不开放 assist/authority，
+   不改变规则代价、需求槽匈牙利、迟滞、计划发布或 D7 binding。
+4. 下一步由 main 将本审计 JSON 及文件 SHA 交给 D6 复核。未来 producer 需另外生成运行时
+   owner/version/applied-ACK/outcome 记录和同 seed paired shadow；这些记录不得回填到本批
+   已冻结的正式数据。

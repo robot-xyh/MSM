@@ -407,3 +407,28 @@ or episode sequence, and it must not be cited as AirSim evidence. Formal
 900-episode generation, model training, and at least 20 unseen-seed evaluation
 remain open. D3 tests collected 255 cases and returned `254 passed, 1 skipped`;
 the skip is the optional OR-Tools dependency.
+
+## 2026-07-21 Formal Assignment Audit Boundary
+
+The formal point-mass assignment corpus now has a read-only full-sample audit. It
+verified 900 scenario episodes, 1604 decision frames, 3658815 candidate edges,
+117304 selected actions, zero dirty episodes, and zero online-truth use. The
+canonical numeric-seed identity is 60/20/20; actual scenario episodes are
+540/180/180 and frames are 962/320/322. This is point-mass dataset evidence, not
+an AirSim episode or a physical interception result.
+
+The learning-frame schema does not carry the current plan owner, current plan
+version, runtime stale rejection, applied acknowledgement, or attributed outcome.
+AirSim/main integration must persist these as separate versioned runtime records.
+It must not infer them from `frame_index`, `previous_plan_version`,
+`feedback_result`, `hysteresis_result`, or the rule-teacher `reward_components`.
+The two result strings are categorical diagnostics; the reward fields are not
+runtime causal rewards.
+
+Before any AirSim shadow or assist review, main must bind the audit JSON and its
+file SHA, then record the same-seed rule and learning proposals, current
+owner/version, applied ACK, outcome, fallback, timeout, stale rejection, demand
+shortfall, churn, and D7 gate state. Until D6 verifies those records, rule cost
+plus demand-slot Hungarian remains the only default path and assist/authority
+stay disabled. This audit changed no AirSim adapter, settings, actor, camera,
+episode order, or control command.

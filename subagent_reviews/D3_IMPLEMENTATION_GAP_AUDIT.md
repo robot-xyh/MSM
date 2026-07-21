@@ -563,3 +563,38 @@ policy、content、assignment、源 SHA、缺 seed、多 seed、保留 seed、�
 本项不修改 Hungarian、`C_final=C_rule+alpha*tanh(delta_C)`、硬门控、迟滞、计划版本
 或 D7 binding。PPO 未启动，现有 bundle 未晋级。D3-owned P1 split ambiguity 已关闭；
 C1 是否可启动由 main 汇总 D4/D5 数据条件后决定。
+
+## 29. 正式分配数据全样本准入 GAP 更新（2026-07-21）
+
+### 已关闭
+
+- **P1 正式数据逐样本审计**：已新增只读流式审计器并扫描全部 883 MiB frame 数据。
+  900 个实际 episode、1604 个决策帧、3658815 条候选边、117304 条选中动作均完成
+  schema、有限数值、维度、索引、容量、需求槽、切分、匿名身份和前序版本复核。
+- **P1 来源绑定与篡改检测**：manifest、frames、训练 registry、共享 registry、生成摘要、
+  episode 进度和批量导出摘要共 7 个文件绑定冻结 SHA256；源文件审计前后哈希一致。
+  审计 JSON 另有规范内容摘要，可供 D6 带外复核。
+- **P1 统计口径歧义**：规范 seed/episode 身份明确为 60/20/20，实际场景 episode 为
+  540/180/180，决策帧为 962/320/322，候选边为 2229182/721445/708188。报告不再把
+  seed 比例写成样本比例。
+- **P1 truth/dirty/identity 审计**：在线 truth 使用、脏 episode、非法 `global_track_id`
+  字段、容量/需求/索引/版本违规均为 0。194 个未导出帧原因原样保留，没有补旧帧。
+
+数据结构状态由 `pending` 更新为 `complete`。专项 10 项和全量 280 项通过，结果为
+`279 passed, 1 skipped`；唯一 skip 为 optional OR-Tools。
+
+### 仍开放
+
+- **P1 运行计划绑定**：正式 learning frame 只有匿名 token 和 `previous_plan_version`，
+  current owner/current version、stale runtime rejection 为 `unavailable`。需要 main 的
+  版本化运行记录，不能由 D3 frame 推断。
+- **P1 ACK 与 outcome 归因**：真实 applied ACK、执行结果及其 AssignmentPlan 绑定未形成。
+  `feedback_result`/`hysteresis_result` 是字符串诊断；`reward_components` 是规则教师分量，
+  都不能替代运行结果。
+- **P1/P2 学习准入**：因果/反事实 reward、同 seed paired shadow 非退化和外部保留 seed
+  验收仍未闭合。PPO、assist、online authority 和权重写入保持关闭，规则代价与需求槽
+  Hungarian 继续为默认路径。
+- **跨模块 D6 消费**：D3 已给出 tracked JSON 和文件 SHA，D6 尚需独立校验并与 D4、D5
+  全样本证据合并。该项由 main/D6 负责，不回写或修改正式 D3 数据。
+
+当前没有新增 P0。D3 全样本数据 GAP 已关闭，跨模块总体准入仍为 `partial`。

@@ -1605,3 +1605,55 @@ split 为 60/20/20，保留 seed 1000-1019 交集为 0。registry file/content/a
 source SHA 依次为 `68608d29...032f`、`29eb6895...f146`、`31c6a3fc...6ab5` 和
 `2ab928a4...15f`。dataset manifest、frames 和两个 registry 文件的验证前后 SHA 相同。
 全量模块测试为 `269 passed, 1 skipped`。
+
+## 37. 正式分配数据流式全样本审计（2026-07-21）
+
+### 37.1 输入绑定
+
+审计器接受正式数据目录、训练 seed 注册表、共享切分注册表、生成摘要、episode 进度和
+批量导出摘要。正式 profile 冻结 7 个文件 SHA256、数据 split hash、共享 registry
+content hash、生成提交和 schedule hash。运行前先复算文件摘要；任一来源路径、内容或
+profile 不一致即记录违规。输出路径若位于正式数据根目录内，审计直接拒绝，防止报告写入
+改变源数据。
+
+### 37.2 流式检查
+
+`frames.jsonl` 约 883 MiB。实现按二进制行读取，每行完成 JSON 有限常量检查和
+`LearningFrameRecord.from_dict()` v2 重建，处理完即释放，不构造全量 records tuple。
+单帧检查顺序如下：
+
+```text
+规范 JSON 和严格字段集合
+  -> 匿名目标/资源 token 与有限数值
+  -> candidate edge、feature、mask、cost 维度
+  -> selected edge 合法索引与 candidate 子集
+  -> 每资源 assignment_capacity
+  -> 每目标 target_demand_slots
+  -> seed/episode split、frame/timestamp/version 顺序
+  -> 累加 split、edge、action 和 hard-reject 计数
+```
+
+候选边 `(i,j)` 的 `rule_costs` 必须与 `rule_cost_matrix[i,j]` 一致。每个候选边产生一个
+资源-目标动作标签，故本批 edge sample 与 action label 都是 3658815；规则正标签为
+117304。资源列的选中次数不得超过 `assignment_capacity`，目标行的选中次数不得超过
+`target_demand_slots`。该检查适用于输入规模，不写死 2v2、5v5 或 200v200。
+
+### 37.3 切分与进度复核
+
+共享 registry 的 100 个数值 seed 先按 D3 v2 算法重放，结果必须精确等于 60/20/20。
+frame 的 seed、manifest seed list 和 registry assignment 必须一致。实际场景展开产生
+900 个 episode，按相同 seed 身份得到 540/180/180；1604 个决策帧为 962/320/322。
+审计同时重算 split hash，防止只修改 manifest 计数。
+
+episode 进度文件逐行绑定 `(scenario_version, seed, episode_id)` 和导出帧数，并检查
+`finite_state`、`repository_dirty`、`online_truth_use_count`。`feedback_result` 和
+`hysteresis_result` 作为字符串分类统计，不按数值或布尔量解释。未导出帧原因单独累加，
+不使用上一有效帧填充。
+
+### 37.4 输出状态
+
+审计 JSON 自身使用规范 JSON 内容 SHA256。0 违规时，数据结构状态为 `complete`；由于
+当前 owner/version、真实 ACK/outcome、可归因 reward 和 paired shadow 未携带，总体仍为
+`partial`。存在任何结构、哈希或约束违规时，数据状态和总体状态都降为 `pending`。所有
+状态下 `model_training_performed=false`、`weights_written=false`、`ppo=false`、
+`assist=false`、`online_authority=false`，并要求规则回退。

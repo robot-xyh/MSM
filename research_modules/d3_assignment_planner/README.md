@@ -886,3 +886,35 @@ SHA 不匹配、seed 缺失或增加、保留 seed 混入、同一数值 seed �
 仍可走非联合开发路径加载，现有正式 BC bundle 和原数据没有原地修改。本项只消除 D3
 切分歧义，不构成 assist 晋级证据；状态仍为 `development/shadow-only`，PPO 未启动。
 D3 全量回归为 `269 passed, 1 skipped`。
+
+## 2026-07-21 正式分配数据全样本准入审计
+
+新增 `assignment_full_sample_audit.py`，对正式 D3 分配数据执行只读、流式、失败关闭审计。
+审计绑定数据清单、883 MiB 帧文件、训练 seed 注册表、共享切分注册表、生成摘要、episode
+进度和批量导出摘要共 7 个源文件。所有源文件在扫描前后重新计算 SHA256；输出目录必须
+位于正式数据根目录之外。审计逐帧调用 v2 严格解析器，并复核有限数值、候选边与动作
+标签维度、动作索引、资源容量、目标需求槽、匿名 token、数值 seed 切分、帧顺序、时间
+顺序和前序计划版本单调性。
+
+2026-07-21 的正式结果为：900 个实际 episode、1604 个决策帧、3658815 条候选边、
+3658815 条资源-目标动作标签和 117304 条规则选中动作。100 个规范数值 seed 按
+60/20/20 切分；场景展开后的实际 episode 为 540/180/180，决策帧为 962/320/322，
+不能把三组计数互相替代。43905780 个候选特征值全部有限；容量、需求槽、索引、切分、
+前序版本、在线真值和非法 `global_track_id` 违规均为 0。生成进度记录 900/900 个有限
+episode、0 个脏 episode、0 次在线真值使用，以及 194 个明确未导出帧原因；没有以前一
+帧补数。正式源文件哈希未变化。
+
+数据结构审计状态为 `complete`，总体准入状态为 `partial`。学习帧只有匿名 ordinal token
+和 `previous_plan_version`，没有当前计划 owner、当前 plan version 或运行时 stale 拒绝
+记录。`reward_components` 是规则代价、覆盖、未满足需求和抖动诊断，不是可归因的运行时
+回报。真实 applied ACK、outcome、因果/反事实 reward 和同 seed 配对 shadow 均为
+`unavailable`。因此没有训练或写入权重，PPO、assist 和在线权限保持关闭；默认路径继续
+使用规则代价与需求槽匈牙利求解。
+
+产物为 `results/assignment_full_sample_audit_20260721.json` 和
+`reports/D3_ASSIGNMENT_FULL_SAMPLE_AUDIT_20260721.md`。JSON 文件 SHA256 为
+`62a47df8058c0238498f2181229a5f6d45f6d958799eda354f03e25ea24b17fb`，去除
+`content_sha256` 字段后的规范内容 SHA256 为
+`954f3e96d563412644ec88d1b621e2a58c781af8af99de79b859d22079fc1867`。新增 10 个负例和
+正常路径测试；D3 全量收集 280 项，结果为 `279 passed, 1 skipped`，唯一 skip 为可选
+OR-Tools 安装检查。

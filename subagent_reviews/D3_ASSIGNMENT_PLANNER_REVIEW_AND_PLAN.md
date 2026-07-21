@@ -835,3 +835,27 @@ D3 正式数据原有 `d3_numeric_seed_atomic_split_v2` 映射与 main 的 detac
 `68608d29...032f`、`29eb6895...f146`、`31c6a3fc...6ab5`、`2ab928a4...15f`。输入文件
 前后哈希相同。D3 全量回归 `269 passed, 1 skipped`。C1 下一步由 main 核对 D4、D5 的
 同 registry binding、跨模块 join 和 label availability，再决定是否建立联合训练视图。
+
+## 32. 正式全样本准入复核（2026-07-21）
+
+D3 owner 已对正式分配数据完成独立流式全样本复核。输入是 7 个冻结源文件，核心帧文件
+约 883 MiB；审计按行处理 1604 个决策帧，没有重新生成或修改正式数据。源文件审计前后
+SHA256 一致，报告和 JSON 写入 D3 自有目录。
+
+复核计数为 900 个实际 episode、3658815 条候选边和 117304 条规则选中动作。规范数值
+seed 身份为 60/20/20；实际 episode 为 540/180/180，决策帧为 962/320/322，候选边为
+2229182/721445/708188。全部 43905780 个候选特征值有限。容量、需求槽、动作索引、
+切分、前序版本、在线 truth、脏 episode 和非法 `global_track_id` 字段违规均为 0。
+`feedback_result` 与 `hysteresis_result` 按字符串统计。194 个不可导出原因保留，没有以上一
+有效帧替代。
+
+数据结构准入为 `complete`，总体为 `partial`。frame 不携带 current owner/current
+version、真实 applied ACK、outcome 或 stale runtime record。规则教师
+`reward_components` 不能解释为可归因 runtime reward；同 seed paired shadow 和外部
+保留 seed 非退化也未闭合。审计没有训练模型或写入 `.pt`，PPO、assist 和在线权限保持
+关闭，默认规则代价与需求槽匈牙利未改变。
+
+新增 10 个审计负例和正常路径测试。D3 全量收集 280 项，结果为
+`279 passed, 1 skipped`，唯一 skip 为 optional OR-Tools。下一步由 main/D6 使用审计
+JSON 文件 SHA `62a47df8...17fb` 和内容 SHA `954f3e96...1867` 做跨模块复核；运行时
+owner/version/ACK/outcome 和 paired shadow 应作为新证据生产，不得回填本批正式数据。
