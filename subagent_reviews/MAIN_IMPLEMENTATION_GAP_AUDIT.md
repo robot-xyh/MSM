@@ -13,9 +13,10 @@
 
 D6 owner 已实现 `d6.cross-module-learning-data-admission.v1` 只读审计和命令行入口。审计显式
 消费 training/shared seed registry、D3 正式 manifest、D4 正式 manifest 与独立 canonical view、
-D5 tracklet/active-vision 正式 manifest/view/readiness，以及 D4/D5 补充课程 summary。正式观测
-语料、补充规则课程、离线评分标签和运行时 ACK 四层证据分别发布，来源混用、哈希篡改、dirty
-source、错误 seed、保留 seed 泄漏和 synthetic ACK 冒充 runtime ACK 均失败关闭。
+D5 tracklet/active-vision 正式 manifest/view/readiness、D4/D5 补充课程 summary，以及 D5 补充
+主动视觉全样本审计和带外文件 SHA。正式观测语料、补充规则课程、逐样本审计、离线评分标签和
+运行时 ACK 分层发布，来源混用、哈希篡改、dirty source、错误 seed、保留 seed 泄漏和 synthetic
+ACK 冒充 runtime ACK 均失败关闭。
 
 main 使用冻结的 900 episode 制品独立复跑。100 个训练 seed 的规范切分为 60/20/20，保留 seed
 `1000-1019` 泄漏为 0，在线真值使用为 0。D4 补充课程的 hold/replan/nonzero quota/transfer 为
@@ -24,13 +25,22 @@ main 使用冻结的 900 episode 制品独立复跑。100 个训练 seed 的规�
 applied/rejected/missing 各 400 只算故障注入覆盖。D5 tracklet 的 480 条候选边中 381 条已标注、
 99 条未标注，离线标签状态为 partial。
 
-当前结论是 BC canonical view available、BC full-sample audit pending。reward、outcome、
-counterfactual、causal、真实 runtime ACK 和 paired shadow 仍 unavailable；PPO、在线 assist 和
-authority 均关闭，规则回退强制。本批关闭 D6-owned 联合准入与报告写入隔离 P0，不形成模型收益
-结论。专项 `16 passed`、D6 全量 `380 passed`；main 复算正式 43,973 个文件的树 SHA-256 仍为
+随后 D5 owner 对 clean 补充课程完成 100 episode/1200 sample 全样本审计：302/302 个受清单约束
+文件、1200/1200 个 35 维有限特征、规范 episode/sample `60/20/20` 与 `720/240/240` 全部通过，
+在线真值、保留 seed、dirty episode 和身份改写均为 0。审计文件/内容 SHA-256 为
+`9a03653538e6dae054da8c127ad4a20aae2481af6c9bbef987edfddff0b423d3` 和
+`a11b65596a4c416deba6d0cb35dcc0c32342a5bae0481291d43e8de0e26550dd`。
+
+D6 已重新消费该证据。当前结论为 BC canonical view available，D5 supplemental full-sample
+complete，D3/D4 full-sample pending，跨模块总状态 partial。reward、outcome、counterfactual、
+causal、真实 runtime ACK 和 paired shadow 仍 unavailable；PPO、在线 assist 和 authority 均关闭，
+规则回退强制。联合报告 JSON/中文 Markdown SHA-256 为
+`d3e3e858a14fb570cd0eb19da2661ce76686906530e313b5f79e6bf6af336de2` 和
+`aaaeaefd99f38a03e4f80ffa96dabcb0eef0dd9724cb38fdb163c0bf603eff21`。专项 `21 passed`、D6
+全量 `385 passed`；main 复算正式 43,973 个文件的树 SHA-256 仍为
 `8ffbe5cf044d121163c8acc3dce1bbd54e14bb6b211b8e1cf440f24c93294fca`。
 
-开放 P1 转为：统一逐样本审计 D3/D4/D5 canonical views；producer 持久化真实动作采用、版本绑定、
+开放 P1 转为：逐样本审计 D3/D4 canonical views；producer 持久化真实动作采用、版本绑定、
 runtime ACK、终局 outcome 和可归因 reward；建立同 seed paired shadow；最后使用保留 seed
 `1000-1019` 做独立模型验收。上述条件未闭合前不启动 PPO，也不允许学习策略进入在线控制权限。
 
@@ -880,8 +890,8 @@ D1 NumPy EKF/FusionAdapter
 | D2 | 无新增 blocker | GNN/Hungarian、稳定 global_track_id、id_switch_count、continuity 和来源身份治理显式计数 | D2 `123 passed, 1 warning` |
 | D3 | 无新增 blocker | 版本化 AssignmentPlan、迟滞、stale rejection、D7 binding | D3 模块测试 |
 | D4 | 无新增 blocker | C2Health、主动/被动降级、二级 lifecycle；active secondary helper/owner 必须对 sustained readiness、expected/actual source、plan/required epoch、expiry/current time 和 plan monotonicity exact-true；冲突或缺失证据 fail-closed | D4 `280 passed` |
-| D5 | 无新增 blocker | 不改写 global_track_id、truth 隔离、friend/duplicate 保守门控；原生 MOT 连续实测历史按 stream/backend/ID 隔离并在空帧/reset 后重计；离线人工记录转换重复坍缩 fail-closed | D5 `288 passed` |
-| D6 | 无新增 blocker | 只消费日志；实际规模、id_switch_count、unavailable/zero 分离；逐 pair physical evidence/result/source、联盟完整性和跨模块学习准入严格门控；报告不得写入正式 generation 根 | D6 `380 passed` |
+| D5 | 无新增 blocker | 不改写 global_track_id、truth 隔离、friend/duplicate 保守门控；原生 MOT 连续实测历史按 stream/backend/ID 隔离并在空帧/reset 后重计；离线人工记录转换重复坍缩 fail-closed；补充课程全样本审计不得开放在线权限 | D5 `486 passed` |
+| D6 | 无新增 blocker | 只消费日志；实际规模、id_switch_count、unavailable/zero 分离；逐 pair physical evidence/result/source、联盟完整性和跨模块学习准入严格门控；D5 全样本证据需带外 SHA，报告不得写入正式 generation 根 | D6 `385 passed` |
 | D7 | 核心公式无 blocker；控制输入 P0 由 main/runtime 持有 | 不分配目标；D3/D4/D5 gate 失败时阻断视觉 PNG；不修改 PN/PNG 核心公式 | D7 模块测试 + truth-isolated control contract |
 | main/runtime | 无新增 blocker | episode bus 可回放；在线 truth identity/state 均为 0；SimpleFlight 只消费 D2 estimate；二级 communication 只消费上一完整 D4 readiness；actor truth 仅离线 5 m scorer；默认不保存 PNG | actor truth 扰动命令不变量 + heartbeat-only/strict-readiness 正反合同 + AirSim runtime `147 passed` |
 
@@ -899,7 +909,7 @@ D1 NumPy EKF/FusionAdapter
 | D1/D2/D3/main | 长 replay 治理阈值 | 版本化 replay/CLI 已具备；D2 10 seeds 的 IDSW=138.1、continuity=0.694 | 默认 GNN 未通过阈值；继续调 gate/lifecycle/model，不用 truth 或本地重绑掩盖问题 |
 | D4/main | 联盟重构、二级接管和恢复实测 | 9/9 确定性矩阵通过，含 member replacement、partition recovery 和双轨合并；严格二级 readiness 已统一到所有入口 | 映射到真实 AirSim 通信延迟/丢包/乱序/时钟漂移多 seed，并量化 failover time；不得以 heartbeat-only 作为正例 |
 | D5/D6 | M 对 N 视觉鲁棒性 | 确定性 10/10，外参漂移/时间偏差保守拒绝，ID rewrite=0 | 在真实多视角 AirSim/相机同步和持续 detect 下复验，不以确定性 fixture 代替实测 |
-| D3/D4/D5/D6/main | 学习数据全样本与运行证据 | canonical seed 60/20/20、正式/补充证据分层和规则动作课程已通过联合只读审计 | 逐样本核对 canonical views；持久化真实 adoption/版本/ACK/outcome/reward；完成 paired shadow 与保留 seed 1000-1019 验收；此前 PPO/assist/authority 保持关闭 |
+| D3/D4/D5/D6/main | 学习数据全样本与运行证据 | canonical seed 60/20/20、正式/补充证据分层和规则动作课程已通过联合只读审计；D5 补充主动视觉 100/1200 全样本子项已完成 | 逐样本核对 D3/D4 canonical views；持久化真实 adoption/版本/ACK/outcome/reward；完成 paired shadow 与保留 seed 1000-1019 验收；PPO/assist/authority 保持关闭 |
 | D6/main | 场景库与长期趋势 | cross-seed、paired effect、bootstrap、联盟 lifecycle 和证据路径已具备 | 固化 scenario version，生成长期 CI、失败漏斗和 active-degradation review 趋势 |
 | D7 | 成员安全与独立到达 | role/wave/window、active/standby、commit-aware gate 和 N/M topology 已有 | 当前不要求同时到达；先验证独立 primary 的 terminal sector、minimum separation 和 member loss，协同到达时间后置 |
 

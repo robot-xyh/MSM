@@ -51,6 +51,7 @@ main
 | D2 身份评估清单 | `scalable3d-offline-identity-evaluation-manifest-v1` | 谱系映射、身份指标或来源校验改变 |
 | D6 真值隔离清单 | `scalable3d-d6-truth-isolated-manifest-v1` | D1/D2 适配、availability 或批量聚合口径改变 |
 | D6 跨模块学习准入 | `d6.cross-module-learning-data-admission.v1` | 正式/补充/离线标签/运行 ACK 分层、canonical view 绑定、动作覆盖或训练准入矩阵语义改变 |
+| D5 补充主动视觉全样本审计 | `d5.active-vision-supplemental-bc-full-sample-audit.v1` | 文件清单、逐样本特征、身份/版本、离线标签和权限门控语义改变 |
 | D5 模型 | `d5-crossview-gnn-v0.1.0` | 网络、特征、权重或训练集改变 |
 | D5 主动视觉 | `d5-active-vision-rule-v1` 或模型语义版本加指纹 | 特征、动作空间、权重或准入报告改变 |
 | D5 主动视觉数据 | `d5.active-vision-episode-dataset.v3` | split、episode、在线/离线标签、运行时 ACK 或哈希语义改变 |
@@ -136,6 +137,13 @@ manifest 或样本。跨视角图 view/readiness 文件 SHA256 分别为
 `aac5d4ec82c27f26dd919f26d93e5eb4452a8f3c98ecbee7fad62577a43fcc09`。该登记只关闭 D3/D4/D5
 学习消费者的 split 身份不一致。跨视角图仍因候选边和困难负边不足而 `fail_closed`；主动视觉仍为
 `development_shadow_only`，不开放 assist、PPO 或相机命令权限。
+
+D5 补充主动视觉课程已完成 100 episode、1200 sample 的全样本审计，审计文件和内容 SHA256
+分别为 `9a03653538e6dae054da8c127ad4a20aae2481af6c9bbef987edfddff0b423d3` 和
+`a11b65596a4c416deba6d0cb35dcc0c32342a5bae0481291d43e8de0e26550dd`。D6 必须同时接收该文件
+及带外文件 SHA，并重新核对 dataset/view/config/registry/summary 绑定。当前 D5 子项为
+`complete`，D3/D4 仍为 `pending`，跨模块总状态为 `partial`；该状态不开放 PPO、assist 或
+authority。
 
 每个持久化 episode 的 D1、D2 和 D6 子目录分别保存独立 manifest。D1 结果必须绑定在线
 总线、离线真值状态和 D2 规范映射；D2 结果必须绑定原始 D1/D2 记录、观测真值标签和身份

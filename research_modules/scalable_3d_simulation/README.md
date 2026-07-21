@@ -42,6 +42,13 @@ wide/zoom=`1000/200`，拦截与侦察相机各 600 条。applied/rejected/missi
 故障注入覆盖，不是真实运行 ACK；reward、outcome、counterfactual 和 causal 标签均为
 `0/1200 available`，PPO、assist 和相机权限继续关闭。
 
+D5 已对该补充课程完成只读全样本审计。100 个 episode、1200 个样本、302 个受清单约束的
+文件全部通过；1200 个样本的 35 维候选特征均为有限值，规范 episode/sample 切分为
+`60/20/20` 和 `720/240/240`，在线真值、保留 seed 泄漏、dirty episode 和身份改写均为 0。
+审计文件和内容 SHA-256 分别为
+`9a03653538e6dae054da8c127ad4a20aae2481af6c9bbef987edfddff0b423d3` 和
+`a11b65596a4c416deba6d0cb35dcc0c32342a5bae0481291d43e8de0e26550dd`。
+
 D5 主动视觉已在 1,153,242 个规则示范样本上完成五轮完整行为克隆。测试精确动作准确率
 为 `0.955978`，CPU 推理 P95 为 `0.1203 ms`，但 `reacquire` 占 92.16%，4,051 个
 `observe_target` 测试样本的召回率为 0，hold 没有正样本，侦察相机精确动作准确率为
@@ -51,14 +58,19 @@ D6 对正式数据生成了源外标签 sidecar，并完成正式 canonical view
 联合只读准入审计。D4 仅有 `898/1798` 帧具备无动作归因的相邻状态结果；D5 主动视觉有
 `1,063,214/1,153,242` 条相邻观测结果。两者可归因 reward 均为 0 条，D5 runtime ACK
 为 0。D5 跨视角图的 480 条候选边中有 381 条已标注、99 条未标注，标签状态为 partial。
-当前只开放 BC canonical view；跨模块 full-sample audit 仍 pending，不能开展近端策略优化、
-在线辅助或因果训练。
+当前 BC canonical view 可用，D5 补充主动视觉全样本子项为 complete；D3、D4 仍缺逐样本
+审计，因此跨模块 full-sample 总状态为 partial。联合报告 JSON/中文 Markdown SHA-256 分别为
+`d3e3e858a14fb570cd0eb19da2661ce76686906530e313b5f79e6bf6af336de2` 和
+`aaaeaefd99f38a03e4f80ffa96dabcb0eef0dd9724cb38fdb163c0bf603eff21`。在 D3、D4、真实
+运行 ACK/outcome、可归因 reward 和 paired shadow 闭合前，不能开展近端策略优化、在线辅助或
+因果训练。
 
 跨模块切分现由 detached `scalable3d-shared-seed-split-registry-v1` 统一管理。100 个训练
 seed 固定为 `60/20/20`，映射与现有 D3 正式开发数据逐项一致，保留 seed 未进入任一桶。
 原 D4、D5 manifest 仍保留各自历史切分；源外 canonical views 已形成，并通过 D6 的
-manifest/view/readiness/summary 层一致性审计。C1 联合训练仍保持关闭，原因已从 seed 切分
-不一致转为跨模块全样本审计、真实动作采用/ACK、reward/outcome 和 paired shadow 缺失。
+manifest/view/readiness/summary 层一致性审计。D5 补充课程进一步通过 D6 的全样本证据消费，
+但 D3、D4 仍停留在清单层。C1 联合训练继续关闭，原因已从 seed 切分不一致转为 D3/D4
+全样本审计、真实动作采用/ACK、reward/outcome 和 paired shadow 缺失。
 生成命令为：
 
 ```bash
