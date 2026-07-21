@@ -395,6 +395,70 @@ class _StaleCameraCommandStack:
         )
 
 
+class _AssignmentPlanAckStack:
+    def __init__(self, *, stale_guidance: bool = False) -> None:
+        self.config: ScenarioConfig | None = None
+        self.stale_guidance = stale_guidance
+
+    def reset(self, config: ScenarioConfig) -> None:
+        self.config = config
+
+    def step(self, step_input: RuntimeStepInput) -> RuntimeStepOutput:
+        assert self.config is not None
+        plan_version = 3
+        guidance_version = plan_version - int(self.stale_guidance)
+        return RuntimeStepOutput(
+            interceptor_acceleration_ned=np.zeros((self.config.resource_count, 3)),
+            recon_acceleration_ned=np.zeros((self.config.recon_count, 3)),
+            publications=(
+                RuntimePublication(
+                    topic="modules.d3.assignment_plan",
+                    source="D3",
+                    schema_version="assignment-plan-v1",
+                    payload={
+                        "timestamp": step_input.timestamp,
+                        "plan_id": "PLAN-ACK-TEST",
+                        "plan_version": plan_version,
+                        "created_at": step_input.timestamp,
+                        "assignments": [
+                            {
+                                "resource_id": "INT-000",
+                                "global_track_id": "GT-000001",
+                                "coalition_id": None,
+                                "coalition_version": None,
+                                "member_role": "primary",
+                            }
+                        ],
+                        "metadata": {
+                            "active_plan_owner": "center",
+                            "owner_node_id": "C2",
+                            "authority_epoch": 4,
+                            "lease_expires_at_s": step_input.timestamp + 1.0,
+                        },
+                    },
+                ),
+                RuntimePublication(
+                    topic="modules.d7.guidance_commands",
+                    source="D7",
+                    schema_version="d7-guidance-v1",
+                    payload={
+                        "timestamp": step_input.timestamp,
+                        "commands": [
+                            {
+                                "resource_id": "INT-000",
+                                "global_track_id": "GT-000001",
+                                "plan_id": "PLAN-ACK-TEST",
+                                "plan_version": guidance_version,
+                                "mode": "midcourse_pn",
+                                "gate_reason": "midcourse_position_guidance",
+                            }
+                        ],
+                    },
+                ),
+            ),
+        )
+
+
 def test_runtime_publication_keeps_safe_copy_as_the_default() -> None:
     publication = RuntimePublication(
         topic="modules.test",
@@ -468,3 +532,67 @@ def test_runtime_applies_current_camera_command_and_rejects_stale_plan() -> None
         "rejected",
         "rejected",
     ]
+
+
+def test_runtime_acknowledges_d3_plan_binding_consumed_by_d7() -> None:
+    config = ScenarioConfig(
+        target_count=1,
+        resource_count=1,
+        recon_count=0,
+        duration_s=0.05,
+        radar_enabled=False,
+        acoustic_enabled=False,
+        visual_enabled=False,
+    )
+
+    result = run_episode(config, module_stack=_AssignmentPlanAckStack())
+
+    assert result.summary["assignment_plan_ack_count"] == 1
+    assert result.summary["assignment_plan_binding_ack_count"] == 1
+    assert result.summary["assignment_plan_control_applied_count"] == 1
+    assert result.summary["assignment_plan_hold_count"] == 0
+    acknowledgements = [
+        message.payload
+        for message in result.online_messages
+        if message.topic == "runtime.assignment_plan_ack"
+    ]
+    assert len(acknowledgements) == 1
+    acknowledgement = acknowledgements[0]
+    assert acknowledgement["plan_id"] == "PLAN-ACK-TEST"
+    assert acknowledgement["plan_version"] == 3
+    assert acknowledgement["accepted"] is True
+    assert acknowledgement["fully_bound_to_guidance"] is True
+    assert acknowledgement["physical_outcome_available"] is False
+    assert acknowledgement["reward_available"] is False
+    assert acknowledgement["binding_acks"] == [
+        {
+            "resource_id": "INT-000",
+            "global_track_id": "GT-000001",
+            "coalition_id": None,
+            "coalition_version": None,
+            "member_role": "primary",
+            "guidance_command_present": True,
+            "guidance_mode": "midcourse_pn",
+            "guidance_gate_reason": "midcourse_position_guidance",
+            "control_applied_to_world": True,
+            "held": False,
+        }
+    ]
+
+
+def test_runtime_rejects_guidance_ack_for_stale_d3_plan_version() -> None:
+    config = ScenarioConfig(
+        target_count=1,
+        resource_count=1,
+        recon_count=0,
+        duration_s=0.05,
+        radar_enabled=False,
+        acoustic_enabled=False,
+        visual_enabled=False,
+    )
+
+    with pytest.raises(ValueError, match="current D3 plan"):
+        run_episode(
+            config,
+            module_stack=_AssignmentPlanAckStack(stale_guidance=True),
+        )

@@ -7,7 +7,7 @@ from dataclasses import dataclass, replace
 import heapq
 from pathlib import Path
 import time
-from typing import Any
+from typing import Any, Mapping
 
 import numpy as np
 
@@ -158,6 +158,10 @@ class Scalable3DEpisodeRunner:
         camera_command_rejected_count = 0
         camera_command_rejection_reasons: Counter[str] = Counter()
         camera_command_ack_count = 0
+        assignment_plan_ack_count = 0
+        assignment_plan_binding_ack_count = 0
+        assignment_plan_control_applied_count = 0
+        assignment_plan_hold_count = 0
 
         for step_index in range(step_count):
             snapshot = self.world.snapshot()
@@ -344,6 +348,31 @@ class Scalable3DEpisodeRunner:
                         module_publication_topic_counts[publication.topic] = (
                             module_publication_topic_counts.get(publication.topic, 0) + 1
                         )
+                    plan_ack = _assignment_plan_runtime_ack(
+                        module_output.publications,
+                        ack_timestamp=current_time,
+                    )
+                    if plan_ack is not None:
+                        self.bus.publish(
+                            topic="runtime.assignment_plan_ack",
+                            source="MAIN-RUNTIME",
+                            timestamp=current_time,
+                            schema_version=(
+                                "scalable3d-assignment-plan-runtime-ack-v1"
+                            ),
+                            payload=plan_ack,
+                            copy_payload=False,
+                        )
+                        assignment_plan_ack_count += 1
+                        assignment_plan_binding_ack_count += int(
+                            plan_ack["binding_ack_count"]
+                        )
+                        assignment_plan_control_applied_count += int(
+                            plan_ack["control_applied_binding_count"]
+                        )
+                        assignment_plan_hold_count += int(
+                            plan_ack["held_binding_count"]
+                        )
                     timing.add(
                         "module_publication_bus",
                         time.perf_counter() - publication_started,
@@ -441,6 +470,14 @@ class Scalable3DEpisodeRunner:
             "camera_command_rejection_reason_counts": dict(
                 sorted(camera_command_rejection_reasons.items())
             ),
+            "assignment_plan_ack_count": assignment_plan_ack_count,
+            "assignment_plan_binding_ack_count": (
+                assignment_plan_binding_ack_count
+            ),
+            "assignment_plan_control_applied_count": (
+                assignment_plan_control_applied_count
+            ),
+            "assignment_plan_hold_count": assignment_plan_hold_count,
             "camera_state_count": len(camera_states),
             "intercepted_target_count": len(self.world.intercepted_target_indices),
             "max_target_speed_mps": diagnostics.max_target_speed_mps,
@@ -781,6 +818,162 @@ def _apply_camera_commands(
             }
         )
     return tuple(acknowledgements)
+
+
+def _assignment_plan_runtime_ack(
+    publications: tuple[Any, ...],
+    *,
+    ack_timestamp: float,
+) -> dict[str, Any] | None:
+    """Bind one newly published D3 plan to the D7 commands consumed by main.
+
+    The acknowledgement is an online, truth-free execution record. It proves
+    that main accepted a versioned plan and records which assignment bindings
+    reached D7 in the same scheduler tick. It does not claim physical
+    interception success or provide an offline reward.
+    """
+
+    d3_publications = tuple(
+        item
+        for item in publications
+        if getattr(item, "topic", None) == "modules.d3.assignment_plan"
+    )
+    if not d3_publications:
+        return None
+    if len(d3_publications) != 1:
+        raise RuntimeError("one scheduler tick published multiple D3 plans")
+    d3_publication = d3_publications[0]
+    plan = _runtime_publication_payload(d3_publication, "D3 plan")
+    assignments = plan.get("assignments")
+    if not isinstance(assignments, list):
+        raise ValueError("D3 plan publication assignments must be a list")
+
+    d7_publications = tuple(
+        item
+        for item in publications
+        if getattr(item, "topic", None) == "modules.d7.guidance_commands"
+    )
+    if len(d7_publications) > 1:
+        raise RuntimeError("one scheduler tick published multiple D7 command batches")
+    d7_commands: list[Any] = []
+    if d7_publications:
+        d7_payload = _runtime_publication_payload(
+            d7_publications[0], "D7 guidance batch"
+        )
+        raw_commands = d7_payload.get("commands")
+        if not isinstance(raw_commands, list):
+            raise ValueError("D7 guidance publication commands must be a list")
+        d7_commands = raw_commands
+
+    plan_id = str(plan.get("plan_id", "")).strip()
+    plan_version = _nonnegative_int(plan.get("plan_version"), "plan_version")
+    if not plan_id:
+        raise ValueError("D3 plan runtime ACK requires plan_id")
+
+    commands_by_binding: dict[tuple[str, str], Mapping[str, Any]] = {}
+    for raw_command in d7_commands:
+        command = _runtime_mapping(raw_command, "D7 guidance command")
+        command_plan_id = str(command.get("plan_id", "")).strip()
+        command_plan_version = _nonnegative_int(
+            command.get("plan_version"), "D7 command plan_version"
+        )
+        if command_plan_id != plan_id or command_plan_version != plan_version:
+            raise ValueError(
+                "D7 guidance command does not reference the current D3 plan"
+            )
+        key = (
+            str(command.get("resource_id", "")).strip(),
+            str(command.get("global_track_id", "")).strip(),
+        )
+        if not all(key) or key in commands_by_binding:
+            raise ValueError("D7 guidance command binding is missing or duplicated")
+        commands_by_binding[key] = command
+
+    binding_acks: list[dict[str, Any]] = []
+    expected_bindings: set[tuple[str, str]] = set()
+    for raw_assignment in assignments:
+        assignment = _runtime_mapping(raw_assignment, "D3 assignment")
+        key = (
+            str(assignment.get("resource_id", "")).strip(),
+            str(assignment.get("global_track_id", "")).strip(),
+        )
+        if not all(key) or key in expected_bindings:
+            raise ValueError("D3 assignment binding is missing or duplicated")
+        expected_bindings.add(key)
+        command = commands_by_binding.get(key)
+        mode = None if command is None else str(command.get("mode", "")).strip()
+        held = bool(command is None or mode == "hold")
+        binding_acks.append(
+            {
+                "resource_id": key[0],
+                "global_track_id": key[1],
+                "coalition_id": assignment.get("coalition_id"),
+                "coalition_version": assignment.get("coalition_version"),
+                "member_role": assignment.get("member_role"),
+                "guidance_command_present": command is not None,
+                "guidance_mode": mode,
+                "guidance_gate_reason": (
+                    None if command is None else command.get("gate_reason")
+                ),
+                "control_applied_to_world": command is not None,
+                "held": held,
+            }
+        )
+
+    extra_commands = sorted(set(commands_by_binding) - expected_bindings)
+    if extra_commands:
+        raise ValueError("D7 guidance batch contains bindings absent from D3 plan")
+
+    metadata = _runtime_mapping(plan.get("metadata", {}), "D3 plan metadata")
+    binding_ack_count = sum(
+        bool(item["guidance_command_present"]) for item in binding_acks
+    )
+    control_applied_count = sum(
+        bool(item["control_applied_to_world"]) for item in binding_acks
+    )
+    held_count = sum(bool(item["held"]) for item in binding_acks)
+    return {
+        "ack_timestamp": float(ack_timestamp),
+        "plan_id": plan_id,
+        "plan_version": plan_version,
+        "plan_created_at": float(plan.get("created_at", ack_timestamp)),
+        "plan_schema_version": str(
+            getattr(d3_publication, "schema_version", "")
+        ),
+        "accepted": True,
+        "status_code": "accepted_by_main_runtime",
+        "assignment_count": len(assignments),
+        "binding_ack_count": binding_ack_count,
+        "fully_bound_to_guidance": binding_ack_count == len(assignments),
+        "control_applied_binding_count": control_applied_count,
+        "held_binding_count": held_count,
+        "active_plan_owner": metadata.get("active_plan_owner"),
+        "owner_node_id": metadata.get("owner_node_id"),
+        "authority_epoch": metadata.get("authority_epoch"),
+        "lease_expires_at_s": metadata.get("lease_expires_at_s"),
+        "binding_acks": binding_acks,
+        "physical_outcome_available": False,
+        "reward_available": False,
+    }
+
+
+def _runtime_publication_payload(publication: Any, name: str) -> Mapping[str, Any]:
+    return _runtime_mapping(getattr(publication, "payload", None), name)
+
+
+def _runtime_mapping(value: Any, name: str) -> Mapping[str, Any]:
+    if not isinstance(value, Mapping):
+        raise ValueError(f"{name} must be a mapping")
+    return value
+
+
+def _nonnegative_int(value: Any, name: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, (int, np.integer)):
+        raise ValueError(f"{name} must be a non-negative integer")
+    result = int(value)
+    if result < 0:
+        raise ValueError(f"{name} must be a non-negative integer")
+    return result
 
 
 def _camera_platform_position(state: CameraRuntimeState, snapshot: Any) -> np.ndarray:

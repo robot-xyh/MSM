@@ -109,6 +109,10 @@ commit。
   准确率为 `0.621823`，因此 bundle 仅允许 development shadow。
 - D6 已完成正式数据 outcome/reward 分层和 detached sidecar。D4、D5 有相邻观测结果，
   但缺版本化动作采用/运行 ACK，reward 均为 0 条可用；PPO、反事实和因果训练保持关闭。
+- main 已新增真值隔离的 `scalable3d-assignment-plan-runtime-ack-v1`。每次 D3 新计划发布时，
+  main 校验同周期 D7 命令引用的 plan id/version，并逐分配记录命令存在、导引模式、门控原因、
+  世界控制回写和保持状态。错版本或额外绑定失败关闭。该 ACK 尚未进入冻结的 900-episode
+  正式数据，也没有物理 outcome/reward；后续新 episode 由 D6 按版本和时间窗离线归因。
 - main 已新增 `scalable3d-shared-seed-split-registry-v1`。100 个训练 seed 使用与 D3 v2
   一致的确定性 `60/20/20` 映射，并绑定原训练 seed 注册表 SHA。D4/D5 源外 canonical
   views 已建立，原数据不改写；D6 联合审计已通过 manifest/view/readiness/summary 层的

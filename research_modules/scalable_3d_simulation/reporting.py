@@ -281,6 +281,11 @@ def _write_episode_report(path: Path, result: EpisodeResult) -> Path:
         f"{int(summary.get('camera_command_issued_count', 0))} 条命令，确认应用 "
         f"{int(summary.get('camera_command_applied_count', 0))} 条，拒绝 "
         f"{int(summary.get('camera_command_rejected_count', 0))} 条。命令只调整相机指向与视场，不生成分配或全局航迹编号。",
+        "main 对 D3 新计划写入 "
+        f"{int(summary.get('assignment_plan_ack_count', 0))} 条运行时确认，覆盖 "
+        f"{int(summary.get('assignment_plan_binding_ack_count', 0))} 个分配绑定；其中 "
+        f"{int(summary.get('assignment_plan_control_applied_count', 0))} 个绑定形成 D7 命令，"
+        f"{int(summary.get('assignment_plan_hold_count', 0))} 个绑定保持。该确认只证明计划被运行时消费，不代表物理拦截结果或可归因奖励。",
         "",
         "## 阶段耗时",
         "",
