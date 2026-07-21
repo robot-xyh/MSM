@@ -21,7 +21,8 @@ active-vision writer/压缩为 `41.5623/43.2639/41.2271 s`，占总 staging 99.7
 编码和 D5 重复 finalization 审计子项已关闭，正式生成吞吐 P1 仍由 D5 active-vision writer
 阻塞。runner 已实现 episode 边界暂停、同计划/同提交恢复、连续 progress 与 staging index
 复核；3-episode `1+2` 分块回归和计划/重复 index 篡改负例通过。不得以降低采样、删除特征
-或放松真值隔离换取耗时。
+或放松真值隔离换取耗时。冻结 schedule 已采用 `round_robin_cells_v1`，每连续 45 个 episode
+覆盖一次完整的 9 场景 × 5 规模目录，首个恢复分块具备代表性。
 
 当前无新增 P0。900 episode、行为克隆/近端策略优化、20 个未见 seed、checkpoint、paired
 shadow 和模型准入仍未执行。main 在关闭 writer 并用首个正式代表分块验证恢复合同后，再连续

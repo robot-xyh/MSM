@@ -75,7 +75,7 @@ episode，总计 900 个。seed 1000-1019 完全保留给最终评估。正式�
 python3 research_modules/scalable_3d_simulation/run_learning_dataset.py \
   --schedule research_modules/scalable_3d_simulation/configs/learning_generation_balanced_v1.json \
   --formal \
-  --max-episodes-per-run 25 \
+  --max-episodes-per-run 45 \
   --output research_modules/scalable_3d_simulation/outputs/learning_generation_v1
 ```
 
@@ -84,6 +84,8 @@ python3 research_modules/scalable_3d_simulation/run_learning_dataset.py \
 校验 Git 提交、计划 SHA256、连续 sequence、在线安全结果和 batch episode index；计划变化、
 重复 episode、未索引或不完整制品均失败关闭。全部 900 个 cell 完成后才执行统一最终化。
 当前 3-episode 开发回归已验证 `1 + 2` 分块续跑和篡改拒绝，正式规模恢复仍需首个代表分块验证。
+冻结 schedule 使用 `round_robin_cells_v1`，每连续 45 个 episode 各覆盖一次 9 类场景和
+5 档规模，避免首个分块只运行单一场景或单一规模。
 
 正式预检要求完整 45 个场景/规模组合且每个组合至少 20 个 seed，同时记录 schedule SHA256。
 九场景存储门和三 seed 批次最终化门已经通过；正式生成吞吐门仍保持开放。当前 D5 主动

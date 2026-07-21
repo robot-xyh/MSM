@@ -163,7 +163,9 @@ commit。
 - 首版正式训练 schedule 已冻结为 `learning_generation_balanced_v1.json`：100 个生成 seed
   通过五个分块按场景/规模均衡轮换，每个 45 个 cell 各有 20 个 seed，共 900 episode；
   seed 1000-1019 保留为最终评估集。runner 在开始前核对完整笛卡尔目录、逐 cell 分母、
-  全局 seed 隔离和 schedule SHA256。该 schedule 只冻结实验设计，不表示容量门或训练已完成。
+  全局 seed 隔离和 schedule SHA256。执行顺序采用 `round_robin_cells_v1`，每连续 45 个
+  episode 各覆盖一次完整场景/规模目录，便于代表性分块检查。该 schedule 只冻结实验设计，
+  不表示容量门或训练已完成。
 - main 已持久化相机指向和视场，D5 每个视觉周期输出带计划、联盟、通信版本和有效期的
   相机命令。相机执行器只接受非过时命令并发布 ACK；学习 disabled/shadow/assist 均保留
   确定性规则安全外壳。5v5 开发冒烟的 84 条命令及 200v200 单 seed 开发诊断的 1872 条

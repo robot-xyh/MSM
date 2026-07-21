@@ -95,6 +95,9 @@ D5 主动视觉默认 20% 测试切分可提供至少 20 个唯一未见 seed。
 progress 与 batch episode index。未索引、重复或不完整 staging 失败关闭；只有全部 cell
 完成后才执行统一数据集最终化。正式标签仍绑定最终生成摘要和冻结 schedule，不以单个分块
 替代完整批次证据。
+冻结的 balanced schedule 显式记录 `round_robin_cells_v1`。每轮依次遍历全部声明 cell 的
+同一 seed offset，因此连续 45 个 episode 各覆盖一次 9 类场景和 5 档规模；执行顺序变化会
+改变 schedule SHA256 和 generation plan，已有 checkpoint 必须拒绝恢复。
 
 批次学习导出在成功最终化后把 episode 索引固化为根目录 `episodes.jsonl`，并删除已经转换
 为正式 D3 数据集的重复 staging。任一 finalizer 异常时保留尚未消费的 staging；D4 因 seed
