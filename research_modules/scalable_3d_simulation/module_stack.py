@@ -9,7 +9,7 @@ shared episode clock and translates only versioned, truth-free DTOs.
 from __future__ import annotations
 
 from collections import Counter
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import math
 from time import perf_counter
 from typing import Any, Iterable, Mapping
@@ -930,6 +930,70 @@ class IntegratedScalableModuleStack:
             ),
         )
 
+    def record_active_vision_runtime_feedback(
+        self,
+        *,
+        timestamp_s: float,
+        camera_states: Iterable[CameraRuntimeState],
+        acknowledgements: Iterable[Mapping[str, Any]],
+    ) -> None:
+        """Attach post-command camera state to the latest active-vision frame.
+
+        D5 decides from the pre-command snapshot. Main applies the bounded camera
+        command immediately afterwards, so the learning sample must carry the
+        resulting runtime state alongside that command's acknowledgement.
+        """
+
+        if not self.stack_config.capture_learning_artifacts:
+            return
+        if not self._d5_active_vision_learning_frames:
+            raise RuntimeError("active-vision feedback has no captured decision frame")
+
+        frame = self._d5_active_vision_learning_frames[-1]
+        timestamp = float(timestamp_s)
+        if abs(float(frame.timestamp_s) - timestamp) > _EPS:
+            raise ValueError("active-vision feedback timestamp does not match latest frame")
+
+        state_by_camera = {state.camera_id: state for state in camera_states}
+        ack_by_camera: dict[str, Mapping[str, Any]] = {}
+        for acknowledgement in acknowledgements:
+            camera_id = str(acknowledgement.get("camera_id", ""))
+            if not camera_id or camera_id in ack_by_camera:
+                raise ValueError("active-vision feedback has missing or duplicate camera ACK")
+            ack_by_camera[camera_id] = acknowledgement
+
+        expected_camera_ids = {
+            decision.effective_action.camera_id for decision in frame.decisions
+        }
+        if set(ack_by_camera) != expected_camera_ids:
+            raise ValueError("active-vision feedback ACK set does not match decisions")
+
+        feedback: list[ActiveVisionCameraFeedbackV1] = []
+        for prior in frame.camera_feedback:
+            camera_id = prior.camera_state.camera_id
+            runtime_state = state_by_camera.get(camera_id)
+            acknowledgement = ack_by_camera.get(camera_id)
+            if runtime_state is None or acknowledgement is None:
+                raise ValueError("active-vision feedback is missing a runtime camera state")
+            if acknowledgement.get("status") == "applied" and int(
+                runtime_state.last_communication_version
+            ) != int(acknowledgement["command_version"]):
+                raise ValueError("applied camera ACK disagrees with runtime camera state")
+            accepted_version = int(runtime_state.last_communication_version)
+            feedback.append(
+                ActiveVisionCameraFeedbackV1(
+                    camera_state=self._active_vision_camera_state(runtime_state),
+                    last_accepted_command_version=(
+                        None if accepted_version == 0 else accepted_version
+                    ),
+                )
+            )
+
+        self._d5_active_vision_learning_frames[-1] = replace(
+            frame,
+            camera_feedback=tuple(feedback),
+        )
+
     def d1_consistency_evidence_records(self) -> tuple[Any, ...]:
         """Return the final truth-free D1 evidence snapshot for offline scoring."""
 
@@ -1047,6 +1111,9 @@ class IntegratedScalableModuleStack:
         self.latest_active_vision_snapshot = snapshot
         self.latest_active_vision_decisions = decisions
         if self.stack_config.capture_learning_artifacts:
+            runtime_camera_by_id = {
+                camera.camera_id: camera for camera in step_input.cameras
+            }
             self._d5_active_vision_learning_frames.append(
                 D5ActiveVisionLearningFrame(
                     frame_index=len(self._d5_active_vision_learning_frames),
@@ -1054,7 +1121,18 @@ class IntegratedScalableModuleStack:
                     snapshot=snapshot,
                     decisions=decisions,
                     camera_feedback=tuple(
-                        ActiveVisionCameraFeedbackV1(camera_state=camera)
+                        ActiveVisionCameraFeedbackV1(
+                            camera_state=camera,
+                            last_accepted_command_version=(
+                                None
+                                if runtime_camera_by_id[
+                                    camera.camera_id
+                                ].last_communication_version == 0
+                                else runtime_camera_by_id[
+                                    camera.camera_id
+                                ].last_communication_version
+                            ),
+                        )
                         for camera in cameras
                     ),
                 )

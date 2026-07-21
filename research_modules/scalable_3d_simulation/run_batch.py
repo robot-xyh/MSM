@@ -112,6 +112,7 @@ def main() -> int:
                         manifest=result.manifest,
                         artifacts=artifact_provider(),
                         offline_truth_labels=result.offline_truth_labels,
+                        online_messages=result.online_messages,
                     )
                 results.append(result)
                 print(

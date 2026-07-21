@@ -252,6 +252,7 @@ def main(argv: list[str] | None = None) -> int:
             manifest=result.manifest,
             artifacts=resolved.stack.learning_artifacts(),
             offline_truth_labels=result.offline_truth_labels,
+            online_messages=result.online_messages,
         )
         artifact_stage_wall_s = time.perf_counter() - staging_started
         row = {

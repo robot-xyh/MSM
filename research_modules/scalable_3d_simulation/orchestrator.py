@@ -300,6 +300,20 @@ class Scalable3DEpisodeRunner:
                         snapshot=snapshot,
                         current_timestamp=current_time,
                     )
+                    feedback_recorder = getattr(
+                        self.module_stack,
+                        "record_active_vision_runtime_feedback",
+                        None,
+                    )
+                    if callable(feedback_recorder) and camera_acks:
+                        feedback_recorder(
+                            timestamp_s=current_time,
+                            camera_states=tuple(
+                                camera_states[camera_id]
+                                for camera_id in sorted(camera_states)
+                            ),
+                            acknowledgements=camera_acks,
+                        )
                     for ack in camera_acks:
                         camera_command_ack_count += 1
                         if ack["status"] == "applied":
@@ -499,6 +513,7 @@ def run_episode(
             manifest=result.manifest,
             artifacts=artifact_provider(),
             offline_truth_labels=result.offline_truth_labels,
+            online_messages=result.online_messages,
         )
         paths.update(
             {f"learning_{key}": value for key, value in learning_paths.items()}
@@ -756,6 +771,7 @@ def _apply_camera_commands(
                 "plan_version": command.plan_version,
                 "coalition_version": command.coalition_version,
                 "communication_version": command.communication_version,
+                "command_version": command.communication_version,
                 "intent": command.intent,
                 "target_global_track_id": command.target_global_track_id,
                 "requested_mode": command.requested_mode,

@@ -135,6 +135,7 @@ class BatchLearningArtifactWriter:
         manifest: EpisodeManifest,
         artifacts: IntegratedLearningArtifacts,
         offline_truth_labels: Iterable[OfflineTruthLabel],
+        online_messages: Iterable[Any] = (),
     ) -> Mapping[str, Any]:
         """Append one complete episode without splitting frames across datasets."""
 
@@ -181,6 +182,7 @@ class BatchLearningArtifactWriter:
             config=config,
             manifest=manifest,
             active_vision_frames=artifacts.d5_active_vision_frames,
+            online_messages=tuple(online_messages),
             generation_config={
                 "schema_version": LEARNING_EXPORT_SCHEMA_VERSION,
                 "source": "scalable_3d_multi_seed_batch",
@@ -355,6 +357,7 @@ def write_episode_learning_artifacts(
     manifest: EpisodeManifest,
     artifacts: IntegratedLearningArtifacts,
     offline_truth_labels: Iterable[OfflineTruthLabel],
+    online_messages: Iterable[Any] = (),
 ) -> dict[str, Path]:
     """Persist D3/D4 truth-free features and physically separate D5 labels."""
 
@@ -403,6 +406,7 @@ def write_episode_learning_artifacts(
         config=config,
         manifest=manifest,
         active_vision_frames=artifacts.d5_active_vision_frames,
+        online_messages=tuple(online_messages),
     )
     paths.update(
         {f"d5_active_vision_{key}": value for key, value in d5_active_paths.items()}
@@ -711,6 +715,7 @@ def _write_d5_active_vision_episode(
     config: ScenarioConfig,
     manifest: EpisodeManifest,
     active_vision_frames: tuple[Any, ...],
+    online_messages: tuple[Any, ...] = (),
     generation_config: Mapping[str, Any] | None = None,
 ) -> tuple[dict[str, Path], dict[str, Any]]:
     """Stage one complete D5 active-vision episode with detached labels."""
@@ -724,6 +729,7 @@ def _write_d5_active_vision_episode(
         }
     from research_modules.d5_terminal_association.src.d5_terminal_association import (
         ActiveVisionEpisodeRecordV1,
+        ActiveVisionRuntimeAckV1,
         ActiveVisionSourceIdentityV1,
         active_vision_sample_from_decision,
         stage_active_vision_episode_record,
@@ -731,7 +737,11 @@ def _write_d5_active_vision_episode(
         unavailable_active_vision_offline_labels,
     )
 
+    acknowledgements = _active_vision_acknowledgements(online_messages)
     samples = []
+    joined_ack_count = 0
+    accepted_ack_count = 0
+    rejected_ack_count = 0
     for frame in sorted(
         active_vision_frames,
         key=lambda item: (int(item.frame_index), float(item.timestamp_s)),
@@ -754,6 +764,34 @@ def _write_d5_active_vision_episode(
                 f"{manifest.episode_id}:active-vision:"
                 f"{int(frame.frame_index):06d}:{camera_id}"
             )
+            ack_payload = acknowledgements.pop(
+                (
+                    camera_id,
+                    float(frame.timestamp_s),
+                    int(decision.plan_version),
+                    int(decision.coalition_version),
+                    int(decision.communication_version),
+                ),
+                None,
+            )
+            runtime_ack = None
+            if ack_payload is not None:
+                runtime_ack = ActiveVisionRuntimeAckV1(
+                    sample_key=key_prefix,
+                    camera_id=camera_id,
+                    command_version=int(ack_payload["command_version"]),
+                    ack_timestamp=float(ack_payload["ack_timestamp"]),
+                    accepted=bool(ack_payload["status"] == "applied"),
+                    status_code=str(ack_payload["reason"]),
+                    plan_version=int(ack_payload["plan_version"]),
+                    coalition_version=int(ack_payload["coalition_version"]),
+                    communication_version=int(
+                        ack_payload["communication_version"]
+                    ),
+                )
+                joined_ack_count += 1
+                accepted_ack_count += int(runtime_ack.accepted)
+                rejected_ack_count += int(not runtime_ack.accepted)
             samples.append(
                 active_vision_sample_from_decision(
                     sample_key=key_prefix,
@@ -763,8 +801,13 @@ def _write_d5_active_vision_episode(
                     snapshot=frame.snapshot,
                     decision=decision,
                     camera_feedback=feedback,
+                    runtime_ack=runtime_ack,
                 )
             )
+    if acknowledgements:
+        raise ValueError(
+            "active-vision runtime ACKs did not match a captured learning decision"
+        )
     record = ActiveVisionEpisodeRecordV1(
         scenario_version=config.scenario_version,
         seed=config.seed,
@@ -798,6 +841,12 @@ def _write_d5_active_vision_episode(
         record.episode_uid,
         unavailable_active_vision_offline_labels(record),
     )
+    if joined_ack_count == len(samples):
+        runtime_ack_status = "joined"
+    elif joined_ack_count:
+        runtime_ack_status = "partial"
+    else:
+        runtime_ack_status = "not_joined"
     return {
         "config": root / "dataset_config.json",
         "online_record": root / str(descriptor["online_file"]),
@@ -808,10 +857,57 @@ def _write_d5_active_vision_episode(
         "staged_frame_count": len(active_vision_frames),
         "sample_count": len(samples),
         "offline_reward_status": "unavailable",
-        "runtime_ack_status": "not_joined",
+        "runtime_ack_status": runtime_ack_status,
+        "runtime_ack_count": joined_ack_count,
+        "runtime_ack_accepted_count": accepted_ack_count,
+        "runtime_ack_rejected_count": rejected_ack_count,
         "dataset_finalized": False,
         "dataset_finalization_reason": "requires_multi_seed_offline_join",
     }
+
+
+def _active_vision_acknowledgements(
+    online_messages: tuple[Any, ...],
+) -> dict[tuple[str, float, int, int, int], Mapping[str, Any]]:
+    """Index truth-free camera ACKs by the decision identity used at export."""
+
+    acknowledgements: dict[
+        tuple[str, float, int, int, int], Mapping[str, Any]
+    ] = {}
+    required = {
+        "camera_id",
+        "issued_timestamp",
+        "ack_timestamp",
+        "plan_version",
+        "coalition_version",
+        "communication_version",
+        "command_version",
+        "status",
+        "reason",
+    }
+    for message in online_messages:
+        if getattr(message, "topic", None) != "runtime.camera_command_ack":
+            continue
+        payload = getattr(message, "payload", None)
+        if not isinstance(payload, Mapping) or not required.issubset(payload):
+            raise ValueError("active-vision runtime ACK payload is incomplete")
+        key = (
+            str(payload["camera_id"]),
+            float(payload["issued_timestamp"]),
+            int(payload["plan_version"]),
+            int(payload["coalition_version"]),
+            int(payload["communication_version"]),
+        )
+        if key in acknowledgements:
+            raise ValueError("duplicate active-vision runtime ACK identity")
+        if int(payload["command_version"]) != int(
+            payload["communication_version"]
+        ):
+            raise ValueError(
+                "active-vision command version must equal its communication version"
+            )
+        acknowledgements[key] = payload
+    return acknowledgements
 
 
 def _write_json(path: Path, payload: Any) -> None:

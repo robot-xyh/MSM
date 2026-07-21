@@ -64,6 +64,10 @@ def test_episode_exports_separate_d3_d4_d5_learning_artifacts(tmp_path) -> None:
     assert summary["d5"]["staged_frame_count"] >= 1
     assert summary["d5_active_vision"]["staged_frame_count"] >= 1
     assert summary["d5_active_vision"]["offline_reward_status"] == "unavailable"
+    assert summary["d5_active_vision"]["runtime_ack_status"] == "joined"
+    assert summary["d5_active_vision"]["runtime_ack_count"] == summary[
+        "d5_active_vision"
+    ]["sample_count"]
     assert (export_root / "d3_assignment" / "staging_frames.jsonl").is_file()
     assert (export_root / "d4_region_frames.jsonl").is_file()
     graph_files = tuple((export_root / "d5_tracklet_graph" / "graphs").glob("*.npz"))
@@ -76,7 +80,37 @@ def test_episode_exports_separate_d3_d4_d5_learning_artifacts(tmp_path) -> None:
     active_online = next((active_root / "online").glob("*.online.jsonl.gz"))
     active_offline = next((active_root / "offline").glob("*.offline.json"))
     with gzip.open(active_online, mode="rt", encoding="utf-8") as stream:
-        assert "truth_entity_id" not in stream.read()
+        active_online_rows = [json.loads(line) for line in stream]
+    assert "truth_entity_id" not in json.dumps(active_online_rows)
+    active_samples = [
+        row for row in active_online_rows if row.get("record_type") == "sample"
+    ]
+    assert active_samples
+    assert all(row["runtime_ack"]["accepted"] is True for row in active_samples)
+    assert all(
+        row["runtime_ack"]["command_version"]
+        == row["runtime_ack"]["communication_version"]
+        for row in active_samples
+    )
+    assert all(
+        row["runtime_ack"]["command_version"]
+        == next(
+            feedback["value"]["last_accepted_command_version"]
+                for feedback in active_online_rows
+                if feedback.get("record_type") == "camera_feedback"
+                and feedback["object_key"] == row["camera_feedback_key"]
+        )
+        for row in active_samples
+    )
+    feedback_rows = [
+        row
+        for row in active_online_rows
+        if row.get("record_type") == "camera_feedback"
+    ]
+    assert any(
+        row["value"]["last_accepted_command_version"] is not None
+        for row in feedback_rows
+    )
     active_offline_payload = json.loads(active_offline.read_text(encoding="utf-8"))
     assert {
         item["reward"]["available"]
@@ -113,6 +147,7 @@ def test_batch_export_finalizes_whole_seed_d3_and_d5_datasets(tmp_path) -> None:
             manifest=replace(result.manifest, repository_dirty=False),
             artifacts=stack.learning_artifacts(),
             offline_truth_labels=result.offline_truth_labels,
+            online_messages=result.online_messages,
         )
 
     paths = writer.finalize()
