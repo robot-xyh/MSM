@@ -94,6 +94,10 @@ def write_capacity_probe_report(
         dataset_bytes=dataset_bytes,
         component_bytes=component_bytes,
         include_plots=write_plots,
+        timed_output_name=timed_root.name,
+        baseline_timed_output_name=(
+            None if baseline_timed_root is None else baseline_timed_root.name
+        ),
     )
     paths["report"] = report_path
     return paths
@@ -317,6 +321,8 @@ def _write_report(
     dataset_bytes: int,
     component_bytes: Mapping[str, int],
     include_plots: bool,
+    timed_output_name: str,
+    baseline_timed_output_name: str | None,
 ) -> None:
     learning = scenario_summary["learning_export_summary"]
     timing = timed_summary["timing_summary"]
@@ -339,6 +345,12 @@ def _write_report(
         else stage_components["D5 主动视觉"]
         / float(timing["artifact_stage_wall_s"])
     )
+    episode_run_wall_s = float(timing["episode_run_wall_s"])
+    data_pipeline_wall_s = (
+        float(timing["artifact_stage_wall_s"])
+        + float(timing["finalization_wall_s"])
+    )
+    data_pipeline_dominates = data_pipeline_wall_s >= episode_run_wall_s
     if baseline_timing is None:
         timing_conclusion = (
             f"名义场景三 seed 的完整生成耗时为 "
@@ -364,14 +376,24 @@ def _write_report(
             f"{float(baseline_timing['episode_run_wall_s']):.1f} 秒变为 "
             f"{float(timing['episode_run_wall_s']):.1f} 秒，基本不变。"
         )
-        gate_conclusion = (
-            "存储门和批次最终化门已通过。正式生成吞吐门暂不关闭："
-            f"D5 主动视觉写入占本轮 staging 的 {active_stage_share:.1%}，"
-            "若 900 个 episode 全部按 200 对 200 计，运行时间保守上界约 "
-            f"{all_200_runtime_upper_hours:.1f} 小时。runner 已实现 episode 边界分块恢复并通过"
-            "三 episode 开发回归；启动正式批次前仍需收敛主动视觉写入，并用首个正式代表"
-            "分块验证恢复合同。"
-        )
+        if data_pipeline_dominates:
+            gate_conclusion = (
+                "存储门和批次最终化门已通过。数据管线总耗时仍高于 episode 计算耗时，"
+                "正式代表分块启动门暂不关闭："
+                f"D5 主动视觉写入占本轮 staging 的 {active_stage_share:.1%}，"
+                "若 900 个 episode 全部按 200 对 200 计，运行时间保守上界约 "
+                f"{all_200_runtime_upper_hours:.1f} 小时。"
+            )
+        else:
+            gate_conclusion = (
+                "存储、最终化和代表分块启动门已通过。制品写入与最终化合计 "
+                f"{data_pipeline_wall_s:.1f} 秒，低于 episode 计算的 "
+                f"{episode_run_wall_s:.1f} 秒，数据管线不再主导总耗时。"
+                f"D5 主动视觉仍占 staging 的 {active_stage_share:.1%}，但绝对耗时已收敛。"
+                "若 900 个 episode 全部按 200 对 200 计，运行时间保守上界约 "
+                f"{all_200_runtime_upper_hours:.1f} 小时。首个 45-episode 代表分块可以启动；"
+                "完整 900 episode、20 个未见 seed 和 200 对 200 实时性目标仍保持开放。"
+            )
     lines = [
         "# 三维规模化仿真容量与运行时报告",
         "",
@@ -478,10 +500,34 @@ def _write_report(
                 f"| {label} | {value:.3f} | "
                 f"{value / float(timing['artifact_stage_wall_s']):.1%} |"
             )
+    per_episode_stage = [
+        float(row["artifact_stage_wall_s"])
+        for row in timed_rows
+        if "artifact_stage_wall_s" in row
+    ]
+    per_episode_active = [
+        float(row["d5_active_vision_stage_wall_s"])
+        for row in timed_rows
+        if "d5_active_vision_stage_wall_s" in row
+    ]
+    if per_episode_stage and per_episode_active:
+        stage_detail = (
+            "本轮三组 nominal seed 的单例制品写入为 "
+            + "/".join(f"{value:.2f}" for value in per_episode_stage)
+            + " 秒，其中 D5 主动视觉为 "
+            + "/".join(f"{value:.2f}" for value in per_episode_active)
+            + " 秒。D5 仍是 staging 的主要组件，但数据处理总耗时已低于 episode 计算耗时。"
+        )
+    else:
+        stage_detail = (
+            "本轮进度文件未提供完整的单例写入分项；报告只采用批次汇总，不推断组件瓶颈。"
+        )
     lines.extend(
         [
             "",
-            "优化后三组 nominal seed 的单例制品写入时间为 41.7、43.4 和 41.4 秒。D3、D4 和 D5 跨视角图写入合计不足 0.2 秒，剩余时间集中在 D5 主动视觉在线记录的构造和压缩。九场景旧长跑中曾出现一次约 51 分钟的异常停顿，现有日志不能判定为系统抢占还是写盘阻塞，不将该停顿线性外推。",
+            stage_detail,
+            "",
+            "九场景旧长跑中曾出现一次约 51 分钟的异常停顿，现有日志不能判定为系统抢占还是写盘阻塞，不将该停顿线性外推。",
             "",
             "## 图表",
             "",
@@ -502,18 +548,20 @@ def _write_report(
         [
             "## 后续工作",
             "",
-            "1. 保持 D3 当前导出路径和 D5 最终化复核，继续作为回归门。",
-            "2. 剖析并优化 D5 主动视觉 episode writer/压缩，不降低采样、不删除特征、不放松真值隔离。",
-            "3. 使用可恢复分块入口复跑五档规模和九类场景的代表 cell，验证正式计划恢复合同。",
-            "4. 吞吐门通过后启动 900 episode；100 个生成 seed 用于训练，1000-1019 只用于最终评估。",
+            "1. 保持 D3、D4、D5 当前导出与独立审计路径，继续作为数据合同回归门。",
+            "2. 启动首个 45-episode 代表分块，核对五档规模、九类场景、检查点和恢复合同。",
+            "3. 首块通过后按同一冻结计划恢复并完成 900 episode；100 个生成 seed 用于训练，1000-1019 只用于最终评估。",
+            "4. 单独剖析 episode 计算热点；不得用降低采样、删除特征或放松真值隔离换取速度。",
             "",
             "## 文件索引",
             "",
             "- 九场景进度：`outputs/capacity_probe_v2/all_scenarios_200v200/episode_progress.csv`",
             "- 九场景汇总：`outputs/capacity_probe_v2/all_scenarios_200v200/generation_summary.json`",
-            "- 优化前 timed 汇总：`outputs/capacity_probe_v2/nominal_timed/generation_summary.json`",
-            "- 优化后 timed 进度：`outputs/capacity_probe_v2/nominal_timed_postopt/episode_progress.csv`",
-            "- 优化后 timed 汇总：`outputs/capacity_probe_v2/nominal_timed_postopt/generation_summary.json`",
+            "- 优化前 timed 汇总：`outputs/capacity_probe_v2/"
+            + (baseline_timed_output_name or "<未提供>")
+            + "/generation_summary.json`",
+            f"- 当前 timed 进度：`outputs/capacity_probe_v2/{timed_output_name}/episode_progress.csv`",
+            f"- 当前 timed 汇总：`outputs/capacity_probe_v2/{timed_output_name}/generation_summary.json`",
             "- 固化结果表：`docs/SCALABLE_3D_CAPACITY_PROBE_RESULTS.csv`",
         ]
     )
@@ -561,7 +609,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--timed-output",
         type=Path,
-        default=module_root / "outputs" / "capacity_probe_v2" / "nominal_timed_postopt",
+        default=module_root / "outputs" / "capacity_probe_v2" / "nominal_timed_postopt2",
     )
     parser.add_argument(
         "--baseline-timed-output",

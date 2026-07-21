@@ -88,9 +88,10 @@ python3 research_modules/scalable_3d_simulation/run_learning_dataset.py \
 5 档规模，避免首个分块只运行单一场景或单一规模。
 
 正式预检要求完整 45 个场景/规模组合且每个组合至少 20 个 seed，同时记录 schedule SHA256。
-九场景存储门和三 seed 批次最终化门已经通过；正式生成吞吐门仍保持开放。当前 D5 主动
-视觉 writer/压缩占 200v200 staging 的 99% 以上。在 writer 收敛并完成首个正式代表分块前，
-不连续启动上述完整批次。
+九场景存储门、三 seed 批次最终化门和代表分块启动门已经通过。D5 主动视觉仍占最新
+200v200 staging 的 96.8%，但三 seed 只需 12.04 秒，写入与最终化合计低于 episode 计算，
+不再形成系统级阻塞。先执行一个 45-episode 正式代表分块并核对恢复证据；首块通过前不连续
+启动其余完整批次。
 
 学习模型默认关闭。显式研究运行可增加下列参数；bundle 缺失、校验失败、分布外、低置信或
 超时均保留规则路径：
@@ -251,12 +252,14 @@ seed 只有 1 个而以 `insufficient_unseen_test_seeds` 保留 staging，符合
 5.54 GB。D3、D4 和 D5 跨视角图正常最终化，D5 主动视觉因不足 20 个未见测试 seed 保留
 staging，符合失败关闭。
 
-同一 nominal seed 930-932 的优化前后计时显示，总耗时由 467.8 秒降至 262.3 秒，staging
-由 225.9 秒降至 126.5 秒，批次最终化由 116.6 秒降至 7.7 秒；episode 运行保持在约
-125-128 秒。优化后 D3、D4、D5 图的三 seed staging 合计不足 0.5 秒，D5 主动视觉写入为
-126.1 秒，占 staging 的 99.7%。因此存储和最终化门已关闭，吞吐门仍由主动视觉 writer/
-压缩阻塞。runner 已支持 episode 边界分块暂停和严格恢复，正式规模恢复证据仍待首个代表
-分块取得。详细证据见 `docs/SCALABLE_3D_CAPACITY_AND_RUNTIME_REPORT_CN.md`。
+同一 nominal seed 930-932 的 clean-tree 计时经过两轮优化后，总耗时由 467.8 秒降至
+144.6 秒，staging 由 225.9 秒降至 12.4 秒，批次最终化由 116.6 秒降至 7.3 秒；episode
+运行保持在 124.7-125.2 秒。第二轮 D5 主动视觉写入为 12.04 秒，三场分别为
+4.05/3.99/4.00 秒。D5 仍占 staging 的 96.8%，但写入与最终化合计 19.7 秒，已低于
+episode 计算的 124.7 秒，不再主导总耗时。存储、最终化和首个正式代表分块启动门已经
+通过；完整 900 episode、20 个未见 seed 和 200v200 实时性目标仍开放。runner 已支持
+episode 边界分块暂停和严格恢复，下一项证据是首个 45-episode 正式代表分块。详细结果见
+`docs/SCALABLE_3D_CAPACITY_AND_RUNTIME_REPORT_CN.md`。
 
 每个物理步结束后，离线评估侧按三维 5 米门限登记唯一接近事件。事件中的真值目标号只
 写入 `offline_proximity_intercepts.jsonl`，不进入在线总线；D6 还需结合分配与身份映射

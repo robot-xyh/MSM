@@ -123,7 +123,7 @@ def test_capacity_report_preserves_measured_results_without_plots(tmp_path) -> N
     assert "延迟噪声" in report
     assert "由 12.0 秒降至 9.0 秒" in report
     assert "D5 主动视觉" in report
-    assert "正式生成吞吐门暂不关闭" in report
+    assert "正式代表分块启动门暂不关闭" in report
     assert paths["results_csv"].read_text(encoding="utf-8-sig").startswith(
         "场景,seed,实时因子"
     )

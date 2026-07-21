@@ -153,13 +153,14 @@ commit。
   最终学习目录 55.36 MB；全部 900 例均按该平均值计算的存储保守上界为 5.54 GB。
   D3、D4 和 D5 跨视角图正常最终化，D5 主动视觉因不足 20 个未见测试 seed 保留 staging。
   存储门已通过，5 GB 运行中停止门继续保留。
-- nominal seed 930-932 的 clean-tree 优化复测中，总耗时 `467.8→262.3 s`，staging
-  `225.9→126.5 s`，批次 finalization `116.6→7.7 s`；episode run `125.2→128.0 s`。
-  D3、D4 和 D5 图三 seed staging 合计不足 0.5 秒，D5 主动视觉 writer/压缩为 126.1 秒，
-  占 staging 99.7%。因此最终化门已通过，正式生成吞吐门仍开放；不得通过降低采样、删除
-  特征或放松真值隔离缩短时间。runner 已实现 episode 边界暂停、同计划/同提交恢复、连续
-  progress 与 staging index 复核；3-episode `1+2` 分块回归及计划/重复 index 篡改负例通过。
-  下一步先优化 writer，再用首个正式代表分块验证恢复合同，然后启动后续 900 episode。
+- nominal seed 930-932 的第二轮 clean-tree 复测中，总耗时进一步达到 `467.8→144.6 s`，
+  staging `225.9→12.4 s`，批次 finalization `116.6→7.3 s`；episode run
+  `125.2→124.7 s`。D5 主动视觉三 seed staging 为 `4.05/3.99/4.00 s`，合计 12.04 秒。
+  它仍占 staging 96.8%，但制品写入与最终化合计 19.7 秒，低于 episode 计算 124.7 秒，
+  D5 writer 系统级阻塞已关闭。不得通过降低采样、删除特征或放松真值隔离继续换取速度。
+  runner 已实现 episode 边界暂停、同计划/同提交恢复、连续 progress 与 staging index 复核；
+  3-episode `1+2` 分块回归及计划/重复 index 篡改负例通过。下一步启动首个 45-episode
+  正式代表分块，验证冻结 schedule 和恢复合同；完整 900 episode 与实时性目标仍开放。
 - 首版正式训练 schedule 已冻结为 `learning_generation_balanced_v1.json`：100 个生成 seed
   通过五个分块按场景/规模均衡轮换，每个 45 个 cell 各有 20 个 seed，共 900 episode；
   seed 1000-1019 保留为最终评估集。runner 在开始前核对完整笛卡尔目录、逐 cell 分母、

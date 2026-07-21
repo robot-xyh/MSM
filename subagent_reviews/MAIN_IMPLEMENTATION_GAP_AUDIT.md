@@ -13,20 +13,20 @@
 seed 而保留 staging。九个 episode 的最终学习目录为 55.36 MB；全部 900 例均按本轮
 200v200 平均值计算的存储保守上界为 5.54 GB。存储 P1 门已关闭，5 GB 运行中停止门保留。
 
-同一 nominal seed 930-932 的优化前后 clean-tree 复测中，完整生成由 `467.8007 s` 降至
-`262.2866 s`，staging 由 `225.9243 s` 降至 `126.4682 s`，批次 finalization 由
-`116.5624 s` 降至 `7.7377 s`；episode run 为 `125.2205→127.9871 s`。D3 三 seed
-staging 为 `0.0917/0.1129/0.0999 s`，D5 graph 为 `0.0250/0.0259/0.0290 s`；D5
-active-vision writer/压缩为 `41.5623/43.2639/41.2271 s`，占总 staging 99.7%。D3 重复
-编码和 D5 重复 finalization 审计子项已关闭，正式生成吞吐 P1 仍由 D5 active-vision writer
-阻塞。runner 已实现 episode 边界暂停、同计划/同提交恢复、连续 progress 与 staging index
-复核；3-episode `1+2` 分块回归和计划/重复 index 篡改负例通过。不得以降低采样、删除特征
-或放松真值隔离换取耗时。冻结 schedule 已采用 `round_robin_cells_v1`，每连续 45 个 episode
-覆盖一次完整的 9 场景 × 5 规模目录，首个恢复分块具备代表性。
+同一 nominal seed 930-932 的第二轮 clean-tree 复测由提交
+`45b36500dc3c6935b1f116614993e291041eb12d` 产生，完整生成达到 `467.8007→144.5513 s`，
+staging `225.9243→12.4372 s`，批次 finalization `116.5624→7.2777 s`；episode run
+`125.2205→124.7415 s`。D5 active-vision 三 seed 为
+`4.0494/3.9898/3.9995 s`，由上一轮 `41.5623/43.2639/41.2271 s` 降低约一个数量级。
+三场均为有限状态、`repository_dirty=false`、在线真值使用 0。D5 仍占 staging 96.8%，
+但写入与最终化合计 19.7 秒，低于 episode 计算 124.7 秒，D5 writer 系统级 P1 阻塞关闭。
+runner 已实现 episode 边界暂停、同计划/同提交恢复、连续 progress 与 staging index 复核；
+3-episode `1+2` 分块回归和计划/重复 index 篡改负例通过。冻结 schedule 采用
+`round_robin_cells_v1`，每连续 45 个 episode 覆盖一次完整的 9 场景 × 5 规模目录。
 
-当前无新增 P0。900 episode、行为克隆/近端策略优化、20 个未见 seed、checkpoint、paired
-shadow 和模型准入仍未执行。main 在关闭 writer 并用首个正式代表分块验证恢复合同后，再连续
-执行冻结 schedule。
+当前无新增 P0。代表分块启动门已经通过；900 episode、行为克隆/近端策略优化、20 个未见
+seed、checkpoint、paired shadow 和模型准入仍未执行。main 下一步启动首个 45-episode
+正式代表分块，核对冻结目录、检查点和恢复合同，通过后继续执行冻结 schedule。
 
 ## 2026-07-20 三维 D1/D2/D6 真值隔离评估闭环
 
@@ -68,15 +68,16 @@ main 新增 `scalable3d-learning-generation-plan-v1` 流式生成入口。nomina
 1/2/3、6 个 2 秒开发 episode 全部有限且在线真值使用为 0；D3/D4/D5 图成功落盘，主动视觉
 107 帧因测试 seed 只有 1 个按预期不最终化。正式模式已在启动前检查完整场景/规模、训练与
 保留评估 seed 零重叠、干净工作树、忽略输出目录及 D5 至少 20 个未见测试 seed。开放 P1
-是 D6 outcome/counterfactual 回填、训练与模型准入。后续 clean-tree 九场景和三 seed 优化
-复测已经关闭存储与 finalization 子项；当前容量/吞吐状态以本文顶部专项为准。剩余 P1 是
-D5 active-vision writer/压缩、正式分块恢复证据，以及 900 episode 的运行与训练。
+是 D6 outcome/counterfactual 回填、训练与模型准入。后续 clean-tree 九场景和两轮三 seed
+优化复测已经关闭存储、finalization 和 D5 writer 系统级子项；当前容量/吞吐状态以本文顶部
+专项为准。剩余 P1 是首个正式 45-episode 分块恢复证据，以及 900 episode 的运行、标签回填
+和训练。
 
 main 已冻结 `scalable3d-balanced-curriculum-v1`：100 个生成 seed 均衡进入 45 个场景/规模
 cell，每 cell 20 个、总计 900 episode；seed 1000-1019 只用于最终评估。正式预检现会拒绝
 缺失交叉 cell、cell 分母不足、训练/评估 seed 交集和 D5 未见 seed 不足，并记录 schedule
-SHA256。runner 的可恢复分块软件合同已完成；D5 writer 收敛和首个正式代表分块验证前不得连续
-执行完整批次。
+SHA256。runner 的可恢复分块软件合同已完成，D5 writer 已由同 seed clean-tree 复测确认收敛；
+首个正式代表分块验证前不得连续执行完整批次。
 
 D6 已接入 `scalable3d-experiment-matrix-v1` 的独立离线审计，按 R0/G1/A1/A2/A3/C1/F1
 验证运行时实际采用证据、固定 cell 分母、同 comparison key 配对差值和 bootstrap 置信区间。
