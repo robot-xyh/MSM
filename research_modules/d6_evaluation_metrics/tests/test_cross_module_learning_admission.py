@@ -273,6 +273,530 @@ def _label_availability(sample_count: int) -> dict[str, object]:
     }
 
 
+def _d3_full_sample_audit_fixture(
+    *,
+    d3_manifest_path: Path,
+    d3_manifest: dict[str, object],
+    training_path: Path,
+    shared_path: Path,
+    shared: dict[str, object],
+) -> dict[str, object]:
+    expected_bindings = {
+        "batch_export_summary_sha256": _sha_token("d3-batch-export-summary"),
+        "dataset_frames_sha256": d3_manifest["frames_sha256"],
+        "dataset_manifest_sha256": _sha_file(d3_manifest_path),
+        "dataset_split_hash": _sha_token("d3-dataset-split"),
+        "episode_progress_sha256": _sha_token("d3-episode-progress"),
+        "generation_summary_sha256": _sha_token("d3-generation-summary"),
+        "shared_registry_content_sha256": shared["content_sha256"],
+        "shared_registry_sha256": _sha_file(shared_path),
+        "source_git_commit": _COMMIT,
+        "source_schedule_sha256": _SCHEDULE_SHA,
+        "training_registry_sha256": _sha_file(training_path),
+    }
+    actual_bindings = {
+        **expected_bindings,
+        "shared_registry_assignment_sha256": shared["assignment_sha256"],
+        "shared_registry_declared_assignment_sha256": shared[
+            "assignment_sha256"
+        ],
+    }
+    source_hashes = {
+        "batch_export_summary": expected_bindings[
+            "batch_export_summary_sha256"
+        ],
+        "dataset_frames": expected_bindings["dataset_frames_sha256"],
+        "dataset_manifest": expected_bindings["dataset_manifest_sha256"],
+        "episode_progress": expected_bindings["episode_progress_sha256"],
+        "generation_summary": expected_bindings["generation_summary_sha256"],
+        "shared_registry": expected_bindings["shared_registry_sha256"],
+        "training_registry": expected_bindings["training_registry_sha256"],
+    }
+    expected_episode_split = {"train": 540, "validation": 180, "test": 180}
+    expected_frame_split = {"train": 962, "validation": 320, "test": 322}
+    expected_edge_split = {
+        "train": 2_229_182,
+        "validation": 721_445,
+        "test": 708_188,
+    }
+    expected_selected_split = {
+        "train": 71_425,
+        "validation": 23_147,
+        "test": 22_732,
+    }
+    payload: dict[str, object] = {
+        "schema_version": "d3.assignment-full-sample-audit.v1",
+        "validation_date": "2026-07-21",
+        "purpose": "formal_assignment_behavior_cloning_full_sample_admission",
+        "source_files": {
+            "batch_export_summary": "fixture/batch_export_summary.json",
+            "dataset_frames": "fixture/frames.jsonl",
+            "dataset_manifest": str(d3_manifest_path),
+            "episode_progress": "fixture/episode_progress.csv",
+            "generation_summary": "fixture/generation_summary.json",
+            "shared_registry": str(shared_path),
+            "training_registry": str(training_path),
+        },
+        "expected_bindings": expected_bindings,
+        "actual_bindings": actual_bindings,
+        "binding_checks": {
+            field: {"actual": value, "expected": value, "passed": True}
+            for field, value in expected_bindings.items()
+        },
+        "artifact_integrity": {
+            "dataset_manifest_frames_binding_valid": True,
+            "formal_source_data_modified": False,
+            "source_artifact_set_sha256": _sha_token("d3-artifact-set"),
+            "source_artifacts_unchanged": True,
+            "source_file_count": 7,
+            "source_hashes_before": source_hashes,
+            "source_hashes_after": source_hashes,
+        },
+        "generation_evidence": {
+            "dirty_episode_count": 0,
+            "episode_count": 900,
+            "exported_frame_count": 1604,
+            "finite_episode_count": 900,
+            "online_truth_use_count": 0,
+            "scale_counts": {
+                "5": 180,
+                "20": 180,
+                "50": 180,
+                "100": 180,
+                "200": 180,
+            },
+            "scenario_counts": {
+                "center_failure": 100,
+                "communication_degraded": 100,
+                "delayed_noisy": 100,
+                "dense_crossing": 100,
+                "evasive_multilevel": 100,
+                "formation_split": 100,
+                "high_threat_m_to_n": 100,
+                "nominal": 100,
+                "secondary_failure": 100,
+            },
+            "unavailable_frame_count": 194,
+        },
+        "coverage": {
+            "actual_episode_counts": expected_episode_split,
+            "actual_frame_counts": expected_frame_split,
+            "anonymous_resource_record_count": 120_080,
+            "anonymous_target_record_count": 118_109,
+            "candidate_edge_count": 3_658_815,
+            "canonical_episode_counts": {
+                "train": 60,
+                "validation": 20,
+                "test": 20,
+            },
+            "decision_sample_count": 1604,
+            "edge_sample_count": 3_658_815,
+            "episode_count": 900,
+            "feature_value_count": 43_905_780,
+            "frame_count": 1604,
+            "resource_target_action_label_count": 3_658_815,
+            "selected_resource_target_action_count": 117_304,
+            "split_action_label_counts": expected_edge_split,
+            "split_candidate_edge_counts": expected_edge_split,
+            "split_selected_action_counts": expected_selected_split,
+            "training_seed_count": 100,
+        },
+        "split_and_provenance_audit": {
+            "actual_decision_sample_counts": expected_frame_split,
+            "actual_source_episode_counts": expected_episode_split,
+            "canonical_episode_identity_counts": {
+                "train": 60,
+                "validation": 20,
+                "test": 20,
+            },
+            "dirty_episode_count": 0,
+            "online_truth_use_count": 0,
+            "repository_dirty": False,
+            "reserved_evaluation_seeds": _RESERVED_SEEDS,
+            "reserved_seed_overlap": [],
+            "source_git_commit": _COMMIT,
+            "source_schedule_sha256": _SCHEDULE_SHA,
+        },
+        "schema_and_numeric_audit": {
+            "all_validated_numeric_features_finite": True,
+            "candidate_dimension_mismatch_count": 0,
+            "dataset_schema_version": "d3_learning_dataset_v2",
+            "feature_value_count": 43_905_780,
+            "nonfinite_numeric_value_count": 0,
+            "split_policy_version": "d3_numeric_seed_atomic_split_v2",
+            "validated_frame_count": 1604,
+        },
+        "version_and_identity_audit": {
+            "anonymous_ordinal_identity_checked_frame_count": 1604,
+            "current_plan_owner_binding": "unavailable",
+            "current_plan_version_binding": "unavailable",
+            "frame_sequence_violation_count": 0,
+            "global_track_id_created_or_rewritten": False,
+            "global_track_id_illegal_field_count": 0,
+            "online_identity_field_occurrence_count": 0,
+            "previous_plan_version_regression_count": 0,
+            "stale_plan_runtime_rejection_evidence": "unavailable",
+            "timestamp_sequence_violation_count": 0,
+            "version_checked_frame_count": 1604,
+        },
+        "action_and_constraint_audit": {
+            "action_index_violation_count": 0,
+            "candidate_edge_count": 3_658_815,
+            "capacity_violation_count": 0,
+            "constraint_checked_frame_count": 1604,
+            "demand_slot_violation_count": 0,
+            "resource_target_action_label_count": 3_658_815,
+            "selected_resource_target_action_count": 117_304,
+        },
+        "acceptance_thresholds": {
+            "action_label_count": 3_658_815,
+            "actual_episode_counts": expected_episode_split,
+            "actual_frame_counts": expected_frame_split,
+            "audit_violation_count_maximum": 0,
+            "candidate_edge_count": 3_658_815,
+            "canonical_episode_counts": {
+                "train": 60,
+                "validation": 20,
+                "test": 20,
+            },
+            "constraint_violation_count_maximum": 0,
+            "decision_sample_count": 1604,
+            "dirty_episode_count_maximum": 0,
+            "episode_count": 900,
+            "global_track_id_illegal_field_count_maximum": 0,
+            "online_truth_use_count_maximum": 0,
+            "reserved_seed_overlap_maximum": 0,
+            "selected_action_count": 117_304,
+        },
+        "evidence_availability": {
+            "causal_or_counterfactual_reward": "unavailable",
+            "offline_rule_teacher_reward_component_frame_count": 1604,
+            "real_runtime_applied_ack": "unavailable",
+            "real_runtime_outcome_attribution": "unavailable",
+            "same_seed_paired_shadow_non_degradation": "unavailable",
+            "zero_padding_used_for_unavailable_evidence": False,
+        },
+        "admission": {
+            "assignment_full_sample_structural_audit": "complete",
+            "assist": False,
+            "model_training_performed": False,
+            "online_authority": False,
+            "overall_status": "partial",
+            "ppo": False,
+            "rule_cost_and_hungarian_default": True,
+            "rule_fallback_required": True,
+            "runtime_plan_binding_evidence": "partial",
+            "weights_written": False,
+        },
+        "audit": {
+            "passed": True,
+            "status": "partial",
+            "violation_count": 0,
+            "violation_details_truncated": False,
+            "violations": [],
+        },
+        "remaining_gates": [],
+    }
+    _rehash_content(payload)
+    return payload
+
+
+def _d4_corpus_fixture(
+    *,
+    supplemental: bool,
+    source_git_commit: str,
+) -> dict[str, object]:
+    if supplemental:
+        episode_count = 100
+        frame_count = 300
+        action_count = 1200
+        episode_split = {"train": 60, "validation": 20, "test": 20}
+        frame_split = {"train": 180, "validation": 60, "test": 60}
+        action_split = {"train": 720, "validation": 240, "test": 240}
+        action_counts = {
+            "hold_true_count": 100,
+            "request_replan_true_count": 200,
+            "resource_quota_negative_count": 100,
+            "resource_quota_nonzero_count": 200,
+            "resource_quota_positive_count": 100,
+            "resource_quota_zero_count": 1000,
+            "transfer_count": 100,
+            "transferred_resource_count": 300,
+        }
+        reward_reason = "supplemental_curriculum_has_no_observed_outcome"
+    else:
+        episode_count = 900
+        frame_count = 1798
+        action_count = 14_384
+        episode_split = {"train": 540, "validation": 180, "test": 180}
+        frame_split = {"train": 1079, "validation": 359, "test": 360}
+        action_split = {"train": 8632, "validation": 2872, "test": 2880}
+        action_counts = {
+            "hold_true_count": 0,
+            "request_replan_true_count": 0,
+            "resource_quota_negative_count": 0,
+            "resource_quota_nonzero_count": 0,
+            "resource_quota_positive_count": 0,
+            "resource_quota_zero_count": 14_384,
+            "transfer_count": 0,
+            "transferred_resource_count": 0,
+        }
+        reward_reason = "d6_episode_outcome_not_joined"
+    corpus: dict[str, object] = {
+        "classification": (
+            "synthetic_rule_teacher_curriculum"
+            if supplemental
+            else "formal_observation_corpus"
+        ),
+        "inventory": {
+            "episode_count": episode_count,
+            "frame_count": frame_count,
+            "sample_count": frame_count,
+            "action_count": action_count,
+            "sample_definition": "one_region_resource_frame",
+            "canonical_split": {
+                split: {
+                    "episode_count": episode_split[split],
+                    "frame_count": frame_split[split],
+                    "sample_count": frame_split[split],
+                    "action_count": action_split[split],
+                }
+                for split in _SPLITS
+            },
+        },
+        "canonical": {
+            "canonical_split": {
+                "seed_counts": {"train": 60, "validation": 20, "test": 20},
+                "episode_counts": episode_split,
+                "frame_counts": frame_split,
+                "numeric_seed_atomic": True,
+                "reserved_seed_count": 20,
+                "reserved_seed_present": False,
+            },
+            "readiness": {
+                "assist_eligible": False,
+                "behavior_cloning_view_available": True,
+                "development_data_governance_only": True,
+                "model_performance_evidence": False,
+                "ppo_available": False,
+            },
+        },
+        "numeric_feature_audit": {
+            "finite_sample_count": frame_count,
+            "nonfinite_path_count": 0,
+            "nonfinite_path_examples": [],
+            "nonfinite_sample_count": 0,
+        },
+        "truth_seed_and_dirty_audit": {
+            "dirty_episode_count": 0,
+            "numeric_seed_atomic": True,
+            "numeric_seed_count": 100,
+            "online_truth_identifier_count": 0,
+            "reserved_evaluation_seed_overlap": [],
+            "truth_identifier_path_examples": [],
+        },
+        "action_coverage": {
+            "action_count": action_count,
+            **action_counts,
+            "rule_teacher_label_count": frame_count,
+            "rule_teacher_label_is_runtime_applied_ack": False,
+            "target_kind_counts": {"rule": frame_count},
+        },
+        "safety_and_generation_audit": {
+            "cross_region_transfer_legality_checked": True,
+            "explicit_pre_projection_action_mask_available": False,
+            "explicit_stale_plan_or_lease_rejection_record_available": False,
+            "owner_epoch_version_lease_monotonic_episode_count": episode_count,
+            "owner_plan_epoch_lease_binding_checked": True,
+            "post_projection_recommendation_count": frame_count,
+            "post_projection_recommendation_is_runtime_applied_ack": False,
+            "resource_quota_conservation_checked": True,
+            "safety_invalid_sample_count": 0,
+            "safety_valid_sample_count": frame_count,
+            "safety_violation_examples": [],
+            "version_violation_examples": [],
+        },
+        "reward_outcome_and_runtime_ack": {
+            "observed_outcome_available": False,
+            "paired_shadow_available": False,
+            "real_runtime_coalition_member_ack_available": False,
+            "reward_available_count": 0,
+            "reward_unavailable_count": frame_count,
+            "reward_unavailable_reason_counts": {reward_reason: frame_count},
+        },
+        "schema_and_source": {
+            "dataset_schema": "d4-region-learning-dataset-v1",
+            "dirty_episode_count": 0,
+            "feature_schema_counts": {
+                "d4-region-resource-features-v1": frame_count
+            },
+            "frame_schema_counts": {"d4-region-learning-frame-v1": frame_count},
+            "recommendation_schema_counts": {
+                "d4-region-resource-recommendation-v1": frame_count
+            },
+            "snapshot_schema_counts": {
+                "d4-region-resource-snapshot-v1": frame_count
+            },
+            "source_config_sha256_episode_counts": {
+                _sha_token(f"d4-config-{supplemental}"): episode_count
+            },
+            "source_git_commit_episode_counts": {
+                source_git_commit: episode_count
+            },
+            "source_schema_counts": {
+                "d4-region-learning-source-v1": episode_count
+            },
+        },
+    }
+    if supplemental:
+        corpus["synthetic_evidence_boundary"] = {
+            "action_coverage_evidence": True,
+            "attributable_reward_evidence": False,
+            "center_or_secondary_takeover_effect_evidence": False,
+            "deterministic_safety_constraint_evidence": True,
+            "finite_value_evidence": True,
+            "network_partition_effect_evidence": False,
+            "observed_outcome_evidence": False,
+            "real_runtime_coalition_member_ack_evidence": False,
+            "structure_and_schema_evidence": True,
+        }
+    return corpus
+
+
+def _d4_full_sample_audit_fixture(
+    *,
+    d4_manifest_path: Path,
+    d4_manifest: dict[str, object],
+    d4_supplemental_path: Path,
+    d4_supplemental: dict[str, object],
+    training_path: Path,
+    shared_path: Path,
+) -> dict[str, object]:
+    supplemental_binding = d4_supplemental["canonical"]["binding"]
+    expected_bindings = {
+        "formal_dataset_sha256": d4_manifest["dataset_sha256"],
+        "formal_manifest_sha256": _sha_file(d4_manifest_path),
+        "formal_source_git_commit": _COMMIT,
+        "shared_registry_sha256": _sha_file(shared_path),
+        "supplemental_canonical_view_sha256": _sha_token(
+            "d4-supplemental-view-file"
+        ),
+        "supplemental_dataset_sha256": d4_supplemental["dataset"][
+            "dataset_sha256"
+        ],
+        "supplemental_manifest_sha256": supplemental_binding[
+            "source_dataset_manifest_file_sha256"
+        ],
+        "supplemental_source_git_commit": _COMMIT,
+        "supplemental_summary_content_sha256": d4_supplemental[
+            "content_sha256"
+        ],
+        "supplemental_summary_file_sha256": _sha_file(d4_supplemental_path),
+        "training_registry_sha256": _sha_file(training_path),
+    }
+    auxiliary_hashes = {
+        "shared_seed_registry": _sha_file(shared_path),
+        "supplemental_canonical_view": expected_bindings[
+            "supplemental_canonical_view_sha256"
+        ],
+        "supplemental_summary": _sha_file(d4_supplemental_path),
+        "training_seed_registry": _sha_file(training_path),
+    }
+    unavailable = {
+        name: {"availability": "unavailable", "status": "pending"}
+        for name in (
+            "attributable_reward",
+            "explicit_pre_projection_action_mask",
+            "observed_outcome",
+            "real_runtime_coalition_member_ack",
+            "same_seed_paired_shadow",
+            "stale_plan_epoch_lease_rejection_samples",
+        )
+    }
+    payload: dict[str, object] = {
+        "schema": "d4-region-resource-full-sample-admission-audit-v1",
+        "validation_date": "2026-07-21",
+        "purpose": "d4_formal_and_supplemental_full_sample_admission",
+        "audit_mode": "read_only_fail_closed",
+        "source_paths": {
+            "formal_dataset": "fixture/d4_formal",
+            "shared_seed_registry": str(shared_path),
+            "supplemental_canonical_view": "fixture/d4_supplemental_view.json",
+            "supplemental_dataset": "fixture/d4_supplemental",
+            "supplemental_summary": str(d4_supplemental_path),
+            "training_seed_registry": str(training_path),
+        },
+        "expected_bindings": expected_bindings,
+        "actual_bindings": expected_bindings,
+        "binding_checks": {
+            field: {"actual": value, "expected": value, "passed": True}
+            for field, value in expected_bindings.items()
+        },
+        "artifact_integrity": {
+            "auxiliary_source_hashes_before": auxiliary_hashes,
+            "auxiliary_source_hashes_after": auxiliary_hashes,
+            "auxiliary_sources_unchanged_during_audit": True,
+            "formal": {
+                "artifact_inventory_exact": True,
+                "dataset_file_count": 901,
+                "episode_sha256_mismatch_count": 0,
+                "episode_sha256_verified_count": 900,
+                "manifest_episode_file_count": 900,
+                "source_unchanged_during_audit": True,
+                "tree_sha256": _sha_token("d4-formal-tree"),
+            },
+            "formal_900_episode_dataset_modified": False,
+            "supplemental": {
+                "artifact_inventory_exact": True,
+                "dataset_file_count": 101,
+                "episode_sha256_mismatch_count": 0,
+                "episode_sha256_verified_count": 100,
+                "manifest_episode_file_count": 100,
+                "source_unchanged_during_audit": True,
+                "tree_sha256": _sha_token("d4-supplemental-tree"),
+            },
+        },
+        "formal_corpus": _d4_corpus_fixture(
+            supplemental=False,
+            source_git_commit=_COMMIT,
+        ),
+        "supplemental_curriculum": _d4_corpus_fixture(
+            supplemental=True,
+            source_git_commit=_COMMIT,
+        ),
+        "status": {
+            "combined_full_sample": "complete",
+            "formal_full_sample": "complete",
+            "supplemental_full_sample": "complete",
+        },
+        "evidence_availability": unavailable,
+        "admission": {
+            "assist_allowed": False,
+            "behavior_cloning_full_sample_audit": "complete",
+            "d6_cross_module_learning_admission": "pending_external_audit",
+            "deterministic_region_rules_are_only_executable_path": True,
+            "lease_epoch_and_safety_projection_remain_mandatory": True,
+            "model_training_performed": False,
+            "online_authority_allowed": False,
+            "ppo_allowed": False,
+            "rule_fallback_required": True,
+            "weights_written": False,
+        },
+        "audit": {
+            "common_violations": [],
+            "fail_closed": True,
+            "formal_violations": [],
+            "passed": True,
+            "supplemental_violations": [],
+            "violation_count": 0,
+            "violations": [],
+        },
+        "remaining_gates": [],
+    }
+    _rehash_content(payload)
+    return payload
+
+
 def _build_fixture(tmp_path: Path) -> CrossModuleLearningAdmissionInputs:
     assignment = _assignment()
     split_values = _split_values(assignment)
@@ -330,27 +854,31 @@ def _build_fixture(tmp_path: Path) -> CrossModuleLearningAdmissionInputs:
     _write_json(shared_path, shared)
 
     d3_path = root / "d3_manifest.json"
-    _write_json(
-        d3_path,
-        {
+    d3_manifest: dict[str, object] = {
             "schema_version": "d3_learning_dataset_v2",
             "episode_count": 900,
-            "frame_count": 1800,
+            "frame_count": 1604,
             "unique_seed_count": 100,
             "split_policy_version": "d3_numeric_seed_atomic_split_v2",
             "split_policy": {},
             "split_seed_values": split_values,
             "split_episode_counts": {"train": 540, "validation": 180, "test": 180},
-            "split_frame_counts": {"train": 1080, "validation": 360, "test": 360},
+            "split_frame_counts": {"train": 962, "validation": 320, "test": 322},
             "identity_policy": "anonymous_ordinal_tokens_no_truth_metadata",
             "source_kind": "scalable_3d_multi_seed_batch",
             "frames_sha256": _sha_token("d3-frames"),
-        },
-    )
+    }
+    _write_json(d3_path, d3_manifest)
 
     d4_entries: list[dict[str, object]] = []
     for seed in _TRAINING_SEEDS:
         for index in range(9):
+            canonical_split = assignment[seed]
+            shortened = (
+                index == 0
+                and canonical_split in {"train", "validation"}
+                and seed == split_values[canonical_split][0]
+            )
             d4_entries.append(
                 {
                     "source": {
@@ -359,7 +887,7 @@ def _build_fixture(tmp_path: Path) -> CrossModuleLearningAdmissionInputs:
                         "git_commit": _COMMIT,
                     },
                     "split": assignment[seed],
-                    "frame_count": 2,
+                    "frame_count": 1 if shortened else 2,
                 }
             )
     d4_manifest = {
@@ -371,7 +899,7 @@ def _build_fixture(tmp_path: Path) -> CrossModuleLearningAdmissionInputs:
             "ppo_available": False,
             "dirty_episode_count": 0,
             "episode_count": 900,
-            "frame_count": 1800,
+            "frame_count": 1798,
             "reward_available_count": 0,
         },
         "episodes": d4_entries,
@@ -393,7 +921,7 @@ def _build_fixture(tmp_path: Path) -> CrossModuleLearningAdmissionInputs:
         "test_seeds": split_values["test"],
         "reserved_evaluation_seeds": _RESERVED_SEEDS,
         "episode_count": 900,
-        "frame_count": 1800,
+        "frame_count": 1798,
     }
     d4_binding["view_sha256"] = _sha_json(d4_binding)
     d4_view = {
@@ -406,7 +934,7 @@ def _build_fixture(tmp_path: Path) -> CrossModuleLearningAdmissionInputs:
         "canonical_split": {
             "seed_counts": {"train": 60, "validation": 20, "test": 20},
             "episode_counts": {"train": 540, "validation": 180, "test": 180},
-            "frame_counts": {"train": 1080, "validation": 360, "test": 360},
+            "frame_counts": {"train": 1079, "validation": 359, "test": 360},
             "numeric_seed_atomic": True,
             "reserved_seed_count": 20,
             "reserved_seed_present": False,
@@ -937,13 +1465,38 @@ def _build_fixture(tmp_path: Path) -> CrossModuleLearningAdmissionInputs:
     d5_full_sample_audit_path = root / "d5_full_sample_audit.json"
     _write_json(d5_full_sample_audit_path, d5_full_sample_audit)
 
+    d3_full_sample_audit = _d3_full_sample_audit_fixture(
+        d3_manifest_path=d3_path,
+        d3_manifest=d3_manifest,
+        training_path=training_path,
+        shared_path=shared_path,
+        shared=shared,
+    )
+    d3_full_sample_audit_path = root / "d3_full_sample_audit.json"
+    _write_json(d3_full_sample_audit_path, d3_full_sample_audit)
+
+    d4_full_sample_audit = _d4_full_sample_audit_fixture(
+        d4_manifest_path=d4_manifest_path,
+        d4_manifest=d4_manifest,
+        d4_supplemental_path=d4_supplemental_path,
+        d4_supplemental=d4_supplemental,
+        training_path=training_path,
+        shared_path=shared_path,
+    )
+    d4_full_sample_audit_path = root / "d4_full_sample_audit.json"
+    _write_json(d4_full_sample_audit_path, d4_full_sample_audit)
+
     return CrossModuleLearningAdmissionInputs(
         training_seed_registry_path=training_path,
         shared_seed_registry_path=shared_path,
         d3_formal_manifest_path=d3_path,
+        d3_full_sample_audit_path=d3_full_sample_audit_path,
+        d3_full_sample_audit_file_sha256=_sha_file(d3_full_sample_audit_path),
         d4_formal_manifest_path=d4_manifest_path,
         d4_formal_canonical_view_path=d4_view_path,
         d4_formal_canonical_view_file_sha256=_sha_file(d4_view_path),
+        d4_full_sample_audit_path=d4_full_sample_audit_path,
+        d4_full_sample_audit_file_sha256=_sha_file(d4_full_sample_audit_path),
         d5_tracklet_formal_manifest_path=tracklet_manifest_path,
         d5_tracklet_canonical_view_path=tracklet_view_path,
         d5_tracklet_canonical_readiness_path=tracklet_readiness_path,
@@ -969,6 +1522,27 @@ def _replace(
     return CrossModuleLearningAdmissionInputs(**values)
 
 
+def _rewrite_full_sample_audit(
+    inputs: CrossModuleLearningAdmissionInputs,
+    module: str,
+    payload: dict[str, object],
+    *,
+    rehash_content: bool = True,
+) -> CrossModuleLearningAdmissionInputs:
+    if module == "d3":
+        path = inputs.d3_full_sample_audit_path
+        sha_field = "d3_full_sample_audit_file_sha256"
+    elif module == "d4":
+        path = inputs.d4_full_sample_audit_path
+        sha_field = "d4_full_sample_audit_file_sha256"
+    else:  # pragma: no cover - test helper contract
+        raise ValueError(f"unsupported module: {module}")
+    if rehash_content:
+        _rehash_content(payload)
+    _write_json(path, payload)
+    return _replace(inputs, **{sha_field: _sha_file(path)})
+
+
 def test_joint_admission_writes_chinese_reports_and_keeps_control_closed(
     tmp_path: Path,
 ) -> None:
@@ -985,10 +1559,10 @@ def test_joint_admission_writes_chinese_reports_and_keeps_control_closed(
     assert payload["action_coverage"]["d5"]["intent"]["observe_target"] == 600
     assert payload["availability"]["runtime_ack"]["available"] is False
     full_sample = payload["evidence_layers"]["full_sample_audits"]
-    assert full_sample["status"] == "partial"
-    assert full_sample["complete"] is False
-    assert full_sample["modules"]["d3_assignment"]["status"] == "pending"
-    assert full_sample["modules"]["d4_region"]["status"] == "pending"
+    assert full_sample["status"] == "complete"
+    assert full_sample["complete"] is True
+    assert full_sample["modules"]["d3_assignment"]["status"] == "complete"
+    assert full_sample["modules"]["d4_region"]["status"] == "complete"
     assert (
         full_sample["modules"]["d5_supplemental_active_vision"]["status"]
         == "complete"
@@ -1009,12 +1583,12 @@ def test_joint_admission_writes_chinese_reports_and_keeps_control_closed(
     assert payload["admission_matrix"] == {
         "behavior_cloning_canonical_view_available": True,
         "behavior_cloning_full_sample_audit": {
-            "available": False,
-            "status": "partial",
-            "reason": "d3_and_d4_full_sample_audits_pending",
+            "available": True,
+            "status": "complete",
+            "reason": "d3_d4_d5_structural_full_sample_audits_complete",
             "module_status": {
-                "d3_assignment": "pending",
-                "d4_region": "pending",
+                "d3_assignment": "complete",
+                "d4_region": "complete",
                 "d5_supplemental_active_vision": "complete",
             },
         },
@@ -1022,14 +1596,14 @@ def test_joint_admission_writes_chinese_reports_and_keeps_control_closed(
         "assist_allowed": False,
         "authority_allowed": False,
         "rule_fallback_required": True,
-        "status": "bc_canonical_view_available_full_sample_audit_partial",
+        "status": "structural_full_sample_complete_overall_admission_partial",
         "promotion_blockers": [
-            "d3_full_sample_audit_pending",
-            "d4_full_sample_audit_pending",
             "reward_unavailable",
             "outcome_unavailable",
+            "causal_and_counterfactual_evidence_unavailable",
             "runtime_ack_attribution_unavailable",
             "paired_shadow_non_degradation_unavailable",
+            "held_out_seed_performance_unavailable",
             "d5_tracklet_training_readiness_fail_closed",
         ],
     }
@@ -1042,8 +1616,8 @@ def test_joint_admission_writes_chinese_reports_and_keeps_control_closed(
     assert "跨模块学习数据联合准入审计" in markdown
     assert "只代表确定性故障注入覆盖" in markdown
     assert "部分标签不能解释为完整监督语料" in markdown
-    assert "D5 补充主动视觉课程已完成 100 个 episode、1200 个样本" in markdown
-    assert "跨模块总状态为 partial" in markdown
+    assert "跨模块结构性全样本状态为 complete" in markdown
+    assert "总体准入仍为 partial" in markdown
 
 
 def test_cli_writes_joint_admission_reports_in_a_fresh_process(
@@ -1066,12 +1640,20 @@ def test_cli_writes_joint_admission_reports_in_a_fresh_process(
             str(inputs.shared_seed_registry_path),
             "--d3-formal-manifest",
             str(inputs.d3_formal_manifest_path),
+            "--d3-full-sample-audit",
+            str(inputs.d3_full_sample_audit_path),
+            "--d3-full-sample-audit-sha256",
+            inputs.d3_full_sample_audit_file_sha256,
             "--d4-formal-manifest",
             str(inputs.d4_formal_manifest_path),
             "--d4-formal-canonical-view",
             str(inputs.d4_formal_canonical_view_path),
             "--d4-formal-canonical-view-sha256",
             inputs.d4_formal_canonical_view_file_sha256,
+            "--d4-full-sample-audit",
+            str(inputs.d4_full_sample_audit_path),
+            "--d4-full-sample-audit-sha256",
+            inputs.d4_full_sample_audit_file_sha256,
             "--d5-tracklet-formal-manifest",
             str(inputs.d5_tracklet_formal_manifest_path),
             "--d5-tracklet-canonical-view",
@@ -1426,3 +2008,277 @@ def test_d5_full_sample_synthetic_ack_cannot_become_runtime_evidence(
     with pytest.raises(CrossModuleLearningAdmissionError) as exc:
         audit_cross_module_learning_data_admission(rebound)
     assert exc.value.code == "d5_full_sample_synthetic_ack_promoted"
+
+
+@pytest.mark.parametrize(
+    ("module", "field", "expected_code"),
+    (
+        (
+            "d3",
+            "d3_full_sample_audit_file_sha256",
+            "d3_full_sample_audit_file_hash_mismatch",
+        ),
+        (
+            "d4",
+            "d4_full_sample_audit_file_sha256",
+            "d4_full_sample_audit_file_hash_mismatch",
+        ),
+    ),
+)
+def test_d3_d4_full_sample_out_of_band_file_hash_fails_closed(
+    tmp_path: Path,
+    module: str,
+    field: str,
+    expected_code: str,
+) -> None:
+    inputs = _build_fixture(tmp_path)
+    mismatched = _replace(inputs, **{field: "f" * 64})
+
+    with pytest.raises(CrossModuleLearningAdmissionError) as exc:
+        audit_cross_module_learning_data_admission(mismatched)
+    assert exc.value.code == expected_code
+
+
+@pytest.mark.parametrize(
+    ("module", "schema_field", "expected_code"),
+    (
+        ("d3", "schema_version", "d3_full_sample_audit_schema_mismatch"),
+        ("d4", "schema", "d4_full_sample_audit_schema_mismatch"),
+    ),
+)
+def test_d3_d4_full_sample_schema_tamper_fails_closed(
+    tmp_path: Path,
+    module: str,
+    schema_field: str,
+    expected_code: str,
+) -> None:
+    inputs = _build_fixture(tmp_path)
+    path = (
+        inputs.d3_full_sample_audit_path
+        if module == "d3"
+        else inputs.d4_full_sample_audit_path
+    )
+    payload = _read_json(path)
+    payload[schema_field] = "tampered-schema"
+    rebound = _rewrite_full_sample_audit(inputs, module, payload)
+
+    with pytest.raises(CrossModuleLearningAdmissionError) as exc:
+        audit_cross_module_learning_data_admission(rebound)
+    assert exc.value.code == expected_code
+
+
+@pytest.mark.parametrize(
+    ("module", "expected_code"),
+    (
+        ("d3", "d3_full_sample_audit_content_hash_mismatch"),
+        ("d4", "d4_full_sample_audit_content_hash_mismatch"),
+    ),
+)
+def test_d3_d4_full_sample_content_hash_tamper_fails_closed(
+    tmp_path: Path,
+    module: str,
+    expected_code: str,
+) -> None:
+    inputs = _build_fixture(tmp_path)
+    path = (
+        inputs.d3_full_sample_audit_path
+        if module == "d3"
+        else inputs.d4_full_sample_audit_path
+    )
+    payload = _read_json(path)
+    payload["purpose"] = "tampered-purpose"
+    rebound = _rewrite_full_sample_audit(
+        inputs,
+        module,
+        payload,
+        rehash_content=False,
+    )
+
+    with pytest.raises(CrossModuleLearningAdmissionError) as exc:
+        audit_cross_module_learning_data_admission(rebound)
+    assert exc.value.code == expected_code
+
+
+@pytest.mark.parametrize(
+    ("module", "expected_code"),
+    (
+        ("d3", "d3_full_sample_inventory_mismatch"),
+        ("d4", "d4_full_sample_inventory_mismatch"),
+    ),
+)
+def test_d3_d4_full_sample_inventory_tamper_fails_closed(
+    tmp_path: Path,
+    module: str,
+    expected_code: str,
+) -> None:
+    inputs = _build_fixture(tmp_path)
+    path = (
+        inputs.d3_full_sample_audit_path
+        if module == "d3"
+        else inputs.d4_full_sample_audit_path
+    )
+    payload = _read_json(path)
+    if module == "d3":
+        coverage = payload["coverage"]
+        assert isinstance(coverage, dict)
+        coverage["candidate_edge_count"] = 3_658_814
+    else:
+        formal = payload["formal_corpus"]
+        assert isinstance(formal, dict)
+        inventory = formal["inventory"]
+        assert isinstance(inventory, dict)
+        inventory["sample_count"] = 1797
+    rebound = _rewrite_full_sample_audit(inputs, module, payload)
+
+    with pytest.raises(CrossModuleLearningAdmissionError) as exc:
+        audit_cross_module_learning_data_admission(rebound)
+    assert exc.value.code == expected_code
+
+
+@pytest.mark.parametrize(
+    ("module", "binding_field", "expected_code"),
+    (
+        (
+            "d3",
+            "dataset_manifest_sha256",
+            "d3_full_sample_expected_binding_mismatch",
+        ),
+        (
+            "d4",
+            "formal_manifest_sha256",
+            "d4_full_sample_expected_binding_mismatch",
+        ),
+    ),
+)
+def test_d3_d4_full_sample_source_binding_tamper_fails_closed(
+    tmp_path: Path,
+    module: str,
+    binding_field: str,
+    expected_code: str,
+) -> None:
+    inputs = _build_fixture(tmp_path)
+    path = (
+        inputs.d3_full_sample_audit_path
+        if module == "d3"
+        else inputs.d4_full_sample_audit_path
+    )
+    payload = _read_json(path)
+    expected = payload["expected_bindings"]
+    actual = payload["actual_bindings"]
+    checks = payload["binding_checks"]
+    assert isinstance(expected, dict)
+    assert isinstance(actual, dict)
+    assert isinstance(checks, dict)
+    wrong = _sha_token(f"wrong-{module}-{binding_field}")
+    expected[binding_field] = wrong
+    actual[binding_field] = wrong
+    checks[binding_field] = {
+        "actual": wrong,
+        "expected": wrong,
+        "passed": True,
+    }
+    rebound = _rewrite_full_sample_audit(inputs, module, payload)
+
+    with pytest.raises(CrossModuleLearningAdmissionError) as exc:
+        audit_cross_module_learning_data_admission(rebound)
+    assert exc.value.code == expected_code
+
+
+@pytest.mark.parametrize(
+    ("module", "expected_code"),
+    (
+        ("d3", "d3_full_sample_producer_audit_failed"),
+        ("d4", "d4_full_sample_status_invalid"),
+    ),
+)
+def test_d3_d4_full_sample_status_tamper_fails_closed(
+    tmp_path: Path,
+    module: str,
+    expected_code: str,
+) -> None:
+    inputs = _build_fixture(tmp_path)
+    path = (
+        inputs.d3_full_sample_audit_path
+        if module == "d3"
+        else inputs.d4_full_sample_audit_path
+    )
+    payload = _read_json(path)
+    if module == "d3":
+        audit = payload["audit"]
+        assert isinstance(audit, dict)
+        audit["status"] = "complete"
+    else:
+        status = payload["status"]
+        assert isinstance(status, dict)
+        status["combined_full_sample"] = "partial"
+    rebound = _rewrite_full_sample_audit(inputs, module, payload)
+
+    with pytest.raises(CrossModuleLearningAdmissionError) as exc:
+        audit_cross_module_learning_data_admission(rebound)
+    assert exc.value.code == expected_code
+
+
+@pytest.mark.parametrize(
+    ("module", "expected_code"),
+    (
+        ("d3", "d3_full_sample_admission_overstated"),
+        ("d4", "d4_full_sample_admission_overstated"),
+    ),
+)
+def test_d3_d4_full_sample_admission_tamper_fails_closed(
+    tmp_path: Path,
+    module: str,
+    expected_code: str,
+) -> None:
+    inputs = _build_fixture(tmp_path)
+    path = (
+        inputs.d3_full_sample_audit_path
+        if module == "d3"
+        else inputs.d4_full_sample_audit_path
+    )
+    payload = _read_json(path)
+    admission = payload["admission"]
+    assert isinstance(admission, dict)
+    if module == "d3":
+        admission["assist"] = True
+    else:
+        admission["assist_allowed"] = True
+    rebound = _rewrite_full_sample_audit(inputs, module, payload)
+
+    with pytest.raises(CrossModuleLearningAdmissionError) as exc:
+        audit_cross_module_learning_data_admission(rebound)
+    assert exc.value.code == expected_code
+
+
+@pytest.mark.parametrize(
+    ("module", "expected_code"),
+    (
+        ("d3", "d3_full_sample_availability_overstated"),
+        ("d4", "d4_full_sample_availability_overstated"),
+    ),
+)
+def test_d3_d4_full_sample_availability_tamper_fails_closed(
+    tmp_path: Path,
+    module: str,
+    expected_code: str,
+) -> None:
+    inputs = _build_fixture(tmp_path)
+    path = (
+        inputs.d3_full_sample_audit_path
+        if module == "d3"
+        else inputs.d4_full_sample_audit_path
+    )
+    payload = _read_json(path)
+    availability = payload["evidence_availability"]
+    assert isinstance(availability, dict)
+    if module == "d3":
+        availability["real_runtime_applied_ack"] = "available"
+    else:
+        runtime_ack = availability["real_runtime_coalition_member_ack"]
+        assert isinstance(runtime_ack, dict)
+        runtime_ack["availability"] = "available"
+    rebound = _rewrite_full_sample_audit(inputs, module, payload)
+
+    with pytest.raises(CrossModuleLearningAdmissionError) as exc:
+        audit_cross_module_learning_data_admission(rebound)
+    assert exc.value.code == expected_code

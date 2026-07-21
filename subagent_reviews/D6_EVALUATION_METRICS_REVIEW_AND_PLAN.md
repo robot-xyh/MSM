@@ -5,8 +5,8 @@
 D6 已实现独立、只读的联合准入入口。输入包括 training/shared seed registry、D3 正式 manifest、D4
 正式 manifest 与 main 生成的独立 canonical view、D5 tracklet 和 active-vision 的正式
 manifest/view/readiness，以及 D4/D5 supplemental summary。入口验证 schema、来源身份、文件与内容
-SHA-256、dirty source、缺失输入和 seed assignment。入口现在还显式接收 D5 supplemental BC 全样本
-审计及调用方提供的文件 SHA-256，不调用 main runtime，也不修改生产者制品。
+SHA-256、dirty source、缺失输入和 seed assignment。入口现在显式接收 D3、D4、D5 三份 producer
+全样本审计及调用方提供的文件 SHA-256，不调用 main runtime，也不修改生产者制品。
 
 真实审计覆盖 900 episode 和 100 个训练 seed。规范 train/validation/test 为 60/20/20，保留 seed
 `1000-1019` 泄漏为 0。D4 formal view 文件 SHA-256 为
@@ -27,20 +27,22 @@ episode=`60/20/20`、sample=`720/240/240`，online/offline/descriptor 各 100 �
 制品通过校验，有限特征 `1200/1200`。online truth、保留 seed、dirty episode 和 D5 身份创建、改写、
 换绑计数均为 0；四类离线标签保持 unavailable 且没有补零。
 
-D5 审计文件 SHA-256 为
-`9a03653538e6dae054da8c127ad4a20aae2481af6c9bbef987edfddff0b423d3`，内容 SHA-256 为
-`a11b65596a4c416deba6d0cb35dcc0c32342a5bae0481291d43e8de0e26550dd`。D6 重新校验其 manifest、
-canonical view、dataset config、training/shared registry、producer summary 和源提交绑定。任一文件
-篡改、错绑定、权限误开或 synthetic ACK 提升都会失败关闭。
+D3 全样本审计覆盖 900 episode、1604 decision frame、3,658,815 candidate edge、117,304 selected
+action 和 43,905,780 个有限特征值。D4 全样本审计覆盖正式 900 episode/1798 sample/14384 action，
+以及补充 100 episode/300 sample/1200 action。D3/D4/D5 审计文件 SHA-256 分别为
+`62a47df8...17fb`、`4245f1db...9e46`、`9a036535...2d3`，内容 SHA-256 分别为
+`954f3e96...1867`、`94f4f4bf...3e7f`、`a11b6559...50dd`。D6 重新校验 expected/actual binding、
+binding checks、计数、零违规和来源绑定。任一文件篡改、错绑定、状态或权限误开都会失败关闭。
 
-联合状态分为 D5 supplemental BC full-sample=`complete`、D3/D4 full-sample=`pending`、跨模块总
-full-sample=`partial`。规范视图允许开发期行为克隆准备；D5 的完成状态不能替代 D3/D4 逐样本审计。
-当前没有训练结果或模型收益结论。下一步由 producer 补齐真实动作采用、版本绑定、runtime ACK、可
-归因 reward/outcome 和终局结果；由 main 组织同 seed paired shadow 与保留 seed `1000-1019` 独立
-验收。上述证据形成前，PPO、在线 assist 和控制 authority 不开放，规则回退保持强制。
+联合状态分为 D3/D4/D5 full-sample 和跨模块 structural full-sample=`complete`，overall admission=
+`partial`。D3 `reward_components` 不是 runtime reward，D4 projected recommendation 和
+`target.kind=rule` 不是 runtime ACK 或 truth。当前没有训练结果或模型收益结论。下一步由 producer
+补齐真实动作采用、版本绑定、runtime ACK、可归因 reward/outcome 和终局结果；由 main 组织因果/
+反事实、同 seed paired shadow 与保留 seed `1000-1019` 独立验收。上述证据形成前，PPO、在线 assist
+和控制 authority 不开放，规则回退保持强制。
 
 报告写盘前会拒绝 output directory 等于或位于正式 generation 根下，避免审计输出改变正式树却仍声明
-source mutation 为 false。2026-07-21 联合审计专项 `21 passed`，D6 全量 `385 passed`，只有既有
+source mutation 为 false。2026-07-21 联合审计专项 `37 passed`，D6 全量 `401 passed`；仅有既有
 Matplotlib `Axes3D` 环境 warning。真实 JSON 与中文 Markdown 已写入 D6 自有输出目录，正式 900
 episode 源数据未修改。
 

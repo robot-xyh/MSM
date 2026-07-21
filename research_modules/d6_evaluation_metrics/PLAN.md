@@ -2,11 +2,13 @@
 
 ## 2026-07-21 跨模块学习数据联合准入状态
 
-- [x] 扩展 D6-owned 联合审计 API 与 CLI，显式接收 D5 supplemental BC 全样本审计路径和调用方带外
+- [x] 扩展 D6-owned 联合审计 API 与 CLI，显式接收 D3、D4、D5 三份全样本审计路径和调用方带外
   文件 SHA-256；报告不记录输入绝对路径，不修改 producer artifact。
-- [x] 重新校验 D5 审计 schema/date、文件与内容 SHA-256、producer audit 结果，并将其
-  manifest/canonical view/dataset config、training/shared registry、summary 和源提交绑定到 D6 当前
-  输入。任一缺失、篡改或错绑定均 fail closed。
+- [x] 对三份审计重新校验 schema/date/purpose、文件与规范内容 SHA-256、producer audit、完整计数、
+  expected/actual binding、binding checks、canonical 60/20/20、truth/dirty/finite/version/identity/
+  constraint 零违规和 complete 状态。任一缺失、篡改、错绑定或权限误开均 fail closed。
+- [x] D3 正式全样本覆盖 900 episode/1604 decision frame/3,658,815 candidate edge/117,304 selected
+  action/43,905,780 finite feature value；D4 正式覆盖 900/1798/14384，补充课程覆盖 100/300/1200。
 - [x] 精确复核 D5 supplemental 的 100 episode/1200 sample、canonical episode=`60/20/20`、sample=
   `720/240/240`、online/offline/descriptor=`100/100/100`、checksummed/verified=`302/302` 和有限特征
   `1200/1200`。
@@ -14,16 +16,17 @@
   `global_track_id` 均为 0。四类 offline label 保持 unavailable 且未补零。
 - [x] D5 synthetic ACK applied/rejected/missing=`400/400/400` 仍标为确定性故障注入；任何 runtime
   evidence 提升或 PPO/assist/authority 误开均失败关闭，规则回退保持 true。
-- [x] 准入矩阵发布 D5 supplemental full-sample=`complete`、D3/D4=`pending`、跨模块总状态=`partial`。
-  BC canonical view 继续可供开发读取，但不能据此开放模型或控制权限。
+- [x] 准入矩阵发布 D3/D4/D5 full-sample 和跨模块 structural full-sample=`complete`，overall admission=
+  `partial`。BC canonical view 与结构证据可供开发读取，但不能据此开放模型或控制权限。
 - [x] 真实输出位于 D6 `outputs/cross_module_learning_admission_20260721/`；JSON/Markdown SHA-256 为
-  `d3e3e858...36de2`/`aaaeaefd...ff21`。专项 `21 passed`，D6 全量 `385 passed`，仅有既有
-  Matplotlib `Axes3D` warning。
-- [ ] 对 D3 和 D4 canonical views 执行逐样本内容、身份和文件集合审计，将跨模块 full-sample 从
-  `partial` 关闭为 `complete`。完成前仅开放开发期行为克隆视图读取。
+  `6593ee8a...87f5`/`7b6480d0...a4ba`。专项 `37 passed`，D6 全量 `401 passed`；仅有既有
+  Matplotlib `Axes3D` 环境 warning。
+- [x] D3/D4 producer 已完成逐样本、文件集合和身份审计；D6 通过显式路径与带外 SHA 独立消费并关闭
+  structural full-sample 层。
 - [ ] producer 持久化真实 action adoption、版本绑定、runtime ACK、可归因 reward/outcome 和终局结果；
   D6 不从 synthetic ACK、相邻状态变化或 unavailable 标签补造这些证据。
-- [ ] 形成同 seed paired shadow 非退化证据，并使用保留 seed `1000-1019` 做独立模型验收。上述条件未
+- [ ] 形成因果/反事实证据、同 seed paired shadow 非退化证据，并使用保留 seed `1000-1019` 做独立
+  模型验收。上述条件未
   完成前继续关闭 PPO、在线 assist 和 authority，并强制规则回退。
 
 ## 2026-07-21 历史 canonical seed split readiness 状态
@@ -49,8 +52,8 @@
   seed、D3/D4/D5 mismatch、模块 missing/extra/reserved 和无 registry 兼容。2026-07-21 D6 全量
   `364 passed`；接受门限为注册表八项 validation 全真且四模块 exact，本次联合门未通过。
 - [x] main/D4/D5 已采用 detached registry 生成规范 split views。正式 900 episode 源 manifest 保持
-  冻结；D6 已通过顶部联合审计核对这些视图。D5 supplemental BC 全样本已 complete，D3/D4 仍
-  pending，跨模块总状态为 partial。
+  冻结；D6 已通过顶部联合审计核对这些视图，并独立消费 D3/D4/D5 producer 全样本报告。跨模块
+  structural full-sample 已 complete，overall admission 仍 partial。
 - [ ] 共享 split 只关闭数据泄漏治理条件。D4/D5 reward、runtime ACK、动作多样性和 PPO 条件仍按原
   GAP 独立开放，不能由 split exact 自动晋升。
 

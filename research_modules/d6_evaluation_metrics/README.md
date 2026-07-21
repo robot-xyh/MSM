@@ -2,34 +2,34 @@
 
 ## 2026-07-21 跨模块学习数据联合准入审计
 
-`cross_module_learning_admission.py` 和对应 CLI 现在额外要求 D5 supplemental BC 全样本审计路径及
-调用方提供的文件 SHA-256。D6 重新计算文件与内容哈希，并将审计中的 manifest、canonical view、
-dataset config、training/shared registry、producer summary 和源提交绑定到本次联合准入正在消费的
-证据。报告只保存哈希和计数，不保存输入的绝对路径。
+`cross_module_learning_admission.py` 和对应 CLI 现在显式要求 D3、D4、D5 三份 producer 全样本审计
+路径及调用方提供的文件 SHA-256。D6 对三份文件重新计算文件哈希和去除 `content_sha256` 后的规范
+内容哈希，并将 producer 的 expected/actual binding、binding checks、正式 manifest、补充 summary、
+training/shared registry 和源提交绑定到本次联合准入输入。报告只保存哈希和计数，不保存输入绝对路径。
 
-2026-07-21 真实复跑确认 D5 supplemental BC 的 100 个 episode、1200 个样本已完成 producer 全样本
-审计。规范 episode 为 `60/20/20`，样本为 `720/240/240`；online、offline、descriptor 各 100 个，
-`302/302` 个登记制品通过 SHA-256；有限行为克隆特征为 `1200/1200`。online truth、保留 seed 泄漏、
-dirty episode 和 D5 创建、改写或换绑 `global_track_id` 的计数均为 0。四类离线标签保持 unavailable，
-没有用数值零补成可用标签。
+2026-07-21 真实复跑确认三模块结构性全样本审计均为 `complete`。D3 覆盖 900 episode、1604 个决策
+帧、3,658,815 条候选边和 117,304 个规则选中动作，43,905,780 个特征值均有限。D4 正式语料覆盖
+900 episode/1798 sample/14384 action，补充课程覆盖 100 episode/300 sample/1200 action；补充动作
+包含 hold 100、request-replan 200、非零配额 200 和 transfer 100。D5 supplemental BC 覆盖 100
+episode/1200 sample，`302/302` 个登记制品通过 SHA-256，有限特征为 `1200/1200`。三模块 online
+truth、保留 seed 泄漏、dirty episode、身份和结构约束违规均为 0。
 
-D5 全样本审计文件 SHA-256 为
-`9a03653538e6dae054da8c127ad4a20aae2481af6c9bbef987edfddff0b423d3`，内容 SHA-256 为
-`a11b65596a4c416deba6d0cb35dcc0c32342a5bae0481291d43e8de0e26550dd`。数据 manifest、canonical view
-和 dataset config SHA-256 分别为 `0c474ee1...1acf`、`0ab1a4a6...72a8`、`e93ca631...fcee`。D5 的
-applied/rejected/missing 各 400 仍只表示确定性故障注入覆盖，未计作真实 runtime ACK 或动作结果。
+D3 审计文件/内容 SHA-256 为 `62a47df8...17fb` / `954f3e96...1867`，D4 为
+`4245f1db...9e46` / `94f4f4bf...3e7f`，D5 为 `9a036535...2d3` / `a11b6559...50dd`。D3
+`reward_components` 只是规则教师诊断，不是运行时奖励。D4 `target.kind=rule` 不是 truth，
+`recommendation.projected=true` 不是运行确认。D5 applied/rejected/missing 各 400 仍只表示确定性
+故障注入覆盖。
 
-联合准入分层发布：D5 supplemental BC full-sample=`complete`；D3 和 D4 full-sample=`pending`；
-跨模块总 full-sample=`partial`。规范 seed 视图仍可用于开发期行为克隆准备。PPO、在线 assist、控制
-authority 均为 false，规则回退保持强制。真实 runtime ACK/outcome、reward/counterfactual/causal、
-paired shadow 和 D5 tracklet 完整训练准入仍是 blocker。
+联合准入分层发布：D3、D4、D5 full-sample 和跨模块 structural full-sample 均为 `complete`；overall
+admission 仍为 `partial`。规范 seed 视图和结构证据可用于行为克隆准备。PPO、在线 assist、控制
+authority 均为 false，规则回退保持强制。真实 runtime applied ACK、observed outcome、可归因 reward、
+counterfactual/causal、同 seed paired shadow、保留 seed 性能和 D5 tracklet 完整训练准入仍是 blocker。
 
 报告写入 `outputs/cross_module_learning_admission_20260721/`，没有进入正式 900-episode generation
-根。JSON 和中文 Markdown SHA-256 分别为
-`d3e3e858a14fb570cd0eb19da2661ce76686906530e313b5f79e6bf6af336de2` 和
-`aaaeaefd99f38a03e4f80ffa96dabcb0eef0dd9724cb38fdb163c0bf603eff21`。专项测试 `21 passed`，D6
-全量 `385 passed`；仅有既有 Matplotlib `Axes3D` 环境 warning。本轮未训练模型、未修改正式数据，
-也未开放 PPO、assist 或 authority。
+根。JSON 和中文 Markdown SHA-256 分别为 `6593ee8a...87f5` 和 `7b6480d0...a4ba`。专项测试增至
+`37 passed`，覆盖 D3/D4 file/content SHA、schema、计数、binding、status、availability 和 admission
+篡改的失败关闭。D6 全量 `401 passed`，仅有既有 Matplotlib `Axes3D` 环境 warning。本轮未训练模型、
+未修改正式数据，也未开放 PPO、assist 或 authority。
 
 ## 2026-07-21 历史 manifest 共享种子划分审计
 

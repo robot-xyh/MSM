@@ -26,12 +26,24 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--training-seed-registry", type=Path, required=True)
     parser.add_argument("--shared-seed-registry", type=Path, required=True)
     parser.add_argument("--d3-formal-manifest", type=Path, required=True)
+    parser.add_argument("--d3-full-sample-audit", type=Path, required=True)
+    parser.add_argument(
+        "--d3-full-sample-audit-sha256",
+        required=True,
+        help="out-of-band SHA256 supplied for the tracked D3 full-sample audit",
+    )
     parser.add_argument("--d4-formal-manifest", type=Path, required=True)
     parser.add_argument("--d4-formal-canonical-view", type=Path, required=True)
     parser.add_argument(
         "--d4-formal-canonical-view-sha256",
         required=True,
         help="out-of-band SHA256 supplied by the D4 formal-view producer",
+    )
+    parser.add_argument("--d4-full-sample-audit", type=Path, required=True)
+    parser.add_argument(
+        "--d4-full-sample-audit-sha256",
+        required=True,
+        help="out-of-band SHA256 supplied for the tracked D4 full-sample audit",
     )
     parser.add_argument("--d5-tracklet-formal-manifest", type=Path, required=True)
     parser.add_argument("--d5-tracklet-canonical-view", type=Path, required=True)
@@ -63,11 +75,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         training_seed_registry_path=args.training_seed_registry,
         shared_seed_registry_path=args.shared_seed_registry,
         d3_formal_manifest_path=args.d3_formal_manifest,
+        d3_full_sample_audit_path=args.d3_full_sample_audit,
+        d3_full_sample_audit_file_sha256=args.d3_full_sample_audit_sha256,
         d4_formal_manifest_path=args.d4_formal_manifest,
         d4_formal_canonical_view_path=args.d4_formal_canonical_view,
         d4_formal_canonical_view_file_sha256=(
             args.d4_formal_canonical_view_sha256
         ),
+        d4_full_sample_audit_path=args.d4_full_sample_audit,
+        d4_full_sample_audit_file_sha256=args.d4_full_sample_audit_sha256,
         d5_tracklet_formal_manifest_path=args.d5_tracklet_formal_manifest,
         d5_tracklet_canonical_view_path=args.d5_tracklet_canonical_view,
         d5_tracklet_canonical_readiness_path=(

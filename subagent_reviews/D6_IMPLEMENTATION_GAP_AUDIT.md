@@ -6,8 +6,8 @@
 
 - 已实现独立的跨模块只读审计入口和 CLI，显式接收 training/shared registry、D3 formal manifest、
   D4 formal manifest 与独立 canonical view、D5 tracklet/active-vision formal
-  manifest/view/readiness、D4/D5 supplemental summary，以及 D5 supplemental BC 全样本审计和调用方
-  提供的审计文件 SHA-256。生产者制品保持只读，报告不记录输入绝对路径。
+  manifest/view/readiness、D4/D5 supplemental summary，以及 D3/D4/D5 producer 全样本审计和调用方
+  提供的三个审计文件 SHA-256。生产者制品保持只读，报告不记录输入绝对路径。
 - 已实现 schema、来源身份、文件/内容 SHA-256、dirty source、missing input、seed assignment 和 reserved
   leakage 的失败关闭校验。负例覆盖 schema/hash 篡改、错误切分、保留 seed 泄漏、formal/supplemental
   混用、synthetic ACK 冒充 runtime ACK、unavailable 标签补零和外部 D4 view 哈希不一致。
@@ -17,8 +17,11 @@
   canonical view 替代。
 - 已禁止报告输出目录等于或位于正式 generation 根下，检查发生在目录创建和文件写入之前；D6 自有
   outputs 路径保持可用。
-- 已输出中文 JSON/Markdown 准入报告。2026-07-21 专项 `21 passed`、D6 全量 `385 passed`；仅有既有
-  Matplotlib `Axes3D` warning。
+- 已对 D3/D4/D5 审计复算 file/content SHA，交叉核对 schema/date/purpose、expected/actual binding、
+  binding checks、完整计数、canonical 60/20/20、零违规、availability 和 admission。D3/D4 的 file/
+  content SHA、schema、计数、binding、status、availability/admission 篡改均有稳定错误码并失败关闭。
+- 已输出中文 JSON/Markdown 准入报告。2026-07-21 专项 `37 passed`、D6 全量 `401 passed`；仅有既有
+  Matplotlib `Axes3D` 环境 warning。
 
 ### 真实证据与当前准入
 
@@ -36,22 +39,20 @@
   `60/20/20`、sample=`720/240/240`；online/offline/descriptor 各 100 个，`302/302` 个登记制品通过
   SHA-256，有限特征 `1200/1200`。online truth、保留 seed、dirty episode 和 D5 创建、改写或换绑
   `global_track_id` 均为 0；四类离线标签保持 unavailable 且没有补零。
-- D5 审计文件 SHA-256 为
-  `9a03653538e6dae054da8c127ad4a20aae2481af6c9bbef987edfddff0b423d3`，内容 SHA-256 为
-  `a11b65596a4c416deba6d0cb35dcc0c32342a5bae0481291d43e8de0e26550dd`。D6 已复核其 manifest、
-  canonical view、dataset config、training/shared registry、producer summary 和源提交绑定。
-- 当前状态为 **D5 supplemental BC full-sample complete**、**D3/D4 full-sample pending**、**跨模块
-  full-sample partial**。PPO、assist 和 authority 均关闭，规则回退强制启用；没有模型收益证据。
+- D3 全样本审计覆盖 900 episode/1604 frame/3,658,815 edge/117,304 selected action/43,905,780 finite
+  value。D4 覆盖 formal 900/1798/14384 和 supplemental 100/300/1200。三份审计的文件 SHA-256 为
+  `62a47df8...17fb`、`4245f1db...9e46`、`9a036535...2d3`，内容 SHA-256 为
+  `954f3e96...1867`、`94f4f4bf...3e7f`、`a11b6559...50dd`。
+- 当前状态为 **D3/D4/D5 full-sample complete**、**跨模块 structural full-sample complete**、
+  **overall admission partial**。PPO、assist 和 authority 均关闭，规则回退强制启用；没有模型收益证据。
 
 ### 仍开放的 P1 前置条件
 
-1. D6 仍需对 D3/D4 canonical views 的逐样本内容、完整文件集合、身份和哈希做统一 full-sample
-   audit。D5 supplemental BC 已完成该层审计，但不能替代 D3/D4，也不能把跨模块总状态提升为 complete。
-2. producer 需要持久化真实动作采用、plan/coalition/communication 版本绑定、applied/rejected runtime
+1. producer 需要持久化真实动作采用、plan/coalition/communication 版本绑定、applied/rejected runtime
    ACK、后续反馈和明确终局结果。synthetic ACK 不能用于关闭该条件。
-3. reward/outcome 需有明确归因窗；PPO 还需 on-policy log probability/value。counterfactual/causal 需
+2. reward/outcome 需有明确归因窗；PPO 还需 on-policy log probability/value。counterfactual/causal 需
    同初态配对重放、随机干预或等价识别证据。
-4. 需要同 seed paired shadow 非退化实验，并在训练完成后使用保留 seed `1000-1019` 做独立验收。
+3. 需要同 seed paired shadow 非退化实验，并在训练完成后使用保留 seed `1000-1019` 做独立验收。
    条件未关闭前，不开放在线 assist、控制 authority 或 PPO。
 
 ## 2026-07-21 历史 canonical seed split GAP 状态

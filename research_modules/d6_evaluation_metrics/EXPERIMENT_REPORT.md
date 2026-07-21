@@ -4,8 +4,8 @@
 
 本次实验使用冻结的 training seed registry、shared registry、D3 formal manifest、D4 formal
 manifest 与独立 canonical view、D5 tracklet/active-vision formal manifest、canonical view、readiness，
-以及 D4/D5 2026-07-21 supplemental summary。D5 supplemental BC 另提供 producer 全样本审计和调用方
-带外文件 SHA-256。审计通过显式路径读取，不搜索邻近目录，不修改正式 producer artifact。D4 formal
+以及 D4/D5 2026-07-21 supplemental summary。D3、D4、D5 另提供 producer 全样本审计和调用方带外
+文件 SHA-256。审计通过显式路径读取，不搜索邻近目录，不修改正式 producer artifact。D4 formal
 view 文件 SHA-256 为
 `73a365d32b0439fbf805f40ea7941b8e992fe4c68687cbc5496704f230440b11`，内部
 `binding.view_sha256` 为
@@ -25,32 +25,36 @@ episode 和 480 candidate edge。
 | D5 视场与角色 | wide/zoom 1000/200；interceptor/recon 600/600 | 覆盖计数通过 |
 | D5 tracklet 标签 | positive 362；negative 19；unlabeled 99 | labeled 381，complete=false，status=partial |
 | D5 synthetic ACK | applied/rejected/missing 各 400 | 仅故障注入覆盖，不计 runtime ACK attribution |
+| D3 分配全样本 | 900 episode；1604 frame；3,658,815 candidate edge | 117,304 selected action；43,905,780 个特征值有限；complete |
+| D4 区域全样本 | formal 900/1798/14384；supplemental 100/300/1200 | 文件、计数、版本、真值隔离和安全合同通过；complete |
 | D5 supplemental 全样本 | 100 episode；1200 sample；online/offline/descriptor 各 100 | 302/302 制品校验，有限特征 1200/1200，complete |
 
 证据层被分为正式观测语料、补充规则教师课程、离线评估标签和 runtime ACK。D5 tracklet 有 381 条已
 标注边，但 99 条边未标注，因此不能报告为完整监督标签集。D5 synthetic ACK 没有实际运行时来源，
 不能用于动作归因、奖励计算或在线准入。
 
-D5 全样本审计确认 canonical episode=`60/20/20`、sample=`720/240/240`，online truth、保留 seed、
-dirty episode 和 D5 创建、改写或换绑 `global_track_id` 的计数均为 0。四类离线标签保持 unavailable，
-没有用数值零补成可用标签。审计文件 SHA-256 为
-`9a03653538e6dae054da8c127ad4a20aae2481af6c9bbef987edfddff0b423d3`，内容 SHA-256 为
-`a11b65596a4c416deba6d0cb35dcc0c32342a5bae0481291d43e8de0e26550dd`。
+D3/D4/D5 全样本审计均确认 canonical seed=`60/20/20`，online truth、保留 seed 泄漏、dirty episode、
+非有限值和结构约束违规为 0。D5 另确认 D5 创建、改写或换绑 `global_track_id` 为 0，四类离线标签
+保持 unavailable，没有以零补成可用标签。三份审计文件 SHA-256 为 `62a47df8...17fb`、
+`4245f1db...9e46`、`9a036535...2d3`，内容 SHA-256 为 `954f3e96...1867`、`94f4f4bf...3e7f`、
+`a11b6559...50dd`。
 
-当前准入矩阵为：BC canonical view available=true；D5 supplemental BC full-sample=complete；D3/D4
-full-sample=pending；跨模块 full-sample=partial；PPO=false；assist=false；authority=false；rule
-fallback required=true。D5 完成状态不能替代 D3/D4 逐样本审计。reward、outcome、counterfactual、
-causal、runtime ACK 和 paired shadow 均 unavailable。本次没有训练模型，也没有模型收益结论。
+当前准入矩阵为：BC canonical view available=true；D3/D4/D5 full-sample=complete；跨模块 structural
+full-sample=complete；overall admission=partial；PPO=false；assist=false；authority=false；rule
+fallback required=true。D3 `reward_components` 只作规则教师诊断，D4 projected recommendation 和
+`target.kind=rule` 不属于 runtime ACK 或 truth。reward、outcome、counterfactual、causal、runtime
+ACK、paired shadow 和保留 seed 性能均 unavailable。本次没有训练模型，也没有模型收益结论。
 
 报告输出位于 D6 自有的
 `outputs/cross_module_learning_admission_20260721/`，JSON 和中文 Markdown SHA-256 分别为
-`d3e3e858a14fb570cd0eb19da2661ce76686906530e313b5f79e6bf6af336de2` 和
-`aaaeaefd99f38a03e4f80ffa96dabcb0eef0dd9724cb38fdb163c0bf603eff21`。写盘入口会在创建目录前拒绝
-正式 generation 根及其子目录，避免评估产物改变正式数据树。专项测试 `21 passed`，D6 全量
-`385 passed`；仅有既有 Matplotlib `Axes3D` 环境 warning。
+`6593ee8a11d33b7c75d633f87e0fbd84cea421798bab0920ef4117cb044a87f5` 和
+`7b6480d08870cbf21f532235ddfdbe9ca7f23ce05f681f2d18846f988355a4ba`。写盘入口会在创建目录前拒绝
+正式 generation 根及其子目录。专项测试 `37 passed`，覆盖 D3/D4 file/content SHA、schema、计数、
+binding、status、availability/admission 篡改；D6 全量 `401 passed`，仅有既有 Matplotlib `Axes3D`
+环境 warning。
 
-后续需完成 D3/D4 canonical views 全样本审计；由 producer 持久化真实 action adoption、版本绑定、runtime
-ACK、可归因 reward/outcome 和终局结果；形成同 seed paired shadow；最后使用保留 seed
+后续由 producer 持久化真实 action adoption、版本绑定、runtime ACK、可归因 reward/outcome 和终局
+结果；形成因果/反事实证据和同 seed paired shadow；最后使用保留 seed
 `1000-1019` 做独立验收。上述条件未满足前，PPO、在线 assist 和 authority 保持关闭。
 
 ## 2.5 2026-07-21 历史正式共享 seed 划分审计

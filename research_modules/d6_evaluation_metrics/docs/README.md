@@ -1,5 +1,11 @@
 # D6 文档索引
 
+2026-07-21 已完成 D3、D4、D5 producer 全样本联合准入。D6 显式接收三份审计路径和带外文件 SHA-256，
+独立复算 file/content SHA，核对 schema、完整计数、expected/actual binding、canonical 60/20/20、零
+违规、availability 和 admission。三模块及跨模块 structural full-sample=`complete`，overall
+admission=`partial`；PPO、assist、authority 均为 false，规则回退为 true。专项 `37 passed`，正式
+输出及哈希见 `../EXPERIMENT_REPORT.md` 2.6 节。本次未修改 AirSim 接线。
+
 2026-07-21 已接入 detached canonical numeric-seed split 只读审计。D6 独立校验共享 registry 的 schema、
 policy、内容/assignment/source SHA-256、100 个训练 seed 和 `1000-1019` 保留 seed 隔离，并比较 D3、
 D4、D5 图数据和 D5 主动视觉 manifest。正式结果为 D3 exact；D4、D5 graph、D5 active 分别有

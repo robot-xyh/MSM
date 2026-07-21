@@ -38,6 +38,16 @@ _D4_FORMAL_BINDING_SCHEMA = "d4-canonical-region-seed-split-view-v1"
 _D5_SUPPLEMENTAL_FULL_SAMPLE_AUDIT_SCHEMA = (
     "d5.active-vision-supplemental-bc-full-sample-audit.v1"
 )
+_D3_FULL_SAMPLE_AUDIT_SCHEMA = "d3.assignment-full-sample-audit.v1"
+_D3_FULL_SAMPLE_AUDIT_PURPOSE = (
+    "formal_assignment_behavior_cloning_full_sample_admission"
+)
+_D4_FULL_SAMPLE_AUDIT_SCHEMA = (
+    "d4-region-resource-full-sample-admission-audit-v1"
+)
+_D4_FULL_SAMPLE_AUDIT_PURPOSE = (
+    "d4_formal_and_supplemental_full_sample_admission"
+)
 
 
 class CrossModuleLearningAdmissionError(RuntimeError):
@@ -55,9 +65,13 @@ class CrossModuleLearningAdmissionInputs:
     training_seed_registry_path: Path
     shared_seed_registry_path: Path
     d3_formal_manifest_path: Path
+    d3_full_sample_audit_path: Path
+    d3_full_sample_audit_file_sha256: str
     d4_formal_manifest_path: Path
     d4_formal_canonical_view_path: Path
     d4_formal_canonical_view_file_sha256: str
+    d4_full_sample_audit_path: Path
+    d4_full_sample_audit_file_sha256: str
     d5_tracklet_formal_manifest_path: Path
     d5_tracklet_canonical_view_path: Path
     d5_tracklet_canonical_readiness_path: Path
@@ -129,9 +143,24 @@ def audit_cross_module_learning_data_admission(
         d5_supplemental=d5_supplemental,
         registry=registry,
     )
+    d3_full_sample = _audit_d3_full_sample(
+        source.d3_full_sample_audit_path,
+        expected_file_sha256=source.d3_full_sample_audit_file_sha256,
+        d3_formal=d3_formal,
+        registry=registry,
+    )
+    d4_full_sample = _audit_d4_full_sample(
+        source.d4_full_sample_audit_path,
+        expected_file_sha256=source.d4_full_sample_audit_file_sha256,
+        d4_formal=d4_formal,
+        d4_supplemental=d4_supplemental,
+        registry=registry,
+    )
 
     availability = _build_availability(
+        d3_full_sample=d3_full_sample,
         d4_formal=d4_formal,
+        d4_full_sample=d4_full_sample,
         d5_active=d5_active,
         d4_supplemental=d4_supplemental,
         d5_supplemental=d5_supplemental,
@@ -139,12 +168,12 @@ def audit_cross_module_learning_data_admission(
     admission = {
         "behavior_cloning_canonical_view_available": True,
         "behavior_cloning_full_sample_audit": {
-            "available": False,
-            "status": "partial",
-            "reason": "d3_and_d4_full_sample_audits_pending",
+            "available": True,
+            "status": "complete",
+            "reason": "d3_d4_d5_structural_full_sample_audits_complete",
             "module_status": {
-                "d3_assignment": "pending",
-                "d4_region": "pending",
+                "d3_assignment": "complete",
+                "d4_region": "complete",
                 "d5_supplemental_active_vision": "complete",
             },
         },
@@ -152,14 +181,14 @@ def audit_cross_module_learning_data_admission(
         "assist_allowed": False,
         "authority_allowed": False,
         "rule_fallback_required": True,
-        "status": "bc_canonical_view_available_full_sample_audit_partial",
+        "status": "structural_full_sample_complete_overall_admission_partial",
         "promotion_blockers": [
-            "d3_full_sample_audit_pending",
-            "d4_full_sample_audit_pending",
             "reward_unavailable",
             "outcome_unavailable",
+            "causal_and_counterfactual_evidence_unavailable",
             "runtime_ack_attribution_unavailable",
             "paired_shadow_non_degradation_unavailable",
+            "held_out_seed_performance_unavailable",
             "d5_tracklet_training_readiness_fail_closed",
         ],
     }
@@ -193,17 +222,11 @@ def audit_cross_module_learning_data_admission(
             },
             "full_sample_audits": {
                 "classification": "cross_module_full_sample_audit",
-                "status": "partial",
-                "complete": False,
+                "status": "complete",
+                "complete": True,
                 "modules": {
-                    "d3_assignment": {
-                        "status": "pending",
-                        "complete": False,
-                    },
-                    "d4_region": {
-                        "status": "pending",
-                        "complete": False,
-                    },
+                    "d3_assignment": d3_full_sample,
+                    "d4_region": d4_full_sample,
                     "d5_supplemental_active_vision": (
                         d5_supplemental_full_sample
                     ),
@@ -314,6 +337,14 @@ def render_cross_module_learning_data_admission_markdown(
         full_sample_modules.get("d5_supplemental_active_vision"),
         "D5 supplemental full-sample audit",
     )
+    d3_full_sample = _mapping(
+        full_sample_modules.get("d3_assignment"),
+        "D3 assignment full-sample audit",
+    )
+    d4_full_sample = _mapping(
+        full_sample_modules.get("d4_region"),
+        "D4 regional full-sample audit",
+    )
     d4_action = _mapping(action.get("d4"), "D4 action")
     d5_action = _mapping(action.get("d5"), "D5 action")
 
@@ -324,9 +355,9 @@ def render_cross_module_learning_data_admission_markdown(
         "",
         "## 结论",
         "",
-        "D3、D4、D5 的规范 seed 身份已统一为训练/验证/测试 60/20/20，保留 seed 1000-1019 泄漏为 0。D5 补充主动视觉课程已完成 100 个 episode、1200 个样本的全样本审计。D3 和 D4 仍待逐样本复核，跨模块总状态为 partial。",
+        "D3、D4、D5 的规范 seed 身份已统一为训练/验证/测试 60/20/20，保留 seed 1000-1019 泄漏为 0。三份 producer 全样本审计均通过文件哈希、内容哈希、来源绑定、完整计数和零违规复核，跨模块结构性全样本状态为 complete。",
         "",
-        "奖励、结果、反事实、因果标签、真实运行时确认和配对 shadow 证据均不可用。因此 PPO、在线辅助和控制权限保持关闭，规则回退继续强制启用。D5 的 applied/rejected/missing 只代表确定性故障注入覆盖，未提升为 runtime evidence。",
+        "结构性完成不等于总体学习准入完成。奖励、结果、反事实、因果标签、真实运行时确认、同 seed 配对 shadow 和保留 seed 性能均不可用。因此 PPO、在线辅助和控制权限保持关闭，规则回退继续强制启用。D3 reward_components 只作规则教师诊断；D4 projected recommendation 和 target.kind=rule 不属于运行确认或真值；D5 applied/rejected/missing 只代表确定性故障注入覆盖。",
         "",
         "## 注册表",
         "",
@@ -366,11 +397,11 @@ def render_cross_module_learning_data_admission_markdown(
         "",
         "| 模块 | 状态 | 范围 |",
         "| --- | --- | --- |",
-        "| D3 分配 | pending | 尚未形成逐样本 D6 审计 |",
-        "| D4 区域 | pending | 尚未形成逐样本 D6 审计 |",
+        f"| D3 分配 | {d3_full_sample['status']} | {d3_full_sample['episode_count']} episode，{d3_full_sample['frame_count']} decision frame，{d3_full_sample['candidate_edge_count']} candidate edge |",
+        f"| D4 区域 | {d4_full_sample['status']} | formal {d4_full_sample['formal']['episode_count']} episode/{d4_full_sample['formal']['sample_count']} sample；supplemental {d4_full_sample['supplemental']['episode_count']} episode/{d4_full_sample['supplemental']['sample_count']} sample |",
         f"| D5 补充主动视觉 | {d5_full_sample['status']} | {d5_full_sample['episode_count']} episode，{d5_full_sample['sample_count']} sample，校验制品 {d5_full_sample['verified_artifact_count']}/{d5_full_sample['checksummed_artifact_count']} |",
         "",
-        f"D5 全样本审计文件 SHA-256 为 `{d5_full_sample['audit_file_sha256']}`，内容 SHA-256 为 `{d5_full_sample['audit_content_sha256']}`。有限特征为 {d5_full_sample['finite_feature_sample_count']}/1200，online truth、保留 seed 泄漏和 dirty episode 均为 0。该 complete 只适用于 D5 supplemental BC，不代表跨模块全样本审计完成。",
+        f"D3 全样本审计文件/内容 SHA-256 为 `{d3_full_sample['audit_file_sha256']}` / `{d3_full_sample['audit_content_sha256']}`；D4 为 `{d4_full_sample['audit_file_sha256']}` / `{d4_full_sample['audit_content_sha256']}`；D5 为 `{d5_full_sample['audit_file_sha256']}` / `{d5_full_sample['audit_content_sha256']}`。三模块 online truth、保留 seed 泄漏、dirty episode 和结构约束违规均为 0。",
         "",
         "## 证据可用性",
         "",
@@ -406,7 +437,7 @@ def render_cross_module_learning_data_admission_markdown(
             "",
             "## 限制",
             "",
-            "D5 supplemental BC 已复核到逐样本审计证据。D3/D4 仍停留在 manifest、detached view 和 summary 层。真实运行时动作执行结果、可归因结果与奖励、反事实/因果标签、配对 shadow 非退化结果和保留 seed 性能尚未形成统一 D6 证据。",
+            "D3、D4、D5 已复核到 producer 全样本结构证据。总体准入仍为 partial：真实运行时动作执行结果、可归因结果与奖励、反事实/因果标签、配对 shadow 非退化结果和保留 seed 性能尚未形成统一 D6 证据。",
             "",
         ]
     )
@@ -485,6 +516,7 @@ def _audit_registries(
         "training_seeds": tuple(training["training_seeds"]),
         "reserved_seeds": tuple(training["reserved_seeds"]),
         "git_commit": training["git_commit"],
+        "schedule_sha256": training_payload["schedule_sha256"],
         "training_file_sha256": _sha256_file(training_path),
         "shared_file_sha256": _sha256_file(shared_path),
         "shared_content_sha256": shared["content_sha256"],
@@ -577,13 +609,18 @@ def _audit_d3_formal(path: Path, registry: Mapping[str, Any]) -> dict[str, Any]:
         "d3_formal_frame_count_mismatch",
         "D3 split frame counts do not sum to frame_count",
     )
-    _require_sha256(manifest.get("frames_sha256"), "D3 frames_sha256")
+    frames_sha256 = _require_sha256(
+        manifest.get("frames_sha256"), "D3 frames_sha256"
+    )
     return {
         "classification": "formal_observation_corpus",
         "manifest_schema_version": manifest["schema_version"],
         "manifest_file_sha256": _sha256_file(path),
+        "frames_sha256": frames_sha256,
         "episode_count": episode_count,
         "frame_count": frame_count,
+        "canonical_episode_counts": split_episode_counts,
+        "canonical_frame_counts": split_frame_counts,
         "unique_seed_count": unique_seed_count,
         "canonical_seed_counts": dict(_EXPECTED_SEED_COUNTS),
         "reserved_seed_leakage_count": 0,
@@ -1438,6 +1475,11 @@ def _audit_d4_supplemental(
         "classification": "supplemental_rule_teacher_curriculum",
         "summary_file_sha256": _sha256_file(path),
         "summary_content_sha256": summary["content_sha256"],
+        "dataset_sha256": dataset["dataset_sha256"],
+        "dataset_manifest_sha256": binding[
+            "source_dataset_manifest_file_sha256"
+        ],
+        "canonical_view_content_sha256": claimed_view_hash,
         "episode_count": episode_count,
         "frame_count": frame_count,
         "canonical_seed_counts": dict(_EXPECTED_SEED_COUNTS),
@@ -1684,6 +1726,1252 @@ def _audit_d5_supplemental(
             "classification": "deterministic_fault_injection_coverage_only",
             "runtime_attribution": False,
         },
+    }
+
+
+def _audit_d3_full_sample(
+    path: Path,
+    *,
+    expected_file_sha256: str,
+    d3_formal: Mapping[str, Any],
+    registry: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Strictly consume the D3 formal assignment full-sample audit."""
+
+    actual_file_hash = _verify_full_sample_file_hash(
+        path,
+        expected_file_sha256,
+        module="d3",
+        label="D3 assignment full-sample audit",
+    )
+    payload = _read_json_object(path, "D3 assignment full-sample audit")
+    _expect_equal(
+        set(payload),
+        {
+            "acceptance_thresholds",
+            "action_and_constraint_audit",
+            "actual_bindings",
+            "admission",
+            "artifact_integrity",
+            "audit",
+            "binding_checks",
+            "content_sha256",
+            "coverage",
+            "evidence_availability",
+            "expected_bindings",
+            "generation_evidence",
+            "purpose",
+            "remaining_gates",
+            "schema_and_numeric_audit",
+            "schema_version",
+            "source_files",
+            "split_and_provenance_audit",
+            "validation_date",
+            "version_and_identity_audit",
+        },
+        "d3_full_sample_audit_fields_mismatch",
+        "D3 full-sample audit top-level fields changed",
+    )
+    _expect_equal(
+        payload.get("schema_version"),
+        _D3_FULL_SAMPLE_AUDIT_SCHEMA,
+        "d3_full_sample_audit_schema_mismatch",
+        "D3 full-sample audit schema changed",
+    )
+    _expect_equal(
+        payload.get("validation_date"),
+        CROSS_MODULE_LEARNING_ADMISSION_DATE,
+        "d3_full_sample_audit_date_mismatch",
+        "D3 full-sample audit validation date changed",
+    )
+    _validate_claimed_content_hash(
+        payload,
+        "content_sha256",
+        "d3_full_sample_audit_content_hash_mismatch",
+    )
+    _expect_equal(
+        payload.get("purpose"),
+        _D3_FULL_SAMPLE_AUDIT_PURPOSE,
+        "d3_full_sample_audit_purpose_mismatch",
+        "D3 full-sample audit purpose changed",
+    )
+
+    source_files = _mapping(payload.get("source_files"), "D3 source files")
+    _expect_equal(
+        set(source_files),
+        {
+            "batch_export_summary",
+            "dataset_frames",
+            "dataset_manifest",
+            "episode_progress",
+            "generation_summary",
+            "shared_registry",
+            "training_registry",
+        },
+        "d3_full_sample_source_set_mismatch",
+        "D3 full-sample source file set changed",
+    )
+    _expect(
+        all(isinstance(value, str) and value.strip() for value in source_files.values()),
+        "d3_full_sample_source_path_invalid",
+        "D3 full-sample source paths must be explicit non-empty strings",
+    )
+
+    producer_audit = _mapping(payload.get("audit"), "D3 producer audit")
+    _expect(
+        producer_audit.get("passed") is True
+        and producer_audit.get("status") == "partial"
+        and _nonnegative_int(
+            producer_audit.get("violation_count"), "D3 producer violations"
+        )
+        == 0
+        and producer_audit.get("violations") == []
+        and producer_audit.get("violation_details_truncated") is False,
+        "d3_full_sample_producer_audit_failed",
+        "D3 producer audit is not a clean structural audit",
+    )
+
+    expected_bindings = _mapping(
+        payload.get("expected_bindings"), "D3 expected bindings"
+    )
+    actual_bindings = _mapping(
+        payload.get("actual_bindings"), "D3 actual bindings"
+    )
+    expected_binding_fields = {
+        "batch_export_summary_sha256",
+        "dataset_frames_sha256",
+        "dataset_manifest_sha256",
+        "dataset_split_hash",
+        "episode_progress_sha256",
+        "generation_summary_sha256",
+        "shared_registry_content_sha256",
+        "shared_registry_sha256",
+        "source_git_commit",
+        "source_schedule_sha256",
+        "training_registry_sha256",
+    }
+    _expect_equal(
+        set(expected_bindings),
+        expected_binding_fields,
+        "d3_full_sample_expected_binding_set_mismatch",
+        "D3 expected binding fields changed",
+    )
+    _expect_equal(
+        set(actual_bindings),
+        expected_binding_fields
+        | {
+            "shared_registry_assignment_sha256",
+            "shared_registry_declared_assignment_sha256",
+        },
+        "d3_full_sample_actual_binding_set_mismatch",
+        "D3 actual binding fields changed",
+    )
+    caller_bindings = {
+        "dataset_frames_sha256": d3_formal["frames_sha256"],
+        "dataset_manifest_sha256": d3_formal["manifest_file_sha256"],
+        "shared_registry_content_sha256": registry["shared_content_sha256"],
+        "shared_registry_sha256": registry["shared_file_sha256"],
+        "source_git_commit": registry["git_commit"],
+        "source_schedule_sha256": registry["schedule_sha256"],
+        "training_registry_sha256": registry["training_file_sha256"],
+    }
+    for field in expected_binding_fields:
+        expected = expected_bindings.get(field)
+        if field == "source_git_commit":
+            _require_git_commit(expected, f"D3 expected {field}")
+        else:
+            _require_sha256(expected, f"D3 expected {field}")
+        _expect_equal(
+            actual_bindings.get(field),
+            expected,
+            "d3_full_sample_source_binding_mismatch",
+            f"D3 expected/actual binding differs at {field}",
+        )
+    for field, expected in caller_bindings.items():
+        _expect_equal(
+            expected_bindings.get(field),
+            expected,
+            "d3_full_sample_expected_binding_mismatch",
+            f"D3 full-sample audit is not bound to the consumed {field}",
+        )
+    _expect(
+        actual_bindings.get("shared_registry_assignment_sha256")
+        == registry["assignment_sha256"]
+        and actual_bindings.get("shared_registry_declared_assignment_sha256")
+        == registry["assignment_sha256"],
+        "d3_full_sample_registry_assignment_mismatch",
+        "D3 full-sample audit is not bound to the canonical seed assignment",
+    )
+    _validate_binding_checks(
+        payload.get("binding_checks"),
+        expected_bindings,
+        module="d3",
+    )
+
+    thresholds = _mapping(
+        payload.get("acceptance_thresholds"), "D3 acceptance thresholds"
+    )
+    expected_episode_split = {"train": 540, "validation": 180, "test": 180}
+    expected_frame_split = {"train": 962, "validation": 320, "test": 322}
+    expected_edge_split = {
+        "train": 2_229_182,
+        "validation": 721_445,
+        "test": 708_188,
+    }
+    expected_selected_split = {
+        "train": 71_425,
+        "validation": 23_147,
+        "test": 22_732,
+    }
+    _expect(
+        _nonnegative_int(thresholds.get("episode_count"), "D3 threshold episodes")
+        == 900
+        and _nonnegative_int(
+            thresholds.get("decision_sample_count"), "D3 threshold samples"
+        )
+        == 1604
+        and _nonnegative_int(
+            thresholds.get("candidate_edge_count"), "D3 threshold edges"
+        )
+        == 3_658_815
+        and _nonnegative_int(
+            thresholds.get("action_label_count"), "D3 threshold labels"
+        )
+        == 3_658_815
+        and _nonnegative_int(
+            thresholds.get("selected_action_count"), "D3 threshold actions"
+        )
+        == 117_304
+        and _count_mapping(
+            thresholds.get("canonical_episode_counts"),
+            "D3 threshold canonical seed counts",
+        )
+        == dict(_EXPECTED_SEED_COUNTS)
+        and _count_mapping(
+            thresholds.get("actual_episode_counts"),
+            "D3 threshold episode split",
+        )
+        == expected_episode_split
+        and _count_mapping(
+            thresholds.get("actual_frame_counts"), "D3 threshold frame split"
+        )
+        == expected_frame_split
+        and all(
+            _nonnegative_int(thresholds.get(field), f"D3 threshold {field}") == 0
+            for field in (
+                "audit_violation_count_maximum",
+                "constraint_violation_count_maximum",
+                "dirty_episode_count_maximum",
+                "global_track_id_illegal_field_count_maximum",
+                "online_truth_use_count_maximum",
+                "reserved_seed_overlap_maximum",
+            )
+        ),
+        "d3_full_sample_threshold_mismatch",
+        "D3 full-sample acceptance thresholds changed",
+    )
+
+    coverage = _mapping(payload.get("coverage"), "D3 full-sample coverage")
+    expected_coverage_counts = {
+        "episode_count": 900,
+        "frame_count": 1604,
+        "decision_sample_count": 1604,
+        "candidate_edge_count": 3_658_815,
+        "edge_sample_count": 3_658_815,
+        "resource_target_action_label_count": 3_658_815,
+        "selected_resource_target_action_count": 117_304,
+        "anonymous_resource_record_count": 120_080,
+        "anonymous_target_record_count": 118_109,
+        "feature_value_count": 43_905_780,
+        "training_seed_count": 100,
+    }
+    _expect(
+        all(
+            _nonnegative_int(coverage.get(field), f"D3 coverage {field}") == expected
+            for field, expected in expected_coverage_counts.items()
+        )
+        and _count_mapping(
+            coverage.get("actual_episode_counts"), "D3 coverage episodes"
+        )
+        == expected_episode_split
+        and _count_mapping(coverage.get("actual_frame_counts"), "D3 coverage frames")
+        == expected_frame_split
+        and _count_mapping(
+            coverage.get("canonical_episode_counts"), "D3 canonical seed identities"
+        )
+        == dict(_EXPECTED_SEED_COUNTS)
+        and _count_mapping(
+            coverage.get("split_candidate_edge_counts"), "D3 split candidate edges"
+        )
+        == expected_edge_split
+        and _count_mapping(
+            coverage.get("split_action_label_counts"), "D3 split action labels"
+        )
+        == expected_edge_split
+        and _count_mapping(
+            coverage.get("split_selected_action_counts"), "D3 selected actions"
+        )
+        == expected_selected_split,
+        "d3_full_sample_inventory_mismatch",
+        "D3 full-sample inventory differs from the producer declaration",
+    )
+    _expect(
+        d3_formal["episode_count"] == 900
+        and d3_formal["frame_count"] == 1604
+        and d3_formal["canonical_episode_counts"] == expected_episode_split
+        and d3_formal["canonical_frame_counts"] == expected_frame_split,
+        "d3_full_sample_formal_inventory_binding_mismatch",
+        "D3 producer counts differ from the consumed formal manifest",
+    )
+
+    generation = _mapping(
+        payload.get("generation_evidence"), "D3 generation evidence"
+    )
+    _expect(
+        _nonnegative_int(generation.get("episode_count"), "D3 generated episodes")
+        == 900
+        and _nonnegative_int(
+            generation.get("exported_frame_count"), "D3 exported frames"
+        )
+        == 1604
+        and _nonnegative_int(
+            generation.get("finite_episode_count"), "D3 finite episodes"
+        )
+        == 900
+        and _nonnegative_int(
+            generation.get("dirty_episode_count"), "D3 dirty episodes"
+        )
+        == 0
+        and _nonnegative_int(
+            generation.get("online_truth_use_count"), "D3 truth use"
+        )
+        == 0
+        and _count_mapping(generation.get("scale_counts"), "D3 scale counts")
+        == {"5": 180, "20": 180, "50": 180, "100": 180, "200": 180}
+        and _count_mapping(
+            generation.get("scenario_counts"), "D3 scenario counts"
+        )
+        == {
+            "center_failure": 100,
+            "communication_degraded": 100,
+            "delayed_noisy": 100,
+            "dense_crossing": 100,
+            "evasive_multilevel": 100,
+            "formation_split": 100,
+            "high_threat_m_to_n": 100,
+            "nominal": 100,
+            "secondary_failure": 100,
+        }
+        and _nonnegative_int(
+            generation.get("unavailable_frame_count"), "D3 unavailable frames"
+        )
+        == 194,
+        "d3_full_sample_generation_count_mismatch",
+        "D3 generation evidence counts changed",
+    )
+
+    provenance = _mapping(
+        payload.get("split_and_provenance_audit"), "D3 provenance audit"
+    )
+    _expect(
+        _count_mapping(
+            provenance.get("actual_decision_sample_counts"),
+            "D3 provenance sample counts",
+        )
+        == expected_frame_split
+        and _count_mapping(
+            provenance.get("actual_source_episode_counts"),
+            "D3 provenance episode counts",
+        )
+        == expected_episode_split
+        and _count_mapping(
+            provenance.get("canonical_episode_identity_counts"),
+            "D3 canonical identity counts",
+        )
+        == dict(_EXPECTED_SEED_COUNTS)
+        and _nonnegative_int(
+            provenance.get("dirty_episode_count"), "D3 provenance dirty episodes"
+        )
+        == 0
+        and _nonnegative_int(
+            provenance.get("online_truth_use_count"), "D3 provenance truth use"
+        )
+        == 0
+        and provenance.get("repository_dirty") is False
+        and provenance.get("reserved_evaluation_seeds")
+        == list(_EXPECTED_RESERVED_SEEDS)
+        and provenance.get("reserved_seed_overlap") == []
+        and provenance.get("source_git_commit") == registry["git_commit"]
+        and provenance.get("source_schedule_sha256") == registry["schedule_sha256"],
+        "d3_full_sample_provenance_failed",
+        "D3 full-sample seed, truth, or clean-source provenance failed",
+    )
+
+    numeric = _mapping(
+        payload.get("schema_and_numeric_audit"), "D3 numeric audit"
+    )
+    _expect(
+        numeric.get("dataset_schema_version") == "d3_learning_dataset_v2"
+        and numeric.get("split_policy_version")
+        == "d3_numeric_seed_atomic_split_v2"
+        and _nonnegative_int(
+            numeric.get("validated_frame_count"), "D3 validated frames"
+        )
+        == 1604
+        and _nonnegative_int(
+            numeric.get("feature_value_count"), "D3 feature values"
+        )
+        == 43_905_780
+        and numeric.get("all_validated_numeric_features_finite") is True
+        and _nonnegative_int(
+            numeric.get("nonfinite_numeric_value_count"), "D3 non-finite values"
+        )
+        == 0
+        and _nonnegative_int(
+            numeric.get("candidate_dimension_mismatch_count"),
+            "D3 dimension mismatches",
+        )
+        == 0,
+        "d3_full_sample_numeric_audit_failed",
+        "D3 full-sample schema or numeric audit failed",
+    )
+
+    identity = _mapping(
+        payload.get("version_and_identity_audit"), "D3 identity audit"
+    )
+    _expect(
+        _nonnegative_int(
+            identity.get("version_checked_frame_count"), "D3 version-checked frames"
+        )
+        == 1604
+        and _nonnegative_int(
+            identity.get("anonymous_ordinal_identity_checked_frame_count"),
+            "D3 identity-checked frames",
+        )
+        == 1604
+        and all(
+            _nonnegative_int(identity.get(field), f"D3 identity {field}") == 0
+            for field in (
+                "frame_sequence_violation_count",
+                "global_track_id_illegal_field_count",
+                "online_identity_field_occurrence_count",
+                "previous_plan_version_regression_count",
+                "timestamp_sequence_violation_count",
+            )
+        )
+        and identity.get("global_track_id_created_or_rewritten") is False
+        and identity.get("current_plan_owner_binding") == "unavailable"
+        and identity.get("current_plan_version_binding") == "unavailable"
+        and identity.get("stale_plan_runtime_rejection_evidence") == "unavailable",
+        "d3_full_sample_identity_or_version_failed",
+        "D3 identity, version, or unavailable-evidence boundary failed",
+    )
+
+    constraints = _mapping(
+        payload.get("action_and_constraint_audit"), "D3 constraint audit"
+    )
+    _expect(
+        _nonnegative_int(
+            constraints.get("constraint_checked_frame_count"),
+            "D3 constraint-checked frames",
+        )
+        == 1604
+        and _nonnegative_int(
+            constraints.get("candidate_edge_count"), "D3 constraint edges"
+        )
+        == 3_658_815
+        and _nonnegative_int(
+            constraints.get("resource_target_action_label_count"),
+            "D3 constraint labels",
+        )
+        == 3_658_815
+        and _nonnegative_int(
+            constraints.get("selected_resource_target_action_count"),
+            "D3 selected actions",
+        )
+        == 117_304
+        and all(
+            _nonnegative_int(constraints.get(field), f"D3 constraint {field}") == 0
+            for field in (
+                "action_index_violation_count",
+                "capacity_violation_count",
+                "demand_slot_violation_count",
+            )
+        ),
+        "d3_full_sample_constraint_audit_failed",
+        "D3 action index, capacity, or demand-slot audit failed",
+    )
+
+    integrity = _mapping(payload.get("artifact_integrity"), "D3 integrity")
+    before = _mapping(integrity.get("source_hashes_before"), "D3 source hashes before")
+    after = _mapping(integrity.get("source_hashes_after"), "D3 source hashes after")
+    _expect(
+        _nonnegative_int(integrity.get("source_file_count"), "D3 source file count")
+        == 7
+        and integrity.get("dataset_manifest_frames_binding_valid") is True
+        and integrity.get("formal_source_data_modified") is False
+        and integrity.get("source_artifacts_unchanged") is True
+        and before == after
+        and set(before) == set(source_files),
+        "d3_full_sample_artifact_integrity_failed",
+        "D3 source artifacts are incomplete or changed during audit",
+    )
+    _require_sha256(
+        integrity.get("source_artifact_set_sha256"), "D3 source artifact set SHA"
+    )
+
+    evidence = _mapping(
+        payload.get("evidence_availability"), "D3 evidence availability"
+    )
+    _expect(
+        evidence.get("causal_or_counterfactual_reward") == "unavailable"
+        and evidence.get("real_runtime_applied_ack") == "unavailable"
+        and evidence.get("real_runtime_outcome_attribution") == "unavailable"
+        and evidence.get("same_seed_paired_shadow_non_degradation") == "unavailable"
+        and evidence.get("zero_padding_used_for_unavailable_evidence") is False
+        and _nonnegative_int(
+            evidence.get("offline_rule_teacher_reward_component_frame_count"),
+            "D3 rule-teacher diagnostic frames",
+        )
+        == 1604,
+        "d3_full_sample_availability_overstated",
+        "D3 unavailable runtime evidence was promoted or zero-imputed",
+    )
+    producer_admission = _mapping(
+        payload.get("admission"), "D3 producer admission"
+    )
+    _expect(
+        producer_admission.get("assignment_full_sample_structural_audit")
+        == "complete"
+        and producer_admission.get("overall_status") == "partial"
+        and producer_admission.get("runtime_plan_binding_evidence") == "partial"
+        and producer_admission.get("model_training_performed") is False
+        and producer_admission.get("weights_written") is False
+        and producer_admission.get("ppo") is False
+        and producer_admission.get("assist") is False
+        and producer_admission.get("online_authority") is False
+        and producer_admission.get("rule_cost_and_hungarian_default") is True
+        and producer_admission.get("rule_fallback_required") is True,
+        "d3_full_sample_admission_overstated",
+        "D3 full-sample audit opened training, assist, or authority",
+    )
+
+    return {
+        "status": "complete",
+        "complete": True,
+        "scope": "d3_formal_assignment_structural_behavior_cloning",
+        "audit_file_sha256": actual_file_hash,
+        "audit_content_sha256": payload["content_sha256"],
+        "manifest_file_sha256": d3_formal["manifest_file_sha256"],
+        "training_registry_sha256": registry["training_file_sha256"],
+        "shared_registry_sha256": registry["shared_file_sha256"],
+        "episode_count": 900,
+        "frame_count": 1604,
+        "canonical_seed_counts": dict(_EXPECTED_SEED_COUNTS),
+        "canonical_episode_counts": expected_episode_split,
+        "canonical_frame_counts": expected_frame_split,
+        "candidate_edge_count": 3_658_815,
+        "selected_action_count": 117_304,
+        "finite_feature_value_count": 43_905_780,
+        "online_truth_use_count": 0,
+        "reserved_seed_leakage_count": 0,
+        "dirty_episode_count": 0,
+        "runtime_reward_available": False,
+        "rule_teacher_reward_components_are_runtime_reward": False,
+        "ppo_allowed": False,
+        "assist_allowed": False,
+        "authority_allowed": False,
+        "rule_fallback_required": True,
+        "remaining_blockers": [
+            "real_runtime_assignment_applied_ack",
+            "real_runtime_outcome_attribution",
+            "causal_or_counterfactual_reward",
+            "same_seed_paired_shadow_non_degradation",
+            "current_plan_owner_and_version_runtime_binding",
+        ],
+    }
+
+
+def _audit_d4_full_sample(
+    path: Path,
+    *,
+    expected_file_sha256: str,
+    d4_formal: Mapping[str, Any],
+    d4_supplemental: Mapping[str, Any],
+    registry: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Strictly consume D4's formal plus supplemental full-sample audit."""
+
+    actual_file_hash = _verify_full_sample_file_hash(
+        path,
+        expected_file_sha256,
+        module="d4",
+        label="D4 regional full-sample audit",
+    )
+    payload = _read_json_object(path, "D4 regional full-sample audit")
+    _expect_equal(
+        set(payload),
+        {
+            "actual_bindings",
+            "admission",
+            "artifact_integrity",
+            "audit",
+            "audit_mode",
+            "binding_checks",
+            "content_sha256",
+            "evidence_availability",
+            "expected_bindings",
+            "formal_corpus",
+            "purpose",
+            "remaining_gates",
+            "schema",
+            "source_paths",
+            "status",
+            "supplemental_curriculum",
+            "validation_date",
+        },
+        "d4_full_sample_audit_fields_mismatch",
+        "D4 full-sample audit top-level fields changed",
+    )
+    _expect_equal(
+        payload.get("schema"),
+        _D4_FULL_SAMPLE_AUDIT_SCHEMA,
+        "d4_full_sample_audit_schema_mismatch",
+        "D4 full-sample audit schema changed",
+    )
+    _expect_equal(
+        payload.get("validation_date"),
+        CROSS_MODULE_LEARNING_ADMISSION_DATE,
+        "d4_full_sample_audit_date_mismatch",
+        "D4 full-sample audit validation date changed",
+    )
+    _validate_claimed_content_hash(
+        payload,
+        "content_sha256",
+        "d4_full_sample_audit_content_hash_mismatch",
+    )
+    _expect_equal(
+        payload.get("purpose"),
+        _D4_FULL_SAMPLE_AUDIT_PURPOSE,
+        "d4_full_sample_audit_purpose_mismatch",
+        "D4 full-sample audit purpose changed",
+    )
+    _expect_equal(
+        payload.get("audit_mode"),
+        "read_only_fail_closed",
+        "d4_full_sample_audit_mode_mismatch",
+        "D4 full-sample audit is not read-only fail-closed",
+    )
+
+    source_paths = _mapping(payload.get("source_paths"), "D4 source paths")
+    _expect_equal(
+        set(source_paths),
+        {
+            "formal_dataset",
+            "shared_seed_registry",
+            "supplemental_canonical_view",
+            "supplemental_dataset",
+            "supplemental_summary",
+            "training_seed_registry",
+        },
+        "d4_full_sample_source_set_mismatch",
+        "D4 full-sample source path set changed",
+    )
+    _expect(
+        all(isinstance(value, str) and value.strip() for value in source_paths.values()),
+        "d4_full_sample_source_path_invalid",
+        "D4 full-sample source paths must be explicit non-empty strings",
+    )
+
+    producer_audit = _mapping(payload.get("audit"), "D4 producer audit")
+    _expect(
+        producer_audit.get("passed") is True
+        and producer_audit.get("fail_closed") is True
+        and _nonnegative_int(
+            producer_audit.get("violation_count"), "D4 producer violations"
+        )
+        == 0
+        and producer_audit.get("violations") == []
+        and producer_audit.get("common_violations") == []
+        and producer_audit.get("formal_violations") == []
+        and producer_audit.get("supplemental_violations") == [],
+        "d4_full_sample_producer_audit_failed",
+        "D4 producer full-sample audit did not pass cleanly",
+    )
+    status = _mapping(payload.get("status"), "D4 producer status")
+    _expect_equal(
+        dict(status),
+        {
+            "combined_full_sample": "complete",
+            "formal_full_sample": "complete",
+            "supplemental_full_sample": "complete",
+        },
+        "d4_full_sample_status_invalid",
+        "D4 formal, supplemental, and combined status must all be complete",
+    )
+
+    expected_bindings = _mapping(
+        payload.get("expected_bindings"), "D4 expected bindings"
+    )
+    actual_bindings = _mapping(
+        payload.get("actual_bindings"), "D4 actual bindings"
+    )
+    binding_fields = {
+        "formal_dataset_sha256",
+        "formal_manifest_sha256",
+        "formal_source_git_commit",
+        "shared_registry_sha256",
+        "supplemental_canonical_view_sha256",
+        "supplemental_dataset_sha256",
+        "supplemental_manifest_sha256",
+        "supplemental_source_git_commit",
+        "supplemental_summary_content_sha256",
+        "supplemental_summary_file_sha256",
+        "training_registry_sha256",
+    }
+    _expect_equal(
+        set(expected_bindings),
+        binding_fields,
+        "d4_full_sample_expected_binding_set_mismatch",
+        "D4 expected binding fields changed",
+    )
+    _expect_equal(
+        set(actual_bindings),
+        binding_fields,
+        "d4_full_sample_actual_binding_set_mismatch",
+        "D4 actual binding fields changed",
+    )
+    for field in binding_fields:
+        expected = expected_bindings.get(field)
+        if field.endswith("git_commit"):
+            _require_git_commit(expected, f"D4 expected {field}")
+        else:
+            _require_sha256(expected, f"D4 expected {field}")
+        _expect_equal(
+            actual_bindings.get(field),
+            expected,
+            "d4_full_sample_source_binding_mismatch",
+            f"D4 expected/actual binding differs at {field}",
+        )
+    caller_bindings = {
+        "formal_dataset_sha256": d4_formal["dataset_sha256"],
+        "formal_manifest_sha256": d4_formal["manifest_file_sha256"],
+        "formal_source_git_commit": registry["git_commit"],
+        "shared_registry_sha256": registry["shared_file_sha256"],
+        "supplemental_dataset_sha256": d4_supplemental["dataset_sha256"],
+        "supplemental_manifest_sha256": d4_supplemental[
+            "dataset_manifest_sha256"
+        ],
+        "supplemental_summary_content_sha256": d4_supplemental[
+            "summary_content_sha256"
+        ],
+        "supplemental_summary_file_sha256": d4_supplemental[
+            "summary_file_sha256"
+        ],
+        "training_registry_sha256": registry["training_file_sha256"],
+    }
+    for field, expected in caller_bindings.items():
+        _expect_equal(
+            expected_bindings.get(field),
+            expected,
+            "d4_full_sample_expected_binding_mismatch",
+            f"D4 full-sample audit is not bound to the consumed {field}",
+        )
+    _validate_binding_checks(
+        payload.get("binding_checks"),
+        expected_bindings,
+        module="d4",
+    )
+
+    formal = _validate_d4_full_sample_corpus(
+        payload.get("formal_corpus"),
+        name="formal",
+        classification="formal_observation_corpus",
+        episode_count=900,
+        frame_count=1798,
+        action_count=14_384,
+        canonical_episode_counts={"train": 540, "validation": 180, "test": 180},
+        canonical_frame_counts={"train": 1079, "validation": 359, "test": 360},
+        canonical_action_counts={"train": 8632, "validation": 2872, "test": 2880},
+        action_counts={
+            "hold_true_count": 0,
+            "request_replan_true_count": 0,
+            "resource_quota_negative_count": 0,
+            "resource_quota_nonzero_count": 0,
+            "resource_quota_positive_count": 0,
+            "resource_quota_zero_count": 14_384,
+            "transfer_count": 0,
+            "transferred_resource_count": 0,
+        },
+        reward_reason="d6_episode_outcome_not_joined",
+        source_git_commit=expected_bindings["formal_source_git_commit"],
+    )
+    supplemental = _validate_d4_full_sample_corpus(
+        payload.get("supplemental_curriculum"),
+        name="supplemental",
+        classification="synthetic_rule_teacher_curriculum",
+        episode_count=100,
+        frame_count=300,
+        action_count=1200,
+        canonical_episode_counts={"train": 60, "validation": 20, "test": 20},
+        canonical_frame_counts={"train": 180, "validation": 60, "test": 60},
+        canonical_action_counts={"train": 720, "validation": 240, "test": 240},
+        action_counts={
+            "hold_true_count": 100,
+            "request_replan_true_count": 200,
+            "resource_quota_negative_count": 100,
+            "resource_quota_nonzero_count": 200,
+            "resource_quota_positive_count": 100,
+            "resource_quota_zero_count": 1000,
+            "transfer_count": 100,
+            "transferred_resource_count": 300,
+        },
+        reward_reason="supplemental_curriculum_has_no_observed_outcome",
+        source_git_commit=expected_bindings["supplemental_source_git_commit"],
+    )
+    _expect(
+        d4_formal["episode_count"] == formal["episode_count"]
+        and d4_formal["frame_count"] == formal["frame_count"]
+        and d4_formal["canonical_episode_counts"]
+        == formal["canonical_episode_counts"]
+        and d4_formal["canonical_frame_counts"]
+        == formal["canonical_frame_counts"],
+        "d4_full_sample_formal_inventory_binding_mismatch",
+        "D4 producer counts differ from the consumed formal manifest/view",
+    )
+    _expect(
+        d4_supplemental["episode_count"] == supplemental["episode_count"]
+        and d4_supplemental["frame_count"] == supplemental["frame_count"]
+        and d4_supplemental["canonical_episode_counts"]
+        == supplemental["canonical_episode_counts"]
+        and d4_supplemental["canonical_frame_counts"]
+        == supplemental["canonical_frame_counts"],
+        "d4_full_sample_supplemental_inventory_binding_mismatch",
+        "D4 producer counts differ from the consumed supplemental summary",
+    )
+
+    integrity = _mapping(payload.get("artifact_integrity"), "D4 integrity")
+    formal_integrity = _mapping(integrity.get("formal"), "D4 formal integrity")
+    supplemental_integrity = _mapping(
+        integrity.get("supplemental"), "D4 supplemental integrity"
+    )
+    _expect(
+        integrity.get("formal_900_episode_dataset_modified") is False
+        and integrity.get("auxiliary_sources_unchanged_during_audit") is True
+        and _mapping(
+            integrity.get("auxiliary_source_hashes_before"),
+            "D4 auxiliary hashes before",
+        )
+        == _mapping(
+            integrity.get("auxiliary_source_hashes_after"),
+            "D4 auxiliary hashes after",
+        )
+        and formal_integrity.get("artifact_inventory_exact") is True
+        and formal_integrity.get("source_unchanged_during_audit") is True
+        and _nonnegative_int(
+            formal_integrity.get("dataset_file_count"), "D4 formal files"
+        )
+        == 901
+        and _nonnegative_int(
+            formal_integrity.get("manifest_episode_file_count"),
+            "D4 formal manifest files",
+        )
+        == 900
+        and _nonnegative_int(
+            formal_integrity.get("episode_sha256_verified_count"),
+            "D4 formal verified files",
+        )
+        == 900
+        and _nonnegative_int(
+            formal_integrity.get("episode_sha256_mismatch_count"),
+            "D4 formal hash mismatches",
+        )
+        == 0
+        and supplemental_integrity.get("artifact_inventory_exact") is True
+        and supplemental_integrity.get("source_unchanged_during_audit") is True
+        and _nonnegative_int(
+            supplemental_integrity.get("dataset_file_count"),
+            "D4 supplemental files",
+        )
+        == 101
+        and _nonnegative_int(
+            supplemental_integrity.get("manifest_episode_file_count"),
+            "D4 supplemental manifest files",
+        )
+        == 100
+        and _nonnegative_int(
+            supplemental_integrity.get("episode_sha256_verified_count"),
+            "D4 supplemental verified files",
+        )
+        == 100
+        and _nonnegative_int(
+            supplemental_integrity.get("episode_sha256_mismatch_count"),
+            "D4 supplemental hash mismatches",
+        )
+        == 0,
+        "d4_full_sample_artifact_integrity_failed",
+        "D4 formal or supplemental artifact verification is incomplete",
+    )
+    _require_sha256(formal_integrity.get("tree_sha256"), "D4 formal tree SHA")
+    _require_sha256(
+        supplemental_integrity.get("tree_sha256"), "D4 supplemental tree SHA"
+    )
+
+    evidence = _mapping(
+        payload.get("evidence_availability"), "D4 evidence availability"
+    )
+    expected_availability = {
+        "attributable_reward",
+        "explicit_pre_projection_action_mask",
+        "observed_outcome",
+        "real_runtime_coalition_member_ack",
+        "same_seed_paired_shadow",
+        "stale_plan_epoch_lease_rejection_samples",
+    }
+    _expect_equal(
+        set(evidence),
+        expected_availability,
+        "d4_full_sample_availability_set_mismatch",
+        "D4 evidence availability fields changed",
+    )
+    for name in expected_availability:
+        item = _mapping(evidence.get(name), f"D4 availability {name}")
+        _expect(
+            item.get("availability") == "unavailable"
+            and item.get("status") == "pending",
+            "d4_full_sample_availability_overstated",
+            f"D4 unavailable evidence was promoted at {name}",
+        )
+
+    producer_admission = _mapping(
+        payload.get("admission"), "D4 producer admission"
+    )
+    _expect(
+        producer_admission.get("behavior_cloning_full_sample_audit") == "complete"
+        and producer_admission.get("d6_cross_module_learning_admission")
+        == "pending_external_audit"
+        and producer_admission.get("model_training_performed") is False
+        and producer_admission.get("weights_written") is False
+        and producer_admission.get("ppo_allowed") is False
+        and producer_admission.get("assist_allowed") is False
+        and producer_admission.get("online_authority_allowed") is False
+        and producer_admission.get("rule_fallback_required") is True
+        and producer_admission.get(
+            "deterministic_region_rules_are_only_executable_path"
+        )
+        is True
+        and producer_admission.get(
+            "lease_epoch_and_safety_projection_remain_mandatory"
+        )
+        is True,
+        "d4_full_sample_admission_overstated",
+        "D4 full-sample audit opened training, assist, or authority",
+    )
+
+    return {
+        "status": "complete",
+        "complete": True,
+        "scope": "d4_formal_and_supplemental_structural_behavior_cloning",
+        "audit_file_sha256": actual_file_hash,
+        "audit_content_sha256": payload["content_sha256"],
+        "formal_manifest_file_sha256": d4_formal["manifest_file_sha256"],
+        "supplemental_summary_file_sha256": d4_supplemental[
+            "summary_file_sha256"
+        ],
+        "training_registry_sha256": registry["training_file_sha256"],
+        "shared_registry_sha256": registry["shared_file_sha256"],
+        "formal": formal,
+        "supplemental": supplemental,
+        "online_truth_use_count": 0,
+        "reserved_seed_leakage_count": 0,
+        "dirty_episode_count": 0,
+        "runtime_ack_available": False,
+        "projected_recommendation_is_runtime_ack": False,
+        "target_kind_rule_is_truth": False,
+        "ppo_allowed": False,
+        "assist_allowed": False,
+        "authority_allowed": False,
+        "rule_fallback_required": True,
+        "remaining_blockers": [
+            "real_runtime_coalition_member_ack_and_outcome_attribution",
+            "versioned_reward_causal_and_counterfactual_labels",
+            "same_seed_paired_shadow_non_degradation",
+            "explicit_stale_plan_epoch_lease_rejection_samples",
+        ],
+    }
+
+
+def _validate_d4_full_sample_corpus(
+    value: Any,
+    *,
+    name: str,
+    classification: str,
+    episode_count: int,
+    frame_count: int,
+    action_count: int,
+    canonical_episode_counts: Mapping[str, int],
+    canonical_frame_counts: Mapping[str, int],
+    canonical_action_counts: Mapping[str, int],
+    action_counts: Mapping[str, int],
+    reward_reason: str,
+    source_git_commit: str,
+) -> dict[str, Any]:
+    corpus = _mapping(value, f"D4 {name} corpus")
+    _expect_equal(
+        corpus.get("classification"),
+        classification,
+        "d4_full_sample_corpus_classification_mismatch",
+        f"D4 {name} corpus classification changed",
+    )
+    inventory = _mapping(corpus.get("inventory"), f"D4 {name} inventory")
+    _expect(
+        _nonnegative_int(inventory.get("episode_count"), f"D4 {name} episodes")
+        == episode_count
+        and _nonnegative_int(inventory.get("frame_count"), f"D4 {name} frames")
+        == frame_count
+        and _nonnegative_int(inventory.get("sample_count"), f"D4 {name} samples")
+        == frame_count
+        and _nonnegative_int(inventory.get("action_count"), f"D4 {name} actions")
+        == action_count
+        and inventory.get("sample_definition") == "one_region_resource_frame",
+        "d4_full_sample_inventory_mismatch",
+        f"D4 {name} full-sample inventory changed",
+    )
+    split_inventory = _mapping(
+        inventory.get("canonical_split"), f"D4 {name} split inventory"
+    )
+    _expect_equal(
+        set(split_inventory),
+        set(_SPLITS),
+        "d4_full_sample_split_inventory_mismatch",
+        f"D4 {name} split inventory changed",
+    )
+    for split in _SPLITS:
+        item = _mapping(split_inventory.get(split), f"D4 {name} {split} inventory")
+        _expect(
+            _nonnegative_int(item.get("episode_count"), "D4 split episodes")
+            == canonical_episode_counts[split]
+            and _nonnegative_int(item.get("frame_count"), "D4 split frames")
+            == canonical_frame_counts[split]
+            and _nonnegative_int(item.get("sample_count"), "D4 split samples")
+            == canonical_frame_counts[split]
+            and _nonnegative_int(item.get("action_count"), "D4 split actions")
+            == canonical_action_counts[split],
+            "d4_full_sample_split_inventory_mismatch",
+            f"D4 {name} {split} inventory changed",
+        )
+
+    canonical = _mapping(corpus.get("canonical"), f"D4 {name} canonical")
+    canonical_split = _mapping(
+        canonical.get("canonical_split"), f"D4 {name} canonical split"
+    )
+    _expect(
+        _count_mapping(canonical_split.get("seed_counts"), "D4 seed counts")
+        == dict(_EXPECTED_SEED_COUNTS)
+        and _count_mapping(
+            canonical_split.get("episode_counts"), "D4 episode counts"
+        )
+        == dict(canonical_episode_counts)
+        and _count_mapping(canonical_split.get("frame_counts"), "D4 frame counts")
+        == dict(canonical_frame_counts)
+        and canonical_split.get("numeric_seed_atomic") is True
+        and _nonnegative_int(
+            canonical_split.get("reserved_seed_count"), "D4 reserved seed count"
+        )
+        == 20
+        and canonical_split.get("reserved_seed_present") is False,
+        "d4_full_sample_canonical_split_mismatch",
+        f"D4 {name} canonical 60/20/20 split changed",
+    )
+    readiness = _mapping(canonical.get("readiness"), f"D4 {name} readiness")
+    _expect(
+        readiness.get("behavior_cloning_view_available") is True
+        and readiness.get("development_data_governance_only") is True
+        and readiness.get("model_performance_evidence") is False
+        and readiness.get("ppo_available") is False
+        and readiness.get("assist_eligible") is False,
+        "d4_full_sample_readiness_overstated",
+        f"D4 {name} canonical readiness opened learning authority",
+    )
+
+    numeric = _mapping(corpus.get("numeric_feature_audit"), f"D4 {name} numeric")
+    _expect(
+        _nonnegative_int(numeric.get("finite_sample_count"), "D4 finite samples")
+        == frame_count
+        and _nonnegative_int(
+            numeric.get("nonfinite_sample_count"), "D4 non-finite samples"
+        )
+        == 0
+        and _nonnegative_int(
+            numeric.get("nonfinite_path_count"), "D4 non-finite paths"
+        )
+        == 0
+        and numeric.get("nonfinite_path_examples") == [],
+        "d4_full_sample_numeric_audit_failed",
+        f"D4 {name} numeric audit failed",
+    )
+    truth = _mapping(
+        corpus.get("truth_seed_and_dirty_audit"), f"D4 {name} truth audit"
+    )
+    _expect(
+        _nonnegative_int(truth.get("dirty_episode_count"), "D4 dirty episodes")
+        == 0
+        and _nonnegative_int(truth.get("numeric_seed_count"), "D4 seed count")
+        == 100
+        and truth.get("numeric_seed_atomic") is True
+        and _nonnegative_int(
+            truth.get("online_truth_identifier_count"), "D4 truth identifiers"
+        )
+        == 0
+        and truth.get("reserved_evaluation_seed_overlap") == []
+        and truth.get("truth_identifier_path_examples") == [],
+        "d4_full_sample_truth_seed_dirty_failed",
+        f"D4 {name} truth, seed, or dirty-source audit failed",
+    )
+
+    action = _mapping(corpus.get("action_coverage"), f"D4 {name} action coverage")
+    _expect(
+        _nonnegative_int(action.get("action_count"), "D4 action count")
+        == action_count
+        and _nonnegative_int(
+            action.get("rule_teacher_label_count"), "D4 teacher labels"
+        )
+        == frame_count
+        and action.get("target_kind_counts") == {"rule": frame_count}
+        and action.get("rule_teacher_label_is_runtime_applied_ack") is False
+        and all(
+            _nonnegative_int(action.get(field), f"D4 action {field}") == expected
+            for field, expected in action_counts.items()
+        ),
+        "d4_full_sample_action_coverage_mismatch",
+        f"D4 {name} action coverage or rule-label boundary changed",
+    )
+    safety = _mapping(
+        corpus.get("safety_and_generation_audit"), f"D4 {name} safety"
+    )
+    _expect(
+        safety.get("owner_plan_epoch_lease_binding_checked") is True
+        and safety.get("cross_region_transfer_legality_checked") is True
+        and safety.get("resource_quota_conservation_checked") is True
+        and _nonnegative_int(
+            safety.get("owner_epoch_version_lease_monotonic_episode_count"),
+            "D4 monotonic episodes",
+        )
+        == episode_count
+        and _nonnegative_int(
+            safety.get("post_projection_recommendation_count"),
+            "D4 projected recommendations",
+        )
+        == frame_count
+        and safety.get("post_projection_recommendation_is_runtime_applied_ack")
+        is False
+        and _nonnegative_int(
+            safety.get("safety_valid_sample_count"), "D4 safe samples"
+        )
+        == frame_count
+        and _nonnegative_int(
+            safety.get("safety_invalid_sample_count"), "D4 unsafe samples"
+        )
+        == 0
+        and safety.get("explicit_pre_projection_action_mask_available") is False
+        and safety.get("explicit_stale_plan_or_lease_rejection_record_available")
+        is False
+        and safety.get("safety_violation_examples") == []
+        and safety.get("version_violation_examples") == [],
+        "d4_full_sample_safety_or_version_failed",
+        f"D4 {name} safety, version, or projected-action boundary failed",
+    )
+    reward = _mapping(
+        corpus.get("reward_outcome_and_runtime_ack"), f"D4 {name} reward"
+    )
+    _expect(
+        reward.get("observed_outcome_available") is False
+        and reward.get("paired_shadow_available") is False
+        and reward.get("real_runtime_coalition_member_ack_available") is False
+        and _nonnegative_int(
+            reward.get("reward_available_count"), "D4 available rewards"
+        )
+        == 0
+        and _nonnegative_int(
+            reward.get("reward_unavailable_count"), "D4 unavailable rewards"
+        )
+        == frame_count
+        and reward.get("reward_unavailable_reason_counts")
+        == {reward_reason: frame_count},
+        "d4_full_sample_runtime_evidence_overstated",
+        f"D4 {name} runtime ACK, outcome, reward, or shadow was overstated",
+    )
+
+    source = _mapping(corpus.get("schema_and_source"), f"D4 {name} source")
+    config_counts = _count_mapping(
+        source.get("source_config_sha256_episode_counts"),
+        f"D4 {name} config counts",
+    )
+    _expect(
+        source.get("dataset_schema") == "d4-region-learning-dataset-v1"
+        and _nonnegative_int(
+            source.get("dirty_episode_count"), "D4 source dirty episodes"
+        )
+        == 0
+        and source.get("feature_schema_counts")
+        == {"d4-region-resource-features-v1": frame_count}
+        and source.get("frame_schema_counts")
+        == {"d4-region-learning-frame-v1": frame_count}
+        and source.get("recommendation_schema_counts")
+        == {"d4-region-resource-recommendation-v1": frame_count}
+        and source.get("snapshot_schema_counts")
+        == {"d4-region-resource-snapshot-v1": frame_count}
+        and source.get("source_schema_counts")
+        == {"d4-region-learning-source-v1": episode_count}
+        and source.get("source_git_commit_episode_counts")
+        == {source_git_commit: episode_count}
+        and sum(config_counts.values()) == episode_count
+        and all(
+            len(key) == 64 and set(key) <= _HEX and count > 0
+            for key, count in config_counts.items()
+        ),
+        "d4_full_sample_schema_or_source_failed",
+        f"D4 {name} schema or source counts changed",
+    )
+
+    if name == "supplemental":
+        synthetic = _mapping(
+            corpus.get("synthetic_evidence_boundary"),
+            "D4 supplemental evidence boundary",
+        )
+        _expect_equal(
+            dict(synthetic),
+            {
+                "action_coverage_evidence": True,
+                "attributable_reward_evidence": False,
+                "center_or_secondary_takeover_effect_evidence": False,
+                "deterministic_safety_constraint_evidence": True,
+                "finite_value_evidence": True,
+                "network_partition_effect_evidence": False,
+                "observed_outcome_evidence": False,
+                "real_runtime_coalition_member_ack_evidence": False,
+                "structure_and_schema_evidence": True,
+            },
+            "d4_full_sample_synthetic_boundary_overstated",
+            "D4 supplemental curriculum was promoted to runtime evidence",
+        )
+
+    return {
+        "classification": classification,
+        "episode_count": episode_count,
+        "frame_count": frame_count,
+        "sample_count": frame_count,
+        "action_count": action_count,
+        "canonical_seed_counts": dict(_EXPECTED_SEED_COUNTS),
+        "canonical_episode_counts": dict(canonical_episode_counts),
+        "canonical_frame_counts": dict(canonical_frame_counts),
+        "canonical_action_counts": dict(canonical_action_counts),
+        "finite_sample_count": frame_count,
+        "online_truth_use_count": 0,
+        "dirty_episode_count": 0,
+        "safety_violation_count": 0,
+        "reward_available_count": 0,
+        "runtime_ack_available": False,
     }
 
 
@@ -2122,7 +3410,9 @@ def _audit_d5_supplemental_full_sample(
 
 def _build_availability(
     *,
+    d3_full_sample: Mapping[str, Any],
     d4_formal: Mapping[str, Any],
+    d4_full_sample: Mapping[str, Any],
     d5_active: Mapping[str, Any],
     d4_supplemental: Mapping[str, Any],
     d5_supplemental: Mapping[str, Any],
@@ -2136,6 +3426,12 @@ def _build_availability(
     sources = {
         "reward": [
             {
+                "source": "d3_full_sample_rule_teacher_diagnostics",
+                "available_sample_count": 0,
+                "sample_count": d3_full_sample["frame_count"],
+                "classification": "not_runtime_reward",
+            },
+            {
                 "source": "d4_formal",
                 "available_sample_count": d4_formal["reward_available_count"],
                 "sample_count": d4_formal["reward_sample_count"],
@@ -2144,6 +3440,13 @@ def _build_availability(
                 "source": "d4_supplemental",
                 "available_sample_count": d4_supplemental["reward_available_count"],
                 "sample_count": d4_supplemental["reward_sample_count"],
+            },
+            {
+                "source": "d4_full_sample",
+                "available_sample_count": 0,
+                "sample_count": d4_full_sample["formal"]["sample_count"]
+                + d4_full_sample["supplemental"]["sample_count"],
+                "classification": "no_attributable_runtime_reward",
             },
             {
                 "source": "d5_formal_active_vision",
@@ -2491,6 +3794,48 @@ def _validate_reserved_absence(
         "reserved_seed_leakage",
         f"{context} contains reserved seeds: {overlap}",
     )
+
+
+def _verify_full_sample_file_hash(
+    path: Path,
+    expected_file_sha256: str,
+    *,
+    module: str,
+    label: str,
+) -> str:
+    expected = _require_sha256(expected_file_sha256, f"{label} file SHA256")
+    actual = _sha256_file(path)
+    _expect_equal(
+        actual,
+        expected,
+        f"{module}_full_sample_audit_file_hash_mismatch",
+        f"{label} file SHA differs from caller evidence",
+    )
+    return actual
+
+
+def _validate_binding_checks(
+    value: Any,
+    expected_bindings: Mapping[str, Any],
+    *,
+    module: str,
+) -> None:
+    checks = _mapping(value, f"{module.upper()} full-sample binding checks")
+    _expect_equal(
+        set(checks),
+        set(expected_bindings),
+        f"{module}_full_sample_binding_check_set_mismatch",
+        f"{module.upper()} full-sample binding check set changed",
+    )
+    for field, expected in expected_bindings.items():
+        item = _mapping(checks.get(field), f"{module.upper()} binding check {field}")
+        _expect(
+            item.get("actual") == expected
+            and item.get("expected") == expected
+            and item.get("passed") is True,
+            f"{module}_full_sample_binding_check_failed",
+            f"{module.upper()} full-sample binding check failed at {field}",
+        )
 
 
 def _validate_claimed_content_hash(

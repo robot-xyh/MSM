@@ -7,8 +7,8 @@
 `audit_cross_module_learning_data_admission()` 接收一组显式文件路径，不搜索邻近目录，也不从文件名
 推断用途。输入包括 training/shared seed registry、D3 formal manifest、D4 formal manifest、D4
 formal canonical view 及其带外文件 SHA-256、D5 tracklet 和 active-vision 的 formal
-manifest/view/readiness、D4/D5 supplemental summary，以及 D5 supplemental BC producer 全样本审计
-和调用方提供的审计文件 SHA-256。CLI
+manifest/view/readiness、D4/D5 supplemental summary，以及 D3/D4/D5 producer 全样本审计和调用方
+提供的三个审计文件 SHA-256。CLI
 `run_cross_module_learning_admission.py` 使用同一组必填参数并输出中文 JSON 和 Markdown。
 
 审计先复用 D6 自有注册表验证器，复算 shared registry 的规范 JSON 内容哈希、assignment 哈希和冻结
@@ -53,21 +53,28 @@ D5 synthetic ACK applied/rejected/missing 各 400。实现强制要求其
 审计以 `synthetic_ack_claims_runtime_ack` 失败关闭。unavailable 的 reward、outcome、counterfactual 和
 causal 标签必须保留零 available count 与明确 unavailable 状态，不能补零为可用标签。
 
-### D5 全样本审计消费
+### D3-D5 全样本审计消费
 
-D6 不信任 D5 报告中的单一 passed 字段。入口先计算审计文件 SHA-256，并与调用方提供的带外值比较；
-随后移除 `content_sha256` 后按规范 JSON 重新计算内容哈希。schema、验证日期、审计 purpose、passed 和
-violation count 均采用固定合同。文件或内容被改写时立即停止准入。
+D6 不信任 producer 报告中的单一 passed 或 complete 字段。入口分别计算 D3、D4、D5 审计文件
+SHA-256，并与调用方提供的带外值比较；随后移除 `content_sha256`，按规范 JSON 重新计算内容哈希。
+schema、验证日期、purpose、passed、violation count 和状态字段均采用固定合同。文件或内容被改写时
+立即停止准入。
 
-审计的 expected/actual bindings 必须同时等于 D6 本轮正在消费的 D5 summary、dataset manifest、
-canonical view、dataset config、training/shared registry、producer summary 和源提交。D6 再核对 100
-episode、1200 sample、episode `60/20/20`、sample `720/240/240`、online/offline/descriptor 各 100、
-登记与校验制品 `302/302`、有限特征 `1200/1200`，并要求 source hash 审计前后不变。
+三份审计的 expected/actual bindings 和逐字段 binding checks 必须一致，并与 D6 本轮消费的正式
+manifest、补充 summary、training/shared registry、数据集摘要和源提交交叉绑定。D3 固定核对 900
+episode、1604 decision frame、3,658,815 candidate edge、117,304 selected action 和 43,905,780 个有限
+特征值。D4 核对正式 900 episode/1798 sample/14384 action，以及补充 100 episode/300 sample/1200
+action。D5 核对 100 episode/1200 sample、episode `60/20/20`、sample `720/240/240`、online/offline/
+descriptor 各 100、登记与校验制品 `302/302`、有限特征 `1200/1200`。
 
-身份和安全检查要求 online truth、保留 seed、dirty episode、非有限特征，以及 D5 创建、改写或换绑
-`global_track_id` 的计数均为 0。四类离线标签必须显式 unavailable 且没有零填充。synthetic ACK 只能
-标为确定性故障注入覆盖；其 applied/rejected/missing 计数不能进入 runtime evidence。producer admission
-必须保持 PPO、assist、authority=false 和 rule fallback=true，否则失败关闭。
+身份和安全检查要求 online truth、保留 seed、dirty episode、非有限特征、身份/版本/容量/需求槽/
+约束违规，以及 D5 创建、改写或换绑 `global_track_id` 的计数均为 0。D3 的 `reward_components` 只按
+规则教师诊断处理。D4 的 `target.kind=rule` 不作 truth，`recommendation.projected=true` 不作 runtime
+applied ACK。D5 四类离线标签必须显式 unavailable 且没有零填充；synthetic ACK 只能标为确定性故障
+注入覆盖。三份 producer admission 均必须保持 PPO、assist、authority=false 和 rule fallback=true。
+
+专项负例分别篡改 D3/D4 的 file SHA、content SHA、schema、库存计数、source binding、producer status、
+availability 和 admission。任一篡改都抛稳定错误码，不用默认 0 或 complete 继续执行。
 
 ### 准入矩阵
 
@@ -75,20 +82,21 @@ episode、1200 sample、episode `60/20/20`、sample `720/240/240`、online/offli
 
 ```text
 BC canonical view available = true
+D3 assignment full-sample audit = complete
+D4 regional full-sample audit = complete
 D5 supplemental BC full-sample audit = complete
-D3/D4 full-sample audit = pending
-cross-module full-sample audit = partial
+cross-module structural full-sample audit = complete
+overall admission = partial
 PPO allowed = false
 assist allowed = false
 authority allowed = false
 rule fallback required = true
 ```
 
-`BC canonical view available` 只说明 detached seed 视图的 manifest/view/readiness 绑定通过。
-`D5 supplemental BC full-sample audit complete` 只说明该 100-episode 补充课程的 producer 审计与 D6
-消费绑定通过。D3/D4 尚未完成逐样本审计，因此跨模块总状态只能是 `partial`，不能发布完整联合训练
-语料资格。synthetic ACK、补充课程动作多样性和离线 evaluator 标签均不会改变 PPO 或在线权限。当前
-输出没有模型性能或收益结论。
+`BC canonical view available` 说明 detached seed 视图绑定通过。`cross-module structural full-sample
+audit complete` 说明三份 producer 审计的结构、文件、计数和零违规状态均通过 D6 复核。它不证明动作
+被真实运行时采用，也不提供可归因 reward/outcome、因果/反事实、同 seed paired shadow 或保留 seed
+性能。因此 overall admission 保持 `partial`，当前输出没有模型性能或收益结论。
 
 ### 输出与验证
 
@@ -96,16 +104,16 @@ rule fallback required = true
 `cross_module_learning_admission.json` 与 `cross_module_learning_admission_cn.md`。真实报告基于
 2026-07-21 冻结输入生成。写盘前先把 training registry 的父目录解析为正式 generation root；目标
 目录与该根相等或位于其下时，以 `output_inside_formal_generation_root` 失败，且不调用 `mkdir`。
-源 900 episode 未修改。D5 审计文件 SHA-256 为
-`9a03653538e6dae054da8c127ad4a20aae2481af6c9bbef987edfddff0b423d3`，内容 SHA-256 为
-`a11b65596a4c416deba6d0cb35dcc0c32342a5bae0481291d43e8de0e26550dd`。专项 21 项覆盖正例 CLI、
-schema/hash tamper、错误 seed、reserved leakage、
+源 900 episode 未修改。D3/D4/D5 审计文件 SHA-256 分别为 `62a47df8...17fb`、`4245f1db...9e46`、
+`9a036535...2d3`，内容 SHA-256 分别为 `954f3e96...1867`、`94f4f4bf...3e7f`、
+`a11b6559...50dd`。专项 37 项覆盖正例 CLI、schema/hash tamper、错误 seed、reserved leakage、
 formal/supplemental 混用、synthetic ACK 冒充 runtime ACK、unavailable 标签补零、formal/training 与
-supplemental dirty source、D4 episode/frame split 篡改、正式树内输出和 missing input；结果为
-`21 passed`。D6 全量为 `385 passed`，仅有既有 Matplotlib `Axes3D` warning。
+supplemental dirty source、D4 episode/frame split 篡改、正式树内输出、missing input，以及 D3/D4
+file/content SHA、schema、计数、binding、status、availability/admission 篡改；结果为 `37 passed`。
+D6 全量为 `401 passed`，仅有既有 Matplotlib `Axes3D` 环境 warning。
 
-后续准入需要完成 D3/D4 canonical views 全样本审计；由 producer 写入真实 action adoption、版本绑定、
-runtime ACK、后续反馈、明确终局结果和归因窗；形成同 seed paired shadow；最后使用保留 seed
+后续准入由 producer 写入真实 action adoption、版本绑定、runtime ACK、后续反馈、明确终局结果和归因
+窗；形成因果/反事实证据和同 seed paired shadow；最后使用保留 seed
 `1000-1019` 验收。PPO 还需要 on-policy log probability/value，反事实和因果训练需要配对重放或受控
 干预。在这些证据形成前，规则路径保持默认。
 
