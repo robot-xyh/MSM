@@ -1,5 +1,12 @@
 # D6 文档索引
 
+2026-07-20 已接入正式学习数据标签只读审计和 detached sidecar 合同。D4/D5 的 outcome、reward、
+counterfactual、causal label 分层、运行确认硬门、保留 seed `1000-1019`、全量 SHA-256、原子发布和
+确定性复用见 `MODULE_PRINCIPLES_CN.md` 与 `ALGORITHM_AND_IMPLEMENTATION.md`。正式 900 episode
+审计确认 D4/D5 reward 均为 0 条可用，D5 runtime ACK 为 0；行为克隆只在模块内可准备，PPO 不可用。
+D4/D5 split 有 423/900 个 episode 不一致，联合训练保持 unavailable。2026-07-21 标签专项
+`17 passed`、D6 全量 `351 passed`；本轮未启动 AirSim，未修改 AirSim 计划或实验报告。
+
 2026-07-20 已接入 scalable 3D 算法实验矩阵离线审计。D6 v5 从配置 metadata 读取
 R0/G1/A1/A2/A3/C1/F1，核对 learning runtime 与实际采用证据，按固定 cell 分母和 variant 汇总，并在
 完整 R0 配对上输出 delta/bootstrap CI。专项 `34 passed`、D6 全量 `314 passed`；clean/formal 与

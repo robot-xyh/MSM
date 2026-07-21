@@ -1,5 +1,35 @@
 # D6 系统评估指标综述及子方案
 
+## 2026-07-20 正式学习标签审计评审
+
+D6 已新增独立的学习标签审计和 sidecar 构造边界。实现不导入 D4/D5 在线控制，不修改正式学习数据，
+也不把 actor/object/truth ID 写入在线特征。校验范围覆盖正式生成身份、900 episode、100 个训练 seed、
+20 个保留评估 seed、模块内及跨 D4/D5 split、文件哈希、共享对象键和 offline 四层标签空值合同。
+
+评审确认 outcome 与动作归因必须分开。D5 相邻 snapshot、projection 或相机姿态可以说明后续观测变化，
+不能证明相机命令已经应用。正式 1,153,242 条样本的 runtime ACK 全为 null，后续相机反馈也没有形成
+可用的 accepted command version 链。因此 D5 observed outcome `1,063,214` 条可用，reward 为 0 条
+可用；行为克隆合同可用，PPO 不可用。D4 同理只有 `898/1798` 条相邻区域 outcome，缺少 recommendation
+采用/执行证据，reward 为 0 条可用。
+
+当前 D4 规则动作共 14384 个，但非零 quota、hold、request-replan 和 transfer 均为 0。该数据可以
+验证行为克隆输入合同，不能用于说明策略覆盖或性能。D5 规则 intent 有 observe-target、reacquire 和
+search-sector，effective mode 全为 disabled；这些规则动作可以作为示范，不能解释为已执行动作或因果
+最优动作。
+
+D4 与 D5 的 seed split registry 不同。423/900 个 episode 的 split 不一致，涉及 47/100 个 seed。
+两个模块各自没有 seed 跨 split，因而单模块行为克隆仍可准备；联合训练会发生跨模块 train/test 污染，
+当前明确标为 unavailable，不通过改写某一侧 split 来掩盖问题。
+
+反事实和因果标签保持 unavailable。单事实轨迹没有同初态替代动作结果，填 0 会把“未知”错误写成
+“无效果”。后续只有在 main/D4/D5 持久化版本化动作采用、运行确认、后续反馈、终局结果，以及同初态
+配对重放或干预证据后，D6 才重新开放对应 reward、PPO、counterfactual 或 causal 准入。
+
+专项 17 项测试覆盖 accepted/rejected/missing ACK、无后继、D4 无归因、schema/identity/split、跨模块
+split、保留 seed、离线空值、篡改和确定性发布。2026-07-21 D6 全量 `351 passed`，仅有既有
+Matplotlib `Axes3D` warning。审计证据日期固定为 2026-07-20。该结论属于正式离线数据审计，不是
+AirSim 或实飞性能结果。
+
 ## 2026-07-20 Scalable 3D 实验矩阵评审
 
 评审确认 D6 v5 保持只读边界。矩阵身份仅来自 scenario config metadata；D6 不导入 main runner，不按

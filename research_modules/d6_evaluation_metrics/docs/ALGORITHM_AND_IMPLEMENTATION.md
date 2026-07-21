@@ -1,5 +1,81 @@
 # D6 系统级离线评估：算法原理与实施说明
 
+## 正式学习标签审计与 sidecar 构造（2026-07-20）
+
+### 输入审计
+
+`learning_label_backfill.py` 从冻结学习导出根目录开始，先验证生成计划、生成摘要、finalized checkpoint、
+训练 seed 注册表和 episode 索引。生成摘要内嵌的学习导出摘要必须与数据集摘要完全一致。Git commit、
+clean/formal 状态和 episode 数必须一致，保留 seed `1000-1019` 与训练 seed 的交集必须为空。
+
+D4 逐 episode 验证 manifest 自哈希、文件 SHA-256、header/footer、frame sequence、frame payload hash、
+source schema、episode identity 和 seed split。D5 验证 `SHA256SUMS` 精确覆盖文件集，descriptor 与
+独立 descriptor 文件一致，online/offline 文件哈希一致，共享 snapshot/camera-feedback 对象键与规范
+JSON 哈希一致，sample/observation key 唯一，时间不回退。D5 source identity、四类记录 schema、
+offline 四层字段、范围和空值合同均检查。D4 与 D5 的 split 另外做交叉审计。两者不一致时保留各自
+原始 split 和单模块 sidecar，readiness 将跨模块联合训练标为 unavailable，不静默改写冻结 split。
+
+### 结果与奖励
+
+D4 对相邻 frame 的区域统计向量计算
+
+```text
+delta_region = summary(frame[t+1]) - summary(frame[t])
+```
+
+该结果标记为 `observed_state_transition_without_action_attribution`。当前数据没有 recommendation 的
+版本化采用/执行证据，因此不计算 D4 reward，也不为 PPO 填造回报。
+
+D5 先按 camera 分组，再连接 0.5 秒窗口内的相邻样本。有目标动作输出目标投影变化，无目标搜索动作
+输出相机覆盖变化。动作归因奖励另设硬门：
+
+```text
+same sample/camera/version ACK
+  -> accepted command version appears in later camera feedback
+  -> feedback timestamp >= ACK timestamp
+  -> bounded transition reward
+```
+
+目标奖励为
+
+```text
+r = clip(0.30 * angular_error_gain
+       + 0.25 * visibility_gain
+       + 0.20 * association_gain
+       + 0.15 * in_fov_gain
+       + 0.10 * occlusion_gain, -1, 1)
+```
+
+搜索奖励为
+
+```text
+r = clip(0.50 * coverage_gain
+       + 0.30 * visibility_gain
+       + 0.20 * association_gain, -1, 1)
+```
+
+拒绝 ACK 是可审计的运行时结果，奖励为 `-1`。缺 ACK、确认版本不一致、后续反馈缺失或反馈早于 ACK
+时 reward unavailable。纯观测 outcome 可保留，但不得升级为动作效果。
+
+### 输出与确定性
+
+审计模式输出一份 readiness JSON。sidecar 模式按 D4 frame 和 D5 sample 写独立 gzip JSONL，并生成
+`readiness.json`、`manifest.json` 和 `SHA256SUMS`。写入先在同父目录临时目录完成，全部成功后用
+`os.replace` 原子发布。JSON 使用固定排序和紧凑分隔符，gzip 使用 `mtime=0`。已有 bundle 必须先通过
+manifest 内容哈希、精确文件集和逐文件 SHA-256 审计，且源摘要哈希相同，才允许幂等复用。
+
+### 正式数据结论
+
+2026-07-20 对正式 900 episode、100 个训练 seed 做全量只读审计。D4 有 1798 帧，纯观测结果
+`898/1798`，reward `0/1798`。D5 有 1,153,242 条样本，纯观测结果
+`1,063,214/1,153,242`，reward `0/1,153,242`；runtime ACK 和 accepted ACK 均为 0，所有 effective
+mode 为 disabled。D4/D5 规则示范合同可以进入行为克隆数据准备。D4 动作缺少多样性，D4/D5 均不满足
+PPO 准入。反事实和因果训练都缺同初态配对重放或干预证据。跨模块 split 审计发现 423/900 个 episode
+不一致，涉及 47/100 个 seed；因此当前只准入模块内训练，不准入 D4/D5 联合训练。
+
+代码验收日期为 2026-07-21，标签专项 `17 passed`，D6 全量 `351 passed`。正式 readiness 的审计日期
+固定为 2026-07-20；本轮只读扫描未启动 AirSim。
+
 ## Scalable 3D 实验矩阵评估算法（2026-07-20）
 
 `experiment_matrix_offline.py` 在 D6 内维护 `scalable3d-experiment-matrix-v1` 和七个变体的支持表，不

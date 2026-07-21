@@ -1,5 +1,43 @@
 # D6 Evaluation Metrics
 
+## 2026-07-20 正式学习数据标签审计
+
+新增 `learning_label_backfill.py` 和 `run_learning_label_backfill.py`。入口只读冻结的 scalable 3D
+学习导出，校验生成计划、检查点、训练 seed 注册表、episode 索引、D4 manifest/逐帧哈希，以及 D5
+`SHA256SUMS`、descriptor、online/offline 文件和共享对象键。D4 与 D5 各自的 episode identity、seed、
+split 和 Git identity 必须自洽；跨模块 split 另行比较。保留评估 seed `1000-1019` 不能进入训练标签。在线 D5 记录递归拒绝
+truth/object/actor 类字段，生成物只能写到源数据集之外。
+
+标签固定分为 `outcome`、`reward`、`counterfactual` 和 `causal_label` 四层，每层都有独立的
+`available/value/reason/provenance`。相邻 D4 区域状态或 D5 相机观测可形成“纯观测转移结果”，但不能
+证明某条建议或相机动作造成了变化。D5 动作奖励要求同 sample、camera、计划版本、联盟版本和通信版本
+的运行确认；接受确认还要求后续反馈中的 `last_accepted_command_version` 与命令版本相同，且反馈时间
+不早于确认时间。相邻姿态变化不替代运行确认。单事实轨迹没有同初态配对重放或干预证据时，反事实和
+因果标签保持 unavailable，不能填 `0`。
+
+正式 900 episode 只读审计覆盖 100 个训练 seed 和 `1000-1019` 共 20 个保留 seed，交集为 0。D4
+共有 1798 帧，898 帧具备相邻纯观测转移，奖励为 `0/1798`；14384 个规则动作中，非零 quota、hold、
+request-replan 和 transfer 均为 0。D4 行为克隆合同可用，但动作多样性不足，PPO 不可用。D5 共有
+1,153,242 条样本，1,063,214 条具备纯观测转移；`runtime_ack=0`、
+`last_accepted_command_version` 未形成可用执行链，奖励为 `0/1,153,242`。D5 规则示范可用于行为克隆，
+不能据此声称因果最优或用于 PPO。D4/D5 有 `423/900` 个 episode、`47/100` 个 seed 的 split 不同，
+所以单模块训练仍可使用各自 split，跨模块联合训练 fail closed。正式源数据未改写，也没有把保留 seed
+用于训练标签。
+
+```bash
+python3 research_modules/d6_evaluation_metrics/scripts/run_learning_label_backfill.py \
+  <learning_dataset> <readiness.json> --audit-only
+
+python3 research_modules/d6_evaluation_metrics/scripts/run_learning_label_backfill.py \
+  <learning_dataset> <detached_sidecar_directory>
+```
+
+完整 sidecar 采用临时目录写入后原子发布，JSON 规范化、gzip `mtime=0`，并生成独立 manifest 和
+`SHA256SUMS`。同一冻结输入重复运行得到一致内容；已有输出只有通过自审计且源摘要哈希一致时才复用。
+审计证据日期固定为 2026-07-20；2026-07-21 代码验收为专项 `17 passed`、D6 全量 `351 passed`，
+仅有既有 Matplotlib `Axes3D` warning。正式审计结果文件由 main 在独立输出目录生成，本模块不修改或
+回填正式学习数据源。
+
 ## 2026-07-20 scalable 3D 算法实验矩阵离线审计
 
 `d6-scalable3d-offline-evaluation-v5` 新增 D6-owned

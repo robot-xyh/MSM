@@ -196,6 +196,18 @@ from .truth_isolated_offline import (
     build_truth_isolated_episode_record,
     render_truth_isolated_markdown,
 )
+from .learning_label_backfill import (
+    BUNDLE_SCHEMA_VERSION as LEARNING_LABEL_BUNDLE_SCHEMA_VERSION,
+    D4_LABEL_SCHEMA_VERSION,
+    D5_LABEL_SCHEMA_VERSION,
+    LearningLabelBackfillConfig,
+    LearningLabelBackfillError,
+    READINESS_SCHEMA_VERSION as LEARNING_LABEL_READINESS_SCHEMA_VERSION,
+    audit_learning_label_readiness,
+    audit_learning_label_sidecar_bundle,
+    write_learning_label_readiness,
+    write_learning_label_sidecars,
+)
 
 __all__ = [
     "AirSimCalibrationRecord",
@@ -346,6 +358,8 @@ __all__ = [
     "D6_TRUTH_ISOLATED_BATCH_SCHEMA_VERSION",
     "D6_TRUTH_ISOLATED_EPISODE_SCHEMA_VERSION",
     "D6_TRUTH_ISOLATED_EVALUATION_DATE",
+    "D4_LABEL_SCHEMA_VERSION",
+    "D5_LABEL_SCHEMA_VERSION",
     "DEFAULT_TRUTH_ISOLATED_BOOTSTRAP_RESAMPLES",
     "DEFAULT_TRUTH_ISOLATED_BOOTSTRAP_RNG_SEED",
     "PublicMetricEvidence",
@@ -355,9 +369,17 @@ __all__ = [
     "TruthIsolatedEpisodeEvaluationRecord",
     "TruthIsolatedEvaluationError",
     "TruthIsolatedOfflineReportGenerator",
+    "LearningLabelBackfillConfig",
+    "LearningLabelBackfillError",
+    "LEARNING_LABEL_BUNDLE_SCHEMA_VERSION",
+    "LEARNING_LABEL_READINESS_SCHEMA_VERSION",
     "adapt_d1_offline_consistency",
     "adapt_d2_scalable_3d_identity",
     "aggregate_truth_isolated_episode_records",
+    "audit_learning_label_readiness",
+    "audit_learning_label_sidecar_bundle",
     "build_truth_isolated_episode_record",
     "render_truth_isolated_markdown",
+    "write_learning_label_readiness",
+    "write_learning_label_sidecars",
 ]

@@ -1,5 +1,48 @@
 # D6 实现差距审计
 
+## 2026-07-20 正式学习标签 GAP 状态
+
+### 已关闭的 D6-owned P0
+
+- 已实现冻结学习导出的只读审计、truth-like 在线字段拒绝、训练/保留 seed 隔离、D4/D5 episode
+  identity、模块内 split 与跨模块 split 交叉审计、全量源哈希和共享对象键校验。
+- 已实现 outcome、reward、counterfactual、causal-label 四层独立 availability。不可辨识的反事实和
+  因果值保持 `null`，没有使用假零。
+- 已实现源外 detached sidecar、原子发布、manifest、SHA-256 和确定性重复运行。正式学习数据不需要
+  原地重标，也不允许就地写入。
+- D5 reward 已将 runtime ACK 设为硬门。相邻姿态或投影改善只能形成纯观测 outcome，不能证明动作
+  被应用。接受 ACK 还要求后续反馈版本和时间一致。
+
+### 正式 900 episode 证据
+
+- 数据身份：Git `39b097e72487567ac915c2297eaa27eed49ef76b`，900 episode，100 个训练 seed；保留
+  seed `1000-1019` 共 20 个，训练交集为 0。
+- D4：1798 帧，observed outcome `898`，reward `0`；14384 个动作中非零 quota、hold、request-replan
+  和 transfer 均为 0。行为克隆合同可用，但动作多样性不足。PPO unavailable。
+- D5：1,153,242 条样本，observed outcome `1,063,214`，reward `0`；runtime/accepted ACK 均为 0，
+  requested action 为 0，effective mode 全部 disabled。规则示范行为克隆可用，主动视觉 PPO
+  unavailable。
+- D4/D5 的 split registry 有 423/900 个 episode、47/100 个 seed 不一致。两个模块各自仍保持 seed
+  原子 split，单模块训练可用；跨模块联合训练 unavailable。Counterfactual 和 causal training 同样
+  unavailable。正式源未修改。审计证据日期为 2026-07-20；2026-07-21 验收为专项 `17 passed`、
+  D6 全量 `351 passed`。
+
+### 仍开放的 P1 producer 条件
+
+1. D4/main 缺每帧 recommendation consumption/adoption、applied action digest、plan/epoch/lease 绑定、
+   post-action 区域状态和终局任务结果。当前无法把区域变化归因给 D4 动作，也无法构造 PPO reward。
+2. D4 正式数据动作退化为全零 quota 且无 hold/replan/transfer。行为克隆管线可读取，但训练样本不具备
+   足够动作覆盖，暂不具备策略准入价值。
+3. D5 生成链先捕获 learning frame，随后 main 才发布 camera-command ACK；正式 online 样本的
+   `runtime_ack` 全为 null。运行态最近接受命令版本也未映射到 camera feedback。现有数据只能提供纯
+   观测转移和规则示范。
+4. PPO 仍缺 on-policy log probability/value。任务级奖励还缺明确终局结果和归因窗。反事实和因果标签
+   仍缺同初态配对重放、随机干预或等价识别证据。
+5. D4 与 D5 使用了不同的 seed split registry。main 需要冻结共享 registry 或独立规范 split sidecar；
+   在此之前不能合并两个模块的数据做联合训练或联合调参。
+
+上述 P1 均是 producer/实验设计条件。D6 已提供机器可读缺失原因和准入结论，不跨模块补造字段。
+
 ## 2026-07-20 Scalable 3D 实验矩阵 P1 状态
 
 - **D6 consumer 已实现**：独立读取并验证 matrix schema、variant、comparison key 和 full-system flag；

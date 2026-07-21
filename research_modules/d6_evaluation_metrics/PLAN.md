@@ -1,5 +1,42 @@
 # D6 Evaluation Metrics Plan
 
+## 2026-07-20 正式离线 outcome/reward 标签状态
+
+- [x] 实现只读 `audit_learning_label_readiness()` 和 CLI，校验正式生成计划、finalized checkpoint、
+  100 个训练 seed、20 个保留评估 seed、900 episode index 及 D4/D5 全量文件哈希。
+- [x] 实现 detached sidecar 写入和 bundle 自审计。输出目录不得位于正式学习数据源内部；manifest、
+  SHA-256、规范 JSON、确定性 gzip 和原子目录发布均已接线。
+- [x] 固定 outcome、reward、counterfactual、causal-label 四层 availability 合同。不可用值使用
+  `null+reason+provenance`，不以 `0` 表示缺失。
+- [x] D4 只从时间窗内相邻 frame 生成区域纯观测转移。正式数据没有推荐采用/执行摘要，故奖励和 PPO
+  fail closed；规则 recommendation 可作为行为克隆输入，但当前动作全为零 quota、无 hold/replan/
+  transfer，不能据此晋升策略。
+- [x] D5 只从同相机时间窗内相邻 snapshot/projection 生成纯观测转移。奖励硬门要求 runtime ACK；
+  接受 ACK 还要有版本一致、时间在 ACK 之后的 camera feedback。相邻姿态变化不作为动作应用证据。
+- [x] 固定 seed `1000-1019` 为保留评估集，训练标签发现重叠时立即失败。在线 truth-like 字段、对象键
+  篡改、模块内 split/identity 不一致和 source hash 变化均 fail closed；跨 D4/D5 split 不一致则保留
+  单模块 sidecar，并明确阻断联合训练。
+- [x] 2026-07-20 正式 900 episode 审计完成：D4 outcome `898/1798`、reward `0/1798`；D5 outcome
+  `1,063,214/1,153,242`、reward `0/1,153,242`、runtime ACK `0`。D4/D5 行为克隆合同可用，PPO、
+  counterfactual 和 causal training 均不可用。D4/D5 split 有 423 个 episode 不一致，联合训练不可用。
+- [x] 17 项专项测试覆盖接受/拒绝/缺失 ACK、无后继、D4 无归因、schema/identity/split、跨模块 split、保留 seed、
+  unavailable 空值、文件篡改、原子写和重复运行确定性。
+- [x] 验证日期 2026-07-21：专项 `17 passed`，D6 全量 `351 passed`；审计输出中的证据日期保持
+  2026-07-20，未启动 AirSim。
+
+### Producer 准入条件
+
+- [ ] D4/main 在 frame 关闭前持久化版本化 recommendation consumption/adoption、applied digest、
+  plan/epoch/lease 绑定和 post-action 状态；同时增加非零 quota、hold、replan、transfer 覆盖。未补齐前
+  D4 PPO 保持 unavailable。
+- [ ] main 调整 active-vision 生成顺序，使 D5 样本在 episode 最终化前连接
+  `runtime.camera_command_ack`，并将运行态最近接受的命令版本写入相机反馈。现有正式数据不得原地
+  回填或根据姿态反推 ACK。
+- [ ] 若训练奖励包含任务完成，另提供明确的终端任务结果和归因时间窗。PPO 还需 on-policy log
+  probability/value；反事实或因果训练需同初态配对重放或受控干预。
+- [ ] main/D4/D5 冻结共享的 seed-atomic split registry 后，重新导出或生成只读规范 split sidecar；完成
+  前 D4 与 D5 只能分别训练和评估，不能混成联合训练集。
+
 ## 2026-07-20 scalable 3D 实验矩阵审计状态
 
 - [x] 只从 `scenario_config.metadata` 读取矩阵 schema、variant、comparison key 和 full-system flag；
