@@ -1,5 +1,13 @@
 # D6 文档索引
 
+2026-07-21 已新增运行时计划确认到离线观测结果的严格联接。D6 显式校验 11 类输入及 SHA-256，复核
+D3/D7 source sequence 与 payload SHA，只使用 D2 source-observation lineage 映射身份，并按同资源相邻
+ACK 建立非重叠三维状态窗。有界配对进展仅作诊断，正式 reward、因果/反事实和三类学习权限保持
+unavailable/false。合法同版本评估刷新按 ACK sequence/时间戳形成独立 occurrence；同版本执行签名
+漂移失败关闭。专项 `22 passed`、D6 全量 `423 passed`；真实 main 3v3 回归形成 2 个 occurrence、6 个
+绑定窗口。原理见 `MODULE_PRINCIPLES_CN.md`，实现见 `ALGORITHM_AND_IMPLEMENTATION.md`，接口证据见
+`../EXPERIMENT_REPORT.md` 2.7 节。该改动不修改 AirSim 接线和冻结训练数据。
+
 2026-07-21 已完成 D3、D4、D5 producer 全样本联合准入。D6 显式接收三份审计路径和带外文件 SHA-256，
 独立复算 file/content SHA，核对 schema、完整计数、expected/actual binding、canonical 60/20/20、零
 违规、availability 和 admission。三模块及跨模块 structural full-sample=`complete`，overall

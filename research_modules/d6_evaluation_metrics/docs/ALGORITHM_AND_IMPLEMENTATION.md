@@ -1,5 +1,72 @@
 # D6 系统级离线评估：算法原理与实施说明
 
+## 运行时计划确认到离线结果的严格联接（2026-07-21）
+
+### 输入合同
+
+`RuntimePlanOutcomeJoinInputs` 固定接收 11 个 `HashedArtifact`：完整在线 JSONL、D2 identity evaluation
+和 manifest、D2 filtered D1/D2 records、observation truth labels、identity evidence、truth-state NPZ、
+proximity JSONL、episode manifest 和 scenario config。API 在解析内容前计算文件 SHA-256。CLI 还要求
+输入清单自身的带外 SHA-256，清单中的相对路径以清单目录解析。
+
+episode 校验重新计算场景配置的规范 JSON SHA，核对 manifest 的 world/bus/scenario 合同、场景身份、
+seed、目标/资源数量、时间步长、终点和 5 米拦截半径。NPZ 必须含有有序唯一时间轴、六维目标/资源
+状态、目标 ID 和 active mask；数组形状按配置中的实际数量验证，不从场景名推断规模。
+
+### ACK 归因
+
+在线 JSONL 的 bus sequence 必须按文件顺序严格递增且全局唯一。对每条 assignment ACK，算法执行：
+
+1. 通过 `source_plan_bus_sequence` 定位先前的 D3 plan envelope，核对 topic、source、schema、plan
+   id/version、created time 和规范 payload SHA；
+2. 若存在 `source_guidance_bus_sequence`，定位同轮 D7 batch，核对规范 payload SHA，并要求每条
+   command 引用相同 plan id/version；
+3. 从 D3 assignment、D7 command 和 ACK binding 三侧建立 `(resource_id, global_track_id)` 集合，拒绝
+   重复资源、额外 binding、缺失 binding 和元数据/计数矛盾；
+4. 以 ACK envelope sequence 和时间戳建立 occurrence，维护每个 plan id 的最高 version。同 plan
+   id/version 只有在 `execution_signature_changed=false` 且两个 refresh-only 标志恰有一个为 true
+   时允许再次出现；绑定、联盟、区域归属、未分配清单和 authority 的规范签名必须不变；
+5. 强制 `physical_outcome_available=false`、`reward_available=false`，禁止在线 ACK 越权声明离线结果。
+
+载荷 SHA 使用 `sort_keys=True`、紧凑分隔符、禁止非有限数的规范 JSON。调用方更新外层文件哈希不能
+绕过内部 sequence/payload 联接检查。
+
+### 身份与状态窗
+
+D2 evaluation 的文件哈希必须同时出现在 D2 manifest；D1/D2 filtered records、truth labels 和
+identity evidence 的实际哈希必须同时匹配 manifest 与 evaluation。filtered records 按 sequence 回查
+完整在线日志，规范载荷必须逐条相同。D2 audit 还必须声明
+`raw_source_hashes_and_record_sequences_verified`、在线 truth 隔离、source record semantics 和唯一允许
+来源 `source_observation_lineage`。
+
+对每个 binding，在 ACK 时刻选取不晚于窗口起点且未超过 lineage age 的最新 D2 mapping。该 mapping
+及窗口内后续 mapping 必须全部 available、包含 source observation/lineage hash，且只指向一个 truth
+target。缺失、歧义或跨窗换绑只影响该绑定的映射和诊断 availability，不把缺值补零。
+
+每个资源按 ACK 顺序构造 `[t_k,t_{k+1})`；最后一窗为 `[t_k,t_{end}]`。状态样本也按同一半开/闭合
+规则选择，要求首末覆盖误差不超过一个物理步长且至少两帧。输出
+
+\[
+\Delta d=d_{start}-d_{end},\qquad
+\Delta d_{best}=d_{start}-d_{min}.
+\]
+
+5 米事件按 resource 和离线映射 target 过滤；同 resource 对其他 truth target 的事件单独列出，不能
+计为 assigned-pair success。事件时间、resource/target index 和距离还要与 NPZ 的同时间样本一致。
+
+### 诊断与准入
+
+有界诊断 `bounded_assigned_pair_best_distance_progress_v1` 使用
+`clip((d_start-d_min)/max(d_start-5m,epsilon),-1,1)`。它要求 accepted ACK、source 完整、D7 command
+存在且 applied、非 hold、唯一映射和完整状态窗。输出同时固定
+`formal_d3_ppo_reward_available=false`、`counterfactual_available=false`、
+`causal_attribution_available=false`。
+
+2026-07-21 的 22 项专项测试和 423 项 D6 全量测试通过。真实 main 1.2 秒、3 目标/3 资源、seed=70
+回归得到 2 个 ACK occurrence 和 6 个 binding window，其中第二条为合法同身份评估刷新。两次执行
+签名相同，online truth 使用为 0。修改同版本 coalition binding 并重算消息摘要的负例以
+`same_plan_execution_signature_changed` 失败关闭。后续由 main 接入每 episode 输入清单和输出登记。
+
 ## 跨模块学习数据联合准入实现（2026-07-21）
 
 ### 输入与身份绑定

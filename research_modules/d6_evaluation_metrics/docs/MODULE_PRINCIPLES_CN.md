@@ -1,5 +1,37 @@
 # D6 系统级离线评估模块原理
 
+## 运行时计划确认与离线结果的证据边界（2026-07-21）
+
+D6 将本链路分成三个互不替代的证据面。在线面包含 D3 分配计划、可选 D7 导引批次和 main
+`runtime.assignment_plan_ack`，其中不得出现目标真值。身份面由 D2 离线评估提供，只接受 D1
+source-observation lineage 形成的唯一 `global_track_id -> truth target` 映射。物理面包含独立真值状态
+和 5 米接近事件，只在离线阶段使用。三个输入面各自带 SHA-256；任一文件、来源序号或载荷摘要不一致
+时停止联接。
+
+同一资源的连续决策按 ACK 时间切窗。前一窗口采用左闭右开区间，后一窗口从下一 ACK 时刻开始；最后
+一窗闭合到 episode 终点。这样，每个离散真值样本和接近事件最多归入一次资源决策。窗口输出首末和
+最小三维距离、距离闭合量、正确目标事件及同一资源对其他目标的事件。错误目标进入 5 米不计为当前
+分配目标的正确结果。
+
+有界配对进展诊断定义为
+
+\[
+q=\operatorname{clip}\left(
+\frac{d_{start}-d_{min}}{\max(d_{start}-5\text{ m},\epsilon)},-1,1
+\right).
+\]
+
+该值只描述单条已执行绑定在一个观测窗中的最佳距离进展。ACK 必须接受，D7 binding 必须实际进入
+世界且不为 hold，D2 映射必须唯一，真值状态窗必须完整。任何一项缺失时 `q=null` 并记录原因。该诊断
+不包含规则基线差值、反事实轨迹或因果归因，因此不能作为 D3 正式近端策略优化奖励。
+
+当前准入继续分层：运行时 ACK 和 observed pair diagnostic 可以 available；formal reward、same-seed
+paired shadow、held-out seed performance、counterfactual 和 causal attribution 均 unavailable。
+PPO、在线 assist 和控制 authority 保持 false，规则回退保持强制。同一 plan identity 可发布显式
+评估刷新；每次 ACK 仍按 sequence 和时间戳形成独立 occurrence。刷新前后的绑定、联盟、未分配目标和
+authority 必须保持同一规范执行签名。真实 3v3 回归已验证 2 个 occurrence 和 6 个窗口；尚无正式多
+seed 证据。
+
 ## 跨模块学习数据联合准入（2026-07-21）
 
 联合准入解决两个不同问题。第一项是规范 seed 视图是否一致，即 D3、D4、D5 是否把同一个数值 seed

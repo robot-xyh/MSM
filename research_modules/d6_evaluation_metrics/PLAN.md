@@ -1,5 +1,33 @@
 # D6 Evaluation Metrics Plan
 
+## 2026-07-21 运行时 ACK 到离线结果联接状态
+
+- [x] 新增 D6-owned `RuntimePlanOutcomeJoinInputs`，固定 11 类显式文件路径与调用方带外 SHA-256；不
+  搜索邻近文件，不修改冻结的 900-episode 正式数据。
+- [x] 校验 episode manifest/config 规范摘要、当前 world/bus/scenario schema、实际 target/resource
+  数量、物理时间轴和固定 5 米事件口径。
+- [x] 对每条 `runtime.assignment_plan_ack` 复核 D3/D7 来源 sequence、来源 topic/source/schema、
+  规范 payload SHA、plan id/version、assignment/binding 全覆盖及计数。ACK envelope sequence/时间戳
+  形成唯一 occurrence；同 plan identity 的显式 refresh 仅在执行签名不变时允许。重复 sequence、
+  同版本签名漂移、陈旧版本、额外绑定和 ACK 自报 outcome/reward 均失败关闭。
+- [x] 独立校验 D2 identity evaluation、manifest、D1/D2 源记录、观测真值标签和 evidence 文件哈希；
+  只允许 `source_observation_lineage` 唯一映射，禁止名称、距离或接近事件反推身份。
+- [x] 按同一资源的相邻 ACK 建立不重叠窗口，输出映射 availability、首末/最小三维距离、距离进展、
+  正确目标和其他目标 5 米事件，并保留原始 D3 learning 与 D4 regional evidence。
+- [x] 新增有界配对进展诊断。只有 accepted ACK、D7 binding 实际 applied、非 hold、唯一 D2 映射和
+  完整状态窗同时成立时才可用；正式 D3 PPO reward、counterfactual 和 causal attribution 始终为
+  `null+reason/unavailable`。
+- [x] CLI 通过带外 SHA-256 加载显式输入清单并输出 JSON、中文 Markdown。专项 `22 passed`，D6
+  全量 `423 passed`；仅有既有 Matplotlib warning。
+- [x] 真实 main 3v3、recon=1、seed=70、1.2 秒回归形成 2 个 ACK occurrence 和 6 个非重叠 binding
+  window；其中 1 个为合法 evaluation refresh，online truth=0，三类学习权限保持 false。同版本修改
+  binding/coalition 的负例失败关闭。
+- [ ] main 将 11 类输入及 SHA 清单接入每个真实 episode 的离线阶段，并将 D6 输出登记到 episode
+  manifest。D6 本任务只提供 API/CLI，不跨所有权修改 main runtime。
+- [ ] 运行同 seed paired formal shadow 和规则基线，取得学习动作实际采用、可归因终局结果及保留 seed
+  `1000-1019` 多 seed 证据。在这些条件满足前继续保持 PPO=false、assist=false、authority=false 和
+  rule fallback=true。
+
 ## 2026-07-21 跨模块学习数据联合准入状态
 
 - [x] 扩展 D6-owned 联合审计 API 与 CLI，显式接收 D3、D4、D5 三份全样本审计路径和调用方带外

@@ -1,5 +1,41 @@
 # D6 系统级评估指标实验报告
 
+## 2.7 2026-07-21 运行时计划确认与离线结果联接验收
+
+本次验收面向 D6 新增的严格离线消费者。输入按 11 类文件拆分，全部由调用方提供 SHA-256。测试同时
+检查 D3 plan、D7 guidance 和 main ACK 的来源 sequence 与规范 payload SHA，D2 identity 的
+source-observation lineage，以及独立 truth-state NPZ 和 5 米 proximity JSONL。D6 未修改正式
+900-episode 数据，也未训练或生成模型。
+
+确定性专项共 22 项，结果全部通过。正常双 ACK fixture 形成两个同资源非重叠窗口。第一个窗口为
+`[1.0,2.0)`，状态样本终止在 1.5 秒；第二个窗口为 `[2.0,3.0]`。首窗 assigned target 的起始/最小
+距离为 10/4 米，距离进展 6 米，正确目标 5 米事件为 true，有界诊断为 1.0。错误目标 5 米事件在独立
+负例中只进入 `other_target_proximity_events`，不计 assigned-pair outcome。
+
+| 检查类别 | 覆盖结果 |
+|---|---|
+| 正常 join 与 CLI | 双窗口、D2 唯一映射、距离/事件、D3/D4 证据和中文报告通过 |
+| 文件完整性 | online、truth-state、proximity 和 D2 各源使用显式 SHA-256 |
+| 内部归因 | plan/guidance sequence、payload SHA、plan version 和 binding 集合重新核对 |
+| 身份失败关闭 | D2 mapping 缺失或歧义时距离和 score 为 null，不使用 proximity 反推身份 |
+| 控制失败关闭 | hold 或缺 D7 时 score unavailable；ACK 自报 outcome/reward 被拒绝 |
+| 版本与刷新 | 同身份合法 refresh 形成独立 occurrence；同版本执行签名漂移、重复 bus sequence、陈旧/错误 version 和额外 binding 均被拒绝 |
+
+D6 全量为 `423 passed`，仅有既有 Matplotlib `Axes3D` 环境 warning。真实 main 3v3、recon=1、
+seed=70、1.2 秒集成回归生成两条同 plan identity ACK。序号 13、时间 0.25 秒为新执行计划；序号 81、
+时间 1.0 秒为 `evaluation_refresh_only`。两条 ACK 分别形成 occurrence，3 个资源累计得到 6 个非重叠
+窗口。两次 occurrence 的绑定、联盟、未分配清单和 authority 执行签名一致，online truth 使用为 0，
+PPO、assist 和 authority 均为 false。
+
+篡改负例在第二次同版本刷新中修改 coalition version，并同步更新 D3、D7、ACK 的引用摘要，使单条
+消息完整性检查仍可通过。D6 随后在跨 occurrence 执行签名比较处返回
+`same_plan_execution_signature_changed`。消费者没有跳过第二条 ACK，也没有把同版本执行变化当作
+评估刷新。
+
+本次结果证明 API、哈希边界、身份隔离、状态切窗和失败关闭逻辑可运行。它不构成正式多 seed 或学习
+策略性能结论。当前尚无同 seed paired formal shadow、学习实际采用的归因结果、保留 seed 性能、
+counterfactual/causal evidence 或正式 PPO reward，因此总体准入保持关闭。
+
 ## 2.6 2026-07-21 跨模块学习数据联合准入审计
 
 本次实验使用冻结的 training seed registry、shared registry、D3 formal manifest、D4 formal

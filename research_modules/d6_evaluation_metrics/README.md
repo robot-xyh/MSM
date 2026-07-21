@@ -1,5 +1,43 @@
 # D6 Evaluation Metrics
 
+## 2026-07-21 运行时计划确认与离线观测结果联接
+
+`runtime_plan_outcome_join.py` 提供 D6 只读严格消费者。调用方必须显式给出 11 类输入文件及各自
+SHA-256：完整 `online_observations.jsonl`、D2 离线身份评估及 manifest、D2 的 D1/D2 在线源记录、
+观测真值标签和身份 evidence、离线真值状态、5 米接近事件、episode manifest 与场景配置。D6 先校验
+文件哈希，再校验 D2 manifest/evaluation 内部来源哈希及其与完整在线日志的 sequence/payload 一致性。
+
+每条 `runtime.assignment_plan_ack` 都重新绑定 D3 计划和可选 D7 导引批次的总线 sequence 与规范载荷
+SHA-256，并以 ACK envelope sequence 与时间戳形成唯一 occurrence。同一 plan id/version 的
+`evaluation_refresh_only` 或 `plan_refresh_only` 可以形成新窗口，但绑定、联盟、未分配目标清单和
+authority 的规范执行签名必须保持不变。重复 sequence、同版本执行签名漂移、旧或错误计划版本、额外
+绑定、载荷摘要错配以及 ACK 自报物理结果或奖励都会失败关闭。D2 真值映射只接受
+`source_observation_lineage` 形成的唯一 available 映射，该映射仅进入离线结果，不返回在线路径。
+
+同一资源按 ACK 时间切成 `[本次 ACK, 下一次 ACK)`，最后一窗闭合到 episode 终点。每个绑定输出身份
+映射可用性、首末/最小三维距离、距离进展、正确目标 5 米事件、同资源对其他目标的 5 米事件、D3
+learning evidence 与 D4 regional evidence。`bounded_assigned_pair_best_distance_progress_v1` 的范围为
+`[-1,1]`，只在 ACK 接受、D7 非 hold 控制确实进入世界、D2 映射唯一和状态窗完整时可用。它是独立
+诊断值，不是 D3 近端策略优化奖励；正式 reward、counterfactual 和 causal attribution 均保持不可用。
+
+公开入口为 `RuntimePlanOutcomeJoinInputs`、`evaluate_runtime_plan_outcomes()`、
+`load_runtime_plan_outcome_join_inputs()` 和 `write_runtime_plan_outcome_join_report()`。CLI 使用带外
+哈希校验输入清单：
+
+```bash
+python3 research_modules/d6_evaluation_metrics/scripts/run_runtime_plan_outcome_join.py \
+  --inputs-json /path/to/runtime_outcome_inputs.json \
+  --inputs-sha256 <sha256> \
+  --output-dir /path/to/independent_output
+```
+
+2026-07-21 专项 `22 passed`，D6 全量 `423 passed`，仅有既有 Matplotlib `Axes3D` 环境 warning。
+真实 main 3 目标/3 资源、recon=1、seed=70、1.2 秒集成回归通过：同一 plan identity 的两条 ACK
+分别形成 occurrence，累计 6 个绑定窗口，在线真值使用为 0，PPO/assist/authority 均为 false。对同
+版本刷新修改 coalition binding 的负例返回 `same_plan_execution_signature_changed`。该结果只证明
+接口、刷新语义和失败关闭行为，尚未形成正式多 seed、同 seed paired shadow、保留 seed 或学习采用
+收益证据。
+
 ## 2026-07-21 跨模块学习数据联合准入审计
 
 `cross_module_learning_admission.py` 和对应 CLI 现在显式要求 D3、D4、D5 三份 producer 全样本审计

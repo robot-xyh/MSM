@@ -1,5 +1,35 @@
 # D6 系统评估指标综述及子方案
 
+## 2026-07-21 运行时计划结果联接复核
+
+### 复核结论
+
+D6 已建立从 main 运行时计划确认到离线观测结果的独立消费者。实现不导入控制栈，不向在线总线暴露
+truth，也不根据距离重建 `global_track_id`。身份只来自 D2 已验证的 source-observation lineage；物理
+状态和 5 米事件在身份确定后才进入离线窗口统计。
+
+每条 ACK 重新核对 D3 plan 和可选 D7 guidance 的 bus sequence 与规范 payload SHA。assignment、
+guidance 和 ACK 三侧 binding 必须一致。一个资源的结果窗从本次 ACK 开始，到下一条同资源 ACK 前
+结束；最后一窗到 episode 终点。该设计避免一个物理样本同时归属于相邻两次决策。
+
+输出的 `bounded_assigned_pair_best_distance_progress_v1` 只表示分配目标在窗口内的最佳距离闭合程度。
+hold、缺 D7、映射歧义、状态窗不完整或 ACK 未接受时为 null 并给出原因。即使观测到 5 米事件，该值
+也不升级为正式 D3 reward；反事实和因果字段保持 unavailable。
+
+### 验证
+
+- 专项：`22 passed`，覆盖正常双窗口、合法同身份 refresh、真实 main 3v3、清单/CLI、外层和内部哈希、
+  sequence/payload 错配、错误或陈旧 plan version、同版本执行签名篡改、额外 binding、D2 映射缺失/
+  歧义、truth/proximity 篡改、ACK 自报结果、hold/缺 D7 和错误目标事件。
+- 全量：`423 passed`，1 条既有 Matplotlib `Axes3D` 环境 warning。
+- 真实集成正例：3 目标/3 资源、recon=1、seed=70、1.2 秒，2 ACK occurrence、6 binding window、
+  online truth=0、PPO/assist/authority=false。
+- 篡改负例：同版本刷新改变 coalition binding，即使同步重算单条消息摘要，仍按执行签名漂移拒绝。
+
+上述测试是代码和接口证据，不是正式多 seed 性能实验。下一步由 main 把 hash spec 和 D6 输出自动
+接入 episode，随后运行同 seed paired formal shadow、学习实际采用和保留 seed 验收；三类学习权限
+在此之前不开放。
+
 ## 2026-07-21 跨模块学习数据联合准入评审
 
 D6 已实现独立、只读的联合准入入口。输入包括 training/shared seed registry、D3 正式 manifest、D4

@@ -1,5 +1,41 @@
 # D6 实现差距审计
 
+## 2026-07-21 运行时结果联接 GAP 更新
+
+### 当前判断
+
+本轮未发现新的 D6-owned P0 阻塞。运行时计划确认到离线观测结果的严格消费者已经实现并完成专项、
+全量和真实 3v3 双 occurrence 接口复核。该能力关闭了“D6 没有公开 API 校验 plan ACK、D2 身份旁路和物理状态窗”
+这一 P1 实现缺口，但没有关闭强化学习正式准入。
+
+### 已关闭的 P1 子项
+
+1. 11 类输入均要求显式路径与带外 SHA-256。D2 evaluation/manifest 的内部来源哈希还要与 D1/D2
+   filtered source、观测真值标签、identity evidence 和完整在线日志逐 sequence/载荷一致。
+2. D3 plan、D7 guidance 与 main ACK 的 sequence、规范 payload SHA、plan id/version 和 binding 集合
+   已形成失败关闭联接。同 plan identity 的合法 refresh 按 ACK occurrence 留痕；重复 sequence、
+   同版本执行签名漂移、旧版本、错误版本、额外 binding 和 ACK 越权声明 outcome/reward 均有测试。
+3. 每个资源的 binding 已按相邻 ACK 切成非重叠观察窗。D6 输出 D2 lineage 映射可用性、三维距离、
+   进展、正确/错误目标 5 米事件以及 D3/D4 原始证据。
+4. 有界配对进展诊断只在 accepted、D7 applied、非 hold、唯一身份映射和完整状态窗下可用。该值明确
+   标记 `formal_reward=false`、`causal=false`、`counterfactual=false`。
+5. 22 项专项和 423 项 D6 全量测试通过。真实 main 3v3、seed=70、1.2 秒输入形成 2 个 ACK
+   occurrence/6 个 binding window，online truth=0，三类学习权限均为 false。
+
+### 仍开放的 P1
+
+1. **main episode 接线。** main 还没有在每个 episode 自动生成 11 项 hash spec、调用本 API、登记
+   输出文件及 SHA。当前公开 API/CLI 可用，生产接线不属于 D6-owned 路径。
+2. **正式可归因结果。** 当前值是单事实轨迹上的 observed pair diagnostic。缺同 seed paired formal
+   shadow、动作实际采用的跨 episode 归因、学习与规则差异、保留 seed 和多 seed 置信区间。
+3. **正式 PPO 数据。** 仍缺 on-policy log probability/value、冻结 reward 定义和保留 seed 非退化
+   验收。当前 `ppo_allowed=false`、`assist_allowed=false`、`authority_allowed=false`、规则回退强制。
+
+### P2 边界
+
+正式 P1 配对和保留 seed 未完成前，不进入奖励塑形、因果模型或策略训练。当前有界诊断可以用于发现
+距离闭合失败和错误目标接近，不能作为训练回报直接写回 D3。
+
 ## 2026-07-21 跨模块学习数据联合准入 GAP
 
 ### 已关闭的 D6-owned P0

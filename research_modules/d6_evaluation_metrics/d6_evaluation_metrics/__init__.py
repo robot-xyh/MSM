@@ -222,6 +222,22 @@ from .cross_module_learning_admission import (
     render_cross_module_learning_data_admission_markdown,
     write_cross_module_learning_data_admission_report,
 )
+from .runtime_plan_outcome_join import (
+    ASSIGNMENT_PLAN_ACK_SCHEMA,
+    ASSIGNMENT_PLAN_ACK_TOPIC,
+    GUIDANCE_COMMAND_TOPIC,
+    HashedArtifact,
+    RUNTIME_PLAN_OUTCOME_DIAGNOSTIC_NAME,
+    RUNTIME_PLAN_OUTCOME_INPUT_SCHEMA_VERSION,
+    RUNTIME_PLAN_OUTCOME_JOIN_DATE,
+    RUNTIME_PLAN_OUTCOME_JOIN_SCHEMA_VERSION,
+    RuntimePlanOutcomeJoinError,
+    RuntimePlanOutcomeJoinInputs,
+    evaluate_runtime_plan_outcomes,
+    load_runtime_plan_outcome_join_inputs,
+    render_runtime_plan_outcome_join_markdown,
+    write_runtime_plan_outcome_join_report,
+)
 
 __all__ = [
     "CANONICAL_SEED_SPLIT_READINESS_SCHEMA_VERSION",
@@ -406,4 +422,18 @@ __all__ = [
     "write_cross_module_learning_data_admission_report",
     "write_learning_label_readiness",
     "write_learning_label_sidecars",
+    "ASSIGNMENT_PLAN_ACK_SCHEMA",
+    "ASSIGNMENT_PLAN_ACK_TOPIC",
+    "GUIDANCE_COMMAND_TOPIC",
+    "HashedArtifact",
+    "RUNTIME_PLAN_OUTCOME_DIAGNOSTIC_NAME",
+    "RUNTIME_PLAN_OUTCOME_INPUT_SCHEMA_VERSION",
+    "RUNTIME_PLAN_OUTCOME_JOIN_DATE",
+    "RUNTIME_PLAN_OUTCOME_JOIN_SCHEMA_VERSION",
+    "RuntimePlanOutcomeJoinError",
+    "RuntimePlanOutcomeJoinInputs",
+    "evaluate_runtime_plan_outcomes",
+    "load_runtime_plan_outcome_join_inputs",
+    "render_runtime_plan_outcome_join_markdown",
+    "write_runtime_plan_outcome_join_report",
 ]
