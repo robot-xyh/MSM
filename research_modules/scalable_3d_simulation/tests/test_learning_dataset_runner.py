@@ -5,11 +5,13 @@ from pathlib import Path
 
 import pytest
 
+import research_modules.scalable_3d_simulation.run_learning_dataset as learning_runner
 from research_modules.scalable_3d_simulation.run_learning_dataset import (
     D5_ACTIVE_VISION_MINIMUM_UNSEEN_SEEDS,
     FORMAL_MINIMUM_SEEDS_PER_SCENARIO_SCALE,
     GENERATION_CHECKPOINT_SCHEMA_VERSION,
     GENERATION_PLAN_SCHEMA_VERSION,
+    LEGACY_GENERATION_CHECKPOINT_SCHEMA_VERSION,
     TRAINING_SEED_REGISTRY_SCHEMA_VERSION,
     _active_vision_test_seed_count,
     _build_training_seed_registry,
@@ -335,3 +337,107 @@ def test_learning_generation_pauses_and_resumes_at_episode_boundary(
     assert finalized["remaining_episode_count"] == 0
     assert [row["sequence"] for row in progress] == [0, 1, 2]
     assert (output / "learning_dataset" / "episodes.jsonl").is_file()
+
+
+def test_generation_checkpoint_advances_after_each_complete_episode(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    output = tmp_path / "crash_recovery"
+    common = [
+        "--output",
+        str(output),
+        "--scenarios",
+        "nominal",
+        "--scales",
+        "2",
+        "--seeds",
+        "81",
+        "82",
+        "83",
+        "--duration",
+        "0.25",
+        "--minimum-free-gb",
+        "0",
+        "--allow-dirty",
+    ]
+    original_run_episode = learning_runner.run_episode
+    call_count = 0
+
+    def fail_on_second_episode(*args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 2:
+            raise RuntimeError("injected episode failure")
+        return original_run_episode(*args, **kwargs)
+
+    monkeypatch.setattr(learning_runner, "run_episode", fail_on_second_episode)
+    with pytest.raises(RuntimeError, match="injected episode failure"):
+        learning_runner.main(common)
+
+    checkpoint = json.loads(
+        (output / "generation_checkpoint.json").read_text(encoding="utf-8")
+    )
+    assert checkpoint["state"] == "paused"
+    assert checkpoint["completed_episode_count"] == 1
+    assert checkpoint["next_sequence"] == 1
+    assert checkpoint["last_completed_episode_id"]
+
+    monkeypatch.setattr(learning_runner, "run_episode", original_run_episode)
+    assert learning_runner.main([*common, "--resume"]) == 0
+    finalized = json.loads(
+        (output / "generation_checkpoint.json").read_text(encoding="utf-8")
+    )
+    assert finalized["state"] == "finalized"
+    assert finalized["completed_episode_count"] == 3
+    assert finalized["checkpoint_recovery_count"] == 0
+
+
+def test_resume_reconciles_validated_progress_ahead_of_legacy_checkpoint(
+    tmp_path: Path,
+) -> None:
+    output = tmp_path / "legacy_checkpoint_lag"
+    common = [
+        "--output",
+        str(output),
+        "--scenarios",
+        "nominal",
+        "--scales",
+        "2",
+        "--seeds",
+        "91",
+        "92",
+        "93",
+        "--duration",
+        "0.25",
+        "--minimum-free-gb",
+        "0",
+        "--allow-dirty",
+    ]
+
+    assert learning_runner.main([*common, "--max-episodes-per-run", "1"]) == 0
+    first_checkpoint = json.loads(
+        (output / "generation_checkpoint.json").read_text(encoding="utf-8")
+    )
+    assert (
+        learning_runner.main(
+            [*common, "--resume", "--max-episodes-per-run", "1"]
+        )
+        == 0
+    )
+
+    first_checkpoint["schema_version"] = LEGACY_GENERATION_CHECKPOINT_SCHEMA_VERSION
+    (output / "generation_checkpoint.json").write_text(
+        json.dumps(first_checkpoint, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    assert learning_runner.main([*common, "--resume"]) == 0
+
+    finalized = json.loads(
+        (output / "generation_checkpoint.json").read_text(encoding="utf-8")
+    )
+    assert finalized["schema_version"] == GENERATION_CHECKPOINT_SCHEMA_VERSION
+    assert finalized["completed_episode_count"] == 3
+    assert finalized["checkpoint_recovery_count"] == 1
+    assert finalized["recovered_progress_row_count"] == 1
+    assert finalized["invocation_count"] == 3

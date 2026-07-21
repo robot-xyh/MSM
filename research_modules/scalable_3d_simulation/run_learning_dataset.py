@@ -7,6 +7,8 @@ import argparse
 import csv
 import hashlib
 import json
+import math
+import os
 from pathlib import Path
 import shutil
 import subprocess
@@ -36,8 +38,11 @@ from research_modules.scalable_3d_simulation.scenarios import (
 
 
 GENERATION_PLAN_SCHEMA_VERSION = "scalable3d-learning-generation-plan-v1"
-GENERATION_CHECKPOINT_SCHEMA_VERSION = (
+LEGACY_GENERATION_CHECKPOINT_SCHEMA_VERSION = (
     "scalable3d-learning-generation-checkpoint-v1"
+)
+GENERATION_CHECKPOINT_SCHEMA_VERSION = (
+    "scalable3d-learning-generation-checkpoint-v2"
 )
 TRAINING_SEED_REGISTRY_SCHEMA_VERSION = "scalable3d-training-seed-registry-v1"
 DEFAULT_CONFIG = Path(__file__).with_name("configs") / "nominal_200v200.json"
@@ -178,10 +183,32 @@ def main(argv: list[str] | None = None) -> int:
             checkpoint["repository_dirty"]
         ) != repository_dirty:
             raise RuntimeError("generation checkpoint source revision changed")
-        if int(checkpoint["completed_episode_count"]) != len(rows):
-            raise RuntimeError("generation checkpoint and progress row counts disagree")
-        prior_generation_wall_s = float(checkpoint["cumulative_generation_wall_s"])
-        invocation_count = int(checkpoint["invocation_count"]) + 1
+        checkpoint_episode_count = int(checkpoint["completed_episode_count"])
+        if checkpoint_episode_count > len(rows):
+            raise RuntimeError(
+                "generation checkpoint is ahead of validated progress rows"
+            )
+        checkpoint_lag = len(rows) - checkpoint_episode_count
+        recovered_wall_s = _recover_checkpoint_lag_wall_s(
+            rows[checkpoint_episode_count:]
+        )
+        prior_generation_wall_s = (
+            float(checkpoint["cumulative_generation_wall_s"])
+            + recovered_wall_s
+        )
+        checkpoint_recovery_count = int(
+            checkpoint.get("checkpoint_recovery_count", 0)
+        ) + int(checkpoint_lag > 0)
+        recovered_progress_row_count = int(
+            checkpoint.get("recovered_progress_row_count", 0)
+        ) + checkpoint_lag
+        # A lag means one prior invocation completed rows after its last durable
+        # checkpoint and then terminated. Count that invocation before this one.
+        invocation_count = (
+            int(checkpoint["invocation_count"])
+            + int(checkpoint_lag > 0)
+            + 1
+        )
     else:
         _prepare_fresh_output(output)
         _write_json(output / "generation_plan.json", plan)
@@ -193,6 +220,8 @@ def main(argv: list[str] | None = None) -> int:
         rows: list[dict[str, Any]] = []
         prior_generation_wall_s = 0.0
         invocation_count = 1
+        checkpoint_recovery_count = 0
+        recovered_progress_row_count = 0
     start_index = len(rows)
     stop_index = len(cells)
     if args.max_episodes_per_run is not None:
@@ -246,9 +275,26 @@ def main(argv: list[str] | None = None) -> int:
             raise RuntimeError(f"episode failed safety checks: {scenario}/{scale}/{seed}")
         if args.formal and row["repository_dirty"]:
             raise RuntimeError("formal episode manifest became dirty during generation")
-        with progress_path.open("a", encoding="utf-8") as stream:
-            stream.write(json.dumps(row, sort_keys=True) + "\n")
+        _append_progress_row(progress_path, row)
         rows.append(row)
+        _write_generation_checkpoint(
+            output,
+            state="paused",
+            plan_sha256=_sha256_file(output / "generation_plan.json"),
+            git_commit=git_commit,
+            repository_dirty=repository_dirty,
+            completed_episode_count=len(rows),
+            cell_count=len(cells),
+            invocation_count=invocation_count,
+            cumulative_generation_wall_s=(
+                prior_generation_wall_s
+                + time.perf_counter()
+                - generation_started
+            ),
+            checkpoint_recovery_count=checkpoint_recovery_count,
+            recovered_progress_row_count=recovered_progress_row_count,
+            last_completed_episode_id=str(row["episode_id"]),
+        )
         print(
             f"[{index + 1}/{len(cells)}] scenario={scenario} scale={scale} "
             f"seed={seed} rtf={row['real_time_factor']:.3f} "
@@ -270,6 +316,9 @@ def main(argv: list[str] | None = None) -> int:
             cell_count=len(cells),
             invocation_count=invocation_count,
             cumulative_generation_wall_s=cumulative_generation_wall_s,
+            checkpoint_recovery_count=checkpoint_recovery_count,
+            recovered_progress_row_count=recovered_progress_row_count,
+            last_completed_episode_id=str(rows[-1]["episode_id"]),
         )
         print(
             f"generation_paused={len(rows)}/{len(cells)} "
@@ -323,6 +372,8 @@ def main(argv: list[str] | None = None) -> int:
                 GENERATION_CHECKPOINT_SCHEMA_VERSION
             ),
             "invocation_count": invocation_count,
+            "checkpoint_recovery_count": checkpoint_recovery_count,
+            "recovered_progress_row_count": recovered_progress_row_count,
         },
     )
     _write_generation_checkpoint(
@@ -336,6 +387,9 @@ def main(argv: list[str] | None = None) -> int:
         invocation_count=invocation_count,
         cumulative_generation_wall_s=generation_wall_s,
         generation_summary_sha256=_sha256_file(output / "generation_summary.json"),
+        checkpoint_recovery_count=checkpoint_recovery_count,
+        recovered_progress_row_count=recovered_progress_row_count,
+        last_completed_episode_id=str(rows[-1]["episode_id"]),
     )
     print(f"learning_summary={paths['summary']}")
     return 0
@@ -583,7 +637,10 @@ def _load_generation_checkpoint(output: Path) -> Mapping[str, Any]:
     }
     if not required.issubset(checkpoint):
         raise RuntimeError("generation checkpoint is missing required fields")
-    if checkpoint["schema_version"] != GENERATION_CHECKPOINT_SCHEMA_VERSION:
+    if checkpoint["schema_version"] not in {
+        LEGACY_GENERATION_CHECKPOINT_SCHEMA_VERSION,
+        GENERATION_CHECKPOINT_SCHEMA_VERSION,
+    }:
         raise RuntimeError("unsupported generation checkpoint schema")
     if checkpoint["state"] != "paused":
         raise RuntimeError("only a paused generation checkpoint can be resumed")
@@ -596,6 +653,27 @@ def _load_generation_checkpoint(output: Path) -> Mapping[str, Any]:
     if float(checkpoint["cumulative_generation_wall_s"]) < 0.0:
         raise RuntimeError("generation checkpoint timing is invalid")
     return checkpoint
+
+
+def _recover_checkpoint_lag_wall_s(
+    rows: Iterable[Mapping[str, Any]],
+) -> float:
+    recovered = 0.0
+    for row in rows:
+        value = float(row.get("episode_and_stage_wall_s", -1.0))
+        if not math.isfinite(value) or value < 0.0:
+            raise RuntimeError(
+                "checkpoint lag contains invalid episode timing evidence"
+            )
+        recovered += value
+    return recovered
+
+
+def _append_progress_row(path: Path, row: Mapping[str, Any]) -> None:
+    with path.open("a", encoding="utf-8") as stream:
+        stream.write(json.dumps(dict(row), sort_keys=True) + "\n")
+        stream.flush()
+        os.fsync(stream.fileno())
 
 
 def _read_progress_rows(path: Path) -> list[dict[str, Any]]:
@@ -668,6 +746,9 @@ def _write_generation_checkpoint(
     invocation_count: int,
     cumulative_generation_wall_s: float,
     generation_summary_sha256: str | None = None,
+    checkpoint_recovery_count: int = 0,
+    recovered_progress_row_count: int = 0,
+    last_completed_episode_id: str | None = None,
 ) -> None:
     if state not in {"paused", "finalized"}:
         raise ValueError(f"unsupported generation checkpoint state: {state}")
@@ -684,6 +765,9 @@ def _write_generation_checkpoint(
         "invocation_count": int(invocation_count),
         "cumulative_generation_wall_s": float(cumulative_generation_wall_s),
         "generation_summary_sha256": generation_summary_sha256,
+        "checkpoint_recovery_count": int(checkpoint_recovery_count),
+        "recovered_progress_row_count": int(recovered_progress_row_count),
+        "last_completed_episode_id": last_completed_episode_id,
     }
     temporary = output / ".generation_checkpoint.json.tmp"
     _write_json(temporary, payload)

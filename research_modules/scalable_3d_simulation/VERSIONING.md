@@ -43,7 +43,7 @@ main
 | 离线真值 | `scalable3d-offline-truth-v1` | 标签结构或评分口径改变 |
 | 学习导出 | `scalable3d-learning-export-v2` | D3/D4/D5 训练制品布局或真值隔离规则改变；v2 增加 D5 主动视觉整 episode 在线记录与独立离线标签 |
 | 学习生成计划 | `scalable3d-learning-generation-plan-v1` | 场景、规模、seed、正式预检或保留评估 seed 规则改变 |
-| 学习生成检查点 | `scalable3d-learning-generation-checkpoint-v1` | 暂停/恢复状态、累计调用计时、计划哈希或完成序号语义改变 |
+| 学习生成检查点 | `scalable3d-learning-generation-checkpoint-v2` | 暂停/恢复状态、累计调用计时、计划哈希或完成序号语义改变；v2 在每个完整 episode 后原子推进，并记录严格校验后的旧检查点滞后恢复 |
 | 训练 seed 注册表 | `scalable3d-training-seed-registry-v1` | 训练/保留评估 seed 身份、来源或隔离规则改变 |
 | 实验矩阵 | `scalable3d-experiment-matrix-v1` | 变体语义、配对键或正式准入条件改变 |
 | D1 一致性评估清单 | `scalable3d-offline-consistency-evaluation-manifest-v1` | 在线证据、真值状态、D2 映射或哈希绑定改变 |
@@ -95,6 +95,11 @@ D5 主动视觉默认 20% 测试切分可提供至少 20 个唯一未见 seed。
 progress 与 batch episode index。未索引、重复或不完整 staging 失败关闭；只有全部 cell
 完成后才执行统一数据集最终化。正式标签仍绑定最终生成摘要和冻结 schedule，不以单个分块
 替代完整批次证据。
+版本 2 checkpoint 在 progress 行同步写盘后逐 episode 原子替换。进程若在 progress 已完整
+落盘而 checkpoint 尚未替换的窄窗口退出，恢复入口只在全部 progress、staging、计划顺序、
+在线真值隔离和安全字段均通过校验时接受滞后，并记录恢复次数、恢复行数和最后 episode。
+checkpoint 领先、staging 领先或来源提交改变仍拒绝恢复。不同 Git 提交产生的 episode 不得
+拼接为同一个正式学习数据集。
 冻结的 balanced schedule 显式记录 `round_robin_cells_v1`。每轮依次遍历全部声明 cell 的
 同一 seed offset，因此连续 45 个 episode 各覆盖一次 9 类场景和 5 档规模；执行顺序变化会
 改变 schedule SHA256 和 generation plan，已有 checkpoint 必须拒绝恢复。

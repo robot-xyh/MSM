@@ -6,6 +6,9 @@
 
 **P0/P1 状态入口**：本文是 main 层唯一的实现差距与 P0/P1 状态入口，集中维护 owner、当前状态、缺少条件和验收口径。2026-07-14 canonical actual-execution 证据链已完成真实 AirSim seed-1 复验：tuned 2v2 与 M5N2 均生成并通过校验的 `d7-actual-execution-metrics-v2`，不存在 unavailable artifact；`control_commands.csv`、`intercept_summary.json` 和 actual envelope 的物理成功数一致，控制计划 ID 与同一个 canonical D3 history 一致，身份和状态在线真值使用计数均为 0。2026-07-15 main/D6 进一步关闭“只有总耗时、无法定位预算违例阶段”的 P1 可观测性实现缺口；随后复核并关闭 D4 多入口二级接管证据不一致的系统级 P0 边界，以及 D2 continuity 固定 `+0.10` 在高基线下不可达的 P1 准入规则缺口。同日第二次只读审计发现 D4 两个公开 helper 仍把部分缺失证据 `None` 当成“非 False”放行；D4 owner 已改为 exact-true/fail-closed，补齐逐字段缺失负例并完成跨模块回归。D2/D6 随后已用原冻结 replay 生成 ceiling-aware v2 正式联合证据：总体 GNN 候选五项 gate 通过，但只有 `clutter`、`combined` 两个 difficulty 通过，dropout truth alignment 仍为 partial，JPDA 不准入，因此只形成 promotion review，默认 GNN/Hungarian 不变。最新相关回归为 D2 `113`、D4 `280`、D6 `272`、AirSim runtime `157`、integrated point-mass `7`；当前无开放运行级或证据级 P0 blocker。P1 继续包括 D3 长期 churn、M5N2 第二 primary/物理联盟、candidate `3/2/1` 机会合同、ClockSpeed 与顺序控制 RPC 解耦、D5 30/50 m 与 native MOT 准入、真实二级网络时序、D2 候选的跨 difficulty/完整系统评审，以及基于新分阶段证据达到 100 ms 实时预算。P2 仍只在隔离环境评估，不替换默认 NumPy/SciPy/PN/PNG/detect 路径。
 
+**当前状态修订（2026-07-20）**：上段“无开放 P0”只对应此前 AirSim 审计。900-episode
+正式生成在第 210 项发现 D5 同流多批次阻塞；以下专项记录为当前状态，优先级高于历史摘要。
+
 ## 2026-07-20 三维学习数据容量与吞吐复核
 
 九类 200v200、每例 2 秒的 clean-tree 容量探针已完成。9/9 episode 状态有限，在线真值
@@ -20,13 +23,26 @@ staging `225.9243→12.4372 s`，批次 finalization `116.5624→7.2777 s`；epi
 `4.0494/3.9898/3.9995 s`，由上一轮 `41.5623/43.2639/41.2271 s` 降低约一个数量级。
 三场均为有限状态、`repository_dirty=false`、在线真值使用 0。D5 仍占 staging 96.8%，
 但写入与最终化合计 19.7 秒，低于 episode 计算 124.7 秒，D5 writer 系统级 P1 阻塞关闭。
-runner 已实现 episode 边界暂停、同计划/同提交恢复、连续 progress 与 staging index 复核；
-3-episode `1+2` 分块回归和计划/重复 index 篡改负例通过。冻结 schedule 采用
-`round_robin_cells_v1`，每连续 45 个 episode 覆盖一次完整的 9 场景 × 5 规模目录。
+runner 已实现 episode 边界暂停、同计划/同提交恢复、连续 progress 与 staging index 复核。
+2026-07-20 正式生成先完成两个 45-episode 分块，90/90 均为有限状态、干净提交且在线真值
+使用为 0。连续运行随后完成到 209/900，在第 210 项
+`communication_degraded 200v200 seed 64` 暴露 D5 同一相机流单次多批次边界异常并退出。
+该目录没有最终化，不能作为正式训练集；D5 修复改变提交后必须从零重跑，禁止混合提交。
 
-当前无新增 P0。代表分块启动门已经通过；900 episode、行为克隆/近端策略优化、20 个未见
-seed、checkpoint、paired shadow 和模型准入仍未执行。main 下一步启动首个 45-episode
-正式代表分块，核对冻结目录、检查点和恢复合同，通过后继续执行冻结 schedule。
+本次退出同时暴露旧 checkpoint 只在显式暂停时更新，导致 progress 为 209 而 checkpoint
+停在 90。main 已升级 `scalable3d-learning-generation-checkpoint-v2`：每个完整 episode
+同步写 progress 后原子推进 checkpoint；旧 checkpoint 滞后仅在 progress、staging、计划顺序和
+安全字段全部通过时恢复，并记录恢复次数和行数。checkpoint 领先、staging 不完整、提交改变仍
+失败关闭。开发定向测试 13/13 通过；正式 900 episode 复跑尚未完成，因此该项状态为“软件
+修复完成、正式证据待重跑”。
+
+D5 修复后的 main 开发回归已复跑原失败 cell `communication_degraded 200v200 seed 64`。
+该单元状态有限、在线真值使用为 0，episode 运行 27.4 秒、写入 3.9 秒，并在三 seed 计划的
+1/3 边界写出 checkpoint v2 后正常暂停。该运行来自脏工作树，仅关闭原异常路径的开发验证，
+不能替代新干净提交上的 900-episode 正式重建。
+
+当前代码级阻塞已关闭，正式证据阻塞为新提交上的 900 episode 重建。行为克隆、近端策略优化、
+20 个未见 seed、paired shadow 和模型准入仍未执行。
 
 ## 2026-07-20 三维 D1/D2/D6 真值隔离评估闭环
 

@@ -79,19 +79,26 @@ python3 research_modules/scalable_3d_simulation/run_learning_dataset.py \
   --output research_modules/scalable_3d_simulation/outputs/learning_generation_v1
 ```
 
-每个分块完成后保留 `generation_checkpoint.json`、`episode_progress.jsonl` 和模块 staging。
-继续下一块时使用相同参数并增加 `--resume`。恢复入口逐字比较生成计划和训练 seed 注册表，
-校验 Git 提交、计划 SHA256、连续 sequence、在线安全结果和 batch episode index；计划变化、
-重复 episode、未索引或不完整制品均失败关闭。全部 900 个 cell 完成后才执行统一最终化。
-当前 3-episode 开发回归已验证 `1 + 2` 分块续跑和篡改拒绝，正式规模恢复仍需首个代表分块验证。
+每个完整 episode 都先同步写入 `episode_progress.jsonl`，再原子推进
+`generation_checkpoint.json`；模块 staging 与进度索引必须一一对应。继续运行时使用相同参数并
+增加 `--resume`。恢复入口逐字比较生成计划和训练 seed 注册表，校验 Git 提交、计划 SHA256、
+连续 sequence、在线安全结果和 batch episode index。版本 2 checkpoint 允许在全部进度和
+staging 已通过校验时恢复“进度领先旧 checkpoint”的崩溃窗口，并记录恢复次数与行数；checkpoint
+领先、重复 episode、未索引或不完整制品仍失败关闭。全部 900 个 cell 完成后才执行统一最终化。
+开发回归已覆盖 `1 + 2` 分块、单 episode 后异常续跑、旧版本 checkpoint 滞后恢复和篡改拒绝。
 冻结 schedule 使用 `round_robin_cells_v1`，每连续 45 个 episode 各覆盖一次 9 类场景和
 5 档规模，避免首个分块只运行单一场景或单一规模。
 
 正式预检要求完整 45 个场景/规模组合且每个组合至少 20 个 seed，同时记录 schedule SHA256。
 九场景存储门、三 seed 批次最终化门和代表分块启动门已经通过。D5 主动视觉仍占最新
 200v200 staging 的 96.8%，但三 seed 只需 12.04 秒，写入与最终化合计低于 episode 计算，
-不再形成系统级阻塞。先执行一个 45-episode 正式代表分块并核对恢复证据；首块通过前不连续
-启动其余完整批次。
+不再形成系统级阻塞。2026-07-20 已完成两个 45-episode 正式分块，90/90 均为有限状态、
+干净提交且在线真值使用为 0。随后连续运行完成到 209/900，在下一项
+`communication_degraded 200v200 seed 64` 暴露 D5 同一相机流单次收到多个批次的边界问题。
+该批次尚未最终化，不能作为训练集；修复后必须在新提交上重新生成，禁止混合不同提交的 episode。
+修复后的脏工作树开发回归已单独运行同一 `communication_degraded 200v200 seed 64`：状态有限、
+在线真值使用为 0，episode 运行 27.4 秒、写入 3.9 秒，并以 checkpoint v2 在 1/3 边界正常暂停。
+该结果只证明原异常单元可通过和恢复点可写，不替代干净提交上的正式重跑。
 
 学习模型默认关闭。显式研究运行可增加下列参数；bundle 缺失、校验失败、分布外、低置信或
 超时均保留规则路径：
@@ -257,8 +264,10 @@ staging，符合失败关闭。
 运行保持在 124.7-125.2 秒。第二轮 D5 主动视觉写入为 12.04 秒，三场分别为
 4.05/3.99/4.00 秒。D5 仍占 staging 的 96.8%，但写入与最终化合计 19.7 秒，已低于
 episode 计算的 124.7 秒，不再主导总耗时。存储、最终化和首个正式代表分块启动门已经
-通过；完整 900 episode、20 个未见 seed 和 200v200 实时性目标仍开放。runner 已支持
-episode 边界分块暂停和严格恢复，下一项证据是首个 45-episode 正式代表分块。详细结果见
+通过；完整 900 episode、20 个未见 seed 和 200v200 实时性目标仍开放。两个正式代表分块
+已完成到 90/900，连续运行随后完成到 209/900，并在第 210 项触发 D5 同流多批次异常。
+runner 的 checkpoint 已升级为逐 episode 原子推进并兼容严格校验后的旧 checkpoint 滞后恢复；
+这只解决异常后的完整边界恢复，不允许跨 Git 提交拼接正式数据。详细结果见
 `docs/SCALABLE_3D_CAPACITY_AND_RUNTIME_REPORT_CN.md`。
 
 每个物理步结束后，离线评估侧按三维 5 米门限登记唯一接近事件。事件中的真值目标号只

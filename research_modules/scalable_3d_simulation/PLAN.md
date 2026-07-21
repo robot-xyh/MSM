@@ -158,9 +158,16 @@ commit。
   `125.2→124.7 s`。D5 主动视觉三 seed staging 为 `4.05/3.99/4.00 s`，合计 12.04 秒。
   它仍占 staging 96.8%，但制品写入与最终化合计 19.7 秒，低于 episode 计算 124.7 秒，
   D5 writer 系统级阻塞已关闭。不得通过降低采样、删除特征或放松真值隔离继续换取速度。
-  runner 已实现 episode 边界暂停、同计划/同提交恢复、连续 progress 与 staging index 复核；
-  3-episode `1+2` 分块回归及计划/重复 index 篡改负例通过。下一步启动首个 45-episode
-  正式代表分块，验证冻结 schedule 和恢复合同；完整 900 episode 与实时性目标仍开放。
+  runner 已实现 episode 边界暂停、同计划/同提交恢复、连续 progress 与 staging index 复核。
+  checkpoint v2 在每个完整 episode 后原子推进；旧 checkpoint 落后时，只有 progress 与
+  staging 全部通过计划、顺序和安全校验才允许恢复，并记录恢复次数和行数。开发回归覆盖
+  `1+2` 分块、单 episode 后异常续跑、旧 v1 checkpoint 滞后恢复以及计划/重复 index 篡改拒绝。
+  2026-07-20 两个正式 45-episode 分块完成，90/90 状态有限、工作树干净、在线真值使用为 0；
+  连续生成完成到 209/900 后在第 210 项 `communication_degraded 200v200 seed 64` 触发
+  D5 同流多批次边界异常。该未最终化目录保留作故障证据；D5 修复形成新提交后从零重跑，
+  不跨提交拼接正式数据。修复后的脏工作树开发回归已让同一失败 cell 完整通过，状态有限、
+  在线真值使用为 0，并在 checkpoint v2 的 1/3 边界正常暂停；它不是正式 clean-tree 证据。
+  完整 900 episode 与实时性目标仍开放。
 - 首版正式训练 schedule 已冻结为 `learning_generation_balanced_v1.json`：100 个生成 seed
   通过五个分块按场景/规模均衡轮换，每个 45 个 cell 各有 20 个 seed，共 900 episode；
   seed 1000-1019 保留为最终评估集。runner 在开始前核对完整笛卡尔目录、逐 cell 分母、
