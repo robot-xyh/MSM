@@ -25,7 +25,15 @@ unavailable label、final manifest、lazy audit、detached canonical view 和 re
 语义；它不是运行频率，更不是策略收益。reward、outcome、counterfactual 和 causal label 必须以
 null/unavailable 明示，不得补零。synthetic curriculum 只允许 development shadow/BC 研究接口；
 PPO、assist、在线 authority 和相机命令权保持关闭。生成报告的标题、说明和约束使用中文，技术
-token/SHA 可原样保留。本轮只有 tmp_path 测试，没有 clean 正式产物。
+token/SHA 可原样保留。
+
+2026-07-21 main 在 detached clean worktree `13e37286d2996a227924bb1a8e2766e52116a534` 完成实际生成。
+100 episode、800 segment、1200 sample 与 canonical seed/episode `60/20/20`、sample
+`720/240/240` 全部通过；online truth、reserved overlap、dirty episode 和 audit violation 均为 0。
+正式 900-episode 输入树前后 SHA 同为
+`8ffbe5cf044d121163c8acc3dce1bbd54e14bb6b211b8e1cf440f24c93294fca`。该证据关闭 clean
+supplemental producer/canonical 子项，但不改变上述权限边界。下一步必须是绑定 SHA 的 BC 全样本
+审计和 main/D6 跨模块准入审计，不能从 synthetic ACK 推导真实执行效果。
 
 ## 宽视场稳定门原理
 

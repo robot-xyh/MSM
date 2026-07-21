@@ -2,6 +2,8 @@
 
 ## 2026-07-21 主动视觉课程阶段 B1b2
 
+**Clean evidence：** main 已在 detached clean worktree `13e37286d2996a227924bb1a8e2766e52116a534` 完成 100/800/1200 与 canonical `60/20/20`、`720/240/240` 的实际生成；dataset/view/config/training-registry/shared-registry/summary-content SHA 分别为 `0c474ee1b0bab34a46c2ebce328761983cf2ecc757da30c2d3d2e03a06cd1acf`、`0ab1a4a6bdd439f6c8a74df5059de3c4950791fba35a1b9514942e83779f72a8`、`e93ca6310338be5db4539fac195f5257e28d16a64b78b1a0351bf6aeca01fcee`、`2ab928a476a4430b99326f245222f058bc5be5025158134ba89b01b3dec7815f`、`68608d29d1f733beea87f1faf06464fededb68a9c2972c51c10cd4c2160f032f`、`0577c73810413ced6277e679477422f467cb2db094f1d376e39e4cbb2a3abd65`，正式树前后 SHA 同为 `8ffbe5cf044d121163c8acc3dce1bbd54e14bb6b211b8e1cf440f24c93294fca`；clean producer/canonical evidence 已关闭，synthetic ACK 不作真实 ACK，PPO/assist 仍关闭。
+
 - [x] 新增独立 100-seed producer。严格读取 training registry 的 100 个 seed 和 `1000-1019`
   保留目录，预检 shared registry schema/content/source binding，并在 canonical API 中完整复算 policy、
   assignment 与 `60/20/20`；两个 registry 文件 SHA256、dataset config、manifest、view/content 和
@@ -26,11 +28,11 @@
   --created-at-utc --global-track-id`，默认读取 Git provenance，可选
   `--tracked-summary-json/--tracked-report-markdown`，Markdown 报告为中文。2026-07-21 新增专项
   `15 passed in 71.87s`，D5 全量 `482 passed in 83.05s`。
-- [ ] main 在真实 clean revision 上使用正式 registry 执行一次 CLI；全新输出目录和 tracked
-  JSON/Markdown 必须位于所有 registry source root 之外，并保存实际 dataset/view/config/registry
-  SHA。本轮仅有 tmp_path fixture 验收，不得称为 clean 正式产物，也不修改正式 900 episode。
-- [ ] 另接真实 runtime ACK/outcome、独立 evaluator reward/counterfactual/causal label 和至少 20 个
-  未见 seed 的 paired shadow；完成前不训练或晋级 PPO/assist，不授予相机命令权。
+- [x] main 已在上述 clean revision 使用正式 registry 执行 CLI，归档 ignored output、tracked
+  JSON/中文 Markdown 及实际 SHA；正式 900-episode 输入树未修改。
+- [ ] 对绑定 dataset/view/config/registry 执行 BC 全样本审计，再由 main/D6 做跨模块准入审计；真实
+  runtime ACK/outcome、reward/counterfactual/causal label 和 paired shadow 未完成前，不开启
+  PPO/assist/在线或相机命令权。
 
 ## 2026-07-21 主动视觉课程阶段 B1b1
 
@@ -55,8 +57,9 @@
   2026-07-21 新定向测试 `12 passed`，主动视觉关联回归 `56 passed`，D5 全量
   `467 passed in 10.40s`，`py_compile` 通过。
 - [x] B1b2 已复用该 builder 完成独立 100-seed 生成、detached finalization、canonical
-  `60/20/20`、CLI 和严格统计接口；clean 正式生成、真实 runtime ACK/outcome、独立 evaluator label、
-  paired shadow、PPO/assist 准入仍按上节保持开放。
+  `60/20/20`、CLI 和严格统计接口；clean producer/canonical evidence 后续已由 `13e3728` 实际制品
+  关闭。开放项仅为 BC 全样本审计、真实 runtime ACK/outcome、reward/counterfactual/causal、
+  paired shadow 及 PPO/assist/authority 准入。
 
 ## 2026-07-21 主动视觉相机执行器阶段 B1a
 
@@ -72,8 +75,10 @@
 - [x] 2026-07-21 定向测试 `18 passed`，D5 全量 `455 passed in 12.18s`。覆盖 WIDE/ZOOM/HOLD、
   过期、三类版本错、相机忙/不可用、FOV 不支持、非法动作、ACK 缺失、truth guard、确定性和输入不变。
 - [x] 阶段 B1b2 已接 supplemental curriculum producer、canonical `60/20/20` 和统计接口。
-- [ ] main 仍需在 clean revision 上正式生成 detached 制品；B1a/B1b2 均未运行 AirSim、未启动
-  PPO/assist，也未形成相机命令权限。
+- [x] main 已在 clean revision `13e3728` 生成 detached supplemental 制品并归档实际 SHA，关闭 clean
+  producer/canonical evidence。
+- [ ] BC 全样本审计、真实 runtime ACK/outcome、reward/counterfactual/causal、paired shadow 和
+  PPO/assist/authority 准入仍未完成；B1a/B1b2 均未运行 AirSim。
 
 ## 2026-07-21 主动视觉宽视场稳定门阶段 A
 
@@ -89,8 +94,8 @@
   `437 passed in 10.28s`。未运行 AirSim，未训练或晋级模型。
 - [x] 阶段 B1b2 已建立 supplemental curriculum producer 接口，覆盖
   hold/observe/reacquire/search、两相机角色和视场边界，且不修改正式 900 episode。
-- [ ] main 另行在真实 clean revision 上生成正式 supplemental 制品并归档 SHA；tmp_path fixture
-  不替代该证据。
+- [x] 软件阶段 tmp_path fixture 保留为历史验收；main 后续已在 clean revision `13e3728` 生成实际
+  supplemental 制品并归档 SHA，正式 900-episode 输入树哈希前后不变。
 - [ ] main/runtime 将真实 applied/rejected/missing ACK 以现有 episode 合同回灌后，再决定是否把 ACK
   纳入稳定门。当前 snapshot 不含 ACK，本阶段不得伪造或扩 DTO。
 - [ ] 只有在阶段 B 数据覆盖和准入门通过后才重训 development bundle。旧 v5 bundle 绑定阶段 A

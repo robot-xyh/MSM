@@ -2,6 +2,10 @@
 
 科研模块，用于把末端相机视场中的本地视觉轨迹保守关联到中心分配的 `global_track_id`。模块可在统一三维 episode 中在线运行；训练标签和真值评分仍保持离线。D5 只输出视觉关联与相机观察意图，不修改、重写或重新分配任何全局轨迹 ID。
 
+## 2026-07-21 B1b2 clean evidence
+
+main 已在 detached clean worktree `13e37286d2996a227924bb1a8e2766e52116a534` 完成实际 CLI 生成：ignored output 为 `outputs/active_vision_supplemental_curriculum_20260721_clean_13e3728`，tracked JSON/中文报告位于 `results/active_vision_supplemental_curriculum_20260721.json` 与 `reports/D5_ACTIVE_VISION_SUPPLEMENTAL_CURRICULUM_20260721.md`；实测 100 episode/800 segment/1200 sample，canonical seed/episode `60/20/20`、sample `720/240/240`，intent `200/600/200/200`、FOV `1000/200`、role `600/600`、故障注入 ACK `400/400/400`，online truth/reserved overlap/dirty episode/audit violation 均为 0。dataset manifest、canonical view、config、training registry、shared registry、summary content SHA 依次为 `0c474ee1b0bab34a46c2ebce328761983cf2ecc757da30c2d3d2e03a06cd1acf`、`0ab1a4a6bdd439f6c8a74df5059de3c4950791fba35a1b9514942e83779f72a8`、`e93ca6310338be5db4539fac195f5257e28d16a64b78b1a0351bf6aeca01fcee`、`2ab928a476a4430b99326f245222f058bc5be5025158134ba89b01b3dec7815f`、`68608d29d1f733beea87f1faf06464fededb68a9c2972c51c10cd4c2160f032f`、`0577c73810413ced6277e679477422f467cb2db094f1d376e39e4cbb2a3abd65`；正式 900-episode 输入树前后 SHA 同为 `8ffbe5cf044d121163c8acc3dce1bbd54e14bb6b211b8e1cf440f24c93294fca`。该证据关闭 clean supplemental producer/canonical 子项；ACK 仍只表示 synthetic 故障覆盖，四类离线 label 均为 `0/1200 available`，PPO/assist/online/camera authority 保持 false，下一步为 BC 全样本审计与 main/D6 跨模块准入审计，本次未训练、未运行 AirSim。
+
 ## 2026-07-21 主动视觉 supplemental curriculum B1b2
 
 D5 已实现独立 100-seed supplemental curriculum 的生成、严格审计和原子发布接口。入口
@@ -31,12 +35,13 @@ caller-owned ID、truth guard、synthetic/dirty provenance、保留 seed、四�
 制品，但状态固定为 `fail_closed_dirty_source`，不能冒充 clean development 数据。
 
 生成的 curriculum Markdown 使用中文标题、说明和约束，并保留技术 token 与 SHA。2026-07-21
-新增专项 `15 passed in 71.87s`，D5 全量 `482 passed in 83.05s`，接受阈值为零失败。
-测试输出全部位于 pytest 临时目录。本轮没有生成仓库内真实 curriculum、没有 clean 正式产物证据，
-没有训练、AirSim 运行或正式 900-episode 数据改写。main 剩余工作是在真实 clean revision 上用正式
-registry 调用 CLI，并把新目录和 tracked 报告置于所有 registry source root 之外，归档实际
-SHA/JSON/Markdown；真实 runtime ACK/outcome、独立 evaluator label 和 paired shadow 仍是后续准入
-证据。
+软件验收为新增专项 `15 passed in 71.87s`、D5 全量 `482 passed in 83.05s`，接受阈值为零失败。
+
+上述 pytest 输出全部位于临时目录，是软件阶段的历史验收；其后 main 已在 clean revision
+`13e37286d2996a227924bb1a8e2766e52116a534` 完成实际 CLI 生成并关闭 supplemental
+producer/canonical evidence，见本文顶部。该 clean synthetic 制品没有训练或 AirSim 证据，也不改写
+正式 900-episode 数据。开放项只剩 BC 全样本审计、真实 runtime ACK/outcome、
+reward/counterfactual/causal、paired shadow 及 PPO/assist/authority 准入。
 
 ## 2026-07-21 主动视觉宽视场稳定门
 
@@ -55,7 +60,8 @@ SHA/JSON/Markdown；真实 runtime ACK/outcome、独立 evaluator label 和 pair
 当前 snapshot 没有 runtime ACK 或 `last_accepted_command_version` 输入。本阶段没有构造替代 ACK，
 只使用已有 `slew_available/action_in_progress_until` 处理相机忙状态。定向主动视觉组合测试
 `47 passed`，D5 全量 `437 passed in 10.28s`。宽视场阶段当时未运行 AirSim、未生成课程数据、
-未训练模型；其后的 B1b2 synthetic producer 状态见本文首节，仍无 clean 正式产物。
+未训练模型；其后的 B1b2 clean producer/canonical evidence 已由 `13e3728` 制品关闭，但没有增加
+真实 runtime ACK/outcome、离线因果标签或模型准入证据。
 GNN 与主动视觉模型继续失败关闭或 development shadow-only。既有 v5 development bundle 绑定旧
 实现哈希，按严格 loader 会因本次规则实现变化拒绝加载；本轮没有重写或追认旧权重。
 

@@ -1,5 +1,9 @@
 # D5 M 对 N 末端多视角配准与协同定位调研
 
+## 2026-07-21 B1b2 clean evidence 对 M 对 N 的边界
+
+commit `13e37286d2996a227924bb1a8e2766e52116a534` 的 clean supplemental 制品已通过 100/800/1200、canonical `60/20/20` 与 `720/240/240`、truth/reserved/dirty/audit 零违规检查，dataset/view/config/training-registry/shared-registry/summary-content SHA 依次为 `0c474ee1b0bab34a46c2ebce328761983cf2ecc757da30c2d3d2e03a06cd1acf`、`0ab1a4a6bdd439f6c8a74df5059de3c4950791fba35a1b9514942e83779f72a8`、`e93ca6310338be5db4539fac195f5257e28d16a64b78b1a0351bf6aeca01fcee`、`2ab928a476a4430b99326f245222f058bc5be5025158134ba89b01b3dec7815f`、`68608d29d1f733beea87f1faf06464fededb68a9c2972c51c10cd4c2160f032f`、`0577c73810413ced6277e679477422f467cb2db094f1d376e39e4cbb2a3abd65`，正式树前后 SHA 同为 `8ffbe5cf044d121163c8acc3dce1bbd54e14bb6b211b8e1cf440f24c93294fca`。该证据只关闭 producer/canonical 子项，不是 M 对 N runtime、真实 ACK 或模型证据；PPO/assist/authority 不变，下一步为 BC 全样本与 main/D6 跨模块准入审计。
+
 ## 2026-07-21 Supplemental curriculum B1b2 对 M 对 N 状态的影响
 
 B1b2 producer 已实现 100 个独立数值 seed、canonical `60/20/20` 和动态 seed 目录治理，但每个课程
@@ -8,9 +12,10 @@ episode 按设计只含 interceptor/recon 两个相机角色。它覆盖两角�
 
 实现没有修改 M 对 N adapter、图构造、聚类、中心绑定或 AirSim runtime；`global_track_id` 仍由中心
 提供且只读。本次 source-root path guard 和中文报告修正同样不改变 M 对 N 算法或证据。新增专项
-`15 passed`、D5 全量 `482 passed in 83.05s` 只证明 producer 和失败关闭合同。本轮没有 clean 正式
-curriculum、M 对 N 模型重训、真实 ACK/outcome 或 paired shadow，因此本文件既有 M 对 N 性能与
-准入结论不变，assist/PPO/相机命令权继续关闭。
+`15 passed`、D5 全量 `482 passed in 83.05s` 是软件阶段历史验收；后续 `13e3728` clean 制品已关闭
+supplemental producer/canonical evidence，但不构成 M 对 N 模型或 runtime 证据。本轮没有 M 对 N
+模型重训、真实 ACK/outcome、reward/counterfactual/causal 或 paired shadow，因此既有 M 对 N 性能
+与准入结论不变；BC 全样本与 main/D6 跨模块准入审计仍开放，assist/PPO/authority 继续关闭。
 
 ## 2026-07-20 M 对 N 主动视觉行为克隆结果
 

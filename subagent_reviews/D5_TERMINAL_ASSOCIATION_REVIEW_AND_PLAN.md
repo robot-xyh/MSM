@@ -1,5 +1,9 @@
 # D5 末端视觉配准与协同身份认证综述及子方案
 
+## 2026-07-21 B1b2 clean evidence 复核
+
+main 已在 detached clean worktree `13e37286d2996a227924bb1a8e2766e52116a534` 生成实际 100/800/1200 supplemental 制品与 canonical `60/20/20`、`720/240/240` 视图；dataset/view/config/training-registry/shared-registry/summary-content SHA 依次为 `0c474ee1b0bab34a46c2ebce328761983cf2ecc757da30c2d3d2e03a06cd1acf`、`0ab1a4a6bdd439f6c8a74df5059de3c4950791fba35a1b9514942e83779f72a8`、`e93ca6310338be5db4539fac195f5257e28d16a64b78b1a0351bf6aeca01fcee`、`2ab928a476a4430b99326f245222f058bc5be5025158134ba89b01b3dec7815f`、`68608d29d1f733beea87f1faf06464fededb68a9c2972c51c10cd4c2160f032f`、`0577c73810413ced6277e679477422f467cb2db094f1d376e39e4cbb2a3abd65`，正式树前后 SHA 同为 `8ffbe5cf044d121163c8acc3dce1bbd54e14bb6b211b8e1cf440f24c93294fca`，truth/reserved/dirty/audit 均为 0。clean producer/canonical evidence 已关闭；`400/400/400` 只属 synthetic 故障覆盖，四类 label 均 `0/1200 available`，PPO/assist/authority 仍关闭，下一步为 BC 全样本与 main/D6 跨模块准入审计，本次无训练或 AirSim。
+
 ## 2026-07-21 Supplemental curriculum B1b2 复核
 
 D5 已具备独立 100-seed synthetic curriculum 的原子 producer、canonical `60/20/20`、严格审计和
@@ -15,9 +19,10 @@ tmp_path 验收得到 100 episode、800 segment、1200 sample；canonical sample
 `fail_closed_dirty_source`。Markdown 报告使用中文标题、说明和约束，并明确每 seed `4/4/4` 不是实际
 运行分布。新增专项 `15 passed in 71.87s`，D5 全量 `482 passed in 83.05s`。
 
-复核结论只关闭 producer 软件缺口。仓库没有本轮 clean 正式 supplemental 制品，未修改正式
-900 episode，未运行 AirSim 或训练。main 仍需在真实 clean revision 上执行 CLI 并归档实际 SHA；
-真实 ACK/outcome、evaluator label 和 paired shadow 继续开放。
+上述 tmp_path 结果是软件阶段历史验收；后续 main 已在 clean revision `13e3728` 执行 CLI、归档实际
+SHA，并关闭 clean supplemental producer/canonical evidence。正式 900 episode 未修改，也未运行
+AirSim 或训练。开放项只剩 BC 全样本审计、真实 ACK/outcome、reward/counterfactual/causal、
+paired shadow 及 PPO/assist/authority 准入。
 
 ## 2026-07-21 主动视觉宽视场门复核
 
@@ -32,8 +37,9 @@ tmp_path 验收得到 100 episode、800 segment、1200 sample；canonical sample
 保守值。
 
 阶段 A 当时只完成规则状态机和模块测试。当前 snapshot 没有 runtime ACK 输入，因此没有把 camera
-feedback 或模拟状态解释为已执行确认；其后 B1b2 已实现独立 synthetic producer 软件，但 clean
-正式生成和真实 applied/rejected/missing ACK 证据仍缺失。主动视觉模型维持 development
+feedback 或模拟状态解释为已执行确认；其后 B1b2 已完成 `13e3728` clean producer/canonical evidence，
+但真实 applied/rejected/missing ACK/outcome、reward/counterfactual/causal 和 paired shadow 仍缺失。
+主动视觉模型维持 development
 shadow-only，assist/PPO 均关闭；阶段 A/B1b2 均没有新增 AirSim 或训练结果。
 旧 v5 bundle 绑定修改前实现哈希，严格 loader 会失败关闭，不能直接用于新规则。定向组合测试为
 `47 passed`，D5 全量为 `437 passed in 10.28s`。

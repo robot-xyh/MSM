@@ -41,8 +41,38 @@ python3 -m d5_terminal_association.active_vision_curriculum_cli \
 
 默认 Git commit/dirty 状态由 CLI 从仓库读取，Markdown 报告使用中文标题、说明和约束。测试验收为
 100 episode、1200 sample、canonical seed/episode `60/20/20`、sample `720/240/240`，新增专项
-`15 passed in 71.87s`、D5 全量 `482 passed in 83.05s`。这些是接口和 tmp_path fixture 结果；
-仓库尚无本轮 clean 正式 curriculum，不得据此训练、重绑旧 bundle 或开启 PPO/assist/authority。
+`15 passed in 71.87s`、D5 全量 `482 passed in 83.05s`。
+
+main 于 `2026-07-21T18:19:52Z` 在 detached clean worktree
+`13e37286d2996a227924bb1a8e2766e52116a534` 执行同一 CLI。ignored output 为
+`research_modules/d5_terminal_association/outputs/active_vision_supplemental_curriculum_20260721_clean_13e3728`，
+tracked summary/report 分别为
+`research_modules/d5_terminal_association/results/active_vision_supplemental_curriculum_20260721.json` 和
+`research_modules/d5_terminal_association/reports/D5_ACTIVE_VISION_SUPPLEMENTAL_CURRICULUM_20260721.md`。
+output 共 `2.2 MiB/308 files`；output 内 summary/report 与 tracked 文件字节一致，dataset
+`SHA256SUMS` 全部通过。
+
+实际 dataset manifest、canonical view、dataset config SHA 依次为：
+
+```text
+0c474ee1b0bab34a46c2ebce328761983cf2ecc757da30c2d3d2e03a06cd1acf
+0ab1a4a6bdd439f6c8a74df5059de3c4950791fba35a1b9514942e83779f72a8
+e93ca6310338be5db4539fac195f5257e28d16a64b78b1a0351bf6aeca01fcee
+```
+
+training/shared registry SHA 依次为
+`2ab928a476a4430b99326f245222f058bc5be5025158134ba89b01b3dec7815f`、
+`68608d29d1f733beea87f1faf06464fededb68a9c2972c51c10cd4c2160f032f`；summary
+`content_sha256=0577c73810413ced6277e679477422f467cb2db094f1d376e39e4cbb2a3abd65`。100/800/1200、
+canonical `60/20/20` 与 `720/240/240`、四 intent、两 FOV、两角色及 ACK `400/400/400` 均符合
+合同，truth/reserved/dirty/audit 均零违规。正式 900-episode 输入树生成前后 SHA 同为
+`8ffbe5cf044d121163c8acc3dce1bbd54e14bb6b211b8e1cf440f24c93294fca`。
+
+这关闭 clean supplemental producer/canonical evidence，不关闭模型或运行准入。ACK 仍是确定性故障
+注入覆盖；reward/outcome/counterfactual/causal 均为 `0/1200 available`，PPO、assist、在线 authority
+和相机命令权均为 false。readiness 继续列出绑定全样本 BC 审计、真实 applied ACK attribution、
+reward/counterfactual/causal 及 paired shadow non-degradation。下一步由 D5 完成 BC 全样本审计，
+再由 main/D6 做跨模块准入审计；本轮未训练、未运行 AirSim，也不重绑旧 bundle。
 
 ## 2026-07-21 宽视场稳定门实施
 

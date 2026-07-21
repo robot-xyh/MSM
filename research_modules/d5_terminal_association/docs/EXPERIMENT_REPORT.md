@@ -1,9 +1,46 @@
 # D5 末端视觉配准与身份认证实验报告
 
+## 2026-07-21 Supplemental curriculum B1b2 clean evidence
+
+main 于 `2026-07-21T18:19:52Z` 在 detached clean worktree
+`13e37286d2996a227924bb1a8e2766e52116a534` 执行 CLI。接受阈值为 100 个 training seed 完整、严格
+lazy/canonical audit 零违规、truth/reserved/dirty 泄漏为 0、所有 SHA 命中且正式 900-episode 输入树
+前后不变。实测全部通过，clean supplemental producer/canonical evidence 子项关闭。
+
+| 验收项 | 实测结果 | 判定边界 |
+| --- | --- | --- |
+| 制品 | ignored output `outputs/active_vision_supplemental_curriculum_20260721_clean_13e3728`，`2.2 MiB/308 files` | 独立 synthetic supplemental 数据集 |
+| tracked 证据 | `results/active_vision_supplemental_curriculum_20260721.json` 与 `reports/D5_ACTIVE_VISION_SUPPLEMENTAL_CURRICULUM_20260721.md` | 与 output 内 summary/report 字节一致 |
+| 规模 | 100 episode、800 segment、1200 sample | 每 seed 1/8/12 |
+| canonical | seed/episode `60/20/20`，sample `720/240/240` | source manifest/episode/sample 未改写 |
+| 课程覆盖 | intent `200/600/200/200`；FOV `1000/200`；role `600/600` | 固定 synthetic curriculum 覆盖 |
+| ACK | applied/rejected/missing `400/400/400` | 每 seed `4/4/4` 故障注入，不是实际运行分布 |
+| 隔离审计 | online truth=0、reserved overlap=0、dirty episode=0、audit violation=0 | clean source、strict audit pass |
+| availability | reward/outcome/counterfactual/causal 均 `0/1200 available` | PPO/assist/online/camera authority=false |
+| BC 准备度 | view available=true、development eligible=true | 尚无绑定全样本 BC 审计，不构成模型准入 |
+| 完整性 | dataset `SHA256SUMS` 全部通过 | 100 descriptor、100 online、100 offline 均校验通过 |
+| 正式输入隔离 | 900-episode tree 前后 SHA 均为 `8ffbe5cf...94fca` | formal input 未修改 |
+
+SHA 绑定如下：
+
+| 对象 | SHA256 |
+| --- | --- |
+| dataset manifest | `0c474ee1b0bab34a46c2ebce328761983cf2ecc757da30c2d3d2e03a06cd1acf` |
+| canonical view | `0ab1a4a6bdd439f6c8a74df5059de3c4950791fba35a1b9514942e83779f72a8` |
+| dataset config | `e93ca6310338be5db4539fac195f5257e28d16a64b78b1a0351bf6aeca01fcee` |
+| training registry | `2ab928a476a4430b99326f245222f058bc5be5025158134ba89b01b3dec7815f` |
+| shared registry | `68608d29d1f733beea87f1faf06464fededb68a9c2972c51c10cd4c2160f032f` |
+| summary `content_sha256` | `0577c73810413ced6277e679477422f467cb2db094f1d376e39e4cbb2a3abd65` |
+
+canonical readiness 仍要求绑定全样本 BC 审计、真实 applied ACK attribution、
+reward/counterfactual/causal label 和 paired shadow non-degradation。下一步为 D5 BC 全样本审计及
+main/D6 跨模块准入审计；本轮没有训练或 AirSim 运行，不开启 PPO/assist/authority。
+
 ## 2026-07-21 Supplemental curriculum B1b2 临时验收
 
-本轮实验对象是 producer 软件合同，所有数据均由 pytest 在 tmp_path 中生成；没有保留仓库内输出，
-没有运行 AirSim、训练 BC/PPO 或修改正式 900 episode。接受阈值为新增专项和 D5 全量零失败。
+本小节记录 producer 软件实现时的临时验收，所有数据均由 pytest 在 tmp_path 中生成；该测试阶段没有
+保留仓库内输出，没有运行 AirSim、训练 BC/PPO 或修改正式 900 episode。接受阈值为新增专项和 D5
+全量零失败。
 
 | 验收项 | 临时输入 | 结果 | 边界 |
 | --- | --- | --- | --- |
@@ -19,10 +56,9 @@
 | 报告 | 临时 summary | 中文标题、说明和约束，明确 `4/4/4` 非实际运行分布 | 技术 token/SHA 保留 |
 | 确定性 | 相同 registry/config/provenance 两次完整生成 | summary、dataset manifest、view 和 Markdown 一致 | 固定测试 provenance |
 
-新增专项 `15 passed in 71.87s`，D5 全量 `482 passed in 83.05s`。本轮没有可引用的真实 output
-manifest SHA、view SHA 或 tracked 报告；这些必须由 main 在 clean revision 上正式执行 CLI 后记录。
-真实 runtime ACK/outcome、paired shadow 和因果标签仍未获得，assist/PPO/在线 authority/相机命令权
-保持 false。
+新增专项 `15 passed in 71.87s`，D5 全量 `482 passed in 83.05s`。本小节的 tmp_path 结果证明软件
+回归；其后的 clean 实际制品证据见上节。真实 runtime ACK/outcome、paired shadow 和因果标签仍未
+获得，assist/PPO/在线 authority/相机命令权保持 false。
 
 ## 2026-07-21 宽视场稳定门代码实验
 
