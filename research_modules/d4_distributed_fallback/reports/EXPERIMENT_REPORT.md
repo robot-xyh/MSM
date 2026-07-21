@@ -99,7 +99,7 @@ D4 验证中心节点异常时的保底策略：
 
 原 `test_region_resource_advisor.py` 32 个 test case，验收阈值零失败，结果 32/32；当时 D4 全量为 335/335。参数化规模为 3、5、8、32 个区域，不固定 8 区或 200 架资源。安全用例覆盖资源守恒、最低备用、断边/网络分区、中心 owner、两个二级 owner、完全 distributed owner、旧 epoch、过期 lease、缺 ACK、fault fence 和 formal committed member 保护。研究管线用例覆盖 BC loss/update、原生 clipped PPO 有限更新、manifest/state_dict/SHA256、版本/SHA/OOD/timeout/低置信/非有限回退和 shadow formal verdict 不变。旧 split 用例只保证单个 `(scenario, seed)` group 不拆分，未证明相同数值 seed 跨场景/规模不泄漏；该缺口由 4.6 的 dataset-v1 回归关闭。
 
-paired evaluator 的合成 19-seed case 按门槛拒绝 assist；合成 20-seed case 报告 backlog、transfer time、plan churn、communication load、fail-closed、安全违规和 candidate latency P50/P95。该 20-seed fixture 只测试 evaluator 逻辑，不是已训练模型的未见 seed 实验，不能作为 assist 推荐证据。当前仍无训练后独立 checkpoint、实际至少 20 个未见 seed paired suite、AirSim 或真实网络收益，默认保持 disabled/shadow。
+paired evaluator 的合成 19-seed case 按门槛拒绝 assist；合成 20-seed case 报告 backlog、transfer time、plan churn、communication load、fail-closed、安全违规和 candidate latency P50/P95。该 20-seed fixture 只测试 evaluator 逻辑，不是已训练模型的未见 seed 实验，不能作为 assist 推荐证据。后续虽已生成开发 checkpoint，但实际至少 20 个未见 seed paired suite、AirSim 或真实网络收益仍未形成，默认保持 disabled/shadow。
 
 同日只读运行 main-owned `scalable_3d_simulation/tests/test_module_stack.py` 为 8/8 passed。已有测试验证：单一二级接管后 D3 plan version 提升且 owner 为 `RECON-001`；两个二级节点发布多 owner 区域 plan；中心和二级连续失效后发布 distributed 区域 plan；D7 仅在当前 owner、epoch、lease、commit 和 fault fence 下继续质点导引。该结果是接口/质点证据，不写成 AirSim、真实网络或实飞结果。
 
@@ -113,11 +113,21 @@ paired evaluator 的合成 19-seed case 按门槛拒绝 assist；合成 20-seed 
 
 ### 4.6 2026-07-20 区域学习 episode 数据合同验证
 
-`tests/test_region_resource_dataset.py` 当前 13 个 pytest case，结果 **13/13 passed**；`test_region_resource_advisor.py` 当前 **49/49 passed**，二者合计 **62/62**，D4 全量 **365/365 passed**，验收门限均为零失败。版本固定为 `d4-region-learning-dataset-v1` 和 `d4-region-resource-model-bundle-v2`。
+`tests/test_region_resource_dataset.py` 当前 15 个 pytest case，结果 **15/15 passed**；`test_region_resource_advisor.py` 当前 **51/51 passed**，二者合计 **66/66**，D4 全量 **369/369 passed**，验收门限均为零失败。版本固定为 `d4-region-learning-dataset-v1` 和 `d4-region-resource-model-bundle-v2`。
 
 高基数正例仍为 96 episode/192 frame，正序和逆序输入得到相同 manifest，同数值 seed 不跨 split。复核新增：训练 target 重新验证 projector、owner/plan/version/epoch/lease、备用和 edge/quota 证明；中心、二级、distributed owner 序列化回读；manifest availability 与可重放 split 对 episode inventory 的一致性；truth/object/global-track key 变体拒绝；区域图规模增加到 200。BC/PPO 缺值仍失败关闭。
 
-该结果只证明数据合同、确定性 split 和 fail-closed loader。96 episode 是程序生成的测试 fixture，不是 main episode writer 的正式导出，不含 AirSim 动力学或真实网络样本；本轮没有训练 checkpoint、训练/验证损失、模型优于规则、至少 20 个真实未见 seed 或性能收益结论。main 后续需把现有 frame_index/timestamp/snapshot/recommendation 流补为公开 source/frame DTO，并调用 D4 stage/finalize/load API；D4 不要求 main 解析私有 JSON 结构。
+该结果只证明数据合同、确定性 split 和 fail-closed loader。96 episode 是程序生成的测试 fixture，不是正式导出，不含 AirSim 动力学或真实网络样本。正式数据、开发 checkpoint 和训练指标见 4.7；两类证据不能合并。main 后续 writer 仍需使用公开 source/frame DTO 和 D4 stage/finalize/load API，不应解析 D4 私有 JSON 结构。
+
+### 4.7 正式数据审计与行为克隆开发训练
+
+2026-07-20 正式数据包含 900 episode、1798 frame 和 14384 个区域动作。900 个 episode SHA256 全部通过，数据集 SHA256 为 `b06d741bd22a0cd84ef1e47a48a0b8cd81ceb7e4ea294eeeb38b892e69d36158`，split SHA256 为 `18a2c60097fefe05cb70ed811d28faf90c51bbbba0bbe984e07f23fb12f8d7f0`。训练、验证和内部测试按数值 seed 原子划分为 70/15/15，外部保留 seed 1000-1019 未进入数据。
+
+固定随机 seed `20260720` 的复跑完成 66 epoch，最佳 epoch 54，训练耗时 66.02 秒。内部测试损失为 `0.071545`，保留比例平均绝对误差为 `0.000317`，侦察优先级平均绝对误差为 `0.000100`，端到端建议和确定性投影推理 P95 为 `0.7774 ms`。权重 SHA256 为 `3da0360be8788f3ffeb8e9f9eba3e0d5369ec0bdf9e05729dfb1db07d71d5f62`，与首次正式训练一致。
+
+动作标签审计给出明确限制：14384 个动作中的非零配额、跨区域转移、保持和请求重规划数量均为 0。保持与重规划表面准确率为 `0.992593`，但两类都没有正样本；配额和转移的零误差同样只反映零动作基线。D6 审计中 898/1798 帧只有无归因相邻状态转移，reward、causal 和 counterfactual 可用数均为 0。训练器没有把这些相邻状态变化改写成回报。
+
+当前结论为“管线可用但动作多样性不足，shadow-only”。bundle admission 保存动作计数，并固定 `action_diversity_sufficient=false`、`strategy_capability_claim_allowed=false`、`reward_evidence_available=false`。内部测试低损失不能用于宣称调度策略能力。没有 D6 可验证回报和外部 20-seed paired shadow 结果前，PPO 与 assist 均不可用。权重只保存在 ignored `outputs/`，文本结果仅记录配置、命令、指标、SHA256 和本地定位。
 
 ## 5. 默认被动降级场景
 
@@ -176,6 +186,6 @@ python3 research_modules/d4_distributed_fallback/scripts/run_failover_simulation
 
 D4 当前适合作为“中心节点、机动高空二级侦察节点、完全分布式”三级被动降级链路，以及“中心未失效但局部证据冲突”的主动降级仲裁框架。区域 authority、secondary resource、plan、owner、epoch/version/lease 和 `k>1` 原子 ACK 已执行 fail-closed，但 bounded bid selection 不是完整 CCBBA，该模块结果也不是 AirSim/scalable3d 物理闭环或自主成员补位证明。系统应继续通过 D3/D5/D6 的统一合同传递 `plan_id/version/authorization_state`、`global_track_id`、`risk_factors` 和 `terminal_consistent`。
 
-区域学习 dataset-v1 已补齐正式数据格式和 seed 隔离机制，但当前结论仍是“合同可用、正式数据与模型证据不可用”。bundle-v2 的 manifest/SHA 溯源不能替代 checkpoint 验收或 paired 性能报告，也不改变 D4 主动/被动降级控制逻辑。
+区域学习 dataset-v1 已形成正式 900 episode 数据和可复现的 development checkpoint。证据只支持“训练与投影管线可运行”；动作多样性、回报归因和外部保留种子不足以支持策略能力结论。bundle-v2 因此强制 shadow-only，其 manifest/SHA 溯源不能替代 paired 性能报告，也不改变 D4 主动/被动降级控制逻辑。
 
 M5N2 中心负对照已完成 20/20，但 coalition 和第二 primary 5 m 均为 0/20；这说明物理协同闭环仍开放，不说明 D4 fallback 失败。本批未执行二级或完全分布式接管，真实 secondary/distributed 多 seed 继续列为 P1。后续必须补 collision object，并运行同 seeds 的中心失效、中心与二级连续失效和可审计主动风险 paired case。

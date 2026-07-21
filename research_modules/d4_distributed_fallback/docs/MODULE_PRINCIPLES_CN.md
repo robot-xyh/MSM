@@ -176,6 +176,14 @@ D1 仍以北-东-地（North-East-Down，NED）坐标系作为融合工作坐标
 
 stage 产物使用 canonical JSONL header/frame/footer 和 frame SHA；finalizer 再固化逐 episode SHA、dataset SHA、feature/target/reward semantics、全部 source identity 和 availability。同一数值 seed 下的不同场景、规模和多个 episode 原子进入同一 train/validation/test split，三份 seed 两两零交集；唯一 seed 少于 3 或实际 unseen 少于声明下限时不生成 dataset。BC loader 缺 target 即失败，PPO loader 缺 target 或 reward 即失败，二者默认拒绝 dirty source，不以 0 填补。`model-bundle-v2` 可嵌入并验证 dataset/split manifest；这些数据治理能力不改变 D4 authority、lease、epoch、CBBA、联盟或降级状态机。
 
+### 3.9 正式行为克隆与准入边界
+
+2026-07-20 正式数据包含 900 episode 和 1798 frame。训练、验证、内部测试分别使用 70、15、15 个数值 seed，外部保留 seed 1000-1019 不在数据集中。审计重新计算 900 个 episode SHA256，并核对 dataset/source/schema、Git/config identity 和 split hash。固定 seed `20260720` 的行为克隆在 CPU 单线程完成 66 epoch，最佳 epoch 为 54；内部测试损失为 `0.071545`。2026-07-21 准入复跑的端到端建议与投影推理 P95 为 `0.7774 ms`，本地权重 SHA256 仍为 `3da0360be8788f3ffeb8e9f9eba3e0d5369ec0bdf9e05729dfb1db07d71d5f62`。
+
+数据中的 14384 个区域动作没有非零配额、跨区域转移、保持或重规划正样本。保留比例和侦察优先级存在变化，模型可复现这两个连续字段；配额和转移的零误差只反映零动作基线。D6 审计还发现 898/1798 帧只有无归因相邻状态转移，reward、causal label 和 counterfactual label 可用数均为 0。模型置信度头没有校准标签。由此，训练管线可用，但动作多样性不足；低损失不构成完整动作策略能力证据，PPO 不可启动。
+
+模型 manifest 固定 `lifecycle_stage=development`、`maximum_advisor_mode=shadow`、`action_diversity_sufficient=false` 和 `strategy_capability_claim_allowed=false`，并保存五项动作计数。`RegionResourceAdvisor` 会读取模式上限；即使请求 `assist` 并传入 20 个 unseen seed，也只能保持 shadow。权重位于 Git 忽略目录，当前无 Git LFS；普通 Git 只记录训练配置、数据/模型准备度、指标、训练命令、权重 SHA256 和本地相对定位。
+
 ## 4. 数学模型与核心公式
 
 ### 4.1 集合、状态与决策
@@ -614,8 +622,8 @@ main/runtime 负责 AirSim 启停与 episode 顺序、故障注入时间轴、D3
 | CBBA 与中心化代价差距 | 辅助函数已实现；只有 D3/main 提供同场景代价矩阵时才有结果 |
 | 外部能力探测 | 只探测本地参考路径和源码能力，不导入、不执行、不增加默认依赖 |
 | 区域资源规则建议与投影 | 已实现 truth-free 变长区域图、守恒/邻边/备用/authority/commit/fault 安全投影；只输出建议 |
-| 共享区域图学习研究管线 | 已实现共享节点/边 actor-critic、行为克隆、原生 clipped PPO、数值 seed 口径 evaluator、bundle-v2/state_dict/SHA256、OOD/timeout/低置信/非有限回退；默认 disabled/shadow |
-| 区域学习 episode dataset | 已实现 dataset-v1 source/frame、完整 episode stage/finalize/load、数值 seed 原子 split、manifest/availability/hash 和严格 BC/PPO loader；main 正式 writer 尚待接线 |
+| 共享区域图学习研究管线 | 正式 900 episode 已完成行为克隆开发训练；bundle/state/SHA、OOD/timeout/低置信/非有限回退和确定性投影可运行。标签动作多样性不足，模型强制 development/shadow-only，PPO/assist 不可用 |
+| 区域学习 episode dataset | 正式 dataset-v1 已完成 900 episode/1798 frame 审计和 70/15/15 seed 原子 split；外部 1000-1019 保持隔离。reward/causal/counterfactual 仍 unavailable |
 | paired shadow evaluator | 已报告 backlog、transfer、churn、communication、fail-closed、安全违规和 P50/P95 latency；少于 20 个未见 seed 不推荐 assist |
 
 ### 8.3 未实现或明确不作为 D4 主线
@@ -632,7 +640,7 @@ main/runtime 负责 AirSim 启停与 episode 顺序、故障注入时间轴、D3
 | 真实通信和视频链路 | 未实现真实 RF、网状网络（mesh）、带宽、时钟漂移、操作系统队列、乱序、重传和硬件故障认证 |
 | 虚拟中心优化 | 明确不在无中心路径运行中心匈牙利算法或最小费用流；只允许离线对照 |
 | D4 直接生成系统计划 | 明确不做；D3/main 拥有 `AssignmentPlan` |
-| 已验收可推荐模型 | 尚无至少 20 个未见 seed 的独立 paired 结果；当前只有管线和有限更新测试，不得声称 learned policy 优于规则 |
+| 已验收可推荐模型 | 已有开发 checkpoint，但无动作正样本、D6 可验证回报和外部 20-seed paired 结果；不得声称 learned policy 优于规则，最高只允许 shadow |
 
 ## 9. 2026-07-20 验证状态
 
@@ -644,7 +652,7 @@ main/runtime 负责 AirSim 启停与 episode 顺序、故障注入时间轴、D3
 
 根据 2026-07-13 主验证报告与 D4 审计：
 
-- 2026-07-20 D4 全量模块回归为 **365/365 项通过**，验收阈值为零失败。区域 authority 23 项；区域建议/学习/消费合同 49 项；episode dataset 13 项。新增复核覆盖 200-region 图、训练 target 的 projector/owner/plan/version/epoch/lease/edge 证明、三层 owner 回读，以及 manifest inventory/split 一致性；96 episode/192 frame 高基数样本仍为纯 Python 合成合同测试，没有新增正式训练数据、checkpoint、多 seed 性能或 AirSim 样本。历史阶段计数保持不变。
+- 2026-07-21 D4 全量模块回归为 **369/369 项通过**，验收阈值为零失败。区域建议/学习/消费与 bundle 准入 51 项；episode 数据、正式审计和训练发布 15 项。新增复核覆盖动作多样性失败关闭、assist bundle 证据门和低损失能力声明禁用。96 episode/192 frame 高基数样本仍为纯 Python 合同测试；正式 900 episode 数据和 development checkpoint 按独立证据口径记录，不包含 AirSim 或真实网络样本。历史阶段计数保持不变。
 - `build_d7_secondary_handoff()` 与 `build_secondary_takeover_plan_metadata()` 当前统一要求 readiness exact-true、expected/actual source 均存在且匹配、plan/required lease epoch 均存在且满足、expiry/current time 均存在且严格 `current_time < expiry`。逐字段 `None`、完整正例和同 id/version 维持路径均有回归；未运行新 AirSim episode。
 - 完全分布式 interceptor/peer 选择不套用二级视觉 readiness 门；动态 N/M、版本/epoch/lease、ACK 和 `global_track_id` 所有权规则未改变。
 - 二级 resource 和 plan lease 只有在 expiry/current time 均存在且严格 `current_time < expiry` 时有效；等于边界按过期处理。缺字段分别输出可审计原因并 fail-closed，不能发布或维持 executable secondary plan。
@@ -654,7 +662,7 @@ main/runtime 负责 AirSim 启停与 episode 顺序、故障注入时间轴、D3
 - 30% 消息丢失下，7/10 因缺 ACK 保守闭锁，只有 3/10 在 ACK 完整后执行。这证明“缺确认不执行”，不是通信性能优良的证明。
 - 更早的 D4 P1 合同层正负例中，二级协调者和完全分布式对等节点都以 3/3 ACK 进入 `executing`，缺 ACK 场景以 2/3 进入 `aborted`（已中止）并保持复核。
 - 区域化合同验证为 23 个确定性单元 test case，无随机 seed；它关闭 D4 模块内 metadata/authority/安全门控。main 后续质点接线的定向 `test_module_stack.py` 为 8/8 passed，覆盖单二级、多二级 owner、distributed D3 plan 和 D7 fencing；二者均不构成 AirSim、真实网络、硬件或长时 200v200 多 seed 证据。
-- 区域资源学习专项为 32 个确定性/有限更新 test case；尚无离线训练后 checkpoint、至少 20 个未见 seed、实际 paired backlog/transfer 收益或真实网络时延分布，因此 assist 资格仍不可用。
+- 区域资源学习已形成正式数据审计和离线开发 checkpoint。内部测试只有 15 个 seed，14384 个动作标签没有 quota/transfer/hold/replan 正样本；D6 审计中 898/1798 帧只有无归因相邻状态转移，reward/causal/counterfactual 可用数均为 0。bundle 固化动作多样性不足和策略能力声明禁止，外部 20-seed paired 结果与真实网络收益仍缺失，因此 assist 资格不可用。
 
 这些结果验证的是单次试验时间轴上的顺序接管、版本/租约/ACK 门控和唯一所有者，不代表真实 RF、真实吞吐带宽、节点时钟漂移、网络设备或硬件故障已经验证。
 
@@ -678,7 +686,7 @@ main/runtime 负责 AirSim 启停与 episode 顺序、故障注入时间轴、D3
 
 - 真实 secondary takeover 和完全分布式 commit 尚未在与上述 M5N2 相同的多 seed 几何中执行，继续是 P1。
 - `d4-region-resource-advisory-v1` 目前只有 D4 单元/接口证据；main 尚未在真实 planning loop 持久化 consumed ID 或将合同接入下一轮 D3，不能据此声称在线规划收益。
-- `d4-region-learning-dataset-v1` 目前只有合成合同证据；main 尚未补 source identity、target/reward availability 并调用公开 stage/finalize API，不能据此声称已有正式训练集或 checkpoint。
+- `d4-region-learning-dataset-v1` 已形成 900 episode 正式训练集和 development checkpoint；但动作正样本、可归因转移、D6 reward/causal/counterfactual、外部 20-seed paired 结果仍缺失，不能据此声称已有可推荐策略。
 - 20 个 `collision_stop` 缺少 collision object/source lineage，无法区分成员间碰撞、环境碰撞或 AirSim 状态异常；在证据补齐前不得把它设为主动降级硬触发。
 
 1. **真实网络未验证**：带宽、拥塞、时钟漂移、操作系统/网络排队、抖动、乱序、重传、实际二级节点到执行资源链路和对等节点图分裂仍开放。
@@ -688,7 +696,7 @@ main/runtime 负责 AirSim 启停与 episode 顺序、故障注入时间轴、D3
 5. **D5 分布式视觉合流仍需标定**：模块内辅助函数已实现，但真实无中心多随机种子下的合流频率、风险权重和覆盖小区切换仍未闭合。
 6. **物理闭环不能由 D4 合同结果替代**：2026-07-15 中心负对照的五资源对二目标（Five Resources to Two Targets，M5N2）20-case 聚合中，联盟完成率为 0/20、第二主资源进入 5 米为 0/20。较早的 5/10 结果属于不同批次历史证据，不覆盖本次同口径聚合。当前物理缺口不能归因于或由 D4 的 60/60 安全门控结果关闭。
 7. **外部算法无性能结论**：MIT CBBA 与 CA-CBBA 当前只有能力不可用记录；未执行就不能比较优劣。
-8. **学习建议尚无推广证据**：BC loss 与 PPO 更新有限、bundle/SHA/OOD/timeout 路径可运行，但未达到至少 20 个未见 seed，也没有 AirSim/真实网络 paired evaluator 结果；默认继续 disabled/shadow。
+8. **学习建议仍无推广证据**：正式 BC 开发模型已生成，但 14384 个动作标签没有 quota/transfer/hold/replan 正样本，898/1798 帧状态转移无归因，reward/causal/counterfactual 可用数均为 0；外部 20-seed 和 AirSim/真实网络 paired evaluator 尚未完成。bundle admission 明确 `action_diversity_sufficient=false` 和 `strategy_capability_claim_allowed=false`，模型继续 development/shadow-only，低损失不能用于宣称调度策略能力。
 
 ## 10. 选型理由
 

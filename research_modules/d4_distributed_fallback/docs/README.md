@@ -9,7 +9,7 @@
 - `../reports/EXPERIMENT_REPORT.md`：当前实验结果、指标表和丢包率曲线。
 - `../reports/AIRSIM_INTEGRATION_PLAN.md`：AirSim 离线回放数据如何映射到 D4 摘要模型。
 
-当前 D4 侧状态见 `../PLAN.md` 的“已实现 / 部分实现 / 未实现 / P1/P2 下一步”：`regional_failover.py` 已冻结动态区域 authority、二级 coverage/readiness、epoch+plan version+最早 lease、全层原子门和受约束 distributed fallback；main-owned 质点模块栈现已消费该合同并覆盖单二级、多二级 owner、distributed D3 plan 与 D7 fencing，既有定向测试 8/8。`region_resource.py`/`region_resource_learning.py` 提供默认 disabled/shadow 的 truth-free 区域建议、消费合同和学习研究路径；`region_resource_dataset.py` 的 dataset-v1 对训练 target 重验 projector/authority/edge 证明，并对 manifest inventory/split 做独立一致性校验。建议/消费 49/49、dataset 13/13、D4 全量 365/365。96-episode/192-frame 样本只是合成合同回归，不是 AirSim、正式训练集、多 seed 性能、真实网络、已训练 checkpoint 或至少 20 个未见 seed 收益证据。2026-07-15 的 20-case M5N2 仍只是 `active degradation=0` 的中心负对照，coalition 和第二 primary 5 m 均为 `0/20`。MIT/CA-CBBA、真实通信/视频链路和 Contract Net 不属当前默认路径。
+当前 D4 侧状态见 `../PLAN.md` 的“已实现 / 部分实现 / 未实现 / P1/P2 下一步”：`regional_failover.py` 已冻结动态区域 authority、二级 coverage/readiness、epoch+plan version+最早 lease、全层原子门和受约束 distributed fallback；main-owned 质点模块栈现已消费该合同并覆盖单二级、多二级 owner、distributed D3 plan 与 D7 fencing，既有定向测试 8/8。`region_resource.py`/`region_resource_learning.py` 提供默认 disabled/shadow 的 truth-free 区域建议、消费合同和学习研究路径；`region_resource_dataset.py` 的 dataset-v1 对训练 target 重验 projector/authority/edge 证明，并对 manifest inventory/split 做独立一致性校验。2026-07-21 区域建议/学习/消费与准入 51/51、dataset/正式审计/训练发布 15/15、D4 全量 369/369。正式 900-episode development checkpoint 已形成，但 14384 个动作缺少 quota/transfer/hold/replan 正样本，D6 reward/causal/counterfactual 可用数均为 0，最高只允许 shadow。2026-07-15 的 20-case M5N2 仍只是 `active degradation=0` 的中心负对照，coalition 和第二 primary 5 m 均为 `0/20`。MIT/CA-CBBA、真实通信/视频链路和 Contract Net 不属当前默认路径。
 
 ## 阅读顺序
 

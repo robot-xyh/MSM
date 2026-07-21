@@ -1,0 +1,49 @@
+{
+  "created_at_utc": "2026-07-21T09:34:47Z",
+  "files": [
+    {
+      "relative_path": "LOCAL_BUNDLE_LOCATION.md",
+      "sha256": "0c17965a5627f5a1c36e1eea81372cdecd3aa07d0a4ba12aa6fc5c8d8c77437d",
+      "size_bytes": 626
+    },
+    {
+      "relative_path": "TRAINING_COMMAND.md",
+      "sha256": "64909b1840b65a170691280130abd0a9d237226516f8cd5b2c7e84450c07906f",
+      "size_bytes": 1008
+    },
+    {
+      "relative_path": "TRAINING_REPORT_CN.md",
+      "sha256": "4ee90dd54c76d1009b333c21dbe30fb645f3817575f469b581721e4df00671c6",
+      "size_bytes": 2793
+    },
+    {
+      "relative_path": "data_readiness.json",
+      "sha256": "41386a80118fb5ed54a4e22718940d2ffcbc47910071af46bb904751d89a0b62",
+      "size_bytes": 6960
+    },
+    {
+      "relative_path": "model_readiness.json",
+      "sha256": "915bbd4190853308d3b24328a4030e3d99176ed28973b27d86473b780421bf11",
+      "size_bytes": 2956
+    },
+    {
+      "relative_path": "training_config.json",
+      "sha256": "ec2eac8eb6d6e97431dc7d952171dcfcd801f50955b1d4f54ac5458baf93f5aa",
+      "size_bytes": 1180
+    },
+    {
+      "relative_path": "training_metrics.json",
+      "sha256": "9ca6f52b80c600d432340177b955773b4545de8ef37c9d1c0a07083a1dc85570",
+      "size_bytes": 25548
+    }
+  ],
+  "git_lfs_available": false,
+  "local_bundle_locator": "research_modules/d4_distributed_fallback/outputs/region_resource_bc_900_20260720/bundle",
+  "model_version": "d4-region-bc-900-development-v1",
+  "schema": "d4-region-bc-tracked-results-v1",
+  "state_dict_sha256": "3da0360be8788f3ffeb8e9f9eba3e0d5369ec0bdf9e05729dfb1db07d71d5f62",
+  "training_config_sha256": "a7d6c6e87cbee732657aa66b37592ada054c92a5b2f741e4891a42e4623978fe",
+  "training_dataset_sha256": "b06d741bd22a0cd84ef1e47a48a0b8cd81ceb7e4ea294eeeb38b892e69d36158",
+  "training_split_sha256": "18a2c60097fefe05cb70ed811d28faf90c51bbbba0bbe984e07f23fb12f8d7f0",
+  "weights_tracked_by_git": false
+}

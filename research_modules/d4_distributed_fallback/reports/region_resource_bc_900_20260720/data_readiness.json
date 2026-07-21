@@ -1,0 +1,227 @@
+{
+  "audited_at_utc": "2026-07-21T09:33:35Z",
+  "dataset_created_at_utc": "2026-07-21T08:17:45Z",
+  "dataset_id": "d4-region-learning-dataset-b06d741bd22a0cd84ef1e47a48a0b8cd81ceb7e4ea294eeeb38b892e69d36158",
+  "dataset_root": "/home/linux/Documents/MSM/research_modules/scalable_3d_simulation/outputs/learning_generation_v1_multibatchfix/learning_dataset/d4_region",
+  "dataset_schema": "d4-region-learning-dataset-v1",
+  "dataset_sha256": "b06d741bd22a0cd84ef1e47a48a0b8cd81ceb7e4ea294eeeb38b892e69d36158",
+  "external_holdout": {
+    "evaluation_completed": false,
+    "present_anywhere_in_dataset": [],
+    "present_in_training": [],
+    "required_seed_count": 20,
+    "required_seeds": [
+      1000,
+      1001,
+      1002,
+      1003,
+      1004,
+      1005,
+      1006,
+      1007,
+      1008,
+      1009,
+      1010,
+      1011,
+      1012,
+      1013,
+      1014,
+      1015,
+      1016,
+      1017,
+      1018,
+      1019
+    ]
+  },
+  "inventory": {
+    "episode_count": 900,
+    "episode_sha256_verified_count": 900,
+    "frame_count": 1798,
+    "recommendation_available_count": 1798,
+    "reward_available_count": 0,
+    "reward_unavailable_count": 1798,
+    "scenario_count": 45,
+    "scenario_scale_count": 5,
+    "scenario_scales": [
+      "M100N100",
+      "M200N200",
+      "M20N20",
+      "M50N50",
+      "M5N5"
+    ],
+    "target_available_count": 1798,
+    "target_unavailable_count": 0
+  },
+  "manifest_file": "/home/linux/Documents/MSM/research_modules/scalable_3d_simulation/outputs/learning_generation_v1_multibatchfix/learning_dataset/d4_region/manifest.json",
+  "manifest_file_sha256": "ff3081c8e320d9c8e1b032fb6234cd24159f0feedb1c6a706633cea6c1030dc6",
+  "readiness": {
+    "action_diversity_sufficient": false,
+    "assist_available": false,
+    "behavior_cloning_development_available": true,
+    "full_action_learning_available": false,
+    "pipeline_usable": true,
+    "ppo_available": false,
+    "reason": "pipeline_usable_but_action_diversity_insufficient_shadow_only",
+    "strategy_capability_claim_allowed": false
+  },
+  "scale_coverage": {
+    "test": {
+      "edge_count_max": 16,
+      "edge_count_min": 16,
+      "frame_count": 270,
+      "region_count_max": 8,
+      "region_count_min": 8,
+      "resource_count_max": 200,
+      "resource_count_min": 5
+    },
+    "train": {
+      "edge_count_max": 16,
+      "edge_count_min": 16,
+      "frame_count": 1258,
+      "region_count_max": 8,
+      "region_count_min": 8,
+      "resource_count_max": 200,
+      "resource_count_min": 5
+    },
+    "validation": {
+      "edge_count_max": 16,
+      "edge_count_min": 16,
+      "frame_count": 270,
+      "region_count_max": 8,
+      "region_count_min": 8,
+      "resource_count_max": 200,
+      "resource_count_min": 5
+    }
+  },
+  "schema": "d4-region-data-readiness-v1",
+  "source_identity": {
+    "git_commits": [
+      "39b097e72487567ac915c2297eaa27eed49ef76b"
+    ],
+    "git_dirty_episode_count": 0,
+    "unique_config_sha256": 900,
+    "unique_episode_ids": 900,
+    "unique_source_identity_sha256": 900
+  },
+  "split": {
+    "algorithm": "d4-numeric-seed-atomic-sha256-v1",
+    "development_test_gate": {
+      "met": true,
+      "minimum_seed_count": 10,
+      "observed_seed_count": 15
+    },
+    "final_assist_internal_test_gate": {
+      "met": false,
+      "minimum_seed_count": 20,
+      "observed_seed_count": 15
+    },
+    "internal_test_episode_count": 135,
+    "internal_test_frame_count": 270,
+    "internal_test_seed_count": 15,
+    "scenario_seed_group_counts": {
+      "test": 135,
+      "train": 630,
+      "validation": 135
+    },
+    "split_seed": 20260720,
+    "split_sha256": "18a2c60097fefe05cb70ed811d28faf90c51bbbba0bbe984e07f23fb12f8d7f0",
+    "train_episode_count": 630,
+    "train_fraction": 0.7,
+    "train_frame_count": 1258,
+    "train_seed_count": 70,
+    "unique_seed_count": 100,
+    "unseen_seed_count": 30,
+    "validation_episode_count": 135,
+    "validation_fraction": 0.15,
+    "validation_frame_count": 270,
+    "validation_seed_count": 15
+  },
+  "target_action_inventory": {
+    "test": {
+      "action_count": 2160,
+      "hold_true_count": 0,
+      "hold_true_rate": 0.0,
+      "reconnaissance_priority_max": 1.0,
+      "reconnaissance_priority_min": 0.0,
+      "reconnaissance_priority_unique_count": 2,
+      "request_replan_true_count": 0,
+      "request_replan_true_rate": 0.0,
+      "reserve_ratio_max": 1.0,
+      "reserve_ratio_min": 0.0,
+      "reserve_ratio_unique_count": 18,
+      "resource_quota_nonzero_count": 0,
+      "resource_quota_nonzero_rate": 0.0,
+      "transfer_count": 0,
+      "transfer_frame_count": 0,
+      "transfer_resource_count": 0
+    },
+    "train": {
+      "action_count": 10064,
+      "hold_true_count": 0,
+      "hold_true_rate": 0.0,
+      "reconnaissance_priority_max": 1.0,
+      "reconnaissance_priority_min": 0.0,
+      "reconnaissance_priority_unique_count": 2,
+      "request_replan_true_count": 0,
+      "request_replan_true_rate": 0.0,
+      "reserve_ratio_max": 1.0,
+      "reserve_ratio_min": 0.0,
+      "reserve_ratio_unique_count": 25,
+      "resource_quota_nonzero_count": 0,
+      "resource_quota_nonzero_rate": 0.0,
+      "transfer_count": 0,
+      "transfer_frame_count": 0,
+      "transfer_resource_count": 0
+    },
+    "validation": {
+      "action_count": 2160,
+      "hold_true_count": 0,
+      "hold_true_rate": 0.0,
+      "reconnaissance_priority_max": 1.0,
+      "reconnaissance_priority_min": 0.0,
+      "reconnaissance_priority_unique_count": 2,
+      "request_replan_true_count": 0,
+      "request_replan_true_rate": 0.0,
+      "reserve_ratio_max": 1.0,
+      "reserve_ratio_min": 0.0,
+      "reserve_ratio_unique_count": 18,
+      "resource_quota_nonzero_count": 0,
+      "resource_quota_nonzero_rate": 0.0,
+      "transfer_count": 0,
+      "transfer_frame_count": 0,
+      "transfer_resource_count": 0
+    }
+  },
+  "target_action_inventory_total": {
+    "action_count": 14384,
+    "hold_true_count": 0,
+    "request_replan_true_count": 0,
+    "resource_quota_nonzero_count": 0,
+    "transfer_count": 0
+  },
+  "verification": {
+    "dataset_content_sha256_verified": true,
+    "dirty_source_absent": true,
+    "episode_identity_unique": true,
+    "episode_schema_verified": true,
+    "episode_sha256_verified": true,
+    "external_holdout_absent_from_dataset": true,
+    "external_holdout_absent_from_train": true,
+    "manifest_file_sha256_verified_on_read": true,
+    "manifest_schema_verified": true,
+    "numeric_seed_atomic": true,
+    "scenario_seed_atomic": true,
+    "source_identity_unique": true,
+    "source_schema_verified": true,
+    "split_seed_sets_disjoint": true,
+    "train_validation_test_leakage_absent": true
+  },
+  "violations": [],
+  "warnings": [
+    "external_holdout_evaluation_not_completed",
+    "hold_and_replan_positive_targets_absent",
+    "internal_test_below_twenty_seed_final_assist_gate",
+    "resource_reallocation_targets_absent",
+    "reward_unavailable_for_all_frames"
+  ]
+}

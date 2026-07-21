@@ -537,6 +537,58 @@ def _bundle(tmp_path: Path, snapshot: RegionResourceSnapshot) -> Path:
     return bundle_dir
 
 
+def _qualified_bundle(tmp_path: Path, snapshot: RegionResourceSnapshot) -> Path:
+    graph = snapshot_to_region_graph(snapshot)
+    model = SharedRegionGraphActorCritic(hidden_dim=16, message_passing_steps=1)
+    bundle_dir = tmp_path / "qualified-bundle"
+    save_region_resource_model_bundle(
+        model,
+        bundle_dir,
+        model_version="test-qualified-v1",
+        training_graphs=(graph,),
+        training_groups=((snapshot.scenario_id, snapshot.seed),),
+        created_at_utc="2026-07-20T00:00:00Z",
+        lifecycle_stage="qualified",
+        maximum_advisor_mode="assist",
+        reward_evidence_available=True,
+        final_holdout_seed_count=20,
+        action_diversity_sufficient=True,
+        strategy_capability_claim_allowed=True,
+        target_action_inventory={
+            "action_count": 4,
+            "resource_quota_nonzero_count": 1,
+            "transfer_count": 1,
+            "hold_true_count": 1,
+            "request_replan_true_count": 1,
+        },
+        admission_reasons=(),
+    )
+    return bundle_dir
+
+
+def test_assist_bundle_rejects_missing_action_diversity_evidence(
+    tmp_path: Path,
+) -> None:
+    snapshot = _snapshot(3)
+    graph = snapshot_to_region_graph(snapshot)
+    model = SharedRegionGraphActorCritic(hidden_dim=16, message_passing_steps=1)
+
+    with pytest.raises(ValueError, match="sufficient action diversity"):
+        save_region_resource_model_bundle(
+            model,
+            tmp_path / "insufficient-diversity-bundle",
+            model_version="test-insufficient-diversity-v1",
+            training_graphs=(graph,),
+            training_groups=((snapshot.scenario_id, snapshot.seed),),
+            created_at_utc="2026-07-20T00:00:00Z",
+            lifecycle_stage="qualified",
+            maximum_advisor_mode="assist",
+            reward_evidence_available=True,
+            final_holdout_seed_count=20,
+            admission_reasons=(),
+        )
+
+
 def test_model_bundle_manifest_state_dict_and_sha_round_trip(tmp_path: Path) -> None:
     snapshot = _snapshot(3)
     bundle_dir = _bundle(tmp_path, snapshot)
@@ -753,9 +805,32 @@ def test_default_is_disabled_and_shadow_does_not_change_formal_d4_verdict() -> N
     assert shadow.formal_decision_digest_before == shadow.formal_decision_digest_after
 
 
-def test_assist_requires_at_least_twenty_unseen_seeds(tmp_path: Path) -> None:
+def test_development_bundle_remains_shadow_even_with_twenty_unseen_seeds(
+    tmp_path: Path,
+) -> None:
     snapshot = _snapshot(3)
     bundle_dir = _bundle(tmp_path, snapshot)
+    advisor = RegionResourceAdvisor.from_bundle(
+        bundle_dir,
+        config=RegionResourceAdvisorConfig(
+            mode=AdvisorMode.ASSIST,
+            minimum_confidence=0.0,
+            ood_margin=0.0,
+            inference_timeout_s=10.0,
+        ),
+    )
+
+    result = advisor.advise(snapshot, unseen_seed_count=20)
+
+    assert not result.assist_eligible
+    assert result.effective_mode == AdvisorMode.SHADOW
+    assert result.recommendation is not None
+    assert result.recommendation.fallback_reason == "model_bundle_shadow_only"
+
+
+def test_qualified_bundle_still_requires_twenty_unseen_seeds(tmp_path: Path) -> None:
+    snapshot = _snapshot(3)
+    bundle_dir = _qualified_bundle(tmp_path, snapshot)
     advisor = RegionResourceAdvisor.from_bundle(
         bundle_dir,
         config=RegionResourceAdvisorConfig(

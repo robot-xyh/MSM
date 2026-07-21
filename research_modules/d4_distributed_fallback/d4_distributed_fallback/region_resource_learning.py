@@ -52,6 +52,10 @@ except ImportError:  # pragma: no cover - exercised only in minimal deployments.
 
 REGION_RESOURCE_MODEL_BUNDLE_SCHEMA = "d4-region-resource-model-bundle-v2"
 REGION_GRAPH_ARCHITECTURE = "shared-region-graph-actor-critic-v1"
+MODEL_LIFECYCLE_DEVELOPMENT = "development"
+MODEL_LIFECYCLE_QUALIFIED = "qualified"
+MODEL_MAXIMUM_MODE_SHADOW = AdvisorMode.SHADOW.value
+MODEL_MAXIMUM_MODE_ASSIST = AdvisorMode.ASSIST.value
 
 NODE_FEATURE_NAMES = (
     "target_demand_fraction",
@@ -865,6 +869,18 @@ class RegionResourceModelManifest:
     training_split_sha256: str | None = None
     training_manifest_file: str | None = None
     training_manifest_sha256: str | None = None
+    lifecycle_stage: str = MODEL_LIFECYCLE_DEVELOPMENT
+    maximum_advisor_mode: str = MODEL_MAXIMUM_MODE_SHADOW
+    reward_evidence_available: bool = False
+    final_holdout_seed_count: int = 0
+    action_diversity_sufficient: bool = False
+    strategy_capability_claim_allowed: bool = False
+    target_action_inventory: Mapping[str, int] = field(default_factory=dict)
+    admission_reasons: tuple[str, ...] = (
+        "development_bundle",
+        "reward_evidence_unavailable",
+        "final_holdout_not_completed",
+    )
     architecture: str = REGION_GRAPH_ARCHITECTURE
     feature_schema: str = REGION_RESOURCE_FEATURE_SCHEMA
     node_feature_dim: int = len(NODE_FEATURE_NAMES)
@@ -894,6 +910,70 @@ class RegionResourceModelManifest:
             raise ValueError("manifest action dimension mismatch")
         if self.hidden_dim <= 0 or self.message_passing_steps <= 0:
             raise ValueError("manifest model dimensions must be positive")
+        if self.lifecycle_stage not in {
+            MODEL_LIFECYCLE_DEVELOPMENT,
+            MODEL_LIFECYCLE_QUALIFIED,
+        }:
+            raise ValueError("unsupported model lifecycle stage")
+        if self.maximum_advisor_mode not in {
+            MODEL_MAXIMUM_MODE_SHADOW,
+            MODEL_MAXIMUM_MODE_ASSIST,
+        }:
+            raise ValueError("unsupported maximum advisor mode")
+        if type(self.reward_evidence_available) is not bool:
+            raise ValueError("reward_evidence_available must be a boolean")
+        if type(self.action_diversity_sufficient) is not bool:
+            raise ValueError("action_diversity_sufficient must be a boolean")
+        if type(self.strategy_capability_claim_allowed) is not bool:
+            raise ValueError(
+                "strategy_capability_claim_allowed must be a boolean"
+            )
+        if int(self.final_holdout_seed_count) < 0:
+            raise ValueError("final_holdout_seed_count must be non-negative")
+        inventory = {
+            str(name): int(count)
+            for name, count in self.target_action_inventory.items()
+        }
+        required_inventory_fields = {
+            "action_count",
+            "resource_quota_nonzero_count",
+            "transfer_count",
+            "hold_true_count",
+            "request_replan_true_count",
+        }
+        if inventory and set(inventory) != required_inventory_fields:
+            raise ValueError("target action inventory fields are incomplete")
+        if any(count < 0 for count in inventory.values()):
+            raise ValueError("target action inventory counts must be non-negative")
+        for name in (
+            "resource_quota_nonzero_count",
+            "hold_true_count",
+            "request_replan_true_count",
+        ):
+            if inventory and inventory[name] > inventory["action_count"]:
+                raise ValueError(f"{name} exceeds target action count")
+        if self.action_diversity_sufficient and not inventory:
+            raise ValueError("action diversity evidence requires a target inventory")
+        if self.strategy_capability_claim_allowed and not self.action_diversity_sufficient:
+            raise ValueError(
+                "strategy capability claims require sufficient action diversity"
+            )
+        object.__setattr__(self, "target_action_inventory", inventory)
+        reasons = tuple(sorted({str(item) for item in self.admission_reasons if str(item)}))
+        object.__setattr__(self, "admission_reasons", reasons)
+        if self.maximum_advisor_mode == MODEL_MAXIMUM_MODE_ASSIST:
+            if self.lifecycle_stage != MODEL_LIFECYCLE_QUALIFIED:
+                raise ValueError("assist bundles must be qualified")
+            if not self.reward_evidence_available:
+                raise ValueError("assist bundles require reward evidence")
+            if int(self.final_holdout_seed_count) < 20:
+                raise ValueError("assist bundles require at least twenty final holdout seeds")
+            if not self.action_diversity_sufficient:
+                raise ValueError("assist bundles require sufficient action diversity")
+            if not self.strategy_capability_claim_allowed:
+                raise ValueError("assist bundles require strategy capability evidence")
+            if reasons:
+                raise ValueError("assist bundles must not carry admission reasons")
         groups = tuple(
             sorted({(str(item[0]), int(item[1])) for item in self.training_groups})
         )
@@ -949,6 +1029,16 @@ class RegionResourceModelManifest:
             "training_split_sha256": self.training_split_sha256,
             "training_manifest_file": self.training_manifest_file,
             "training_manifest_sha256": self.training_manifest_sha256,
+            "lifecycle_stage": self.lifecycle_stage,
+            "maximum_advisor_mode": self.maximum_advisor_mode,
+            "reward_evidence_available": self.reward_evidence_available,
+            "final_holdout_seed_count": int(self.final_holdout_seed_count),
+            "action_diversity_sufficient": self.action_diversity_sufficient,
+            "strategy_capability_claim_allowed": (
+                self.strategy_capability_claim_allowed
+            ),
+            "target_action_inventory": dict(self.target_action_inventory),
+            "admission_reasons": list(self.admission_reasons),
             "created_at_utc": self.created_at_utc,
         }
 
@@ -962,6 +1052,7 @@ class RegionResourceModelManifest:
             (str(item["scenario_id"]), int(item["seed"]))
             for item in payload.get("training_groups", ())
         )
+        payload["admission_reasons"] = tuple(payload.get("admission_reasons", ()))
         return cls(**payload)
 
 
@@ -982,6 +1073,18 @@ def save_region_resource_model_bundle(
     training_groups: Iterable[tuple[str, int]] = (),
     created_at_utc: str,
     training_dataset_manifest: RegionLearningDatasetManifest | None = None,
+    lifecycle_stage: str = MODEL_LIFECYCLE_DEVELOPMENT,
+    maximum_advisor_mode: str = MODEL_MAXIMUM_MODE_SHADOW,
+    reward_evidence_available: bool = False,
+    final_holdout_seed_count: int = 0,
+    action_diversity_sufficient: bool = False,
+    strategy_capability_claim_allowed: bool = False,
+    target_action_inventory: Mapping[str, int] | None = None,
+    admission_reasons: Sequence[str] = (
+        "development_bundle",
+        "reward_evidence_unavailable",
+        "final_holdout_not_completed",
+    ),
 ) -> RegionResourceModelManifest:
     _require_torch()
     destination = Path(bundle_dir)
@@ -1060,6 +1163,14 @@ def save_region_resource_model_bundle(
         ),
         training_manifest_file=training_manifest_file,
         training_manifest_sha256=training_manifest_sha256,
+        lifecycle_stage=lifecycle_stage,
+        maximum_advisor_mode=maximum_advisor_mode,
+        reward_evidence_available=reward_evidence_available,
+        final_holdout_seed_count=final_holdout_seed_count,
+        action_diversity_sufficient=action_diversity_sufficient,
+        strategy_capability_claim_allowed=strategy_capability_claim_allowed,
+        target_action_inventory=dict(target_action_inventory or {}),
+        admission_reasons=tuple(admission_reasons),
     )
     manifest_path = destination / "manifest.json"
     temporary_manifest_path = destination / "manifest.json.tmp"
@@ -1410,10 +1521,17 @@ class RegionResourceAdvisor:
                 formal_decision=formal_decision,
             )
 
+        manifest = getattr(self.learned_policy, "manifest", None)
+        bundle_allows_assist = bool(
+            manifest is None
+            or getattr(manifest, "maximum_advisor_mode", MODEL_MAXIMUM_MODE_ASSIST)
+            == MODEL_MAXIMUM_MODE_ASSIST
+        )
         assist_eligible = bool(
             self.config.mode == AdvisorMode.ASSIST
             and unseen_seed_count >= self.config.minimum_unseen_seeds
             and not fallback_used
+            and bundle_allows_assist
         )
         effective_mode = (
             AdvisorMode.ASSIST if assist_eligible else AdvisorMode.SHADOW
@@ -1422,7 +1540,11 @@ class RegionResourceAdvisor:
             gate_reason = (
                 "fewer_than_minimum_unseen_seeds"
                 if unseen_seed_count < self.config.minimum_unseen_seeds
-                else fallback_reason or "assist_gate_not_met"
+                else (
+                    "model_bundle_shadow_only"
+                    if not bundle_allows_assist
+                    else fallback_reason or "assist_gate_not_met"
+                )
             )
             if recommendation.fallback_reason is None:
                 recommendation = RegionResourceRecommendation(

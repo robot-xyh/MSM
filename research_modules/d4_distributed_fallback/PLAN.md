@@ -12,14 +12,15 @@
 - 研究管线包含规则基线、共享节点/边网络的变长区域图 actor-critic、行为克隆、原生 clipped PPO、包含 SHA256 的 manifest + `state_dict` bundle、完整 episode/数值 seed 原子划分和 paired shadow evaluator。reward 显式惩罚高威胁积压、跨区转移耗时、通信负载、备用不足、分配冲突、降级失败和计划抖动。
 - 默认 API 为 `disabled`，CLI 为 `shadow`。超时、低置信、OOD、非有限、版本/SHA 不匹配均回退规则建议；规则 fallback 与学习候选必须通过同一 `DeterministicResourceProjector` 实例，学习模型只允许返回 raw proposal。少于 20 个未见 seed 不得进入 assist。正式 D4 健康检测、leader 选择、epoch/lease fencing、联盟 ACK/commit、D3 assignment 与 D7 gate 不受学习层替代。
 - 新增 `d4-region-learning-dataset-v1`：source 固化 scenario/version/scale、seed、episode ID、Git commit/dirty 和 config SHA；frame 固化 snapshot、`rule|formal|unavailable` target、reward/unavailable 与可选 recommendation。训练 target 由固定 projector 重验 authority generation、lease、reserve、edge 和 quota 证明；manifest 重验 canonical episode inventory、availability 和可重放 split。stage 只发布完整 episode，同一数值 seed 的所有场景/规模/episode 必须同 split。BC/PPO loader 默认拒绝 dirty、缺 target/reward，`d4-region-resource-model-bundle-v2` 可嵌入数据 manifest。
-- 2026-07-20 验收：建议/消费合同 `test_region_resource_advisor.py` 为 49/49，数据合同 13/13，合计 62/62，D4 全量 365/365；此前 main-owned scalable 3D 定向集成为 8/8，阈值均为零失败。复核新增 200-region 图路径、三层 owner 回读和训练数据负向门。96-episode/192-frame 高基数样本是纯 Python 合成合同回归，不是正式训练数据、多 seed 性能或 AirSim 证据。尚无训练后独立 checkpoint、20 个未见 seed paired 结果、AirSim 学习评估或真实网络证据。
+- 2026-07-21 当前验收：建议/消费/学习准入 `test_region_resource_advisor.py` 为 51/51，数据合同与正式训练回归为 15/15，合计 66/66，D4 全量 369/369；此前 main-owned scalable 3D 定向集成为 8/8，阈值均为零失败。历史合同阶段数字保留在实验报告，不再作为当前计数。
+- 2026-07-20 正式数据与开发训练：只读审计 900 episode/1798 frame，逐 episode SHA、dataset/source/schema、70/15/15 seed 原子 split 和 1000-1019 外部保留 seed 隔离均通过。2026-07-21 按固定 seed 复跑行为克隆，完成 66 epoch，最佳 epoch 54，内部测试 loss `0.071545`、CPU 推理 P95 `0.7774 ms`、权重 SHA256 `3da0360be8788f3ffeb8e9f9eba3e0d5369ec0bdf9e05729dfb1db07d71d5f62`，与首次权重哈希一致。正式标签的 14384 个区域动作中 nonzero quota、transfer、hold、request_replan 均为 0；D6 审计还确认 898/1798 帧只有无归因相邻状态转移，reward/causal/counterfactual 可用数均为 0。bundle 机器准入固定 `action_diversity_sufficient=false`、`strategy_capability_claim_allowed=false`、`development/shadow-only`。行为克隆管线可用，但低损失不能作为完整动作策略能力，PPO 和 assist 均不可用。权重保存在 ignored `outputs/`，tracked 结果不含模型文件。
 
 - `regional_failover.py` 新增 `RegionalScenarioMetadata`、`RegionDefinition`、`RegionalTaskEvidence`、`MobileReconSecondary`、`RegionalFallbackMember`、`RegionOwnershipMetadata` 和 `RegionalFailoverCoordinator`，不导入 main-owned `scalable_3d_simulation`，通过 mapping/`to_dict()` 只读适配 `scalable3d-scenario-v1`。
 - 每个区域最多一个 active authority。中心 health 未进入 `failed` 时始终保留中心 owner；D1/D2/D3/D5 风险只改变 `continue_center|request_secondary_assist|request_center_replan|hold_for_review`，不把主动降级变成所有权转移。
 - 中心 `failed` 后，逐区域只从显式 coverage 且 strict readiness 完整的 `mobile_high_recon` 中选择二级协调者；排序为 takeover priority、coverage ratio、lease epoch、node id。二级节点保持 `coordinator_only`，不作为拦截成员。
 - 没有有效二级节点时才执行受约束 bid fallback：按 region、availability、communication、operator hold、跨区域 capacity、capability demand 和 D5 support/hold/ambiguity 形成确定性候选成员集；一个成员可同时覆盖多项 capability。该实现是可审计保底 heuristic，不是完整 CBBA 消息共识、CCBBA、reserve 激活或动态联盟重构。
 - authority 切换必须同时提升 `epoch` 和 `plan_version`；租约严格满足 `timestamp < expiry`，并收缩到 authority、D3 task 与二级 lease 的最早 expiry。中心、二级和 distributed 三层的 `k>1` 任务均复用 `CoalitionCommitCoordinator`，只有 required-member ACK 全集对同一 target/coalition/plan/version/epoch 有效时才原子 `committed`；缺 ACK、旧 ACK/authority generation、过期 lease 和任一层级分区全部 fail closed。
-- 2026-07-20 区域合同阶段新增 23 项确定性单元测试：5/20/50/100/200 个 region/task/resource 元数据与中心 ownership，声明 resource/recon 数量上限，D1/D2 主动证据、D3/D5 硬门控、中心失效、二级失效、双区域 coverage、中心/二级/distributed 完整与缺失 ACK、旧 ACK epoch、全层网络分区、旧 authority epoch/plan version、最早 task/authority lease、旧 secondary lease epoch、D5 member hold、单成员多能力与跨区域 capacity。当时 D4 全量为 303/303，当前已由 **365/365 passed** 覆盖。
+- 2026-07-20 区域合同阶段新增 23 项确定性单元测试：5/20/50/100/200 个 region/task/resource 元数据与中心 ownership，声明 resource/recon 数量上限，D1/D2 主动证据、D3/D5 硬门控、中心失效、二级失效、双区域 coverage、中心/二级/distributed 完整与缺失 ACK、旧 ACK epoch、全层网络分区、旧 authority epoch/plan version、最早 task/authority lease、旧 secondary lease epoch、D5 member hold、单成员多能力与跨区域 capacity。当时 D4 全量为 303/303，当前已由 **369/369 passed** 覆盖。
 - 验证边界：23 项合同用例本身无随机 seed、AirSim episode、真实 RF/mesh/socket、带宽/时钟漂移或物理命中证据。main 后续已完成质点模块栈接线，但这不把合同单元测试升级为 AirSim/真实网络证据；根级系统文档仍由 main 同步。
 
 ### 0.1 2026-07-15 P0 公开二级接管入口统一（已完成）
@@ -28,7 +29,7 @@
 - 二级 owner 必须证明显式 current time、正 lease epoch、严格 `current_time < lease_expiry`、fresh heartbeat/cue/communication、gimbal=true、coverage >= 0.65、network full-view >= 0.80，以及至少 3 次/0.2 s 的 sustained readiness。缺失、陈旧、等于 expiry 或低于门限均阻断二级 proposal/execution。
 - `FailoverCoordinator.plan_degraded()` 只对 secondary candidate 应用该门；interceptor/cluster-representative peer 的 distributed election 保持独立，不要求二级视觉 evidence。动态 N/M、plan/coalition version、epoch/lease、ACK、partition/recovery 和 upstream `global_track_id` 合同不变。
 - 278/278 历史回归未覆盖 `build_d7_secondary_handoff()` 和 `build_secondary_takeover_plan_metadata()` 对 sustained/source/lease epoch 的 `None`，此前“所有公开入口已闭锁”的说法撤回。两个 helper 现要求 readiness exact-true、expected/actual source 均存在且匹配、plan/required lease epoch 均存在且满足、expiry/current time 均存在且严格未过期；同一已激活 plan 的维持路径不豁免。
-- 当日验收结果：D4 全量 280/280 passed，两个 helper 的逐字段 `None`、完整正例、same-plan 维持和 distributed bypass 均通过；`build_coalition_commit_d6_metadata()` 缺 current time 时仍 lease invalid/atomic false。该历史结果先由 303/303、再由当前 365/365 回归取代；P0 判定不变。
+- 当日验收结果：D4 全量 280/280 passed，两个 helper 的逐字段 `None`、完整正例、same-plan 维持和 distributed bypass 均通过；`build_coalition_commit_d6_metadata()` 缺 current time 时仍 lease invalid/atomic false。该历史结果先由 303/303、再由当前 369/369 回归取代；P0 判定不变。
 
 ### 0.2 2026-07-15 M5N2 中心负对照（已完成，非降级验收）
 
@@ -70,7 +71,7 @@ D4 所属的 P1 合同层已闭合。最新 2026-07-11 验证中，ComputerVisio
 |---|---|---|
 | P0 secondary evidence/lease fail-closed | **2026-07-15 已关闭**：280/280 回归覆盖 coordinator/episode/coalition/D6 及两个公开 plan helper；readiness/source/epoch/time 任一缺失均阻断，历史 278/278 过度声明已纠正 | 新 AirSim 网络证据或 P1 自主联盟重构 |
 | scalable3d 区域 authority 与质点接线 | **已实现并接线到 main 质点模块栈**：模块合同覆盖 5/20/50/100/200 metadata；main 集成已覆盖单二级、多二级 owner 和连续失效后的 distributed D3 plan，D7 按 owner/epoch/lease/commit/fault fence 执行 | AirSim、真实网络、长时 200v200 多 seed、完整 CCBBA 或物理任务闭环 |
-| 区域资源学习建议与消费合同 | **可选研究能力已实现，默认 disabled/shadow**：规则、确定性投影、版本化限时 advisory、一次性消费门、共享变长图 actor-critic、BC、原生 PPO、bundle/SHA、OOD/timeout 回退和 paired evaluator 均有测试 | main/D3 实际接线、持久化跨进程消费 ledger、已训练可推荐模型、20 个未见 seed、AirSim/真实网络收益，以及任何直接裁决/assignment 权限 |
+| 区域资源学习建议与消费合同 | **行为克隆开发模型已训练，仍为 shadow-only**：规则、确定性投影、版本化限时 advisory、一次性消费门、共享变长图 actor-critic、BC/PPO 接口、bundle/SHA、OOD/timeout 回退和 paired evaluator 均可运行；正式 900 episode 审计和 BC 已完成 | 14384 个标签动作没有 quota/transfer/hold/replan 正样本，D6 reward/causal/counterfactual 可用数均为 0，内部 test 仅 15 seed，外部 20 seed 未评估；bundle 明确禁止策略能力声明，不得 PPO/assist，也不具有裁决/assignment 权限 |
 | P1 合同层 | **已完成**：secondary ACK 3/3 `executing`、peer ACK 3/3 `executing`、缺 ACK 2/3 `aborted`/`hold_for_review` 已有真实 ComputerVision 正负例 | 自主成员形成、完整重构或物理拦截 |
 | P1 通信 replay | **D4 模块内已完成**：九场景合同 replay 加六场景、10-seed 内存通信矩阵，覆盖 0.5 s delay、30% loss、中心/二级连续失效、分区恢复、乱序旧版本和 split-brain 防护 | 真实 AirSim 网络时序或物理任务连续性 |
 | P1 episode 时钟接口 | **D4 模块侧已完成并通过批量验收**：除 7 类规范合同 replay 外，2026-07-13 已完成六类、10-seed、60-case AirSim episode clock 故障注入；逐 case 保留 owner/version、ACK、epoch、lease 和恢复记录 | 该结果不是实际 RF、mesh、socket、带宽、时钟漂移或硬件网络验证 |
@@ -442,7 +443,7 @@ D4 已完成 fail-closed 与本地 commit 合同：`CoalitionSafetyEvidence` 读
 | D5 distributed visual evidence 运行时合流 | D4 模块内可把 D5 多 peer evidence merge 到 `TrackSummary.visual_evidence` | 真实多 seed no-center case 中 D5 多 peer 输出到 D4 `TrackSummary.visual_evidence` 的合流频率和风险权重仍需标定 | main 在 no-center case 持续调用 `merge_distributed_visual_evidence_into_tracks()` 或等价接线 |
 | CBBA 与中心化最优 gap | D4 已有 `CBBACostGapBenchmark`、`build_cbba_cost_gap_benchmark()` 和 `build_cbba_d6_metadata()`，可对 D3/main 提供的中心 plan/cost matrix 计算 cost/completion/conflict/message gap 并输出 D6 多 seed 报告字段 | 真实 episode 还未持续保存同场景 D3 cost matrix/current plan，也未由 D6 汇总多 seed gap | main/D3 保存中心化 cost matrix/current plan，D6 聚合 benchmark 输出 |
 | scalable3d 区域运行时接线 | main-owned 质点模块栈已发布区域 evidence、消费 ownership payload，并闭合单二级、多二级和 distributed D3 plan；D7 按 owner/epoch/lease/commit/fault fence 门控 | 仅有接口/质点集成测试；未完成 AirSim、真实网络、长时 200v200 多 seed 与 D6 区域趋势报告 | 保持 8/8 定向集成回归，补 20 个未见 seed、stage timing、transition/churn、分区恢复和安全违规统计 |
-| 区域资源建议消费与学习效果 | 后投影 advisory、一次性门、规则、BC/PPO 有限更新、dataset-v1、bundle-v2 和 fail-closed 回退已实现；训练标签与 manifest 均重验安全/来源一致性；建议专项 49/49、数据合同 13/13、全量 365/365 | main/D3 尚未消费 advisory，main episode writer 尚未调用 D4 dataset API；未训练可推广 checkpoint，未达到 20 个未见 seed，未有 AirSim/真实网络 paired 收益 | main 在 owned 集成层接 `advisory_contract`，并用公开 stage/finalize/load 写正式数据；训练/验证/测试按数值 seed 原子划分，再用至少 20 个未见 seed shadow paired evaluator；通过前不得 assist |
+| 区域资源建议消费与学习效果 | 后投影 advisory、一次性门、规则、dataset-v1、bundle provenance 和 fail-closed 回退已实现；正式 900 episode 已按 70/15/15 seed 审计并完成固定 seed BC 开发模型，tracked 指标与 SHA 已落盘 | 当前 14384 个区域动作没有 quota/transfer/hold/replan 正样本；898/1798 帧状态转移无归因；reward/causal/counterfactual 可用数均为 0；外部 20 seed、paired 收益和 main/D3 advisory 消费仍未完成 | producer 先生成带动作归因和安全结果的正负样本，D6 冻结 reward/causal 合同；随后重训并在 1000-1019 上做 paired shadow。当前 bundle 固化 `action_diversity_sufficient=false` 与 `strategy_capability_claim_allowed=false`，不得用低损失申请 PPO/assist |
 
 ## 13. 未实现
 
@@ -471,7 +472,7 @@ P1：
 8. 复用已完成的 M5N2 20-case 几何/seeds 运行 secondary/distributed paired 故障场景，并补充 collision object/source lineage；不得以 `collision_stop` 或未进入 5 m 直接触发主动降级。
 9. scalable3d episode bus 的单二级、多二级和 distributed D3 plan 接线已完成；下一步保持 owner/epoch/lease/commit/fault fence 回归，并补长时 200v200、多 seed stage timing、分区恢复、transition/churn 和 D6 汇总。D4 不越权修改 main-owned 文件。
 10. main 后续如消费区域资源建议，只接 `d4-region-resource-advisory-v1`，每个 D3 planning boundary 用 current snapshot/formal verdict 重验并持久化 consumed advisory ID；不得直接消费 raw/non-projected recommendation。该工作属于 main/D3-owned 集成，本轮 D4 不越界修改。
-11. main episode writer 改用 `RegionLearningEpisodeSource`、`RegionLearningFrame`、`stage_region_learning_episode()` 和 `finalize_region_learning_dataset()`；旧的 frame_index/timestamp/snapshot/recommendation JSONL 必须补 source identity、显式 target/reward availability，不能由 main 解析 D4 私有结构。学习路径先以规则 teacher 做 BC，再运行原生 clipped PPO；数据按完整 episode 和数值 seed 原子 split，bundle v2 验证 dataset/split/state SHA。至少 20 个未见 seed 的 paired shadow 报告满足零安全违规且 backlog/fail-closed 不回归前，不得推荐 assist，更不得改变正式 D4/D3/D7 裁决。
+11. 正式 writer 与 dataset-v1 已形成 900 episode 数据，行为克隆开发训练已完成。下一轮不直接启动 PPO：producer 需为 quota/transfer/hold/replan 生成可归因正样本，D6 需提供版本化 outcome/reward/causal/counterfactual availability、公式和审计制品 SHA256；缺失时继续 unavailable。重训后使用外部 seed 1000-1019 做 paired shadow，要求零安全违规且 backlog/fail-closed 不回归。满足前 bundle 保持 development/shadow-only，低损失不作为策略能力证据，也不改变正式 D4/D3/D7 裁决。
 
 P2：
 

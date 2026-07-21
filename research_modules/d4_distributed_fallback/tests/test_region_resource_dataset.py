@@ -9,6 +9,7 @@ import pytest
 import torch
 
 from d4_distributed_fallback.region_resource import (
+    AdvisorMode,
     RegionResourceEdge,
     RegionResourceNode,
     RegionResourceSnapshot,
@@ -31,11 +32,21 @@ from d4_distributed_fallback.region_resource_dataset import (
 )
 from d4_distributed_fallback.region_resource_learning import (
     ModelBundleValidationError,
+    RegionResourceAdvisor,
+    RegionResourceAdvisorConfig,
     SharedRegionGraphActorCritic,
     load_region_behavior_cloning_samples,
     load_region_ppo_training_episodes,
     load_region_resource_model_bundle,
     save_region_resource_model_bundle,
+)
+from d4_distributed_fallback.region_resource_training import (
+    D4_DATA_READINESS_SCHEMA,
+    D4_MODEL_READINESS_SCHEMA,
+    RegionBehaviorCloningConfig,
+    audit_region_learning_dataset,
+    publish_region_behavior_cloning_results,
+    train_region_behavior_cloning,
 )
 from d4_distributed_fallback.regional_failover import RegionalAuthorityLayer
 
@@ -578,3 +589,141 @@ def test_model_bundle_v2_binds_and_verifies_training_dataset_manifest(
         match="training_manifest_sha256_mismatch",
     ):
         load_region_resource_model_bundle(bundle)
+
+
+def test_formal_dataset_audit_reports_atomic_splits_and_external_holdout(
+    tmp_path: Path,
+) -> None:
+    dataset_path = _finalize(
+        tmp_path / "source",
+        [_source("audit", seed, 0) for seed in range(8)],
+        reward_available=False,
+    )
+    config = RegionBehaviorCloningConfig(
+        epochs=1,
+        hidden_dim=8,
+        message_passing_steps=1,
+        batch_size=4,
+        early_stopping_patience=1,
+        minimum_development_test_seeds=1,
+    )
+
+    _, report = audit_region_learning_dataset(dataset_path, config=config)
+
+    assert report["schema"] == D4_DATA_READINESS_SCHEMA
+    assert report["inventory"]["episode_count"] == 8
+    assert report["inventory"]["reward_available_count"] == 0
+    assert report["verification"]["episode_sha256_verified"]
+    assert report["verification"]["numeric_seed_atomic"]
+    assert report["verification"]["scenario_seed_atomic"]
+    assert report["verification"]["train_validation_test_leakage_absent"]
+    assert report["external_holdout"]["present_in_training"] == []
+    assert report["readiness"]["behavior_cloning_development_available"]
+    assert report["target_action_inventory"]["train"]["action_count"] > 0
+    assert report["readiness"]["pipeline_usable"]
+    assert not report["readiness"]["strategy_capability_claim_allowed"]
+    assert (
+        report["readiness"]["reason"]
+        == "pipeline_usable_but_action_diversity_insufficient_shadow_only"
+    )
+    assert isinstance(report["readiness"]["full_action_learning_available"], bool)
+    assert not report["readiness"]["ppo_available"]
+
+
+def test_behavior_cloning_training_publishes_shadow_only_audited_bundle(
+    tmp_path: Path,
+) -> None:
+    dataset_path = _finalize(
+        tmp_path / "source",
+        [_source("training", seed, 0) for seed in range(8)],
+        reward_available=False,
+    )
+    source_manifest_before = (dataset_path / "manifest.json").read_bytes()
+    output = tmp_path / "trained"
+    config = RegionBehaviorCloningConfig(
+        random_seed=17,
+        epochs=2,
+        hidden_dim=8,
+        message_passing_steps=1,
+        batch_size=4,
+        early_stopping_patience=2,
+        minimum_development_test_seeds=1,
+        model_version="test-development-v1",
+        d6_audit_frame_count=16,
+        d6_unattributed_transition_frame_count=8,
+        d6_reward_available_count=0,
+        d6_causal_label_available_count=0,
+        d6_counterfactual_available_count=0,
+    )
+
+    result = train_region_behavior_cloning(
+        dataset_path,
+        output,
+        config=config,
+    )
+
+    readiness = json.loads(
+        (output / "model_readiness.json").read_text(encoding="utf-8")
+    )
+    assert readiness["schema"] == D4_MODEL_READINESS_SCHEMA
+    assert readiness["shadow_only"]
+    assert not readiness["assist_eligible"]
+    assert not readiness["ppo_available"]
+    assert readiness["pipeline_usable"]
+    assert not readiness["action_diversity_sufficient"]
+    assert not readiness["strategy_capability_claim_allowed"]
+    assert not readiness["low_loss_is_strategy_capability_evidence"]
+    assert "action_diversity_insufficient" in readiness["admission_reasons"]
+    assert readiness["full_action_learning_available"] == result["data_readiness"][
+        "readiness"
+    ]["full_action_learning_available"]
+    assert not readiness["confidence_calibrated"]
+    assert readiness["external_d6_audit"]["unattributed_transition_frame_count"] == 8
+    assert not readiness["external_d6_audit"]["training_reward_derived"]
+    assert len(readiness["state_dict_sha256"]) == 64
+    assert len(readiness["training_config_sha256"]) == 64
+    assert result["training_metrics"]["splits"]["test"]["frame_count"] > 0
+    assert (dataset_path / "manifest.json").read_bytes() == source_manifest_before
+
+    bundle = load_region_resource_model_bundle(
+        output / "bundle",
+        require_training_dataset_manifest=True,
+    )
+    snapshot = load_region_learning_dataset(dataset_path).episode_records[0].frames[
+        0
+    ].snapshot
+    advisor = RegionResourceAdvisor.from_bundle(
+        output / "bundle",
+        config=RegionResourceAdvisorConfig(
+            mode=AdvisorMode.ASSIST,
+            minimum_confidence=0.0,
+            inference_timeout_s=10.0,
+        ),
+    )
+    decision = advisor.advise(snapshot, unseen_seed_count=20)
+    assert bundle.manifest.maximum_advisor_mode == "shadow"
+    assert not bundle.manifest.action_diversity_sufficient
+    assert not bundle.manifest.strategy_capability_claim_allowed
+    assert "action_diversity_insufficient" in bundle.manifest.admission_reasons
+    assert bundle.manifest.target_action_inventory == readiness[
+        "target_action_inventory"
+    ]
+    assert decision.effective_mode == AdvisorMode.SHADOW
+    assert not decision.assist_eligible
+
+    report_text = (output / "TRAINING_REPORT_CN.md").read_text(encoding="utf-8")
+    assert "管线可用但动作多样性不足" in report_text
+    assert "低损失" in report_text
+    assert "不能用来宣称调度策略能力" in report_text
+
+    tracked = tmp_path / "tracked-results"
+    tracked_manifest = publish_region_behavior_cloning_results(
+        output,
+        tracked,
+        bundle_locator="research_modules/d4_distributed_fallback/outputs/test",
+        training_command="python3 train_region_resource_bc.py",
+    )
+    assert not tracked_manifest["weights_tracked_by_git"]
+    assert tracked_manifest["state_dict_sha256"] == readiness["state_dict_sha256"]
+    assert not tuple(tracked.rglob("*.pt"))
+    assert (tracked / "LOCAL_BUNDLE_LOCATION.md").is_file()
