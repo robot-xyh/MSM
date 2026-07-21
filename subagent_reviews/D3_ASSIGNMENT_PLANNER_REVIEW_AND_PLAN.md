@@ -743,6 +743,28 @@ mask 篡改和 hard-reject truth key 注入负例。200×200 top-32 六帧微基
 墙钟阈值；全量结果为 `254 passed, 1 skipped`。
 
 复核结论为 D3-owned 重复对象/JSON 转换 GAP 已关闭。标准库 `tolist/json.dumps` 是剩余
-热点，九场景 27.86 MB 内容按 schema 要求保留。main 的 D3/D4/D5 staging 74-76 s 仍需
-读取分模块 wall fields，不能由本微基准推断。没有运行 AirSim、训练模型或改变
+热点，九场景 27.86 MB 内容按 schema 要求保留。模块微基准本身不能解释联合 staging；
+main 后续 clean-tree 复测已补齐分项 wall fields。没有运行 AirSim、训练模型或改变
 Hungarian、残差公式、硬掩码、计划版本、联盟和 D7 授权。
+
+## 29. Clean-tree 200v200 集成复核（2026-07-20）
+
+main 对相同 nominal 200v200 三 seed 生成链执行优化前后对照。基线位于
+`capacity_probe_v2/nominal_timed`，优化后位于
+`capacity_probe_v2/nominal_timed_postopt`。优化后 producer commit 为
+`4052d9411363c39d52100c0e3a4f60ee88443cab`，`repository_dirty=false`。
+
+| 阶段 | 基线 | 优化后 |
+|---|---:|---:|
+| episode run | 125.2205 s | 127.9871 s |
+| artifact staging | 225.9243 s | 126.4682 s |
+| D3/D4/D5 联合 finalization | 116.5624 s | 7.7377 s |
+| 总生成 | 467.8007 s | 262.2866 s |
+
+D3 stage 在 seed 930/931/932 上分别为 0.0917/0.1129/0.0999 s；D3 输出 6 帧并正常
+finalize，train/validation/test 各 2 帧，在线真值使用为 0。该结果将 D3-owned 重复编码
+与 finalization 热点状态确认为什么“已关闭”，也证明此前联合 staging 不能归因于 D3。
+联合 finalization 的 7.7377 s 是三个模块的汇总，不得全部记为 D3 改善。
+
+本次证据是三维质点数据生成，不是 AirSim、训练收益或物理拦截结果。正式 900 episode、
+正式模型、至少 20 个未见 seed 的 paired shadow 非退化评估和 assist promotion 仍开放。

@@ -395,8 +395,15 @@ evidence with 6,400 candidate edges per frame and measured only frame export.
 Six-frame dataset finalization decreased from a 0.910 s median to 0.244 s while
 canonical bytes and schema stayed identical.
 
-The result does not explain the 74-76 s combined D3/D4/D5 staging interval.
-Main should retain and aggregate `d3_stage_wall_s`, `d4_stage_wall_s`,
-`d5_graph_stage_wall_s`, and `d5_active_vision_stage_wall_s` before changing an
-AirSim or scalable runtime schedule. D3 tests collected 255 cases and returned
-`254 passed, 1 skipped`; the skip is the optional OR-Tools dependency.
+The module profile alone did not explain the 74-76 s combined D3/D4/D5 staging
+interval. Main subsequently completed a clean-tree scalable point-mass rerun
+for nominal 200v200 seeds 930/931/932. The post-optimization D3 stage fields
+were 0.0917/0.1129/0.0999 s, with 6 finalized frames and zero online truth use.
+The combined finalization changed from 116.5624 s to 7.7377 s, but that field
+includes D3, D4, and D5 and is not a D3-only result.
+
+This rerun changed no AirSim setting, actor, camera, adapter, control command,
+or episode sequence, and it must not be cited as AirSim evidence. Formal
+900-episode generation, model training, and at least 20 unseen-seed evaluation
+remain open. D3 tests collected 255 cases and returned `254 passed, 1 skipped`;
+the skip is the optional OR-Tools dependency.

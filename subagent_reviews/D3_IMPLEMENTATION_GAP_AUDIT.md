@@ -480,7 +480,7 @@ benchmark。上述关闭项是 D3 software contract，不把模型提案升级�
 | 构造后可变状态逃逸校验 | fail-closed closed | writer 重新校验 mask/shape/finite/anonymous schema；真值键和 mask 篡改均拒绝 |
 | schema/content/hash 漂移 | deterministic closed | expected legacy semantic bytes 与优化输出完全相同；正逆序、frame SHA、manifest 回归通过 |
 | D3 finalization 峰值 | improved, not zero-copy | 匹配 cProfile/Tracemalloc 14,575,699 -> 12,725,690 B，下降 12.69% |
-| 74-76 s 总 staging 归因 | cross-module P1 open | D3 六帧完整导出阶段约 0.87 s；main 必须用 D3/D4/D5 分项 wall fields 定位其余耗时 |
+| 联合 staging 的 D3 归因 | closed by clean-tree integration evidence | postopt 三 seed 的 D3 stage 为 0.0917/0.1129/0.0999 s；其余耗时不归入 D3 |
 | JSON `tolist/dumps` | residual P2 optimization | 已为主要热点；无新依赖和无格式变化条件下保留，后续只能 optional adapter 对照 |
 | 正式数据/模型准入 | P1 open/unavailable | 仍缺正式连续数据、训练、>=20 未见 seed、shadow 非退化和 assist promotion |
 
@@ -494,3 +494,21 @@ OR-Tools，零失败达到门限。
 `AIRSIM_INTEGRATION_PLAN.md` 仅纠正 main 已采用 iterator 并记录未运行 AirSim；没有改变
 settings、actor、camera、control 或 episode 合同。M-to-N 算法和成员合同未变化，因此
 `D3_M_TO_N_ASSIGNMENT_AND_SCHEDULING_REVIEW.md` 检查后无需修改。
+
+## 26. Clean-tree 200v200 复测 GAP 更新（2026-07-20）
+
+| GAP/能力 | 当前状态 | 证据与剩余边界 |
+|---|---|---|
+| D3 优化是否进入 main 生成链 | closed | producer commit `4052d9411363c39d52100c0e3a4f60ee88443cab`；`repository_dirty=false` |
+| D3 stage 归因 | closed | seed 930/931/932 分别为 0.0917/0.1129/0.0999 s；不是此前 74-76 s 联合耗时来源 |
+| D3 数据收口 | closed for probe | 6 帧正常最终化，train/validation/test 各 2 帧；在线 truth 使用为 0 |
+| 联合 finalization 归因 | protected/open by owner | 总值 `116.5624 -> 7.7377 s` 同时包含 D3/D4/D5，不能全部归因 D3 |
+| 正式 900-episode 生成 | P1 open | 当前仅 nominal 200v200 三 seed、每 seed 2 s；`formal=false` |
+| 正式训练和晋级 | P1 open/unavailable | 尚无正式 BC/PPO 权重、>=20 未见 seed paired shadow、非退化结论或 assist promotion |
+
+同一对照中，总生成 `467.8007 -> 262.2866 s`，artifact stage
+`225.9243 -> 126.4682 s`，episode run `125.2205 -> 127.9871 s`。这些总量用于确认集成
+效果，不替代模块归因。D3-owned 重复编码/最终化性能缺口保持关闭；本轮没有新增 P0。
+
+模块 README、PLAN、五份指定主题文档、D3 review/GAP 已同步检查。M-to-N 需求槽、联盟
+成员和调度合同没有变化，专项 M-to-N review 无需修改。

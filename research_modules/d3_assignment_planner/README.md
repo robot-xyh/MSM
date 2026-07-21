@@ -774,9 +774,19 @@ finalization 仍先验证每个 `LearningFrameRecord` 的当前数组、掩码�
 
 当前 top-32 帧约 2.20 MB；九场景 D3 正式帧证据总计约 27.86 MB，数据内容和存储量按
 要求未压缩或删减。模块局部测得的六帧构造、首次编码、逐行读取和 finalization 合计约
-0.87 s，不能把 main 记录的 D3/D4/D5 每 episode 74-76 s 全部归因于 D3。后续应使用
-main 已记录的 `d3_stage_wall_s`、`d4_stage_wall_s`、`d5_graph_stage_wall_s` 和
-`d5_active_vision_stage_wall_s` 分模块分析。
+0.87 s，不能把 main 记录的 D3/D4/D5 总耗时全部归因于 D3。
+
+main 随后在干净工作树上复跑 nominal 200v200、seed 930/931/932、每个 episode 2 s。
+优化后产物由 commit `4052d9411363c39d52100c0e3a4f60ee88443cab` 生成，清单记录
+`repository_dirty=false`。总生成耗时由 467.8007 s 降至 262.2866 s，artifact staging
+由 225.9243 s 降至 126.4682 s，总 finalization 由 116.5624 s 降至 7.7377 s；episode
+run 为 125.2205 s 与 127.9871 s，基本未变。这里的总 finalization 同时包含 D3、D4、D5，
+不能作为 D3 单模块耗时。
+
+分项记录给出的 D3 stage 分别为 0.0917 s、0.1129 s、0.0999 s。D3 数据集共 6 帧，
+train/validation/test 各 2 帧，正常最终化，在线真值使用为 0。该证据关闭 D3-owned
+重复编码和最终化热点及其跨模块归因问题，但不是正式 900-episode 生成、模型训练、
+至少 20 个未见 seed 评估或 AirSim 结果。
 
 可复现命令：
 

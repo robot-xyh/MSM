@@ -58,3 +58,9 @@ payload sidecar 和 SQLite key/offset 索引。top-32 六帧 finalization 中位
 降至 0.244 s，输出字节、schema 和 hash 不变。最新全量收集 255 项，结果为
 `254 passed, 1 skipped`。详细数据见 `EXPERIMENT_REPORT.md`；该结果没有运行 AirSim，
 也不能解释 D3/D4/D5 组合 staging 的全部耗时。
+
+main 随后完成 clean-tree nominal 200v200 三 seed 集成复测。优化后 D3 stage 为
+0.0917/0.1129/0.0999 s，6 帧正常最终化且在线真值使用为 0；总生成由 467.8007 s 降至
+262.2866 s。联合 finalization 由 116.5624 s 降至 7.7377 s，但该字段汇总 D3/D4/D5，
+不能全部归因 D3。`EXPERIMENT_REPORT.md` 记录完整对照，`PLAN.md` 与 GAP 记录正式
+900 episode、训练和至少 20 个未见 seed 评估仍开放。

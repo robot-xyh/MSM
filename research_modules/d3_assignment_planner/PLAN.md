@@ -885,8 +885,8 @@ promotion、可抢占 timeout、AirSim 模型收益或 200v200 全栈学习性�
 ### 下一步与边界
 
 - 当前 main 已逐行调用 `iter_learning_frame_records()`；D3 调用侧全量 materialization
-  缺口不再开放。main 仍需按 `d3_stage_wall_s`、D4 和 D5 分项计时定位每 episode
-  74-76 s 的其余来源，D3 模块结果不能替代这项跨模块归因。
+  缺口不再开放。clean-tree 复测也已写出 D3、D4、D5 分项计时，D3 stage 为
+  0.0917/0.1129/0.0999 s。D3-owned 重复编码/最终化及跨模块归因缺口均已关闭。
 - top-32 canonical 帧约 2.20 MB，九场景 D3 数据约 27.86 MB。无 schema/content 变化条件
   下不删除 dense rule matrix、mask 或候选特征；正式 900-episode 容量由 main gate 决定。
 - 标准库 `tolist()` 与 `json.dumps()` 已成为剩余主要 CPU 路径。后续若研究更快编码器，
@@ -896,3 +896,26 @@ promotion、可抢占 timeout、AirSim 模型收益或 200v200 全栈学习性�
 
 本批 D3 全量收集 255 项，结果 `254 passed, 1 skipped`；唯一 skip 为 optional
 OR-Tools，零失败满足门限。
+
+## 27. Clean-tree 200v200 复测状态（2026-07-20）
+
+### 已完成
+
+1. main 使用 nominal 200v200、seed 930/931/932、每 seed 2 s，在干净工作树复跑三
+   episode。优化后 producer commit 为
+   `4052d9411363c39d52100c0e3a4f60ee88443cab`，manifest 记录
+   `repository_dirty=false`。
+2. 基线到优化后，总耗时为 `467.8007 -> 262.2866 s`，artifact stage 为
+   `225.9243 -> 126.4682 s`，联合 finalization 为 `116.5624 -> 7.7377 s`，episode run
+   为 `125.2205 -> 127.9871 s`。
+3. D3 分项 stage 为 `0.0917/0.1129/0.0999 s`。6 帧数据正常最终化，三个 split 各 2 帧，
+   `online_truth_use_count=0`。这组结果证明 D3 导出优化进入 main 真实三维质点生成链路，
+   不再只依赖模块微基准。
+
+### 下一步
+
+- 联合 finalization 同时收口 D3、D4、D5，7.7377 s 的改善不能全部计入 D3。
+- 不再继续改 D3 默认 JSON schema 或 Hungarian 主线来追逐联合阶段耗时。标准库
+  `tolist/json.dumps` 只保留为 P2 optional adapter 研究项。
+- 900 episode 正式 schedule、正式 BC/PPO 训练、至少 20 个未见 seed 的 paired shadow
+  非退化评估和 assist promotion 仍未完成，继续作为 P1 主线。

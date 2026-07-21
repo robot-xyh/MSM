@@ -543,3 +543,43 @@ SHA 和 manifest。构造后篡改 mask 或注入真值键仍在写正式文件�
 
 新增确定性和微基准结构测试后，D3 全量收集 255 项，结果为
 `254 passed, 1 skipped`；唯一 skip 是 optional OR-Tools，零失败满足门限。
+
+## 2026-07-20 Clean-tree 200v200 三 seed 复测
+
+### 设置
+
+main 使用 nominal 200v200 配置运行 seed 930、931、932，每个 episode 时长 2 s。基线产物
+为 `capacity_probe_v2/nominal_timed`，优化后产物为
+`capacity_probe_v2/nominal_timed_postopt`。优化后 producer commit 为
+`4052d9411363c39d52100c0e3a4f60ee88443cab`，生成计划与汇总均记录
+`repository_dirty=false`。该批 `formal=false`，用于容量与耗时复核。
+
+### 总体结果
+
+| 指标 | 基线 | 优化后 | 变化 |
+|---|---:|---:|---:|
+| episode run | 125.2205 s | 127.9871 s | +2.7666 s |
+| artifact staging | 225.9243 s | 126.4682 s | -99.4561 s |
+| D3/D4/D5 联合 finalization | 116.5624 s | 7.7377 s | -108.8247 s |
+| 总生成 | 467.8007 s | 262.2866 s | -205.5141 s |
+
+episode run 基本保持，时间下降集中在 staging 和联合 finalization。联合 finalization 是
+D3、D4、D5 的汇总字段，不能全部归因于 D3。
+
+### D3 分项
+
+| seed | D3 stage | 导出帧数 | 在线真值使用 |
+|---:|---:|---:|---:|
+| 930 | 0.0917 s | 2 | 0 |
+| 931 | 0.1129 s | 2 | 0 |
+| 932 | 0.0999 s | 2 | 0 |
+
+D3 最终数据集共 6 帧，train、validation、test 各 2 帧，manifest 正常生成。该结果证明
+D3-owned 重复编码和最终化热点已经关闭，并已在 main 的三维质点生成链中生效。它没有
+证明模型收益、AirSim 性能或物理拦截效果。
+
+### 剩余工作
+
+正式 900-episode schedule 尚未执行。正式 BC/PPO 权重、至少 20 个未见 seed 的 paired
+shadow 非退化评估和 assist promotion 也未完成。后续报告必须继续分别列出 D3 stage 与
+联合 finalization，避免跨模块误归因。

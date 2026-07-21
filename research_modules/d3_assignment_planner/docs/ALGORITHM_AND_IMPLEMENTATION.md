@@ -1444,3 +1444,26 @@ SQLite 不再保存 2.20 MB payload text，也不在最终排序阶段执行
 1.71×、dataset finalize 3.74×；匹配 cProfile/Tracemalloc 峰值降低 12.69%。标准库 JSON
 编码和 NumPy `tolist()` 是剩余主要热点。本批全量为 `254 passed, 1 skipped`，默认
 Hungarian、学习公式、plan version 与安全门控均未改变。
+
+## 34. Clean-tree 三维生成链验证（2026-07-20）
+
+main 使用 nominal 200v200 配置连续生成 seed 930、931、932，每个 episode 仿真 2 s。
+优化前后使用同一场景口径；优化后 producer commit 为
+`4052d9411363c39d52100c0e3a4f60ee88443cab`，清单记录工作树干净。
+
+| 计时字段 | 优化前 | 优化后 |
+|---|---:|---:|
+| `episode_run_wall_s` | 125.2205 s | 127.9871 s |
+| `artifact_stage_wall_s` | 225.9243 s | 126.4682 s |
+| `finalization_wall_s` | 116.5624 s | 7.7377 s |
+| `generation_wall_s` | 467.8007 s | 262.2866 s |
+
+每个 episode 的 D3 stage 分别为 0.0917/0.1129/0.0999 s。writer 最终得到 6 帧，按数值
+seed 原子切分为 train、validation、test 各 2 帧；数据集 schema 为
+`d3_learning_dataset_v2`，在线真值使用为 0。该结果验证了单次编码、offset 索引和受控
+split 替换已用于 main 的实际三维质点生成链。
+
+`finalization_wall_s` 是 D3、D4、D5 数据集收口的联合计时。它从 116.5624 s 降到
+7.7377 s 的变化不能由 D3 单独认领；D3 的直接耗时证据是三个 `d3_stage_wall_s`。
+这次运行也没有训练模型、运行 AirSim 或证明 assignment 收益。900 episode 正式生成、
+正式 BC/PPO 和至少 20 个未见 seed 的 shadow 评估仍未完成。
