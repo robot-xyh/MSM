@@ -18,8 +18,10 @@ import os
 from pathlib import Path
 import re
 import stat
+import threading
 from types import MappingProxyType
 from typing import Any, Iterable, Iterator, Mapping, Sequence
+import weakref
 
 import numpy as np
 
@@ -62,6 +64,7 @@ ACTIVE_VISION_OFFLINE_LABEL_SCHEMA_VERSION = "d5.active-vision-offline-label.v1"
 ACTIVE_VISION_SOURCE_IDENTITY_SCHEMA_VERSION = "d5.active-vision-source-identity.v1"
 ACTIVE_VISION_DATASET_CONFIG_SCHEMA_VERSION = "d5.active-vision-dataset-config.v1"
 ACTIVE_VISION_ONLINE_STORAGE_LAYOUT = "deduplicated-reference-stream-jsonl-gzip-v1"
+ACTIVE_VISION_GZIP_COMPRESSLEVEL = 6
 
 _SHA256_PATTERN = re.compile(r"[0-9a-f]{64}")
 _GIT_COMMIT_PATTERN = re.compile(r"(?:[0-9a-f]{40}|[0-9a-f]{64})")
@@ -132,6 +135,36 @@ class _RecordedDecisionStateAudit:
     effective_action: ActiveVisionActionV1
     rule_demonstration_action: ActiveVisionActionV1
     fallback_reason: str | None
+
+
+@dataclass(frozen=True)
+class _SnapshotReferenceIndex:
+    center_ids: frozenset[str]
+    camera_by_id: Mapping[str, ActiveVisionCameraState]
+    assigned_target_ids_by_camera: Mapping[str, frozenset[str]]
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "camera_by_id", MappingProxyType(dict(self.camera_by_id)))
+        object.__setattr__(
+            self,
+            "assigned_target_ids_by_camera",
+            MappingProxyType(dict(self.assigned_target_ids_by_camera)),
+        )
+
+
+@dataclass(frozen=True)
+class _PreparedStreamObject:
+    kind: str
+    object_key: str
+    payload: Mapping[str, Any]
+    canonical_payload: bytes
+
+
+_SNAPSHOT_REFERENCE_CACHE_LOCK = threading.RLock()
+_SNAPSHOT_REFERENCE_CACHE: dict[
+    int,
+    tuple[weakref.ReferenceType[ActiveVisionSnapshotV1], _SnapshotReferenceIndex],
+] = {}
 
 
 @dataclass(frozen=True)
@@ -253,8 +286,10 @@ class ActiveVisionEpisodeSampleV2:
         object.__setattr__(self, "fallback_reason", fallback or None)
         if not isinstance(self.snapshot, ActiveVisionSnapshotV1):
             raise TypeError("snapshot must be ActiveVisionSnapshotV1")
-        camera = self.snapshot.camera(self.camera_id)
-        _validate_snapshot_center_references(self.snapshot)
+        snapshot_index = _validate_snapshot_center_references(self.snapshot)
+        camera = snapshot_index.camera_by_id.get(self.camera_id)
+        if camera is None:
+            raise ValueError("camera_id is not a member of the active-vision snapshot")
         versions = (
             self.snapshot.plan.plan_version,
             self.snapshot.plan.coalition_version,
@@ -280,6 +315,7 @@ class ActiveVisionEpisodeSampleV2:
                 self.camera_id,
                 require_current_versions=True,
                 field_name=name,
+                snapshot_index=snapshot_index,
             )
         if self.requested_action is not None:
             _validate_action_reference(
@@ -288,6 +324,7 @@ class ActiveVisionEpisodeSampleV2:
                 self.camera_id,
                 require_current_versions=False,
                 field_name="requested_action",
+                snapshot_index=snapshot_index,
             )
         candidate_keys = {
             action.action_key
@@ -329,7 +366,7 @@ class ActiveVisionEpisodeSampleV2:
             accepted_version = feedback.last_accepted_command_version
             if ack.accepted and accepted_version is not None and ack.command_version != accepted_version:
                 raise ValueError("accepted runtime ACK disagrees with camera feedback version")
-        assert_truth_free_active_vision_payload(self)
+        _assert_sample_components_truth_free(self)
 
 
 @dataclass(frozen=True)
@@ -367,6 +404,7 @@ class ActiveVisionEpisodeRecordV2:
             raise ValueError("episode sample timestamps must be non-decreasing")
         previous_versions = (-1, -1, -1)
         center_track_state: dict[str, tuple[int, float]] = {}
+        previous_snapshot: ActiveVisionSnapshotV1 | None = None
         for sample in samples:
             versions = (
                 sample.plan_version,
@@ -376,17 +414,21 @@ class ActiveVisionEpisodeRecordV2:
             if any(current < previous for current, previous in zip(versions, previous_versions)):
                 raise ValueError("episode plan/coalition/communication versions must not decrease")
             previous_versions = versions
-            for track in sample.snapshot.tracks:
-                previous = center_track_state.get(track.global_track_id)
-                if previous is not None and (
-                    track.track_version < previous[0]
-                    or track.measurement_timestamp + 1.0e-9 < previous[1]
-                ):
-                    raise ValueError("center-owned track reference regressed within the episode")
-                center_track_state[track.global_track_id] = (
-                    track.track_version,
-                    track.measurement_timestamp,
-                )
+            if sample.snapshot is not previous_snapshot:
+                for track in sample.snapshot.tracks:
+                    previous = center_track_state.get(track.global_track_id)
+                    if previous is not None and (
+                        track.track_version < previous[0]
+                        or track.measurement_timestamp + 1.0e-9 < previous[1]
+                    ):
+                        raise ValueError(
+                            "center-owned track reference regressed within the episode"
+                        )
+                    center_track_state[track.global_track_id] = (
+                        track.track_version,
+                        track.measurement_timestamp,
+                    )
+                previous_snapshot = sample.snapshot
         object.__setattr__(self, "scenario_version", scenario)
         object.__setattr__(self, "seed", int(self.seed))
         object.__setattr__(self, "episode_id", episode)
@@ -1260,32 +1302,38 @@ def _write_episode_record_stream_atomic(
     record: ActiveVisionEpisodeRecordV1,
 ) -> _OnlineEpisodeAudit:
     snapshot_key_by_identity: dict[int, str] = {}
-    snapshot_payloads: dict[str, Mapping[str, Any]] = {}
+    snapshot_objects: dict[str, _PreparedStreamObject] = {}
     samples_by_snapshot: dict[
         str, list[tuple[ActiveVisionEpisodeSampleV1, str]]
     ] = {}
     feedback_key_by_identity: dict[int, str] = {}
-    feedback_payloads: dict[str, Mapping[str, Any]] = {}
+    feedback_objects: dict[str, _PreparedStreamObject] = {}
     sample_index: list[dict[str, Any]] = []
 
     for sample in record.samples:
         snapshot_identity = id(sample.snapshot)
         snapshot_key = snapshot_key_by_identity.get(snapshot_identity)
         if snapshot_key is None:
+            # Revalidate at the persistence boundary without using the immutable
+            # in-process cache.  A caller that bypassed frozen dataclass semantics
+            # cannot smuggle a changed center identity into the online artifact.
+            _validate_snapshot_center_references(sample.snapshot, force=True)
             snapshot_payload = _snapshot_to_payload(sample.snapshot)
-            _assert_online_truth_free(snapshot_payload)
-            snapshot_key = _stream_object_key("snapshot", snapshot_payload)
+            prepared_snapshot = _prepare_stream_object("snapshot", snapshot_payload)
+            snapshot_key = prepared_snapshot.object_key
             snapshot_key_by_identity[snapshot_identity] = snapshot_key
-            snapshot_payloads.setdefault(snapshot_key, snapshot_payload)
+            snapshot_objects.setdefault(snapshot_key, prepared_snapshot)
 
         feedback_identity = id(sample.camera_feedback)
         feedback_key = feedback_key_by_identity.get(feedback_identity)
         if feedback_key is None:
             feedback_payload = _feedback_to_payload(sample.camera_feedback)
-            _assert_online_truth_free(feedback_payload)
-            feedback_key = _stream_object_key("camera-feedback", feedback_payload)
+            prepared_feedback = _prepare_stream_object(
+                "camera-feedback", feedback_payload
+            )
+            feedback_key = prepared_feedback.object_key
             feedback_key_by_identity[feedback_identity] = feedback_key
-            feedback_payloads.setdefault(feedback_key, feedback_payload)
+            feedback_objects.setdefault(feedback_key, prepared_feedback)
 
         samples_by_snapshot.setdefault(snapshot_key, []).append((sample, feedback_key))
         sample_index.append(
@@ -1308,8 +1356,8 @@ def _write_episode_record_stream_atomic(
         "record_type": "footer",
         "schema_version": record.schema_version,
         "sample_count": len(record.samples),
-        "unique_snapshot_count": len(snapshot_payloads),
-        "unique_camera_feedback_count": len(feedback_payloads),
+        "unique_snapshot_count": len(snapshot_objects),
+        "unique_camera_feedback_count": len(feedback_objects),
         "sample_index_sha256": sha256_json(sample_index),
     }
 
@@ -1320,39 +1368,25 @@ def _write_episode_record_stream_atomic(
             with gzip.GzipFile(
                 filename="",
                 mode="wb",
-                compresslevel=6,
+                compresslevel=ACTIVE_VISION_GZIP_COMPRESSLEVEL,
                 fileobj=raw_handle,
                 mtime=0,
             ) as stream:
                 _write_episode_stream_row(stream, header)
-                for feedback_key, feedback_payload in feedback_payloads.items():
-                    _expect_equal(
-                        _stream_object_key("camera-feedback", feedback_payload),
-                        feedback_key,
-                        "camera_feedback_key_mismatch",
-                    )
-                    _write_episode_stream_row(
+                for feedback_key, feedback_object in feedback_objects.items():
+                    _expect_equal(feedback_object.object_key, feedback_key, "camera_feedback_key_mismatch")
+                    _write_prepared_stream_object_row(
                         stream,
-                        {
-                            "record_type": "camera_feedback",
-                            "object_key": feedback_key,
-                            "value": feedback_payload,
-                        },
+                        record_type="camera_feedback",
+                        prepared=feedback_object,
                     )
                 for snapshot_key, grouped_samples in samples_by_snapshot.items():
-                    snapshot_payload = snapshot_payloads[snapshot_key]
-                    _expect_equal(
-                        _stream_object_key("snapshot", snapshot_payload),
-                        snapshot_key,
-                        "snapshot_key_mismatch",
-                    )
-                    _write_episode_stream_row(
+                    snapshot_object = snapshot_objects[snapshot_key]
+                    _expect_equal(snapshot_object.object_key, snapshot_key, "snapshot_key_mismatch")
+                    _write_prepared_stream_object_row(
                         stream,
-                        {
-                            "record_type": "snapshot",
-                            "object_key": snapshot_key,
-                            "value": snapshot_payload,
-                        },
+                        record_type="snapshot",
+                        prepared=snapshot_object,
                     )
                     for sample, feedback_key in grouped_samples:
                         _write_episode_stream_row(
@@ -1377,14 +1411,72 @@ def _write_episode_record_stream_atomic(
         synthetic_fixture=record.synthetic_fixture,
         sample_keys={sample.sample_key: sample.observation_key for sample in record.samples},
         sample_count=len(record.samples),
-        unique_snapshot_count=len(snapshot_payloads),
-        unique_camera_feedback_count=len(feedback_payloads),
+        unique_snapshot_count=len(snapshot_objects),
+        unique_camera_feedback_count=len(feedback_objects),
     )
 
 
 def _write_episode_stream_row(stream: Any, payload: Mapping[str, Any]) -> None:
     _assert_online_truth_free(payload)
     stream.write(_canonical_json_bytes(payload))
+
+
+def _prepare_stream_object(
+    kind: str,
+    payload: Mapping[str, Any],
+) -> _PreparedStreamObject:
+    _assert_online_truth_free(payload)
+    canonical_payload = _canonical_json_bytes(payload)
+    object_key = f"{kind}-sha256-{hashlib.sha256(canonical_payload).hexdigest()}"
+    return _PreparedStreamObject(
+        kind=kind,
+        object_key=object_key,
+        payload=payload,
+        canonical_payload=canonical_payload,
+    )
+
+
+def _write_prepared_stream_object_row(
+    stream: Any,
+    *,
+    record_type: str,
+    prepared: _PreparedStreamObject,
+) -> None:
+    expected_key = (
+        f"{prepared.kind}-sha256-"
+        f"{hashlib.sha256(prepared.canonical_payload).hexdigest()}"
+    )
+    mismatch_code = (
+        "snapshot_key_mismatch"
+        if prepared.kind == "snapshot"
+        else "camera_feedback_key_mismatch"
+    )
+    _expect_equal(prepared.object_key, expected_key, mismatch_code)
+    value_bytes = prepared.canonical_payload
+    if not value_bytes.endswith(b"\n"):
+        raise ActiveVisionDatasetValidationError(
+            "prepared_stream_object_invalid",
+            "prepared stream object is not canonical newline-terminated JSON",
+        )
+    row = (
+        b'{"object_key":'
+        + _canonical_json_scalar_bytes(prepared.object_key)
+        + b',"record_type":'
+        + _canonical_json_scalar_bytes(record_type)
+        + b',"value":'
+        + value_bytes[:-1]
+        + b"}\n"
+    )
+    stream.write(row)
+
+
+def _canonical_json_scalar_bytes(value: str) -> bytes:
+    return json.dumps(
+        str(value),
+        ensure_ascii=True,
+        allow_nan=False,
+        separators=(",", ":"),
+    ).encode("utf-8")
 
 
 def _read_episode_record_stream(
@@ -1530,8 +1622,7 @@ def _read_episode_record_stream(
                             "online stream contains a duplicate snapshot object",
                         )
                     current_snapshot = _snapshot_from_payload(snapshot_payload)
-                    if not materialize:
-                        _validate_snapshot_center_references(current_snapshot)
+                    _validate_snapshot_center_references(current_snapshot)
                     current_snapshot_key = snapshot_key
                     current_snapshot_sample_count = 0
                     snapshot_keys.add(snapshot_key)
@@ -3320,8 +3411,21 @@ def _ppo_episode(item: LoadedActiveVisionEpisode) -> ActiveVisionResearchEpisode
     )
 
 
-def _validate_snapshot_center_references(snapshot: ActiveVisionSnapshotV1) -> None:
-    center_ids = {item.global_track_id for item in snapshot.tracks}
+def _validate_snapshot_center_references(
+    snapshot: ActiveVisionSnapshotV1,
+    *,
+    force: bool = False,
+) -> _SnapshotReferenceIndex:
+    if not isinstance(snapshot, ActiveVisionSnapshotV1):
+        raise TypeError("snapshot must be ActiveVisionSnapshotV1")
+    identity = id(snapshot)
+    if not force:
+        with _SNAPSHOT_REFERENCE_CACHE_LOCK:
+            cached = _SNAPSHOT_REFERENCE_CACHE.get(identity)
+            if cached is not None and cached[0]() is snapshot:
+                return cached[1]
+
+    center_ids = frozenset(item.global_track_id for item in snapshot.tracks)
     for track_id in center_ids:
         try:
             assert_truth_free_active_vision_payload({"opaque_center_reference": track_id})
@@ -3346,6 +3450,40 @@ def _validate_snapshot_center_references(snapshot: ActiveVisionSnapshotV1) -> No
             f"snapshot contains unknown center global_track_id references: {sorted(unknown)}",
         )
 
+    camera_by_id = {item.camera_id: item for item in snapshot.cameras}
+    assigned_target_ids_by_camera: dict[str, set[str]] = {
+        camera_id: set() for camera_id in camera_by_id
+    }
+    for assignment in snapshot.plan.assignments:
+        assigned_target_ids_by_camera[assignment.camera_id].add(
+            assignment.global_track_id
+        )
+    index = _SnapshotReferenceIndex(
+        center_ids=center_ids,
+        camera_by_id=camera_by_id,
+        assigned_target_ids_by_camera={
+            camera_id: frozenset(target_ids)
+            for camera_id, target_ids in assigned_target_ids_by_camera.items()
+        },
+    )
+    if force:
+        return index
+
+    def remove_cached_snapshot(
+        reference: weakref.ReferenceType[ActiveVisionSnapshotV1],
+        *,
+        cached_identity: int = identity,
+    ) -> None:
+        with _SNAPSHOT_REFERENCE_CACHE_LOCK:
+            current = _SNAPSHOT_REFERENCE_CACHE.get(cached_identity)
+            if current is not None and current[0] is reference:
+                _SNAPSHOT_REFERENCE_CACHE.pop(cached_identity, None)
+
+    reference = weakref.ref(snapshot, remove_cached_snapshot)
+    with _SNAPSHOT_REFERENCE_CACHE_LOCK:
+        _SNAPSHOT_REFERENCE_CACHE[identity] = (reference, index)
+    return index
+
 
 def _validate_action_reference(
     action: ActiveVisionActionV1,
@@ -3354,12 +3492,18 @@ def _validate_action_reference(
     *,
     require_current_versions: bool,
     field_name: str,
+    snapshot_index: _SnapshotReferenceIndex | None = None,
 ) -> None:
     if not isinstance(action, ActiveVisionActionV1):
         raise TypeError(f"{field_name} must be ActiveVisionActionV1")
     if action.camera_id != camera_id:
         raise ValueError(f"{field_name} camera does not match the sample")
-    center_ids = {item.global_track_id for item in snapshot.tracks}
+    index = (
+        _validate_snapshot_center_references(snapshot)
+        if snapshot_index is None
+        else snapshot_index
+    )
+    center_ids = index.center_ids
     target_id = action.target_global_track_id
     if target_id is not None:
         if target_id not in center_ids:
@@ -3367,7 +3511,9 @@ def _validate_action_reference(
                 "unknown_center_reference",
                 f"{field_name} references an unknown center global_track_id",
             )
-        if target_id not in set(snapshot.assigned_target_ids(camera_id)):
+        if target_id not in index.assigned_target_ids_by_camera.get(
+            camera_id, frozenset()
+        ):
             raise ActiveVisionDatasetValidationError(
                 "global_track_id_local_rewrite",
                 f"{field_name} locally rebinds a center global_track_id",
@@ -3382,6 +3528,31 @@ def _validate_action_reference(
         snapshot.communication.communication_version,
     ):
         raise ValueError(f"{field_name} versions do not match the center snapshot")
+
+
+def _assert_sample_components_truth_free(sample: ActiveVisionEpisodeSampleV1) -> None:
+    """Audit per-camera fields without rescanning the frozen shared snapshot."""
+
+    assert_truth_free_active_vision_payload(
+        {
+            "schema_version": sample.schema_version,
+            "sample_key": sample.sample_key,
+            "observation_key": sample.observation_key,
+            "sequence_index": sample.sequence_index,
+            "camera_id": sample.camera_id,
+            "rule_demonstration_action": sample.rule_demonstration_action,
+            "requested_action": sample.requested_action,
+            "effective_action": sample.effective_action,
+            "requested_mode": sample.requested_mode,
+            "effective_mode": sample.effective_mode,
+            "fallback_reason": sample.fallback_reason,
+            "plan_version": sample.plan_version,
+            "coalition_version": sample.coalition_version,
+            "communication_version": sample.communication_version,
+            "camera_feedback": sample.camera_feedback,
+            "runtime_ack": sample.runtime_ack,
+        }
+    )
 
 
 def _validate_recorded_decision_state(sample: ActiveVisionEpisodeSampleV2) -> None:

@@ -1,0 +1,66 @@
+         8699541 function calls (8318120 primitive calls) in 1.982 seconds
+
+   Ordered by: cumulative time
+   List reduced from 430 to 60 due to restriction <60>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+        1    0.000    0.000    2.008    2.008 profile_active_vision_episode_staging.py:222(run_once)
+     6123    0.004    0.000    1.378    0.000 active_vision_contracts.py:1179(assert_truth_free_active_vision_payload)
+307438/6123    0.316    0.000    1.374    0.000 active_vision_contracts.py:1185(visit)
+        3    0.007    0.002    1.351    0.450 active_vision_episode_dataset.py:1482(_read_episode_record_stream)
+11564/7349    0.008    0.000    1.131    0.000 profile_active_vision_episode_staging.py:227(tracked)
+     2015    0.001    0.000    0.661    0.000 active_vision_episode_dataset.py:2171(_assert_online_truth_free)
+   252315    0.105    0.000    0.634    0.000 active_vision_contracts.py:1406(_forbidden_input_key)
+        1    0.000    0.000    0.624    0.624 active_vision_episode_dataset.py:970(load_active_vision_episode_record)
+   253330    0.123    0.000    0.501    0.000 {built-in method builtins.any}
+     1209    0.003    0.000    0.456    0.000 active_vision_episode_dataset.py:1823(_read_episode_stream_row)
+  2018520    0.216    0.000    0.377    0.000 active_vision_contracts.py:1407(<genexpr>)
+        1    0.000    0.000    0.365    0.365 active_vision_episode_dataset.py:985(audit_active_vision_episode_record)
+        1    0.000    0.000    0.364    0.364 active_vision_episode_dataset.py:736(stage_active_vision_offline_labels)
+        1    0.002    0.002    0.350    0.350 profile_active_vision_episode_staging.py:60(build_fixture)
+      400    0.005    0.000    0.314    0.001 active_vision_episode_dataset.py:273(__post_init__)
+        2    0.000    0.000    0.301    0.150 active_vision_episode_dataset.py:688(stage_active_vision_episode_record)
+        2    0.002    0.001    0.298    0.149 active_vision_episode_dataset.py:1300(_write_episode_record_stream_atomic)
+      800    0.011    0.000    0.247    0.000 active_vision_contracts.py:967(enumerate_safe_action_candidates)
+        2    0.000    0.000    0.234    0.117 active_vision_episode_dataset.py:384(__post_init__)
+      200    0.001    0.000    0.210    0.001 active_vision_episode_dataset.py:1877(_sample_from_reference_payload)
+   252315    0.115    0.000    0.207    0.000 active_vision_contracts.py:1421(_normalise_key)
+        3    0.003    0.001    0.193    0.064 active_vision_episode_dataset.py:2312(_snapshot_from_payload)
+        4    0.000    0.000    0.174    0.044 active_vision_contracts.py:332(__post_init__)
+      400    0.006    0.000    0.162    0.000 active_vision_episode_dataset.py:1944(_audit_sample_reference_payload)
+  1767505    0.161    0.000    0.161    0.000 {method 'endswith' of 'str' objects}
+      400    0.001    0.000    0.155    0.000 active_vision_episode_dataset.py:3533(_assert_sample_components_truth_free)
+      404    0.000    0.000    0.139    0.000 active_vision_episode_dataset.py:1419(_write_episode_stream_row)
+      402    0.001    0.000    0.137    0.000 active_vision_episode_dataset.py:1424(_prepare_stream_object)
+      200    0.000    0.000    0.126    0.001 active_vision_episode_dataset.py:637(active_vision_sample_from_decision)
+718030/642194    0.069    0.000    0.111    0.000 {built-in method builtins.isinstance}
+      600    0.001    0.000    0.109    0.000 active_vision_episode_dataset.py:2619(_feedback_from_payload)
+      800    0.001    0.000    0.107    0.000 active_vision_episode_dataset.py:201(__post_init__)
+     5800    0.006    0.000    0.079    0.000 active_vision_contracts.py:1288(_action)
+     7600    0.034    0.000    0.078    0.000 active_vision_contracts.py:418(__post_init__)
+     3400    0.013    0.000    0.069    0.000 active_vision_contracts.py:1319(_bounded_delta)
+      801    0.005    0.000    0.063    0.000 active_vision_contracts.py:491(__post_init__)
+     3204    0.036    0.000    0.053    0.000 active_vision_contracts.py:523(<genexpr>)
+    79300    0.052    0.000    0.052    0.000 {method 'search' of 're.Pattern' objects}
+     2631    0.003    0.000    0.050    0.000 active_vision_episode_dataset.py:3755(_canonical_json_bytes)
+    13600    0.007    0.000    0.048    0.000 fromnumeric.py:2245(clip)
+     3435    0.004    0.000    0.048    0.000 __init__.py:183(dumps)
+    37918    0.009    0.000    0.047    0.000 typing.py:1194(__instancecheck__)
+        3    0.030    0.010    0.046    0.015 active_vision_episode_dataset.py:2135(_validate_stream_record_order)
+     1200    0.006    0.000    0.044    0.000 active_vision_episode_dataset.py:2492(_camera_from_payload)
+   504636    0.044    0.000    0.044    0.000 {method 'replace' of 'str' objects}
+     3435    0.003    0.000    0.043    0.000 encoder.py:183(encode)
+     1600    0.013    0.000    0.042    0.000 active_vision_contracts.py:157(__post_init__)
+    13600    0.008    0.000    0.041    0.000 fromnumeric.py:48(_wrapfunc)
+     2631    0.039    0.000    0.039    0.000 encoder.py:205(iterencode)
+      800    0.006    0.000    0.039    0.000 active_vision_contracts.py:223(__post_init__)
+    37918    0.013    0.000    0.038    0.000 typing.py:1465(__subclasscheck__)
+    70219    0.037    0.000    0.037    0.000 active_vision_contracts.py:1425(_finite)
+      500    0.002    0.000    0.034    0.000 active_vision_episode_dataset.py:230(__post_init__)
+     4803    0.012    0.000    0.033    0.000 active_vision_contracts.py:1446(_sector)
+    13600    0.011    0.000    0.032    0.000 fromnumeric.py:38(_wrapit)
+   253634    0.029    0.000    0.029    0.000 {method 'startswith' of 'str' objects}
+     1800    0.006    0.000    0.028    0.000 active_vision_episode_dataset.py:2566(_action_from_payload)
+     1605    0.003    0.000    0.027    0.000 active_vision_episode_dataset.py:3414(_validate_snapshot_center_references)
+   252334    0.026    0.000    0.026    0.000 {method 'lower' of 'str' objects}
+    12122    0.015    0.000    0.026    0.000 dataclasses.py:1271(fields)

@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections import Counter
 from dataclasses import replace
 import gzip
+import hashlib
 import json
 from pathlib import Path
 import stat
@@ -435,6 +436,87 @@ def test_high_cardinality_stream_deduplicates_snapshot_and_scales_near_linearly(
     assert compressed_large / compressed_small < 6.0
     assert deduplicated_large < legacy_large * 0.15
     assert compressed_large < legacy_large * 0.05
+
+
+def test_200_camera_writer_is_deterministic_byte_equivalent_and_bounded_calls(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: Counter[str] = Counter()
+    tracked_names = (
+        "_assert_online_truth_free",
+        "_canonical_json_bytes",
+        "_feedback_to_payload",
+        "_snapshot_to_payload",
+        "_stream_object_key",
+        "assert_truth_free_active_vision_payload",
+        "sha256_file",
+    )
+    for name in tracked_names:
+        original = getattr(episode_dataset_module, name)
+
+        def tracked(*args: object, _name: str = name, _original=original, **kwargs: object):
+            calls[_name] += 1
+            return _original(*args, **kwargs)
+
+        monkeypatch.setattr(episode_dataset_module, name, tracked)
+
+    record = _record(777, camera_count=200, track_count=400)
+    outputs: list[bytes] = []
+    decompressed: list[bytes] = []
+    for suffix in ("a", "b"):
+        root = tmp_path / suffix
+        descriptor = stage_active_vision_episode_record(
+            root,
+            record,
+            generation_config=GENERATION_CONFIG,
+        )
+        encoded = (root / descriptor["online_file"]).read_bytes()
+        outputs.append(encoded)
+        decompressed.append(gzip.decompress(encoded))
+
+    assert outputs[0] == outputs[1]
+    assert decompressed[0] == decompressed[1]
+    assert len(outputs[0]) <= 50_000
+    assert len(decompressed[0]) == 732_814
+    assert hashlib.sha256(decompressed[0]).hexdigest() == (
+        "45d5179e3e79ec12c026c6693737c73fdc546c9b0610214f770b89dbe81409ec"
+    )
+
+    # Two complete writes share one snapshot each and keep every camera feedback.
+    assert calls["_snapshot_to_payload"] == 2
+    assert calls["_feedback_to_payload"] == 400
+    assert calls["_stream_object_key"] == 0
+    assert calls["sha256_file"] == 4
+    assert calls["_canonical_json_bytes"] <= 820
+    assert calls["_assert_online_truth_free"] <= 820
+    # The old per-sample full-snapshot path made more than 80,000 calls for one
+    # build.  The bounded count proves that center identities are checked once
+    # per frozen snapshot while every sample-owned field remains audited.
+    assert calls["assert_truth_free_active_vision_payload"] < 4_000
+
+
+def test_writer_reaudits_snapshot_payload_and_rejects_injected_truth(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    record = _record(778, camera_count=8, track_count=16)
+    original = episode_dataset_module._snapshot_to_payload
+
+    def inject_truth(snapshot: ActiveVisionSnapshotV1) -> dict[str, object]:
+        payload = original(snapshot)
+        payload["truth_entity_id"] = "entity-001"
+        return payload
+
+    monkeypatch.setattr(episode_dataset_module, "_snapshot_to_payload", inject_truth)
+    with pytest.raises(ActiveVisionDatasetValidationError) as exc_info:
+        stage_active_vision_episode_record(
+            tmp_path,
+            record,
+            generation_config=GENERATION_CONFIG,
+        )
+    assert exc_info.value.code == "online_truth_identity_forbidden"
+    assert not tuple((tmp_path / "online").glob("*.online.jsonl.gz"))
 
 
 def test_offline_staging_stream_audits_without_loading_complete_record(

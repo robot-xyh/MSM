@@ -1,0 +1,77 @@
+{
+  "schema_version": "d5.active-vision-staging-profile-comparison.v1",
+  "baseline": {
+    "git_commit": "153ba1ec4dc89903802ac48ede9ef1fa57a68a53",
+    "fixture": {
+      "camera_count": 200,
+      "track_count": 400,
+      "snapshot_count": 1,
+      "sample_count": 200,
+      "seed": 777
+    },
+    "timings_seconds": {
+      "fixture_build": 2.3597288590099197,
+      "online_stage": 0.06344385701231658,
+      "offline_stage": 0.13592182801221497,
+      "materialized_load": 2.394844655995257,
+      "public_audit": 0.1339218569919467
+    },
+    "selected_call_counts": {
+      "fixture_build_truth_audit": 80601,
+      "online_stage_canonical_json": 809,
+      "online_stage_truth_audit": 604,
+      "online_stage_stream_object_key": 402,
+      "online_stage_sha256_file": 2
+    },
+    "online_gzip_bytes": 37001,
+    "online_decompressed_bytes": 732814,
+    "online_gzip_sha256": "b5d1c5e902a93466774ea6dcb851bbd336e500de533832b6be4a44e85f0b28d3",
+    "online_decompressed_sha256": "45d5179e3e79ec12c026c6693737c73fdc546c9b0610214f770b89dbe81409ec"
+  },
+  "optimized": {
+    "working_tree_parent_commit": "153ba1ec4dc89903802ac48ede9ef1fa57a68a53",
+    "repeat_count": 3,
+    "median_timings_seconds": {
+      "fixture_build": 0.10973048300365917,
+      "online_stage": 0.043249614973319694,
+      "offline_stage": 0.1288432210276369,
+      "materialized_load": 0.18018681902321987,
+      "public_audit": 0.12772472100914456
+    },
+    "selected_call_counts_per_run": {
+      "fixture_build_truth_audit": 1001,
+      "online_stage_canonical_json": 407,
+      "online_stage_truth_audit": 403,
+      "online_stage_stream_object_key": 0,
+      "online_stage_sha256_file": 2
+    },
+    "online_gzip_bytes": 37001,
+    "online_decompressed_bytes": 732814,
+    "online_gzip_sha256": "b5d1c5e902a93466774ea6dcb851bbd336e500de533832b6be4a44e85f0b28d3",
+    "online_decompressed_sha256": "45d5179e3e79ec12c026c6693737c73fdc546c9b0610214f770b89dbe81409ec"
+  },
+  "speedup": {
+    "fixture_build": 21.50477054704325,
+    "online_stage": 1.4669230477879291,
+    "materialized_load": 13.290898129938373
+  },
+  "existing_200v200_artifact_check": {
+    "source_sample_count": 3536,
+    "source_unique_snapshot_count": 17,
+    "source_gzip_bytes": 1066116,
+    "baseline_writer_seconds": 3.5529290130070876,
+    "optimized_writer_seconds": 0.7313298820226919,
+    "baseline_materialized_load_seconds": 38.00520230998518,
+    "optimized_materialized_load_seconds": 2.843475255998783,
+    "writer_output_byte_identical": true
+  },
+  "contracts": {
+    "gzip_compresslevel_before": 6,
+    "gzip_compresslevel_after": 6,
+    "schema_changed": false,
+    "sampling_frequency_changed": false,
+    "features_removed_or_quantized": false,
+    "public_audit_independent": true,
+    "truth_free_gate_relaxed": false
+  }
+}
