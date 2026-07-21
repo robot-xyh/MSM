@@ -33,6 +33,9 @@ from .sparse_tracklet_graph import (
 
 
 _MISSING = object()
+_TIMESTAMP_EPSILON = 1.0e-12
+_TEMPORAL_IN_ORDER = "in_order_state_update"
+_TEMPORAL_OOSM_IGNORED = "oosm_measurement_ignored"
 _CANONICAL_MEASUREMENT_ORDER = ("u", "v", "xmin", "ymin", "xmax", "ymax")
 _MEASUREMENT_NAME_ALIASES = {
     "center_x": "u",
@@ -126,7 +129,12 @@ class Scalable3DAdaptedCameraBatch:
     metadata: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        if self.status not in {"ok", "empty", "empty_geometry_unavailable"}:
+        if self.status not in {
+            "ok",
+            "empty",
+            "empty_geometry_unavailable",
+            "oosm_ignored",
+        }:
             raise ValueError("invalid adapted camera batch status")
         object.__setattr__(self, "tracklets", tuple(self.tracklets))
         object.__setattr__(self, "metadata", MappingProxyType(dict(self.metadata)))
@@ -298,11 +306,47 @@ class _AnonymousCameraTracker:
         self.config = config
         self._next_sequence = 1
         self._tracks: dict[int, _AnonymousTrackState] = {}
-        self._last_timestamp: float | None = None
+        self._latest_measurement_timestamp: float | None = None
+        self._last_arrival_timestamp: float | None = None
+        self._oosm_measurement_ignored_count = 0
 
-    def validate_timestamp(self, timestamp: float) -> None:
-        if self._last_timestamp is not None and timestamp + 1.0e-12 < self._last_timestamp:
-            raise ValueError("camera scan timestamps must be monotonic within an episode")
+    @property
+    def latest_measurement_timestamp(self) -> float | None:
+        return self._latest_measurement_timestamp
+
+    @property
+    def last_arrival_timestamp(self) -> float | None:
+        return self._last_arrival_timestamp
+
+    @property
+    def oosm_measurement_ignored_count(self) -> int:
+        return self._oosm_measurement_ignored_count
+
+    def validate_timestamps(
+        self,
+        measurement_timestamp: float,
+        arrival_timestamp: float,
+    ) -> str:
+        if self._last_arrival_timestamp is not None:
+            arrival_delta = arrival_timestamp - self._last_arrival_timestamp
+            if arrival_delta < -_TIMESTAMP_EPSILON:
+                raise ValueError(
+                    "camera scan arrival timestamps must not regress within an episode"
+                )
+            if abs(arrival_delta) <= _TIMESTAMP_EPSILON:
+                raise ValueError(
+                    "duplicate camera scan arrival timestamp within an episode"
+                )
+        if self._latest_measurement_timestamp is None:
+            return _TEMPORAL_IN_ORDER
+        measurement_delta = measurement_timestamp - self._latest_measurement_timestamp
+        if abs(measurement_delta) <= _TIMESTAMP_EPSILON:
+            raise ValueError(
+                "duplicate camera scan measurement timestamp within an episode"
+            )
+        if measurement_delta < 0.0:
+            return _TEMPORAL_OOSM_IGNORED
+        return _TEMPORAL_IN_ORDER
 
     def update(
         self,
@@ -314,7 +358,16 @@ class _AnonymousCameraTracker:
         arrival_timestamp: float,
         camera_template: _CameraTemplate | None,
     ) -> tuple[CameraLocalTracklet, ...]:
-        self.validate_timestamp(measurement_timestamp)
+        temporal_status = self.validate_timestamps(
+            measurement_timestamp,
+            arrival_timestamp,
+        )
+        if temporal_status == _TEMPORAL_OOSM_IGNORED:
+            # The tracker has no fixed-lag replay. Preserve arrival semantics without
+            # rewinding its current kinematic or lifecycle state.
+            self._last_arrival_timestamp = arrival_timestamp
+            self._oosm_measurement_ignored_count += 1
+            return ()
         ordered_detections = tuple(
             sorted(
                 detections,
@@ -407,7 +460,8 @@ class _AnonymousCameraTracker:
             if state.missed_frames > self.config.max_missed_frames:
                 del self._tracks[sequence]
 
-        self._last_timestamp = measurement_timestamp
+        self._latest_measurement_timestamp = measurement_timestamp
+        self._last_arrival_timestamp = arrival_timestamp
         return tuple(sorted(output, key=lambda item: item.local_track_id))
 
     def _match(self, detections: Sequence[_PreparedDetection]) -> dict[int, int]:
@@ -458,11 +512,21 @@ class Scalable3DTerminalAdapter:
         stream_keys = tuple(item.stream_key for item in prepared)
         if len(stream_keys) != len(set(stream_keys)):
             raise ValueError("one adapt_batches call may contain at most one batch per camera stream")
+        temporal_statuses: list[str] = []
         for item in prepared:
             tracker = self._trackers.get(item.stream_key)
-            if tracker is not None:
-                tracker.validate_timestamp(item.measurement_timestamp)
-        return tuple(self._commit_prepared_batch(item) for item in prepared)
+            temporal_statuses.append(
+                _TEMPORAL_IN_ORDER
+                if tracker is None
+                else tracker.validate_timestamps(
+                    item.measurement_timestamp,
+                    item.arrival_timestamp,
+                )
+            )
+        return tuple(
+            self._commit_prepared_batch(item, temporal_status)
+            for item, temporal_status in zip(prepared, temporal_statuses, strict=True)
+        )
 
     def process(
         self,
@@ -496,6 +560,7 @@ class Scalable3DTerminalAdapter:
     def _commit_prepared_batch(
         self,
         prepared: _PreparedCameraBatch,
+        temporal_status: str,
     ) -> Scalable3DAdaptedCameraBatch:
         key = prepared.stream_key
         tracker = self._trackers.setdefault(key, _AnonymousCameraTracker(self.config))
@@ -517,7 +582,9 @@ class Scalable3DTerminalAdapter:
                 prepared.measurement_timestamp,
             )
         )
-        if tracklets:
+        if temporal_status == _TEMPORAL_OOSM_IGNORED:
+            status = "oosm_ignored"
+        elif tracklets:
             status = "ok"
         elif geometry is not None:
             status = "empty"
@@ -526,6 +593,11 @@ class Scalable3DTerminalAdapter:
         metadata = {
             "input_detection_count": len(prepared.detections),
             "output_tracklet_count": len(tracklets),
+            "temporal_status": temporal_status,
+            "tracker_state_updated": temporal_status == _TEMPORAL_IN_ORDER,
+            "oosm_measurement_ignored_count": tracker.oosm_measurement_ignored_count,
+            "latest_state_measurement_timestamp": tracker.latest_measurement_timestamp,
+            "last_arrival_timestamp": tracker.last_arrival_timestamp,
             "tracker_state_scope": "per_resource_camera",
             "local_id_source": "d5_tracker_allocated",
             "geometry_source": (

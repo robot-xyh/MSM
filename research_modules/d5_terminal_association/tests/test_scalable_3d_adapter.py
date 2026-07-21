@@ -107,6 +107,7 @@ def _measurement(
     observation_id: str | None = None,
     metadata_updates: dict[str, object] | None = None,
     confidence: float = 0.95,
+    arrival_timestamp: float | None = None,
 ) -> SimpleNamespace:
     metadata = _camera_metadata(camera_index)
     metadata.update(metadata_updates or {})
@@ -122,7 +123,9 @@ def _measurement(
         sensor_id=sensor_id,
         modality="vision_bbox",
         measurement_timestamp=timestamp,
-        arrival_timestamp=timestamp + 0.05,
+        arrival_timestamp=(
+            timestamp + 0.05 if arrival_timestamp is None else arrival_timestamp
+        ),
         frame_id=f"camera_{camera_index}_optical",
         measurement=np.concatenate((np.asarray(center, dtype=float), np.asarray(bbox, dtype=float))),
         covariance=covariance,
@@ -140,6 +143,7 @@ def _batch(
     frame_index: int,
     batch_id: str | None = None,
     include_camera_metadata: bool = False,
+    arrival_timestamp: float | None = None,
 ) -> SimpleNamespace:
     return SimpleNamespace(
         batch_id=batch_id or f"batch-c{camera_index:02d}-f{frame_index:04d}",
@@ -147,7 +151,9 @@ def _batch(
         resource_id=f"RESOURCE-{camera_index}",
         camera_id=f"CAM-{camera_index}",
         measurement_timestamp=timestamp,
-        arrival_timestamp=timestamp + 0.05,
+        arrival_timestamp=(
+            timestamp + 0.05 if arrival_timestamp is None else arrival_timestamp
+        ),
         measurements=measurements,
         camera_metadata=(_camera_metadata(camera_index) if include_camera_metadata else None),
     )
@@ -293,6 +299,145 @@ def test_cross_frame_local_id_is_tracker_owned_and_kinematics_are_computed() -> 
     assert second_track.bbox_scale_rate_s > 0.0
     assert np.asarray(second_track.metadata["bbox_covariance_px"]).shape == (4, 4)
     assert second_track.metadata["mot_history_length"] == 2
+
+
+def test_arrival_order_accepts_oosm_measurement_without_rewinding_tracker() -> None:
+    adapter = Scalable3DTerminalAdapter()
+    centers, boxes = _projected_boxes(0, (1,))
+
+    def scan(
+        measurement_timestamp: float,
+        arrival_timestamp: float,
+        offset: tuple[float, float],
+        frame_index: int,
+    ) -> SimpleNamespace:
+        delta = np.asarray(offset, dtype=float)
+        return _batch(
+            0,
+            (
+                _measurement(
+                    camera_index=0,
+                    center=centers[0] + delta,
+                    bbox=boxes[0] + np.array([delta[0], delta[1], delta[0], delta[1]]),
+                    timestamp=measurement_timestamp,
+                    arrival_timestamp=arrival_timestamp,
+                    frame_index=frame_index,
+                    detection_index=0,
+                ),
+            ),
+            timestamp=measurement_timestamp,
+            arrival_timestamp=arrival_timestamp,
+            frame_index=frame_index,
+        )
+
+    first = adapter.adapt_batch(scan(1.0, 1.10, (0.0, 0.0), 1))
+    newest = adapter.adapt_batch(scan(1.2, 1.25, (4.0, 2.0), 2))
+    late = adapter.adapt_batch(scan(1.1, 1.35, (2.0, 1.0), 3))
+    resumed = adapter.adapt_batch(scan(1.3, 1.45, (6.0, 3.0), 4))
+
+    assert first.tracklets[0].local_track_id == "trk-000001"
+    assert newest.tracklets[0].local_track_id == "trk-000001"
+    assert late.status == "oosm_ignored"
+    assert late.measurement_timestamp == pytest.approx(1.1)
+    assert late.arrival_timestamp == pytest.approx(1.35)
+    assert late.tracklets == ()
+    assert late.camera_geometry is not None
+    assert late.camera_geometry.measurement_timestamp == pytest.approx(1.1)
+    assert late.metadata["temporal_status"] == "oosm_measurement_ignored"
+    assert late.metadata["tracker_state_updated"] is False
+    assert late.metadata["oosm_measurement_ignored_count"] == 1
+    assert late.metadata["latest_state_measurement_timestamp"] == pytest.approx(1.2)
+    assert late.metadata["last_arrival_timestamp"] == pytest.approx(1.35)
+
+    resumed_track = resumed.tracklets[0]
+    assert resumed.status == "ok"
+    assert resumed_track.local_track_id == "trk-000001"
+    assert resumed_track.metadata["mot_history_length"] == 3
+    assert resumed_track.tracklet_start_timestamp == pytest.approx(1.0)
+    intrinsics = _intrinsics()
+    assert resumed_track.angular_velocity_rad_s == pytest.approx(
+        np.array([2.0 / intrinsics.fx / 0.1, 1.0 / intrinsics.fy / 0.1])
+    )
+    assert resumed.metadata["temporal_status"] == "in_order_state_update"
+    assert resumed.metadata["oosm_measurement_ignored_count"] == 1
+    assert resumed.metadata["latest_state_measurement_timestamp"] == pytest.approx(1.3)
+
+
+def test_arrival_timestamp_regression_fails_before_tracker_state_update() -> None:
+    adapter = Scalable3DTerminalAdapter()
+    centers, boxes = _projected_boxes(0, (1,))
+
+    def scan(
+        measurement_timestamp: float,
+        arrival_timestamp: float,
+        frame_index: int,
+    ) -> SimpleNamespace:
+        return _batch(
+            0,
+            (
+                _measurement(
+                    camera_index=0,
+                    center=centers[0],
+                    bbox=boxes[0],
+                    timestamp=measurement_timestamp,
+                    arrival_timestamp=arrival_timestamp,
+                    frame_index=frame_index,
+                    detection_index=0,
+                ),
+            ),
+            timestamp=measurement_timestamp,
+            arrival_timestamp=arrival_timestamp,
+            frame_index=frame_index,
+        )
+
+    first = adapter.adapt_batch(scan(2.0, 2.20, 1))
+    with pytest.raises(ValueError, match="arrival timestamps must not regress"):
+        adapter.adapt_batch(scan(2.1, 2.15, 2))
+    recovered = adapter.adapt_batch(scan(2.1, 2.30, 3))
+
+    assert first.tracklets[0].local_track_id == recovered.tracklets[0].local_track_id
+    assert recovered.tracklets[0].metadata["mot_history_length"] == 2
+    assert recovered.metadata["oosm_measurement_ignored_count"] == 0
+
+
+def test_duplicate_arrival_and_measurement_fail_closed_before_state_update() -> None:
+    adapter = Scalable3DTerminalAdapter()
+    centers, boxes = _projected_boxes(0, (1,))
+
+    def scan(
+        measurement_timestamp: float,
+        arrival_timestamp: float,
+        frame_index: int,
+    ) -> SimpleNamespace:
+        return _batch(
+            0,
+            (
+                _measurement(
+                    camera_index=0,
+                    center=centers[0],
+                    bbox=boxes[0],
+                    timestamp=measurement_timestamp,
+                    arrival_timestamp=arrival_timestamp,
+                    frame_index=frame_index,
+                    detection_index=0,
+                ),
+            ),
+            timestamp=measurement_timestamp,
+            arrival_timestamp=arrival_timestamp,
+            frame_index=frame_index,
+        )
+
+    original = scan(3.0, 3.10, 1)
+    first = adapter.adapt_batch(original)
+    with pytest.raises(ValueError, match="duplicate camera scan arrival timestamp"):
+        adapter.adapt_batch(original)
+    with pytest.raises(ValueError, match="duplicate camera scan measurement timestamp"):
+        adapter.adapt_batch(scan(3.0, 3.20, 2))
+    recovered = adapter.adapt_batch(scan(3.1, 3.30, 3))
+
+    assert first.tracklets[0].local_track_id == recovered.tracklets[0].local_track_id
+    assert recovered.tracklets[0].metadata["mot_history_length"] == 2
+    assert recovered.metadata["oosm_measurement_ignored_count"] == 0
 
 
 def test_false_alarm_miss_and_empty_scan_do_not_relabel_surviving_track() -> None:
