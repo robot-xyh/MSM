@@ -1,5 +1,35 @@
 # D5 实现差距审计
 
+## 2026-07-21 主动视觉课程 B1b1 GAP 状态
+
+**单-seed 内存 producer 软件子项已关闭。** D5 新增配置化
+`build_active_vision_curriculum_episode()`。调用方提供 source identity、角色相机/资源 ID、版本起点
+和中心拥有的 `global_track_id`；producer 只读复用中心 ID。任意非负整数 seed 生成 1 个
+`ActiveVisionEpisodeRecordV2`，负 seed 失败关闭。构造过程没有文件 I/O，也没有 canonical、CLI、
+报告或 AirSim 入口。
+
+**固定覆盖不绕过规则和安全执行。** 8 个片段共 12 个连续样本，精确包含
+`hold=2 / observe_target=6 / reacquire=2 / search_sector=2`、`wide=10 / zoom=2`、
+`interceptor=6 / recon=6`。两个角色都覆盖四类 intent、两类 FOV 和 applied/rejected/missing。
+动作全部由 `DeterministicLookAtScanPolicy + ActiveVisionControllerV1` 产生，三帧 observe 片段通过现有
+稳定门得到 `WIDE/WIDE/ZOOM`，随后才调用 `DeterministicCameraCommandExecutor`；没有手工拼装
+decision/effective action 补类别。
+
+**版本、ACK 和在线隔离合同通过。** 时间严格递增、序号为 `0..11`，plan/coalition 单调且同片段
+稳定，communication 每样本递增；snapshot、action、sample 和 ACK 版本一致。执行器调用始终满足
+`command_version == action.communication_version`。ACK 精确为 `applied=4 / rejected=4 / missing=4`；
+accepted 与 feedback 最近接受版本一致，rejected/missing 不修改执行输入反馈或推进版本。在线 record
+不含 truth/actor/object identity，不创建或改写 `global_track_id`；未生成 reward、outcome、
+counterfactual 或 causal label。同 seed 对象和规范序列化确定，调用方输入保持不变。
+
+2026-07-21 新定向测试 `12 passed`，主动视觉关联回归 `56 passed`，D5 全量
+`467 passed in 10.40s`，`py_compile` 通过。本子项只证明确定性内存课程及故障注入 ACK 语义，不把
+`4/4/4` 解释为真实 runtime 分布或动作收益。B1b2 仍需复用 builder 生成独立多 seed episode，完成
+detached staging/finalization、canonical `60/20/20`、CLI、统计报告，并另接真实 runtime ACK/outcome、
+独立 evaluator label 和 paired shadow；assist/PPO/相机命令权限继续关闭。README、模块原理、算法、
+AirSim 集成、实验报告及另外两份 D5 review 已检查，因 B1b1 无磁盘制品或运行/实验新证据，留待
+B1b2 同步。
+
 ## 2026-07-21 主动视觉相机执行器 B1a GAP 状态
 
 **模块内执行与 ACK 语义的软件缺口已关闭。** D5 新增确定性 camera command executor。执行器以

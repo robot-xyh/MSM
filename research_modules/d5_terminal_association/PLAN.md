@@ -1,5 +1,32 @@
 # D5 终端视觉配准与身份认证计划
 
+## 2026-07-21 主动视觉课程阶段 B1b1
+
+- [x] 新增 `active_vision_curriculum.py` 的单-seed、纯内存 supplemental curriculum builder。
+  调用方必须显式提供 `ActiveVisionSourceIdentityV1`、配置和中心拥有的 `global_track_id`；builder
+  只读复制该 ID，不创建、改写或换绑中心身份，任意非负整数 seed 均可确定性构造，负 seed 拒绝。
+- [x] 固定 8 个片段形成 1 个合法 `ActiveVisionEpisodeRecordV2`、12 个连续样本。intent 精确为
+  `hold=2 / observe_target=6 / reacquire=2 / search_sector=2`，FOV 为 `wide=10 / zoom=2`，角色为
+  `interceptor=6 / recon=6`；每个角色都覆盖四类 intent、`wide/zoom` 和三类 ACK 结果。
+- [x] 全部 effective action 都由按片段隔离状态的 `DeterministicLookAtScanPolicy` 经
+  `ActiveVisionControllerV1` 产生，再进入 `DeterministicCameraCommandExecutor`；未手填 decision 或
+  非法 effective action。两个三帧 observe 片段分别通过既有稳定门自然产生 `WIDE/WIDE/ZOOM`。
+- [x] ACK 精确为 `applied=4 / rejected=4 / missing=4`。producer 调用执行器时始终令
+  `command_version == action.communication_version`；accepted ACK 与反馈最近接受版本一致，rejected
+  和 missing 对执行器输入反馈保持对象不变且不推进最近接受版本。该分布是确定性故障输入覆盖，
+  不是 main/runtime 的真实 ACK 频率证据。
+- [x] sample timestamp 严格递增，sequence index 为 `0..11`；plan/coalition 按片段单调推进、
+  communication 按样本严格递增，snapshot/action/sample/ACK 版本逐项一致。在线 record 通过 truth
+  guard，不含 evaluator identity；builder 不生成 reward、outcome、counterfactual 或 causal label，
+  不写磁盘、不接 canonical/CLI/报告。
+- [x] 同 seed 的 record 对象和规范 JSON、summary 对象和 JSON 均确定；调用方 source/config 输入不变。
+  2026-07-21 新定向测试 `12 passed`，主动视觉关联回归 `56 passed`，D5 全量
+  `467 passed in 10.40s`，`py_compile` 通过。
+- [ ] B1b2 复用该 builder 按独立 seed 生成多 episode，接现有 detached staging/finalization 与
+  canonical `60/20/20`，再增加 CLI、统计和正式报告；真实 runtime ACK/outcome、独立 evaluator
+  label、paired shadow、PPO/assist 准入仍保持开放。已检查 README、模块原理、算法实现、AirSim
+  集成、实验报告和另外两份 D5 review；B1b1 没有相应磁盘/运行/实验证据，按约定留到 B1b2 更新。
+
 ## 2026-07-21 主动视觉相机执行器阶段 B1a
 
 - [x] 新增无隐藏状态的 `DeterministicCameraCommandExecutor`。输入沿用现有 snapshot、action 和

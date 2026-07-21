@@ -139,6 +139,15 @@ from .active_vision_camera_executor import (
     ActiveVisionCameraFault,
     DeterministicCameraCommandExecutor,
 )
+from .active_vision_curriculum import (
+    ACTIVE_VISION_CURRICULUM_SAMPLE_COUNT,
+    ACTIVE_VISION_CURRICULUM_SCHEMA_VERSION,
+    ACTIVE_VISION_CURRICULUM_SEGMENT_COUNT,
+    ACTIVE_VISION_CURRICULUM_SUMMARY_SCHEMA_VERSION,
+    ActiveVisionCurriculumConfig,
+    ActiveVisionCurriculumSummary,
+    build_active_vision_curriculum_episode,
+)
 from .consistency import (
     TerminalConsistencyConfig,
     TerminalConsistencyTracker,
@@ -413,6 +422,10 @@ __all__ = [
     "ActiveVisionSafetyConfig",
     "ACTIVE_VISION_ACTION_SCHEMA_VERSION",
     "ACTIVE_VISION_CAMERA_EXECUTION_SCHEMA_VERSION",
+    "ACTIVE_VISION_CURRICULUM_SAMPLE_COUNT",
+    "ACTIVE_VISION_CURRICULUM_SCHEMA_VERSION",
+    "ACTIVE_VISION_CURRICULUM_SEGMENT_COUNT",
+    "ACTIVE_VISION_CURRICULUM_SUMMARY_SCHEMA_VERSION",
     "ACTIVE_VISION_EPISODE_DATASET_SCHEMA_VERSION",
     "ACTIVE_VISION_EPISODE_RECORD_SCHEMA_VERSION",
     "ACTIVE_VISION_FEATURE_NAMES",
@@ -435,6 +448,8 @@ __all__ = [
     "ActiveVisionCameraFeedbackV1",
     "ActiveVisionCommunicationState",
     "ActiveVisionControllerV1",
+    "ActiveVisionCurriculumConfig",
+    "ActiveVisionCurriculumSummary",
     "ActiveVisionDatasetSplit",
     "ActiveVisionDatasetValidationError",
     "ActiveVisionDecisionV1",
@@ -495,6 +510,7 @@ __all__ = [
     "assert_anonymous_online_payload",
     "bind_clusters_to_center_tracks",
     "build_camera_overlap_index",
+    "build_active_vision_curriculum_episode",
     "build_offline_edge_training_batch",
     "build_sparse_tracklet_graph",
     "constrained_tracklet_clusters",
