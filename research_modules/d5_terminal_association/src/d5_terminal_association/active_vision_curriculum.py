@@ -113,6 +113,25 @@ class ActiveVisionCurriculumConfig:
         object.__setattr__(self, "start_timestamp_s", start)
         assert_truth_free_active_vision_payload(self)
 
+    def to_payload(self) -> dict[str, Any]:
+        """Return the stable caller-owned curriculum configuration."""
+
+        return {
+            "schema_version": self.schema_version,
+            "global_track_id": self.global_track_id,
+            "scenario_version": self.scenario_version,
+            "episode_id_prefix": self.episode_id_prefix,
+            "interceptor_camera_id": self.interceptor_camera_id,
+            "interceptor_resource_id": self.interceptor_resource_id,
+            "recon_camera_id": self.recon_camera_id,
+            "recon_resource_id": self.recon_resource_id,
+            "initial_plan_version": self.initial_plan_version,
+            "initial_coalition_version": self.initial_coalition_version,
+            "initial_communication_version": self.initial_communication_version,
+            "initial_track_version": self.initial_track_version,
+            "start_timestamp_s": self.start_timestamp_s,
+        }
+
 
 @dataclass(frozen=True)
 class ActiveVisionCurriculumSummary:

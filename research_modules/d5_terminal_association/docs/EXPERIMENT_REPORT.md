@@ -1,5 +1,29 @@
 # D5 末端视觉配准与身份认证实验报告
 
+## 2026-07-21 Supplemental curriculum B1b2 临时验收
+
+本轮实验对象是 producer 软件合同，所有数据均由 pytest 在 tmp_path 中生成；没有保留仓库内输出，
+没有运行 AirSim、训练 BC/PPO 或修改正式 900 episode。接受阈值为新增专项和 D5 全量零失败。
+
+| 验收项 | 临时输入 | 结果 | 边界 |
+| --- | --- | --- | --- |
+| 小 fixture | 1 seed、既有 staging/unavailable-label API | 1 episode、12 sample，四类 label unavailable | 不 finalise、不作为数据证据 |
+| 完整 producer | 100 training seed、保留 seed `1000-1019` | 100 episode、800 segment、1200 sample；保留泄漏 0 | synthetic development only |
+| canonical | shared registry | seed/episode `60/20/20`，sample `720/240/240` | 源 manifest/episode/sample 不改写 |
+| 覆盖 | 每 seed 固定 builder | intent `200/600/200/200`，FOV `1000/200`，角色 `600/600` | 只证明固定课程覆盖 |
+| ACK | executor 故障注入 | applied/rejected/missing 各 400 | 每 seed `4/4/4`，非真实分布/收益 |
+| availability | unavailable offline label | reward/outcome/counterfactual/causal 全部 unavailable | PPO=false |
+| provenance | clean/dirty 测试分支 | dirty 标记为 `fail_closed_dirty_source` | fixture clean 分支不是正式 clean 证据 |
+| source-root guard | 正式嵌套 registry 布局及两个独立 registry 根 | output/tracked 路径在根内均于建目录前拒绝，registry 哈希不变 | 不写入正式 900-episode 输入树 |
+| 失败关闭 | 目的目录、异常清理、registry、reserved、truth guard | 全部拒绝且不发布残留目录 | 不回滚或覆盖调用方目录 |
+| 报告 | 临时 summary | 中文标题、说明和约束，明确 `4/4/4` 非实际运行分布 | 技术 token/SHA 保留 |
+| 确定性 | 相同 registry/config/provenance 两次完整生成 | summary、dataset manifest、view 和 Markdown 一致 | 固定测试 provenance |
+
+新增专项 `15 passed in 71.87s`，D5 全量 `482 passed in 83.05s`。本轮没有可引用的真实 output
+manifest SHA、view SHA 或 tracked 报告；这些必须由 main 在 clean revision 上正式执行 CLI 后记录。
+真实 runtime ACK/outcome、paired shadow 和因果标签仍未获得，assist/PPO/在线 authority/相机命令权
+保持 false。
+
 ## 2026-07-21 宽视场稳定门代码实验
 
 本轮只验证 D5 模块内确定性规则，没有启动 AirSim、没有生成补充课程，也没有训练或评估模型。

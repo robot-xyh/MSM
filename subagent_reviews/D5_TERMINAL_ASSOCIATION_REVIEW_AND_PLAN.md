@@ -1,5 +1,24 @@
 # D5 末端视觉配准与协同身份认证综述及子方案
 
+## 2026-07-21 Supplemental curriculum B1b2 复核
+
+D5 已具备独立 100-seed synthetic curriculum 的原子 producer、canonical `60/20/20`、严格审计和
+CLI。实现复用 B1b1 builder 与现有 episode staging/finalize/lazy/canonical/readiness API；输出目录
+必须不存在，全部校验在 sibling 临时目录完成后才发布。中心 `global_track_id` 必须由调用方显式
+提供，truth-like 引用、seed 漏/多、registry mismatch、保留 seed、版本或 availability 异常均失败
+关闭。training/shared registry 的父目录分别作为受保护 source root；output 和 tracked 报告不得等于
+或位于任一根下，正式嵌套布局和 registry 分离布局均在目录创建前失败关闭。
+
+tmp_path 验收得到 100 episode、800 segment、1200 sample；canonical sample 为 `720/240/240`。
+四 intent、两 FOV、interceptor/recon 和三 ACK 已覆盖。ACK 各 400 仅是确定性故障注入，不是 runtime
+分布或收益。四类 offline label 均 unavailable，PPO/assist/authority 均 false；dirty 生成状态为
+`fail_closed_dirty_source`。Markdown 报告使用中文标题、说明和约束，并明确每 seed `4/4/4` 不是实际
+运行分布。新增专项 `15 passed in 71.87s`，D5 全量 `482 passed in 83.05s`。
+
+复核结论只关闭 producer 软件缺口。仓库没有本轮 clean 正式 supplemental 制品，未修改正式
+900 episode，未运行 AirSim 或训练。main 仍需在真实 clean revision 上执行 CLI 并归档实际 SHA；
+真实 ACK/outcome、evaluator label 和 paired shadow 继续开放。
+
 ## 2026-07-21 主动视觉宽视场门复核
 
 规则策略原先可在单帧投影满足阈值时立即进入窄视场。当前实现增加相机局部连续性门，状态键由相机、
@@ -12,9 +31,10 @@
 相机状态相互隔离，重复调用同一帧不会增加计数。`N=1` 是明确的旧语义兼容选项，默认仍采用 3 帧
 保守值。
 
-本轮只完成规则状态机和模块测试。当前 snapshot 没有 runtime ACK 输入，因此没有把 camera feedback
-或模拟状态解释为已执行确认。阶段 B 仍需独立课程 producer 和真实 applied/rejected/missing ACK
-证据。主动视觉模型维持 development shadow-only，assist/PPO 均关闭；本轮没有 AirSim 或训练结果。
+阶段 A 当时只完成规则状态机和模块测试。当前 snapshot 没有 runtime ACK 输入，因此没有把 camera
+feedback 或模拟状态解释为已执行确认；其后 B1b2 已实现独立 synthetic producer 软件，但 clean
+正式生成和真实 applied/rejected/missing ACK 证据仍缺失。主动视觉模型维持 development
+shadow-only，assist/PPO 均关闭；阶段 A/B1b2 均没有新增 AirSim 或训练结果。
 旧 v5 bundle 绑定修改前实现哈希，严格 loader 会失败关闭，不能直接用于新规则。定向组合测试为
 `47 passed`，D5 全量为 `437 passed in 10.28s`。
 

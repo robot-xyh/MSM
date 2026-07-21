@@ -1,5 +1,37 @@
 # D5 终端视觉配准与身份认证计划
 
+## 2026-07-21 主动视觉课程阶段 B1b2
+
+- [x] 新增独立 100-seed producer。严格读取 training registry 的 100 个 seed 和 `1000-1019`
+  保留目录，预检 shared registry schema/content/source binding，并在 canonical API 中完整复算 policy、
+  assignment 与 `60/20/20`；两个 registry 文件 SHA256、dataset config、manifest、view/content 和
+  readiness SHA 均进入 summary。
+- [x] 每 seed 只调用 `build_active_vision_curriculum_episode()`，随后复用
+  `stage_active_vision_episode_record()`、`unavailable_active_vision_offline_labels()`、
+  `stage_active_vision_offline_labels()`、`finalize_active_vision_episode_dataset()` 和 lazy loader；未复制
+  active-vision 在线/离线序列化合同。
+- [x] 输出目录必须不存在。100 episode 在 sibling 临时目录完成全部生成、finalize、canonical、
+  readiness、逐 episode 审计和重载复核后才用 `os.replace()` 发布；目的目录竞争出现或任一步失败均
+  不发布并清理临时目录。
+- [x] training/shared registry 各自的父目录均作为只读 source root；正式布局中 shared registry
+  位于 training root 下时由外层根覆盖，二者分离时分别保护。output、tracked JSON/Markdown 等于或
+  位于任一根下时，在创建目的、临时或 tracked 目录前失败关闭，并保持 registry 文件哈希不变。
+- [x] 聚合合同固定为 100 episode、800 segment、1200 sample；canonical seed/episode
+  `60/20/20`、sample `720/240/240`。四 intent、wide/zoom、interceptor/recon 和三 ACK 均逐 seed
+  复核；`4/4/4` 只记为 executor 故障覆盖，不作为真实 ACK 分布或收益。
+- [x] reward/outcome/counterfactual/causal label 全部显式 unavailable；synthetic、dirty、truth、
+  reserved leakage、版本和中心 ID 均失败关闭。dirty 状态为 `fail_closed_dirty_source`；PPO、assist、
+  在线 authority 和相机命令权为 false。
+- [x] CLI required 参数为 `--output-dir --training-seed-registry --shared-seed-registry
+  --created-at-utc --global-track-id`，默认读取 Git provenance，可选
+  `--tracked-summary-json/--tracked-report-markdown`，Markdown 报告为中文。2026-07-21 新增专项
+  `15 passed in 71.87s`，D5 全量 `482 passed in 83.05s`。
+- [ ] main 在真实 clean revision 上使用正式 registry 执行一次 CLI；全新输出目录和 tracked
+  JSON/Markdown 必须位于所有 registry source root 之外，并保存实际 dataset/view/config/registry
+  SHA。本轮仅有 tmp_path fixture 验收，不得称为 clean 正式产物，也不修改正式 900 episode。
+- [ ] 另接真实 runtime ACK/outcome、独立 evaluator reward/counterfactual/causal label 和至少 20 个
+  未见 seed 的 paired shadow；完成前不训练或晋级 PPO/assist，不授予相机命令权。
+
 ## 2026-07-21 主动视觉课程阶段 B1b1
 
 - [x] 新增 `active_vision_curriculum.py` 的单-seed、纯内存 supplemental curriculum builder。
@@ -22,10 +54,9 @@
 - [x] 同 seed 的 record 对象和规范 JSON、summary 对象和 JSON 均确定；调用方 source/config 输入不变。
   2026-07-21 新定向测试 `12 passed`，主动视觉关联回归 `56 passed`，D5 全量
   `467 passed in 10.40s`，`py_compile` 通过。
-- [ ] B1b2 复用该 builder 按独立 seed 生成多 episode，接现有 detached staging/finalization 与
-  canonical `60/20/20`，再增加 CLI、统计和正式报告；真实 runtime ACK/outcome、独立 evaluator
-  label、paired shadow、PPO/assist 准入仍保持开放。已检查 README、模块原理、算法实现、AirSim
-  集成、实验报告和另外两份 D5 review；B1b1 没有相应磁盘/运行/实验证据，按约定留到 B1b2 更新。
+- [x] B1b2 已复用该 builder 完成独立 100-seed 生成、detached finalization、canonical
+  `60/20/20`、CLI 和严格统计接口；clean 正式生成、真实 runtime ACK/outcome、独立 evaluator label、
+  paired shadow、PPO/assist 准入仍按上节保持开放。
 
 ## 2026-07-21 主动视觉相机执行器阶段 B1a
 
@@ -40,8 +71,9 @@
   通信版本沿用已验证 action，可直接通过现有 episode sample 合同。旧命令版本失败关闭。
 - [x] 2026-07-21 定向测试 `18 passed`，D5 全量 `455 passed in 12.18s`。覆盖 WIDE/ZOOM/HOLD、
   过期、三类版本错、相机忙/不可用、FOV 不支持、非法动作、ACK 缺失、truth guard、确定性和输入不变。
-- [ ] 阶段 B1b 再接 supplemental curriculum producer、canonical `60/20/20`、clean detached 重生和
-  统计报告。本阶段未生成数据、未运行 AirSim、未启动 PPO/assist，也未形成相机命令权限。
+- [x] 阶段 B1b2 已接 supplemental curriculum producer、canonical `60/20/20` 和统计接口。
+- [ ] main 仍需在 clean revision 上正式生成 detached 制品；B1a/B1b2 均未运行 AirSim、未启动
+  PPO/assist，也未形成相机命令权限。
 
 ## 2026-07-21 主动视觉宽视场稳定门阶段 A
 
@@ -55,8 +87,10 @@
   `REACQUIRE + WIDE`；重捕获和扫描选择 `WIDE`。云台忙时保持当前 FOV，恢复后从宽视场窗口重计。
 - [x] 新增 8 项稳定门专项；主动视觉定向组合 `47 passed`，D5 全量
   `437 passed in 10.28s`。未运行 AirSim，未训练或晋级模型。
-- [ ] 阶段 B 另行建立 clean supplemental curriculum producer，覆盖 hold/observe/reacquire/search、
-  相机角色和视场边界，不修改正式 900 episode。
+- [x] 阶段 B1b2 已建立 supplemental curriculum producer 接口，覆盖
+  hold/observe/reacquire/search、两相机角色和视场边界，且不修改正式 900 episode。
+- [ ] main 另行在真实 clean revision 上生成正式 supplemental 制品并归档 SHA；tmp_path fixture
+  不替代该证据。
 - [ ] main/runtime 将真实 applied/rejected/missing ACK 以现有 episode 合同回灌后，再决定是否把 ACK
   纳入稳定门。当前 snapshot 不含 ACK，本阶段不得伪造或扩 DTO。
 - [ ] 只有在阶段 B 数据覆盖和准入门通过后才重训 development bundle。旧 v5 bundle 绑定阶段 A

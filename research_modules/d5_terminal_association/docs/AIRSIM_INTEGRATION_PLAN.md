@@ -1,5 +1,24 @@
 # AirSim 离线集成计划
 
+## 2026-07-21 Supplemental curriculum B1b2 与 AirSim 边界
+
+B1b2 新增的是 D5 离线 synthetic curriculum producer 和 CLI，没有修改 AirSim launcher、settings、
+reset/episode order、detector、actor target、真实云台或 runtime ACK DTO。producer 内的
+applied/rejected/missing 来自 `DeterministicCameraCommandExecutor` 故障注入，每 seed `4/4/4`，
+只用于接口覆盖；不得写成 AirSim 或硬件 ACK 分布，也不得由此推导可见率、重捕获、关联或拦截收益。
+
+main 后续若生成 clean supplemental 制品，应在 AirSim 之外、真实 clean revision 上使用正式
+training/shared registry 调用 CLI。全新输出目录及 tracked JSON/Markdown 必须位于两个 registry
+各自 source root 之外；正式嵌套布局由外层 training root 保护。该动作不能改写或追加正式
+900-episode 目录。生成后只归档 producer 的 dataset/view/config/registry SHA、summary 和中文
+Markdown。真实 AirSim
+requested action、ACK、执行后 outcome、reward/counterfactual/causal evaluator label 仍应通过既有
+online/offline 分流合同另行采集，并在 paired shadow 验收前保持 assist/PPO/authority=false。
+
+2026-07-21 D5 全量 `482 passed in 83.05s`，但测试制品全部位于 tmp_path；本节没有新增 AirSim
+运行日期、场景、seed 或样本证据，也没有 clean 正式生成结果。因此既有 AirSim 集成状态和实验结论
+不因 B1b2 接口实现而升级。
+
 ## 2026-07-20 主动视觉 episode dataset 接线边界
 
 D5 已完成整 episode writer/loader/audit 代码，但本轮没有修改 main runtime。main 后续应在每个

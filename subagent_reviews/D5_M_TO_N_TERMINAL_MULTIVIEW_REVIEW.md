@@ -1,5 +1,17 @@
 # D5 M 对 N 末端多视角配准与协同定位调研
 
+## 2026-07-21 Supplemental curriculum B1b2 对 M 对 N 状态的影响
+
+B1b2 producer 已实现 100 个独立数值 seed、canonical `60/20/20` 和动态 seed 目录治理，但每个课程
+episode 按设计只含 interceptor/recon 两个相机角色。它覆盖两角色的四 intent、wide/zoom 和三类
+故障 ACK，不是 5/20/50/100/200 相机 M 对 N 可见性、候选预算、跨视角关联或真实执行实验。
+
+实现没有修改 M 对 N adapter、图构造、聚类、中心绑定或 AirSim runtime；`global_track_id` 仍由中心
+提供且只读。本次 source-root path guard 和中文报告修正同样不改变 M 对 N 算法或证据。新增专项
+`15 passed`、D5 全量 `482 passed in 83.05s` 只证明 producer 和失败关闭合同。本轮没有 clean 正式
+curriculum、M 对 N 模型重训、真实 ACK/outcome 或 paired shadow，因此本文件既有 M 对 N 性能与
+准入结论不变，assist/PPO/相机命令权继续关闭。
+
 ## 2026-07-20 M 对 N 主动视觉行为克隆结果
 
 正式行为克隆覆盖 5v5、20v20、50v50、100v100 和 200v200，算法按输入相机、目标和候选动作数量

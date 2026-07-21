@@ -4,6 +4,46 @@
 
 **适用范围：** 本文依据第五研究模块（D5）的当前代码、README、PLAN、模块原理文档和系统总汇总，同步说明算法原理、数据合同、代码实施路径与验证结果。文中严格区分默认在线主线、已实现但非默认的辅助/离线能力，以及尚未实现能力；计划项不能据此解释为已上线能力。
 
+## 2026-07-21 Supplemental curriculum B1b2 实施
+
+`active_vision_curriculum_dataset.py` 是现有 API 的编排层。它先严格读取 training registry 的 100 个
+seed 和 `1000-1019` 保留目录，计算两个 registry file SHA 和 generation config SHA；每个 seed 用
+相同 `ActiveVisionSourceIdentityV1` 调用 `build_active_vision_curriculum_episode()`。随后依次调用既有
+online staging、`unavailable_active_vision_offline_labels()`、offline staging 和 v3 finalizer，不定义
+新的 record、descriptor、offline-label 或 manifest 序列化格式。
+
+finalize 后使用 strict lazy loader，detached view 由
+`write/load_active_vision_canonical_seed_view()` 生成和复载，readiness 由
+`active_vision_canonical_readiness()` 计算。审计流式物化单个 episode，逐项验证固定 12-sample
+覆盖、8 个 plan/coalition segment、communication/track 版本、caller-owned center ID、ACK/status、
+四类 unavailable label 和 synthetic/dirty provenance。summary 绑定 dataset manifest/content/split、
+dataset config、view file/content、readiness 与两个 registry SHA。任何异常会删除 sibling 临时目录；
+所有门通过后才以 `os.replace()` 发布不存在的目的目录，并从发布路径再次严格复载。
+
+预检把 training/shared registry 各自的父目录作为 source root。若 shared registry 位于 training
+root 下，外层 training root 直接覆盖正式输入树；若二者分离，则两个根分别检查。`output_dir`、
+tracked summary 和 tracked Markdown 等于或位于任一根下时，入口会在 destination 存在性处理、
+registry 读取及目录创建前拒绝。路径先经 `resolve()`，发布后写 tracked 制品时复用同一解析结果。
+
+CLI 形式为：
+
+```bash
+PYTHONPATH=research_modules/d5_terminal_association/src \
+python3 -m d5_terminal_association.active_vision_curriculum_cli \
+  --output-dir <new-output-dir> \
+  --training-seed-registry <training_seed_registry.json> \
+  --shared-seed-registry <shared_seed_split_registry/registry.json> \
+  --created-at-utc <ISO-UTC> \
+  --global-track-id <center-owned-id> \
+  [--tracked-summary-json <summary.json>] \
+  [--tracked-report-markdown <report.md>]
+```
+
+默认 Git commit/dirty 状态由 CLI 从仓库读取，Markdown 报告使用中文标题、说明和约束。测试验收为
+100 episode、1200 sample、canonical seed/episode `60/20/20`、sample `720/240/240`，新增专项
+`15 passed in 71.87s`、D5 全量 `482 passed in 83.05s`。这些是接口和 tmp_path fixture 结果；
+仓库尚无本轮 clean 正式 curriculum，不得据此训练、重绑旧 bundle 或开启 PPO/assist/authority。
+
 ## 2026-07-21 宽视场稳定门实施
 
 实现位于 `DeterministicLookAtScanPolicy`。`ActiveVisionSafetyConfigV1` 新增

@@ -2,6 +2,31 @@
 
 **状态日期：2026-07-21**
 
+## Supplemental curriculum 生成原则
+
+补充课程与正式 900-episode 数据是两个独立数据集。D5 只接受调用方显式给出的中心
+`global_track_id` 和 Git/config provenance；同一 ID 被只读带入 track、assignment、projection 和
+action，不允许 producer 创建替代 ID。100 个 training seed 必须完整来自绑定 registry，保留
+`1000-1019` 不得出现。shared registry 的 schema、source file SHA、content、assignment 和数值 seed
+策略必须由既有 canonical API 复算，而不能信任调用方声明。
+
+training registry 和 shared registry 各自解析后的父目录都是受保护的只读 source root。shared
+registry 位于 training root 下时，外层根保护完整正式输入树；两者不在同一根时分别保护。输出目录、
+tracked JSON 和 tracked Markdown 不得等于或位于任一 source root 下，路径冲突必须在读取生成输入、
+创建 staging 或 tracked 目录前失败关闭。
+
+生成采用“临时 sibling 完成、验证后原子发布”。目的目录预先存在即拒绝；online record、offline
+unavailable label、final manifest、lazy audit、detached canonical view 和 readiness 全部在临时目录
+闭合。只有 seed/episode/sample、版本、truth、synthetic/dirty、availability 与所有 SHA 门均通过，
+才执行 `os.replace()`。视图只重分完整 episode，不改源 manifest 或样本。dirty 数据可以用于验证
+失败关闭分支，但不具备 clean development 资格。
+
+每 seed 的 applied/rejected/missing `4/4/4` 是执行器故障注入覆盖，用来确认 ACK 与 camera feedback
+语义；它不是运行频率，更不是策略收益。reward、outcome、counterfactual 和 causal label 必须以
+null/unavailable 明示，不得补零。synthetic curriculum 只允许 development shadow/BC 研究接口；
+PPO、assist、在线 authority 和相机命令权保持关闭。生成报告的标题、说明和约束使用中文，技术
+token/SHA 可原样保留。本轮只有 tmp_path 测试，没有 clean 正式产物。
+
 ## 宽视场稳定门原理
 
 相机缩窄视场会降低搜索覆盖，对单帧误配也更敏感。D5 因此把缩放资格与当前中心绑定的连续性分开

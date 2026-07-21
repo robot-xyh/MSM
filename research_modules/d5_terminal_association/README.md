@@ -2,6 +2,42 @@
 
 科研模块，用于把末端相机视场中的本地视觉轨迹保守关联到中心分配的 `global_track_id`。模块可在统一三维 episode 中在线运行；训练标签和真值评分仍保持离线。D5 只输出视觉关联与相机观察意图，不修改、重写或重新分配任何全局轨迹 ID。
 
+## 2026-07-21 主动视觉 supplemental curriculum B1b2
+
+D5 已实现独立 100-seed supplemental curriculum 的生成、严格审计和原子发布接口。入口
+`generate_active_vision_supplemental_curriculum()` 要求调用方显式提供输出目录、training/shared
+registry、创建时间、Git provenance 和中心拥有的 `global_track_id`；CLI 还将这些关键参数设为
+required。D5 只读复制中心 ID，不创建、改写或换绑。输出目录必须不存在，全部制品先在同级临时
+目录完成 staging、finalize、lazy load、canonical view、readiness 和二次审计，最后以
+`os.replace()` 一次发布；异常会清理临时目录。
+
+training registry 与 shared registry 各自解析后的父目录均是受保护的只读 source root。若 shared
+registry 位于 training root 下，外层 training root 覆盖完整正式输入树；若二者分属不同目录，则
+两个根分别受保护。`output_dir`、tracked JSON 和 tracked Markdown 等于或位于任一 source root 下时，
+producer 会在创建目的、临时或 tracked 目录前失败关闭，避免把补充制品写入正式 900-episode 输入树。
+
+producer 读取并绑定 100 个 training seed、`1000-1019` 保留 seed、两个 registry schema/file
+SHA256 和 shared content/assignment 合同。每个 seed 复用 B1b1 builder 生成 1 episode、8 segment、
+12 sample，再复用现有 online staging、显式 unavailable offline labels 和 v3 finalizer。聚合覆盖为
+100 episode、800 segment、1200 sample；intent 为 `200/600/200/200`，FOV 为 `1000/200`，角色为
+`600/600`。applied/rejected/missing 各 400，只表示每 seed `4/4/4` 的确定性故障注入覆盖，不是
+真实 runtime 频率、动作结果或收益证据。
+
+detached canonical view 复用 shared registry 得到 seed/episode `60/20/20`、sample
+`720/240/240`，不改源 manifest、episode 或 sample。审计逐项检查 seed/UID/sample、版本单调、
+caller-owned ID、truth guard、synthetic/dirty provenance、保留 seed、四类 intent、两类 FOV、
+两角色、三类 ACK、dataset/view/config/registry SHA。reward、outcome、counterfactual、causal label
+全部显式 unavailable；PPO、assist、在线 authority 和相机命令权均为 false。dirty 输入可形成审计
+制品，但状态固定为 `fail_closed_dirty_source`，不能冒充 clean development 数据。
+
+生成的 curriculum Markdown 使用中文标题、说明和约束，并保留技术 token 与 SHA。2026-07-21
+新增专项 `15 passed in 71.87s`，D5 全量 `482 passed in 83.05s`，接受阈值为零失败。
+测试输出全部位于 pytest 临时目录。本轮没有生成仓库内真实 curriculum、没有 clean 正式产物证据，
+没有训练、AirSim 运行或正式 900-episode 数据改写。main 剩余工作是在真实 clean revision 上用正式
+registry 调用 CLI，并把新目录和 tracked 报告置于所有 registry source root 之外，归档实际
+SHA/JSON/Markdown；真实 runtime ACK/outcome、独立 evaluator label 和 paired shadow 仍是后续准入
+证据。
+
 ## 2026-07-21 主动视觉宽视场稳定门
 
 确定性主动视觉规则已增加“宽视场保持直到绑定稳定”状态门。状态按
@@ -18,7 +54,8 @@
 
 当前 snapshot 没有 runtime ACK 或 `last_accepted_command_version` 输入。本阶段没有构造替代 ACK，
 只使用已有 `slew_available/action_in_progress_until` 处理相机忙状态。定向主动视觉组合测试
-`47 passed`，D5 全量 `437 passed in 10.28s`。本轮未运行 AirSim、未生成课程数据、未训练模型；
+`47 passed`，D5 全量 `437 passed in 10.28s`。宽视场阶段当时未运行 AirSim、未生成课程数据、
+未训练模型；其后的 B1b2 synthetic producer 状态见本文首节，仍无 clean 正式产物。
 GNN 与主动视觉模型继续失败关闭或 development shadow-only。既有 v5 development bundle 绑定旧
 实现哈希，按严格 loader 会因本次规则实现变化拒绝加载；本轮没有重写或追认旧权重。
 
