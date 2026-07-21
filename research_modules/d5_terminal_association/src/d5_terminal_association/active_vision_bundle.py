@@ -19,6 +19,7 @@ from .active_vision_contracts import (
     ACTIVE_VISION_ACTION_SPACE_VERSION,
     ACTIVE_VISION_FEATURE_SCHEMA_VERSION,
     ActiveVisionPolicyProposal,
+    ActiveVisionRuntimeMode,
     ActiveVisionSafetyConfigV1,
     ActiveVisionSnapshotV1,
 )
@@ -36,11 +37,19 @@ from .active_vision_learning import (
 )
 
 
-ACTIVE_VISION_BUNDLE_SCHEMA_VERSION = "d5.active-vision-model-bundle.v4"
+ACTIVE_VISION_BUNDLE_SCHEMA_VERSION = "d5.active-vision-model-bundle.v5"
 ACTIVE_VISION_WEIGHTS_FILENAME = "weights.pt"
 ACTIVE_VISION_MANIFEST_FILENAME = "manifest.json"
 ACTIVE_VISION_CHECKSUMS_FILENAME = "SHA256SUMS"
 _SHA_PATTERN = re.compile(r"^[0-9a-f]{64}$")
+_BUNDLE_PROFILES = frozenset({"research_candidate", "development_shadow_only"})
+_IMPLEMENTATION_SOURCE_FILES = (
+    "active_vision_contracts.py",
+    "active_vision_episode_dataset.py",
+    "active_vision_learning.py",
+    "active_vision_bundle.py",
+    "active_vision_bc_training.py",
+)
 
 
 class ActiveVisionBundleValidationError(ValueError):
@@ -59,6 +68,10 @@ class LoadedActiveVisionPolicy:
     bundle_weights_sha256: str
     device: torch.device
     assist_admitted: bool
+    runtime_status: str
+    allowed_runtime_modes: tuple[ActiveVisionRuntimeMode, ...]
+    ppo_enabled: bool
+    rule_fallback_required: bool
     safety_config: ActiveVisionSafetyConfigV1
     ood_margin: float = 0.05
     available: bool = True
@@ -171,6 +184,7 @@ def write_active_vision_model_bundle(
     validation_results: Mapping[str, Any],
     admission_report: ActiveVisionAdmissionReport | None = None,
     model_semantic_version: str = ACTIVE_VISION_MODEL_SEMANTIC_VERSION,
+    bundle_profile: str = "research_candidate",
 ) -> Mapping[str, Any]:
     """Write a research bundle.  No report means assist remains unadmitted."""
 
@@ -188,8 +202,19 @@ def write_active_vision_model_bundle(
     semantic_version = str(model_semantic_version).strip()
     if not semantic_version:
         raise ValueError("model_semantic_version must be non-empty")
+    profile = str(bundle_profile).strip().lower()
+    if profile not in _BUNDLE_PROFILES:
+        raise ValueError("unsupported active-vision bundle profile")
+    if profile == "development_shadow_only" and (
+        method != "behavior_cloning" or admission_report is not None
+    ):
+        raise ValueError(
+            "development shadow-only bundles require behavior cloning without admission"
+        )
     training_payload = _json_object(training_config, "training_config")
     validation_payload = _json_object(validation_results, "validation_results")
+    training_config_sha256 = _sha256_json(training_payload)
+    code_provenance = _implementation_provenance()
     root = Path(bundle_dir)
     root.mkdir(parents=True, exist_ok=True)
     weights_path = root / ACTIVE_VISION_WEIGHTS_FILENAME
@@ -216,7 +241,13 @@ def write_active_vision_model_bundle(
     ):
         raise ValueError("admission report dataset hashes do not match bundle training data")
     admission_payload: Mapping[str, Any]
-    if admission_report is None:
+    if profile == "development_shadow_only":
+        admission_payload = {
+            "status": "development_shadow_only",
+            "assist_admitted": False,
+            "report": None,
+        }
+    elif admission_report is None:
         admission_payload = {
             "status": "research_candidate_not_admitted",
             "assist_admitted": False,
@@ -228,6 +259,14 @@ def write_active_vision_model_bundle(
             "assist_admitted": admission_report.assist_admitted,
             "report": dict(admission_report.to_manifest()),
         }
+    assist_admitted = bool(admission_payload["assist_admitted"])
+    ppo_enabled = method in {"clipped_ppo", "behavior_cloning_then_clipped_ppo"}
+    runtime_status = str(admission_payload["status"])
+    allowed_runtime_modes = (
+        [ActiveVisionRuntimeMode.SHADOW.value, ActiveVisionRuntimeMode.ASSIST.value]
+        if assist_admitted
+        else [ActiveVisionRuntimeMode.SHADOW.value]
+    )
     manifest = {
         "schema_version": ACTIVE_VISION_BUNDLE_SCHEMA_VERSION,
         "model_semantic_version": semantic_version,
@@ -240,6 +279,7 @@ def write_active_vision_model_bundle(
             "feature_dim": model.feature_dim,
             "hidden_dim": model.hidden_dim,
         },
+        "code_provenance": code_provenance,
         "feature_bounds": {
             "minimum": list(feature_bounds.minimum),
             "maximum": list(feature_bounds.maximum),
@@ -250,6 +290,7 @@ def write_active_vision_model_bundle(
             "dataset_manifest_sha256": dataset_manifest_sha256,
             "split_sha256": split_sha256,
             "training_set_sha256": training_set_sha256,
+            "config_sha256": training_config_sha256,
             "config": training_payload,
         },
         "validation_results": validation_payload,
@@ -261,6 +302,14 @@ def write_active_vision_model_bundle(
             "model_fingerprint": fingerprint,
         },
         "admission": dict(admission_payload),
+        "runtime_policy": {
+            "status": runtime_status,
+            "allowed_runtime_modes": allowed_runtime_modes,
+            "assist_admitted": assist_admitted,
+            "ppo_enabled": ppo_enabled,
+            "rule_fallback_required": True,
+            "camera_command_authority": False,
+        },
     }
     _write_json_atomic(manifest_path, manifest)
     manifest_sha = _sha256_file(manifest_path)
@@ -314,10 +363,12 @@ def load_active_vision_model_bundle(
         "feature_names",
         "architecture",
         "feature_bounds",
+        "code_provenance",
         "training",
         "validation_results",
         "weights",
         "admission",
+        "runtime_policy",
     }
     if set(manifest) != required_manifest_fields:
         raise ActiveVisionBundleValidationError(
@@ -337,6 +388,35 @@ def load_active_vision_model_bundle(
     _expect(manifest.get("feature_schema_version"), ACTIVE_VISION_FEATURE_SCHEMA_VERSION, "feature_schema_mismatch")
     _expect(manifest.get("action_space_version"), ACTIVE_VISION_ACTION_SPACE_VERSION, "action_space_mismatch")
     _expect(tuple(manifest.get("feature_names", ())), ACTIVE_VISION_FEATURE_NAMES, "feature_order_mismatch")
+    code_provenance = _required_mapping(manifest, "code_provenance")
+    if set(code_provenance) != {"implementation_sha256", "source_files"}:
+        raise ActiveVisionBundleValidationError(
+            "code_provenance_fields_mismatch", "code provenance fields mismatch"
+        )
+    source_files = code_provenance.get("source_files")
+    if not isinstance(source_files, Mapping) or set(source_files) != set(
+        _IMPLEMENTATION_SOURCE_FILES
+    ):
+        raise ActiveVisionBundleValidationError(
+            "code_provenance_files_mismatch", "code provenance is incomplete"
+        )
+    for filename, digest in source_files.items():
+        _validate_sha(digest, str(filename), error_type=ActiveVisionBundleValidationError)
+    _validate_sha(
+        code_provenance.get("implementation_sha256"),
+        "implementation_sha256",
+        error_type=ActiveVisionBundleValidationError,
+    )
+    _expect(
+        code_provenance["implementation_sha256"],
+        _sha256_json(dict(sorted(source_files.items()))),
+        "implementation_sha_mismatch",
+    )
+    _expect(
+        code_provenance["implementation_sha256"],
+        _implementation_provenance()["implementation_sha256"],
+        "implementation_runtime_mismatch",
+    )
     architecture = _required_mapping(manifest, "architecture")
     if set(architecture) != {"class_name", "feature_dim", "hidden_dim"}:
         raise ActiveVisionBundleValidationError("architecture_fields_mismatch", "architecture fields mismatch")
@@ -370,6 +450,7 @@ def load_active_vision_model_bundle(
         "dataset_manifest_sha256",
         "split_sha256",
         "training_set_sha256",
+        "config_sha256",
         "config",
     }:
         raise ActiveVisionBundleValidationError("training_fields_mismatch", "training fields mismatch")
@@ -385,6 +466,16 @@ def load_active_vision_model_bundle(
         manifest.get("validation_results"), Mapping
     ):
         raise ActiveVisionBundleValidationError("training_metadata_invalid", "training metadata is invalid")
+    _validate_sha(
+        training["config_sha256"],
+        "config_sha256",
+        error_type=ActiveVisionBundleValidationError,
+    )
+    _expect(
+        training["config_sha256"],
+        _sha256_json(dict(training["config"])),
+        "training_config_sha_mismatch",
+    )
     weights = _required_mapping(manifest, "weights")
     if set(weights) != {"filename", "format", "sha256", "size_bytes", "model_fingerprint"}:
         raise ActiveVisionBundleValidationError("weights_fields_mismatch", "weights fields mismatch")
@@ -405,7 +496,10 @@ def load_active_vision_model_bundle(
     assist_admitted = bool(admission["assist_admitted"])
     report_payload = admission["report"]
     if report_payload is None:
-        if assist_admitted or admission["status"] != "research_candidate_not_admitted":
+        if assist_admitted or admission["status"] not in {
+            "research_candidate_not_admitted",
+            "development_shadow_only",
+        }:
             raise ActiveVisionBundleValidationError("admission_invalid", "bundle cannot self-admit")
     else:
         if not isinstance(report_payload, Mapping):
@@ -437,6 +531,61 @@ def load_active_vision_model_bundle(
         _expect(report.assist_admitted, assist_admitted, "admission_status_mismatch")
         expected_status = "assist_admitted" if assist_admitted else "research_candidate_not_admitted"
         _expect(admission["status"], expected_status, "admission_status_mismatch")
+    runtime_policy = _required_mapping(manifest, "runtime_policy")
+    if set(runtime_policy) != {
+        "status",
+        "allowed_runtime_modes",
+        "assist_admitted",
+        "ppo_enabled",
+        "rule_fallback_required",
+        "camera_command_authority",
+    }:
+        raise ActiveVisionBundleValidationError(
+            "runtime_policy_fields_mismatch", "runtime policy fields mismatch"
+        )
+    if runtime_policy["status"] != admission["status"]:
+        raise ActiveVisionBundleValidationError(
+            "runtime_policy_status_mismatch", "runtime and admission status differ"
+        )
+    if bool(runtime_policy["assist_admitted"]) != assist_admitted:
+        raise ActiveVisionBundleValidationError(
+            "runtime_policy_assist_mismatch", "runtime assist flag differs"
+        )
+    if runtime_policy["rule_fallback_required"] is not True:
+        raise ActiveVisionBundleValidationError(
+            "rule_fallback_required", "active-vision bundles require rule fallback"
+        )
+    if runtime_policy["camera_command_authority"] is not False:
+        raise ActiveVisionBundleValidationError(
+            "camera_command_authority_forbidden", "model bundle cannot own camera commands"
+        )
+    try:
+        allowed_runtime_modes = tuple(
+            ActiveVisionRuntimeMode(value)
+            for value in runtime_policy["allowed_runtime_modes"]
+        )
+    except (TypeError, ValueError) as exc:
+        raise ActiveVisionBundleValidationError(
+            "allowed_runtime_modes_invalid", "allowed runtime modes are invalid"
+        ) from exc
+    expected_modes = (
+        (ActiveVisionRuntimeMode.SHADOW, ActiveVisionRuntimeMode.ASSIST)
+        if assist_admitted
+        else (ActiveVisionRuntimeMode.SHADOW,)
+    )
+    _expect(allowed_runtime_modes, expected_modes, "allowed_runtime_modes_mismatch")
+    ppo_enabled = bool(runtime_policy["ppo_enabled"])
+    expected_ppo = training["method"] in {
+        "clipped_ppo",
+        "behavior_cloning_then_clipped_ppo",
+    }
+    _expect(ppo_enabled, expected_ppo, "ppo_status_mismatch")
+    if admission["status"] == "development_shadow_only" and (
+        training["method"] != "behavior_cloning" or ppo_enabled
+    ):
+        raise ActiveVisionBundleValidationError(
+            "development_profile_invalid", "development bundle is not BC-only"
+        )
     try:
         state_dict = torch.load(weights_path, map_location="cpu", weights_only=True)
     except TypeError as exc:
@@ -470,6 +619,10 @@ def load_active_vision_model_bundle(
         bundle_weights_sha256=weights_sha,
         device=target_device,
         assist_admitted=assist_admitted,
+        runtime_status=str(runtime_policy["status"]),
+        allowed_runtime_modes=allowed_runtime_modes,
+        ppo_enabled=ppo_enabled,
+        rule_fallback_required=True,
         safety_config=safety_config or ActiveVisionSafetyConfigV1(),
         ood_margin=ood_margin,
     )
@@ -480,13 +633,25 @@ def load_active_vision_model_bundle_for_runtime(
     *,
     device: str | torch.device = "cpu",
     safety_config: ActiveVisionSafetyConfigV1 | None = None,
+    requested_mode: ActiveVisionRuntimeMode | str = ActiveVisionRuntimeMode.SHADOW,
 ) -> LoadedActiveVisionPolicy | UnavailableActiveVisionPolicy:
     try:
-        return load_active_vision_model_bundle(
+        policy = load_active_vision_model_bundle(
             bundle_dir,
             device=device,
             safety_config=safety_config,
         )
+        mode = ActiveVisionRuntimeMode(requested_mode)
+        if mode not in policy.allowed_runtime_modes:
+            return UnavailableActiveVisionPolicy(
+                failure_reason=(
+                    "bundle_assist_not_admitted"
+                    if mode is ActiveVisionRuntimeMode.ASSIST
+                    else "bundle_runtime_mode_not_allowed"
+                ),
+                model_fingerprint=policy.model_fingerprint,
+            )
+        return policy
     except ActiveVisionBundleValidationError as exc:
         code = exc.code if exc.code.startswith("bundle_") else f"bundle_{exc.code}"
         return UnavailableActiveVisionPolicy(failure_reason=code)
@@ -561,6 +726,29 @@ def _sha256_file(path: Path) -> str:
         for chunk in iter(lambda: stream.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def _sha256_json(payload: Any) -> str:
+    encoded = json.dumps(
+        payload,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+        ensure_ascii=True,
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _implementation_provenance() -> dict[str, Any]:
+    root = Path(__file__).resolve().parent
+    source_files = {
+        filename: _sha256_file(root / filename)
+        for filename in _IMPLEMENTATION_SOURCE_FILES
+    }
+    return {
+        "implementation_sha256": _sha256_json(dict(sorted(source_files.items()))),
+        "source_files": dict(sorted(source_files.items())),
+    }
 
 
 def _torch_save_atomic(path: Path, payload: Mapping[str, torch.Tensor]) -> None:

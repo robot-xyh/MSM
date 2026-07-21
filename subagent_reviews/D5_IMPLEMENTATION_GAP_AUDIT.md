@@ -1,5 +1,60 @@
 # D5 实现差距审计
 
+## 2026-07-20 主动视觉行为克隆 P1 状态
+
+**全量行为克隆训练管线已关闭，运行准入 P1 仍开放。** 正式数据的完整性、整 seed 分割、保留 seed
+隔离和规则示范可用性通过。900 个 episode、1,153,242 个样本中，train/validation/test 为
+`685005/238354/229883` 样本和 `60/20/20` 个唯一 seed。固定 seed 在完整 train split 上完成
+5 epoch，未使用子样本替代正式训练。
+
+test 损失为 `0.109311`，精确动作准确率为 `0.955978`，但该数值不能支持准入。数据中
+`reacquire=1,062,876 (92.16%)`、`observe_target=19,838 (1.72%)`、`hold=0`。test 的
+`observe_target` 4,051 个样本全部被判为 `reacquire`，召回率和 F1 为 0；侦察相机精确动作准确率
+为 `0.621823`，明显低于拦截相机的 `0.970229`。模型尚未覆盖关键观察和保持行为。
+
+校准 P1 也未关闭。验证集温度缩放 `T=0.906731` 后，test NLL 从 `0.109311` 降至 `0.108656`，
+15-bin ECE 从 `0.020389` 升至 `0.020856`，不满足写回 bundle 的理由。当前 bundle 固定
+`development_shadow_only`、assist=false、PPO=false、rule fallback required；assist 加载失败关闭。
+
+剩余 producer 缺口为：增加独立 seed 的 hold/observe/recon/FOV/边界动作示范；实际请求 shadow
+动作并记录 runtime ACK 与执行后 outcome；建立独立 reward/counterfactual/causal label；完成至少
+20 个未见 seed 的 paired shadow 非退化验收。D6 给出的 1,063,214 条 observed outcome 没有动作执行
+归因，不能用作 reward。D4/D5 split 不一致，联合训练关闭。该状态没有新增 P0；规则主动视觉、版本
+门、友方冲突门、中心 `global_track_id` 只读和相机命令安全门保持不变。
+
+开发权重 SHA256 为
+`829d016611967d7f7adddcb58c99a96e418486e33a7fc987042a16d294c2b77b`，只位于 ignored outputs。
+正式统计见 `results/active_vision_bc_formal_20260720.json` 和
+`reports/D5_ACTIVE_VISION_BC_FORMAL_20260720.md`。D5 全量 `414 passed`。main 仍需在 VERSIONING
+登记 active-vision bundle v5 和本地权重规则。
+
+## 2026-07-20 正式图数据训练准入 P1 状态
+
+**数据生成子项已关闭。** main 在新修复链上完成 900 episode 正式生成，D5 图数据包含 12851 个
+图帧。D5 strict loader 已复算全部 graph/label SHA256，并校验 schema、feature order、整 seed
+split、split/training-set hash。train/validation/test 为 `60/20/20` 个唯一 seed，互不泄漏；
+`1000-1019` 保留评估 seed 未进入训练。
+
+**图模型准入 P1 仍开放。** `12532/12851` 帧无候选边，edge-free 为 `97.52%`；仅 319 帧含边，
+总边 480。train/validation/test 负边为 `11/4/4`，且 19 条负边全部集中在 `200v200` 的 5 类
+场景。partial candidate recall 为 `4/4、1/1、1/1`，分母过小且标签可用率仅约
+`3.96%/3.06%/3.42%`。训练门共有 15 项失败，不能把局部 recall=1.0 解释为候选召回已验证。
+
+**软件门已关闭。** 新增只读 readiness audit CLI，冻结 edge-free、类别支持、candidate recall
+availability/pair 分母、场景规模覆盖和测试 seed 门。正式训练仍拒绝不完整验证真值；显式
+development-only 模式只计算已标注边指标，误合并率和完整候选召回保持 unavailable。bundle v3
+绑定数据、split、配置、特征、readiness audit 和实现代码哈希，并固定不具备 G1/assist 权限。
+
+**开发训练证据不关闭 P1。** 固定 seed `20260720`、40 epoch、CPU 训练得到验证/测试 F1
+`0.9804/1.0`，但每个分割只有 4 条验证/测试负边，完整误合并率和 candidate recall 不可计算。
+权重 SHA256 `9bbe53d6...35cbf2d` 两次一致，只保存在 ignored outputs；promotion 仍为 `fail_closed`。
+2026-07-20 图训练专项 `16 passed`、D5 全量 `412 passed`。
+
+**下一 producer GAP：** 增加独立 seed 下的多相机共同可见窗口、密集交叉/遮挡/重捕获和在现有
+几何门内可混淆的异目标，补齐候选裁剪前 pair 分母与全部评价 tracklet 离线标签。不得复制样本、
+降低身份/几何门或把开发模型接入 G1。main 另需同步 main-owned `VERSIONING.md` 的 bundle v3 和
+无 git-lfs 权重策略。
+
 ## 2026-07-20 同相机多批次 P1 状态
 
 **正式证据：** `learning_generation_v1_oosmfix` 已写入 209 条进度（sequence 0-208），随后在

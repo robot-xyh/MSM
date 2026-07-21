@@ -29,7 +29,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     policy = (
         None
         if args.bundle_dir is None
-        else load_active_vision_model_bundle_for_runtime(args.bundle_dir, device=args.device)
+        else load_active_vision_model_bundle_for_runtime(
+            args.bundle_dir,
+            device=args.device,
+            requested_mode=requested,
+        )
     )
     if requested is ActiveVisionRuntimeMode.DISABLED:
         effective = ActiveVisionRuntimeMode.DISABLED

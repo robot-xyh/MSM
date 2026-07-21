@@ -1,0 +1,112 @@
+{
+  "schema_version": "d5.tracklet-training-readiness-result.v1",
+  "validation_date": "2026-07-20",
+  "validation_timezone": "America/Los_Angeles",
+  "dataset": {
+    "manifest_sha256": "d9a84007995fe94918483bd5cb5ddc38f60f61d819bea27137dfa2619bf75426",
+    "readiness_audit_sha256": "a527d4cef65291ed8f2ed1ca1e3ea401ab2da6c9e529b8d1d3f6a24865bae458",
+    "episode_count": 12851,
+    "edge_free_episode_count": 12532,
+    "edge_free_ratio": 0.9751770290249786,
+    "edge_bearing_episode_count": 319,
+    "candidate_edge_count": 480,
+    "seed_count_by_split": {
+      "train": 60,
+      "validation": 20,
+      "test": 20
+    },
+    "reserved_evaluation_seeds_1000_1019_in_training": []
+  },
+  "class_balance": {
+    "train": {
+      "positive": 210,
+      "negative": 11,
+      "unlabeled": 65
+    },
+    "validation": {
+      "positive": 76,
+      "negative": 4,
+      "unlabeled": 19
+    },
+    "test": {
+      "positive": 76,
+      "negative": 4,
+      "unlabeled": 15
+    }
+  },
+  "candidate_recall_partial_support": {
+    "train": "4/4",
+    "validation": "1/1",
+    "test": "1/1",
+    "admission_evidence": false
+  },
+  "readiness": {
+    "training_status": "fail_closed",
+    "development_training_status": "allowed_not_admissible",
+    "promotion_status": "fail_closed",
+    "g1_assist_eligible": false,
+    "failed_gate_count": 15
+  },
+  "development_training": {
+    "command": "PYTHONPATH=research_modules/d5_terminal_association/src python3 -m d5_terminal_association.tracklet_training_audit --dataset-dir research_modules/scalable_3d_simulation/outputs/learning_generation_v1_multibatchfix/learning_dataset/d5_tracklet_graph --output-dir research_modules/d5_terminal_association/outputs/tracklet_graph_readiness_20260720 --train-development --seed 20260720 --epochs 40 --device cpu --latency-repeats 3",
+    "seed": 20260720,
+    "epochs": 40,
+    "best_epoch": 38,
+    "selected_positive_edges": 210,
+    "selected_negative_edges": 11,
+    "loss": {
+      "train": 0.03313715571494152,
+      "validation": 0.05051915064205838,
+      "test": 0.0012871560811215186
+    },
+    "metrics_by_split": {
+      "train": {
+        "precision": 1.0,
+        "recall": 0.9857142857142858,
+        "f1": 0.9928057553956835,
+        "ece": 0.015987175822045147,
+        "p95_inference_latency_ms": 0.029339786851778522
+      },
+      "validation": {
+        "precision": 0.974025974025974,
+        "recall": 0.9868421052631579,
+        "f1": 0.9803921568627451,
+        "ece": 0.03285445820074526,
+        "p95_inference_latency_ms": 0.023624645837116983
+      },
+      "test": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
+        "ece": 0.0005772595091911858,
+        "p95_inference_latency_ms": 0.034773653896991163
+      },
+      "truth_scope": "labeled_candidate_edges_only",
+      "false_merge_rate_available": false,
+      "candidate_recall_available": false
+    },
+    "test_precision": 1.0,
+    "test_recall": 1.0,
+    "test_f1": 1.0,
+    "test_false_merge_rate_available": false,
+    "test_candidate_recall_available": false,
+    "calibration_temperature": 0.8396660302054414,
+    "decision_threshold": 0.6200544892395049,
+    "training_elapsed_seconds": 72.43194691400276,
+    "pipeline_elapsed_seconds": 93.0508265089884,
+    "selected_device": "cpu",
+    "cpu_logical_count": 22,
+    "cuda_device_available": "NVIDIA GeForce RTX 4050 Laptop GPU",
+    "cuda_total_memory_bytes": 6053232640,
+    "weights_size_bytes": 97717,
+    "weights_sha256": "9bbe53d6cab52e529155b8b92318e98e9bf7e373846fdee38a1f3b39235cbf2d",
+    "reproducibility_runs": 2,
+    "repeated_weights_sha256_match": true,
+    "bundle_manifest_sha256": "a6349ca3aedc72eccef16a574a21b84d1fd8d6efbae81c0233bae641a052083c",
+    "implementation_sha256": "7d1f8fc6dd87e1d1ff8421664848d50fb80a925d071fe2ef08829cd80d60df72",
+    "bundle_local_path": "research_modules/d5_terminal_association/outputs/tracklet_graph_readiness_20260720/development_model_bundle",
+    "bundle_tracked_by_git": false,
+    "git_lfs_required_for_future_weight_publication": true
+  },
+  "statistical_limit": "Validation and test each contain only four labeled negative edges. High labeled-edge scores do not establish candidate recall, false-merge safety, or cross-scene generalization."
+}

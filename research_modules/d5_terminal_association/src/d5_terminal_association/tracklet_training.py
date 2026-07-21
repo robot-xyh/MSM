@@ -8,7 +8,9 @@ import json
 import math
 import os
 from pathlib import Path
+import platform
 import random
+import sys
 import time
 from typing import Any, Mapping, Sequence
 
@@ -80,6 +82,8 @@ class TrackletTrainingResult:
 def train_tracklet_edge_model(
     dataset: LoadedTrackletDataset,
     config: TrackletTrainingConfig,
+    *,
+    allow_partial_validation_truth: bool = False,
 ) -> TrackletTrainingResult:
     """Train with deterministic whole-graph gradient accumulation."""
 
@@ -87,7 +91,10 @@ def train_tracklet_edge_model(
     validation_episodes = dataset.split("validation")
     if not train_episodes or not validation_episodes:
         raise ValueError("training and validation splits must both contain episodes")
-    _require_complete_binary_validation(validation_episodes)
+    _require_binary_validation(
+        validation_episodes,
+        allow_partial_truth=allow_partial_validation_truth,
+    )
     _set_fixed_seed(config.seed)
     device = torch.device(config.device)
     model = NativeTrackletEdgeClassifier(
@@ -259,6 +266,7 @@ def evaluate_tracklet_edge_model(
     ece_bins: int = 10,
     latency_repeats: int = 3,
     model_size_bytes: int | None = None,
+    allow_partial_truth_metrics: bool = False,
 ) -> dict[str, Any]:
     """Evaluate one split and preserve unavailable metrics as null, never zero."""
 
@@ -307,7 +315,7 @@ def evaluate_tracklet_edge_model(
 
     probabilities = np.concatenate(all_probabilities) if all_probabilities else np.empty(0)
     targets = np.concatenate(all_targets) if all_targets else np.empty(0)
-    if not complete_truth:
+    if not complete_truth and not allow_partial_truth_metrics:
         truth_metrics = {
             name: _unavailable("incomplete_evaluator_truth")
             for name in (
@@ -320,6 +328,7 @@ def evaluate_tracklet_edge_model(
                 "ece",
             )
         }
+        truth_scope = "unavailable_incomplete_evaluator_truth"
     elif not targets.size:
         truth_metrics = {
             name: _unavailable("no_labeled_candidate_edges")
@@ -333,6 +342,15 @@ def evaluate_tracklet_edge_model(
                 "ece",
             )
         }
+        truth_scope = "unavailable_no_labeled_candidate_edges"
+    elif not complete_truth:
+        truth_metrics = _labeled_edge_metrics(
+            probabilities,
+            targets,
+            threshold=threshold,
+            ece_bins=ece_bins,
+        )
+        truth_scope = "labeled_candidate_edges_only"
     else:
         truth_metrics = _edge_and_cluster_metrics(
             episodes,
@@ -341,6 +359,7 @@ def evaluate_tracklet_edge_model(
             threshold=threshold,
             ece_bins=ece_bins,
         )
+        truth_scope = "complete_graph_truth"
     latency_values = np.asarray(latency_ms, dtype=np.float64)
     latency_metrics = {
         "p50_inference_latency_ms": _available(float(np.percentile(latency_values, 50))),
@@ -355,6 +374,7 @@ def evaluate_tracklet_edge_model(
         "split": split,
         "episode_count": len(episodes),
         "complete_truth": complete_truth,
+        "truth_scope": truth_scope,
         "labeled_candidate_edge_count": int(targets.size),
         "decision_threshold": threshold,
         "temperature": temperature_value,
@@ -372,12 +392,30 @@ def run_training_pipeline(
     report_path: str | Path,
     *,
     config: TrackletTrainingConfig | None = None,
+    development_only: bool = False,
+    readiness_audit_sha256: str | None = None,
 ) -> Mapping[str, Any]:
-    """Train, validation-calibrate, bundle, strict-reload, and test once."""
+    """Train, calibrate, bundle, strict-reload, and evaluate once.
+
+    The default formal path still requires complete validation truth.  The
+    explicit development-only path may calibrate on labeled candidate edges,
+    but its bundle is permanently marked ineligible for G1/assist.
+    """
 
     cfg = config or TrackletTrainingConfig()
+    if development_only and readiness_audit_sha256 is None:
+        raise ValueError("development-only training requires readiness_audit_sha256")
+    if not development_only and readiness_audit_sha256 is not None:
+        raise ValueError("formal training must not attach a development readiness audit")
+    pipeline_started = time.perf_counter()
     dataset = load_tracklet_dataset(dataset_dir)
-    training = train_tracklet_edge_model(dataset, cfg)
+    training_started = time.perf_counter()
+    training = train_tracklet_edge_model(
+        dataset,
+        cfg,
+        allow_partial_validation_truth=development_only,
+    )
+    training_elapsed_seconds = time.perf_counter() - training_started
     validation_logits, validation_targets = _split_logits_and_targets(
         training.model,
         dataset.split("validation"),
@@ -395,9 +433,15 @@ def run_training_pipeline(
         device=cfg.device,
         ece_bins=cfg.ece_bins,
         latency_repeats=cfg.latency_repeats,
+        allow_partial_truth_metrics=development_only,
     )
     training_config_payload = asdict(cfg)
     training_config_sha256 = sha256_json(training_config_payload)
+    admission_status = (
+        "development_only_fail_closed"
+        if development_only
+        else "research_candidate_not_default"
+    )
     write_tracklet_model_bundle(
         bundle_dir,
         training.model,
@@ -408,6 +452,8 @@ def run_training_pipeline(
         calibration_temperature=temperature,
         decision_threshold=threshold,
         validation_results=validation_results,
+        admission_status=admission_status,
+        readiness_audit_sha256=readiness_audit_sha256,
     )
     scorer = load_tracklet_model_bundle(
         bundle_dir,
@@ -415,8 +461,21 @@ def run_training_pipeline(
         expected_dataset_manifest_sha256=dataset.manifest_sha256,
         expected_split_sha256=str(dataset.manifest["split_sha256"]),
         expected_training_set_sha256=str(dataset.manifest["training_set_sha256"]),
+        expected_readiness_audit_sha256=readiness_audit_sha256,
     )
     weights_size = Path(bundle_dir, "weights.pt").stat().st_size
+    train_results = evaluate_tracklet_edge_model(
+        dataset,
+        scorer.model,
+        split="train",
+        temperature=scorer.temperature,
+        decision_threshold=scorer.decision_threshold,
+        device=cfg.device,
+        ece_bins=cfg.ece_bins,
+        latency_repeats=cfg.latency_repeats,
+        model_size_bytes=weights_size,
+        allow_partial_truth_metrics=development_only,
+    )
     test_results = evaluate_tracklet_edge_model(
         dataset,
         scorer.model,
@@ -427,10 +486,21 @@ def run_training_pipeline(
         ece_bins=cfg.ece_bins,
         latency_repeats=cfg.latency_repeats,
         model_size_bytes=weights_size,
+        allow_partial_truth_metrics=development_only,
     )
+    final_loss_by_split = {
+        split: _binary_cross_entropy_on_split(
+            scorer.model,
+            dataset.split(split),
+            torch.device(cfg.device),
+        )
+        for split in ("train", "validation", "test")
+    }
     report = {
         "schema_version": TRAINING_REPORT_SCHEMA_VERSION,
-        "admission_status": "research_candidate_not_default",
+        "admission_status": admission_status,
+        "g1_assist_eligible": False,
+        "readiness_audit_sha256": readiness_audit_sha256,
         "dataset": {
             "manifest_sha256": dataset.manifest_sha256,
             "split_sha256": dataset.manifest["split_sha256"],
@@ -447,6 +517,8 @@ def run_training_pipeline(
             "selected_negative_edges": training.selected_negative_edges,
             "selected_hard_negative_edges": training.selected_hard_negative_edges,
             "hard_negative_provenance": dataset.manifest["hard_negative_provenance"],
+            "training_elapsed_seconds": training_elapsed_seconds,
+            "final_loss_by_split": final_loss_by_split,
         },
         "calibration": {
             "source_split": "validation",
@@ -454,13 +526,19 @@ def run_training_pipeline(
             "decision_threshold": threshold,
             "threshold_objective": "validation_f1",
         },
+        "train": train_results,
         "validation": validation_results,
         "test": test_results,
         "bundle": {
             "directory": str(Path(bundle_dir)),
             "manifest_sha256": scorer.bundle_manifest_sha256,
             "weights_sha256": scorer.bundle_weights_sha256,
+            "implementation_sha256": scorer.manifest["code_provenance"][
+                "implementation_sha256"
+            ],
         },
+        "hardware": _hardware_summary(cfg.device),
+        "pipeline_elapsed_seconds": time.perf_counter() - pipeline_started,
     }
     _write_json_atomic(Path(report_path), report)
     return report
@@ -484,6 +562,9 @@ def run_evaluation_pipeline(
         expected_split_sha256=str(dataset.manifest["split_sha256"]),
         expected_training_set_sha256=str(dataset.manifest["training_set_sha256"]),
     )
+    development_only = (
+        scorer.manifest["admission"]["status"] == "development_only_fail_closed"
+    )
     evaluation = evaluate_tracklet_edge_model(
         dataset,
         scorer.model,
@@ -494,6 +575,7 @@ def run_evaluation_pipeline(
         ece_bins=ece_bins,
         latency_repeats=latency_repeats,
         model_size_bytes=Path(bundle_dir, "weights.pt").stat().st_size,
+        allow_partial_truth_metrics=development_only,
     )
     report = {
         "schema_version": EVALUATION_REPORT_SCHEMA_VERSION,
@@ -568,15 +650,23 @@ def _split_logits_and_targets(
     return logits_array, targets_array
 
 
-def _require_complete_binary_validation(episodes: Sequence[LoadedTrackletEpisode]) -> None:
-    if not all(episode.evaluator_labels.labels_complete for episode in episodes):
+def _require_binary_validation(
+    episodes: Sequence[LoadedTrackletEpisode],
+    *,
+    allow_partial_truth: bool,
+) -> None:
+    if (
+        not allow_partial_truth
+        and not all(episode.evaluator_labels.labels_complete for episode in episodes)
+    ):
         raise ValueError("formal calibration requires complete validation truth")
     targets = []
     for episode in episodes:
         values, eligible = edge_targets(episode)
         targets.extend(values[eligible].tolist())
     if set(targets) != {0.0, 1.0}:
-        raise ValueError("formal calibration requires positive and negative validation edges")
+        prefix = "development" if allow_partial_truth else "formal"
+        raise ValueError(f"{prefix} calibration requires positive and negative validation edges")
 
 
 def _graph_tensors(
@@ -648,6 +738,52 @@ def _edge_and_cluster_metrics(
                 else "no_same_target_cross_camera_pairs"
             )
         ),
+        "brier_score": _available(float(np.mean((probabilities - targets) ** 2))),
+        "ece": _available(_expected_calibration_error(probabilities, targets, ece_bins)),
+    }
+
+
+def _labeled_edge_metrics(
+    probabilities: np.ndarray,
+    targets: np.ndarray,
+    *,
+    threshold: float,
+    ece_bins: int,
+) -> dict[str, Any]:
+    """Report development diagnostics without claiming graph-level completeness."""
+
+    predictions = probabilities >= threshold
+    expected = targets >= 0.5
+    true_positive = int(np.sum(predictions & expected))
+    false_positive = int(np.sum(predictions & ~expected))
+    false_negative = int(np.sum(~predictions & expected))
+    precision = (
+        true_positive / (true_positive + false_positive)
+        if true_positive + false_positive
+        else None
+    )
+    recall = (
+        true_positive / (true_positive + false_negative)
+        if true_positive + false_negative
+        else None
+    )
+    f1 = (
+        2.0 * precision * recall / (precision + recall)
+        if precision is not None and recall is not None and precision + recall
+        else 0.0
+        if precision is not None and recall is not None
+        else None
+    )
+    return {
+        "precision": _available(precision) if precision is not None else _unavailable(
+            "no_predicted_positive_edges"
+        ),
+        "recall": _available(recall) if recall is not None else _unavailable(
+            "no_positive_candidate_edges"
+        ),
+        "f1": _available(f1) if f1 is not None else _unavailable("f1_undefined"),
+        "false_merge_rate": _unavailable("incomplete_graph_truth"),
+        "candidate_recall": _unavailable("candidate_recall_not_fully_evaluable"),
         "brier_score": _available(float(np.mean((probabilities - targets) ** 2))),
         "ece": _available(_expected_calibration_error(probabilities, targets, ece_bins)),
     }
@@ -806,6 +942,31 @@ def _set_fixed_seed(seed: int) -> None:
     torch.use_deterministic_algorithms(True, warn_only=True)
 
 
+def _hardware_summary(device: str) -> dict[str, Any]:
+    cuda_devices: list[dict[str, Any]] = []
+    if torch.cuda.is_available():
+        for index in range(torch.cuda.device_count()):
+            properties = torch.cuda.get_device_properties(index)
+            cuda_devices.append(
+                {
+                    "index": index,
+                    "name": properties.name,
+                    "total_memory_bytes": int(properties.total_memory),
+                }
+            )
+    return {
+        "selected_device": str(torch.device(device)),
+        "python_version": sys.version.split()[0],
+        "platform": platform.platform(),
+        "machine": platform.machine(),
+        "cpu_logical_count": os.cpu_count(),
+        "torch_version": torch.__version__,
+        "cuda_available": torch.cuda.is_available(),
+        "cuda_runtime_version": torch.version.cuda,
+        "cuda_devices": cuda_devices,
+    }
+
+
 def _write_json_atomic(path: Path, value: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     encoded = (
@@ -845,6 +1006,12 @@ def _build_parser() -> argparse.ArgumentParser:
     train.add_argument("--device", default="cpu")
     train.add_argument("--ece-bins", type=int, default=10)
     train.add_argument("--latency-repeats", type=int, default=3)
+    train.add_argument(
+        "--development-only",
+        action="store_true",
+        help="allow labeled-edge calibration but permanently forbid G1/assist admission",
+    )
+    train.add_argument("--readiness-audit-sha256")
     evaluate = subparsers.add_parser("evaluate", help="strictly load a bundle and evaluate one split")
     evaluate.add_argument("--dataset-dir", required=True)
     evaluate.add_argument("--bundle-dir", required=True)
@@ -878,6 +1045,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             args.bundle_dir,
             args.report,
             config=config,
+            development_only=args.development_only,
+            readiness_audit_sha256=args.readiness_audit_sha256,
         )
         print(
             json.dumps(

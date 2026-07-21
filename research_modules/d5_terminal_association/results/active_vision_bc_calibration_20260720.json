@@ -1,0 +1,47 @@
+{
+  "admission_effect": "none_shadow_only",
+  "bundle_manifest_sha256": "9c0cb50c25eb3f47f609172be3bdadca1a2b65a0244fc3e3cf5464602aa70ad4",
+  "bundle_weights_sha256": "829d016611967d7f7adddcb58c99a96e418486e33a7fc987042a16d294c2b77b",
+  "evaluation_split": "test",
+  "feature_cache_manifest_sha256": "0ac5193b455a8304e4a850bea16742acee6755e3e0459a21b23cbbec7d97d3e2",
+  "fit_method": "bounded_scalar_temperature_nll_48_iterations",
+  "fit_split": "validation",
+  "result": "temperature_not_applied_ece_not_improved",
+  "schema_version": "d5.active-vision-bc-calibration-audit.v1",
+  "scope": "offline_posthoc_assessment_not_bound_into_bundle",
+  "temperature": 0.906730741006662,
+  "test_raw": {
+    "accuracy": 0.9559776059995737,
+    "brier_score": 0.059945859014987946,
+    "negative_log_likelihood": 0.10931108891963959,
+    "sample_count": 229883,
+    "top_label_ece_15": 0.020389124583011103,
+    "top_label_mce_15": 0.4402402523087292
+  },
+  "test_temperature_scaled": {
+    "accuracy": 0.9559776059995737,
+    "brier_score": 0.059955209493637085,
+    "negative_log_likelihood": 0.10865552723407745,
+    "sample_count": 229883,
+    "top_label_ece_15": 0.020856115184472022,
+    "top_label_mce_15": 0.4167637829848284
+  },
+  "validation_date": "2026-07-20",
+  "validation_raw": {
+    "accuracy": 0.9578106513840758,
+    "brier_score": 0.05743584781885147,
+    "negative_log_likelihood": 0.10540261119604111,
+    "sample_count": 238354,
+    "top_label_ece_15": 0.018769544705164565,
+    "top_label_mce_15": 0.9312710165977478
+  },
+  "validation_temperature_scaled": {
+    "accuracy": 0.9578106513840758,
+    "brier_score": 0.05744605511426926,
+    "negative_log_likelihood": 0.10477779805660248,
+    "sample_count": 238354,
+    "top_label_ece_15": 0.019273116553593022,
+    "top_label_mce_15": 0.40372834221957477
+  },
+  "validation_timezone": "America/Los_Angeles"
+}

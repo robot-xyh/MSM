@@ -4,6 +4,63 @@
 
 **适用范围：** 本文依据第五研究模块（D5）的当前代码、README、PLAN、模块原理文档和系统总汇总，同步说明算法原理、数据合同、代码实施路径与验证结果。文中严格区分默认在线主线、已实现但非默认的辅助/离线能力，以及尚未实现能力；计划项不能据此解释为已上线能力。
 
+## 2026-07-20 主动视觉行为克隆实施
+
+正式入口采用六段流水线：严格加载数据集；在 train 中抽取 5v5、50v50、200v200 容量探针；把每个
+安全候选动作展开成 35 维特征并按 split 写入 memmap；在完整 train split 上做掩码批量交叉熵训练；
+用 validation 选择最佳 epoch；最后一次性计算 train/validation/test 分层指标和推理时延。候选动作
+数量由当前状态决定，当前数据为 4 或 7，不写死相机或目标规模。
+
+流式缓存保存候选特征、候选意图/FOV/yaw/pitch/目标引用标志、每样本候选数、规则动作索引、相机
+类型、场景和规模。train/validation/test 分别有 `4,669,959/1,625,596/1,565,555` 条候选行。
+训练配置为 seed `20260720`、5 epoch、batch 2048、隐藏层 64、学习率 `3e-4`、CPU 16 线程。每个
+epoch 完整呈现 685,005 个训练样本，不做类别复制或小样本替代。
+
+最佳 epoch 为 5，train/validation/test 交叉熵为 `0.106584/0.105403/0.109311`。test 精确动作、
+意图和 FOV 准确率为 `0.955978/0.982378/0.982378`。分层结果揭示总体数值的限制：
+`observe_target` 4,051 个 test 样本全部被判为 `reacquire`，`hold` 无正样本；search intent 判断正确，
+但精确 yaw 动作准确率只有 `0.582657`；recon 精确动作准确率为 `0.621823`。
+
+验证集只读温度缩放得到 `T=0.906731`。test NLL 从 `0.109311` 降至 `0.108656`，Brier 从
+`0.059946` 变为 `0.059955`，15-bin ECE 从 `0.020389` 升至 `0.020856`。该校准没有进入 bundle。
+bundle v5 记录 `development_shadow_only`、assist=false、PPO=false、rule fallback required=true、
+camera command authority=false。shadow loader 可用，assist loader 返回
+`bundle_assist_not_admitted`。权重只在 ignored outputs，在线默认规则路径不变。
+
+正式训练没有使用 D6 提供的 1,063,214 条相邻 observed outcome；它们缺少 requested action、runtime
+ACK 和执行归因。PPO 仍需独立 reward、counterfactual 和 causal label。D4/D5 split 未统一时禁止
+联合训练。详细统计见 `../results/active_vision_bc_formal_20260720.json` 和
+`../reports/D5_ACTIVE_VISION_BC_FORMAL_20260720.md`。
+
+## 2026-07-20 图数据审计与开发训练实施
+
+`tracklet_training_audit.py` 以只读方式调用正式 dataset loader。loader 对 12851 个 graph/label pair
+逐文件校验 SHA256，并检查 dataset/graph/label schema、节点和边特征顺序、整 seed split、class
+balance、split hash 与 training-set hash。审计报告按 split 和场景规模统计 edge-free、正负/未标注
+边、candidate recall availability、pair 分母和困难负样本来源。
+
+冻结训练门包括：各 split edge-free `<=0.90`；train 正/负边至少 `100/100`，validation/test 至少
+`50/30`；candidate recall 标签可用率为 1.0 且每 split 至少 100 个 pair；至少 80% 场景规模 cell
+同时具有正负边；test 至少 20 个唯一 seed。当前数据有 `12532/12851` 个 edge-free 图帧，负边为
+`11/4/4`，partial recall 分母为 `4/1/1`，因此训练与 promotion 均失败关闭。
+
+正式 `run_training_pipeline()` 仍要求 validation 全图真值完整。只有显式传入 development-only 和
+readiness audit SHA256 时，训练器才允许在 eligible labeled edge 上选择模型、拟合 validation-only
+temperature 和阈值。此时 precision/recall/F1/Brier/ECE 只标记为
+`labeled_candidate_edges_only`；误合并率和完整 candidate recall 保持 unavailable。
+
+模型 bundle 磁盘合同升为 `d5.tracklet-model-bundle.v3`。manifest 除既有 dataset/split/training/
+config hash、feature version/order 和模型结构外，新增 readiness audit SHA256、实现源文件 SHA256
+和显式 admission 状态。loader 会校验 bundle 记录的实现哈希与当前训练/图网络/审计实现一致；任一
+差异使运行时 scorer unavailable 并回退规则路径。开发 bundle 永远为
+`development_only_fail_closed`、`default_model=false`、`g1_assist_eligible=false`。
+
+固定 seed `20260720` 运行 40 epoch，选择 210 条正边和 11 条负边，最佳 epoch 38。validation/test
+F1 为 `0.9804/1.0`，但各自只有 4 条负边；temperature=`0.839666`、threshold=`0.620054`，完整
+误合并率和 candidate recall 不可用。该结果只验证软件管线。权重 SHA256
+`9bbe53d6cab52e529155b8b92318e98e9bf7e373846fdee38a1f3b39235cbf2d` 两次一致，完整 bundle 只在
+ignored outputs 保存。
+
 ## 2026-07-20 同流多批次实施
 
 正式生成器按运行周期把所有已到达视觉批次送入 D5。通信退化场景可能在一次调用中包含同一相机的

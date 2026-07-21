@@ -1,5 +1,57 @@
 # D5 终端视觉配准与身份认证计划
 
+## 2026-07-20 主动视觉行为克隆准入
+
+- [x] 对正式 900-episode、1,153,242-sample 数据执行严格 loader、逐制品 SHA256、schema、整 seed
+  原子分割和保留 seed 隔离检查；train/validation/test 唯一 seed 为 `60/20/20`，交集为 0。
+- [x] 运行可复现容量探针并采用流式特征缓存。候选动作数为 4-7，完整缓存含
+  `4,669,959/1,625,596/1,565,555` 条 train/validation/test 候选行，未把全数据驻留内存。
+- [x] 固定 seed `20260720` 在完整 train split 上运行 5-epoch 行为克隆；每 epoch 使用 685,005
+  样本，总样本呈现次数 3,425,025，未抽样冒充正式训练。
+- [x] 输出总体、逐意图、逐相机类型、逐规模指标和 CPU P50/P95/P99。test 精确动作准确率
+  `0.955978`，但 `observe_target` 召回/F1 为 0、`hold` 无正样本、recon 精确动作仅 `0.621823`。
+- [x] 完成只读温度校准审计。`T=0.906731` 只轻微降低 test NLL，ECE 反而增加，因此不写回 bundle。
+- [x] 生成 v5 development bundle，绑定 dataset/split/training/config/code/weight SHA256；shadow 可
+  加载，assist 必须以 `bundle_assist_not_admitted` 拒绝，PPO=false，规则回退必需，相机命令权=false。
+- [x] 权重与完整 bundle 只保存到 ignored `outputs/`；tracked results 只保存命令、配置、指标、哈希
+  和本地定位。2026-07-20 D5 全量 `414 passed`。
+- [ ] producer 以独立场景和 seed 补充 hold、observe_target、recon、不同 FOV 及动作边界示范，避免
+  `reacquire` 占比 92.16% 造成多数类假高分。
+- [ ] 在 shadow 模式真实产生 requested action，记录 runtime ACK、执行后 outcome、时延和规则回退，
+  建立动作归因。无动作归因的相邻观测不得作为 reward。
+- [ ] 至少 20 个完全未见 seed 完成 paired shadow 非退化评估后，再讨论 assist；在此之前保持
+  `development_shadow_only`。PPO 需独立 reward/counterfactual/causal label，本阶段不启动。
+- [ ] D4/D5 split 合同统一前保持联合训练关闭。main 在 VERSIONING 中登记 active-vision bundle v5
+  及无 git-lfs 时权重仅位于 ignored outputs 的规则。
+
+## 2026-07-20 正式跨视角图数据准入与补数
+
+- [x] 对 `learning_generation_v1_multibatchfix` 的 12851 个 D5 图帧执行只读严格加载；逐文件验证
+  graph/label SHA256、schema、feature version/order、split hash、training-set hash 和 class balance。
+- [x] 复核整 seed 分割：train/validation/test 唯一 seed 为 `60/20/20`，交集为 0；保留评估 seed
+  `1000-1019` 未进入训练。
+- [x] 冻结训练准入门：各分割 edge-free 比例 `<=0.90`；训练正/负边至少 `100/100`，验证和测试
+  正/负边至少 `50/30`；candidate recall 标签可用率为 1.0 且每分割 pair 分母至少 100；至少
+  80% 场景规模 cell 同时具备正负边；测试至少 20 个唯一 seed。
+- [x] 审计结果失败关闭：总 edge-free 为 `12532/12851 (97.52%)`，仅 319 帧有边；三分割边为
+  `286/99/95`，负边为 `11/4/4`；partial candidate recall 分母只有 `4/1/1`。15 个数据门失败。
+- [x] 新增显式 `development-only` 训练路径。正式训练对不完整验证真值仍失败关闭；开发模式只使用
+  已标注 candidate edge，误合并率和 candidate recall 保持 unavailable，不允许用零代替。
+- [x] 将图模型 bundle 升为 v3，绑定 readiness audit、数据/split/training/config、节点/边特征和
+  实现代码 SHA256；开发 bundle 固定 `default_model=false`、`g1_assist_eligible=false`。
+- [x] 固定 seed `20260720` 完成 40 epoch 开发训练：最佳 epoch 38，权重 SHA256
+  `9bbe53d6...35cbf2d`；验证/测试 F1 为 `0.9804/1.0`，但各只有 4 条负边，promotion 继续
+  `fail_closed`。两次固定 seed 运行权重哈希一致。
+- [x] 权重和完整 bundle 只保存到 ignored 的 D5 `outputs/`；`results/` 仅保存命令、配置、指标、
+  哈希和本地定位，不复制权重。
+- [x] 2026-07-20 验证：图训练专项 `16 passed`，D5 全量 `412 passed`，语法检查通过。
+- [ ] main 更新 `research_modules/scalable_3d_simulation/VERSIONING.md`：登记 D5 tracklet bundle v3，
+  并明确无 git-lfs 时开发权重不进入普通 Git。本 D5 owner 不修改 main-owned 文件。
+- [ ] producer 增加新独立 seed 的相机重叠、密集交叉、遮挡进出、时延重捕获、有界外参扰动和
+  epipolar/投影上可混淆的异目标；不得通过复制样本或降低在线安全门补足负边。
+- [ ] 补齐评价帧全部 camera-local tracklet 的离线标签及候选裁剪前同目标跨相机 pair 总表，使
+  candidate recall 在 validation/test 上具备可审计分母。补数后重新生成新版本数据集并重跑审计。
+
 ## 2026-07-20 同相机多批次阻塞修复与正式数据复跑
 
 - [x] 核对正式失败语义：`learning_generation_v1_oosmfix` 已保存 209 条完成记录

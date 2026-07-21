@@ -10,6 +10,19 @@ D5 文档遵循 `research_modules/DOCUMENTATION_STANDARD.md`。推荐阅读顺�
 6. `EXPERIMENT_REPORT.md`：离线仿真结果、终端决策曲线和二级侦察 cue 说明。
 7. `AIRSIM_INTEGRATION_PLAN.md`：AirSim 离线回放接入计划。
 8. `../reports/D5_MANUAL_VIDEO_TRACKING_B_20260715.md`：人工初始化五目标视频 local MOT 实测报告。
+9. `../reports/D5_TRACKLET_GRAPH_TRAINING_READINESS_20260720.md`：正式跨视角图数据训练准入、开发模型和补数要求。
+10. `../reports/D5_ACTIVE_VISION_BC_FORMAL_20260720.md`：正式主动视觉行为克隆数据审计、分层指标、校准和 shadow-only 准入结论。
+
+2026-07-20，D5 已在完整正式 train split 上完成主动视觉行为克隆。900 个 episode、1,153,242 个
+样本通过整 seed 分割审计；开发模型 test 精确动作准确率为 95.60%，但 observe_target 召回为 0、
+hold 无正样本、recon 精确动作准确率为 62.18%。bundle v5 仅允许 shadow，assist/PPO 均关闭。
+权重只位于 ignored outputs；可跟踪结果为 `../results/active_vision_bc_formal_20260720.json` 和
+`../results/active_vision_bc_calibration_20260720.json`。
+
+2026-07-20，main 已完成正式 900 episode。D5 对 12851 个图帧完成逐文件哈希、整 seed 分割和
+训练准入审计。97.52% 图帧无候选边，train/validation/test 负边仅 `11/4/4`，因此 G1/assist
+继续失败关闭。固定 seed 开发模型只用于管线验证，权重仅保存在 ignored outputs；可跟踪摘要为
+`../results/tracklet_graph_training_readiness_20260720.json`。
 
 2026-07-20 active-vision staging 专项的复现入口为
 `../simulations/profile_active_vision_episode_staging.py`，对照 JSON 和 cProfile 文本位于
@@ -17,15 +30,17 @@ D5 文档遵循 `research_modules/DOCUMENTATION_STANDARD.md`。推荐阅读顺�
 共享 snapshot 重复审计/编码热点。main 已在提交
 `45b36500dc3c6935b1f116614993e291041eb12d` 上完成同配置 clean-tree 三 seed postopt2 复跑：
 D5 active-vision staging 从 `41.5623/43.2639/41.2271 s` 降至
-`4.0494/3.9898/3.9995 s`，writer P1 的系统级复跑项已关闭。正式 900 episode、20 个未见测试
-seed、训练和 assist 准入仍未完成；该离线写入结果不代表在线实时性。
+`4.0494/3.9898/3.9995 s`，writer P1 的系统级复跑项已关闭。该段是 2026-07-20 的历史状态；正式
+900 episode 已于下一阶段完成，但图数据训练和 assist 准入因监督覆盖不足仍未通过。离线写入结果
+不代表在线实时性。
 
 2026-07-20 新增匿名稀疏 tracklet 图文档：实现入口为
 `../src/d5_terminal_association/sparse_tracklet_graph.py`、`tracklet_gnn.py` 和
 `active_vision.py`；原理、算法、AirSim 待接线和代码级实验分别同步在
 `MODULE_PRINCIPLES_CN.md`、`ALGORITHM_AND_IMPLEMENTATION.md`、
-`AIRSIM_INTEGRATION_PLAN.md` 与 `EXPERIMENT_REPORT.md`。小样本训练仅为 smoke，
-当前没有已验收 checkpoint 或学习型主动视觉策略。2026-07-20 P0 复审后，构造器与递归
+`AIRSIM_INTEGRATION_PLAN.md` 与 `EXPERIMENT_REPORT.md`。2026-07-20 小样本训练仅为 smoke；
+2026-07-20 已生成 development-only 图模型，但没有已验收 G1/assist checkpoint 或学习型主动视觉
+策略。2026-07-20 P0 复审后，构造器与递归
 payload guard 已进一步拒绝 `TGT-0001`、`TargetDrone_1` 等 truth-like local ID，同时保留
 `cam01-track-0001`。当前构图已用视锥/时间/空间桶索引和相机对预算替代全 camera-pair，
 并用每 tracklet 候选上限替代每对 `n_left x n_right` 矩阵。

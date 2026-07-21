@@ -17,6 +17,13 @@ from d5_terminal_association.active_vision_bundle import (
     load_active_vision_model_bundle_for_runtime,
     write_active_vision_model_bundle,
 )
+from d5_terminal_association.active_vision_bc_training import (
+    ActiveVisionBcConfig,
+    build_behavior_cloning_feature_cache,
+    evaluate_behavior_cloning_model,
+    load_behavior_cloning_feature_cache,
+    train_cached_behavior_cloning,
+)
 from d5_terminal_association.active_vision_cli import build_parser
 from d5_terminal_association.active_vision_contracts import (
     ACTIVE_VISION_ACTION_SCHEMA_VERSION,
@@ -588,7 +595,12 @@ def test_split_fails_closed_with_fewer_than_three_unique_seed_values() -> None:
         split_active_vision_episode_groups(repeated)
 
 
-def _write_bundle(path: Path, snapshot: ActiveVisionSnapshotV1) -> None:
+def _write_bundle(
+    path: Path,
+    snapshot: ActiveVisionSnapshotV1,
+    *,
+    bundle_profile: str = "research_candidate",
+) -> None:
     torch.manual_seed(4)
     model = ActiveVisionActorCritic(hidden_dim=8)
     episode = ActiveVisionResearchEpisode(
@@ -616,6 +628,7 @@ def _write_bundle(path: Path, snapshot: ActiveVisionSnapshotV1) -> None:
         training_method="behavior_cloning",
         training_config={"seed": 4},
         validation_results={"status": "unit_smoke_not_admission"},
+        bundle_profile=bundle_profile,
     )
 
 
@@ -635,7 +648,7 @@ def test_bundle_round_trip_sha_tamper_schema_and_ood_fail_closed(tmp_path: Path)
     loaded = load_active_vision_model_bundle(valid)
     assert loaded.available is True
     assert loaded.assist_admitted is False
-    assert loaded.manifest["schema_version"] == "d5.active-vision-model-bundle.v4"
+    assert loaded.manifest["schema_version"] == "d5.active-vision-model-bundle.v5"
     assert loaded.manifest["dataset_schema_version"] == "d5.active-vision-episode-dataset.v3"
     assert loaded.model_fingerprint == active_vision_model_fingerprint(loaded.model)
 
@@ -662,6 +675,142 @@ def test_bundle_round_trip_sha_tamper_schema_and_ood_fail_closed(tmp_path: Path)
     with pytest.raises(ActiveVisionBundleValidationError) as exc_info:
         load_active_vision_model_bundle(wrong_schema)
     assert exc_info.value.code == "bundle_schema_mismatch"
+
+
+def test_development_bundle_is_shadow_only_and_assist_fails_closed(
+    tmp_path: Path,
+) -> None:
+    bundle = tmp_path / "development-shadow"
+    _write_bundle(bundle, _snapshot(), bundle_profile="development_shadow_only")
+
+    shadow = load_active_vision_model_bundle_for_runtime(
+        bundle,
+        requested_mode=ActiveVisionRuntimeMode.SHADOW,
+    )
+    assist = load_active_vision_model_bundle_for_runtime(
+        bundle,
+        requested_mode=ActiveVisionRuntimeMode.ASSIST,
+    )
+
+    assert shadow.available is True
+    assert shadow.runtime_status == "development_shadow_only"
+    assert shadow.assist_admitted is False
+    assert shadow.ppo_enabled is False
+    assert shadow.rule_fallback_required is True
+    assert assist.available is False
+    assert assist.failure_reason == "bundle_assist_not_admitted"
+
+
+class _TinyActiveVisionDataset:
+    def __init__(
+        self,
+        episodes_by_split: dict[str, tuple[ActiveVisionResearchEpisode, ...]],
+    ) -> None:
+        self._episodes_by_split = episodes_by_split
+        self.episode_descriptors = tuple(
+            {
+                "scenario_version": episode.scenario_version,
+                "seed": episode.seed,
+                "episode_id": episode.episode_id,
+                "split": split,
+                "sample_count": len(episode.transitions),
+                "synthetic_fixture": episode.synthetic_fixture,
+            }
+            for split, episodes in episodes_by_split.items()
+            for episode in episodes
+        )
+        self.manifest_sha256 = "d" * 64
+        self.manifest = {
+            "schema_version": "d5.active-vision-episode-dataset.v3",
+            "split_sha256": "e" * 64,
+            "training_set_sha256": "f" * 64,
+            "availability": {
+                name: {
+                    "status": "unavailable",
+                    "sample_count": len(self.episode_descriptors),
+                    "available_sample_count": 0,
+                }
+                for name in ("outcome", "reward", "counterfactual", "causal_label")
+            },
+        }
+
+    def split_descriptors(self, split: str) -> tuple[dict[str, object], ...]:
+        return tuple(
+            item for item in self.episode_descriptors if item["split"] == split
+        )
+
+    def iter_behavior_cloning_episodes(self, split: str):
+        return iter(self._episodes_by_split[split])
+
+
+def test_cached_behavior_cloning_uses_full_split_and_stratifies_metrics(
+    tmp_path: Path,
+) -> None:
+    base = _research_episodes(7)
+    scales = ("5v5", "50v50", "200v200", "5v5", "50v50", "200v200", "5v5")
+    episodes = tuple(
+        replace(
+            episode,
+            scenario_version=f"active-vision-{scale}-v1",
+            episode_id=f"episode-{index}",
+        )
+        for index, (episode, scale) in enumerate(zip(base, scales))
+    )
+    dataset = _TinyActiveVisionDataset(
+        {
+            "train": episodes[:3],
+            "validation": episodes[3:5],
+            "test": episodes[5:],
+        }
+    )
+
+    manifest, audit, manifest_sha = build_behavior_cloning_feature_cache(
+        dataset,
+        tmp_path / "cache",
+    )
+    loaded_manifest, caches, loaded_sha = load_behavior_cloning_feature_cache(
+        tmp_path / "cache"
+    )
+    config = ActiveVisionBcConfig(
+        seed=17,
+        epochs=1,
+        batch_size=2,
+        evaluation_batch_size=2,
+        hidden_dim=8,
+        cpu_threads=1,
+        latency_samples=1,
+        latency_warmup=0,
+    )
+    model, _, training = train_cached_behavior_cloning(
+        loaded_manifest,
+        caches,
+        config=config,
+    )
+    evaluation = evaluate_behavior_cloning_model(
+        model,
+        loaded_manifest,
+        caches,
+        config=config,
+    )
+
+    assert loaded_sha == manifest_sha
+    assert manifest["splits"]["train"]["sample_count"] == 3
+    assert audit["sample_count"] == 7
+    assert audit["whole_seed_split_atomic"] is True
+    assert audit["class_imbalance"]["hold_positive_sample_count"] == 0
+    assert training["samples_seen_per_epoch"] == 3
+    assert training["total_sample_presentations"] == 3
+    assert evaluation["train"]["sample_count"] == 3
+    assert evaluation["train"]["per_scale"]["5v5"]["sample_count"] == 1
+    assert (
+        evaluation["train"]["per_camera_type"]["interceptor"]["sample_count"]
+        == 3
+    )
+    assert evaluation["train"]["per_camera_type"]["recon"]["sample_count"] == 0
+    assert (
+        evaluation["test"]["per_intent"]["hold"]["precision"]["available"]
+        is False
+    )
 
 
 def _paired_results(*, synthetic: bool) -> tuple[PairedShadowEpisodeResult, ...]:

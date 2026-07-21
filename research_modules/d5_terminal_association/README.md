@@ -2,6 +2,70 @@
 
 科研模块，用于把末端相机视场中的本地视觉轨迹保守关联到中心分配的 `global_track_id`。模块可在统一三维 episode 中在线运行；训练标签和真值评分仍保持离线。D5 只输出视觉关联与相机观察意图，不修改、重写或重新分配任何全局轨迹 ID。
 
+## 2026-07-20 主动视觉行为克隆正式开发训练
+
+D5 对正式 `d5_active_vision` 数据完成只读严格审计和全量行为克隆。数据包含 900 个 episode、
+1,153,242 个样本，train/validation/test 为 `540/180/180` episode、`685005/238354/229883`
+样本和 `60/20/20` 个唯一 seed。三个分割 seed 无交集，保留评估 seed `1000-1019` 未进入训练。
+数据集 manifest SHA256 为
+`cd2ee22e8566bb14938d34aa997c850c13bf1ec9c8bd09061089c7fcc7ac3d9d`。
+
+固定 seed `20260720` 在完整 train split 上训练 5 个 epoch，每个 epoch 使用全部 685,005 个样本。
+最佳 epoch 为 5，train/validation/test 损失为 `0.106584/0.105403/0.109311`，test 精确动作准确率
+为 `0.955978`。该总体数值受类别不平衡支配：`reacquire` 占 `92.16%`，test 中 4,051 个
+`observe_target` 样本召回率和 F1 均为 0，`hold` 没有正样本；侦察相机 test 精确动作准确率仅
+`0.621823`。模型不能据此替代规则策略。
+
+单候选集 CPU 前向 P50/P95/P99 为 `0.1074/0.1203/0.2220 ms`。严格审计、缓存构建、训练和评估
+分别耗时 `786.998/1348.215/53.043/10.630 s`，全流程 `2239.694 s`，峰值 RSS
+`1865.87 MiB`。验证集温度缩放得到 `T=0.906731`，test 负对数似然由 `0.109311` 降至
+`0.108656`，但 15-bin 期望校准误差由 `0.020389` 升至 `0.020856`，因此未写入 bundle。
+
+bundle 为 `d5.active-vision-model-bundle.v5`，状态固定为 `development_shadow_only`，只允许
+shadow 加载；assist 加载以 `bundle_assist_not_admitted` 失败关闭。PPO 未启动，规则回退必需，模型
+没有相机命令权。权重 SHA256 为
+`829d016611967d7f7adddcb58c99a96e418486e33a7fc987042a16d294c2b77b`，完整 bundle 只保存在
+ignored 的 `outputs/active_vision_bc_formal_20260720/`。可跟踪指标与报告位于
+`results/active_vision_bc_formal_20260720.json`、`results/active_vision_bc_calibration_20260720.json`
+和 `reports/D5_ACTIVE_VISION_BC_FORMAL_20260720.md`。D5 全量回归为 `414 passed`。
+
+下一步 producer 必须补充 `hold`、`observe_target` 和侦察相机动作覆盖，并在 shadow 请求后记录
+runtime ACK、实际执行结果和安全回退。当前 1,063,214 条 observed outcome 只是无动作归因的相邻
+观测，不作为 reward。D4/D5 split 不一致，联合训练继续关闭；main 需在 VERSIONING 中同步 bundle
+v5 和本地 ignored 权重定位。
+
+## 2026-07-20 正式图数据训练前审计
+
+main 已在 `learning_generation_v1_multibatchfix` 完成 900 episode 正式生成。D5 对其中
+`d5_tracklet_graph` 执行只读严格加载，逐项复算 12851 个图文件和 12851 个标签文件的 SHA256，
+校验 dataset/graph/label schema、节点/边特征版本和顺序、整 seed 原子分割、split/training-set
+hash。train/validation/test 唯一 seed 为 `60/20/20`，互相无交集；保留评估 seed
+`1000-1019` 没有进入训练。
+
+数据完整性通过，训练准入失败关闭。`12532/12851` 帧没有候选边，edge-free 比例为 `97.52%`；
+train/validation/test 候选边为 `286/99/95`，负边只有 `11/4/4`。candidate recall 仅在
+`4/1/1` 个可评价同目标跨相机 pair 上得到局部 `1.0`，不能作为准入证据。负边全部来自
+`200v200` 的 5 类场景，5/20/50/100 规模没有形成负边覆盖。
+
+新增 `tracklet_training_audit.py`，冻结 edge-free、正负样本、candidate-recall availability/pair
+支持、场景规模双类别覆盖和 20 个测试 seed 门。正式入口仍要求完整验证真值；显式开发模式只在
+已标注候选边上训练并永久标记 `development_only_fail_closed`。模型 bundle 升为 v3，绑定数据集、
+split、训练集、训练配置、readiness audit、特征版本和实现代码 SHA256，且固定
+`default_model=false`、`g1_assist_eligible=false`。
+
+固定 seed `20260720` 的 40-epoch CPU 开发训练选择 210 条正边和 11 条负边，最佳 epoch 38。
+验证/测试已标注边 F1 为 `0.9804/1.0`，但两者各只有 4 条负边；误合并率与完整 candidate recall
+不可用。权重 SHA256 为
+`9bbe53d6cab52e529155b8b92318e98e9bf7e373846fdee38a1f3b39235cbf2d`，两次固定 seed 运行一致。
+完整 bundle 只位于 ignored 的 `outputs/tracklet_graph_readiness_20260720/`，不使用普通
+Git 提交。可跟踪摘要见 `results/tracklet_graph_training_readiness_20260720.json`，详细报告见
+`reports/D5_TRACKLET_GRAPH_TRAINING_READINESS_20260720.md`。
+
+2026-07-20 新增专项并入后，D5 全量为 `412 passed`。下一轮 producer 必须增加独立
+场景/seed 的跨相机共同可见窗口、几何可混淆负例和完整离线 pair 分母；不得复制样本或降低在线
+身份、几何、同相机互斥和 `global_track_id` 所有权门。main 还需在 `VERSIONING.md` 同步 bundle
+v3 和“无 git-lfs 时权重只保存在 ignored outputs”的规则。
+
 ## 2026-07-20 同相机多到达批次处理
 
 正式 `learning_generation_v1_oosmfix` 已写入 209 条完成记录（sequence 0-208），下一项

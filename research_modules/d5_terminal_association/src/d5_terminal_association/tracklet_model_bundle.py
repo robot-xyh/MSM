@@ -20,16 +20,26 @@ from .tracklet_dataset import (
     GRAPH_SCHEMA_VERSION,
     NODE_FEATURE_VERSION,
     sha256_file,
+    sha256_json,
 )
 from .tracklet_gnn import NativeTrackletEdgeClassifier, graph_tensors
 
 
-MODEL_BUNDLE_SCHEMA_VERSION = "d5.tracklet-model-bundle.v2"
+MODEL_BUNDLE_SCHEMA_VERSION = "d5.tracklet-model-bundle.v3"
 MODEL_SEMANTIC_VERSION = "1.0.0"
 WEIGHTS_FILENAME = "weights.pt"
 MANIFEST_FILENAME = "manifest.json"
 CHECKSUMS_FILENAME = "SHA256SUMS"
 _SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
+_ALLOWED_ADMISSION_STATUSES = frozenset(
+    {"research_candidate_not_default", "development_only_fail_closed"}
+)
+_IMPLEMENTATION_SOURCE_FILES = (
+    "tracklet_gnn.py",
+    "tracklet_model_bundle.py",
+    "tracklet_training.py",
+    "tracklet_training_audit.py",
+)
 
 
 class ModelBundleValidationError(ValueError):
@@ -86,8 +96,10 @@ def write_tracklet_model_bundle(
     decision_threshold: float,
     validation_results: Mapping[str, Any],
     model_semantic_version: str = MODEL_SEMANTIC_VERSION,
+    admission_status: str = "research_candidate_not_default",
+    readiness_audit_sha256: str | None = None,
 ) -> Mapping[str, Any]:
-    """Write a research-candidate bundle without granting default admission."""
+    """Write a fail-closed bundle that can never self-admit to G1/assist."""
 
     if not isinstance(model, NativeTrackletEdgeClassifier):
         raise TypeError("model must be NativeTrackletEdgeClassifier")
@@ -108,7 +120,15 @@ def write_tracklet_model_bundle(
     semantic_version = str(model_semantic_version).strip()
     if not semantic_version:
         raise ValueError("model_semantic_version must be non-empty")
+    admission_value = str(admission_status).strip()
+    if admission_value not in _ALLOWED_ADMISSION_STATUSES:
+        raise ValueError("unsupported tracklet model admission_status")
+    if readiness_audit_sha256 is not None:
+        _validate_sha256(readiness_audit_sha256, "readiness_audit_sha256")
+    if admission_value == "development_only_fail_closed" and readiness_audit_sha256 is None:
+        raise ValueError("development-only bundles require readiness_audit_sha256")
     validation_payload = _json_object(validation_results, "validation_results")
+    code_provenance = _implementation_provenance()
 
     root = Path(bundle_dir)
     root.mkdir(parents=True, exist_ok=True)
@@ -153,6 +173,7 @@ def write_tracklet_model_bundle(
             "training_set_sha256": training_set_sha256,
             "training_config_sha256": training_config_sha256,
         },
+        "code_provenance": code_provenance,
         "calibration": {
             "method": "validation_only_scalar_temperature",
             "source_split": "validation",
@@ -168,8 +189,10 @@ def write_tracklet_model_bundle(
             "size_bytes": weights_size,
         },
         "admission": {
-            "status": "research_candidate_not_default",
+            "status": admission_value,
             "default_model": False,
+            "g1_assist_eligible": False,
+            "readiness_audit_sha256": readiness_audit_sha256,
         },
     }
     _write_json_atomic(paths["manifest"], manifest)
@@ -191,6 +214,7 @@ def load_tracklet_model_bundle(
     expected_dataset_manifest_sha256: str | None = None,
     expected_split_sha256: str | None = None,
     expected_training_set_sha256: str | None = None,
+    expected_readiness_audit_sha256: str | None = None,
 ) -> CalibratedTrackletEdgeScorer:
     """Strictly validate checksums/schema/order and load weights safely."""
 
@@ -298,6 +322,37 @@ def load_tracklet_model_bundle(
             "training_set_sha_mismatch",
         )
 
+    code_provenance = manifest.get("code_provenance")
+    if not isinstance(code_provenance, Mapping):
+        raise ModelBundleValidationError("code_provenance_missing", "bundle code provenance is missing")
+    if set(code_provenance) != {"implementation_sha256", "source_files"}:
+        raise ModelBundleValidationError(
+            "code_provenance_fields_mismatch", "bundle code provenance fields mismatch"
+        )
+    source_files = code_provenance.get("source_files")
+    if not isinstance(source_files, Mapping) or set(source_files) != set(_IMPLEMENTATION_SOURCE_FILES):
+        raise ModelBundleValidationError(
+            "code_provenance_files_mismatch", "bundle source file provenance is incomplete"
+        )
+    for filename, digest in source_files.items():
+        _validate_sha256(digest, str(filename), error_type=ModelBundleValidationError)
+    _validate_sha256(
+        code_provenance.get("implementation_sha256"),
+        "implementation_sha256",
+        error_type=ModelBundleValidationError,
+    )
+    _expect_equal(
+        code_provenance["implementation_sha256"],
+        sha256_json(dict(sorted(source_files.items()))),
+        "implementation_sha_mismatch",
+    )
+    current_provenance = _implementation_provenance()
+    _expect_equal(
+        code_provenance["implementation_sha256"],
+        current_provenance["implementation_sha256"],
+        "implementation_runtime_mismatch",
+    )
+
     calibration = manifest.get("calibration")
     if not isinstance(calibration, Mapping):
         raise ModelBundleValidationError("calibration_missing", "bundle calibration is missing")
@@ -319,12 +374,39 @@ def load_tracklet_model_bundle(
     if not isinstance(manifest.get("validation_results"), Mapping):
         raise ModelBundleValidationError("validation_results_missing", "validation results are missing")
     admission = manifest.get("admission")
+    if not isinstance(admission, Mapping) or set(admission) != {
+        "status",
+        "default_model",
+        "g1_assist_eligible",
+        "readiness_audit_sha256",
+    }:
+        raise ModelBundleValidationError("admission_invalid", "bundle admission fields are invalid")
+    admission_status = admission.get("status")
     if (
-        not isinstance(admission, Mapping)
+        admission_status not in _ALLOWED_ADMISSION_STATUSES
         or admission.get("default_model") is not False
-        or admission.get("status") != "research_candidate_not_default"
+        or admission.get("g1_assist_eligible") is not False
     ):
-        raise ModelBundleValidationError("admission_invalid", "bundle must not self-admit as a default model")
+        raise ModelBundleValidationError(
+            "admission_invalid", "bundle must remain outside default and G1/assist admission"
+        )
+    audit_sha256 = admission.get("readiness_audit_sha256")
+    if audit_sha256 is not None:
+        _validate_sha256(
+            audit_sha256,
+            "readiness_audit_sha256",
+            error_type=ModelBundleValidationError,
+        )
+    if admission_status == "development_only_fail_closed" and audit_sha256 is None:
+        raise ModelBundleValidationError(
+            "admission_invalid", "development-only bundle is missing its readiness audit hash"
+        )
+    if expected_readiness_audit_sha256 is not None:
+        _expect_equal(
+            audit_sha256,
+            expected_readiness_audit_sha256,
+            "readiness_audit_sha_mismatch",
+        )
 
     weights = manifest.get("weights")
     if not isinstance(weights, Mapping):
@@ -388,6 +470,17 @@ def load_tracklet_model_bundle_for_runtime(
         return UnavailableTrackletEdgeScorer(
             failure_reason=f"bundle_unexpected_{type(exc).__name__}"
         )
+
+
+def _implementation_provenance() -> dict[str, Any]:
+    root = Path(__file__).resolve().parent
+    source_files = {
+        filename: sha256_file(root / filename) for filename in _IMPLEMENTATION_SOURCE_FILES
+    }
+    return {
+        "implementation_sha256": sha256_json(dict(sorted(source_files.items()))),
+        "source_files": dict(sorted(source_files.items())),
+    }
 
 
 def _read_checksums(path: Path) -> dict[str, str]:

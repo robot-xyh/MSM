@@ -48,6 +48,10 @@ from d5_terminal_association.tracklet_training import (
     run_evaluation_pipeline,
     run_training_pipeline,
 )
+from d5_terminal_association.tracklet_training_audit import (
+    assess_tracklet_model_promotion,
+    run_tracklet_training_audit,
+)
 
 
 def _anonymous_graph(seed: int = 1) -> tuple[SparseTrackletGraph, tuple[OfflineTrackletTruthLabel, ...]]:
@@ -362,6 +366,115 @@ def test_formal_training_bundle_round_trip_and_evaluation_cli_api(tmp_path: Path
     assert (bundle_dir / "manifest.json").is_file()
     assert (bundle_dir / "weights.pt").is_file()
     assert (bundle_dir / "SHA256SUMS").is_file()
+
+
+def test_readiness_audit_fails_closed_on_insufficient_class_support(tmp_path: Path) -> None:
+    dataset_dir = tmp_path / "dataset"
+    output_dir = tmp_path / "audit"
+    for seed in range(1, 11):
+        graph, labels = _anonymous_graph(seed)
+        stage_tracklet_dataset_episode(
+            dataset_dir,
+            graph,
+            labels,
+            scenario_version="synthetic-crossing-5v5-v1",
+            seed=seed,
+            episode_id="episode-a",
+            generation_config={"candidate_graph": "geometry-gated"},
+            labels_complete=True,
+            candidate_recall_available=True,
+        )
+    finalize_tracklet_dataset(dataset_dir, split_seed=77)
+
+    report, json_path, markdown_path, audit_sha256 = run_tracklet_training_audit(
+        dataset_dir,
+        output_dir,
+    )
+
+    assert report["dataset"]["validated_graph_sha256_count"] == 10
+    assert report["split_integrity"]["whole_seed_atomic"] is True
+    assert report["split_integrity"]["reserved_evaluation_seed_overlap"]["train"] == []
+    assert report["training_readiness"]["status"] == "fail_closed"
+    assert report["development_training"]["status"] == "allowed_not_admissible"
+    assert report["promotion_readiness"]["g1_assist_eligible"] is False
+    assert any(
+        name.endswith("negative_edge_support")
+        for name in report["training_readiness"]["failed_gates"]
+    )
+    assert json_path.is_file() and markdown_path.is_file()
+    assert len(audit_sha256) == 64
+
+
+def test_partial_label_training_is_development_only_and_audit_bound(tmp_path: Path) -> None:
+    dataset_dir = tmp_path / "dataset"
+    for seed in range(1, 11):
+        graph, labels = _anonymous_graph(seed)
+        stage_tracklet_dataset_episode(
+            dataset_dir,
+            graph,
+            labels,
+            scenario_version="synthetic-crossing-5v5-v1",
+            seed=seed,
+            episode_id="episode-a",
+            generation_config={"candidate_graph": "geometry-gated"},
+            labels_complete=False,
+            candidate_recall_available=False,
+        )
+    finalize_tracklet_dataset(dataset_dir, split_seed=77)
+    audit, _, _, audit_sha256 = run_tracklet_training_audit(
+        dataset_dir,
+        tmp_path / "audit",
+    )
+    config = TrackletTrainingConfig(
+        seed=29,
+        epochs=1,
+        hidden_dim=8,
+        message_passing_steps=1,
+        latency_repeats=1,
+    )
+
+    with pytest.raises(ValueError, match="formal calibration requires complete validation truth"):
+        run_training_pipeline(
+            dataset_dir,
+            tmp_path / "formal-bundle",
+            tmp_path / "formal-report.json",
+            config=config,
+        )
+
+    report = run_training_pipeline(
+        dataset_dir,
+        tmp_path / "development-bundle",
+        tmp_path / "development-report.json",
+        config=config,
+        development_only=True,
+        readiness_audit_sha256=audit_sha256,
+    )
+    scorer = load_tracklet_model_bundle(
+        tmp_path / "development-bundle",
+        expected_readiness_audit_sha256=audit_sha256,
+    )
+    promotion = assess_tracklet_model_promotion(audit, report)
+
+    assert report["admission_status"] == "development_only_fail_closed"
+    assert report["g1_assist_eligible"] is False
+    assert report["test"]["truth_scope"] == "labeled_candidate_edges_only"
+    assert report["test"]["metrics"]["precision"]["available"] is True
+    assert report["test"]["metrics"]["false_merge_rate"] == {
+        "available": False,
+        "value": None,
+        "reason": "incomplete_graph_truth",
+    }
+    assert scorer.manifest["admission"] == {
+        "status": "development_only_fail_closed",
+        "default_model": False,
+        "g1_assist_eligible": False,
+        "readiness_audit_sha256": audit_sha256,
+    }
+    assert scorer.manifest["code_provenance"]["implementation_sha256"] == report[
+        "bundle"
+    ]["implementation_sha256"]
+    assert promotion["status"] == "fail_closed"
+    assert promotion["g1_assist_eligible"] is False
 
 
 def test_checkpoint_round_trip_preserves_calibrated_probabilities(tmp_path: Path) -> None:
