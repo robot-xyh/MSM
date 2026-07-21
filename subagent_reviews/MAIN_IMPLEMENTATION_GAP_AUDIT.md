@@ -9,6 +9,45 @@
 **当前状态修订（2026-07-20）**：上段“无开放 P0”只对应此前 AirSim 审计。900-episode
 正式生成在第 210 项发现 D5 同流多批次阻塞；以下专项记录为当前状态，优先级高于历史摘要。
 
+## 2026-07-21 运行采用、离线结果与跨视角数据收敛
+
+当前没有新增 P0。D3、D4、D5 的学习数据 producer 已完成全样本结构审计，main 的配对实验
+矩阵固定使用 `sensor_random_schedule_version=entity_fixed_v1`，并持久化外生配置 SHA-256。
+冻结 900 episode 保持只读，在线真值使用为 0。学习运行状态继续固定为
+`PPO=false`、`assist=false`、`authority=false`、`rule_fallback=true`。
+
+D4 新增 `d4-region-resource-runtime-ack-evidence-v2`。它把区域建议采用分为
+`new_execution_plan_applied` 和 `evaluation_refresh_applied`。真实 main 5v5、seed 41 的同计划
+刷新链为 source D3 seq 10、current D3 seq 94、consumption seq 96、D7 seq 99、ACK seq 100。
+计划编号和版本均保持 v1，资源绑定、联盟和 authority 执行签名不变，因此只准入评估刷新；
+刷新标志、binding/coalition、执行签名或前序计划证据被篡改时失败关闭。D4 当前全量
+`430 passed`。该证据不等于新执行计划、成员 ACK、物理结果或奖励。
+
+D6 新增运行时确认到离线三维结果的严格联接。真实 main 3v3 episode 的 2 条 ACK 被识别为
+1 条新计划身份和 1 条同身份评估刷新，按 ACK sequence/timestamp 形成 6 个非重叠资源-航迹
+窗口。D2 离线身份映射、三维真值状态、五米接近事件和 11 项输入 SHA-256 均在消费前校验；
+在线真值使用为 0。窗口输出起始、终止、最小距离和有界距离进展诊断，但该诊断不是 D3
+正式近端策略优化奖励，也不构成反事实或因果证据。D6 全量 `423 passed`。main 已把 11 项
+输入清单、JSON、中文报告和 provenance manifest 自动接入有运行时 ACK 的 episode，scalable
+3D 全量 `90 passed`。
+
+D5 对冻结正式图语料的 99 条未标注边完成逐条审计。原导出没有保存可核验 source-observation
+lineage，99 条全部保持 unavailable，没有使用最近邻或轨迹连续性伪标签。独立困难样本课程已在
+detached clean 提交 `79b2550ce2ef407c7cfcc653ce04a80fe2226c06` 上复生：4,500 帧、
+66,726 个匿名局部航迹节点、245,032 条默认几何门候选边，正/负/未标注为
+`57,292/187,740/0`。补充 manifest、dataset manifest 和 composite view SHA-256 分别为
+`4b9875fee86b5c425f683a6da23e6af1308bcf2383d3633d4fd6207fe2f25a32`、
+`4c49aebae8040f8a7dace329b5d1769739e2e40d811c3ad5eb733f302ebd8f6f` 和
+`11e8acbdbe268574ead402f2be5c9aa8e3459a7e4147a18e0570df3402892415`。数据支持与训练数据
+来源门为 pass；尚未训练新模型、未生成 `.pt`，promotion 状态为
+`awaiting_new_model_evidence`，G1 和 assist 继续关闭。
+
+当前 P1 按以下顺序推进：先在 clean composite view 上训练新的 D5 图模型并完成内部独立测试；
+再使用保留 seed `1000-1019` 做未见场景评估；随后建立规则与学习候选的同 seed paired shadow，
+要求身份交换、错误合并、重复分配和安全违规不恶化；最后生成多 seed 的实际学习采用、运行确认
+和物理结果证据。D3/D4 的有界诊断需另行冻结正式 reward 口径。上述门完成前不启动 PPO，
+不开放在线辅助或控制权限。
+
 ## 2026-07-21 跨模块学习数据联合准入
 
 D6 owner 已实现 `d6.cross-module-learning-data-admission.v1` 只读审计和命令行入口。审计显式

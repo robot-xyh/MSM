@@ -102,8 +102,10 @@ commit。
 - D3 已完成完整数据行为克隆，当前为 development/shadow-only。D4 已完成行为克隆，但
   正式规则动作缺少 quota、hold、replan 和 transfer 正样本。D4 已用独立 clean 课程补齐
   四类规则示范覆盖并形成 canonical 行为克隆只读视图；该课程没有 reward，不能用于 PPO
-  或 assist。D5 跨视角图已完成数据审计和开发训练，但 97.52% 图帧无候选边且困难负样本
-  不足。三者均未获得 assist 准入。
+  或 assist。D5 正式跨视角图的 97.52% 图帧无候选边且困难负样本不足，原开发模型不能
+  晋级；独立 clean 困难样本课程已补充 4500 帧、245032 条默认几何门候选边，正/负/
+  未标注为 `57292/187740/0`，数据支持与训练数据来源门已通过。新模型尚未训练，三者
+  均未获得 assist 准入。
 - D5 主动视觉已完成 1,153,242 样本的完整行为克隆。总体测试精确动作准确率为
   `0.955978`，但 `observe_target` 测试召回率为 0、hold 无正样本、侦察相机精确动作
   准确率为 `0.621823`，因此 bundle 仅允许 development shadow。
@@ -125,21 +127,23 @@ commit。
   一致的确定性 `60/20/20` 映射，并绑定原训练 seed 注册表 SHA。D4/D5 源外 canonical
   views 已建立，原数据不改写；D6 联合审计已通过 manifest/view/readiness/summary 层的
   seed 身份与哈希检查。D5 补充主动视觉的 100 episode/1200 sample 全样本审计已通过，
-  302/302 个制品和 1200/1200 个有限特征满足门限；D3、D4 尚未逐样本审计，因此总状态为
-  BC canonical view available、full-sample audit partial。
+  302/302 个制品和 1200/1200 个有限特征满足门限；D3、D4 的正式/补充全样本结构审计也
+  已完成。三类 producer 状态均为 complete，但总体准入仍因真实 outcome、reward、paired
+  shadow 和保留 seed 证据缺失而保持 partial。
 - D4 clean 补充课程已覆盖 hold/replan/quota/transfer=`100/200/200/100`。D5 clean 补充
   课程为 100 episode/1200 sample，覆盖四类观察 intent、wide/zoom 和拦截/侦察角色；
   synthetic ACK 三类各 400 只作故障注入。两套课程均没有可归因结果或 reward。
-- D6 联合审计确认 D5 tracklet 的 480 条候选边中 381 条已标注、99 条未标注，标签为
-  partial；PPO、assist 和 authority 均关闭，规则回退强制。D5 全样本审计文件/内容 SHA-256
-  为 `9a03653538e6dae054da8c127ad4a20aae2481af6c9bbef987edfddff0b423d3` 和
-  `a11b65596a4c416deba6d0cb35dcc0c32342a5bae0481291d43e8de0e26550dd`。D6 专项
-  `21 passed`、全量 `385 passed`，正式数据树 SHA-256 保持
-  `8ffbe5cf044d121163c8acc3dce1bbd54e14bb6b211b8e1cf440f24c93294fca`。
-- main scalable 测试当前为 `82 passed`。shared split 与规则课程 producer 已关闭；下一阶段
-  先完成 D3/D4 全样本审计，补 D5 重叠视场/困难负样本，并建立真实 runtime
-  ACK/outcome 与 paired shadow 数据链。满足准入条件后再运行 R0/G1/A1/A2/A3/C1/F1 和
-  seed `1000-1019` 独立验收。
+- D6 联合审计确认原 D5 tracklet 的 99 条未标注边没有可核验 source-observation lineage，
+  因此保持 unavailable，没有伪标签回填。clean 补充图 manifest/dataset/composite-view
+  SHA-256 分别为 `4b9875fee86b5c425f683a6da23e6af1308bcf2383d3633d4fd6207fe2f25a32`、
+  `4c49aebae8040f8a7dace329b5d1769739e2e40d811c3ad5eb733f302ebd8f6f` 和
+  `11e8acbdbe268574ead402f2be5c9aa8e3459a7e4147a18e0570df3402892415`。D6 当前
+  全量 `423 passed`；PPO、assist 和 authority 均关闭，规则回退强制。
+- main scalable 测试当前为 `90 passed`。shared split、全样本 producer 审计、D4 runtime
+  adoption、D6 observed-outcome 联接和 D5 clean 困难样本数据门已闭合。下一阶段先训练新的
+  D5 图模型并完成内部独立测试，再运行 seed `1000-1019` 保留集和同 seed paired shadow；
+  D3/D4 还需冻结正式 reward 口径。只有学习实际采用、运行 ACK、物理结果和非退化证据形成
+  多 seed 闭环后，才评审 R0/G1/A1/A2/A3/C1/F1 或 PPO/assist 晋级。
 - main 已增加默认关闭的侦察观察线索开关。5v5、3 秒、5 seed 对照中，线索使视觉观测
   增加，但候选边由 128 降至 64；在 D5 完成宽视场保持和跨视角稳定门控前，不进入默认
   生成路径或正式实验矩阵。

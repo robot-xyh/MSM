@@ -42,8 +42,10 @@ D3 已在完整数据上完成行为克隆开发训练，内部测试边排序�
 一致率为 `0.677019`，推理 P95 为 `2.554 ms`；bundle 保持 `development/shadow-only`，
 未启动近端策略优化。D4 行为克隆内部测试 loss 为 `0.071545`、推理 P95 为 `0.7774 ms`，
 但 14384 个区域动作没有非零 quota、hold、replan 或 transfer，因而同样不能进入 assist，
-近端策略优化不可用。D5 跨视角图共有 12851 个图帧，其中 97.52% 没有候选边，负边只有
-19 条；当前高 F1 来自极弱的负样本分母，G1 和 assist 均失败关闭。
+近端策略优化不可用。D5 正式跨视角图共有 12851 个图帧，其中 97.52% 没有候选边，负边
+只有 19 条；原开发模型的高 F1 来自极弱的负样本分母，不能晋级。D5 已在独立 clean
+补充课程中生成 4500 帧和 245032 条默认几何门候选边，正/负/未标注为
+`57292/187740/0`，数据支持与训练数据来源门已通过。新模型尚未训练，G1 和 assist 仍关闭。
 
 D4 已另建不修改正式 900 episode 的区域动作覆盖课程。clean commit `9445ed6` 生成
 100 个 seed、100 个 episode 和 300 帧，覆盖 hold 100、request_replan 200、非零配额
@@ -69,15 +71,17 @@ D5 主动视觉已在 1,153,242 个规则示范样本上完成五轮完整行为
 `observe_target` 测试样本的召回率为 0，hold 没有正样本，侦察相机精确动作准确率为
 `0.621823`。该 bundle 只允许 shadow 加载，assist 和 PPO 均失败关闭。
 
-D6 对正式数据生成了源外标签 sidecar，并完成正式 canonical views 与 D4/D5 补充课程的
-联合只读准入审计。D4 仅有 `898/1798` 帧具备无动作归因的相邻状态结果；D5 主动视觉有
-`1,063,214/1,153,242` 条相邻观测结果。两者可归因 reward 均为 0 条，D5 runtime ACK
-为 0。D5 跨视角图的 480 条候选边中有 381 条已标注、99 条未标注，标签状态为 partial。
-当前 BC canonical view 可用，D5 补充主动视觉全样本子项为 complete；D3、D4 仍缺逐样本
-审计，因此跨模块 full-sample 总状态为 partial。联合报告 JSON/中文 Markdown SHA-256 分别为
-`d3e3e858a14fb570cd0eb19da2661ce76686906530e313b5f79e6bf6af336de2` 和
-`aaaeaefd99f38a03e4f80ffa96dabcb0eef0dd9724cb38fdb163c0bf603eff21`。在 D3、D4、真实
-运行 ACK/outcome、可归因 reward 和 paired shadow 闭合前，不能开展近端策略优化、在线辅助或
+D6 对正式数据生成了源外标签 sidecar，并完成 D3、D4、D5 producer 的全样本结构审计。
+D3 覆盖 900 episode/1604 frame、3,658,815 条候选边和 117,304 条选择边；D4 覆盖正式
+900 episode/1798 frame 及补充 100 episode/300 frame；D5 主动视觉补充覆盖 100 episode/
+1200 sample/302 个制品。三类 producer 全样本状态均为 complete，联合报告 JSON/中文
+Markdown SHA-256 分别为
+`6593ee8a11d33b7c75d633f87e0fbd84cea421798bab0920ef4117cb044a87f5` 和
+`7b6480d08870cbf21f532235ddfdbe9ca7f23ce05f681f2d18846f988355a4ba`。总体准入仍为 partial：
+D4 只有 `898/1798` 帧具备无动作归因的相邻状态结果，D5 主动视觉虽有大量相邻观测结果，
+但两者可归因 reward 均为 0；正式数据也没有新的 runtime ACK、paired shadow 和保留 seed
+性能。D5 正式图的 99 条未标注边因缺少精确 lineage 保持 unavailable，clean 补充图数据尚未
+训练模型。在正式 reward、同 seed 对照和学习实际采用证据闭合前，不能开展 PPO、在线辅助或
 因果训练。
 
 D6 还已在真实 main 3v3 质点 episode 上完成运行时计划确认与离线结果联接。2 条确认被识别
