@@ -2,32 +2,25 @@
 
 ## 2026-07-21 跨模块学习数据联合准入状态
 
-- [x] 新增 D6-owned 只读联合审计 API 与 CLI。显式输入 training/shared registry、D3 formal
-  manifest、D4 formal manifest 与独立 canonical view、D5 tracklet/active-vision formal
-  manifest/view/readiness，以及 D4/D5 supplemental summary；不修改任何 producer artifact。
-- [x] 对 schema、来源身份、文件与内容 SHA-256、dirty source、缺失输入、100 个训练 seed、
-  train/validation/test=`60/20/20` 和保留 seed `1000-1019` 零泄漏执行 fail-closed 校验。
-- [x] 将 D4 900-episode formal canonical view 与 D4 100-episode/300-frame supplemental
-  curriculum 分层。formal view 文件 SHA-256 为
-  `73a365d32b0439fbf805f40ea7941b8e992fe4c68687cbc5496704f230440b11`，不得由 supplemental view
-  替代。
-- [x] 将证据固定分为 formal observation corpus、supplemental rule-teacher curriculum、offline
-  evaluator labels 和 runtime ACK evidence。D5 synthetic ACK applied/rejected/missing 各 400 仅作
-  测试覆盖，不作 runtime attribution。
-- [x] 汇总 D4 hold/request-replan/nonzero quota/transfer=`100/200/200/100`；D5 intent
-  hold/observe-target/reacquire/search-sector=`200/600/200/200`，wide/zoom=`1000/200`，
-  interceptor/recon=`600/600`。
-- [x] 精确校验 D4 supplemental canonical episode=`60/20/20`、frame=`180/60/60`。汇总 D5 tracklet
-  480 条候选边的正/负/未标注=`362/19/99`，发布 `381 labeled/99 unlabeled`、`complete=false`、
-  `status=partial`，不把部分标签声明为完整监督集。
-- [x] 报告写盘前拒绝 output directory 等于或位于 training registry 所属正式 generation 根下；D6 自有
-  `outputs/` 仍是允许路径，`source_mutation_performed=false` 仅在该隔离约束下成立。
-- [x] 准入矩阵固定为 BC canonical view available、BC full-sample audit pending、PPO=false、
-  assist=false、authority=false、rule fallback required=true。补充课程和 synthetic ACK 不得提升资格。
-- [x] 2026-07-21 使用真实 900 episode 冻结制品运行 CLI，规范 seed 为 60/20/20，reserved leakage=0，
-  online truth=0。专项 `16 passed`，D6 全量 `380 passed`，仅有既有 Matplotlib `Axes3D` warning。
-- [ ] 对 D3/D4/D5 canonical views 执行逐样本内容、身份和文件集合审计，关闭
-  `behavior_cloning_full_sample_audit=pending`。完成前仅开放开发期行为克隆视图读取。
+- [x] 扩展 D6-owned 联合审计 API 与 CLI，显式接收 D5 supplemental BC 全样本审计路径和调用方带外
+  文件 SHA-256；报告不记录输入绝对路径，不修改 producer artifact。
+- [x] 重新校验 D5 审计 schema/date、文件与内容 SHA-256、producer audit 结果，并将其
+  manifest/canonical view/dataset config、training/shared registry、summary 和源提交绑定到 D6 当前
+  输入。任一缺失、篡改或错绑定均 fail closed。
+- [x] 精确复核 D5 supplemental 的 100 episode/1200 sample、canonical episode=`60/20/20`、sample=
+  `720/240/240`、online/offline/descriptor=`100/100/100`、checksummed/verified=`302/302` 和有限特征
+  `1200/1200`。
+- [x] 复核 online truth、reserved seed、dirty episode、非有限特征以及 D5 创建/改写/换绑
+  `global_track_id` 均为 0。四类 offline label 保持 unavailable 且未补零。
+- [x] D5 synthetic ACK applied/rejected/missing=`400/400/400` 仍标为确定性故障注入；任何 runtime
+  evidence 提升或 PPO/assist/authority 误开均失败关闭，规则回退保持 true。
+- [x] 准入矩阵发布 D5 supplemental full-sample=`complete`、D3/D4=`pending`、跨模块总状态=`partial`。
+  BC canonical view 继续可供开发读取，但不能据此开放模型或控制权限。
+- [x] 真实输出位于 D6 `outputs/cross_module_learning_admission_20260721/`；JSON/Markdown SHA-256 为
+  `d3e3e858...36de2`/`aaaeaefd...ff21`。专项 `21 passed`，D6 全量 `385 passed`，仅有既有
+  Matplotlib `Axes3D` warning。
+- [ ] 对 D3 和 D4 canonical views 执行逐样本内容、身份和文件集合审计，将跨模块 full-sample 从
+  `partial` 关闭为 `complete`。完成前仅开放开发期行为克隆视图读取。
 - [ ] producer 持久化真实 action adoption、版本绑定、runtime ACK、可归因 reward/outcome 和终局结果；
   D6 不从 synthetic ACK、相邻状态变化或 unavailable 标签补造这些证据。
 - [ ] 形成同 seed paired shadow 非退化证据，并使用保留 seed `1000-1019` 做独立模型验收。上述条件未
@@ -56,7 +49,8 @@
   seed、D3/D4/D5 mismatch、模块 missing/extra/reserved 和无 registry 兼容。2026-07-21 D6 全量
   `364 passed`；接受门限为注册表八项 validation 全真且四模块 exact，本次联合门未通过。
 - [x] main/D4/D5 已采用 detached registry 生成规范 split views。正式 900 episode 源 manifest 保持
-  冻结；D6 已通过顶部联合审计核对这些视图，但跨模块全样本审计仍 pending。
+  冻结；D6 已通过顶部联合审计核对这些视图。D5 supplemental BC 全样本已 complete，D3/D4 仍
+  pending，跨模块总状态为 partial。
 - [ ] 共享 split 只关闭数据泄漏治理条件。D4/D5 reward、runtime ACK、动作多样性和 PPO 条件仍按原
   GAP 独立开放，不能由 split exact 自动晋升。
 

@@ -1,9 +1,9 @@
 """Read-only admission audit for cross-module scalable-3D learning data.
 
-The audit consumes immutable producer manifests and detached canonical views.
-It never rewrites D3/D4/D5 data and never upgrades synthetic curriculum ACKs
-to runtime execution evidence.  Manifest-level readiness is intentionally
-separate from a future full-sample audit.
+The audit consumes immutable producer manifests, detached canonical views,
+and producer-owned full-sample evidence.  It never rewrites D3/D4/D5 data and
+never upgrades synthetic curriculum ACKs to runtime execution evidence.  A
+module full-sample result is kept separate from cross-module completeness.
 """
 
 from __future__ import annotations
@@ -35,6 +35,9 @@ _D5_VIEW_SCHEMA = "d5.canonical-seed-split-view.v1"
 _D5_READINESS_SCHEMA = "d5.canonical-seed-readiness.v1"
 _D4_FORMAL_VIEW_SCHEMA = "d4-canonical-region-seed-split-audit-v1"
 _D4_FORMAL_BINDING_SCHEMA = "d4-canonical-region-seed-split-view-v1"
+_D5_SUPPLEMENTAL_FULL_SAMPLE_AUDIT_SCHEMA = (
+    "d5.active-vision-supplemental-bc-full-sample-audit.v1"
+)
 
 
 class CrossModuleLearningAdmissionError(RuntimeError):
@@ -63,6 +66,8 @@ class CrossModuleLearningAdmissionInputs:
     d5_active_vision_canonical_readiness_path: Path
     d4_supplemental_summary_path: Path
     d5_supplemental_summary_path: Path
+    d5_supplemental_full_sample_audit_path: Path
+    d5_supplemental_full_sample_audit_file_sha256: str
 
     def resolved(self) -> "CrossModuleLearningAdmissionInputs":
         return CrossModuleLearningAdmissionInputs(
@@ -116,6 +121,14 @@ def audit_cross_module_learning_data_admission(
     d5_supplemental = _audit_d5_supplemental(
         source.d5_supplemental_summary_path, registry
     )
+    d5_supplemental_full_sample = _audit_d5_supplemental_full_sample(
+        source.d5_supplemental_full_sample_audit_path,
+        expected_file_sha256=(
+            source.d5_supplemental_full_sample_audit_file_sha256
+        ),
+        d5_supplemental=d5_supplemental,
+        registry=registry,
+    )
 
     availability = _build_availability(
         d4_formal=d4_formal,
@@ -127,16 +140,22 @@ def audit_cross_module_learning_data_admission(
         "behavior_cloning_canonical_view_available": True,
         "behavior_cloning_full_sample_audit": {
             "available": False,
-            "status": "pending",
-            "reason": "manifest_and_summary_level_audit_only",
+            "status": "partial",
+            "reason": "d3_and_d4_full_sample_audits_pending",
+            "module_status": {
+                "d3_assignment": "pending",
+                "d4_region": "pending",
+                "d5_supplemental_active_vision": "complete",
+            },
         },
         "ppo_allowed": False,
         "assist_allowed": False,
         "authority_allowed": False,
         "rule_fallback_required": True,
-        "status": "bc_canonical_view_available_full_sample_audit_pending",
+        "status": "bc_canonical_view_available_full_sample_audit_partial",
         "promotion_blockers": [
-            "behavior_cloning_full_sample_audit_pending",
+            "d3_full_sample_audit_pending",
+            "d4_full_sample_audit_pending",
             "reward_unavailable",
             "outcome_unavailable",
             "runtime_ack_attribution_unavailable",
@@ -167,7 +186,28 @@ def audit_cross_module_learning_data_admission(
                 "classification": "supplemental_rule_teacher_curriculum",
                 "formal_corpus_replacement_allowed": False,
                 "d4_region": d4_supplemental,
-                "d5_active_vision": d5_supplemental,
+                "d5_active_vision": {
+                    **d5_supplemental,
+                    "full_sample_audit": d5_supplemental_full_sample,
+                },
+            },
+            "full_sample_audits": {
+                "classification": "cross_module_full_sample_audit",
+                "status": "partial",
+                "complete": False,
+                "modules": {
+                    "d3_assignment": {
+                        "status": "pending",
+                        "complete": False,
+                    },
+                    "d4_region": {
+                        "status": "pending",
+                        "complete": False,
+                    },
+                    "d5_supplemental_active_vision": (
+                        d5_supplemental_full_sample
+                    ),
+                },
             },
             "offline_evaluator_labels": {
                 "classification": "offline_evaluator_labels",
@@ -246,6 +286,12 @@ def render_cross_module_learning_data_admission_markdown(
     supplemental = _mapping(
         layers.get("supplemental_rule_teacher_curriculum"), "supplemental layer"
     )
+    full_sample_layer = _mapping(
+        layers.get("full_sample_audits"), "full-sample audit layer"
+    )
+    full_sample_modules = _mapping(
+        full_sample_layer.get("modules"), "full-sample audit modules"
+    )
     offline = _mapping(layers.get("offline_evaluator_labels"), "offline labels")
     tracklet_labels = _mapping(
         offline.get("tracklet_association_labels"), "tracklet labels"
@@ -264,6 +310,10 @@ def render_cross_module_learning_data_admission_markdown(
     )
     d4_supp = _mapping(supplemental.get("d4_region"), "D4 supplemental")
     d5_supp = _mapping(supplemental.get("d5_active_vision"), "D5 supplemental")
+    d5_full_sample = _mapping(
+        full_sample_modules.get("d5_supplemental_active_vision"),
+        "D5 supplemental full-sample audit",
+    )
     d4_action = _mapping(action.get("d4"), "D4 action")
     d5_action = _mapping(action.get("d5"), "D5 action")
 
@@ -274,9 +324,9 @@ def render_cross_module_learning_data_admission_markdown(
         "",
         "## 结论",
         "",
-        "D3、D4、D5 的规范 seed 身份已统一为训练/验证/测试 60/20/20，保留 seed 1000-1019 泄漏为 0。行为克隆规范视图可用于开发期读取；跨模块全样本复核仍未完成。",
+        "D3、D4、D5 的规范 seed 身份已统一为训练/验证/测试 60/20/20，保留 seed 1000-1019 泄漏为 0。D5 补充主动视觉课程已完成 100 个 episode、1200 个样本的全样本审计。D3 和 D4 仍待逐样本复核，跨模块总状态为 partial。",
         "",
-        "奖励、结果、反事实、因果标签、真实运行时确认和配对 shadow 证据均不可用。因此 PPO、在线辅助和控制权限保持关闭，规则回退继续强制启用。D5 的 applied/rejected/missing 只代表确定性故障注入覆盖。",
+        "奖励、结果、反事实、因果标签、真实运行时确认和配对 shadow 证据均不可用。因此 PPO、在线辅助和控制权限保持关闭，规则回退继续强制启用。D5 的 applied/rejected/missing 只代表确定性故障注入覆盖，未提升为 runtime evidence。",
         "",
         "## 注册表",
         "",
@@ -312,6 +362,16 @@ def render_cross_module_learning_data_admission_markdown(
         f"| D5 视场 | wide {d5_action['fov']['wide']}；zoom {d5_action['fov']['zoom']} |",
         f"| D5 角色 | interceptor {d5_action['camera_role']['interceptor']}；recon {d5_action['camera_role']['recon']} |",
         "",
+        "## 全样本审计",
+        "",
+        "| 模块 | 状态 | 范围 |",
+        "| --- | --- | --- |",
+        "| D3 分配 | pending | 尚未形成逐样本 D6 审计 |",
+        "| D4 区域 | pending | 尚未形成逐样本 D6 审计 |",
+        f"| D5 补充主动视觉 | {d5_full_sample['status']} | {d5_full_sample['episode_count']} episode，{d5_full_sample['sample_count']} sample，校验制品 {d5_full_sample['verified_artifact_count']}/{d5_full_sample['checksummed_artifact_count']} |",
+        "",
+        f"D5 全样本审计文件 SHA-256 为 `{d5_full_sample['audit_file_sha256']}`，内容 SHA-256 为 `{d5_full_sample['audit_content_sha256']}`。有限特征为 {d5_full_sample['finite_feature_sample_count']}/1200，online truth、保留 seed 泄漏和 dirty episode 均为 0。该 complete 只适用于 D5 supplemental BC，不代表跨模块全样本审计完成。",
+        "",
         "## 证据可用性",
         "",
         "| 证据 | 可用 | 原因 |",
@@ -346,7 +406,7 @@ def render_cross_module_learning_data_admission_markdown(
             "",
             "## 限制",
             "",
-            "本次复核到 manifest、detached view 和 summary 层。D3/D4/D5 的逐样本内容、真实运行时动作执行结果、配对 shadow 非退化结果和保留 seed 性能尚未形成统一 D6 全样本证据。",
+            "D5 supplemental BC 已复核到逐样本审计证据。D3/D4 仍停留在 manifest、detached view 和 summary 层。真实运行时动作执行结果、可归因结果与奖励、反事实/因果标签、配对 shadow 非退化结果和保留 seed 性能尚未形成统一 D6 证据。",
             "",
         ]
     )
@@ -1435,6 +1495,13 @@ def _audit_d5_supplemental(
         "d5_supplemental_dirty_source",
         "D5 supplemental curriculum belongs to a dirty source",
     )
+    dataset_config_sha256 = _require_sha256(
+        source.get("dataset_config_sha256"),
+        "D5 supplemental dataset config SHA",
+    )
+    source_git_commit = _require_git_commit(
+        source.get("git_commit"), "D5 supplemental source Git commit"
+    )
     dataset = _mapping(summary.get("dataset"), "D5 supplemental dataset")
     episode_count = _nonnegative_int(
         dataset.get("episode_count"), "D5 supplemental episode_count"
@@ -1452,6 +1519,10 @@ def _audit_d5_supplemental(
     _require_sha256(dataset.get("content_sha256"), "D5 supplemental content SHA")
 
     canonical = _mapping(summary.get("canonical"), "D5 supplemental canonical")
+    canonical_view_sha256 = _require_sha256(
+        canonical.get("view_manifest_sha256"),
+        "D5 supplemental canonical view SHA",
+    )
     split = _mapping(canonical.get("split"), "D5 supplemental canonical split")
     _validate_canonical_split_catalog(split, registry, context="D5 supplemental")
     _expect_equal(
@@ -1579,6 +1650,17 @@ def _audit_d5_supplemental(
         "classification": "supplemental_rule_teacher_curriculum",
         "summary_file_sha256": _sha256_file(path),
         "summary_content_sha256": summary["content_sha256"],
+        "dataset_manifest_sha256": _require_sha256(
+            dataset.get("manifest_sha256"), "D5 supplemental manifest SHA"
+        ),
+        "dataset_content_sha256": _require_sha256(
+            dataset.get("content_sha256"), "D5 supplemental content SHA"
+        ),
+        "dataset_config_sha256": dataset_config_sha256,
+        "canonical_view_sha256": canonical_view_sha256,
+        "source_git_commit": source_git_commit,
+        "training_registry_sha256": registry["training_file_sha256"],
+        "shared_registry_sha256": registry["shared_file_sha256"],
         "episode_count": episode_count,
         "segment_count": _nonnegative_int(
             coverage.get("segment_count"), "D5 segment_count"
@@ -1602,6 +1684,439 @@ def _audit_d5_supplemental(
             "classification": "deterministic_fault_injection_coverage_only",
             "runtime_attribution": False,
         },
+    }
+
+
+def _audit_d5_supplemental_full_sample(
+    path: Path,
+    *,
+    expected_file_sha256: str,
+    d5_supplemental: Mapping[str, Any],
+    registry: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Strictly consume D5's tracked 100-episode full-sample audit."""
+
+    expected_file_hash = _require_sha256(
+        expected_file_sha256, "D5 supplemental full-sample audit file SHA"
+    )
+    actual_file_hash = _sha256_file(path)
+    _expect_equal(
+        actual_file_hash,
+        expected_file_hash,
+        "d5_full_sample_audit_file_hash_mismatch",
+        "D5 supplemental full-sample audit file SHA differs from caller evidence",
+    )
+    payload = _read_json_object(path, "D5 supplemental full-sample audit")
+    _expect_equal(
+        payload.get("schema_version"),
+        _D5_SUPPLEMENTAL_FULL_SAMPLE_AUDIT_SCHEMA,
+        "d5_full_sample_audit_schema_mismatch",
+        "D5 supplemental full-sample audit schema changed",
+    )
+    _expect_equal(
+        payload.get("validation_date"),
+        CROSS_MODULE_LEARNING_ADMISSION_DATE,
+        "d5_full_sample_audit_date_mismatch",
+        "D5 supplemental full-sample audit validation date changed",
+    )
+    _validate_claimed_content_hash(
+        payload,
+        "content_sha256",
+        "d5_full_sample_audit_content_hash_mismatch",
+    )
+    _expect_equal(
+        payload.get("purpose"),
+        "supplemental_rule_teacher_behavior_cloning_full_sample_admission",
+        "d5_full_sample_audit_purpose_mismatch",
+        "D5 supplemental full-sample audit purpose changed",
+    )
+
+    producer_audit = _mapping(payload.get("audit"), "D5 full-sample audit result")
+    _expect(
+        producer_audit.get("passed") is True
+        and _nonnegative_int(
+            producer_audit.get("violation_count"), "D5 full-sample violations"
+        )
+        == 0
+        and producer_audit.get("violations") == [],
+        "d5_full_sample_producer_audit_failed",
+        "D5 producer full-sample audit did not pass cleanly",
+    )
+
+    expected_bindings = {
+        "canonical_view_sha256": d5_supplemental["canonical_view_sha256"],
+        "dataset_config_sha256": d5_supplemental["dataset_config_sha256"],
+        "dataset_manifest_sha256": d5_supplemental["dataset_manifest_sha256"],
+        "shared_registry_sha256": registry["shared_file_sha256"],
+        "source_git_commit": d5_supplemental["source_git_commit"],
+        "summary_content_sha256": d5_supplemental["summary_content_sha256"],
+        "training_registry_sha256": registry["training_file_sha256"],
+    }
+    claimed_expected = _mapping(
+        payload.get("expected_bindings"), "D5 expected full-sample bindings"
+    )
+    claimed_actual = _mapping(
+        payload.get("actual_bindings"), "D5 actual full-sample bindings"
+    )
+    _expect_equal(
+        dict(claimed_expected),
+        expected_bindings,
+        "d5_full_sample_expected_binding_mismatch",
+        "D5 full-sample expected bindings differ from D6 inputs",
+    )
+    for field, expected in expected_bindings.items():
+        _expect_equal(
+            claimed_actual.get(field),
+            expected,
+            "d5_full_sample_source_binding_mismatch",
+            f"D5 full-sample actual binding differs at {field}",
+        )
+    _expect_equal(
+        claimed_actual.get("summary_file_sha256"),
+        d5_supplemental["summary_file_sha256"],
+        "d5_full_sample_summary_file_binding_mismatch",
+        "D5 full-sample audit is not bound to the consumed summary file",
+    )
+    dataset_checksums_sha256 = _require_sha256(
+        claimed_actual.get("dataset_checksums_sha256"),
+        "D5 full-sample dataset checksums SHA",
+    )
+
+    binding_checks = _mapping(
+        payload.get("binding_checks"), "D5 full-sample binding checks"
+    )
+    _expect_equal(
+        set(binding_checks),
+        set(expected_bindings),
+        "d5_full_sample_binding_check_set_mismatch",
+        "D5 full-sample binding check set changed",
+    )
+    for field, expected in expected_bindings.items():
+        item = _mapping(binding_checks.get(field), f"D5 binding check {field}")
+        _expect(
+            item.get("actual") == expected
+            and item.get("expected") == expected
+            and item.get("passed") is True,
+            "d5_full_sample_binding_check_failed",
+            f"D5 full-sample binding check failed at {field}",
+        )
+
+    coverage = _mapping(payload.get("coverage"), "D5 full-sample coverage")
+    _expect_equal(
+        (
+            _nonnegative_int(coverage.get("episode_count"), "D5 audited episodes"),
+            _nonnegative_int(coverage.get("sample_count"), "D5 audited samples"),
+            _nonnegative_int(coverage.get("segment_count"), "D5 audited segments"),
+        ),
+        (100, 1200, 800),
+        "d5_full_sample_inventory_mismatch",
+        "D5 full-sample episode/sample inventory changed",
+    )
+    expected_episode_counts = {"train": 60, "validation": 20, "test": 20}
+    expected_sample_counts = {"train": 720, "validation": 240, "test": 240}
+    _expect_equal(
+        _count_mapping(
+            coverage.get("canonical_episode_counts"),
+            "D5 full-sample canonical episode counts",
+        ),
+        expected_episode_counts,
+        "d5_full_sample_episode_split_mismatch",
+        "D5 full-sample canonical episode counts differ from 60/20/20",
+    )
+    _expect_equal(
+        _count_mapping(
+            coverage.get("canonical_sample_counts"),
+            "D5 full-sample canonical sample counts",
+        ),
+        expected_sample_counts,
+        "d5_full_sample_sample_split_mismatch",
+        "D5 full-sample canonical sample counts differ from 720/240/240",
+    )
+    _expect_equal(
+        _count_mapping(coverage.get("intent_counts"), "D5 audited intent counts"),
+        d5_supplemental["action_coverage"]["intent"],
+        "d5_full_sample_intent_binding_mismatch",
+        "D5 full-sample intent counts differ from the consumed summary",
+    )
+    _expect_equal(
+        _count_mapping(coverage.get("fov_mode_counts"), "D5 audited FOV counts"),
+        d5_supplemental["action_coverage"]["fov"],
+        "d5_full_sample_fov_binding_mismatch",
+        "D5 full-sample FOV counts differ from the consumed summary",
+    )
+    _expect_equal(
+        _count_mapping(
+            coverage.get("camera_role_counts"), "D5 audited camera role counts"
+        ),
+        d5_supplemental["action_coverage"]["camera_role"],
+        "d5_full_sample_role_binding_mismatch",
+        "D5 full-sample camera-role counts differ from the consumed summary",
+    )
+
+    integrity = _mapping(
+        payload.get("artifact_integrity"), "D5 full-sample artifact integrity"
+    )
+    _expect(
+        _nonnegative_int(
+            integrity.get("checksummed_file_count"), "D5 checksummed files"
+        )
+        == 302
+        and _nonnegative_int(
+            integrity.get("sha256_verified_file_count"), "D5 verified files"
+        )
+        == 302
+        and _nonnegative_int(
+            integrity.get("sha256_mismatch_file_count"), "D5 hash mismatches"
+        )
+        == 0
+        and _nonnegative_int(
+            integrity.get("online_file_count"), "D5 online files"
+        )
+        == 100
+        and _nonnegative_int(
+            integrity.get("offline_file_count"), "D5 offline files"
+        )
+        == 100
+        and _nonnegative_int(
+            integrity.get("episode_descriptor_file_count"),
+            "D5 descriptor files",
+        )
+        == 100
+        and _nonnegative_int(
+            integrity.get("descriptor_manifest_match_count"),
+            "D5 descriptor/manifest matches",
+        )
+        == 100
+        and integrity.get("checksum_artifact_set_exact") is True
+        and integrity.get("online_offline_episode_collections_complete") is True
+        and integrity.get("canonical_loader_passed") is True
+        and integrity.get("strict_lazy_loader_passed") is True
+        and integrity.get("source_artifacts_unchanged") is True
+        and integrity.get("formal_900_episode_dataset_modified") is False,
+        "d5_full_sample_artifact_integrity_failed",
+        "D5 full-sample artifact set or SHA verification is incomplete",
+    )
+    expected_source_hashes = {
+        "canonical_view_sha256": expected_bindings["canonical_view_sha256"],
+        "dataset_checksums_sha256": dataset_checksums_sha256,
+        "dataset_config_sha256": expected_bindings["dataset_config_sha256"],
+        "dataset_manifest_sha256": expected_bindings["dataset_manifest_sha256"],
+        "shared_registry_sha256": expected_bindings["shared_registry_sha256"],
+        "summary_file_sha256": d5_supplemental["summary_file_sha256"],
+        "training_registry_sha256": expected_bindings["training_registry_sha256"],
+    }
+    _expect_equal(
+        dict(_mapping(integrity.get("source_hashes_before"), "D5 source hashes before")),
+        expected_source_hashes,
+        "d5_full_sample_source_hash_before_mismatch",
+        "D5 full-sample pre-audit source hashes differ from D6 inputs",
+    )
+    _expect_equal(
+        dict(_mapping(integrity.get("source_hashes_after"), "D5 source hashes after")),
+        expected_source_hashes,
+        "d5_full_sample_source_hash_after_mismatch",
+        "D5 full-sample audit changed or rebound source artifacts",
+    )
+
+    feature = _mapping(
+        payload.get("behavior_cloning_feature_audit"),
+        "D5 full-sample behavior cloning features",
+    )
+    _expect(
+        _nonnegative_int(feature.get("sample_count"), "D5 feature samples") == 1200
+        and _nonnegative_int(
+            feature.get("finite_feature_sample_count"), "D5 finite feature samples"
+        )
+        == 1200
+        and _nonnegative_int(
+            feature.get("nonfinite_feature_sample_count"),
+            "D5 non-finite feature samples",
+        )
+        == 0
+        and feature.get("global_track_id_created_rewritten_or_rebound") is False
+        and feature.get("numeric_seed_atomic") is True
+        and feature.get("reserved_evaluation_seed_overlap") == []
+        and _nonnegative_int(
+            feature.get("version_consistency_checked_sample_count"),
+            "D5 version-checked samples",
+        )
+        == 1200
+        and _nonnegative_int(
+            feature.get("version_monotonic_episode_count"),
+            "D5 version-monotonic episodes",
+        )
+        == 100,
+        "d5_full_sample_feature_audit_failed",
+        "D5 full-sample feature, identity, or version audit is incomplete",
+    )
+    _expect_equal(
+        _count_mapping(
+            feature.get("canonical_seed_counts"), "D5 feature canonical seed counts"
+        ),
+        dict(_EXPECTED_SEED_COUNTS),
+        "d5_full_sample_feature_seed_split_mismatch",
+        "D5 feature audit canonical seed counts changed",
+    )
+    _expect_equal(
+        _count_mapping(
+            feature.get("canonical_sample_counts"),
+            "D5 feature canonical sample counts",
+        ),
+        expected_sample_counts,
+        "d5_full_sample_feature_sample_split_mismatch",
+        "D5 feature audit canonical sample counts changed",
+    )
+
+    truth = _mapping(
+        payload.get("truth_seed_and_source_audit"),
+        "D5 full-sample truth/seed/source audit",
+    )
+    _expect(
+        _nonnegative_int(truth.get("dirty_episode_count"), "D5 dirty episodes") == 0
+        and truth.get("repository_dirty") is False
+        and truth.get("dirty_source_accepted") is False
+        and _nonnegative_int(
+            truth.get("online_truth_identifier_count"), "D5 online truth count"
+        )
+        == 0
+        and truth.get("online_truth_used_for_behavior_cloning") is False
+        and truth.get("reserved_seed_overlap") == []
+        and truth.get("reserved_evaluation_seeds")
+        == list(_EXPECTED_RESERVED_SEEDS)
+        and _nonnegative_int(
+            truth.get("training_seed_count"), "D5 training seed count"
+        )
+        == 100
+        and _nonnegative_int(
+            truth.get("synthetic_episode_count"), "D5 synthetic episodes"
+        )
+        == 100
+        and _nonnegative_int(
+            truth.get("non_synthetic_episode_count"), "D5 non-synthetic episodes"
+        )
+        == 0
+        and _nonnegative_int(
+            truth.get("truth_guard_passed_episode_count"),
+            "D5 truth-guarded episodes",
+        )
+        == 100
+        and truth.get("formal_900_episode_dataset_modified") is False,
+        "d5_full_sample_truth_seed_source_failed",
+        "D5 full-sample truth, reserved seed, or clean-source audit failed",
+    )
+
+    identity = _mapping(
+        payload.get("version_and_identity_audit"),
+        "D5 full-sample version/identity audit",
+    )
+    runtime_modes = _count_mapping(
+        identity.get("runtime_mode_counts"), "D5 runtime mode counts"
+    )
+    _expect(
+        identity.get("caller_owned_binding_rechecked_for_all_samples") is True
+        and identity.get("d5_created_rewritten_or_rebound_global_track_id") is False
+        and identity.get("global_track_id_created_or_rebound") is False
+        and identity.get("global_track_id_source") == "caller_owned_center_reference"
+        and identity.get("communication_and_track_versions_strictly_increasing")
+        is True
+        and identity.get("plan_and_coalition_versions_monotonic") is True
+        and identity.get("sequence_contiguous") is True
+        and identity.get("timestamps_strictly_increasing") is True
+        and runtime_modes == {"disabled": 1200},
+        "d5_full_sample_identity_or_version_failed",
+        "D5 full-sample identity or version contract failed",
+    )
+
+    labels = _validate_unavailable_label_set(
+        payload.get("offline_label_availability"),
+        expected_sample_count=1200,
+        context="D5 supplemental full-sample",
+        require_zero_padding_flag=True,
+    )
+    ack = _mapping(
+        payload.get("synthetic_ack_fault_coverage"),
+        "D5 full-sample synthetic ACK coverage",
+    )
+    ack_counts = _count_mapping(ack.get("counts"), "D5 full-sample ACK counts")
+    _expect(
+        ack_counts == {"applied": 400, "rejected": 400, "missing": 400}
+        and ack.get("expected_counts") == ack_counts
+        and ack.get("interpretation")
+        == "deterministic_fault_injection_coverage_only"
+        and ack.get("real_runtime_distribution_evidence") is False
+        and ack.get("runtime_ack_attribution_available") is False
+        and ack.get("reward_or_outcome_evidence") is False,
+        "d5_full_sample_synthetic_ack_promoted",
+        "D5 synthetic ACK coverage was promoted to runtime evidence",
+    )
+    corpus = _mapping(
+        payload.get("corpus_classification"), "D5 full-sample corpus classification"
+    )
+    _expect(
+        corpus.get("formal_observation_corpus") is False
+        and corpus.get("supplemental_rule_teacher_data") is True
+        and corpus.get("offline_evaluation_labels_available") is False
+        and corpus.get("real_runtime_ack_evidence") is False,
+        "d5_full_sample_corpus_classification_invalid",
+        "D5 full-sample evidence classification overstates runtime or formal evidence",
+    )
+    producer_admission = _mapping(
+        payload.get("admission"), "D5 full-sample admission"
+    )
+    _expect(
+        producer_admission.get("behavior_cloning_full_sample_audit") == "complete"
+        and producer_admission.get("d6_cross_module_learning_admission")
+        == "pending_external_audit"
+        and producer_admission.get("model_training_performed") is False
+        and producer_admission.get("weights_written") is False
+        and producer_admission.get("ppo") is False
+        and producer_admission.get("assist") is False
+        and producer_admission.get("online_authority") is False
+        and producer_admission.get("camera_command_authority") is False
+        and producer_admission.get("rule_fallback_required") is True,
+        "d5_full_sample_admission_overstated",
+        "D5 full-sample audit opened training or online authority",
+    )
+
+    return {
+        "status": "complete",
+        "complete": True,
+        "scope": "d5_supplemental_behavior_cloning_only",
+        "audit_file_sha256": actual_file_hash,
+        "audit_content_sha256": payload["content_sha256"],
+        "dataset_manifest_sha256": expected_bindings["dataset_manifest_sha256"],
+        "canonical_view_sha256": expected_bindings["canonical_view_sha256"],
+        "dataset_config_sha256": expected_bindings["dataset_config_sha256"],
+        "training_registry_sha256": expected_bindings["training_registry_sha256"],
+        "shared_registry_sha256": expected_bindings["shared_registry_sha256"],
+        "producer_summary_content_sha256": expected_bindings[
+            "summary_content_sha256"
+        ],
+        "source_git_commit": expected_bindings["source_git_commit"],
+        "episode_count": 100,
+        "sample_count": 1200,
+        "canonical_episode_counts": expected_episode_counts,
+        "canonical_sample_counts": expected_sample_counts,
+        "checksummed_artifact_count": 302,
+        "verified_artifact_count": 302,
+        "finite_feature_sample_count": 1200,
+        "online_truth_use_count": 0,
+        "reserved_seed_leakage_count": 0,
+        "dirty_episode_count": 0,
+        "offline_label_availability": labels,
+        "synthetic_ack_fault_coverage": {
+            "counts": ack_counts,
+            "runtime_attribution": False,
+        },
+        "ppo_allowed": False,
+        "assist_allowed": False,
+        "authority_allowed": False,
+        "rule_fallback_required": True,
+        "remaining_blockers": [
+            "real_runtime_applied_ack_and_outcome_attribution",
+            "reward_counterfactual_and_causal_labels",
+            "paired_shadow_non_degradation",
+        ],
     }
 
 
@@ -2050,6 +2565,13 @@ def _require_sha256(value: Any, name: str) -> str:
     text = str(value or "")
     if len(text) != 64 or any(character not in _HEX for character in text):
         _fail("sha256_invalid", f"{name} must be a lowercase SHA256")
+    return text
+
+
+def _require_git_commit(value: Any, name: str) -> str:
+    text = str(value or "")
+    if len(text) not in {40, 64} or any(character not in _HEX for character in text):
+        _fail("git_commit_invalid", f"{name} must be a lowercase full Git object ID")
     return text
 
 

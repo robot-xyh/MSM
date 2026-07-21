@@ -4,8 +4,9 @@
 
 本次实验使用冻结的 training seed registry、shared registry、D3 formal manifest、D4 formal
 manifest 与独立 canonical view、D5 tracklet/active-vision formal manifest、canonical view、readiness，
-以及 D4/D5 2026-07-21 supplemental summary。审计通过显式路径读取，不搜索邻近目录，不修改正式
-producer artifact。D4 formal view 文件 SHA-256 为
+以及 D4/D5 2026-07-21 supplemental summary。D5 supplemental BC 另提供 producer 全样本审计和调用方
+带外文件 SHA-256。审计通过显式路径读取，不搜索邻近目录，不修改正式 producer artifact。D4 formal
+view 文件 SHA-256 为
 `73a365d32b0439fbf805f40ea7941b8e992fe4c68687cbc5496704f230440b11`，内部
 `binding.view_sha256` 为
 `e6a84861de6e7f0ef8fcf787ec3e28a59c2e7b5504faaaa4c75344db21f6128d`。
@@ -24,25 +25,31 @@ episode 和 480 candidate edge。
 | D5 视场与角色 | wide/zoom 1000/200；interceptor/recon 600/600 | 覆盖计数通过 |
 | D5 tracklet 标签 | positive 362；negative 19；unlabeled 99 | labeled 381，complete=false，status=partial |
 | D5 synthetic ACK | applied/rejected/missing 各 400 | 仅故障注入覆盖，不计 runtime ACK attribution |
+| D5 supplemental 全样本 | 100 episode；1200 sample；online/offline/descriptor 各 100 | 302/302 制品校验，有限特征 1200/1200，complete |
 
 证据层被分为正式观测语料、补充规则教师课程、离线评估标签和 runtime ACK。D5 tracklet 有 381 条已
 标注边，但 99 条边未标注，因此不能报告为完整监督标签集。D5 synthetic ACK 没有实际运行时来源，
 不能用于动作归因、奖励计算或在线准入。
 
-当前准入矩阵为：BC canonical view available=true；BC full-sample audit=pending；PPO=false；
-assist=false；authority=false；rule fallback required=true。前一项只说明 manifest/view/readiness 和
-规范 seed 身份通过，后一项说明逐样本文件集合及内容尚未完成统一复核。reward、outcome、
-counterfactual、causal、runtime ACK 和 paired shadow 均 unavailable。本次没有训练模型，也没有模型
-收益结论。
+D5 全样本审计确认 canonical episode=`60/20/20`、sample=`720/240/240`，online truth、保留 seed、
+dirty episode 和 D5 创建、改写或换绑 `global_track_id` 的计数均为 0。四类离线标签保持 unavailable，
+没有用数值零补成可用标签。审计文件 SHA-256 为
+`9a03653538e6dae054da8c127ad4a20aae2481af6c9bbef987edfddff0b423d3`，内容 SHA-256 为
+`a11b65596a4c416deba6d0cb35dcc0c32342a5bae0481291d43e8de0e26550dd`。
+
+当前准入矩阵为：BC canonical view available=true；D5 supplemental BC full-sample=complete；D3/D4
+full-sample=pending；跨模块 full-sample=partial；PPO=false；assist=false；authority=false；rule
+fallback required=true。D5 完成状态不能替代 D3/D4 逐样本审计。reward、outcome、counterfactual、
+causal、runtime ACK 和 paired shadow 均 unavailable。本次没有训练模型，也没有模型收益结论。
 
 报告输出位于 D6 自有的
 `outputs/cross_module_learning_admission_20260721/`，JSON 和中文 Markdown SHA-256 分别为
-`f5dcddc4e84644a5c83146f11b3fdd8ff2b72a342bc6547091d13fd0618370d2` 和
-`b6ceefb6e0ef6264b2b389c1bacb77a1499f0a286fd3bf8443d0ca1cb89890f1`。写盘入口会在创建目录前拒绝
-正式 generation 根及其子目录，避免评估产物改变正式数据树。专项测试 `16 passed`，D6 全量
-`380 passed`；仅有既有 Matplotlib `Axes3D` 环境 warning。
+`d3e3e858a14fb570cd0eb19da2661ce76686906530e313b5f79e6bf6af336de2` 和
+`aaaeaefd99f38a03e4f80ffa96dabcb0eef0dd9724cb38fdb163c0bf603eff21`。写盘入口会在创建目录前拒绝
+正式 generation 根及其子目录，避免评估产物改变正式数据树。专项测试 `21 passed`，D6 全量
+`385 passed`；仅有既有 Matplotlib `Axes3D` 环境 warning。
 
-后续需完成 canonical views 全样本审计；由 producer 持久化真实 action adoption、版本绑定、runtime
+后续需完成 D3/D4 canonical views 全样本审计；由 producer 持久化真实 action adoption、版本绑定、runtime
 ACK、可归因 reward/outcome 和终局结果；形成同 seed paired shadow；最后使用保留 seed
 `1000-1019` 做独立验收。上述条件未满足前，PPO、在线 assist 和 authority 保持关闭。
 

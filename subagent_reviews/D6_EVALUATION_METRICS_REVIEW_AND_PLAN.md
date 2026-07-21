@@ -5,7 +5,8 @@
 D6 已实现独立、只读的联合准入入口。输入包括 training/shared seed registry、D3 正式 manifest、D4
 正式 manifest 与 main 生成的独立 canonical view、D5 tracklet 和 active-vision 的正式
 manifest/view/readiness，以及 D4/D5 supplemental summary。入口验证 schema、来源身份、文件与内容
-SHA-256、dirty source、缺失输入和 seed assignment，不调用 main runtime，也不修改生产者制品。
+SHA-256、dirty source、缺失输入和 seed assignment。入口现在还显式接收 D5 supplemental BC 全样本
+审计及调用方提供的文件 SHA-256，不调用 main runtime，也不修改生产者制品。
 
 真实审计覆盖 900 episode 和 100 个训练 seed。规范 train/validation/test 为 60/20/20，保留 seed
 `1000-1019` 泄漏为 0。D4 formal view 文件 SHA-256 为
@@ -21,16 +22,25 @@ D5 tracklet 的 480 条候选边中，362 条为正标签、19 条为负标签�
 
 D5 synthetic ACK 的 applied/rejected/missing 各 400，只能说明故障注入分支被测试，不能归因到运行时
 动作执行。当前 reward、outcome、counterfactual、causal、runtime ACK 和 paired shadow 证据均
-unavailable。报告准入矩阵因此保持 BC canonical view available、BC full-sample audit pending、
-PPO=false、assist=false、authority=false、rule fallback required=true。
+unavailable。D5 supplemental BC 的 producer 全样本审计已完成：100 episode、1200 sample，canonical
+episode=`60/20/20`、sample=`720/240/240`，online/offline/descriptor 各 100 个，`302/302` 个登记
+制品通过校验，有限特征 `1200/1200`。online truth、保留 seed、dirty episode 和 D5 身份创建、改写、
+换绑计数均为 0；四类离线标签保持 unavailable 且没有补零。
 
-评审区分“规范视图可读”和“全样本可用”。前者允许行为克隆数据准备；后者仍需逐样本校验 detached
-views 的文件集合、身份和内容哈希。当前没有训练结果或模型收益结论。下一步由 producer 补齐真实动作
-采用、版本绑定、runtime ACK、可归因 reward/outcome 和终局结果；由 main 组织同 seed paired shadow
-与保留 seed `1000-1019` 独立验收。上述证据形成前，PPO、在线 assist 和控制 authority 不开放。
+D5 审计文件 SHA-256 为
+`9a03653538e6dae054da8c127ad4a20aae2481af6c9bbef987edfddff0b423d3`，内容 SHA-256 为
+`a11b65596a4c416deba6d0cb35dcc0c32342a5bae0481291d43e8de0e26550dd`。D6 重新校验其 manifest、
+canonical view、dataset config、training/shared registry、producer summary 和源提交绑定。任一文件
+篡改、错绑定、权限误开或 synthetic ACK 提升都会失败关闭。
+
+联合状态分为 D5 supplemental BC full-sample=`complete`、D3/D4 full-sample=`pending`、跨模块总
+full-sample=`partial`。规范视图允许开发期行为克隆准备；D5 的完成状态不能替代 D3/D4 逐样本审计。
+当前没有训练结果或模型收益结论。下一步由 producer 补齐真实动作采用、版本绑定、runtime ACK、可
+归因 reward/outcome 和终局结果；由 main 组织同 seed paired shadow 与保留 seed `1000-1019` 独立
+验收。上述证据形成前，PPO、在线 assist 和控制 authority 不开放，规则回退保持强制。
 
 报告写盘前会拒绝 output directory 等于或位于正式 generation 根下，避免审计输出改变正式树却仍声明
-source mutation 为 false。2026-07-21 联合审计专项 `16 passed`，D6 全量 `380 passed`，只有既有
+source mutation 为 false。2026-07-21 联合审计专项 `21 passed`，D6 全量 `385 passed`，只有既有
 Matplotlib `Axes3D` 环境 warning。真实 JSON 与中文 Markdown 已写入 D6 自有输出目录，正式 900
 episode 源数据未修改。
 

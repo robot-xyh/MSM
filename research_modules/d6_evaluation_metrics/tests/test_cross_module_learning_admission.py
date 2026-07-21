@@ -697,6 +697,8 @@ def _build_fixture(tmp_path: Path) -> CrossModuleLearningAdmissionInputs:
             "shared_seed_registry_sha256": _sha_file(shared_path),
             "shared_seed_registry_content_sha256": shared["content_sha256"],
             "shared_seed_registry_assignment_sha256": shared["assignment_sha256"],
+            "dataset_config_sha256": _sha_token("d5-supplemental-config"),
+            "git_commit": _COMMIT,
             "repository_dirty": False,
         },
         "dataset": {
@@ -707,6 +709,7 @@ def _build_fixture(tmp_path: Path) -> CrossModuleLearningAdmissionInputs:
             "unique_seed_count": 100,
         },
         "canonical": {
+            "view_manifest_sha256": _sha_token("d5-supplemental-view"),
             "split": {
                 "unit": "numeric_seed_atomic_across_modules_scenarios_and_scales",
                 "split_seed": 20260720,
@@ -762,6 +765,178 @@ def _build_fixture(tmp_path: Path) -> CrossModuleLearningAdmissionInputs:
     d5_supplemental_path = root / "d5_supplemental.json"
     _write_json(d5_supplemental_path, d5_supplemental)
 
+    d5_full_expected_bindings = {
+        "canonical_view_sha256": d5_supplemental["canonical"][
+            "view_manifest_sha256"
+        ],
+        "dataset_config_sha256": d5_supplemental["source_binding"][
+            "dataset_config_sha256"
+        ],
+        "dataset_manifest_sha256": d5_supplemental["dataset"][
+            "manifest_sha256"
+        ],
+        "shared_registry_sha256": _sha_file(shared_path),
+        "source_git_commit": _COMMIT,
+        "summary_content_sha256": d5_supplemental["content_sha256"],
+        "training_registry_sha256": _sha_file(training_path),
+    }
+    d5_checksums_sha256 = _sha_token("d5-supplemental-checksums")
+    d5_source_hashes = {
+        "canonical_view_sha256": d5_full_expected_bindings[
+            "canonical_view_sha256"
+        ],
+        "dataset_checksums_sha256": d5_checksums_sha256,
+        "dataset_config_sha256": d5_full_expected_bindings[
+            "dataset_config_sha256"
+        ],
+        "dataset_manifest_sha256": d5_full_expected_bindings[
+            "dataset_manifest_sha256"
+        ],
+        "shared_registry_sha256": d5_full_expected_bindings[
+            "shared_registry_sha256"
+        ],
+        "summary_file_sha256": _sha_file(d5_supplemental_path),
+        "training_registry_sha256": d5_full_expected_bindings[
+            "training_registry_sha256"
+        ],
+    }
+    d5_full_actual_bindings = {
+        **d5_full_expected_bindings,
+        "dataset_checksums_sha256": d5_checksums_sha256,
+        "summary_file_sha256": _sha_file(d5_supplemental_path),
+    }
+    d5_full_sample_audit: dict[str, object] = {
+        "schema_version": (
+            "d5.active-vision-supplemental-bc-full-sample-audit.v1"
+        ),
+        "validation_date": "2026-07-21",
+        "purpose": (
+            "supplemental_rule_teacher_behavior_cloning_full_sample_admission"
+        ),
+        "expected_bindings": d5_full_expected_bindings,
+        "actual_bindings": d5_full_actual_bindings,
+        "binding_checks": {
+            field: {"actual": value, "expected": value, "passed": True}
+            for field, value in d5_full_expected_bindings.items()
+        },
+        "coverage": {
+            "episode_count": 100,
+            "segment_count": 800,
+            "sample_count": 1200,
+            "canonical_episode_counts": {
+                "train": 60,
+                "validation": 20,
+                "test": 20,
+            },
+            "canonical_sample_counts": {
+                "train": 720,
+                "validation": 240,
+                "test": 240,
+            },
+            "intent_counts": d5_supplemental["coverage"]["intent_counts"],
+            "fov_mode_counts": d5_supplemental["coverage"]["fov_mode_counts"],
+            "camera_role_counts": d5_supplemental["coverage"][
+                "camera_role_counts"
+            ],
+        },
+        "artifact_integrity": {
+            "canonical_loader_passed": True,
+            "checksum_artifact_set_exact": True,
+            "checksummed_file_count": 302,
+            "descriptor_manifest_match_count": 100,
+            "episode_descriptor_file_count": 100,
+            "formal_900_episode_dataset_modified": False,
+            "offline_file_count": 100,
+            "online_file_count": 100,
+            "online_offline_episode_collections_complete": True,
+            "sha256_mismatch_file_count": 0,
+            "sha256_verified_file_count": 302,
+            "source_artifacts_unchanged": True,
+            "source_hashes_before": d5_source_hashes,
+            "source_hashes_after": d5_source_hashes,
+            "strict_lazy_loader_passed": True,
+        },
+        "behavior_cloning_feature_audit": {
+            "sample_count": 1200,
+            "finite_feature_sample_count": 1200,
+            "nonfinite_feature_sample_count": 0,
+            "global_track_id_created_rewritten_or_rebound": False,
+            "numeric_seed_atomic": True,
+            "reserved_evaluation_seed_overlap": [],
+            "version_consistency_checked_sample_count": 1200,
+            "version_monotonic_episode_count": 100,
+            "canonical_seed_counts": {
+                "train": 60,
+                "validation": 20,
+                "test": 20,
+            },
+            "canonical_sample_counts": {
+                "train": 720,
+                "validation": 240,
+                "test": 240,
+            },
+        },
+        "truth_seed_and_source_audit": {
+            "dirty_episode_count": 0,
+            "repository_dirty": False,
+            "dirty_source_accepted": False,
+            "online_truth_identifier_count": 0,
+            "online_truth_used_for_behavior_cloning": False,
+            "reserved_seed_overlap": [],
+            "reserved_evaluation_seeds": _RESERVED_SEEDS,
+            "training_seed_count": 100,
+            "synthetic_episode_count": 100,
+            "non_synthetic_episode_count": 0,
+            "truth_guard_passed_episode_count": 100,
+            "formal_900_episode_dataset_modified": False,
+        },
+        "version_and_identity_audit": {
+            "caller_owned_binding_rechecked_for_all_samples": True,
+            "d5_created_rewritten_or_rebound_global_track_id": False,
+            "global_track_id_created_or_rebound": False,
+            "global_track_id_source": "caller_owned_center_reference",
+            "communication_and_track_versions_strictly_increasing": True,
+            "plan_and_coalition_versions_monotonic": True,
+            "sequence_contiguous": True,
+            "timestamps_strictly_increasing": True,
+            "runtime_mode_counts": {"disabled": 1200},
+        },
+        "offline_label_availability": supplemental_labels,
+        "synthetic_ack_fault_coverage": {
+            "counts": {"applied": 400, "rejected": 400, "missing": 400},
+            "expected_counts": {
+                "applied": 400,
+                "rejected": 400,
+                "missing": 400,
+            },
+            "interpretation": "deterministic_fault_injection_coverage_only",
+            "real_runtime_distribution_evidence": False,
+            "runtime_ack_attribution_available": False,
+            "reward_or_outcome_evidence": False,
+        },
+        "corpus_classification": {
+            "formal_observation_corpus": False,
+            "supplemental_rule_teacher_data": True,
+            "offline_evaluation_labels_available": False,
+            "real_runtime_ack_evidence": False,
+        },
+        "admission": {
+            "behavior_cloning_full_sample_audit": "complete",
+            "d6_cross_module_learning_admission": "pending_external_audit",
+            "model_training_performed": False,
+            "weights_written": False,
+            "ppo": False,
+            "assist": False,
+            "online_authority": False,
+            "camera_command_authority": False,
+            "rule_fallback_required": True,
+        },
+        "audit": {"passed": True, "violation_count": 0, "violations": []},
+    }
+    _rehash_content(d5_full_sample_audit)
+    d5_full_sample_audit_path = root / "d5_full_sample_audit.json"
+    _write_json(d5_full_sample_audit_path, d5_full_sample_audit)
+
     return CrossModuleLearningAdmissionInputs(
         training_seed_registry_path=training_path,
         shared_seed_registry_path=shared_path,
@@ -777,6 +952,10 @@ def _build_fixture(tmp_path: Path) -> CrossModuleLearningAdmissionInputs:
         d5_active_vision_canonical_readiness_path=active_readiness_path,
         d4_supplemental_summary_path=d4_supplemental_path,
         d5_supplemental_summary_path=d5_supplemental_path,
+        d5_supplemental_full_sample_audit_path=d5_full_sample_audit_path,
+        d5_supplemental_full_sample_audit_file_sha256=_sha_file(
+            d5_full_sample_audit_path
+        ),
     )
 
 
@@ -805,6 +984,21 @@ def test_joint_admission_writes_chinese_reports_and_keeps_control_closed(
     assert payload["action_coverage"]["d4"]["transfer"] == 100
     assert payload["action_coverage"]["d5"]["intent"]["observe_target"] == 600
     assert payload["availability"]["runtime_ack"]["available"] is False
+    full_sample = payload["evidence_layers"]["full_sample_audits"]
+    assert full_sample["status"] == "partial"
+    assert full_sample["complete"] is False
+    assert full_sample["modules"]["d3_assignment"]["status"] == "pending"
+    assert full_sample["modules"]["d4_region"]["status"] == "pending"
+    assert (
+        full_sample["modules"]["d5_supplemental_active_vision"]["status"]
+        == "complete"
+    )
+    assert (
+        full_sample["modules"]["d5_supplemental_active_vision"][
+            "verified_artifact_count"
+        ]
+        == 302
+    )
     tracklet_labels = payload["evidence_layers"]["offline_evaluator_labels"][
         "tracklet_association_labels"
     ]
@@ -816,16 +1010,22 @@ def test_joint_admission_writes_chinese_reports_and_keeps_control_closed(
         "behavior_cloning_canonical_view_available": True,
         "behavior_cloning_full_sample_audit": {
             "available": False,
-            "status": "pending",
-            "reason": "manifest_and_summary_level_audit_only",
+            "status": "partial",
+            "reason": "d3_and_d4_full_sample_audits_pending",
+            "module_status": {
+                "d3_assignment": "pending",
+                "d4_region": "pending",
+                "d5_supplemental_active_vision": "complete",
+            },
         },
         "ppo_allowed": False,
         "assist_allowed": False,
         "authority_allowed": False,
         "rule_fallback_required": True,
-        "status": "bc_canonical_view_available_full_sample_audit_pending",
+        "status": "bc_canonical_view_available_full_sample_audit_partial",
         "promotion_blockers": [
-            "behavior_cloning_full_sample_audit_pending",
+            "d3_full_sample_audit_pending",
+            "d4_full_sample_audit_pending",
             "reward_unavailable",
             "outcome_unavailable",
             "runtime_ack_attribution_unavailable",
@@ -842,6 +1042,8 @@ def test_joint_admission_writes_chinese_reports_and_keeps_control_closed(
     assert "跨模块学习数据联合准入审计" in markdown
     assert "只代表确定性故障注入覆盖" in markdown
     assert "部分标签不能解释为完整监督语料" in markdown
+    assert "D5 补充主动视觉课程已完成 100 个 episode、1200 个样本" in markdown
+    assert "跨模块总状态为 partial" in markdown
 
 
 def test_cli_writes_joint_admission_reports_in_a_fresh_process(
@@ -886,6 +1088,10 @@ def test_cli_writes_joint_admission_reports_in_a_fresh_process(
             str(inputs.d4_supplemental_summary_path),
             "--d5-supplemental-summary",
             str(inputs.d5_supplemental_summary_path),
+            "--d5-supplemental-full-sample-audit",
+            str(inputs.d5_supplemental_full_sample_audit_path),
+            "--d5-supplemental-full-sample-audit-sha256",
+            inputs.d5_supplemental_full_sample_audit_file_sha256,
             "--output-dir",
             str(output_dir),
         ],
@@ -1114,3 +1320,109 @@ def test_d4_formal_out_of_band_file_hash_is_required(tmp_path: Path) -> None:
     with pytest.raises(CrossModuleLearningAdmissionError) as exc:
         audit_cross_module_learning_data_admission(mismatched)
     assert exc.value.code == "d4_formal_view_file_hash_mismatch"
+
+
+def test_d5_full_sample_out_of_band_file_hash_is_required(tmp_path: Path) -> None:
+    inputs = _build_fixture(tmp_path)
+    mismatched = _replace(
+        inputs,
+        d5_supplemental_full_sample_audit_file_sha256="f" * 64,
+    )
+
+    with pytest.raises(CrossModuleLearningAdmissionError) as exc:
+        audit_cross_module_learning_data_admission(mismatched)
+    assert exc.value.code == "d5_full_sample_audit_file_hash_mismatch"
+
+
+def test_d5_full_sample_content_tamper_fails_closed(tmp_path: Path) -> None:
+    inputs = _build_fixture(tmp_path)
+    value = _read_json(inputs.d5_supplemental_full_sample_audit_path)
+    coverage = value["coverage"]
+    assert isinstance(coverage, dict)
+    coverage["sample_count"] = 1199
+    _write_json(inputs.d5_supplemental_full_sample_audit_path, value)
+    rebound = _replace(
+        inputs,
+        d5_supplemental_full_sample_audit_file_sha256=_sha_file(
+            inputs.d5_supplemental_full_sample_audit_path
+        ),
+    )
+
+    with pytest.raises(CrossModuleLearningAdmissionError) as exc:
+        audit_cross_module_learning_data_admission(rebound)
+    assert exc.value.code == "d5_full_sample_audit_content_hash_mismatch"
+
+
+def test_d5_full_sample_source_binding_mismatch_fails_closed(
+    tmp_path: Path,
+) -> None:
+    inputs = _build_fixture(tmp_path)
+    value = _read_json(inputs.d5_supplemental_full_sample_audit_path)
+    expected = value["expected_bindings"]
+    actual = value["actual_bindings"]
+    checks = value["binding_checks"]
+    assert isinstance(expected, dict)
+    assert isinstance(actual, dict)
+    assert isinstance(checks, dict)
+    wrong = _sha_token("wrong-dataset-manifest")
+    expected["dataset_manifest_sha256"] = wrong
+    actual["dataset_manifest_sha256"] = wrong
+    checks["dataset_manifest_sha256"] = {
+        "actual": wrong,
+        "expected": wrong,
+        "passed": True,
+    }
+    _rehash_content(value)
+    _write_json(inputs.d5_supplemental_full_sample_audit_path, value)
+    rebound = _replace(
+        inputs,
+        d5_supplemental_full_sample_audit_file_sha256=_sha_file(
+            inputs.d5_supplemental_full_sample_audit_path
+        ),
+    )
+
+    with pytest.raises(CrossModuleLearningAdmissionError) as exc:
+        audit_cross_module_learning_data_admission(rebound)
+    assert exc.value.code == "d5_full_sample_expected_binding_mismatch"
+
+
+def test_d5_full_sample_cannot_open_assist_authority(tmp_path: Path) -> None:
+    inputs = _build_fixture(tmp_path)
+    value = _read_json(inputs.d5_supplemental_full_sample_audit_path)
+    admission = value["admission"]
+    assert isinstance(admission, dict)
+    admission["assist"] = True
+    _rehash_content(value)
+    _write_json(inputs.d5_supplemental_full_sample_audit_path, value)
+    rebound = _replace(
+        inputs,
+        d5_supplemental_full_sample_audit_file_sha256=_sha_file(
+            inputs.d5_supplemental_full_sample_audit_path
+        ),
+    )
+
+    with pytest.raises(CrossModuleLearningAdmissionError) as exc:
+        audit_cross_module_learning_data_admission(rebound)
+    assert exc.value.code == "d5_full_sample_admission_overstated"
+
+
+def test_d5_full_sample_synthetic_ack_cannot_become_runtime_evidence(
+    tmp_path: Path,
+) -> None:
+    inputs = _build_fixture(tmp_path)
+    value = _read_json(inputs.d5_supplemental_full_sample_audit_path)
+    ack = value["synthetic_ack_fault_coverage"]
+    assert isinstance(ack, dict)
+    ack["real_runtime_distribution_evidence"] = True
+    _rehash_content(value)
+    _write_json(inputs.d5_supplemental_full_sample_audit_path, value)
+    rebound = _replace(
+        inputs,
+        d5_supplemental_full_sample_audit_file_sha256=_sha_file(
+            inputs.d5_supplemental_full_sample_audit_path
+        ),
+    )
+
+    with pytest.raises(CrossModuleLearningAdmissionError) as exc:
+        audit_cross_module_learning_data_admission(rebound)
+    assert exc.value.code == "d5_full_sample_synthetic_ack_promoted"

@@ -4,13 +4,15 @@
 
 联合准入解决两个不同问题。第一项是规范 seed 视图是否一致，即 D3、D4、D5 是否把同一个数值 seed
 放入相同的训练、验证或测试集合。第二项是视图中的全部样本是否已经逐条核验。当前第一项通过，状态为
-`BC canonical view available`；第二项尚未完成，状态为 `BC full-sample audit pending`。规范视图可读
-不等于模型已训练，也不等于数据已满足策略优化条件。
+`BC canonical view available`。第二项按模块发布：D5 supplemental BC 已完成，D3 和 D4 仍待完成，
+因此跨模块总状态为 `partial`。规范视图可读或单模块审计完成都不等于模型已训练，也不等于数据已满足
+策略优化条件。
 
 D6 只读接收训练 seed 注册表、共享 seed 注册表、D3 正式 manifest、D4 正式 manifest 与独立
 canonical view、D5 tracklet/active-vision 正式 manifest、canonical view、readiness，以及 D4/D5
-补充课程 summary。每个输入都核对 schema、来源身份、文件或内容 SHA-256、clean source 和缺失状态。
-任一身份不一致、哈希篡改、dirty source、错误 seed assignment 或保留 seed 泄漏都会失败关闭。
+补充课程 summary。D5 supplemental BC 还提供 producer 全样本审计和调用方带外文件 SHA-256。每个
+输入都核对 schema、来源身份、文件或内容 SHA-256、clean source 和缺失状态。任一身份不一致、哈希
+篡改、dirty source、错误 seed assignment 或保留 seed 泄漏都会失败关闭。
 
 真实审计使用 2026-07-21 冻结的 900 episode、100 个训练 seed。规范
 train/validation/test=`60/20/20`，保留 seed `1000-1019` 泄漏为 0。D4 formal canonical view 的
@@ -33,10 +35,15 @@ D5 synthetic ACK 的 applied/rejected/missing 各 400，是对 ACK 分支的确�
 outcome、counterfactual、causal、runtime ACK 和 paired shadow 均不可用。PPO、在线 assist 和控制
 authority 保持关闭，规则回退强制启用。该审计没有模型收益结论。
 
-剩余工作是逐样本复核 canonical views，补齐真实动作采用与版本绑定、runtime ACK、可归因终局结果和
-奖励，形成同 seed paired shadow 非退化证据，并使用保留 seed `1000-1019` 做独立验收。2026-07-21
-联合审计专项 `16 passed`，D6 全量 `380 passed`；仅有既有 Matplotlib `Axes3D` 环境 warning。报告
-只能写到正式 generation 根之外，防止离线评估产物改变正式数据树。
+D5 supplemental BC 全样本审计覆盖 100 episode、1200 sample，canonical episode=`60/20/20`、
+sample=`720/240/240`；online/offline/descriptor 各 100 个，`302/302` 个登记制品完成 SHA-256 校验，
+有限特征 `1200/1200`。online truth、保留 seed、dirty episode 和 D5 创建、改写或换绑
+`global_track_id` 均为 0；四类离线标签保持 unavailable，没有以零补值。
+
+剩余工作是逐样本复核 D3/D4 canonical views，补齐真实动作采用与版本绑定、runtime ACK、可归因终局
+结果和奖励，形成同 seed paired shadow 非退化证据，并使用保留 seed `1000-1019` 做独立验收。
+2026-07-21 联合审计专项 `21 passed`，D6 全量 `385 passed`；仅有既有 Matplotlib `Axes3D` 环境
+warning。报告只能写到正式 generation 根之外，防止离线评估产物改变正式数据树。
 
 ## 历史共享种子划分治理（2026-07-21）
 

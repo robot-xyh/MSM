@@ -6,7 +6,8 @@
 
 - 已实现独立的跨模块只读审计入口和 CLI，显式接收 training/shared registry、D3 formal manifest、
   D4 formal manifest 与独立 canonical view、D5 tracklet/active-vision formal
-  manifest/view/readiness，以及 D4/D5 supplemental summary。生产者制品保持只读。
+  manifest/view/readiness、D4/D5 supplemental summary，以及 D5 supplemental BC 全样本审计和调用方
+  提供的审计文件 SHA-256。生产者制品保持只读，报告不记录输入绝对路径。
 - 已实现 schema、来源身份、文件/内容 SHA-256、dirty source、missing input、seed assignment 和 reserved
   leakage 的失败关闭校验。负例覆盖 schema/hash 篡改、错误切分、保留 seed 泄漏、formal/supplemental
   混用、synthetic ACK 冒充 runtime ACK、unavailable 标签补零和外部 D4 view 哈希不一致。
@@ -16,7 +17,7 @@
   canonical view 替代。
 - 已禁止报告输出目录等于或位于正式 generation 根下，检查发生在目录创建和文件写入之前；D6 自有
   outputs 路径保持可用。
-- 已输出中文 JSON/Markdown 准入报告。2026-07-21 专项 `16 passed`、D6 全量 `380 passed`；仅有既有
+- 已输出中文 JSON/Markdown 准入报告。2026-07-21 专项 `21 passed`、D6 全量 `385 passed`；仅有既有
   Matplotlib `Axes3D` warning。
 
 ### 真实证据与当前准入
@@ -31,14 +32,21 @@
   `partial`，`labeled_count=381`、`complete=false`，不具备完整监督标签口径。
 - D5 synthetic ACK applied/rejected/missing 各 400，只是确定性故障注入覆盖，runtime ACK attribution
   仍 unavailable。reward、outcome、counterfactual、causal 和 paired shadow 同样 unavailable。
-- 当前只开放 **BC canonical view available**。**BC full-sample audit pending** 表示尚未逐样本核验
-  detached views，不得解释为行为克隆模型已训练或有效。PPO、assist 和 authority 均关闭，规则回退
-  强制启用；没有模型收益证据。
+- D5 supplemental BC 的 producer 全样本审计已完成：100 episode、1200 sample，canonical episode=
+  `60/20/20`、sample=`720/240/240`；online/offline/descriptor 各 100 个，`302/302` 个登记制品通过
+  SHA-256，有限特征 `1200/1200`。online truth、保留 seed、dirty episode 和 D5 创建、改写或换绑
+  `global_track_id` 均为 0；四类离线标签保持 unavailable 且没有补零。
+- D5 审计文件 SHA-256 为
+  `9a03653538e6dae054da8c127ad4a20aae2481af6c9bbef987edfddff0b423d3`，内容 SHA-256 为
+  `a11b65596a4c416deba6d0cb35dcc0c32342a5bae0481291d43e8de0e26550dd`。D6 已复核其 manifest、
+  canonical view、dataset config、training/shared registry、producer summary 和源提交绑定。
+- 当前状态为 **D5 supplemental BC full-sample complete**、**D3/D4 full-sample pending**、**跨模块
+  full-sample partial**。PPO、assist 和 authority 均关闭，规则回退强制启用；没有模型收益证据。
 
 ### 仍开放的 P1 前置条件
 
-1. D6 需要对 D3/D4/D5 canonical views 的逐样本内容、完整文件集合、身份和哈希做统一 full-sample
-   audit。当前只完成 manifest/view/readiness/summary 层准入。
+1. D6 仍需对 D3/D4 canonical views 的逐样本内容、完整文件集合、身份和哈希做统一 full-sample
+   audit。D5 supplemental BC 已完成该层审计，但不能替代 D3/D4，也不能把跨模块总状态提升为 complete。
 2. producer 需要持久化真实动作采用、plan/coalition/communication 版本绑定、applied/rejected runtime
    ACK、后续反馈和明确终局结果。synthetic ACK 不能用于关闭该条件。
 3. reward/outcome 需有明确归因窗；PPO 还需 on-policy log probability/value。counterfactual/causal 需

@@ -45,6 +45,14 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--d4-supplemental-summary", type=Path, required=True)
     parser.add_argument("--d5-supplemental-summary", type=Path, required=True)
+    parser.add_argument(
+        "--d5-supplemental-full-sample-audit", type=Path, required=True
+    )
+    parser.add_argument(
+        "--d5-supplemental-full-sample-audit-sha256",
+        required=True,
+        help="out-of-band SHA256 supplied for the tracked D5 full-sample audit",
+    )
     parser.add_argument("--output-dir", type=Path, required=True)
     return parser
 
@@ -76,6 +84,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         ),
         d4_supplemental_summary_path=args.d4_supplemental_summary,
         d5_supplemental_summary_path=args.d5_supplemental_summary,
+        d5_supplemental_full_sample_audit_path=(
+            args.d5_supplemental_full_sample_audit
+        ),
+        d5_supplemental_full_sample_audit_file_sha256=(
+            args.d5_supplemental_full_sample_audit_sha256
+        ),
     )
     try:
         outputs = write_cross_module_learning_data_admission_report(
