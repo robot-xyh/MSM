@@ -1,5 +1,24 @@
 # D5 实现差距审计
 
+## 2026-07-21 主动视觉宽视场门 GAP 状态
+
+**规则缩放抖动的软件缺口已关闭。** `DeterministicLookAtScanPolicy` 现在按
+`camera_id + global_track_id + plan_version + coalition_version` 维护连续帧计数。默认窗口为 3 帧，
+达到窗口前保持 `OBSERVE_TARGET + WIDE`；达到窗口后仍需通过原有投影不确定度门才允许 `ZOOM`。
+重复帧不累计，`N=1` 可恢复旧即时缩放行为，旧调用不需要增加参数。
+
+**失败关闭边界保持。** 计划、联盟、目标、时间或证据回退会重置状态。低置信、遮挡/可见性不合格、
+投影不在视场、通信异常、版本不一致、友方保留冲突和相机忙均不能积累缩放资格。多个当前分配投影
+的质量差小于默认 `0.05` 时按歧义处理并重捕获。状态只在本相机内维护，中心
+`global_track_id`、几何门、同相机互斥和友方门均未变化。
+
+**ACK 与 producer P1 仍开放。** 当前主动视觉 snapshot 不携带 runtime ACK 或相机反馈中的最近接受
+命令版本。阶段 A 只读取已有 busy 字段，没有伪造 ACK，也没有扩 DTO。正式数据仍为
+`hold=0`、`reacquire` 主导且无 applied-action 归因；因此 supplemental curriculum、真实 ACK/
+outcome、paired shadow、assist 和 PPO 状态均未关闭。定向组合测试 `47 passed`，D5 全量
+`437 passed in 10.28s`；未运行新 AirSim 或模型实验。旧 v5 bundle 的 code provenance 对应修改前
+实现，严格 loader 应拒绝加载；该失败关闭不等于完成模型重训或准入。
+
 ## 2026-07-21 canonical split GAP 状态
 
 **D4/D5 split 身份不一致已关闭。** D5 新增两个 detached canonical view，严格绑定原 dataset

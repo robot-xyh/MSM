@@ -480,7 +480,7 @@ def test_200_camera_writer_is_deterministic_byte_equivalent_and_bounded_calls(
     assert len(outputs[0]) <= 50_000
     assert len(decompressed[0]) == 732_814
     assert hashlib.sha256(decompressed[0]).hexdigest() == (
-        "45d5179e3e79ec12c026c6693737c73fdc546c9b0610214f770b89dbe81409ec"
+        "9f062a650d0660d46a78f6bbc642a97652db2dfee1d16e652aa525561629dfc8"
     )
 
     # Two complete writes share one snapshot each and keep every camera feedback.

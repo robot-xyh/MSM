@@ -480,6 +480,8 @@ class ActiveVisionSafetyConfigV1:
     minimum_association_confidence: float = 0.60
     maximum_occlusion_fraction: float = 0.80
     zoom_max_uncertainty_trace_deg2: float = 9.0
+    zoom_stability_window_frames: int = 3
+    zoom_minimum_binding_score_margin: float = 0.05
     learned_minimum_confidence: float = 0.55
     model_inference_timeout_ms: float = 50.0
     scan_sectors_deg: tuple[tuple[float, float, float, float], ...] = (
@@ -520,6 +522,21 @@ class ActiveVisionSafetyConfigV1:
         if uncertainty < 0.0:
             raise ValueError("zoom uncertainty threshold must be non-negative")
         object.__setattr__(self, "zoom_max_uncertainty_trace_deg2", uncertainty)
+        stable_frames = int(self.zoom_stability_window_frames)
+        if (
+            isinstance(self.zoom_stability_window_frames, bool)
+            or stable_frames < 1
+            or stable_frames != self.zoom_stability_window_frames
+        ):
+            raise ValueError("zoom stability window must contain at least one frame")
+        object.__setattr__(self, "zoom_stability_window_frames", stable_frames)
+        binding_margin = _finite(
+            self.zoom_minimum_binding_score_margin,
+            "zoom_minimum_binding_score_margin",
+        )
+        if not 0.0 <= binding_margin <= 1.0:
+            raise ValueError("zoom binding score margin must be in [0, 1]")
+        object.__setattr__(self, "zoom_minimum_binding_score_margin", binding_margin)
         sectors = tuple(_sector(value) for value in self.scan_sectors_deg)
         if not sectors:
             raise ValueError("at least one deterministic scan sector is required")
@@ -576,11 +593,22 @@ class ActiveVisionDecisionV1:
     communication_version: int
 
 
+@dataclass(frozen=True)
+class _BindingStabilityState:
+    key: tuple[str, str, int, int]
+    stable_frame_count: int
+    last_current_timestamp: float
+    last_snapshot_timestamp: float
+    last_measurement_timestamp: float
+    last_arrival_timestamp: float
+
+
 class DeterministicLookAtScanPolicy:
     """Deterministic look-at/reacquire/scan baseline used for every fallback."""
 
     def __init__(self, config: ActiveVisionSafetyConfigV1 | None = None) -> None:
         self.config = config or ActiveVisionSafetyConfigV1()
+        self._binding_stability_by_camera: dict[str, _BindingStabilityState] = {}
 
     def select_action(
         self,
@@ -603,7 +631,32 @@ class DeterministicLookAtScanPolicy:
             config=self.config,
         )
         if version_reason is not None:
-            return self.scan_action(snapshot, camera=camera, current_timestamp=now, reason=version_reason)
+            self._reset_binding_stability(camera_id)
+            return self.scan_action(
+                snapshot,
+                camera=camera,
+                current_timestamp=now,
+                reason=version_reason,
+            )
+        previous_state = self._binding_stability_by_camera.get(camera_id)
+        if (
+            snapshot.snapshot_timestamp > now + 1.0e-9
+            or (
+                previous_state is not None
+                and (
+                    now + 1.0e-9 < previous_state.last_current_timestamp
+                    or snapshot.snapshot_timestamp + 1.0e-9
+                    < previous_state.last_snapshot_timestamp
+                )
+            )
+        ):
+            self._reset_binding_stability(camera_id)
+            return self.scan_action(
+                snapshot,
+                camera=camera,
+                current_timestamp=now,
+                reason="policy_time_regression",
+            )
         if (
             not camera.slew_available
             or (
@@ -611,6 +664,7 @@ class DeterministicLookAtScanPolicy:
                 and camera.action_in_progress_until > now
             )
         ):
+            self._reset_binding_stability(camera_id)
             return _action(
                 snapshot,
                 camera,
@@ -663,9 +717,35 @@ class DeterministicLookAtScanPolicy:
                     item.global_track_id,
                 ),
             )
+            if _projection_binding_is_ambiguous(
+                selected,
+                fresh,
+                minimum_margin=self.config.zoom_minimum_binding_score_margin,
+            ):
+                self._reset_binding_stability(camera_id)
+                return self._target_action(
+                    snapshot,
+                    camera,
+                    selected,
+                    now,
+                    intent=ActiveVisionIntent.REACQUIRE,
+                    fov_mode=_wide_or_current(camera),
+                    reason="rule_reacquire_ambiguous_assigned_projection",
+                )
+            stable_frame_count = self._advance_binding_stability(
+                snapshot,
+                camera_id=camera_id,
+                evidence=selected,
+                current_timestamp=now,
+            )
+            binding_stable = (
+                stable_frame_count >= self.config.zoom_stability_window_frames
+            )
             fov_mode = (
                 ActiveVisionFovMode.ZOOM
-                if selected.uncertainty_trace_deg2 <= self.config.zoom_max_uncertainty_trace_deg2
+                if binding_stable
+                and selected.uncertainty_trace_deg2
+                <= self.config.zoom_max_uncertainty_trace_deg2
                 and ActiveVisionFovMode.ZOOM in camera.supported_fov_modes
                 else _wide_or_current(camera)
             )
@@ -679,6 +759,7 @@ class DeterministicLookAtScanPolicy:
                 reason="rule_fresh_assigned_projection",
             )
         if reacquire:
+            self._reset_binding_stability(camera_id)
             selected = min(
                 reacquire,
                 key=lambda item: (
@@ -696,12 +777,70 @@ class DeterministicLookAtScanPolicy:
                 fov_mode=_wide_or_current(camera),
                 reason="rule_reacquire_last_projection",
             )
+        self._reset_binding_stability(camera_id)
         return self.scan_action(
             snapshot,
             camera=camera,
             current_timestamp=now,
             reason="rule_no_usable_assigned_projection",
         )
+
+    def _advance_binding_stability(
+        self,
+        snapshot: ActiveVisionSnapshotV1,
+        *,
+        camera_id: str,
+        evidence: ActiveVisionProjectionEvidence,
+        current_timestamp: float,
+    ) -> int:
+        key = (
+            camera_id,
+            evidence.global_track_id,
+            snapshot.plan.plan_version,
+            snapshot.plan.coalition_version,
+        )
+        previous = self._binding_stability_by_camera.get(camera_id)
+        if previous is None or previous.key != key:
+            count = 1
+        elif (
+            current_timestamp + 1.0e-9 < previous.last_current_timestamp
+            or snapshot.snapshot_timestamp + 1.0e-9
+            < previous.last_snapshot_timestamp
+            or evidence.measurement_timestamp + 1.0e-9
+            < previous.last_measurement_timestamp
+            or evidence.arrival_timestamp + 1.0e-9
+            < previous.last_arrival_timestamp
+        ):
+            count = 1
+        elif (
+            current_timestamp - previous.last_current_timestamp
+            > self.config.max_communication_age_s + 1.0e-9
+            or snapshot.snapshot_timestamp - previous.last_snapshot_timestamp
+            > self.config.max_communication_age_s + 1.0e-9
+        ):
+            count = 1
+        elif (
+            current_timestamp > previous.last_current_timestamp + 1.0e-9
+            and snapshot.snapshot_timestamp > previous.last_snapshot_timestamp + 1.0e-9
+            and evidence.measurement_timestamp
+            > previous.last_measurement_timestamp + 1.0e-9
+            and evidence.arrival_timestamp > previous.last_arrival_timestamp + 1.0e-9
+        ):
+            count = previous.stable_frame_count + 1
+        else:
+            count = previous.stable_frame_count
+        self._binding_stability_by_camera[camera_id] = _BindingStabilityState(
+            key=key,
+            stable_frame_count=count,
+            last_current_timestamp=current_timestamp,
+            last_snapshot_timestamp=snapshot.snapshot_timestamp,
+            last_measurement_timestamp=evidence.measurement_timestamp,
+            last_arrival_timestamp=evidence.arrival_timestamp,
+        )
+        return count
+
+    def _reset_binding_stability(self, camera_id: str) -> None:
+        self._binding_stability_by_camera.pop(camera_id, None)
 
     def scan_action(
         self,
@@ -1344,6 +1483,32 @@ def _bounded_delta(
         yaw *= scale
         pitch *= scale
     return (float(yaw), float(pitch))
+
+
+def _projection_binding_is_ambiguous(
+    selected: ActiveVisionProjectionEvidence,
+    candidates: Sequence[ActiveVisionProjectionEvidence],
+    *,
+    minimum_margin: float,
+) -> bool:
+    """Treat near-equal assigned projections as unsafe for narrow FOV."""
+
+    alternatives = tuple(
+        item for item in candidates if item.global_track_id != selected.global_track_id
+    )
+    if not alternatives:
+        return False
+
+    def score(item: ActiveVisionProjectionEvidence) -> float:
+        return (
+            item.association_confidence
+            * item.visibility_probability
+            * (1.0 - item.occlusion_fraction)
+        )
+
+    selected_score = score(selected)
+    alternative_score = max(score(item) for item in alternatives)
+    return selected_score - alternative_score < minimum_margin - 1.0e-12
 
 
 def _reservation_conflict(

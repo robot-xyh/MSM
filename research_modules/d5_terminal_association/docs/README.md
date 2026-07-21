@@ -15,6 +15,11 @@ D5 文档遵循 `research_modules/DOCUMENTATION_STANDARD.md`。推荐阅读顺�
 11. `../reports/D5_TRACKLET_GRAPH_CANONICAL_SEED_VIEW_20260721.md`：跨视角图数据共享 seed 只读视图、正式计数和失败关闭门。
 12. `../reports/D5_ACTIVE_VISION_CANONICAL_SEED_VIEW_20260721.md`：主动视觉共享 seed 只读视图、正式样本计数和 shadow-only 边界。
 
+2026-07-21，确定性主动视觉规则新增默认 3 帧的宽视场稳定门。状态按相机、中心目标、计划版本和
+联盟版本隔离；计划/目标变化、时间或证据回退、歧义、通信异常、友方冲突和相机忙都会清除计数。
+该阶段只有模块规则测试，未运行 AirSim 或模型训练，也没有运行时 ACK 输入。详细原理、实现和测试
+分别见 `MODULE_PRINCIPLES_CN.md`、`ALGORITHM_AND_IMPLEMENTATION.md` 和 `EXPERIMENT_REPORT.md`。
+
 2026-07-21，D5 已为两类正式学习数据建立 detached canonical seed view。两类数据都使用共享
 `60/20/20` 数值 seed，保留 seed `1000-1019` 泄漏为 0，原 manifest 与源文件树未修改。图数据
 readiness 因 97.52% 无边和困难负边不足继续失败关闭；主动视觉因 hold/observe 覆盖、运行 ACK 和

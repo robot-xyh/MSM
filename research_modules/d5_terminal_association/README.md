@@ -2,6 +2,26 @@
 
 科研模块，用于把末端相机视场中的本地视觉轨迹保守关联到中心分配的 `global_track_id`。模块可在统一三维 episode 中在线运行；训练标签和真值评分仍保持离线。D5 只输出视觉关联与相机观察意图，不修改、重写或重新分配任何全局轨迹 ID。
 
+## 2026-07-21 主动视觉宽视场稳定门
+
+确定性主动视觉规则已增加“宽视场保持直到绑定稳定”状态门。状态按
+`camera_id + global_track_id + plan_version + coalition_version` 隔离，默认要求连续 3 个具有严格
+递增时间戳的有效投影帧。首帧和第二帧仍输出 `OBSERVE_TARGET + WIDE`；达到窗口后，只有投影
+协方差继续满足既有不确定度门才允许 `ZOOM`。配置 `zoom_stability_window_frames=1` 可恢复原来的
+即时缩放语义，旧调用不需要新增参数。
+
+有效帧仍需通过原有新鲜度、可见概率、遮挡、关联置信度、视场内、当前分配、版本、通信和友方
+保留门。计划、联盟、目标、时间顺序或证据状态变化会清空该相机的计数；近等质量的多目标投影按
+可配置分数间隔判为歧义并回到 `REACQUIRE + WIDE`。重捕获和扫描主动选择宽视场；云台忙时清除
+计数并保持当前视场，恢复后重新经过宽视场窗口。不同相机不共享状态。该变化不修改
+`global_track_id`、动作 DTO、同相机互斥或运行时权限。
+
+当前 snapshot 没有 runtime ACK 或 `last_accepted_command_version` 输入。本阶段没有构造替代 ACK，
+只使用已有 `slew_available/action_in_progress_until` 处理相机忙状态。定向主动视觉组合测试
+`47 passed`，D5 全量 `437 passed in 10.28s`。本轮未运行 AirSim、未生成课程数据、未训练模型；
+GNN 与主动视觉模型继续失败关闭或 development shadow-only。既有 v5 development bundle 绑定旧
+实现哈希，按严格 loader 会因本次规则实现变化拒绝加载；本轮没有重写或追认旧权重。
+
 ## 2026-07-21 共享 canonical seed 只读视图
 
 D5 已为正式跨视角图数据和主动视觉 episode 数据实现独立的 canonical split view。视图先调用原有

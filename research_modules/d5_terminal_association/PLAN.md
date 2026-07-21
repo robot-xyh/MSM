@@ -1,5 +1,24 @@
 # D5 终端视觉配准与身份认证计划
 
+## 2026-07-21 主动视觉宽视场稳定门阶段 A
+
+- [x] 在 `DeterministicLookAtScanPolicy` 内建立按相机、中心目标、计划版本和联盟版本隔离的状态键，
+  默认连续 3 帧稳定后才允许由宽视场切入窄视场；`N=1` 保留即时缩放兼容选项。
+- [x] 稳定帧继续复用既有新鲜度、可见概率、遮挡、关联置信度、`in_fov`、当前分配、版本、通信、
+  友方保留和云台包络门，不降低任一安全阈值。
+- [x] 对计划/联盟/目标变化、时间回退、证据回退、低置信/投影失效、通信异常、友方冲突和相机忙
+  清空相机局部计数；重复同一帧不累计，不同相机不串状态。
+- [x] 多个当前分配投影的质量间隔小于默认 `0.05` 时按歧义处理，输出
+  `REACQUIRE + WIDE`；重捕获和扫描选择 `WIDE`。云台忙时保持当前 FOV，恢复后从宽视场窗口重计。
+- [x] 新增 8 项稳定门专项；主动视觉定向组合 `47 passed`，D5 全量
+  `437 passed in 10.28s`。未运行 AirSim，未训练或晋级模型。
+- [ ] 阶段 B 另行建立 clean supplemental curriculum producer，覆盖 hold/observe/reacquire/search、
+  相机角色和视场边界，不修改正式 900 episode。
+- [ ] main/runtime 将真实 applied/rejected/missing ACK 以现有 episode 合同回灌后，再决定是否把 ACK
+  纳入稳定门。当前 snapshot 不含 ACK，本阶段不得伪造或扩 DTO。
+- [ ] 只有在阶段 B 数据覆盖和准入门通过后才重训 development bundle。旧 v5 bundle 绑定阶段 A
+  之前的实现 SHA256，严格加载应失败关闭，不得沿用旧权重解释新规则候选。
+
 ## 2026-07-21 共享 canonical seed 视图
 
 - [x] 为 tracklet graph 与 active-vision episode 分别实现 strict、detached、只读的 canonical
