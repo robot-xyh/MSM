@@ -51,6 +51,11 @@ def test_schedule_expands_cells_and_rejects_duplicates(tmp_path) -> None:
     loaded_cells, reserved = _load_schedule_plan(path, default_duration_s=2.0)
     assert loaded_cells == cells
     assert reserved == (101, 102)
+    unsupported = json.loads(path.read_text(encoding="utf-8"))
+    unsupported["execution_order"] = "unknown"
+    path.write_text(json.dumps(unsupported), encoding="utf-8")
+    with pytest.raises(ValueError, match="execution order"):
+        _load_schedule_plan(path, default_duration_s=2.0)
     with pytest.raises(ValueError, match="duplicate generation cell"):
         _validate_generation_plan(
             (cells[0], cells[0]),
@@ -196,6 +201,16 @@ def test_committed_balanced_schedule_meets_formal_preflight() -> None:
         for scale in (5, 20, 50, 100, 200)
     }
     assert set(counts.values()) == {FORMAL_MINIMUM_SEEDS_PER_SCENARIO_SCALE}
+    expected_catalog = {
+        (scenario, scale)
+        for scenario in AVAILABLE_SCENARIOS
+        for scale in (5, 20, 50, 100, 200)
+    }
+    for start in range(0, len(cells), len(expected_catalog)):
+        block = cells[start : start + len(expected_catalog)]
+        assert {(scenario, scale) for scenario, scale, _, _ in block} == (
+            expected_catalog
+        )
     _validate_generation_plan(
         cells,
         reserved_evaluation_seeds=reserved,

@@ -2,6 +2,7 @@
   "schema_version": "scalable3d-learning-generation-plan-v1",
   "schedule_id": "scalable3d-balanced-curriculum-v1",
   "description": "Balanced 100-seed curriculum; every scenario covers all five seed blocks once and every scenario/scale cell has 20 seeds.",
+  "execution_order": "round_robin_cells_v1",
   "design": {
     "scenario_count": 9,
     "scales": [

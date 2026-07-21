@@ -378,7 +378,7 @@ def _load_schedule_plan(
     raw_cells = payload.get("cells")
     if not isinstance(raw_cells, list) or not raw_cells:
         raise ValueError("learning generation schedule requires non-empty cells")
-    cells: list[tuple[str, int, int, float]] = []
+    declared_cells: list[tuple[str, int, tuple[int, ...], float]] = []
     for raw in raw_cells:
         if not isinstance(raw, Mapping):
             raise ValueError("schedule cells must be JSON objects")
@@ -388,7 +388,28 @@ def _load_schedule_plan(
         seeds = raw.get("seeds")
         if not isinstance(seeds, list) or not seeds:
             raise ValueError("schedule cell seeds must be a non-empty list")
-        cells.extend((scenario, scale, int(seed), duration) for seed in seeds)
+        declared_cells.append(
+            (scenario, scale, tuple(int(seed) for seed in seeds), duration)
+        )
+    execution_order = str(
+        payload.get("execution_order", "declared_cells_v1")
+    ).strip()
+    cells: list[tuple[str, int, int, float]] = []
+    if execution_order == "declared_cells_v1":
+        for scenario, scale, seeds, duration in declared_cells:
+            cells.extend((scenario, scale, seed, duration) for seed in seeds)
+    elif execution_order == "round_robin_cells_v1":
+        maximum_seed_count = max(len(seeds) for _, _, seeds, _ in declared_cells)
+        for seed_offset in range(maximum_seed_count):
+            for scenario, scale, seeds, duration in declared_cells:
+                if seed_offset < len(seeds):
+                    cells.append(
+                        (scenario, scale, seeds[seed_offset], duration)
+                    )
+    else:
+        raise ValueError(
+            f"unsupported learning generation execution order: {execution_order}"
+        )
     raw_reserved = payload.get("reserved_evaluation_seeds", [])
     if not isinstance(raw_reserved, list):
         raise ValueError("schedule reserved_evaluation_seeds must be a list")
