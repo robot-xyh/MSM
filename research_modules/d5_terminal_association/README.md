@@ -2,6 +2,36 @@
 
 科研模块，用于把末端相机视场中的本地视觉轨迹保守关联到中心分配的 `global_track_id`。模块可在统一三维 episode 中在线运行；训练标签和真值评分仍保持离线。D5 只输出视觉关联与相机观察意图，不修改、重写或重新分配任何全局轨迹 ID。
 
+## 2026-07-20 同相机多到达批次处理
+
+正式 `learning_generation_v1_oosmfix` 已写入 209 条完成记录（sequence 0-208），下一项
+`communication_degraded` 200v200 在 D5 入口失败，异常为
+`one adapt_batches call may contain at most one batch per camera stream`。通信退化时，一个运行周期会
+排空此前已到达的队列，同一 `(resource_id, camera_id)` 出现多个扫描批次是合法接收语义。原限制是
+OOSM 修复时为简化无副作用预检增加的临时假设，不适用于积压队列。
+
+`adapt_batches()` 现在分两阶段执行。第一阶段完成真值隔离、字段有限性、相机命名空间、观测来源
+唯一性和全部时序预检。批次按
+`(arrival_timestamp, resource_id, camera_id, measurement_timestamp)` 确定性排列，各相机使用独立的
+暂存 arrival/measurement 高水位。任一重复 arrival、已提交 arrival 回退或重复 measurement 都在
+任何 tracker 状态变化前拒绝整个调用。第二阶段才按该顺序逐批提交；合法 OOSM 仍只推进 arrival
+高水位并输出 `oosm_ignored`，不倒写局部轨迹状态。
+
+`process()` 保留全部适配批次用于时序审计，但单时刻关联图只使用每个相机最后一次有效状态更新。
+这避免同一稳定 `tracklet_key` 的多个历史版本同时进入稀疏图，也避免后到 OOSM 几何覆盖当前状态。
+每个 tracker 另以有序时间戳登记已接收 measurement；它只用于识别较早正常帧或已忽略 OOSM 的
+再次重传，不参与运动估计、局部 ID 或中心绑定。
+
+2026-07-20 定向适配器测试 `31 passed`，D5 全量 `410 passed in 11.68s`，语法和格式检查通过。
+测试覆盖同流两正常批次、正常/OOSM 混合、历史 measurement 重传、三类原子失败关闭及多相机多批次
+确定性。在线路径没有
+读取 truth/object/actor ID，没有创建或改写 `global_track_id`，也没有固定相机或目标数量。
+
+该证据关闭 D5 代码级多批次阻塞，不证明正式 900 episode 已恢复或完成。按照 `VERSIONING.md`，
+main 必须在同时包含 D5 与 runner 修复的新干净提交上，使用新输出目录从 sequence 0 开始重建正式
+900 episode 数据集，再复核 900 条进度、有限状态、online truth use=0、checkpoint 和全部 D5 数据
+制品。绑定 `c5a9f6d` 的旧 209 条目录只保留为故障证据，不得恢复、续写或与新数据集拼接。
+
 ## 2026-07-20 通信退化场景的视觉 OOSM 处理
 
 正式 45-episode 分块在前 29 个 cell 完成后，于 `communication_degraded` 200v200 的 sequence 29
@@ -20,11 +50,11 @@
 
 当前轻量 tracker 没有固定时滞回放历史，因此忽略 OOSM 的状态更新比把当前状态回退到过去更
 保守。在线 payload 仍不含 truth/actor/object identity，`global_track_id` 所有权和只读规则不变。
-2026-07-20 定向适配器测试 `24 passed`，D5 全量 `403 passed in 9.74s`，接受阈值为零失败。
-这关闭 D5 代码级 OOSM 阻塞。原失败目录只有 29 条 progress，没有 paused
-`generation_checkpoint.json`，且 runner 要求 resume 的 Git revision 不变；修复提交后不能把原目录
-直接 `--resume` 成正式数据。main 应保留原目录作故障证据，在修复后的 clean commit 新建输出并
-完整运行首个 45-episode 分块，再在同一提交上 resume 下一分块。当前没有该系统级复跑证据。
+OOSM 修复当时的定向适配器测试为 `24 passed`，D5 全量为 `403 passed in 9.74s`。原失败目录只有
+29 条 progress，不能跨 revision 直接恢复。main 随后在修复提交和新目录
+`learning_generation_v1_oosmfix` 完成 209 条进度，原 sequence 29 OOSM 异常未再出现，且至少完成
+一次 checkpoint resume。该证据关闭原 OOSM 运行阻塞。第 210 项暴露的同相机多批次问题由上节
+处理；正式 900 episode 仍未完成。
 
 ## 2026-07-20 active-vision staging 性能修复
 

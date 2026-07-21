@@ -1,5 +1,27 @@
 # D5 实现差距审计
 
+## 2026-07-20 同相机多批次 P1 状态
+
+**正式证据：** `learning_generation_v1_oosmfix` 已写入 209 条进度（sequence 0-208），随后在
+`communication_degraded` 200v200 因一次 D5 调用出现同相机多个 batch 而失败。运行周期排空通信
+积压时该输入合法；“每次调用每流一批”是适配器假设，不是传输合同。
+
+**D5 代码级 P1 已关闭：** 全部输入先做结构、真值隔离、有限性和时序事务预检，再按 arrival 主键
+规范顺序逐批更新各自 tracker。重复 arrival、已提交 arrival 回退和重复 measurement 在任何状态
+变化前拒绝。OOSM 仍保留双时间戳且不倒写状态。`process()` 保留全部批次审计，图只取每流最后一次
+有效状态更新，避免相同稳定 tracklet key 的多个时间版本和重复相机几何进入同一快照。
+
+**回归证据：** 同流两正常批次、正常/OOSM 混合、历史正常/OOSM measurement 重传、三类原子失败、
+多相机多批次正反输入均通过。2026-07-20 定向 `31 passed`、D5 全量
+`410 passed in 11.68s`，语法和格式检查通过。实现没有 truth/
+actor/object ID 入口，没有中心 ID 写接口，也没有固定规模。
+
+**系统级 P1 仍开放：** 绑定 `c5a9f6d` 的 209 条历史进度只保留为故障证据。main 必须依据
+`VERSIONING.md`，在同时包含 D5 与 runner 修复的新干净提交上使用新输出目录，从 sequence 0 重建
+正式 900 episode；不得恢复、续写旧目录或跨提交拼接。新数据集还需验证 900 条进度、45 个场景/
+规模 cell 各 20 seed、finite、clean、online truth use=0、checkpoint、manifest 及 D5 graph/
+active-vision 最终化。OOSM 信息利用率和固定时滞重放仍是后续研究项，不属于本次阻塞修复。
+
 ## 2026-07-20 通信退化 OOSM P1 状态
 
 **根因：** 正式 45-episode 分块在 sequence 29 的 `communication_degraded` 200v200 进入
@@ -10,17 +32,17 @@
 **D5 代码级 P1 已关闭：** tracker 以 arrival 为接收顺序，以 measurement 高水位保护当前状态。
 合法 OOSM 不再抛错，也不回退运动学、框、命中、漏帧或 ID 状态；批次保留双时间戳并以
 `oosm_ignored`、累计计数和高水位诊断显式输出。重复 measurement、重复 arrival 和 arrival 回退均
-在提交前失败关闭。没有排序或改写时间戳，没有 truth ID 输入，没有 `global_track_id` 创建或换绑。
+在提交前失败关闭。不按 measurement 改写接收语义，也不改写时间戳；同调用多批次的 arrival 规范
+顺序见上节。没有 truth ID 输入，没有 `global_track_id` 创建或换绑。
 
 **代码证据：** arrival 单调/measurement 乱序正例验证 OOSM 不更新状态且下一正常帧保持局部 ID、
 命中数和速度基准；三个负例验证 arrival 回退、原样重复及同 measurement 重传不污染 tracker。
 2026-07-20 定向 `24 passed`，D5 全量 `403 passed in 9.74s`，接受阈值为零失败。
 
-**系统级 P1 仍开放：** 本轮没有修改或运行 scalable main。原 `learning_generation_v1` 在异常前
-没有写 paused checkpoint，且其 revision 为 2bf8f85；修复提交后不能直接正式 resume。main 必须在
-新 clean revision 和新输出目录重跑完整首个 45-cell，验证 sequence 29 对应 cell、有限状态、online
-truth use=0 与 progress/checkpoint 连续性；随后在同一 revision 上 resume 下一分块。当前策略保守
-丢弃 OOSM 对 MOT 状态的更新；若正式统计显示信息损失过高，有界固定时滞重放仍是后续研究项。
+**OOSM 系统阻塞已关闭，信息利用 P1 仍开放：** main 后续在修复提交的新目录完成首个 45-cell和
+一次 checkpoint resume，累计 209 条完成进度，原 sequence 29 OOSM 异常未复现。后续中断属于上节
+同相机多批次限制。当前策略仍保守丢弃 OOSM 对 MOT 状态的更新；正式 900 episode 完成后应统计
+占比和关联影响，必要时再研究有界固定时滞重放。
 
 ## 2026-07-20 clean-tree 200v200 postopt2 后的 P1 判定
 

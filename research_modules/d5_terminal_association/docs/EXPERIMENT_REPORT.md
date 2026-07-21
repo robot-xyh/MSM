@@ -1,5 +1,31 @@
 # D5 末端视觉配准与身份认证实验报告
 
+## 2026-07-20 同相机多批次回归
+
+正式 `learning_generation_v1_oosmfix` 的 `episode_progress.jsonl` 有 209 条完成记录，最后一条为
+sequence 208、`communication_degraded` 100v100。下一项 200v200 在 D5 结构门处抛出
+`one adapt_batches call may contain at most one batch per camera stream`，未写入新的完成记录。本节
+只验证 D5 修复，不宣称正式生成已恢复。
+
+| 用例 | 输入 | 实测结果 |
+| --- | --- | --- |
+| 同流两正常批次 | 一次 `process()` 输入两帧，并反转输入排列 | 输出按 arrival 排列，history 为 1/2；图只含最新一个稳定 local track |
+| 正常与 OOSM 混合 | 同一调用先到新 measurement，后到旧 measurement | 正常帧更新，迟到帧为 `oosm_ignored`；恢复帧 history 不计迟到帧 |
+| 重复 arrival | 同流两批次具有相同 arrival | 整个调用在提交前拒绝，恢复帧 history 证明无前缀污染 |
+| arrival 回退 | 输入 arrival 早于已提交高水位 | 整个调用在提交前拒绝，OOSM 计数不变 |
+| 重复 measurement | 两个更晚 arrival 携带同一当前 measurement | 整个调用在提交前拒绝 |
+| 历史 measurement 重传 | 重传较早正常帧，再重传已忽略 OOSM | 两类输入均判为 duplicate；恢复帧 history 和 OOSM 计数无污染 |
+| 多相机多批次 | 两个相机各两帧，正序和逆序各运行一次 | 规范输出相同；每流独立 history 1/2；图为两个当前节点、两个相机几何 |
+
+定向文件为 `31 passed in 1.76s`，D5 全量为 `410 passed in 11.68s`，语法检查和 owned-path
+`git diff --check` 通过。接受阈值为零失败、错误前无状态污染、图节点键唯一、双时间戳不改写、
+online truth identity use=0。最后一项由代码与测试边界验证，不代替 main 对正式制品的全量审计。
+
+剩余验收是 main 在同时包含 D5 与 runner 修复的新干净提交上，使用新输出目录从 sequence 0 重建
+全部 900 episode，再检查每个场景/规模/seed 计数、有限状态、clean revision、online truth use、
+checkpoint、最终 manifest 和 D5 图/主动视觉制品。绑定 `c5a9f6d` 的旧 209 条目录只保留为故障
+证据，不得恢复、续写或与新数据集拼接。当前没有新 900 集的完成证据。
+
 ## 2026-07-20 通信乱序单元验证
 
 测试针对正式分块 sequence 29 暴露的时序边界，不运行或伪造 scalable main resume。接受阈值为
@@ -14,12 +40,10 @@
 | 同 measurement 重传 | 同量测时间以更晚 arrival 输入 | `duplicate camera scan measurement timestamp`，状态不变 | 通过 |
 | 普通顺序回归 | 既有 D5 全部测试 | `403 passed in 9.74s` | 通过 |
 
-定向 `test_scalable_3d_adapter.py` 为 `24 passed in 1.72s`。测试未使用 truth ID，未创建或改写
-`global_track_id`。当前证据关闭 D5 代码级阻塞，不证明 sequence 29 已经恢复，也不证明忽略 OOSM
-对跨视角召回没有影响。原输出目录没有 paused checkpoint，且绑定旧 Git revision，不能直接形成
-正式 resume。main 应在修复后的 clean revision 新建输出，验证 sequence 29 对应 cell、完整
-45-cell、finite state、online truth use=0 和 checkpoint/progress 连续性；随后在同一 revision 上
-resume 下一分块，并汇总 OOSM 计数。
+定向 `test_scalable_3d_adapter.py` 当时为 `24 passed in 1.72s`。测试未使用 truth ID，未创建或改写
+`global_track_id`。main 后续在新目录完成首个 45-cell、一次 checkpoint resume，并累计 209 条完成
+进度，原 sequence 29 OOSM 异常没有复现。第 210 项因同相机多批次限制中断，已由本报告上一节的
+`31/410 passed` 修复覆盖。忽略 OOSM 对跨视角召回的影响仍需在 900 episode 完成后统计。
 
 ## 2026-07-20 clean-tree 200v200 postopt2 系统复测
 

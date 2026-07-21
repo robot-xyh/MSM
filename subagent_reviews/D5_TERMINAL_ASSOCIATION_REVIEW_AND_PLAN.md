@@ -1,5 +1,22 @@
 # D5 末端视觉配准与协同身份认证综述及子方案
 
+## 2026-07-20 多批次接收窗口复核
+
+正式生成链在已有 209 条完成进度后暴露第二个通信退化边界：同一运行周期可能收到同相机多个已
+到达批次。D5 原适配器只允许每流一批，无法表达通信队列积压。该限制与动态相机数量、目标数量、
+检测身份无关。
+
+修复把调用解释为接收窗口。窗口先整体预检，再按 arrival、resource、camera、measurement 的确定
+顺序逐批提交。每流独立推演双高水位，任何非法批次都使窗口原子失败；正常与 OOSM 混合时仅正常
+帧写 tracker。全部批次保留审计，跨视角图只使用每个相机最后有效状态，避免历史 tracklet key
+冲突。已接收 measurement 的有序登记同时拒绝较早正常帧和 OOSM 重传，但不参与身份或运动估计。
+定向 `31 passed`、D5 全量 `410 passed in 11.68s`。
+
+代码级阻塞关闭，正式 900 episode、最终化和至少 20 个未见 seed 仍未完成。绑定 `c5a9f6d` 的旧
+209 条目录只保留为故障证据。main 必须在同时包含 D5 与 runner 修复的新干净提交上，使用新输出
+目录从 sequence 0 重建 900 episode，不得恢复或拼接旧目录。D5 不因恢复吞吐而放宽真值隔离、
+中心 ID 只读或 OOSM 失败关闭规则。
+
 ## 2026-07-20 通信退化视觉时序复核
 
 正式分块在 `communication_degraded` 200v200 暴露了 camera-local tracker 的时钟语义错误。传输层
@@ -11,10 +28,10 @@
 几何，不生成局部轨迹证据，不改当前状态。重复 measurement、重复 arrival 和 arrival 回退均在
 提交前拒绝。该策略没有引入 truth ID，也不接触中心 `global_track_id` 所有权。
 
-2026-07-20 定向 `24 passed`、D5 全量 `403 passed in 9.74s`。代码级 OOSM 阻塞关闭。原失败目录
-没有 paused checkpoint，且绑定旧 revision，不能在修复提交后直接正式 resume。main 需在新目录
-重跑首个 45-cell，再在同一 clean revision 上 resume 下一分块。本轮没有证明 OOSM 信息利用率、
-跨视角精度或实时收益；固定时滞回放仅在后续统计证明有必要时设计。
+OOSM 修复当时定向 `24 passed`、D5 全量 `403 passed in 9.74s`。main 后续在新目录完成首个
+45-cell、checkpoint resume，并累计 209 条完成进度，原 OOSM 异常没有复现。后续中断属于上节的
+同相机多批次限制。本轮仍没有证明 OOSM 信息利用率、跨视角精度或实时收益；固定时滞回放仅在
+900 episode 统计证明有必要时设计。
 
 ## 2026-07-20 clean-tree 200v200 postopt2 性能复核
 

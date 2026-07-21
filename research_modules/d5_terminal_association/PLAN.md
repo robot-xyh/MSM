@@ -1,20 +1,42 @@
 # D5 终端视觉配准与身份认证计划
 
+## 2026-07-20 同相机多批次阻塞修复与正式数据复跑
+
+- [x] 核对正式失败语义：`learning_generation_v1_oosmfix` 已保存 209 条完成记录
+  （sequence 0-208），下一项 `communication_degraded` 200v200 因同一次 D5 调用包含同相机多个
+  已到达批次而失败。该输入是通信队列积压后的合法排空，不是相机串流或规模配置错误。
+- [x] 将 `adapt_batches()` 改为两阶段事务。全部 batch 先完成 truth-free、有限性、来源唯一性和
+  per-stream 暂存高水位预检，再按 arrival、resource、camera、measurement 规范顺序提交；任一
+  duplicate arrival、已提交 arrival rollback 或 duplicate measurement 均不允许产生部分状态更新。
+- [x] 保持既有 OOSM 语义：合法迟到 measurement 保留原双时间戳和几何，只增加 OOSM 计数并推进
+  arrival 高水位，不更新或老化 tracker，不生成局部轨迹。
+- [x] `process()` 的 `camera_batches` 保留全部到达批次；关联图和 source-observation link 只取每个
+  camera stream 最后一次有效状态更新，防止稳定 local track key 的历史版本重复进入一个图快照。
+- [x] 对每流登记全部已接收 measurement 时间戳，较早正常帧和已忽略 OOSM 的重传也判为 duplicate；
+  登记仅用于去重，不改变运动状态、身份或中心绑定。
+- [x] 新增同流两正常批次、同流正常/OOSM 混合、历史 measurement 重传、duplicate arrival/
+  rollback/measurement 原子拒绝、多相机多批次确定性与不串流回归。2026-07-20 定向
+  `31 passed`、D5 全量 `410 passed in 11.68s`，语法和 `git diff --check` 通过。
+- [ ] main 按 `VERSIONING.md` 在同时包含 D5 与 runner 修复的新干净提交上，使用新输出目录从
+  sequence 0 开始重建正式 900 episode，并完成 900 条进度、45 cell × 20 seed、finite、clean、
+  online truth use=0、checkpoint 和数据最终化审计。绑定 `c5a9f6d` 的旧 209 条目录只保留为故障
+  证据，不得恢复、续写或与新数据集拼接。
+
 ## 2026-07-20 通信退化 OOSM 修复与正式 resume
 
 - [x] 定位 sequence 29 失败：main 已按 arrival 顺序交付，D5 camera-local tracker 错把 measurement
   时间作为流接收顺序，并在更新时覆盖当前状态时间。
 - [x] 按 camera stream 分离 arrival 高水位和 measurement 高水位。合法 OOSM 保留双时间戳并以
   `oosm_ignored` 接收，但不回退、创建、老化或更新 tracker 状态；累计计数随批次 metadata 输出。
-- [x] 对 arrival 回退、重复 arrival 和同 measurement 重传在状态变化前失败关闭；不排序、不改写
-  时间戳、不使用 truth ID、不创建或改写 `global_track_id`。
+- [x] 对 arrival 回退、重复 arrival 和同 measurement 重传在状态变化前失败关闭；不按 measurement
+  重排接收语义、不改写时间戳、不使用 truth ID、不创建或改写 `global_track_id`。同一次调用的多个
+  已到达批次现按 arrival 主键规范排序，具体见上节。
 - [x] 新增 arrival 单调/measurement 乱序正例，以及 arrival 回退、原样重复和同 measurement 重传
   负例。2026-07-20 定向 `24 passed`、D5 全量 `403 passed in 9.74s`，零失败。
-- [ ] 原 `learning_generation_v1` 仅保留为 2bf8f85 失败证据：它缺少 paused checkpoint，且新提交
-  不能通过 revision-pinned resume。main 在修复后的 clean commit 使用新输出目录完整运行首个
-  45-episode 分块，确认 sequence 29 对应 cell 通过、online truth use=0、状态有限且 progress 连续。
-- [ ] main 在上述新目录和同一 clean commit 上执行一次真正的 `--resume`，确认 paused checkpoint、
-  generation plan、seed registry、Git revision 和下一分块进度连续；不得把两版代码混入同一正式集。
+- [x] 原 `learning_generation_v1` 保留为旧 revision 失败证据。main 在修复提交的新目录
+  `learning_generation_v1_oosmfix` 完成首个 45-episode 分块，原 sequence 29 对应 OOSM cell 已通过。
+- [x] main 在同一 clean revision 上完成 checkpoint resume；新目录累计 209 条完成进度
+  （sequence 0-208），未把旧版输出混入该正式集。随后阻塞属于同相机多批次，见上节。
 - [ ] 正式分块结束后统计 `oosm_measurement_ignored_count`。若 OOSM 占比或信息损失不可接受，再单独
   设计有界固定时滞历史与确定性重放；当前不以未验证回放替代保守失败关闭路径。
 

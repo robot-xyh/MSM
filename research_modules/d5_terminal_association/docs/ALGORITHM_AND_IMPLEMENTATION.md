@@ -4,6 +4,48 @@
 
 **适用范围：** 本文依据第五研究模块（D5）的当前代码、README、PLAN、模块原理文档和系统总汇总，同步说明算法原理、数据合同、代码实施路径与验证结果。文中严格区分默认在线主线、已实现但非默认的辅助/离线能力，以及尚未实现能力；计划项不能据此解释为已上线能力。
 
+## 2026-07-20 同流多批次实施
+
+正式生成器按运行周期把所有已到达视觉批次送入 D5。通信退化场景可能在一次调用中包含同一相机的
+多个 batch。旧代码在结构预检后强制 stream key 唯一，导致正式目录写入 209 条进度后于下一项
+`communication_degraded` 200v200 中断。
+
+该旧目录及其 generation plan/manifest 绑定提交 `c5a9f6d`。D5 修复与 runner 修复形成新提交后，
+不得跨提交恢复或拼接旧进度。正式生成必须在同时包含两项修复的新干净提交上，以新输出目录从
+sequence 0 重建全部 900 episode；旧 209 条记录只用于保留故障过程。
+
+当前实现先按下式建立规范处理序列：
+
+```text
+sort_key = (arrival_timestamp, resource_id, camera_id, measurement_timestamp)
+```
+
+排序只确定同一接收窗口内已到达批次的处理顺序，不改变任何时间戳，也不按 measurement 重排通信
+语义。随后从各 tracker 的已提交双高水位复制暂存状态，对规范序列逐项调用无副作用的时间转移函数：
+
+```text
+(latest_measurement, last_arrival)
+    + (measurement, arrival)
+    -> (temporal_status, staged_latest_measurement, staged_last_arrival)
+```
+
+正常批次同时推进两个暂存高水位；OOSM 只推进暂存 arrival；重复 arrival、相对已提交高水位的
+arrival 回退和重复量测直接抛错。tracker 用有序浮点时间戳序列登记本 episode 已接收的全部
+measurement，二分检查容差为 `1e-12 s`；暂存事务另登记本调用已预检时间戳。因此等于当前高水位、
+重传较早正常帧和重传已忽略 OOSM 都会在提交前拒绝。登记不保存图像或检测身份。只有所有 stream
+的整批推演成功后才调用 tracker update。该两阶段过程使后续非法批次不能留下前缀状态污染。
+
+匿名 local ID 在跨帧保持稳定，因此同一相机的多个正常批次会产生相同 `tracklet_key` 的不同时间
+版本。稀疏图是当前状态快照，不能同时容纳这些历史版本。`process()` 先顺序消费全部批次，再为每个
+stream 选最后一个 `tracker_state_updated=true` 的 batch 进入图。空的正常扫描会替换此前证据；
+OOSM 不替换最后有效状态。`Scalable3DStepResult.camera_batches` 保留全部接收审计，`tracklets`、
+`camera_geometries` 和 source-observation link 与实际图节点保持一致。
+
+新增测试验证同流两正常批次、正常/OOSM 混合、历史 measurement/OOSM 重传、三类事务失败和多相机
+输入逆序等价。2026-07-20 定向测试 `31 passed`，D5 全量 `410 passed in 11.68s`。在线 payload
+仍拒绝 truth/object/actor ID，
+本地 tracker 不生成或改写 `global_track_id`，批次数量由输入决定。
+
 ## 2026-07-20 camera-local OOSM 实施
 
 原 `_AnonymousCameraTracker` 只保存一个 `_last_timestamp`，它实际记录 measurement 时间。
@@ -16,8 +58,8 @@
 - `_latest_measurement_timestamp`：已实际更新 MOT 状态的量测高水位；
 - `_oosm_measurement_ignored_count`：合法 OOSM 的累计保守忽略数。
 
-`adapt_batches()` 仍先完成所有 truth-free、source observation 唯一性和 stream 唯一性检查，再对每个
-已有 tracker 进行无副作用时序预检，最后按输入 arrival 顺序提交。单流判定为：
+`adapt_batches()` 仍先完成所有 truth-free 和 source observation 唯一性检查，再按上节两阶段事务
+对一个或多个同流批次进行无副作用时序预检，最后按规范 arrival 顺序提交。单流判定为：
 
 ```text
 arrival < last_arrival       -> fail closed: arrival regression

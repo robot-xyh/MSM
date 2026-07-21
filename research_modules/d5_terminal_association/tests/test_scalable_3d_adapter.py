@@ -186,6 +186,36 @@ def _projected_batch(
     )
 
 
+def _timed_projected_batch(
+    camera_index: int,
+    *,
+    measurement_timestamp: float,
+    arrival_timestamp: float,
+    frame_index: int,
+    center_offset_px: tuple[float, float] = (0.0, 0.0),
+    point_index: int = 1,
+) -> SimpleNamespace:
+    centers, boxes = _projected_boxes(camera_index, (point_index,))
+    offset = np.asarray(center_offset_px, dtype=float)
+    bbox_offset = np.array([offset[0], offset[1], offset[0], offset[1]])
+    measurement = _measurement(
+        camera_index=camera_index,
+        center=centers[0] + offset,
+        bbox=boxes[0] + bbox_offset,
+        timestamp=measurement_timestamp,
+        arrival_timestamp=arrival_timestamp,
+        frame_index=frame_index,
+        detection_index=0,
+    )
+    return _batch(
+        camera_index,
+        (measurement,),
+        timestamp=measurement_timestamp,
+        arrival_timestamp=arrival_timestamp,
+        frame_index=frame_index,
+    )
+
+
 def _center_tracks() -> list[SimpleNamespace]:
     return [
         SimpleNamespace(
@@ -361,6 +391,283 @@ def test_arrival_order_accepts_oosm_measurement_without_rewinding_tracker() -> N
     assert resumed.metadata["temporal_status"] == "in_order_state_update"
     assert resumed.metadata["oosm_measurement_ignored_count"] == 1
     assert resumed.metadata["latest_state_measurement_timestamp"] == pytest.approx(1.3)
+
+
+def test_one_process_call_drains_two_normal_batches_from_the_same_camera() -> None:
+    adapter = Scalable3DTerminalAdapter()
+    first = _timed_projected_batch(
+        0,
+        measurement_timestamp=1.0,
+        arrival_timestamp=1.10,
+        frame_index=1,
+    )
+    second = _timed_projected_batch(
+        0,
+        measurement_timestamp=1.1,
+        arrival_timestamp=1.20,
+        frame_index=2,
+        center_offset_px=(4.0, 2.0),
+    )
+
+    result = adapter.process((second, first), _center_tracks())
+
+    assert [batch.arrival_timestamp for batch in result.camera_batches] == [1.10, 1.20]
+    assert [batch.status for batch in result.camera_batches] == ["ok", "ok"]
+    assert [
+        batch.tracklets[0].metadata["mot_history_length"]
+        for batch in result.camera_batches
+    ] == [1, 2]
+    assert len(result.tracklets) == result.association.graph.node_count == 1
+    assert result.tracklets[0].source_observation_id == "obs-c00-f0002-d0000"
+    assert result.tracklets[0].local_track_id == "trk-000001"
+    assert len(result.camera_geometries) == 1
+    assert result.camera_geometries[0].measurement_timestamp == pytest.approx(1.1)
+
+
+def test_one_call_mixes_normal_and_oosm_batches_without_rewinding_state() -> None:
+    adapter = Scalable3DTerminalAdapter()
+    baseline = adapter.adapt_batch(
+        _timed_projected_batch(
+            0,
+            measurement_timestamp=1.0,
+            arrival_timestamp=1.05,
+            frame_index=1,
+        )
+    )
+    normal = _timed_projected_batch(
+        0,
+        measurement_timestamp=1.2,
+        arrival_timestamp=1.25,
+        frame_index=2,
+        center_offset_px=(4.0, 2.0),
+    )
+    oosm = _timed_projected_batch(
+        0,
+        measurement_timestamp=1.1,
+        arrival_timestamp=1.35,
+        frame_index=3,
+        center_offset_px=(2.0, 1.0),
+    )
+
+    drained = adapter.adapt_batches((oosm, normal))
+    resumed = adapter.adapt_batch(
+        _timed_projected_batch(
+            0,
+            measurement_timestamp=1.3,
+            arrival_timestamp=1.45,
+            frame_index=4,
+            center_offset_px=(6.0, 3.0),
+        )
+    )
+
+    assert baseline.tracklets[0].local_track_id == "trk-000001"
+    assert [batch.status for batch in drained] == ["ok", "oosm_ignored"]
+    assert [batch.measurement_timestamp for batch in drained] == [1.2, 1.1]
+    assert drained[0].tracklets[0].metadata["mot_history_length"] == 2
+    assert drained[1].tracklets == ()
+    assert drained[1].metadata["tracker_state_updated"] is False
+    assert drained[1].metadata["latest_state_measurement_timestamp"] == pytest.approx(1.2)
+    assert drained[1].metadata["last_arrival_timestamp"] == pytest.approx(1.35)
+    assert resumed.tracklets[0].metadata["mot_history_length"] == 3
+    assert resumed.metadata["oosm_measurement_ignored_count"] == 1
+
+
+def test_historical_normal_and_oosm_retransmissions_are_duplicate_measurements() -> None:
+    adapter = Scalable3DTerminalAdapter()
+    adapter.adapt_batch(
+        _timed_projected_batch(
+            0,
+            measurement_timestamp=1.0,
+            arrival_timestamp=1.05,
+            frame_index=1,
+        )
+    )
+    adapter.adapt_batch(
+        _timed_projected_batch(
+            0,
+            measurement_timestamp=1.2,
+            arrival_timestamp=1.25,
+            frame_index=2,
+            center_offset_px=(4.0, 2.0),
+        )
+    )
+
+    with pytest.raises(ValueError, match="duplicate camera scan measurement timestamp"):
+        adapter.adapt_batch(
+            _timed_projected_batch(
+                0,
+                measurement_timestamp=1.0,
+                arrival_timestamp=1.35,
+                frame_index=3,
+            )
+        )
+
+    oosm = adapter.adapt_batch(
+        _timed_projected_batch(
+            0,
+            measurement_timestamp=1.1,
+            arrival_timestamp=1.45,
+            frame_index=4,
+            center_offset_px=(2.0, 1.0),
+        )
+    )
+    with pytest.raises(ValueError, match="duplicate camera scan measurement timestamp"):
+        adapter.adapt_batch(
+            _timed_projected_batch(
+                0,
+                measurement_timestamp=1.1,
+                arrival_timestamp=1.55,
+                frame_index=5,
+                center_offset_px=(2.0, 1.0),
+            )
+        )
+
+    recovered = adapter.adapt_batch(
+        _timed_projected_batch(
+            0,
+            measurement_timestamp=1.3,
+            arrival_timestamp=1.65,
+            frame_index=6,
+            center_offset_px=(6.0, 3.0),
+        )
+    )
+    assert oosm.status == "oosm_ignored"
+    assert oosm.metadata["oosm_measurement_ignored_count"] == 1
+    assert recovered.tracklets[0].metadata["mot_history_length"] == 3
+    assert recovered.metadata["oosm_measurement_ignored_count"] == 1
+
+
+@pytest.mark.parametrize(
+    ("invalid_batches", "message"),
+    [
+        (
+            (
+                (1.1, 1.20, 2),
+                (1.2, 1.20, 3),
+            ),
+            "duplicate camera scan arrival timestamp",
+        ),
+        (
+            (
+                (0.9, 1.05, 2),
+                (1.1, 1.20, 3),
+            ),
+            "arrival timestamps must not regress",
+        ),
+        (
+            (
+                (1.1, 1.20, 2),
+                (1.1, 1.30, 3),
+            ),
+            "duplicate camera scan measurement timestamp",
+        ),
+    ],
+)
+def test_multibatch_timestamp_failure_is_atomic(
+    invalid_batches: tuple[tuple[float, float, int], ...],
+    message: str,
+) -> None:
+    adapter = Scalable3DTerminalAdapter()
+    first = adapter.adapt_batch(
+        _timed_projected_batch(
+            0,
+            measurement_timestamp=1.0,
+            arrival_timestamp=1.10,
+            frame_index=1,
+        )
+    )
+    batches = tuple(
+        _timed_projected_batch(
+            0,
+            measurement_timestamp=measurement_timestamp,
+            arrival_timestamp=arrival_timestamp,
+            frame_index=frame_index,
+            center_offset_px=(2.0, 1.0),
+        )
+        for measurement_timestamp, arrival_timestamp, frame_index in invalid_batches
+    )
+
+    with pytest.raises(ValueError, match=message):
+        adapter.adapt_batches(batches)
+
+    recovered = adapter.adapt_batch(
+        _timed_projected_batch(
+            0,
+            measurement_timestamp=1.1,
+            arrival_timestamp=1.40,
+            frame_index=4,
+            center_offset_px=(4.0, 2.0),
+        )
+    )
+    assert first.tracklets[0].local_track_id == recovered.tracklets[0].local_track_id
+    assert recovered.tracklets[0].metadata["mot_history_length"] == 2
+    assert recovered.metadata["oosm_measurement_ignored_count"] == 0
+
+
+def test_multicamera_multibatch_processing_is_deterministic_and_stream_local() -> None:
+    batches = (
+        _timed_projected_batch(
+            0,
+            measurement_timestamp=2.1,
+            arrival_timestamp=2.30,
+            frame_index=2,
+            center_offset_px=(5.0, 2.0),
+        ),
+        _timed_projected_batch(
+            1,
+            measurement_timestamp=2.0,
+            arrival_timestamp=2.05,
+            frame_index=1,
+        ),
+        _timed_projected_batch(
+            1,
+            measurement_timestamp=2.1,
+            arrival_timestamp=2.20,
+            frame_index=2,
+            center_offset_px=(-3.0, 1.0),
+        ),
+        _timed_projected_batch(
+            0,
+            measurement_timestamp=2.0,
+            arrival_timestamp=2.10,
+            frame_index=1,
+        ),
+    )
+
+    forward = Scalable3DTerminalAdapter().process(batches, _center_tracks())
+    reverse = Scalable3DTerminalAdapter().process(tuple(reversed(batches)), _center_tracks())
+
+    def signature(result: object) -> tuple[tuple[object, ...], ...]:
+        return tuple(
+            (
+                batch.resource_id,
+                batch.camera_id,
+                batch.measurement_timestamp,
+                batch.arrival_timestamp,
+                batch.tracklets[0].local_track_id,
+                batch.tracklets[0].metadata["mot_history_length"],
+            )
+            for batch in result.camera_batches
+        )
+
+    assert signature(forward) == signature(reverse)
+    assert [batch.arrival_timestamp for batch in forward.camera_batches] == [
+        2.05,
+        2.10,
+        2.20,
+        2.30,
+    ]
+    assert [
+        batch.tracklets[0].metadata["mot_history_length"]
+        for batch in forward.camera_batches
+    ] == [1, 1, 2, 2]
+    assert len(forward.tracklets) == forward.association.graph.node_count == 2
+    assert {tracklet.camera_key for tracklet in forward.tracklets} == {
+        "RESOURCE-0/CAM-0",
+        "RESOURCE-1/CAM-1",
+    }
+    assert {tracklet.local_track_id for tracklet in forward.tracklets} == {"trk-000001"}
+    assert len(forward.camera_geometries) == 2
 
 
 def test_arrival_timestamp_regression_fails_before_tracker_state_update() -> None:

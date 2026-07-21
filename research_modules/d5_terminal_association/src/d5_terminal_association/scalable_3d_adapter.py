@@ -7,6 +7,7 @@ are validated but are never reused as camera-local tracker identifiers.
 
 from __future__ import annotations
 
+from bisect import bisect_left, insort
 from dataclasses import dataclass, field, fields, is_dataclass
 import math
 import re
@@ -193,15 +194,23 @@ class Scalable3DStepResult:
 
     @property
     def tracklets(self) -> tuple[CameraLocalTracklet, ...]:
-        return tuple(tracklet for batch in self.camera_batches for tracklet in batch.tracklets)
+        # One process call may drain several scans from the same camera.  The
+        # association graph is a current-state snapshot, so expose only the
+        # de-duplicated tracklets that actually entered that graph.
+        return tuple(self.association.graph.nodes)
 
     @property
     def camera_geometries(self) -> tuple[TrackletCameraGeometry, ...]:
-        return tuple(
-            batch.camera_geometry
-            for batch in self.camera_batches
-            if batch.camera_geometry is not None
-        )
+        required_camera_keys = {tracklet.camera_key for tracklet in self.tracklets}
+        latest_by_camera: dict[str, TrackletCameraGeometry] = {}
+        for batch in self.camera_batches:
+            if not bool(batch.metadata.get("tracker_state_updated", False)):
+                continue
+            if batch.camera_geometry is None:
+                continue
+            if batch.camera_geometry.camera_key in required_camera_keys:
+                latest_by_camera[batch.camera_geometry.camera_key] = batch.camera_geometry
+        return tuple(latest_by_camera[key] for key in sorted(latest_by_camera))
 
     @property
     def source_observation_links(self) -> tuple["SourceObservationTrackletLink", ...]:
@@ -299,6 +308,51 @@ class _AnonymousTrackState:
     missed_frames: int = 0
 
 
+def _validate_camera_timestamp_transition(
+    measurement_timestamp: float,
+    arrival_timestamp: float,
+    *,
+    latest_measurement_timestamp: float | None,
+    last_arrival_timestamp: float | None,
+) -> tuple[str, float | None, float]:
+    """Validate one receive-order transition without mutating tracker state."""
+
+    if last_arrival_timestamp is not None:
+        arrival_delta = arrival_timestamp - last_arrival_timestamp
+        if arrival_delta < -_TIMESTAMP_EPSILON:
+            raise ValueError(
+                "camera scan arrival timestamps must not regress within an episode"
+            )
+        if abs(arrival_delta) <= _TIMESTAMP_EPSILON:
+            raise ValueError(
+                "duplicate camera scan arrival timestamp within an episode"
+            )
+    if latest_measurement_timestamp is None:
+        return _TEMPORAL_IN_ORDER, measurement_timestamp, arrival_timestamp
+    measurement_delta = measurement_timestamp - latest_measurement_timestamp
+    if abs(measurement_delta) <= _TIMESTAMP_EPSILON:
+        raise ValueError(
+            "duplicate camera scan measurement timestamp within an episode"
+        )
+    if measurement_delta < 0.0:
+        return _TEMPORAL_OOSM_IGNORED, latest_measurement_timestamp, arrival_timestamp
+    return _TEMPORAL_IN_ORDER, measurement_timestamp, arrival_timestamp
+
+
+def _contains_timestamp(
+    ordered_timestamps: Sequence[float],
+    timestamp: float,
+) -> bool:
+    index = bisect_left(ordered_timestamps, timestamp)
+    return (
+        index < len(ordered_timestamps)
+        and abs(ordered_timestamps[index] - timestamp) <= _TIMESTAMP_EPSILON
+    ) or (
+        index > 0
+        and abs(ordered_timestamps[index - 1] - timestamp) <= _TIMESTAMP_EPSILON
+    )
+
+
 class _AnonymousCameraTracker:
     """Deterministic per-camera tracker that owns all local ID allocation."""
 
@@ -309,6 +363,7 @@ class _AnonymousCameraTracker:
         self._latest_measurement_timestamp: float | None = None
         self._last_arrival_timestamp: float | None = None
         self._oosm_measurement_ignored_count = 0
+        self._received_measurement_timestamps: list[float] = []
 
     @property
     def latest_measurement_timestamp(self) -> float | None:
@@ -322,31 +377,28 @@ class _AnonymousCameraTracker:
     def oosm_measurement_ignored_count(self) -> int:
         return self._oosm_measurement_ignored_count
 
+    def has_received_measurement_timestamp(self, timestamp: float) -> bool:
+        return _contains_timestamp(self._received_measurement_timestamps, timestamp)
+
     def validate_timestamps(
         self,
         measurement_timestamp: float,
         arrival_timestamp: float,
     ) -> str:
-        if self._last_arrival_timestamp is not None:
-            arrival_delta = arrival_timestamp - self._last_arrival_timestamp
-            if arrival_delta < -_TIMESTAMP_EPSILON:
-                raise ValueError(
-                    "camera scan arrival timestamps must not regress within an episode"
-                )
-            if abs(arrival_delta) <= _TIMESTAMP_EPSILON:
-                raise ValueError(
-                    "duplicate camera scan arrival timestamp within an episode"
-                )
-        if self._latest_measurement_timestamp is None:
-            return _TEMPORAL_IN_ORDER
-        measurement_delta = measurement_timestamp - self._latest_measurement_timestamp
-        if abs(measurement_delta) <= _TIMESTAMP_EPSILON:
+        status, _, _ = _validate_camera_timestamp_transition(
+            measurement_timestamp,
+            arrival_timestamp,
+            latest_measurement_timestamp=self._latest_measurement_timestamp,
+            last_arrival_timestamp=self._last_arrival_timestamp,
+        )
+        if _contains_timestamp(
+            self._received_measurement_timestamps,
+            measurement_timestamp,
+        ):
             raise ValueError(
                 "duplicate camera scan measurement timestamp within an episode"
             )
-        if measurement_delta < 0.0:
-            return _TEMPORAL_OOSM_IGNORED
-        return _TEMPORAL_IN_ORDER
+        return status
 
     def update(
         self,
@@ -365,6 +417,7 @@ class _AnonymousCameraTracker:
         if temporal_status == _TEMPORAL_OOSM_IGNORED:
             # The tracker has no fixed-lag replay. Preserve arrival semantics without
             # rewinding its current kinematic or lifecycle state.
+            insort(self._received_measurement_timestamps, measurement_timestamp)
             self._last_arrival_timestamp = arrival_timestamp
             self._oosm_measurement_ignored_count += 1
             return ()
@@ -460,6 +513,7 @@ class _AnonymousCameraTracker:
             if state.missed_frames > self.config.max_missed_frames:
                 del self._tracks[sequence]
 
+        insort(self._received_measurement_timestamps, measurement_timestamp)
         self._latest_measurement_timestamp = measurement_timestamp
         self._last_arrival_timestamp = arrival_timestamp
         return tuple(sorted(output, key=lambda item: item.local_track_id))
@@ -509,23 +563,68 @@ class Scalable3DTerminalAdapter:
         )
         if len(frame_source_keys) != len(set(frame_source_keys)):
             raise ValueError("one source observation may belong to only one tracklet per frame")
-        stream_keys = tuple(item.stream_key for item in prepared)
-        if len(stream_keys) != len(set(stream_keys)):
-            raise ValueError("one adapt_batches call may contain at most one batch per camera stream")
+        ordered_prepared = tuple(
+            sorted(
+                prepared,
+                key=lambda item: (
+                    item.arrival_timestamp,
+                    item.resource_id,
+                    item.camera_id,
+                    item.measurement_timestamp,
+                ),
+            )
+        )
+        staged_temporal_state: dict[
+            tuple[str, str], tuple[float | None, float | None]
+        ] = {}
+        staged_measurement_timestamps: dict[tuple[str, str], list[float]] = {}
         temporal_statuses: list[str] = []
-        for item in prepared:
-            tracker = self._trackers.get(item.stream_key)
-            temporal_statuses.append(
-                _TEMPORAL_IN_ORDER
-                if tracker is None
-                else tracker.validate_timestamps(
+        for item in ordered_prepared:
+            if item.stream_key not in staged_temporal_state:
+                tracker = self._trackers.get(item.stream_key)
+                staged_temporal_state[item.stream_key] = (
+                    None if tracker is None else tracker.latest_measurement_timestamp,
+                    None if tracker is None else tracker.last_arrival_timestamp,
+                )
+                staged_measurement_timestamps[item.stream_key] = []
+            latest_measurement, last_arrival = staged_temporal_state[item.stream_key]
+            temporal_status, latest_measurement, last_arrival = (
+                _validate_camera_timestamp_transition(
                     item.measurement_timestamp,
                     item.arrival_timestamp,
+                    latest_measurement_timestamp=latest_measurement,
+                    last_arrival_timestamp=last_arrival,
                 )
+            )
+            tracker = self._trackers.get(item.stream_key)
+            if (
+                tracker is not None
+                and tracker.has_received_measurement_timestamp(
+                    item.measurement_timestamp
+                )
+            ) or _contains_timestamp(
+                staged_measurement_timestamps[item.stream_key],
+                item.measurement_timestamp,
+            ):
+                raise ValueError(
+                    "duplicate camera scan measurement timestamp within an episode"
+                )
+            temporal_statuses.append(temporal_status)
+            insort(
+                staged_measurement_timestamps[item.stream_key],
+                item.measurement_timestamp,
+            )
+            staged_temporal_state[item.stream_key] = (
+                latest_measurement,
+                last_arrival,
             )
         return tuple(
             self._commit_prepared_batch(item, temporal_status)
-            for item, temporal_status in zip(prepared, temporal_statuses, strict=True)
+            for item, temporal_status in zip(
+                ordered_prepared,
+                temporal_statuses,
+                strict=True,
+            )
         )
 
     def process(
@@ -537,11 +636,12 @@ class Scalable3DTerminalAdapter:
     ) -> Scalable3DStepResult:
         adapted_batches = self.adapt_batches(batches)
         center_tracks = global_tracks3d_to_projection_tracks(center_tracks_3d)
+        association_batches = _latest_state_update_batches(adapted_batches)
         association = run_scalable_3d_online_association(
-            tuple(tracklet for batch in adapted_batches for tracklet in batch.tracklets),
+            tuple(tracklet for batch in association_batches for tracklet in batch.tracklets),
             tuple(
                 batch.camera_geometry
-                for batch in adapted_batches
+                for batch in association_batches
                 if batch.camera_geometry is not None
             ),
             center_tracks,
@@ -620,6 +720,18 @@ class Scalable3DTerminalAdapter:
             status=status,
             metadata=metadata,
         )
+
+
+def _latest_state_update_batches(
+    batches: Iterable[Scalable3DAdaptedCameraBatch],
+) -> tuple[Scalable3DAdaptedCameraBatch, ...]:
+    """Select one current-state batch per camera for the association snapshot."""
+
+    latest_by_stream: dict[tuple[str, str], Scalable3DAdaptedCameraBatch] = {}
+    for batch in batches:
+        if bool(batch.metadata.get("tracker_state_updated", False)):
+            latest_by_stream[(batch.resource_id, batch.camera_id)] = batch
+    return tuple(latest_by_stream[key] for key in sorted(latest_by_stream))
 
 
 def global_track3d_to_projection_track(track: Any) -> GlobalTrack:

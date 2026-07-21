@@ -1,5 +1,18 @@
 # D5 M 对 N 末端多视角配准与协同定位调研
 
+## 2026-07-20 M 对 N 多批次接收修复
+
+M 对 N 运行周期会按实际到达队列产生零个、一个或多个同相机 batch。正式数据链在 209 条已完成
+进度后，由 `communication_degraded` 200v200 首次触发同流多批次限制。当前适配器按输入数量工作，
+先原子预检整个窗口，再以 arrival 主键确定顺序并逐流更新，不设置相机、目标或批次数量上限。
+
+关联图只保留每个相机最后有效状态，历史正常帧仍参与 tracker 推进但不重复占用图节点，OOSM 不
+覆盖当前几何。多相机正反输入回归得到相同输出，各 tracker 的 local ID/history 独立。2026-07-20
+定向 `31 passed`、D5 全量 `410 passed in 11.68s`。该结果关闭模块代码阻塞；900 episode 和数据
+最终化仍需 main 复跑确认。绑定 `c5a9f6d` 的旧 209 条目录只保留为故障证据；main 必须在同时包含
+D5 与 runner 修复的新干净提交上，以新输出目录从 sequence 0 重建 900 episode，不得恢复或跨提交
+拼接旧数据。
+
 ## 2026-07-20 M 对 N 通信乱序处理
 
 200v200 通信退化场景中，不同相机流及同一相机的不同扫描会因链路抖动形成 arrival 顺序与
@@ -7,9 +20,9 @@ measurement 顺序不一致。D5 现在按 `(resource_id, camera_id)` 独立维�
 不影响时序判断。合法 OOSM 被显式计数并禁止回退 camera-local MOT；重复或回退 arrival 失败关闭。
 
 该处理保留每个批次的 measurement/arrival 时间、相机几何、动态相机数量和匿名命名空间，且不把
-后到帧绑定到 truth 或中心 ID。定向 `24 passed`、D5 全量 `403 passed in 9.74s`。原失败目录缺少
-paused checkpoint；main 尚未在修复后的 clean revision 新跑完整 45-cell 并 resume 下一分块，因此
-这里只关闭 D5 代码阻塞，不关闭正式 M 对 N 数据生成验收。
+后到帧绑定到 truth 或中心 ID。修复当时定向 `24 passed`、D5 全量 `403 passed in 9.74s`。main
+随后完成首个 45-cell、checkpoint resume，并累计 209 条完成进度，原 OOSM 异常没有复现。正式
+M 对 N 数据生成仍因上节多批次问题及 900 episode 未完成而保持开放。
 
 ## 2026-07-20 200v200 M 对 N 数据链 clean-tree postopt2 复测
 
