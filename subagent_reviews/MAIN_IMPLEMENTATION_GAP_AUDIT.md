@@ -9,6 +9,31 @@
 **当前状态修订（2026-07-20）**：上段“无开放 P0”只对应此前 AirSim 审计。900-episode
 正式生成在第 210 项发现 D5 同流多批次阻塞；以下专项记录为当前状态，优先级高于历史摘要。
 
+## 2026-07-21 跨模块学习数据联合准入
+
+D6 owner 已实现 `d6.cross-module-learning-data-admission.v1` 只读审计和命令行入口。审计显式
+消费 training/shared seed registry、D3 正式 manifest、D4 正式 manifest 与独立 canonical view、
+D5 tracklet/active-vision 正式 manifest/view/readiness，以及 D4/D5 补充课程 summary。正式观测
+语料、补充规则课程、离线评分标签和运行时 ACK 四层证据分别发布，来源混用、哈希篡改、dirty
+source、错误 seed、保留 seed 泄漏和 synthetic ACK 冒充 runtime ACK 均失败关闭。
+
+main 使用冻结的 900 episode 制品独立复跑。100 个训练 seed 的规范切分为 60/20/20，保留 seed
+`1000-1019` 泄漏为 0，在线真值使用为 0。D4 补充课程的 hold/replan/nonzero quota/transfer 为
+`100/200/200/100`；D5 补充课程为 100 episode/800 segment/1200 sample，四类 intent 为
+`200/600/200/200`，wide/zoom 为 `1000/200`，拦截/侦察角色各 600。synthetic ACK
+applied/rejected/missing 各 400 只算故障注入覆盖。D5 tracklet 的 480 条候选边中 381 条已标注、
+99 条未标注，离线标签状态为 partial。
+
+当前结论是 BC canonical view available、BC full-sample audit pending。reward、outcome、
+counterfactual、causal、真实 runtime ACK 和 paired shadow 仍 unavailable；PPO、在线 assist 和
+authority 均关闭，规则回退强制。本批关闭 D6-owned 联合准入与报告写入隔离 P0，不形成模型收益
+结论。专项 `16 passed`、D6 全量 `380 passed`；main 复算正式 43,973 个文件的树 SHA-256 仍为
+`8ffbe5cf044d121163c8acc3dce1bbd54e14bb6b211b8e1cf440f24c93294fca`。
+
+开放 P1 转为：统一逐样本审计 D3/D4/D5 canonical views；producer 持久化真实动作采用、版本绑定、
+runtime ACK、终局 outcome 和可归因 reward；建立同 seed paired shadow；最后使用保留 seed
+`1000-1019` 做独立模型验收。上述条件未闭合前不启动 PPO，也不允许学习策略进入在线控制权限。
+
 ## 2026-07-20 三维学习数据容量与吞吐复核
 
 九类 200v200、每例 2 秒的 clean-tree 容量探针已完成。9/9 episode 状态有限，在线真值
@@ -856,7 +881,7 @@ D1 NumPy EKF/FusionAdapter
 | D3 | 无新增 blocker | 版本化 AssignmentPlan、迟滞、stale rejection、D7 binding | D3 模块测试 |
 | D4 | 无新增 blocker | C2Health、主动/被动降级、二级 lifecycle；active secondary helper/owner 必须对 sustained readiness、expected/actual source、plan/required epoch、expiry/current time 和 plan monotonicity exact-true；冲突或缺失证据 fail-closed | D4 `280 passed` |
 | D5 | 无新增 blocker | 不改写 global_track_id、truth 隔离、friend/duplicate 保守门控；原生 MOT 连续实测历史按 stream/backend/ID 隔离并在空帧/reset 后重计；离线人工记录转换重复坍缩 fail-closed | D5 `288 passed` |
-| D6 | 无新增 blocker | 只消费日志；实际规模、id_switch_count、unavailable/zero 分离；逐 pair physical evidence/result/source 和联盟完整性严格门控 | D6 `243 passed` |
+| D6 | 无新增 blocker | 只消费日志；实际规模、id_switch_count、unavailable/zero 分离；逐 pair physical evidence/result/source、联盟完整性和跨模块学习准入严格门控；报告不得写入正式 generation 根 | D6 `380 passed` |
 | D7 | 核心公式无 blocker；控制输入 P0 由 main/runtime 持有 | 不分配目标；D3/D4/D5 gate 失败时阻断视觉 PNG；不修改 PN/PNG 核心公式 | D7 模块测试 + truth-isolated control contract |
 | main/runtime | 无新增 blocker | episode bus 可回放；在线 truth identity/state 均为 0；SimpleFlight 只消费 D2 estimate；二级 communication 只消费上一完整 D4 readiness；actor truth 仅离线 5 m scorer；默认不保存 PNG | actor truth 扰动命令不变量 + heartbeat-only/strict-readiness 正反合同 + AirSim runtime `147 passed` |
 
@@ -874,6 +899,7 @@ D1 NumPy EKF/FusionAdapter
 | D1/D2/D3/main | 长 replay 治理阈值 | 版本化 replay/CLI 已具备；D2 10 seeds 的 IDSW=138.1、continuity=0.694 | 默认 GNN 未通过阈值；继续调 gate/lifecycle/model，不用 truth 或本地重绑掩盖问题 |
 | D4/main | 联盟重构、二级接管和恢复实测 | 9/9 确定性矩阵通过，含 member replacement、partition recovery 和双轨合并；严格二级 readiness 已统一到所有入口 | 映射到真实 AirSim 通信延迟/丢包/乱序/时钟漂移多 seed，并量化 failover time；不得以 heartbeat-only 作为正例 |
 | D5/D6 | M 对 N 视觉鲁棒性 | 确定性 10/10，外参漂移/时间偏差保守拒绝，ID rewrite=0 | 在真实多视角 AirSim/相机同步和持续 detect 下复验，不以确定性 fixture 代替实测 |
+| D3/D4/D5/D6/main | 学习数据全样本与运行证据 | canonical seed 60/20/20、正式/补充证据分层和规则动作课程已通过联合只读审计 | 逐样本核对 canonical views；持久化真实 adoption/版本/ACK/outcome/reward；完成 paired shadow 与保留 seed 1000-1019 验收；此前 PPO/assist/authority 保持关闭 |
 | D6/main | 场景库与长期趋势 | cross-seed、paired effect、bootstrap、联盟 lifecycle 和证据路径已具备 | 固化 scenario version，生成长期 CI、失败漏斗和 active-degradation review 趋势 |
 | D7 | 成员安全与独立到达 | role/wave/window、active/standby、commit-aware gate 和 N/M topology 已有 | 当前不要求同时到达；先验证独立 primary 的 terminal sector、minimum separation 和 member loss，协同到达时间后置 |
 

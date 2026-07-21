@@ -110,11 +110,20 @@ commit。
 - D6 已完成正式数据 outcome/reward 分层和 detached sidecar。D4、D5 有相邻观测结果，
   但缺版本化动作采用/运行 ACK，reward 均为 0 条可用；PPO、反事实和因果训练保持关闭。
 - main 已新增 `scalable3d-shared-seed-split-registry-v1`。100 个训练 seed 使用与 D3 v2
-  一致的确定性 `60/20/20` 映射，并绑定原训练 seed 注册表 SHA。原 D4/D5 数据不改写；
-  它们需要建立源外 canonical view 并通过 D6 审计后，C1 联合训练才可开始。
-- main scalable 测试当前为 `82 passed`。下一阶段先关闭 shared split、D4 动作覆盖、D5
-  重叠视场/困难负样本和主动视觉 ACK producer 缺口，再运行 R0/G1/A1/A2/A3/C1/F1 及
-  seed `1000-1019` 验收。
+  一致的确定性 `60/20/20` 映射，并绑定原训练 seed 注册表 SHA。D4/D5 源外 canonical
+  views 已建立，原数据不改写；D6 联合审计已通过 manifest/view/readiness/summary 层的
+  seed 身份与哈希检查。当前为 BC canonical view available、full-sample audit pending。
+- D4 clean 补充课程已覆盖 hold/replan/quota/transfer=`100/200/200/100`。D5 clean 补充
+  课程为 100 episode/1200 sample，覆盖四类观察 intent、wide/zoom 和拦截/侦察角色；
+  synthetic ACK 三类各 400 只作故障注入。两套课程均没有可归因结果或 reward。
+- D6 联合审计确认 D5 tracklet 的 480 条候选边中 381 条已标注、99 条未标注，标签为
+  partial；PPO、assist 和 authority 均关闭，规则回退强制。D6 专项 `16 passed`、全量
+  `380 passed`，正式数据树 SHA-256 保持
+  `8ffbe5cf044d121163c8acc3dce1bbd54e14bb6b211b8e1cf440f24c93294fca`。
+- main scalable 测试当前为 `82 passed`。shared split 与规则课程 producer 已关闭；下一阶段
+  先完成跨模块 full-sample audit，补 D5 重叠视场/困难负样本，并建立真实 runtime
+  ACK/outcome 与 paired shadow 数据链。满足准入条件后再运行 R0/G1/A1/A2/A3/C1/F1 和
+  seed `1000-1019` 独立验收。
 - main 已增加默认关闭的侦察观察线索开关。5v5、3 秒、5 seed 对照中，线索使视觉观测
   增加，但候选边由 128 降至 64；在 D5 完成宽视场保持和跨视角稳定门控前，不进入默认
   生成路径或正式实验矩阵。

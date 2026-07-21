@@ -36,20 +36,30 @@ D4 已另建不修改正式 900 episode 的区域动作覆盖课程。clean comm
 60/20/20 行为克隆只读视图，但没有可归因 outcome/reward，PPO、assist 和在线 authority
 继续关闭。
 
+D5 已另建主动视觉补充规则课程。clean commit `13e3728` 生成 100 episode、800 segment
+和 1200 sample，覆盖 hold/observe-target/reacquire/search-sector=`200/600/200/200`、
+wide/zoom=`1000/200`，拦截与侦察相机各 600 条。applied/rejected/missing 各 400 是确定性
+故障注入覆盖，不是真实运行 ACK；reward、outcome、counterfactual 和 causal 标签均为
+`0/1200 available`，PPO、assist 和相机权限继续关闭。
+
 D5 主动视觉已在 1,153,242 个规则示范样本上完成五轮完整行为克隆。测试精确动作准确率
 为 `0.955978`，CPU 推理 P95 为 `0.1203 ms`，但 `reacquire` 占 92.16%，4,051 个
 `observe_target` 测试样本的召回率为 0，hold 没有正样本，侦察相机精确动作准确率为
 `0.621823`。该 bundle 只允许 shadow 加载，assist 和 PPO 均失败关闭。
 
-D6 对正式数据生成了源外标签 sidecar。D4 仅有 `898/1798` 帧具备无动作归因的相邻状态
-结果；D5 主动视觉有 `1,063,214/1,153,242` 条相邻观测结果。两者可归因 reward 均为 0
-条，D5 runtime ACK 为 0，因此只能开展规则示范行为克隆，不能开展近端策略优化或因果
-训练。
+D6 对正式数据生成了源外标签 sidecar，并完成正式 canonical views 与 D4/D5 补充课程的
+联合只读准入审计。D4 仅有 `898/1798` 帧具备无动作归因的相邻状态结果；D5 主动视觉有
+`1,063,214/1,153,242` 条相邻观测结果。两者可归因 reward 均为 0 条，D5 runtime ACK
+为 0。D5 跨视角图的 480 条候选边中有 381 条已标注、99 条未标注，标签状态为 partial。
+当前只开放 BC canonical view；跨模块 full-sample audit 仍 pending，不能开展近端策略优化、
+在线辅助或因果训练。
 
 跨模块切分现由 detached `scalable3d-shared-seed-split-registry-v1` 统一管理。100 个训练
 seed 固定为 `60/20/20`，映射与现有 D3 正式开发数据逐项一致，保留 seed 未进入任一桶。
-原 D4、D5 manifest 仍保留各自历史切分；在它们完成源外 canonical view 并通过 D6 一致性
-审计前，C1 联合训练保持关闭。生成命令为：
+原 D4、D5 manifest 仍保留各自历史切分；源外 canonical views 已形成，并通过 D6 的
+manifest/view/readiness/summary 层一致性审计。C1 联合训练仍保持关闭，原因已从 seed 切分
+不一致转为跨模块全样本审计、真实动作采用/ACK、reward/outcome 和 paired shadow 缺失。
+生成命令为：
 
 ```bash
 python3 research_modules/scalable_3d_simulation/run_shared_seed_split.py \
