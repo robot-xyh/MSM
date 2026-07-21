@@ -42,6 +42,10 @@ from .active_vision_contracts import (
     ActiveVisionIntent,
     ActiveVisionRuntimeMode,
 )
+from .canonical_seed_view import (
+    canonical_view_binding,
+    load_active_vision_canonical_seed_view,
+)
 from .active_vision_episode_dataset import (
     ACTIVE_VISION_EPISODE_DATASET_SCHEMA_VERSION,
     LazyActiveVisionEpisodeDataset,
@@ -818,6 +822,9 @@ def run_formal_behavior_cloning(
     tracked_summary_path: str | Path | None = None,
     tracked_report_path: str | Path | None = None,
     external_observed_outcome_count: int | None = None,
+    canonical_view_manifest_path: str | Path | None = None,
+    training_seed_registry_path: str | Path | None = None,
+    shared_seed_registry_path: str | Path | None = None,
 ) -> dict[str, Any]:
     output_root = Path(output_dir)
     if output_root.exists() and any(output_root.iterdir()):
@@ -825,7 +832,12 @@ def run_formal_behavior_cloning(
     output_root.mkdir(parents=True, exist_ok=True)
     pipeline_started = time.perf_counter()
     audit_started = time.perf_counter()
-    dataset = load_active_vision_episode_dataset_lazy(dataset_dir)
+    dataset = _load_behavior_cloning_dataset(
+        dataset_dir,
+        canonical_view_manifest_path=canonical_view_manifest_path,
+        training_seed_registry_path=training_seed_registry_path,
+        shared_seed_registry_path=shared_seed_registry_path,
+    )
     integrity_elapsed = time.perf_counter() - audit_started
     capacity = audit_capacity_probe(dataset)
     cache_manifest, data_audit, cache_manifest_sha256 = build_behavior_cloning_feature_cache(
@@ -863,6 +875,9 @@ def run_formal_behavior_cloning(
         "ppo_enabled": False,
         "observed_outcome_used_as_reward": False,
     }
+    canonical_view = canonical_view_binding(dataset)
+    if canonical_view is not None:
+        training_config["canonical_seed_view"] = canonical_view
     bundle_dir = output_root / "development_shadow_model_bundle"
     validation_results = {
         "validation": evaluation["validation"],
@@ -898,11 +913,16 @@ def run_formal_behavior_cloning(
     loaded = load_active_vision_model_bundle(bundle_dir, device=config.device)
     bundle_manifest_path = bundle_dir / ACTIVE_VISION_MANIFEST_FILENAME
     weights_path = bundle_dir / ACTIVE_VISION_WEIGHTS_FILENAME
+    canonical_split_aligned = canonical_view is not None
     external_evidence = {
         "d6_observed_outcome_count": external_observed_outcome_count,
         "observed_outcome_scope": "adjacent_observation_without_applied_action_attribution",
         "observed_outcome_used_as_reward": False,
-        "d4_d5_joint_training": "disabled_split_mismatch",
+        "d4_d5_joint_training": (
+            "split_aligned_data_view_only_no_joint_model_admission"
+            if canonical_split_aligned
+            else "disabled_split_mismatch"
+        ),
     }
     report = {
         "schema_version": ACTIVE_VISION_BC_REPORT_SCHEMA_VERSION,
@@ -915,6 +935,7 @@ def run_formal_behavior_cloning(
             "split_sha256": dataset.manifest["split_sha256"],
             "training_set_sha256": dataset.manifest["training_set_sha256"],
             "strict_integrity_audit_seconds": integrity_elapsed,
+            "canonical_seed_view": canonical_view,
         },
         "data_audit": data_audit,
         "capacity_probe": capacity,
@@ -957,7 +978,11 @@ def run_formal_behavior_cloning(
                 "no_applied_action_outcomes",
                 "no_reward_or_counterfactual_labels",
                 "no_formal_paired_shadow_non_degradation_evidence",
-                "d4_d5_split_mismatch_disables_joint_training",
+                (
+                    "joint_model_contract_not_admitted_after_split_alignment"
+                    if canonical_split_aligned
+                    else "d4_d5_split_mismatch_disables_joint_training"
+                ),
             ],
         },
         "evaluation_elapsed_seconds": evaluation_elapsed,
@@ -1474,6 +1499,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--latency-samples", type=int, default=2048)
     parser.add_argument("--latency-warmup", type=int, default=64)
     parser.add_argument("--external-observed-outcome-count", type=int, default=None)
+    parser.add_argument("--canonical-view-manifest")
+    parser.add_argument("--training-seed-registry")
+    parser.add_argument("--shared-seed-registry")
     return parser
 
 
@@ -1498,6 +1526,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         tracked_summary_path=args.tracked_summary,
         tracked_report_path=args.tracked_report,
         external_observed_outcome_count=args.external_observed_outcome_count,
+        canonical_view_manifest_path=args.canonical_view_manifest,
+        training_seed_registry_path=args.training_seed_registry,
+        shared_seed_registry_path=args.shared_seed_registry,
     )
     print(
         json.dumps(
@@ -1513,6 +1544,32 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
     )
     return 0
+
+
+def _load_behavior_cloning_dataset(
+    dataset_dir: str | Path,
+    *,
+    canonical_view_manifest_path: str | Path | None,
+    training_seed_registry_path: str | Path | None,
+    shared_seed_registry_path: str | Path | None,
+) -> LazyActiveVisionEpisodeDataset:
+    canonical_values = (
+        canonical_view_manifest_path,
+        training_seed_registry_path,
+        shared_seed_registry_path,
+    )
+    if not any(value is not None for value in canonical_values):
+        return load_active_vision_episode_dataset_lazy(dataset_dir)
+    if not all(value is not None for value in canonical_values):
+        raise ValueError(
+            "canonical active-vision view requires view manifest, training registry, and shared registry"
+        )
+    return load_active_vision_canonical_seed_view(
+        dataset_dir,
+        view_manifest_path=canonical_view_manifest_path,
+        training_seed_registry_path=training_seed_registry_path,
+        shared_seed_registry_path=shared_seed_registry_path,
+    )
 
 
 if __name__ == "__main__":  # pragma: no cover - exercised through the CLI.

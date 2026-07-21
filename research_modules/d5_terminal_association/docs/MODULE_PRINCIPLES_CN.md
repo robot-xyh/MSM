@@ -1,6 +1,22 @@
 # 第五研究模块末端视觉关联（Terminal Association, D5）原理
 
-**状态日期：2026-07-20**
+**状态日期：2026-07-21**
+
+## 共享 seed 只读视图原则
+
+跨模块学习必须引用同一组训练、验证和测试 seed。D5 不改写正式数据集解决历史分桶差异，而是在
+strict loader 之后叠加 detached view。视图把数值 seed 作为原子单位，同一 seed 的全部场景、规模
+和完整 episode 只能进入一个 split。图的节点/边、主动视觉在线流和离线标签均保持原字节内容。
+
+视图同时绑定四类身份：原 manifest 与去除旧 split 后的 source content hash；training registry
+文件 hash；shared registry 文件、content 与 assignment hash；D5 consumer/source schema。加载时
+独立复算 D3-compatible 排序，不信任 registry 中已经写入的桶。seed 缺失、多余、重复、错桶或
+`1000-1019` 保留 seed 出现时失败关闭。三项 canonical 路径未同时提供时，训练入口拒绝半绑定。
+
+split 对齐只解决数据治理问题。它不增加候选边、困难负样本、少数意图、运行 ACK 或 reward，也不
+改变旧模型的训练身份。正式图数据对齐后仍有 97.52% 无边帧；主动视觉仍无 hold 正样本和动作结果
+归因。因此图模型不进入 G1/assist，主动视觉保持 development shadow-only，PPO 关闭。D5 对
+`global_track_id` 的只读边界、几何门、同相机互斥和规则回退不受学习视图影响。
 
 ## 主动视觉行为克隆原则
 

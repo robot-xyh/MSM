@@ -1,5 +1,24 @@
 # D5 实现差距审计
 
+## 2026-07-21 canonical split GAP 状态
+
+**D4/D5 split 身份不一致已关闭。** D5 新增两个 detached canonical view，严格绑定原 dataset
+manifest/content、training seed registry、shared registry file/content/assignment hash 及 source/
+consumer schema。两类数据均按完整 episode 使用同一数值 seed `60/20/20`，保留 seed
+`1000-1019` 泄漏为 0。源数据树内容哈希前后不变，原 manifest 未改。默认旧加载路径也未改变。
+
+**模型准入 GAP 未随 split 对齐关闭。** 图数据 canonical 分桶后仍有 `12532/12851 (97.52%)`
+无边帧，train/validation/test 负边为 `13/4/2`，candidate recall 仍不可完整评价。训练与 promotion
+维持 `fail_closed`。主动视觉 canonical 样本为 `695705/229651/227886`；已绑定的全量审计仍显示
+`hold=0`、`observe_target` 占比低且召回为 0、`reacquire` 主导、所有运行动作 disabled、无 applied
+action ACK/reward/counterfactual/causal attribution。状态维持 development shadow-only，assist=false，
+PPO=false，规则回退必需。
+
+本轮只关闭“跨模块训练 split 身份无法对齐”这一数据治理 P1。旧图开发模型和主动视觉 v5 bundle
+仍绑定原 split，本轮未重训，不得用 canonical view 追认旧指标。剩余 producer 缺口保持：增加真实
+困难负边与候选召回分母；补主动视觉少数意图、侦察相机动作、ACK 和因果标签；完成独立 seed 的
+paired shadow。main 需同步 VERSIONING 中的 view schema 与正式哈希。
+
 ## 2026-07-20 主动视觉行为克隆 P1 状态
 
 **全量行为克隆训练管线已关闭，运行准入 P1 仍开放。** 正式数据的完整性、整 seed 分割、保留 seed
@@ -19,7 +38,8 @@ test 损失为 `0.109311`，精确动作准确率为 `0.955978`，但该数值�
 剩余 producer 缺口为：增加独立 seed 的 hold/observe/recon/FOV/边界动作示范；实际请求 shadow
 动作并记录 runtime ACK 与执行后 outcome；建立独立 reward/counterfactual/causal label；完成至少
 20 个未见 seed 的 paired shadow 非退化验收。D6 给出的 1,063,214 条 observed outcome 没有动作执行
-归因，不能用作 reward。D4/D5 split 不一致，联合训练关闭。该状态没有新增 P0；规则主动视觉、版本
+归因，不能用作 reward。该段是 2026-07-20 原 split 状态；2026-07-21 已用 canonical 只读视图关闭
+split 身份不一致，但联合模型仍因标签和准入门关闭。该状态没有新增 P0；规则主动视觉、版本
 门、友方冲突门、中心 `global_track_id` 只读和相机命令安全门保持不变。
 
 开发权重 SHA256 为

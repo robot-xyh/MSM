@@ -12,6 +12,13 @@ D5 文档遵循 `research_modules/DOCUMENTATION_STANDARD.md`。推荐阅读顺�
 8. `../reports/D5_MANUAL_VIDEO_TRACKING_B_20260715.md`：人工初始化五目标视频 local MOT 实测报告。
 9. `../reports/D5_TRACKLET_GRAPH_TRAINING_READINESS_20260720.md`：正式跨视角图数据训练准入、开发模型和补数要求。
 10. `../reports/D5_ACTIVE_VISION_BC_FORMAL_20260720.md`：正式主动视觉行为克隆数据审计、分层指标、校准和 shadow-only 准入结论。
+11. `../reports/D5_TRACKLET_GRAPH_CANONICAL_SEED_VIEW_20260721.md`：跨视角图数据共享 seed 只读视图、正式计数和失败关闭门。
+12. `../reports/D5_ACTIVE_VISION_CANONICAL_SEED_VIEW_20260721.md`：主动视觉共享 seed 只读视图、正式样本计数和 shadow-only 边界。
+
+2026-07-21，D5 已为两类正式学习数据建立 detached canonical seed view。两类数据都使用共享
+`60/20/20` 数值 seed，保留 seed `1000-1019` 泄漏为 0，原 manifest 与源文件树未修改。图数据
+readiness 因 97.52% 无边和困难负边不足继续失败关闭；主动视觉因 hold/observe 覆盖、运行 ACK 和
+reward 归因不足继续只允许 shadow。该更新不改变 AirSim 或在线末端关联接口。
 
 2026-07-20，D5 已在完整正式 train split 上完成主动视觉行为克隆。900 个 episode、1,153,242 个
 样本通过整 seed 分割审计；开发模型 test 精确动作准确率为 95.60%，但 observe_target 召回为 0、

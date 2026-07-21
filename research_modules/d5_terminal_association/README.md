@@ -2,6 +2,34 @@
 
 科研模块，用于把末端相机视场中的本地视觉轨迹保守关联到中心分配的 `global_track_id`。模块可在统一三维 episode 中在线运行；训练标签和真值评分仍保持离线。D5 只输出视觉关联与相机观察意图，不修改、重写或重新分配任何全局轨迹 ID。
 
+## 2026-07-21 共享 canonical seed 只读视图
+
+D5 已为正式跨视角图数据和主动视觉 episode 数据实现独立的 canonical split view。视图先调用原有
+strict loader 校验全部源制品，再独立复算 main-owned `scalable3d-shared-seed-split-registry-v1`。
+它只在内存中按数值 seed 重分完整 episode，不改原 manifest，不复制图、在线流或离线标签。任一
+源 hash、注册表 hash、schema、policy、seed 缺失/多余/重复、错桶或保留 seed 泄漏都会失败关闭。
+
+两类正式数据均绑定 training registry
+`2ab928a476a4430b99326f245222f058bc5be5025158134ba89b01b3dec7815f` 和 shared registry
+`68608d29d1f733beea87f1faf06464fededb68a9c2972c51c10cd4c2160f032f`。canonical seed 为
+`60/20/20`，保留 seed `1000-1019` 泄漏数为 0。图数据 canonical episode 为
+`7715/2574/2562`，候选边为 `281/116/83`；主动视觉 episode 为 `540/180/180`，样本为
+`695705/229651/227886`。原数据树内容哈希在生成前后保持：图数据
+`b3bccc7eb4b9c3d27874fae162a277e70c0f11a3ebcf680f90982cf86b18ab79`，主动视觉
+`46f7b415a2ed29a6f0f1370b075fe9d2c768bfba49c9d0a64a779039453c20e6`。
+
+`canonical_seed_view.py` 提供 detached manifest CLI/API。图 readiness、图训练/评估和主动视觉
+行为克隆只有显式同时传入 view manifest、training registry 与 shared registry 才使用 canonical
+分桶；未传参数时保持旧 loader 和旧 split。D4/D5 的 split 身份不一致已在数据视图层关闭，但旧
+development bundle 仍绑定原 split，未在本轮重训。图数据 `97.52%` 无边、困难负边不足和候选召回
+不完整；主动视觉 `hold=0`、`observe_target` 召回为 0、无 applied-action ACK/reward 归因。
+G1/assist 与 PPO 均继续失败关闭，规则回退保持必需。
+
+正式证据位于 `results/*canonical_seed_view_20260721.json`、
+`results/*canonical_seed_readiness_20260721.json` 和
+`reports/D5_*_CANONICAL_SEED_VIEW_20260721.md`。main 仍需在 VERSIONING 中登记 D5 view schema、
+正式 manifest/hash 和“权重不进入普通 Git”的既有规则。
+
 ## 2026-07-20 主动视觉行为克隆正式开发训练
 
 D5 对正式 `d5_active_vision` 数据完成只读严格审计和全量行为克隆。数据包含 900 个 episode、
@@ -31,8 +59,9 @@ ignored 的 `outputs/active_vision_bc_formal_20260720/`。可跟踪指标与报�
 
 下一步 producer 必须补充 `hold`、`observe_target` 和侦察相机动作覆盖，并在 shadow 请求后记录
 runtime ACK、实际执行结果和安全回退。当前 1,063,214 条 observed outcome 只是无动作归因的相邻
-观测，不作为 reward。D4/D5 split 不一致，联合训练继续关闭；main 需在 VERSIONING 中同步 bundle
-v5 和本地 ignored 权重定位。
+观测，不作为 reward。2026-07-21 canonical view 已关闭 D4/D5 split 身份不一致；联合模型仍因
+标签、准入和运行合同未满足而关闭。main 需在 VERSIONING 中同步 bundle v5、canonical view 和本地
+ignored 权重定位。
 
 ## 2026-07-20 正式图数据训练前审计
 

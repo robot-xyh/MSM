@@ -1,5 +1,21 @@
 # D5 末端视觉配准与协同身份认证综述及子方案
 
+## 2026-07-21 canonical seed 视图复核
+
+D5 已把正式 tracklet graph 与 active-vision episode 映射到 main 共享的数值 seed 分桶。实现先走
+原 strict loader，再校验 training/shared registry 全部 schema、policy 与 SHA256，最后只在内存中
+替换完整 episode 的 split。任何 hash 漂移、缺失/多余/重复 seed、错桶、重复 episode 或保留 seed
+进入数据都会拒绝加载。默认 loader 不自动切换，训练调用方必须显式提供三个 canonical 路径。
+
+正式复核结果为 seed `60/20/20`。图数据 canonical episode `7715/2574/2562`、edge
+`281/116/83`；主动视觉 episode `540/180/180`、sample `695705/229651/227886`。两类数据的保留
+seed 泄漏均为 0，原数据树生成前后哈希相同。该结果允许 D4/D5 在后续联合研究中引用同一 split
+身份，不代表两个模型、标签或运行合同已经可联合训练。
+
+图监督稀疏和主动视觉动作归因仍是准入主断点。GNN 只输出既有候选边的同目标概率，active-vision
+模型只允许 shadow。中心 `global_track_id` 只读、同相机互斥、几何门、友方/版本门和规则回退均未
+变化。本轮没有模型重训、AirSim 运行或相机命令接口变化。
+
 ## 2026-07-20 主动视觉行为克隆复核
 
 正式主动视觉数据已完成严格审计和全量行为克隆。900 个 episode 按整 seed 分为
@@ -11,7 +27,8 @@ test 损失 `0.109311`、精确动作准确率 `0.955978`；单候选集 CPU 推
 主要反映多数类和简单意图，不能证明云台观察策略泛化。
 
 v5 bundle 只允许 shadow，PPO 未启动，规则回退和相机命令安全门保留。无动作归因的相邻 outcome
-不作 reward，D4/D5 split 不一致时不联合训练。下一轮先补齐 hold/observe/recon 示范和真实 shadow
+不作 reward。该段记录 2026-07-20 原 split 状态；2026-07-21 canonical view 已完成 split 身份
+对齐，联合模型仍因标签和准入合同未满足而关闭。下一轮先补齐 hold/observe/recon 示范和真实 shadow
 ACK/outcome，再用至少 20 个未见 seed 做 paired non-degradation；在此之前不得改变中心
 `global_track_id`、版本门、友方冲突门或默认规则路径。
 

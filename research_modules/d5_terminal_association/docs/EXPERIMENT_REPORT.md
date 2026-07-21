@@ -1,5 +1,32 @@
 # D5 末端视觉配准与身份认证实验报告
 
+## 2026-07-21 canonical seed 只读视图验证
+
+本轮未训练模型。测试目标是验证正式 D5 图数据和主动视觉数据能否在不修改源数据的条件下使用
+main 共享 `60/20/20` seed 分桶。两类视图均先完成原 strict loader 全量审计，再生成 detached
+manifest 和 readiness。training registry 文件 SHA256 为 `2ab928a4...7815f`，shared registry 文件
+SHA256 为 `68608d29...f032f`，assignment SHA256 为 `31c6a3fc...46ab5`。
+
+| 数据 | canonical seed | episode | sample/edge | 重分 episode | 保留 seed 泄漏 |
+| --- | --- | --- | --- | ---: | ---: |
+| tracklet graph | 60/20/20 | 7715/2574/2562 | edge 281/116/83 | 8350 | 0 |
+| active vision | 60/20/20 | 540/180/180 | sample 695705/229651/227886 | 558 | 0 |
+
+图数据源树在视图操作前后均为
+`b3bccc7eb4b9c3d27874fae162a277e70c0f11a3ebcf680f90982cf86b18ab79`；主动视觉源树前后均为
+`46f7b415a2ed29a6f0f1370b075fe9d2c768bfba49c9d0a64a779039453c20e6`。哈希按相对文件清单和逐文件
+SHA256 汇总。两个原 manifest SHA256 仍分别为 `d9a84007...5426` 和 `cd2ee22e...3d9d`。
+
+split alignment 通过。图 readiness 仍有 15 个失败门：全量 `12532/12851` 无边，canonical
+train/validation/test 负边只有 `13/4/2`，candidate recall availability/pair 支持和场景规模双类别
+覆盖不足。主动视觉绑定上一轮全量审计后仍为 `hold=0`、`observe_target` 低占比且召回为 0、
+`reacquire` 主导、无 applied-action ACK/reward/counterfactual/causal attribution。图 G1/assist 和
+主动视觉 assist/PPO 均未准入。
+
+新增 canonical 专项 `15 passed`，D5 全量 `429 passed in 10.21s`。未运行 AirSim，未生成新权重，
+未改变在线视觉 DTO、相机配置或末端关联阈值。正式 JSON 和中文报告位于模块 `results/`、`reports/`
+的 `*CANONICAL_SEED_VIEW_20260721*` 同名制品。
+
 ## 2026-07-20 主动视觉行为克隆正式开发实验
 
 正式数据集通过逐制品 SHA256、schema、只读、整 seed 分割和保留 seed 隔离审计。数据包含 900 个

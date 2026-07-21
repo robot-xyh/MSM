@@ -12,6 +12,7 @@ from pathlib import Path
 import re
 from typing import Any, Mapping, Sequence
 
+from .canonical_seed_view import canonical_view_binding, load_tracklet_canonical_seed_view
 from .tracklet_dataset import (
     LoadedTrackletDataset,
     LoadedTrackletEpisode,
@@ -200,6 +201,7 @@ def audit_tracklet_training_readiness(
     development_failures = _development_training_failures(split_summaries, split_atomic)
     development_allowed = not development_failures
     producer_summary = _producer_summary(all_episodes)
+    canonical_view = canonical_view_binding(dataset)
     return {
         "schema_version": READINESS_AUDIT_SCHEMA_VERSION,
         "dataset": {
@@ -215,6 +217,7 @@ def audit_tracklet_training_readiness(
             "edge_feature_version": dataset.manifest["edge_feature_version"],
             "validated_graph_sha256_count": len(all_episodes),
             "validated_label_sha256_count": len(all_episodes),
+            "canonical_seed_view": canonical_view,
         },
         "criteria": {
             **asdict(rule),
@@ -286,8 +289,16 @@ def run_tracklet_training_audit(
     output_dir: str | Path,
     *,
     criteria: TrackletReadinessCriteria | None = None,
+    canonical_view_manifest_path: str | Path | None = None,
+    training_seed_registry_path: str | Path | None = None,
+    shared_seed_registry_path: str | Path | None = None,
 ) -> tuple[dict[str, Any], Path, Path, str]:
-    dataset = load_tracklet_dataset(dataset_dir)
+    dataset = _load_audit_dataset(
+        dataset_dir,
+        canonical_view_manifest_path=canonical_view_manifest_path,
+        training_seed_registry_path=training_seed_registry_path,
+        shared_seed_registry_path=shared_seed_registry_path,
+    )
     report = audit_tracklet_training_readiness(dataset, criteria=criteria)
     root = Path(output_dir)
     json_path = root / "training_readiness_audit.json"
@@ -796,6 +807,9 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--dataset-dir", required=True)
     parser.add_argument("--output-dir", required=True)
+    parser.add_argument("--canonical-view-manifest")
+    parser.add_argument("--training-seed-registry")
+    parser.add_argument("--shared-seed-registry")
     parser.add_argument("--train-development", action="store_true")
     parser.add_argument("--seed", type=int, default=20260720)
     parser.add_argument("--epochs", type=int, default=40)
@@ -813,6 +827,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     report, json_path, markdown_path, audit_sha256 = run_tracklet_training_audit(
         args.dataset_dir,
         args.output_dir,
+        canonical_view_manifest_path=args.canonical_view_manifest,
+        training_seed_registry_path=args.training_seed_registry,
+        shared_seed_registry_path=args.shared_seed_registry,
     )
     summary: dict[str, Any] = {
         "audit_report": str(json_path),
@@ -848,6 +865,9 @@ def main(argv: Sequence[str] | None = None) -> int:
                 ),
                 development_only=True,
                 readiness_audit_sha256=audit_sha256,
+                canonical_view_manifest_path=args.canonical_view_manifest,
+                training_seed_registry_path=args.training_seed_registry,
+                shared_seed_registry_path=args.shared_seed_registry,
             )
             promotion = assess_tracklet_model_promotion(report, training_report)
             promotion_path = output_root / "promotion_assessment.json"
@@ -870,6 +890,32 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
     print(json.dumps(summary, ensure_ascii=True, allow_nan=False, sort_keys=True))
     return 0
+
+
+def _load_audit_dataset(
+    dataset_dir: str | Path,
+    *,
+    canonical_view_manifest_path: str | Path | None,
+    training_seed_registry_path: str | Path | None,
+    shared_seed_registry_path: str | Path | None,
+) -> LoadedTrackletDataset:
+    canonical_values = (
+        canonical_view_manifest_path,
+        training_seed_registry_path,
+        shared_seed_registry_path,
+    )
+    if not any(value is not None for value in canonical_values):
+        return load_tracklet_dataset(dataset_dir)
+    if not all(value is not None for value in canonical_values):
+        raise ValueError(
+            "canonical tracklet view requires view manifest, training registry, and shared registry"
+        )
+    return load_tracklet_canonical_seed_view(
+        dataset_dir,
+        view_manifest_path=canonical_view_manifest_path,
+        training_seed_registry_path=training_seed_registry_path,
+        shared_seed_registry_path=shared_seed_registry_path,
+    )
 
 
 if __name__ == "__main__":  # pragma: no cover - exercised through the CLI.

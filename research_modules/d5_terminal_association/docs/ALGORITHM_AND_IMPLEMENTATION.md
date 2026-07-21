@@ -1,8 +1,30 @@
 # D5 终端视觉配准与身份认证算法原理与实施文档
 
-**状态日期：2026-07-20**
+**状态日期：2026-07-21**
 
 **适用范围：** 本文依据第五研究模块（D5）的当前代码、README、PLAN、模块原理文档和系统总汇总，同步说明算法原理、数据合同、代码实施路径与验证结果。文中严格区分默认在线主线、已实现但非默认的辅助/离线能力，以及尚未实现能力；计划项不能据此解释为已上线能力。
+
+## 2026-07-21 canonical seed 视图实施
+
+`canonical_seed_view.py` 对两类数据使用同一流程：先调用既有 strict loader；读取 training seed
+registry；独立复算 shared registry 的数值 seed 排序、assignment/content hash 和 `60/20/20`
+目录；核对数据恰好覆盖 0-99 且与 `1000-1019` 无交集；最后按 seed 构造只存在于内存的 episode
+descriptor/tracklet episode split。源 manifest、图/标签、在线 gzip 流和离线标签均不写入。
+
+detached manifest 记录 source manifest/content/split/training-set hash，两个 registry 的 file/
+content/assignment hash，source/consumer schema，canonical seed/episode/sample/edge 计数，以及新的
+split/training-set hash。manifest 自身再计算 content hash。已有 view 加载时先根据当前源数据和
+注册表重建期望 payload，再与磁盘 JSON 做全对象比较；任一字段变化直接失败关闭。
+
+图 readiness 和 `run_training_pipeline()`、主动视觉 `run_formal_behavior_cloning()` 新增三个显式
+参数：canonical view manifest、training registry、shared registry。三者必须全有或全无。显式
+模式把 detached view 文件 SHA256 作为 dataset manifest 身份，并把 registry binding 写入训练配置；
+默认模式继续使用旧 manifest/split。这样旧开发 bundle 不会被静默解释为 canonical 模型。
+
+正式图视图的 episode 为 `7715/2574/2562`、候选边为 `281/116/83`、负边为 `13/4/2`。正式主动
+视觉视图的 episode 为 `540/180/180`、sample 为 `695705/229651/227886`。两类视图 seed 均为
+`60/20/20`，保留 seed 泄漏为 0。该实施只关闭 split 身份不一致，不执行模型训练，不改变在线
+关联、相机命令或 `global_track_id` 合同。
 
 ## 2026-07-20 主动视觉行为克隆实施
 
@@ -28,8 +50,9 @@ camera command authority=false。shadow loader 可用，assist loader 返回
 `bundle_assist_not_admitted`。权重只在 ignored outputs，在线默认规则路径不变。
 
 正式训练没有使用 D6 提供的 1,063,214 条相邻 observed outcome；它们缺少 requested action、runtime
-ACK 和执行归因。PPO 仍需独立 reward、counterfactual 和 causal label。D4/D5 split 未统一时禁止
-联合训练。详细统计见 `../results/active_vision_bc_formal_20260720.json` 和
+ACK 和执行归因。PPO 仍需独立 reward、counterfactual 和 causal label。2026-07-21 canonical view
+已统一 split 身份，联合模型仍需独立标签、准入和运行合同。详细统计见
+`../results/active_vision_bc_formal_20260720.json` 和
 `../reports/D5_ACTIVE_VISION_BC_FORMAL_20260720.md`。
 
 ## 2026-07-20 图数据审计与开发训练实施

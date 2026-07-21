@@ -1,5 +1,26 @@
 # D5 终端视觉配准与身份认证计划
 
+## 2026-07-21 共享 canonical seed 视图
+
+- [x] 为 tracklet graph 与 active-vision episode 分别实现 strict、detached、只读的 canonical
+  split view；复用原 strict loader，不改原 manifest，不复制或重写在线/离线样本。
+- [x] 独立复算 training/shared registry 的 file/content/assignment SHA256、D3-compatible 数值 seed
+  策略和 `60/20/20` 分桶；缺失、多余、重复、错桶、schema/policy 变化及 seed `1000-1019` 均失败关闭。
+- [x] 冻结 source manifest/content、registry、consumer/source schema、canonical split/training-set
+  hash 和 episode/sample/edge 计数，并生成两类 tracked detached manifest 与中文 readiness 报告。
+- [x] 图 readiness、图开发训练/评估和主动视觉 BC 增加显式 canonical 参数；三个路径参数必须成组
+  提供。默认不带参数时继续使用原 split，避免静默改变既有开发模型语义。
+- [x] 正式图视图为 seed `60/20/20`、episode `7715/2574/2562`、edge `281/116/83`；正式主动视觉
+  视图为 seed `60/20/20`、episode `540/180/180`、sample `695705/229651/227886`。保留 seed 泄漏为 0。
+- [x] 验证原数据树前后内容哈希不变；2026-07-21 新增 15 项 canonical 专项，D5 全量
+  `429 passed`。未运行耗时完整模型训练。
+- [ ] graph producer 继续补 edge-bearing frame、真实困难负边和完整 candidate-recall 分母；canonical
+  对齐不改变 `12532/12851` 无边事实，G1/assist 保持失败关闭。
+- [ ] active-vision producer 补 hold/observe/recon、applied-action runtime ACK、独立 reward/
+  counterfactual/causal label 与 paired shadow。旧 v5 bundle 不因重分桶自动晋级或改绑。
+- [ ] main 更新 VERSIONING，登记 view schema、两类正式 view/hash 和 D4/D5 split 视图已对齐；D5
+  owner 不修改 main-owned 文件。
+
 ## 2026-07-20 主动视觉行为克隆准入
 
 - [x] 对正式 900-episode、1,153,242-sample 数据执行严格 loader、逐制品 SHA256、schema、整 seed
@@ -21,7 +42,8 @@
   建立动作归因。无动作归因的相邻观测不得作为 reward。
 - [ ] 至少 20 个完全未见 seed 完成 paired shadow 非退化评估后，再讨论 assist；在此之前保持
   `development_shadow_only`。PPO 需独立 reward/counterfactual/causal label，本阶段不启动。
-- [ ] D4/D5 split 合同统一前保持联合训练关闭。main 在 VERSIONING 中登记 active-vision bundle v5
+- [x] 2026-07-21 通过共享 canonical seed 只读视图关闭 D4/D5 split 身份不一致。联合模型仍因标签、
+  准入和运行合同未满足而关闭；main 在 VERSIONING 中登记 active-vision bundle v5、view schema
   及无 git-lfs 时权重仅位于 ignored outputs 的规则。
 
 ## 2026-07-20 正式跨视角图数据准入与补数

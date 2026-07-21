@@ -18,6 +18,7 @@ import numpy as np
 import torch
 from torch.nn import functional as F
 
+from .canonical_seed_view import canonical_view_binding, load_tracklet_canonical_seed_view
 from .tracklet_dataset import (
     LoadedTrackletDataset,
     LoadedTrackletEpisode,
@@ -394,6 +395,9 @@ def run_training_pipeline(
     config: TrackletTrainingConfig | None = None,
     development_only: bool = False,
     readiness_audit_sha256: str | None = None,
+    canonical_view_manifest_path: str | Path | None = None,
+    training_seed_registry_path: str | Path | None = None,
+    shared_seed_registry_path: str | Path | None = None,
 ) -> Mapping[str, Any]:
     """Train, calibrate, bundle, strict-reload, and evaluate once.
 
@@ -408,7 +412,12 @@ def run_training_pipeline(
     if not development_only and readiness_audit_sha256 is not None:
         raise ValueError("formal training must not attach a development readiness audit")
     pipeline_started = time.perf_counter()
-    dataset = load_tracklet_dataset(dataset_dir)
+    dataset = _load_pipeline_dataset(
+        dataset_dir,
+        canonical_view_manifest_path=canonical_view_manifest_path,
+        training_seed_registry_path=training_seed_registry_path,
+        shared_seed_registry_path=shared_seed_registry_path,
+    )
     training_started = time.perf_counter()
     training = train_tracklet_edge_model(
         dataset,
@@ -436,6 +445,9 @@ def run_training_pipeline(
         allow_partial_truth_metrics=development_only,
     )
     training_config_payload = asdict(cfg)
+    canonical_view = canonical_view_binding(dataset)
+    if canonical_view is not None:
+        training_config_payload["canonical_seed_view"] = canonical_view
     training_config_sha256 = sha256_json(training_config_payload)
     admission_status = (
         "development_only_fail_closed"
@@ -553,8 +565,16 @@ def run_evaluation_pipeline(
     device: str = "cpu",
     ece_bins: int = 10,
     latency_repeats: int = 3,
+    canonical_view_manifest_path: str | Path | None = None,
+    training_seed_registry_path: str | Path | None = None,
+    shared_seed_registry_path: str | Path | None = None,
 ) -> Mapping[str, Any]:
-    dataset = load_tracklet_dataset(dataset_dir)
+    dataset = _load_pipeline_dataset(
+        dataset_dir,
+        canonical_view_manifest_path=canonical_view_manifest_path,
+        training_seed_registry_path=training_seed_registry_path,
+        shared_seed_registry_path=shared_seed_registry_path,
+    )
     scorer = load_tracklet_model_bundle(
         bundle_dir,
         device=device,
@@ -1012,6 +1032,7 @@ def _build_parser() -> argparse.ArgumentParser:
         help="allow labeled-edge calibration but permanently forbid G1/assist admission",
     )
     train.add_argument("--readiness-audit-sha256")
+    _add_canonical_view_arguments(train)
     evaluate = subparsers.add_parser("evaluate", help="strictly load a bundle and evaluate one split")
     evaluate.add_argument("--dataset-dir", required=True)
     evaluate.add_argument("--bundle-dir", required=True)
@@ -1020,6 +1041,7 @@ def _build_parser() -> argparse.ArgumentParser:
     evaluate.add_argument("--device", default="cpu")
     evaluate.add_argument("--ece-bins", type=int, default=10)
     evaluate.add_argument("--latency-repeats", type=int, default=3)
+    _add_canonical_view_arguments(evaluate)
     return parser
 
 
@@ -1047,6 +1069,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             config=config,
             development_only=args.development_only,
             readiness_audit_sha256=args.readiness_audit_sha256,
+            canonical_view_manifest_path=args.canonical_view_manifest,
+            training_seed_registry_path=args.training_seed_registry,
+            shared_seed_registry_path=args.shared_seed_registry,
         )
         print(
             json.dumps(
@@ -1066,9 +1091,44 @@ def main(argv: Sequence[str] | None = None) -> int:
         device=args.device,
         ece_bins=args.ece_bins,
         latency_repeats=args.latency_repeats,
+        canonical_view_manifest_path=args.canonical_view_manifest,
+        training_seed_registry_path=args.training_seed_registry,
+        shared_seed_registry_path=args.shared_seed_registry,
     )
     print(json.dumps({"report": str(args.report), "status": "evaluated"}))
     return 0
+
+
+def _add_canonical_view_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--canonical-view-manifest")
+    parser.add_argument("--training-seed-registry")
+    parser.add_argument("--shared-seed-registry")
+
+
+def _load_pipeline_dataset(
+    dataset_dir: str | Path,
+    *,
+    canonical_view_manifest_path: str | Path | None,
+    training_seed_registry_path: str | Path | None,
+    shared_seed_registry_path: str | Path | None,
+) -> LoadedTrackletDataset:
+    canonical_values = (
+        canonical_view_manifest_path,
+        training_seed_registry_path,
+        shared_seed_registry_path,
+    )
+    if not any(value is not None for value in canonical_values):
+        return load_tracklet_dataset(dataset_dir)
+    if not all(value is not None for value in canonical_values):
+        raise ValueError(
+            "canonical tracklet view requires view manifest, training registry, and shared registry"
+        )
+    return load_tracklet_canonical_seed_view(
+        dataset_dir,
+        view_manifest_path=canonical_view_manifest_path,
+        training_seed_registry_path=training_seed_registry_path,
+        shared_seed_registry_path=shared_seed_registry_path,
+    )
 
 
 if __name__ == "__main__":  # pragma: no cover - exercised through the CLI.
