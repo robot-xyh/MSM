@@ -1,5 +1,20 @@
 # D5 终端视觉配准与身份认证计划
 
+## 2026-07-20 200v200 clean-tree 复测与下一热点
+
+- [x] main 在提交 `4052d9411363c39d52100c0e3a4f60ee88443cab` 上完成 nominal 200v200、
+  2 s、seed 930-932 clean-tree 复测；三场 `repository_dirty=false`、online truth use 为 0。
+- [x] 确认重复 finalization 审计热点关闭：总 finalization 由 `116.5624 s` 降至 `7.7377 s`；
+  D5 graph staging 为 `0.0250/0.0259/0.0290 s`，且 graph dataset 正常最终化。
+- [x] 确认端到端收益与边界：artifact staging `225.9243→126.4682 s`，总生成
+  `467.8007→262.2866 s`；episode run `125.2205→127.9871 s`，不宣称在线仿真加速。
+- [ ] 优化 active-vision episode writer/gzip 压缩。当前三场分别为
+  `41.5623/43.2639/41.2271 s`，占每场 artifact staging 的 99.6% 以上。必须保持现有采样、全部
+  特征、确定性格式、在线/离线物理分流、SHA256 与失败关闭审计，不得用删减数据换吞吐。
+- [ ] 生成并最终化正式 900-episode corpus，随后运行正式 BC/PPO、checkpoint 制品、paired shadow
+  与 assist 准入。当前仅 3 个 seed，因不足 20 个未见测试 seed 返回
+  `insufficient_unseen_test_seeds`，该失败关闭状态符合合同但不构成训练准入。
+
 ## 2026-07-20 200v200 主动视觉容量与跨视角 seed 隔离
 
 - [x] 将 active-vision online record 升为 record/sample v2：确定性 `.online.jsonl.gz` 按 SHA256 key

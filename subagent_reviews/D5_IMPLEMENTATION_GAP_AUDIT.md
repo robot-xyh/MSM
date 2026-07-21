@@ -1,5 +1,29 @@
 # D5 实现差距审计
 
+## 2026-07-20 clean-tree 200v200 复测后的 P1 判定
+
+main 使用 nominal 200v200、2 s、seed 930-932，在生产提交
+`4052d9411363c39d52100c0e3a4f60ee88443cab` 上完成 clean-tree 复测。三场 manifest 均为
+`repository_dirty=false`，在线 truth use 为 0。基线与优化后目录分别为
+`capacity_probe_v2/nominal_timed/` 和 `capacity_probe_v2/nominal_timed_postopt/`。
+
+**已关闭 P1 子项：重复 finalization 审计热点。** finalization 总墙钟由 `116.5624 s` 降至
+`7.7377 s`，降低约 93.4%；D5 graph staging 仅为 `0.0250/0.0259/0.0290 s`，并完成正式
+graph dataset 最终化。该证据把先前仅有调用计数和合成辅助墙钟的结论提升为三 seed、clean-tree、
+真实 200v200 生成链路证据。
+
+**开放 P1：active-vision episode writer/压缩。** 三场 active-vision staging 为
+`41.5623/43.2639/41.2271 s`，占各场 artifact staging 的 99.6% 以上。artifact staging 总墙钟虽由
+`225.9243 s` 降至 `126.4682 s`，但该路径仍是明确主热点。下一步应剖分对象编码、逐行写入、gzip
+压缩与落盘等待；不得降低采样率、删除 snapshot/action/feedback/ACK 特征，或放松 truth-free、
+离线标签分离、SHA256、whole-seed split 和失败关闭合同。
+
+**仍未关闭的准入项：** 总生成由 `467.8007 s` 降至 `262.2866 s`，episode run 基本持平
+（`125.2205→127.9871 s`），因此不能声明 200v200 已达到实时。三 seed 只能形成 1 个测试 seed；
+active-vision finalizer 以 `insufficient_unseen_test_seeds` 拒绝正式最终化并保留数据，行为符合合同。
+正式 900-episode corpus、BC/PPO、20 个未见 seed、checkpoint、paired shadow 和 assist 准入均保持
+开放 P1。
+
 ## 2026-07-20 主动视觉 staging/finalization 开销 GAP 状态
 
 **D5-owned 重复工作子项已关闭：** 非物化 stream audit 不再为每条 sample 构造并递归扫描共享

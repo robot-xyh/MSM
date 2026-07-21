@@ -4,6 +4,23 @@
 
 **适用范围：** 本文描述第五研究模块（D5）当前代码、测试和主运行链路已经具备的能力。文中将默认主线、已实现但非默认的辅助/离线能力、尚未实现能力严格分开。计划项不能据此解释为已上线能力。
 
+## 2026-07-20 规模化数据性能判定原则
+
+规模化数据优化必须分别核算 episode run、artifact staging 和 finalization，不能用总墙钟掩盖单项
+热点。main 在提交 `4052d9411363c39d52100c0e3a4f60ee88443cab` 上运行 nominal 200v200、2 s、
+seed 930-932，三场均为 clean tree 且 online truth use=0。相对基线，总墙钟
+`467.8007→262.2866 s`，staging `225.9243→126.4682 s`，finalization
+`116.5624→7.7377 s`；episode run `125.2205→127.9871 s`，应判为基本持平。
+
+D5 graph staging 为 `0.0250/0.0259/0.0290 s` 并正常最终化，重复 finalization 审计热点已经关闭。
+D5 active-vision staging 为 `41.5623/43.2639/41.2271 s`，占每场 staging 的 99.6% 以上。后续只能
+在等价对象编码、流式写入、gzip 参数和落盘实现上优化，不能降低采样、删减特征，或弱化在线
+truth-free、离线标签物理隔离、哈希和失败关闭原则。
+
+数据可生成不等于学习能力准入。三 seed 只产生 1 个规划测试 seed，未达到 20 个未见测试 seed；
+active-vision dataset 因此保持未最终化，理由为 `insufficient_unseen_test_seeds`。正式 900-episode
+corpus、BC/PPO、checkpoint、paired shadow 与 assist 准入均仍是待完成项。
+
 ## 2026-07-20 主动视觉 episode 数据最小权限原则
 
 整 episode 数据记录仍必须遵守在线最小权限。正式 `ActiveVisionEpisodeSampleV2` 保存完整

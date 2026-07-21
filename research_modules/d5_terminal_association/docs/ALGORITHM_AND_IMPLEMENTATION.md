@@ -4,6 +4,30 @@
 
 **适用范围：** 本文依据第五研究模块（D5）的当前代码、README、PLAN、模块原理文档和系统总汇总，同步说明算法原理、数据合同、代码实施路径与验证结果。文中严格区分默认在线主线、已实现但非默认的辅助/离线能力，以及尚未实现能力；计划项不能据此解释为已上线能力。
 
+## 2026-07-20 clean-tree 200v200 数据链验证
+
+main 使用固定 nominal 200v200 配置运行 3 个 2 s episode，seed 为 930-932。生产提交为
+`4052d9411363c39d52100c0e3a4f60ee88443cab`，三场 `repository_dirty=false`。基线和优化后产物
+分别保存在 `capacity_probe_v2/nominal_timed/` 与 `nominal_timed_postopt/`。
+
+| 计时项 | 基线 | 优化后 | 变化 |
+| --- | ---: | ---: | ---: |
+| episode run | 125.2205 s | 127.9871 s | +2.2% |
+| artifact staging | 225.9243 s | 126.4682 s | -44.0% |
+| finalization | 116.5624 s | 7.7377 s | -93.4% |
+| generation total | 467.8007 s | 262.2866 s | -43.9% |
+
+分项计时把 D5 两条路径区分开。匿名 tracklet graph 每场 staging 仅
+`0.0250/0.0259/0.0290 s`，并完成 dataset 最终化。active-vision 整 episode 记录每场仍需
+`41.5623/43.2639/41.2271 s`，占对应 artifact staging 的 99.6% 以上。由此可确认，重复
+finalization 审计已不再是主热点；下一实现重点是 active-vision writer 中的对象序列化、逐行 gzip
+压缩和落盘。优化必须产生同一 schema、同一采样、同一特征与同一真值隔离结果，不能通过减少
+训练证据取得表面加速。
+
+三场在线 truth use 都为 0。active-vision finalizer 因测试 seed 规划数为 1、低于正式门限 20，
+返回 `insufficient_unseen_test_seeds` 并保留未最终化数据；这是预期的失败关闭。该实验尚未生成
+900-episode corpus，也没有运行正式 BC/PPO、生成 checkpoint 或形成 assist 准入报告。
+
 ## 2026-07-20 主动视觉整 episode 数据实现
 
 新增 `active_vision_episode_dataset.py`，实现以下版本化合同和 API：

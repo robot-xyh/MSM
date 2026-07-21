@@ -1,5 +1,35 @@
 # D5 末端视觉配准与身份认证实验报告
 
+## 2026-07-20 clean-tree 200v200 三 seed 性能复测
+
+本次实验使用 nominal 200v200、2 s、seed 930-932。优化后产物由提交
+`4052d9411363c39d52100c0e3a4f60ee88443cab` 生成，三场 `repository_dirty=false`。基线为
+`capacity_probe_v2/nominal_timed/`，复测为 `capacity_probe_v2/nominal_timed_postopt/`。
+
+| 指标 | 基线 | 复测 | 结果 |
+| --- | ---: | ---: | --- |
+| episode 数 | 3 | 3 | 相同 seed、规模和 2 s 时长 |
+| episode run | 125.2205 s | 127.9871 s | 基本持平 |
+| artifact staging | 225.9243 s | 126.4682 s | 降低约 44.0% |
+| finalization | 116.5624 s | 7.7377 s | 降低约 93.4% |
+| generation total | 467.8007 s | 262.2866 s | 降低约 43.9% |
+| online truth use | 0 | 0 | 满足隔离要求 |
+
+| seed | D5 graph staging | D5 active-vision staging | active-vision 占本场 staging |
+| ---: | ---: | ---: | ---: |
+| 930 | 0.0250 s | 41.5623 s | 99.6% 以上 |
+| 931 | 0.0259 s | 43.2639 s | 99.6% 以上 |
+| 932 | 0.0290 s | 41.2271 s | 99.6% 以上 |
+
+D5 graph dataset 正常最终化。active-vision 只有 3 个唯一 seed，预检只规划出 1 个测试 seed，低于
+正式要求的 20 个未见测试 seed；finalizer 返回 `insufficient_unseen_test_seeds`，没有伪造正式
+manifest。该结果证明重复 finalization 审计热点已经关闭，同时定位出 active-vision episode
+writer/gzip 压缩是下一 P1 热点。当前数据不能用于声明正式 BC/PPO、checkpoint、paired shadow、
+assist 准入或 200v200 实时运行；900-episode 正式 corpus 也尚未生成。
+
+后续性能优化的接受条件是同一输入生成同一 schema、样本数、特征、动作/ACK、版本、在线/离线
+隔离和哈希语义。降低采样、删除特征或放松真值隔离不属于可接受优化。
+
 ## 2026-07-20 主动视觉整 episode 数据管线代码实验
 
 本节同时记录 D5-owned 合成合同测试与 main 提供的新格式 nominal 容量复测。D5 本轮没有修改

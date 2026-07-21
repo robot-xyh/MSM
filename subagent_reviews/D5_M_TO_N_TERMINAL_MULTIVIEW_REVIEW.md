@@ -1,5 +1,18 @@
 # D5 M 对 N 末端多视角配准与协同定位调研
 
+## 2026-07-20 200v200 M 对 N 数据链 clean-tree 复测
+
+nominal 200v200、2 s、seed 930-932 在提交
+`4052d9411363c39d52100c0e3a4f60ee88443cab` 上完成 clean-tree 复测。三场在线 truth use 为 0，
+D5 graph 均完成最终化；graph staging 分别为 `0.0250/0.0259/0.0290 s`。总 finalization 从
+`116.5624 s` 降到 `7.7377 s`，确认 M 对 N 数据终结阶段的重复审计热点已经关闭。
+
+active-vision 写入/压缩仍分别耗时 `41.5623/43.2639/41.2271 s`，占各 episode artifact staging
+的 99.6% 以上。该项是下一 P1 性能热点，优化不得改变动态 M/N 数量语义，不得减少样本或训练特征，
+也不得绕过在线真值隔离、独立离线标签、共享 seed 原子切分和哈希审计。当前只有 3 个 seed，
+active-vision finalizer 因不足 20 个未见测试 seed 失败关闭；正式 900-episode corpus、BC/PPO、
+checkpoint 与模型准入仍未完成。
+
 ## 2026-07-20 M 对 N 数据终结开销复核
 
 优化按 episode 和实际 camera 数量工作，不引入 N 的固定上限。非物化审计不再为每个 camera sample

@@ -1,5 +1,22 @@
 # D5 末端视觉配准与协同身份认证综述及子方案
 
+## 2026-07-20 clean-tree 200v200 性能复核
+
+main 在提交 `4052d9411363c39d52100c0e3a4f60ee88443cab` 上完成 nominal 200v200、2 s、
+seed 930-932 的 clean-tree 复测，三场均记录 `repository_dirty=false` 与 online truth use=0。
+相对优化前基线，总生成 `467.8007→262.2866 s`，artifact staging
+`225.9243→126.4682 s`，finalization `116.5624→7.7377 s`；episode run
+`125.2205→127.9871 s`，未产生在线仿真加速结论。
+
+D5 graph staging 仅 `0.0250/0.0259/0.0290 s`，且 graph dataset 正常最终化，重复 finalization
+审计热点可判为关闭。active-vision staging 仍为 `41.5623/43.2639/41.2271 s`，占每场 artifact
+staging 的 99.6% 以上，下一轮只应优化 episode writer、对象序列化与 gzip/落盘路径。采样、特征、
+动作和 ACK 证据、真值隔离与失败关闭门不得削弱。
+
+三 seed 不满足 20 个未见测试 seed 的正式门，active-vision dataset 以
+`insufficient_unseen_test_seeds` 保持未最终化。审查不接受由该结果推导 BC/PPO、checkpoint、
+paired shadow 或 assist 准入；900-episode 正式 corpus 也尚未生成。
+
 ## 2026-07-20 主动视觉数据开销复核
 
 本轮只收敛 D5 数据写入与终结开销，不改变末端关联算法或运行时接口。非物化 reader 现在对共享

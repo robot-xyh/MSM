@@ -2,6 +2,30 @@
 
 科研模块，用于把末端相机视场中的本地视觉轨迹保守关联到中心分配的 `global_track_id`。模块可在统一三维 episode 中在线运行；训练标签和真值评分仍保持离线。D5 只输出视觉关联与相机观察意图，不修改、重写或重新分配任何全局轨迹 ID。
 
+## 2026-07-20 200v200 clean-tree 三 seed 复测
+
+main 在提交 `4052d9411363c39d52100c0e3a4f60ee88443cab` 上复跑 nominal 200v200、2 s、
+seed 930-932。产物记录 `repository_dirty=false`，可与优化前
+`outputs/capacity_probe_v2/nominal_timed/` 直接比较；优化后证据位于
+`outputs/capacity_probe_v2/nominal_timed_postopt/`。
+
+| 阶段 | 优化前 | 优化后 | 判定 |
+| --- | ---: | ---: | --- |
+| episode run | 125.2205 s | 127.9871 s | 基本持平，本轮未优化在线仿真 |
+| artifact staging | 225.9243 s | 126.4682 s | 降低约 44.0% |
+| finalization | 116.5624 s | 7.7377 s | 降低约 93.4% |
+| generation total | 467.8007 s | 262.2866 s | 降低约 43.9% |
+
+三场 D5 graph staging 分别为 `0.0250/0.0259/0.0290 s`，图数据正常最终化。D5 active-vision
+staging 分别为 `41.5623/43.2639/41.2271 s`，占对应 episode artifact staging 的 99.6% 以上，
+已成为下一项 P1 性能热点。重复 finalization 审计热点据此关闭；后续优化对象限定为 active-vision
+episode writer 与 gzip 压缩路径，不得通过降低采样、删除特征或放松在线真值隔离缩短时间。
+
+三 seed 只能规划出 1 个测试 seed，未达到正式准入要求的 20 个未见测试 seed，因此 active-vision
+dataset 以 `insufficient_unseen_test_seeds` 失败关闭并保留未最终化 episode/online/offline 数据。
+三场 `online_truth_use_count=0`。正式 900-episode corpus、行为克隆（BC）、近端策略优化（PPO）、
+20 个未见 seed 的性能验收、checkpoint 与 assist 准入仍未完成。
+
 ## 2026-07-20 200v200 主动视觉数据容量与跨视角 seed 隔离
 
 新增 `active_vision_episode_dataset.py`，把统一三维 episode 的主动视觉决策形成正式版本化数据
