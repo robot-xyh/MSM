@@ -113,7 +113,7 @@ paired evaluator 的合成 19-seed case 按门槛拒绝 assist；合成 20-seed 
 
 ### 4.6 2026-07-20 区域学习 episode 数据合同验证
 
-`tests/test_region_resource_dataset.py` 当前 15 个 pytest case，结果 **15/15 passed**；`test_region_resource_advisor.py` 当前 **51/51 passed**，二者合计 **66/66**。增加 4.8 的共享切分 12 项后，该历史阶段 D4 全量为 **381/381 passed**，验收门限均为零失败。加入 4.9 的动作覆盖课程 6 项后，2026-07-21 当前全量为 **387/387 passed**。版本固定为 `d4-region-learning-dataset-v1` 和 `d4-region-resource-model-bundle-v2`。
+`tests/test_region_resource_dataset.py` 当前 15 个 pytest case，结果 **15/15 passed**；`test_region_resource_advisor.py` 当前 **51/51 passed**，二者合计 **66/66**。增加 4.8 的共享切分 12 项后，该历史阶段 D4 全量为 **381/381 passed**，验收门限均为零失败。加入 4.9 的动作覆盖课程 6 项后为 **387/387 passed**；再加入 4.10 的全样本准入专项 10 项后，2026-07-21 当前全量为 **397/397 passed**。版本固定为 `d4-region-learning-dataset-v1` 和 `d4-region-resource-model-bundle-v2`。
 
 高基数正例仍为 96 episode/192 frame，正序和逆序输入得到相同 manifest，同数值 seed 不跨 split。复核新增：训练 target 重新验证 projector、owner/plan/version/epoch/lease、备用和 edge/quota 证明；中心、二级、distributed owner 序列化回读；manifest availability 与可重放 split 对 episode inventory 的一致性；truth/object/global-track key 变体拒绝；区域图规模增加到 200。BC/PPO 缺值仍失败关闭。
 
@@ -147,7 +147,7 @@ paired evaluator 的合成 19-seed case 按门槛拒绝 assist；合成 20-seed 
 
 数据集 SHA256 为 `b06d741bd22a0cd84ef1e47a48a0b8cd81ceb7e4ea294eeeb38b892e69d36158`；原 split SHA256 为 `18a2c60097fefe05cb70ed811d28faf90c51bbbba0bbe984e07f23fb12f8d7f0`；源 registry SHA256 为 `2ab928a476a4430b99326f245222f058bc5be5025158134ba89b01b3dec7815f`；共享 registry content SHA256 为 `29eb6895c4aa570b068f15141cbbbfede3041519117852d1ad48e848a25af146`，assignment SHA256 为 `31c6a3fc265d088d9958f44d579d8098e2aeab06b0daa60c68452ae4c6d46ab5`。
 
-审计前后正式 D4 dataset 目录树 SHA256 均为 `8cde5cace4bd8106e35801f6179775ae39298592f3b556f712ea857b9c496bc1`。原 manifest 和 900 个 episode 文件未改写。新增 12 项测试覆盖成功映射、BC 显式选择、哈希篡改、漏/多 seed、保留 seed 和源 SHA 不匹配；该共享切分阶段 D4 全量为 381/381。该结果只证明跨模块数据切分治理可用。PPO 仍不可用，assist 仍关闭，16.9 的行为克隆性能不因重新分桶自动更新；加入 4.9 的课程专项后当前全量为 387/387。
+审计前后正式 D4 dataset 目录树 SHA256 均为 `8cde5cace4bd8106e35801f6179775ae39298592f3b556f712ea857b9c496bc1`。原 manifest 和 900 个 episode 文件未改写。新增 12 项测试覆盖成功映射、BC 显式选择、哈希篡改、漏/多 seed、保留 seed 和源 SHA 不匹配；该共享切分阶段 D4 全量为 381/381。该结果只证明跨模块数据切分治理可用。PPO 仍不可用，assist 仍关闭，行为克隆性能不因重新分桶自动更新；加入课程专项后为 387/387，加入全样本审计专项后当前为 397/397。
 
 ### 4.9 区域动作覆盖补充课程
 
@@ -168,7 +168,22 @@ paired evaluator 的合成 19-seed case 按门槛拒绝 assist；合成 20-seed 
 
 canonical 视图为 60/20/20 seed，对应 180/60/60 frame。训练桶含 hold 60、request-replan 120、非零 quota 120、transfer 60；验证和测试桶各含 20、40、40、20。clean 数据集 SHA256 为 `7e17aba7911602c1b9e9f5b917aea97f1eeec478f03963b119fbcfc8de299e72`，view SHA256 为 `9aa28765bc6e09fd912b2899716e8f0b046d538a0cb96da610519963784cc8de`。
 
-专项测试 6/6、D4 全量 387/387 通过。clean 课程的 dirty episode 数为 0，180 个 canonical 训练样本可由 BC 只读 view 消费，`behavior_cloning_manifest_available=true`；PPO loader 因 reward unavailable 拒绝，assist 和 authority 仍关闭。首次 dirty 课程只保留为开发期结构审计历史。该课程只补规则 teacher 动作覆盖，不构成模型收益或 AirSim 策略证据。
+专项测试 6/6、该阶段 D4 全量 387/387 通过。clean 课程的 dirty episode 数为 0，180 个 canonical 训练样本可由 BC 只读 view 消费，`behavior_cloning_manifest_available=true`；PPO loader 因 reward unavailable 拒绝，assist 和 authority 仍关闭。首次 dirty 课程只保留为开发期结构审计历史。该课程只补规则 teacher 动作覆盖，不构成模型收益或 AirSim 策略证据。
+
+### 4.10 区域调度全样本准入审计
+
+2026-07-21 使用 `d4-region-resource-full-sample-admission-audit-v1` 对两类冻结数据执行只读、失败关闭审计。正式数据位于 `research_modules/scalable_3d_simulation/outputs/learning_generation_v1_multibatchfix/learning_dataset/d4_region`；clean supplemental 课程位于 `research_modules/d4_distributed_fallback/outputs/region_action_coverage_curriculum_20260721_clean_9445ed6/dataset`。审计不修改两类数据，不训练模型，不生成权重，也不开放 online assist 或 authority。
+
+| 数据 | episode | frame/sample | action | train/validation/test episode | train/validation/test sample | train/validation/test action |
+|---|---:|---:|---:|---:|---:|---:|
+| 正式数据 | 900 | 1798 | 14384 | 540/180/180 | 1079/359/360 | 8632/2872/2880 |
+| clean supplemental | 100 | 300 | 1200 | 60/20/20 | 180/60/60 | 720/240/240 |
+
+正式数据 900/900 episode 哈希通过，1798/1798 样本数值有限且安全合同有效。补充课程 100/100 episode 哈希通过，300/300 样本数值有限且安全合同有效。两类数据的 manifest/source/schema、规范 60/20/20 切分、资源配额守恒、transfer 邻接和容量、owner/plan/epoch/lease/version 单调与有效性、保留 seed、dirty 状态和真值隔离均通过，违规数为 0。补充课程动作覆盖为 hold 100、request-replan 200、非零 quota 200、transfer 100；正式数据四类正动作仍均为 0。
+
+`target.kind=rule` 仅表示规则教师标签，`target` 字段名不属于真值泄漏。`recommendation.projected=true` 仅说明建议通过离线确定性安全投影，不能解释为 runtime applied ACK。当前数据没有显式投影前 action mask、被拒旧 plan/epoch/lease 候选、真实 `CoalitionMemberAck`、observed outcome、可归因 reward 或同 seed paired shadow；这些证据均标为 unavailable/pending。模块内正式、补充和联合全样本状态为 complete，D6 外部准入仍 pending。
+
+审计专项 10/10、D4 全量 397/397 通过。审计内容 SHA256 为 `94f4f4bf914dde9fee0ce1d92ac491902019dd7388502fbee5f96c4edfac3e7f`，tracked JSON 文件带外 SHA256 为 `4245f1db36f1af47259554f0770e75a3fe97fcc5e9b75c1b04c83d5bfb5c9e46`。D6 需按显式 JSON 路径和该带外哈希独立复核。复核完成、真实 ACK/outcome/reward 与 paired shadow 形成前，确定性规则、lease/epoch 和安全投影仍是唯一可执行路径。
 
 ## 5. 默认被动降级场景
 
@@ -227,6 +242,6 @@ python3 research_modules/d4_distributed_fallback/scripts/run_failover_simulation
 
 D4 当前适合作为“中心节点、机动高空二级侦察节点、完全分布式”三级被动降级链路，以及“中心未失效但局部证据冲突”的主动降级仲裁框架。区域 authority、secondary resource、plan、owner、epoch/version/lease 和 `k>1` 原子 ACK 已执行 fail-closed，但 bounded bid selection 不是完整 CCBBA，该模块结果也不是 AirSim/scalable3d 物理闭环或自主成员补位证明。系统应继续通过 D3/D5/D6 的统一合同传递 `plan_id/version/authorization_state`、`global_track_id`、`risk_factors` 和 `terminal_consistent`。
 
-区域学习 dataset-v1 已形成正式 900 episode 数据和可复现的 development checkpoint。独立补充课程已提供四类规则 teacher 正样本，commit `9445ed6` 的 clean 数据及 canonical BC 只读 view 已可用，但仍没有动作执行结果或 reward。证据仍只支持训练、投影和课程生成管线可运行；回报归因、外部保留种子和成对收益不足以支持策略能力结论。bundle-v2 继续强制 shadow-only，其 manifest/SHA 溯源不能替代 paired 性能报告，也不改变 D4 主动/被动降级控制逻辑。
+区域学习 dataset-v1 已形成正式 900 episode 数据和可复现的 development checkpoint。独立补充课程已提供四类规则教师正样本，两类数据的 D4 全样本准入均为 complete，但仍没有 runtime applied ACK、动作执行结果或 reward。证据只支持数据结构、有限值、动作覆盖和确定性安全合同；D6 外部复核、回报归因、外部保留种子和成对收益不足以支持策略能力结论。bundle-v2 继续强制 shadow-only，其 manifest/SHA 溯源不能替代 paired 性能报告，也不改变 D4 主动/被动降级控制逻辑。
 
 M5N2 中心负对照已完成 20/20，但 coalition 和第二 primary 5 m 均为 0/20；这说明物理协同闭环仍开放，不说明 D4 fallback 失败。本批未执行二级或完全分布式接管，真实 secondary/distributed 多 seed 继续列为 P1。后续必须补 collision object，并运行同 seeds 的中心失效、中心与二级连续失效和可审计主动风险 paired case。

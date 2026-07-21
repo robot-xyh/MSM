@@ -162,7 +162,7 @@ D1 仍以北-东-地（North-East-Down，NED）坐标系作为融合工作坐标
 
 ### 3.7 区域资源快照与动作边界
 
-区域节点必须包含目标需求和高威胁积压的聚合值、D1/D2 不确定性、D5 可见性/一致性、可用资源与备用、二级覆盖/就绪、通信容量/时延/丢包，以及当前 owner layer/node、plan version、epoch 和 lease。区域边包含可转移资源、距离、转移时间、带宽、通信/机动可用性与 partition。合同递归拒绝 actor/target/truth identity 和 `global_track_id` 字段。
+区域节点必须包含目标需求和高威胁积压的聚合值、D1/D2 不确定性、D5 可见性/一致性、可用资源与备用、二级覆盖/就绪、通信容量/时延/丢包，以及当前 owner layer/node、plan version、epoch 和 lease。区域边包含可转移资源、距离、转移时间、带宽、通信/机动可用性与 partition。合同递归拒绝具体 actor/target/object 真值标识和 `global_track_id` 字段；它不拒绝教师标签使用的 `target` 容器。
 
 建议动作不能列出资源成员或目标标识。`resource_quota_delta` 由投影后的邻边 transfer 重新计算，所有区域之和必须为零；模型不能通过直接写 quota delta 绕开资源守恒。`reserve_ratio`、`reconnaissance_priority`、`hold` 和 `request_replan` 只表达建议，不改变 formal D4 verdict。
 
@@ -172,7 +172,7 @@ D1 仍以北-东-地（North-East-Down，NED）坐标系作为融合工作坐标
 
 ### 3.8 区域学习 episode 数据治理
 
-`d4-region-learning-dataset-v1` 以完整 episode 为最小持久化和 split 单元。source 必须记录 scenario/version/scale、数值 seed、episode ID、Git commit/dirty 与 config SHA256；每帧 target 只能是区域级 `rule|formal` 投影建议或带原因的 unavailable，reward 同样必须显式 available/unavailable，可选 recommendation 只作记录。任何 target/actor/global-track/evaluator/offline truth key 都被拒绝，不能进入在线特征。
+`d4-region-learning-dataset-v1` 以完整 episode 为最小持久化和 split 单元。source 必须记录 scenario/version/scale、数值 seed、episode ID、Git commit/dirty 与 config SHA256；每帧 `target` 容器只能保存区域级 `rule|formal` 教师建议或带原因的 unavailable，reward 同样必须显式 available/unavailable，可选 recommendation 只作记录。`target` 字段名和 `target.kind=rule` 本身不是 truth；被拒绝的是 actor/target/object/global-track/evaluator/offline truth 标识及其键变体，不能让真实身份进入在线特征。
 
 stage 产物使用 canonical JSONL header/frame/footer 和 frame SHA；finalizer 再固化逐 episode SHA、dataset SHA、feature/target/reward semantics、全部 source identity 和 availability。同一数值 seed 下的不同场景、规模和多个 episode 原子进入同一 train/validation/test split，三份 seed 两两零交集；唯一 seed 少于 3 或实际 unseen 少于声明下限时不生成 dataset。BC loader 缺 target 即失败，PPO loader 缺 target 或 reward 即失败，二者默认拒绝 dirty source，不以 0 填补。`model-bundle-v2` 可嵌入并验证 dataset/split manifest；这些数据治理能力不改变 D4 authority、lease、epoch、CBBA、联盟或降级状态机。
 
@@ -199,6 +199,12 @@ canonical view 是冻结内存覆盖层。它保存每个 episode 的原 split �
 本次配置为 4 个区域、17 份聚合资源、100 个 seed、每 seed 3 帧。结果含 hold 100、request-replan 200、非零 quota action 200、transfer 100。canonical 训练、验证、测试桶为 60/20/20 seed，每个桶都有四类动作。硬约束违规、在线真值字段和保留 seed 泄漏均为 0。
 
 课程没有动作执行后的真实结果。300 帧 reward 和 outcome 全部显式 unavailable，因此只能用于行为克隆 teacher 覆盖和离线 shadow。main 已在 detached clean worktree commit `9445ed6` 上生成 dirty episode 为 0 的课程，canonical 训练桶 180 帧可由行为克隆只读 view 加载；PPO loader 仍因 reward unavailable 失败关闭，assist 和 authority 不开放。首次 dirty 产物只保留为开发历史。该结果关闭 producer、标签覆盖和 clean BC 数据准入缺口，不关闭策略有效性、因果归因、外部保留 seed 性能或在线准入。
+
+### 3.12 全样本准入审计
+
+`d4-region-resource-full-sample-admission-audit-v1` 对冻结正式数据和 clean supplemental 课程执行只读全样本检查。正式数据为 900 episode、1798 frame/sample、14384 action；共享规范视图按 60/20/20 seed 映射为 540/180/180 episode、1079/359/360 sample 和 8632/2872/2880 action。补充课程为 100 episode、300 frame/sample、1200 action，映射为 60/20/20 episode、180/60/60 sample 和 720/240/240 action。审计逐项核对 manifest、episode SHA256、来源/schema、数值有限性、动作类型、配额守恒、transfer 邻接和容量、owner/plan/epoch/lease/version、保留 seed、dirty 状态和真值隔离；900/900 与 100/100 episode 哈希通过，安全有效样本分别为 1798/1798 和 300/300，违规数为 0。
+
+准入状态 `complete` 只表示上述模块内数据合同全部通过。正式与补充数据中的 `target.kind=rule` 都是规则教师标签，不能作为在线真值或策略收益；`recommendation.projected=true` 只表示后投影建议通过确定性安全合同，不能作为运行时 applied ACK。显式投影前 action mask、被拒旧计划/旧时期/旧租约候选、真实 `CoalitionMemberAck`、observed outcome、可归因 reward 和同 seed paired shadow 均没有可验证字段，状态必须保持 `unavailable/pending`。D6 还需按 tracked JSON 显式路径和带外 SHA256 独立准入。在这些证据形成前，PPO、assist 和 authority 不开放。
 
 ## 4. 数学模型与核心公式
 
@@ -670,7 +676,7 @@ main/runtime 负责 AirSim 启停与 episode 顺序、故障注入时间轴、D3
 
 根据 2026-07-13 主验证报告与 D4 审计：
 
-- 2026-07-21 D4 全量模块回归为 **387/387 项通过**，验收阈值为零失败。区域动作覆盖课程专项 6/6，覆盖动作分布、真值隔离、确定性、安全投影、canonical split、保留 seed、reward unavailable、行为克隆加载和 PPO 失败关闭。正式 900 episode 数据、补充课程、canonical view 和 development checkpoint 按独立证据口径记录，不包含新的 AirSim 或真实网络样本。历史阶段计数保持不变。
+- 2026-07-21 D4 全量模块回归为 **397/397 项通过**，验收阈值为零失败。全样本审计专项 10/10，覆盖正常数据、非有限值、规范切分错误、配额不守恒、非法转移、旧 epoch/lease/version、generation 回退、真值泄漏和文件篡改。正式 900 episode 与补充 100 episode 的模块内全样本状态均为 complete；D6 外部复核和真实 ACK/outcome/reward/paired-shadow 仍 pending。该结果不包含新的 AirSim 或真实网络样本，历史阶段计数保持不变。
 - `build_d7_secondary_handoff()` 与 `build_secondary_takeover_plan_metadata()` 当前统一要求 readiness exact-true、expected/actual source 均存在且匹配、plan/required lease epoch 均存在且满足、expiry/current time 均存在且严格 `current_time < expiry`。逐字段 `None`、完整正例和同 id/version 维持路径均有回归；未运行新 AirSim episode。
 - 完全分布式 interceptor/peer 选择不套用二级视觉 readiness 门；动态 N/M、版本/epoch/lease、ACK 和 `global_track_id` 所有权规则未改变。
 - 二级 resource 和 plan lease 只有在 expiry/current time 均存在且严格 `current_time < expiry` 时有效；等于边界按过期处理。缺字段分别输出可审计原因并 fail-closed，不能发布或维持 executable secondary plan。
@@ -702,12 +708,14 @@ main/runtime 负责 AirSim 启停与 episode 顺序、故障注入时间轴、D3
 13. **区域学习 episode 数据合同**：truth-free source/frame、完整 episode、数值 seed 原子 split、多层 SHA、availability 和严格 BC/PPO loader 已完成模块测试；main 正式 episode writer 尚未接线。
 14. **D4 共享切分消费端**：source-external registry 的 schema/policy/hash/source binding、100-seed 完整覆盖、保留集隔离和只读 BC 视图已完成；D3/D5 消费端和联合训练不由 D4 单独关闭。
 15. **区域动作覆盖 producer**：独立课程在三个 canonical 桶中覆盖 hold、request-replan、quota 和 transfer，并保持投影、真值和保留 seed 门控；课程未生成 reward，不开放 PPO 或 assist。
+16. **区域调度全样本准入**：正式数据和补充课程的 manifest、逐文件哈希、全部样本、规范 split、有限值和确定性安全合同已完成只读 fail-closed 审计；结果不把规则教师 target 或 projected recommendation 升格为运行 ACK。
 
 ### 9.3 剩余局限
 
 - 真实 secondary takeover 和完全分布式 commit 尚未在与上述 M5N2 相同的多 seed 几何中执行，继续是 P1。
 - `d4-region-resource-advisory-v1` 目前只有 D4 单元/接口证据；main 尚未在真实 planning loop 持久化 consumed ID 或将合同接入下一轮 D3，不能据此声称在线规划收益。
 - `d4-region-learning-dataset-v1` 已形成 900 episode 正式训练集和 development checkpoint；但动作正样本、可归因转移、D6 reward/causal/counterfactual、外部 20-seed paired 结果仍缺失，不能据此声称已有可推荐策略。
+- D4 全样本准入已完成，D6 尚未使用显式 JSON 路径和带外文件 SHA256 独立复核。真实 ACK、outcome、可归因 reward、被拒旧 generation 样本和同 seed paired shadow 没有进入当前 corpus，不能从 post-projection recommendation 推导。
 - 20 个 `collision_stop` 缺少 collision object/source lineage，无法区分成员间碰撞、环境碰撞或 AirSim 状态异常；在证据补齐前不得把它设为主动降级硬触发。
 
 1. **真实网络未验证**：带宽、拥塞、时钟漂移、操作系统/网络排队、抖动、乱序、重传、实际二级节点到执行资源链路和对等节点图分裂仍开放。
@@ -762,6 +770,7 @@ PYTHONPATH=research_modules/d4_distributed_fallback python3 -m pytest -q researc
 - `region_resource_dataset.py`：episode source/frame、stage/finalize/load、数值 seed split、manifest/availability/hash；
 - `canonical_seed_split.py`：共享 seed registry 严格校验、原 dataset/split/source 多级绑定和只读 canonical view；
 - `region_resource_curriculum.py`：独立动作覆盖课程、三类确定性状态构造、canonical 绑定和安全/真值/reward 审计；
+- `region_resource_full_sample_audit.py`：正式与补充数据的全 manifest、全 episode、全 frame/sample 只读准入、来源/哈希/规范切分和证据 availability 审计；
 - `region_resource_learning.py`：共享区域图 actor-critic、严格 BC/PPO loader、bundle-v2/SHA/OOD 和 fail-closed advisor；
 - `region_resource_cli.py`、`scripts/run_region_resource_advisor.py`：默认 shadow 的建议/paired evaluation CLI；
 - `episode_communication.py`：单次试验时钟通信接口与七场景验收；
