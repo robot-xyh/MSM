@@ -9,9 +9,15 @@ seed 930-932 的 clean-tree 复测，三场均记录 `repository_dirty=false` �
 `125.2205→127.9871 s`，未产生在线仿真加速结论。
 
 D5 graph staging 仅 `0.0250/0.0259/0.0290 s`，且 graph dataset 正常最终化，重复 finalization
-审计热点可判为关闭。active-vision staging 仍为 `41.5623/43.2639/41.2271 s`，占每场 artifact
-staging 的 99.6% 以上，下一轮只应优化 episode writer、对象序列化与 gzip/落盘路径。采样、特征、
-动作和 ACK 证据、真值隔离与失败关闭门不得削弱。
+审计热点可判为关闭。历史 active-vision staging 为 `41.5623/43.2639/41.2271 s`，占每场 artifact
+staging 的 99.6% 以上，因此完成了 sample 构造、writer、对象序列化、真值审计、SHA 和 gzip 的
+专项剖析。主因是共享 snapshot 的逐 camera 重复审计，不是 gzip。
+
+修复后 200-camera/400-track fixture 构造 `2.3597→0.1097 s`，materialized load
+`2.3948→0.1802 s`；既有 3,536-sample 制品 writer `3.5529→0.7313 s`。gzip level 6、压缩字节、
+解压 JSONL、SHA256、schema、采样、特征、动作/ACK、真值隔离和公共独立 audit 均保持。数据专项
+`18 passed`、全量 `400 passed in 9.74s`。D5-owned 重复处理子项关闭；main clean-tree 三 seed
+端到端复跑仍开放。
 
 三 seed 不满足 20 个未见测试 seed 的正式门，active-vision dataset 以
 `insufficient_unseen_test_seeds` 保持未最终化。审查不接受由该结果推导 BC/PPO、checkpoint、
@@ -25,7 +31,8 @@ offline 内容审计，并在文件指纹不变时复用 SHA256 和连接证据�
 
 6-episode 确定性计数由 stream/offline parse `12/12` 降为 `6/6`，SHA256 `67→20`，每制品一次；
 独立 audit 仍重新执行一轮。合成 200-camera/400-track stream audit 辅助墙钟约 `9.81→0.37 s`。
-数据专项 `16 passed`、全量 `398 passed in 15.75s`。schema、采样、特征、真值隔离、whole-seed
+原阶段数据专项 `16 passed`、全量 `398 passed in 15.75s`；本次最新回归为 `18/400 passed`。
+schema、采样、特征、真值隔离、whole-seed
 split、哈希、只读和失败关闭语义保持。正式 900-episode clean-tree 吞吐与恢复仍开放。
 
 ## 2026-07-20 主动视觉整 episode 容量与 lazy 数据合同审查

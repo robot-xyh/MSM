@@ -8,9 +8,13 @@
   D5 graph staging 为 `0.0250/0.0259/0.0290 s`，且 graph dataset 正常最终化。
 - [x] 确认端到端收益与边界：artifact staging `225.9243→126.4682 s`，总生成
   `467.8007→262.2866 s`；episode run `125.2205→127.9871 s`，不宣称在线仿真加速。
-- [ ] 优化 active-vision episode writer/gzip 压缩。当前三场分别为
-  `41.5623/43.2639/41.2271 s`，占每场 artifact staging 的 99.6% 以上。必须保持现有采样、全部
-  特征、确定性格式、在线/离线物理分流、SHA256 与失败关闭审计，不得用删减数据换吞吐。
+- [x] 完成 D5-owned active-vision sample/writer 性能修复。剖析确认 gzip level 6 只占少量时间，
+  主因是共享 snapshot 被每个 camera sample 重复执行中心引用与递归 truth-free 审计，以及 writer
+  重复规范化对象。200-camera/400-track fixture 构造 `2.3597→0.1097 s`、materialized load
+  `2.3948→0.1802 s`；既有 3,536-sample 制品 writer `3.5529→0.7313 s`。gzip/解压字节和 SHA256
+  修改前后完全相同，采样、特征、在线/离线分流、版本/ACK、只读和失败关闭合同保持。
+- [ ] 由 main 在 clean-tree 下复跑 nominal 200v200 seed 930-932，确认历史 active-vision staging
+  `41.5623/43.2639/41.2271 s` 的端到端下降幅度。D5 微基准不得替代该系统级结果。
 - [ ] 生成并最终化正式 900-episode corpus，随后运行正式 BC/PPO、checkpoint 制品、paired shadow
   与 assist 准入。当前仅 3 个 seed，因不足 20 个未见测试 seed 返回
   `insufficient_unseen_test_seeds`，该失败关闭状态符合合同但不构成训练准入。
@@ -59,7 +63,7 @@
   parse 从 `12/12` 降至 `6/6`，SHA256 从 `67` 降至 `20`，20 个制品各哈希一次；独立 public audit
   仍另做 `6/6` 次 parse 和每制品一次哈希。200-camera/400-track 合成 stream audit 辅助墙钟约
   `9.81→0.37 s`；已有 nominal/dense 200v200 文件独立 audit 约 `2.08/2.21 s`。墙钟不是硬门。
-  数据管线 `16 passed`、D5 全量 `398 passed in 15.75s`，接受阈值为零失败。
+  数据管线 `18 passed`、D5 全量 `400 passed in 9.74s`，接受阈值为零失败。
 - [x] main 容量复测：nominal seed 91、每档 2 s 的 5/20/50/100/200v200 总制品约
   `0.086/0.295/0.733/1.543/2.884 MB`；200v200 online/offline 为 `1.064/1.818 MB`、`3536`
   samples、RSS 约 `1.04 GB`、online truth=0。该结果关闭单 episode 去重容量门。

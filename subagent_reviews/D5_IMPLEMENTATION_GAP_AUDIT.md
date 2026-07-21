@@ -12,11 +12,18 @@ main 使用 nominal 200v200、2 s、seed 930-932，在生产提交
 graph dataset 最终化。该证据把先前仅有调用计数和合成辅助墙钟的结论提升为三 seed、clean-tree、
 真实 200v200 生成链路证据。
 
-**开放 P1：active-vision episode writer/压缩。** 三场 active-vision staging 为
-`41.5623/43.2639/41.2271 s`，占各场 artifact staging 的 99.6% 以上。artifact staging 总墙钟虽由
-`225.9243 s` 降至 `126.4682 s`，但该路径仍是明确主热点。下一步应剖分对象编码、逐行写入、gzip
-压缩与落盘等待；不得降低采样率、删除 snapshot/action/feedback/ACK 特征，或放松 truth-free、
-离线标签分离、SHA256、whole-seed split 和失败关闭合同。
+**D5-owned P1 子项已关闭：active-vision sample/writer 重复处理。** 专项剖析确认 gzip level 6
+不是主因。共享 snapshot 此前在每个 camera sample 构造和物化时重复执行中心引用及递归
+truth-free 审计；writer 还重复规范化 snapshot/feedback。修复后 200-camera/400-track fixture
+构造 `2.3597→0.1097 s`、online stage `0.0634→0.0432 s`、materialized load
+`2.3948→0.1802 s`。构造 truth-audit 调用 `80,601→1,001`，online canonical JSON
+`809→407`，object-key helper `402→0`。既有 3,536-sample/17-snapshot 制品 writer
+`3.5529→0.7313 s`、load `38.0052→2.8435 s`，writer 字节完全相同。
+
+**系统级 P1 复跑仍开放。** 历史三场 active-vision staging `41.5623/43.2639/41.2271 s` 继续作为
+main clean-tree seed 930-932 的复跑基线。D5 微基准不能替代真实 episode 端到端计时。schema、
+采样、全部 snapshot/action/feedback/ACK、truth-free、离线标签分离、SHA256、只读和 whole-seed
+split 未改变；公共 audit 仍独立读盘并失败关闭。
 
 **仍未关闭的准入项：** 总生成由 `467.8007 s` 降至 `262.2866 s`，episode run 基本持平
 （`125.2205→127.9871 s`），因此不能声明 200v200 已达到实时。三 seed 只能形成 1 个测试 seed；
@@ -35,7 +42,8 @@ snapshot，只保留完成动作、版本、反馈、ACK、中心引用和顺序
 由 `12/12` 降至 `6/6`，SHA256 调用由 `67` 降至 `20`，20 个实际制品各一次；独立 public audit
 另执行 `6/6` 次 parse 和每制品一次哈希。200-camera/400-track 合成 stream audit 辅助墙钟约
 `9.81→0.37 s`，已有 nominal/dense 200v200 gzip 独立 audit 约 `2.08/2.21 s`。数据专项
-`16 passed`，D5 全量 `398 passed in 15.75s`。墙钟不是硬门。
+原阶段为 `16 passed`、D5 全量 `398 passed in 15.75s`；本次新增 writer 等价性与篡改回归后为
+数据专项 `18 passed`、D5 全量 `400 passed in 9.74s`。墙钟不是单元测试硬门。
 
 **合同状态：** schema/version、采样频率、训练特征、online truth-free、离线标签物理隔离、
 SHA256SUMS、只读制品、whole-seed split 和 fail-closed 均未改变。缓存期间文件变化新增稳定

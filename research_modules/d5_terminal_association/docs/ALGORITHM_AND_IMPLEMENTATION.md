@@ -4,6 +4,28 @@
 
 **适用范围：** 本文依据第五研究模块（D5）的当前代码、README、PLAN、模块原理文档和系统总汇总，同步说明算法原理、数据合同、代码实施路径与验证结果。文中严格区分默认在线主线、已实现但非默认的辅助/离线能力，以及尚未实现能力；计划项不能据此解释为已上线能力。
 
+## 2026-07-20 主动视觉 staging 实施
+
+性能剖析把 active-vision staging 拆为快照/样本构造、online writer、offline join、物化加载、公共
+audit、规范化 JSON、SHA256 和 gzip。200-camera/400-track fixture 中，主要开销来自每个相机
+样本重复调用 `_validate_snapshot_center_references()` 和对共享 snapshot 做递归 truth-free 审计；
+gzip 累计耗时较小，因此保持 level 6。
+
+实现增加私有 `_SnapshotReferenceIndex`。缓存键只使用冻结 snapshot 的对象身份，并由 weakref 在
+对象释放时删除。索引保存中心 ID、相机成员和每相机分配集合。sample 构造利用索引校验中心引用，
+并单独审计动作、版本、反馈和 ACK。writer 调用 `force=True` 重新建立索引，防止调用方绕过 frozen
+语义后把变化写盘。reader 每遇到唯一 snapshot 行建立一次索引；公共 audit 每次重新从文件创建
+对象，不复用前次审计证据。
+
+私有 `_PreparedStreamObject` 保存已审计 payload、规范化字节和对象键。对象键直接对规范化字节
+计算 SHA256，写行时嵌入同一字节。输出与原 writer 的规范化 JSONL 逐字节一致。确定性测试固定
+200/400 fixture 的解压 SHA256，并比较两次 gzip 输出；调用计数测试约束重复编码，篡改测试在
+`_snapshot_to_payload()` 注入真值字段后要求写盘前失败关闭。
+
+验证结果为 fixture 构造 `2.3597→0.1097 s`、online stage `0.0634→0.0432 s`、materialized
+load `2.3948→0.1802 s`；既有 3,536-sample 制品 writer `3.5529→0.7313 s`。数据专项
+`18 passed`，D5 全量 `400 passed in 9.74s`。schema、公开 DTO、采样和特征未改变。
+
 ## 2026-07-20 clean-tree 200v200 数据链验证
 
 main 使用固定 nominal 200v200 配置运行 3 个 2 s episode，seed 为 930-932。生产提交为
@@ -102,7 +124,7 @@ admission 检查不变；版本升级不等于模型准入。
 `731412/37004` 字节（解压/gzip）。main 的 nominal seed 91、2 s 新格式复测中，200v200 总制品
 `2.884 MB`，online/offline `1.064/1.818 MB`、`3536` samples、RSS 约 `1.04 GB`、online truth=0。
 
-2026-07-20 当前验证为数据管线 `16 passed`、D5 全量 `398 passed in 15.75s`。6 episode ×
+2026-07-20 当前最新验证为数据管线 `18 passed`、D5 全量 `400 passed in 9.74s`。6 episode ×
 48 camera × 96 track 的可复现计数回归中，finalize 的 stream/offline parse 为 `6/6`，旧路径为
 `12/12`；`sha256_file` 为 20 个制品各一次，旧路径共 `67` 次。单独 public audit 会再次独立产生
 `6/6` 次 parse 和每制品一次 SHA256。200-camera/400-track 合成 stream audit 本机辅助墙钟从约

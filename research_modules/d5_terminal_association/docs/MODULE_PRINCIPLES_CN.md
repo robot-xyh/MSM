@@ -4,6 +4,22 @@
 
 **适用范围：** 本文描述第五研究模块（D5）当前代码、测试和主运行链路已经具备的能力。文中将默认主线、已实现但非默认的辅助/离线能力、尚未实现能力严格分开。计划项不能据此解释为已上线能力。
 
+## 2026-07-20 主动视觉数据写入性能
+
+主动视觉 episode 中，一个时刻的完整快照由同批相机样本共享。原实现虽然在磁盘上只保存一次
+快照，构造每个相机样本时仍重复扫描快照中的中心航迹、相机和投影证据。200 相机条件下，审计
+开销近似按相机数乘快照规模增长。剖析同时确认 gzip level 6 不是主要耗时来源。
+
+当前实现对冻结快照建立弱引用生命周期内的中心引用索引。每条样本仍校验动作、计划/联盟/通信
+版本、相机反馈、运行确认、有限动作集和样本自身真值字段。持久化前绕过缓存再次检查快照；公共
+audit 从磁盘独立复核，因此缓存不旁路真值隔离或中心 ID 只读门。writer 将一次规范化编码同时用于
+SHA256 对象键和 JSONL 写入，gzip 等级、格式和字节保持不变。
+
+200-camera/400-track fixture 构造由 `2.3597 s` 降至 `0.1097 s`，materialized load 由
+`2.3948 s` 降至 `0.1802 s`；既有 3,536-sample 制品 writer 由 `3.5529 s` 降至
+`0.7313 s`。修改前后 gzip 和解压流 SHA256 相同。D5 全量 `400 passed in 9.74s`。该证据关闭
+D5-owned 重复处理子项，不替代 main 的 clean-tree 三 seed 或 900 episode 验收。
+
 ## 2026-07-20 规模化数据性能判定原则
 
 规模化数据优化必须分别核算 episode run、artifact staging 和 finalization，不能用总墙钟掩盖单项
@@ -70,7 +86,8 @@ track ID 都不得携带 truth/actor/object-like 标识。
 2026-07-20 main 容量实测为 nominal seed 91、每档 2 s：5/20/50/100/200v200 总制品约
 `0.086/0.295/0.733/1.543/2.884 MB`；200v200 online/offline `1.064/1.818 MB`、`3536` samples、
 RSS 约 `1.04 GB`、online truth=0，单 episode 容量门通过。D5 当前代码证据为数据管线
-`16 passed`、全量 `398 passed in 15.75s`。6 episode × 48 camera × 96 track 的确定性计数中，
+原阶段 `16 passed`、全量 `398 passed in 15.75s`；本次最新为数据专项 `18 passed`、全量
+`400 passed in 9.74s`。6 episode × 48 camera × 96 track 的确定性计数中，
 finalize 的 online/offline parse 从 `12/12` 降为 `6/6`，SHA256 调用从 `67` 降为 `20`，每个实际
 制品一次；独立 public audit 仍重新执行一轮。200-camera/400-track 合成 stream audit 辅助墙钟约
 `9.81→0.37 s`，墙钟不作为验收门。磁盘 schema、在线真值隔离、离线标签分离、whole-seed split、

@@ -2,6 +2,42 @@
 
 科研模块，用于把末端相机视场中的本地视觉轨迹保守关联到中心分配的 `global_track_id`。模块可在统一三维 episode 中在线运行；训练标签和真值评分仍保持离线。D5 只输出视觉关联与相机观察意图，不修改、重写或重新分配任何全局轨迹 ID。
 
+## 2026-07-20 active-vision staging 性能修复
+
+D5 owner 对 200 camera、400 center track、1 个共享 snapshot、200 个 camera sample 的确定性
+fixture 分别测量 sample/record 构造、online writer、offline join、materialized load 和公共 audit。
+修改前工作树基于提交 `153ba1ec4dc89903802ac48ede9ef1fa57a68a53`。主要根因不是 gzip：同一冻结
+snapshot 在每个 camera sample 构造和物化时重复执行中心引用扫描与递归 truth-free 审计；writer
+还会为 snapshot/feedback 重复规范化 JSON、计算对象键并在写行时再次扫描。
+
+修改后，同一冻结 snapshot 只建立一次弱引用生命周期内的中心引用索引。每个 sample 仍独立检查
+动作、计划/联盟/通信版本、相机反馈、ACK、有限动作集和 sample-owned truth-free 字段；writer 在
+持久化边界对 snapshot 执行一次不使用缓存的强制复核。规范化 snapshot/feedback 字节同时用于
+SHA256 对象键和流式写入。公共 audit 仍独立从磁盘解压、验哈希、审计每行并失败关闭。
+
+| 200/400 fixture 指标 | 修改前 | 修改后中位数 | 结果 |
+| --- | ---: | ---: | --- |
+| fixture 构造 | 2.3597 s | 0.1097 s | 约 21.50 倍 |
+| online stage | 0.0634 s | 0.0432 s | 约 1.47 倍 |
+| materialized load | 2.3948 s | 0.1802 s | 约 13.29 倍 |
+| fixture 构造 truth-audit 调用 | 80,601 | 1,001 | 重复共享快照扫描消除 |
+| online canonical JSON 调用 | 809 | 407 | 对象 payload 只编码一次 |
+| online object-key helper 调用 | 402 | 0 | 直接复用已编码字节 |
+
+fixture 的 gzip 仍为 level 6、`37,001` 字节，解压后为 `732,814` 字节；修改前后 gzip SHA256 和
+解压流 SHA256 均完全相同。既有 200v200、`3,536` sample、17 snapshot 制品的 writer 为
+`3.5529→0.7313 s`，materialized load 为 `38.0052→2.8435 s`，writer 输出逐字节相同。验证脚本与
+结果位于 `simulations/profile_active_vision_episode_staging.py` 和 `results/active_vision_staging_*`。
+新增确定性、调用计数、解压语义等价和写盘前真值注入拒绝测试；D5 全量 `400 passed in 9.74s`，
+接受阈值为零失败。schema、公开 DTO、采样、特征、压缩级别、中心 ID 只读、版本/ACK、SHA256、
+只读和 whole-seed split 合同均未改变。
+
+该结果关闭 D5-owned writer/sample 重复处理子项。main 尚需在 clean-tree 下复跑 nominal 200v200
+seed 930-932，确认此前每场 `41.2-43.3 s` 的 active-vision staging 在真实 episode 中同步下降。正式
+900-episode corpus、BC/PPO、20 个未见 seed、checkpoint、paired shadow 和 assist 准入仍未完成。
+本次没有改变 AirSim 相机、检测器、云台或运行接口，`docs/AIRSIM_INTEGRATION_PLAN.md` 检查后无需
+修改。
+
 ## 2026-07-20 200v200 clean-tree 三 seed 复测
 
 main 在提交 `4052d9411363c39d52100c0e3a4f60ee88443cab` 上复跑 nominal 200v200、2 s、
@@ -16,10 +52,10 @@ seed 930-932。产物记录 `repository_dirty=false`，可与优化前
 | finalization | 116.5624 s | 7.7377 s | 降低约 93.4% |
 | generation total | 467.8007 s | 262.2866 s | 降低约 43.9% |
 
-三场 D5 graph staging 分别为 `0.0250/0.0259/0.0290 s`，图数据正常最终化。D5 active-vision
-staging 分别为 `41.5623/43.2639/41.2271 s`，占对应 episode artifact staging 的 99.6% 以上，
-已成为下一项 P1 性能热点。重复 finalization 审计热点据此关闭；后续优化对象限定为 active-vision
-episode writer 与 gzip 压缩路径，不得通过降低采样、删除特征或放松在线真值隔离缩短时间。
+三场 D5 graph staging 分别为 `0.0250/0.0259/0.0290 s`，图数据正常最终化。该次复测的 D5
+active-vision staging 分别为 `41.5623/43.2639/41.2271 s`，占对应 episode artifact staging 的
+99.6% 以上，因而触发了上节专项剖析。D5-owned writer/sample 重复处理现已修复；这组三 seed
+历史数据保留为 main clean-tree 复跑基线，不用微基准直接回填端到端结果。
 
 三 seed 只能规划出 1 个测试 seed，未达到正式准入要求的 20 个未见测试 seed，因此 active-vision
 dataset 以 `insufficient_unseen_test_seeds` 失败关闭并保留未最终化 episode/online/offline 数据。
@@ -121,7 +157,7 @@ schema；loader 复算并拒绝跨场景 seed 泄漏。
 effective action 必须保持同 tick 规则动作；匿名 tracklet 的 resource、camera 和 local ID 均拒绝
 truth/actor/object-like 命名。
 
-2026-07-20 当前验证：数据管线 `16 passed`、D5 全量 `398 passed in 15.75s`，接受阈值为零失败。
+2026-07-20 当前验证：数据管线 `18 passed`、D5 全量 `400 passed in 9.74s`，接受阈值为零失败。
 确定性 6-episode/48-camera/96-track 计数微基准中，finalize 在线解压/解析由 `12` 次降至 `6` 次，
 offline join 解析由 `12` 次降至 `6` 次，`sha256_file` 调用由 `67` 次降至 `20` 次；20 个实际制品
 各哈希一次，finalize 内部公开 audit 调用为 0。随后单独调用公开 audit 时再次产生 `6` 次在线流

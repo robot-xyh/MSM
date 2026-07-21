@@ -1,5 +1,37 @@
 # D5 末端视觉配准与身份认证实验报告
 
+## 2026-07-20 active-vision staging 专项
+
+实验使用 200 camera、400 center track、1 个共享 snapshot、200 个 camera sample 的确定性 fixture，
+重复 3 次取中位数。修改前基于提交 `153ba1ec4dc89903802ac48ede9ef1fa57a68a53`。测试同时记录
+函数调用、gzip/解压字节和 SHA256；墙钟只作辅助证据，单元测试以调用次数、逐字节等价和失败关闭
+为门。
+
+| 指标 | 修改前 | 修改后 | 判定 |
+| --- | ---: | ---: | --- |
+| fixture 构造 | 2.3597 s | 0.1097 s | 约 21.50 倍 |
+| online stage | 0.0634 s | 0.0432 s | 约 1.47 倍 |
+| offline stage | 0.1359 s | 0.1288 s | 基本持平，公共流审计保留 |
+| materialized load | 2.3948 s | 0.1802 s | 约 13.29 倍 |
+| public audit | 0.1339 s | 0.1277 s | 基本持平，保持独立 |
+| fixture 构造 truth-audit 调用 | 80,601 | 1,001 | 共享快照重复扫描消除 |
+| online canonical JSON 调用 | 809 | 407 | payload 编码复用 |
+| online object-key helper 调用 | 402 | 0 | 对已编码字节直接哈希 |
+| online SHA256 文件调用 | 2 | 2 | 合同未减少 |
+
+gzip 继续使用固定 level 6。修改前后文件均为 `37,001` 字节，解压后均为 `732,814` 字节；gzip
+SHA256 为 `b5d1c5e9...f0b28d3`，解压流 SHA256 为 `45d5179e...1409ec`。既有真实规模制品包含
+3,536 samples 和 17 snapshots，writer `3.5529→0.7313 s`，materialized load
+`38.0052→2.8435 s`，writer 输出逐字节相同。cProfile 显示优化后主要保留开销是公共/离线流的
+独立 truth-free 审计，这部分按合同不合并。
+
+新增两项回归：同一输入两次 gzip 输出与固定解压语义一致；在 snapshot payload 转换后注入
+`truth_entity_id` 时，writer 在产生正式 online 文件前以 `online_truth_identity_forbidden` 拒绝。
+数据专项 `18 passed`，D5 全量 `400 passed in 9.74s`，接受阈值为零失败。
+
+本专项关闭 D5-owned sample/writer 重复处理。尚未完成 main clean-tree seed 930-932 端到端复跑、
+900-episode corpus、正式 BC/PPO、20 个未见 seed、checkpoint、paired shadow 和 assist 准入。
+
 ## 2026-07-20 clean-tree 200v200 三 seed 性能复测
 
 本次实验使用 nominal 200v200、2 s、seed 930-932。优化后产物由提交
@@ -23,8 +55,9 @@
 
 D5 graph dataset 正常最终化。active-vision 只有 3 个唯一 seed，预检只规划出 1 个测试 seed，低于
 正式要求的 20 个未见测试 seed；finalizer 返回 `insufficient_unseen_test_seeds`，没有伪造正式
-manifest。该结果证明重复 finalization 审计热点已经关闭，同时定位出 active-vision episode
-writer/gzip 压缩是下一 P1 热点。当前数据不能用于声明正式 BC/PPO、checkpoint、paired shadow、
+manifest。该结果证明重复 finalization 审计热点已经关闭，并形成上节 writer 专项的历史基线。
+当前 D5-owned 重复处理已修复，但 main 尚未复跑同一三 seed。当前数据不能用于声明正式
+BC/PPO、checkpoint、paired shadow、
 assist 准入或 200v200 实时运行；900-episode 正式 corpus 也尚未生成。
 
 后续性能优化的接受条件是同一输入生成同一 schema、样本数、特征、动作/ACK、版本、在线/离线
@@ -53,8 +86,8 @@ main/AirSim；容量数值只证明单 seed 数据生成，不是训练、checkp
 | 非物化 stream profile | 200 camera/400 track 合成共享 snapshot；另取既有 nominal/dense 200v200 gzip | 合成辅助墙钟约 `9.81→0.37 s`；`1.066/1.134 MB`、`3536/3744` sample 实际文件独立 audit 约 `2.08/2.21 s` | 硬门只采用调用计数和零失败；墙钟仅作辅助 | 通过软件门，非正式吞吐验收 |
 | lazy BC/PPO | 8 episode；逐次推进 iterator | lazy handle 创建加载 episode=0；BC/PPO 每次 `next()` 只加载当前 episode；BC 不读 offline label | 跨 episode 累积=0；PPO reward 均为 `0.5` | 通过 |
 | 最终合同复核 | 相对 dataset root、伪造 fallback effective action、truth-like resource/camera ID | 相对 staging/finalize/load 成功；伪造动作和污染命名全部拒绝 | 误拒合法路径=0；错误动作/身份接受=0 | 通过 |
-| 新数据管线专项 | 16 项测试 | `16 passed` | 零失败 | 通过 |
-| D5 全量回归 | 全部 D5 tests | `398 passed in 15.75s` | 零失败 | 通过 |
+| 新数据管线专项 | 18 项测试 | `18 passed` | 零失败 | 通过 |
+| D5 全量回归 | 全部 D5 tests | `400 passed in 9.74s` | 零失败 | 通过 |
 
 共享 seed 原子 split 将 learning dataset 升为 v2；去重磁盘合同将 episode dataset 升为 v3、
 record/descriptor/sample 升为 v2，bundle 升为 `d5.active-vision-model-bundle.v4` 并绑定 episode

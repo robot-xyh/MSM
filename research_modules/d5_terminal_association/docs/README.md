@@ -11,6 +11,11 @@ D5 文档遵循 `research_modules/DOCUMENTATION_STANDARD.md`。推荐阅读顺�
 7. `AIRSIM_INTEGRATION_PLAN.md`：AirSim 离线回放接入计划。
 8. `../reports/D5_MANUAL_VIDEO_TRACKING_B_20260715.md`：人工初始化五目标视频 local MOT 实测报告。
 
+2026-07-20 active-vision staging 专项的复现入口为
+`../simulations/profile_active_vision_episode_staging.py`，对照 JSON 和 cProfile 文本位于
+`../results/active_vision_staging_profile_*`。该专项保持 gzip level 6 和磁盘 schema，关闭 D5-owned
+共享 snapshot 重复审计/编码热点；main clean-tree 三 seed 与正式 900 episode 验收仍未完成。
+
 2026-07-20 新增匿名稀疏 tracklet 图文档：实现入口为
 `../src/d5_terminal_association/sparse_tracklet_graph.py`、`tracklet_gnn.py` 和
 `active_vision.py`；原理、算法、AirSim 待接线和代码级实验分别同步在
