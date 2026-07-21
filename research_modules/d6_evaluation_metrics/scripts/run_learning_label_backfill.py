@@ -45,6 +45,15 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="development-only structural audit; never use for formal readiness",
     )
+    parser.add_argument(
+        "--shared-seed-split-registry",
+        type=Path,
+        default=None,
+        help=(
+            "optional detached scalable3d-shared-seed-split-registry-v1; "
+            "enables read-only D3/D4/D5 canonical split readiness"
+        ),
+    )
     return parser
 
 
@@ -60,12 +69,14 @@ def main(argv: list[str] | None = None) -> int:
                 args.learning_dataset_dir,
                 args.output,
                 config=config,
+                shared_seed_split_registry_path=args.shared_seed_split_registry,
             )
         else:
             payload = write_learning_label_sidecars(
                 args.learning_dataset_dir,
                 args.output,
                 config=config,
+                shared_seed_split_registry_path=args.shared_seed_split_registry,
             )
     except LearningLabelBackfillError as exc:
         print(json.dumps({"status": "failed", "reason": exc.code}, sort_keys=True))

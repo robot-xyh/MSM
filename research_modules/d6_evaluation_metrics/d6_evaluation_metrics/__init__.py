@@ -208,8 +208,15 @@ from .learning_label_backfill import (
     write_learning_label_readiness,
     write_learning_label_sidecars,
 )
+from .canonical_seed_split_readiness import (
+    CANONICAL_SEED_SPLIT_READINESS_SCHEMA_VERSION,
+    CanonicalSeedSplitAuditError,
+    audit_canonical_seed_split_readiness,
+)
 
 __all__ = [
+    "CANONICAL_SEED_SPLIT_READINESS_SCHEMA_VERSION",
+    "CanonicalSeedSplitAuditError",
     "AirSimCalibrationRecord",
     "AirSimCalibrationReportGenerator",
     "aggregate_cross_seed_airsim_calibration_records",
@@ -220,6 +227,7 @@ __all__ = [
     "CLOCK_SPEED_COMPARISON_SCHEMA_VERSION",
     "ClockSpeedComparisonReportGenerator",
     "ClockSpeedComparisonValidationError",
+    "audit_canonical_seed_split_readiness",
     "CASE_AWARE_SUITE_TIMING_MODE",
     "CASE_AWARE_TIMING_METADATA_FIELDS",
     "COOPERATIVE_CLOSURE_SCHEMA_VERSION",

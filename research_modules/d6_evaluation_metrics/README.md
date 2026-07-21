@@ -1,5 +1,46 @@
 # D6 Evaluation Metrics
 
+## 2026-07-21 共享种子划分只读审计
+
+新增 `canonical_seed_split_readiness.py`，并在正式学习标签 readiness 中接入可选的 detached
+`scalable3d-shared-seed-split-registry-v1`。D6 独立复算注册表 schema、policy、规范 JSON 内容哈希、
+assignment 哈希和 `d3_numeric_seed_atomic_split_v2` 数值种子分配，不导入 main runtime。审计同时核对
+源 `training_seed_registry.json` 的 SHA-256、100 个训练 seed 完整覆盖、保留 seed `1000-1019` 隔离
+以及 60/20/20 的 train/validation/test 划分。
+
+可选注册表启用后，D6 分别读取 D3 assignment、D4 region、D5 tracklet graph 和 D5 active-vision
+manifest。每个模块报告原 split hash、canonical registry/assignment hash、三类 seed 数、missing、
+extra、reserved、内部冲突和 canonical mismatch seed。D4 与 D5 manifest 有逐记录计数时，继续报告
+mismatch episode 和 frame/sample；D3 只有聚合 manifest，发生 mismatch 时下钻计数保持
+`null+reason`，不能填 0。四个 required module 全部 exact match 时，跨模块联合训练 readiness 才为
+available。未提供注册表时，原有 D4/D5 单模块标签与 legacy split 比较保持不变。
+
+正式 900 episode 只读审计结果如下。D3 为 exact，seed 为 `60/20/20`，mismatch 为 0。D4 seed 为
+`70/15/15`，有 51 个 mismatch seed、459 个 episode、917 帧。D5 tracklet graph seed 为
+`60/20/20`，有 65 个 mismatch seed、8350 个图记录、284 条候选边。D5 active vision seed 为
+`60/20/20`，有 62 个 mismatch seed、558 个 episode、713298 条样本。四模块 missing、extra、reserved
+seed 均为 0，但联合训练仍为 unavailable，原因是 D4 和两类 D5 数据没有精确遵守 canonical assignment。
+旧 D4/D5 直接比较的 423/900 episode、47/100 seed 不一致继续作为历史诊断保留。
+
+验收门限是注册表八项 validation 全部为 true，且四个 required module 均为 `exact_match=true` 后才开放
+联合训练。本次前半项通过，后半项未通过。2026-07-21 D6 全量回归为 `364 passed`，仅有既有
+Matplotlib `Axes3D` 环境 warning。
+
+注册表文件 SHA-256 为 `68608d29d1f733beea87f1faf06464fededb68a9c2972c51c10cd4c2160f032f`，
+内容哈希为 `29eb6895c4aa570b068f15141cbbbfede3041519117852d1ad48e848a25af146`，assignment
+哈希为 `31c6a3fc265d088d9958f44d579d8098e2aeab06b0daa60c68452ae4c6d46ab5`。正式审计写入
+`/tmp/d6_learning_label_readiness_shared_split_20260721.json`，文件 SHA-256 为
+`a0469fa0bf4f1fc80d5e5dc9afac74d4638e782161c0c3f5ebc6befd93f405d1`；源 900 episode 数据未修改。
+
+```bash
+python3 research_modules/d6_evaluation_metrics/scripts/run_learning_label_backfill.py \
+  <learning_dataset> <readiness.json> --audit-only \
+  --shared-seed-split-registry <detached_registry.json>
+```
+
+该审计只给出数据治理和联合训练准入结论，不评价模型精度。D4、D5 后续应按 detached registry 重新生成
+规范 split view 或新数据版本；D6 不改写已有 manifest。
+
 ## 2026-07-20 正式学习数据标签审计
 
 新增 `learning_label_backfill.py` 和 `run_learning_label_backfill.py`。入口只读冻结的 scalable 3D

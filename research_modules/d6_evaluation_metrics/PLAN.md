@@ -1,5 +1,29 @@
 # D6 Evaluation Metrics Plan
 
+## 2026-07-21 canonical seed split readiness 状态
+
+- [x] 新增 D6 自有、纯文件的 canonical split 审计，不导入 main runtime，不修改 D3/D4/D5 manifest。
+- [x] 校验 `scalable3d-shared-seed-split-registry-v1` schema、policy、content SHA-256、assignment
+  SHA-256、源 training registry SHA-256、100 个训练 seed 完整覆盖和 `1000-1019` 保留 seed 隔离。
+- [x] 独立复算 `d3_numeric_seed_atomic_split_v2` 的 60/20/20 数值 seed assignment；仅信任哈希不足以
+  通过 readiness。
+- [x] 审计 D3 assignment、D4 region、D5 tracklet graph、D5 active-vision manifest，输出各模块原
+  split hash、seed 数、missing/extra/reserved/mismatch，以及可靠层级的 episode/sample mismatch。
+- [x] 联合训练门改为四个 required module 全部 canonical exact 才 available；不一致时保持
+  `false/null+reason`。未传 registry 时继续使用旧 D4/D5 readiness，兼容既有调用。
+- [x] CLI 新增显式 `--shared-seed-split-registry`，audit-only 和 detached sidecar 两条路径均支持；
+  registry 身份进入 readiness/source，已有 bundle 不会静默复用不同 registry。
+- [x] 2026-07-21 正式 900 episode 全量只读审计通过源哈希检查。D3 exact；D4 mismatch 为
+  51 seed/459 episode/917 frame；D5 graph 为 65 seed/8350 graph record/284 candidate edge；D5
+  active vision 为 62 seed/558 episode/713298 sample。联合训练 unavailable。
+- [x] 测试覆盖 exact、content/assignment tamper、source SHA mismatch、registry missing/extra/reserved
+  seed、D3/D4/D5 mismatch、模块 missing/extra/reserved 和无 registry 兼容。2026-07-21 D6 全量
+  `364 passed`；接受门限为注册表八项 validation 全真且四模块 exact，本次联合门未通过。
+- [ ] main/D4/D5 采用 detached registry 生成新的规范 split view 或新版本数据。正式 900 episode 源
+  manifest 保持冻结；在四模块 exact 前，C1 等跨模块联合训练继续 fail closed。
+- [ ] 共享 split 只关闭数据泄漏治理条件。D4/D5 reward、runtime ACK、动作多样性和 PPO 条件仍按原
+  GAP 独立开放，不能由 split exact 自动晋升。
+
 ## 2026-07-20 正式离线 outcome/reward 标签状态
 
 - [x] 实现只读 `audit_learning_label_readiness()` 和 CLI，校验正式生成计划、finalized checkpoint、

@@ -1,5 +1,12 @@
 # D6 文档索引
 
+2026-07-21 已接入 detached canonical numeric-seed split 只读审计。D6 独立校验共享 registry 的 schema、
+policy、内容/assignment/source SHA-256、100 个训练 seed 和 `1000-1019` 保留 seed 隔离，并比较 D3、
+D4、D5 图数据和 D5 主动视觉 manifest。正式结果为 D3 exact；D4、D5 graph、D5 active 分别有
+51、65、62 个 mismatch seed，联合训练 unavailable。算法和空值口径见
+`ALGORITHM_AND_IMPLEMENTATION.md`，治理原则见 `MODULE_PRINCIPLES_CN.md`，正式统计见
+`../EXPERIMENT_REPORT.md`。2026-07-21 D6 全量 `364 passed`；本次不改变 AirSim 接线。
+
 2026-07-20 已接入正式学习数据标签只读审计和 detached sidecar 合同。D4/D5 的 outcome、reward、
 counterfactual、causal label 分层、运行确认硬门、保留 seed `1000-1019`、全量 SHA-256、原子发布和
 确定性复用见 `MODULE_PRINCIPLES_CN.md` 与 `ALGORITHM_AND_IMPLEMENTATION.md`。正式 900 episode

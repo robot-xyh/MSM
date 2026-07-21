@@ -21,6 +21,11 @@ import shutil
 import tempfile
 from typing import Any, Iterable, Iterator, Mapping, Sequence
 
+from .canonical_seed_split_readiness import (
+    CanonicalSeedSplitAuditError,
+    audit_canonical_seed_split_readiness,
+)
+
 
 READINESS_SCHEMA_VERSION = "d6.learning-label-readiness.v1"
 BUNDLE_SCHEMA_VERSION = "d6.learning-label-sidecar-bundle.v1"
@@ -183,6 +188,7 @@ def audit_learning_label_readiness(
     learning_dataset_dir: str | Path,
     *,
     config: LearningLabelBackfillConfig | None = None,
+    shared_seed_split_registry_path: str | Path | None = None,
 ) -> dict[str, Any]:
     """Audit a frozen learning export and report label/training readiness.
 
@@ -199,7 +205,12 @@ def audit_learning_label_readiness(
         sink_root=None,
         expected_episode_splits=d4.episode_splits or {},
     )
-    return _readiness_payload(context, resolved, d4, d5)
+    canonical_split = _audit_optional_canonical_seed_split(
+        context.dataset_root, shared_seed_split_registry_path
+    )
+    return _readiness_payload(
+        context, resolved, d4, d5, canonical_split=canonical_split
+    )
 
 
 def write_learning_label_sidecars(
@@ -207,6 +218,7 @@ def write_learning_label_sidecars(
     output_dir: str | Path,
     *,
     config: LearningLabelBackfillConfig | None = None,
+    shared_seed_split_registry_path: str | Path | None = None,
 ) -> dict[str, Any]:
     """Atomically write detached D4/D5 label sidecars and their manifest.
 
@@ -230,7 +242,11 @@ def write_learning_label_sidecars(
         )
     if output.exists():
         manifest = audit_learning_label_sidecar_bundle(output)
-        current_readiness = audit_learning_label_readiness(source, config=resolved)
+        current_readiness = audit_learning_label_readiness(
+            source,
+            config=resolved,
+            shared_seed_split_registry_path=shared_seed_split_registry_path,
+        )
         if manifest.get("source") != current_readiness["source"]:
             raise LearningLabelBackfillError(
                 "existing_bundle_source_mismatch",
@@ -256,7 +272,16 @@ def write_learning_label_sidecars(
             sink_root=staging,
             expected_episode_splits=d4.episode_splits or {},
         )
-        readiness = _readiness_payload(context, resolved, d4, d5)
+        canonical_split = _audit_optional_canonical_seed_split(
+            context.dataset_root, shared_seed_split_registry_path
+        )
+        readiness = _readiness_payload(
+            context,
+            resolved,
+            d4,
+            d5,
+            canonical_split=canonical_split,
+        )
         _write_json_atomic(staging / "readiness.json", readiness)
 
         artifact_entries = _artifact_entries(staging, exclude={"manifest.json", "SHA256SUMS"})
@@ -297,10 +322,15 @@ def write_learning_label_readiness(
     output_json: str | Path,
     *,
     config: LearningLabelBackfillConfig | None = None,
+    shared_seed_split_registry_path: str | Path | None = None,
 ) -> dict[str, Any]:
     """Write a compact deterministic audit without materializing sidecars."""
 
-    payload = audit_learning_label_readiness(learning_dataset_dir, config=config)
+    payload = audit_learning_label_readiness(
+        learning_dataset_dir,
+        config=config,
+        shared_seed_split_registry_path=shared_seed_split_registry_path,
+    )
     _write_json_atomic(Path(output_json), payload)
     return payload
 
@@ -1480,6 +1510,8 @@ def _readiness_payload(
     config: LearningLabelBackfillConfig,
     d4: _D4Stats,
     d5: _D5Stats,
+    *,
+    canonical_split: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     d4_behavior_cloning_available = bool(
         config.verify_all_source_hashes
@@ -1492,26 +1524,103 @@ def _readiness_payload(
         and d5.dirty_episode_count == 0
         and d5.rule_demonstration_count == d5.sample_count
     )
+    legacy_split_available = d5.split_mismatch_count == 0
+    if canonical_split is None:
+        joint_training_available = legacy_split_available
+        joint_training_reason = (
+            None
+            if legacy_split_available
+            else "d4_d5_seed_split_registries_differ"
+        )
+        split_alignment = {
+            "status": "consistent" if legacy_split_available else "inconsistent",
+            "aligned_episode_count": d5.split_alignment_count,
+            "mismatched_episode_count": d5.split_mismatch_count,
+            "mismatched_seed_count": len(d5.split_mismatch_seeds or ()),
+            "mismatch_pair_counts": dict(
+                sorted((d5.split_mismatch_pairs or {}).items())
+            ),
+            "training_scope": (
+                "joint_training_allowed"
+                if legacy_split_available
+                else "module_local_training_only"
+            ),
+            "reason": joint_training_reason,
+        }
+    else:
+        joint = _mapping(
+            canonical_split.get("joint_training"),
+            "canonical joint-training readiness",
+        )
+        joint_training_available = joint.get("available") is True
+        joint_training_reason = joint.get("reason")
+        split_alignment = {
+            "status": "consistent" if joint_training_available else "inconsistent",
+            "canonical_registry_used": True,
+            "canonical_registry_content_sha256": canonical_split["registry"][
+                "content_sha256"
+            ],
+            "canonical_assignment_sha256": canonical_split["registry"][
+                "assignment_sha256"
+            ],
+            "required_modules": list(joint.get("required_modules", ())),
+            "nonmatching_modules": list(joint.get("nonmatching_modules", ())),
+            "aligned_episode_count": None,
+            "mismatched_episode_count": None,
+            "mismatched_seed_count": None,
+            "mismatch_pair_counts": None,
+            "training_scope": joint.get("scope"),
+            "reason": joint_training_reason,
+            "aggregate_count_reason": (
+                None
+                if joint_training_available
+                else "module_specific_mismatch_counts_reported_in_canonical_seed_split"
+            ),
+            "legacy_d4_d5_comparison": {
+                "status": "consistent" if legacy_split_available else "inconsistent",
+                "aligned_episode_count": d5.split_alignment_count,
+                "mismatched_episode_count": d5.split_mismatch_count,
+                "mismatched_seed_count": len(d5.split_mismatch_seeds or ()),
+                "mismatch_pair_counts": dict(
+                    sorted((d5.split_mismatch_pairs or {}).items())
+                ),
+            },
+        }
+    source = {
+        "dataset_name": context.dataset_root.name,
+        "git_commit": context.git_commit,
+        "episode_count": len(context.episode_index),
+        "batch_learning_export_summary_sha256": context.source_hashes[
+            "batch_learning_export_summary"
+        ],
+        "generation_plan_sha256": context.source_hashes["generation_plan"],
+        "generation_summary_sha256": context.source_hashes["generation_summary"],
+        "generation_checkpoint_sha256": context.source_hashes[
+            "generation_checkpoint"
+        ],
+        "episode_index_sha256": context.source_hashes["episode_index"],
+        "training_seed_registry_sha256": context.source_hashes[
+            "training_seed_registry"
+        ],
+    }
+    if canonical_split is not None:
+        source.update(
+            {
+                "shared_seed_split_registry_sha256": canonical_split["registry"][
+                    "file_sha256"
+                ],
+                "shared_seed_split_registry_content_sha256": canonical_split[
+                    "registry"
+                ]["content_sha256"],
+                "shared_seed_split_assignment_sha256": canonical_split["registry"][
+                    "assignment_sha256"
+                ],
+            }
+        )
     return {
         "schema_version": READINESS_SCHEMA_VERSION,
         "audit_date": config.audit_date,
-        "source": {
-            "dataset_name": context.dataset_root.name,
-            "git_commit": context.git_commit,
-            "episode_count": len(context.episode_index),
-            "batch_learning_export_summary_sha256": context.source_hashes[
-                "batch_learning_export_summary"
-            ],
-            "generation_plan_sha256": context.source_hashes["generation_plan"],
-            "generation_summary_sha256": context.source_hashes["generation_summary"],
-            "generation_checkpoint_sha256": context.source_hashes[
-                "generation_checkpoint"
-            ],
-            "episode_index_sha256": context.source_hashes["episode_index"],
-            "training_seed_registry_sha256": context.source_hashes[
-                "training_seed_registry"
-            ],
-        },
+        "source": source,
         "labeling_policy": _labeling_policy(config),
         "truth_isolation": {
             "online_source_mutated": False,
@@ -1523,28 +1632,13 @@ def _readiness_payload(
             "online_truth_policy": "forbidden",
             "labels_detached": True,
             "all_registered_source_hashes_verified": config.verify_all_source_hashes,
-            "cross_module_split_alignment": {
-                "status": (
-                    "consistent" if d5.split_mismatch_count == 0 else "inconsistent"
-                ),
-                "aligned_episode_count": d5.split_alignment_count,
-                "mismatched_episode_count": d5.split_mismatch_count,
-                "mismatched_seed_count": len(d5.split_mismatch_seeds or ()),
-                "mismatch_pair_counts": dict(
-                    sorted((d5.split_mismatch_pairs or {}).items())
-                ),
-                "training_scope": (
-                    "joint_training_allowed"
-                    if d5.split_mismatch_count == 0
-                    else "module_local_training_only"
-                ),
-                "reason": (
-                    None
-                    if d5.split_mismatch_count == 0
-                    else "d4_d5_seed_split_registries_differ"
-                ),
-            },
+            "cross_module_split_alignment": split_alignment,
         },
+        **(
+            {"canonical_seed_split": canonical_split}
+            if canonical_split is not None
+            else {}
+        ),
         "d4_region": {
             "episode_count": d4.episode_count,
             "frame_count": d4.frame_count,
@@ -1673,9 +1767,25 @@ def _readiness_payload(
             "causal_training_available": False,
             "formal_dataset_relabel_required": False,
             "sidecar_backfill_supported": True,
-            "cross_module_joint_training_available": d5.split_mismatch_count == 0,
+            "cross_module_joint_training_available": joint_training_available,
+            "cross_module_joint_training": {
+                "available": joint_training_available,
+                "reason": joint_training_reason,
+            },
         },
     }
+
+
+def _audit_optional_canonical_seed_split(
+    dataset_root: Path,
+    registry_path: str | Path | None,
+) -> dict[str, Any] | None:
+    if registry_path is None:
+        return None
+    try:
+        return audit_canonical_seed_split_readiness(dataset_root, registry_path)
+    except CanonicalSeedSplitAuditError as exc:
+        raise LearningLabelBackfillError(exc.code, str(exc)) from exc
 
 
 def _labeling_policy(config: LearningLabelBackfillConfig) -> dict[str, Any]:

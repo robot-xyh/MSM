@@ -1,5 +1,27 @@
 # D6 系统级离线评估模块原理
 
+## 共享种子划分治理（2026-07-21）
+
+跨模块联合训练要求同一个数值 seed 在 D3、D4 和 D5 中承担相同角色。若 seed 7 在 D3 属于训练集，
+在 D5 属于测试集，联合调参会把同一仿真随机条件同时用于训练和测试。模型指标因此失去独立测试含义。
+D6 将这种问题作为数据治理失败处理，不把它解释为模型性能波动。
+
+共享注册表是源训练 seed 清单之上的 detached 视图。D6 先验证源清单 SHA-256、训练/保留 seed 隔离和
+100 个训练 seed 覆盖，再验证注册表内容哈希与 assignment 哈希。随后按冻结的数值 seed 排序公式独立
+复算 60/20/20 分配。哈希正确但分配不能复现，或注册表正确但模块 manifest 没有精确遵守，均不能开放
+联合训练。
+
+D3 manifest 只有按 split 聚合的 seed、episode 和 frame 数。发生 seed mismatch 时，D6 无法从
+manifest 判断具体多少 episode/frame 受影响，因此使用 `null+reason`。D4 和 D5 保留逐 episode 或逐图
+记录，可以按 seed 直接累计 mismatch episode 与 sample。这里的 sample 对 D4 是区域帧，对 D5 图模型
+是候选边，对 D5 主动视觉是相机策略样本。不同统计单位不相加。
+
+正式审计确认 D3 与 canonical 完全一致。D4 有 51 个 mismatch seed；D5 图数据和主动视觉数据分别有
+65 和 62 个 mismatch seed。联合训练 readiness 为 unavailable。该结论不否定各模块在本地 split 上的
+行为克隆开发结果，也不证明任何模型达到准入门限。D6 只记录治理状态，不改写生产者 manifest。
+工程验收要求注册表八项自校验通过，并且四个 required module 均 exact。本次注册表通过、模块联合门
+未通过；2026-07-21 D6 全量回归为 `364 passed`。
+
 ## 离线学习标签的证据分层（2026-07-20）
 
 D6 将学习标签分成四层。`outcome` 表示后续观测到的状态变化；`reward` 表示在动作确实进入运行时后，

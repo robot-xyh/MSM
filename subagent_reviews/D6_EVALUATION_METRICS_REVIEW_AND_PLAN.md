@@ -1,5 +1,22 @@
 # D6 系统评估指标综述及子方案
 
+## 2026-07-21 共享种子划分评审
+
+D6 已形成独立的 canonical split consumer。它从 detached registry 和源 training registry 读取证据，
+复算内容哈希、assignment 哈希和冻结数值 seed 排序，不调用 main 仿真或学习运行时。模块 manifest 只读，
+D6 没有修改 D3、D4 或 D5 划分的权限。
+
+正式 900 episode 审计确认注册表自身有效，训练 seed 100 个、保留 seed 20 个且无重叠。D3 的
+60/20/20 划分与 canonical exact。D4 的 70/15/15 划分有 51 个 seed 不一致；D5 图数据和主动视觉数据
+各为 60/20/20，但具体 seed 分配分别有 65 和 62 个不一致。对应受影响记录为 D4 459 episode/917 frame、
+D5 图数据 8350 graph record/284 candidate edge、D5 主动视觉 558 episode/713298 sample。
+
+评审结论是联合训练继续不可用。单模块行为克隆开发结果可以保留，但不能跨模块拼接训练、调参或发布
+联合测试指标。下一步由 main 协调 D4/D5 生成 canonical split view；D6 只复核 exact match 和保留 seed
+隔离。即使 split 修复，奖励、运行确认和 PPO producer 条件仍需分别验收。
+本次接受门限是注册表八项 validation 全真且四模块 exact。注册表有效但联合门未通过。2026-07-21
+D6 全量回归为 `364 passed`，仅有既有 Matplotlib `Axes3D` warning。
+
 ## 2026-07-20 正式学习标签审计评审
 
 D6 已新增独立的学习标签审计和 sidecar 构造边界。实现不导入 D4/D5 在线控制，不修改正式学习数据，

@@ -1,5 +1,49 @@
 # D6 系统级离线评估：算法原理与实施说明
 
+## 共享数值种子划分审计（2026-07-21）
+
+入口 `audit_canonical_seed_split_readiness()` 接收学习数据目录和 detached registry 路径。实现只使用
+标准库读取 JSON 和计算 SHA-256，不导入 main-owned `shared_seed_split.py`。这样可以独立发现 main
+实现、注册表内容和模块 manifest 之间的漂移。
+
+对每个训练 seed (s)，审计器使用冻结字符串
+`d3_numeric_seed_atomic_split_v2|20260720\0s` 计算 SHA-256，并按“摘要、数值 seed”排序。前 20 个
+进入测试集，随后 20 个进入验证集，其余 60 个进入训练集。复算结果必须逐项等于 registry 的
+`assignments` 和 `split_seed_values`。注册表还必须满足以下条件：
+
+1. schema、policy、ordering compatibility 和 consumer contract 与 v1 冻结值一致；
+2. 去除 `content_sha256` 后的规范 JSON 哈希等于声明值，完整 assignments 的规范 JSON 哈希等于
+   `assignment_sha256`；
+3. source training registry SHA-256、Git identity、dirty flag 和 schedule hash 一致；
+4. 100 个训练 seed 恰好出现一次，保留 seed `1000-1019` 不得出现，训练/保留交集为 0。
+
+模块比较先构造 `seed -> {split}`。missing、extra、reserved、同 seed 跨多个 split，或与 canonical
+assignment 不同，都会使 `exact_match=false`。D4、D5 逐记录 manifest 允许进一步计算：
+
+\[
+N_{episode}^{mis}=\sum_e \mathbf{1}[q(s_e)\ne split_e],\qquad
+N_{sample}^{mis}=\sum_e n_e\mathbf{1}[q(s_e)\ne split_e]
+\]
+
+其中 (q(s_e)) 是 canonical split，(n_e) 分别取区域 frame、候选 edge 或主动视觉 sample 数。
+D3 发生不一致时没有逐 seed episode/frame 索引，对应值保持 unavailable。四模块联合门为：
+
+\[
+available_{joint}=exact_{D3}\land exact_{D4}\land exact_{D5\_graph}
+\land exact_{D5\_active}
+\]
+
+CLI 参数 `--shared-seed-split-registry` 是显式可选项。缺省调用不增加 main runtime 依赖，并继续输出
+原 D4/D5 标签审计。传入 registry 后，registry 文件、内容和 assignment SHA-256 写入 readiness source；
+不同 registry 不能复用已有 detached sidecar bundle。
+
+正式数据结果为 D3 `0` mismatch；D4 `51 seed/459 episode/917 frame`；D5 graph
+`65 seed/8350 graph record/284 candidate edge`；D5 active vision
+`62 seed/558 episode/713298 sample`。所有模块 missing/extra/reserved seed 均为 0。联合训练仍
+unavailable。以上是 manifest 与数据划分审计，不是边分类、策略或任务性能指标。
+2026-07-21 验收门限为注册表八项 validation 全真且四模块 exact；实际只有注册表和 D3 通过，联合门
+失败。D6 全量测试为 `364 passed`，仅有既有 Matplotlib `Axes3D` warning。
+
 ## 正式学习标签审计与 sidecar 构造（2026-07-20）
 
 ### 输入审计

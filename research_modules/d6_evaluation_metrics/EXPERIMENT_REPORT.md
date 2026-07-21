@@ -1,5 +1,29 @@
 # D6 系统级评估指标实验报告
 
+## 2.5 2026-07-21 正式共享 seed 划分审计
+
+本次对 `learning_generation_v1_multibatchfix` 的 900 episode 学习导出执行全量只读 readiness。输入为
+100 个训练 seed 和 20 个保留评估 seed。训练/保留交集为 0，全部已注册源文件哈希验证通过，正式源
+数据未修改。输出位于临时目录
+`/tmp/d6_learning_label_readiness_shared_split_20260721.json`，SHA-256 为
+`a0469fa0bf4f1fc80d5e5dc9afac74d4638e782161c0c3f5ebc6befd93f405d1`。
+
+| 模块 | train/validation/test seed | mismatch seed | mismatch episode/记录 | mismatch sample | 结论 |
+|---|---:|---:|---:|---:|---|
+| D3 assignment | 60/20/20 | 0 | 0 | 0 frame | exact |
+| D4 region | 70/15/15 | 51 | 459 | 917 frame | mismatch |
+| D5 tracklet graph | 60/20/20 | 65 | 8350 | 284 candidate edge | mismatch |
+| D5 active vision | 60/20/20 | 62 | 558 | 713298 sample | mismatch |
+
+四模块 missing、extra、reserved seed 均为 0。D3 与 canonical assignment 完全一致，D4 和两类 D5
+manifest 不一致，因此联合训练 readiness 为 unavailable。旧 D4/D5 两模块直接比较仍为 423/900 个
+episode、47/100 个 seed 不一致。两种统计使用不同参照，不应混为同一个数。
+
+注册表 schema、policy、内容哈希、assignment 哈希和源 training registry SHA-256 均通过独立复算。
+该结果只验证数据划分治理。模型性能、奖励可用性、PPO 准入和联合策略效果未在本次实验中评估。
+接受门限为注册表八项 validation 全真且 D3/D4/D5 graph/D5 active 全部 exact。本次注册表通过，模块
+联合门未通过。2026-07-21 D6 全量回归为 `364 passed`，仅有既有 Matplotlib `Axes3D` warning。
+
 ## 2.4 2026-07-20 scalable 3D 算法实验矩阵接口验收
 
 本节验证 D6 对 `scalable3d-experiment-matrix-v1` 持久化 episode 的只读审计。输入是确定性 fixture 和

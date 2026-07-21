@@ -586,6 +586,20 @@ def test_cross_module_split_mismatch_blocks_joint_training_only(tmp_path: Path) 
     assert readiness["overall"]["cross_module_joint_training_available"] is False
 
 
+def test_no_shared_registry_preserves_legacy_d4_d5_readiness(tmp_path: Path) -> None:
+    source = _build_dataset(tmp_path)
+
+    readiness = audit_learning_label_readiness(source)
+
+    assert "canonical_seed_split" not in readiness
+    alignment = readiness["truth_isolation"]["cross_module_split_alignment"]
+    assert alignment["status"] == "consistent"
+    assert alignment["aligned_episode_count"] == 1
+    assert alignment["mismatched_episode_count"] == 0
+    assert "canonical_registry_used" not in alignment
+    assert readiness["overall"]["cross_module_joint_training_available"] is True
+
+
 def test_sidecar_bundle_is_detached_atomic_and_deterministic(tmp_path: Path) -> None:
     source = _build_dataset(tmp_path)
     source_hashes = {

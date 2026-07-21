@@ -1,5 +1,42 @@
 # D6 实现差距审计
 
+## 2026-07-21 canonical seed split GAP 状态
+
+### 已关闭的 D6-owned P0/P1 consumer 缺口
+
+- 已实现 detached shared registry 的独立 schema、policy、content hash、assignment hash 和 source
+  training registry SHA-256 校验，不导入 main runtime。
+- 已实现 100 个训练 seed 全覆盖、`1000-1019` 保留 seed 隔离和冻结数值 seed assignment 复算。
+- 已实现 D3、D4、D5 tracklet graph、D5 active-vision 四类 manifest 的 seed 数、missing、extra、
+  reserved、内部冲突、mismatch seed、原 split hash 和 canonical hash 报告。
+- D4/D5 可可靠下钻到 mismatch episode/sample；D3 缺逐 seed frame 索引时保留 `null+reason`。联合训练
+  只有四模块 exact 时才 available，无 registry 调用保持原 D4/D5 兼容。
+- CLI、audit-only 和 detached sidecar 已接线；正式源不重写。篡改、源 SHA 错配、缺失/额外/保留 seed
+  和各模块 mismatch 均有 fail-closed 回归。
+
+### 正式证据
+
+- 数据：Git `39b097e72487567ac915c2297eaa27eed49ef76b`，900 episode，100 个训练 seed，20 个保留
+  seed，源哈希全量校验通过。
+- D3：60/20/20，canonical exact，0 mismatch。
+- D4：70/15/15，51 mismatch seed、459 episode、917 frame。
+- D5 graph：60/20/20，65 mismatch seed、8350 graph record、284 candidate edge。
+- D5 active vision：60/20/20，62 mismatch seed、558 episode、713298 sample。
+- 四模块 missing/extra/reserved seed 均为 0。联合训练 `available=false`，原因
+  `required_module_split_not_exactly_canonical`。正式 readiness SHA-256 为
+  `a0469fa0bf4f1fc80d5e5dc9afac74d4638e782161c0c3f5ebc6befd93f405d1`。
+- 接受门限为注册表八项 validation 全真且四模块 exact；本次只满足注册表和 D3 条件。2026-07-21
+  D6 全量 `364 passed`，仅有既有 Matplotlib `Axes3D` warning。
+
+### 仍开放的跨模块 P1 producer 条件
+
+1. main/D4/D5 需要基于 detached registry 生成新的规范 split view 或新版本数据；冻结的 900 episode
+   源 manifest 不原地改写。四模块 exact 前，跨模块联合训练保持 fail closed。
+2. shared split exact 只解决数据泄漏治理。D4 动作多样性、applied action/reward，D5 runtime ACK/reward
+   和 D4/D5 PPO 条件仍未满足，不能随 split 修复自动关闭。
+3. 正式 C1 联合训练还需在 canonical split 上重新生成 bundle，并用保留 seed `1000-1019` 做外部验收。
+   当前 D3/D4/D5 单模块开发结果不可拼接为联合性能结论。
+
 ## 2026-07-20 正式学习标签 GAP 状态
 
 ### 已关闭的 D6-owned P0
