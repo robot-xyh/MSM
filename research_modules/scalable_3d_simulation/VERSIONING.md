@@ -52,8 +52,10 @@ main
 | D6 真值隔离清单 | `scalable3d-d6-truth-isolated-manifest-v1` | D1/D2 适配、availability 或批量聚合口径改变 |
 | D5 模型 | `d5-crossview-gnn-v0.1.0` | 网络、特征、权重或训练集改变 |
 | D5 主动视觉 | `d5-active-vision-rule-v1` 或模型语义版本加指纹 | 特征、动作空间、权重或准入报告改变 |
-| D5 主动视觉数据 | `d5.active-vision-episode-dataset.v2` | split、episode、在线/离线标签或哈希语义改变；v2 固定共享数值 seed 跨场景原子划分 |
-| D5 主动视觉 bundle | `d5.active-vision-model-bundle.v3` | 模型、特征、数据集 schema 绑定或权重改变 |
+| D5 主动视觉数据 | `d5.active-vision-episode-dataset.v3` | split、episode、在线/离线标签、运行时 ACK 或哈希语义改变 |
+| D5 主动视觉 bundle | `d5.active-vision-model-bundle.v5` | 模型、特征、数据集 schema、准备度证据绑定或权重改变 |
+| D5 规范种子视图 | `d5.canonical-seed-split-view.v1` | 消费者、源数据/注册表绑定、完整 episode 重分桶或内容哈希语义改变 |
+| D5 规范视图准备度 | `d5.canonical-seed-readiness.v1` | 数据准入门、证据可用性或失败关闭结论字段改变 |
 | D3 策略 | `d3-rl-cost-policy-v0.1.0` | 策略结构、权重或动作定义改变 |
 | D4 区域策略 | `d4-region-resource-rule-v1` 或模型版本加权重 SHA 前缀 | 区域特征、动作、安全投影或权重改变 |
 | 阈值配置 | `scalable3d-thresholds-v1` | 门限和回退条件改变 |
@@ -123,6 +125,16 @@ seed 缺失、增加、错桶，或 source/assignment/content SHA 不一致时�
 `68608d29d1f733beea87f1faf06464fededb68a9c2972c51c10cd4c2160f032f`；其来源训练 seed 注册表
 SHA256 为 `2ab928a476a4430b99326f245222f058bc5be5025158134ba89b01b3dec7815f`。保留 seed
 `1000-1019` 不出现在三个训练桶中。
+
+D5 在 2026-07-21 基于上述注册表为跨视角图和主动视觉数据建立 detached、只读的规范种子视图。
+两类视图均按数值 seed 使用 `60/20/20` 分桶，保留 seed `1000-1019` 泄漏为 0，且不改写正式数据
+manifest 或样本。跨视角图 view/readiness 文件 SHA256 分别为
+`59d63560eccb443b09a868c7eb6abc159fea10ea823f6aee0378f3d3c0be85b6` 和
+`e2feac1aec55a1a34e24545115c80006982ced65a43057771dc8510f1be96908`；主动视觉 view/readiness
+文件 SHA256 分别为 `a019854fd87224996f5c84015bb66ccd37b7a0b5605f4784ffc59751e1716703` 和
+`aac5d4ec82c27f26dd919f26d93e5eb4452a8f3c98ecbee7fad62577a43fcc09`。该登记只关闭 D3/D4/D5
+学习消费者的 split 身份不一致。跨视角图仍因候选边和困难负边不足而 `fail_closed`；主动视觉仍为
+`development_shadow_only`，不开放 assist、PPO 或相机命令权限。
 
 每个持久化 episode 的 D1、D2 和 D6 子目录分别保存独立 manifest。D1 结果必须绑定在线
 总线、离线真值状态和 D2 规范映射；D2 结果必须绑定原始 D1/D2 记录、观测真值标签和身份
