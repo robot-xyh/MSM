@@ -6,7 +6,7 @@
 
 AirSim episode clock 只提供统一的仿真时间基准。已通过的 delay/loss/partition case 是时间轴上的可复现故障注入，不代表真实吞吐带宽、无线传播、节点时钟漂移、操作系统排队、乱序、重传或硬件链路已经验证。
 
-## 2. 2026-07-20 当前状态
+## 2. 2026-07-21 当前状态
 
 最新 M5N2 baseline/candidate 各 10 seeds 已完成，共 20/20 case。该批中心 owner 始终有效且 `active degradation=0`，是中心继续执行负对照：coalition completion `0/20`、第二 primary 进入 5 m `0/20`，20 个第二 primary 均为 `collision_stop`。由于 collision object 未写盘，runtime 后续必须补充碰撞对象/来源字段，D4 不能把该终态自动转换成主动降级事件。D4 main-bus 阶段 mean/P95/max 约 `5.59/6.70/94.10 ms`。`png_ttc_2v2_seed001` 排除在 M5N2 聚合之外，dropout case 完成数为 0。
 
@@ -36,14 +36,14 @@ main/runtime 已按 AirSim episode clock 对以下六类场景各运行 10 seeds
 | false degradation | 0 |
 | duplicate owner | 0 |
 | split-brain prevention failure | 0 |
-| D4 模块回归 | 365/365 passed |
+| D4 模块回归 | 387/387 passed（2026-07-21，含动作覆盖课程专项 6/6） |
 | 区域资源建议/消费合同专项 | 49/49 passed |
 | 区域学习 episode 数据合同 | 13/13 passed |
 | scalable 3D 质点接口定向测试 | 8/8 passed |
 
 30% loss 场景中，7 个缺 ACK case 保守阻断，只有 3 个完整 ACK case 执行。该结果关闭 episode-clock 多 seed 安全矩阵缺口，不关闭真实网络 P1。
 
-2026-07-15 的 280/280 回归关闭了公开 secondary plan helper 的 readiness/source/epoch/time 缺失门控，更早 278/278 不再作为全部入口证据。区域合同阶段为 303/303，建议管线阶段 335/335，next-cycle 消费合同阶段 350/350；2026-07-21 增加离线共享切分测试后，当前 D4 全量为 381/381。main 既有质点模块栈定向 8/8 覆盖单一二级、多二级区域 owner、连续失效后的 distributed D3 plan，以及 D7 owner/epoch/lease/commit/fault fence。正式 900-episode development checkpoint 已生成并强制 shadow-only；共享切分只属于离线 data-governance。本轮没有启动 AirSim，也没有新增 AirSim 多 seed、真实网络或硬件证据，接口、场景和安全门控均未改变。
+2026-07-15 的 280/280 回归关闭了公开 secondary plan helper 的 readiness/source/epoch/time 缺失门控，更早 278/278 不再作为全部入口证据。区域合同阶段为 303/303，建议管线阶段 335/335，next-cycle 消费合同阶段 350/350；2026-07-21 增加共享切分和动作覆盖课程测试后，当前 D4 全量为 387/387。main 既有质点模块栈定向 8/8 覆盖单一二级、多二级区域 owner、连续失效后的 distributed D3 plan，以及 D7 owner/epoch/lease/commit/fault fence。正式 900-episode development checkpoint 已生成并强制 shadow-only；独立课程提供 hold/replan/quota/transfer teacher 正类，但 reward/outcome unavailable，且当前实际产物为 dirty source。本轮没有启动 AirSim，也没有新增 AirSim 多 seed、真实网络或硬件证据，接口、场景和安全门控均未改变。
 
 ## 3. 状态与所有权规则
 
@@ -126,6 +126,7 @@ D4 每个 tick 输出：
 5. 区域资源学习建议先在 shadow 中运行至少 20 个未见 seed，paired 报告 backlog、transfer、churn、communication、fail-closed、安全违规和 P50/P95 latency。未满足门槛前不进入 assist；即使满足也不绕过正式 D4/D3/D7 gate。
 6. main 如在 AirSim planning loop 消费区域资源建议，只接受 `d4-region-resource-advisory-v1`，在每个 D3 planning boundary 使用 current snapshot/formal verdict 重验，并跨进程持久化 consumed advisory ID。不得直接消费 raw/non-projected recommendation；D4 不修改 main/D3-owned 实现。
 7. main 的逐 episode region-learning writer 改为调用 D4 公开 API：episode 开始固化 `RegionLearningEpisodeSource`（scenario/version/scale、seed、episode ID、Git commit/dirty、config SHA），逐帧构造带显式 target/reward availability 的 `RegionLearningFrame`，episode 完成后 stage，批次完成后 finalize。旧 JSONL 只有 frame_index/timestamp/snapshot/recommendation，不满足正式训练合同；main 不应解析 D4 私有 artifact。
+8. 动作覆盖课程保持离线独立。main 不把课程 frame 注入 AirSim episode bus，也不把规则 teacher 当作实际 D4 运行结果。代码合并后可在 clean worktree 重生课程，并在训练配置中单独记录正式 episode 与课程样本比例；缺真实 outcome 时仍不得启动 PPO。
 
 以下项目仍为 P1，不能由当前 episode-clock 结果替代：
 
@@ -151,9 +152,11 @@ D4 每个 tick 输出：
 ```bash
 python3 -m py_compile \
   research_modules/d4_distributed_fallback/d4_distributed_fallback/region_resource.py \
-  research_modules/d4_distributed_fallback/d4_distributed_fallback/region_resource_learning.py
+  research_modules/d4_distributed_fallback/d4_distributed_fallback/region_resource_learning.py \
+  research_modules/d4_distributed_fallback/d4_distributed_fallback/region_resource_curriculum.py \
+  research_modules/d4_distributed_fallback/d4_distributed_fallback/region_resource_curriculum_cli.py
 PYTHONPATH=research_modules/d4_distributed_fallback \
 python3 -m pytest -q research_modules/d4_distributed_fallback/tests
 ```
 
-本轮新增 D4 后投影 advisory contract、消费门、测试和文档，不启动 AirSim，也不修改 main/runtime、scalable_3d_simulation、D3、D5、D6 或 D7。既有 main-owned 质点集成 8/8 仅作为此前接口事实保留，本轮未把 D4 单元测试外推为新的 AirSim 或多 seed 证据。
+本轮新增 D4 独立动作覆盖课程、canonical 绑定、审计、测试和文档，不启动 AirSim，也不修改 main/runtime、scalable_3d_simulation、D3、D5、D6 或 D7。既有 main-owned 质点集成 8/8 仅作为此前接口事实保留，本轮未把 D4 单元测试外推为新的 AirSim 或多 seed 证据。

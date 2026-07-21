@@ -282,6 +282,20 @@ from .region_resource_training import (
     publish_region_behavior_cloning_results,
     train_region_behavior_cloning,
 )
+from .region_resource_curriculum import (
+    CURRICULUM_FRAME_KINDS,
+    CURRICULUM_REWARD_UNAVAILABLE_REASON,
+    REGION_ACTION_COVERAGE_AUDIT_SCHEMA,
+    REGION_ACTION_COVERAGE_CURRICULUM_SCHEMA,
+    REGION_ACTION_COVERAGE_CURRICULUM_VERSION,
+    REGION_ACTION_COVERAGE_SUMMARY_SCHEMA,
+    GeneratedRegionActionCoverageCurriculum,
+    RegionActionCoverageCurriculumConfig,
+    RegionActionCoverageCurriculumError,
+    audit_region_action_coverage_curriculum,
+    build_region_action_coverage_frames,
+    generate_region_action_coverage_curriculum,
+)
 
 __all__ = [
     "ActiveDegradationArbiter",
@@ -536,4 +550,16 @@ __all__ = [
     "audit_region_learning_dataset",
     "publish_region_behavior_cloning_results",
     "train_region_behavior_cloning",
+    "CURRICULUM_FRAME_KINDS",
+    "CURRICULUM_REWARD_UNAVAILABLE_REASON",
+    "REGION_ACTION_COVERAGE_AUDIT_SCHEMA",
+    "REGION_ACTION_COVERAGE_CURRICULUM_SCHEMA",
+    "REGION_ACTION_COVERAGE_CURRICULUM_VERSION",
+    "REGION_ACTION_COVERAGE_SUMMARY_SCHEMA",
+    "GeneratedRegionActionCoverageCurriculum",
+    "RegionActionCoverageCurriculumConfig",
+    "RegionActionCoverageCurriculumError",
+    "audit_region_action_coverage_curriculum",
+    "build_region_action_coverage_frames",
+    "generate_region_action_coverage_curriculum",
 ]

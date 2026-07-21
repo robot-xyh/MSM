@@ -1,11 +1,11 @@
 # 分布式协同与降级接管模块原理（模块编号 D4）
 
-**状态日期**：2026-07-20
+**状态日期**：2026-07-21
 **适用范围**：离线科研仿真、合同验证、故障注入与评估日志。
 **事实来源**：当前 D4 源码与测试、模块说明文件 `README.md`、模块计划文件 `PLAN.md`、D4 实现差距审计与综述，以及 2026-07-13 主级优先级 1 收敛验证报告 `MAIN_P1_CONVERGENCE_VALIDATION_REPORT_20260713.md`。
 **状态声明**：本文只解释当前能力，不改变能力状态。凡标为“可选/离线”或“未实现”的内容，不属于默认在线主线。
 
-**当前事实增量**：main-owned scalable 3D 质点模块栈已接入单一二级、多二级区域 owner 和中心/二级连续失效后的 distributed D3 plan；D7 依据 owner、plan version、epoch、lease、commit 与 fault generation fence 恢复导引。此前定向集成测试 8/8 passed，仅是质点接口证据。D4 同时具备默认 disabled/shadow 的区域资源学习建议层，以及 `d4-region-resource-advisory-v1` 后投影消费合同；它只建议区域配额和邻区转移，下一轮消费必须重验 current snapshot/authority，确定性 D4 安全状态机继续拥有健康检测、leader、epoch/lease、ACK/commit 和最终降级裁决。
+**当前事实增量**：main-owned scalable 3D 质点模块栈已接入单一二级、多二级区域 owner 和中心/二级连续失效后的 distributed D3 plan；D7 依据 owner、plan version、epoch、lease、commit 与 fault generation fence 恢复导引。此前定向集成测试 8/8 passed，仅是质点接口证据。D4 同时具备默认 disabled/shadow 的区域资源学习建议层，以及 `d4-region-resource-advisory-v1` 后投影消费合同；它只建议区域配额和邻区转移，下一轮消费必须重验 current snapshot/authority，确定性 D4 安全状态机继续拥有健康检测、leader、epoch/lease、ACK/commit 和最终降级裁决。2026-07-21 新增独立动作覆盖补充课程，100 个 seed 的 300 帧中已形成 hold、request-replan、非零 quota 和 transfer 正类；该课程 reward/outcome 全部不可用，未改变正式 900 episode、PPO、assist 或在线裁决状态。
 
 ## 1. 模块定位与问题定义
 
@@ -191,6 +191,14 @@ stage 产物使用 canonical JSONL header/frame/footer 和 frame SHA；finalizer
 canonical view 是冻结内存覆盖层。它保存每个 episode 的原 split 和共享 split，并绑定原 dataset SHA、原 split SHA、manifest 文件 SHA、共享 registry 文件/内容 SHA、assignment SHA 和源 registry SHA。源 manifest 与 episode 文件不修改。BC loader 只有显式传入 view 时采用共享 60/20/20；默认仍使用原 70/15/15。
 
 正式 900 episode 的共享视图包含 60/20/20 seed、540/180/180 episode 和 1079/359/360 frame。源数据目录树在审计前后哈希相同。该能力解决数据治理问题，不证明模型收益，不解除动作多样性、reward、PPO 或 assist 门槛。
+
+### 3.11 区域动作覆盖补充课程
+
+`d4-region-action-coverage-curriculum-v1` 是独立的规则 teacher 数据源。它不从正式 episode 抽取标签，也不修改正式 900 episode。生成器读取共享训练 seed 注册表，对每个数值 seed 依次构造三种区域聚合状态：降级失败触发保持、分配冲突触发中心重规划请求、相邻区域余量和需求缺口触发资源转移。动作由现有 `RuleRegionResourcePolicy` 生成，再由 `DeterministicResourceProjector` 投影；课程自身不能直接写入可信 quota。
+
+本次配置为 4 个区域、17 份聚合资源、100 个 seed、每 seed 3 帧。结果含 hold 100、request-replan 200、非零 quota action 200、transfer 100。canonical 训练、验证、测试桶为 60/20/20 seed，每个桶都有四类动作。硬约束违规、在线真值字段和保留 seed 泄漏均为 0。
+
+课程没有动作执行后的真实结果。300 帧 reward 和 outcome 全部显式 unavailable，因此只能用于行为克隆 teacher 覆盖和离线 shadow。当前实际制品来自 dirty worktree，默认行为克隆加载器会拒绝；clean fixture 已验证 canonical 训练桶 180 帧可加载，PPO loader 因 reward unavailable 失败关闭。该结果关闭 producer 和标签覆盖接口缺口，不关闭策略有效性、因果归因、外部保留 seed 性能或在线准入。
 
 ## 4. 数学模型与核心公式
 
@@ -633,6 +641,7 @@ main/runtime 负责 AirSim 启停与 episode 顺序、故障注入时间轴、D3
 | 共享区域图学习研究管线 | 正式 900 episode 已完成行为克隆开发训练；bundle/state/SHA、OOD/timeout/低置信/非有限回退和确定性投影可运行。标签动作多样性不足，模型强制 development/shadow-only，PPO/assist 不可用 |
 | 区域学习 episode dataset | 正式 dataset-v1 已完成 900 episode/1798 frame 审计和 70/15/15 seed 原子 split；外部 1000-1019 保持隔离。reward/causal/counterfactual 仍 unavailable |
 | 跨模块共享 seed 切分消费端 | D4 已实现独立严格校验和只读 60/20/20 canonical view；原 dataset 零修改。仅属 development/data-governance，不是模型性能证据 |
+| 区域动作覆盖补充课程 | 独立 producer 已覆盖 hold、request-replan、非零 quota 和 transfer；所有 target 经确定性投影，reward/outcome unavailable。仅用于 clean 来源下的行为克隆和离线 shadow，不是正式策略证据 |
 | paired shadow evaluator | 已报告 backlog、transfer、churn、communication、fail-closed、安全违规和 P50/P95 latency；少于 20 个未见 seed 不推荐 assist |
 
 ### 8.3 未实现或明确不作为 D4 主线
@@ -661,7 +670,7 @@ main/runtime 负责 AirSim 启停与 episode 顺序、故障注入时间轴、D3
 
 根据 2026-07-13 主验证报告与 D4 审计：
 
-- 2026-07-21 D4 全量模块回归为 **381/381 项通过**，验收阈值为零失败。区域建议/学习/消费与 bundle 准入 51 项；episode 数据、正式审计和训练发布 15 项；共享切分正反回归 12 项。新增复核覆盖动作多样性失败关闭、assist bundle 证据门、低损失能力声明禁用，以及共享 registry/hash/seed 完整性。96 episode/192 frame 高基数样本仍为纯 Python 合同测试；正式 900 episode 数据、canonical view 和 development checkpoint 按独立证据口径记录，不包含 AirSim 或真实网络样本。历史阶段计数保持不变。
+- 2026-07-21 D4 全量模块回归为 **387/387 项通过**，验收阈值为零失败。区域动作覆盖课程专项 6/6，覆盖动作分布、真值隔离、确定性、安全投影、canonical split、保留 seed、reward unavailable、行为克隆加载和 PPO 失败关闭。正式 900 episode 数据、补充课程、canonical view 和 development checkpoint 按独立证据口径记录，不包含新的 AirSim 或真实网络样本。历史阶段计数保持不变。
 - `build_d7_secondary_handoff()` 与 `build_secondary_takeover_plan_metadata()` 当前统一要求 readiness exact-true、expected/actual source 均存在且匹配、plan/required lease epoch 均存在且满足、expiry/current time 均存在且严格 `current_time < expiry`。逐字段 `None`、完整正例和同 id/version 维持路径均有回归；未运行新 AirSim episode。
 - 完全分布式 interceptor/peer 选择不套用二级视觉 readiness 门；动态 N/M、版本/epoch/lease、ACK 和 `global_track_id` 所有权规则未改变。
 - 二级 resource 和 plan lease 只有在 expiry/current time 均存在且严格 `current_time < expiry` 时有效；等于边界按过期处理。缺字段分别输出可审计原因并 fail-closed，不能发布或维持 executable secondary plan。
@@ -672,6 +681,7 @@ main/runtime 负责 AirSim 启停与 episode 顺序、故障注入时间轴、D3
 - 更早的 D4 P1 合同层正负例中，二级协调者和完全分布式对等节点都以 3/3 ACK 进入 `executing`，缺 ACK 场景以 2/3 进入 `aborted`（已中止）并保持复核。
 - 区域化合同验证为 23 个确定性单元 test case，无随机 seed；它关闭 D4 模块内 metadata/authority/安全门控。main 后续质点接线的定向 `test_module_stack.py` 为 8/8 passed，覆盖单二级、多二级 owner、distributed D3 plan 和 D7 fencing；二者均不构成 AirSim、真实网络、硬件或长时 200v200 多 seed 证据。
 - 区域资源学习已形成正式数据审计和离线开发 checkpoint。内部测试只有 15 个 seed，14384 个动作标签没有 quota/transfer/hold/replan 正样本；D6 审计中 898/1798 帧只有无归因相邻状态转移，reward/causal/counterfactual 可用数均为 0。bundle 固化动作多样性不足和策略能力声明禁止，外部 20-seed paired 结果与真实网络收益仍缺失，因此 assist 资格不可用。
+- 独立补充课程已提供四类规则 teacher 正样本，但实际制品为 dirty source，且没有 outcome/reward。它不能覆盖正式数据的状态分布，也不能把现有 development bundle 重新分类为可推荐策略。
 
 这些结果验证的是单次试验时间轴上的顺序接管、版本/租约/ACK 门控和唯一所有者，不代表真实 RF、真实吞吐带宽、节点时钟漂移、网络设备或硬件故障已经验证。
 
@@ -691,6 +701,7 @@ main/runtime 负责 AirSim 启停与 episode 顺序、故障注入时间轴、D3
 12. **下一周期 advisory 消费合同**：版本化内容 ID、严格有效期、逐区域/transfer 来源版本、安全证明、旧 generation/重放/ACK/fault/守恒/edge fail-closed 已完成模块测试；main/D3 实际消费尚未接线。
 13. **区域学习 episode 数据合同**：truth-free source/frame、完整 episode、数值 seed 原子 split、多层 SHA、availability 和严格 BC/PPO loader 已完成模块测试；main 正式 episode writer 尚未接线。
 14. **D4 共享切分消费端**：source-external registry 的 schema/policy/hash/source binding、100-seed 完整覆盖、保留集隔离和只读 BC 视图已完成；D3/D5 消费端和联合训练不由 D4 单独关闭。
+15. **区域动作覆盖 producer**：独立课程在三个 canonical 桶中覆盖 hold、request-replan、quota 和 transfer，并保持投影、真值和保留 seed 门控；课程未生成 reward，不开放 PPO 或 assist。
 
 ### 9.3 剩余局限
 
@@ -750,6 +761,7 @@ PYTHONPATH=research_modules/d4_distributed_fallback python3 -m pytest -q researc
 - `region_resource.py`：区域资源快照、规则基线、确定性安全投影、reward、数值 seed 原子划分与 paired evaluator；
 - `region_resource_dataset.py`：episode source/frame、stage/finalize/load、数值 seed split、manifest/availability/hash；
 - `canonical_seed_split.py`：共享 seed registry 严格校验、原 dataset/split/source 多级绑定和只读 canonical view；
+- `region_resource_curriculum.py`：独立动作覆盖课程、三类确定性状态构造、canonical 绑定和安全/真值/reward 审计；
 - `region_resource_learning.py`：共享区域图 actor-critic、严格 BC/PPO loader、bundle-v2/SHA/OOD 和 fail-closed advisor；
 - `region_resource_cli.py`、`scripts/run_region_resource_advisor.py`：默认 shadow 的建议/paired evaluation CLI；
 - `episode_communication.py`：单次试验时钟通信接口与七场景验收；
