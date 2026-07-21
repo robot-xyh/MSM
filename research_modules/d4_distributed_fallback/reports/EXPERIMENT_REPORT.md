@@ -113,7 +113,7 @@ paired evaluator 的合成 19-seed case 按门槛拒绝 assist；合成 20-seed 
 
 ### 4.6 2026-07-20 区域学习 episode 数据合同验证
 
-`tests/test_region_resource_dataset.py` 当前 15 个 pytest case，结果 **15/15 passed**；`test_region_resource_advisor.py` 当前 **51/51 passed**，二者合计 **66/66**，D4 全量 **369/369 passed**，验收门限均为零失败。版本固定为 `d4-region-learning-dataset-v1` 和 `d4-region-resource-model-bundle-v2`。
+`tests/test_region_resource_dataset.py` 当前 15 个 pytest case，结果 **15/15 passed**；`test_region_resource_advisor.py` 当前 **51/51 passed**，二者合计 **66/66**。增加 4.8 的共享切分 12 项后，D4 全量为 **381/381 passed**，验收门限均为零失败。版本固定为 `d4-region-learning-dataset-v1` 和 `d4-region-resource-model-bundle-v2`。
 
 高基数正例仍为 96 episode/192 frame，正序和逆序输入得到相同 manifest，同数值 seed 不跨 split。复核新增：训练 target 重新验证 projector、owner/plan/version/epoch/lease、备用和 edge/quota 证明；中心、二级、distributed owner 序列化回读；manifest availability 与可重放 split 对 episode inventory 的一致性；truth/object/global-track key 变体拒绝；区域图规模增加到 200。BC/PPO 缺值仍失败关闭。
 
@@ -128,6 +128,26 @@ paired evaluator 的合成 19-seed case 按门槛拒绝 assist；合成 20-seed 
 动作标签审计给出明确限制：14384 个动作中的非零配额、跨区域转移、保持和请求重规划数量均为 0。保持与重规划表面准确率为 `0.992593`，但两类都没有正样本；配额和转移的零误差同样只反映零动作基线。D6 审计中 898/1798 帧只有无归因相邻状态转移，reward、causal 和 counterfactual 可用数均为 0。训练器没有把这些相邻状态变化改写成回报。
 
 当前结论为“管线可用但动作多样性不足，shadow-only”。bundle admission 保存动作计数，并固定 `action_diversity_sufficient=false`、`strategy_capability_claim_allowed=false`、`reward_evidence_available=false`。内部测试低损失不能用于宣称调度策略能力。没有 D6 可验证回报和外部 20-seed paired shadow 结果前，PPO 与 assist 均不可用。权重只保存在 ignored `outputs/`，文本结果仅记录配置、命令、指标、SHA256 和本地定位。
+
+### 4.8 共享 seed 切分只读审计
+
+2026-07-21，D4 使用独立消费者读取正式 shared registry，没有导入 main runtime。校验项包括 schema/policy、D3 兼容排序、consumer contract、content/assignment SHA256、源 training-seed-registry SHA、100 个 dataset seed 的完整覆盖、无额外 seed 和保留 seed 1000-1019 隔离。正式视图结果如下。
+
+| 项目 | 原 D4 split | canonical view |
+|---|---:|---:|
+| 训练 seed | 70 | 60 |
+| 验证 seed | 15 | 20 |
+| 测试 seed | 15 | 20 |
+| 训练 episode | 630 | 540 |
+| 验证 episode | 135 | 180 |
+| 测试 episode | 135 | 180 |
+| 训练 frame | 1258 | 1079 |
+| 验证 frame | 270 | 359 |
+| 测试 frame | 270 | 360 |
+
+数据集 SHA256 为 `b06d741bd22a0cd84ef1e47a48a0b8cd81ceb7e4ea294eeeb38b892e69d36158`；原 split SHA256 为 `18a2c60097fefe05cb70ed811d28faf90c51bbbba0bbe984e07f23fb12f8d7f0`；源 registry SHA256 为 `2ab928a476a4430b99326f245222f058bc5be5025158134ba89b01b3dec7815f`；共享 registry content SHA256 为 `29eb6895c4aa570b068f15141cbbbfede3041519117852d1ad48e848a25af146`，assignment SHA256 为 `31c6a3fc265d088d9958f44d579d8098e2aeab06b0daa60c68452ae4c6d46ab5`。
+
+审计前后正式 D4 dataset 目录树 SHA256 均为 `8cde5cace4bd8106e35801f6179775ae39298592f3b556f712ea857b9c496bc1`。原 manifest 和 900 个 episode 文件未改写。新增 12 项测试覆盖成功映射、BC 显式选择、哈希篡改、漏/多 seed、保留 seed 和源 SHA 不匹配；D4 全量为 381/381。该结果只证明跨模块数据切分治理可用。PPO 仍不可用，assist 仍关闭，16.9 的行为克隆性能不因重新分桶自动更新。
 
 ## 5. 默认被动降级场景
 

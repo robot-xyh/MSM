@@ -40,6 +40,7 @@ from .region_resource_dataset import (
     RegionLearningSplit,
     load_region_learning_dataset,
 )
+from .canonical_seed_split import CanonicalRegionLearningDatasetView
 
 
 try:  # The default deterministic D4 path does not require torch.
@@ -602,12 +603,22 @@ def load_region_behavior_cloning_samples(
     split: RegionLearningSplit | str = RegionLearningSplit.TRAIN,
     device: Any = None,
     allow_dirty_source: bool = False,
+    canonical_split_view: CanonicalRegionLearningDatasetView | None = None,
 ) -> tuple[BehaviorCloningSample, ...]:
-    """Build BC samples only when every selected frame has a real target."""
+    """Build BC samples only when every selected frame has a real target.
+
+    The optional canonical view is an explicit, read-only split override for
+    cross-module development.  Omitting it preserves the module-local split.
+    """
 
     loaded = _resolve_region_learning_dataset(dataset)
+    selected_dataset: LoadedRegionLearningDataset | CanonicalRegionLearningDatasetView
+    selected_dataset = loaded
+    if canonical_split_view is not None:
+        canonical_split_view.assert_source(loaded)
+        selected_dataset = canonical_split_view
     episodes = _training_episodes(
-        loaded,
+        selected_dataset,
         split=split,
         allow_dirty_source=allow_dirty_source,
         purpose="behavior_cloning",
@@ -1613,7 +1624,7 @@ def _resolve_region_learning_dataset(
 
 
 def _training_episodes(
-    dataset: LoadedRegionLearningDataset,
+    dataset: LoadedRegionLearningDataset | CanonicalRegionLearningDatasetView,
     *,
     split: RegionLearningSplit | str,
     allow_dirty_source: bool,

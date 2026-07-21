@@ -43,7 +43,7 @@ main/runtime 已按 AirSim episode clock 对以下六类场景各运行 10 seeds
 
 30% loss 场景中，7 个缺 ACK case 保守阻断，只有 3 个完整 ACK case 执行。该结果关闭 episode-clock 多 seed 安全矩阵缺口，不关闭真实网络 P1。
 
-2026-07-15 的 280/280 回归关闭了公开 secondary plan helper 的 readiness/source/epoch/time 缺失门控，更早 278/278 不再作为全部入口证据。区域合同阶段为 303/303，建议管线阶段 335/335，next-cycle 消费合同阶段 350/350；2026-07-21 当前 D4 全量为 369/369。main 既有质点模块栈定向 8/8 覆盖单一二级、多二级区域 owner、连续失效后的 distributed D3 plan，以及 D7 owner/epoch/lease/commit/fault fence。正式 900-episode development checkpoint 已生成并强制 shadow-only，但本轮没有启动 AirSim，也没有新增 AirSim 多 seed、真实网络或硬件证据；该离线训练结果不改变本计划的接口、场景和安全门控。
+2026-07-15 的 280/280 回归关闭了公开 secondary plan helper 的 readiness/source/epoch/time 缺失门控，更早 278/278 不再作为全部入口证据。区域合同阶段为 303/303，建议管线阶段 335/335，next-cycle 消费合同阶段 350/350；2026-07-21 增加离线共享切分测试后，当前 D4 全量为 381/381。main 既有质点模块栈定向 8/8 覆盖单一二级、多二级区域 owner、连续失效后的 distributed D3 plan，以及 D7 owner/epoch/lease/commit/fault fence。正式 900-episode development checkpoint 已生成并强制 shadow-only；共享切分只属于离线 data-governance。本轮没有启动 AirSim，也没有新增 AirSim 多 seed、真实网络或硬件证据，接口、场景和安全门控均未改变。
 
 ## 3. 状态与所有权规则
 

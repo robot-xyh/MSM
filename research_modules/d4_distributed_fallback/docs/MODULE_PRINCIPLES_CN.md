@@ -184,6 +184,14 @@ stage 产物使用 canonical JSONL header/frame/footer 和 frame SHA；finalizer
 
 模型 manifest 固定 `lifecycle_stage=development`、`maximum_advisor_mode=shadow`、`action_diversity_sufficient=false` 和 `strategy_capability_claim_allowed=false`，并保存五项动作计数。`RegionResourceAdvisor` 会读取模式上限；即使请求 `assist` 并传入 20 个 unseen seed，也只能保持 shadow。权重位于 Git 忽略目录，当前无 Git LFS；普通 Git 只记录训练配置、数据/模型准备度、指标、训练命令、权重 SHA256 和本地相对定位。
 
+### 3.10 共享 seed 切分视图
+
+联合训练不能分别沿用 D3、D4、D5 的模块内 split，否则同一数值 seed 可能在一个模块用于训练、在另一个模块用于测试。D4 新增只读 canonical view，消费 main 发布的 `scalable3d-shared-seed-split-registry-v1`，但不导入 main runtime。消费者独立复现 D3 兼容哈希排序，并校验 registry schema/policy、content/assignment SHA、源 training-seed-registry SHA、100 个 dataset seed 的完整覆盖、无额外 seed 和 1000-1019 保留集隔离。
+
+canonical view 是冻结内存覆盖层。它保存每个 episode 的原 split 和共享 split，并绑定原 dataset SHA、原 split SHA、manifest 文件 SHA、共享 registry 文件/内容 SHA、assignment SHA 和源 registry SHA。源 manifest 与 episode 文件不修改。BC loader 只有显式传入 view 时采用共享 60/20/20；默认仍使用原 70/15/15。
+
+正式 900 episode 的共享视图包含 60/20/20 seed、540/180/180 episode 和 1079/359/360 frame。源数据目录树在审计前后哈希相同。该能力解决数据治理问题，不证明模型收益，不解除动作多样性、reward、PPO 或 assist 门槛。
+
 ## 4. 数学模型与核心公式
 
 ### 4.1 集合、状态与决策
@@ -624,6 +632,7 @@ main/runtime 负责 AirSim 启停与 episode 顺序、故障注入时间轴、D3
 | 区域资源规则建议与投影 | 已实现 truth-free 变长区域图、守恒/邻边/备用/authority/commit/fault 安全投影；只输出建议 |
 | 共享区域图学习研究管线 | 正式 900 episode 已完成行为克隆开发训练；bundle/state/SHA、OOD/timeout/低置信/非有限回退和确定性投影可运行。标签动作多样性不足，模型强制 development/shadow-only，PPO/assist 不可用 |
 | 区域学习 episode dataset | 正式 dataset-v1 已完成 900 episode/1798 frame 审计和 70/15/15 seed 原子 split；外部 1000-1019 保持隔离。reward/causal/counterfactual 仍 unavailable |
+| 跨模块共享 seed 切分消费端 | D4 已实现独立严格校验和只读 60/20/20 canonical view；原 dataset 零修改。仅属 development/data-governance，不是模型性能证据 |
 | paired shadow evaluator | 已报告 backlog、transfer、churn、communication、fail-closed、安全违规和 P50/P95 latency；少于 20 个未见 seed 不推荐 assist |
 
 ### 8.3 未实现或明确不作为 D4 主线
@@ -652,7 +661,7 @@ main/runtime 负责 AirSim 启停与 episode 顺序、故障注入时间轴、D3
 
 根据 2026-07-13 主验证报告与 D4 审计：
 
-- 2026-07-21 D4 全量模块回归为 **369/369 项通过**，验收阈值为零失败。区域建议/学习/消费与 bundle 准入 51 项；episode 数据、正式审计和训练发布 15 项。新增复核覆盖动作多样性失败关闭、assist bundle 证据门和低损失能力声明禁用。96 episode/192 frame 高基数样本仍为纯 Python 合同测试；正式 900 episode 数据和 development checkpoint 按独立证据口径记录，不包含 AirSim 或真实网络样本。历史阶段计数保持不变。
+- 2026-07-21 D4 全量模块回归为 **381/381 项通过**，验收阈值为零失败。区域建议/学习/消费与 bundle 准入 51 项；episode 数据、正式审计和训练发布 15 项；共享切分正反回归 12 项。新增复核覆盖动作多样性失败关闭、assist bundle 证据门、低损失能力声明禁用，以及共享 registry/hash/seed 完整性。96 episode/192 frame 高基数样本仍为纯 Python 合同测试；正式 900 episode 数据、canonical view 和 development checkpoint 按独立证据口径记录，不包含 AirSim 或真实网络样本。历史阶段计数保持不变。
 - `build_d7_secondary_handoff()` 与 `build_secondary_takeover_plan_metadata()` 当前统一要求 readiness exact-true、expected/actual source 均存在且匹配、plan/required lease epoch 均存在且满足、expiry/current time 均存在且严格 `current_time < expiry`。逐字段 `None`、完整正例和同 id/version 维持路径均有回归；未运行新 AirSim episode。
 - 完全分布式 interceptor/peer 选择不套用二级视觉 readiness 门；动态 N/M、版本/epoch/lease、ACK 和 `global_track_id` 所有权规则未改变。
 - 二级 resource 和 plan lease 只有在 expiry/current time 均存在且严格 `current_time < expiry` 时有效；等于边界按过期处理。缺字段分别输出可审计原因并 fail-closed，不能发布或维持 executable secondary plan。
@@ -681,6 +690,7 @@ main/runtime 负责 AirSim 启停与 episode 顺序、故障注入时间轴、D3
 11. **区域资源建议安全边界**：资源守恒、邻边/分区、最低备用、formal owner/epoch/lease/fault/commit fence、模型回退和 shadow 不变性已完成模块测试；正式降级裁决仍归确定性 D4 状态机。
 12. **下一周期 advisory 消费合同**：版本化内容 ID、严格有效期、逐区域/transfer 来源版本、安全证明、旧 generation/重放/ACK/fault/守恒/edge fail-closed 已完成模块测试；main/D3 实际消费尚未接线。
 13. **区域学习 episode 数据合同**：truth-free source/frame、完整 episode、数值 seed 原子 split、多层 SHA、availability 和严格 BC/PPO loader 已完成模块测试；main 正式 episode writer 尚未接线。
+14. **D4 共享切分消费端**：source-external registry 的 schema/policy/hash/source binding、100-seed 完整覆盖、保留集隔离和只读 BC 视图已完成；D3/D5 消费端和联合训练不由 D4 单独关闭。
 
 ### 9.3 剩余局限
 
@@ -739,6 +749,7 @@ PYTHONPATH=research_modules/d4_distributed_fallback python3 -m pytest -q researc
 - `regional_failover.py`：scalable3d 区域元数据、逐区域 authority、机动高空二级覆盖和受约束原子 fallback；
 - `region_resource.py`：区域资源快照、规则基线、确定性安全投影、reward、数值 seed 原子划分与 paired evaluator；
 - `region_resource_dataset.py`：episode source/frame、stage/finalize/load、数值 seed split、manifest/availability/hash；
+- `canonical_seed_split.py`：共享 seed registry 严格校验、原 dataset/split/source 多级绑定和只读 canonical view；
 - `region_resource_learning.py`：共享区域图 actor-critic、严格 BC/PPO loader、bundle-v2/SHA/OOD 和 fail-closed advisor；
 - `region_resource_cli.py`、`scripts/run_region_resource_advisor.py`：默认 shadow 的建议/paired evaluation CLI；
 - `episode_communication.py`：单次试验时钟通信接口与七场景验收；

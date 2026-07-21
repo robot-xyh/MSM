@@ -6,13 +6,13 @@
 
 **2026-07-20 区域建议边界同步**：新增全局区域资源建议层不改变联盟形成职责。`RegionResourceSnapshot` 只保留需求/积压和资源/通信/authority 的区域聚合，不含 actor truth ID、目标 ID、成员列表或 resource-target assignment；建议只调整区域 quota、邻边 transfer、备用、侦察和 hold/replan。formal committed member、owner/epoch/lease、fault fence 和 ACK 由确定性投影保护，学习策略不能形成/解散联盟或替代 D3 assignment。`d4-region-resource-advisory-v1` 仅把后投影区域建议固化为内容寻址、限时、逐 generation 可审计的下一轮规划输入；消费门重验 current snapshot/plan/epoch/lease/ACK/fault、守恒、邻接/容量和 replay，不输出 formal coalition 的 member/target identity。规则与学习共享同一 projector。原共享图/BC/PPO/bundle/shadow 管线 32/32，新增消费合同后该阶段专项 47/47、D4 全量 350/350；新增 15 项为无随机 seed 的 Python 合同测试，不是联盟形成、正式多 seed、AirSim 或真实网络证据。少于 20 个实际未见 seed 不得 assist。
 
-**2026-07-20 episode 数据合同边界同步**：`d4-region-learning-dataset-v1` 只保存 truth-free 区域快照、区域级 target/reward availability 和可选 recommendation，不保存联盟 target truth、evaluator truth 或成员级 assignment。训练 target 复核 projector/authority/edge，manifest 复核 inventory/split；该阶段数据合同 13/13、D4 全量 365/365。2026-07-21 当前全量为 369/369，新增项只涉及正式数据审计、行为克隆开发包和 shadow-only 准入。这不改变联盟形成、ACK、epoch、lease、CBBA 或恢复逻辑，也不是联盟算法或性能证据。
+**2026-07-20 episode 数据合同边界同步**：`d4-region-learning-dataset-v1` 只保存 truth-free 区域快照、区域级 target/reward availability 和可选 recommendation，不保存联盟 target truth、evaluator truth 或成员级 assignment。训练 target 复核 projector/authority/edge，manifest 复核 inventory/split；该阶段数据合同 13/13、D4 全量 365/365。2026-07-21 当前全量为 381/381；新增共享切分项只提供只读数据治理视图。这不改变联盟形成、ACK、epoch、lease、CBBA 或恢复逻辑，也不是联盟算法或性能证据。
 
 **2026-07-20 main 质点接线事实**：单一二级、多二级区域 owner 和中心/二级连续失效后的 distributed D3 plan 已进入 main-owned scalable 3D 质点模块栈，D7 按 owner/epoch/lease/commit/fault fence 执行；定向测试 8/8。该事实不是 AirSim、真实网络、完整 CCBBA 或自主重构证据。
 
 **2026-07-20 区域合同同步**：`regional_failover.py` 已把中心 -> 机动高空二级 -> distributed 顺序扩展为逐区域 authority，并仅为无有效二级节点的区域加入能力/跨区域 capacity 受约束 bid selection。该 selection 从动态 member/task 集合形成候选，允许单成员覆盖多项 capability，D5 support/hold/ambiguity 参与排序或排除；中心、二级和 distributed 的 `k_j>1` 候选都必须全部 required ACK、current plan/coalition version、epoch 和最早 lease 后原子 `committed`。commit metadata 依次标记 `d3_center_assignment`、`d3_assignment_secondary_coordination`、`bounded_constrained_bid_selection`。23 项区域测试使当时 D4 全量达到 303/303，当前为 365/365。该增量不实现 CBBA 多轮消息共识、全局组合最优、CCBBA coupled timing、reserve 激活或在线成员重构；main 后续只有质点接口接线，仍无 AirSim/真实网络或物理证据。
 
-**2026-07-15 历史合同同步**：secondary coordinator proposal 与两个公开 secondary plan helper 均已 fail-closed；helper active/maintained 路径要求 readiness exact-true、expected/actual source、plan/required lease epoch 和严格未过期时间证据。此前 278/278 不含 helper 的逐字段 `None`，不能证明全部公开入口；当日 280/280 已补齐，当前全量为 369/369。distributed peer commit 继续只受 member/双版本/epoch/lease/digest/partition 合同约束，不套用二级视觉门。
+**2026-07-15 历史合同同步**：secondary coordinator proposal 与两个公开 secondary plan helper 均已 fail-closed；helper active/maintained 路径要求 readiness exact-true、expected/actual source、plan/required lease epoch 和严格未过期时间证据。此前 278/278 不含 helper 的逐字段 `None`，不能证明全部公开入口；当日 280/280 已补齐，当前全量为 381/381。distributed peer commit 继续只受 member/双版本/epoch/lease/digest/partition 合同约束，不套用二级视觉门。
 
 ## 1. 问题定义与关键结论
 
