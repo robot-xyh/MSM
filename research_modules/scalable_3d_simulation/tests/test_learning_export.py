@@ -121,6 +121,16 @@ def test_batch_export_finalizes_whole_seed_d3_and_d5_datasets(tmp_path) -> None:
     assert paths["episode_index"].is_file()
     assert not writer._d3_staging_path.exists()
     assert not writer._episode_index_path.exists()
+    episode_rows = [
+        json.loads(line)
+        for line in paths["episode_index"].read_text(encoding="utf-8").splitlines()
+    ]
+    assert len(episode_rows) == 3
+    for row in episode_rows:
+        assert row["d3_stage_wall_s"] >= 0.0
+        assert row["d4_stage_wall_s"] >= 0.0
+        assert row["d5_graph_stage_wall_s"] >= 0.0
+        assert row["d5_active_vision_stage_wall_s"] >= 0.0
     assert paths["d3_manifest"].is_file()
     assert paths["d4_manifest"].is_file()
     assert paths["d5_manifest"].is_file()

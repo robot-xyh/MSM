@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 import json
 from pathlib import Path
 import shutil
+import time
 from typing import Any, Iterable, Mapping
 
 from .episode_bus import EpisodeManifest, jsonable
@@ -50,6 +51,7 @@ class BatchLearningArtifactWriter:
     ) -> Mapping[str, Any]:
         """Append one complete episode without splitting frames across datasets."""
 
+        d3_started = time.perf_counter()
         records, unavailable = _build_d3_records(
             config=config,
             manifest=manifest,
@@ -60,12 +62,16 @@ class BatchLearningArtifactWriter:
                 stream.write(
                     json.dumps(record.to_dict(), ensure_ascii=False, sort_keys=True) + "\n"
                 )
+        d3_stage_wall_s = time.perf_counter() - d3_started
+        d4_started = time.perf_counter()
         _, d4_summary = _stage_d4_learning_episode(
             self._d4_staging_root,
             config=config,
             manifest=manifest,
             frames=artifacts.d4_region_frames,
         )
+        d4_stage_wall_s = time.perf_counter() - d4_started
+        d5_graph_started = time.perf_counter()
         _, d5_summary = _write_d5_frames(
             self.root / "d5_tracklet_graph",
             config=config,
@@ -78,6 +84,8 @@ class BatchLearningArtifactWriter:
                 "truth_join": "offline_observation_id_to_anonymous_tracklet_v1",
             },
         )
+        d5_graph_stage_wall_s = time.perf_counter() - d5_graph_started
+        d5_active_started = time.perf_counter()
         _, d5_active_summary = _write_d5_active_vision_episode(
             self.root / "d5_active_vision",
             config=config,
@@ -90,6 +98,7 @@ class BatchLearningArtifactWriter:
                 "offline_reward_policy": "explicit_unavailable_until_d6_join",
             },
         )
+        d5_active_stage_wall_s = time.perf_counter() - d5_active_started
         episode_row = {
             "episode_id": manifest.episode_id,
             "scenario_version": config.scenario_version,
@@ -102,6 +111,10 @@ class BatchLearningArtifactWriter:
             "d5_active_vision_staged_frame_count": int(
                 d5_active_summary["staged_frame_count"]
             ),
+            "d3_stage_wall_s": d3_stage_wall_s,
+            "d4_stage_wall_s": d4_stage_wall_s,
+            "d5_graph_stage_wall_s": d5_graph_stage_wall_s,
+            "d5_active_vision_stage_wall_s": d5_active_stage_wall_s,
         }
         with self._episode_index_path.open("a", encoding="utf-8") as stream:
             stream.write(
