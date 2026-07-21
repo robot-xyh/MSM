@@ -1,5 +1,23 @@
 # D5 终端视觉配准与身份认证计划
 
+## 2026-07-21 Supplemental BC 全样本准入审计
+
+- [x] 新增只读 fail-closed 审计入口，复用 strict lazy loader、canonical loader、既有 supplemental
+  合同审计与 BC 候选特征 API；逐项复核 dataset 全文件 SHA/集合、1200 个样本、版本、中心 ID、
+  truth/dirty/reserved、synthetic ACK 边界和四类 unavailable label。JSON/Markdown 只能原子写到
+  supplemental 与 registry source root 之外；绑定错误仍写 `pending` 报告并由 CLI 返回非零。
+- [x] 2026-07-21 对 clean commit `13e37286d2996a227924bb1a8e2766e52116a534` 的实际制品完成审计。
+  接受阈值为 100 episode、1200 sample、canonical `60/20/20` 与 `720/240/240`、302/302 文件 SHA、
+  1200/1200 有限特征和零违规；实测全部通过，7800 个候选特征行、1200/1200 唯一规则示范、
+  truth/reserved/dirty=0。tracked JSON/中文报告已发布，内容 SHA 为
+  `a11b65596a4c416deba6d0cb35dcc0c32342a5bae0481291d43e8de0e26550dd`；新增专项
+  `4 passed in 35.72s`，D5 全量 `486 passed in 119.63s`。
+- [x] 关闭 supplemental producer/canonical 之后的 behavior-cloning full-sample audit 子项；确认
+  `400/400/400` 仅为 synthetic 故障覆盖，四类 label 均 `0/1200 available`。本轮没有训练、AirSim、
+  `.pt` 权重或数据树写入，PPO/assist/authority=false，rule fallback required=true。
+- [ ] 由 main/D6 完成跨模块学习准入审计；真实 runtime ACK/outcome、reward/counterfactual/causal、
+  paired shadow 未完成前，不开启 PPO、assist、在线或相机命令 authority。
+
 ## 2026-07-21 主动视觉课程阶段 B1b2
 
 **Clean evidence：** main 已在 detached clean worktree `13e37286d2996a227924bb1a8e2766e52116a534` 完成 100/800/1200 与 canonical `60/20/20`、`720/240/240` 的实际生成；dataset/view/config/training-registry/shared-registry/summary-content SHA 分别为 `0c474ee1b0bab34a46c2ebce328761983cf2ecc757da30c2d3d2e03a06cd1acf`、`0ab1a4a6bdd439f6c8a74df5059de3c4950791fba35a1b9514942e83779f72a8`、`e93ca6310338be5db4539fac195f5257e28d16a64b78b1a0351bf6aeca01fcee`、`2ab928a476a4430b99326f245222f058bc5be5025158134ba89b01b3dec7815f`、`68608d29d1f733beea87f1faf06464fededb68a9c2972c51c10cd4c2160f032f`、`0577c73810413ced6277e679477422f467cb2db094f1d376e39e4cbb2a3abd65`，正式树前后 SHA 同为 `8ffbe5cf044d121163c8acc3dce1bbd54e14bb6b211b8e1cf440f24c93294fca`；clean producer/canonical evidence 已关闭，synthetic ACK 不作真实 ACK，PPO/assist 仍关闭。
@@ -30,7 +48,8 @@
   `15 passed in 71.87s`，D5 全量 `482 passed in 83.05s`。
 - [x] main 已在上述 clean revision 使用正式 registry 执行 CLI，归档 ignored output、tracked
   JSON/中文 Markdown 及实际 SHA；正式 900-episode 输入树未修改。
-- [ ] 对绑定 dataset/view/config/registry 执行 BC 全样本审计，再由 main/D6 做跨模块准入审计；真实
+- [x] 已对绑定 dataset/view/config/registry 执行 supplemental BC 全样本审计并发布零违规证据。
+- [ ] 由 main/D6 做跨模块准入审计；真实
   runtime ACK/outcome、reward/counterfactual/causal label 和 paired shadow 未完成前，不开启
   PPO/assist/在线或相机命令权。
 
@@ -58,7 +77,8 @@
   `467 passed in 10.40s`，`py_compile` 通过。
 - [x] B1b2 已复用该 builder 完成独立 100-seed 生成、detached finalization、canonical
   `60/20/20`、CLI 和严格统计接口；clean producer/canonical evidence 后续已由 `13e3728` 实际制品
-  关闭。开放项仅为 BC 全样本审计、真实 runtime ACK/outcome、reward/counterfactual/causal、
+  关闭。supplemental BC 全样本审计也已关闭；开放项仅为 main/D6 跨模块准入、真实 runtime
+  ACK/outcome、reward/counterfactual/causal、
   paired shadow 及 PPO/assist/authority 准入。
 
 ## 2026-07-21 主动视觉相机执行器阶段 B1a
@@ -77,8 +97,9 @@
 - [x] 阶段 B1b2 已接 supplemental curriculum producer、canonical `60/20/20` 和统计接口。
 - [x] main 已在 clean revision `13e3728` 生成 detached supplemental 制品并归档实际 SHA，关闭 clean
   producer/canonical evidence。
-- [ ] BC 全样本审计、真实 runtime ACK/outcome、reward/counterfactual/causal、paired shadow 和
-  PPO/assist/authority 准入仍未完成；B1a/B1b2 均未运行 AirSim。
+- [x] supplemental BC 全样本审计已完成并绑定 clean 数据 SHA。
+- [ ] main/D6 跨模块准入、真实 runtime ACK/outcome、reward/counterfactual/causal、paired shadow 和
+  PPO/assist/authority 准入仍未完成；B1a/B1b2 与本审计均未运行 AirSim。
 
 ## 2026-07-21 主动视觉宽视场稳定门阶段 A
 

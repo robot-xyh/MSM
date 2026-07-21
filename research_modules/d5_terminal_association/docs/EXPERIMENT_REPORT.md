@@ -1,5 +1,46 @@
 # D5 末端视觉配准与身份认证实验报告
 
+## 2026-07-21 Supplemental BC 全样本 clean 审计
+
+本轮以 clean producer commit `13e37286d2996a227924bb1a8e2766e52116a534`、实际 ignored
+supplemental output、tracked producer summary 及正式 training/shared registry 为只读输入。接受阈值为
+100 episode、1200 sample、canonical episode `60/20/20` 和 sample `720/240/240`、文件集合完整且
+全部 SHA 命中、1200 个样本的 35 维候选特征全部有限、规则示范在候选集中唯一，以及
+truth/reserved/dirty/audit violation 均为 0。
+
+| 验收项 | 实测 | 判定 |
+| --- | --- | --- |
+| 完整数据集 | 303 个 dataset 文件，其中 302/302 由 `SHA256SUMS` 校验 | 通过 |
+| episode 文件集合 | descriptor/online/offline 各 100，全部与 manifest 一致 | 通过 |
+| 规模 | 100 episode、800 segment、1200 sample | 通过 |
+| canonical | episode `60/20/20`、sample `720/240/240`，数值 seed 原子分桶 | 通过 |
+| BC 特征 | 1200/1200 样本有限，35 维，7800 候选行，规则示范 1200/1200 唯一 | 通过 |
+| 分布 | intent `200/600/200/200`、FOV `1000/200`、role `600/600` | 通过 |
+| 版本/身份 | 100/100 episode 单调，1200/1200 样本一致；唯一 caller-owned center ID | 通过 |
+| 隔离 | online truth=0、reserved overlap=0、dirty episode=0、audit violation=0 | 通过 |
+| offline label | reward/outcome/counterfactual/causal 均 `0/1200 available`，未补零 | 保持 unavailable |
+| 权限 | PPO/assist/online/camera authority=false；rule fallback required=true | 保持关闭 |
+
+tracked JSON 和中文报告分别为
+`results/active_vision_supplemental_bc_full_sample_audit_20260721.json`、
+`reports/D5_ACTIVE_VISION_SUPPLEMENTAL_BC_FULL_SAMPLE_AUDIT_20260721.md`，审计内容 SHA256 为
+`a11b65596a4c416deba6d0cb35dcc0c32342a5bae0481291d43e8de0e26550dd`。dataset manifest、canonical
+view、dataset config、training registry、shared registry、producer summary content SHA 依次为
+`0c474ee1b0bab34a46c2ebce328761983cf2ecc757da30c2d3d2e03a06cd1acf`、
+`0ab1a4a6bdd439f6c8a74df5059de3c4950791fba35a1b9514942e83779f72a8`、
+`e93ca6310338be5db4539fac195f5257e28d16a64b78b1a0351bf6aeca01fcee`、
+`2ab928a476a4430b99326f245222f058bc5be5025158134ba89b01b3dec7815f`、
+`68608d29d1f733beea87f1faf06464fededb68a9c2972c51c10cd4c2160f032f`、
+`0577c73810413ced6277e679477422f467cb2db094f1d376e39e4cbb2a3abd65`。supplemental 输出保持
+308 files/约 2.2 MiB；正式 900-episode 树保持 43973 files、SHA256
+`8ffbe5cf044d121163c8acc3dce1bbd54e14bb6b211b8e1cf440f24c93294fca`。
+
+结论为 `behavior-cloning full-sample audit=complete`，但只针对 synthetic 补充规则教师数据，并非
+D6 跨模块准入或模型训练结果。ACK `400/400/400` 只是故障注入覆盖，不是 runtime 分布。真实
+ACK/outcome attribution、reward/counterfactual/causal、paired shadow 仍缺失；本轮未训练、未运行
+AirSim、未写 `.pt` 或修改数据树。新增专项 `4 passed in 35.72s`，D5 全量
+`486 passed in 119.63s`，零失败阈值通过。
+
 ## 2026-07-21 Supplemental curriculum B1b2 clean evidence
 
 main 于 `2026-07-21T18:19:52Z` 在 detached clean worktree
@@ -17,7 +58,7 @@ lazy/canonical audit 零违规、truth/reserved/dirty 泄漏为 0、所有 SHA �
 | ACK | applied/rejected/missing `400/400/400` | 每 seed `4/4/4` 故障注入，不是实际运行分布 |
 | 隔离审计 | online truth=0、reserved overlap=0、dirty episode=0、audit violation=0 | clean source、strict audit pass |
 | availability | reward/outcome/counterfactual/causal 均 `0/1200 available` | PPO/assist/online/camera authority=false |
-| BC 准备度 | view available=true、development eligible=true | 尚无绑定全样本 BC 审计，不构成模型准入 |
+| BC 准备度 | view available=true、development eligible=true | 后续绑定全样本审计已完成；仍不构成模型准入 |
 | 完整性 | dataset `SHA256SUMS` 全部通过 | 100 descriptor、100 online、100 offline 均校验通过 |
 | 正式输入隔离 | 900-episode tree 前后 SHA 均为 `8ffbe5cf...94fca` | formal input 未修改 |
 
@@ -32,8 +73,8 @@ SHA 绑定如下：
 | shared registry | `68608d29d1f733beea87f1faf06464fededb68a9c2972c51c10cd4c2160f032f` |
 | summary `content_sha256` | `0577c73810413ced6277e679477422f467cb2db094f1d376e39e4cbb2a3abd65` |
 
-canonical readiness 仍要求绑定全样本 BC 审计、真实 applied ACK attribution、
-reward/counterfactual/causal label 和 paired shadow non-degradation。下一步为 D5 BC 全样本审计及
+生成时 canonical readiness 要求的绑定全样本 BC 审计已由本文顶部证据关闭；真实 applied ACK
+attribution、reward/counterfactual/causal label 和 paired shadow non-degradation 仍开放。下一步为
 main/D6 跨模块准入审计；本轮没有训练或 AirSim 运行，不开启 PPO/assist/authority。
 
 ## 2026-07-21 Supplemental curriculum B1b2 临时验收

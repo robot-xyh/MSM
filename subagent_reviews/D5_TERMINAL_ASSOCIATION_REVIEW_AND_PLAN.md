@@ -1,8 +1,25 @@
 # D5 末端视觉配准与协同身份认证综述及子方案
 
+## 2026-07-21 Supplemental BC 全样本准入复核
+
+D5 新增只读 fail-closed 审计并对 clean supplemental 完整 100 episode/1200 sample 运行。接受阈值为
+canonical `60/20/20` episode 与 `720/240/240` sample、302/302 checksummed 文件、1200/1200 有限
+35 维候选特征、版本/身份一致及 truth/reserved/dirty/违规为 0；实测全部通过，候选特征行 7800，
+规则示范 1200/1200 唯一。证据 JSON/中文报告内容 SHA 为
+`a11b65596a4c416deba6d0cb35dcc0c32342a5bae0481291d43e8de0e26550dd`，来源 commit 为
+`13e37286d2996a227924bb1a8e2766e52116a534`，dataset/view/config/registry/summary 六项 SHA 与下节
+clean evidence 完全一致。supplemental 树保持 308 files/约 2.2 MiB；正式 900-episode 树保持
+43973 files、SHA256 `8ffbe5cf044d121163c8acc3dce1bbd54e14bb6b211b8e1cf440f24c93294fca`。
+
+该证据关闭 supplemental BC full-sample audit，作为 D6 跨模块学习准入的前置证据；不代表 D6 已
+准入或模型已训练。`400/400/400` 仍只属 synthetic 故障注入，四类离线 label 仍 unavailable，真实
+runtime ACK/outcome、reward/counterfactual/causal、paired shadow 保持开放。PPO/assist/authority=false，
+rule fallback required=true；本轮未运行 AirSim、未生成 `.pt`、未修改两棵数据树。
+新增专项 `4 passed in 35.72s`，D5 全量 `486 passed in 119.63s`，接受阈值为零失败。
+
 ## 2026-07-21 B1b2 clean evidence 复核
 
-main 已在 detached clean worktree `13e37286d2996a227924bb1a8e2766e52116a534` 生成实际 100/800/1200 supplemental 制品与 canonical `60/20/20`、`720/240/240` 视图；dataset/view/config/training-registry/shared-registry/summary-content SHA 依次为 `0c474ee1b0bab34a46c2ebce328761983cf2ecc757da30c2d3d2e03a06cd1acf`、`0ab1a4a6bdd439f6c8a74df5059de3c4950791fba35a1b9514942e83779f72a8`、`e93ca6310338be5db4539fac195f5257e28d16a64b78b1a0351bf6aeca01fcee`、`2ab928a476a4430b99326f245222f058bc5be5025158134ba89b01b3dec7815f`、`68608d29d1f733beea87f1faf06464fededb68a9c2972c51c10cd4c2160f032f`、`0577c73810413ced6277e679477422f467cb2db094f1d376e39e4cbb2a3abd65`，正式树前后 SHA 同为 `8ffbe5cf044d121163c8acc3dce1bbd54e14bb6b211b8e1cf440f24c93294fca`，truth/reserved/dirty/audit 均为 0。clean producer/canonical evidence 已关闭；`400/400/400` 只属 synthetic 故障覆盖，四类 label 均 `0/1200 available`，PPO/assist/authority 仍关闭，下一步为 BC 全样本与 main/D6 跨模块准入审计，本次无训练或 AirSim。
+main 已在 detached clean worktree `13e37286d2996a227924bb1a8e2766e52116a534` 生成实际 100/800/1200 supplemental 制品与 canonical `60/20/20`、`720/240/240` 视图；dataset/view/config/training-registry/shared-registry/summary-content SHA 依次为 `0c474ee1b0bab34a46c2ebce328761983cf2ecc757da30c2d3d2e03a06cd1acf`、`0ab1a4a6bdd439f6c8a74df5059de3c4950791fba35a1b9514942e83779f72a8`、`e93ca6310338be5db4539fac195f5257e28d16a64b78b1a0351bf6aeca01fcee`、`2ab928a476a4430b99326f245222f058bc5be5025158134ba89b01b3dec7815f`、`68608d29d1f733beea87f1faf06464fededb68a9c2972c51c10cd4c2160f032f`、`0577c73810413ced6277e679477422f467cb2db094f1d376e39e4cbb2a3abd65`，正式树前后 SHA 同为 `8ffbe5cf044d121163c8acc3dce1bbd54e14bb6b211b8e1cf440f24c93294fca`，truth/reserved/dirty/audit 均为 0。clean producer/canonical 与后续 supplemental BC 全样本证据均已关闭；`400/400/400` 只属 synthetic 故障覆盖，四类 label 均 `0/1200 available`，PPO/assist/authority 仍关闭，下一步为 main/D6 跨模块准入审计，本次无训练或 AirSim。
 
 ## 2026-07-21 Supplemental curriculum B1b2 复核
 
@@ -21,7 +38,8 @@ tmp_path 验收得到 100 episode、800 segment、1200 sample；canonical sample
 
 上述 tmp_path 结果是软件阶段历史验收；后续 main 已在 clean revision `13e3728` 执行 CLI、归档实际
 SHA，并关闭 clean supplemental producer/canonical evidence。正式 900 episode 未修改，也未运行
-AirSim 或训练。开放项只剩 BC 全样本审计、真实 ACK/outcome、reward/counterfactual/causal、
+AirSim 或训练。supplemental BC 全样本审计已由本文顶部证据关闭；开放项只剩 main/D6 跨模块准入、
+真实 ACK/outcome、reward/counterfactual/causal、
 paired shadow 及 PPO/assist/authority 准入。
 
 ## 2026-07-21 主动视觉宽视场门复核

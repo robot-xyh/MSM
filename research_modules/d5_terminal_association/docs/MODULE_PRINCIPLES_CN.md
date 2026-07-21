@@ -2,6 +2,30 @@
 
 **状态日期：2026-07-21**
 
+## Supplemental BC 全样本审计原则
+
+补充规则教师数据进入跨模块学习评审前，必须对 immutable dataset、detached canonical view、training/
+shared registry 和 producer summary 重新建立文件级绑定，不能只信任生成时的统计。审计先复用 strict
+lazy loader 校验 `SHA256SUMS` 精确文件集合和 online/offline join，再复用 canonical loader 按数值 seed
+原子分桶；随后遍历全部 BC 样本，要求每个规则示范在有限动作候选中唯一，35 维候选特征全部有限，
+plan/coalition/communication/track 版本单调一致，且所有 track、assignment、projection、action 引用
+仍指向调用方提供的唯一中心 `global_track_id`。审计 JSON/中文报告不得写入 supplemental 或 registry
+source root，绑定不一致时仍发布 `pending` 证据并返回失败。
+
+2026-07-21 实际 clean 审计接受阈值为 100 episode、1200 sample、canonical episode `60/20/20` 与
+sample `720/240/240`、302/302 checksummed 文件、1200/1200 有限特征及零 truth/reserved/dirty/
+audit violation。实测全部通过，100 descriptor/online/offline 集合完整，7800 个候选特征行，1200/1200
+规则示范唯一；审计内容 SHA256 为
+`a11b65596a4c416deba6d0cb35dcc0c32342a5bae0481291d43e8de0e26550dd`，来源 commit 为
+`13e37286d2996a227924bb1a8e2766e52116a534`。来源六项 SHA 与 producer clean evidence 一致；
+supplemental 树保持 308 files/约 2.2 MiB，正式 900-episode 树保持 43973 files、SHA256
+`8ffbe5cf044d121163c8acc3dce1bbd54e14bb6b211b8e1cf440f24c93294fca`。
+
+该审计只关闭 supplemental behavior-cloning full-sample 子项。补充课程是 synthetic 规则教师数据，
+不是正式观测语料；`400/400/400` 是故障注入覆盖，不是真实 runtime ACK。四类离线标签仍 unavailable，
+不得补零。D6 跨模块准入、真实 ACK/outcome attribution、reward/counterfactual/causal 与 paired shadow
+仍未完成，因此 PPO、assist、在线/相机 authority 保持 false，规则回退必需。
+
 ## Supplemental curriculum 生成原则
 
 补充课程与正式 900-episode 数据是两个独立数据集。D5 只接受调用方显式给出的中心
@@ -31,9 +55,10 @@ token/SHA 可原样保留。
 100 episode、800 segment、1200 sample 与 canonical seed/episode `60/20/20`、sample
 `720/240/240` 全部通过；online truth、reserved overlap、dirty episode 和 audit violation 均为 0。
 正式 900-episode 输入树前后 SHA 同为
-`8ffbe5cf044d121163c8acc3dce1bbd54e14bb6b211b8e1cf440f24c93294fca`。该证据关闭 clean
-supplemental producer/canonical 子项，但不改变上述权限边界。下一步必须是绑定 SHA 的 BC 全样本
-审计和 main/D6 跨模块准入审计，不能从 synthetic ACK 推导真实执行效果。
+`8ffbe5cf044d121163c8acc3dce1bbd54e14bb6b211b8e1cf440f24c93294fca`。该生成证据关闭 clean
+supplemental producer/canonical 子项；其后绑定 SHA 的 BC 全样本审计也已由本节顶部证据关闭，且不
+改变上述权限边界。下一步只进入 main/D6 跨模块准入与真实运行证据建设，不能从 synthetic ACK
+推导真实执行效果。
 
 ## 宽视场稳定门原理
 

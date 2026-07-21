@@ -1,8 +1,25 @@
 # D5 M 对 N 末端多视角配准与协同定位调研
 
+## 2026-07-21 Supplemental BC 全样本审计对 M 对 N 的边界
+
+D5 已对 clean supplemental 100 episode/1200 sample 完成绑定 SHA 的只读全样本审计：canonical
+episode/sample 为 `60/20/20`、`720/240/240`，302/302 checksummed 文件、1200/1200 有限特征、
+7800 候选行、1200/1200 唯一规则示范均通过，truth/reserved/dirty/违规为 0。审计内容 SHA256 为
+`a11b65596a4c416deba6d0cb35dcc0c32342a5bae0481291d43e8de0e26550dd`，来源 commit 为
+`13e37286d2996a227924bb1a8e2766e52116a534`；六项 producer 来源 SHA 保持本文下节记录值，正式
+900-episode 树保持 43973 files 与
+`8ffbe5cf044d121163c8acc3dce1bbd54e14bb6b211b8e1cf440f24c93294fca`。
+
+该结果关闭 supplemental BC 全样本子项，但课程每 episode 仍只有 interceptor/recon 两个角色，不能
+替代 M 对 N 的多相机可见性、跨视角关联、真实 ACK/outcome 或模型评估。`400/400/400` 只属 synthetic
+故障覆盖；四类离线标签 unavailable，未训练模型或运行 AirSim。main/D6 跨模块准入、M 对 N 真实
+runtime、paired shadow 与 PPO/assist/authority 仍开放，规则回退必需。
+本轮新增专项 `4 passed in 35.72s`、D5 全量 `486 passed in 119.63s`；这些仍是软件/离线审计回归，
+不构成 M 对 N runtime 性能结论。
+
 ## 2026-07-21 B1b2 clean evidence 对 M 对 N 的边界
 
-commit `13e37286d2996a227924bb1a8e2766e52116a534` 的 clean supplemental 制品已通过 100/800/1200、canonical `60/20/20` 与 `720/240/240`、truth/reserved/dirty/audit 零违规检查，dataset/view/config/training-registry/shared-registry/summary-content SHA 依次为 `0c474ee1b0bab34a46c2ebce328761983cf2ecc757da30c2d3d2e03a06cd1acf`、`0ab1a4a6bdd439f6c8a74df5059de3c4950791fba35a1b9514942e83779f72a8`、`e93ca6310338be5db4539fac195f5257e28d16a64b78b1a0351bf6aeca01fcee`、`2ab928a476a4430b99326f245222f058bc5be5025158134ba89b01b3dec7815f`、`68608d29d1f733beea87f1faf06464fededb68a9c2972c51c10cd4c2160f032f`、`0577c73810413ced6277e679477422f467cb2db094f1d376e39e4cbb2a3abd65`，正式树前后 SHA 同为 `8ffbe5cf044d121163c8acc3dce1bbd54e14bb6b211b8e1cf440f24c93294fca`。该证据只关闭 producer/canonical 子项，不是 M 对 N runtime、真实 ACK 或模型证据；PPO/assist/authority 不变，下一步为 BC 全样本与 main/D6 跨模块准入审计。
+commit `13e37286d2996a227924bb1a8e2766e52116a534` 的 clean supplemental 制品已通过 100/800/1200、canonical `60/20/20` 与 `720/240/240`、truth/reserved/dirty/audit 零违规检查，dataset/view/config/training-registry/shared-registry/summary-content SHA 依次为 `0c474ee1b0bab34a46c2ebce328761983cf2ecc757da30c2d3d2e03a06cd1acf`、`0ab1a4a6bdd439f6c8a74df5059de3c4950791fba35a1b9514942e83779f72a8`、`e93ca6310338be5db4539fac195f5257e28d16a64b78b1a0351bf6aeca01fcee`、`2ab928a476a4430b99326f245222f058bc5be5025158134ba89b01b3dec7815f`、`68608d29d1f733beea87f1faf06464fededb68a9c2972c51c10cd4c2160f032f`、`0577c73810413ced6277e679477422f467cb2db094f1d376e39e4cbb2a3abd65`，正式树前后 SHA 同为 `8ffbe5cf044d121163c8acc3dce1bbd54e14bb6b211b8e1cf440f24c93294fca`。该证据关闭 producer/canonical，后续 supplemental BC 全样本子项也已关闭；它仍不是 M 对 N runtime、真实 ACK 或模型证据。PPO/assist/authority 不变，下一步为 main/D6 跨模块准入审计。
 
 ## 2026-07-21 Supplemental curriculum B1b2 对 M 对 N 状态的影响
 
@@ -15,7 +32,8 @@ episode 按设计只含 interceptor/recon 两个相机角色。它覆盖两角�
 `15 passed`、D5 全量 `482 passed in 83.05s` 是软件阶段历史验收；后续 `13e3728` clean 制品已关闭
 supplemental producer/canonical evidence，但不构成 M 对 N 模型或 runtime 证据。本轮没有 M 对 N
 模型重训、真实 ACK/outcome、reward/counterfactual/causal 或 paired shadow，因此既有 M 对 N 性能
-与准入结论不变；BC 全样本与 main/D6 跨模块准入审计仍开放，assist/PPO/authority 继续关闭。
+与准入结论不变；supplemental BC 全样本审计已完成，但 main/D6 跨模块准入仍开放，
+assist/PPO/authority 继续关闭。
 
 ## 2026-07-20 M 对 N 主动视觉行为克隆结果
 

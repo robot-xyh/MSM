@@ -4,6 +4,53 @@
 
 **适用范围：** 本文依据第五研究模块（D5）的当前代码、README、PLAN、模块原理文档和系统总汇总，同步说明算法原理、数据合同、代码实施路径与验证结果。文中严格区分默认在线主线、已实现但非默认的辅助/离线能力，以及尚未实现能力；计划项不能据此解释为已上线能力。
 
+## 2026-07-21 Supplemental BC 全样本审计实施
+
+`active_vision_supplemental_bc_audit.py` 是只读审计编排层，不定义新 dataset 序列化合同。它先调用
+`load_active_vision_episode_dataset_lazy()` 验证 `SHA256SUMS` 对 302 个 dataset 文件的精确覆盖、逐文件
+SHA、只读位、schema、descriptor/online/offline join 和 truth guard，再调用
+`load_active_vision_canonical_seed_view()` 复算 registry 与数值 seed 原子分桶。既有
+`audit_active_vision_supplemental_curriculum()` 负责 100 episode/1200 sample 的版本、中心 ID、ACK、
+availability 和 producer summary 重算；额外 BC 遍历调用 `active_vision_candidate_batch()`，检查每个
+规则动作在有限候选中唯一且全部 35 维训练特征有限。输出路径预检保护 supplemental root 与两个
+registry source root；JSON/Markdown 用 sibling 临时文件和 `os.replace()` 原子写入。任一 expected/
+actual SHA 或 commit 不匹配时状态为 `pending`、PPO/assist/authority 仍 false，CLI 返回非零。
+
+CLI 形式为：
+
+```bash
+PYTHONPATH=research_modules/d5_terminal_association/src \
+python3 -m d5_terminal_association.active_vision_supplemental_bc_audit \
+  --dataset-dir <supplemental-output/dataset> \
+  --canonical-view <canonical_seed_view.json> \
+  --training-seed-registry <training_seed_registry.json> \
+  --shared-seed-registry <shared-registry.json> \
+  --supplemental-summary <curriculum_summary.json> \
+  --expected-dataset-manifest-sha256 <sha256> \
+  --expected-canonical-view-sha256 <sha256> \
+  --expected-dataset-config-sha256 <sha256> \
+  --expected-training-registry-sha256 <sha256> \
+  --expected-shared-registry-sha256 <sha256> \
+  --expected-summary-content-sha256 <sha256> \
+  --expected-source-git-commit <full-commit> \
+  --validation-date 2026-07-21 \
+  --output-json <tracked-audit.json> \
+  --output-markdown <tracked-report.md>
+```
+
+实际 clean 运行通过 100 episode、1200 sample、canonical `60/20/20` episode 与 `720/240/240`
+sample、302/302 文件 SHA、1200/1200 有限特征、7800 候选行和零违规阈值。审计内容 SHA256 为
+`a11b65596a4c416deba6d0cb35dcc0c32342a5bae0481291d43e8de0e26550dd`，clean source commit 为
+`13e37286d2996a227924bb1a8e2766e52116a534`；dataset manifest/view/config/training registry/shared
+registry/summary content SHA 分别为
+`0c474ee1b0bab34a46c2ebce328761983cf2ecc757da30c2d3d2e03a06cd1acf`、
+`0ab1a4a6bdd439f6c8a74df5059de3c4950791fba35a1b9514942e83779f72a8`、
+`e93ca6310338be5db4539fac195f5257e28d16a64b78b1a0351bf6aeca01fcee`、
+`2ab928a476a4430b99326f245222f058bc5be5025158134ba89b01b3dec7815f`、
+`68608d29d1f733beea87f1faf06464fededb68a9c2972c51c10cd4c2160f032f`、
+`0577c73810413ced6277e679477422f467cb2db094f1d376e39e4cbb2a3abd65`。该运行未训练、未启动 AirSim、
+未写权重或两棵数据树；只关闭 supplemental BC 全样本子项，D6 准入和真实运行证据仍开放。
+
 ## 2026-07-21 Supplemental curriculum B1b2 实施
 
 `active_vision_curriculum_dataset.py` 是现有 API 的编排层。它先严格读取 training registry 的 100 个
@@ -70,8 +117,9 @@ canonical `60/20/20` 与 `720/240/240`、四 intent、两 FOV、两角色及 ACK
 
 这关闭 clean supplemental producer/canonical evidence，不关闭模型或运行准入。ACK 仍是确定性故障
 注入覆盖；reward/outcome/counterfactual/causal 均为 `0/1200 available`，PPO、assist、在线 authority
-和相机命令权均为 false。readiness 继续列出绑定全样本 BC 审计、真实 applied ACK attribution、
-reward/counterfactual/causal 及 paired shadow non-degradation。下一步由 D5 完成 BC 全样本审计，
+和相机命令权均为 false。生成时 readiness 列出的绑定全样本 BC 审计现已由本文顶部 clean 证据关闭；
+真实 applied ACK attribution、reward/counterfactual/causal 及 paired shadow non-degradation 仍开放。
+下一步由 main/D6 完成跨模块准入审计，
 再由 main/D6 做跨模块准入审计；本轮未训练、未运行 AirSim，也不重绑旧 bundle。
 
 ## 2026-07-21 宽视场稳定门实施

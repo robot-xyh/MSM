@@ -13,11 +13,14 @@ output 与 tracked JSON/中文 Markdown 均位于受保护 source root 之外；
 SHA 同为 `8ffbe5cf044d121163c8acc3dce1bbd54e14bb6b211b8e1cf440f24c93294fca`。实际 100/800/1200 与
 canonical `60/20/20` 已通过 clean producer 审计，因此该生成证据不再开放。
 
-本次仍没有启动 AirSim，没有 AirSim 运行日期、场景、图像、真实云台 ACK 或执行后 outcome。制品内
+本次仍没有启动 AirSim，没有 AirSim 运行场景、图像、真实云台 ACK 或执行后 outcome。制品内
 applied/rejected/missing `400/400/400` 仅为 executor 故障注入；真实 AirSim requested action、ACK、
-reward/counterfactual/causal evaluator label 仍须按既有 online/offline 分流合同采集。下一步先做绑定
-全样本 BC 审计，再由 main/D6 做跨模块准入审计；paired shadow 通过前保持
-assist/PPO/online/camera authority=false。D5 全量软件回归仍为 `482 passed in 83.05s`。
+reward/counterfactual/causal evaluator label 仍须按既有 online/offline 分流合同采集。2026-07-21
+supplemental BC 全样本审计已按 100 episode/1200 sample、302/302 文件 SHA、1200/1200 有限特征和
+零违规阈值通过，内容 SHA 为
+`a11b65596a4c416deba6d0cb35dcc0c32342a5bae0481291d43e8de0e26550dd`；该离线证据没有运行 AirSim，
+不能替代真实 ACK/outcome。下一步由 main/D6 做跨模块准入审计并建设 runtime/paired shadow 数据；
+paired shadow 通过前保持 assist/PPO/online/camera authority=false，规则回退必需。
 
 ## 2026-07-20 主动视觉 episode dataset 接线边界
 

@@ -1,8 +1,38 @@
 # D5 实现差距审计
 
+## 2026-07-21 Supplemental BC 全样本 GAP 关闭证据
+
+**supplemental behavior-cloning full-sample audit 子项已关闭，D6 跨模块准入仍开放。** D5 新增只读
+fail-closed 审计入口并对 clean commit `13e37286d2996a227924bb1a8e2766e52116a534` 的实际 100-episode
+制品完成验证。接受阈值为 100 episode、1200 sample、canonical episode `60/20/20` 与 sample
+`720/240/240`、dataset 302/302 个 checksummed 文件一致、online/offline/descriptor 各 100 个、全部
+35 维候选特征有限、版本与 caller-owned `global_track_id` 一致，以及 truth/reserved/dirty/audit
+violation 均为 0。实测 1200/1200 样本通过，形成 7800 个候选特征行，规则示范 1200/1200 在候选集
+唯一，intent/FOV/role 为 `200/600/200/200`、`1000/200`、`600/600`，违规为 0。
+
+tracked 证据为 `results/active_vision_supplemental_bc_full_sample_audit_20260721.json` 和
+`reports/D5_ACTIVE_VISION_SUPPLEMENTAL_BC_FULL_SAMPLE_AUDIT_20260721.md`，内容 SHA256 为
+`a11b65596a4c416deba6d0cb35dcc0c32342a5bae0481291d43e8de0e26550dd`。dataset/view/config/training-
+registry/shared-registry/producer-summary-content SHA 仍为
+`0c474ee1b0bab34a46c2ebce328761983cf2ecc757da30c2d3d2e03a06cd1acf`、
+`0ab1a4a6bdd439f6c8a74df5059de3c4950791fba35a1b9514942e83779f72a8`、
+`e93ca6310338be5db4539fac195f5257e28d16a64b78b1a0351bf6aeca01fcee`、
+`2ab928a476a4430b99326f245222f058bc5be5025158134ba89b01b3dec7815f`、
+`68608d29d1f733beea87f1faf06464fededb68a9c2972c51c10cd4c2160f032f`、
+`0577c73810413ced6277e679477422f467cb2db094f1d376e39e4cbb2a3abd65`。supplemental 树仍为
+308 files/约 2.2 MiB，正式 900-episode 树仍为 43973 files、SHA256
+`8ffbe5cf044d121163c8acc3dce1bbd54e14bb6b211b8e1cf440f24c93294fca`。
+
+该关闭项只证明补充规则教师数据可供 D6 继续做跨模块学习准入审计，不追认旧模型或开放 runtime。
+synthetic `applied/rejected/missing=400/400/400` 不是实际 ACK；reward/outcome/counterfactual/causal
+仍为 `0/1200 available` 且未补零。main/D6 准入、真实 ACK/outcome attribution、paired shadow 和
+上述离线标签仍是开放 P1；PPO/assist/online/camera authority=false，规则回退必需。本轮未训练、
+未运行 AirSim、未生成 `.pt`，未修改 supplemental 或正式 900-episode 数据树。新增专项
+`4 passed in 35.72s`，D5 全量 `486 passed in 119.63s`，零失败阈值通过。
+
 ## 2026-07-21 B1b2 clean evidence
 
-main 已在 detached clean worktree `13e37286d2996a227924bb1a8e2766e52116a534` 完成 100 episode/800 segment/1200 sample 与 canonical seed/episode `60/20/20`、sample `720/240/240` 的实际生成；intent/FOV/role/故障注入 ACK 分别为 `200/600/200/200`、`1000/200`、`600/600`、`400/400/400`，truth/reserved/dirty/audit 均零违规。dataset/view/config/training-registry/shared-registry/summary-content SHA 依次为 `0c474ee1b0bab34a46c2ebce328761983cf2ecc757da30c2d3d2e03a06cd1acf`、`0ab1a4a6bdd439f6c8a74df5059de3c4950791fba35a1b9514942e83779f72a8`、`e93ca6310338be5db4539fac195f5257e28d16a64b78b1a0351bf6aeca01fcee`、`2ab928a476a4430b99326f245222f058bc5be5025158134ba89b01b3dec7815f`、`68608d29d1f733beea87f1faf06464fededb68a9c2972c51c10cd4c2160f032f`、`0577c73810413ced6277e679477422f467cb2db094f1d376e39e4cbb2a3abd65`，正式 900-episode 输入树前后 SHA 同为 `8ffbe5cf044d121163c8acc3dce1bbd54e14bb6b211b8e1cf440f24c93294fca`。clean supplemental producer/canonical evidence 子项据此关闭；synthetic ACK 不是真实 ACK，四类 label 仍为 `0/1200 available`，PPO/assist/authority 继续关闭，下一步为 BC 全样本审计与 main/D6 跨模块准入审计，本次未训练、未运行 AirSim。
+main 已在 detached clean worktree `13e37286d2996a227924bb1a8e2766e52116a534` 完成 100 episode/800 segment/1200 sample 与 canonical seed/episode `60/20/20`、sample `720/240/240` 的实际生成；intent/FOV/role/故障注入 ACK 分别为 `200/600/200/200`、`1000/200`、`600/600`、`400/400/400`，truth/reserved/dirty/audit 均零违规。dataset/view/config/training-registry/shared-registry/summary-content SHA 依次为 `0c474ee1b0bab34a46c2ebce328761983cf2ecc757da30c2d3d2e03a06cd1acf`、`0ab1a4a6bdd439f6c8a74df5059de3c4950791fba35a1b9514942e83779f72a8`、`e93ca6310338be5db4539fac195f5257e28d16a64b78b1a0351bf6aeca01fcee`、`2ab928a476a4430b99326f245222f058bc5be5025158134ba89b01b3dec7815f`、`68608d29d1f733beea87f1faf06464fededb68a9c2972c51c10cd4c2160f032f`、`0577c73810413ced6277e679477422f467cb2db094f1d376e39e4cbb2a3abd65`，正式 900-episode 输入树前后 SHA 同为 `8ffbe5cf044d121163c8acc3dce1bbd54e14bb6b211b8e1cf440f24c93294fca`。clean supplemental producer/canonical evidence 子项据此关闭；后续 supplemental BC 全样本子项也已由上节关闭。synthetic ACK 不是真实 ACK，四类 label 仍为 `0/1200 available`，PPO/assist/authority 继续关闭，下一步为 main/D6 跨模块准入审计，本次未训练、未运行 AirSim。
 
 ## 2026-07-21 主动视觉课程 B1b2 GAP 状态
 
@@ -27,8 +57,9 @@ dirty 只能得到 `fail_closed_dirty_source`。PPO、assist、online authority�
 curriculum Markdown 的标题、说明和约束现均为中文，并继续声明 `4/4/4` 只是故障注入覆盖。
 2026-07-21 新增专项 `15 passed in 71.87s`，D5 全量 `482 passed in 83.05s`。tmp_path fixture 是软件
 阶段历史验收；其后 main 已在 clean revision `13e3728` 生成并归档实际 supplemental output，关闭
-clean producer/canonical evidence，且正式 900 episode 未修改。本轮未训练、未运行 AirSim。开放项
-只剩 BC 全样本审计、真实 runtime ACK/outcome、reward/counterfactual/causal、paired shadow 及
+clean producer/canonical evidence，且正式 900 episode 未修改。后续 supplemental BC 全样本审计已
+由本文顶部证据关闭。本轮未训练、未运行 AirSim。开放项只剩 main/D6 跨模块准入、真实 runtime
+ACK/outcome、reward/counterfactual/causal、paired shadow 及
 PPO/assist/authority 准入。README、PLAN、三份 D5 review 及模块内原理、算法、AirSim、实验文档已同步。
 
 ## 2026-07-21 主动视觉课程 B1b1 GAP 状态
@@ -56,8 +87,9 @@ counterfactual 或 causal label。同 seed 对象和规范序列化确定，调�
 2026-07-21 新定向测试 `12 passed`，主动视觉关联回归 `56 passed`，D5 全量
 `467 passed in 10.40s`，`py_compile` 通过。本子项只证明确定性内存课程及故障注入 ACK 语义，不把
 `4/4/4` 解释为真实 runtime 分布或动作收益。B1b2 的多 seed staging/finalization、canonical、CLI
-和统计软件及 clean producer/canonical evidence 现已由上节关闭；BC 全样本审计、真实 runtime
-ACK/outcome、reward/counterfactual/causal、paired shadow 仍开放，assist/PPO/authority 继续关闭。
+和统计软件、clean producer/canonical evidence 及 supplemental BC 全样本审计现均已关闭；main/D6
+跨模块准入、真实 runtime ACK/outcome、reward/counterfactual/causal、paired shadow 仍开放，
+assist/PPO/authority 继续关闭。
 
 ## 2026-07-21 主动视觉相机执行器 B1a GAP 状态
 
@@ -76,7 +108,8 @@ episode sample 构造合同，其中 missing 保持 `runtime_ack=None`。执行�
 
 2026-07-21 定向结果为 `18 passed`，D5 全量为 `455 passed in 12.18s`。B1a 阶段当时未运行 AirSim、
 未生成课程数据、未接真实相机 runtime，也未训练或晋级模型。其后 B1b2 已关闭 producer、canonical
-软件及 clean evidence 缺口；BC 全样本审计、真实 applied/rejected/missing 与 outcome、
+软件及 clean evidence，supplemental BC 全样本审计也已关闭；main/D6 跨模块准入、真实
+applied/rejected/missing 与 outcome、
 reward/counterfactual/causal、paired shadow 仍为 P1，assist、PPO 和 authority 继续关闭。
 
 ## 2026-07-21 主动视觉宽视场门 GAP 状态
@@ -93,8 +126,9 @@ reward/counterfactual/causal、paired shadow 仍为 P1，assist、PPO 和 author
 
 **clean producer evidence 已关闭，真实 ACK 仍开放。** 当前主动视觉 snapshot 不携带 runtime ACK 或相机反馈中的
 最近接受命令版本。阶段 A 只读取已有 busy 字段，没有伪造 ACK，也没有扩 DTO。B1b2 已实现 synthetic
-supplemental producer，clean 制品已由 `13e3728` 证据关闭；正式 900-episode 数据仍为 `hold=0`、
-`reacquire` 主导且无 applied-action 归因。因此 BC 全样本审计、真实 ACK/outcome、
+supplemental producer，clean 制品及 supplemental BC 全样本审计已由 `13e3728` 绑定证据关闭；正式
+900-episode 数据仍为 `hold=0`、`reacquire` 主导且无 applied-action 归因。因此 main/D6 跨模块准入、
+真实 ACK/outcome、
 reward/counterfactual/causal、paired shadow、assist、PPO 和 authority
 状态均未关闭。定向组合测试 `47 passed`，D5 全量
 `437 passed in 10.28s`；未运行新 AirSim 或模型实验。旧 v5 bundle 的 code provenance 对应修改前

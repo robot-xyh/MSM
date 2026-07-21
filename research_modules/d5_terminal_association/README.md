@@ -2,9 +2,42 @@
 
 科研模块，用于把末端相机视场中的本地视觉轨迹保守关联到中心分配的 `global_track_id`。模块可在统一三维 episode 中在线运行；训练标签和真值评分仍保持离线。D5 只输出视觉关联与相机观察意图，不修改、重写或重新分配任何全局轨迹 ID。
 
+## 2026-07-21 Supplemental BC 全样本 clean 审计
+
+D5 已对 `outputs/active_vision_supplemental_curriculum_20260721_clean_13e3728` 执行只读、
+fail-closed 的 behavior-cloning 全样本准入审计。接受阈值为 100 episode、1200 sample、canonical
+episode `60/20/20` 与 sample `720/240/240`、全部文件 SHA 命中、1200 个样本的 35 维候选特征全部
+有限，以及 truth/reserved/dirty/审计违规均为 0。实测为 100/800/1200，dataset 内 302/302 个
+checksummed 文件通过，100 descriptor、100 online、100 offline 集合完整；1200/1200 样本特征有限，
+共 7800 个候选特征行，规则示范在候选集中 1200/1200 唯一。intent、FOV、角色分别为
+`200/600/200/200`、`1000/200`、`600/600`，版本单调且逐样本一致，唯一中心引用保持调用方提供的
+`CENTER-CURRICULUM-TRACK-ALPHA`，D5 未创建、改写或换绑。
+
+证据位于 `results/active_vision_supplemental_bc_full_sample_audit_20260721.json` 和
+`reports/D5_ACTIVE_VISION_SUPPLEMENTAL_BC_FULL_SAMPLE_AUDIT_20260721.md`，审计内容 SHA256 为
+`a11b65596a4c416deba6d0cb35dcc0c32342a5bae0481291d43e8de0e26550dd`。dataset manifest、canonical
+view、dataset config、training registry、shared registry、producer summary content SHA 仍分别为
+`0c474ee1b0bab34a46c2ebce328761983cf2ecc757da30c2d3d2e03a06cd1acf`、
+`0ab1a4a6bdd439f6c8a74df5059de3c4950791fba35a1b9514942e83779f72a8`、
+`e93ca6310338be5db4539fac195f5257e28d16a64b78b1a0351bf6aeca01fcee`、
+`2ab928a476a4430b99326f245222f058bc5be5025158134ba89b01b3dec7815f`、
+`68608d29d1f733beea87f1faf06464fededb68a9c2972c51c10cd4c2160f032f`、
+`0577c73810413ced6277e679477422f467cb2db094f1d376e39e4cbb2a3abd65`，clean source commit 为
+`13e37286d2996a227924bb1a8e2766e52116a534`。supplemental 树保持 308 files/约 2.2 MiB；正式
+900-episode 树保持 43973 files、SHA256
+`8ffbe5cf044d121163c8acc3dce1bbd54e14bb6b211b8e1cf440f24c93294fca`。
+
+该证据关闭 supplemental producer/canonical 后续的 BC 全样本审计子项，但不是模型训练、D6
+跨模块准入或 runtime 权限证据。`applied/rejected/missing=400/400/400` 仍只表示 synthetic 故障注入
+覆盖，不是实际 ACK 分布；reward/outcome/counterfactual/causal 均为 `0/1200 available`，未补零。
+PPO、assist、online/camera authority 保持 false，rule fallback required=true。下一步为 main/D6
+跨模块学习准入审计、真实 runtime ACK/outcome 归因与 paired shadow；本轮未训练、未运行 AirSim、
+未写 `.pt` 权重，也未修改两棵数据树。
+新增专项 `4 passed in 35.72s`，D5 全量 `486 passed in 119.63s`，接受阈值均为零失败。
+
 ## 2026-07-21 B1b2 clean evidence
 
-main 已在 detached clean worktree `13e37286d2996a227924bb1a8e2766e52116a534` 完成实际 CLI 生成：ignored output 为 `outputs/active_vision_supplemental_curriculum_20260721_clean_13e3728`，tracked JSON/中文报告位于 `results/active_vision_supplemental_curriculum_20260721.json` 与 `reports/D5_ACTIVE_VISION_SUPPLEMENTAL_CURRICULUM_20260721.md`；实测 100 episode/800 segment/1200 sample，canonical seed/episode `60/20/20`、sample `720/240/240`，intent `200/600/200/200`、FOV `1000/200`、role `600/600`、故障注入 ACK `400/400/400`，online truth/reserved overlap/dirty episode/audit violation 均为 0。dataset manifest、canonical view、config、training registry、shared registry、summary content SHA 依次为 `0c474ee1b0bab34a46c2ebce328761983cf2ecc757da30c2d3d2e03a06cd1acf`、`0ab1a4a6bdd439f6c8a74df5059de3c4950791fba35a1b9514942e83779f72a8`、`e93ca6310338be5db4539fac195f5257e28d16a64b78b1a0351bf6aeca01fcee`、`2ab928a476a4430b99326f245222f058bc5be5025158134ba89b01b3dec7815f`、`68608d29d1f733beea87f1faf06464fededb68a9c2972c51c10cd4c2160f032f`、`0577c73810413ced6277e679477422f467cb2db094f1d376e39e4cbb2a3abd65`；正式 900-episode 输入树前后 SHA 同为 `8ffbe5cf044d121163c8acc3dce1bbd54e14bb6b211b8e1cf440f24c93294fca`。该证据关闭 clean supplemental producer/canonical 子项；ACK 仍只表示 synthetic 故障覆盖，四类离线 label 均为 `0/1200 available`，PPO/assist/online/camera authority 保持 false，下一步为 BC 全样本审计与 main/D6 跨模块准入审计，本次未训练、未运行 AirSim。
+main 已在 detached clean worktree `13e37286d2996a227924bb1a8e2766e52116a534` 完成实际 CLI 生成：ignored output 为 `outputs/active_vision_supplemental_curriculum_20260721_clean_13e3728`，tracked JSON/中文报告位于 `results/active_vision_supplemental_curriculum_20260721.json` 与 `reports/D5_ACTIVE_VISION_SUPPLEMENTAL_CURRICULUM_20260721.md`；实测 100 episode/800 segment/1200 sample，canonical seed/episode `60/20/20`、sample `720/240/240`，intent `200/600/200/200`、FOV `1000/200`、role `600/600`、故障注入 ACK `400/400/400`，online truth/reserved overlap/dirty episode/audit violation 均为 0。dataset manifest、canonical view、config、training registry、shared registry、summary content SHA 依次为 `0c474ee1b0bab34a46c2ebce328761983cf2ecc757da30c2d3d2e03a06cd1acf`、`0ab1a4a6bdd439f6c8a74df5059de3c4950791fba35a1b9514942e83779f72a8`、`e93ca6310338be5db4539fac195f5257e28d16a64b78b1a0351bf6aeca01fcee`、`2ab928a476a4430b99326f245222f058bc5be5025158134ba89b01b3dec7815f`、`68608d29d1f733beea87f1faf06464fededb68a9c2972c51c10cd4c2160f032f`、`0577c73810413ced6277e679477422f467cb2db094f1d376e39e4cbb2a3abd65`；正式 900-episode 输入树前后 SHA 同为 `8ffbe5cf044d121163c8acc3dce1bbd54e14bb6b211b8e1cf440f24c93294fca`。该证据关闭 clean supplemental producer/canonical 子项；后续 supplemental BC 全样本审计也已由上节证据关闭。ACK 仍只表示 synthetic 故障覆盖，四类离线 label 均为 `0/1200 available`，PPO/assist/online/camera authority 保持 false，下一步为 main/D6 跨模块准入审计，本次未训练、未运行 AirSim。
 
 ## 2026-07-21 主动视觉 supplemental curriculum B1b2
 
@@ -40,7 +73,8 @@ caller-owned ID、truth guard、synthetic/dirty provenance、保留 seed、四�
 上述 pytest 输出全部位于临时目录，是软件阶段的历史验收；其后 main 已在 clean revision
 `13e37286d2996a227924bb1a8e2766e52116a534` 完成实际 CLI 生成并关闭 supplemental
 producer/canonical evidence，见本文顶部。该 clean synthetic 制品没有训练或 AirSim 证据，也不改写
-正式 900-episode 数据。开放项只剩 BC 全样本审计、真实 runtime ACK/outcome、
+正式 900-episode 数据。supplemental BC 全样本审计现已由本文顶部证据关闭；开放项只剩 main/D6
+跨模块准入审计、真实 runtime ACK/outcome、
 reward/counterfactual/causal、paired shadow 及 PPO/assist/authority 准入。
 
 ## 2026-07-21 主动视觉宽视场稳定门
