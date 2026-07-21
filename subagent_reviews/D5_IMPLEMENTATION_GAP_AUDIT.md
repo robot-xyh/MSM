@@ -1,5 +1,24 @@
 # D5 实现差距审计
 
+## 2026-07-21 Tracklet 困难样本 GAP 状态
+
+**困难样本 producer 和数据支持子项已闭合；训练与 G1 未闭合。** 冻结正式语料 99 条未标注边的
+194 个缺失端点均没有可精确证明的 offline observation lineage，可靠回填为 0，全部继续
+`unavailable`。独立 supplemental producer 实际生成 4,500 帧、66,726 节点和 245,032 条默认几何门
+候选边，正/负/未标注为 `57292/187740/0`，标签可用率 100%，正式源重复违规和保留 seed 泄漏均为
+0。该结果关闭“缺少独立困难负边、完整标签和 candidate-recall 分母”的数据支持子项。
+
+detached 组合视图选入 472 个完整正式帧和 4,500 个补充帧。train/validation/test 的无边比例为
+`8.68%/10.34%/10.45%`，负边为 `112314/37694/37734`，可评价同目标 pair 为
+`50103/16683/16698`，标签可用率和双类 cell 比例均为 100%。既有数据门全部通过，未降低时间、
+视场、极线、射线、重投影、协方差或度数门。
+
+当前制品绑定 commit `087a568c71a0c1004653d0e4175b156856b2e34b` 的未提交工作区，
+`supplemental_source_repository_dirty=true`，因此 training readiness 按合同 `fail_closed`。该项仍是
+开放 P1；main 需提交代码后在 detached clean worktree 复生数据并二次准入。模型训练、保留 seed
+独立评估、影子对照和 promotion 尚未开始，G1/assist/在线控制继续关闭。D5 本轮不得把“数据支持
+通过”写成“训练可用”或“模型晋级”。专项 `12 passed`，D5 全量 `498 passed`。
+
 ## 2026-07-21 Supplemental BC 全样本 GAP 关闭证据
 
 **supplemental behavior-cloning full-sample audit 子项已关闭，D6 跨模块准入仍开放。** D5 新增只读

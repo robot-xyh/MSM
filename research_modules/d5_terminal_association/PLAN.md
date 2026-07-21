@@ -1,5 +1,31 @@
 # D5 终端视觉配准与身份认证计划
 
+## 2026-07-21 跨视角困难样本课程与准入视图
+
+- [x] 只读审计冻结正式图语料的 99 条未标注边。194 个缺失端点中 95 条边两端缺失、4 条边缺
+  source 端；冻结导出没有精确 offline observation truth lineage，同 tracklet 也无其他 evaluator
+  label，可靠回填数为 0。99 条边继续 `unavailable`，未修改正式源，未采用最近邻、连续性或伪标签。
+- [x] 新增独立 supplemental producer，使用与正式源分离的随机流、100 个训练 seed 和 45 个场景
+  规模 cell，覆盖相机基线、密集交叉、遮挡进出、时间偏差、外参扰动、漏检、虚警和 tracklet
+  重入。候选边仍使用默认时间、视场、极线、射线、重投影、协方差和度数门，不提供降低门限参数。
+- [x] 保持在线节点匿名，truth 只在图构建后按精确 observation lineage 加入物理分离 evaluator
+  制品。manifest 绑定 Git/config/schema/version、正式 manifest、training/shared registry、默认门
+  配置、实现文件和全部制品 SHA-256；拒绝保留 seed、重复图/边、缺标签、hash 篡改、split 泄漏、
+  候选门变化、负边伪造和正式源变化。
+- [x] 实际生成 4,500 帧、66,726 节点和 245,032 边，正/负/未标注为
+  `57292/187740/0`，标签可用率 100%，与正式源重复违规为 0。共享 seed 分桶为 `60/20/20`。
+- [x] 建立 detached formal + supplemental canonical admission view，不复制或回写两类源数据。组合
+  视图选入正式 472 帧和补充 4,500 帧；各 split 无边比例不超过 10.45%，负边支持均远高于
+  `100/30/30`，候选召回分母均高于 100，标签可用率与双类 cell 比例均为 100%，数据支持门通过。
+- [x] 本轮明确只闭合 producer 与数据支持，不训练新模型、不生成 `.pt`、不开放 G1/assist，D5 不
+  创建、改写或换绑 `global_track_id`。专项 `12 passed in 5.49s`，全量 D5
+  `498 passed in 124.90s`。
+- [ ] 当前全量制品绑定未提交工作区 commit `087a568c71a0c1004653d0e4175b156856b2e34b` 且
+  `repository_dirty=true`，总体训练准入正确保持 `fail_closed`。main 提交代码后，在 detached clean
+  worktree 对该提交复生数据并执行第二次准入；clean provenance 通过前不得关闭训练 readiness。
+- [ ] clean 数据支持通过后仍需单独训练、保留 seed 独立评估和同 seed 影子对照，才可讨论模型
+  promotion。G1、assist 和在线控制权限当前均为 false。
+
 ## 2026-07-21 Supplemental BC 全样本准入审计
 
 - [x] 新增只读 fail-closed 审计入口，复用 strict lazy loader、canonical loader、既有 supplemental

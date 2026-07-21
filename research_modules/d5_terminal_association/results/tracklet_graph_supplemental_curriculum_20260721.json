@@ -1,0 +1,46 @@
+{
+  "admission": {
+    "full_sample_audit_required": true,
+    "g1_assist_allowed": false,
+    "global_track_id_created_or_rebound": false,
+    "model_training_performed": false,
+    "producer_complete": true,
+    "pt_generated": false
+  },
+  "candidate_edge_count": 245032,
+  "canonical_seed_counts": {
+    "test": 20,
+    "train": 60,
+    "validation": 20
+  },
+  "class_balance": {
+    "negative_candidate_edges": 187740,
+    "positive_candidate_edges": 57292,
+    "unlabeled_candidate_edges": 0
+  },
+  "content_sha256": "da23e9856cdfaa208d93588cc8342d89dfc6fc00f8ce1f7212460798ebb8e398",
+  "dataset_manifest_sha256": "ec2708477332416be83e12f1458cc2dff72a2c5196d1fdb58fbb074a85660ee4",
+  "duplicate_violation_count": 0,
+  "episode_count": 4500,
+  "evaluator_lineage_sha256": "587a05927a00f795ab5b1828f0443f41297b79ae1d115dcc1193f35164b77c49",
+  "factor_coverage": {
+    "external_perturbation": 4500,
+    "false_alarm": 3050,
+    "missed_detection": 3824,
+    "occluded": 1500,
+    "occlusion_enter": 1500,
+    "occlusion_exit": 1500,
+    "occlusion_target_omitted": 4500,
+    "reentry_tracklet_fragment": 1275,
+    "time_bias": 4000
+  },
+  "formal_manifest_sha256": "d9a84007995fe94918483bd5cb5ddc38f60f61d819bea27137dfa2619bf75426",
+  "label_availability_ratio": 1.0,
+  "manifest_sha256": "77d117ba7a0d6cdbddf4ce9fcccd63455e2b28a916c6526d97e17857bfb9ad90",
+  "node_count": 66726,
+  "scenario_scale_cell_count": 45,
+  "schema_version": "d5.tracklet-supplemental-summary.v1",
+  "source_git_commit": "087a568c71a0c1004653d0e4175b156856b2e34b",
+  "source_repository_dirty": true,
+  "unique_seed_count": 100
+}

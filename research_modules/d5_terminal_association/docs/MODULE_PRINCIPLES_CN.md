@@ -2,6 +2,24 @@
 
 **状态日期：2026-07-21**
 
+## 跨视角困难样本准入原则
+
+冻结正式语料的缺标签记录只能由精确来源链补齐。有效证据必须同时匹配正式 manifest、episode、
+匿名 tracklet、量测时刻、source observation 和 evaluator truth。最近时刻、同 tracklet 跨帧沿用、
+几何邻近和模型预测都不构成标签证据。本轮审计的 99 条未标注边涉及 194 个缺失端点，冻结导出没有
+保留符合上述条件的来源链，可靠回填为 0，全部继续 `unavailable`。
+
+补数采用独立物理投影课程，不修改冻结语料。四个局部相机观测四个物理目标，在线阶段只形成匿名
+camera-local tracklet、双时间戳、像素量测、协方差和几何特征。候选边先经过既有时间、视场、极线、
+射线、重投影、协方差和度数门；精确 truth 在图完成后通过独立 observation lineage 加入 evaluator
+标签。这样得到的困难负边表示“几何上可混淆但物理身份不同”，不会通过放宽在线安全门增加样本。
+
+准入分为数据支持、训练和模型晋级三层。formal + supplemental 只读视图以完整 numeric seed 为原子
+按共享 registry 切分，并复核保留 seed、source hash、标签完整性、边支持、candidate recall 分母和
+双类场景覆盖。实际 4,500 帧补充语料含 245,032 条边，正/负/未标注为
+`57292/187740/0`；组合视图 4,972 帧的全部数据门通过。当前来源工作区为 dirty，因此只关闭 producer
+和数据支持；训练 readiness 继续失败关闭。没有模型训练或 `.pt`，G1/assist/在线权限不开放。
+
 ## Supplemental BC 全样本审计原则
 
 补充规则教师数据进入跨模块学习评审前，必须对 immutable dataset、detached canonical view、training/

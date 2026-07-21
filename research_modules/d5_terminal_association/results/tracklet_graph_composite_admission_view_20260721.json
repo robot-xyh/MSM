@@ -1,0 +1,333 @@
+{
+  "canonical_subviews": {
+    "formal": {
+      "content_sha256": "096f7305c5ddc8821995aeda5c2f11057b386ed04ada79833051ca9e85035407",
+      "file": "tracklet_graph_composite_admission_view_20260721.formal.json",
+      "file_sha256": "59d63560eccb443b09a868c7eb6abc159fea10ea823f6aee0378f3d3c0be85b6"
+    },
+    "supplemental": {
+      "content_sha256": "a549db017cb3444262283caf01eff6c0f77cf4fba29a974b6e26046b8529518f",
+      "file": "tracklet_graph_composite_admission_view_20260721.supplemental.json",
+      "file_sha256": "b2bf6582652ae2dcb94749df83f9cad9180636b9e73e603e1536728fd928c2f9"
+    }
+  },
+  "content_sha256": "5236f897a5f968a94ae076dabe2292f8321ee083ba13acaa8404e0aba14e252f",
+  "duplicate_audit": {
+    "formal_edge_content_fingerprint_overlap": [],
+    "formal_episode_uid_overlap": [],
+    "formal_graph_content_fingerprint_overlap": [],
+    "formal_graph_sha256_overlap": [],
+    "supplemental_edge_content_unique_count": 245032,
+    "supplemental_edge_duplicate_count": 0,
+    "supplemental_episode_uid_unique": true,
+    "supplemental_graph_content_unique_count": 4500,
+    "supplemental_graph_duplicate_count": 0,
+    "violation_count": 0
+  },
+  "readiness": {
+    "criteria": {
+      "maximum_edge_free_ratio": 0.9,
+      "maximum_p95_inference_latency_ms": 100.0,
+      "maximum_test_ece": 0.05,
+      "maximum_test_false_merge_rate": 0.01,
+      "minimum_candidate_recall_availability_ratio": 1.0,
+      "minimum_candidate_recall_pairs_per_split": 100,
+      "minimum_scenario_scale_both_class_fraction": 0.8,
+      "minimum_test_candidate_recall": 0.95,
+      "minimum_test_f1": 0.92,
+      "minimum_test_negative_edges": 30,
+      "minimum_test_positive_edges": 50,
+      "minimum_test_precision": 0.95,
+      "minimum_test_recall": 0.9,
+      "minimum_test_seed_count": 20,
+      "minimum_train_negative_edges": 100,
+      "minimum_train_positive_edges": 100,
+      "minimum_validation_negative_edges": 30,
+      "minimum_validation_positive_edges": 50,
+      "reserved_evaluation_seed_start": 1000,
+      "reserved_evaluation_seed_stop": 1020,
+      "reserved_evaluation_seeds": [
+        1000,
+        1001,
+        1002,
+        1003,
+        1004,
+        1005,
+        1006,
+        1007,
+        1008,
+        1009,
+        1010,
+        1011,
+        1012,
+        1013,
+        1014,
+        1015,
+        1016,
+        1017,
+        1018,
+        1019
+      ]
+    },
+    "data_support_readiness": {
+      "existing_gate_results": [
+        {
+          "name": "dataset_integrity",
+          "observed": "strict_loader_passed",
+          "passed": true,
+          "required": "strict_loader_passed"
+        },
+        {
+          "name": "whole_seed_split_atomicity",
+          "observed": {
+            "train_test": [],
+            "train_validation": [],
+            "validation_test": []
+          },
+          "passed": true,
+          "required": "no_seed_overlap"
+        },
+        {
+          "name": "reserved_evaluation_seeds_excluded_from_training",
+          "observed": [],
+          "passed": true,
+          "required": []
+        },
+        {
+          "name": "minimum_test_seed_count",
+          "observed": 20,
+          "passed": true,
+          "required": ">=20"
+        },
+        {
+          "name": "train_edge_free_ratio",
+          "observed": 0.08679500168861871,
+          "passed": true,
+          "required": "<=0.9"
+        },
+        {
+          "name": "train_positive_edge_support",
+          "observed": 34539,
+          "passed": true,
+          "required": ">=100"
+        },
+        {
+          "name": "train_negative_edge_support",
+          "observed": 112314,
+          "passed": true,
+          "required": ">=100"
+        },
+        {
+          "name": "train_candidate_recall_availability",
+          "observed": 1.0,
+          "passed": true,
+          "required": ">=1.0"
+        },
+        {
+          "name": "train_candidate_recall_pair_support",
+          "observed": 50103,
+          "passed": true,
+          "required": ">=100"
+        },
+        {
+          "name": "train_scenario_scale_both_class_coverage",
+          "observed": 1.0,
+          "passed": true,
+          "required": ">=0.8"
+        },
+        {
+          "name": "validation_edge_free_ratio",
+          "observed": 0.10337972166998012,
+          "passed": true,
+          "required": "<=0.9"
+        },
+        {
+          "name": "validation_positive_edge_support",
+          "observed": 11350,
+          "passed": true,
+          "required": ">=50"
+        },
+        {
+          "name": "validation_negative_edge_support",
+          "observed": 37694,
+          "passed": true,
+          "required": ">=30"
+        },
+        {
+          "name": "validation_candidate_recall_availability",
+          "observed": 1.0,
+          "passed": true,
+          "required": ">=1.0"
+        },
+        {
+          "name": "validation_candidate_recall_pair_support",
+          "observed": 16683,
+          "passed": true,
+          "required": ">=100"
+        },
+        {
+          "name": "validation_scenario_scale_both_class_coverage",
+          "observed": 1.0,
+          "passed": true,
+          "required": ">=0.8"
+        },
+        {
+          "name": "test_edge_free_ratio",
+          "observed": 0.1044776119402985,
+          "passed": true,
+          "required": "<=0.9"
+        },
+        {
+          "name": "test_positive_edge_support",
+          "observed": 11409,
+          "passed": true,
+          "required": ">=50"
+        },
+        {
+          "name": "test_negative_edge_support",
+          "observed": 37734,
+          "passed": true,
+          "required": ">=30"
+        },
+        {
+          "name": "test_candidate_recall_availability",
+          "observed": 1.0,
+          "passed": true,
+          "required": ">=1.0"
+        },
+        {
+          "name": "test_candidate_recall_pair_support",
+          "observed": 16698,
+          "passed": true,
+          "required": ">=100"
+        },
+        {
+          "name": "test_scenario_scale_both_class_coverage",
+          "observed": 1.0,
+          "passed": true,
+          "required": ">=0.8"
+        }
+      ],
+      "label_availability_100_percent": true,
+      "passed": true,
+      "status": "pass"
+    },
+    "identity_safety": {
+      "deterministic_rule_fallback_preserved": true,
+      "geometry_gate_preserved": true,
+      "global_track_id_rewrite_allowed": false,
+      "model_output": "same_target_probability_on_existing_candidate_edges_only",
+      "same_camera_mutual_exclusion_preserved": true
+    },
+    "promotion_readiness": {
+      "g1_assist_eligible": false,
+      "model_training_performed": false,
+      "passed": false,
+      "pt_generated": false,
+      "status": "fail_closed"
+    },
+    "schema_version": "d5.tracklet-composite-admission-readiness.v1",
+    "selected_corpus": {
+      "candidate_edge_count": 245040,
+      "episode_count": 4972,
+      "formal_excluded_episode_count": 12379,
+      "formal_selected_episode_count": 472,
+      "label_availability_ratio": 1.0,
+      "node_count": 67416,
+      "reserved_evaluation_seed_overlap": [],
+      "seed_counts": {
+        "test": 20,
+        "train": 60,
+        "validation": 20
+      },
+      "supplemental_selected_episode_count": 4500,
+      "unlabeled_candidate_edge_count": 0
+    },
+    "sources": {
+      "formal_manifest_sha256": "d9a84007995fe94918483bd5cb5ddc38f60f61d819bea27137dfa2619bf75426",
+      "formal_source_modified": false,
+      "supplemental_manifest_sha256": "77d117ba7a0d6cdbddf4ce9fcccd63455e2b28a916c6526d97e17857bfb9ad90",
+      "supplemental_source_modified": false,
+      "supplemental_source_repository_dirty": true
+    },
+    "split_summaries": {
+      "test": {
+        "candidate_recall_availability_ratio": 1.0,
+        "candidate_recall_pair_support": 16698,
+        "edge_free_episode_count": 105,
+        "edge_free_ratio": 0.1044776119402985,
+        "episode_count": 1005,
+        "negative_candidate_edges": 37734,
+        "positive_candidate_edges": 11409,
+        "scenario_scale_both_class_fraction": 1.0,
+        "unlabeled_candidate_edges": 0
+      },
+      "train": {
+        "candidate_recall_availability_ratio": 1.0,
+        "candidate_recall_pair_support": 50103,
+        "edge_free_episode_count": 257,
+        "edge_free_ratio": 0.08679500168861871,
+        "episode_count": 2961,
+        "negative_candidate_edges": 112314,
+        "positive_candidate_edges": 34539,
+        "scenario_scale_both_class_fraction": 1.0,
+        "unlabeled_candidate_edges": 0
+      },
+      "validation": {
+        "candidate_recall_availability_ratio": 1.0,
+        "candidate_recall_pair_support": 16683,
+        "edge_free_episode_count": 104,
+        "edge_free_ratio": 0.10337972166998012,
+        "episode_count": 1006,
+        "negative_candidate_edges": 37694,
+        "positive_candidate_edges": 11350,
+        "scenario_scale_both_class_fraction": 1.0,
+        "unlabeled_candidate_edges": 0
+      }
+    },
+    "training_readiness": {
+      "failure_reasons": [
+        "supplemental_source_repository_dirty"
+      ],
+      "passed": false,
+      "status": "fail_closed"
+    }
+  },
+  "schema_version": "d5.tracklet-composite-admission-view.v1",
+  "selection": {
+    "candidate_edge_count": 245040,
+    "episode_count": 4972,
+    "formal_excluded_episode_count": 12379,
+    "formal_policy": "labels_complete_and_candidate_recall_available",
+    "formal_selected_episode_count": 472,
+    "label_availability_ratio": 1.0,
+    "node_count": 67416,
+    "reserved_evaluation_seed_overlap": [],
+    "seed_counts": {
+      "test": 20,
+      "train": 60,
+      "validation": 20
+    },
+    "selection_sha256": "b8be439c8d760366d88df80450e2724f347e5c23ef7d6c325652a2cf708685b2",
+    "supplemental_policy": "all_full_profile_episodes",
+    "supplemental_selected_episode_count": 4500,
+    "training_set_sha256": "1f8937c35e8431d3d5b91a76a2d2b5aaeb67a41ffab26390ebe1128d0b9722b2",
+    "unlabeled_candidate_edge_count": 0
+  },
+  "selection_policy_version": "d5-tracklet-complete-label-source-selection-v1",
+  "source_contract": {
+    "complete_seed_atomic_split_required": true,
+    "reserved_seed_allowed": false,
+    "sample_copy_allowed": false,
+    "source_artifact_modified": false,
+    "source_label_backfill_allowed": false,
+    "source_manifest_modified": false
+  },
+  "sources": {
+    "formal_manifest_sha256": "d9a84007995fe94918483bd5cb5ddc38f60f61d819bea27137dfa2619bf75426",
+    "formal_source_modified": false,
+    "supplemental_manifest_sha256": "77d117ba7a0d6cdbddf4ce9fcccd63455e2b28a916c6526d97e17857bfb9ad90",
+    "supplemental_source_modified": false,
+    "supplemental_source_repository_dirty": true
+  }
+}

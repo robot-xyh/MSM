@@ -4,6 +4,32 @@
 
 **适用范围：** 本文依据第五研究模块（D5）的当前代码、README、PLAN、模块原理文档和系统总汇总，同步说明算法原理、数据合同、代码实施路径与验证结果。文中严格区分默认在线主线、已实现但非默认的辅助/离线能力，以及尚未实现能力；计划项不能据此解释为已上线能力。
 
+## 2026-07-21 跨视角困难样本实现
+
+实现由四个相互分离的部分组成。`tracklet_unlabeled_audit.py` 对冻结正式数据执行严格加载，逐条定位
+未标注边的缺失端点；只有外部 lineage 与正式 manifest 绑定且精确匹配 episode、tracklet、时间戳和
+source observation 时才允许判定可恢复。`tracklet_supplemental_curriculum.py` 以独立 SHA 派生随机
+流构造三维目标、相机基线和扰动，再调用未修改的 `SparseTrackletGraphConfig()` 与现有图构造器。
+在线 graph 生成完成后才按 observation ID 连接 evaluator label，并把完整 lineage 写入确定性 gzip。
+
+producer 固定使用 seed `0-99` 和 9 场景 × 5 规模的 45 个 cell。每个 cell/seed 生成一个图帧，覆盖
+密集交叉、遮挡进入/遮挡/退出、时间偏差、到达延迟、外参位置与姿态扰动、漏检、虚警和重入碎片。
+manifest 记录正式源、两套 registry、默认候选门、实现文件、配置与逐制品 SHA-256，并检查正式与
+补充 episode、graph content 和 edge content 指纹重复。任何 truth 泄漏、保留 seed、标签缺失、
+hash 漂移、候选门变化或 evaluator 负边伪造均失败关闭。
+
+`tracklet_supplemental_admission.py` 分别为 formal 和 supplemental 建立 detached canonical subview，
+然后在内存中组合完整 episode。正式帧只有在 `labels_complete` 和
+`candidate_recall_available` 同时为真时入选；补充帧必须全部满足这两个条件。组合视图复用既有
+`TrackletReadinessCriteria`，不修改 `edge-free<=90%`、负边支持、candidate recall、标签和场景覆盖
+阈值。视图文件仅保存来源绑定和选择清单，不复制或改写图与标签。
+
+实际运行生成 4,500 帧、66,726 节点、245,032 边，正/负/未标注为
+`57292/187740/0`。组合视图选入正式 472 帧和补充 4,500 帧，全部数据支持门通过。来源
+`087a568c71a0c1004653d0e4175b156856b2e34b` 的工作区 dirty 标志为真，因此 training readiness 的
+唯一失败原因是 `supplemental_source_repository_dirty`。CLI 没有训练入口，本轮未生成 `.pt`，
+promotion、G1 和 assist 均保持关闭。
+
 ## 2026-07-21 Supplemental BC 全样本审计实施
 
 `active_vision_supplemental_bc_audit.py` 是只读审计编排层，不定义新 dataset 序列化合同。它先调用

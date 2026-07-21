@@ -1,0 +1,2803 @@
+{
+  "content_sha256": "8153272308ccf83e7e1ea87f91bf9ae4e60216835808cfab561818b07215b522",
+  "decision": {
+    "formal_backfill_allowed": false,
+    "formal_backfill_performed": false,
+    "training_view_must_exclude_incomplete_label_frames": true,
+    "unproven_edges_remain_unavailable": 99
+  },
+  "edges": [
+    {
+      "edge_index": 0,
+      "edge_status": "unavailable",
+      "episode_id": "delayed_noisy_200v200-s55-0766e4e448c7-d5-frame-000000",
+      "episode_uid": "019ff3fbec15d5020c9cba24",
+      "missing_endpoints": [
+        {
+          "measurement_timestamp": 0.0,
+          "side": "source",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0106/CAM-INT-0106:trk-000001"
+        },
+        {
+          "measurement_timestamp": 0.0,
+          "side": "target",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0119/CAM-INT-0119:trk-000001"
+        }
+      ],
+      "missing_pattern": "both_endpoints_missing",
+      "scenario_version": "delayed_noisy-200v200-v1",
+      "seed": 55,
+      "source_tracklet_key": "INT-0106/CAM-INT-0106:trk-000001",
+      "split": "train",
+      "target_tracklet_key": "INT-0119/CAM-INT-0119:trk-000001"
+    },
+    {
+      "edge_index": 0,
+      "edge_status": "unavailable",
+      "episode_id": "delayed_noisy_200v200-s51-78d4ecdf2fec-d5-frame-000002",
+      "episode_uid": "01c81bc60da7ad0e355e8ca4",
+      "missing_endpoints": [
+        {
+          "measurement_timestamp": 0.1,
+          "side": "source",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0135/CAM-INT-0135:trk-000001"
+        },
+        {
+          "measurement_timestamp": 0.1,
+          "side": "target",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0140/CAM-INT-0140:trk-000001"
+        }
+      ],
+      "missing_pattern": "both_endpoints_missing",
+      "scenario_version": "delayed_noisy-200v200-v1",
+      "seed": 51,
+      "source_tracklet_key": "INT-0135/CAM-INT-0135:trk-000001",
+      "split": "validation",
+      "target_tracklet_key": "INT-0140/CAM-INT-0140:trk-000001"
+    },
+    {
+      "edge_index": 0,
+      "edge_status": "unavailable",
+      "episode_id": "delayed_noisy_200v200-s54-04cb494ab780-d5-frame-000010",
+      "episode_uid": "03856de7c04ef1725a13c133",
+      "missing_endpoints": [
+        {
+          "measurement_timestamp": 0.5,
+          "side": "source",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0065/CAM-INT-0065:trk-000002"
+        },
+        {
+          "measurement_timestamp": 0.5,
+          "side": "target",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0085/CAM-INT-0085:trk-000002"
+        }
+      ],
+      "missing_pattern": "both_endpoints_missing",
+      "scenario_version": "delayed_noisy-200v200-v1",
+      "seed": 54,
+      "source_tracklet_key": "INT-0065/CAM-INT-0065:trk-000002",
+      "split": "train",
+      "target_tracklet_key": "INT-0085/CAM-INT-0085:trk-000002"
+    },
+    {
+      "edge_index": 0,
+      "edge_status": "unavailable",
+      "episode_id": "secondary_failure_200v200-s2-c490333fee17-d5-frame-000019",
+      "episode_uid": "0458c7e1362c1ed7d1c2dbda",
+      "missing_endpoints": [
+        {
+          "measurement_timestamp": 1.8,
+          "side": "source",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0003/CAM-INT-0003:trk-000002"
+        }
+      ],
+      "missing_pattern": "source_endpoint_missing",
+      "scenario_version": "secondary_failure-200v200-v1",
+      "seed": 2,
+      "source_tracklet_key": "INT-0003/CAM-INT-0003:trk-000002",
+      "split": "validation",
+      "target_tracklet_key": "RECON-008/CAM-RECON-008:trk-000010"
+    },
+    {
+      "edge_index": 0,
+      "edge_status": "unavailable",
+      "episode_id": "delayed_noisy_200v200-s42-6c607ca67e19-d5-frame-000004",
+      "episode_uid": "095cde41091d94d75b4cc113",
+      "missing_endpoints": [
+        {
+          "measurement_timestamp": 0.2,
+          "side": "source",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0087/CAM-INT-0087:trk-000001"
+        },
+        {
+          "measurement_timestamp": 0.2,
+          "side": "target",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0112/CAM-INT-0112:trk-000001"
+        }
+      ],
+      "missing_pattern": "both_endpoints_missing",
+      "scenario_version": "delayed_noisy-200v200-v1",
+      "seed": 42,
+      "source_tracklet_key": "INT-0087/CAM-INT-0087:trk-000001",
+      "split": "train",
+      "target_tracklet_key": "INT-0112/CAM-INT-0112:trk-000001"
+    },
+    {
+      "edge_index": 0,
+      "edge_status": "unavailable",
+      "episode_id": "delayed_noisy_100v100-s16-c3517ff06146-d5-frame-000000",
+      "episode_uid": "0a2ddde96df7bc2aa30e06d3",
+      "missing_endpoints": [
+        {
+          "measurement_timestamp": 0.0,
+          "side": "source",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0091/CAM-INT-0091:trk-000001"
+        },
+        {
+          "measurement_timestamp": 0.0,
+          "side": "target",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0095/CAM-INT-0095:trk-000001"
+        }
+      ],
+      "missing_pattern": "both_endpoints_missing",
+      "scenario_version": "delayed_noisy-100v100-v1",
+      "seed": 16,
+      "source_tracklet_key": "INT-0091/CAM-INT-0091:trk-000001",
+      "split": "train",
+      "target_tracklet_key": "INT-0095/CAM-INT-0095:trk-000001"
+    },
+    {
+      "edge_index": 0,
+      "edge_status": "unavailable",
+      "episode_id": "delayed_noisy_200v200-s40-ce7096221353-d5-frame-000004",
+      "episode_uid": "0cf5474db3bb703c0d2f5e6a",
+      "missing_endpoints": [
+        {
+          "measurement_timestamp": 0.2,
+          "side": "source",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0075/CAM-INT-0075:trk-000001"
+        },
+        {
+          "measurement_timestamp": 0.2,
+          "side": "target",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0086/CAM-INT-0086:trk-000001"
+        }
+      ],
+      "missing_pattern": "both_endpoints_missing",
+      "scenario_version": "delayed_noisy-200v200-v1",
+      "seed": 40,
+      "source_tracklet_key": "INT-0075/CAM-INT-0075:trk-000001",
+      "split": "train",
+      "target_tracklet_key": "INT-0086/CAM-INT-0086:trk-000001"
+    },
+    {
+      "edge_index": 0,
+      "edge_status": "unavailable",
+      "episode_id": "delayed_noisy_200v200-s53-e5f00a816276-d5-frame-000010",
+      "episode_uid": "109a98d5d53336d9c48570be",
+      "missing_endpoints": [
+        {
+          "measurement_timestamp": 0.5,
+          "side": "source",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0148/CAM-INT-0148:trk-000001"
+        },
+        {
+          "measurement_timestamp": 0.5,
+          "side": "target",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0160/CAM-INT-0160:trk-000002"
+        }
+      ],
+      "missing_pattern": "both_endpoints_missing",
+      "scenario_version": "delayed_noisy-200v200-v1",
+      "seed": 53,
+      "source_tracklet_key": "INT-0148/CAM-INT-0148:trk-000001",
+      "split": "train",
+      "target_tracklet_key": "INT-0160/CAM-INT-0160:trk-000002"
+    },
+    {
+      "edge_index": 0,
+      "edge_status": "unavailable",
+      "episode_id": "delayed_noisy_200v200-s57-da72a7811603-d5-frame-000004",
+      "episode_uid": "11bdae06258e0318117a70ba",
+      "missing_endpoints": [
+        {
+          "measurement_timestamp": 0.2,
+          "side": "source",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0154/CAM-INT-0154:trk-000001"
+        },
+        {
+          "measurement_timestamp": 0.2,
+          "side": "target",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0160/CAM-INT-0160:trk-000001"
+        }
+      ],
+      "missing_pattern": "both_endpoints_missing",
+      "scenario_version": "delayed_noisy-200v200-v1",
+      "seed": 57,
+      "source_tracklet_key": "INT-0154/CAM-INT-0154:trk-000001",
+      "split": "validation",
+      "target_tracklet_key": "INT-0160/CAM-INT-0160:trk-000001"
+    },
+    {
+      "edge_index": 0,
+      "edge_status": "unavailable",
+      "episode_id": "formation_split_200v200-s2-32f4a0df0c03-d5-frame-000019",
+      "episode_uid": "1dca2ef02dd09c10eb61949c",
+      "missing_endpoints": [
+        {
+          "measurement_timestamp": 1.8,
+          "side": "source",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0003/CAM-INT-0003:trk-000002"
+        }
+      ],
+      "missing_pattern": "source_endpoint_missing",
+      "scenario_version": "formation_split-200v200-v1",
+      "seed": 2,
+      "source_tracklet_key": "INT-0003/CAM-INT-0003:trk-000002",
+      "split": "validation",
+      "target_tracklet_key": "RECON-008/CAM-RECON-008:trk-000010"
+    },
+    {
+      "edge_index": 0,
+      "edge_status": "unavailable",
+      "episode_id": "dense_crossing_200v200-s92-955474452abc-d5-frame-000002",
+      "episode_uid": "1f50cafdc92cd4e012c305d2",
+      "missing_endpoints": [
+        {
+          "measurement_timestamp": 0.1,
+          "side": "source",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0047/CAM-INT-0047:trk-000001"
+        },
+        {
+          "measurement_timestamp": 0.1,
+          "side": "target",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0070/CAM-INT-0070:trk-000001"
+        }
+      ],
+      "missing_pattern": "both_endpoints_missing",
+      "scenario_version": "dense_crossing-200v200-v1",
+      "seed": 92,
+      "source_tracklet_key": "INT-0047/CAM-INT-0047:trk-000001",
+      "split": "test",
+      "target_tracklet_key": "INT-0070/CAM-INT-0070:trk-000001"
+    },
+    {
+      "edge_index": 0,
+      "edge_status": "unavailable",
+      "episode_id": "delayed_noisy_100v100-s8-c02109a35eca-d5-frame-000006",
+      "episode_uid": "2138071f38c2f3544c13593f",
+      "missing_endpoints": [
+        {
+          "measurement_timestamp": 0.4,
+          "side": "source",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0015/CAM-INT-0015:trk-000002"
+        },
+        {
+          "measurement_timestamp": 0.4,
+          "side": "target",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0022/CAM-INT-0022:trk-000001"
+        }
+      ],
+      "missing_pattern": "both_endpoints_missing",
+      "scenario_version": "delayed_noisy-100v100-v1",
+      "seed": 8,
+      "source_tracklet_key": "INT-0015/CAM-INT-0015:trk-000002",
+      "split": "train",
+      "target_tracklet_key": "INT-0022/CAM-INT-0022:trk-000001"
+    },
+    {
+      "edge_index": 0,
+      "edge_status": "unavailable",
+      "episode_id": "delayed_noisy_100v100-s11-39ddc718de4f-d5-frame-000001",
+      "episode_uid": "2670c3530789dbc9ebc92bcf",
+      "missing_endpoints": [
+        {
+          "measurement_timestamp": 0.1,
+          "side": "source",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0081/CAM-INT-0081:trk-000001"
+        },
+        {
+          "measurement_timestamp": 0.1,
+          "side": "target",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0085/CAM-INT-0085:trk-000001"
+        }
+      ],
+      "missing_pattern": "both_endpoints_missing",
+      "scenario_version": "delayed_noisy-100v100-v1",
+      "seed": 11,
+      "source_tracklet_key": "INT-0081/CAM-INT-0081:trk-000001",
+      "split": "train",
+      "target_tracklet_key": "INT-0085/CAM-INT-0085:trk-000001"
+    },
+    {
+      "edge_index": 0,
+      "edge_status": "unavailable",
+      "episode_id": "delayed_noisy_200v200-s48-fa5bebfb992e-d5-frame-000010",
+      "episode_uid": "319eb693d77eca4f02f2f162",
+      "missing_endpoints": [
+        {
+          "measurement_timestamp": 0.5,
+          "side": "source",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0006/CAM-INT-0006:trk-000004"
+        },
+        {
+          "measurement_timestamp": 0.5,
+          "side": "target",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0020/CAM-INT-0020:trk-000001"
+        }
+      ],
+      "missing_pattern": "both_endpoints_missing",
+      "scenario_version": "delayed_noisy-200v200-v1",
+      "seed": 48,
+      "source_tracklet_key": "INT-0006/CAM-INT-0006:trk-000004",
+      "split": "train",
+      "target_tracklet_key": "INT-0020/CAM-INT-0020:trk-000001"
+    },
+    {
+      "edge_index": 1,
+      "edge_status": "unavailable",
+      "episode_id": "delayed_noisy_200v200-s48-fa5bebfb992e-d5-frame-000010",
+      "episode_uid": "319eb693d77eca4f02f2f162",
+      "missing_endpoints": [
+        {
+          "measurement_timestamp": 0.5,
+          "side": "source",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0178/CAM-INT-0178:trk-000001"
+        },
+        {
+          "measurement_timestamp": 0.5,
+          "side": "target",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0185/CAM-INT-0185:trk-000003"
+        }
+      ],
+      "missing_pattern": "both_endpoints_missing",
+      "scenario_version": "delayed_noisy-200v200-v1",
+      "seed": 48,
+      "source_tracklet_key": "INT-0178/CAM-INT-0178:trk-000001",
+      "split": "train",
+      "target_tracklet_key": "INT-0185/CAM-INT-0185:trk-000003"
+    },
+    {
+      "edge_index": 0,
+      "edge_status": "unavailable",
+      "episode_id": "delayed_noisy_200v200-s59-df977623034d-d5-frame-000000",
+      "episode_uid": "3315f4b353cc9b52906f497b",
+      "missing_endpoints": [
+        {
+          "measurement_timestamp": 0.0,
+          "side": "source",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0151/CAM-INT-0151:trk-000001"
+        },
+        {
+          "measurement_timestamp": 0.0,
+          "side": "target",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0153/CAM-INT-0153:trk-000001"
+        }
+      ],
+      "missing_pattern": "both_endpoints_missing",
+      "scenario_version": "delayed_noisy-200v200-v1",
+      "seed": 59,
+      "source_tracklet_key": "INT-0151/CAM-INT-0151:trk-000001",
+      "split": "train",
+      "target_tracklet_key": "INT-0153/CAM-INT-0153:trk-000001"
+    },
+    {
+      "edge_index": 0,
+      "edge_status": "unavailable",
+      "episode_id": "delayed_noisy_200v200-s58-2d144d80d039-d5-frame-000002",
+      "episode_uid": "34ebc6b3ce89c511658d05c5",
+      "missing_endpoints": [
+        {
+          "measurement_timestamp": 0.1,
+          "side": "source",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0098/CAM-INT-0098:trk-000001"
+        },
+        {
+          "measurement_timestamp": 0.1,
+          "side": "target",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0101/CAM-INT-0101:trk-000002"
+        }
+      ],
+      "missing_pattern": "both_endpoints_missing",
+      "scenario_version": "delayed_noisy-200v200-v1",
+      "seed": 58,
+      "source_tracklet_key": "INT-0098/CAM-INT-0098:trk-000001",
+      "split": "train",
+      "target_tracklet_key": "INT-0101/CAM-INT-0101:trk-000002"
+    },
+    {
+      "edge_index": 0,
+      "edge_status": "unavailable",
+      "episode_id": "delayed_noisy_200v200-s51-78d4ecdf2fec-d5-frame-000000",
+      "episode_uid": "36311f08e18dbce802054def",
+      "missing_endpoints": [
+        {
+          "measurement_timestamp": 0.0,
+          "side": "source",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0051/CAM-INT-0051:trk-000001"
+        },
+        {
+          "measurement_timestamp": 0.0,
+          "side": "target",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0059/CAM-INT-0059:trk-000001"
+        }
+      ],
+      "missing_pattern": "both_endpoints_missing",
+      "scenario_version": "delayed_noisy-200v200-v1",
+      "seed": 51,
+      "source_tracklet_key": "INT-0051/CAM-INT-0051:trk-000001",
+      "split": "validation",
+      "target_tracklet_key": "INT-0059/CAM-INT-0059:trk-000001"
+    },
+    {
+      "edge_index": 0,
+      "edge_status": "unavailable",
+      "episode_id": "delayed_noisy_200v200-s49-68e2ce2f2205-d5-frame-000006",
+      "episode_uid": "3688265db8531781ced07c0c",
+      "missing_endpoints": [
+        {
+          "measurement_timestamp": 0.3,
+          "side": "source",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0132/CAM-INT-0132:trk-000001"
+        },
+        {
+          "measurement_timestamp": 0.3,
+          "side": "target",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0139/CAM-INT-0139:trk-000002"
+        }
+      ],
+      "missing_pattern": "both_endpoints_missing",
+      "scenario_version": "delayed_noisy-200v200-v1",
+      "seed": 49,
+      "source_tracklet_key": "INT-0132/CAM-INT-0132:trk-000001",
+      "split": "train",
+      "target_tracklet_key": "INT-0139/CAM-INT-0139:trk-000002"
+    },
+    {
+      "edge_index": 0,
+      "edge_status": "unavailable",
+      "episode_id": "high_threat_m_to_n_200v200-s24-19bdde7072c9-d5-frame-000001",
+      "episode_uid": "36ce0ecc78915da103865d55",
+      "missing_endpoints": [
+        {
+          "measurement_timestamp": 0.1,
+          "side": "source",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0079/CAM-INT-0079:trk-000001"
+        },
+        {
+          "measurement_timestamp": 0.1,
+          "side": "target",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0083/CAM-INT-0083:trk-000001"
+        }
+      ],
+      "missing_pattern": "both_endpoints_missing",
+      "scenario_version": "high_threat_m_to_n-200v200-v1",
+      "seed": 24,
+      "source_tracklet_key": "INT-0079/CAM-INT-0079:trk-000001",
+      "split": "train",
+      "target_tracklet_key": "INT-0083/CAM-INT-0083:trk-000001"
+    },
+    {
+      "edge_index": 0,
+      "edge_status": "unavailable",
+      "episode_id": "delayed_noisy_200v200-s50-031242e5db5e-d5-frame-000002",
+      "episode_uid": "3713fa8a6badacdd9a41a305",
+      "missing_endpoints": [
+        {
+          "measurement_timestamp": 0.1,
+          "side": "source",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0023/CAM-INT-0023:trk-000001"
+        },
+        {
+          "measurement_timestamp": 0.1,
+          "side": "target",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0048/CAM-INT-0048:trk-000001"
+        }
+      ],
+      "missing_pattern": "both_endpoints_missing",
+      "scenario_version": "delayed_noisy-200v200-v1",
+      "seed": 50,
+      "source_tracklet_key": "INT-0023/CAM-INT-0023:trk-000001",
+      "split": "train",
+      "target_tracklet_key": "INT-0048/CAM-INT-0048:trk-000001"
+    },
+    {
+      "edge_index": 0,
+      "edge_status": "unavailable",
+      "episode_id": "delayed_noisy_200v200-s46-35b4428aab20-d5-frame-000002",
+      "episode_uid": "39a3f52d0f12af7bcc9c0905",
+      "missing_endpoints": [
+        {
+          "measurement_timestamp": 0.1,
+          "side": "source",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0092/CAM-INT-0092:trk-000001"
+        },
+        {
+          "measurement_timestamp": 0.1,
+          "side": "target",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0093/CAM-INT-0093:trk-000002"
+        }
+      ],
+      "missing_pattern": "both_endpoints_missing",
+      "scenario_version": "delayed_noisy-200v200-v1",
+      "seed": 46,
+      "source_tracklet_key": "INT-0092/CAM-INT-0092:trk-000001",
+      "split": "train",
+      "target_tracklet_key": "INT-0093/CAM-INT-0093:trk-000002"
+    },
+    {
+      "edge_index": 0,
+      "edge_status": "unavailable",
+      "episode_id": "delayed_noisy_200v200-s49-68e2ce2f2205-d5-frame-000000",
+      "episode_uid": "445fb9995404d8bacb6add82",
+      "missing_endpoints": [
+        {
+          "measurement_timestamp": 0.0,
+          "side": "source",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0169/CAM-INT-0169:trk-000001"
+        },
+        {
+          "measurement_timestamp": 0.0,
+          "side": "target",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0189/CAM-INT-0189:trk-000001"
+        }
+      ],
+      "missing_pattern": "both_endpoints_missing",
+      "scenario_version": "delayed_noisy-200v200-v1",
+      "seed": 49,
+      "source_tracklet_key": "INT-0169/CAM-INT-0169:trk-000001",
+      "split": "train",
+      "target_tracklet_key": "INT-0189/CAM-INT-0189:trk-000001"
+    },
+    {
+      "edge_index": 0,
+      "edge_status": "unavailable",
+      "episode_id": "delayed_noisy_100v100-s6-bbe47579000a-d5-frame-000004",
+      "episode_uid": "459ca9d32ac230d3e7133a01",
+      "missing_endpoints": [
+        {
+          "measurement_timestamp": 0.3,
+          "side": "source",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0092/CAM-INT-0092:trk-000001"
+        },
+        {
+          "measurement_timestamp": 0.3,
+          "side": "target",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0097/CAM-INT-0097:trk-000001"
+        }
+      ],
+      "missing_pattern": "both_endpoints_missing",
+      "scenario_version": "delayed_noisy-100v100-v1",
+      "seed": 6,
+      "source_tracklet_key": "INT-0092/CAM-INT-0092:trk-000001",
+      "split": "train",
+      "target_tracklet_key": "INT-0097/CAM-INT-0097:trk-000001"
+    },
+    {
+      "edge_index": 0,
+      "edge_status": "unavailable",
+      "episode_id": "delayed_noisy_100v100-s4-da1627db1cda-d5-frame-000006",
+      "episode_uid": "46b6370e8835b1f25bb45710",
+      "missing_endpoints": [
+        {
+          "measurement_timestamp": 0.3,
+          "side": "source",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0087/CAM-INT-0087:trk-000002"
+        },
+        {
+          "measurement_timestamp": 0.3,
+          "side": "target",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "RECON-003/CAM-RECON-003:trk-000002"
+        }
+      ],
+      "missing_pattern": "both_endpoints_missing",
+      "scenario_version": "delayed_noisy-100v100-v1",
+      "seed": 4,
+      "source_tracklet_key": "INT-0087/CAM-INT-0087:trk-000002",
+      "split": "train",
+      "target_tracklet_key": "RECON-003/CAM-RECON-003:trk-000002"
+    },
+    {
+      "edge_index": 0,
+      "edge_status": "unavailable",
+      "episode_id": "delayed_noisy_200v200-s53-e5f00a816276-d5-frame-000002",
+      "episode_uid": "490f0c983435b130bbc6b9e3",
+      "missing_endpoints": [
+        {
+          "measurement_timestamp": 0.1,
+          "side": "source",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0005/CAM-INT-0005:trk-000001"
+        },
+        {
+          "measurement_timestamp": 0.1,
+          "side": "target",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0014/CAM-INT-0014:trk-000003"
+        }
+      ],
+      "missing_pattern": "both_endpoints_missing",
+      "scenario_version": "delayed_noisy-200v200-v1",
+      "seed": 53,
+      "source_tracklet_key": "INT-0005/CAM-INT-0005:trk-000001",
+      "split": "train",
+      "target_tracklet_key": "INT-0014/CAM-INT-0014:trk-000003"
+    },
+    {
+      "edge_index": 1,
+      "edge_status": "unavailable",
+      "episode_id": "delayed_noisy_200v200-s53-e5f00a816276-d5-frame-000002",
+      "episode_uid": "490f0c983435b130bbc6b9e3",
+      "missing_endpoints": [
+        {
+          "measurement_timestamp": 0.1,
+          "side": "source",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0144/CAM-INT-0144:trk-000001"
+        },
+        {
+          "measurement_timestamp": 0.1,
+          "side": "target",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0145/CAM-INT-0145:trk-000001"
+        }
+      ],
+      "missing_pattern": "both_endpoints_missing",
+      "scenario_version": "delayed_noisy-200v200-v1",
+      "seed": 53,
+      "source_tracklet_key": "INT-0144/CAM-INT-0144:trk-000001",
+      "split": "train",
+      "target_tracklet_key": "INT-0145/CAM-INT-0145:trk-000001"
+    },
+    {
+      "edge_index": 0,
+      "edge_status": "unavailable",
+      "episode_id": "delayed_noisy_200v200-s54-04cb494ab780-d5-frame-000002",
+      "episode_uid": "4ced2a899e0e3346663e7ee1",
+      "missing_endpoints": [
+        {
+          "measurement_timestamp": 0.1,
+          "side": "source",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0118/CAM-INT-0118:trk-000001"
+        },
+        {
+          "measurement_timestamp": 0.1,
+          "side": "target",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0128/CAM-INT-0128:trk-000001"
+        }
+      ],
+      "missing_pattern": "both_endpoints_missing",
+      "scenario_version": "delayed_noisy-200v200-v1",
+      "seed": 54,
+      "source_tracklet_key": "INT-0118/CAM-INT-0118:trk-000001",
+      "split": "train",
+      "target_tracklet_key": "INT-0128/CAM-INT-0128:trk-000001"
+    },
+    {
+      "edge_index": 0,
+      "edge_status": "unavailable",
+      "episode_id": "delayed_noisy_200v200-s57-da72a7811603-d5-frame-000000",
+      "episode_uid": "506eac6458f92ed66e6a07ed",
+      "missing_endpoints": [
+        {
+          "measurement_timestamp": 0.0,
+          "side": "source",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0047/CAM-INT-0047:trk-000001"
+        },
+        {
+          "measurement_timestamp": 0.0,
+          "side": "target",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0048/CAM-INT-0048:trk-000001"
+        }
+      ],
+      "missing_pattern": "both_endpoints_missing",
+      "scenario_version": "delayed_noisy-200v200-v1",
+      "seed": 57,
+      "source_tracklet_key": "INT-0047/CAM-INT-0047:trk-000001",
+      "split": "validation",
+      "target_tracklet_key": "INT-0048/CAM-INT-0048:trk-000001"
+    },
+    {
+      "edge_index": 1,
+      "edge_status": "unavailable",
+      "episode_id": "delayed_noisy_200v200-s57-da72a7811603-d5-frame-000000",
+      "episode_uid": "506eac6458f92ed66e6a07ed",
+      "missing_endpoints": [
+        {
+          "measurement_timestamp": 0.0,
+          "side": "source",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0103/CAM-INT-0103:trk-000001"
+        },
+        {
+          "measurement_timestamp": 0.0,
+          "side": "target",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0133/CAM-INT-0133:trk-000001"
+        }
+      ],
+      "missing_pattern": "both_endpoints_missing",
+      "scenario_version": "delayed_noisy-200v200-v1",
+      "seed": 57,
+      "source_tracklet_key": "INT-0103/CAM-INT-0103:trk-000001",
+      "split": "validation",
+      "target_tracklet_key": "INT-0133/CAM-INT-0133:trk-000001"
+    },
+    {
+      "edge_index": 2,
+      "edge_status": "unavailable",
+      "episode_id": "delayed_noisy_200v200-s57-da72a7811603-d5-frame-000000",
+      "episode_uid": "506eac6458f92ed66e6a07ed",
+      "missing_endpoints": [
+        {
+          "measurement_timestamp": 0.0,
+          "side": "source",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0108/CAM-INT-0108:trk-000001"
+        },
+        {
+          "measurement_timestamp": 0.0,
+          "side": "target",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0117/CAM-INT-0117:trk-000001"
+        }
+      ],
+      "missing_pattern": "both_endpoints_missing",
+      "scenario_version": "delayed_noisy-200v200-v1",
+      "seed": 57,
+      "source_tracklet_key": "INT-0108/CAM-INT-0108:trk-000001",
+      "split": "validation",
+      "target_tracklet_key": "INT-0117/CAM-INT-0117:trk-000001"
+    },
+    {
+      "edge_index": 0,
+      "edge_status": "unavailable",
+      "episode_id": "delayed_noisy_200v200-s45-84fe4fae50fd-d5-frame-000008",
+      "episode_uid": "52916d7b8e419768fa83f7e7",
+      "missing_endpoints": [
+        {
+          "measurement_timestamp": 0.4,
+          "side": "source",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0149/CAM-INT-0149:trk-000002"
+        },
+        {
+          "measurement_timestamp": 0.4,
+          "side": "target",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "RECON-002/CAM-RECON-002:trk-000002"
+        }
+      ],
+      "missing_pattern": "both_endpoints_missing",
+      "scenario_version": "delayed_noisy-200v200-v1",
+      "seed": 45,
+      "source_tracklet_key": "INT-0149/CAM-INT-0149:trk-000002",
+      "split": "train",
+      "target_tracklet_key": "RECON-002/CAM-RECON-002:trk-000002"
+    },
+    {
+      "edge_index": 0,
+      "edge_status": "unavailable",
+      "episode_id": "delayed_noisy_200v200-s49-68e2ce2f2205-d5-frame-000008",
+      "episode_uid": "543b70f20b2932e5dad9d8a5",
+      "missing_endpoints": [
+        {
+          "measurement_timestamp": 0.4,
+          "side": "source",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0013/CAM-INT-0013:trk-000001"
+        },
+        {
+          "measurement_timestamp": 0.4,
+          "side": "target",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0035/CAM-INT-0035:trk-000001"
+        }
+      ],
+      "missing_pattern": "both_endpoints_missing",
+      "scenario_version": "delayed_noisy-200v200-v1",
+      "seed": 49,
+      "source_tracklet_key": "INT-0013/CAM-INT-0013:trk-000001",
+      "split": "train",
+      "target_tracklet_key": "INT-0035/CAM-INT-0035:trk-000001"
+    },
+    {
+      "edge_index": 0,
+      "edge_status": "unavailable",
+      "episode_id": "delayed_noisy_200v200-s48-fa5bebfb992e-d5-frame-000004",
+      "episode_uid": "554dd2078ea36221b1c60bdd",
+      "missing_endpoints": [
+        {
+          "measurement_timestamp": 0.2,
+          "side": "source",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0082/CAM-INT-0082:trk-000001"
+        },
+        {
+          "measurement_timestamp": 0.2,
+          "side": "target",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0094/CAM-INT-0094:trk-000001"
+        }
+      ],
+      "missing_pattern": "both_endpoints_missing",
+      "scenario_version": "delayed_noisy-200v200-v1",
+      "seed": 48,
+      "source_tracklet_key": "INT-0082/CAM-INT-0082:trk-000001",
+      "split": "train",
+      "target_tracklet_key": "INT-0094/CAM-INT-0094:trk-000001"
+    },
+    {
+      "edge_index": 1,
+      "edge_status": "unavailable",
+      "episode_id": "delayed_noisy_200v200-s48-fa5bebfb992e-d5-frame-000004",
+      "episode_uid": "554dd2078ea36221b1c60bdd",
+      "missing_endpoints": [
+        {
+          "measurement_timestamp": 0.2,
+          "side": "source",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0158/CAM-INT-0158:trk-000002"
+        },
+        {
+          "measurement_timestamp": 0.2,
+          "side": "target",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0166/CAM-INT-0166:trk-000002"
+        }
+      ],
+      "missing_pattern": "both_endpoints_missing",
+      "scenario_version": "delayed_noisy-200v200-v1",
+      "seed": 48,
+      "source_tracklet_key": "INT-0158/CAM-INT-0158:trk-000002",
+      "split": "train",
+      "target_tracklet_key": "INT-0166/CAM-INT-0166:trk-000002"
+    },
+    {
+      "edge_index": 0,
+      "edge_status": "unavailable",
+      "episode_id": "delayed_noisy_100v100-s19-c2ea312fde70-d5-frame-000008",
+      "episode_uid": "569ac464b19ca6e87602dbb0",
+      "missing_endpoints": [
+        {
+          "measurement_timestamp": 0.4,
+          "side": "source",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0027/CAM-INT-0027:trk-000002"
+        },
+        {
+          "measurement_timestamp": 0.4,
+          "side": "target",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0032/CAM-INT-0032:trk-000001"
+        }
+      ],
+      "missing_pattern": "both_endpoints_missing",
+      "scenario_version": "delayed_noisy-100v100-v1",
+      "seed": 19,
+      "source_tracklet_key": "INT-0027/CAM-INT-0027:trk-000002",
+      "split": "train",
+      "target_tracklet_key": "INT-0032/CAM-INT-0032:trk-000001"
+    },
+    {
+      "edge_index": 0,
+      "edge_status": "unavailable",
+      "episode_id": "delayed_noisy_200v200-s41-9de6d335cc3d-d5-frame-000009",
+      "episode_uid": "5d0e940f014d12dd16b5ea6e",
+      "missing_endpoints": [
+        {
+          "measurement_timestamp": 0.5,
+          "side": "source",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0142/CAM-INT-0142:trk-000001"
+        },
+        {
+          "measurement_timestamp": 0.5,
+          "side": "target",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0160/CAM-INT-0160:trk-000005"
+        }
+      ],
+      "missing_pattern": "both_endpoints_missing",
+      "scenario_version": "delayed_noisy-200v200-v1",
+      "seed": 41,
+      "source_tracklet_key": "INT-0142/CAM-INT-0142:trk-000001",
+      "split": "validation",
+      "target_tracklet_key": "INT-0160/CAM-INT-0160:trk-000005"
+    },
+    {
+      "edge_index": 0,
+      "edge_status": "unavailable",
+      "episode_id": "nominal_200v200-s69-9cb0cbe9c8e9-d5-frame-000017",
+      "episode_uid": "5d2a1aee60222c22ae1ecda3",
+      "missing_endpoints": [
+        {
+          "measurement_timestamp": 1.6,
+          "side": "source",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0003/CAM-INT-0003:trk-000001"
+        }
+      ],
+      "missing_pattern": "source_endpoint_missing",
+      "scenario_version": "nominal-200v200-v1",
+      "seed": 69,
+      "source_tracklet_key": "INT-0003/CAM-INT-0003:trk-000001",
+      "split": "test",
+      "target_tracklet_key": "RECON-008/CAM-RECON-008:trk-000010"
+    },
+    {
+      "edge_index": 0,
+      "edge_status": "unavailable",
+      "episode_id": "delayed_noisy_200v200-s40-ce7096221353-d5-frame-000010",
+      "episode_uid": "5e94e8773d4fda151e268a0d",
+      "missing_endpoints": [
+        {
+          "measurement_timestamp": 0.5,
+          "side": "source",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0142/CAM-INT-0142:trk-000001"
+        },
+        {
+          "measurement_timestamp": 0.5,
+          "side": "target",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0148/CAM-INT-0148:trk-000003"
+        }
+      ],
+      "missing_pattern": "both_endpoints_missing",
+      "scenario_version": "delayed_noisy-200v200-v1",
+      "seed": 40,
+      "source_tracklet_key": "INT-0142/CAM-INT-0142:trk-000001",
+      "split": "train",
+      "target_tracklet_key": "INT-0148/CAM-INT-0148:trk-000003"
+    },
+    {
+      "edge_index": 1,
+      "edge_status": "unavailable",
+      "episode_id": "delayed_noisy_200v200-s40-ce7096221353-d5-frame-000010",
+      "episode_uid": "5e94e8773d4fda151e268a0d",
+      "missing_endpoints": [
+        {
+          "measurement_timestamp": 0.5,
+          "side": "source",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0174/CAM-INT-0174:trk-000001"
+        },
+        {
+          "measurement_timestamp": 0.5,
+          "side": "target",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0179/CAM-INT-0179:trk-000003"
+        }
+      ],
+      "missing_pattern": "both_endpoints_missing",
+      "scenario_version": "delayed_noisy-200v200-v1",
+      "seed": 40,
+      "source_tracklet_key": "INT-0174/CAM-INT-0174:trk-000001",
+      "split": "train",
+      "target_tracklet_key": "INT-0179/CAM-INT-0179:trk-000003"
+    },
+    {
+      "edge_index": 0,
+      "edge_status": "unavailable",
+      "episode_id": "center_failure_100v100-s51-e82eda457fe6-d5-frame-000000",
+      "episode_uid": "63a7e560ca875ce064c3e63e",
+      "missing_endpoints": [
+        {
+          "measurement_timestamp": 0.0,
+          "side": "source",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0094/CAM-INT-0094:trk-000001"
+        },
+        {
+          "measurement_timestamp": 0.0,
+          "side": "target",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0096/CAM-INT-0096:trk-000001"
+        }
+      ],
+      "missing_pattern": "both_endpoints_missing",
+      "scenario_version": "center_failure-100v100-v1",
+      "seed": 51,
+      "source_tracklet_key": "INT-0094/CAM-INT-0094:trk-000001",
+      "split": "validation",
+      "target_tracklet_key": "INT-0096/CAM-INT-0096:trk-000001"
+    },
+    {
+      "edge_index": 0,
+      "edge_status": "unavailable",
+      "episode_id": "delayed_noisy_200v200-s52-1a3f2f39511d-d5-frame-000008",
+      "episode_uid": "676af07c11492227ca3198a3",
+      "missing_endpoints": [
+        {
+          "measurement_timestamp": 0.4,
+          "side": "source",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0048/CAM-INT-0048:trk-000001"
+        },
+        {
+          "measurement_timestamp": 0.4,
+          "side": "target",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0070/CAM-INT-0070:trk-000001"
+        }
+      ],
+      "missing_pattern": "both_endpoints_missing",
+      "scenario_version": "delayed_noisy-200v200-v1",
+      "seed": 52,
+      "source_tracklet_key": "INT-0048/CAM-INT-0048:trk-000001",
+      "split": "test",
+      "target_tracklet_key": "INT-0070/CAM-INT-0070:trk-000001"
+    },
+    {
+      "edge_index": 0,
+      "edge_status": "unavailable",
+      "episode_id": "high_threat_m_to_n_50v50-s53-807b42129c5e-d5-frame-000000",
+      "episode_uid": "6841a9bd6f269f21154c4624",
+      "missing_endpoints": [
+        {
+          "measurement_timestamp": 0.0,
+          "side": "source",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0008/CAM-INT-0008:trk-000001"
+        },
+        {
+          "measurement_timestamp": 0.0,
+          "side": "target",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0010/CAM-INT-0010:trk-000001"
+        }
+      ],
+      "missing_pattern": "both_endpoints_missing",
+      "scenario_version": "high_threat_m_to_n-50v50-v1",
+      "seed": 53,
+      "source_tracklet_key": "INT-0008/CAM-INT-0008:trk-000001",
+      "split": "train",
+      "target_tracklet_key": "INT-0010/CAM-INT-0010:trk-000001"
+    },
+    {
+      "edge_index": 0,
+      "edge_status": "unavailable",
+      "episode_id": "delayed_noisy_200v200-s43-b553254a3e47-d5-frame-000002",
+      "episode_uid": "6842aaea59531cf5b4acd6d3",
+      "missing_endpoints": [
+        {
+          "measurement_timestamp": 0.1,
+          "side": "source",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0149/CAM-INT-0149:trk-000001"
+        },
+        {
+          "measurement_timestamp": 0.1,
+          "side": "target",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0165/CAM-INT-0165:trk-000002"
+        }
+      ],
+      "missing_pattern": "both_endpoints_missing",
+      "scenario_version": "delayed_noisy-200v200-v1",
+      "seed": 43,
+      "source_tracklet_key": "INT-0149/CAM-INT-0149:trk-000001",
+      "split": "train",
+      "target_tracklet_key": "INT-0165/CAM-INT-0165:trk-000002"
+    },
+    {
+      "edge_index": 0,
+      "edge_status": "unavailable",
+      "episode_id": "delayed_noisy_200v200-s48-fa5bebfb992e-d5-frame-000000",
+      "episode_uid": "68ad501e801e79f4695c3f91",
+      "missing_endpoints": [
+        {
+          "measurement_timestamp": 0.0,
+          "side": "source",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0132/CAM-INT-0132:trk-000001"
+        },
+        {
+          "measurement_timestamp": 0.0,
+          "side": "target",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0143/CAM-INT-0143:trk-000001"
+        }
+      ],
+      "missing_pattern": "both_endpoints_missing",
+      "scenario_version": "delayed_noisy-200v200-v1",
+      "seed": 48,
+      "source_tracklet_key": "INT-0132/CAM-INT-0132:trk-000001",
+      "split": "train",
+      "target_tracklet_key": "INT-0143/CAM-INT-0143:trk-000001"
+    },
+    {
+      "edge_index": 0,
+      "edge_status": "unavailable",
+      "episode_id": "delayed_noisy_200v200-s41-9de6d335cc3d-d5-frame-000001",
+      "episode_uid": "6a4feb0f8bac1afb916ec2d9",
+      "missing_endpoints": [
+        {
+          "measurement_timestamp": 0.1,
+          "side": "source",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0008/CAM-INT-0008:trk-000001"
+        },
+        {
+          "measurement_timestamp": 0.1,
+          "side": "target",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0019/CAM-INT-0019:trk-000001"
+        }
+      ],
+      "missing_pattern": "both_endpoints_missing",
+      "scenario_version": "delayed_noisy-200v200-v1",
+      "seed": 41,
+      "source_tracklet_key": "INT-0008/CAM-INT-0008:trk-000001",
+      "split": "validation",
+      "target_tracklet_key": "INT-0019/CAM-INT-0019:trk-000001"
+    },
+    {
+      "edge_index": 0,
+      "edge_status": "unavailable",
+      "episode_id": "delayed_noisy_200v200-s44-69009baae953-d5-frame-000000",
+      "episode_uid": "6c7c0694a2e6e12034bd56cf",
+      "missing_endpoints": [
+        {
+          "measurement_timestamp": 0.0,
+          "side": "source",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0136/CAM-INT-0136:trk-000002"
+        },
+        {
+          "measurement_timestamp": 0.0,
+          "side": "target",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0146/CAM-INT-0146:trk-000001"
+        }
+      ],
+      "missing_pattern": "both_endpoints_missing",
+      "scenario_version": "delayed_noisy-200v200-v1",
+      "seed": 44,
+      "source_tracklet_key": "INT-0136/CAM-INT-0136:trk-000002",
+      "split": "validation",
+      "target_tracklet_key": "INT-0146/CAM-INT-0146:trk-000001"
+    },
+    {
+      "edge_index": 1,
+      "edge_status": "unavailable",
+      "episode_id": "delayed_noisy_200v200-s44-69009baae953-d5-frame-000000",
+      "episode_uid": "6c7c0694a2e6e12034bd56cf",
+      "missing_endpoints": [
+        {
+          "measurement_timestamp": 0.0,
+          "side": "source",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0180/CAM-INT-0180:trk-000001"
+        },
+        {
+          "measurement_timestamp": 0.0,
+          "side": "target",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0192/CAM-INT-0192:trk-000001"
+        }
+      ],
+      "missing_pattern": "both_endpoints_missing",
+      "scenario_version": "delayed_noisy-200v200-v1",
+      "seed": 44,
+      "source_tracklet_key": "INT-0180/CAM-INT-0180:trk-000001",
+      "split": "validation",
+      "target_tracklet_key": "INT-0192/CAM-INT-0192:trk-000001"
+    },
+    {
+      "edge_index": 0,
+      "edge_status": "unavailable",
+      "episode_id": "delayed_noisy_50v50-s79-a3e89ba45185-d5-frame-000000",
+      "episode_uid": "736d6a54076270c3dd93e05b",
+      "missing_endpoints": [
+        {
+          "measurement_timestamp": 0.0,
+          "side": "source",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0048/CAM-INT-0048:trk-000001"
+        },
+        {
+          "measurement_timestamp": 0.0,
+          "side": "target",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0050/CAM-INT-0050:trk-000001"
+        }
+      ],
+      "missing_pattern": "both_endpoints_missing",
+      "scenario_version": "delayed_noisy-50v50-v1",
+      "seed": 79,
+      "source_tracklet_key": "INT-0048/CAM-INT-0048:trk-000001",
+      "split": "train",
+      "target_tracklet_key": "INT-0050/CAM-INT-0050:trk-000001"
+    },
+    {
+      "edge_index": 0,
+      "edge_status": "unavailable",
+      "episode_id": "delayed_noisy_50v50-s69-a2bbf57e1583-d5-frame-000003",
+      "episode_uid": "7bdb1e0a082775a09f2d9472",
+      "missing_endpoints": [
+        {
+          "measurement_timestamp": 0.2,
+          "side": "source",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0009/CAM-INT-0009:trk-000001"
+        },
+        {
+          "measurement_timestamp": 0.2,
+          "side": "target",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0012/CAM-INT-0012:trk-000004"
+        }
+      ],
+      "missing_pattern": "both_endpoints_missing",
+      "scenario_version": "delayed_noisy-50v50-v1",
+      "seed": 69,
+      "source_tracklet_key": "INT-0009/CAM-INT-0009:trk-000001",
+      "split": "test",
+      "target_tracklet_key": "INT-0012/CAM-INT-0012:trk-000004"
+    },
+    {
+      "edge_index": 0,
+      "edge_status": "unavailable",
+      "episode_id": "delayed_noisy_100v100-s7-088b8808fb19-d5-frame-000008",
+      "episode_uid": "80157d113bf94611e7d9017f",
+      "missing_endpoints": [
+        {
+          "measurement_timestamp": 0.5,
+          "side": "source",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0011/CAM-INT-0011:trk-000002"
+        },
+        {
+          "measurement_timestamp": 0.5,
+          "side": "target",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0012/CAM-INT-0012:trk-000002"
+        }
+      ],
+      "missing_pattern": "both_endpoints_missing",
+      "scenario_version": "delayed_noisy-100v100-v1",
+      "seed": 7,
+      "source_tracklet_key": "INT-0011/CAM-INT-0011:trk-000002",
+      "split": "test",
+      "target_tracklet_key": "INT-0012/CAM-INT-0012:trk-000002"
+    },
+    {
+      "edge_index": 0,
+      "edge_status": "unavailable",
+      "episode_id": "dense_crossing_100v100-s45-4b4f4b79be37-d5-frame-000001",
+      "episode_uid": "8415769aaba7dbe081dd4708",
+      "missing_endpoints": [
+        {
+          "measurement_timestamp": 0.1,
+          "side": "source",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0055/CAM-INT-0055:trk-000001"
+        },
+        {
+          "measurement_timestamp": 0.1,
+          "side": "target",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0060/CAM-INT-0060:trk-000001"
+        }
+      ],
+      "missing_pattern": "both_endpoints_missing",
+      "scenario_version": "dense_crossing-100v100-v1",
+      "seed": 45,
+      "source_tracklet_key": "INT-0055/CAM-INT-0055:trk-000001",
+      "split": "train",
+      "target_tracklet_key": "INT-0060/CAM-INT-0060:trk-000001"
+    },
+    {
+      "edge_index": 0,
+      "edge_status": "unavailable",
+      "episode_id": "delayed_noisy_200v200-s48-fa5bebfb992e-d5-frame-000008",
+      "episode_uid": "88e193564a3afb4904ba064d",
+      "missing_endpoints": [
+        {
+          "measurement_timestamp": 0.4,
+          "side": "source",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0031/CAM-INT-0031:trk-000001"
+        },
+        {
+          "measurement_timestamp": 0.4,
+          "side": "target",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0051/CAM-INT-0051:trk-000002"
+        }
+      ],
+      "missing_pattern": "both_endpoints_missing",
+      "scenario_version": "delayed_noisy-200v200-v1",
+      "seed": 48,
+      "source_tracklet_key": "INT-0031/CAM-INT-0031:trk-000001",
+      "split": "train",
+      "target_tracklet_key": "INT-0051/CAM-INT-0051:trk-000002"
+    },
+    {
+      "edge_index": 0,
+      "edge_status": "unavailable",
+      "episode_id": "delayed_noisy_200v200-s52-1a3f2f39511d-d5-frame-000002",
+      "episode_uid": "8aeb609119147aaaf55ea552",
+      "missing_endpoints": [
+        {
+          "measurement_timestamp": 0.1,
+          "side": "source",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0136/CAM-INT-0136:trk-000001"
+        },
+        {
+          "measurement_timestamp": 0.1,
+          "side": "target",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0147/CAM-INT-0147:trk-000002"
+        }
+      ],
+      "missing_pattern": "both_endpoints_missing",
+      "scenario_version": "delayed_noisy-200v200-v1",
+      "seed": 52,
+      "source_tracklet_key": "INT-0136/CAM-INT-0136:trk-000001",
+      "split": "test",
+      "target_tracklet_key": "INT-0147/CAM-INT-0147:trk-000002"
+    },
+    {
+      "edge_index": 1,
+      "edge_status": "unavailable",
+      "episode_id": "delayed_noisy_200v200-s52-1a3f2f39511d-d5-frame-000002",
+      "episode_uid": "8aeb609119147aaaf55ea552",
+      "missing_endpoints": [
+        {
+          "measurement_timestamp": 0.1,
+          "side": "source",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0160/CAM-INT-0160:trk-000001"
+        },
+        {
+          "measurement_timestamp": 0.1,
+          "side": "target",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0172/CAM-INT-0172:trk-000001"
+        }
+      ],
+      "missing_pattern": "both_endpoints_missing",
+      "scenario_version": "delayed_noisy-200v200-v1",
+      "seed": 52,
+      "source_tracklet_key": "INT-0160/CAM-INT-0160:trk-000001",
+      "split": "test",
+      "target_tracklet_key": "INT-0172/CAM-INT-0172:trk-000001"
+    },
+    {
+      "edge_index": 0,
+      "edge_status": "unavailable",
+      "episode_id": "delayed_noisy_200v200-s45-84fe4fae50fd-d5-frame-000000",
+      "episode_uid": "8f2b421d258b7613fe6d59ae",
+      "missing_endpoints": [
+        {
+          "measurement_timestamp": 0.0,
+          "side": "source",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0119/CAM-INT-0119:trk-000001"
+        },
+        {
+          "measurement_timestamp": 0.0,
+          "side": "target",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0124/CAM-INT-0124:trk-000001"
+        }
+      ],
+      "missing_pattern": "both_endpoints_missing",
+      "scenario_version": "delayed_noisy-200v200-v1",
+      "seed": 45,
+      "source_tracklet_key": "INT-0119/CAM-INT-0119:trk-000001",
+      "split": "train",
+      "target_tracklet_key": "INT-0124/CAM-INT-0124:trk-000001"
+    },
+    {
+      "edge_index": 0,
+      "edge_status": "unavailable",
+      "episode_id": "delayed_noisy_200v200-s59-df977623034d-d5-frame-000002",
+      "episode_uid": "8f473c947f498afb012739cd",
+      "missing_endpoints": [
+        {
+          "measurement_timestamp": 0.1,
+          "side": "source",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0066/CAM-INT-0066:trk-000001"
+        },
+        {
+          "measurement_timestamp": 0.1,
+          "side": "target",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0069/CAM-INT-0069:trk-000002"
+        }
+      ],
+      "missing_pattern": "both_endpoints_missing",
+      "scenario_version": "delayed_noisy-200v200-v1",
+      "seed": 59,
+      "source_tracklet_key": "INT-0066/CAM-INT-0066:trk-000001",
+      "split": "train",
+      "target_tracklet_key": "INT-0069/CAM-INT-0069:trk-000002"
+    },
+    {
+      "edge_index": 1,
+      "edge_status": "unavailable",
+      "episode_id": "delayed_noisy_200v200-s59-df977623034d-d5-frame-000002",
+      "episode_uid": "8f473c947f498afb012739cd",
+      "missing_endpoints": [
+        {
+          "measurement_timestamp": 0.1,
+          "side": "source",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0157/CAM-INT-0157:trk-000001"
+        },
+        {
+          "measurement_timestamp": 0.1,
+          "side": "target",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0161/CAM-INT-0161:trk-000001"
+        }
+      ],
+      "missing_pattern": "both_endpoints_missing",
+      "scenario_version": "delayed_noisy-200v200-v1",
+      "seed": 59,
+      "source_tracklet_key": "INT-0157/CAM-INT-0157:trk-000001",
+      "split": "train",
+      "target_tracklet_key": "INT-0161/CAM-INT-0161:trk-000001"
+    },
+    {
+      "edge_index": 0,
+      "edge_status": "unavailable",
+      "episode_id": "formation_split_200v200-s5-ce5b9e6515ab-d5-frame-000019",
+      "episode_uid": "9391c702c5bc54eb01ec4598",
+      "missing_endpoints": [
+        {
+          "measurement_timestamp": 1.8,
+          "side": "source",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0046/CAM-INT-0046:trk-000002"
+        }
+      ],
+      "missing_pattern": "source_endpoint_missing",
+      "scenario_version": "formation_split-200v200-v1",
+      "seed": 5,
+      "source_tracklet_key": "INT-0046/CAM-INT-0046:trk-000002",
+      "split": "validation",
+      "target_tracklet_key": "RECON-003/CAM-RECON-003:trk-000002"
+    },
+    {
+      "edge_index": 0,
+      "edge_status": "unavailable",
+      "episode_id": "delayed_noisy_100v100-s17-5ec63a8636c2-d5-frame-000008",
+      "episode_uid": "95e352ec4276dce46f491eb2",
+      "missing_endpoints": [
+        {
+          "measurement_timestamp": 0.5,
+          "side": "source",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0064/CAM-INT-0064:trk-000003"
+        },
+        {
+          "measurement_timestamp": 0.5,
+          "side": "target",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0070/CAM-INT-0070:trk-000002"
+        }
+      ],
+      "missing_pattern": "both_endpoints_missing",
+      "scenario_version": "delayed_noisy-100v100-v1",
+      "seed": 17,
+      "source_tracklet_key": "INT-0064/CAM-INT-0064:trk-000003",
+      "split": "test",
+      "target_tracklet_key": "INT-0070/CAM-INT-0070:trk-000002"
+    },
+    {
+      "edge_index": 0,
+      "edge_status": "unavailable",
+      "episode_id": "dense_crossing_200v200-s91-2f5a944f1812-d5-frame-000000",
+      "episode_uid": "971166186c2b8751792263a5",
+      "missing_endpoints": [
+        {
+          "measurement_timestamp": 0.0,
+          "side": "source",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0093/CAM-INT-0093:trk-000001"
+        },
+        {
+          "measurement_timestamp": 0.0,
+          "side": "target",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0100/CAM-INT-0100:trk-000001"
+        }
+      ],
+      "missing_pattern": "both_endpoints_missing",
+      "scenario_version": "dense_crossing-200v200-v1",
+      "seed": 91,
+      "source_tracklet_key": "INT-0093/CAM-INT-0093:trk-000001",
+      "split": "test",
+      "target_tracklet_key": "INT-0100/CAM-INT-0100:trk-000001"
+    },
+    {
+      "edge_index": 0,
+      "edge_status": "unavailable",
+      "episode_id": "delayed_noisy_200v200-s45-84fe4fae50fd-d5-frame-000012",
+      "episode_uid": "97919fd2f3dfe9150f47b3e1",
+      "missing_endpoints": [
+        {
+          "measurement_timestamp": 0.6,
+          "side": "source",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0087/CAM-INT-0087:trk-000001"
+        },
+        {
+          "measurement_timestamp": 0.6,
+          "side": "target",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0098/CAM-INT-0098:trk-000002"
+        }
+      ],
+      "missing_pattern": "both_endpoints_missing",
+      "scenario_version": "delayed_noisy-200v200-v1",
+      "seed": 45,
+      "source_tracklet_key": "INT-0087/CAM-INT-0087:trk-000001",
+      "split": "train",
+      "target_tracklet_key": "INT-0098/CAM-INT-0098:trk-000002"
+    },
+    {
+      "edge_index": 0,
+      "edge_status": "unavailable",
+      "episode_id": "dense_crossing_200v200-s86-e56f2ac40c63-d5-frame-000000",
+      "episode_uid": "98f86d81415df37461b9be97",
+      "missing_endpoints": [
+        {
+          "measurement_timestamp": 0.0,
+          "side": "source",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0125/CAM-INT-0125:trk-000001"
+        },
+        {
+          "measurement_timestamp": 0.0,
+          "side": "target",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0130/CAM-INT-0130:trk-000001"
+        }
+      ],
+      "missing_pattern": "both_endpoints_missing",
+      "scenario_version": "dense_crossing-200v200-v1",
+      "seed": 86,
+      "source_tracklet_key": "INT-0125/CAM-INT-0125:trk-000001",
+      "split": "validation",
+      "target_tracklet_key": "INT-0130/CAM-INT-0130:trk-000001"
+    },
+    {
+      "edge_index": 0,
+      "edge_status": "unavailable",
+      "episode_id": "delayed_noisy_200v200-s52-1a3f2f39511d-d5-frame-000004",
+      "episode_uid": "9930ad6ff13a826c4f2cef03",
+      "missing_endpoints": [
+        {
+          "measurement_timestamp": 0.2,
+          "side": "source",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0104/CAM-INT-0104:trk-000001"
+        },
+        {
+          "measurement_timestamp": 0.2,
+          "side": "target",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0112/CAM-INT-0112:trk-000001"
+        }
+      ],
+      "missing_pattern": "both_endpoints_missing",
+      "scenario_version": "delayed_noisy-200v200-v1",
+      "seed": 52,
+      "source_tracklet_key": "INT-0104/CAM-INT-0104:trk-000001",
+      "split": "test",
+      "target_tracklet_key": "INT-0112/CAM-INT-0112:trk-000001"
+    },
+    {
+      "edge_index": 1,
+      "edge_status": "unavailable",
+      "episode_id": "delayed_noisy_200v200-s52-1a3f2f39511d-d5-frame-000004",
+      "episode_uid": "9930ad6ff13a826c4f2cef03",
+      "missing_endpoints": [
+        {
+          "measurement_timestamp": 0.2,
+          "side": "source",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0106/CAM-INT-0106:trk-000001"
+        },
+        {
+          "measurement_timestamp": 0.2,
+          "side": "target",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0112/CAM-INT-0112:trk-000001"
+        }
+      ],
+      "missing_pattern": "both_endpoints_missing",
+      "scenario_version": "delayed_noisy-200v200-v1",
+      "seed": 52,
+      "source_tracklet_key": "INT-0106/CAM-INT-0106:trk-000001",
+      "split": "test",
+      "target_tracklet_key": "INT-0112/CAM-INT-0112:trk-000001"
+    },
+    {
+      "edge_index": 0,
+      "edge_status": "unavailable",
+      "episode_id": "delayed_noisy_200v200-s49-68e2ce2f2205-d5-frame-000010",
+      "episode_uid": "9ad0c97fda9b5e9177bb0c56",
+      "missing_endpoints": [
+        {
+          "measurement_timestamp": 0.5,
+          "side": "source",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0003/CAM-INT-0003:trk-000001"
+        },
+        {
+          "measurement_timestamp": 0.5,
+          "side": "target",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0192/CAM-INT-0192:trk-000001"
+        }
+      ],
+      "missing_pattern": "both_endpoints_missing",
+      "scenario_version": "delayed_noisy-200v200-v1",
+      "seed": 49,
+      "source_tracklet_key": "INT-0003/CAM-INT-0003:trk-000001",
+      "split": "train",
+      "target_tracklet_key": "INT-0192/CAM-INT-0192:trk-000001"
+    },
+    {
+      "edge_index": 1,
+      "edge_status": "unavailable",
+      "episode_id": "delayed_noisy_200v200-s49-68e2ce2f2205-d5-frame-000010",
+      "episode_uid": "9ad0c97fda9b5e9177bb0c56",
+      "missing_endpoints": [
+        {
+          "measurement_timestamp": 0.5,
+          "side": "source",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0015/CAM-INT-0015:trk-000001"
+        },
+        {
+          "measurement_timestamp": 0.5,
+          "side": "target",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0022/CAM-INT-0022:trk-000002"
+        }
+      ],
+      "missing_pattern": "both_endpoints_missing",
+      "scenario_version": "delayed_noisy-200v200-v1",
+      "seed": 49,
+      "source_tracklet_key": "INT-0015/CAM-INT-0015:trk-000001",
+      "split": "train",
+      "target_tracklet_key": "INT-0022/CAM-INT-0022:trk-000002"
+    },
+    {
+      "edge_index": 2,
+      "edge_status": "unavailable",
+      "episode_id": "delayed_noisy_200v200-s49-68e2ce2f2205-d5-frame-000010",
+      "episode_uid": "9ad0c97fda9b5e9177bb0c56",
+      "missing_endpoints": [
+        {
+          "measurement_timestamp": 0.5,
+          "side": "source",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0022/CAM-INT-0022:trk-000003"
+        },
+        {
+          "measurement_timestamp": 0.5,
+          "side": "target",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0038/CAM-INT-0038:trk-000002"
+        }
+      ],
+      "missing_pattern": "both_endpoints_missing",
+      "scenario_version": "delayed_noisy-200v200-v1",
+      "seed": 49,
+      "source_tracklet_key": "INT-0022/CAM-INT-0022:trk-000003",
+      "split": "train",
+      "target_tracklet_key": "INT-0038/CAM-INT-0038:trk-000002"
+    },
+    {
+      "edge_index": 0,
+      "edge_status": "unavailable",
+      "episode_id": "delayed_noisy_50v50-s79-a3e89ba45185-d5-frame-000006",
+      "episode_uid": "9b48c1b25f8c4b5308e39681",
+      "missing_endpoints": [
+        {
+          "measurement_timestamp": 0.4,
+          "side": "source",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0031/CAM-INT-0031:trk-000002"
+        },
+        {
+          "measurement_timestamp": 0.4,
+          "side": "target",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0034/CAM-INT-0034:trk-000002"
+        }
+      ],
+      "missing_pattern": "both_endpoints_missing",
+      "scenario_version": "delayed_noisy-50v50-v1",
+      "seed": 79,
+      "source_tracklet_key": "INT-0031/CAM-INT-0031:trk-000002",
+      "split": "train",
+      "target_tracklet_key": "INT-0034/CAM-INT-0034:trk-000002"
+    },
+    {
+      "edge_index": 0,
+      "edge_status": "unavailable",
+      "episode_id": "delayed_noisy_50v50-s64-79b7396ef4f7-d5-frame-000002",
+      "episode_uid": "9bbfb06ceaf2c9cb978bff80",
+      "missing_endpoints": [
+        {
+          "measurement_timestamp": 0.1,
+          "side": "source",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0016/CAM-INT-0016:trk-000001"
+        },
+        {
+          "measurement_timestamp": 0.1,
+          "side": "target",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0022/CAM-INT-0022:trk-000001"
+        }
+      ],
+      "missing_pattern": "both_endpoints_missing",
+      "scenario_version": "delayed_noisy-50v50-v1",
+      "seed": 64,
+      "source_tracklet_key": "INT-0016/CAM-INT-0016:trk-000001",
+      "split": "validation",
+      "target_tracklet_key": "INT-0022/CAM-INT-0022:trk-000001"
+    },
+    {
+      "edge_index": 0,
+      "edge_status": "unavailable",
+      "episode_id": "delayed_noisy_100v100-s6-bbe47579000a-d5-frame-000001",
+      "episode_uid": "a212388a4dd55280725d93fe",
+      "missing_endpoints": [
+        {
+          "measurement_timestamp": 0.1,
+          "side": "source",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0013/CAM-INT-0013:trk-000001"
+        },
+        {
+          "measurement_timestamp": 0.1,
+          "side": "target",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0016/CAM-INT-0016:trk-000001"
+        }
+      ],
+      "missing_pattern": "both_endpoints_missing",
+      "scenario_version": "delayed_noisy-100v100-v1",
+      "seed": 6,
+      "source_tracklet_key": "INT-0013/CAM-INT-0013:trk-000001",
+      "split": "train",
+      "target_tracklet_key": "INT-0016/CAM-INT-0016:trk-000001"
+    },
+    {
+      "edge_index": 0,
+      "edge_status": "unavailable",
+      "episode_id": "delayed_noisy_200v200-s57-da72a7811603-d5-frame-000010",
+      "episode_uid": "a47b2f3026689e62cd7d336b",
+      "missing_endpoints": [
+        {
+          "measurement_timestamp": 0.5,
+          "side": "source",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0046/CAM-INT-0046:trk-000003"
+        },
+        {
+          "measurement_timestamp": 0.5,
+          "side": "target",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0053/CAM-INT-0053:trk-000002"
+        }
+      ],
+      "missing_pattern": "both_endpoints_missing",
+      "scenario_version": "delayed_noisy-200v200-v1",
+      "seed": 57,
+      "source_tracklet_key": "INT-0046/CAM-INT-0046:trk-000003",
+      "split": "validation",
+      "target_tracklet_key": "INT-0053/CAM-INT-0053:trk-000002"
+    },
+    {
+      "edge_index": 0,
+      "edge_status": "unavailable",
+      "episode_id": "delayed_noisy_100v100-s0-66b144ed6366-d5-frame-000010",
+      "episode_uid": "a52b75cf7ca8e9f1625c2433",
+      "missing_endpoints": [
+        {
+          "measurement_timestamp": 0.5,
+          "side": "source",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0091/CAM-INT-0091:trk-000001"
+        },
+        {
+          "measurement_timestamp": 0.5,
+          "side": "target",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0095/CAM-INT-0095:trk-000001"
+        }
+      ],
+      "missing_pattern": "both_endpoints_missing",
+      "scenario_version": "delayed_noisy-100v100-v1",
+      "seed": 0,
+      "source_tracklet_key": "INT-0091/CAM-INT-0091:trk-000001",
+      "split": "train",
+      "target_tracklet_key": "INT-0095/CAM-INT-0095:trk-000001"
+    },
+    {
+      "edge_index": 0,
+      "edge_status": "unavailable",
+      "episode_id": "delayed_noisy_200v200-s41-9de6d335cc3d-d5-frame-000000",
+      "episode_uid": "ac8a4a404706f79f48930e29",
+      "missing_endpoints": [
+        {
+          "measurement_timestamp": 0.0,
+          "side": "source",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0064/CAM-INT-0064:trk-000001"
+        },
+        {
+          "measurement_timestamp": 0.0,
+          "side": "target",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0082/CAM-INT-0082:trk-000001"
+        }
+      ],
+      "missing_pattern": "both_endpoints_missing",
+      "scenario_version": "delayed_noisy-200v200-v1",
+      "seed": 41,
+      "source_tracklet_key": "INT-0064/CAM-INT-0064:trk-000001",
+      "split": "validation",
+      "target_tracklet_key": "INT-0082/CAM-INT-0082:trk-000001"
+    },
+    {
+      "edge_index": 0,
+      "edge_status": "unavailable",
+      "episode_id": "delayed_noisy_200v200-s46-35b4428aab20-d5-frame-000006",
+      "episode_uid": "b004e9b4511c26daf091c12f",
+      "missing_endpoints": [
+        {
+          "measurement_timestamp": 0.3,
+          "side": "source",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0065/CAM-INT-0065:trk-000001"
+        },
+        {
+          "measurement_timestamp": 0.3,
+          "side": "target",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0096/CAM-INT-0096:trk-000001"
+        }
+      ],
+      "missing_pattern": "both_endpoints_missing",
+      "scenario_version": "delayed_noisy-200v200-v1",
+      "seed": 46,
+      "source_tracklet_key": "INT-0065/CAM-INT-0065:trk-000001",
+      "split": "train",
+      "target_tracklet_key": "INT-0096/CAM-INT-0096:trk-000001"
+    },
+    {
+      "edge_index": 0,
+      "edge_status": "unavailable",
+      "episode_id": "delayed_noisy_200v200-s59-df977623034d-d5-frame-000010",
+      "episode_uid": "b6577fadc50228a35d63fb00",
+      "missing_endpoints": [
+        {
+          "measurement_timestamp": 0.5,
+          "side": "source",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0069/CAM-INT-0069:trk-000003"
+        },
+        {
+          "measurement_timestamp": 0.5,
+          "side": "target",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "RECON-004/CAM-RECON-004:trk-000001"
+        }
+      ],
+      "missing_pattern": "both_endpoints_missing",
+      "scenario_version": "delayed_noisy-200v200-v1",
+      "seed": 59,
+      "source_tracklet_key": "INT-0069/CAM-INT-0069:trk-000003",
+      "split": "train",
+      "target_tracklet_key": "RECON-004/CAM-RECON-004:trk-000001"
+    },
+    {
+      "edge_index": 0,
+      "edge_status": "unavailable",
+      "episode_id": "delayed_noisy_200v200-s51-78d4ecdf2fec-d5-frame-000003",
+      "episode_uid": "bbd2ce8c43eb4f4a06798aae",
+      "missing_endpoints": [
+        {
+          "measurement_timestamp": 0.2,
+          "side": "source",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0124/CAM-INT-0124:trk-000001"
+        },
+        {
+          "measurement_timestamp": 0.2,
+          "side": "target",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0129/CAM-INT-0129:trk-000001"
+        }
+      ],
+      "missing_pattern": "both_endpoints_missing",
+      "scenario_version": "delayed_noisy-200v200-v1",
+      "seed": 51,
+      "source_tracklet_key": "INT-0124/CAM-INT-0124:trk-000001",
+      "split": "validation",
+      "target_tracklet_key": "INT-0129/CAM-INT-0129:trk-000001"
+    },
+    {
+      "edge_index": 0,
+      "edge_status": "unavailable",
+      "episode_id": "delayed_noisy_100v100-s17-5ec63a8636c2-d5-frame-000007",
+      "episode_uid": "bd524bd7616b852013537be0",
+      "missing_endpoints": [
+        {
+          "measurement_timestamp": 0.4,
+          "side": "source",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0044/CAM-INT-0044:trk-000001"
+        },
+        {
+          "measurement_timestamp": 0.4,
+          "side": "target",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0045/CAM-INT-0045:trk-000002"
+        }
+      ],
+      "missing_pattern": "both_endpoints_missing",
+      "scenario_version": "delayed_noisy-100v100-v1",
+      "seed": 17,
+      "source_tracklet_key": "INT-0044/CAM-INT-0044:trk-000001",
+      "split": "test",
+      "target_tracklet_key": "INT-0045/CAM-INT-0045:trk-000002"
+    },
+    {
+      "edge_index": 0,
+      "edge_status": "unavailable",
+      "episode_id": "dense_crossing_200v200-s91-2f5a944f1812-d5-frame-000001",
+      "episode_uid": "bf301542d8729f02a16e6b55",
+      "missing_endpoints": [
+        {
+          "measurement_timestamp": 0.1,
+          "side": "source",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0094/CAM-INT-0094:trk-000001"
+        },
+        {
+          "measurement_timestamp": 0.1,
+          "side": "target",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0102/CAM-INT-0102:trk-000001"
+        }
+      ],
+      "missing_pattern": "both_endpoints_missing",
+      "scenario_version": "dense_crossing-200v200-v1",
+      "seed": 91,
+      "source_tracklet_key": "INT-0094/CAM-INT-0094:trk-000001",
+      "split": "test",
+      "target_tracklet_key": "INT-0102/CAM-INT-0102:trk-000001"
+    },
+    {
+      "edge_index": 0,
+      "edge_status": "unavailable",
+      "episode_id": "delayed_noisy_200v200-s43-b553254a3e47-d5-frame-000000",
+      "episode_uid": "c43516c25dcf84fdf0889cc2",
+      "missing_endpoints": [
+        {
+          "measurement_timestamp": 0.0,
+          "side": "source",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0087/CAM-INT-0087:trk-000001"
+        },
+        {
+          "measurement_timestamp": 0.0,
+          "side": "target",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0092/CAM-INT-0092:trk-000001"
+        }
+      ],
+      "missing_pattern": "both_endpoints_missing",
+      "scenario_version": "delayed_noisy-200v200-v1",
+      "seed": 43,
+      "source_tracklet_key": "INT-0087/CAM-INT-0087:trk-000001",
+      "split": "train",
+      "target_tracklet_key": "INT-0092/CAM-INT-0092:trk-000001"
+    },
+    {
+      "edge_index": 0,
+      "edge_status": "unavailable",
+      "episode_id": "delayed_noisy_100v100-s15-322a5eeef55d-d5-frame-000002",
+      "episode_uid": "c6062ef8da27d552de5fa5b5",
+      "missing_endpoints": [
+        {
+          "measurement_timestamp": 0.1,
+          "side": "source",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0006/CAM-INT-0006:trk-000001"
+        },
+        {
+          "measurement_timestamp": 0.1,
+          "side": "target",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0100/CAM-INT-0100:trk-000001"
+        }
+      ],
+      "missing_pattern": "both_endpoints_missing",
+      "scenario_version": "delayed_noisy-100v100-v1",
+      "seed": 15,
+      "source_tracklet_key": "INT-0006/CAM-INT-0006:trk-000001",
+      "split": "train",
+      "target_tracklet_key": "INT-0100/CAM-INT-0100:trk-000001"
+    },
+    {
+      "edge_index": 0,
+      "edge_status": "unavailable",
+      "episode_id": "communication_degraded_200v200-s66-ebfc5175b2fa-d5-frame-000007",
+      "episode_uid": "cc415d0ba56abf04fa22c8ae",
+      "missing_endpoints": [
+        {
+          "measurement_timestamp": 0.4,
+          "side": "source",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0018/CAM-INT-0018:trk-000002"
+        },
+        {
+          "measurement_timestamp": 0.3,
+          "side": "target",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0034/CAM-INT-0034:trk-000001"
+        }
+      ],
+      "missing_pattern": "both_endpoints_missing",
+      "scenario_version": "communication_degraded-200v200-v1",
+      "seed": 66,
+      "source_tracklet_key": "INT-0018/CAM-INT-0018:trk-000002",
+      "split": "train",
+      "target_tracklet_key": "INT-0034/CAM-INT-0034:trk-000001"
+    },
+    {
+      "edge_index": 0,
+      "edge_status": "unavailable",
+      "episode_id": "delayed_noisy_200v200-s47-5690a7443862-d5-frame-000004",
+      "episode_uid": "d16ffcdd061e869be4ac39f2",
+      "missing_endpoints": [
+        {
+          "measurement_timestamp": 0.2,
+          "side": "source",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0054/CAM-INT-0054:trk-000001"
+        },
+        {
+          "measurement_timestamp": 0.2,
+          "side": "target",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0074/CAM-INT-0074:trk-000002"
+        }
+      ],
+      "missing_pattern": "both_endpoints_missing",
+      "scenario_version": "delayed_noisy-200v200-v1",
+      "seed": 47,
+      "source_tracklet_key": "INT-0054/CAM-INT-0054:trk-000001",
+      "split": "test",
+      "target_tracklet_key": "INT-0074/CAM-INT-0074:trk-000002"
+    },
+    {
+      "edge_index": 1,
+      "edge_status": "unavailable",
+      "episode_id": "delayed_noisy_200v200-s47-5690a7443862-d5-frame-000004",
+      "episode_uid": "d16ffcdd061e869be4ac39f2",
+      "missing_endpoints": [
+        {
+          "measurement_timestamp": 0.2,
+          "side": "source",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0075/CAM-INT-0075:trk-000001"
+        },
+        {
+          "measurement_timestamp": 0.2,
+          "side": "target",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0082/CAM-INT-0082:trk-000002"
+        }
+      ],
+      "missing_pattern": "both_endpoints_missing",
+      "scenario_version": "delayed_noisy-200v200-v1",
+      "seed": 47,
+      "source_tracklet_key": "INT-0075/CAM-INT-0075:trk-000001",
+      "split": "test",
+      "target_tracklet_key": "INT-0082/CAM-INT-0082:trk-000002"
+    },
+    {
+      "edge_index": 0,
+      "edge_status": "unavailable",
+      "episode_id": "delayed_noisy_50v50-s63-5b45eb22b203-d5-frame-000004",
+      "episode_uid": "d2bd0f5d584d3cbdec52edd5",
+      "missing_endpoints": [
+        {
+          "measurement_timestamp": 0.2,
+          "side": "source",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0003/CAM-INT-0003:trk-000003"
+        },
+        {
+          "measurement_timestamp": 0.2,
+          "side": "target",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0049/CAM-INT-0049:trk-000002"
+        }
+      ],
+      "missing_pattern": "both_endpoints_missing",
+      "scenario_version": "delayed_noisy-50v50-v1",
+      "seed": 63,
+      "source_tracklet_key": "INT-0003/CAM-INT-0003:trk-000003",
+      "split": "train",
+      "target_tracklet_key": "INT-0049/CAM-INT-0049:trk-000002"
+    },
+    {
+      "edge_index": 0,
+      "edge_status": "unavailable",
+      "episode_id": "delayed_noisy_200v200-s50-031242e5db5e-d5-frame-000004",
+      "episode_uid": "d72bbc070844839bb6c57220",
+      "missing_endpoints": [
+        {
+          "measurement_timestamp": 0.2,
+          "side": "source",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0063/CAM-INT-0063:trk-000002"
+        },
+        {
+          "measurement_timestamp": 0.2,
+          "side": "target",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0071/CAM-INT-0071:trk-000001"
+        }
+      ],
+      "missing_pattern": "both_endpoints_missing",
+      "scenario_version": "delayed_noisy-200v200-v1",
+      "seed": 50,
+      "source_tracklet_key": "INT-0063/CAM-INT-0063:trk-000002",
+      "split": "train",
+      "target_tracklet_key": "INT-0071/CAM-INT-0071:trk-000001"
+    },
+    {
+      "edge_index": 0,
+      "edge_status": "unavailable",
+      "episode_id": "delayed_noisy_200v200-s42-6c607ca67e19-d5-frame-000006",
+      "episode_uid": "da89c8a2e38ef4e9f1cef731",
+      "missing_endpoints": [
+        {
+          "measurement_timestamp": 0.3,
+          "side": "source",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0083/CAM-INT-0083:trk-000001"
+        },
+        {
+          "measurement_timestamp": 0.3,
+          "side": "target",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0086/CAM-INT-0086:trk-000002"
+        }
+      ],
+      "missing_pattern": "both_endpoints_missing",
+      "scenario_version": "delayed_noisy-200v200-v1",
+      "seed": 42,
+      "source_tracklet_key": "INT-0083/CAM-INT-0083:trk-000001",
+      "split": "train",
+      "target_tracklet_key": "INT-0086/CAM-INT-0086:trk-000002"
+    },
+    {
+      "edge_index": 0,
+      "edge_status": "unavailable",
+      "episode_id": "delayed_noisy_200v200-s54-04cb494ab780-d5-frame-000008",
+      "episode_uid": "dd468501d19a18b86bef2a14",
+      "missing_endpoints": [
+        {
+          "measurement_timestamp": 0.4,
+          "side": "source",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0173/CAM-INT-0173:trk-000001"
+        },
+        {
+          "measurement_timestamp": 0.4,
+          "side": "target",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0195/CAM-INT-0195:trk-000001"
+        }
+      ],
+      "missing_pattern": "both_endpoints_missing",
+      "scenario_version": "delayed_noisy-200v200-v1",
+      "seed": 54,
+      "source_tracklet_key": "INT-0173/CAM-INT-0173:trk-000001",
+      "split": "train",
+      "target_tracklet_key": "INT-0195/CAM-INT-0195:trk-000001"
+    },
+    {
+      "edge_index": 0,
+      "edge_status": "unavailable",
+      "episode_id": "dense_crossing_100v100-s53-6058bf72da68-d5-frame-000000",
+      "episode_uid": "e3178701407bfd9bdee8cc28",
+      "missing_endpoints": [
+        {
+          "measurement_timestamp": 0.0,
+          "side": "source",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0041/CAM-INT-0041:trk-000001"
+        },
+        {
+          "measurement_timestamp": 0.0,
+          "side": "target",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0046/CAM-INT-0046:trk-000001"
+        }
+      ],
+      "missing_pattern": "both_endpoints_missing",
+      "scenario_version": "dense_crossing-100v100-v1",
+      "seed": 53,
+      "source_tracklet_key": "INT-0041/CAM-INT-0041:trk-000001",
+      "split": "train",
+      "target_tracklet_key": "INT-0046/CAM-INT-0046:trk-000001"
+    },
+    {
+      "edge_index": 0,
+      "edge_status": "unavailable",
+      "episode_id": "delayed_noisy_200v200-s54-04cb494ab780-d5-frame-000000",
+      "episode_uid": "e3fd51e7d53899bc71c47812",
+      "missing_endpoints": [
+        {
+          "measurement_timestamp": 0.0,
+          "side": "source",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0084/CAM-INT-0084:trk-000001"
+        },
+        {
+          "measurement_timestamp": 0.0,
+          "side": "target",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0087/CAM-INT-0087:trk-000001"
+        }
+      ],
+      "missing_pattern": "both_endpoints_missing",
+      "scenario_version": "delayed_noisy-200v200-v1",
+      "seed": 54,
+      "source_tracklet_key": "INT-0084/CAM-INT-0084:trk-000001",
+      "split": "train",
+      "target_tracklet_key": "INT-0087/CAM-INT-0087:trk-000001"
+    },
+    {
+      "edge_index": 0,
+      "edge_status": "unavailable",
+      "episode_id": "delayed_noisy_100v100-s11-39ddc718de4f-d5-frame-000009",
+      "episode_uid": "e5a9984673daa122feb2d4e2",
+      "missing_endpoints": [
+        {
+          "measurement_timestamp": 0.5,
+          "side": "source",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0007/CAM-INT-0007:trk-000001"
+        },
+        {
+          "measurement_timestamp": 0.5,
+          "side": "target",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0016/CAM-INT-0016:trk-000001"
+        }
+      ],
+      "missing_pattern": "both_endpoints_missing",
+      "scenario_version": "delayed_noisy-100v100-v1",
+      "seed": 11,
+      "source_tracklet_key": "INT-0007/CAM-INT-0007:trk-000001",
+      "split": "train",
+      "target_tracklet_key": "INT-0016/CAM-INT-0016:trk-000001"
+    },
+    {
+      "edge_index": 0,
+      "edge_status": "unavailable",
+      "episode_id": "delayed_noisy_100v100-s12-0686e8a2c83b-d5-frame-000006",
+      "episode_uid": "ef44f78a8f6c6d4eaa7ddbe5",
+      "missing_endpoints": [
+        {
+          "measurement_timestamp": 0.3,
+          "side": "source",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0008/CAM-INT-0008:trk-000001"
+        },
+        {
+          "measurement_timestamp": 0.3,
+          "side": "target",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0015/CAM-INT-0015:trk-000001"
+        }
+      ],
+      "missing_pattern": "both_endpoints_missing",
+      "scenario_version": "delayed_noisy-100v100-v1",
+      "seed": 12,
+      "source_tracklet_key": "INT-0008/CAM-INT-0008:trk-000001",
+      "split": "train",
+      "target_tracklet_key": "INT-0015/CAM-INT-0015:trk-000001"
+    },
+    {
+      "edge_index": 1,
+      "edge_status": "unavailable",
+      "episode_id": "delayed_noisy_100v100-s12-0686e8a2c83b-d5-frame-000006",
+      "episode_uid": "ef44f78a8f6c6d4eaa7ddbe5",
+      "missing_endpoints": [
+        {
+          "measurement_timestamp": 0.3,
+          "side": "source",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0026/CAM-INT-0026:trk-000002"
+        },
+        {
+          "measurement_timestamp": 0.3,
+          "side": "target",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0042/CAM-INT-0042:trk-000001"
+        }
+      ],
+      "missing_pattern": "both_endpoints_missing",
+      "scenario_version": "delayed_noisy-100v100-v1",
+      "seed": 12,
+      "source_tracklet_key": "INT-0026/CAM-INT-0026:trk-000002",
+      "split": "train",
+      "target_tracklet_key": "INT-0042/CAM-INT-0042:trk-000001"
+    },
+    {
+      "edge_index": 2,
+      "edge_status": "unavailable",
+      "episode_id": "delayed_noisy_100v100-s12-0686e8a2c83b-d5-frame-000006",
+      "episode_uid": "ef44f78a8f6c6d4eaa7ddbe5",
+      "missing_endpoints": [
+        {
+          "measurement_timestamp": 0.3,
+          "side": "source",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0027/CAM-INT-0027:trk-000001"
+        },
+        {
+          "measurement_timestamp": 0.3,
+          "side": "target",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0042/CAM-INT-0042:trk-000001"
+        }
+      ],
+      "missing_pattern": "both_endpoints_missing",
+      "scenario_version": "delayed_noisy-100v100-v1",
+      "seed": 12,
+      "source_tracklet_key": "INT-0027/CAM-INT-0027:trk-000001",
+      "split": "train",
+      "target_tracklet_key": "INT-0042/CAM-INT-0042:trk-000001"
+    },
+    {
+      "edge_index": 0,
+      "edge_status": "unavailable",
+      "episode_id": "delayed_noisy_50v50-s66-7c3a9db5dcd9-d5-frame-000001",
+      "episode_uid": "efc0d75d7084c0a7f77ca5fe",
+      "missing_endpoints": [
+        {
+          "measurement_timestamp": 0.1,
+          "side": "source",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0001/CAM-INT-0001:trk-000001"
+        },
+        {
+          "measurement_timestamp": 0.1,
+          "side": "target",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0045/CAM-INT-0045:trk-000001"
+        }
+      ],
+      "missing_pattern": "both_endpoints_missing",
+      "scenario_version": "delayed_noisy-50v50-v1",
+      "seed": 66,
+      "source_tracklet_key": "INT-0001/CAM-INT-0001:trk-000001",
+      "split": "train",
+      "target_tracklet_key": "INT-0045/CAM-INT-0045:trk-000001"
+    },
+    {
+      "edge_index": 0,
+      "edge_status": "unavailable",
+      "episode_id": "evasive_multilevel_200v200-s24-2584a0ee889f-d5-frame-000001",
+      "episode_uid": "f214874bc79dcec669b6f44d",
+      "missing_endpoints": [
+        {
+          "measurement_timestamp": 0.1,
+          "side": "source",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0079/CAM-INT-0079:trk-000001"
+        },
+        {
+          "measurement_timestamp": 0.1,
+          "side": "target",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0083/CAM-INT-0083:trk-000001"
+        }
+      ],
+      "missing_pattern": "both_endpoints_missing",
+      "scenario_version": "evasive_multilevel-200v200-v1",
+      "seed": 24,
+      "source_tracklet_key": "INT-0079/CAM-INT-0079:trk-000001",
+      "split": "train",
+      "target_tracklet_key": "INT-0083/CAM-INT-0083:trk-000001"
+    },
+    {
+      "edge_index": 0,
+      "edge_status": "unavailable",
+      "episode_id": "delayed_noisy_200v200-s49-68e2ce2f2205-d5-frame-000004",
+      "episode_uid": "f8b24049e101424f2d7312ac",
+      "missing_endpoints": [
+        {
+          "measurement_timestamp": 0.2,
+          "side": "source",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0166/CAM-INT-0166:trk-000001"
+        },
+        {
+          "measurement_timestamp": 0.2,
+          "side": "target",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0183/CAM-INT-0183:trk-000002"
+        }
+      ],
+      "missing_pattern": "both_endpoints_missing",
+      "scenario_version": "delayed_noisy-200v200-v1",
+      "seed": 49,
+      "source_tracklet_key": "INT-0166/CAM-INT-0166:trk-000001",
+      "split": "train",
+      "target_tracklet_key": "INT-0183/CAM-INT-0183:trk-000002"
+    },
+    {
+      "edge_index": 0,
+      "edge_status": "unavailable",
+      "episode_id": "delayed_noisy_200v200-s45-84fe4fae50fd-d5-frame-000004",
+      "episode_uid": "fcd9cbe103b8db80cebd1947",
+      "missing_endpoints": [
+        {
+          "measurement_timestamp": 0.2,
+          "side": "source",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0086/CAM-INT-0086:trk-000001"
+        },
+        {
+          "measurement_timestamp": 0.2,
+          "side": "target",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0092/CAM-INT-0092:trk-000002"
+        }
+      ],
+      "missing_pattern": "both_endpoints_missing",
+      "scenario_version": "delayed_noisy-200v200-v1",
+      "seed": 45,
+      "source_tracklet_key": "INT-0086/CAM-INT-0086:trk-000001",
+      "split": "train",
+      "target_tracklet_key": "INT-0092/CAM-INT-0092:trk-000002"
+    },
+    {
+      "edge_index": 0,
+      "edge_status": "unavailable",
+      "episode_id": "evasive_multilevel_50v50-s53-d771c97ad109-d5-frame-000000",
+      "episode_uid": "fe02bc29c21b620c26d18756",
+      "missing_endpoints": [
+        {
+          "measurement_timestamp": 0.0,
+          "side": "source",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0008/CAM-INT-0008:trk-000001"
+        },
+        {
+          "measurement_timestamp": 0.0,
+          "side": "target",
+          "source_observation_id_sha256": null,
+          "status": "unavailable_source_observation_lineage_missing",
+          "tracklet_key": "INT-0010/CAM-INT-0010:trk-000001"
+        }
+      ],
+      "missing_pattern": "both_endpoints_missing",
+      "scenario_version": "evasive_multilevel-50v50-v1",
+      "seed": 53,
+      "source_tracklet_key": "INT-0008/CAM-INT-0008:trk-000001",
+      "split": "train",
+      "target_tracklet_key": "INT-0010/CAM-INT-0010:trk-000001"
+    }
+  ],
+  "missing_pattern_counts": {
+    "both_endpoints_missing": 95,
+    "source_endpoint_missing": 4
+  },
+  "offline_lineage": {
+    "file_sha256": null,
+    "path_supplied": false,
+    "record_count": 0,
+    "source_manifest_bound": false,
+    "status": "not_preserved_in_frozen_formal_export"
+  },
+  "scenario_counts": {
+    "center_failure-100v100-v1": 1,
+    "communication_degraded-200v200-v1": 1,
+    "delayed_noisy-100v100-v1": 16,
+    "delayed_noisy-200v200-v1": 61,
+    "delayed_noisy-50v50-v1": 6,
+    "dense_crossing-100v100-v1": 2,
+    "dense_crossing-200v200-v1": 4,
+    "evasive_multilevel-200v200-v1": 1,
+    "evasive_multilevel-50v50-v1": 1,
+    "formation_split-200v200-v1": 2,
+    "high_threat_m_to_n-200v200-v1": 1,
+    "high_threat_m_to_n-50v50-v1": 1,
+    "nominal-200v200-v1": 1,
+    "secondary_failure-200v200-v1": 1
+  },
+  "schema_version": "d5.tracklet-unlabeled-lineage-audit.v1",
+  "source": {
+    "dataset_manifest_sha256": "d9a84007995fe94918483bd5cb5ddc38f60f61d819bea27137dfa2619bf75426",
+    "dataset_schema_version": "d5.tracklet-dataset.v2",
+    "episode_count": 12851,
+    "source_modified": false
+  },
+  "split_counts": {
+    "test": 15,
+    "train": 65,
+    "validation": 19
+  },
+  "summary": {
+    "exact_lineage_endpoint_count": 0,
+    "formal_source_records_rewritten": 0,
+    "missing_endpoint_count": 194,
+    "nearest_neighbor_or_track_continuity_labels_used": 0,
+    "recoverable_edge_count": 0,
+    "unavailable_edge_count": 99,
+    "unlabeled_candidate_edge_count": 99
+  }
+}

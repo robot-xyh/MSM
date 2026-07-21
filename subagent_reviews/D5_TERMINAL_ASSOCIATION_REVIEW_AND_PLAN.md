@@ -1,5 +1,18 @@
 # D5 末端视觉配准与协同身份认证综述及子方案
 
+## 2026-07-21 Tracklet 困难样本复核
+
+正式语料的 99 条未标注边已逐条复核。冻结导出缺少可同时绑定 episode、匿名 tracklet、量测时刻和
+source observation 的离线来源链，可靠补标为 0；99 条边继续 unavailable，正式源未改动。D5 随后
+使用独立 seed 和物理投影生成 4,500 个困难样本图帧，得到 245,032 条通过既有几何门的候选边，
+正/负/未标注为 `57292/187740/0`。truth 只存在于图构建后的独立 evaluator lineage。
+
+formal + supplemental detached 视图共 4,972 帧和 245,040 条边，现有数据量、标签完整性、候选
+召回分母与场景双类覆盖门全部通过。该结果只闭合 producer 和数据支持。当前 supplemental manifest
+记录 dirty source，training readiness 继续失败关闭；没有训练模型、没有 `.pt`、没有开放 G1 或
+assist。main 后续在提交后的 clean worktree 复生数据并做第二次准入，D5 不在本轮改 Git 或提前
+宣告训练闭合。新增专项 `12 passed in 5.49s`，全量 `498 passed in 124.90s`。
+
 ## 2026-07-21 Supplemental BC 全样本准入复核
 
 D5 新增只读 fail-closed 审计并对 clean supplemental 完整 100 episode/1200 sample 运行。接受阈值为

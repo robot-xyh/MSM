@@ -1,5 +1,37 @@
 # D5 末端视觉配准与身份认证实验报告
 
+## 2026-07-21 跨视角困难样本全量审计
+
+冻结正式语料含 12,851 个图帧、480 条候选边，正/负/未标注为 `362/19/99`。99 条未标注边在
+train/validation/test 中为 `65/19/15`，涉及 194 个缺失端点；95 条边两端缺失，4 条边缺 source
+端。冻结输出没有可精确绑定的 offline observation lineage，可靠回填为 0，99 条全部保持
+`unavailable`。审计没有写回正式源。
+
+| 验收项 | 实测 | 判定 |
+| --- | --- | --- |
+| 补充规模 | 100 seed、45 cell、4,500 帧、66,726 节点 | 通过 |
+| 候选边 | 245,032；正/负/未标注 `57292/187740/0` | 通过 |
+| 标签与隔离 | 标签可用率 100%，online truth=0 | 通过 |
+| 因素覆盖 | 外参扰动 4,500；时间偏差 4,000；漏检 3,824；虚警 3,050 | 通过 |
+| 遮挡覆盖 | 进入/遮挡/退出各 1,500；重入碎片 1,275 | 通过 |
+| 重复与 seed | 正式源重复违规 0；canonical seed `60/20/20`；保留 seed 重叠 0 | 通过 |
+| 组合视图 | 正式 472 + 补充 4,500 = 4,972 帧，245,040 边 | 通过 |
+| 数据支持门 | 各 split 无边率 `8.68%/10.34%/10.45%`，全部既有门通过 | 通过 |
+| 训练准入 | `supplemental_source_repository_dirty=true` | 失败关闭 |
+| 模型权限 | 未训练、无 `.pt`、G1/assist=false | 保持关闭 |
+
+补充 manifest SHA-256 为
+`77d117ba7a0d6cdbddf4ce9fcccd63455e2b28a916c6526d97e17857bfb9ad90`，dataset manifest 为
+`ec2708477332416be83e12f1458cc2dff72a2c5196d1fdb58fbb074a85660ee4`，evaluator lineage 为
+`587a05927a00f795ab5b1828f0443f41297b79ae1d115dcc1193f35164b77c49`。组合准入报告 JSON/Markdown
+SHA-256 为 `338709926cbaafefbdd62f8c0ebfbddb699d1b76c26f5e21b56baccfc20200c0` 和
+`c612b6c38e78146e5078019717d76775702ffe2d8dfe9be5bdae17f085f85f0a`。专项测试
+`12 passed in 5.49s`，D5 全量 `498 passed in 124.90s`。
+
+结论限定为困难样本 producer 与数据支持闭合。当前制品绑定 dirty 工作区，训练 readiness 仍关闭；
+main 将在代码提交后的 detached clean worktree 复生同配置数据并做第二次准入。本轮没有训练模型、
+没有运行 AirSim，也没有改变在线关联或 `global_track_id` 合同。
+
 ## 2026-07-21 Supplemental BC 全样本 clean 审计
 
 本轮以 clean producer commit `13e37286d2996a227924bb1a8e2766e52116a534`、实际 ignored
