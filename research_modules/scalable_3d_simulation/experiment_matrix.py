@@ -23,6 +23,7 @@ from .scenarios import AVAILABLE_SCENARIOS, make_curriculum_scenario
 
 
 EXPERIMENT_MATRIX_SCHEMA_VERSION = "scalable3d-experiment-matrix-v1"
+PAIRED_SENSOR_RANDOM_SCHEDULE_VERSION = "entity_fixed_v1"
 EXPERIMENT_VARIANTS = ("R0", "G1", "A1", "A2", "A3", "C1", "F1")
 FULL_SYSTEM_SCENARIOS = frozenset(
     {"center_failure", "secondary_failure", "high_threat_m_to_n"}
@@ -242,6 +243,7 @@ def run_experiment_matrix(
     output_dir.mkdir(parents=True, exist_ok=True)
     rows: list[dict[str, Any]] = []
     episode_dirs: list[Path] = []
+    pairing_hashes: dict[str, str] = {}
     for index, cell in enumerate(cells):
         config = make_curriculum_scenario(
             cell.scenario,
@@ -250,12 +252,28 @@ def run_experiment_matrix(
             duration_s=plan.duration_s,
             base=base_config,
         )
+        config = replace(
+            config,
+            sensor_random_schedule_version=(
+                PAIRED_SENSOR_RANDOM_SCHEDULE_VERSION
+            ),
+        )
+        pairing_config_sha256 = paired_exogenous_config_sha256(config)
+        prior_pairing_hash = pairing_hashes.setdefault(
+            cell.comparison_key,
+            pairing_config_sha256,
+        )
+        if prior_pairing_hash != pairing_config_sha256:
+            raise RuntimeError(
+                "experiment variants do not share one exogenous configuration"
+            )
         metadata = dict(config.metadata)
         metadata.update(
             {
                 "experiment_matrix_schema": EXPERIMENT_MATRIX_SCHEMA_VERSION,
                 "algorithm_variant": cell.variant,
                 "comparison_key": cell.comparison_key,
+                "paired_exogenous_config_sha256": pairing_config_sha256,
                 "full_system_validation": cell.variant == "F1",
             }
         )
@@ -287,6 +305,10 @@ def run_experiment_matrix(
                 "scale": cell.scale,
                 "seed": cell.seed,
                 "comparison_key": cell.comparison_key,
+                "paired_exogenous_config_sha256": pairing_config_sha256,
+                "sensor_random_schedule_version": (
+                    resolved.config.sensor_random_schedule_version
+                ),
                 "episode_id": result.manifest.episode_id,
                 "finite_state": bool(result.summary["finite_state"]),
                 "online_truth_use_count": int(result.summary["online_truth_use_count"]),
@@ -309,6 +331,11 @@ def run_experiment_matrix(
         "training_seeds_sha256": _seed_digest(plan.training_seeds or ()),
         "cell_count": len(cells),
         "completed_cell_count": len(rows),
+        "paired_random_schedule_version": (
+            PAIRED_SENSOR_RANDOM_SCHEDULE_VERSION
+        ),
+        "paired_exogenous_config_count": len(pairing_hashes),
+        "paired_exogenous_configuration_consistent": True,
     }
     paths = {
         "manifest": _write_json(output_dir / "experiment_matrix_manifest.json", matrix_manifest),
@@ -366,6 +393,43 @@ def _seed_digest(seeds: Iterable[int]) -> str:
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
+def paired_exogenous_config_sha256(config: ScenarioConfig) -> str:
+    """Hash physical, sensor, communication, and fault inputs only.
+
+    Learning variants and resolved model fingerprints are deliberately
+    excluded. The hash is therefore identical for R0 and candidate variants
+    only when they share the same exogenous episode conditions.
+    """
+
+    payload = config.to_dict()
+    for name in (
+        "d3_policy_version",
+        "d4_policy_version",
+        "d5_model_version",
+        "d5_active_vision_policy_version",
+    ):
+        payload.pop(name, None)
+    metadata = dict(payload.get("metadata", {}))
+    for name in (
+        "algorithm_variant",
+        "comparison_key",
+        "experiment_matrix_schema",
+        "full_system_validation",
+        "learning_runtime",
+        "paired_exogenous_config_sha256",
+    ):
+        metadata.pop(name, None)
+    payload["metadata"] = metadata
+    encoded = json.dumps(
+        payload,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
 def _write_json(path: Path, payload: Mapping[str, Any]) -> Path:
     path.write_text(
         json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
@@ -390,6 +454,7 @@ __all__ = [
     "ExperimentMatrixPlan",
     "ModelBundlePaths",
     "load_training_seeds",
+    "paired_exogenous_config_sha256",
     "repository_state",
     "run_experiment_matrix",
     "runtime_options_for_variant",

@@ -66,6 +66,11 @@ class SensorScene:
         detected = candidate & (
             self.radar_rng.random(positions.shape[0]) < self.config.radar_detection_probability
         )
+        fixed_standard_noise = (
+            self.radar_rng.normal(size=(positions.shape[0], 3))
+            if self._uses_entity_fixed_random_schedule
+            else None
+        )
         measurements: list[SensorMeasurement] = []
         labels: list[OfflineTruthLabel] = []
         detection_index = 0
@@ -80,7 +85,14 @@ class SensorScene:
             ) * self.config.radar_range_std_per_km_m
             angle_std = math.radians(self.config.radar_angle_std_deg)
             covariance = np.diag([range_std**2, angle_std**2, angle_std**2])
-            noise = self.radar_rng.multivariate_normal(np.zeros(3, dtype=float), covariance)
+            noise = (
+                fixed_standard_noise[target_index]
+                * np.array([range_std, angle_std, angle_std], dtype=float)
+                if fixed_standard_noise is not None
+                else self.radar_rng.multivariate_normal(
+                    np.zeros(3, dtype=float), covariance
+                )
+            )
             value = np.array([range_m, azimuth, elevation], dtype=float) + noise
             value[1] = _wrap_angle(value[1])
             value[2] = float(np.clip(value[2], -0.5 * np.pi, 0.5 * np.pi))
@@ -113,6 +125,9 @@ class SensorScene:
                         "sensor_position_ned": [0.0, 0.0, 0.0],
                         "range_dependent_covariance": True,
                         "scan_index": self._radar_scan_index,
+                        "random_schedule_version": (
+                            self.config.sensor_random_schedule_version
+                        ),
                     },
                 )
             )
@@ -155,6 +170,16 @@ class SensorScene:
                 self.acoustic_rng.random(positions.shape[0])
                 < self.config.acoustic_detection_probability
             )
+            fixed_angle_noise = (
+                self.acoustic_rng.normal(size=(positions.shape[0], 2))
+                if self._uses_entity_fixed_random_schedule
+                else None
+            )
+            fixed_soundprint_noise = (
+                self.acoustic_rng.normal(size=(positions.shape[0], 3))
+                if self._uses_entity_fixed_random_schedule
+                else None
+            )
             for local_index, target_index in enumerate(np.flatnonzero(detected)):
                 vector = relative[target_index]
                 horizontal = float(np.linalg.norm(vector[:2]))
@@ -165,14 +190,22 @@ class SensorScene:
                     ],
                     dtype=float,
                 )
-                value = noiseless + self.acoustic_rng.multivariate_normal(
-                    np.zeros(2, dtype=float), covariance
+                value = noiseless + (
+                    fixed_angle_noise[target_index] * angle_std
+                    if fixed_angle_noise is not None
+                    else self.acoustic_rng.multivariate_normal(
+                        np.zeros(2, dtype=float), covariance
+                    )
                 )
                 value[0] = _wrap_angle(value[0])
                 value[1] = float(np.clip(value[1], -0.5 * np.pi, 0.5 * np.pi))
                 soundprint = np.clip(
                     np.array([0.72, 0.19, 0.09], dtype=float)
-                    + self.acoustic_rng.normal(0.0, 0.025, 3),
+                    + (
+                        fixed_soundprint_noise[target_index] * 0.025
+                        if fixed_soundprint_noise is not None
+                        else self.acoustic_rng.normal(0.0, 0.025, 3)
+                    ),
                     0.0,
                     1.0,
                 )
@@ -200,6 +233,9 @@ class SensorScene:
                             "soundprint_class_probabilities": soundprint.tolist(),
                             "soundprint_is_identity": False,
                             "scan_index": self._acoustic_scan_index,
+                            "random_schedule_version": (
+                                self.config.sensor_random_schedule_version
+                            ),
                         },
                     )
                 )
@@ -237,6 +273,16 @@ class SensorScene:
         measurements: list[SensorMeasurement] = []
         labels: list[OfflineTruthLabel] = []
         for view in views:
+            fixed_detection_draws = None
+            fixed_center_noise = None
+            fixed_scale_noise = None
+            if self._uses_entity_fixed_random_schedule:
+                target_count = snapshot.intruders.state.shape[0]
+                fixed_detection_draws = self.visual_rng.random(target_count)
+                fixed_center_noise = self.visual_rng.normal(
+                    size=(target_count, 2)
+                )
+                fixed_scale_noise = self.visual_rng.normal(size=target_count)
             if active_indices.size == 0:
                 self._append_false_alarms(view, timestamp, measurements)
                 continue
@@ -265,17 +311,29 @@ class SensorScene:
             visible_local = np.flatnonzero(
                 projection.visible & (projected_area >= minimum_area)
             )
-            retained = visible_local[
-                self.visual_rng.random(visible_local.size)
-                < self.config.visual_detection_probability
-            ]
+            if fixed_detection_draws is None:
+                retained = visible_local[
+                    self.visual_rng.random(visible_local.size)
+                    < self.config.visual_detection_probability
+                ]
+            else:
+                visible_target_indices = active_indices[visible_local]
+                retained = visible_local[
+                    fixed_detection_draws[visible_target_indices]
+                    < self.config.visual_detection_probability
+                ]
             retained_covariance = projection.covariance_pixels[retained]
             if retained.size:
                 cholesky = np.linalg.cholesky(
                     retained_covariance
                     + np.eye(2, dtype=float)[None, :, :] * 1.0e-12
                 )
-                standard_noise = self.visual_rng.normal(size=(retained.size, 2))
+                retained_target_indices = active_indices[retained]
+                standard_noise = (
+                    self.visual_rng.normal(size=(retained.size, 2))
+                    if fixed_center_noise is None
+                    else fixed_center_noise[retained_target_indices]
+                )
                 center_noise = np.einsum("nij,nj->ni", cholesky, standard_noise)
                 noisy_centers = projection.pixel_centers[retained] + center_noise
                 retained_bbox = projection.bbox_xyxy[retained]
@@ -283,7 +341,12 @@ class SensorScene:
                 heights = np.maximum(retained_bbox[:, 3] - retained_bbox[:, 1], 1.0)
                 scale_noise = np.maximum(
                     0.5,
-                    1.0 + self.visual_rng.normal(0.0, 0.025, retained.size),
+                    1.0
+                    + (
+                        self.visual_rng.normal(0.0, 0.025, retained.size)
+                        if fixed_scale_noise is None
+                        else fixed_scale_noise[retained_target_indices] * 0.025
+                    ),
                 )
                 widths *= scale_noise
                 heights *= scale_noise
@@ -335,6 +398,7 @@ class SensorScene:
                             view,
                             bbox_area,
                             self._visual_scan_index,
+                            self.config.sensor_random_schedule_version,
                         ),
                     )
                 )
@@ -482,12 +546,26 @@ class SensorScene:
                     covariance=np.eye(6, dtype=float) * 16.0,
                     confidence=0.15,
                     classification_hint=None,
-                    metadata=_camera_metadata(view, width * height, self._visual_scan_index),
+                    metadata=_camera_metadata(
+                        view,
+                        width * height,
+                        self._visual_scan_index,
+                        self.config.sensor_random_schedule_version,
+                    ),
                 )
             )
 
+    @property
+    def _uses_entity_fixed_random_schedule(self) -> bool:
+        return self.config.sensor_random_schedule_version == "entity_fixed_v1"
 
-def _camera_metadata(view: CameraView, bbox_area: float, scan_index: int) -> dict[str, object]:
+
+def _camera_metadata(
+    view: CameraView,
+    bbox_area: float,
+    scan_index: int,
+    random_schedule_version: str,
+) -> dict[str, object]:
     horizontal_fov_deg = math.degrees(
         2.0 * math.atan(view.intrinsics.width_px / (2.0 * view.intrinsics.fx))
     )
@@ -507,6 +585,7 @@ def _camera_metadata(view: CameraView, bbox_area: float, scan_index: int) -> dic
         "camera_horizontal_fov_deg": float(horizontal_fov_deg),
         "bbox_area_px2": float(bbox_area),
         "scan_index": int(scan_index),
+        "random_schedule_version": str(random_schedule_version),
     }
 
 

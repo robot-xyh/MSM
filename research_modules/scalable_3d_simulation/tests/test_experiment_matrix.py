@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 import json
 from pathlib import Path
 
@@ -11,9 +12,11 @@ from research_modules.scalable_3d_simulation.experiment_matrix import (
     ModelBundlePaths,
     _validate_resolved_variant,
     load_training_seeds,
+    paired_exogenous_config_sha256,
     runtime_options_for_variant,
     validate_required_bundles,
 )
+from research_modules.scalable_3d_simulation.models import ScenarioConfig
 
 
 def test_matrix_cells_keep_comparable_keys_and_scope_f1() -> None:
@@ -119,3 +122,30 @@ def test_declared_learning_variant_cannot_silently_be_rule_fallback() -> None:
     with pytest.raises(RuntimeError, match="did not resolve"):
         _validate_resolved_variant("A1", diagnostics, allow_rule_fallback=False)
     _validate_resolved_variant("A1", diagnostics, allow_rule_fallback=True)
+
+
+def test_paired_exogenous_hash_ignores_algorithm_identity_but_not_sensor_schedule() -> None:
+    base = ScenarioConfig(
+        target_count=5,
+        resource_count=5,
+        recon_count=1,
+        sensor_random_schedule_version="entity_fixed_v1",
+        metadata={"fault_schedule": [{"time_s": 1.0, "component": "center"}]},
+    )
+    candidate = replace(
+        base,
+        d3_policy_version="candidate-policy",
+        metadata={
+            **base.metadata,
+            "algorithm_variant": "A1",
+            "comparison_key": "nominal|5|7",
+            "learning_runtime": {"d3": {"effective_mode": "assist"}},
+        },
+    )
+
+    assert paired_exogenous_config_sha256(base) == paired_exogenous_config_sha256(
+        candidate
+    )
+    assert paired_exogenous_config_sha256(base) != paired_exogenous_config_sha256(
+        replace(base, sensor_random_schedule_version="sequential_v1")
+    )

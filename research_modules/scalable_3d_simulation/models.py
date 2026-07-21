@@ -16,6 +16,9 @@ SCENARIO_SCHEMA_VERSION = "scalable3d-scenario-v1"
 ONLINE_OBSERVATION_SCHEMA_VERSION = "scalable3d-observation-v1"
 OFFLINE_TRUTH_SCHEMA_VERSION = "scalable3d-offline-truth-v1"
 DEFAULT_THRESHOLD_VERSION = "scalable3d-thresholds-v1"
+SENSOR_RANDOM_SCHEDULE_VERSIONS = frozenset(
+    {"sequential_v1", "entity_fixed_v1"}
+)
 
 
 class EntityKind(str, Enum):
@@ -111,6 +114,7 @@ class ScenarioConfig:
     acoustic_enabled: bool = True
     visual_enabled: bool = True
     communication_enabled: bool = True
+    sensor_random_schedule_version: str = "sequential_v1"
     d1_model_version: str = "d1-scalable3d-fusion-v1"
     d2_model_version: str = "d2-scalable3d-association-v1"
     d3_policy_version: str = "d3-scalable3d-rule-cost-v1"
@@ -223,6 +227,13 @@ class ScenarioConfig:
         ):
             if not str(getattr(self, name)).strip():
                 raise ValueError(f"{name} must be non-empty")
+        schedule = str(self.sensor_random_schedule_version).strip().lower()
+        if schedule not in SENSOR_RANDOM_SCHEDULE_VERSIONS:
+            raise ValueError(
+                "sensor_random_schedule_version must be sequential_v1 or "
+                "entity_fixed_v1"
+            )
+        object.__setattr__(self, "sensor_random_schedule_version", schedule)
 
     @property
     def entity_count(self) -> int:

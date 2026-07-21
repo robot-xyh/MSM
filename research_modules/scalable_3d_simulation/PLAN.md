@@ -227,6 +227,10 @@ commit。
   必须证明对应 bundle 已加载且 assist 实际生效。正式运行强制完整场景目录、五档规模、
   至少 20 个未见 seed、独立训练 seed 注册表、干净工作树和 D6 回灌。当前只完成 2v2
   单 seed 编排冒烟，尚无正式 bundle 和消融结果。
+- 实验矩阵现强制使用 `entity_fixed_v1` 传感器随机序列，并按 `comparison_key` 固化剔除
+  算法版本后的外生配置 SHA-256。雷达、声学和视觉均按固定目标槽位消耗检测/噪声随机量，
+  先前视场或 active mask 不再改变后续噪声位置；普通 episode 仍默认 `sequential_v1`。
+  该能力保证传感器随机源可配对，不代表候选策略已获 assist，也不替代 outcome/reward 审计。
 
 ## 7. 验收标准
 
