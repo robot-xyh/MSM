@@ -83,6 +83,16 @@ def write_episode_outputs(
             artifact_paths=paths,
         )
     )
+    if int(result.summary.get("assignment_plan_ack_count", 0)) > 0:
+        from .d6_integration import write_episode_runtime_plan_outcome_outputs
+
+        paths.update(
+            write_episode_runtime_plan_outcome_outputs(
+                result,
+                output_dir / "d6_runtime_plan_outcomes",
+                artifact_paths=paths,
+            )
+        )
     paths["report"] = _write_episode_report(
         output_dir / "SCALABLE_3D_EPISODE_REPORT_CN.md", result
     )

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from hashlib import sha256
 import json
+import os
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
@@ -11,6 +12,23 @@ from typing import Any, Mapping, Sequence
 D6_TRUTH_ISOLATED_MANIFEST_SCHEMA_VERSION = (
     "scalable3d-d6-truth-isolated-manifest-v1"
 )
+D6_RUNTIME_PLAN_OUTCOME_MANIFEST_SCHEMA_VERSION = (
+    "scalable3d-d6-runtime-plan-outcome-manifest-v1"
+)
+
+_RUNTIME_PLAN_OUTCOME_SOURCE_PATHS = {
+    "online_observations": "online_observations",
+    "d2_identity_evaluation": "offline_identity_evaluation",
+    "d2_identity_manifest": "offline_identity_manifest",
+    "d2_online_d1_records": "offline_identity_d1_records",
+    "d2_online_d2_records": "offline_identity_d2_records",
+    "d2_observation_truth_labels": "offline_identity_truth_labels",
+    "d2_identity_evidence": "offline_identity_evidence",
+    "offline_truth_state": "offline_truth_state",
+    "offline_proximity_intercepts": "offline_intercepts",
+    "episode_manifest": "manifest",
+    "scenario_config": "scenario_config",
+}
 
 
 def build_truth_isolated_episode_record(
@@ -124,6 +142,122 @@ def write_batch_truth_isolated_outputs(
     )
     return {
         f"d6_truth_isolated_batch_{name}": path for name, path in paths.items()
+    }
+
+
+def write_episode_runtime_plan_outcome_outputs(
+    result: Any,
+    output_dir: str | Path,
+    *,
+    artifact_paths: Mapping[str, Path],
+) -> dict[str, Path]:
+    """Join runtime plan ACKs to offline outcomes using a replayable hash manifest."""
+
+    if int(result.summary.get("assignment_plan_ack_count", 0)) <= 0:
+        raise ValueError("runtime plan outcome join requires at least one plan ACK")
+
+    _prepare_matplotlib_3d()
+    from research_modules.d6_evaluation_metrics.d6_evaluation_metrics import (
+        HashedArtifact,
+        RUNTIME_PLAN_OUTCOME_INPUT_SCHEMA_VERSION,
+        RuntimePlanOutcomeJoinInputs,
+        load_runtime_plan_outcome_join_inputs,
+        write_runtime_plan_outcome_join_report,
+    )
+
+    root = Path(output_dir).resolve()
+    root.mkdir(parents=True, exist_ok=True)
+    missing = tuple(
+        sorted(
+            path_key
+            for path_key in _RUNTIME_PLAN_OUTCOME_SOURCE_PATHS.values()
+            if artifact_paths.get(path_key) is None
+        )
+    )
+    if missing:
+        raise ValueError(
+            "runtime plan outcome join source paths missing: " + ", ".join(missing)
+        )
+
+    hashed_sources = {
+        logical_name: HashedArtifact(
+            Path(artifact_paths[path_key]).resolve(),
+            _sha256_file(artifact_paths[path_key]),
+        )
+        for logical_name, path_key in _RUNTIME_PLAN_OUTCOME_SOURCE_PATHS.items()
+    }
+    inputs = RuntimePlanOutcomeJoinInputs(**hashed_sources)
+    input_specification = {
+        "schema_version": RUNTIME_PLAN_OUTCOME_INPUT_SCHEMA_VERSION,
+        "artifacts": {
+            name: {
+                "path": os.path.relpath(artifact.path, start=root),
+                "sha256": artifact.sha256,
+            }
+            for name, artifact in sorted(hashed_sources.items())
+        },
+    }
+    input_path = _write_json(root / "input_specification.json", input_specification)
+    input_sha = _sha256_file(input_path)
+    verified_inputs = load_runtime_plan_outcome_join_inputs(
+        input_path,
+        expected_sha256=input_sha,
+    )
+    if (
+        verified_inputs.resolved().to_dict()["artifacts"]
+        != inputs.resolved().to_dict()["artifacts"]
+    ):
+        raise ValueError("runtime plan outcome input specification round-trip mismatch")
+
+    report_paths = write_runtime_plan_outcome_join_report(
+        verified_inputs,
+        root,
+    )
+    evaluation = _load_json(report_paths["json"], "D6 runtime plan outcome report")
+    admission = evaluation.get("admission")
+    if not isinstance(admission, Mapping):
+        raise TypeError("D6 runtime plan outcome report admission must be a mapping")
+    output_hashes = {
+        "input_specification": input_sha,
+        **{
+            name: _sha256_file(path) for name, path in sorted(report_paths.items())
+        },
+    }
+    manifest_path = _write_json(
+        root / "manifest.json",
+        {
+            "schema_version": D6_RUNTIME_PLAN_OUTCOME_MANIFEST_SCHEMA_VERSION,
+            "episode_id": str(result.manifest.episode_id),
+            "scenario_version": str(result.config.scenario_version),
+            "seed": int(result.config.seed),
+            "target_count": int(result.config.target_count),
+            "resource_count": int(result.config.resource_count),
+            "runtime_assignment_plan_ack_count": int(
+                result.summary.get("assignment_plan_ack_count", 0)
+            ),
+            "source_hashes": {
+                name: artifact.sha256
+                for name, artifact in sorted(hashed_sources.items())
+            },
+            "output_hashes": dict(sorted(output_hashes.items())),
+            "admission": {
+                "status": admission.get("status"),
+                "ppo_allowed": bool(admission.get("ppo_allowed", False)),
+                "assist_allowed": bool(admission.get("assist_allowed", False)),
+                "authority_allowed": bool(admission.get("authority_allowed", False)),
+                "rule_fallback_required": bool(
+                    admission.get("rule_fallback_required", True)
+                ),
+            },
+        },
+    )
+    return {
+        "d6_runtime_plan_outcome_manifest": manifest_path,
+        "d6_runtime_plan_outcome_input_specification": input_path,
+        **{
+            f"d6_runtime_plan_outcome_{name}": path
+            for name, path in report_paths.items()
+        },
     }
 
 
@@ -263,8 +397,10 @@ def _write_json(path: Path, payload: Mapping[str, Any]) -> Path:
 
 
 __all__ = [
+    "D6_RUNTIME_PLAN_OUTCOME_MANIFEST_SCHEMA_VERSION",
     "D6_TRUTH_ISOLATED_MANIFEST_SCHEMA_VERSION",
     "build_truth_isolated_episode_record",
     "write_batch_truth_isolated_outputs",
+    "write_episode_runtime_plan_outcome_outputs",
     "write_episode_truth_isolated_outputs",
 ]

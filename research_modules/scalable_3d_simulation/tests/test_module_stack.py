@@ -213,6 +213,41 @@ def test_5v5_online_stack_connects_d1_to_d7_without_truth_identity(tmp_path) -> 
         "available"
     )
     assert d6_record["d2_identity"]["truth_isolation_verified"] is True
+    runtime_root = tmp_path / "d6_runtime_plan_outcomes"
+    runtime_inputs = json.loads(
+        (runtime_root / "input_specification.json").read_text(encoding="utf-8")
+    )
+    runtime_result = json.loads(
+        (runtime_root / "runtime_plan_outcome_join.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    runtime_manifest = json.loads(
+        (runtime_root / "manifest.json").read_text(encoding="utf-8")
+    )
+    assert len(runtime_inputs["artifacts"]) == 11
+    assert all(
+        not item["path"].startswith("/")
+        and item["sha256"].startswith("sha256:")
+        for item in runtime_inputs["artifacts"].values()
+    )
+    assert runtime_result["runtime_ack_evidence"]["ack_count"] >= 1
+    assert runtime_result["runtime_ack_evidence"]["binding_count"] >= 5
+    assert runtime_result["runtime_ack_evidence"]["online_truth_use_count"] == 0
+    assert runtime_result["admission"]["ppo_allowed"] is False
+    assert runtime_result["admission"]["assist_allowed"] is False
+    assert runtime_result["admission"]["authority_allowed"] is False
+    assert runtime_result["admission"]["rule_fallback_required"] is True
+    assert runtime_manifest["runtime_assignment_plan_ack_count"] == (
+        result.summary["assignment_plan_ack_count"]
+    )
+    assert runtime_manifest["admission"] == {
+        "assist_allowed": False,
+        "authority_allowed": False,
+        "ppo_allowed": False,
+        "rule_fallback_required": True,
+        "status": "runtime_observed_diagnostic_only_admission_closed",
+    }
 
 
 def test_d6_batch_aggregates_distinct_seed_episode_artifacts(tmp_path) -> None:

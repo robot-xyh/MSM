@@ -109,12 +109,18 @@ commit。
   准确率为 `0.621823`，因此 bundle 仅允许 development shadow。
 - D6 已完成正式数据 outcome/reward 分层和 detached sidecar。D4、D5 有相邻观测结果，
   但缺版本化动作采用/运行 ACK，reward 均为 0 条可用；PPO、反事实和因果训练保持关闭。
-- main 已新增真值隔离的 `scalable3d-assignment-plan-runtime-ack-v1`。每次 D3 新计划发布时，
-  main 校验同周期 D7 命令引用的 plan id/version，并逐分配记录命令存在、导引模式、门控原因、
-  世界控制回写和保持状态；记录绑定 D3/D7 来源总线序号及规范载荷 SHA-256。错版本或额外绑定
-  失败关闭；D3 学习采用和 D4 建议采用元数据只原样转录，缺失时保持 null。该 ACK 尚未进入
-  冻结的 900-episode 正式数据，也没有物理 outcome/reward；后续新 episode 由 D6 按版本和
-  时间窗离线归因。
+- main 已新增真值隔离的 `scalable3d-assignment-plan-runtime-ack-v1`。每次 D3 新计划或明确
+  refresh 发布时，main 校验同周期 D7 命令引用的 plan id/version，并逐分配记录命令存在、
+  导引模式、门控原因、世界控制回写和保持状态；记录绑定 D3/D7 来源总线序号及规范载荷
+  SHA-256。错版本、额外绑定和同版本执行签名变化均失败关闭。D4 v2 消费端已用真实 main
+  5v5 seed 41 验证 `evaluation_refresh_applied`，不把刷新误报为新执行计划。
+- D6 已实现确认到离线物理状态的只读联接，main 会为有确认的 episode 自动登记 11 项输入和
+  SHA-256，写出可复载 input specification、逐 binding 非重叠窗口、JSON、中文报告和 provenance
+  manifest。真实 main 3v3 episode 的 2 条确认形成 6 个窗口，在线真值使用为 0；同版本刷新
+  由 ACK sequence/timestamp 唯一化，binding/coalition/authority 篡改失败关闭。当前只提供
+  有界距离进展诊断，不提供正式 reward、counterfactual 或 causal label。冻结 900 episode
+  仍没有该 runtime 证据；paired shadow、保留 seed 和学习实际采用多 seed 证据未完成，PPO、
+  assist 和 authority 继续关闭。
 - main 已新增 `scalable3d-shared-seed-split-registry-v1`。100 个训练 seed 使用与 D3 v2
   一致的确定性 `60/20/20` 映射，并绑定原训练 seed 注册表 SHA。D4/D5 源外 canonical
   views 已建立，原数据不改写；D6 联合审计已通过 manifest/view/readiness/summary 层的

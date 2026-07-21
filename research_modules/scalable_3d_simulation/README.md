@@ -22,6 +22,14 @@ main 还在 D3 发布新计划的同一调度周期，将计划逐项绑定到 D
 字段保持为空。该记录只证明计划被运行时接收以及绑定是否进入 D7，不把五米接近、任务完成或
 规则教师诊断写成结果与奖励。
 
+main 现已把该确认链自动接入 D6 离线结果联接。存在运行时计划确认的 episode 会额外写出
+`d6_runtime_plan_outcomes/input_specification.json`，其中登记在线总线、D2 离线身份映射、
+三维真值状态、五米接近事件、场景配置和 episode manifest 共 11 项输入及 SHA-256。D6 先
+复载并校验该清单，再按确认序号和时间戳建立互不重叠的资源-航迹窗口。同一计划编号和版本
+允许产生明确标记的评估刷新窗口，但资源绑定、联盟和 authority 执行签名必须保持不变。
+每个窗口输出起始、结束、最小三维距离和五米事件；距离进展只记为诊断，不作为 D3 正式奖励。
+输入清单、联接结果、中文报告和 main provenance manifest 均随 episode 保存。
+
 ## 2026-07-21 正式数据与开发训练状态
 
 修复逐 episode checkpoint 和 D5 同流多批次边界后，新的正式生成目录已经完成全部
@@ -71,6 +79,12 @@ D6 对正式数据生成了源外标签 sidecar，并完成正式 canonical view
 `aaaeaefd99f38a03e4f80ffa96dabcb0eef0dd9724cb38fdb163c0bf603eff21`。在 D3、D4、真实
 运行 ACK/outcome、可归因 reward 和 paired shadow 闭合前，不能开展近端策略优化、在线辅助或
 因果训练。
+
+D6 还已在真实 main 3v3 质点 episode 上完成运行时计划确认与离线结果联接。2 条确认被识别
+为 1 条新计划身份和 1 条同身份评估刷新，共形成 6 个资源-航迹窗口；来源序号、载荷哈希、
+D2 身份映射和离线三维状态均通过校验，在线真值使用为 0。所有窗口具备有界距离进展诊断，
+但当前没有同 seed 配对影子、保留 seed 结果、正式强化学习奖励或因果证据，因此 PPO、assist
+和 authority 仍为 false，规则回退保持启用。
 
 跨模块切分现由 detached `scalable3d-shared-seed-split-registry-v1` 统一管理。100 个训练
 seed 固定为 `60/20/20`，映射与现有 D3 正式开发数据逐项一致，保留 seed 未进入任一桶。
