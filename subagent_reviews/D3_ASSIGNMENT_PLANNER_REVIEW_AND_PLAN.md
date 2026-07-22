@@ -1198,3 +1198,25 @@ D3 现把匿名记录区域计划作为该类离线帧的固定安全输入。�
 该修复位于既有离线执行接口内部，main 无需更改调用签名。main 后续仍需验证升版计划进入
 D4 adoption、D7 控制和 D6 结果侧车后的同一 lineage。当前没有 AirSim、生产 ACK 或物理
 拦截证据；M-to-N 区域原子联盟仍需单独多 seed 验收。
+
+## 48. 200×200 规划证据性能复核（2026-07-22）
+
+main 基线表明三次 D3 规划随 20/50/100/200 规模近似平方增长，200 规模累计
+`7.329949 s`。D3 cProfile 将确定性主因定位到 planning evidence：相同 rule/effective
+breakdown 被按完整 40,000 单元重复深度匿名化，单次约调用 80,200 次
+`_safe_cost_breakdown()`。向量化代价构造和 Hungarian 不是本轮主热点。
+
+D3 已在证据层完成最小范围修复。相同源 breakdown 按对象身份缓存，rule/effective 共享
+只读匿名 breakdown/reject 结构，数值矩阵保持独立不可写；结构不同的学习有效矩阵继续单独
+清洗。previous-plan 迟滞比较只复制 hard-safe candidate breakdown。规划公式、求解器、
+M-to-N、迟滞、版本、stale、联盟和 D7 binding 均未改。
+
+独立基准由 `2651.953 ms` 降至 `189.111 ms`，加速 `14.023x`；完整 seed 42000、2.2 秒
+质点链路三次 D3 规划降至 `1.013593 s`，加速 `7.232x`。完整边、候选边和 assignment
+保持 `40000/6400/200`，在线真值使用为 0。新增非等量、200x200、M-to-N 和多周期语义/
+操作计数测试，定向 `62 passed`；D3 全量选定集为
+`422 passed, 1 skipped, 2 deselected`。
+
+结论：D3-owned P1 规划证据确定性热点已关闭。墙钟仍是 development benchmark，后续由
+main 运行完整 200v200 多 seed 和 AirSim 系统验收。两项既有 `global_track_stale` 跨模块
+失败不属于本次回归，D3 不放宽 stale 门。更大规模求解器替换不纳入本轮工作。

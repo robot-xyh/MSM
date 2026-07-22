@@ -2425,3 +2425,45 @@ epoch、lease、commit、前序计划、版本、时间和转换摘要篡改。�
 `secondary_failure` 以规模 5、3.2 秒运行 seed 1000-1019，40/40 arm 生成；seed
 1011/1019 的待分配目标无区域 assignment。离线干预专项 `23 passed`，D3 全量
 `419 passed, 1 skipped`。本轮未运行 AirSim。
+
+## 52. 规划证据快照优化
+
+### 52.1 原始热点
+
+稀疏三维代价构造会为完整矩阵填入数值 sentinel，只为候选边物化详细 breakdown。规则路径
+未启用学习修正时，`rule_matrix_result` 与 `effective_matrix_result` 通常引用同一 breakdown
+和 reject 结构。原证据构造器仍逐单元调用两次 `_safe_cost_breakdown()`，200x200 时约为
+80,200 次。大量裁剪单元共享同一模板字典，重复处理没有增加证据信息。
+
+### 52.2 快照构造
+
+`build_planning_frame_evidence()` 在单帧范围创建 breakdown cache 和安全键 cache。每个源
+mapping 先按对象身份查找；命中时还要验证缓存保留的源对象就是当前对象。匿名结果使用
+`MappingProxyType`，调用方不能修改。规则和有效结果的顶层 breakdown/reject tuple 是同一
+对象时，有效结果直接复用已匿名化结构；否则继续逐结构处理，保持学习修正证据独立。
+
+数值矩阵不共享。`_readonly_array()` 使用源数组的 C 顺序字节串创建新数组，并关闭写权限。
+因此 rule/effective 数值快照内容可以相同，但对象和底层字节缓冲相互独立。输入矩阵后续被
+修改时不会污染证据。
+
+### 52.3 迟滞比较
+
+`_hysteresis_comparison_matrix()` 先浅复制 breakdown 行容器，再只遍历
+`candidate_edge_indices`。每条候选边按需复制字典并移除改配惩罚和软视觉反馈 shaping。
+previous-plan binding 已由 `_preserved_candidate_edges()` 强制进入候选 mask；硬拒绝边不会
+成为可保留执行边。未进入候选的 sentinel breakdown 保持共享且不被修改。
+
+### 52.4 语义测试
+
+专项测试覆盖以下条件：
+
+- 3 目标/5 资源和 5 目标/3 资源的非等量分配；
+- 200x200 下 40,000 完整边、6,400 候选边和 200 个 assignment；
+- `2 primary + 1 reserve` 的 M-to-N 角色、容量和 demand slot；
+- previous-plan 多周期稳定签名、计划号和版本保持；
+- rule/effective 数值矩阵独立、breakdown 只读且共享安全；
+- breakdown 深度清洗次数随候选边数量增长，而非对完整矩阵重复两次。
+
+墙钟保存在开发 benchmark 中，不进入单元测试断言。当前定向回归为 `62 passed`，D3 全量
+选定集为 `422 passed, 1 skipped, 2 deselected`，语法检查通过。两项
+`global_track_stale` 跨模块失败在未修改基线可复现，本实现未调整 stale 门控。

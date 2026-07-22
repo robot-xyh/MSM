@@ -1044,3 +1044,34 @@ reserved-seed 隔离多周期 rollout，并让 D4 adoption、D7 命令 lineage �
 仍开放的 P1 是 main 侧隔离物理 rollout 联合验收：D4 adoption、D7 命令 lineage 和 D6
 物理结果必须绑定同一升版计划。真实 M-to-N 区域原子联盟、多规模通信退化和 AirSim 尚未
 验证；这些结果不能由当前单成员区域重放推导。
+
+## 45. 200×200 规划证据热点 GAP 更新（2026-07-22）
+
+### 已关闭
+
+1. P1 确定性性能热点已关闭：规则和有效矩阵共享同一 breakdown/reject 源结构时，不再对
+   40,000 单元重复深度匿名化；不同学习结构仍分别处理。
+2. previous-plan 迟滞比较不再复制全部 breakdown，只复制 hard-safe candidate edge；既有
+   binding 仍通过 preserved candidate 合同进入比较范围。
+3. 数值 rule/effective 矩阵继续使用独立不可写快照，匿名 breakdown 继续只读。证据 schema、
+   哈希输入和回放语义未改变。
+4. 规则代价、不可达边、容量、M-to-N demand slot、Hungarian、迟滞、计划版本、stale、
+   联盟及 D7 binding 均保持原合同。
+
+### 证据
+
+独立 200x200 开发基准中，向量化中位数由 `2651.953 ms` 降至 `189.111 ms`，完整链路
+seed 42000 的三次 D3 规划由 `7.329949 s` 降至 `1.013593 s`。breakdown 清洗由约
+80,200 次降至 6,601 次。结构仍为 40,000 完整边、6,400 候选边和 200 个 assignment。
+新增 3x5、5x3、200x200、M-to-N 和 previous-plan 多周期测试，定向 `62 passed`，语法
+检查通过。D3 全量选定集为 `422 passed, 1 skipped, 2 deselected`。墙钟只作为 benchmark，
+不设单元测试硬门限。
+
+### 仍开放
+
+1. 完整 200v200 多 seed、候选上限扫描、长周期 previous-plan、AirSim 和物理拦截仍是 main
+   侧系统验收 P1，不由本次 D3 微基准关闭。
+2. D3 完整收集中的两项 `global_track_stale` 在未修改 HEAD 可复现，归属 main/D7 的既有
+   跨模块时序断点。D3 stale 拒绝不放宽。
+3. 更大规模 sparse flow、区域分解和复杂容量求解保持 P2/P3 optional，不进入默认主线。
+4. 当前没有新增 D3 P0。

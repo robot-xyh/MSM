@@ -1473,3 +1473,47 @@ arm 均生成。seed 1011/1019 均为 4 个绑定加 `target_0004` 显式未分�
 D3 本地 secondary-failure 区域回放断点已关闭。仍需 main 把同一结果接入隔离物理 rollout，
 核对 D4 adoption、D7 命令 lineage 和 D6 结果侧车。当前真实 reserved-seed 数据为单成员
 区域授权；M-to-N 原子联盟的区域离线重放仍需独立多 seed 场景验证。AirSim 未运行。
+
+## 48. 200×200 规划证据确定性热点（2026-07-22）
+
+### 问题定位
+
+1. `PlannerConfig.scalable_3d(max_candidate_edges_per_target=32)` 已把 Python 代价明细物化
+   控制在 6,400 条候选边，但规划证据仍对规则和有效两个 40,000 单元矩阵分别递归匿名化。
+2. cProfile 基线中单次 planner 累计 `10.436 s`，其中 planning evidence 为 `9.697 s`；
+   `_safe_cost_breakdown` 调用约 80,200 次。向量化代价构造约 `0.085 s`，Hungarian 两臂
+   合计约 `0.53 s`，因此本轮不重写代价模型或求解器。
+3. previous-plan 周期还会为迟滞比较复制全部 breakdown，进一步放大完整矩阵成本。
+
+### 已完成
+
+1. 同一源 breakdown 结构按对象身份只清洗一次，匿名结果为只读映射；缓存同时保存源对象
+   引用，避免对象编号复用导致误命中。
+2. 规则和有效结果共享源 breakdown/reject 结构时复用匿名 tuple。两个数值矩阵仍是相互
+   独立的不可写快照；学习 assist 形成不同结构时仍分别匿名化。
+3. `_readonly_array()` 从源数组直接生成一个只读字节快照，移除额外中间数组复制。
+4. 迟滞比较只复制 `hard_safe_candidate_mask` 内的 breakdown。previous-plan 边由既有
+   preserved-candidate 合同纳入候选；被裁剪或硬拒绝单元继续保留 sentinel，不参与旧计划
+   或候选解评分。
+5. 未修改规则代价、不可达边、容量、M-to-N demand slot、Hungarian、迟滞、版本、stale、
+   联盟或 D7 binding 语义。
+
+### 验证
+
+1. 新增 3x5、5x3、200x200、M-to-N 和 previous-plan 多周期测试。测试同时检查分配规模、
+   角色/容量、稳定签名、版本保持、只读证据和 breakdown 清洗上界，不以墙钟作为脆弱门限。
+2. 独立 200x200、32 候选边、3 次重复的向量化中位数由 `2651.953 ms` 降至
+   `189.111 ms`，加速 `14.023x`；当前复跑为 `195.716 ms`。结构保持 40,000 条完整边、
+   6,400 条候选边和 200 条 assignment。
+3. 优化后预热求解器的 cProfile 中 planning evidence 为 `0.210072 s`，breakdown 清洗
+   为 6,601 次。完整 seed 42000、2.2 秒、200v200 集成运行的三次 D3 规划由
+   `7.329949 s` 降至 `1.013593 s`，在线真值使用为 0，计划 ACK 为 3。
+4. 语法检查和定向 `62 passed` 已通过。D3 全量选定集为
+   `422 passed, 1 skipped, 2 deselected`；两项 `global_track_stale` 可在未修改 HEAD
+   复现，作为 main/D7 跨模块既有失败保留，禁止放宽 stale 合同。
+
+### 开放项
+
+上述墙钟数据只用于开发归因。完整 200v200 多 seed、不同候选边上限、previous-plan 长周期、
+AirSim 和物理拦截仍需 main 统一运行并由 D6 汇总。更大规模的稀疏流或区域分解仍是后续
+研究，不进入本轮 P1 修复。

@@ -1,0 +1,113 @@
+{
+  "schema": "d3_scalable_planner_hotpath_comparison_v1",
+  "validation_date": "2026-07-22",
+  "evidence_class": "development_performance_benchmark",
+  "semantic_contract": "same_rule_costs_hard_constraints_capacity_demand_slots_hungarian_hysteresis_versioning_and_bindings",
+  "standalone_200v200": {
+    "command": "PYTHONPATH=research_modules/d3_assignment_planner/src python3 research_modules/d3_assignment_planner/simulations/run_scalable_3d_assignment_benchmark.py --count 200 --max-edges 32 --repeat 3",
+    "baseline": {
+      "git_commit": "634c16f",
+      "worktree": "detached_clean",
+      "vectorized_runs_ms": [
+        2640.267,
+        2913.519,
+        2651.953
+      ],
+      "vectorized_median_ms": 2651.953,
+      "legacy_median_ms": 4671.643
+    },
+    "optimized": {
+      "git_commit": null,
+      "worktree": "d3_change_under_review",
+      "vectorized_runs_ms": [
+        189.111,
+        253.563,
+        177.918
+      ],
+      "vectorized_median_ms": 189.111,
+      "legacy_median_ms": 2882.029
+    },
+    "verification_rerun": {
+      "vectorized_runs_ms": [
+        184.171,
+        252.769,
+        195.716
+      ],
+      "vectorized_median_ms": 195.716,
+      "legacy_runs_ms": [
+        3801.114,
+        3166.235,
+        3457.884
+      ],
+      "legacy_median_ms": 3457.884
+    },
+    "vectorized_median_speedup": 14.023,
+    "vectorized_median_reduction_percent": 92.869,
+    "target_count": 200,
+    "resource_count": 200,
+    "candidate_full_edge_count": 40000,
+    "candidate_edge_count": 6400,
+    "candidate_breakdown_materialization_count": 6400,
+    "assignment_count": 200
+  },
+  "cprofile_single_vectorized_plan": {
+    "baseline": {
+      "total_cumulative_s": 10.436,
+      "planning_evidence_cumulative_s": 9.697,
+      "anonymous_matrix_result_call_count": 2,
+      "safe_cost_breakdown_call_count": 80200
+    },
+    "optimized_warm_solver_import": {
+      "total_cumulative_s": 0.433,
+      "planning_evidence_cumulative_s": 0.210072,
+      "anonymous_matrix_result_call_count": 2,
+      "safe_cost_breakdown_call_count": 6601,
+      "vectorized_cost_build_cumulative_s": 0.093069,
+      "hungarian_cumulative_s": 0.008834,
+      "input_snapshot_cumulative_s": 0.082537
+    },
+    "planning_evidence_cumulative_speedup": 46.16,
+    "note": "cProfile amplifies Python call overhead; warm-solver timings are used only for attribution, not as a hard real-time threshold"
+  },
+  "integrated_seed42000_2p2s": {
+    "baseline": {
+      "source": "research_modules/scalable_3d_simulation/outputs/point_mass_integrated_observation_smoke_20260722_development_coalesced/nominal/200v200/seed_42000/summary.json",
+      "d3_assignment_call_count": 3,
+      "d3_assignment_wall_time_s": 7.329949116916396,
+      "main_d3_adapter_wall_time_s": 0.021738396026194096,
+      "episode_wall_time_s": 60.209991472016554,
+      "real_time_factor": 0.03653878610865576
+    },
+    "optimized": {
+      "source": "/tmp/msm_scalable3d_d3_postopt_200_seed42000/summary.json",
+      "d3_assignment_call_count": 3,
+      "d3_assignment_wall_time_s": 1.013593134994153,
+      "main_d3_adapter_wall_time_s": 0.02118089294526726,
+      "episode_wall_time_s": 29.749489084002562,
+      "real_time_factor": 0.07395084983772122,
+      "finite_state": true,
+      "online_truth_use_count": 0,
+      "assignment_count": 200,
+      "assignment_plan_ack_count": 3
+    },
+    "d3_assignment_speedup": 7.232,
+    "d3_assignment_reduction_percent": 86.171,
+    "scope_note": "The episode wall-time change is not attributed solely to D3 because other stage timings varied between development runs"
+  },
+  "acceptance_policy": {
+    "wall_clock_is_benchmark_only": true,
+    "unit_tests_use_hard_operation_counts": true,
+    "truth_used_online": false,
+    "formal_realtime_claim": false
+  },
+  "module_validation": {
+    "targeted_tests_passed": 62,
+    "full_selected_tests": 423,
+    "full_selected_tests_passed": 422,
+    "optional_tests_skipped": 1,
+    "known_cross_module_tests_deselected": 2,
+    "known_cross_module_reason": "global_track_stale reproducible on detached unmodified HEAD",
+    "py_compile_passed": true,
+    "git_diff_check_passed": true
+  }
+}

@@ -5464,13 +5464,13 @@ class AssignmentPlanner:
         """Remove candidate-search-only shaping from the gain comparison."""
 
         matrix = matrix_result.matrix.copy()
-        breakdown_rows = [
-            [dict(breakdown) for breakdown in row]
-            for row in matrix_result.breakdowns
-        ]
+        breakdown_rows = [list(row) for row in matrix_result.breakdowns]
         track_by_id = {track.track_id: track for track in tracks}
         fov_weight = float(self.cost_model.weights.fov)
-
+        feedback_by_target: dict[
+            int,
+            tuple[Mapping[str, Any], Mapping[str, Any]],
+        ] = {}
         for target_index, target_id in enumerate(matrix_result.target_ids):
             track = track_by_id.get(target_id)
             base_fov: Mapping[str, Any] = {}
@@ -5488,47 +5488,50 @@ class AssignmentPlanner:
                     base_fov = raw_base
                 if isinstance(raw_applied, Mapping):
                     applied_fov = raw_applied
+            feedback_by_target[target_index] = (base_fov, applied_fov)
 
-            for resource_index, resource_id in enumerate(matrix_result.resource_ids):
-                reject_reason = matrix_result.reject_reasons[target_index][resource_index]
-                breakdown = breakdown_rows[target_index][resource_index]
-                switch_penalty = max(
+        # Only hard-safe candidate edges can appear in either the candidate or
+        # preserved previous solution. Pruned/rejected cells remain internal
+        # sentinels, so copying their breakdown dictionaries is unnecessary.
+        for target_index, resource_index in matrix_result.candidate_edge_indices:
+            resource_id = matrix_result.resource_ids[resource_index]
+            base_fov, applied_fov = feedback_by_target[target_index]
+            breakdown = dict(breakdown_rows[target_index][resource_index])
+            switch_penalty = max(
+                0.0,
+                float(breakdown.get("reassignment_switch_penalty", 0.0)),
+            )
+            feedback_fov_cost = 0.0
+            if resource_id in base_fov and resource_id in applied_fov:
+                try:
+                    base_value = max(0.0, min(1.0, float(base_fov[resource_id])))
+                    applied_value = max(
+                        0.0,
+                        min(1.0, float(applied_fov[resource_id])),
+                    )
+                except (TypeError, ValueError):
+                    base_value = applied_value = 0.0
+                feedback_fov_cost = fov_weight * max(
                     0.0,
-                    float(breakdown.get("reassignment_switch_penalty", 0.0)),
+                    applied_value - base_value,
                 )
-                feedback_fov_cost = 0.0
-                if resource_id in base_fov and resource_id in applied_fov:
-                    try:
-                        base_value = max(0.0, min(1.0, float(base_fov[resource_id])))
-                        applied_value = max(
-                            0.0,
-                            min(1.0, float(applied_fov[resource_id])),
-                        )
-                    except (TypeError, ValueError):
-                        base_value = applied_value = 0.0
-                    feedback_fov_cost = fov_weight * max(
-                        0.0,
-                        applied_value - base_value,
-                    )
 
-                if reject_reason is None:
-                    comparison_cost = max(
-                        0.0,
-                        float(matrix[target_index, resource_index])
-                        - switch_penalty
-                        - feedback_fov_cost,
-                    )
-                    matrix[target_index, resource_index] = comparison_cost
-                    breakdown["fov"] = max(
-                        0.0,
-                        float(breakdown.get("fov", 0.0)) - feedback_fov_cost,
-                    )
-                    breakdown["reassignment_switch_penalty"] = 0.0
-                    breakdown["total"] = comparison_cost
-                breakdown["hysteresis_excluded_switch_penalty"] = switch_penalty
-                breakdown["hysteresis_excluded_soft_feedback_fov"] = (
-                    feedback_fov_cost
-                )
+            comparison_cost = max(
+                0.0,
+                float(matrix[target_index, resource_index])
+                - switch_penalty
+                - feedback_fov_cost,
+            )
+            matrix[target_index, resource_index] = comparison_cost
+            breakdown["fov"] = max(
+                0.0,
+                float(breakdown.get("fov", 0.0)) - feedback_fov_cost,
+            )
+            breakdown["reassignment_switch_penalty"] = 0.0
+            breakdown["total"] = comparison_cost
+            breakdown["hysteresis_excluded_switch_penalty"] = switch_penalty
+            breakdown["hysteresis_excluded_soft_feedback_fov"] = feedback_fov_cost
+            breakdown_rows[target_index][resource_index] = breakdown
 
         return replace(
             matrix_result,

@@ -275,6 +275,43 @@ def build_planning_frame_evidence(
             )
         )
 
+    # Sparse rule matrices intentionally reuse one reject-template mapping for
+    # thousands of pruned cells.  Preserve that sharing while detaching the
+    # snapshot, and reuse the sanitized structure when rule/effective results
+    # point at the same source evidence.
+    breakdown_cache: dict[
+        int,
+        tuple[Mapping[str, Any], Mapping[str, float]],
+    ] = {}
+    safe_key_cache: dict[str, bool] = {}
+    anonymous_rule_matrix_result = _anonymous_matrix_result(
+        rule_matrix_result,
+        target_tokens,
+        resource_tokens,
+        keep_learning_metadata=False,
+        breakdown_cache=breakdown_cache,
+        safe_key_cache=safe_key_cache,
+    )
+    anonymous_effective_matrix_result = _anonymous_matrix_result(
+        effective_matrix_result,
+        target_tokens,
+        resource_tokens,
+        keep_learning_metadata=True,
+        breakdown_cache=breakdown_cache,
+        safe_key_cache=safe_key_cache,
+        shared_breakdowns=(
+            anonymous_rule_matrix_result.breakdowns
+            if effective_matrix_result.breakdowns is rule_matrix_result.breakdowns
+            else None
+        ),
+        shared_reject_reasons=(
+            anonymous_rule_matrix_result.reject_reasons
+            if effective_matrix_result.reject_reasons
+            is rule_matrix_result.reject_reasons
+            else None
+        ),
+    )
+
     return PlanningFrameEvidence(
         available=True,
         reason="available",
@@ -286,18 +323,8 @@ def build_planning_frame_evidence(
         previous_plan_version=(
             0 if previous_plan is None else int(previous_plan.version)
         ),
-        rule_matrix_result=_anonymous_matrix_result(
-            rule_matrix_result,
-            target_tokens,
-            resource_tokens,
-            keep_learning_metadata=False,
-        ),
-        effective_matrix_result=_anonymous_matrix_result(
-            effective_matrix_result,
-            target_tokens,
-            resource_tokens,
-            keep_learning_metadata=True,
-        ),
+        rule_matrix_result=anonymous_rule_matrix_result,
+        effective_matrix_result=anonymous_effective_matrix_result,
         shadow_proposal_matrix=shadow_proposal,
         learning_mode=learning_mode,
         learning_state=learning_state,
@@ -478,26 +505,50 @@ def _anonymous_matrix_result(
     resource_tokens: Mapping[str, str],
     *,
     keep_learning_metadata: bool,
+    breakdown_cache: dict[
+        int,
+        tuple[Mapping[str, Any], Mapping[str, float]],
+    ] | None = None,
+    safe_key_cache: dict[str, bool] | None = None,
+    shared_breakdowns: tuple[tuple[Mapping[str, float], ...], ...] | None = None,
+    shared_reject_reasons: tuple[tuple[str | None, ...], ...] | None = None,
 ) -> CostMatrixResult:
     metadata = (
         _safe_learning_metadata(result.metadata)
         if keep_learning_metadata
         else MappingProxyType({})
     )
+    sanitized_breakdowns = (
+        shared_breakdowns
+        if shared_breakdowns is not None
+        else tuple(
+            tuple(
+                _cached_safe_cost_breakdown(
+                    value,
+                    breakdown_cache=breakdown_cache,
+                    safe_key_cache=safe_key_cache,
+                )
+                for value in row
+            )
+            for row in result.breakdowns
+        )
+    )
+    sanitized_reject_reasons = (
+        shared_reject_reasons
+        if shared_reject_reasons is not None
+        else tuple(
+            tuple(None if value is None else str(value) for value in row)
+            for row in result.reject_reasons
+        )
+    )
     return CostMatrixResult(
         matrix=_readonly_array(result.matrix, dtype=float),
-        breakdowns=tuple(
-            tuple(_safe_cost_breakdown(value) for value in row)
-            for row in result.breakdowns
-        ),
+        breakdowns=sanitized_breakdowns,
         target_ids=tuple(target_tokens[value] for value in result.target_ids),
         resource_ids=tuple(resource_tokens[value] for value in result.resource_ids),
         unassigned_costs=_readonly_array(result.unassigned_costs, dtype=float),
         target_threat_scores=tuple(float(value) for value in result.target_threat_scores),
-        reject_reasons=tuple(
-            tuple(None if value is None else str(value) for value in row)
-            for row in result.reject_reasons
-        ),
+        reject_reasons=sanitized_reject_reasons,
         candidate_mask=(
             None
             if result.candidate_mask is None
@@ -860,12 +911,37 @@ def _plan_node_ids(
     }
 
 
-def _safe_cost_breakdown(value: Mapping[str, Any]) -> Mapping[str, float]:
+def _cached_safe_cost_breakdown(
+    value: Mapping[str, Any],
+    *,
+    breakdown_cache: dict[
+        int,
+        tuple[Mapping[str, Any], Mapping[str, float]],
+    ] | None,
+    safe_key_cache: dict[str, bool] | None,
+) -> Mapping[str, float]:
+    if breakdown_cache is None:
+        return _safe_cost_breakdown(value, safe_key_cache=safe_key_cache)
+    cache_key = id(value)
+    cached = breakdown_cache.get(cache_key)
+    if cached is not None and cached[0] is value:
+        return cached[1]
+    sanitized = _safe_cost_breakdown(value, safe_key_cache=safe_key_cache)
+    breakdown_cache[cache_key] = (value, sanitized)
+    return sanitized
+
+
+def _safe_cost_breakdown(
+    value: Mapping[str, Any],
+    *,
+    safe_key_cache: dict[str, bool] | None = None,
+) -> Mapping[str, float]:
     return MappingProxyType(
         {
             str(key): float(item)
             for key, item in value.items()
-            if _safe_key(key) and isinstance(item, (int, float, np.number))
+            if _cached_safe_key(key, safe_key_cache)
+            and isinstance(item, (int, float, np.number))
         }
     )
 
@@ -908,9 +984,20 @@ def _safe_key(value: Any) -> bool:
     return bool(key) and not any(item in key for item in forbidden)
 
 
+def _cached_safe_key(value: Any, cache: dict[str, bool] | None) -> bool:
+    if cache is None:
+        return _safe_key(value)
+    key = str(value)
+    if key not in cache:
+        cache[key] = _safe_key(key)
+    return cache[key]
+
+
 def _readonly_array(value: Any, *, dtype: Any) -> np.ndarray:
-    copied = np.ascontiguousarray(np.array(value, dtype=dtype, copy=True))
-    immutable = np.frombuffer(copied.tobytes(), dtype=copied.dtype).reshape(copied.shape)
+    source = np.asarray(value, dtype=dtype)
+    immutable = np.frombuffer(source.tobytes(order="C"), dtype=source.dtype).reshape(
+        source.shape
+    )
     immutable.setflags(write=False)
     return immutable
 

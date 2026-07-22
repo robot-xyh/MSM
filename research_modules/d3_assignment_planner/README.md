@@ -1290,3 +1290,27 @@ lease 或 commit。重放后仍由原精确匹配器核对 binding、完整执�
 同时在未分配和不完整清单中，且没有区域 assignment。在线真值使用为 0。离线干预专项为
 `23 passed`，D3 全量为 `419 passed, 1 skipped`；skip 仍为可选 OR-Tools。本轮没有运行
 AirSim，也没有生成生产 runtime ACK、D4 物理采用或拦截结果。
+
+## 2026-07-22 规划证据性能收敛
+
+200 目标、200 资源、每目标最多 32 条候选边时，规划器仍保留 40,000 单元的确定性求解
+矩阵和 6,400 条候选边。原实现对规则矩阵和有效矩阵分别深度匿名化全部单元，即使二者共享
+同一 breakdown 结构，也会重复清洗和复制。单次规划约触发 80,200 次 breakdown 清洗，
+规划证据成为确定性主耗时。
+
+当前实现按源 breakdown 对象身份缓存只读匿名结果。规则矩阵和有效矩阵共享源结构时复用
+同一匿名 breakdown/reject tuple，数值矩阵仍各自保存独立、不可写副本；学习残差形成不同
+有效结构时仍分别处理。迟滞比较只复制 hard-safe candidate breakdown，不复制已裁剪或硬
+拒绝单元。规则代价、不可达边、资源容量、M-to-N demand slot、Hungarian、迟滞、计划版本、
+stale 拒绝、联盟和 D7 binding 合同均未改变。
+
+独立同配置开发基准的向量化中位数由 `2651.953 ms` 降至 `189.111 ms`，加速 `14.023x`；
+当前工作树复跑为 `195.716 ms`。cProfile 中 breakdown 清洗由约 `80,200` 次降至 `6,601`
+次。完整 seed 42000、2.2 秒、200v200 质点链路的三次 D3 规划由 `7.329949 s` 降至
+`1.013593 s`。这些是开发性能证据，不是硬实时验收，也不代表完整 episode 的全部提速均
+来自 D3。结果记录见 `results/scalable_3d_planner_hotpath_20260722.json`。
+
+新增测试覆盖 3x5、5x3、200x200、M-to-N 和 previous-plan 多周期语义及操作计数。定向
+回归为 `62 passed`；D3 全量选定集为 `422 passed, 1 skipped, 2 deselected`。两项
+`global_track_stale` 失败可在未修改 HEAD 复现，属于 main/D7 跨模块既有断点；D3 不通过
+放宽 stale 门控处理。完整 200v200 多 seed、AirSim 和物理拦截仍由 main 组织后续验收。
