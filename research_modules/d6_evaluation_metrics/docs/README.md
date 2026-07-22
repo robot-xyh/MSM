@@ -1,5 +1,12 @@
 # D6 文档索引
 
+`OBSERVATION_GOVERNANCE_CALIBRATION_CONTRACT_CN.md` 定义长 episode D1 扫描 OOSM、D2
+claim ledger、evaluator-only sidecar、哈希链和 main required fields 的公共合同。
+2026-07-22 的 development 快速治理基准与 200 对 200 全栈单 seed 冒烟见
+`../EXPERIMENT_REPORT.md` 2.16 节；两类证据的隔离原则见 `MODULE_PRINCIPLES_CN.md`，读取和
+availability 算法见 `ALGORITHM_AND_IMPLEMENTATION.md`。快速基准覆盖四档各 5 seed，全栈冒烟
+仅覆盖 2.2 s 单 seed；两者均不能替代 clean formal 多 seed 精度与物理闭环验收。
+
 2026-07-22 D2 重复航迹治理后的 `active_risk` 开发期复跑证据见
 `MODULE_PRINCIPLES_CN.md`、`ALGORITHM_AND_IMPLEMENTATION.md` 和 `../EXPERIMENT_REPORT.md` 2.14 节。
 20 个 seed 的计划消费、导引血缘、物理窗、D4 adoption、配对差值、非退化和降级配对比较均为

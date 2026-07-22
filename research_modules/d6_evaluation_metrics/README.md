@@ -1,5 +1,52 @@
 # D6 Evaluation Metrics
 
+## 2026-07-22 长 Episode 观测治理标定合同
+
+D6 新增 `scalable3d-observation-governance-calibration-v1` 只读评估合同，用于 main 后续
+生成的 20/50/100/200 及其他动态规模长 episode。实现位于
+`d6_evaluation_metrics/observation_governance_calibration.py`，命令行入口为
+`scripts/run_observation_governance_calibration.py`。该路径只读取 episode 结束后的公共
+JSON 制品，不导入 D1/D2 runtime，也不回写控制状态。
+
+输入分为批输入清单、episode manifest、在线治理审计和可选 evaluator-only 侧车。每个
+episode 显式记录 `scale/target_count/resource_count/seed/duration_s`、完整 Git commit、
+clean/dirty、证据层级、配置 SHA-256 和 world/bus/scenario/observation/D1/D2 schema。
+在线审计覆盖 D1 OOSM 缓冲、重排、拒绝、过旧、溢出、淘汰和内存估算，以及 D2 当前/峰值
+claim、淘汰、过旧、溢出、重放隔离、时间戳冲突、合并事件和内存估算。
+
+所有计数均采用 `{availability,value,reason}`。`unavailable` 必须使用 `value=null`，不能以
+零代替。近邻召回、错误抑制、错误合并和确认时延只接受
+`scalable3d-observation-governance-evaluator-sidecar-v1`；侧车必须声明
+`evaluator_only=true`、`online_consumed=false`，并用 SHA-256 同时绑定 manifest、在线审计
+和离线真值摘要。D6 不读取原始真值。
+
+报告固定输出逐 seed CSV、聚合 JSON 和中文 Markdown。规模聚合对在线计数给出均值、P95
+和最大值；比例指标给出 evaluator 样本数、汇总比例和 episode 重采样自助法 95% 置信区间。
+schema/hash/provenance 缺失、不一致规模、重复 seed、脏正式来源或在线真值泄漏会拒绝整批
+输入。完整 producer 字段和调用示例见
+`docs/OBSERVATION_GOVERNANCE_CALIBRATION_CONTRACT_CN.md`。
+
+2026-07-22 的 14 项合成合同测试覆盖 available/unavailable、显式零、制品篡改、动态规模、
+20/50/100/200、7/37 非基线规模和真值隔离；D6 全量为 `521 passed`，另有一条既有
+Matplotlib `Axes3D` 环境 warning。
+
+同日 D6 只读核验 development 制品
+`observation_governance_calibration_20260722_development`。该批在脏工作树上生成，20、50、
+100、200 四档各 5 个互异 seed，共 20 个 episode；每个 episode 世界时长 33.75 s，在线
+真值使用数为 0。各档 D1 重排数均为 12，拒绝、过旧和溢出均为 0，峰值扫描缓冲为 3。
+D2 峰值 claim/容量依次为 2390/4800、6020/12000、12070/24000、24170/48000；安全淘汰数
+依次为 285、735、1485、2985，溢出为 0。evaluator-only 的近邻召回率为 1.0，错误抑制率和
+错误合并率为 0，确认时延为 0.25 s；上述指标均为 available，并保留 95% episode bootstrap
+区间。200 规模的 D1+D2 tracemalloc 口径峰值约为 58.99 MB。上述数值仅说明这组快速治理
+基准在给定输入下的表现，不等同于全系统精度、物理闭环或正式容量验收。
+
+另一份 development 制品
+`point_mass_integrated_observation_smoke_20260722_development_coalesced` 是实际 D1-D7 集成质点
+栈的单 seed 冒烟。200 对 200 场景推进 2.2 s 世界时间，墙钟耗时 60.21 s，实时因子 0.0365，
+在线真值使用数为 0。该制品用于确认全栈可以运行和写出治理审计，不与快速治理基准合并统计，
+也不能作为长时性能或拦截效果结论。仍需在 clean commit 上正式复跑、扩大 seed 和场景覆盖，
+并补齐完整系统精度与物理闭环验收。
+
 ## 2026-07-22 active_risk D2 修复后开发期复跑
 
 main 在脏工作树上生成了开发期结果集

@@ -1,5 +1,71 @@
 # D6 系统级离线评估：算法原理与实施说明
 
+## 长 Episode 观测治理评估（2026-07-22）
+
+解析器从带外提供的 input-spec SHA-256 开始，依次验证批输入清单、episode manifest、在线
+治理审计和可选 evaluator-only 侧车。在线审计回指 manifest 摘要；侧车同时回指 manifest、
+在线审计和离线真值摘要。四层制品的 episode ID、规模、目标数、资源数、seed 和时长逐项
+相等，Git/config/bus schema provenance 也必须一致。
+
+D6 不导入 D1/D2 runtime。在线 JSON 出现 truth/actor/object identity 字段、
+`online_truth_use_count != 0`、formal source 为 dirty、schema 不支持或摘要不一致时，整批
+fail closed。在线计数仅接受以下两种记录：
+
+```text
+available   -> value 为非负整数，reason=null
+unavailable -> value=null，reason 为非空字符串
+```
+
+D1 与 D2 的当前内存都可用时，D6 才计算合计当前内存；峰值同理：
+
+```text
+M_total,current = M_D1,current + M_D2,current
+M_total,peak    = M_D1,peak    + M_D2,peak
+```
+
+任一分量 unavailable 时，合计保持 unavailable。D6 还检查 current 不超过 peak，以及 D1
+`too_old + overflow` 不超过总 rejected。它不根据对象数量自行估算每条 claim 占用字节，内存
+值必须来自 producer 的显式估算口径。
+
+近邻召回、错误抑制和错误合并由 evaluator-only 侧车给出分子与正分母。规模内汇总比例为：
+
+```text
+r = sum(numerator_i) / sum(denominator_i)
+```
+
+自助法按 episode 有放回抽样，每次重新计算 pooled ratio，取 2.5% 和 97.5% 分位数。输出同时
+记录 evaluator 总样本数、可用 episode 数、总 episode 数和不可用原因。确认时延由侧车提供
+非空 `samples_s`，按规模合并后计算均值、P95 和最大值。零秒样本是合法真零；空样本不能标记
+available。
+
+公开 API 为 `load_observation_governance_calibration_inputs()`、
+`evaluate_observation_governance_calibration()`、
+`ObservationGovernanceCalibrationReportGenerator.write_report_bundle()` 和
+`main_producer_required_json_paths()`。精确字段模板见
+`OBSERVATION_GOVERNANCE_CALIBRATION_CONTRACT_CN.md`。
+
+### Development 结果读取
+
+2026-07-22 的快速基准由同一 v1 消费器读取 20 个 episode。四档规模各 5 seed，每个 episode
+为 33.75 s。D6 从在线审计读取 D1/D2 计数和 tracemalloc 口径内存，从 evaluator-only 侧车
+读取近邻召回、错误抑制、错误合并和确认时延。容量值由 main runner summary 提供，仅用于与
+峰值 claim 对照；D6 不据此修改 ledger 容量。
+
+结果解释按以下顺序执行：
+
+1. 先核对每个计数的 availability 和来源摘要，再汇总数值。四档 D1/D2 治理指标均为 5/5
+   available，在线真值使用数为 0。
+2. 再核对 evaluator-only 分母。近邻样本数随规模分别为 13375、33775、67775、135775；
+   召回率为 1.0，错误抑制率和错误合并率为 0，区间分别为 [1,1]、[0,0]、[0,0]。
+3. 确认时延样本数分别为 100、250、500、1000，四档均值/P95/最大值均为 0.25 s。
+4. 200 规模 D1+D2 合计峰值为 58,990,143 B。该数值只保留为当前 Python 进程的开发期
+   tracemalloc 描述，不外推到 AirSim、显存、网络进程或部署硬件。
+
+实际 D1-D7 质点冒烟由原有 scalable 3D 离线消费者单独读取。该回合的 200 对 200、2.2 s、
+60.21 s 墙钟和 0.0365 实时因子只形成单 seed 描述统计。完整系统精度、身份连续性和物理闭环
+缺少足够 sidecar 或时长时保持 unavailable。实现不把快速基准的 evaluator-only 结果回填到
+全栈冒烟，也不为单 seed 构造 bootstrap 区间。
+
 ## D2 修复后开发期证据复核（2026-07-22）
 
 本轮没有修改 D6 评估算法。既有 `paired_isolated_physical` 消费链直接读取 main 生成的 20-seed

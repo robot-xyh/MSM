@@ -1,5 +1,47 @@
 # D6 实现差距审计
 
+## 2026-07-22 长 Episode 观测治理 GAP 状态
+
+### D6-owned 已关闭
+
+- 已实现 `scalable3d-observation-governance-calibration-v1` 的只读解析、fail-closed 校验、
+  availability-aware 汇总和 CSV/JSON/中文 Markdown 输出。
+- 已覆盖 D1 scan OOSM 和 D2 claim ledger 的当前/峰值、淘汰、过旧、溢出、重放、时间戳冲突、
+  缓冲/重排/拒绝及内存估算。
+- 已将近邻召回、错误抑制、错误合并和确认时延限制为 evaluator-only sidecar；D6 不读取原始
+  truth，不参与 D1/D2 控制。
+- 已实现不一致 scale、重复 seed、脏正式源、缺 schema/hash/provenance、制品篡改和在线真值
+  泄漏的整批拒绝。
+- 2026-07-22 合成专项 `14 passed`、D6 全量 `521 passed`，覆盖 20/50/100/200 和非基线动态规模。
+
+### Development 证据已形成
+
+- 快速治理基准覆盖 20/50/100/200，各 5 seed、共 20 个 33.75 s episode；全部为
+  dirty/development，online truth use 为 0。
+- D1 每档重排 12，拒绝/过旧/溢出 0，峰值扫描缓冲 3。D2 峰值 claim/容量从
+  2390/4800 增至 24170/48000，安全淘汰从 285 增至 2985，溢出保持 0。
+- evaluator-only 近邻召回 1.0，错误抑制和错误合并 0，确认时延 0.25 s；四档均有明确
+  availability、有效分母和 95% bootstrap 区间。
+- 200 规模 D1+D2 tracemalloc 口径峰值约 58.99 MB。该值仅是快速基准的开发期内存描述。
+- 实际 D1-D7 质点栈另完成 200 对 200 单 seed 冒烟：2.2 s 世界时间、60.21 s 墙钟、实时
+  因子 0.0365、online truth use 为 0。该制品不与快速基准合并，也不构成正式性能证据。
+
+### 仍开放的跨模块 P1 输入条件
+
+1. **clean formal 重跑。** 当前 20 个快速 episode 和单次全栈冒烟均来自脏工作树。main 仍需
+   在冻结 clean commit 上按相同输入合同复跑并发布可保留制品，development 数值不能直接晋级。
+2. **统计覆盖。** 快速基准每档只有 5 seed，且输入模式固定。仍需增加 seed、时长、乱序幅度、
+   近邻密度、漏检和虚警条件，才能冻结 claim retention、OOSM buffer 和内存门限。
+3. **全系统精度。** 快速侧车的近邻指标只评价治理基准。实际 D1-D7 全栈单 seed 制品缺少完整的
+   位置/速度精度、身份连续性和关联真值侧车，相关指标必须保持 unavailable。
+4. **物理闭环。** 2.2 s 全栈冒烟没有足够时间评价计划消费、导引许可和五米物理接近。需要多 seed
+   长时全栈回合，才能形成拦截成功率和失败原因分布。
+5. **性能门限。** 60.21 s 墙钟和 0.0365 实时因子是单机 development 描述值。尚未建立硬件配置、
+   进程拆分、内存覆盖和可接受实时因子的正式门限。
+
+D6 当前没有新增 P0 代码缺口。上述项目依赖 main 和各 producer 提供正式输入；D6 保持只读、
+availability-aware 和 fail-closed，不通过补零或放宽来源校验关闭这些缺口。
+
 ## 2026-07-22 D2 修复后 development evidence GAP 更新
 
 ### 本批已关闭

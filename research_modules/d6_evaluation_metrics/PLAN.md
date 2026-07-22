@@ -1,5 +1,52 @@
 # D6 Evaluation Metrics Plan
 
+## 2026-07-22 长 Episode 观测治理标定
+
+### D6 已完成
+
+1. 冻结输出 `scalable3d-observation-governance-calibration-v1`，并定义批输入、episode
+   manifest、在线 D1/D2 审计和 evaluator-only 侧车四层公共 schema。
+2. 实现外部输入摘要、逐制品摘要、在线审计到 manifest 的摘要绑定，以及侧车到 manifest、
+   在线审计和离线真值摘要的三向绑定。
+3. 实现 episode 身份、scale 语义、全局唯一 seed、formal clean source、Git/config/schema
+   provenance 和在线真值字段扫描的 fail-closed 校验。
+4. 实现 D1 扫描 OOSM 和 D2 claim ledger 的 availability-aware 读取；显式零与 unavailable
+   在 CSV/JSON/Markdown 中保持分离。
+5. 仅从 evaluator-only 侧车读取近邻召回、错误抑制、错误合并和确认时延。比例按 evaluator
+   分母报告样本数，并以 episode 重采样计算 95% 自助法置信区间。
+6. 输出逐 seed CSV、按规模 aggregate JSON 和中文 Markdown；在线指标按规模给出均值、P95、
+   最大值和可用 episode 数。
+
+2026-07-22 专项 `14 passed`、D6 全量 `521 passed`。fixture 覆盖 20/50/100/200 和 7/37 动态规模、available/
+unavailable、零事件与真零、哈希篡改、脏正式来源、在线真值字段、跨制品规模冲突、重复 seed、
+缺 provenance、非法侧车在线消费及 producer required-path 清单。
+
+### Development 制品核验
+
+- [x] 只读核验 `observation_governance_calibration_20260722_development`：四档规模各 5 seed，
+  共 20 个 33.75 s episode，均为 dirty/development，online truth use 为 0。
+- [x] 核对 D1 各档重排 12、拒绝/过旧/溢出 0、峰值扫描缓冲 3；指标可用性均为 5/5。
+- [x] 核对 D2 峰值 claim/容量为 2390/4800、6020/12000、12070/24000、24170/48000，
+  安全淘汰为 285/735/1485/2985，溢出为 0；指标可用性均为 5/5。
+- [x] 核对 evaluator-only 近邻召回 1.0、错误抑制和错误合并 0、确认时延 0.25 s；比例
+  指标保留有效分母和 episode bootstrap 95% 区间。200 规模 D1+D2 tracemalloc 口径峰值
+  约 58.99 MB。
+- [x] 单独核验 `point_mass_integrated_observation_smoke_20260722_development_coalesced`：200 对
+  200、单 seed、2.2 s 世界时间、60.21 s 墙钟、实时因子 0.0365、online truth use 为 0。
+  该结果标记为全栈冒烟，不并入快速治理基准，也不作为正式性能验收。
+
+### 后续输入条件
+
+1. main 在冻结的 clean commit 和 clean worktree 上按同一合同重跑 20/50/100/200，提供外部
+   input-spec SHA-256，并将结果标为 formal。当前 development 数值不能直接升级为正式结论。
+2. 扩大每档 seed 数、episode 时长和近邻/乱序/漏检/高密度压力条件，确认 claim retention、
+   缓冲门限和安全淘汰在不同输入下仍稳定。
+3. 对实际 D1-D7 质点栈运行多 seed、长时场景；补齐位置/速度精度、身份连续性、计划消费、
+   导引许可和 5 m 物理闭环。单 seed 2.2 s 冒烟不用于上述验收。
+4. 所有新增指标继续显式记录 availability。缺 truth sidecar、有效分母或血缘时保持 null，
+   不以快速基准的 evaluator-only 结果替代全系统精度。
+5. D6 只负责只读核验和报告，不参与 D1/D2 参数调节或控制。
+
 ## 2026-07-22 active_risk D2 修复后开发期复跑状态
 
 - [x] 只读核对 `/tmp/msm_active_risk_d2_fix_20260722/` 的 manifest、共同检查点报告、D6 sidecar、

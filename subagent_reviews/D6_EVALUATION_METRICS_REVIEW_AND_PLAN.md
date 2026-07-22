@@ -1,5 +1,33 @@
 # D6 系统评估指标综述及子方案
 
+## 2026-07-22 长 Episode 观测治理评审
+
+D6 已完成面向 main 长 episode 标定的公共只读合同。批输入、manifest、在线 D1/D2 审计和
+evaluator-only 侧车分别版本化并由 SHA-256 绑定。episode 的 scale/target/resource/seed/
+duration、Git、配置和 schema provenance 必须跨制品一致；formal dirty、重复 seed、在线
+truth 或缺失来源链均 fail closed。
+
+报告按实际规模聚合 D1 扫描 OOSM 和 D2 claim ledger。在线指标给出 mean/P95/max 和可用
+episode 数。近邻 recall、false suppression、erroneous coalescence 与 confirmation latency
+只消费离线侧车；比例保留 evaluator 分母和 bootstrap 95% 区间。unavailable 继续使用空值，
+不写成零。
+
+2026-07-22 合成专项 `14 passed`、D6 全量 `521 passed`。D6-owned parser/report GAP 已关闭。
+
+同日 development 快速基准已提供 20/50/100/200 各 5 seed，共 20 个 33.75 s episode。在线
+真值使用数为 0；D1 每档重排 12、拒绝/过旧/溢出 0、峰值缓冲 3；D2 峰值 claim/容量为
+2390/4800、6020/12000、12070/24000、24170/48000，安全淘汰为 285/735/1485/2985，溢出
+为 0。evaluator-only 近邻召回 1.0，错误抑制和错误合并 0，确认时延 0.25 s；全部指标有
+availability 和 95% bootstrap 区间。200 规模 D1+D2 tracemalloc 口径峰值约 58.99 MB。
+
+实际 D1-D7 质点栈的 200 对 200 单 seed 冒烟单独记录：2.2 s 世界时间、60.21 s 墙钟、实时
+因子 0.0365、online truth use 为 0。该结果只说明全栈能够运行并产出治理审计。快速基准不代表
+全栈，单次冒烟也不代表快速治理的 33.75 s 统计。
+
+两组制品均来自脏工作树，证据级别保持 development。D6 下一步等待 clean commit 正式复跑、
+更大 seed/压力覆盖和完整系统精度、身份与五米物理闭环侧车；在此之前不发布正式性能或拦截
+效果结论。D6 不参与参数调整或控制。
+
 ## 2026-07-22 D2 修复后 active_risk 开发期复核
 
 D6 已只读检查 `/tmp/msm_active_risk_d2_fix_20260722/` 的 manifest、共同检查点报告、D6 sidecar、中文
