@@ -1,5 +1,12 @@
 # D6 文档索引
 
+2026-07-21 已接入 D5 held-out report/corpus 的严格只读消费者。输入 v2 要求两项制品成对显式提供，
+v1 只兼容无 held-out；D6 校验文件/内容 SHA、20 seed×45 cell×1 帧、model weights/config、冻结
+validation 温度/阈值和身份/真值/权限零违规。指标通过只完成 held-out 层，paired shadow 仍独立阻断
+G1/assist/authority。专项合成合同测试 `34 passed`，D6 全量 `457 passed`；当前无正式 900 帧制品，
+真实 held-out 结论仍 unavailable。本次不修改 AirSim 接线。原理、实现和证据边界分别见
+`MODULE_PRINCIPLES_CN.md`、`ALGORITHM_AND_IMPLEMENTATION.md` 和 `../EXPERIMENT_REPORT.md` 2.9 节。
+
 2026-07-21 已新增运行时计划确认到离线观测结果的严格联接。D6 显式校验 11 类输入及 SHA-256，复核
 D3/D7 source sequence 与 payload SHA，只使用 D2 source-observation lineage 映射身份，并按同资源相邻
 ACK 建立非重叠三维状态窗。有界配对进展仅作诊断，正式 reward、因果/反事实和三类学习权限保持

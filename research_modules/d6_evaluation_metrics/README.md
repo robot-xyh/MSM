@@ -8,11 +8,26 @@ manifest，并为每个文件提供带外 SHA-256。实现不搜索 D5 ignored o
 seed、保留 seed `1000-1019` 零重叠、正负边、未标注边为 0、45 个场景规模单元、dirty 状态和来源未
 改写任一不满足时均失败关闭。
 
+输入清单已升级为 `d6.d5-clean-graph-inputs.v2`，可选的
+`heldout_evaluation_report` 与 `heldout_manifest` 必须成对显式提供；旧
+`d6.d5-clean-graph-inputs.v1` 仅兼容原三段结构，不能携带 held-out 字段。D6 不发现 corpus 邻近路径，
+而是独立核对调用方文件 SHA、D5 newline-canonical `content_sha256`、
+`d5.tracklet-heldout-model-evaluation.v1`、`d5.tracklet-heldout-corpus.v1`、精确 seed
+`1000-1019`、45 个冻结场景规模单元和 900 个 episode。报告中的权重、bundle manifest、held-out
+manifest、validation 温度和阈值必须与已提供内部 model bundle 一致；调温、重选阈值、更新权重、
+online truth、同相机边、未标注边、`global_track_id` 创建/换绑或权限伪造均失败关闭。
+
 输出分为数据支持、训练数据来源、模型内部测试、保留 seed、同 seed 配对影子五层。2026-07-21 对
 当前 D5 clean 制品的核验结果为：composite 4,972 episode、245,040 条候选边，其中正边 57,298、
 负边 187,742、未标注 0；前两层为 `complete`，后三层为 `unavailable`。G1、assist、authority 和
 正式 PPO reward 均为 false，规则回退保持启用。完整模型 bundle 即使通过内部测试合同，也不能替代
 保留 seed 和 paired shadow。
+
+结构合法且 held-out 指标通过时，D6 只把 `evidence_layers.held_out_seed` 标为 `complete`；指标未达
+冻结门限时标为 `failed` 并保留 producer `fail_closed`；缺成对制品时为 `unavailable`。无论该层结果
+如何，未提供 paired shadow 时 G1、assist、authority 均为 false，`rule_fallback_required=true`。
+当前仓库尚无正式 900 帧 held-out corpus/report，因此真实 `held_out_seed` 仍为 `unavailable`，没有
+“已通过”结论。34 项专项合成测试和 D6 全量 `457 passed`；仅有既有 Matplotlib `Axes3D` warning。
 
 公开接口为 `D5CleanGraphEvidenceInputs`、`load_d5_clean_graph_evidence_inputs()`、
 `audit_d5_clean_graph_evidence()` 和 `write_d5_clean_graph_evidence_report()`。CLI 为

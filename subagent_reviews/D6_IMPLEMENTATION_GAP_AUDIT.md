@@ -12,15 +12,25 @@
    前两层 complete，后三层 unavailable；G1、assist、authority、正式 PPO reward 继续关闭。
 4. 未来模型 bundle 已固定权重 SHA、配置 SHA、训练来源 SHA、测试指标、45 cell 和 latency 合同。
    内部测试通过也不能越过保留 seed 和 paired shadow 门。
-5. 2026-07-21 专项 `14 passed`、D6 全量 `437 passed`，仅有既有 Matplotlib warning。
+5. 输入 schema 已升级到 `d6.d5-clean-graph-inputs.v2`：held-out evaluation report/manifest 为成对
+   可选制品；v1 只兼容原无 held-out 结构，不接受新增字段，也不做邻近路径发现。
+6. 已实现 `d5.tracklet-heldout-model-evaluation.v1` 与 `d5.tracklet-heldout-corpus.v1` 的独立严格
+   消费。调用方 SHA、D5 newline-canonical 内容 SHA、seed `1000-1019`、45 cell、900 episode、
+   model weights/config、held-out manifest、冻结 validation 温度/阈值及零权重更新均有交叉绑定。
+7. online truth、同相机边、未标注边、`global_track_id` 创建/换绑和伪造 authority 任一非零/true 均
+   拒绝。结构合法的门限失败保留为 `held_out_seed=failed`、producer `fail_closed`，不会伪装成输入
+   不可用；缺成对制品仍明确为 `unavailable`。
+8. 2026-07-21 专项合成合同测试 `34 passed`、D6 全量 `457 passed`，仅有既有 Matplotlib warning。
+   合成正例不构成正式 900 帧性能证据。
 
 ### 仍开放的 P1
 
 1. 缺真实训练权重及完整内部模型测试报告，`internal_model_test=unavailable`。
-2. 缺保留 seed `1000-1019` 的独立模型验收，`held_out_seed=unavailable`。
+2. D5 已提交正式 20 seed×45 cell=900 帧合同，但当前仓库没有正式 held-out corpus/report 制品；
+   因此 `held_out_seed=unavailable`，没有“已通过”结论。
 3. 缺相同 seed、冻结配置下规则与模型的 paired formal shadow，`paired_shadow=unavailable`。
-4. 上述证据形成并通过正式门限前，G1、assist、authority 和模型 promotion 不得开放；规则回退保持
-   强制。D6 不补造模型结果、奖励、因果或反事实证据。
+4. 即使未来正式 held-out 单层通过，paired shadow 未提供时 G1、assist、authority 和模型 promotion
+   仍不得开放，规则回退保持强制。D6 不补造模型结果、奖励、因果或反事实证据。
 
 ## 2026-07-21 运行时结果联接 GAP 更新
 

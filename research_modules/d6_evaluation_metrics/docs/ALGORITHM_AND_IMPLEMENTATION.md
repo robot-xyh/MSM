@@ -5,8 +5,10 @@
 ### 输入和完整性
 
 `D5CleanGraphEvidenceInputs` 固定接收八类数据制品。每项路径由调用方给出，并携带独立 SHA-256；输入
-清单本身由 CLI 再校验一次带外 SHA-256。JSON 制品同时复算去除 `content_sha256` 后的规范内容摘要。
-文件摘要、内容摘要、来源 manifest 或 canonical subview 任一不一致即停止评估。
+清单本身由 CLI 再校验一次带外 SHA-256。v2 可额外接收成对的 held-out evaluation report/manifest，
+缺一即在构造阶段拒绝；v1 只兼容原 `artifacts/model_evidence` 结构，出现 held-out 字段按未知字段拒绝。
+基础 JSON 复算去除 `content_sha256` 后的规范内容摘要；D5 held-out JSON 按 producer 的末尾换行规范
+复算。文件摘要、内容摘要、来源 manifest 或 canonical subview 任一不一致即停止评估。
 
 审计器逐 episode 重建 seed 到 split 的映射，要求 60 个训练、20 个验证、20 个内部测试 seed，且
 `1000-1019` 不得进入任何集合。候选边总数必须等于正边、负边和未标注边之和；三个 split 都必须有
@@ -20,9 +22,18 @@
 和设备时延字段缺一即失败关闭。内部阈值通过只把 `internal_model_test` 标为 `complete`，不会自动开放
 held-out、paired shadow、G1、assist 或 authority。
 
-当前无模型 bundle 时，模型内部测试、保留 seed 和 paired shadow 均输出 `null/unavailable+reason`。
-审计结果固定声明正式 PPO reward、因果和反事实不可用，并记录没有修改现有 runtime outcome
-diagnostic。报告器只在 D6 指定输出目录原子写入 JSON 和中文 Markdown。
+held-out 消费器进一步解析已提供的 D5 v3 bundle manifest，核对 feature/schema、training hashes、
+weights hash/size、development-only admission 和 validation-only calibration。corpus manifest 的 profile
+必须精确等于 20 seed×45 cell×1 帧；900 个 descriptor 的 seed/cell 集合、双类且无未标注边、config/
+gate hash、descriptor/inventory hash和聚合计数必须闭合。report 的 45 个 cell 各含 20 episode，边数与
+manifest 对应 cell 一致，温度和阈值逐层与 bundle calibration 一致。
+
+D6 重新计算 overall/cell 的 precision、recall、F1、false-merge、candidate-recall、ECE 和 P95 latency
+门，不信任 producer 的 pass 字段。producer assessment 与重算结果不一致即拒绝；一致且通过时只输出
+`held_out_seed=complete`，一致但未达标时输出 `held_out_seed=failed` 与 producer `fail_closed`。报告中
+的 paired shadow 必须是 not-run，G1/assist/authority 必须 fail-closed。当前没有正式 900 帧制品，
+因此真实层仍为 `unavailable`；34 项专项均为合成合同测试。审计器不修改输入或控制路径，报告器只在
+D6 指定输出目录原子写入 JSON 和中文 Markdown。
 
 ## 运行时计划确认到离线结果的严格联接（2026-07-21）
 

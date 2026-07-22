@@ -10,10 +10,22 @@ diagnostic。
 当前 4,972 episode、245,040 条候选边的 composite 数据通过数据支持和训练来源门；未标注边为 0，
 seed 为 60/20/20，保留 seed 无重叠，45 个场景规模单元和 clean source 合同成立。没有真实模型内部
 测试、保留 seed 或 paired shadow 证据，三层保持 unavailable。G1、assist、authority 和 PPO 均关闭，
-规则回退继续启用。专项 `14 passed`，D6 全量 `437 passed`，仅有既有 Matplotlib warning。
+规则回退继续启用。
 
-下一步由 D5/训练流程产生完整模型 bundle，由 main 组织保留 seed 和同 seed paired formal shadow。
-D6 只复核证据，不把 synthetic contract fixture 或 clean data pass 写成模型 promotion。
+D6 输入合同现为 `d6.d5-clean-graph-inputs.v2`，可成对接收显式 held-out evaluation report/manifest；
+v1 继续只读兼容原无 held-out 结构。消费者不扫描 D5 输出目录，独立复算调用方文件 SHA 和 D5 内容
+SHA，并严格核对 held-out report/corpus schema、20 个 seed `1000-1019`、45 cell、900 episode、内部
+model weights/bundle manifest、冻结 validation 温度/阈值、零权重更新、零 online truth/同相机边/
+未标注边及零 `global_track_id` 创建换绑。未知字段、哈希篡改和权限伪造均拒绝。
+
+结构合法且门限通过只完成 `held_out_seed`；门限失败标为 `failed` 并保留 producer `fail_closed`；缺
+制品为 `unavailable`。paired shadow 未提供时 G1、assist、authority 保持 false，规则回退为 true。
+专项合成合同测试 `34 passed`，D6 全量 `457 passed`，仅有既有 Matplotlib warning。当前没有正式
+900 帧制品，故这些测试不构成 held-out 通过结论。
+
+下一步由 D5/训练流程产生完整模型 bundle 和正式 900 帧 held-out 制品，由 main 组织同 seed paired
+formal shadow。D6 只复核证据，不把 synthetic contract fixture 或 clean data pass 写成模型
+promotion。
 
 ## 2026-07-21 运行时计划结果联接复核
 

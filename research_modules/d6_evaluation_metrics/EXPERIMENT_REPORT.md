@@ -1,5 +1,29 @@
 # D6 系统级评估指标实验报告
 
+## 2.9 2026-07-21 D5 保留种子报告合同接入验证
+
+本次只验证 D6 对已提交 D5 held-out schema 的严格消费接口，没有生成或运行 D5 正式 900 帧语料。
+输入 schema 升级为 `d6.d5-clean-graph-inputs.v2`，held-out evaluation report 与 corpus manifest 必须
+成对显式提供并携带调用方 SHA-256；旧 v1 清单仍可表示两项均缺失，此时
+`held_out_seed=unavailable`。消费器不搜索 D5 输出目录，也不加载模型执行推理。
+
+合成正例严格构造 20 个 seed `1000-1019`、45 个场景规模单元、900 个 episode descriptor，并使用
+`d5.tracklet-heldout-model-evaluation.v1`、`d5.tracklet-heldout-corpus.v1` 和 D5 newline-canonical
+`content_sha256`。D6 独立核对 held-out manifest、内部 model weights/bundle manifest、validation-only
+温度/阈值、各 cell 20 episode 和边计数，再重算 overall/cell 冻结指标门。正例只验证
+`held_out_seed=complete` 分支；它是 synthetic contract fixture，不是正式性能结果。
+
+负例覆盖部分 held-out pair、无内部 model bundle、seed/cell/episode 缺失、weights/config/manifest
+错配、温度或阈值重选、权重更新、伪造 authority、online truth、同相机边、未标注边、
+`global_track_id` 创建/换绑、未知字段、调用方 SHA 和 JSON 内容 SHA 篡改。结构合法但指标不达标的
+样例不抛成“缺制品”，而是得到 `held_out_seed=failed`、producer `fail_closed`。所有样例中 paired
+shadow 均未提供，G1/assist/authority 均为 false，`rule_fallback_required=true`。
+
+专项结果为 `34 passed`，D6 全量为 `457 passed`，仅有既有 Matplotlib `Axes3D` warning。当前仓库
+没有正式 D5 900 帧 held-out corpus/report，因此真实 `held_out_seed` 仍为 `unavailable`，没有保留
+种子“已通过”结论。剩余正式 blocker 是完整内部模型证据和同 seed paired formal shadow；即使未来
+held-out 单层通过，也不能据此开放 G1、assist 或控制 authority。
+
 ## 2.8 2026-07-21 D5 clean 图数据分层验收
 
 本次验收只读消费 D5 显式登记的 clean summary、composite admission/view、canonical subview 和正式/

@@ -13,9 +13,16 @@ D6 不把“数据可训练”解释为“模型可上线”。D5 clean 图证�
 模型报告、保留 seed 结果和 paired shadow，因此 G1、辅助模式和控制权限继续关闭，确定性几何规则
 保持默认路径。
 
-未来模型内部报告必须同时绑定权重、配置和训练来源 SHA，并包含聚合测试指标、45 个场景规模单元和
-推理时延。该报告只可能打开“模型内部测试”一层。保留 seed、paired shadow、正式奖励、因果和反事实
-结论仍需独立证据。
+输入清单 v2 将 held-out evaluation report 与 corpus manifest 定义为成对可选制品；v1 只能表示未
+提供 held-out。D6 不导入 producer 或查找相邻路径，只消费调用方显式文件，并分别核验文件 SHA 和 D5
+带末尾换行的规范 JSON 内容 SHA。正式 held-out 目录必须精确覆盖 seed `1000-1019` 与 45 个冻结场景
+规模单元，共 900 帧；report 必须与实际 manifest、内部 model weights/bundle manifest 和 validation
+阶段冻结的温度/阈值一致。held-out 数据不得参与温度、阈值或权重更新。
+
+online truth、同相机候选边、未标注边和 `global_track_id` 创建/换绑必须为零，G1/assist/authority
+声明必须为 false。结构合法且门限通过只完成“保留 seed”层；门限失败记为 `failed/fail_closed`，缺
+制品记为 `unavailable`。paired shadow 是独立后续层，未提供时规则回退保持强制。当前只有合成合同
+测试，没有正式 900 帧制品，因此保留 seed 层仍为 unavailable，不能形成模型通过结论。
 
 ## 运行时计划确认与离线结果的证据边界（2026-07-21）
 

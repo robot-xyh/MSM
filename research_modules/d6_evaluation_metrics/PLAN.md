@@ -9,10 +9,19 @@
   G1、assist、authority 或正式 PPO reward。
 - [x] 为未来模型报告固定权重 SHA、配置 SHA、训练来源 SHA、测试指标、45 cell 指标和 latency
   合同；缺项、伪造字段和门限降低均失败关闭。
-- [x] 提供包级公开 API、带外清单哈希 CLI、JSON/中文 Markdown 报告和 14 项专项回归。D6 全量为
-  `437 passed`，仅有既有 Matplotlib `Axes3D` warning。
-- [ ] 训练并登记真实模型内部测试证据；完成后再以保留 seed `1000-1019` 和同 seed paired formal
-  shadow 独立验收。当前三项保持 `unavailable`，G1/assist/authority 保持 false。
+- [x] 将显式输入清单升级到 `d6.d5-clean-graph-inputs.v2`，held-out evaluation report/manifest 只能
+  成对提供；v1 仅兼容无 held-out 的旧结构，新增字段在 v1 下按未知字段拒绝。
+- [x] 严格消费 D5 held-out v1 report/corpus manifest：双重 SHA、精确 20 seed×45 cell=900 episode、
+  内部 model weights/bundle manifest、冻结 validation 温度/阈值、零权重更新、零 online truth/
+  同相机边/未标注边和零 `global_track_id` 创建换绑均独立复核。
+- [x] held-out 指标通过只完成 `held_out_seed`；指标失败输出 `failed`/producer `fail_closed`；缺制品
+  输出 `unavailable`。paired shadow 未提供时 G1/assist/authority 始终 false，规则回退始终 true。
+- [x] 提供包级公开 API、带外清单哈希 CLI、JSON/中文 Markdown 报告和 34 项专项合成回归。专项
+  `34 passed`，D6 全量 `457 passed`，仅有既有 Matplotlib `Axes3D` warning。
+- [ ] 训练并登记真实模型内部测试证据，并由 D5/main 生成正式 seed `1000-1019`、45 cell、900 帧
+  held-out corpus/report；当前仓库没有该正式制品，`held_out_seed=unavailable`，不得写“已通过”。
+- [ ] 运行同 seed paired formal shadow。完成前 G1/assist/authority 保持 false，规则回退保持 true；
+  held-out 单层即使通过也不能解除该 blocker。
 
 ## 2026-07-21 运行时 ACK 到离线结果联接状态
 
