@@ -283,14 +283,18 @@ GAP、算法文档和系统总报告。
    20/20 通过，confidence 0/20 通过冻结门限 0.6；不降低门限，继续规则回退。
 8. main 运行器升级为 `scalable3d-reserved-seed-interventions-v2` 和 D3 safety shell v2，
    manifest/report 增加 D4 分门统计。学习权限和规则回退边界不变。
+9. clean 源提交 `78912963b67fe86ee9a8d29186b18a9dd60c460c` 已完成同配置 v2 正式重跑。
+   D3 treatment applied/fallback=`20/0`，有效矩阵变化 `20/20`、最终 binding 变化 `0/20`；
+   D4 confidence 通过 `0/20`，其余四门各 `20/20`，safe adopted/fallback=`0/20`/`20/20`。
+10. D6 提交 `d4e8562` 已完成 v1/v2 consumer、profile/schema 绑定和自包含 v2 篡改测试，并
+    生成 profile-bound availability sidecar。D3 同帧 assignment comparison 可用；runtime ACK、
+    physical outcome/effect、counterfactual 和 causal 继续为 unavailable。
 
 ### 下一步
 
-1. 在包含 D3 二元门、D4 v2 诊断和 main v2 runner 的干净提交上，以相同 5v5、2.2 秒、
-   20 seed 配置生成新目录，要求所有 `source_repository_dirty=false` 且制品哈希通过。
-2. D6 扩展只读消费者以识别 v2 schema 和实际采用的 D3 treatment；仍缺运行确认和物理结果时，
-   paired outcome/effect 必须保持 unavailable，不能用同帧代价差替代。
-3. D4 后续在独立 calibration split 校准或重训 confidence head，不使用保留 seed 下调 0.6 门限；
+1. 为实际采用的候选计划取得严格绑定的 runtime ACK 和采用后物理状态窗口，再由 D6 计算
+   paired physical outcome/effect；不得用同帧 assignment cost 或零采用回退替代物理证据。
+2. D4 后续在独立 calibration split 校准或重训 confidence head，不使用保留 seed 下调 0.6 门限；
    降级策略效果另用中心失效/二级失效快照和独立干预时刻评估。
-4. 完成 v2 5v5 正式审计后再扩展 5/20/50/100/200 规模。PPO、assist 和 authority 在独立
+3. 在保留 5v5 v2 证据的同时扩展 5/20/50/100/200 规模。PPO、assist 和 authority 在独立
    非退化评审前保持关闭。

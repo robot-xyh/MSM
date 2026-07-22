@@ -323,10 +323,11 @@ seed 17 复测：
 保留 seed `1000-1019` 上的 D1/D2 NIS、NEES、门控率和长期速度 coverage 仍未完成。
 D5 已完成 20-seed paired shadow，但 `shared_global_track_count=0` 且尺度特征接近确定性
 可分，满分结果只说明当前合成保留集可分，不能外推到真实跨视角泛化。D3、D4 和 D5 均已
-具备模块内数据、训练、bundle 与规则回退管线；现有 bundle 均未获得 assist 准入。D6 已能
-离线消费规模化 episode 并输出逐 seed、聚合、中文报告和曲线。当前剩余条件是取得真实
-adoption、运行确认和结果窗口，完成 D3/D4 干净工作树保留集证据及 D6 sidecar，再决定是否
-需要扩充训练分布。PPO、assist 和 authority 保持关闭。
+具备模块内数据、训练、bundle 与规则回退管线；现有 bundle 均未获得 assist 准入。D3/D4
+clean v2 保留集和 D6 profile-bound availability sidecar 已完成，D3 同帧 assignment comparison
+可用。当前剩余条件是取得严格绑定的 runtime ACK 和采用后物理结果窗口，并在独立故障场景
+评估 D4 降级策略。缺少这些证据时不计算 paired physical effect，也不开放 PPO、assist 或
+authority。
 
 同日完成主动视觉运行时接线后，5v5、1.4 秒开发冒烟发出并确认 84 条相机命令，拒绝数为
 0。200v200、seed 17、1.2 秒开发诊断发出并确认 1872 条命令，主动视觉 9 次调用累计约
@@ -388,8 +389,17 @@ treatment 均因旧 OOD 门回退；复核确认 `previous_binding` 是二元特
 
 运行器现升级为 `scalable3d-reserved-seed-interventions-v2`。D3 安全外壳标识升级为
 `d3-offline-intervention-safety-shell-v2`，绑定二元端点与连续特征分离检查；顶层 manifest
-和中文报告增加 D4 v2 的 confidence/OOD/latency/finite 分门统计。v2 正式重跑和 D6 新侧车
-仍待干净提交后生成。学习权限继续固定为 `PPO/assist/authority=false`、`rule_fallback=true`。
+和中文报告增加 D4 v2 的 confidence/OOD/latency/finite/failure 分门统计。clean 源提交
+`78912963b67fe86ee9a8d29186b18a9dd60c460c` 的 v2 正式结果包含 20 个有限、在线真值使用为 0
+的源 episode。D3 20/20 treatment 实际应用、0 回退，20/20 有效代价矩阵变化但最终 binding
+均未变；D4 20/20 候选被评估，只有 confidence gate 为 0/20，其余四门均为 20/20，最终全部
+规则回退。
+
+D6 在提交 `d4e8562` 中完成 v1/v2 严格 consumer 和 profile/schema 绑定。当前 canonical 输出为
+`reserved_seed_interventions_nominal_5v5_1000_1019_formal_7891296_d6_profile_bound_v2_audit_20260722`，
+sidecar 文件/内容 SHA-256 分别为 `f3852251...c3b` / `c02a345c...d2d`。审计只开放同帧 offline
+assignment comparison；runtime ACK、physical outcome/effect、counterfactual 和 causal 仍不可用。
+学习权限继续固定为 `PPO/assist/authority=false`、`rule_fallback=true`。
 
 ## 版本
 

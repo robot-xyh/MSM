@@ -52,6 +52,7 @@ main
 | D6 真值隔离清单 | `scalable3d-d6-truth-isolated-manifest-v1` | D1/D2 适配、availability 或批量聚合口径改变 |
 | D6 跨模块学习准入 | `d6.cross-module-learning-data-admission.v1` | 正式/补充/离线标签/运行 ACK 分层、canonical view 绑定、动作覆盖或训练准入矩阵语义改变 |
 | 保留 seed 隔离干预 | `scalable3d-reserved-seed-interventions-v2` | v2 绑定 D3 二元/连续分布门语义，并在 manifest/report 中持久化 D4 v2 分门诊断；历史 `6d5bfea` 正式证据保持 v1 |
+| D6 保留 seed 可用性审计 | `d6.reserved-seed-intervention-outcome-availability.v2` | v2 严格绑定源 schema/commit/摘要，区分同帧 assignment comparison 与 runtime/physical/counterfactual/causal availability；历史 v1 保持只读 |
 | D5 补充主动视觉全样本审计 | `d5.active-vision-supplemental-bc-full-sample-audit.v1` | 文件清单、逐样本特征、身份/版本、离线标签和权限门控语义改变 |
 | D5 模型 | `d5-crossview-gnn-v0.1.0` | 网络、特征、权重或训练集改变 |
 | D5 主动视觉 | `d5-active-vision-rule-v1` 或模型语义版本加指纹 | 特征、动作空间、权重或准入报告改变 |
@@ -157,6 +158,14 @@ D4 区域快照 SHA-256、D3/D4 冻结 bundle 身份，以及每个 treatment �
 运行器只生成隔离执行收据，不生成 runtime ACK、physical outcome、counterfactual 或 causal
 字段。顶层目录通过临时目录原子发布并附 `SHA256SUMS`。正式证据要求 20 个源 episode 均为
 `repository_dirty=false`；脏工作树输出只可用于调试。
+
+clean 源提交 `78912963b67fe86ee9a8d29186b18a9dd60c460c` 已生成 v2 正式制品；`SHA256SUMS` 与
+source manifest SHA-256 分别为 `821f15035e628d8db86f13c22d93f8e05142c5f00aae9118974a74bdc98b72bc`
+和 `d6ef23b28add92e9a24a185ea72a7275e341bd796a2e11930c4d5f46b19a883c`。D6 profile-bound v2
+审计由提交 `d4e8562` 的代码逐字节复生，sidecar 文件/内容 SHA-256 分别为
+`f3852251daf02ec87fe878e7fb80aad6f381d8c0756a5c956a32e737a3871c3b` 和
+`c02a345c46ddc642dea7fb6bfcfb24184e7dc2a9f35b754c90324d074b445d2d`。该 sidecar 只证明同帧
+assignment comparison 可用，不把缺失的运行确认或物理结果补零。
 
 每个持久化 episode 的 D1、D2 和 D6 子目录分别保存独立 manifest。D1 结果必须绑定在线
 总线、离线真值状态和 D2 规范映射；D2 结果必须绑定原始 D1/D2 记录、观测真值标签和身份
