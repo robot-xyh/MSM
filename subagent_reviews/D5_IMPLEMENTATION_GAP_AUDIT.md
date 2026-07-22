@@ -1,5 +1,22 @@
 # D5 实现差距审计
 
+## 2026-07-21 候选召回 P1 状态
+
+**代码根因已关闭，clean 数据与模型证据重新开放。** 修复前 4,500 帧 clean supplemental 的
+370,211 个可能跨相机 pair 中，几何门只拒绝 21 个；最终 8 邻居 cap 从 370,190 条门后边删除
+125,158 条。canonical test 候选召回为 `11409/16698=0.683255`。根因是最终 cap 与前置 24 邻居
+预算不一致，不是图神经网络分类器或几何安全门。
+
+默认最终 cap 已对齐为 24，并保留每节点最大度数 24、边数 `<=12V` 和确定性几何评分排序。新增
+诊断可分别统计几何拒绝与最终 cap 删除。seed 5、`delayed_noisy`、scale 200 的四相机软件回归得到
+15/15 同目标 pair、候选召回 1.0、实际最大度数 12；cap=2 的失败压力用例保持确定性、严格上界和
+几何门不变。专项 `20+13 passed`，D5 全量 `529 passed in 122.96s`。
+
+P1 仍开放：main 需在 clean commit 上重建 4,500 帧 supplemental，重生成 composite admission view
+并确认三个 split 候选召回均不低于 0.95；随后重新执行内部训练、保留 seed `1000-1019` 评估和
+paired shadow。旧 245,032 边、旧 manifest/view SHA 和 `training_readiness=pass` 是修复前证据，
+不能晋级当前实现。G1、assist、authority 保持关闭。
+
 ## 2026-07-21 保留 seed 评估管线状态
 
 | 项目 | 状态 | 证据与边界 |

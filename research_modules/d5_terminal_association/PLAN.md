@@ -1,5 +1,23 @@
 # D5 终端视觉配准与身份认证计划
 
+## 2026-07-21 候选图邻居预算收敛
+
+- [x] 对 clean supplemental 逐级归因：370,211 个可能跨相机 pair 中几何门仅拒绝 21 个，最终
+  8 邻居预算从 370,190 条门后边删除 125,158 条。canonical test 候选召回历史值为
+  `11409/16698=0.683255`。
+- [x] 将默认最终邻居预算与前置候选预算对齐为 24。保留确定性几何评分排序和每节点常数度数上界；
+  最大度数为 24，边数上界为 `floor(V*24/2)=12V`，不放宽任何几何、协方差、身份、版本或友方门。
+- [x] 分离记录几何门拒绝和最终预算截断，并增加实际最大度数和边数上界诊断。现有 graph schema
+  可复载新增计数字段。
+- [x] 完成软件回归。seed 5、`delayed_noisy`、scale 200 四相机困难帧保留 15/15 个同目标 pair，
+  候选召回 1.0、最终 cap 删除 0、实际最大度数 12；小 cap=2 时保持确定性和严格度数上界。专项
+  `20 passed`、`13 passed`，D5 全量 `529 passed in 122.96s`。
+- [ ] main 在包含本修复的 clean commit 上重建 4,500 帧 supplemental，重生成 composite view 和
+  admission report，并用实际全样本计数确认各 split 候选召回率不低于 0.95。修复前
+  245,032 边及 `training_readiness=pass` 只保留为历史证据。
+- [ ] 新语料准入后重新执行 30-epoch 内部开发训练，再运行 seed `1000-1019` 独立 held-out 与
+  paired shadow。以上完成前 G1、assist、在线和相机控制权限保持关闭。
+
 ## 2026-07-21 保留 seed 独立评估
 
 - [x] 建立独立 held-out schema、producer 和 strict loader。正式 profile 固定 seed `1000-1019`、45 个

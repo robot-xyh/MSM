@@ -12,6 +12,7 @@ from d5_terminal_association.models import CameraModel, GlobalTrack
 from d5_terminal_association.sparse_tracklet_graph import (
     EDGE_FEATURE_NAMES,
     CameraLocalTracklet,
+    SparseTrackletGraph,
     SparseTrackletGraphConfig,
     TrackletCameraGeometry,
     assert_anonymous_online_payload,
@@ -404,3 +405,79 @@ def test_200_target_four_camera_graph_is_sparse_and_bounded() -> None:
     assert int(degree.max()) <= config.max_neighbors_per_node
     assert graph.candidate_counts["global_projection_gate_pass"] < 0.02 * 240_000
     assert elapsed_s < 15.0
+
+
+def test_small_final_degree_cap_is_deterministic_bounded_and_geometry_safe() -> None:
+    points = np.array(
+        [
+            [1000.0, -45.0, -65.0],
+            [990.0, -15.0, -45.0],
+            [1010.0, 15.0, -35.0],
+            [1020.0, 45.0, -55.0],
+        ],
+        dtype=float,
+    )
+    tracklets, cameras, center_tracks = _projected_inputs(points, camera_count=4)
+    default_graph = build_sparse_tracklet_graph(
+        tracklets,
+        cameras,
+        center_tracks=center_tracks,
+    )
+    config = SparseTrackletGraphConfig(max_neighbors_per_node=2)
+    forward = build_sparse_tracklet_graph(
+        tracklets,
+        cameras,
+        center_tracks=center_tracks,
+        config=config,
+    )
+    reverse = build_sparse_tracklet_graph(
+        reversed(tracklets),
+        reversed(cameras),
+        center_tracks=reversed(center_tracks),
+        config=config,
+    )
+
+    def edge_keys(graph: SparseTrackletGraph) -> tuple[tuple[str, str], ...]:
+        return tuple(
+            sorted(
+                tuple(sorted((edge.source_tracklet_key, edge.target_tracklet_key)))
+                for edge in graph.edges
+            )
+        )
+
+    degrees = np.bincount(forward.edge_index.reshape(-1), minlength=forward.node_count)
+    geometry_counts = (
+        "time_gate_pass",
+        "fov_gate_pass",
+        "epipolar_gate_pass",
+        "ray_gate_pass",
+        "reprojection_gate_pass",
+        "covariance_gate_pass",
+        "global_projection_gate_pass",
+        "rejected_geometry_gate_total",
+    )
+
+    assert edge_keys(forward) == edge_keys(reverse)
+    assert int(degrees.max()) <= config.max_neighbors_per_node
+    assert forward.edge_count <= forward.node_count * config.max_neighbors_per_node // 2
+    assert forward.candidate_counts["effective_degree_upper_bound"] == 2
+    assert forward.candidate_counts["retained_edge_count_upper_bound"] == forward.node_count
+    assert forward.candidate_counts["retained_max_degree"] == int(degrees.max())
+    assert forward.candidate_counts["rejected_final_degree_cap"] > 0
+    assert forward.candidate_counts["pre_cap_edges"] == (
+        forward.candidate_counts["retained_edges"]
+        + forward.candidate_counts["rejected_final_degree_cap"]
+    )
+    assert forward.candidate_counts["geometry_gate_input_edges"] == (
+        forward.candidate_counts["pre_cap_edges"]
+        + forward.candidate_counts["rejected_geometry_gate_total"]
+    )
+    assert all(
+        forward.candidate_counts[name] == default_graph.candidate_counts[name]
+        for name in geometry_counts
+    )
+    assert all(
+        forward.nodes[edge.source_index].camera_key
+        != forward.nodes[edge.target_index].camera_key
+        for edge in forward.edges
+    )

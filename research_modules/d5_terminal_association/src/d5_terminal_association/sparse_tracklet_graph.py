@@ -304,7 +304,7 @@ class SparseTrackletGraphConfig:
     camera_pair_budget: int = 4_096
     camera_index_max_search_radius_cells: int = 8
     max_tracklet_candidate_edges_per_node: int = 24
-    max_neighbors_per_node: int = 8
+    max_neighbors_per_node: int = 24
     covariance_regularization: float = 1.0e-6
 
     def __post_init__(self) -> None:
@@ -1039,6 +1039,7 @@ def build_sparse_tracklet_graph(
         "reprojection_gate_pass": 0,
         "covariance_gate_pass": 0,
         "global_projection_gate_pass": 0,
+        "geometry_gate_input_edges": len(tracklet_pairs),
         "pre_cap_edges": 0,
         "retained_edges": 0,
         "rejected_tracklet_time": 0,
@@ -1051,7 +1052,22 @@ def build_sparse_tracklet_graph(
         "rejected_covariance": 0,
         "rejected_pixel_mahalanobis": 0,
         "rejected_global_projection": 0,
+        "rejected_geometry_gate_total": 0,
         "rejected_final_degree_cap": 0,
+        "max_neighbors_per_node": cfg.max_neighbors_per_node,
+        "effective_degree_upper_bound": min(
+            cfg.max_tracklet_candidate_edges_per_node,
+            cfg.max_neighbors_per_node,
+        ),
+        "retained_edge_count_upper_bound": (
+            len(nodes)
+            * min(
+                cfg.max_tracklet_candidate_edges_per_node,
+                cfg.max_neighbors_per_node,
+            )
+            // 2
+        ),
+        "retained_max_degree": 0,
     }
     counts.update(camera_overlap.candidate_counts)
     counts.update(tracklet_index_counts)
@@ -1237,9 +1253,23 @@ def build_sparse_tracklet_graph(
             )
 
     counts["pre_cap_edges"] = len(candidate_edges)
+    counts["rejected_geometry_gate_total"] = len(tracklet_pairs) - len(candidate_edges)
     retained = _degree_limited_edges(candidate_edges, len(nodes), cfg.max_neighbors_per_node)
     counts["retained_edges"] = len(retained)
     counts["rejected_final_degree_cap"] = len(candidate_edges) - len(retained)
+    if retained:
+        retained_degrees = np.bincount(
+            np.asarray(
+                [
+                    node_index
+                    for edge in retained
+                    for node_index in (edge.source_index, edge.target_index)
+                ],
+                dtype=np.int64,
+            ),
+            minlength=len(nodes),
+        )
+        counts["retained_max_degree"] = int(retained_degrees.max(initial=0))
     edge_index = (
         np.asarray([(edge.source_index, edge.target_index) for edge in retained], dtype=np.int64).T
         if retained

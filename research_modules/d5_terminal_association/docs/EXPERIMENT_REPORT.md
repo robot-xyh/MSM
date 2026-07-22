@@ -1,5 +1,27 @@
 # D5 末端视觉配准与身份认证实验报告
 
+## 2026-07-21 候选图预算回归
+
+修复前 clean supplemental 共 4,500 帧。逐级审计得到 370,211 个可能跨相机 pair，几何门后
+370,190 条，仅 21 条因几何条件被拒绝；最终 8 邻居预算删除 125,158 条，留下 245,032 条。
+canonical test 中 16,698 个可评价同目标 pair 只保留 11,409 个，候选召回率为 0.683255。该结果
+定位为最终预算缺口，不是图分类器或几何门失败。
+
+代码将最终默认预算从 8 调整到 24，与前置候选预算一致。所有时间、视场、极线、射线、重投影、
+协方差、全局投影、同相机互斥、身份、版本和友方门保持原值。图仍满足最大度数 24 和边数上界
+`12V`。
+
+固定 seed 5、`delayed_noisy`、scale 200 的四相机困难帧用于回归。该帧有 15 个匿名节点和 83 条
+门后边，最终保留 83 条；15/15 个同目标跨相机 pair 被保留，候选召回率为 1.0，实际最大度数为
+12，最终预算删除数为 0。人为设置 cap=2 的测试保持最大度数不超过 2，正反输入顺序得到相同边集，
+几何门通过与拒绝计数不变。
+
+专项测试结果为 `test_sparse_tracklet_graph.py: 20 passed in 3.03s`、
+`test_tracklet_supplemental_curriculum.py: 13 passed in 5.66s`。D5 全量回归为
+`529 passed in 122.96s`。这些是 2026-07-21 的软件与内存测试结果，没有重建 4,500 帧 clean
+supplemental，也没有重生成 composite view、重训模型或执行 900 帧 held-out。下文旧 clean
+`training_readiness=pass` 及其哈希保留为修复前历史证据，不能作为当前 24 邻居配置的准入结论。
+
 ## 2026-07-21 保留集管线 smoke
 
 本轮验证 held-out producer、strict loader 和 development bundle evaluator 的软件合同，没有生成

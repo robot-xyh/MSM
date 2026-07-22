@@ -108,6 +108,57 @@ def test_physical_curriculum_builds_dual_class_edges_without_online_truth() -> N
     assert factors["time_bias"] > 0
 
 
+def test_default_final_degree_budget_preserves_difficult_four_camera_true_pairs() -> None:
+    graph, offline, _, _ = curriculum_module._build_curriculum_frame(
+        5,
+        scenario="delayed_noisy",
+        scale=200,
+        frame_index=0,
+        gate_config=SparseTrackletGraphConfig(),
+    )
+    joined = join_offline_observation_labels(graph, offline)
+    truth_by_key = {
+        label.tracklet_key: label.truth_entity_id for label in joined.tracklet_labels
+    }
+    possible_true_pairs: set[tuple[str, str]] = set()
+    for source_index, source in enumerate(graph.nodes):
+        for target in graph.nodes[source_index + 1 :]:
+            if source.camera_key == target.camera_key:
+                continue
+            if truth_by_key[source.tracklet_key] == truth_by_key[target.tracklet_key]:
+                possible_true_pairs.add(tuple(sorted((source.tracklet_key, target.tracklet_key))))
+    retained_pairs = {
+        tuple(sorted((edge.source_tracklet_key, edge.target_tracklet_key)))
+        for edge in graph.edges
+    }
+    retained_true_pairs = possible_true_pairs.intersection(retained_pairs)
+    candidate_recall = len(retained_true_pairs) / len(possible_true_pairs)
+    degrees = np.bincount(graph.edge_index.reshape(-1), minlength=graph.node_count)
+
+    assert joined.labels_complete
+    assert graph.node_count == 15
+    assert graph.candidate_counts["pre_cap_edges"] == 83
+    assert graph.candidate_counts["retained_edges"] == 83
+    assert len(possible_true_pairs) == 15
+    assert candidate_recall >= 0.95
+    assert graph.candidate_counts["rejected_final_degree_cap"] == 0
+    assert graph.candidate_counts["pre_cap_edges"] == graph.candidate_counts["retained_edges"]
+    assert graph.candidate_counts["geometry_gate_input_edges"] == (
+        graph.candidate_counts["pre_cap_edges"]
+        + graph.candidate_counts["rejected_geometry_gate_total"]
+    )
+    assert int(degrees.max()) <= SparseTrackletGraphConfig().max_neighbors_per_node
+    assert int(degrees.max()) == 12
+    assert graph.candidate_counts["retained_max_degree"] == int(degrees.max())
+    assert all(
+        graph.nodes[edge.source_index].camera_key
+        != graph.nodes[edge.target_index].camera_key
+        for edge in graph.edges
+    )
+    assert all(not edge.shared_global_track_ids for edge in graph.edges)
+    assert all("truth" not in str(node.metadata).lower() for node in graph.nodes)
+
+
 def test_candidate_gate_override_is_rejected() -> None:
     with pytest.raises(TrackletSupplementalCurriculumError) as error:
         curriculum_module._build_curriculum_frame(

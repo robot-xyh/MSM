@@ -2,6 +2,35 @@
 
 **状态日期：2026-07-21**
 
+## 候选邻居预算修复
+
+`build_sparse_tracklet_graph()` 包含两级有界稀疏化。相机重叠索引后的 tracklet 候选生成先使用
+`max_tracklet_candidate_edges_per_node` 限制度数，所有几何安全门通过后，再由
+`_degree_limited_edges()` 按 `(gate_score, source_tracklet_key, target_tracklet_key)` 排序执行最终
+度数限制。旧默认值分别为 24 和 8，第二级会删除第一级已经保留且通过全部几何门的边。
+
+clean supplemental 的逐级审计得到：可能跨相机 pair 370,211，进入几何门 370,211，门后
+370,190，几何拒绝 21，最终预算删除 125,158，保留 245,032。canonical test 的同目标候选分母为
+16,698，保留 11,409，候选召回率为 0.683255。该链路把问题定位到最终 cap，不需要改动图神经网络、
+候选特征或安全门阈值。
+
+当前 `SparseTrackletGraphConfig` 将两个默认预算统一为 24。最终贪心保留器仍显式维护节点度数，
+因此
+
+\[
+\max_i d_i\leq 24,\qquad |E|\leq\left\lfloor\frac{24V}{2}\right\rfloor=12V.
+\]
+
+实现新增 `geometry_gate_input_edges`、`rejected_geometry_gate_total`、
+`rejected_final_degree_cap`、`effective_degree_upper_bound`、`retained_edge_count_upper_bound` 和
+`retained_max_degree`。这些字段只扩展 `candidate_counts`，现有图 schema 按名称复载，不读取或写入
+evaluator truth。中心 `global_track_id` 仍只读。
+
+回归固定 seed 5、`delayed_noisy`、scale 200 的四相机困难帧：15 个节点、83 条门后边、83 条最终
+边、15/15 个同目标 pair、候选召回率 1.0、实际最大度数 12。另以 cap=2 验证输入逆序结果一致、
+最大度数不超过 2、边数不超过 `floor(2V/2)`，且各几何门计数与默认图相同。当前只完成代码和内存
+测试，未重建 clean corpus、未重训、未运行 held-out 或 paired shadow。
+
 ## 保留 seed 跨视角图评估
 
 `tracklet_heldout_evaluation.py` 定义独立于训练数据的 held-out 合同。正式 profile 的 seed 目录固定为
