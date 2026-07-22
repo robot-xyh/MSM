@@ -1,5 +1,20 @@
 # D5 实现差距审计
 
+## 2026-07-21 保留 seed 评估管线状态
+
+| 项目 | 状态 | 证据与边界 |
+| --- | --- | --- |
+| `1000-1019` 独立 producer | 代码与 smoke 已闭合 | 正式 profile 固定 20 seed×45 cell=900 帧；不调用训练 registry，不写 formal/supplemental，目标不存在且原子发布。1 seed×2 cell smoke 已复载。 |
+| 数据与真值安全 | 代码与测试已闭合 | 在线图匿名；truth 只在 label/lineage；默认几何候选门不变；同相机边、未标注边、训练 seed、hash/lineage 篡改和路径重叠失败关闭；不创建或换绑 `global_track_id`。 |
+| development bundle 评估 | 代码与 smoke 已闭合 | 固定使用 bundle validation 温度/阈值，输出整体和逐 cell 指标及延迟；评估前后复核权重、配置和 corpus 哈希。随机 bundle 保持 `fail_closed`。 |
+| 正式 900 帧 held-out | P1 开放 | 尚未实际生成，也没有正式 manifest SHA、全样本计数、指标和成本。须等待 clean 内部训练 bundle 后由 main 在 detached clean worktree 运行。 |
+| paired shadow | P1 开放 | 尚未在相同 `1000-1019` seed 上比较规则路径和开发模型。held-out 即使通过也不能替代该证据。 |
+| G1/assist/authority | 关闭 | 报告固定为 false；正式 held-out 与 paired shadow 未完成前不得晋级。 |
+
+新增专项为 `17 passed in 1.09s`，D5 全量回归为 `527 passed in 120.93s`。该变化是离线图数据与
+评估能力，不改变 AirSim、实时关联、相机命令或 D7 交接合同。45 帧成本 smoke 得到生成与复载
+0.686 s、613,567 bytes；正式 900 帧仅有约 14 s/12.3 MB 的线性估算，仍缺实际制品和全量指标。
+
 ## 2026-07-21 Composite 训练适配器 GAP 状态
 
 **只读训练入口与预检子项已关闭，模型证据仍是 P1。** D5 已实现 formal + supplemental strict

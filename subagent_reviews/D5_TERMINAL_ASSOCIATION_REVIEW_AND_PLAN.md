@@ -1,5 +1,21 @@
 # D5 末端视觉配准与协同身份认证综述及子方案
 
+## 2026-07-21 保留 seed 独立评估复核
+
+D5 已实现专用 `held_out_evaluation` 数据合同。正式目录只接受 seed `1000-1019`，每个 seed 必须
+覆盖 45 个冻结场景规模单元。producer 不使用训练 split registry，不复制或回写 formal/supplemental，
+并在 sibling 临时目录完成逐制品哈希、标签和 lineage 校验后原子发布。训练 seed、cell 缺失、
+同相机边、未标注边、候选门变化、hash 篡改和输出重叠均失败关闭。
+
+development bundle evaluator 使用模型包既有 validation 温度和阈值，不提供 held-out 调参或训练
+入口。整体及逐 cell 指标与实测延迟写入机器 JSON 和中文 Markdown。权重、模型配置和 corpus 在
+评估前后保持只读。当前 1 seed×2 cell smoke 已完成，专项 `17 passed`、D5 全量 `527 passed`；
+完整 900 帧没有生成，main 正在执行的 clean 30-epoch 训练不属于本次完成证据。
+
+后续由 main 在训练提交和 clean bundle 固定后运行 900 帧生产与全样本评估，再用相同保留 seed
+执行规则/模型 paired shadow。两项完成前，D5 图模型保持 development/shadow-only，G1、assist、
+在线身份和相机控制权限均关闭。D5 不创建、改写或换绑 `global_track_id`。
+
 ## 2026-07-21 Composite 内部训练入口复核
 
 D5 已把 clean composite corpus 接入现有原生 PyTorch 图模型管线。入口只读复载正式完整帧和补充

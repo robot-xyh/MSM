@@ -1,5 +1,29 @@
 # D5 末端视觉配准与身份认证实验报告
 
+## 2026-07-21 保留集管线 smoke
+
+本轮验证 held-out producer、strict loader 和 development bundle evaluator 的软件合同，没有生成
+完整 900 帧。代表性配置使用 seed `1000`，选取 2 个冻结场景规模单元，共生成 2 个图帧。两帧均
+具有正、负候选边，未标注边为 0；在线 NPZ 不含 truth 或 global 字段。图、标签、descriptor、配置
+和 gzip lineage 经清单 SHA 复载，全部 episode 只标记 `held_out_evaluation`。
+
+随机初始化的 development-only bundle 使用自身 validation 温度和阈值完成评估。该模型没有性能
+证据，结果按实际指标保持 `fail_closed`。权重、bundle manifest 和 held-out manifest 的评估前后
+哈希一致。paired shadow 为 `not_run`，G1、assist 和 authority 均为 false。此结果只证明数据与
+评估链路可执行，不说明模型达到跨视角关联指标。
+
+专项测试运行 `pytest -q research_modules/d5_terminal_association/tests/test_tracklet_heldout_evaluation.py`，
+结果为 `17 passed in 1.09s`。用例覆盖 seed 目录、cell 完整性、逐制品哈希、lineage、同相机互斥、
+标签完整性、冻结温度/阈值、权重只读和路径隔离。D5 全量回归为
+`527 passed in 120.93s`。完整 900 帧生成、全样本评估与 paired shadow 待 main 在 clean 提交和
+训练 bundle 就绪后执行。
+
+成本基准另取 seed `1000` 的全部 45 个 cell，不属于正式保留集生成。实测生成与 strict reload
+0.686 s，得到 45 帧、2,404 边、138 个文件和 613,567 bytes；随机 development bundle 在
+`latency_repeats=1` 下评估用时 0.117 s。线性外推 900 帧约 13.7 s 和 12,271,340 bytes，固定目录
+开销扣除后预计 2,703 个文件。考虑文件系统与正式三次延迟重复，执行预算取 30 s、20 MB。该数字
+是本机软件基准估算，不是正式 900 帧结果。
+
 ## 2026-07-21 Composite 内部训练预检
 
 本轮只运行只读预检，没有执行模型训练。严格 loader 复载 clean formal + supplemental 组合视图，

@@ -2,6 +2,33 @@
 
 科研模块，用于把末端相机视场中的本地视觉轨迹保守关联到中心分配的 `global_track_id`。模块可在统一三维 episode 中在线运行；训练标签和真值评分仍保持离线。D5 只输出视觉关联与相机观察意图，不修改、重写或重新分配任何全局轨迹 ID。
 
+## 2026-07-21 保留 seed 独立图评估
+
+D5 已增加独立 held-out producer、严格 loader 和 development bundle 评估入口。正式目录固定为
+`1000-1019` 共 20 个保留 seed；每个 seed 覆盖冻结的 9 类场景和 5 个规模，共应生成 900 个图帧。
+该入口不读取训练 `0-99` registry，也不形成 train、validation 或 test 划分。每个 episode 只标记
+`held_out_evaluation`。formal 与 supplemental 源只绑定 manifest 哈希，目标目录必须不存在，全部
+图、标签、描述符、配置和 evaluator lineage 在同级临时目录校验后原子发布。
+
+图生成继续使用现有三维质点、针孔投影和默认时间、极线、射线、重投影及协方差候选门。在线图只
+保存匿名相机局部 tracklet；truth 位于独立 label 和 gzip lineage，并按 observation、tracklet、时刻、
+相机和确定性实体规则逐项复核。loader 拒绝 `0-99` seed、cell 缺失、同相机候选边、未标注边、
+manifest/graph/label/lineage 哈希变化、来源/输出重叠和候选门漂移。
+
+评估入口只接受严格加载的 `development_only_fail_closed` bundle，直接使用 bundle 内 validation
+温度和判决阈值。在整体和 45 个 cell 上计算精确率、召回率、F1、错误合并率、候选召回率、期望
+校准误差和实测推理延迟。接口没有训练、调温度或选阈值路径，并在前后复核权重、模型配置和
+held-out manifest 哈希。评估 JSON 与中文 Markdown 始终把 paired shadow 标为 `not_run`，把 G1、
+assist 和 authority 保持关闭。
+
+当前只运行了 1 个保留 seed、2 个 cell 的代表性 smoke，生成 2 帧并完成冻结 bundle 评估合同；
+随机开发模型按真实指标保持 `fail_closed`。专项测试为 `17 passed in 1.09s`，D5 全量回归为
+`527 passed in 120.93s`。正式 900 帧尚未生成，也未运行正式 held-out 指标或 paired shadow。
+另用 1 个 seed 覆盖全部 45 cell 做成本 smoke：45 帧、2,404 边的生成与 strict reload 用时
+0.686 s，占用 613,567 bytes/138 files；一次延迟重复的随机模型评估用时 0.117 s。按帧线性估算，
+900 帧约需 14 s、约 12.3 MB 和 2,703 个文件；正式执行应预留 30 s 与 20 MB，并以实际记录为准。
+本节不包含 AirSim 或在线控制证据。
+
 ## 2026-07-21 Composite 内部训练适配器
 
 D5 已增加 formal complete frames 与 clean supplemental full corpus 的只读训练入口。入口严格复载

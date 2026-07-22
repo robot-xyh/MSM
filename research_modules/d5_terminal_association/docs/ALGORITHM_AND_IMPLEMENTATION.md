@@ -2,6 +2,66 @@
 
 **状态日期：2026-07-21**
 
+## 保留 seed 跨视角图评估
+
+`tracklet_heldout_evaluation.py` 定义独立于训练数据的 held-out 合同。正式 profile 的 seed 目录固定为
+`1000-1019`，场景目录固定为 `FORMAL_SCENARIO_CELLS` 的 9×5 组合。生产数量为
+
+\[
+N_{graph}=20\times 45\times 1=900.
+\]
+
+producer 不加载训练 `0-99` registry，也不调用训练划分函数。每个 descriptor 的 `split` 和
+`evaluation_role` 均只能是 `held_out_evaluation`。formal 与 supplemental 只作为只读来源绑定；
+producer 在生成前后比较两份源 manifest SHA-256。目标目录必须不存在，且不得等于、包含或位于
+任一来源目录内。制品先写入同级随机临时目录，全部完成后由 `os.replace()` 原子发布。
+
+单帧生成复用 supplemental 已验证的三维目标、相机基线、遮挡进出、时钟偏差、外参扰动、漏检和
+虚警模型。seed 集合与训练完全不相交，因此物理状态和扰动随机流不与训练样本重用。图构造仍采用
+`SparseTrackletGraphConfig()` 默认值，调用方没有放宽候选门的参数入口。每帧必须同时包含正边和
+困难负边，且未标注边为零，否则 producer 失败关闭。
+
+在线 graph NPZ 只含节点/边特征、匿名 tracklet key、相机 key、量测/到达时刻、门分数和候选计数。
+truth 位于 `labels/*.labels.json` 和 `evaluator/observation_lineage.json.gz`。lineage 逐节点记录来源
+观测、相机、量测时刻、三维点和 evaluator identity。strict loader 重算每个 graph/label/config/
+lineage SHA，核对 20×45 目录笛卡尔积，并拒绝训练 seed、同相机边、标签缺失、lineage 伪造、候选
+门变化和额外未登记文件。
+
+评估入口使用 `load_tracklet_model_bundle()` 严格加载 development bundle。bundle 必须保持
+`development_only_fail_closed`，且 `default_model=false`、`g1_assist_eligible=false`。模型只在
+`torch.no_grad()` 和 `eval()` 下运行。概率计算固定为
+
+\[
+p_e=\sigma\left(\frac{l_e}{T_{val}}\right),\qquad
+\hat y_e=\mathbb{I}(p_e\geq \tau_{val}),
+\]
+
+其中温度 \(T_{val}\) 和阈值 \(\tau_{val}\) 均来自 bundle 的 validation 校准。held-out 接口拒绝
+温度覆盖、阈值覆盖和权重更新。评估前后再次比较 `weights.pt`、bundle manifest 和 held-out
+manifest 哈希。
+
+整体和各 cell 使用完整候选边计算精确率、召回率、F1、错误合并率、候选召回率、Brier 分数、
+期望校准误差及 P50/P95/最大推理延迟。准入门沿用既有 test 阈值，不允许降低；整体或任一 cell
+失败都会输出 `fail_closed`。机器报告与中文报告将 data support、内部模型、held-out、paired
+shadow 和 G1/assist/authority 分层。held-out 结果不改写训练报告，也不授予运行权限。
+
+正式命令如下，当前尚未执行完整 900 帧：
+
+```bash
+PYTHONPATH=research_modules/d5_terminal_association/src python3 \
+  research_modules/d5_terminal_association/scripts/run_tracklet_heldout_evaluation.py produce \
+  --formal-dataset <formal-dataset> --supplemental-root <clean-supplemental> \
+  --output-dir <new-heldout-output> --created-at-utc <UTC>
+
+PYTHONPATH=research_modules/d5_terminal_association/src python3 \
+  research_modules/d5_terminal_association/scripts/run_tracklet_heldout_evaluation.py evaluate \
+  --heldout-corpus <heldout-output> --bundle-dir <development-model-bundle> \
+  --output-dir <new-evaluation-output> --evaluated-at-utc <UTC>
+```
+
+本轮只完成 1 seed × 2 cell smoke 和 17 项专项测试。正式 900 帧、正式模型指标及 paired shadow
+仍为开放项。
+
 ## Composite 只读训练流程
 
 `load_composite_training_corpus()` 重新计算 formal、supplemental、canonical subview、composite view、

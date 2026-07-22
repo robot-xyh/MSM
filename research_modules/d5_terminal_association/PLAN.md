@@ -1,5 +1,26 @@
 # D5 终端视觉配准与身份认证计划
 
+## 2026-07-21 保留 seed 独立评估
+
+- [x] 建立独立 held-out schema、producer 和 strict loader。正式 profile 固定 seed `1000-1019`、45 个
+  场景规模 cell 和 900 帧；训练 `0-99` registry 不参与 split，所有 episode 只使用
+  `held_out_evaluation` 角色。
+- [x] 复用现有物理投影和默认稀疏几何候选门。在线图保持匿名，evaluator truth 分离保存并用
+  observation lineage 精确复核；禁止同相机边、未标注边和 `global_track_id` 创建、改写或换绑。
+- [x] 实现目标目录不存在检查、source/output 重叠检查、临时目录原子发布、逐图 SHA-256、配置、
+  manifest、lineage 和 source Git/config/schema/version 绑定。
+- [x] 实现 development bundle 冻结评估入口。整体和逐 cell 输出分类、错误合并、候选召回、校准和
+  延迟指标；held-out 不能调温度、选阈值或更新权重。
+- [x] 增加训练 seed、seed 缺失/多余、cell 缺失、manifest/graph/lineage 篡改、同相机边、未标注
+  边、权重篡改、调参/写权重企图和输出重叠的失败关闭测试。专项为 `17 passed in 1.09s`，D5
+  全量为 `527 passed in 120.93s`。
+- [x] 运行 1 seed × 2 cell 的代表性 smoke；2 个图帧均通过数据复载和 evaluator 安全审计。随机开发
+  bundle 指标不足时保持 `fail_closed`，G1/assist/authority 未开放。
+- [ ] main 完成当前 clean 内部训练并提交可复核 bundle 后，在 detached clean worktree 生成正式
+  900 帧 held-out corpus，运行全样本评估并保存 JSON、中文 Markdown、精确 SHA 和实际成本。
+- [ ] 在同一 `1000-1019` seed 上完成规则路径与开发模型的 paired shadow 非退化对照。该项完成前
+  G1、assist、在线身份和相机控制权限保持关闭。
+
 ## 2026-07-21 Composite 内部训练入口
 
 - [x] 增加 formal + supplemental 只读 loader 和训练适配器。绑定 composite view、admission report、
