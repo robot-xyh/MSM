@@ -7,7 +7,7 @@
 
 ## 0. 当前性能与治理状态（2026-07-22）
 
-- D1 已完成同一 runtime tick 内的延迟物化接口。`process_scan_batch()` 默认完整返回不变；显式
+- D1 已完成同一 fusion timestamp 内的延迟物化接口。`process_scan_batch()` 默认完整返回不变；显式
   state-only 仍完成扫描关联、fixed-lag/OOSM、双时间戳、covariance、门控、health、consistency
   evidence、lineage 和累计诊断，只不构造中间 `GlobalTrack`。
 - `FusionStateUpdateResult` 提供 `tracks_materialized=false`、准确 `current_track_count`、
@@ -19,7 +19,13 @@
   `12 -> 3`。定向 `30 passed`，D1 全量 `168 passed in 29.43s`。
 - publication audit 已升级为 v2，区分总发布、完整快照、state-only 和完整航迹记录数。旧 v1
   日志继续按完整快照处理；state-only 的 `track_count=0` 不代表当前总航迹数，当前数量只读取
-  `current_track_count`。main 尚未接线，clean 全栈多 seed 验收仍开放。
+  `current_track_count`。main 已在 clean `8f86192` 三 seed 质点全栈接线；AirSim 和实时预算仍开放。
+- 10 s seeds 42000-42002 的 state-only/完整快照分别为 `310/454`、`328/516`、`278/504`，
+  逐例合计全部 `764/844/782` 个扫描。事件、scan input、共享摘要和世界真值与旧 clean
+  `3bac3ff` 相同。
+- D1 fusion 三 seed 均值 `103.339 -> 92.991 s`，下降 10.0%；2.2 s seed 42000 全栈墙钟
+  `18.611 -> 18.302 s`。3/3 clean、finite、在线 truth 0，D1/D2 overflow 和安全合同均通过；
+  该结果不关闭实时、AirSim 或正式精度。
 
 - 长时专项使用 10 s 冻结输入，包含 764 个扫描、12,107 条匿名观测和 202 条终态航迹；重排
   49 次，峰值缓冲 64 个扫描/825 条观测，在线 truth 使用为 0。
@@ -31,12 +37,13 @@
 - `fusion_performance_diagnostics()` 已提供固定大小的 episode 累计计数，包括 filter update、
   checkpoint reuse、状态查询、重基和物化次数。当前优化路径的状态查询、固定滞后后缀复用、
   合法前缀快路径和缓存一致性刷新计数分别为 152,861、110,891、300,024 和 194,916。main
-  summary 当前未采样该接口，不影响 D1 模块级复测；后续可由 main profiler sidecar 接入。
+  final diagnostics 已采样固定大小的 D1 fusion performance 快照，不保存逐扫描历史。
 - 764 条 D1 全量快照约 186.2 MiB，其中 357 条同融合时刻可合并，294 条连续未变化。这是延迟
-  物化接口前的历史基线；D1 已实现同一 tick 末尾快照能力，但 main 尚未接线。跨 tick 合并仍是
+  物化接口前的历史基线；D1 已实现同一 fusion timestamp 末尾快照能力，main 已完成质点全栈
+  接线。跨 tick 合并仍是
   main 调度建议。
-- D1-owned 长时重复计算缺口据此关闭。clean 完整全栈多 seed、系统 P95/实时倍率、发布节流、
-  AirSim 和正式 RMSE/NEES/NIS 仍是独立 P1 验收项。
+- D1-owned 长时重复计算和 main 质点接线缺口据此关闭。更多长时 seed、系统 P95/实时倍率、
+  跨 tick 发布节流、AirSim 和正式 RMSE/NEES/NIS 仍是独立 P1 验收项。
 
 - 第二阶段以 clean `492979e` 的 200 规模五 seed 为起点；第一阶段默认路径 D1 fusion 分别为
   10.096、13.693、12.895、11.973、11.856 s，均值 12.103 s。冻结 seed 42000 输入的
@@ -50,7 +57,7 @@
 - 模块级墙钟 `10.792 s -> 8.635 s`，本机单次 1.25 倍；专项 `10 passed in 10.33s`，D1
   全量 `161 passed in 38.02s`。墙钟只作说明，正式验收使用语义哈希和操作计数。
 - 第二阶段没有丢弃观测、缩短 fixed-lag、压低 covariance、放宽 gate、使用 truth 或降低发布
-  内容。优化后 clean 五 seed 全栈尚未复跑，系统 P95、AirSim 和完整 200v200 实时性仍开放。
+  内容。后续 clean 三 seed 全栈已经复跑；系统 P95、AirSim 和完整 200v200 实时性仍开放。
 
 - D1 已在冻结的 seed 42000/200v200 输入上完成函数级 profiler。未缓存路径的主要热点为
   `_state_at` 38.120 s、`_replay_record` 46.097 s、`_filter_update` 37.615 s/93,234 次，以及
@@ -74,12 +81,12 @@
 - 单次 200v200 三维质点全栈 smoke 使用 seed 42000、2.2 s。D1 处理 86 个扫描/2,051 条观测，
   重排 10、拒绝 0，峰值缓冲 33 个扫描/623 条观测；fusion 累计 35.115 s，平均 408.313 ms，
   扫描输入累计 2.682 s。全栈墙钟 60.210 s，实时倍率 0.037；该批仍是 dirty development。
-- 当前剩余性能 P1 转为 main-owned clean 完整全栈多 seed 验收。需要冻结硬件、发布频率、场景
-  配置和周期预算，记录 P50/P95/max、长历史峰值内存与端到端实时倍率；不得把 D1-only 3.82 倍
-  写成 200v200 全系统实时。
+- clean `8f86192` 已补充三 seed 完整全栈验收，D1 fusion 均值下降 10.0%，但处理 10 s 输入仍需
+  92.991 s。剩余性能 P1 是冻结硬件、发布频率、场景配置和周期预算，扩展时长/seed 并记录
+  P50/P95/max、长历史峰值内存与端到端实时倍率；不得把 D1-only 3.82 倍或本次 10.0% 写成实时。
 - 两批均未启动 AirSim，也没有正式多 seed RMSE、NEES、NIS coverage 或 200v200 任务效果。
-  D1 当前无新增 P0 blocker；clean 治理和 D1-owned 冻结输入热点已关闭，clean 全栈未见多 seed、
-  固定硬件配置和预注册周期预算仍开放。
+  D1 当前无新增 P0 blocker；clean 治理、D1-owned 冻结输入热点和三 seed 质点接线已关闭，
+  更多长时 seed、固定硬件配置和预注册周期预算仍开放。
 
 ## 0.1 历史 D1-owned 状态（2026-07-16）
 
@@ -990,3 +997,37 @@ covariance 限幅、航迹分级和 consistency evidence 均保留。
 commit 上运行完整未见多 seed，验证长历史、内存、D2-D7 下游和端到端周期。正式融合精度、
 AirSim 与物理拦截不属于本次证据。性能专项 `6 passed`，main 复跑 D1 全量
 `157 passed in 28.77s`。
+
+## 30. Clean 200v200 延迟物化接线评审（2026-07-22）
+
+### 30.1 接线判定
+
+clean 候选提交 `8f86192` 已按 D1 合同处理同一 runtime tick 释放的多个扫描。每个扫描仍独立
+执行状态更新并产生发布记录；同一 fusion timestamp 只有中间记录采用
+`tracks_materialized=false`、空 tracks 数组和
+准确 `current_track_count`，最后后验才生成完整快照。三个 10 s seed 的 state-only/完整快照为
+`310/454`、`328/516`、`278/504`，逐例合计等于 `764/844/782` 个接收和释放扫描。
+
+评审认为该实现遵守扫描原子性。它没有把不同 observer scan 合并，也没有改变双时间戳、
+covariance、fixed-lag/OOSM、门控、来源谱系或 `global_track_id`。事件、scan input、共享摘要和
+世界真值与旧 clean `3bac3ff` 对应 seed 相同。
+
+### 30.2 性能与安全判定
+
+seeds 42000、42001、42002 的 D1 fusion 分别从
+`103.176/106.447/100.394 s` 降至 `89.796/96.599/92.578 s`，均值
+`103.339 -> 92.991 s`，下降 10.0%。2.2 s seed 42000 全栈墙钟
+`18.611 -> 18.302 s`。3/3 episode 均 clean、finite，在线 truth 使用 0，D1/D2 overflow 和
+安全合同全部通过。
+
+该数据支持“延迟物化已接线且没有破坏当前语义”，不支持“200v200 已实时”。D1 单项处理 10 s
+输入仍平均耗时 92.991 s。正式 RMSE/NEES/NIS、真实传感器时延、AirSim 和物理拦截不在本次
+证据范围。
+
+### 30.3 后续计划
+
+1. 在固定硬件和预注册周期预算下扩展时长与未见 seed，报告 P50/P95/max、峰值内存和日志增长。
+2. 通过独立 truth sidecar 与 D2 canonical mapping 形成按传感器、距离和场景分组的
+   RMSE/NEES/NIS consistency 证据。
+3. AirSim 若采用相同 state-only writer，再单独验证时间基准、传感器桥接、episode reset 和
+   持久化 schema；本轮质点结果不能直接迁移为 AirSim 结论。

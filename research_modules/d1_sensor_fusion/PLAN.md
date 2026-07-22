@@ -1,5 +1,22 @@
 # D1 多传感器融合与目标配准实施计划
 
+## Clean 200v200 全栈证据与剩余计划（2026-07-22）
+
+main 已在 clean 候选提交 `8f86192` 接入 D1 的 state-only/末尾快照合同。同一 fusion timestamp
+内的扫描逐个更新，只有末次后验物化完整快照。200v200 三维质点 10 s
+场景使用 seeds 42000、42001、42002，3/3 clean、finite，在线 truth 使用 0，D1/D2 overflow
+和安全合同全部通过。相对旧 clean 提交 `3bac3ff`，D1 fusion 三 seed 均值
+`103.339 -> 92.991 s`，下降 10.0%；seed 42000 的 2.2 s 全栈墙钟
+`18.611 -> 18.302 s`。
+
+三例 state-only 扫描数为 `310/328/278`，完整快照数为 `454/516/504`，分别合计
+`764/844/782` 个已接收并释放的扫描。所有扫描仍逐个融合和发布，事件、scan input、共享摘要及
+世界真值与旧提交同 seed 一致。main-owned 质点全栈接线和 clean 三 seed 语义复跑项据此关闭。
+
+下一阶段不再重复实现延迟物化。开放 P1 是更长时和更多未见 seed 的固定硬件周期统计、
+P50/P95/max 与峰值内存、正式 RMSE/NEES/NIS consistency、真实 sensor-specific latency 以及
+AirSim 接线。D1 fusion 在 10 s 仿真中仍需 92.991 s，不能宣称实时闭合。
+
 ## 同一运行时刻延迟物化状态（2026-07-22）
 
 D1-owned 接口已完成。`process_scan_batch()` 默认行为保持不变；显式
@@ -15,9 +32,11 @@ consistency evidence、lineage 或累计诊断。4 扫描、3 目标、检查点
 `d1.fused_track_publication_audit.v2` 区分总发布、完整快照、状态更新和航迹记录数，并兼容缺少
 新字段的 v1 日志。定向测试 `30 passed`，D1 全量 `168 passed in 29.43s`。
 
-剩余工作属于 main-owned 集成 P1：按 released scan 顺序调用 state-only 接口，中间扫描保存轻量
-audit，最后扫描的 summary 与一次完整快照合并后交给 D2；随后用同一冻结输入从 clean commit 比较
-墙钟、峰值内存、日志体积和语义哈希。D1 不在本任务中修改 main/scalable runtime。
+main-owned scalable 三维质点集成已按 released scan 顺序调用 state-only 接口，同一
+fusion timestamp 的中间扫描保存轻量 audit，末次扫描的 summary 与一次完整快照合并后交给
+D2，并完成 clean 三 seed 对照。
+D1 不在本任务中修改 main/scalable runtime。尚未关闭的是系统实时预算、长历史资源增长、
+AirSim 和正式融合精度。
 
 ## 当前性能治理状态与后续计划（2026-07-22）
 
@@ -39,8 +58,9 @@ audit，最后扫描的 summary 与一次完整快照合并后交给 D2；随后
 5. **发布边界明确**：764 条全量快照约 186.2 MiB，407 个唯一融合时刻，357 条同融合时刻可合并，
    294 条连续未变化。D1 已提供同一 tick 延迟物化接口；跨 tick 合并和 heartbeat/lineage sidecar
    仍只是 main 调度建议。
-6. **剩余系统 P1**：main 需接入 state-only/末尾快照合同，并从 clean commit 复跑完整多 seed
-   全栈。D1-only 1.463 倍和构造回归中的 `12 -> 3` 物化数都不能写成 200v200 系统实时。
+6. **剩余系统 P1**：main 已接入 state-only/末尾快照合同并完成 clean 三 seed 全栈复跑；下一步
+   扩展时长和 seed，冻结周期与内存预算并补正式精度。D1-only 1.463 倍、构造回归中的
+   `12 -> 3` 和全栈 D1 分项下降 10.0% 都不能写成 200v200 系统实时。
 
 专项报告为 `reports/D1_LONG_DURATION_PERFORMANCE_BENCHMARK_CN.md` 及对应 JSON。延迟物化接口
 改变 main 的推荐调用方式，因此 `docs/AIRSIM_INTEGRATION_PLAN.md` 已同步；没有改变 AirSim
@@ -1126,16 +1146,29 @@ W_k = M_k - L
 observations = sensor_observations_from_online_batch(batch)
 frame = SensorScanFrame.from_observations(observations, scan_id=batch.batch_id)
 decision = organizer.ingest(frame)
-latest_result = None
-for released in decision.released_scans:
-    latest_result = fusion.process_scan_batch(released.observations)
-if latest_result is not None:
-    publish_to_d2(latest_result.tracks)
+
+for fusion_time, scans_at_time in group_by_fusion_timestamp(decision.released_scans):
+    latest_state = None
+    for scan_index, released in enumerate(scans_at_time):
+        latest_state = fusion.process_scan_batch(
+            released.observations,
+            materialize_tracks=False,
+        )
+        if scan_index + 1 < len(scans_at_time):
+            publish_state_update(latest_state)
+    if latest_state is not None:
+        snapshot = fusion.materialize_global_tracks()
+        publish_full_snapshot(latest_state, snapshot)
+        publish_to_d2(snapshot.tracks)
+
 publish_scan_audit(decision.events, decision.audit)
 ```
 
 - 一个到达的 `OnlineSensorBatch` 对应一次 `ingest()`，main 不拆帧，也不直接把 buffered/rejected
   帧交给 D1 fusion 或 D2；
+- `group_by_fusion_timestamp()` 表示 main 调度侧按融合时刻分组的伪代码，不是新增 D1 API；
+  组内每个扫描仍调用一次 `process_scan_batch(..., materialize_tracks=False)` 并各自产生发布记录，
+  只有该 fusion timestamp 的末次后验物化完整快照；
 - 所有输入必须先统一到 episode 时钟和 D1 canonical frame；organizer 不估计 clock offset，也不
   执行外部坐标变换；
 - 没有扫描的调度 tick 调 `advance_arrival_time(now)`，episode 输入结束调一次 `close()`，并处理
@@ -1150,10 +1183,10 @@ publish_scan_audit(decision.events, decision.audit)
 扫描/观测数量上限、驻留超时、动态 1/7/200 点、truth 注入拒绝、main 批次转换/融合组合及
 嵌套只读视觉元数据快照；D1 全量 `151 passed`。
 
-D1-owned 的可执行输入合同已关闭。仍开放的系统 P1 是：main-owned runtime 采用该接口；按
-20/50/100/200 规模和长 episode 冻结 `max_lateness_s`、驻留/容量/claim 上限；统计 too-late
-误拒、buffer 峰值、吞吐和 tail close；与 D2/D6 schema 对齐。该 organizer 不替代现有 fixed-lag
-Kalman OOSM replay，也没有关闭真实传感器长期延迟与一致性标定。
+D1-owned 的可执行输入合同和 main scalable 三维质点 runtime 接线已经关闭。仍开放的系统 P1
+是：按 20/50/100/200 规模和更长 episode 冻结 `max_lateness_s`、驻留/容量/claim 上限；统计
+too-late 误拒、buffer 峰值、吞吐和 tail close；与 D2/D6 长期 schema 对齐。该 organizer 不替代
+现有 fixed-lag Kalman OOSM replay，也没有关闭真实传感器长期延迟与一致性标定。
 
 ## 30. P1 逐扫描融合热点治理结果（2026-07-22）
 
@@ -1185,8 +1218,8 @@ snapshot 从 16,653 降至 86。未缓存参考墙钟 34.701 s，优化路径 9.
 
 ### 30.3 开放项
 
-1. main 在 clean commit 上复跑完整三维质点多 seed，确认 D1 分项、全栈实时倍率和长历史峰值
-   内存；本次 D1-only 结果不关闭系统周期预算。
+1. main 已在 clean `8f86192` 完成 200v200 三 seed 全栈复跑；下一步扩展更多 seed 和更长历史，
+   冻结周期与峰值内存预算。当前 D1 fusion 均值 92.991 s，不关闭系统实时预算。
 2. 正式融合效果仍需独立 truth sidecar、D2 canonical mapping 和多 seed RMSE/NEES/NIS
    coverage。该性能优化不提供精度证据。
 3. AirSim producer、Blocks/CV/SimpleFlight、episode 编排和持久化 schema 均未改变。本轮已检查

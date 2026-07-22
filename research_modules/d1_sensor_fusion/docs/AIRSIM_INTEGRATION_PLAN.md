@@ -293,27 +293,28 @@ frame = SensorScanFrame.from_observations(
 )
 decision = scan_organizer.ingest(frame)
 
-last_state_result = None
-for scan_index, released in enumerate(decision.released_scans):
-    state_result = fusion_adapter.process_scan_batch(
-        released.observations,
-        materialize_tracks=False,
-    )
-    if scan_index + 1 < len(decision.released_scans):
-        publish_d1_audit(
-            tracks_materialized=False,
-            tracks=[],
-            track_count=0,
-            current_track_count=state_result.current_track_count,
-            summary=state_result.summary.to_dict(),
+for fusion_time, scans_at_time in group_by_fusion_timestamp(decision.released_scans):
+    last_state_result = None
+    for scan_index, released in enumerate(scans_at_time):
+        state_result = fusion_adapter.process_scan_batch(
+            released.observations,
+            materialize_tracks=False,
         )
-    last_state_result = state_result
-if last_state_result is not None:
-    snapshot = fusion_adapter.materialize_global_tracks()
-    full_payload = last_state_result.to_dict()
-    full_payload.update(snapshot.to_dict())
-    persist_full_d1_publication(full_payload)
-    publish_fused_tracks_to_d2(snapshot.tracks)
+        if scan_index + 1 < len(scans_at_time):
+            publish_d1_audit(
+                tracks_materialized=False,
+                tracks=[],
+                track_count=0,
+                current_track_count=state_result.current_track_count,
+                summary=state_result.summary.to_dict(),
+            )
+        last_state_result = state_result
+    if last_state_result is not None:
+        snapshot = fusion_adapter.materialize_global_tracks()
+        full_payload = last_state_result.to_dict()
+        full_payload.update(snapshot.to_dict())
+        persist_full_d1_publication(full_payload)
+        publish_fused_tracks_to_d2(snapshot.tracks)
 
 write_scan_events(decision.events)
 write_scan_audit(decision.audit)
@@ -336,10 +337,11 @@ write_scan_audit(decision.audit)
    `events`、累计 `audit`、D1 fusion summary 分开写入日志。
 7. D6 可统计 too-late、reordered、buffer peak、overflow 和 expiry。未经长 episode 标定的计数
    不直接触发 D4 主动降级。
-8. 同一 runtime tick 释放多个扫描时，每个扫描仍按顺序调用 state-only 接口；不得把扫描拼接。
-   中间日志为 `tracks_materialized=false`、`tracks=[]`、`track_count=0`，实际内部航迹数写入
+8. `group_by_fusion_timestamp()` 是 main 调度侧按融合时刻分组的伪代码，不是新增 D1 API。同一
+   fusion timestamp 的每个扫描仍按顺序调用 state-only 接口；不得把扫描拼接。中间日志为
+   `tracks_materialized=false`、`tracks=[]`、`track_count=0`，实际内部航迹数写入
    `current_track_count`。D2 v1 可继续校验数组长度，且不会把未物化记录当成规范航迹快照。
-9. 本 tick 最后调用一次 `materialize_global_tracks()`。完整发布的 `track_count`、
+9. 每个 fusion timestamp 只在末次后验调用一次 `materialize_global_tracks()`。完整发布的 `track_count`、
    `current_track_count` 和 `len(tracks)` 必须相等。旧日志无 `tracks_materialized` 时按完整快照
    解释；`tracks=None` 仅由 D1 audit 作为过渡兼容输入，不作为新 writer 推荐格式。
 
@@ -356,3 +358,7 @@ episode 顺序。随后 main 从 clean 提交
 20/50/100/200 各 5 seed 的 formal 复跑；20/20 `repository_dirty=false`，扫描拒绝、过旧和
 溢出均为 0。该结果只更新非 AirSim 的治理接线状态。真实 Blocks/CV/SimpleFlight 适配、
 settings、传感器桥接、launch/reset 和多 seed AirSim 验收计划均无变化，仍由 main 负责。
+
+随后 clean 候选 `8f86192` 已在 200v200 三维质点 10 s seeds 42000-42002 验证上述按
+fusion timestamp 延迟物化合同；3/3 clean、finite、在线 truth 使用 0，D1 全量回归为
+`168 passed`。该证据不表示 AirSim writer 已采用此模式，也不改变前述 AirSim 开放项。

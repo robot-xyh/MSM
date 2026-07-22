@@ -10,32 +10,34 @@
 
 | GAP/合同 | 当前状态 | 2026-07-22 证据 | 剩余关闭条件 |
 | --- | --- | --- | --- |
-| 长时 fixed-lag 超线性增长 | **D1-owned 冻结输入缺口已关闭；系统 P1 仍开放** | 10 s/764 scans/12,107 obs 对照中，history replay `170,106 -> 13,397`、filter update `120,440 -> 9,549`、墙钟 `157.237 -> 107.449 s`；状态查询/后缀复用/前缀快路径/一致性刷新分别为 `152,861/110,891/300,024/194,916`；逐扫描/终态/evidence 哈希等价 | main 从 clean commit 复跑完整多 seed，冻结硬件和周期预算；D1 不以丢观测、缩短 6 s fixed-lag、放宽 gate 或使用 truth 换性能 |
-| 同一 tick 重复全量快照物化 | **D1-owned 接口缺口已关闭；main 集成 P1 开放** | 默认 API 不变；state-only 返回准确 `current_track_count` 且禁止访问 `tracks`；3 目标、4 扫描、6 s fixed-lag/检查点前 OOSM 中终态/evidence 等价，物化 `12 -> 3`；D1 全量 `168 passed` | main 按 released scan 顺序处理；中间扫描发布 `tracks_materialized=false, tracks=[], track_count=0, current_track_count=N`，末扫描 summary 与一次完整快照合并；从 clean commit 复跑全栈多 seed 墙钟/内存/日志/语义哈希 |
+| 长时 fixed-lag 超线性增长 | **D1-owned 冻结输入缺口已关闭；系统 P1 仍开放** | 10 s/764 scans/12,107 obs 对照中，history replay `170,106 -> 13,397`、filter update `120,440 -> 9,549`、墙钟 `157.237 -> 107.449 s`；clean 三 seed 全栈 D1 fusion 均值进一步为 `103.339 -> 92.991 s` | 扩展更长时和未见 seed，冻结硬件和周期预算；D1 不以丢观测、缩短 6 s fixed-lag、放宽 gate 或使用 truth 换性能 |
+| 同一 fusion timestamp 重复全量快照物化 | **D1-owned 接口与 main 质点集成项已关闭** | 默认 API 不变；clean `8f86192` 三 seed 的 state-only/完整快照为 `310/454`、`328/516`、`278/504`，逐例合计全部扫描；事件、scan input、共享摘要和世界真值与旧 clean 相同 | 保持语义回归；AirSim writer、跨 tick heartbeat/lineage 和实时预算另行验收 |
 | D1 全量快照持久化 | **审计 v2 已实现；跨 tick 策略仍开放** | 旧基线 764 条约 186.2 MiB；新 audit 分别统计 publication/materialized/state-only/track records，兼容 v1 数组日志和 state-only 的空数组或过渡 null | main 后续评估跨 tick heartbeat/lineage sidecar；必须保留状态/身份/生命周期/质量/lineage 事件并支持 D6 重建。D1 不修改 main 发布器 |
 | 扫描水位线 clean/formal 复跑 | **已关闭** | 提交 `e4d66db02a0b8f1b867a0e81b4a73de84588426b`；20/50/100/200 各 5 seed，20/20 formal 且 `repository_dirty=false`；每例 136 帧、重排 12、拒绝/过旧/溢出 0、峰值/结束缓冲 3/0、在线 truth 0 | 保持 schema/hash/truth-isolation 回归；AirSim 和完整融合另行验收 |
 | 观测治理内存边界 | 正式快速治理证据已获得 | 200 规模 `estimated_peak_memory_bytes.mean=40,914,828.4 B`，约 40.91 MB；最大 40,926,870 B | 完整融合、长历史和进程常驻集内存仍需单独记录；tracemalloc 值不是生产预算 |
-| 逐小扫描全后验吞吐 | **D1-owned 冻结输入热点已关闭；系统 P1 仍开放** | profiler 定位 `_state_at`/历史 replay 和重复 health snapshot；增量后验检查点与每扫描公共审计快照使 filter update `93,234 -> 1,797`、health snapshot `16,653 -> 86`；逐扫描/终态/evidence 哈希等价；34.701 s -> 9.073 s | main 从 clean commit 复跑完整未见多 seed，冻结硬件、发布频率与周期预算；另验长历史内存和端到端实时倍率 |
-| 扫描关联重复模型构造 | **D1-owned 已关闭；全栈复跑仍开放** | clean `492979e` 五 seed 旧默认均值 12.103 s；seed 42000 current-default 与优化路径逐扫描/终态/evidence 哈希等价；candidate/innovation 均保持 371,054，model build `16,457 -> 82`，projection `16,457 -> 14,648`，墙钟 `10.792 -> 8.635 s` | main 用新默认路径复跑 clean 多 seed；不得用单 seed 1.25 倍替代系统 P95、AirSim 或实时验收 |
-| 正式 200v200 算法效果 | 未验收 | 单次全栈只有 development/dirty seed 42000；正式 sidecar 指标 unavailable | 未见多 seed、正确 D2 canonical mapping、RMSE/NEES/NIS/coverage 与置信区间 |
+| 逐小扫描全后验吞吐 | **D1-owned 冻结输入热点已关闭；系统 P1 仍开放** | profiler 定位 `_state_at`/历史 replay 和重复 health snapshot；增量后验检查点与公共审计快照使 filter update `93,234 -> 1,797`、health snapshot `16,653 -> 86`；clean 三 seed 全栈已完成 | 冻结硬件、发布频率与周期预算并扩展更长时；另验长历史内存和端到端实时倍率 |
+| 扫描关联重复模型构造 | **D1-owned 与 clean 三 seed 复跑已关闭** | seed 42000 冻结对照中 model build `16,457 -> 82`、墙钟 `10.792 -> 8.635 s`；clean `8f86192` 三 seed 全栈安全与语义回归通过 | 不得用模块单 seed 1.25 倍或全栈 D1 分项 10.0% 替代系统 P95、AirSim 或实时验收 |
+| 正式 200v200 算法效果 | 未验收 | clean 三 seed 全栈已运行，但正式 RMSE/NEES/NIS sidecar 和 D2 canonical mapping 指标仍 unavailable | 更多未见 seed、正确 D2 canonical mapping、RMSE/NEES/NIS/coverage 与置信区间 |
 | AirSim 状态 | 无变化 | 两批均为合成治理或三维质点制品，未启动 Blocks/CV/SimpleFlight | 按独立 AirSim 计划采集和验收，不得把本批改写为 AirSim 证据 |
 
 本轮没有新增 D1 P0 blocker。长时冻结输入优化新增固定大小的
 `FusionPerformanceDiagnostics`，可由 profiler 读取累计 filter update/checkpoint reuse 等计数，
-无需在 episode summary 内保存逐扫描历史。D1 已提供同一 tick state-only/末尾快照接口和
-publication audit v2；main 当前尚未接线，保留为 main-owned 集成 P1，不回退 D1 已完成的长时
-语义等价优化。clean/formal 治理复跑缺口已
+无需在 episode summary 内保存逐扫描历史。D1 已提供同一 fusion timestamp 的
+state-only/末尾快照接口和
+publication audit v2；main 已在 clean `8f86192` 三种子质点全栈接线，接线项关闭，不回退 D1
+已完成的长时语义等价优化。clean/formal 治理复跑缺口已
 关闭，输入 SHA-256 及 60 个引用制品
 均通过复核。释放后的重复后验计算已在 D1 冻结输入上完成治理；未缓存参考与优化路径保持每扫描
 一对一关联、双时间戳、covariance、OOSM、observer-scan conflict、consistency evidence 和
-完整 `GlobalTrack` 输出。该证据不能替代 clean 完整全栈多 seed、AirSim 和融合精度验收。
+完整 `GlobalTrack` 输出。clean 三 seed 已补充全栈接线证据，但仍不能替代实时预算、AirSim 和
+融合精度验收。
 
 第二阶段继续治理第一阶段默认路径中的扫描关联成本。严格几何键只允许在实际量测函数参数一致时
 复用非雷达预测量测和数值雅可比；每个候选对仍独立求创新协方差并参加 Hungarian 分配。冻结
 输入 SHA-256 为 `bc539686b130d96c63b76b9161fadbae2dba59de44cb61ac80d92f2ea1018406`。
 86 个逐扫描语义摘要、最终 201 条航迹和 consistency evidence 完全一致，在线 truth 使用为 0。
 专项 `10 passed in 10.33s`，D1 全量 `161 passed in 38.02s`。当前无新增 D1 P0 blocker；
-优化后 clean 五 seed 全栈复跑和正式效果指标仍为 P1。
+clean 三 seed 全栈复跑已完成，更多长时 seed、实时预算和正式效果指标仍为 P1。
 
 ## 0.1 历史 D1-owned GAP 增量（2026-07-16）
 
@@ -769,3 +771,18 @@ P1 关闭需要同时满足治理审计、数值等价和吞吐预算。AirSim�
 consistency evidence 和发布数组隔离。D1-owned 冻结输入性能热点据此关闭；正式融合精度、
 AirSim 和完整 200v200 实时性保持开放。性能专项 `6 passed`，main 复跑 D1 全量
 `157 passed in 28.77s`。
+
+## 29. 2026-07-22 Clean 200v200 延迟物化接线 GAP 状态
+
+| GAP/合同 | 当前状态 | 证据 | 剩余关闭条件 |
+| --- | --- | --- | --- |
+| main state-only/末尾快照接线 | 已关闭三维质点集成项 | clean `8f86192`；10 s seeds 42000-42002；state-only `310/328/278`，完整快照 `454/516/504`，逐例合计全部扫描 `764/844/782` | AirSim writer 和跨 tick heartbeat/lineage sidecar 仍独立开放 |
+| 逐扫描语义与审计 | 已关闭本组回归 | 所有扫描仍逐个融合和发布；事件、scan input、共享摘要和世界真值与旧 clean `3bac3ff` 对应 seed 相同 | 后续 schema 变更保持该等价检查 |
+| 在线安全合同 | 已关闭本组回归 | 3/3 clean、finite，在线 truth 使用 0，D1/D2 overflow 0，安全合同全部通过 | 扩展更多未见 seed、故障和更长历史 |
+| D1 全栈分项改善 | 已形成描述性证据 | 10 s 三 seed D1 fusion 均值 `103.339 -> 92.991 s`，下降 10.0%；2.2 s seed 42000 全栈墙钟 `18.611 -> 18.302 s` | 固定硬件和预算后统计 P50/P95/max、峰值内存与更长时增长 |
+| 完整系统实时预算 | **P1 仍开放** | 候选 10 s D1 fusion 均值仍为 92.991 s | 达到预注册周期预算；不能以三 seed 平均改善替代实时验收 |
+| 正式融合精度与 AirSim | **P1 仍开放** | 本组是匿名三维质点输入，未改变 AirSim 或生成正式 RMSE/NEES/NIS | D2 canonical mapping、独立 truth sidecar、多 seed consistency 与真实 AirSim 接线 |
+
+本轮没有新增 D1 P0。clean 三 seed 已关闭“main 尚未接入延迟物化”和“没有 clean 全栈语义
+复跑”的旧表述；实时、长历史资源、正式精度、真实时延分布和 AirSim 仍是开放 P1。证据目录为
+`research_modules/scalable_3d_simulation/outputs/scalable_3d_long_duration_candidate_20260722_clean_8f86192/`。

@@ -8,11 +8,27 @@
 
 ## 当前权威增量（2026-07-22）
 
+### Clean 200v200 接线证据
+
+算法接口完成后，main 在 clean 候选提交 `8f86192` 中按量测扫描顺序执行状态更新，并仅在同一
+fusion timestamp 的最后后验构造完整 `GlobalTrack` 快照。10 s、200v200 三维质点 seeds
+42000、42001、42002 均 clean、finite，在线 truth 使用 0，D1/D2 overflow 和全部安全合同通过。
+
+三例 scan/state-only/full snapshot 计数分别为
+`764/310/454`、`844/328/516`、`782/278/504`。state-only 与 full snapshot 之和逐例等于扫描
+总数，说明每个扫描仍被融合并发布。与旧 clean `3bac3ff` 相比，事件、scan input、共享摘要及
+世界真值相同；D1 fusion 三 seed 均值 `103.339 -> 92.991 s`，下降 10.0%。seed 42000 的
+2.2 s 全栈墙钟 `18.611 -> 18.302 s`。
+
+该结果验证 main 调用方式和算法语义，没有改变滤波公式、门控、固定时滞窗口、双时间戳、
+协方差或规范身份。D1 fusion 处理 10 s 输入仍平均耗时 92.991 s，实时性、AirSim 和正式精度
+继续开放。
+
 ### 扫描状态更新与航迹物化分离
 
-同一运行时刻可能由扫描整理器释放多个不同传感器或不同量测时刻的扫描。扫描不能拼接成一个伪
+同一 runtime tick 可能由扫描整理器释放多个不同传感器或不同量测时刻的扫描。扫描不能拼接成一个伪
 扫描，因为每个扫描都有独立 observer-scan key、一对一关联集合、双时间戳和乱序语义。当前实现
-保持逐扫描状态更新，只把完整航迹对象构造从中间扫描移到本 tick 末尾：
+保持逐扫描状态更新，只把完整航迹对象构造从同一 fusion timestamp 的中间扫描移到该组末尾：
 
 ```text
 released scan 1 -> process_scan_batch(..., materialize_tracks=False) -> state/audit
@@ -30,7 +46,8 @@ released scan n -> process_scan_batch(..., materialize_tracks=False) -> state/au
 前 OOSM、预测、协方差限制、健康统计、一致性证据修订、来源谱系和性能计数。它只不调用
 `global_tracks()`。返回的 `FusionStateUpdateResult` 包含准确的 `current_track_count`，因此 main
 可记录轻量状态，而无须从 `tracks` 推导数量。`tracks` 属性主动抛出
-`TracksNotMaterializedError`，防止空列表被解释为当前没有航迹。
+`TracksNotMaterializedError`，防止空列表被解释为当前没有航迹。main-owned scalable 三维质点
+runtime 已按该调用方式完成上述 clean 三 seed 复跑。
 
 显式物化接口在当前内部后验上构造 `FusionTrackSnapshot`。它共享一次 association/latency/
 sensor-health 发布上下文，再逐航迹复制状态、协方差、生命周期、支持来源和元数据。物化不执行
@@ -46,7 +63,7 @@ sensor-health 发布上下文，再逐航迹复制状态、协方差、生命周
 `tracks_materialized=false`、`tracks=[]`、`track_count=0` 和准确的 `current_track_count`；
 audit 仍兼容过渡期的 `tracks=null`。审计分别统计总发布数、完整快照数、状态更新数和完整快照
 内航迹记录数。定向测试 `30 passed`，D1 全量 `168 passed in 29.43s`。没有运行
-AirSim，也没有形成完整 200v200 运行时加速结论。
+AirSim；完整 200v200 运行时的 clean 三 seed 结果见上节，但仍未形成实时闭合结论。
 
 ### 长时固定滞后检查点复用
 
@@ -71,8 +88,9 @@ AirSim，也没有形成完整 200v200 运行时加速结论。
 合同。
 
 冻结日志的 764 条全量航迹发布约 186.2 MiB，只有 407 个唯一融合时刻。该数据来自延迟物化接口
-引入前。D1 现已提供同一 tick 中间状态更新和末尾快照接口；main 尚未接线。跨 tick 合并和轻量
-heartbeat/lineage 仍是后续建议，必须保留规范状态、身份、生命周期、质量跨档和来源谱系事件。
+引入前。D1 已提供同一 tick 中间状态更新和末尾快照接口，main 也已在 scalable 三维质点全栈
+接线。跨 tick 合并和轻量 heartbeat/lineage 仍是后续建议，必须保留规范状态、身份、生命周期、
+质量跨档和来源谱系事件。
 
 ### 第二阶段扫描关联工作区
 
@@ -99,7 +117,7 @@ SHA-256 为 `bc539686b130d96c63b76b9161fadbae2dba59de44cb61ac80d92f2ea1018406`�
 
 模块级纯融合墙钟为 `10.792 s -> 8.635 s`，本机单次 1.25 倍。专项
 `10 passed in 10.33s`，D1 全量 `161 passed in 38.02s`。性能单测不使用墙钟阈值；验收依赖
-确定性操作计数和输出哈希。优化后的 clean 五 seed 全栈与 AirSim 尚未复跑。
+确定性操作计数和输出哈希。后续 clean 三 seed 全栈已经复跑，AirSim 尚未复跑。
 
 ### 第一阶段增量后验与发布快照
 

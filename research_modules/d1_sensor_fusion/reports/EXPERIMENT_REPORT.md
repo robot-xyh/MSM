@@ -1,5 +1,26 @@
 # D1 Sensor Fusion Offline Experiment Report
 
+## 2026-07-22 Clean 200v200 全栈接线复跑
+
+clean 候选提交 `8f86192` 已在 main-owned 三维质点全栈接入同一 fusion timestamp 延迟物化。10 s
+seeds 42000、42001、42002 均为 clean、finite，在线 truth 使用 0，D1/D2 overflow 和安全合同
+全部通过。旧对照为 clean 提交 `3bac3ff`。
+
+| Seed | 扫描数 | State-only | 完整快照 | 旧 D1 fusion | 新 D1 fusion |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 42000 | 764 | 310 | 454 | 103.176 s | 89.796 s |
+| 42001 | 844 | 328 | 516 | 106.447 s | 96.599 s |
+| 42002 | 782 | 278 | 504 | 100.394 s | 92.578 s |
+| 均值 | - | - | - | 103.339 s | 92.991 s |
+
+D1 fusion 均值下降 10.0%。每例 state-only 与完整快照之和均等于接收和释放扫描数；所有扫描仍
+逐个融合并发布。事件、scan input、共享摘要和世界真值与旧提交对应 seed 相同。seed 42000 的
+2.2 s 全栈墙钟由 18.611 s 降至 18.302 s。
+
+该结果关闭 main-owned 质点全栈延迟物化接线和 clean 三 seed 语义复跑项，不关闭实时预算。
+10 s 输入的 D1 fusion 仍平均耗时 92.991 s；本组也不提供 AirSim、真实传感器精度、
+RMSE/NEES/NIS 或物理拦截证据。当前证据摘要另见 `../docs/EXPERIMENT_REPORT.md`。
+
 ## 2026-07-22 长时固定滞后性能对照
 
 ### 输入与验收

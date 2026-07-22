@@ -4,6 +4,25 @@ Offline research module for radar, acoustic, EO, and optional synthetic lidar he
 
 ## 当前性能与治理证据（2026-07-22）
 
+### Clean 200v200 全栈接线复跑
+
+main 已在 clean 候选提交 `8f86192` 中接入同一运行时刻延迟物化合同，并对 10 s、200v200
+三维质点场景运行 seeds 42000、42001、42002。3/3 episode 均为 clean、状态有限、在线 truth
+使用 0，D1/D2 溢出和跨模块安全合同均通过。相对旧 clean 提交 `3bac3ff`，D1 fusion 三 seed
+均值由 `103.339 s` 降至 `92.991 s`，下降 10.0%。seed 42000 的 2.2 s 全栈墙钟由
+`18.611 s` 降至 `18.302 s`。
+
+三个 10 s episode 的 state-only 扫描数分别为 `310/328/278`，完整物化快照数分别为
+`454/516/504`；两类记录之和分别为 `764/844/782`，与各 episode 的接收和释放扫描数相同。
+每个扫描仍按原顺序执行关联、固定时滞重放、状态更新和发布，只有同一 fusion timestamp 的中间
+`GlobalTrack` 快照不再重复构造。事件、扫描输入、共享摘要和世界真值与旧提交 `3bac3ff`
+对应 seed 保持一致。
+
+该结果关闭 main-owned 质点全栈的延迟物化接线与 clean 三 seed 语义复跑项，不关闭实时预算。
+10 s 仿真中的 D1 fusion 均值仍为 92.991 s，也不构成 AirSim、真实传感器精度、
+RMSE/NEES/NIS 或完整拦截效果证据。证据目录为
+`../scalable_3d_simulation/outputs/scalable_3d_long_duration_candidate_20260722_clean_8f86192/`。
+
 ### 第四阶段：同一运行时刻延迟物化
 
 `process_scan_batch(observations)` 的默认返回、字段和序列化保持不变，仍生成完整
@@ -28,7 +47,8 @@ Offline research module for radar, acoustic, EO, and optional synthetic lidar he
 `materialized_snapshot_count`、`state_only_count` 和 `track_record_count`。无
 `tracks_materialized` 字段的 v1 日志继续按完整快照读取。新 state-only writer 使用
 `tracks=[]`、`track_count=0` 和准确的 `current_track_count`；audit 也兼容过渡期的
-`tracks=None`。main-owned runtime 尚未接入该接口，接线和 clean 多 seed 性能复跑仍是系统 P1。
+`tracks=None`。main-owned scalable 三维质点 runtime 已按该接口接线并完成上述 clean 三 seed
+复跑；系统实时预算、AirSim 接线和正式精度仍是开放 P1。
 
 ### 第三阶段：长时固定滞后检查点复用
 
@@ -53,8 +73,8 @@ filter update 为 `120,440 -> 9,549`。候选对和创新求解均保持 2,393,9
 
 发布审计记录 764 条 `modules.d1.fused_tracks`，共 186.2 MiB；其中只有 407 个唯一融合时刻，
 357 条可在同一融合时刻保留最后后验，另有 294 条连续未变化快照。这是延迟物化接口引入前的
-历史基线；D1 后续已提供同一 runtime tick 内的显式 state-only 接口，但 main 尚未接线，也未
-实现跨 tick 发布节流或 heartbeat/lineage sidecar。详细证据见
+历史基线；D1 后续已提供同一 fusion timestamp 内的显式 state-only 接口，main 已按该接口完成
+clean 三 seed 质点全栈接线复跑，但仍未实现跨 tick 发布节流或 heartbeat/lineage sidecar。详细证据见
 `reports/D1_LONG_DURATION_PERFORMANCE_BENCHMARK_CN.md` 和对应 JSON。
 
 ### 第二阶段：扫描关联工作区
@@ -77,8 +97,9 @@ evidence 哈希一致。候选对和创新求解均保持 371,054 次；量测�
 `161 passed in 38.02s`。操作计数和语义哈希是验收依据，墙钟只作复核。
 
 详细结果见 `reports/D1_SCAN_ASSOCIATION_PERFORMANCE_BENCHMARK_CN.md` 和
-`reports/d1_scan_association_performance_benchmark_20260722.json`。优化后的 clean 五 seed
-完整全栈尚未复跑；1.25 倍不能解释为 AirSim 或 200v200 完整系统已经实时。
+`reports/d1_scan_association_performance_benchmark_20260722.json`。后续 clean 提交
+`8f86192` 已完成 200v200 三 seed 全栈复跑，结果见本节首段；1.25 倍模块对照和 10.0% 全栈 D1
+分项改善都不能解释为 AirSim 或 200v200 完整系统已经实时。
 
 ### 第一阶段：增量后验与发布快照
 
@@ -123,18 +144,20 @@ manifest、20 份在线审计和 20 份评估侧车共 60 个文件均通过独�
 development 全栈性能证据，不因上述正式治理复跑而升级。
 
 D1-owned 的冻结输入逐扫描热点已关闭。优化没有合并扫描、丢弃观测、缩短固定滞后窗、改变
-双时间戳、压低 covariance 或放宽门控。剩余系统 P1 是从 clean commit 运行完整多 seed 全栈，
-冻结硬件、发布频率和周期预算，并分别验收长历史内存、正式融合精度和端到端实时倍率。
+双时间戳、压低 covariance 或放宽门控。clean 三 seed 全栈与同一运行时刻延迟物化已经复跑；
+剩余系统 P1 是扩大未见 seed 和时长，冻结硬件、发布频率和周期预算，并分别验收长历史内存、
+正式融合精度和端到端实时倍率。
 
 证据入口：
 
 - `../scalable_3d_simulation/outputs/observation_governance_calibration_20260722_formal_e4d66db/`；
 - `../scalable_3d_simulation/outputs/point_mass_integrated_observation_smoke_20260722_development_coalesced/`；
+- `../scalable_3d_simulation/outputs/scalable_3d_long_duration_candidate_20260722_clean_8f86192/`；
 - `reports/D1_SCAN_FUSION_PERFORMANCE_BENCHMARK_CN.md`。
 
-正式治理和 D1-only 性能结果都不是 AirSim、传感器精度或 200v200 完整系统验收。全栈仍需
-clean 多 seed、冻结硬件/配置和逐阶段 P50/P95/max；融合效果仍需 RMSE/NIS/NEES availability
-与正确 D2 canonical mapping。
+正式治理、D1-only 性能和 clean 三 seed 质点全栈结果都不是 AirSim、传感器精度或 200v200
+实时系统验收。全栈仍需更长时、多 seed、冻结硬件/配置和逐阶段 P50/P95/max；融合效果仍需
+RMSE/NIS/NEES availability 与正确 D2 canonical mapping。
 
 ## 历史 D1-owned 增量（2026-07-16）
 
@@ -755,9 +778,10 @@ birth 和次扫 update 均为 `5/5、20/20、50/50、100/100、200/200`；200 �
 新增专项 `9 passed`，D1 全量 `120 passed`。一次本机非门限化探针中 200 点首扫约 0.108 s、
 次扫约 0.392 s；该单次耗时不是实时性能验收。
 
-当前 D1-owned 实现和合同回归已完成，但 main orchestrator 尚未接入此 adapter，D2 的原生
-六维关联、漏检/虚警下的航迹确认与删除、多 seed dense crossing 的 recall/ID continuity、
-长期 NIS/NEES 和实时预算仍需跨模块验收。本轮不涉及 AirSim runtime。
+当前 D1-owned 实现和合同回归已完成，main scalable 三维质点 runtime 也已接入此 adapter，并在
+clean `8f86192` 的 200v200 三 seed 中通过安全与语义回归。D2 的原生六维关联、漏检/虚警下的
+航迹确认与删除、多 seed dense crossing 的 recall/ID continuity、长期 NIS/NEES 和实时预算仍需
+跨模块验收；该接线结论不扩展到 AirSim runtime。
 
 ### 无多普勒速度稳定性修复（2026-07-20）
 
