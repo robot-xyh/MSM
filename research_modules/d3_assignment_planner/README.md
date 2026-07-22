@@ -12,6 +12,8 @@ Boundary: this module only supports offline simulation, evaluation, and human-re
 - `src/d3_assignment_planner/calibration.py`: reusable full/incremental P1 matrix runner and D6-friendly summaries.
 - `src/d3_assignment_planner/cooperative_prescreen.py`: versioned M-to-N cooperative candidate grid, observed-result ranking, and current-plan metadata export.
 - `src/d3_assignment_planner/learning.py`: optional shared candidate-edge PyTorch residual, behavior-cloning warm-up, shadow/assist inference, masks, and rule fallback.
+- `src/d3_assignment_planner/runtime_plan_ack.py`: strict read-only validation of main runtime plan adoption ACKs.
+- `src/d3_assignment_planner/runtime_reward_evidence.py`: hash-bound adopted-window to observed-outcome attribution contract; formal reward remains fail-closed.
 - `tests/`: unit tests.
 - `simulations/run_rolling_assignment.py`: 100 s, 2 Hz rolling simulation.
 - `docs/ALGORITHM_AND_IMPLEMENTATION.md`: Chinese algorithm principles and implementation guide.
@@ -959,3 +961,35 @@ OR-Tools。
 该接口已经实现并经当前 producer smoke 验证，但冻结的 900-episode 正式数据生成于
 ACK producer 之前，仍没有 current owner/version、applied ACK、outcome 或 reward。
 PPO、assist 和在线 authority 继续关闭，规则代价与需求槽 Hungarian 仍是默认执行路径。
+
+## 2026-07-21 已采用计划窗口归因合同
+
+D3 新增 `runtime_reward_evidence.py`，将现有运行计划 ACK 与 D6
+`d6.runtime-plan-outcome-join.v1` 离线结果连接为
+`d3_runtime_plan_window_reward_evidence_v1`。输入必须包含经过
+`validate_assignment_plan_runtime_ack(...)` 验证的 ACK、ACK 总线序号、完整 D6 联接
+结果及其外部规范载荷 SHA-256，并明确指定资源和 `global_track_id`。适配器不导入 D6 或
+main，不读取文件路径中的真值身份，也不修改计划。
+
+每个输出同时绑定：
+
+- plan id/version、中心/二级 owner、authority epoch；
+- D3 来源计划、D7 消费命令和 main ACK 的严格递增总线序号；
+- D3/D7 来源载荷 SHA-256、ACK 证据 SHA-256、D6 结果 SHA-256 和 11 项来源文件摘要；
+- 资源-航迹、联盟、角色、ACK occurrence、刷新类型、执行签名和不重叠时间窗。
+
+证据层明确分成 command、ACK applied、observed outcome、paired、counterfactual 和
+causal。D6 的五米接近事件和有界最优距离进展只保留为离线观测诊断，不能自动写成因果
+奖励。现有 `OfflineRewardComponents` 六项仍是规则教师诊断；新合同逐项输出
+availability/reason，当前不补零。缺 ACK、owner、来源序号/哈希、字段、窗口，或者出现
+窗口重叠、刷新语义错误、版本回退、在线真值使用和自报 reward，均失败关闭。
+
+2026-07-21 的专项测试为 `16 passed`。其中一项运行真实 main 三维质点 3v3、seed 41、
+1.2 秒，并消费 main 自动生成的 D6 结果；选定 binding 的命令、采用和结果窗口连接成功，
+正式 reward 仍为 unavailable。D3 全量收集 320 项，结果为
+`319 passed, 1 skipped`；唯一 skip 是未安装的可选 OR-Tools。Hungarian、
+`C_final=C_rule+alpha*tanh(delta_C)`、确定性安全外壳、PPO/assist/authority 状态均未改变。
+
+仍缺同 seed 配对运行、反事实结果、因果归因、计划级六项运行结果和外部保留 seed 证据。
+这些条件闭合前，`formal_d3_runtime_reward` 保持 unavailable，PPO 不启动，规则回退保持
+启用。冻结的 900-episode 数据没有新 ACK，未被回填或修改。

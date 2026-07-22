@@ -79,7 +79,12 @@ _LEARNING_FRAME_FIELDS = frozenset(
 
 @dataclass(frozen=True)
 class OfflineRewardComponents:
-    """Auditable raw terms used by BC diagnostics and PPO reward shaping."""
+    """Auditable rule-teacher terms for offline BC/PPO research only.
+
+    These planning-frame diagnostics are not an attributed runtime reward.
+    Runtime reward availability is governed by the separate adopted-window
+    evidence contract.
+    """
 
     high_threat_coverage: float
     rule_total_cost: float

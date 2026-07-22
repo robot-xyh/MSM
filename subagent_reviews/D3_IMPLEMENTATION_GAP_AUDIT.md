@@ -632,3 +632,38 @@ assignment/binding/control 为 3/3/3，held=0，online truth use=0。D3 全量 3
   保留 seed 未闭合。PPO、assist、online authority 继续 false。
 
 当前没有新增 P0。原“D3 无严格 ACK 消费器”已关闭；跨模块正式采用与结果归因仍为 P1。
+
+## 31. 已采用计划窗口归因 GAP 更新（2026-07-21）
+
+### 已关闭
+
+- **ACK 到 D6 observed outcome 的 D3 适配器**：已实现
+  `d3_runtime_plan_window_reward_evidence_v1`。它只接受已验证 ACK 和带外部规范载荷
+  SHA-256 的 D6 v1 联接结果，不依赖 main/D6 包。
+- **来源、消费和窗口绑定**：plan id/version、owner、source/consumption/ACK sequence、
+  D3/D7 payload hash、ACK evidence hash、D6 result hash、资源-航迹、联盟角色、
+  occurrence、执行签名和时间窗均进入输出。
+- **窗口和刷新治理**：同资源重叠、非单调 ACK、计划版本回退、occurrence 缺口、刷新类型
+  错误、同 identity 执行签名变化均失败关闭。
+- **真值与自报隔离**：在线真值使用非零、ACK/D6 自报正式 reward、反事实或因果结果均
+  拒绝。D6 离线 truth identity 不进入 D3 输出。
+- **缺失值口径**：六个原始 reward 分项逐项保存 availability/reason；当前值均为 null，
+  不补 0。五米事件和距离进展保持 observed diagnostic，不能升级为 causal reward。
+
+2026-07-21 专项为 `16 passed`，含 1 个真实 main 三维质点 3v3、seed 41、1.2 秒 D6 自动
+结果消费样本。D3 全量为 `319 passed, 1 skipped`，唯一 skip 为 optional OR-Tools。
+
+### 仍开放
+
+- **P1 正式 reward 证据**：当前只有命令、采用和观测窗口，没有同 seed paired
+  intervention、counterfactual 或 causal attribution。`formal_d3_runtime_reward` 保持
+  unavailable。
+- **P1 计划级原始分项**：D6 v1 binding window 没有完整提供高威胁覆盖、总代价、未满足
+  槽、计划抖动、过期和安全拒绝的可归因运行结果。现有 `OfflineRewardComponents` 仍是
+  规则教师诊断。
+- **P1 外部验收**：seed 1000-1019、正式 paired shadow、非退化和 multi-seed 学习采用
+  结果未完成。PPO、assist、online authority 保持 false，规则回退为 true。
+- **历史数据覆盖**：冻结 900 episode 生成于 ACK producer 之前，保持不可回填。
+
+本轮没有新增 P0。原“D6 离线 join 尚无 D3 consumer”改为已关闭；“正式可归因 reward”
+继续为 P1，且缺失原因已由版本化合同固定。

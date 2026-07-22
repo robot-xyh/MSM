@@ -1122,3 +1122,34 @@ consumer 因此按明确模块名、类名、精确数据类字段和受支持 s
 最后一条 ACK 的 3 条 binding 均被核对，但没有学习 mode、物理 outcome 或 reward，
 所以三类学习/结果可用性仍为 false。D3 全量结果为 `303 passed, 1 skipped`。冻结
 900-episode 数据不含该 schema，保持 unavailable；PPO、assist 和 authority 不开放。
+
+## 运行结果归因原则（2026-07-21）
+
+计划发布、计划被采用和执行后出现结果是三个不同事实。D3 发布 assignment 只证明命令
+存在；D7 命令及 main ACK 证明某个资源-航迹 binding 在该调度 tick 被消费；D6 离线窗口
+证明指定时间段内观察到了距离或接近事件。后两者之间存在时间先后关系，但仅靠相邻变化
+不能证明结果由该计划造成。
+
+新合同按下列链路建立可审计引用：
+
+```text
+D3 计划来源序号与摘要
+        -> D7 消费序号与摘要
+        -> main ACK 序号和采用状态
+        -> 不重叠的资源-航迹结果窗口
+        -> D6 离线观测诊断
+```
+
+每一层携带 plan id/version、owner、资源、中心 `global_track_id`、联盟角色、时间和
+SHA-256。D5/D7 的局部结果不能改写航迹身份。相同 plan id/version 的再次发布只有在
+执行签名不变且明确标注 evaluation refresh 或 plan refresh 时，才形成新的 occurrence
+窗口；旧版本、重叠窗口和歧义刷新均拒绝。
+
+D6 的五米事件回答“该资源在窗口内是否接近离线映射的指定目标”，有界距离进展回答
+“窗口内最佳距离比起点改善多少”。两项都依赖离线真值评分，只进入 D3 的
+`observed_outcome` 层。正式奖励还需同 seed 配对、反事实结果和因果归因。缺少这些证据时，
+六个规则教师分项逐项标记 unavailable，不补 0，也不调用 `weighted_total()` 冒充运行
+奖励。
+
+专项 16 项及 3v3、seed 41、1.2 秒真实 main 三维质点集成测试已验证该原则的代码合同。
+当前结论是归因边界已实现，正式 reward 尚不可用。PPO、assist 和 authority 保持关闭。

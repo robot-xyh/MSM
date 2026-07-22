@@ -455,3 +455,19 @@ slot 重评分；`rule_cost_matrix_v1` 是 promotion 的唯一成本非退化口
 的来源哈希和控制统计，但不是高威胁 M-to-N 物理协同试验。consumer 源码不导入 main；
 main 集成栈只在 D3 测试中导入。冻结 900-episode 数据仍无运行 ACK；多成员 outcome、
 联盟协同完成和 reward 继续 unavailable，PPO/assist 不开放。
+
+## 27. M-to-N 运行窗口归因（2026-07-21）
+
+新的 D3 归因合同按成员 binding 建窗，因此同一 `global_track_id` 可以合法对应多个
+primary/reserve 资源，同时每个资源仍只能有一个当前窗口。每个成员分别绑定 plan/
+coalition version、角色、owner、D7 消费和 ACK occurrence。资源窗口重叠、旧联盟版本、
+角色不一致或同 identity 执行签名变化均拒绝。
+
+成员进入五米或距离改善只形成该 binding 的 observed diagnostic。合同不会把一个成员的
+结果外推为 coalition completion，也不会把多个同 episode 五米事件相加为协同 reward。
+正式 M-to-N 奖励仍需计划级需求满足、全部 required primary 状态、规则/候选同 seed 配对
+和反事实归因。当前六项原始 reward 分量与 coalition reward 均 unavailable，不补零；
+PPO、assist 和 authority 保持关闭。
+
+该行为包含在 16 项新专项和 D3 全量 `319 passed, 1 skipped` 中。真实 3v3 集成样本验证
+普通 binding 链路，不是高威胁多成员物理协同试验，不能关闭原有 M-to-N 多 seed P1。

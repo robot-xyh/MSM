@@ -1065,3 +1065,36 @@ OR-Tools，零失败满足门限。
    sidecar 提供 outcome/reward。D3 验证器只证明来源与绑定一致。
 3. 同 seed paired shadow、可归因 reward、外部保留 seed 和 promotion gate 未闭合。
    PPO、assist、authority 保持 false；默认规划和安全外壳不变。
+
+## 已采用计划窗口归因计划更新（2026-07-21）
+
+### 本轮完成
+
+1. 增加版本化 `d3_runtime_plan_window_reward_evidence_v1`。适配器只接受已通过 D3
+   `runtime_plan_ack` 验证的不可变 ACK，并用调用方提供的 SHA-256 校验完整 D6 v1 结果。
+2. 将来源计划发布、D7 同 tick 消费、main ACK、D6 观测窗口拆成独立层。输出绑定
+   source/consumption/ACK sequence、plan id/version、owner、resource-target binding、
+   occurrence、执行签名、时间窗和全部来源摘要。
+3. 对整个 D6 窗口集合复核不重叠、ACK 顺序、计划版本单调、同 identity 刷新序号连续、
+   刷新类型和执行签名一致。缺字段、旧版本、错误刷新、窗口重叠和在线真值使用失败关闭。
+4. 固定原始分项可用性清单：`high_threat_coverage`、`rule_total_cost`、
+   `unmet_demand_slots`、`reassignment_churn`、`plan_expired`、`safety_rejections`。当前
+   D6 binding-window 证据不足以给出这些计划级运行分项，因此每项使用 null value 和明确
+   reason，不用 0 代替缺失。
+5. 将五米接近和有界最优距离进展保留为 `observed_outcome`，同时强制
+   `formal_reward_eligible=false`。paired、counterfactual、causal 和 formal reward 当前
+   均 unavailable。
+6. 真实 main 3v3、seed 41、1.2 秒集成样本验证 producer、D6 join 和 D3 consumer 可以
+   对接，且在线真值使用为 0。专项 16 项和 D3 全量 320 项通过零失败门限。
+
+### 后续证据
+
+1. main/D6 需产生同场景、同 seed、同初始状态和同传感器随机数的规则/候选配对运行，
+   明确 intervention、factual/counterfactual 计划和完整 outcome hash。
+2. D6 需补充计划级需求满足、抖动、过期和安全结果的版本化 sidecar。单 binding 距离变化
+   和同 episode 五米事件不能替代这些分项。
+3. 只有 paired、counterfactual、causal、外部保留 seed 和非退化门全部可用后，才讨论
+   正式标量 reward 与 PPO。当前保持 `PPO=false`、`assist=false`、`authority=false`、
+   `rule_fallback=true`。
+4. 冻结 900-episode 数据生成于 ACK producer 之前，保持原样；新证据必须来自新 episode，
+   不得回填旧数据。

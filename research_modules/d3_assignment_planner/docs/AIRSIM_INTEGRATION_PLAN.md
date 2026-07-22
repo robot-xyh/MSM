@@ -451,3 +451,27 @@ truth ID 只进入 D6 离线评分。
 冻结 900-episode 数据没有该 ACK，不能原地回填。新的 AirSim 或三维质点 episode 可以
 生成 ACK sidecar，但 physical outcome 和 reward 必须由 D6 独立生成；运行 ACK 自报
 这两项会被 D3 拒绝。当前 PPO、assist 和在线 authority 均不启用。
+
+## AirSim 结果归因接入（2026-07-21）
+
+新的 D3 适配器已经在三维质点 main runtime 上验证，尚未形成 AirSim 实测证据。AirSim
+episode 若要进入同一合同，main 需要继续保存 D3 plan envelope、D7 guidance envelope、
+`runtime.assignment_plan_ack`、D2 离线身份映射、真值状态、五米事件、场景配置和
+episode manifest。D6 先独立完成 v1 联接并写出完整结果及摘要，D3 再按资源和
+`global_track_id` 消费指定窗口。
+
+AirSim 在线链路不得把 actor 名称、检测真实编号或仿真真值写入 D3 plan、D7 command 或
+ACK。真值只存在于 D6 离线来源中；D3 输出会删除 truth target 和原始事件身份，只保留
+布尔事件、距离进展可用性和来源 SHA-256。若 D6 报告在线真值使用不为 0，D3 直接拒绝。
+
+后续 AirSim 验收至少包括：
+
+1. 同一资源连续计划刷新产生不重叠窗口，plan version 和 occurrence 单调；
+2. command-only、hold、缺 D7 消费、过期 owner/lease 和旧版本不能形成 applied 证据；
+3. 规则与候选策略使用相同场景、seed、初始状态和传感器随机数分别运行，由 D6 输出配对
+   sidecar；
+4. 五米事件和相邻距离改善只作 observed diagnostic，正式 reward 在 paired、
+   counterfactual 和 causal 字段完整前保持 unavailable。
+
+当前验收日期为 2026-07-21，样本为 1 个三维质点 3v3 seed，不是 Blocks、SimpleFlight
+或 ComputerVision 试验。AirSim seed 数、结果值和正式奖励均待验证。

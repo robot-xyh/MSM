@@ -860,7 +860,7 @@ version、真实 applied ACK、outcome 或 stale runtime record。规则教师
 JSON 文件 SHA `62a47df8...17fb` 和内容 SHA `954f3e96...1867` 做跨模块复核；运行时
 owner/version/ACK/outcome 和 paired shadow 应作为新证据生产，不得回填本批正式数据。
 
-## 30. Runtime ACK 消费复核（2026-07-21）
+## 33. Runtime ACK 消费复核（2026-07-21）
 
 D3 已增加版本化、只读的运行计划 ACK 验证器。接口不依赖 main 包，要求提供 ACK、
 D3 来源 envelope、可选 D7 来源 envelope 和预期 `AssignmentPlan`。它复算规范
@@ -882,3 +882,23 @@ fully-bound、control-applied 和 held。
 outcome/reward sidecar 和同 seed paired shadow 仍开放。规则教师 `reward_components`
 不再能被误写为运行 reward，shadow 或 accepted plan 不再能被误写为学习 applied ACK。
 PPO、assist、authority 保持 false。D3 全量结果为 `303 passed, 1 skipped`。
+
+## 34. 运行结果归因复核（2026-07-21）
+
+D6 已提供只读 `runtime-plan-outcome-join.v1`，D3 本轮补齐自身消费边界。新适配器要求
+verified ACK 和完整 D6 结果摘要，按一个资源-`global_track_id` binding 建立来源计划、
+D7 消费、main ACK 和结果窗口的引用。输出保留 owner、版本、三个序号、时间窗、执行
+签名和全部摘要，不复制 D6 的离线真值身份。
+
+复核确认以下行为失败关闭：缺 ACK/owner/字段/摘要、错误资源或航迹、序号倒置、窗口
+重叠、旧版本、刷新类型错误、同 identity 执行签名变化、在线真值使用、自报 reward、
+反事实或因果结果。顶层与 namespaced D3 包路径继续采用受约束类身份兼容，不接受任意
+鸭子类型。
+
+现有六项 `OfflineRewardComponents` 是规则教师值，不能作为运行结果。新输出对六项分别
+写 null 和 reason；D6 的五米事件及距离进展只进入 observed outcome。当前 paired、
+counterfactual、causal、formal reward 全部 unavailable，PPO/assist/authority 保持关闭。
+
+专项 16 项和真实 main 3v3、seed 41、1.2 秒集成样本通过；D3 全量为
+`319 passed, 1 skipped`。下一步由 main/D6 生成规则/候选同 seed 配对 episode 和计划级
+结果 sidecar，再由 D3 定义后续 reward schema 版本；不得在 v1 上放宽门限。

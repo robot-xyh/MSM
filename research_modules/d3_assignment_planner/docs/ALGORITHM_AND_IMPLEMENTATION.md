@@ -1705,3 +1705,61 @@ D3 自动化测试导入，避免形成运行时耦合或循环导入。
 含 3 条 assignment，全部 binding 到 D7，验证后 control-applied=3、held=0；在线 truth
 use=0。D3 全量为 `303 passed, 1 skipped`。冻结 900-episode 数据仍没有该 ACK，不能
 用于 PPO 或 assist 准入。
+
+## 已采用窗口到奖励证据的实现（2026-07-21）
+
+### 输入
+
+`build_runtime_plan_window_reward_evidence(...)` 接收六项输入：经过既有 ACK 校验器生成的
+`AssignmentPlanRuntimeAckEvidence`、ACK 总线序号、D6 v1 结果、D6 结果规范载荷摘要、
+资源编号和中心航迹编号。D3 不直接读取 D6 文件，也不接受 command-only mapping 替代
+已验证 ACK 对象。
+
+来源顺序必须满足：
+
+```text
+source_plan_bus_sequence
+  < consumption_bus_sequence
+  < ack_bus_sequence
+```
+
+现有 ACK 合同要求 D3 计划、D7 消费命令和 ACK 属于同一调度 tick，所以新输出分别保留
+命令、消费和 ACK 时间，同时把结果窗口起点锁定为 ACK 时间。窗口终点由该资源的下一条
+ACK 或 episode 终点确定。
+
+### 集合验证
+
+适配器先校验完整 D6 规范载荷 SHA-256，再验证 v1 顶层字段、11 项来源文件摘要、episode
+摘要、运行 ACK 统计、observed diagnostics、admission 和 audit。随后对所有 binding
+window 执行下列检查：
+
+1. 同一资源窗口按起点和 ACK 序号严格递增；除最后一个闭区间外，前序窗口使用左闭右开，
+   任意重叠均拒绝。
+2. 同 plan id 的版本不能回退。每个 plan id/version 的 occurrence 从 1 连续编号；第 1
+   次必须是新计划 identity，后续只能是 evaluation refresh 或 plan refresh。
+3. 同 identity 刷新的 execution signature 必须相同。资源、`global_track_id`、联盟、角色、
+   guidance mode、gate reason、control-applied 和 held 必须与 ACK 逐项一致。
+4. D6 报告必须保持在线真值使用为 0、来源序号和摘要已验证、审计零违规、PPO/assist/
+   authority 关闭并要求规则回退。D6 或 ACK 自报正式 reward、反事实或因果结果会被拒绝。
+
+### 可用性输出
+
+输出按证据层保存，不做隐式类型转换：
+
+- `command`：D3 来源计划中存在指定 binding；
+- `ack_applied`：D7 命令存在、未 hold 且 main 确认已写回世界；
+- `observed_outcome`：有界最佳距离进展、指定目标五米事件和同资源其他目标五米事件；
+- `paired`、`counterfactual`、`causal`：当前 D6 v1 均为 unavailable；
+- `raw_reward_components`：沿用六项规则教师名称，但当前全部为 null，并给出缺失原因；
+- `formal_reward`：固定为 unavailable，不调用现有离线 `weighted_total()`。
+
+五米事件即使为 true，也只说明该窗口观察到事件。没有配对干预时不能计算计划的边际
+贡献。距离进展同样只是范围 `[-1,1]` 的诊断值，不进入
+`C_final=C_rule+alpha*tanh(delta_C)`，不修改 Hungarian 选边或安全外壳。
+
+### 验证
+
+16 项专项覆盖正常/hold、缺 ACK、owner 缺失、摘要篡改、窗口重叠、刷新错误、版本回退、
+在线真值泄漏、缺字段、自报 reward/反事实/因果、错误 binding、序号错误、双包导入和真实
+main-D6 集成。真实样本为三维质点 3v3、seed 41、1.2 秒。D3 全量为
+`319 passed, 1 skipped`，唯一 skip 是可选 OR-Tools。

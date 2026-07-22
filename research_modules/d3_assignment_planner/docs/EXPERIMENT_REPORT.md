@@ -758,3 +758,41 @@ D3 全量收集 304 项，结果 `303 passed, 1 skipped`，唯一 skip 为 optio
 冻结正式数据仍是 900 episode、1604 决策帧，生成时间早于 ACK producer，因此正式逐样本
 ACK 覆盖率仍为 0。当前结论只证明验证接口和新 producer 的小规模对接可用，不证明学习
 动作收益、物理拦截结果或 reward 归因。
+
+## 运行窗口归因合同验证（2026-07-21）
+
+### 目的
+
+本次验证检查 D3 是否能把一个已验证的计划 ACK 与 D6 的离线观测窗口严格连接，同时避免
+把命令、相邻状态变化或五米事件误写成因果奖励。没有启动 PPO，没有加载 assist，也没有
+改变 Hungarian、代价残差公式和安全外壳。
+
+### 样本与门限
+
+| 项目 | 设置或门限 |
+|---|---|
+| 专项单元测试 | 16 项，要求零失败 |
+| 集成样本 | 三维质点 3v3，seed 41，1.2 秒 |
+| 在线真值使用 | 必须为 0 |
+| 来源关系 | D3 source sequence < D7 consumption sequence < ACK sequence |
+| 窗口 | 同资源不重叠，版本和刷新语义一致 |
+| 正式奖励 | 配对、反事实、因果证据缺失时必须 unavailable |
+| 学习权限 | PPO/assist/authority 必须 false，规则回退必须 true |
+
+### 结果
+
+专项结果为 `16 passed`。真实 main 集成样本由当前 runtime 自动生成 D3 计划、D7 命令、
+ACK 和 D6 `runtime_plan_outcome_join.json`。D3 对最后一条 ACK 的一个 active binding
+完成来源、消费、ACK、owner、资源-航迹、执行签名和时间窗联接，在线真值使用为 0。
+输出中 command 和 ACK applied 可用；观测诊断按 D6 实际状态保留；paired、
+counterfactual、causal 和 formal reward 均不可用。
+
+D3 全量收集 320 项，结果 `319 passed, 1 skipped`。唯一 skip 是当前环境未安装的可选
+OR-Tools 对照。冻结 900 episode/1604 帧正式数据没有新 ACK，本次没有修改或回填这些
+文件。
+
+### 判断
+
+ACK 到 observed outcome 的合同断点已关闭。正式 reward 仍缺计划级运行分项、同 seed
+配对结果、反事实和因果证据，因此尚不能启动 PPO。五米事件和距离改善可用于诊断窗口
+是否有结果，不用于宣称分配策略收益。
