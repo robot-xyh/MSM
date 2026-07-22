@@ -142,13 +142,8 @@ def test_active_risk_seed_1005_publishes_five_tracks_and_replay_audit() -> None:
         if message.topic == "modules.d2.associated_tracks"
     )
 
-    assert [item.payload["track_count"] for item in publications] == [
-        5,
-        6,
-        6,
-        5,
-        5,
-    ]
+    assert publications
+    assert all(item.payload["track_count"] == 5 for item in publications)
     final_ids = tuple(
         item["global_track_id"] for item in publications[-1].payload["tracks"]
     )
@@ -159,10 +154,29 @@ def test_active_risk_seed_1005_publishes_five_tracks_and_replay_audit() -> None:
     assert governance["schema_version"] == (
         "d2-observation-evidence-governance-v1"
     )
-    assert governance["cumulative"]["replay_quarantine_count"] >= 2
-    assert governance["cumulative"]["tentative_stale_drop_count"] == 1
+    assert governance["cumulative"]["replay_quarantine_count"] == 0
+    assert governance["cumulative"]["tentative_stale_drop_count"] == 0
     assert governance["global_track_id_owner"] == "D2_center"
     assert governance["online_truth_used"] is False
+    tracker_summary = runtime.stack.d2.summary()
+    assert tracker_summary["birth_count"] == 5
+    assert tracker_summary["duplicate_coalescence_count"] == 0
+    assert tracker_summary["replay_quarantine_count"] == 0
+    assert tracker_summary["replay_coast_count"] == (
+        tracker_summary["replay_quarantine_count"]
+    )
+    assert result.observation_governance_audit[
+        "d2_finalize_unchanged_posterior_skip_count"
+    ] in {0, 1}
+    assert result.observation_governance_audit[
+        "d2_finalize_coalesced_release_count"
+    ] >= 1
+    finalize_timing = next(
+        item
+        for item in result.stage_timings
+        if item.stage == "module.d2_association_finalize"
+    )
+    assert finalize_timing.call_count == 1
     assert result.summary["online_truth_use_count"] == 0
 
 

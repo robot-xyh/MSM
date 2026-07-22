@@ -248,6 +248,43 @@ def test_5v5_online_stack_connects_d1_to_d7_without_truth_identity(tmp_path) -> 
         "rule_fallback_required": True,
         "status": "runtime_observed_diagnostic_only_admission_closed",
     }
+    governance = result.observation_governance_audit
+    assert governance is not None
+    assert governance["online_truth_use_count"] == 0
+    assert governance["d1_scan_input"]["closed"] is True
+    assert governance["d1_scan_input"]["current_buffered_scan_count"] == 0
+    ledger = governance["d2_claim_ledger"]
+    assert ledger["current_count"] <= ledger["max_count"]
+    assert ledger["peak_count"] <= ledger["max_count"]
+    governance_manifest = json.loads(
+        (
+            tmp_path
+            / "observation_governance"
+            / "observation_governance_manifest.json"
+        ).read_text(encoding="utf-8")
+    )
+    governance_online = json.loads(
+        (
+            tmp_path
+            / "observation_governance"
+            / "observation_governance_online_audit.json"
+        ).read_text(encoding="utf-8")
+    )
+    governance_aggregate = json.loads(
+        (
+            tmp_path
+            / "observation_governance"
+            / "d6_report"
+            / "observation_governance_aggregate.json"
+        ).read_text(encoding="utf-8")
+    )
+    assert governance_manifest["online_truth_use_count"] == 0
+    assert governance_online["online_truth_use_count"] == 0
+    assert governance_online["d1_scan_oosm_audit"]["metrics"][
+        "current_oosm_buffer_count"
+    ]["value"] == 0
+    assert governance_aggregate["episode_count"] == 1
+    assert governance_aggregate["truth_isolation"]["online_truth_use_count"] == 0
 
 
 def test_d6_batch_aggregates_distinct_seed_episode_artifacts(tmp_path) -> None:
@@ -298,14 +335,16 @@ def test_200v200_stack_uses_sparse_candidates_and_commands_every_assignment() ->
         resource_count=200,
         recon_count=8,
         region_count=8,
-        duration_s=0.25,
+        duration_s=0.45,
         seed=17,
         radar_detection_probability=1.0,
         acoustic_enabled=False,
         visual_enabled=False,
         communication_enabled=False,
     )
-    stack = IntegratedScalableModuleStack()
+    stack = IntegratedScalableModuleStack(
+        IntegratedStackConfig(d1_scan_max_lateness_s=0.0)
+    )
 
     result = run_episode(config, module_stack=stack)
 
@@ -328,7 +367,18 @@ def test_center_failure_reissues_a_secondary_owned_plan_before_guidance_continue
         seed=3,
         duration_s=1.2,
     )
-    stack = IntegratedScalableModuleStack()
+    config = replace(
+        config,
+        metadata={
+            **config.metadata,
+            "fault_schedule": [
+                {"time_s": 0.6, "component": "center", "action": "failed"}
+            ],
+        },
+    )
+    stack = IntegratedScalableModuleStack(
+        IntegratedStackConfig(d1_scan_max_lateness_s=0.0)
+    )
 
     result = run_episode(config, module_stack=stack)
 
@@ -356,6 +406,9 @@ def test_secondary_failure_reissues_a_distributed_regional_plan() -> None:
         seed=4,
         duration_s=4.4,
     )
+    # Radar arrives later than the faster vision stream in this scenario. Keep
+    # the production lateness window so valid radar scans survive reordering
+    # while the distributed handover is exercised.
     stack = IntegratedScalableModuleStack()
 
     result = run_episode(config, module_stack=stack)
@@ -408,11 +461,13 @@ def test_two_secondary_nodes_publish_one_multi_owner_regional_plan() -> None:
         visual_enabled=False,
         metadata={
             "fault_schedule": [
-                {"time_s": 0.4, "component": "center", "action": "failed"}
+                {"time_s": 0.6, "component": "center", "action": "failed"}
             ]
         },
     )
-    stack = IntegratedScalableModuleStack()
+    stack = IntegratedScalableModuleStack(
+        IntegratedStackConfig(d1_scan_max_lateness_s=0.0)
+    )
 
     result = run_episode(config, module_stack=stack)
 
@@ -452,7 +507,18 @@ def test_regional_authority_adapter_rejects_incomplete_d4_evidence(
         seed=3,
         duration_s=1.2,
     )
-    stack = IntegratedScalableModuleStack()
+    config = replace(
+        config,
+        metadata={
+            **config.metadata,
+            "fault_schedule": [
+                {"time_s": 0.6, "component": "center", "action": "failed"}
+            ],
+        },
+    )
+    stack = IntegratedScalableModuleStack(
+        IntegratedStackConfig(d1_scan_max_lateness_s=0.0)
+    )
     run_episode(config, module_stack=stack)
 
     target_ids = {track.global_track_id for track in stack.latest_d2_tracks}
@@ -542,6 +608,7 @@ def test_d4_advisory_bridge_rejects_replay_and_strict_expiry() -> None:
         visual_enabled=False,
     )
     stack = IntegratedScalableModuleStack(
+        IntegratedStackConfig(d1_scan_max_lateness_s=0.0),
         d4_region_advisor=_assist_region_advisor(),
         d4_unseen_seed_count=1,
     )
@@ -575,6 +642,7 @@ def test_d4_advisory_bridge_rejects_replay_and_strict_expiry() -> None:
     )
 
     expiry_stack = IntegratedScalableModuleStack(
+        IntegratedStackConfig(d1_scan_max_lateness_s=0.0),
         d4_region_advisor=_assist_region_advisor(),
         d4_unseen_seed_count=1,
     )
@@ -609,6 +677,7 @@ def test_fault_generation_blocks_d4_advisory_before_gate_consumption() -> None:
         visual_enabled=False,
     )
     stack = IntegratedScalableModuleStack(
+        IntegratedStackConfig(d1_scan_max_lateness_s=0.0),
         d4_region_advisor=_assist_region_advisor(),
         d4_unseen_seed_count=1,
     )

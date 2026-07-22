@@ -61,16 +61,24 @@ def test_reserved_seed_runner_emits_forty_fail_closed_arms(tmp_path: Path) -> No
         == len(item.offline_track_truth_mapping)
         for item in execution.sources
     )
-    assert all(
-        len(item.intervention_global_tracks) == item.scenario_config.target_count
-        and len(item.planning_target_identity_bridge)
-        == item.scenario_config.target_count
-        and len(item.planning_resource_identity_bridge)
-        == item.scenario_config.resource_count
-        and len(item.offline_track_truth_mapping)
-        == item.scenario_config.target_count
-        for item in execution.sources
+    # The intervention inventory is the truth-free online D2 inventory at the
+    # selected frame. A missed target must remain absent instead of being
+    # backfilled from evaluator truth.
+    for item in execution.sources:
+        track_count = len(item.intervention_global_tracks)
+        assert 0 < track_count <= item.scenario_config.target_count
+        assert len(item.planning_target_identity_bridge) == track_count
+        assert len(item.offline_track_truth_mapping) == track_count
+        assert len(item.planning_resource_identity_bridge) == (
+            item.scenario_config.resource_count
+        )
+    observed_track_count = sum(
+        len(item.intervention_global_tracks) for item in execution.sources
     )
+    configured_target_count = sum(
+        item.scenario_config.target_count for item in execution.sources
+    )
+    assert observed_track_count / configured_target_count >= 0.95
     source = execution.sources[0]
     target_bridge = source.planning_target_identity_bridge
     resource_bridge = source.planning_resource_identity_bridge

@@ -70,6 +70,7 @@ class EpisodeResult:
     d1_consistency_evidence_records: tuple[Any, ...]
     stage_timings: tuple[StageTiming, ...]
     summary: dict[str, Any]
+    observation_governance_audit: dict[str, Any] | None = None
     output_paths: dict[str, Path] | None = None
 
 
@@ -396,11 +397,54 @@ class Scalable3DEpisodeRunner:
                 if not diagnostics.finite_state:
                     raise FloatingPointError(f"non-finite world state at {diagnostics.timestamp:.3f}s")
 
+        if self.module_stack is not None:
+            finalizer = getattr(self.module_stack, "finalize", None)
+            if callable(finalizer):
+                started = time.perf_counter()
+                final_output = finalizer(float(timestamps[-1])).validated(
+                    resource_count=self.config.resource_count,
+                    recon_count=self.config.recon_count,
+                )
+                if final_output.camera_commands:
+                    raise ValueError(
+                        "module finalization must not emit camera commands"
+                    )
+                if np.any(final_output.interceptor_acceleration_ned) or np.any(
+                    final_output.recon_acceleration_ned
+                ):
+                    raise ValueError(
+                        "module finalization must not emit motion commands"
+                    )
+                publication_started = time.perf_counter()
+                for publication in final_output.publications:
+                    self.bus.publish(
+                        topic=publication.topic,
+                        source=publication.source,
+                        timestamp=float(timestamps[-1]),
+                        schema_version=publication.schema_version,
+                        payload=publication.payload,
+                        copy_payload=publication.copy_payload,
+                    )
+                    module_publication_count += 1
+                    module_publication_topic_counts[publication.topic] = (
+                        module_publication_topic_counts.get(publication.topic, 0)
+                        + 1
+                    )
+                timing.add(
+                    "module_publication_bus_finalize",
+                    time.perf_counter() - publication_started,
+                )
+                last_module_diagnostics = dict(final_output.diagnostics)
+                timing.add("module_stack_finalize", time.perf_counter() - started)
+
         elapsed = time.perf_counter() - episode_start
         diagnostics = self.world.diagnostics()
         communication_stats = self.communication.stats()
         messages = self.bus.messages()
         d1_consistency_records = _d1_consistency_evidence_records(
+            self.module_stack
+        )
+        observation_governance_audit = _observation_governance_audit(
             self.module_stack
         )
         learning_artifact_counts = _learning_artifact_counts(self.module_stack)
@@ -506,6 +550,7 @@ class Scalable3DEpisodeRunner:
             d1_consistency_evidence_records=d1_consistency_records,
             stage_timings=timing.records(),
             summary=summary,
+            observation_governance_audit=observation_governance_audit,
         )
 
 
@@ -579,6 +624,7 @@ def run_episode(
         ),
         stage_timings=result.stage_timings,
         summary=result.summary,
+        observation_governance_audit=result.observation_governance_audit,
         output_paths=paths,
     )
 
@@ -685,6 +731,20 @@ def _d1_consistency_evidence_records(
     if not callable(provider):
         return ()
     return tuple(provider())
+
+
+def _observation_governance_audit(
+    module_stack: ScalableModuleStack | None,
+) -> dict[str, Any] | None:
+    provider = getattr(module_stack, "observation_governance_audit", None)
+    if not callable(provider):
+        return None
+    audit = provider()
+    if not isinstance(audit, Mapping):
+        raise TypeError("observation governance audit must be a mapping")
+    if int(audit.get("online_truth_use_count", -1)) != 0:
+        raise ValueError("observation governance audit reports online truth use")
+    return dict(audit)
 
 
 def _refresh_camera_runtime_states(

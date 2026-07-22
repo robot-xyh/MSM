@@ -29,9 +29,26 @@ def write_episode_outputs(
         output_dir / "scenario_config.json", result.config.to_dict()
     )
     paths["summary"] = _write_json(output_dir / "summary.json", result.summary)
+    if result.observation_governance_audit is not None:
+        paths["observation_governance_audit"] = _write_json(
+            output_dir / "observation_governance_audit.json",
+            result.observation_governance_audit,
+        )
     paths["online_observations"] = _write_online_jsonl(
         output_dir / "online_observations.jsonl", result
     )
+    if result.observation_governance_audit is not None:
+        from .observation_governance_reporting import (
+            write_episode_observation_governance_outputs,
+        )
+
+        paths.update(
+            write_episode_observation_governance_outputs(
+                result,
+                output_dir / "observation_governance",
+                source_bus_path=paths["online_observations"],
+            )
+        )
     paths["offline_truth_labels"] = _write_truth_jsonl(
         output_dir / "offline_truth_labels.jsonl", result
     )

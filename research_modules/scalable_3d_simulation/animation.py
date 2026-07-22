@@ -119,11 +119,18 @@ def ensure_mplot3d(matplotlib_module: object) -> None:
     if bundled_toolkits.is_dir() and str(bundled_toolkits) not in mpl_toolkits.__path__:
         mpl_toolkits.__path__.insert(0, str(bundled_toolkits))
     try:
-        importlib.import_module("mpl_toolkits.mplot3d")
+        mplot3d = importlib.import_module("mpl_toolkits.mplot3d")
     except (ImportError, ModuleNotFoundError) as exc:
         raise RuntimeError(
             "the active Matplotlib installation does not provide a compatible mplot3d toolkit"
         ) from exc
+
+    # Matplotlib registers Axes3D while importing matplotlib.projections. If a
+    # mismatched system mpl_toolkits was found first, that initial registration
+    # is skipped; importing the compatible toolkit later does not replay it.
+    projections = importlib.import_module("matplotlib.projections")
+    if "3d" not in projections.get_projection_names():
+        projections.register_projection(mplot3d.Axes3D)
 
 
 def _ned_to_plot(values: np.ndarray) -> np.ndarray:

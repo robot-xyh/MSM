@@ -8,7 +8,7 @@ shared episode clock and translates only versioned, truth-free DTOs.
 
 from __future__ import annotations
 
-from collections import Counter
+from collections import Counter, deque
 from dataclasses import dataclass, replace
 import math
 from time import perf_counter
@@ -17,9 +17,15 @@ from typing import Any, Iterable, Mapping
 import numpy as np
 
 from research_modules.d1_sensor_fusion.src.d1_sensor_fusion import (
+    ScanInputConfig,
+    ScanInputOrganizer,
     Scalable3DFusionAdapter,
+    SensorScanFrame,
+    sensor_observations_from_online_batch,
 )
 from research_modules.d2_data_association.d2_data_association import (
+    ObservationClaimLedgerConfig,
+    ReplayCoastConfig,
     Scalable3DTracker,
     detections3d_from_d1_global_tracks,
 )
@@ -114,6 +120,13 @@ class IntegratedStackConfig:
     d5_active_vision_mode: str = "disabled"
     d5_active_vision_zoom_fov_deg: float = 30.0
     d5_recon_track_cues_enabled: bool = False
+    d1_scan_max_lateness_s: float = 0.5
+    d1_scan_max_buffer_residence_s: float = 5.0
+    d2_claim_retention_s: float = 30.0
+    d2_claim_max_lateness_s: float = 5.0
+    d2_claim_capacity_safety_factor: float = 2.0
+    d2_replay_coast_grace_s: float = 0.5
+    d1_scan_event_log_limit: int = 4_096
 
     def __post_init__(self) -> None:
         if self.assignment_lease_multiplier <= 1.0:
@@ -134,6 +147,29 @@ class IntegratedStackConfig:
         object.__setattr__(self, "d5_active_vision_mode", active_mode)
         if not 1.0 < float(self.d5_active_vision_zoom_fov_deg) < 179.0:
             raise ValueError("d5_active_vision_zoom_fov_deg must be in (1, 179)")
+        for name in (
+            "d1_scan_max_lateness_s",
+            "d1_scan_max_buffer_residence_s",
+            "d2_claim_retention_s",
+            "d2_claim_max_lateness_s",
+            "d2_replay_coast_grace_s",
+        ):
+            value = float(getattr(self, name))
+            if not np.isfinite(value) or value < 0.0:
+                raise ValueError(f"{name} must be finite and non-negative")
+        if self.d1_scan_max_buffer_residence_s < self.d1_scan_max_lateness_s:
+            raise ValueError(
+                "d1_scan_max_buffer_residence_s must cover d1_scan_max_lateness_s"
+            )
+        if (
+            not np.isfinite(self.d2_claim_capacity_safety_factor)
+            or self.d2_claim_capacity_safety_factor < 1.0
+        ):
+            raise ValueError(
+                "d2_claim_capacity_safety_factor must be finite and at least one"
+            )
+        if int(self.d1_scan_event_log_limit) <= 0:
+            raise ValueError("d1_scan_event_log_limit must be positive")
         for name in ("secondary_coverage_ratio", "secondary_network_full_view_rate"):
             value = float(getattr(self, name))
             if not 0.0 <= value <= 1.0:
@@ -217,6 +253,7 @@ class IntegratedScalableModuleStack:
         )
         self.config: ScenarioConfig | None = None
         self.d1: Scalable3DFusionAdapter | None = None
+        self.d1_scan_input: ScanInputOrganizer | None = None
         self.d2: Scalable3DTracker | None = None
         self.d3: AssignmentPlanner | None = None
         self.d4: RegionalFailoverCoordinator | None = None
@@ -259,14 +296,37 @@ class IntegratedScalableModuleStack:
         ] = []
         self._d2_identity_lineage_by_track: dict[str, tuple[dict[str, Any], ...]] = {}
         self._d2_observation_replay_generation: dict[str, int] = {}
+        self._latest_d2_input_signature: tuple[tuple[Any, ...], ...] | None = None
+        self._d2_finalize_unchanged_posterior_skip_count = 0
+        self._d2_finalize_coalesced_release_count = 0
         self._d1_latest_lineage_by_observation: dict[str, dict[str, Any]] = {}
+        self._d1_pending_lineage_by_track: dict[
+            str, dict[str, dict[str, Any]]
+        ] = {}
+        self._d1_scan_events: deque[dict[str, Any]] = deque(
+            maxlen=int(self.stack_config.d1_scan_event_log_limit)
+        )
+        self._d1_scan_event_total_count = 0
+        self._d1_scan_input_closed = False
         self._stage_wall_time_s: dict[str, float] = {}
         self._stage_call_count: dict[str, int] = {}
 
     def reset(self, config: ScenarioConfig) -> None:
         self.config = config
         self.d1 = Scalable3DFusionAdapter()
-        self.d2 = Scalable3DTracker()
+        self.d1_scan_input = ScanInputOrganizer(
+            _scan_input_config(config, self.stack_config)
+        )
+        self.d2 = Scalable3DTracker(
+            observation_claim_config=_observation_claim_config(
+                config,
+                self.stack_config,
+            ),
+            replay_coast_config=ReplayCoastConfig(
+                config_version="main-scalable3d-replay-coast-policy-v1",
+                grace_seconds=self.stack_config.d2_replay_coast_grace_s,
+            ),
+        )
         self.d3 = AssignmentPlanner(
             config=PlannerConfig.scalable_3d(
                 max_candidate_edges_per_target=(
@@ -344,7 +404,14 @@ class IntegratedScalableModuleStack:
         self._d5_active_vision_learning_frames.clear()
         self._d2_identity_lineage_by_track.clear()
         self._d2_observation_replay_generation.clear()
+        self._latest_d2_input_signature = None
+        self._d2_finalize_unchanged_posterior_skip_count = 0
+        self._d2_finalize_coalesced_release_count = 0
         self._d1_latest_lineage_by_observation.clear()
+        self._d1_pending_lineage_by_track.clear()
+        self._d1_scan_events.clear()
+        self._d1_scan_event_total_count = 0
+        self._d1_scan_input_closed = False
         self._stage_wall_time_s.clear()
         self._stage_call_count.clear()
 
@@ -378,11 +445,27 @@ class IntegratedScalableModuleStack:
         d1_updated = False
         for batch in arrived:
             started = perf_counter()
-            result = self.d1.process_online_sensor_batch(batch)
-            self._record_timing("d1_fusion", perf_counter() - started)
-            self.latest_d1_tracks = tuple(result.tracks)
-            d1_updated = True
-            publications.append(self._d1_publication(result, batch, now))
+            observations = sensor_observations_from_online_batch(batch)
+            scan_result = self.d1_scan_input.ingest(
+                SensorScanFrame.from_observations(
+                    observations,
+                    scan_id=batch.batch_id,
+                )
+            )
+            self._record_timing("d1_scan_input", perf_counter() - started)
+            d1_updated = bool(
+                self._consume_d1_scan_result(
+                    scan_result,
+                    publications=publications,
+                    publication_timestamp=now,
+                )
+                or d1_updated
+            )
+
+        started = perf_counter()
+        scan_clock_result = self.d1_scan_input.advance_arrival_time(now)
+        self._record_timing("d1_scan_input_clock", perf_counter() - started)
+        self._record_d1_scan_events(scan_clock_result.events)
 
         if (
             d1_updated
@@ -396,6 +479,7 @@ class IntegratedScalableModuleStack:
             if detections:
                 d2_timestamp = max(item.measurement_timestamp for item in detections)
                 self.latest_d2_result = self.d2.step(detections, d2_timestamp)
+                self._latest_d2_input_signature = _d2_input_signature(detections)
                 self.latest_d2_tracks = tuple(self.d2.active_tracks())
                 self._update_d2_identity_lineage(
                     self.latest_d2_result,
@@ -451,10 +535,15 @@ class IntegratedScalableModuleStack:
                 center_health=center_health,
                 secondary_failed=secondary_failed,
             )
-            if self.stack_config.capture_learning_artifacts:
+            if (
+                self.stack_config.capture_learning_artifacts
+                and self.d3.latest_planning_evidence is not None
+            ):
                 self._d3_learning_frames.append(self.d3.latest_planning_evidence)
-            publications.append(self._d3_publication(now))
-            publications.append(self._d4_publication(now))
+            if self.latest_plan is not None:
+                publications.append(self._d3_publication(now))
+            if self.latest_d4_decision is not None:
+                publications.append(self._d4_publication(now))
             if self.latest_d4_region_consumption is not None:
                 publications.append(self._d4_region_consumption_publication(now))
             if self.latest_d4_region_advice is not None:
@@ -503,6 +592,171 @@ class IntegratedScalableModuleStack:
             publications=tuple(publications),
             diagnostics=self._diagnostics(now),
         )
+
+    def finalize(self, timestamp: float) -> RuntimeStepOutput:
+        """Flush finite scan tails after the episode stops producing input.
+
+        Finalization publishes every ordered D1 tail result, then sends only
+        the final fused posterior to D2. It never emits a camera or motion
+        command, so no post-episode control is applied to the world.
+        """
+
+        config = self._require_ready()
+        now = float(timestamp)
+        if not np.isfinite(now) or now < 0.0:
+            raise ValueError("finalization timestamp must be finite and non-negative")
+        if self._d1_scan_input_closed:
+            return RuntimeStepOutput(
+                interceptor_acceleration_ned=np.zeros(
+                    (config.resource_count, 3), dtype=float
+                ),
+                recon_acceleration_ned=np.zeros((config.recon_count, 3), dtype=float),
+                publications=(),
+                diagnostics=self._diagnostics(now),
+            )
+
+        publications: list[RuntimePublication] = []
+        started = perf_counter()
+        scan_result = self.d1_scan_input.close()
+        self._record_timing("d1_scan_input_finalize", perf_counter() - started)
+        self._consume_d1_scan_result(
+            scan_result,
+            publications=publications,
+            publication_timestamp=now,
+        )
+        released_count = len(scan_result.released_scans)
+        if released_count:
+            self._d2_finalize_coalesced_release_count += max(0, released_count - 1)
+            self._associate_latest_d1_tracks(
+                publications,
+                publication_timestamp=now,
+                timing_stage="d2_association_finalize",
+                skip_unchanged_posterior=True,
+            )
+        self._d1_scan_input_closed = True
+
+        return RuntimeStepOutput(
+            interceptor_acceleration_ned=np.zeros(
+                (config.resource_count, 3), dtype=float
+            ),
+            recon_acceleration_ned=np.zeros((config.recon_count, 3), dtype=float),
+            publications=tuple(publications),
+            diagnostics=self._diagnostics(now),
+        )
+
+    def observation_governance_audit(self) -> dict[str, Any]:
+        """Return a truth-free public snapshot for main/D6 persistence."""
+
+        self._require_ready()
+        d1_audit = self.d1_scan_input.audit_summary().to_dict()
+        d2_summary = self.d2.summary()
+        return {
+            "schema_version": "scalable3d-observation-governance-runtime-v1",
+            "d1_scan_input": d1_audit,
+            "d1_scan_event_total_count": self._d1_scan_event_total_count,
+            "d1_scan_event_retained_count": len(self._d1_scan_events),
+            "d1_scan_event_log_limit": self._d1_scan_events.maxlen,
+            "d1_scan_events": tuple(self._d1_scan_events),
+            "d2_claim_ledger": dict(
+                d2_summary.get("observation_claim_ledger", {})
+            ),
+            "d2_observation_rejection_reason_counts": dict(
+                d2_summary.get("observation_rejection_reason_counts", {})
+            ),
+            "d2_duplicate_coalescence_count": int(
+                d2_summary.get("duplicate_coalescence_count", 0)
+            ),
+            "d2_replay_quarantine_count": int(
+                d2_summary.get("replay_quarantine_count", 0)
+            ),
+            "d2_replay_coast_count": int(
+                d2_summary.get("replay_coast_count", 0)
+            ),
+            "d2_replay_coast_reason_counts": dict(
+                d2_summary.get("replay_coast_reason_counts", {})
+            ),
+            "d2_replay_coast_config": dict(
+                d2_summary.get("replay_coast_config", {})
+            ),
+            "d2_finalize_unchanged_posterior_skip_count": int(
+                self._d2_finalize_unchanged_posterior_skip_count
+            ),
+            "d2_finalize_coalesced_release_count": int(
+                self._d2_finalize_coalesced_release_count
+            ),
+            "d2_timestamp_conflict_count": int(
+                d2_summary.get("observation_timestamp_conflict_count", 0)
+            ),
+            "d2_tracker_state_timestamp": self.d2.state_timestamp,
+            "online_truth_use_count": 0,
+        }
+
+    def _consume_d1_scan_result(
+        self,
+        scan_result: Any,
+        *,
+        publications: list[RuntimePublication],
+        publication_timestamp: float,
+    ) -> bool:
+        self._record_d1_scan_events(scan_result.events)
+        updated = False
+        for released_scan in scan_result.released_scans:
+            started = perf_counter()
+            result = self.d1.process_scan_batch(released_scan.observations)
+            self._record_timing("d1_fusion", perf_counter() - started)
+            self.latest_d1_tracks = tuple(result.tracks)
+            publications.append(
+                self._d1_publication(
+                    result,
+                    released_scan,
+                    publication_timestamp,
+                )
+            )
+            updated = True
+        return updated
+
+    def _record_d1_scan_events(self, events: Iterable[Any]) -> None:
+        records = tuple(item.to_dict() for item in events)
+        self._d1_scan_event_total_count += len(records)
+        self._d1_scan_events.extend(records)
+
+    def _associate_latest_d1_tracks(
+        self,
+        publications: list[RuntimePublication],
+        *,
+        publication_timestamp: float,
+        timing_stage: str,
+        skip_unchanged_posterior: bool = False,
+    ) -> bool:
+        if not self.latest_d1_tracks:
+            return False
+        started = perf_counter()
+        _, detections = detections3d_from_d1_global_tracks(self.latest_d1_tracks)
+        if not detections:
+            self._record_timing(timing_stage, perf_counter() - started)
+            return False
+        input_signature = _d2_input_signature(detections)
+        if (
+            skip_unchanged_posterior
+            and input_signature == self._latest_d2_input_signature
+        ):
+            self._d2_finalize_unchanged_posterior_skip_count += 1
+            self._record_timing(timing_stage, perf_counter() - started)
+            return False
+        d2_timestamp = max(item.measurement_timestamp for item in detections)
+        if (
+            self.d2.state_timestamp is not None
+            and d2_timestamp + _EPS < self.d2.state_timestamp
+        ):
+            self._record_timing(timing_stage, perf_counter() - started)
+            return False
+        self.latest_d2_result = self.d2.step(detections, d2_timestamp)
+        self._latest_d2_input_signature = input_signature
+        self.latest_d2_tracks = tuple(self.d2.active_tracks())
+        self._update_d2_identity_lineage(self.latest_d2_result, detections)
+        publications.append(self._d2_publication(publication_timestamp))
+        self._record_timing(timing_stage, perf_counter() - started)
+        return True
 
     def _run_assignment_and_failover(
         self,
@@ -1693,6 +1947,10 @@ class IntegratedScalableModuleStack:
                 "regional_d3_unassigned_target_has_executable_binding"
             )
         executable_target_ids = target_ids - explicitly_unassigned_targets
+        if not executable_target_ids:
+            raise RegionalPlanAuthorityError(
+                "regional_d4_no_executable_targets"
+            )
         if any(
             target_id not in assignments_by_target
             for target_id in executable_target_ids
@@ -2630,16 +2888,22 @@ class IntegratedScalableModuleStack:
                 secondary_failed = True
         return center, secondary_failed
 
-    def _d1_publication(self, result: Any, batch: OnlineSensorBatch, now: float) -> RuntimePublication:
+    def _d1_publication(self, result: Any, batch: Any, now: float) -> RuntimePublication:
         evidence_by_observation = {
             item.observation_id: item
             for item in self.d1.consistency_evidence_records()
+        }
+        source_observations = tuple(
+            getattr(batch, "measurements", getattr(batch, "observations", ()))
+        )
+        source_observation_ids = {
+            str(measurement.observation_id) for measurement in source_observations
         }
         observation_timestamps = {
             str(measurement.observation_id): float(
                 measurement.measurement_timestamp
             )
-            for measurement in batch.measurements
+            for measurement in source_observations
         }
         for track in result.tracks:
             metadata = getattr(track, "metadata", {})
@@ -2656,6 +2920,23 @@ class IntegratedScalableModuleStack:
                 if evidence is None
                 else evidence.measurement_timestamp
             )
+
+        d1_track_id_by_observation: dict[str, str] = {}
+        for observation_id in source_observation_ids:
+            evidence = evidence_by_observation.get(observation_id)
+            if evidence is None or evidence.source_global_track_id is None:
+                continue
+            d1_track_id_by_observation[observation_id] = str(
+                evidence.source_global_track_id
+            )
+        for track in result.tracks:
+            metadata = getattr(track, "metadata", {})
+            if not isinstance(metadata, Mapping):
+                continue
+            observation_id = str(metadata.get("latest_observation_id", "")).strip()
+            d1_track_id = str(getattr(track, "global_track_id", "")).strip()
+            if observation_id in source_observation_ids and d1_track_id:
+                d1_track_id_by_observation[observation_id] = d1_track_id
 
         observation_lineage = []
         for observation_id, measurement_timestamp in observation_timestamps.items():
@@ -2685,13 +2966,21 @@ class IntegratedScalableModuleStack:
             self._d1_latest_lineage_by_observation[observation_id] = dict(
                 lineage_record
             )
+            d1_track_id = d1_track_id_by_observation.get(observation_id)
+            if d1_track_id is not None:
+                self._d1_pending_lineage_by_track.setdefault(
+                    d1_track_id,
+                    {},
+                )[observation_id] = dict(lineage_record)
         return RuntimePublication(
             topic="modules.d1.fused_tracks",
             source="D1",
             schema_version="d1-scalable3d-fusion-v1",
             payload={
                 "timestamp": now,
-                "batch_id": batch.batch_id,
+                "batch_id": str(
+                    getattr(batch, "batch_id", getattr(batch, "scan_id", ""))
+                ),
                 "sensor_id": batch.sensor_id,
                 "track_count": len(result.tracks),
                 "tracks": [_track_summary(track) for track in result.tracks],
@@ -2818,6 +3107,21 @@ class IntegratedScalableModuleStack:
                                 )
                             ),
                         },
+                        "claim_ledger": dict(
+                            tracker_summary.get("observation_claim_ledger", {})
+                        ),
+                        "replay_coast_count": int(
+                            association_metadata.get("replay_coast_count", 0)
+                        ),
+                        "replay_coast_reason_counts": dict(
+                            association_metadata.get(
+                                "replay_coast_reason_counts",
+                                {},
+                            )
+                        ),
+                        "replay_coast_config": dict(
+                            tracker_summary.get("replay_coast_config", {})
+                        ),
                         "global_track_id_owner": "D2_center",
                         "online_truth_used": False,
                     },
@@ -2853,6 +3157,14 @@ class IntegratedScalableModuleStack:
 
         self._d2_identity_lineage_by_track.clear()
         detection_by_id = {item.detection_id: item for item in detections}
+        d1_track_id_by_detection = {
+            detection.detection_id: str(source_track.global_track_id)
+            for source_track, detection in zip(
+                self.latest_d1_tracks,
+                detections,
+                strict=True,
+            )
+        }
         for detection_id, global_track_id in dict(
             result.metadata.get("detection_to_track", {})
         ).items():
@@ -2864,17 +3176,47 @@ class IntegratedScalableModuleStack:
             ).strip()
             if not observation_id:
                 continue
-            lineage_record = self._d1_latest_lineage_by_observation.get(
-                observation_id
+            d1_track_id = d1_track_id_by_detection.get(str(detection_id))
+            pending_by_observation = self._d1_pending_lineage_by_track.get(
+                d1_track_id or "",
+                {},
             )
-            if lineage_record is None:
-                continue
-            self._d2_observation_replay_generation[observation_id] = int(
-                lineage_record["replay_generation"]
+            lineage_records = tuple(
+                sorted(
+                    pending_by_observation.values(),
+                    key=lambda item: (
+                        float(item["measurement_timestamp"]),
+                        str(item["observation_id"]),
+                    ),
+                )
             )
-            self._d2_identity_lineage_by_track[str(global_track_id)] = (
-                dict(lineage_record),
+            if not lineage_records:
+                latest_record = self._d1_latest_lineage_by_observation.get(
+                    observation_id
+                )
+                if latest_record is None:
+                    continue
+                lineage_records = (latest_record,)
+
+            canonical_id = str(global_track_id)
+            accumulated = list(
+                self._d2_identity_lineage_by_track.get(canonical_id, ())
             )
+            emitted_ids = {
+                str(item["observation_id"]) for item in accumulated
+            }
+            for lineage_record in lineage_records:
+                emitted_observation_id = str(lineage_record["observation_id"])
+                self._d2_observation_replay_generation[
+                    emitted_observation_id
+                ] = int(lineage_record["replay_generation"])
+                if emitted_observation_id not in emitted_ids:
+                    accumulated.append(dict(lineage_record))
+                    emitted_ids.add(emitted_observation_id)
+                pending_by_observation.pop(emitted_observation_id, None)
+            if d1_track_id and not pending_by_observation:
+                self._d1_pending_lineage_by_track.pop(d1_track_id, None)
+            self._d2_identity_lineage_by_track[canonical_id] = tuple(accumulated)
 
     def _d2_identity_lineage_payload(self, result: Any) -> list[dict[str, Any]]:
         detection_to_track = dict(result.metadata.get("detection_to_track", {}))
@@ -3101,6 +3443,7 @@ class IntegratedScalableModuleStack:
         )
 
     def _diagnostics(self, now: float) -> dict[str, Any]:
+        governance = self.observation_governance_audit()
         return {
             "schema_version": INTEGRATED_STACK_SCHEMA_VERSION,
             "timestamp": now,
@@ -3190,6 +3533,7 @@ class IntegratedScalableModuleStack:
                 and self.latest_plan.metadata.get("regional_hint_applied", False)
             ),
             "learning_runtime": dict(self.learning_runtime_diagnostics),
+            "observation_governance": governance,
             "online_truth_use_count": 0,
             "stage_timings": {
                 stage: {
@@ -3225,12 +3569,76 @@ class IntegratedScalableModuleStack:
         if self.config is None:
             raise RuntimeError("module stack must be reset before step")
         assert self.d1 is not None
+        assert self.d1_scan_input is not None
         assert self.d2 is not None
         assert self.d3 is not None
         assert self.d4 is not None
         assert self.d5 is not None
         assert self.d7 is not None
         return self.config
+
+
+def _scan_input_config(
+    config: ScenarioConfig,
+    stack_config: IntegratedStackConfig,
+) -> ScanInputConfig:
+    scan_rate_hz = 0.0
+    if config.radar_enabled:
+        scan_rate_hz += 1.0 / config.radar_period_s
+    if config.acoustic_enabled:
+        scan_rate_hz += config.acoustic_sensor_count / config.acoustic_period_s
+    if config.visual_enabled:
+        scan_rate_hz += (
+            config.resource_count + config.recon_count
+        ) / config.visual_period_s
+    buffering_horizon_s = max(
+        stack_config.d1_scan_max_lateness_s + config.physics_dt_s,
+        config.physics_dt_s,
+    )
+    maximum_scans = max(
+        1_024,
+        int(math.ceil(2.0 * scan_rate_hz * buffering_horizon_s)),
+    )
+    maximum_observations = max(
+        200_000,
+        maximum_scans * max(1, config.target_count),
+    )
+    return ScanInputConfig(
+        max_lateness_s=stack_config.d1_scan_max_lateness_s,
+        max_buffer_residence_s=stack_config.d1_scan_max_buffer_residence_s,
+        max_buffered_scans=maximum_scans,
+        max_buffered_observations=maximum_observations,
+    )
+
+
+def _observation_claim_config(
+    config: ScenarioConfig,
+    stack_config: IntegratedStackConfig,
+) -> ObservationClaimLedgerConfig:
+    protected_window_s = max(
+        stack_config.d2_claim_retention_s,
+        stack_config.d2_claim_max_lateness_s,
+    )
+    claims_per_window = (
+        config.target_count
+        * protected_window_s
+        / config.association_period_s
+    )
+    maximum_claims = max(
+        4_096,
+        int(
+            math.ceil(
+                claims_per_window
+                * stack_config.d2_claim_capacity_safety_factor
+            )
+        ),
+    )
+    return ObservationClaimLedgerConfig(
+        config_version="main-scalable3d-observation-claim-policy-v1",
+        retention_seconds=stack_config.d2_claim_retention_s,
+        max_count=maximum_claims,
+        max_lateness_seconds=stack_config.d2_claim_max_lateness_s,
+    )
 
 
 def _active_camera_position(
@@ -3347,6 +3755,43 @@ def _vertical_fov_deg(
     return math.degrees(
         2.0 * math.atan(math.tan(0.5 * horizontal) * float(height) / float(width))
     )
+
+
+def _d2_input_signature(detections: Iterable[Any]) -> tuple[tuple[Any, ...], ...]:
+    """Identify new D1 evidence without depending on D1-owned track identity."""
+
+    signature: list[tuple[Any, ...]] = []
+    for detection in detections:
+        raw_metadata = getattr(detection, "metadata", {})
+        metadata = raw_metadata if isinstance(raw_metadata, Mapping) else {}
+        observation_id = str(metadata.get("latest_observation_id", "")).strip()
+        if observation_id:
+            signature.append(
+                (
+                    str(metadata.get("latest_sensor_id", "")),
+                    observation_id,
+                    float(
+                        metadata.get(
+                            "latest_measurement_timestamp",
+                            metadata.get(
+                                "source_measurement_timestamp",
+                                detection.measurement_timestamp,
+                            ),
+                        )
+                    ),
+                    int(metadata.get("hits", 0)),
+                    int(metadata.get("latest_replay_filter_update_count", 0)),
+                )
+            )
+            continue
+        signature.append(
+            (
+                "anonymous_detection",
+                str(detection.detection_id),
+                float(detection.measurement_timestamp),
+            )
+        )
+    return tuple(sorted(signature))
 
 
 def _batch_modality(batch: OnlineSensorBatch) -> str:
