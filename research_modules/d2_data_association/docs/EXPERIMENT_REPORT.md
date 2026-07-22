@@ -645,11 +645,15 @@ GNN/Hungarian、claim ledger、coast 或生命周期算法。
 1583/1583 和 truth use 0；运行时波动使尾部关联为 2.881 s，说明本批时延只能作为
 development 主机样本，不能声明实时服务等级。
 
-## 22. 四规模快速治理标定（2026-07-22）
+## 22. 四规模 formal/clean 治理标定（2026-07-22）
 
-快速 runner 覆盖 20、50、100、200 四个规模，每档 5 个唯一 seed，共 20 个 episode。
-报告明确 `formal_episode_count=0`，全部属于 development。truth 仅在 online step 后由
-evaluator sidecar 使用，在线 truth use 合计为 0。
+快速 runner 的初次 development 结果已在 clean 提交
+`e4d66db02a0b8f1b867a0e81b4a73de84588426b` 上复跑。正式批次覆盖 20、50、
+100、200 四个规模，每档 5 个唯一 seed，共 20 个 episode。各档
+`formal_episode_count=5`，合计 20/20 formal；20 个 manifest 均记录
+`repository_dirty=false` 和同一提交。truth 仅在 online step 之后由 evaluator
+sidecar 使用，20 个 sidecar 均标记 `evaluator_only=true`、`online_consumed=false`，
+在线 truth use 合计为 0。
 
 | 规模 | seed 数 | claim peak | capacity | safe evicted | overflow / too-old |
 | ---: | ---: | ---: | ---: | ---: | ---: |
@@ -659,7 +663,11 @@ evaluator sidecar 使用，在线 truth use 合计为 0。
 | 200 | 5 | 24170 | 48000 | 2985 | 0 / 0 |
 
 四档 near-neighbor recall 均为 1.0，false suppression rate 和 erroneous coalescence
-rate 均为 0，confirmation latency mean/P95 均为 0.25/0.25 s。这些指标来自专用治理
-benchmark，输入结构和难度受控。它不包含完整的 D1-D7 运动、分配、降级、视觉和制导
-闭环，也不是 AirSim 或完整 200v200 多 seed 验收。正式结论仍需 clean commit、至少
-20 个未见 seed、代表性漏检/遮挡/杂波/OOSM 分布和隔离离线身份评分。
+rate 均为 0，confirmation latency mean/P95 均为 0.25/0.25 s。输入清单绑定的
+20 个 manifest、20 个 online audit 和 20 个 evaluator sidecar 已逐文件重算
+SHA-256，60/60 与登记值一致。
+
+该批次只关闭 clean 来源上的四规模治理复跑，输入结构和难度受控。它没有
+覆盖完整 D1-D7 融合、真实 AirSim、多场景身份连续性、实时服务等级或物理拦截闭环。
+后续仍需扩大未见 seed，加入代表性漏检、遮挡、杂波和 OOSM 分布，并以独立离线
+身份标签验证 IDSW 和连续性。

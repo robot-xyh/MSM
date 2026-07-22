@@ -1198,8 +1198,9 @@ overflow 0、安全淘汰大于 0。3/12 目标、16 帧、0.75 m 间距离线 b
 为 43/187，误抑制 0、召回 1.0、错误合并 0、确认延迟 0.25 s、IDSW 0；truth 仅在关联
 完成后进入 evaluator。完整 D2 回归为 `183 passed, 1 warning in 29.08s`。
 
-这些数据是确定性模块 fixture。真实 AirSim observation ID、时钟漂移、迟到分布、遮挡/
-杂波和 20/50/100/200 多 seed 的 recall/false merge/latency 仍需标定。
+这些数据是确定性模块 fixture。2026-07-22 后续完成的 formal/clean 质点治理
+批次已覆盖 20/50/100/200 各 5 个 seed，见第二十三节。真实 AirSim observation ID、
+时钟漂移、迟到分布、遮挡/杂波以及身份连续性标定仍需单独完成。
 
 ## 二十一、重复后验短时续航原则（2026-07-22）
 
@@ -1223,3 +1224,17 @@ active-risk seed 1005 当前保持 5 条规范航迹且不再经历第 6 条错�
 正数 bounded replay。保留 seed 1011 和 1019 在 1.0 s 干预时刻各只有 4 条航迹，后续
 新鲜观测到达后恢复到 5 条 confirmed。两类结果共同要求验收按实际在线库存检查身份
 唯一性、谱系、生命周期和覆盖率，不能固定发布次数或强制航迹数等于离线真值目标数。
+
+## 二十三、formal/clean 治理证据原则（2026-07-22）
+
+1. **正式性按 episode 判定**：20 个 manifest 均必须同时满足
+   `evidence_tier=formal`、`repository_dirty=false` 和绑定提交
+   `e4d66db02a0b8f1b867a0e81b4a73de84588426b`。`runner_summary.json` 顶层没有
+   `formal_episode_count` 不能被解读为 0；分档 aggregate 中每档 5 个 formal episode
+   与每个 manifest 的 provenance 是验收依据。
+2. **真值隔离优先于分数**：在线路径真值使用总数必须为 0。召回率、误抑制、错误合并和
+   确认延迟只来自 `evaluator_only=true`、`online_consumed=false` 的 sidecar。本批次四档
+   近邻召回率为 1.0，两类错误率为 0，确认延迟为 0.25 s。
+3. **容量验收不等于全系统验收**：20/50/100/200 规模的 claim peak 都低于对应
+   capacity，安全淘汰已发生且 overflow/too-old 为 0。这关闭 clean 治理复跑，不代表完整
+   D1-D7 融合、真实 AirSim、多场景身份连续性、实时服务等级或物理拦截已通过。

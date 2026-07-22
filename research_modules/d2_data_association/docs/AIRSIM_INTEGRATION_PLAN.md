@@ -355,8 +355,11 @@ nearby recall、erroneous coalescence、confirmation latency 和 IDSW 只供 D6 
 在线 D2 消息。
 
 真实 AirSim 仍需验证相机/雷达适配后的 observation ID 唯一性、时钟误差、迟到分布、
-缓冲上限、遮挡/杂波和距离分档门限。模块当前的长期循环与离线 benchmark 已关闭代码/
-接口缺口，但不能代替 20/50/100/200 多规模多 seed 标定或 200v200 验收。
+缓冲上限、遮挡/杂波和距离分档门限。2026-07-22 在 clean 提交
+`e4d66db02a0b8f1b867a0e81b4a73de84588426b`
+上完成的 20/50/100/200 各 5 seed formal 质点治理复跑，只关闭 claim 容量、安全淘汰、
+哈希来源和 evaluator-only 真值隔离的 clean 复跑。本批没有启动 AirSim，不改变本文的
+AirSim 适配、时钟和场景标定计划，也不构成完整 200v200 验收。
 
 main 还需持久化 `replay_coast_count/events/track_ids/reason_counts/config` 和
 `missed_track_ids`。grace 应覆盖 D1 相邻全量发布到下一次雷达更新之间的正常间隔，并给

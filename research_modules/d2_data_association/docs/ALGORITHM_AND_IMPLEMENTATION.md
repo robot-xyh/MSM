@@ -1453,3 +1453,21 @@ main 验收应使用三个独立关系：D2 在线库存与 D3 匿名目标库�
 5v5 序列断言。复现脚本采用 `d2.active-risk-seed1005-reproduction.v3`：允许 replay=0
 或有界 replay，同时强制五条规范中心航迹、birth 5、coast/quarantine 一致、无 stale
 drop/错误合并和在线 truth 0。当前完整 D2 测试为 `189 passed, 1 warning`。
+
+## 23. formal/clean 多规模治理证据
+
+2026-07-22 在提交 `e4d66db02a0b8f1b867a0e81b4a73de84588426b` 上运行
+20/50/100/200 四个规模，每档 5 个 seed。全部 20 个 manifest 都是
+`evidence_tier=formal`、`repository_dirty=false`，并绑定同一源提交。校准输入清单对
+manifest、online audit 和 evaluator sidecar 分别登记 SHA-256；60 个关键文件的
+逐个重算结果全部一致。
+
+claim peak/capacity 随规模依次为 2390/4800、6020/12000、12070/24000 和
+24170/48000。安全淘汰数依次为 285、735、1485 和 2985，说明 30 s retention
+水位线已在长 episode 内实际激活；overflow 和 too-old 均为 0。离线 evaluator-only
+侧近邻召回率为 1.0，误抑制率和错误合并率为 0，确认延迟均值/P95 为
+0.25/0.25 s。所有 sidecar 均标记 evaluator-only 且未被在线路径消费，在线真值使用为 0。
+
+该运行验证的是已有 claim ledger、安全淘汰和离线指标合同在 clean 来源上的多规模行为，
+没有改变 GNN/Hungarian、门控、coast、生命周期或中心 ID ownership。它是受控质点治理
+benchmark，不是完整融合、真实 AirSim、多场景 IDSW/连续性、实时服务等级或物理拦截验收。

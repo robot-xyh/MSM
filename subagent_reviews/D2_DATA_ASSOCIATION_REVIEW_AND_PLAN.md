@@ -817,9 +817,9 @@ main 应显式构造 `ObservationClaimLedgerConfig`，将 config/schema version 
 排空，reset 后重新构造。main 持久化公开 ledger/OOSM summary，不读取私有 claim。
 
 真实 AirSim observation ID、时钟误差、迟到长尾、buffer/ledger 默认值和距离/遮挡/杂波
-仍需标定。20/50/100/200 目标与至少 20 未见 seed 的 false suppression、recall、false
-merge、confirmation latency、IDSW/continuity 和时延证据仍开放。默认 GNN/Hungarian、
-中心 ID ownership、离线一对一 truth 映射和 explicit IDSW availability 不变。
+仍需标定。20/50/100/200 各 5 seed 的 formal/clean 治理复跑已在后续批次完成；
+更多未见 seed、代表性难度、IDSW/continuity 和完整闭环时延证据仍开放。默认
+GNN/Hungarian、中心 ID ownership、离线一对一 truth 映射和 explicit IDSW availability 不变。
 
 ## 31. 重复全量后验短时 coast 评审
 
@@ -883,15 +883,22 @@ coalescence 和 online truth use 均为 0。
 混合成一条验收记录。当前结果来自脏工作树和单 seed，不是 AirSim、实时服务等级或完整
 200v200 结论。
 
-### 33.2 快速治理批次
+### 33.2 快速治理 formal/clean 批次
 
-快速治理覆盖 20/50/100/200 各 5 个 seed，报告 `formal_episode_count=0`。200 规模 claim
-peak 24170、capacity 48000、安全淘汰 2985、overflow/too-old 0；四档 near-neighbor recall
-1.0、false suppression 0、erroneous coalescence 0、online truth 0。该 runner 只校验
-治理和离线 sidecar，不包含完整 D1-D7 闭环。
+初次 development 批次的 `formal_episode_count=0` 保留为历史口径。提交
+`e4d66db02a0b8f1b867a0e81b4a73de84588426b` 上的复跑覆盖 20/50/100/200 各
+5 个唯一 seed，共 20/20 formal/clean episode。输入清单绑定的 60 个 manifest/
+online-audit/sidecar SHA-256 全部重算一致，20 个 sidecar 均为 evaluator-only 且
+没有进入在线路径。
+
+四档 claim peak/capacity 为 2390/4800、6020/12000、12070/24000、24170/48000；
+safe evicted 为 285/735/1485/2985，overflow/too-old 全为 0。近邻召回率为 1.0，
+false suppression 和 erroneous coalescence 为 0，确认延迟均值/P95 为 0.25/0.25 s，
+online truth use 为 0。该 runner 只校验质点治理和离线 sidecar，不包含完整 D1-D7 闭环。
 
 ### 33.3 后续决策
 
-seed1005 测试验收口径已同步。下一步从 clean commit 复跑；正式 P1 仍需每档至少 20 个未见
-seed、真实或代表性漏检/遮挡/杂波/OOSM 分布、离线 IDSW/continuity 和完整闭环时延。
-D2 默认 GNN/Hungarian、中心 `global_track_id` ownership 和 fail-closed 边界保持不变。
+seed1005 测试验收口径已同步，clean 治理复跑也已关闭。后续 P1 聚焦更多未见
+seed、真实或代表性漏检/遮挡/杂波/OOSM 分布、离线 IDSW/continuity、真实 AirSim 和
+完整闭环时延。D2 默认 GNN/Hungarian、中心 `global_track_id` ownership 和 fail-closed
+边界保持不变。

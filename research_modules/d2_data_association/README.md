@@ -650,11 +650,20 @@ drop/错误合并且在线真值使用为 0。当前 2.2 s 复跑得到 6 个五
 时延拼接成同一结果。以上均来自脏工作树质点运行，不是 AirSim、实时性或完整 200v200
 验收。
 
-快速治理标定另运行 20/50/100/200 四个规模、每档 5 个 seed，共 20 个 development
-episode，`formal_episode_count=0`。200 规模 claim current/peak 为 `24170/24170`、容量
-48000、安全淘汰 2985、overflow/too-old 0；四档离线 near-neighbor recall 均为 1.0，
-false suppression 和 erroneous coalescence 均为 0，在线真值使用为 0。这是专用治理
-benchmark，不包含完整运动、分配、降级、视觉和制导闭环。
+快速治理初跑为脏工作树 development 证据。随后在提交
+`e4d66db02a0b8f1b867a0e81b4a73de84588426b` 上完成 20/50/100/200 四个规模、
+每档 5 个 seed 的 formal/clean 复跑。20 个 manifest 全部记录
+`evidence_tier=formal`、`repository_dirty=false` 和同一源提交；输入清单绑定的
+20 个 manifest、20 个 online audit 和 20 个 evaluator sidecar 共 60 个 SHA-256
+全部匹配。
+
+四档 claim peak/capacity 依次为 `2390/4800`、`6020/12000`、
+`12070/24000`、`24170/48000`，安全淘汰依次为 285、735、1485、2985，
+overflow/too-old 均为 0。离线评估侧近邻召回率均为 1.0，误抑制率和错误
+合并率均为 0，确认延迟均值/P95 均为 0.25/0.25 s；20 个 episode 在线
+真值使用总数为 0，sidecar 全部为 evaluator-only 且未被在线路径消费。
+该证据只关闭 clean 提交上的多规模观测治理复跑，不关闭完整 D1-D7 融合、
+真实 AirSim、多场景身份连续性、实时服务等级或物理拦截闭环。
 
 保留 seed 1011 和 1019 在 1.0 s 干预帧只有 4 条在线航迹，后续新鲜观测到达后终态恢复
 5 条 confirmed。scalable 验收仍应以实际 D2 库存连接 D3，并单独报告相对场景目标数的

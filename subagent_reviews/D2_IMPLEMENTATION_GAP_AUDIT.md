@@ -788,8 +788,10 @@ runtime ACK unavailable。它关闭 clean 来源复跑，不证明策略收益�
   replay coast 和 episode-finalize 审计；当前证据没有读取 `_observation_claims` 私有状态。
 - 真实 AirSim observation ID 唯一性、源时钟误差、迟到长尾、buffer/ledger 参数、距离/
   遮挡/杂波门限和 false suppression 尚未标定。
-- 20/50/100/200 各 5 个 seed 的快速治理 development 证据已生成；至少 20 个未见 seed、
-  clean 来源、完整闭环 IDSW/continuity、代表性 OOSM 分布和正式循环时延仍缺证据。
+- 20/50/100/200 各 5 个 seed 的快速治理已在提交
+  `e4d66db02a0b8f1b867a0e81b4a73de84588426b` 上完成
+  20/20 formal/clean 复跑，clean 来源缺口已关闭。更多未见 seed、完整闭环
+  IDSW/continuity、代表性 OOSM/遮挡/杂波分布和正式循环时延仍缺证据。
 - `tentative_drop_miss_threshold=2`、两个 99% coalescence gate 和默认 ledger 参数仍是
   baseline；模块 fixture 不构成 200v200、实时 SLA 或 AirSim promotion。
 
@@ -842,7 +844,7 @@ D2 算法未修改。
 - target inventory 必须按实际 D2 快照连接 D3；离线 `target_count` 差额只作 availability，
   不得用 truth 补轨。
 
-## 2026-07-22 多规模治理 development 证据
+## 2026-07-22 多规模治理 formal/clean 证据
 
 ### 已获得证据
 
@@ -852,19 +854,26 @@ D2 算法未修改。
   truth use 均为 0。
 - 合并前 development 制品的 claim 为 1976/1976。它与单次 finalize 制品不是同一运行，
   不能混合报告。
-- 快速治理覆盖 20/50/100/200 各 5 seed。200 规模 claim peak/capacity 为 24170/48000、
-  safe evicted 2985、overflow/too-old 0；四档 near-neighbor recall 1.0、false suppression
-  0、erroneous coalescence 0、online truth 0。
+- 快速治理的 development 数值已在提交
+  `e4d66db02a0b8f1b867a0e81b4a73de84588426b` 上完成 formal/clean 复跑。
+  20/50/100/200 各 5 seed，共 20/20 formal episode；20 个 manifest 均为 clean 且绑定该提交。
+- 四档 claim peak/capacity 为 2390/4800、6020/12000、12070/24000、24170/48000，
+  safe evicted 为 285/735/1485/2985，overflow/too-old 均为 0。near-neighbor recall 均为
+  1.0，false suppression 和 erroneous coalescence 均为 0，confirmation latency
+  mean/P95 均为 0.25/0.25 s。
+- 20 个 sidecar 均为 evaluator-only 且未被在线消费，online truth use 为 0。输入清单
+  登记的 20 个 manifest、20 个 online audit 和 20 个 sidecar 共 60 个 SHA-256 已全部重算通过。
 
 ### GAP 判定
 
-该批报告 `formal_episode_count=0`，来源为脏工作树 development；快速 runner 是治理专项，
-单 seed 200v200 是质点集成 smoke。它们部分关闭“多规模容量和无真值泄漏没有任何证据”
-的 P1，但不关闭以下项目：
+初次 development 批次的 `formal_episode_count=0` 仅作历史记录。新批次以每个 manifest
+的 formal/clean provenance 和 aggregate 每档 `formal_episode_count=5` 为验收依据；
+`runner_summary.json` 顶层不提供该分档计数，不将其缺失值解读为 0。该结果关闭
+clean 提交上的四规模观测治理复跑，但不关闭以下项目：
 
-- clean commit 上每档至少 20 个未见 seed 的正式复跑；
+- 每档更多未见 seed 及代表性漏检、遮挡、杂波和 OOSM 难度分布；
 - 完整 200v200 感知、关联、分配、降级、视觉、制导闭环；
-- 真实 AirSim、代表性漏检/遮挡/杂波/OOSM 和离线身份指标；
+- 真实 AirSim 和多场景离线 IDSW/continuity 身份指标；
 - 最坏大连通分量、循环时延预算和实时服务等级。
 
 本次没有改变 GNN/Hungarian、门限、claim/coast 算法、中心 ID ownership 或控制接口。

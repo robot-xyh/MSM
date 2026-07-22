@@ -834,15 +834,19 @@ active-risk 5v5 seed 1005 在 0.439 s 由 5 条航迹扩张为 6 条。新增航
 3. 真实 AirSim 和长期多 seed 仍需评估漏检后的建轨延迟、干预帧可用率和航迹连续性；该
    P1 标定不通过放宽 replay grace 或硬编码目标数解决。
 
-## 23. 多规模 development 治理证据
+## 23. 多规模治理证据
 
 1. main 的 200v200、seed 42000、2.2 s 质点制品把尾部 31 次 D2 调用合并为 1 次，记录
    `coalesced_release_count=30`。最新持久化制品的常规/尾部 D2 时延分别为 6.135/2.033 s，
    claim current/peak 为 `1583/1583`、容量 60000、overflow/too-old 0、online truth 0。
    合并前制品的 `1976/1976` 只作历史对照，不与新制品混报。
-2. 快速治理 runner 已覆盖 20/50/100/200 各 5 个 seed。200 规模 claim peak 24170、容量
-   48000、安全淘汰 2985、overflow/too-old 0；四档 near-neighbor recall 1.0、false
-   suppression 0、erroneous coalescence 0、online truth 0。
-3. 两批均标记 `development`，快速治理报告的 `formal_episode_count=0`。它们不是 AirSim、
-   不是实时 SLA，也没有完成完整 200v200 多 seed 感知到拦截验收。下一阶段需 clean commit
-   复跑、至少 20 个未见 seed、完整闭环指标和独立离线身份评分。
+2. 快速治理初跑的 development 数值已由提交
+   `e4d66db02a0b8f1b867a0e81b4a73de84588426b` 上的 formal/clean 批次复核。
+   20/50/100/200 各 5 个唯一 seed，共 20/20 formal episode；manifest 均为
+   `repository_dirty=false` 并绑定该提交。输入清单中 60 个关键制品哈希全部匹配。
+3. 四档 claim peak/capacity 为 2390/4800、6020/12000、12070/24000、24170/48000；
+   safe evicted 为 285/735/1485/2985，overflow/too-old 全为 0。评估侧近邻召回率
+   为 1.0，误抑制/错误合并为 0，确认延迟均值/P95 为 0.25/0.25 s，在线真值使用 0。
+4. 该批次关闭 clean 来源的四规模治理复跑。仍需用更多未见 seed、代表性漏检/
+   遮挡/杂波/OOSM 分布和独立身份标签验证 IDSW/continuity。该批次不是
+   AirSim、实时 SLA 或完整 200v200 感知到物理拦截验收。
