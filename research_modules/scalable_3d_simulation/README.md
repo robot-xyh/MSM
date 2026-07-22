@@ -401,25 +401,32 @@ sidecar 文件/内容 SHA-256 分别为 `f3852251...c3b` / `c02a345c...d2d`。�
 assignment comparison；runtime ACK、physical outcome/effect、counterfactual 和 causal 仍不可用。
 学习权限继续固定为 `PPO/assist/authority=false`、`rule_fallback=true`。
 
-### D2 陈旧观测修复复跑
+### D1/D2 观测治理
 
-2026-07-22，active-risk 5v5 seed 1005 暴露出 D1 重复发布同一底层观测预测后验的问题。
-D2 现以不透明观测标识和传感器命名空间判定新鲜度，重复证据不再累计命中；暂定航迹连续
-两次没有新证据后删除。main 总线使用 `d2-observation-evidence-governance-v1` 保存逐帧
-隔离、时间冲突、重复合并和累计暂定删除审计，在线消息仍不包含目标真值。
+2026-07-22，D1 前置扫描组织器和 D2 观测声明账本已接入统一 episode 状态机。D1 按量测
+时间水位线对完整扫描做有界排序，重复、冲突、过晚和容量溢出整扫描拒绝。D2 使用不透明
+观测标识、源命名空间和量测时刻区分新证据与后验重放；声明按安全水位线淘汰，超过容量时
+失败关闭。main 总线保留双时间戳、协方差、公开审计和中心航迹身份所有权。
 
-单 seed 复现最终恢复为五条 confirmed 航迹，隔离 9 次、删除伪航迹 1 条、在线真值使用
-为 0。开发工作树上的 seed `1000-1019` 复跑先恢复了全部物理窗，随后在 detached clean
-提交 `0fa7c00c3514c4fa87a17953ab66fdfb73489b0b` 上完成同配置正式复验。物理续跑清单已升级
-为 `scalable3d-checkpoint-paired-physical-rollout-v2`，自证 20 个源 episode 来自同一提交，
-`repository_dirty=false`，脏源计数为 0。
+active-risk 5v5 seed 1005 的当前 1.1 秒集成路径始终保持 5 条规范航迹，起始数为 5，重复
+出生、暂定删除和错误合并均为 0。结束排空阶段先按量测顺序融合并发布全部 D1 尾部扫描，
+只把最终融合后验送 D2 一次，并在该次中心关联中归档所有待发布的 D1 源观测谱系。因此旧
+实现由逐尾帧产生的 9 次人工重放现为 0，离线一致性映射仍覆盖全部已融合观测。正常运行期
+的周期关联、短时 coast、失联老化和控制门控没有改变。
 
-D6 的计划消费、导引血缘、物理窗、D4 降级采用、配对物理比较和非退化证据均为 `20/20`；
-D4 区域采用为 `188/188`，control/treatment 各执行 1960 条命令。seed 1005 的离线映射唯一
-覆盖 `GT3D-000001` 至 `GT3D-000005`，在线真值使用为 0，全部制品 SHA-256 校验通过。
-两臂在 1 秒计划有效窗内均无 5 米成功，平均最近距离约 3822.36 米，不能据此宣称拦截效果
-或降级收益。counterfactual、causal 和 production runtime ACK 继续不可用。长时 claim
-容量、误抑制率、完整乱序量测和 AirSim 标定仍开放。
+快速治理基准位于
+`outputs/observation_governance_calibration_20260722_development`。20、50、100、200 四档各
+运行 5 个 seed，每例 136 帧、33.75 秒。全部 episode 在线真值使用为 0；每例 D1 正确重排
+12 个扫描，拒绝、过旧和溢出均为 0，峰值缓冲为 3 个扫描。D2 峰值声明数分别为
+2390/4800、6020/12000、12070/24000 和 24170/48000，安全淘汰数分别为 285、735、1485
+和 2985，容量溢出为 0。离线侧车的近邻召回为 1.0，错误抑制和错误合并为 0，确认时延为
+0.25 秒。200 规模 D1 与 D2 合计峰值 `tracemalloc` 约 58.99 MB。
+
+上述批次来自脏工作树，证据等级为 development，并且只测试观测治理，不是完整 D1/D2
+精度、AirSim 或 200 对 200 拦截验收。另行运行的 200v200 单 seed、2.2 秒全栈质点烟测在
+尾部合并后用时 60.21 秒，实时倍率 0.0365；相比合并前 95.41 秒有所下降，但仍明显不实时。
+当前主要耗时为 D1 融合累计 35.12 秒和 D3 三次分配累计 7.33 秒。干净提交正式复跑、完整
+多 seed 物理闭环、真实 AirSim 时延分布和阈值冻结仍开放。
 
 ## 版本
 
@@ -438,8 +445,12 @@ D4 区域采用为 `188/188`，control/treatment 各执行 1960 条命令。seed
 - 相机命令确认：`scalable3d-camera-command-ack-v1`
 - 实验矩阵：`scalable3d-experiment-matrix-v1`
 - D1 离线一致性清单：`scalable3d-offline-consistency-evaluation-manifest-v1`
+- D1 扫描输入审计：`d1.scan_input.audit_summary.v1`
 - D2 身份评估清单：`scalable3d-offline-identity-evaluation-manifest-v1`
 - D2 观测证据治理：`d2-observation-evidence-governance-v1`
+- D2 观测声明账本：`d2-observation-claim-ledger-v2`
+- main 观测治理快照：`scalable3d-observation-governance-runtime-v1`
+- D6 观测治理标定输入：`scalable3d-observation-governance-calibration-input-v1`
 - D6 真值隔离清单：`scalable3d-d6-truth-isolated-manifest-v1`
 - 跨模块共享 seed 切分：`scalable3d-shared-seed-split-registry-v1`
 - 保留 seed 隔离干预：新制品使用 `scalable3d-reserved-seed-interventions-v2`；历史正式证据保留 v1

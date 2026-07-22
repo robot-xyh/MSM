@@ -48,8 +48,12 @@ main
 | 共享 seed 切分注册表 | `scalable3d-shared-seed-split-registry-v1` | D3/D4/D5 联合训练的数值 seed 分桶、比例、来源哈希或保留集规则改变 |
 | 实验矩阵 | `scalable3d-experiment-matrix-v1` | 变体语义、配对键或正式准入条件改变 |
 | D1 一致性评估清单 | `scalable3d-offline-consistency-evaluation-manifest-v1` | 在线证据、真值状态、D2 映射或哈希绑定改变 |
+| D1 扫描输入审计 | `d1.scan_input.audit_summary.v1` | 水位线、扫描拒绝、缓冲容量或结束排空语义改变 |
 | D2 身份评估清单 | `scalable3d-offline-identity-evaluation-manifest-v1` | 谱系映射、身份指标或来源校验改变 |
 | D2 观测证据治理 | `d2-observation-evidence-governance-v1` | D1 观测新鲜度、重放隔离、时间冲突、暂定航迹删除或重复合并审计语义改变 |
+| D2 观测声明账本 | `d2-observation-claim-ledger-v2` | 声明键、水位线、安全淘汰、容量或反重放语义改变 |
+| main 观测治理快照 | `scalable3d-observation-governance-runtime-v1` | D1/D2 在线治理汇总或结束排空计数语义改变 |
+| D6 观测治理标定输入 | `scalable3d-observation-governance-calibration-input-v1` | episode 描述、制品哈希、在线审计或 evaluator-only 侧车绑定改变 |
 | D6 真值隔离清单 | `scalable3d-d6-truth-isolated-manifest-v1` | D1/D2 适配、availability 或批量聚合口径改变 |
 | D6 跨模块学习准入 | `d6.cross-module-learning-data-admission.v1` | 正式/补充/离线标签/运行 ACK 分层、canonical view 绑定、动作覆盖或训练准入矩阵语义改变 |
 | 保留 seed 隔离干预 | `scalable3d-reserved-seed-interventions-v2` | v2 绑定 D3 二元/连续分布门语义，并在 manifest/report 中持久化 D4 v2 分门诊断；历史 `6d5bfea` 正式证据保持 v1 |
@@ -89,6 +93,10 @@ main
   "threshold_version": "scalable3d-thresholds-v1"
 }
 ```
+
+观测治理另写独立子清单，绑定 D1 扫描审计、D2 声明账本、在线治理快照、源总线和
+evaluator-only 侧车的 schema 与 SHA-256。通用 episode manifest 不重复嵌入这些运行期
+审计字段。
 
 bundle 的本地绝对路径不写入 manifest。解析成功后记录语义版本和权重 SHA256；解析失败时
 保留规则版本，并在 scenario metadata 与在线诊断中记录请求模式、实际模式和稳定回退原因。
