@@ -1108,3 +1108,43 @@ seed 42000 的三次 D3 规划由 `7.329949 s` 降至 `1.013593 s`。breakdown �
    Python 消费者。
 
 当前没有新增 D3 P0。D3-owned 重复物化缺口已关闭，系统级长时复跑保持 P1。
+
+## 47. 冻结输入性能归因与身份签名复用 GAP 更新（2026-07-22）
+
+### 已关闭
+
+1. **P1 热点归因不可复现**：新增固定字段的结构操作计数，分别覆盖 40,000 个完整目标资源
+   对、6,400 条候选边、候选连通分量、Hungarian 准备矩阵、计划边规范哈希、迟滞访问、
+   匿名证据复制和发布校验。操作计数不随采样频率或机器负载变化。
+2. **P1 诊断污染计划合同风险**：诊断对象和墙钟只存在于独立 benchmark 结果，不写入
+   `AssignmentPlan.metadata`、`plan_id`、执行签名、运行时 ACK 或控制许可。
+3. **P1 身份边界重复计算与权威来源**：候选执行签名在一次规划调用内复用；latest published
+   execution signature 由 planner-owned cache 跨帧保存并作为权威。caller previous 只做
+   一致性校验，不能替代 latest。公共发布仍从待发布对象计算 candidate signature。
+4. **P1 参考路径语义不明确**：身份重复计算和关闭离线证据只作为归因参考。两者没有成为
+   PlannerConfig 开关，也不能用于在线绕过规划证据。
+5. **P1 区域异常优先级回归**：区域接管先完成 plan id/version 校验，再检查 pending
+   inventory，最后执行通用执行语义校验。库存篡改继续返回 `RegionalPlanAuthorityError`；
+   其他同 identity 执行语义篡改返回 `StalePlanError`。直接发布和 authority fence 门控未放宽。
+
+### 证据
+
+冻结输入为 200×200、seed 42000、每目标最多 32 条候选边，输入 SHA-256 为
+`c7c86f22252add5a6e201577ec99baa63050e56d00898e66d514ab3c0c46c7ff`。默认路径上一
+计划帧的暖启动中位为 `334.735 ms`；身份重复计算参考为 `389.673 ms`；关闭离线证据参考
+为 `223.147 ms`。默认上一计划帧中，成本矩阵、Hungarian、计划边证据、迟滞、身份固化、
+发布和匿名证据中位分别为 `66.401/4.460/82.342/31.602/2.967/0.156/74.305 ms`。
+
+三条路径的 binding SHA-256、计划版本和规范业务 SHA-256 一致，刷新帧均复用原计划号。
+身份缓存、区域异常优先级、直接发布、authority fence 和性能诊断定向组合为 `46 passed`。
+D3 全量收集 439 项，结果为 `436 passed, 1 skipped, 2 failed`。skip 是可选 OR-Tools；
+两个失败均为已在基线复现的 main/D7 `global_track_stale` 跨模块失败。
+
+### 仍开放
+
+1. main 仍需在候选提交的隔离 clean worktree 复跑 seed 42000-42002 的 2.2 秒和 10 秒
+   200v200 episode，核对 D3 调用次数、每次输入形状、累计墙钟、计划 ACK、输出字节和内存。
+2. 单机三次墙钟存在调度噪声，只能用于热点排序，不能直接证明旧提交 `2.484 s` 与当前
+   clean 三 seed 均值 `3.348 s` 的差异由 D3 代码引起。
+3. 两项 `global_track_stale` 仍由 main/D7 时序链路处理。D3 不放宽 stale 门控。
+4. 当前没有新增 D3 P0；AirSim、物理拦截及系统实时能力不由本次隔离 benchmark 证明。

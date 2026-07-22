@@ -210,6 +210,35 @@ def test_authority_generation_fence_rejects_expected_version_mismatch() -> None:
     assert error.value.reason == "expected_previous_version_mismatch"
 
 
+def test_authority_generation_fence_rejects_same_identity_tampered_source() -> None:
+    planner, current = _fixture()
+    tampered = replace(
+        current,
+        assignments=(
+            replace(current.assignments[0], resource_id="R-TAMPERED"),
+            *current.assignments[1:],
+        ),
+    )
+
+    with pytest.raises(StalePlanError) as error:
+        planner.advance_authority_generation(
+            tampered,
+            timestamp=1.0,
+            expected_previous_version=current.version,
+            fence_reason="center_failure",
+        )
+    assert error.value.reason == "stale_previous_plan_semantics"
+
+    fenced = planner.advance_authority_generation(
+        current,
+        timestamp=1.0,
+        expected_previous_version=current.version,
+        fence_reason="center_failure",
+    )
+    assert fenced.version == current.version + 1
+    assert fenced.assignment_signature() == current.assignment_signature()
+
+
 def test_consecutive_authority_generation_fences_are_monotonic() -> None:
     planner, current = _fixture()
     first = planner.advance_authority_generation(

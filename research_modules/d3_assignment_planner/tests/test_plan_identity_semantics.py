@@ -370,3 +370,51 @@ def test_publish_rejects_compatible_refresh_with_changed_lineage_id() -> None:
         match="evaluation-only refresh cannot advance executable plan identity",
     ):
         planner.publish_plan(replace(refresh, plan_id="d3-plan-invalid-lineage"))
+
+
+def test_planner_rejects_same_identity_previous_plan_with_tampered_execution() -> None:
+    planner = _planner()
+    resources = [ResourceState("R1"), ResourceState("R2")]
+    first = planner.plan([_track()], resources, timestamp=0.0)
+    tampered = replace(
+        first,
+        assignments=(replace(first.assignments[0], resource_id="R2"),),
+    )
+
+    with pytest.raises(StalePlanError) as error:
+        planner.plan(
+            [_track()],
+            resources,
+            timestamp=1.0,
+            previous_plan=tampered,
+            expected_previous_version=first.version,
+        )
+
+    assert error.value.reason == "stale_previous_plan_semantics"
+
+
+def test_direct_publish_uses_trusted_latest_signature_for_same_identity() -> None:
+    planner = _planner()
+    resources = [ResourceState("R1"), ResourceState("R2")]
+    first = planner.plan([_track()], resources, timestamp=0.0)
+    refresh = planner.plan(
+        [_track()],
+        resources,
+        timestamp=1.0,
+        previous_plan=first,
+        publish=False,
+    )
+
+    published = planner.publish_plan(refresh)
+    assert published.plan_id == first.plan_id
+    assert published.version == first.version
+
+    tampered = replace(
+        published,
+        assignments=(replace(published.assignments[0], resource_id="R2"),),
+    )
+    with pytest.raises(
+        ValueError,
+        match="cannot change execution semantics without a new identity",
+    ):
+        planner.publish_plan(tampered)

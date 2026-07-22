@@ -1558,3 +1558,31 @@ AirSim 和物理拦截仍需 main 统一运行并由 D6 汇总。更大规模的
 main 应在 clean worktree 重跑 10 秒以上 200v200，确认总线文件、D6 读取、runtime ACK 和
 内存峰值。旧归档仍按 v1 读取；外部直接索引 `current_cost_breakdowns_by_edge` 的消费者需
 改用规范字段或 D3 导出函数。AirSim 接口没有变化。
+
+## 50. 冻结输入性能归因与身份签名复用（2026-07-22）
+
+### 已完成
+
+1. 增加定长、计划外的 `D3PlannerOperationCounts`，覆盖全量对、候选边、连通分量、
+   Hungarian 准备矩阵、计划边哈希、迟滞重评分、匿名证据复制、`plan_id` 生成和发布校验。
+   墙钟只由 benchmark 记录，不进入计划元数据或控制合同。
+2. 固定 200×200、seed 42000、top-32 匿名输入，并记录输入 SHA-256。基准同时执行默认、
+   身份重复计算参考和关闭离线证据参考；参考路径不进入运行时配置。
+3. `_finalize_and_publish()` 在调用内复用候选执行签名；latest published execution signature
+   由 planner-owned cache 跨帧保存并作为发布权威。caller previous 只做一致性校验，不能
+   充当 latest；公共 `publish_plan()` 仍从待发布对象计算 candidate signature。
+4. 三条路径的 binding、计划版本和规范业务哈希一致。默认上一计划帧中位为 334.735 ms；
+   身份重复计算参考为 389.673 ms；关闭离线证据参考为 223.147 ms。墙钟只作本机归因。
+5. 区域接管先校验 plan id/version，再保留 pending inventory 的
+   `RegionalPlanAuthorityError`，最后执行通用执行语义校验。直接发布和 authority fence
+   继续使用可信 latest 签名失败关闭。规则代价、需求槽、Hungarian、迟滞、版本和 D5/D7
+   binding 不变。
+
+### 验收与后续
+
+身份、区域、authority fence 和性能诊断定向组合 `46 passed`。D3 共收集 439 项，正式结果
+为 `436 passed, 1 skipped, 2 failed`；两项失败是已在基线复现的 main/D7
+`global_track_stale` 集成断点，skip 是可选 OR-Tools。D3 不放宽 stale 门控。
+main 后续在候选提交的 detached clean worktree 复跑 seed 42000-42002 的同配置 2.2 秒和
+10 秒 episode，分别核对 D3 调用密度、每次输入规模、累计墙钟、计划 ACK、输出字节和内存。
+完成该复测前，不把本模块单次结果写成系统实时能力。

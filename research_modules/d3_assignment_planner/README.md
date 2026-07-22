@@ -1335,3 +1335,42 @@ SHA-256、`inline_canonical_single_copy` 和旧字段引用。`assignment_eviden
 尚不是新代码完整 episode 复跑结果。新增专项 5 项通过。D3 全量收集 430 项，其中 427 项
 通过、1 项因可选 OR-Tools 跳过、2 项为既有跨模块 `global_track_stale` 失败；D3 未放宽
 stale 门控。
+
+## 2026-07-22 冻结输入性能归因
+
+新增 `performance_diagnostics.py` 和
+`simulations/run_planner_performance_diagnostics.py`。接口使用定长
+`D3PlannerOperationCounts` 记录成本矩阵、候选边、候选连通分量、Hungarian 准备矩阵、
+计划边物化与规范哈希、迟滞重评分、匿名证据复制和发布校验的结构操作数。墙钟只写入
+benchmark JSON/Markdown，不进入 `AssignmentPlan.metadata`、`plan_id`、执行签名或运行时
+ACK。
+
+冻结输入为 200 个匿名 GlobalTrack 代理和 200 个资源，seed 42000、top-32，输入
+SHA-256 为
+`c7c86f22252add5a6e201577ec99baa63050e56d00898e66d514ab3c0c46c7ff`。每帧保留
+40,000 个全量目标资源对、6,400 条候选边、一个 200×200 候选连通分量和 80,000 个
+Hungarian 准备矩阵单元。首帧匿名证据复制 80,000 个数值单元并访问 40,000 个 breakdown
+单元，实际净化 6,401 个共享对象；上一计划帧另访问 6,400 条迟滞边并重评分 400 个绑定。
+
+三次暖启动中，默认首帧/上一计划帧中位端到端为 `274.275/334.735 ms`。上一计划帧的
+计划边证据、迟滞和离线匿名证据中位耗时分别为 `82.342/31.602/74.305 ms`，Hungarian
+约 `4.460 ms`。关闭离线证据的归因参考为 `223.147 ms`，只说明该证据边界的成本，不是
+允许在线关闭证据的新配置。
+
+发布链路在一次规划调用内复用候选执行签名。latest published execution signature 由规划器
+自有缓存跨帧保存并作为发布权威；caller previous 只计算一次签名并与该权威值做一致性校验，
+不能替代 latest。公共 `publish_plan()` 仍从待发布对象计算 candidate signature。区域接管
+先校验 plan id/version 和专用 pending inventory，再执行通用语义一致性校验。上一计划帧中，
+默认身份固化/发布边界
+为 `2.967/0.156 ms`，重复计算参考为 `15.629/13.246 ms`。默认、重复计算参考和关闭证据
+参考的 binding SHA-256、计划版本和规范业务 SHA-256 完全一致；规则代价、Hungarian、
+需求槽、迟滞、版本及 D5/D7 binding 未修改。原始结果见
+`results/d3_planner_performance_attribution_20260722.json`，中文说明见
+`reports/D3_PLANNER_PERFORMANCE_ATTRIBUTION_20260722_CN.md`。
+
+本地 D3 共收集 439 项，结果为 `436 passed, 1 skipped, 2 failed`。skip 是可选 OR-Tools；
+两个失败是已在基线复现的 main/D7 `global_track_stale` 真实主总线断点。身份缓存、直接发布、
+authority fence、区域错误优先级和性能诊断定向组合为 `46 passed`。
+main 后续必须在候选提交的 detached clean worktree 使用相同 2.2 秒/10 秒、seed
+42000-42002 复跑，联合比较 D3 调用密度、输入形状、累计墙钟、计划 ACK 和输出大小，不能
+用本模块单次 benchmark 直接解释集成累计时间。

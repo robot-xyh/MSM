@@ -211,6 +211,7 @@ class AssignmentPlanner:
         self._latest_version = 0
         self._latest_plan_id: str | None = None
         self._latest_published_plan: AssignmentPlan | None = None
+        self._latest_published_execution_signature: tuple[Any, ...] | None = None
         self._latest_planning_evidence = PlanningFrameEvidence.unavailable(
             reason="no_planning_frame",
             planning_path="none",
@@ -417,7 +418,10 @@ class AssignmentPlanner:
         hint_rejection_reason: str | None = None
         hint_available = regional_planning_hint is not None
         try:
-            self._validate_previous_plan(previous_plan, expected_previous_version)
+            previous_execution_signature = self._validate_previous_plan(
+                previous_plan,
+                expected_previous_version,
+            )
             if hint_available:
                 try:
                     hint = self._coerce_regional_planning_hint(
@@ -475,6 +479,7 @@ class AssignmentPlanner:
                 timestamp=timestamp,
                 forced_replan=forced_replan,
                 publish=publish,
+                previous_execution_signature=previous_execution_signature,
             )
         except Exception as exc:
             self._fail_planning_evidence(planning_path, exc)
@@ -509,7 +514,10 @@ class AssignmentPlanner:
         immediately reject the fenced source generation.
         """
 
-        self._validate_previous_plan(previous_plan, expected_previous_version)
+        latest_execution_signature = self._validate_previous_plan(
+            previous_plan,
+            expected_previous_version,
+        )
         latest = self._latest_published_plan
         if latest is None:
             raise StalePlanError(
@@ -519,16 +527,8 @@ class AssignmentPlanner:
                 previous_version=previous_plan.version,
                 expected_previous_version=expected_previous_version,
             )
-        if previous_plan.execution_signature() != latest.execution_signature():
-            raise StalePlanError(
-                "authority generation fence source semantics are not current",
-                reason="authority_fence_source_semantics_mismatch",
-                previous_plan_id=previous_plan.plan_id,
-                previous_version=previous_plan.version,
-                expected_previous_version=expected_previous_version,
-                latest_plan_id=latest.plan_id,
-                latest_version=latest.version,
-            )
+        if latest_execution_signature is None:
+            raise RuntimeError("published plan execution signature is unavailable")
 
         evaluated_at_s = float(timestamp)
         latest_evaluated_at_s = float(
@@ -564,8 +564,13 @@ class AssignmentPlanner:
         fence_generation = int(
             latest.metadata.get("fault_authority_fence_generation", 0)
         ) + 1
+        source_execution_signature = (
+            latest_execution_signature
+            if source_plan is latest
+            else source_plan.execution_signature()
+        )
         target_inventory_changed = (
-            source_plan.execution_signature() != latest.execution_signature()
+            source_execution_signature != latest_execution_signature
         )
         fence_metadata = {
             "fault_authority_fence_schema": (
@@ -702,7 +707,11 @@ class AssignmentPlanner:
         coalitions still require atomic commit and complete ACK evidence.
         """
 
-        self._validate_previous_plan(previous_plan, expected_previous_version)
+        self._validate_previous_plan(
+            previous_plan,
+            expected_previous_version,
+            validate_execution_semantics=False,
+        )
         track_items = tuple(tracks)
         resource_items = tuple(resources)
         pending_target_ids = self._validate_regional_authority(
@@ -710,6 +719,10 @@ class AssignmentPlanner:
             tracks=track_items,
             previous_plan=previous_plan,
             timestamp=timestamp,
+        )
+        previous_execution_signature = self._validate_previous_plan(
+            previous_plan,
+            expected_previous_version,
         )
         rule_matrix_result, matrix_result = self._build_search_matrices(
             track_items,
@@ -804,6 +817,7 @@ class AssignmentPlanner:
             timestamp=timestamp,
             forced_replan=False,
             publish=publish,
+            previous_execution_signature=previous_execution_signature,
         )
         return result, rule_matrix_result, matrix_result
 
@@ -1419,7 +1433,10 @@ class AssignmentPlanner:
         Stale identities remain hard errors and are never silently substituted.
         """
 
-        self._validate_previous_plan(previous_plan, expected_previous_version)
+        previous_execution_signature = self._validate_previous_plan(
+            previous_plan,
+            expected_previous_version,
+        )
         track_items = tuple(tracks)
         resource_items = tuple(resources)
         changed_tracks = frozenset(str(value) for value in changed_track_ids)
@@ -1453,6 +1470,7 @@ class AssignmentPlanner:
                 forced_replan=forced_replan,
                 publish=publish,
                 started_at=started_at,
+                previous_execution_signature=previous_execution_signature,
             )
 
         affected_targets, affected_resources = self._affected_component(
@@ -1476,6 +1494,7 @@ class AssignmentPlanner:
                 forced_replan=forced_replan,
                 publish=publish,
                 started_at=started_at,
+                previous_execution_signature=previous_execution_signature,
             )
         if affected_targets == all_target_ids or affected_resources == all_resource_ids:
             return self._full_plan_from_incremental_request(
@@ -1490,6 +1509,7 @@ class AssignmentPlanner:
                 forced_replan=forced_replan,
                 publish=publish,
                 started_at=started_at,
+                previous_execution_signature=previous_execution_signature,
             )
 
         affected_track_items = tuple(
@@ -1562,6 +1582,7 @@ class AssignmentPlanner:
             timestamp=timestamp,
             forced_replan=forced_replan,
             publish=publish,
+            previous_execution_signature=previous_execution_signature,
         )
         return result, rule_matrix_result, matrix_result
 
@@ -2683,16 +2704,23 @@ class AssignmentPlanner:
         timestamp: float,
         forced_replan: bool,
         publish: bool,
+        previous_execution_signature: tuple[Any, ...] | None,
     ) -> AssignmentPlan:
+        plan_execution_signature = plan.execution_signature()
         result = self._finalize_identity(
             plan,
             previous_plan=previous_plan,
             evaluated_at_s=timestamp,
             forced_replan=forced_replan,
             publish=publish,
+            plan_execution_signature=plan_execution_signature,
+            previous_execution_signature=previous_execution_signature,
         )
         if publish:
-            self.publish_plan(result)
+            self._publish_plan(
+                result,
+                plan_execution_signature=plan_execution_signature,
+            )
         return result
 
     def _full_plan_from_incremental_request(
@@ -2709,6 +2737,7 @@ class AssignmentPlanner:
         forced_replan: bool,
         publish: bool,
         started_at: float,
+        previous_execution_signature: tuple[Any, ...],
     ) -> tuple[AssignmentPlan, CostMatrixResult, CostMatrixResult]:
         result, rule_matrix_result, matrix_result = self._plan_candidate(
             tracks=tracks,
@@ -2741,6 +2770,7 @@ class AssignmentPlanner:
             timestamp=timestamp,
             forced_replan=forced_replan,
             publish=publish,
+            previous_execution_signature=previous_execution_signature,
         )
         return result, rule_matrix_result, matrix_result
 
@@ -3298,12 +3328,29 @@ class AssignmentPlanner:
     def publish_plan(self, plan: AssignmentPlan) -> AssignmentPlan:
         """Register a plan as published for subsequent stale checks."""
 
+        return self._publish_plan(plan)
+
+    def _publish_plan(
+        self,
+        plan: AssignmentPlan,
+        *,
+        plan_execution_signature: tuple[Any, ...] | None = None,
+    ) -> AssignmentPlan:
+        """Publish using the planner-owned latest execution signature."""
+
         plan = replace(
             plan,
             metadata={**dict(plan.metadata), "plan_published": True},
         )
         latest = self._latest_published_plan
         if latest is not None:
+            if plan_execution_signature is None:
+                plan_execution_signature = plan.execution_signature()
+            latest_execution_signature = (
+                self._trusted_latest_published_execution_signature()
+            )
+            if latest_execution_signature is None:
+                raise RuntimeError("published plan execution signature is unavailable")
             declared_authority_fence = self._declares_authority_generation_fence(
                 plan
             )
@@ -3320,16 +3367,24 @@ class AssignmentPlanner:
                         latest_plan_id=latest.plan_id,
                         latest_version=latest.version,
                     )
-                if plan.execution_signature() != latest.execution_signature():
+                if plan_execution_signature != latest_execution_signature:
                     raise ValueError(
                         "published plan cannot change execution semantics without a new identity"
                     )
                 self._latest_published_plan = plan
+                self._latest_published_execution_signature = (
+                    plan_execution_signature
+                )
                 self._invalidate_evidence_for_unmatched_publish(plan)
                 return plan
             if declared_authority_fence:
-                self._validate_authority_generation_fence(plan, latest)
-            if plan.execution_signature() == latest.execution_signature():
+                self._validate_authority_generation_fence(
+                    plan,
+                    latest,
+                    plan_execution_signature=plan_execution_signature,
+                    latest_execution_signature=latest_execution_signature,
+                )
+            if plan_execution_signature == latest_execution_signature:
                 if not declared_authority_fence:
                     raise ValueError(
                         "evaluation-only refresh cannot advance executable plan identity"
@@ -3352,11 +3407,29 @@ class AssignmentPlanner:
                     latest_plan_id=latest.plan_id,
                     latest_version=latest.version,
                 )
+        elif plan_execution_signature is None:
+            plan_execution_signature = plan.execution_signature()
         self._latest_version = plan.version
         self._latest_plan_id = plan.plan_id
         self._latest_published_plan = plan
+        self._latest_published_execution_signature = plan_execution_signature
         self._invalidate_evidence_for_unmatched_publish(plan)
         return plan
+
+    def _trusted_latest_published_execution_signature(
+        self,
+    ) -> tuple[Any, ...] | None:
+        """Return the signature paired with the planner-owned latest plan."""
+
+        latest = self._latest_published_plan
+        if latest is None:
+            self._latest_published_execution_signature = None
+            return None
+        signature = self._latest_published_execution_signature
+        if signature is None:
+            signature = latest.execution_signature()
+            self._latest_published_execution_signature = signature
+        return signature
 
     @staticmethod
     def _declares_authority_generation_fence(plan: AssignmentPlan) -> bool:
@@ -3369,6 +3442,9 @@ class AssignmentPlanner:
     def _validate_authority_generation_fence(
         plan: AssignmentPlan,
         latest: AssignmentPlan,
+        *,
+        plan_execution_signature: tuple[Any, ...],
+        latest_execution_signature: tuple[Any, ...],
     ) -> None:
         metadata = plan.metadata
         required_metadata = {
@@ -3400,7 +3476,7 @@ class AssignmentPlanner:
         ):
             raise ValueError("authority generation fence cannot change owner or authorization")
         validated_assignment_plan_payload_sha256(plan)
-        if plan.execution_signature() != latest.execution_signature():
+        if plan_execution_signature != latest_execution_signature:
             if not metadata.get("fault_authority_fence_target_inventory_changed"):
                 raise ValueError(
                     "authority generation fence inventory change is not declared"
@@ -3420,10 +3496,16 @@ class AssignmentPlanner:
         evaluated_at_s: float,
         forced_replan: bool,
         publish: bool,
+        plan_execution_signature: tuple[Any, ...] | None = None,
+        previous_execution_signature: tuple[Any, ...] | None = None,
     ) -> AssignmentPlan:
+        if plan_execution_signature is None:
+            plan_execution_signature = plan.execution_signature()
+        if previous_plan is not None and previous_execution_signature is None:
+            previous_execution_signature = previous_plan.execution_signature()
         execution_changed = (
             previous_plan is None
-            or plan.execution_signature() != previous_plan.execution_signature()
+            or plan_execution_signature != previous_execution_signature
         )
         evaluation_refresh = previous_plan is not None and not execution_changed
         identity_created_at_s = (
@@ -4882,9 +4964,13 @@ class AssignmentPlanner:
                 comparison_matrix_result,
             )
         )
-        change_count = self._change_count(
-            previous_plan.assignments,
-            candidate.assignments,
+        previous_assignment_signature = self._assignment_signature(
+            previous_plan.assignments
+        )
+        candidate_assignment_signature = candidate.stable_signature
+        change_count = self._change_count_from_signatures(
+            previous_assignment_signature,
+            candidate_assignment_signature,
         )
         budget = self._window_change_budget(
             previous_plan=previous_plan,
@@ -4956,8 +5042,9 @@ class AssignmentPlanner:
                     ),
                 },
             )
-        same_assignment = candidate.stable_signature == self._assignment_signature(
-            previous_assignments
+        same_assignment = (
+            candidate_assignment_signature
+            == self._assignment_signature(previous_assignments)
         )
         dwell_time = timestamp - previous_plan.last_changed_at
         previous_high_threat_unassigned = self._high_threat_unassigned_count(
@@ -5415,10 +5502,12 @@ class AssignmentPlanner:
         self,
         previous_plan: AssignmentPlan | None,
         expected_previous_version: int | None,
-    ) -> None:
+        *,
+        validate_execution_semantics: bool = True,
+    ) -> tuple[Any, ...] | None:
         if previous_plan is None:
             if self._latest_plan_id is None:
-                return
+                return None
             raise StalePlanError(
                 "previous_plan is required after the planner has an active plan",
                 reason="previous_plan_required",
@@ -5458,6 +5547,27 @@ class AssignmentPlanner:
                 latest_plan_id=self._latest_plan_id,
                 latest_version=self._latest_version or None,
             )
+        if not validate_execution_semantics:
+            return None
+        latest = self._latest_published_plan
+        if latest is None:
+            return previous_plan.execution_signature()
+        latest_execution_signature = (
+            self._trusted_latest_published_execution_signature()
+        )
+        if latest_execution_signature is None:
+            raise RuntimeError("published plan execution signature is unavailable")
+        if previous_plan.execution_signature() != latest_execution_signature:
+            raise StalePlanError(
+                "previous_plan execution semantics do not match the active plan",
+                reason="stale_previous_plan_semantics",
+                previous_plan_id=previous_plan.plan_id,
+                previous_version=previous_plan.version,
+                expected_previous_version=expected_previous_version,
+                latest_plan_id=latest.plan_id,
+                latest_version=latest.version,
+            )
+        return latest_execution_signature
 
     def _hysteresis_comparison_matrix(
         self,
@@ -6103,9 +6213,21 @@ class AssignmentPlanner:
         previous: tuple[Assignment, ...],
         candidate: tuple[Assignment, ...],
     ) -> int:
-        def by_target(items: tuple[Assignment, ...]) -> dict[str, frozenset[tuple[object, ...]]]:
+        return cls._change_count_from_signatures(
+            cls._assignment_signature(previous),
+            cls._assignment_signature(candidate),
+        )
+
+    @staticmethod
+    def _change_count_from_signatures(
+        previous: tuple[tuple[object, ...], ...],
+        candidate: tuple[tuple[object, ...], ...],
+    ) -> int:
+        def by_target(
+            items: tuple[tuple[object, ...], ...],
+        ) -> dict[str, frozenset[tuple[object, ...]]]:
             grouped: dict[str, set[tuple[object, ...]]] = {}
-            for signature in cls._assignment_signature(items):
+            for signature in items:
                 grouped.setdefault(str(signature[0]), set()).add(signature[1:])
             return {key: frozenset(value) for key, value in grouped.items()}
 

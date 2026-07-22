@@ -2519,3 +2519,66 @@ current_cost_breakdowns_by_edge_ref = cost_breakdowns_by_edge
 专项 5 项通过。全量收集 430 项，结果为 427 passed、1 skipped、2 failed。skip 是可选
 OR-Tools；两个失败仍是 main/D7 `global_track_stale` 跨模块时序用例，在本轮前已存在。
 本项未放宽 stale，也未运行新 schema 的完整长时 episode。
+
+## 54. 冻结输入性能诊断与签名复用
+
+### 54.1 诊断边界
+
+`D3PlannerOperationCounts` 是固定字段、固定大小的 benchmark 记录。它统计完整目标资源对、
+候选边、候选连通分量、Hungarian 局部矩阵和虚拟列、求解结果解码行、计划构造、计划边
+物化与规范哈希、输入快照、迟滞访问、匿名证据复制以及发布校验。该对象不被 planner 返回，
+也不写入计划 metadata。
+
+`D3PlannerPhaseTimings` 使用单调高精度时钟记录包含式阶段边界。计时包装器只存在于
+`performance_diagnostics.py` 的基准子类中。阶段可能嵌套，数值不能相加。业务路径没有新增
+计时回调，墙钟不会影响随机性、计划身份或控制判定。
+
+### 54.2 冻结输入
+
+冻结输入按 seed 42000 构造 200 个匿名目标代理和 200 个资源。位置位于确定性三维网格，
+随机抖动由 NumPy 固定种子生成；协方差、威胁度、速度和资源约束均写入规范输入摘要。
+输入 SHA-256 为
+`c7c86f22252add5a6e201577ec99baa63050e56d00898e66d514ab3c0c46c7ff`。
+目标号只用于匿名业务绑定，不是仿真 truth id。
+
+每个目标最多保留 32 条候选边。该 fixture 形成 40,000 个完整数值对、6,400 条候选边和一个
+200×200 候选连通分量。求解准备 40,000 个局部实边单元和 40,000 个未分配虚拟列单元。
+这些操作数在重复运行间必须完全一致。
+
+### 54.3 参考路径
+
+基准执行三条路径：默认路径、身份重复计算参考、关闭离线证据参考。身份参考恢复旧行为，
+让身份固化和发布边界各自生成执行签名。证据参考只跳过 benchmark 子类的匿名 planning
+evidence 快照，用于估计该边界，不暴露为 PlannerConfig 或线上接口。
+
+每条路径连续执行首帧和上一计划帧，并重复三次。汇总器要求每次的版本、决策状态、绑定
+SHA-256、规范业务 SHA-256、操作计数和计划号复用状态一致；否则基准失败。规范业务哈希
+删除随机计划身份字段，保留 assignment、库存、成本证据、迟滞和授权语义。
+
+### 54.4 局部等价优化
+
+`_finalize_and_publish()` 在进入身份固化前计算 candidate execution signature，并在同一调用
+内传给身份固化和发布校验。latest published execution signature 不取自 caller previous，
+而是与 `_latest_published_plan` 配对保存在 planner-owned cache 中并跨帧复用。caller
+previous 计算自身签名后只与该可信值比较。公共 `publish_plan()` 仍从待发布对象计算
+candidate signature，再与 planner-owned latest 比较。
+
+区域路径先调用只检查 plan id/version 的前置门，随后执行 pending inventory 专用校验。
+专用校验通过后再运行完整 previous execution signature 校验。这样库存篡改保留
+`RegionalPlanAuthorityError`，其他同 identity 执行语义篡改仍以 `StalePlanError` 失败关闭。
+
+`_apply_hysteresis()` 已持有候选计划的 `stable_signature`，变更计数直接使用该值；旧计划
+签名仍从旧 assignment 构造。后续的 same-assignment 判断复用同一候选签名。代价矩阵、
+候选图、Hungarian 输入、迟滞阈值和最终 assignment 未改变。
+
+### 54.5 结果与限制
+
+默认上一计划帧端到端中位为 `334.735 ms`。成本矩阵、Hungarian、计划边证据、迟滞、身份
+固化、发布和离线证据中位分别为 `66.401/4.460/82.342/31.602/2.967/0.156/74.305 ms`。
+恢复身份重复计算后，身份固化和发布分别为 `15.629/13.246 ms`；端到端为 `389.673 ms`。
+关闭离线证据参考为 `223.147 ms`，该路径不可用于生产。
+
+三条路径的 binding、版本和规范业务哈希一致，刷新帧均复用原计划号。身份、区域、直接发布、
+authority fence 和性能诊断定向组合 `46 passed`。全量 439 项中 436 项通过、1 项可选
+OR-Tools 跳过、2 项为已在基线复现的 `global_track_stale` 跨模块测试失败。本结果是单机
+开发归因，不是 AirSim、长时 200v200 或系统实时能力证明。

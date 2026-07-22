@@ -1237,3 +1237,36 @@ v1；新 v2 的内容或审计元数据不一致时失败关闭。外层计划 s
 430 项中 427 passed、1 skipped、2 个既有 `global_track_stale` failed。下一步由 main 在
 clean worktree 重跑长时 episode，并由 D6 验证新 payload；D3 不把旧样本投影写成正式新
 schema 运行证据。
+
+## 50. 冻结输入性能归因与身份签名复用复核（2026-07-22）
+
+本轮没有根据三次集成累计墙钟直接调整规则代价或迟滞。D3 先建立匿名冻结输入，把规划链路
+拆为成本矩阵、候选图、Hungarian、计划边证据、迟滞、身份固化、发布校验和离线证据八个
+边界。定长操作计数用于解释算法工作量，墙钟只由 benchmark 包装器采集。在线计划对象不
+携带任何性能字段。
+
+200×200、top-32 输入产生 40,000 个完整对、6,400 条候选边和一个 200×200 连通分量。
+Hungarian 的局部实边和未分配虚拟列共准备 80,000 个单元。规划证据复制 80,000 个数值
+单元并访问 40,000 个 breakdown 单元，按共享对象实际净化 6,401 次。上一计划帧另外访问
+6,400 条迟滞边，并对旧计划和候选计划共 400 个绑定进行重评分。
+
+局部代码复核发现执行签名在身份固化和发布校验边界重复生成。当前实现只在一次规划调用内
+复用 candidate signature。latest published execution signature 由 planner-owned cache
+跨帧保存并作为唯一发布权威；caller previous 仍计算自身签名，但只用于与可信 latest 做
+一致性校验。公共 `publish_plan()` 从待发布对象计算 candidate signature，不接受外部 latest
+签名。优化前后的 assignment、计划版本、计划号复用行为和规范业务哈希完全一致。
+
+区域路径采用分阶段校验。plan id/version 首先失败关闭，pending inventory 随后由区域规则
+检查，以保留 `RegionalPlanAuthorityError`；通过区域检查后再执行通用 execution signature
+校验。其他同 identity 执行语义篡改仍返回 `StalePlanError`。直接发布和 authority fence
+继续使用 planner-owned latest cache。
+
+三条基准路径用于区分成本来源。默认上一计划帧中位为 `334.735 ms`，恢复身份重复计算后
+为 `389.673 ms`，关闭离线证据的离线参考为 `223.147 ms`。后一个参考不满足生产审计要求，
+没有运行时入口。各阶段计时为包含式边界，不能相加解释端到端时间。
+
+身份、区域、直接发布、authority fence 和性能诊断定向组合 `46 passed`。D3 全量 439 项中
+436 项通过、1 项可选 OR-Tools 跳过；两项真实主总线测试仍因 `global_track_stale` 将 3 个
+binding 全部保持为 held。该断点已在基线复现，本轮未调整 stale 门。main 应在隔离环境用
+同一提交复测 seed 42000-42002，只有
+单次输入操作数、调用密度和累计耗时能够相互解释后，才可形成集成性能结论。

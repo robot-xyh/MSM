@@ -1,0 +1,667 @@
+{
+  "schema": "d3_planner_performance_benchmark_v1",
+  "diagnostic_schema": "d3_planner_performance_diagnostic_v1",
+  "fixture_schema": "d3_reproducible_assignment_fixture_v1",
+  "seed": 42000,
+  "target_count": 200,
+  "resource_count": 200,
+  "max_candidate_edges_per_target": 32,
+  "repeat": 3,
+  "input_sha256": "c7c86f22252add5a6e201577ec99baa63050e56d00898e66d514ab3c0c46c7ff",
+  "wall_clock_scope": "benchmark_report_only",
+  "plan_metadata_contains_performance_diagnostics": false,
+  "reference_modes_are_runtime_candidates": false,
+  "latest_published_signature_source": "planner_owned_cache",
+  "caller_previous_signature_used_as_latest": false,
+  "modes": [
+    {
+      "mode": "default",
+      "initial": {
+        "plan_version": 1,
+        "decision_state": "accepted",
+        "assignment_count": 200,
+        "plan_id_format_valid": true,
+        "plan_id_reused": false,
+        "binding_sha256": "794a9eef1d94c26fd599dde2a8999e7d9a0726776f96b0daa4edb67a6f3a9039",
+        "business_sha256": "79e2ff6fc1d3f516fa0a5ee30f99508e52eb25974f04f8a979c954e02bf1e0ad",
+        "evidence_available": true,
+        "operation_counts": {
+          "target_count": 200,
+          "resource_count": 200,
+          "full_pair_count": 40000,
+          "vectorized_rule_pair_count": 40000,
+          "candidate_edge_count": 6400,
+          "candidate_component_count": 1,
+          "largest_component_target_count": 200,
+          "largest_component_resource_count": 200,
+          "hungarian_local_matrix_cell_count": 40000,
+          "hungarian_dummy_cell_count": 40000,
+          "hungarian_prepared_cell_count": 80000,
+          "solver_decoded_row_count": 200,
+          "plan_build_call_count": 1,
+          "plan_id_generation_count": 1,
+          "plan_edge_materialization_count": 6400,
+          "canonical_edge_hash_call_count": 1,
+          "canonical_edge_hash_item_count": 6400,
+          "input_snapshot_entity_count": 600,
+          "hysteresis_candidate_edge_visit_count": 0,
+          "hysteresis_binding_rescore_count": 0,
+          "evidence_capture_call_count": 1,
+          "evidence_matrix_cell_copy_count": 80000,
+          "evidence_candidate_mask_cell_copy_count": 80000,
+          "evidence_breakdown_cell_visit_count": 40000,
+          "evidence_unique_breakdown_sanitize_count": 6401,
+          "evidence_track_copy_count": 200,
+          "evidence_resource_copy_count": 200,
+          "evidence_plan_assignment_copy_count": 200,
+          "publish_validation_call_count": 1
+        },
+        "timing_samples_ms": {
+          "end_to_end_ms": [
+            255.171581,
+            304.080687,
+            308.403557
+          ],
+          "search_matrix_ms": [
+            65.674856,
+            57.379436,
+            58.781511
+          ],
+          "hungarian_ms": [
+            4.05073,
+            3.597613,
+            3.602979
+          ],
+          "plan_payload_ms": [
+            83.039957,
+            137.973679,
+            81.580955
+          ],
+          "plan_edge_evidence_ms": [
+            75.749659,
+            130.587364,
+            74.517161
+          ],
+          "hysteresis_ms": [
+            0.005958,
+            0.005301,
+            0.005139
+          ],
+          "identity_finalize_ms": [
+            1.371277,
+            1.301114,
+            1.254763
+          ],
+          "publish_ms": [
+            0.018869,
+            0.017171,
+            0.01572
+          ],
+          "offline_evidence_ms": [
+            59.740608,
+            62.447621,
+            121.196494
+          ],
+          "canonical_business_hash_ms": [
+            535.438097,
+            454.779323,
+            441.318121
+          ]
+        },
+        "timing_medians_ms": {
+          "end_to_end_ms": 304.080687,
+          "search_matrix_ms": 58.781511,
+          "hungarian_ms": 3.602979,
+          "plan_payload_ms": 83.039957,
+          "plan_edge_evidence_ms": 75.749659,
+          "hysteresis_ms": 0.005301,
+          "identity_finalize_ms": 1.301114,
+          "publish_ms": 0.017171,
+          "offline_evidence_ms": 62.447621,
+          "canonical_business_hash_ms": 454.779323
+        }
+      },
+      "refresh": {
+        "plan_version": 1,
+        "decision_state": "unchanged",
+        "assignment_count": 200,
+        "plan_id_format_valid": true,
+        "plan_id_reused": true,
+        "binding_sha256": "794a9eef1d94c26fd599dde2a8999e7d9a0726776f96b0daa4edb67a6f3a9039",
+        "business_sha256": "8aee3130a60cb6581214837ca0cc79a94c139bd4bb6c8b23e36dec1f12c5e030",
+        "evidence_available": true,
+        "operation_counts": {
+          "target_count": 200,
+          "resource_count": 200,
+          "full_pair_count": 40000,
+          "vectorized_rule_pair_count": 40000,
+          "candidate_edge_count": 6400,
+          "candidate_component_count": 1,
+          "largest_component_target_count": 200,
+          "largest_component_resource_count": 200,
+          "hungarian_local_matrix_cell_count": 40000,
+          "hungarian_dummy_cell_count": 40000,
+          "hungarian_prepared_cell_count": 80000,
+          "solver_decoded_row_count": 200,
+          "plan_build_call_count": 1,
+          "plan_id_generation_count": 1,
+          "plan_edge_materialization_count": 6400,
+          "canonical_edge_hash_call_count": 1,
+          "canonical_edge_hash_item_count": 6400,
+          "input_snapshot_entity_count": 600,
+          "hysteresis_candidate_edge_visit_count": 6400,
+          "hysteresis_binding_rescore_count": 400,
+          "evidence_capture_call_count": 1,
+          "evidence_matrix_cell_copy_count": 80000,
+          "evidence_candidate_mask_cell_copy_count": 80000,
+          "evidence_breakdown_cell_visit_count": 40000,
+          "evidence_unique_breakdown_sanitize_count": 6401,
+          "evidence_track_copy_count": 200,
+          "evidence_resource_copy_count": 200,
+          "evidence_plan_assignment_copy_count": 400,
+          "publish_validation_call_count": 1
+        },
+        "timing_samples_ms": {
+          "end_to_end_ms": [
+            309.180316,
+            353.264804,
+            301.677952
+          ],
+          "search_matrix_ms": [
+            60.027297,
+            57.881419,
+            60.506123
+          ],
+          "hungarian_ms": [
+            4.031286,
+            3.658534,
+            3.602129
+          ],
+          "plan_payload_ms": [
+            82.19509,
+            79.295446,
+            81.747863
+          ],
+          "plan_edge_evidence_ms": [
+            74.864537,
+            72.171009,
+            74.684306
+          ],
+          "hysteresis_ms": [
+            32.049264,
+            30.263256,
+            31.093475
+          ],
+          "identity_finalize_ms": [
+            3.045298,
+            63.124982,
+            2.812102
+          ],
+          "publish_ms": [
+            0.157078,
+            0.162862,
+            0.170211
+          ],
+          "offline_evidence_ms": [
+            74.742502,
+            68.581289,
+            71.873727
+          ],
+          "canonical_business_hash_ms": [
+            468.694828,
+            445.822387,
+            521.434588
+          ]
+        },
+        "timing_medians_ms": {
+          "end_to_end_ms": 309.180316,
+          "search_matrix_ms": 60.027297,
+          "hungarian_ms": 3.658534,
+          "plan_payload_ms": 81.747863,
+          "plan_edge_evidence_ms": 74.684306,
+          "hysteresis_ms": 31.093475,
+          "identity_finalize_ms": 3.045298,
+          "publish_ms": 0.162862,
+          "offline_evidence_ms": 71.873727,
+          "canonical_business_hash_ms": 468.694828
+        }
+      }
+    },
+    {
+      "mode": "identity_recompute_reference",
+      "initial": {
+        "plan_version": 1,
+        "decision_state": "accepted",
+        "assignment_count": 200,
+        "plan_id_format_valid": true,
+        "plan_id_reused": false,
+        "binding_sha256": "794a9eef1d94c26fd599dde2a8999e7d9a0726776f96b0daa4edb67a6f3a9039",
+        "business_sha256": "79e2ff6fc1d3f516fa0a5ee30f99508e52eb25974f04f8a979c954e02bf1e0ad",
+        "evidence_available": true,
+        "operation_counts": {
+          "target_count": 200,
+          "resource_count": 200,
+          "full_pair_count": 40000,
+          "vectorized_rule_pair_count": 40000,
+          "candidate_edge_count": 6400,
+          "candidate_component_count": 1,
+          "largest_component_target_count": 200,
+          "largest_component_resource_count": 200,
+          "hungarian_local_matrix_cell_count": 40000,
+          "hungarian_dummy_cell_count": 40000,
+          "hungarian_prepared_cell_count": 80000,
+          "solver_decoded_row_count": 200,
+          "plan_build_call_count": 1,
+          "plan_id_generation_count": 1,
+          "plan_edge_materialization_count": 6400,
+          "canonical_edge_hash_call_count": 1,
+          "canonical_edge_hash_item_count": 6400,
+          "input_snapshot_entity_count": 600,
+          "hysteresis_candidate_edge_visit_count": 0,
+          "hysteresis_binding_rescore_count": 0,
+          "evidence_capture_call_count": 1,
+          "evidence_matrix_cell_copy_count": 80000,
+          "evidence_candidate_mask_cell_copy_count": 80000,
+          "evidence_breakdown_cell_visit_count": 40000,
+          "evidence_unique_breakdown_sanitize_count": 6401,
+          "evidence_track_copy_count": 200,
+          "evidence_resource_copy_count": 200,
+          "evidence_plan_assignment_copy_count": 200,
+          "publish_validation_call_count": 1
+        },
+        "timing_samples_ms": {
+          "end_to_end_ms": [
+            263.65095,
+            315.492265,
+            313.393126
+          ],
+          "search_matrix_ms": [
+            59.085265,
+            59.074487,
+            58.221085
+          ],
+          "hungarian_ms": [
+            3.911402,
+            3.766814,
+            3.627763
+          ],
+          "plan_payload_ms": [
+            86.862838,
+            84.447155,
+            81.721517
+          ],
+          "plan_edge_evidence_ms": [
+            79.316459,
+            76.807806,
+            74.648725
+          ],
+          "hysteresis_ms": [
+            0.005178,
+            0.005164,
+            0.005456
+          ],
+          "identity_finalize_ms": [
+            7.944332,
+            7.872887,
+            7.795902
+          ],
+          "publish_ms": [
+            6.13786,
+            64.814804,
+            5.666876
+          ],
+          "offline_evidence_ms": [
+            64.023455,
+            60.26203,
+            120.577111
+          ],
+          "canonical_business_hash_ms": [
+            462.281738,
+            445.342571,
+            458.691901
+          ]
+        },
+        "timing_medians_ms": {
+          "end_to_end_ms": 313.393126,
+          "search_matrix_ms": 59.074487,
+          "hungarian_ms": 3.766814,
+          "plan_payload_ms": 84.447155,
+          "plan_edge_evidence_ms": 76.807806,
+          "hysteresis_ms": 0.005178,
+          "identity_finalize_ms": 7.872887,
+          "publish_ms": 6.13786,
+          "offline_evidence_ms": 64.023455,
+          "canonical_business_hash_ms": 458.691901
+        }
+      },
+      "refresh": {
+        "plan_version": 1,
+        "decision_state": "unchanged",
+        "assignment_count": 200,
+        "plan_id_format_valid": true,
+        "plan_id_reused": true,
+        "binding_sha256": "794a9eef1d94c26fd599dde2a8999e7d9a0726776f96b0daa4edb67a6f3a9039",
+        "business_sha256": "8aee3130a60cb6581214837ca0cc79a94c139bd4bb6c8b23e36dec1f12c5e030",
+        "evidence_available": true,
+        "operation_counts": {
+          "target_count": 200,
+          "resource_count": 200,
+          "full_pair_count": 40000,
+          "vectorized_rule_pair_count": 40000,
+          "candidate_edge_count": 6400,
+          "candidate_component_count": 1,
+          "largest_component_target_count": 200,
+          "largest_component_resource_count": 200,
+          "hungarian_local_matrix_cell_count": 40000,
+          "hungarian_dummy_cell_count": 40000,
+          "hungarian_prepared_cell_count": 80000,
+          "solver_decoded_row_count": 200,
+          "plan_build_call_count": 1,
+          "plan_id_generation_count": 1,
+          "plan_edge_materialization_count": 6400,
+          "canonical_edge_hash_call_count": 1,
+          "canonical_edge_hash_item_count": 6400,
+          "input_snapshot_entity_count": 600,
+          "hysteresis_candidate_edge_visit_count": 6400,
+          "hysteresis_binding_rescore_count": 400,
+          "evidence_capture_call_count": 1,
+          "evidence_matrix_cell_copy_count": 80000,
+          "evidence_candidate_mask_cell_copy_count": 80000,
+          "evidence_breakdown_cell_visit_count": 40000,
+          "evidence_unique_breakdown_sanitize_count": 6401,
+          "evidence_track_copy_count": 200,
+          "evidence_resource_copy_count": 200,
+          "evidence_plan_assignment_copy_count": 400,
+          "publish_validation_call_count": 1
+        },
+        "timing_samples_ms": {
+          "end_to_end_ms": [
+            369.999709,
+            369.201276,
+            328.082355
+          ],
+          "search_matrix_ms": [
+            57.799957,
+            58.888481,
+            61.368519
+          ],
+          "hungarian_ms": [
+            4.123092,
+            3.729027,
+            3.838712
+          ],
+          "plan_payload_ms": [
+            143.961093,
+            82.978017,
+            86.275096
+          ],
+          "plan_edge_evidence_ms": [
+            136.978212,
+            75.6868,
+            78.73248
+          ],
+          "hysteresis_ms": [
+            29.349126,
+            30.97779,
+            32.540237
+          ],
+          "identity_finalize_ms": [
+            14.688114,
+            14.608869,
+            15.976621
+          ],
+          "publish_ms": [
+            6.102118,
+            5.733025,
+            6.072608
+          ],
+          "offline_evidence_ms": [
+            70.106665,
+            128.614779,
+            75.116395
+          ],
+          "canonical_business_hash_ms": [
+            447.956295,
+            451.078388,
+            543.03732
+          ]
+        },
+        "timing_medians_ms": {
+          "end_to_end_ms": 369.201276,
+          "search_matrix_ms": 58.888481,
+          "hungarian_ms": 3.838712,
+          "plan_payload_ms": 86.275096,
+          "plan_edge_evidence_ms": 78.73248,
+          "hysteresis_ms": 30.97779,
+          "identity_finalize_ms": 14.688114,
+          "publish_ms": 6.072608,
+          "offline_evidence_ms": 75.116395,
+          "canonical_business_hash_ms": 451.078388
+        }
+      }
+    },
+    {
+      "mode": "evidence_bypass_reference",
+      "initial": {
+        "plan_version": 1,
+        "decision_state": "accepted",
+        "assignment_count": 200,
+        "plan_id_format_valid": true,
+        "plan_id_reused": false,
+        "binding_sha256": "794a9eef1d94c26fd599dde2a8999e7d9a0726776f96b0daa4edb67a6f3a9039",
+        "business_sha256": "79e2ff6fc1d3f516fa0a5ee30f99508e52eb25974f04f8a979c954e02bf1e0ad",
+        "evidence_available": false,
+        "operation_counts": {
+          "target_count": 200,
+          "resource_count": 200,
+          "full_pair_count": 40000,
+          "vectorized_rule_pair_count": 40000,
+          "candidate_edge_count": 6400,
+          "candidate_component_count": 1,
+          "largest_component_target_count": 200,
+          "largest_component_resource_count": 200,
+          "hungarian_local_matrix_cell_count": 40000,
+          "hungarian_dummy_cell_count": 40000,
+          "hungarian_prepared_cell_count": 80000,
+          "solver_decoded_row_count": 200,
+          "plan_build_call_count": 1,
+          "plan_id_generation_count": 1,
+          "plan_edge_materialization_count": 6400,
+          "canonical_edge_hash_call_count": 1,
+          "canonical_edge_hash_item_count": 6400,
+          "input_snapshot_entity_count": 600,
+          "hysteresis_candidate_edge_visit_count": 0,
+          "hysteresis_binding_rescore_count": 0,
+          "evidence_capture_call_count": 1,
+          "evidence_matrix_cell_copy_count": 0,
+          "evidence_candidate_mask_cell_copy_count": 0,
+          "evidence_breakdown_cell_visit_count": 0,
+          "evidence_unique_breakdown_sanitize_count": 0,
+          "evidence_track_copy_count": 0,
+          "evidence_resource_copy_count": 0,
+          "evidence_plan_assignment_copy_count": 0,
+          "publish_validation_call_count": 1
+        },
+        "timing_samples_ms": {
+          "end_to_end_ms": [
+            186.891502,
+            187.967199,
+            186.545446
+          ],
+          "search_matrix_ms": [
+            58.157841,
+            58.757325,
+            58.31756
+          ],
+          "hungarian_ms": [
+            3.615261,
+            3.601196,
+            3.646784
+          ],
+          "plan_payload_ms": [
+            81.225162,
+            81.72814,
+            81.928901
+          ],
+          "plan_edge_evidence_ms": [
+            74.054086,
+            74.532025,
+            74.746455
+          ],
+          "hysteresis_ms": [
+            0.00481,
+            0.005387,
+            0.005298
+          ],
+          "identity_finalize_ms": [
+            1.283169,
+            1.274887,
+            1.245269
+          ],
+          "publish_ms": [
+            0.016074,
+            0.015335,
+            0.015388
+          ],
+          "offline_evidence_ms": [
+            0.016216,
+            0.011907,
+            0.012473
+          ],
+          "canonical_business_hash_ms": [
+            447.025095,
+            446.218111,
+            465.227672
+          ]
+        },
+        "timing_medians_ms": {
+          "end_to_end_ms": 186.891502,
+          "search_matrix_ms": 58.31756,
+          "hungarian_ms": 3.615261,
+          "plan_payload_ms": 81.72814,
+          "plan_edge_evidence_ms": 74.532025,
+          "hysteresis_ms": 0.005298,
+          "identity_finalize_ms": 1.274887,
+          "publish_ms": 0.015388,
+          "offline_evidence_ms": 0.012473,
+          "canonical_business_hash_ms": 447.025095
+        }
+      },
+      "refresh": {
+        "plan_version": 1,
+        "decision_state": "unchanged",
+        "assignment_count": 200,
+        "plan_id_format_valid": true,
+        "plan_id_reused": true,
+        "binding_sha256": "794a9eef1d94c26fd599dde2a8999e7d9a0726776f96b0daa4edb67a6f3a9039",
+        "business_sha256": "8aee3130a60cb6581214837ca0cc79a94c139bd4bb6c8b23e36dec1f12c5e030",
+        "evidence_available": false,
+        "operation_counts": {
+          "target_count": 200,
+          "resource_count": 200,
+          "full_pair_count": 40000,
+          "vectorized_rule_pair_count": 40000,
+          "candidate_edge_count": 6400,
+          "candidate_component_count": 1,
+          "largest_component_target_count": 200,
+          "largest_component_resource_count": 200,
+          "hungarian_local_matrix_cell_count": 40000,
+          "hungarian_dummy_cell_count": 40000,
+          "hungarian_prepared_cell_count": 80000,
+          "solver_decoded_row_count": 200,
+          "plan_build_call_count": 1,
+          "plan_id_generation_count": 1,
+          "plan_edge_materialization_count": 6400,
+          "canonical_edge_hash_call_count": 1,
+          "canonical_edge_hash_item_count": 6400,
+          "input_snapshot_entity_count": 600,
+          "hysteresis_candidate_edge_visit_count": 6400,
+          "hysteresis_binding_rescore_count": 400,
+          "evidence_capture_call_count": 1,
+          "evidence_matrix_cell_copy_count": 0,
+          "evidence_candidate_mask_cell_copy_count": 0,
+          "evidence_breakdown_cell_visit_count": 0,
+          "evidence_unique_breakdown_sanitize_count": 0,
+          "evidence_track_copy_count": 0,
+          "evidence_resource_copy_count": 0,
+          "evidence_plan_assignment_copy_count": 0,
+          "publish_validation_call_count": 1
+        },
+        "timing_samples_ms": {
+          "end_to_end_ms": [
+            222.293416,
+            224.899724,
+            237.959186
+          ],
+          "search_matrix_ms": [
+            57.015237,
+            59.135325,
+            62.24915
+          ],
+          "hungarian_ms": [
+            4.131461,
+            4.284262,
+            4.396579
+          ],
+          "plan_payload_ms": [
+            81.978159,
+            82.360896,
+            86.191092
+          ],
+          "plan_edge_evidence_ms": [
+            74.912855,
+            75.073794,
+            78.979397
+          ],
+          "hysteresis_ms": [
+            29.347253,
+            29.298423,
+            31.92951
+          ],
+          "identity_finalize_ms": [
+            2.807458,
+            2.902627,
+            2.981237
+          ],
+          "publish_ms": [
+            0.170741,
+            0.170049,
+            0.176437
+          ],
+          "offline_evidence_ms": [
+            0.013381,
+            0.013031,
+            0.013735
+          ],
+          "canonical_business_hash_ms": [
+            508.829506,
+            513.707771,
+            473.054256
+          ]
+        },
+        "timing_medians_ms": {
+          "end_to_end_ms": 224.899724,
+          "search_matrix_ms": 59.135325,
+          "hungarian_ms": 4.284262,
+          "plan_payload_ms": 82.360896,
+          "plan_edge_evidence_ms": 75.073794,
+          "hysteresis_ms": 29.347253,
+          "identity_finalize_ms": 2.902627,
+          "publish_ms": 0.170741,
+          "offline_evidence_ms": 0.013381,
+          "canonical_business_hash_ms": 508.829506
+        }
+      }
+    }
+  ],
+  "semantic_equivalence": {
+    "bindings_equal": true,
+    "plan_versions_equal": true,
+    "canonical_business_hashes_equal": true,
+    "refresh_reuses_plan_identity": true,
+    "rule_costs_changed": false,
+    "hungarian_changed": false,
+    "hysteresis_changed": false,
+    "d5_d7_binding_changed": false
+  }
+}

@@ -12,6 +12,7 @@ from d3_assignment_planner import (
     RegionalCoalitionCommitEvidence,
     RegionalPlanAuthorityError,
     ResourceState,
+    StalePlanError,
     TargetDemand,
     TargetTrack,
     validated_assignment_plan_payload_sha256,
@@ -395,6 +396,33 @@ def test_regional_authority_rejects_tampered_pending_inventory_evidence() -> Non
             expected_previous_version=previous.version,
         )
     assert error.value.reason == "regional_authority_target_set_mismatch"
+
+
+def test_regional_authority_still_rejects_other_execution_semantic_tamper() -> None:
+    planner = _planner()
+    tracks = (_track("T", "A", 100.0),)
+    resources = (_resource("R", "A", 0.0),)
+    previous = planner.plan(tracks, resources, timestamp=0.0)
+    grant = _grant(
+        previous,
+        region_id="A",
+        target_id="T",
+        resource_ids=("R",),
+        owner_layer="secondary",
+        owner_node_id="RECON-A",
+    )
+    tampered = replace(previous, human_authorization_state="required")
+
+    with pytest.raises(StalePlanError) as error:
+        planner.plan_regional_authority(
+            tracks,
+            resources,
+            timestamp=1.0,
+            previous_plan=tampered,
+            authority=RegionalAuthorityInput(1.0, (grant,)),
+            expected_previous_version=previous.version,
+        )
+    assert error.value.reason == "stale_previous_plan_semantics"
 
 
 @pytest.mark.parametrize(
