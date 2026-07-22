@@ -1,29 +1,32 @@
 # D1 Sensor Fusion Offline Experiment Report
 
-## 2026-07-22 Scalable 3D development 证据复核
+## 2026-07-22 Scalable 3D 正式治理证据复核
 
 ### 证据层次
 
-本节只复核 main 生成的公开制品，不重新运行 scalable 场景。两组制品都来自 commit
-`ca83b4a328ea5ca2686e42ee9a905cd539b8186d` 的 dirty 工作区，证据等级为 development。
+本节只复核 main 生成的公开制品，不重新运行 scalable 场景。正式治理批来自 clean 提交
+`e4d66db02a0b8f1b867a0e81b4a73de84588426b`。20/50/100/200 四档各 5 个互异 seed，共
+20 个 episode；每例 136 帧、33.75 s。20/20 manifest 均为 `repository_dirty=false`、
+`evidence_tier=formal`，在线 truth 使用总数为 0。
 
-第一组是快速观测治理 benchmark。20/50/100/200 四档各 5 个互异 seed，共 20 个 episode；
-每个 episode 为 136 帧、33.75 s。runner 明确记录 `full_system_evidence=false`，D6 聚合记录
-`formal_episode_count=0`。该组只验证扫描治理、审计、内存边界和 truth 隔离，不运行完整 D1
-EKF/fixed-lag 融合。
-
-| 规模 | episode | 每 episode 扫描 | 重排 | 拒绝 | 峰值缓冲 | 结束缓冲 | D1 峰值内存最大值 |
+| 规模 | formal episode | 每例扫描 | 每例重排 | 拒绝/过旧/溢出 | 峰值/结束缓冲 | 峰值内存均值 | 峰值内存最大值 |
 | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 20 | 5 | 136 | 12 | 0 | 3 | 0 | 4.42 MB |
-| 50 | 5 | 136 | 12 | 0 | 3 | 0 | 10.40 MB |
-| 100 | 5 | 136 | 12 | 0 | 3 | 0 | 20.53 MB |
-| 200 | 5 | 136 | 12 | 0 | 3 | 0 | 40.91 MB |
+| 20 | 5/5 | 136 | 12 | 0/0/0 | 3/0 | 4.30 MB | 4,419,125 B |
+| 50 | 5/5 | 136 | 12 | 0/0/0 | 3/0 | 10.36 MB | 10,411,011 B |
+| 100 | 5/5 | 136 | 12 | 0/0/0 | 3/0 | 20.53 MB | 20,537,990 B |
+| 200 | 5/5 | 136 | 12 | 0/0/0 | 3/0 | 40.91 MB | 40,926,870 B |
 
-四档在线 truth 使用均为 0。内存值取 D6 聚合中的 `estimated_peak_memory_bytes.max`，以十进制
-MB 表示；200 规模的原值为 40,911,754 B，约 39.02 MiB。该值是 Python tracemalloc 派生的
-development 样本，不代表进程常驻集、AirSim 总内存或生产硬件预算。
+内存值取 D6 聚合中的 `estimated_peak_memory_bytes`，均值以十进制 MB 表示。它是 Python
+tracemalloc 派生指标，不等同进程常驻集、AirSim 总内存或生产硬件预算。runner 仍明确记录
+`full_system_evidence=false`，评估端也记录 `runtime_modules_imported=false`；该组只运行快速
+治理 benchmark，不运行完整 D1 EKF/fixed-lag 融合。
 
-第二组是 seed 42000 的 200v200 单次三维质点全栈 smoke。仿真推进 2.2 s，墙钟耗时
+独立哈希复核结果如下：聚合报告绑定的输入 SHA-256 为
+`dd62ae9b6efd86d9669b42ccc0630127bc504a18f37c84be5b3ac8b519a42655`，与实际输入文件一致；
+输入清单引用的 20 份 manifest、20 份在线审计和 20 份评估侧车，共 60 个文件全部匹配声明值。
+
+另保留 seed 42000 的 200v200 单次三维质点全栈 development smoke。该批来自旧 dirty
+development 工作区，不能由正式治理结果自动升级。仿真推进 2.2 s，墙钟耗时
 60.210 s，实时倍率 0.037。在线共 2,051 条匿名观测，其中 radar 1,966 条、EO 85 条；声学为
 0。D1 的 86 个扫描全部释放，重排 10、拒绝 0，峰值缓冲 33 个扫描/623 条观测，结束缓冲为 0，
 在线 truth 使用为 0。
@@ -37,17 +40,18 @@ development 样本，不代表进程常驻集、AirSim 总内存或生产硬件�
 
 ### 结果判断
 
-快速治理结果证明当前 lateness 配置在构造流中可以重排预置乱序且不触发误拒，缓冲在 episode
-结束后归零。它没有执行完整融合，因此不能用 20 个 episode 的通过结果证明 200v200 实时性、
-定位精度或航迹质量。
+正式治理结果证明当前 lateness 配置在这组预注册构造流中可以重排预置乱序且不触发拒绝、过旧
+或溢出，缓冲在 episode 结束后归零，且来源、提交和哈希链可复核。clean/formal 治理复跑缺口
+据此关闭。它没有执行完整融合，不能用 20 个 episode 的通过结果证明 200v200 实时性、定位
+精度或航迹质量。
 
 单次全栈结果暴露了明确的 P1 性能缺口。每个释放扫描都会调用一次 `process_scan_batch()`；
 小 EO 扫描与大 radar 扫描都可能触发关联、fixed-lag 重放和完整后验快照。main 的尾部发布合并
 减少了下游重复发布，但没有减少 D1 对各释放扫描的后验处理。35.115 s 的 D1 fusion 占本次
 60.210 s 墙钟的大部分，当前实现不能据此声称实时。
 
-本批没有正式 evaluator sidecar 产生的 RMSE、NEES、NIS coverage、近邻召回、错误抑制或确认
-时延；相关指标在单次全栈治理报告中为 unavailable。D1 终态 201 条 source track 与 D2 的
+单次全栈批没有正式 evaluator sidecar 产生的 RMSE、NEES、NIS coverage、近邻召回、错误抑制
+或确认时延；相关指标在该批治理报告中为 unavailable。D1 终态 201 条 source track 与 D2 的
 200 条 canonical track 也不能直接解释为精度或身份结果。该批只有一个 seed，未覆盖复杂机动、
 虚警、持续漏检或长 episode 历史增长。
 
@@ -59,12 +63,13 @@ development 样本，不代表进程常驻集、AirSim 总内存或生产硬件�
    每帧审计、扫描原子性和一对一关联顺序保持不变。
 3. 优化前后对比 track 集、state/covariance、双时间戳、innovation evidence、拒绝原因和在线
    truth 使用；数值等价容差沿用 `1e-9`。
-4. 从 clean commit 对 20/50/100/200 运行未见多 seed D1-only 与全栈基准，保存硬件、配置、
-   P50/P95/max、峰值内存和实时倍率。另行运行 AirSim 与传感器精度标定，不混用本节分母。
+4. clean/formal 快速治理多 seed 已完成；下一步从 clean commit 对 20/50/100/200 运行 D1-only
+   与完整全栈未见多 seed，保存硬件、配置、P50/P95/max、峰值内存和实时倍率。另行运行 AirSim
+   与传感器精度标定，不混用本节分母。
 
 制品入口：
 
-- `research_modules/scalable_3d_simulation/outputs/observation_governance_calibration_20260722_development/`；
+- `research_modules/scalable_3d_simulation/outputs/observation_governance_calibration_20260722_formal_e4d66db/`；
 - `research_modules/scalable_3d_simulation/outputs/point_mass_integrated_observation_smoke_20260722_development_coalesced/`。
 
 ## 2026-07-16 Local Image Track 合同回归

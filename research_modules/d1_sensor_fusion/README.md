@@ -2,20 +2,28 @@
 
 Offline research module for radar, acoustic, EO, and optional synthetic lidar heterogeneous observation fusion. The module estimates six-state NED `GlobalTrack` objects with covariance.
 
-## 当前 development 证据（2026-07-22）
+## 当前正式治理证据（2026-07-22）
 
-main 已把版本化扫描输入整理接入 scalable 3D development 路径，并生成两组可复核制品。第一组
-是 20/50/100/200 四档、每档 5 个互异 seed 的快速观测治理 benchmark。每个 episode 为
-136 帧、33.75 s；D1 每 episode 重排 12 帧、拒绝 0 帧、峰值缓冲 3 帧、结束缓冲 0 帧，在线
-truth 使用为 0。200 规模的 D1 `estimated_peak_memory_bytes` 最大为 40,911,754 B，即
-40.91 MB（39.02 MiB）。该批标记为 `development/dirty`、`formal_episode_count=0`、
-`full_system_evidence=false`，只验证治理审计和资源有界性，不运行完整 D1 EKF 融合。
+main 已从 clean 提交 `e4d66db02a0b8f1b867a0e81b4a73de84588426b` 完成版本化扫描输入
+治理的正式复跑。20/50/100/200 四档各 5 个互异 seed，共 20 个 episode；每例 136 帧、
+33.75 s。20/20 manifest 均为 `repository_dirty=false`、`evidence_tier=formal`。D1 每例重排
+12 帧，拒绝、过旧和溢出均为 0，峰值缓冲 3 帧，结束缓冲 0 帧，在线 truth 使用为 0。
+
+200 规模的 D1 `estimated_peak_memory_bytes` 五例均值为 40,914,828.4 B，约 40.91 MB；最大值
+为 40,926,870 B。聚合报告绑定的输入 SHA-256 为
+`dd62ae9b6efd86d9669b42ccc0630127bc504a18f37c84be5b3ac8b519a42655`；输入清单引用的 20 份
+manifest、20 份在线审计和 20 份评估侧车共 60 个文件均通过独立 SHA-256 复核。
+
+该批仍标记 `full_system_evidence=false`，完整运行时模块未导入。它关闭的是“从 clean commit
+正式复跑观测治理并验证哈希、容量和 truth 隔离”的缺口，不运行完整 D1 EKF 融合，也不验证
+定位精度、AirSim 或完整拦截效果。
 
 第二组是 seed 42000 的 200v200 单次三维质点全栈 development smoke。2.2 s 仿真接收并释放
 86 个扫描、2,051 条匿名观测；重排 10 帧、拒绝 0 帧，峰值缓冲为 33 帧/623 条观测，episode
 结束后为 0。`module.d1_fusion` 的 86 次调用累计 35.115 s，平均 408.313 ms；D1 扫描输入整理
 累计 2.682 s，平均 31.186 ms。全栈墙钟时间为 60.210 s，实时倍率仅 0.037。在线 truth 使用
-仍为 0，但该批只有一个 seed、工作区非 clean、没有可用的融合精度或一致性验收指标。
+仍为 0，但该批只有一个 seed、工作区非 clean、没有可用的融合精度或一致性验收指标。它保留为
+development 全栈性能证据，不因上述正式治理复跑而升级。
 
 当前 P1 已从“main 是否接入扫描水位线”收敛为“逐个小扫描执行全后验处理的吞吐”。现有路径
 对每个释放扫描调用一次 `process_scan_batch()`；即使 main 在尾部合并下游发布，D1 仍需逐扫描
@@ -24,11 +32,12 @@ truth 使用为 0。200 规模的 D1 `estimated_peak_memory_bytes` 最大为 40,
 
 证据入口：
 
-- `../scalable_3d_simulation/outputs/observation_governance_calibration_20260722_development/`；
+- `../scalable_3d_simulation/outputs/observation_governance_calibration_20260722_formal_e4d66db/`；
 - `../scalable_3d_simulation/outputs/point_mass_integrated_observation_smoke_20260722_development_coalesced/`。
 
-上述结果不是 AirSim、传感器精度或 200v200 正式验收。正式关闭仍需 clean commit、未见多 seed、
-冻结硬件/配置、逐阶段 P50/P95/max 和 RMSE/NIS/NEES availability 证据。
+正式治理结果不是 AirSim、传感器精度或 200v200 完整系统验收。逐小扫描融合吞吐仍需 clean
+全栈多 seed、冻结硬件/配置和逐阶段 P50/P95/max；融合效果仍需 RMSE/NIS/NEES availability
+与正确 D2 canonical mapping。
 
 ## 历史 D1-owned 增量（2026-07-16）
 

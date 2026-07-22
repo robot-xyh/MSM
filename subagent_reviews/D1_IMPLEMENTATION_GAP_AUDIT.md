@@ -6,20 +6,19 @@
 
 **更新时间**: 2026-07-22。
 
-## 0. 当前 development GAP 增量（2026-07-22）
+## 0. 当前正式治理 GAP 增量（2026-07-22）
 
 | GAP/合同 | 当前状态 | 2026-07-22 证据 | 剩余关闭条件 |
 | --- | --- | --- | --- |
-| 扫描水位线 main 接线 | development 已接线，D1-owned 合同保持关闭 | 20/50/100/200 各 5 seed 的快速治理层每 episode 136 帧、重排 12、拒绝 0、峰值缓冲 3、尾部 0；在线 truth 0 | clean commit 下复跑并冻结配置；AirSim 接线另行验收 |
-| 观测治理内存边界 | development 有界证据 | 200 规模 `estimated_peak_memory_bytes.max=40,911,754 B`，约 40.91 MB；20/50/100/200 近似随规模增长 | 长 episode、完整融合和进程常驻集内存仍需单独记录；当前 tracemalloc 值不是生产预算 |
-| 逐小扫描全后验吞吐 | **P1 开放，当前最直接 D1 缺口** | 单次 200v200/seed 42000/2.2 s：86 次 fusion 累计 35.115 s，平均 408.313 ms；扫描整理累计 2.682 s；全栈墙钟 60.210 s | 先分项 profile，再做 release micro-batch、dirty-track-only 重放/快照和缓存复用；clean 多 seed 下满足预注册周期预算且数值/审计不退化 |
+| 扫描水位线 clean/formal 复跑 | **已关闭** | 提交 `e4d66db02a0b8f1b867a0e81b4a73de84588426b`；20/50/100/200 各 5 seed，20/20 formal 且 `repository_dirty=false`；每例 136 帧、重排 12、拒绝/过旧/溢出 0、峰值/结束缓冲 3/0、在线 truth 0 | 保持 schema/hash/truth-isolation 回归；AirSim 和完整融合另行验收 |
+| 观测治理内存边界 | 正式快速治理证据已获得 | 200 规模 `estimated_peak_memory_bytes.mean=40,914,828.4 B`，约 40.91 MB；最大 40,926,870 B | 完整融合、长历史和进程常驻集内存仍需单独记录；tracemalloc 值不是生产预算 |
+| 逐小扫描全后验吞吐 | **P1 开放，当前最直接 D1 缺口** | 单次 200v200/seed 42000/2.2 s 仍是 dirty development：86 次 fusion 累计 35.115 s，平均 408.313 ms；扫描整理累计 2.682 s；全栈墙钟 60.210 s | 先分项 profile，再做 release micro-batch、dirty-track-only 重放/快照和缓存复用；clean 全栈多 seed 下满足预注册周期预算且数值/审计不退化 |
 | 正式 200v200 算法效果 | 未验收 | 单次全栈只有 development/dirty seed 42000；正式 sidecar 指标 unavailable | 未见多 seed、正确 D2 canonical mapping、RMSE/NEES/NIS/coverage 与置信区间 |
 | AirSim 状态 | 无变化 | 两批均为合成治理或三维质点制品，未启动 Blocks/CV/SimpleFlight | 按独立 AirSim 计划采集和验收，不得把本批改写为 AirSim 证据 |
 
-本轮没有新增 D1 P0 blocker。扫描整理层已按预期保持双时间戳、covariance、整帧原子性、有限
-缓冲和在线 truth 隔离；真正未闭合的是释放后融合器的计算粒度。main 尾部合并可以减少 D2
-中间发布，但当前 D1 仍逐个释放扫描执行后验处理，因此不能用治理层 20 episode 的快速通过
-替代全栈吞吐验收。
+本轮没有新增 D1 P0 blocker。clean/formal 治理复跑缺口已关闭，输入 SHA-256 及 60 个引用制品
+均通过复核。真正未闭合的是释放后融合器的计算粒度。main 尾部合并可以减少 D2 中间发布，但
+当前 D1 仍逐个释放扫描执行后验处理，因此不能用正式治理层 20 episode 替代全栈吞吐验收。
 
 ## 0.1 历史 D1-owned GAP 增量（2026-07-16）
 
@@ -688,15 +687,20 @@ replay、timestamp conflict、arrival regression、容量、驻留超时、动�
 `advance_arrival_time()`、episode 尾部 `close()`、长期 claim memory 和 D2/D6 持久化是开放
 系统 P1。当前无新增 D1 P0 blocker。
 
-## 27. 2026-07-22 development 接线与吞吐 GAP 状态
+## 27. 2026-07-22 正式治理与 development 吞吐 GAP 状态
 
 ### 27.1 制品核验
 
-快速治理制品的 runner 标记为 `fast_3d_governance_benchmark`、`development`、dirty worktree，
-并显式给出 `full_system_evidence=false`。20 个 episode 覆盖四档规模、每档 5 个 seed；每个
-episode 136 帧/33.75 s。D1 每 episode 重排 12、拒绝 0、峰值缓冲 3、结束缓冲 0，在线 truth
-使用 0。200 档峰值内存最大 40,911,754 B。D6 聚合中的 `formal_episode_count=0`，所以本项仅
-作为参数和资源治理 development 证据。
+快速治理制品的 runner 标记为 `fast_3d_governance_benchmark`、`formal`、clean worktree，
+提交为 `e4d66db02a0b8f1b867a0e81b4a73de84588426b`，并显式给出
+`full_system_evidence=false`。20 个 episode 覆盖四档规模、每档 5 个 seed；20/20 manifest
+均为 `repository_dirty=false`。每个 episode 136 帧/33.75 s，D1 每例重排 12、拒绝/过旧/
+溢出 0、峰值缓冲 3、结束缓冲 0，在线 truth 使用 0。200 档峰值内存均值
+40,914,828.4 B、最大 40,926,870 B。
+
+聚合报告绑定的输入 SHA-256 与实际文件一致，输入清单引用的 60 个制品全部通过独立 SHA-256
+复核。因此 clean/formal 观测治理复跑缺口关闭。该 runner 不导入完整运行时模块，不能据此
+关闭融合吞吐、精度或完整系统效果。
 
 全栈制品为单一 seed 42000 的 200v200 三维质点 2.2 s smoke，工作区同样 dirty。D1 接收并
 释放 86 个扫描/2,051 条观测，重排 10、拒绝 0、峰值缓冲 33 个扫描/623 条观测，结束缓冲 0。
@@ -723,9 +727,9 @@ evaluator sidecar，精度、召回和一致性指标不可用。
 4. 相同冻结输入上要求 track ID 集、state/covariance、双时间戳、OOSM、innovation/gate 和
    truth-use 与基线一致，数值容差沿用 `1e-9`。不得丢观测、缩短合法历史、伪同步或收紧
    covariance。
-5. 从 clean commit 运行 20/50/100/200 未见多 seed D1-only 和全栈基准，记录固定硬件下
-   P50/P95/max、峰值内存和实时倍率。D1 周期预算由 main 预注册；历史 100 ms AirSim 预算只作
-   参考，不能自动当作 200v200 正式阈值。
+5. clean/formal 快速治理多 seed 已完成。后续从 clean commit 运行 20/50/100/200 未见多 seed
+   D1-only 和完整全栈基准，记录固定硬件下 P50/P95/max、峰值内存和实时倍率。D1 周期预算由
+   main 预注册；历史 100 ms AirSim 预算只作参考，不能自动当作 200v200 正式阈值。
 
 P1 关闭需要同时满足治理审计、数值等价和吞吐预算。AirSim、传感器精度与 200v200 任务效果
 仍是独立验收项。

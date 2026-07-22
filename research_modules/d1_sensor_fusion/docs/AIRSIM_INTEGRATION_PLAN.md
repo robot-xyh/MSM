@@ -328,7 +328,8 @@ write_scan_audit(decision.audit)
 
 `ScanInputOrganizer` 是纯 Python 扫描输入合同，不依赖 AirSim SDK。2026-07-22 仅完成 15 项
 构造测试和 D1 `151 passed` 全量回归；没有启动 Blocks/CV、没有修改 settings、launch/reset 或
-episode 顺序。随后 main 已在 dirty worktree 的 scalable 3D development 路径接入该合同：快速
-治理层覆盖 20/50/100/200 各 5 seed，单次 200v200 三维质点全栈也完成扫描接收和尾部关闭。
-这些结果只更新 scalable development 接线状态，不是 AirSim 证据。真实 Blocks/CV/SimpleFlight
-适配、settings、传感器桥接、launch/reset 和多 seed AirSim 验收计划均无变化，仍由 main 负责。
+episode 顺序。随后 main 从 clean 提交
+`e4d66db02a0b8f1b867a0e81b4a73de84588426b` 对 scalable 快速治理路径完成
+20/50/100/200 各 5 seed 的 formal 复跑；20/20 `repository_dirty=false`，扫描拒绝、过旧和
+溢出均为 0。该结果只更新非 AirSim 的治理接线状态。真实 Blocks/CV/SimpleFlight 适配、
+settings、传感器桥接、launch/reset 和多 seed AirSim 验收计划均无变化，仍由 main 负责。

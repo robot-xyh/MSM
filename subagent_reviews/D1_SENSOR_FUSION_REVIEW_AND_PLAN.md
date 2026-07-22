@@ -5,22 +5,24 @@
 
 ---
 
-## 0. 当前 development 状态（2026-07-22）
+## 0. 当前正式治理状态（2026-07-22）
 
-- main 已把 D1 扫描输入整理接入 scalable 3D development 链路。快速治理层覆盖
-  20/50/100/200、每档 5 个互异 seed；每 episode 136 帧/33.75 s，D1 重排 12、拒绝 0、峰值
-  缓冲 3、尾部缓冲 0、在线 truth 使用 0。200 规模峰值内存最大 40.91 MB。
-- 该快速治理层显式标记 `full_system_evidence=false`、`formal_episode_count=0` 和 dirty
-  worktree。它证明 scan organizer 的审计和容量路径可执行，不运行完整 EKF/fixed-lag 融合，
-  不能说明定位精度或实时性。
+- main 已从 clean 提交 `e4d66db02a0b8f1b867a0e81b4a73de84588426b` 完成 D1 扫描输入
+  治理正式复跑。20/50/100/200 各 5 个互异 seed，共 20/20 formal episode；每例
+  136 帧/33.75 s，D1 重排 12、拒绝/过旧/溢出 0、峰值/结束缓冲 3/0，在线 truth 使用 0。
+- 20/20 manifest 均为 `repository_dirty=false`、`evidence_tier=formal`。200 规模峰值内存均值
+  约 40.91 MB，最大 40,926,870 B；输入文件和 60 个引用制品 SHA-256 全部匹配。
+- 该快速治理层仍显式标记 `full_system_evidence=false`，且未导入完整运行时模块。它关闭 clean/
+  formal 治理复跑缺口，不运行完整 EKF/fixed-lag 融合，不能说明定位精度或实时性。
 - 单次 200v200 三维质点全栈 smoke 使用 seed 42000、2.2 s。D1 处理 86 个扫描/2,051 条观测，
   重排 10、拒绝 0，峰值缓冲 33 个扫描/623 条观测；fusion 累计 35.115 s，平均 408.313 ms，
-  扫描输入累计 2.682 s。全栈墙钟 60.210 s，实时倍率 0.037。
+  扫描输入累计 2.682 s。全栈墙钟 60.210 s，实时倍率 0.037；该批仍是 dirty development。
 - 当前最直接的 D1 P1 是逐小扫描全后验处理。每个释放 scan 都进入一次扫描级关联、fixed-lag
   重放和后验快照；main 合并尾部下游发布并未消除 D1 内部逐扫描计算。优化应集中在 release
   micro-batch、dirty-track-only 传播/快照和 revision cache，扫描审计和数值语义保持不变。
 - 两批均未启动 AirSim，也没有正式多 seed RMSE、NEES、NIS coverage 或 200v200 任务效果。
-  D1 当前无新增 P0 blocker；正式关闭需 clean commit、未见多 seed、固定硬件配置和预注册预算。
+  D1 当前无新增 P0 blocker；clean 治理已关闭，clean 全栈未见多 seed、固定硬件配置和预注册
+  周期预算仍开放。
 
 ## 0.1 历史 D1-owned 状态（2026-07-16）
 
@@ -875,22 +877,23 @@ truth 拒绝、main 批次转换组合和嵌套 `mappingproxy` 快照均通过�
 仍由现有 fixed-lag replay 做 measurement-time 状态重建。main 后续必须记录配置/schema、
 watermark、缓冲峰值、too-late/overflow/expiry、close tail 和误拒率，再冻结场景级阈值。
 
-## 28. Main development 接线证据评审（2026-07-22）
+## 28. Main 正式治理接线证据评审（2026-07-22）
 
 ### 28.1 治理层结果
 
 快速治理 benchmark 的价值是把接口接线和算法吞吐分开。四档规模各 5 个 seed 的扫描数、
 时长和预置乱序方式相同；每 episode 的 12 个乱序扫描均被重排，拒绝、过旧、溢出和淘汰均为
-0，结束缓冲为 0。200 规模峰值内存为 40.91 MB。结果说明当前 development 配置在这一构造流
-上没有误拒或尾部泄漏，并不说明真实传感器时延分布下仍保持相同结果。
+0，结束缓冲为 0。20/20 均来自同一 clean 提交且标记 formal。200 规模峰值内存均值约
+40.91 MB、最大 40,926,870 B。结果说明当前正式配置在这一构造流上没有误拒或尾部泄漏，并不
+说明真实传感器时延分布下仍保持相同结果。
 
-该 runner 没有导入完整运行时控制模块，D6 也将 20 个 episode 全部记为非正式。因此近邻召回
-等 evaluator-only 数值只能解释该快速 benchmark 自身，不能提升为 D1 EKF 精度、D2 身份连续
-或 200v200 全系统效果。
+输入 SHA-256 和清单引用的 60 个制品均已核验。该 runner 没有导入完整运行时控制模块，近邻
+召回等 evaluator-only 数值只能解释快速 benchmark 自身，不能提升为 D1 EKF 精度、D2 身份
+连续或 200v200 全系统效果。
 
 ### 28.2 全栈结果
 
-单 seed 全栈运行确认 D1 organizer 在 2,051 条匿名观测上完成 86 个扫描的接收、重排和关闭，
+旧 dirty development 单 seed 全栈运行确认 D1 organizer 在 2,051 条匿名观测上完成 86 个扫描的接收、重排和关闭，
 没有在线 truth 使用。它同时说明扫描治理成本并非当前主导项：输入整理平均 31.186 ms，而完整
 融合平均 408.313 ms。总仿真只推进 2.2 s，墙钟用时 60.210 s，无法满足实时执行。
 
@@ -901,7 +904,7 @@ watermark、缓冲峰值、too-late/overflow/expiry、close tail 和误拒率，
 
 ### 28.3 评审结论
 
-D1 扫描输入合同及 main development 接线已有证据，GAP 从“接口未接”转为“接线未正式验收、
-融合吞吐未闭合”。优化前必须补函数级 profile；优化后必须在同输入下保持 track/state/
-covariance/evidence 等价，再由 clean 多 seed 验证周期预算。AirSim、传感器精度和正式
-200v200 验收继续独立开放。
+D1 扫描输入合同及 main clean/formal 治理接线已经验收，相关复跑 GAP 关闭。融合吞吐仍未
+闭合；优化前必须补函数级 profile，优化后必须在同输入下保持 track/state/covariance/evidence
+等价，再由 clean 全栈多 seed 验证周期预算。AirSim、传感器精度和正式 200v200 完整拦截验收
+继续独立开放。
