@@ -153,6 +153,16 @@ def covariance_a95(covariance: np.ndarray) -> float:
     return float(np.sqrt(CHI2_2_95 * max(float(eigvals[-1]), 0.0)))
 
 
+def _observation_sort_key(
+    observation: SensorObservation,
+) -> tuple[float, float, str]:
+    return (
+        float(observation.measurement_timestamp),
+        float(observation.arrival_timestamp),
+        str(observation.observation_id),
+    )
+
+
 @dataclass
 class TrackRecord:
     track_id: str
@@ -173,6 +183,8 @@ class TrackRecord:
     origin_observation_id: str | None = None
     archived_observations: list[SensorObservation] = field(default_factory=list)
     accepted_observer_scan_keys: set[tuple[str, str, str]] = field(default_factory=set)
+    replay_checkpoints: list["_ReplayCheckpoint"] = field(default_factory=list)
+    current_state_covariance_limited: bool = False
     metadata: dict = field(default_factory=dict)
 
 
@@ -200,6 +212,22 @@ class SensorHealthState:
     unexpected_oosm_count: int = 0
 
 
+@dataclass(frozen=True)
+class _ReplayCheckpoint:
+    observation_id: str
+    sort_key: tuple[float, float, str]
+    posterior: EKFState
+    nis: float
+    gated: bool
+
+
+@dataclass(frozen=True)
+class _TrackPublicationContext:
+    association_audit: dict[str, Any]
+    latency_audit: dict[str, Any]
+    sensor_health: dict[str, dict[str, Any]]
+
+
 @dataclass
 class _BatchProcessingContext:
     state_cache: dict[tuple[str, int, float], EKFState] = field(default_factory=dict)
@@ -216,6 +244,10 @@ class _BatchProcessingContext:
     state_cache_hit_count: int = 0
     state_cache_miss_count: int = 0
     finalization_replay_count: int = 0
+    replay_filter_update_count: int = 0
+    replay_checkpoint_reuse_count: int = 0
+    global_track_materialization_count: int = 0
+    sensor_health_snapshot_build_count: int = 0
 
 
 class FusionAdapter:
@@ -251,6 +283,8 @@ class FusionAdapter:
         sensor_timing_expectations: dict[
             str, SensorTimingExpectation | dict[str, Any]
         ] | None = None,
+        incremental_replay_cache: bool = True,
+        shared_publication_audit_snapshot: bool = True,
     ) -> None:
         self.process_noise = float(process_noise)
         self.bucket_size = float(bucket_size)
@@ -310,6 +344,10 @@ class FusionAdapter:
             )
             for key, value in dict(sensor_timing_expectations or {}).items()
         }
+        self.incremental_replay_cache = bool(incremental_replay_cache)
+        self.shared_publication_audit_snapshot = bool(
+            shared_publication_audit_snapshot
+        )
         self.tracks: dict[str, TrackRecord] = {}
         self.sensor_health: dict[str, SensorHealthState] = {}
         self.current_time = 0.0
@@ -444,6 +482,14 @@ class FusionAdapter:
             state_cache_hit_count=context.state_cache_hit_count,
             state_cache_miss_count=context.state_cache_miss_count,
             finalization_replay_count=context.finalization_replay_count,
+            replay_filter_update_count=context.replay_filter_update_count,
+            replay_checkpoint_reuse_count=context.replay_checkpoint_reuse_count,
+            global_track_materialization_count=(
+                context.global_track_materialization_count
+            ),
+            sensor_health_snapshot_build_count=(
+                context.sensor_health_snapshot_build_count
+            ),
             deferred_update_replay_avoidance_count=max(
                 0,
                 context.accepted_update_count - context.finalization_replay_count,
@@ -585,6 +631,14 @@ class FusionAdapter:
             state_cache_hit_count=context.state_cache_hit_count,
             state_cache_miss_count=context.state_cache_miss_count,
             finalization_replay_count=context.finalization_replay_count,
+            replay_filter_update_count=context.replay_filter_update_count,
+            replay_checkpoint_reuse_count=context.replay_checkpoint_reuse_count,
+            global_track_materialization_count=(
+                context.global_track_materialization_count
+            ),
+            sensor_health_snapshot_build_count=(
+                context.sensor_health_snapshot_build_count
+            ),
             deferred_update_replay_avoidance_count=max(
                 0,
                 context.accepted_update_count - context.finalization_replay_count,
@@ -680,6 +734,7 @@ class FusionAdapter:
         record = self.tracks[str(track)]
         previous_timestamp = float(record.current_state.timestamp)
         record.current_state = predict_to(record.current_state, timestamp, self.process_noise)
+        record.current_state_covariance_limited = False
         reasons = []
         if float(timestamp) - previous_timestamp > self.long_extrapolation_s:
             reasons.append("long_extrapolation")
@@ -754,6 +809,7 @@ class FusionAdapter:
             self.duplicate_observation_count += 1
             self._record_sensor_fault(observation, "duplicate_observation", rejected=True)
             record.current_state = predict_to(record.current_state, current_time, self.process_noise)
+            record.current_state_covariance_limited = False
             self._limit_record_covariance(record)
             return False
 
@@ -765,6 +821,7 @@ class FusionAdapter:
             )
             record.association_diagnostics["observer_scan_conflict"] += 1
             record.current_state = predict_to(record.current_state, current_time, self.process_noise)
+            record.current_state_covariance_limited = False
             self._limit_record_covariance(record)
             self._mark_observation_processed(observation)
             return False
@@ -794,6 +851,7 @@ class FusionAdapter:
                     current_time,
                     self.process_noise,
                 )
+                record.current_state_covariance_limited = False
                 self._limit_record_covariance(record)
                 self._mark_observation_processed(observation)
                 return False
@@ -812,6 +870,10 @@ class FusionAdapter:
         inserted_observation = False
         if observation.observation_id not in {obs.observation_id for obs in record.observations}:
             record.observations.append(observation)
+            self._invalidate_replay_checkpoints(
+                record,
+                from_sort_key=_observation_sort_key(observation),
+            )
             inserted_observation = True
             self._mark_batch_history_changed(record)
         self._record_replay_audit(record, inserted_observation)
@@ -836,6 +898,7 @@ class FusionAdapter:
             current_time,
         )
         record.current_state = state
+        record.current_state_covariance_limited = False
         record.recent_nis = deque(nises[-50:], maxlen=50)
         self._update_filter_gate_metadata(
             record,
@@ -877,6 +940,7 @@ class FusionAdapter:
                 checkpoint_timestamp,
             )
             record.initial_state = checkpoint
+            self._invalidate_replay_checkpoints(record)
             self._finalize_record_replay(record, current_time)
 
         self._record_replay_audit(record, inserted_observation)
@@ -902,7 +966,28 @@ class FusionAdapter:
         return True
 
     def global_tracks(self) -> list[GlobalTrack]:
-        return [self._to_global_track(record) for record in self.tracks.values()]
+        publication_context = (
+            self._track_publication_context()
+            if self.shared_publication_audit_snapshot
+            else None
+        )
+        return [
+            self._to_global_track(record, publication_context)
+            for record in self.tracks.values()
+        ]
+
+    def _track_publication_context(self) -> _TrackPublicationContext:
+        context = self._batch_context
+        if context is not None:
+            context.sensor_health_snapshot_build_count += 1
+        return _TrackPublicationContext(
+            association_audit=self.association_audit_summary(),
+            latency_audit=self.latency_audit_summary().to_dict(),
+            sensor_health={
+                summary.sensor_id: summary.to_dict()
+                for summary in self.sensor_health_summaries()
+            },
+        )
 
     def consistency_evidence_records(
         self,
@@ -1153,6 +1238,7 @@ class FusionAdapter:
             if record.current_state.timestamp < timestamp - 1e-12:
                 previous_timestamp = float(record.current_state.timestamp)
                 record.current_state = predict_to(record.current_state, timestamp, self.process_noise)
+                record.current_state_covariance_limited = False
                 reasons = []
                 if float(timestamp) - previous_timestamp > self.long_extrapolation_s:
                     reasons.append("long_extrapolation")
@@ -1523,6 +1609,7 @@ class FusionAdapter:
             checkpoint_timestamp,
         )
         record.initial_state = checkpoint
+        self._invalidate_replay_checkpoints(record)
         context.checkpoint_dirty_track_ids.remove(record.track_id)
 
     def _require_batch_context(self) -> _BatchProcessingContext:
@@ -1716,15 +1803,80 @@ class FusionAdapter:
             initial_observation,
             state,
         )
-        for observation in sorted_observations:
-            if observation.observation_id == record.initial_observation_id:
-                continue
-            if observation.measurement_timestamp < state.timestamp - 1e-9:
-                continue
-            if observation.measurement_timestamp > until_time + 1e-9:
-                continue
-            state = predict_to(state, observation.measurement_timestamp, self.process_noise)
+        eligible = [
+            observation
+            for observation in sorted_observations
+            if observation.observation_id != record.initial_observation_id
+            and observation.measurement_timestamp >= state.timestamp - 1e-9
+            and observation.measurement_timestamp <= until_time + 1e-9
+        ]
+
+        if not self.incremental_replay_cache:
+            record.replay_checkpoints.clear()
+            for observation in eligible:
+                state = predict_to(
+                    state,
+                    observation.measurement_timestamp,
+                    self.process_noise,
+                )
+                state, nis, gated = self._filter_update(state, observation)
+                if self._batch_context is not None:
+                    self._batch_context.replay_filter_update_count += 1
+                self._capture_consistency_update_if_enabled(
+                    record,
+                    observation,
+                    state,
+                    nis,
+                    gated,
+                )
+                nises.append(nis)
+                if gated:
+                    gated_observation_ids.append(observation.observation_id)
+            state = predict_to(state, until_time, self.process_noise)
+            return state, nises, tuple(gated_observation_ids)
+
+        matching_prefix = 0
+        prefix_limit = min(len(eligible), len(record.replay_checkpoints))
+        while matching_prefix < prefix_limit:
+            observation = eligible[matching_prefix]
+            checkpoint = record.replay_checkpoints[matching_prefix]
+            if (
+                checkpoint.observation_id != observation.observation_id
+                or checkpoint.sort_key != _observation_sort_key(observation)
+            ):
+                break
+            matching_prefix += 1
+
+        if matching_prefix < prefix_limit:
+            del record.replay_checkpoints[matching_prefix:]
+
+        for observation, checkpoint in zip(
+            eligible[:matching_prefix],
+            record.replay_checkpoints[:matching_prefix],
+        ):
+            state = checkpoint.posterior.copy()
+            nises.append(checkpoint.nis)
+            if checkpoint.gated:
+                gated_observation_ids.append(observation.observation_id)
+            self._capture_consistency_update_if_enabled(
+                record,
+                observation,
+                state,
+                checkpoint.nis,
+                checkpoint.gated,
+            )
+        if self._batch_context is not None:
+            self._batch_context.replay_checkpoint_reuse_count += matching_prefix
+
+        for observation in eligible[matching_prefix:]:
+            state = predict_to(
+                state,
+                observation.measurement_timestamp,
+                self.process_noise,
+            )
             state, nis, gated = self._filter_update(state, observation)
+            if self._batch_context is not None:
+                self._batch_context.replay_filter_update_count += 1
             self._capture_consistency_update_if_enabled(
                 record,
                 observation,
@@ -1732,11 +1884,39 @@ class FusionAdapter:
                 nis,
                 gated,
             )
+            record.replay_checkpoints.append(
+                _ReplayCheckpoint(
+                    observation_id=observation.observation_id,
+                    sort_key=_observation_sort_key(observation),
+                    posterior=state.copy(),
+                    nis=float(nis),
+                    gated=bool(gated),
+                )
+            )
             nises.append(nis)
             if gated:
                 gated_observation_ids.append(observation.observation_id)
         state = predict_to(state, until_time, self.process_noise)
         return state, nises, tuple(gated_observation_ids)
+
+    def _invalidate_replay_checkpoints(
+        self,
+        record: TrackRecord,
+        *,
+        from_sort_key: tuple[float, float, str] | None = None,
+    ) -> None:
+        if from_sort_key is None:
+            record.replay_checkpoints.clear()
+            return
+        first_affected = next(
+            (
+                index
+                for index, checkpoint in enumerate(record.replay_checkpoints)
+                if checkpoint.sort_key >= from_sort_key
+            ),
+            len(record.replay_checkpoints),
+        )
+        del record.replay_checkpoints[first_affected:]
 
     def _refresh_initial(self, record: TrackRecord) -> None:
         if record.checkpoint_active:
@@ -1754,6 +1934,7 @@ class FusionAdapter:
         record.initial_state = EKFState(state, covariance, earliest.measurement_timestamp)
         record.initial_observation_id = earliest.observation_id
         record.created_timestamp = earliest.measurement_timestamp
+        self._invalidate_replay_checkpoints(record)
 
     def _prune_record(self, record: TrackRecord, current_time: float) -> None:
         """Rebase at the latest observation not newer than the lag boundary.
@@ -1812,6 +1993,7 @@ class FusionAdapter:
             f"fixed-lag-checkpoint:{record.track_id}:{checkpoint_timestamp:.9f}"
         )
         record.observations = retained
+        self._invalidate_replay_checkpoints(record)
         record.checkpoint_active = True
         record.checkpoint_count += 1
 
@@ -1820,6 +2002,7 @@ class FusionAdapter:
             current_time,
         )
         record.current_state = rebased_state
+        record.current_state_covariance_limited = False
         record.recent_nis = deque(rebased_nises[-50:], maxlen=50)
         self._update_filter_gate_metadata(
             record,
@@ -1872,8 +2055,16 @@ class FusionAdapter:
                     existing.add(source_track_key)
                     record.metadata["source_track_ids"] = tuple(sorted(existing))
 
-    def _to_global_track(self, record: TrackRecord) -> GlobalTrack:
-        self._limit_record_covariance(record)
+    def _to_global_track(
+        self,
+        record: TrackRecord,
+        publication_context: _TrackPublicationContext | None = None,
+    ) -> GlobalTrack:
+        batch_context = self._batch_context
+        if batch_context is not None:
+            batch_context.global_track_materialization_count += 1
+        if not record.current_state_covariance_limited:
+            self._limit_record_covariance(record)
         level = self._classify(record)
         likelihood_sum = sum(record.identity_likelihood.values())
         identity_likelihood = (
@@ -1883,6 +2074,17 @@ class FusionAdapter:
         )
         last_nis = record.recent_nis[-1] if record.recent_nis else None
         metadata = dict(record.metadata)
+        if publication_context is None:
+            publication_context = _TrackPublicationContext(
+                association_audit=self.association_audit_summary(),
+                latency_audit=self.latency_audit_summary().to_dict(),
+                sensor_health={
+                    summary.sensor_id: summary.to_dict()
+                    for summary in self.sensor_health_summaries()
+                },
+            )
+            if batch_context is not None:
+                batch_context.sensor_health_snapshot_build_count += 1
         metadata.update(
             {
                 "a95_m": covariance_a95(record.current_state.covariance),
@@ -1893,12 +2095,12 @@ class FusionAdapter:
                 "latency_compensation": self.latency_compensation,
                 "source_support": dict(record.source_support),
                 "association_diagnostics": dict(record.association_diagnostics),
-                "association_audit": self.association_audit_summary(),
+                "association_audit": dict(publication_context.association_audit),
                 "duplicate_observation_count": self.duplicate_observation_count,
-                "latency_audit": self.latency_audit_summary().to_dict(),
+                "latency_audit": dict(publication_context.latency_audit),
                 "sensor_health": {
-                    summary.sensor_id: summary.to_dict()
-                    for summary in self.sensor_health_summaries()
+                    sensor_id: dict(summary)
+                    for sensor_id, summary in publication_context.sensor_health.items()
                 },
             }
         )
@@ -1908,8 +2110,8 @@ class FusionAdapter:
         )
         return GlobalTrack(
             global_track_id=record.track_id,
-            state=record.current_state.state,
-            covariance=record.current_state.covariance,
+            state=record.current_state.state.copy(),
+            covariance=record.current_state.covariance.copy(),
             timestamp=record.current_state.timestamp,
             track_level=level,
             source_support=dict(record.source_support),
@@ -2072,6 +2274,7 @@ class FusionAdapter:
             covariance,
             record.current_state.timestamp,
         )
+        record.current_state_covariance_limited = True
         for reason in applied:
             record.covariance_limit_reasons[str(reason)] += 1
         if applied:

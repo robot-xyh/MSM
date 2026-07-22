@@ -1,5 +1,59 @@
 # D1 Sensor Fusion Offline Experiment Report
 
+## 2026-07-22 逐扫描融合性能治理
+
+### 输入与方法
+
+本次直接使用 seed 42000 的冻结 200v200 在线观测，不重新生成世界，也不读取离线 truth。输入
+SHA-256 为 `38d24429711b67d612f2f398478386ebf0df690fae55cd9dcc36434aac4fb078`，包含
+86 个扫描和 2,051 条匿名观测；输入整理记录 10 次重排，峰值缓冲 33 个扫描/623 条观测，拒绝
+为 0，结束缓冲为 0。
+
+对照路径关闭增量后验检查点和公共发布审计快照，作为同一代码中的未缓存参考。优化路径启用
+两项能力。两个路径按同一扫描顺序运行，逐扫描比较航迹和批次语义哈希，结束后比较最终航迹与
+consistency evidence 哈希。验收使用确定性操作数，墙钟和 cProfile 只用于说明成本分布。
+
+### Profiler 结果
+
+| 函数 | 未缓存调用 | 未缓存累计时间 | 优化调用 | 优化累计时间 |
+| --- | ---: | ---: | ---: | ---: |
+| `process_scan_batch` | 86 | 64.744 s | 86 | 17.657 s |
+| `_replay_record` | 18,249 | 46.097 s | 18,249 | 6.837 s |
+| `_state_at` | 18,299 | 38.120 s | 18,299 | 1.722 s |
+| `_filter_update` | 93,234 | 37.615 s | 1,797 | 0.826 s |
+| `global_tracks` | 86 | 9.856 s | 86 | 1.595 s |
+| `sensor_health_summaries` | 16,653 | 7.291 s | 86 | 0.040 s |
+
+cProfile 会放大绝对墙钟。表中结果用于定位重复工作：状态查询反复重放相同观测前缀；航迹发布
+又为每条航迹重复生成同一扫描的传感器健康摘要。
+
+### 优化结果
+
+| 指标 | 未缓存参考 | 优化路径 |
+| --- | ---: | ---: |
+| replay filter update | 93,234 | 1,797 |
+| replay checkpoint reuse | 0 | 91,437 |
+| sensor-health snapshot build | 16,653 | 86 |
+| GlobalTrack materialization | 16,653 | 16,653 |
+| 纯融合墙钟 | 34.701 s | 9.073 s |
+
+滤波更新操作数下降 98.07%，本机单次墙钟加速 3.82 倍。航迹物化数量没有减少，说明结果仍在
+每个扫描完整发布。逐扫描语义摘要、最终 201 条航迹和 consistency evidence 哈希全部一致；
+在线 truth 使用为 0。
+
+专项测试覆盖 1/7/200 动态规模、优化开关语义等价、操作数下降、窗口内乱序插入、检查点前
+合法 OOSM、一致性证据 revision 和发布数组防别名。性能专项 `6 passed`，main 复跑 D1 全量
+`157 passed in 28.77s`。
+
+### 结论边界
+
+D1-owned 冻结输入逐扫描热点已关闭。该结论不表示 200v200 全系统已经实时，也不提供
+RMSE、NEES、NIS coverage、AirSim 或物理拦截证据。下一步由 main 从 clean commit 运行完整
+未见多 seed 全栈，固定硬件和发布频率后统计 P50/P95/max、峰值内存与实时倍率。
+
+详细机器可读结果见 `D1_SCAN_FUSION_PERFORMANCE_BENCHMARK_CN.md` 和
+`d1_scan_fusion_performance_benchmark_20260722.json`。
+
 ## 2026-07-22 Scalable 3D 正式治理证据复核
 
 ### 证据层次

@@ -4,6 +4,13 @@
 
 ## 当前证据索引（2026-07-22）
 
+最新 D1-owned 性能证据使用 seed 42000 的冻结 200v200 输入：86 个扫描、2,051 条匿名观测，
+输入 SHA-256 为 `38d24429711b67d612f2f398478386ebf0df690fae55cd9dcc36434aac4fb078`。
+增量后验检查点和每扫描公共发布审计快照保持逐扫描、终态航迹及 consistency evidence 哈希
+等价；filter update `93,234 -> 1,797`，health snapshot `16,653 -> 86`，墙钟
+`34.701 s -> 9.073 s`。详细结果位于
+`../reports/D1_SCAN_FUSION_PERFORMANCE_BENCHMARK_CN.md` 和对应 JSON。
+
 最新正式治理证据来自 clean 提交 `e4d66db02a0b8f1b867a0e81b4a73de84588426b`。
 20/50/100/200 各 5 seed，共 20/20 formal episode；每例 136 帧/33.75 s，D1 重排 12、拒绝/
 过旧/溢出 0、峰值缓冲 3、尾部缓冲 0、在线 truth 使用 0。200 规模峰值内存均值约
@@ -14,10 +21,10 @@
 35.115 s，扫描输入累计 2.682 s，全栈墙钟 60.210 s。正式治理结果和该 development 全栈结果
 都不是 AirSim、融合精度或完整 200v200 拦截验收。
 
-最新 D1-owned 合同增量仍是版本化扫描输入整理。15 项确定性专项覆盖水位线、整帧 too-late、
+版本化扫描输入整理仍是强制合同。15 项确定性专项覆盖水位线、整帧 too-late、
 duplicate/replay/conflict、有限缓冲、同时间多源、动态 1/7/200 点输入及嵌套只读视觉元数据
-快照；既有权威 D1 全量回归为 `151 passed`。clean 治理复跑已关闭，但逐小扫描全后验处理造成
-的融合吞吐仍是 P1，clean 全栈多 seed 和精度标定仍开放。
+快照。逐小扫描重复后验热点已经在冻结输入上关闭；clean 全栈多 seed、长历史内存和精度标定
+仍开放。
 
 历史最新真实 AirSim 证据仍为 2026-07-15 M5N2：
 
@@ -42,5 +49,10 @@ D1 侧解释见本目录各算法/AirSim 文档和 `../reports/EXPERIMENT_REPORT
 
 - `../reports/tracks_xy.png`
 - `../reports/rmse_latency_ablation.png`
+
+逐扫描性能基准另提供：
+
+- `../reports/D1_SCAN_FUSION_PERFORMANCE_BENCHMARK_CN.md`
+- `../reports/d1_scan_fusion_performance_benchmark_20260722.json`
 
 更新文档时不要移动或重命名上述图表，避免破坏报告中的相对链接。

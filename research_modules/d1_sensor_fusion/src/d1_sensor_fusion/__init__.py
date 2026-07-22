@@ -141,6 +141,13 @@ from .scan_input import (
     ScanTimestampConflictError,
     SensorScanFrame,
 )
+from .scan_fusion_performance import (
+    SCAN_FUSION_PERFORMANCE_SCHEMA_VERSION,
+    compare_scan_fusion_variants,
+    load_frozen_sensor_scans,
+    run_scan_fusion_variant,
+    write_scan_fusion_performance_report,
+)
 from .types import (
     CISourceWeight,
     CooperativeBearingObservation,
@@ -239,6 +246,7 @@ __all__ = [
     "SCAN_INPUT_CONFIG_SCHEMA_VERSION",
     "SCAN_INPUT_FRAME_SCHEMA_VERSION",
     "SCAN_INPUT_RESULT_SCHEMA_VERSION",
+    "SCAN_FUSION_PERFORMANCE_SCHEMA_VERSION",
     "Scalable3DFusionAdapter",
     "ScanInputAuditEvent",
     "ScanInputAuditSummary",
@@ -262,6 +270,7 @@ __all__ = [
     "build_offline_truth_state_sidecar",
     "consistency_payload_sha256",
     "consistency_range_bin",
+    "compare_scan_fusion_variants",
     "covariance_intersection",
     "file_sha256",
     "evaluate_offline_consistency",
@@ -272,6 +281,7 @@ __all__ = [
     "localize_bearing_observation_group",
     "load_airsim_replay_payloads",
     "load_frozen_governed_replay",
+    "load_frozen_sensor_scans",
     "migrate_offline_legacy_sensor_observation",
     "observations_from_airsim_dry_run_fixture",
     "read_blocks_sensor_observations_jsonl",
@@ -281,6 +291,7 @@ __all__ = [
     "replay_sensor_observations_csv",
     "replay_sensor_observations_jsonl",
     "run_p2_isolated_benchmark",
+    "run_scan_fusion_variant",
     "sensor_observation_from_csv_row",
     "sensor_observation_from_jsonl_record",
     "sensor_observation_from_local_image_track",
@@ -297,6 +308,7 @@ __all__ = [
     "write_sensor_observations_csv",
     "write_sensor_observations_jsonl",
     "write_frozen_airsim_replay",
+    "write_scan_fusion_performance_report",
     "summarize_recon_cue_from_tracks",
     "DuplicateScanLineageError",
 ]

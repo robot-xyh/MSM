@@ -2,7 +2,26 @@
 
 Offline research module for radar, acoustic, EO, and optional synthetic lidar heterogeneous observation fusion. The module estimates six-state NED `GlobalTrack` objects with covariance.
 
-## 当前正式治理证据（2026-07-22）
+## 当前性能与治理证据（2026-07-22）
+
+D1 已用 seed 42000 的冻结 200v200 在线观测完成逐扫描融合热点治理。输入 SHA-256 为
+`38d24429711b67d612f2f398478386ebf0df690fae55cd9dcc36434aac4fb078`，包含 86 个扫描和
+2,051 条匿名观测，重排 10 次，峰值缓冲 33 个扫描/623 条观测，在线 truth 使用为 0。
+函数剖析确认主要重复工作来自 `_state_at()` 和 `_replay_record()` 对不变历史反复执行滤波，
+以及每条发布航迹重复构造传感器健康快照。
+
+当前默认路径为每航迹维护增量后验检查点。顺序输入复用已完成后验；窗口内乱序只删除插入点
+及其后的检查点；固定滞后重基、起始观测变化和检查点前 OOSM 会完整失效相关缓存。每个扫描
+仍执行原有一对一关联，并重建一致性证据 revision。发布阶段每扫描只构造一次关联、时延和
+传感器健康公共快照；所有 `GlobalTrack` 仍完整携带审计字段，发布数组与内部缓存不共享内存。
+
+同一冻结输入的未缓存参考与优化路径逐扫描语义哈希、最终航迹哈希和一致性证据哈希完全一致。
+replay 滤波更新由 93,234 次降至 1,797 次，传感器健康快照由 16,653 次降至 86 次；未缓存参考
+墙钟为 34.701 s，优化路径为 9.073 s，本机单次加速 3.82 倍。操作计数和语义哈希是验收依据，
+墙钟只作复核。报告见 `reports/D1_SCAN_FUSION_PERFORMANCE_BENCHMARK_CN.md` 和
+`reports/d1_scan_fusion_performance_benchmark_20260722.json`。
+
+性能专项 `6 passed`；main 复跑 D1 全量 `157 passed in 28.77s`。
 
 main 已从 clean 提交 `e4d66db02a0b8f1b867a0e81b4a73de84588426b` 完成版本化扫描输入
 治理的正式复跑。20/50/100/200 四档各 5 个互异 seed，共 20 个 episode；每例 136 帧、
@@ -25,18 +44,18 @@ manifest、20 份在线审计和 20 份评估侧车共 60 个文件均通过独�
 仍为 0，但该批只有一个 seed、工作区非 clean、没有可用的融合精度或一致性验收指标。它保留为
 development 全栈性能证据，不因上述正式治理复跑而升级。
 
-当前 P1 已从“main 是否接入扫描水位线”收敛为“逐个小扫描执行全后验处理的吞吐”。现有路径
-对每个释放扫描调用一次 `process_scan_batch()`；即使 main 在尾部合并下游发布，D1 仍需逐扫描
-完成关联、fixed-lag 重放和全航迹后验快照。后续优化必须保持扫描原子性、双时间戳、covariance、
-在线 truth 隔离和数值结果，不得靠丢观测、改时间戳或收紧协方差换取耗时下降。
+D1-owned 的冻结输入逐扫描热点已关闭。优化没有合并扫描、丢弃观测、缩短固定滞后窗、改变
+双时间戳、压低 covariance 或放宽门控。剩余系统 P1 是从 clean commit 运行完整多 seed 全栈，
+冻结硬件、发布频率和周期预算，并分别验收长历史内存、正式融合精度和端到端实时倍率。
 
 证据入口：
 
 - `../scalable_3d_simulation/outputs/observation_governance_calibration_20260722_formal_e4d66db/`；
-- `../scalable_3d_simulation/outputs/point_mass_integrated_observation_smoke_20260722_development_coalesced/`。
+- `../scalable_3d_simulation/outputs/point_mass_integrated_observation_smoke_20260722_development_coalesced/`；
+- `reports/D1_SCAN_FUSION_PERFORMANCE_BENCHMARK_CN.md`。
 
-正式治理结果不是 AirSim、传感器精度或 200v200 完整系统验收。逐小扫描融合吞吐仍需 clean
-全栈多 seed、冻结硬件/配置和逐阶段 P50/P95/max；融合效果仍需 RMSE/NIS/NEES availability
+正式治理和 D1-only 性能结果都不是 AirSim、传感器精度或 200v200 完整系统验收。全栈仍需
+clean 多 seed、冻结硬件/配置和逐阶段 P50/P95/max；融合效果仍需 RMSE/NIS/NEES availability
 与正确 D2 canonical mapping。
 
 ## 历史 D1-owned 增量（2026-07-16）

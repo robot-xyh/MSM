@@ -940,6 +940,10 @@ class FusionBatchSummary:
     state_cache_hit_count: int
     state_cache_miss_count: int
     finalization_replay_count: int
+    replay_filter_update_count: int
+    replay_checkpoint_reuse_count: int
+    global_track_materialization_count: int
+    sensor_health_snapshot_build_count: int
     deferred_update_replay_avoidance_count: int
     published_at: float
     ordering: str = "input_arrival_order"
@@ -959,6 +963,14 @@ class FusionBatchSummary:
             "state_cache_hit_count": self.state_cache_hit_count,
             "state_cache_miss_count": self.state_cache_miss_count,
             "finalization_replay_count": self.finalization_replay_count,
+            "replay_filter_update_count": self.replay_filter_update_count,
+            "replay_checkpoint_reuse_count": self.replay_checkpoint_reuse_count,
+            "global_track_materialization_count": (
+                self.global_track_materialization_count
+            ),
+            "sensor_health_snapshot_build_count": (
+                self.sensor_health_snapshot_build_count
+            ),
             "deferred_update_replay_avoidance_count": (
                 self.deferred_update_replay_avoidance_count
             ),

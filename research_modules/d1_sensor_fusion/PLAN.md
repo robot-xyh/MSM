@@ -1,6 +1,6 @@
 # D1 多传感器融合与目标配准实施计划
 
-## 当前正式治理状态与后续计划（2026-07-22）
+## 当前性能治理状态与后续计划（2026-07-22）
 
 clean 治理复跑已经完成。提交为 `e4d66db02a0b8f1b867a0e81b4a73de84588426b`；
 20/50/100/200 各 5 个 seed，共 20 个 formal episode，每例 136 帧、33.75 s。20/20
@@ -17,23 +17,23 @@ truth 使用 0。200 规模峰值内存五例均值约 40.91 MB，最大 40,926,
 达到实时运行。该结果没有 AirSim、clean 全栈多 seed 或融合精度验收，继续作为 development
 性能基线。
 
-后续 P1 按以下顺序执行，本计划不预设算法代码已经完成：
+上述单 seed 输入已完成函数级 profile 和语义等价优化：
 
-1. **冻结剖析口径**：按 scan size、modality、正常释放/episode 尾部释放拆分关联、
-   measurement-time 状态获取、fixed-lag replay、后验快照和 evidence 序列化耗时；同时记录
-   changed-track 数量、历史长度和 cache hit/miss。
-2. **减少重复全后验工作**：评估同一已关闭量测时刻队列的 release micro-batch、dirty-track-only
-   重放和快照、跨小扫描状态缓存复用。扫描审计仍逐帧保留，扫描级一对一关联顺序不改变，D2
-   只消费完成后的版本化融合快照。
-3. **建立等价性护栏**：相同冻结输入下，track 集、双时间戳、state/covariance、接受/拒绝、
-   OOSM、innovation evidence 和 truth-use 必须与基线一致；数值差异采用既有 `1e-9` 回归容差，
-   不允许通过观测降采样、伪同步或 covariance 收紧优化。
-4. **分层验收**：先做 D1-only 20/50/100/200 多 seed，再做真实三维质点全栈；记录 P50/P95/max、
-   峰值内存和实时倍率。已有 100 ms AirSim 循环预算仅作历史参考，200v200 的 D1 周期预算须由
-   main 在固定发布频率和硬件条件下预注册。
-5. **正式证据分层**：治理合同的 clean/formal 多 seed 已完成；后续从 clean commit 运行
-   D1-only 与完整三维质点全栈未见 seed，保存 config/hash/hardware provenance。D6 继续区分
-   治理合同、融合数值、系统吞吐和 AirSim 指标，四类证据不得互相替代。
+1. **根因已定位**：未缓存路径中 `_state_at()` 累计 38.120 s、`_replay_record()` 46.097 s，
+   `_filter_update()` 被调用 93,234 次；`global_tracks()` 累计 9.856 s，其中传感器健康摘要被
+   构造 16,653 次。
+2. **增量后验已实现**：每条航迹保存按观测排序的后验检查点。顺序更新复用前缀；窗口内 OOSM
+   只失效插入点后的后缀；固定滞后重基、起始观测变化和检查点前 OOSM 清空相关缓存。缓存命中
+   仍重建一致性 evidence，不改变每扫描一对一关联。
+3. **发布重复工作已消除**：每扫描只生成一次 association、latency 和 sensor-health 公共审计
+   快照，再复制到全部 `GlobalTrack`。输出 state/covariance 使用独立副本，外部修改不能污染
+   内部检查点或绕过 covariance 限幅。
+4. **确定性验收已通过**：相同 86 扫描/2,051 观测上，逐扫描语义、最终航迹和 consistency
+   evidence 哈希完全一致；replay filter update 为 `93,234 -> 1,797`，health snapshot 为
+   `16,653 -> 86`。未缓存参考 34.701 s，优化路径 9.073 s，加速 3.82 倍。
+5. **剩余 P1**：由 main 从 clean commit 运行 20/50/100/200 未见多 seed 的完整全栈基准，冻结
+   硬件、发布频率和周期预算，记录 P50/P95/max、峰值内存与实时倍率。正式 RMSE/NEES/NIS、
+   AirSim 和物理拦截继续独立验收，不能由本次 D1-only 加速替代。
 
 ## 历史 D1-owned 增量与后续计划（2026-07-16）
 
@@ -1085,3 +1085,40 @@ D1-owned 的可执行输入合同已关闭。仍开放的系统 P1 是：main-ow
 20/50/100/200 规模和长 episode 冻结 `max_lateness_s`、驻留/容量/claim 上限；统计 too-late
 误拒、buffer 峰值、吞吐和 tail close；与 D2/D6 schema 对齐。该 organizer 不替代现有 fixed-lag
 Kalman OOSM replay，也没有关闭真实传感器长期延迟与一致性标定。
+
+## 30. P1 逐扫描融合热点治理结果（2026-07-22）
+
+### 30.1 实现
+
+1. `TrackRecord.replay_checkpoints` 按观测排序保存滤波后验、NIS 和 gate 结果。正常顺序调用复用
+   已有后验；OOSM 只删除插入排序键及之后的检查点。
+2. 固定滞后重基、起始观测变化和检查点前合法 OOSM 会清空相关缓存并从正确锚点重建，不缩短
+   `buffer_horizon`。命中检查点时仍调用 consistency evidence 捕获，保持 revision 与未缓存路径
+   一致。
+3. `global_tracks()` 每扫描生成一次 association/latency/sensor-health 审计快照。每条航迹仍
+   物化并携带完整 metadata；发布 state/covariance 复制后交给调用方，不暴露内部缓存数组。
+4. `FusionBatchSummary` 新增 replay filter update、checkpoint reuse、track materialization 和
+   health snapshot build 四项操作计数。`incremental_replay_cache` 与
+   `shared_publication_audit_snapshot` 开关只用于建立未缓存参考对照。
+
+### 30.2 验收
+
+冻结输入为 seed 42000 的 200v200 在线观测 JSONL，SHA-256 为
+`38d24429711b67d612f2f398478386ebf0df690fae55cd9dcc36434aac4fb078`。输入含 86 个扫描、
+2,051 条观测、10 次重排，峰值 33 扫描/623 观测。未缓存与优化路径的逐扫描语义摘要、最终
+201 条航迹和 consistency evidence 哈希相同，在线 truth 使用为 0。
+
+replay filter update 从 93,234 降至 1,797，下降 98.07%；checkpoint reuse 为 91,437；health
+snapshot 从 16,653 降至 86。未缓存参考墙钟 34.701 s，优化路径 9.073 s，本机单次 3.82 倍。
+墙钟不是单元测试阈值，正式验收依赖操作计数、语义哈希、1/7/200 动态规模、乱序后缀失效、
+检查点前 OOSM 和发布数组隔离回归。性能专项 `6 passed`；main 复跑 D1 全量
+`157 passed in 28.77s`。
+
+### 30.3 开放项
+
+1. main 在 clean commit 上复跑完整三维质点多 seed，确认 D1 分项、全栈实时倍率和长历史峰值
+   内存；本次 D1-only 结果不关闭系统周期预算。
+2. 正式融合效果仍需独立 truth sidecar、D2 canonical mapping 和多 seed RMSE/NEES/NIS
+   coverage。该性能优化不提供精度证据。
+3. AirSim producer、Blocks/CV/SimpleFlight、episode 编排和持久化 schema 均未改变。本轮已检查
+   `docs/AIRSIM_INTEGRATION_PLAN.md`，无需修改。

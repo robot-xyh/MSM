@@ -12,13 +12,14 @@
 | --- | --- | --- | --- |
 | 扫描水位线 clean/formal 复跑 | **已关闭** | 提交 `e4d66db02a0b8f1b867a0e81b4a73de84588426b`；20/50/100/200 各 5 seed，20/20 formal 且 `repository_dirty=false`；每例 136 帧、重排 12、拒绝/过旧/溢出 0、峰值/结束缓冲 3/0、在线 truth 0 | 保持 schema/hash/truth-isolation 回归；AirSim 和完整融合另行验收 |
 | 观测治理内存边界 | 正式快速治理证据已获得 | 200 规模 `estimated_peak_memory_bytes.mean=40,914,828.4 B`，约 40.91 MB；最大 40,926,870 B | 完整融合、长历史和进程常驻集内存仍需单独记录；tracemalloc 值不是生产预算 |
-| 逐小扫描全后验吞吐 | **P1 开放，当前最直接 D1 缺口** | 单次 200v200/seed 42000/2.2 s 仍是 dirty development：86 次 fusion 累计 35.115 s，平均 408.313 ms；扫描整理累计 2.682 s；全栈墙钟 60.210 s | 先分项 profile，再做 release micro-batch、dirty-track-only 重放/快照和缓存复用；clean 全栈多 seed 下满足预注册周期预算且数值/审计不退化 |
+| 逐小扫描全后验吞吐 | **D1-owned 冻结输入热点已关闭；系统 P1 仍开放** | profiler 定位 `_state_at`/历史 replay 和重复 health snapshot；增量后验检查点与每扫描公共审计快照使 filter update `93,234 -> 1,797`、health snapshot `16,653 -> 86`；逐扫描/终态/evidence 哈希等价；34.701 s -> 9.073 s | main 从 clean commit 复跑完整未见多 seed，冻结硬件、发布频率与周期预算；另验长历史内存和端到端实时倍率 |
 | 正式 200v200 算法效果 | 未验收 | 单次全栈只有 development/dirty seed 42000；正式 sidecar 指标 unavailable | 未见多 seed、正确 D2 canonical mapping、RMSE/NEES/NIS/coverage 与置信区间 |
 | AirSim 状态 | 无变化 | 两批均为合成治理或三维质点制品，未启动 Blocks/CV/SimpleFlight | 按独立 AirSim 计划采集和验收，不得把本批改写为 AirSim 证据 |
 
 本轮没有新增 D1 P0 blocker。clean/formal 治理复跑缺口已关闭，输入 SHA-256 及 60 个引用制品
-均通过复核。真正未闭合的是释放后融合器的计算粒度。main 尾部合并可以减少 D2 中间发布，但
-当前 D1 仍逐个释放扫描执行后验处理，因此不能用正式治理层 20 episode 替代全栈吞吐验收。
+均通过复核。释放后的重复后验计算已在 D1 冻结输入上完成治理；未缓存参考与优化路径保持每扫描
+一对一关联、双时间戳、covariance、OOSM、observer-scan conflict、consistency evidence 和
+完整 `GlobalTrack` 输出。该证据不能替代 clean 完整全栈多 seed、AirSim 和融合精度验收。
 
 ## 0.1 历史 D1-owned GAP 增量（2026-07-16）
 
@@ -42,7 +43,7 @@ AirSim producer wiring、相机标定、像素 covariance 标定或 100 ms 运�
 | --- | --- | --- | --- |
 | 在线 identity/state truth 隔离 | P0 持续回归通过 | M5N2 baseline/candidate 各 10 case，共 20 case；两项在线使用计数均为 0 | 保持所有 runtime 入口 fail-closed，不把 offline sidecar 回灌在线链 |
 | 双时间戳、covariance、NED | P0 合同保持 | 本轮未修改合同；D1 仍以正式观测合同进入 main bus | 后续性能优化不得丢观测、改时间或人为收紧 covariance |
-| 真实运行时 100 ms 预算 | P1 开放，当前最直接缺口 | 3,805 tick；D1 fusion mean/P95/max=`320.00/451.46/1234.88 ms`，为 main-bus 内层主导阶段 | 相同冻结输入上 profile/优化后复跑多 seed；P95 达到系统预算且数值/审计不退化 |
+| 真实运行时 100 ms 预算 | P1 开放，历史 AirSim 系统证据 | 3,805 tick；D1 fusion mean/P95/max=`320.00/451.46/1234.88 ms`，为 main-bus 内层主导阶段；后续 D1-only 冻结输入热点已优化 | main 用当前实现复跑真实多 seed；P95 达到预注册系统预算且数值/审计不退化 |
 | 真实传感器精度与 consistency | P1 开放 | 本批 NIS/NEES/RMSE 均不可用 | 独立 sensor-specific 多 seed case，带 truth sidecar、正确身份映射和 availability |
 | M5N2 停止边界 | 已冻结 | M5N2 20/20；额外 1 个 `png_ttc_2v2_seed001` 排除；dropout=0 | 缺失 case 保持 unavailable，不补零、不混入本批统计 |
 
@@ -733,3 +734,22 @@ evaluator sidecar，精度、召回和一致性指标不可用。
 
 P1 关闭需要同时满足治理审计、数值等价和吞吐预算。AirSim、传感器精度与 200v200 任务效果
 仍是独立验收项。
+
+## 28. 2026-07-22 逐扫描融合性能 GAP 状态
+
+| GAP/合同 | 当前状态 | D1-owned 证据 | 剩余关闭条件 |
+| --- | --- | --- | --- |
+| 函数级性能归因 | 已关闭 | 未优化 cProfile：`_state_at=38.120 s`、`_replay_record=46.097 s`、`_filter_update=37.615 s/93,234 calls`；`global_tracks=9.856 s`、`sensor_health_summaries=7.291 s/16,653 calls` | 保持 benchmark 输入哈希和操作计数可复核 |
+| 重复 fixed-lag 后验计算 | 已关闭 D1-owned 热点 | 每航迹增量后验检查点；顺序复用前缀，窗口内 OOSM 仅失效后缀，重基/起始变化/检查点前 OOSM 完整失效 | clean 多 seed 长历史的峰值内存和检查点增长由 main 验收 |
+| consistency evidence 等价 | 已关闭 | 缓存命中仍重建 evidence revision；86 个扫描逐扫描语义、终态 201 航迹和 evidence 哈希与未缓存参考一致 | D6 继续消费现有 schema，不把性能计数解释为精度指标 |
+| 重复发布审计 | 已关闭 | association/latency/sensor-health 每扫描构造一次，全部 `GlobalTrack` 仍携带完整副本；health snapshot `16,653 -> 86` | 后续 schema 扩展须保持公共快照只读和每航迹输出独立 |
+| 发布数组别名 | 已关闭 | `GlobalTrack.state/covariance` 与内部后验解耦，外部原地修改后再次发布仍保持内部值 | 保持防别名单测 |
+| 完整系统周期预算 | **P1 开放，main-owned** | D1-only 未缓存 34.701 s、优化 9.073 s，单机单次 3.82 倍；操作数下降 98.07% | clean 20/50/100/200 未见多 seed 全栈 P50/P95/max、固定硬件配置和预注册预算 |
+
+冻结输入 SHA-256 为
+`38d24429711b67d612f2f398478386ebf0df690fae55cd9dcc36434aac4fb078`，含 86 个扫描和
+2,051 条匿名观测，10 次重排，峰值 33 扫描/623 观测，在线 truth 使用 0。专项覆盖
+1/7/200 动态规模、逐扫描语义等价、操作数下降、乱序后缀失效、检查点前合法 OOSM、
+consistency evidence 和发布数组隔离。D1-owned 冻结输入性能热点据此关闭；正式融合精度、
+AirSim 和完整 200v200 实时性保持开放。性能专项 `6 passed`，main 复跑 D1 全量
+`157 passed in 28.77s`。

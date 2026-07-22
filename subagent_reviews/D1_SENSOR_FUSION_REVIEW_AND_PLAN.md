@@ -5,7 +5,19 @@
 
 ---
 
-## 0. 当前正式治理状态（2026-07-22）
+## 0. 当前性能与治理状态（2026-07-22）
+
+- D1 已在冻结的 seed 42000/200v200 输入上完成函数级 profiler。未缓存路径的主要热点为
+  `_state_at` 38.120 s、`_replay_record` 46.097 s、`_filter_update` 37.615 s/93,234 次，以及
+  每航迹重复生成 sensor-health 快照 16,653 次。
+- 当前实现为每航迹增量后验检查点。顺序扫描复用缓存；窗口内 OOSM 只失效插入点后的后缀；
+  固定滞后重基、起始观测变化和检查点前 OOSM 触发完整相关失效。缓存命中仍重建 consistency
+  evidence revision，不改变扫描级一对一关联。
+- 每扫描公共构造 association、latency 和 sensor-health 发布快照，所有 `GlobalTrack` 继续携带
+  完整审计字段。发布 state/covariance 已与内部后验数组解耦。
+- 相同 86 个扫描/2,051 条观测上，逐扫描语义、最终 201 条航迹和 consistency evidence 哈希
+  均与未缓存参考一致。filter update `93,234 -> 1,797`，health snapshot `16,653 -> 86`；
+  34.701 s -> 9.073 s，本机单次 3.82 倍。D1-owned 冻结输入热点据此关闭。
 
 - main 已从 clean 提交 `e4d66db02a0b8f1b867a0e81b4a73de84588426b` 完成 D1 扫描输入
   治理正式复跑。20/50/100/200 各 5 个互异 seed，共 20/20 formal episode；每例
@@ -17,12 +29,12 @@
 - 单次 200v200 三维质点全栈 smoke 使用 seed 42000、2.2 s。D1 处理 86 个扫描/2,051 条观测，
   重排 10、拒绝 0，峰值缓冲 33 个扫描/623 条观测；fusion 累计 35.115 s，平均 408.313 ms，
   扫描输入累计 2.682 s。全栈墙钟 60.210 s，实时倍率 0.037；该批仍是 dirty development。
-- 当前最直接的 D1 P1 是逐小扫描全后验处理。每个释放 scan 都进入一次扫描级关联、fixed-lag
-  重放和后验快照；main 合并尾部下游发布并未消除 D1 内部逐扫描计算。优化应集中在 release
-  micro-batch、dirty-track-only 传播/快照和 revision cache，扫描审计和数值语义保持不变。
+- 当前剩余性能 P1 转为 main-owned clean 完整全栈多 seed 验收。需要冻结硬件、发布频率、场景
+  配置和周期预算，记录 P50/P95/max、长历史峰值内存与端到端实时倍率；不得把 D1-only 3.82 倍
+  写成 200v200 全系统实时。
 - 两批均未启动 AirSim，也没有正式多 seed RMSE、NEES、NIS coverage 或 200v200 任务效果。
-  D1 当前无新增 P0 blocker；clean 治理已关闭，clean 全栈未见多 seed、固定硬件配置和预注册
-  周期预算仍开放。
+  D1 当前无新增 P0 blocker；clean 治理和 D1-owned 冻结输入热点已关闭，clean 全栈未见多 seed、
+  固定硬件配置和预注册周期预算仍开放。
 
 ## 0.1 历史 D1-owned 状态（2026-07-16）
 
@@ -904,7 +916,32 @@ watermark、缓冲峰值、too-late/overflow/expiry、close tail 和误拒率，
 
 ### 28.3 评审结论
 
-D1 扫描输入合同及 main clean/formal 治理接线已经验收，相关复跑 GAP 关闭。融合吞吐仍未
-闭合；优化前必须补函数级 profile，优化后必须在同输入下保持 track/state/covariance/evidence
-等价，再由 clean 全栈多 seed 验证周期预算。AirSim、传感器精度和正式 200v200 完整拦截验收
-继续独立开放。
+D1 扫描输入合同及 main clean/formal 治理接线已经验收，相关复跑 GAP 关闭。截至该次治理
+评审，融合吞吐尚未闭合，要求先补函数级 profile 和同输入语义等价证据。该要求已由下节的
+D1-owned 优化完成；clean 全栈多 seed 周期预算、AirSim、传感器精度和正式 200v200 完整拦截
+验收继续独立开放。
+
+## 29. D1 逐扫描融合性能治理评审（2026-07-22）
+
+### 29.1 方案取舍
+
+本轮没有合并不同 observer scan，也没有延迟或省略扫描级关联。优化只复用已经计算且输入前缀
+未变化的滤波后验。每个检查点绑定 observation ID、量测/到达排序键、后验、NIS 和 gate 结果；
+新观测插入后仅删除排序位置及之后的检查点。固定滞后锚点改变时全部重建，避免旧锚点污染。
+
+公共发布审计快照只消除同一扫描内对相同全局状态的重复序列化准备。每条 `GlobalTrack` 仍独立
+复制 metadata、state 和 covariance。observer-scan conflict、双时间戳、fixed-lag OOSM、
+covariance 限幅、航迹分级和 consistency evidence 均保留。
+
+### 29.2 验收判断
+
+冻结输入 SHA-256 为
+`38d24429711b67d612f2f398478386ebf0df690fae55cd9dcc36434aac4fb078`。未缓存参考和优化路径
+均处理 86 个扫描、2,051 条观测并输出 201 条终态航迹。逐扫描语义摘要、终态和 evidence 哈希
+完全一致；在线 truth 使用为 0。确定性操作计数显示滤波更新下降 98.07%，该指标比墙钟更适合
+持续回归。
+
+评审结论为：D1-owned 冻结输入逐扫描热点已关闭；系统实时预算仍开放。下一步由 main 在 clean
+commit 上运行完整未见多 seed，验证长历史、内存、D2-D7 下游和端到端周期。正式融合精度、
+AirSim 与物理拦截不属于本次证据。性能专项 `6 passed`，main 复跑 D1 全量
+`157 passed in 28.77s`。

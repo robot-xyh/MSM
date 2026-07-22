@@ -1,12 +1,30 @@
 # 第一研究模块：多传感器融合与目标配准算法与实施说明
 
-> 文档日期：2026-07-16
+> 文档日期：2026-07-22
 >
 > 适用范围：离线科研仿真、受治理回放和系统接口验证
 >
 > 实现依据：当前第一研究模块代码、`README.md`、`PLAN.md`、模块原理文档和系统总汇总
 
-## 当前权威增量（2026-07-16）
+## 当前权威增量（2026-07-22）
+
+本轮在 `FusionAdapter` 中实现逐航迹增量后验检查点和每扫描公共发布审计快照。检查点记录观测
+身份、量测/到达排序键、滤波后验、归一化创新平方和 gate 结果。正常顺序扫描直接复用匹配前缀；
+窗口内乱序只失效插入点及之后的后缀；固定滞后重基、起始观测变化和检查点前 OOSM 清空相关
+缓存。缓存命中仍执行 consistency evidence 捕获，以当前 replay revision 重建证据。
+
+发布阶段先生成一份 association、latency 和 sensor-health 上下文，再复制到当前扫描的全部
+`GlobalTrack`。每条航迹仍独立物化，state/covariance 与内部后验不共享数组。新增四项确定性
+计数：实际 replay filter update、checkpoint reuse、global-track materialization 和
+sensor-health snapshot build。
+
+冻结 seed 42000/200v200 输入包含 86 个扫描、2,051 条匿名观测，SHA-256 为
+`38d24429711b67d612f2f398478386ebf0df690fae55cd9dcc36434aac4fb078`。未缓存参考与优化路径
+的逐扫描语义、最终 201 条航迹和 consistency evidence 哈希一致；filter update
+`93,234 -> 1,797`，health snapshot `16,653 -> 86`。墙钟 `34.701 s -> 9.073 s`，本机单次
+3.82 倍。该结果只关闭 D1-owned 冻结输入热点。
+
+## 历史权威增量（2026-07-16）
 
 本轮新增 `local_image_track.py` 的保守适配算法。输入是 main-owned
 `LocalImageTrackObservation`，输出是 `SensorObservation | None`：
@@ -1179,5 +1197,50 @@ observer namespace；把它们拼成一个伪扫描会改变“一条航迹每 o
 复用只读快照。
 
 优化的数值护栏是相同冻结输入下 track 集、每条 state/covariance、双时间戳、OOSM、innovation/
-gate、接受/拒绝和 truth-use 与当前基线一致，容差沿用 `1e-9`。当前只是实施方向，尚未修改
-D1 算法代码，也没有性能收益证据。
+gate、接受/拒绝和 truth-use 与当前基线一致，容差沿用 `1e-9`。该段记录优化前方案；增量后验
+检查点和公共发布快照已经按下节实现。
+
+## 30. 增量后验检查点（2026-07-22）
+
+### 30.1 检查点结构
+
+对航迹 `r`，将除起始观测外、截至查询时刻 `t` 的有效观测按以下键排序：
+
+```text
+k_i = (measurement_timestamp_i, arrival_timestamp_i, observation_id_i)
+```
+
+第 `i` 个检查点保存应用该观测后的后验 `(x_i+, P_i+)`、NIS 和 gate 结果。新的状态查询先从
+第一项开始比较观测身份与排序键，最长匹配前缀直接复用；余下后缀运行原有 `predict_to()` 和
+`_filter_update()`。检查点不缓存发布时刻外推，因此查询末端仍按原有过程噪声传播到 `t`。
+
+### 30.2 失效规则
+
+- 顺序追加观测：保留全部旧前缀，只计算新后缀；
+- 历史中部插入 OOSM：删除第一个排序键不小于插入键的检查点及其后缀；
+- 起始观测变化：重新生成起始状态并清空全部检查点；
+- 固定滞后重基：旧锚点后验成为新的初始状态，清空检查点后按保留窗口重建；
+- 检查点前合法 OOSM：从可用历史锚点完整重建，不使用旧后验。
+
+`_capture_consistency_update_if_enabled()` 对缓存命中和新计算路径都执行。缓存只复用数值后验，
+不复用或跳过当前 replay revision 的证据记录。observer-scan conflict、measurement/arrival 双
+时间戳和航迹 covariance 均沿用原路径。
+
+### 30.3 发布快照
+
+association audit、latency audit 和 sensor-health 都是扫描完成时的全局快照。优化前每物化一条
+航迹都会重新构造一次；优化后每扫描构造一次，再为每条航迹复制字典。状态和协方差数组使用
+独立副本，调用方修改发布对象不会改变内部 `TrackRecord`。协方差限幅增加内部状态标志，只在
+状态变化后重新执行，限幅原因和阈值保持不变。
+
+### 30.4 可复核基准
+
+`scan_fusion_performance.py` 从冻结 JSONL 读取 `topic=sensor.observations`，仍经过正式
+`sensor_observations_from_online_batch()` 和 `ScanInputOrganizer`，然后分别运行关闭/开启优化
+的两个适配器。每扫描计算输出与批次摘要哈希，结束后计算航迹和 consistency evidence 哈希。
+性能验收使用操作计数；墙钟和 cProfile 用于解释热点，不进入脆弱单测。
+
+冻结输入上 filter update 下降 98.07%，逐扫描和终态语义相同。1/7/200 动态规模、乱序后缀
+失效、检查点前 OOSM、evidence revision 和发布数组防别名均进入测试。性能专项 `6 passed`，
+main 复跑 D1 全量 `157 passed in 28.77s`。该基准不读取在线 truth，也不证明 AirSim、正式
+传感器精度或完整系统实时性。
