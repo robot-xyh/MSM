@@ -1265,6 +1265,22 @@ def canonical_runtime_payload_sha256(value: Any) -> str:
     return sha256(encoded).hexdigest()
 
 
+def canonical_execution_binding_sha256(
+    payload: Mapping[str, Any],
+    *,
+    path: str = "assignment_plan",
+) -> str:
+    """Hash only the executable resource/track/coalition binding inventory.
+
+    Runtime and isolated-simulation evidence use this public helper so a plan
+    refresh cannot hide a changed executable binding inside unrelated metadata.
+    The normalized fields are the same fields checked by the runtime ACK parser.
+    """
+
+    signature = _execution_binding_signature(_as_mapping(payload, path), path)
+    return canonical_runtime_payload_sha256(signature)
+
+
 def _validate_consumption_state(consumption: Mapping[str, Any]) -> None:
     consumable = _strict_bool(
         _required(consumption, "consumable", "consumption"),

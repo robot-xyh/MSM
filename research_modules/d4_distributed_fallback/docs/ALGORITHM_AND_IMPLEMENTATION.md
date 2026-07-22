@@ -6,7 +6,100 @@
 
 **适用范围**：Python 科研仿真、AirSim 单次试验时钟接线和离线故障回放
 
-**当前集成事实**：main-owned scalable 3D 质点模块栈已接入单一二级、多二级区域 owner 和中心/二级连续失效后的 distributed D3 plan，D7 按 owner/epoch/lease/commit/fault fence 门控。本轮定向集成测试 8/8 passed；该证据不是 AirSim、真实网络或实飞验证。新增区域资源学习能力只提供默认 disabled/shadow 的聚合建议，不能替代本文的确定性状态机与安全合同。D4 已实现运行时采用 ACK v2、区域结果/奖励证据 v1、保留 seed 配对干预 specification/manifest v1、arm evidence v2，以及冻结 development bundle 的隔离只读加载/执行入口；配对专项 33/33、模块全量 482/482。nominal 5v5 保留 seed execution receipts 和 D6 profile-bound v2 outcome-availability sidecar 均已存在。sidecar 状态为 `pass_offline_assignment_comparison_only`，只证明同帧离线分配比较及 D4 门控/回退；运行时确认、物理结果、paired effect/non-degradation、counterfactual、causal 和降级策略效果仍未形成，PPO、assist 和 authority 保持关闭。
+**当前集成事实**：main-owned scalable 3D 质点模块栈已接入单一二级、多二级区域 owner 和中心/二级连续失效后的 distributed D3 plan，D7 按 owner/epoch/lease/commit/fault fence 门控。本轮定向集成测试 8/8 passed；该证据不是 AirSim、真实网络或实飞验证。新增区域资源学习能力只提供默认 disabled/shadow 的聚合建议，不能替代本文的确定性状态机与安全合同。D4 已实现运行时采用 ACK v2、区域结果/奖励证据 v1、保留 seed 配对干预 specification/manifest v1、arm evidence v2，以及冻结 development bundle 的隔离只读加载/执行入口；计划代际专项 26/26、模块全量 508/508。nominal 5v5 保留 seed execution receipts 和 D6 profile-bound v2 outcome-availability sidecar 均已存在。sidecar 状态为 `pass_offline_assignment_comparison_only`，只证明同帧离线分配比较及 D4 门控/回退；中心失效 20-seed 的首轮物理续跑因 source/applied 代际构造错误未形成区域采用，paired effect/non-degradation、counterfactual、causal 和降级策略效果仍未形成，PPO、assist 和 authority 保持关闭。
+
+## 0.0A 隔离 degraded rollout 采用合同
+
+### 场景与来源
+
+新合同位于 `region_resource_isolated_rollout.py`。它面向 main 的克隆世界 rollout，和生产 `runtime_ack` 分开。每条证据对应一个 `region_id + arm_id + cycle_index`，只允许三类场景：
+
+1. `center_failed`：中心健康为 failed，formal D4 decision 已形成可执行 secondary authority；
+2. `center_and_secondary_failed`：中心 failed，当前区域没有可用二级节点，formal decision 已形成可执行 distributed authority；
+3. `active_risk`：中心未 failed，D1/D2/D3/D5 风险存在，formal action 为请求中心重规划或二级辅助。
+
+lineage 记录 scenario/version、seed、arm、cycle、区域和来源时间，并保存下列规范哈希：
+
+```text
+H_lineage = H(
+  scenario_config,
+  initial_state,
+  communication_schedule,
+  fault_schedule,
+  D4_source_snapshot,
+  D4_formal_decision,
+  D3_source_plan,
+  candidate_gate
+)
+```
+
+验证器重新计算 snapshot、decision、source plan 和 candidate gate 哈希。场景名含 nominal、区域不唯一、标签与 health/action/layer 不一致、网络分区或来源哈希变化均拒绝。该限制使 nominal 5v5 门控记录不能被重新标注为降级策略效果证据。
+
+### 候选门
+
+候选采用前保存六项门：
+
+```text
+g_conf = confidence >= 0.60
+g_ood  = candidate_ood_passed
+g_time = candidate_latency_ms <= 50
+g_fin  = candidate_finite
+g_fail = candidate_failure_gate_passed
+g_proj = candidate_safety_projection_passed
+gate_pass = candidate_considered and all(g_conf, g_ood, g_time, g_fin, g_fail, g_proj)
+```
+
+0.6 与 50 ms 是当前冻结值，合同拒绝其他值。候选缺失或任一门失败时 `rule_fallback=true`。门通过后仍可保守选择规则 override，但必须保存原因。候选 payload SHA 与后续 D3 plan metadata 绑定，避免把另一个候选或规则计划记到当前候选名下。
+
+### 计划采用
+
+源计划必须与 formal D4 regional ownership 的 plan ID/version、owner、epoch 和 lease 一致。新执行计划满足：
+
+这里的 source 是 formal decision 实际命名的计划代际。D3 帧中的 `previous_plan` 只表示规划祖先。中心失效后，`previous_plan` 通常仍是中心 owner；中心和二级连续失效后，它通常仍是二级 owner。它们不能分别作为 secondary 或 distributed formal decision 的 source。main 应先取与 formal decision 同帧的当前计划，按区域写入 formal owner/node/epoch/lease，再让 D3 从该 source 产生 applied successor。
+
+三种场景的区域权威关系如下：
+
+1. `center_failed`：source 和 applied 都使用选中二级节点的 owner，epoch/lease 取 secondary formal ownership；applied 的计划版本严格高于 source。
+2. `center_and_secondary_failed`：source 和 applied 都使用当前区域的 distributed coordinator，epoch/lease 取 distributed formal ownership；不同区域可以有不同 owner，但每条区域证据只绑定一个 owner。
+3. `active_risk`：source 仍由中心持有。重规划改变 binding 时发布严格后继；未改变执行时保留原身份并走刷新分支。
+
+若 owner、epoch 或 lease 发生改变，原 formal decision 已不再描述 applied authority。main 必须生成新的 snapshot、formal decision 和 lineage，不能只改计划 metadata。
+
+```text
+plan_id_new != plan_id_source
+plan_version_new > plan_version_source
+execution_signature_changed = true
+plan_refresh_only = false
+evaluation_refresh_only = false
+t_created_new > t_created_source
+t_source <= t_created_new <= t_ack < t_lease
+```
+
+应用计划和隔离 ACK 还必须同时匹配 formal owner/node/epoch/lease、计划 payload SHA、执行 binding SHA 和 assignment count。ACK 要求全部 binding 已由隔离世界消费，且 `network_partition_observed=false`。验证器按 ACK ID 防重放，并按 arm/region 保存最高 `(epoch, plan_version)`，旧 generation 不可再次采用。
+
+同 plan ID/version 只能形成 `evaluation_refresh_applied`。它要求恰好一个 refresh-only flag 为真，`execution_signature_changed=false`，并保持 binding、未分配航迹集合、owner、epoch、lease 和 plan creation time 不变。刷新只证明同代评估被隔离世界记录，不表示执行改变，也不计入候选采用。
+
+低置信或其他候选门失败时，可以由 main 发布严格更新的确定性规则 fallback 计划。此时 `new_execution_plan_applied=true` 只描述规则计划已消费，`isolated_candidate_adoption_available=false`。缺 ACK、formal commit 不完整、旧 epoch、到期 lease、owner/binding 篡改或网络分区时，两类 applied 标志均为 false。
+
+### 权限边界
+
+隔离 ACK 和采用证据固定以下状态：
+
+```text
+isolated_simulation_only = true
+production_runtime_ack = false
+physical_outcome_available = false
+paired_non_degradation_available = false
+counterfactual_available = false
+causal_effect_available = false
+degradation_effectiveness_claim_allowed = false
+ppo_enabled = assist_enabled = authority_enabled = false
+rule_fallback_enabled = true
+```
+
+`build_region_resource_isolated_plan_ack_from_d3_evidence()` 为 D3 v1 隔离消费证据提供边界桥接。它不导入 D3，按冻结字段集合独立验证来源 lineage 及其哈希、计划身份和 payload 哈希、assignment/binding 完整性、消费时间窗、内容寻址 consumption ID，以及生产、物理、回报、因果、PPO、assist、authority 全部关闭。通过后仍只生成 `production_runtime_ack=false` 的 D4 隔离回执。
+
+2026-07-22 本地验证包含三类严格后继正例、三类同代刷新、同版本异 ID 拒绝、被动降级故障前 owner 拒绝、低置信规则回退、D3 回执桥接、缺 ACK、receipt replay、旧 epoch、到期 lease、owner/binding 篡改、生产 ACK 伪标记、网络分区、缺联盟 ACK、nominal 重标记和 refresh binding 变化，共 26/26；D4 全量 508/508。测试使用确定性 Python fixture。main 尚需修正物理续跑 producer 后重新形成 20-seed 区域采用和 D6 描述性比较。
 
 ## 0.0 同 seed 配对干预
 

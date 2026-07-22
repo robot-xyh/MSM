@@ -1,5 +1,26 @@
 # D4 分布式协同与降级接管
 
+## 2026-07-22 隔离物理续跑计划代际复核
+
+main 的中心失效 20-seed 物理续跑共形成 20 个 pair、196 条区域记录，D7 世界命令已经应用，但 D4 区域采用全部以 `isolated_execution_plan_not_strictly_new` 拒绝。该结果不是 owner、epoch、lease 或物理消费失败。适配器把同帧 `d3_planning_frame.plan` 作为 formal source，同时把从 `previous_plan` 重新求解得到的同版本 arm plan 作为 applied plan。两者计划标识不同而版本相同，不满足严格后继，也不属于同身份刷新。
+
+main 必须按以下规则构造证据：
+
+- `center_failed`：source 是与同帧 formal secondary decision 完全一致的区域计划；owner 为选中的二级节点，epoch 和 lease 取 formal ownership。applied 必须由该 source 继续生成，使用新 plan ID、严格更高版本，并保持同一 formal owner/epoch/lease。
+- `center_and_secondary_failed`：source 是与 formal distributed decision 一致的区域计划；每个区域使用该 decision 的分布式 owner、epoch 和 lease。applied 同样必须是该 source 的严格后继。
+- `active_risk`：source 是 formal center authority 的当前计划。若中心重规划改变执行签名，applied 必须严格更新；若实际执行未改变，只能以相同 plan ID/version、相同 binding/未分配清单和相同 owner/epoch/lease 形成显式 evaluation refresh。
+- `d3_planning_frame.previous_plan` 只表示 D3 规划祖先。被动降级时它仍属于上一个 authority，不能直接冒充 D4 source，除非另有同代 formal D4 decision 明确绑定它。
+
+D4 没有放宽 strictly-new、owner、epoch、lease 或 production-runtime-ack 门。模块测试新增同版本异 ID、故障前 owner 和三类刷新回归，隔离专项 **26/26 passed**，D4 全量 **508/508 passed**。main 仍需按上述规则重构 source/applied producer 后复跑；本次全拒绝不能计为降级采用成功。
+
+## 2026-07-21 PDT / 2026-07-22 UTC 隔离多周期采用合同
+
+新增 `region_resource_isolated_rollout.py`，为 main 后续克隆世界多周期 rollout 提供 `d4-region-resource-isolated-adoption-evidence-v1`。合同只接受 `center_failed`、`center_and_secondary_failed` 和 `active_risk` 三类来源；snapshot、formal D4 decision、源 D3 plan、候选门、场景配置、初始状态、通信 schedule 和故障 schedule 均以 SHA256 进入 lineage。场景名含 nominal、来源哈希不一致、网络分区或 formal decision 未形成可执行二级/分布式 authority 时，降级策略证据保持不可用。
+
+候选证据显式区分 `candidate_considered`、`gate_pass`、`new_execution_plan_applied`、`evaluation_refresh_applied` 和 `rule_fallback`。候选置信门保持 `0.6`，时延门保持 `50 ms`。只有新 plan ID、严格更高 plan version、当前 owner/epoch/lease、完整 binding hash 和 main 隔离世界消费回执全部一致时，才输出 `isolated_candidate_adoption_available=true`。同 plan ID/version 只允许 binding、未分配集合、owner、epoch、lease 和创建时间不变的 evaluation refresh；它不计为候选采用。候选低置信、缺 ACK、旧 epoch、到期 lease、ACK/plan binding 篡改、缺联盟确认或分区均失败关闭，低置信候选只能回到确定性规则计划。
+
+隔离回执固定 `isolated_simulation_only=true`、`production_runtime_ack=false`。证据同时固定 physical outcome、paired non-degradation、counterfactual、causal、degradation-effectiveness claim、PPO、assist 和 authority 为 false，规则回退为 true。D4 还提供 D3 `d3.isolated-plan-consumption-evidence.v1` 到本合同的严格桥接：不导入 D3，只校验字段集合、来源 lineage、计划、binding 数量、时间窗、内容哈希和隔离权限，再生成非生产 D4 回执。2026-07-22 本地验证覆盖三类正例、三类刷新、同版本异 ID 拒绝、故障前 authority 来源拒绝、规则回退、D3 回执桥接和篡改/过期负例，专项 **26/26 passed**，D4 全量 **508/508 passed**。当前只完成 D4 消费合同；main 的首轮中心失效物理续跑尚未形成有效区域采用，D6 也不能据此给出成对非退化结论。既有 nominal 5v5 结果不得关闭该缺口。
+
 本模块用于离线科研仿真：当中心 C2 节点不可用时，评估区域二级节点接管、完全无中心协商、中心恢复合并等被动降级机制；当中心仍可用但 D1/D2/D3/D5 的不确定性或末端视觉不一致升高时，评估主动降级仲裁机制。模块只使用内存网络和粗粒度摘要，不包含真实通信、飞控、硬件、火控、毁伤、自动处置或授权绕过逻辑。
 
 **2026-07-21 保留 seed 配对候选门诊断**：`RegionResourcePairedArmEvidence` 已升级为 `d4-region-resource-paired-arm-evidence-v2`。新证据除 aggregate `candidate_thresholds_passed` 外，还持久化 candidate confidence、冻结的 `minimum_confidence`、OOD 状态、candidate latency 与 latency limit、finite 状态，以及 confidence/OOD/latency/finite/external-failure 五项 gate 结果。executor 对已考虑候选至少输出 `candidate_low_confidence`、`candidate_ood_rejected`、`candidate_inference_timeout`、`candidate_output_nonfinite` 中对应的明确拒绝码；旧 `candidate_threshold_or_finite_gate_rejected` 仅作为兼容汇总码保留，不能单独解释拒绝。v1 reader 先按旧字段集合和旧 manifest content ID 验证，再迁移为 v2 且令新增诊断显式 unavailable；历史 v1 artifact 保持只读，新 v2 正式证据使用独立目录，不覆盖旧运行。

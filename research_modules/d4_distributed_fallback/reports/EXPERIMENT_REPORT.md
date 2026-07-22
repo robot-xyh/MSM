@@ -231,6 +231,39 @@ canonical 视图为 60/20/20 seed，对应 180/60/60 frame。训练桶含 hold 6
 
 默认 `minimum_confidence=0.6` 未下调，正式 20 个 treatment 均继续规则回退，候选有效数仍为 0。bundle manifest 明确包含 `confidence_head_uncalibrated`；后续应在与训练和保留 seed 隔离的 calibration split 上报告 reliability/ECE/Brier，校准或重训 confidence head 后仍按同一 0.6 门复验。本轮没有修改 bundle、权重、manifest、当前 v2 正式输出或历史 v1 artifact，也没有开放 PPO/assist/authority。D6 availability sidecar 已形成，但 runtime ACK、post-intervention physical outcome、paired effect/non-degradation、counterfactual、causal 和故障场景降级策略效果仍不可用。nominal 5v5 只证明门控分解和失败回退，不能说明候选策略有效、优于规则或具有降级策略效果。
 
+### 4.13 隔离 degraded rollout 合同验证
+
+2026-07-21 本地运行 `test_region_resource_isolated_rollout.py`。测试使用单区域确定性合同 fixture，source seed 字段为 1000，但没有运行保留 seed 批次、AirSim、真实网络或质点多周期状态积分。验收目标是验证错误证据不能形成隔离候选采用。
+
+| 验收项 | 结果 | 判据 |
+|---|---:|---|
+| `center_failed` 正例 | 通过 | secondary formal authority、严格新计划和隔离 receipt 一致 |
+| `center_and_secondary_failed` 正例 | 通过 | distributed formal authority、严格新计划和隔离 receipt 一致 |
+| `active_risk` 正例 | 通过 | 中心未失效、风险 action、严格新计划和隔离 receipt 一致 |
+| 三类同代 evaluation refresh | 通过 | refresh 可记录，candidate adoption 必须为 false |
+| 同版本、不同 plan ID | 拒绝 | 既非同身份 refresh，也不是严格更高版本 |
+| 被动降级故障前 authority 作为 source | 拒绝 | source 必须匹配 formal secondary/distributed ownership |
+| 低置信候选 | 通过 | `0.59 < 0.6`，仅规则 fallback 计划可继续 |
+| 缺 ACK / receipt replay | 通过 | applied 和 candidate adoption 均为 false |
+| 旧 epoch / 到期 lease / owner 篡改 | 通过 | authority gate 拒绝 |
+| plan 或 ACK binding 篡改 | 通过 | binding SHA gate 拒绝 |
+| same-generation binding 变化 | 通过 | refresh gate 拒绝 |
+| 网络分区 / 缺联盟 ACK | 通过 | formal degraded execution 拒绝 |
+| nominal 场景重标记 | 通过 | degraded evidence 不可用 |
+| production ACK 伪标记 | 通过 | isolated ACK schema 拒绝 |
+| 隔离专项 | 26/26 | 零失败 |
+| D4 全量 | 508/508 | 零失败 |
+
+三类正例输出 `isolated_simulation_only=true`、`production_runtime_ack=false`。它们只证明 D4 能验证来源、候选门、计划代次、authority 和隔离消费回执。physical outcome、paired non-degradation、counterfactual、causal、degradation effectiveness、PPO、assist 和 authority 均保持 false。main 尚未生成 arm-complete 多周期 rollout，D6 尚未接入干预后物理窗口，因此本节没有降级策略性能结果。
+
+### 4.14 中心失效物理续跑适配审计
+
+2026-07-22 审查 main 的中心失效 20-seed 物理续跑。20 个 pair 共生成 196 条区域采用记录。D7 世界命令已经写入隔离世界，D6 对 196 条记录的拒绝原因均为 `isolated_execution_plan_not_strictly_new`。
+
+在线 D3 帧同时保存故障前 `previous_plan` 和故障后 `plan`。formal D4 decision 绑定故障后的当前 plan。现有物理 arm 从 `previous_plan` 重新求解，得到与 formal source 版本相同、计划标识不同的结果。D4 将该转换判为执行变化，但版本没有严格提高，因此拒绝。把 `previous_plan` 直接改作 source 也不成立：中心失效场景的 previous owner 是 center，中心与二级连续失效场景的 previous owner 是 secondary，均与当前 formal ownership 不符。
+
+修正工作位于 main/D3 producer：以 formal current plan 为 source，再产生严格更高版本 applied plan；若实际世界只继续执行 formal current plan，则输出同身份、同 binding 的 evaluation refresh。D4 本轮只增加回归和说明，没有调整安全门。该 20-seed 结果证明错误代际被一致拒绝，不证明降级计划已采用，也不能用于 paired non-degradation 或策略效果结论。
+
 ## 5. 默认被动降级场景
 
 运行命令：

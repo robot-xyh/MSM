@@ -1,5 +1,24 @@
 # D4 实现差距审计：分布式协同与降级接管
 
+## 2026-07-22 中心失效物理续跑代际审计
+
+- **D4 P0 安全门无缺口**：`RegionResourceIsolatedAdoptionVerifier` 正确拒绝不同 plan ID、相同 plan version 的执行变化。strictly-new、formal owner、epoch、lease、binding、ACK 和 `production_runtime_ack=false` 均保持不变。
+- **main/D3 producer P1 仍开放**：中心失效 20-seed 共 20 pair、196 region，D7 命令已应用，但区域采用 196/196 以 `isolated_execution_plan_not_strictly_new` 拒绝。main 以 formal current plan 为 source，arm 却从 `previous_plan` 生成同版本异 ID applied plan。
+- **source 规则**：`center_failed` 使用 formal secondary source；`center_and_secondary_failed` 使用逐区域 formal distributed source；`active_risk` 使用 formal center source。被动降级前的 center/secondary `previous_plan` 不属于当前 formal authority，不能直接作为 D4 source。
+- **applied 规则**：执行变化必须在同一 formal owner/epoch/lease 下使用新 ID、严格更高版本和更新创建时间。无执行变化只能使用同一 plan ID/version、同 binding/未分配集合/创建时间的显式 refresh。authority 改变时先重建 formal decision 和 lineage。
+- **本轮验收**：隔离专项 26/26、D4 全量 508/508、D4 owned paths 的 `git diff --check` 通过。该结果关闭 D4 公共合同说明和负例测试缺口，不关闭 main 物理采用、D6 描述性比较或降级效果 P1。
+
+## 2026-07-21 PDT / 2026-07-22 UTC 隔离 degraded rollout 采用边界
+
+- **D4 合同缺口已关闭**：新增 `d4-region-resource-degraded-scenario-lineage-v1`、candidate gate、isolated plan-consumption ACK 和 adoption evidence。API 由 `RegionResourceIsolatedAdoptionVerifier` 提供，按 region/arm/cycle 验证三类降级来源、源哈希、formal D4 authority、源/新 D3 plan、执行 binding 和隔离消费回执。
+- **采用语义已拆分**：输出分别保存 `candidate_considered`、`gate_pass`、`new_execution_plan_applied`、`evaluation_refresh_applied`、`rule_fallback`。只有 passing candidate、非 fallback、严格更新的新 plan ID/version、当前 owner/epoch/lease 和完整 isolated receipt 同时成立，才有 `isolated_candidate_adoption_available=true`。同代 evaluation refresh 即使候选通过也不计为采用。
+- **降级来源已限定**：`center_failed` 必须由可执行 secondary authority 证明；`center_and_secondary_failed` 必须由可执行 distributed authority 证明；`active_risk` 必须由中心未失败、D1/D2/D3/D5 风险和 `request_center_replan|request_secondary_assist` 证明。snapshot、decision、计划、候选门及配置/初态/通信/故障 schedule 均进入 SHA256 lineage。nominal 场景明确 rejected，既有 nominal 5v5 不能关闭策略效果 GAP。
+- **安全门保持不变**：`minimum_confidence=0.6`、latency limit `50 ms`、OOD、finite、failure、deterministic projection、owner/epoch/lease、plan version 和 binding gate 均未放宽。缺 ACK、receipt replay、旧 epoch、到期/错误 lease、owner/binding 篡改、same-generation binding 变化、网络分区和缺联盟 ACK 全部失败关闭。低置信候选只允许规则 fallback 计划继续。
+- **证据权限保持关闭**：隔离 receipt/evidence 固定 `production_runtime_ack=false`、`isolated_simulation_only=true`。physical outcome、paired non-degradation、counterfactual、causal、degradation-effectiveness claim、PPO、assist 和 authority 全为 false，规则回退为 true。
+- **D3 回执边界已接入**：D4 可独立解析 `d3.isolated-plan-consumption-evidence.v1`，严格核对来源 lineage、计划身份、binding 完整性、消费时间窗、内容哈希以及非生产权限，再转换为 D4 隔离 ACK。它不导入 D3，也不把 D3 回执解释为生产运行时 ACK。
+- **验收**：2026-07-22 本地确定性隔离合同测试 **26/26 passed**；D4 全量 **508/508 passed**。测试不是 AirSim、真实通信或完成采用的正式多 seed rollout。
+- **仍开放的 P1**：main 尚未在隔离克隆世界中逐周期消费 control/treatment 计划并生成 receipt、D7 command lineage 和干预后物理状态窗口。D6 尚未按该 lineage 形成 arm-complete physical outcome、paired non-degradation 或 degradation scenario 汇总。上述 producer/评估完成前，当前工作只证明合同能拒绝错误证据，不能证明 D4 学习候选有效或降级策略优于规则。
+
 ## 2026-07-22 保留 seed 候选门诊断与 D6 可用性审计
 
 - **诊断 GAP 已关闭**：arm evidence 升级为 v2，保存 candidate confidence、`minimum_confidence`、OOD、latency/limit、finite，以及 confidence/OOD/latency/finite/external-failure 五项 gate。已评估候选分别使用 `candidate_low_confidence`、`candidate_ood_rejected`、`candidate_inference_timeout`、`candidate_output_nonfinite`；旧 generic reason 只兼容保留，不能单独解释拒绝。

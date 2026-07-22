@@ -8,6 +8,10 @@ AirSim episode clock 只提供统一的仿真时间基准。已通过的 delay/l
 
 ## 2. 2026-07-22 当前状态
 
+D4 已增加隔离 degraded rollout 采用合同，供 main 在未来 AirSim reset-separated control/treatment episode 或 scalable3d 克隆世界中生成逐周期证据。每个 receipt 必须绑定 `center_failed|center_and_secondary_failed|active_risk`、场景/初态/通信/故障 schedule SHA、D4 source snapshot/decision、源/新 D3 plan 和 candidate gate。它固定 `isolated_simulation_only=true`、`production_runtime_ack=false`，不能写入现有生产 `runtime.assignment_plan_ack` 口径。AirSim 接入时只有实际消费全部 D3 binding 并形成 D7/control lineage 后才能生成 receipt；D3 v1 隔离消费证据还必须通过 D4 独立桥接校验，截图、simGetDetections metadata、单帧建议或 projected flag 均不能代替。该合同专项 26/26、D4 全量 508/508；本轮未启动 AirSim，故没有新增 AirSim 结果。
+
+main 适配器必须先按 region 将同帧当前 D3 plan 转为 formal D4 source view。`center_failed` 使用 secondary owner，`center_and_secondary_failed` 使用各区域 distributed owner，`active_risk` 保持 center owner；epoch 和 lease 均取 formal ownership。D3 `previous_plan` 不得直接替代这个 source。需要改变执行时，main/D3 从 formal source 发布新 ID 和严格更高版本的 applied plan；继续执行原计划时，applied 保持同一身份、binding、未分配清单和创建时间，并显式设置一个 refresh-only 标志。owner/epoch/lease 变化必须先生成新 formal decision。中心失效首轮 20-seed 的 20 pair、196 条区域记录全部以 `isolated_execution_plan_not_strictly_new` 拒绝，说明现有 producer 尚未满足该规则；D7 世界命令已应用不能替代计划代际门。
+
 D4 已完成保留 seed 1000-1019 的配对干预消费合同和冻结候选隔离加载器；scalable 3D nominal 5v5 的正式 v2 40-arm execution receipts 位于 `reserved_seed_interventions_nominal_5v5_1000_1019_formal_7891296`，绑定源提交 `78912963b67fe86ee9a8d29186b18a9dd60c460c`。D6 已生成 profile-bound v2 outcome-availability sidecar，目录为 `research_modules/d6_evaluation_metrics/outputs/reserved_seed_interventions_nominal_5v5_1000_1019_formal_7891296_d6_profile_bound_v2_audit_20260722/`，状态 `pass_offline_assignment_comparison_only`，文件/内容 SHA256 为 `f3852251...1c3b`/`c02a345c...5d2d`。D6 独立重算确认 20/20 source clean/finite、truth=0、candidate considered 20/20；保持 `minimum_confidence=0.6` 后 confidence 0/20，OOD/latency/finite/failure 各 20/20，aggregate 0/20，safe adoption 0/20，规则回退 20/20。执行时延 `treatment_candidate_latency_ms` 的 nearest-rank P95 为 `2.241315 ms`，门控汇总的线性插值 P95 为 `2.264415 ms`。本轮未修改 main/AirSim runtime，也未启动 AirSim。未来 AirSim 配对仍由 main 为每个 seed 生成规则 control 与候选 treatment 两个 reset 隔离 episode，并冻结相同 settings/scenario config、actor/资源初始状态、通信 schedule、故障 schedule 和区域快照 lineage SHA。D4 treatment 只读加载 `region_resource_bc_900_20260720/bundle`，核对 manifest、权重和训练清单 SHA，生成 raw candidate 后进入原确定性投影；加载、推理、阈值或投影失败均记录并回退规则。arm evidence v2 不改变 bundle、authority、projection 或 next-cycle 安全门，`isolated_treatment_safe_adopted` 也不能改变线上 authority。availability sidecar 已存在不表示 physical outcome 有值；runtime ACK、AirSim 干预后物理结果、paired effect/non-degradation、counterfactual、causal 和故障场景降级策略效果仍未执行或不可用。当前专项 33/33、D4 全量 482/482；`formal_twenty_seed_performance_completed=false`，nominal 5v5 只证明门控和规则回退。
 
 最新 M5N2 baseline/candidate 各 10 seeds 已完成，共 20/20 case。该批中心 owner 始终有效且 `active degradation=0`，是中心继续执行负对照：coalition completion `0/20`、第二 primary 进入 5 m `0/20`，20 个第二 primary 均为 `collision_stop`。由于 collision object 未写盘，runtime 后续必须补充碰撞对象/来源字段，D4 不能把该终态自动转换成主动降级事件。D4 main-bus 阶段 mean/P95/max 约 `5.59/6.70/94.10 ms`。`png_ttc_2v2_seed001` 排除在 M5N2 聚合之外，dropout case 完成数为 0。
@@ -44,14 +48,14 @@ main/runtime 已按 AirSim episode clock 对以下六类场景各运行 10 seeds
 | false degradation | 0 |
 | duplicate owner | 0 |
 | split-brain prevention failure | 0 |
-| D4 模块回归 | 482/482 passed（2026-07-21；含配对/冻结加载与门诊断专项 33/33，奖励合同专项 19/19） |
+| D4 模块回归 | 508/508 passed（2026-07-22；含隔离 degraded rollout 专项 26/26） |
 | 区域资源建议/消费合同专项 | 49/49 passed |
 | 区域学习 episode 数据合同 | 13/13 passed |
 | scalable 3D 质点接口定向测试 | 8/8 passed |
 
 30% loss 场景中，7 个缺 ACK case 保守阻断，只有 3 个完整 ACK case 执行。该结果关闭 episode-clock 多 seed 安全矩阵缺口，不关闭真实网络 P1。
 
-2026-07-15 的 280/280 回归关闭了公开 secondary plan helper 的 readiness/source/epoch/time 缺失门控，更早 278/278 不再作为全部入口证据。区域合同阶段为 303/303，建议管线阶段 335/335，next-cycle 消费合同阶段 350/350，课程阶段为 387/387，全样本准入阶段为 397/397，运行时确认阶段为 430/430；加入区域 reward、冻结 bundle 隔离加载和候选门诊断回归后，当前 D4 全量为 482/482。新增诊断不改变任何 AirSim 控制、场景或在线门控，也不提供新的 AirSim、真实网络或硬件证据。main 既有质点模块栈定向 8/8 覆盖单一二级、多二级区域 owner、连续失效后的 distributed D3 plan，以及 D7 owner/epoch/lease/commit/fault fence。正式 development checkpoint 强制 shadow-only；冻结数据中的真实 ACK/outcome/reward 仍 unavailable，PPO、assist 和 authority 继续关闭。
+2026-07-15 的 280/280 回归关闭了公开 secondary plan helper 的 readiness/source/epoch/time 缺失门控，更早 278/278 不再作为全部入口证据。区域合同阶段为 303/303，建议管线阶段 335/335，next-cycle 消费合同阶段 350/350，课程阶段为 387/387，全样本准入阶段为 397/397，运行时确认阶段为 430/430；加入区域 reward、冻结 bundle 隔离加载、候选门诊断、degraded rollout 合同和 D3 隔离消费证据桥接后，当前 D4 全量为 501/501。新增隔离合同不改变任何 AirSim 控制、场景或在线门控，也不提供新的 AirSim、真实网络或硬件证据。main 既有质点模块栈定向 8/8 覆盖单一二级、多二级区域 owner、连续失效后的 distributed D3 plan，以及 D7 owner/epoch/lease/commit/fault fence。正式 development checkpoint 强制 shadow-only；冻结数据中的真实 ACK/outcome/reward 仍 unavailable，PPO、assist 和 authority 继续关闭。
 
 ## 3. 状态与所有权规则
 

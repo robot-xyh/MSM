@@ -1,5 +1,30 @@
 # D4 分布式协同与降级接管计划
 
+## 2026-07-22 计划代际适配复核
+
+- **已确认**：`RegionResourceIsolatedAdoptionVerifier` 的严格后继和评估刷新分支语义正确，无需调整安全门。隔离专项 26/26、D4 全量 508/508 通过。
+- **main 待改**：三类场景的 source 必须是与同帧 formal D4 regional ownership 对齐的当前计划，不是任意 `previous_plan`。applied 要么是 source 的新 ID、严格更高版本后继，要么是同 ID/version 且执行签名、binding、未分配清单、owner、epoch、lease 和创建时间均不变的显式刷新。
+- **被动降级**：中心失效使用 secondary formal owner；中心和二级失效使用逐区域 distributed formal owner。两者的 applied plan 保持 formal epoch/lease，若 authority generation 改变则必须重新生成 snapshot、formal decision 和 lineage。
+- **主动风险**：中心仍是 owner。执行变化走严格新计划；仅重新评估且世界继续执行原计划时走 evaluation refresh。刷新不能计为候选采用或动作回报。
+- **验收未完成**：中心失效 20-seed 的 20 pair、196 区域记录仍全部被拒绝。main 修正 producer 并由 D6 重新汇总前，不关闭物理采用 P1。
+
+## 0.0A 2026-07-21 PDT / 2026-07-22 UTC 隔离 degraded rollout 合同（D4 已完成，main/D6 producer 待完成）
+
+- D4 已新增独立于生产 runtime ACK 的 `d4-region-resource-isolated-plan-consumption-ack-v1` 和 `d4-region-resource-isolated-adoption-evidence-v1`。main 后续为 control/treatment 克隆世界逐周期生成 receipt；D4 只读核验，不导入 main、D3、D6 或 D7 runtime，也不改变正式 authority。
+- lineage 只允许 `center_failed`、`center_and_secondary_failed`、`active_risk`。每个 region/cycle/arm 绑定 scenario/version、seed、配置、初始状态、通信/故障 schedule、D4 snapshot/decision、源 D3 plan 和 candidate gate SHA256。nominal 场景不能伪装成降级证据，既有 nominal 5v5 只保留门控/回退基线意义。
+- 候选门保持 `minimum_confidence=0.6`、latency limit `50 ms`，并要求 OOD、finite、external-failure 和 deterministic safety projection 全部通过。候选失败或保守 override 时只能记录 `rule_fallback=true`；不得把 projected recommendation、离线 receipt 或同代 refresh 写成候选采用。
+- 新执行计划采用必须同时满足：新 plan ID、严格更高 version、`execution_signature_changed=true`、非 refresh-only、创建/评估时间不早于来源帧、formal owner/node/epoch/lease 完整一致、ACK 时间严格早于 lease、全部 assignment binding 已由隔离世界消费。same-generation 只允许唯一 refresh flag，且 binding、未分配集合、owner、epoch、lease、plan creation 全部不变。
+- 缺 receipt、receipt replay、旧 epoch、旧 plan generation、过期/不一致 lease、owner 或 binding 篡改、缺 CoalitionMemberAck、formal fail-closed、网络分区和低置信候选均保持安全边界。输出固定 `production_runtime_ack=false`、`isolated_simulation_only=true`，physical/paired/counterfactual/causal/effectiveness/PPO/assist/authority 全为 false，规则回退保持 true。
+- D4 提供 D3 `d3.isolated-plan-consumption-evidence.v1` 的独立严格桥接，校验来源 lineage、计划身份、binding 数量、时间窗、内容哈希和全部非生产权限后，才生成 D4 隔离回执；该桥接不表示 main 已消费计划，也不授予生产 ACK。
+- D4 模块验收为隔离专项 **26/26**、全量 **508/508 passed**。样本为确定性单元合同 fixture，不是 AirSim、真实网络或已完成采用的多 seed 物理结果。
+
+### main/D6 后续顺序
+
+1. main 用相同初始世界和外生传感器、通信、故障 schedule 克隆 control/treatment arm；每个 arm 独立消费自身 D3 plan，并在实际状态积分和 D7 command consumption 后生成隔离 receipt。receipt 不得命名为 production runtime ACK。
+2. 单独运行 `center_failed`、`center_and_secondary_failed`、`active_risk` 多周期场景；优先构造接近决策边界且可能改变 plan binding 的样本。nominal 5v5 不进入降级效果验收。
+3. D6 仅在 lineage、receipt、逐周期状态窗口和 arm 完整性齐备后计算 availability-aware physical outcome 与 paired non-degradation。因果/反事实结论继续单独审计。
+4. 正式多 seed evidence 生成后，D4 再按新制品的日期、seed 数、阈值、结果和限制同步 README/PLAN/GAP；当前不得开放 PPO、assist 或 production authority。
+
 ## 0.0 2026-07-22 保留 seed 配对干预边界（D6 可用性 sidecar 已形成，物理结果待完成）
 
 - 新增版本化 `d4-region-resource-paired-intervention-spec-v1`。保留 seed 固定为 1000-1019，每个 seed 必须同时具有 `control_rule` 和 `treatment_candidate` 两个隔离 arm。两个 arm 重复绑定相同 scenario/version、配置 SHA、初始状态 SHA、通信 schedule SHA、故障 schedule SHA 和区域快照 lineage SHA；候选 bundle manifest、模型权重、策略版本、置信/超时/OOD 阈值及安全外壳版本也被内容寻址固定。
