@@ -132,3 +132,17 @@ D3 分配数据 27.86 MB，D5 主动视觉 25.48 MB，两者占主要空间。�
 - 当前 timed 汇总：`outputs/capacity_probe_v2/nominal_timed_postopt2/generation_summary.json`
 - 未最终化正式故障证据：`outputs/learning_generation_v1_oosmfix/episode_progress.jsonl`
 - 固化结果表：`docs/SCALABLE_3D_CAPACITY_PROBE_RESULTS.csv`
+
+## 规则全栈性能复测
+
+2026 年 7 月 22 日在 detached clean 提交 `492979ee122610dac6c503c1aa0f91cef78251ae`
+上运行 20、50、100、200 四档，每档 5 个 seed，单例 2.2 秒。20 个 episode 状态均有限，
+在线真值使用为 0。平均实时倍率为 `1.362/0.491/0.185/0.068`，只有 20 对 20 达到实时。
+
+200 对 200 的平均墙钟为 32.711 秒。D1 融合、D2 关联和 D3 分配平均为
+`12.103/7.555/0.870 s`。历史同 seed development 墙钟为 60.210 秒，当前 clean 结果为
+28.106 秒；两者离散汇总一致，但历史基线来自脏工作树，速度差只作开发趋势。D1、D3 的
+性能归因以各自同输入 A/B 为准。
+
+该批不含学习 assist、AirSim、长时内存和物理拦截。D6 没有正式实验矩阵元数据，因此将其
+归为描述性校准。详细结果和哈希见 `SCALABLE_3D_RULE_PERFORMANCE_CALIBRATION_CN.md`。
