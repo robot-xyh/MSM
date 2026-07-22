@@ -86,6 +86,23 @@ from .offline_truth import (
     strip_offline_truth_from_frames,
     write_offline_truth_labels_jsonl,
 )
+from .observation_governance import (
+    OBSERVATION_CLAIM_LEDGER_SCHEMA_VERSION,
+    REPLAY_COAST_POLICY_SCHEMA_VERSION,
+    ObservationClaimLedgerConfig,
+    ReplayCoastConfig,
+)
+from .observation_governance_benchmark import (
+    OBSERVATION_GOVERNANCE_BENCHMARK_SCHEMA_VERSION,
+    ObservationGovernanceBenchmarkReport,
+    run_observation_governance_benchmark,
+)
+from .oosm_scan_adapter import (
+    OOSM_SCAN_ADAPTER_SCHEMA_VERSION,
+    OOSMScanAdapterConfig,
+    OOSMScanAdapterOutcome,
+    Scalable3DOOSMScanAdapter,
+)
 from .p2_benchmark import (
     OptionalBenchmarkResult,
     P2BenchmarkReport,
@@ -240,6 +257,15 @@ __all__ = [
     "OptionalBenchmarkResult",
     "OptionalDependencyStatus",
     "OptionalIntegrationUnavailable",
+    "OBSERVATION_CLAIM_LEDGER_SCHEMA_VERSION",
+    "REPLAY_COAST_POLICY_SCHEMA_VERSION",
+    "OBSERVATION_GOVERNANCE_BENCHMARK_SCHEMA_VERSION",
+    "OOSM_SCAN_ADAPTER_SCHEMA_VERSION",
+    "ObservationClaimLedgerConfig",
+    "ReplayCoastConfig",
+    "ObservationGovernanceBenchmarkReport",
+    "OOSMScanAdapterConfig",
+    "OOSMScanAdapterOutcome",
     "P2BenchmarkReport",
     "P1IdentityCalibrationReport",
     "P1_REPLAY_STRESS_SCHEMA_VERSION",
@@ -276,6 +302,7 @@ __all__ = [
     "Scalable3DIdentityMetrics",
     "Scalable3DObservationTruthLabel",
     "Scalable3DTracker",
+    "Scalable3DOOSMScanAdapter",
     "FrameGlobalTrackTruthMapping",
     "GlobalTrackLineageEvidence",
     "GlobalTrackTruthMapping",
@@ -328,6 +355,7 @@ __all__ = [
     "run_dense_crossing_calibration",
     "run_long_replay_calibration",
     "run_optional_framework_benchmark",
+    "run_observation_governance_benchmark",
     "run_p1_identity_calibration",
     "scenario_difficulty_metadata",
     "transform_d1_governed_replay",

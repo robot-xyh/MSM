@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import heapq
 from collections import Counter, defaultdict, deque
 from dataclasses import dataclass, field
 from math import exp, sqrt
@@ -19,6 +20,11 @@ from .models import (
     RejectedPair,
     TrackLifecycleState,
     govern_covariance,
+)
+from .observation_governance import (
+    OBSERVATION_CLAIM_LEDGER_SCHEMA_VERSION,
+    ObservationClaimLedgerConfig,
+    ReplayCoastConfig,
 )
 from .scalable_3d_models import (
     POSITION_H_3D,
@@ -422,6 +428,12 @@ class Scalable3DTracker:
         CHI2_GATE_3D_99_PERCENT
     )
     observation_timestamp_tolerance_s: float = 1.0e-6
+    observation_claim_config: ObservationClaimLedgerConfig = field(
+        default_factory=ObservationClaimLedgerConfig
+    )
+    replay_coast_config: ReplayCoastConfig = field(
+        default_factory=ReplayCoastConfig
+    )
     create_tracks_from_unmatched_detections: bool = True
     track_history_limit: int = 32
     frame_log_limit: int = 256
@@ -435,6 +447,9 @@ class Scalable3DTracker:
     )
     _track_observation_keys: dict[str, set[str]] = field(
         default_factory=lambda: defaultdict(set), init=False
+    )
+    _observation_claim_eviction_heap: list[tuple[float, str]] = field(
+        default_factory=list, init=False
     )
     _frame_logs: deque[dict[str, Any]] = field(init=False)
     _runtime_seconds: deque[float] = field(init=False)
@@ -450,6 +465,23 @@ class Scalable3DTracker:
     _velocity_innovation_gate_count: int = field(default=0, init=False)
     _replay_quarantine_count: int = field(default=0, init=False)
     _observation_timestamp_conflict_count: int = field(default=0, init=False)
+    _observation_measurement_too_old_count: int = field(default=0, init=False)
+    _observation_claim_overflow_count: int = field(default=0, init=False)
+    _observation_claim_evicted_count: int = field(default=0, init=False)
+    _observation_claim_peak_count: int = field(default=0, init=False)
+    _observation_rejection_reason_counts: Counter[str] = field(
+        default_factory=Counter, init=False
+    )
+    _replay_coast_count: int = field(default=0, init=False)
+    _replay_coast_reason_counts: Counter[str] = field(
+        default_factory=Counter, init=False
+    )
+    _observation_claim_safe_watermark: float | None = field(
+        default=None, init=False
+    )
+    _observation_admission_watermark: float | None = field(
+        default=None, init=False
+    )
     _duplicate_coalescence_count: int = field(default=0, init=False)
     _tentative_stale_drop_count: int = field(default=0, init=False)
     _latest_risk_summary: AssociationRiskSummary | None = field(
@@ -490,6 +522,15 @@ class Scalable3DTracker:
             raise ValueError(
                 "observation_timestamp_tolerance_s must be finite and non-negative"
             )
+        if not isinstance(
+            self.observation_claim_config,
+            ObservationClaimLedgerConfig,
+        ):
+            raise TypeError(
+                "observation_claim_config must be ObservationClaimLedgerConfig"
+            )
+        if not isinstance(self.replay_coast_config, ReplayCoastConfig):
+            raise TypeError("replay_coast_config must be ReplayCoastConfig")
         for name in (
             "confirmation_hits",
             "engageable_hits",
@@ -519,6 +560,12 @@ class Scalable3DTracker:
             key=lambda item: item.global_track_id,
         )
 
+    @property
+    def state_timestamp(self) -> float | None:
+        """Latest common scan epoch consumed by the monotonic tracker."""
+
+        return self._last_timestamp
+
     def step(
         self,
         detections: Iterable[Detection3D],
@@ -539,16 +586,25 @@ class Scalable3DTracker:
         if self._last_timestamp is not None and timestamp + 1.0e-12 < self._last_timestamp:
             raise ValueError("out-of-sequence scans require an explicit OOSM adapter")
 
+        claim_eviction_events = self._advance_observation_claim_watermark(timestamp)
+
         (
             fresh_detections,
             replay_quarantine_events,
             observation_evidence_by_detection,
         ) = self._partition_observation_freshness(detection_list, timestamp)
+        frame_rejection_reason_counts = Counter(
+            str(item["reason"]) for item in replay_quarantine_events
+        )
 
         self.predict_all(timestamp)
         result = self.associator.associate(
             self.active_tracks(),
             fresh_detections,
+            timestamp,
+        )
+        eligible_replay_coasts = self._eligible_replay_coasts(
+            replay_quarantine_events,
             timestamp,
         )
         detections_by_id = {item.detection_id: item for item in fresh_detections}
@@ -566,10 +622,25 @@ class Scalable3DTracker:
                 source_binding_conflicts.append(conflict)
             self._advance_after_hit(track)
 
+        replay_coast_events: list[dict[str, Any]] = []
+        missed_track_ids: list[str] = []
         for track_id in result.unmatched_track_ids:
             track = self.tracks.get(track_id)
             if track is not None and track.lifecycle_state != TrackLifecycleState.DROPPED:
+                coast_event = eligible_replay_coasts.get(track_id)
+                if coast_event is not None:
+                    replay_coast_events.append(coast_event)
+                    continue
                 self._mark_missed(track)
+                missed_track_ids.append(track_id)
+
+        frame_replay_coast_reason_counts = Counter(
+            str(item["reason"]) for item in replay_coast_events
+        )
+        self._replay_coast_count += len(replay_coast_events)
+        self._replay_coast_reason_counts.update(
+            frame_replay_coast_reason_counts
+        )
 
         created_track_ids_by_detection: dict[str, str] = {}
         if self.create_tracks_from_unmatched_detections:
@@ -640,6 +711,28 @@ class Scalable3DTracker:
                     replay_quarantine_events
                 ),
                 "replay_quarantine_events": replay_quarantine_events,
+                "replay_coast_count": len(replay_coast_events),
+                "replay_coast_events": replay_coast_events,
+                "replay_coast_track_ids": sorted(
+                    item["global_track_id"] for item in replay_coast_events
+                ),
+                "replay_coast_reason_counts": dict(
+                    sorted(frame_replay_coast_reason_counts.items())
+                ),
+                "replay_coast_reason_counts_cumulative": dict(
+                    sorted(self._replay_coast_reason_counts.items())
+                ),
+                "replay_coast_config": self.replay_coast_config.to_dict(),
+                "missed_track_ids": sorted(missed_track_ids),
+                "observation_rejection_reason_counts": dict(
+                    sorted(frame_rejection_reason_counts.items())
+                ),
+                "observation_rejection_reason_counts_cumulative": dict(
+                    sorted(self._observation_rejection_reason_counts.items())
+                ),
+                "observation_claim_ledger": self._observation_claim_ledger_summary(),
+                "observation_claim_eviction_count": len(claim_eviction_events),
+                "observation_claim_eviction_events": claim_eviction_events,
                 "created_track_ids_by_detection": dict(
                     sorted(created_track_ids_by_detection.items())
                 ),
@@ -709,6 +802,18 @@ class Scalable3DTracker:
                     "replay_quarantined_detection_count": len(
                         replay_quarantine_events
                     ),
+                    "replay_coast_count": len(replay_coast_events),
+                    "replay_coast_reason_counts": dict(
+                        sorted(frame_replay_coast_reason_counts.items())
+                    ),
+                    "replay_coast_config": self.replay_coast_config.to_dict(),
+                    "missed_track_count": len(missed_track_ids),
+                    "observation_rejection_reason_counts": dict(
+                        sorted(frame_rejection_reason_counts.items())
+                    ),
+                    "observation_claim_ledger": (
+                        self._observation_claim_ledger_summary()
+                    ),
                     "duplicate_coalescence_count": len(coalescence_events),
                     "source_binding_conflict_count": len(source_binding_conflicts),
                     "global_track_id_owner": "D2_center",
@@ -737,6 +842,15 @@ class Scalable3DTracker:
                 "replay_quarantined_detection_count": len(
                     replay_quarantine_events
                 ),
+                "replay_coast_count": len(replay_coast_events),
+                "replay_coast_reason_counts": dict(
+                    sorted(frame_replay_coast_reason_counts.items())
+                ),
+                "missed_track_count": len(missed_track_ids),
+                "observation_rejection_reason_counts": dict(
+                    sorted(frame_rejection_reason_counts.items())
+                ),
+                "observation_claim_eviction_count": len(claim_eviction_events),
                 "duplicate_coalescence_count": len(coalescence_events),
                 "unmatched_track_count": len(result.unmatched_track_ids),
                 "candidate_edge_count": int(result.metadata["candidate_edge_count"]),
@@ -782,10 +896,27 @@ class Scalable3DTracker:
             "drop_count": self._drop_count,
             "tentative_stale_drop_count": self._tentative_stale_drop_count,
             "replay_quarantine_count": self._replay_quarantine_count,
+            "replay_coast_count": self._replay_coast_count,
+            "replay_coast_reason_counts": dict(
+                sorted(self._replay_coast_reason_counts.items())
+            ),
+            "replay_coast_config": self.replay_coast_config.to_dict(),
             "observation_timestamp_conflict_count": (
                 self._observation_timestamp_conflict_count
             ),
+            "observation_measurement_too_old_count": (
+                self._observation_measurement_too_old_count
+            ),
+            "observation_claim_overflow_count": (
+                self._observation_claim_overflow_count
+            ),
             "observation_claim_count": len(self._observation_claims),
+            "observation_claim_peak_count": self._observation_claim_peak_count,
+            "observation_claim_evicted_count": self._observation_claim_evicted_count,
+            "observation_rejection_reason_counts": dict(
+                sorted(self._observation_rejection_reason_counts.items())
+            ),
+            "observation_claim_ledger": self._observation_claim_ledger_summary(),
             "duplicate_coalescence_count": self._duplicate_coalescence_count,
             "tentative_drop_miss_threshold": self.tentative_drop_miss_threshold,
             "duplicate_coalescence_position_gate_threshold": (
@@ -1066,11 +1197,9 @@ class Scalable3DTracker:
                     reason = self._replay_reason(existing.evidence, evidence)
                     existing.replay_count += 1
                     existing.last_replay_state_timestamp = float(timestamp)
-                    self._replay_quarantine_count += 1
-                    if reason == "observation_identity_timestamp_conflict":
-                        self._observation_timestamp_conflict_count += 1
+                    self._record_observation_rejection(reason)
                     events.append(
-                        self._replay_quarantine_event(
+                        self._observation_rejection_event(
                             detection,
                             evidence,
                             existing,
@@ -1089,24 +1218,68 @@ class Scalable3DTracker:
                 max(finite_timestamps) - min(finite_timestamps)
                 > self.observation_timestamp_tolerance_s
             ):
-                first_detection, first_evidence = candidates[0]
+                first_detection, first_evidence = max(
+                    candidates,
+                    key=lambda item: (
+                        -1.0
+                        if item[1].source_measurement_timestamp is None
+                        else item[1].source_measurement_timestamp,
+                        item[0].detection_id,
+                    ),
+                )
                 claim = _ObservationClaim(
                     evidence=first_evidence,
                     first_detection_id=first_detection.detection_id,
                     first_state_timestamp=float(timestamp),
                 )
-                self._observation_claims[evidence_key] = claim
+                claim_requires_storage = any(
+                    not self._observation_measurement_is_too_old(evidence)
+                    for _, evidence in candidates
+                )
+                if claim_requires_storage and not self._store_observation_claim(claim):
+                    for detection, evidence in candidates:
+                        self._record_observation_rejection(
+                            "observation_claim_ledger_overflow"
+                        )
+                        events.append(
+                            self._observation_rejection_event(
+                                detection,
+                                evidence,
+                                None,
+                                reason="observation_claim_ledger_overflow",
+                            )
+                        )
+                    continue
                 for detection, evidence in candidates:
                     claim.replay_count += 1
                     claim.last_replay_state_timestamp = float(timestamp)
-                    self._replay_quarantine_count += 1
-                    self._observation_timestamp_conflict_count += 1
+                    self._record_observation_rejection(
+                        "observation_identity_timestamp_conflict"
+                    )
                     events.append(
-                        self._replay_quarantine_event(
+                        self._observation_rejection_event(
                             detection,
                             evidence,
                             claim,
                             reason="observation_identity_timestamp_conflict",
+                        )
+                    )
+                continue
+
+            if any(
+                self._observation_measurement_is_too_old(evidence)
+                for _, evidence in candidates
+            ):
+                for detection, evidence in candidates:
+                    self._record_observation_rejection(
+                        "observation_measurement_too_old"
+                    )
+                    events.append(
+                        self._observation_rejection_event(
+                            detection,
+                            evidence,
+                            None,
+                            reason="observation_measurement_too_old",
                         )
                     )
                 continue
@@ -1119,13 +1292,30 @@ class Scalable3DTracker:
                 first_detection_id=winner.detection_id,
                 first_state_timestamp=float(timestamp),
             )
-            self._observation_claims[evidence_key] = claim
+            if not self._store_observation_claim(claim):
+                for detection, rejected_evidence in candidates:
+                    self._record_observation_rejection(
+                        "observation_claim_ledger_overflow"
+                    )
+                    events.append(
+                        self._observation_rejection_event(
+                            detection,
+                            rejected_evidence,
+                            None,
+                            reason="observation_claim_ledger_overflow",
+                        )
+                    )
+                accepted.pop()
+                evidence_by_detection.pop(winner.detection_id, None)
+                continue
             for detection, duplicate_evidence in candidates[1:]:
                 claim.replay_count += 1
                 claim.last_replay_state_timestamp = float(timestamp)
-                self._replay_quarantine_count += 1
+                self._record_observation_rejection(
+                    "duplicate_observation_within_scan"
+                )
                 events.append(
-                    self._replay_quarantine_event(
+                    self._observation_rejection_event(
                         detection,
                         duplicate_evidence,
                         claim,
@@ -1191,10 +1381,10 @@ class Scalable3DTracker:
         return "repeated_latest_observation_id"
 
     @staticmethod
-    def _replay_quarantine_event(
+    def _observation_rejection_event(
         detection: Detection3D,
         evidence: _ObservationEvidence,
-        claim: _ObservationClaim,
+        claim: _ObservationClaim | None,
         *,
         reason: str,
     ) -> dict[str, Any]:
@@ -1207,10 +1397,217 @@ class Scalable3DTracker:
             ),
             "state_valid_timestamp": detection.measurement_timestamp,
             "arrival_timestamp": detection.arrival_timestamp,
-            "claimed_global_track_id": claim.global_track_id,
-            "first_detection_id": claim.first_detection_id,
-            "replay_generation": claim.replay_count,
+            "claimed_global_track_id": (
+                None if claim is None else claim.global_track_id
+            ),
+            "first_detection_id": (
+                None if claim is None else claim.first_detection_id
+            ),
+            "replay_generation": 0 if claim is None else claim.replay_count,
             "reason": reason,
+            "online_truth_used": False,
+        }
+
+    def _eligible_replay_coasts(
+        self,
+        replay_events: list[dict[str, Any]],
+        timestamp: float,
+    ) -> dict[str, dict[str, Any]]:
+        """Return one bounded, prediction-only coast decision per track.
+
+        Any non-replay rejection associated with a track disables coast for
+        that track in the current frame. Eligibility is measured from the last
+        fresh measurement update; replay processing never changes that time.
+        """
+
+        repeated_by_track: dict[str, list[dict[str, Any]]] = defaultdict(list)
+        blocked_track_ids: set[str] = set()
+        for event in replay_events:
+            raw_track_id = event.get("claimed_global_track_id")
+            if raw_track_id is None or not str(raw_track_id).strip():
+                continue
+            track_id = str(raw_track_id)
+            if event.get("reason") == "repeated_latest_observation_id":
+                repeated_by_track[track_id].append(event)
+            else:
+                blocked_track_ids.add(track_id)
+
+        decisions: dict[str, dict[str, Any]] = {}
+        grace = self.replay_coast_config.grace_seconds
+        for track_id in sorted(repeated_by_track):
+            if track_id in blocked_track_ids:
+                continue
+            track = self.tracks.get(track_id)
+            if track is None or track.lifecycle_state == TrackLifecycleState.DROPPED:
+                continue
+            age = float(timestamp) - float(track.last_update_time)
+            if age < -self.observation_timestamp_tolerance_s:
+                continue
+            if age > grace + self.observation_timestamp_tolerance_s:
+                continue
+            events = repeated_by_track[track_id]
+            decisions[track_id] = {
+                "global_track_id": track_id,
+                "reason": "repeated_latest_observation_id",
+                "decision": "prediction_only_replay_coast",
+                "state_timestamp": float(timestamp),
+                "last_fresh_update_time": float(track.last_update_time),
+                "age_since_last_fresh_update_seconds": max(0.0, age),
+                "grace_seconds": grace,
+                "config_version": self.replay_coast_config.config_version,
+                "detection_ids": sorted(
+                    str(item["detection_id"]) for item in events
+                ),
+                "observation_ids": sorted(
+                    {str(item["observation_id"]) for item in events}
+                ),
+                "measurement_update_applied": False,
+                "hit_added": False,
+                "miss_added": False,
+                "birth_allowed": False,
+                "grace_refreshed": False,
+                "online_truth_used": False,
+            }
+        return decisions
+
+    def _record_observation_rejection(self, reason: str) -> None:
+        reason = str(reason)
+        self._replay_quarantine_count += 1
+        self._observation_rejection_reason_counts[reason] += 1
+        if reason == "observation_identity_timestamp_conflict":
+            self._observation_timestamp_conflict_count += 1
+        elif reason == "observation_measurement_too_old":
+            self._observation_measurement_too_old_count += 1
+        elif reason == "observation_claim_ledger_overflow":
+            self._observation_claim_overflow_count += 1
+
+    def _store_observation_claim(self, claim: _ObservationClaim) -> bool:
+        if len(self._observation_claims) >= self.observation_claim_config.max_count:
+            return False
+        self._observation_claims[claim.evidence.key] = claim
+        if claim.evidence.source_measurement_timestamp is not None:
+            heapq.heappush(
+                self._observation_claim_eviction_heap,
+                (
+                    claim.evidence.source_measurement_timestamp,
+                    claim.evidence.key,
+                ),
+            )
+        self._observation_claim_peak_count = max(
+            self._observation_claim_peak_count,
+            len(self._observation_claims),
+        )
+        return True
+
+    def _advance_observation_claim_watermark(
+        self,
+        tracker_timestamp: float,
+    ) -> list[dict[str, Any]]:
+        admission_watermark = self.observation_claim_config.admission_watermark(
+            tracker_timestamp
+        )
+        if self._observation_admission_watermark is not None:
+            admission_watermark = max(
+                admission_watermark,
+                self._observation_admission_watermark,
+            )
+        self._observation_admission_watermark = float(admission_watermark)
+
+        watermark = self.observation_claim_config.safe_watermark(tracker_timestamp)
+        if self._observation_claim_safe_watermark is not None:
+            watermark = max(watermark, self._observation_claim_safe_watermark)
+        self._observation_claim_safe_watermark = float(watermark)
+        events: list[dict[str, Any]] = []
+        retirement_boundary = watermark - self.observation_timestamp_tolerance_s
+        while (
+            self._observation_claim_eviction_heap
+            and self._observation_claim_eviction_heap[0][0]
+            < retirement_boundary
+        ):
+            source_timestamp, key = heapq.heappop(
+                self._observation_claim_eviction_heap
+            )
+            claim = self._observation_claims.get(key)
+            if claim is None:
+                continue
+            if claim.evidence.source_measurement_timestamp != source_timestamp:
+                continue
+            self._observation_claims.pop(key)
+            if claim.global_track_id is not None:
+                track_keys = self._track_observation_keys.get(claim.global_track_id)
+                if track_keys is not None:
+                    track_keys.discard(key)
+                    if not track_keys:
+                        self._track_observation_keys.pop(claim.global_track_id, None)
+            self._observation_claim_evicted_count += 1
+            events.append(
+                {
+                    "observation_id": claim.evidence.observation_id,
+                    "source_namespace": claim.evidence.source_namespace,
+                    "source_measurement_timestamp": (
+                        claim.evidence.source_measurement_timestamp
+                    ),
+                    "safe_watermark": watermark,
+                    "claimed_global_track_id": claim.global_track_id,
+                    "reason": "claim_retired_after_safe_watermark",
+                    "online_truth_used": False,
+                }
+            )
+        return events
+
+    def _observation_measurement_is_too_old(
+        self,
+        evidence: _ObservationEvidence,
+    ) -> bool:
+        source_timestamp = evidence.source_measurement_timestamp
+        watermark = self._observation_admission_watermark
+        return bool(
+            source_timestamp is not None
+            and watermark is not None
+            and source_timestamp
+            < watermark - self.observation_timestamp_tolerance_s
+        )
+
+    def _observation_claim_ledger_summary(self) -> dict[str, Any]:
+        undated_count = sum(
+            claim.evidence.source_measurement_timestamp is None
+            for claim in self._observation_claims.values()
+        )
+        return {
+            **self.observation_claim_config.to_dict(),
+            "schema_version": OBSERVATION_CLAIM_LEDGER_SCHEMA_VERSION,
+            "current_count": len(self._observation_claims),
+            "peak_count": self._observation_claim_peak_count,
+            "evicted_count": self._observation_claim_evicted_count,
+            "overflow_rejection_count": self._observation_claim_overflow_count,
+            "too_old_rejection_count": self._observation_measurement_too_old_count,
+            "replay_rejection_count": (
+                self._observation_rejection_reason_counts.get(
+                    "repeated_latest_observation_id",
+                    0,
+                )
+                + self._observation_rejection_reason_counts.get(
+                    "duplicate_observation_within_scan",
+                    0,
+                )
+            ),
+            "total_rejection_count": self._replay_quarantine_count,
+            "safe_watermark_measurement_timestamp": (
+                self._observation_claim_safe_watermark
+            ),
+            "admission_watermark_measurement_timestamp": (
+                self._observation_admission_watermark
+            ),
+            "undated_non_evictable_count": int(undated_count),
+            "eviction_index_count": len(self._observation_claim_eviction_heap),
+            "track_observation_key_count": sum(
+                len(keys) for keys in self._track_observation_keys.values()
+            ),
+            "track_observation_index_track_count": len(
+                self._track_observation_keys
+            ),
+            "tombstone_count": 0,
+            "anti_replay_mode": "trusted_measurement_time_safe_watermark",
             "online_truth_used": False,
         }
 
@@ -1357,7 +1754,7 @@ class Scalable3DTracker:
         self._drop_count += 1
         for source_key in tuple(duplicate.source_track_keys):
             self._source_bindings[source_key] = survivor.global_track_id
-        duplicate_keys = self._track_observation_keys.get(
+        duplicate_keys = self._track_observation_keys.pop(
             duplicate.global_track_id,
             set(),
         )

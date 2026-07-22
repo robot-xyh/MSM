@@ -8,7 +8,7 @@
 
 ## 0. P0/P1 缺口快照
 
-- **P0**：无 P0 blocker。GNN/Hungarian、显式 `id_switch_count`、`track_continuity`、risk summary、replay helper、按输入集合长度运行、航迹质量评分、运动一致性约束和 quality-aware gate baseline 已是当前主线并保持回归。
+- **P0**：无开放 blocker。GNN/Hungarian、显式 `id_switch_count`、`track_continuity`、risk summary、replay helper、按输入集合长度运行、航迹质量评分、运动一致性约束和 quality-aware gate baseline 已是当前主线。seed1005 v3 验收已允许 replay=0 或有界 replay，见第 32 节。
 - **P1 合同层已闭合**：D1 governed adapter、online/offline truth 分离、association log/profile version、`d2-offline-truth-label/v1`、N-target dense/crossing fixture、至少 10-seed runner、availability-aware summary、M-of-N/false-track/NIS/NEES 接口及中心 canonical registry 基础已回归。
 - **P1 完整冻结 v2 证据已生成，长期标定仍开放**：最佳 GNN 候选 IDSW `1.358333 -> 0.616667`（下降 `54.6012%`），continuity `0.981046 -> 0.983954`，P95 `15.470 ms`；false-track/truth leakage 均为 0。总体联合 gate 全部通过，`promotion_recommended=true`；分档仅 clutter/combined 通过，另外四档 baseline IDSW=0 fail-closed。后续 P1 是跨模块评审、更长 OOSM/遮挡/杂波和生命周期标定，不再是缺少 v2 联合报告。
 - **历史基线**：2026-07-10 的 5v5/2v2 批次和 2026-07-11 早期的 seeds 7/17/27 当时不足以关闭 D2 P1，且 T001 双 primary 尚未通过。这些只作为实施前/过渡基线，不代表当前状态。
@@ -22,6 +22,8 @@
   `collision_stop`，但碰撞对象未持久化，不归因于 D2。默认 GNN/Hungarian 和中心
   `global_track_id` 所有权不变；终止前额外完成的一个 `png_ttc_2v2_seed001` 被排除，
   dropout case 为 0。
+- **2026-07-22 当前回归**：main 尾部合并后 seed1005 的 replay 合法为 0；复现和测试
+  验收已同步，完整 D2 为 `189 passed, 1 warning`。关联算法未修改。
 
 ## 1. 研究问题
 
@@ -770,17 +772,126 @@ stale drop 1 次、coalescence 0 次、在线 truth 使用 0 次。最终保留 
 `168 passed, 1 warning in 26.15s`。近邻不同目标专项验证没有误合并，异步时间专项验证
 新 observation 可接收、同 identity 的量测时间冲突被拒绝。
 
-本次首先关闭 D2-owned 单 seed 缺口。main 随后在 2026-07-22 脏工作树完成
-active-risk seeds 1000--1019 的 development 集成复跑，并持久化
+本次首先关闭 D2-owned 单 seed 缺口。main 随后完成 development 集成复跑，并持久化
 `d2-observation-evidence-governance-v1`。D6 的 plan consumption、guidance lineage、
 physical window、D4 adoption、paired physical effect、paired non-degradation 和
 degraded comparison 均为 20/20 available；D4 adoption 188/188，两臂各 1960 条命令。
-seed 1005 离线身份只得到 GT1-GT5 五条唯一映射，在线 truth 使用 0。
+seed 1005 离线身份只得到 GT1-GT5 五条唯一映射，在线 truth 使用 0。提交 `0fa7c00`
+随后生成 clean-tree 20-seed 结果：`repository_dirty=false`、20 个 pair、D4 adoption
+188/188、两臂各 1960 条命令、100 条离线唯一映射。两臂 1 s 窗口均无 5 m 拦截；
+counterfactual、causal、production runtime ACK unavailable。clean 复跑已完成，但不
+支持因果收益、AirSim 或 200v200 结论。
 
-评审据此把“main bus 审计持久化”和“20-seed development 复跑”改为已闭合。该运行的
-control/treatment 物理差值为 0，counterfactual、causal 和 production runtime ACK 均
-unavailable，不能声称策略因果收益，也不能替代 clean formal run、历史正式证据、AirSim
-或 200v200 完整验收。D2 仍需测量长 episode claim 容量，标定 coalescence/lifecycle
-的 false suppression、recall 和 false merge，并为整帧乱序输入设计独立 OOSM adapter。
-默认六维 GNN/Hungarian、中心 `global_track_id` ownership 和离线一对一 truth 映射保持
-不变。
+## 30. 长 episode observation evidence governance 评审
+
+### 30.1 设计决定
+
+- 将过旧观测接纳水位线与 claim 安全淘汰水位线分开。前者由 max-lateness 决定，后者由
+  `max(retention, max-lateness)` 决定。这样较长 retention 不会放宽量测迟到边界。
+- 不采用无限 tombstone。带可信源量测时间的 claim 只在安全水位线后淘汰；同一旧证据
+  重放时由 admission watermark 拒绝。无源时间 claim 保留到容量上限，满载后新证据
+  fail closed。
+- claim 字典、航迹反向 key 和淘汰最小堆受同一 max-count 上界约束。拒绝原因分开报告，
+  不把 too-old、timestamp conflict、replay 和 overflow 合并成单一计数。
+- Tracker 继续只接受单调 common-epoch scan。新的 OOSM adapter 只在 Tracker 前缓存和
+  排序完整 scan；不做已更新状态的回溯、重放或固定滞后平滑。
+- 近邻召回和误抑制只由独立离线 truth sidecar 评分。在线 metadata、候选图、合并门和
+  `global_track_id` owner 不读取 truth。
+
+### 30.2 结果
+
+15 个新增专项覆盖两个水位线、淘汰后旧证据、overflow、无时间戳容量、5/40 动态 N
+长期循环、整帧 inversion/超窗/overflow/已释放边界，以及 3/12 目标离线基准。完整 D2
+为 `183 passed, 1 warning in 29.08s`。
+
+5 x 500 和 40 x 200 帧循环均满足 peak/current <= `6N`、overflow 0、evicted >0。
+3/12 目标各 16 帧、0.75 m 间距的合法检测为 43/187，false suppression 0、recall 1.0、
+错误 coalescence 0、确认延迟 0.25 s、IDSW 0。该结果只证明确定性 fixture 下不因新账本
+规则损害这些样本，不能外推真实传感器分布。
+
+### 30.3 接入和开放项
+
+main 应显式构造 `ObservationClaimLedgerConfig`，将 config/schema version 写入 manifest。
+已排序 scan 可直接调用 Tracker；arrival-order 输入存在整帧 inversion 时使用
+`Scalable3DOOSMScanAdapter`。每次 submit 可释放 0 到多帧，flush 只在 episode 终止时
+排空，reset 后重新构造。main 持久化公开 ledger/OOSM summary，不读取私有 claim。
+
+真实 AirSim observation ID、时钟误差、迟到长尾、buffer/ledger 默认值和距离/遮挡/杂波
+仍需标定。20/50/100/200 目标与至少 20 未见 seed 的 false suppression、recall、false
+merge、confirmation latency、IDSW/continuity 和时延证据仍开放。默认 GNN/Hungarian、
+中心 ID ownership、离线一对一 truth 映射和 explicit IDSW availability 不变。
+
+## 31. 重复全量后验短时 coast 评审
+
+### 31.1 决策
+
+D1 未获新量测时继续发布预测后验，旧 observation ID 必须被 D2 quarantine。直接把该帧
+计 miss 会让正常高频发布与较低雷达更新率之间出现错误 lost。当前只对已绑定活动航迹、
+原因严格为 `repeated_latest_observation_id` 且距最后新鲜更新不超过版本化 grace 的情况
+跳过 miss。航迹仍执行到当前单调时刻的运动预测，不做量测校正。
+
+宽限不由 replay 刷新。冲突、过旧、溢出、未绑定、已 dropped 和超时均不 coast；同一
+航迹在一帧出现其他拒绝原因时也阻断 coast。该边界避免把时间冲突或账本压力伪装成正常
+传感器间隔。
+
+### 31.2 证据和接入
+
+5 个新增专项覆盖版本、跨帧 replay、超时、冲突和长循环。12 目标 200 帧 fixture 的
+1920 次 replay 均未增加 hit/birth/miss，claim 内存仍有界。seed 1005 始终保持 5 条航迹，
+不再先生成第 6 条再删除。完整 D2 为 `188 passed, 1 warning in 31.03s`。main 后续显式
+传入 `ReplayCoastConfig`，并记录逐帧 coast 和实际 miss；AirSim grace 参数仍需按传感器
+节拍标定。
+
+## 32. scalable 尾部合并评审
+
+### 32.1 当前行为
+
+main 已把 episode 结束时的 D1 扫描排空改为“逐条融合、最终后验单次送 D2”。active-risk
+seed 1005 的 1.1 s 当前路径只有 1 个常规 D2 帧和 1 个 finalize D2 帧，均保持 GT1-GT5。
+累计 claim 10、replay quarantine/coast 0、birth 5、stale drop 0、coalescence 0；finalize
+调用 1 次并合并 5 条尾部释放。该次 finalize 不生成相机或运动控制命令。
+
+因此上一轮记录的 7 个 D2 帧、26 个 claim 和 9 次 replay 只属于旧 main 接线，不能继续
+作为当前集成口径。D2 的 bounded coast 功能仍由 12 目标、200 帧、1920 次 replay 的模块
+fixture 覆盖。上游先合并重复后验时，集成 replay 为 0 是合法结果。
+
+### 32.2 测试一致性
+
+seed1005 复现报告已升级为 v3。验收接受 replay=0 或正数 bounded replay，并强制全部
+发布帧为 GT1-GT5、owner 为 `D2_center`、birth 5、coast 与 quarantine 一致、无 stale
+drop/错误合并和 online truth 0。当前 2.2 s 路径得到 6 个五航迹帧、replay 0，
+`acceptance_passed=true`；专项 2 个测试通过，完整 D2 为 `189 passed, 1 warning`。
+本次没有修改关联、claim、coast 或身份所有权算法。
+
+### 32.3 干预库存
+
+保留 seed 1011/1019 的干预帧仍只有 4 条航迹。两例首扫各缺一个观测，第 5 条新鲜证据在
+干预时刻之后到达，终态恢复为 5 条 confirmed。干预源的 target inventory 以冻结时刻
+实际 D2 发布为准；`planning_target_identity_bridge` 与该库存一一对应，离线 truth mapping
+只用于后验评分。main 应把 target_count 差额作为可用性指标，不得用 truth 补轨。
+
+## 33. 多规模治理证据评审
+
+### 33.1 200v200 单 seed
+
+最新持久化 development 制品为 200 个目标、200 个资源、seed 42000、2.2 s。尾部 31 次
+D2 调用合并为 1 次，`coalesced_release_count=30`；常规 D2 关联 8 次共 6.135 s，尾部
+关联 1 次为 2.033 s。claim current/peak/capacity 为 1583/1583/60000，overflow、too-old、
+coalescence 和 online truth use 均为 0。
+
+1976/1976 是上一份合并前 development 制品的 claim 值。两份制品的调用拓扑不同，不能
+混合成一条验收记录。当前结果来自脏工作树和单 seed，不是 AirSim、实时服务等级或完整
+200v200 结论。
+
+### 33.2 快速治理批次
+
+快速治理覆盖 20/50/100/200 各 5 个 seed，报告 `formal_episode_count=0`。200 规模 claim
+peak 24170、capacity 48000、安全淘汰 2985、overflow/too-old 0；四档 near-neighbor recall
+1.0、false suppression 0、erroneous coalescence 0、online truth 0。该 runner 只校验
+治理和离线 sidecar，不包含完整 D1-D7 闭环。
+
+### 33.3 后续决策
+
+seed1005 测试验收口径已同步。下一步从 clean commit 复跑；正式 P1 仍需每档至少 20 个未见
+seed、真实或代表性漏检/遮挡/杂波/OOSM 分布、离线 IDSW/continuity 和完整闭环时延。
+D2 默认 GNN/Hungarian、中心 `global_track_id` ownership 和 fail-closed 边界保持不变。

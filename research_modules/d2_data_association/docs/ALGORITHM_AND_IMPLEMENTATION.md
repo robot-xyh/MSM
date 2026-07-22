@@ -1329,14 +1329,127 @@ observation claim 和 coalescence。在线 `id_switch_count` 仍为 `None` 且 a
 航迹数为 `5,6,6,5,5,5,5,5,5,5`，replay quarantine 9、tentative stale drop 1、
 coalescence 0、online truth use 0。完整 D2 测试 `168 passed, 1 warning in 26.15s`。
 
-### 19.5 main 总线和开发期 20-seed 验证
+### 19.5 main 总线和 20-seed 验证
 
 main 已把逐帧与累计审计包装为 `d2-observation-evidence-governance-v1` 并持久化，字段
 覆盖 fresh/replay、timestamp conflict、coalescence、suppressed births 和 tentative
 stale drop。2026-07-22 的脏工作树 development rerun 使用 seeds 1000--1019，D6 七类
 证据 availability 均为 20/20；seed 1005 离线 identity 为 GT1-GT5 五条唯一映射，在线
-truth use 0。该结果关闭接口接线和开发期复跑缺口，不是算法参数 promotion 证据。
+truth use 0。随后提交 `0fa7c00` 的 clean-tree 复跑记录 `repository_dirty=false`、源提交
+统一、20 个 pair、D4 adoption 188/188、两臂各 1960 条命令和 100 条离线唯一映射。
+1 s 计划窗内两臂均无 5 m 拦截；counterfactual、causal、production runtime ACK 仍
+unavailable。该结果关闭 clean 复跑缺口，不是算法参数 promotion 或拦截效果证据。
 
-仍未完成 clean formal run、长时 claim 容量策略、false suppression/false merge 的独立
-统计、整帧 OOSM adapter 和真实 AirSim 分档标定。counterfactual、causal、production
-runtime ACK 均为 unavailable，不能据当前结果声称 200v200 完整验收。
+## 20. 有界 claim ledger 与整帧 OOSM
+
+### 20.1 两个时间水位线
+
+配置 `ObservationClaimLedgerConfig` 包含 schema/config version、保留时间 `T_r`、最大
+claim 数 `C_max` 和最大迟到 `T_l`。Tracker 状态时刻为 `t` 时，观测接纳边界为
+
+```text
+W_admit = t - T_l
+```
+
+源量测时刻严格早于 `W_admit` 的新 key 不进入候选图。claim 的安全淘汰边界为
+
+```text
+W_evict = t - max(T_r, T_l)
+```
+
+只有源量测时刻严格早于 `W_evict` 的 claim 可删除。因 `W_evict <= W_admit`，已删除 key
+携带原旧量测时间再次到达时，仍会在字典查询前被 admission watermark 拒绝。实现不保存
+无限 tombstone；防重放依赖带命名空间的 observation ID、可信且不可回退的源量测时间，
+以及 main/DDS 层对消息完整性的保证。缺少源量测时间的 claim 不淘汰，容量满后新 key
+按 `observation_claim_ledger_overflow` 拒绝。
+
+### 20.2 内存与运行复杂度
+
+claim 字典最多 `C_max` 项，按 track 组织的 observation key 总数不超过 resident claims，
+淘汰最小堆最多保存每个有时间 claim 一项。常驻声明内存为 `O(C_max)`。每次有时间 claim
+写入和淘汰为摊销 `O(log C_max)`；一次 scan 的声明分区为 `O(M log M)` 的确定性 key/
+detection 排序加 claim 操作，其中 `M` 为本帧观测数。淘汰 key 时同步删除 track 反向索引，
+不会由历史 episode 长度继续增长。
+
+### 20.3 拒绝原因与审计
+
+逐帧 `AssociationResult.metadata` 输出：
+
+- `observation_rejection_reason_counts` 与累计版本；
+- `replay_quarantine_events`；
+- `observation_claim_ledger`；
+- 本帧 eviction count/events。
+
+原因至少区分 `observation_measurement_too_old`、
+`observation_identity_timestamp_conflict`、`repeated_latest_observation_id`、
+`duplicate_observation_within_scan` 和 `observation_claim_ledger_overflow`。summary 的 ledger
+包含 current/peak/evicted、overflow/too-old/replay、admission/safe watermark、undated、
+eviction index、track observation key/index count、`tombstone_count=0`、配置版本和
+`online_truth_used=false`。
+
+### 20.4 整帧 OOSM 边界
+
+`Scalable3DOOSMScanAdapter` 是 Tracker 前置排序器。每次 submit 接收一个共同 state-valid
+measurement epoch 的完整 scan，arrival time 表示该 scan 已完整到达。适配器以
+`latest_arrival - max_lateness` 作为释放水位线，从最小堆按 measurement time 释放 0 到
+多帧。超过 max-lateness、早于已释放 Tracker state、arrival 回退或 buffer overflow 的
+scan 整帧拒绝。Tracker `step()` 始终按非递减时间调用。
+
+`flush()` 只表示 episode 输入终止，把仍在迟到窗内的 scan 排序排空。它不允许在 episode
+中周期调用来绕过 max-lateness，也不做固定滞后回溯、状态重放或平滑。adapter summary
+输出 submitted/admitted/released/rejected、current/peak scan/detection buffer、measurement inversion、
+逐原因累计值、arrival/release/state 时间和 `rewind_or_fixed_lag_smoothing=false`。
+
+### 20.5 离线治理基准
+
+`run_observation_governance_benchmark()` 先用匿名检测运行 online Tracker，再把独立 truth
+label 交给 `Sparse3DOfflineEvaluator`。truth 不进入检测 metadata、候选生成、Hungarian、
+生命周期或 claim ledger。公开报告字段包括合法检测数、false suppression 数/率、近邻
+独立目标 recall、错误 coalescence、逐 truth confirmation latency、离线 IDSW/continuity
+和 ledger summary。
+
+2026-07-22 的确定性 3/12 目标、16 帧、0.75 m 间距测试分别含 43/187 条合法检测，误抑制
+0、召回 1.0、错误合并 0、确认延迟均值/P95 0.25/0.25 s、离线 IDSW 0。5 目标 x 500 帧
+和 40 目标 x 200 帧循环的 peak/current 均不超过 `6N`，overflow 0 且发生安全淘汰。
+新增 15 个测试后完整 D2 为 `183 passed, 1 warning in 29.08s`。
+
+上述结果关闭模块内有界账本、显式整帧排序边界和确定性误抑制基准。真实 AirSim、多规模
+多 seed、时钟漂移、ID 唯一性、遮挡/杂波和最坏大连通分量仍需标定，不能据模块 fixture
+声称 200v200 完整验收。
+
+## 21. 重复后验的有界预测 coast
+
+设当前统一状态时刻为 `t_k`，航迹最后一次接受新鲜量测的时刻为 `t_u`，版本化宽限为
+`G`。重放 detection 先按原规则进入 quarantine。只有以下条件同时成立时，航迹本帧免计
+一次 miss：拒绝原因为 `repeated_latest_observation_id`；claim 已绑定该现存非 dropped
+航迹；同航迹本帧没有时间冲突等其他拒绝；且 `0 <= t_k-t_u <= G`。
+
+coast 帧仍执行常速度预测和协方差传播，以保持 Tracker 状态时刻单调。它不执行量测
+Joseph 更新或协方差交叉，不修改 hits、misses、last detection 和 `last_update_time`，也
+不允许 quarantined detection 形成 birth。后续 replay 始终使用同一个 `t_u` 计算年龄，
+因此 `t_k-t_u > G` 后恢复 miss。持续重放不能延长宽限。
+
+`ReplayCoastConfig` 公开 schema/config version、grace、时钟来源和
+`refresh_on_replay=false`。每帧输出 coast event、track、reason、age、grace 和实际 miss；
+summary 累计 coast count/reason。候选 coast 只使用本帧 quarantine 事件，额外临时复杂度
+为 `O(Q)`，其中 `Q` 为本帧拒绝数；没有新增随 episode 长度增长的容器。
+
+## 22. 在线库存与集成验收
+
+设冻结干预时刻的在线 D2 活动航迹集合为 \(\mathcal{T}_k\)，仿真离线目标集合为
+\(\mathcal{G}_k\)。在线合同只允许由观测证据构造 \(\mathcal{T}_k\)，因此一般只能要求
+\(|\mathcal{T}_k| \le |\mathcal{G}_k| + N_{FA}\)，其中 \(N_{FA}\) 是在线可能形成的虚警
+航迹数。不能直接要求 \(|\mathcal{T}_k|=|\mathcal{G}_k|\)。是否漏检、虚警或身份错误只能
+在关联结束后通过隔离 truth sidecar 评分。
+
+当前 seed 1005 的 1.1 s 运行产生 1 个常规 D2 帧和 1 个 finalize D2 帧，每帧均为
+GT1-GT5 五条规范中心航迹。最终累计 birth 5、claim 10、replay quarantine/coast 0、
+stale drop 0、coalescence 0；finalize 只调用 D2 一次并合并 5 条尾部释放，不用于控制。
+seed 1011/1019 的 1.0 s 干预快照各为 4 条航迹，因为首个雷达扫描各漏检一目标，后续
+观测在干预时刻之后到达。两例最终均为 5 confirmed。
+
+main 验收应使用三个独立关系：D2 在线库存与 D3 匿名目标库存等长；在线目标桥覆盖 D2
+库存且不改写规范 ID；离线 truth mapping 单独携带可用性。发布次数和航迹数不再由固定
+5v5 序列断言。复现脚本采用 `d2.active-risk-seed1005-reproduction.v3`：允许 replay=0
+或有界 replay，同时强制五条规范中心航迹、birth 5、coast/quarantine 一致、无 stale
+drop/错误合并和在线 truth 0。当前完整 D2 测试为 `189 passed, 1 warning`。

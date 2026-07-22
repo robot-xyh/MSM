@@ -150,7 +150,7 @@ D2 是 C-UAS 多目标数据关联研究模块，目标是在离线仿真和日�
 
 ### 2026-07-12 状态同步
 
-- commit `33e6fa0` 本身没有修改 D2；其后的 D2-owned P1 任务新增长 governed replay 校准入口、OOSM exposure 审计和动态 N/M 回归。当前指定 D2 回归为 `69 passed, 1 warning`，warning 是本机 Matplotlib `Axes3D` 多版本导入问题。
+- commit `33e6fa0` 本身没有修改 D2；其后的 D2-owned P1 任务新增长 governed replay 校准入口、OOSM exposure 审计和动态 N/M 回归。该阶段 D2 回归当时为 `69 passed, 1 warning`，warning 是本机 Matplotlib `Axes3D` 多版本导入问题。
 - main GAP 与 PNG delivery AirSim 报告给出的 D2 相关新证据仅是合同保持：2v2 candidate 10 seeds 为 20/20 pair、在线 truth 使用为 0；锁定后两帧 dropout 仍沿原 global/local track 与计划上下文预测，没有 truth ID 或本地 ID 重写。
 - M5N2 8 s 短窗口为 0/9，且不是同几何、同时间窗的长期对照；该 AirSim 报告没有 D2 专项 offline IDSW/continuity 或真实 dense/crossing 长回放。当前已闭合 D2 synthetic 长 replay runner/schema，但真实 replay、gate/risk、M-of-N/false-track、NIS/NEES 和跨节点 failover 标定仍开放。
 
@@ -539,17 +539,123 @@ python3 research_modules/d2_data_association/scripts/reproduce_active_risk_seed_
 异步新证据；真实 seed 专项 1 个。完整 D2 回归为 `168 passed, 1 warning in 26.15s`，
 warning 仍为本机 Matplotlib `Axes3D` 环境问题。
 
-main 于 2026-07-22 在脏工作树完成 development 20-seed active-risk 集成复跑。运行时
-总线已持久化 `d2-observation-evidence-governance-v1`，包括 fresh/replay、timestamp
-conflict、coalescence、suppressed births 和 tentative stale drop 的逐帧/累计证据。
-D6 的 plan consumption、guidance lineage、physical window、D4 adoption、paired
-physical effect、paired non-degradation 和 degraded comparison 均为 20/20 available；
-D4 adoption 合计 188/188，control/treatment 各生成并应用 1960 条命令。seed 1005 的
-离线身份恢复为 GT1-GT5 五条唯一映射，online truth use 0。
+main 于 2026-07-22 先完成 development 复跑，随后以提交 `0fa7c00` 生成 clean-tree
+active-risk seeds 1000--1019 结果。clean manifest 记录 `repository_dirty=false`、源提交
+统一、20/20 物理窗与配对比较可用、D4 adoption 188/188、两臂各 1960 条命令、100 条
+离线唯一身份映射。seed 1005 保持 GT1-GT5 五条唯一映射，在线 truth use 0。两臂在
+1 s 计划有效窗内均为 0 次 5 m 拦截；counterfactual、causal 和 production runtime ACK
+仍 unavailable，因此该 clean 结果只关闭可复现集成运行，不证明降级收益或拦截效果。
 
-上述结果关闭“main bus 尚未持久化”和“active-risk 20-seed development 复跑尚未执行”
-两项集成缺口。它不是 clean formal run，不能覆盖历史正式证据，也不能声明因果、反事实、
-production runtime ACK、AirSim 标定或 200v200 完整验收。长 episode observation claim
-容量、近邻目标误抑制/误合并率、整帧 OOSM adapter 和真实 AirSim 阈值标定仍开放。
-在线 `id_switch_count` 继续显式为 `None/unavailable`，不得用 truth-free 计数替代离线
-身份评分。
+## 2026-07-22 长 episode 声明治理
+
+`Scalable3DTracker` 新增 `ObservationClaimLedgerConfig`。默认配置版本为
+`d2-observation-claim-policy-v2`，包含 retention、max-count 和 max-lateness。新观测先按
+`current_state_time - max_lateness` 检查是否过旧；claim 只有在
+`current_state_time - max(retention, max_lateness)` 之后才可淘汰。淘汰索引使用最小堆，
+旧量测即使 key 已从字典移除，也会被 admission watermark 拒绝，不能重新形成 hit 或
+birth。无源量测时间的 claim 不淘汰；达到 max-count 后新证据 fail closed，内存不再增长。
+
+逐帧 metadata 和 summary 现区分 `observation_measurement_too_old`、
+`observation_identity_timestamp_conflict`、`repeated_latest_observation_id`、
+`duplicate_observation_within_scan` 和 `observation_claim_ledger_overflow`。公开 ledger
+summary 包含配置/schema 版本、current/peak/evicted、overflow/too-old/replay、两个水位线、
+undated、eviction index、track observation reverse-index、`tombstone_count=0` 和
+anti-replay mode。
+
+乱序整帧由可选 `Scalable3DOOSMScanAdapter` 在 Tracker 前处理。它按到达顺序接收完整
+common-epoch scan，在 max-lateness 水位线后按量测时间释放；超窗、早于已释放状态或缓冲
+溢出的 scan 整帧拒绝。`flush()` 只用于 episode 结束后的有序排空，不做状态回溯、固定
+滞后平滑或重放。
+
+本轮新增 15 个模块测试。5 目标 x 500 帧和 40 目标 x 200 帧长期循环均满足 claim
+peak 不超过配置上限、overflow=0 且发生安全淘汰。离线 benchmark 的 3/12 目标、16 帧、
+0.75 m 间距分别有 43/187 条合法检测，误抑制 0、近邻召回 1.0、错误 coalescence 0、
+确认延迟均值/P95 0.25/0.25 s、离线 IDSW 0；truth 只在 `step()` 后进入 evaluator。
+完整 D2 回归为 `183 passed, 1 warning in 29.08s`。真实 AirSim 的 observation ID 稳定性、
+时钟误差、距离/遮挡/杂波门限，以及 20/50/100/200 多规模多 seed 性能证据仍开放。
+在线 `id_switch_count` 继续显式为 `None/unavailable`。
+
+### main-owned 接入建议
+
+main 构造 Tracker 时应显式传入并写入 manifest：
+
+```python
+tracker = Scalable3DTracker(
+    observation_claim_config=ObservationClaimLedgerConfig(
+        config_version="d2-observation-claim-policy-v2",
+        retention_seconds=30.0,
+        max_count=100_000,
+        max_lateness_seconds=5.0,
+    ),
+    replay_coast_config=ReplayCoastConfig(
+        config_version="d2-replay-coast-policy-v1",
+        grace_seconds=0.5,
+    ),
+)
+```
+
+若 main 已保证 scan 的 state-valid `measurement_timestamp` 单调，可直接调用
+`tracker.step()`。若 transport 按 arrival 顺序交付且完整 scan 可能乱序，应使用
+`Scalable3DOOSMScanAdapter`。每个 `submit_scan()` 传入一个完整共同量测时刻的 scan；空
+scan 必须显式传 measurement/arrival time。一次 submit 可能释放 0 到多条 result，main
+应按 result 自带时间逐条发布。`flush()` 只在确认该 episode 不再有输入时调用，reset 后
+重新构造 adapter/tracker，不能把 flush 当作周期性回溯更新。
+
+在线持久化建议包括 result 的 `observation_rejection_reason_counts`、累计 reason、
+`observation_claim_ledger`、eviction count/events，以及 adapter summary 的
+submitted/admitted/released/rejected、current/peak scan 与 detection buffer、measurement inversion、拒绝
+原因、水位线和 last released time。离线 D6 可消费 governance benchmark 的 false
+suppression、nearby recall、erroneous coalescence、confirmation latency 和 offline
+identity metrics；这些 truth 指标不得写回在线总线。
+
+## 2026-07-22 重复后验短时 coast
+
+D1 全量发布后验时，无新量测的航迹仍可能携带上一条 `latest_observation_id`。D2 继续把
+这类 detection 按 `repeated_latest_observation_id` 隔离，不进入候选图、状态量测更新、
+hit 或 birth。若该 claim 已绑定现存中心航迹，且当前状态时刻距航迹
+`last_update_time` 不超过版本化 `ReplayCoastConfig.grace_seconds`，该航迹本帧只做常
+速度预测，不增加 miss。`last_update_time` 和宽限起点不因 replay 刷新，超过宽限后立即
+恢复原 miss/lost/drop 逻辑。时间冲突、过旧量测、账本溢出和未绑定 claim 均不 coast。
+
+逐帧结果公开 `replay_coast_count/events/track_ids/reason_counts/config` 和
+`missed_track_ids`；Tracker summary 公开累计 coast count、reason 和配置。coast 不增加
+常驻 ledger，额外持久状态只有定长整数计数。12 目标、200 帧、雷达每 0.5 s 更新的全量
+后验循环中，1920 次相邻 replay coast，所有航迹 misses 为 0，claim 仍受 max-count
+约束。合并前 main 接线中的 active-risk seed 1005 曾从旧基线的 `5,6,6,5` 改为前四帧
+持续 5 条航迹，9 次 replay 均未形成额外 birth 或 tentative stale drop；当前尾部合并后
+该 seed 的集成 replay 为 0，见下一节。两种路径在线 truth 使用均为 0。
+完整 D2 回归为 `188 passed, 1 warning in 31.03s`；warning 为既有 Matplotlib
+`Axes3D` 环境提示。
+
+## 2026-07-22 scalable 尾部合并后证据复核
+
+main 当前在 episode 结束时仍按量测时刻逐条融合并发布 D1 尾部扫描，但只把最终融合后验
+送入 D2 一次；该次更新只用于状态和审计收口，不生成相机或运动控制命令。active-risk
+5v5、seed 1005、1.1 s 当前运行产生 2 个 D2 发布帧，均为 GT1-GT5 五条规范航迹。累计
+birth 5、claim 10、replay quarantine/coast 0、tentative stale drop 0、coalescence 0；
+D2 finalize 调用 1 次，`coalesced_release_count=5`，在线真值使用为 0。旧文档中的
+`claim=26、replay=9` 属于尾部逐次调用 D2 的上一版 main 接线，不再代表当前集成行为。
+
+D2 的 bounded replay/coast 能力没有删除。12 目标、200 帧模块 fixture 仍以 1920 次
+重复后验验证宽限、超时和冲突边界。seed1005 复现报告现为
+`d2.active-risk-seed1005-reproduction.v3`，接受 replay=0 或有界 replay；两种分支均要求
+全部发布为 GT1-GT5、owner 为 `D2_center`、birth 5、coast 与 quarantine 一致、无 stale
+drop/错误合并且在线真值使用为 0。当前 2.2 s 复跑得到 6 个五航迹帧、replay 0，
+`acceptance_passed=true`。完整 D2 回归为 `189 passed, 1 warning`，未修改 D2 算法。
+
+200v200、seed 42000、2.2 s 的最新持久化 development 制品将尾部 31 次 D2 调用合并为
+1 次并记录 `coalesced_release_count=30`。常规 D2 关联 8 次共 6.135 s，尾部关联 1 次为
+2.033 s；claim current/peak 为 `1583/1583`，容量 60000，overflow/too-old 0，在线真值
+使用 0。`1976/1976` 来自合并前的上一份 development 制品，不能与合并后的调用次数和
+时延拼接成同一结果。以上均来自脏工作树质点运行，不是 AirSim、实时性或完整 200v200
+验收。
+
+快速治理标定另运行 20/50/100/200 四个规模、每档 5 个 seed，共 20 个 development
+episode，`formal_episode_count=0`。200 规模 claim current/peak 为 `24170/24170`、容量
+48000、安全淘汰 2985、overflow/too-old 0；四档离线 near-neighbor recall 均为 1.0，
+false suppression 和 erroneous coalescence 均为 0，在线真值使用为 0。这是专用治理
+benchmark，不包含完整运动、分配、降级、视觉和制导闭环。
+
+保留 seed 1011 和 1019 在 1.0 s 干预帧只有 4 条在线航迹，后续新鲜观测到达后终态恢复
+5 条 confirmed。scalable 验收仍应以实际 D2 库存连接 D3，并单独报告相对场景目标数的
+可见性缺口；不得用离线 truth 补轨或硬编码目标数。

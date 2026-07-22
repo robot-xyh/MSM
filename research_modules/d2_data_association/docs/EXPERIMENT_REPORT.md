@@ -326,8 +326,9 @@ IDSW 0，identity/coverage continuity 均为 0.98；虚警用例 50 个真目标
 调度抖动；它不是多 seed 置信区间、实时 SLA、AirSim 或 200v200 全链路结果。KD-tree
 避免无条件全对扩张，但极端全重叠目标
 仍会形成大连通分量；候选预算、分区与召回率需要联合标定。main-owned scalable
-point-mass bus 已有只读运行诊断，但修复后跨模块复跑和多 seed 验收未完成；六维
-JPDA/MHT、OOSM 和高机动滤波也未实现。
+point-mass bus 已有只读运行诊断，但该阶段修复后的跨模块复跑和多 seed 验收尚未完成；
+后续第 18 节已实现有界 whole-scan OOSM adapter。六维 JPDA/MHT、OOSM 状态回溯/平滑
+和高机动滤波仍未实现。
 
 ## 15. 2026-07-20 六维速度状态稳定性实验
 
@@ -504,9 +505,9 @@ warning 是既有 Matplotlib `Axes3D` 环境提示，不影响关联结果。在
 ### 17.4 限制
 
 本批关闭的是 seed 1005 暴露出的 D2-owned 陈旧观测重复确认缺口。证据来自一个质点
-seed，不是 AirSim、200 对 200 或物理拦截结论。观测 claim 当前按 episode 保存且不
-淘汰；长时 200 目标运行的内存占用、合并门的 false suppression/recall 和显式整帧
-OOSM adapter 仍待验证。
+seed，不是 AirSim、200 对 200 或物理拦截结论。该初版在当时仍按 episode 保存 claim
+且不淘汰；该限制已由第 18 节的有界 ledger、离线误抑制基准和整帧 OOSM adapter 后续
+关闭。真实 AirSim 与 200v200 多 seed 证据仍开放。
 
 ### 17.5 development 20-seed 集成复跑
 
@@ -535,6 +536,130 @@ conflict、coalescence、suppressed births 和 tentative stale drop 的逐帧/�
 因此该批只证明开发期接线、可用性和非退化记录完整，不证明因果收益或生产运行能力。
 
 main 同批回归记录 D2 `168 passed, 1 warning`、scalable `110 passed`，其余 D1、D3-D7
-也全部通过。本次 D2 文档同步未修改代码，未重复执行测试。下一步仍是 clean formal
-rerun、长时 claim 容量和近邻误抑制/误合并率测量，以及真实 AirSim OOSM/遮挡/杂波
-分档标定；不得把本批结果写成 200v200 完整验收。
+也全部通过。该 development 结果随后由 clean-tree 运行取代，不能单独作为正式来源。
+
+### 17.6 clean-tree 20-seed 复跑
+
+提交 `0fa7c00c3514c4fa87a17953ab66fdfb73489b0b` 的输出 manifest 记录
+`repository_dirty=false`、`dirty_source_episode_count=0` 和统一源提交。active-risk
+seeds 1000--1019 共 20 个 pair；D4 adoption 188/188，control/treatment 各 1960 条命令，
+离线唯一身份映射合计 100，seed 1005 为 GT1-GT5 五条唯一映射。物理窗、D4 adoption、
+paired physical effect 和 paired non-degradation 均为 20/20 可用。
+
+两臂在 1 s 计划有效窗内的 5 m 拦截成功均为 0。counterfactual、causal 和 production
+runtime ACK 不可用。该批证明提交与输入来源可复现，未证明物理拦截效果或主动降级收益。
+
+## 18. 长 episode 声明和 OOSM 模块测试（2026-07-22）
+
+本轮不启动 AirSim，不运行随机 seed。新增 15 个确定性测试，完整 D2 为
+`183 passed, 1 warning in 29.08s`；warning 是既有 Matplotlib `Axes3D` 环境提示。
+
+| 验收项 | 输入 | 结果 |
+| --- | --- | --- |
+| 小规模长期循环 | 5 目标 x 500 帧，max-count=30 | peak/current <=30，overflow 0，evicted >0 |
+| 中规模长期循环 | 40 目标 x 200 帧，max-count=240 | peak/current <=240，overflow 0，evicted >0 |
+| 近邻离线基准 | 3 目标，16 帧，0.75 m | 43 条合法检测，误抑制 0，recall 1.0，错误合并 0 |
+| 动态 N 离线基准 | 12 目标，16 帧，末目标第 5 帧进入 | 187 条合法检测，误抑制 0，recall 1.0，错误合并 0 |
+| 确认延迟 | 3/12 目标基准 | mean/P95 0.25/0.25 s |
+| 离线身份 | 3/12 目标基准 | IDSW 0，continuity 1.0，truth 仅 evaluator 可见 |
+| OOSM 排序 | 0.0、2.0、1.5、3.0 s 到达序列 | Tracker 释放为 0.0、1.5、2.0、3.0 s |
+| OOSM fail closed | 超窗、buffer overflow、早于已释放 state | 逐原因拒绝，状态时间不回退 |
+
+模块测试证明 `O(C_max)` 常驻 claim 上界、旧证据水位线防重放、动态 N 和公开审计合同。
+数据没有覆盖真实 AirSim observation ID、传感器时钟偏差、长尾网络迟到、遮挡/杂波、
+20/50/100/200 多 seed 或最坏大连通分量。这些仍是 P1 实验项。
+
+## 19. 重复全量后验 coast 模块测试（2026-07-22）
+
+5 个确定性专项验证 D2 自身的 bounded replay 分支。跨帧重复后验在 0.5 s grace 内不
+增加 hit、birth 或 miss；0.25 s 配置下，0.30 s replay 恢复 miss 并进入 lost；同一
+observation ID 对应冲突量测时间时不 coast。12 目标、200 帧、雷达每 0.5 s 更新的
+fixture 产生 1920 次 coast，所有航迹 misses=0，claim 未超过 max-count。
+
+此前 main 尾部逐次调用 D2 时，active-risk seed 1005 曾记录 replay quarantine/coast 9。
+该数值只描述旧接线版本。main 现已在 D2 前合并尾部融合后验，当前集成结果见第 20 节。
+D2 的 coast 算法和上述模块 fixture 均未修改，真实 AirSim grace 仍待按传感器节拍标定。
+
+## 20. scalable 尾部合并复核（2026-07-22）
+
+### 20.1 seed 1005 当前结果
+
+active-risk 5v5、seed 1005、1.1 s 当前运行发布 2 个 D2 帧：1 个来自常规在线关联，
+1 个来自 episode finalize。两帧均为 GT1-GT5 五条航迹，终帧全部 confirmed。main 在
+尾部按量测时间逐条融合 D1 扫描，只把最终融合后验送 D2 一次，并禁止该 finalize 路径
+生成相机或运动控制命令。
+
+| 项目 | 当前结果 |
+| --- | --- |
+| D2 发布帧 | 2，航迹数均为 5 |
+| birth / claim | 5 / 10 |
+| replay quarantine / coast | 0 / 0 |
+| tentative stale drop / coalescence | 0 / 0 |
+| D2 finalize 调用 | 1 |
+| `coalesced_release_count` | 5 |
+| 在线 truth 使用 | 0 |
+
+旧报告的 7 帧、claim 26、replay 9 来自 D1 尾部每次释放都调用 D2 的上一版 main。当前
+`replay=0` 表示重复尾部后验没有进入 D2，并不表示 D2 删除了 replay quarantine 或 coast。
+
+### 20.2 D2 复现脚本与测试口径
+
+复现报告升级为 `d2.active-risk-seed1005-reproduction.v3`，验收 profile 为
+`canonical_five_tracks_with_optional_bounded_replay_v3`。replay=0 与正数 bounded replay
+均可接受；正数分支只允许 `repeated_latest_observation_id`，两种分支都要求 coast 与
+quarantine 一致。报告还检查全部发布帧为 GT1-GT5、owner 为 `D2_center`、birth 5、最终
+confirmed、无 stale drop/错误合并且 online truth 0。
+
+当前 2.2 s 运行得到 6 个五航迹发布帧，birth 5、active track 5、replay
+quarantine/coast 0、stale drop 0、coalescence 0、online truth 0，
+`acceptance_passed=true`。专项测试 2 个通过，完整 D2 回归为 `189 passed, 1 warning`；
+warning 是既有 Matplotlib `Axes3D` 环境提示。本次只调整复现和测试验收合同，没有修改
+GNN/Hungarian、claim ledger、coast 或生命周期算法。
+
+### 20.3 干预库存
+
+保留 seeds 1011 和 1019 在 1.0 s 干预时刻各只有 4 条在线航迹。两例首个雷达扫描各漏检
+一个目标，第 5 条新鲜观测在干预时刻之后到达，终态恢复为 5 条 confirmed。干预源应冻结
+实际在线库存，并把相对场景目标总数的差额记录为覆盖率和初始化延迟；在线 D2 不使用
+离线 truth 补轨。
+
+## 21. 200v200 单 seed development 复核（2026-07-22）
+
+持久化的 `point_mass_integrated_observation_smoke_20260722_development_coalesced` 制品采用
+200 个目标、200 个资源、seed 42000、2.2 s 质点场景。manifest 标记
+`repository_dirty=true`。它验证 main 尾部调用数量和 D2 治理审计，不是正式性能验收。
+
+| 项目 | 结果 |
+| --- | --- |
+| 常规 D2 关联 | 8 次，共 6.135 s |
+| 尾部 D2 关联 | 1 次，2.033 s |
+| 合并的尾部释放 | 30 |
+| claim current / peak / capacity | 1583 / 1583 / 60000 |
+| overflow / too-old | 0 / 0 |
+| duplicate coalescence | 0 |
+| online truth use | 0 |
+
+上一份 `development_optimized` 制品在尾部仍调用 D2 31 次，claim current/peak 为
+1976/1976。该数值不能与新制品的单次 finalize 和 2.033 s 时延合并报告。当前代码的
+独立 `/tmp` 复跑同样得到 `coalesced_release_count=30`、单次 finalize、claim
+1583/1583 和 truth use 0；运行时波动使尾部关联为 2.881 s，说明本批时延只能作为
+development 主机样本，不能声明实时服务等级。
+
+## 22. 四规模快速治理标定（2026-07-22）
+
+快速 runner 覆盖 20、50、100、200 四个规模，每档 5 个唯一 seed，共 20 个 episode。
+报告明确 `formal_episode_count=0`，全部属于 development。truth 仅在 online step 后由
+evaluator sidecar 使用，在线 truth use 合计为 0。
+
+| 规模 | seed 数 | claim peak | capacity | safe evicted | overflow / too-old |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 20 | 5 | 2390 | 4800 | 285 | 0 / 0 |
+| 50 | 5 | 6020 | 12000 | 735 | 0 / 0 |
+| 100 | 5 | 12070 | 24000 | 1485 | 0 / 0 |
+| 200 | 5 | 24170 | 48000 | 2985 | 0 / 0 |
+
+四档 near-neighbor recall 均为 1.0，false suppression rate 和 erroneous coalescence
+rate 均为 0，confirmation latency mean/P95 均为 0.25/0.25 s。这些指标来自专用治理
+benchmark，输入结构和难度受控。它不包含完整的 D1-D7 运动、分配、降级、视觉和制导
+闭环，也不是 AirSim 或完整 200v200 多 seed 验收。正式结论仍需 clean commit、至少
+20 个未见 seed、代表性漏检/遮挡/杂波/OOSM 分布和隔离离线身份评分。

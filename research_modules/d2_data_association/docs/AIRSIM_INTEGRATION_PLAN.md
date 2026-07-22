@@ -298,13 +298,68 @@ tentative stale drop 和受约束 coalescence 审计。main 已在开发期总�
 `d2-observation-evidence-governance-v1` 原样持久化，包括 fresh/replay、timestamp
 conflict、coalescence、suppressed births 和 tentative stale drop 的累计值。
 
-2026-07-22 的专项采用 point-mass seed 1005，不启动 Blocks。最终 10 帧活动航迹数为
+2026-07-22 的早期专项采用 point-mass seed 1005，不启动 Blocks。当时 10 帧活动航迹数为
 `5,6,6,5,5,5,5,5,5,5`，quarantine 9 次、tentative stale drop 1 次、在线 truth 使用
-0 次；完整 D2 回归为 `168 passed, 1 warning in 26.15s`。随后完成的脏工作树
+0 次；该结果只保留为 main 尾部合并前的历史证据。当前 main 逐扫描融合 D1 尾部输入，
+只把最终后验送 D2 一次，seed1005 集成 replay=0 合法；v3 复现验收同时接受 replay=0 与
+bounded replay。随后完成的脏工作树
 development 20-seed active-risk 运行中，D6 七类 availability 均为 20/20，D4 adoption
 188/188，seed 1005 离线恢复 GT1-GT5 五条唯一映射且在线 truth 使用仍为 0。这关闭了
-开发期 main/D6 接线验证，不是 AirSim 验收结论。
+开发期 main/D6 接线验证，不是 AirSim 验收结论。随后提交 `0fa7c00` 的 clean-tree 复跑
+记录 `repository_dirty=false`、20 个 pair、D4 adoption 188/188、两臂各 1960 条命令和
+100 条离线唯一映射。该 clean 运行已完成；两臂 1 s 窗口内均无 5 m 拦截，不能解释为
+拦截收益或 AirSim 结论。
 
-真实 AirSim 仍需验证相机/雷达适配后的 observation ID 稳定性、时钟误差、整帧 OOSM、
-遮挡/杂波和距离分档门限。clean formal run、长时 claim 容量及误抑制率也未完成；当前
-development 产物不得覆盖历史正式证据或解释为 200v200 完整验收。
+## 长 episode 与 OOSM 接入
+
+main-owned scalable runtime 推荐显式构造：
+
+```python
+tracker = Scalable3DTracker(
+    observation_claim_config=ObservationClaimLedgerConfig(
+        config_version="d2-observation-claim-policy-v2",
+        retention_seconds=30.0,
+        max_count=100_000,
+        max_lateness_seconds=5.0,
+    ),
+    replay_coast_config=ReplayCoastConfig(
+        config_version="d2-replay-coast-policy-v1",
+        grace_seconds=0.5,
+    ),
+)
+```
+
+以上数值是模块默认 baseline，不是 AirSim 冻结值。main 应根据实测速率、episode 时长、
+迟到分位数和内存预算生成配置，并把 config/schema version 写入 manifest。D1 传入 D2 的
+state-valid `measurement_timestamp`、底层 `source_measurement_timestamp` 和 scan
+`arrival_timestamp` 必须分开保留。
+
+若 main 已在上游保证完整 scan 的 state-valid epoch 单调，可以直接调用 `tracker.step()`。
+若网络按 arrival 顺序交付且整个 scan 可能乱序，应构造
+`Scalable3DOOSMScanAdapter(tracker=tracker, config=OOSMScanAdapterConfig(...))`：
+
+1. `submit_scan()` 每次只接收一个共同 measurement epoch 的完整 scan，按 arrival 顺序
+   调用；空 scan 显式传入 measurement/arrival timestamp。
+2. submit 可能返回 0 到多条 released result。main 必须按每条 result 的 timestamp 发布，
+   不得用 submit 调用时刻覆盖量测时刻。
+3. `flush()` 只在确认 episode 输入结束时调用。它把迟到窗内剩余 scan 按量测时间排空，
+   不用于周期更新，不允许跨 reset 复用 adapter/tracker。
+4. 超窗、早于已释放 state、arrival 回退或 buffer overflow 的 rejected event 进入 D6 日志，
+   不调用 Tracker，也不伪称固定滞后回溯。
+
+main 应持久化 Tracker result/summary 的 reason counts、ledger current/peak/evicted、overflow、
+too-old、两个水位线、undated、配置版本和 eviction 统计；adapter summary 的
+submitted/admitted/released/rejected、current/peak scan/detection buffer、measurement inversion、逐原因
+计数和 last released time也需进入 episode 汇总。离线 benchmark 的 false suppression、
+nearby recall、erroneous coalescence、confirmation latency 和 IDSW 只供 D6 评分，不进入
+在线 D2 消息。
+
+真实 AirSim 仍需验证相机/雷达适配后的 observation ID 唯一性、时钟误差、迟到分布、
+缓冲上限、遮挡/杂波和距离分档门限。模块当前的长期循环与离线 benchmark 已关闭代码/
+接口缺口，但不能代替 20/50/100/200 多规模多 seed 标定或 200v200 验收。
+
+main 还需持久化 `replay_coast_count/events/track_ids/reason_counts/config` 和
+`missed_track_ids`。grace 应覆盖 D1 相邻全量发布到下一次雷达更新之间的正常间隔，并给
+时钟抖动留出已测裕量；不得按 episode 时长设置。超过 grace 后 D2 自动恢复 miss，main
+不应在外层重置 `last_update_time`。整帧乱序仍先由 OOSM adapter 排序，coast 不承担乱序
+回溯职责。

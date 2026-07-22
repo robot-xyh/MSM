@@ -888,8 +888,9 @@ JPDA。**
 ### 11.2 模块回归状态
 
 2026-07-13 main 报告记录的历史回归为 `93 passed`。2026-07-14 Post-batch 审计后
-已重新运行完整 D2 suite，当前结果为 `99 passed, 1 warning`；warning 来自本机
-Matplotlib `Axes3D` 环境，不影响 D2 结论。当前模块使用 Python pytest 测试框架，
+当时完整 D2 suite 为 `99 passed, 1 warning`；2026-07-22 当前权威结果为
+`183 passed, 1 warning in 29.08s`。warning 来自本机 Matplotlib `Axes3D` 环境，
+不影响 D2 结论。当前模块使用 Python pytest 测试框架，
 并通过环境变量 `PYTHONPATH`（Python 模块搜索路径）指向 D2 模块目录：
 
 ```bash
@@ -1131,9 +1132,9 @@ D1 可以把旧量测形成的后验预测到新的状态时刻。对 D2 而言�
 D2 同时使用三类时间：`Detection3D.measurement_timestamp` 表示后验状态有效时刻，
 `arrival_timestamp` 表示到达 D2 的时刻，metadata 中的
 `source_measurement_timestamp` 表示后验最新底层观测的量测时刻。关联仍在统一状态
-时刻进行；是否允许形成 hit 由 opaque observation key 决定。不同 observation ID 即使
-源量测时间更早，也可以作为一次新的 OOSM 后验接纳；同一 ID 重放或同一 ID 对应冲突
-源时间则隔离。
+时刻进行；是否允许形成 hit 由 opaque observation key、最大迟到和声明水位线共同决定。
+不同 observation ID 只有在源量测时间未超过配置的 max-lateness 时才可接纳；同一 ID
+重放或同一 ID 对应冲突源时间直接隔离。
 
 ### 19.2 生命周期抑制
 
@@ -1156,15 +1157,69 @@ online truth use 0。5 个合成专项和 1 个真实 seed 专项通过；完整
 `168 passed, 1 warning in 26.15s`。该结果是模块级单 seed point-mass 证据，不能代替
 AirSim 标定。
 
-### 19.4 开发期多 seed 证据边界
+### 19.4 多 seed 证据边界
 
 main 随后在同日脏工作树运行 active-risk seeds 1000--1019 的 control/treatment 隔离
 对照。总线已将 observation evidence governance 以版本化 `v1` 结构持久化。D6 七类
 非因果证据可用性均为 20/20；D4 adoption 合计 188/188，两臂各应用 1960 条命令。
 seed 1005 的离线谱系只恢复 GT1-GT5 五条唯一映射，在线真值使用为 0。
 
-这批数据证明治理字段能够穿过 main bus，并能在 20 个开发期 seed 中形成完整的可用性
-证据链。control 和 treatment 的物理指标差值为 0；counterfactual、causal、production
-runtime ACK 均不可用。因此不能据此声称策略因果有效，也不能覆盖历史正式数据或扩展为
-200v200 验收。clean formal run、长时 claim 容量、误抑制率、整帧 OOSM 和 AirSim
-分档标定继续开放。
+同日提交 `0fa7c00` 的 clean-tree 运行记录源提交统一、`repository_dirty=false`、20 个
+pair、D4 adoption 188/188、两臂各 1960 条命令和 100 条离线唯一映射。control 和
+treatment 在 1 s 有效窗内均无 5 m 拦截；counterfactual、causal、production runtime
+ACK 均不可用。clean 复跑已完成，但不构成策略收益、AirSim 或 200v200 验收。
+
+## 二十、长时声明和乱序整帧原则（2026-07-22）
+
+### 20.1 有界声明
+
+声明策略同时配置 retention、max-count 和 max-lateness，并携带独立版本。max-lateness
+形成观测接纳水位线；`max(retention, max-lateness)` 形成更保守的淘汰水位线。claim 只有
+越过淘汰水位线后才能删除。原量测再次到达时仍早于接纳水位线，因而不能形成命中或出生。
+该方法用受信源量测时间代替无限 tombstone。源量测时间缺失时不做不安全淘汰；容量满后
+新证据拒绝，并显式报告 overflow。
+
+声明字典、航迹反向 key 和淘汰最小堆的常驻规模均为 `O(C_max)`。逐帧与累计审计区分
+too-old、同 key 时间冲突、replay、同帧重复和 overflow，并报告 current、peak、evicted、
+undated、两个水位线和配置版本。中心 `global_track_id` ownership、GNN/Hungarian 和在线
+`id_switch_count=None/unavailable` 不变。
+
+### 20.2 整帧乱序
+
+Tracker 本体保持单调 state time。乱序 scan 只能先进入
+`Scalable3DOOSMScanAdapter`，按 arrival time 建立事件时间水位线，再按 measurement time
+释放完整 scan。超 max-lateness、早于已释放 state、arrival 回退或缓冲溢出均整帧拒绝。
+`flush()` 只用于 episode 结束后的有序排空；该适配器不进行回溯、重放或固定滞后平滑。
+
+### 20.3 验证边界
+
+2026-07-22 的 5 x 500 帧和 40 x 200 帧循环均满足 claim peak/current 不超过 `6N`、
+overflow 0、安全淘汰大于 0。3/12 目标、16 帧、0.75 m 间距离线 benchmark 的合法检测
+为 43/187，误抑制 0、召回 1.0、错误合并 0、确认延迟 0.25 s、IDSW 0；truth 仅在关联
+完成后进入 evaluator。完整 D2 回归为 `183 passed, 1 warning in 29.08s`。
+
+这些数据是确定性模块 fixture。真实 AirSim observation ID、时钟漂移、迟到分布、遮挡/
+杂波和 20/50/100/200 多 seed 的 recall/false merge/latency 仍需标定。
+
+## 二十一、重复后验短时续航原则（2026-07-22）
+
+D1 的状态发布频率可以高于雷达新量测频率。相邻发布帧携带同一 observation ID 时，D2
+仍把它视为重放，不重复融合。若该证据已经绑定活动中心航迹，且距最后一次新鲜更新不
+超过版本化宽限，航迹只按运动模型预测，本帧不增加漏配。这样避免正常传感器更新间隔把
+航迹误判为 lost。
+
+宽限时钟只从新鲜量测更新。重放不增加命中、不重置漏配、不建立航迹，也不刷新宽限。
+时间冲突、过旧、溢出、未绑定和超时继续保守拒绝并计 miss。该策略只处理发布节拍差，
+不替代传感器失联检测。真实 AirSim 需要按雷达周期和抖动分布标定默认 0.5 s。
+
+## 二十二、在线航迹库存原则（2026-07-22）
+
+在线航迹数量由已到达且通过治理的观测、关联结果和生命周期共同决定。场景目标总数只在
+仿真配置和离线评估中可知，不能用来补齐 D2 航迹。雷达漏检或量测尚未到达时，冻结的
+干预快照可以少于目标总数；这应记录为检测/初始化可用性，而不是伪造一条无观测航迹。
+
+active-risk seed 1005 当前保持 5 条规范航迹且不再经历第 6 条错误出生。main 在尾部只把
+最终 D1 后验送 D2 一次，因此该集成路径 replay=0 合法；D2 模块仍用独立 fixture 验证
+正数 bounded replay。保留 seed 1011 和 1019 在 1.0 s 干预时刻各只有 4 条航迹，后续
+新鲜观测到达后恢复到 5 条 confirmed。两类结果共同要求验收按实际在线库存检查身份
+唯一性、谱系、生命周期和覆盖率，不能固定发布次数或强制航迹数等于离线真值目标数。
