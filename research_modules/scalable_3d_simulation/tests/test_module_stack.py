@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections import Counter
 from dataclasses import replace
+import csv
 import json
 
 import numpy as np
@@ -223,6 +224,42 @@ def test_5v5_online_stack_connects_d1_to_d7_without_truth_identity(tmp_path) -> 
     )
     assert "本次启用 D1-D7 规则集成栈" in report
     assert "D1/D2 航迹数分别为 5/5" in report
+    online_lines = (tmp_path / "online_observations.jsonl").read_text(
+        encoding="utf-8"
+    ).splitlines()
+    d1_lines = (tmp_path / "offline_identity" / "online_d1_records.jsonl").read_text(
+        encoding="utf-8"
+    ).splitlines()
+    d2_lines = (tmp_path / "offline_identity" / "online_d2_records.jsonl").read_text(
+        encoding="utf-8"
+    ).splitlines()
+    assert d1_lines == [
+        line
+        for line in online_lines
+        if json.loads(line)["topic"] == "modules.d1.fused_tracks"
+    ]
+    assert d2_lines == [
+        line
+        for line in online_lines
+        if json.loads(line)["topic"] == "modules.d2.associated_tracks"
+    ]
+    with (tmp_path / "post_run_timings.csv").open(
+        newline="", encoding="utf-8"
+    ) as stream:
+        post_run_rows = list(csv.DictReader(stream))
+    assert {row["stage"] for row in post_run_rows}.issuperset(
+        {
+            "online_bus_and_identity_views",
+            "offline_identity",
+            "offline_consistency",
+            "d6_runtime_plan_outcomes",
+            "total_before_timing_artifact",
+        }
+    )
+    assert {
+        row["schema_version"] for row in post_run_rows
+    } == {"scalable3d-post-run-timings-v1"}
+    assert all(float(row["wall_time_s"]) >= 0.0 for row in post_run_rows)
     consistency_manifest = json.loads(
         (tmp_path / "offline_consistency" / "manifest.json").read_text(
             encoding="utf-8"

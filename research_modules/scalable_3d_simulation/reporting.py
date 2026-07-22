@@ -2,15 +2,21 @@
 
 from __future__ import annotations
 
+from contextlib import ExitStack
 import csv
 import json
 from pathlib import Path
+from time import perf_counter
 from typing import Any, Iterable
 
 import numpy as np
 
 from .episode_bus import jsonable
+from .offline_evaluation import PrewrittenIdentityRecordPaths
 from .orchestrator import EpisodeResult
+
+
+POST_RUN_TIMING_SCHEMA_VERSION = "scalable3d-post-run-timings-v1"
 
 
 def write_episode_outputs(
@@ -22,8 +28,11 @@ def write_episode_outputs(
 ) -> dict[str, Path]:
     """Write online logs and evaluator truth into explicitly separate artifacts."""
 
+    post_run_started = perf_counter()
+    timings: list[tuple[str, float]] = []
     output_dir.mkdir(parents=True, exist_ok=True)
     paths: dict[str, Path] = {}
+    stage_started = perf_counter()
     paths["manifest"] = _write_json(output_dir / "manifest.json", result.manifest.to_dict())
     paths["scenario_config"] = _write_json(
         output_dir / "scenario_config.json", result.config.to_dict()
@@ -34,14 +43,22 @@ def write_episode_outputs(
             output_dir / "observation_governance_audit.json",
             result.observation_governance_audit,
         )
-    paths["online_observations"] = _write_online_jsonl(
-        output_dir / "online_observations.jsonl", result
+    _append_post_run_timing(timings, "core_metadata", stage_started)
+
+    stage_started = perf_counter()
+    paths["online_observations"], prewritten_identity_records = _write_online_jsonl(
+        output_dir / "online_observations.jsonl",
+        result,
+        identity_output_dir=output_dir / "offline_identity",
     )
+    _append_post_run_timing(timings, "online_bus_and_identity_views", stage_started)
+
     if result.observation_governance_audit is not None:
         from .observation_governance_reporting import (
             write_episode_observation_governance_outputs,
         )
 
+        stage_started = perf_counter()
         paths.update(
             write_episode_observation_governance_outputs(
                 result,
@@ -49,17 +66,23 @@ def write_episode_outputs(
                 source_bus_path=paths["online_observations"],
             )
         )
+        _append_post_run_timing(timings, "observation_governance", stage_started)
+
+    stage_started = perf_counter()
     paths["offline_truth_labels"] = _write_truth_jsonl(
         output_dir / "offline_truth_labels.jsonl", result
     )
     paths["offline_truth_state"] = _write_truth_state_npz(
         output_dir / "offline_truth_state.npz", result
     )
+    _append_post_run_timing(timings, "offline_truth_artifacts", stage_started)
+
     from .offline_evaluation import (
         write_offline_consistency_evaluation,
         write_offline_identity_evaluation,
     )
 
+    stage_started = perf_counter()
     identity_paths = write_offline_identity_evaluation(
         output_dir / "offline_identity",
         episode_id=result.manifest.episode_id,
@@ -67,8 +90,12 @@ def write_episode_outputs(
         offline_truth_labels=result.offline_truth_labels,
         lineage_time_window_s=_identity_evaluation_window_s(result),
         truth_presence_window_s=_identity_evaluation_window_s(result),
+        prewritten_records=prewritten_identity_records,
     )
     paths.update(identity_paths)
+    _append_post_run_timing(timings, "offline_identity", stage_started)
+
+    stage_started = perf_counter()
     paths.update(
         write_offline_consistency_evaluation(
             output_dir / "offline_consistency",
@@ -85,14 +112,20 @@ def write_episode_outputs(
             timestamp_tolerance_s=_consistency_evaluation_tolerance_s(result),
         )
     )
+    _append_post_run_timing(timings, "offline_consistency", stage_started)
+
+    stage_started = perf_counter()
     paths["offline_intercepts"] = _write_intercepts_jsonl(
         output_dir / "offline_proximity_intercepts.jsonl", result
     )
     paths["stage_timings"] = _write_stage_timings(
         output_dir / "stage_timings.csv", result
     )
+    _append_post_run_timing(timings, "runtime_artifacts", stage_started)
+
     from .d6_integration import write_episode_truth_isolated_outputs
 
+    stage_started = perf_counter()
     paths.update(
         write_episode_truth_isolated_outputs(
             result,
@@ -100,9 +133,12 @@ def write_episode_outputs(
             artifact_paths=paths,
         )
     )
+    _append_post_run_timing(timings, "d6_truth_isolated", stage_started)
+
     if int(result.summary.get("assignment_plan_ack_count", 0)) > 0:
         from .d6_integration import write_episode_runtime_plan_outcome_outputs
 
+        stage_started = perf_counter()
         paths.update(
             write_episode_runtime_plan_outcome_outputs(
                 result,
@@ -110,14 +146,23 @@ def write_episode_outputs(
                 artifact_paths=paths,
             )
         )
+        _append_post_run_timing(timings, "d6_runtime_plan_outcomes", stage_started)
+
+    stage_started = perf_counter()
     paths["report"] = _write_episode_report(
         output_dir / "SCALABLE_3D_EPISODE_REPORT_CN.md", result
     )
+    _append_post_run_timing(timings, "episode_report", stage_started)
+
+    visual_started = perf_counter()
+    visual_written = False
     if write_plot:
+        visual_written = True
         paths["trajectory_plot"] = _write_trajectory_plot(
             output_dir / "trajectories_3d.png", result
         )
     if animation_formats:
+        visual_written = True
         from .animation import write_trajectory_animation
 
         for raw_format in animation_formats:
@@ -128,6 +173,13 @@ def write_episode_outputs(
                 result,
                 output_dir / f"trajectories_3d.{animation_format}",
             )
+    if visual_written:
+        _append_post_run_timing(timings, "visual_outputs", visual_started)
+    paths["post_run_timings"] = _write_post_run_timings(
+        output_dir / "post_run_timings.csv",
+        timings,
+        total_wall_time_s=perf_counter() - post_run_started,
+    )
     return paths
 
 
@@ -178,24 +230,87 @@ def write_batch_outputs(results: Iterable[EpisodeResult], output_dir: Path) -> d
     return paths
 
 
-def _write_online_jsonl(path: Path, result: EpisodeResult) -> Path:
-    with path.open("w", encoding="utf-8") as stream:
+def _write_online_jsonl(
+    path: Path,
+    result: EpisodeResult,
+    *,
+    identity_output_dir: Path | None = None,
+) -> tuple[Path, PrewrittenIdentityRecordPaths | None]:
+    d1_topic = "modules.d1.fused_tracks"
+    d2_topic = "modules.d2.associated_tracks"
+    d1_record_count = sum(
+        1 for message in result.online_messages if message.topic == d1_topic
+    )
+    d2_record_count = sum(
+        1 for message in result.online_messages if message.topic == d2_topic
+    )
+    write_identity_views = (
+        identity_output_dir is not None
+        and d1_record_count > 0
+        and d2_record_count > 0
+    )
+    prewritten_records: PrewrittenIdentityRecordPaths | None = None
+    with ExitStack() as stack:
+        stream = stack.enter_context(path.open("w", encoding="utf-8"))
+        d1_stream = None
+        d2_stream = None
+        if write_identity_views:
+            identity_output_dir.mkdir(parents=True, exist_ok=True)
+            d1_path = identity_output_dir / "online_d1_records.jsonl"
+            d2_path = identity_output_dir / "online_d2_records.jsonl"
+            d1_stream = stack.enter_context(d1_path.open("w", encoding="utf-8"))
+            d2_stream = stack.enter_context(d2_path.open("w", encoding="utf-8"))
+            prewritten_records = PrewrittenIdentityRecordPaths(
+                d1_path=d1_path,
+                d2_path=d2_path,
+                d1_record_count=d1_record_count,
+                d2_record_count=d2_record_count,
+            )
         for message in result.online_messages:
-            stream.write(json.dumps(message.to_dict(), ensure_ascii=False, sort_keys=True) + "\n")
-    return path
+            line = (
+                json.dumps(
+                    message.to_dict(),
+                    ensure_ascii=False,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                )
+                + "\n"
+            )
+            stream.write(line)
+            if message.topic == d1_topic and d1_stream is not None:
+                d1_stream.write(line)
+            elif message.topic == d2_topic and d2_stream is not None:
+                d2_stream.write(line)
+    return path, prewritten_records
 
 
 def _write_truth_jsonl(path: Path, result: EpisodeResult) -> Path:
     with path.open("w", encoding="utf-8") as stream:
         for label in result.offline_truth_labels:
-            stream.write(json.dumps(jsonable(label), ensure_ascii=False, sort_keys=True) + "\n")
+            stream.write(
+                json.dumps(
+                    jsonable(label),
+                    ensure_ascii=False,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                )
+                + "\n"
+            )
     return path
 
 
 def _write_intercepts_jsonl(path: Path, result: EpisodeResult) -> Path:
     with path.open("w", encoding="utf-8") as stream:
         for event in result.proximity_intercepts:
-            stream.write(json.dumps(jsonable(event), ensure_ascii=False, sort_keys=True) + "\n")
+            stream.write(
+                json.dumps(
+                    jsonable(event),
+                    ensure_ascii=False,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                )
+                + "\n"
+            )
     return path
 
 
@@ -228,6 +343,42 @@ def _write_stage_timings(path: Path, result: EpisodeResult) -> Path:
                     "mean_wall_time_ms": timing.mean_wall_time_ms,
                 }
             )
+    return path
+
+
+def _append_post_run_timing(
+    timings: list[tuple[str, float]], stage: str, started: float
+) -> None:
+    timings.append((stage, perf_counter() - started))
+
+
+def _write_post_run_timings(
+    path: Path,
+    timings: Iterable[tuple[str, float]],
+    *,
+    total_wall_time_s: float,
+) -> Path:
+    with path.open("w", newline="", encoding="utf-8") as stream:
+        writer = csv.DictWriter(
+            stream,
+            fieldnames=["schema_version", "stage", "wall_time_s"],
+        )
+        writer.writeheader()
+        for stage, wall_time_s in timings:
+            writer.writerow(
+                {
+                    "schema_version": POST_RUN_TIMING_SCHEMA_VERSION,
+                    "stage": stage,
+                    "wall_time_s": wall_time_s,
+                }
+            )
+        writer.writerow(
+            {
+                "schema_version": POST_RUN_TIMING_SCHEMA_VERSION,
+                "stage": "total_before_timing_artifact",
+                "wall_time_s": total_wall_time_s,
+            }
+        )
     return path
 
 

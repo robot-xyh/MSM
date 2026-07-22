@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import csv
 import json
 from pathlib import Path
 
@@ -23,6 +24,7 @@ from research_modules.scalable_3d_simulation.models import (
 )
 from research_modules.scalable_3d_simulation.orchestrator import run_episode
 from research_modules.scalable_3d_simulation.offline_evaluation import (
+    PrewrittenIdentityRecordPaths,
     write_offline_identity_evaluation,
 )
 from research_modules.scalable_3d_simulation.runtime_ports import (
@@ -229,6 +231,47 @@ def test_offline_identity_marks_incomplete_lineage_unavailable(tmp_path: Path) -
     assert "source_lineage_missing" in evaluation["audit"][
         "identity_metrics_blocking_reasons"
     ]
+
+
+def test_offline_identity_rejects_mismatched_prewritten_record_counts(
+    tmp_path: Path,
+) -> None:
+    messages = (
+        VersionedEnvelope(
+            sequence=1,
+            topic="modules.d1.fused_tracks",
+            source="D1",
+            timestamp=0.1,
+            schema_version="d1-scalable3d-fusion-v1",
+            payload={"tracks": [], "observation_lineage": []},
+        ),
+        VersionedEnvelope(
+            sequence=2,
+            topic="modules.d2.associated_tracks",
+            source="D2",
+            timestamp=0.1,
+            schema_version="d2-scalable3d-association-v1",
+            payload={"tracks": [], "identity_lineage": []},
+        ),
+    )
+    d1_path = tmp_path / "online_d1_records.jsonl"
+    d2_path = tmp_path / "online_d2_records.jsonl"
+    d1_path.write_text("{}\n", encoding="utf-8")
+    d2_path.write_text("{}\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="prewritten D1 record count"):
+        write_offline_identity_evaluation(
+            tmp_path / "evaluation",
+            episode_id="prewritten-count-mismatch",
+            messages=messages,
+            offline_truth_labels=(),
+            prewritten_records=PrewrittenIdentityRecordPaths(
+                d1_path=d1_path,
+                d2_path=d2_path,
+                d1_record_count=2,
+                d2_record_count=1,
+            ),
+        )
 
 
 def test_episode_routes_sensor_batches_through_configured_network() -> None:

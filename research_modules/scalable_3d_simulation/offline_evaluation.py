@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from dataclasses import dataclass
 from hashlib import sha256
 import json
 from pathlib import Path
@@ -22,6 +23,16 @@ OFFLINE_CONSISTENCY_MANIFEST_SCHEMA_VERSION = (
 )
 
 
+@dataclass(frozen=True)
+class PrewrittenIdentityRecordPaths:
+    """Identity record views serialized with the authoritative online bus."""
+
+    d1_path: Path
+    d2_path: Path
+    d1_record_count: int
+    d2_record_count: int
+
+
 def write_offline_identity_evaluation(
     output_dir: str | Path,
     *,
@@ -30,6 +41,7 @@ def write_offline_identity_evaluation(
     offline_truth_labels: Iterable[OfflineTruthLabel],
     lineage_time_window_s: float = 1.0,
     truth_presence_window_s: float = 1.0,
+    prewritten_records: PrewrittenIdentityRecordPaths | None = None,
 ) -> dict[str, Path]:
     """Persist D2 identity evidence and evaluator truth as separate artifacts."""
 
@@ -72,8 +84,20 @@ def write_offline_identity_evaluation(
         write_scalable_3d_observation_truth_labels,
     )
 
-    d1_path = _write_message_jsonl(root / "online_d1_records.jsonl", d1_messages)
-    d2_path = _write_message_jsonl(root / "online_d2_records.jsonl", d2_messages)
+    if prewritten_records is None:
+        d1_path = _write_message_jsonl(root / "online_d1_records.jsonl", d1_messages)
+        d2_path = _write_message_jsonl(root / "online_d2_records.jsonl", d2_messages)
+    else:
+        if prewritten_records.d1_record_count != len(d1_messages):
+            raise ValueError("prewritten D1 record count does not match online messages")
+        if prewritten_records.d2_record_count != len(d2_messages):
+            raise ValueError("prewritten D2 record count does not match online messages")
+        d1_path = Path(prewritten_records.d1_path)
+        d2_path = Path(prewritten_records.d2_path)
+        if not d1_path.is_file() or not d2_path.is_file():
+            raise FileNotFoundError("prewritten identity record view is missing")
+        if d1_path.resolve() == d2_path.resolve():
+            raise ValueError("prewritten D1 and D2 record views must be separate files")
     truth_records = tuple(
         Scalable3DObservationTruthLabel(
             observation_id=item.observation_id,
@@ -628,6 +652,7 @@ def _write_message_jsonl(
                     message.to_dict(),
                     ensure_ascii=False,
                     sort_keys=True,
+                    separators=(",", ":"),
                 )
                 + "\n"
             )
@@ -638,7 +663,13 @@ def _write_jsonl(path: Path, payloads: Iterable[Mapping[str, Any]]) -> Path:
     with path.open("w", encoding="utf-8") as stream:
         for payload in payloads:
             stream.write(
-                json.dumps(payload, ensure_ascii=False, sort_keys=True) + "\n"
+                json.dumps(
+                    payload,
+                    ensure_ascii=False,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                )
+                + "\n"
             )
     return path
 
@@ -677,6 +708,7 @@ def _mapping(value: Any, name: str) -> Mapping[str, Any]:
 __all__ = [
     "OFFLINE_CONSISTENCY_MANIFEST_SCHEMA_VERSION",
     "OFFLINE_IDENTITY_MANIFEST_SCHEMA_VERSION",
+    "PrewrittenIdentityRecordPaths",
     "write_offline_consistency_evaluation",
     "write_offline_identity_evaluation",
 ]
