@@ -894,3 +894,45 @@ control 门扩展为校验 binding、执行签名、版本、窗口、决策状�
 这次复验关闭了 D3 精确重放阻塞。它没有生成 main 正式落盘产物，也没有 D6 非退化统计、
 物理拦截结果或因果结论。冻结 bundle 保持 development/shadow-only；PPO、online assist、
 authority 继续关闭，规则回退继续启用。main 仍需重跑完整 D3/D4 runner 并交给 D6 汇总。
+
+## 二元特征分布门复验（2026-07-21）
+
+### 问题与基线
+
+main 首轮正式 nominal 5v5、2.2 秒、seed `1000-1019` 产物正常加载冻结 bundle，但
+treatment applied 为 0，20 次全部因 `out_of_distribution` 回退。独立特征复算表明 11 个
+连续特征均未超过 6σ。`previous_binding=1` 按旧高斯判据得到 `z=8.4669`，共影响 98 条
+绑定边。
+
+### 修改后结果
+
+保持同一 bundle、同一 20 个 seed、同一场景和阈值执行不写盘复验。结果如下：
+
+| 指标 | 结果 |
+| --- | ---: |
+| treatment 数 | 20 |
+| 模型实际应用 | 20 |
+| 规则回退 | 0 |
+| 最大连续特征 z | 1.6229 |
+| 推理时延最小值 | 0.238 ms |
+| 推理时延均值 | 0.340 ms |
+| 推理时延 P50 | 0.268 ms |
+| 推理时延 P95 | 0.692 ms |
+| 推理时延最大值 | 0.899 ms |
+| treatment 重复分配 | 0 |
+| treatment 硬约束违规 | 0 |
+| treatment 高威胁未满足 | 0 |
+
+规则和 treatment 的平均规则成本均为 `17.0560`，平均抖动均为 0，说明本批残差没有改变
+最终 binding。规则矩阵哈希保持不变。manifest SHA256 仍为
+`a9213d65606a9e2f921040e153488c0f4cdebb10882fa16013fce5b59f9314c0`，state dict SHA256
+仍为 `e3da9fd5b54451da83358405b6051991e0c78bcf9f538b350d459b05faf8e0b2`。
+
+### 回归与限制
+
+回归覆盖合法 1、容差内端点、`0.5`、上下越界、非有限二元值、连续 6σ 超限和 loader
+特征顺序绑定。D3 全量 `372 passed, 1 skipped`；skip 为可选 OR-Tools。
+
+本次复验未写入 main 正式输出，不替换首轮 20 次 OOD 的历史产物。它证明修复后的隔离
+模型路径可达，并未证明物理效果、反事实收益或因果收益。生产 assist 和 authority 继续
+关闭，规则回退继续启用。

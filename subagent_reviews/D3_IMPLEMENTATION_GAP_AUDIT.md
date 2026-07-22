@@ -759,3 +759,29 @@ assignment/binding/control 为 3/3/3，held=0，online truth use=0。D3 全量 3
 
 本项关闭导致正式 20-seed runner 中断的 D3 P1 阻塞，没有新增 P0。专项 `9 passed`，D3
 全量收集 365 项，结果 `364 passed, 1 skipped`；skip 仅为 optional OR-Tools。
+
+## 35. 二元特征 OOD GAP 更新（2026-07-21）
+
+### 已关闭
+
+- **P1 二元端点误拒绝**：`previous_binding` 已按伯努利 `{0,1}` 语义校验，合法端点不再
+  使用对称高斯 z 门。`0.5`、越界和非有限值继续 OOD；其余连续特征仍使用原 6σ。
+- **P1 OOD 可解释性**：新增真值安全的版本化诊断，记录触发特征、候选边偏移、最大连续
+  z 和原因。既有 `is_ood()` 布尔消费者不需修改。
+- **P1 loader 语义绑定**：生产 shadow loader 将 manifest 的已验证特征顺序显式交给 guard。
+  bundle、权重、normalization、阈值和 production admission 均未改变。
+- **P1 隔离模型可达性**：同一冻结 bundle 与 nominal 5v5、2.2 秒、seed `1000-1019`
+  不写盘复验得到 applied=20、fallback=0；最大连续 z=`1.6229`，P95=`0.692 ms`，重复、
+  硬违规和高威胁未满足均为 0。
+
+### 仍开放
+
+- **P1 正式产物更新**：main 首轮落盘产物仍保留 20 次旧 OOD。main 需用当前代码重跑并
+  生成新哈希，D3 不修改该目录。
+- **P1 D6 非退化与运行结果**：当前成本和 binding 未变化，但 runtime ACK、物理 outcome、
+  counterfactual、causal 和正式 reward 仍 unavailable。需要 D6 对新落盘产物独立复核。
+- **P1 模型晋级**：20/20 隔离推理只关闭错误门控和可达性缺口，不构成生产晋级结论。
+  PPO、online assist、authority 保持 false，规则回退保持 true。
+
+本项没有新增 P0。D3 全量收集 373 项，结果 `372 passed, 1 skipped`；skip 仅为 optional
+OR-Tools。

@@ -1078,3 +1078,26 @@ OR-Tools。
 `replan_ack_no_change`，逐 seed binding 与记录帧一致，bundle 正常读取。该复验没有生成
 main 正式产物，也没有运行时确认、物理结果、反事实或因果证据。生产 assist 准入、PPO、
 在线 authority 和规则回退边界均未改变。
+
+## 2026-07-21 二元特征分布门修复
+
+正式 nominal 5v5、2.2 秒、seed `1000-1019` 的首轮落盘证据中，20 个 treatment 均以
+`out_of_distribution` 回退。复核显示 11 个连续特征的最大 z 分数不超过 `1.6229`；唯一
+超出旧全局门限的是 `previous_binding=1`。该特征在训练集中的均值为 `0.013906895`、尺度
+为 `0.116464332`，按对称高斯公式得到 `z=8.4669`，但其定义域是伯努利端点 `{0, 1}`。
+
+`FeatureDistributionGuard` 现按显式特征语义检查：`previous_binding` 只接受有限的 0 或 1，
+允许 `1e-6` 浮点容差，合法端点不参与连续特征 z 门。`0.5`、越界值和非有限值仍判定为
+分布外；其余 11 个连续特征继续使用原 `ood_z_threshold=6.0`。bundle loader 显式绑定
+manifest 的特征顺序，未修改 manifest、权重或 normalization。
+
+新增 `d3_feature_distribution_assessment_v1` 诊断结果。学习元数据可记录触发特征、候选边
+偏移、最大连续 z、对应特征和失败原因，不记录目标、资源或全局航迹身份。原 `is_ood()`
+布尔接口保留，现有消费者可以继续使用。
+
+使用原冻结 bundle 和当前源帧完成不写盘复验。20/20 treatment 均进入隔离模型推理，
+applied=20、fallback=0；时延最小/均值/P50/P95/最大分别为
+`0.238/0.340/0.268/0.692/0.899 ms`。规则与 treatment 的重复分配、硬约束违规和高威胁
+未满足均为 0，规则矩阵保持不变。D3 全量收集 373 项，结果为
+`372 passed, 1 skipped`；skip 仅为可选 OR-Tools。该证据不包含运行 ACK、物理结果、
+反事实或因果结论，PPO、生产 assist、authority 继续关闭，规则回退继续启用。

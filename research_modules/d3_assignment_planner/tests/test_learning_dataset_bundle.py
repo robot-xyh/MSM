@@ -566,6 +566,38 @@ def test_bundle_is_weights_only_checksum_verified_and_assist_requires_promotion(
     assert mismatch.fallback_reason == "dataset_frames_sha256_mismatch"
 
 
+def test_shadow_loader_binds_binary_feature_semantics_without_rewriting_stats(
+    tmp_path: Path,
+) -> None:
+    pytest.importorskip("torch")
+    mean = np.zeros(len(EDGE_FEATURE_NAMES), dtype=np.float32)
+    scale = np.ones(len(EDGE_FEATURE_NAMES), dtype=np.float32)
+    mean[-1] = 0.013906895
+    scale[-1] = 0.116464331
+    saved = save_model_bundle(
+        tmp_path,
+        SharedEdgeActorCriticPolicy(hidden_size=8),
+        split_hash="4" * 64,
+        dataset_frames_sha256="d" * 64,
+        normalization_mean=mean,
+        normalization_scale=scale,
+        training_results={"loss": 1.0},
+    )
+
+    loaded = load_model_bundle(tmp_path, mode="shadow")
+
+    assert loaded.loaded is True
+    assert loaded.assistant is not None
+    guard = loaded.assistant.distribution_guard
+    assert guard is not None
+    assert guard.feature_names == EDGE_FEATURE_NAMES
+    assert np.array_equal(guard.mean, np.asarray(saved.normalization_mean))
+    assert np.array_equal(guard.scale, np.asarray(saved.normalization_scale))
+    features = np.tile(guard.mean, (1, 1))
+    features[0, -1] = 1.0
+    assert guard.evaluate(features, z_threshold=6.0).is_ood is False
+
+
 @pytest.mark.parametrize("mutation", ["feature", "policy", "sha"])
 def test_bundle_mismatch_falls_back_to_rule_without_unsafe_load(
     tmp_path: Path,

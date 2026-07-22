@@ -1979,3 +1979,45 @@ bundle 做不写盘验证。20 个 control 的状态分布为 15 个 `unchanged`
 `held_by_hysteresis`、2 个 `replan_ack_no_change`，逐 seed binding 和执行状态一致，共完成
 40 个 arm。该运行没有 runtime ACK、物理 outcome、counterfactual 或 causal 证据，不改变
 production loader 的 shadow-only 准入。
+
+## 42. 特征语义分布门（2026-07-21）
+
+### 42.1 原错误
+
+旧实现对 12 个候选边特征统一计算 `abs((x-mean)/scale)`。正式 bundle 中
+`previous_binding` 的均值和尺度为 `0.013906895` 和 `0.116464332`。合法值 1 因此产生
+`z=8.4669`，导致含前序绑定的 98 条边使 20 个 treatment 全部在模型调用前回退。
+
+### 42.2 新判据
+
+特征 schema 显式声明 `previous_binding` 为二元项，其余项为连续项。实现先检查数组形状和
+有限性，再执行：
+
+```text
+for previous_binding:
+    valid = isclose(x, 0, atol=1e-6) or isclose(x, 1, atol=1e-6)
+
+for every continuous feature j:
+    z_j = abs((x_j - mean_j) / scale_j)
+    valid = z_j <= ood_z_threshold
+```
+
+`0.5` 返回 `binary_feature_not_endpoint`；小于 0 或大于 1 的值返回
+`binary_feature_out_of_range`；非有限值返回 `non_finite_feature`。连续特征超过原 6σ 时
+返回 `continuous_feature_z_threshold`。绝对值上限、模型超时、置信度、动作掩码和规则
+回退检查顺序未放宽。
+
+### 42.3 诊断与兼容
+
+`FeatureDistributionAssessment` 使用独立 schema
+`d3_feature_distribution_assessment_v1`。结果包含 OOD 标志、原因、触发特征及索引、候选边
+偏移、最大连续 z、对应特征和阈值。`to_metadata()` 只增加
+`learning_distribution_*` 字段，不删除旧字段；`FeatureDistributionGuard.is_ood()` 继续
+返回布尔值。production loader 从已校验的 manifest 显式传入 `feature_names`，normalization
+数组仍按原值送入预测器。
+
+### 42.4 验证边界
+
+正式 bundle 的 manifest、state dict、阈值和权重未改变。不写盘运行 seed `1000-1019`
+后，20 个 treatment 均实际调用模型；最大连续 z=`1.6229`。该路径仍是隔离实验 arm，输出
+不可发布，且不生成运行 ACK、物理结果、反事实或因果证据。

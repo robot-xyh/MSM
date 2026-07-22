@@ -976,3 +976,22 @@ unchanged、3 个 held、2 个 replan ACK，binding/状态失配为 0。
 当前 D3 P1 runner 阻塞已关闭。main 仍需写出完整 D3/D4 产物，D6 仍需完成非退化和结果
 sidecar；runtime ACK、物理结果、反事实、因果和正式 reward 不可用。该结果不支持 PPO、
 online assist 或 authority 晋级。
+
+## 38. 二元特征分布门复核（2026-07-21）
+
+首轮正式保留 seed 证据中的 20/20 OOD 不是连续特征越界。11 个连续项最大 z 为
+`1.6229`；旧门把伯努利 `previous_binding=1` 与训练均值做对称高斯比较，得到
+`z=8.4669`。训练集中已包含该端点，拒绝结果与特征定义不一致。
+
+D3 现固定二元特征清单和 `1e-6` 端点容差。合法 0/1 绕过连续 z 门，非法中间值、越界和
+非有限值仍失败关闭。连续 6σ、绝对上限、deadline、confidence、动作掩码、版本、安全门
+和规则回退均保持原值。loader 只绑定 manifest 已验证的特征顺序，没有修改冻结 bundle。
+
+诊断 schema 记录原因、特征名、索引、边偏移和最大连续 z，不携带目标、资源、真值或
+全局航迹身份。回归覆盖合法/非法二元输入和连续超限；D3 全量为
+`372 passed, 1 skipped`。
+
+同一正式 bundle 与当前 nominal 5v5、2.2 秒、seed `1000-1019` 的不写盘复验得到
+applied=20、fallback=0，推理均值/P95/最大为 `0.340/0.692/0.899 ms`。重复分配、硬约束
+违规和高威胁未满足均为 0，最终 binding 未变化。下一步由 main 重跑正式落盘产物，并由
+D6 复核非退化与运行结果。当前不开放 PPO、online assist 或 authority。

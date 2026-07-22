@@ -477,6 +477,7 @@ def load_model_bundle(
     guard = FeatureDistributionGuard(
         mean=np.asarray(manifest.normalization_mean, dtype=np.float32),
         scale=np.asarray(manifest.normalization_scale, dtype=np.float32),
+        feature_names=manifest.feature_names,
     )
     assistant = LearningCostAssistant(
         NormalizedPolicyPredictor(

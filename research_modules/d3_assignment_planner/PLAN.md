@@ -1198,3 +1198,28 @@ OR-Tools，零失败满足门限。
    代替 D6 sidecar，也不能形成学习策略收益结论。
 3. runtime ACK、物理 outcome、counterfactual 和 causal 继续保持 unavailable。冻结 bundle
    仍为 development/shadow-only；PPO、online assist、authority 不开放，规则回退保持启用。
+
+## 38. 二元特征分布门修复（2026-07-21）
+
+### 已完成
+
+1. 将 `previous_binding` 固定为伯努利二元特征。有限 `0/1` 及 `1e-6` 容差内端点合法，
+   不再进入连续特征对称 z 分数；`0.5`、越界和非有限值继续失败关闭。
+2. 其余 11 个连续特征仍使用冻结 normalization 和 `ood_z_threshold=6.0`。未调整 bundle、
+   权重、alpha、deadline、confidence、生产准入或规则回退。
+3. 新增版本化、真值安全的分布评估结果，并以增量 metadata 记录触发特征、边偏移、最大
+   连续 z 和原因。旧 `is_ood()` 返回类型和调用方式保持兼容。
+4. 正式 bundle 与 nominal 5v5、2.2 秒、seed `1000-1019` 不写盘复验完成：20 个 treatment
+   全部进入模型，applied=20、fallback=0，最大连续 z=`1.6229`，P95=`0.692 ms`，最大
+   `0.899 ms`；重复、硬违规和高威胁未满足均为 0。
+5. D3 全量 `372 passed, 1 skipped`。bundle manifest 和 state dict SHA256 分别保持
+   `a9213d65...14c0` 与 `e3da9fd5...0b2`。
+
+### 后续
+
+1. main 需用修复后的代码重新生成正式落盘 D3/D4 产物；旧落盘文件仍记录 20 次错误 OOD，
+   不得覆盖解释为修复后结果。
+2. D6 需基于新产物完成逐 seed 成本、安全、回退和时延非退化复核。当前不写盘验证只证明
+   D3 隔离推理入口可达。
+3. runtime ACK、物理 outcome、counterfactual、causal 和生产晋级继续 unavailable。
+   PPO、online assist、authority 保持 false，规则回退保持 true。

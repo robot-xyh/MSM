@@ -14,6 +14,9 @@ from .models import AssignmentPlan, ResourceState, TargetTrack
 
 
 LEARNING_RESIDUAL_SCHEMA_V1 = "d3_shared_edge_residual_v1"
+FEATURE_DISTRIBUTION_ASSESSMENT_SCHEMA_V1 = (
+    "d3_feature_distribution_assessment_v1"
+)
 EDGE_FEATURE_NAMES = (
     "rule_cost_squashed",
     "threat",
@@ -28,6 +31,8 @@ EDGE_FEATURE_NAMES = (
     "primary_count",
     "previous_binding",
 )
+BINARY_EDGE_FEATURE_NAMES = ("previous_binding",)
+BINARY_FEATURE_ENDPOINT_TOLERANCE = 1.0e-6
 
 
 @dataclass(frozen=True)
@@ -95,11 +100,74 @@ class ResidualPrediction:
 
 
 @dataclass(frozen=True)
+class FeatureDistributionAssessment:
+    """Truth-free explanation of one feature-distribution decision."""
+
+    is_ood: bool
+    reason: str
+    z_threshold: float | None
+    trigger_feature: str | None = None
+    trigger_feature_index: int | None = None
+    trigger_edge_offset: int | None = None
+    max_continuous_z: float | None = None
+    max_continuous_z_feature: str | None = None
+    max_continuous_z_edge_offset: int | None = None
+    binary_tolerance: float = BINARY_FEATURE_ENDPOINT_TOLERANCE
+    schema_version: str = FEATURE_DISTRIBUTION_ASSESSMENT_SCHEMA_V1
+
+    def to_metadata(self) -> dict[str, Any]:
+        """Return additive metadata without target/resource identity."""
+
+        return {
+            "learning_distribution_diagnostic_schema": self.schema_version,
+            "learning_distribution_is_ood": bool(self.is_ood),
+            "learning_distribution_reason": self.reason,
+            "learning_distribution_trigger_feature": self.trigger_feature,
+            "learning_distribution_trigger_feature_index": (
+                self.trigger_feature_index
+            ),
+            "learning_distribution_trigger_edge_offset": (
+                self.trigger_edge_offset
+            ),
+            "learning_distribution_max_continuous_z": self.max_continuous_z,
+            "learning_distribution_max_continuous_z_feature": (
+                self.max_continuous_z_feature
+            ),
+            "learning_distribution_max_continuous_z_edge_offset": (
+                self.max_continuous_z_edge_offset
+            ),
+            "learning_distribution_z_threshold": self.z_threshold,
+            "learning_distribution_binary_tolerance": float(
+                self.binary_tolerance
+            ),
+        }
+
+
+@dataclass(frozen=True)
 class FeatureDistributionGuard:
-    """Small train-split feature guard for shadow and assist inference."""
+    """Feature-semantic train-split guard for shadow and assist inference."""
 
     mean: np.ndarray
     scale: np.ndarray
+    feature_names: tuple[str, ...] = EDGE_FEATURE_NAMES
+
+    def __post_init__(self) -> None:
+        feature_names = tuple(str(value) for value in self.feature_names)
+        if feature_names != EDGE_FEATURE_NAMES:
+            raise ValueError("feature guard names do not match the D3 schema")
+        mean = np.asarray(self.mean, dtype=np.float32).reshape(-1).copy()
+        scale = np.asarray(self.scale, dtype=np.float32).reshape(-1).copy()
+        if mean.shape != (len(feature_names),) or scale.shape != mean.shape:
+            raise ValueError("feature guard statistics have the wrong shape")
+        if not np.all(np.isfinite(mean)) or not np.all(np.isfinite(scale)):
+            raise ValueError("feature guard statistics must be finite")
+        if np.any(scale <= 0.0):
+            raise ValueError("feature guard scales must be positive")
+        mean.setflags(write=False)
+        scale.setflags(write=False)
+        object.__setattr__(self, "feature_names", feature_names)
+        object.__setattr__(self, "mean", mean)
+        object.__setattr__(self, "scale", scale)
 
     @classmethod
     def fit(
@@ -124,14 +192,142 @@ class FeatureDistributionGuard:
             scale=np.maximum(np.std(matrix, axis=0), float(minimum_scale)),
         )
 
-    def is_ood(self, features: np.ndarray, *, z_threshold: float) -> bool:
-        matrix = np.asarray(features, dtype=np.float32)
+    def evaluate(
+        self,
+        features: np.ndarray,
+        *,
+        z_threshold: float,
+        binary_tolerance: float = BINARY_FEATURE_ENDPOINT_TOLERANCE,
+    ) -> FeatureDistributionAssessment:
+        """Apply domain checks to binary features and z checks to continuous ones."""
+
+        threshold = float(z_threshold)
+        tolerance = float(binary_tolerance)
+        if not isfinite(threshold) or threshold <= 0.0:
+            return FeatureDistributionAssessment(
+                is_ood=True,
+                reason="invalid_z_threshold",
+                z_threshold=None,
+                binary_tolerance=tolerance,
+            )
+        if not isfinite(tolerance) or tolerance < 0.0:
+            return FeatureDistributionAssessment(
+                is_ood=True,
+                reason="invalid_binary_tolerance",
+                z_threshold=threshold,
+                binary_tolerance=BINARY_FEATURE_ENDPOINT_TOLERANCE,
+            )
+        try:
+            matrix = np.asarray(features, dtype=np.float32)
+        except (TypeError, ValueError):
+            return FeatureDistributionAssessment(
+                is_ood=True,
+                reason="feature_array_invalid",
+                z_threshold=threshold,
+                binary_tolerance=tolerance,
+            )
         if matrix.ndim != 2 or matrix.shape[1:] != self.mean.shape:
-            return True
-        if not np.all(np.isfinite(matrix)):
-            return True
-        z_score = np.abs((matrix - self.mean) / self.scale)
-        return bool(np.any(z_score > float(z_threshold)))
+            return FeatureDistributionAssessment(
+                is_ood=True,
+                reason="feature_shape_mismatch",
+                z_threshold=threshold,
+                binary_tolerance=tolerance,
+            )
+        nonfinite = np.argwhere(~np.isfinite(matrix))
+        if nonfinite.size:
+            edge_offset, feature_index = (
+                int(nonfinite[0, 0]),
+                int(nonfinite[0, 1]),
+            )
+            return FeatureDistributionAssessment(
+                is_ood=True,
+                reason="non_finite_feature",
+                z_threshold=threshold,
+                trigger_feature=self.feature_names[feature_index],
+                trigger_feature_index=feature_index,
+                trigger_edge_offset=edge_offset,
+                binary_tolerance=tolerance,
+            )
+
+        binary_indices = tuple(
+            self.feature_names.index(name) for name in BINARY_EDGE_FEATURE_NAMES
+        )
+        continuous_indices = tuple(
+            index
+            for index in range(len(self.feature_names))
+            if index not in binary_indices
+        )
+        max_z: float | None = None
+        max_z_feature: str | None = None
+        max_z_edge_offset: int | None = None
+        if matrix.shape[0] and continuous_indices:
+            index_array = np.asarray(continuous_indices, dtype=int)
+            continuous_z = np.abs(
+                (matrix[:, index_array] - self.mean[index_array])
+                / self.scale[index_array]
+            )
+            flat_offset = int(np.argmax(continuous_z))
+            edge_offset, local_feature_index = np.unravel_index(
+                flat_offset,
+                continuous_z.shape,
+            )
+            feature_index = continuous_indices[int(local_feature_index)]
+            max_z = float(continuous_z[edge_offset, local_feature_index])
+            max_z_feature = self.feature_names[feature_index]
+            max_z_edge_offset = int(edge_offset)
+
+        for feature_index in binary_indices:
+            values = matrix[:, feature_index]
+            at_zero = np.isclose(values, 0.0, rtol=0.0, atol=tolerance)
+            at_one = np.isclose(values, 1.0, rtol=0.0, atol=tolerance)
+            invalid_offsets = np.flatnonzero(~(at_zero | at_one))
+            if invalid_offsets.size:
+                edge_offset = int(invalid_offsets[0])
+                value = float(values[edge_offset])
+                reason = (
+                    "binary_feature_out_of_range"
+                    if value < -tolerance or value > 1.0 + tolerance
+                    else "binary_feature_not_endpoint"
+                )
+                return FeatureDistributionAssessment(
+                    is_ood=True,
+                    reason=reason,
+                    z_threshold=threshold,
+                    trigger_feature=self.feature_names[feature_index],
+                    trigger_feature_index=feature_index,
+                    trigger_edge_offset=edge_offset,
+                    max_continuous_z=max_z,
+                    max_continuous_z_feature=max_z_feature,
+                    max_continuous_z_edge_offset=max_z_edge_offset,
+                    binary_tolerance=tolerance,
+                )
+
+        if max_z is not None and max_z > threshold:
+            feature_index = self.feature_names.index(str(max_z_feature))
+            return FeatureDistributionAssessment(
+                is_ood=True,
+                reason="continuous_feature_z_threshold",
+                z_threshold=threshold,
+                trigger_feature=max_z_feature,
+                trigger_feature_index=feature_index,
+                trigger_edge_offset=max_z_edge_offset,
+                max_continuous_z=max_z,
+                max_continuous_z_feature=max_z_feature,
+                max_continuous_z_edge_offset=max_z_edge_offset,
+                binary_tolerance=tolerance,
+            )
+        return FeatureDistributionAssessment(
+            is_ood=False,
+            reason="in_distribution",
+            z_threshold=threshold,
+            max_continuous_z=max_z,
+            max_continuous_z_feature=max_z_feature,
+            max_continuous_z_edge_offset=max_z_edge_offset,
+            binary_tolerance=tolerance,
+        )
+
+    def is_ood(self, features: np.ndarray, *, z_threshold: float) -> bool:
+        return self.evaluate(features, z_threshold=z_threshold).is_ood
 
 
 def build_learning_action_mask(
@@ -288,7 +484,9 @@ class LearningCostAssistant:
             return self._fallback(matrix_result, common, "version_constraint")
         if batch.edge_count == 0:
             return self._fallback(matrix_result, common, "no_candidate_edges")
-        if self._is_ood(batch.features):
+        distribution = self._distribution_assessment(batch.features)
+        common = {**common, **distribution.to_metadata()}
+        if distribution.is_ood:
             return self._fallback(matrix_result, common, "out_of_distribution")
 
         started = perf_counter()
@@ -380,17 +578,88 @@ class LearningCostAssistant:
             },
         )
 
-    def _is_ood(self, features: np.ndarray) -> bool:
-        if not np.all(np.isfinite(features)):
-            return True
-        if np.any(np.abs(features) > self.config.absolute_feature_limit):
-            return True
-        if self.distribution_guard is None:
-            return False
-        return self.distribution_guard.is_ood(
-            features,
-            z_threshold=self.config.ood_z_threshold,
+    def _distribution_assessment(
+        self,
+        features: np.ndarray,
+    ) -> FeatureDistributionAssessment:
+        try:
+            matrix = np.asarray(features, dtype=np.float32)
+        except (TypeError, ValueError):
+            return FeatureDistributionAssessment(
+                is_ood=True,
+                reason="feature_array_invalid",
+                z_threshold=float(self.config.ood_z_threshold),
+            )
+        if matrix.ndim != 2 or matrix.shape[1:] != (len(EDGE_FEATURE_NAMES),):
+            return FeatureDistributionAssessment(
+                is_ood=True,
+                reason="feature_shape_mismatch",
+                z_threshold=float(self.config.ood_z_threshold),
+            )
+        nonfinite = np.argwhere(~np.isfinite(matrix))
+        if nonfinite.size:
+            edge_offset, feature_index = (
+                int(nonfinite[0, 0]),
+                int(nonfinite[0, 1]),
+            )
+            return FeatureDistributionAssessment(
+                is_ood=True,
+                reason="non_finite_feature",
+                z_threshold=float(self.config.ood_z_threshold),
+                trigger_feature=EDGE_FEATURE_NAMES[feature_index],
+                trigger_feature_index=feature_index,
+                trigger_edge_offset=edge_offset,
+            )
+
+        guard_assessment = (
+            None
+            if self.distribution_guard is None
+            else self.distribution_guard.evaluate(
+                matrix,
+                z_threshold=self.config.ood_z_threshold,
+            )
         )
+        absolute_values = np.abs(matrix)
+        if absolute_values.size and np.any(
+            absolute_values > self.config.absolute_feature_limit
+        ):
+            edge_offset, feature_index = np.unravel_index(
+                int(np.argmax(absolute_values)),
+                absolute_values.shape,
+            )
+            return FeatureDistributionAssessment(
+                is_ood=True,
+                reason="absolute_feature_limit",
+                z_threshold=float(self.config.ood_z_threshold),
+                trigger_feature=EDGE_FEATURE_NAMES[int(feature_index)],
+                trigger_feature_index=int(feature_index),
+                trigger_edge_offset=int(edge_offset),
+                max_continuous_z=(
+                    None
+                    if guard_assessment is None
+                    else guard_assessment.max_continuous_z
+                ),
+                max_continuous_z_feature=(
+                    None
+                    if guard_assessment is None
+                    else guard_assessment.max_continuous_z_feature
+                ),
+                max_continuous_z_edge_offset=(
+                    None
+                    if guard_assessment is None
+                    else guard_assessment.max_continuous_z_edge_offset
+                ),
+            )
+        if guard_assessment is not None:
+            return guard_assessment
+        return FeatureDistributionAssessment(
+            is_ood=False,
+            reason="guard_not_configured",
+            z_threshold=float(self.config.ood_z_threshold),
+        )
+
+    def _is_ood(self, features: np.ndarray) -> bool:
+        return self._distribution_assessment(features).is_ood
 
     @staticmethod
     def _fallback(

@@ -7,6 +7,8 @@ import numpy as np
 import pytest
 
 from d3_assignment_planner import (
+    EDGE_FEATURE_NAMES,
+    FEATURE_DISTRIBUTION_ASSESSMENT_SCHEMA_V1,
     AssignmentPlanner,
     BehaviorCloningBatch,
     CostModel,
@@ -253,6 +255,143 @@ def test_out_of_distribution_features_fall_back_before_model_inference() -> None
 
     assert np.array_equal(final.matrix, rule.matrix)
     assert final.metadata["learning_fallback_reason"] == "out_of_distribution"
+    assert final.metadata["learning_distribution_is_ood"] is True
+    assert final.metadata["learning_distribution_reason"] == (
+        "continuous_feature_z_threshold"
+    )
+    assert final.metadata["learning_distribution_trigger_feature"] in (
+        EDGE_FEATURE_NAMES
+    )
+    assert final.metadata["learning_distribution_max_continuous_z"] > 2.0
+    assert final.metadata["learning_distribution_diagnostic_schema"] == (
+        FEATURE_DISTRIBUTION_ASSESSMENT_SCHEMA_V1
+    )
+    assert "global_track" not in repr(final.metadata).lower()
+
+
+def _formal_feature_guard() -> FeatureDistributionGuard:
+    mean = np.asarray(
+        [
+            0.7354207038879395,
+            0.237921804189682,
+            0.0,
+            0.4981588125228882,
+            0.45164230465888977,
+            0.08711422979831696,
+            0.0,
+            0.0,
+            0.0,
+            0.1009148582816124,
+            0.09958004951477051,
+            0.01390689518302679,
+        ],
+        dtype=np.float32,
+    )
+    scale = np.asarray(
+        [
+            0.020066455006599426,
+            0.10546088963747025,
+            0.0010000000474974513,
+            0.014847339130938053,
+            0.033151645213365555,
+            0.10001710802316666,
+            0.0010000000474974513,
+            0.0010000000474974513,
+            0.0010000000474974513,
+            0.02376730367541313,
+            0.011986627243459225,
+            0.11646433174610138,
+        ],
+        dtype=np.float32,
+    )
+    return FeatureDistributionGuard(mean=mean, scale=scale)
+
+
+def test_binary_previous_binding_endpoint_bypasses_continuous_z_gate() -> None:
+    guard = _formal_feature_guard()
+    features = np.tile(guard.mean, (2, 1))
+    features[0, -1] = 1.0
+    features[1, -1] = 1.0 + 5.0e-7
+
+    assessment = guard.evaluate(features, z_threshold=6.0)
+
+    assert assessment.is_ood is False
+    assert assessment.reason == "in_distribution"
+    assert assessment.max_continuous_z == pytest.approx(0.0)
+    assert assessment.trigger_feature is None
+
+
+def test_assistant_infers_with_a_legal_previous_binding_endpoint() -> None:
+    config, _, rule, tracks, resources = _rule_matrix()
+    previous = AssignmentPlanner(config=config).plan(
+        tracks,
+        resources,
+        timestamp=0.0,
+    )
+    mean = np.zeros(len(EDGE_FEATURE_NAMES), dtype=np.float32)
+    scale = np.ones(len(EDGE_FEATURE_NAMES), dtype=np.float32)
+    mean[-1] = 0.013906895
+    scale[-1] = 0.116464331
+    assistant = LearningCostAssistant(
+        _FixedPredictor(0.25),
+        config=LearningAssistConfig(mode="assist", min_confidence=0.0),
+        distribution_guard=FeatureDistributionGuard(mean=mean, scale=scale),
+    )
+
+    final = assistant.apply(
+        rule,
+        tracks,
+        resources,
+        expected_previous_version=previous.version,
+        current_plan_version=previous.version,
+        previous_plan=previous,
+    )
+
+    assert final.metadata["learning_applied"] is True
+    assert final.metadata["learning_fallback_reason"] is None
+    assert final.metadata["learning_distribution_is_ood"] is False
+    assert final.metadata["learning_distribution_reason"] == "in_distribution"
+    assert not np.array_equal(final.matrix, rule.matrix)
+
+
+@pytest.mark.parametrize(
+    ("value", "reason"),
+    (
+        (0.5, "binary_feature_not_endpoint"),
+        (-0.01, "binary_feature_out_of_range"),
+        (1.01, "binary_feature_out_of_range"),
+        (float("nan"), "non_finite_feature"),
+    ),
+)
+def test_binary_previous_binding_invalid_values_remain_ood(
+    value: float,
+    reason: str,
+) -> None:
+    guard = _formal_feature_guard()
+    features = np.tile(guard.mean, (1, 1))
+    features[0, -1] = value
+
+    assessment = guard.evaluate(features, z_threshold=6.0)
+
+    assert assessment.is_ood is True
+    assert assessment.reason == reason
+    assert assessment.trigger_feature == "previous_binding"
+    assert assessment.trigger_feature_index == len(EDGE_FEATURE_NAMES) - 1
+    assert assessment.trigger_edge_offset == 0
+
+
+def test_continuous_feature_still_uses_the_same_six_sigma_gate() -> None:
+    guard = _formal_feature_guard()
+    features = np.tile(guard.mean, (1, 1))
+    features[0, 0] = guard.mean[0] + 6.01 * guard.scale[0]
+    features[0, -1] = 1.0
+
+    assessment = guard.evaluate(features, z_threshold=6.0)
+
+    assert assessment.is_ood is True
+    assert assessment.reason == "continuous_feature_z_threshold"
+    assert assessment.trigger_feature == EDGE_FEATURE_NAMES[0]
+    assert assessment.max_continuous_z == pytest.approx(6.01, rel=1.0e-5)
 
 
 def test_shadow_mode_reports_candidate_residuals_without_changing_rule_costs() -> None:
