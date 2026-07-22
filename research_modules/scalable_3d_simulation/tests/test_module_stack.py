@@ -4,6 +4,7 @@ from collections import Counter
 from dataclasses import replace
 import json
 
+import numpy as np
 import pytest
 
 from research_modules.d3_assignment_planner.src.d3_assignment_planner import (
@@ -90,6 +91,55 @@ def test_5v5_online_stack_connects_d1_to_d7_without_truth_identity(tmp_path) -> 
     assert result.summary["finite_state"] is True
     assert result.summary["online_truth_use_count"] == 0
     assert result.d1_consistency_evidence_records
+    d1_publications = tuple(
+        message.payload
+        for message in result.online_messages
+        if message.topic == "modules.d1.fused_tracks"
+    )
+    assert d1_publications
+    state_only = tuple(
+        payload
+        for payload in d1_publications
+        if not payload["tracks_materialized"]
+    )
+    full_snapshots = tuple(
+        payload for payload in d1_publications if payload["tracks_materialized"]
+    )
+    assert state_only
+    assert len(full_snapshots) == len(
+        {payload["summary"]["published_at"] for payload in d1_publications}
+    )
+    assert all(
+        payload["snapshot_kind"] == "state_update"
+        and payload["tracks"] == []
+        and payload["track_count"] == 0
+        and payload["current_track_count"] > 0
+        for payload in state_only
+    )
+    assert all(
+        payload["snapshot_kind"] == "full_posterior"
+        and payload["track_count"] == payload["current_track_count"]
+        and payload["track_count"] == len(payload["tracks"])
+        for payload in full_snapshots
+    )
+    published_observation_ids = {
+        item["observation_id"]
+        for payload in d1_publications
+        for item in payload["observation_lineage"]
+    }
+    assert published_observation_ids == {
+        item.observation_id for item in result.d1_consistency_evidence_records
+    }
+    assert result.observation_governance_audit["d1_state_only_scan_count"] == len(
+        state_only
+    )
+    assert result.observation_governance_audit[
+        "d1_materialized_snapshot_count"
+    ] == len(full_snapshots)
+    final_diagnostics = result.summary["module_final_diagnostics"]
+    assert final_diagnostics["d1_fusion_performance"]["current_track_count"] == 5
+    assert final_diagnostics["d5_terminal_performance"]["process_frame_count"] > 0
+    assert final_diagnostics["d5_terminal_performance"]["graph_build_count"] > 0
     assert len(stack.latest_d1_tracks) == 5
     assert len(stack.latest_d2_tracks) == 5
     assert len(stack.latest_plan.assignments) == 5
@@ -285,6 +335,89 @@ def test_5v5_online_stack_connects_d1_to_d7_without_truth_identity(tmp_path) -> 
     ]["value"] == 0
     assert governance_aggregate["episode_count"] == 1
     assert governance_aggregate["truth_isolation"]["online_truth_use_count"] == 0
+
+
+def test_d1_same_time_snapshot_coalescing_preserves_final_module_state() -> None:
+    config = ScenarioConfig(
+        scenario_name="d1_snapshot_coalescing_equivalence",
+        scenario_version="d1-snapshot-coalescing-equivalence-v1",
+        target_count=5,
+        resource_count=5,
+        recon_count=1,
+        region_count=2,
+        duration_s=1.2,
+        seed=7,
+        radar_detection_probability=1.0,
+    )
+    baseline = IntegratedScalableModuleStack(
+        IntegratedStackConfig(d1_coalesce_same_fusion_time=False)
+    )
+    candidate = IntegratedScalableModuleStack(
+        IntegratedStackConfig(d1_coalesce_same_fusion_time=True)
+    )
+
+    baseline_result = run_episode(config, module_stack=baseline)
+    candidate_result = run_episode(config, module_stack=candidate)
+
+    assert candidate_result.observation_governance_audit[
+        "d1_state_only_scan_count"
+    ] > 0
+    assert baseline_result.observation_governance_audit[
+        "d1_state_only_scan_count"
+    ] == 0
+    assert candidate_result.observation_governance_audit[
+        "d1_materialized_snapshot_count"
+    ] < baseline_result.observation_governance_audit[
+        "d1_materialized_snapshot_count"
+    ]
+    assert tuple(track.global_track_id for track in candidate.latest_d1_tracks) == tuple(
+        track.global_track_id for track in baseline.latest_d1_tracks
+    )
+    for candidate_track, baseline_track in zip(
+        candidate.latest_d1_tracks,
+        baseline.latest_d1_tracks,
+        strict=True,
+    ):
+        assert candidate_track.timestamp == baseline_track.timestamp
+        np.testing.assert_array_equal(candidate_track.state, baseline_track.state)
+        np.testing.assert_array_equal(
+            candidate_track.covariance,
+            baseline_track.covariance,
+        )
+        assert candidate_track.track_level == baseline_track.track_level
+    assert tuple(track.global_track_id for track in candidate.latest_d2_tracks) == tuple(
+        track.global_track_id for track in baseline.latest_d2_tracks
+    )
+    for candidate_track, baseline_track in zip(
+        candidate.latest_d2_tracks,
+        baseline.latest_d2_tracks,
+        strict=True,
+    ):
+        np.testing.assert_array_equal(candidate_track.state, baseline_track.state)
+        np.testing.assert_array_equal(
+            candidate_track.covariance,
+            baseline_track.covariance,
+        )
+        assert candidate_track.lifecycle_state == baseline_track.lifecycle_state
+    assert candidate.latest_plan.execution_signature() == (
+        baseline.latest_plan.execution_signature()
+    )
+    np.testing.assert_array_equal(
+        candidate.latest_guidance_batch.acceleration_ned_mps2,
+        baseline.latest_guidance_batch.acceleration_ned_mps2,
+    )
+    assert tuple(
+        replace(command, plan_id="")
+        for command in candidate.latest_guidance_batch.pair_commands
+    ) == tuple(
+        replace(command, plan_id="")
+        for command in baseline.latest_guidance_batch.pair_commands
+    )
+    assert [
+        item.to_dict() for item in candidate_result.d1_consistency_evidence_records
+    ] == [
+        item.to_dict() for item in baseline_result.d1_consistency_evidence_records
+    ]
 
 
 def test_d6_batch_aggregates_distinct_seed_episode_artifacts(tmp_path) -> None:

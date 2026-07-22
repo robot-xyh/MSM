@@ -127,6 +127,7 @@ class IntegratedStackConfig:
     d2_claim_capacity_safety_factor: float = 2.0
     d2_replay_coast_grace_s: float = 0.5
     d1_scan_event_log_limit: int = 4_096
+    d1_coalesce_same_fusion_time: bool = True
 
     def __post_init__(self) -> None:
         if self.assignment_lease_multiplier <= 1.0:
@@ -170,6 +171,8 @@ class IntegratedStackConfig:
             )
         if int(self.d1_scan_event_log_limit) <= 0:
             raise ValueError("d1_scan_event_log_limit must be positive")
+        if not isinstance(self.d1_coalesce_same_fusion_time, bool):
+            raise TypeError("d1_coalesce_same_fusion_time must be a bool")
         for name in ("secondary_coverage_ratio", "secondary_network_full_view_rate"):
             value = float(getattr(self, name))
             if not 0.0 <= value <= 1.0:
@@ -307,6 +310,9 @@ class IntegratedScalableModuleStack:
             maxlen=int(self.stack_config.d1_scan_event_log_limit)
         )
         self._d1_scan_event_total_count = 0
+        self._d1_state_only_scan_count = 0
+        self._d1_materialized_snapshot_count = 0
+        self._d1_same_fusion_time_coalesced_scan_count = 0
         self._d1_scan_input_closed = False
         self._stage_wall_time_s: dict[str, float] = {}
         self._stage_call_count: dict[str, int] = {}
@@ -411,6 +417,9 @@ class IntegratedScalableModuleStack:
         self._d1_pending_lineage_by_track.clear()
         self._d1_scan_events.clear()
         self._d1_scan_event_total_count = 0
+        self._d1_state_only_scan_count = 0
+        self._d1_materialized_snapshot_count = 0
+        self._d1_same_fusion_time_coalesced_scan_count = 0
         self._d1_scan_input_closed = False
         self._stage_wall_time_s.clear()
         self._stage_call_count.clear()
@@ -442,7 +451,7 @@ class IntegratedScalableModuleStack:
         vision_batches = tuple(
             batch for batch in arrived if _batch_modality(batch) == "vision_bbox"
         )
-        d1_updated = False
+        released_scans: list[Any] = []
         for batch in arrived:
             started = perf_counter()
             observations = sensor_observations_from_online_batch(batch)
@@ -453,19 +462,18 @@ class IntegratedScalableModuleStack:
                 )
             )
             self._record_timing("d1_scan_input", perf_counter() - started)
-            d1_updated = bool(
-                self._consume_d1_scan_result(
-                    scan_result,
-                    publications=publications,
-                    publication_timestamp=now,
-                )
-                or d1_updated
-            )
+            self._record_d1_scan_events(scan_result.events)
+            released_scans.extend(scan_result.released_scans)
 
         started = perf_counter()
         scan_clock_result = self.d1_scan_input.advance_arrival_time(now)
         self._record_timing("d1_scan_input_clock", perf_counter() - started)
         self._record_d1_scan_events(scan_clock_result.events)
+        d1_updated = self._consume_d1_released_scans(
+            released_scans,
+            publications=publications,
+            publication_timestamp=now,
+        )
 
         if (
             d1_updated
@@ -657,6 +665,16 @@ class IntegratedScalableModuleStack:
             "d1_scan_event_retained_count": len(self._d1_scan_events),
             "d1_scan_event_log_limit": self._d1_scan_events.maxlen,
             "d1_scan_events": tuple(self._d1_scan_events),
+            "d1_coalesce_same_fusion_time_enabled": bool(
+                self.stack_config.d1_coalesce_same_fusion_time
+            ),
+            "d1_state_only_scan_count": int(self._d1_state_only_scan_count),
+            "d1_materialized_snapshot_count": int(
+                self._d1_materialized_snapshot_count
+            ),
+            "d1_same_fusion_time_coalesced_scan_count": int(
+                self._d1_same_fusion_time_coalesced_scan_count
+            ),
             "d2_claim_ledger": dict(
                 d2_summary.get("observation_claim_ledger", {})
             ),
@@ -699,21 +717,76 @@ class IntegratedScalableModuleStack:
         publication_timestamp: float,
     ) -> bool:
         self._record_d1_scan_events(scan_result.events)
-        updated = False
-        for released_scan in scan_result.released_scans:
+        return self._consume_d1_released_scans(
+            scan_result.released_scans,
+            publications=publications,
+            publication_timestamp=publication_timestamp,
+        )
+
+    def _consume_d1_released_scans(
+        self,
+        released_scans: Iterable[Any],
+        *,
+        publications: list[RuntimePublication],
+        publication_timestamp: float,
+    ) -> bool:
+        """Fuse ordered scans and materialize one snapshot per fusion time.
+
+        D1 state updates remain strictly ordered.  When several consecutive
+        scans resolve to the same nondecreasing fusion timestamp, only the last
+        posterior is converted into detached ``GlobalTrack`` objects.  Every
+        scan still emits its batch summary and observation lineage.
+        """
+
+        scans = tuple(released_scans)
+        if not scans:
+            return False
+
+        processed: list[tuple[Any, Any]] = []
+        for index, released_scan in enumerate(scans):
+            fusion_timestamp = max(
+                float(self.d1.current_time),
+                float(released_scan.arrival_timestamp),
+            )
+            next_fusion_timestamp = None
+            if index + 1 < len(scans):
+                next_fusion_timestamp = max(
+                    fusion_timestamp,
+                    float(scans[index + 1].arrival_timestamp),
+                )
+            materialize_tracks = bool(
+                not self.stack_config.d1_coalesce_same_fusion_time
+                or next_fusion_timestamp is None
+                or next_fusion_timestamp > fusion_timestamp + _EPS
+            )
             started = perf_counter()
-            result = self.d1.process_scan_batch(released_scan.observations)
+            result = self.d1.process_scan_batch(
+                released_scan.observations,
+                materialize_tracks=materialize_tracks,
+            )
             self._record_timing("d1_fusion", perf_counter() - started)
-            self.latest_d1_tracks = tuple(result.tracks)
+            if materialize_tracks:
+                self.latest_d1_tracks = tuple(result.tracks)
+                self._d1_materialized_snapshot_count += 1
+            else:
+                self._d1_state_only_scan_count += 1
+                self._d1_same_fusion_time_coalesced_scan_count += 1
+            processed.append((result, released_scan))
+
+        evidence_by_observation = {
+            item.observation_id: item
+            for item in self.d1.consistency_evidence_records()
+        }
+        for result, released_scan in processed:
             publications.append(
                 self._d1_publication(
                     result,
                     released_scan,
                     publication_timestamp,
+                    evidence_by_observation=evidence_by_observation,
                 )
             )
-            updated = True
-        return updated
+        return True
 
     def _record_d1_scan_events(self, events: Iterable[Any]) -> None:
         records = tuple(item.to_dict() for item in events)
@@ -2888,11 +2961,28 @@ class IntegratedScalableModuleStack:
                 secondary_failed = True
         return center, secondary_failed
 
-    def _d1_publication(self, result: Any, batch: Any, now: float) -> RuntimePublication:
-        evidence_by_observation = {
-            item.observation_id: item
-            for item in self.d1.consistency_evidence_records()
-        }
+    def _d1_publication(
+        self,
+        result: Any,
+        batch: Any,
+        now: float,
+        *,
+        evidence_by_observation: Mapping[str, Any] | None = None,
+    ) -> RuntimePublication:
+        if evidence_by_observation is None:
+            evidence_by_observation = {
+                item.observation_id: item
+                for item in self.d1.consistency_evidence_records()
+            }
+        tracks_materialized = bool(
+            getattr(result, "tracks_materialized", True)
+        )
+        tracks = tuple(result.tracks) if tracks_materialized else ()
+        current_track_count = (
+            len(tracks)
+            if tracks_materialized
+            else int(getattr(result, "current_track_count"))
+        )
         source_observations = tuple(
             getattr(batch, "measurements", getattr(batch, "observations", ()))
         )
@@ -2905,7 +2995,7 @@ class IntegratedScalableModuleStack:
             )
             for measurement in source_observations
         }
-        for track in result.tracks:
+        for track in tracks:
             metadata = getattr(track, "metadata", {})
             observation_id = str(
                 metadata.get("latest_observation_id", "")
@@ -2929,7 +3019,7 @@ class IntegratedScalableModuleStack:
             d1_track_id_by_observation[observation_id] = str(
                 evidence.source_global_track_id
             )
-        for track in result.tracks:
+        for track in tracks:
             metadata = getattr(track, "metadata", {})
             if not isinstance(metadata, Mapping):
                 continue
@@ -2982,8 +3072,17 @@ class IntegratedScalableModuleStack:
                     getattr(batch, "batch_id", getattr(batch, "scan_id", ""))
                 ),
                 "sensor_id": batch.sensor_id,
-                "track_count": len(result.tracks),
-                "tracks": [_track_summary(track) for track in result.tracks],
+                # Schema v1 consumers define track_count as the serialized
+                # track-array length.  State-only records therefore expose the
+                # live inventory separately instead of pretending an empty
+                # array is a full snapshot.
+                "track_count": len(tracks),
+                "current_track_count": current_track_count,
+                "tracks_materialized": tracks_materialized,
+                "snapshot_kind": (
+                    "full_posterior" if tracks_materialized else "state_update"
+                ),
+                "tracks": [_track_summary(track) for track in tracks],
                 "summary": result.summary.to_dict(),
                 "observation_lineage": observation_lineage,
             },
@@ -3465,6 +3564,10 @@ class IntegratedScalableModuleStack:
                     for item in self.latest_d5_result.association.bindings
                 )
             ),
+            "d1_fusion_performance": (
+                self.d1.fusion_performance_diagnostics().to_dict()
+            ),
+            "d5_terminal_performance": self.d5.performance_snapshot().to_dict(),
             "d5_active_vision_command_count": len(
                 self.latest_active_vision_decisions
             ),
