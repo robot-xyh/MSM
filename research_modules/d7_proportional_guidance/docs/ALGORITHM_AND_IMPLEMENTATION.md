@@ -1,5 +1,43 @@
 # D7 比例导引与末端视觉导引算法及实施方案
 
+## 2026-07-21 隔离双臂实施
+
+`isolated_arm_guidance.py` 在 `ScalableGuidanceController3D` 外增加严格执行外壳。
+调用顺序如下：
+
+```text
+完整源计划载荷 -> 计算 SHA-256 -> 构造 arm context
+arm context + pair inputs -> 校验 arm、版本、hash、binding 和 D4
+既有 ScalableGuidanceController3D -> 生成原始三维命令
+显式 terminal pair -> 再校验 D5 gate
+通过 -> command_generated；未通过 -> held + 零加速度
+main 写入指定克隆世界 -> isolated world application receipt
+validator/summary -> 分开统计 generated、held、applied
+```
+
+公开接口包括 `IsolatedGuidanceExecutionContextV1`、
+`IsolatedArmGuidanceExecutor3D`、`IsolatedGuidanceCommandV1`、
+`IsolatedGuidanceBatchV1`、`IsolatedGuidanceWorldApplicationV1`、
+`validate_isolated_guidance_command()` 和 `summarize_isolated_guidance_commands()`。
+schema 分别版本化，所有控制记录固定
+`isolated_simulation_only=true/production_runtime_ack=false`。
+`build_isolated_guidance_lineage_record_v1()` 进一步生成 D6 已定义的
+`d7.isolated-command-lineage.v1` 平面行，完整 arm/episode/binding/gate 信息保留在
+`command_payload` 内；main 另行生成 world application 与硬约束记录。
+
+执行器只接受初始化时绑定的 experiment/seed/arm/episode/isolation identity，并按 arm
+保存最高已消费计划版本及每个版本的计划 hash。版本回退、同版本 hash 改变或传入
+载荷的实算 hash 不符会抛出稳定 contract error，调用方得不到 batch。pair 级 D4、
+binding 或 D5 terminal gate 失败则返回 held record 和零加速度，便于 main 保留失败
+证据而不推进该资源。application receipt 还核对 isolation world、command hash、
+加速度逐元素一致和时间单调性。
+
+2026-07-21 专项 `9 passed`，D7 全量 `213 passed`。测试覆盖两臂状态独立、跨臂
+污染、计划与 receipt 篡改、旧计划、D4/D5/binding 负例，以及 generated/held/applied
+摘要；200 pair 规模样本逐对核对状态和 binding hash。实现未修改位置 PN、视觉 PNG、LOS、TTC、coast 或
+`png_guidance_delivery` 公式。main 和 D6 尚未接入新 sidecar，故当前只有 D7 合同
+证据，没有多周期 physical outcome 或 production ACK 证据。
+
 ## 2026-07-20 可扩展三维实现
 
 新增实现位于 `d7_proportional_guidance/scalable_3d_guidance.py`，公开

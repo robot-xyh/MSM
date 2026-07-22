@@ -1,5 +1,30 @@
 # D7 末端切换诊断实验记录
 
+## 2026-07-21 隔离双臂命令合同验证
+
+本轮未启动 AirSim。验证对象为隔离质点 paired rollout 的 D7 命令血缘、arm 状态
+隔离和写回确认语义。样本为 9 个无随机 seed 的确定性测试，D7 全量
+`213 passed`，验收阈值为零失败。
+
+| 场景 | 验收条件 | 结果 |
+| --- | --- | --- |
+| control/treatment 同 pair | LOS/TTC/模式状态分别保存，不跨臂累计 | 通过 |
+| wrong arm/cross-arm receipt | 在 batch 或 validator 阶段拒绝 | 通过 |
+| stale plan/hash tamper | 版本回退、载荷 hash 不符时不暴露 batch | 通过 |
+| D4 不允许 | held，资源加速度为零 | 通过 |
+| 显式 D5 terminal gate 未通过 | held，不能以中段回退掩盖末端门失败 | 通过 |
+| resource-track binding 不一致 | held，`global_track_id` 不重绑 | 通过 |
+| 200 pair 隔离 | 200 份状态与 binding hash 独立，命令均 finite | 通过 |
+| generated/held/applied | 三态独立统计，held 不得生成写回凭据 | 通过 |
+| truth/actor/object 在线字段 | context/binding lineage 拒绝 | 通过 |
+
+测试还验证 application receipt 只能引用同 arm、同 episode、同 isolation world、同计划
+hash、同 binding 和同加速度命令。所有 receipt 均为
+`isolated_simulation_only=true/production_runtime_ack=false`。这些结果证明 D7 的
+接口和 fail-closed 行为，不证明 main 已完成双世界多周期运行，也不提供
+post-intervention physical outcome。位置 PN、视觉 PNG、LOS、TTC、coast 和
+`png_guidance_delivery` 核心公式未修改。
+
 ## 2026-07-20 可扩展三维闭环确定性验收
 
 本轮验证对象为新增 `scalable_3d_guidance.py`，未启动 AirSim。测试日期

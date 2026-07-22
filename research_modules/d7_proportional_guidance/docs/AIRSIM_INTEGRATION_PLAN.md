@@ -1,5 +1,21 @@
 # D7 AirSim 集成计划
 
+## 2026-07-21 隔离双臂接入边界
+
+本轮新增合同面向 main-owned 三维质点克隆世界，没有启动 AirSim，也没有改变
+SimpleFlight 控制路径。main 在 control/treatment paired rollout 中应为每个 arm 创建
+独立 `IsolatedArmGuidanceExecutor3D`，把完整 D3 plan 载荷同时用于 context hash 和
+pair binding，并把 `IsolatedGuidanceBatchV1` 只写入 context 指定的 isolation world。
+世界 step 成功消费命令后，再生成 application receipt；在 step 之前不得预生成 receipt。
+写盘时可调用 `build_isolated_guidance_lineage_record_v1()` 生成 D6 需要的命令 JSONL，
+但 world application id、实际世界写入时刻和硬约束违规数仍由 main 填写。
+
+AirSim 或真实运行若后续复用该 schema，必须新增真正的 runtime/vehicle ACK 层，不能
+把当前 `production_runtime_ack=false` 的隔离 receipt 改名使用。main publication 还应
+原样保存 context、binding hash、command hash、held reason 和 application receipt
+hash，D6 才能把计划消费与后续物理窗口连接。该工作属于 main/D6，D7 本轮没有修改
+AirSim 适配器、相机设置、车辆命令或导引公式。D7 本地验收为 `213 passed`。
+
 ## 2026-07-20 三维共享世界接入状态
 
 D7 已提供 `ScalableGuidanceController3D.command_batch(...)`，但本轮没有启动 AirSim，

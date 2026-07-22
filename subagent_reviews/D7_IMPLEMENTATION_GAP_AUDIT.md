@@ -1,5 +1,36 @@
 # D7 比例导引与末端视觉 PNG 实现差距审计
 
+## 2026-07-21 GAP 更新：隔离双臂命令合同关闭
+
+D7-owned 的“control/treatment 各自消费计划并保留可审计命令血缘”缺口已关闭。
+`isolated_arm_guidance.py` 提供版本化 context、command、validator、summary、batch 和
+world-application receipt。每条命令都绑定 experiment/seed/arm/episode、隔离世界、
+源计划 id/version/hash、assignment binding、生成时刻和控制模式；pair 状态同时在
+arm 和 resource-track 两级隔离。写回凭据明确是 isolated simulation confirmation，
+不是 production runtime ACK。
+
+负向验收覆盖错 arm、跨臂 command/receipt、旧计划、计划 hash 篡改、同版本 hash
+冲突、D4 不允许、D5 显式 terminal gate 不满足、resource-track mismatch、held 命令
+误写回和在线 truth/actor/object 身份字段。所有失败均在加速度暴露或写回凭据生成前
+fail closed；`global_track_id` rewrite 为 0。2026-07-21 新增 9 个场景，D7 全量
+`213 passed`，门槛零失败；200 pair 样本的状态和 binding hash 均逐对隔离。核心
+PN/PNG/LOS/TTC/coast 公式没有改动。
+
+当前状态表：
+
+| 项目 | 状态 | 剩余边界 |
+| --- | --- | --- |
+| D7 隔离 arm context 与命令 schema | implemented/tested | main 尚未切换 paired rollout runner |
+| source plan/binding/command SHA-256 | implemented/tested | 正式实验 manifest 仍由 main 生成与冻结 |
+| generated/held/applied 三态与 summary | implemented/tested | D6 尚未消费新的 command/receipt sidecar |
+| isolated world application receipt | implemented/tested contract | 仅 main 写回确认，不能称 production ACK |
+| control/treatment 多周期物理效果 | unavailable | 需要 main 克隆世界、同外生时序和后续状态窗口 |
+| D4 degraded paired rollout | unavailable | 应使用独立降级场景，不以 nominal 5v5 代替 |
+
+因此 D7 此项不再列为模块接口 P1；开放 P1 位于 main/D6 的多周期集成、写盘、结果
+关联和保留 seed 验证。任何离线 receipt 都不得升级成真实在线确认。下文旧 GAP 记录
+保留为历史状态。
+
 ## 2026-07-20 GAP 重分类：scalable point-mass 3D runtime 已实现
 
 此前表中“online/default 3D PN 控制律仅有 P2 benchmark”的描述已被本轮部分取代。

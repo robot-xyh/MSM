@@ -1,5 +1,28 @@
 # D7 经典比例导引架构计划
 
+## 2026-07-21 隔离 control/treatment 消费计划完成
+
+D7-owned 工作已按“冻结公式 -> 定义血缘合同 -> 构造 arm-local controller -> 增加
+fail-closed validator/summary -> 补负向回归 -> 同步文档”完成。新增合同覆盖
+experiment、seed、arm、episode、isolation、source plan id/version/hash、assignment
+binding hash、生成时间、控制模式和命令 hash。command generation、held 和 isolated
+world application 使用三种独立状态；后者只由 main 在世界写回后确认，并固定
+`isolated_simulation_only=true`、`production_runtime_ack=false`。
+
+控制臂和处理臂必须各用一个 `IsolatedArmGuidanceExecutor3D`。执行器拒绝其他 arm
+上下文、计划版本回退、同版本 hash 冲突和载荷 hash 不符；D4、resource-track binding
+或显式 D5 terminal gate 不满足时只产生零加速度 held record。每个执行器内部仍按
+`(resource_id, assigned_global_track_id)` 独立保存原有导引状态，不创建或改写全局
+航迹身份，也不读取仿真真值身份。
+
+2026-07-21 专项 `9 passed`，D7 全量 `213 passed`；规模样本覆盖 200 个独立 pair
+状态和 binding hash。下一步由 main 在
+`scalable_3d_simulation` 中建立两个克隆世界和独立 episode bus：分别传入本 arm 的
+完整计划载荷与 context，应用 `IsolatedGuidanceBatchV1` 后生成 world application
+receipt，并把 command/receipt hash 交给 D6 做多周期 physical window join。该接线
+完成前，不得把本地 command record 称为 runtime ACK 或 post-intervention 物理证据。
+位置 PN、视觉 PNG、LOS、TTC、coast 与 `png_guidance_delivery` 核心公式继续冻结。
+
 ## 2026-07-20 可扩展三维闭环计划完成
 
 本轮完成 `scalable_3d_guidance.py` 与

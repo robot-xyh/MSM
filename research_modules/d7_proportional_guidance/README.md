@@ -1,5 +1,34 @@
 # D7 比例导引与末端视觉 PNG 模块
 
+## 2026-07-21 隔离双臂命令血缘
+
+D7 新增 `isolated_arm_guidance.py`，作为既有 `ScalableGuidanceController3D` 外侧的
+版本化安全与证据边界。main 为 control、treatment 两个克隆世界分别创建
+`IsolatedArmGuidanceExecutor3D`，每个实例持有独立的 pair 滤波和模式状态。每条
+`IsolatedGuidanceCommandV1` 均绑定 experiment、seed、arm、episode、isolated world、
+源计划 id/version/SHA-256、资源-`global_track_id` binding、生成时刻和实际控制模式。
+源计划哈希由完整计划载荷规范化计算，binding 和命令本身另有独立 SHA-256。
+
+执行状态分为 `command_generated`、`held` 和 `control_applied_to_world`。D7 生成命令时
+不会声明已写入世界；main 只有在对应克隆世界实际消费同一加速度后，才调用
+`confirm_world_application()` 形成 `IsolatedGuidanceWorldApplicationV1`。该凭据始终
+标记 `isolated_simulation_only=true`、`production_runtime_ack=false`，只能证明隔离
+质点实验中的写回确认，不能替代在线运行确认、飞控确认或物理效果证据。
+
+严格外壳在暴露加速度前拒绝错 arm、旧计划、同版本不同哈希和计划载荷哈希不符。
+resource-track binding 不一致或 D4 不允许时输出零加速度 `held`。main 对某 pair 显式
+声明需要 D5 末端门控后，D5 合同未通过也归零并保持 `held`；未声明末端门控的中段
+pair 仍可使用当前三维位置 PN。在线 lineage 拒绝 actor/object/truth 等真值身份字段，
+D7 只复制 center-owned `global_track_id`。
+
+2026-07-21 新增 9 个确定性专项测试，覆盖 control/treatment 状态隔离、跨臂污染、
+计划版本/哈希篡改、D4/D5/binding fail-closed、held 与 world-applied 分离、回写凭据
+篡改及在线真值字段拒绝；其中规模样本验证 200 个 pair 均有独立状态与不同 binding
+哈希。D7 全量结果为 `213 passed`，验收阈值为零失败。本批未
+修改位置比例导引、视觉比例导引、LOS 滤波、TTC、coast 或
+`png_guidance_delivery` 核心公式。main 双世界多周期接线、D7 publication 持久化、
+D6 结果关联和真实运行确认仍属于跨模块后续工作。
+
 ## 2026-07-20 可扩展三维质点闭环
 
 D7 新增独立的 `d7_proportional_guidance/scalable_3d_guidance.py`，为 main-owned
@@ -169,6 +198,7 @@ research_modules/d7_proportional_guidance/
     airsim_contract_replay.py
     calibration.py
     comparison.py
+    isolated_arm_guidance.py
     models.py
     pn.py
     replay.py
@@ -186,6 +216,7 @@ research_modules/d7_proportional_guidance/
     conftest.py
     test_airsim_phase1_dry_run.py
     test_coalition_guidance_gate.py
+    test_isolated_arm_guidance.py
     test_proportional_guidance.py
 ```
 
@@ -199,6 +230,8 @@ research_modules/d7_proportional_guidance/
 - `guidance_mode_from_terminal_contract(...)`：把 D3/D4/D5 末端合同结果映射为显式 D7 日志状态，包括 `handover_pending`、`hold`、`reacquire` 和 `abort_revoke`。
 - `terminal_switch_allowed_rate` / `summarize_terminal_switch_quality`：对 D7 已输出的 gate 结果做离线通过率统计，不重新执行 runtime gate 逻辑。
 - `D7RuntimeBus`：D7-owned N-pair state injection adapter。调用方为每个 assignment pair 注入当前 D3 binding、D4 permission、D5 terminal association 和可选 bbox observation；D7 为每个 `resource_id -> assigned_global_track_id` 维护独立 terminal delivery 和 latch，输出 canonical terminal semantics、termination snapshot、lifecycle reset、KF innovation、prediction/coast、TTC 面积预处理及既有 D3/D4/D5 gate/log 字段，不调用 AirSim 或 SimpleFlight。
+- `IsolatedArmGuidanceExecutor3D`：为 paired control/treatment 克隆世界提供 arm-local controller、完整计划 SHA-256、binding/command 血缘、fail-closed validator、generated/held/applied summary 和 simulation-only world-application receipt。它不替代 production runtime ACK，也不修改导引公式。
+- `build_isolated_guidance_lineage_record_v1()`：把完整 D7 context/command record 保存在 `command_payload`，同时生成 D6 严格消费的 `d7.isolated-command-lineage.v1` 平面 JSONL 行；main 仍负责独立的 world-application 记录和硬约束计数。
 - `OptionalLos6DKalmanReplay`：delivery 风格 6D LOS KF 的离线 replay 后端。优先消费 D5 已组合的 `camera_to_ned_rotation`，否则使用 `body_to_ned_rotation @ camera_to_body_rotation`；两条路径都要求曝光时间与姿态/相机位姿时间同步，缺字段时明确 `unavailable`。在线默认仍使用现有 EMA/滑窗，不由该后端授权控制。
 - `RuntimeGuidanceLaw` / `select_runtime_guidance_law(...)`：供 main 使用的四导引律选择合同。`pure_pursuit` 和 `radar_pn` 全程保持所选律；`png_vm` 和 `png_ttc` 先使用 `radar_pn`，仅在 D3/D4/D5 合同、视觉质量 gate 和迟滞全部通过后切换末端视觉律。旧离线名称 `pn` 只作为输入别名归一为 `radar_pn`。
 - `compute_three_dimensional_pn_benchmark`：从注入的相对 NED 三维位置/速度计算 3D geometry PN 对照字段，只用于 benchmark/advisory，不替换默认二维 PN/PNG API。

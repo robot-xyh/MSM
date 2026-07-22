@@ -1,5 +1,26 @@
 # D7 比例导引架构评审与补充方案
 
+## 2026-07-21 隔离双臂控制血缘评审
+
+评审结论为 D7-owned 接口通过。新增外壳没有进入比例导引、视觉比例导引、LOS
+滤波、TTC 或 coast 计算，只在既有三维命令外增加实验 arm、源计划、assignment 和
+写回血缘。control 与 treatment 分别拥有独立 controller，不能以同一 pair key 共享
+滤波器或模式状态。命令、binding 和完整源计划载荷均有独立 SHA-256，可在 D6 join
+前发现字段篡改。
+
+安全门评审为 fail closed。错误 arm、旧版本、同版本不同 hash 和计划载荷 hash 不符
+不会返回可写入世界的 batch；D4、resource-track binding 和显式要求的 D5 terminal
+gate 不满足时，batch 对应索引为零且记录 `held`。held command 不能生成 application
+receipt；非 held command 只能写入 context 指定的 isolation world。receipt 固定声明
+simulation-only，并禁止 production runtime ACK 语义。
+
+2026-07-21 专项 9 项和 D7 全量 213 项全部通过；200 pair 规模样本逐对核对状态与
+binding hash。该结果证明接口、隔离与篡改检测，
+不证明 control/treatment 已产生不同物理结果，也不证明真实 runtime ACK 可用。main
+仍需接入克隆世界、多周期计划消费、D7 command publication 和状态窗口；D6 仍需按
+完整 hash/provenance 做 availability-aware join。核心公式、参数和
+`png_guidance_delivery` 均未修改。
+
 ## 2026-07-20 scalable 3D 闭环评审
 
 D7-owned 新增 `scalable_3d_guidance.py` 和
