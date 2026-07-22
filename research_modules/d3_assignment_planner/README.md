@@ -1371,6 +1371,20 @@ Hungarian 准备矩阵单元。首帧匿名证据复制 80,000 个数值单元�
 本地 D3 共收集 439 项，结果为 `436 passed, 1 skipped, 2 failed`。skip 是可选 OR-Tools；
 两个失败是已在基线复现的 main/D7 `global_track_stale` 真实主总线断点。身份缓存、直接发布、
 authority fence、区域错误优先级和性能诊断定向组合为 `46 passed`。
-main 后续必须在候选提交的 detached clean worktree 使用相同 2.2 秒/10 秒、seed
-42000-42002 复跑，联合比较 D3 调用密度、输入形状、累计墙钟、计划 ACK 和输出大小，不能
-用本模块单次 benchmark 直接解释集成累计时间。
+
+## 2026-07-22 clean 10 秒三种子集成复核
+
+main 已在 clean commit `8f86192` 上完成 200v200、10 秒、seed 42000-42002 复跑。三组
+`repository_dirty=false`、`finite_state=true`、`online_truth_use_count=0`。每组均发布
+10 份 D3 计划并收到 10 次计划 ACK。D3 assignment 累计墙钟分别为
+`3.437/3.319/3.110 s`，均值 `3.289 s`；旧 clean commit `3bac3ff` 的对应均值为
+`3.348 s`，变化约 `-1.8%`。
+
+三组的调用次数、计划发布数、计划 ACK，以及 binding ACK、control applied、hold 业务摘要
+与旧提交逐 seed 一致。该复跑确认 D1 快照优化没有改变 D3 的计划执行语义。1.8% 的墙钟差异
+按基本持平和调度噪声处理，不作为 D3 优化归因、实时能力或晋级依据。
+
+冻结 200x200 benchmark 与本次集成复核是两组独立证据。前者保持默认上一计划帧
+`334.735 ms` 等原始数字，用于固定输入下的热点归因；后者记录完整 10 秒 episode 中 10 次
+D3 调用的累计墙钟和业务一致性。当前仍未证明 AirSim、物理拦截、长期内存上限或生产实时
+能力。

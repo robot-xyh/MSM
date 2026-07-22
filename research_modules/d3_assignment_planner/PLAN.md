@@ -1583,6 +1583,23 @@ main 应在 clean worktree 重跑 10 秒以上 200v200，确认总线文件、D6
 身份、区域、authority fence 和性能诊断定向组合 `46 passed`。D3 共收集 439 项，正式结果
 为 `436 passed, 1 skipped, 2 failed`；两项失败是已在基线复现的 main/D7
 `global_track_stale` 集成断点，skip 是可选 OR-Tools。D3 不放宽 stale 门控。
-main 后续在候选提交的 detached clean worktree 复跑 seed 42000-42002 的同配置 2.2 秒和
-10 秒 episode，分别核对 D3 调用密度、每次输入规模、累计墙钟、计划 ACK、输出字节和内存。
-完成该复测前，不把本模块单次结果写成系统实时能力。
+
+## 51. clean 10 秒三种子集成复核（2026-07-22）
+
+### 已完成
+
+1. main 在 clean commit `8f86192` 上运行 200v200、10 秒、seed 42000-42002。三组均为
+   clean、finite，在线 truth 使用为 0。
+2. 每个 seed 均调用并发布 D3 计划 10 次，计划 ACK 为 10。binding ACK、control applied
+   和 hold 摘要与旧 clean commit `3bac3ff` 逐 seed 一致。
+3. D3 assignment 累计墙钟为 `3.437/3.319/3.110 s`，均值由旧提交的 `3.348 s` 变为
+   `3.289 s`，约 `-1.8%`。该幅度按基本持平和调度噪声处理，不形成性能晋级或代码归因。
+4. 本次结果确认 D1 快照优化没有改变 D3 调用次数、计划业务摘要或执行语义。规则代价、
+   Hungarian、需求槽、迟滞、版本及 D5/D7 binding 未改变。
+
+### 证据边界与后续
+
+冻结 200x200 benchmark 继续用于固定输入归因，默认上一计划帧保持 `334.735 ms`；clean
+三种子结果用于完整 episode 的累计墙钟和业务一致性。两组证据不得互相替代。后续由 main
+继续验证 AirSim、物理拦截、长期内存峰值和系统实时预算；D3 不基于本次 1.8% 差异调整规则
+代价、迟滞或发布合同。

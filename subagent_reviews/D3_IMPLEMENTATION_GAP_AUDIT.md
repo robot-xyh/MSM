@@ -1099,10 +1099,11 @@ seed 42000 的三次 D3 规划由 `7.329949 s` 降至 `1.013593 s`。breakdown �
 字节，减少 48.03%。专项 5 项通过。D3 全量收集 430 项，其中 427 passed、1 skipped、
 2 个既有跨模块 `global_track_stale` failed。
 
-### 仍开放
+### 状态与仍开放
 
-1. main 需以新 schema 重跑 clean 10 秒以上 200v200，验证总线文件、内存峰值、D6 和
-   runtime ACK；旧产物投影不能替代新 episode。
+1. main 已在 clean commit `8f86192` 完成 10 秒、seed 42000-42002 新 episode。每组 D3
+   发布和计划 ACK 均为 10，计划业务摘要与旧提交一致，clean/finite/truth0 门通过。总线
+   长时复跑和 runtime ACK 证据已补齐；长期内存峰值仍需单独测量。
 2. 两项 `global_track_stale` 属于 main/D7 时序断点。D3 不通过放宽 stale 门控关闭。
 3. 外部直接读取旧别名的未知消费者需迁移到规范字段或公共导出函数。仓库内没有此类
    Python 消费者。
@@ -1140,11 +1141,15 @@ seed 42000 的三次 D3 规划由 `7.329949 s` 降至 `1.013593 s`。breakdown �
 D3 全量收集 439 项，结果为 `436 passed, 1 skipped, 2 failed`。skip 是可选 OR-Tools；
 两个失败均为已在基线复现的 main/D7 `global_track_stale` 跨模块失败。
 
-### 仍开放
+### clean 集成复核与仍开放
 
-1. main 仍需在候选提交的隔离 clean worktree 复跑 seed 42000-42002 的 2.2 秒和 10 秒
-   200v200 episode，核对 D3 调用次数、每次输入形状、累计墙钟、计划 ACK、输出字节和内存。
-2. 单机三次墙钟存在调度噪声，只能用于热点排序，不能直接证明旧提交 `2.484 s` 与当前
-   clean 三 seed 均值 `3.348 s` 的差异由 D3 代码引起。
-3. 两项 `global_track_stale` 仍由 main/D7 时序链路处理。D3 不放宽 stale 门控。
-4. 当前没有新增 D3 P0；AirSim、物理拦截及系统实时能力不由本次隔离 benchmark 证明。
+1. main 已在 clean commit `8f86192` 完成 10 秒、seed 42000-42002 复跑。D3 assignment
+   累计墙钟为 `3.437/3.319/3.110 s`，均值 `3.289 s`；旧 clean commit `3bac3ff` 均值
+   为 `3.348 s`。约 `-1.8%` 的变化按基本持平和调度噪声处理，不形成性能归因或晋级。
+2. 三组均 clean、finite、online truth use=0；每组 D3 调用和计划 ACK 均为 10。binding
+   ACK、control applied 和 hold 摘要与旧提交逐 seed 一致，确认 D1 快照优化未改变 D3
+   执行语义。
+3. 冻结 benchmark 的 `334.735 ms` 等原数字继续用于固定输入归因；clean episode 只提供
+   累计墙钟与业务一致性证据。长期内存峰值、AirSim、物理拦截和系统实时预算仍开放。
+4. 两项 `global_track_stale` 仍由 main/D7 时序链路处理。D3 不放宽 stale 门控。
+5. 当前没有新增 D3 P0。clean 三种子集成复测这一 P1 证据项已关闭。
