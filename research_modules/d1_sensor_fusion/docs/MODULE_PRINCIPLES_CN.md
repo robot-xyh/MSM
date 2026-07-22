@@ -946,3 +946,40 @@ object ID、列表顺序和目标数量推断。NEES 只在 estimate covariance 
 main 复跑的 D1 全量 `136 passed` 共同证明上述合同可执行、
 JSON 有限且原有滤波回归保持。已知误差 `5 m/12 m/s` 和 coverage `0.5` 是 evaluator oracle，
 不是传感器精度指标。正式多 seed RMSE/NEES/NIS coverage 与阈值仍由 main/D2/D6 后续实验闭合。
+
+## 21. 扫描先整理再融合（2026-07-22）
+
+迟到扫描进入滤波器前先经过独立输入整理。`ScanInputOrganizer` 按 arrival 顺序接收整帧，按
+measurement time 水位线释放。窗口内乱序允许重排；严格早于已关闭水位线的帧全部拒绝。等于
+水位线的时刻暂不关闭，便于同一时刻的不同传感器来源在窗口内到齐。
+
+整帧原子性是本合同的核心。任何 duplicate、relay replay、scan ID/时间/payload conflict、
+too-late、缓冲溢出或驻留超时，都不会把部分点迹送入融合器。每条观测仍携带双时间戳、
+covariance、NED/pixel canonical frame、source frame 和 source lineage。在线 truth 字段在摘要
+计算前拒绝，`global_track_id` 不在该层产生或改写。
+
+输入整理具有时间和数量上限，并输出逐帧事件和累计审计。main 只处理
+`decision.released_scans`：每一帧再交给 `process_scan_batch()`，融合后的 tracks 才能进入 D2。
+无扫描 tick 用 `advance_arrival_time()` 检查驻留期限，episode 结束用 `close()` 释放有效尾部。
+
+扫描帧通过字段级快照接收只读输入。数组独立复制并设为只读，嵌套映射递归冻结，因此 main
+视觉元数据中的 `mappingproxy` 不需要解冻。快照后仍执行协方差合同和递归在线身份检查，原始
+元数据或数组的后续修改不会改变已接收扫描。
+
+该层不做卡尔曼回溯。现有 fixed-lag replay 仍在扫描释放后根据 measurement time 运行。
+2026-07-22 的 15 项构造测试覆盖 1/7/200 动态数量、主要拒绝路径及嵌套只读视觉元数据，D1
+全量 `151 passed`；未运行 AirSim，也未完成真实长 episode 阈值标定。
+
+## 22. 治理通过不等于融合实时（2026-07-22）
+
+20/50/100/200 四档、每档 5 seed 的快速治理结果说明水位线、缓冲和尾部关闭合同在构造流上
+可执行：每 episode 136 帧中重排 12、拒绝 0、峰值缓冲 3、结束缓冲 0，在线 truth 使用 0。
+该 runner 不执行完整融合，因此不能用它证明 200v200 实时性或精度。
+
+单次 200v200 三维质点全栈把问题定位到释放后的后验处理。86 个扫描的 D1 fusion 累计
+35.115 s，平均 408.313 ms；输入整理累计 2.682 s。当前每个小扫描都可能触发全套关联、历史
+重放和后验快照。后续优化必须保持每帧审计和扫描级关联语义，只减少未变航迹的重复传播、复制
+和发布。任何通过丢观测、改写时间或压低 covariance 获得的加速都不接受。
+
+这些数据来自 dirty development 制品和一个全栈 seed。AirSim、融合精度、长 episode 历史增长
+和 clean 多 seed 预算仍未验收。

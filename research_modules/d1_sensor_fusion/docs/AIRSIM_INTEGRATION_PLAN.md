@@ -279,3 +279,56 @@ AirSim persisted observation schema，也没有启动 AirSim。
 lineage mapping adapter，不能回填为 available。后续若接线，main 应在每个 episode 结束后单独写
 online bundle、truth sidecar、D2 mapping 和 offline result；在线文件不得包含 truth/actor/object
 字段，D6 必须按 availability 聚合。该后续接线和真实 AirSim 多 seed 标定均为 main-owned 开放项。
+
+## 14. main-owned 可扩展三维扫描接入（2026-07-22）
+
+本节给出 main 的推荐调用合同，不修改 `scalable_3d_simulation` 或 AirSim runtime 文件。对于
+每个按 arrival 顺序到达的 `OnlineSensorBatch`：
+
+```python
+observations = sensor_observations_from_online_batch(online_batch)
+frame = SensorScanFrame.from_observations(
+    observations,
+    scan_id=online_batch.batch_id,
+)
+decision = scan_organizer.ingest(frame)
+
+latest_fused = None
+for released in decision.released_scans:
+    latest_fused = fusion_adapter.process_scan_batch(released.observations)
+if latest_fused is not None:
+    publish_fused_tracks_to_d2(latest_fused.tracks)
+
+write_scan_events(decision.events)
+write_scan_audit(decision.audit)
+```
+
+调用约束：
+
+1. 一个 batch 构造一个 `SensorScanFrame`，不得按检测点拆帧；batch 内 sensor、modality、双时间戳
+   和 scan ID 必须一致。main 冻结后的嵌套 `mappingproxy` 相机元数据可直接输入；D1 会建立
+   独立只读快照，不要求 main 解冻或转成普通字典。
+2. 所有 measurement/arrival time 必须先归一到统一 episode clock，观测 frame 必须先满足 D1
+   canonical 合同；organizer 不估计 clock offset，也不执行 tf/外参变换。
+3. `ingest()` 每个到达批次调用一次。只有 `released_scans` 可进入 `process_scan_batch()`；
+   buffered/rejected 扫描不能直接送 D2。
+4. episode tick 前进但没有扫描时，调用 `advance_arrival_time(current_episode_time)`。该调用只
+   清理超过 `max_buffer_residence_s` 的帧，不推进 measurement watermark。
+5. producer 全部结束后调用一次 `close()`。必须处理 `close_result.released_scans`，再结束 D1
+   和 D2；否则尾部合法扫描会留在窗口中。
+6. 每个 episode manifest 固定 scan input 五个 schema 版本和 `ScanInputConfig.to_dict()`；逐帧
+   `events`、累计 `audit`、D1 fusion summary 分开写入日志。
+7. D6 可统计 too-late、reordered、buffer peak、overflow 和 expiry。未经长 episode 标定的计数
+   不直接触发 D4 主动降级。
+
+推荐初始参数只可作为开发配置，不可写成传感器指标。`max_lateness_s` 应覆盖正常 sensor-specific
+抖动而不是平均固定链路延迟；`max_buffer_residence_s` 和数量上限需按扫描率、传感器数、最大 N
+及日志压力共同计算。20/50/100/200 长 episode 各自记录水位线、缓冲峰值、误拒、尾部释放和
+处理耗时后再冻结 profile。
+
+`ScanInputOrganizer` 是纯 Python 扫描输入合同，不依赖 AirSim SDK。2026-07-22 仅完成 15 项
+构造测试和 D1 `151 passed` 全量回归；没有启动 Blocks/CV、没有修改 settings、launch/reset 或
+episode 顺序。随后 main 已在 dirty worktree 的 scalable 3D development 路径接入该合同：快速
+治理层覆盖 20/50/100/200 各 5 seed，单次 200v200 三维质点全栈也完成扫描接收和尾部关闭。
+这些结果只更新 scalable development 接线状态，不是 AirSim 证据。真实 Blocks/CV/SimpleFlight
+适配、settings、传感器桥接、launch/reset 和多 seed AirSim 验收计划均无变化，仍由 main 负责。

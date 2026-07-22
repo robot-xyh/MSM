@@ -2,9 +2,23 @@
 
 本目录保存 D1 多传感器融合与目标配准模块的说明文档。
 
-## 当前证据索引（2026-07-15）
+## 当前证据索引（2026-07-22）
 
-最新权威增量为真实 AirSim M5N2 baseline/candidate 各 10 case，共 20 case。在线 identity/state
+最新 main development 证据包含两层。快速治理 benchmark 覆盖 20/50/100/200、每档 5 个 seed，
+每 episode 136 帧/33.75 s；D1 重排 12、拒绝 0、峰值缓冲 3、尾部缓冲 0、在线 truth 使用 0，
+200 规模峰值内存为 40.91 MB。单次 200v200 三维质点全栈 smoke 为 seed 42000/2.2 s，D1
+处理 86 个扫描和 2,051 条观测，重排 10、拒绝 0、峰值 33 帧/623 条观测；fusion 累计
+35.115 s，扫描输入累计 2.682 s，全栈墙钟 60.210 s。两批均为 dirty development，不是
+AirSim、融合精度或正式 200v200 验收。
+
+最新 D1-owned 合同增量仍是版本化扫描输入整理。15 项确定性专项覆盖水位线、整帧 too-late、
+duplicate/replay/conflict、有限缓冲、同时间多源、动态 1/7/200 点输入及嵌套只读视觉元数据
+快照；D1 全量 `151 passed`。main 接线已获得 development 证据，但逐小扫描全后验处理造成的
+融合吞吐仍是 P1，clean 多 seed 正式标定仍开放。
+
+历史最新真实 AirSim 证据仍为 2026-07-15 M5N2：
+
+该 AirSim 增量包含 M5N2 baseline/candidate 各 10 case，共 20 case。在线 identity/state
 truth use 均为 0；D1 fusion 的 3,805 个时序样本 mean/P95/max 为
 `320.00/451.46/1234.88 ms`，真实运行时 100 ms 预算尚未闭合。本批不提供可用 NIS、NEES
 或 RMSE，不能替代 D1 传感器精度与一致性专项。额外 `png_ttc_2v2_seed001` 已排除，dropout

@@ -1,5 +1,72 @@
 # D1 Sensor Fusion Offline Experiment Report
 
+## 2026-07-22 Scalable 3D development 证据复核
+
+### 证据层次
+
+本节只复核 main 生成的公开制品，不重新运行 scalable 场景。两组制品都来自 commit
+`ca83b4a328ea5ca2686e42ee9a905cd539b8186d` 的 dirty 工作区，证据等级为 development。
+
+第一组是快速观测治理 benchmark。20/50/100/200 四档各 5 个互异 seed，共 20 个 episode；
+每个 episode 为 136 帧、33.75 s。runner 明确记录 `full_system_evidence=false`，D6 聚合记录
+`formal_episode_count=0`。该组只验证扫描治理、审计、内存边界和 truth 隔离，不运行完整 D1
+EKF/fixed-lag 融合。
+
+| 规模 | episode | 每 episode 扫描 | 重排 | 拒绝 | 峰值缓冲 | 结束缓冲 | D1 峰值内存最大值 |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 20 | 5 | 136 | 12 | 0 | 3 | 0 | 4.42 MB |
+| 50 | 5 | 136 | 12 | 0 | 3 | 0 | 10.40 MB |
+| 100 | 5 | 136 | 12 | 0 | 3 | 0 | 20.53 MB |
+| 200 | 5 | 136 | 12 | 0 | 3 | 0 | 40.91 MB |
+
+四档在线 truth 使用均为 0。内存值取 D6 聚合中的 `estimated_peak_memory_bytes.max`，以十进制
+MB 表示；200 规模的原值为 40,911,754 B，约 39.02 MiB。该值是 Python tracemalloc 派生的
+development 样本，不代表进程常驻集、AirSim 总内存或生产硬件预算。
+
+第二组是 seed 42000 的 200v200 单次三维质点全栈 smoke。仿真推进 2.2 s，墙钟耗时
+60.210 s，实时倍率 0.037。在线共 2,051 条匿名观测，其中 radar 1,966 条、EO 85 条；声学为
+0。D1 的 86 个扫描全部释放，重排 10、拒绝 0，峰值缓冲 33 个扫描/623 条观测，结束缓冲为 0，
+在线 truth 使用为 0。
+
+| D1 阶段 | 调用次数 | 累计耗时 | 平均耗时 |
+| --- | ---: | ---: | ---: |
+| 扫描输入整理 | 86 | 2.682 s | 31.186 ms |
+| 融合处理 | 86 | 35.115 s | 408.313 ms |
+| 无扫描时钟推进 | 44 | 0.001 s | 0.026 ms |
+| 扫描尾部关闭 | 1 | 0.0002 s | 0.234 ms |
+
+### 结果判断
+
+快速治理结果证明当前 lateness 配置在构造流中可以重排预置乱序且不触发误拒，缓冲在 episode
+结束后归零。它没有执行完整融合，因此不能用 20 个 episode 的通过结果证明 200v200 实时性、
+定位精度或航迹质量。
+
+单次全栈结果暴露了明确的 P1 性能缺口。每个释放扫描都会调用一次 `process_scan_batch()`；
+小 EO 扫描与大 radar 扫描都可能触发关联、fixed-lag 重放和完整后验快照。main 的尾部发布合并
+减少了下游重复发布，但没有减少 D1 对各释放扫描的后验处理。35.115 s 的 D1 fusion 占本次
+60.210 s 墙钟的大部分，当前实现不能据此声称实时。
+
+本批没有正式 evaluator sidecar 产生的 RMSE、NEES、NIS coverage、近邻召回、错误抑制或确认
+时延；相关指标在单次全栈治理报告中为 unavailable。D1 终态 201 条 source track 与 D2 的
+200 条 canonical track 也不能直接解释为精度或身份结果。该批只有一个 seed，未覆盖复杂机动、
+虚警、持续漏检或长 episode 历史增长。
+
+### 后续验收
+
+1. 在相同冻结输入上按 scan size、modality、正常释放/尾部释放拆分关联、状态获取、历史重放、
+   后验物化和证据序列化耗时。
+2. 评估同一关闭量测时刻的 release micro-batch、dirty-track-only 重放/快照和跨小扫描缓存复用；
+   每帧审计、扫描原子性和一对一关联顺序保持不变。
+3. 优化前后对比 track 集、state/covariance、双时间戳、innovation evidence、拒绝原因和在线
+   truth 使用；数值等价容差沿用 `1e-9`。
+4. 从 clean commit 对 20/50/100/200 运行未见多 seed D1-only 与全栈基准，保存硬件、配置、
+   P50/P95/max、峰值内存和实时倍率。另行运行 AirSim 与传感器精度标定，不混用本节分母。
+
+制品入口：
+
+- `research_modules/scalable_3d_simulation/outputs/observation_governance_calibration_20260722_development/`；
+- `research_modules/scalable_3d_simulation/outputs/point_mass_integrated_observation_smoke_20260722_development_coalesced/`。
+
 ## 2026-07-16 Local Image Track 合同回归
 
 本轮是无随机 seed 的 API/合同构造测试，不是 AirSim episode 或传感器精度实验。13 项专项
@@ -257,3 +324,27 @@ D1-owned 的逐更新持久化 DTO、schema/hash/source provenance、基于 obse
 关闭。没有修改 EKF/量测模型/门限/track ID，也没有执行 AirSim 或正式多 seed 实验。上述
 `5 m/12 m/s/0.5` 是故意设置的 oracle，不是算法表现。按 sensor/range/scenario 的正式多 seed
 RMSE、NEES、NIS coverage、置信区间和验收阈值仍未闭合。
+
+## 2026-07-22 扫描输入整理合同回归
+
+本轮是纯 Python API/合同测试，不是 AirSim episode，也不测融合精度。输入为构造的匿名 radar
+扫描，无随机 seed。测试把完整扫描按 arrival 顺序提交给 `ScanInputOrganizer`，检查
+measurement-time 水位线、有限缓冲和整帧拒绝，再把 `released_scans` 交给既有
+`Scalable3DFusionAdapter.process_scan_batch()`。
+
+| 验收项 | 样本与阈值 | 结果 |
+| --- | --- | --- |
+| 有序与窗口内乱序 | 释放顺序必须按 measurement time；双时间戳和 covariance 逐项不变 | 通过 |
+| 超窗迟到 | 7 点扫描必须整帧拒绝，释放数为 0 | 通过 |
+| 同时间多源 | 两来源 4 点和 6 点扫描均保留，不发生 scan-key 冲突 | 通过 |
+| duplicate/replay/conflict | 三类分别计数，均不进入 released scans | 通过 |
+| 时间/数量上限 | arrival regression、scan/observation overflow、residence expiry 均 fail closed | 通过 |
+| 动态数量 | 1、7、200 点扫描无固定 2v2/5v5 假设 | 通过 |
+| 在线身份边界 | truth 注入在 claim/digest 前拒绝 | 通过 |
+| 只读视觉元数据 | 嵌套 `mappingproxy` 可建立独立只读快照；嵌套 truth 仍拒绝 | 通过 |
+| main 组合路径 | `OnlineSensorBatch -> SensorScanFrame -> released_scans -> process_scan_batch` | 通过，3 条六维航迹 |
+| 测试 | 专项/全量 | `15/15`；`151/151` |
+
+结果证明 D1-owned 的扫描释放边界可执行。它没有改变 EKF、fixed-lag replay、关联门限或
+`global_track_id`。未运行 AirSim，未给出 RMSE/NIS/NEES、实时吞吐、too-late 误拒率或长 episode
+容量结论。main 仍需在 20/50/100/200 规模下接线并标定配置。

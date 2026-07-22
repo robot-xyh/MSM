@@ -1,6 +1,35 @@
 # D1 多传感器融合与目标配准实施计划
 
-## 当前权威增量与后续计划（2026-07-16）
+## 当前 development 状态与后续计划（2026-07-22）
+
+main 已在 development/dirty 工作区完成扫描治理接线和两层证据采集。快速治理层覆盖
+20/50/100/200、每档 5 个 seed；每 episode 136 帧、33.75 s，D1 重排 12、拒绝 0、峰值缓冲
+3、结束缓冲 0、在线 truth 使用 0。200 规模的 tracemalloc 派生峰值为 40.91 MB。该层不导入
+完整运行时模块，不计算 EKF 融合精度，不能用于关闭 D1 融合吞吐或算法效果。
+
+单次 200v200 三维质点全栈 smoke 使用 seed 42000，仿真时长 2.2 s。D1 接收/释放 86 个扫描、
+2,051 条观测，重排 10、拒绝 0，峰值缓冲 33 个扫描/623 条观测，尾部缓冲归零。D1 fusion
+累计 35.115 s/86 次，平均 408.313 ms；扫描输入整理累计 2.682 s。全栈墙钟 60.210 s，尚未
+达到实时运行。该结果没有 AirSim、clean commit、多 seed 或融合精度验收。
+
+后续 P1 按以下顺序执行，本计划不预设算法代码已经完成：
+
+1. **冻结剖析口径**：按 scan size、modality、正常释放/episode 尾部释放拆分关联、
+   measurement-time 状态获取、fixed-lag replay、后验快照和 evidence 序列化耗时；同时记录
+   changed-track 数量、历史长度和 cache hit/miss。
+2. **减少重复全后验工作**：评估同一已关闭量测时刻队列的 release micro-batch、dirty-track-only
+   重放和快照、跨小扫描状态缓存复用。扫描审计仍逐帧保留，扫描级一对一关联顺序不改变，D2
+   只消费完成后的版本化融合快照。
+3. **建立等价性护栏**：相同冻结输入下，track 集、双时间戳、state/covariance、接受/拒绝、
+   OOSM、innovation evidence 和 truth-use 必须与基线一致；数值差异采用既有 `1e-9` 回归容差，
+   不允许通过观测降采样、伪同步或 covariance 收紧优化。
+4. **分层验收**：先做 D1-only 20/50/100/200 多 seed，再做真实三维质点全栈；记录 P50/P95/max、
+   峰值内存和实时倍率。已有 100 ms AirSim 循环预算仅作历史参考，200v200 的 D1 周期预算须由
+   main 在固定发布频率和硬件条件下预注册。
+5. **正式证据**：从 clean commit 运行未见 seed，保存 config/hash/hardware provenance，并由
+   D6 区分治理合同、融合数值、系统吞吐和 AirSim 指标。上述四类证据不得互相替代。
+
+## 历史 D1-owned 增量与后续计划（2026-07-16）
 
 `LocalImageTrackObservation -> SensorObservation | None` 的 D1-owned 合同适配已完成：
 `measured` 严格转换为 EO/pixel，`lost` 不产生量测；双时间戳、2×2 covariance、confidence、
@@ -334,8 +363,9 @@ schema/version 字段，仍需更长 episode 和 D6 批量 schema 审计。
 延迟预算超限和持续窗口等已校准证据，不能直接按 raw OOSM rate 降级。
 
 本证据只关闭 truth-isolated 运行时接线的单 seed smoke 风险，不关闭 P1 multi-seed 校准。
-下一步仍需多 seed、长时窗口、不同传感器延迟分布、正常/故障对照和批处理/水位线口径对照，
-再确定 OOSM、区域质量和 handover readiness 的告警阈值。
+扫描级水位线 API 已于 2026-07-22 形成独立、版本化、有限缓冲的 fail-closed 合同。下一步仍需
+main 正式接线，并用多 seed、长时窗口、不同传感器延迟分布和正常/故障对照校准 lateness、
+驻留时间、OOSM、区域质量和 handover readiness 告警阈值。
 
 ## 8. 交付物
 
@@ -977,3 +1007,75 @@ main 复跑 D1 全量 `136 passed`。接受阈值是合同、hash、availability
    至少 20 个未见 seed、复杂 crossing/漏检/虚警/机动及真实 covariance 标定尚未执行。
 5. AirSim producer/runtime 未接线该 artifact，本轮未运行 AirSim；现有 AirSim episode 不能因
    API 存在而改写为 consistency metrics available。
+
+## 29. P1 整帧 OOSM/迟到扫描输入合同（2026-07-22）
+
+### 29.1 工程边界
+
+现有 `process_scan_batch()` 负责一个已确定扫描内的点迹关联和 fixed-lag 数值更新，不负责等待
+未来扫描或关闭 event-time 水位线。新增 `ScanInputOrganizer` 专门负责该上游边界：按 arrival
+顺序接收完整扫描，在有限迟到窗口内按 measurement time 重排，只将完整
+`SensorScanFrame` 放入 `released_scans`。D1 不在该层生成航迹、不调用 D2、不创建或改写
+`global_track_id`。
+
+设第 `k` 次成功接收后的最大量测时刻为 `M_k`，配置最大迟到量为 `L`：
+
+```text
+W_k = M_k - L
+```
+
+新扫描量测时刻严格小于接收前水位线 `W_(k-1)` 时整帧 too-late。缓冲中量测时刻严格小于
+`W_k` 的扫描按 `(measurement_timestamp, received_sequence)` 释放；等于水位线的边界仍开放，
+保证同一量测时刻的不同来源可在窗口内共同到达。episode 结束由 main 显式 `close()`，释放未
+过期尾部。没有新扫描但 episode 时钟推进时调用 `advance_arrival_time()`，只执行驻留期限，不
+伪造事件时间。
+
+### 29.2 已实现合同
+
+1. `SensorScanFrame` 保留每条观测的双时间戳、covariance、canonical/NED source frame、sensor
+   namespace 和 immutable source lineage；字段级快照递归接受并冻结嵌套 `Mapping`/`mappingproxy`，
+   数组使用独立只读副本，随后执行在线 covariance 与 truth 隔离。
+2. config/frame/event/summary/result 五类 schema 均为 v1，`to_dict()` 可有限 JSON 序列化。
+3. 同 scan 精确重发记 duplicate；相同 source payload 经不同 transport envelope 重发记 replay；
+   scan ID、lineage、量测时间或 payload 内容不一致记 timestamp conflict。分类不使用仿真 truth。
+4. 所有拒绝均以扫描为原子单位。too-late、buffer overflow、buffer residence expiry、claim
+   capacity、结构非法均不会产生部分 `released_scans`。
+5. 缓冲由时间、扫描数量和观测数量三项确定性上限约束；claim registry 另有扫描/lineage 数量
+   上限，达到上限后 fail closed。
+6. `ScanInputAuditEvent` 给出逐帧 lifecycle，`ScanInputAuditSummary` 给出累计 received/buffered/
+   reordered/released/rejected 及各拒绝原因、当前/最大缓冲和水位线。
+
+### 29.3 main 推荐接入
+
+```python
+observations = sensor_observations_from_online_batch(batch)
+frame = SensorScanFrame.from_observations(observations, scan_id=batch.batch_id)
+decision = organizer.ingest(frame)
+latest_result = None
+for released in decision.released_scans:
+    latest_result = fusion.process_scan_batch(released.observations)
+if latest_result is not None:
+    publish_to_d2(latest_result.tracks)
+publish_scan_audit(decision.events, decision.audit)
+```
+
+- 一个到达的 `OnlineSensorBatch` 对应一次 `ingest()`，main 不拆帧，也不直接把 buffered/rejected
+  帧交给 D1 fusion 或 D2；
+- 所有输入必须先统一到 episode 时钟和 D1 canonical frame；organizer 不估计 clock offset，也不
+  执行外部坐标变换；
+- 没有扫描的调度 tick 调 `advance_arrival_time(now)`，episode 输入结束调一次 `close()`，并处理
+  `close().released_scans`；
+- manifest 记录 scan input schema、完整 config、episode 时钟来源和调用计数；
+- audit 进入 main/D6 日志，不阻塞实时控制，不作为未经标定的 D4 降级命令。
+
+### 29.4 验收与开放项
+
+2026-07-22 采用确定性构造输入，无随机 seed、无 AirSim。新增 15 项测试，覆盖有序、窗口内
+乱序、超窗整帧拒绝、同时间多源、duplicate/replay/timestamp conflict、arrival regression、
+扫描/观测数量上限、驻留超时、动态 1/7/200 点、truth 注入拒绝、main 批次转换/融合组合及
+嵌套只读视觉元数据快照；D1 全量 `151 passed`。
+
+D1-owned 的可执行输入合同已关闭。仍开放的系统 P1 是：main-owned runtime 采用该接口；按
+20/50/100/200 规模和长 episode 冻结 `max_lateness_s`、驻留/容量/claim 上限；统计 too-late
+误拒、buffer 峰值、吞吐和 tail close；与 D2/D6 schema 对齐。该 organizer 不替代现有 fixed-lag
+Kalman OOSM replay，也没有关闭真实传感器长期延迟与一致性标定。

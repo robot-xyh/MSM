@@ -2,7 +2,35 @@
 
 Offline research module for radar, acoustic, EO, and optional synthetic lidar heterogeneous observation fusion. The module estimates six-state NED `GlobalTrack` objects with covariance.
 
-## 当前权威增量（2026-07-16）
+## 当前 development 证据（2026-07-22）
+
+main 已把版本化扫描输入整理接入 scalable 3D development 路径，并生成两组可复核制品。第一组
+是 20/50/100/200 四档、每档 5 个互异 seed 的快速观测治理 benchmark。每个 episode 为
+136 帧、33.75 s；D1 每 episode 重排 12 帧、拒绝 0 帧、峰值缓冲 3 帧、结束缓冲 0 帧，在线
+truth 使用为 0。200 规模的 D1 `estimated_peak_memory_bytes` 最大为 40,911,754 B，即
+40.91 MB（39.02 MiB）。该批标记为 `development/dirty`、`formal_episode_count=0`、
+`full_system_evidence=false`，只验证治理审计和资源有界性，不运行完整 D1 EKF 融合。
+
+第二组是 seed 42000 的 200v200 单次三维质点全栈 development smoke。2.2 s 仿真接收并释放
+86 个扫描、2,051 条匿名观测；重排 10 帧、拒绝 0 帧，峰值缓冲为 33 帧/623 条观测，episode
+结束后为 0。`module.d1_fusion` 的 86 次调用累计 35.115 s，平均 408.313 ms；D1 扫描输入整理
+累计 2.682 s，平均 31.186 ms。全栈墙钟时间为 60.210 s，实时倍率仅 0.037。在线 truth 使用
+仍为 0，但该批只有一个 seed、工作区非 clean、没有可用的融合精度或一致性验收指标。
+
+当前 P1 已从“main 是否接入扫描水位线”收敛为“逐个小扫描执行全后验处理的吞吐”。现有路径
+对每个释放扫描调用一次 `process_scan_batch()`；即使 main 在尾部合并下游发布，D1 仍需逐扫描
+完成关联、fixed-lag 重放和全航迹后验快照。后续优化必须保持扫描原子性、双时间戳、covariance、
+在线 truth 隔离和数值结果，不得靠丢观测、改时间戳或收紧协方差换取耗时下降。
+
+证据入口：
+
+- `../scalable_3d_simulation/outputs/observation_governance_calibration_20260722_development/`；
+- `../scalable_3d_simulation/outputs/point_mass_integrated_observation_smoke_20260722_development_coalesced/`。
+
+上述结果不是 AirSim、传感器精度或 200v200 正式验收。正式关闭仍需 clean commit、未见多 seed、
+冻结硬件/配置、逐阶段 P50/P95/max 和 RMSE/NIS/NEES availability 证据。
+
+## 历史 D1-owned 增量（2026-07-16）
 
 - 顶层 API 新增 `sensor_observation_from_local_image_track()`，把 main-owned
   `LocalImageTrackObservation` 保守适配为 D1 `SensorObservation | None`。只有 `measured`
@@ -192,8 +220,9 @@ latency audit and region-quality metrics, including `d1_max_delay_s` about 0.2 s
 `d1_region_quality_window` event per episode. The observed
 `d1_oosm_observation_rate=0.9866666667` is the current asynchronous replay accounting result for
 fixed-delay, sequentially ingested sensor batches. It is not evidence of a sensor fault and must not
-directly trigger D4 degradation. Expected-latency budgets, batch/watermark semantics, and fault
-injection controls still require calibration.
+directly trigger D4 degradation. The scan-level watermark API is now explicit and tested, while
+sensor-specific lateness budgets, runtime adoption, and fault-injection thresholds still require
+calibration.
 
 This is a seed-7, five-frame, 0.4 s smoke run. It closes neither the multi-seed P1 calibration item nor
 long-duration latency/region threshold governance. Truth-isolated multi-seed replay, longer windows,
@@ -676,3 +705,76 @@ covariance 和 non-finite fail-closed；
 已知误差夹具得到 position RMSE `5 m`、velocity RMSE `12 m/s`、NIS gate coverage `0.5`。
 main 复跑 D1 全量为 `136 passed`。这些结果只关闭 evidence/evaluator 合同，不是正式多 seed
 精度、coverage 或 covariance 标定达标结论；现有 NumPy EKF、量测模型、门限和 track ID 未改。
+
+## 版本化扫描输入整理（2026-07-22）
+
+`ScanInputOrganizer` 位于在线批次转换与 `process_scan_batch()` 之间。其输入是完整
+`SensorScanFrame`，输出只包含越过量测时间水位线后可以安全释放的 `released_scans`。扫描中的
+每条 `SensorObservation` 原样保留 `measurement_timestamp`、`arrival_timestamp`、covariance、
+canonical frame、NED/source frame 元数据和 source lineage。输入先执行 covariance 与在线身份
+隔离检查；truth/actor/object 字段不会进入摘要、缓冲或摘要哈希。
+
+`SensorScanFrame` 采用字段级不可变快照，不对包含 `mappingproxy` 的观测做通用深拷贝。量测、
+协方差和元数据中的数组均建立独立只读副本；嵌套 `Mapping`、序列和集合递归冻结。该处理兼容
+main 的只读视觉相机模型元数据，并在快照完成后继续执行协方差和递归 truth 隔离检查。
+
+水位线定义为当前已接收唯一扫描的最大量测时刻减去 `max_lateness_s`。量测时刻严格早于既有
+水位线的扫描整帧拒绝；等于边界的扫描继续留在窗口中，以允许多个来源在同一量测时刻到达。
+窗口内乱序扫描按量测时刻、再按接收序号确定性释放。同一 scan/payload、同一 source lineage
+重发及 scan ID/时间/内容冲突分别记为 duplicate、replay 和 timestamp conflict。任何拒绝都不
+产生部分扫描，也不会出现在 `released_scans`。
+
+配置和运行 DTO 使用以下版本：
+
+- `d1.scan_input.config.v1`；
+- `d1.scan_input.frame.v1`；
+- `d1.scan_input.audit_event.v1`；
+- `d1.scan_input.audit_summary.v1`；
+- `d1.scan_input.result.v1`。
+
+缓冲同时受 `max_buffer_residence_s`、`max_buffered_scans` 和
+`max_buffered_observations` 限制。scan/source-lineage claim ledger 也有独立数量上限。容量不足
+时拒绝新整帧，不驱逐一个已接受扫描来换取另一个扫描。逐帧事件和累计摘要明确记录 received、
+buffered、reordered、released、duplicate、replay、timestamp conflict、too-late、buffer
+overflow、buffer expiry 和 claim capacity overflow。
+
+main-owned `scalable_3d_simulation` 推荐按以下方式接入，但 D1 本轮没有修改 main 文件：
+
+```python
+observations = sensor_observations_from_online_batch(online_sensor_batch)
+frame = SensorScanFrame.from_observations(
+    observations,
+    scan_id=online_sensor_batch.batch_id,
+)
+decision = scan_input_organizer.ingest(frame)
+
+latest_fusion_result = None
+for released_frame in decision.released_scans:
+    latest_fusion_result = fusion_adapter.process_scan_batch(
+        released_frame.observations
+    )
+if latest_fusion_result is not None:
+    publish_to_d2(latest_fusion_result.tracks)
+
+scan_events = [event.to_dict() for event in decision.events]
+scan_audit = decision.audit.to_dict()
+```
+
+进入同一 organizer 的扫描必须已经换算到统一 episode 时钟和 D1 canonical frame；该 adapter
+不估计传感器时钟偏差，也不替代坐标变换。当 episode 时钟继续前进但没有扫描到达时，main 调用
+`advance_arrival_time(current_episode_time)`，以执行缓冲驻留时间上限；该调用不会伪造量测或
+推进量测水位线。episode 输入结束时调用 `close()`，再按量测时刻释放尚未过期的尾部扫描，并
+同样逐帧送入 `process_scan_batch()`，再发布最后一个融合快照。`close()` 后不再接收新扫描。每个 episode 的 manifest
+应记录上述 schema 和 `ScanInputConfig.to_dict()`，D6 消费 event/audit，不参与控制路径。
+
+2026-07-22 的确定性 API 测试不使用随机 seed，也未运行 AirSim。15 项专项覆盖有序扫描、窗口
+内乱序、超窗迟到、同时间多源、duplicate、relay replay、timestamp conflict、到达时刻回退、
+扫描/观测容量、驻留超时、1/7/200 动态观测数量、truth 注入拒绝及
+`OnlineSensorBatch -> SensorScanFrame -> released_scans -> process_scan_batch` 组合。新增回归还
+覆盖嵌套 `mappingproxy` 相机元数据的独立只读快照及其中 truth 字段拒绝。专项 `15 passed`，
+D1 全量 `151 passed`。
+
+该 adapter 只整理扫描输入，不是固定滞后卡尔曼 OOSM 平滑器。释放后的量测仍由现有
+`FusionAdapter` 依据 measurement time 做 EKF 更新和 fixed-lag replay。D1-owned P1 输入合同
+已关闭；main 正式接线、20/50/100/200 长 episode 的 lateness/residence/capacity 标定、无扫描
+时钟推进策略、吞吐和误拒率仍是系统 P1。

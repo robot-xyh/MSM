@@ -4,9 +4,24 @@
 **范围**: 对照 `subagent_reviews/D1_SENSOR_FUSION_REVIEW_AND_PLAN.md`、`C_UAS_MAINSTREAM_SOLUTIONS_AND_DIFFICULTIES.md`、`research_modules/d1_sensor_fusion` 源码和测试，审计共识算法、开源方案和当前实现差距。  
 **边界**: 本审计只覆盖离线科研仿真、数据合同、传感器观测、航迹融合和评估接口；不涉及真实飞控、硬件驱动、火控、毁伤或自动处置。
 
-**更新时间**: 2026-07-16。
+**更新时间**: 2026-07-22。
 
-## 0. 当前权威 GAP 增量（2026-07-16）
+## 0. 当前 development GAP 增量（2026-07-22）
+
+| GAP/合同 | 当前状态 | 2026-07-22 证据 | 剩余关闭条件 |
+| --- | --- | --- | --- |
+| 扫描水位线 main 接线 | development 已接线，D1-owned 合同保持关闭 | 20/50/100/200 各 5 seed 的快速治理层每 episode 136 帧、重排 12、拒绝 0、峰值缓冲 3、尾部 0；在线 truth 0 | clean commit 下复跑并冻结配置；AirSim 接线另行验收 |
+| 观测治理内存边界 | development 有界证据 | 200 规模 `estimated_peak_memory_bytes.max=40,911,754 B`，约 40.91 MB；20/50/100/200 近似随规模增长 | 长 episode、完整融合和进程常驻集内存仍需单独记录；当前 tracemalloc 值不是生产预算 |
+| 逐小扫描全后验吞吐 | **P1 开放，当前最直接 D1 缺口** | 单次 200v200/seed 42000/2.2 s：86 次 fusion 累计 35.115 s，平均 408.313 ms；扫描整理累计 2.682 s；全栈墙钟 60.210 s | 先分项 profile，再做 release micro-batch、dirty-track-only 重放/快照和缓存复用；clean 多 seed 下满足预注册周期预算且数值/审计不退化 |
+| 正式 200v200 算法效果 | 未验收 | 单次全栈只有 development/dirty seed 42000；正式 sidecar 指标 unavailable | 未见多 seed、正确 D2 canonical mapping、RMSE/NEES/NIS/coverage 与置信区间 |
+| AirSim 状态 | 无变化 | 两批均为合成治理或三维质点制品，未启动 Blocks/CV/SimpleFlight | 按独立 AirSim 计划采集和验收，不得把本批改写为 AirSim 证据 |
+
+本轮没有新增 D1 P0 blocker。扫描整理层已按预期保持双时间戳、covariance、整帧原子性、有限
+缓冲和在线 truth 隔离；真正未闭合的是释放后融合器的计算粒度。main 尾部合并可以减少 D2
+中间发布，但当前 D1 仍逐个释放扫描执行后验处理，因此不能用治理层 20 episode 的快速通过
+替代全栈吞吐验收。
+
+## 0.1 历史 D1-owned GAP 增量（2026-07-16）
 
 | GAP/合同 | 当前状态 | 2026-07-16 证据 | 剩余关闭条件 |
 | --- | --- | --- | --- |
@@ -20,7 +35,7 @@
 AirSim producer wiring、相机标定、像素 covariance 标定或 100 ms 运行预算 P1。默认 AirSim
 检测源、launch/reset/episode 顺序和图片保存策略均未改变。
 
-## 0.1 历史权威 GAP 增量（2026-07-15）
+## 0.2 历史系统 GAP 增量（2026-07-15）
 
 本节覆盖后文按日期保留的历史状态，不删除既有实现与验证记录。
 
@@ -260,7 +275,7 @@ simulation-only truth-hint 配置仍需写入 provenance 并通过无 truth-hint
 
 1. **显式 replay schema 与区域字段**: D1 v1 reader 已实现，但当前 main Blocks writer 的真实 2v2 日志没有 `schema_version` 和 `coverage_cell`，只能走 legacy schema 并生成 `unassigned` 区域；main/shared writer 需显式写 `d1.sensor_observation.v1` 并传递覆盖区域，D1 保持兼容但不修改 main/runtime。
 2. **main/D6 长期批量 schema**: main tick 已发布 `TrackUncertaintySummary[]`，但尚未发布 `LatencyAuditSummary`、`FusionQualityRegionSummary[]`、`FusionQualityRegionWindowSummary[]` 和 `SensorHealthSummary[]`；需统一长期 JSONL/CSV 字段、covariance reason 与 timestamp uncertainty 命名。
-3. **expected-latency/OOSM 健康阈值**: 真实 smoke 的固定 0.2 s 延迟会产生大量合法 OOSM；需要以传感器延迟预算、同帧 batch/水位线或滑动比率区分正常 replay 与 clock/stale 故障，避免 advisory FDIR-light 在正常流上建议隔离。
+3. **expected-latency/OOSM 健康阈值**: 扫描级水位线、整帧 too-late 拒绝和有限缓冲 API 已于 2026-07-22 在 D1 内闭合；真实 smoke 的固定 0.2 s 延迟仍需 main 采用该 API，并用传感器延迟预算和滑动比率区分正常 replay 与 clock/stale 故障，避免 advisory FDIR-light 在正常流上建议隔离。
 4. **truth-free replay 一致性**: main bus 的 simulation-only truth-hint 配置未写入 replay provenance；默认无 truth-hint 重放同一 2v2 JSONL 会产生一条重复航迹。需记录融合/关联配置并校准无真值门控，使离线 replay 与真实在线约束一致，truth metadata 仅作离线标签。
 5. **AirSim CV/Blocks multi-seed 回归**: 单次真实 2v2 smoke 已完成输入审计，但仍需 `simGetDetections`/detector boxes 的 N actor、多 seed JSONL/CSV 样本，覆盖 actor label、camera metadata、bbox covariance 和 secondary/mobile recon metadata；D1 不直连真实 AirSim runtime bus。
 6. **真实样本区域/质量阈值**: 用带 `coverage_cell` 的多 seed 样本校准区域窗口、freshness/source-gap、协方差增长率和 handover readiness 的持续阈值。
@@ -300,7 +315,7 @@ simulation-only truth-hint 配置仍需写入 provenance 并通过无 truth-hint
 | D1 -> D2 -> D3 在线断链 | 三个 5v5 case 均运行 5 帧；D1/D2/D3 health 为 `ok`，D1 每组 15 条记录，D3 assignment coverage 为 1.0 | 单 seed 短时 smoke 已通过，无 P0 断链 |
 | 在线 truth 隔离 | main 在线关联不再依赖 truth hint，仍输出中心航迹和分配 | 单 seed 接线已通过；multi-seed/长时一致性仍为 P1 |
 | D1 governance 进入 main bus | 每组均有 `d1_latency_audit`、`d1_region_quality_window`；metrics 含 delay、OOSM、region quality/readiness | 基础接线已完成；长期 schema 和完整 health/reason 字段仍为 P1 |
-| OOSM 口径 | 三组 `d1_oosm_observation_rate=0.9866666667`，mean/max delay 约 0.2 s，stale rate 为 0 | 这是固定延迟异步回放累计口径，不是传感器故障率；预算、水位线和故障对照标定仍为 P1 |
+| OOSM 口径 | 三组 `d1_oosm_observation_rate=0.9866666667`，mean/max delay 约 0.2 s，stale rate 为 0 | 这是旧逐观测异步回放累计口径，不是传感器故障率；扫描水位线 API 已实现，main 接线后的预算和故障对照标定仍为 P1 |
 | multi-seed 阈值治理 | 当前只有 seed 7、5 帧、0.4 s | 未关闭；必须保留 P1 |
 
 因此本轮只更新证据状态，不关闭 D1 的真实多 seed、长时间窗口、sensor-specific latency、
@@ -650,3 +665,67 @@ median/P90/max=`6.28/12.16/21.03 m/s`，而速度 covariance trace 仍为
 D1-owned 评估接口缺口；不关闭真实 covariance 标定、滤波一致性、速度/位置精度、复杂场景
 生命周期、D2 identity continuity 或系统实时预算。AirSim 影响已检查并在模块计划中记录：未接线、
 未运行、历史 availability 不变。
+
+## 26. 2026-07-22 整帧迟到扫描输入 GAP 状态
+
+| GAP/合同 | 当前状态 | D1-owned 证据 | 剩余关闭条件 |
+| --- | --- | --- | --- |
+| arrival-order 扫描入口 | 已关闭 | `SensorScanFrame` 和 `ScanInputOrganizer.ingest()`；每帧保留双时间戳、covariance、canonical/NED source frame 和 lineage；字段级只读快照兼容嵌套 `mappingproxy` | main-owned bus 将每个 `OnlineSensorBatch` 转为一帧并调用 |
+| measurement-time 水位线 | 已关闭 | `W=max_seen_measurement-max_lateness`；边界等时刻保持开放，严格早于既有水位线整帧 too-late | 20/50/100/200 长 episode 标定 `max_lateness_s` 和误拒率 |
+| duplicate/replay/conflict | 已关闭 | 不使用 truth 的 scan/content/lineage digest；逐帧和累计分项审计 | main/D6 持久化 schema 并校验长期 claim 上限 |
+| 有限缓冲 | 已关闭 | 驻留时间、扫描数、观测数和 claim scan/lineage 均有配置上限；溢出保守拒绝新整帧 | 多 sensor 高负载下冻结容量并测峰值/吞吐 |
+| 动态 N | 已关闭模块合同 | 1/7/200 点扫描均可接收/关闭/释放，无 2v2/5v5 常量 | 系统多 seed 规模化运行仍由 main 验收 |
+| D1/D2 边界 | 已关闭接口，未接线 | `released_scans` 是唯一可进入 `process_scan_batch()` 的集合；rejected/buffered 不产生航迹 | main 仅将融合后的 tracks 交给 D2，并发布 audit 给 D6 |
+
+版本为 `d1.scan_input.config/frame/audit_event/audit_summary/result.v1`。2026-07-22 的 15 项构造
+测试无随机 seed、无 AirSim，覆盖有序、窗口内乱序、too-late、同时间多源、duplicate、relay
+replay、timestamp conflict、arrival regression、容量、驻留超时、动态 N、truth 注入和
+`OnlineSensorBatch -> SensorScanFrame -> process_scan_batch` 组合，并覆盖嵌套 `mappingproxy`
+视觉元数据的独立只读快照与 truth 隔离；D1 全量 `151 passed`。
+
+本项关闭的是 D1-owned 可执行输入合同，不是完整 fixed-lag Kalman OOSM 回溯。后者仍由
+`FusionAdapter` 在释放后执行。main 接线、实际 lateness/residence/capacity 参数、无扫描 tick 的
+`advance_arrival_time()`、episode 尾部 `close()`、长期 claim memory 和 D2/D6 持久化是开放
+系统 P1。当前无新增 D1 P0 blocker。
+
+## 27. 2026-07-22 development 接线与吞吐 GAP 状态
+
+### 27.1 制品核验
+
+快速治理制品的 runner 标记为 `fast_3d_governance_benchmark`、`development`、dirty worktree，
+并显式给出 `full_system_evidence=false`。20 个 episode 覆盖四档规模、每档 5 个 seed；每个
+episode 136 帧/33.75 s。D1 每 episode 重排 12、拒绝 0、峰值缓冲 3、结束缓冲 0，在线 truth
+使用 0。200 档峰值内存最大 40,911,754 B。D6 聚合中的 `formal_episode_count=0`，所以本项仅
+作为参数和资源治理 development 证据。
+
+全栈制品为单一 seed 42000 的 200v200 三维质点 2.2 s smoke，工作区同样 dirty。D1 接收并
+释放 86 个扫描/2,051 条观测，重排 10、拒绝 0、峰值缓冲 33 个扫描/623 条观测，结束缓冲 0。
+`module.d1_fusion` 累计 35.114923 s，平均 408.313 ms；`module.d1_scan_input` 累计
+2.681969 s，平均 31.186 ms。全栈墙钟 60.210 s，实时倍率 0.037。单次治理报告没有正式
+evaluator sidecar，精度、召回和一致性指标不可用。
+
+### 27.2 P1 根因边界
+
+当前 main 对水位线释放的每个 scan 都调用一次 `process_scan_batch()`。该调用保持正确的扫描级
+一对一关联，却同时执行 measurement-time 状态获取、fixed-lag replay、changed-track 终结传播、
+全航迹结果快照和在线 evidence 更新。相机产生的少量观测小扫描也承担相同调用边界；episode
+尾部虽然可合并 D2 中间发布，D1 仍要处理所有释放扫描。现有数据只能证明该调用粒度与 200
+规模下的高耗时相关，尚未完成函数级 profiler，不能把全部 35.115 s 归因于单一内部函数。
+
+### 27.3 优化与验收思路
+
+1. 按 scan modality/size、正常/尾部释放、track/history 数量采集关联、`_state_at`、历史重放、
+   发布传播、后验物化和 evidence 序列化的独立耗时与 cache 命中率。
+2. 以不改变扫描级关联顺序为前提，研究已关闭 measurement-time cohort 的 release micro-batch；
+   对多个小扫描延迟全局发布，但逐扫描保留 audit 和接受/拒绝证据。
+3. 将最终传播和快照限定为 dirty tracks，复用未变航迹的只读结果；缓存必须以 history revision
+   为键，任何新观测只失效受影响航迹。
+4. 相同冻结输入上要求 track ID 集、state/covariance、双时间戳、OOSM、innovation/gate 和
+   truth-use 与基线一致，数值容差沿用 `1e-9`。不得丢观测、缩短合法历史、伪同步或收紧
+   covariance。
+5. 从 clean commit 运行 20/50/100/200 未见多 seed D1-only 和全栈基准，记录固定硬件下
+   P50/P95/max、峰值内存和实时倍率。D1 周期预算由 main 预注册；历史 100 ms AirSim 预算只作
+   参考，不能自动当作 200v200 正式阈值。
+
+P1 关闭需要同时满足治理审计、数值等价和吞吐预算。AirSim、传感器精度与 200v200 任务效果
+仍是独立验收项。

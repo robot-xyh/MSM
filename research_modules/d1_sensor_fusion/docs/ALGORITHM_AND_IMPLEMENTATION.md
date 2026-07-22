@@ -892,7 +892,7 @@ checkpoint_dirty_track_ids                                    -> set
 算法步骤：
 
 1. 先对全批观测执行不修改滤波状态的正式 covariance/online 合同校验；
-2. 按调用方输入顺序逐条更新 current arrival watermark、latency/OOSM 和 sensor health；
+2. 按调用方输入顺序逐条更新融合器的 current arrival-time cursor、latency/OOSM 和 sensor health；
 3. 逐条执行 duplicate、observer scan、关联和非测距修正门控；
 4. `_state_at()` 先按 track history revision 查缓存，命中返回副本；
 5. 接受量测后写入原始 observation history，并仅增加对应 track revision；
@@ -967,7 +967,7 @@ d(i,j) = (z_j - x_i)^T (P_i + R_j)^-1 (z_j - x_i)
 条 birth 不会参与同一 scan 后续点迹的竞争，从算法上消除固定门限造成的空间 packing 上限。
 
 更新仍使用 `_BatchProcessingContext`：同测量时刻的 track state 只重放一次，dirty track 在
-批末各重放一次到 arrival watermark。历史 scan 迟到时写入原 observation history，并按既有
+批末各重放一次到融合发布时刻。历史 scan 迟到时写入原 observation history，并按既有
 fixed-lag/origin/archive 规则重建；track 输出同时保留 measurement/arrival timestamp。
 
 ### 26.3 三维声学弱约束
@@ -1073,3 +1073,108 @@ observation/update 指标和 source/input digest，记录数随输入变化，�
 `136 passed`。oracle 夹具为 position RMSE `5 m`、
 velocity RMSE `12 m/s`、NIS gate coverage `0.5`；其目的仅是验证公式和 fail-closed 路径。
 正式多 seed 精度、统计 coverage 和传感器 covariance 校准尚无新证据。
+
+## 28. 扫描输入的事件时间水位线（2026-07-22）
+
+### 28.1 与固定滞后回放的分工
+
+扫描输入整理和卡尔曼 OOSM 回放是两个连续阶段。输入整理判断完整扫描能否进入融合器；固定
+滞后回放在扫描释放后，根据 measurement time 重建状态。前者不读取航迹、不计算 Kalman 增益，
+后者不负责等待未来扫描或限制上游缓冲。
+
+```text
+arrival-order scans
+  -> ScanInputOrganizer
+  -> measurement-order released scans
+  -> process_scan_batch
+  -> measurement-time EKF/fixed-lag replay
+```
+
+设已经接收的唯一扫描最大量测时刻为 `M_k`，最大允许迟到为 `L`，水位线为：
+
+```text
+W_k = M_k - L
+```
+
+接收新帧前，如果 `t_measurement < W_(k-1)`，该帧已越过关闭边界，全部拒绝。接收后，缓冲中
+满足 `t_measurement < W_k` 的帧按 `(t_measurement, received_sequence)` 排序释放。严格不等号
+保留了 `t_measurement == W_k` 的边界，使不同来源的同时间扫描能在迟到窗口内汇合。episode
+结束的 `close()` 表示调用方确认不再有新帧，此时按同一顺序释放尚未过期的尾部。
+
+### 28.2 扫描身份与冲突
+
+每帧由 source namespace、sensor/modality/frame、scan ID 和 observation lineage 描述。在线输入
+先经过 covariance 与 truth 隔离检查，再计算两个摘要：
+
+```text
+content_digest = H(measurement time, measurement, covariance, lineage,
+                   geometry, quality, non-transport metadata)
+frame_digest   = H(content_digest, scan ID, arrival/transport envelope)
+```
+
+- 相同 scan key 和相同 frame digest：duplicate；
+- 相同 source lineage/content、不同 transport envelope：replay；
+- scan key 或 lineage 被不同 measurement time、covariance 或 payload 复用：timestamp/payload
+  conflict；
+- 一帧中只有部分 lineage 已出现：mixed replay/conflict，整帧拒绝。
+
+摘要不使用 truth、actor、object、目标顺序或 `global_track_id`。拒绝分类可以与 too-late 同时为
+真，便于区分“来源重复”和“已经越过水位线”两个事实。
+
+### 28.3 有限资源与审计
+
+扫描帧不再调用通用 `deepcopy`。D1 按 `SensorObservation` 字段建立快照：measurement、
+covariance 以及相机内外参等元数据数组独立复制并设为只读；嵌套 `Mapping`、列表和集合递归
+冻结。这样可以直接接收 main `OnlineSensorBatch` 中的 `mappingproxy` 相机模型，同时保持原始
+生产者后续修改不会影响已接收帧。递归 truth 检查在快照后执行，冻结结构不会绕过身份隔离。
+
+配置同时限制：最大迟到时间、最大缓冲驻留时间、缓冲扫描数、缓冲观测数、claim scan 数和
+claim observation-lineage 数。新帧会推进水位线时，先原子计算可释放集合和加入后的容量；只有
+容量满足才接收。已关闭的扫描先释放，再接收边界帧，因此缓冲在函数执行期间也不超过数量
+上限。驻留超时、buffer/claim overflow 都 fail closed，不用丢弃旧帧换入新帧。
+
+`ScanInputAuditEvent` 按扫描记录 buffered/reordered/released/duplicate/replay/conflict/too-late/
+overflow/expiry，`ScanInputAuditSummary` 累计上述数量，并给出当前和最大缓冲、latest arrival、
+max measurement、水位线和 closed 状态。事件与摘要使用独立 v1 schema，可直接有限 JSON
+序列化。
+
+### 28.4 main 组合接口
+
+```python
+observations = sensor_observations_from_online_batch(batch)
+frame = SensorScanFrame.from_observations(observations, scan_id=batch.batch_id)
+decision = organizer.ingest(frame)
+latest_result = None
+for released in decision.released_scans:
+    latest_result = adapter.process_scan_batch(released.observations)
+if latest_result is not None:
+    publish_to_d2(latest_result.tracks)
+```
+
+输入时间必须先归一到同一 episode clock，观测坐标必须先符合 D1 canonical frame。organizer
+本身不估计 clock offset，也不做外部 frame 变换。没有扫描的 episode tick 只调用
+`advance_arrival_time(now)` 维护驻留上限；它不改变 event-time
+水位线。episode 结束必须调用 `close()` 并处理尾部 `released_scans`。main 只把融合后的 tracks
+交给 D2，逐帧 events 和累计 audit 交给 D6。D1 本轮未修改 main-owned runtime。
+
+2026-07-22 的 15 项确定性合同测试和 D1 全量 `151 passed` 验证该行为，无随机 seed、无
+AirSim。仍需 main 用 20/50/100/200 长 episode 标定延迟/容量参数、误拒率和吞吐；这些结果也
+不代替 fixed-lag 数值正确性或真实传感器精度验收。
+
+## 29. 扫描释放粒度与后验处理预算（2026-07-22）
+
+main development 接线表明，输入整理和融合计算需要分别计时。快速治理 benchmark 中，四档
+规模各 5 个 seed 的每个 episode 都能在峰值 3 帧缓冲下处理 136 帧，重排 12、拒绝 0、尾部
+缓冲 0；该路径不运行完整融合。单次 200v200 全栈则对 86 个释放扫描逐一调用
+`process_scan_batch()`，fusion 累计 35.115 s、平均 408.313 ms，明显高于输入整理的
+2.682 s/31.186 ms。
+
+扫描级一对一关联不能被简单跨来源合并。雷达 scan、拦截相机 scan 和侦察相机 scan 有不同的
+observer namespace；把它们拼成一个伪扫描会改变“一条航迹每 observer scan 最多一次更新”的
+语义。性能优化只能复用计算和延迟后验物化：先按原顺序完成每帧关联和 evidence，再对同一已
+关闭 measurement-time cohort 合并发布传播；只重放 revision 变化的 dirty tracks，未变航迹
+复用只读快照。
+
+优化的数值护栏是相同冻结输入下 track 集、每条 state/covariance、双时间戳、OOSM、innovation/
+gate、接受/拒绝和 truth-use 与当前基线一致，容差沿用 `1e-9`。当前只是实施方向，尚未修改
+D1 算法代码，也没有性能收益证据。
