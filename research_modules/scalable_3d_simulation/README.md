@@ -46,6 +46,31 @@ D1 仍是首要热点，下一轮优先处理创新求解、数值雅可比和�
 完整条件、逐规模表、同 seed 开发对照和制品哈希见
 `docs/SCALABLE_3D_RULE_PERFORMANCE_CALIBRATION_CN.md`。
 
+## 2026-07-22 长时性能对照工具
+
+`long_duration_performance.py` 和
+`scripts/compare_long_duration_episodes.py` 用于比较同一 clean 提交、同一 seed、仅仿真
+时长不同的两个 episode。工具只读取 manifest、场景配置、summary、阶段耗时和可选的
+`/usr/bin/time -v` 资源记录，不扫描大体积在线 JSONL 内容。
+
+对照结果包含总墙钟、实时倍率、峰值驻留内存、在线日志速率、D1/D2 治理状态、计划确认
+以及各阶段的单位仿真时间增长、调用密度增长和单次调用成本增长。比较前强制核对提交号、
+场景版本、seed、目标/资源/侦察节点数量及去除时长后的配置摘要，避免把不同来源 episode
+混为同一性能样本。
+
+```bash
+python3 research_modules/scalable_3d_simulation/scripts/compare_long_duration_episodes.py \
+  --short-episode <2.2-second-episode> \
+  --long-episode <10-second-episode> \
+  --output-dir <comparison-output>
+```
+
+提交 `c0460e0` 的 seed 42000 基线显示，2.2 秒与 10 秒运行的单位仿真时间墙钟由
+`9.868 s` 增至 `26.329 s`，归一化增长 `2.668x`；峰值驻留内存由 `1.054 GiB` 增至
+`3.154 GiB`。D1 fusion 和 D2 association 的单次调用成本分别增长约 `2.107x` 和
+`3.467x`。该结果只用于定位长时历史增长。修复后仍需在新的 clean 提交复跑相同 pair，
+再由 D6 独立评估并扩展多 seed。
+
 ## 2026-07-21 正式数据与开发训练状态
 
 修复逐 episode checkpoint 和 D5 同流多批次边界后，新的正式生成目录已经完成全部
