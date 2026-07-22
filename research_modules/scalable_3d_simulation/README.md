@@ -86,6 +86,30 @@ python3 research_modules/scalable_3d_simulation/scripts/compare_long_duration_ep
 103.339/8.203/3.348/2.699 秒。3/3 状态有限、在线真值为 0、D1/D2 overflow 为 0，3/3
 没有五米接近事件。该批继续属于描述性性能校准，不是拦截效果或学习算法验收。
 
+## 2026-07-22 发布边界与冻结热点复测
+
+detached clean 提交 `8f8619246298bdce34fabb7c7199bc282487bd45` 完成相同 seed 42000
+的 2.2/10 秒对照，以及 seeds 42000-42002 的三组 10 秒运行。D1 对每个扫描继续执行状态
+更新并保留一条发布；同一融合时刻内只有最后一个后验构造完整航迹数组，其余发布携带空的
+`tracks`、`track_count=0`、真实 `current_track_count`、扫描摘要和观测谱系。旧 schema 对
+`track_count == len(tracks)` 的约束保持成立。
+
+三组 10 秒核心墙钟均值为 155.895 秒，实时倍率均值 0.0642，峰值驻留内存均值
+2.889 GiB。相对上一候选，三项变化分别为 -9.4%、+10.4% 和 -5.4%。D1 融合均值由
+103.339 秒降至 92.991 秒；模块发布总线均值由 7.574 秒降至 6.211 秒；文件系统写出块
+均值下降 23.4%。state-only/full 快照数量分别为 `310/454`、`328/516` 和 `278/504`。
+
+seed 42000 的长短单位仿真时间成本增长由 2.036 倍降至 1.830 倍，在线日志增长由
+1.436 倍降至 1.249 倍。D5 终端配准单次调用成本增长由 2.696 倍降至 2.423 倍，但仍为
+开放 P1。D3 三 seed 累计时间由 3.348 秒变为 3.289 秒，按基本持平处理，不据此修改代价、
+迟滞或求解主线。
+
+3/3 episode 均为 clean、有限状态、在线真值使用为 0，D1/D2 overflow 为 0。场景配置、
+离线真值标签、三维真值数组、接近事件、扫描事件和既有业务摘要与上一候选相同。D6 将三组
+结果归类为 `descriptive_clean_source_calibration`；该证据不关闭实时性、物理拦截、AirSim
+或学习模型准入。详细结果见
+`docs/SCALABLE_3D_LONG_DURATION_PERFORMANCE_CALIBRATION_CN.md`。
+
 ## 2026-07-21 正式数据与开发训练状态
 
 修复逐 episode checkpoint 和 D5 同流多批次边界后，新的正式生成目录已经完成全部
@@ -513,6 +537,8 @@ SHA-256 分别为 `6fb64252292aaedd3c68d1bfea64b76496136ce6edb32add61a281d511c4e
 - D2 观测证据治理：`d2-observation-evidence-governance-v1`
 - D2 观测声明账本：`d2-observation-claim-ledger-v2`
 - main 观测治理快照：`scalable3d-observation-governance-runtime-v1`
+- D1 融合性能诊断：`d1.fusion_performance_diagnostics.v1`
+- D5 终端操作数诊断：`d5-scalable3d-operation-counts-v1`
 - D6 观测治理标定输入：`scalable3d-observation-governance-calibration-input-v1`
 - D6 真值隔离清单：`scalable3d-d6-truth-isolated-manifest-v1`
 - 跨模块共享 seed 切分：`scalable3d-shared-seed-split-registry-v1`

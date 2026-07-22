@@ -74,6 +74,12 @@ main
 
 兼容性新增字段可保留当前主版本。不兼容的字段删除、单位变化、坐标语义变化或行为变化必须升级主版本。模型和策略采用语义化版本号。
 
+`scalable3d-episode-bus-v1` 的 D1 航迹发布现允许两种兼容记录：`full_posterior` 携带完整
+`tracks`，`state_update` 只携带扫描摘要、观测谱系和 `current_track_count`。两类记录都保持
+`track_count == len(tracks)`；需要完整快照的 consumer 必须检查 `tracks_materialized`，不能
+把 state update 的空数组解释为当前航迹库存归零。该新增不删除旧字段，因此保持总线 v1；
+后续若改变 `track_count` 语义或取消完整快照，则必须升级总线主版本。
+
 ## 实验清单
 
 每个输出目录必须包含 `manifest.json`，至少记录：
