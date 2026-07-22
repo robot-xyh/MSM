@@ -81,6 +81,11 @@ python3 research_modules/scalable_3d_simulation/scripts/compare_long_duration_ep
 阶段耗时、语义哈希和后续边界见
 `docs/SCALABLE_3D_LONG_DURATION_PERFORMANCE_CALIBRATION_CN.md`。
 
+同一 clean 提交随后完成 seed 42001、42002 的 10 秒运行。三 seed 核心墙钟均值为
+172.097 秒，实时倍率均值 0.0581，峰值驻留内存均值 3.055 GiB；D1/D2/D3/D5 阶段均值为
+103.339/8.203/3.348/2.699 秒。3/3 状态有限、在线真值为 0、D1/D2 overflow 为 0，3/3
+没有五米接近事件。该批继续属于描述性性能校准，不是拦截效果或学习算法验收。
+
 ## 2026-07-21 正式数据与开发训练状态
 
 修复逐 episode checkpoint 和 D5 同流多批次边界后，新的正式生成目录已经完成全部

@@ -953,7 +953,7 @@ D1 NumPy EKF/FusionAdapter
 
 | Owner | 当前缺口 | 已有基础 | 缺少条件/下一验收 |
 | --- | --- | --- | --- |
-| main/D1/D2/D3/D5/D6 | 分阶段实时性能与长时增长达标 | clean `3bac3ff` 同 seed 2.2/10 s 对照全部安全合同通过；10 s 核心墙钟 `263.289 -> 172.214 s`，D1 `162.494 -> 103.176 s`，D2 常规关联 `35.812 -> 8.304 s`；D1-D7 规范输出和 201 帧世界状态与旧基线一致 | 实时倍率仍仅 `0.058`，峰值内存 `2.981 GiB`，长短单位时间成本仍增长 `2.036x`；D1 全量快照、D5 终端单次成本、稳定窗口 P50/P95/max 和少量 10 s 多 seed 仍需关闭。不得把单 seed 描述性校准当实时或正式验收 |
+| main/D1/D2/D3/D5/D6 | 分阶段实时性能与长时增长达标 | clean `3bac3ff` 同 seed 2.2/10 s 对照全部安全合同通过；10 s 核心墙钟 `263.289 -> 172.214 s`，D1 `162.494 -> 103.176 s`，D2 常规关联 `35.812 -> 8.304 s`；D1-D7 规范输出和 201 帧世界状态与旧基线一致。三组 10 s 核心墙钟/峰值内存均值为 `172.097 s/3.055 GiB`，3/3 truth/overflow 为 0 | 实时倍率均值仍仅 `0.0581`，长短单位时间成本仍增长 `2.036x`；D1 全量快照、D3 冻结输入归因、D5 终端单次成本和稳定窗口 P50/P95/max 仍需关闭。不得把三 seed 描述性校准当实时或正式验收 |
 | D2/D6/main | v2 关联候选评审与跨 difficulty 证据 | 正式 v2 联合报告已生成；总体五项 gate 通过，IDSW 下降 54.6%，P95 15.47 ms，truth leakage=0；默认在线主线未改变 | 仅 `clutter/combined` 通过，四个零 baseline-IDSW difficulty fail-closed，dropout truth alignment 为 partial；需补同 case/seed 完整多源 system bundle 后再决定是否晋级，JPDA 保持不准入 |
 | D3/D5/D7/main | M5N2 协同物理闭环 | 同条件 10-seed paired 和四层日志已完成；baseline 7/30 pair，candidate 4/30，联盟均 0/10 | 分离第二 primary 中段重捕、D5 共识、D7 gate 和成员安全根因；candidate 保持关闭 |
 | D5/D7/main | 单帧 dropout 尾部 | 2-5 帧逐 seed 全通过，物理结果 100/100，truth/ID/version 无违规 | 复核 seed 2 在 0.8 s 注入时没有进入 image-KF 的锁定时序；不得用聚合计数掩盖 |
@@ -1067,9 +1067,10 @@ episode 正式复跑。四档各 5 seed 均通过 `formal_only` 准入，`reposi
 4. 峰值驻留内存仍为 2.981 GiB，10 秒在线日志仍为 296.336 MiB，报告与写出后处理为
    83.596 秒。main 需治理发布边界和写出开销，同时保留状态变化、身份、生命周期、质量跨档
    和来源谱系事件。
-5. 先扩展少量 10 秒 seed，记录稳定窗口 P50/P95/max、D3 耗时和内存分布，再决定完整 20
-   未见 seed。当前 manifest 没有正式实验矩阵元数据，D6 将其归为 clean-source descriptive；
-   长时物理闭环、AirSim 和学习消融仍未完成。
+5. seed 42000-42002 的三组 10 秒运行已完成，核心墙钟均值 172.097 秒、峰值内存均值
+   3.055 GiB、D3 分配均值 3.348 秒，3/3 状态有限且 truth/overflow 为 0。先完成冻结输入
+   归因和稳定窗口 P50/P95/max，再决定完整 20 未见 seed。当前 manifest 没有正式实验矩阵
+   元数据，D6 将其归为 clean-source descriptive；长时物理闭环、AirSim 和学习消融仍未完成。
 
 详细证据见
 `research_modules/scalable_3d_simulation/docs/SCALABLE_3D_RULE_PERFORMANCE_CALIBRATION_CN.md` 和
