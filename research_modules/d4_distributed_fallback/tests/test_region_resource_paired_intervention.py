@@ -25,6 +25,7 @@ from d4_distributed_fallback.region_resource_paired_intervention import (
     REGION_RESOURCE_FROZEN_DEVELOPMENT_STATE_DICT_SHA256,
     REGION_RESOURCE_FROZEN_DEVELOPMENT_TRAINING_MANIFEST_SHA256,
     REGION_RESOURCE_PAIRED_ARM_EVIDENCE_SCHEMA,
+    REGION_RESOURCE_PAIRED_ARM_EVIDENCE_SCHEMA_V1,
     REGION_RESOURCE_PAIRED_MANIFEST_SCHEMA,
     REGION_RESOURCE_PAIRED_SPEC_SCHEMA,
     REGION_RESOURCE_RESERVED_EVALUATION_SEEDS,
@@ -56,6 +57,21 @@ from d4_distributed_fallback.regional_failover import (
     RegionalRegionDecision,
     RegionalScenarioMetadata,
     RegionOwnershipMetadata,
+)
+
+
+_CANDIDATE_GATE_DIAGNOSTIC_FIELDS = (
+    "candidate_gate_diagnostics_available",
+    "candidate_confidence",
+    "minimum_confidence",
+    "candidate_ood_passed",
+    "candidate_latency_limit_ms",
+    "candidate_finite",
+    "candidate_confidence_gate_passed",
+    "candidate_ood_gate_passed",
+    "candidate_latency_gate_passed",
+    "candidate_finite_gate_passed",
+    "candidate_failure_gate_passed",
 )
 
 
@@ -333,6 +349,47 @@ def _execute_pair(
     return control, treatment
 
 
+def _execute_gate_candidate(
+    *,
+    confidence: float = 0.9,
+    candidate_latency_ms: float = 2.0,
+    candidate_ood_passed: bool = True,
+    make_nonfinite: bool = False,
+) -> RegionResourcePairedArmEvidence:
+    specification = _specification()
+    snapshot = _snapshot(1000)
+    candidate = replace(_candidate(snapshot), confidence=confidence)
+    if make_nonfinite:
+        object.__setattr__(
+            candidate.actions[0],
+            "expected_lease_expires_at_s",
+            float("nan"),
+        )
+    return RegionResourcePairedInterventionExecutor(specification).execute_arm(
+        arm=RegionResourcePairedArm.TREATMENT,
+        seed=1000,
+        observed_input_binding=specification.arm_for(
+            1000, RegionResourcePairedArm.TREATMENT
+        ).input_binding,
+        snapshot=snapshot,
+        evaluated_at_s=1.5,
+        candidate_recommendation=candidate,
+        candidate_bundle_manifest_sha256=_bundle().bundle_manifest_sha256,
+        candidate_latency_ms=candidate_latency_ms,
+        candidate_ood_passed=candidate_ood_passed,
+    )
+
+
+def _as_v1_arm_evidence_payload(
+    evidence: RegionResourcePairedArmEvidence,
+) -> dict[str, object]:
+    payload = evidence.to_dict()
+    for field_name in _CANDIDATE_GATE_DIAGNOSTIC_FIELDS:
+        payload.pop(field_name)
+    payload["schema"] = REGION_RESOURCE_PAIRED_ARM_EVIDENCE_SCHEMA_V1
+    return payload
+
+
 def test_specification_freezes_exact_reserved_pairs_and_round_trips() -> None:
     specification = _specification()
 
@@ -399,9 +456,31 @@ def test_control_and_treatment_are_isolated_and_never_online_authority() -> None
     assert control.deterministic_rule_executed is True
     assert control.isolated_arm_safe_adopted is True
     assert control.isolated_treatment_safe_adopted is False
+    assert control.candidate_gate_diagnostics_available is True
+    assert control.minimum_confidence == pytest.approx(0.6)
+    assert control.candidate_latency_limit_ms == pytest.approx(50.0)
+    assert control.candidate_confidence is None
+    assert control.candidate_ood_passed is None
+    assert control.candidate_finite is None
+    assert control.candidate_confidence_gate_passed is None
+    assert control.candidate_ood_gate_passed is None
+    assert control.candidate_latency_gate_passed is None
+    assert control.candidate_finite_gate_passed is None
+    assert control.candidate_failure_gate_passed is None
     assert treatment.candidate_considered is True
     assert treatment.candidate_bundle_match is True
     assert treatment.candidate_thresholds_passed is True
+    assert treatment.candidate_gate_diagnostics_available is True
+    assert treatment.candidate_confidence == pytest.approx(0.9)
+    assert treatment.minimum_confidence == pytest.approx(0.6)
+    assert treatment.candidate_ood_passed is True
+    assert treatment.candidate_latency_limit_ms == pytest.approx(50.0)
+    assert treatment.candidate_finite is True
+    assert treatment.candidate_confidence_gate_passed is True
+    assert treatment.candidate_ood_gate_passed is True
+    assert treatment.candidate_latency_gate_passed is True
+    assert treatment.candidate_finite_gate_passed is True
+    assert treatment.candidate_failure_gate_passed is True
     assert treatment.candidate_safety_projection_passed is True
     assert treatment.next_cycle_consumption_passed is True
     assert treatment.isolated_treatment_safe_adopted is True
@@ -416,6 +495,102 @@ def test_control_and_treatment_are_isolated_and_never_online_authority() -> None
         assert evidence.assist_enabled is False
         assert evidence.online_authority is False
         assert evidence.rule_fallback_enabled is True
+
+
+@pytest.mark.parametrize(
+    ("gate", "reason", "kwargs"),
+    (
+        (
+            "candidate_confidence_gate_passed",
+            "candidate_low_confidence",
+            {"confidence": 0.599999},
+        ),
+        (
+            "candidate_ood_gate_passed",
+            "candidate_ood_rejected",
+            {"candidate_ood_passed": False},
+        ),
+        (
+            "candidate_latency_gate_passed",
+            "candidate_inference_timeout",
+            {"candidate_latency_ms": 50.001},
+        ),
+        (
+            "candidate_finite_gate_passed",
+            "candidate_output_nonfinite",
+            {"make_nonfinite": True},
+        ),
+    ),
+)
+def test_each_candidate_gate_has_explicit_diagnostics_and_rule_fallback(
+    gate: str,
+    reason: str,
+    kwargs: dict[str, object],
+) -> None:
+    evidence = _execute_gate_candidate(**kwargs)
+
+    assert evidence.pair_input_match is True
+    assert evidence.candidate_bundle_match is True
+    assert evidence.candidate_thresholds_passed is False
+    assert getattr(evidence, gate) is False
+    assert evidence.candidate_failure_gate_passed is True
+    assert reason in evidence.rejection_reasons
+    assert (
+        "candidate_threshold_or_finite_gate_rejected"
+        in evidence.rejection_reasons
+    )
+    assert evidence.rule_fallback_used is True
+    assert evidence.deterministic_rule_executed is True
+    assert evidence.next_cycle_consumption_passed is True
+    assert evidence.isolated_arm_safe_adopted is True
+    assert evidence.isolated_treatment_safe_adopted is False
+
+
+def test_combined_candidate_gate_failure_persists_every_explicit_reason() -> None:
+    evidence = _execute_gate_candidate(
+        confidence=0.5,
+        candidate_latency_ms=50.001,
+        candidate_ood_passed=False,
+        make_nonfinite=True,
+    )
+
+    assert evidence.candidate_confidence == pytest.approx(0.5)
+    assert evidence.minimum_confidence == pytest.approx(0.6)
+    assert evidence.candidate_ood_passed is False
+    assert evidence.candidate_latency_ms == pytest.approx(50.001)
+    assert evidence.candidate_latency_limit_ms == pytest.approx(50.0)
+    assert evidence.candidate_finite is False
+    assert evidence.candidate_confidence_gate_passed is False
+    assert evidence.candidate_ood_gate_passed is False
+    assert evidence.candidate_latency_gate_passed is False
+    assert evidence.candidate_finite_gate_passed is False
+    assert evidence.candidate_failure_gate_passed is True
+    assert {
+        "candidate_low_confidence",
+        "candidate_ood_rejected",
+        "candidate_inference_timeout",
+        "candidate_output_nonfinite",
+        "candidate_threshold_or_finite_gate_rejected",
+    }.issubset(evidence.rejection_reasons)
+    assert evidence.candidate_recommendation_sha256 is None
+    assert evidence.rule_fallback_used is True
+    assert evidence.next_cycle_consumption_passed is True
+    assert evidence.isolated_treatment_safe_adopted is False
+
+
+def test_candidate_threshold_boundaries_remain_closed_at_original_values() -> None:
+    evidence = _execute_gate_candidate(
+        confidence=0.6,
+        candidate_latency_ms=50.0,
+    )
+
+    assert evidence.minimum_confidence == pytest.approx(0.6)
+    assert evidence.candidate_latency_limit_ms == pytest.approx(50.0)
+    assert evidence.candidate_confidence_gate_passed is True
+    assert evidence.candidate_latency_gate_passed is True
+    assert evidence.candidate_thresholds_passed is True
+    assert evidence.rule_fallback_used is False
+    assert evidence.isolated_treatment_safe_adopted is True
 
 
 @pytest.mark.parametrize(
@@ -450,6 +625,13 @@ def test_treatment_fails_closed_when_observed_pair_input_differs(
     )
 
     assert evidence.pair_input_match is False
+    assert evidence.candidate_bundle_match is True
+    assert evidence.candidate_thresholds_passed is True
+    assert evidence.candidate_confidence_gate_passed is True
+    assert evidence.candidate_ood_gate_passed is True
+    assert evidence.candidate_latency_gate_passed is True
+    assert evidence.candidate_finite_gate_passed is True
+    assert evidence.rule_fallback_used is True
     assert evidence.isolated_treatment_safe_adopted is False
     assert evidence.next_cycle_consumption_passed is False
     assert f"paired_input_mismatch:{field}" in evidence.rejection_reasons
@@ -490,6 +672,11 @@ def test_treatment_falls_back_on_stale_epoch_and_bundle_hash() -> None:
     )
     assert wrong_bundle.isolated_treatment_safe_adopted is False
     assert wrong_bundle.rule_fallback_used is True
+    assert wrong_bundle.candidate_thresholds_passed is True
+    assert wrong_bundle.candidate_confidence_gate_passed is True
+    assert wrong_bundle.candidate_ood_gate_passed is True
+    assert wrong_bundle.candidate_latency_gate_passed is True
+    assert wrong_bundle.candidate_finite_gate_passed is True
     assert "candidate_bundle_or_policy_mismatch" in wrong_bundle.rejection_reasons
 
 
@@ -596,6 +783,12 @@ def test_treatment_fails_closed_on_coalition_or_lease_fence(
 
     assert evidence.isolated_treatment_safe_adopted is False
     assert evidence.isolated_arm_safe_adopted is False
+    assert evidence.candidate_bundle_match is True
+    assert evidence.candidate_thresholds_passed is True
+    assert evidence.candidate_confidence_gate_passed is True
+    assert evidence.candidate_ood_gate_passed is True
+    assert evidence.candidate_latency_gate_passed is True
+    assert evidence.candidate_finite_gate_passed is True
     assert any(reason in item for item in evidence.rejection_reasons)
 
 
@@ -634,6 +827,72 @@ def test_manifest_requires_all_arms_matches_hashes_and_round_trips() -> None:
             arm_evidence=(tampered, *manifest.arm_evidence[1:]),
             manifest_id="",
         )
+
+
+def test_v1_arm_and_manifest_json_are_verified_then_migrated_to_v2() -> None:
+    specification = _specification()
+    evidence: list[RegionResourcePairedArmEvidence] = []
+    for seed in REGION_RESOURCE_RESERVED_EVALUATION_SEEDS:
+        evidence.extend(_execute_pair(specification, _snapshot(seed)))
+    manifest = RegionResourcePairedInterventionManifest(
+        specification=specification,
+        arm_evidence=tuple(evidence),
+        created_at_utc="2026-07-21T00:00:00Z",
+    )
+    legacy_payload = manifest.to_dict()
+    legacy_payload["arm_evidence"] = [
+        _as_v1_arm_evidence_payload(item) for item in manifest.arm_evidence
+    ]
+    content_payload = dict(legacy_payload)
+    content_payload.pop("manifest_id")
+    legacy_payload["manifest_id"] = (
+        "d4-rr-paired-manifest-"
+        + sha256(
+            json.dumps(
+                content_payload,
+                sort_keys=True,
+                separators=(",", ":"),
+                ensure_ascii=True,
+                allow_nan=False,
+            ).encode("utf-8")
+        ).hexdigest()
+    )
+    legacy_manifest_id = legacy_payload["manifest_id"]
+
+    migrated = RegionResourcePairedInterventionManifest.from_dict(legacy_payload)
+
+    assert migrated.manifest_id != legacy_manifest_id
+    assert migrated.treatment_safe_adoption_count == 20
+    assert migrated.failed_arm_count == 0
+    for original, record in zip(manifest.arm_evidence, migrated.arm_evidence):
+        assert record.schema == REGION_RESOURCE_PAIRED_ARM_EVIDENCE_SCHEMA
+        assert record.candidate_gate_diagnostics_available is False
+        assert record.candidate_confidence is None
+        assert record.minimum_confidence is None
+        assert record.candidate_ood_passed is None
+        assert record.candidate_latency_limit_ms is None
+        assert record.candidate_finite is None
+        assert record.candidate_confidence_gate_passed is None
+        assert record.candidate_ood_gate_passed is None
+        assert record.candidate_latency_gate_passed is None
+        assert record.candidate_finite_gate_passed is None
+        assert record.candidate_failure_gate_passed is None
+        assert record.pair_input_match is original.pair_input_match
+        assert record.candidate_bundle_match is original.candidate_bundle_match
+        assert record.rule_fallback_used is original.rule_fallback_used
+        assert (
+            record.next_cycle_consumption_passed
+            is original.next_cycle_consumption_passed
+        )
+        assert (
+            record.isolated_treatment_safe_adopted
+            is original.isolated_treatment_safe_adopted
+        )
+
+    tampered = dict(legacy_payload)
+    tampered["manifest_id"] = "d4-rr-paired-manifest-" + _sha("tampered")
+    with pytest.raises(ValueError, match="legacy manifest content"):
+        RegionResourcePairedInterventionManifest.from_dict(tampered)
 
 
 def test_manifest_rejects_different_actual_arm_snapshot_hashes() -> None:
@@ -811,10 +1070,18 @@ def test_isolated_evaluator_uses_raw_candidate_then_truthful_rule_fallback() -> 
     assert treatment.candidate_recommendation_sha256 is not None
     assert treatment.candidate_bundle_match is True
     assert treatment.candidate_thresholds_passed is False
+    assert treatment.candidate_gate_diagnostics_available is True
+    assert treatment.minimum_confidence == pytest.approx(0.6)
+    assert treatment.candidate_latency_limit_ms == pytest.approx(50.0)
+    assert treatment.candidate_ood_passed is False
+    assert treatment.candidate_ood_gate_passed is False
+    assert treatment.candidate_finite is True
+    assert treatment.candidate_finite_gate_passed is True
     assert treatment.rule_fallback_used is True
     assert treatment.deterministic_rule_executed is True
     assert treatment.isolated_treatment_safe_adopted is False
     assert "isolated_candidate_ood_rejected" in treatment.rejection_reasons
+    assert "candidate_ood_rejected" in treatment.rejection_reasons
     assert "candidate_threshold_or_finite_gate_rejected" in treatment.rejection_reasons
     for evidence in (control, treatment):
         assert evidence.runtime_advisory_applied_ack_available is False
@@ -855,6 +1122,16 @@ def test_isolated_evaluator_records_bundle_failure_and_runs_rule(tmp_path) -> No
     assert control.snapshot_payload_sha256 == treatment.snapshot_payload_sha256
     assert treatment.candidate_considered is False
     assert treatment.candidate_recommendation_sha256 is None
+    assert treatment.minimum_confidence == pytest.approx(0.6)
+    assert treatment.candidate_latency_limit_ms == pytest.approx(50.0)
+    assert treatment.candidate_confidence is None
+    assert treatment.candidate_ood_passed is None
+    assert treatment.candidate_finite is None
+    assert treatment.candidate_confidence_gate_passed is None
+    assert treatment.candidate_ood_gate_passed is None
+    assert treatment.candidate_latency_gate_passed is None
+    assert treatment.candidate_finite_gate_passed is None
+    assert treatment.candidate_failure_gate_passed is None
     assert treatment.rule_fallback_used is True
     assert treatment.deterministic_rule_executed is True
     assert treatment.isolated_treatment_safe_adopted is False

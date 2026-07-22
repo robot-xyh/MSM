@@ -1,12 +1,13 @@
 # D4 实现差距审计：分布式协同与降级接管
 
-## 2026-07-21 保留 seed 同配对干预合同
+## 2026-07-21 保留 seed 候选门诊断
 
-- **D4 模块边界已关闭**：除 specification、arm evidence、manifest 和 CLI 外，现已补齐稳定的隔离候选加载器/执行器。它严格限定 seed 1000-1019 及 control/treatment 两个隔离 arm，每对绑定相同 scenario/config/initial-state/communication/fault/snapshot-lineage SHA；只接受 `region_resource_bc_900_20260720` development bundle，并固定 manifest、权重、训练清单、数据集和切分 SHA。缺 seed、缺 arm、跨 arm schedule 或实际 snapshot 不同、错误 bundle、文件变化、hash 篡改、truth key 与非有限值均拒绝。
-- **安全采用已隔离**：control 只执行确定性规则。加载器只读生成 raw learned candidate，不构造生产 advisor；treatment 候选必须经过 bundle/置信/时限/OOD/有限值检查，以及现有 owner/version/epoch/lease、fault fence、coalition ACK、邻接、容量、备用、已提交资源和守恒投影。加载、推理或投影任一失败均记录原因并回退规则。旧 epoch、过期 lease、缺 ACK、联盟不完整、未知边或不安全建议不得影响 treatment 下一周期。
-- **权限与证据边界**：`isolated_treatment_safe_adopted` 不是 runtime applied ACK。PPO、assist、online authority 固定 false，rule fallback 固定 true。D4 不读取 truth，不生成 observed outcome、paired non-degradation、counterfactual 或 causal label，也不把 post-projection recommendation 当成 applied ACK。
-- **验收**：2026-07-21 专项增至 **26/26**，D4 全量 **475/475 passed**。新增六项覆盖真实冻结 bundle 三文件 SHA 与读取前后零变化、非冻结 binding、加载后文件变化、权重篡改、raw 候选分布外/阈值回退和候选投影异常；原 exact seeds/arms、JSON/CLI、输入/快照配对及全部安全门回归继续通过。验收阈值为零测试失败、零在线权限升级、候选失败全部规则回退。该证据是单元/本地制品读取验证，不是正式 20-seed 策略性能试验。
-- **仍开放的 P1**：D4 的 stable loader/executor 缺口已关闭。main 尚未在实际保留 seed 上生成 40 个隔离 episode 和对应 manifest；D6 尚未提供 outcome sidecar、制品哈希与 paired non-degradation。counterfactual/causal 仍需独立设计和审计。完成前不得启动 PPO、开放 assist/authority 或宣称候选优于规则。
+- **诊断 GAP 已关闭**：arm evidence 升级为 v2，保存 candidate confidence、`minimum_confidence`、OOD、latency/limit、finite，以及 confidence/OOD/latency/finite/external-failure 五项 gate。已评估候选分别使用 `candidate_low_confidence`、`candidate_ood_rejected`、`candidate_inference_timeout`、`candidate_output_nonfinite`；旧 generic reason 只兼容保留，不能单独解释拒绝。
+- **旧证据兼容**：v1 reader 先验证旧字段集合和旧 manifest content ID，再迁移为新增诊断 unavailable 的 v2 对象。冻结 bundle、权重、manifest 和正式 v1 artifact 均未修改；未知历史字段不回填。
+- **安全门未降低**：默认 `minimum_confidence=0.6`、latency limit `50 ms`、OOD、finite、bundle identity、pair input、owner/version/epoch/lease、fault fence、coalition ACK、投影和 next-cycle consumption 语义不变。任一候选门失败仍执行确定性规则，`PPO/assist/authority=false`、`rule_fallback=true`。
+- **正式只读诊断**：权威 nominal 5v5 seed 1000-1019 的 20 个 treatment record 显示 confidence min/mean/max `0.508893/0.563426/0.569492`，OOD 与 finite 各 20/20 通过；正式 latency P95/max `35.608/42.302 ms`，20/20 通过 `50 ms` 门。confidence 通过数为 0/20，因此明确拒绝均为 low confidence，候选有效数仍为 0。
+- **验收**：配对专项 **33/33**、D4 全量 **482/482 passed**。新增测试覆盖四个单门、组合门、原阈值边界、v1 40-arm manifest 迁移，以及 rule fallback、pair input、bundle identity 和 next-cycle safety 不退化。
+- **仍开放的 P1**：bundle manifest 明确声明 confidence head uncalibrated。后续只能在与训练和保留 seed 隔离的 calibration split 上评估 reliability/ECE/Brier，校准或重训 head 后以同一 0.6 门复验；不得使用本批保留 seed 降阈值。D6 outcome sidecar、paired non-degradation、counterfactual 和 causal 仍未形成，不能宣称候选有效或优于规则。
 
 ## 2026-07-21 区域 reward 定义与消费合同
 

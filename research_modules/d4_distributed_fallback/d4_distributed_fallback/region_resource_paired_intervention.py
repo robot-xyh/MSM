@@ -53,8 +53,11 @@ from .regional_failover import REGIONAL_FAILOVER_SCHEMA, RegionalFailoverDecisio
 
 
 REGION_RESOURCE_PAIRED_SPEC_SCHEMA = "d4-region-resource-paired-intervention-spec-v1"
-REGION_RESOURCE_PAIRED_ARM_EVIDENCE_SCHEMA = (
+REGION_RESOURCE_PAIRED_ARM_EVIDENCE_SCHEMA_V1 = (
     "d4-region-resource-paired-arm-evidence-v1"
+)
+REGION_RESOURCE_PAIRED_ARM_EVIDENCE_SCHEMA = (
+    "d4-region-resource-paired-arm-evidence-v2"
 )
 REGION_RESOURCE_PAIRED_MANIFEST_SCHEMA = (
     "d4-region-resource-paired-intervention-manifest-v1"
@@ -88,6 +91,26 @@ REGION_RESOURCE_FROZEN_DEVELOPMENT_SPLIT_SHA256 = (
 
 _SHA256_HEX_LENGTH = 64
 _ALLOWED_PROJECTION_NOTES = (":clipped_by_safety_projection",)
+_CANDIDATE_GATE_DIAGNOSTIC_FIELDS = (
+    "candidate_gate_diagnostics_available",
+    "candidate_confidence",
+    "minimum_confidence",
+    "candidate_ood_passed",
+    "candidate_latency_limit_ms",
+    "candidate_finite",
+    "candidate_confidence_gate_passed",
+    "candidate_ood_gate_passed",
+    "candidate_latency_gate_passed",
+    "candidate_finite_gate_passed",
+    "candidate_failure_gate_passed",
+)
+_CANDIDATE_GENERIC_GATE_REJECTION = (
+    "candidate_threshold_or_finite_gate_rejected"
+)
+_CANDIDATE_LOW_CONFIDENCE_REJECTION = "candidate_low_confidence"
+_CANDIDATE_OOD_REJECTION = "candidate_ood_rejected"
+_CANDIDATE_TIMEOUT_REJECTION = "candidate_inference_timeout"
+_CANDIDATE_NONFINITE_REJECTION = "candidate_output_nonfinite"
 _FORBIDDEN_KEY_TOKENS = (
     "truth",
     "actor_id",
@@ -462,6 +485,17 @@ class RegionResourcePairedArmEvidence:
     next_cycle_consumption_passed: bool
     isolated_arm_safe_adopted: bool
     isolated_treatment_safe_adopted: bool
+    candidate_gate_diagnostics_available: bool
+    candidate_confidence: float | None
+    minimum_confidence: float | None
+    candidate_ood_passed: bool | None
+    candidate_latency_limit_ms: float | None
+    candidate_finite: bool | None
+    candidate_confidence_gate_passed: bool | None
+    candidate_ood_gate_passed: bool | None
+    candidate_latency_gate_passed: bool | None
+    candidate_finite_gate_passed: bool | None
+    candidate_failure_gate_passed: bool | None
     candidate_recommendation_sha256: str | None = None
     executed_recommendation_sha256: str | None = None
     advisory_id: str | None = None
@@ -483,7 +517,11 @@ class RegionResourcePairedArmEvidence:
     def __post_init__(self) -> None:
         if self.schema != REGION_RESOURCE_PAIRED_ARM_EVIDENCE_SCHEMA:
             raise ValueError("unsupported paired arm evidence schema")
-        arm = self.arm if isinstance(self.arm, RegionResourcePairedArm) else RegionResourcePairedArm(str(self.arm))
+        arm = (
+            self.arm
+            if isinstance(self.arm, RegionResourcePairedArm)
+            else RegionResourcePairedArm(str(self.arm))
+        )
         object.__setattr__(self, "arm", arm)
         if not self.arm_id or int(self.seed) not in REGION_RESOURCE_RESERVED_EVALUATION_SEEDS:
             raise ValueError("paired arm evidence identity or seed is invalid")
@@ -506,6 +544,41 @@ class RegionResourcePairedArmEvidence:
             value = float(getattr(self, name))
             if not isfinite(value) or value < 0.0:
                 raise ValueError(f"{name} must be finite and non-negative")
+        if not isinstance(self.candidate_gate_diagnostics_available, bool):
+            raise ValueError("candidate_gate_diagnostics_available must be boolean")
+        diagnostic_boolean_fields = (
+            "candidate_ood_passed",
+            "candidate_finite",
+            "candidate_confidence_gate_passed",
+            "candidate_ood_gate_passed",
+            "candidate_latency_gate_passed",
+            "candidate_finite_gate_passed",
+            "candidate_failure_gate_passed",
+        )
+        for name in diagnostic_boolean_fields:
+            value = getattr(self, name)
+            if value is not None and not isinstance(value, bool):
+                raise ValueError(f"{name} must be boolean or null")
+        if self.candidate_confidence is not None:
+            confidence = float(self.candidate_confidence)
+            if not isfinite(confidence) or not 0.0 <= confidence <= 1.0:
+                raise ValueError("candidate_confidence must be finite and in [0, 1]")
+            object.__setattr__(self, "candidate_confidence", confidence)
+        if self.minimum_confidence is not None:
+            minimum_confidence = float(self.minimum_confidence)
+            if not isfinite(minimum_confidence) or not 0.0 <= minimum_confidence <= 1.0:
+                raise ValueError("minimum_confidence must be finite and in [0, 1]")
+            object.__setattr__(self, "minimum_confidence", minimum_confidence)
+        if self.candidate_latency_limit_ms is not None:
+            latency_limit_ms = float(self.candidate_latency_limit_ms)
+            if not isfinite(latency_limit_ms) or latency_limit_ms < 0.0:
+                raise ValueError(
+                    "candidate_latency_limit_ms must be finite and non-negative"
+                )
+            object.__setattr__(self, "candidate_latency_limit_ms", latency_limit_ms)
+        object.__setattr__(self, "projection_notes", _unique(self.projection_notes))
+        object.__setattr__(self, "rejection_reasons", _unique(self.rejection_reasons))
+        self._validate_candidate_gate_diagnostics(arm)
         if self.pair_input_match != (
             self.expected_input_sha256 == self.observed_input_sha256
         ):
@@ -562,8 +635,115 @@ class RegionResourcePairedArmEvidence:
             or self.advisory_payload_sha256 is None
         ):
             raise ValueError("adopted arm evidence requires recommendation and advisory hashes")
-        object.__setattr__(self, "projection_notes", _unique(self.projection_notes))
-        object.__setattr__(self, "rejection_reasons", _unique(self.rejection_reasons))
+
+    def _validate_candidate_gate_diagnostics(
+        self, arm: RegionResourcePairedArm
+    ) -> None:
+        diagnostic_values = tuple(
+            getattr(self, name)
+            for name in _CANDIDATE_GATE_DIAGNOSTIC_FIELDS
+            if name != "candidate_gate_diagnostics_available"
+        )
+        if not self.candidate_gate_diagnostics_available:
+            if any(value is not None for value in diagnostic_values):
+                raise ValueError(
+                    "unavailable candidate gate diagnostics must remain null"
+                )
+            return
+        if self.minimum_confidence is None or self.candidate_latency_limit_ms is None:
+            raise ValueError("candidate gate diagnostics require frozen thresholds")
+
+        candidate_values = (
+            self.candidate_confidence,
+            self.candidate_ood_passed,
+            self.candidate_finite,
+            self.candidate_confidence_gate_passed,
+            self.candidate_ood_gate_passed,
+            self.candidate_latency_gate_passed,
+            self.candidate_finite_gate_passed,
+            self.candidate_failure_gate_passed,
+        )
+        if arm == RegionResourcePairedArm.CONTROL:
+            if any(value is not None for value in candidate_values):
+                raise ValueError("control evidence cannot contain candidate gate results")
+            return
+        if not self.candidate_considered:
+            if any(value is not None for value in candidate_values):
+                raise ValueError(
+                    "missing treatment candidate cannot contain evaluated gate results"
+                )
+            if self.candidate_thresholds_passed:
+                raise ValueError("missing treatment candidate cannot pass threshold gates")
+            return
+
+        required_results = (
+            self.candidate_ood_passed,
+            self.candidate_finite,
+            self.candidate_confidence_gate_passed,
+            self.candidate_ood_gate_passed,
+            self.candidate_latency_gate_passed,
+            self.candidate_finite_gate_passed,
+            self.candidate_failure_gate_passed,
+        )
+        if any(value is None for value in required_results):
+            raise ValueError("considered candidate requires every gate result")
+        if self.candidate_finite and self.candidate_confidence is None:
+            raise ValueError("finite candidate requires a persisted confidence")
+
+        expected_confidence_pass = bool(
+            self.candidate_confidence is not None
+            and self.candidate_confidence >= self.minimum_confidence
+        )
+        if self.candidate_confidence_gate_passed != expected_confidence_pass:
+            raise ValueError("candidate confidence gate contradicts persisted values")
+        if self.candidate_ood_gate_passed != self.candidate_ood_passed:
+            raise ValueError("candidate OOD gate contradicts persisted status")
+        if self.candidate_latency_gate_passed != (
+            self.candidate_latency_ms <= self.candidate_latency_limit_ms
+        ):
+            raise ValueError("candidate latency gate contradicts persisted values")
+        if self.candidate_finite_gate_passed != self.candidate_finite:
+            raise ValueError("candidate finite gate contradicts persisted status")
+        expected_thresholds_passed = all(
+            (
+                self.candidate_confidence_gate_passed,
+                self.candidate_ood_gate_passed,
+                self.candidate_latency_gate_passed,
+                self.candidate_finite_gate_passed,
+                self.candidate_failure_gate_passed,
+            )
+        )
+        if self.candidate_thresholds_passed != expected_thresholds_passed:
+            raise ValueError("candidate aggregate gate contradicts decomposed gates")
+
+        reasons = set(self.rejection_reasons)
+        if (
+            self.candidate_confidence is not None
+            and not self.candidate_confidence_gate_passed
+            and _CANDIDATE_LOW_CONFIDENCE_REJECTION not in reasons
+        ):
+            raise ValueError("low-confidence gate rejection reason is missing")
+        required_reasons = (
+            (
+                self.candidate_ood_gate_passed,
+                _CANDIDATE_OOD_REJECTION,
+            ),
+            (
+                self.candidate_latency_gate_passed,
+                _CANDIDATE_TIMEOUT_REJECTION,
+            ),
+            (
+                self.candidate_finite_gate_passed,
+                _CANDIDATE_NONFINITE_REJECTION,
+            ),
+        )
+        for gate_passed, reason in required_reasons:
+            if not gate_passed and reason not in reasons:
+                raise ValueError(f"candidate gate rejection reason is missing: {reason}")
+        if not self.candidate_thresholds_passed and not (
+            reasons - {_CANDIDATE_GENERIC_GATE_REJECTION}
+        ):
+            raise ValueError("candidate rejection cannot contain only the generic reason")
 
     def to_dict(self) -> dict[str, Any]:
         return to_jsonable(self)
@@ -573,8 +753,25 @@ class RegionResourcePairedArmEvidence:
         cls, value: Mapping[str, Any]
     ) -> "RegionResourcePairedArmEvidence":
         _reject_truth_keys(value)
-        _require_exact_keys(value, cls.__dataclass_fields__, "arm_evidence")
         payload = dict(value)
+        if payload.get("schema") == REGION_RESOURCE_PAIRED_ARM_EVIDENCE_SCHEMA_V1:
+            legacy_fields = {
+                name: field
+                for name, field in cls.__dataclass_fields__.items()
+                if name not in _CANDIDATE_GATE_DIAGNOSTIC_FIELDS
+            }
+            _require_exact_keys(value, legacy_fields, "arm_evidence")
+            payload.update(
+                {
+                    name: False
+                    if name == "candidate_gate_diagnostics_available"
+                    else None
+                    for name in _CANDIDATE_GATE_DIAGNOSTIC_FIELDS
+                }
+            )
+            payload["schema"] = REGION_RESOURCE_PAIRED_ARM_EVIDENCE_SCHEMA
+        else:
+            _require_exact_keys(value, cls.__dataclass_fields__, "arm_evidence")
         payload["projection_notes"] = tuple(payload.get("projection_notes", ()))
         payload["rejection_reasons"] = tuple(payload.get("rejection_reasons", ()))
         return cls(**payload)
@@ -668,16 +865,38 @@ class RegionResourcePairedInterventionManifest:
         _reject_truth_keys(value)
         _require_exact_keys(value, cls.__dataclass_fields__, "manifest")
         payload = dict(value)
+        raw_arm_evidence = tuple(
+            _mapping(item, f"manifest.arm_evidence[{index}]")
+            for index, item in enumerate(
+                _sequence(payload["arm_evidence"], "manifest.arm_evidence")
+            )
+        )
+        arm_schemas = {item.get("schema") for item in raw_arm_evidence}
+        legacy_arm_evidence = arm_schemas == {
+            REGION_RESOURCE_PAIRED_ARM_EVIDENCE_SCHEMA_V1
+        }
+        if (
+            REGION_RESOURCE_PAIRED_ARM_EVIDENCE_SCHEMA_V1 in arm_schemas
+            and not legacy_arm_evidence
+        ):
+            raise ValueError("paired manifest cannot mix v1 and v2 arm evidence")
+        if legacy_arm_evidence:
+            expected_legacy_id = _content_id(
+                "d4-rr-paired-manifest", value, excluded=("manifest_id",)
+            )
+            if payload["manifest_id"] and payload["manifest_id"] != expected_legacy_id:
+                raise ValueError("manifest_id does not match legacy manifest content")
+            # The returned object is canonical v2 evidence and therefore gets a
+            # new content ID after the original v1 ID has been verified.
+            payload["manifest_id"] = ""
         payload["specification"] = RegionResourcePairedInterventionSpecification.from_dict(
             _mapping(payload["specification"], "manifest.specification")
         )
         payload["arm_evidence"] = tuple(
             RegionResourcePairedArmEvidence.from_dict(
-                _mapping(item, f"manifest.arm_evidence[{index}]")
+                item
             )
-            for index, item in enumerate(
-                _sequence(payload["arm_evidence"], "manifest.arm_evidence")
-            )
+            for item in raw_arm_evidence
         )
         return cls(**payload)
 
@@ -874,6 +1093,18 @@ class RegionResourcePairedInterventionExecutor:
         candidate_bundle_match = normalized_arm == RegionResourcePairedArm.CONTROL
         candidate_thresholds_passed = normalized_arm == RegionResourcePairedArm.CONTROL
         candidate_projection_passed = normalized_arm == RegionResourcePairedArm.CONTROL
+        minimum_confidence = float(self.specification.thresholds.minimum_confidence)
+        candidate_latency_limit_ms = (
+            1000.0 * self.specification.thresholds.inference_timeout_s
+        )
+        candidate_confidence: float | None = None
+        candidate_ood_status: bool | None = None
+        candidate_finite: bool | None = None
+        candidate_confidence_gate_passed: bool | None = None
+        candidate_ood_gate_passed: bool | None = None
+        candidate_latency_gate_passed: bool | None = None
+        candidate_finite_gate_passed: bool | None = None
+        candidate_failure_gate_passed: bool | None = None
         candidate_sha: str | None = None
         projection_notes: tuple[str, ...] = ()
         selected: RegionResourceRecommendation | None = None
@@ -883,9 +1114,19 @@ class RegionResourcePairedInterventionExecutor:
         if normalized_arm == RegionResourcePairedArm.TREATMENT:
             bundle = self.specification.candidate_bundle
             if candidate_recommendation is not None:
-                candidate_sha = canonical_runtime_payload_sha256(
-                    candidate_recommendation.to_dict()
+                candidate_finite = _recommendation_is_finite(
+                    candidate_recommendation
                 )
+                try:
+                    confidence = float(candidate_recommendation.confidence)
+                except (TypeError, ValueError):
+                    confidence = float("nan")
+                if isfinite(confidence):
+                    candidate_confidence = confidence
+                if candidate_finite:
+                    candidate_sha = canonical_runtime_payload_sha256(
+                        candidate_recommendation.to_dict()
+                    )
             candidate_bundle_match = bool(
                 candidate_recommendation is not None
                 and candidate_bundle_manifest_sha256 == bundle.bundle_manifest_sha256
@@ -897,18 +1138,40 @@ class RegionResourcePairedInterventionExecutor:
             )
             if not candidate_bundle_match:
                 rejections.append("candidate_bundle_or_policy_mismatch")
-            timeout_ms = 1000.0 * self.specification.thresholds.inference_timeout_s
-            candidate_thresholds_passed = bool(
-                candidate_recommendation is not None
-                and not normalized_candidate_failures
-                and candidate_latency_ms <= timeout_ms
-                and candidate_ood_passed is True
-                and candidate_recommendation.confidence
-                >= self.specification.thresholds.minimum_confidence
-                and _recommendation_is_finite(candidate_recommendation)
-            )
+            if candidate_recommendation is not None:
+                candidate_ood_status = candidate_ood_passed is True
+                candidate_confidence_gate_passed = bool(
+                    candidate_confidence is not None
+                    and candidate_confidence >= minimum_confidence
+                )
+                candidate_ood_gate_passed = candidate_ood_status
+                candidate_latency_gate_passed = bool(
+                    candidate_latency_ms <= candidate_latency_limit_ms
+                )
+                candidate_finite_gate_passed = bool(candidate_finite)
+                candidate_failure_gate_passed = not normalized_candidate_failures
+                candidate_thresholds_passed = all(
+                    (
+                        candidate_confidence_gate_passed,
+                        candidate_ood_gate_passed,
+                        candidate_latency_gate_passed,
+                        candidate_finite_gate_passed,
+                        candidate_failure_gate_passed,
+                    )
+                )
+                if (
+                    candidate_confidence is not None
+                    and not candidate_confidence_gate_passed
+                ):
+                    rejections.append(_CANDIDATE_LOW_CONFIDENCE_REJECTION)
+                if not candidate_ood_gate_passed:
+                    rejections.append(_CANDIDATE_OOD_REJECTION)
+                if not candidate_latency_gate_passed:
+                    rejections.append(_CANDIDATE_TIMEOUT_REJECTION)
+                if not candidate_finite_gate_passed:
+                    rejections.append(_CANDIDATE_NONFINITE_REJECTION)
             if not candidate_thresholds_passed:
-                rejections.append("candidate_threshold_or_finite_gate_rejected")
+                rejections.append(_CANDIDATE_GENERIC_GATE_REJECTION)
 
             if (
                 pair_input_match
@@ -1010,6 +1273,17 @@ class RegionResourcePairedInterventionExecutor:
             next_cycle_consumption_passed=next_cycle_passed,
             isolated_arm_safe_adopted=next_cycle_passed,
             isolated_treatment_safe_adopted=isolated_treatment_adopted,
+            candidate_gate_diagnostics_available=True,
+            candidate_confidence=candidate_confidence,
+            minimum_confidence=minimum_confidence,
+            candidate_ood_passed=candidate_ood_status,
+            candidate_latency_limit_ms=candidate_latency_limit_ms,
+            candidate_finite=candidate_finite,
+            candidate_confidence_gate_passed=candidate_confidence_gate_passed,
+            candidate_ood_gate_passed=candidate_ood_gate_passed,
+            candidate_latency_gate_passed=candidate_latency_gate_passed,
+            candidate_finite_gate_passed=candidate_finite_gate_passed,
+            candidate_failure_gate_passed=candidate_failure_gate_passed,
             candidate_recommendation_sha256=candidate_sha,
             executed_recommendation_sha256=canonical_runtime_payload_sha256(
                 selected.to_dict()

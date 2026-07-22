@@ -8,7 +8,7 @@ AirSim episode clock 只提供统一的仿真时间基准。已通过的 delay/l
 
 ## 2. 2026-07-21 当前状态
 
-D4 已完成保留 seed 1000-1019 的配对干预消费合同和冻结候选隔离加载器，但本轮未修改 main/AirSim runtime，也未启动 AirSim。后续由 main 为每个 seed 生成规则 control 与候选 treatment 两个 reset 隔离 episode，并冻结相同 settings/scenario config、actor/资源初始状态、通信 schedule、故障 schedule 和区域快照 lineage SHA。D4 treatment 只读加载 `region_resource_bc_900_20260720/bundle`，核对 manifest、权重和训练清单 SHA，生成 raw candidate 后进入原确定性投影；加载、推理、阈值或投影失败均记录并回退规则。只有 bundle、阈值、owner/version/epoch/lease、fault fence、联盟 ACK、邻接、容量和资源守恒门全部通过，才返回 `isolated_treatment_safe_adopted=true`。该字段只允许 main 在 treatment episode 的下一周期使用安全投影建议，不能改变线上 authority。D6 应单独保存 outcome sidecar 并绑定 specification/manifest/arm/artifact SHA。当前专项 26/26、D4 全量 475/475；正式 40 个 episode、paired non-degradation、counterfactual 和 causal 仍未执行。
+D4 已完成保留 seed 1000-1019 的配对干预消费合同和冻结候选隔离加载器；scalable 3D nominal 5v5 的正式 40-arm execution receipts 已存在，但本轮未修改 main/AirSim runtime，也未启动 AirSim。未来 AirSim 配对仍由 main 为每个 seed 生成规则 control 与候选 treatment 两个 reset 隔离 episode，并冻结相同 settings/scenario config、actor/资源初始状态、通信 schedule、故障 schedule 和区域快照 lineage SHA。D4 treatment 只读加载 `region_resource_bc_900_20260720/bundle`，核对 manifest、权重和训练清单 SHA，生成 raw candidate 后进入原确定性投影；加载、推理、阈值或投影失败均记录并回退规则。arm evidence v2 新增 confidence/OOD/latency/finite 原始诊断和逐项 gate，不改变 bundle、authority、projection 或 next-cycle 安全门。只有全部门通过，才返回 `isolated_treatment_safe_adopted=true`；该字段不能改变线上 authority。D6 应单独保存 outcome sidecar并绑定 specification/manifest/arm/artifact SHA。当前专项 33/33、D4 全量 482/482；AirSim 配对 episode、paired non-degradation、counterfactual 和 causal 仍未执行。
 
 最新 M5N2 baseline/candidate 各 10 seeds 已完成，共 20/20 case。该批中心 owner 始终有效且 `active degradation=0`，是中心继续执行负对照：coalition completion `0/20`、第二 primary 进入 5 m `0/20`，20 个第二 primary 均为 `collision_stop`。由于 collision object 未写盘，runtime 后续必须补充碰撞对象/来源字段，D4 不能把该终态自动转换成主动降级事件。D4 main-bus 阶段 mean/P95/max 约 `5.59/6.70/94.10 ms`。`png_ttc_2v2_seed001` 排除在 M5N2 聚合之外，dropout case 完成数为 0。
 
@@ -25,7 +25,7 @@ D4 当前具备两层 AirSim episode 接口、一个已接入 main 质点模块�
 - `d4-regional-failover-v1`：D4-owned truth-free payload，包含动态 scenario/node/region/task metadata、逐区域 ownership、D1/D2/D3/D5 risk、机动高空二级 coverage/readiness、最早 lease、跨区域 capacity fallback assignment 和全层 coalition commit。main-owned scalable 3D 质点模块栈已消费该接口并发布 secondary/distributed D3 plan；AirSim 区域 episode 仍未验证。
 - `d4-region-resource-snapshot-v1` / `d4-region-resource-recommendation-v1` / `d4-region-resource-advisory-v1`：只传区域聚合图与配额/邻区转移/备用/侦察/hold-replan 建议，不传 actor/truth/object identity 或具体 assignment。advisory 在确定性投影后增加内容 ID、严格有效期、逐区域/transfer source generation、资源与 edge proof；main 下一轮消费时还必须对 current snapshot/formal verdict 重验，并拒绝 replay。它不能替代 D4 仲裁、D3 plan 或 D7 gate。
 - `d4-region-resource-outcome-window-v1` / `d4-region-resource-reward-evidence-v1`：只读接收 ACK 锚定的非重叠区域结果窗口，保存八项原始成本及 availability/reason。当前只完成 schema、公式和失败关闭消费端；AirSim/main producer、D6 汇总和训练准入未完成。
-- `d4-region-resource-paired-intervention-spec-v1` / arm evidence v1 / manifest v1：冻结 20 个保留 seed 的两 arm 输入、`region_resource_bc_900_20260720` 三文件摘要、阈值和安全版本；隔离 loader/evaluator 已可生成 raw candidate 并执行确定性投影/规则回退。AirSim/main 后续只负责按规范调度与记录，D6 负责结果 sidecar。D4 不把隔离采用标志解释为线上 ACK。
+- `d4-region-resource-paired-intervention-spec-v1` / arm evidence v2 / manifest v1：冻结 20 个保留 seed 的两 arm 输入、`region_resource_bc_900_20260720` 三文件摘要、阈值和安全版本；隔离 loader/evaluator 已可生成 raw candidate，记录 confidence/OOD/latency/finite 分解门，并执行确定性投影/规则回退。v1 arm JSON 可受校验迁移但不回填冻结 artifact。AirSim/main 后续只负责按规范调度与记录，D6 负责结果 sidecar。D4 不把隔离采用标志解释为线上 ACK。
 
 main/runtime 已按 AirSim episode clock 对以下六类场景各运行 10 seeds，共 60 case：
 
@@ -44,14 +44,14 @@ main/runtime 已按 AirSim episode clock 对以下六类场景各运行 10 seeds
 | false degradation | 0 |
 | duplicate owner | 0 |
 | split-brain prevention failure | 0 |
-| D4 模块回归 | 475/475 passed（2026-07-21；含配对/冻结加载专项 26/26，奖励合同专项 19/19） |
+| D4 模块回归 | 482/482 passed（2026-07-21；含配对/冻结加载与门诊断专项 33/33，奖励合同专项 19/19） |
 | 区域资源建议/消费合同专项 | 49/49 passed |
 | 区域学习 episode 数据合同 | 13/13 passed |
 | scalable 3D 质点接口定向测试 | 8/8 passed |
 
 30% loss 场景中，7 个缺 ACK case 保守阻断，只有 3 个完整 ACK case 执行。该结果关闭 episode-clock 多 seed 安全矩阵缺口，不关闭真实网络 P1。
 
-2026-07-15 的 280/280 回归关闭了公开 secondary plan helper 的 readiness/source/epoch/time 缺失门控，更早 278/278 不再作为全部入口证据。区域合同阶段为 303/303，建议管线阶段 335/335，next-cycle 消费合同阶段 350/350，课程阶段为 387/387，全样本准入阶段为 397/397，运行时确认阶段为 430/430；加入区域 reward 和冻结 bundle 隔离加载回归后，当前 D4 全量为 475/475。新增合同不改变任何 AirSim 控制、场景或在线门控，也不提供新的 AirSim、真实网络或硬件证据。main 既有质点模块栈定向 8/8 覆盖单一二级、多二级区域 owner、连续失效后的 distributed D3 plan，以及 D7 owner/epoch/lease/commit/fault fence。正式 development checkpoint 强制 shadow-only；冻结数据中的真实 ACK/outcome/reward 仍 unavailable，PPO、assist 和 authority 继续关闭。
+2026-07-15 的 280/280 回归关闭了公开 secondary plan helper 的 readiness/source/epoch/time 缺失门控，更早 278/278 不再作为全部入口证据。区域合同阶段为 303/303，建议管线阶段 335/335，next-cycle 消费合同阶段 350/350，课程阶段为 387/387，全样本准入阶段为 397/397，运行时确认阶段为 430/430；加入区域 reward、冻结 bundle 隔离加载和候选门诊断回归后，当前 D4 全量为 482/482。新增诊断不改变任何 AirSim 控制、场景或在线门控，也不提供新的 AirSim、真实网络或硬件证据。main 既有质点模块栈定向 8/8 覆盖单一二级、多二级区域 owner、连续失效后的 distributed D3 plan，以及 D7 owner/epoch/lease/commit/fault fence。正式 development checkpoint 强制 shadow-only；冻结数据中的真实 ACK/outcome/reward 仍 unavailable，PPO、assist 和 authority 继续关闭。
 
 ## 3. 状态与所有权规则
 
@@ -131,7 +131,7 @@ D4 每个 tick 输出：
 2. 增加可审计主动风险 case：D1 协方差/陈旧、D2 关联冲突、D3 stale/infeasible、D5 current binding/身份/跨视角不一致；单纯物理未命中或 `collision_stop` 不得直接触发降级。
 3. 在控制日志中持久化 collision object/source lineage，用于区分成员碰撞、环境碰撞和 AirSim 状态异常；该字段只供诊断和 D6 评分，不绕过 D4 仲裁。
 4. 保持已完成的 scalable3d versioned envelope 接线回归，扩展 5/20/50/100/200 长时多 seed episode，记录逐区域 owner、generation、lease、commit、fault fence、stage timing、churn 和分区恢复；该工作属于 main-owned 集成，不由 D4 修改。
-5. 区域资源学习建议先在 shadow 中运行至少 20 个未见 seed，paired 报告 backlog、transfer、churn、communication、fail-closed、安全违规和 P50/P95 latency。未满足门槛前不进入 assist；即使满足也不绕过正式 D4/D3/D7 gate。
+5. 区域资源学习建议先在 shadow 中运行至少 20 个未见 seed，paired 报告 backlog、transfer、churn、communication、fail-closed、安全违规和 P50/P95 latency。当前 nominal 5v5 保留 seed 的 20/20 confidence 低于 0.6，只能用于规划独立 confidence 校准/重训，不能据此下调门。未满足门槛前不进入 assist；即使满足也不绕过正式 D4/D3/D7 gate。
 6. main 如在 AirSim planning loop 消费区域资源建议，只接受 `d4-region-resource-advisory-v1`，在每个 D3 planning boundary 使用 current snapshot/formal verdict 重验，并跨进程持久化 consumed advisory ID。不得直接消费 raw/non-projected recommendation；D4 不修改 main/D3-owned 实现。
 7. main 的逐 episode region-learning writer 改为调用 D4 公开 API：episode 开始固化 `RegionLearningEpisodeSource`（scenario/version/scale、seed、episode ID、Git commit/dirty、config SHA），逐帧构造带显式 target/reward availability 的 `RegionLearningFrame`，episode 完成后 stage，批次完成后 finalize。旧 JSONL 只有 frame_index/timestamp/snapshot/recommendation，不满足正式训练合同；main 不应解析 D4 私有 artifact。
 8. 动作覆盖课程保持离线独立。main 不把课程 frame 注入 AirSim episode bus，也不把规则 teacher 当作实际 D4 运行结果。clean worktree 重生已经完成；后续训练配置仍须单独记录正式 episode 与课程样本比例，缺真实 outcome 时不得启动 PPO。

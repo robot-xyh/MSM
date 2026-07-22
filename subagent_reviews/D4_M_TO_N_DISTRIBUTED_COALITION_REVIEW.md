@@ -4,7 +4,7 @@
 **范围**：中心 C2、二级侦察节点和完全无中心三种运行层级下，面向 `k_j > 1` 协同任务的联盟形成、通信、一致性、成员退出和中心恢复。
 **模块边界**：D4 研究“谁组成联盟、谁协调、何时重构以及如何保持版本一致”；D3 拥有中心化资源分配，D7 拥有到达时序和导引，D5/D2 提供身份与关联证据。本文不运行 AirSim；2026-07-11 已在调研结论上补充第一阶段 fail-closed 安全实现。
 
-**2026-07-21 配对干预与联盟边界同步**：保留 seed 1000-1019 的规则 control/候选 treatment 合同复用区域 `coalition_ack_complete`、owner/plan/version/epoch/lease 和 fault fence。隔离加载器现只读校验 `region_resource_bc_900_20260720` 冻结 bundle，并把 raw candidate 交给原确定性投影；它不读取成员真值，也不能形成或改写联盟。任一必要成员 ACK 不完整、联盟 generation 旧、租约到期、候选加载/推理/投影失败或故障栅栏生效时，候选不得进入 treatment 下一周期。专项现为 26/26、D4 全量 475/475。该合同只建立同输入实验边界，未执行正式 20-seed 联盟 paired shadow，也没有成员级物理 outcome 或因果证据。
+**2026-07-21 配对干预与联盟边界同步**：保留 seed 1000-1019 的规则 control/候选 treatment 继续复用 `coalition_ack_complete`、owner/plan/version/epoch/lease 和 fault fence；`d4-region-resource-paired-arm-evidence-v2` 仅把候选 confidence、`minimum_confidence`、OOD、latency limit、finite 及逐项门结果持久化，并将拒绝分解为 low-confidence、OOD、timeout 和 nonfinite，v1 JSON 仍可读取。权威 nominal 5v5 正式记录的只读诊断为 confidence **0.508893/0.563426/0.569492**（min/mean/max）、`>=0.6` **0/20**、OOD **20/20**、finite **20/20**、latency P95/max **35.608/42.302 ms** 且 `<=50 ms` **20/20**，所以 20 个候选均以 `candidate_low_confidence` 明确拒绝并执行规则回退。专项现为 **33/33**、D4 全量 **482/482 passed**。隔离加载器仍只读校验 `region_resource_bc_900_20260720` 冻结 bundle，raw candidate 仍须通过原确定性投影和 next-cycle gate；该诊断不形成或改写联盟，不代替成员 ACK，不降低 `minimum_confidence`，也不提供成员级物理 outcome、因果证据、PPO、assist 或 authority 准入。
 
 **2026-07-21 区域 reward 与联盟边界同步**：新增结果窗口合同要求窗口内 coalition binding 首尾哈希一致，否则区域 reward 失败关闭。这个校验用于防止把联盟重构前后的结果合成一条样本；它不验证 required member ACK，也不把稳定 coalition hash 解释为联盟已执行。新执行计划的区域 reward 仍是非因果时间窗口观测，同代评估刷新没有动作 reward。新增专项 19/19、D4 全量 449/449；真实联盟 paired shadow、成员级物理结果和 on-policy evidence 仍未完成。
 
