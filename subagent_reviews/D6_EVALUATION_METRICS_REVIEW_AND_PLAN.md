@@ -1,5 +1,35 @@
 # D6 系统评估指标综述及子方案
 
+## 2026-07-21 D3/D4 保留 seed 隔离执行独立复核
+
+D6 已对 main 生成的 `nominal` 5 资源/5 目标、seed `1000-1019` 隔离执行制品建立只读审计链。审计先
+用带外摘要固定 `SHA256SUMS`、顶层 manifest、源提交和四个 bundle digest，再从 20 条 lineage、D3
+arm/receipt 和 D4 specification/evidence 重算所有计数。审计不导入 D3/D4 producer，不修改输入；
+六个输入文件的审计前后集合摘要一致。
+
+完整性复核通过：五个 checksum 成员和 manifest 内全部 artifact SHA 一致；20 条 lineage 均来自
+`6d5bfead31d53258b020a5f157b2ad5e7f25ee35`，dirty、nonfinite、online truth use 为 0，且每个 seed
+的 control/treatment 共享 source episode、sensor random stream、communication schedule 和 fault
+schedule。D3/D4 各 40 arm，均为 20 control + 20 treatment；每对 input、lineage、specification 和
+bundle digest identity 均通过。
+
+执行结果体现的是失败关闭。D3 候选 learning cost `0/20` 实际应用，全部因 `out_of_distribution`
+回退；control 决策为 unchanged 15、held_by_hysteresis 3、replan_ack_no_change 2。D4 candidate
+`0/20` safe-adopted，全部因 `candidate_threshold_or_finite_gate_rejected` 回退。D3 receipt latency
+n=20、mean/P95=0/0 ms；D4 candidate latency n=20、mean 8.291408 ms、median 1.196097 ms、
+nearest-rank P95 35.255481 ms、max 42.301505 ms。时延可用不等于 outcome 可用。
+
+评审结论为 `pass_fail_closed_only`。sidecar 仅将 execution receipts 标为 available；runtime ACK、
+physical outcome、counterfactual 和 causal 均为 unavailable。由于两种 treatment adoption 都是 0，
+paired outcome、paired effect 和 non-degradation 的值必须为 null，不能把回退后的相等输出解释为
+effect=0 或非退化。该证据证明失败关闭和证据完整性，不证明候选策略有效、非退化、外部泛化或因果
+收益，也不改变 PPO、assist、authority 和默认规则路径。
+
+正式输出位于
+`research_modules/d6_evaluation_metrics/outputs/reserved_seed_interventions_nominal_5v5_1000_1019_d6_audit_20260721/`。
+专项 `7 passed`、D6 全量 `472 passed`；输出 `SHA256SUMS` 已二次复算。下一步前置条件是 producer/main
+提供严格绑定的非零安全采用 ACK 和采用后的物理状态窗；在此之前不追加 paired performance 声明。
+
 ## 2026-07-22 D5 配对影子权威 v2 独立复核
 
 D6 已实现独立、只读、显式路径和带外 SHA-256 的权威 v2 消费器。输入固定绑定 v2 report/lineage、

@@ -1,5 +1,47 @@
 # D6 实现差距审计
 
+## 2026-07-21 D3/D4 保留 seed 隔离执行 GAP 更新
+
+### 已关闭的 D6-owned P1
+
+1. 已实现可复用的 D3/D4 保留 seed 独立只读 consumer 和 CLI。输入只通过显式目录及带外
+   `SHA256SUMS`、顶层 manifest、源提交和 D3/D4 bundle digest 绑定；输出不得位于 producer 输入树。
+2. 已重新校验五个 `SHA256SUMS` 成员、manifest 内全部 artifact SHA、20 条 source lineage 和审计
+   前后六文件快照。seed 精确为 `1000-1019`，source commit 为
+   `6d5bfead31d53258b020a5f157b2ad5e7f25ee35`，dirty、nonfinite、online truth use 均为 0；
+   同源/随机/通信/故障四类标志均为 `20/20`。
+3. 已从 D3 arm/receipt 和 D4 specification/evidence 独立重算各 40 arm、20 control/20 treatment、
+   pair input/lineage identity、bundle digest identity、回退原因和时延，不采用 producer 汇总替代明细。
+4. 已固定 outcome availability sidecar：execution receipts 可用；runtime ACK、physical outcome、
+   counterfactual、causal 不可用。零采用时 paired outcome/effect/non-degradation 固定为
+   `available=false,status=unavailable,value=null`。
+5. 已原子生成 JSON sidecar、中文 Markdown、provenance manifest 和 `SHA256SUMS`。专项 `7 passed`、
+   D6 全量 `472 passed`，输出校验和复算通过，输入摘要前后不变。
+
+### 真实结果与证据等级
+
+- D3 treatment 应用 `0/20`，`20/20` 因 `out_of_distribution` 回退；control 为 unchanged 15、
+  held-by-hysteresis 3、replan-ACK-no-change 2。D3 treatment receipt latency 的 20 条记录可用且均为
+  `0 ms`，表示失败关闭路径记录，不表示效果为 0。
+- D4 treatment 安全采用 `0/20`，`20/20` 因 `candidate_threshold_or_finite_gate_rejected` 回退；
+  candidate latency mean/P95/max 为 `8.291408/35.255481/42.301505 ms`。
+- D3 bundle manifest/state 绑定为 `a9213d...14c0`/`e3da9f...e0b2`，D4 为
+  `dad2ad...5c9`/`3da036...f62`。bundle 文件不在输入目录内，故这是 digest identity binding，
+  不是 D6 对模型文件的重新哈希。
+
+### 仍开放的 P1
+
+1. **实际采用。** 两类候选路径实际采用均为 0。失败关闭得到验证，但没有候选动作进入后续物理状态。
+2. **运行时与物理结果。** 当前没有严格绑定的 runtime ACK、采用后状态窗或终局结果；paired outcome、
+   effect、non-degradation、counterfactual 和 causal 不能计算，也不能用回退后 control/treatment 同值补 0。
+3. **策略有效性与权限。** 本批不证明 D3/D4 候选策略有效，不关闭 promotion、PPO、assist、authority
+   或外部泛化缺口。后续必须先取得非零安全采用和严格绑定的多 seed 物理结果，再按冻结门限复审。
+
+正式 D6 输出为
+`research_modules/d6_evaluation_metrics/outputs/reserved_seed_interventions_nominal_5v5_1000_1019_d6_audit_20260721/`。
+审计时间 `2026-07-22T04:06:26Z`（本地日期 2026-07-21）。当前无新增 P0；关闭的是 D6 consumer、
+证据完整性和 availability 表达缺口，不是上游候选性能 GAP。
+
 ## 2026-07-22 D5 paired-shadow 权威 v2 GAP 更新
 
 ### 已关闭的 D6-owned P1

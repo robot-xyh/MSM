@@ -1,5 +1,32 @@
 # D6 Evaluation Metrics Plan
 
+## 2026-07-21 D3/D4 保留 seed 隔离执行审计状态
+
+- [x] 新增 D6-owned 独立只读 consumer，显式接收输入目录、输出目录、审计时间和七项带外 identity
+  binding；输出位于 D6 ignored `outputs/`，输入目录及其子目录禁止写入。
+- [x] 复算 `SHA256SUMS`、顶层 manifest 文件 SHA、五个成员文件及 manifest 内全部 artifact SHA；
+  审计前后六个输入文件的集合摘要一致。
+- [x] 验证 20 条 lineage 精确覆盖 seed `1000-1019`、源提交
+  `6d5bfead31d53258b020a5f157b2ad5e7f25ee35`、dirty=0、nonfinite=0、online truth use=0，
+  同源/随机/通信/故障四类配对标志均为 20/20。
+- [x] 独立核验 D3 40 arm/40 receipt、20 control/20 treatment、pair input identity、bundle digest、
+  arm spec/plan payload 内部摘要；重算 control 状态 `15/3/2` 和 treatment `0/20` applied、
+  `20/20 out_of_distribution` fallback。
+- [x] 独立核验 D4 40 specification/40 evidence、20 control/20 treatment、pair input/lineage、candidate
+  bundle 与 specification identity；重算 `0/20` treatment safe-adopted、
+  `20/20 candidate_threshold_or_finite_gate_rejected` fallback。
+- [x] 将 receipt/candidate inference latency 与 outcome 分层。D3 n=20、mean/P95=`0/0 ms`；D4 n=20、
+  mean=`8.291408 ms`、median=`1.196097 ms`、nearest-rank P95=`35.255481 ms`、max=`42.301505 ms`。
+- [x] 固定 availability：execution receipt 可用；runtime ACK、physical outcome、counterfactual 和 causal
+  不可用。零 treatment adoption 时 paired outcome/effect/non-degradation 必须为 `null+unavailable`，
+  禁止填 0 或发布候选有效、非退化、反事实和因果声明。
+- [x] CLI 原子生成 JSON sidecar、中文 Markdown、provenance manifest 和 `SHA256SUMS` 到
+  `outputs/reserved_seed_interventions_nominal_5v5_1000_1019_d6_audit_20260721/`。
+- [x] 2026-07-21（UTC `2026-07-22T04:06:26Z`）专项 `7 passed`、D6 全量 `472 passed`；输出
+  `SHA256SUMS` 二次校验通过，仅有既有 Matplotlib warning。
+- [ ] main/D3/D4 后续若产生严格绑定的实际采用 ACK 和采用后的物理状态窗，再由 D6 生成新的 outcome
+  sidecar。当前制品不得用于策略 promotion、线上 assist/authority 或因果收益验收。
+
 ## 2026-07-22 D5 paired-shadow 权威 v2 独立审计状态
 
 - [x] 新增 D6-owned 显式输入合同，要求 v2 report/lineage、held-out corpus/evaluation、模型包、D5

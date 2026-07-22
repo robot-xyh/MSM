@@ -1,5 +1,44 @@
 # D6 Evaluation Metrics
 
+## 2026-07-21 D3/D4 保留 seed 隔离执行独立审计
+
+`reserved_seed_intervention_audit.py` 是 D6 对 main 生成的 D3/D4 保留 seed 隔离执行制品的独立只读
+consumer。当前权威输入为
+`../scalable_3d_simulation/outputs/reserved_seed_interventions_nominal_5v5_1000_1019_formal_6d5bfea/`，
+源提交固定为 `6d5bfead31d53258b020a5f157b2ad5e7f25ee35`。入口先用带外摘要绑定
+`SHA256SUMS` 和顶层 manifest，再复算五个成员文件、manifest 内全部 artifact SHA、D3 规范内容摘要/
+arm spec/plan payload、D4 specification/arm identity，以及审计前后六个输入文件集合摘要。它不导入
+D3/D4 producer 代码，也拒绝把输出写到输入目录内。
+
+20 条 source lineage 精确覆盖 seed `1000-1019`，dirty、非有限 source 和 online truth use 均为 0；
+control/treatment 同源 episode、传感器随机流、通信日程和故障日程均为 `20/20`。D3 和 D4 各有 40
+个 arm，均为 20 control + 20 treatment；每对输入摘要、lineage、specification 和 bundle digest
+身份全部闭合。D3 bundle manifest/state 绑定为
+`a9213d65606a9e2f921040e153488c0f4cdebb10882fa16013fce5b59f9314c0` /
+`e3da9fd5b54451da83358405b6051991e0c78bcf9f538b350d459b05faf8e0b2`，D4 为
+`dad2adbe9c36dd9ff8ee8bb3c11b1e07e66743c6f80dd8e956799208a10c05c9` /
+`3da0360be8788f3ffeb8e9f9eba3e0d5369ec0bdf9e05729dfb1db07d71d5f62`。模型文件不在输入目录内，
+因此 D6 证明的是给定 digest 的严格身份绑定，不声称重新哈希了 bundle 文件。
+
+D3 treatment 实际应用为 `0/20`，`20/20` 因 `out_of_distribution` 使用规则回退；control 状态为
+`unchanged=15`、`held_by_hysteresis=3`、`replan_ack_no_change=2`。D4 treatment 安全采用为 `0/20`，
+`20/20` 因 `candidate_threshold_or_finite_gate_rejected` 使用规则回退。D3 treatment receipt latency
+为 20 个可用的 `0 ms` 记录；D4 candidate latency 为 n=20、mean `8.291408 ms`、median
+`1.196097 ms`、nearest-rank P95 `35.255481 ms`、max `42.301505 ms`。时延为可用执行诊断，不是效果。
+
+sidecar 显式输出 `execution_receipts=true`，`runtime_ack/physical_outcome/counterfactual/causal=false`。
+由于两类 treatment 实际采用数都是 0，paired outcome、paired effect 和 non-degradation 均为
+`available=false,status=unavailable,value=null`，不能填数值 0。该结果只证明失败关闭与证据完整性，
+不证明 D3/D4 候选策略有效、非退化或具有因果收益。
+
+公开入口为 `ReservedSeedInterventionAuditInputs`、`audit_reserved_seed_interventions()`、
+`write_reserved_seed_intervention_audit()` 和 `render_reserved_seed_intervention_audit_markdown()`；CLI 为
+`scripts/run_reserved_seed_intervention_audit.py`。正式输出位于
+`outputs/reserved_seed_interventions_nominal_5v5_1000_1019_d6_audit_20260721/`，包含 JSON sidecar、
+中文 Markdown、provenance manifest 和 `SHA256SUMS`。审计时间为 `2026-07-22T04:06:26Z`
+（America/Los_Angeles 日期 2026-07-21）；专项 `7 passed`，D6 全量 `472 passed`，仅有既有
+Matplotlib `Axes3D` warning。
+
 ## 2026-07-22 D5 paired-shadow 权威 v2 独立审计
 
 `d5_paired_shadow_audit.py` 是 D6 对 D5 权威 v2 配对影子制品的独立只读消费者。调用方必须显式提供

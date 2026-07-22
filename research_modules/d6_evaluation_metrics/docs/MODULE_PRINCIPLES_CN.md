@@ -1,5 +1,29 @@
 # D6 系统级离线评估模块原理
 
+## 零采用隔离执行的 outcome 可用性原则（2026-07-21）
+
+D6 将“执行 receipt 存在”“候选动作实际采用”“采用后的物理结果”和“配对/因果效果”分成四层。第一层
+只能证明某个隔离 arm 执行了门控、回退或确定性规则路径；它不能自动提供后三层。若 treatment 实际
+采用数为 0，即使 control 与 treatment 的输出数值相同，也只能说明 treatment 回退到了规则路径，不能
+把 paired outcome、effect 或 non-degradation 写成数值 0。正确表达是
+`available=false,status=unavailable,value=null` 并给出缺少采用和结果的原因。
+
+保留 seed 审计还要求输入身份先于统计结论。D6 使用调用方带外摘要固定 checksum 文件、顶层 manifest、
+源提交和 bundle digest，再从底层 lineage 与 arm evidence 重算 seed、计数、配对输入和回退分布。
+producer manifest 中的汇总只作为待核对声明。每个 seed 的 control/treatment 必须共享源 episode、传感器
+随机流、通信日程和故障日程；D3 还需共享 observation snapshot、规则矩阵和 action mask，D4 还需共享
+initial state、region snapshot 和 input digest。任何错配均失败关闭。
+
+bundle 文件不在审计输入目录时，D6 只能证明 artifact 中的 manifest/state digest 与调用方给定 digest
+一致，不能表述为重新哈希了模型文件。类似地，receipt/candidate latency 可以从明细重算为 available，
+但该可用性只属于推理或门控耗时，不会提升 runtime ACK、physical outcome、counterfactual 或 causal
+availability。
+
+2026-07-21 的 `nominal` 5 资源/5 目标、seed `1000-1019` 审计中，D3/D4 各 40 arm 的 identity 与
+lineage 完整；D3 `0/20` 应用并全部 OOD 回退，D4 `0/20` 安全采用并全部门限/有限性回退。因此本次
+结论仅为“失败关闭和证据完整性通过”。候选策略有效性、非退化、运行时采用、物理收益和因果收益均未
+得到证明。专项 `7 passed`、D6 全量 `472 passed`。
+
 ## 配对影子独立审计（2026-07-22）
 
 D6 将生产者报告视为待核对声明，不直接采用其中的汇总结果。审计入口要求调用方显式给出权威 v2

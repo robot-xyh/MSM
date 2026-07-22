@@ -268,6 +268,23 @@ from .d5_paired_shadow_audit import (
     validate_paired_lineage_records,
     write_d5_paired_shadow_audit,
 )
+from .reserved_seed_intervention_audit import (
+    EXPECTED_CHECKSUMS_SHA256,
+    EXPECTED_D3_BUNDLE_MANIFEST_SHA256,
+    EXPECTED_D3_BUNDLE_STATE_SHA256,
+    EXPECTED_D4_BUNDLE_MANIFEST_SHA256,
+    EXPECTED_D4_BUNDLE_STATE_SHA256,
+    EXPECTED_RESERVED_SEEDS,
+    EXPECTED_SOURCE_COMMIT,
+    EXPECTED_SOURCE_MANIFEST_SHA256,
+    RESERVED_SEED_AUDIT_MANIFEST_SCHEMA_VERSION,
+    RESERVED_SEED_AUDIT_SCHEMA_VERSION,
+    ReservedSeedInterventionAuditError,
+    ReservedSeedInterventionAuditInputs,
+    audit_reserved_seed_interventions,
+    render_reserved_seed_intervention_audit_markdown,
+    write_reserved_seed_intervention_audit,
+)
 
 __all__ = [
     "CANONICAL_SEED_SPLIT_READINESS_SCHEMA_VERSION",
@@ -492,4 +509,19 @@ __all__ = [
     "validate_paired_lineage_records",
     "write_d5_paired_shadow_audit",
     "write_runtime_plan_outcome_join_report",
+    "EXPECTED_CHECKSUMS_SHA256",
+    "EXPECTED_D3_BUNDLE_MANIFEST_SHA256",
+    "EXPECTED_D3_BUNDLE_STATE_SHA256",
+    "EXPECTED_D4_BUNDLE_MANIFEST_SHA256",
+    "EXPECTED_D4_BUNDLE_STATE_SHA256",
+    "EXPECTED_RESERVED_SEEDS",
+    "EXPECTED_SOURCE_COMMIT",
+    "EXPECTED_SOURCE_MANIFEST_SHA256",
+    "RESERVED_SEED_AUDIT_MANIFEST_SCHEMA_VERSION",
+    "RESERVED_SEED_AUDIT_SCHEMA_VERSION",
+    "ReservedSeedInterventionAuditError",
+    "ReservedSeedInterventionAuditInputs",
+    "audit_reserved_seed_interventions",
+    "render_reserved_seed_intervention_audit_markdown",
+    "write_reserved_seed_intervention_audit",
 ]

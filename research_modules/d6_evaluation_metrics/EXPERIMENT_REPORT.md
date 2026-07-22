@@ -1,5 +1,69 @@
 # D6 系统级评估指标实验报告
 
+## 2.11 2026-07-21 D3/D4 保留 seed 隔离执行独立审计
+
+### 场景、输入与接受门限
+
+本次 D6 审计时间为 `2026-07-22T04:06:26Z`（America/Los_Angeles 日期 2026-07-21）。权威输入是
+`nominal` 5 资源/5 目标、每个 source episode 2.2 秒、seed `1000-1019` 的 scalable 3D 隔离执行
+制品，源提交必须精确等于 `6d5bfead31d53258b020a5f157b2ad5e7f25ee35`。输入
+`SHA256SUMS`/manifest SHA-256 分别为
+`931f68855df3e9f8c2a1f718249cf33c4ba6899d907ad0032af5b9588e90f08f` 和
+`c393f26042f048a8614c81d9ffaef1a58d2b2df1dc32740eae8f10246833e691`。
+
+接受门限是五个 checksum 成员和 manifest 内全部 artifact SHA 匹配；20 条 lineage 无缺失、重复或
+额外 seed；dirty、nonfinite、online truth use 均为 0；同源/随机/通信/故障标志均为 20/20；D3/D4
+各 40 arm 且每类 control/treatment 为 20/20；20 对输入、lineage 和 bundle identity 全部通过。
+审计前后六个输入文件摘要必须一致。任一条件失败即不生成报告包。
+
+D3 bundle manifest/state 绑定为
+`a9213d65606a9e2f921040e153488c0f4cdebb10882fa16013fce5b59f9314c0` /
+`e3da9fd5b54451da83358405b6051991e0c78bcf9f538b350d459b05faf8e0b2`，D4 为
+`dad2adbe9c36dd9ff8ee8bb3c11b1e07e66743c6f80dd8e956799208a10c05c9` /
+`3da0360be8788f3ffeb8e9f9eba3e0d5369ec0bdf9e05729dfb1db07d71d5f62`。这些是对任务给定 digest 的
+身份绑定；bundle 文件未包含在输入中，D6 未声称重新哈希模型文件。
+
+### 独立重算结果
+
+| 模块/指标 | 结果 | availability/解释 |
+| --- | --- | --- |
+| source lineage | 20 条，seed 1000-1019 | 完整；dirty/truth/nonfinite=0 |
+| D3 arm | 40，control/treatment=20/20 | receipt available |
+| D3 treatment applied | 0/20 | 20/20 `out_of_distribution` 回退 |
+| D3 control 状态 | unchanged 15；held 3；replan ACK no change 2 | receipt available |
+| D3 treatment latency | n=20，mean/P95=0/0 ms | 失败关闭路径时延，不是效果 |
+| D4 arm | 40，control/treatment=20/20 | execution evidence available |
+| D4 treatment safe-adopted | 0/20 | 20/20 门限/有限性拒绝并回退 |
+| D4 candidate latency | n=20，mean 8.291408；median 1.196097；P95 35.255481；max 42.301505 ms | available |
+| runtime ACK | 无 | unavailable/null |
+| physical outcome | 无 | unavailable/null |
+| counterfactual / causal | 无 | unavailable/null |
+| paired outcome/effect/non-degradation | 无 | 零采用且无物理结果，unavailable/null |
+
+`execution_receipts=true` 只表明隔离执行与回退证据存在。D3 与 D4 的 treatment 实际采用均为 0，故
+回退后 control/treatment 的相同输出不能形成 effect=0 或 non-degradation 结论。没有物理 outcome
+数值可画，因而本报告不生成效果曲线；用空图或零线会错误表达不可用证据。
+
+### 输出、SHA 与结论
+
+正式输出目录为
+`research_modules/d6_evaluation_metrics/outputs/reserved_seed_interventions_nominal_5v5_1000_1019_d6_audit_20260721/`。
+
+| 文件 | SHA-256 |
+| --- | --- |
+| `outcome_availability_sidecar.json` | `bfca0fffd343d8aa95c049239631b2de04d261126fb9bb7b6937db3c6f5507f4` |
+| `RESERVED_SEED_INTERVENTION_AUDIT_CN.md` | `b60eccda9b799000edb1e6dc99ab7798bf9bedd26af81e2d4daf4e463334ee6f` |
+| `provenance_manifest.json` | `9ca69b06a4c8e1dd1eb23fa027cb7da63805731e8441a7ec6f882e65d7544590` |
+| `SHA256SUMS` | `0acf4dd3463565dc1d2f596e6226ddbb4a874cd1ec088afee5c74ba2d14fc078` |
+
+sidecar 规范内容 SHA-256 为
+`5d789bf77dac3e6545b5a4b1f27693d35de1659c98e03489fe65fc0f38e5a202`。专项测试 `7 passed`，D6
+全量 `472 passed`，输出 `sha256sum -c` 全部通过；仅有既有 Matplotlib `Axes3D` warning。
+
+本次结果只证明失败关闭和证据完整性，不证明 D3/D4 候选策略有效、非退化、外部泛化或具有因果
+收益。下一步必须先取得严格绑定的非零实际采用 ACK 和采用后物理状态窗，再生成新的 paired outcome/
+effect sidecar。
+
 ## 2.10 2026-07-22 D5 配对影子权威 v2 独立审计
 
 本次审计只读消费 D5 权威 v2 报告、逐帧来源记录、保留种子图语料、保留种子评估报告、冻结模型包和

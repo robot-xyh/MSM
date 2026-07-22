@@ -1,5 +1,74 @@
 # D6 系统级离线评估：算法原理与实施说明
 
+## D3/D4 保留 seed 隔离执行 consumer（2026-07-21）
+
+### 输入合同与哈希链
+
+`ReservedSeedInterventionAuditInputs` 接收 producer 输入目录、D6 输出目录、UTC 审计时间和七项带外
+绑定：源 Git commit、`SHA256SUMS`、顶层 manifest、D3 bundle manifest/state、D4 bundle
+manifest/state。当前默认值绑定正式
+`reserved_seed_interventions_nominal_5v5_1000_1019_formal_6d5bfea` 制品。输出目录不得等于或位于
+输入目录；输入必须精确包含 checksum、D3 JSON、D4 JSON、manifest、producer 中文报告和 lineage
+JSONL 六个普通非符号链接文件。
+
+审计顺序为：
+
+1. 复算六文件 SHA，先用带外 SHA 固定 `SHA256SUMS` 与 manifest；
+2. 严格解析 checksum 的五个成员，拒绝缺失、额外、重复和路径字符；
+3. 将 manifest 的四个逻辑 artifact SHA 映射到 D3、D4、报告和 lineage 实际文件；
+4. 解析并重算底层 evidence；
+5. 再次复算六文件 SHA，前后不一致返回 `input_artifact_mutation_detected`；
+6. 只在全部门控通过后，在输入树外以临时目录原子发布 sidecar、Markdown、provenance manifest 和
+   `SHA256SUMS`，发布前再做一次输入快照比较。
+
+### Lineage 与 D3 重算
+
+lineage 必须按顺序精确覆盖整数 seed `1000-1019`，每条 schema、source commit、scenario/version
+一致，`source_repository_dirty=false`、`finite_state=true`、`online_truth_use_count=0`，四个共享标志
+均为 true。八类 snapshot/source digest 必须是有效 SHA-256，source episode identity 必须唯一。
+
+D3 consumer 复算 paired evaluator report、specification 和内部 manifest 的规范 JSON SHA；40 个 arm
+必须与 specification 的 20 对 control/treatment 一一对应，manifest receipt 必须等于 arm receipt。
+每对除 arm identity、kind、isolation、intervention enable 和 planner path 外的输入字段必须相同，并
+与 lineage 的 initial state、D3 snapshot 和 scenario digest 交叉绑定。每个 arm 继续复算 arm spec 与
+output plan payload SHA，验证 plan id/version、action mask、规则矩阵、版本/容量/可达性/迟滞/安全门、
+零 nonfinite、零 online label 和零 `global_track_id` rewrite。
+
+最终从 control receipt 重算迟滞状态，从 treatment receipt 重算 applied/fallback/reason 和
+`inference_elapsed_ms`。当前结果为 control `unchanged=15`、`held_by_hysteresis=3`、
+`replan_ack_no_change=2`；treatment applied `0/20`，OOD fallback `20/20`。
+
+### D4 重算与 availability
+
+D4 consumer 去除 `specification_id` 后重算 specification identity，并对每个 arm 去除 `arm_id` 后重算
+arm identity。40 个 specification 和 40 个 evidence 必须形成 seed×`control_rule/treatment_candidate`
+的完整笛卡尔目录。每对 `input_binding` 必须相等，并逐字段绑定 lineage 的 initial state、scenario、
+region snapshot、communication schedule 和 fault schedule。evidence 的 expected/observed input、
+snapshot、specification SHA 和 pair flag 还要在两臂间一致。
+
+treatment evidence 要求 candidate 被考虑但 threshold 和 safety projection 均未通过，
+`isolated_treatment_safe_adopted=false`、`rule_fallback_used=true`，且唯一拒绝原因是
+`candidate_threshold_or_finite_gate_rejected`。当前重算得到 safe-adopted `0/20`、fallback `20/20`。
+
+对有限非负时延样本，D6 输出样本数、min、mean、median、nearest-rank P95 和 max，其中
+
+\[
+k_{0.95}=\lceil0.95n\rceil,
+\qquad P95=x_{(k_{0.95})}.
+\]
+
+D3 treatment receipt 的 20 条时延均为 0 ms；D4 candidate 的 mean/median/P95/max 为
+`8.291408/1.196097/35.255481/42.301505 ms`。这些统计只属于执行诊断。
+
+sidecar 同时输出布尔 availability map 和带 `available/status/value/reason` 的详细结构。execution
+receipts 为 true；runtime ACK、physical outcome、counterfactual、causal 为 false。由于 D3 和 D4
+treatment adoption 都为 0，paired outcome/effect/non-degradation 固定为 null/unavailable。实现没有
+计算 effect=0 的分支，也没有发布候选有效或因果声明。
+
+公开 API 为 `audit_reserved_seed_interventions()`、`write_reserved_seed_intervention_audit()` 和
+Markdown renderer；CLI 为 `scripts/run_reserved_seed_intervention_audit.py`。专项 `7 passed`、D6
+全量 `472 passed`，真实输出 checksum 二次校验通过。
+
 ## D5 配对影子权威 v2 消费器（2026-07-22）
 
 ### 显式绑定与只读快照
