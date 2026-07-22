@@ -41,12 +41,20 @@ _OPERATION_FIELDS = (
 )
 
 
-def load_frozen_sensor_scans(path: str | Path) -> tuple[tuple[SensorScanFrame, ...], dict[str, Any]]:
-    """Load identity-free bus observations through the production scan organizer."""
+def load_frozen_sensor_scan_release_groups(
+    path: str | Path,
+) -> tuple[tuple[tuple[SensorScanFrame, ...], ...], dict[str, Any]]:
+    """Load organizer release groups without losing main's snapshot schedule.
+
+    One bus input may release several buffered scans.  Main coalesces full
+    ``GlobalTrack`` materialization only inside that release group, so a flat
+    scan sequence is insufficient for a representative state-only/full
+    performance replay.
+    """
 
     source = Path(path)
     organizer = ScanInputOrganizer()
-    released: list[SensorScanFrame] = []
+    release_groups: list[tuple[SensorScanFrame, ...]] = []
     input_batch_count = 0
     input_observation_count = 0
     with source.open("r", encoding="utf-8") as stream:
@@ -64,18 +72,33 @@ def load_frozen_sensor_scans(path: str | Path) -> tuple[tuple[SensorScanFrame, .
                     scan_id=str(payload["batch_id"]),
                 )
             )
-            released.extend(result.released_scans)
-    released.extend(organizer.close().released_scans)
+            if result.released_scans:
+                release_groups.append(tuple(result.released_scans))
+    tail = tuple(organizer.close().released_scans)
+    if tail:
+        release_groups.append(tail)
     audit = organizer.audit_summary().to_dict()
-    return tuple(released), {
+    released_scan_count = sum(len(group) for group in release_groups)
+    return tuple(release_groups), {
         "source_path": str(source),
         "source_sha256": _sha256_file(source),
         "input_batch_count": input_batch_count,
         "input_observation_count": input_observation_count,
-        "released_scan_count": len(released),
+        "released_scan_count": released_scan_count,
+        "release_group_count": len(release_groups),
         "scan_input_audit": audit,
         "online_truth_use_count": 0,
     }
+
+
+def load_frozen_sensor_scans(
+    path: str | Path,
+) -> tuple[tuple[SensorScanFrame, ...], dict[str, Any]]:
+    """Load a flat identity-free scan sequence for existing benchmarks."""
+
+    release_groups, summary = load_frozen_sensor_scan_release_groups(path)
+    released = tuple(scan for group in release_groups for scan in group)
+    return released, summary
 
 
 def run_scan_fusion_variant(

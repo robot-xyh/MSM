@@ -1,5 +1,21 @@
 # D1 Sensor Fusion Offline Experiment Report
 
+## 2026-07-22 雷达候选预门控与快照物化对照
+
+本次使用 clean `8f86192` 的 10 s 冻结在线观测 seeds 42000-42002。参考路径关闭雷达预门控和
+A95 单次复用；候选路径开启两项优化。预门控仅对有限、严格对称、Gershgorin 严格正定且确认
+最小特征值高于 `np.linalg.pinv` cutoff 上界的创新协方差生效，其他矩阵全部回退旧精确伪逆。
+
+旧/新纯融合墙钟均值为 `91.313/88.619 s`，3/3 candidate 更快，聚合加速 `1.030x`。精确创新
+求解合计 `7,130,228 -> 1,578,677`，下降 77.9%。三个 seed 的逐扫描后验、终态航迹和一致性
+证据哈希全部一致；候选对、固定滞后操作数、扫描/观测数和完整/状态快照调度不变。非正定交叉
+协方差和近奇异截断负例均确认未认证矩阵不被预拒绝，并保持扫描语义等价。专项 `6 passed`，
+D1 全量 `175 passed in 26.69s`。
+
+详细逐 seed 数据见 `D1_COALESCED_RELEASE_PERFORMANCE_BENCHMARK_CN.md` 和
+`d1_coalesced_release_performance_benchmark_20260722.json`。本结果不证明 AirSim 实时性、真实
+雷达精度、正式系统容量或 200 对 200 闭环实时性。
+
 ## 2026-07-22 Clean 200v200 全栈接线复跑
 
 clean 候选提交 `8f86192` 已在 main-owned 三维质点全栈接入同一 fusion timestamp 延迟物化。10 s

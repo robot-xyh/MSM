@@ -7,6 +7,7 @@ import hashlib
 import json
 from pathlib import Path
 import pstats
+from statistics import fmean
 from time import perf_counter
 from types import MappingProxyType
 from typing import Any, Mapping, Sequence
@@ -14,11 +15,17 @@ from typing import Any, Mapping, Sequence
 import numpy as np
 
 from .scalable_3d import Scalable3DFusionAdapter
-from .scan_fusion_performance import load_frozen_sensor_scans
+from .scan_fusion_performance import (
+    load_frozen_sensor_scan_release_groups,
+    load_frozen_sensor_scans,
+)
 from .scan_input import SensorScanFrame
 
 
 LONG_DURATION_PERFORMANCE_SCHEMA_VERSION = "d1.long_duration_performance.v1"
+COALESCED_RELEASE_PERFORMANCE_SCHEMA_VERSION = (
+    "d1.coalesced_release_performance.v1"
+)
 FUSED_TRACK_PUBLICATION_AUDIT_SCHEMA_VERSION = (
     "d1.fused_track_publication_audit.v2"
 )
@@ -139,6 +146,133 @@ def run_long_duration_variant(
     }
 
 
+def run_coalesced_release_schedule_variant(
+    release_groups: Sequence[Sequence[SensorScanFrame]],
+    *,
+    variant: str,
+    adapter_options: Mapping[str, Any] | None = None,
+    profile_path: str | Path | None = None,
+) -> dict[str, Any]:
+    """Replay the current main state-only/full materialization schedule.
+
+    Fusion wall time excludes semantic hashing.  Every released scan is still
+    fused exactly once; only consecutive scans in one organizer release group
+    that resolve to the same fusion timestamp defer detached ``GlobalTrack``
+    construction until that timestamp's final scan.
+    """
+
+    adapter = Scalable3DFusionAdapter(**dict(adapter_options or {}))
+    operation_totals = {name: 0 for name in _BATCH_OPERATION_FIELDS}
+    per_scan_semantic_digests: list[str] = []
+    per_second: dict[str, dict[str, float | int]] = {}
+    process_wall_time_s = 0.0
+    semantic_hash_wall_time_s = 0.0
+    profiler = cProfile.Profile() if profile_path is not None else None
+    last_materialized_tracks: Sequence[Any] | None = None
+    scan_count = 0
+    observation_count = 0
+    materialized_snapshot_count = 0
+    state_only_scan_count = 0
+
+    for release_group in release_groups:
+        scans = tuple(release_group)
+        for index, scan in enumerate(scans):
+            fusion_timestamp = max(
+                float(adapter.current_time),
+                float(scan.arrival_timestamp),
+            )
+            next_fusion_timestamp = None
+            if index + 1 < len(scans):
+                next_fusion_timestamp = max(
+                    fusion_timestamp,
+                    float(scans[index + 1].arrival_timestamp),
+                )
+            materialize_tracks = bool(
+                next_fusion_timestamp is None
+                or next_fusion_timestamp > fusion_timestamp + 1.0e-9
+            )
+
+            started = perf_counter()
+            if profiler is not None:
+                profiler.enable()
+            result = adapter.process_scan_batch(
+                scan.observations,
+                materialize_tracks=materialize_tracks,
+            )
+            if profiler is not None:
+                profiler.disable()
+            elapsed = perf_counter() - started
+            process_wall_time_s += elapsed
+
+            hash_started = perf_counter()
+            per_scan_semantic_digests.append(
+                _coalesced_scan_semantic_digest(adapter, result)
+            )
+            semantic_hash_wall_time_s += perf_counter() - hash_started
+
+            summary = result.summary.to_dict()
+            for name in _BATCH_OPERATION_FIELDS:
+                operation_totals[name] += int(summary.get(name, 0))
+            if materialize_tracks:
+                last_materialized_tracks = result.tracks
+                materialized_snapshot_count += 1
+            else:
+                state_only_scan_count += 1
+            scan_count += 1
+            observation_count += len(scan.observations)
+            second_key = str(int(float(scan.arrival_timestamp)))
+            second = per_second.setdefault(
+                second_key,
+                {
+                    "scan_count": 0,
+                    "observation_count": 0,
+                    "fusion_wall_time_s": 0.0,
+                },
+            )
+            second["scan_count"] = int(second["scan_count"]) + 1
+            second["observation_count"] = int(second["observation_count"]) + len(
+                scan.observations
+            )
+            second["fusion_wall_time_s"] = (
+                float(second["fusion_wall_time_s"]) + elapsed
+            )
+
+    if last_materialized_tracks is None:
+        raise ValueError("coalesced benchmark requires at least one released scan")
+
+    profile = None
+    if profiler is not None:
+        destination = Path(profile_path)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        profiler.dump_stats(str(destination))
+        profile = _profile_summary(destination)
+
+    final_tracks = _semantic_track_snapshot(last_materialized_tracks)
+    evidence = [item.to_dict() for item in adapter.consistency_evidence_records()]
+    return {
+        "variant": str(variant),
+        "adapter_options": dict(adapter_options or {}),
+        "release_group_count": len(release_groups),
+        "scan_count": scan_count,
+        "observation_count": observation_count,
+        "track_count": len(last_materialized_tracks),
+        "materialized_snapshot_count": materialized_snapshot_count,
+        "state_only_scan_count": state_only_scan_count,
+        "process_wall_time_s": process_wall_time_s,
+        "semantic_hash_wall_time_s": semantic_hash_wall_time_s,
+        "operation_totals": operation_totals,
+        "cumulative_diagnostics": adapter.fusion_performance_diagnostics().to_dict(),
+        "per_second": per_second,
+        "per_scan_semantic_digests": per_scan_semantic_digests,
+        "per_scan_semantic_digests_sha256": _json_sha256(
+            per_scan_semantic_digests
+        ),
+        "final_tracks_sha256": _json_sha256(final_tracks),
+        "consistency_evidence_sha256": _json_sha256(evidence),
+        "profile": profile,
+    }
+
+
 def compare_long_duration_variants(
     source: str | Path,
     *,
@@ -246,6 +380,169 @@ def compare_long_duration_variants(
             ),
             "acceptance": acceptance,
             "passed": all(acceptance.values()),
+        },
+    }
+
+
+def compare_coalesced_release_performance_variants(
+    source: str | Path,
+    *,
+    profile_directory: str | Path | None = None,
+) -> dict[str, Any]:
+    """Compare the clean baseline with D1's next association/materialization path."""
+
+    release_groups, input_summary = load_frozen_sensor_scan_release_groups(source)
+    profile_root = None if profile_directory is None else Path(profile_directory)
+    reference = run_coalesced_release_schedule_variant(
+        release_groups,
+        variant="clean_reference",
+        adapter_options={
+            "radar_association_lower_bound_gate": False,
+            "reuse_track_classification_a95": False,
+        },
+        profile_path=(
+            None if profile_root is None else profile_root / "reference.prof"
+        ),
+    )
+    optimized = run_coalesced_release_schedule_variant(
+        release_groups,
+        variant="radar_lower_bound_and_single_a95",
+        adapter_options={
+            "radar_association_lower_bound_gate": True,
+            "reuse_track_classification_a95": True,
+        },
+        profile_path=(
+            None if profile_root is None else profile_root / "optimized.prof"
+        ),
+    )
+
+    reference_ops = reference["operation_totals"]
+    optimized_ops = optimized["operation_totals"]
+    solve_reduction = _reduction_fraction(
+        int(reference_ops["association_innovation_solve_count"]),
+        int(optimized_ops["association_innovation_solve_count"]),
+    )
+    fixed_lag_fields = (
+        "history_replay_count",
+        "origin_replay_count",
+        "state_cache_hit_count",
+        "state_cache_miss_count",
+        "finalization_replay_count",
+        "replay_filter_update_count",
+        "replay_checkpoint_reuse_count",
+    )
+    acceptance = {
+        "per_scan_semantic_equivalence": (
+            optimized["per_scan_semantic_digests"]
+            == reference["per_scan_semantic_digests"]
+        ),
+        "final_track_equivalence": (
+            optimized["final_tracks_sha256"]
+            == reference["final_tracks_sha256"]
+        ),
+        "consistency_evidence_equivalence": (
+            optimized["consistency_evidence_sha256"]
+            == reference["consistency_evidence_sha256"]
+        ),
+        "candidate_pair_count_preserved": (
+            int(optimized_ops["association_candidate_pair_count"])
+            == int(reference_ops["association_candidate_pair_count"])
+        ),
+        "exact_innovation_solve_reduction_at_least_50_percent": (
+            solve_reduction >= 0.50
+        ),
+        "fixed_lag_operation_counts_preserved": all(
+            int(optimized_ops[name]) == int(reference_ops[name])
+            for name in fixed_lag_fields
+        ),
+        "materialization_schedule_preserved": (
+            optimized["materialized_snapshot_count"]
+            == reference["materialized_snapshot_count"]
+            and optimized["state_only_scan_count"]
+            == reference["state_only_scan_count"]
+            and int(optimized_ops["global_track_materialization_count"])
+            == int(reference_ops["global_track_materialization_count"])
+            and int(optimized_ops["sensor_health_snapshot_build_count"])
+            == int(reference_ops["sensor_health_snapshot_build_count"])
+        ),
+        "scan_and_observation_count_preserved": (
+            optimized["scan_count"] == reference["scan_count"]
+            and optimized["observation_count"] == reference["observation_count"]
+        ),
+        "online_truth_use_count_zero": input_summary["online_truth_use_count"] == 0,
+    }
+    return {
+        "schema_version": COALESCED_RELEASE_PERFORMANCE_SCHEMA_VERSION,
+        "input": input_summary,
+        "reference": reference,
+        "optimized": optimized,
+        "comparison": {
+            "fusion_wall_time_speedup": (
+                float(reference["process_wall_time_s"])
+                / float(optimized["process_wall_time_s"])
+                if float(optimized["process_wall_time_s"]) > 0.0
+                else None
+            ),
+            "innovation_solve_reduction_fraction": solve_reduction,
+            "acceptance": acceptance,
+            "passed": all(acceptance.values()),
+        },
+    }
+
+
+def compare_coalesced_release_performance_sources(
+    sources: Sequence[str | Path],
+    *,
+    profile_directory: str | Path | None = None,
+) -> dict[str, Any]:
+    """Run the coalesced benchmark across deterministic frozen seeds."""
+
+    source_paths = tuple(Path(item) for item in sources)
+    if not source_paths:
+        raise ValueError("at least one frozen source is required")
+    runs = []
+    for index, source in enumerate(source_paths):
+        runs.append(
+            compare_coalesced_release_performance_variants(
+                source,
+                profile_directory=(
+                    profile_directory if index == 0 else None
+                ),
+            )
+        )
+
+    reference_times = [
+        float(item["reference"]["process_wall_time_s"]) for item in runs
+    ]
+    optimized_times = [
+        float(item["optimized"]["process_wall_time_s"]) for item in runs
+    ]
+    run_speedups = [
+        before / after
+        for before, after in zip(reference_times, optimized_times)
+    ]
+    candidate_faster_count = sum(
+        after < before
+        for before, after in zip(reference_times, optimized_times)
+    )
+    semantic_passed = all(item["comparison"]["passed"] for item in runs)
+    aggregate_speedup = fmean(reference_times) / fmean(optimized_times)
+    stable_wall_time_improvement = (
+        candidate_faster_count == len(runs) and aggregate_speedup >= 1.02
+    )
+    return {
+        "schema_version": COALESCED_RELEASE_PERFORMANCE_SCHEMA_VERSION,
+        "runs": runs,
+        "aggregate": {
+            "run_count": len(runs),
+            "reference_mean_fusion_wall_time_s": fmean(reference_times),
+            "optimized_mean_fusion_wall_time_s": fmean(optimized_times),
+            "aggregate_fusion_wall_time_speedup": aggregate_speedup,
+            "per_run_fusion_wall_time_speedups": run_speedups,
+            "candidate_faster_count": candidate_faster_count,
+            "semantic_and_operation_acceptance_passed": semantic_passed,
+            "stable_wall_time_improvement": stable_wall_time_improvement,
+            "passed": semantic_passed and stable_wall_time_improvement,
         },
     }
 
@@ -373,6 +670,94 @@ def write_long_duration_performance_report(
     )
 
 
+def write_coalesced_release_performance_report(
+    report: Mapping[str, Any],
+    *,
+    json_path: str | Path,
+    markdown_path: str | Path,
+) -> None:
+    json_destination = Path(json_path)
+    markdown_destination = Path(markdown_path)
+    json_destination.parent.mkdir(parents=True, exist_ok=True)
+    markdown_destination.parent.mkdir(parents=True, exist_ok=True)
+    json_destination.write_text(
+        json.dumps(report, ensure_ascii=False, indent=2, default=_json_default)
+        + "\n",
+        encoding="utf-8",
+    )
+    markdown_destination.write_text(
+        _coalesced_release_markdown_report(report),
+        encoding="utf-8",
+    )
+
+
+def _coalesced_scan_semantic_digest(adapter: Any, result: Any) -> str:
+    summary = result.summary.to_dict()
+    for name in _BATCH_OPERATION_FIELDS:
+        summary.pop(name, None)
+    tracks_materialized = bool(result.tracks_materialized)
+    return _json_sha256(
+        {
+            "tracks_materialized": tracks_materialized,
+            "summary": summary,
+            "posterior": _internal_posterior_snapshot(adapter),
+            "materialized_tracks": (
+                _semantic_track_snapshot(result.tracks)
+                if tracks_materialized
+                else None
+            ),
+        }
+    )
+
+
+def _internal_posterior_snapshot(adapter: Any) -> dict[str, Any]:
+    """Capture semantic state without constructing detached GlobalTrack objects."""
+
+    records = []
+    for track_id in sorted(adapter.tracks):
+        record = adapter.tracks[track_id]
+        records.append(
+            {
+                "track_id": record.track_id,
+                "current_state": record.current_state.state,
+                "current_covariance": record.current_state.covariance,
+                "current_timestamp": record.current_state.timestamp,
+                "current_state_covariance_limited": (
+                    record.current_state_covariance_limited
+                ),
+                "created_timestamp": record.created_timestamp,
+                "hits": record.hits,
+                "source_support": dict(record.source_support),
+                "identity_likelihood": dict(record.identity_likelihood),
+                "recent_nis": tuple(record.recent_nis),
+                "covariance_limit_reasons": dict(
+                    record.covariance_limit_reasons
+                ),
+                "association_diagnostics": dict(
+                    record.association_diagnostics
+                ),
+                "metadata": dict(record.metadata),
+                "active_observation_ids": tuple(
+                    sorted(item.observation_id for item in record.observations)
+                ),
+                "archived_observation_ids": tuple(
+                    sorted(
+                        item.observation_id
+                        for item in record.archived_observations
+                    )
+                ),
+                "accepted_observer_scan_keys": tuple(
+                    sorted(record.accepted_observer_scan_keys)
+                ),
+            }
+        )
+    return {
+        "current_time": adapter.current_time,
+        "next_track_id": adapter._next_track_id,
+        "records": records,
+    }
+
+
 def _semantic_result_digest(result: Any) -> str:
     summary = result.summary.to_dict()
     for name in _BATCH_OPERATION_FIELDS:
@@ -446,8 +831,12 @@ def _profile_summary(path: Path) -> dict[str, Any]:
         "_prune_record",
         "_filter_update",
         "_scan_one_to_one_assignments",
+        "_radar_scan_cost_matrix",
         "_cached_non_radar_scan_cost_matrix",
         "global_tracks",
+        "_to_global_track",
+        "covariance_a95",
+        "pinv",
     }
     selected: dict[str, dict[str, float | int]] = {}
     for (_, _, function_name), values in stats.stats.items():
@@ -491,6 +880,102 @@ def _sha256_file(path: Path) -> str:
         for chunk in iter(lambda: stream.read(1024 * 1024), b""):
             digest.update(chunk)
     return "sha256:" + digest.hexdigest()
+
+
+def _coalesced_release_markdown_report(report: Mapping[str, Any]) -> str:
+    aggregate = report["aggregate"]
+    runs = report["runs"]
+    lines = [
+        "# D1 雷达关联与快照物化性能基准",
+        "",
+        "## 结论",
+        "",
+        (
+            f"冻结输入共 {aggregate['run_count']} 个 seed。旧路径纯融合墙钟均值为 "
+            f"{aggregate['reference_mean_fusion_wall_time_s']:.3f} 秒，优化路径为 "
+            f"{aggregate['optimized_mean_fusion_wall_time_s']:.3f} 秒，均值加速 "
+            f"{aggregate['aggregate_fusion_wall_time_speedup']:.3f} 倍。"
+        ),
+        (
+            "逐扫描后验、终态航迹和在线一致性证据均通过确定性哈希验证。"
+            "扫描、观测、固定滞后操作数和 state-only/full 快照计划保持不变。"
+        ),
+        "",
+        "## 分 seed 结果",
+        "",
+        "| 输入 | 扫描/观测 | 旧路径 / s | 优化路径 / s | 加速 | 精确求解旧/新 | 完整/状态更新 | 语义验收 |",
+        "| --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |",
+    ]
+    for item in runs:
+        source = Path(item["input"]["source_path"])
+        reference = item["reference"]
+        optimized = item["optimized"]
+        reference_ops = reference["operation_totals"]
+        optimized_ops = optimized["operation_totals"]
+        lines.append(
+            f"| `{source.parent.name}` | {reference['scan_count']:,}/"
+            f"{reference['observation_count']:,} | "
+            f"{reference['process_wall_time_s']:.3f} | "
+            f"{optimized['process_wall_time_s']:.3f} | "
+            f"{item['comparison']['fusion_wall_time_speedup']:.3f}x | "
+            f"{reference_ops['association_innovation_solve_count']:,}/"
+            f"{optimized_ops['association_innovation_solve_count']:,} | "
+            f"{optimized['materialized_snapshot_count']:,}/"
+            f"{optimized['state_only_scan_count']:,} | "
+            f"{'通过' if item['comparison']['passed'] else '失败'} |"
+        )
+
+    first = runs[0]
+    reference_profile = first["reference"].get("profile")
+    optimized_profile = first["optimized"].get("profile")
+    if reference_profile is not None and optimized_profile is not None:
+        before_functions = reference_profile["selected_functions"]
+        after_functions = optimized_profile["selected_functions"]
+        lines.extend(
+            [
+                "",
+                "## 代表 seed 剖析",
+                "",
+                "cProfile 只用于分离热点，绝对时间受剖析开销影响。",
+                "",
+                "| 阶段 | 函数 | 旧路径累计 / s | 优化路径累计 / s |",
+                "| --- | --- | ---: | ---: |",
+            ]
+        )
+        stages = (
+            ("雷达候选与创新求解", "_radar_scan_cost_matrix"),
+            ("固定滞后状态查询", "_state_at"),
+            ("固定滞后历史重放", "_replay_record"),
+            ("完整快照入口", "global_tracks"),
+            ("航迹对象物化", "_to_global_track"),
+            ("置信椭圆半径", "covariance_a95"),
+        )
+        for stage, name in stages:
+            before = before_functions.get(name, {})
+            after = after_functions.get(name, {})
+            lines.append(
+                f"| {stage} | `{name}` | "
+                f"{float(before.get('cumulative_time_s', 0.0)):.3f} | "
+                f"{float(after.get('cumulative_time_s', 0.0)):.3f} |"
+            )
+
+    lines.extend(
+        [
+            "",
+            "## 算法边界",
+            "",
+            "雷达预门控只对有限、逐元素严格对称且通过 Gershgorin 严格正定认证的创新协方差"
+            "生效。正定下界还必须高于 NumPy `pinv` 的奇异值截断上界；不定、近奇异、非对称或"
+            "其他未认证矩阵全部执行原有精确 `pinv`。只有已认证矩阵的马氏距离保守下界严格"
+            "超过原门限时，候选对才跳过伪逆。Hungarian 一对一分配、原门限和 `pinv` 语义不变。"
+            "完整快照只复用同一次协方差得到的 A95，分级阈值和发布字段不变。",
+            "",
+            "结果证明当前冻结三维质点输入上的语义等价和本机性能收益。它不证明 AirSim 实时性、"
+            "真实雷达精度、正式系统容量或 200 对 200 闭环实时性。",
+            "",
+        ]
+    )
+    return "\n".join(lines)
 
 
 def _markdown_report(report: Mapping[str, Any]) -> str:

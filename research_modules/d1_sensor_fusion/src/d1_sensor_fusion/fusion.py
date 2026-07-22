@@ -135,6 +135,77 @@ MEASUREMENT_COVARIANCE_FLOORS = {
     "eo": np.array([0.25, 0.25], dtype=float),
     "lidar": np.array([1.0e-2, 1.0e-2, 1.0e-2], dtype=float),
 }
+RADAR_ASSOCIATION_LOWER_BOUND_RELATIVE_MARGIN = 1.0e-12
+RADAR_ASSOCIATION_PINV_RCOND = 1.0e-15
+
+
+def _radar_lower_bound_applicability(
+    innovation_covariances: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Certify matrices where the legacy pseudoinverse equals an inverse.
+
+    Exact symmetry plus a positive Gershgorin lower bound proves strict
+    positive definiteness.  Requiring that lower bound to exceed an upper
+    bound on NumPy ``pinv``'s singular-value cutoff proves that no eigenmode is
+    truncated by the legacy solve.  Uncertified matrices must use ``pinv``.
+    """
+
+    transposed = np.swapaxes(innovation_covariances, -1, -2)
+    finite = np.all(np.isfinite(innovation_covariances), axis=(-2, -1))
+    exactly_symmetric = np.all(
+        innovation_covariances == transposed,
+        axis=(-2, -1),
+    )
+    diagonal = np.diagonal(innovation_covariances, axis1=-2, axis2=-1)
+    absolute_row_sums = np.sum(np.abs(innovation_covariances), axis=-1)
+    off_diagonal_radii = absolute_row_sums - np.abs(diagonal)
+    gershgorin_lower = np.min(diagonal - off_diagonal_radii, axis=-1)
+    spectral_upper = np.max(absolute_row_sums, axis=-1)
+    safe_spectral_upper = spectral_upper * (
+        1.0 + RADAR_ASSOCIATION_LOWER_BOUND_RELATIVE_MARGIN
+    )
+    safe_gershgorin_lower = (
+        gershgorin_lower
+        - RADAR_ASSOCIATION_LOWER_BOUND_RELATIVE_MARGIN * spectral_upper
+    )
+    cutoff_upper = RADAR_ASSOCIATION_PINV_RCOND * safe_spectral_upper
+    certified = (
+        finite
+        & exactly_symmetric
+        & (safe_spectral_upper > 0.0)
+        & (safe_gershgorin_lower > 0.0)
+        & (safe_gershgorin_lower > cutoff_upper)
+    )
+    return certified, safe_spectral_upper
+
+
+def _radar_lower_bound_rejection_mask(
+    differences: np.ndarray,
+    innovation_covariances: np.ndarray,
+    association_gate: float,
+) -> np.ndarray:
+    """Return pairs whose Mahalanobis distance must exceed the gate.
+
+    For a certified ``S``, the legacy pseudoinverse retains every eigenmode
+    and therefore equals ``inv(S)``.  Its quadratic form is bounded below by
+    ``||d||^2 / ||S||_2``; the maximum absolute row sum is a conservative
+    upper bound for ``||S||_2``.  Uncertified pairs are never pre-rejected.
+    """
+
+    squared_distances = np.einsum("toi,toi->to", differences, differences)
+    certified, spectral_upper = _radar_lower_bound_applicability(
+        innovation_covariances
+    )
+    threshold = (
+        float(association_gate)
+        * spectral_upper
+        * (1.0 + RADAR_ASSOCIATION_LOWER_BOUND_RELATIVE_MARGIN)
+    )
+    return (
+        certified
+        & np.isfinite(squared_distances)
+        & (squared_distances > threshold)
+    )
 
 
 def _state_bound_diag(
@@ -303,6 +374,8 @@ class FusionAdapter:
         incremental_replay_cache: bool = True,
         shared_publication_audit_snapshot: bool = True,
         scan_association_model_cache: bool = True,
+        radar_association_lower_bound_gate: bool = True,
+        reuse_track_classification_a95: bool = True,
         direct_checkpoint_state_queries: bool = True,
         fixed_lag_checkpoint_suffix_reuse: bool = True,
         trusted_replay_checkpoint_prefix: bool = True,
@@ -371,6 +444,12 @@ class FusionAdapter:
             shared_publication_audit_snapshot
         )
         self.scan_association_model_cache = bool(scan_association_model_cache)
+        self.radar_association_lower_bound_gate = bool(
+            radar_association_lower_bound_gate
+        )
+        self.reuse_track_classification_a95 = bool(
+            reuse_track_classification_a95
+        )
         self.direct_checkpoint_state_queries = bool(direct_checkpoint_state_queries)
         self.fixed_lag_checkpoint_suffix_reuse = bool(
             fixed_lag_checkpoint_suffix_reuse
@@ -1558,45 +1637,9 @@ class FusionAdapter:
             )
 
         if all(observation.modality == "radar" for observation in observations):
-            measurement_timestamp = observations[0].measurement_timestamp
-            track_states = [
-                self._state_at(record, measurement_timestamp)
-                for _, record in track_items
-            ]
-            observation_states = [
-                radar_state_from_observation(observation, self.radar_covariance_config)
-                for observation in observations
-            ]
-            if context is not None:
-                context.association_radar_track_state_build_count += len(track_states)
-                context.association_radar_observation_state_build_count += len(
-                    observation_states
-                )
-                context.association_innovation_solve_count += (
-                    len(track_states) * len(observation_states)
-                )
-            track_positions = np.stack([item.state[:3] for item in track_states])
-            track_covariances = np.stack(
-                [item.covariance[:3, :3] for item in track_states]
-            )
-            observation_positions = np.stack([item[0][:3] for item in observation_states])
-            observation_covariances = np.stack(
-                [item[1][:3, :3] for item in observation_states]
-            )
-            differences = (
-                observation_positions[None, :, :] - track_positions[:, None, :]
-            )
-            innovation_covariances = (
-                track_covariances[:, None, :, :]
-                + observation_covariances[None, :, :, :]
-                + np.eye(3, dtype=float)[None, None, :, :] * 1.0e-6
-            )
-            inverses = np.linalg.pinv(innovation_covariances)
-            cost_matrix = np.einsum(
-                "toi,toij,toj->to",
-                differences,
-                inverses,
-                differences,
+            cost_matrix = self._radar_scan_cost_matrix(
+                track_items,
+                observations,
             )
         elif self.scan_association_model_cache:
             cost_matrix = self._cached_non_radar_scan_cost_matrix(
@@ -1647,6 +1690,91 @@ class FusionAdapter:
                 continue
             assignments[int(column)] = track_items[int(row)][0]
         return assignments
+
+    def _radar_scan_cost_matrix(
+        self,
+        track_items: list[tuple[str, TrackRecord]],
+        observations: list[SensorObservation],
+    ) -> np.ndarray:
+        """Build exact radar costs after a conservative gate lower bound."""
+
+        context = self._batch_context
+        measurement_timestamp = observations[0].measurement_timestamp
+        track_states = [
+            self._state_at(record, measurement_timestamp)
+            for _, record in track_items
+        ]
+        observation_states = [
+            radar_state_from_observation(
+                observation,
+                self.radar_covariance_config,
+            )
+            for observation in observations
+        ]
+        if context is not None:
+            context.association_radar_track_state_build_count += len(track_states)
+            context.association_radar_observation_state_build_count += len(
+                observation_states
+            )
+
+        track_positions = np.stack([item.state[:3] for item in track_states])
+        track_covariances = np.stack(
+            [item.covariance[:3, :3] for item in track_states]
+        )
+        observation_positions = np.stack(
+            [item[0][:3] for item in observation_states]
+        )
+        observation_covariances = np.stack(
+            [item[1][:3, :3] for item in observation_states]
+        )
+        differences = (
+            observation_positions[None, :, :] - track_positions[:, None, :]
+        )
+        innovation_covariances = (
+            track_covariances[:, None, :, :]
+            + observation_covariances[None, :, :, :]
+            + np.eye(3, dtype=float)[None, None, :, :] * 1.0e-6
+        )
+        pair_count = len(track_states) * len(observation_states)
+        if not self.radar_association_lower_bound_gate:
+            if context is not None:
+                context.association_innovation_solve_count += pair_count
+            inverses = np.linalg.pinv(
+                innovation_covariances,
+                rcond=RADAR_ASSOCIATION_PINV_RCOND,
+            )
+            return np.einsum(
+                "toi,toij,toj->to",
+                differences,
+                inverses,
+                differences,
+            )
+
+        rejected = _radar_lower_bound_rejection_mask(
+            differences,
+            innovation_covariances,
+            self.association_gate,
+        )
+        exact = ~rejected
+        exact_solve_count = int(np.count_nonzero(exact))
+        if context is not None:
+            context.association_innovation_solve_count += exact_solve_count
+        cost_matrix = np.full(rejected.shape, np.inf, dtype=float)
+        if exact_solve_count == 0:
+            return cost_matrix
+
+        exact_differences = differences[exact]
+        exact_inverses = np.linalg.pinv(
+            innovation_covariances[exact],
+            rcond=RADAR_ASSOCIATION_PINV_RCOND,
+        )
+        cost_matrix[exact] = np.einsum(
+            "ni,nij,nj->n",
+            exact_differences,
+            exact_inverses,
+            exact_differences,
+        )
+        return cost_matrix
 
     def _cached_non_radar_scan_cost_matrix(
         self,
@@ -2500,7 +2628,12 @@ class FusionAdapter:
             batch_context.global_track_materialization_count += 1
         if not record.current_state_covariance_limited:
             self._limit_record_covariance(record)
-        level = self._classify(record)
+        if self.reuse_track_classification_a95:
+            a95_m = covariance_a95(record.current_state.covariance)
+            level = self._classify(record, a95_m=a95_m)
+        else:
+            level = self._classify(record)
+            a95_m = covariance_a95(record.current_state.covariance)
         likelihood_sum = sum(record.identity_likelihood.values())
         identity_likelihood = (
             {key: value / likelihood_sum for key, value in record.identity_likelihood.items()}
@@ -2522,7 +2655,7 @@ class FusionAdapter:
                 batch_context.sensor_health_snapshot_build_count += 1
         metadata.update(
             {
-                "a95_m": covariance_a95(record.current_state.covariance),
+                "a95_m": a95_m,
                 "frame_id": "ned",
                 "valid_at": record.current_state.timestamp,
                 "published_at": self.current_time,
@@ -2555,8 +2688,17 @@ class FusionAdapter:
             metadata=metadata,
         )
 
-    def _classify(self, record: TrackRecord) -> TrackLevel:
-        a95 = covariance_a95(record.current_state.covariance)
+    def _classify(
+        self,
+        record: TrackRecord,
+        *,
+        a95_m: float | None = None,
+    ) -> TrackLevel:
+        a95 = (
+            covariance_a95(record.current_state.covariance)
+            if a95_m is None
+            else float(a95_m)
+        )
         source_count = sum(1 for count in record.source_support.values() if count > 0)
         if record.recent_nis:
             nis_pass_rate = sum(nis <= self.association_gate for nis in record.recent_nis) / len(

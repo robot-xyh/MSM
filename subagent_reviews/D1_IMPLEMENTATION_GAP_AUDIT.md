@@ -17,6 +17,7 @@
 | 观测治理内存边界 | 正式快速治理证据已获得 | 200 规模 `estimated_peak_memory_bytes.mean=40,914,828.4 B`，约 40.91 MB；最大 40,926,870 B | 完整融合、长历史和进程常驻集内存仍需单独记录；tracemalloc 值不是生产预算 |
 | 逐小扫描全后验吞吐 | **D1-owned 冻结输入热点已关闭；系统 P1 仍开放** | profiler 定位 `_state_at`/历史 replay 和重复 health snapshot；增量后验检查点与公共审计快照使 filter update `93,234 -> 1,797`、health snapshot `16,653 -> 86`；clean 三 seed 全栈已完成 | 冻结硬件、发布频率与周期预算并扩展更长时；另验长历史内存和端到端实时倍率 |
 | 扫描关联重复模型构造 | **D1-owned 与 clean 三 seed 复跑已关闭** | seed 42000 冻结对照中 model build `16,457 -> 82`、墙钟 `10.792 -> 8.635 s`；clean `8f86192` 三 seed 全栈安全与语义回归通过 | 不得用模块单 seed 1.25 倍或全栈 D1 分项 10.0% 替代系统 P95、AirSim 或实时验收 |
+| 雷达候选精确创新求解成本 | **D1-owned 严格等价优化已关闭；系统实时 P1 仍开放** | 仅对有限、严格对称、Gershgorin 严格正定且高于 `pinv` cutoff 的矩阵预门控；非正定交叉协方差和近奇异截断负例均回退旧精确求解。10 s 三 seed 精确求解合计 `7,130,228 -> 1,578,677`，逐扫描/终态/evidence 哈希一致，墙钟均值 `91.313 -> 88.619 s`，3/3 更快 | 记录真实异常 covariance 的认证/回退比例，扩展未见 seed、时长和固定硬件周期统计；优化后仍非实时，不得放宽 gate、cutoff 或 `pinv` 语义 |
 | 正式 200v200 算法效果 | 未验收 | clean 三 seed 全栈已运行，但正式 RMSE/NEES/NIS sidecar 和 D2 canonical mapping 指标仍 unavailable | 更多未见 seed、正确 D2 canonical mapping、RMSE/NEES/NIS/coverage 与置信区间 |
 | AirSim 状态 | 无变化 | 两批均为合成治理或三维质点制品，未启动 Blocks/CV/SimpleFlight | 按独立 AirSim 计划采集和验收，不得把本批改写为 AirSim 证据 |
 
@@ -38,6 +39,12 @@ publication audit v2；main 已在 clean `8f86192` 三种子质点全栈接线�
 86 个逐扫描语义摘要、最终 201 条航迹和 consistency evidence 完全一致，在线 truth 使用为 0。
 专项 `10 passed in 10.33s`，D1 全量 `161 passed in 38.02s`。当前无新增 D1 P0 blocker；
 clean 三 seed 全栈复跑已完成，更多长时 seed、实时预算和正式效果指标仍为 P1。
+
+第三阶段雷达预门控不再使用未认证的 trace 比值。当前实现以严格对称、Gershgorin 正定下界和
+`pinv` cutoff 上界共同认证适用性；任何认证失败都保留全部候选并执行旧精确伪逆。两类反例
+明确覆盖旧路径会保留、朴素下界可能误拒绝的情况，扫描级参考/候选语义一致。三 seed 冻结基准
+和 D1 全量 `175 passed` 后，本 D1-owned 数学边界缺口关闭；系统实时、正式精度和真实异常矩阵
+分布仍按 P1 保持开放。
 
 ## 0.1 历史 D1-owned GAP 增量（2026-07-16）
 

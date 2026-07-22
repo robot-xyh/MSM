@@ -4,6 +4,13 @@
 
 ## 当前证据索引（2026-07-22）
 
+最新 D1-owned 雷达关联优化使用 clean `8f86192` 的 10 s 冻结输入 seeds 42000-42002。
+预门控只处理通过有限性、严格对称、Gershgorin 严格正定和 `pinv` cutoff 安全裕量认证的创新
+协方差；其余矩阵全部回退旧精确 `pinv`。非正定交叉协方差和近奇异截断负例均证明 rejection
+mask 不会预拒绝旧路径会保留的候选，扫描级语义保持一致。三 seed 旧/新纯融合墙钟均值为
+`91.313/88.619 s`，3/3 更快；精确创新求解合计 `7,130,228 -> 1,578,677`。逐扫描、终态和
+一致性证据哈希完全一致，D1 全量 `175 passed in 26.69s`。结果不关闭实时、AirSim 或正式精度。
+
 clean 候选提交 `8f86192` 已完成 200v200 三维质点全栈的同一运行时刻延迟物化接线复跑。
 10 s seeds 42000、42001、42002 均为 clean、finite，在线 truth 使用 0，D1/D2 overflow 和安全
 合同全部通过。相对旧 clean `3bac3ff`，D1 fusion 三 seed 均值
@@ -85,5 +92,9 @@ D1 侧解释见本目录各算法/AirSim 文档和 `../reports/EXPERIMENT_REPORT
 - `../reports/d1_scan_association_performance_benchmark_20260722.json`
 - `../reports/D1_LONG_DURATION_PERFORMANCE_BENCHMARK_CN.md`
 - `../reports/d1_long_duration_performance_benchmark_20260722.json`
+- `../reports/D1_COALESCED_RELEASE_PERFORMANCE_BENCHMARK_CN.md`
+- `../reports/d1_coalesced_release_performance_benchmark_20260722.json`
+- `../reports/D1_COALESCED_RELEASE_PROFILE_2P2_CN.md`
+- `../reports/d1_coalesced_release_profile_2p2_20260722.json`
 
 更新文档时不要移动或重命名上述图表，避免破坏报告中的相对链接。

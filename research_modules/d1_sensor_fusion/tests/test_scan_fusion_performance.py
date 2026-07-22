@@ -2,14 +2,20 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from enum import Enum
+from unittest.mock import patch
 
 import numpy as np
 import pytest
 
+import d1_sensor_fusion.fusion as fusion_module
 from d1_sensor_fusion import (
     FusionStateUpdateResult,
     Scalable3DFusionAdapter,
     TracksNotMaterializedError,
+)
+from d1_sensor_fusion.fusion import (
+    _radar_lower_bound_applicability,
+    _radar_lower_bound_rejection_mask,
 )
 from d1_sensor_fusion.observations import (
     CameraModel,
@@ -582,6 +588,44 @@ def test_published_track_arrays_do_not_alias_cached_posterior() -> None:
     np.testing.assert_array_equal(republished.covariance, expected_covariance)
 
 
+def test_track_materialization_reuses_classification_a95_exactly_once() -> None:
+    reference = Scalable3DFusionAdapter(
+        radar_association_lower_bound_gate=False,
+        reuse_track_classification_a95=False,
+    )
+    optimized = Scalable3DFusionAdapter(
+        radar_association_lower_bound_gate=False,
+        reuse_track_classification_a95=True,
+    )
+    scan = _radar_scan(
+        7,
+        measurement_timestamp=0.0,
+        arrival_timestamp=0.2,
+        scan_id="single-a95-materialization",
+    )
+    reference.process_scan_batch(scan, materialize_tracks=False)
+    optimized.process_scan_batch(scan, materialize_tracks=False)
+
+    with patch.object(
+        fusion_module,
+        "covariance_a95",
+        wraps=fusion_module.covariance_a95,
+    ) as reference_a95:
+        reference_tracks = reference.global_tracks()
+    with patch.object(
+        fusion_module,
+        "covariance_a95",
+        wraps=fusion_module.covariance_a95,
+    ) as optimized_a95:
+        optimized_tracks = optimized.global_tracks()
+
+    assert _canonical([item.to_dict() for item in optimized_tracks]) == _canonical(
+        [item.to_dict() for item in reference_tracks]
+    )
+    assert reference_a95.call_count == 2 * len(reference_tracks)
+    assert optimized_a95.call_count == len(optimized_tracks)
+
+
 def _association_adapters(
     **kwargs,
 ) -> tuple[Scalable3DFusionAdapter, Scalable3DFusionAdapter]:
@@ -696,3 +740,214 @@ def test_scan_association_model_cache_matches_oosm_and_fixed_lag_reference() -> 
 
     assert current.pre_checkpoint_oosm_replay_count == 1
     assert optimized.pre_checkpoint_oosm_replay_count == 1
+
+
+def test_radar_lower_bound_rejects_only_pairs_above_exact_gate() -> None:
+    rng = np.random.default_rng(20260722)
+    differences = rng.normal(0.0, 300.0, size=(7, 11, 3))
+    diagonal = rng.uniform(20.0, 80.0, size=(7, 11, 3))
+    innovation_covariances = np.zeros((7, 11, 3, 3), dtype=float)
+    diagonal_index = np.arange(3)
+    innovation_covariances[..., diagonal_index, diagonal_index] = diagonal
+    innovation_covariances[..., 0, 1] = 0.25
+    innovation_covariances[..., 1, 0] = 0.25
+    innovation_covariances[..., 0, 2] = -0.1
+    innovation_covariances[..., 2, 0] = -0.1
+    innovation_covariances[..., 1, 2] = 0.2
+    innovation_covariances[..., 2, 1] = 0.2
+
+    certified, _ = _radar_lower_bound_applicability(
+        innovation_covariances
+    )
+    gate = 40.0
+
+    rejected = _radar_lower_bound_rejection_mask(
+        differences,
+        innovation_covariances,
+        gate,
+    )
+    inverses = np.linalg.pinv(innovation_covariances)
+    exact_costs = np.einsum(
+        "toi,toij,toj->to",
+        differences,
+        inverses,
+        differences,
+    )
+
+    assert np.all(certified)
+    assert np.any(rejected)
+    assert np.all(exact_costs[rejected] > gate)
+
+
+@pytest.mark.parametrize(
+    ("unsafe_covariance", "difference"),
+    [
+        (
+            np.array(
+                [[1.0, 2.0, 0.0], [2.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
+                dtype=float,
+            ),
+            np.array([1.0e6, -1.0e6, 0.0], dtype=float),
+        ),
+        (
+            np.diag([1.0e12, 1.0, 1.0e-20]),
+            np.array([0.0, 0.0, 1.0e9], dtype=float),
+        ),
+    ],
+    ids=("indefinite_cross_covariance", "pinv_truncated_near_singular"),
+)
+def test_radar_lower_bound_never_rejects_uncertified_covariance(
+    unsafe_covariance: np.ndarray,
+    difference: np.ndarray,
+) -> None:
+    gate = 40.0
+    differences = np.broadcast_to(difference, (2, 3, 3)).copy()
+    covariances = np.broadcast_to(
+        unsafe_covariance,
+        (2, 3, 3, 3),
+    ).copy()
+
+    certified, _ = _radar_lower_bound_applicability(covariances)
+    rejected = _radar_lower_bound_rejection_mask(
+        differences,
+        covariances,
+        association_gate=gate,
+    )
+    exact_costs = np.einsum(
+        "toi,toij,toj->to",
+        differences,
+        np.linalg.pinv(covariances),
+        differences,
+    )
+    naive_trace_lower_bounds = np.einsum(
+        "toi,toi->to",
+        differences,
+        differences,
+    ) / np.trace(covariances, axis1=-2, axis2=-1)
+
+    assert not np.any(certified)
+    assert not np.any(rejected)
+    assert np.all(exact_costs <= gate)
+    assert np.all(naive_trace_lower_bounds > gate)
+
+
+@pytest.mark.parametrize(
+    "unsafe_innovation_covariance",
+    [
+        np.array(
+            [[1.0, 2.0, 0.0], [2.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
+            dtype=float,
+        ),
+        np.diag([1.0e12, 1.0, 0.0]),
+    ],
+    ids=("indefinite_cross_covariance", "pinv_truncated_near_singular"),
+)
+def test_uncertified_radar_scan_falls_back_to_exact_pinv_semantics(
+    unsafe_innovation_covariance: np.ndarray,
+) -> None:
+    reference = Scalable3DFusionAdapter(
+        association_gate=40.0,
+        radar_association_lower_bound_gate=False,
+    )
+    optimized = Scalable3DFusionAdapter(
+        association_gate=40.0,
+        radar_association_lower_bound_gate=True,
+    )
+    origin = _radar_scan(
+        7,
+        measurement_timestamp=0.0,
+        arrival_timestamp=0.2,
+        scan_id="unsafe-radar-origin",
+    )
+    _assert_semantically_equal(
+        reference,
+        optimized,
+        reference.process_scan_batch(origin),
+        optimized.process_scan_batch(origin),
+    )
+
+    def install_unsafe_state_query(adapter: Scalable3DFusionAdapter) -> None:
+        original_state_at = adapter._state_at
+
+        def unsafe_state_at(record, timestamp):
+            state = original_state_at(record, timestamp)
+            state.covariance[:3, :3] = unsafe_innovation_covariance
+            return state
+
+        adapter._state_at = unsafe_state_at
+
+    install_unsafe_state_query(reference)
+    install_unsafe_state_query(optimized)
+    original_radar_state = fusion_module.radar_state_from_observation
+
+    def radar_state_with_zero_covariance(observation, config):
+        state, covariance = original_radar_state(observation, config)
+        return state, np.zeros_like(covariance)
+
+    update = _radar_scan(
+        7,
+        measurement_timestamp=0.1,
+        arrival_timestamp=0.3,
+        scan_id="unsafe-radar-update",
+    )
+    with patch.object(
+        fusion_module,
+        "radar_state_from_observation",
+        side_effect=radar_state_with_zero_covariance,
+    ):
+        reference_result = reference.process_scan_batch(update)
+        optimized_result = optimized.process_scan_batch(update)
+
+    _assert_semantically_equal(
+        reference,
+        optimized,
+        reference_result,
+        optimized_result,
+    )
+    pair_count = len(origin) * len(update)
+    assert reference_result.summary.association_innovation_solve_count == pair_count
+    assert optimized_result.summary.association_innovation_solve_count == pair_count
+
+
+def test_radar_lower_bound_preserves_scan_semantics_and_reduces_exact_solves() -> None:
+    reference = Scalable3DFusionAdapter(
+        association_gate=40.0,
+        radar_association_lower_bound_gate=False,
+    )
+    optimized = Scalable3DFusionAdapter(
+        association_gate=40.0,
+        radar_association_lower_bound_gate=True,
+    )
+    origin = _radar_scan(
+        40,
+        measurement_timestamp=0.0,
+        arrival_timestamp=0.2,
+        scan_id="radar-lower-bound-origin",
+    )
+    _assert_semantically_equal(
+        reference,
+        optimized,
+        reference.process_scan_batch(origin),
+        optimized.process_scan_batch(origin),
+    )
+
+    update = _radar_scan(
+        40,
+        measurement_timestamp=0.1,
+        arrival_timestamp=0.3,
+        scan_id="radar-lower-bound-update",
+    )
+    reference_result = reference.process_scan_batch(update)
+    optimized_result = optimized.process_scan_batch(update)
+    _assert_semantically_equal(
+        reference,
+        optimized,
+        reference_result,
+        optimized_result,
+    )
+
+    pair_count = len(origin) * len(update)
+    assert reference_result.summary.association_candidate_pair_count == pair_count
+    assert optimized_result.summary.association_candidate_pair_count == pair_count
+    assert reference_result.summary.association_innovation_solve_count == pair_count
+    assert 0 < optimized_result.summary.association_innovation_solve_count < pair_count
