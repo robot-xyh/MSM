@@ -1,5 +1,38 @@
 # D6 系统级评估指标实验报告
 
+## 2.18 2026-07-22 批次根发现修复验证
+
+### 场景
+
+输入为 `scalable_3d_rule_performance_calibration_20260722_clean_492979e`。批次包含 20、50、100、
+200 四档规模，每档 seed 42000-42004，共 20 个主 episode。每个 episode 还包含 D6 truth-isolated、
+D2 identity、D1 consistency 等带 manifest 的 sidecar。
+
+验收条件为：递归发现恰好 20 个主 episode；sidecar 混入为 0；四档各 5 seed；CLI 正常写出逐 seed
+CSV、聚合 JSON、中文报告和阶段时序曲线；缺 experiment-matrix metadata 时保持描述性类别。
+
+### 结果
+
+| 项目 | 修复前 | 修复后 |
+| --- | ---: | ---: |
+| 递归命中的 manifest 目录 | 100 | 20 |
+| 主 episode | 20 | 20 |
+| sidecar 误收录 | 80 | 0 |
+| CLI 完整生成报告 | 否，`int(None)` 中止 | 是 |
+| dirty episode | 不可完成统计 | 0/20 |
+| 描述性 clean-source calibration | 不可完成统计 | 20/20 |
+| 实验矩阵 formal availability | 不可完成统计 | 0/20 |
+
+修复后使用 2000 次固定随机种子 bootstrap。四个聚合组均为 5 episode、5 seed。在线真值字段违规
+计数 20/20 available，值均为 0。缺字段和 `None` 专项保持 unavailable，没有补零。
+
+### 测试与边界
+
+Scalable 3D 专项为 `46 passed`，覆盖批次根、sidecar、显式目录、缺在线日志仍计入和 `None`
+收口。D6 全量为 `527 passed`。一条 Matplotlib `Axes3D` warning 来自
+本机重复安装环境，不影响二维时序图和本次判断。本验证只证明离线目录发现、空值收口和报告分类
+正确，不证明融合精度、关联连续性、规划性能、AirSim 接口、实时性或物理拦截效果。
+
 ## 2.17 2026-07-22 观测治理正式结果
 
 ### 来源

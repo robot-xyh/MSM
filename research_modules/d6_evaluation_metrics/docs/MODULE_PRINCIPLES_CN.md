@@ -1,5 +1,20 @@
 # D6 系统级离线评估模块原理
 
+## Episode 身份与侧车隔离（2026-07-22）
+
+离线目录中的 manifest 不等同于主 episode。身份评估、真值隔离、一致性检查和运行结果连接器都
+可以生成自己的 manifest。D6 递归发现时要求 manifest、场景配置和 episode 摘要位于同一目录，
+才将其视为主 episode。该合同只解决目录身份，不判断算法是否通过。
+
+显式输入和递归输入采用不同边界。调用方通过 `--episode-dir` 指定的目录继续进入评估，以便历史
+不完整记录得到明确 unavailable 结果。`--episode-root` 只自动发现满足三项结构合同的目录，避免
+sidecar 扩大 episode 数和统计分母。在线观测、可选真值、近距事件和阶段时序缺失时不影响目录身份，
+但对应指标为空并保留原因。
+
+来源清洁度与正式实验资格分开。基础 provenance 可以证明工作树 clean、配置摘要匹配、schema
+一致和在线真值隔离。实验矩阵正式资格还需要 variant、comparison key 和运行模式等显式 metadata。
+前一层通过而后一层缺失时，状态为描述性 clean-source calibration，不称为 formal experiment。
+
 ## 长 Episode 观测治理原则（2026-07-22）
 
 长 episode 首先评估治理状态能否被审计，再讨论算法效果。D1 的乱序缓冲和 D2 的 claim

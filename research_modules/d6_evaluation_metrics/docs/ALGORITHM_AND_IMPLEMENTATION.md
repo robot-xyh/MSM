@@ -814,6 +814,33 @@ scenario config、summary、stage CSV、online JSONL 和 offline proximity JSONL
 `timestamp/sequence` 排序；不导入 simulator 或控制模块。配置以 producer 同口径 canonical JSON
 复算 SHA-256，并交叉检查 scenario/version/seed、实际数量和 D3/D4/D5 runtime version。
 
+### 批次根发现与空值收口
+
+`discover_scalable_3d_episode_dirs()` 对显式 `episode_dirs` 保持调用方输入。对 `episode_roots` 递归
+扫描时，候选目录必须同时包含：
+
+```text
+manifest.json
+scenario_config.json
+summary.json
+```
+
+该最小集合能排除 `d6_truth_isolated`、`offline_identity`、`offline_consistency` 等 sidecar manifest。
+发现阶段不解析目录名，也不要求 `online_observations.jsonl`、`stage_timings.csv`、近距事件或离线
+真值文件。候选进入评估后，各文件仍按原 loader 独立产生 available 或
+`null/unavailable+reason`。因此缺在线日志的真实 episode 会保留在批次分母中，不会被静默过滤。
+
+`_finalize_episode_status()` 通过 `_available_nonnegative_int()` 读取关键计数。只有 availability 为
+available 且值为非负整数时才比较是否大于零。available 与非法值冲突时字段转为 unavailable；原本
+unavailable 的 `None` 不参与数值转换。基础 clean provenance 和实验矩阵 formal 门分别收口：无矩阵
+声明的 clean 输入为 `descriptive_clean_source_calibration`，矩阵合同完整通过时为
+`clean_formal_experiment_matrix`。
+
+2026-07-22 确定性测试覆盖批次根、显式 episode、四类 sidecar、批次根缺在线日志仍计入和 summary `None`。
+真实 20-case 批次修复前发现 100 个 manifest 目录，修复后只发现 20 个主 episode；CLI 以 2000 次
+bootstrap 完成报告。20/20 为 clean 来源，实验矩阵字段 20/20 unavailable，因此没有提升为 formal
+实验结果。专项 `46 passed`，D6 全量 `527 passed`。
+
 ### Learning runtime provenance
 
 consumer 比较 `scenario_config.metadata.learning_runtime` 与

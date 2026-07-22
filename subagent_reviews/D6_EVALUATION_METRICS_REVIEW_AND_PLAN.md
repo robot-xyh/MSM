@@ -1,5 +1,24 @@
 # D6 系统评估指标综述及子方案
 
+## 2026-07-22 Scalable 3D 批次发现评审
+
+批次根目录不是 episode 身份依据。主 episode 内的离线一致性、身份评估和真值隔离制品各自带有
+manifest，它们描述的是评估侧车，不具备完整在线 episode 合同。仅凭 manifest 递归会扩大分母，
+还会把缺在线记录的 sidecar 送入状态收口。
+
+D6 现以三项结构制品识别主 episode：manifest 固定来源，scenario config 固定场景，summary 固定
+episode 结果。三项必须位于同一目录。online observations、阶段时序、近距事件、离线真值和各模块
+sidecar 不参与身份判断；它们缺失时按各自 availability 处理。显式 episode 路径不受递归筛选影响，
+便于审计历史不完整记录。
+
+计数收口使用“availability、类型、范围”三步检查。available 的值必须是非负整数；unavailable 的
+值保持 null。该规则防止 `None` 被转成 0，也防止缺证据目录使整批评估崩溃。clean provenance 只
+说明来源可复核。没有 experiment-matrix metadata 的批次归为描述性 clean-source calibration。
+
+真实复核批次包含 20/50/100/200 四档，每档 5 seed。修复前发现 100 个 manifest 目录；修复后发现
+20 个主 episode，sidecar 为 0。20/20 clean、20/20 无实验矩阵声明，最终证据类别均为描述性
+clean-source calibration。该结果验证发现和报告合同，不评价 D1-D7 性能。
+
 ## 2026-07-22 长 Episode 观测治理评审
 
 D6 已完成面向 main 长 episode 标定的公共只读合同。批输入、manifest、在线 D1/D2 审计和

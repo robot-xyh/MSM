@@ -1,5 +1,35 @@
 # D6 Evaluation Metrics Plan
 
+## 2026-07-22 Scalable 3D 批次根发现闭环
+
+### 已完成
+
+- [x] 将 `--episode-root` 从“任意 manifest 目录”改为“三项主 episode 结构”发现合同：
+  `manifest.json`、`scenario_config.json`、`summary.json`。
+- [x] 排除主 episode 内 D6 truth-isolated、D2 identity、D1 consistency 等 sidecar manifest，
+  不依赖目录名、2v2/5v5 标签或真值编号。
+- [x] 保留显式 `--episode-dir` 和历史/缺在线日志或其他制品记录；缺失值继续输出
+  `null/unavailable+reason`，不补零。
+- [x] 状态收口仅处理 available 的合法非负整数；`None`、缺字段和缺文件不再触发 `int()` 异常。
+- [x] 将无实验矩阵声明的 clean 输入归类为 `descriptive_clean_source_calibration`，与
+  `clean_formal_experiment_matrix` 分开。
+- [x] 增加 batch-root、显式 episode、sidecar、批次根缺在线记录仍计入和 summary `None` 的
+  确定性回归。
+
+### 验证
+
+2026-07-22 对 `scalable_3d_rule_performance_calibration_20260722_clean_492979e` 运行真实批次根
+入口。验收要求为发现 20 个主 episode、sidecar 混入 0、四档各 5 seed、CLI 正常退出、缺实验
+矩阵声明不提升为 formal。结果全部满足：20/20 为描述性 clean-source calibration，dirty 为 0，
+实验矩阵 formal availability 为 0/20。专项 `46 passed`，D6 全量 `527 passed`。
+
+### 后续边界
+
+该修复关闭批次根离线评估崩溃，不改变 producer schema、控制链或指标公式。后续仍由 main 提供
+冻结实验矩阵 metadata、长时物理结果和多 seed 正式输入；D6 不从 clean 状态单独推断算法正式通过。
+`AIRSIM_INTEGRATION_PLAN.md` 已检查，本次不改变 AirSim Blocks、ComputerVision、SimpleFlight、
+episode reset 或日志接入，因此无需修改。
+
 ## 2026-07-22 长 Episode 观测治理标定
 
 ### D6 已完成

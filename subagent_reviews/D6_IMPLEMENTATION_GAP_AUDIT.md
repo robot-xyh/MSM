@@ -1,5 +1,32 @@
 # D6 实现差距审计
 
+## 2026-07-22 Scalable 3D sidecar 误发现 GAP 状态
+
+### 已关闭的 D6-owned P0
+
+1. `--episode-root` 原先递归接收所有 `manifest.json` 父目录。20 个主 episode 各含四类
+   sidecar manifest，实际发现 100 个目录；sidecar 被当作 episode 后缺少在线日志，最终在
+   `int(None)` 处中止整批评估。
+2. 发现合同现要求 manifest、scenario config 和 summary 三项结构制品共存。给定 clean 批次只
+   发现 20 个主 episode，80 个 sidecar 全部排除；缺 online observations 的 episode 仍会被发现，
+   再由 evaluator 标记相关证据 unavailable。
+3. 状态收口现按 availability 读取非负整数。缺文件、缺字段和 `None` 保持 unavailable，不补零、
+   不伪造在线真值审计值。
+4. clean 来源与实验矩阵 formal 分层。给定 20 episode 全部 clean，但均未声明 experiment matrix；
+   最终状态为 `descriptive_clean_source_calibration`，实验矩阵 formal 仍为 unavailable。
+5. 确定性测试覆盖 batch-root、显式 episode、四类 sidecar、批次根缺在线记录仍计入和 summary
+   `None`。专项 `46 passed`，D6 全量 `527 passed`；CLI 2000 次 bootstrap 正常生成四类报告制品。
+
+### 仍开放的 P1
+
+- 本次没有增加实验矩阵 metadata、长期多 seed 趋势、位置/速度精度、身份连续性、实时性或五米
+  物理闭环证据。这些输入条件沿用本文件后续开放项。
+- `formal_acceptance_eligible` 继续表示基础 clean provenance 门；最终证据类别和
+  `experiment_matrix_formal_acceptance_eligible` 决定是否具备实验矩阵 formal 资格，二者不得混写。
+
+当前没有由该问题遗留的 P0。`AIRSIM_INTEGRATION_PLAN.md` 已检查；离线目录发现不改变 AirSim
+日志 producer、运行时编排或控制接口，因此无需修改。
+
 ## 2026-07-22 长 Episode 观测治理 GAP 状态
 
 ### D6-owned 已关闭

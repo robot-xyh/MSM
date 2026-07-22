@@ -70,6 +70,11 @@ _LEARNING_MODULE_VERSION_FIELDS = {
 _ADVISOR_MODES = frozenset({"disabled", "shadow", "assist"})
 
 _OPTIONAL_TRUTH_ARTIFACT = "offline_truth_labels.jsonl"
+_EPISODE_DISCOVERY_REQUIRED_ARTIFACTS = (
+    "manifest.json",
+    "scenario_config.json",
+    "summary.json",
+)
 _GROUP_FIELDS = (
     "scenario_name",
     "scenario_version",
@@ -280,18 +285,31 @@ def discover_scalable_3d_episode_dirs(
     episode_dirs: Iterable[str | Path] = (),
     episode_roots: Iterable[str | Path] = (),
 ) -> tuple[Path, ...]:
-    """Resolve explicit directories and recursively discover manifest-bearing episodes."""
+    """Resolve explicit directories and discover directories with the episode core."""
 
     resolved: list[Path] = [Path(value).resolve() for value in episode_dirs]
     for raw_root in episode_roots:
         root = Path(raw_root).resolve()
         if not root.is_dir():
             raise FileNotFoundError(f"episode root does not exist: {root}")
-        resolved.extend(path.parent.resolve() for path in sorted(root.rglob("manifest.json")))
+        resolved.extend(
+            path.parent.resolve()
+            for path in sorted(root.rglob("manifest.json"))
+            if _has_scalable_3d_episode_core(path.parent)
+        )
     unique = tuple(dict.fromkeys(resolved))
     if not unique:
         raise ValueError("no scalable 3D episode directories were supplied or discovered")
     return unique
+
+
+def _has_scalable_3d_episode_core(directory: Path) -> bool:
+    """Return whether discovery evidence distinguishes an episode from a sidecar."""
+
+    return all(
+        (directory / artifact_name).is_file()
+        for artifact_name in _EPISODE_DISCOVERY_REQUIRED_ARTIFACTS
+    )
 
 
 def evaluate_scalable_3d_episode(episode_dir: str | Path) -> dict[str, Any]:
@@ -565,6 +583,19 @@ def aggregate_scalable_3d_episodes(
         "formal_acceptance_eligible_episode_count": sum(
             row.get("formal_acceptance_eligible") is True for row in rows
         ),
+        "episode_evidence_status_distribution": dict(
+            sorted(
+                Counter(
+                    str(
+                        row.get(
+                            "episode_evidence_status",
+                            "descriptive_or_incomplete_evidence",
+                        )
+                    )
+                    for row in rows
+                ).items()
+            )
+        ),
         "repository_dirty_episode_count": sum(
             row.get("repository_dirty") is True for row in rows
         ),
@@ -639,7 +670,8 @@ def render_scalable_3d_offline_markdown(
         "## 结论",
         "",
         f"本次离线读取 {len(rows)} 个 main-owned episode。评估按 scenario/version、实际 target/resource/recon/camera 数量和 seed 组织，不从 2v2/5v5 名称推断规模。",
-        f"正式 provenance 条件可用的 episode 为 {aggregate.get('formal_acceptance_eligible_episode_count', 0)}/{len(rows)}；dirty episode 为 {aggregate.get('repository_dirty_episode_count', 0)}。",
+        f"基础 clean provenance 条件可用的 episode 为 {aggregate.get('formal_acceptance_eligible_episode_count', 0)}/{len(rows)}；dirty episode 为 {aggregate.get('repository_dirty_episode_count', 0)}。",
+        f"最终证据分类分布为 `{json.dumps(aggregate.get('episode_evidence_status_distribution', {}), ensure_ascii=False, sort_keys=True)}`。没有实验矩阵声明的 clean 输入归入 descriptive clean-source calibration，不提升为实验矩阵 formal 证据。",
         f"当前 schema 合同由 `{SCALABLE_3D_SCHEMA_REGISTRY_VERSION}` 核对；原始 schema 字段始终保留，旧值、未知值、篡改值或缺字段不得进入正式 clean acceptance。",
         "五米接近仅是离线物理诊断，不自动代表身份正确、合同许可、控制成功或任务成功。",
         "",
@@ -3610,25 +3642,39 @@ def _add_stage_columns(row: dict[str, Any], stage_names: Sequence[str]) -> None:
 
 def _finalize_episode_status(row: dict[str, Any]) -> None:
     failures = list(row.get("_failure_reasons", []))
+    online_truth_use_count = _available_nonnegative_int(
+        row,
+        "online_truth_use_count",
+    )
+    online_truth_field_violation_count = _available_nonnegative_int(
+        row,
+        "online_truth_field_violation_count",
+    )
+    active_vision_target_reference_violation_count = _available_nonnegative_int(
+        row,
+        "d5_active_vision_target_reference_violation_count",
+    )
+    active_vision_ack_target_mismatch_count = _available_nonnegative_int(
+        row,
+        "d5_active_vision_ack_target_mismatch_count",
+    )
     if row.get("finite_state_availability") == "available" and row.get("finite_state") is False:
         failures.append("non_finite_world_state")
-    if (
-        row.get("online_truth_use_count_availability") == "available"
-        and int(row.get("online_truth_use_count", 0)) > 0
-    ):
+    if online_truth_use_count is not None and online_truth_use_count > 0:
         failures.append("online_truth_use_nonzero")
-    if int(row.get("online_truth_field_violation_count", 0)) > 0:
+    if (
+        online_truth_field_violation_count is not None
+        and online_truth_field_violation_count > 0
+    ):
         failures.append("online_truth_field_violation")
     if (
-        row.get("d5_active_vision_target_reference_violation_count_availability")
-        == "available"
-        and int(row.get("d5_active_vision_target_reference_violation_count", 0)) > 0
+        active_vision_target_reference_violation_count is not None
+        and active_vision_target_reference_violation_count > 0
     ):
         failures.append("d5_active_vision_unknown_center_track_reference")
     if (
-        row.get("d5_active_vision_ack_target_mismatch_count_availability")
-        == "available"
-        and int(row.get("d5_active_vision_ack_target_mismatch_count", 0)) > 0
+        active_vision_ack_target_mismatch_count is not None
+        and active_vision_ack_target_mismatch_count > 0
     ):
         failures.append("d5_active_vision_ack_target_reference_mismatch")
     if row.get("repository_dirty") is True:
@@ -3696,9 +3742,31 @@ def _finalize_episode_status(row: dict[str, Any]) -> None:
         }
     )
     row["evidence_unavailability_reasons_json"] = unavailable_reasons
-    row["episode_evidence_status"] = (
-        "formal_provenance_ready" if eligible else "descriptive_or_incomplete_evidence"
-    )
+    if (
+        eligible
+        and row.get("experiment_matrix_formal_acceptance_eligible") is True
+    ):
+        row["episode_evidence_status"] = "clean_formal_experiment_matrix"
+    elif eligible and row.get("experiment_matrix_declared") is not True:
+        row["episode_evidence_status"] = "descriptive_clean_source_calibration"
+    else:
+        row["episode_evidence_status"] = "descriptive_or_incomplete_evidence"
+
+
+def _available_nonnegative_int(row: dict[str, Any], field: str) -> int | None:
+    """Read an available count without coercing missing evidence to zero."""
+
+    if row.get(f"{field}_availability") != "available":
+        return None
+    value = row.get(field)
+    if not _is_int_like(value) or int(value) < 0:
+        _put_unavailable(
+            row,
+            field,
+            f"status_finalization_count_missing_or_invalid:{field}",
+        )
+        return None
+    return int(value)
 
 
 def _validate_provenance_consistency(

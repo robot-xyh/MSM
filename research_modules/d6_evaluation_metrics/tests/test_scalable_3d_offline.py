@@ -41,6 +41,18 @@ def _write_jsonl(path: Path, records: list[dict[str, object]]) -> None:
     )
 
 
+def _write_sidecar_manifests(episode: Path) -> None:
+    for name in (
+        "d6_truth_isolated",
+        "offline_identity",
+        "offline_consistency",
+        "observation_governance",
+    ):
+        sidecar = episode / name
+        sidecar.mkdir()
+        _write_json(sidecar / "manifest.json", {"schema_version": f"{name}-v1"})
+
+
 def _track(index: int, *, speed_offset: float = 0.0) -> dict[str, object]:
     covariance = [[0.0] * 6 for _ in range(6)]
     for axis in range(6):
@@ -1242,6 +1254,7 @@ def test_real_producer_style_r0_matrix_contract_is_audited_without_path_inferenc
     assert row["variant_execution_failure_reasons_json"] == []
     assert row["experiment_matrix_formal_acceptance_eligible"] is True
     assert row["experiment_matrix_evidence_class"] == "clean_formal"
+    assert row["episode_evidence_status"] == "clean_formal_experiment_matrix"
 
 
 def test_historical_episode_stays_evaluable_with_matrix_fields_unavailable(
@@ -2037,6 +2050,9 @@ def test_report_bundle_bootstraps_distinct_seeds_and_writes_all_artifacts(
     assert all(path.is_file() and path.stat().st_size > 0 for path in outputs.values())
     aggregate = json.loads(outputs["aggregate_json"].read_text(encoding="utf-8"))
     assert aggregate["episode_count"] == 2
+    assert aggregate["episode_evidence_status_distribution"] == {
+        "descriptive_clean_source_calibration": 2
+    }
     assert len(aggregate["groups"]) == 1
     group = aggregate["groups"][0]
     assert group["target_count"] == 50
@@ -2075,6 +2091,104 @@ def test_report_bundle_bootstraps_distinct_seeds_and_writes_all_artifacts(
     assert "control adoption 只接受通过合同与 summary 审计" in markdown
     assert "d6-scalable3d-schema-registry-v1" in markdown
     assert "schema current" in markdown
+    assert "descriptive clean-source calibration" in markdown
+
+
+def test_batch_root_discovery_excludes_sidecar_manifest_directories(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "batch"
+    first = _write_episode(root / "20v20" / "seed_1", seed=1, target_count=20)
+    second = _write_episode(root / "50v50" / "seed_2", seed=2, target_count=50)
+    _write_sidecar_manifests(first)
+    _write_sidecar_manifests(second)
+
+    discovered = discover_scalable_3d_episode_dirs(episode_roots=[root])
+
+    assert discovered == (first.resolve(), second.resolve())
+    assert all(path.name.startswith("seed_") for path in discovered)
+
+
+def test_batch_root_discovery_keeps_episode_with_missing_online_records(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "batch_with_incomplete_episode"
+    complete = _write_episode(root / "20v20" / "seed_1", seed=1, target_count=20)
+    incomplete = _write_episode(root / "20v20" / "seed_2", seed=2, target_count=20)
+    (incomplete / "online_observations.jsonl").unlink()
+    _write_sidecar_manifests(complete)
+    _write_sidecar_manifests(incomplete)
+
+    discovered = discover_scalable_3d_episode_dirs(episode_roots=[root])
+
+    assert discovered == (complete.resolve(), incomplete.resolve())
+    outputs = Scalable3DOfflineReportGenerator().write_report_bundle(
+        tmp_path / "incomplete_report",
+        inputs=Scalable3DOfflineEvaluationInputs(discovered),
+        bootstrap_resamples=50,
+    )
+    aggregate = json.loads(outputs["aggregate_json"].read_text(encoding="utf-8"))
+    assert aggregate["episode_count"] == 2
+    with outputs["per_episode_seed_csv"].open(newline="", encoding="utf-8") as stream:
+        rows = list(csv.DictReader(stream))
+    incomplete_row = next(row for row in rows if row["seed"] == "2")
+    assert incomplete_row["online_truth_field_violation_count"] == ""
+    assert (
+        incomplete_row["online_truth_field_violation_count_availability"]
+        == "unavailable"
+    )
+    assert incomplete_row["episode_evidence_status"] == (
+        "descriptive_or_incomplete_evidence"
+    )
+
+
+def test_explicit_episode_directory_remains_supported_with_sidecars(
+    tmp_path: Path,
+) -> None:
+    episode = _write_episode(tmp_path / "explicit" / "seed_3", seed=3)
+    _write_sidecar_manifests(episode)
+
+    discovered = discover_scalable_3d_episode_dirs(episode_dirs=[episode])
+
+    assert discovered == (episode.resolve(),)
+    row = evaluate_scalable_3d_episode(discovered[0])
+    assert row["episode_evidence_status"] == (
+        "descriptive_clean_source_calibration"
+    )
+
+
+def test_missing_online_records_remain_unavailable_during_status_finalization(
+    tmp_path: Path,
+) -> None:
+    episode = _write_episode(tmp_path / "missing_online_records")
+    (episode / "online_observations.jsonl").unlink()
+
+    row = evaluate_scalable_3d_episode(episode)
+
+    assert row["online_truth_field_violation_count"] is None
+    assert row["online_truth_field_violation_count_availability"] == "unavailable"
+    assert row["online_truth_field_violation_count_unavailable_reason"] == (
+        "artifact_missing:online_observations.jsonl"
+    )
+    assert row["formal_acceptance_eligible"] is False
+    assert row["episode_evidence_status"] == "descriptive_or_incomplete_evidence"
+
+
+def test_none_summary_count_remains_unavailable_not_zero(tmp_path: Path) -> None:
+    episode = _write_episode(tmp_path / "none_summary_count")
+    summary_path = episode / "summary.json"
+    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    summary["online_truth_use_count"] = None
+    _write_json(summary_path, summary)
+
+    row = evaluate_scalable_3d_episode(episode)
+
+    assert row["online_truth_use_count"] is None
+    assert row["online_truth_use_count_availability"] == "unavailable"
+    assert row["online_truth_use_count_unavailable_reason"] == (
+        "summary_online_truth_use_count_invalid"
+    )
+    assert row["formal_acceptance_eligible"] is False
 
 
 def test_cli_accepts_episode_root_and_generates_bundle(tmp_path: Path) -> None:
@@ -2105,3 +2219,39 @@ def test_cli_accepts_episode_root_and_generates_bundle(tmp_path: Path) -> None:
 
     assert "aggregate_json:" in completed.stdout
     assert (output / "scalable_3d_offline_aggregate.json").is_file()
+
+
+def test_cli_accepts_explicit_episode_directory(tmp_path: Path) -> None:
+    episode = _write_episode(tmp_path / "explicit_cli" / "seed_4", seed=4)
+    _write_sidecar_manifests(episode)
+    script = (
+        Path(__file__).resolve().parents[1]
+        / "scripts"
+        / "run_scalable_3d_offline_evaluation.py"
+    )
+    output = tmp_path / "explicit_cli_report"
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(script),
+            "--episode-dir",
+            str(episode),
+            "--output-dir",
+            str(output),
+            "--bootstrap-resamples",
+            "50",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    assert "aggregate_json:" in completed.stdout
+    aggregate = json.loads(
+        (output / "scalable_3d_offline_aggregate.json").read_text(encoding="utf-8")
+    )
+    assert aggregate["episode_count"] == 1
+    assert aggregate["episode_evidence_status_distribution"] == {
+        "descriptive_clean_source_calibration": 1
+    }

@@ -1,5 +1,31 @@
 # D6 Evaluation Metrics
 
+## 2026-07-22 Scalable 3D 批次根发现修复
+
+`run_scalable_3d_offline_evaluation.py --episode-root` 递归扫描批次目录时，原实现只检查
+`manifest.json`。每个主 episode 下的 `d6_truth_isolated`、`offline_identity`、
+`offline_consistency` 等 sidecar 也有 manifest，因而会被错误送入 episode 评估。sidecar 缺少
+在线记录后，状态收口又对 unavailable 的 `None` 计数执行 `int()`，导致整批报告中止。
+
+发现阶段现要求同一目录至少同时存在 `manifest.json`、`scenario_config.json` 和 `summary.json`。
+这三项只用于区分主 episode 与 sidecar。在线日志、阶段时序、近距事件和离线真值等制品仍由
+评估器逐项判断；缺失时保留 `null/unavailable+reason`。显式
+`--episode-dir` 继续直接评估调用方指定目录，历史记录不会因缺少可选制品而被发现逻辑静默丢弃。
+
+状态收口仅对 availability 为 available 且值为非负整数的计数做比较。缺字段、缺文件和 `None`
+不再按零处理，也不会触发类型转换异常。无实验矩阵声明但基础 clean provenance 完整的 episode
+标记为 `descriptive_clean_source_calibration`；只有实验矩阵合同完整并通过时才标记
+`clean_formal_experiment_matrix`。
+
+2026-07-22 使用
+`scalable_3d_rule_performance_calibration_20260722_clean_492979e` 复核：修复前递归命中
+100 个 manifest 目录，其中 80 个为 sidecar；修复后只发现 20 个主 episode，四档规模各 5 seed，
+sidecar 混入为 0，CLI 以 2000 次 bootstrap 完整生成 CSV、JSON、中文 Markdown 和时序曲线。
+20/20 来源 `repository_dirty=false`，20/20 缺实验矩阵声明，最终均为
+`descriptive_clean_source_calibration`。本次只修复离线输入发现和空值收口，不新增精度、实时性、
+AirSim 或物理拦截证据。专项 `46 passed`，D6 全量 `527 passed`；仅保留既有 Matplotlib
+`Axes3D` 环境 warning。
+
 ## 2026-07-22 长 Episode 观测治理标定合同
 
 D6 新增 `scalable3d-observation-governance-calibration-v1` 只读评估合同，用于 main 后续

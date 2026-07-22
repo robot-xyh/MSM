@@ -34,7 +34,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         "--episode-root",
         action="append",
         default=[],
-        help="recursively discover manifest-bearing episode directories",
+        help="recursively discover directories with the scalable 3D episode core",
     )
     parser.add_argument("--output-dir", required=True)
     parser.add_argument(
