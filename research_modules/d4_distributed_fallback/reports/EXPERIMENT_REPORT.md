@@ -8,7 +8,7 @@
 
 2026-07-21 又增加区域结果/奖励证据合同测试。19 个新增用例覆盖新执行计划、同代评估刷新、分项缺测不补零、ACK 缺失、旧 generation、租约过期、窗口重叠、执行与联盟绑定变化、快照/来源哈希篡改、在线真值字段和 D6 目标级诊断误用。新增专项 19/19，ACK 与奖励证据专项 52/52，D4 全量 449/449。测试使用单区域确定性 fixture，不是多 seed 性能试验。它证明 schema、公式和失败关闭逻辑可运行，没有提供正式 episode 的实际区域 reward、策略收益、物理执行或因果证据。
 
-同日增加保留 seed 配对干预合同、冻结候选只读加载和候选门诊断。arm evidence 升级为 v2，保存 candidate confidence、冻结最小置信门、OOD、latency/limit、finite 和逐项 gate；v1 reader 在验证旧 manifest content ID 后迁移，未知诊断保持 unavailable。专项现为 33/33，D4 全量 482/482。权威 nominal 5v5 seed 1000-1019 正式 execution receipts 已存在；本轮只读诊断且未改写正式 artifact。D6 outcome sidecar 尚未接入，observed outcome、paired non-degradation、counterfactual 和 causal 均保持 unavailable。
+同日增加保留 seed 配对干预合同、冻结候选只读加载和候选门诊断。arm evidence 升级为 v2，保存 candidate confidence、冻结最小置信门、OOD、latency/limit、finite 和逐项 gate；v1 reader 在验证旧 manifest content ID 后迁移，未知诊断保持 unavailable。专项现为 33/33，D4 全量 482/482。当前权威 `formal_7891296` 已生成 nominal 5v5 seed 1000-1019 的正式 v2 execution receipts；D4 仅做只读复核，不改写该输出。它没有 D6 outcome sidecar，`formal_twenty_seed_performance_completed=false`，observed outcome、paired non-degradation、counterfactual 和 causal 均保持 unavailable。
 
 ## 2. 实验目的
 
@@ -201,24 +201,33 @@ canonical 视图为 60/20/20 seed，对应 180/60/60 frame。训练桶含 hold 6
 
 专项测试由 26 项增至 33 项。新增用例分别覆盖 low-confidence、OOD、timeout、nonfinite、四门组合、原 `0.6/50 ms` 边界和 v1 40-arm manifest 迁移；既有 bundle identity、pair input、authority/projection、next-cycle safety 和规则回退回归保持通过。明确拒绝码与旧 generic 汇总码可同时存在，但任何已评估单门失败都不能只留下 generic。
 
-正式输入为 `research_modules/scalable_3d_simulation/outputs/reserved_seed_interventions_nominal_5v5_1000_1019_formal_6d5bfea`，验证日期 2026-07-21，场景 nominal 5v5，样本为 20 个 treatment record。main 只读复算与 D4 不写盘诊断结果如下；latency 取正式 v1 JSON，P95 使用线性插值。
+正式输入为 `research_modules/scalable_3d_simulation/outputs/reserved_seed_interventions_nominal_5v5_1000_1019_formal_7891296`，验证日期 2026-07-21，场景 nominal 5v5，源提交 `78912963b67fe86ee9a8d29186b18a9dd60c460c`。D4 对 `SHA256SUMS`、manifest、20 条 source lineage 和 40 条 arm evidence v2 做了独立只读复核；v2 latency 的 P95 使用线性插值。旧 v1 latency 只属于历史运行，不进入下表。
 
 | 验收项 | 门限 | 结果 |
 |---|---:|---:|
 | 配对专项 | 33/33 | 33/33 passed |
 | D4 全量 | 零失败 | 482/482 passed |
+| `SHA256SUMS` 文件 SHA256 | `821f1503...72bc` | 匹配 |
+| manifest SHA256 | `d6ef23b2...883c` | 匹配 |
+| source lineage | 20 clean/finite，truth=0 | 20/20，20/20，0 |
+| arm evidence schema | 全部 v2 | 40/40 |
 | 冻结 bundle 读取前后 SHA 变化 | 0 | 0 |
-| confidence min/mean/max | 诊断统计 | 0.508893/0.563426/0.569492 |
+| candidate considered | 20/20 | 20/20 |
+| confidence min/mean/max | 诊断统计 | 0.508892953/0.563426384/0.569492280 |
 | confidence 通过数 | `>=0.6` | 0/20 |
 | OOD 通过数 | 全部通过 | 20/20 |
+| latency 通过数 | `<=50 ms` | 20/20 |
 | finite 通过数 | 全部通过 | 20/20 |
-| latency P95/max | `<=50 ms` | 35.608/42.302 ms，20/20 通过 |
+| failure gate 通过数 | 全部通过 | 20/20 |
+| latency min/mean/P95/max | 诊断统计 | 1.103510/1.977479/2.264415/2.703312 ms |
+| safe adopted | 必须由 aggregate gate 决定 | 0/20 |
 | 明确阈值拒绝 | 分解到具体门 | `candidate_low_confidence`: 20 |
-| 候选失败后规则回退 | 100% | 100% |
+| generic 兼容理由 | 允许与明确理由并存 | `candidate_threshold_or_finite_gate_rejected`: 20 |
+| 候选失败后规则回退 | 20/20 | 20/20 |
 | PPO/assist/online authority | 全部 false | 全部 false |
 | runtime ACK/outcome/causal 伪造 | 0 | 0 |
 
-默认 `minimum_confidence=0.6` 未下调，正式 20 个 treatment 均继续规则回退，候选有效数仍为 0。bundle manifest 明确包含 `confidence_head_uncalibrated`；后续应在与训练和保留 seed 隔离的 calibration split 上报告 reliability/ECE/Brier，校准或重训 confidence head 后仍按同一 0.6 门复验。本轮没有修改 bundle、权重、manifest 或正式 v1 artifact，也没有开放 PPO/assist/authority。D6 outcome sidecar、paired non-degradation、counterfactual 和 causal effect 仍不可用；结果不能说明候选策略有效或优于规则。
+默认 `minimum_confidence=0.6` 未下调，正式 20 个 treatment 均继续规则回退，候选有效数仍为 0。bundle manifest 明确包含 `confidence_head_uncalibrated`；后续应在与训练和保留 seed 隔离的 calibration split 上报告 reliability/ECE/Brier，校准或重训 confidence head 后仍按同一 0.6 门复验。本轮没有修改 bundle、权重、manifest、当前 v2 正式输出或历史 v1 artifact，也没有开放 PPO/assist/authority。D6 outcome sidecar、paired non-degradation、counterfactual 和 causal effect 仍不可用；nominal 5v5 门诊断不能说明候选策略有效、优于规则或具有降级策略效果。
 
 ## 5. 默认被动降级场景
 

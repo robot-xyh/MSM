@@ -10,11 +10,11 @@
 - manifest 要求 40 个 arm 记录完整，逐 seed 核对两个 arm 的 observed input 和实际 snapshot payload SHA。缺 arm、输入/通信/故障 schedule 不同、跨 arm 快照不同、内容哈希篡改、truth/actor/object/target key 和非有限值全部失败关闭。v1 reader 先验证旧字段集合和旧 manifest content ID，再迁移为诊断 unavailable 的 v2；不回填或改写冻结 v1 JSON。CLI 只做 JSON 严格验证和 canonical migration/round-trip。
 - D4 复用 `ShadowPairedEvaluator(minimum_unseen_seeds=20)` 作为未来 D6 sidecar 的指标计算入口；D4 当前 manifest 固定 `d6_outcome_sidecar_attached=false`，observed outcome、paired non-degradation、counterfactual、causal、formal 20-seed performance 和性能声明全部 unavailable/false。
 - 2026-07-21 模块验收：配对专项 **33/33**，D4 全量 **482/482 passed**。新增回归逐项覆盖 confidence/OOD/latency/finite 单门、四门组合、原始 `0.6/50 ms` 边界、v1 40-arm manifest 迁移，以及 rule fallback、pair input、bundle identity 和 next-cycle safety 不退化。
-- 权威正式输入 `reserved_seed_interventions_nominal_5v5_1000_1019_formal_6d5bfea` 已包含 nominal 5v5 seed 1000-1019 的 40-arm execution receipts。main 只读复算与 D4 不写盘诊断为 confidence min/mean/max `0.508893/0.563426/0.569492`，OOD 与 finite 各 20/20 通过；正式 v1 latency P95/max `35.608/42.302 ms`，20/20 通过 `50 ms` 门。20/20 唯一明确阈值拒绝为 low confidence，因默认 `minimum_confidence=0.6` 未下调而全部规则回退。该结果不是 candidate validity 或 paired performance。
+- 当前权威正式输入 `reserved_seed_interventions_nominal_5v5_1000_1019_formal_7891296` 绑定源提交 `78912963b67fe86ee9a8d29186b18a9dd60c460c`，`SHA256SUMS`/manifest SHA256 分别为 `821f1503...72bc` 和 `d6ef23b2...883c`。独立只读复核确认 20/20 source clean 且 finite、truth 使用数 0，40/40 arm 为 evidence v2，candidate considered 20/20。confidence min/mean/max 为 `0.508892953/0.563426384/0.569492280`，在未下调的 `minimum_confidence=0.6` 下通过 0/20；OOD、latency、finite、failure gate 各通过 20/20。v2 latency min/mean/P95/max 为 `1.103510/1.977479/2.264415/2.703312 ms`，20/20 通过 `50 ms` 门。safe adopted 0/20、规则回退 20/20，明确 low-confidence 与兼容 generic reason 各 20 次。旧 v1 latency 仅作历史记录，不与本次 v2 混算；`formal_twenty_seed_performance_completed=false`，该结果不是 candidate validity、paired performance 或降级策略效果。
 
 ### 后续执行顺序
 
-1. 保持正式 20-seed artifact、冻结 900-episode 数据、bundle、权重和 manifest 只读；后续重跑必须写入新目录并保留独立 lineage，不能覆盖正式 v1 记录。
+1. 保持当前 v2 正式 20-seed artifact、历史 v1 artifact、冻结 900-episode 数据、bundle、权重和 manifest 只读；后续重跑必须写入新目录并保留独立 lineage，不能覆盖任一正式记录。
 2. 在与训练 seed、保留 seed 1000-1019 均隔离的 calibration split 上定义 confidence 标签，报告 reliability diagram、ECE、Brier 和分桶样本数。优先校准或重训 confidence head；不使用本次保留 seed 选择或下调 `minimum_confidence`。
 3. 校准/重训候选仍须在同一 `minimum_confidence=0.6`、OOD、`50 ms`、finite、bundle、authority、projection 和 next-cycle 门下复验；未通过则继续规则回退。
 4. D6 以独立 sidecar 绑定 specification SHA、manifest ID、arm ID 和结果制品 SHA，生成 observed outcome 与 paired non-degradation。counterfactual/causal 另行审计，不能由 D4 的安全采用标记推导。
