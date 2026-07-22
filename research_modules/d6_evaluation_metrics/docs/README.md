@@ -1,5 +1,23 @@
 # D6 文档索引
 
+2026-07-22 D2 重复航迹治理后的 `active_risk` 开发期复跑证据见
+`MODULE_PRINCIPLES_CN.md`、`ALGORITHM_AND_IMPLEMENTATION.md` 和 `../EXPERIMENT_REPORT.md` 2.14 节。
+20 个 seed 的计划消费、导引血缘、物理窗、D4 adoption、配对差值、非退化和降级配对比较均为
+20/20 可用；D4 区域采用合计 `188/188`，两臂各有 `1960` 条实际 world 命令，seed 1005 的 5 条
+D2 航迹离线映射完整且 online truth use 为 0。该批为脏工作树 development rerun；两臂 5 m 成功均
+为 0，production runtime ACK、counterfactual 和 causal 仍不可用，不替换下方此前 clean formal
+19/20 历史证据。
+
+2026-07-22 新增隔离双臂多周期物理评估合同。证据分层、真值隔离和结论边界见
+`MODULE_PRINCIPLES_CN.md`；D3 计划消费、D7 world application、5 m 物理窗、差值和非退化算法见
+`ALGORITHM_AND_IMPLEMENTATION.md`。同一合同现支持显式、可选且经 spec/manifest 双重 SHA-256 绑定的
+D4 区域采用文件，区分 `not_declared`、名义 `not_applicable`、完整采用和部分区域不可用，并仅在全部
+必要证据完整时输出描述性降级配对物理比较。已写入但未被 verdict 准入的 ACK 仍独立审计；其存在不
+提升 adoption availability。接口验证见 `../EXPERIMENT_REPORT.md` 2.13 节；专项 `24 passed`、D6 全量
+`507 passed`，main 20 seed producer 集成专项 `1 passed`。`active_risk` 20-seed 只读复跑已通过，但
+D4 adoption/降级比较为 0/20 available，物理窗为 19/20。当前结果不能解释为正式降级收益、反事实或
+因果结论。
+
 2026-07-22 已将 D3/D4 保留 seed consumer 升级为 v1/v2 严格分派。历史 v1 保持兼容；新 v2 独立
 复核 D3 safety-shell 40 arm、20/20 treatment application、同帧 assignment cost/safety/churn，以及
 D4 arm-evidence-v2 的 confidence/OOD/latency/finite/failure 分门和 manifest 汇总。仅 offline

@@ -1,5 +1,35 @@
 # D6 M 对 N 协同拦截评估框架审查
 
+## 2026-07-22 D2 修复后动态规模合同开发期复核
+
+`active_risk` seed `1000-1019` 的开发期隔离续跑已恢复 20/20 物理窗和离线身份映射。D6 仍按实际
+assignment、region 和离线 mapping inventory 计算，不从 `5v5` 名称推断数量。D4 区域采用合计
+`188/188`，两臂各 `1960` 条命令实际写入 world；seed 1005 只有 5 条唯一 D2 中心航迹映射，online
+truth use 为 0。此前重复航迹没有通过放宽一对一映射处理，而是在上游治理后由原有 D6 合同正常消费。
+
+七个可计算证据层均达到 20/20 available，但两臂 5 m 成功均为 0，差值为 0。该结果验证动态 inventory、
+区域 adoption 和身份映射链在当前开发期输入上闭合，不是 M 对 N 联盟物理性能结论。结果来自脏工作树，
+不能替换下方原有 clean formal 19/20 历史证据；production runtime ACK、counterfactual 和 causal 仍
+不可用。
+
+## 2026-07-22 M 对 N 隔离双臂物理结果合同
+
+新增 paired-isolated physical consumer 按实际 assignment 列表构造物理窗，不假定资源数等于目标数。
+多个资源可以合法引用同一 `global_track_id`。逐 arm 同时报告 successful binding count 和去重后的
+successful target count：前者描述参与成员，后者防止一个高威胁目标被三架资源命中后重复计为三个目标。
+错误绑定按每个资源-目标窗口内进入其他目标 5 m 的事实单独计数，不把合法的多资源同目标分配视为重复
+身份或错误锁定。
+
+control/treatment 的共享初态和外生日程按 seed 固定，episode、world、控制血缘和真值状态保持隔离。
+只有两臂的计划消费、D7 世界应用和全部物理窗都完整，才输出成功数、最近距离、到达 5 m、硬约束和
+错误绑定的 treatment-control 差值。任一联盟成员缺消费或控制证据时，相关 paired effect 和
+non-degradation 为 null，不使用其余成员结果补齐。D4 区域采用文件进一步按实际 region 数量汇总，不
+从 M/N 或场景名推断区域数；任一区域采用不可用时，降级配对物理比较为 null，但保留区域失败原因。
+当前 24 个合成合同测试和 main 20 seed producer 集成专项证明动态 assignment、区域采用、空值和血缘
+门控可执行。新增回归允许已写入但未被 D4 verdict 准入的隔离 ACK 继续接受审计，同时保持区域采用和
+降级比较 unavailable。`active_risk` 20-seed 复跑的 D4 adoption/降级比较为 0/20 available，物理窗
+19/20；尚无 clean、冻结的正式 M 对 N 降级效果报告，不能据此给出联盟物理或因果收益。
+
 ## 2026-07-22 M 对 N 跨视角配对影子证据
 
 D5 权威 v2 配对影子包含 `high_threat_m_to_n` 场景，并与其余 8 类场景共同覆盖 5、20、50、100、

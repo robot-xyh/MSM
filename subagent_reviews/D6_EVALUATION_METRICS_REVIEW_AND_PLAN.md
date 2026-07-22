@@ -1,5 +1,60 @@
 # D6 系统评估指标综述及子方案
 
+## 2026-07-22 D2 修复后 active_risk 开发期复核
+
+D6 已只读检查 `/tmp/msm_active_risk_d2_fix_20260722/` 的 manifest、共同检查点报告、D6 sidecar、中文
+报告和 seed 1005 control 离线身份文件。根目录 447 个摘要和 D6 目录 3 个摘要全部通过。20 个 seed
+的计划消费、导引血缘、物理窗、D4 adoption、配对物理差值、配对非退化和降级配对比较均为 20/20
+可用；D4 区域采用合计 `188/188`，control/treatment 各有 `1960` 条实际命令。
+
+seed 1005 已恢复为 5 条唯一中心航迹到 5 个目标的离线一对一映射，online truth use 为 0，整批审计
+也没有 `global_track_id` 改写。该结果表明 D2 重复航迹导致的离线身份映射断点在本次开发期输入中已
+消失。D6 消费算法和 schema 未改变。
+
+本批两臂 5 m 成功数均为 0，配对差值为 0；20/20 非退化是描述性判定。counterfactual/causal 均为
+0/20 available，production runtime ACK 未评估，降级有效性声明禁止。该批由脏工作树生成，只作为
+development rerun；下方原有 clean formal 19/20 历史证据保持原文，不由本批替换。
+
+文档同步后 D6 全量为 `507 passed, 1 warning`，owned-path `git diff --check` 通过；warning 为既有
+Matplotlib `Axes3D` 环境问题。
+
+## 2026-07-22 隔离双臂多周期物理结果复核方案
+
+D6 已增加独立的 paired-isolated physical consumer。输入按 seed 固定一份初始状态和三份外生日程，
+再分别列出 control 与 treatment 的 episode、计划、隔离消费确认、导引命令、世界应用、离线身份和
+真值轨迹。所有文件都由调用方提供带外 SHA-256；D6 不搜索相邻目录，也不导入 producer 私有状态。
+两臂可以读取相同的不可变日程，但必须运行在不同 episode、world 和文件树中。
+
+每个 arm 现在可显式携带 D4 区域采用文件。input spec 与 arm manifest 必须同时声明并绑定该文件；
+D6 逐区域重算 source/applied plan、场景 lineage、candidate gate、isolated plan ACK 和 adoption verdict
+之间的摘要、arm、seed、region、owner/epoch/lease 关系。文件未声明、名义空文件、完整采用和部分区域
+不可用分别保留，不从相邻路径推断证据，也不把隔离确认称为生产运行 ACK。
+
+生产者可以保留一条通过独立校验的隔离 ACK，同时令 verdict 的
+`isolated_plan_consumption_ack_available=false` 和 `ack_id=null`。D6 此时继续审计 ACK 的计划、血缘、
+执行绑定和非生产属性，但不将其计为 adoption。只有 verdict 声明 ACK available 时才强制编号一致。
+ACK 本体伪造、顶层 available 与 verdict unavailable 矛盾、以及生产确认冒充仍失败关闭。
+
+计划消费层重新核对 D3 的计划编号、版本、规范载荷摘要和 binding inventory。该确认只说明隔离仿真
+读取了计划，不能称为 production runtime ACK。导引层继续核对 D7 command 到消费确认、资源、中心
+航迹和 world application 的血缘；每个绑定需要至少一个实际世界应用，整个 arm 至少覆盖两个控制周期。
+online 制品不允许携带 truth-like 字段，`global_track_id` 不由 D6 创建或改写。离线阶段才使用一对一
+身份映射和真值轨迹计算三维距离。
+
+物理窗按资源的计划消费区间划分，首次已应用命令为起点，下一次已接受计划或 episode 终点为终点。
+距离不大于 5 m 计为成功；同时统计最小距离、首次进入 5 m 时间、错误目标进入 5 m、硬约束和唯一目标
+成功数。treatment-control 差值是描述性结果。非退化 v1 要求成功数不下降、平均最近距离不增大、硬
+约束不增加、错误绑定不增加；无成功时到达时间保持 null，不强行进入总体判断。
+
+证据层在原有 plan consumption、guidance lineage、physical window、paired physical effect 和 paired
+non-degradation 之外，增加 d4 degraded adoption 与 degraded paired physical comparison。后者要求
+control/treatment 全部区域采用、区域清单和 intervention 一致，并同时具备计划、导引和物理窗。它仍
+只支持 paired isolated simulation comparison；counterfactual 和 causal 保持 null。2026-07-22 的
+24 个合成合同测试、D6 全量 `507 passed` 和 main 20 seed producer 集成专项 `1 passed` 证明接口、
+篡改检测、空值逻辑和真实嵌套合同可运行。`active_risk` seed `1000-1019` 的只读复跑进一步确认 D4
+adoption/降级比较为 0/20 available，物理窗为 19/20。尚无 clean、冻结的正式降级效果报告，也没有
+改变 PPO、assist、authority 或规则回退状态。
+
 ## 2026-07-22 D3/D4 保留 seed v1/v2 独立复核
 
 D6 已将原 v1-only consumer 改为按权威顶层 schema 严格分派。v1 的 source commit、带外摘要、零采用

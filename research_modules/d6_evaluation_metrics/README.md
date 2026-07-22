@@ -1,5 +1,81 @@
 # D6 Evaluation Metrics
 
+## 2026-07-22 active_risk D2 修复后开发期复跑
+
+main 在脏工作树上生成了开发期结果集
+`/tmp/msm_active_risk_d2_fix_20260722/`。D6 使用既有只读消费者复核 seed `1000-1019`；根结果集
+`SHA256SUMS` 的 447 个成员和 D6 输出目录的 3 个成员均通过摘要校验。该结果没有复制进模块输出目录，
+也没有作为 clean formal 制品发布。
+
+20/20 对的 `plan_consumption`、`guidance_lineage`、`physical_window`、`d4_degraded_adoption`、
+`paired_physical_effect`、`paired_non_degradation` 和 `degraded_paired_physical_comparison` 均可用。
+D4 区域采用在 control/treatment 两臂分别为 `94/94`，合计 `188/188`；两臂各有 `1960` 条实际写入
+隔离 world 的控制命令。seed 1005 的 control 离线身份文件包含 5 条一对一映射：
+`GT3D-000001` 至 `GT3D-000005` 分别映射到 `TGT-0001` 至 `TGT-0005`，状态均为
+`unique_lineage_verified`；该 seed 和整批审计的 online truth use 均为 0。
+
+两臂在 1 s 物理窗内的 5 m 成功数均为 0，物理差值为 0，20/20 对通过描述性非退化判定。
+`paired_physical_effect` 可用表示差值可计算，不表示拦截或降级有效。隔离计划消费仍不是 production
+runtime ACK；counterfactual/causal 均为 `0/20 available`，降级有效性声明仍禁止。本段只补充 D2 重复
+航迹治理后的 development evidence，不改写下方此前 `19/20` 的 clean formal 历史记录，也不改变
+PPO、assist、authority 或规则回退状态。
+
+本轮仅改文档，D6 全量回归为 `507 passed, 1 warning`；warning 是既有 Matplotlib `Axes3D` 环境问题，
+不影响 JSON、JSONL、Markdown 或摘要核验。
+
+## 2026-07-22 隔离双臂多周期物理结果评估合同
+
+`paired_isolated_physical.py` 新增 D6 只读、失败关闭的 control/treatment 多周期物理结果消费者。输入
+清单 schema 为 `d6.paired-isolated-physical-inputs.v1`，按 seed 显式列出共享初始状态、传感器日程、
+通信日程、故障日程，以及两套 arm 各自独立的 episode manifest、D3 计划、隔离计划消费确认、D7 命令
+血缘、世界应用记录、离线身份映射和离线真值状态。每个文件均由调用方提供带外 SHA-256；输入清单
+本身也必须通过 `--inputs-sha256` 绑定。control 与 treatment 的 episode ID、world ID 和全部 arm 文件
+路径必须不同；共享初态和三类外生日程摘要必须相同。
+
+每个 arm 可显式声明 `d4_adoption_evidence.jsonl`。声明后，该文件必须同时出现在 arm manifest 的
+`arm_artifact_sha256` 中，路径与 SHA-256 均进入评估前后只读快照；spec 与 manifest 少一侧声明、文件
+缺失或摘要漂移均失败关闭。旧输入不声明该文件时继续兼容，状态记为 `not_declared`，D6 不搜索邻近
+文件。名义场景显式声明的空文件记为 `not_applicable`，不计作缺失或降级采用失败。
+
+消费者逐条复算 D3 计划 `plan_id/plan_version/payload SHA-256`、消费绑定摘要、D7 命令载荷摘要和世界
+应用血缘。隔离确认固定使用 `paired_isolated_simulation_only` 语义，并要求
+`production_runtime_ack=false`；它不得称为 `runtime.assignment_plan_ack` 或生产运行时确认。每个已接受
+绑定至少有两个控制周期，且至少一条 D7 命令由独立世界应用记录证明
+`control_applied_to_world=true`，才能开放 guidance lineage。D3、消费确认、D7 和世界应用文件均执行
+truth-like 字段扫描；目标真值只从 D6 离线身份映射和独立真值轨迹读取。
+
+物理窗口从一个绑定首次实际写入隔离 world 开始，到该资源下一次已接受计划消费或 episode 终点结束。
+成功判据固定为北东地坐标三维欧氏距离不大于 5 m。逐 seed 输出目标成功数、成功绑定数、最近距离、
+到达 5 m 时间、硬约束次数、错误目标进入 5 m 的错误绑定次数和 treatment-control 差值。availability
+严格分为 `plan_consumption`、`guidance_lineage`、`physical_window`、`paired_physical_effect`、
+`paired_non_degradation`、`d4_degraded_adoption`、`degraded_paired_physical_comparison`、
+`counterfactual` 和 `causal`。D4 层逐区域核对 schema、arm、region、seed、计划/场景血缘、候选门、
+隔离计划消费确认和 adoption verdict，并汇总 `region_count/available_count/reason_counts/
+intervention_kind`。只有两臂全部区域采用以及既有计划、导引和物理窗均完整，才输出描述性的降级配对
+物理比较。任一必要证据缺失时，对应值为 `null` 并给出
+原因；不以零补值。全部适用证据完整时，效果仍只称为
+`paired_isolated_simulation_comparison`。本合同不会因为共享外生日程自动开放 counterfactual 或 causal。
+
+D4 可以保留一条结构和血缘均合法的隔离计划消费确认，同时在 verdict 中声明
+`isolated_plan_consumption_ack_available=false`。这表示该确认可供审计，但未被 D4 准入为 adoption
+证据。D6 仍完整校验确认中的计划、血缘、执行绑定和非生产声明；只有 verdict 将确认标为 available
+时，才要求 verdict `ack_id` 与确认编号一致。未准入时 verdict `ack_id` 可为 `null`，对应区域和顶层
+D4 adoption 继续 unavailable，不能开放降级配对比较。
+
+公开入口为 `PairedIsolatedPhysicalInputs`、`load_paired_isolated_physical_inputs()`、
+`evaluate_paired_isolated_physical()` 和 `write_paired_isolated_physical_report()`；CLI 为
+`scripts/run_paired_isolated_physical_evaluation.py`；D4 顶层记录 schema 由公开常量
+`D4_ISOLATED_PHYSICAL_ADOPTION_SCHEMA` 固定。写盘入口生成 JSON sidecar、中文 Markdown、
+provenance manifest 和 `SHA256SUMS`，并在评估前后复算全部输入摘要。2026-07-22 合成合同专项
+`24 passed`，D6 全量 `507 passed`；覆盖旧输入、名义空文件、有效/部分区域 D4 采用、保留但未准入的
+ACK、文件缺失、SHA 篡改、spec/manifest 声明不一致、arm/region/seed/plan/ACK 篡改、available 状态
+矛盾、隔离确认冒充生产 ACK 和 D7 命令血缘错配。main 20 seed producer 集成专项另有 `1 passed`。
+同日只读复跑 `active_risk` seed `1000-1019` 后，20/20 对计划消费和导引血缘可用，物理窗 19/20；
+control/treatment 各 98 条区域记录的 adoption 可用数均为 0。两臂合计原因是
+`isolated_execution_plan_not_strictly_new=188`、`degraded_scenario_evidence_invalid=8`，因此 D4 adoption、
+降级配对比较、聚合物理差值、聚合非退化、反事实和因果均保持 unavailable。上述结果是兼容性和证据
+边界验证，不是 D3/D4 降级策略的物理收益结论。
+
 ## 2026-07-22 D3/D4 保留 seed v1/v2 独立审计
 
 `reserved_seed_intervention_audit.py` 现按顶层 manifest schema 严格分派历史 v1 与新 v2；v1 常量、旧

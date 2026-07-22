@@ -1,5 +1,73 @@
 # D6 实现差距审计
 
+## 2026-07-22 D2 修复后 development evidence GAP 更新
+
+### 本批已关闭
+
+1. `active_risk` seed `1000-1019` 在 D2 重复航迹治理后已形成完整开发期输入。计划消费、导引血缘、
+   物理窗、D4 adoption、配对物理差值、配对非退化和降级配对比较均为 `20/20 available`。
+2. D4 区域采用从此前不可用记录恢复为两臂各 `94/94`，合计 `188/188`；control/treatment 各有
+   `1960` 条控制命令实际写入隔离 world。
+3. seed 1005 的离线映射为 5 条唯一 D2 中心航迹到 5 个真值目标的一对一关系，online truth use 为 0；
+   整批审计的 truth 隔离、摘要完整性和 `global_track_id` 不改写均通过。
+4. D6 既有消费者无需算法修改即可生成完整报告。根结果集 447 个摘要和 D6 输出 3 个摘要均通过，
+   证明此前 19/20 中 seed 1005 的评估断点不是 D6 空值或映射放宽所掩盖。文档同步后 D6 全量为
+   `507 passed, 1 warning`，warning 为既有 Matplotlib `Axes3D` 环境问题。
+
+### 仍开放的 P1
+
+1. **正式证据。** 本批是 2026-07-22 脏工作树 development rerun，不具备 clean formal 发布条件。
+   需要 main 在冻结提交和 clean worktree 上按相同合同重跑；此前 clean formal 19/20 历史证据不改写。
+2. **物理有效性。** 两臂 5 m 成功数均为 0，20/20 非退化和零差值只说明短窗内未退化，不证明拦截
+   或降级收益。
+3. **识别边界。** production runtime ACK 仍不可用，counterfactual/causal 为 `0/20 available`；
+   `degradation_effectiveness_claim_allowed=false`。这些层不能由开发期 20/20 availability 关闭。
+
+当前无新增 P0。此次只关闭 D2 修复后 active-risk 开发期证据链完整性缺口，不关闭正式发布、生产确认
+或因果识别 GAP。
+
+## 2026-07-22 隔离双臂物理结果 GAP 更新
+
+### 已关闭的 D6-owned P1
+
+1. 已实现版本化双臂输入清单和逐文件带外 SHA-256 验证。control/treatment 必须同 seed、同场景、同
+   初态、同传感器/通信/故障日程，但 episode、world 和所有 arm 文件路径相互隔离；初始真值状态和
+   时间轴由 D6 重新核对。
+2. 已实现 D3 计划 identity/version/hash、隔离计划消费和 binding inventory 的严格消费者。隔离消费
+   证据固定为 simulation-only；任何 `production_runtime_ack=true` 声明均按冒充生产确认失败关闭。
+3. 已实现 D7 命令到 consumed plan、资源、中心航迹、command payload 和 world application 的完整血缘
+   校验。只有至少两个控制周期，且每个已消费绑定有独立 `control_applied_to_world` 记录，才开放物理窗。
+4. 已实现离线身份和真值隔离、NED 三维 5 m 判据、逐绑定结果、逐 seed 及聚合差值。指标包含成功数、
+   最近距离、到达 5 m 时间、硬约束、错误目标接近形成的错误绑定和 treatment-control 差值。
+5. 已将可选 `d4_adoption_evidence.jsonl` 纳入 input spec/arm manifest 声明一致性、路径隔离、逐文件
+   SHA-256 和前后快照；旧输入为 not-declared，显式名义空文件为 not-applicable，不搜索邻近文件。
+6. 已逐区域复核 D4 schema、arm/region/seed/intervention、source/applied plan、场景 lineage、candidate
+   gate、isolated plan ACK 和 adoption verdict。部分区域不可用时保留 region/available/reason/
+   intervention 汇总，`degraded_paired_physical_comparison` 保持 null。
+7. 已实现九层 availability 和确定性 sidecar。降级比较只有在两臂完整 D4 adoption 及既有计划、导引、
+   物理窗均可用时开放，且仍只称 paired isolated simulation comparison；counterfactual/causal 不开放。
+8. 已关闭真实生产者 unavailable 记录兼容缺口。保留的隔离 ACK 始终独立校验；只有 verdict 声明 ACK
+   available 时才绑定 verdict `ack_id`。未准入 ACK 可审计但不提升 adoption，伪造 ACK、available 状态
+   矛盾和生产确认冒充继续失败关闭。
+9. 合成专项 `24 passed`，D6 全量 `507 passed`，仅有既有 Matplotlib warning。main 当前 20 seed
+   producer 集成专项 `1 passed`。`active_risk` 20-seed 只读复跑已正常生成 D6 报告：D4 adoption 和降级
+   比较均 0/20 available，物理窗 19/20，聚合 effect/non-degradation 不开放。
+
+### 仍开放的 P1
+
+1. **正式证据发布。** main 已接通 D4 文件到 arm manifest 和 D6 input spec，并完成 20 seed 集成与
+   `active_risk` 只读评估；当前区域均因计划不够新或场景证据无效而 unavailable，且 1/20 对缺完整
+   物理窗。尚无 clean、冻结、可保留且 D4 adoption 可用的正式降级物理效果报告。
+2. **实际多周期差异。** 需要近边界场景使 treatment 与 control 的计划或后续轨迹产生可辨差异；同帧
+   assignment cost 改变但绑定不变的 nominal 5v5 不足以评价物理收益。
+3. **D4 降级性能。** 中心失效、中心与二级同时失效、主动风险三类输入均需按预先冻结的比较问题形成
+   可保留多 seed 证据。合同通过只证明采用血缘完整，不证明降级策略有效。
+4. **结论边界。** 本轮不关闭 counterfactual、causal、线上 promotion、PPO、assist 或 authority。
+   即使正式双臂共享全部外生日程，除非另有冻结的识别假设和实验设计，这些层仍保持 unavailable。
+
+当前无新增 P0。关闭的是 D6 只读消费、完整性验证、空值和报告合同，不是 D3/D4 学习策略性能 GAP。
+`AIRSIM_INTEGRATION_PLAN.md` 已检查；本轮未改变 AirSim runtime 或生产 ACK 接口。
+
 ## 2026-07-22 D3/D4 保留 seed v1/v2 GAP 更新
 
 ### 已关闭的 D6-owned P1

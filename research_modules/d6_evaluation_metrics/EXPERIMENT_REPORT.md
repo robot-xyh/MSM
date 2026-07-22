@@ -1,5 +1,81 @@
 # D6 系统级评估指标实验报告
 
+## 2.14 2026-07-22 D2 修复后 active_risk 开发期复跑
+
+### 输入与完整性
+
+本批读取 main 在脏工作树生成的临时结果目录 `/tmp/msm_active_risk_d2_fix_20260722/`，覆盖 seed
+`1000-1019` 共 20 对 control/treatment 隔离续跑。结果目录没有复制到仓库。根 `SHA256SUMS` 的 447
+个成员全部通过，D6 输出目录中的 sidecar、中文报告和 provenance manifest 三项摘要也全部通过。
+manifest 声明 `production_runtime_ack=false`、`counterfactual_available=false`、
+`causal_available=false`。
+
+文档同步后运行 D6 全量测试，结果为 `507 passed, 1 warning`。warning 是既有 Matplotlib `Axes3D`
+环境问题，不影响本次 JSON、JSONL、Markdown 和 SHA-256 核验。
+
+### 证据覆盖
+
+| 证据层 | 可用 seed | 总 seed | 结论边界 |
+| --- | ---: | ---: | --- |
+| 计划消费 | 20 | 20 | 隔离仿真消费，不是生产确认 |
+| 导引血缘 | 20 | 20 | 命令与计划、资源、航迹和 world application 闭合 |
+| 物理窗 | 20 | 20 | 1 s 窗口可计算 |
+| D4 区域采用 | 20 | 20 | 两臂区域证据完整 |
+| 配对物理差值 | 20 | 20 | 描述性差值可计算 |
+| 配对非退化 | 20 | 20 | 20/20 通过，不表示拦截成功 |
+| 降级配对比较 | 20 | 20 | 描述性隔离比较 |
+| 反事实 | 0 | 20 | unavailable/null |
+| 因果 | 0 | 20 | unavailable/null |
+
+D4 adoption 在 control 和 treatment 中分别为 `94/94`，合计 `188/188`。两臂分别生成并实际写入
+`1960` 条控制命令。20 个 seed 共形成 100 条离线身份映射。seed 1005 的 control 文件包含
+`GT3D-000001...GT3D-000005` 到 `TGT-0001...TGT-0005` 的 5 条唯一映射，状态均为
+`unique_lineage_verified`；`online_truth_isolation_verified=true`，online truth use 为 0。
+
+### 结果解释
+
+control 和 treatment 的 5 m 成功数均为 0，成功绑定数均为 0，平均最近距离相同；成功数、最近距离、
+硬约束和错误绑定的 treatment-control 差值均为 0。20/20 对通过非退化判据，表示 treatment 在当前
+1 s 描述性窗口内未比 control 更差。由于两臂都没有 5 m 成功，time-to-5m 及其差值不可用。
+
+本批关闭的是 D2 重复航迹修复后的开发期证据完整性断点。它没有给出拦截性能提升，也不支持降级策略
+有效性、生产运行确认、反事实或因果结论。该结果不得覆盖本报告下方此前 clean formal `19/20` 的历史
+证据。后续正式发布仍需在冻结提交和 clean worktree 上复跑并保存可保留制品。
+
+## 2.13 2026-07-22 隔离双臂物理评估接口验证
+
+本轮完成 D6 消费合同和 main 生产路径接线验证，没有发布正式降级策略性能实验。基础合成 fixture 使用
+1 个 seed、1 个资源、2 个目标和两套隔离 world，包含两个 D7 控制周期。完整路径中 control 与
+treatment 均有 1 个唯一目标进入 5 m；treatment 的平均最近距离相对 control 减少 1 m，到达 5 m 时间
+差为 -0.5 s，硬约束和错误绑定差值均为 0。这些数值只用于断言计算公式和序列化结果。
+
+D4 扩展把每臂可选 `d4_adoption_evidence.jsonl` 纳入输入清单、arm manifest 和只读摘要链。有效降级
+记录按区域核对 source/applied plan、场景血缘、候选门、隔离计划消费确认和 adoption verdict。部分
+区域不可用时仍输出 region count、available count、原因分布和 intervention kind，但
+`degraded_paired_physical_comparison` 为 null。名义空文件标记为 not applicable；旧输入未声明该文件
+时继续兼容，且不会从相邻目录自动发现证据。
+
+专项共 24 项并全部通过。新增覆盖有效 D4 记录、部分区域不可用、名义空文件、旧输入、保留但未被
+verdict 准入的 ACK、声明文件缺失、SHA 篡改、spec/manifest 声明不一致、arm/region/seed/plan/ACK
+篡改、available 状态矛盾和 production runtime ACK 冒充；既有缺 D7 证据、跨臂初态和命令血缘测试
+继续通过。D6 全量为 `507 passed`，仅有既有 Matplotlib `Axes3D` warning。main 20 seed producer 的
+集成专项另为 `1 passed`。
+
+同日使用 main 生成的 `active_risk` seed `1000-1019` 输入做只读复跑。输入清单带外 SHA-256 为
+`f13a35ac732353cd037ea0daf45d5c4946feba2a23520b6426471387dd9c1f19`。20/20 对计划消费和导引血缘
+可用，物理窗及一般配对物理差值为 19/20，故聚合物理
+差值和聚合非退化不可用。control 与 treatment 各有 98 条区域记录，可用 adoption 均为 0；两臂合计
+`isolated_execution_plan_not_strictly_new` 188 条，`degraded_scenario_evidence_invalid` 8 条。D6 正常
+生成报告，没有再因未准入 ACK 的 verdict `ack_id=null` 异常退出。20/20 对的 D4 adoption 与降级配对
+比较均 unavailable，counterfactual 和 causal 仍为 null/unavailable。该复跑关闭消费者兼容缺口，未
+关闭上游新计划身份、完整物理窗或降级效果证据缺口。
+
+`d4_degraded_adoption` 只表示隔离世界采用证据完整。两臂 D4、计划消费、导引血缘和物理窗全部可用时，
+D6 才输出描述性的 `degraded_paired_physical_comparison`。该结果仍属于 paired isolated simulation
+comparison。counterfactual 和 causal 始终为 null/unavailable，隔离 ACK 不称为生产运行确认。正式
+验收仍需 clean、冻结、可保留的多 seed 降级场景和预先定义的识别假设；当前结果不能用于模型 promotion、
+PPO、assist、authority、物理非退化或降级因果收益声明。
+
 ## 2.12 2026-07-22 D3/D4 保留 seed v2 独立审计
 
 ### 输入、合同与独立重算

@@ -1,5 +1,113 @@
 # D6 系统级离线评估：算法原理与实施说明
 
+## D2 修复后开发期证据复核（2026-07-22）
+
+本轮没有修改 D6 评估算法。既有 `paired_isolated_physical` 消费链直接读取 main 生成的 20-seed
+`active_risk` 结果，并按原合同执行文件摘要、计划消费、D7 命令血缘、world application、D4 区域采用
+和离线身份映射核验。根结果集 447 个文件摘要及 D6 输出 3 个文件摘要均通过，证明本次统计来自同一份
+未被读取过程改写的开发期输入。
+
+计算结果中，七个可计算证据层均达到 `20/20 available`，D4 两臂区域采用合计 `188/188`，两臂各
+`1960` 条控制命令实际写入隔离 world。seed 1005 的离线映射从此前重复航迹断点恢复为 5 条唯一
+中心航迹到 5 个真值目标的一对一关系，online truth use 为 0。两臂成功数仍为 0，物理差值均为 0；
+counterfactual 和 causal 保持 null/unavailable。
+
+该批次按 main 运行上下文标记为脏工作树 development rerun。算法、schema、阈值和 availability 依赖
+关系均未改变，故不能用本次 20/20 替换此前 clean formal 19/20，也不能由可计算的零差值推导生产确认、
+降级有效性或因果收益。
+
+文档同步后 D6 全量回归为 `507 passed, 1 warning`。warning 来自既有 Matplotlib `Axes3D` 环境，不影响
+本轮只读证据复核。
+
+## 隔离双臂多周期物理评估（2026-07-22）
+
+### 输入验证
+
+输入 spec 以 pair 和 seed 为索引。共享制品包括初态、传感器日程、通信日程和故障日程；每个 arm 包含
+episode manifest、D3 计划、隔离消费确认、D7 命令、world application、离线身份和离线真值状态。
+调用方为每个文件给出 SHA-256，CLI 再用一个带外 SHA-256 固定输入 spec。manifest 同时绑定共享文件
+和 arm 文件摘要。路径重复、episode/world ID 重复、seed/场景/步长不一致、摘要漂移或初始状态不一致
+均在统计前失败关闭。
+
+D3 计划载荷按排序键、紧凑分隔符和有限 JSON 数值计算规范 SHA-256。消费确认必须返回同一 plan ID、
+version、payload SHA 和 assignment inventory SHA，并处于计划发布之后。确认语义固定为
+`paired_isolated_simulation_only`，生产运行确认固定为 false。D7 每条命令进一步绑定 consumption ID、
+计划 identity、资源和中心航迹；命令 payload SHA 与 world application 中的 command SHA 必须一致。
+一个 arm 至少有两个不同控制周期，每个已消费 binding 至少有一条被 world application 证明已应用的
+命令。
+
+### D4 降级采用
+
+`d4_adoption_evidence.jsonl` 是可选 arm 制品。若 input spec 声明它，arm manifest 必须包含同名摘要，
+并满足
+
+\[
+H_{spec}(f)=H_{manifest}(f)=\operatorname{SHA256}(f).
+\]
+
+D6 不扫描未声明文件。非空文件的每条记录严格限定顶层键集合和
+`scalable3d-d4-isolated-physical-adoption-v1` schema。记录 arm 必须等于当前 control/treatment，场景
+lineage 的 seed、arm ID 和 region 必须一致。source plan 与 candidate gate 的规范摘要分别等于
+lineage 中的摘要；applied plan、isolated plan ACK 和 adoption verdict 再绑定同一 lineage、计划
+identity、执行 binding、owner、epoch 与 lease。所有 production-runtime、production-authority、
+physical-outcome、counterfactual、causal 和 authority 声明必须为 false。
+
+ACK 制品存在和 verdict 准入 ACK 是两个状态。若 `isolated_plan_consumption_ack_available=true`，D6
+要求 ACK 已通过独立校验，且 verdict `ack_id` 与 ACK 编号一致。若该标志为 false，ACK 仍按完整 schema、
+计划、lineage、binding 和非生产声明校验，但 verdict `ack_id` 可以为 null。此分支只保留审计线索，
+不会把顶层 `available=false` 提升为可用。ACK 内容伪造、available 记录引用未准入 ACK、或任何生产
+确认声明仍失败关闭。
+
+对 arm (a)，降级采用完整度为
+
+\[
+A_a=\frac{n_{available,a}}{n_{region,a}}.
+\]
+
+报告保留 `region_count`、`available_count`、`reason_counts` 和 `intervention_kind`。当 (n_{region}=0)
+且文件已声明时，状态为名义场景 `not_applicable`。仅当 control 与 treatment 的区域集合、干预类型及
+全部区域采用一致，且两臂计划消费、导引和物理窗均可用时，生成
+`degraded_paired_physical_comparison`。其中的物理差值沿用下节定义，不新增因果估计量。
+
+### 物理窗口
+
+对资源 \(i\) 和离线映射后的目标 \(j\)，每个真值采样时刻的距离为
+
+\[
+d_{ij}(t)=\left\|p_i^{NED}(t)-p_j^{NED}(t)\right\|_2.
+\]
+
+窗口从该 binding 第一条已应用命令开始，到同一资源下一次已接受计划消费之前结束；最后一个窗口闭合
+到 episode 终点。若
+
+\[
+\min_t d_{ij}(t)\leq 5\ \mathrm{m},
+\]
+
+则该 binding 成功。首次满足条件的采样时刻减去窗口起点得到 time-to-5m。成功数按唯一 assigned truth
+target 去重；另保留成功 binding 数。若同一窗口内资源进入其他目标 5 m 范围，记录一次 incorrect
+binding observation。硬约束次数来自已核验 world application，不从终局距离推断。
+
+### 配对差值和非退化
+
+所有 treatment-control 差值统一定义为
+
+\[
+\Delta m=m_{treatment}-m_{control}.
+\]
+
+输出成功数、成功 binding 数、平均最近距离、全局最近距离、到达 5 m 时间、硬约束和错误绑定差值。
+某一 arm 没有 5 m 成功时，到达时间差值为 null，并写明原因。非退化 v1 的总体布尔值要求成功数差值
+不小于 0，平均最近距离差值不大于 0，硬约束差值不大于 0，错误绑定差值不大于 0。该布尔值只服务于
+隔离仿真的描述性门控，不是因果收益或线上准入结论。
+
+公开实现位于 `paired_isolated_physical.py`，CLI 位于
+`scripts/run_paired_isolated_physical_evaluation.py`。输出为 sidecar、中文 Markdown、provenance manifest
+和 `SHA256SUMS`。合成专项覆盖完整、缺证据、篡改、跨 seed/初态、生产 ACK 冒充和 D7 血缘错配；
+2026-07-22 扩展后为 `24 passed`，D6 全量为 `507 passed`。main 20 seed producer 集成专项为
+`1 passed`。同日 `active_risk` 20-seed 只读复跑通过，D4 adoption 和降级比较均为 0/20 available；
+该结果验证了 unavailable 生产者形态的兼容性，不形成降级因果或反事实结果。
+
 ## D3/D4 保留 seed v1/v2 consumer（2026-07-22）
 
 consumer 在 checksum 链认证后读取顶层 manifest schema，并仅接受

@@ -1,5 +1,65 @@
 # D6 系统级离线评估模块原理
 
+## 开发期证据与正式证据分层（2026-07-22）
+
+D6 按结果来源分别保留 development 和 clean formal 证据。开发期复跑可以用于定位合同断点、验证修复
+后的字段完整性和确认消费者是否能计算指标，但不能覆盖已经发布的正式历史结果。若运行来自脏工作树，
+或 manifest 没有可核验的 clean commit 绑定，D6 必须保留 development 标签，即使所有输入摘要、血缘
+和 availability 均通过。
+
+D2 重复航迹治理后，main 在脏工作树生成的 `active_risk` 20-seed 结果已由既有消费者只读复核。
+计划消费、导引血缘、物理窗、D4 区域采用、配对物理差值、非退化和降级配对比较均为 20/20 可用；
+D4 区域采用合计 `188/188`，control/treatment 各有 `1960` 条实际 world 命令。seed 1005 的 5 条
+中心航迹均获得唯一离线真值映射，online truth use 为 0。该结果说明此前缺失映射的证据断点在开发期
+复跑中消失。
+
+availability 与能力结论继续分开。本批两臂均未在 1 s 窗口进入 5 m，配对差值为 0；20/20 非退化只
+表示 treatment 没有比 control 更差。隔离消费不是生产运行确认，共享外生日程不建立反事实或因果
+识别。counterfactual 和 causal 仍为 0/20 可用，先前 clean formal 的 19/20 历史证据继续保留。
+
+## 隔离双臂物理证据原则（2026-07-22）
+
+双臂评估先证明输入等价和执行隔离。control 与 treatment 读取同一冻结初始状态以及相同传感器、通信、
+故障日程，随机 seed 和场景版本一致。两臂各自拥有 episode、world、计划消费记录、导引记录和真值状态
+文件。共享日程用于减少外生波动，独立 world 防止一个 arm 的状态、控制器记忆或总线消息进入另一个
+arm。共享日程只建立描述性配对基础，不能单独建立反事实或因果识别。
+
+D6 将“计划发布”“隔离消费”“命令生成”“写入 world”“物理状态窗”分开。D3 计划的编号、版本、载荷
+摘要和资源-中心航迹绑定必须与消费确认一致。消费确认只能声明 isolated simulation；生产运行确认字段
+必须为 false。D7 命令继续绑定该消费确认和计划摘要，并由另一条 world application 记录证明控制确实
+写入对应隔离 world。生成命令但未写入 world 时，导引血缘和物理窗不可用。
+
+真值只在 D6 离线阶段进入。online 计划、确认、命令和世界应用记录接受 truth-like 字段扫描，任何目标
+真实编号或状态进入这些文件都失败关闭。D6 使用单独的中心航迹到目标真值映射读取 assigned target，
+不把映射回写给 D1-D5，也不创建或重绑定 `global_track_id`。每个输入文件先验证调用方提供的带外
+SHA-256，评估结束后再次计算文件集合摘要，保证只读。
+
+D4 降级采用是独立证据层。调用方只有在 input spec 和 arm manifest 同时声明文件并绑定相同摘要时，
+D6 才读取该文件。每条记录必须绑定当前 arm、seed 和 region，并通过 source plan、applied plan、场景
+lineage、candidate gate、隔离计划消费确认和 adoption verdict 的交叉摘要。任何 production runtime
+ACK、production authority、物理结果或因果权限声明都使输入失败关闭。D6 只确认“该隔离 world 消费
+了哪一份降级计划”，不把它解释为生产节点确认。
+
+“记录中存在 ACK”和“D4 verdict 将 ACK 判为可用”必须分开。前者允许 D6 对已写入确认做来源审计；
+后者由 `isolated_plan_consumption_ack_available` 明确声明。标志为 false 时，D6 仍校验 ACK 的计划、
+血缘、执行绑定和隔离属性，但不要求 verdict 持有同一 `ack_id`，也不把 ACK 计为 adoption 可用。
+标志为 true 时，ACK 必须存在且编号一致。这样既保留失败路径证据，也不会把一次世界消费误写成 D4
+采纳。伪造 ACK、状态矛盾和生产确认冒充仍失败关闭。
+
+名义场景空文件与缺证据分开。显式空文件表示该 seed 不适用降级采用，状态为 `not_applicable`；历史
+清单未声明文件时状态为 `not_declared`。前者不进入不可用区域计数，后者不能支持降级配对比较。非空
+文件按区域汇总总数、可用数、原因和 intervention kind；任一区域不可用时保留汇总，但配对值为空。
+
+availability 按依赖链逐层开放。计划消费缺失时，后续值全部为 null；命令或世界应用不完整时，物理窗
+为 null；任一 arm 物理窗不完整时，paired effect 和 non-degradation 为 null。counterfactual 和 causal
+在当前输入合同中始终为 null。降级配对比较还要求两臂 D4 区域清单和 intervention 一致，且全部区域、
+计划消费、导引血缘和物理窗都可用。输出仍是描述性的隔离仿真比较，不是降级因果收益。这样可以输出
+已有观测，又不会把“未观察到差异”写成效果为零。
+
+2026-07-22 的 `active_risk` 20-seed 只读复跑中，两臂各 98 个区域的 D4 adoption 可用数均为 0；
+20 对降级比较全部 unavailable。计划消费和导引血缘为 20/20，物理窗为 19/20，因此一般聚合物理差值
+和非退化也不可用。该结果只证明消费者能审计真实 unavailable 记录并保持空值边界。
+
 ## 版本分派与 assignment/outcome 分层原则（2026-07-22）
 
 保留 seed consumer 先认证带外 `SHA256SUMS` 与 manifest，再只按顶层 schema 分派 v1/v2；未知版本直接
