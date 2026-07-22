@@ -2050,7 +2050,13 @@ def compute_region_resource_reward(
     metrics: RegionResourceRewardMetrics,
     weights: RegionResourceRewardWeights | None = None,
 ) -> float:
-    """Return the native research reward as a negative weighted safety cost."""
+    """Return the legacy unversioned research cost used by local fixtures.
+
+    This helper has no runtime ACK, availability, provenance, or outcome-window
+    binding and therefore must not be treated as formal training evidence.  Use
+    ``RegionResourceRewardEvidenceAdapter`` for the versioned, fail-closed
+    regional reward contract.
+    """
 
     resolved = weights or RegionResourceRewardWeights()
     return -sum(

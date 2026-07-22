@@ -7,7 +7,9 @@
 
 **当前事实增量**：main-owned scalable 3D 质点模块栈已接入单一二级、多二级区域 owner 和中心/二级连续失效后的 distributed D3 plan；D7 依据 owner、plan version、epoch、lease、commit 与 fault generation fence 恢复导引。此前定向集成测试 8/8 passed，仅是质点接口证据。D4 同时具备默认 disabled/shadow 的区域资源学习建议层，以及 `d4-region-resource-advisory-v1` 后投影消费合同；它只建议区域配额和邻区转移，下一轮消费必须重验 current snapshot/authority，确定性 D4 安全状态机继续拥有健康检测、leader、epoch/lease、ACK/commit 和最终降级裁决。2026-07-21 新增独立动作覆盖补充课程，100 个 seed 的 300 帧中已形成 hold、request-replan、非零 quota 和 transfer 正类；该课程 reward/outcome 全部不可用，未改变正式 900 episode、PPO、assist 或在线裁决状态。
 
-**运行时证据增量**：D4 的只读验证器已升级为 `d4-region-resource-runtime-ack-evidence-v2`。执行签名发生变化时，验证器要求严格更新的 plan ID/version、完整 owner/epoch/lease 和 D3-D7-main 绑定，输出 `new_execution_plan_applied`。执行签名不变时，只允许显式 refresh-only 元数据，并要求前序 D3 source-plan envelope 与当前资源、全局航迹、联盟标识/版本、成员角色、区域 owner 和未分配集合一致，输出 `evaluation_refresh_applied`。后者只证明建议经过同代评估并被采纳；D3 ACK 缺省 epoch/lease 时仍由 D4 advisory 的有效 authority fence 限定，不能推导新执行权限。5v5 seed 41 的真实 main 质点链路及篡改负例为 5/5，运行时专项合计 33/33，D4 全量 430/430。两类确认都不等于联盟成员确认、物理结果或策略回报，也不授予 PPO、assist 或正式 authority。冻结 900 episode 不含这条证据链。
+**运行时证据增量**：D4 的只读验证器已升级为 `d4-region-resource-runtime-ack-evidence-v2`。执行签名发生变化时，验证器要求严格更新的 plan ID/version、完整 owner/epoch/lease 和 D3-D7-main 绑定，输出 `new_execution_plan_applied`。执行签名不变时，只允许显式 refresh-only 元数据，并要求前序 D3 source-plan envelope 与当前资源、全局航迹、联盟标识/版本、成员角色、区域 owner 和未分配集合一致，输出 `evaluation_refresh_applied`。后者只证明建议经过同代评估并被采纳；D3 ACK 缺省 epoch/lease 时仍由 D4 advisory 的有效 authority fence 限定，不能推导新执行权限。5v5 seed 41 的真实 main 质点链路及篡改负例为 5/5，运行时专项合计 33/33；当前 D4 全量 449/449。两类确认都不等于联盟成员确认、物理结果或因果策略回报，也不授予 PPO、assist 或正式 authority。冻结 900 episode 不含这条证据链。
+
+**区域结果证据增量**：`d4-region-resource-observational-reward-v1` 已把区域 reward 的组成、归一化和证据边界固定下来。八项成本分别为高威胁积压、配额满足缺口、转移完成缺口、备用不足、通信负载、分配冲突、降级失败和计划抖动。每项保留原值、单位、归一化分母、来源哈希和可用原因；缺测时整项不可用，不使用相邻状态差或控制命令补零。ACK 时间是窗口起点，结果快照是窗口终点，执行和联盟绑定在首尾必须一致，owner/epoch/lease/fault generation 在窗口内不得改变。新执行计划可得到时间窗口层面的非因果观测奖励，同代评估刷新只能得到观测成本。两者都不证明 `CoalitionMemberAck`、物理执行、因果改善或策略优于规则。新增专项 19/19、D4 全量 449/449；正式 episode producer、paired shadow、on-policy 数据和 PPO 仍未完成。
 
 ## 1. 模块定位与问题定义
 
@@ -31,6 +33,7 @@ D4 的默认实现不是另一套常驻中心规划器。中心可用时，D3 �
 6. **无中心连续性**：使用一致性捆绑算法（Consensus-Based Bundle Algorithm，CBBA）风格的单获胜者协商作为一对一连续性保底，并显式报告收敛、冲突和通信开销。
 7. **恢复防双主**：中心心跳恢复后先做双轨校验，不因单次恢复立即夺回所有权。
 8. **建议消费防重放**：区域资源建议必须先形成内容寻址、限时、逐 generation 可审计的后投影合同；main 在下一轮规划边界重验后才能把它作为 D3 输入，同一 advisory 不得重复消费。
+9. **结果窗口防误归因**：区域结果必须绑定实际采用 ACK、计划和 authority generation，并在非重叠租约窗口内记录完整分项来源；评估刷新、目标级真值诊断和命令记录不能直接升级为策略奖励。
 
 ### 1.3 科学问题
 
@@ -446,7 +449,7 @@ scalable3d 区域集合记为 \(\mathcal{R}\)。每个区域只能有一个 acti
 \Delta q_r=\sum_u x_{ur}-\sum_v x_{rv}.
 \]
 
-仅当边可通信、可机动且未 partition 时允许 \(x_{uv}>0\)，并满足 edge capacity。源区域转出后必须保留已提交联盟资源和最低备用；owner/plan/epoch/lease 与 formal verdict 不一致、fault fence、缺 ACK 或过期 lease 时该区域 transfer 为零并进入 hold。学习奖励是以下代价的负加权和：高威胁积压、跨区转移耗时、通信负载、备用不足、分配冲突、降级失败和计划抖动。奖励不能减弱任何安全投影条件。
+仅当边可通信、可机动且未 partition 时允许 \(x_{uv}>0\)，并满足 edge capacity。源区域转出后必须保留已提交联盟资源和最低备用；owner/plan/epoch/lease 与 formal verdict 不一致、fault fence、缺 ACK 或过期 lease 时该区域 transfer 为零并进入 hold。正式 v1 观测成本固定为高威胁积压、配额满足缺口、转移完成缺口、备用不足、通信负载、分配冲突、降级失败和计划抖动八项归一化成本的加权平均；只有 ACK 锚定、来源哈希完整且八项均可用的新执行计划窗口才取负成本作为非因果观测奖励。旧 `compute_region_resource_reward()` 不含 availability、provenance 和窗口绑定，只是研究辅助函数。任何奖励都不能减弱安全投影条件。
 
 ## 5. 算法步骤
 
@@ -678,7 +681,7 @@ main/runtime 负责 AirSim 启停与 episode 顺序、故障注入时间轴、D3
 
 根据 2026-07-13 主验证报告与 D4 审计：
 
-- 2026-07-21 D4 全量模块回归为 **397/397 项通过**，验收阈值为零失败。全样本审计专项 10/10，覆盖正常数据、非有限值、规范切分错误、配额不守恒、非法转移、旧 epoch/lease/version、generation 回退、真值泄漏和文件篡改。正式 900 episode 与补充 100 episode 的模块内全样本状态均为 complete；D6 外部复核和真实 ACK/outcome/reward/paired-shadow 仍 pending。该结果不包含新的 AirSim 或真实网络样本，历史阶段计数保持不变。
+- 2026-07-21 全样本准入阶段为 **397/397 项通过**，验收阈值为零失败；加入运行时确认和区域奖励合同后，当前 D4 全量为 **449/449**。全样本审计专项 10/10，覆盖正常数据、非有限值、规范切分错误、配额不守恒、非法转移、旧 epoch/lease/version、generation 回退、真值泄漏和文件篡改。正式 900 episode 与补充 100 episode 的模块内全样本状态均为 complete；D6 外部复核和真实 ACK/outcome/reward/paired-shadow 仍 pending。该结果不包含新的 AirSim 或真实网络样本，历史阶段计数保持不变。
 - `build_d7_secondary_handoff()` 与 `build_secondary_takeover_plan_metadata()` 当前统一要求 readiness exact-true、expected/actual source 均存在且匹配、plan/required lease epoch 均存在且满足、expiry/current time 均存在且严格 `current_time < expiry`。逐字段 `None`、完整正例和同 id/version 维持路径均有回归；未运行新 AirSim episode。
 - 完全分布式 interceptor/peer 选择不套用二级视觉 readiness 门；动态 N/M、版本/epoch/lease、ACK 和 `global_track_id` 所有权规则未改变。
 - 二级 resource 和 plan lease 只有在 expiry/current time 均存在且严格 `current_time < expiry` 时有效；等于边界按过期处理。缺字段分别输出可审计原因并 fail-closed，不能发布或维持 executable secondary plan。
