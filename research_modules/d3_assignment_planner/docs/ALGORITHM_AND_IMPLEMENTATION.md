@@ -1816,3 +1816,107 @@ python3 -m d3_assignment_planner.learning_cli \
 该入口只做严格载入、哈希复核和规范化 JSON 输出，不运行 PPO、不启动仿真、不产生实际
 20-seed 结果。2026-07-21 专项测试为 `36 passed`，D3 全量为
 `355 passed, 1 skipped`；唯一 skip 为可选 OR-Tools。
+
+## 40. 保留 Seed 隔离执行算法（2026-07-21）
+
+### 40.1 接口
+
+公开入口为：
+
+```python
+execute_offline_paired_intervention(
+    specification,
+    planning_frames,
+    bundle_dir=...,
+    planner_config=...,
+)
+```
+
+`planning_frames` 必须精确包含 seed `1000-1019`，不能缺失或增加。返回
+`OfflinePairedInterventionExecution`，其中包含 40 个隔离计划、40 条 receipt、一个共享
+`ShadowEvaluationReport` 和一个严格 `PairedInterventionManifest`。另有三个公开哈希函数
+用于 main 构造 specification：输入快照、规则成本矩阵和学习动作掩码分别计算 SHA-256。
+
+### 40.2 输入冻结
+
+输入快照哈希定义为：
+
+```text
+H_input = SHA256(
+  frame schema,
+  planning path,
+  timestamp,
+  anonymous tracks,
+  anonymous resources,
+  previous plan,
+  rule CostMatrixResult
+)
+```
+
+`effective_matrix_result` 和当前 `plan` 是被比较的输出，不进入 `H_input`。规则矩阵哈希除
+数值矩阵外还包含目标/资源顺序、不可分配成本、威胁度、拒绝原因、候选掩码和逐边成本
+分解。动作掩码哈希包含目标/资源顺序、硬安全布尔矩阵及 expected/current plan version。
+版本不等时动作集合为空。control/treatment 的三个哈希必须一致。
+
+规划帧只接受可用、匿名、有限的 `PlanningFrameEvidence`。前序 plan id/version、干预
+时刻、规范中的输入 SHA 和 seed 必须匹配。输入 learning state 只能是 rule-only、shadow
+proposal 或 rule fallback，已经由 assist 改写的 frame 不能再充当 control。
+
+### 40.3 Bundle 校验
+
+执行器不调用生产 assist 模式。校验顺序为：
+
+1. 对 `manifest.json` 原始文件计算 SHA-256，并与 specification 的 bundle SHA 比较。
+2. 调用 `load_model_bundle(..., mode="shadow")`，复用 schema、数据合同、state dict 文件
+   SHA、`weights_only=True` 和严格 state dict 结构检查。
+3. 核对 `policy_version`、v3 schema、`stage=development`、`allowed_modes=[shadow]`、
+   `assist_authorized=false`、`rule_fallback_required=true`，并确认 1000-1019 均在外部保留
+   seed 清单中。
+4. 扫描已加载 state dict 的全部 tensor。任何非有限权重直接返回
+   `model_state_nonfinite`，不执行推理。
+
+全部通过后，执行器复用已验证 predictor 和训练分布 guard，在仅存于离线执行器内部的
+`LearningCostAssistant(mode="assist")` 中施加残差。该 mode 不通过生产 loader 创建，
+结果计划也带 `runtime_execution_allowed=false`，因此不会改变在线 admission。
+
+### 40.4 两臂复放
+
+规划器使用冻结成本适配器。适配器先移除规划帧中已记录的重分配切换罚项，再由传入的
+planner config 按前序计划重新施加，随后要求复放规则矩阵与原矩阵在 `1e-12` 绝对误差内
+一致。control 直接求解：
+
+```text
+X_control = Hungarian(C_rule, M_safe)
+```
+
+treatment 先提取当前稀疏候选边特征，再计算：
+
+```text
+C_treatment[i,j] = C_rule[i,j] + alpha * tanh(delta_C[i,j])
+X_treatment = Hungarian(C_treatment, M_safe)
+```
+
+模型只能修改 `M_safe=true` 的成本。分布外、置信度不足、推理超过 manifest deadline、
+输出形状错误、非有限输出或模型异常时，`C_treatment` 恢复为 `C_rule`。M-to-N 需求继续
+由原 demand-slot planner 展开，迟滞和前序计划评分继续使用现有 D3 逻辑。
+执行器在求解后再次比较 effective matrix 与规则矩阵的硬安全动作掩码。模型已经装载但因
+分布外或超时回退时，计划分别记录 `bundle_loaded=true`、`learning_applied=false` 和明确
+回退原因，避免把“模型未装载”和“模型未采用”混为同一状态。
+
+### 40.5 收据与证据边界
+
+所有 seed 完成后，执行器以规则矩阵为共同评价基准，计算两臂的 assignment cost、高威胁
+需求缺口、资源重复、硬掩码违规和相对前序计划的 binding 变化。20 个 frame 聚合成同一
+paired report，再生成 40 条 receipt，因此 manifest 可以验证全部 receipt 引用同一报告。
+
+receipt 记录实际 plan id/version、计划载荷 SHA、矩阵/掩码 SHA、学习是否应用、规则回退
+原因、迟滞结果和推理时延。输出中 nonfinite admitted count、在线标签 key 和
+`global_track_id` 改写均为 0。runtime ACK、物理 outcome、反事实和因果可用性固定为 false；
+执行器不生成这些对象。
+
+### 40.6 验证状态
+
+专项 7 项以 20 个保留 seed 结构和临时 v3 development bundle 实际运行 40 臂，覆盖成功、
+manifest SHA、policy version、分布外、deadline、非有限权重、输入快照篡改和有限 JSON。
+结果 `7 passed`。D3 全量为 `362 passed, 1 skipped`，skip 为可选 OR-Tools。正式
+scalable-3d episode 和 D6 sidecar 尚未接入，本节不报告策略收益或晋级结论。

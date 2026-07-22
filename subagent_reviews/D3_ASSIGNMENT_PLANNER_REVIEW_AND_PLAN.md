@@ -924,3 +924,30 @@ sidecar 独立提供，没有 sidecar 时保持 unavailable。
 生成性能或因果结论。main 后续负责隔离 episode 和运行时记录，D6 负责 outcome join 与
 统计；D3 不扩展为跨模块 runner。专项为 `36 passed`，D3 全量为
 `355 passed, 1 skipped`；唯一 skip 为可选 OR-Tools。
+
+## 36. 保留 Seed 隔离执行复核（2026-07-21）
+
+D3 已将配对 specification 转为可执行 typed API。main 提供 seed `1000-1019` 的 20 个
+匿名 `PlanningFrameEvidence` 和冻结 development bundle 后，D3 在两个独立 planner 中
+复放 control 与 treatment。control 使用原规则矩阵；treatment 只在
+`offline_simulation_intervention_arm` 内施加有界代价残差。两条路径共享输入快照、规则
+矩阵、硬安全动作掩码、前序计划和时间戳。
+
+模型加载没有复用生产 assist 权限。新入口先调用生产 shadow loader，再核对 manifest
+文件 SHA、权重 SHA、policy version、development/shadow-only admission、保留 seed 清单
+和权重有限性。通过后仅在离线 planner 内构造有效残差；分布外、低置信度、超时、非有限
+值或任何 bundle 不一致均回退规则矩阵。生产 `load_model_bundle(..., mode="assist")` 对
+同一 bundle 继续返回 `bundle_shadow_only`。
+
+一次批执行生成一个覆盖 20 seed 的配对报告和 40 条共享报告哈希的真实 receipt。输出
+计划带离线、不可发布和无授权标记。manifest 的 runtime ACK、outcome、counterfactual、
+causal 层继续 unavailable，不从规则成本或五米事件推断。D3 没有伪造 main ACK、D6 结果
+或因果收益。
+
+专项 7 项使用临时冻结 v3 development bundle 和 20 个匿名规划帧，覆盖成功路径、
+manifest/version 失配、分布外门控、deadline、非有限权重、快照篡改和 JSON 产物，全部
+通过。D3 全量为 `362 passed, 1 skipped`，唯一 skip 为可选 OR-Tools。
+
+当前判断：D3 模块执行接口缺口已关闭；main 的正式 1000-1019 三维 episode 调度、D6
+非退化侧车和 applied ACK 仍开放。完成这些外部证据前不修改 production admission，不启动
+PPO，不开放 online assist 或 authority。

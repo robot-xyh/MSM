@@ -279,6 +279,17 @@ from .paired_intervention import (
     load_paired_intervention_manifest,
     write_paired_intervention_manifest,
 )
+from .offline_intervention_execution import (
+    OFFLINE_PAIRED_INTERVENTION_EXECUTION_SCHEMA_V1,
+    OFFLINE_PAIRED_INTERVENTION_REPORT_KIND_V1,
+    OfflineInterventionArmExecution,
+    OfflinePairedInterventionExecution,
+    canonical_learning_action_mask_sha256,
+    canonical_planning_frame_snapshot_sha256,
+    canonical_rule_cost_matrix_sha256,
+    execute_offline_paired_intervention,
+    write_offline_paired_intervention_execution,
+)
 
 __all__ = [
     "ASSIGNMENT_CALIBRATION_PROFILE_SCHEMA_V1",
@@ -376,6 +387,10 @@ __all__ = [
     "NormalizedPolicyPredictor",
     "OfflineRewardComponents",
     "OFFLINE_INTERVENTION_SCOPE",
+    "OFFLINE_PAIRED_INTERVENTION_EXECUTION_SCHEMA_V1",
+    "OFFLINE_PAIRED_INTERVENTION_REPORT_KIND_V1",
+    "OfflineInterventionArmExecution",
+    "OfflinePairedInterventionExecution",
     "OrToolsUnavailableError",
     "P2_CAPACITY_BENCHMARK_SCHEMA",
     "PAIRED_INTERVENTION_ARM_SCHEMA_V1",
@@ -464,8 +479,11 @@ __all__ = [
     "assignment_validity_summary_from_plan",
     "behavior_clone_warmup",
     "canonical_runtime_payload_sha256",
+    "canonical_learning_action_mask_sha256",
     "canonical_paired_intervention_sha256",
+    "canonical_planning_frame_snapshot_sha256",
     "canonical_reward_evidence_payload_sha256",
+    "canonical_rule_cost_matrix_sha256",
     "audit_formal_learning_dataset",
     "assign_episode_split",
     "assign_seed_splits",
@@ -484,6 +502,7 @@ __all__ = [
     "continue_active_secondary_plan",
     "demand_for_cooperative_candidate",
     "evaluate_terminal_feedback",
+    "execute_offline_paired_intervention",
     "evaluate_shadow_pairs",
     "evaluate_behavior_cloning_development",
     "generate_synthetic_learning_dataset",
@@ -511,6 +530,7 @@ __all__ = [
     "validate_shared_seed_split_binding",
     "validate_assignment_plan_runtime_ack",
     "write_learning_dataset",
+    "write_offline_paired_intervention_execution",
     "write_paired_intervention_manifest",
     "write_shadow_report",
 ]

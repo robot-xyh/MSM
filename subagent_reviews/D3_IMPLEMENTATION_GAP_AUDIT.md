@@ -696,3 +696,38 @@ assignment/binding/control 为 3/3/3，held=0，online truth use=0。D3 全量 3
 本项关闭了“D3 没有正式保留 seed 配对干预 specification/manifest”的接口缺口，没有
 关闭正式实验和因果证据缺口，也没有新增 P0。2026-07-21 专项 `36 passed`，D3 全量
 `355 passed, 1 skipped`；唯一 skip 为可选 OR-Tools。
+
+## 33. 保留 Seed 隔离执行 GAP 更新（2026-07-21）
+
+### 已关闭
+
+- **P1 D3 本地执行入口**：`execute_offline_paired_intervention(...)` 已能一次消费完整
+  specification 和 20 个 `PlanningFrameEvidence`，真实运行 40 个隔离 arm，并返回共享
+  配对报告、40 份 `PairedInterventionExecutionReceipt` 与严格 manifest。main 不再需要
+  复制 D3 模型加载和矩阵求解逻辑。
+- **P1 同帧输入一致性**：输入快照、规则矩阵和动作掩码均重新计算规范 SHA-256。两条
+  arm 的前序计划、时间戳、矩阵、掩码和版本不一致时失败关闭；control 复放 binding 与
+  原规划帧不一致也会拒绝。
+- **P1 development bundle 隔离加载**：执行器校验 manifest 文件 SHA、state dict SHA、
+  policy version、v3 development/shadow-only admission、保留 seed inventory 和权重
+  有限性。生产 assist 加载器未放宽，同一 development bundle 仍被
+  `bundle_shadow_only` 阻断。
+- **P1 运行门控与规则回退**：分布外输入、低置信度、deadline、非有限权重、模型异常、
+  manifest/版本/权重不一致均产生真实 treatment fallback receipt。规则矩阵和硬安全动作
+  掩码保持不变，PPO、online assist、authority 和 runtime publication 均未开放。
+
+### 仍开放
+
+- **P1 正式 1000-1019 episode 执行**：本轮 7 项专项使用临时冻结 v3 bundle 和匿名单元
+  规划帧验证 API，未消费 main 的正式三维 episode。正式 40 臂产物、逐 seed applied/
+  fallback 分布和多周期计划结果仍需 main 调度生成。
+- **P1 D6 非退化与结果侧车**：D3 配对报告只计算规划层规则成本、需求缺口、抖动、硬约束、
+  回退和推理时延。runtime ACK、物理 outcome、counterfactual、causal 和正式 reward 仍为
+  unavailable，不能由 D3 自行补齐。
+- **P1 模型准入**：尚无正式保留 seed 的成本/安全非退化、分布外率、deadline 分位数和
+  applied ACK。bundle 保持 development/shadow-only，PPO/assist/authority 继续 false，
+  rule fallback 继续 true。
+
+本项关闭原“D3 没有 paired intervention 实际执行 API 和真实收据生成器”的模块缺口；
+正式主流程执行和 D6 独立判定仍是 P1。没有新增 P0。专项 `7 passed`，D3 全量收集 363
+项，结果 `362 passed, 1 skipped`，唯一 skip 为可选 OR-Tools。

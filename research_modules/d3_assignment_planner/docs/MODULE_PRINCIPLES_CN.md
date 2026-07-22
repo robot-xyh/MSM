@@ -1166,3 +1166,26 @@ Hungarian；treatment 只在离线仿真 arm 中应用有界代价残差，再�
 assist 和 online authority 仍保持关闭，模型失败时必须回退规则路径。D3 只证明输入和
 计划 lineage，运行 ACK 继续由既有验证器确认。执行后的 outcome、反事实和因果统计由
 D6 sidecar 管理；未接 sidecar 时对应可用性保持 unavailable。
+
+## 保留 Seed 隔离执行原则（2026-07-21）
+
+配对合同必须由真实执行数据支撑。D3 的离线批执行器以 20 个匿名
+`PlanningFrameEvidence` 为输入，不重新读取仿真真值，也不根据 arm 名称合成计划。每个
+帧先固定输入侧哈希：匿名目标、匿名资源、前序计划、量测时刻、规则成本、不可分配成本和
+硬安全掩码。effective matrix 和当前输出计划不进入输入哈希，防止把干预结果反向写入输入。
+
+control 和 treatment 各使用一个新建 planner。二者从同一前序计划开始，使用同一规则
+矩阵、同一动作掩码和同一 planner 阈值。control 不加载学习助手；treatment 的冻结预测器
+只允许在离线作用域内生成有界成本修正，不能输出资源编号或计划身份。Hungarian、可达性、
+容量、版本和迟滞仍决定最终计划。control 复放后的资源-目标 binding 必须与原规划帧一致，
+否则说明配置或输入没有真正冻结，整组执行失败。
+
+development 模型的“可读取”和“可在线采用”保持分离。离线入口调用生产 shadow loader
+验证数据合同、state dict 和权重 SHA，再额外核对 manifest 文件 SHA、policy version、
+development/shadow-only admission、保留 seed 清单及权重有限性。通过这些检查只获得
+离线干预资格。生产 assist 准入没有变化，输出计划明确标记不可发布、无运行时授权。
+
+20 个 seed 的规划层结果汇总为一个配对报告，40 条 arm 收据引用同一报告 SHA。该报告
+可以比较规则成本、需求缺口、抖动、硬约束、回退和推理时间，不能证明物理结果或因果收益。
+运行时 ACK、outcome、counterfactual 和 causal 继续由 main/D6 提供。当前自动化测试已
+证明执行器和失败关闭逻辑可用；正式三维 seed 1000-1019 尚未由 main 接入。

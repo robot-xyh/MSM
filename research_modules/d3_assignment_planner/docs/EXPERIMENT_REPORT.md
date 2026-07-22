@@ -813,3 +813,45 @@ OR-Tools 检查。
 这些测试证明合同能够拒绝不等价或不安全的配对声明，不代表学习代价修正取得性能收益。
 本轮没有生成正式 treatment applied 比例、运行 ACK 覆盖率、计划结果、反事实或因果指标，
 也没有修改冻结的 900-episode 数据。实际 20-seed 运行和 D6 sidecar 联接仍是后续工作。
+
+## 保留 Seed 隔离执行器测试（2026-07-21）
+
+### 测试对象
+
+本次测试对象是 D3 新增的离线配对执行入口，不是正式三维 episode。测试按规范建立 seed
+`1000-1019` 的 20 个匿名 `PlanningFrameEvidence`。每个 seed 包含两个目标、两个资源、
+一个前序计划和一个当前规则成本帧。测试临时生成 v3 development/shadow-only bundle，
+权重、manifest 和配置均绑定 SHA-256；临时 bundle 不替代项目已冻结的正式 BC 权重。
+
+### 验收条件
+
+- 20 个 seed 必须全部存在，每个 seed 必须执行 control 和 treatment，共 40 臂；
+- 两臂的输入快照、规则矩阵、动作掩码和前序版本哈希一致；
+- 成功路径生成 40 条真实 receipt，全部引用同一个配对报告 SHA；
+- development bundle 仍不能通过生产 assist 准入；
+- manifest SHA、policy version、分布外、deadline 和非有限权重异常均使用规则回退；
+- 输入快照被替换时，在生成任何 receipt 前失败关闭；
+- 输出不包含在线真值，PPO、online assist、authority 和 runtime publication 均关闭；
+- runtime ACK、物理 outcome、counterfactual 和 causal 不得被声明为 available。
+
+### 结果
+
+专项共 7 项，全部通过。正常路径实际生成 20 个 paired frame、40 个隔离计划和 40 条
+receipt。manifest/version 不一致时，20 个 treatment 均记录同一稳定回退原因；分布外和
+deadline 场景中，treatment 与 control 的资源-目标 binding 一致，规则矩阵 SHA 和动作
+掩码 SHA 保持相同。注入非有限权重后，模型在推理前以 `model_state_nonfinite` 被拒绝。
+生产 `load_model_bundle(..., mode="assist")` 对测试 development bundle 返回
+`bundle_shadow_only`。
+分布外和 deadline 用例同时确认 bundle 已成功装载、学习修正未应用、规则回退已执行；
+三个状态独立记录。求解后的 effective action mask 与输入规则 action mask 保持一致。
+
+D3 全量收集 363 项，结果为 `362 passed, 1 skipped`。唯一 skip 是当前环境没有安装的
+可选 OR-Tools。语法检查和有限 JSON 写出均通过。
+
+### 结论
+
+D3 已具备让 main 运行正式保留 seed 配对实验的模块内入口，模型加载、矩阵复放、规则
+回退和 receipt 生成不再需要 main 重写。当前证据只覆盖软件接口和匿名单元规划帧。正式
+三维 seed 1000-1019、同源传感器随机流、通信/故障 schedule、运行 ACK、物理结果和 D6
+非退化判断尚未执行。bundle 继续保持 development/shadow-only，PPO、online assist 和
+authority 继续关闭。

@@ -1015,3 +1015,40 @@ outcome、counterfactual 和 causal 分层；未连接 D6 sidecar 时后三项�
 `rule_fallback=true` 保持不变，默认执行路径仍为规则代价与需求槽 Hungarian。2026-07-21
 专项结果为 `36 passed`，D3 全量结果为 `355 passed, 1 skipped`；唯一 skip 为未安装的
 可选 OR-Tools 检查。
+
+## 2026-07-21 保留 Seed 隔离执行入口
+
+D3 新增 `offline_intervention_execution.py`，把上一节的配对规范落实为可调用的离线执行
+入口。main 只需提供完整 `PairedInterventionSpecification`、seed `1000-1019` 对应的
+20 个 `PlanningFrameEvidence` 和冻结 bundle 目录。执行器在 D3 内部完成模型读取、规则
+臂复放、学习臂复放、Hungarian 求解、迟滞处理、哈希计算和收据组装，不要求 main 复制
+manifest、PyTorch 权重或残差模型的加载细节。
+
+执行顺序如下：
+
+1. 重新计算每个匿名规划帧的输入快照 SHA-256，并与 control/treatment 规范逐项核对。
+2. 计算规则矩阵和硬安全动作掩码 SHA-256。两条 arm 使用同一矩阵、同一掩码、同一前序
+   计划和同一时间戳。
+3. 生产 `load_model_bundle(..., mode="shadow")` 先验证 manifest、权重文件、数据合同和
+   state dict。离线执行器再核对 manifest 文件 SHA、policy version、development/
+   shadow-only 准入、保留 seed 清单和全部权重有限性。
+4. control 使用规则矩阵加 Hungarian。treatment 只在
+   `offline_simulation_intervention_arm` 内使用
+   `C_final=C_rule+alpha*tanh(delta_C)`；分布外输入、低置信度、超时、非有限权重、模型
+   异常或 bundle 不一致均回退到同一规则矩阵。
+5. 对 20 个 seed 生成一个真实配对评估报告，40 份
+   `PairedInterventionExecutionReceipt` 共享该报告哈希，并直接形成
+   `PairedInterventionManifest`。输出计划标记为离线、不可发布、无运行时授权。
+
+生产加载器没有放宽。development bundle 直接请求 `mode="assist"` 仍返回
+`bundle_shadow_only`；离线 treatment 不构成 PPO、在线 assist 或 authority。执行结果只
+包含规则成本、需求缺口、抖动、硬约束、回退和推理时延等 D3 规划层配对指标。runtime
+ACK、物理 outcome、counterfactual 和 causal 均明确为 unavailable，仍由 main/D6 后续
+生成独立证据。
+
+2026-07-21 的专项测试使用 20 个保留 seed 结构、20 个匿名规划帧和临时冻结 v3
+development bundle，实际执行 40 个隔离 arm。7 项测试覆盖正常执行、manifest SHA、
+policy version、分布外门控、deadline、非有限权重、输入快照不一致和 JSON 产物；全部
+通过。D3 全量收集 363 项，结果为 `362 passed, 1 skipped`，唯一 skip 为未安装的可选
+OR-Tools。该结果证明执行入口和失败关闭逻辑可用，尚不等于正式三维主流程已经运行 seed
+`1000-1019`，也不形成模型非退化或在线晋级结论。

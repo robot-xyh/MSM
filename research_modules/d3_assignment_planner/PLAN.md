@@ -1130,3 +1130,44 @@ OR-Tools，零失败满足门限。
    统计。D3 manifest 本身不能将这些层改为 available。
 3. 在真实 20-seed 结果和 D6 非退化判定完成前，继续保持 `PPO=false`、
    `assist=false`、`authority=false`、`rule_fallback=true`。
+
+## 36. 保留 Seed 配对干预执行入口（2026-07-21）
+
+### 已完成
+
+1. 新增 typed API `execute_offline_paired_intervention(...)`。输入固定为完整配对规范、
+   seed `1000-1019` 的 20 个 `PlanningFrameEvidence`、冻结 bundle 目录和 D3 planner
+   配置；输出包含 40 个隔离 plan、40 份真实执行收据、共享配对报告和可直接序列化的
+   `PairedInterventionManifest`。
+2. control/treatment 从同一匿名输入快照复放。执行器复算输入、规则矩阵和动作掩码哈希，
+   校验前序 plan id/version、干预时间和帧清单。control 复放结果必须与原规划帧的资源-
+   目标 binding 一致，否则失败关闭。
+3. 冻结 development bundle 先走生产 shadow loader，再由离线入口核对 manifest 文件
+   SHA、state dict SHA、policy version、v3 development/shadow-only admission、
+   1000-1019 holdout inventory 和有限权重。生产 assist 准入函数未改，绕过 promotion 的
+   路径仍不存在。
+4. treatment 的残差只作用于 `offline_simulation_intervention_arm`。动作仍由硬安全掩码
+   和 Hungarian 决定；分布外输入、超时、低置信度、非有限值、模型异常或 bundle 不匹配
+   时，treatment 使用原规则矩阵并在 receipt 中保存稳定回退原因。
+5. 20 个 seed 聚合为一个 `d3_shadow_paired_evaluation_v2` 报告。40 份 receipt 共享报告
+   SHA，输出同时固定 `PPO=false`、`online_assist=false`、`online_authority=false`、
+   `runtime_publication_allowed=false` 和 `rule_fallback=true`。不生成 runtime ACK、物理
+   outcome、反事实或因果字段。
+
+### 验证
+
+- 专项 7 项，使用临时冻结 v3 development bundle 和 20 个匿名保留-seed 规划帧，覆盖
+  成功执行、manifest/version 失配、分布外输入、deadline、非有限权重和输入哈希篡改，
+  结果 `7 passed`。
+- D3 全量收集 363 项，结果 `362 passed, 1 skipped`；skip 仅可选 OR-Tools。
+- 生产 `load_model_bundle(..., mode="assist")` 对同一 development bundle 继续返回
+  `bundle_shadow_only`。
+
+### 下一步
+
+1. main 在 `scalable_3d_simulation` 为 seed 1000-1019 生成实际同源规划帧，并用本 API
+   写出正式 40 臂执行产物。D3 不跨模块实现该调度。
+2. D6 独立校验共享输入、收据、计划结果和 episode outcome，补充 non-degradation、
+   counterfactual/causal availability；当前 D3 报告不得代替 D6 结果侧车。
+3. 只有正式 20-seed 配对、运行时 applied ACK、成本和安全非退化、分布外/deadline 门限
+   同时通过后，才讨论 qualified bundle。PPO、online assist 和 authority 继续关闭。
