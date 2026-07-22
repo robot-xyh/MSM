@@ -14,6 +14,8 @@ from enum import Enum
 from hashlib import sha256
 import json
 from math import isfinite
+from pathlib import Path
+from time import perf_counter
 from typing import Any, Mapping, Sequence
 
 from .models import to_jsonable
@@ -38,6 +40,15 @@ from .region_resource_runtime_ack import (
     REGION_RESOURCE_RUNTIME_ACK_EVIDENCE_SCHEMA,
     canonical_runtime_payload_sha256,
 )
+from .region_resource_learning import (
+    MODEL_LIFECYCLE_DEVELOPMENT,
+    MODEL_MAXIMUM_MODE_SHADOW,
+    REGION_GRAPH_ARCHITECTURE,
+    LearnedRegionResourcePolicy,
+    LoadedRegionResourceModelBundle,
+    ModelBundleValidationError,
+    load_region_resource_model_bundle,
+)
 from .regional_failover import REGIONAL_FAILOVER_SCHEMA, RegionalFailoverDecision
 
 
@@ -55,6 +66,25 @@ REGION_RESOURCE_COALITION_FENCE_VERSION = "d4-coalition-lease-epoch-ack-fence-v1
 REGION_RESOURCE_RULE_POLICY_NAME = "d4-region-resource-rule"
 REGION_RESOURCE_RULE_POLICY_VERSION = "v1"
 REGION_RESOURCE_RESERVED_EVALUATION_SEEDS = tuple(range(1000, 1020))
+REGION_RESOURCE_FROZEN_DEVELOPMENT_BUNDLE_ID = "region_resource_bc_900_20260720"
+REGION_RESOURCE_FROZEN_DEVELOPMENT_MODEL_VERSION = (
+    "d4-region-bc-900-development-v1"
+)
+REGION_RESOURCE_FROZEN_DEVELOPMENT_MANIFEST_SHA256 = (
+    "dad2adbe9c36dd9ff8ee8bb3c11b1e07e66743c6f80dd8e956799208a10c05c9"
+)
+REGION_RESOURCE_FROZEN_DEVELOPMENT_STATE_DICT_SHA256 = (
+    "3da0360be8788f3ffeb8e9f9eba3e0d5369ec0bdf9e05729dfb1db07d71d5f62"
+)
+REGION_RESOURCE_FROZEN_DEVELOPMENT_TRAINING_MANIFEST_SHA256 = (
+    "ff3081c8e320d9c8e1b032fb6234cd24159f0feedb1c6a706633cea6c1030dc6"
+)
+REGION_RESOURCE_FROZEN_DEVELOPMENT_DATASET_SHA256 = (
+    "b06d741bd22a0cd84ef1e47a48a0b8cd81ceb7e4ea294eeeb38b892e69d36158"
+)
+REGION_RESOURCE_FROZEN_DEVELOPMENT_SPLIT_SHA256 = (
+    "18a2c60097fefe05cb70ed811d28faf90c51bbbba0bbe984e07f23fb12f8d7f0"
+)
 
 _SHA256_HEX_LENGTH = 64
 _ALLOWED_PROJECTION_NOTES = (":clipped_by_safety_projection",)
@@ -652,6 +682,128 @@ class RegionResourcePairedInterventionManifest:
         return cls(**payload)
 
 
+@dataclass(frozen=True)
+class RegionResourceIsolatedCandidateEvaluation:
+    """Raw candidate and immutable bundle evidence from isolated inference."""
+
+    recommendation: RegionResourceRecommendation
+    bundle_manifest_sha256: str
+    candidate_latency_ms: float
+    candidate_ood_passed: bool
+
+    def __post_init__(self) -> None:
+        _require_sha256(self.bundle_manifest_sha256, "bundle_manifest_sha256")
+        if not isfinite(float(self.candidate_latency_ms)) or self.candidate_latency_ms < 0.0:
+            raise ValueError("candidate_latency_ms must be finite and non-negative")
+        if self.recommendation.source != RecommendationSource.LEARNED:
+            raise ValueError("isolated candidate must be a raw learned recommendation")
+        if self.recommendation.projected:
+            raise ValueError("isolated candidate loader must not project recommendations")
+
+
+class RegionResourceIsolatedPairedCandidateLoader:
+    """Read and evaluate a frozen candidate bundle without advisor authority.
+
+    The caller must provide the out-of-band bundle identity frozen in the
+    paired specification.  This loader never constructs ``RegionResourceAdvisor``
+    and never requests assist or online authority.  It reads the model in eval
+    mode, verifies all bundle hashes supported by the model-bundle contract,
+    and checks that those files did not change during each inference.
+    """
+
+    def __init__(
+        self,
+        candidate_bundle: RegionResourceCandidateBundleBinding,
+        bundle_dir: str | Path,
+        *,
+        map_location: Any = "cpu",
+    ) -> None:
+        source = Path(bundle_dir)
+        if source.is_symlink():
+            raise ModelBundleValidationError("paired_bundle_directory_symlink_forbidden")
+        if candidate_bundle != REGION_RESOURCE_FROZEN_DEVELOPMENT_BUNDLE_BINDING:
+            raise ModelBundleValidationError(
+                "paired_bundle_not_frozen_development_bundle"
+            )
+        if (
+            source.name != "bundle"
+            or source.parent.name != REGION_RESOURCE_FROZEN_DEVELOPMENT_BUNDLE_ID
+        ):
+            raise ModelBundleValidationError("paired_bundle_id_mismatch")
+
+        manifest_path = source / "manifest.json"
+        actual_manifest_sha256 = _sha256_file(manifest_path)
+        if actual_manifest_sha256 != candidate_bundle.bundle_manifest_sha256:
+            raise ModelBundleValidationError("paired_bundle_manifest_sha256_mismatch")
+
+        loaded = load_region_resource_model_bundle(
+            source,
+            expected_model_version=candidate_bundle.policy_version,
+            expected_state_dict_sha256=candidate_bundle.model_state_sha256,
+            map_location=map_location,
+            require_training_dataset_manifest=True,
+        )
+        loaded_manifest_payload = loaded.manifest.to_dict()
+        try:
+            current_manifest_payload = json.loads(
+                manifest_path.read_text(encoding="utf-8")
+            )
+        except (OSError, ValueError, TypeError, json.JSONDecodeError) as exc:
+            raise ModelBundleValidationError(
+                "paired_bundle_manifest_unreadable_after_load"
+            ) from exc
+        if loaded_manifest_payload != current_manifest_payload:
+            raise ModelBundleValidationError(
+                "paired_bundle_manifest_changed_during_load"
+            )
+        if loaded.manifest.model_version != candidate_bundle.bundle_version:
+            raise ModelBundleValidationError("paired_bundle_version_mismatch")
+        if candidate_bundle.policy_name != REGION_GRAPH_ARCHITECTURE:
+            raise ModelBundleValidationError("paired_bundle_policy_name_mismatch")
+        if candidate_bundle.policy_version != loaded.manifest.model_version:
+            raise ModelBundleValidationError("paired_bundle_policy_version_mismatch")
+        _validate_frozen_development_manifest(loaded)
+
+        self.bundle_dir = source
+        self.bundle_manifest_sha256 = actual_manifest_sha256
+        self.loaded_bundle = loaded
+        self.policy = LearnedRegionResourcePolicy(loaded.model, loaded.manifest)
+        self._bundle_fingerprint = _loaded_bundle_fingerprint(loaded)
+        if self._bundle_fingerprint != _frozen_development_bundle_fingerprint():
+            raise ModelBundleValidationError("paired_bundle_fingerprint_mismatch")
+
+    def evaluate(
+        self,
+        snapshot: RegionResourceSnapshot,
+        *,
+        ood_margin: float,
+    ) -> RegionResourceIsolatedCandidateEvaluation:
+        """Generate one raw candidate and prove that the bundle stayed frozen."""
+
+        if not isfinite(float(ood_margin)) or float(ood_margin) < 0.0:
+            raise ValueError("ood_margin must be finite and non-negative")
+        before = _loaded_bundle_fingerprint(self.loaded_bundle)
+        if before != self._bundle_fingerprint:
+            raise ModelBundleValidationError("paired_bundle_changed_before_inference")
+
+        started_at = perf_counter()
+        try:
+            recommendation = self.policy.recommend_raw(snapshot)
+            ood_passed = not self.policy.is_ood(snapshot, margin=float(ood_margin))
+        finally:
+            latency_ms = 1000.0 * (perf_counter() - started_at)
+            after = _loaded_bundle_fingerprint(self.loaded_bundle)
+            if after != self._bundle_fingerprint:
+                raise ModelBundleValidationError("paired_bundle_changed_during_inference")
+
+        return RegionResourceIsolatedCandidateEvaluation(
+            recommendation=recommendation,
+            bundle_manifest_sha256=self.bundle_manifest_sha256,
+            candidate_latency_ms=latency_ms,
+            candidate_ood_passed=ood_passed,
+        )
+
+
 class RegionResourcePairedInterventionExecutor:
     """Apply one arm inside an isolated experiment without online authority."""
 
@@ -678,6 +830,7 @@ class RegionResourcePairedInterventionExecutor:
         candidate_bundle_manifest_sha256: str | None = None,
         candidate_latency_ms: float = 0.0,
         candidate_ood_passed: bool = True,
+        candidate_failure_reasons: Sequence[str] = (),
         formal_decision: RegionalFailoverDecision | None = None,
     ) -> RegionResourcePairedArmEvidence:
         normalized_arm = arm if isinstance(arm, RegionResourcePairedArm) else RegionResourcePairedArm(str(arm))
@@ -691,9 +844,19 @@ class RegionResourcePairedInterventionExecutor:
         if not isfinite(float(candidate_latency_ms)) or float(candidate_latency_ms) < 0.0:
             raise ValueError("candidate_latency_ms must be finite and non-negative")
 
-        rejections = _input_rejections(expected_input, observed_input_binding)
-        rejections.extend(_snapshot_rejections(expected_input, snapshot))
-        pair_input_match = not rejections and expected_input_sha == observed_input_sha
+        input_rejections = _input_rejections(expected_input, observed_input_binding)
+        input_rejections.extend(_snapshot_rejections(expected_input, snapshot))
+        pair_input_match = (
+            not input_rejections and expected_input_sha == observed_input_sha
+        )
+        rejections = list(input_rejections)
+        normalized_candidate_failures = _unique(candidate_failure_reasons)
+        if (
+            normalized_arm == RegionResourcePairedArm.CONTROL
+            and normalized_candidate_failures
+        ):
+            raise ValueError("control arm cannot carry candidate failure reasons")
+        rejections.extend(normalized_candidate_failures)
         authority_rejections = _authority_fence_rejections(
             snapshot, evaluated_at_s=float(evaluated_at_s)
         )
@@ -704,7 +867,10 @@ class RegionResourcePairedInterventionExecutor:
         )
         if not advisory_window_safe:
             rejections.append("advisory_window_expired_before_next_cycle")
-        candidate_considered = normalized_arm == RegionResourcePairedArm.TREATMENT
+        candidate_considered = bool(
+            normalized_arm == RegionResourcePairedArm.TREATMENT
+            and candidate_recommendation is not None
+        )
         candidate_bundle_match = normalized_arm == RegionResourcePairedArm.CONTROL
         candidate_thresholds_passed = normalized_arm == RegionResourcePairedArm.CONTROL
         candidate_projection_passed = normalized_arm == RegionResourcePairedArm.CONTROL
@@ -734,6 +900,7 @@ class RegionResourcePairedInterventionExecutor:
             timeout_ms = 1000.0 * self.specification.thresholds.inference_timeout_s
             candidate_thresholds_passed = bool(
                 candidate_recommendation is not None
+                and not normalized_candidate_failures
                 and candidate_latency_ms <= timeout_ms
                 and candidate_ood_passed is True
                 and candidate_recommendation.confidence
@@ -751,23 +918,31 @@ class RegionResourcePairedInterventionExecutor:
                 and candidate_thresholds_passed
             ):
                 assert candidate_recommendation is not None
-                projected_candidate = self.projector.project(
-                    snapshot,
-                    candidate_recommendation,
-                    formal_decision=formal_decision,
-                )
-                projection_notes = tuple(projected_candidate.projection_rejections)
-                candidate_projection_passed = all(
-                    note.endswith(_ALLOWED_PROJECTION_NOTES)
-                    for note in projection_notes
-                )
-                if candidate_projection_passed:
-                    selected = projected_candidate
+                try:
+                    projected_candidate = self.projector.project(
+                        snapshot,
+                        candidate_recommendation,
+                        formal_decision=formal_decision,
+                    )
+                except Exception as exc:  # Isolated candidate errors must fail closed.
+                    rejections.append(
+                        _failure_reason("candidate_projection_failed", exc)
+                    )
                 else:
-                    rejections.extend(
-                        f"candidate_projection_rejected:{note}"
+                    projection_notes = tuple(
+                        projected_candidate.projection_rejections
+                    )
+                    candidate_projection_passed = all(
+                        note.endswith(_ALLOWED_PROJECTION_NOTES)
                         for note in projection_notes
                     )
+                    if candidate_projection_passed:
+                        selected = projected_candidate
+                    else:
+                        rejections.extend(
+                            f"candidate_projection_rejected:{note}"
+                            for note in projection_notes
+                        )
             if selected is None:
                 fallback_used = True
                 deterministic_rule_executed = True
@@ -846,6 +1021,123 @@ class RegionResourcePairedInterventionExecutor:
             projection_notes=projection_notes,
             rejection_reasons=_unique(rejections),
         )
+
+
+class RegionResourceIsolatedPairedEvaluator:
+    """Stable main-facing entry for one same-snapshot isolated arm pair.
+
+    Bundle load and inference failures are converted into treatment evidence
+    with deterministic rule fallback.  The control arm never sees the learned
+    candidate, and neither arm can emit an online ACK, outcome, or authority.
+    """
+
+    def __init__(
+        self,
+        specification: RegionResourcePairedInterventionSpecification,
+        bundle_dir: str | Path,
+        *,
+        map_location: Any = "cpu",
+    ) -> None:
+        self.specification = specification
+        self.executor = RegionResourcePairedInterventionExecutor(specification)
+        self.bundle_dir = Path(bundle_dir)
+        self.candidate_loader: RegionResourceIsolatedPairedCandidateLoader | None = None
+        self.load_rejection_reasons: tuple[str, ...] = ()
+        self.actual_bundle_manifest_sha256: str | None = None
+        try:
+            self.actual_bundle_manifest_sha256 = _sha256_file(
+                self.bundle_dir / "manifest.json"
+            )
+            self.candidate_loader = RegionResourceIsolatedPairedCandidateLoader(
+                specification.candidate_bundle,
+                self.bundle_dir,
+                map_location=map_location,
+            )
+        except (
+            ModelBundleValidationError,
+            OSError,
+            RuntimeError,
+            TypeError,
+            ValueError,
+        ) as exc:
+            self.load_rejection_reasons = (
+                _failure_reason("isolated_candidate_load_failed", exc),
+            )
+
+    @property
+    def candidate_loader_ready(self) -> bool:
+        return self.candidate_loader is not None
+
+    def execute_pair(
+        self,
+        *,
+        seed: int,
+        observed_input_binding: RegionResourcePairedInputBinding,
+        snapshot: RegionResourceSnapshot,
+        evaluated_at_s: float,
+        formal_decision: RegionalFailoverDecision | None = None,
+    ) -> tuple[RegionResourcePairedArmEvidence, RegionResourcePairedArmEvidence]:
+        """Execute control and treatment against the exact same snapshot object."""
+
+        control = self.executor.execute_arm(
+            arm=RegionResourcePairedArm.CONTROL,
+            seed=seed,
+            observed_input_binding=observed_input_binding,
+            snapshot=snapshot,
+            evaluated_at_s=evaluated_at_s,
+            formal_decision=formal_decision,
+        )
+
+        candidate: RegionResourceIsolatedCandidateEvaluation | None = None
+        candidate_rejections = list(self.load_rejection_reasons)
+        if self.candidate_loader is not None:
+            try:
+                candidate = self.candidate_loader.evaluate(
+                    snapshot,
+                    ood_margin=self.specification.thresholds.ood_margin,
+                )
+            except (
+                ModelBundleValidationError,
+                OSError,
+                RuntimeError,
+                TypeError,
+                ValueError,
+            ) as exc:
+                candidate_rejections.append(
+                    _failure_reason("isolated_candidate_inference_failed", exc)
+                )
+        if candidate is not None:
+            if not candidate.candidate_ood_passed:
+                candidate_rejections.append("isolated_candidate_ood_rejected")
+            if candidate.candidate_latency_ms > (
+                1000.0 * self.specification.thresholds.inference_timeout_s
+            ):
+                candidate_rejections.append("isolated_candidate_inference_timeout")
+
+        treatment = self.executor.execute_arm(
+            arm=RegionResourcePairedArm.TREATMENT,
+            seed=seed,
+            observed_input_binding=observed_input_binding,
+            snapshot=snapshot,
+            evaluated_at_s=evaluated_at_s,
+            candidate_recommendation=(
+                candidate.recommendation if candidate is not None else None
+            ),
+            candidate_bundle_manifest_sha256=(
+                candidate.bundle_manifest_sha256
+                if candidate is not None
+                else self.actual_bundle_manifest_sha256
+            ),
+            candidate_latency_ms=(
+                candidate.candidate_latency_ms if candidate is not None else 0.0
+            ),
+            candidate_ood_passed=(
+                candidate.candidate_ood_passed if candidate is not None else False
+            ),
+            candidate_failure_reasons=tuple(candidate_rejections),
+            formal_decision=formal_decision,
+        )
+        return control, treatment
 
 
 def build_region_resource_paired_intervention_specification(
@@ -984,6 +1276,98 @@ def _recommendation_is_finite(recommendation: RegionResourceRecommendation) -> b
         return False
 
 
+def _loaded_bundle_fingerprint(
+    loaded: LoadedRegionResourceModelBundle,
+) -> tuple[tuple[str, str], ...]:
+    paths = [
+        loaded.bundle_dir / "manifest.json",
+        loaded.bundle_dir / loaded.manifest.state_dict_file,
+    ]
+    if loaded.manifest.training_dataset_available:
+        assert loaded.manifest.training_manifest_file is not None
+        paths.append(loaded.bundle_dir / loaded.manifest.training_manifest_file)
+    fingerprint: list[tuple[str, str]] = []
+    for path in paths:
+        if path.is_symlink():
+            raise ModelBundleValidationError("paired_bundle_file_symlink_forbidden")
+        fingerprint.append((path.name, _sha256_file(path)))
+    return tuple(fingerprint)
+
+
+def _frozen_development_bundle_fingerprint() -> tuple[tuple[str, str], ...]:
+    return (
+        (
+            "manifest.json",
+            REGION_RESOURCE_FROZEN_DEVELOPMENT_MANIFEST_SHA256,
+        ),
+        (
+            "state_dict.pt",
+            REGION_RESOURCE_FROZEN_DEVELOPMENT_STATE_DICT_SHA256,
+        ),
+        (
+            "training_dataset_manifest.json",
+            REGION_RESOURCE_FROZEN_DEVELOPMENT_TRAINING_MANIFEST_SHA256,
+        ),
+    )
+
+
+def _validate_frozen_development_manifest(
+    loaded: LoadedRegionResourceModelBundle,
+) -> None:
+    manifest = loaded.manifest
+    expected = {
+        "architecture": REGION_GRAPH_ARCHITECTURE,
+        "model_version": REGION_RESOURCE_FROZEN_DEVELOPMENT_MODEL_VERSION,
+        "state_dict_sha256": (
+            REGION_RESOURCE_FROZEN_DEVELOPMENT_STATE_DICT_SHA256
+        ),
+        "training_manifest_sha256": (
+            REGION_RESOURCE_FROZEN_DEVELOPMENT_TRAINING_MANIFEST_SHA256
+        ),
+        "training_dataset_sha256": (
+            REGION_RESOURCE_FROZEN_DEVELOPMENT_DATASET_SHA256
+        ),
+        "training_split_sha256": REGION_RESOURCE_FROZEN_DEVELOPMENT_SPLIT_SHA256,
+        "lifecycle_stage": MODEL_LIFECYCLE_DEVELOPMENT,
+        "maximum_advisor_mode": MODEL_MAXIMUM_MODE_SHADOW,
+    }
+    for name, value in expected.items():
+        if getattr(manifest, name) != value:
+            raise ModelBundleValidationError(
+                f"paired_bundle_frozen_manifest_mismatch:{name}"
+            )
+    if (
+        manifest.training_dataset_available is not True
+        or loaded.training_dataset_manifest is None
+    ):
+        raise ModelBundleValidationError(
+            "paired_bundle_training_manifest_unavailable"
+        )
+    if any(
+        (
+            manifest.reward_evidence_available,
+            manifest.action_diversity_sufficient,
+            manifest.strategy_capability_claim_allowed,
+        )
+    ):
+        raise ModelBundleValidationError(
+            "paired_bundle_development_admission_flags_changed"
+        )
+
+
+def _sha256_file(path: Path) -> str:
+    digest = sha256()
+    with path.open("rb") as handle:
+        for block in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def _failure_reason(prefix: str, exc: Exception) -> str:
+    detail = "_".join((str(exc).strip() or type(exc).__name__).split())
+    return f"{prefix}:{detail}"
+
+
 def _content_id(prefix: str, value: Any, *, excluded: Sequence[str]) -> str:
     payload = to_jsonable(value)
     if not isinstance(payload, dict):
@@ -1048,3 +1432,19 @@ def _sequence(value: Any, path: str) -> Sequence[Any]:
 
 def _unique(values: Sequence[Any]) -> tuple[str, ...]:
     return tuple(dict.fromkeys(str(value) for value in values if str(value)))
+
+
+REGION_RESOURCE_FROZEN_DEVELOPMENT_BUNDLE_BINDING = (
+    RegionResourceCandidateBundleBinding(
+        bundle_id=REGION_RESOURCE_FROZEN_DEVELOPMENT_BUNDLE_ID,
+        bundle_version=REGION_RESOURCE_FROZEN_DEVELOPMENT_MODEL_VERSION,
+        bundle_manifest_sha256=(
+            REGION_RESOURCE_FROZEN_DEVELOPMENT_MANIFEST_SHA256
+        ),
+        model_state_sha256=(
+            REGION_RESOURCE_FROZEN_DEVELOPMENT_STATE_DICT_SHA256
+        ),
+        policy_name=REGION_GRAPH_ARCHITECTURE,
+        policy_version=REGION_RESOURCE_FROZEN_DEVELOPMENT_MODEL_VERSION,
+    )
+)

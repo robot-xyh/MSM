@@ -8,7 +8,7 @@
 
 2026-07-21 又增加区域结果/奖励证据合同测试。19 个新增用例覆盖新执行计划、同代评估刷新、分项缺测不补零、ACK 缺失、旧 generation、租约过期、窗口重叠、执行与联盟绑定变化、快照/来源哈希篡改、在线真值字段和 D6 目标级诊断误用。新增专项 19/19，ACK 与奖励证据专项 52/52，D4 全量 449/449。测试使用单区域确定性 fixture，不是多 seed 性能试验。它证明 schema、公式和失败关闭逻辑可运行，没有提供正式 episode 的实际区域 reward、策略收益、物理执行或因果证据。
 
-同日增加保留 seed 配对干预合同测试。20 个新增用例覆盖 1000-1019 exact seed/arm inventory、相同配置/初始状态/通信/故障/快照 lineage、JSON 与 CLI round-trip、旧 epoch、过期 lease、缺联盟 ACK、fault fence、未知边、容量安全裁剪、候选 bundle/hash、truth key、非有限值、跨 arm 实际快照和权限不可升级。专项 20/20，区域建议、运行确认、奖励与联盟安全相关回归 132/132，D4 全量 469/469。测试代码为了验证 40-arm manifest 完整性构造了内存 fixture，但没有运行 20 个正式 episode，也没有生成性能统计。D6 outcome sidecar 尚未接入，observed outcome、paired non-degradation、counterfactual 和 causal 均保持 unavailable。
+同日增加保留 seed 配对干预合同及冻结候选只读加载测试。原 20 个用例覆盖 1000-1019 exact seed/arm inventory、相同配置/初始状态/通信/故障/快照 lineage、JSON 与 CLI round-trip、旧 epoch、过期 lease、缺联盟 ACK、fault fence、未知边、容量安全裁剪、候选 bundle/hash、truth key、非有限值、跨 arm 实际快照和权限不可升级。新增 6 个用例实际读取 `region_resource_bc_900_20260720` development bundle，复核 manifest、权重和训练清单 SHA，覆盖非冻结 binding、加载后文件变化、权重篡改、raw candidate 阈值回退和投影异常。专项 26/26，D4 全量 475/475。测试代码为了验证 40-arm manifest 完整性构造了内存 fixture，但没有运行 20 个正式 episode，也没有生成性能统计。D6 outcome sidecar 尚未接入，observed outcome、paired non-degradation、counterfactual 和 causal 均保持 unavailable。
 
 ## 2. 实验目的
 
@@ -117,7 +117,7 @@ paired evaluator 的合成 19-seed case 按门槛拒绝 assist；合成 20-seed 
 
 ### 4.6 2026-07-20 区域学习 episode 数据合同验证
 
-`tests/test_region_resource_dataset.py` 当前 15 个 pytest case，结果 **15/15 passed**；`test_region_resource_advisor.py` 当前 **51/51 passed**，二者合计 **66/66**。共享切分、动作覆盖课程、全样本准入和运行时确认阶段分别达到 381/381、387/387、397/397 和 430/430。加入 19 项区域 reward 合同后，2026-07-21 当前全量为 **469/469 passed**。版本固定为 `d4-region-learning-dataset-v1`、`d4-region-resource-model-bundle-v2` 和 `d4-region-resource-observational-reward-v1`。
+`tests/test_region_resource_dataset.py` 当前 15 个 pytest case，结果 **15/15 passed**；`test_region_resource_advisor.py` 当前 **51/51 passed**，二者合计 **66/66**。共享切分、动作覆盖课程、全样本准入和运行时确认阶段分别达到 381/381、387/387、397/397 和 430/430。加入 19 项区域 reward 合同后，2026-07-21 当前全量为 **475/475 passed**。版本固定为 `d4-region-learning-dataset-v1`、`d4-region-resource-model-bundle-v2` 和 `d4-region-resource-observational-reward-v1`。
 
 高基数正例仍为 96 episode/192 frame，正序和逆序输入得到相同 manifest，同数值 seed 不跨 split。复核新增：训练 target 重新验证 projector、owner/plan/version/epoch/lease、备用和 edge/quota 证明；中心、二级、distributed owner 序列化回读；manifest availability 与可重放 split 对 episode inventory 的一致性；truth/object/global-track key 变体拒绝；区域图规模增加到 200。BC/PPO 缺值仍失败关闭。
 
@@ -151,7 +151,7 @@ paired evaluator 的合成 19-seed case 按门槛拒绝 assist；合成 20-seed 
 
 数据集 SHA256 为 `b06d741bd22a0cd84ef1e47a48a0b8cd81ceb7e4ea294eeeb38b892e69d36158`；原 split SHA256 为 `18a2c60097fefe05cb70ed811d28faf90c51bbbba0bbe984e07f23fb12f8d7f0`；源 registry SHA256 为 `2ab928a476a4430b99326f245222f058bc5be5025158134ba89b01b3dec7815f`；共享 registry content SHA256 为 `29eb6895c4aa570b068f15141cbbbfede3041519117852d1ad48e848a25af146`，assignment SHA256 为 `31c6a3fc265d088d9958f44d579d8098e2aeab06b0daa60c68452ae4c6d46ab5`。
 
-审计前后正式 D4 dataset 目录树 SHA256 均为 `8cde5cace4bd8106e35801f6179775ae39298592f3b556f712ea857b9c496bc1`。原 manifest 和 900 个 episode 文件未改写。新增 12 项测试覆盖成功映射、BC 显式选择、哈希篡改、漏/多 seed、保留 seed 和源 SHA 不匹配；该共享切分阶段 D4 全量为 381/381。该结果只证明跨模块数据切分治理可用。PPO 仍不可用，assist 仍关闭，行为克隆性能不因重新分桶自动更新；当前全量为 469/469。
+审计前后正式 D4 dataset 目录树 SHA256 均为 `8cde5cace4bd8106e35801f6179775ae39298592f3b556f712ea857b9c496bc1`。原 manifest 和 900 个 episode 文件未改写。新增 12 项测试覆盖成功映射、BC 显式选择、哈希篡改、漏/多 seed、保留 seed 和源 SHA 不匹配；该共享切分阶段 D4 全量为 381/381。该结果只证明跨模块数据切分治理可用。PPO 仍不可用，assist 仍关闭，行为克隆性能不因重新分桶自动更新；当前全量为 475/475。
 
 ### 4.9 区域动作覆盖补充课程
 
@@ -191,9 +191,26 @@ canonical 视图为 60/20/20 seed，对应 180/60/60 frame。训练桶含 hold 6
 
 ### 4.11 区域建议运行时确认接口
 
-2026-07-21，运行时确认输出升级为 `d4-region-resource-runtime-ack-evidence-v2`。原合同专项 28/28；新增真实 main 质点集成 5/5，运行时专项合计 33/33。集成正例直接运行 5v5、seed 41、duration 1.2 s、assist `RegionResourceAdvisor`：source D3 seq=10，current D3 seq=94，consumption seq=96，D7 seq=99，ACK seq=100。初次计划在 0.25 s 发布，同 plan ID/version v1 在 1.0 s 以 `evaluation_refresh_only=true`、`execution_signature_changed=false` 完成区域建议评估刷新；payload SHA 和 binding 完整，验证器输出 `available=true`、`adoption_kind=evaluation_refresh_applied`。加入区域 reward 合同后当前 D4 全量为 469/469。
+2026-07-21，运行时确认输出升级为 `d4-region-resource-runtime-ack-evidence-v2`。原合同专项 28/28；新增真实 main 质点集成 5/5，运行时专项合计 33/33。集成正例直接运行 5v5、seed 41、duration 1.2 s、assist `RegionResourceAdvisor`：source D3 seq=10，current D3 seq=94，consumption seq=96，D7 seq=99，ACK seq=100。初次计划在 0.25 s 发布，同 plan ID/version v1 在 1.0 s 以 `evaluation_refresh_only=true`、`execution_signature_changed=false` 完成区域建议评估刷新；payload SHA 和 binding 完整，验证器输出 `available=true`、`adoption_kind=evaluation_refresh_applied`。加入区域 reward 合同后当前 D4 全量为 475/475。
 
 四项集成负例分别篡改 refresh flags、在同版本中改变 coalition version、声明 `execution_signature_changed=true` 却不提升 plan generation，以及移除前序 source-plan envelope，均按稳定 code 失败关闭。手工 fixture 仍覆盖严格更新的新执行计划路径。该质点正例只证明建议在同执行方案下被重新评估和采纳；不证明新执行计划、物理结果或 reward。冻结 900 episode 没有这些 runtime 字段，`CoalitionMemberAck`、物理 outcome、可归因 reward、paired shadow、PPO、assist 和 authority 状态未改变。
+
+### 4.12 冻结候选隔离加载验证
+
+2026-07-21，D4 对 `region_resource_bc_900_20260720/bundle` 增加只读、内容寻址的隔离加载验证。冻结 manifest SHA256 为 `dad2adbe9c36dd9ff8ee8bb3c11b1e07e66743c6f80dd8e956799208a10c05c9`，权重为 `3da0360be8788f3ffeb8e9f9eba3e0d5369ec0bdf9e05729dfb1db07d71d5f62`，训练清单为 `ff3081c8e320d9c8e1b032fb6234cd24159f0feedb1c6a706633cea6c1030dc6`。加载器同时复核 development 生命周期、shadow-only 最高模式、正式数据集和切分摘要，并在每次 raw inference 前后重新计算三文件指纹。
+
+专项测试由原 20 项增至 26 项。实际 bundle 正例确认三文件读取前后 SHA 不变、模型处于 evaluation mode、输出为 `source=learned` 且 `projected=false`。负例覆盖错误 binding、载入后训练清单变化、权重追加篡改、分布外/低置信候选，以及候选投影异常。六类路径均未修改正式 advisor 或区域 failover decision；失败 treatment 记录拒绝原因并执行确定性规则。
+
+| 验收项 | 门限 | 结果 |
+|---|---:|---:|
+| 配对专项 | 26/26 | 26/26 passed |
+| D4 全量 | 零失败 | 475/475 passed |
+| 冻结 bundle 读取前后 SHA 变化 | 0 | 0 |
+| 候选失败后规则回退 | 100% | 100% |
+| PPO/assist/online authority | 全部 false | 全部 false |
+| runtime ACK/outcome/causal 伪造 | 0 | 0 |
+
+该验证使用确定性单元 fixture 和一次本机冻结 development bundle 推理，没有运行 1000-1019 的正式 40-arm episode。D6 outcome sidecar、paired non-degradation、counterfactual 和 causal effect 仍不可用；结果不能用于开放生产 assist/authority，也不能说明候选策略优于规则。
 
 ## 5. 默认被动降级场景
 

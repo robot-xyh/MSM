@@ -1,18 +1,20 @@
 # D4 分布式协同与降级接管计划
 
-## 0.0 2026-07-21 保留 seed 配对干预边界（D4 合同已完成，正式运行待 main/D6）
+## 0.0 2026-07-21 保留 seed 配对干预边界（D4 加载/执行合同已完成，正式运行待 main/D6）
 
 - 新增版本化 `d4-region-resource-paired-intervention-spec-v1`。保留 seed 固定为 1000-1019，每个 seed 必须同时具有 `control_rule` 和 `treatment_candidate` 两个隔离 arm。两个 arm 重复绑定相同 scenario/version、配置 SHA、初始状态 SHA、通信 schedule SHA、故障 schedule SHA 和区域快照 lineage SHA；候选 bundle manifest、模型权重、策略版本、置信/超时/OOD 阈值及安全外壳版本也被内容寻址固定。
+- 隔离候选加载器只接受 `region_resource_bc_900_20260720/bundle`。冻结身份为 development 模型 `d4-region-bc-900-development-v1`，manifest/权重/训练清单 SHA256 分别为 `dad2adbe...c05c9`、`3da0360b...d5f62` 和 `ff3081c8...30dc6`。加载时要求训练清单存在，并校验数据集 `b06d741b...d36158`、切分 `18a2c600...d7f0`、`maximum_advisor_mode=shadow` 及全部不可准入字段；每次推理前后重新计算三文件指纹，文件变化立即失败关闭。
 - control 只执行现有 `RuleRegionResourcePolicy`。treatment 只在离线仿真 arm 内允许候选建议进入现有 `DeterministicResourceProjector`；候选必须经过 owner/plan/version/epoch/lease、fault fence、coalition ACK、邻接、带宽/机动、边容量、备用、已提交资源和总量守恒检查，再由现有 next-cycle consumption gate 复核。旧 generation、过期 lease、缺 ACK、联盟不完整、未知边、bundle/阈值/哈希错误均阻断候选并保持规则回退。
+- 加载、原始推理、分布外、超时、低置信、非有限输出和候选投影异常均写入 treatment rejection reasons。没有成功生成 raw candidate 时 `candidate_considered=false`；候选失败不能被后续投影覆盖为成功。规则 fallback 仍使用原确定性 projector，正式 `RegionResourceAdvisor`、区域 failover decision 和生产准入状态不变。
 - `isolated_treatment_safe_adopted` 只表示候选在隔离 treatment arm 中具备下一周期输入资格。它显式不能转换为 `runtime_advisory_applied_ack`，也不改变正式 D4 authority、D3 plan 或 D7 gate。`PPO=false`、`assist=false`、`authority=false`、`rule_fallback=true` 被 specification、arm evidence 和 manifest 三层共同固定。
 - manifest 要求 40 个 arm 记录完整，逐 seed 核对两个 arm 的 observed input 和实际 snapshot payload SHA。缺 arm、输入/通信/故障 schedule 不同、跨 arm 快照不同、内容哈希篡改、truth/actor/object/target key 和非有限值全部失败关闭。当前 CLI 只做 JSON 严格验证和 canonical round-trip，不生成合成正式数据。
 - D4 复用 `ShadowPairedEvaluator(minimum_unseen_seeds=20)` 作为未来 D6 sidecar 的指标计算入口；D4 当前 manifest 固定 `d6_outcome_sidecar_attached=false`，observed outcome、paired non-degradation、counterfactual、causal、formal 20-seed performance 和性能声明全部 unavailable/false。
-- 2026-07-21 模块验收：新增合同专项 20/20，区域建议/运行确认/奖励/联盟安全相关回归 132/132，D4 全量 **469/469 passed**。测试中的 20-seed/40-arm 对象仅用于 schema、失败关闭与 round-trip 回归，不是正式 episode 或策略性能样本。
+- 2026-07-21 模块验收：配对专项 **26/26**，D4 全量 **475/475 passed**。六个新增用例实际读取冻结 bundle 并验证读取前后 SHA 不变，同时覆盖错误 binding、加载后文件变化、权重篡改、raw 候选阈值回退和投影异常。测试中的 20-seed/40-arm 对象仍只用于 schema、失败关闭与 round-trip 回归，不是正式 episode 或策略性能样本。
 
 ### 后续执行顺序
 
 1. main 在保留 seed 1000-1019 上冻结实际 scenario/config/initial state/communication/fault/snapshot-lineage 制品，并按每 seed 两个隔离 arm 调度；不得修改冻结 900-episode 数据。
-2. treatment arm 只消费冻结候选 bundle。main 仅在 D4 evidence 的 `isolated_treatment_safe_adopted=true` 时把安全投影结果送入该 arm 的下一周期，线上 authority 保持 false；control 始终走规则策略。
+2. treatment arm 只通过 `RegionResourceIsolatedPairedEvaluator` 消费上述冻结 bundle。main 仅在 D4 evidence 的 `isolated_treatment_safe_adopted=true` 时把安全投影结果送入该隔离 arm 的下一周期，线上 authority 保持 false；control 始终走规则策略。
 3. D6 以独立 sidecar 绑定 specification SHA、manifest ID、arm ID 和结果制品 SHA，生成 observed outcome 与 paired non-degradation。counterfactual/causal 另行审计，不能由 D4 的安全采用标记推导。
 4. 完成 20 个实际 seed、40 个隔离 episode、D6 sidecar 和同输入审计后，再评审候选是否保留在 shadow；PPO、assist 和 authority 仍需独立准入，不由本阶段自动开放。
 
@@ -56,7 +58,7 @@
 - 中心 `failed` 后，逐区域只从显式 coverage 且 strict readiness 完整的 `mobile_high_recon` 中选择二级协调者；排序为 takeover priority、coverage ratio、lease epoch、node id。二级节点保持 `coordinator_only`，不作为拦截成员。
 - 没有有效二级节点时才执行受约束 bid fallback：按 region、availability、communication、operator hold、跨区域 capacity、capability demand 和 D5 support/hold/ambiguity 形成确定性候选成员集；一个成员可同时覆盖多项 capability。该实现是可审计保底 heuristic，不是完整 CBBA 消息共识、CCBBA、reserve 激活或动态联盟重构。
 - authority 切换必须同时提升 `epoch` 和 `plan_version`；租约严格满足 `timestamp < expiry`，并收缩到 authority、D3 task 与二级 lease 的最早 expiry。中心、二级和 distributed 三层的 `k>1` 任务均复用 `CoalitionCommitCoordinator`，只有 required-member ACK 全集对同一 target/coalition/plan/version/epoch 有效时才原子 `committed`；缺 ACK、旧 ACK/authority generation、过期 lease 和任一层级分区全部 fail closed。
-- 2026-07-20 区域合同阶段新增 23 项确定性单元测试：5/20/50/100/200 个 region/task/resource 元数据与中心 ownership，声明 resource/recon 数量上限，D1/D2 主动证据、D3/D5 硬门控、中心失效、二级失效、双区域 coverage、中心/二级/distributed 完整与缺失 ACK、旧 ACK epoch、全层网络分区、旧 authority epoch/plan version、最早 task/authority lease、旧 secondary lease epoch、D5 member hold、单成员多能力与跨区域 capacity。当时 D4 全量为 303/303，当前已由 **469/469 passed** 覆盖。
+- 2026-07-20 区域合同阶段新增 23 项确定性单元测试：5/20/50/100/200 个 region/task/resource 元数据与中心 ownership，声明 resource/recon 数量上限，D1/D2 主动证据、D3/D5 硬门控、中心失效、二级失效、双区域 coverage、中心/二级/distributed 完整与缺失 ACK、旧 ACK epoch、全层网络分区、旧 authority epoch/plan version、最早 task/authority lease、旧 secondary lease epoch、D5 member hold、单成员多能力与跨区域 capacity。当时 D4 全量为 303/303，当前已由 **475/475 passed** 覆盖。
 - 验证边界：23 项合同用例本身无随机 seed、AirSim episode、真实 RF/mesh/socket、带宽/时钟漂移或物理命中证据。main 后续已完成质点模块栈接线，但这不把合同单元测试升级为 AirSim/真实网络证据；根级系统文档仍由 main 同步。
 
 ### 0.1 2026-07-15 P0 公开二级接管入口统一（已完成）
@@ -65,7 +67,7 @@
 - 二级 owner 必须证明显式 current time、正 lease epoch、严格 `current_time < lease_expiry`、fresh heartbeat/cue/communication、gimbal=true、coverage >= 0.65、network full-view >= 0.80，以及至少 3 次/0.2 s 的 sustained readiness。缺失、陈旧、等于 expiry 或低于门限均阻断二级 proposal/execution。
 - `FailoverCoordinator.plan_degraded()` 只对 secondary candidate 应用该门；interceptor/cluster-representative peer 的 distributed election 保持独立，不要求二级视觉 evidence。动态 N/M、plan/coalition version、epoch/lease、ACK、partition/recovery 和 upstream `global_track_id` 合同不变。
 - 278/278 历史回归未覆盖 `build_d7_secondary_handoff()` 和 `build_secondary_takeover_plan_metadata()` 对 sustained/source/lease epoch 的 `None`，此前“所有公开入口已闭锁”的说法撤回。两个 helper 现要求 readiness exact-true、expected/actual source 均存在且匹配、plan/required lease epoch 均存在且满足、expiry/current time 均存在且严格未过期；同一已激活 plan 的维持路径不豁免。
-- 当日验收结果：D4 全量 280/280 passed，两个 helper 的逐字段 `None`、完整正例、same-plan 维持和 distributed bypass 均通过；`build_coalition_commit_d6_metadata()` 缺 current time 时仍 lease invalid/atomic false。当前全量回归为 469/469；P0 判定不变。
+- 当日验收结果：D4 全量 280/280 passed，两个 helper 的逐字段 `None`、完整正例、same-plan 维持和 distributed bypass 均通过；`build_coalition_commit_d6_metadata()` 缺 current time 时仍 lease invalid/atomic false。当前全量回归为 475/475；P0 判定不变。
 
 ### 0.2 2026-07-15 M5N2 中心负对照（已完成，非降级验收）
 
@@ -153,9 +155,9 @@ P0 状态：无 P0 blocker。P0-B 在 D4 模块内已闭合到单元测试层：
 
 2026-07-11 中心重规划请求 lifecycle 已在 D4 模块侧闭合：冻结 `CenterReplanStatus` 携带 request/target/coalition/risk/state/timestamp/resolved-plan 字段，adapter 用排序去重后的 risk tuple 比较当前风险。`ActiveDegradationConfig.center_replan_cooldown_s=2.0`，以 resolved/requested time 为起点；pending/applied/no-change 在窗口内即使新增非硬风险也继续 suppress，严格到 `timestamp >= reference+2.0` 才重新开放。`terminal_persistent_disagreement` 保留首次请求和 D6 hard-risk 分类，但不绕过 cooldown；expired、中心 failed 以及 friend/重复锁/assignment-version/IDSW/coalition conflict 仍即时绕过。2026-07-12 后，`continue_center` 对无硬冲突的 `ambiguous/hold/reacquire` 始终保留 `terminal_consistent=True` 以表达 current center binding 仍可信；持续失锁只触发视觉 cue/观察路径。真实 mismatch、stale/not-current plan、版本/ACK/lease 冲突仍保留 `terminal_consistent=False` 和风险供 D7 独立门控。center-replan lifecycle 与 `k=1` fallback 本身无行为变化。
 
-2026-07-11 D4 本地 P1 原子联盟合同已实现：冻结 `CoalitionMemberAck`、`CoalitionCommitState` 和轻量 `CoalitionCommitCoordinator` 直接扩展现有 `CoalitionSafetyEvidence`。协调器校验双版本、epoch、成员身份、ACK 有效期、lease 和 digest；完整 ACK 后才能进入 committed/executing，缺 ACK、旧 epoch、过期 lease、网络分区或 digest 冲突进入 aborted/reconfiguring。中心正常仍使用现有路径；中心失效后，只有 secondary `takeover_ready` 或完全无中心 committed 联盟才设置 `atomic_coalition_formed=true`，否则保持 fail closed。event/D6 metadata 已输出 commit 状态、成员、epoch、coordinator 和 lease；恢复只输出双轨审计，不立即夺权。该合同在 2026-07-12 无行为变化；当时 D4 模块测试 148 项通过，当前全量为 469/469。
+2026-07-11 D4 本地 P1 原子联盟合同已实现：冻结 `CoalitionMemberAck`、`CoalitionCommitState` 和轻量 `CoalitionCommitCoordinator` 直接扩展现有 `CoalitionSafetyEvidence`。协调器校验双版本、epoch、成员身份、ACK 有效期、lease 和 digest；完整 ACK 后才能进入 committed/executing，缺 ACK、旧 epoch、过期 lease、网络分区或 digest 冲突进入 aborted/reconfiguring。中心正常仍使用现有路径；中心失效后，只有 secondary `takeover_ready` 或完全无中心 committed 联盟才设置 `atomic_coalition_formed=true`，否则保持 fail closed。event/D6 metadata 已输出 commit 状态、成员、epoch、coordinator 和 lease；恢复只输出双轨审计，不立即夺权。该合同在 2026-07-12 无行为变化；当时 D4 模块测试 148 项通过，当前全量为 475/475。
 
-2026-07-11 center replan coalition convergence 已补齐：D4 读取 main 已传入的 D5 `CoalitionVisualSummary`，校验 current track/plan/coalition scope、完整 primary lock 集合、无 conflict，以及 commit-required 时 committed/executing 和 required ACK 完整。只有中心 alive 且当前决策无 friend/duplicate/wrong-binding/version/commit/health 硬冲突时，matching pending request 才可输出 `continue_center` 和 `resolution_hint=acknowledged_no_change`；同一 summary 对所有 current primary 给出一致 action。D4 不修改 main adapter；最小接口字段记录在 README。该能力本轮无行为变化；当时模块测试为 148 项通过，当前全量为 469/469。
+2026-07-11 center replan coalition convergence 已补齐：D4 读取 main 已传入的 D5 `CoalitionVisualSummary`，校验 current track/plan/coalition scope、完整 primary lock 集合、无 conflict，以及 commit-required 时 committed/executing 和 required ACK 完整。只有中心 alive 且当前决策无 friend/duplicate/wrong-binding/version/commit/health 硬冲突时，matching pending request 才可输出 `continue_center` 和 `resolution_hint=acknowledged_no_change`；同一 summary 对所有 current primary 给出一致 action。D4 不修改 main adapter；最小接口字段记录在 README。该能力本轮无行为变化；当时模块测试为 148 项通过，当前全量为 475/475。
 
 历史基线（2026-07-11、最终 P1 验证前）：`blocks_cv_m5_n2_liveness_batch_20260711` 的 seeds 7/17/27 均为 6 次重规划请求、6 次 `acknowledged_no_change`、0 次 applied、0 次 expired，需求满足率均为 1.0，错误重复锁均为 0，说明当时中心重规划请求 lifecycle 和合法多成员锁审计已稳定收敛。T002 的视觉共识帧为 4/5/4，D7 每个 seed 获得 2 次终端合同许可；T001 双 primary 共识均为 0。该批次已被最新 10-seed/故障注入验收补充，只证明 ComputerVision 状态链，不代表 SimpleFlight 动力学控制、协同到达或物理拦截完成。
 

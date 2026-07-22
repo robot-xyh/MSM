@@ -2,11 +2,11 @@
 
 ## 2026-07-21 保留 seed 同配对干预合同
 
-- **D4 模块边界已关闭**：新增 specification、arm evidence、manifest 和 CLI，严格限定 seed 1000-1019 及 control/treatment 两个隔离 arm。每对绑定相同 scenario/config/initial-state/communication/fault/snapshot-lineage SHA，并冻结候选 bundle、阈值和安全外壳版本。缺 seed、缺 arm、跨 arm schedule 或实际 snapshot 不同、hash 篡改、truth key 与非有限值均拒绝。
-- **安全采用已隔离**：control 只执行确定性规则。treatment 候选必须经过 bundle/置信/时限/OOD/有限值检查，以及现有 owner/version/epoch/lease、fault fence、coalition ACK、邻接、容量、备用、已提交资源和守恒投影。旧 epoch、过期 lease、缺 ACK、联盟不完整、未知边或不安全建议不得影响 treatment 下一周期；可安全回退规则。
+- **D4 模块边界已关闭**：除 specification、arm evidence、manifest 和 CLI 外，现已补齐稳定的隔离候选加载器/执行器。它严格限定 seed 1000-1019 及 control/treatment 两个隔离 arm，每对绑定相同 scenario/config/initial-state/communication/fault/snapshot-lineage SHA；只接受 `region_resource_bc_900_20260720` development bundle，并固定 manifest、权重、训练清单、数据集和切分 SHA。缺 seed、缺 arm、跨 arm schedule 或实际 snapshot 不同、错误 bundle、文件变化、hash 篡改、truth key 与非有限值均拒绝。
+- **安全采用已隔离**：control 只执行确定性规则。加载器只读生成 raw learned candidate，不构造生产 advisor；treatment 候选必须经过 bundle/置信/时限/OOD/有限值检查，以及现有 owner/version/epoch/lease、fault fence、coalition ACK、邻接、容量、备用、已提交资源和守恒投影。加载、推理或投影任一失败均记录原因并回退规则。旧 epoch、过期 lease、缺 ACK、联盟不完整、未知边或不安全建议不得影响 treatment 下一周期。
 - **权限与证据边界**：`isolated_treatment_safe_adopted` 不是 runtime applied ACK。PPO、assist、online authority 固定 false，rule fallback 固定 true。D4 不读取 truth，不生成 observed outcome、paired non-degradation、counterfactual 或 causal label，也不把 post-projection recommendation 当成 applied ACK。
-- **验收**：2026-07-21 新增 20 个确定性合同测试，覆盖 exact seeds/arms、JSON/CLI round-trip、输入与快照配对、旧 epoch/lease、缺 ACK、fault fence、非邻接、容量裁剪、bundle/hash/truth/非有限值和权限不可升级；专项 20/20，相关回归 132/132，D4 全量 **469/469 passed**。这些 fixture 不属于正式 20-seed episode 或性能证据。
-- **仍开放的 P1**：main 尚未在实际保留 seed 上生成 40 个隔离 episode 和对应 manifest；D6 尚未提供 outcome sidecar、制品哈希与 paired non-degradation。counterfactual/causal 仍需独立设计和审计。完成前不得启动 PPO、开放 assist/authority 或宣称候选优于规则。
+- **验收**：2026-07-21 专项增至 **26/26**，D4 全量 **475/475 passed**。新增六项覆盖真实冻结 bundle 三文件 SHA 与读取前后零变化、非冻结 binding、加载后文件变化、权重篡改、raw 候选分布外/阈值回退和候选投影异常；原 exact seeds/arms、JSON/CLI、输入/快照配对及全部安全门回归继续通过。验收阈值为零测试失败、零在线权限升级、候选失败全部规则回退。该证据是单元/本地制品读取验证，不是正式 20-seed 策略性能试验。
+- **仍开放的 P1**：D4 的 stable loader/executor 缺口已关闭。main 尚未在实际保留 seed 上生成 40 个隔离 episode 和对应 manifest；D6 尚未提供 outcome sidecar、制品哈希与 paired non-degradation。counterfactual/causal 仍需独立设计和审计。完成前不得启动 PPO、开放 assist/authority 或宣称候选优于规则。
 
 ## 2026-07-21 区域 reward 定义与消费合同
 
@@ -64,7 +64,7 @@
 - **开发训练结果**：固定 seed `20260720` 完成 66 epoch，最佳 epoch 54，内部测试 loss `0.071545`；2026-07-21 准入复跑耗时 66.02 秒、推理 P95 `0.7774 ms`，权重 SHA256 `3da0360be8788f3ffeb8e9f9eba3e0d5369ec0bdf9e05729dfb1db07d71d5f62` 与首次训练一致。结果只证明训练、加载、推理和确定性投影管线可运行。
 - **bundle admission**：manifest 与 model readiness 固化 `lifecycle_stage=development`、`maximum_advisor_mode=shadow`、`action_diversity_sufficient=false`、`strategy_capability_claim_allowed=false`、`reward_evidence_available=false` 及全部动作计数；即使调用方声明 20 个 unseen seed 也不能进入 assist。当前严格结论为“管线可用但动作多样性不足，shadow-only”。
 - **仍开放的 P1**：独立 producer 已生成 quota/transfer/hold/replan 规则 teacher 正样本，clean 课程及 canonical BC 只读 view 已准入，但该课程不是正式状态分布。仍需正式/课程混合策略、D6 版本化 outcome/reward/causal/counterfactual 字段与审计制品 SHA256，以及外部 1000-1019 paired shadow。上述项目未完成前，不启动 PPO，不评审 assist，不宣称 learned policy 优于规则。
-- **版本与验收**：权重和完整 bundle 位于 ignored `outputs/`，当前无 Git LFS；可跟踪结果只含配置、命令、指标、准备度、权重 SHA256 和本地定位。全样本审计专项 10/10 后为 397/397；运行时原合同 28/28、真实集成与篡改 5/5；区域 reward 专项 19/19 加入后为 449/449，当前 D4 全量 **469/469 passed**。
+- **版本与验收**：权重和完整 bundle 位于 ignored `outputs/`，当前无 Git LFS；可跟踪结果只含配置、命令、指标、准备度、权重 SHA256 和本地定位。全样本审计专项 10/10 后为 397/397；运行时原合同 28/28、真实集成与篡改 5/5；区域 reward 专项 19/19 加入后为 449/449，当前 D4 全量 **475/475 passed**。
 
 ## 2026-07-20 区域资源建议与 main 质点接线同步
 
@@ -83,7 +83,7 @@
 - **已关闭的 D4 模块缺口**：新增 `d4-regional-failover-v1`，不导入 main-owned simulator 即可消费 `scalable3d-scenario-v1` mapping，按动态 resource/recon/region/task 数量输出 truth-free 逐区域 authority payload，并拒绝 schema 或声明节点数量溢出。中心未 `failed` 时保持中心 owner；中心失效后按区域 coverage + strict readiness + lease epoch 选择 `mobile_high_recon`；无有效二级节点时才进入 bounded capability/跨区域 capacity bid fallback。
 - **安全合同**：owner/layer 变化要求 `epoch` 与 `plan_version` 同时提升，租约严格 `timestamp < expiry` 并收缩到 authority、D3 task 和二级 lease 的最早 expiry。中心、二级、distributed 任一 `k>1` candidate 都必须 required ACK 完整且 target/coalition/plan version、epoch、lease 一致后原子 `committed`；commit metadata 分别使用 `d3_center_assignment`、`d3_assignment_secondary_coordination` 和 `bounded_constrained_bid_selection`，只有 distributed fallback 使用最后一种 formation。缺 ACK、旧 authority/ACK epoch、旧 plan version、过期 lease 和任一层级网络分区均 fail closed。
 - **输入证据**：逐任务显式消费 D1 covariance/measurement age、D2 ambiguity/IDSW/duplicate、D3 plan id/version/epoch/lease/current/feasible、D5 consistent/inconsistent/binding/friend/duplicate 及 member support/hold/ambiguity；D4 只复制上游 `global_track_id`。
-- **验证日期/样本/结果**：2026-07-20，23 个确定性 pytest case，无随机 seed。五档参数分别为 5/20/50/100/200 region，每档构造相同数量 active task/resource metadata；其余 case 覆盖声明节点数上限、中心/二级连续失效、双区域 coverage、全层完整/缺失 ACK、D5 member hold、单成员多能力、跨区域 capacity、旧 generation、最早 lease 和全层分区。新增 23/23、当时 D4 全量 **303/303 passed**；当前全量为 469/469。
+- **验证日期/样本/结果**：2026-07-20，23 个确定性 pytest case，无随机 seed。五档参数分别为 5/20/50/100/200 region，每档构造相同数量 active task/resource metadata；其余 case 覆盖声明节点数上限、中心/二级连续失效、双区域 coverage、全层完整/缺失 ACK、D5 member hold、单成员多能力、跨区域 capacity、旧 generation、最早 lease 和全层分区。新增 23/23、当时 D4 全量 **303/303 passed**；当前全量为 475/475。
 - **仍开放**：长时 200v200 与多 seed 性能、真实 AirSim/RF/mesh/socket/时钟漂移/队列、D6 区域统计、物理拦截。bounded candidate formation 是确定性贪心，不是 CBBA 多轮共识或 CCBBA，也无全局组合最优、timing coupling、reserve 激活、补位/缩编/整盟重构。
 - **所有权边界**：根级系统文档与 scalable3d/main 文件不在 D4 owned paths，本轮未修改，需 main 在集成时同步。
 
@@ -104,13 +104,13 @@
 
 P0 已关闭：`FailoverCoordinator`、`AirSimEpisodeCommunicationAdapter` 和 `CoalitionCommitCoordinator` 的 secondary proposal 统一消费 strict readiness evidence；current time、lease epoch/expiry、fresh heartbeat/cue/communication、gimbal=true、coverage >=0.65、network full-view >=0.80 和 sustained readiness 缺一不可。`build_d7_secondary_handoff()` 与 `build_secondary_takeover_plan_metadata()` 也已改为 active secondary evidence exact-true：expected/actual source、plan/required lease epoch、expiry/current time 必须显式存在并满足合同，同一 active plan 维持不豁免。
 
-2026-07-15 当日 D4 全量验收阈值为零失败，结果 280/280 passed。此前 278/278 未覆盖两个公开 helper 的 sustained/source/epoch `None`，不能证明所有公开入口闭锁；新增逐字段 `None`、完整正例、same-plan 维持和 distributed bypass 后才关闭该 P0。该历史计数先由 303/303、430/430，再由当前 469/469 回归取代，P0 判定不变。
+2026-07-15 当日 D4 全量验收阈值为零失败，结果 280/280 passed。此前 278/278 未覆盖两个公开 helper 的 sustained/source/epoch `None`，不能证明所有公开入口闭锁；新增逐字段 `None`、完整正例、same-plan 维持和 distributed bypass 后才关闭该 P0。该历史计数先由 303/303、430/430，再由当前 475/475 回归取代，P0 判定不变。
 
 ## 2026-07-14 P0 secondary lease fail-closed 闭合
 
 新确认的 P0 边界已关闭：secondary resource candidate、plan 发布/维持、active owner 消费和 D7 handoff 统一要求 expiry/current time 均存在且严格 `current_time < expiry`。缺 expiry、缺 current time、`now == expiry`、`now > expiry`、旧 lease epoch 和 source mismatch 均不可发布或维持 executable secondary plan；active secondary owner 失效时转为 `hold_review`。中心健康、主动降级策略及 heartbeat/readiness/cue/gimbal/link 门控未改变。
 
-该轮 2026-07-14 历史验收为 211/211 passed；2026-07-15 的 278/278 与 280/280、区域阶段 303/303、建议管线阶段 335/335、消费合同阶段 350/350、共享切分阶段 381/381、课程阶段 387/387、全样本阶段 397/397、运行时确认阶段 430/430 都是历史结果，当前 D4 全量为 469/469。未运行新 AirSim episode。member replacement 仍只是测试手工给定替换成员后的 replay，不是自主 reserve 激活、补位、缩编或整盟重组。
+该轮 2026-07-14 历史验收为 211/211 passed；2026-07-15 的 278/278 与 280/280、区域阶段 303/303、建议管线阶段 335/335、消费合同阶段 350/350、共享切分阶段 381/381、课程阶段 387/387、全样本阶段 397/397、运行时确认阶段 430/430 都是历史结果，当前 D4 全量为 475/475。未运行新 AirSim episode。member replacement 仍只是测试手工给定替换成员后的 replay，不是自主 reserve 激活、补位、缩编或整盟重组。
 
 ## 2026-07-13 P1 episode-time 故障验收增量
 

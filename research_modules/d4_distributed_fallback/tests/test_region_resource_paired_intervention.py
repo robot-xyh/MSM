@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import replace
 from hashlib import sha256
 import json
+from pathlib import Path
+import shutil
 
 import pytest
 
@@ -17,11 +19,18 @@ from d4_distributed_fallback.region_resource import (
     ShadowPairedEvaluator,
 )
 from d4_distributed_fallback.region_resource_paired_intervention import (
+    REGION_RESOURCE_FROZEN_DEVELOPMENT_BUNDLE_BINDING,
+    REGION_RESOURCE_FROZEN_DEVELOPMENT_BUNDLE_ID,
+    REGION_RESOURCE_FROZEN_DEVELOPMENT_MANIFEST_SHA256,
+    REGION_RESOURCE_FROZEN_DEVELOPMENT_STATE_DICT_SHA256,
+    REGION_RESOURCE_FROZEN_DEVELOPMENT_TRAINING_MANIFEST_SHA256,
     REGION_RESOURCE_PAIRED_ARM_EVIDENCE_SCHEMA,
     REGION_RESOURCE_PAIRED_MANIFEST_SCHEMA,
     REGION_RESOURCE_PAIRED_SPEC_SCHEMA,
     REGION_RESOURCE_RESERVED_EVALUATION_SEEDS,
     RegionResourceCandidateBundleBinding,
+    RegionResourceIsolatedPairedCandidateLoader,
+    RegionResourceIsolatedPairedEvaluator,
     RegionResourcePairedArm,
     RegionResourcePairedArmEvidence,
     RegionResourcePairedArmSpecification,
@@ -33,15 +42,45 @@ from d4_distributed_fallback.region_resource_paired_intervention import (
     build_region_resource_paired_intervention_specification,
     build_region_resource_shadow_paired_evaluator,
 )
+from d4_distributed_fallback.region_resource_learning import (
+    ModelBundleValidationError,
+)
 from d4_distributed_fallback.region_resource_paired_intervention_cli import main
 from d4_distributed_fallback.region_resource_runtime_ack import (
     canonical_runtime_payload_sha256,
 )
-from d4_distributed_fallback.regional_failover import RegionalAuthorityLayer
+from d4_distributed_fallback.regional_failover import (
+    RegionalAction,
+    RegionalAuthorityLayer,
+    RegionalFailoverDecision,
+    RegionalRegionDecision,
+    RegionalScenarioMetadata,
+    RegionOwnershipMetadata,
+)
 
 
 def _sha(label: str) -> str:
     return sha256(label.encode("utf-8")).hexdigest()
+
+
+def _file_sha256(path: Path) -> str:
+    digest = sha256()
+    with path.open("rb") as handle:
+        for block in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def _frozen_bundle_dir() -> Path:
+    path = (
+        Path(__file__).resolve().parents[1]
+        / "outputs"
+        / REGION_RESOURCE_FROZEN_DEVELOPMENT_BUNDLE_ID
+        / "bundle"
+    )
+    if not path.is_dir():
+        pytest.skip("frozen D4 development bundle is not available locally")
+    return path
 
 
 def _snapshot(
@@ -126,6 +165,50 @@ def _binding(snapshot: RegionResourceSnapshot) -> RegionResourcePairedInputBindi
     )
 
 
+def _formal_decision(snapshot: RegionResourceSnapshot) -> RegionalFailoverDecision:
+    scenario = RegionalScenarioMetadata.from_scalable_scenario(
+        {
+            "schema_version": "scalable3d-scenario-v1",
+            "scenario_name": snapshot.scenario_id,
+            "scenario_version": snapshot.scenario_version,
+            "target_count": snapshot.region_count,
+            "resource_count": snapshot.total_resources,
+            "recon_count": 0,
+            "region_count": snapshot.region_count,
+        },
+        region_ids=tuple(node.region_id for node in snapshot.regions),
+    )
+    return RegionalFailoverDecision(
+        timestamp_s=snapshot.timestamp_s,
+        scenario=scenario,
+        region_decisions=tuple(
+            RegionalRegionDecision(
+                region_id=node.region_id,
+                selected_layer=node.current_owner_layer,
+                action=RegionalAction.CONTINUE_CENTER,
+                reason="paired_fixture",
+                ownership=RegionOwnershipMetadata(
+                    region_id=node.region_id,
+                    owner_id=node.current_owner_id,
+                    owner_layer=node.current_owner_layer,
+                    owner_role=node.current_owner_layer.value,
+                    plan_id=node.plan_id,
+                    plan_version=node.plan_version,
+                    epoch=node.epoch,
+                    lease_expires_at_s=node.lease_expires_at_s,
+                    active=node.owner_active,
+                    task_ids=(),
+                ),
+                execution_allowed=True,
+                fail_closed=False,
+                risk_factors=(),
+                task_ids=(),
+            )
+            for node in snapshot.regions
+        ),
+    )
+
+
 def _bundle() -> RegionResourceCandidateBundleBinding:
     return RegionResourceCandidateBundleBinding(
         bundle_id="candidate-region-bundle",
@@ -150,6 +233,22 @@ def _specification(
         input_bindings=tuple(_binding(resolved[seed]) for seed in sorted(resolved)),
         candidate_bundle=_bundle(),
         thresholds=RegionResourcePairedThresholds(advisory_ttl_s=5.0),
+    )
+
+
+def _frozen_specification(
+    *,
+    thresholds: RegionResourcePairedThresholds | None = None,
+) -> RegionResourcePairedInterventionSpecification:
+    snapshots = {
+        seed: _snapshot(seed) for seed in REGION_RESOURCE_RESERVED_EVALUATION_SEEDS
+    }
+    return build_region_resource_paired_intervention_specification(
+        experiment_id="frozen-region-development-paired-evaluation",
+        experiment_version="v1",
+        input_bindings=tuple(_binding(snapshots[seed]) for seed in sorted(snapshots)),
+        candidate_bundle=REGION_RESOURCE_FROZEN_DEVELOPMENT_BUNDLE_BINDING,
+        thresholds=thresholds or RegionResourcePairedThresholds(advisory_ttl_s=5.0),
     )
 
 
@@ -617,3 +716,195 @@ def test_arm_evidence_cannot_upgrade_projection_to_ack_or_outcome() -> None:
         replace(evidence, paired_non_degradation_available=True)
     with pytest.raises(ValueError, match="cannot grant outcome or online authority"):
         replace(evidence, online_authority=True)
+
+
+def test_frozen_candidate_loader_verifies_every_bundle_file_without_mutation() -> None:
+    bundle_dir = _frozen_bundle_dir()
+    expected = {
+        "manifest.json": REGION_RESOURCE_FROZEN_DEVELOPMENT_MANIFEST_SHA256,
+        "state_dict.pt": REGION_RESOURCE_FROZEN_DEVELOPMENT_STATE_DICT_SHA256,
+        "training_dataset_manifest.json": (
+            REGION_RESOURCE_FROZEN_DEVELOPMENT_TRAINING_MANIFEST_SHA256
+        ),
+    }
+    before = {name: _file_sha256(bundle_dir / name) for name in expected}
+
+    loader = RegionResourceIsolatedPairedCandidateLoader(
+        REGION_RESOURCE_FROZEN_DEVELOPMENT_BUNDLE_BINDING,
+        bundle_dir,
+    )
+    evaluation = loader.evaluate(_snapshot(1000), ood_margin=0.05)
+    after = {name: _file_sha256(bundle_dir / name) for name in expected}
+
+    assert before == expected == after
+    assert loader.loaded_bundle.model.training is False
+    assert evaluation.bundle_manifest_sha256 == expected["manifest.json"]
+    assert evaluation.recommendation.source == RecommendationSource.LEARNED
+    assert evaluation.recommendation.projected is False
+    assert (
+        evaluation.recommendation.model_sha256
+        == REGION_RESOURCE_FROZEN_DEVELOPMENT_STATE_DICT_SHA256
+    )
+    assert evaluation.candidate_latency_ms >= 0.0
+
+
+def test_frozen_candidate_loader_rejects_any_other_bundle_binding() -> None:
+    with pytest.raises(
+        ModelBundleValidationError,
+        match="paired_bundle_not_frozen_development_bundle",
+    ):
+        RegionResourceIsolatedPairedCandidateLoader(
+            replace(
+                REGION_RESOURCE_FROZEN_DEVELOPMENT_BUNDLE_BINDING,
+                bundle_id="different-development-bundle",
+            ),
+            Path("unused") / "different-development-bundle" / "bundle",
+        )
+
+
+def test_frozen_candidate_loader_detects_post_load_bundle_mutation(tmp_path) -> None:
+    copied_bundle = (
+        tmp_path / REGION_RESOURCE_FROZEN_DEVELOPMENT_BUNDLE_ID / "bundle"
+    )
+    shutil.copytree(_frozen_bundle_dir(), copied_bundle)
+    loader = RegionResourceIsolatedPairedCandidateLoader(
+        REGION_RESOURCE_FROZEN_DEVELOPMENT_BUNDLE_BINDING,
+        copied_bundle,
+    )
+    training_manifest = copied_bundle / "training_dataset_manifest.json"
+    training_manifest.write_bytes(training_manifest.read_bytes() + b"\n")
+
+    with pytest.raises(
+        ModelBundleValidationError,
+        match="paired_bundle_changed_before_inference",
+    ):
+        loader.evaluate(_snapshot(1000), ood_margin=0.05)
+
+
+def test_isolated_evaluator_uses_raw_candidate_then_truthful_rule_fallback() -> None:
+    specification = _frozen_specification()
+    snapshot = _snapshot(1000)
+    input_binding = specification.arm_for(
+        1000, RegionResourcePairedArm.CONTROL
+    ).input_binding
+    evaluator = RegionResourceIsolatedPairedEvaluator(
+        specification,
+        _frozen_bundle_dir(),
+    )
+    formal_decision = _formal_decision(snapshot)
+    formal_before = formal_decision.to_dict()
+
+    control, treatment = evaluator.execute_pair(
+        seed=1000,
+        observed_input_binding=input_binding,
+        snapshot=snapshot,
+        evaluated_at_s=1.5,
+        formal_decision=formal_decision,
+    )
+
+    assert evaluator.candidate_loader_ready is True
+    assert formal_decision.to_dict() == formal_before
+    assert control.observed_input_sha256 == treatment.observed_input_sha256
+    assert control.snapshot_payload_sha256 == treatment.snapshot_payload_sha256
+    assert control.pair_input_match is treatment.pair_input_match is True
+    assert treatment.candidate_considered is True
+    assert treatment.candidate_recommendation_sha256 is not None
+    assert treatment.candidate_bundle_match is True
+    assert treatment.candidate_thresholds_passed is False
+    assert treatment.rule_fallback_used is True
+    assert treatment.deterministic_rule_executed is True
+    assert treatment.isolated_treatment_safe_adopted is False
+    assert "isolated_candidate_ood_rejected" in treatment.rejection_reasons
+    assert "candidate_threshold_or_finite_gate_rejected" in treatment.rejection_reasons
+    for evidence in (control, treatment):
+        assert evidence.runtime_advisory_applied_ack_available is False
+        assert evidence.observed_outcome_available is False
+        assert evidence.paired_non_degradation_available is False
+        assert evidence.counterfactual_available is False
+        assert evidence.causal_effect_available is False
+        assert evidence.ppo_enabled is False
+        assert evidence.assist_enabled is False
+        assert evidence.online_authority is False
+        assert evidence.rule_fallback_enabled is True
+
+
+def test_isolated_evaluator_records_bundle_failure_and_runs_rule(tmp_path) -> None:
+    copied_bundle = (
+        tmp_path / REGION_RESOURCE_FROZEN_DEVELOPMENT_BUNDLE_ID / "bundle"
+    )
+    shutil.copytree(_frozen_bundle_dir(), copied_bundle)
+    state_dict = copied_bundle / "state_dict.pt"
+    state_dict.write_bytes(state_dict.read_bytes() + b"tampered")
+    specification = _frozen_specification()
+    snapshot = _snapshot(1000)
+    evaluator = RegionResourceIsolatedPairedEvaluator(
+        specification,
+        copied_bundle,
+    )
+
+    control, treatment = evaluator.execute_pair(
+        seed=1000,
+        observed_input_binding=specification.arm_for(
+            1000, RegionResourcePairedArm.CONTROL
+        ).input_binding,
+        snapshot=snapshot,
+        evaluated_at_s=1.5,
+    )
+
+    assert evaluator.candidate_loader_ready is False
+    assert control.snapshot_payload_sha256 == treatment.snapshot_payload_sha256
+    assert treatment.candidate_considered is False
+    assert treatment.candidate_recommendation_sha256 is None
+    assert treatment.rule_fallback_used is True
+    assert treatment.deterministic_rule_executed is True
+    assert treatment.isolated_treatment_safe_adopted is False
+    assert any(
+        reason.startswith("isolated_candidate_load_failed:state_dict_sha256_mismatch")
+        for reason in treatment.rejection_reasons
+    )
+
+
+def test_candidate_projection_exception_is_recorded_and_falls_back() -> None:
+    class BrokenProjector:
+        def __init__(self, delegate) -> None:
+            self.delegate = delegate
+
+        def project(self, *args, **kwargs):
+            raise RuntimeError("synthetic_projection_failure")
+
+        def build_advisory_contract(self, *args, **kwargs):
+            return self.delegate.build_advisory_contract(*args, **kwargs)
+
+        def validate_for_consumption(self, *args, **kwargs):
+            return self.delegate.validate_for_consumption(*args, **kwargs)
+
+    specification = _specification()
+    snapshot = _snapshot(1000)
+    executor = RegionResourcePairedInterventionExecutor(specification)
+    original_projector = executor.projector
+    executor.projector = BrokenProjector(original_projector)
+
+    # The rule policy retains the original deterministic projector instance.
+    assert executor.rule_policy.projector is original_projector
+    evidence = executor.execute_arm(
+        arm=RegionResourcePairedArm.TREATMENT,
+        seed=1000,
+        observed_input_binding=specification.arm_for(
+            1000, RegionResourcePairedArm.TREATMENT
+        ).input_binding,
+        snapshot=snapshot,
+        evaluated_at_s=1.5,
+        candidate_recommendation=_candidate(snapshot),
+        candidate_bundle_manifest_sha256=_bundle().bundle_manifest_sha256,
+        candidate_latency_ms=2.0,
+    )
+
+    assert evidence.rule_fallback_used is True
+    assert evidence.deterministic_rule_executed is True
+    assert evidence.isolated_treatment_safe_adopted is False
+    assert any(
+        reason.startswith(
+            "candidate_projection_failed:synthetic_projection_failure"
+        )
+        for reason in evidence.rejection_reasons
+    )
