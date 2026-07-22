@@ -1,13 +1,14 @@
 # D4 实现差距审计：分布式协同与降级接管
 
-## 2026-07-21 保留 seed 候选门诊断
+## 2026-07-22 保留 seed 候选门诊断与 D6 可用性审计
 
 - **诊断 GAP 已关闭**：arm evidence 升级为 v2，保存 candidate confidence、`minimum_confidence`、OOD、latency/limit、finite，以及 confidence/OOD/latency/finite/external-failure 五项 gate。已评估候选分别使用 `candidate_low_confidence`、`candidate_ood_rejected`、`candidate_inference_timeout`、`candidate_output_nonfinite`；旧 generic reason 只兼容保留，不能单独解释拒绝。
 - **旧证据兼容**：v1 reader 先验证旧字段集合和旧 manifest content ID，再迁移为新增诊断 unavailable 的 v2 对象。冻结 bundle、权重、manifest 和历史 v1 artifact 均未修改；当前正式 v2 证据位于独立目录，未知历史字段不回填。
 - **安全门未降低**：默认 `minimum_confidence=0.6`、latency limit `50 ms`、OOD、finite、bundle identity、pair input、owner/version/epoch/lease、fault fence、coalition ACK、投影和 next-cycle consumption 语义不变。任一候选门失败仍执行确定性规则，`PPO/assist/authority=false`、`rule_fallback=true`。
-- **正式 v2 只读复核**：权威 `formal_7891296` 绑定源提交 `78912963b67fe86ee9a8d29186b18a9dd60c460c`，`SHA256SUMS`/manifest SHA256 为 `821f1503...72bc`/`d6ef23b2...883c`，清单内文件逐项通过。20/20 source clean 且 finite、truth 使用数 0；40/40 arm 为 evidence v2，candidate considered 20/20。confidence min/mean/max 为 `0.508892953/0.563426384/0.569492280`，在 `minimum_confidence=0.6` 下通过 0/20；OOD、latency、finite、failure gate 各 20/20 通过。v2 latency min/mean/P95/max 为 `1.103510/1.977479/2.264415/2.703312 ms`，全部通过 `50 ms` 门。safe adopted 0/20、规则回退 20/20，明确 low-confidence 与 generic 兼容理由各 20 次；旧 v1 latency 只作历史记录，不与 v2 混算。
+- **正式 v2 独立审计**：权威 `formal_7891296` 绑定源提交 `78912963b67fe86ee9a8d29186b18a9dd60c460c`，`SHA256SUMS`/manifest SHA256 为 `821f1503...72bc`/`d6ef23b2...883c`。D6 独立重算确认 20/20 source clean 且 finite、truth 使用数 0、candidate considered 20/20。confidence min/mean/max 为 `0.508892953/0.563426384/0.569492280`，在 `minimum_confidence=0.6` 下通过 0/20；OOD、latency、finite、failure gate 各 20/20，aggregate 0/20，safe adopted 0/20，规则回退 20/20。执行时延 `treatment_candidate_latency_ms` 的 nearest-rank P95 为 `2.241315 ms`；门控汇总 `candidate_gate_summary.candidate_latency_ms` 的线性插值 P95 为 `2.264415 ms`，不得合并为单一 P95。
+- **D6 sidecar 状态**：profile-bound v2 outcome-availability sidecar 已形成，目录为 `research_modules/d6_evaluation_metrics/outputs/reserved_seed_interventions_nominal_5v5_1000_1019_formal_7891296_d6_profile_bound_v2_audit_20260722/`，状态为 `pass_offline_assignment_comparison_only`。sidecar 文件 SHA256 为 `f3852251daf02ec87fe878e7fb80aad6f381d8c0756a5c956a32e737a3871c3b`，规范内容 SHA256 为 `c02a345c46ddc642dea7fb6bfcfb24184e7dc2a9f35b754c90324d074b445d2d`。源 manifest 的 `d6_outcome_sidecar_attached=false` 只保留生成时历史事实，不否定后续独立 sidecar。
 - **验收**：配对专项 **33/33**、D4 全量 **482/482 passed**。新增测试覆盖四个单门、组合门、原阈值边界、v1 40-arm manifest 迁移，以及 rule fallback、pair input、bundle identity 和 next-cycle safety 不退化。
-- **仍开放的 P1**：bundle manifest 明确声明 confidence head uncalibrated。后续只能在与训练和保留 seed 隔离的 calibration split 上评估 reliability/ECE/Brier，校准或重训 head 后以同一 0.6 门复验；不得使用本批保留 seed 降阈值。正式 manifest 固定 `formal_twenty_seed_performance_completed=false`、`PPO/assist/authority=false`；D6 outcome sidecar、paired non-degradation、counterfactual 和 causal 仍未形成，不能宣称候选有效、优于规则或具有降级策略效果。
+- **仍开放的 P1**：bundle manifest 明确声明 confidence head uncalibrated。后续只能在与训练和保留 seed 隔离的 calibration split 上评估 reliability/ECE/Brier，校准或重训 head 后以同一 0.6 门复验；不得使用本批保留 seed 降阈值。availability sidecar 已存在不等于 physical outcome sidecar 有值；runtime ACK、post-intervention physical outcome、paired effect/non-degradation、counterfactual、causal 和故障场景降级策略效果仍 unavailable。正式 manifest 固定 `formal_twenty_seed_performance_completed=false`、`PPO/assist/authority=false`，不能宣称候选有效、优于规则或具有降级策略效果。
 
 ## 2026-07-21 区域 reward 定义与消费合同
 
@@ -16,7 +17,7 @@
 - **失败关闭**：缺 ACK、ACK 字段不完整、窗口重叠、旧 epoch/fault generation、lease 覆盖不足、source/current plan 不一致、owner 或区域清单变化、execution/coalition 首尾哈希变化、快照/制品/窗口 SHA 错误、truth/evaluator/actor 字段和必填项缺失全部 unavailable。已接受窗口按 episode/region 防重叠。
 - **验收**：新增专项 19/19，运行时 ACK 与奖励专项 52/52，D4 全量 **449/449 passed**；新增/修改 Python 的 `py_compile` 通过。验证日期为 2026-07-21，场景是单区域 deterministic contract fixture 与既有 5v5 seed 41 ACK 集成回归，样本不属于 AirSim 或正式多 seed 数据。
 - **证据边界**：`new_execution_plan_applied` 的 reward 只作非因果时间窗口归因；`evaluation_refresh_applied` 没有执行变化，不能形成动作 reward。两类都不自动等于 `CoalitionMemberAck`、control/physical outcome、counterfactual、causal、paired shadow 或 on-policy evidence。PPO、assist、authority 均为 false，规则回退为 true。
-- **仍开放的 P1**：main/D6 尚未按新 schema 生产真实区域时序和不重叠窗口，冻结 900 episode 与 100 episode 课程没有 ACK/result 分项。保留 seed 1000-1019 已有正式 v2 隔离 execution receipts，但没有 outcome sidecar 或 paired non-degradation。D6 当前 `runtime_plan_outcome_join` 是目标级、带离线真值的距离进展诊断，并显式声明 formal reward/causal unavailable；D4 已拒绝把它升级为区域 reward。完成真实 producer、带外哈希、多 seed paired/on-policy 审计前，不连接 PPO loader，不启动 PPO，不评审 assist/authority。
+- **仍开放的 P1**：main/D6 尚未按新 schema 生产真实区域时序和不重叠窗口，冻结 900 episode 与 100 episode 课程没有 ACK/result 分项。保留 seed 1000-1019 已有正式 v2 隔离 execution receipts 和 D6 availability sidecar，但 sidecar 只提供同帧离线分配比较，没有 runtime ACK、区域 outcome 或 paired non-degradation。D6 当前 `runtime_plan_outcome_join` 是目标级、带离线真值的距离进展诊断，并显式声明 formal reward/causal unavailable；D4 已拒绝把它升级为区域 reward。完成真实 producer、带外哈希、多 seed paired/on-policy 审计前，不连接 PPO loader，不启动 PPO，不评审 assist/authority。
 
 ## 2026-07-21 区域建议运行时确认
 
@@ -45,7 +46,7 @@
 - **安全与隔离**：`hard_constraint_violation_count=0`、在线 truth key 数 0、保留 seed 1000-1019 出现数 0。训练 seed registry 和 shared registry 文件 SHA256 仍为 `2ab928a4...15f`、`68608d29...320f`，正式 900 episode 未写入。
 - **clean 准入证据**：main 已在 detached clean worktree commit `9445ed6` 上重生课程。dirty episode 数为 0，dataset SHA256 为 `7e17aba...9e72`，canonical view SHA256 为 `9aa28765...cc8de`，`behavior_cloning_manifest_available=true`，canonical train 的 180 个样本可由 BC 只读 view 加载。首次 dirty 产物只保留为开发历史。
 - **reward 与准入边界**：300/300 reward 和 outcome 显式 unavailable，PPO、online assist 和 authority 保持关闭。clean BC 数据准入不等于模型收益或在线策略准入，PPO loader 继续因 reward 缺失失败关闭。
-- **剩余 P1**：冻结正式 episode 与补充课程采样比例；由 D6 提供版本化、可归因 outcome/reward/causal/counterfactual 和制品 SHA；在现有保留 seed 1000-1019 v2 execution receipts 上绑定 outcome sidecar并完成 paired non-degradation。完成前不得启动 PPO、评审 assist 或宣称学习策略优于规则。
+- **剩余 P1**：冻结正式 episode 与补充课程采样比例；保留已完成的 D6 profile-bound availability sidecar 绑定，继续提供版本化、可归因 runtime ACK、outcome/reward、paired non-degradation、causal/counterfactual 和制品 SHA。完成前不得启动 PPO、评审 assist 或宣称学习策略优于规则。
 - **验收**：课程专项 6/6，该阶段 D4 全量 **387/387 passed**；加入全样本审计专项后当时为 **397/397 passed**，运行时确认专项后为 **430/430 passed**，区域 reward 合同阶段为 **449/449 passed**，当前为 **482/482 passed**。
 
 ## 2026-07-21 共享 seed 切分消费端闭合

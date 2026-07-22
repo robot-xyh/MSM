@@ -8,7 +8,7 @@
 
 2026-07-21 又增加区域结果/奖励证据合同测试。19 个新增用例覆盖新执行计划、同代评估刷新、分项缺测不补零、ACK 缺失、旧 generation、租约过期、窗口重叠、执行与联盟绑定变化、快照/来源哈希篡改、在线真值字段和 D6 目标级诊断误用。新增专项 19/19，ACK 与奖励证据专项 52/52，D4 全量 449/449。测试使用单区域确定性 fixture，不是多 seed 性能试验。它证明 schema、公式和失败关闭逻辑可运行，没有提供正式 episode 的实际区域 reward、策略收益、物理执行或因果证据。
 
-同日增加保留 seed 配对干预合同、冻结候选只读加载和候选门诊断。arm evidence 升级为 v2，保存 candidate confidence、冻结最小置信门、OOD、latency/limit、finite 和逐项 gate；v1 reader 在验证旧 manifest content ID 后迁移，未知诊断保持 unavailable。专项现为 33/33，D4 全量 482/482。当前权威 `formal_7891296` 已生成 nominal 5v5 seed 1000-1019 的正式 v2 execution receipts；D4 仅做只读复核，不改写该输出。它没有 D6 outcome sidecar，`formal_twenty_seed_performance_completed=false`，observed outcome、paired non-degradation、counterfactual 和 causal 均保持 unavailable。
+同日增加保留 seed 配对干预合同、冻结候选只读加载和候选门诊断。arm evidence 升级为 v2，保存 candidate confidence、冻结最小置信门、OOD、latency/limit、finite 和逐项 gate；v1 reader 在验证旧 manifest content ID 后迁移，未知诊断保持 unavailable。专项现为 33/33，D4 全量 482/482。当前权威 `formal_7891296` 已生成 nominal 5v5 seed 1000-1019 的正式 v2 execution receipts；D4 仅做只读复核，不改写该输出。2026-07-22，D6 在 `research_modules/d6_evaluation_metrics/outputs/reserved_seed_interventions_nominal_5v5_1000_1019_formal_7891296_d6_profile_bound_v2_audit_20260722/` 生成 profile-bound v2 outcome-availability sidecar，状态为 `pass_offline_assignment_comparison_only`；sidecar 文件 SHA256 为 `f3852251daf02ec87fe878e7fb80aad6f381d8c0756a5c956a32e737a3871c3b`，规范内容 SHA256 为 `c02a345c46ddc642dea7fb6bfcfb24184e7dc2a9f35b754c90324d074b445d2d`。该 sidecar 只使同帧离线分配比较可用；`formal_twenty_seed_performance_completed=false`，runtime ACK、物理结果、paired effect/non-degradation、counterfactual 和 causal 均保持 unavailable。
 
 ## 2. 实验目的
 
@@ -201,7 +201,7 @@ canonical 视图为 60/20/20 seed，对应 180/60/60 frame。训练桶含 hold 6
 
 专项测试由 26 项增至 33 项。新增用例分别覆盖 low-confidence、OOD、timeout、nonfinite、四门组合、原 `0.6/50 ms` 边界和 v1 40-arm manifest 迁移；既有 bundle identity、pair input、authority/projection、next-cycle safety 和规则回退回归保持通过。明确拒绝码与旧 generic 汇总码可同时存在，但任何已评估单门失败都不能只留下 generic。
 
-正式输入为 `research_modules/scalable_3d_simulation/outputs/reserved_seed_interventions_nominal_5v5_1000_1019_formal_7891296`，验证日期 2026-07-21，场景 nominal 5v5，源提交 `78912963b67fe86ee9a8d29186b18a9dd60c460c`。D4 对 `SHA256SUMS`、manifest、20 条 source lineage 和 40 条 arm evidence v2 做了独立只读复核；v2 latency 的 P95 使用线性插值。旧 v1 latency 只属于历史运行，不进入下表。
+正式输入为 `research_modules/scalable_3d_simulation/outputs/reserved_seed_interventions_nominal_5v5_1000_1019_formal_7891296`，源验证日期 2026-07-21，D6 独立审计日期 2026-07-22，场景 nominal 5v5，源提交 `78912963b67fe86ee9a8d29186b18a9dd60c460c`。D4 对 `SHA256SUMS`、manifest、20 条 source lineage 和 40 条 arm evidence v2 做了只读复核，D6 随后按 profile-bound v2 合同独立重算。执行时延与门控汇总使用不同 P95 方法，必须分列。旧 v1 latency 只属于历史运行，不进入下表。
 
 | 验收项 | 门限 | 结果 |
 |---|---:|---:|
@@ -219,7 +219,9 @@ canonical 视图为 60/20/20 seed，对应 180/60/60 frame。训练桶含 hold 6
 | latency 通过数 | `<=50 ms` | 20/20 |
 | finite 通过数 | 全部通过 | 20/20 |
 | failure gate 通过数 | 全部通过 | 20/20 |
-| latency min/mean/P95/max | 诊断统计 | 1.103510/1.977479/2.264415/2.703312 ms |
+| 执行时延 P95 | `treatment_candidate_latency_ms`，nearest-rank | 2.241315 ms |
+| 门控汇总时延 P95 | `candidate_gate_summary.candidate_latency_ms`，线性插值 | 2.264415 ms |
+| aggregate gate 通过数 | 全部门通过 | 0/20 |
 | safe adopted | 必须由 aggregate gate 决定 | 0/20 |
 | 明确阈值拒绝 | 分解到具体门 | `candidate_low_confidence`: 20 |
 | generic 兼容理由 | 允许与明确理由并存 | `candidate_threshold_or_finite_gate_rejected`: 20 |
@@ -227,7 +229,7 @@ canonical 视图为 60/20/20 seed，对应 180/60/60 frame。训练桶含 hold 6
 | PPO/assist/online authority | 全部 false | 全部 false |
 | runtime ACK/outcome/causal 伪造 | 0 | 0 |
 
-默认 `minimum_confidence=0.6` 未下调，正式 20 个 treatment 均继续规则回退，候选有效数仍为 0。bundle manifest 明确包含 `confidence_head_uncalibrated`；后续应在与训练和保留 seed 隔离的 calibration split 上报告 reliability/ECE/Brier，校准或重训 confidence head 后仍按同一 0.6 门复验。本轮没有修改 bundle、权重、manifest、当前 v2 正式输出或历史 v1 artifact，也没有开放 PPO/assist/authority。D6 outcome sidecar、paired non-degradation、counterfactual 和 causal effect 仍不可用；nominal 5v5 门诊断不能说明候选策略有效、优于规则或具有降级策略效果。
+默认 `minimum_confidence=0.6` 未下调，正式 20 个 treatment 均继续规则回退，候选有效数仍为 0。bundle manifest 明确包含 `confidence_head_uncalibrated`；后续应在与训练和保留 seed 隔离的 calibration split 上报告 reliability/ECE/Brier，校准或重训 confidence head 后仍按同一 0.6 门复验。本轮没有修改 bundle、权重、manifest、当前 v2 正式输出或历史 v1 artifact，也没有开放 PPO/assist/authority。D6 availability sidecar 已形成，但 runtime ACK、post-intervention physical outcome、paired effect/non-degradation、counterfactual、causal 和故障场景降级策略效果仍不可用。nominal 5v5 只证明门控分解和失败回退，不能说明候选策略有效、优于规则或具有降级策略效果。
 
 ## 5. 默认被动降级场景
 

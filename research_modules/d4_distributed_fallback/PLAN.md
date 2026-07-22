@@ -1,6 +1,6 @@
 # D4 分布式协同与降级接管计划
 
-## 0.0 2026-07-21 保留 seed 配对干预边界（正式执行记录已存在，D6 outcome 待完成）
+## 0.0 2026-07-22 保留 seed 配对干预边界（D6 可用性 sidecar 已形成，物理结果待完成）
 
 - 新增版本化 `d4-region-resource-paired-intervention-spec-v1`。保留 seed 固定为 1000-1019，每个 seed 必须同时具有 `control_rule` 和 `treatment_candidate` 两个隔离 arm。两个 arm 重复绑定相同 scenario/version、配置 SHA、初始状态 SHA、通信 schedule SHA、故障 schedule SHA 和区域快照 lineage SHA；候选 bundle manifest、模型权重、策略版本、置信/超时/OOD 阈值及安全外壳版本也被内容寻址固定。
 - 隔离候选加载器只接受 `region_resource_bc_900_20260720/bundle`。冻结身份为 development 模型 `d4-region-bc-900-development-v1`，manifest/权重/训练清单 SHA256 分别为 `dad2adbe...c05c9`、`3da0360b...d5f62` 和 `ff3081c8...30dc6`。加载时要求训练清单存在，并校验数据集 `b06d741b...d36158`、切分 `18a2c600...d7f0`、`maximum_advisor_mode=shadow` 及全部不可准入字段；每次推理前后重新计算三文件指纹，文件变化立即失败关闭。
@@ -8,17 +8,17 @@
 - arm evidence 升级为 v2；对已考虑候选保存 confidence/`minimum_confidence`、OOD、latency/limit、finite 和 confidence/OOD/latency/finite/external-failure 五项 gate。低置信、分布外、超时和非有限输出分别写入 `candidate_low_confidence`、`candidate_ood_rejected`、`candidate_inference_timeout` 和 `candidate_output_nonfinite`；旧 generic reason 仅兼容保留。没有成功生成 raw candidate 时 `candidate_considered=false` 且各候选 gate 为未评估，不伪造低置信或非有限结论。规则 fallback 仍使用原确定性 projector，正式 `RegionResourceAdvisor`、区域 failover decision 和生产准入状态不变。
 - `isolated_treatment_safe_adopted` 只表示候选在隔离 treatment arm 中具备下一周期输入资格。它显式不能转换为 `runtime_advisory_applied_ack`，也不改变正式 D4 authority、D3 plan 或 D7 gate。`PPO=false`、`assist=false`、`authority=false`、`rule_fallback=true` 被 specification、arm evidence 和 manifest 三层共同固定。
 - manifest 要求 40 个 arm 记录完整，逐 seed 核对两个 arm 的 observed input 和实际 snapshot payload SHA。缺 arm、输入/通信/故障 schedule 不同、跨 arm 快照不同、内容哈希篡改、truth/actor/object/target key 和非有限值全部失败关闭。v1 reader 先验证旧字段集合和旧 manifest content ID，再迁移为诊断 unavailable 的 v2；不回填或改写冻结 v1 JSON。CLI 只做 JSON 严格验证和 canonical migration/round-trip。
-- D4 复用 `ShadowPairedEvaluator(minimum_unseen_seeds=20)` 作为未来 D6 sidecar 的指标计算入口；D4 当前 manifest 固定 `d6_outcome_sidecar_attached=false`，observed outcome、paired non-degradation、counterfactual、causal、formal 20-seed performance 和性能声明全部 unavailable/false。
+- D4 复用 `ShadowPairedEvaluator(minimum_unseen_seeds=20)` 作为 D6 指标计算入口。源 producer manifest 中的 `d6_outcome_sidecar_attached=false` 保留为生成时历史事实；D6 后续已独立生成 profile-bound v2 outcome-availability sidecar，状态为 `pass_offline_assignment_comparison_only`。它只开放同帧离线分配比较，runtime ACK、observed physical outcome、paired effect/non-degradation、counterfactual、causal、formal 20-seed performance 和性能声明仍为 unavailable/false。
 - 2026-07-21 模块验收：配对专项 **33/33**，D4 全量 **482/482 passed**。新增回归逐项覆盖 confidence/OOD/latency/finite 单门、四门组合、原始 `0.6/50 ms` 边界、v1 40-arm manifest 迁移，以及 rule fallback、pair input、bundle identity 和 next-cycle safety 不退化。
-- 当前权威正式输入 `reserved_seed_interventions_nominal_5v5_1000_1019_formal_7891296` 绑定源提交 `78912963b67fe86ee9a8d29186b18a9dd60c460c`，`SHA256SUMS`/manifest SHA256 分别为 `821f1503...72bc` 和 `d6ef23b2...883c`。独立只读复核确认 20/20 source clean 且 finite、truth 使用数 0，40/40 arm 为 evidence v2，candidate considered 20/20。confidence min/mean/max 为 `0.508892953/0.563426384/0.569492280`，在未下调的 `minimum_confidence=0.6` 下通过 0/20；OOD、latency、finite、failure gate 各通过 20/20。v2 latency min/mean/P95/max 为 `1.103510/1.977479/2.264415/2.703312 ms`，20/20 通过 `50 ms` 门。safe adopted 0/20、规则回退 20/20，明确 low-confidence 与兼容 generic reason 各 20 次。旧 v1 latency 仅作历史记录，不与本次 v2 混算；`formal_twenty_seed_performance_completed=false`，该结果不是 candidate validity、paired performance 或降级策略效果。
+- 当前权威正式输入 `reserved_seed_interventions_nominal_5v5_1000_1019_formal_7891296` 绑定源提交 `78912963b67fe86ee9a8d29186b18a9dd60c460c`，`SHA256SUMS`/manifest SHA256 分别为 `821f1503...72bc` 和 `d6ef23b2...883c`。D6 独立重算确认 20/20 source clean 且 finite、truth 使用数 0，candidate considered 20/20；confidence min/mean/max 为 `0.508892953/0.563426384/0.569492280`，在未下调的 `minimum_confidence=0.6` 下通过 0/20，OOD、latency、finite、failure gate 各通过 20/20，aggregate 0/20，safe adopted 0/20，规则回退 20/20。执行时延 `treatment_candidate_latency_ms` 的 nearest-rank P95 为 `2.241315 ms`；门控汇总 `candidate_gate_summary.candidate_latency_ms` 的线性插值 P95 为 `2.264415 ms`。D6 sidecar 位于 `research_modules/d6_evaluation_metrics/outputs/reserved_seed_interventions_nominal_5v5_1000_1019_formal_7891296_d6_profile_bound_v2_audit_20260722/`，文件/内容 SHA256 分别为 `f3852251...1c3b`/`c02a345c...5d2d`。`formal_twenty_seed_performance_completed=false`；nominal 5v5 只证明门控和回退，不证明 candidate validity、paired physical performance 或降级策略效果。
 
 ### 后续执行顺序
 
 1. 保持当前 v2 正式 20-seed artifact、历史 v1 artifact、冻结 900-episode 数据、bundle、权重和 manifest 只读；后续重跑必须写入新目录并保留独立 lineage，不能覆盖任一正式记录。
 2. 在与训练 seed、保留 seed 1000-1019 均隔离的 calibration split 上定义 confidence 标签，报告 reliability diagram、ECE、Brier 和分桶样本数。优先校准或重训 confidence head；不使用本次保留 seed 选择或下调 `minimum_confidence`。
 3. 校准/重训候选仍须在同一 `minimum_confidence=0.6`、OOD、`50 ms`、finite、bundle、authority、projection 和 next-cycle 门下复验；未通过则继续规则回退。
-4. D6 以独立 sidecar 绑定 specification SHA、manifest ID、arm ID 和结果制品 SHA，生成 observed outcome 与 paired non-degradation。counterfactual/causal 另行审计，不能由 D4 的安全采用标记推导。
-5. 只有完成独立校准、D6 sidecar、同输入审计及单独准入评审后，才决定是否保留 shadow candidate；PPO、assist 和 authority 不由本阶段开放。
+4. 保留已完成的 D6 profile-bound v2 sidecar 绑定和同帧离线分配比较；下一步为相同 arm 补充可认证 runtime ACK、干预后物理状态窗口和 paired effect/non-degradation。counterfactual/causal 另行审计，不能由 D4 的安全采用或规则回退标记推导。
+5. 只有完成独立校准、运行时与物理结果证据、同输入审计及单独准入评审后，才决定是否保留 shadow candidate；当前 availability sidecar 本身不能开放 PPO、assist 或 authority。
 
 ## 0.1 2026-07-21 区域 reward 口径冻结（模块内合同已完成）
 

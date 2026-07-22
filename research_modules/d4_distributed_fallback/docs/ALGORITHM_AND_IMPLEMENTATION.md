@@ -2,11 +2,11 @@
 
 **模块**：D4 分布式协同与降级接管
 
-**同步基线**：2026-07-21 D4 代码、模块说明、计划、GAP/review 与模块报告
+**同步基线**：2026-07-22 D4 代码、模块说明、计划、GAP/review 与模块报告
 
 **适用范围**：Python 科研仿真、AirSim 单次试验时钟接线和离线故障回放
 
-**当前集成事实**：main-owned scalable 3D 质点模块栈已接入单一二级、多二级区域 owner 和中心/二级连续失效后的 distributed D3 plan，D7 按 owner/epoch/lease/commit/fault fence 门控。本轮定向集成测试 8/8 passed；该证据不是 AirSim、真实网络或实飞验证。新增区域资源学习能力只提供默认 disabled/shadow 的聚合建议，不能替代本文的确定性状态机与安全合同。D4 已实现运行时采用 ACK v2、区域结果/奖励证据 v1、保留 seed 配对干预 specification/manifest v1、arm evidence v2，以及冻结 development bundle 的隔离只读加载/执行入口；配对专项 33/33、模块全量 482/482。nominal 5v5 保留 seed execution receipts 已存在，但 D6 outcome sidecar、paired non-degradation、counterfactual 和 causal 证据仍未形成，PPO、assist 和 authority 保持关闭。
+**当前集成事实**：main-owned scalable 3D 质点模块栈已接入单一二级、多二级区域 owner 和中心/二级连续失效后的 distributed D3 plan，D7 按 owner/epoch/lease/commit/fault fence 门控。本轮定向集成测试 8/8 passed；该证据不是 AirSim、真实网络或实飞验证。新增区域资源学习能力只提供默认 disabled/shadow 的聚合建议，不能替代本文的确定性状态机与安全合同。D4 已实现运行时采用 ACK v2、区域结果/奖励证据 v1、保留 seed 配对干预 specification/manifest v1、arm evidence v2，以及冻结 development bundle 的隔离只读加载/执行入口；配对专项 33/33、模块全量 482/482。nominal 5v5 保留 seed execution receipts 和 D6 profile-bound v2 outcome-availability sidecar 均已存在。sidecar 状态为 `pass_offline_assignment_comparison_only`，只证明同帧离线分配比较及 D4 门控/回退；运行时确认、物理结果、paired effect/non-degradation、counterfactual、causal 和降级策略效果仍未形成，PPO、assist 和 authority 保持关闭。
 
 ## 0.0 同 seed 配对干预
 
@@ -51,9 +51,9 @@ arm evidence 区分五组事实：
 2. `pair_input_match`：该 arm 的实际输入是否与冻结规范一致；
 3. `isolated_treatment_safe_adopted`：候选是否通过安全投影并可进入隔离 arm 下一周期；
 4. `runtime_advisory_applied_ack_available`：线上 main-D3-D7 是否确认执行，本合同固定为 false；
-5. outcome、paired non-degradation、counterfactual 和 causal availability：是否已有 D6 独立结果 sidecar，本合同当前全部为 false。
+5. outcome、paired non-degradation、counterfactual 和 causal availability：D4 arm/manifest 生成时字段保持 false；D6 后续独立 sidecar 已形成，但这些物理与因果字段在 sidecar 中仍为 unavailable。
 
-manifest 要求 20 个 seed 的 40 个 arm 记录齐全，并逐 seed 比较两个 arm 的 observed input 与实际 snapshot payload SHA。v1 arm evidence reader 先按旧字段集合和旧 manifest content ID 验证，再迁移为新增诊断 unavailable 的 v2 对象；冻结 v1 artifact 不回填。manifest 只证明实验可配对和候选是否被安全采用，不计算区域 reward，也不把投影后的 recommendation 当作 applied ACK。后续 D6 必须用 specification SHA、manifest ID、arm ID 和结果制品 SHA 建立独立 sidecar，再调用既有 `ShadowPairedEvaluator` 比较积压、转移时间、计划抖动、通信负载、失败关闭、安全违规和时延。D4 在 sidecar 接入前不得宣称非退化或因果效果。
+manifest 要求 20 个 seed 的 40 个 arm 记录齐全，并逐 seed 比较两个 arm 的 observed input 与实际 snapshot payload SHA。v1 arm evidence reader 先按旧字段集合和旧 manifest content ID 验证，再迁移为新增诊断 unavailable 的 v2 对象；冻结 v1 artifact 不回填。manifest 只证明实验可配对和候选是否被安全采用，不计算区域 reward，也不把投影后的 recommendation 当作 applied ACK。D6 已用源 schema、源提交、manifest、输入制品及 bundle 摘要建立 profile-bound v2 sidecar，并完成同帧离线分配比较；下一版证据仍须补入可认证 runtime ACK、干预后物理状态窗口和 paired effect/non-degradation。D4 在这些物理证据接入前不得宣称非退化、反事实或因果效果。
 
 ## 0. 区域观测奖励
 
@@ -910,11 +910,13 @@ clean 课程的 `behavior_cloning_manifest_available=true`，canonical BC 只读
 
 `tests/test_region_resource_paired_intervention.py` 现为 33 项，结果 33/33 通过；D4 全量为 482/482。既有六项冻结加载测试直接读取 `region_resource_bc_900_20260720/bundle`，核对 manifest、权重和训练清单三份 SHA，并确认一次 raw inference 前后文件摘要不变。模型保持 evaluation mode，输出来源为 learned、`projected=false`，模型权重摘要与冻结值一致。
 
-新增七项门诊断回归逐项覆盖 low-confidence、OOD、timeout、nonfinite、四门组合、`confidence=0.6/latency=50 ms` 原边界和 v1 40-arm manifest 迁移。每个单门失败及组合失败都产生明确 treatment rejection code 并回到 `RuleRegionResourcePolicy`；pair input mismatch、bundle mismatch 和 authority/next-cycle 负例确认各自安全门不被诊断字段替代。没有生成候选时 `candidate_considered=false` 且 gate 为未评估。control 和 treatment 的 observed input SHA、snapshot payload SHA 语义保持不变，PPO、assist、online authority、runtime ACK、observed outcome、paired non-degradation、counterfactual 和 causal availability 全部保持 false。
+新增七项门诊断回归逐项覆盖 low-confidence、OOD、timeout、nonfinite、四门组合、`confidence=0.6/latency=50 ms` 原边界和 v1 40-arm manifest 迁移。每个单门失败及组合失败都产生明确 treatment rejection code 并回到 `RuleRegionResourcePolicy`；pair input mismatch、bundle mismatch 和 authority/next-cycle 负例确认各自安全门不被诊断字段替代。没有生成候选时 `candidate_considered=false` 且 gate 为未评估。control 和 treatment 的 observed input SHA、snapshot payload SHA 语义保持不变；D4 源 arm/manifest 内 PPO、assist、online authority、runtime ACK、observed outcome、paired non-degradation、counterfactual 和 causal availability 全部保持 false。后续 D6 sidecar 的离线比较可用性不回填这些冻结源字段。
 
 当前权威正式输入为 `reserved_seed_interventions_nominal_5v5_1000_1019_formal_7891296`，源提交为 `78912963b67fe86ee9a8d29186b18a9dd60c460c`；`SHA256SUMS` 文件及 manifest SHA256 分别为 `821f15035e628d8db86f13c22d93f8e05142c5f00aae9118974a74bdc98b72bc`、`d6ef23b28add92e9a24a185ea72a7275e341bd796a2e11930c4d5f46b19a883c`，清单内五个文件逐项校验通过。`source_lineage.jsonl` 含 seed 1000-1019 的 20 个唯一 source，20/20 clean、20/20 finite、在线 truth 使用总数 0；D4 记录含 20 control 与 20 treatment，40/40 schema 为 `d4-region-resource-paired-arm-evidence-v2`，pair input、bundle identity 和 next-cycle gate 均为 40/40 通过。
 
-20 个 treatment 均 `candidate_considered=true`。confidence min/mean/max 为 `0.508892953/0.563426384/0.569492280`，默认 `minimum_confidence=0.6` 不变，因此 confidence gate 通过 0/20；OOD、latency、finite、failure gate 各通过 20/20。v2 latency min/mean/P95/max 为 `1.103510/1.977479/2.264415/2.703312 ms`，20/20 不超过 `50 ms`。aggregate gate 通过 0/20、safe adopted 0/20、规则回退 20/20；`candidate_low_confidence` 与兼容 `candidate_threshold_or_finite_gate_rejected` 均记录 20 次。旧 v1 latency 属于独立历史运行，不能覆盖或混入该 v2 统计。冻结 bundle 仍声明 confidence head uncalibrated，正式 manifest 同时固定 `formal_twenty_seed_performance_completed=false`、`PPO/assist/authority=false`；本结果只支持在独立 calibration split 上评估 ECE/Brier/reliability 并校准或重训 head，不支持用保留 seed 降阈值，也不支持候选有效、降级策略效果、非退化或因果收益结论。
+20 个 treatment 均 `candidate_considered=true`。confidence min/mean/max 为 `0.508892953/0.563426384/0.569492280`，默认 `minimum_confidence=0.6` 不变，因此 confidence gate 通过 0/20；OOD、latency、finite、failure gate 各通过 20/20。aggregate gate 通过 0/20、safe adopted 0/20、规则回退 20/20；`candidate_low_confidence` 与兼容 `candidate_threshold_or_finite_gate_rejected` 均记录 20 次。D6 将执行记录 `treatment_candidate_latency_ms` 按 nearest-rank 计算 P95，结果为 `2.241315 ms`；门控摘要 `candidate_gate_summary.candidate_latency_ms` 按线性插值计算 P95，结果为 `2.264415 ms`。两者样本相同但统计方法不同，报告时必须携带字段和方法。旧 v1 latency 属于独立历史运行，不能覆盖或混入该 v2 统计。冻结 bundle 仍声明 confidence head uncalibrated，正式 manifest 同时固定 `formal_twenty_seed_performance_completed=false`、`PPO/assist/authority=false`；本结果只支持在独立 calibration split 上评估 ECE/Brier/reliability 并校准或重训 head，不支持用保留 seed 降阈值，也不支持候选有效、降级策略效果、非退化或因果收益结论。
+
+D6 profile-bound v2 outcome-availability sidecar 位于 `research_modules/d6_evaluation_metrics/outputs/reserved_seed_interventions_nominal_5v5_1000_1019_formal_7891296_d6_profile_bound_v2_audit_20260722/`，状态为 `pass_offline_assignment_comparison_only`。sidecar 文件 SHA256 为 `f3852251daf02ec87fe878e7fb80aad6f381d8c0756a5c956a32e737a3871c3b`，规范内容 SHA256 为 `c02a345c46ddc642dea7fb6bfcfb24184e7dc2a9f35b754c90324d074b445d2d`。D6 独立重算确认 candidate considered 20/20、confidence 0/20、OOD/latency/finite/failure 各 20/20、aggregate 0/20、safe adoption 0/20 和 fallback 20/20。availability sidecar 已存在不表示 physical outcome sidecar 有值；runtime ACK、post-intervention physical outcome、paired effect/non-degradation、counterfactual、causal 和故障场景降级策略效果均为 unavailable。该 nominal 5v5 证据只关闭门控分解与规则回退审计，不关闭策略效果 P1。
 
 ## 17. 真实网络限制与后续实施
 
