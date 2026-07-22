@@ -1,6 +1,51 @@
 # D6 系统级离线评估：算法原理与实施说明
 
-## D3/D4 保留 seed 隔离执行 consumer（2026-07-21）
+## D3/D4 保留 seed v1/v2 consumer（2026-07-22）
+
+consumer 在 checksum 链认证后读取顶层 manifest schema，并仅接受
+`scalable3d-reserved-seed-interventions-v1` 或 `v2`。数据类的历史默认常量仍绑定 v1；CLI 通过
+`--profile v1|v2` 选择版本对应 source/output 默认路径及预期 source schema、source commit、checksum、
+manifest 带外摘要，默认 profile 为 v2。调用者可替换同 schema 的路径和摘要；源 manifest 为另一已知
+schema 时仍报 `source_manifest_profile_schema_mismatch`。新增 schema 字段位于数据类原有字段之后，
+历史位置参数和默认 v1 调用不变。schema 分派不放宽共同合同：六文件精确 inventory、五个 checksum 成员、
+manifest artifact SHA、20 条顺序 seed、lineage、配对共享标志、arm 目录和审计前后快照均须通过。
+
+v2 D3 额外要求 40 个 arm 的 `safety_shell_version` 和 `safety_shell_config_sha256` 分别精确等于冻结
+v2 值。treatment receipt 必须为 `learning_cost_applied=true`、无 fallback，并与 paired evaluator 的
+20 条 frame 在 seed、pair id、时延和规则基准 cost 上闭合。control/treatment 的 target-resource 选择
+签名必须逐 seed 相同。D6 从 frame 重算 rule/treatment cost mean、high-threat unmet、duplicate、hard
+violation、churn 和 per-seed summary；P95 使用线性插值
+
+\[
+p=(n-1)q,\qquad P_q=x_{\lfloor p\rfloor}+(p-\lfloor p\rfloor)
+(x_{\lceil p\rceil}-x_{\lfloor p\rfloor}).
+\]
+
+v2 D4 要求每条 evidence schema 为 `d4-region-resource-paired-arm-evidence-v2`。对 treatment 独立检查
+`confidence >= minimum_confidence`、OOD pass、`latency <= limit`、finite 和 failure 五门；
+`candidate_thresholds_passed` 必须等于五门逻辑合取，projection/adoption 与合取一致，fallback 与其
+取反一致。D6 再重算 considered/diagnostic/各门/aggregate 计数、confidence/latency min/mean/P95/max、
+拒绝原因和阈值唯一值，并与顶层 manifest 的嵌套 gate summary 严格相等。
+
+D4 同一批 treatment latency 以两个字段提供。`treatment_candidate_latency_ms` 沿用通用执行时延汇总，
+P95 采用最近秩法，正式值为 `2.241315 ms`；`candidate_gate_summary.candidate_latency_ms` 与 producer
+门控汇总一致，P95 采用线性插值，正式值为 `2.264415 ms`。报告必须同时标注字段和算法。
+
+v2 sidecar schema 为 `d6.reserved-seed-intervention-outcome-availability.v2`，provenance 为对应 v2。
+它新增 `offline_assignment_comparison=true`，但 runtime ACK、physical outcome、counterfactual、causal
+和 paired physical outcome/effect/non-degradation 继续输出 null/unavailable。实现中没有从 D3 同帧
+comparison 或 D4 零采用生成物理 effect 的分支。测试使用代码内最小合同完整 v2 fixture，故 clean
+clone 仍执行成功路径、D3 safety hash、D4 evidence schema/门字段、manifest gate summary、availability
+和 profile/schema mismatch；权威 bundle 复算仍单独保留。sidecar 与 provenance 都序列化预期 source
+schema。固定 `2026-07-22T04:56:47Z` 的 profile-bound canonical 四文件经同输入 CLI 临时复生后逐字节
+一致。专项 `18 passed`、无权威输出路径 `16 passed`、D6 全量 `483 passed`。
+
+profile-bound v2 canonical 目录为
+`../outputs/reserved_seed_interventions_nominal_5v5_1000_1019_formal_7891296_d6_profile_bound_v2_audit_20260722/`。
+历史 v1/v2 目录不覆盖。特别是旧 v1 已发布 sidecar/provenance 未包含 schema binding；当前 consumer
+保持 v1 API 和计算语义兼容，但新生成文件属于 profile-bound provenance，不承诺复现旧文件哈希。
+
+## D3/D4 保留 seed 隔离执行 consumer（2026-07-21，历史 v1）
 
 ### 输入合同与哈希链
 

@@ -1,5 +1,16 @@
 # D6 文档索引
 
+2026-07-22 已将 D3/D4 保留 seed consumer 升级为 v1/v2 严格分派。历史 v1 保持兼容；新 v2 独立
+复核 D3 safety-shell 40 arm、20/20 treatment application、同帧 assignment cost/safety/churn，以及
+D4 arm-evidence-v2 的 confidence/OOD/latency/finite/failure 分门和 manifest 汇总。仅 offline
+assignment comparison 可用；runtime ACK、physical outcome/effect、counterfactual 和 causal 仍为
+null/unavailable。算法见 `ALGORITHM_AND_IMPLEMENTATION.md`，边界见 `MODULE_PRINCIPLES_CN.md`，
+结果见 `../EXPERIMENT_REPORT.md` 2.12 节。CLI profile 已绑定预期源 schema；测试内 v2 fixture 使
+clean clone 仍覆盖成功与关键篡改路径。当前 canonical 使用独立 profile-bound v2 目录；固定时间戳
+四文件可逐字节复生，sidecar/provenance 均记录 source schema。专项 `18 passed`、无权威输出路径
+`16 passed`、D6 全量 `483 passed`。历史 v1 文件保留为旧 provenance，不把旧哈希写成当前可复生
+哈希。已检查 `../AIRSIM_INTEGRATION_PLAN.md`；本次无 AirSim 接线变化，因此未修改。
+
 2026-07-22 已完成 D5 paired-shadow 权威 v2 独立审计。D6 显式绑定 v2 report/lineage、held-out
 corpus/evaluation、模型包、D5 实现源码和保留的 superseded 证据，复核 2718 项输入且审计前后哈希
 一致。900 条 lineage、20 seed、45 cell、74024 条候选边、graph/candidate/label identity、逐 seed/cell

@@ -1,5 +1,67 @@
 # D6 系统级评估指标实验报告
 
+## 2.12 2026-07-22 D3/D4 保留 seed v2 独立审计
+
+### 输入、合同与独立重算
+
+权威输入为
+`research_modules/scalable_3d_simulation/outputs/reserved_seed_interventions_nominal_5v5_1000_1019_formal_7891296/`，
+场景为 nominal 5 资源/5 目标、seed `1000-1019`。源提交必须为
+`78912963b67fe86ee9a8d29186b18a9dd60c460c`；`SHA256SUMS`/manifest SHA-256 必须为
+`821f15035e628d8db86f13c22d93f8e05142c5f00aae9118974a74bdc98b72bc` /
+`d6ef23b28add92e9a24a185ea72a7275e341bd796a2e11930c4d5f46b19a883c`。D6 从底层 lineage、arm、
+receipt 和 gate evidence 重算汇总，不信任 producer 聚合替代明细；六个输入文件审计前后 SHA 不变。
+
+20 条 lineage 精确覆盖 seed `1000-1019`，dirty、nonfinite、online truth use 均为 0；同源 episode、
+传感器随机流、通信日程和故障日程均为 20/20。D3/D4 各 40 arm，control/treatment 均为 20/20，
+pair input、lineage 和 bundle identity 均通过。D3/D4 bundle manifest/state 延续冻结绑定：D3 为
+`a9213d65...14c0` / `e3da9fd5...e0b2`，D4 为 `dad2adbe...05c9` / `3da0360b...5f62`。
+
+### 结果与 availability
+
+| 模块/指标 | 独立重算结果 | 解释 |
+| --- | --- | --- |
+| D3 safety shell | v2/config SHA，40/40 arm | 严格绑定 |
+| D3 treatment | applied 20/20；fallback 0/20 | 隔离 assignment 层应用 |
+| D3 control 状态 | unchanged 15；held 3；replan ACK no change 2 | receipt available |
+| D3 assignment cost | rule/treatment=`17.0560260319065/17.0560260319065` | 同帧规则 cost 基准 |
+| D3 safety/churn | high-threat unmet、duplicate、hard、churn 均 0/0 | offline comparison available |
+| D3 inference | P95(linear)=`0.3108014891040515 ms` | 执行诊断，不是物理效果 |
+| D4 considered | 20/20 | arm evidence v2 |
+| D4 confidence gate | 0/20 pass | low-confidence 20/20 |
+| D4 OOD/latency/finite/failure | 各 20/20 pass | 分门明细与 manifest 一致 |
+| D4 aggregate/adoption/fallback | 0/20；0/20；20/20 | 全部规则回退 |
+| D4 treatment latency P95 | nearest-rank=`2.241314999992028 ms` | `treatment_candidate_latency_ms` |
+| D4 gate latency P95 | linear interpolation=`2.264414849923924 ms` | `candidate_gate_summary.candidate_latency_ms` |
+| runtime ACK / physical outcome | 无 | unavailable/null |
+| counterfactual / causal | 无 | unavailable/null |
+| paired physical outcome/effect/non-degradation | 无 | unavailable/null，不填 0 |
+
+sidecar 状态为 `pass_offline_assignment_comparison_only`。D3 的同帧 assignment comparison 可用，只说明
+在冻结规则 cost/safety/churn 口径下未观察到退化；没有 runtime ACK 或采用后的物理状态窗，不能据此
+声明候选策略有效、物理非退化、反事实或因果收益。D4 的零采用也不等于效果为 0。本次 nominal 5v5
+只验证门控和回退，不是通信、节点或资源降级下的策略评估。
+
+### 输出与验收
+
+profile-bound canonical 输出目录为
+`research_modules/d6_evaluation_metrics/outputs/reserved_seed_interventions_nominal_5v5_1000_1019_formal_7891296_d6_profile_bound_v2_audit_20260722/`，
+审计时间 `2026-07-22T04:56:47Z`。
+
+| 文件 | SHA-256 |
+| --- | --- |
+| `outcome_availability_sidecar.json` | `f3852251daf02ec87fe878e7fb80aad6f381d8c0756a5c956a32e737a3871c3b` |
+| `RESERVED_SEED_INTERVENTION_AUDIT_CN.md` | `bd80c1dda496d7d43e2b274628fdbe3a5ef8a4b99c8c354562ba2149b70f9949` |
+| `provenance_manifest.json` | `0d50a95daf098bdc732a7d3344ef8340d7fc1828a2df7b971b40313db23f7dc6` |
+| `SHA256SUMS` | `db4af357cbf087b20b28f5c3bcc775b98d711f996bb3040aac0b45ca5ae7b87c` |
+
+sidecar 内容 SHA-256 为
+`c02a345c46ddc642dea7fb6bfcfb24184e7dc2a9f35b754c90324d074b445d2d`。sidecar 与 provenance 均记录
+`source_manifest_schema_version=scalable3d-reserved-seed-interventions-v2`。同一 source 和时间戳经 CLI
+写入临时目录后，四文件与 canonical 逐字节一致，两个目录的 `sha256sum -c` 均通过。专项
+`18 passed`、无权威输出路径 `16 passed`、D6 全量 `483 passed`；仅有既有 Matplotlib `Axes3D`
+warning。
+
 ## 2.11 2026-07-21 D3/D4 保留 seed 隔离执行独立审计
 
 ### 场景、输入与接受门限
@@ -46,7 +108,8 @@ D3 bundle manifest/state 绑定为
 
 ### 输出、SHA 与结论
 
-正式输出目录为
+以下目录及哈希是 schema binding 序列化之前发布的历史 v1 证据，不是当前 consumer 的可复生哈希。
+当前代码重新生成 v1 时仍保持算法/API v1 语义，但 provenance 会增加 source schema binding。历史输出目录为
 `research_modules/d6_evaluation_metrics/outputs/reserved_seed_interventions_nominal_5v5_1000_1019_d6_audit_20260721/`。
 
 | 文件 | SHA-256 |

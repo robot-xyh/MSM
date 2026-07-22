@@ -20,17 +20,35 @@ import tempfile
 from typing import Any, Mapping, Sequence
 
 
-RESERVED_SEED_AUDIT_SCHEMA_VERSION = (
+RESERVED_SEED_AUDIT_SCHEMA_VERSION_V1 = (
     "d6.reserved-seed-intervention-outcome-availability.v1"
 )
-RESERVED_SEED_AUDIT_MANIFEST_SCHEMA_VERSION = (
+RESERVED_SEED_AUDIT_SCHEMA_VERSION_V2 = (
+    "d6.reserved-seed-intervention-outcome-availability.v2"
+)
+RESERVED_SEED_AUDIT_MANIFEST_SCHEMA_VERSION_V1 = (
     "d6.reserved-seed-intervention-provenance-manifest.v1"
 )
-RESERVED_SEED_SOURCE_MANIFEST_SCHEMA_VERSION = (
+RESERVED_SEED_AUDIT_MANIFEST_SCHEMA_VERSION_V2 = (
+    "d6.reserved-seed-intervention-provenance-manifest.v2"
+)
+RESERVED_SEED_SOURCE_MANIFEST_SCHEMA_VERSION_V1 = (
     "scalable3d-reserved-seed-interventions-v1"
+)
+RESERVED_SEED_SOURCE_MANIFEST_SCHEMA_VERSION_V2 = (
+    "scalable3d-reserved-seed-interventions-v2"
 )
 RESERVED_SEED_LINEAGE_SCHEMA_VERSION = (
     "scalable3d-reserved-seed-source-lineage-v1"
+)
+
+# Backward-compatible names remain bound to the historical v1 audit profile.
+RESERVED_SEED_AUDIT_SCHEMA_VERSION = RESERVED_SEED_AUDIT_SCHEMA_VERSION_V1
+RESERVED_SEED_AUDIT_MANIFEST_SCHEMA_VERSION = (
+    RESERVED_SEED_AUDIT_MANIFEST_SCHEMA_VERSION_V1
+)
+RESERVED_SEED_SOURCE_MANIFEST_SCHEMA_VERSION = (
+    RESERVED_SEED_SOURCE_MANIFEST_SCHEMA_VERSION_V1
 )
 
 EXPECTED_RESERVED_SEEDS = tuple(range(1000, 1020))
@@ -40,6 +58,13 @@ EXPECTED_CHECKSUMS_SHA256 = (
 )
 EXPECTED_SOURCE_MANIFEST_SHA256 = (
     "c393f26042f048a8614c81d9ffaef1a58d2b2df1dc32740eae8f10246833e691"
+)
+EXPECTED_SOURCE_COMMIT_V2 = "78912963b67fe86ee9a8d29186b18a9dd60c460c"
+EXPECTED_CHECKSUMS_SHA256_V2 = (
+    "821f15035e628d8db86f13c22d93f8e05142c5f00aae9118974a74bdc98b72bc"
+)
+EXPECTED_SOURCE_MANIFEST_SHA256_V2 = (
+    "d6ef23b28add92e9a24a185ea72a7275e341bd796a2e11930c4d5f46b19a883c"
 )
 EXPECTED_D3_BUNDLE_MANIFEST_SHA256 = (
     "a9213d65606a9e2f921040e153488c0f4cdebb10882fa16013fce5b59f9314c0"
@@ -53,6 +78,34 @@ EXPECTED_D4_BUNDLE_MANIFEST_SHA256 = (
 EXPECTED_D4_BUNDLE_STATE_SHA256 = (
     "3da0360be8788f3ffeb8e9f9eba3e0d5369ec0bdf9e05729dfb1db07d71d5f62"
 )
+EXPECTED_D3_SAFETY_SHELL_VERSION_V2 = (
+    "d3-offline-intervention-safety-shell-v2"
+)
+EXPECTED_D3_SAFETY_SHELL_CONFIG_SHA256_V2 = (
+    "d95fff61d31d80dc799ca6a9fcbf1c6e7adbed5a3f3cdd08b2ab38f9365f75b8"
+)
+EXPECTED_D4_ARM_EVIDENCE_SCHEMA_VERSION_V2 = (
+    "d4-region-resource-paired-arm-evidence-v2"
+)
+
+RESERVED_SEED_AUDIT_PROFILE_BINDINGS: dict[str, dict[str, str]] = {
+    "v1": {
+        "source_manifest_schema_version": (
+            RESERVED_SEED_SOURCE_MANIFEST_SCHEMA_VERSION_V1
+        ),
+        "source_git_commit": EXPECTED_SOURCE_COMMIT,
+        "checksums_sha256": EXPECTED_CHECKSUMS_SHA256,
+        "source_manifest_sha256": EXPECTED_SOURCE_MANIFEST_SHA256,
+    },
+    "v2": {
+        "source_manifest_schema_version": (
+            RESERVED_SEED_SOURCE_MANIFEST_SCHEMA_VERSION_V2
+        ),
+        "source_git_commit": EXPECTED_SOURCE_COMMIT_V2,
+        "checksums_sha256": EXPECTED_CHECKSUMS_SHA256_V2,
+        "source_manifest_sha256": EXPECTED_SOURCE_MANIFEST_SHA256_V2,
+    },
+}
 
 _CHECKSUMS_FILE = "SHA256SUMS"
 _SOURCE_MANIFEST_FILE = "manifest.json"
@@ -117,10 +170,29 @@ class ReservedSeedInterventionAuditInputs:
         EXPECTED_D4_BUNDLE_MANIFEST_SHA256
     )
     expected_d4_bundle_state_sha256: str = EXPECTED_D4_BUNDLE_STATE_SHA256
+    expected_source_manifest_schema_version: str = (
+        RESERVED_SEED_SOURCE_MANIFEST_SCHEMA_VERSION_V1
+    )
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "source_dir", Path(self.source_dir).resolve())
         object.__setattr__(self, "output_dir", Path(self.output_dir).resolve())
+        source_schema_version = str(
+            self.expected_source_manifest_schema_version
+        ).strip()
+        if source_schema_version not in {
+            RESERVED_SEED_SOURCE_MANIFEST_SCHEMA_VERSION_V1,
+            RESERVED_SEED_SOURCE_MANIFEST_SCHEMA_VERSION_V2,
+        }:
+            _fail(
+                "invalid_expected_source_manifest_schema_version",
+                repr(source_schema_version),
+            )
+        object.__setattr__(
+            self,
+            "expected_source_manifest_schema_version",
+            source_schema_version,
+        )
         source_commit = str(self.expected_source_commit).strip().lower()
         if _GIT_COMMIT_RE.fullmatch(source_commit) is None:
             _fail(
@@ -145,6 +217,9 @@ class ReservedSeedInterventionAuditInputs:
 
     def expected_bindings(self) -> dict[str, str]:
         return {
+            "source_manifest_schema_version": (
+                self.expected_source_manifest_schema_version
+            ),
             "source_git_commit": self.expected_source_commit,
             "checksums_sha256": self.expected_checksums_sha256,
             "source_manifest_sha256": self.expected_source_manifest_sha256,
@@ -169,6 +244,16 @@ def audit_reserved_seed_interventions(
     checksums = _validate_checksum_chain(inputs, paths, snapshot_before)
 
     source_manifest = _load_json_object(paths[_SOURCE_MANIFEST_FILE], "manifest")
+    source_schema_version = _source_manifest_schema_version(source_manifest)
+    _expect_equal(
+        source_schema_version,
+        inputs.expected_source_manifest_schema_version,
+        "source_manifest_profile_schema_mismatch",
+        (
+            f"expected={inputs.expected_source_manifest_schema_version!r}, "
+            f"actual={source_schema_version!r}"
+        ),
+    )
     lineage_records = _load_jsonl(paths[_LINEAGE_FILE])
     d3_payload = _load_json_object(paths[_D3_FILE], "D3 execution artifact")
     d4_payload = _load_json_object(paths[_D4_FILE], "D4 execution artifact")
@@ -181,11 +266,13 @@ def audit_reserved_seed_interventions(
         d3_payload,
         lineage_by_seed=lineage_by_seed,
         inputs=inputs,
+        source_schema_version=source_schema_version,
     )
     d4_summary = _audit_d4(
         d4_payload,
         lineage_by_seed=lineage_by_seed,
         inputs=inputs,
+        source_schema_version=source_schema_version,
     )
     _validate_source_manifest(
         source_manifest,
@@ -194,6 +281,7 @@ def audit_reserved_seed_interventions(
         d4_summary=d4_summary,
         inputs=inputs,
         input_sha256=snapshot_before,
+        source_schema_version=source_schema_version,
     )
 
     snapshot_after = _snapshot(paths)
@@ -214,20 +302,79 @@ def audit_reserved_seed_interventions(
         "counterfactual_outcome_evidence_not_present"
     )
     unavailable_causal = _unavailable(
-        "zero_treatment_adoptions_and_no_paired_physical_outcomes"
+        "paired_physical_outcomes_and_counterfactual_evidence_not_present"
     )
     unavailable_paired_outcome = _unavailable(
-        "zero_treatment_adoptions_and_no_observed_physical_outcomes"
+        "post_intervention_physical_outcome_windows_not_present"
     )
     unavailable_paired_effect = _unavailable(
-        "paired_effect_is_not_defined_without_adopted_treatments_and_outcomes"
+        "paired_effect_is_not_defined_without_paired_physical_outcomes"
     )
+    is_v2 = (
+        source_schema_version
+        == RESERVED_SEED_SOURCE_MANIFEST_SCHEMA_VERSION_V2
+    )
+    evidence_availability = {
+        "execution_receipts": True,
+        "runtime_ack": False,
+        "physical_outcome": False,
+        "counterfactual": False,
+        "causal": False,
+    }
+    availability_details: dict[str, Any] = {
+        "execution_receipts": {
+            "available": True,
+            "status": "available",
+            "value": True,
+            "d3_receipt_count": d3_summary["execution_receipt_count"],
+            "d4_receipt_count": d4_summary["execution_receipt_count"],
+            "reason": None,
+        },
+        "runtime_ack": unavailable_runtime,
+        "physical_outcome": unavailable_physical,
+        "counterfactual": unavailable_counterfactual,
+        "causal": unavailable_causal,
+    }
+    if is_v2:
+        evidence_availability["offline_assignment_comparison"] = True
+        availability_details["offline_assignment_comparison"] = dict(
+            _mapping(d3_summary, "offline_assignment_comparison")
+        )
+
+    d3_fail_closed = d3_summary["treatment_rule_fallback_count"] == 20
+    d4_fail_closed = (
+        d4_summary["treatment_safe_adopted_count"] == 0
+        and d4_summary["treatment_rule_fallback_count"] == 20
+    )
+    limitations = [
+        "No runtime ACK or post-intervention physical outcome is included.",
+        "Bundle digest identifiers are bound, but bundle files are not in the input directory and were not re-hashed by D6.",
+        "Receipt latency is available; policy effectiveness and causal effect are not.",
+    ]
+    if is_v2:
+        limitations.insert(
+            0,
+            "D3 isolated treatment application is observable only as a same-frame offline assignment comparison; D4 has zero safe adoptions.",
+        )
+        limitations.append(
+            "The nominal 5v5 run is not evidence of degraded-operation strategy effectiveness."
+        )
+    else:
+        limitations.insert(0, "D3 and D4 treatment adoption counts are both zero.")
 
     result: dict[str, Any] = {
-        "schema_version": RESERVED_SEED_AUDIT_SCHEMA_VERSION,
+        "schema_version": (
+            RESERVED_SEED_AUDIT_SCHEMA_VERSION_V2
+            if is_v2
+            else RESERVED_SEED_AUDIT_SCHEMA_VERSION_V1
+        ),
         "audited_at_utc": str(inputs.audited_at_utc),
         "audit_role": "independent_read_only_consumer",
-        "status": "pass_fail_closed_only",
+        "status": (
+            "pass_offline_assignment_comparison_only"
+            if is_v2
+            else "pass_fail_closed_only"
+        ),
         "audit_passed": True,
         "source": {
             "directory": str(inputs.source_dir),
@@ -252,27 +399,8 @@ def audit_reserved_seed_interventions(
             "input_artifact_set_sha256": _artifact_set_sha256(snapshot_before),
         },
         "source_lineage": lineage_summary,
-        "evidence_availability": {
-            "execution_receipts": True,
-            "runtime_ack": False,
-            "physical_outcome": False,
-            "counterfactual": False,
-            "causal": False,
-        },
-        "availability_details": {
-            "execution_receipts": {
-                "available": True,
-                "status": "available",
-                "value": True,
-                "d3_receipt_count": d3_summary["execution_receipt_count"],
-                "d4_receipt_count": d4_summary["execution_receipt_count"],
-                "reason": None,
-            },
-            "runtime_ack": unavailable_runtime,
-            "physical_outcome": unavailable_physical,
-            "counterfactual": unavailable_counterfactual,
-            "causal": unavailable_causal,
-        },
+        "evidence_availability": evidence_availability,
+        "availability_details": availability_details,
         "paired_results": {
             "outcome": unavailable_paired_outcome,
             "effect": unavailable_paired_effect,
@@ -283,7 +411,12 @@ def audit_reserved_seed_interventions(
         "d3": d3_summary,
         "d4": d4_summary,
         "claims": {
-            "fail_closed_behavior_verified": True,
+            "fail_closed_behavior_verified": d3_fail_closed and d4_fail_closed,
+            "d3_isolated_treatment_application_verified": (
+                d3_summary["treatment_applied_count"] == 20
+            ),
+            "d4_fail_closed_behavior_verified": d4_fail_closed,
+            "same_frame_offline_assignment_comparison_available": is_v2,
             "evidence_integrity_verified": True,
             "candidate_policy_effectiveness_proven": False,
             "paired_non_degradation_proven": False,
@@ -292,12 +425,7 @@ def audit_reserved_seed_interventions(
             "online_admission_changed": False,
             "runtime_authority_granted": False,
         },
-        "limitations": [
-            "D3 and D4 treatment adoption counts are both zero.",
-            "No runtime ACK or post-intervention physical outcome is included.",
-            "Bundle digest identifiers are bound, but bundle files are not in the input directory and were not re-hashed by D6.",
-            "Receipt latency is available; policy effectiveness and causal effect are not.",
-        ],
+        "limitations": limitations,
     }
     return _with_content_sha256(result)
 
@@ -327,7 +455,12 @@ def write_reserved_seed_intervention_audit(
         ]
         provenance = _with_content_sha256(
             {
-                "schema_version": RESERVED_SEED_AUDIT_MANIFEST_SCHEMA_VERSION,
+                "schema_version": (
+                    RESERVED_SEED_AUDIT_MANIFEST_SCHEMA_VERSION_V2
+                    if report["source"]["schema_version"]
+                    == RESERVED_SEED_SOURCE_MANIFEST_SCHEMA_VERSION_V2
+                    else RESERVED_SEED_AUDIT_MANIFEST_SCHEMA_VERSION_V1
+                ),
                 "audited_at_utc": report["audited_at_utc"],
                 "status": report["status"],
                 "audit_sidecar_content_sha256": report["content_sha256"],
@@ -403,37 +536,49 @@ def render_reserved_seed_intervention_audit_markdown(
     d3_status = _mapping(d3, "control_decision_counts")
     d3_fallback = _mapping(d3, "treatment_fallback_reason_counts")
     d4_rejection = _mapping(d4, "treatment_rejection_reason_counts")
+    is_v2 = (
+        source["schema_version"]
+        == RESERVED_SEED_SOURCE_MANIFEST_SCHEMA_VERSION_V2
+    )
 
-    return "\n".join(
+    lines = [
+        "# D6 保留 seed 隔离执行独立审计",
+        "",
+        "## 1. 审计范围",
+        "",
+        f"- 审计时间（UTC）：`{report['audited_at_utc']}`。",
+        f"- 权威输入：`{source['directory']}`。",
+        f"- 源 schema：`{source['schema_version']}`。",
+        f"- 场景与规模：`{source['scenario']}`，资源 `{source['resource_count']}`，目标 `{source['target_count']}`，seed `1000-1019`。",
+        f"- 源提交：`{source['source_git_commit']}`。",
+        "- 方法：D6 只读重算校验和、lineage、arm/receipt、成对身份及版本对应汇总，不导入 D3/D4 producer 代码。",
+        "",
+        "## 2. 完整性结果",
+        "",
+        "| 检查项 | 结果 |",
+        "| --- | --- |",
+        "| `SHA256SUMS` | 通过 |",
+        "| manifest 内全部 artifact SHA | 通过 |",
+        "| 20 条 source lineage / seed 1000-1019 | 通过 |",
+        "| dirty source episode | `0` |",
+        "| online truth use | `0` |",
+        "| 同源/随机流/通信/故障日程 | `20/20` 全部一致 |",
+        "| 审计前后输入 artifact set SHA | 一致 |",
+        f"| 输入 artifact set SHA256 | `{integrity['input_artifact_set_sha256']}` |",
+        "",
+        "## 3. Outcome availability",
+        "",
+        "| 证据 | available | value | 原因 |",
+        "| --- | --- | --- | --- |",
+        f"| execution receipts | `true` | `true` | D3 `{details['execution_receipts']['d3_receipt_count']}` + D4 `{details['execution_receipts']['d4_receipt_count']}` |",
+    ]
+    if is_v2:
+        offline = _mapping(details, "offline_assignment_comparison")
+        lines.append(
+            f"| offline assignment comparison | `true` | `true` | `{offline['scope']}` |"
+        )
+    lines.extend(
         [
-            "# D6 保留 seed 隔离执行独立审计",
-            "",
-            "## 1. 审计范围",
-            "",
-            f"- 审计时间（UTC）：`{report['audited_at_utc']}`。",
-            f"- 权威输入：`{source['directory']}`。",
-            f"- 场景与规模：`{source['scenario']}`，资源 `{source['resource_count']}`，目标 `{source['target_count']}`，seed `1000-1019`。",
-            f"- 源提交：`{source['source_git_commit']}`。",
-            "- 方法：D6 只读重算校验和、lineage、arm/receipt 和成对身份，不导入 D3/D4 producer 代码。",
-            "",
-            "## 2. 完整性结果",
-            "",
-            "| 检查项 | 结果 |",
-            "| --- | --- |",
-            "| `SHA256SUMS` | 通过 |",
-            "| manifest 内全部 artifact SHA | 通过 |",
-            "| 20 条 source lineage / seed 1000-1019 | 通过 |",
-            "| dirty source episode | `0` |",
-            "| online truth use | `0` |",
-            "| 同源/随机流/通信/故障日程 | `20/20` 全部一致 |",
-            "| 审计前后输入 artifact set SHA | 一致 |",
-            f"| 输入 artifact set SHA256 | `{integrity['input_artifact_set_sha256']}` |",
-            "",
-            "## 3. Outcome availability",
-            "",
-            "| 证据 | available | value | 原因 |",
-            "| --- | --- | --- | --- |",
-            f"| execution receipts | `true` | `true` | D3 `{details['execution_receipts']['d3_receipt_count']}` + D4 `{details['execution_receipts']['d4_receipt_count']}` |",
             f"| runtime ACK | `false` | `null` | `{details['runtime_ack']['reason']}` |",
             f"| physical outcome | `false` | `null` | `{details['physical_outcome']['reason']}` |",
             f"| counterfactual | `false` | `null` | `{details['counterfactual']['reason']}` |",
@@ -441,31 +586,81 @@ def render_reserved_seed_intervention_audit_markdown(
             f"| paired outcome | `false` | `null` | `{paired['outcome']['reason']}` |",
             f"| paired effect | `false` | `null` | `{paired['effect']['reason']}` |",
             "",
-            "实际采用数为零时，`paired outcome/effect` 是不可用，不是数值 `0`。本报告不据回退后同值作非退化、反事实或因果声明。",
+            "`paired outcome/effect` 因缺少采用后的物理状态窗口而不可用，值必须为 `null`，不得解释为数值 `0`。",
             "",
             "## 4. D3 独立重算",
             "",
             f"- arm：`{d3['arm_count']}`，control/treatment=`{d3['control_arm_count']}/{d3['treatment_arm_count']}`；20 对输入与 bundle 身份全部一致。",
             f"- treatment 实际应用：`{d3['treatment_applied_count']}/20`；规则回退：`{d3['treatment_rule_fallback_count']}/20`；`out_of_distribution`：`{d3_fallback.get('out_of_distribution', 0)}`。",
             f"- control 状态：`unchanged={d3_status.get('unchanged', 0)}`，`held_by_hysteresis={d3_status.get('held_by_hysteresis', 0)}`，`replan_ack_no_change={d3_status.get('replan_ack_no_change', 0)}`。",
-            f"- treatment receipt 推理时延可用：n=`{d3_latency['sample_count']}`，mean=`{_format_ms(d3_latency['mean_ms'])}` ms，p95=`{_format_ms(d3_latency['p95_ms'])}` ms；这里的 `0` 是 receipt 记录的失败关闭路径时延，不是效果值。",
+        ]
+    )
+    if is_v2:
+        comparison = _mapping(d3, "offline_assignment_comparison")
+        costs = _mapping(comparison, "assignment_cost")
+        high_threat = _mapping(comparison, "high_threat_unmet")
+        duplicate = _mapping(comparison, "duplicate_count")
+        hard = _mapping(comparison, "hard_violation_count")
+        churn = _mapping(comparison, "churn_mean")
+        shell = _mapping(d3, "safety_shell")
+        lines.extend(
+            [
+                f"- safety shell：`{shell['version']}` / `{shell['config_sha256']}`，40/40 arm 绑定通过。",
+                f"- 同帧离线 assignment comparison 可用：规则/treatment 在规则 cost 基准上的均值为 `{costs['control_rule_mean']}` / `{costs['treatment_assignment_mean']}`；high-threat unmet=`{high_threat['control_total']}/{high_threat['treatment_total']}`，duplicate=`{duplicate['control_total']}/{duplicate['treatment_total']}`，hard=`{hard['control_total']}/{hard['treatment_total']}`，churn mean=`{churn['control']}/{churn['treatment']}`。",
+                f"- treatment inference：n=`{d3_latency['sample_count']}`，mean=`{_format_ms(d3_latency['mean_ms'])}` ms，p95(linear)=`{_format_ms(d3_latency['p95_ms'])}` ms。该 comparison 不是物理 outcome/effect。",
+            ]
+        )
+    else:
+        lines.append(
+            f"- treatment receipt 推理时延可用：n=`{d3_latency['sample_count']}`，mean=`{_format_ms(d3_latency['mean_ms'])}` ms，p95=`{_format_ms(d3_latency['p95_ms'])}` ms；这是失败关闭路径时延，不是效果值。"
+        )
+    lines.extend(
+        [
             f"- bundle manifest/state 绑定：`{d3['bundle_binding']['manifest_sha256']}` / `{d3['bundle_binding']['state_sha256']}`。",
             "",
             "## 5. D4 独立重算",
             "",
             f"- arm：`{d4['arm_count']}`，control/treatment=`{d4['control_arm_count']}/{d4['treatment_arm_count']}`；20 对输入与 bundle 身份全部一致。",
             f"- treatment 安全采用：`{d4['treatment_safe_adopted_count']}/20`；规则回退：`{d4['treatment_rule_fallback_count']}/20`；`candidate_threshold_or_finite_gate_rejected`：`{d4_rejection.get('candidate_threshold_or_finite_gate_rejected', 0)}`。",
-            f"- treatment candidate 推理时延可用：n=`{d4_latency['sample_count']}`，mean=`{_format_ms(d4_latency['mean_ms'])}` ms，median=`{_format_ms(d4_latency['median_ms'])}` ms，p95(nearest-rank)=`{_format_ms(d4_latency['p95_ms'])}` ms，max=`{_format_ms(d4_latency['max_ms'])}` ms。",
+        ]
+    )
+    if is_v2:
+        gates = _mapping(d4, "candidate_gate_summary")
+        lines.extend(
+            [
+                f"- candidate considered=`{gates['candidate_considered_count']}/20`；confidence/OOD/latency/finite/failure pass=`{gates['confidence_gate_passed_count']}/{gates['ood_gate_passed_count']}/{gates['latency_gate_passed_count']}/{gates['finite_gate_passed_count']}/{gates['failure_gate_passed_count']}`；aggregate pass=`{gates['aggregate_gate_passed_count']}`。",
+                f"- low-confidence=`{d4_rejection.get('candidate_low_confidence', 0)}/20`。`treatment_candidate_latency_ms` 的 p95(nearest-rank)=`{_format_ms(d4_latency['p95_ms'])}` ms；`candidate_gate_summary.candidate_latency_ms` 的 p95(linear interpolation)=`{_format_ms(gates['candidate_latency_ms']['p95'])}` ms。两者使用相同 20 个样本，但统计口径不同。",
+                "- 本次是 nominal 5v5 门控审计，不是通信、节点或资源降级下的策略评估。",
+            ]
+        )
+    else:
+        lines.append(
+            f"- treatment candidate 推理时延可用：n=`{d4_latency['sample_count']}`，mean=`{_format_ms(d4_latency['mean_ms'])}` ms，median=`{_format_ms(d4_latency['median_ms'])}` ms，p95(nearest-rank)=`{_format_ms(d4_latency['p95_ms'])}` ms，max=`{_format_ms(d4_latency['max_ms'])}` ms。"
+        )
+    lines.extend(
+        [
             f"- bundle manifest/state 绑定：`{d4['bundle_binding']['manifest_sha256']}` / `{d4['bundle_binding']['state_sha256']}`。",
             "",
             "## 6. 结论与边界",
             "",
-            "本审计只证明两条候选路径在 20 个保留 seed 上失败关闭，以及输入、lineage、成对执行 receipt 和 digest 绑定完整。它不证明 D3 或 D4 候选策略有效，也不证明非退化、运行时采用、物理收益、反事实收益或因果收益。",
+        ]
+    )
+    if is_v2:
+        lines.append(
+            "本审计证明 v2 输入完整、D3 隔离 treatment 已应用且同帧 assignment comparison 未出现 cost/safety/churn 退化，并证明 D4 在低置信度门失败时 20/20 回退。它不证明 D3 或 D4 候选策略有效，也不证明运行时采用、物理非退化、反事实收益或因果收益。"
+        )
+    else:
+        lines.append(
+            "本审计只证明两条候选路径在 20 个保留 seed 上失败关闭，以及输入、lineage、成对执行 receipt 和 digest 绑定完整。它不证明 D3 或 D4 候选策略有效，也不证明非退化、运行时采用、物理收益、反事实收益或因果收益。"
+        )
+    lines.extend(
+        [
             "",
-            "D3/D4 bundle 文件不在本输入目录内；D6 校验的是 artifact 中声明的 manifest/state digest 与任务给定 digest 的严格绑定，并未重新哈希模型文件。后续只有取得严格绑定的 runtime ACK 和采用后的物理状态窗口，才能另行计算 paired outcome/effect。",
+            "D3/D4 bundle 文件不在本输入目录内；D6 校验 artifact 中声明的 manifest/state digest 与任务给定 digest 的严格绑定，未重新哈希模型文件。只有取得严格绑定的 runtime ACK 和采用后的物理状态窗口，才能另行计算 paired outcome/effect。",
             "",
         ]
     )
+    return "\n".join(lines)
 
 
 def _validate_input_locations(
@@ -489,6 +684,20 @@ def _validate_input_locations(
         _expect(path.is_file(), "input_artifact_missing", name)
         _expect(not path.is_symlink(), "input_artifact_symlink_rejected", name)
     return paths
+
+
+def _source_manifest_schema_version(manifest: Mapping[str, Any]) -> str:
+    schema_version = str(manifest.get("schema_version", ""))
+    _expect(
+        schema_version
+        in {
+            RESERVED_SEED_SOURCE_MANIFEST_SCHEMA_VERSION_V1,
+            RESERVED_SEED_SOURCE_MANIFEST_SCHEMA_VERSION_V2,
+        },
+        "source_manifest_schema_mismatch",
+        schema_version,
+    )
+    return schema_version
 
 
 def _validate_checksum_chain(
@@ -621,6 +830,9 @@ def _audit_d3(
     *,
     lineage_by_seed: Mapping[int, Mapping[str, Any]],
     inputs: ReservedSeedInterventionAuditInputs,
+    source_schema_version: str = (
+        RESERVED_SEED_SOURCE_MANIFEST_SCHEMA_VERSION_V1
+    ),
 ) -> dict[str, Any]:
     _expect_equal(
         payload.get("schema_version"),
@@ -702,7 +914,10 @@ def _audit_d3(
         "d3_internal_manifest_sha256_mismatch",
         "D3 manifest",
     )
-    _validate_d3_manifest_availability(manifest)
+    _validate_d3_manifest_availability(
+        manifest,
+        source_schema_version=source_schema_version,
+    )
 
     pairs = _sequence(specification, "pairs")
     _expect_equal(len(pairs), 20, "d3_pair_count_mismatch", str(len(pairs)))
@@ -750,6 +965,7 @@ def _audit_d3(
     applied_count = fallback_count = 0
     pair_identity_count = bundle_identity_count = 0
     receipt_hash_count = plan_hash_count = 0
+    assignment_identity_count = 0
     for pair_raw in pairs:
         pair = _as_mapping(pair_raw, "D3 pair")
         seed = _integer(pair.get("seed"), "D3 pair seed")
@@ -785,6 +1001,22 @@ def _audit_d3(
             _expect(spec.get("online_authority_enabled") is False, "d3_online_authority_enabled", str(seed))
             _expect(spec.get("ppo_enabled") is False, "d3_ppo_enabled", str(seed))
             _expect(spec.get("rule_fallback_enabled") is True, "d3_rule_fallback_disabled", str(seed))
+            if (
+                source_schema_version
+                == RESERVED_SEED_SOURCE_MANIFEST_SCHEMA_VERSION_V2
+            ):
+                _expect_equal(
+                    spec.get("safety_shell_version"),
+                    EXPECTED_D3_SAFETY_SHELL_VERSION_V2,
+                    "d3_safety_shell_version_mismatch",
+                    f"{seed}:{spec.get('arm_kind')}",
+                )
+                _expect_equal(
+                    spec.get("safety_shell_config_sha256"),
+                    EXPECTED_D3_SAFETY_SHELL_CONFIG_SHA256_V2,
+                    "d3_safety_shell_config_sha256_mismatch",
+                    f"{seed}:{spec.get('arm_kind')}",
+                )
             bundle_identity_count += 1
 
         control_arm = arm_by_key[(seed, "control")]
@@ -796,12 +1028,14 @@ def _audit_d3(
             expected_kind="control",
             expected_pair_id=pair_id,
             paired_report_sha256=paired_report_sha256,
+            source_schema_version=source_schema_version,
         )
         treatment_receipt = _validate_d3_arm(
             treatment_arm,
             expected_kind="treatment",
             expected_pair_id=pair_id,
             paired_report_sha256=paired_report_sha256,
+            source_schema_version=source_schema_version,
         )
         receipt_hash_count += 2
         plan_hash_count += 2
@@ -827,10 +1061,22 @@ def _audit_d3(
             str(seed),
         )
         pair_identity_count += 1
+        if (
+            source_schema_version
+            == RESERVED_SEED_SOURCE_MANIFEST_SCHEMA_VERSION_V2
+        ):
+            _expect_equal(
+                _d3_assignment_signature(_mapping(control_arm, "plan")),
+                _d3_assignment_signature(_mapping(treatment_arm, "plan")),
+                "d3_v2_selected_assignment_identity_mismatch",
+                str(seed),
+            )
+            assignment_identity_count += 1
 
         control_statuses[str(control_receipt.get("hysteresis_decision", ""))] += 1
-        fallback_reason = str(treatment_receipt.get("fallback_reason", ""))
-        treatment_fallbacks[fallback_reason] += 1
+        fallback_reason = treatment_receipt.get("fallback_reason")
+        if fallback_reason is not None:
+            treatment_fallbacks[str(fallback_reason)] += 1
         applied_count += int(treatment_receipt.get("learning_cost_applied") is True)
         fallback_count += int(treatment_receipt.get("rule_fallback_applied") is True)
         treatment_latencies.append(
@@ -846,11 +1092,33 @@ def _audit_d3(
         "unchanged": 15,
     }
     _expect_equal(dict(sorted(control_statuses.items())), expected_statuses, "d3_control_status_summary_mismatch", "D3 control decisions")
-    _expect_equal(dict(treatment_fallbacks), {"out_of_distribution": 20}, "d3_fallback_summary_mismatch", "D3 treatment")
-    _expect_equal(applied_count, 0, "d3_treatment_applied_unexpected", str(applied_count))
-    _expect_equal(fallback_count, 20, "d3_rule_fallback_count_mismatch", str(fallback_count))
+    is_v2 = (
+        source_schema_version
+        == RESERVED_SEED_SOURCE_MANIFEST_SCHEMA_VERSION_V2
+    )
+    expected_fallbacks = {} if is_v2 else {"out_of_distribution": 20}
+    expected_applied_count = 20 if is_v2 else 0
+    expected_fallback_count = 0 if is_v2 else 20
+    _expect_equal(
+        dict(treatment_fallbacks),
+        expected_fallbacks,
+        "d3_fallback_summary_mismatch",
+        "D3 treatment",
+    )
+    _expect_equal(
+        applied_count,
+        expected_applied_count,
+        "d3_treatment_applied_count_mismatch",
+        str(applied_count),
+    )
+    _expect_equal(
+        fallback_count,
+        expected_fallback_count,
+        "d3_rule_fallback_count_mismatch",
+        str(fallback_count),
+    )
 
-    return {
+    d3_result: dict[str, Any] = {
         "execution_receipts_available": True,
         "execution_receipt_count": 40,
         "arm_count": 40,
@@ -870,9 +1138,306 @@ def _audit_d3(
         "treatment_applied_count": applied_count,
         "treatment_rule_fallback_count": fallback_count,
         "treatment_fallback_reason_counts": dict(sorted(treatment_fallbacks.items())),
-        "treatment_inference_latency_ms": _latency_summary(treatment_latencies),
-        "paired_outcome": _unavailable("no_adopted_d3_treatment_and_no_physical_outcome"),
-        "paired_effect": _unavailable("no_adopted_d3_treatment_and_no_physical_outcome"),
+        "treatment_inference_latency_ms": _latency_summary(
+            treatment_latencies,
+            p95_method="linear" if is_v2 else "nearest_rank",
+        ),
+        "paired_outcome": _unavailable("d3_physical_outcome_not_present"),
+        "paired_effect": _unavailable("d3_paired_physical_effect_not_available"),
+    }
+    if is_v2:
+        d3_result["safety_shell"] = {
+            "version": EXPECTED_D3_SAFETY_SHELL_VERSION_V2,
+            "config_sha256": EXPECTED_D3_SAFETY_SHELL_CONFIG_SHA256_V2,
+            "verified_arm_count": 40,
+        }
+        d3_result["selected_assignment_identity_verified_pair_count"] = (
+            assignment_identity_count
+        )
+        d3_result["offline_assignment_comparison"] = (
+            _audit_d3_v2_offline_assignment_comparison(
+                paired_report,
+                arm_by_key=arm_by_key,
+                inputs=inputs,
+            )
+        )
+    return d3_result
+
+
+def _d3_assignment_signature(plan: Mapping[str, Any]) -> dict[str, Any]:
+    assignments = []
+    for raw_assignment in _sequence(plan, "assignments"):
+        assignment = _as_mapping(raw_assignment, "D3 plan assignment")
+        assignments.append(
+            (
+                str(assignment.get("target_id", "")),
+                str(assignment.get("resource_id", "")),
+                str(assignment.get("member_role", "")),
+                str(assignment.get("coalition_id", "")),
+            )
+        )
+    return {
+        "assignments": sorted(assignments),
+        "unassigned_target_ids": sorted(
+            str(item) for item in _sequence(plan, "unassigned_target_ids")
+        ),
+    }
+
+
+def _audit_d3_v2_offline_assignment_comparison(
+    report: Mapping[str, Any],
+    *,
+    arm_by_key: Mapping[tuple[int, str], Mapping[str, Any]],
+    inputs: ReservedSeedInterventionAuditInputs,
+) -> dict[str, Any]:
+    _expect_equal(
+        report.get("schema_version"),
+        "d3_shadow_paired_evaluation_v2",
+        "d3_v2_paired_report_schema_mismatch",
+        "paired evaluator report",
+    )
+    _expect_equal(
+        report.get("cost_basis"),
+        "rule_cost_matrix_v1",
+        "d3_v2_comparison_cost_basis_mismatch",
+        "paired evaluator report",
+    )
+    _expect_equal(
+        report.get("model_state_dict_sha256"),
+        inputs.expected_d3_bundle_state_sha256,
+        "d3_v2_paired_report_state_binding_mismatch",
+        "paired evaluator report",
+    )
+    _require_sha256(
+        report.get("dataset_frames_sha256"),
+        "D3 v2 paired report dataset frames",
+    )
+    _require_sha256(report.get("split_hash"), "D3 v2 paired report split")
+    frames = _sequence(report, "frames")
+    _expect_equal(
+        len(frames),
+        len(EXPECTED_RESERVED_SEEDS),
+        "d3_v2_comparison_frame_count_mismatch",
+        "paired evaluator frames",
+    )
+    _expect_equal(
+        report.get("frame_count"),
+        len(frames),
+        "d3_v2_reported_frame_count_mismatch",
+        "paired evaluator report",
+    )
+    _expect_equal(
+        [_integer(_as_mapping(item, "D3 v2 frame").get("seed"), "D3 v2 frame seed") for item in frames],
+        list(EXPECTED_RESERVED_SEEDS),
+        "d3_v2_comparison_seed_catalog_mismatch",
+        "paired evaluator frames",
+    )
+
+    rule_costs: list[float] = []
+    treatment_costs: list[float] = []
+    latencies: list[float] = []
+    rule_high_threat: list[int] = []
+    treatment_high_threat: list[int] = []
+    rule_duplicates: list[int] = []
+    treatment_duplicates: list[int] = []
+    rule_hard: list[int] = []
+    treatment_hard: list[int] = []
+    rule_churn: list[int] = []
+    treatment_churn: list[int] = []
+    fallback_reasons: Counter[str] = Counter()
+    expected_per_seed: dict[str, Any] = {}
+    for raw_frame in frames:
+        frame = _as_mapping(raw_frame, "D3 v2 frame")
+        seed = _integer(frame.get("seed"), "D3 v2 frame seed")
+        _expect_equal(
+            frame.get("episode"),
+            f"d3-reserved-pair-{seed}",
+            "d3_v2_comparison_episode_mismatch",
+            str(seed),
+        )
+        _expect_equal(
+            frame.get("frame_index"),
+            0,
+            "d3_v2_comparison_frame_index_mismatch",
+            str(seed),
+        )
+        _expect_equal(
+            frame.get("scenario_version"),
+            "nominal-5v5-v1",
+            "d3_v2_comparison_scenario_mismatch",
+            str(seed),
+        )
+        control_plan = _mapping(arm_by_key[(seed, "control")], "plan")
+        treatment_plan = _mapping(arm_by_key[(seed, "treatment")], "plan")
+        treatment_receipt = _mapping(
+            arm_by_key[(seed, "treatment")],
+            "receipt",
+        )
+        rule_cost = _number(
+            frame.get("rule_assignment_cost"),
+            "D3 v2 rule assignment cost",
+        )
+        treatment_cost = _number(
+            frame.get("shadow_assignment_cost"),
+            "D3 v2 treatment assignment cost",
+        )
+        _expect_equal(
+            rule_cost,
+            _number(control_plan.get("total_cost"), "D3 control plan cost"),
+            "d3_v2_rule_cost_plan_mismatch",
+            str(seed),
+        )
+        _expect_equal(
+            treatment_cost,
+            rule_cost,
+            "d3_v2_treatment_rule_basis_cost_mismatch",
+            str(seed),
+        )
+        _expect_equal(
+            _d3_assignment_signature(control_plan),
+            _d3_assignment_signature(treatment_plan),
+            "d3_v2_comparison_assignment_identity_mismatch",
+            str(seed),
+        )
+        latency = _number(
+            frame.get("inference_elapsed_ms"),
+            "D3 v2 comparison inference latency",
+        )
+        _expect_equal(
+            latency,
+            _number(
+                treatment_receipt.get("inference_elapsed_ms"),
+                "D3 v2 treatment receipt latency",
+            ),
+            "d3_v2_comparison_latency_receipt_mismatch",
+            str(seed),
+        )
+        fallback_reason = frame.get("fallback_reason")
+        _expect_equal(
+            fallback_reason,
+            treatment_receipt.get("fallback_reason"),
+            "d3_v2_comparison_fallback_receipt_mismatch",
+            str(seed),
+        )
+        if fallback_reason is not None:
+            fallback_reasons[str(fallback_reason)] += 1
+
+        metrics = {
+            "rule_high_threat_unmet": rule_high_threat,
+            "shadow_high_threat_unmet": treatment_high_threat,
+            "rule_duplicate_count": rule_duplicates,
+            "shadow_duplicate_count": treatment_duplicates,
+            "rule_hard_violation_count": rule_hard,
+            "shadow_hard_violation_count": treatment_hard,
+            "rule_churn": rule_churn,
+            "shadow_churn": treatment_churn,
+        }
+        for name, destination in metrics.items():
+            destination.append(_integer(frame.get(name), f"D3 v2 frame {name}"))
+        rule_costs.append(rule_cost)
+        treatment_costs.append(treatment_cost)
+        latencies.append(latency)
+        expected_per_seed[str(seed)] = {
+            "fallback_frame_count": int(fallback_reason is not None),
+            "frame_count": 1,
+            "rule_assignment_cost_mean": rule_cost,
+            "rule_churn_mean": rule_churn[-1],
+            "rule_high_threat_unmet_total": rule_high_threat[-1],
+            "shadow_assignment_cost_mean": treatment_cost,
+            "shadow_churn_mean": treatment_churn[-1],
+            "shadow_high_threat_unmet_total": treatment_high_threat[-1],
+        }
+
+    assignment_cost = {
+        "rule_mean": math.fsum(rule_costs) / len(rule_costs),
+        "shadow_mean": math.fsum(treatment_costs) / len(treatment_costs),
+    }
+    high_threat = {
+        "rule_total": sum(rule_high_threat),
+        "shadow_total": sum(treatment_high_threat),
+    }
+    duplicate_hard = {
+        "rule_duplicate_count": sum(rule_duplicates),
+        "rule_hard_violation_count": sum(rule_hard),
+        "shadow_duplicate_count": sum(treatment_duplicates),
+        "shadow_hard_violation_count": sum(treatment_hard),
+    }
+    churn = {
+        "rule_mean": math.fsum(rule_churn) / len(rule_churn),
+        "shadow_mean": math.fsum(treatment_churn) / len(treatment_churn),
+    }
+    inference_ms = {
+        "p50": _percentile_linear(latencies, 0.50),
+        "p95": _percentile_linear(latencies, 0.95),
+    }
+    _expect_numeric_mapping_close(
+        _mapping(report, "assignment_cost"),
+        assignment_cost,
+        "d3_v2_assignment_cost_summary_mismatch",
+        "paired evaluator report",
+    )
+    for field, expected in (
+        ("high_threat_unmet", high_threat),
+        ("duplicate_hard_violation", duplicate_hard),
+        ("churn", churn),
+        ("inference_ms", inference_ms),
+        ("fallback_reasons", dict(sorted(fallback_reasons.items()))),
+        ("per_seed_metrics", expected_per_seed),
+    ):
+        _expect_equal(
+            report.get(field),
+            expected,
+            f"d3_v2_{field}_summary_mismatch",
+            "paired evaluator report",
+        )
+    _expect(report.get("rule_matrix_unchanged") is True, "d3_v2_rule_matrix_changed", "paired evaluator report")
+    _expect_equal(high_threat["rule_total"], 0, "d3_v2_rule_high_threat_unmet", "paired evaluator report")
+    _expect_equal(high_threat["shadow_total"], 0, "d3_v2_treatment_high_threat_unmet", "paired evaluator report")
+    _expect_equal(sum(duplicate_hard.values()), 0, "d3_v2_duplicate_or_hard_violation", "paired evaluator report")
+    _expect_equal(churn, {"rule_mean": 0.0, "shadow_mean": 0.0}, "d3_v2_churn_nonzero", "paired evaluator report")
+    promotion = _mapping(report, "promotion_manifest")
+    _expect(promotion.get("promotion_recommended") is False, "d3_v2_promotion_claim", "paired evaluator report")
+    _expect_equal(promotion.get("promotion_status"), "unavailable", "d3_v2_promotion_status_mismatch", "paired evaluator report")
+
+    reported_assignment_cost = _mapping(report, "assignment_cost")
+    return {
+        "available": True,
+        "status": "available",
+        "value": True,
+        "reason": None,
+        "scope": "same_frame_offline_assignment_only",
+        "frame_count": len(frames),
+        "cost_basis": "rule_cost_matrix_v1",
+        "assignment_cost": {
+            "control_rule_mean": reported_assignment_cost["rule_mean"],
+            "treatment_assignment_mean": reported_assignment_cost[
+                "shadow_mean"
+            ],
+        },
+        "high_threat_unmet": {
+            "control_total": high_threat["rule_total"],
+            "treatment_total": high_threat["shadow_total"],
+        },
+        "duplicate_count": {
+            "control_total": duplicate_hard["rule_duplicate_count"],
+            "treatment_total": duplicate_hard["shadow_duplicate_count"],
+        },
+        "hard_violation_count": {
+            "control_total": duplicate_hard["rule_hard_violation_count"],
+            "treatment_total": duplicate_hard["shadow_hard_violation_count"],
+        },
+        "churn_mean": {
+            "control": churn["rule_mean"],
+            "treatment": churn["shadow_mean"],
+        },
+        "inference_latency_ms": _latency_summary(
+            latencies,
+            p95_method="linear",
+        ),
+        "selected_assignment_identity_match_count": len(frames),
+        "physical_outcome_available": False,
+        "paired_physical_effect_available": False,
+        "candidate_policy_effectiveness_proven": False,
     }
 
 
@@ -882,6 +1447,7 @@ def _validate_d3_arm(
     expected_kind: str,
     expected_pair_id: str,
     paired_report_sha256: str,
+    source_schema_version: str,
 ) -> Mapping[str, Any]:
     spec = _mapping(arm, "arm_specification")
     receipt = _mapping(arm, "receipt")
@@ -905,8 +1471,44 @@ def _validate_d3_arm(
     _expect_equal(arm.get("learning_cost_applied"), receipt.get("learning_cost_applied"), "d3_arm_application_copy_mismatch", f"{seed}:{expected_kind}")
     _expect_equal(arm.get("rule_fallback_applied"), receipt.get("rule_fallback_applied"), "d3_arm_fallback_flag_copy_mismatch", f"{seed}:{expected_kind}")
     _expect_equal(_number(arm.get("inference_elapsed_ms"), "D3 arm latency"), _number(receipt.get("inference_elapsed_ms"), "D3 receipt latency"), "d3_arm_latency_copy_mismatch", f"{seed}:{expected_kind}")
-    _expect_equal(arm.get("effective_matrix_sha256"), receipt.get("rule_cost_matrix_sha256"), "d3_effective_matrix_binding_mismatch", f"{seed}:{expected_kind}")
+    effective_matrix_sha256 = _require_sha256(
+        arm.get("effective_matrix_sha256"),
+        "D3 effective matrix",
+    )
+    if (
+        source_schema_version
+        == RESERVED_SEED_SOURCE_MANIFEST_SCHEMA_VERSION_V2
+        and expected_kind == "treatment"
+    ):
+        _expect(
+            effective_matrix_sha256 != receipt.get("rule_cost_matrix_sha256"),
+            "d3_v2_effective_matrix_not_intervened",
+            str(seed),
+        )
+    else:
+        _expect_equal(
+            effective_matrix_sha256,
+            receipt.get("rule_cost_matrix_sha256"),
+            "d3_effective_matrix_binding_mismatch",
+            f"{seed}:{expected_kind}",
+        )
     _expect(receipt.get("isolated_simulation") is True, "d3_arm_not_isolated", f"{seed}:{expected_kind}")
+    if (
+        source_schema_version
+        == RESERVED_SEED_SOURCE_MANIFEST_SCHEMA_VERSION_V2
+    ):
+        _expect_equal(
+            receipt.get("schema_version"),
+            "d3.paired-intervention-execution-receipt.v1",
+            "d3_v2_receipt_schema_mismatch",
+            f"{seed}:{expected_kind}",
+        )
+        _expect_equal(
+            receipt.get("paired_evaluator_schema_version"),
+            "d3_shadow_paired_evaluation_v2",
+            "d3_v2_paired_evaluator_schema_mismatch",
+            f"{seed}:{expected_kind}",
+        )
     for name in (
         "capacity_gate_enforced",
         "deterministic_action_mask_enforced",
@@ -929,14 +1531,37 @@ def _validate_d3_arm(
         _expect(receipt.get("fallback_reason") is None, "d3_control_fallback_reason_present", str(seed))
         _expect(receipt.get("learning_cost_applied") is False, "d3_control_learning_applied", str(seed))
         _expect(receipt.get("rule_fallback_applied") is False, "d3_control_rule_fallback", str(seed))
-    else:
+    elif (
+        source_schema_version
+        == RESERVED_SEED_SOURCE_MANIFEST_SCHEMA_VERSION_V1
+    ):
         _expect_equal(receipt.get("fallback_reason"), "out_of_distribution", "d3_treatment_fallback_reason_mismatch", str(seed))
         _expect(receipt.get("learning_cost_applied") is False, "d3_treatment_learning_applied", str(seed))
         _expect(receipt.get("rule_fallback_applied") is True, "d3_treatment_rule_fallback_missing", str(seed))
+    else:
+        _expect(
+            receipt.get("fallback_reason") is None,
+            "d3_v2_treatment_fallback_reason_present",
+            str(seed),
+        )
+        _expect(
+            receipt.get("learning_cost_applied") is True,
+            "d3_v2_treatment_learning_not_applied",
+            str(seed),
+        )
+        _expect(
+            receipt.get("rule_fallback_applied") is False,
+            "d3_v2_treatment_rule_fallback_unexpected",
+            str(seed),
+        )
     return receipt
 
 
-def _validate_d3_manifest_availability(manifest: Mapping[str, Any]) -> None:
+def _validate_d3_manifest_availability(
+    manifest: Mapping[str, Any],
+    *,
+    source_schema_version: str,
+) -> None:
     audit = _mapping(manifest, "audit")
     for name in (
         "d3_computed_causal_attribution",
@@ -956,9 +1581,28 @@ def _validate_d3_manifest_availability(manifest: Mapping[str, Any]) -> None:
     paired_input = _mapping(availability, "paired_input_equivalence")
     _expect(paired_input.get("available") is True and paired_input.get("value") is True, "d3_manifest_pair_input_unavailable", "paired_input_equivalence")
     applied = _mapping(availability, "treatment_safely_applied_in_isolated_simulation")
-    _expect(applied.get("available") is True and applied.get("value") is False, "d3_manifest_treatment_application_claim", "treatment_safely_applied")
-    _expect_equal(applied.get("applied_seed_count"), 0, "d3_manifest_applied_count_mismatch", "availability")
-    _expect_equal(applied.get("fallback_seed_count"), 20, "d3_manifest_fallback_count_mismatch", "availability")
+    is_v2 = (
+        source_schema_version
+        == RESERVED_SEED_SOURCE_MANIFEST_SCHEMA_VERSION_V2
+    )
+    _expect(
+        applied.get("available") is True
+        and applied.get("value") is is_v2,
+        "d3_manifest_treatment_application_claim",
+        "treatment_safely_applied",
+    )
+    _expect_equal(
+        applied.get("applied_seed_count"),
+        20 if is_v2 else 0,
+        "d3_manifest_applied_count_mismatch",
+        "availability",
+    )
+    _expect_equal(
+        applied.get("fallback_seed_count"),
+        0 if is_v2 else 20,
+        "d3_manifest_fallback_count_mismatch",
+        "availability",
+    )
 
 
 def _audit_d4(
@@ -966,8 +1610,11 @@ def _audit_d4(
     *,
     lineage_by_seed: Mapping[int, Mapping[str, Any]],
     inputs: ReservedSeedInterventionAuditInputs,
+    source_schema_version: str = (
+        RESERVED_SEED_SOURCE_MANIFEST_SCHEMA_VERSION_V1
+    ),
 ) -> dict[str, Any]:
-    _expect_equal(payload.get("schema_version"), RESERVED_SEED_SOURCE_MANIFEST_SCHEMA_VERSION, "d4_schema_mismatch", "D4 execution artifact")
+    _expect_equal(payload.get("schema_version"), source_schema_version, "d4_schema_mismatch", "D4 execution artifact")
     _expect_equal(payload.get("execution_scope"), "offline_simulation_intervention_arm", "d4_execution_scope_mismatch", "D4 execution artifact")
     _expect_equal(
         _mapping(payload, "evidence_availability"),
@@ -986,6 +1633,10 @@ def _audit_d4(
     _expect_equal(loader.get("load_rejection_reasons"), [], "d4_candidate_loader_rejected", "candidate loader")
 
     manifest = _mapping(payload, "manifest")
+    is_v2 = (
+        source_schema_version
+        == RESERVED_SEED_SOURCE_MANIFEST_SCHEMA_VERSION_V2
+    )
     for name in (
         "causal_effect_available",
         "counterfactual_available",
@@ -997,6 +1648,42 @@ def _audit_d4(
     ):
         _expect(manifest.get(name) is False, "d4_manifest_outcome_claim", name)
     specification = _mapping(manifest, "specification")
+    minimum_confidence: float | None = None
+    latency_limit_ms: float | None = None
+    if is_v2:
+        _expect_equal(
+            manifest.get("schema"),
+            "d4-region-resource-paired-intervention-manifest-v1",
+            "d4_v2_manifest_schema_mismatch",
+            "D4 manifest",
+        )
+        _expect_equal(
+            specification.get("schema"),
+            "d4-region-resource-paired-intervention-spec-v1",
+            "d4_v2_specification_schema_mismatch",
+            "D4 specification",
+        )
+        thresholds = _mapping(specification, "thresholds")
+        minimum_confidence = _number(
+            thresholds.get("minimum_confidence"),
+            "D4 minimum confidence",
+        )
+        latency_limit_ms = 1000.0 * _number(
+            thresholds.get("inference_timeout_s"),
+            "D4 inference timeout",
+        )
+        _expect_equal(
+            minimum_confidence,
+            0.6,
+            "d4_v2_minimum_confidence_mismatch",
+            "D4 specification",
+        )
+        _expect_equal(
+            latency_limit_ms,
+            50.0,
+            "d4_v2_latency_limit_mismatch",
+            "D4 specification",
+        )
     unsigned_specification = dict(specification)
     specification_id = str(unsigned_specification.pop("specification_id", ""))
     _expect_equal(
@@ -1044,6 +1731,8 @@ def _audit_d4(
 
     rejections: Counter[str] = Counter()
     treatment_latencies: list[float] = []
+    treatment_confidences: list[float] = []
+    gate_counts: Counter[str] = Counter()
     safe_adopted_count = fallback_count = 0
     pair_identity_count = bundle_identity_count = 0
     for seed in EXPECTED_RESERVED_SEEDS:
@@ -1078,6 +1767,9 @@ def _audit_d4(
             specification_sha256=specification_sha256,
             expected_kind="control_rule",
             lineage=lineage,
+            source_schema_version=source_schema_version,
+            minimum_confidence=minimum_confidence,
+            latency_limit_ms=latency_limit_ms,
         )
         _validate_d4_evidence(
             treatment,
@@ -1085,6 +1777,9 @@ def _audit_d4(
             specification_sha256=specification_sha256,
             expected_kind="treatment_candidate",
             lineage=lineage,
+            source_schema_version=source_schema_version,
+            minimum_confidence=minimum_confidence,
+            latency_limit_ms=latency_limit_ms,
         )
         for name in (
             "expected_input_sha256",
@@ -1101,12 +1796,44 @@ def _audit_d4(
         treatment_latencies.append(
             _number(treatment.get("candidate_latency_ms"), "D4 candidate latency")
         )
+        if is_v2:
+            treatment_confidences.append(
+                _number(
+                    treatment.get("candidate_confidence"),
+                    "D4 candidate confidence",
+                )
+            )
+            gate_counts["candidate_considered_count"] += int(
+                treatment.get("candidate_considered") is True
+            )
+            gate_counts["diagnostics_available_count"] += int(
+                treatment.get("candidate_gate_diagnostics_available") is True
+            )
+            for output_name, evidence_name in (
+                ("confidence_gate_passed_count", "candidate_confidence_gate_passed"),
+                ("ood_gate_passed_count", "candidate_ood_gate_passed"),
+                ("latency_gate_passed_count", "candidate_latency_gate_passed"),
+                ("finite_gate_passed_count", "candidate_finite_gate_passed"),
+                ("failure_gate_passed_count", "candidate_failure_gate_passed"),
+                ("aggregate_gate_passed_count", "candidate_thresholds_passed"),
+            ):
+                gate_counts[output_name] += int(
+                    treatment.get(evidence_name) is True
+                )
 
     _expect_equal(safe_adopted_count, 0, "d4_treatment_safe_adopted_unexpected", str(safe_adopted_count))
     _expect_equal(fallback_count, 20, "d4_rule_fallback_count_mismatch", str(fallback_count))
-    _expect_equal(dict(rejections), {"candidate_threshold_or_finite_gate_rejected": 20}, "d4_rejection_summary_mismatch", "D4 treatment")
+    expected_rejections = (
+        {
+            "candidate_low_confidence": 20,
+            "candidate_threshold_or_finite_gate_rejected": 20,
+        }
+        if is_v2
+        else {"candidate_threshold_or_finite_gate_rejected": 20}
+    )
+    _expect_equal(dict(rejections), expected_rejections, "d4_rejection_summary_mismatch", "D4 treatment")
 
-    return {
+    d4_result: dict[str, Any] = {
         "execution_receipts_available": True,
         "execution_receipt_count": 40,
         "arm_count": 40,
@@ -1128,6 +1855,24 @@ def _audit_d4(
         "paired_outcome": _unavailable("no_adopted_d4_treatment_and_no_physical_outcome"),
         "paired_effect": _unavailable("no_adopted_d4_treatment_and_no_physical_outcome"),
     }
+    if is_v2:
+        assert minimum_confidence is not None
+        assert latency_limit_ms is not None
+        d4_result["candidate_gate_summary"] = {
+            **dict(gate_counts),
+            "arm_evidence_schema_versions": [
+                EXPECTED_D4_ARM_EVIDENCE_SCHEMA_VERSION_V2
+            ],
+            "candidate_confidence": _gate_distribution_summary(
+                treatment_confidences
+            ),
+            "candidate_latency_ms": _gate_distribution_summary(
+                treatment_latencies
+            ),
+            "minimum_confidence_values": [minimum_confidence],
+            "candidate_latency_limit_ms_values": [latency_limit_ms],
+        }
+    return d4_result
 
 
 def _validate_d4_evidence(
@@ -1137,8 +1882,41 @@ def _validate_d4_evidence(
     specification_sha256: str,
     expected_kind: str,
     lineage: Mapping[str, Any],
+    source_schema_version: str,
+    minimum_confidence: float | None,
+    latency_limit_ms: float | None,
 ) -> None:
     seed = _integer(item.get("seed"), "D4 evidence seed")
+    is_v2 = (
+        source_schema_version
+        == RESERVED_SEED_SOURCE_MANIFEST_SCHEMA_VERSION_V2
+    )
+    if is_v2:
+        _expect_equal(
+            item.get("schema"),
+            EXPECTED_D4_ARM_EVIDENCE_SCHEMA_VERSION_V2,
+            "d4_v2_arm_evidence_schema_mismatch",
+            f"{seed}:{expected_kind}",
+        )
+        _expect(
+            item.get("candidate_gate_diagnostics_available") is True,
+            "d4_v2_gate_diagnostics_unavailable",
+            f"{seed}:{expected_kind}",
+        )
+        _expect(minimum_confidence is not None, "d4_v2_threshold_missing", "minimum confidence")
+        _expect(latency_limit_ms is not None, "d4_v2_threshold_missing", "latency limit")
+        _expect_equal(
+            _number(item.get("minimum_confidence"), "D4 evidence minimum confidence"),
+            minimum_confidence,
+            "d4_v2_evidence_minimum_confidence_mismatch",
+            f"{seed}:{expected_kind}",
+        )
+        _expect_equal(
+            _number(item.get("candidate_latency_limit_ms"), "D4 evidence latency limit"),
+            latency_limit_ms,
+            "d4_v2_evidence_latency_limit_mismatch",
+            f"{seed}:{expected_kind}",
+        )
     _expect_equal(item.get("arm_id"), spec.get("arm_id"), "d4_evidence_arm_id_mismatch", f"{seed}:{expected_kind}")
     _expect_equal(item.get("arm"), expected_kind, "d4_evidence_kind_mismatch", str(seed))
     _expect_equal(item.get("specification_sha256"), specification_sha256, "d4_evidence_specification_sha256_mismatch", f"{seed}:{expected_kind}")
@@ -1171,14 +1949,81 @@ def _validate_d4_evidence(
         _expect(item.get("isolated_treatment_safe_adopted") is False, "d4_control_treatment_adopted", str(seed))
         _expect(item.get("rule_fallback_used") is False, "d4_control_rule_fallback", str(seed))
         _expect_equal(list(_sequence(item, "rejection_reasons")), [], "d4_control_rejection_reason", str(seed))
+        if is_v2:
+            for name in (
+                "candidate_confidence",
+                "candidate_confidence_gate_passed",
+                "candidate_failure_gate_passed",
+                "candidate_finite",
+                "candidate_finite_gate_passed",
+                "candidate_latency_gate_passed",
+                "candidate_ood_gate_passed",
+                "candidate_ood_passed",
+            ):
+                _expect(
+                    item.get(name) is None,
+                    "d4_v2_control_gate_value_nonnull",
+                    f"{seed}:{name}",
+                )
+            _expect_equal(latency, 0.0, "d4_v2_control_latency_nonzero", str(seed))
+            _expect(item.get("candidate_thresholds_passed") is True, "d4_v2_control_thresholds_failed", str(seed))
+            _expect(item.get("candidate_safety_projection_passed") is True, "d4_v2_control_projection_failed", str(seed))
     else:
         _expect(item.get("candidate_considered") is True, "d4_treatment_candidate_not_considered", str(seed))
         _require_sha256(item.get("candidate_recommendation_sha256"), "D4 candidate recommendation")
-        _expect(item.get("candidate_thresholds_passed") is False, "d4_treatment_threshold_unexpectedly_passed", str(seed))
-        _expect(item.get("candidate_safety_projection_passed") is False, "d4_treatment_projection_unexpectedly_passed", str(seed))
-        _expect(item.get("isolated_treatment_safe_adopted") is False, "d4_treatment_safe_adopted", str(seed))
-        _expect(item.get("rule_fallback_used") is True, "d4_treatment_rule_fallback_missing", str(seed))
-        _expect_equal(list(_sequence(item, "rejection_reasons")), ["candidate_threshold_or_finite_gate_rejected"], "d4_treatment_rejection_reason_mismatch", str(seed))
+        if is_v2:
+            assert minimum_confidence is not None
+            assert latency_limit_ms is not None
+            confidence = _number(
+                item.get("candidate_confidence"),
+                "D4 candidate confidence",
+            )
+            _expect(
+                0.0 <= confidence <= 1.0,
+                "d4_v2_candidate_confidence_out_of_range",
+                str(seed),
+            )
+            expected_confidence_gate = confidence >= minimum_confidence
+            _expect_equal(
+                item.get("candidate_confidence_gate_passed"),
+                expected_confidence_gate,
+                "d4_v2_candidate_confidence_gate_mismatch",
+                str(seed),
+            )
+            _expect(item.get("candidate_ood_passed") is True, "d4_v2_candidate_ood_failed", str(seed))
+            _expect_equal(item.get("candidate_ood_gate_passed"), item.get("candidate_ood_passed"), "d4_v2_candidate_ood_gate_mismatch", str(seed))
+            _expect_equal(item.get("candidate_latency_gate_passed"), latency <= latency_limit_ms, "d4_v2_candidate_latency_gate_mismatch", str(seed))
+            _expect(item.get("candidate_finite") is True, "d4_v2_candidate_nonfinite", str(seed))
+            _expect_equal(item.get("candidate_finite_gate_passed"), item.get("candidate_finite"), "d4_v2_candidate_finite_gate_mismatch", str(seed))
+            _expect(item.get("candidate_failure_gate_passed") is True, "d4_v2_candidate_failure_gate_failed", str(seed))
+            aggregate_gate = all(
+                item.get(name) is True
+                for name in (
+                    "candidate_confidence_gate_passed",
+                    "candidate_ood_gate_passed",
+                    "candidate_latency_gate_passed",
+                    "candidate_finite_gate_passed",
+                    "candidate_failure_gate_passed",
+                )
+            )
+            _expect_equal(item.get("candidate_thresholds_passed"), aggregate_gate, "d4_v2_candidate_aggregate_gate_mismatch", str(seed))
+            _expect_equal(item.get("candidate_safety_projection_passed"), aggregate_gate, "d4_v2_candidate_projection_gate_mismatch", str(seed))
+            _expect_equal(item.get("isolated_treatment_safe_adopted"), aggregate_gate, "d4_v2_candidate_adoption_gate_mismatch", str(seed))
+            _expect_equal(item.get("rule_fallback_used"), not aggregate_gate, "d4_v2_candidate_fallback_gate_mismatch", str(seed))
+            expected_rejections = []
+            if not expected_confidence_gate:
+                expected_rejections.append("candidate_low_confidence")
+            if not aggregate_gate:
+                expected_rejections.append(
+                    "candidate_threshold_or_finite_gate_rejected"
+                )
+            _expect_equal(list(_sequence(item, "rejection_reasons")), expected_rejections, "d4_v2_treatment_rejection_reason_mismatch", str(seed))
+        else:
+            _expect(item.get("candidate_thresholds_passed") is False, "d4_treatment_threshold_unexpectedly_passed", str(seed))
+            _expect(item.get("candidate_safety_projection_passed") is False, "d4_treatment_projection_unexpectedly_passed", str(seed))
+            _expect(item.get("isolated_treatment_safe_adopted") is False, "d4_treatment_safe_adopted", str(seed))
+            _expect(item.get("rule_fallback_used") is True, "d4_treatment_rule_fallback_missing", str(seed))
+            _expect_equal(list(_sequence(item, "rejection_reasons")), ["candidate_threshold_or_finite_gate_rejected"], "d4_treatment_rejection_reason_mismatch", str(seed))
 
 
 def _validate_source_manifest(
@@ -1189,8 +2034,9 @@ def _validate_source_manifest(
     d4_summary: Mapping[str, Any],
     inputs: ReservedSeedInterventionAuditInputs,
     input_sha256: Mapping[str, str],
+    source_schema_version: str,
 ) -> None:
-    _expect_equal(manifest.get("schema_version"), RESERVED_SEED_SOURCE_MANIFEST_SCHEMA_VERSION, "source_manifest_schema_mismatch", "manifest")
+    _expect_equal(manifest.get("schema_version"), source_schema_version, "source_manifest_schema_mismatch", "manifest")
     _expect_equal(manifest.get("experiment_scope"), "reserved_seed_isolated_d3_d4_execution", "source_manifest_scope_mismatch", "manifest")
     _expect_equal(manifest.get("reserved_seeds"), list(EXPECTED_RESERVED_SEEDS), "source_manifest_seed_catalog_mismatch", "manifest")
     _expect_equal(manifest.get("source_episode_count"), 20, "source_manifest_episode_count_mismatch", "manifest")
@@ -1229,21 +2075,60 @@ def _validate_source_manifest(
     _expect(d4_bundle.get("loaded") is True, "source_manifest_d4_bundle_not_loaded", "manifest")
     _expect_equal(d4_bundle.get("bundle_manifest_sha256"), inputs.expected_d4_bundle_manifest_sha256, "source_manifest_d4_manifest_mismatch", "manifest")
     _expect_equal(d4_bundle.get("model_state_sha256"), inputs.expected_d4_bundle_state_sha256, "source_manifest_d4_state_mismatch", "manifest")
+    is_v2 = (
+        source_schema_version
+        == RESERVED_SEED_SOURCE_MANIFEST_SCHEMA_VERSION_V2
+    )
+    expected_d3_summary: dict[str, Any] = {
+        "applied_count": d3_summary["treatment_applied_count"],
+        "fallback_reason_counts": d3_summary[
+            "treatment_fallback_reason_counts"
+        ],
+        "rule_fallback_count": d3_summary[
+            "treatment_rule_fallback_count"
+        ],
+    }
+    if is_v2:
+        expected_d3_summary.update(
+            {
+                "safety_shell_config_sha256": (
+                    EXPECTED_D3_SAFETY_SHELL_CONFIG_SHA256_V2
+                ),
+                "safety_shell_version": EXPECTED_D3_SAFETY_SHELL_VERSION_V2,
+            }
+        )
     _expect_equal(
         _mapping(manifest, "d3_treatment_summary"),
-        {"applied_count": 0, "fallback_reason_counts": {"out_of_distribution": 20}, "rule_fallback_count": 20},
+        expected_d3_summary,
         "source_manifest_d3_summary_mismatch",
         "manifest",
     )
+    expected_d4_summary: dict[str, Any] = {
+        "rejection_reason_counts": d4_summary[
+            "treatment_rejection_reason_counts"
+        ],
+        "rule_fallback_count": d4_summary[
+            "treatment_rule_fallback_count"
+        ],
+        "safe_adopted_count": d4_summary["treatment_safe_adopted_count"],
+    }
+    if is_v2:
+        expected_d4_summary["candidate_gate_summary"] = d4_summary[
+            "candidate_gate_summary"
+        ]
     _expect_equal(
         _mapping(manifest, "d4_treatment_summary"),
-        {"rejection_reason_counts": {"candidate_threshold_or_finite_gate_rejected": 20}, "rule_fallback_count": 20, "safe_adopted_count": 0},
+        expected_d4_summary,
         "source_manifest_d4_summary_mismatch",
         "manifest",
     )
 
 
-def _latency_summary(values: Sequence[float]) -> dict[str, Any]:
+def _latency_summary(
+    values: Sequence[float],
+    *,
+    p95_method: str = "nearest_rank",
+) -> dict[str, Any]:
     _expect(len(values) > 0, "latency_samples_missing", "latency summary")
     ordered = sorted(float(value) for value in values)
     for value in ordered:
@@ -1255,7 +2140,18 @@ def _latency_summary(values: Sequence[float]) -> dict[str, Any]:
         if count % 2
         else (ordered[midpoint - 1] + ordered[midpoint]) / 2.0
     )
-    p95_index = max(0, math.ceil(0.95 * count) - 1)
+    _expect(
+        p95_method in {"nearest_rank", "linear"},
+        "unsupported_percentile_method",
+        p95_method,
+    )
+    if p95_method == "nearest_rank":
+        p95_index = max(0, math.ceil(0.95 * count) - 1)
+        p95 = ordered[p95_index]
+        output_method = "nearest_rank"
+    else:
+        p95 = _percentile_linear(ordered, 0.95)
+        output_method = "linear_interpolation"
     return {
         "availability": "available",
         "available": True,
@@ -1264,10 +2160,37 @@ def _latency_summary(values: Sequence[float]) -> dict[str, Any]:
         "min_ms": ordered[0],
         "mean_ms": math.fsum(ordered) / count,
         "median_ms": median,
-        "p95_ms": ordered[p95_index],
-        "p95_method": "nearest_rank",
+        "p95_ms": p95,
+        "p95_method": output_method,
         "max_ms": ordered[-1],
     }
+
+
+def _gate_distribution_summary(values: Sequence[float]) -> dict[str, Any]:
+    _expect(len(values) > 0, "gate_samples_missing", "gate summary")
+    ordered = sorted(float(value) for value in values)
+    for value in ordered:
+        _expect(math.isfinite(value), "invalid_gate_sample", repr(value))
+    return {
+        "maximum": ordered[-1],
+        "mean": math.fsum(ordered) / len(ordered),
+        "minimum": ordered[0],
+        "p95": _percentile_linear(ordered, 0.95),
+        "sample_count": len(ordered),
+    }
+
+
+def _percentile_linear(values: Sequence[float], quantile: float) -> float:
+    _expect(len(values) > 0, "percentile_samples_missing", "percentile")
+    _expect(0.0 <= quantile <= 1.0, "percentile_out_of_range", str(quantile))
+    ordered = sorted(float(value) for value in values)
+    position = (len(ordered) - 1) * quantile
+    lower = math.floor(position)
+    upper = math.ceil(position)
+    if lower == upper:
+        return ordered[lower]
+    weight = position - lower
+    return ordered[lower] + (ordered[upper] - ordered[lower]) * weight
 
 
 def _unavailable(reason: str) -> dict[str, Any]:
@@ -1433,6 +2356,27 @@ def _is_relative_to(path: Path, parent: Path) -> bool:
 def _expect_equal(actual: Any, expected: Any, code: str, detail: str) -> None:
     if actual != expected:
         _fail(code, f"{detail}: actual={actual!r}, expected={expected!r}")
+
+
+def _expect_numeric_mapping_close(
+    actual: Mapping[str, Any],
+    expected: Mapping[str, Any],
+    code: str,
+    detail: str,
+) -> None:
+    _expect_equal(set(actual), set(expected), code, detail)
+    for key, expected_value in expected.items():
+        actual_value = _number(actual.get(key), f"{detail}:{key}")
+        _expect(
+            math.isclose(
+                actual_value,
+                _number(expected_value, f"{detail}:{key}"),
+                rel_tol=1e-12,
+                abs_tol=1e-12,
+            ),
+            code,
+            f"{detail}:{key}: actual={actual_value!r}, expected={expected_value!r}",
+        )
 
 
 def _expect(condition: bool, code: str, detail: str) -> None:

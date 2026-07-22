@@ -1,6 +1,37 @@
 # D6 系统评估指标综述及子方案
 
-## 2026-07-21 D3/D4 保留 seed 隔离执行独立复核
+## 2026-07-22 D3/D4 保留 seed v1/v2 独立复核
+
+D6 已将原 v1-only consumer 改为按权威顶层 schema 严格分派。v1 的 source commit、带外摘要、零采用
+fail-close 和五项 availability map 保持兼容；v2 独立绑定 commit
+`78912963b67fe86ee9a8d29186b18a9dd60c460c`、checksum `821f1503...72bc` 和 manifest
+`d6ef23b2...883c`。CLI profile 同时绑定预期源 schema；同 schema 摘要可带外覆盖，跨 schema 失败关闭。
+历史 Python API 的位置参数顺序和默认 v1 不变。两版共同执行六文件 inventory/checksum、20 条 lineage、seed/dirty/truth/配对标志、
+D3/D4 各 40 arm、pair input/bundle identity 和输入前后快照校验。
+
+v2 D3 的 safety shell v2/config SHA 在 40/40 arm 上一致。treatment applied/fallback=`20/0`；20 对
+target-resource 选择相同。按冻结规则 cost 基准，rule/treatment mean 均为 `17.0560260319065`，
+high-threat unmet、duplicate、hard violation 和 churn 均为 0，inference P95(linear) 为
+`0.310801 ms`。该层只支持 `offline_assignment_comparison=available`。
+
+v2 D4 的 20 条 treatment evidence 均为 arm evidence v2。candidate considered 20/20，confidence
+0/20 pass，OOD/latency/finite/failure 各 20/20 pass，aggregate 0/20；low-confidence 20/20，safe
+adopted 0/20，fallback 20/20。分门逻辑、置信度/时延分布、拒绝原因和 manifest gate summary 均由
+D6 重算。执行时延最近秩 P95=`2.241315 ms`，门控汇总线性插值 P95=`2.264415 ms`。nominal 5v5
+不能解释为降级策略评估。
+
+最终状态是 `pass_offline_assignment_comparison_only`。runtime ACK、physical outcome、paired physical
+outcome/effect/non-degradation、counterfactual 和 causal 仍为 null/unavailable；D4 零采用不是效果 0，
+D3 同帧无退化也不证明候选策略有效或开放线上权限。正式 v2 输出位于
+`research_modules/d6_evaluation_metrics/outputs/reserved_seed_interventions_nominal_5v5_1000_1019_formal_7891296_d6_profile_bound_v2_audit_20260722/`。
+sidecar/报告/provenance/checksum 文件 SHA-256 为 `f3852251...71c3b`、`bd80c1dd...f9949`、
+`0d50a95d...f7dc6`、`db4af357...7b87c`，sidecar 内容 SHA 为 `c02a345c...5d2d`。固定时间戳
+CLI 复生四文件逐字节一致，内部 checksum 通过。
+测试内 v2 fixture 保证无 ignored output 时仍执行关键成功和篡改诊断；正式 bundle 复算继续保留。
+专项 `18 passed`、无权威输出路径 `16 passed`、D6 全量 `483 passed`。下一步只在取得严格绑定的 runtime ACK
+和采用后物理窗口后新增 physical outcome/effect sidecar。
+
+## 2026-07-21 D3/D4 保留 seed 隔离执行独立复核（历史 v1）
 
 D6 已对 main 生成的 `nominal` 5 资源/5 目标、seed `1000-1019` 隔离执行制品建立只读审计链。审计先
 用带外摘要固定 `SHA256SUMS`、顶层 manifest、源提交和四个 bundle digest，再从 20 条 lineage、D3
@@ -25,7 +56,8 @@ paired outcome、paired effect 和 non-degradation 的值必须为 null，不能
 effect=0 或非退化。该证据证明失败关闭和证据完整性，不证明候选策略有效、非退化、外部泛化或因果
 收益，也不改变 PPO、assist、authority 和默认规则路径。
 
-正式输出位于
+下列 v1 目录是 schema binding 序列化前发布的历史制品。当前 consumer 保持 v1 API/算法语义，但新生成
+文件属于 profile-bound provenance，不以旧哈希作为当前复生目标。历史输出位于
 `research_modules/d6_evaluation_metrics/outputs/reserved_seed_interventions_nominal_5v5_1000_1019_d6_audit_20260721/`。
 专项 `7 passed`、D6 全量 `472 passed`；输出 `SHA256SUMS` 已二次复算。下一步前置条件是 producer/main
 提供严格绑定的非零安全采用 ACK 和采用后的物理状态窗；在此之前不追加 paired performance 声明。

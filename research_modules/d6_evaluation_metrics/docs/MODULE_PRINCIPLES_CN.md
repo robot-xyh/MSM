@@ -1,5 +1,31 @@
 # D6 系统级离线评估模块原理
 
+## 版本分派与 assignment/outcome 分层原则（2026-07-22）
+
+保留 seed consumer 先认证带外 `SHA256SUMS` 与 manifest，再只按顶层 schema 分派 v1/v2；未知版本直接
+拒绝。CLI profile 还必须与源 schema 精确一致；同 schema 的带外摘要可更新，不能通过同时替换路径和
+摘要把 v1 输入标成 v2。历史 Python API 默认 v1。历史 v1 的 D3/D4 均为零采用回退，v2 则允许 D3 在隔离模拟内应用 learning cost，同时要求全部
+arm 固定 safety-shell version/config SHA。D4 v2 不只读取 aggregate threshold，而是逐 treatment 重算
+confidence、OOD、latency、finite、failure 五个门及其逻辑合取，再与 manifest 的门计数和分布汇总
+交叉核对。版本新增字段不能反向改变 v1 语义。
+
+schema binding 是正式 provenance 的组成部分，必须同时出现在 sidecar 的 integrity binding 和独立
+provenance manifest 中。固定输入与审计时间应产生逐字节相同的 sidecar、Markdown、provenance 和
+checksum 文件。旧 v1 已发布文件保持历史原样；当前 consumer 仍默认 v1 并保持数据计算兼容，但重新
+发布时会增加 schema binding，因此属于新的 profile-bound provenance，不沿用旧文件哈希。
+
+“offline assignment comparison available”和“physical outcome available”是不同证据层。D3 v2 可从
+同帧配对的选择 identity、冻结规则 cost 基准、安全违规和 churn 明细重算 assignment non-degradation；
+这只覆盖当帧离散分配结果。若没有严格绑定的 runtime ACK 和采用后物理状态窗，paired physical
+outcome/effect/non-degradation、counterfactual 和 causal 仍必须为 `null+unavailable`。D4 零采用也
+不能填 effect=0。nominal 5v5 的低置信度回退只证明门控失败关闭，不构成降级策略评估。
+
+2026-07-22 v2 审计中，D3 applied/fallback=`20/0`，规则/treatment assignment cost mean 均为
+`17.0560260319065`，安全/churn 计数为 0，inference P95 为 `0.310801 ms`；D4 confidence pass=`0/20`，
+其余四门各 `20/20`，safe-adopted/fallback=`0/20`/`20/20`。D4 执行时延汇总的最近秩 P95 为
+`2.241315 ms`，门控分布汇总的线性插值 P95 为 `2.264415 ms`。因此 sidecar 仅开放 offline assignment
+comparison，不开放候选有效性、运行时权限或物理/因果结论。
+
 ## 零采用隔离执行的 outcome 可用性原则（2026-07-21）
 
 D6 将“执行 receipt 存在”“候选动作实际采用”“采用后的物理结果”和“配对/因果效果”分成四层。第一层

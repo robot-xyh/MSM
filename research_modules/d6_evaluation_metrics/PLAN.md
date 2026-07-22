@@ -1,6 +1,37 @@
 # D6 Evaluation Metrics Plan
 
-## 2026-07-21 D3/D4 保留 seed 隔离执行审计状态
+## 2026-07-22 D3/D4 保留 seed v1/v2 审计状态
+
+- [x] 以顶层 schema 严格分派 `scalable3d-reserved-seed-interventions-v1/v2`；保留 v1 默认 API 常量、
+  既有位置参数顺序、fail-closed 语义和测试。CLI `--profile v1|v2` 同时绑定预期 source schema；
+  同 schema 可覆盖路径/带外摘要，跨 schema profile 失败关闭，默认消费新 v2。
+- [x] 对 v2 绑定 source commit `78912963b67fe86ee9a8d29186b18a9dd60c460c`、`SHA256SUMS`
+  `821f1503...72bc`、manifest `d6ef23b2...883c`，并重算全部成员、artifact SHA、20 条 lineage、
+  seed 目录、dirty/truth/共享标志及 D3/D4 40 arm identity。
+- [x] 校验 D3 safety shell v2/config SHA 的 40/40 arm 绑定；重算 treatment applied/fallback=`20/0`、
+  20 对选择 identity、规则基准 assignment cost、安全/churn 指标和 linear P95 inference latency。
+- [x] 校验 D4 arm evidence v2 和 confidence/OOD/latency/finite/failure 五个分门字段；从 20 条
+  treatment evidence 重算各门计数、置信度/时延分布、拒绝原因，并与 source manifest 嵌套汇总一致。
+  `treatment_candidate_latency_ms` 使用 nearest-rank P95=`2.241315 ms`；gate summary 使用 linear
+  interpolation P95=`2.264415 ms`，两者不混写。
+- [x] availability 分层：offline assignment comparison 可用；runtime ACK、physical outcome、
+  counterfactual、causal、paired physical outcome/effect/non-degradation 均保持 `null+unavailable`。
+  D4 零采用不补效果 0，nominal 5v5 不解释为降级策略评估。
+- [x] 输出 v2 JSON sidecar、中文 Markdown、provenance manifest 和 `SHA256SUMS` 到
+  `outputs/reserved_seed_interventions_nominal_5v5_1000_1019_formal_7891296_d6_profile_bound_v2_audit_20260722/`；
+  固定时间 `2026-07-22T04:56:47Z`，输入目录保持只读，输出 checksum 复算通过，同时间戳四文件
+  逐字节复生通过。
+- [x] 测试内构造合同完整 v2 fixture，无 ignored output 时仍覆盖 v2 成功路径、availability、D3
+  safety-shell、D4 evidence schema/门字段和 manifest 汇总篡改。正式 bundle 存在时继续复算权威 v1/v2；
+  sidecar/provenance 均断言 schema binding，同时间戳 writer 逐字节复生纳入测试；专项 `18 passed`、
+  无权威输出路径 `16 passed`、D6 全量 `483 passed`。
+- [ ] 取得严格绑定的 runtime ACK 和采用后物理状态窗后，另行生成 paired physical outcome/effect；
+  当前同帧离线 assignment comparison 不用于 promotion、PPO、assist、authority 或因果验收。
+
+`AIRSIM_INTEGRATION_PLAN.md` 已检查。本次只读消费 scalable 3D JSON/JSONL，不改变 AirSim runtime、
+episode 编排、控制或 AirSim 输入合同，因此不修改该计划。
+
+## 2026-07-21 D3/D4 保留 seed 隔离执行审计状态（历史 v1）
 
 - [x] 新增 D6-owned 独立只读 consumer，显式接收输入目录、输出目录、审计时间和七项带外 identity
   binding；输出位于 D6 ignored `outputs/`，输入目录及其子目录禁止写入。
@@ -24,6 +55,8 @@
   `outputs/reserved_seed_interventions_nominal_5v5_1000_1019_d6_audit_20260721/`。
 - [x] 2026-07-21（UTC `2026-07-22T04:06:26Z`）专项 `7 passed`、D6 全量 `472 passed`；输出
   `SHA256SUMS` 二次校验通过，仅有既有 Matplotlib warning。
+- [x] 历史 v1 已发布目录保持不变。当前 consumer 新生成 v1 时会序列化预期 source schema，属于
+  profile-bound provenance；历史哈希只描述旧制品，不作为当前代码的可复生哈希。
 - [ ] main/D3/D4 后续若产生严格绑定的实际采用 ACK 和采用后的物理状态窗，再由 D6 生成新的 outcome
   sidecar。当前制品不得用于策略 promotion、线上 assist/authority 或因果收益验收。
 

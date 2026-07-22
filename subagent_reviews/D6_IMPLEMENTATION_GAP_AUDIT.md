@@ -1,6 +1,41 @@
 # D6 实现差距审计
 
-## 2026-07-21 D3/D4 保留 seed 隔离执行 GAP 更新
+## 2026-07-22 D3/D4 保留 seed v1/v2 GAP 更新
+
+### 已关闭的 D6-owned P1
+
+1. 保留 seed consumer 已从 v1-only 改为顶层 schema 严格分派，历史 v1 输入、默认 API 绑定、状态与
+   availability 结构继续通过；v2 有独立 sidecar/provenance schema 和 CLI profile。profile 现显式
+   绑定预期 source schema，同 schema 摘要覆盖可用，跨 schema 失败关闭。
+2. v2 权威输入的 checksum、manifest artifact SHA、20 条 lineage、seed `1000-1019`、source commit、
+   dirty/truth/共享标志、D3/D4 40 arm、pair input/bundle identity 已独立复核。
+3. D3 safety shell v2/config SHA 的 40/40 arm 绑定已关闭；20/20 treatment applied，D6 从 20 条 frame
+   重算同帧规则基准 cost、安全/churn 和 inference latency，并与 receipt/report 闭合。
+4. D4 arm evidence v2、confidence/OOD/latency/finite/failure 分门逻辑和顶层 manifest gate summary 已
+   关闭严格消费缺口。重算结果为 confidence 0/20 pass，其余四门 20/20，safe adopted 0、fallback 20。
+5. availability 已区分 offline assignment comparison 与 physical outcome。前者在 D3 v2 可用；后者及
+   runtime ACK、paired effect、counterfactual、causal 均为 null/unavailable。测试覆盖 gate/schema/
+   safety hash/summary 篡改。合同完整 v2 fixture 已消除 clean clone 对 ignored output 的关键路径依赖；
+   正式 bundle 仍作条件性复算。D4 两个 P95 已分别标注 nearest-rank=`2.241315 ms` 和 linear
+   interpolation=`2.264415 ms`。sidecar/provenance schema binding 和同时间戳四文件逐字节复生均已
+   纳入验收。专项 `18 passed`、无权威输出路径 `16 passed`、D6 全量 `483 passed`。
+
+### 仍开放的 P1
+
+1. **物理结果与效果。** D3 虽在隔离 assignment 层 20/20 applied，但没有 runtime ACK 或采用后物理
+   状态窗；D4 safe adoption 仍为 0。paired physical outcome/effect/non-degradation 不能计算或补 0。
+2. **策略有效性。** 同帧 assignment cost/safety/churn 无退化不证明候选策略在轨迹、终局或外部场景
+   有效，也不支持 promotion、PPO、assist 或 authority。
+3. **降级评估。** 本批是 nominal 5v5；D4 low-confidence fail-close 不关闭通信、节点、资源故障条件下
+   的降级策略性能 GAP。
+
+profile-bound v2 canonical 位于
+`research_modules/d6_evaluation_metrics/outputs/reserved_seed_interventions_nominal_5v5_1000_1019_formal_7891296_d6_profile_bound_v2_audit_20260722/`。
+四文件 SHA 为 `f3852251...71c3b`、`bd80c1dd...f9949`、`0d50a95d...f7dc6`、`db4af357...7b87c`，
+sidecar 内容 SHA 为 `c02a345c...5d2d`。旧 v1/v2 目录未覆盖。
+`AIRSIM_INTEGRATION_PLAN.md` 已检查；本次没有 AirSim runtime、episode 或控制接口变化，因此保持不改。
+
+## 2026-07-21 D3/D4 保留 seed 隔离执行 GAP 更新（历史 v1）
 
 ### 已关闭的 D6-owned P1
 
@@ -37,7 +72,8 @@
 3. **策略有效性与权限。** 本批不证明 D3/D4 候选策略有效，不关闭 promotion、PPO、assist、authority
    或外部泛化缺口。后续必须先取得非零安全采用和严格绑定的多 seed 物理结果，再按冻结门限复审。
 
-正式 D6 输出为
+下列 v1 输出是 schema binding 序列化前的历史已发布制品；当前 consumer 重新生成 v1 会产生
+profile-bound provenance，不把旧哈希作为当前可复生值。历史 D6 输出为
 `research_modules/d6_evaluation_metrics/outputs/reserved_seed_interventions_nominal_5v5_1000_1019_d6_audit_20260721/`。
 审计时间 `2026-07-22T04:06:26Z`（本地日期 2026-07-21）。当前无新增 P0；关闭的是 D6 consumer、
 证据完整性和 availability 表达缺口，不是上游候选性能 GAP。

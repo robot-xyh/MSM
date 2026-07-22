@@ -2,24 +2,32 @@ from __future__ import annotations
 
 import hashlib
 import json
+import sys
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
 from d6_evaluation_metrics import (
     EXPECTED_CHECKSUMS_SHA256,
+    EXPECTED_CHECKSUMS_SHA256_V2,
     EXPECTED_D3_BUNDLE_MANIFEST_SHA256,
     EXPECTED_D3_BUNDLE_STATE_SHA256,
     EXPECTED_D4_BUNDLE_MANIFEST_SHA256,
     EXPECTED_D4_BUNDLE_STATE_SHA256,
     EXPECTED_SOURCE_COMMIT,
+    EXPECTED_SOURCE_COMMIT_V2,
     EXPECTED_SOURCE_MANIFEST_SHA256,
+    EXPECTED_SOURCE_MANIFEST_SHA256_V2,
+    RESERVED_SEED_AUDIT_PROFILE_BINDINGS,
+    RESERVED_SEED_AUDIT_SCHEMA_VERSION_V2,
     ReservedSeedInterventionAuditError,
     ReservedSeedInterventionAuditInputs,
     audit_reserved_seed_interventions,
     write_reserved_seed_intervention_audit,
 )
 from d6_evaluation_metrics import reserved_seed_intervention_audit as audit_module
+from scripts import run_reserved_seed_intervention_audit as audit_cli
 
 
 def _token(label: str) -> str:
@@ -37,14 +45,16 @@ def _file_sha(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def _build_lineage() -> list[dict[str, object]]:
+def _build_lineage(
+    source_commit: str = EXPECTED_SOURCE_COMMIT,
+) -> list[dict[str, object]]:
     records: list[dict[str, object]] = []
     for seed in range(1000, 1020):
         records.append(
             {
                 "schema_version": "scalable3d-reserved-seed-source-lineage-v1",
                 "seed": seed,
-                "source_git_commit": EXPECTED_SOURCE_COMMIT,
+                "source_git_commit": source_commit,
                 "source_repository_dirty": False,
                 "finite_state": True,
                 "online_truth_use_count": 0,
@@ -489,14 +499,437 @@ def _build_fixture(tmp_path: Path) -> ReservedSeedInterventionAuditInputs:
     )
 
 
+def _build_d3_v2(
+    records: list[dict[str, object]],
+) -> dict[str, object]:
+    payload = _build_d3(records)
+    manifest = payload["manifest"]
+    assert isinstance(manifest, dict)
+    specification = manifest["specification"]
+    assert isinstance(specification, dict)
+    pairs = specification["pairs"]
+    assert isinstance(pairs, list)
+    arms = payload["arms"]
+    assert isinstance(arms, list)
+
+    frames: list[dict[str, object]] = []
+    per_seed_metrics: dict[str, object] = {}
+    for pair in pairs:
+        assert isinstance(pair, dict)
+        seed = int(pair["seed"])
+        pair_id = str(pair["pair_id"])
+        for kind in ("control", "treatment"):
+            pair_spec = pair[kind]
+            assert isinstance(pair_spec, dict)
+            pair_spec.update(
+                {
+                    "safety_shell_version": (
+                        audit_module.EXPECTED_D3_SAFETY_SHELL_VERSION_V2
+                    ),
+                    "safety_shell_config_sha256": (
+                        audit_module.EXPECTED_D3_SAFETY_SHELL_CONFIG_SHA256_V2
+                    ),
+                }
+            )
+            arm = next(
+                item
+                for item in arms
+                if item["arm_specification"]["seed"] == seed
+                and item["arm_specification"]["arm_kind"] == kind
+            )
+            arm_spec = arm["arm_specification"]
+            assert isinstance(arm_spec, dict)
+            arm_spec.update(pair_spec)
+            plan = arm["plan"]
+            assert isinstance(plan, dict)
+            plan.update(
+                {
+                    "assignments": [
+                        {
+                            "target_id": f"T{seed}",
+                            "resource_id": f"R{seed}",
+                            "member_role": "primary",
+                            "coalition_id": f"C{seed}",
+                        }
+                    ],
+                    "total_cost": 12.5,
+                    "unassigned_target_ids": [],
+                }
+            )
+            receipt = arm["receipt"]
+            assert isinstance(receipt, dict)
+            treatment = kind == "treatment"
+            receipt.update(
+                {
+                    "schema_version": (
+                        "d3.paired-intervention-execution-receipt.v1"
+                    ),
+                    "paired_evaluator_schema_version": (
+                        "d3_shadow_paired_evaluation_v2"
+                    ),
+                    "fallback_reason": None,
+                    "learning_cost_applied": treatment,
+                    "rule_fallback_applied": False,
+                    "inference_elapsed_ms": 0.25 if treatment else 0.0,
+                }
+            )
+            arm.update(
+                {
+                    "fallback_reason": None,
+                    "learning_cost_applied": treatment,
+                    "rule_fallback_applied": False,
+                    "inference_elapsed_ms": 0.25 if treatment else 0.0,
+                    "effective_matrix_sha256": (
+                        _token(f"v2-effective:{seed}")
+                        if treatment
+                        else receipt["rule_cost_matrix_sha256"]
+                    ),
+                }
+            )
+
+        frame = {
+            "seed": seed,
+            "episode": pair_id,
+            "frame_index": 0,
+            "scenario_version": "nominal-5v5-v1",
+            "rule_assignment_cost": 12.5,
+            "shadow_assignment_cost": 12.5,
+            "inference_elapsed_ms": 0.25,
+            "fallback_reason": None,
+            "rule_high_threat_unmet": 0,
+            "shadow_high_threat_unmet": 0,
+            "rule_duplicate_count": 0,
+            "shadow_duplicate_count": 0,
+            "rule_hard_violation_count": 0,
+            "shadow_hard_violation_count": 0,
+            "rule_churn": 0,
+            "shadow_churn": 0,
+        }
+        frames.append(frame)
+        per_seed_metrics[str(seed)] = {
+            "fallback_frame_count": 0,
+            "frame_count": 1,
+            "rule_assignment_cost_mean": 12.5,
+            "rule_churn_mean": 0,
+            "rule_high_threat_unmet_total": 0,
+            "shadow_assignment_cost_mean": 12.5,
+            "shadow_churn_mean": 0,
+            "shadow_high_threat_unmet_total": 0,
+        }
+
+    paired_report = {
+        "schema_version": "d3_shadow_paired_evaluation_v2",
+        "cost_basis": "rule_cost_matrix_v1",
+        "model_state_dict_sha256": EXPECTED_D3_BUNDLE_STATE_SHA256,
+        "dataset_frames_sha256": _token("v2-fixture-frames"),
+        "split_hash": _token("v2-fixture-split"),
+        "frame_count": 20,
+        "frames": frames,
+        "assignment_cost": {"rule_mean": 12.5, "shadow_mean": 12.5},
+        "high_threat_unmet": {"rule_total": 0, "shadow_total": 0},
+        "duplicate_hard_violation": {
+            "rule_duplicate_count": 0,
+            "rule_hard_violation_count": 0,
+            "shadow_duplicate_count": 0,
+            "shadow_hard_violation_count": 0,
+        },
+        "churn": {"rule_mean": 0.0, "shadow_mean": 0.0},
+        "inference_ms": {"p50": 0.25, "p95": 0.25},
+        "fallback_reasons": {},
+        "per_seed_metrics": per_seed_metrics,
+        "rule_matrix_unchanged": True,
+        "promotion_manifest": {
+            "promotion_recommended": False,
+            "promotion_status": "unavailable",
+        },
+    }
+    paired_report_sha = audit_module._producer_json_sha256(paired_report)
+    payload["paired_evaluator_report"] = paired_report
+    payload["paired_evaluator_report_sha256"] = paired_report_sha
+
+    for arm in arms:
+        assert isinstance(arm, dict)
+        receipt = arm["receipt"]
+        spec = arm["arm_specification"]
+        plan = arm["plan"]
+        assert isinstance(receipt, dict)
+        assert isinstance(spec, dict)
+        assert isinstance(plan, dict)
+        receipt["paired_evaluator_report_sha256"] = paired_report_sha
+        receipt["arm_spec_sha256"] = audit_module._producer_json_sha256(spec)
+        receipt["output_plan_payload_sha256"] = (
+            audit_module._producer_json_sha256(plan)
+        )
+
+    applied = manifest["availability"][
+        "treatment_safely_applied_in_isolated_simulation"
+    ]
+    assert isinstance(applied, dict)
+    applied.update(
+        {
+            "value": True,
+            "applied_seed_count": 20,
+            "fallback_seed_count": 0,
+        }
+    )
+    specification_sha = audit_module._producer_json_sha256(specification)
+    payload["specification_sha256"] = specification_sha
+    manifest["specification_sha256"] = specification_sha
+    manifest["execution_receipts"] = [arm["receipt"] for arm in arms]
+    manifest.pop("manifest_sha256", None)
+    manifest["manifest_sha256"] = audit_module._producer_json_sha256(manifest)
+    return payload
+
+
+def _build_d4_v2(
+    records: list[dict[str, object]],
+) -> dict[str, object]:
+    payload = _build_d4(records)
+    payload["schema_version"] = (
+        audit_module.RESERVED_SEED_SOURCE_MANIFEST_SCHEMA_VERSION_V2
+    )
+    manifest = payload["manifest"]
+    assert isinstance(manifest, dict)
+    manifest["schema"] = "d4-region-resource-paired-intervention-manifest-v1"
+    specification = manifest["specification"]
+    assert isinstance(specification, dict)
+    specification.pop("specification_id", None)
+    specification["schema"] = "d4-region-resource-paired-intervention-spec-v1"
+    specification["thresholds"] = {
+        "minimum_confidence": 0.6,
+        "inference_timeout_s": 0.05,
+    }
+    specification["specification_id"] = (
+        "d4-rr-paired-spec-"
+        + audit_module._producer_json_sha256(specification)
+    )
+    specification_sha = audit_module._producer_json_sha256(specification)
+
+    evidence = manifest["arm_evidence"]
+    assert isinstance(evidence, list)
+    for item in evidence:
+        assert isinstance(item, dict)
+        treatment = item["arm"] == "treatment_candidate"
+        item.update(
+            {
+                "schema": audit_module.EXPECTED_D4_ARM_EVIDENCE_SCHEMA_VERSION_V2,
+                "specification_sha256": specification_sha,
+                "candidate_gate_diagnostics_available": True,
+                "minimum_confidence": 0.6,
+                "candidate_latency_limit_ms": 50.0,
+                "candidate_confidence": 0.55 if treatment else None,
+                "candidate_confidence_gate_passed": (
+                    False if treatment else None
+                ),
+                "candidate_ood_passed": True if treatment else None,
+                "candidate_ood_gate_passed": True if treatment else None,
+                "candidate_latency_gate_passed": True if treatment else None,
+                "candidate_finite": True if treatment else None,
+                "candidate_finite_gate_passed": True if treatment else None,
+                "candidate_failure_gate_passed": True if treatment else None,
+                "candidate_thresholds_passed": not treatment,
+                "candidate_safety_projection_passed": not treatment,
+                "isolated_treatment_safe_adopted": False,
+                "rule_fallback_used": treatment,
+                "rejection_reasons": (
+                    [
+                        "candidate_low_confidence",
+                        "candidate_threshold_or_finite_gate_rejected",
+                    ]
+                    if treatment
+                    else []
+                ),
+            }
+        )
+    return payload
+
+
+def _build_v2_fixture(tmp_path: Path) -> ReservedSeedInterventionAuditInputs:
+    source_dir = tmp_path / "source-v2"
+    source_dir.mkdir()
+    records = _build_lineage(EXPECTED_SOURCE_COMMIT_V2)
+    d3 = _build_d3_v2(records)
+    d4 = _build_d4_v2(records)
+    _write_json(source_dir / "d3_offline_paired_intervention.json", d3)
+    _write_json(source_dir / "d4_offline_paired_intervention.json", d4)
+    (source_dir / "source_lineage.jsonl").write_text(
+        "".join(
+            json.dumps(record, sort_keys=True, separators=(",", ":")) + "\n"
+            for record in records
+        ),
+        encoding="utf-8",
+    )
+    (source_dir / "RESERVED_SEED_INTERVENTION_REPORT_CN.md").write_text(
+        "# v2 fixture\n",
+        encoding="utf-8",
+    )
+    artifact_sha = {
+        "d3_execution": _file_sha(
+            source_dir / "d3_offline_paired_intervention.json"
+        ),
+        "d4_execution": _file_sha(
+            source_dir / "d4_offline_paired_intervention.json"
+        ),
+        "report_cn": _file_sha(
+            source_dir / "RESERVED_SEED_INTERVENTION_REPORT_CN.md"
+        ),
+        "source_lineage": _file_sha(source_dir / "source_lineage.jsonl"),
+    }
+    candidate_latencies = [float(index) for index in range(1, 21)]
+    candidate_gate_summary = {
+        "candidate_considered_count": 20,
+        "diagnostics_available_count": 20,
+        "confidence_gate_passed_count": 0,
+        "ood_gate_passed_count": 20,
+        "latency_gate_passed_count": 20,
+        "finite_gate_passed_count": 20,
+        "failure_gate_passed_count": 20,
+        "aggregate_gate_passed_count": 0,
+        "arm_evidence_schema_versions": [
+            audit_module.EXPECTED_D4_ARM_EVIDENCE_SCHEMA_VERSION_V2
+        ],
+        "candidate_confidence": audit_module._gate_distribution_summary(
+            [0.55] * 20
+        ),
+        "candidate_latency_ms": audit_module._gate_distribution_summary(
+            candidate_latencies
+        ),
+        "minimum_confidence_values": [0.6],
+        "candidate_latency_limit_ms_values": [50.0],
+    }
+    manifest = {
+        "schema_version": (
+            audit_module.RESERVED_SEED_SOURCE_MANIFEST_SCHEMA_VERSION_V2
+        ),
+        "experiment_scope": "reserved_seed_isolated_d3_d4_execution",
+        "reserved_seeds": list(range(1000, 1020)),
+        "source_episode_count": 20,
+        "source_git_commits": [EXPECTED_SOURCE_COMMIT_V2],
+        "dirty_source_episode_count": 0,
+        "source_nonfinite_count": 0,
+        "online_truth_use_count": 0,
+        "d3_arm_count": 40,
+        "d4_arm_count": 40,
+        "scenario": "nominal",
+        "scale": 5,
+        "resource_count": 5,
+        "target_count": 5,
+        "duration_s": 2.2,
+        "evidence_availability": {
+            "causal": False,
+            "counterfactual": False,
+            "execution_receipts": True,
+            "physical_outcome": False,
+            "runtime_ack": False,
+        },
+        "admission": {
+            "assist": False,
+            "authority": False,
+            "ppo": False,
+            "rule_fallback": True,
+        },
+        "artifacts_sha256": artifact_sha,
+        "d3_bundle": {
+            "loaded": True,
+            "expected_manifest_sha256": EXPECTED_D3_BUNDLE_MANIFEST_SHA256,
+            "manifest_sha256": EXPECTED_D3_BUNDLE_MANIFEST_SHA256,
+            "state_dict_sha256": EXPECTED_D3_BUNDLE_STATE_SHA256,
+        },
+        "d4_bundle": {
+            "loaded": True,
+            "bundle_manifest_sha256": EXPECTED_D4_BUNDLE_MANIFEST_SHA256,
+            "model_state_sha256": EXPECTED_D4_BUNDLE_STATE_SHA256,
+        },
+        "d3_treatment_summary": {
+            "applied_count": 20,
+            "fallback_reason_counts": {},
+            "rule_fallback_count": 0,
+            "safety_shell_config_sha256": (
+                audit_module.EXPECTED_D3_SAFETY_SHELL_CONFIG_SHA256_V2
+            ),
+            "safety_shell_version": (
+                audit_module.EXPECTED_D3_SAFETY_SHELL_VERSION_V2
+            ),
+        },
+        "d4_treatment_summary": {
+            "rejection_reason_counts": {
+                "candidate_low_confidence": 20,
+                "candidate_threshold_or_finite_gate_rejected": 20,
+            },
+            "rule_fallback_count": 20,
+            "safe_adopted_count": 0,
+            "candidate_gate_summary": candidate_gate_summary,
+        },
+    }
+    _write_json(source_dir / "manifest.json", manifest)
+    checksum_names = (
+        "d3_offline_paired_intervention.json",
+        "d4_offline_paired_intervention.json",
+        "manifest.json",
+        "RESERVED_SEED_INTERVENTION_REPORT_CN.md",
+        "source_lineage.jsonl",
+    )
+    (source_dir / "SHA256SUMS").write_text(
+        "".join(
+            f"{_file_sha(source_dir / name)}  {name}\n"
+            for name in checksum_names
+        ),
+        encoding="ascii",
+    )
+    return ReservedSeedInterventionAuditInputs(
+        source_dir=source_dir,
+        output_dir=tmp_path / "output-v2",
+        audited_at_utc="2026-07-22T12:00:00Z",
+        expected_source_manifest_schema_version=(
+            RESERVED_SEED_AUDIT_PROFILE_BINDINGS["v2"][
+                "source_manifest_schema_version"
+            ]
+        ),
+        expected_source_commit=EXPECTED_SOURCE_COMMIT_V2,
+        expected_checksums_sha256=_file_sha(source_dir / "SHA256SUMS"),
+        expected_source_manifest_sha256=_file_sha(source_dir / "manifest.json"),
+    )
+
+
+def _load_v2_fixture(
+    inputs: ReservedSeedInterventionAuditInputs,
+) -> tuple[
+    dict[str, object],
+    dict[str, object],
+    dict[int, dict[str, object]],
+]:
+    d3 = json.loads(
+        (inputs.source_dir / "d3_offline_paired_intervention.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    d4 = json.loads(
+        (inputs.source_dir / "d4_offline_paired_intervention.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    lineage = {
+        int(record["seed"]): record
+        for record in (
+            json.loads(line)
+            for line in (
+                inputs.source_dir / "source_lineage.jsonl"
+            ).read_text(encoding="utf-8").splitlines()
+        )
+    }
+    return d3, d4, lineage
+
+
 def test_synthetic_audit_recomputes_counts_and_keeps_effect_null(
     tmp_path: Path,
 ) -> None:
     inputs = _build_fixture(tmp_path)
+    assert inputs.expected_source_manifest_schema_version.endswith("-v1")
 
     result = audit_reserved_seed_interventions(inputs)
 
     assert result["status"] == "pass_fail_closed_only"
+    assert result["source"]["schema_version"].endswith("-v1")
     assert result["evidence_availability"] == {
         "execution_receipts": True,
         "runtime_ack": False,
@@ -516,6 +949,60 @@ def test_synthetic_audit_recomputes_counts_and_keeps_effect_null(
     assert result["d4"]["treatment_candidate_latency_ms"]["mean_ms"] == 10.5
     assert result["d4"]["treatment_candidate_latency_ms"]["p95_ms"] == 19.0
     assert result["claims"]["candidate_policy_effectiveness_proven"] is False
+    assert "offline_assignment_comparison" not in result["evidence_availability"]
+
+
+def test_historical_positional_inputs_keep_v1_schema_default(
+    tmp_path: Path,
+) -> None:
+    inputs = _build_fixture(tmp_path)
+    legacy = ReservedSeedInterventionAuditInputs(
+        inputs.source_dir,
+        inputs.output_dir,
+        inputs.audited_at_utc,
+        inputs.expected_source_commit,
+        inputs.expected_checksums_sha256,
+        inputs.expected_source_manifest_sha256,
+        inputs.expected_d3_bundle_manifest_sha256,
+        inputs.expected_d3_bundle_state_sha256,
+        inputs.expected_d4_bundle_manifest_sha256,
+        inputs.expected_d4_bundle_state_sha256,
+    )
+
+    assert legacy.expected_source_manifest_schema_version.endswith("-v1")
+    assert audit_reserved_seed_interventions(legacy)["source"][
+        "schema_version"
+    ].endswith("-v1")
+
+
+def test_synthetic_v2_recomputes_gates_without_ignored_outputs(
+    tmp_path: Path,
+) -> None:
+    inputs = _build_v2_fixture(tmp_path)
+
+    result = audit_reserved_seed_interventions(inputs)
+
+    assert result["schema_version"] == RESERVED_SEED_AUDIT_SCHEMA_VERSION_V2
+    assert result["status"] == "pass_offline_assignment_comparison_only"
+    assert result["d3"]["treatment_applied_count"] == 20
+    assert result["d3"]["treatment_rule_fallback_count"] == 0
+    comparison = result["d3"]["offline_assignment_comparison"]
+    assert comparison["assignment_cost"] == {
+        "control_rule_mean": 12.5,
+        "treatment_assignment_mean": 12.5,
+    }
+    assert comparison["inference_latency_ms"]["p95_ms"] == 0.25
+    gates = result["d4"]["candidate_gate_summary"]
+    assert gates["confidence_gate_passed_count"] == 0
+    assert gates["ood_gate_passed_count"] == 20
+    assert gates["latency_gate_passed_count"] == 20
+    assert gates["finite_gate_passed_count"] == 20
+    assert gates["failure_gate_passed_count"] == 20
+    assert gates["aggregate_gate_passed_count"] == 0
+    assert result["d4"]["treatment_candidate_latency_ms"]["p95_ms"] == 19.0
+    assert gates["candidate_latency_ms"]["p95"] == pytest.approx(19.05)
+    assert result["paired_results"]["outcome"]["value"] is None
+    assert result["paired_results"]["effect"]["value"] is None
 
 
 def test_writer_does_not_mutate_inputs_and_seals_outputs(tmp_path: Path) -> None:
@@ -545,6 +1032,73 @@ def test_writer_does_not_mutate_inputs_and_seals_outputs(tmp_path: Path) -> None
     assert "不证明 D3 或 D4 候选策略有效" in outputs["markdown"].read_text(
         encoding="utf-8"
     )
+
+
+def test_cli_profile_allows_same_schema_digest_overrides(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    inputs = _build_fixture(tmp_path)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "run_reserved_seed_intervention_audit.py",
+            "--profile",
+            "v1",
+            "--source-dir",
+            str(inputs.source_dir),
+            "--output-dir",
+            str(tmp_path / "cli-v1-output"),
+            "--audited-at-utc",
+            "2026-07-22T13:00:00Z",
+            "--expected-source-commit",
+            inputs.expected_source_commit,
+            "--expected-checksums-sha256",
+            inputs.expected_checksums_sha256,
+            "--expected-source-manifest-sha256",
+            inputs.expected_source_manifest_sha256,
+        ],
+    )
+
+    assert audit_cli.main() == 0
+    summary = json.loads(capsys.readouterr().out)
+    assert summary["profile"] == "v1"
+    assert summary["source_schema_version"].endswith("-v1")
+
+
+def test_cli_profile_schema_mismatch_fails_closed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    inputs = _build_fixture(tmp_path)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "run_reserved_seed_intervention_audit.py",
+            "--profile",
+            "v2",
+            "--source-dir",
+            str(inputs.source_dir),
+            "--output-dir",
+            str(tmp_path / "cli-mismatch-output"),
+            "--audited-at-utc",
+            "2026-07-22T13:00:00Z",
+            "--expected-source-commit",
+            inputs.expected_source_commit,
+            "--expected-checksums-sha256",
+            inputs.expected_checksums_sha256,
+            "--expected-source-manifest-sha256",
+            inputs.expected_source_manifest_sha256,
+        ],
+    )
+
+    with pytest.raises(ReservedSeedInterventionAuditError) as error:
+        audit_cli.main()
+
+    assert error.value.code == "source_manifest_profile_schema_mismatch"
 
 
 def test_checksum_tamper_is_rejected(tmp_path: Path) -> None:
@@ -653,3 +1207,233 @@ def test_authoritative_bundle_matches_bound_facts(tmp_path: Path) -> None:
         8.291408499644604
     )
     assert result["paired_results"]["effect"]["value"] is None
+
+
+AUTHORITATIVE_SOURCE_V2 = (
+    Path(__file__).resolve().parents[2]
+    / "scalable_3d_simulation"
+    / "outputs"
+    / "reserved_seed_interventions_nominal_5v5_1000_1019_formal_7891296"
+)
+
+
+def _authoritative_v2_inputs(tmp_path: Path) -> ReservedSeedInterventionAuditInputs:
+    return ReservedSeedInterventionAuditInputs(
+        source_dir=AUTHORITATIVE_SOURCE_V2,
+        output_dir=tmp_path / "authoritative-v2-output",
+        audited_at_utc="2026-07-22T12:00:00Z",
+        expected_source_manifest_schema_version=(
+            RESERVED_SEED_AUDIT_PROFILE_BINDINGS["v2"][
+                "source_manifest_schema_version"
+            ]
+        ),
+        expected_source_commit=EXPECTED_SOURCE_COMMIT_V2,
+        expected_checksums_sha256=EXPECTED_CHECKSUMS_SHA256_V2,
+        expected_source_manifest_sha256=EXPECTED_SOURCE_MANIFEST_SHA256_V2,
+    )
+
+
+@pytest.mark.skipif(
+    not AUTHORITATIVE_SOURCE_V2.is_dir(),
+    reason="main-generated v2 authoritative bundle is not present",
+)
+def test_authoritative_v2_recomputes_gates_and_keeps_physical_effect_null(
+    tmp_path: Path,
+) -> None:
+    result = audit_reserved_seed_interventions(
+        _authoritative_v2_inputs(tmp_path)
+    )
+
+    assert result["schema_version"] == RESERVED_SEED_AUDIT_SCHEMA_VERSION_V2
+    assert result["status"] == "pass_offline_assignment_comparison_only"
+    assert result["evidence_availability"] == {
+        "execution_receipts": True,
+        "runtime_ack": False,
+        "physical_outcome": False,
+        "counterfactual": False,
+        "causal": False,
+        "offline_assignment_comparison": True,
+    }
+    assert result["d3"]["treatment_applied_count"] == 20
+    assert result["d3"]["treatment_rule_fallback_count"] == 0
+    comparison = result["d3"]["offline_assignment_comparison"]
+    assert comparison["assignment_cost"] == {
+        "control_rule_mean": 17.0560260319065,
+        "treatment_assignment_mean": 17.0560260319065,
+    }
+    assert comparison["inference_latency_ms"]["p95_ms"] == pytest.approx(
+        0.3108014891040515
+    )
+    gates = result["d4"]["candidate_gate_summary"]
+    assert gates["candidate_considered_count"] == 20
+    assert gates["confidence_gate_passed_count"] == 0
+    assert gates["ood_gate_passed_count"] == 20
+    assert gates["latency_gate_passed_count"] == 20
+    assert gates["finite_gate_passed_count"] == 20
+    assert gates["failure_gate_passed_count"] == 20
+    assert gates["aggregate_gate_passed_count"] == 0
+    assert result["d4"]["treatment_safe_adopted_count"] == 0
+    assert result["d4"]["treatment_rule_fallback_count"] == 20
+    assert result["paired_results"]["outcome"]["value"] is None
+    assert result["paired_results"]["effect"]["value"] is None
+    assert result["paired_results"]["non_degradation"]["value"] is None
+    assert result["claims"]["candidate_policy_effectiveness_proven"] is False
+    assert result["claims"]["paired_non_degradation_proven"] is False
+
+
+def test_v2_writer_preserves_availability_boundary(tmp_path: Path) -> None:
+    inputs = _build_v2_fixture(tmp_path)
+    outputs = write_reserved_seed_intervention_audit(inputs)
+    sidecar = json.loads(outputs["sidecar"].read_text(encoding="utf-8"))
+    provenance = json.loads(
+        outputs["provenance_manifest"].read_text(encoding="utf-8")
+    )
+
+    expected_schema = inputs.expected_source_manifest_schema_version
+    assert sidecar["integrity"]["expected_bindings"][
+        "source_manifest_schema_version"
+    ] == expected_schema
+    assert provenance["expected_bindings"][
+        "source_manifest_schema_version"
+    ] == expected_schema
+    assert sidecar["availability_details"]["offline_assignment_comparison"][
+        "available"
+    ] is True
+    assert sidecar["availability_details"]["physical_outcome"]["value"] is None
+    assert sidecar["paired_results"]["effect"]["value"] is None
+    assert provenance["schema_version"].endswith(".v2")
+    markdown = outputs["markdown"].read_text(encoding="utf-8")
+    assert "不是通信、节点或资源降级下的策略评估" in markdown
+    assert "不证明 D3 或 D4 候选策略有效" in markdown
+    assert "p95(nearest-rank)" in markdown
+    assert "p95(linear interpolation)" in markdown
+
+
+def test_v2_writer_is_byte_reproducible_for_same_timestamp(
+    tmp_path: Path,
+) -> None:
+    inputs = _build_v2_fixture(tmp_path)
+    first = write_reserved_seed_intervention_audit(inputs)
+    second = write_reserved_seed_intervention_audit(
+        replace(inputs, output_dir=tmp_path / "output-v2-reproduction")
+    )
+
+    assert set(first) == set(second)
+    for name in first:
+        assert first[name].read_bytes() == second[name].read_bytes()
+
+
+def _reseal_d3_after_spec_change(payload: dict[str, object]) -> None:
+    manifest = payload["manifest"]
+    assert isinstance(manifest, dict)
+    specification = manifest["specification"]
+    assert isinstance(specification, dict)
+    arms = payload["arms"]
+    assert isinstance(arms, list)
+    manifest["execution_receipts"] = [arm["receipt"] for arm in arms]
+    specification_sha = audit_module._producer_json_sha256(specification)
+    payload["specification_sha256"] = specification_sha
+    manifest["specification_sha256"] = specification_sha
+    manifest.pop("manifest_sha256", None)
+    manifest["manifest_sha256"] = audit_module._producer_json_sha256(manifest)
+
+
+def test_v2_d3_safety_shell_hash_tamper_is_diagnosed(tmp_path: Path) -> None:
+    inputs = _build_v2_fixture(tmp_path)
+    d3, _, lineage = _load_v2_fixture(inputs)
+    manifest = d3["manifest"]
+    assert isinstance(manifest, dict)
+    specification = manifest["specification"]
+    assert isinstance(specification, dict)
+    pairs = specification["pairs"]
+    assert isinstance(pairs, list)
+    pair = pairs[0]
+    assert isinstance(pair, dict)
+    arms = d3["arms"]
+    assert isinstance(arms, list)
+    for kind in ("control", "treatment"):
+        pair_spec = pair[kind]
+        assert isinstance(pair_spec, dict)
+        pair_spec["safety_shell_config_sha256"] = "0" * 64
+        arm = next(
+            item
+            for item in arms
+            if item["arm_specification"]["seed"] == 1000
+            and item["arm_specification"]["arm_kind"] == kind
+        )
+        arm["arm_specification"]["safety_shell_config_sha256"] = "0" * 64
+        arm["receipt"]["arm_spec_sha256"] = (
+            audit_module._producer_json_sha256(arm["arm_specification"])
+        )
+    _reseal_d3_after_spec_change(d3)
+
+    with pytest.raises(ReservedSeedInterventionAuditError) as error:
+        audit_module._audit_d3(
+            d3,
+            lineage_by_seed=lineage,
+            inputs=inputs,
+            source_schema_version=inputs.expected_source_manifest_schema_version,
+        )
+
+    assert error.value.code == "d3_safety_shell_config_sha256_mismatch"
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "expected_code"),
+    [
+        ("schema", "d4-region-resource-paired-arm-evidence-v1", "d4_v2_arm_evidence_schema_mismatch"),
+        ("candidate_confidence_gate_passed", True, "d4_v2_candidate_confidence_gate_mismatch"),
+    ],
+)
+def test_v2_d4_gate_tamper_is_diagnosed(
+    tmp_path: Path,
+    field: str,
+    value: object,
+    expected_code: str,
+) -> None:
+    inputs = _build_v2_fixture(tmp_path)
+    _, d4, lineage = _load_v2_fixture(inputs)
+    manifest = d4["manifest"]
+    assert isinstance(manifest, dict)
+    evidence = manifest["arm_evidence"]
+    assert isinstance(evidence, list)
+    treatment = next(item for item in evidence if item["arm"] == "treatment_candidate")
+    treatment[field] = value
+
+    with pytest.raises(ReservedSeedInterventionAuditError) as error:
+        audit_module._audit_d4(
+            d4,
+            lineage_by_seed=lineage,
+            inputs=inputs,
+            source_schema_version=inputs.expected_source_manifest_schema_version,
+        )
+
+    assert error.value.code == expected_code
+
+
+def test_v2_manifest_gate_summary_tamper_is_diagnosed(tmp_path: Path) -> None:
+    inputs = _build_v2_fixture(tmp_path)
+    result = audit_reserved_seed_interventions(inputs)
+    manifest = json.loads(
+        (inputs.source_dir / "manifest.json").read_text(encoding="utf-8")
+    )
+    manifest["d4_treatment_summary"]["candidate_gate_summary"][
+        "confidence_gate_passed_count"
+    ] = 1
+    input_sha = {
+        path.name: _file_sha(path)
+        for path in inputs.source_dir.iterdir()
+    }
+
+    with pytest.raises(ReservedSeedInterventionAuditError) as error:
+        audit_module._validate_source_manifest(
+            manifest,
+            lineage_summary=result["source_lineage"],
+            d3_summary=result["d3"],
+            d4_summary=result["d4"],
+            inputs=inputs,
+            input_sha256=input_sha,
+            source_schema_version=inputs.expected_source_manifest_schema_version,
+        )
+
+    assert error.value.code == "source_manifest_d4_summary_mismatch"

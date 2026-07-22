@@ -1,6 +1,49 @@
 # D6 Evaluation Metrics
 
-## 2026-07-21 D3/D4 保留 seed 隔离执行独立审计
+## 2026-07-22 D3/D4 保留 seed v1/v2 独立审计
+
+`reserved_seed_intervention_audit.py` 现按顶层 manifest schema 严格分派历史 v1 与新 v2；v1 常量、旧
+输入和 `pass_fail_closed_only` sidecar 结构保持兼容，CLI 用 `--profile v1|v2` 选择对应带外 commit、
+源 manifest schema、`SHA256SUMS`、manifest 摘要与默认路径，当前默认是 v2。同 schema 的路径和摘要
+允许带外覆盖；profile 与源 schema 不一致时失败关闭。Python API 的既有位置参数顺序和默认 v1 语义
+保持不变。两版都只读校验六文件 inventory、checksum 链、
+20 条 seed `1000-1019` lineage、dirty/nonfinite/online-truth 零值、四类配对共享标志、D3/D4 各
+40 arm、pair input/bundle identity 和审计前后输入集合摘要。
+
+新权威 v2 输入为
+`../scalable_3d_simulation/outputs/reserved_seed_interventions_nominal_5v5_1000_1019_formal_7891296/`，
+源提交 `78912963b67fe86ee9a8d29186b18a9dd60c460c`，`SHA256SUMS`/manifest SHA-256 为
+`821f15035e628d8db86f13c22d93f8e05142c5f00aae9118974a74bdc98b72bc` /
+`d6ef23b28add92e9a24a185ea72a7275e341bd796a2e11930c4d5f46b19a883c`。D3 的 40 个 arm 均绑定
+`d3-offline-intervention-safety-shell-v2` 与配置 SHA
+`d95fff61d31d80dc799ca6a9fcbf1c6e7adbed5a3f3cdd08b2ab38f9365f75b8`；20/20 treatment applied、
+0 fallback。同帧规则基准 assignment cost 均值为 `17.0560260319065/17.0560260319065`，high-threat
+unmet、duplicate、hard violation 和 churn 均为 0，inference P95(linear) 为 `0.310801 ms`。
+
+D4 的 20 个 treatment candidate 均使用 `d4-region-resource-paired-arm-evidence-v2`：considered
+20/20，confidence pass 0/20，OOD/latency/finite/failure pass 均为 20/20，aggregate pass 0/20；
+20/20 因 low confidence 进入规则回退，safe-adopted 为 0。该 nominal 5v5 结果不是降级策略评估。
+同一组 20 条 D4 时延样本有两个明确口径：`treatment_candidate_latency_ms` 的最近秩 P95 为
+`2.241315 ms`，`candidate_gate_summary.candidate_latency_ms` 的线性插值 P95 为 `2.264415 ms`。
+sidecar 只新增 `offline_assignment_comparison=true`；runtime ACK、physical outcome、counterfactual、
+causal 以及 paired physical outcome/effect/non-degradation 继续为 unavailable/null，不能把 D4 零采用
+写成效果 0，也不能据 D3 同帧比较声明候选策略有效。
+
+当前 profile-bound canonical 输出位于
+`outputs/reserved_seed_interventions_nominal_5v5_1000_1019_formal_7891296_d6_profile_bound_v2_audit_20260722/`，
+固定审计时间为 `2026-07-22T04:56:47Z`。producer source commit、`SHA256SUMS` 和 manifest 摘要保持
+`78912963...c460c`、`821f1503...72bc` 和 `d6ef23b2...883c`，未修改 source bundle。
+sidecar/中文报告/provenance/`SHA256SUMS` 文件 SHA-256 分别为
+`f3852251daf02ec87fe878e7fb80aad6f381d8c0756a5c956a32e737a3871c3b`、
+`bd80c1dda496d7d43e2b274628fdbe3a5ef8a4b99c8c354562ba2149b70f9949`、
+`0d50a95daf098bdc732a7d3344ef8340d7fc1828a2df7b971b40313db23f7dc6`、
+`db4af357cbf087b20b28f5c3bcc775b98d711f996bb3040aac0b45ca5ae7b87c`；sidecar 内容 SHA 为
+`c02a345c46ddc642dea7fb6bfcfb24184e7dc2a9f35b754c90324d074b445d2d`。同时间戳 CLI 临时复生与四文件
+逐字节一致，`sha256sum -c` 通过。专项 `18 passed`，D6 全量 `483 passed`，仅有既有 Matplotlib
+`Axes3D` warning。无 ignored output 时仍运行 16 个合成/篡改/
+兼容测试，仅两个正式 v1/v2 bundle 复算按权威输入存在性跳过。
+
+## 2026-07-21 D3/D4 保留 seed 隔离执行独立审计（历史 v1）
 
 `reserved_seed_intervention_audit.py` 是 D6 对 main 生成的 D3/D4 保留 seed 隔离执行制品的独立只读
 consumer。当前权威输入为
@@ -33,7 +76,9 @@ sidecar 显式输出 `execution_receipts=true`，`runtime_ack/physical_outcome/c
 
 公开入口为 `ReservedSeedInterventionAuditInputs`、`audit_reserved_seed_interventions()`、
 `write_reserved_seed_intervention_audit()` 和 `render_reserved_seed_intervention_audit_markdown()`；CLI 为
-`scripts/run_reserved_seed_intervention_audit.py`。正式输出位于
+`scripts/run_reserved_seed_intervention_audit.py`。下列目录是 schema binding 加入序列化 provenance
+之前发布的历史 v1 输出。当前 consumer 重新生成 v1 时会包含 source schema binding，属于新的
+profile-bound provenance，不承诺复现历史四文件哈希。历史输出位于
 `outputs/reserved_seed_interventions_nominal_5v5_1000_1019_d6_audit_20260721/`，包含 JSON sidecar、
 中文 Markdown、provenance manifest 和 `SHA256SUMS`。审计时间为 `2026-07-22T04:06:26Z`
 （America/Los_Angeles 日期 2026-07-21）；专项 `7 passed`，D6 全量 `472 passed`，仅有既有
