@@ -322,8 +322,14 @@ def test_process_batch_matches_streaming_across_fixed_lag_checkpoint_boundary() 
 
 def test_process_batch_reduces_history_replays_for_dense_same_time_frame() -> None:
     targets = _targets(5)
-    sequential = FusionAdapter(association_gate=50.0)
-    batched = FusionAdapter(association_gate=50.0)
+    sequential = FusionAdapter(
+        association_gate=50.0,
+        direct_checkpoint_state_queries=False,
+    )
+    batched = FusionAdapter(
+        association_gate=50.0,
+        direct_checkpoint_state_queries=False,
+    )
     _seed_tracks((sequential, batched), targets)
     sequential_replays = _count_replay_calls(sequential)
     batched_replays = _count_replay_calls(batched)

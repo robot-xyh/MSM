@@ -4,6 +4,33 @@ Offline research module for radar, acoustic, EO, and optional synthetic lidar he
 
 ## 当前性能与治理证据（2026-07-22）
 
+### 第三阶段：长时固定滞后检查点复用
+
+本阶段直接回放 clean 长时对照的冻结 `sensor.observations`，不重新生成场景，也不读取在线
+truth。输入 SHA-256 为
+`3efa561a07bf0cdcd74d23570ee23ca173f56ddaf632c89258d02c20c299a51a`，包含 764 个扫描、
+12,107 条匿名观测和 202 条终态航迹；扫描重排 49 次，峰值缓冲 64 个扫描/825 条观测，拒绝、
+过旧和溢出均为 0，在线 truth 使用为 0。
+
+长时增长来自完整缓存历史仍被逐项查询、固定滞后重基后丢失可复用后缀，以及一致性证据对未变化
+前缀重复执行滤波。默认路径现采用完整检查点二分状态查询、固定滞后检查点后缀复用、受失效逻辑
+维护的合法前缀快路径和缓存一致性证据标量刷新。6 s 固定滞后窗、观测数量和顺序、双时间戳、
+covariance、关联/创新门限、`GlobalTrack` 字段和在线真值隔离均未改变。
+
+相同输入的旧路径与优化路径逐扫描、终态航迹和一致性证据哈希完全一致。纯融合墙钟为
+`157.237 s -> 107.449 s`，加速 1.463 倍；history replay 为 `170,106 -> 13,397`，replay
+filter update 为 `120,440 -> 9,549`。候选对和创新求解均保持 2,393,969 次。D1 同时提供固定
+大小的 `FusionAdapter.fusion_performance_diagnostics()` 累计诊断快照，其中包含
+`replay_filter_update_count`、`replay_checkpoint_reuse_count` 和检查点快路径计数。优化路径实际
+执行检查点状态查询 152,861 次、固定滞后后缀复用 110,891 次、合法前缀快路径 300,024 次和
+缓存一致性刷新 194,916 次；调用方可按 episode 采样，不需要保存逐扫描历史。
+
+发布审计记录 764 条 `modules.d1.fused_tracks`，共 186.2 MiB；其中只有 407 个唯一融合时刻，
+357 条可在同一融合时刻保留最后后验，另有 294 条连续未变化快照。D1 仍逐扫描完成有序融合并
+生成完整结果。按融合时刻合并全量快照、以 heartbeat/lineage sidecar 记录未变化状态只是给 main
+的调度建议，**本阶段未修改 main，也未实现发布节流或合并**。详细证据见
+`reports/D1_LONG_DURATION_PERFORMANCE_BENCHMARK_CN.md` 和对应 JSON。
+
 ### 第二阶段：扫描关联工作区
 
 第一阶段增量后验成为默认路径后，clean 提交 `492979e` 的 200 规模五个 seed 中，D1 fusion

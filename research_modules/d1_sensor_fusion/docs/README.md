@@ -4,6 +4,14 @@
 
 ## 当前证据索引（2026-07-22）
 
+长时固定滞后专项直接回放 10 s 冻结输入，SHA-256 为
+`3efa561a07bf0cdcd74d23570ee23ca173f56ddaf632c89258d02c20c299a51a`，包含 764 个扫描、
+12,107 条匿名观测和 202 条终态航迹。旧路径与优化路径保持逐扫描、终态和一致性证据哈希
+一致；history replay `170,106 -> 13,397`，filter update `120,440 -> 9,549`，纯融合墙钟
+`157.237 s -> 107.449 s`。报告位于
+`../reports/D1_LONG_DURATION_PERFORMANCE_BENCHMARK_CN.md` 和对应 JSON。发布侧 186.2 MiB
+全量快照的合并仍是 main-owned 建议，当前未实现。
+
 第二阶段扫描关联工作区使用 clean `492979e` 的 seed 42000 冻结输入，SHA-256 为
 `bc539686b130d96c63b76b9161fadbae2dba59de44cb61ac80d92f2ea1018406`。current-default 与
 优化路径保持 86 个逐扫描语义、最终 201 条航迹和 consistency evidence 哈希一致；候选对和
@@ -64,5 +72,7 @@ D1 侧解释见本目录各算法/AirSim 文档和 `../reports/EXPERIMENT_REPORT
 - `../reports/d1_scan_fusion_performance_benchmark_20260722.json`
 - `../reports/D1_SCAN_ASSOCIATION_PERFORMANCE_BENCHMARK_CN.md`
 - `../reports/d1_scan_association_performance_benchmark_20260722.json`
+- `../reports/D1_LONG_DURATION_PERFORMANCE_BENCHMARK_CN.md`
+- `../reports/d1_long_duration_performance_benchmark_20260722.json`
 
 更新文档时不要移动或重命名上述图表，避免破坏报告中的相对链接。

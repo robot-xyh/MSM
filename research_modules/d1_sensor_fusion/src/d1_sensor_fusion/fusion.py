@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from bisect import bisect_right
 from collections import Counter, deque
 from dataclasses import asdict, dataclass, field, is_dataclass, replace
 from typing import Any, Iterable
@@ -30,6 +31,7 @@ from .types import (
     COMMUNICATION_METADATA_KEYS,
     FusionBatchResult,
     FusionBatchSummary,
+    FusionPerformanceDiagnostics,
     FusionQualityRegionSummary,
     GlobalTrack,
     LatencyAuditSummary,
@@ -185,6 +187,7 @@ class TrackRecord:
     archived_observations: list[SensorObservation] = field(default_factory=list)
     accepted_observer_scan_keys: set[tuple[str, str, str]] = field(default_factory=set)
     replay_checkpoints: list["_ReplayCheckpoint"] = field(default_factory=list)
+    replay_checkpoints_complete: bool = False
     current_state_covariance_limited: bool = False
     metadata: dict = field(default_factory=dict)
 
@@ -255,6 +258,11 @@ class _BatchProcessingContext:
     association_innovation_solve_count: int = 0
     association_radar_track_state_build_count: int = 0
     association_radar_observation_state_build_count: int = 0
+    checkpoint_state_query_count: int = 0
+    fixed_lag_rebase_count: int = 0
+    fixed_lag_checkpoint_suffix_reuse_count: int = 0
+    replay_checkpoint_prefix_fast_path_count: int = 0
+    cached_consistency_refresh_count: int = 0
 
 
 class FusionAdapter:
@@ -293,6 +301,10 @@ class FusionAdapter:
         incremental_replay_cache: bool = True,
         shared_publication_audit_snapshot: bool = True,
         scan_association_model_cache: bool = True,
+        direct_checkpoint_state_queries: bool = True,
+        fixed_lag_checkpoint_suffix_reuse: bool = True,
+        trusted_replay_checkpoint_prefix: bool = True,
+        cached_consistency_prefix_refresh: bool = True,
     ) -> None:
         self.process_noise = float(process_noise)
         self.bucket_size = float(bucket_size)
@@ -357,6 +369,16 @@ class FusionAdapter:
             shared_publication_audit_snapshot
         )
         self.scan_association_model_cache = bool(scan_association_model_cache)
+        self.direct_checkpoint_state_queries = bool(direct_checkpoint_state_queries)
+        self.fixed_lag_checkpoint_suffix_reuse = bool(
+            fixed_lag_checkpoint_suffix_reuse
+        )
+        self.trusted_replay_checkpoint_prefix = bool(
+            trusted_replay_checkpoint_prefix
+        )
+        self.cached_consistency_prefix_refresh = bool(
+            cached_consistency_prefix_refresh
+        )
         self.tracks: dict[str, TrackRecord] = {}
         self.sensor_health: dict[str, SensorHealthState] = {}
         self.current_time = 0.0
@@ -383,6 +405,7 @@ class FusionAdapter:
         self._consistency_evidence: dict[str, OnlineConsistencyEvidenceRecord] = {}
         self._consistency_replay_revision = 0
         self._consistency_capture_context: tuple[str, int] | None = None
+        self._performance_totals: Counter[str] = Counter()
 
     def _bucket(self, timestamp: float) -> int:
         """Return the fixed-lag cache bucket for a timestamp."""
@@ -522,6 +545,11 @@ class FusionAdapter:
                 context.accepted_update_count - context.finalization_replay_count,
             ),
             published_at=float(self.current_time),
+        )
+        self._accumulate_batch_performance(
+            context,
+            observation_count=len(prepared),
+            scan_batch=False,
         )
         return FusionBatchResult(tracks=tracks, summary=summary)
 
@@ -689,6 +717,11 @@ class FusionAdapter:
                 context.accepted_update_count - context.finalization_replay_count,
             ),
             published_at=float(self.current_time),
+        )
+        self._accumulate_batch_performance(
+            context,
+            observation_count=len(prepared),
+            scan_batch=True,
         )
         return FusionBatchResult(tracks=tracks, summary=summary)
 
@@ -942,6 +975,7 @@ class FusionAdapter:
             record,
             current_time,
         )
+        record.replay_checkpoints_complete = self.incremental_replay_cache
         record.current_state = state
         record.current_state_covariance_limited = False
         record.recent_nis = deque(nises[-50:], maxlen=50)
@@ -952,6 +986,7 @@ class FusionAdapter:
         )
         self._limit_record_covariance(record)
         self._prune_record(record, current_time)
+        record.replay_checkpoints_complete = self.incremental_replay_cache
 
     def _compensate_pre_checkpoint_oosm(
         self,
@@ -1020,6 +1055,77 @@ class FusionAdapter:
             self._to_global_track(record, publication_context)
             for record in self.tracks.values()
         ]
+
+    def fusion_performance_diagnostics(self) -> FusionPerformanceDiagnostics:
+        """Return fixed-size cumulative counters for episode-level profiling."""
+
+        totals = self._performance_totals
+        return FusionPerformanceDiagnostics(
+            batch_count=int(totals["batch_count"]),
+            scan_batch_count=int(totals["scan_batch_count"]),
+            observation_count=int(totals["observation_count"]),
+            history_replay_count=int(totals["history_replay_count"]),
+            origin_replay_count=int(totals["origin_replay_count"]),
+            finalization_replay_count=int(totals["finalization_replay_count"]),
+            replay_filter_update_count=int(totals["replay_filter_update_count"]),
+            replay_checkpoint_reuse_count=int(
+                totals["replay_checkpoint_reuse_count"]
+            ),
+            checkpoint_state_query_count=int(totals["checkpoint_state_query_count"]),
+            fixed_lag_rebase_count=int(totals["fixed_lag_rebase_count"]),
+            fixed_lag_checkpoint_suffix_reuse_count=int(
+                totals["fixed_lag_checkpoint_suffix_reuse_count"]
+            ),
+            replay_checkpoint_prefix_fast_path_count=int(
+                totals["replay_checkpoint_prefix_fast_path_count"]
+            ),
+            cached_consistency_refresh_count=int(
+                totals["cached_consistency_refresh_count"]
+            ),
+            global_track_materialization_count=int(
+                totals["global_track_materialization_count"]
+            ),
+            sensor_health_snapshot_build_count=int(
+                totals["sensor_health_snapshot_build_count"]
+            ),
+            association_candidate_pair_count=int(
+                totals["association_candidate_pair_count"]
+            ),
+            association_innovation_solve_count=int(
+                totals["association_innovation_solve_count"]
+            ),
+            current_track_count=len(self.tracks),
+            current_time=float(self.current_time),
+        )
+
+    def _accumulate_batch_performance(
+        self,
+        context: _BatchProcessingContext,
+        *,
+        observation_count: int,
+        scan_batch: bool,
+    ) -> None:
+        totals = self._performance_totals
+        totals["batch_count"] += 1
+        totals["scan_batch_count"] += int(scan_batch)
+        totals["observation_count"] += int(observation_count)
+        for name in (
+            "history_replay_count",
+            "origin_replay_count",
+            "finalization_replay_count",
+            "replay_filter_update_count",
+            "replay_checkpoint_reuse_count",
+            "checkpoint_state_query_count",
+            "fixed_lag_rebase_count",
+            "fixed_lag_checkpoint_suffix_reuse_count",
+            "replay_checkpoint_prefix_fast_path_count",
+            "cached_consistency_refresh_count",
+            "global_track_materialization_count",
+            "sensor_health_snapshot_build_count",
+            "association_candidate_pair_count",
+            "association_innovation_solve_count",
+        ):
+            totals[name] += int(getattr(context, name))
 
     def _track_publication_context(self) -> _TrackPublicationContext:
         context = self._batch_context
@@ -1262,6 +1368,7 @@ class FusionAdapter:
             hits=1,
             origin_state=initial.copy(),
             origin_observation_id=observation.observation_id,
+            replay_checkpoints_complete=self.incremental_replay_cache,
             metadata={
                 **(
                     {"truth_id": observation.metadata["truth_id"]}
@@ -1738,11 +1845,46 @@ class FusionAdapter:
 
         if record.checkpoint_active and timestamp < record.initial_state.timestamp - 1e-9:
             state = self._replay_from_origin(record, timestamp)[0]
+        elif (
+            self.incremental_replay_cache
+            and self.direct_checkpoint_state_queries
+            and record.replay_checkpoints_complete
+        ):
+            self._refresh_initial(record)
+            if record.replay_checkpoints_complete:
+                if context is not None:
+                    context.checkpoint_state_query_count += 1
+                state = self._state_from_complete_replay_checkpoints(
+                    record,
+                    timestamp,
+                )
+            else:
+                state, _, _ = self._replay_record(record, timestamp)
         else:
             state, _, _ = self._replay_record(record, timestamp)
         if context is not None:
             context.state_cache[key] = state.copy()
         return state
+
+    def _state_from_complete_replay_checkpoints(
+        self,
+        record: TrackRecord,
+        timestamp: float,
+    ) -> EKFState:
+        """Query an exact state without walking an already-cached history."""
+
+        cutoff = float(timestamp) + 1.0e-9
+        checkpoint_count = bisect_right(
+            record.replay_checkpoints,
+            cutoff,
+            key=lambda checkpoint: checkpoint.sort_key[0],
+        )
+        state = (
+            record.initial_state.copy()
+            if checkpoint_count == 0
+            else record.replay_checkpoints[checkpoint_count - 1].posterior.copy()
+        )
+        return predict_to(state, timestamp, self.process_noise)
 
     def _mark_batch_history_changed(
         self,
@@ -1844,6 +1986,33 @@ class FusionAdapter:
                 previous=self._consistency_evidence.get(observation.observation_id),
             )
         )
+
+    def _refresh_cached_consistency_evidence_if_enabled(
+        self,
+        record: TrackRecord,
+        observation: SensorObservation | None,
+    ) -> bool:
+        """Advance unchanged cached evidence without rebuilding its model/state."""
+
+        context = self._consistency_capture_context
+        if (
+            not self.cached_consistency_prefix_refresh
+            or observation is None
+            or context is None
+            or context[0] != record.track_id
+        ):
+            return False
+        previous = self._consistency_evidence.get(observation.observation_id)
+        if previous is None or previous.source_global_track_id != record.track_id:
+            return False
+        self._consistency_evidence[observation.observation_id] = replace(
+            previous,
+            replay_revision=context[1],
+            replay_count=previous.replay_count + 1,
+        )
+        if self._batch_context is not None:
+            self._batch_context.cached_consistency_refresh_count += 1
+        return True
 
     def _capture_consistency_update_if_enabled(
         self,
@@ -1956,11 +2125,15 @@ class FusionAdapter:
             ),
             None,
         )
-        self._capture_consistency_initialization_if_enabled(
+        if not self._refresh_cached_consistency_evidence_if_enabled(
             record,
             initial_observation,
-            state,
-        )
+        ):
+            self._capture_consistency_initialization_if_enabled(
+                record,
+                initial_observation,
+                state,
+            )
         eligible = [
             observation
             for observation in sorted_observations
@@ -1993,17 +2166,24 @@ class FusionAdapter:
             state = predict_to(state, until_time, self.process_noise)
             return state, nises, tuple(gated_observation_ids)
 
-        matching_prefix = 0
         prefix_limit = min(len(eligible), len(record.replay_checkpoints))
-        while matching_prefix < prefix_limit:
-            observation = eligible[matching_prefix]
-            checkpoint = record.replay_checkpoints[matching_prefix]
-            if (
-                checkpoint.observation_id != observation.observation_id
-                or checkpoint.sort_key != _observation_sort_key(observation)
-            ):
-                break
-            matching_prefix += 1
+        if self.trusted_replay_checkpoint_prefix:
+            matching_prefix = prefix_limit
+            if self._batch_context is not None:
+                self._batch_context.replay_checkpoint_prefix_fast_path_count += (
+                    matching_prefix
+                )
+        else:
+            matching_prefix = 0
+            while matching_prefix < prefix_limit:
+                observation = eligible[matching_prefix]
+                checkpoint = record.replay_checkpoints[matching_prefix]
+                if (
+                    checkpoint.observation_id != observation.observation_id
+                    or checkpoint.sort_key != _observation_sort_key(observation)
+                ):
+                    break
+                matching_prefix += 1
 
         if matching_prefix < prefix_limit:
             del record.replay_checkpoints[matching_prefix:]
@@ -2012,17 +2192,22 @@ class FusionAdapter:
             eligible[:matching_prefix],
             record.replay_checkpoints[:matching_prefix],
         ):
-            state = checkpoint.posterior.copy()
             nises.append(checkpoint.nis)
             if checkpoint.gated:
                 gated_observation_ids.append(observation.observation_id)
-            self._capture_consistency_update_if_enabled(
+            if not self._refresh_cached_consistency_evidence_if_enabled(
                 record,
                 observation,
-                state,
-                checkpoint.nis,
-                checkpoint.gated,
-            )
+            ):
+                self._capture_consistency_update_if_enabled(
+                    record,
+                    observation,
+                    checkpoint.posterior,
+                    checkpoint.nis,
+                    checkpoint.gated,
+                )
+        if matching_prefix:
+            state = record.replay_checkpoints[matching_prefix - 1].posterior.copy()
         if self._batch_context is not None:
             self._batch_context.replay_checkpoint_reuse_count += matching_prefix
 
@@ -2063,6 +2248,7 @@ class FusionAdapter:
         *,
         from_sort_key: tuple[float, float, str] | None = None,
     ) -> None:
+        record.replay_checkpoints_complete = False
         if from_sort_key is None:
             record.replay_checkpoints.clear()
             return
@@ -2126,7 +2312,18 @@ class FusionAdapter:
             return
 
         state_before_rebase = record.current_state.copy()
-        checkpoint, _, _ = self._replay_record(record, checkpoint_timestamp)
+        can_reuse_suffix = (
+            self.incremental_replay_cache
+            and self.fixed_lag_checkpoint_suffix_reuse
+            and record.replay_checkpoints_complete
+        )
+        if can_reuse_suffix:
+            checkpoint = self._state_from_complete_replay_checkpoints(
+                record,
+                checkpoint_timestamp,
+            )
+        else:
+            checkpoint, _, _ = self._replay_record(record, checkpoint_timestamp)
         discarded = [
             observation
             for observation in record.observations
@@ -2151,15 +2348,31 @@ class FusionAdapter:
             f"fixed-lag-checkpoint:{record.track_id}:{checkpoint_timestamp:.9f}"
         )
         record.observations = retained
-        self._invalidate_replay_checkpoints(record)
+        if can_reuse_suffix:
+            record.replay_checkpoints = [
+                checkpoint_item
+                for checkpoint_item in record.replay_checkpoints
+                if checkpoint_item.sort_key[0] > checkpoint_timestamp + 1.0e-9
+            ]
+            context = self._batch_context
+            if context is not None:
+                context.fixed_lag_checkpoint_suffix_reuse_count += len(
+                    record.replay_checkpoints
+                )
+        else:
+            self._invalidate_replay_checkpoints(record)
         record.checkpoint_active = True
         record.checkpoint_count += 1
+        context = self._batch_context
+        if context is not None:
+            context.fixed_lag_rebase_count += 1
 
         rebased_state, rebased_nises, gated_observation_ids = self._replay_record(
             record,
             current_time,
         )
         record.current_state = rebased_state
+        record.replay_checkpoints_complete = self.incremental_replay_cache
         record.current_state_covariance_limited = False
         record.recent_nis = deque(rebased_nises[-50:], maxlen=50)
         self._update_filter_gate_metadata(

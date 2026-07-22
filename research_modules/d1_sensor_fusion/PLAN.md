@@ -2,6 +2,31 @@
 
 ## 当前性能治理状态与后续计划（2026-07-22）
 
+长时固定滞后专项已经完成 D1-owned 等价优化。冻结输入 SHA-256 为
+`3efa561a07bf0cdcd74d23570ee23ca173f56ddaf632c89258d02c20c299a51a`，包含 764 个扫描和
+12,107 条匿名观测，在线 truth 使用为 0。实施和验收状态如下：
+
+1. **增长来源已定位并治理**：完整后验检查点支持二分状态查询；固定滞后重基保留仍有效的检查点
+   后缀；失效逻辑维护合法缓存前缀；未变化一致性证据只刷新 revision/replay count。算法主线和
+   6 s 固定滞后窗未改变。
+2. **长时语义验收通过**：旧路径与优化路径的 764 个逐扫描摘要、202 条终态航迹和一致性证据
+   哈希一致，candidate pair/innovation solve 均保持 2,393,969，在线 truth 使用为 0。
+3. **确定性操作数下降**：history replay `170,106 -> 13,397`，replay filter update
+   `120,440 -> 9,549`；纯融合墙钟 `157.237 s -> 107.449 s`，本机单次 1.463 倍。
+4. **有界诊断已落地**：`fusion_performance_diagnostics()` 以固定大小累计标量暴露 filter update、
+   checkpoint reuse、状态查询、重基和物化计数，供 episode profiler 采样，不携带航迹历史。当前
+   冻结输入实际记录状态查询 152,861、后缀复用 110,891、合法前缀快路径 300,024 和缓存一致性
+   刷新 194,916 次。
+5. **发布边界明确**：764 条全量快照约 186.2 MiB，407 个唯一融合时刻，357 条同融合时刻可合并，
+   294 条连续未变化。按唯一融合时刻保留最后后验是 main 调度建议，当前未实现；D1 不直接修改
+   main 发布策略。
+6. **剩余系统 P1**：main 需在不丢规范状态、身份、生命周期和 lineage 事件的前提下评估发布合并，
+   并从 clean commit 复跑完整多 seed 全栈。D1-only 1.463 倍不能写成 200v200 系统实时。
+
+专项报告为 `reports/D1_LONG_DURATION_PERFORMANCE_BENCHMARK_CN.md` 及对应 JSON。本阶段没有
+AirSim producer、topic、reset/episode 或相机接口变化，因此 `docs/AIRSIM_INTEGRATION_PLAN.md`
+已检查，无需修改。
+
 第二阶段扫描关联优化已经完成。clean 提交 `492979e` 的 200 规模五 seed 第一阶段默认路径
 D1 fusion 为 10.096/13.693/12.895/11.973/11.856 s，均值 12.103 s。seed 42000 冻结输入
 SHA-256 为 `bc539686b130d96c63b76b9161fadbae2dba59de44cb61ac80d92f2ea1018406`；输入仍为

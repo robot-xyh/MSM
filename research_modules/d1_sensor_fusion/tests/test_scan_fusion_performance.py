@@ -18,6 +18,9 @@ from d1_sensor_fusion.types import FusionBatchResult, SensorObservation
 
 
 _OPERATION_SUMMARY_FIELDS = (
+    "history_replay_count",
+    "origin_replay_count",
+    "finalization_replay_count",
     "state_cache_hit_count",
     "state_cache_miss_count",
     "replay_filter_update_count",
@@ -346,6 +349,67 @@ def test_pre_checkpoint_oosm_rebuild_matches_uncached_reference() -> None:
     )
     assert optimized.pre_checkpoint_oosm_replay_count == 1
     assert optimized_result.summary.origin_replay_count >= 1
+
+
+def test_long_fixed_lag_checkpoint_reuse_is_exact_and_bounded() -> None:
+    reference = Scalable3DFusionAdapter(
+        association_gate=40.0,
+        buffer_horizon=0.5,
+        direct_checkpoint_state_queries=False,
+        fixed_lag_checkpoint_suffix_reuse=False,
+        trusted_replay_checkpoint_prefix=False,
+        cached_consistency_prefix_refresh=False,
+    )
+    optimized = Scalable3DFusionAdapter(
+        association_gate=40.0,
+        buffer_horizon=0.5,
+    )
+    reference_filter_updates = 0
+    optimized_filter_updates = 0
+    optimized_checkpoint_reuse = 0
+
+    for scan_index in range(8):
+        timestamp = 0.2 * scan_index
+        scan = _radar_scan(
+            1,
+            measurement_timestamp=timestamp,
+            arrival_timestamp=timestamp + 0.1,
+            scan_id=f"long-fixed-lag-{scan_index}",
+        )
+        reference_result = reference.process_scan_batch(scan)
+        optimized_result = optimized.process_scan_batch(scan)
+        _assert_semantically_equal(
+            reference,
+            optimized,
+            reference_result,
+            optimized_result,
+        )
+        reference_filter_updates += (
+            reference_result.summary.replay_filter_update_count
+        )
+        optimized_filter_updates += (
+            optimized_result.summary.replay_filter_update_count
+        )
+        optimized_checkpoint_reuse += (
+            optimized_result.summary.replay_checkpoint_reuse_count
+        )
+
+    diagnostics = optimized.fusion_performance_diagnostics()
+    assert optimized_filter_updates < reference_filter_updates
+    assert optimized_checkpoint_reuse > 0
+    assert diagnostics.batch_count == 8
+    assert diagnostics.scan_batch_count == 8
+    assert diagnostics.observation_count == 8
+    assert diagnostics.replay_filter_update_count == optimized_filter_updates
+    assert diagnostics.checkpoint_state_query_count > 0
+    assert diagnostics.fixed_lag_rebase_count > 0
+    assert diagnostics.fixed_lag_checkpoint_suffix_reuse_count > 0
+    assert diagnostics.replay_checkpoint_prefix_fast_path_count > 0
+    assert diagnostics.cached_consistency_refresh_count > 0
+    assert diagnostics.current_track_count == 1
+    assert diagnostics.to_dict()["schema_version"] == (
+        "d1.fusion_performance_diagnostics.v1"
+    )
 
 
 def test_published_track_arrays_do_not_alias_cached_posterior() -> None:

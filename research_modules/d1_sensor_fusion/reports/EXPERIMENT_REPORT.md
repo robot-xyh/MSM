@@ -1,5 +1,49 @@
 # D1 Sensor Fusion Offline Experiment Report
 
+## 2026-07-22 长时固定滞后性能对照
+
+### 输入与验收
+
+本次直接使用 clean 长时场景的 10 s 冻结在线观测。文件 SHA-256 为
+`3efa561a07bf0cdcd74d23570ee23ca173f56ddaf632c89258d02c20c299a51a`，包含 764 个扫描、
+12,107 条匿名观测和 202 条终态航迹。扫描重排 49 次，峰值缓冲 64 个扫描/825 条观测，所有
+扫描均释放，在线 truth 使用为 0。旧路径关闭四项长时缓存优化，优化路径全部开启；两者使用相同
+输入、相同扫描顺序和相同 6 s 固定滞后窗。
+
+### 结果
+
+| 指标 | 旧路径 | 优化路径 |
+| --- | ---: | ---: |
+| 纯融合墙钟 | 157.237 s | 107.449 s |
+| history replay | 170,106 | 13,397 |
+| replay filter update | 120,440 | 9,549 |
+| replay checkpoint reuse | 3,551,291 | 300,024 |
+| checkpoint state query | 0 | 152,861 |
+| fixed-lag suffix reuse | 0 | 110,891 |
+| trusted prefix fast path | 0 | 300,024 |
+| cached consistency refresh | 0 | 194,916 |
+| candidate pair | 2,393,969 | 2,393,969 |
+| innovation solve | 2,393,969 | 2,393,969 |
+
+墙钟加速为 1.463 倍；history replay 和 filter update 分别下降 92.12% 和 92.07%。逐扫描语义、
+终态航迹和一致性证据哈希均一致，说明操作数下降来自合法检查点复用，没有减少观测或改变业务
+输出。累计计数可通过固定大小的 `fusion_performance_diagnostics()` 读取，便于 episode profiler
+补充 summary 缺失的 filter update/checkpoint reuse 证据。
+
+### 发布审计
+
+`modules.d1.fused_tracks` 共 764 条、195,260,766 B（186.2 MiB）。日志包含 94 个唯一 runtime
+时刻、407 个唯一融合时刻、470 个唯一航迹快照；357 条记录可在同一融合时刻合并，294 条与前一
+快照相同。D1 的逐扫描有序融合仍然必要。按唯一融合时刻持久化最后后验，并以 heartbeat/lineage
+sidecar 保存未变化证据，是给 main 的后续建议；本次没有修改 main，也没有实现发布合并。
+
+### 结论边界
+
+本专项关闭的是冻结输入下长时固定滞后重复计算的 D1-owned 缺口。它不关闭 clean 完整全栈多
+seed、端到端实时倍率、峰值常驻内存、AirSim、RMSE、NEES、NIS 或物理拦截验收。详细机器可读
+证据见 `D1_LONG_DURATION_PERFORMANCE_BENCHMARK_CN.md` 和
+`d1_long_duration_performance_benchmark_20260722.json`。
+
 ## 2026-07-22 扫描关联工作区优化
 
 ### 基线与输入

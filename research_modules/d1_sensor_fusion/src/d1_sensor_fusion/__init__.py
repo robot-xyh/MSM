@@ -81,6 +81,14 @@ from .long_replay import (
     build_long_replay_scenario,
     summarize_long_replay,
 )
+from .long_duration_performance import (
+    FUSED_TRACK_PUBLICATION_AUDIT_SCHEMA_VERSION,
+    LONG_DURATION_PERFORMANCE_SCHEMA_VERSION,
+    audit_fused_track_publications,
+    compare_long_duration_variants,
+    run_long_duration_variant,
+    write_long_duration_performance_report,
+)
 from .local_image_track import sensor_observation_from_local_image_track
 from .observations import RadarCovarianceConfig
 from .online_anonymization import (
@@ -160,6 +168,7 @@ from .types import (
     CovarianceIntersectionSummary,
     FusionBatchResult,
     FusionBatchSummary,
+    FusionPerformanceDiagnostics,
     FusionQualityRegionSummary,
     FusionQualityRegionWindowSummary,
     GlobalTrack,
@@ -201,8 +210,10 @@ __all__ = [
     "FusionAdapter",
     "FusionBatchResult",
     "FusionBatchSummary",
+    "FusionPerformanceDiagnostics",
     "FusionQualityRegionSummary",
     "FusionQualityRegionWindowSummary",
+    "FUSED_TRACK_PUBLICATION_AUDIT_SCHEMA_VERSION",
     "GlobalTrack",
     "LONG_REPLAY_CONFIG_VERSION",
     "LONG_REPLAY_OFFLINE_TRUTH_SCHEMA_VERSION",
@@ -210,6 +221,7 @@ __all__ = [
     "LONG_REPLAY_SCENARIO_VERSION",
     "LONG_REPLAY_SUMMARY_SCHEMA_VERSION",
     "LONG_REPLAY_THRESHOLD_PROFILE_VERSION",
+    "LONG_DURATION_PERFORMANCE_SCHEMA_VERSION",
     "LatencyAuditSummary",
     "LosIntersectionAngle",
     "LongReplayConfig",
@@ -265,6 +277,7 @@ __all__ = [
     "TrackLevel",
     "TrackUncertaintySummary",
     "annotate_covariance_growth_rates",
+    "audit_fused_track_publications",
     "anonymize_online_observations",
     "assert_scalable_online_payload_identity_free",
     "assert_online_observations_identity_free",
@@ -276,6 +289,7 @@ __all__ = [
     "consistency_range_bin",
     "compare_scan_association_variants",
     "compare_scan_fusion_variants",
+    "compare_long_duration_variants",
     "covariance_intersection",
     "file_sha256",
     "evaluate_offline_consistency",
@@ -297,6 +311,7 @@ __all__ = [
     "replay_sensor_observations_jsonl",
     "run_p2_isolated_benchmark",
     "run_scan_fusion_variant",
+    "run_long_duration_variant",
     "sensor_observation_from_csv_row",
     "sensor_observation_from_jsonl_record",
     "sensor_observation_from_local_image_track",
@@ -315,6 +330,7 @@ __all__ = [
     "write_frozen_airsim_replay",
     "write_scan_association_performance_report",
     "write_scan_fusion_performance_report",
+    "write_long_duration_performance_report",
     "summarize_recon_cue_from_tracks",
     "DuplicateScanLineageError",
 ]

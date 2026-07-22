@@ -1004,6 +1004,75 @@ class FusionBatchSummary:
 
 
 @dataclass(frozen=True)
+class FusionPerformanceDiagnostics:
+    """Bounded cumulative operation counters for batch/scan fusion.
+
+    The snapshot intentionally contains scalar counters only.  It can be
+    sampled by an episode profiler without retaining per-scan track snapshots
+    or observation histories.
+    """
+
+    batch_count: int
+    scan_batch_count: int
+    observation_count: int
+    history_replay_count: int
+    origin_replay_count: int
+    finalization_replay_count: int
+    replay_filter_update_count: int
+    replay_checkpoint_reuse_count: int
+    checkpoint_state_query_count: int
+    fixed_lag_rebase_count: int
+    fixed_lag_checkpoint_suffix_reuse_count: int
+    replay_checkpoint_prefix_fast_path_count: int
+    cached_consistency_refresh_count: int
+    global_track_materialization_count: int
+    sensor_health_snapshot_build_count: int
+    association_candidate_pair_count: int
+    association_innovation_solve_count: int
+    current_track_count: int
+    current_time: float
+    schema_version: str = "d1.fusion_performance_diagnostics.v1"
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema_version": self.schema_version,
+            "batch_count": self.batch_count,
+            "scan_batch_count": self.scan_batch_count,
+            "observation_count": self.observation_count,
+            "history_replay_count": self.history_replay_count,
+            "origin_replay_count": self.origin_replay_count,
+            "finalization_replay_count": self.finalization_replay_count,
+            "replay_filter_update_count": self.replay_filter_update_count,
+            "replay_checkpoint_reuse_count": self.replay_checkpoint_reuse_count,
+            "checkpoint_state_query_count": self.checkpoint_state_query_count,
+            "fixed_lag_rebase_count": self.fixed_lag_rebase_count,
+            "fixed_lag_checkpoint_suffix_reuse_count": (
+                self.fixed_lag_checkpoint_suffix_reuse_count
+            ),
+            "replay_checkpoint_prefix_fast_path_count": (
+                self.replay_checkpoint_prefix_fast_path_count
+            ),
+            "cached_consistency_refresh_count": (
+                self.cached_consistency_refresh_count
+            ),
+            "global_track_materialization_count": (
+                self.global_track_materialization_count
+            ),
+            "sensor_health_snapshot_build_count": (
+                self.sensor_health_snapshot_build_count
+            ),
+            "association_candidate_pair_count": (
+                self.association_candidate_pair_count
+            ),
+            "association_innovation_solve_count": (
+                self.association_innovation_solve_count
+            ),
+            "current_track_count": self.current_track_count,
+            "current_time": self.current_time,
+        }
+
+
+@dataclass(frozen=True)
 class FusionBatchResult:
     """Final publication and audit evidence produced by ``process_batch``."""
 
