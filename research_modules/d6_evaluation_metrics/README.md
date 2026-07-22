@@ -1,6 +1,33 @@
 # D6 Evaluation Metrics
 
-## 2026-07-21 D5 干净跨视角图数据分层审计
+## 2026-07-22 D5 paired-shadow 权威 v2 独立审计
+
+`d5_paired_shadow_audit.py` 是 D6 对 D5 权威 v2 配对影子制品的独立只读消费者。调用方必须显式提供
+v2 report、v2 lineage、held-out corpus、held-out evaluation、冻结模型包、D5 源实现以及已保留的旧
+report/lineage，并逐项提供带外 SHA-256。审计重新计算 producer content SHA、2702 项 corpus inventory、
+源码实现绑定和审计前后共 2718 项输入集合哈希，不搜索相邻目录，也不修改 D5 制品。
+
+正式证据覆盖 seed `1000-1019`、45 个场景规模单元、900 帧和 74024 条已标注候选边。D6 从 lineage
+重新核对每帧只加载一个图，规则臂与模型臂的 graph/candidate/label SHA 完全相同，模型没有增删候选边；
+随后重算逐 seed、逐 cell 和总体边级/簇级混淆计数及延时。45/45 cell 无质量退化，模型边级和簇级
+precision/recall/F1 均为 1.0，模型打分 P95 为 3.292009 ms。同相机边、未标注边、在线真值特征、
+`global_track_id` 改写和输入改写均为 0。
+
+独立合成可分性检查限制了该结论。`shared_global_track_count` 在 74024 条边上恒为 0；
+`global_projection_mahalanobis` 单特征 F1 为 0.370482，因此没有证据表明满分由中心身份线索直接驱动。
+但 `bbox_scale_rate_delta_s`、`bbox_log_scale_delta` 和 `angular_velocity_delta_rad_s` 均达到近确定性
+单变量可分，最强特征在 35/45 cell 达到门限。paired-shadow 层可标记 `complete`，研究影子只获得
+`qualified_with_synthetic_separability_caveat`；外部泛化证据仍不足。`G1=false`、`PPO=false`、
+`assist=false`、`authority=false`、`rule_fallback=true`，线上准入和默认路径均未改变。
+
+公开接口为 `D5PairedShadowAuditInputs`、`audit_d5_paired_shadow_evidence()`、
+`write_d5_paired_shadow_audit()` 和 `screen_single_feature_separability()`。CLI 为
+`scripts/run_d5_paired_shadow_audit.py`。独立输出位于
+`outputs/d5_paired_shadow_e39a54d/`，包含 JSON、中文 Markdown、manifest 和 `SHA256SUMS`。
+2026-07-22 专项测试 `8 passed`，D6 全量测试 `465 passed`；唯一警告为既有 Matplotlib
+`Axes3D` 导入问题，不影响本次离线 JSON、Markdown 或摘要校验。
+
+## 2026-07-21 D5 干净跨视角图数据分层审计（v2 前置阶段）
 
 `d5_clean_graph_evidence.py` 是 D6 对 D5 tracked clean 数据的只读入口。调用方必须显式提供补充数据
 summary、composite admission/view、两份 canonical subview、补充 manifest/dataset manifest 和正式源
@@ -26,8 +53,8 @@ online truth、同相机边、未标注边、`global_track_id` 创建/换绑或�
 结构合法且 held-out 指标通过时，D6 只把 `evidence_layers.held_out_seed` 标为 `complete`；指标未达
 冻结门限时标为 `failed` 并保留 producer `fail_closed`；缺成对制品时为 `unavailable`。无论该层结果
 如何，未提供 paired shadow 时 G1、assist、authority 均为 false，`rule_fallback_required=true`。
-当前仓库尚无正式 900 帧 held-out corpus/report，因此真实 `held_out_seed` 仍为 `unavailable`，没有
-“已通过”结论。34 项专项合成测试和 D6 全量 `457 passed`；仅有既有 Matplotlib `Axes3D` warning。
+该段记录 paired-shadow v2 生成前的前置状态。当时正式 900 帧制品尚未提供；当前 held-out 与
+paired-shadow 状态以上一节的 2026-07-22 独立审计为准。原 34 项专项合成测试只证明接口合同。
 
 公开接口为 `D5CleanGraphEvidenceInputs`、`load_d5_clean_graph_evidence_inputs()`、
 `audit_d5_clean_graph_evidence()` 和 `write_d5_clean_graph_evidence_report()`。CLI 为

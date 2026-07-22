@@ -1,10 +1,19 @@
 # D6 文档索引
 
+2026-07-22 已完成 D5 paired-shadow 权威 v2 独立审计。D6 显式绑定 v2 report/lineage、held-out
+corpus/evaluation、模型包、D5 实现源码和保留的 superseded 证据，复核 2718 项输入且审计前后哈希
+一致。900 条 lineage、20 seed、45 cell、74024 条候选边、graph/candidate/label identity、逐 seed/cell
+汇总和零安全违规均闭合。paired-shadow=`complete`，但三类运动/尺度特征近确定性可分，最强特征只在
+35/45 cell 达到门限；外部泛化证据为 `synthetic_only_insufficient_for_external_generalization`。
+G1/PPO/assist/authority 均为 false，规则回退保持 true。算法见 `ALGORITHM_AND_IMPLEMENTATION.md`，
+证据边界见 `MODULE_PRINCIPLES_CN.md`，实测结果见 `../EXPERIMENT_REPORT.md` 顶部。
+专项测试 `8 passed`，D6 全量测试 `465 passed`；仅有既有 Matplotlib `Axes3D` 导入警告。
+
 2026-07-21 已接入 D5 held-out report/corpus 的严格只读消费者。输入 v2 要求两项制品成对显式提供，
 v1 只兼容无 held-out；D6 校验文件/内容 SHA、20 seed×45 cell×1 帧、model weights/config、冻结
 validation 温度/阈值和身份/真值/权限零违规。指标通过只完成 held-out 层，paired shadow 仍独立阻断
-G1/assist/authority。专项合成合同测试 `34 passed`，D6 全量 `457 passed`；当前无正式 900 帧制品，
-真实 held-out 结论仍 unavailable。本次不修改 AirSim 接线。原理、实现和证据边界分别见
+G1/assist/authority。该段是权威 v2 生成前的接口状态，专项合成合同测试不代表正式结果；当前状态
+以上一段独立审计为准。本次不修改 AirSim 接线。原理、实现和证据边界分别见
 `MODULE_PRINCIPLES_CN.md`、`ALGORITHM_AND_IMPLEMENTATION.md` 和 `../EXPERIMENT_REPORT.md` 2.9 节。
 
 2026-07-21 已新增运行时计划确认到离线观测结果的严格联接。D6 显式校验 11 类输入及 SHA-256，复核

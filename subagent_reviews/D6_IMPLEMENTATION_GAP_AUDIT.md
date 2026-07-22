@@ -1,6 +1,35 @@
 # D6 实现差距审计
 
-## 2026-07-21 D5 clean 图数据分层准入 GAP
+## 2026-07-22 D5 paired-shadow 权威 v2 GAP 更新
+
+### 已关闭的 D6-owned P1
+
+1. 已实现权威 v2 独立消费者。v2 report/lineage、held-out corpus/evaluation、冻结模型包、D5 实现源码
+   和 superseded report/lineage 均要求显式路径和带外 SHA-256。
+2. 已核验 2702 项 corpus inventory、7 个实现文件和全部关键输入；审计前后 2718 项输入集合哈希一致，
+   D5 冻结报告、语料、模型和旧证据没有被修改。
+3. 20 seed、45 cell、900 lineage、74024 条已标注候选边完整。每帧图只加载一次，规则/模型两臂的
+   graph/candidate/label identity 均为 1.0，模型增删候选边为 0。
+4. 逐 seed、逐 cell 和总体边级/簇级计数及延时由 D6 重算并与 producer 对齐。45/45 cell 无质量退化；
+   同相机候选边、未标注边、online truth、`global_track_id` 改写和输入改写均为 0。
+5. paired-shadow 层已从 `unavailable` 更新为 `complete`。研究影子资格为
+   `qualified_with_synthetic_separability_caveat`，不是线上准入。
+
+### 仍开放的 P1
+
+1. **外部泛化。** `shared_global_track_count` 恒为 0，中心投影马氏距离单特征 F1 仅 0.370482，未发现
+   中心身份线索直接决定标签；但三个尺度/角速度差特征近确定性可分，最强特征在 35/45 cell 达到门限。
+   当前满分只能作为合成语料上的结果。
+2. **去捷径复验。** 仍需随机化或移除近确定性合成特征，增加独立相机噪声、外参漂移、目标外观与运动
+   扰动，并在 no-center-feature 条件下重复同 seed paired shadow。
+3. **线上权限。** 外部泛化和跨模块真实采用证据未闭合。G1/PPO/assist/authority 均保持 false，规则
+   回退保持 true；本次审计不改变模型 promotion 或默认运行路径。
+
+输出为 `research_modules/d6_evaluation_metrics/outputs/d5_paired_shadow_e39a54d/`。专项测试
+`8 passed`，D6 全量测试 `465 passed`；摘要和输入不变性检查全部通过。唯一警告为既有 Matplotlib
+`Axes3D` 导入问题，不影响本次离线审计。
+
+## 2026-07-21 D5 clean 图数据分层准入 GAP（v2 前置状态）
 
 ### 已关闭的 D6-owned P1
 
@@ -8,8 +37,8 @@
    ignored output 的隐式路径。
 2. 已复核文件/内容摘要、formal/supplemental 来源、60/20/20 seed、保留 seed 零重叠、正负边、
    未标注 0、45 cell、dirty=false 和来源未改写。篡改、泄漏、门限降低和伪模型报告均失败关闭。
-3. 已形成数据支持、训练来源、模型内部测试、保留 seed、paired shadow 五层输出。当前真实证据只让
-   前两层 complete，后三层 unavailable；G1、assist、authority、正式 PPO reward 继续关闭。
+3. 已形成数据支持、训练来源、模型内部测试、保留 seed、paired shadow 五层输出。该段记录 v2 生成
+   前的状态；当前各层状态以上一节权威 v2 审计为准。
 4. 未来模型 bundle 已固定权重 SHA、配置 SHA、训练来源 SHA、测试指标、45 cell 和 latency 合同。
    内部测试通过也不能越过保留 seed 和 paired shadow 门。
 5. 输入 schema 已升级到 `d6.d5-clean-graph-inputs.v2`：held-out evaluation report/manifest 为成对
@@ -23,14 +52,10 @@
 8. 2026-07-21 专项合成合同测试 `34 passed`、D6 全量 `457 passed`，仅有既有 Matplotlib warning。
    合成正例不构成正式 900 帧性能证据。
 
-### 仍开放的 P1
+### 历史开放项处置
 
-1. 缺真实训练权重及完整内部模型测试报告，`internal_model_test=unavailable`。
-2. D5 已提交正式 20 seed×45 cell=900 帧合同，但当前仓库没有正式 held-out corpus/report 制品；
-   因此 `held_out_seed=unavailable`，没有“已通过”结论。
-3. 缺相同 seed、冻结配置下规则与模型的 paired formal shadow，`paired_shadow=unavailable`。
-4. 即使未来正式 held-out 单层通过，paired shadow 未提供时 G1、assist、authority 和模型 promotion
-   仍不得开放，规则回退保持强制。D6 不补造模型结果、奖励、因果或反事实证据。
+真实冻结权重、内部测试、held-out 和同 seed paired shadow 已形成并由上一节关闭核算缺口。它们没有
+关闭外部泛化、真实运行采用、因果/反事实和线上权限缺口；这些项目不得由合成满分回填。
 
 ## 2026-07-21 运行时结果联接 GAP 更新
 
@@ -102,7 +127,8 @@
 - D5 tracklet 480 条 candidate edge 中正标签 362、负标签 19、未标注 99。离线关联标签状态为
   `partial`，`labeled_count=381`、`complete=false`，不具备完整监督标签口径。
 - D5 synthetic ACK applied/rejected/missing 各 400，只是确定性故障注入覆盖，runtime ACK attribution
-  仍 unavailable。reward、outcome、counterfactual、causal 和 paired shadow 同样 unavailable。
+  仍 unavailable。reward、outcome、counterfactual 和 causal 仍 unavailable；D5 图关联 paired shadow
+  已由顶部权威 v2 审计关闭，但不替代这些控制归因证据。
 - D5 supplemental BC 的 producer 全样本审计已完成：100 episode、1200 sample，canonical episode=
   `60/20/20`、sample=`720/240/240`；online/offline/descriptor 各 100 个，`302/302` 个登记制品通过
   SHA-256，有限特征 `1200/1200`。online truth、保留 seed、dirty episode 和 D5 创建、改写或换绑
@@ -120,8 +146,8 @@
    ACK、后续反馈和明确终局结果。synthetic ACK 不能用于关闭该条件。
 2. reward/outcome 需有明确归因窗；PPO 还需 on-policy log probability/value。counterfactual/causal 需
    同初态配对重放、随机干预或等价识别证据。
-3. 需要同 seed paired shadow 非退化实验，并在训练完成后使用保留 seed `1000-1019` 做独立验收。
-   条件未关闭前，不开放在线 assist、控制 authority 或 PPO。
+3. D5 图关联同 seed paired shadow 和保留 seed 已完成；仍需去合成捷径的外部泛化复验，以及 D3/D4
+   真实动作采用和反事实证据。条件未关闭前，不开放在线 assist、控制 authority 或 PPO。
 
 ## 2026-07-21 历史 canonical seed split GAP 状态
 

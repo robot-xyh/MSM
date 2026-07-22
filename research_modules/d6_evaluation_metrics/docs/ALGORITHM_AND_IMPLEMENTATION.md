@@ -1,6 +1,62 @@
 # D6 系统级离线评估：算法原理与实施说明
 
-## D5 clean 图数据严格消费者（2026-07-21）
+## D5 配对影子权威 v2 消费器（2026-07-22）
+
+### 显式绑定与只读快照
+
+`D5PairedShadowAuditInputs` 接收九类显式位置：v2 报告、v2 来源记录、保留种子语料目录、保留种子评估
+报告、模型包目录、D5 源码目录、已替代 v1 报告、已替代 v1 来源记录和 D6 输出目录。除输出目录外，
+每类关键制品均通过调用方带外 SHA-256 或报告内已核验清单绑定。消费者不搜索相邻目录，也不导入或
+执行 D5 代码。
+
+审计首先复算 v2 文件 SHA 和去除 `content_sha256` 后的规范内容 SHA，再核对报告内 input spec、2702
+项语料 inventory、模型包三项摘要和 7 个实现文件摘要。全部关键文件、语料条目和实现文件构成只读
+快照。完整审计结束后重新计算同一快照；前后集合摘要不一致即返回
+`input_artifact_mutation_detected`。v1 报告和来源记录只作为 superseded evidence 校验，不能与 v2
+聚合或替代 v2 实现绑定。
+
+### 来源完整性与独立复算
+
+来源记录必须精确覆盖
+
+\[
+20\ \text{个 seed}\times 9\ \text{类场景}\times 5\ \text{档规模}=900\ \text{帧}。
+\]
+
+每条记录要求 `loaded_graph_instance_count=1`，并要求规则臂、模型臂的 graph、candidate 和 label SHA
+分别相等。D6 以 episode 标识、seed、场景和规模联合去重，拒绝缺失、重复和额外记录。候选边计数必须
+与语料图一致，规则和模型两臂的覆盖相同，候选增加数和删除数均为 0。
+
+D6 不信任来源报告的聚合指标。它从逐帧边级和簇级混淆计数重新构造逐 seed、逐场景规模单元和总体
+结果。对任一层，精确率、召回率和 F1 按同一整数计数计算；延时样本重新计算均值和 P95，并拒绝
+NaN、无穷值或负值。逐层重算结果必须与来源报告一致，45 个单元还必须分别满足候选覆盖、质量非退化
+和延时门限。
+
+### 合成可分性筛查
+
+对每个候选边特征 \(f\)，D6 在两个方向枚举相邻唯一值之间的阈值 \(t\)，计算单特征分类规则
+
+\[
+\hat y=\mathbf{1}[f\le t]\quad\text{或}\quad \hat y=\mathbf{1}[f>t]
+\]
+
+的最佳 F1 与平衡准确率。总体筛查后，对最佳特征按 45 个场景规模单元重复计算。F1 不低于 0.98 且
+平衡准确率不低于 0.95 时，记为近乎完全可分。该方法衡量数据标签是否带有单变量合成捷径，不等同于
+模型特征归因，也不把中心绑定线索自动判为真值泄漏。
+
+权威 v2 的 `shared_global_track_count` 恒为 0，`global_projection_mahalanobis` 的最佳单特征 F1 为
+0.370482；中心身份线索不足以解释满分。三个运动或尺度特征达到近乎完全可分，最强特征在 35/45 个
+单元满足门限。因此审计状态为 `pass_with_synthetic_separability_caveat`，外部泛化证据等级为
+`synthetic_only_insufficient_for_external_generalization`。
+
+### 输出和权限边界
+
+写盘入口在全部门控通过后原子生成 JSON、中文 Markdown、manifest 和 `SHA256SUMS`。输出只能把
+配对影子层标为 `complete`，或把研究影子标为带限制资格。固定权限字段为 G1=false、近端策略优化=
+false、辅助模式=false、控制权限=false、规则回退=true；消费者没有修改线上准入或默认路径的接口。
+2026-07-22 专项测试 `8 passed`、D6 全量测试 `465 passed`，输出清单和内容摘要校验通过。
+
+## D5 clean 图数据严格消费者（2026-07-21，v2 前置阶段）
 
 ### 输入和完整性
 
@@ -31,9 +87,9 @@ manifest 对应 cell 一致，温度和阈值逐层与 bundle calibration 一致
 D6 重新计算 overall/cell 的 precision、recall、F1、false-merge、candidate-recall、ECE 和 P95 latency
 门，不信任 producer 的 pass 字段。producer assessment 与重算结果不一致即拒绝；一致且通过时只输出
 `held_out_seed=complete`，一致但未达标时输出 `held_out_seed=failed` 与 producer `fail_closed`。报告中
-的 paired shadow 必须是 not-run，G1/assist/authority 必须 fail-closed。当前没有正式 900 帧制品，
-因此真实层仍为 `unavailable`；34 项专项均为合成合同测试。审计器不修改输入或控制路径，报告器只在
-D6 指定输出目录原子写入 JSON 和中文 Markdown。
+的 paired shadow 必须是 not-run，G1/assist/authority 必须 fail-closed。本节描述权威 v2 形成前的
+合同状态；当时没有正式 900 帧制品，34 项专项只属于合成合同测试。当前保留种子与配对影子状态以上一
+节为准。审计器始终不修改输入或控制路径，报告器只在 D6 指定输出目录原子写入 JSON 和中文 Markdown。
 
 ## 运行时计划确认到离线结果的严格联接（2026-07-21）
 

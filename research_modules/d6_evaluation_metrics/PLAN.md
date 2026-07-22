@@ -1,6 +1,26 @@
 # D6 Evaluation Metrics Plan
 
-## 2026-07-21 D5 clean 图数据准入状态
+## 2026-07-22 D5 paired-shadow 权威 v2 独立审计状态
+
+- [x] 新增 D6-owned 显式输入合同，要求 v2 report/lineage、held-out corpus/evaluation、模型包、D5
+  源实现和 superseded report/lineage 的路径及带外 SHA-256；不搜索相邻输出。
+- [x] 复算 producer report content SHA、input spec SHA、全部 input binding、2702 项 corpus inventory
+  和 7 个 implementation SHA；审计前后 2718 项输入集合哈希一致。
+- [x] 验证 seed `1000-1019`、45 cell、900 lineage、74024 条已标注候选边，无缺失、重复或额外记录；
+  每帧 `loaded_graph_instance_count=1`，图、候选边和标签 identity 均为 1.0。
+- [x] 重新聚合逐 seed、逐 cell 和总体边级/簇级混淆计数及延时；45/45 cell 无质量退化，模型未增删
+  候选边，同相机边、未标注边、online truth 和 `global_track_id` 改写均为 0。
+- [x] 独立筛查 14 个边特征的单变量标签可分性。中心绑定计数恒为 0，中心投影马氏距离区分力弱；三类
+  尺度/角速度差特征近确定性可分，最强特征覆盖 35/45 cell。
+- [x] 输出 JSON、中文 Markdown、manifest 和 `SHA256SUMS` 到
+  `outputs/d5_paired_shadow_e39a54d/`。paired-shadow=`complete`，research shadow 仅带合成可分性限制。
+- [x] 保持 G1/PPO/assist/authority=false、rule fallback=true，不改变线上准入、默认路径和冻结报告。
+- [x] 运行专项和 D6 全量回归：`8 passed`、`465 passed`；执行 `SHA256SUMS`、JSON/manifest 内容摘要
+  和 `git diff --check` 校验。
+- [ ] 生成去除或随机化近确定性合成特征、独立相机噪声和外参偏差的数据，重复 no-center-feature
+  paired shadow；形成该证据前，外部泛化状态保持不足。
+
+## 2026-07-21 D5 clean 图数据准入状态（v2 前置阶段）
 
 - [x] 新增八类显式 D5 数据制品及逐文件带外 SHA-256 合同；禁止隐式发现 ignored output。
 - [x] 复核内部 content SHA、正式/补充来源绑定、60/20/20 seed、保留 seed 零重叠、正负边、未标注
@@ -18,10 +38,10 @@
   输出 `unavailable`。paired shadow 未提供时 G1/assist/authority 始终 false，规则回退始终 true。
 - [x] 提供包级公开 API、带外清单哈希 CLI、JSON/中文 Markdown 报告和 34 项专项合成回归。专项
   `34 passed`，D6 全量 `457 passed`，仅有既有 Matplotlib `Axes3D` warning。
-- [ ] 训练并登记真实模型内部测试证据，并由 D5/main 生成正式 seed `1000-1019`、45 cell、900 帧
-  held-out corpus/report；当前仓库没有该正式制品，`held_out_seed=unavailable`，不得写“已通过”。
-- [ ] 运行同 seed paired formal shadow。完成前 G1/assist/authority 保持 false，规则回退保持 true；
-  held-out 单层即使通过也不能解除该 blocker。
+- [x] 已登记冻结模型、seed `1000-1019`、45 cell、900 帧 held-out corpus/report，并由上节消费者完成
+  权威 v2 配对审计。该完成项只关闭合成 held-out/paired-shadow 执行与核算层。
+- [x] 同 seed paired formal shadow 已运行并由 D6 独立复核；合成可分性使外部泛化和线上准入继续
+  fail closed，G1/assist/authority 保持 false，规则回退保持 true。
 
 ## 2026-07-21 运行时 ACK 到离线结果联接状态
 
@@ -76,9 +96,9 @@
   structural full-sample 层。
 - [ ] producer 持久化真实 action adoption、版本绑定、runtime ACK、可归因 reward/outcome 和终局结果；
   D6 不从 synthetic ACK、相邻状态变化或 unavailable 标签补造这些证据。
-- [ ] 形成因果/反事实证据、同 seed paired shadow 非退化证据，并使用保留 seed `1000-1019` 做独立
-  模型验收。上述条件未
-  完成前继续关闭 PPO、在线 assist 和 authority，并强制规则回退。
+- [ ] D5 同 seed paired shadow 与保留 seed 核算已经完成；跨模块 D3/D4 的因果/反事实、真实动作采用
+  和终局结果仍未完成。合成可分性也尚未关闭外部泛化门；继续关闭 PPO、在线 assist 和 authority，
+  并强制规则回退。
 
 ## 2026-07-21 历史 canonical seed split readiness 状态
 

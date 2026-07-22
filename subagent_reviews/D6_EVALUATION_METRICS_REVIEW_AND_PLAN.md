@@ -1,6 +1,30 @@
 # D6 系统评估指标综述及子方案
 
-## 2026-07-21 D5 clean 跨视角图证据复核
+## 2026-07-22 D5 配对影子权威 v2 独立复核
+
+D6 已实现独立、只读、显式路径和带外 SHA-256 的权威 v2 消费器。输入固定绑定 v2 report/lineage、
+保留种子 corpus/evaluation、冻结模型包、D5 实现源码和 superseded v1 证据。审计验证 2702 项语料
+inventory、7 个实现文件和全部关键输入；审计前后 2718 项输入集合摘要一致。旧 v1 只保留为被替代
+证据，未与 v2 源码或结果混用。
+
+20 个 seed、45 个场景规模单元、900 条 lineage 和 74024 条已标注候选边完整。每帧只加载一个图；
+规则臂与模型臂的 graph、candidate 和 label identity 均为 1.0，候选增删为 0。D6 独立重算逐 seed、
+逐单元和总体边级、簇级计数及延时，45/45 单元无质量退化。同相机候选边、未标注候选边、在线真值
+特征和 `global_track_id` 改写均为 0。
+
+合成可分性复核改变了证据等级。中心共享航迹计数恒为 0，中心投影马氏距离的最佳单特征 F1 为
+0.370482，未发现中心身份线索直接决定标签。三个运动或尺度差特征近确定性可分，最强特征覆盖 35/45
+单元。当前结果可关闭配对执行与核算缺口，不能证明独立几何和真实视觉条件下的外部泛化。
+
+最终状态限定为 paired-shadow=`complete`、research-shadow=
+`qualified_with_synthetic_separability_caveat`。G1、近端策略优化、辅助模式和控制权限保持 false，
+规则回退保持 true。后续优先生成去合成捷径、独立相机几何、外参和时间扰动语料，并运行
+no-center-feature 同 seed 配对复验。
+
+2026-07-22 回归结果为专项 `8 passed`、D6 全量 `465 passed`。输出 `SHA256SUMS`、JSON/manifest 内容
+摘要和输入前后集合摘要均已复算通过。
+
+## 2026-07-21 D5 clean 跨视角图证据复核（v2 前置阶段）
 
 D6 已提供显式、只读、带外 SHA-256 约束的 D5 clean 数据消费者。复核覆盖 supplemental summary、
 composite admission/view、formal/supplemental canonical view、supplemental manifest/dataset 和 formal
@@ -8,9 +32,9 @@ source manifest。实现不搜索 D5 ignored output，不修改来源，也不�
 diagnostic。
 
 当前 4,972 episode、245,040 条候选边的 composite 数据通过数据支持和训练来源门；未标注边为 0，
-seed 为 60/20/20，保留 seed 无重叠，45 个场景规模单元和 clean source 合同成立。没有真实模型内部
-测试、保留 seed 或 paired shadow 证据，三层保持 unavailable。G1、assist、authority 和 PPO 均关闭，
-规则回退继续启用。
+seed 为 60/20/20，保留 seed 无重叠，45 个场景规模单元和 clean source 合同成立。本节记录 v2 生成
+前状态；当前模型内部测试、保留 seed 和 paired shadow 状态以上一节为准。G1、assist、authority 和
+PPO 仍关闭，规则回退继续启用。
 
 D6 输入合同现为 `d6.d5-clean-graph-inputs.v2`，可成对接收显式 held-out evaluation report/manifest；
 v1 继续只读兼容原无 held-out 结构。消费者不扫描 D5 输出目录，独立复算调用方文件 SHA 和 D5 内容
@@ -20,12 +44,11 @@ model weights/bundle manifest、冻结 validation 温度/阈值、零权重更�
 
 结构合法且门限通过只完成 `held_out_seed`；门限失败标为 `failed` 并保留 producer `fail_closed`；缺
 制品为 `unavailable`。paired shadow 未提供时 G1、assist、authority 保持 false，规则回退为 true。
-专项合成合同测试 `34 passed`，D6 全量 `457 passed`，仅有既有 Matplotlib warning。当前没有正式
-900 帧制品，故这些测试不构成 held-out 通过结论。
+专项合成合同测试 `34 passed`，D6 全量 `457 passed`，仅证明当时的接口合同。权威 v2 的正式合成证据
+及其限制以上一节独立复核为准。
 
-下一步由 D5/训练流程产生完整模型 bundle 和正式 900 帧 held-out 制品，由 main 组织同 seed paired
-formal shadow。D6 只复核证据，不把 synthetic contract fixture 或 clean data pass 写成模型
-promotion。
+冻结模型、正式 900 帧 held-out 制品和同 seed paired formal shadow 已形成。下一步转为去合成捷径的
+外部泛化复验；D6 只复核证据，不把 clean data、held-out 或 paired-shadow 单层通过写成模型 promotion。
 
 ## 2026-07-21 运行时计划结果联接复核
 

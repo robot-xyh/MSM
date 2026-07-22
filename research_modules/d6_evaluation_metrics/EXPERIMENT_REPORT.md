@@ -1,6 +1,35 @@
 # D6 系统级评估指标实验报告
 
-## 2.9 2026-07-21 D5 保留种子报告合同接入验证
+## 2.10 2026-07-22 D5 配对影子权威 v2 独立审计
+
+本次审计只读消费 D5 权威 v2 报告、逐帧来源记录、保留种子图语料、保留种子评估报告、冻结模型包和
+实现源码。所有路径由调用方显式给出，并附带独立于报告的 SHA-256。D6 同时核对已替代 v1 报告及
+来源记录，防止将旧报告与新源码混用。审计前后共 2718 项输入制品的集合摘要一致，D5 报告、语料、
+模型和源码均未被修改。
+
+权威样本覆盖 seed `1000-1019`、9 类场景、5 档规模，共 45 个场景规模单元、900 帧和 74024 条已
+标注候选边。逐帧来源记录恰好 900 条，无重复、缺失或额外帧；每条记录只加载一个图实例。规则臂与
+模型臂的图、候选边和标签 SHA 完全相同，三项身份比例均为 1.0，模型增删候选边为 0。D6 重新汇总
+逐 seed、逐场景规模单元和总体边级、簇级计数及延时，结果均与来源明细闭合。45/45 个单元无质量
+退化；模型边级和簇级精确率、召回率、F1 值均为 1.0，模型打分 P95 为 3.292009 毫秒。规则边级
+F1 为 0.367980，规则簇级 F1 为 0.239234。
+
+安全审计确认同相机候选边、未标注候选边、在线真值特征和 `global_track_id` 改写均为 0。独立
+单变量筛查同时发现合成数据捷径。`shared_global_track_count` 在全部候选边上恒为 0，中心投影
+马氏距离的最佳单特征 F1 为 0.370482，当前满分并非由这两项中心身份线索直接解释。包围框尺度变化率、
+包围框对数尺度差和角速度差接近确定性分离标签；最强特征在 35/45 个单元达到预设门限。该现象将
+外部泛化证据降为“仅合成数据，不足以证明外部泛化”。
+
+审计结论为 `pass_with_synthetic_separability_caveat`。配对影子层记为 `complete`，研究影子仅记为
+`qualified_with_synthetic_separability_caveat`。该结论不开放线上路径：G1、近端策略优化、辅助模式
+和控制权限均为 false，规则回退为 true。后续需在独立相机几何、外参和时间扰动下移除或随机化上述
+近确定性特征，再运行无中心绑定特征的同 seed 配对复验。
+
+专项测试 `8 passed`，D6 全量回归 `465 passed`。`SHA256SUMS`、审计 JSON 内容摘要、manifest 内容摘要
+和审计前后输入集合摘要均通过复算。唯一警告为既有 Matplotlib `Axes3D` 导入问题，不影响本次离线
+图证据审计。
+
+## 2.9 2026-07-21 D5 保留种子报告合同接入验证（v2 前置阶段）
 
 本次只验证 D6 对已提交 D5 held-out schema 的严格消费接口，没有生成或运行 D5 正式 900 帧语料。
 输入 schema 升级为 `d6.d5-clean-graph-inputs.v2`，held-out evaluation report 与 corpus manifest 必须
@@ -19,12 +48,11 @@
 样例不抛成“缺制品”，而是得到 `held_out_seed=failed`、producer `fail_closed`。所有样例中 paired
 shadow 均未提供，G1/assist/authority 均为 false，`rule_fallback_required=true`。
 
-专项结果为 `34 passed`，D6 全量为 `457 passed`，仅有既有 Matplotlib `Axes3D` warning。当前仓库
-没有正式 D5 900 帧 held-out corpus/report，因此真实 `held_out_seed` 仍为 `unavailable`，没有保留
-种子“已通过”结论。剩余正式 blocker 是完整内部模型证据和同 seed paired formal shadow；即使未来
-held-out 单层通过，也不能据此开放 G1、assist 或控制 authority。
+专项结果为 `34 passed`，D6 全量为 `457 passed`，仅有既有 Matplotlib `Axes3D` warning。当时没有
+正式 D5 900 帧 held-out corpus/report，因此该阶段 `held_out_seed=unavailable`。当前保留种子和配对
+影子结论以 2.10 节权威 v2 审计为准；G1、assist 和控制 authority 仍未开放。
 
-## 2.8 2026-07-21 D5 clean 图数据分层验收
+## 2.8 2026-07-21 D5 clean 图数据分层验收（v2 前置阶段）
 
 本次验收只读消费 D5 显式登记的 clean summary、composite admission/view、canonical subview 和正式/
 补充 manifest。八项文件及输入清单均由调用方提供 SHA-256。实际 composite 包含 4,972 episode、
