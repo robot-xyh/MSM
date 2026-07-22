@@ -2,6 +2,31 @@
 
 科研模块，用于把末端相机视场中的本地视觉轨迹保守关联到中心分配的 `global_track_id`。模块可在统一三维 episode 中在线运行；训练标签和真值评分仍保持离线。D5 只输出视觉关联与相机观察意图，不修改、重写或重新分配任何全局轨迹 ID。
 
+## 2026-07-21 Composite 内部训练适配器
+
+D5 已增加 formal complete frames 与 clean supplemental full corpus 的只读训练入口。入口严格复载
+两类源、detached composite view、admission report 和 training/shared seed registry，强制完整
+seed 原子 `60/20/20`、排除 `1000-1019`、覆盖每个 split 的 45 个场景规模单元、标签完整和同相机
+候选边为 0。默认配置固定为原生 PyTorch、CPU 单线程、30 epoch、32 维隐藏层和两轮消息传递；
+PyTorch Geometric、在线 truth 特征及本地 `global_track_id` 绑定均未引入。
+
+本轮对 clean composite 实际执行只读 preflight：4,972 个图帧、245,040 条候选边，train/validation/
+test 的正边为 `34539/11350/11409`，负边为 `112314/37694/37734`，未标注边为 0，每个 split 均为
+45 个 cell。preflight 文件 SHA-256 为
+`f4a498582cffa6672aa5775311f39ea1f5f12756383c9216ff04cbf8aaa026a8`；运行耗时 29.72 s，峰值
+RSS 约 896 MiB。当前实现尚未提交，因此 provenance 记录 `repository_dirty=true`；预检没有调用
+训练函数，也没有生成权重。
+
+全量 clean 内部训练完成后，训练适配器会从实际 training report 和 bundle 另写
+`d5.tracklet-graph-model-evaluation.v1` 报告，供 D6 与 `weights.pt`、bundle `manifest.json` 三件套
+消费。报告只包含实际 test 指标、20 个 test seed、45 个 cell 指标和实测延迟；每个 cell 的
+`sample_count` 是该 cell 的 `labeled_candidate_edge_count`，不是 episode 数。该报告只属于内部模型
+测试证据，不包含保留 seed 或 paired shadow，也不开放 G1、assist、在线或相机控制权限。
+
+2026-07-21 新增 composite 专项 `12 passed in 1.05s`，D5 全量为
+`510 passed in 121.82s`。正式 30-epoch 训练、最终 `.pt`、保留 seed `1000-1019` 独立评估和
+同 seed paired shadow 均未执行。
+
 ## 2026-07-21 跨视角困难样本数据支持
 
 D5 已完成冻结正式语料的未标注边溯源审计。正式语料共有 99 条未标注候选边和 194 个缺失端点，

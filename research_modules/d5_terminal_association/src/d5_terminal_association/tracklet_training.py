@@ -366,6 +366,13 @@ def evaluate_tracklet_edge_model(
         "p50_inference_latency_ms": _available(float(np.percentile(latency_values, 50))),
         "p95_inference_latency_ms": _available(float(np.percentile(latency_values, 95))),
     }
+    latency_summary = {
+        "device": str(target_device),
+        "sample_count": int(latency_values.size),
+        "p50_ms": float(np.percentile(latency_values, 50)),
+        "p95_ms": float(np.percentile(latency_values, 95)),
+        "max_ms": float(np.max(latency_values)),
+    }
     size_metric = (
         _available(int(model_size_bytes), unit="bytes")
         if model_size_bytes is not None
@@ -384,6 +391,7 @@ def evaluate_tracklet_edge_model(
             **latency_metrics,
             "model_size": size_metric,
         },
+        "latency": latency_summary,
     }
 
 
@@ -406,18 +414,41 @@ def run_training_pipeline(
     but its bundle is permanently marked ineligible for G1/assist.
     """
 
-    cfg = config or TrackletTrainingConfig()
-    if development_only and readiness_audit_sha256 is None:
-        raise ValueError("development-only training requires readiness_audit_sha256")
-    if not development_only and readiness_audit_sha256 is not None:
-        raise ValueError("formal training must not attach a development readiness audit")
-    pipeline_started = time.perf_counter()
     dataset = _load_pipeline_dataset(
         dataset_dir,
         canonical_view_manifest_path=canonical_view_manifest_path,
         training_seed_registry_path=training_seed_registry_path,
         shared_seed_registry_path=shared_seed_registry_path,
     )
+    return run_loaded_tracklet_training_pipeline(
+        dataset,
+        bundle_dir,
+        report_path,
+        config=config,
+        development_only=development_only,
+        readiness_audit_sha256=readiness_audit_sha256,
+    )
+
+
+def run_loaded_tracklet_training_pipeline(
+    dataset: LoadedTrackletDataset,
+    bundle_dir: str | Path,
+    report_path: str | Path,
+    *,
+    config: TrackletTrainingConfig | None = None,
+    development_only: bool = False,
+    readiness_audit_sha256: str | None = None,
+) -> Mapping[str, Any]:
+    """Run the existing pipeline on an already strict-loaded read-only view."""
+
+    if not isinstance(dataset, LoadedTrackletDataset):
+        raise TypeError("dataset must be a LoadedTrackletDataset")
+    cfg = config or TrackletTrainingConfig()
+    if development_only and readiness_audit_sha256 is None:
+        raise ValueError("development-only training requires readiness_audit_sha256")
+    if not development_only and readiness_audit_sha256 is not None:
+        raise ValueError("formal training must not attach a development readiness audit")
+    pipeline_started = time.perf_counter()
     training_started = time.perf_counter()
     training = train_tracklet_edge_model(
         dataset,
@@ -518,6 +549,9 @@ def run_training_pipeline(
             "split_sha256": dataset.manifest["split_sha256"],
             "training_set_sha256": dataset.manifest["training_set_sha256"],
             "config_sha256": dataset.manifest["config_sha256"],
+            "test_seed_values": sorted(
+                {int(episode.graph.seed) for episode in dataset.split("test")}
+            ),
         },
         "training": {
             "config": training_config_payload,
@@ -1143,6 +1177,7 @@ __all__ = [
     "evaluate_tracklet_edge_model",
     "fit_validation_temperature",
     "run_evaluation_pipeline",
+    "run_loaded_tracklet_training_pipeline",
     "run_training_pipeline",
     "select_validation_threshold",
     "train_tracklet_edge_model",

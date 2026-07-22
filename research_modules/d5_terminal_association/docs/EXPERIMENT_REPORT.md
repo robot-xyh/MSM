@@ -1,5 +1,30 @@
 # D5 末端视觉配准与身份认证实验报告
 
+## 2026-07-21 Composite 内部训练预检
+
+本轮只运行只读预检，没有执行模型训练。严格 loader 复载 clean formal + supplemental 组合视图，
+得到 4,972 个图帧和 245,040 条候选边。seed 为 `60/20/20`，每个 split 覆盖 45 个场景规模单元，
+同相机候选边、未标注边和保留 seed 重叠均为 0。
+
+| 项目 | train | validation | test |
+| --- | ---: | ---: | ---: |
+| 正候选边 | 34,539 | 11,350 | 11,409 |
+| 负候选边 | 112,314 | 37,694 | 37,734 |
+| 未标注边 | 0 | 0 | 0 |
+| 场景规模单元 | 45 | 45 | 45 |
+
+预检 JSON 文件 SHA-256 为
+`f4a498582cffa6672aa5775311f39ea1f5f12756383c9216ff04cbf8aaa026a8`，运行耗时 29.72 s，峰值
+RSS 917,312 KiB。当前代码尚未提交，报告正确记录 `repository_dirty=true`；该状态不阻断只读预检，
+但会阻断正式内部训练。专项测试 `12 passed in 1.05s`，覆盖最小完整预检、哈希和 registry 绑定、
+保留 seed、split、同相机边、未标注边、权限分层及 D6 三件套导出。D5 全量为
+`510 passed in 121.82s`。
+
+D6-facing 导出代码已经实现，但本轮没有实际模型和 bundle，因此没有生成
+`d5.tracklet-graph-model-evaluation.v1` 制品。后续报告中的 cell `sample_count` 将使用实际已标注候选
+边数。正式 30-epoch 训练、保留 seed 独立评估和 paired shadow 均待 main 在 clean worktree 执行；
+G1、assist 和 authority 保持关闭。
+
 ## 2026-07-21 跨视角困难样本全量审计
 
 冻结正式语料含 12,851 个图帧、480 条候选边，正/负/未标注为 `362/19/99`。99 条未标注边在

@@ -1,5 +1,16 @@
 # D5 末端视觉配准与协同身份认证综述及子方案
 
+## 2026-07-21 Composite 内部训练入口复核
+
+D5 已把 clean composite corpus 接入现有原生 PyTorch 图模型管线。入口只读复载正式完整帧和补充
+语料，并绑定 view、admission 与共享 seed registry；`60/20/20`、45 cell、标签和同相机互斥均为
+强制门。实际 preflight 为 4,972 帧、245,040 边，未进入训练分支。
+
+未来 clean 全量训练会附带 D6-facing 独立模型报告。报告的 test/cell 指标和延迟全部来自实际训练
+评估，权重及配置哈希来自 bundle；cell 样本数按已标注候选边统计。内部 test 报告不等于保留 seed
+或 paired shadow 证据，也不授予 G1/assist/authority。本轮专项 `12 passed in 1.05s`，D5 全量
+`510 passed in 121.82s`；正式模型、`.pt`、保留 seed 和 paired shadow 仍未完成。
+
 ## 2026-07-21 Tracklet 困难样本复核
 
 正式语料的 99 条未标注边已逐条复核。冻结导出缺少可同时绑定 episode、匿名 tracklet、量测时刻和

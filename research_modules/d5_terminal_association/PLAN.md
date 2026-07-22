@@ -1,5 +1,24 @@
 # D5 终端视觉配准与身份认证计划
 
+## 2026-07-21 Composite 内部训练入口
+
+- [x] 增加 formal + supplemental 只读 loader 和训练适配器。绑定 composite view、admission report、
+  两份 seed registry 及源制品哈希，不复制或回写源数据。
+- [x] 强制 seed 原子 `60/20/20`、保留 seed 排除、45 个场景规模单元、正负类、完整标签和同相机
+  互斥；模型、特征、默认几何候选门、随机 seed 和 CPU 线程配置固定，漂移时失败关闭。
+- [x] 对 clean composite 运行不训练 preflight。实测 4,972 帧、245,040 边、未标注 0，数据支持
+  通过；preflight 文件 SHA-256 为
+  `f4a498582cffa6672aa5775311f39ea1f5f12756383c9216ff04cbf8aaa026a8`。
+- [x] 实现 D6-facing 内部模型测试报告导出。报告严格使用实际训练报告和 bundle；cell
+  `sample_count` 使用已标注候选边数。报告不携带 G1/assist/authority 字段。
+- [x] 增加成功预检、报告/view/hash 绑定、registry/split、保留 seed、同相机边、未标注边、权限
+  分层和 D6 三件套正负测试。专项 `12 passed in 1.05s`；D5 全量
+  `510 passed in 121.82s`。
+- [ ] main 提交实现后，在 detached clean worktree 执行固定 30-epoch 内部开发训练并保存实际
+  model report、weights 和 config 三件套。本轮不执行该步骤。
+- [ ] 使用保留 seed `1000-1019` 做独立评估，并完成同 seed paired shadow。两项完成前保持
+  G1、assist、在线和相机控制权限关闭。
+
 ## 2026-07-21 跨视角困难样本课程与准入视图
 
 - [x] 只读审计冻结正式图语料的 99 条未标注边。194 个缺失端点中 95 条边两端缺失、4 条边缺

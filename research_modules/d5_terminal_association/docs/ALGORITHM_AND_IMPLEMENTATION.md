@@ -2,6 +2,41 @@
 
 **状态日期：2026-07-21**
 
+## Composite 只读训练流程
+
+`load_composite_training_corpus()` 重新计算 formal、supplemental、canonical subview、composite view、
+admission report 和两份 registry 的绑定。加载完成后，`audit_composite_training_dataset()` 逐 episode
+检查 seed split、标签、候选边相机命名空间和场景规模 cell。训练输出目录不得与任何源根、view 或
+admission report 重叠。训练期只在内存 manifest 中补充 formal/supplemental 困难负例来源描述，
+不写回源 manifest 或样本。
+
+`run_loaded_tracklet_training_pipeline()` 复用现有原生 PyTorch 图分类器、温度标定、阈值选择、bundle
+写入和严格重载。production profile 固定 seed `20260721`、30 epoch、hidden dimension 32、两轮消息
+传递、16 图梯度累积和 CPU 单线程；脏工作树的非 smoke 训练在创建输出前拒绝。当前仅执行
+`preflight`，没有运行该 production profile。
+
+全量训练分支对 test split 记录实际 `sample_count/p50/p95/max` 延迟，并逐一评价 45 个场景规模
+cell。`build_d6_model_evaluation_report()` 只从实际训练报告、`weights.pt` 和 bundle `manifest.json`
+提取 D6 所需字段，复核权重与配置文件哈希、training source、20 个 test seed、完整 truth 和全部
+指标 availability。cell `sample_count` 取 `labeled_candidate_edge_count`。任何哈希不符、指标
+unavailable、cell 缺失或保留 seed 混入都会拒绝导出。独立报告没有权限字段；最终训练摘要仍明确
+held-out、paired shadow 和 G1/assist 未完成。
+
+命令行分为两个子命令：
+
+```bash
+PYTHONPATH=research_modules/d5_terminal_association/src \
+python3 research_modules/d5_terminal_association/scripts/run_tracklet_composite_training.py \
+  preflight --formal-dataset <formal> --supplemental-root <supplemental> \
+  --training-seed-registry <training_registry> --shared-seed-registry <shared_registry> \
+  --composite-view <view.json> --composite-admission-report <admission.json> \
+  --output-json <preflight.json> --output-markdown <preflight.md>
+
+# 仅由 main 在提交后的 detached clean worktree 执行；本轮未运行。
+python3 research_modules/d5_terminal_association/scripts/run_tracklet_composite_training.py \
+  train <同一组 source 参数> --output-dir <clean_internal_output>
+```
+
 **适用范围：** 本文依据第五研究模块（D5）的当前代码、README、PLAN、模块原理文档和系统总汇总，同步说明算法原理、数据合同、代码实施路径与验证结果。文中严格区分默认在线主线、已实现但非默认的辅助/离线能力，以及尚未实现能力；计划项不能据此解释为已上线能力。
 
 ## 2026-07-21 跨视角困难样本实现

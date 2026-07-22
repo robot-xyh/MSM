@@ -2,6 +2,20 @@
 
 **状态日期：2026-07-21**
 
+## Composite 训练证据分层
+
+组合语料训练入口只接受严格复载的 formal complete frames 与 clean supplemental corpus。源数据、
+组合视图、准入报告和共享 seed registry 必须同时命中；seed 按完整数值原子分为 `60/20/20`，
+`1000-1019` 保留 seed 不得进入，三个 split 都必须覆盖 45 个场景规模单元并同时含正负边。在线图
+仍只含匿名 camera-local tracklet、双时间戳、协方差和几何特征。truth 只参与物理分离的离线标签，
+D5 不创建或改写中心 `global_track_id`。
+
+证据分为数据支持、内部模型测试、保留 seed、paired shadow 和 G1/assist 五层。2026-07-21 的实际
+preflight 已验证 4,972 帧和 245,040 条边，数据支持通过；它没有训练模型。未来 clean 内部训练可
+生成 D6 三件套，其中模型报告严格来自 test 评估和 bundle。cell 的样本口径为已标注候选边数，
+避免把一帧 episode 误写成一个分类样本。即使内部 test 全部门限通过，保留 seed 和 paired shadow
+未完成时 G1、assist、在线及相机控制权限仍为 false，规则与几何回退继续生效。
+
 ## 跨视角困难样本准入原则
 
 冻结正式语料的缺标签记录只能由精确来源链补齐。有效证据必须同时匹配正式 manifest、episode、

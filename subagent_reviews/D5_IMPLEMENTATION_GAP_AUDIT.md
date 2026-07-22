@@ -1,5 +1,21 @@
 # D5 实现差距审计
 
+## 2026-07-21 Composite 训练适配器 GAP 状态
+
+**只读训练入口与预检子项已关闭，模型证据仍是 P1。** D5 已实现 formal + supplemental strict
+loader、固定训练 profile、完整 seed/cell/标签/同相机互斥审计和脏工作树正式训练阻断。实际
+preflight 复载 4,972 帧、245,040 边，`60/20/20` 与每 split 45 cell 均通过，未训练模型。
+
+**D6 内部模型报告生产接口已闭合，实际三件套仍不可用。** clean 全量训练完成后，D5 可从实际
+training report、`weights.pt` 和 bundle `manifest.json` 生成精确
+`d5.tracklet-graph-model-evaluation.v1`。cell `sample_count` 使用已标注候选边数。专项正负测试已
+覆盖哈希、指标 availability、cell 完整性和保留 seed；报告不包含权限字段。由于本轮没有正式训练，
+D6 当前仍只能消费 data support，不能取得实际 internal model test 三件套。
+
+开放 P1 为：main 在提交后的 detached clean worktree 执行固定训练；D6 复核实际三件套；保留 seed
+`1000-1019` 独立评估；同 seed paired shadow。全部完成前 G1、assist、在线与相机控制权限保持关闭。
+本轮专项 `12 passed in 1.05s`，D5 全量 `510 passed in 121.82s`。
+
 ## 2026-07-21 Tracklet 困难样本 GAP 状态
 
 **困难样本 producer、clean 数据来源和训练数据支持子项已闭合；模型与 G1 未闭合。** 冻结正式语料 99 条未标注边的
