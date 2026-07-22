@@ -187,6 +187,11 @@ def test_held_unchanged_and_forced_replan_frames_replace_previous_evidence() -> 
     assert forced.decision_state == "replan_ack_no_change"
     assert forced_evidence.available is True
     assert forced_evidence.timestamp_s == 0.75
+    assert forced_evidence.forced_replan is True
+    assert held_evidence.forced_replan is False
+    assert forced_evidence.plan.metadata["plan_owner"] == "center"
+    assert forced_evidence.plan.metadata["owner_node_id"] == "node_0000"
+    assert forced_evidence.previous_plan.metadata["owner_node_id"] == "node_0000"
     assert first_evidence is not unchanged_evidence
     assert unchanged_evidence is not forced_evidence
     assert forced_evidence is not held_evidence

@@ -851,7 +851,46 @@ D3 全量收集 363 项，结果为 `362 passed, 1 skipped`。唯一 skip 是当
 ### 结论
 
 D3 已具备让 main 运行正式保留 seed 配对实验的模块内入口，模型加载、矩阵复放、规则
-回退和 receipt 生成不再需要 main 重写。当前证据只覆盖软件接口和匿名单元规划帧。正式
-三维 seed 1000-1019、同源传感器随机流、通信/故障 schedule、运行 ACK、物理结果和 D6
-非退化判断尚未执行。bundle 继续保持 development/shadow-only，PPO、online assist 和
-authority 继续关闭。
+回退和 receipt 生成不再需要 main 重写。该阶段证据只覆盖软件接口和匿名单元规划帧；当时
+尚未消费正式三维 seed 1000-1019。bundle 继续保持 development/shadow-only，PPO、
+online assist 和 authority 继续关闭。
+
+## 保留 Seed 控制臂重放修复测试（2026-07-21）
+
+### 问题
+
+main 当前 nominal 5v5、duration 2.2、seed 1000-1019 在 `t=1.0` 选取干预帧。旧执行器在
+seeds 1002、1009、1011、1017、1019 触发 `control_plan_replay_mismatch`。记录帧分别为
+`held_by_hysteresis` 或 `replan_ack_no_change`，重放帧却因所有权 metadata 缺失进入
+`accepted_execution_control_change`。严格门拒绝了不同 binding，没有产生错误收据。
+
+### 修复和验收
+
+规划证据增加 `forced_replan`，并保留匿名执行所有权、激活、授权、节点/链路、迟滞窗口
+计数和联盟语义。前序计划中退出当前 roster 的实体不再被删除，改用 `previous_*` token。
+control 门扩展为校验 binding、执行签名、版本、窗口、决策状态、changed 和 N/M 规模。
+
+专项夹具仍使用完整 20-seed inventory 和临时 development bundle。新增场景覆盖 5v5 成本
+切换但驻留时间不足、4→5 目标强制重规划、5→4 目标生命周期移除，以及人为篡改 binding。
+专项结果为 `9 passed`；D3 全量收集 365 项，结果 `364 passed, 1 skipped`，唯一 skip 为
+可选 OR-Tools。
+
+### 当前源帧复验
+
+复验直接消费 main 当前源帧生成器的 20 个匿名规划帧和项目冻结 development bundle，未
+写入 main 输出目录。结果如下：
+
+| 项目 | 结果 |
+|---|---:|
+| seed | 20 |
+| control/treatment arm | 40 |
+| control `unchanged` | 15 |
+| control `held_by_hysteresis` | 3 |
+| control `replan_ack_no_change` | 2 |
+| control binding/状态失配 | 0 |
+| bundle loaded | true |
+| runtime ACK / outcome / counterfactual / causal | 全部 unavailable |
+
+这次复验关闭了 D3 精确重放阻塞。它没有生成 main 正式落盘产物，也没有 D6 非退化统计、
+物理拦截结果或因果结论。冻结 bundle 保持 development/shadow-only；PPO、online assist、
+authority 继续关闭，规则回退继续启用。main 仍需重跑完整 D3/D4 runner 并交给 D6 汇总。

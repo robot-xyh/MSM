@@ -258,6 +258,7 @@ def canonical_planning_frame_snapshot_sha256(
         "planning_path": evidence.planning_path,
         "selection_source": evidence.selection_source,
         "timestamp_s": evidence.timestamp_s,
+        "forced_replan": evidence.forced_replan,
         "previous_plan_version": evidence.previous_plan_version,
         "tracks": evidence.tracks,
         "resources": evidence.resources,
@@ -567,14 +568,15 @@ def _execute_arm(
         _fail("offline_treatment_bundle_state_invalid")
 
     rule_result = _required_rule_result(evidence)
+    replay_config = _offline_replay_planner_config(config, evidence)
     frozen_model = _FrozenPlanningFrameCostModel(
         rule_result,
-        config=config,
+        config=replay_config,
         weights=weights,
     )
     planner = AssignmentPlanner(
         cost_model=frozen_model,
-        config=config,
+        config=replay_config,
         learning_assistant=assistant,
     )
     previous_plan = evidence.previous_plan
@@ -587,6 +589,7 @@ def _execute_arm(
         previous_plan=previous_plan,
         window_id=None if evidence.plan is None else evidence.plan.window_id,
         expected_previous_version=arm.expected_previous_plan_version,
+        forced_replan=evidence.forced_replan,
         publish=False,
     )
     replay = planner.latest_planning_evidence
@@ -603,7 +606,7 @@ def _execute_arm(
     if replay_action_hash != action_mask_hash:
         _fail("action_mask_replay_mismatch")
     if arm.arm_kind == CONTROL_ARM and evidence.plan is not None:
-        if _binding_signature(plan) != _binding_signature(evidence.plan):
+        if not _control_plan_replay_matches(plan, evidence.plan):
             _fail("control_plan_replay_mismatch")
 
     effective = replay.effective_matrix_result
@@ -711,6 +714,22 @@ def _annotate_isolated_plan(
             "counterfactual_available": False,
             "causal_available": False,
         },
+    )
+
+
+def _offline_replay_planner_config(
+    config: PlannerConfig,
+    evidence: PlanningFrameEvidence,
+) -> PlannerConfig:
+    plan = evidence.plan
+    if plan is None:
+        _fail("offline_execution_planning_frame_incomplete")
+    return replace(
+        config,
+        human_authorization_state=plan.human_authorization_state,
+        source_node_id=plan.source_node_id,
+        target_node_id=plan.target_node_id,
+        link_type=plan.link_type,
     )
 
 
@@ -1091,6 +1110,24 @@ def _binding_signature(plan: AssignmentPlan) -> frozenset[tuple[str, str]]:
     return frozenset(
         (assignment.target_id, assignment.resource_id)
         for assignment in plan.assignments
+    )
+
+
+def _control_plan_replay_matches(
+    replayed: AssignmentPlan,
+    recorded: AssignmentPlan,
+) -> bool:
+    """Require exact executable semantics while ignoring generated plan identity."""
+
+    return (
+        _binding_signature(replayed) == _binding_signature(recorded)
+        and replayed.execution_signature() == recorded.execution_signature()
+        and replayed.version == recorded.version
+        and replayed.window_id == recorded.window_id
+        and replayed.decision_state == recorded.decision_state
+        and replayed.changed == recorded.changed
+        and replayed.resource_count == recorded.resource_count
+        and replayed.target_count == recorded.target_count
     )
 
 

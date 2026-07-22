@@ -1171,3 +1171,30 @@ OR-Tools，零失败满足门限。
    counterfactual/causal availability；当前 D3 报告不得代替 D6 结果侧车。
 3. 只有正式 20-seed 配对、运行时 applied ACK、成本和安全非退化、分布外/deadline 门限
    同时通过后，才讨论 qualified bundle。PPO、online assist 和 authority 继续关闭。
+
+## 37. 保留 Seed 精确重放修复（2026-07-21）
+
+### 已完成
+
+1. 将 `forced_replan` 纳入 `PlanningFrameEvidence` 和输入快照哈希，中心规划与增量规划均在
+   捕获帧时保存调用状态；区域授权路径保持默认 false，不引入不存在的重规划权限。
+2. 匿名前序计划保留迟滞重放实际读取的窗口编号和累计变化数，并保留执行所有权、激活、
+   人工授权、节点/链路及联盟执行语义。所有节点和前序独有目标/资源使用稳定匿名 token，
+   不保留 truth、actor、object 或 mesh 身份。
+3. 离线执行器依据记录计划恢复 planner 的人工作业状态和匿名链路端点。control 除比较
+   资源-目标 binding 外，还严格比较执行签名、版本、窗口、决策状态、changed 和 N/M 规模；
+   任一差异继续返回 `control_plan_replay_mismatch`。
+4. 新增 20-seed 5v5 真实形态回归，覆盖 `held_by_hysteresis`、4→5 目标
+   `replan_ack_no_change`、5→4 生命周期移除及篡改 binding 负例。专项 9 项通过，D3 全量
+   `364 passed, 1 skipped`。
+5. 使用 main 当前 nominal 5v5、duration 2.2、seed 1000-1019 源帧和冻结 development
+   bundle 完成不写盘内存复验。20 个 control 均精确复现，状态分布为 15/3/2，40 个 arm
+   完成，未产生在线权限或结果证据。
+
+### 下一步
+
+1. main 重新运行并写出完整 D3/D4 保留-seed 产物；D3 不修改 main runner 或输出目录。
+2. D6 基于正式产物补充逐 seed 非退化、回退、分布外和时延统计。当前 D3 内存复验不能
+   代替 D6 sidecar，也不能形成学习策略收益结论。
+3. runtime ACK、物理 outcome、counterfactual 和 causal 继续保持 unavailable。冻结 bundle
+   仍为 development/shadow-only；PPO、online assist、authority 不开放，规则回退保持启用。

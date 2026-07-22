@@ -1846,6 +1846,7 @@ H_input = SHA256(
   frame schema,
   planning path,
   timestamp,
+  forced replan state,
   anonymous tracks,
   anonymous resources,
   previous plan,
@@ -1883,7 +1884,8 @@ proposal 或 rule fallback，已经由 assist 改写的 frame 不能再充当 co
 
 规划器使用冻结成本适配器。适配器先移除规划帧中已记录的重分配切换罚项，再由传入的
 planner config 按前序计划重新施加，随后要求复放规则矩阵与原矩阵在 `1e-12` 绝对误差内
-一致。control 直接求解：
+一致。匿名规划帧同时提供人工作业状态、节点/链路端点和 `forced_replan`，用于恢复原状态机
+分支。control 直接求解：
 
 ```text
 X_control = Hungarian(C_rule, M_safe)
@@ -1916,7 +1918,64 @@ receipt 记录实际 plan id/version、计划载荷 SHA、矩阵/掩码 SHA、�
 
 ### 40.6 验证状态
 
-专项 7 项以 20 个保留 seed 结构和临时 v3 development bundle 实际运行 40 臂，覆盖成功、
-manifest SHA、policy version、分布外、deadline、非有限权重、输入快照篡改和有限 JSON。
-结果 `7 passed`。D3 全量为 `362 passed, 1 skipped`，skip 为可选 OR-Tools。正式
-scalable-3d episode 和 D6 sidecar 尚未接入，本节不报告策略收益或晋级结论。
+专项 9 项以 20 个保留 seed 结构和临时 v3 development bundle 实际运行 40 臂，覆盖成功、
+manifest SHA、policy version、分布外、deadline、非有限权重、输入快照篡改、真实形态
+迟滞/重规划和严格 binding 负例。结果 `9 passed`。D3 全量为
+`364 passed, 1 skipped`，skip 为可选 OR-Tools。本节不报告策略收益或晋级结论。
+
+## 41. 执行控制状态的匿名重放（2026-07-21）
+
+### 41.1 失配机理
+
+迟滞释放不仅取决于成本和驻留时间。planner 会比较前序计划与候选计划的所有权字段、
+激活字段和人工授权状态：
+
+```text
+control_change =
+    owner(previous) != owner(candidate)
+    or activation(previous) != activation(candidate)
+    or authorization(previous) != authorization(candidate)
+```
+
+`control_change=true` 会允许候选计划绕过普通迟滞。旧匿名化把前序 metadata 清空，而新候选
+仍由 planner config 生成中心所有权，于是产生虚假的 `accepted_execution_control_change`。
+规则矩阵没有变化，状态机输入却已不等价。严格 binding 门随后发现输出不同并拒绝执行。
+
+### 41.2 证据结构
+
+修复后的规划帧保留三类输入。第一类是计划所有权、激活、授权、源/目标节点和链路；第二类
+是 `hysteresis_change_window_id` 与 `hysteresis_window_changes_used`；第三类是调用级
+`forced_replan`。前两类进入匿名 `AssignmentPlan`，第三类是
+`PlanningFrameEvidence` 的显式字段并进入 `H_input`。
+
+目标、资源、联盟和节点分别建立 token 映射。前序计划可能包含当前帧已不存在的目标或资源，
+这些身份不能直接删除，否则 `_missing_previous_execution_target_ids` 会失去生命周期证据。
+实现为其建立 `previous_target_%04d` 和 `previous_resource_%04d`。当前 roster 的矩阵顺序和
+动作掩码保持不变，前序占位符只用于迟滞重评分和执行语义比较。
+
+### 41.3 控制臂验收
+
+离线 planner 从记录计划恢复 `human_authorization_state`、匿名 source/target node 和
+`link_type`，再用记录的 `forced_replan` 调用普通中心规划入口。control 通过条件为：
+
+```text
+binding(replay) == binding(recorded)
+execution_signature(replay) == execution_signature(recorded)
+version/window/decision/changed/scale(replay)
+    == version/window/decision/changed/scale(recorded)
+```
+
+隔离计划编号不参与比较，因为执行器会生成新的不可发布 plan id。其余任一差异都保留原
+错误码 `control_plan_replay_mismatch`。该检查发生在离线结果注入不可发布标记之前。
+
+### 41.4 验证
+
+单元回归构造完整 20-seed inventory。场景包含 3 个 5v5 迟滞保持帧、2 个由 4 个目标增加
+到 5 个目标且 `forced_replan=true` 的无变化确认帧，以及 1 个从 5 个目标减少到 4 个目标
+的生命周期帧。所有 control 精确复现；篡改一个资源-目标 binding 后仍以严格错误码拒绝。
+
+另读取 main 当前 nominal 5v5、duration 2.2、seed 1000-1019 源帧并使用冻结 development
+bundle 做不写盘验证。20 个 control 的状态分布为 15 个 `unchanged`、3 个
+`held_by_hysteresis`、2 个 `replan_ack_no_change`，逐 seed binding 和执行状态一致，共完成
+40 个 arm。该运行没有 runtime ACK、物理 outcome、counterfactual 或 causal 证据，不改变
+production loader 的 shadow-only 准入。

@@ -22,6 +22,9 @@ from d3_assignment_planner import (
     TREATMENT_ARM,
     TREATMENT_PLANNER_PATH,
     AssignmentPlanner,
+    CostModel,
+    CostWeights,
+    HungarianAssignmentSolver,
     PairedInterventionArmSpecification,
     PairedInterventionContractError,
     PairedInterventionSeedPair,
@@ -128,6 +131,104 @@ def _planning_frames(
         )
         frames[seed] = planner.latest_planning_evidence
     return frames
+
+
+_HELD_5V5_SEEDS = frozenset({1002, 1009, 1017})
+_FORCED_REPLAN_4_TO_5_SEEDS = frozenset({1011, 1019})
+_REMOVED_TARGET_SEED = 1005
+
+
+def _realistic_tracks(
+    seed: int,
+    count: int,
+    *,
+    shifted: bool = False,
+) -> tuple[TargetTrack, ...]:
+    resource_ids = tuple(f"interceptor-{seed}-{index}" for index in range(5))
+    return tuple(
+        TargetTrack(
+            f"global-track-{seed}-{index}",
+            threat_score=0.20 + 0.01 * index,
+            covariance=0.1 + 0.01 * index,
+            window_cost=0.0,
+            fov_difficulty_by_resource={
+                resource_id: (
+                    0.0
+                    if resource_index
+                    == ((index + 1) % 5 if shifted else index)
+                    else 1.0
+                )
+                for resource_index, resource_id in enumerate(resource_ids)
+            },
+            metadata={
+                "truth_id": f"truth-{seed}-{index}",
+                "target_actor_name": f"actor-{seed}-{index}",
+            },
+        )
+        for index in range(count)
+    )
+
+
+def _realistic_resources(seed: int) -> tuple[ResourceState, ...]:
+    return tuple(
+        ResourceState(
+            f"interceptor-{seed}-{index}",
+            metadata={"object_id": f"vehicle-object-{seed}-{index}"},
+        )
+        for index in range(5)
+    )
+
+
+def _realistic_five_by_five_frames() -> tuple[
+    PlannerConfig,
+    CostWeights,
+    dict[int, object],
+]:
+    config = PlannerConfig(
+        enable_hysteresis=True,
+        delta=0.2,
+        min_dwell=2.0,
+        human_authorization_state="approved",
+        source_node_id="private-center-node",
+    )
+    weights = CostWeights(
+        window=0.0,
+        covariance=0.0,
+        threat=0.0,
+        resource_state=0.0,
+        fov=1.0,
+        conflict=0.0,
+        reachability_3d=0.0,
+        region=0.0,
+    )
+    frames: dict[int, object] = {}
+    for seed in PAIRED_INTERVENTION_RESERVED_SEEDS_V1:
+        planner = AssignmentPlanner(
+            cost_model=CostModel(weights=weights, config=config),
+            solver=HungarianAssignmentSolver(allow_scipy=False),
+            config=config,
+        )
+        initial_count = 4 if seed in _FORCED_REPLAN_4_TO_5_SEEDS else 5
+        previous = planner.plan(
+            _realistic_tracks(seed, initial_count),
+            _realistic_resources(seed),
+            timestamp=0.0,
+        )
+        current_count = 4 if seed == _REMOVED_TARGET_SEED else 5
+        planner.plan(
+            _realistic_tracks(
+                seed,
+                current_count,
+                shifted=seed in _HELD_5V5_SEEDS,
+            ),
+            _realistic_resources(seed),
+            timestamp=1.0,
+            previous_plan=previous,
+            expected_previous_version=previous.version,
+            forced_replan=seed in _FORCED_REPLAN_4_TO_5_SEEDS,
+        )
+        frames[seed] = planner.latest_planning_evidence
+    return config, weights, frames
 
 
 def _specification(
@@ -284,6 +385,117 @@ def test_reserved_seed_execution_creates_real_shared_report_receipts(
     assert load_model_bundle(bundle_dir, mode="assist").fallback_reason == (
         "bundle_shadow_only"
     )
+
+
+def test_realistic_five_by_five_control_exactly_replays_execution_state(
+    tmp_path: Path,
+) -> None:
+    bundle_dir = tmp_path / "bundle"
+    _bundle(bundle_dir)
+    config, weights, frames = _realistic_five_by_five_frames()
+    specification = _specification(bundle_dir=bundle_dir, frames=frames)
+
+    for seed in _HELD_5V5_SEEDS:
+        assert frames[seed].plan.decision_state == "held_by_hysteresis"
+        assert frames[seed].forced_replan is False
+    for seed in _FORCED_REPLAN_4_TO_5_SEEDS:
+        frame = frames[seed]
+        assert frame.plan.decision_state == "replan_ack_no_change"
+        assert frame.forced_replan is True
+        assert frame.plan.target_count == len(frame.tracks) == 5
+        assert frame.previous_plan.target_count == 4
+        assert len(frame.plan.assignments) == 4
+
+    removed = frames[_REMOVED_TARGET_SEED]
+    prior_only_targets = {
+        assignment.target_id
+        for assignment in removed.previous_plan.assignments
+        if assignment.target_id.startswith("previous_target_")
+    }
+    assert prior_only_targets == {"previous_target_0000"}
+    assert all(
+        not assignment.target_id.startswith("previous_target_")
+        for assignment in removed.plan.assignments
+    )
+    assert removed.plan.decision_state == "accepted_previous_infeasible"
+
+    for frame in frames.values():
+        assert frame.plan.metadata["plan_owner"] == "center"
+        assert frame.plan.metadata["owner_node_id"] == "node_0000"
+        assert frame.previous_plan.metadata["owner_node_id"] == "node_0000"
+        assert frame.plan.source_node_id == "node_0000"
+        rendered = repr(frame)
+        assert "private-center-node" not in rendered
+        assert "global-track-" not in rendered
+        assert "interceptor-" not in rendered
+        assert "truth-" not in rendered
+        assert "actor-" not in rendered
+        assert "object-" not in rendered
+
+    result = execute_offline_paired_intervention(
+        specification,
+        frames,
+        bundle_dir=bundle_dir,
+        planner_config=config,
+        cost_weights=weights,
+    )
+    controls = {
+        item.arm_specification.seed: item
+        for item in result.arms
+        if item.arm_specification.arm_kind == CONTROL_ARM
+    }
+    assert len(controls) == 20
+    for seed, frame in frames.items():
+        expected = frame.plan
+        replayed = controls[seed].plan
+        assert {
+            (item.target_id, item.resource_id) for item in replayed.assignments
+        } == {
+            (item.target_id, item.resource_id) for item in expected.assignments
+        }
+        assert replayed.version == expected.version
+        assert replayed.window_id == expected.window_id
+        assert replayed.decision_state == expected.decision_state
+        assert replayed.changed == expected.changed
+        assert replayed.resource_count == expected.resource_count
+        assert replayed.target_count == expected.target_count
+
+
+def test_control_binding_tamper_still_fails_strict_replay_gate(
+    tmp_path: Path,
+) -> None:
+    bundle_dir = tmp_path / "bundle"
+    _bundle(bundle_dir)
+    config = PlannerConfig(enable_hysteresis=False)
+    frames = _planning_frames(config)
+    seed = PAIRED_INTERVENTION_RESERVED_SEEDS_V1[0]
+    frame = frames[seed]
+    recorded = frame.plan
+    first = recorded.assignments[0]
+    replacement_resource = next(
+        resource.resource_id
+        for resource in frame.resources
+        if resource.resource_id != first.resource_id
+    )
+    tampered = replace(
+        recorded,
+        assignments=(
+            replace(first, resource_id=replacement_resource),
+            *recorded.assignments[1:],
+        ),
+    )
+    frames[seed] = replace(frame, plan=tampered)
+    specification = _specification(bundle_dir=bundle_dir, frames=frames)
+
+    with pytest.raises(PairedInterventionContractError) as captured:
+        execute_offline_paired_intervention(
+            specification,
+            frames,
+            bundle_dir=bundle_dir,
+            planner_config=config,
+        )
+
+    assert captured.value.code == "control_plan_replay_mismatch"
 
 
 @pytest.mark.parametrize(

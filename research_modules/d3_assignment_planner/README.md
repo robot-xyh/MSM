@@ -1052,3 +1052,29 @@ policy version、分布外门控、deadline、非有限权重、输入快照不�
 通过。D3 全量收集 363 项，结果为 `362 passed, 1 skipped`，唯一 skip 为未安装的可选
 OR-Tools。该结果证明执行入口和失败关闭逻辑可用，尚不等于正式三维主流程已经运行 seed
 `1000-1019`，也不形成模型非退化或在线晋级结论。
+
+## 2026-07-21 保留 Seed 控制臂精确重放
+
+main 的 nominal 5v5、2.2 秒保留-seed 源帧暴露了一个重放缺口：匿名化曾清空前序计划的
+执行所有权元数据，也没有记录调用时的 `forced_replan`。离线 control planner 因此把
+中心所有权误判为新的执行控制变化，绕过迟滞并产生不同 binding。严格
+`control_plan_replay_mismatch` 正确阻断了这些帧。
+
+`PlanningFrameEvidence` 现在保留精确重放所需的真值安全状态：计划所有权与激活字段、
+人工授权、源/目标节点和链路、同窗口迟滞计数、联盟执行语义以及 `forced_replan`。节点、
+资源、目标和联盟身份统一匿名化；仅存在于前序计划的目标或资源使用
+`previous_target_*` / `previous_resource_*` 占位符。输入快照 SHA-256 已包含
+`forced_replan`。离线执行器从匿名证据恢复 planner 的授权和链路配置，control 需同时
+复现 binding、执行签名、版本、窗口、决策状态、changed 标志和 N/M 规模，否则仍以
+`control_plan_replay_mismatch` 失败关闭。
+
+专项测试扩展为 9 项。新增 20-seed 真实形态夹具覆盖 5v5 迟滞保持、4→5 目标的
+`replan_ack_no_change`、5→4 生命周期移除和前序目标占位符；故意篡改 binding 的负例仍被
+严格门拒绝。D3 全量收集 365 项，结果 `364 passed, 1 skipped`，唯一 skip 为可选
+OR-Tools。
+
+另以 main 当前源帧和冻结 development bundle 做了不写盘内存复验：20 个 seed、40 个 arm
+全部完成，control 状态为 15 个 `unchanged`、3 个 `held_by_hysteresis` 和 2 个
+`replan_ack_no_change`，逐 seed binding 与记录帧一致，bundle 正常读取。该复验没有生成
+main 正式产物，也没有运行时确认、物理结果、反事实或因果证据。生产 assist 准入、PPO、
+在线 authority 和规则回退边界均未改变。

@@ -234,6 +234,7 @@ class AssignmentPlanner:
         resources: tuple[ResourceState, ...],
         plan: AssignmentPlan,
         previous_plan: AssignmentPlan | None,
+        forced_replan: bool = False,
     ) -> None:
         try:
             evidence = build_planning_frame_evidence(
@@ -246,6 +247,7 @@ class AssignmentPlanner:
                 resources=resources,
                 plan=plan,
                 previous_plan=previous_plan,
+                forced_replan=forced_replan,
             )
         except Exception as exc:
             evidence = PlanningFrameEvidence.unavailable(
@@ -362,6 +364,7 @@ class AssignmentPlanner:
             resources=resource_items,
             plan=result,
             previous_plan=previous_plan,
+            forced_replan=forced_replan,
         )
         return result
 
@@ -1078,6 +1081,7 @@ class AssignmentPlanner:
             resources=resource_items,
             plan=result,
             previous_plan=previous_plan,
+            forced_replan=forced_replan,
         )
         return result
 

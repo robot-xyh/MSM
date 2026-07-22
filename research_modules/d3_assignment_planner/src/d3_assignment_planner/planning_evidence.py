@@ -13,6 +13,8 @@ from .costs import CostMatrixResult
 from .models import (
     Assignment,
     AssignmentPlan,
+    CoalitionPlan,
+    DemandSatisfactionSummary,
     ResourceState,
     TargetDemand,
     TargetTrack,
@@ -21,6 +23,65 @@ from .models import (
 
 PLANNING_FRAME_EVIDENCE_SCHEMA_V1 = "d3_planning_frame_evidence_v1"
 _EMPTY_MAPPING: Mapping[str, Any] = MappingProxyType({})
+
+_PLAN_REPLAY_METADATA_KEYS = frozenset(
+    {
+        "plan_schema",
+        "plan_owner",
+        "active_plan_owner",
+        "owner_node_id",
+        "current_plan_owner",
+        "current_plan_owner_node_id",
+        "secondary_takeover_state",
+        "secondary_plan_executable",
+        "secondary_activated_at_s",
+        "secondary_lease_expires_at_s",
+        "secondary_leader_epoch",
+        "activation_state",
+        "activation_at_s",
+        "executable",
+        "hysteresis_change_window_id",
+        "hysteresis_window_changes_used",
+    }
+)
+_PLAN_REPLAY_NODE_KEYS = frozenset(
+    {"owner_node_id", "current_plan_owner_node_id"}
+)
+_ASSIGNMENT_REPLAY_METADATA_KEYS = frozenset(
+    {
+        "coordination_mode",
+        "primary_resource_count",
+        "minimum_separation_s",
+        "terminal_authorization_scope",
+        "arrival_coordination_required",
+        "required_capability_class",
+        "plan_owner",
+        "active_plan_owner",
+        "owner_node_id",
+        "secondary_takeover_state",
+        "secondary_plan_executable",
+        "secondary_activated_at_s",
+        "secondary_lease_expires_at_s",
+        "secondary_leader_epoch",
+        "activation_state",
+        "activation_at_s",
+        "executable",
+        "regional_owner_layer",
+        "regional_region_id",
+        "regional_epoch",
+        "regional_lease_expires_at_s",
+        "regional_commit_state",
+        "regional_commit_required",
+        "regional_commit_mode",
+        "regional_commit_evidence_present",
+    }
+)
+_COALITION_REPLAY_METADATA_KEYS = frozenset(
+    {
+        "demand_template",
+        "membership_changed_at_s",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -46,6 +107,7 @@ class PlanningFrameEvidence:
     resources: tuple[ResourceState, ...] = ()
     plan: AssignmentPlan | None = None
     previous_plan: AssignmentPlan | None = None
+    forced_replan: bool = False
     schema_version: str = PLANNING_FRAME_EVIDENCE_SCHEMA_V1
 
     @property
@@ -89,6 +151,7 @@ def build_planning_frame_evidence(
     resources: Sequence[ResourceState],
     plan: AssignmentPlan,
     previous_plan: AssignmentPlan | None,
+    forced_replan: bool = False,
 ) -> PlanningFrameEvidence:
     """Build a detached anonymous snapshot, or an explicit unavailable result."""
 
@@ -131,9 +194,38 @@ def build_planning_frame_evidence(
         target_id: f"target_{index:04d}"
         for index, target_id in enumerate(rule_matrix_result.target_ids)
     }
+    prior_target_ids = _plan_target_ids(previous_plan) - set(target_tokens)
+    target_tokens.update(
+        {
+            target_id: f"previous_target_{index:04d}"
+            for index, target_id in enumerate(sorted(prior_target_ids))
+        }
+    )
     resource_tokens = {
         resource_id: f"resource_{index:04d}"
         for index, resource_id in enumerate(rule_matrix_result.resource_ids)
+    }
+    prior_resource_ids = _plan_resource_ids(previous_plan) - set(resource_tokens)
+    resource_tokens.update(
+        {
+            resource_id: f"previous_resource_{index:04d}"
+            for index, resource_id in enumerate(sorted(prior_resource_ids))
+        }
+    )
+    coalition_tokens = {
+        coalition_id: f"coalition_{index:04d}"
+        for index, coalition_id in enumerate(
+            sorted(_plan_coalition_ids(plan) | _plan_coalition_ids(previous_plan))
+        )
+    }
+    node_tokens = {
+        node_id: f"node_{index:04d}"
+        for index, node_id in enumerate(
+            sorted(
+                _plan_node_ids(plan, resource_tokens)
+                | _plan_node_ids(previous_plan, resource_tokens)
+            )
+        )
     }
     anonymous_tracks = tuple(
         _anonymous_track(track, target_tokens[track.track_id])
@@ -143,11 +235,23 @@ def build_planning_frame_evidence(
         _anonymous_resource(resource, resource_tokens[resource.resource_id])
         for resource in resource_items
     )
-    anonymous_plan = _anonymous_plan(plan, target_tokens, resource_tokens)
+    anonymous_plan = _anonymous_plan(
+        plan,
+        target_tokens,
+        resource_tokens,
+        coalition_tokens,
+        node_tokens,
+    )
     anonymous_previous = (
         None
         if previous_plan is None
-        else _anonymous_plan(previous_plan, target_tokens, resource_tokens)
+        else _anonymous_plan(
+            previous_plan,
+            target_tokens,
+            resource_tokens,
+            coalition_tokens,
+            node_tokens,
+        )
     )
 
     return PlanningFrameEvidence(
@@ -182,6 +286,7 @@ def build_planning_frame_evidence(
         resources=anonymous_resources,
         plan=anonymous_plan,
         previous_plan=anonymous_previous,
+        forced_replan=bool(forced_replan),
     )
 
 
@@ -402,12 +507,36 @@ def _anonymous_plan(
     plan: AssignmentPlan,
     target_tokens: Mapping[str, str],
     resource_tokens: Mapping[str, str],
+    coalition_tokens: Mapping[str, str],
+    node_tokens: Mapping[str, str],
 ) -> AssignmentPlan:
     assignments = tuple(
-        _anonymous_assignment(assignment, target_tokens, resource_tokens)
+        _anonymous_assignment(
+            assignment,
+            target_tokens,
+            resource_tokens,
+            coalition_tokens,
+            node_tokens,
+        )
         for assignment in plan.assignments
         if assignment.target_id in target_tokens
         and assignment.resource_id in resource_tokens
+    )
+    coalitions = tuple(
+        _anonymous_coalition(
+            coalition,
+            target_tokens,
+            resource_tokens,
+            coalition_tokens,
+        )
+        for coalition in plan.coalitions
+        if coalition.target_id in target_tokens
+        and coalition.coalition_id in coalition_tokens
+    )
+    demand_summaries = tuple(
+        _anonymous_demand_summary(summary, target_tokens, coalition_tokens)
+        for summary in plan.demand_summaries
+        if summary.target_id in target_tokens
     )
     return replace(
         plan,
@@ -422,14 +551,25 @@ def _anonymous_plan(
             for value in plan.incomplete_target_ids
             if value in target_tokens
         ),
-        metadata=MappingProxyType({}),
-        source_node_id=None,
-        target_node_id=None,
-        link_type=None,
-        resource_count=len(resource_tokens),
-        target_count=len(target_tokens),
-        coalitions=(),
-        demand_summaries=(),
+        metadata=_safe_plan_replay_metadata(
+            plan.metadata,
+            resource_tokens,
+            node_tokens,
+        ),
+        source_node_id=_anonymous_endpoint(
+            plan.source_node_id,
+            resource_tokens,
+            node_tokens,
+        ),
+        target_node_id=_anonymous_endpoint(
+            plan.target_node_id,
+            resource_tokens,
+            node_tokens,
+        ),
+        resource_count=int(plan.resource_count),
+        target_count=int(plan.target_count),
+        coalitions=coalitions,
+        demand_summaries=demand_summaries,
     )
 
 
@@ -437,18 +577,221 @@ def _anonymous_assignment(
     assignment: Assignment,
     target_tokens: Mapping[str, str],
     resource_tokens: Mapping[str, str],
+    coalition_tokens: Mapping[str, str],
+    node_tokens: Mapping[str, str],
 ) -> Assignment:
     return replace(
         assignment,
         target_id=target_tokens[assignment.target_id],
         resource_id=resource_tokens[assignment.resource_id],
         cost_breakdown=_safe_cost_breakdown(assignment.cost_breakdown),
-        source_node_id=None,
-        target_node_id=None,
-        link_type=None,
-        coalition_id=None,
-        metadata=MappingProxyType({}),
+        source_node_id=_anonymous_endpoint(
+            assignment.source_node_id,
+            resource_tokens,
+            node_tokens,
+        ),
+        target_node_id=_anonymous_endpoint(
+            assignment.target_node_id,
+            resource_tokens,
+            node_tokens,
+        ),
+        coalition_id=(
+            None
+            if assignment.coalition_id is None
+            else coalition_tokens[assignment.coalition_id]
+        ),
+        metadata=_safe_assignment_replay_metadata(
+            assignment.metadata,
+            resource_tokens,
+            node_tokens,
+        ),
     )
+
+
+def _anonymous_coalition(
+    coalition: CoalitionPlan,
+    target_tokens: Mapping[str, str],
+    resource_tokens: Mapping[str, str],
+    coalition_tokens: Mapping[str, str],
+) -> CoalitionPlan:
+    return replace(
+        coalition,
+        coalition_id=coalition_tokens[coalition.coalition_id],
+        target_id=target_tokens[coalition.target_id],
+        members=tuple(
+            replace(member, resource_id=resource_tokens[member.resource_id])
+            for member in coalition.members
+            if member.resource_id in resource_tokens
+        ),
+        metadata=MappingProxyType(
+            {
+                key: _safe_replay_value(coalition.metadata[key])
+                for key in _COALITION_REPLAY_METADATA_KEYS
+                if key in coalition.metadata
+            }
+        ),
+    )
+
+
+def _anonymous_demand_summary(
+    summary: DemandSatisfactionSummary,
+    target_tokens: Mapping[str, str],
+    coalition_tokens: Mapping[str, str],
+) -> DemandSatisfactionSummary:
+    return replace(
+        summary,
+        target_id=target_tokens[summary.target_id],
+        coalition_id=(
+            None
+            if summary.coalition_id is None
+            else coalition_tokens[summary.coalition_id]
+        ),
+    )
+
+
+def _safe_plan_replay_metadata(
+    metadata: Mapping[str, Any],
+    resource_tokens: Mapping[str, str],
+    node_tokens: Mapping[str, str],
+) -> Mapping[str, Any]:
+    return MappingProxyType(
+        {
+            key: (
+                _anonymous_endpoint(
+                    metadata[key],
+                    resource_tokens,
+                    node_tokens,
+                )
+                if key in _PLAN_REPLAY_NODE_KEYS
+                else _safe_replay_value(metadata[key])
+            )
+            for key in _PLAN_REPLAY_METADATA_KEYS
+            if key in metadata
+        }
+    )
+
+
+def _safe_assignment_replay_metadata(
+    metadata: Mapping[str, Any],
+    resource_tokens: Mapping[str, str],
+    node_tokens: Mapping[str, str],
+) -> Mapping[str, Any]:
+    return MappingProxyType(
+        {
+            key: (
+                _anonymous_endpoint(
+                    metadata[key],
+                    resource_tokens,
+                    node_tokens,
+                )
+                if key == "owner_node_id"
+                else _safe_replay_value(metadata[key])
+            )
+            for key in _ASSIGNMENT_REPLAY_METADATA_KEYS
+            if key in metadata
+        }
+    )
+
+
+def _anonymous_endpoint(
+    value: str | None,
+    resource_tokens: Mapping[str, str],
+    node_tokens: Mapping[str, str],
+) -> str | None:
+    if value is None:
+        return None
+    text = str(value)
+    if text in resource_tokens:
+        return resource_tokens[text]
+    return node_tokens[text]
+
+
+def _safe_replay_value(value: Any) -> Any:
+    if isinstance(value, np.generic):
+        return value.item()
+    if isinstance(value, Mapping):
+        return MappingProxyType(
+            {
+                str(key): _safe_replay_value(item)
+                for key, item in value.items()
+                if _safe_key(key)
+            }
+        )
+    if isinstance(value, (tuple, list)):
+        return tuple(_safe_replay_value(item) for item in value)
+    if isinstance(value, (str, int, float, bool, type(None))):
+        return value
+    raise TypeError("unsupported planning replay metadata value")
+
+
+def _plan_target_ids(plan: AssignmentPlan | None) -> set[str]:
+    if plan is None:
+        return set()
+    return {
+        *(assignment.target_id for assignment in plan.assignments),
+        *(coalition.target_id for coalition in plan.coalitions),
+        *(summary.target_id for summary in plan.demand_summaries),
+        *plan.unassigned_target_ids,
+        *plan.incomplete_target_ids,
+    }
+
+
+def _plan_resource_ids(plan: AssignmentPlan | None) -> set[str]:
+    if plan is None:
+        return set()
+    return {
+        *(assignment.resource_id for assignment in plan.assignments),
+        *(
+            member.resource_id
+            for coalition in plan.coalitions
+            for member in coalition.members
+        ),
+    }
+
+
+def _plan_coalition_ids(plan: AssignmentPlan | None) -> set[str]:
+    if plan is None:
+        return set()
+    return {
+        *(coalition.coalition_id for coalition in plan.coalitions),
+        *(
+            assignment.coalition_id
+            for assignment in plan.assignments
+            if assignment.coalition_id is not None
+        ),
+        *(
+            summary.coalition_id
+            for summary in plan.demand_summaries
+            if summary.coalition_id is not None
+        ),
+    }
+
+
+def _plan_node_ids(
+    plan: AssignmentPlan | None,
+    resource_tokens: Mapping[str, str],
+) -> set[str]:
+    if plan is None:
+        return set()
+    values = {
+        plan.source_node_id,
+        plan.target_node_id,
+        *(assignment.source_node_id for assignment in plan.assignments),
+        *(assignment.target_node_id for assignment in plan.assignments),
+        *(
+            plan.metadata.get(key)
+            for key in _PLAN_REPLAY_NODE_KEYS
+        ),
+        *(
+            assignment.metadata.get("owner_node_id")
+            for assignment in plan.assignments
+        ),
+    }
+    return {
+        str(value)
+        for value in values
+        if value is not None and str(value) not in resource_tokens
+    }
 
 
 def _safe_cost_breakdown(value: Mapping[str, Any]) -> Mapping[str, float]:

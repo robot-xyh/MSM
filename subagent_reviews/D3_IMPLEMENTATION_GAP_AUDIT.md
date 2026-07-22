@@ -1,7 +1,7 @@
 # D3 实现差距审计
 
 **模块**: D3 集中式资源-目标分配
-**审计日期**: 2026-07-15
+**审计日期**: 2026-07-21
 **审计依据**: 当前 `research_modules/d3_assignment_planner/` 代码、README、PLAN、docs 和 tests，既有 2026-07-13 M5N2 40-case 报告，以及 `research_modules/airsim_runtime/outputs/p1_terminal_timing_funnel_10seed_20260715_m5n2_*/episode_006_full_flow/main_episode_bus/d3_plan_history.json` 的最新 20-case/3725-record 只读复核、main/D6/D7 物理结果汇总、`subagent_reviews/MAIN_IMPLEMENTATION_GAP_AUDIT.md` 和 `EVAL/FRAMEWORK_EVAL_P0_P1_P2_GAP_CONFIRMATION.md`。
 **边界**: 本审计只覆盖离线科研仿真中的抽象资源-目标分配、版本化计划、终端反馈合同、D7 guidance binding、D6 记录导出和 AirSim dry-run 适配；不涉及真实飞控、硬件、火控、毁伤逻辑或绕过人工授权的自动处置。
 
@@ -731,3 +731,31 @@ assignment/binding/control 为 3/3/3，held=0，online truth use=0。D3 全量 3
 本项关闭原“D3 没有 paired intervention 实际执行 API 和真实收据生成器”的模块缺口；
 正式主流程执行和 D6 独立判定仍是 P1。没有新增 P0。专项 `7 passed`，D3 全量收集 363
 项，结果 `362 passed, 1 skipped`，唯一 skip 为可选 OR-Tools。
+
+## 34. 保留 Seed 精确重放 GAP 更新（2026-07-21）
+
+### 已关闭
+
+- **P1 control 重放状态缺失**：`PlanningFrameEvidence` 已保存 `forced_replan`、执行所有权、
+  激活、授权、节点/链路、迟滞窗口计数和联盟执行语义。匿名化不再把状态机输入清空。
+- **P1 roster 生命周期重放**：前序计划独有目标和资源使用 `previous_target_*` 与
+  `previous_resource_*`，既保留缺目标/缺资源判定，又不泄漏真值、Actor 或对象身份。
+- **P1 严格控制臂校验**：`control_plan_replay_mismatch` 保留并加强。control 必须精确复现
+  binding、执行签名、版本、窗口、决策状态、changed 和规模；篡改 binding 负例继续失败
+  关闭。
+- **P1 当前源帧阻塞复核**：main nominal 5v5、duration 2.2、seed 1000-1019 的 20 个源帧
+  已在内存中通过 D3 执行器。40 个 arm 完成，20 个 control 状态为 15 个 unchanged、3 个
+  held、2 个 replan ACK，失配为 0。冻结 development bundle 正常读取。
+
+### 仍开放
+
+- **P1 正式产物与 D6 sidecar**：本轮不修改 main runner，也未写出完整 D3/D4 正式目录。
+  main 仍需重跑并落盘，D6 再计算非退化、回退、分布外和时延统计。
+- **P1 运行和结果证据**：runtime ACK、物理 outcome、counterfactual、causal 和 formal
+  reward 均 unavailable。D3 内存执行不能替代这些证据。
+- **P1 模型晋级**：本轮只修复 control 基准可信度，没有证明 treatment 优于规则路径。
+  bundle 继续 development/shadow-only，PPO、online assist、authority 为 false，规则回退
+  为 true。
+
+本项关闭导致正式 20-seed runner 中断的 D3 P1 阻塞，没有新增 P0。专项 `9 passed`，D3
+全量收集 365 项，结果 `364 passed, 1 skipped`；skip 仅为 optional OR-Tools。

@@ -4,6 +4,8 @@
 **边界**: 本文只讨论抽象资源-目标匹配、离线评估和人工授权前的候选计划，不包含真实火控参数、毁伤模型或自动处置流程。
 **D3 复核状态 2026-07-14**: active-plan 连续性、execution-signature identity、candidate/published 分离、forced replan ack/applied、solve 前 switch penalty、secondary activation/current-binding、same-owner continuation、M-to-N demand-slot、保守增量规划、feedback soft/hard 分级、transient feedback dwell、role-aware primary 保持和 canonical planning-tick history schema/export 均已关闭。普通 ambiguous/hold/reacquire 不再升级为资源 `operator_hold`，且 transient 窗口不能绕过 `min_dwell`。M5N2 采用 `2 primary + 1 standby reserve`，不要求两个 primary 同时到达。真实 SimpleFlight 已完成 baseline 与三个候选各 10 seeds、共 40 个 episode；coalition completion 依次为 `0/10`、`5/10`、`2/10`、`1/10`，最佳 `20 m / 3 s / 40 deg` profile 未达到 `8/10`。版本/stale/role 合同及 reserve 安全保持；P1 开放项转为 main history 写盘与 D6 churn 消费、D5 feedback 权重/迟滞和动态 N/M 标定。P2 仅为隔离 optional benchmark。
 
+**保留 seed 重放状态 2026-07-21**: nominal 5v5、duration 2.2、seeds 1000-1019 的 D3 control 重放阻塞已关闭。匿名证据现保留真值安全的执行控制、迟滞和 `forced_replan` 状态；20 个当前 main 源帧在内存中全部精确重放。正式落盘产物、D6 非退化 sidecar 和运行结果证据仍由 main/D6 后续完成。
+
 **P1 switch-penalty 状态 2026-07-10**: done。`reassignment_switch_penalty` 已从 solve 后追加改为 solve 前进入可行改配边；同 resource、不可行边、无历史 assignment 的 target 和 unassigned cost 不变。solver matrix、breakdown total、objective、Assignment 和 evidence 使用同一成本且无双重计费。新 current plan binding 即使发生改配仍为 `active/current`，旧 plan 由 current plan id/version gate 失效。
 
 当前 D3 P0/P1 缺口清单：
@@ -951,3 +953,26 @@ manifest/version 失配、分布外门控、deadline、非有限权重、快照�
 当前判断：D3 模块执行接口缺口已关闭；main 的正式 1000-1019 三维 episode 调度、D6
 非退化侧车和 applied ACK 仍开放。完成这些外部证据前不修改 production admission，不启动
 PPO，不开放 online assist 或 authority。
+
+## 37. 保留 Seed 精确重放复核（2026-07-21）
+
+失败帧集中在 `t=1.0`。原计划是 `held_by_hysteresis` 或
+`replan_ack_no_change`，离线重放却生成 `accepted_execution_control_change`。代码复核
+确认规则矩阵和动作掩码没有变化；差异来自匿名前序计划清空 owner/activation metadata，
+以及规划帧未记录 `forced_replan`。因此严格 `control_plan_replay_mismatch` 是正确拒绝，
+不能删除或放宽。
+
+D3 修复限定在证据和离线执行边界。计划 owner/activation、授权、节点/链路、迟滞窗口累计
+数和联盟执行字段按白名单保存，身份值匿名化；前序独有 roster 使用 `previous_*` token。
+离线 planner 恢复匿名配置并传入原 `forced_replan`。control gate 现在比较完整执行签名和
+状态，不只比较 pair 集合。生产 `load_model_bundle()` 的 assist 准入未改，离线输出仍不可
+发布。
+
+新增 20-seed 真实形态回归覆盖 5v5 迟滞、4→5 强制重规划、5→4 生命周期和篡改 binding
+负例。专项 `9 passed`；D3 全量 `364 passed, 1 skipped`。随后读取 main 当前 20 个源帧与
+冻结 development bundle 做不写盘复验，40 个 arm 完成，control 状态分布为 15 个
+unchanged、3 个 held、2 个 replan ACK，binding/状态失配为 0。
+
+当前 D3 P1 runner 阻塞已关闭。main 仍需写出完整 D3/D4 产物，D6 仍需完成非退化和结果
+sidecar；runtime ACK、物理结果、反事实、因果和正式 reward 不可用。该结果不支持 PPO、
+online assist 或 authority 晋级。
