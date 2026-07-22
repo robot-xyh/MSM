@@ -1075,3 +1075,36 @@ seed 42000 的三次 D3 规划由 `7.329949 s` 降至 `1.013593 s`。breakdown �
    跨模块时序断点。D3 stale 拒绝不放宽。
 3. 更大规模 sparse flow、区域分解和复杂容量求解保持 P2/P3 optional，不进入默认主线。
 4. 当前没有新增 D3 P0。
+
+## 46. AssignmentPlan 在线成本证据重复物化 GAP 更新（2026-07-22）
+
+### 已关闭
+
+1. **P1 在线计划载荷重复**：`d3_assignment_evidence_v2` 只内联一份完整
+   `cost_breakdowns_by_edge`。旧 `current_cost_breakdowns_by_edge` 改为字段引用，不再随
+   每次 JSON 发布复制全部候选边。
+2. **P1 审计完整性**：规范列表继续包含全部候选边及成本分解，并新增内容 schema、条目数、
+   规范 SHA-256 和存储方式。没有删除候选集、拒绝边、Hungarian 输入、迟滞或 D6 所需成本
+   证据。
+3. **P1 旧产物读取**：公共导出函数兼容 v1 规范字段、双字段和仅旧别名。双字段冲突、v2
+   计数/摘要/引用错误均失败关闭。
+4. **P0 合同保持**：assignment、`global_track_id`、执行签名、owner、plan id/version、
+   stale、联盟和 D7 binding 不变。完整 payload SHA 随 schema 正常变化，运行确认仍按实际
+   payload 重算。
+
+### 证据
+
+合成 200x200、6,400 候选边计划从 10,466,292 字节降至 5,622,366 字节，减少 46.28%。
+只读 10 秒 seed 42000 样本的一条在线计划按 v2 投影后从 9,905,419 字节降至 5,147,795
+字节，减少 48.03%。专项 5 项通过。D3 全量收集 430 项，其中 427 passed、1 skipped、
+2 个既有跨模块 `global_track_stale` failed。
+
+### 仍开放
+
+1. main 需以新 schema 重跑 clean 10 秒以上 200v200，验证总线文件、内存峰值、D6 和
+   runtime ACK；旧产物投影不能替代新 episode。
+2. 两项 `global_track_stale` 属于 main/D7 时序断点。D3 不通过放宽 stale 门控关闭。
+3. 外部直接读取旧别名的未知消费者需迁移到规范字段或公共导出函数。仓库内没有此类
+   Python 消费者。
+
+当前没有新增 D3 P0。D3-owned 重复物化缺口已关闭，系统级长时复跑保持 P1。

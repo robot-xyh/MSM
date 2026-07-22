@@ -1314,3 +1314,24 @@ stale 拒绝、联盟和 D7 binding 合同均未改变。
 回归为 `62 passed`；D3 全量选定集为 `422 passed, 1 skipped, 2 deselected`。两项
 `global_track_stale` 失败可在未修改 HEAD 复现，属于 main/D7 跨模块既有断点；D3 不通过
 放宽 stale 门控处理。完整 200v200 多 seed、AirSim 和物理拦截仍由 main 组织后续验收。
+
+## 2026-07-22 AssignmentPlan 在线成本证据去重
+
+200v200 长时输出中，每条 `modules.d3.assignment_plan` 同时携带
+`cost_breakdowns_by_edge` 和内容相同的 `current_cost_breakdowns_by_edge`。只读 seed
+42000 样本的一条计划包含 6,304 条边，两份列表各占 4,757,920 字节。仓库消费者检索确认，
+前者是 D3、D4/D6 回放使用的规范证据字段，后者没有 Python 消费者。
+
+当前计划元数据使用 `d3_assignment_evidence_v2`。完整边成本只保存在
+`cost_breakdowns_by_edge`，同时记录 `d3_cost_breakdowns_by_edge_v1`、条目数、规范
+SHA-256、`inline_canonical_single_copy` 和旧字段引用。`assignment_evidence_from_plan()`
+优先读取规范字段，并兼容 v1 的双字段或仅旧别名输入；v2 的计数、摘要、存储方式或引用不
+一致时拒绝导出。`assignment_plan_v2`、Hungarian、候选集、迟滞、owner、版本、stale、
+联盟和执行签名没有改变。
+
+合成 200x200、6,400 候选边计划由 10,466,292 字节降至 5,622,366 字节，减少
+4,843,926 字节，即 46.28%。同一测试确认 assignment、稳定签名、执行签名和计划身份一致。
+只读 10 秒样本按新字段投影由 9,905,419 字节降至 5,147,795 字节，减少 48.03%；该数字
+尚不是新代码完整 episode 复跑结果。新增专项 5 项通过。D3 全量收集 430 项，其中 427 项
+通过、1 项因可选 OR-Tools 跳过、2 项为既有跨模块 `global_track_stale` 失败；D3 未放宽
+stale 门控。

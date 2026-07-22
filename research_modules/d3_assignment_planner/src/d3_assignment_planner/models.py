@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
 from enum import Enum
+from hashlib import sha256
+import json
 from math import isfinite, sqrt
 from typing import Any, Iterable, Mapping
 from uuid import uuid4
@@ -79,6 +81,9 @@ ASSIGNMENT_PLAN_SCHEMA_V1 = "assignment_plan_v1"
 ASSIGNMENT_PLAN_SCHEMA_V2 = "assignment_plan_v2"
 PLAN_HISTORY_RECORD_SCHEMA_V1 = "d3_plan_history_record_v1"
 ASSIGNMENT_CALIBRATION_PROFILE_SCHEMA_V1 = "d3_assignment_calibration_profile_v1"
+ASSIGNMENT_EVIDENCE_SCHEMA_V1 = "d3_assignment_evidence_v1"
+ASSIGNMENT_EVIDENCE_SCHEMA_V2 = "d3_assignment_evidence_v2"
+ASSIGNMENT_COST_BREAKDOWNS_SCHEMA_V1 = "d3_cost_breakdowns_by_edge_v1"
 TERMINAL_FEEDBACK_PROFILE_SCHEMA_V1 = "d3_terminal_feedback_profile_v1"
 DEFAULT_COST_PROFILE_ID = "d3_hungarian_baseline"
 DEFAULT_COST_PROFILE_VERSION = "1.0.0"
@@ -98,6 +103,27 @@ GUIDANCE_BINDING_STATES = frozenset(
         GUIDANCE_BINDING_HOLD,
     }
 )
+
+
+def canonical_cost_breakdowns_by_edge_sha256(
+    edges: Iterable[Mapping[str, Any]],
+) -> str:
+    """Hash one complete edge-cost evidence list using canonical JSON."""
+
+    edge_tuple = edges if isinstance(edges, tuple) else tuple(edges)
+    try:
+        encoded = json.dumps(
+            edge_tuple,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        ).encode("utf-8")
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise ValueError(
+            "cost breakdown evidence must be finite canonical JSON"
+        ) from exc
+    return sha256(encoded).hexdigest()
 
 
 class CoordinationMode(str, Enum):
@@ -876,6 +902,12 @@ class AssignmentEvidenceExport:
     cost_matrix_resource_ids: tuple[str, ...] = ()
     cost_matrix: tuple[tuple[float, ...], ...] = ()
     cost_breakdowns_by_edge: tuple[Mapping[str, Any], ...] = ()
+    current_plan_evidence_schema: str = ASSIGNMENT_EVIDENCE_SCHEMA_V1
+    cost_breakdowns_by_edge_schema: str = ASSIGNMENT_COST_BREAKDOWNS_SCHEMA_V1
+    cost_breakdowns_by_edge_count: int = 0
+    cost_breakdowns_by_edge_sha256: str = ""
+    cost_breakdowns_by_edge_storage: str = "legacy_inline"
+    cost_breakdowns_by_edge_source_field: str = "cost_breakdowns_by_edge"
     rejected_edges: tuple[Mapping[str, Any], ...] = ()
     stale_plan_rejected: bool = False
     stale_reject_reason: str | None = None
@@ -2466,6 +2498,15 @@ def assignment_evidence_from_plan(plan: AssignmentPlan) -> AssignmentEvidenceExp
     secondary_plan_version = _metadata_int(plan_metadata.get("secondary_plan_version"))
     if secondary_plan_version is None and active_plan_owner == "secondary":
         secondary_plan_version = plan.version
+    (
+        cost_breakdowns,
+        evidence_schema,
+        cost_breakdown_schema,
+        cost_breakdown_count,
+        cost_breakdown_sha256,
+        cost_breakdown_storage,
+        cost_breakdown_source_field,
+    ) = _assignment_cost_breakdown_evidence(plan_metadata)
 
     return AssignmentEvidenceExport(
         plan_id=plan.plan_id,
@@ -2527,9 +2568,13 @@ def assignment_evidence_from_plan(plan: AssignmentPlan) -> AssignmentEvidenceExp
             plan_metadata.get("cost_matrix_resource_ids")
         ),
         cost_matrix=_metadata_float_matrix(plan_metadata.get("cost_matrix")),
-        cost_breakdowns_by_edge=_metadata_mapping_tuple(
-            plan_metadata.get("cost_breakdowns_by_edge")
-        ),
+        cost_breakdowns_by_edge=cost_breakdowns,
+        current_plan_evidence_schema=evidence_schema,
+        cost_breakdowns_by_edge_schema=cost_breakdown_schema,
+        cost_breakdowns_by_edge_count=cost_breakdown_count,
+        cost_breakdowns_by_edge_sha256=cost_breakdown_sha256,
+        cost_breakdowns_by_edge_storage=cost_breakdown_storage,
+        cost_breakdowns_by_edge_source_field=cost_breakdown_source_field,
         rejected_edges=_metadata_mapping_tuple(plan_metadata.get("rejected_edges")),
         stale_plan_rejected=_metadata_bool(
             plan_metadata.get("stale_plan_rejected")
@@ -4241,6 +4286,99 @@ def _metadata_mapping_tuple(value: Any) -> tuple[Mapping[str, Any], ...]:
         if isinstance(item, Mapping):
             mappings.append(dict(item))
     return tuple(mappings)
+
+
+def _assignment_cost_breakdown_evidence(
+    metadata: Mapping[str, Any],
+) -> tuple[
+    tuple[Mapping[str, Any], ...],
+    str,
+    str,
+    int,
+    str,
+    str,
+    str,
+]:
+    """Resolve v2 canonical evidence and legacy v1 aliases without ambiguity."""
+
+    canonical_present = "cost_breakdowns_by_edge" in metadata
+    legacy_present = "current_cost_breakdowns_by_edge" in metadata
+    canonical_edges = (
+        _metadata_mapping_tuple(metadata.get("cost_breakdowns_by_edge"))
+        if canonical_present
+        else ()
+    )
+    legacy_edges = (
+        _metadata_mapping_tuple(metadata.get("current_cost_breakdowns_by_edge"))
+        if legacy_present
+        else ()
+    )
+    if canonical_present and legacy_present and canonical_edges != legacy_edges:
+        raise ValueError("ambiguous cost breakdown evidence aliases")
+
+    if canonical_present:
+        edges = canonical_edges
+        source_field = "cost_breakdowns_by_edge"
+    elif legacy_present:
+        edges = legacy_edges
+        source_field = "current_cost_breakdowns_by_edge"
+    else:
+        edges = ()
+        source_field = "cost_breakdowns_by_edge"
+
+    evidence_schema = (
+        _metadata_text(metadata, "current_plan_evidence_schema")
+        or ASSIGNMENT_EVIDENCE_SCHEMA_V1
+    )
+    edge_schema = (
+        _metadata_text(metadata, "cost_breakdowns_by_edge_schema")
+        or ASSIGNMENT_COST_BREAKDOWNS_SCHEMA_V1
+    )
+    computed_count = len(edges)
+    computed_sha256 = canonical_cost_breakdowns_by_edge_sha256(edges)
+    declared_count = _metadata_int(metadata.get("cost_breakdowns_by_edge_count"))
+    declared_sha256 = _metadata_text(metadata, "cost_breakdowns_by_edge_sha256")
+    storage = (
+        _metadata_text(metadata, "cost_breakdowns_by_edge_storage")
+        or (
+            "legacy_alias_inline"
+            if source_field.startswith("current_")
+            else "legacy_inline"
+        )
+    )
+
+    if "cost_breakdowns_by_edge_count" in metadata and declared_count is None:
+        raise ValueError("cost breakdown evidence count is invalid")
+    if declared_count is not None and declared_count != computed_count:
+        raise ValueError("cost breakdown evidence count mismatch")
+    if declared_sha256 is not None and declared_sha256 != computed_sha256:
+        raise ValueError("cost breakdown evidence SHA-256 mismatch")
+
+    if evidence_schema == ASSIGNMENT_EVIDENCE_SCHEMA_V2:
+        if not canonical_present or legacy_present:
+            raise ValueError(
+                "assignment evidence v2 requires one canonical cost breakdown list"
+            )
+        if edge_schema != ASSIGNMENT_COST_BREAKDOWNS_SCHEMA_V1:
+            raise ValueError("unsupported cost breakdown evidence schema")
+        if declared_count is None or declared_sha256 is None:
+            raise ValueError("assignment evidence v2 audit metadata is incomplete")
+        if storage != "inline_canonical_single_copy":
+            raise ValueError("assignment evidence v2 storage mode is invalid")
+        if metadata.get("current_cost_breakdowns_by_edge_ref") != (
+            "cost_breakdowns_by_edge"
+        ):
+            raise ValueError("assignment evidence v2 compatibility reference is invalid")
+
+    return (
+        edges,
+        evidence_schema,
+        edge_schema,
+        computed_count,
+        computed_sha256,
+        storage,
+        source_field,
+    )
 
 
 def _metadata_mapping(value: Any) -> Mapping[str, Any]:

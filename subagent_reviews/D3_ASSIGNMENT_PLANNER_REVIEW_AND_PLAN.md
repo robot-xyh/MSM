@@ -1220,3 +1220,20 @@ M-to-N、迟滞、版本、stale、联盟和 D7 binding 均未改。
 结论：D3-owned P1 规划证据确定性热点已关闭。墙钟仍是 development benchmark，后续由
 main 运行完整 200v200 多 seed 和 AirSim 系统验收。两项既有 `global_track_stale` 跨模块
 失败不属于本次回归，D3 不放宽 stale 门。更大规模求解器替换不纳入本轮工作。
+
+## 49. AssignmentPlan 成本证据单副本复核（2026-07-22）
+
+长时输出的主要 D3 载荷问题来自字段别名。6,304 条边在
+`cost_breakdowns_by_edge/current_cost_breakdowns_by_edge` 中各写一次，单份为
+4,757,920 字节。仓库检索只有生产者写旧别名，没有跨模块 Python 消费者；规范字段已被
+`assignment_evidence_from_plan()` 使用。
+
+D3 将内部证据升级到 `d3_assignment_evidence_v2`。完整列表、拒绝信息和成本分解保留，
+并增加内容 schema、count、SHA-256、单副本存储标记和旧字段引用。公共导出接口可读取旧
+v1；新 v2 的内容或审计元数据不一致时失败关闭。外层计划 schema、assignment、执行签名、
+版本、owner、迟滞和 stale 均未改变。
+
+合成 200x200 计划缩减 46.28%，只读长时样本字段投影缩减 48.03%。新增 5 项通过。全量
+430 项中 427 passed、1 skipped、2 个既有 `global_track_stale` failed。下一步由 main 在
+clean worktree 重跑长时 episode，并由 D6 验证新 payload；D3 不把旧样本投影写成正式新
+schema 运行证据。

@@ -1517,3 +1517,44 @@ D3 本地 secondary-failure 区域回放断点已关闭。仍需 main 把同一�
 上述墙钟数据只用于开发归因。完整 200v200 多 seed、不同候选边上限、previous-plan 长周期、
 AirSim 和物理拦截仍需 main 统一运行并由 D6 汇总。更大规模的稀疏流或区域分解仍是后续
 研究，不进入本轮 P1 修复。
+
+## 49. AssignmentPlan 在线成本证据单副本（2026-07-22）
+
+### 问题
+
+1. clean 10 秒、seed 42000 输出的一条 `modules.d3.assignment_plan` 为 9,905,419 字节。
+   其中 `cost_breakdowns_by_edge` 与 `current_cost_breakdowns_by_edge` 各含 6,304 条记录，
+   单份为 4,757,920 字节，内容完全相同。
+2. 全仓库 Python 消费者只读取规范字段 `cost_breakdowns_by_edge`。旧 `current_` 字段仅在
+   planner 生产处出现。两个 tuple 在内存中可共享边字典，但进入总线 `to_dict/JSON` 后会
+   写出两份完整列表。
+3. 成本明细不能改成摘要或采样。D6 审计、回放和问题定位仍需完整候选边证据。
+
+### 实施
+
+1. 内部证据升级为 `d3_assignment_evidence_v2`，计划外层继续使用
+   `assignment_plan_v2`。规范列表仍是 `cost_breakdowns_by_edge`。
+2. 元数据新增 `d3_cost_breakdowns_by_edge_v1`、条目数、规范 SHA-256、
+   `inline_canonical_single_copy` 和 `current_cost_breakdowns_by_edge_ref`。旧字段本体不再
+   写入 v2。
+3. `assignment_evidence_from_plan()` 支持 v1 规范字段、v1 双字段和仅旧别名三种输入。
+   双字段内容冲突时拒绝；v2 缺规范字段、计数、摘要、存储方式或引用时拒绝。
+4. 执行签名不包含本项审计元数据。assignment、候选集、Hungarian、迟滞、owner、版本、
+   stale、联盟和 D7 binding 保持原语义。完整计划 payload SHA 会随 schema 变化，消费者应
+   对实际收到的 v2 payload 重算，不得复用 v1 摘要。
+
+### 验证
+
+1. 合成 200x200、6,400 候选边计划从 10,466,292 字节降至 5,622,366 字节，减少
+   4,843,926 字节和 46.28%。assignment、稳定签名、执行签名、plan id/version 和完整边
+   证据均等价。
+2. 只读长时样本按相同字段投影后为 5,147,795 字节，较 9,905,419 字节减少 48.03%。该
+   结果是旧产物的确定性投影，不替代 main 新 schema 长时复跑。
+3. 新增 5 项专项测试，覆盖单副本、v1 旧别名、计数/摘要篡改和 stale/version。D3 全量
+   430 项中 427 passed、1 skipped、2 个既有跨模块 `global_track_stale` failed。
+
+### 后续
+
+main 应在 clean worktree 重跑 10 秒以上 200v200，确认总线文件、D6 读取、runtime ACK 和
+内存峰值。旧归档仍按 v1 读取；外部直接索引 `current_cost_breakdowns_by_edge` 的消费者需
+改用规范字段或 D3 导出函数。AirSim 接口没有变化。

@@ -1293,3 +1293,34 @@ seed 1011 和 1019 的 control/treatment 均为 4 个执行 binding。`target_00
 episode 总耗时变化全部归因于 D3。完整 200v200 多 seed、AirSim、长期 previous-plan 周期
 和物理拦截尚未验收。原始汇总保存在
 `results/scalable_3d_planner_hotpath_20260722.json`。
+
+## AssignmentPlan 成本证据载荷试验（2026-07-22）
+
+### 条件
+
+- 合成输入：200 个目标、200 个资源、每目标最多 32 条候选边。
+- 结构：40,000 个完整数值单元、6,400 条候选成本记录、200 个 assignment。
+- 历史样本：clean 10 秒、seed 42000，只读；抽取首条包含重复字段的计划记录。
+- 比较方法：旧结构内联规范字段和 `current_` 别名；新结构保留规范字段并增加 schema、
+  count、SHA-256、storage 和 ref。
+
+### 结果
+
+| 对象 | 旧结构 | 新结构 | 减少 |
+|---|---:|---:|---:|
+| 合成 200x200 完整计划 | 10,466,292 B | 5,622,366 B | 4,843,926 B，46.28% |
+| 10 秒样本单条总线 payload 投影 | 9,905,419 B | 5,147,795 B | 4,757,624 B，48.03% |
+
+合成测试中，旧结构与新结构的 assignment、稳定签名、执行签名、plan id/version 和完整边
+成本内容相同。v2 记录的 6,400 条计数和规范 SHA-256 可重算。v1 仅旧别名仍可由 D3 导出
+函数读取。计数或摘要篡改会被拒绝。
+
+专项 `5 passed`。全量收集 430 项，结果为 `427 passed, 1 skipped, 2 failed`。skip 是未
+安装的可选 OR-Tools。两个失败是既有真实主总线用例中的 `global_track_stale`，未修改 HEAD
+已记录可复现；本项没有调整 D7 gate 或 stale 规则。
+
+### 边界
+
+样本的新结构大小通过旧 JSON 的确定性字段投影计算，没有改写只读产物。main 仍需在 clean
+worktree 生成新 schema 的 10 秒以上 episode，再核对总文件大小、内存峰值、D6 读取和
+runtime ACK。结果不属于 AirSim 或物理拦截证据。

@@ -22,6 +22,9 @@ from .airsim_dry_run_adapter import (
 )
 from .models import (
     ASSIGNMENT_CALIBRATION_PROFILE_SCHEMA_V1,
+    ASSIGNMENT_COST_BREAKDOWNS_SCHEMA_V1,
+    ASSIGNMENT_EVIDENCE_SCHEMA_V1,
+    ASSIGNMENT_EVIDENCE_SCHEMA_V2,
     ASSIGNMENT_PLAN_SCHEMA_V1,
     ASSIGNMENT_PLAN_SCHEMA_V2,
     PLAN_HISTORY_RECORD_SCHEMA_V1,
@@ -64,6 +67,7 @@ from .models import (
     assignment_records_from_plan,
     assignment_validity_summary_from_plan,
     compose_threat_score_baseline,
+    canonical_cost_breakdowns_by_edge_sha256,
     continue_active_secondary_plan,
     evaluate_terminal_feedback,
     guidance_bindings_from_assignment_plan,
@@ -323,6 +327,9 @@ from .offline_intervention_execution import (
 
 __all__ = [
     "ASSIGNMENT_CALIBRATION_PROFILE_SCHEMA_V1",
+    "ASSIGNMENT_COST_BREAKDOWNS_SCHEMA_V1",
+    "ASSIGNMENT_EVIDENCE_SCHEMA_V1",
+    "ASSIGNMENT_EVIDENCE_SCHEMA_V2",
     "Assignment",
     "ASSIGNMENT_PLAN_SCHEMA_V1",
     "ASSIGNMENT_PLAN_SCHEMA_V2",
@@ -546,6 +553,7 @@ __all__ = [
     "canonical_isolated_execution_planning_frame_sha256",
     "development_shadow_admission",
     "build_p1_assignment_fixtures",
+    "canonical_cost_breakdowns_by_edge_sha256",
     "build_p1_cooperative_candidate_grid",
     "build_p2_capacity_benchmark_problem",
     "compose_threat_score_baseline",

@@ -2467,3 +2467,55 @@ previous-plan binding 已由 `_preserved_candidate_edges()` 强制进入候选 m
 墙钟保存在开发 benchmark 中，不进入单元测试断言。当前定向回归为 `62 passed`，D3 全量
 选定集为 `422 passed, 1 skipped, 2 deselected`，语法检查通过。两项
 `global_track_stale` 跨模块失败在未修改基线可复现，本实现未调整 stale 门控。
+
+## 53. 在线计划成本证据去重
+
+### 53.1 旧结构
+
+`_matrix_evidence_metadata()` 为每条候选边生成目标号、资源号、总成本、分项成本、可行性
+和拒绝原因。旧 `d3_assignment_evidence_v1` 把同一个 edge tuple 同时放入
+`cost_breakdowns_by_edge` 与 `current_cost_breakdowns_by_edge`。Python 对象阶段只重复
+tuple 容器；总线序列化会遍历两次，并在 JSON 中写出两份内容。
+
+10 秒 clean 样本的一条计划有 6,304 条候选边。每份 JSON 列表为 4,757,920 字节，计划
+payload 为 9,905,419 字节。仓库检索没有发现 `current_cost_breakdowns_by_edge` 的跨模块
+Python 读取者。`assignment_evidence_from_plan()` 和既有 D6 审计使用规范字段。
+
+### 53.2 v2 结构
+
+规划器先固定 `edge_evidence = tuple(edges)`，只把该对象写入
+`cost_breakdowns_by_edge`。附加审计字段为：
+
+```text
+current_plan_evidence_schema = d3_assignment_evidence_v2
+cost_breakdowns_by_edge_schema = d3_cost_breakdowns_by_edge_v1
+cost_breakdowns_by_edge_count = len(edge_evidence)
+cost_breakdowns_by_edge_sha256 = SHA256(canonical_json(edge_evidence))
+cost_breakdowns_by_edge_storage = inline_canonical_single_copy
+current_cost_breakdowns_by_edge_ref = cost_breakdowns_by_edge
+```
+
+摘要采用 UTF-8、键排序、紧凑分隔符和禁止非有限数的 JSON。列表顺序沿用目标索引、资源
+索引的确定性候选边顺序。摘要覆盖完整成本分解，不覆盖摘要字段本身。
+
+### 53.3 兼容读取
+
+`assignment_evidence_from_plan()` 先检查规范字段；规范字段不存在时读取 v1 的
+`current_cost_breakdowns_by_edge`。v1 同时存在两个字段时要求内容相同。v2 要求规范字段、
+内容 schema、计数、摘要、存储方式和引用全部存在并匹配。任何歧义或篡改均抛出错误，不
+返回部分证据。
+
+外层 `AssignmentPlan.plan_schema` 保持 v2。成本证据元数据不属于执行签名，因此计划号、
+版本、assignment 和 stale 判定不变化。规范计划 payload SHA 会变化，这是 schema 变化的
+正常结果；runtime ACK 对新 payload 重新计算摘要。
+
+### 53.4 结果
+
+合成 200x200、top-32 计划含 40,000 完整数值单元、6,400 条候选边和 200 个 assignment。
+模拟旧双副本后为 10,466,292 字节，新结构为 5,622,366 字节，减少 46.28%。只读长时样本
+按 v2 字段投影后为 5,147,795 字节，减少 48.03%。测试确认完整边内容、assignment、稳定
+签名、执行签名和 plan id/version 一致。
+
+专项 5 项通过。全量收集 430 项，结果为 427 passed、1 skipped、2 failed。skip 是可选
+OR-Tools；两个失败仍是 main/D7 `global_track_stale` 跨模块时序用例，在本轮前已存在。
+本项未放宽 stale，也未运行新 schema 的完整长时 episode。

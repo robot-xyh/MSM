@@ -15,6 +15,8 @@ from .costs import CostMatrixResult, CostModel
 from .learning import LearningCostAssistant
 from .models import (
     ASSIGNMENT_CALIBRATION_PROFILE_SCHEMA_V1,
+    ASSIGNMENT_COST_BREAKDOWNS_SCHEMA_V1,
+    ASSIGNMENT_EVIDENCE_SCHEMA_V2,
     ASSIGNMENT_PLAN_SCHEMA_V2,
     Assignment,
     AssignmentPlan,
@@ -29,6 +31,7 @@ from .models import (
     SolverResult,
     TargetDemand,
     TargetTrack,
+    canonical_cost_breakdowns_by_edge_sha256,
 )
 from .solver import HungarianAssignmentSolver, HungarianDemandSlotSolver
 from .planning_evidence import (
@@ -5996,9 +5999,10 @@ class AssignmentPlanner:
             if reason != "candidate_pruned_sparse"
         }
         hard_reject_reasons = tuple(sorted(hard_reject_reason_counts))
+        edge_evidence = tuple(edges)
         return {
             **dict(matrix_result.metadata),
-            "current_plan_evidence_schema": "d3_assignment_evidence_v1",
+            "current_plan_evidence_schema": ASSIGNMENT_EVIDENCE_SCHEMA_V2,
             "cost_matrix_target_ids": matrix_result.target_ids,
             "cost_matrix_resource_ids": matrix_result.resource_ids,
             "cost_matrix": cost_matrix,
@@ -6006,8 +6010,16 @@ class AssignmentPlanner:
             "cost_matrix_storage": (
                 "sparse_candidate_edges" if sparse else "dense"
             ),
-            "cost_breakdowns_by_edge": tuple(edges),
-            "current_cost_breakdowns_by_edge": tuple(edges),
+            "cost_breakdowns_by_edge": edge_evidence,
+            "cost_breakdowns_by_edge_schema": (
+                ASSIGNMENT_COST_BREAKDOWNS_SCHEMA_V1
+            ),
+            "cost_breakdowns_by_edge_count": len(edge_evidence),
+            "cost_breakdowns_by_edge_sha256": (
+                canonical_cost_breakdowns_by_edge_sha256(edge_evidence)
+            ),
+            "cost_breakdowns_by_edge_storage": "inline_canonical_single_copy",
+            "current_cost_breakdowns_by_edge_ref": "cost_breakdowns_by_edge",
             "rejected_edges": tuple(rejected_edges),
             "solver_reject_count": sum(reject_reason_counts.values()),
             "candidate_pruned_edge_count": reject_reason_counts.get(
