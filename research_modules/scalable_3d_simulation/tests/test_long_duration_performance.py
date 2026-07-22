@@ -121,6 +121,35 @@ def _write_episode(
                 "mean_wall_time_ms": 40 * wall_time / duration,
             }
         )
+    with (root / "post_run_timings.csv").open(
+        "w", newline="", encoding="utf-8"
+    ) as stream:
+        writer = csv.DictWriter(
+            stream,
+            fieldnames=["schema_version", "stage", "wall_time_s"],
+        )
+        writer.writeheader()
+        writer.writerow(
+            {
+                "schema_version": "scalable3d-post-run-timings-v1",
+                "stage": "online_bus_and_identity_views",
+                "wall_time_s": duration * 0.2,
+            }
+        )
+        writer.writerow(
+            {
+                "schema_version": "scalable3d-post-run-timings-v1",
+                "stage": "d6_runtime_plan_outcomes",
+                "wall_time_s": duration * 0.1,
+            }
+        )
+        writer.writerow(
+            {
+                "schema_version": "scalable3d-post-run-timings-v1",
+                "stage": "total_before_timing_artifact",
+                "wall_time_s": duration * 0.3,
+            }
+        )
     (root / "process_resource_usage.txt").write_text(
         "\n".join(
             [
@@ -161,6 +190,10 @@ def test_compare_long_duration_episodes_reports_normalized_growth(tmp_path: Path
     )
     assert d1["normalized_call_density_growth"] == 1.0
     assert d1["normalized_per_call_cost_growth"] == 2.0
+    assert comparison["short_measured_post_run_wall_time_s"] == 0.6
+    assert comparison["long_measured_post_run_wall_time_s"] == 3.0
+    assert comparison["normalized_measured_post_run_growth"] == 1.0
+    assert len(comparison["post_run_stage_comparisons"]) == 2
     assert report["long_episode"]["process_resource_usage"]["elapsed_wall_time_s"] == 220.0
 
 
@@ -177,6 +210,25 @@ def test_loader_marks_missing_process_usage_unavailable(tmp_path: Path) -> None:
         "maximum_rss_bytes": None,
         "elapsed_wall_time_s": None,
         "unavailable_reason": "process_resource_usage_missing",
+    }
+
+
+def test_loader_keeps_legacy_episode_without_post_run_timings_compatible(
+    tmp_path: Path,
+) -> None:
+    episode = _write_episode(
+        tmp_path / "episode", duration=2.0, wall_time=20.0, rss_kb=1_000, elapsed="22.0"
+    )
+    (episode / "post_run_timings.csv").unlink()
+
+    loaded = load_long_duration_episode(episode)
+
+    assert loaded["post_run_timings"] == {
+        "availability": "unavailable",
+        "schema_version": None,
+        "total_wall_time_s": None,
+        "stages": {},
+        "unavailable_reason": "post_run_timings_missing",
     }
 
 
@@ -212,3 +264,5 @@ def test_report_bundle_writes_json_and_chinese_markdown(tmp_path: Path) -> None:
     assert all(path.is_file() for path in outputs.values())
     assert "# 三维长时性能对照" in markdown
     assert "clean-source" in markdown
+    assert "已测结束后处理" in markdown
+    assert "## 结束后处理耗时" in markdown

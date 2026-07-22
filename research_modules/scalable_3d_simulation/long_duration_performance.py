@@ -19,6 +19,7 @@ _CORE_FILES = (
     "summary.json",
     "stage_timings.csv",
 )
+_POST_RUN_TIMING_SCHEMA_VERSION = "scalable3d-post-run-timings-v1"
 _STAGE_NAMES = (
     "module.d1_scan_input",
     "module.d1_fusion",
@@ -106,10 +107,28 @@ def compare_long_duration_episodes(
             }
         )
 
+    post_run_stage_comparisons = _compare_post_run_stages(
+        short,
+        long,
+        superlinear_threshold=superlinear_threshold,
+    )
+
     short_rss = short["process_resource_usage"]["maximum_rss_bytes"]
     long_rss = long["process_resource_usage"]["maximum_rss_bytes"]
     short_process_elapsed = short["process_resource_usage"]["elapsed_wall_time_s"]
     long_process_elapsed = long["process_resource_usage"]["elapsed_wall_time_s"]
+    short_process_residual = (
+        None
+        if short_process_elapsed is None
+        else max(0.0, short_process_elapsed - short["wall_time_s"])
+    )
+    long_process_residual = (
+        None
+        if long_process_elapsed is None
+        else max(0.0, long_process_elapsed - long["wall_time_s"])
+    )
+    short_measured_post_run = short["post_run_timings"].get("total_wall_time_s")
+    long_measured_post_run = long["post_run_timings"].get("total_wall_time_s")
     rss_ratio = (
         _safe_ratio(float(long_rss), float(short_rss))
         if short_rss is not None and long_rss is not None
@@ -165,16 +184,20 @@ def compare_long_duration_episodes(
             "maximum_rss_ratio": rss_ratio,
             "short_process_elapsed_wall_time_s": short_process_elapsed,
             "long_process_elapsed_wall_time_s": long_process_elapsed,
-            "short_post_run_overhead_s": (
-                None
-                if short_process_elapsed is None
-                else max(0.0, short_process_elapsed - short["wall_time_s"])
+            # Retain the old field names for readers of comparison schema v1.
+            "short_post_run_overhead_s": short_process_residual,
+            "long_post_run_overhead_s": long_process_residual,
+            "short_process_residual_wall_time_s": short_process_residual,
+            "long_process_residual_wall_time_s": long_process_residual,
+            "short_measured_post_run_wall_time_s": short_measured_post_run,
+            "long_measured_post_run_wall_time_s": long_measured_post_run,
+            "normalized_measured_post_run_growth": _normalized_duration_growth(
+                short_measured_post_run,
+                long_measured_post_run,
+                short_duration_s=short["duration_s"],
+                long_duration_s=long["duration_s"],
             ),
-            "long_post_run_overhead_s": (
-                None
-                if long_process_elapsed is None
-                else max(0.0, long_process_elapsed - long["wall_time_s"])
-            ),
+            "post_run_stage_comparisons": post_run_stage_comparisons,
             "stage_comparisons": stage_comparisons,
             "superlinear_stage_names": [
                 item["stage"] for item in stage_comparisons if item["superlinear"]
@@ -196,6 +219,7 @@ def load_long_duration_episode(episode_dir: str | Path) -> dict[str, Any]:
     scenario = _load_json(root / "scenario_config.json")
     summary = _load_json(root / "summary.json")
     stages = _load_stage_timings(root / "stage_timings.csv")
+    post_run_timings = _load_post_run_timings(root / "post_run_timings.csv")
     diagnostics = _mapping(summary.get("module_final_diagnostics"))
     governance = _mapping(diagnostics.get("observation_governance"))
     d1 = _mapping(governance.get("d1_scan_input"))
@@ -264,6 +288,7 @@ def load_long_duration_episode(episode_dir: str | Path) -> dict[str, Any]:
             "overflow_rejection_count": int(d2.get("overflow_rejection_count")),
         },
         "stage_timings": stages,
+        "post_run_timings": post_run_timings,
         "process_resource_usage": _load_process_resource_usage(
             root / "process_resource_usage.txt"
         ),
@@ -318,11 +343,17 @@ def render_long_duration_comparison_markdown(report: Mapping[str, Any]) -> str:
         lines.append(
             f"| 进程峰值驻留内存/GiB | {short_rss / 2**30:.3f} | {long_rss / 2**30:.3f} |"
         )
-    short_overhead = comparison["short_post_run_overhead_s"]
-    long_overhead = comparison["long_post_run_overhead_s"]
+    short_overhead = comparison["short_process_residual_wall_time_s"]
+    long_overhead = comparison["long_process_residual_wall_time_s"]
     if short_overhead is not None and long_overhead is not None:
         lines.append(
-            f"| 启动与结果写出开销/s | {short_overhead:.3f} | {long_overhead:.3f} |"
+            f"| 进程非核心残差（含启动与写出）/s | {short_overhead:.3f} | {long_overhead:.3f} |"
+        )
+    short_measured = comparison["short_measured_post_run_wall_time_s"]
+    long_measured = comparison["long_measured_post_run_wall_time_s"]
+    if short_measured is not None and long_measured is not None:
+        lines.append(
+            f"| 已测结束后处理/s | {short_measured:.3f} | {long_measured:.3f} |"
         )
     short_log_rate = comparison["short_online_log_bytes_per_simulated_second"]
     long_log_rate = comparison["long_online_log_bytes_per_simulated_second"]
@@ -351,6 +382,23 @@ def render_long_duration_comparison_markdown(report: Mapping[str, Any]) -> str:
             f"{_format_ratio(call_cost_growth)} | "
             f"{'是' if item['superlinear'] else '否'} |"
         )
+    if comparison["post_run_stage_comparisons"]:
+        lines.extend(
+            [
+                "",
+                "## 结束后处理耗时",
+                "",
+                "| 阶段 | 短时/s | 长时/s | 单位仿真时间增长 | 超线性 |",
+                "| --- | ---: | ---: | ---: | :---: |",
+            ]
+        )
+        for item in comparison["post_run_stage_comparisons"]:
+            lines.append(
+                f"| `{item['stage']}` | {item['short_wall_time_s']:.3f} | "
+                f"{item['long_wall_time_s']:.3f} | "
+                f"{_format_ratio(item['normalized_growth'])} | "
+                f"{'是' if item['superlinear'] else '否'} |"
+            )
     lines.extend(
         [
             "",
@@ -471,6 +519,97 @@ def _load_stage_timings(path: Path) -> dict[str, dict[str, float | int]]:
             }
             for row in rows
         }
+
+
+def _load_post_run_timings(path: Path) -> dict[str, Any]:
+    if not path.is_file():
+        return {
+            "availability": "unavailable",
+            "schema_version": None,
+            "total_wall_time_s": None,
+            "stages": {},
+            "unavailable_reason": "post_run_timings_missing",
+        }
+    stages: dict[str, float] = {}
+    schema_versions: set[str] = set()
+    with path.open(newline="", encoding="utf-8") as stream:
+        for row in csv.DictReader(stream):
+            schema_versions.add(str(row["schema_version"]))
+            stage = str(row["stage"])
+            wall_time_s = float(row["wall_time_s"])
+            if wall_time_s < 0.0:
+                raise ValueError("post-run timing values must be non-negative")
+            if stage in stages:
+                raise ValueError(f"duplicate post-run timing stage: {stage}")
+            stages[stage] = wall_time_s
+    if schema_versions != {_POST_RUN_TIMING_SCHEMA_VERSION}:
+        raise ValueError("unsupported post-run timing schema")
+    total = stages.pop("total_before_timing_artifact", None)
+    if total is None:
+        raise ValueError("post-run timing total is missing")
+    return {
+        "availability": "available",
+        "schema_version": _POST_RUN_TIMING_SCHEMA_VERSION,
+        "total_wall_time_s": total,
+        "stages": stages,
+        "unavailable_reason": None,
+    }
+
+
+def _compare_post_run_stages(
+    short: Mapping[str, Any],
+    long: Mapping[str, Any],
+    *,
+    superlinear_threshold: float,
+) -> list[dict[str, Any]]:
+    short_timings = short["post_run_timings"]
+    long_timings = long["post_run_timings"]
+    if (
+        short_timings["availability"] != "available"
+        or long_timings["availability"] != "available"
+    ):
+        return []
+    comparisons = []
+    short_stages = short_timings["stages"]
+    long_stages = long_timings["stages"]
+    for stage in sorted(set(short_stages).intersection(long_stages)):
+        short_wall_time_s = float(short_stages[stage])
+        long_wall_time_s = float(long_stages[stage])
+        normalized_growth = _normalized_duration_growth(
+            short_wall_time_s,
+            long_wall_time_s,
+            short_duration_s=short["duration_s"],
+            long_duration_s=long["duration_s"],
+        )
+        comparisons.append(
+            {
+                "stage": stage,
+                "short_wall_time_s": short_wall_time_s,
+                "long_wall_time_s": long_wall_time_s,
+                "normalized_growth": normalized_growth,
+                "superlinear": bool(
+                    normalized_growth is not None
+                    and normalized_growth >= superlinear_threshold
+                    and long_wall_time_s >= 0.1
+                ),
+            }
+        )
+    return comparisons
+
+
+def _normalized_duration_growth(
+    short_value: float | None,
+    long_value: float | None,
+    *,
+    short_duration_s: float,
+    long_duration_s: float,
+) -> float | None:
+    if short_value is None or long_value is None:
+        return None
+    return _optional_ratio(
+        long_value / long_duration_s,
+        short_value / short_duration_s,
+    )
 
 
 def _scenario_without_duration_sha256(scenario: Mapping[str, Any]) -> str:
