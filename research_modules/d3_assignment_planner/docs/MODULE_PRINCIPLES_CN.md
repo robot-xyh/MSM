@@ -1228,3 +1228,19 @@ continuous_valid = max_j |(x_j - mean_j) / scale_j| <= 6
 诊断结果只包含特征 schema、特征名、候选边序号、最大连续 z 和原因。它不携带目标、资源、
 Actor、真值或 `global_track_id`。该结构用于解释失败关闭，不形成在线权限，也不能替代
 D6 的结果与因果评估。
+
+## 正式隔离证据的解释边界（2026-07-21）
+
+v2 正式保留 seed 证据把“模型是否执行”“求解输入是否改变”“最终分配是否改变”分成三个
+独立事实。`learning_cost_applied=true` 表示 treatment 在隔离 arm 内完成模型推理并将残差
+加入有效代价矩阵。control/treatment 的有效矩阵摘要不同，证明求解输入已经改变。两条
+arm 的最终 binding 相同，说明本批代价变化没有跨过 Hungarian 最优解的切换边界。
+
+隔离 applied 不能解释为运行时采用。计划 metadata 同时声明 `isolated_simulation=true`、
+`runtime_execution_allowed=false`，顶层 admission 也保持 PPO、online assist、authority
+关闭。没有 runtime ACK 时，系统无法证明任何 treatment 计划进入实际执行；没有 D6
+outcome sidecar 时，也不能判断物理效果、反事实差异或因果收益。
+
+本次正式证据的完整性由源提交、source lineage、manifest、`SHA256SUMS` 和 D3 artifact
+摘要共同约束。D3 只读复算 20 个源 episode、40 个 arm、成本、时延和安全计数，不依赖
+main 报告文字。该原则使“规划层无退化”与“系统效果已验证”保持明确区分。

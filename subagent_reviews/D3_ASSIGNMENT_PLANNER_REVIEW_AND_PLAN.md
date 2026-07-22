@@ -4,7 +4,7 @@
 **边界**: 本文只讨论抽象资源-目标匹配、离线评估和人工授权前的候选计划，不包含真实火控参数、毁伤模型或自动处置流程。
 **D3 复核状态 2026-07-14**: active-plan 连续性、execution-signature identity、candidate/published 分离、forced replan ack/applied、solve 前 switch penalty、secondary activation/current-binding、same-owner continuation、M-to-N demand-slot、保守增量规划、feedback soft/hard 分级、transient feedback dwell、role-aware primary 保持和 canonical planning-tick history schema/export 均已关闭。普通 ambiguous/hold/reacquire 不再升级为资源 `operator_hold`，且 transient 窗口不能绕过 `min_dwell`。M5N2 采用 `2 primary + 1 standby reserve`，不要求两个 primary 同时到达。真实 SimpleFlight 已完成 baseline 与三个候选各 10 seeds、共 40 个 episode；coalition completion 依次为 `0/10`、`5/10`、`2/10`、`1/10`，最佳 `20 m / 3 s / 40 deg` profile 未达到 `8/10`。版本/stale/role 合同及 reserve 安全保持；P1 开放项转为 main history 写盘与 D6 churn 消费、D5 feedback 权重/迟滞和动态 N/M 标定。P2 仅为隔离 optional benchmark。
 
-**保留 seed 重放状态 2026-07-21**: nominal 5v5、duration 2.2、seeds 1000-1019 的 D3 control 重放阻塞已关闭。匿名证据现保留真值安全的执行控制、迟滞和 `forced_replan` 状态；20 个当前 main 源帧在内存中全部精确重放。正式落盘产物、D6 非退化 sidecar 和运行结果证据仍由 main/D6 后续完成。
+**保留 seed 证据状态 2026-07-21**: nominal 5v5、duration 2.2、seeds 1000-1019 的 D3 control 精确重放阻塞已关闭，v2 正式产物已落盘并通过 D3 独立哈希与内容复核。20 个 treatment 全部进入隔离模型推理，无回退；有效代价矩阵全部变化，最终 binding 均未变。该结果只关闭规划层正式应用和非退化证据缺口；runtime ACK、物理 outcome、反事实、因果和生产晋级仍为 unavailable。
 
 **P1 switch-penalty 状态 2026-07-10**: done。`reassignment_switch_penalty` 已从 solve 后追加改为 solve 前进入可行改配边；同 resource、不可行边、无历史 assignment 的 target 和 unassigned cost 不变。solver matrix、breakdown total、objective、Assignment 和 evidence 使用同一成本且无双重计费。新 current plan binding 即使发生改配仍为 `active/current`，旧 plan 由 current plan id/version gate 失效。
 
@@ -19,6 +19,7 @@
 - P1 feedback 分级 root-cause fix done：ordinary ambiguous/hold/reacquire、几何/FOV/检测不稳定为 edge-soft；friend overlap/verified friend、身份安全冲突、duplicate 和显式 feasibility reject 保持 fail-closed。分类审计兼容旧 metadata。
 - P1 canonical history schema/export done：`PlanningTickHistoryRecord` / `plan_history_record_from_plan(...)` 输出 `d3_plan_history_record_v1`，以 main 提供的 `[sequence_index, timestamp]` 排序，聚合 ordered assignment/coalition、owner/epoch/lease、迟滞/成员变化、soft/hard feedback、成本和 stale/rollback/replan 审计；严格 JSON 且排除 truth 字段。
 - P1 evidence update：历史 40-case 保留为旧预筛；最新 M5N2 baseline/candidate 各 10 seeds 已由 main 写盘 canonical history。20/20 case、3725/3725 record 可用，plan-version/member-roster/owner transition 均为 0；membership audit 数量不得直接当成 churn。物理第二 primary/coalition 仍开放。
+- P1 formal reserved-seed evidence done：v2 正式产物已独立复核；treatment applied=`20/20`、fallback=`0`，cost-matrix changed=`20/20`，final-binding changed=`0/20`。安全计数和规则评分未退化，但未形成 runtime/physical/causal/promotion 证据。
 - P1：D5 feedback 权重与 dwell/迟滞阈值仍需用逐时刻 D6 records 配对标定。
 - P1 增量接口 done：输入快照、changed-set 完整性、独立连通分量局部求解、全量 fallback reason、全局迟滞、M-to-N all-or-none 和增量/全量 comparison summary 已测试；仍缺真实非等量 3v5/5v3、目标新增、资源失效和 crossing/dense 动态 N/M 多 seed 校准。
 - P1 deterministic calibration support done：versioned 8-scenario matrix 新增高威胁需求变化、D5 reserve feedback 和 hard-window；paired runner 统一比较 full/incremental latency、churn、unassigned high-threat、coalition shortfall 和 fallback/reject，8/8 转换 assignment/cost 等价。
@@ -993,5 +994,29 @@ D3 现固定二元特征清单和 `1e-6` 端点容差。合法 0/1 绕过连续 
 
 同一正式 bundle 与当前 nominal 5v5、2.2 秒、seed `1000-1019` 的不写盘复验得到
 applied=20、fallback=0，推理均值/P95/最大为 `0.340/0.692/0.899 ms`。重复分配、硬约束
-违规和高威胁未满足均为 0，最终 binding 未变化。下一步由 main 重跑正式落盘产物，并由
-D6 复核非退化与运行结果。当前不开放 PPO、online assist 或 authority。
+违规和高威胁未满足均为 0，最终 binding 未变化。该不写盘结果已由第 39 节的
+v2 正式证据取代；PPO、online assist 和 authority 仍未开放。
+
+## 39. v2 正式保留 Seed 证据复核（2026-07-21）
+
+本轮只读复核了 nominal 5v5、2.2 秒、seed `1000-1019` 的 v2 正式产物。
+源提交为 `78912963b67fe86ee9a8d29186b18a9dd60c460c`。`SHA256SUMS`、
+`manifest.json` 和 D3 产物的 SHA-256 分别为
+`821f15035e628d8db86f13c22d93f8e05142c5f00aae9118974a74bdc98b72bc`、
+`d6ef23b28add92e9a24a185ea72a7275e341bd796a2e11930c4d5f46b19a883c` 和
+`e878cd97f2a0f1c84fbd68b5ee996d0dc6d4e550cce42eab53558a33a120270b`。五个受管
+文件的 `sha256sum -c` 全部通过，D3 JSON 没有非有限数。
+
+来源 lineage 中有 20 个唯一源样本，对应 seed `1000-1019`。20 个样本全部
+clean/finite，online truth 使用为 0。control 和 treatment 各 20 条。treatment
+applied=`20/20`、fallback=`0`；隔离模型修改了 `20/20` 组有效代价矩阵，
+最终 Hungarian binding 变化为 `0/20`。规则与 treatment 的 assignment cost mean 均为
+`17.0560260319065`；高威胁未满足、duplicate、hard violation 和 churn 均为 0。
+推理时延 P50/P95 为 `0.246385/0.310801 ms`，最小/最大为
+`0.234524/0.792214 ms`。
+
+结论限定在规划层隔离应用。学习修正已实际进入求解输入，但没有改变最终分配，
+也没有产生可声明的任务收益。runtime ACK、physical outcome、counterfactual、causal 和
+formal reward 均为 unavailable，promotion 仍为 unavailable。PPO、assist、authority 保持
+false，rule fallback 保持 true，runtime publication 保持 false。本结论取代第 35-38 节中
+“正式产物待 main 重跑”的历史状态，不改变其他安全门控和开放缺口。

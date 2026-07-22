@@ -1101,3 +1101,25 @@ applied=20、fallback=0；时延最小/均值/P50/P95/最大分别为
 未满足均为 0，规则矩阵保持不变。D3 全量收集 373 项，结果为
 `372 passed, 1 skipped`；skip 仅为可选 OR-Tools。该证据不包含运行 ACK、物理结果、
 反事实或因果结论，PPO、生产 assist、authority 继续关闭，规则回退继续启用。
+
+## 2026-07-21 v2 正式保留 Seed 证据
+
+D3 对 main 生成的 v2 正式目录进行了独立只读复核：
+`reserved_seed_interventions_nominal_5v5_1000_1019_formal_7891296`。当前源提交为
+`78912963b67fe86ee9a8d29186b18a9dd60c460c`，与 20 条 source lineage 一致；20 个源 episode
+均为 clean、finite，在线 truth 使用计数为 0。`SHA256SUMS` 文件 SHA256 为
+`821f15035e628d8db86f13c22d93f8e05142c5f00aae9118974a74bdc98b72bc`，manifest SHA256 为
+`d6ef23b28add92e9a24a185ea72a7275e341bd796a2e11930c4d5f46b19a883c`。清单内 5 个文件全部
+通过 `sha256sum -c`；D3 执行产物 SHA256 为
+`e878cd97f2a0f1c84fbd68b5ee996d0dc6d4e550cce42eab53558a33a120270b`。
+
+20 个 control 和 20 个 treatment inventory 完整。20/20 treatment 均在
+`offline_simulation_intervention_arm` 内实际应用学习代价，fallback 为 0；control 与
+treatment 的有效代价矩阵 SHA 在 20/20 配对中不同，证明模型改变了隔离求解输入。最终
+资源目标 binding 的变化为 0/20。规则与 treatment 的规则评分均值均为
+`17.0560260319065`，高威胁未满足、重复分配、硬约束违规和抖动总数均为 0。
+
+从 20 帧重新计算的推理时延 P50/P95 为 `0.246385/0.310801 ms`，与产物汇总一致。该结果
+只证明隔离学习路径已执行且本批最终分配未变化。runtime ACK、physical outcome、
+counterfactual 和 causal 全部 unavailable；promotion 状态仍为 unavailable。PPO、线上
+assist、authority 保持 false，规则回退保持 true，运行时发布仍被禁止。

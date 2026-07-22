@@ -1223,3 +1223,26 @@ OR-Tools，零失败满足门限。
    D3 隔离推理入口可达。
 3. runtime ACK、物理 outcome、counterfactual、causal 和生产晋级继续 unavailable。
    PPO、online assist、authority 保持 false，规则回退保持 true。
+
+## 39. v2 正式保留 Seed 证据同步（2026-07-21）
+
+### 已完成
+
+1. main 已按第 38 节后续项生成 v2 正式产物，目录绑定源提交 `78912963...c460c`。D3 owner
+   独立验证 `SHA256SUMS`、manifest 及清单内 5 个文件，未修改 main 输出。
+2. 20 个 source episode 均 clean、finite，online truth use=0；20 control 和 20 treatment
+   清单完整。D3 产物没有非有限数值。
+3. 20/20 treatment 在隔离 arm 内 applied，fallback=0。20/20 有效代价矩阵发生变化，最终
+   binding 变化为 0/20；规则与 treatment 的规则评分均值均为 `17.0560260319065`。
+4. 高威胁未满足、duplicate、hard violation 和 churn 的 control/treatment 总数均为 0。
+   推理时延 P50/P95 为 `0.246385/0.310801 ms`。
+5. v2 证据关闭“修复后正式落盘产物缺失”和“隔离 treatment 是否实际应用未知”两项 P1
+   缺口。它没有关闭运行采用、物理结果和因果归因缺口。
+
+### 后续
+
+1. D6 仍需以独立 sidecar 联接 runtime ACK、physical outcome 和计划级结果；当前 promotion
+   manifest 因缺 D6 outcome sidecar 保持 unavailable。
+2. 如需讨论 production admission，必须先获得运行确认、结果非退化、反事实和因果证据。
+   当前 `PPO=false`、`assist=false`、`authority=false`、`rule_fallback=true` 不变。
+3. 后续正式证据必须新建版本化目录并保留旧产物；不得回写本次 v2 文件或冻结 bundle。

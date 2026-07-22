@@ -936,3 +936,51 @@ treatment applied 为 0，20 次全部因 `out_of_distribution` 回退。独立�
 本次复验未写入 main 正式输出，不替换首轮 20 次 OOD 的历史产物。它证明修复后的隔离
 模型路径可达，并未证明物理效果、反事实收益或因果收益。生产 assist 和 authority 继续
 关闭，规则回退继续启用。
+
+## v2 正式保留 Seed 证据（2026-07-21）
+
+### 输入
+
+权威目录为
+`reserved_seed_interventions_nominal_5v5_1000_1019_formal_7891296`，场景为 nominal 5v5，
+时长 2.2 秒，seed 为 `1000-1019`。源提交
+`78912963b67fe86ee9a8d29186b18a9dd60c460c` 与当前检出提交、manifest 和 20 条 lineage
+记录一致。20 个源均 clean、finite，在线 truth 使用为 0。
+
+`SHA256SUMS` 文件和 manifest 的 SHA256 分别为
+`821f15035e628d8db86f13c22d93f8e05142c5f00aae9118974a74bdc98b72bc` 和
+`d6ef23b28add92e9a24a185ea72a7275e341bd796a2e11930c4d5f46b19a883c`。清单内 5 个文件
+全部通过校验。D3 artifact SHA256 为
+`e878cd97f2a0f1c84fbd68b5ee996d0dc6d4e550cce42eab53558a33a120270b`，JSON 内非有限数值为 0。
+
+### 结果
+
+| 指标 | control | treatment |
+| --- | ---: | ---: |
+| arm 数 | 20 | 20 |
+| 隔离学习 applied | 0 | 20 |
+| 规则回退 | 0 | 0 |
+| assignment cost mean | 17.0560260319065 | 17.0560260319065 |
+| 高威胁未满足总数 | 0 | 0 |
+| duplicate 总数 | 0 | 0 |
+| hard violation 总数 | 0 | 0 |
+| churn 总数 | 0 | 0 |
+
+20/20 配对的 treatment 有效代价矩阵 SHA 与 control 不同，最终 binding 变化为 0/20。模型
+在隔离路径中确实改变了求解代价，但变化幅度没有改变本批 Hungarian 最优匹配。冻结规则
+矩阵保持不变，最终规则评分也没有变化。
+
+20 条 treatment frame 的推理时延为：P50 `0.246385 ms`、P95 `0.310801 ms`，最小值
+`0.234524 ms`，最大值 `0.792214 ms`。最大值主要影响单帧尾部，不改变 P95 结论；当前只
+报告本机离线运行结果，不外推为部署时延指标。
+
+### 证据边界
+
+`treatment_safely_applied_in_isolated_simulation` 已 available，表示 20 个 treatment 均通过
+D3 隔离安全外壳并形成收据。runtime ACK、physical outcome、counterfactual 和 causal 均
+为 unavailable，运行时发布为 false。promotion manifest 的状态是 unavailable，原因为
+尚未联接 D6 outcome sidecar。
+
+因此，本次正式结果关闭了修复后二元特征门的正式落盘验证缺口，并证明规划层安全指标在
+本批未恶化。它不证明学习计划已在线采用，也不证明物理结果或因果收益。PPO、online
+assist、authority 继续关闭，规则回退继续启用。

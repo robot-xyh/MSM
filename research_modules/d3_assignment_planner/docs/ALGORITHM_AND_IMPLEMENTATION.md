@@ -2021,3 +2021,48 @@ for every continuous feature j:
 正式 bundle 的 manifest、state dict、阈值和权重未改变。不写盘运行 seed `1000-1019`
 后，20 个 treatment 均实际调用模型；最大连续 z=`1.6229`。该路径仍是隔离实验 arm，输出
 不可发布，且不生成运行 ACK、物理结果、反事实或因果证据。
+
+## 43. v2 正式证据复核方法（2026-07-21）
+
+### 43.1 完整性校验
+
+复核入口是版本化目录，不使用报告中的自然语言结论。先计算 `SHA256SUMS` 文件和 manifest
+摘要，再用清单逐文件校验 D3/D4 执行产物、中文报告和 source lineage。manifest 中的 D3
+artifact 摘要还需与文件实算值再次比较。v2 本次验证值为：
+
+```text
+source commit: 78912963b67fe86ee9a8d29186b18a9dd60c460c
+SHA256SUMS:    821f15035e628d8db86f13c22d93f8e05142c5f00aae9118974a74bdc98b72bc
+manifest:      d6ef23b28add92e9a24a185ea72a7275e341bd796a2e11930c4d5f46b19a883c
+D3 artifact:   e878cd97f2a0f1c84fbd68b5ee996d0dc6d4e550cce42eab53558a33a120270b
+```
+
+source lineage 必须严格覆盖 seed `1000-1019`，每个 seed 只有一个 source episode、一个
+不同的 D3 输入摘要，并同时满足 clean、finite 和 online truth use=0。D3 JSON 递归检查
+所有浮点值，非有限计数必须为 0。
+
+### 43.2 配对重算
+
+按 seed 将 40 个 arm 重新组成 20 个 control/treatment 对。每对分别计算：
+
+```text
+matrix_changed = H(C_effective_control) != H(C_effective_treatment)
+binding_changed = sort(target_id, resource_id)_control
+                  != sort(target_id, resource_id)_treatment
+```
+
+本次 `matrix_changed=20/20`、`binding_changed=0/20`。前者证明学习残差已进入隔离有效代价
+矩阵；后者说明最终 Hungarian 选择未变化。`rule_matrix_unchanged=true` 表示冻结规则基线
+没有被原地修改，与 treatment 有效矩阵发生变化并不矛盾。
+
+规则成本、treatment 规则评分、高威胁缺口、重复、硬违规和抖动从 20 条 frame 逐项求和或
+求均值，不直接采用 manifest 汇总。推理 P50/P95 由 20 条 frame latency 重新计算。复算值
+与产物一致：成本均值 `17.0560260319065`，所有安全计数为 0，P50/P95 为
+`0.246385/0.310801 ms`。
+
+### 43.3 可用性判定
+
+隔离 treatment applied 的依据是 arm 字段、计划 metadata 和 manifest availability 三处
+一致，且 fallback 为 0。runtime ACK、outcome、counterfactual 和 causal 必须分别有独立
+证据引用；本次均缺失。promotion manifest 的 `promotion_status=unavailable` 是证据不足，
+不能改写为性能退化，也不能改写为准入通过。

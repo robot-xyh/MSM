@@ -21,6 +21,8 @@ D3 当前已经完成中心化一对一与显式 M-to-N demand-slot 主线：Sci
 
 历史 40-case 仍保留为旧候选预筛证据；最新 20-case 已完成 main 逐 tick history 写盘。D3 现提供并实际写盘 `d3_plan_history_record_v1`、`PlanningTickHistoryRecord` 和 `plan_history_record_from_plan(...)`；`3725` 条记录完整输出 owner、迟滞、成本、成员与 stale/rollback 审计且排除 truth。实际 plan/member/owner churn 均为 0；`3555` 条 membership audit 是候选换员评估，其中 `3524` 条成员保持、`31` 条成员层通过后被全局迟滞保持，不能计为实际 churn。普通 pair hold 扩大为资源不可行仍只是旧 40-case 根因线索，不是已证明的物理失败因果。
 
+2026-07-21 的 v2 正式保留 seed 证据已关闭“正式产物未更新”和“隔离 treatment 是否实际应用不可用”两项 D3 P1 证据缺口。独立复核确认 20 个 seed 全部 clean/finite，online truth 使用为 0，treatment applied=`20/20`、fallback=`0`。隔离模型修改了 `20/20` 组有效代价矩阵，但最终 Hungarian binding 变化为 `0/20`；规则与 treatment 的平均分配代价均为 `17.0560260319065`，高威胁未满足、重复、硬约束违规和 churn 均为 0。这是规划层隔离应用与非退化证据，不是 runtime ACK、物理 outcome、反事实、因果或生产晋级证据。
+
 ## 2. 已实现
 
 | 能力 | 实现状态 | 关键代码/测试依据 |
@@ -785,3 +787,41 @@ assignment/binding/control 为 3/3/3，held=0，online truth use=0。D3 全量 3
 
 本项没有新增 P0。D3 全量收集 373 项，结果 `372 passed, 1 skipped`；skip 仅为 optional
 OR-Tools。
+
+## 36. v2 正式保留 Seed 证据 GAP 更新（2026-07-21）
+
+### 独立复核
+
+- **来源与完整性**：证据来源提交为
+  `78912963b67fe86ee9a8d29186b18a9dd60c460c`。`SHA256SUMS` 文件的 SHA-256 为
+  `821f15035e628d8db86f13c22d93f8e05142c5f00aae9118974a74bdc98b72bc`；
+  `manifest.json` 为
+  `d6ef23b28add92e9a24a185ea72a7275e341bd796a2e11930c4d5f46b19a883c`；D3 产物
+  `d3_offline_paired_intervention.json` 为
+  `e878cd97f2a0f1c84fbd68b5ee996d0dc6d4e550cce42eab53558a33a120270b`。
+  `sha256sum -c` 对五个受管文件全部通过，D3 产物无非有限数。
+- **样本与真值隔离**：来源 lineage 包含唯一 seed `1000-1019`，20 个源样本全部
+  clean/finite，online truth 使用计数为 0。control/treatment 各 20 条，未发现样本数、
+  seed 或 arm 缺失。
+- **规划层结果**：treatment applied=`20/20`、fallback=`0`，有效代价矩阵变化
+  `20/20`，最终 binding 变化 `0/20`。规则臂与 treatment 臂的 assignment cost mean 均为
+  `17.0560260319065`；高威胁未满足、duplicate、hard violation 和 churn 均为 0。
+  推理时延 P50/P95 为 `0.246385/0.310801 ms`，最小/最大为
+  `0.234524/0.792214 ms`。
+
+### 已关闭
+
+- **P1 正式产物更新**：第 35 节中“旧 OOD 产物待重跑”状态已被本节 v2 证据取代。
+- **P1 隔离 treatment 应用可用性**：20 个 treatment 全部进入隔离模型推理，无 OOD、
+  deadline 或其他规则回退。
+- **P1 规划层非退化复核**：安全计数、高威胁满足、churn 和规则评分均未恶化。
+  代价矩阵变化但最终 binding 不变，因此不声明已获得任务性能收益。
+
+### 仍开放
+
+- **P1 运行与物理结果**：runtime ACK、physical outcome、counterfactual 和 causal 均为
+  unavailable；现有证据不支持运行采用或物理效果结论。
+- **P1 正式奖励与生产晋级**：formal reward 和 promotion 仍为 unavailable。PPO、assist、
+  authority 保持 false，rule fallback 保持 true，runtime publication 保持 false。
+
+本项没有新增 P0，也没有更改冻结 bundle、线上准入或默认规则路径。
