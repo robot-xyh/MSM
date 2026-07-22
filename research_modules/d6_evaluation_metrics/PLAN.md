@@ -21,6 +21,24 @@
 unavailable、零事件与真零、哈希篡改、脏正式来源、在线真值字段、跨制品规模冲突、重复 seed、
 缺 provenance、非法侧车在线消费及 producer required-path 清单。
 
+### Clean/formal 制品核验
+
+- [x] 独立核验 `observation_governance_calibration_20260722_formal_e4d66db`：输入策略
+  `formal_only`，20 episode/20 个互异 seed，四档各 5 seed、每回合 33.75 s。
+- [x] 核对来源提交 `e4d66db02a0b8f1b867a0e81b4a73de84588426b`、clean worktree、formal
+  evidence tier 和 online truth use=0；20 个 episode 的来源字段一致。
+- [x] 核对 D6 为 `offline_read_only_fail_closed`，不导入运行模块，D1/D2 控制修改均为 false。
+- [x] 核对四档 D1 重排 12、拒绝/过旧/溢出 0、峰值缓冲 3；D2 峰值 claim/容量为
+  2390/4800、6020/12000、12070/24000、24170/48000，安全淘汰为
+  285/735/1485/2985，溢出为 0。
+- [x] 核对 evaluator-only 近邻召回 1.0、95% bootstrap 区间 [1,1]；错误抑制/错误合并
+  为 0、区间 [0,0]；确认时延均值/P95/最大值为 0.25 s。全部指标为 5/5 available。
+- [x] 复算 aggregate SHA-256
+  `6fb64252292aaedd3c68d1bfea64b76496136ce6edb32add61a281d511c4ed22` 和中文报告 SHA-256
+  `6198854b867d39fb2f1300cddeb1f75972ba8b7952361622213050115feb0827`。
+- [x] 保持结论边界：该批是快速治理基准 formal 证据，不是精度、AirSim、实时性、完整控制
+  闭环或物理拦截验收。
+
 ### Development 制品核验
 
 - [x] 只读核验 `observation_governance_calibration_20260722_development`：四档规模各 5 seed，
@@ -37,8 +55,8 @@ unavailable、零事件与真零、哈希篡改、脏正式来源、在线真值
 
 ### 后续输入条件
 
-1. main 在冻结的 clean commit 和 clean worktree 上按同一合同重跑 20/50/100/200，提供外部
-   input-spec SHA-256，并将结果标为 formal。当前 development 数值不能直接升级为正式结论。
+1. 已完成同输入、clean commit 的 20/50/100/200 formal 快速治理复跑。后续不得用 development
+   制品覆盖该权威记录；新正式制品必须使用新的来源摘要和独立版本标识。
 2. 扩大每档 seed 数、episode 时长和近邻/乱序/漏检/高密度压力条件，确认 claim retention、
    缓冲门限和安全淘汰在不同输入下仍稳定。
 3. 对实际 D1-D7 质点栈运行多 seed、长时场景；补齐位置/速度精度、身份连续性、计划消费、

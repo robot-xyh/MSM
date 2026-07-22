@@ -44,6 +44,29 @@ available。
 `main_producer_required_json_paths()`。精确字段模板见
 `OBSERVATION_GOVERNANCE_CALIBRATION_CONTRACT_CN.md`。
 
+### Clean/formal 复核
+
+formal 消费仍使用相同 v1 算法，不增加特殊分支。输入清单必须声明 `formal_only`；20 个
+manifest 逐一满足 `evidence_tier=formal`、`repository_dirty=false`、同一完整 Git commit 和
+`online_truth_use_count=0`。聚合结果必须声明 `runtime_modules_imported=false`，且 D1/D2
+control mutation 均为 false。D6 只在所有跨制品摘要、episode 身份、规模和 seed 唯一性检查
+通过后输出正式报告。
+
+2026-07-22 权威输入绑定提交 `e4d66db02a0b8f1b867a0e81b4a73de84588426b`，覆盖 20 个
+episode/20 seed。四档 D1 重排/峰值缓冲为 12/3，拒绝、过旧和溢出为 0；D2 峰值 claim 为
+2390、6020、12070、24170，容量为 4800、12000、24000、48000，安全淘汰为 285、735、
+1485、2985，溢出为 0。D1+D2 合计峰值最大值分别为 6,355,286、15,029,595、29,619,091、
+59,007,120 B。
+
+evaluator-only 的近邻样本分别为 13,375、33,775、67,775、135,775。四档近邻召回为 1.0，
+95% 自助区间 [1,1]；错误抑制和错误合并均为 0，区间 [0,0]；确认时延均值/P95/最大值均为
+0.25 s。聚合 JSON 和中文报告摘要分别为
+`6fb64252292aaedd3c68d1bfea64b76496136ce6edb32add61a281d511c4ed22` 和
+`6198854b867d39fb2f1300cddeb1f75972ba8b7952361622213050115feb0827`。
+
+formal 标签适用于该快速治理评估问题。算法不据此生成位置/速度误差、AirSim 性能、端到端
+实时因子或物理拦截指标；缺少相应输入时，这些能力保持未评估。
+
 ### Development 结果读取
 
 2026-07-22 的快速基准由同一 v1 消费器读取 20 个 episode。四档规模各 5 seed，每个 episode

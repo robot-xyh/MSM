@@ -24,9 +24,17 @@ availability 和 95% bootstrap 区间。200 规模 D1+D2 tracemalloc 口径峰�
 因子 0.0365、online truth use 为 0。该结果只说明全栈能够运行并产出治理审计。快速基准不代表
 全栈，单次冒烟也不代表快速治理的 33.75 s 统计。
 
-两组制品均来自脏工作树，证据级别保持 development。D6 下一步等待 clean commit 正式复跑、
-更大 seed/压力覆盖和完整系统精度、身份与五米物理闭环侧车；在此之前不发布正式性能或拦截
-效果结论。D6 不参与参数调整或控制。
+快速治理矩阵随后在 clean 提交 `e4d66db02a0b8f1b867a0e81b4a73de84588426b` 上以
+`formal_only` 完整复跑。权威制品覆盖 20 episode/20 seed，四档各 5 seed；online truth use
+为 0。D6 聚合记录 `runtime_modules_imported=false`，D1/D2 控制修改均为 false。正式四档
+D1/D2 计数与上方 development 治理结果一致；近邻召回 1.0 的 95% 区间为 [1,1]，错误抑制和
+错误合并 0 的区间为 [0,0]，确认时延为 0.25 s，全部为 5/5 available。
+
+aggregate SHA-256 为 `6fb64252292aaedd3c68d1bfea64b76496136ce6edb32add61a281d511c4ed22`，
+中文报告 SHA-256 为 `6198854b867d39fb2f1300cddeb1f75972ba8b7952361622213050115feb0827`。
+快速治理 clean/formal 缺口已经关闭。200 对 200 全栈冒烟仍是 dirty/development；精度、身份、
+AirSim、实时性和五米物理闭环不从治理 formal 结果继承，仍需独立正式证据。D6 不参与参数调整
+或控制。
 
 ## 2026-07-22 D2 修复后 active_risk 开发期复核
 

@@ -2,6 +2,10 @@
 
 `OBSERVATION_GOVERNANCE_CALIBRATION_CONTRACT_CN.md` 定义长 episode D1 扫描 OOSM、D2
 claim ledger、evaluator-only sidecar、哈希链和 main required fields 的公共合同。
+2026-07-22 clean/formal 快速治理结果见 `../EXPERIMENT_REPORT.md` 2.17 节。该批采用
+`formal_only`，覆盖 20 episode/20 seed，绑定 clean 提交
+`e4d66db02a0b8f1b867a0e81b4a73de84588426b`，online truth use 为 0。正式证据只覆盖治理
+合同，不包含精度、AirSim、实时性或物理拦截验收。
 2026-07-22 的 development 快速治理基准与 200 对 200 全栈单 seed 冒烟见
 `../EXPERIMENT_REPORT.md` 2.16 节；两类证据的隔离原则见 `MODULE_PRINCIPLES_CN.md`，读取和
 availability 算法见 `ALGORITHM_AND_IMPLEMENTATION.md`。快速基准覆盖四档各 5 seed，全栈冒烟

@@ -30,6 +30,24 @@ schema/hash/provenance 缺失、不一致规模、重复 seed、脏正式来源�
 20/50/100/200、7/37 非基线规模和真值隔离；D6 全量为 `521 passed`，另有一条既有
 Matplotlib `Axes3D` 环境 warning。
 
+同日 D6 独立核验 clean/formal 制品
+`observation_governance_calibration_20260722_formal_e4d66db`。输入策略为 `formal_only`，绑定
+提交 `e4d66db02a0b8f1b867a0e81b4a73de84588426b`，工作树 clean。20、50、100、200 四档
+各 5 个互异 seed，共 20 个 episode；每个 episode 为 33.75 s，在线真值使用数为 0。D6
+评估模式为只读失败关闭，`runtime_modules_imported=false`，D1/D2 控制修改标志均为 false。
+
+四档 D1 重排均为 12，拒绝/过旧/溢出均为 0，峰值扫描缓冲均为 3。D2 峰值 claim/容量
+依次为 2390/4800、6020/12000、12070/24000、24170/48000；安全淘汰依次为 285、735、
+1485、2985，溢出均为 0。evaluator-only 近邻召回率均为 1.0，95% episode bootstrap 区间
+均为 [1.0, 1.0]；错误抑制率和错误合并率均为 0，区间均为 [0, 0]；确认时延均值、P95 和
+最大值均为 0.25 s。所有上述指标均为 5/5 available。
+
+聚合 JSON SHA-256 为
+`6fb64252292aaedd3c68d1bfea64b76496136ce6edb32add61a281d511c4ed22`，中文报告 SHA-256
+为 `6198854b867d39fb2f1300cddeb1f75972ba8b7952361622213050115feb0827`。该批关闭治理合同
+在既定快速基准上的 clean/formal 证据缺口，不证明位置或速度精度、AirSim 接线、实时运行能力、
+完整 D1-D7 控制效果或物理拦截成功。
+
 同日 D6 只读核验 development 制品
 `observation_governance_calibration_20260722_development`。该批在脏工作树上生成，20、50、
 100、200 四档各 5 个互异 seed，共 20 个 episode；每个 episode 世界时长 33.75 s，在线

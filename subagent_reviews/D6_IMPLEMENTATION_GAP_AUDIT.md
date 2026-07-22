@@ -26,10 +26,23 @@
 - 实际 D1-D7 质点栈另完成 200 对 200 单 seed 冒烟：2.2 s 世界时间、60.21 s 墙钟、实时
   因子 0.0365、online truth use 为 0。该制品不与快速基准合并，也不构成正式性能证据。
 
+### Clean/formal 治理证据已关闭
+
+- 权威制品 `observation_governance_calibration_20260722_formal_e4d66db` 使用 `formal_only`，
+  绑定 clean 提交 `e4d66db02a0b8f1b867a0e81b4a73de84588426b`，覆盖 20 episode/20 seed。
+- 四档各 5 seed、每回合 33.75 s，online truth use 为 0；D6 不导入运行模块，D1/D2 控制
+  修改均为 false。
+- D1 重排/峰值缓冲为 12/3，拒绝/过旧/溢出为 0；D2 峰值 claim/容量和安全淘汰分别为
+  2390/4800/285、6020/12000/735、12070/24000/1485、24170/48000/2985，溢出为 0。
+- evaluator-only 近邻召回为 1.0、95% 区间 [1,1]；错误抑制和错误合并为 0、区间 [0,0]；
+  确认时延为 0.25 s。四档全部指标为 5/5 available。
+- aggregate SHA-256 为 `6fb64252292aaedd3c68d1bfea64b76496136ce6edb32add61a281d511c4ed22`；
+  中文报告 SHA-256 为 `6198854b867d39fb2f1300cddeb1f75972ba8b7952361622213050115feb0827`。
+
 ### 仍开放的跨模块 P1 输入条件
 
-1. **clean formal 重跑。** 当前 20 个快速 episode 和单次全栈冒烟均来自脏工作树。main 仍需
-   在冻结 clean commit 上按相同输入合同复跑并发布可保留制品，development 数值不能直接晋级。
+1. **治理 formal 已关闭，其他证据未继承。** 快速治理矩阵已有 clean/formal 结果；单次全栈
+   冒烟仍为 development。formal 标签不能用于关闭精度、AirSim、实时性或物理拦截 GAP。
 2. **统计覆盖。** 快速基准每档只有 5 seed，且输入模式固定。仍需增加 seed、时长、乱序幅度、
    近邻密度、漏检和虚警条件，才能冻结 claim retention、OOSM buffer 和内存门限。
 3. **全系统精度。** 快速侧车的近邻指标只评价治理基准。实际 D1-D7 全栈单 seed 制品缺少完整的
@@ -39,8 +52,8 @@
 5. **性能门限。** 60.21 s 墙钟和 0.0365 实时因子是单机 development 描述值。尚未建立硬件配置、
    进程拆分、内存覆盖和可接受实时因子的正式门限。
 
-D6 当前没有新增 P0 代码缺口。上述项目依赖 main 和各 producer 提供正式输入；D6 保持只读、
-availability-aware 和 fail-closed，不通过补零或放宽来源校验关闭这些缺口。
+D6 当前没有新增 P0 代码缺口。剩余项目依赖 main 和各 producer 提供对应证据层的正式输入；
+D6 保持只读、availability-aware 和 fail-closed，不通过补零、复用治理侧车或放宽来源校验关闭缺口。
 
 ## 2026-07-22 D2 修复后 development evidence GAP 更新
 

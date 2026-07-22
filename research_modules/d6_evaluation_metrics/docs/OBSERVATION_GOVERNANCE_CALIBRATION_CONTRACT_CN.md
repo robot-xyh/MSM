@@ -297,3 +297,15 @@ python3 research_modules/d6_evaluation_metrics/scripts/run_observation_governanc
 33.75 s，online truth use 为 0。D6 已给出 claim 峰值、安全淘汰、近邻召回、错误抑制、错误
 合并、确认时延和内存的开发期描述，详见 `../EXPERIMENT_REPORT.md` 2.16 节。该批不是 clean
 formal 制品，输入模式和 seed 数仍有限，不能据此冻结生产门限或发布正式性能结论。
+
+随后 main 在 clean 提交 `e4d66db02a0b8f1b867a0e81b4a73de84588426b` 上按 `formal_only`
+准入策略复跑同一矩阵。D6 独立确认 20 episode/20 seed、四档各 5 seed、在线真值使用数 0、
+`runtime_modules_imported=false` 和 D1/D2 控制未修改。四档在线治理指标均为 5/5 available；
+近邻召回率为 1.0、95% 区间 [1,1]，错误抑制和错误合并为 0、区间 [0,0]，确认时延为
+0.25 s。aggregate SHA-256 为
+`6fb64252292aaedd3c68d1bfea64b76496136ce6edb32add61a281d511c4ed22`，中文报告 SHA-256
+为 `6198854b867d39fb2f1300cddeb1f75972ba8b7952361622213050115feb0827`。正式指标和完整表格见
+`../EXPERIMENT_REPORT.md` 2.17 节。
+
+本合同的 formal 状态只适用于快速观测治理证据。它不包含跟踪位置/速度精度、AirSim、部署
+实时性、完整 D1-D7 控制闭环或物理拦截结果。
