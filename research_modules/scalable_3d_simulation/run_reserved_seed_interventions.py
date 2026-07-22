@@ -41,7 +41,7 @@ DEFAULT_D4_BUNDLE = (
     / "region_resource_bc_900_20260720"
     / "bundle"
 )
-DEFAULT_OUTPUT = SCALABLE_ROOT / "outputs" / "reserved_seed_interventions_v1"
+DEFAULT_OUTPUT = SCALABLE_ROOT / "outputs" / "reserved_seed_interventions_v2"
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
