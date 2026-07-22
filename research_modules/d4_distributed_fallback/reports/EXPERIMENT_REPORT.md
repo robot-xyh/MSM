@@ -8,6 +8,8 @@
 
 2026-07-21 又增加区域结果/奖励证据合同测试。19 个新增用例覆盖新执行计划、同代评估刷新、分项缺测不补零、ACK 缺失、旧 generation、租约过期、窗口重叠、执行与联盟绑定变化、快照/来源哈希篡改、在线真值字段和 D6 目标级诊断误用。新增专项 19/19，ACK 与奖励证据专项 52/52，D4 全量 449/449。测试使用单区域确定性 fixture，不是多 seed 性能试验。它证明 schema、公式和失败关闭逻辑可运行，没有提供正式 episode 的实际区域 reward、策略收益、物理执行或因果证据。
 
+同日增加保留 seed 配对干预合同测试。20 个新增用例覆盖 1000-1019 exact seed/arm inventory、相同配置/初始状态/通信/故障/快照 lineage、JSON 与 CLI round-trip、旧 epoch、过期 lease、缺联盟 ACK、fault fence、未知边、容量安全裁剪、候选 bundle/hash、truth key、非有限值、跨 arm 实际快照和权限不可升级。专项 20/20，区域建议、运行确认、奖励与联盟安全相关回归 132/132，D4 全量 469/469。测试代码为了验证 40-arm manifest 完整性构造了内存 fixture，但没有运行 20 个正式 episode，也没有生成性能统计。D6 outcome sidecar 尚未接入，observed outcome、paired non-degradation、counterfactual 和 causal 均保持 unavailable。
+
 ## 2. 实验目的
 
 D4 验证中心节点异常时的保底策略：
@@ -115,7 +117,7 @@ paired evaluator 的合成 19-seed case 按门槛拒绝 assist；合成 20-seed 
 
 ### 4.6 2026-07-20 区域学习 episode 数据合同验证
 
-`tests/test_region_resource_dataset.py` 当前 15 个 pytest case，结果 **15/15 passed**；`test_region_resource_advisor.py` 当前 **51/51 passed**，二者合计 **66/66**。共享切分、动作覆盖课程、全样本准入和运行时确认阶段分别达到 381/381、387/387、397/397 和 430/430。加入 19 项区域 reward 合同后，2026-07-21 当前全量为 **449/449 passed**。版本固定为 `d4-region-learning-dataset-v1`、`d4-region-resource-model-bundle-v2` 和 `d4-region-resource-observational-reward-v1`。
+`tests/test_region_resource_dataset.py` 当前 15 个 pytest case，结果 **15/15 passed**；`test_region_resource_advisor.py` 当前 **51/51 passed**，二者合计 **66/66**。共享切分、动作覆盖课程、全样本准入和运行时确认阶段分别达到 381/381、387/387、397/397 和 430/430。加入 19 项区域 reward 合同后，2026-07-21 当前全量为 **469/469 passed**。版本固定为 `d4-region-learning-dataset-v1`、`d4-region-resource-model-bundle-v2` 和 `d4-region-resource-observational-reward-v1`。
 
 高基数正例仍为 96 episode/192 frame，正序和逆序输入得到相同 manifest，同数值 seed 不跨 split。复核新增：训练 target 重新验证 projector、owner/plan/version/epoch/lease、备用和 edge/quota 证明；中心、二级、distributed owner 序列化回读；manifest availability 与可重放 split 对 episode inventory 的一致性；truth/object/global-track key 变体拒绝；区域图规模增加到 200。BC/PPO 缺值仍失败关闭。
 
@@ -149,7 +151,7 @@ paired evaluator 的合成 19-seed case 按门槛拒绝 assist；合成 20-seed 
 
 数据集 SHA256 为 `b06d741bd22a0cd84ef1e47a48a0b8cd81ceb7e4ea294eeeb38b892e69d36158`；原 split SHA256 为 `18a2c60097fefe05cb70ed811d28faf90c51bbbba0bbe984e07f23fb12f8d7f0`；源 registry SHA256 为 `2ab928a476a4430b99326f245222f058bc5be5025158134ba89b01b3dec7815f`；共享 registry content SHA256 为 `29eb6895c4aa570b068f15141cbbbfede3041519117852d1ad48e848a25af146`，assignment SHA256 为 `31c6a3fc265d088d9958f44d579d8098e2aeab06b0daa60c68452ae4c6d46ab5`。
 
-审计前后正式 D4 dataset 目录树 SHA256 均为 `8cde5cace4bd8106e35801f6179775ae39298592f3b556f712ea857b9c496bc1`。原 manifest 和 900 个 episode 文件未改写。新增 12 项测试覆盖成功映射、BC 显式选择、哈希篡改、漏/多 seed、保留 seed 和源 SHA 不匹配；该共享切分阶段 D4 全量为 381/381。该结果只证明跨模块数据切分治理可用。PPO 仍不可用，assist 仍关闭，行为克隆性能不因重新分桶自动更新；当前全量为 449/449。
+审计前后正式 D4 dataset 目录树 SHA256 均为 `8cde5cace4bd8106e35801f6179775ae39298592f3b556f712ea857b9c496bc1`。原 manifest 和 900 个 episode 文件未改写。新增 12 项测试覆盖成功映射、BC 显式选择、哈希篡改、漏/多 seed、保留 seed 和源 SHA 不匹配；该共享切分阶段 D4 全量为 381/381。该结果只证明跨模块数据切分治理可用。PPO 仍不可用，assist 仍关闭，行为克隆性能不因重新分桶自动更新；当前全量为 469/469。
 
 ### 4.9 区域动作覆盖补充课程
 
@@ -189,7 +191,7 @@ canonical 视图为 60/20/20 seed，对应 180/60/60 frame。训练桶含 hold 6
 
 ### 4.11 区域建议运行时确认接口
 
-2026-07-21，运行时确认输出升级为 `d4-region-resource-runtime-ack-evidence-v2`。原合同专项 28/28；新增真实 main 质点集成 5/5，运行时专项合计 33/33。集成正例直接运行 5v5、seed 41、duration 1.2 s、assist `RegionResourceAdvisor`：source D3 seq=10，current D3 seq=94，consumption seq=96，D7 seq=99，ACK seq=100。初次计划在 0.25 s 发布，同 plan ID/version v1 在 1.0 s 以 `evaluation_refresh_only=true`、`execution_signature_changed=false` 完成区域建议评估刷新；payload SHA 和 binding 完整，验证器输出 `available=true`、`adoption_kind=evaluation_refresh_applied`。加入区域 reward 合同后当前 D4 全量为 449/449。
+2026-07-21，运行时确认输出升级为 `d4-region-resource-runtime-ack-evidence-v2`。原合同专项 28/28；新增真实 main 质点集成 5/5，运行时专项合计 33/33。集成正例直接运行 5v5、seed 41、duration 1.2 s、assist `RegionResourceAdvisor`：source D3 seq=10，current D3 seq=94，consumption seq=96，D7 seq=99，ACK seq=100。初次计划在 0.25 s 发布，同 plan ID/version v1 在 1.0 s 以 `evaluation_refresh_only=true`、`execution_signature_changed=false` 完成区域建议评估刷新；payload SHA 和 binding 完整，验证器输出 `available=true`、`adoption_kind=evaluation_refresh_applied`。加入区域 reward 合同后当前 D4 全量为 469/469。
 
 四项集成负例分别篡改 refresh flags、在同版本中改变 coalition version、声明 `execution_signature_changed=true` 却不提升 plan generation，以及移除前序 source-plan envelope，均按稳定 code 失败关闭。手工 fixture 仍覆盖严格更新的新执行计划路径。该质点正例只证明建议在同执行方案下被重新评估和采纳；不证明新执行计划、物理结果或 reward。冻结 900 episode 没有这些 runtime 字段，`CoalitionMemberAck`、物理 outcome、可归因 reward、paired shadow、PPO、assist 和 authority 状态未改变。
 
