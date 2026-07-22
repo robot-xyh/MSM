@@ -940,20 +940,20 @@ D1 NumPy EKF/FusionAdapter
 
 | Owner | P0 状态 | 必须保持的合同 | 验收 |
 | --- | --- | --- | --- |
-| D1 | 无新增 blocker | 双时间戳、NED、协方差、OOSM、source de-dup、局部图像航迹 fail-closed 适配和 GlobalTrack | D1 `151 passed` |
-| D2 | 无新增 blocker | GNN/Hungarian、稳定 global_track_id、id_switch_count、continuity、陈旧观测隔离和来源身份治理显式计数 | D2 `189 passed, 1 warning` |
+| D1 | 无新增 blocker | 双时间戳、NED、协方差、OOSM、source de-dup、局部图像航迹 fail-closed 适配和 GlobalTrack | D1 `163 passed` |
+| D2 | 无新增 blocker | GNN/Hungarian、稳定 global_track_id、id_switch_count、continuity、陈旧观测隔离和来源身份治理显式计数 | D2 `215 passed, 1 warning` |
 | D3 | 无新增 blocker | 版本化 AssignmentPlan、迟滞、stale rejection、D7 binding | D3 `419 passed, 1 skipped` |
 | D4 | 无新增 blocker | C2Health、主动/被动降级、二级 lifecycle；active secondary helper/owner 必须对 sustained readiness、expected/actual source、plan/required epoch、expiry/current time 和 plan monotonicity exact-true；冲突或缺失证据 fail-closed | D4 `508 passed` |
-| D5 | 无新增 blocker | 不改写 global_track_id、truth 隔离、friend/duplicate 保守门控；原生 MOT 连续实测历史按 stream/backend/ID 隔离并在空帧/reset 后重计；离线人工记录转换重复坍缩 fail-closed；补充课程全样本审计不得开放在线权限 | D5 `534 passed` |
+| D5 | 无新增 blocker | 不改写 global_track_id、truth 隔离、friend/duplicate 保守门控；原生 MOT 连续实测历史按 stream/backend/ID 隔离并在空帧/reset 后重计；离线人工记录转换重复坍缩 fail-closed；补充课程全样本审计不得开放在线权限 | D5 `537 passed` |
 | D6 | 无新增 blocker | 只消费日志；实际规模、id_switch_count、unavailable/zero 分离；逐 pair physical evidence/result/source、联盟完整性和跨模块学习准入严格门控；D5 全样本证据需带外 SHA，报告不得写入正式 generation 根 | D6 `521 passed, 1 warning` |
 | D7 | 核心公式无 blocker；控制输入 P0 由 main/runtime 持有 | 不分配目标；D3/D4/D5 gate 失败时阻断视觉 PNG；不修改 PN/PNG 核心公式 | D7 `213 passed` + truth-isolated control contract |
-| main/runtime | 无新增 blocker | episode bus 可回放；在线 truth identity/state 均为 0；SimpleFlight 只消费 D2 estimate；二级 communication 只消费上一完整 D4 readiness；actor truth 仅离线 5 m scorer；默认不保存 PNG | scalable main `111 passed`；既有 AirSim runtime `147 passed` |
+| main/runtime | 无新增 blocker | episode bus 可回放；在线 truth identity/state 均为 0；SimpleFlight 只消费 D2 estimate；二级 communication 只消费上一完整 D4 readiness；actor truth 仅离线 5 m scorer；默认不保存 PNG | scalable main `115 passed, 1 warning`；既有 AirSim runtime `147 passed` |
 
 ### 7.3 当前 P1 清单
 
 | Owner | 当前缺口 | 已有基础 | 缺少条件/下一验收 |
 | --- | --- | --- | --- |
-| main/D1/D3/D6 | 分阶段实时性能达标 | 两层 stage timing、严格 D6 consumer 和中文报告已实现；200v200 单 seed 2.2 s 质点烟测经尾部合并由 95.41 s 降至 60.21 s，D2 尾部调用 31->1 | 当前实时倍率仍仅 0.0365；D1 融合累计 35.12 s、D3 三次分配 7.33 s。需先优化并以多 seed 复验，再运行真实 2v2/M5N2 时延统计；不得把治理 benchmark 当实时全栈证据 |
+| main/D1/D2/D3/D5/D6 | 分阶段实时性能与长时增长达标 | clean `3bac3ff` 同 seed 2.2/10 s 对照全部安全合同通过；10 s 核心墙钟 `263.289 -> 172.214 s`，D1 `162.494 -> 103.176 s`，D2 常规关联 `35.812 -> 8.304 s`；D1-D7 规范输出和 201 帧世界状态与旧基线一致 | 实时倍率仍仅 `0.058`，峰值内存 `2.981 GiB`，长短单位时间成本仍增长 `2.036x`；D1 全量快照、D5 终端单次成本、稳定窗口 P50/P95/max 和少量 10 s 多 seed 仍需关闭。不得把单 seed 描述性校准当实时或正式验收 |
 | D2/D6/main | v2 关联候选评审与跨 difficulty 证据 | 正式 v2 联合报告已生成；总体五项 gate 通过，IDSW 下降 54.6%，P95 15.47 ms，truth leakage=0；默认在线主线未改变 | 仅 `clutter/combined` 通过，四个零 baseline-IDSW difficulty fail-closed，dropout truth alignment 为 partial；需补同 case/seed 完整多源 system bundle 后再决定是否晋级，JPDA 保持不准入 |
 | D3/D5/D7/main | M5N2 协同物理闭环 | 同条件 10-seed paired 和四层日志已完成；baseline 7/30 pair，candidate 4/30，联盟均 0/10 | 分离第二 primary 中段重捕、D5 共识、D7 gate 和成员安全根因；candidate 保持关闭 |
 | D5/D7/main | 单帧 dropout 尾部 | 2-5 帧逐 seed 全通过，物理结果 100/100，truth/ID/version 无违规 | 复核 seed 2 在 0.8 s 注入时没有进入 image-KF 的锁定时序；不得用聚合计数掩盖 |
@@ -1055,13 +1055,22 @@ episode 正式复跑。四档各 5 seed 均通过 `formal_only` 准入，`reposi
 
 ### 仍开放 P1
 
-1. D1 继续收敛创新求解、数值雅可比和发布物化；不得丢观测、缩短固定滞后窗或改变双时
-   间戳、协方差和一致性证据。
-2. main 收敛发布总线、模块栈结束收束和日志序列化；不得删除审计字段或降低采样频率。
-3. 增加 200 规模长时内存与周期 P50/P95/max，验证检查点、声明账本和生命周期不会随时长
-   无界增长。
-4. 本批 manifest 没有正式实验矩阵元数据，D6 将其归为 clean-source descriptive。完整
-   20 未见 seed、长时物理闭环、AirSim 和学习消融仍未完成。
+1. clean `3bac3ff` 的同 seed 2.2/10 秒候选对已完成。10 秒核心墙钟由 263.289 秒降至
+   172.214 秒，实时倍率由 0.038 提高到 0.058；长短单位时间成本增长由 2.668 倍降至
+   2.036 倍。该项取得进展但未关闭。
+2. D1 固定时滞专项已将 history replay `170,106 -> 13,397`、filter update
+   `120,440 -> 9,549`，逐扫描、终态和一致性证据哈希等价。全栈 10 秒 D1 融合仍为
+   103.176 秒；下一步分离滤波、GlobalTrack 物化和 764 次全量快照持久化，不得丢观测、
+   缩短固定滞后窗或改变双时间戳、协方差和一致性证据。
+3. D2 常规关联已下降到 8.304 秒；D5 终端配准绝对耗时下降到 2.621 秒，但单次调用成本随
+   时长增长 2.696 倍。D5 需补图构建和历史缓存操作数诊断。
+4. 峰值驻留内存仍为 2.981 GiB，10 秒在线日志仍为 296.336 MiB，报告与写出后处理为
+   83.596 秒。main 需治理发布边界和写出开销，同时保留状态变化、身份、生命周期、质量跨档
+   和来源谱系事件。
+5. 先扩展少量 10 秒 seed，记录稳定窗口 P50/P95/max、D3 耗时和内存分布，再决定完整 20
+   未见 seed。当前 manifest 没有正式实验矩阵元数据，D6 将其归为 clean-source descriptive；
+   长时物理闭环、AirSim 和学习消融仍未完成。
 
 详细证据见
-`research_modules/scalable_3d_simulation/docs/SCALABLE_3D_RULE_PERFORMANCE_CALIBRATION_CN.md`。
+`research_modules/scalable_3d_simulation/docs/SCALABLE_3D_RULE_PERFORMANCE_CALIBRATION_CN.md` 和
+`research_modules/scalable_3d_simulation/docs/SCALABLE_3D_LONG_DURATION_PERFORMANCE_CALIBRATION_CN.md`。
