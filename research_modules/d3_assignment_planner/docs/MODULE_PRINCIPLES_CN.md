@@ -1238,9 +1238,29 @@ arm 的最终 binding 相同，说明本批代价变化没有跨过 Hungarian �
 
 隔离 applied 不能解释为运行时采用。计划 metadata 同时声明 `isolated_simulation=true`、
 `runtime_execution_allowed=false`，顶层 admission 也保持 PPO、online assist、authority
-关闭。没有 runtime ACK 时，系统无法证明任何 treatment 计划进入实际执行；没有 D6
-outcome sidecar 时，也不能判断物理效果、反事实差异或因果收益。
+关闭。没有 runtime ACK 时，系统无法证明任何 treatment 计划进入实际执行；没有包含
+干预后物理状态窗口的 D6 outcome 证据时，也不能判断物理效果、反事实差异或因果收益。
 
 本次正式证据的完整性由源提交、source lineage、manifest、`SHA256SUMS` 和 D3 artifact
 摘要共同约束。D3 只读复算 20 个源 episode、40 个 arm、成本、时延和安全计数，不依赖
-main 报告文字。该原则使“规划层无退化”与“系统效果已验证”保持明确区分。
+main 报告文字。该原则使“同帧规划安全计数相等”与“系统效果已验证”保持明确区分。
+
+## 独立可用性消费原则（2026-07-22）
+
+D3 producer 产物完整，不自动表示结果已经被独立评估方消费。D6 在提交 `d4e8562` 中生成
+profile-bound v2 sidecar，将来源 schema、manifest、bundle 摘要和逐 arm 收据绑定后，才把
+`same_frame_offline_assignment_comparison` 标为 available。正式目录为
+`research_modules/d6_evaluation_metrics/outputs/reserved_seed_interventions_nominal_5v5_1000_1019_formal_7891296_d6_profile_bound_v2_audit_20260722/`，
+状态为 `pass_offline_assignment_comparison_only`。sidecar 文件 SHA-256 为
+`f3852251daf02ec87fe878e7fb80aad6f381d8c0756a5c956a32e737a3871c3b`，规范内容
+SHA-256 为 `c02a345c46ddc642dea7fb6bfcfb24184e7dc2a9f35b754c90324d074b445d2d`。
+
+该可用性只覆盖同一规划帧上的规则臂与 treatment 臂比较。20/20 treatment 实际应用，
+fallback 为 0，20/20 有效代价矩阵不同，0/20 最终 binding 不同；两臂平均规则成本均为
+`17.0560260319065`，高威胁未满足、重复、硬违规和抖动均为 0。它证明 D3 分配层证据可被
+独立重算和消费，不证明模型改善任务结果。
+
+运行采用和执行结果继续独立分层。本 artifact set 没有 runtime ACK、干预后的物理状态
+窗口、paired physical effect/non-degradation、counterfactual 或 causal 证据；promotion
+仍不可用。PPO、线上 assist、authority 保持关闭，规则回退保持启用。D6 sidecar 已存在，
+但它没有被错误扩展成物理或因果结论。

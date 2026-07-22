@@ -4,7 +4,7 @@
 **边界**: 本文只讨论抽象资源-目标匹配、离线评估和人工授权前的候选计划，不包含真实火控参数、毁伤模型或自动处置流程。
 **D3 复核状态 2026-07-14**: active-plan 连续性、execution-signature identity、candidate/published 分离、forced replan ack/applied、solve 前 switch penalty、secondary activation/current-binding、same-owner continuation、M-to-N demand-slot、保守增量规划、feedback soft/hard 分级、transient feedback dwell、role-aware primary 保持和 canonical planning-tick history schema/export 均已关闭。普通 ambiguous/hold/reacquire 不再升级为资源 `operator_hold`，且 transient 窗口不能绕过 `min_dwell`。M5N2 采用 `2 primary + 1 standby reserve`，不要求两个 primary 同时到达。真实 SimpleFlight 已完成 baseline 与三个候选各 10 seeds、共 40 个 episode；coalition completion 依次为 `0/10`、`5/10`、`2/10`、`1/10`，最佳 `20 m / 3 s / 40 deg` profile 未达到 `8/10`。版本/stale/role 合同及 reserve 安全保持；P1 开放项转为 main history 写盘与 D6 churn 消费、D5 feedback 权重/迟滞和动态 N/M 标定。P2 仅为隔离 optional benchmark。
 
-**保留 seed 证据状态 2026-07-21**: nominal 5v5、duration 2.2、seeds 1000-1019 的 D3 control 精确重放阻塞已关闭，v2 正式产物已落盘并通过 D3 独立哈希与内容复核。20 个 treatment 全部进入隔离模型推理，无回退；有效代价矩阵全部变化，最终 binding 均未变。该结果只关闭规划层正式应用和非退化证据缺口；runtime ACK、物理 outcome、反事实、因果和生产晋级仍为 unavailable。
+**保留 seed 证据状态 2026-07-22**: nominal 5v5、duration 2.2、seeds 1000-1019 的 D3 control 精确重放阻塞已关闭，v2 正式产物已落盘并通过 D3 独立复核。D6 profile-bound v2 sidecar 状态为 `pass_offline_assignment_comparison_only`，现已把 same-frame offline assignment comparison 标为 available，关闭 D3 assignment 层可用性和独立消费缺口。runtime ACK、post-intervention physical outcome、paired physical effect/non-degradation、反事实、因果和生产晋级仍为 unavailable；PPO、assist、authority 保持 false，规则回退保持 true。
 
 **P1 switch-penalty 状态 2026-07-10**: done。`reassignment_switch_penalty` 已从 solve 后追加改为 solve 前进入可行改配边；同 resource、不可行边、无历史 assignment 的 target 和 unassigned cost 不变。solver matrix、breakdown total、objective、Assignment 和 evidence 使用同一成本且无双重计费。新 current plan binding 即使发生改配仍为 `active/current`，旧 plan 由 current plan id/version gate 失效。
 
@@ -20,6 +20,7 @@
 - P1 canonical history schema/export done：`PlanningTickHistoryRecord` / `plan_history_record_from_plan(...)` 输出 `d3_plan_history_record_v1`，以 main 提供的 `[sequence_index, timestamp]` 排序，聚合 ordered assignment/coalition、owner/epoch/lease、迟滞/成员变化、soft/hard feedback、成本和 stale/rollback/replan 审计；严格 JSON 且排除 truth 字段。
 - P1 evidence update：历史 40-case 保留为旧预筛；最新 M5N2 baseline/candidate 各 10 seeds 已由 main 写盘 canonical history。20/20 case、3725/3725 record 可用，plan-version/member-roster/owner transition 均为 0；membership audit 数量不得直接当成 churn。物理第二 primary/coalition 仍开放。
 - P1 formal reserved-seed evidence done：v2 正式产物已独立复核；treatment applied=`20/20`、fallback=`0`，cost-matrix changed=`20/20`，final-binding changed=`0/20`。安全计数和规则评分未退化，但未形成 runtime/physical/causal/promotion 证据。
+- P1 D6 independent consumption done：profile-bound v2 availability sidecar 已存在，same-frame offline assignment comparison 为 available；runtime ACK、physical outcome、paired non-degradation、counterfactual 和 causal 仍明确 unavailable。
 - P1：D5 feedback 权重与 dwell/迟滞阈值仍需用逐时刻 D6 records 配对标定。
 - P1 增量接口 done：输入快照、changed-set 完整性、独立连通分量局部求解、全量 fallback reason、全局迟滞、M-to-N all-or-none 和增量/全量 comparison summary 已测试；仍缺真实非等量 3v5/5v3、目标新增、资源失效和 crossing/dense 动态 N/M 多 seed 校准。
 - P1 deterministic calibration support done：versioned 8-scenario matrix 新增高威胁需求变化、D5 reserve feedback 和 hard-window；paired runner 统一比较 full/incremental latency、churn、unassigned high-threat、coalition shortfall 和 fallback/reject，8/8 转换 assignment/cost 等价。
@@ -974,8 +975,8 @@ D3 修复限定在证据和离线执行边界。计划 owner/activation、授权
 冻结 development bundle 做不写盘复验，40 个 arm 完成，control 状态分布为 15 个
 unchanged、3 个 held、2 个 replan ACK，binding/状态失配为 0。
 
-当前 D3 P1 runner 阻塞已关闭。main 仍需写出完整 D3/D4 产物，D6 仍需完成非退化和结果
-sidecar；runtime ACK、物理结果、反事实、因果和正式 reward 不可用。该结果不支持 PPO、
+第 37 节阶段的 D3 P1 runner 阻塞已关闭；当时 main 尚未写出完整 D3/D4 产物，D6 也尚未
+完成独立结果消费。runtime ACK、物理结果、反事实、因果和正式 reward 当时不可用。该结果不支持 PPO、
 online assist 或 authority 晋级。
 
 ## 38. 二元特征分布门复核（2026-07-21）
@@ -1020,3 +1021,23 @@ applied=`20/20`、fallback=`0`；隔离模型修改了 `20/20` 组有效代价�
 formal reward 均为 unavailable，promotion 仍为 unavailable。PPO、assist、authority 保持
 false，rule fallback 保持 true，runtime publication 保持 false。本结论取代第 35-38 节中
 “正式产物待 main 重跑”的历史状态，不改变其他安全门控和开放缺口。
+
+## 40. D6 Profile-Bound v2 可用性复核（2026-07-22）
+
+D6 已在提交 `d4e8562` 中完成独立只读消费，目录为
+`research_modules/d6_evaluation_metrics/outputs/reserved_seed_interventions_nominal_5v5_1000_1019_formal_7891296_d6_profile_bound_v2_audit_20260722/`。
+`outcome_availability_sidecar.json` 状态为
+`pass_offline_assignment_comparison_only`；文件 SHA-256 为
+`f3852251daf02ec87fe878e7fb80aad6f381d8c0756a5c956a32e737a3871c3b`，规范内容
+SHA-256 为 `c02a345c46ddc642dea7fb6bfcfb24184e7dc2a9f35b754c90324d074b445d2d`。
+
+D6 复算得到 treatment applied=`20/20`、fallback=`0`、effective matrix changed=`20/20`、
+final binding changed=`0/20`。rule/treatment 同帧 cost mean 均为
+`17.0560260319065`；high-threat unmet、duplicate、hard violation 和 churn 均为 0。
+`same_frame_offline_assignment_comparison` 因而为 available，D3 assignment 层可用性和
+独立消费缺口关闭。
+
+该 sidecar 没有 runtime ACK 和干预后的物理状态窗口。post-intervention physical outcome、
+paired physical effect/non-degradation、counterfactual、causal 和 promotion 仍为
+unavailable；`PPO=false`、`assist=false`、`authority=false`、`rule_fallback=true`。本批
+binding 未变化不能解释为候选策略有效，也不能解释为物理无退化。

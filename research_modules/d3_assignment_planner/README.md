@@ -1123,3 +1123,24 @@ treatment 的有效代价矩阵 SHA 在 20/20 配对中不同，证明模型改�
 只证明隔离学习路径已执行且本批最终分配未变化。runtime ACK、physical outcome、
 counterfactual 和 causal 全部 unavailable；promotion 状态仍为 unavailable。PPO、线上
 assist、authority 保持 false，规则回退保持 true，运行时发布仍被禁止。
+
+## 2026-07-22 D6 Profile-Bound v2 可用性审计
+
+D6 已在提交 `d4e8562` 中作为独立只读消费者完成 profile-bound v2 审计。正式目录为
+`research_modules/d6_evaluation_metrics/outputs/reserved_seed_interventions_nominal_5v5_1000_1019_formal_7891296_d6_profile_bound_v2_audit_20260722/`；
+`outcome_availability_sidecar.json` 状态为
+`pass_offline_assignment_comparison_only`。sidecar 文件 SHA-256 为
+`f3852251daf02ec87fe878e7fb80aad6f381d8c0756a5c956a32e737a3871c3b`，规范内容
+SHA-256 为 `c02a345c46ddc642dea7fb6bfcfb24184e7dc2a9f35b754c90324d074b445d2d`。
+
+D6 独立复核确认 20/20 isolated treatment applied、0 fallback、20/20 effective cost
+matrix changed、0/20 final binding changed。rule 与 treatment 的同帧 assignment cost
+mean 均为 `17.0560260319065`；high-threat unmet、duplicate、hard violation 和 churn
+均为 0。因此 `same_frame_offline_assignment_comparison` 已标记为 available，D3 的分配层
+可用性和独立消费缺口已关闭。
+
+该 sidecar 不包含本正式 artifact set 的 runtime ACK 或干预后的物理状态窗口。
+post-intervention physical outcome、paired physical effect/non-degradation、counterfactual、
+causal 和 promotion 仍为 unavailable；`PPO=false`、`assist=false`、`authority=false`、
+`rule_fallback=true` 保持不变。以上边界不把“最终 binding 未变化”解释为物理无退化或策略
+有效。

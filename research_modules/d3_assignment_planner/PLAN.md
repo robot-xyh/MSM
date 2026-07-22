@@ -1041,8 +1041,9 @@ OR-Tools，零失败满足门限。
 5. 学习证据缺字段保持 unavailable。只有 assist、applied 和 bundle-loaded 三条件同时
    明确为真，且整个来源链验证通过，才形成 runtime learning applied ACK。shadow、规则
    教师诊断或 accepted plan 均不形成该证据。
-6. 物理 outcome 和 reward 在 v1 ACK 中必须为 false。独立 D6 sidecar 尚未作为该接口
-   输入，因此任何自报 true 都被拒绝。返回值为 frozen dataclass 和 tuple，只支持新建
+6. 物理 outcome 和 reward 在 v1 ACK 中必须为 false。D6 profile-bound availability
+   sidecar 已独立存在，但不是该 ACK 接口的输入，因此任何自报 true 都被拒绝。返回值为
+   frozen dataclass 和 tuple，只支持新建
    序列化对象，不修改或重新发布 `AssignmentPlan`。
 
 ### 验证
@@ -1061,8 +1062,9 @@ OR-Tools，零失败满足门限。
 
 1. 冻结的正式 900 episode 不含新 ACK，不能把当前 3v3 自动化集成测试回填或外推为
    正式逐样本 applied evidence。
-2. D6 仍需实现按 source sequence/hash、plan id/version 和时间窗的离线 join，并从独立
-   sidecar 提供 outcome/reward。D3 验证器只证明来源与绑定一致。
+2. D6 已实现同帧离线分配比较的 profile-bound 消费；仍需按 source sequence/hash、plan
+   id/version 和时间窗连接 runtime ACK 与干预后物理 outcome/reward。D3 验证器只证明
+   来源与绑定一致。
 3. 同 seed paired shadow、可归因 reward、外部保留 seed 和 promotion gate 未闭合。
    PPO、assist、authority 保持 false；默认规划和安全外壳不变。
 
@@ -1241,8 +1243,31 @@ OR-Tools，零失败满足门限。
 
 ### 后续
 
-1. D6 仍需以独立 sidecar 联接 runtime ACK、physical outcome 和计划级结果；当前 promotion
-   manifest 因缺 D6 outcome sidecar 保持 unavailable。
-2. 如需讨论 production admission，必须先获得运行确认、结果非退化、反事实和因果证据。
+1. D6 profile-bound v2 availability sidecar 已独立消费同帧规划结果；当前正式 artifact
+   set 仍不含 runtime ACK、干预后 physical outcome 或 paired physical effect。
+2. 如需讨论 production admission，必须另行获得运行确认、物理结果非退化、反事实和因果
+   证据。
    当前 `PPO=false`、`assist=false`、`authority=false`、`rule_fallback=true` 不变。
 3. 后续正式证据必须新建版本化目录并保留旧产物；不得回写本次 v2 文件或冻结 bundle。
+
+## 40. D6 Profile-Bound v2 可用性同步（2026-07-22）
+
+### 已完成
+
+1. D6 已在提交 `d4e8562` 中生成独立 profile-bound v2 availability sidecar，目录为
+   `research_modules/d6_evaluation_metrics/outputs/reserved_seed_interventions_nominal_5v5_1000_1019_formal_7891296_d6_profile_bound_v2_audit_20260722/`。
+   sidecar 状态为 `pass_offline_assignment_comparison_only`，文件 SHA-256 为
+   `f3852251daf02ec87fe878e7fb80aad6f381d8c0756a5c956a32e737a3871c3b`，规范内容 SHA-256
+   为 `c02a345c46ddc642dea7fb6bfcfb24184e7dc2a9f35b754c90324d074b445d2d`。
+2. D6 确认 20/20 isolated treatment applied、0 fallback、20/20 effective matrix changed、
+   0/20 final binding changed。rule/treatment 同帧 assignment cost mean 均为
+   `17.0560260319065`，high-threat unmet、duplicate、hard violation 和 churn 均为 0。
+3. `same_frame_offline_assignment_comparison` 现为 available。这关闭 D3 assignment 层的
+   可用性和独立消费 P1 缺口，但不构成策略有效性或物理非退化结论。
+
+### 仍开放
+
+1. 当前正式 artifact set 的 runtime ACK、post-intervention physical outcome、paired
+   physical effect/non-degradation、counterfactual 和 causal 仍为 unavailable。
+2. promotion 仍为 unavailable；`PPO=false`、`assist=false`、`authority=false`、
+   `rule_fallback=true`。D3 不因 sidecar 可用而改变默认 Hungarian、在线准入或发布权限。

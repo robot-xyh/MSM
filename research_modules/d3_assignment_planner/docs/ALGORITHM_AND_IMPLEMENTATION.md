@@ -1684,8 +1684,8 @@ mapping、D3 来源 envelope mapping、可选 D7 来源 envelope mapping 和预�
 6. 重算 aggregate count 和 fully-bound。ACK 自报统计与逐行结果不一致时失败关闭。
 7. 将学习和区域提示元数据与 D3 来源计划比较。缺失学习字段归为 unavailable；
    assist/applied/bundle-loaded 条件未同时满足时不得输出学习 applied ACK。
-8. 强制 `physical_outcome_available=false` 和 `reward_available=false`。D6 独立
-   sidecar 尚未接入本函数，ACK 自报 true 使用
+8. 强制 `physical_outcome_available=false` 和 `reward_available=false`。D6 已有独立
+   profile-bound availability sidecar，但它不是本 ACK 验证函数的输入；ACK 自报 true 使用
    `physical_outcome_sidecar_required` 或 `reward_sidecar_required` 拒绝。
 
 ### 38.3 验证结果
@@ -2066,3 +2066,41 @@ binding_changed = sort(target_id, resource_id)_control
 一致，且 fallback 为 0。runtime ACK、outcome、counterfactual 和 causal 必须分别有独立
 证据引用；本次均缺失。promotion manifest 的 `promotion_status=unavailable` 是证据不足，
 不能改写为性能退化，也不能改写为准入通过。
+
+## 44. D6 Profile-Bound v2 独立消费（2026-07-22）
+
+### 44.1 绑定对象
+
+D6 提交 `d4e8562` 对 v2 producer bundle 执行 profile-bound 只读审计。输出目录为
+`research_modules/d6_evaluation_metrics/outputs/reserved_seed_interventions_nominal_5v5_1000_1019_formal_7891296_d6_profile_bound_v2_audit_20260722/`。
+`outcome_availability_sidecar.json` 的文件 SHA-256 是
+`f3852251daf02ec87fe878e7fb80aad6f381d8c0756a5c956a32e737a3871c3b`，去除自引用字段后按
+规范 JSON 计算的内容 SHA-256 是
+`c02a345c46ddc642dea7fb6bfcfb24184e7dc2a9f35b754c90324d074b445d2d`。状态固定为
+`pass_offline_assignment_comparison_only`。
+
+### 44.2 D3 可用性判定
+
+D6 从 20 对 control/treatment 收据重算以下条件：
+
+```text
+treatment_applied = 20/20
+treatment_fallback = 0
+effective_matrix_changed = 20/20
+final_binding_changed = 0/20
+rule_cost_mean = treatment_cost_mean = 17.0560260319065
+high_threat_unmet = duplicate = hard_violation = churn = 0
+```
+
+这些条件通过后，`offline_assignment_comparison.status=available`，scope 为
+`same_frame_offline_assignment_only`。因此 D3 assignment 层可用性和独立消费缺口关闭。
+最终 binding 相同只说明本批 residual 没有越过 Hungarian 最优解切换边界，不证明候选策略
+有效，也不构成 physical non-degradation。
+
+### 44.3 保持关闭的证据层
+
+当前 artifact set 没有 runtime ACK reference，也没有 intervention 后的物理状态窗口。
+physical outcome、paired physical effect/non-degradation、counterfactual 和 causal 均保持
+`unavailable`。promotion 继续不可用；PPO、assist、authority 均为 false，rule fallback
+为 true。D3 的 ACK 验证器和窗口归因接口不读取该 sidecar，也不从离线比较结果生成运行
+权限。

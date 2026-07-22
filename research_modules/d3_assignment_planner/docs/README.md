@@ -75,3 +75,9 @@ test 只作开发诊断，不是最终准入证据。行为克隆训练、分档
 `ALGORITHM_AND_IMPLEMENTATION.md` 第 36 节，正式 900-episode 映射验证见
 `EXPERIMENT_REPORT.md` 第 17 节。该工作只关闭 D3 切分歧义，现有 BC 仍为
 `development/shadow-only`。
+
+2026-07-22，D6 profile-bound v2 availability sidecar 已独立消费 D3 正式保留-seed
+产物，并把同帧离线分配比较标为 available。该状态关闭 D3 assignment 层可用性和独立
+消费缺口；runtime ACK、物理结果、paired non-degradation、反事实、因果和 production
+promotion 仍不可用。证据目录、双哈希和逐项结果见 `EXPERIMENT_REPORT.md`，实现口径见
+`ALGORITHM_AND_IMPLEMENTATION.md` 第 44 节。

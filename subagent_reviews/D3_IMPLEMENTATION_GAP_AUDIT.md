@@ -1,7 +1,7 @@
 # D3 实现差距审计
 
 **模块**: D3 集中式资源-目标分配
-**审计日期**: 2026-07-21
+**审计日期**: 2026-07-22
 **审计依据**: 当前 `research_modules/d3_assignment_planner/` 代码、README、PLAN、docs 和 tests，既有 2026-07-13 M5N2 40-case 报告，以及 `research_modules/airsim_runtime/outputs/p1_terminal_timing_funnel_10seed_20260715_m5n2_*/episode_006_full_flow/main_episode_bus/d3_plan_history.json` 的最新 20-case/3725-record 只读复核、main/D6/D7 物理结果汇总、`subagent_reviews/MAIN_IMPLEMENTATION_GAP_AUDIT.md` 和 `EVAL/FRAMEWORK_EVAL_P0_P1_P2_GAP_CONFIRMATION.md`。
 **边界**: 本审计只覆盖离线科研仿真中的抽象资源-目标分配、版本化计划、终端反馈合同、D7 guidance binding、D6 记录导出和 AirSim dry-run 适配；不涉及真实飞控、硬件、火控、毁伤逻辑或绕过人工授权的自动处置。
 
@@ -21,7 +21,9 @@ D3 当前已经完成中心化一对一与显式 M-to-N demand-slot 主线：Sci
 
 历史 40-case 仍保留为旧候选预筛证据；最新 20-case 已完成 main 逐 tick history 写盘。D3 现提供并实际写盘 `d3_plan_history_record_v1`、`PlanningTickHistoryRecord` 和 `plan_history_record_from_plan(...)`；`3725` 条记录完整输出 owner、迟滞、成本、成员与 stale/rollback 审计且排除 truth。实际 plan/member/owner churn 均为 0；`3555` 条 membership audit 是候选换员评估，其中 `3524` 条成员保持、`31` 条成员层通过后被全局迟滞保持，不能计为实际 churn。普通 pair hold 扩大为资源不可行仍只是旧 40-case 根因线索，不是已证明的物理失败因果。
 
-2026-07-21 的 v2 正式保留 seed 证据已关闭“正式产物未更新”和“隔离 treatment 是否实际应用不可用”两项 D3 P1 证据缺口。独立复核确认 20 个 seed 全部 clean/finite，online truth 使用为 0，treatment applied=`20/20`、fallback=`0`。隔离模型修改了 `20/20` 组有效代价矩阵，但最终 Hungarian binding 变化为 `0/20`；规则与 treatment 的平均分配代价均为 `17.0560260319065`，高威胁未满足、重复、硬约束违规和 churn 均为 0。这是规划层隔离应用与非退化证据，不是 runtime ACK、物理 outcome、反事实、因果或生产晋级证据。
+2026-07-21 的 v2 正式保留 seed 证据已关闭“正式产物未更新”和“隔离 treatment 是否实际应用不可用”两项 D3 P1 证据缺口。独立复核确认 20 个 seed 全部 clean/finite，online truth 使用为 0，treatment applied=`20/20`、fallback=`0`。隔离模型修改了 `20/20` 组有效代价矩阵，但最终 Hungarian binding 变化为 `0/20`；规则与 treatment 的平均分配代价均为 `17.0560260319065`，高威胁未满足、重复、硬约束违规和 churn 均为 0。这是规划层隔离应用与同帧安全计数比较，不是 runtime ACK、物理 outcome、paired physical non-degradation、反事实、因果或生产晋级证据。
+
+2026-07-22，D6 提交 `d4e8562` 已生成 profile-bound v2 availability sidecar，状态为 `pass_offline_assignment_comparison_only`。D6 将 same-frame offline assignment comparison 标为 available，D3 assignment 层可用性和独立消费缺口关闭。当前正式 artifact set 仍没有 runtime ACK、post-intervention physical outcome、paired physical effect/non-degradation、counterfactual 或 causal 证据；promotion、PPO、assist 和 authority 未开放，规则回退保持启用。
 
 ## 2. 已实现
 
@@ -825,3 +827,28 @@ OR-Tools。
   authority 保持 false，rule fallback 保持 true，runtime publication 保持 false。
 
 本项没有新增 P0，也没有更改冻结 bundle、线上准入或默认规则路径。
+
+## 37. D6 Profile-Bound v2 Availability GAP 更新（2026-07-22）
+
+### 已关闭
+
+- **P1 D3 assignment 层可用性**：D6 profile-bound v2 sidecar 已独立消费正式 producer
+  bundle，状态为 `pass_offline_assignment_comparison_only`。正式目录是
+  `research_modules/d6_evaluation_metrics/outputs/reserved_seed_interventions_nominal_5v5_1000_1019_formal_7891296_d6_profile_bound_v2_audit_20260722/`。
+- **P1 独立消费**：sidecar 文件 SHA-256 为
+  `f3852251daf02ec87fe878e7fb80aad6f381d8c0756a5c956a32e737a3871c3b`，规范内容 SHA-256
+  为 `c02a345c46ddc642dea7fb6bfcfb24184e7dc2a9f35b754c90324d074b445d2d`。来源 schema、
+  manifest、bundle identity、收据和逐 pair 结果均由 D6 只读校验。
+- **P1 same-frame offline comparison**：treatment applied=`20/20`、fallback=`0`、effective
+  matrix changed=`20/20`、final binding changed=`0/20`。rule/treatment cost mean 均为
+  `17.0560260319065`，high-threat unmet、duplicate、hard violation 和 churn 均为 0。
+
+### 仍开放
+
+- **P1 运行采用与物理结果**：本正式 artifact set 的 runtime ACK、post-intervention
+  physical outcome 和 paired physical effect/non-degradation 均为 unavailable。
+- **P1 反事实、因果和晋级**：counterfactual、causal 和 promotion 仍 unavailable；
+  `PPO=false`、`assist=false`、`authority=false`、`rule_fallback=true`。same-frame
+  assignment comparison 不得扩展成候选策略有效、物理无退化或生产准入结论。
+
+本项不新增 P0，不改变 D3 代码、冻结 bundle、默认 Hungarian、线上发布权限或安全门控。

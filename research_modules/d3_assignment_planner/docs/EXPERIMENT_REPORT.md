@@ -978,9 +978,35 @@ treatment applied 为 0，20 次全部因 `out_of_distribution` 回退。独立�
 
 `treatment_safely_applied_in_isolated_simulation` 已 available，表示 20 个 treatment 均通过
 D3 隔离安全外壳并形成收据。runtime ACK、physical outcome、counterfactual 和 causal 均
-为 unavailable，运行时发布为 false。promotion manifest 的状态是 unavailable，原因为
-尚未联接 D6 outcome sidecar。
+为 unavailable，运行时发布为 false。D6 profile-bound v2 sidecar 已在后续独立审计中生成，
+但没有补入上述缺失的运行时和物理结果证据，因此 promotion 仍为 unavailable。
 
-因此，本次正式结果关闭了修复后二元特征门的正式落盘验证缺口，并证明规划层安全指标在
-本批未恶化。它不证明学习计划已在线采用，也不证明物理结果或因果收益。PPO、online
+因此，本次正式结果关闭了修复后二元特征门的正式落盘验证缺口，并证明本批同帧规划安全
+计数与规则臂相等。它不证明学习计划已在线采用，也不证明物理非退化或因果收益。PPO、online
 assist、authority 继续关闭，规则回退继续启用。
+
+## D6 Profile-Bound v2 独立审计（2026-07-22）
+
+### 证据绑定
+
+D6 在提交 `d4e8562` 中独立消费上述 v2 正式产物。审计目录为
+`research_modules/d6_evaluation_metrics/outputs/reserved_seed_interventions_nominal_5v5_1000_1019_formal_7891296_d6_profile_bound_v2_audit_20260722/`。
+sidecar 状态为 `pass_offline_assignment_comparison_only`；文件 SHA-256 为
+`f3852251daf02ec87fe878e7fb80aad6f381d8c0756a5c956a32e737a3871c3b`，规范内容
+SHA-256 为 `c02a345c46ddc642dea7fb6bfcfb24184e7dc2a9f35b754c90324d074b445d2d`。
+
+### 审计结果
+
+| 指标 | D6 独立结果 |
+| --- | ---: |
+| isolated treatment applied | 20/20 |
+| treatment fallback | 0 |
+| effective matrix changed | 20/20 |
+| final binding changed | 0/20 |
+| rule/treatment cost mean | 17.0560260319065 / 17.0560260319065 |
+| high-threat unmet / duplicate / hard violation / churn | 0 / 0 / 0 / 0 |
+
+D6 将 `same_frame_offline_assignment_comparison` 标为 available，关闭 D3 分配层可用性和
+独立消费缺口。该结果只覆盖同帧规划输出。runtime ACK、post-intervention physical
+outcome、paired physical effect/non-degradation、counterfactual 和 causal 仍为
+unavailable。promotion 不可用；PPO、assist、authority 保持 false，规则回退保持 true。
