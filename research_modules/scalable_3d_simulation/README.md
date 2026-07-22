@@ -401,6 +401,24 @@ sidecar 文件/内容 SHA-256 分别为 `f3852251...c3b` / `c02a345c...d2d`。�
 assignment comparison；runtime ACK、physical outcome/effect、counterfactual 和 causal 仍不可用。
 学习权限继续固定为 `PPO/assist/authority=false`、`rule_fallback=true`。
 
+### D2 陈旧观测修复复跑
+
+2026-07-22，active-risk 5v5 seed 1005 暴露出 D1 重复发布同一底层观测预测后验的问题。
+D2 现以不透明观测标识和传感器命名空间判定新鲜度，重复证据不再累计命中；暂定航迹连续
+两次没有新证据后删除。main 总线使用 `d2-observation-evidence-governance-v1` 保存逐帧
+隔离、时间冲突、重复合并和累计暂定删除审计，在线消息仍不包含目标真值。
+
+单 seed 复现最终恢复为五条 confirmed 航迹，隔离 9 次、删除伪航迹 1 条、在线真值使用
+为 0。随后在当前脏工作树上对 seed `1000-1019` 运行共同检查点双臂物理续跑，D6 的
+`physical_window`、`d4_degraded_adoption`、`paired_physical_effect`、
+`paired_non_degradation` 和 `degraded_paired_physical_comparison` 均为 `20/20`；D4
+区域采用为 `188/188`，control/treatment 各执行 1960 条命令。seed 1005 的离线映射重新
+覆盖 `GT3D-000001` 至 `GT3D-000005`。counterfactual/causal 仍不可用，本次结果也不是
+production runtime ACK。
+
+该输出位于临时开发目录，没有作为正式制品提交。形成干净提交后需同配置复跑，才可替代
+此前 `19/20` 的开发判断。长时 claim 容量、误抑制率、完整乱序量测和 AirSim 标定仍开放。
+
 ## 版本
 
 - 世界：`scalable3d-world-v1`
@@ -419,6 +437,7 @@ assignment comparison；runtime ACK、physical outcome/effect、counterfactual �
 - 实验矩阵：`scalable3d-experiment-matrix-v1`
 - D1 离线一致性清单：`scalable3d-offline-consistency-evaluation-manifest-v1`
 - D2 身份评估清单：`scalable3d-offline-identity-evaluation-manifest-v1`
+- D2 观测证据治理：`d2-observation-evidence-governance-v1`
 - D6 真值隔离清单：`scalable3d-d6-truth-isolated-manifest-v1`
 - 跨模块共享 seed 切分：`scalable3d-shared-seed-split-registry-v1`
 - 保留 seed 隔离干预：新制品使用 `scalable3d-reserved-seed-interventions-v2`；历史正式证据保留 v1

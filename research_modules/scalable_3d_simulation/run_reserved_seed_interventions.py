@@ -13,6 +13,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from research_modules.scalable_3d_simulation.reserved_seed_interventions import (
+    INTERVENTION_KINDS,
     ReservedSeedInterventionOptions,
     execute_reserved_seed_interventions,
     resolve_d3_development_bundle_binding,
@@ -47,6 +48,11 @@ DEFAULT_OUTPUT = SCALABLE_ROOT / "outputs" / "reserved_seed_interventions_v2"
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--scenario", default="nominal")
+    parser.add_argument(
+        "--intervention-kind",
+        choices=("auto", *INTERVENTION_KINDS),
+        default="auto",
+    )
     parser.add_argument("--scale", type=int, default=5)
     parser.add_argument("--target-count", type=int)
     parser.add_argument("--resource-count", type=int)
@@ -74,6 +80,7 @@ def main(argv: list[str] | None = None) -> int:
         target_count=args.target_count,
         resource_count=args.resource_count,
         duration_s=args.duration,
+        intervention_kind=args.intervention_kind,
         created_at_utc=args.created_at_utc,
     )
     d3_bundle = resolve_d3_development_bundle_binding(

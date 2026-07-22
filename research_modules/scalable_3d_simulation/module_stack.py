@@ -142,12 +142,14 @@ class IntegratedStackConfig:
 
 @dataclass(frozen=True)
 class D4RegionLearningFrame:
-    """One truth-free regional snapshot and its optional advisory output."""
+    """One truth-free regional snapshot and its formal D4 source evidence."""
 
     frame_index: int
     timestamp_s: float
     snapshot: Any
     recommendation: Any | None
+    formal_snapshot: Any
+    formal_decision: Any
 
 
 @dataclass(frozen=True)
@@ -914,6 +916,8 @@ class IntegratedScalableModuleStack:
                     timestamp_s=now,
                     snapshot=regional_snapshot,
                     recommendation=recommendation,
+                    formal_snapshot=formal_snapshot,
+                    formal_decision=self.latest_d4_decision,
                 )
             )
         self._record_timing(
@@ -1676,6 +1680,26 @@ class IntegratedScalableModuleStack:
             raise RegionalPlanAuthorityError("regional_d4_decision_from_future")
 
         assignments_by_target = previous_plan.assignments_by_target()
+        explicitly_unassigned_targets = {
+            str(target_id)
+            for target_id in previous_plan.unassigned_target_ids
+            if str(target_id) in target_ids
+        }
+        if any(
+            assignments_by_target.get(target_id)
+            for target_id in explicitly_unassigned_targets
+        ):
+            raise RegionalPlanAuthorityError(
+                "regional_d3_unassigned_target_has_executable_binding"
+            )
+        executable_target_ids = target_ids - explicitly_unassigned_targets
+        if any(
+            target_id not in assignments_by_target
+            for target_id in executable_target_ids
+        ):
+            raise RegionalPlanAuthorityError(
+                "regional_d3_executable_target_assignment_missing"
+            )
         coalition_by_target = {
             coalition.target_id: coalition for coalition in previous_plan.coalitions
         }
@@ -1838,7 +1862,7 @@ class IntegratedScalableModuleStack:
                 )
             )
 
-        if covered_targets != target_ids:
+        if covered_targets != executable_target_ids:
             raise RegionalPlanAuthorityError("regional_d4_target_set_incomplete")
         return RegionalAuthorityInput(
             adjudicated_at_s=float(frame.timestamp_s),
@@ -2680,6 +2704,8 @@ class IntegratedScalableModuleStack:
     def _d2_publication(self, now: float) -> RuntimePublication:
         result = self.latest_d2_result
         risk = result.risk_summary
+        tracker_summary = self.d2.summary()
+        association_metadata = result.metadata
         return RuntimePublication(
             topic="modules.d2.associated_tracks",
             source="D2",
@@ -2703,8 +2729,98 @@ class IntegratedScalableModuleStack:
                         result.metadata.get("dense_pair_count", 0)
                     ),
                     "source_binding_conflicts": list(
-                        result.metadata.get("source_binding_conflicts", ())
+                        association_metadata.get("source_binding_conflicts", ())
                     ),
+                    "observation_evidence_governance": {
+                        "schema_version": (
+                            "d2-observation-evidence-governance-v1"
+                        ),
+                        "input_detection_count": int(
+                            association_metadata.get("input_detection_count", 0)
+                        ),
+                        "fresh_detection_count": int(
+                            association_metadata.get("fresh_detection_count", 0)
+                        ),
+                        "freshness_available_count": int(
+                            association_metadata.get(
+                                "observation_freshness_available_count",
+                                0,
+                            )
+                        ),
+                        "freshness_unavailable_count": int(
+                            association_metadata.get(
+                                "observation_freshness_unavailable_count",
+                                0,
+                            )
+                        ),
+                        "replay_quarantined_detection_count": int(
+                            association_metadata.get(
+                                "replay_quarantined_detection_count",
+                                0,
+                            )
+                        ),
+                        "replay_quarantine_events": list(
+                            association_metadata.get(
+                                "replay_quarantine_events",
+                                (),
+                            )
+                        ),
+                        "duplicate_coalescence_count": int(
+                            association_metadata.get(
+                                "duplicate_coalescence_count",
+                                0,
+                            )
+                        ),
+                        "duplicate_coalescence_events": list(
+                            association_metadata.get(
+                                "duplicate_coalescence_events",
+                                (),
+                            )
+                        ),
+                        "suppressed_births_by_detection": dict(
+                            association_metadata.get(
+                                "suppressed_births_by_detection",
+                                {},
+                            )
+                        ),
+                        "tentative_drop_miss_threshold": int(
+                            association_metadata.get(
+                                "tentative_drop_miss_threshold",
+                                tracker_summary.get(
+                                    "tentative_drop_miss_threshold",
+                                    0,
+                                ),
+                            )
+                        ),
+                        "cumulative": {
+                            "observation_claim_count": int(
+                                tracker_summary.get("observation_claim_count", 0)
+                            ),
+                            "replay_quarantine_count": int(
+                                tracker_summary.get("replay_quarantine_count", 0)
+                            ),
+                            "observation_timestamp_conflict_count": int(
+                                tracker_summary.get(
+                                    "observation_timestamp_conflict_count",
+                                    0,
+                                )
+                            ),
+                            "duplicate_coalescence_count": int(
+                                tracker_summary.get(
+                                    "duplicate_coalescence_count",
+                                    0,
+                                )
+                            ),
+                            "tentative_stale_drop_count": int(
+                                tracker_summary.get(
+                                    "tentative_stale_drop_count",
+                                    0,
+                                )
+                            ),
+                        },
+                        "global_track_id_owner": "D2_center",
+                        "online_truth_used": False,
+                    },
                     "risk_summary": (
                         None
                         if risk is None

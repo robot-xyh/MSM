@@ -26,6 +26,7 @@ from .learning_runtime import LearningRuntimeOptions, resolve_learning_runtime
 from .module_stack import IntegratedStackConfig
 from .orchestrator import EpisodeResult, Scalable3DEpisodeRunner
 from .scenarios import make_curriculum_scenario
+from .world import WorldCheckpoint, VectorizedPointMassWorld
 
 
 RESERVED_SEED_INTERVENTION_SCHEMA_VERSION = (
@@ -35,7 +36,13 @@ RESERVED_SEED_SOURCE_LINEAGE_SCHEMA_VERSION = (
     "scalable3d-reserved-seed-source-lineage-v1"
 )
 RESERVED_EVALUATION_SEEDS = tuple(range(1000, 1020))
-INTERVENTION_SELECTION_POLICY = "first-common-frame-after-prior-plan-v1"
+INTERVENTION_SELECTION_POLICY = "scenario-qualified-common-frame-v2"
+INTERVENTION_KINDS = (
+    "nominal",
+    "center_failed",
+    "center_and_secondary_failed",
+    "active_risk",
+)
 D1_D2_LINEAGE_CONTRACT_VERSION = "scalable3d-d1-d2-planning-evidence-v1"
 D3_SAFETY_SHELL_VERSION = "d3-offline-intervention-safety-shell-v2"
 
@@ -56,6 +63,38 @@ class D3DevelopmentBundleBinding:
 
 
 @dataclass(frozen=True, slots=True)
+class InterventionGlobalTrackSnapshot:
+    """Truth-free D2 track retained for post-intervention D7 prediction."""
+
+    global_track_id: str
+    timestamp_s: float
+    state_ned: np.ndarray
+    covariance: np.ndarray
+    lifecycle_state: str
+
+    def __post_init__(self) -> None:
+        if not str(self.global_track_id).strip():
+            raise ValueError("global_track_id must be non-empty")
+        timestamp = float(self.timestamp_s)
+        if not isfinite(timestamp) or timestamp < 0.0:
+            raise ValueError("track timestamp must be finite and nonnegative")
+        state = np.asarray(self.state_ned, dtype=float)
+        covariance = np.asarray(self.covariance, dtype=float)
+        if state.shape != (6,) or not np.all(np.isfinite(state)):
+            raise ValueError("track state must be finite with shape (6,)")
+        if covariance.shape != (6, 6) or not np.all(np.isfinite(covariance)):
+            raise ValueError("track covariance must be finite with shape (6, 6)")
+        state = state.copy()
+        covariance = covariance.copy()
+        state.setflags(write=False)
+        covariance.setflags(write=False)
+        object.__setattr__(self, "timestamp_s", timestamp)
+        object.__setattr__(self, "state_ned", state)
+        object.__setattr__(self, "covariance", covariance)
+        object.__setattr__(self, "lifecycle_state", str(self.lifecycle_state))
+
+
+@dataclass(frozen=True, slots=True)
 class ReservedSeedInterventionOptions:
     """Scenario controls shared by all twenty reserved source episodes."""
 
@@ -64,6 +103,7 @@ class ReservedSeedInterventionOptions:
     target_count: int | None = None
     resource_count: int | None = None
     duration_s: float = 2.2
+    intervention_kind: str = "auto"
     created_at_utc: str = "2026-07-21T00:00:00Z"
     reserved_seeds: tuple[int, ...] = RESERVED_EVALUATION_SEEDS
 
@@ -80,6 +120,13 @@ class ReservedSeedInterventionOptions:
                 raise ValueError(f"{name} must be positive when provided")
         if not isfinite(float(self.duration_s)) or float(self.duration_s) <= 0.0:
             raise ValueError("duration_s must be positive and finite")
+        kind = str(self.intervention_kind).strip().lower()
+        if kind != "auto" and kind not in INTERVENTION_KINDS:
+            raise ValueError(
+                "intervention_kind must be auto, nominal, center_failed, "
+                "center_and_secondary_failed, or active_risk"
+            )
+        object.__setattr__(self, "intervention_kind", kind)
         if not str(self.created_at_utc).strip():
             raise ValueError("created_at_utc must be non-empty")
         seeds = tuple(int(seed) for seed in self.reserved_seeds)
@@ -105,11 +152,110 @@ class ReservedSeedSourceEvidence:
     fault_schedule_sha256: str
     d3_planning_frame: Any
     d4_region_snapshot: Any
+    d4_formal_snapshot: Any
+    d4_formal_decision: Any
     d3_input_snapshot_sha256: str
     d4_region_snapshot_lineage_sha256: str
+    intervention_kind: str
+    frame_selection_policy: str
     intervention_timestamp_s: float
+    intervention_world_checkpoint: WorldCheckpoint
+    intervention_global_tracks: tuple[InterventionGlobalTrackSnapshot, ...]
+    planning_target_identity_bridge: tuple[tuple[str, str], ...]
+    planning_resource_identity_bridge: tuple[tuple[str, str], ...]
+    offline_track_truth_mapping: tuple[tuple[str, str], ...]
     finite_state: bool
     online_truth_use_count: int
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.intervention_world_checkpoint, WorldCheckpoint):
+            raise TypeError("intervention_world_checkpoint must be a WorldCheckpoint")
+        if not np.isclose(
+            self.intervention_world_checkpoint.timestamp,
+            self.intervention_timestamp_s,
+            rtol=0.0,
+            atol=1.0e-9,
+        ):
+            raise ValueError("intervention checkpoint timestamp mismatch")
+        for name, timestamp in (
+            ("d4_formal_snapshot", self.d4_formal_snapshot.timestamp_s),
+            ("d4_formal_decision", self.d4_formal_decision.timestamp_s),
+        ):
+            if not np.isclose(
+                float(timestamp),
+                self.intervention_timestamp_s,
+                rtol=0.0,
+                atol=1.0e-9,
+            ):
+                raise ValueError(f"{name} timestamp mismatch")
+        if self.intervention_kind not in INTERVENTION_KINDS:
+            raise ValueError("intervention_kind is unsupported")
+        if not str(self.frame_selection_policy).strip():
+            raise ValueError("frame_selection_policy must be non-empty")
+        tracks = tuple(self.intervention_global_tracks)
+        if any(not isinstance(item, InterventionGlobalTrackSnapshot) for item in tracks):
+            raise TypeError("intervention_global_tracks contains an invalid item")
+        track_ids = tuple(item.global_track_id for item in tracks)
+        if len(track_ids) != len(set(track_ids)):
+            raise ValueError("intervention global track ids must be unique")
+        target_bridge = tuple(
+            (str(token), str(global_track_id))
+            for token, global_track_id in self.planning_target_identity_bridge
+        )
+        resource_bridge = tuple(
+            (str(token), str(resource_id))
+            for token, resource_id in self.planning_resource_identity_bridge
+        )
+        _validate_identity_bridge(target_bridge, "target")
+        _validate_identity_bridge(resource_bridge, "resource")
+        expected_target_bridge = tuple(
+            (str(track.track_id), snapshot.global_track_id)
+            for track, snapshot in zip(
+                tuple(self.d3_planning_frame.tracks),
+                tracks,
+                strict=True,
+            )
+        )
+        expected_resource_bridge = tuple(
+            (str(resource.resource_id), resource_id)
+            for resource, resource_id in zip(
+                tuple(self.d3_planning_frame.resources),
+                self.intervention_world_checkpoint.interceptor_ids,
+                strict=True,
+            )
+        )
+        if target_bridge != expected_target_bridge:
+            raise ValueError("target identity bridge differs from source ordinal lineage")
+        if resource_bridge != expected_resource_bridge:
+            raise ValueError("resource identity bridge differs from source ordinal lineage")
+        if {item[1] for item in target_bridge} != set(track_ids):
+            raise ValueError("target identity bridge does not cover D2 tracks")
+        if {item[1] for item in resource_bridge} != set(
+            self.intervention_world_checkpoint.interceptor_ids
+        ):
+            raise ValueError("resource identity bridge does not cover world resources")
+        object.__setattr__(self, "intervention_global_tracks", tracks)
+        object.__setattr__(
+            self,
+            "planning_target_identity_bridge",
+            target_bridge,
+        )
+        object.__setattr__(
+            self,
+            "planning_resource_identity_bridge",
+            resource_bridge,
+        )
+        mapping = tuple(
+            (str(track_id), str(truth_target_id))
+            for track_id, truth_target_id in self.offline_track_truth_mapping
+        )
+        if any(not track_id or not truth_target_id for track_id, truth_target_id in mapping):
+            raise ValueError("offline identity mapping values must be non-empty")
+        if len({item[0] for item in mapping}) != len(mapping):
+            raise ValueError("offline identity mapping contains duplicate tracks")
+        if len({item[1] for item in mapping}) != len(mapping):
+            raise ValueError("offline identity mapping must be one-to-one")
+        object.__setattr__(self, "offline_track_truth_mapping", tuple(sorted(mapping)))
 
     def lineage_payload(self) -> dict[str, Any]:
         return {
@@ -130,8 +276,30 @@ class ReservedSeedSourceEvidence:
             "d4_region_snapshot_lineage_sha256": (
                 self.d4_region_snapshot_lineage_sha256
             ),
+            "d4_formal_snapshot_sha256": _canonical_sha256(
+                self.d4_formal_snapshot
+            ),
+            "d4_formal_decision_sha256": _canonical_sha256(
+                self.d4_formal_decision.to_dict()
+            ),
+            "intervention_kind": self.intervention_kind,
             "intervention_timestamp_s": float(self.intervention_timestamp_s),
-            "frame_selection_policy": INTERVENTION_SELECTION_POLICY,
+            "intervention_world_checkpoint_sha256": _canonical_sha256(
+                self.intervention_world_checkpoint
+            ),
+            "planning_target_identity_bridge_sha256": _canonical_sha256(
+                self.planning_target_identity_bridge
+            ),
+            "planning_resource_identity_bridge_sha256": _canonical_sha256(
+                self.planning_resource_identity_bridge
+            ),
+            "intervention_global_track_snapshot_sha256": _canonical_sha256(
+                self.intervention_global_tracks
+            ),
+            "offline_identity_mapping_count": len(
+                self.offline_track_truth_mapping
+            ),
+            "frame_selection_policy": self.frame_selection_policy,
             "finite_state": bool(self.finite_state),
             "online_truth_use_count": int(self.online_truth_use_count),
             "control_and_treatment_share_source_episode": True,
@@ -223,15 +391,8 @@ def collect_reserved_seed_sources(
     cost_weights_sha: str | None = None
 
     for seed in options.reserved_seeds:
-        config = make_curriculum_scenario(
-            options.scenario,
-            scale=options.scale,
-            seed=seed,
-            duration_s=options.duration_s,
-            target_count=options.target_count,
-            resource_count=options.resource_count,
-        )
-        config = replace(config, sensor_random_schedule_version="entity_fixed_v1")
+        intervention_kind = _resolved_intervention_kind(options)
+        config = _make_intervention_scenario(options, seed=seed)
         resolved = resolve_learning_runtime(
             config,
             LearningRuntimeOptions(),
@@ -245,8 +406,30 @@ def collect_reserved_seed_sources(
         d3_frame, d4_frame = _select_common_intervention_frames(
             artifacts.d3_planning_frames,
             artifacts.d4_region_frames,
+            intervention_kind=intervention_kind,
         )
         _validate_source_episode(result, seed=seed)
+        intervention_checkpoint = _world_checkpoint_at_timestamp(
+            result,
+            float(d3_frame.timestamp_s),
+        )
+        (
+            intervention_global_tracks,
+            target_identity_bridge,
+            resource_identity_bridge,
+        ) = _planning_identity_bridge_at_timestamp(
+            result,
+            timestamp_s=float(d3_frame.timestamp_s),
+            d3_frame=d3_frame,
+            checkpoint=intervention_checkpoint,
+        )
+        offline_identity_mapping = _offline_identity_mapping_at_timestamp(
+            result,
+            timestamp_s=float(d3_frame.timestamp_s),
+            global_track_ids=tuple(
+                item.global_track_id for item in intervention_global_tracks
+            ),
+        )
         if int(d4_frame.snapshot.seed) != seed:
             raise ValueError("D4 region snapshot seed does not match source episode")
         if d4_frame.snapshot.scenario_version != resolved.config.scenario_version:
@@ -287,11 +470,20 @@ def collect_reserved_seed_sources(
                 fault_schedule_sha256=_fault_schedule_sha256(resolved.config),
                 d3_planning_frame=d3_frame,
                 d4_region_snapshot=d4_frame.snapshot,
+                d4_formal_snapshot=d4_frame.formal_snapshot,
+                d4_formal_decision=d4_frame.formal_decision,
                 d3_input_snapshot_sha256=_d3_input_snapshot_sha256(d3_frame),
                 d4_region_snapshot_lineage_sha256=_canonical_sha256(
                     d4_frame.snapshot.to_dict()
                 ),
+                intervention_kind=intervention_kind,
+                frame_selection_policy=_frame_selection_policy(intervention_kind),
                 intervention_timestamp_s=float(d3_frame.timestamp_s),
+                intervention_world_checkpoint=intervention_checkpoint,
+                intervention_global_tracks=intervention_global_tracks,
+                planning_target_identity_bridge=target_identity_bridge,
+                planning_resource_identity_bridge=resource_identity_bridge,
+                offline_track_truth_mapping=offline_identity_mapping,
                 finite_state=bool(result.summary["finite_state"]),
                 online_truth_use_count=int(
                     result.summary["online_truth_use_count"]
@@ -627,6 +819,8 @@ def _build_d4_specification(
 def _select_common_intervention_frames(
     d3_frames: Sequence[Any],
     d4_frames: Sequence[Any],
+    *,
+    intervention_kind: str,
 ) -> tuple[Any, Any]:
     d3_candidates = [
         frame
@@ -647,14 +841,305 @@ def _select_common_intervention_frames(
         for d3 in d3_candidates
         for d4 in d4_candidates
         if abs(float(d3.timestamp_s) - float(d4.timestamp_s)) <= 1.0e-9
+        and _d4_frame_matches_scenario(d4, intervention_kind)
     ]
     if not matches:
         raise ValueError("source episode has no common D3/D4 intervention frame")
-    # The first frame after a prior plan is available is the clean intervention
-    # boundary. Later unchanged frames may contain accumulated execution-control
-    # state that is intentionally absent from the frozen offline replay.
+    # The first scenario-qualified frame after a prior plan is available is the
+    # clean intervention boundary.  Fault scenarios therefore cannot silently
+    # reuse a pre-fault nominal frame.
     _, d3_frame, d4_frame = min(matches, key=lambda item: item[0])
     return d3_frame, d4_frame
+
+
+def _resolved_intervention_kind(options: ReservedSeedInterventionOptions) -> str:
+    if options.intervention_kind != "auto":
+        return options.intervention_kind
+    if options.scenario == "center_failure":
+        return "center_failed"
+    if options.scenario == "secondary_failure":
+        return "center_and_secondary_failed"
+    return "nominal"
+
+
+def _make_intervention_scenario(
+    options: ReservedSeedInterventionOptions,
+    *,
+    seed: int,
+) -> Any:
+    intervention_kind = _resolved_intervention_kind(options)
+    config = make_curriculum_scenario(
+        options.scenario,
+        scale=options.scale,
+        seed=seed,
+        duration_s=options.duration_s,
+        target_count=options.target_count,
+        resource_count=options.resource_count,
+    )
+    if intervention_kind == "active_risk":
+        metadata = {
+            **dict(config.metadata),
+            "active_risk_source": "d1_covariance_growth",
+        }
+        config = replace(
+            config,
+            scenario_name=(
+                f"active_risk_{config.resource_count}v{config.target_count}"
+            ),
+            scenario_version=(
+                f"active-risk-{config.resource_count}v{config.target_count}-v1"
+            ),
+            radar_range_std_base_m=30.0,
+            radar_range_std_per_km_m=10.0,
+            radar_angle_std_deg=3.0,
+            metadata=metadata,
+        )
+    return replace(config, sensor_random_schedule_version="entity_fixed_v1")
+
+
+def _frame_selection_policy(intervention_kind: str) -> str:
+    family = str(intervention_kind).strip().lower()
+    if family == "center_failed":
+        qualifier = "center-failed-secondary-executable"
+    elif family == "center_and_secondary_failed":
+        qualifier = "center-secondary-failed-distributed-executable"
+    elif family == "active_risk":
+        qualifier = "center-owned-active-risk"
+    else:
+        qualifier = "first-common-frame-after-prior-plan"
+    return f"{INTERVENTION_SELECTION_POLICY}:{qualifier}"
+
+
+def _d4_frame_matches_scenario(frame: Any, intervention_kind: str) -> bool:
+    family = str(intervention_kind).strip().lower()
+    snapshot = getattr(frame, "formal_snapshot", None)
+    decision = getattr(frame, "formal_decision", None)
+    if snapshot is None or decision is None:
+        return False
+    regions = tuple(getattr(decision, "region_decisions", ()))
+    health = getattr(getattr(snapshot, "center_health", None), "value", None)
+    if family == "center_failed":
+        return bool(
+            health == "failed"
+            and any(
+                getattr(getattr(item, "selected_layer", None), "value", None)
+                == "secondary"
+                and getattr(getattr(item, "action", None), "value", None)
+                == "degrade_to_secondary"
+                and bool(getattr(item, "execution_allowed", False))
+                for item in regions
+            )
+        )
+    if family == "center_and_secondary_failed":
+        return bool(
+            health == "failed"
+            and not tuple(getattr(snapshot, "secondary_nodes", ()))
+            and any(
+                getattr(getattr(item, "selected_layer", None), "value", None)
+                == "distributed"
+                and getattr(getattr(item, "action", None), "value", None)
+                == "degrade_to_distributed"
+                and bool(getattr(item, "execution_allowed", False))
+                for item in regions
+            )
+        )
+    if family == "active_risk":
+        return bool(
+            health != "failed"
+            and any(
+                getattr(getattr(item, "selected_layer", None), "value", None)
+                == "center"
+                and getattr(getattr(item, "action", None), "value", None)
+                in {"request_center_replan", "request_secondary_assist"}
+                and bool(getattr(item, "risk_factors", ()))
+                for item in regions
+            )
+        )
+    return True
+
+
+def _world_checkpoint_at_timestamp(
+    result: EpisodeResult,
+    timestamp_s: float,
+) -> WorldCheckpoint:
+    """Rebuild the evaluator-only world state at the frozen intervention frame."""
+
+    timestamp = float(timestamp_s)
+    indices = np.flatnonzero(
+        np.isclose(result.timestamps, timestamp, rtol=0.0, atol=1.0e-9)
+    )
+    if indices.size != 1:
+        raise ValueError("intervention timestamp is not a unique world frame")
+    index = int(indices[0])
+    bootstrap = VectorizedPointMassWorld(result.config).checkpoint()
+    intruder_active = np.asarray(
+        result.intruder_active_history[index], dtype=bool
+    )
+    return WorldCheckpoint(
+        timestamp=timestamp,
+        intruder_ids=result.intruder_ids,
+        interceptor_ids=tuple(
+            f"INT-{item + 1:04d}" for item in range(result.config.resource_count)
+        ),
+        recon_ids=tuple(
+            f"RECON-{item + 1:03d}" for item in range(result.config.recon_count)
+        ),
+        intruder_state=result.intruder_state_history[index],
+        interceptor_state=result.interceptor_state_history[index],
+        recon_state=result.recon_state_history[index],
+        intruder_active=intruder_active,
+        interceptor_active=np.ones(result.config.resource_count, dtype=bool),
+        recon_active=np.ones(result.config.recon_count, dtype=bool),
+        intercepted_target_indices=tuple(
+            int(item) for item in np.flatnonzero(~intruder_active)
+        ),
+        rng_state=bootstrap.rng_state,
+    )
+
+
+def _offline_identity_mapping_at_timestamp(
+    result: EpisodeResult,
+    *,
+    timestamp_s: float,
+    global_track_ids: Sequence[str],
+) -> tuple[tuple[str, str], ...]:
+    """Join online D2 lineage to evaluator labels without exposing truth online."""
+
+    timestamp = float(timestamp_s)
+    messages = [
+        message
+        for message in result.online_messages
+        if message.topic == "modules.d2.associated_tracks"
+        and float(message.timestamp) <= timestamp + 1.0e-9
+    ]
+    if not messages:
+        return ()
+    truth_by_observation = {
+        str(label.observation_id): str(label.truth_entity_id)
+        for label in result.offline_truth_labels
+        if float(label.measurement_timestamp) <= timestamp + 1.0e-9
+    }
+    allowed_tracks = {str(item) for item in global_track_ids}
+    evidence_by_track: dict[str, set[str]] = {
+        track_id: set() for track_id in allowed_tracks
+    }
+    for message in messages:
+        payload = message.payload
+        if not isinstance(payload, Mapping):
+            continue
+        lineage_rows = payload.get("identity_lineage", ())
+        if not isinstance(lineage_rows, Sequence) or isinstance(
+            lineage_rows, (str, bytes, bytearray)
+        ):
+            continue
+        for raw in lineage_rows:
+            if not isinstance(raw, Mapping):
+                continue
+            track_id = str(raw.get("global_track_id", "")).strip()
+            if track_id not in allowed_tracks:
+                continue
+            sources = raw.get("source_observations", ())
+            if not isinstance(sources, Sequence) or isinstance(
+                sources, (str, bytes, bytearray)
+            ):
+                continue
+            evidence_by_track[track_id].update(
+                truth_by_observation[observation_id]
+                for source in sources
+                if isinstance(source, Mapping)
+                for observation_id in (str(source.get("observation_id", "")),)
+                if observation_id in truth_by_observation
+            )
+    candidate = {
+        track_id: next(iter(truth_ids))
+        for track_id, truth_ids in evidence_by_track.items()
+        if len(truth_ids) == 1
+    }
+    target_counts = Counter(candidate.values())
+    return tuple(
+        sorted(
+            (track_id, truth_target_id)
+            for track_id, truth_target_id in candidate.items()
+            if target_counts[truth_target_id] == 1
+        )
+    )
+
+
+def _planning_identity_bridge_at_timestamp(
+    result: EpisodeResult,
+    *,
+    timestamp_s: float,
+    d3_frame: Any,
+    checkpoint: WorldCheckpoint,
+) -> tuple[
+    tuple[InterventionGlobalTrackSnapshot, ...],
+    tuple[tuple[str, str], ...],
+    tuple[tuple[str, str], ...],
+]:
+    """Bind D3 ordinal tokens back to their source D2/resource identities."""
+
+    messages = [
+        message
+        for message in result.online_messages
+        if message.topic == "modules.d2.associated_tracks"
+        and float(message.timestamp) <= float(timestamp_s) + 1.0e-9
+    ]
+    if not messages:
+        raise ValueError("intervention frame has no D2 track publication")
+    latest = max(messages, key=lambda item: (float(item.timestamp), item.sequence))
+    payload = latest.payload
+    if not isinstance(payload, Mapping):
+        raise ValueError("D2 intervention publication is not a mapping")
+    raw_tracks = payload.get("tracks", ())
+    if not isinstance(raw_tracks, Sequence) or isinstance(
+        raw_tracks, (str, bytes, bytearray)
+    ):
+        raise ValueError("D2 intervention track inventory is invalid")
+    sorted_tracks = sorted(
+        (item for item in raw_tracks if isinstance(item, Mapping)),
+        key=lambda item: str(item.get("global_track_id", "")),
+    )
+    anonymous_tracks = tuple(d3_frame.tracks)
+    if len(sorted_tracks) != len(anonymous_tracks):
+        raise ValueError("D3 anonymous target inventory differs from D2 tracks")
+    snapshots = tuple(
+        InterventionGlobalTrackSnapshot(
+            global_track_id=str(item["global_track_id"]),
+            timestamp_s=float(item["timestamp"]),
+            state_ned=np.asarray(item["state_ned"], dtype=float),
+            covariance=np.asarray(item["covariance"], dtype=float),
+            lifecycle_state=str(item["track_state"]),
+        )
+        for item in sorted_tracks
+    )
+    target_bridge = tuple(
+        (str(track.track_id), snapshot.global_track_id)
+        for track, snapshot in zip(anonymous_tracks, snapshots, strict=True)
+    )
+    anonymous_resources = tuple(d3_frame.resources)
+    if len(anonymous_resources) != len(checkpoint.interceptor_ids):
+        raise ValueError("D3 anonymous resource inventory differs from world")
+    resource_bridge = tuple(
+        (str(resource.resource_id), resource_id)
+        for resource, resource_id in zip(
+            anonymous_resources,
+            checkpoint.interceptor_ids,
+            strict=True,
+        )
+    )
+    return snapshots, target_bridge, resource_bridge
+
+
+def _validate_identity_bridge(
+    bridge: Sequence[tuple[str, str]],
+    kind: str,
+) -> None:
+    if any(not token or not identity for token, identity in bridge):
+        raise ValueError(f"{kind} identity bridge values must be non-empty")
+    if len({item[0] for item in bridge}) != len(bridge):
+        raise ValueError(f"{kind} identity bridge contains duplicate tokens")
+    if len({item[1] for item in bridge}) != len(bridge):
+        raise ValueError(f"{kind} identity bridge contains duplicate identities")
 
 
 def _validate_source_episode(result: EpisodeResult, *, seed: int) -> None:

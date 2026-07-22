@@ -5,7 +5,10 @@ import pytest
 
 from research_modules.scalable_3d_simulation.dynamics import integrate_point_masses
 from research_modules.scalable_3d_simulation.models import KinematicLimits, ScenarioConfig
-from research_modules.scalable_3d_simulation.world import VectorizedPointMassWorld
+from research_modules.scalable_3d_simulation.world import (
+    VectorizedPointMassWorld,
+    WorldCheckpoint,
+)
 from research_modules.scalable_3d_simulation.scenarios import make_curriculum_scenario
 
 
@@ -19,6 +22,49 @@ def test_ned_altitude_and_seeded_reset_are_consistent() -> None:
     assert np.all(-first.intruders.position_ned[:, 2] <= config.maximum_altitude_m)
     assert np.array_equal(first.intruders.state, reset.intruders.state)
     assert np.array_equal(first.interceptors.state, reset.interceptors.state)
+
+
+def test_world_checkpoint_clones_state_without_mutable_aliases() -> None:
+    config = ScenarioConfig(
+        target_count=3,
+        resource_count=3,
+        recon_count=1,
+        duration_s=0.3,
+    )
+    world = VectorizedPointMassWorld(config)
+    world.step(
+        interceptor_acceleration_ned=np.full((3, 3), 0.25, dtype=float)
+    )
+    checkpoint = world.checkpoint()
+    clone = world.clone()
+
+    assert isinstance(checkpoint, WorldCheckpoint)
+    assert clone is not world
+    assert np.array_equal(clone.intruder_state, world.intruder_state)
+    assert np.array_equal(clone.interceptor_state, world.interceptor_state)
+    assert not np.shares_memory(clone.intruder_state, world.intruder_state)
+    assert not np.shares_memory(clone.interceptor_state, world.interceptor_state)
+    with pytest.raises(ValueError):
+        checkpoint.intruder_state[0, 0] = 0.0
+
+    clone.step(
+        interceptor_acceleration_ned=np.full((3, 3), -0.5, dtype=float)
+    )
+    world.step(
+        interceptor_acceleration_ned=np.full((3, 3), 0.5, dtype=float)
+    )
+    assert not np.array_equal(clone.interceptor_state, world.interceptor_state)
+
+
+def test_world_checkpoint_rejects_incompatible_inventory() -> None:
+    source = VectorizedPointMassWorld(
+        ScenarioConfig(target_count=2, resource_count=2, recon_count=0)
+    )
+    destination = VectorizedPointMassWorld(
+        ScenarioConfig(target_count=3, resource_count=2, recon_count=0)
+    )
+    with pytest.raises(ValueError, match="inventory"):
+        destination.restore(source.checkpoint())
 
 
 def test_dynamics_enforce_speed_acceleration_turn_and_inactive_state() -> None:

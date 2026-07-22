@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import copy
 from dataclasses import dataclass
+from typing import Any, Mapping
 
 import numpy as np
 
@@ -15,6 +17,9 @@ from .models import (
     ScenarioConfig,
     WorldSnapshot,
 )
+
+
+WORLD_CHECKPOINT_SCHEMA_VERSION = "scalable3d-world-checkpoint-v1"
 
 
 @dataclass(frozen=True)
@@ -41,6 +46,58 @@ class ProximityInterceptEvent:
     resource_id: str
     truth_target_id: str
     distance_m: float
+
+
+@dataclass(frozen=True)
+class WorldCheckpoint:
+    """In-memory truth checkpoint used only to clone isolated evaluator worlds."""
+
+    timestamp: float
+    intruder_ids: tuple[str, ...]
+    interceptor_ids: tuple[str, ...]
+    recon_ids: tuple[str, ...]
+    intruder_state: np.ndarray
+    interceptor_state: np.ndarray
+    recon_state: np.ndarray
+    intruder_active: np.ndarray
+    interceptor_active: np.ndarray
+    recon_active: np.ndarray
+    intercepted_target_indices: tuple[int, ...]
+    rng_state: Mapping[str, Any]
+    schema_version: str = WORLD_CHECKPOINT_SCHEMA_VERSION
+
+    def __post_init__(self) -> None:
+        if self.schema_version != WORLD_CHECKPOINT_SCHEMA_VERSION:
+            raise ValueError("unsupported world checkpoint schema")
+        timestamp = float(self.timestamp)
+        if not np.isfinite(timestamp) or timestamp < 0.0:
+            raise ValueError("checkpoint timestamp must be finite and nonnegative")
+        object.__setattr__(self, "timestamp", timestamp)
+        for name, width, dtype in (
+            ("intruder_state", 6, float),
+            ("interceptor_state", 6, float),
+            ("recon_state", 6, float),
+            ("intruder_active", 1, bool),
+            ("interceptor_active", 1, bool),
+            ("recon_active", 1, bool),
+        ):
+            raw = np.asarray(getattr(self, name), dtype=dtype)
+            if width == 6:
+                if raw.ndim != 2 or raw.shape[1] != width:
+                    raise ValueError(f"{name} must have shape (entity_count, 6)")
+                if not np.all(np.isfinite(raw)):
+                    raise ValueError(f"{name} must contain only finite values")
+            elif raw.ndim != 1:
+                raise ValueError(f"{name} must have shape (entity_count,)")
+            value = raw.copy()
+            value.setflags(write=False)
+            object.__setattr__(self, name, value)
+        object.__setattr__(self, "intruder_ids", tuple(self.intruder_ids))
+        object.__setattr__(self, "interceptor_ids", tuple(self.interceptor_ids))
+        object.__setattr__(self, "recon_ids", tuple(self.recon_ids))
+        indices = tuple(sorted({int(value) for value in self.intercepted_target_indices}))
+        object.__setattr__(self, "intercepted_target_indices", indices)
+        object.__setattr__(self, "rng_state", copy.deepcopy(dict(self.rng_state)))
 
 
 class VectorizedPointMassWorld:
@@ -85,6 +142,92 @@ class VectorizedPointMassWorld:
         self.recon_active.fill(True)
         self.intercepted_target_indices.clear()
         return self.snapshot()
+
+    def checkpoint(self) -> WorldCheckpoint:
+        """Capture a deep, immutable state for isolated paired rollouts."""
+
+        return WorldCheckpoint(
+            timestamp=self.timestamp,
+            intruder_ids=self.intruder_ids,
+            interceptor_ids=self.interceptor_ids,
+            recon_ids=self.recon_ids,
+            intruder_state=self.intruder_state,
+            interceptor_state=self.interceptor_state,
+            recon_state=self.recon_state,
+            intruder_active=self.intruder_active,
+            interceptor_active=self.interceptor_active,
+            recon_active=self.recon_active,
+            intercepted_target_indices=tuple(sorted(self.intercepted_target_indices)),
+            rng_state=self.rng.bit_generator.state,
+        )
+
+    def restore(self, checkpoint: WorldCheckpoint) -> WorldSnapshot:
+        """Restore one compatible checkpoint without sharing mutable arrays."""
+
+        if not isinstance(checkpoint, WorldCheckpoint):
+            raise TypeError("checkpoint must be a WorldCheckpoint")
+        expected_ids = (self.intruder_ids, self.interceptor_ids, self.recon_ids)
+        actual_ids = (
+            checkpoint.intruder_ids,
+            checkpoint.interceptor_ids,
+            checkpoint.recon_ids,
+        )
+        if actual_ids != expected_ids:
+            raise ValueError("checkpoint entity inventory does not match world config")
+        expected_shapes = (
+            (self.config.target_count, 6),
+            (self.config.resource_count, 6),
+            (self.config.recon_count, 6),
+            (self.config.target_count,),
+            (self.config.resource_count,),
+            (self.config.recon_count,),
+        )
+        actual_shapes = tuple(
+            value.shape
+            for value in (
+                checkpoint.intruder_state,
+                checkpoint.interceptor_state,
+                checkpoint.recon_state,
+                checkpoint.intruder_active,
+                checkpoint.interceptor_active,
+                checkpoint.recon_active,
+            )
+        )
+        if actual_shapes != expected_shapes:
+            raise ValueError("checkpoint shape does not match world config")
+        if any(
+            not 0 <= index < self.config.target_count
+            for index in checkpoint.intercepted_target_indices
+        ):
+            raise ValueError("checkpoint intercepted target index is out of range")
+        if any(
+            checkpoint.intruder_active[index]
+            for index in checkpoint.intercepted_target_indices
+        ):
+            raise ValueError("checkpoint intercepted target must be inactive")
+
+        self.timestamp = checkpoint.timestamp
+        self.intruder_state = checkpoint.intruder_state.copy()
+        self.interceptor_state = checkpoint.interceptor_state.copy()
+        self.recon_state = checkpoint.recon_state.copy()
+        self.intruder_active = checkpoint.intruder_active.copy()
+        self.interceptor_active = checkpoint.interceptor_active.copy()
+        self.recon_active = checkpoint.recon_active.copy()
+        self.intercepted_target_indices = set(
+            checkpoint.intercepted_target_indices
+        )
+        try:
+            self.rng.bit_generator.state = copy.deepcopy(dict(checkpoint.rng_state))
+        except (TypeError, ValueError) as exc:
+            raise ValueError("checkpoint RNG state is incompatible") from exc
+        return self.snapshot()
+
+    def clone(self) -> "VectorizedPointMassWorld":
+        """Create an independent world at the exact current truth state."""
+
+        clone = VectorizedPointMassWorld(self.config)
+        clone.restore(self.checkpoint())
+        return clone
 
     def step(
         self,

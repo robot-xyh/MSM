@@ -88,10 +88,12 @@ from .shared_seed_split import (
     write_shared_seed_split_registry,
 )
 from .reserved_seed_interventions import (
+    INTERVENTION_KINDS,
     INTERVENTION_SELECTION_POLICY,
     RESERVED_EVALUATION_SEEDS,
     RESERVED_SEED_INTERVENTION_SCHEMA_VERSION,
     D3DevelopmentBundleBinding,
+    InterventionGlobalTrackSnapshot,
     ReservedSeedInterventionExecution,
     ReservedSeedInterventionOptions,
     ReservedSeedSourceBatch,
@@ -100,6 +102,20 @@ from .reserved_seed_interventions import (
     execute_reserved_seed_interventions,
     resolve_d3_development_bundle_binding,
     write_reserved_seed_intervention_execution,
+)
+from .isolated_degraded_adoption import (
+    D4_ISOLATED_PHYSICAL_ADOPTION_SCHEMA,
+    D4IsolatedPhysicalAdoptionRecord,
+    evaluate_d4_isolated_physical_adoption,
+)
+from .isolated_physical_rollout import (
+    ISOLATED_PHYSICAL_ROLLOUT_SCHEMA_VERSION,
+    CheckpointPhysicalRolloutOptions,
+    IsolatedPhysicalArmResult,
+    IsolatedPhysicalPairResult,
+    IsolatedPhysicalRolloutExecution,
+    execute_checkpoint_paired_physical_rollouts,
+    write_checkpoint_paired_physical_rollouts,
 )
 from .world import ProximityInterceptEvent, VectorizedPointMassWorld
 from .animation import write_trajectory_animation
@@ -117,6 +133,8 @@ __all__ = [
     "DeliveredMessage",
     "DeterministicCommunicationNetwork",
     "D4RegionLearningFrame",
+    "D4_ISOLATED_PHYSICAL_ADOPTION_SCHEMA",
+    "D4IsolatedPhysicalAdoptionRecord",
     "D5GraphLearningFrame",
     "D5ActiveVisionLearningFrame",
     "EntityKind",
@@ -152,7 +170,14 @@ __all__ = [
     "RESERVED_EVALUATION_SEEDS",
     "RESERVED_SEED_INTERVENTION_SCHEMA_VERSION",
     "INTERVENTION_SELECTION_POLICY",
+    "INTERVENTION_KINDS",
     "D3DevelopmentBundleBinding",
+    "InterventionGlobalTrackSnapshot",
+    "ISOLATED_PHYSICAL_ROLLOUT_SCHEMA_VERSION",
+    "CheckpointPhysicalRolloutOptions",
+    "IsolatedPhysicalArmResult",
+    "IsolatedPhysicalPairResult",
+    "IsolatedPhysicalRolloutExecution",
     "ReservedSeedInterventionExecution",
     "ReservedSeedInterventionOptions",
     "ReservedSeedSourceBatch",
@@ -184,6 +209,8 @@ __all__ = [
     "resolve_d3_development_bundle_binding",
     "collect_reserved_seed_sources",
     "execute_reserved_seed_interventions",
+    "execute_checkpoint_paired_physical_rollouts",
+    "evaluate_d4_isolated_physical_adoption",
     "run_episode",
     "run_experiment_matrix",
     "runtime_options_for_variant",
@@ -192,4 +219,5 @@ __all__ = [
     "write_episode_learning_artifacts",
     "write_shared_seed_split_registry",
     "write_reserved_seed_intervention_execution",
+    "write_checkpoint_paired_physical_rollouts",
 ]

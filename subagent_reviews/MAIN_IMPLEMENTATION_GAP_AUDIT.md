@@ -940,13 +940,13 @@ D1 NumPy EKF/FusionAdapter
 
 | Owner | P0 状态 | 必须保持的合同 | 验收 |
 | --- | --- | --- | --- |
-| D1 | 无新增 blocker | 双时间戳、NED、协方差、OOSM、source de-dup、局部图像航迹 fail-closed 适配和 GlobalTrack | D1 `111 passed` |
-| D2 | 无新增 blocker | GNN/Hungarian、稳定 global_track_id、id_switch_count、continuity 和来源身份治理显式计数 | D2 `123 passed, 1 warning` |
-| D3 | 无新增 blocker | 版本化 AssignmentPlan、迟滞、stale rejection、D7 binding | D3 模块测试 |
-| D4 | 无新增 blocker | C2Health、主动/被动降级、二级 lifecycle；active secondary helper/owner 必须对 sustained readiness、expected/actual source、plan/required epoch、expiry/current time 和 plan monotonicity exact-true；冲突或缺失证据 fail-closed | D4 `280 passed` |
-| D5 | 无新增 blocker | 不改写 global_track_id、truth 隔离、friend/duplicate 保守门控；原生 MOT 连续实测历史按 stream/backend/ID 隔离并在空帧/reset 后重计；离线人工记录转换重复坍缩 fail-closed；补充课程全样本审计不得开放在线权限 | D5 `486 passed` |
-| D6 | 无新增 blocker | 只消费日志；实际规模、id_switch_count、unavailable/zero 分离；逐 pair physical evidence/result/source、联盟完整性和跨模块学习准入严格门控；D5 全样本证据需带外 SHA，报告不得写入正式 generation 根 | D6 `385 passed` |
-| D7 | 核心公式无 blocker；控制输入 P0 由 main/runtime 持有 | 不分配目标；D3/D4/D5 gate 失败时阻断视觉 PNG；不修改 PN/PNG 核心公式 | D7 模块测试 + truth-isolated control contract |
+| D1 | 无新增 blocker | 双时间戳、NED、协方差、OOSM、source de-dup、局部图像航迹 fail-closed 适配和 GlobalTrack | D1 `136 passed` |
+| D2 | 无新增 blocker | GNN/Hungarian、稳定 global_track_id、id_switch_count、continuity、陈旧观测隔离和来源身份治理显式计数 | D2 `168 passed, 1 warning` |
+| D3 | 无新增 blocker | 版本化 AssignmentPlan、迟滞、stale rejection、D7 binding | D3 `419 passed, 1 skipped` |
+| D4 | 无新增 blocker | C2Health、主动/被动降级、二级 lifecycle；active secondary helper/owner 必须对 sustained readiness、expected/actual source、plan/required epoch、expiry/current time 和 plan monotonicity exact-true；冲突或缺失证据 fail-closed | D4 `508 passed` |
+| D5 | 无新增 blocker | 不改写 global_track_id、truth 隔离、friend/duplicate 保守门控；原生 MOT 连续实测历史按 stream/backend/ID 隔离并在空帧/reset 后重计；离线人工记录转换重复坍缩 fail-closed；补充课程全样本审计不得开放在线权限 | D5 `534 passed` |
+| D6 | 无新增 blocker | 只消费日志；实际规模、id_switch_count、unavailable/zero 分离；逐 pair physical evidence/result/source、联盟完整性和跨模块学习准入严格门控；D5 全样本证据需带外 SHA，报告不得写入正式 generation 根 | D6 `507 passed, 1 warning` |
+| D7 | 核心公式无 blocker；控制输入 P0 由 main/runtime 持有 | 不分配目标；D3/D4/D5 gate 失败时阻断视觉 PNG；不修改 PN/PNG 核心公式 | D7 `213 passed` + truth-isolated control contract |
 | main/runtime | 无新增 blocker | episode bus 可回放；在线 truth identity/state 均为 0；SimpleFlight 只消费 D2 estimate；二级 communication 只消费上一完整 D4 readiness；actor truth 仅离线 5 m scorer；默认不保存 PNG | actor truth 扰动命令不变量 + heartbeat-only/strict-readiness 正反合同 + AirSim runtime `147 passed` |
 
 ### 7.3 当前 P1 清单
@@ -961,6 +961,7 @@ D1 NumPy EKF/FusionAdapter
 | D5/main | YOLOv8/native MOT 校准 | adapter、Results 连续历史和离线 benchmark 已有；当前在线明确继续使用 AirSim detect | 等数据集补充后再校准类别、尺度、置信度、远距召回、IDSW/continuity、GPU/CPU P95 延时和失败回退；代码级历史累计已关闭，不阻塞 detect-first P1 |
 | D1/D2/D5/main | 通用图像来源谱系真实运行标定 | 局部观测合同、D5 离线适配、D1 EO 入口、D1 `source_track_ids`、main NED-only D2 handoff 和 D2 三项来源治理计数已实现 | 接入真实可见光/红外 producer 与 D5 拒绝计数，冻结内外参/时间同步/像素协方差；至少 10 个来源扰动 AirSim case 评估 false-suppression、recall 和离线 IDSW/continuity |
 | D1/D2/D3/main | 长 replay 治理阈值 | 版本化 replay/CLI 已具备；D2 10 seeds 的 IDSW=138.1、continuity=0.694 | 默认 GNN 未通过阈值；继续调 gate/lifecycle/model，不用 truth 或本地重绑掩盖问题 |
+| D2/main/D6 | 陈旧观测治理长期标定 | seed 1005 已恢复五条唯一航迹；开发期 active-risk 20-seed 物理窗和 D4 采用均为 20/20；main 已持久化 v1 治理证据 | clean-tree 同配置复验；测量 20/50/100/200 长 episode claim 容量、false suppression、近邻召回和整帧 OOSM；不得把开发复跑升级为正式 200v200 结论 |
 | D4/main | 联盟重构、二级接管和恢复实测 | 9/9 确定性矩阵通过，含 member replacement、partition recovery 和双轨合并；严格二级 readiness 已统一到所有入口 | 映射到真实 AirSim 通信延迟/丢包/乱序/时钟漂移多 seed，并量化 failover time；不得以 heartbeat-only 作为正例 |
 | D5/D6 | M 对 N 视觉鲁棒性 | 确定性 10/10，外参漂移/时间偏差保守拒绝，ID rewrite=0 | 在真实多视角 AirSim/相机同步和持续 detect 下复验，不以确定性 fixture 代替实测 |
 | D3/D4/D5/D6/main | 学习数据全样本与运行证据 | canonical seed 60/20/20 和全样本审计已完成；D5 20-seed paired shadow 已完成但有合成可分性限制；D3/D4 v2 clean 5v5 正式制品和 D6 profile-bound availability sidecar 已完成，真值使用为 0；D3 20/20 隔离应用且 binding 未变，D4 20/20 因低置信回退 | 取得严格绑定的 runtime ACK 和采用后物理窗口后再计算 paired physical outcome/effect；D4 confidence 只在独立 calibration split 校准，不用保留 seed 降门限；故障策略另跑 degraded snapshot；完成前 PPO/assist/authority 保持关闭 |
@@ -989,3 +990,21 @@ python3 -m pytest -q research_modules/d7_proportional_guidance/tests
 pytest -q research_modules/airsim_runtime/tests/test_blocks_runtime.py
 git diff --check
 ```
+
+## 2026-07-22 active-risk seed 1005 重复航迹闭环
+
+D2 已关闭旧 D1 后验重复计入 confirmation hit 的代码缺口。修复只读取在线可得的观测
+命名空间、`latest_observation_id`、时间戳、六维状态和协方差。重复底层观测从关联输入隔离；
+暂定航迹连续两次没有新证据后删除；统计合并要求共享谱系并通过位置和速度马氏门，不能用
+宽空间门合并相距 1.5 km 的航迹。`global_track_id` 仍由 D2 中心链路持有，在线
+`id_switch_count` 继续明确为 unavailable，真值只用于 D6 离线映射。
+
+main 已把 `d2-observation-evidence-governance-v1` 接入统一 episode bus。seed 1005 专项的
+10 帧活动航迹数为 `5,6,6,5,5,5,5,5,5,5`，隔离旧观测 9 次、删除暂定伪航迹 1 条，
+最终 `GT3D-000001` 至 `GT3D-000005` 均获得唯一离线映射，在线真值使用为 0。
+
+同一脏工作树上的 active-risk seed `1000-1019` 开发复跑恢复了完整证据：计划消费、导引
+血缘、物理窗、D4 降级采用、配对物理比较和非退化均为 `20/20`；D4 区域采用为
+`188/188`，两臂各执行 1960 条命令。反事实、因果和 production runtime ACK 仍不可用。
+该结果关闭本轮代码级 blocker，但不覆盖此前正式制品；形成提交后必须执行 clean-tree
+20-seed 复验。长时 claim 容量、误抑制率、近邻召回、整帧乱序输入和 AirSim 标定保留为 P1。

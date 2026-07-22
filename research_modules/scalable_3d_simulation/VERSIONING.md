@@ -49,6 +49,7 @@ main
 | 实验矩阵 | `scalable3d-experiment-matrix-v1` | 变体语义、配对键或正式准入条件改变 |
 | D1 一致性评估清单 | `scalable3d-offline-consistency-evaluation-manifest-v1` | 在线证据、真值状态、D2 映射或哈希绑定改变 |
 | D2 身份评估清单 | `scalable3d-offline-identity-evaluation-manifest-v1` | 谱系映射、身份指标或来源校验改变 |
+| D2 观测证据治理 | `d2-observation-evidence-governance-v1` | D1 观测新鲜度、重放隔离、时间冲突、暂定航迹删除或重复合并审计语义改变 |
 | D6 真值隔离清单 | `scalable3d-d6-truth-isolated-manifest-v1` | D1/D2 适配、availability 或批量聚合口径改变 |
 | D6 跨模块学习准入 | `d6.cross-module-learning-data-admission.v1` | 正式/补充/离线标签/运行 ACK 分层、canonical view 绑定、动作覆盖或训练准入矩阵语义改变 |
 | 保留 seed 隔离干预 | `scalable3d-reserved-seed-interventions-v2` | v2 绑定 D3 二元/连续分布门语义，并在 manifest/report 中持久化 D4 v2 分门诊断；历史 `6d5bfea` 正式证据保持 v1 |
