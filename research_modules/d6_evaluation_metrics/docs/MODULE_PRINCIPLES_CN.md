@@ -1,5 +1,29 @@
 # D6 系统级离线评估模块原理
 
+## 大型在线日志的单次安全审计原则（2026-07-22）
+
+性能优化不能把“调用方说已检查”当作安全事实。独立 D6 文件入口始终从调用方给出的文件 SHA-256
+开始，逐条解码完整在线日志。JSON 唯一 key、非有限数、envelope 精确字段、sequence 单调性和
+truth-like key 都在主题过滤前检查。调用方没有布尔参数可以关闭这些步骤。
+
+真值键检查与 JSON 对象构造共用一次 `object_pairs_hook`。hook 在构造每个 mapping 时按既有规则执行
+trim、lower 和连字符归一化，记录 `truth/actor/object/ground_truth` 等禁用键；完整 JSON 解码结束后
+失败关闭。这样仍能识别 Unicode 转义 key，也保留 duplicate-key 解析失败优先级，但不再递归访问已
+构造对象中的每个 list 和 scalar。
+
+主题过滤只决定哪些合法对象需要长期保留，不决定哪些对象接受审计。运行时结果联接只需要 D1/D2
+血缘源、D3 计划、D7 命令和 main assignment ACK。D1/D2 对象以规范整行 SHA 代替完整载荷留存，
+随后与 D2 filtered source 逐条复算比对；D3/D7/ACK 保留原载荷以执行 binding 和 payload SHA 校验。
+其他主题只有在全部安全检查通过后才释放。
+
+不可变离线身份数据也只扫描一次。D2 evaluation 先按原合同逐帧检查排序、唯一航迹和 mapping 类型，
+然后建立 `global_track_id` 索引。每个 binding window 仍按原 lineage freshness、窗口边界、available/
+ambiguous 规则选择映射，不再从头扫描全部 frame。索引改变复杂度和内存生命周期，不改变证据层级。
+
+2026-07-22 的 3380 条 development 固定输入确认 baseline/candidate 报告完全相等，业务 JSON、漂亮
+打印 JSON 和 Markdown 摘要均不变。该证据只关闭当前 D6 离线消费者的重复扫描性能缺口；正式容量、
+AirSim、物理效果和跨进程审计证明仍是独立问题。
+
 ## Episode 身份与侧车隔离（2026-07-22）
 
 离线目录中的 manifest 不等同于主 episode。身份评估、真值隔离、一致性检查和运行结果连接器都

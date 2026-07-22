@@ -1,5 +1,65 @@
 # D6 系统级离线评估：算法原理与实施说明
 
+## Runtime plan outcome join 的流式安全实现（2026-07-22）
+
+### 在线解析
+
+`_iter_jsonl(..., reject_online_truth=True)` 对每个物理行只调用一次标准 JSON decoder。解码 hook 同时
+完成 duplicate-key 检查和禁用真值键收集；`parse_constant` 继续拒绝 NaN/Infinity。得到顶层 mapping
+后，解析器按原顺序校验精确六字段、正整数 sequence、全文件唯一且严格递增 sequence、非负时间戳和
+非空 topic/source/schema。只有这些检查全部通过后才按 topic 决定留存。
+
+```text
+for raw_line in online_jsonl:
+    record = decode_unique_and_collect_forbidden_keys(raw_line)
+    reject_if_forbidden_key_seen(record)
+    validate_exact_envelope_and_global_sequence(record)
+    if topic in {D1, D2}:
+        retain(sequence, topic, canonical_sha256(record)); release payload
+    elif topic in {D3, D7, MAIN_ACK}:
+        retain(envelope and payload)
+    else:
+        release record
+```
+
+禁用键基于解码后的 key，因此 `ground\u002dtruth` 与 `ground-truth` 等价。禁用键失败在过滤前发生，
+所以无关主题不能藏匿真值。实现没有 `already_checked=True` 一类参数。未来如增加 main 审计证明，证明
+至少必须版本化绑定在线文件 SHA-256、禁用键集合/归一化策略、验证器身份和验证结果；裸布尔值不构成
+准入证据。
+
+### D2 来源与身份索引
+
+D2 filtered D1/D2 JSONL 继续逐条解析，并按 sequence 找到在线记录。两侧分别计算相同规范 JSON SHA：
+
+```text
+SHA256(UTF8(json.dumps(record, sort_keys=True, separators=(",", ":"), allow_nan=False)))
+```
+
+只有摘要相等才承认 filtered source 来自完整在线日志。在线侧预先保存摘要只是缩短对象生命周期，
+没有取消离线侧复算。
+
+D2 evaluation 完成既有 schema、source hash、lineage audit、frame 顺序和帧内唯一航迹检查后，构造：
+
+```text
+identity_index[global_track_id] = ((frame_time_0, mapping_0), ...)
+```
+
+旧窗口查找复杂度为 `O(W * sum(frame mappings))`；新实现为一次 `O(sum(frame mappings))` 建索引，
+之后每窗只扫描该航迹候选。候选顺序、`1e-9` 时间容差、lineage freshness、跨窗 truth ID 一致性和
+source lineage 汇总代码保持原样。
+
+### 等价性与复杂度验证
+
+固定 200v200/2.2 s/seed 42000 输入包含 3380 条、63,014,782 B 在线记录，9 帧/1799 条 D2 mapping，
+3 ACK/594 窗口。全部 3380 条接受真值审计；长期保留 130 条，其中 95 条只存摘要。旧窗口路径最多
+访问 1,068,606 条 mapping，新索引只建一次 1799 条记录。
+
+`8f86192` 与 candidate 各 3 次同输入阶段均值为：总 evaluate `5.302515 -> 2.901966 s`，online
+load `2.777838 -> 1.506296 s`，D2 identity `1.544734 -> 0.866780 s`，binding windows
+`0.451765 -> 0.028150 s`。两份返回 mapping 使用 Python equality 完全相等；业务 JSON SHA 为
+`7325b468...cec0a7`，写盘 JSON/Markdown SHA 为 `10db5198...58d3` / `97a364f1...5d76`。
+这些时间是本机 development 描述值，不是正式部署阈值。
+
 ## 长 Episode 观测治理评估（2026-07-22）
 
 解析器从带外提供的 input-spec SHA-256 开始，依次验证批输入清单、episode manifest、在线

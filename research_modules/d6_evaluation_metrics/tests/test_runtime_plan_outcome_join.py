@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 from dataclasses import replace
 import hashlib
 import json
@@ -47,6 +48,13 @@ def _canonical_hash(payload: Any, *, prefixed: bool = False) -> str:
 
 def _file_hash(path: Path) -> str:
     return f"sha256:{hashlib.sha256(path.read_bytes()).hexdigest()}"
+
+
+def _report_business_hash(payload: Mapping[str, Any]) -> str:
+    normalized = copy.deepcopy(payload)
+    for name, artifact in normalized["source_artifacts"].items():
+        artifact["path"] = f"<{name}>"
+    return _canonical_hash(normalized, prefixed=True)
 
 
 def _write_json(path: Path, payload: Mapping[str, Any]) -> None:
@@ -623,6 +631,83 @@ def test_normal_join_builds_nonoverlapping_windows_and_keeps_admission_closed(
     assert "不是 D3 正式强化学习奖励" in output["markdown"].read_text(
         encoding="utf-8"
     )
+
+
+def test_candidate_report_matches_pre_streaming_baseline_business_hash(
+    tmp_path: Path,
+) -> None:
+    inputs, _ = _make_fixture(tmp_path / "sources")
+
+    result = evaluate_runtime_plan_outcomes(inputs)
+
+    assert _report_business_hash(result) == (
+        "sha256:800c90c1e9e7c34a7f26e5b2c620f15cfc65cfbc1f3b5e6286be584ae534adaa"
+    )
+
+
+def test_truth_injection_in_unretained_topic_still_fails_closed(
+    tmp_path: Path,
+) -> None:
+    inputs, _ = _make_fixture(tmp_path / "sources")
+
+    def inject(rows: list[dict[str, Any]]) -> None:
+        rows.append(
+            _envelope(
+                11,
+                "runtime.camera_command_ack",
+                "MAIN-RUNTIME",
+                2.5,
+                "camera-command-ack-v1",
+                {"nested": [{"ground-truth": "TGT-0001"}]},
+            )
+        )
+
+    inputs = _rewrite_online(inputs, inject)
+    online_path = inputs.online_observations.path
+    encoded = online_path.read_text(encoding="utf-8").replace(
+        '"ground-truth"',
+        '"ground\\u002dtruth"',
+    )
+    online_path.write_text(encoded, encoding="utf-8")
+    inputs = _refresh(inputs, "online_observations")
+
+    with pytest.raises(RuntimePlanOutcomeJoinError) as captured:
+        evaluate_runtime_plan_outcomes(inputs)
+
+    assert captured.value.code == "online_truth_field_present"
+
+
+def test_digest_only_d2_source_link_still_rejects_payload_divergence(
+    tmp_path: Path,
+) -> None:
+    inputs, paths = _make_fixture(tmp_path / "sources")
+    d1_path = paths["d2_online_d1_records"]
+    rows = [json.loads(line) for line in d1_path.read_text(encoding="utf-8").splitlines()]
+    rows[0]["payload"]["timestamp"] = 0.9
+    _write_jsonl(d1_path, rows)
+    d1_sha256 = _file_hash(d1_path)
+
+    evaluation_path = paths["d2_identity_evaluation"]
+    evaluation = json.loads(evaluation_path.read_text(encoding="utf-8"))
+    evaluation["source_hashes"]["online_d1_records"] = d1_sha256
+    _write_json(evaluation_path, evaluation)
+
+    manifest_path = paths["d2_identity_manifest"]
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["source_hashes"]["online_d1_records"] = d1_sha256
+    manifest["source_hashes"]["identity_evaluation"] = _file_hash(
+        evaluation_path
+    )
+    _write_json(manifest_path, manifest)
+
+    inputs = _refresh(inputs, "d2_online_d1_records")
+    inputs = _refresh(inputs, "d2_identity_evaluation")
+    inputs = _refresh(inputs, "d2_identity_manifest")
+
+    with pytest.raises(RuntimePlanOutcomeJoinError) as captured:
+        evaluate_runtime_plan_outcomes(inputs)
+
+    assert captured.value.code == "d2_source_payload_not_in_online_log"
 
 
 def test_same_identity_evaluation_refresh_creates_a_distinct_occurrence_window(

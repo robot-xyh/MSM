@@ -1,5 +1,11 @@
 # D6 文档索引
 
+2026-07-22 runtime plan outcome join 的严格等价性能优化见
+`MODULE_PRINCIPLES_CN.md` 和 `ALGORITHM_AND_IMPLEMENTATION.md`，固定 3380 条 development A/B 结果见
+`../EXPERIMENT_REPORT.md` 2.19 节。实现对全部在线记录继续执行真值键审计，只在审计后最小化留存，
+并对 D2 identity 建立一次只读索引。baseline/candidate 报告、业务 JSON 和写盘摘要不变；独立入口
+没有跳过真值检查的布尔参数。该结果不改变 AirSim 接线、admission 或物理证据层级。
+
 `OBSERVATION_GOVERNANCE_CALIBRATION_CONTRACT_CN.md` 定义长 episode D1 扫描 OOSM、D2
 claim ledger、evaluator-only sidecar、哈希链和 main required fields 的公共合同。
 2026-07-22 clean/formal 快速治理结果见 `../EXPERIMENT_REPORT.md` 2.17 节。该批采用

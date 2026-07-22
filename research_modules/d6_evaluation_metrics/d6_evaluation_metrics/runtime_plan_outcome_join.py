@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from dataclasses import dataclass
+from functools import partial
 import hashlib
 import json
 import math
@@ -124,6 +125,20 @@ _FORBIDDEN_ONLINE_KEYS = frozenset(
         "offline_truth_labels",
     }
 )
+_D2_FILTERED_SOURCE_TOPICS = frozenset(
+    {
+        "modules.d1.fused_tracks",
+        "modules.d2.associated_tracks",
+    }
+)
+_RETAINED_ONLINE_TOPICS = frozenset(
+    {
+        *_D2_FILTERED_SOURCE_TOPICS,
+        ASSIGNMENT_PLAN_TOPIC,
+        GUIDANCE_COMMAND_TOPIC,
+        ASSIGNMENT_PLAN_ACK_TOPIC,
+    }
+)
 
 
 class RuntimePlanOutcomeJoinError(RuntimeError):
@@ -227,7 +242,8 @@ class _Envelope:
     source: str
     timestamp: float
     schema_version: str
-    payload: Mapping[str, Any]
+    payload: Mapping[str, Any] | None
+    canonical_record_sha256: str | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -263,6 +279,15 @@ class _TruthState:
     @property
     def episode_end(self) -> float:
         return float(self.timestamps[-1])
+
+
+@dataclass(frozen=True, slots=True)
+class _IdentityIndex:
+    lineage_time_window_s: float
+    by_global_track_id: Mapping[
+        str,
+        tuple[tuple[float, Mapping[str, Any]], ...],
+    ]
 
 
 def load_runtime_plan_outcome_join_inputs(
@@ -632,11 +657,17 @@ def _validate_episode_contract(
 
 
 def _load_online_envelopes(path: Path) -> tuple[_Envelope, ...]:
-    records = _load_jsonl(path, "online observations")
     envelopes: list[_Envelope] = []
     seen: set[int] = set()
     previous = 0
-    for index, record in enumerate(records, start=1):
+    for index, record in enumerate(
+        _iter_jsonl(
+            path,
+            "online observations",
+            reject_online_truth=True,
+        ),
+        start=1,
+    ):
         _require_exact_keys(
             record,
             {"sequence", "topic", "source", "timestamp", "schema_version", "payload"},
@@ -656,15 +687,26 @@ def _load_online_envelopes(path: Path) -> tuple[_Envelope, ...]:
         seen.add(sequence)
         previous = sequence
         payload = _mapping(record.get("payload"), "online envelope payload")
-        _assert_truth_free(record)
+        topic = _required_string(record, "topic")
+        source = _required_string(record, "source")
+        timestamp = _nonnegative_float(record.get("timestamp"), "timestamp")
+        schema_version = _required_string(record, "schema_version")
+        if topic not in _RETAINED_ONLINE_TOPICS:
+            continue
+        canonical_record_sha256 = None
+        retained_payload: Mapping[str, Any] | None = payload
+        if topic in _D2_FILTERED_SOURCE_TOPICS:
+            canonical_record_sha256 = _canonical_payload_sha256(record)
+            retained_payload = None
         envelopes.append(
             _Envelope(
                 sequence=sequence,
-                topic=_required_string(record, "topic"),
-                source=_required_string(record, "source"),
-                timestamp=_nonnegative_float(record.get("timestamp"), "timestamp"),
-                schema_version=_required_string(record, "schema_version"),
-                payload=payload,
+                topic=topic,
+                source=source,
+                timestamp=timestamp,
+                schema_version=schema_version,
+                payload=retained_payload,
+                canonical_record_sha256=canonical_record_sha256,
             )
         )
     return tuple(envelopes)
@@ -687,6 +729,7 @@ def _validate_runtime_acks(
             "unsupported_runtime_ack_contract",
             "runtime assignment ACK source or schema is unsupported",
         )
+        assert envelope.payload is not None
         ack = envelope.payload
         _require_exact_keys(ack, set(_ACK_KEYS), "runtime assignment ACK")
         _expect(
@@ -738,6 +781,7 @@ def _validate_runtime_acks(
             "ACK source plan sequence does not identify a prior D3 plan",
         )
         assert plan_envelope is not None
+        assert plan_envelope.payload is not None
         _expect(
             ack.get("plan_schema_version") == plan_envelope.schema_version,
             "source_plan_schema_mismatch",
@@ -890,6 +934,7 @@ def _validate_runtime_acks(
                 "ACK source guidance sequence does not identify a prior D7 batch",
             )
             assert guidance_envelope is not None
+            assert guidance_envelope.payload is not None
             _expect_payload_hash(
                 guidance_envelope.payload,
                 guidance_hash,
@@ -1329,10 +1374,12 @@ def _validate_filtered_online_source(
     expected_topic: str,
     online_envelopes: Mapping[int, _Envelope],
 ) -> None:
-    rows = _load_jsonl(path, f"D2 filtered source {expected_topic}")
-    _expect(rows, "d2_filtered_source_empty", f"D2 source {expected_topic} is empty")
     seen: set[int] = set()
-    for row in rows:
+    for row in _iter_jsonl(
+        path,
+        f"D2 filtered source {expected_topic}",
+        empty_code="d2_filtered_source_empty",
+    ):
         sequence = _positive_int(row.get("sequence"), "D2 source sequence")
         _expect(
             sequence not in seen,
@@ -1346,16 +1393,10 @@ def _validate_filtered_online_source(
             "d2_source_sequence_not_in_online_log",
             "D2 filtered source sequence is absent from online observations",
         )
-        expected_row = {
-            "sequence": online.sequence,
-            "topic": online.topic,
-            "source": online.source,
-            "timestamp": online.timestamp,
-            "schema_version": online.schema_version,
-            "payload": online.payload,
-        }
         _expect(
-            _canonical_payload_sha256(row) == _canonical_payload_sha256(expected_row),
+            online.canonical_record_sha256 is not None
+            and _canonical_payload_sha256(row)
+            == online.canonical_record_sha256,
             "d2_source_payload_not_in_online_log",
             "D2 filtered source payload differs from online observations",
         )
@@ -1438,10 +1479,13 @@ def _load_and_validate_proximity_events(
     *,
     truth: _TruthState,
 ) -> tuple[Mapping[str, Any], ...]:
-    rows = _load_jsonl(path, "offline proximity intercepts", allow_empty=True)
     seen: set[tuple[float, str, str]] = set()
     result: list[Mapping[str, Any]] = []
-    for row in rows:
+    for row in _iter_jsonl(
+        path,
+        "offline proximity intercepts",
+        allow_empty=True,
+    ):
         timestamp = _nonnegative_float(row.get("timestamp"), "event timestamp")
         resource_id = _required_string(row, "resource_id")
         truth_target_id = _required_string(row, "truth_target_id")
@@ -1506,6 +1550,7 @@ def _build_binding_windows(
                 f"resource {resource_id} has simultaneous or reversed ACK windows",
             )
 
+    identity_index = _build_identity_index(identity) if by_resource else None
     windows: list[dict[str, Any]] = []
     for resource_id in sorted(by_resource):
         values = by_resource[resource_id]
@@ -1523,7 +1568,7 @@ def _build_binding_windows(
                     start=ack.ack_timestamp,
                     end=end,
                     end_inclusive=final_window,
-                    identity=identity,
+                    identity=identity_index,
                     truth=truth,
                     events=events,
                 )
@@ -1539,12 +1584,13 @@ def _evaluate_binding_window(
     start: float,
     end: float,
     end_inclusive: bool,
-    identity: Mapping[str, Any],
+    identity: _IdentityIndex | None,
     truth: _TruthState,
     events: Sequence[Mapping[str, Any]],
 ) -> dict[str, Any]:
     resource_id = str(binding["resource_id"])
     track_id = str(binding["global_track_id"])
+    assert identity is not None
     mapping = _identity_mapping_for_window(
         identity,
         global_track_id=track_id,
@@ -1658,28 +1704,46 @@ def _evaluate_binding_window(
     }
 
 
-def _identity_mapping_for_window(
+def _build_identity_index(
     evaluation: Mapping[str, Any],
-    *,
-    global_track_id: str,
-    start: float,
-    end: float,
-    end_inclusive: bool,
-) -> dict[str, Any]:
+) -> _IdentityIndex:
     configuration = _mapping(
         evaluation.get("configuration"), "D2 identity configuration"
     )
     lineage_window = _positive_float(
         configuration.get("lineage_time_window_s"), "lineage_time_window_s"
     )
-    candidates: list[tuple[float, Mapping[str, Any]]] = []
+    by_global_track_id: dict[
+        str,
+        list[tuple[float, Mapping[str, Any]]],
+    ] = defaultdict(list)
     for raw_frame in _sequence(evaluation.get("frames"), "D2 identity frames"):
         frame = _mapping(raw_frame, "D2 identity frame")
         frame_time = float(frame["frame_timestamp"])
         for raw_mapping in _sequence(frame.get("mappings"), "D2 frame mappings"):
             item = _mapping(raw_mapping, "D2 track mapping")
-            if item.get("global_track_id") == global_track_id:
-                candidates.append((frame_time, item))
+            by_global_track_id[str(item["global_track_id"])].append(
+                (frame_time, item)
+            )
+    return _IdentityIndex(
+        lineage_time_window_s=lineage_window,
+        by_global_track_id={
+            track_id: tuple(values)
+            for track_id, values in by_global_track_id.items()
+        },
+    )
+
+
+def _identity_mapping_for_window(
+    identity: _IdentityIndex,
+    *,
+    global_track_id: str,
+    start: float,
+    end: float,
+    end_inclusive: bool,
+) -> dict[str, Any]:
+    lineage_window = identity.lineage_time_window_s
+    candidates = identity.by_global_track_id.get(global_track_id, ())
     before = [item for item in candidates if item[0] <= start + 1.0e-9]
     if not before:
         return _unavailable_identity("d2_mapping_missing_at_window_start")
@@ -2019,36 +2083,76 @@ def _load_json(path: Path, name: str) -> Mapping[str, Any]:
     return _mapping(payload, name)
 
 
-def _load_jsonl(
+def _iter_jsonl(
     path: Path,
     name: str,
     *,
     allow_empty: bool = False,
-) -> tuple[Mapping[str, Any], ...]:
-    result: list[Mapping[str, Any]] = []
-    for line_number, raw in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
-        _expect(
-            bool(raw.strip()),
-            "jsonl_blank_line",
-            f"{name} contains a blank line at {line_number}",
-        )
-        try:
-            payload = json.loads(
-                raw,
-                object_pairs_hook=_unique_object,
-                parse_constant=_reject_json_constant,
+    empty_code: str = "jsonl_empty",
+    reject_online_truth: bool = False,
+) -> Iterable[Mapping[str, Any]]:
+    record_count = 0
+    with path.open("r", encoding="utf-8") as stream:
+        lines = enumerate(stream, start=1)
+        for line_number, raw in lines:
+            record_count += 1
+            _expect(
+                bool(raw.strip()),
+                "jsonl_blank_line",
+                f"{name} contains a blank line at {line_number}",
             )
-        except RuntimePlanOutcomeJoinError:
-            raise
-        except Exception as exc:
-            _fail("jsonl_load_failed", f"cannot load {name} line {line_number}: {exc}")
-        result.append(_mapping(payload, f"{name} line {line_number}"))
+            forbidden_fields: list[str] = []
+            object_hook = (
+                partial(
+                    _unique_truth_free_online_object,
+                    forbidden_fields=forbidden_fields,
+                )
+                if reject_online_truth
+                else _unique_object
+            )
+            try:
+                payload = json.loads(
+                    raw,
+                    object_pairs_hook=object_hook,
+                    parse_constant=_reject_json_constant,
+                )
+            except RuntimePlanOutcomeJoinError:
+                raise
+            except Exception as exc:
+                _fail(
+                    "jsonl_load_failed",
+                    f"cannot load {name} line {line_number}: {exc}",
+                )
+            if forbidden_fields:
+                _fail(
+                    "online_truth_field_present",
+                    "online observations contain evaluator-only field "
+                    f"{forbidden_fields[0]}",
+                )
+            yield _mapping(payload, f"{name} line {line_number}")
     _expect(
-        allow_empty or bool(result),
-        "jsonl_empty",
+        allow_empty or record_count > 0,
+        empty_code,
         f"{name} contains no records",
     )
-    return tuple(result)
+
+
+def _unique_truth_free_online_object(
+    pairs: Iterable[tuple[str, Any]],
+    *,
+    forbidden_fields: list[str],
+) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise RuntimePlanOutcomeJoinError(
+                "duplicate_json_key", f"duplicate JSON object key: {key}"
+            )
+        result[key] = value
+        normalised = str(key).strip().lower().replace("-", "_")
+        if normalised in _FORBIDDEN_ONLINE_KEYS:
+            forbidden_fields.append(key)
+    return result
 
 
 def _unique_object(pairs: Iterable[tuple[str, Any]]) -> dict[str, Any]:
@@ -2066,23 +2170,6 @@ def _reject_json_constant(value: str) -> None:
     raise RuntimePlanOutcomeJoinError(
         "nonfinite_json_number", f"non-finite JSON number is forbidden: {value}"
     )
-
-
-def _assert_truth_free(value: Any) -> None:
-    pending = [value]
-    while pending:
-        item = pending.pop()
-        if isinstance(item, Mapping):
-            for key, nested in item.items():
-                normalised = str(key).strip().lower().replace("-", "_")
-                _expect(
-                    normalised not in _FORBIDDEN_ONLINE_KEYS,
-                    "online_truth_field_present",
-                    f"online observations contain evaluator-only field {key}",
-                )
-                pending.append(nested)
-        elif isinstance(item, (list, tuple)):
-            pending.extend(item)
 
 
 def _mapping(value: Any, name: str) -> Mapping[str, Any]:

@@ -1,5 +1,43 @@
 # D6 实现差距审计
 
+## 2026-07-22 runtime outcome join 性能 GAP 更新
+
+### 已关闭的 D6-owned P1 子项
+
+1. 完整在线 JSONL 不再先全量物化、再递归遍历同一对象树。全部记录改为逐行唯一键解码，truth-like
+   key 检查融合到 object hook，主题过滤仍位于安全检查之后。
+2. 联接只保留 D1/D2/D3/D7/assignment ACK。D1/D2 以规范记录 SHA 参与 filtered-source 复算，
+   不在内存保留大载荷；来源 sequence/payload 合同未放宽。
+3. D2 identity 原有逐帧严格校验完成后建立一次航迹索引。594 个窗口不再重复扫描同一 1799 条
+   mapping，freshness、歧义、availability 和时间边界不变。
+4. 新增 baseline 业务哈希和被过滤主题 Unicode 转义真值注入回归。独立入口没有布尔跳过参数；
+   `ground\u002dtruth` 仍以 `online_truth_field_present` 失败关闭。
+
+### 证据
+
+固定 development 输入为 200v200、2.2 s、seed 42000，input spec SHA `1e41bc47...c2c24a`；
+在线操作数 63,014,782 B/3380 条，全部审计，130 条保留，3 ACK/594 窗口。`8f86192` 与 candidate
+各 3 次同进程均值为总 evaluate `5.302515 -> 2.901966 s`，online load
+`2.777838 -> 1.506296 s`，D2 identity `1.544734 -> 0.866780 s`，窗口
+`0.451765 -> 0.028150 s`。单进程峰值 RSS 描述值为 `289716 -> 142000 KiB`。
+
+两版 report mapping 完全相等；业务/JSON/Markdown SHA 分别为 `7325b468...cec0a7`、
+`10db5198...58d3`、`97a364f1...5d76`。admission、availability、contract/control/physical、正式
+reward/counterfactual/causal 和规则回退状态未变化。专项 `25 passed`，D6 全量
+`530 passed, 1 warning`。
+
+### 仍开放的 P1
+
+1. 当前 A/B 是单 seed dirty/development 性能证据。仍需 clean/frozen、长时、多 seed、对称和非对称
+   M 对 N 输入及硬件信息，才能形成正式容量与内存门限。
+2. main 审计证明快速路径尚未定义或实现。独立 D6 继续重验全部记录；未来证明必须绑定文件 SHA、
+   schema、真值策略版本和验证者，不能由裸布尔值替代。
+3. 完整 JSON 解码和 D1/D2 双侧规范摘要仍是主要 CPU 成本。任何后续优化都必须保留真值扫描与来源
+   复算，不能用性能理由降低失败关闭等级。
+4. 本项不关闭 AirSim、实时控制、规划质量、五米物理效果或因果识别 GAP。
+
+当前没有由本次优化引入的 P0。`AIRSIM_INTEGRATION_PLAN.md` 已检查；无 producer 或 runtime 接口变化。
+
 ## 2026-07-22 Scalable 3D sidecar 误发现 GAP 状态
 
 ### 已关闭的 D6-owned P0

@@ -1,5 +1,25 @@
 # D6 系统评估指标综述及子方案
 
+## 2026-07-22 runtime outcome join 性能与安全复核
+
+本轮选择默认严格路径优化，没有接受“main 已检查”的无结构声明。在线文件仍从带外 SHA 开始逐条
+解码；禁用真值 key 在 JSON object hook 中与 duplicate key 同时检查，随后才执行主题过滤。因此优化
+删除的是第二次 Python 对象树递归，不是安全审计。Unicode 转义 key 经过标准 decoder 还原后仍命中。
+
+留存面缩小到联接真实依赖的五类主题。D1/D2 只保留规范整行摘要并与 filtered source 双侧重算；
+D3/D7/ACK 继续保留完整载荷以核验 source sequence、payload SHA、binding、authority 和执行状态。
+D2 evaluation 仍先完成 source hash、lineage、帧顺序和帧内唯一性检查，之后的只读航迹索引仅消除
+594 个窗口对同一 mapping 列表的重复扫描。
+
+固定 3380 条、63,014,782 B、200v200/2.2 s/seed 42000 development 输入上，`8f86192` 与 candidate
+返回 mapping 完全一致。总评估三次均值从 5.302515 s 降到 2.901966 s；在线加载从 2.777838 s 降到
+1.506296 s；窗口从 0.451765 s 降到 0.028150 s。业务 JSON、漂亮打印 JSON 和 Markdown 摘要均不变。
+专项 25 项和 D6 全量 530 项通过，真值注入和 D2 filtered-source 偏离负例均失败关闭。
+
+复核结论是 D6-owned 离线重复解析/扫描 P1 已关闭，证据边界未升级。该批不是 clean formal 容量测试，
+也不评价 AirSim、控制实时性或物理效果。下一优先级是正式长时多 seed 容量门限；若 main 后续确需
+跨进程快速路径，必须先给出绑定源 SHA 与真值策略版本的可审计证明合同，独立入口仍默认重验。
+
 ## 2026-07-22 Scalable 3D 批次发现评审
 
 批次根目录不是 episode 身份依据。主 episode 内的离线一致性、身份评估和真值隔离制品各自带有

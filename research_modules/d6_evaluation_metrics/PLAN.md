@@ -1,5 +1,40 @@
 # D6 Evaluation Metrics Plan
 
+## 2026-07-22 runtime plan outcome join 离线性能闭环
+
+### 已完成
+
+- [x] 在线 JSONL 改为单次流式解码；唯一 key、非有限数、精确 envelope、sequence 和 truth-like key
+  仍对全部记录失败关闭，且真值键检查与对象构造合并。
+- [x] 仅保留 D1/D2/D3/D7/assignment ACK 联接证据。D1/D2 改存规范整行 SHA，过滤源逐条重算，
+  不降低 sequence/payload 绑定强度。
+- [x] D2 identity 在原逐帧合同校验后建立一次 `global_track_id` 索引，消除每个绑定窗重扫同一不可变
+  frames/mappings 子树，窗口 freshness、歧义和 availability 语义不变。
+- [x] 增加 `8f86192` baseline 业务哈希回归，以及被过滤主题中 Unicode 转义 `ground-truth` 的负向测试。
+- [x] 保持报告 schema、漂亮打印 JSON、中文 Markdown、admission、contract/control/physical 分层和
+  output hash 语义不变；没有添加调用方布尔跳过参数。
+
+### 固定输入验证
+
+2026-07-22 使用 200 对 200、2.2 s、seed 42000 的 development coalesced 制品，input spec SHA-256
+为 `1e41bc47...c2c24a`。在线操作数为 63,014,782 B/3380 条，真值检查 3380 条，保留 130 条，
+D1/D2 摘要 95 条、D3/D7/ACK 完整载荷 35 条；结果为 3 ACK/594 binding windows。
+
+同进程各 3 次均值：evaluate `5.302515 -> 2.901966 s`，online load
+`2.777838 -> 1.506296 s`，D2 identity `1.544734 -> 0.866780 s`，binding windows
+`0.451765 -> 0.028150 s`。业务 SHA `7325b468...cec0a7`、JSON SHA `10db5198...58d3` 和
+Markdown SHA `97a364f1...5d76` 前后相同。专项 `25 passed`，D6 全量 `530 passed, 1 warning`。
+
+### 仍开放的 P1
+
+1. 在 clean/frozen 的长时、多 seed、20/50/100/200 与非对称 M 对 N 输入上建立正式 wall/RSS 门限；
+   本轮单 seed development A/B 不能作为部署容量验收。
+2. 若 main 需要跨进程复用真值检查，先定义带 schema、源文件 SHA、禁用键策略版本和验证者身份的审计
+   证明，再增加失败关闭快速路径；不得用裸布尔值跳过。当前未实现，独立入口始终重验。
+3. 继续优化完整 JSON 解码和规范摘要只能保持严格等价；不得删去 D2 来源复算或在线真值检查。
+4. 本次不改变 AirSim producer、episode 编排、控制状态或物理证据。`AIRSIM_INTEGRATION_PLAN.md` 已检查，
+   无需修改。
+
 ## 2026-07-22 Scalable 3D 批次根发现闭环
 
 ### 已完成

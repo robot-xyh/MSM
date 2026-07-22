@@ -1,5 +1,55 @@
 # D6 系统级评估指标实验报告
 
+## 2.19 2026-07-22 runtime plan outcome join 严格等价性能验证
+
+### 场景与验收
+
+固定输入来自 `point_mass_integrated_observation_smoke_20260722_development_coalesced` 的 nominal
+200v200/seed 42000 episode，世界时长 2.2 s。input spec SHA-256 为
+`1e41bc47e2ea0215674285e770054c45f52c32405c8e9566631a21d9ebc2c24a`，在线 JSONL 为
+63,014,782 B/3380 条。报告含 3 条 runtime assignment ACK 和 594 个绑定窗。
+
+验收要求为：candidate 与 `8f86192` baseline 的报告 mapping 完全相等；业务 JSON 和既有漂亮打印
+JSON/Markdown 摘要不变；非联接主题中的转义真值键仍失败关闭；独立入口不得通过调用方布尔值跳过
+检查；admission、availability、contract/control/physical 分层和正式 reward 空值不变。
+
+### 固定操作数
+
+3380 条在线记录全部完成 JSON、唯一键、数值、envelope、sequence 和真值键审计。仅 130 条进入
+后续索引：D1 86、D2 9、D3 3、D7 29、main ACK 3。D1/D2 的 95 条记录只保存规范整行摘要；其余
+3250 条在校验后释放。D2 identity 为 9 帧、1799 条 mapping、202 个唯一中心航迹。旧路径对 594 个
+窗口最多形成 1,068,606 次全表 mapping 访问；candidate 只建一次 1799 条索引，再访问各航迹候选。
+
+### 结果
+
+baseline/candidate 在同一 Python 3.12 进程内交替运行，各 3 次，表中为 `perf_counter` 均值：
+
+| 阶段 | baseline/s | candidate/s | 降幅 |
+| --- | ---: | ---: | ---: |
+| 总 evaluate | 5.302515 | 2.901966 | 45.27% |
+| 在线流加载与审计 | 2.777838 | 1.506296 | 45.77% |
+| D2 身份与来源校验 | 1.544734 | 0.866780 | 43.89% |
+| 绑定窗构建 | 0.451765 | 0.028150 | 93.77% |
+
+candidate cProfile 为 evaluate 3.651 s、online load 2.473 s、binding windows 0.051 s；递归
+`_assert_truth_free` 不再出现。两个独立新进程的单次 `/usr/bin/time` 为 baseline
+5.03 s/289,716 KiB、candidate 2.58 s/142,000 KiB。RSS 和单次进程墙钟只描述本机开发环境。
+
+baseline/candidate mapping 全等，规范业务 JSON SHA-256 同为
+`7325b46857163ed692b13ae84d83834dae1282c07ac554839fd7575d7dcec0a7`。candidate 实际写盘的
+JSON/Markdown SHA-256 为 `10db519870924a221ff2b197519dea0c4514195843425876f56dc1612b4158d3` /
+`97a364f1e347b829c0fe3375244a5026fc31c3a1f331526b4669d254cc255d76`，与已有 baseline 文件一致。
+
+### 安全负例、测试与边界
+
+新增负例把 `ground\u002dtruth` 放入后续不会保留的 `runtime.camera_command_ack`，candidate 仍返回
+`online_truth_field_present`。基线业务哈希测试对临时路径做逻辑名归一化后固定为
+`800c90c1...34adaa`。专项 `25 passed`，D6 全量 `530 passed, 1 warning`。
+
+该输入是单 seed development 制品，不形成 clean/formal 容量门限，不评价 AirSim、实时部署、规划
+质量或五米物理效果。尚未实现 main 审计证明快速路径；独立 D6 入口仍逐条重验。剩余 P1 是长时多
+seed 正式容量、跨硬件门限，以及在不放宽真值隔离和 D2 来源摘要复算前提下继续降低 JSON/规范编码成本。
+
 ## 2.18 2026-07-22 批次根发现修复验证
 
 ### 场景

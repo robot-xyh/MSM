@@ -1,5 +1,51 @@
 # D6 Evaluation Metrics
 
+## 2026-07-22 runtime plan outcome join 严格等价性能优化
+
+`runtime_plan_outcome_join.py` 现逐行解析完整在线 JSONL。每条记录仍校验唯一 JSON key、有限数、
+envelope 精确字段、严格递增 sequence 和全部层级的 truth-like key；禁用键检查融合到 JSON
+`object_pairs_hook`，不再在解码后递归遍历同一对象树。过滤发生在完整解析与真值检查之后，因此即使
+`runtime.camera_command_ack` 等非联接主题包含 Unicode 转义的 `ground-truth`，独立 D6 入口也会以
+`online_truth_field_present` 失败关闭。实现没有调用方布尔跳过开关，也没有仅凭“main 已检查”绕过
+真值隔离。
+
+D6 只长期保留后续合同实际需要的 D1 fused tracks、D2 associated tracks、D3 assignment、D7 guidance
+和 main assignment ACK。D1/D2 在线记录在解码后保存规范整行 SHA-256，并立即释放大载荷；离线 D2
+过滤源仍逐条重算规范摘要后比对。D2 identity 完成原有逐帧类型、顺序和重复航迹校验后，只建立一次
+`global_track_id -> [(frame_time, mapping)]` 只读索引，所有窗口继续使用原有 freshness、availability、
+歧义和时间边界公式。
+
+固定 A/B 输入为 development 制品
+`point_mass_integrated_observation_smoke_20260722_development_coalesced/nominal/200v200/seed_42000`，
+input spec SHA-256 为 `1e41bc47e2ea0215674285e770054c45f52c32405c8e9566631a21d9ebc2c24a`。
+场景为 200 对 200、2.2 s、seed 42000；在线文件为 63,014,782 B、3380 条 envelope，全部 3380 条
+执行真值检查，仅 130 条保留，其中 95 条 D1/D2 只保留规范摘要、35 条 D3/D7/ACK 保留载荷；输出
+包含 3 条 ACK 和 594 个绑定窗。`8f86192` baseline 与 candidate 在同一 Python 3.12 进程内交替运行
+3 次，`perf_counter` 阶段均值如下：
+
+| 阶段 | baseline/s | candidate/s | 降幅 |
+| --- | ---: | ---: | ---: |
+| `evaluate_runtime_plan_outcomes` | 5.302515 | 2.901966 | 45.27% |
+| `_load_online_envelopes` | 2.777838 | 1.506296 | 45.77% |
+| `_load_and_validate_d2_identity` | 1.544734 | 0.866780 | 43.89% |
+| `_build_binding_windows` | 0.451765 | 0.028150 | 93.77% |
+
+candidate cProfile 的 evaluate/online-load 为 3.651/2.473 s；旧递归 truth guard 已消失。两个独立
+新进程的单次 `/usr/bin/time` 结果为 baseline 5.03 s、289,716 KiB，candidate 2.58 s、142,000 KiB；
+该单次 RSS/进程墙钟只作本机开发期描述，不是部署门限。
+
+两版报告 mapping 完全相等。规范业务 JSON SHA-256 同为
+`7325b46857163ed692b13ae84d83834dae1282c07ac554839fd7575d7dcec0a7`；漂亮打印 JSON 与中文
+Markdown 文件 SHA-256 分别保持
+`10db519870924a221ff2b197519dea0c4514195843425876f56dc1612b4158d3` 和
+`97a364f1e347b829c0fe3375244a5026fc31c3a1f331526b4669d254cc255d76`。admission、availability、
+contract/control/physical 分层、正式 reward/counterfactual/causal 空值及规则回退均未改变。
+专项 `25 passed`，D6 全量 `530 passed, 1 warning`；warning 仍为本机 Matplotlib `Axes3D` 环境问题。
+
+剩余 P1 是对长时、多 seed、clean/frozen 输入建立正式容量门限，以及在确有跨进程复用需求时设计
+版本化、绑定源文件 SHA 和真值策略版本的 main 审计证明。该证明尚未实现；独立 D6 文件入口继续默认
+重验每条在线记录。当前主要剩余 CPU 热点是完整 JSON 解码和 D1/D2 规范摘要，不能通过放宽隔离删除。
+
 ## 2026-07-22 Scalable 3D 批次根发现修复
 
 `run_scalable_3d_offline_evaluation.py --episode-root` 递归扫描批次目录时，原实现只检查
