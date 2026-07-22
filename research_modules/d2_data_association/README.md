@@ -506,3 +506,50 @@ truth、37 目标动态规模、schema/hash/在线 truth 隔离、六维 source 
 接线、AirSim/point-mass 正式多 seed 身份性能仍开放。当前 main producer 会跳过无
 source lineage 的 D2 track/frame；在其按完整 D2 frame 集合持久化 available/unavailable
 evidence 前，不能把现有接线写成端到端 identity metrics 已可用。
+
+## 2026-07-22 陈旧后验重放治理
+
+active-risk 5v5、seed 1005 暴露出一条独立于空间近邻的重复航迹路径。D1 的一条预测型
+后验在没有新传感器观测时仍按当前状态时刻发布，但 `latest_observation_id` 长时间保持
+为 `radar-s000002-d0003`。旧 D2 只看每帧重新生成的 detection ID，把同一底层观测
+重复计为新命中，最终令 `GT3D-000004` 和 `GT3D-000006` 同时 confirmed。两条航迹
+相距约 1.5--1.6 km，不能用宽距离门强行合并。
+
+`Scalable3DTracker` 现已在 GNN/Hungarian 前增加在线观测新鲜度治理：
+
+- 以 `latest_sensor_id + latest_observation_id` 形成不解析内容的 opaque evidence key；
+- 同一 key 跨帧再次出现时从关联输入中隔离，不参与状态更新、命中计数或确认；
+- 同一 key 携带冲突的源量测时间时 fail closed，并输出时间冲突审计；
+- tentative 航迹连续两帧没有新证据后删除，第一次漏配只重置连续命中，保留短时重获；
+- 航迹合并只允许共享 observation/source 证据、六维位置和速度统计门均通过、且双方
+  没有在同帧同时获得新证据。survivor 依次按生命周期成熟度、创建时间、命中数和
+  `global_track_id` 选择；状态使用协方差交叉融合，不累加重复命中。
+
+真实复现命令：
+
+```bash
+PYTHONPATH=research_modules/d2_data_association \
+python3 research_modules/d2_data_association/scripts/reproduce_active_risk_seed_1005.py
+```
+
+2026-07-22 的 2.2 s 单 seed 结果为：10 个 D2 发布帧，航迹数
+`5,6,6,5,5,5,5,5,5,5`；隔离陈旧后验 9 次、tentative 陈旧删除 1 次、统计合并 0 次，
+最终保留 `GT3D-000001` 至 `GT3D-000005`，`GT3D-000006` 被删除，在线真值使用为 0。
+5 个合成专项覆盖重复确认、seed 1005 等价短时重生、近邻独立目标、协方差合并边界和
+异步新证据；真实 seed 专项 1 个。完整 D2 回归为 `168 passed, 1 warning in 26.15s`，
+warning 仍为本机 Matplotlib `Axes3D` 环境问题。
+
+main 于 2026-07-22 在脏工作树完成 development 20-seed active-risk 集成复跑。运行时
+总线已持久化 `d2-observation-evidence-governance-v1`，包括 fresh/replay、timestamp
+conflict、coalescence、suppressed births 和 tentative stale drop 的逐帧/累计证据。
+D6 的 plan consumption、guidance lineage、physical window、D4 adoption、paired
+physical effect、paired non-degradation 和 degraded comparison 均为 20/20 available；
+D4 adoption 合计 188/188，control/treatment 各生成并应用 1960 条命令。seed 1005 的
+离线身份恢复为 GT1-GT5 五条唯一映射，online truth use 0。
+
+上述结果关闭“main bus 尚未持久化”和“active-risk 20-seed development 复跑尚未执行”
+两项集成缺口。它不是 clean formal run，不能覆盖历史正式证据，也不能声明因果、反事实、
+production runtime ACK、AirSim 标定或 200v200 完整验收。长 episode observation claim
+容量、近邻目标误抑制/误合并率、整帧 OOSM adapter 和真实 AirSim 阈值标定仍开放。
+在线 `id_switch_count` 继续显式为 `None/unavailable`，不得用 truth-free 计数替代离线
+身份评分。

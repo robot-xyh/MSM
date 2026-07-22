@@ -459,3 +459,82 @@ availability 和 main/D6 公共 artifact 的 D2-owned 合同缺口；不能声�
 IDSW 性能、多 seed continuity、门限收益或实时性。main producer 当前会跳过无 lineage
 的 D2 track/frame，尚不满足完整 evidence 集合合同；修正后仍需使用独立 sidecar 生成
 正式 episode artifact。
+
+## 17. active-risk seed 1005 陈旧观测重放治理（2026-07-22）
+
+### 17.1 现象与根因
+
+专项使用 scalable 3D 质点场景 `active_risk`、seed 1005、5 个目标和 2.2 s 短时回放。
+旧路径在 `t=0.247 s` 建立 5 条 tentative 航迹；`t=0.439 s` 时原 GT4 未匹配，D1 的
+第 4 条后验触发 GT6。此后 GT4 持续接收新的雷达观测，GT6 却反复携带同一个
+`latest_observation_id=radar-s000002-d0003`。GT6 的状态有效时刻随帧更新，但底层量测
+谱系没有变化。旧 D2 将每帧包装出的新 detection ID 计为新命中，因而把陈旧后验确认成
+第二条全局航迹。
+
+GT4 与 GT6 相距约 1.5--1.6 km。二者不满足合理的统计近距合并条件。本次治理在关联前
+使用传感器命名空间与不透明 `latest_observation_id` 组成在线证据键。同一证据只能贡献
+一次关联和一次命中；重复证据进入 quarantine，不参与 KD-tree、Hungarian、状态更新或
+确认计数。证据键不解析目标序号，也不读取仿真 truth、actor ID 或 object name。
+
+### 17.2 生命周期与重复合并边界
+
+tentative 航迹首次缺少新证据时保留，连续第二次缺少新证据时删除。该规则允许 GT4 在
+短时漏配后被新的雷达观测重获，同时使只依靠陈旧后验维持的 GT6 退出。重复航迹合并仅在
+共享在线观测谱系或带命名空间的 source-track 谱系、且位置和速度三维马氏门同时通过时
+启用；同帧双方都有新证据时禁止合并。survivor 按航迹成熟度、创建时间、命中数、漏失数
+和 ID 顺序确定，保留原 `global_track_id`。本 seed 没有触发合并，GT6 通过 tentative
+生命周期删除。
+
+### 17.3 结果
+
+| 项目 | 结果 |
+| --- | --- |
+| 10 个 D2 发布帧的活动航迹数 | `5, 6, 6, 5, 5, 5, 5, 5, 5, 5` |
+| 最终活动航迹 | `GT3D-000001` 至 `GT3D-000005` |
+| replay quarantine | 9 次 |
+| tentative stale drop | 1 次 |
+| duplicate coalescence | 0 次 |
+| 在线 truth 使用 | 0 次 |
+| 专项回归 | 6 个通过 |
+| D2 完整回归 | `168 passed, 1 warning in 26.15s` |
+
+warning 是既有 Matplotlib `Axes3D` 环境提示，不影响关联结果。在线
+`id_switch_count` 继续显式输出 `None + unavailable`，没有用缺失 truth 伪造零值。
+
+### 17.4 限制
+
+本批关闭的是 seed 1005 暴露出的 D2-owned 陈旧观测重复确认缺口。证据来自一个质点
+seed，不是 AirSim、200 对 200 或物理拦截结论。观测 claim 当前按 episode 保存且不
+淘汰；长时 200 目标运行的内存占用、合并门的 false suppression/recall 和显式整帧
+OOSM adapter 仍待验证。
+
+### 17.5 development 20-seed 集成复跑
+
+main 于 2026-07-22 在脏工作树运行 `/tmp/msm_active_risk_d2_fix_20260722/`。场景为
+active-risk seeds 1000--1019，共 20 对隔离的 control/treatment 质点 episode，每个
+episode 1.0 s。该批用于检查修复后的运行时证据链，不是 clean formal benchmark。
+
+| 验收项 | 结果 |
+| --- | --- |
+| plan consumption availability | 20/20 |
+| guidance lineage availability | 20/20 |
+| physical window availability | 20/20 |
+| D4 degraded adoption availability | 20/20 |
+| paired physical effect availability | 20/20 |
+| paired non-degradation availability | 20/20 |
+| degraded paired comparison availability | 20/20 |
+| D4 adoption | control 94 + treatment 94 = 188/188 |
+| 控制命令 | control 1960，treatment 1960，held 0 |
+| seed 1005 离线身份 | GT1-GT5 五条 `unique_lineage_verified` |
+| 在线 truth / global ID 改写 | 0 / 0 |
+
+总线已持久化 `d2-observation-evidence-governance-v1`，包含 fresh/replay、timestamp
+conflict、coalescence、suppressed births 和 tentative stale drop 的逐帧/累计字段。D6
+报告的 control/treatment 平均最近距离相同，物理差值为 0；paired non-degradation 为
+20/20。counterfactual 和 causal availability 均为 0/20，production runtime ACK 未评估。
+因此该批只证明开发期接线、可用性和非退化记录完整，不证明因果收益或生产运行能力。
+
+main 同批回归记录 D2 `168 passed, 1 warning`、scalable `110 passed`，其余 D1、D3-D7
+也全部通过。本次 D2 文档同步未修改代码，未重复执行测试。下一步仍是 clean formal
+rerun、长时 claim 容量和近邻误抑制/误合并率测量，以及真实 AirSim OOSM/遮挡/杂波
+分档标定；不得把本批结果写成 200v200 完整验收。

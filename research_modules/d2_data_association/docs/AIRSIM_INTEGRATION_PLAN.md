@@ -275,3 +275,36 @@ retain them as unavailable/unassigned evidence before the producer wiring meets
 this contract. Real AirSim-derived artifacts and formal multi-seed identity
 performance remain open; the default GNN/Hungarian, gates, and control path are
 unchanged.
+
+## 2026-07-22 陈旧观测重放治理接入要求
+
+active-risk seed 1005 质点回放确认：D1 可在连续状态发布中重复携带同一底层
+`latest_observation_id`。D2 现以 `latest_sensor_id + latest_observation_id` 作为不透明
+在线证据键，在关联前隔离已消费证据。该键只用于新鲜度治理，不能解析目标序号，也不能
+包含 AirSim actor/object identity。
+
+真实 AirSim runtime 进入 D2 前应保留下列字段：
+
+- D1 后验的状态有效时刻；
+- `arrival_timestamp`；
+- 底层观测的 `measurement_timestamp`；
+- `latest_observation_id`；
+- 稳定且带命名空间的 sensor/source node 标识；
+- replay generation（若上游显式提供）。
+
+D1 predict-only 发布不得伪造新的 observation ID。相同证据键对应不同底层量测时间时，
+D2 按 timestamp conflict 隔离，不进行状态更新。D2 对每帧输出 replay quarantine、claim、
+tentative stale drop 和受约束 coalescence 审计。main 已在开发期总线上将这些字段以
+`d2-observation-evidence-governance-v1` 原样持久化，包括 fresh/replay、timestamp
+conflict、coalescence、suppressed births 和 tentative stale drop 的累计值。
+
+2026-07-22 的专项采用 point-mass seed 1005，不启动 Blocks。最终 10 帧活动航迹数为
+`5,6,6,5,5,5,5,5,5,5`，quarantine 9 次、tentative stale drop 1 次、在线 truth 使用
+0 次；完整 D2 回归为 `168 passed, 1 warning in 26.15s`。随后完成的脏工作树
+development 20-seed active-risk 运行中，D6 七类 availability 均为 20/20，D4 adoption
+188/188，seed 1005 离线恢复 GT1-GT5 五条唯一映射且在线 truth 使用仍为 0。这关闭了
+开发期 main/D6 接线验证，不是 AirSim 验收结论。
+
+真实 AirSim 仍需验证相机/雷达适配后的 observation ID 稳定性、时钟误差、整帧 OOSM、
+遮挡/杂波和距离分档门限。clean formal run、长时 claim 容量及误抑制率也未完成；当前
+development 产物不得覆盖历史正式证据或解释为 200v200 完整验收。

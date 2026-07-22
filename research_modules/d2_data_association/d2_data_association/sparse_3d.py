@@ -43,6 +43,28 @@ class _SparseEdge:
     velocity_cost_gated: bool
 
 
+@dataclass(frozen=True, slots=True)
+class _ObservationEvidence:
+    """Opaque online observation identity used only for replay governance."""
+
+    key: str
+    observation_id: str
+    source_namespace: str
+    source_measurement_timestamp: float | None
+
+
+@dataclass(slots=True)
+class _ObservationClaim:
+    """First-consumption record for one D1 observation lineage token."""
+
+    evidence: _ObservationEvidence
+    first_detection_id: str
+    first_state_timestamp: float
+    global_track_id: str | None = None
+    replay_count: int = 0
+    last_replay_state_timestamp: float | None = None
+
+
 @dataclass(slots=True)
 class Sparse3DGNNHungarianAssociator:
     """Global nearest-neighbor association on a KD-tree candidate graph.
@@ -391,7 +413,15 @@ class Scalable3DTracker:
     engageable_hits: int = 4
     lost_miss_threshold: int = 2
     drop_miss_threshold: int = 5
+    tentative_drop_miss_threshold: int = 2
     engageable_position_covariance_trace: float = 30.0
+    duplicate_coalescence_position_gate_threshold: float = (
+        CHI2_GATE_3D_99_PERCENT
+    )
+    duplicate_coalescence_velocity_gate_threshold: float = (
+        CHI2_GATE_3D_99_PERCENT
+    )
+    observation_timestamp_tolerance_s: float = 1.0e-6
     create_tracks_from_unmatched_detections: bool = True
     track_history_limit: int = 32
     frame_log_limit: int = 256
@@ -400,6 +430,12 @@ class Scalable3DTracker:
     _next_track_number: int = field(default=1, init=False)
     _last_timestamp: float | None = field(default=None, init=False)
     _source_bindings: dict[str, str] = field(default_factory=dict, init=False)
+    _observation_claims: dict[str, _ObservationClaim] = field(
+        default_factory=dict, init=False
+    )
+    _track_observation_keys: dict[str, set[str]] = field(
+        default_factory=lambda: defaultdict(set), init=False
+    )
     _frame_logs: deque[dict[str, Any]] = field(init=False)
     _runtime_seconds: deque[float] = field(init=False)
     _frame_count: int = field(default=0, init=False)
@@ -412,6 +448,10 @@ class Scalable3DTracker:
         default_factory=Counter, init=False
     )
     _velocity_innovation_gate_count: int = field(default=0, init=False)
+    _replay_quarantine_count: int = field(default=0, init=False)
+    _observation_timestamp_conflict_count: int = field(default=0, init=False)
+    _duplicate_coalescence_count: int = field(default=0, init=False)
+    _tentative_stale_drop_count: int = field(default=0, init=False)
     _latest_risk_summary: AssociationRiskSummary | None = field(
         default=None, init=False
     )
@@ -437,10 +477,25 @@ class Scalable3DTracker:
                 "velocity_innovation_gate_threshold must be positive and finite"
             )
         for name in (
+            "duplicate_coalescence_position_gate_threshold",
+            "duplicate_coalescence_velocity_gate_threshold",
+        ):
+            value = float(getattr(self, name))
+            if not np.isfinite(value) or value <= 0.0:
+                raise ValueError(f"{name} must be positive and finite")
+        if (
+            not np.isfinite(self.observation_timestamp_tolerance_s)
+            or self.observation_timestamp_tolerance_s < 0.0
+        ):
+            raise ValueError(
+                "observation_timestamp_tolerance_s must be finite and non-negative"
+            )
+        for name in (
             "confirmation_hits",
             "engageable_hits",
             "lost_miss_threshold",
             "drop_miss_threshold",
+            "tentative_drop_miss_threshold",
             "track_history_limit",
             "frame_log_limit",
         ):
@@ -484,13 +539,19 @@ class Scalable3DTracker:
         if self._last_timestamp is not None and timestamp + 1.0e-12 < self._last_timestamp:
             raise ValueError("out-of-sequence scans require an explicit OOSM adapter")
 
+        (
+            fresh_detections,
+            replay_quarantine_events,
+            observation_evidence_by_detection,
+        ) = self._partition_observation_freshness(detection_list, timestamp)
+
         self.predict_all(timestamp)
         result = self.associator.associate(
             self.active_tracks(),
-            detection_list,
+            fresh_detections,
             timestamp,
         )
-        detections_by_id = {item.detection_id: item for item in detection_list}
+        detections_by_id = {item.detection_id: item for item in fresh_detections}
         detection_to_track: dict[str, str] = {}
         source_binding_conflicts: list[dict[str, str]] = []
         state_update_diagnostics: list[dict[str, Any]] = []
@@ -521,6 +582,35 @@ class Scalable3DTracker:
                 if conflict is not None:
                     source_binding_conflicts.append(conflict)
 
+        for detection_id, track_id in detection_to_track.items():
+            evidence = observation_evidence_by_detection.get(detection_id)
+            if evidence is not None:
+                self._assign_observation_claim(evidence, track_id)
+
+        updated_track_ids = set(detection_to_track.values())
+        coalescence_events, track_aliases = self._coalesce_duplicate_tracks(
+            timestamp,
+            updated_track_ids=updated_track_ids,
+        )
+        suppressed_births_by_detection: dict[str, str] = {}
+        if track_aliases:
+            def resolved_track_id(track_id: str) -> str:
+                while track_id in track_aliases:
+                    track_id = track_aliases[track_id]
+                return track_id
+
+            detection_to_track = {
+                detection_id: resolved_track_id(track_id)
+                for detection_id, track_id in detection_to_track.items()
+            }
+            for detection_id, track_id in tuple(
+                created_track_ids_by_detection.items()
+            ):
+                survivor_id = track_aliases.get(track_id)
+                if survivor_id is not None:
+                    suppressed_births_by_detection[detection_id] = track_id
+                    created_track_ids_by_detection.pop(detection_id)
+
         self._refresh_track_quality(result, set(created_track_ids_by_detection.values()))
         update_mode_counts = Counter(
             str(item["mode"]) for item in state_update_diagnostics
@@ -535,8 +625,31 @@ class Scalable3DTracker:
         result.metadata.update(
             {
                 "detection_to_track": dict(sorted(detection_to_track.items())),
+                "input_detection_count": len(detection_list),
+                "fresh_detection_count": len(fresh_detections),
+                "observation_freshness_available_count": (
+                    len(observation_evidence_by_detection)
+                    + len(replay_quarantine_events)
+                ),
+                "observation_freshness_unavailable_count": (
+                    len(detection_list)
+                    - len(observation_evidence_by_detection)
+                    - len(replay_quarantine_events)
+                ),
+                "replay_quarantined_detection_count": len(
+                    replay_quarantine_events
+                ),
+                "replay_quarantine_events": replay_quarantine_events,
                 "created_track_ids_by_detection": dict(
                     sorted(created_track_ids_by_detection.items())
+                ),
+                "suppressed_births_by_detection": dict(
+                    sorted(suppressed_births_by_detection.items())
+                ),
+                "duplicate_coalescence_count": len(coalescence_events),
+                "duplicate_coalescence_events": coalescence_events,
+                "duplicate_survivor_policy": (
+                    "lifecycle_maturity_then_oldest_creation_then_hits_then_id"
                 ),
                 "source_track_bindings": dict(sorted(self._source_bindings.items())),
                 "source_binding_conflicts": source_binding_conflicts,
@@ -544,6 +657,9 @@ class Scalable3DTracker:
                 "tracker_runtime_seconds": tracker_runtime,
                 "track_history_limit": self.track_history_limit,
                 "frame_log_limit": self.frame_log_limit,
+                "tentative_drop_miss_threshold": (
+                    self.tentative_drop_miss_threshold
+                ),
                 "global_track_id_owner": "D2_center",
                 "state_update_mode_counts": dict(sorted(update_mode_counts.items())),
                 "velocity_innovation_gate_count": velocity_gate_count,
@@ -590,6 +706,10 @@ class Scalable3DTracker:
                 {
                     "active_track_count": len(self.active_tracks()),
                     "created_track_count": len(created_track_ids_by_detection),
+                    "replay_quarantined_detection_count": len(
+                        replay_quarantine_events
+                    ),
+                    "duplicate_coalescence_count": len(coalescence_events),
                     "source_binding_conflict_count": len(source_binding_conflicts),
                     "global_track_id_owner": "D2_center",
                     "state_update_mode_counts": dict(
@@ -614,6 +734,10 @@ class Scalable3DTracker:
                 "timestamp": timestamp,
                 "matched_count": len(result.matched_pairs),
                 "created_track_count": len(created_track_ids_by_detection),
+                "replay_quarantined_detection_count": len(
+                    replay_quarantine_events
+                ),
+                "duplicate_coalescence_count": len(coalescence_events),
                 "unmatched_track_count": len(result.unmatched_track_ids),
                 "candidate_edge_count": int(result.metadata["candidate_edge_count"]),
                 "dense_pair_count": int(result.metadata["dense_pair_count"]),
@@ -656,6 +780,23 @@ class Scalable3DTracker:
             "birth_count": self._birth_count,
             "lost_count": self._lost_count,
             "drop_count": self._drop_count,
+            "tentative_stale_drop_count": self._tentative_stale_drop_count,
+            "replay_quarantine_count": self._replay_quarantine_count,
+            "observation_timestamp_conflict_count": (
+                self._observation_timestamp_conflict_count
+            ),
+            "observation_claim_count": len(self._observation_claims),
+            "duplicate_coalescence_count": self._duplicate_coalescence_count,
+            "tentative_drop_miss_threshold": self.tentative_drop_miss_threshold,
+            "duplicate_coalescence_position_gate_threshold": (
+                self.duplicate_coalescence_position_gate_threshold
+            ),
+            "duplicate_coalescence_velocity_gate_threshold": (
+                self.duplicate_coalescence_velocity_gate_threshold
+            ),
+            "duplicate_survivor_policy": (
+                "lifecycle_maturity_then_oldest_creation_then_hits_then_id"
+            ),
             "id_switch_count": None,
             "id_switch_count_available": False,
             "id_switch_count_reason": "offline_truth_evaluator_required",
@@ -866,7 +1007,11 @@ class Scalable3DTracker:
         track.misses += 1
         track.consecutive_hits = 0
         track.identity_confidence = max(0.0, track.identity_confidence - 0.20)
-        if track.misses >= self.drop_miss_threshold:
+        tentative_stale_drop = bool(
+            old_state == TrackLifecycleState.TENTATIVE
+            and track.misses >= self.tentative_drop_miss_threshold
+        )
+        if tentative_stale_drop or track.misses >= self.drop_miss_threshold:
             track.lifecycle_state = TrackLifecycleState.DROPPED
         elif track.misses >= self.lost_miss_threshold:
             track.lifecycle_state = TrackLifecycleState.LOST
@@ -875,9 +1020,354 @@ class Scalable3DTracker:
             self._lost_count += 1
         if old_state != TrackLifecycleState.DROPPED and track.lifecycle_state == TrackLifecycleState.DROPPED:
             self._drop_count += 1
+            if tentative_stale_drop:
+                self._tentative_stale_drop_count += 1
             for source_key in tuple(track.source_track_keys):
                 if self._source_bindings.get(source_key) == track.global_track_id:
                     self._source_bindings.pop(source_key, None)
+
+    def _partition_observation_freshness(
+        self,
+        detections: list[Detection3D],
+        timestamp: float,
+    ) -> tuple[
+        list[Detection3D],
+        list[dict[str, Any]],
+        dict[str, _ObservationEvidence],
+    ]:
+        """Remove repeated D1 posterior evidence before association and hits."""
+
+        without_evidence: list[Detection3D] = []
+        grouped: dict[str, list[tuple[Detection3D, _ObservationEvidence]]] = (
+            defaultdict(list)
+        )
+        for detection in detections:
+            evidence = self._observation_evidence(detection)
+            if evidence is None:
+                without_evidence.append(detection)
+            else:
+                grouped[evidence.key].append((detection, evidence))
+
+        accepted = list(without_evidence)
+        evidence_by_detection: dict[str, _ObservationEvidence] = {}
+        events: list[dict[str, Any]] = []
+        for evidence_key in sorted(grouped):
+            candidates = sorted(
+                grouped[evidence_key],
+                key=lambda item: (
+                    float(np.trace(item[0].covariance)),
+                    -float(item[0].confidence),
+                    item[0].detection_id,
+                ),
+            )
+            existing = self._observation_claims.get(evidence_key)
+            if existing is not None:
+                for detection, evidence in candidates:
+                    reason = self._replay_reason(existing.evidence, evidence)
+                    existing.replay_count += 1
+                    existing.last_replay_state_timestamp = float(timestamp)
+                    self._replay_quarantine_count += 1
+                    if reason == "observation_identity_timestamp_conflict":
+                        self._observation_timestamp_conflict_count += 1
+                    events.append(
+                        self._replay_quarantine_event(
+                            detection,
+                            evidence,
+                            existing,
+                            reason=reason,
+                        )
+                    )
+                continue
+
+            measurement_timestamps = {
+                item[1].source_measurement_timestamp for item in candidates
+            }
+            finite_timestamps = {
+                value for value in measurement_timestamps if value is not None
+            }
+            if len(finite_timestamps) > 1 and (
+                max(finite_timestamps) - min(finite_timestamps)
+                > self.observation_timestamp_tolerance_s
+            ):
+                first_detection, first_evidence = candidates[0]
+                claim = _ObservationClaim(
+                    evidence=first_evidence,
+                    first_detection_id=first_detection.detection_id,
+                    first_state_timestamp=float(timestamp),
+                )
+                self._observation_claims[evidence_key] = claim
+                for detection, evidence in candidates:
+                    claim.replay_count += 1
+                    claim.last_replay_state_timestamp = float(timestamp)
+                    self._replay_quarantine_count += 1
+                    self._observation_timestamp_conflict_count += 1
+                    events.append(
+                        self._replay_quarantine_event(
+                            detection,
+                            evidence,
+                            claim,
+                            reason="observation_identity_timestamp_conflict",
+                        )
+                    )
+                continue
+
+            winner, evidence = candidates[0]
+            accepted.append(winner)
+            evidence_by_detection[winner.detection_id] = evidence
+            claim = _ObservationClaim(
+                evidence=evidence,
+                first_detection_id=winner.detection_id,
+                first_state_timestamp=float(timestamp),
+            )
+            self._observation_claims[evidence_key] = claim
+            for detection, duplicate_evidence in candidates[1:]:
+                claim.replay_count += 1
+                claim.last_replay_state_timestamp = float(timestamp)
+                self._replay_quarantine_count += 1
+                events.append(
+                    self._replay_quarantine_event(
+                        detection,
+                        duplicate_evidence,
+                        claim,
+                        reason="duplicate_observation_within_scan",
+                    )
+                )
+
+        accepted.sort(key=lambda item: item.detection_id)
+        events.sort(key=lambda item: item["detection_id"])
+        return accepted, events, evidence_by_detection
+
+    def _observation_evidence(
+        self,
+        detection: Detection3D,
+    ) -> _ObservationEvidence | None:
+        metadata = detection.metadata
+        raw_observation_id = metadata.get(
+            "latest_observation_id",
+            metadata.get("observation_id"),
+        )
+        if raw_observation_id is None or not str(raw_observation_id).strip():
+            return None
+        observation_id = str(raw_observation_id).strip()
+        raw_namespace = metadata.get("latest_sensor_id")
+        if raw_namespace is None:
+            raw_namespace = detection.source_node_id
+        if raw_namespace is None:
+            nodes = metadata.get("source_node_ids")
+            if isinstance(nodes, (list, tuple, set)) and nodes:
+                raw_namespace = ",".join(sorted(str(item) for item in nodes))
+        source_namespace = (
+            "d1-online-observation"
+            if raw_namespace is None or not str(raw_namespace).strip()
+            else str(raw_namespace).strip()
+        )
+        raw_timestamp = metadata.get(
+            "source_measurement_timestamp",
+            metadata.get("latest_measurement_timestamp"),
+        )
+        source_timestamp: float | None = None
+        if raw_timestamp is not None:
+            candidate = float(raw_timestamp)
+            if np.isfinite(candidate) and candidate >= 0.0:
+                source_timestamp = candidate
+        return _ObservationEvidence(
+            key=f"{source_namespace}::{observation_id}",
+            observation_id=observation_id,
+            source_namespace=source_namespace,
+            source_measurement_timestamp=source_timestamp,
+        )
+
+    def _replay_reason(
+        self,
+        original: _ObservationEvidence,
+        replay: _ObservationEvidence,
+    ) -> str:
+        first = original.source_measurement_timestamp
+        current = replay.source_measurement_timestamp
+        if first is not None and current is not None and (
+            abs(first - current) > self.observation_timestamp_tolerance_s
+        ):
+            return "observation_identity_timestamp_conflict"
+        return "repeated_latest_observation_id"
+
+    @staticmethod
+    def _replay_quarantine_event(
+        detection: Detection3D,
+        evidence: _ObservationEvidence,
+        claim: _ObservationClaim,
+        *,
+        reason: str,
+    ) -> dict[str, Any]:
+        return {
+            "detection_id": detection.detection_id,
+            "observation_id": evidence.observation_id,
+            "source_namespace": evidence.source_namespace,
+            "source_measurement_timestamp": (
+                evidence.source_measurement_timestamp
+            ),
+            "state_valid_timestamp": detection.measurement_timestamp,
+            "arrival_timestamp": detection.arrival_timestamp,
+            "claimed_global_track_id": claim.global_track_id,
+            "first_detection_id": claim.first_detection_id,
+            "replay_generation": claim.replay_count,
+            "reason": reason,
+            "online_truth_used": False,
+        }
+
+    def _assign_observation_claim(
+        self,
+        evidence: _ObservationEvidence,
+        global_track_id: str,
+    ) -> None:
+        claim = self._observation_claims[evidence.key]
+        claim.global_track_id = str(global_track_id)
+        self._track_observation_keys[str(global_track_id)].add(evidence.key)
+
+    def _coalesce_duplicate_tracks(
+        self,
+        timestamp: float,
+        *,
+        updated_track_ids: set[str],
+    ) -> tuple[list[dict[str, Any]], dict[str, str]]:
+        """Merge only provenance-linked, statistically compatible duplicates."""
+
+        events: list[dict[str, Any]] = []
+        aliases: dict[str, str] = {}
+        active = self.active_tracks()
+        for left_index, left in enumerate(active):
+            if left.lifecycle_state == TrackLifecycleState.DROPPED:
+                continue
+            for right in active[left_index + 1 :]:
+                if left.lifecycle_state == TrackLifecycleState.DROPPED:
+                    break
+                if right.lifecycle_state == TrackLifecycleState.DROPPED:
+                    continue
+                if (
+                    left.global_track_id in updated_track_ids
+                    and right.global_track_id in updated_track_ids
+                ):
+                    continue
+                shared_observations = sorted(
+                    self._track_observation_keys.get(left.global_track_id, set())
+                    & self._track_observation_keys.get(right.global_track_id, set())
+                )
+                shared_sources = sorted(
+                    left.source_track_keys & right.source_track_keys
+                )
+                if not shared_observations and not shared_sources:
+                    continue
+                position_distance = _quadratic_form(
+                    left.covariance[:3, :3] + right.covariance[:3, :3],
+                    left.position_ned - right.position_ned,
+                )
+                velocity_distance = _quadratic_form(
+                    left.covariance[3:, 3:] + right.covariance[3:, 3:],
+                    left.velocity_ned - right.velocity_ned,
+                )
+                if (
+                    position_distance
+                    > self.duplicate_coalescence_position_gate_threshold
+                    or velocity_distance
+                    > self.duplicate_coalescence_velocity_gate_threshold
+                ):
+                    continue
+                survivor, duplicate = self._select_duplicate_survivor(left, right)
+                self._merge_duplicate_into_survivor(survivor, duplicate)
+                aliases[duplicate.global_track_id] = survivor.global_track_id
+                event = {
+                    "timestamp": float(timestamp),
+                    "survivor_global_track_id": survivor.global_track_id,
+                    "duplicate_global_track_id": duplicate.global_track_id,
+                    "shared_observation_count": len(shared_observations),
+                    "shared_source_track_count": len(shared_sources),
+                    "position_mahalanobis_squared": float(position_distance),
+                    "velocity_mahalanobis_squared": float(velocity_distance),
+                    "survivor_policy": (
+                        "lifecycle_maturity_then_oldest_creation_then_hits_then_id"
+                    ),
+                    "online_truth_used": False,
+                }
+                events.append(event)
+                self._duplicate_coalescence_count += 1
+        return events, aliases
+
+    @staticmethod
+    def _select_duplicate_survivor(
+        left: GlobalTrack3D,
+        right: GlobalTrack3D,
+    ) -> tuple[GlobalTrack3D, GlobalTrack3D]:
+        maturity = {
+            TrackLifecycleState.ENGAGEABLE: 3,
+            TrackLifecycleState.CONFIRMED: 2,
+            TrackLifecycleState.TENTATIVE: 1,
+            TrackLifecycleState.LOST: 0,
+            TrackLifecycleState.DROPPED: -1,
+        }
+
+        def key(track: GlobalTrack3D) -> tuple[float | str, ...]:
+            return (
+                -float(maturity[track.lifecycle_state]),
+                float(track.created_at),
+                -float(track.hits),
+                float(track.misses),
+                track.global_track_id,
+            )
+
+        survivor, duplicate = sorted((left, right), key=key)
+        return survivor, duplicate
+
+    def _merge_duplicate_into_survivor(
+        self,
+        survivor: GlobalTrack3D,
+        duplicate: GlobalTrack3D,
+    ) -> None:
+        survivor.state, survivor.covariance = _covariance_intersection(
+            survivor.state,
+            survivor.covariance,
+            duplicate.state,
+            duplicate.covariance,
+            first_weight=0.5,
+        )
+        survivor.ensure_covariance_consistency()
+        survivor.hits = max(survivor.hits, duplicate.hits)
+        survivor.consecutive_hits = max(
+            survivor.consecutive_hits,
+            duplicate.consecutive_hits,
+        )
+        survivor.misses = min(survivor.misses, duplicate.misses)
+        if duplicate.last_update_time > survivor.last_update_time:
+            survivor.last_detection_id = duplicate.last_detection_id
+        survivor.last_update_time = max(
+            survivor.last_update_time, duplicate.last_update_time
+        )
+        survivor.age = max(survivor.age, duplicate.age)
+        survivor.identity_confidence = max(
+            survivor.identity_confidence,
+            duplicate.identity_confidence,
+        )
+        survivor.source_track_keys.update(duplicate.source_track_keys)
+        survivor.append_history(
+            f"duplicate_survivor:{duplicate.global_track_id}"
+        )
+
+        duplicate.lifecycle_state = TrackLifecycleState.DROPPED
+        duplicate.append_history(
+            f"duplicate_coalesced_into:{survivor.global_track_id}"
+        )
+        self._drop_count += 1
+        for source_key in tuple(duplicate.source_track_keys):
+            self._source_bindings[source_key] = survivor.global_track_id
+        duplicate_keys = self._track_observation_keys.get(
+            duplicate.global_track_id,
+            set(),
+        )
+        self._track_observation_keys[survivor.global_track_id].update(
+            duplicate_keys
+        )
+        for observation_key in duplicate_keys:
+            claim = self._observation_claims.get(observation_key)
+            if claim is not None:
+                claim.global_track_id = survivor.global_track_id
 
     def _bind_source(
         self,

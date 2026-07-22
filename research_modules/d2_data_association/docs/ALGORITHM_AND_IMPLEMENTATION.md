@@ -1274,3 +1274,69 @@ availability/reason；已知存在 truth frame 但无 assignment 时的可验证
 GNN/Hungarian 没有改动。当前 main producer 仍跳过无 source lineage 的 D2 track/frame，
 必须补齐 unavailable/unassigned evidence 后才满足完整性校验。当前只有合同/合成回归，
 不是正式多 seed 身份性能结果。
+
+## 19. 2026-07-22 重放隔离和强证据合并
+
+### 19.1 输入分区
+
+`Scalable3DTracker.step()` 先从每条六维 D1 posterior metadata 读取
+`latest_observation_id`、`latest_sensor_id` 和 `source_measurement_timestamp`。组合键
+
+```text
+observation_key = sensor_namespace + "::" + latest_observation_id
+```
+
+只作完全相等比较，不解释字符串内容。首次出现的 key 进入关联；已消费 key 的后续
+posterior 进入 quarantine。若同 key 的源量测时间变化超过 `1e-6 s`，原因记为
+`observation_identity_timestamp_conflict`。没有该 metadata 的旧调用保持兼容，但
+`observation_freshness_unavailable_count` 会显式增加。
+
+隔离发生在 KD-tree 和 Hungarian 前。被隔离 posterior 不参与候选边、不更新状态、
+不增加 hits，也不写入 `detection_to_track`。每条事件保留 observation ID、传感器
+namespace、源量测/状态有效/到达时间、首次 detection、已声明中心航迹、D2 本地计算的
+replay generation 和 `online_truth_used=false`。
+
+### 19.2 tentative 删除
+
+默认 `confirmation_hits=2`，`tentative_drop_miss_threshold=2`。一次漏配后的 tentative
+仍可由新 observation 恢复，但连续第二次没有新证据时直接 dropped；已确认航迹继续按
+`lost_miss_threshold=2`、`drop_miss_threshold=5` 处理。该规则没有把 detection 序号、
+场景目标数或离线 truth 用作条件。
+
+### 19.3 航迹合并
+
+两个活动航迹只有满足以下全部条件才进入合并：
+
+1. 共享至少一个已消费 observation key 或 namespaced source-track key；
+2. 本帧没有双方同时获得不同的新鲜 observation；
+3. `delta_p` 在 `Pp_i + Pp_j` 下的三维马氏距离不超过 99% 卡方门；
+4. `delta_v` 在 `Pv_i + Pv_j` 下的三维马氏距离不超过同一门。
+
+survivor 排序为 `engageable > confirmed > tentative > lost`，同级选择创建更早、hits
+更多、misses 更少、ID 字典序更小的航迹。survivor 的 ID 不变；重复航迹转 dropped。
+两条状态使用固定 0.5 权重协方差交叉，hits/consecutive hits 取最大值，source 和
+observation claims 转移到 survivor，不对相关信息求和。
+
+### 19.4 审计输出
+
+逐帧 metadata 新增 fresh/unavailable/replay 数量、`replay_quarantine_events`、
+`duplicate_coalescence_events`、suppressed births、survivor policy 和 tentative 门限；
+tracker summary 累计 replay quarantine、timestamp conflict、tentative stale drop、
+observation claim 和 coalescence。在线 `id_switch_count` 仍为 `None` 且 availability
+为 false，离线 evaluator 口径不变。
+
+2026-07-22 的 seed 1005 真值隔离复现使用 5v5 active-risk、2.2 s、10 个 D2 帧，
+航迹数为 `5,6,6,5,5,5,5,5,5,5`，replay quarantine 9、tentative stale drop 1、
+coalescence 0、online truth use 0。完整 D2 测试 `168 passed, 1 warning in 26.15s`。
+
+### 19.5 main 总线和开发期 20-seed 验证
+
+main 已把逐帧与累计审计包装为 `d2-observation-evidence-governance-v1` 并持久化，字段
+覆盖 fresh/replay、timestamp conflict、coalescence、suppressed births 和 tentative
+stale drop。2026-07-22 的脏工作树 development rerun 使用 seeds 1000--1019，D6 七类
+证据 availability 均为 20/20；seed 1005 离线 identity 为 GT1-GT5 五条唯一映射，在线
+truth use 0。该结果关闭接口接线和开发期复跑缺口，不是算法参数 promotion 证据。
+
+仍未完成 clean formal run、长时 claim 容量策略、false suppression/false merge 的独立
+统计、整帧 OOSM adapter 和真实 AirSim 分档标定。counterfactual、causal、production
+runtime ACK 均为 unavailable，不能据当前结果声称 200v200 完整验收。

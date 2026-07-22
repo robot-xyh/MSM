@@ -739,3 +739,48 @@ lifecycle/association，并检查完整 D2 track-frame 集合。任一失败不�
 associator、gate、owner、JPDA/MHT 或控制代码，没有 AirSim/多 seed 性能证据。评审结论
 是 D2-owned contract GAP 关闭；main evidence producer 当前跳过无 lineage track/frame，
 与完整性合同不一致，D6 正式消费和 episode 统计继续开放。
+
+## 29. 2026-07-22 陈旧观测重放与重复航迹治理评审
+
+### 29.1 机制判定
+
+active-risk seed 1005 的 GT4/GT6 离线谱系都对应同一目标，但在线修复不得读取该 truth。
+在线证据显示，GT4 持续接收新的雷达 observation，GT6 的
+`latest_observation_id=radar-s000002-d0003` 从 `t=0.439 s` 后重复出现。外层 detection
+ID 和状态有效时刻每帧变化，底层量测谱系没有变化。旧 tracker 把这些包装帧计为独立
+hit，形成 5 个真实目标、6 条 confirmed GlobalTrack。GT4/GT6 相距 1.5--1.6 km，宽化
+几何合并门会增加近邻不同目标误合并风险，因而不采用。
+
+### 29.2 设计决定
+
+- observation freshness 在关联前判定。证据键由 sensor namespace 和不透明 observation
+  ID 组成，不解释 ID 中的序号或目标含义。
+- 重复证据不进入 KD-tree、Hungarian、状态更新和 confirmation hit；量测时间冲突直接
+  quarantine。迟到但具有新 observation ID 的 posterior 仍可进入当前有序 state epoch。
+- tentative 首 miss 保留，连续第二次无新证据删除，避免单次异步漏配立刻销毁，同时阻止
+  陈旧证据维持的新生航迹成为 confirmed。
+- 航迹合并仅作为强谱系和统计一致性同时成立时的后备治理。同帧双新证据禁止合并；
+  survivor 保留原中心 ID，不累计重复 hits。
+
+### 29.3 验收与后续
+
+seed 1005 的 10 帧活动航迹数为 `5,6,6,5,5,5,5,5,5,5`，quarantine 9 次、tentative
+stale drop 1 次、coalescence 0 次、在线 truth 使用 0 次。最终保留 GT1-GT5，GT4
+重获，GT6 删除。5 个合成治理专项和 1 个真实集成专项通过；完整 D2 为
+`168 passed, 1 warning in 26.15s`。近邻不同目标专项验证没有误合并，异步时间专项验证
+新 observation 可接收、同 identity 的量测时间冲突被拒绝。
+
+本次首先关闭 D2-owned 单 seed 缺口。main 随后在 2026-07-22 脏工作树完成
+active-risk seeds 1000--1019 的 development 集成复跑，并持久化
+`d2-observation-evidence-governance-v1`。D6 的 plan consumption、guidance lineage、
+physical window、D4 adoption、paired physical effect、paired non-degradation 和
+degraded comparison 均为 20/20 available；D4 adoption 188/188，两臂各 1960 条命令。
+seed 1005 离线身份只得到 GT1-GT5 五条唯一映射，在线 truth 使用 0。
+
+评审据此把“main bus 审计持久化”和“20-seed development 复跑”改为已闭合。该运行的
+control/treatment 物理差值为 0，counterfactual、causal 和 production runtime ACK 均
+unavailable，不能声称策略因果收益，也不能替代 clean formal run、历史正式证据、AirSim
+或 200v200 完整验收。D2 仍需测量长 episode claim 容量，标定 coalescence/lifecycle
+的 false suppression、recall 和 false merge，并为整帧乱序输入设计独立 OOSM adapter。
+默认六维 GNN/Hungarian、中心 `global_track_id` ownership 和离线一对一 truth 映射保持
+不变。

@@ -1119,3 +1119,52 @@ seed 41、10 帧更新中，候选/全对保持 `200/40,000`，输入/输出速�
 上述原则由五个 `v1` schema 和 23 个专项测试约束；2026-07-20 完整 D2 回归为
 `162 passed, 1 warning in 30.63s`。本轮不改变默认 GNN/Hungarian、JPDA/MHT、门限、
 owner 或控制链路，也不构成 AirSim/point-mass 多 seed 性能证据。
+
+## 十九、在线观测新鲜度与重复航迹治理（2026-07-22）
+
+### 19.1 观测时间和状态时间
+
+D1 可以把旧量测形成的后验预测到新的状态时刻。对 D2 而言，新状态时间说明该后验
+可以与当前航迹比较，不说明出现了新的传感器信息。若 `latest_observation_id` 和源量测
+时间未变化，同一后验跨帧进入滤波会重复降低协方差、增加命中数并绕过确认门。
+
+D2 同时使用三类时间：`Detection3D.measurement_timestamp` 表示后验状态有效时刻，
+`arrival_timestamp` 表示到达 D2 的时刻，metadata 中的
+`source_measurement_timestamp` 表示后验最新底层观测的量测时刻。关联仍在统一状态
+时刻进行；是否允许形成 hit 由 opaque observation key 决定。不同 observation ID 即使
+源量测时间更早，也可以作为一次新的 OOSM 后验接纳；同一 ID 重放或同一 ID 对应冲突
+源时间则隔离。
+
+### 19.2 生命周期抑制
+
+确认采用连续新证据，而非连续发布帧。tentative 第一次没有新证据时只清零连续命中；
+第二次仍无新证据则删除。已确认航迹继续使用原 lost/drop 门限。该取舍允许一次短时
+漏配后由新观测恢复旧中心 ID，同时阻止单个离群观测衍生的航迹靠 D1 预测重放确认。
+
+### 19.3 合并安全条件
+
+空间接近只能说明统计重叠，不能证明同一目标。当前合并必须先具备共享 observation
+key 或 namespaced source-track key，再同时满足位置和速度马氏距离门。两个航迹在同帧
+各自获得不同新观测时禁止合并。survivor 选择顺序为生命周期成熟度、创建时间、命中
+数、漏配数和中心 ID；状态用协方差交叉融合，hits 取最大值而不求和。这样保留一个
+已有中心 ID，也不把相关重复信息当作独立量测增加确定性。
+
+active-risk 5v5 seed 1005 验证中，两条问题航迹相距约 1.5--1.6 km，没有执行空间
+合并。D2 隔离 9 次同 observation 重放，错误 tentative 航迹连续两次无新证据后删除，
+原 `GT3D-000004` 由新观测恢复。10 个发布帧从 `5,6,6` 收敛为后续 7 帧均为 5 条，
+online truth use 0。5 个合成专项和 1 个真实 seed 专项通过；完整回归
+`168 passed, 1 warning in 26.15s`。该结果是模块级单 seed point-mass 证据，不能代替
+AirSim 标定。
+
+### 19.4 开发期多 seed 证据边界
+
+main 随后在同日脏工作树运行 active-risk seeds 1000--1019 的 control/treatment 隔离
+对照。总线已将 observation evidence governance 以版本化 `v1` 结构持久化。D6 七类
+非因果证据可用性均为 20/20；D4 adoption 合计 188/188，两臂各应用 1960 条命令。
+seed 1005 的离线谱系只恢复 GT1-GT5 五条唯一映射，在线真值使用为 0。
+
+这批数据证明治理字段能够穿过 main bus，并能在 20 个开发期 seed 中形成完整的可用性
+证据链。control 和 treatment 的物理指标差值为 0；counterfactual、causal、production
+runtime ACK 均不可用。因此不能据此声称策略因果有效，也不能覆盖历史正式数据或扩展为
+200v200 验收。clean formal run、长时 claim 容量、误抑制率、整帧 OOSM 和 AirSim
+分档标定继续开放。

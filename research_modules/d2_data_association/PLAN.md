@@ -689,3 +689,61 @@ MHT、Stone Soup/FilterPy 仅保留为 P2 optional/offline benchmark，不进入
 - 本项关闭“D2 没有可审计 global-track-to-truth 离线映射及 availability identity metrics
   合同”的模块缺口。main producer 接线、D6 汇总字段、真实多 seed IDSW/continuity 与
   阈值性能结论仍开放，不能因合成合同测试通过而升级。
+
+## 19. 2026-07-22 陈旧 D1 后验和短时重生治理
+
+### 19.1 问题和判据
+
+active-risk 5v5 seed 1005 在 0.439 s 由 5 条航迹扩张为 6 条。新增航迹后续每帧接收
+状态时刻不同、但 `latest_observation_id` 始终相同的 D1 预测后验，因此旧确认门把同一
+观测重复计成多次命中。`GT3D-000004/000006` 空间相距超过 1 km，宽空间合并既不能
+解释来源，也会增加近邻真实目标误合并风险。
+
+本轮冻结以下 truth-free 规则：
+
+1. D2 只把 opaque observation ID 与传感器 namespace 用作新鲜度证据，不解析 ID
+   内容，不读取 actor、object 或 target truth。
+2. 同一 observation key 只允许第一次进入关联；后续 state-valid posterior 继续作为
+   D1 预测输出审计，但不再形成 D2 hit。
+3. 同 key 的源量测时间变化超过 `1e-6 s` 时按 identity/timestamp conflict 隔离。
+4. tentative 第一次漏配保持 tentative，连续第二次仍无新证据时 dropped。该规则保留
+   seed 1005 中旧 `GT3D-000004` 的短时重获，同时清除错误 `GT3D-000006`。
+5. 合并要求共享 observation/source 证据，并同时通过三维位置和三维速度 99% 卡方门。
+   双方同帧都有新证据时禁止合并。survivor 先看生命周期成熟度，再选更早创建、命中
+   更多、ID 字典序更小的中心航迹；不重命名 survivor。
+
+### 19.2 已完成实现和证据
+
+- `Scalable3DTracker.step()` 在预测和 GNN/Hungarian 前完成 fresh/replay 分区。
+- 每帧 metadata 输出输入/新鲜/不可判定/隔离数量、replay generation、claimed track、
+  时间冲突、合并事件、survivor policy 和 suppressed birth；summary 累计隔离、冲突、
+  tentative 删除与合并计数，并继续显式输出 `id_switch_count` availability。
+- 5 个模块专项验证陈旧重放无法确认、旧 ID 重获、近邻独立目标不合并、共享来源的
+  协方差门边界和新 OOSM posterior 单次接纳。
+- 真实 point-mass active-risk 5v5 seed 1005、2.2 s、10 个 D2 发布帧的航迹数为
+  `5,6,6,5,5,5,5,5,5,5`；隔离 9 次，tentative stale drop 1 次，最终 5 条 confirmed，
+  `GT3D-000004` 保留，`GT3D-000006` 删除，online truth use 0。
+- 验证日期 2026-07-22；完整命令结果 `168 passed, 1 warning in 26.15s`。验收阈值为
+  seed 等价输入不形成重复 confirmed、近邻独立目标不误合并、在线真值使用为 0、
+  `id_switch_count` 字段不消失和完整回归零失败，全部通过。
+
+### 19.3 开发期集成状态和后续计划
+
+1. **开发期证据已闭合**：main 于 2026-07-22 在脏工作树运行 active-risk reserved
+   seeds 1000--1019。D6 的 plan consumption、guidance lineage、physical window、D4
+   adoption、paired physical effect、paired non-degradation 和 degraded comparison
+   均为 20/20 available；D4 adoption 为 188/188，control/treatment 各 1960 条命令。
+2. **总线持久化已闭合**：main bus 已发布并持久化
+   `d2-observation-evidence-governance-v1`，覆盖 fresh/replay、timestamp conflict、
+   coalescence、suppressed births 和 tentative stale drop 的逐帧及累计字段。seed 1005
+   离线映射恢复 GT1-GT5 五条唯一身份，online truth use 0。
+3. **证据边界保持**：该批是 dirty development rerun；counterfactual、causal 和
+   production runtime ACK 均 unavailable。它不能替代 clean formal run、历史正式证据、
+   AirSim 标定或 200v200 完整验收。
+4. 对 20/50/100/200 规模长 episode 测量 observation claim 内存，并设计不允许陈旧
+   observation 再生的有界保留策略。当前单 episode 字典未做容量淘汰。
+5. 使用至少 20 个未见 seed 标定 `tentative_drop_miss_threshold=2` 和两个 99% 合并门，
+   同时报告合法新目标确认延迟、漏检召回和误合并率。OOSM 扫描仍需显式 adapter；
+   本轮只允许“新 observation ID 的迟到 D1 posterior”在当前 state-valid 时刻接纳。
+6. 在 clean worktree 复现同一 manifest，并补充真实 AirSim replay 的距离、遮挡、杂波和
+   异步分档；只有该证据可用于正式阈值冻结或主线验收。

@@ -703,3 +703,56 @@ availability 拒绝。没有 AirSim 或正式多 seed 运行。
   isolation 均未改变。
 
 因此本项状态为“D2-owned 离线映射与指标合同关闭；main/D6 集成和性能证据开放”。
+
+## 2026-07-22 active-risk seed 1005 重复航迹 GAP 收口
+
+### 已关闭的 D2-owned 缺口
+
+- **陈旧 posterior 重复计 hit**：D2 不再按外层 detection ID 判断证据新鲜度。关联前以
+  sensor namespace 和不透明 `latest_observation_id` 建立 observation claim；重复键不
+  进入候选图、Hungarian、状态更新或命中计数。同键量测时间冲突按 fail-closed
+  quarantine 处理。
+- **tentative 短时重生**：tentative 首次无新证据时保留，连续第二次无新证据时删除。
+  seed 1005 中 GT4 可由后续新雷达观测重获，只靠同一旧观测维持的 GT6 被删除。
+- **重复航迹治理边界**：coalescence 必须同时具备共享 observation/source-track 谱系及
+  位置、速度三维马氏门；同帧双方都有新证据时禁止合并。survivor 按成熟度、创建时间、
+  hits、misses 和 ID 确定，原 `global_track_id` 保持不变。
+- **审计与身份边界**：逐帧和 summary 显式输出 quarantine、timestamp conflict、claim、
+  tentative stale drop、coalescence 和 survivor policy；`id_switch_count` 仍是显式
+  `None + unavailable`。在线逻辑不读取 truth、actor ID、object ID 或目标名称。
+
+### 验证证据
+
+- 真实集成输入通过 `_make_intervention_scenario(active_risk, seed=1005)` 与
+  `Scalable3DEpisodeRunner` 复现。10 个 D2 帧的活动航迹数为
+  `5,6,6,5,5,5,5,5,5,5`，最终保留 GT1-GT5，GT4 保留、GT6 删除。
+- replay quarantine 9 次、tentative stale drop 1 次、coalescence 0 次、在线 truth 使用
+  0 次。该结果说明本例由 freshness/lifecycle 治理关闭，没有通过 1.5--1.6 km 的宽门
+  强行合并。
+- 5 个合成专项覆盖重复 replay、seed 1005 等价分支、近邻独立目标、共享来源统计门和
+  异步时间边界；另有 1 个真实 seed 1005 集成回归。D2 全量结果为
+  `168 passed, 1 warning in 26.15s`，验收阈值零失败。
+
+### 当前 GAP 状态
+
+P0 无新增 blocker。本轮只关闭 D2-owned 的 stale observation duplicate-confirmation
+缺口。main 后续已在 2026-07-22 脏工作树 development 运行中完成两项集成闭合：
+
+- main runtime 以 `d2-observation-evidence-governance-v1` 持久化 fresh/replay、claim、
+  timestamp conflict、coalescence、suppressed births 和 tentative stale drop 证据；
+- active-risk seeds 1000--1019 的 D6 七类 availability 均为 20/20，D4 adoption
+  188/188，control/treatment 各 1960 条命令；seed 1005 离线恢复 GT1-GT5 五条唯一
+  映射，在线 truth 使用 0。
+
+以下 P1/集成项保持开放：
+
+- clean formal run，以及多 seed 下 false suppression、独立近邻召回、错误合并率和
+  lifecycle 参数敏感性统计；
+- 单 episode observation claim 当前不淘汰，长时 200 目标内存与容量上限需要测量；
+- D2 仍拒绝乱序 scan；本轮只允许 state-valid 时刻有序、底层 observation ID 新鲜的迟到
+  posterior，完整整帧 OOSM 仍需显式 adapter；
+- 真实 AirSim observation identity、时间误差、距离/遮挡/杂波分档仍需标定。
+
+该 20-seed 产物是 dirty development rerun。counterfactual、causal 和 production runtime
+ACK 均 unavailable，物理对照差值为 0；它不能覆盖历史正式证据，也没有形成 AirSim、
+200 对 200 端到端或实时 SLA 证据。
