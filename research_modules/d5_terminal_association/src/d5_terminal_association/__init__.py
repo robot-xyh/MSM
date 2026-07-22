@@ -257,9 +257,11 @@ from .sparse_tracklet_graph import (
     is_truth_like_local_track_id,
 )
 from .scalable_3d_adapter import (
+    SCALABLE_3D_PERFORMANCE_SCHEMA_VERSION,
     Scalable3DAdaptedCameraBatch,
     Scalable3DAdapterConfig,
     Scalable3DAssociationResult,
+    Scalable3DPerformanceSnapshot,
     Scalable3DStepResult,
     Scalable3DTerminalAdapter,
     SourceObservationTrackletLink,
@@ -511,9 +513,11 @@ __all__ = [
     "PairedShadowEpisodeResult",
     "GeneratedActiveVisionSupplementalCurriculum",
     "RESERVED_ACTIVE_VISION_EVALUATION_SEEDS",
+    "SCALABLE_3D_PERFORMANCE_SCHEMA_VERSION",
     "Scalable3DAdaptedCameraBatch",
     "Scalable3DAdapterConfig",
     "Scalable3DAssociationResult",
+    "Scalable3DPerformanceSnapshot",
     "Scalable3DStepResult",
     "Scalable3DTerminalAdapter",
     "SourceObservationTrackletLink",

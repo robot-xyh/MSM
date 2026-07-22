@@ -54,6 +54,7 @@ _MEASUREMENT_NAME_ALIASES = {
     "y_min": "ymin",
 }
 _CAMERA_SENSOR_PATTERN = re.compile(r"^CAM-(INT-\d+|RECON-\d+)(?:-|$)", re.IGNORECASE)
+SCALABLE_3D_PERFORMANCE_SCHEMA_VERSION = "d5-scalable3d-operation-counts-v1"
 
 
 @dataclass(frozen=True)
@@ -115,6 +116,75 @@ class Scalable3DAdapterConfig:
         object.__setattr__(self, "max_missed_frames", max_missed_frames)
         if not isinstance(self.graph_config, SparseTrackletGraphConfig):
             raise TypeError("graph_config must be SparseTrackletGraphConfig")
+
+
+@dataclass(frozen=True)
+class Scalable3DPerformanceSnapshot:
+    """Fixed-size, non-business operation counts for one adapter episode.
+
+    The snapshot deliberately contains scalar counters only.  It is queried by
+    benchmarks and is never merged into ``Scalable3DAssociationResult`` or a
+    terminal binding publication.
+    """
+
+    process_frame_count: int = 0
+    camera_batch_count: int = 0
+    input_detection_count: int = 0
+    emitted_tracklet_count: int = 0
+    oosm_batch_count: int = 0
+    camera_template_build_count: int = 0
+    camera_template_reuse_count: int = 0
+    active_camera_stream_current: int = 0
+    active_camera_stream_peak: int = 0
+    active_local_history_current: int = 0
+    active_local_history_peak: int = 0
+    received_timestamp_history_current: int = 0
+    received_timestamp_history_peak: int = 0
+    tracker_pair_evaluation_count: int = 0
+    tracker_match_candidate_count: int = 0
+    tracker_history_update_count: int = 0
+    center_track_input_count: int = 0
+    center_projection_cache_hit_count: int = 0
+    center_projection_cache_miss_count: int = 0
+    graph_build_count: int = 0
+    graph_node_count: int = 0
+    camera_overlap_index_build_count: int = 0
+    candidate_edge_generation_count: int = 0
+    geometry_gate_rejection_count: int = 0
+    retained_graph_edge_count: int = 0
+    edge_scoring_count: int = 0
+    scored_edge_count: int = 0
+    cluster_build_count: int = 0
+    cluster_output_count: int = 0
+    projection_matrix_build_count: int = 0
+    projection_matrix_cell_count: int = 0
+    projection_matrix_binding_reuse_count: int = 0
+    binding_matrix_build_count: int = 0
+    binding_matrix_cell_count: int = 0
+    hungarian_solve_count: int = 0
+    binding_output_count: int = 0
+
+    def __post_init__(self) -> None:
+        for item in fields(self):
+            value = int(getattr(self, item.name))
+            if value < 0:
+                raise ValueError(f"{item.name} must be non-negative")
+            object.__setattr__(self, item.name, value)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema_version": SCALABLE_3D_PERFORMANCE_SCHEMA_VERSION,
+            **{item.name: int(getattr(self, item.name)) for item in fields(self)},
+        }
+
+
+_PERFORMANCE_COUNTER_NAMES = tuple(
+    item.name for item in fields(Scalable3DPerformanceSnapshot)
+)
+
+
+def _empty_performance_counts() -> dict[str, int]:
+    return {name: 0 for name in _PERFORMANCE_COUNTER_NAMES}
 
 
 @dataclass(frozen=True)
@@ -292,6 +362,8 @@ class _PreparedCameraBatch:
     arrival_timestamp: float
     detections: tuple[_PreparedDetection, ...]
     camera_template: _CameraTemplate | None
+    camera_template_build_count: int = 0
+    camera_template_reuse_count: int = 0
 
     @property
     def stream_key(self) -> tuple[str, str]:
@@ -307,6 +379,13 @@ class _AnonymousTrackState:
     tracklet_start_timestamp: float
     hits: int = 1
     missed_frames: int = 0
+
+
+@dataclass(frozen=True)
+class _TrackerUpdateOperationCounts:
+    pair_evaluation_count: int = 0
+    match_candidate_count: int = 0
+    history_update_count: int = 0
 
 
 def _validate_camera_timestamp_transition(
@@ -365,6 +444,7 @@ class _AnonymousCameraTracker:
         self._last_arrival_timestamp: float | None = None
         self._oosm_measurement_ignored_count = 0
         self._received_measurement_timestamps: list[float] = []
+        self._last_operation_counts = _TrackerUpdateOperationCounts()
 
     @property
     def latest_measurement_timestamp(self) -> float | None:
@@ -377,6 +457,18 @@ class _AnonymousCameraTracker:
     @property
     def oosm_measurement_ignored_count(self) -> int:
         return self._oosm_measurement_ignored_count
+
+    @property
+    def active_history_count(self) -> int:
+        return len(self._tracks)
+
+    @property
+    def received_timestamp_count(self) -> int:
+        return len(self._received_measurement_timestamps)
+
+    @property
+    def last_operation_counts(self) -> _TrackerUpdateOperationCounts:
+        return self._last_operation_counts
 
     def has_received_measurement_timestamp(self, timestamp: float) -> bool:
         return _contains_timestamp(self._received_measurement_timestamps, timestamp)
@@ -421,6 +513,7 @@ class _AnonymousCameraTracker:
             insort(self._received_measurement_timestamps, measurement_timestamp)
             self._last_arrival_timestamp = arrival_timestamp
             self._oosm_measurement_ignored_count += 1
+            self._last_operation_counts = _TrackerUpdateOperationCounts()
             return ()
         ordered_detections = tuple(
             sorted(
@@ -432,7 +525,11 @@ class _AnonymousCameraTracker:
                 ),
             )
         )
-        assignments = self._match(ordered_detections)
+        (
+            assignments,
+            pair_evaluation_count,
+            match_candidate_count,
+        ) = self._match(ordered_detections)
         matched_sequences = set(assignments.values())
         emitted_sequences: set[int] = set()
         output: list[CameraLocalTracklet] = []
@@ -507,6 +604,7 @@ class _AnonymousCameraTracker:
             )
             emitted_sequences.add(sequence)
 
+        history_update_count = len(self._tracks)
         for sequence, state in list(self._tracks.items()):
             if sequence in matched_sequences or sequence in emitted_sequences:
                 continue
@@ -517,15 +615,27 @@ class _AnonymousCameraTracker:
         insort(self._received_measurement_timestamps, measurement_timestamp)
         self._latest_measurement_timestamp = measurement_timestamp
         self._last_arrival_timestamp = arrival_timestamp
+        self._last_operation_counts = _TrackerUpdateOperationCounts(
+            pair_evaluation_count=pair_evaluation_count,
+            match_candidate_count=match_candidate_count,
+            history_update_count=history_update_count,
+        )
         return tuple(sorted(output, key=lambda item: item.local_track_id))
 
-    def _match(self, detections: Sequence[_PreparedDetection]) -> dict[int, int]:
+    def _match(
+        self,
+        detections: Sequence[_PreparedDetection],
+    ) -> tuple[dict[int, int], int, int]:
         candidates: list[tuple[float, float, int, int]] = []
+        pair_evaluation_count = len(self._tracks) * len(detections)
         for sequence, state in self._tracks.items():
             for detection_index, detection in enumerate(detections):
                 iou = _bbox_iou(state.bbox_xyxy, detection.bbox_xyxy)
                 distance = float(np.linalg.norm(state.center_px - detection.center_px))
-                if iou < self.config.iou_match_threshold and distance > self.config.max_center_distance_px:
+                if (
+                    iou < self.config.iou_match_threshold
+                    and distance > self.config.max_center_distance_px
+                ):
                     continue
                 candidates.append((-iou, distance, sequence, detection_index))
 
@@ -538,7 +648,7 @@ class _AnonymousCameraTracker:
             matched_sequences.add(sequence)
             matched_detections.add(detection_index)
             assignments[detection_index] = sequence
-        return assignments
+        return assignments, pair_evaluation_count, len(candidates)
 
 
 class Scalable3DTerminalAdapter:
@@ -549,6 +659,12 @@ class Scalable3DTerminalAdapter:
         self._trackers: dict[tuple[str, str], _AnonymousCameraTracker] = {}
         self._center_track_source_signature: tuple[Any, ...] | None = None
         self._center_projection_tracks: tuple[GlobalTrack, ...] = ()
+        self._performance_counts = _empty_performance_counts()
+
+    def performance_snapshot(self) -> Scalable3DPerformanceSnapshot:
+        """Return bounded episode counters without changing business output."""
+
+        return Scalable3DPerformanceSnapshot(**self._performance_counts)
 
     def adapt_batch(self, batch: Any) -> Scalable3DAdaptedCameraBatch:
         return self.adapt_batches((batch,))[0]
@@ -640,15 +756,18 @@ class Scalable3DTerminalAdapter:
         adapted_batches = self.adapt_batches(batches)
         center_track_items = tuple(center_tracks_3d)
         source_signature = _center_track_content_signature(center_track_items)
+        self._increment_performance("center_track_input_count", len(center_track_items))
         if (
             source_signature is not None
             and source_signature == self._center_track_source_signature
         ):
             center_tracks = self._center_projection_tracks
+            self._increment_performance("center_projection_cache_hit_count")
         else:
             center_tracks = global_tracks3d_to_projection_tracks(center_track_items)
             self._center_track_source_signature = source_signature
             self._center_projection_tracks = center_tracks
+            self._increment_performance("center_projection_cache_miss_count")
         association_batches = _latest_state_update_batches(adapted_batches)
         association = run_scalable_3d_online_association(
             tuple(tracklet for batch in association_batches for tracklet in batch.tracklets),
@@ -661,16 +780,92 @@ class Scalable3DTerminalAdapter:
             config=self.config,
             edge_model=edge_model,
         )
+        self._record_association_operations(association, len(center_tracks))
+        self._increment_performance("process_frame_count")
         return Scalable3DStepResult(adapted_batches, center_tracks, association)
 
     def reset_stream(self, resource_id: str, camera_id: str) -> None:
         key = (str(resource_id).strip(), str(camera_id).strip())
         self._trackers.pop(key, None)
+        self._refresh_history_gauges()
 
     def reset_episode(self) -> None:
         self._trackers.clear()
         self._center_track_source_signature = None
         self._center_projection_tracks = ()
+        self._performance_counts = _empty_performance_counts()
+
+    def _increment_performance(self, name: str, value: int = 1) -> None:
+        if name not in self._performance_counts:
+            raise KeyError(f"unknown D5 performance counter: {name}")
+        increment = int(value)
+        if increment < 0:
+            raise ValueError("D5 performance counters cannot decrease")
+        self._performance_counts[name] += increment
+
+    def _refresh_history_gauges(self) -> None:
+        active_streams = len(self._trackers)
+        active_histories = sum(
+            tracker.active_history_count for tracker in self._trackers.values()
+        )
+        received_timestamps = sum(
+            tracker.received_timestamp_count for tracker in self._trackers.values()
+        )
+        gauges = (
+            ("active_camera_stream_current", "active_camera_stream_peak", active_streams),
+            ("active_local_history_current", "active_local_history_peak", active_histories),
+            (
+                "received_timestamp_history_current",
+                "received_timestamp_history_peak",
+                received_timestamps,
+            ),
+        )
+        for current_name, peak_name, value in gauges:
+            self._performance_counts[current_name] = int(value)
+            self._performance_counts[peak_name] = max(
+                self._performance_counts[peak_name],
+                int(value),
+            )
+
+    def _record_association_operations(
+        self,
+        association: Scalable3DAssociationResult,
+        center_track_count: int,
+    ) -> None:
+        graph = association.graph
+        candidate_counts = graph.candidate_counts
+        cluster_count = len(association.clusters)
+        has_binding_matrix = cluster_count > 0 and center_track_count > 0
+        self._increment_performance("graph_build_count")
+        self._increment_performance("graph_node_count", graph.node_count)
+        self._increment_performance("camera_overlap_index_build_count")
+        self._increment_performance(
+            "candidate_edge_generation_count",
+            int(candidate_counts.get("geometry_gate_input_edges", 0)),
+        )
+        self._increment_performance(
+            "geometry_gate_rejection_count",
+            int(candidate_counts.get("rejected_geometry_gate_total", 0)),
+        )
+        self._increment_performance("retained_graph_edge_count", graph.edge_count)
+        self._increment_performance("edge_scoring_count")
+        self._increment_performance("scored_edge_count", graph.edge_count)
+        self._increment_performance("cluster_build_count")
+        self._increment_performance("cluster_output_count", cluster_count)
+        self._increment_performance("projection_matrix_build_count")
+        self._increment_performance(
+            "projection_matrix_cell_count",
+            graph.node_count * center_track_count,
+        )
+        if has_binding_matrix:
+            self._increment_performance("projection_matrix_binding_reuse_count")
+            self._increment_performance("binding_matrix_build_count")
+            self._increment_performance(
+                "binding_matrix_cell_count",
+                cluster_count * center_track_count,
+            )
+            self._increment_performance("hungarian_solve_count")
+        self._increment_performance("binding_output_count", len(association.bindings))
 
     def _commit_prepared_batch(
         self,
@@ -688,6 +883,35 @@ class Scalable3DTerminalAdapter:
             arrival_timestamp=prepared.arrival_timestamp,
             camera_template=template,
         )
+        tracker_operations = tracker.last_operation_counts
+        self._increment_performance("camera_batch_count")
+        self._increment_performance("input_detection_count", len(prepared.detections))
+        self._increment_performance("emitted_tracklet_count", len(tracklets))
+        self._increment_performance(
+            "oosm_batch_count",
+            int(temporal_status == _TEMPORAL_OOSM_IGNORED),
+        )
+        self._increment_performance(
+            "camera_template_build_count",
+            prepared.camera_template_build_count,
+        )
+        self._increment_performance(
+            "camera_template_reuse_count",
+            prepared.camera_template_reuse_count,
+        )
+        self._increment_performance(
+            "tracker_pair_evaluation_count",
+            tracker_operations.pair_evaluation_count,
+        )
+        self._increment_performance(
+            "tracker_match_candidate_count",
+            tracker_operations.match_candidate_count,
+        )
+        self._increment_performance(
+            "tracker_history_update_count",
+            tracker_operations.history_update_count,
+        )
+        self._refresh_history_gauges()
         geometry = (
             None
             if template is None
@@ -1074,15 +1298,31 @@ def _prepare_camera_batch(batch: Any, config: Scalable3DAdapterConfig) -> _Prepa
         else np.eye(2, dtype=float) * config.default_center_variance_px2
     )
     template_metadata = measurement_metadata[0] if measurement_metadata else batch_metadata
+    camera_template_build_count = 0
+    camera_template_reuse_count = 0
     camera_template = (
         _camera_template(template_metadata, center_covariance, config)
         if _has_complete_camera_metadata(template_metadata)
         else None
     )
+    if camera_template is not None:
+        camera_template_build_count = 1
     if detections and camera_template is None:
         raise ValueError("vision_bbox measurements require complete camera metadata")
+    template_signature = _camera_template_input_signature(
+        template_metadata,
+        center_covariance,
+    )
     for metadata in measurement_metadata[1:]:
+        if (
+            template_signature is not None
+            and _camera_template_input_signature(metadata, center_covariance)
+            == template_signature
+        ):
+            camera_template_reuse_count += 1
+            continue
         other = _camera_template(metadata, center_covariance, config)
+        camera_template_build_count += 1
         if not _camera_templates_equivalent(camera_template, other):
             raise ValueError("camera geometry changes within one online batch")
     return _PreparedCameraBatch(
@@ -1092,6 +1332,8 @@ def _prepare_camera_batch(batch: Any, config: Scalable3DAdapterConfig) -> _Prepa
         arrival_timestamp=arrival_timestamp,
         detections=tuple(detections),
         camera_template=camera_template,
+        camera_template_build_count=camera_template_build_count,
+        camera_template_reuse_count=camera_template_reuse_count,
     )
 
 
@@ -1240,6 +1482,93 @@ def _camera_template(
         attitude_covariance_rad2=attitude_covariance,
         position_covariance_source=position_source,
         attitude_covariance_source=attitude_source,
+    )
+
+
+def _camera_template_input_signature(
+    metadata: Mapping[str, Any],
+    measurement_covariance: np.ndarray,
+) -> tuple[Any, ...] | None:
+    """Fingerprint fields consumed by ``_camera_template``.
+
+    A missing or unusual value returns ``None`` and forces the original full
+    validation path.  Equal signatures are safe to reuse because the first
+    occurrence in the batch has already passed every shape, finiteness,
+    rotation, and covariance check.
+    """
+
+    try:
+        intrinsics_value = metadata["camera_intrinsics"]
+        if isinstance(intrinsics_value, Mapping):
+            intrinsics_signature: tuple[Any, ...] = (
+                "mapping",
+                float(intrinsics_value["fx"]),
+                float(intrinsics_value["fy"]),
+                float(intrinsics_value["cx"]),
+                float(intrinsics_value["cy"]),
+                int(intrinsics_value["width_px"]),
+                int(intrinsics_value["height_px"]),
+            )
+        else:
+            intrinsics = np.asarray(intrinsics_value, dtype=float)
+            image_size = np.asarray(
+                _first_present(metadata, ("image_size", "camera_image_size"))
+            )
+            intrinsics_signature = (
+                "matrix",
+                intrinsics.shape,
+                intrinsics.tobytes(order="C"),
+                image_size.shape,
+                image_size.tobytes(order="C"),
+            )
+        position = np.asarray(
+            _first_present(metadata, ("camera_position_ned", "position_ned")),
+            dtype=float,
+        )
+        rotation = np.asarray(
+            _first_present(
+                metadata,
+                ("rotation_camera_from_ned", "camera_rotation_from_ned"),
+            ),
+            dtype=float,
+        )
+        position_covariance_value = _first_present(
+            metadata,
+            ("camera_position_covariance_ned", "position_covariance_ned"),
+            default=None,
+        )
+        attitude_covariance_value = _first_present(
+            metadata,
+            ("camera_attitude_covariance_rad2", "attitude_covariance_rad2"),
+            default=None,
+        )
+        position_covariance = (
+            None
+            if position_covariance_value is None
+            else np.asarray(position_covariance_value, dtype=float)
+        )
+        attitude_covariance = (
+            None
+            if attitude_covariance_value is None
+            else np.asarray(attitude_covariance_value, dtype=float)
+        )
+        measurement = np.asarray(measurement_covariance, dtype=float)
+    except (KeyError, TypeError, ValueError):
+        return None
+    return (
+        intrinsics_signature,
+        position.shape,
+        position.tobytes(order="C"),
+        rotation.shape,
+        rotation.tobytes(order="C"),
+        None
+        if position_covariance is None
+        else (position_covariance.shape, position_covariance.tobytes(order="C")),
+        None
+        if attitude_covariance is None
+        else (attitude_covariance.shape, attitude_covariance.tobytes(order="C")),
+        measurement.shape,
+        measurement.tobytes(order="C"),
     )
 
 
@@ -1480,9 +1809,11 @@ def _bbox_iou(
 
 
 __all__ = [
+    "SCALABLE_3D_PERFORMANCE_SCHEMA_VERSION",
     "Scalable3DAdaptedCameraBatch",
     "Scalable3DAdapterConfig",
     "Scalable3DAssociationResult",
+    "Scalable3DPerformanceSnapshot",
     "Scalable3DStepResult",
     "Scalable3DTerminalAdapter",
     "SourceObservationTrackletLink",

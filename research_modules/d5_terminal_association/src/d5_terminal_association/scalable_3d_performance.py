@@ -32,9 +32,42 @@ from .active_vision_contracts import (
 from .scalable_3d_adapter import Scalable3DStepResult, Scalable3DTerminalAdapter
 
 
-SCALABLE_3D_D5_PERFORMANCE_SCHEMA_VERSION = "d5-scalable3d-performance-v1"
+SCALABLE_3D_D5_PERFORMANCE_SCHEMA_VERSION = "d5-scalable3d-performance-v2"
+SCALABLE_3D_D5_DURATION_COMPARISON_SCHEMA_VERSION = (
+    "d5-scalable3d-duration-operation-comparison-v1"
+)
 _TERMINAL_TOPIC = "modules.d5.terminal_association"
 _ACTIVE_VISION_TOPIC = "modules.d5.active_vision"
+_OPERATION_RATE_FIELDS = (
+    "camera_batch_count",
+    "input_detection_count",
+    "emitted_tracklet_count",
+    "camera_template_build_count",
+    "camera_template_reuse_count",
+    "tracker_pair_evaluation_count",
+    "tracker_match_candidate_count",
+    "tracker_history_update_count",
+    "center_track_input_count",
+    "center_projection_cache_hit_count",
+    "center_projection_cache_miss_count",
+    "graph_build_count",
+    "graph_node_count",
+    "camera_overlap_index_build_count",
+    "candidate_edge_generation_count",
+    "geometry_gate_rejection_count",
+    "retained_graph_edge_count",
+    "edge_scoring_count",
+    "scored_edge_count",
+    "cluster_build_count",
+    "cluster_output_count",
+    "projection_matrix_cell_count",
+    "projection_matrix_build_count",
+    "projection_matrix_binding_reuse_count",
+    "binding_matrix_build_count",
+    "binding_matrix_cell_count",
+    "hungarian_solve_count",
+    "binding_output_count",
+)
 
 
 @dataclass(frozen=True)
@@ -131,7 +164,8 @@ def benchmark_terminal_replay(
     expected_hash = _canonical_sha256(expected)
     elapsed_values: list[float] = []
     first_actual: list[dict[str, Any]] | None = None
-    first_call_elapsed: list[float] = []
+    call_elapsed_by_repeat: list[list[float]] = []
+    first_operation_counts: dict[str, Any] | None = None
     for repeat_index in range(repeat_count):
         adapter = Scalable3DTerminalAdapter()
         actual: list[dict[str, Any]] = []
@@ -149,11 +183,34 @@ def benchmark_terminal_replay(
                 )
             actual.append(core)
         elapsed_values.append(perf_counter() - started)
+        call_elapsed_by_repeat.append(call_elapsed)
+        operation_counts = adapter.performance_snapshot().to_dict()
         if repeat_index == 0:
             first_actual = actual
-            first_call_elapsed = call_elapsed
+            first_operation_counts = operation_counts
+        elif operation_counts != first_operation_counts:
+            raise RuntimeError("D5 operation counts changed across identical replay repeats")
     assert first_actual is not None
+    assert first_operation_counts is not None
+    representative_repeat_index = sorted(
+        range(len(elapsed_values)),
+        key=lambda index: elapsed_values[index],
+    )[len(elapsed_values) // 2]
+    representative_call_elapsed = call_elapsed_by_repeat[representative_repeat_index]
     actual_hash = _canonical_sha256(first_actual)
+    expected_final = expected[-1] if expected else {}
+    actual_final = first_actual[-1] if first_actual else {}
+    expected_final_bindings = expected_final.get("bindings", ())
+    actual_final_bindings = actual_final.get("bindings", ())
+    process_frame_count = int(first_operation_counts["process_frame_count"])
+    operation_counts_per_frame = {
+        name: (
+            0.0
+            if process_frame_count == 0
+            else float(first_operation_counts[name]) / process_frame_count
+        )
+        for name in _OPERATION_RATE_FIELDS
+    }
     binding_state_counts = Counter(
         binding["decision_state"]
         for frame in first_actual
@@ -168,19 +225,55 @@ def benchmark_terminal_replay(
         "maximum_elapsed_s": max(elapsed_values),
         "median_call_ms": (
             0.0
-            if not first_call_elapsed
-            else median(first_call_elapsed) * 1000.0
+            if not representative_call_elapsed
+            else median(representative_call_elapsed) * 1000.0
         ),
         "maximum_call_ms": (
-            0.0 if not first_call_elapsed else max(first_call_elapsed) * 1000.0
+            0.0
+            if not representative_call_elapsed
+            else max(representative_call_elapsed) * 1000.0
+        ),
+        "mean_call_ms": (
+            0.0
+            if not representative_call_elapsed
+            else sum(representative_call_elapsed)
+            * 1000.0
+            / len(representative_call_elapsed)
+        ),
+        "p95_call_ms": (
+            0.0
+            if not representative_call_elapsed
+            else float(np.percentile(representative_call_elapsed, 95.0)) * 1000.0
+        ),
+        "representative_timing_repeat_index": representative_repeat_index,
+        "first_terminal_timestamp": (
+            None if not replay.frames else replay.frames[0].timestamp
+        ),
+        "last_terminal_timestamp": (
+            None if not replay.frames else replay.frames[-1].timestamp
+        ),
+        "simulation_duration_s": (
+            0.0 if not replay.frames else max(frame.timestamp for frame in replay.frames)
         ),
         "recorded_core_sha256": expected_hash,
         "replayed_core_sha256": actual_hash,
+        "recorded_final_core_sha256": _canonical_sha256(expected_final),
+        "replayed_final_core_sha256": _canonical_sha256(actual_final),
+        "recorded_final_binding_sha256": _canonical_sha256(expected_final_bindings),
+        "replayed_final_binding_sha256": _canonical_sha256(actual_final_bindings),
         "semantic_match": actual_hash == expected_hash,
+        "final_core_semantic_match": _canonical_json(actual_final)
+        == _canonical_json(expected_final),
+        "final_binding_semantic_match": _canonical_json(actual_final_bindings)
+        == _canonical_json(expected_final_bindings),
         "tracklet_count": sum(item["tracklet_count"] for item in first_actual),
         "graph_node_count": sum(item["graph_node_count"] for item in first_actual),
         "graph_edge_count": sum(item["graph_edge_count"] for item in first_actual),
         "binding_state_counts": dict(sorted(binding_state_counts.items())),
+        "operation_counts": first_operation_counts,
+        "operation_counts_sha256": _canonical_sha256(first_operation_counts),
+        "operation_counts_per_frame": operation_counts_per_frame,
+        "operation_diagnostics_are_fixed_size": True,
         "global_track_id_mutation_count": 0,
         "online_truth_use_count": 0,
     }
@@ -315,6 +408,148 @@ def run_scalable_3d_d5_performance_benchmark(
             "publication_payload_requires_separate_main_bus_audit": True,
         },
     }
+
+
+def compare_terminal_replay_benchmarks(
+    short_result: Mapping[str, Any],
+    long_result: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Compare fixed-size operation rates for two truth-free replays."""
+
+    required_checks = (
+        "semantic_match",
+        "final_core_semantic_match",
+        "final_binding_semantic_match",
+        "operation_diagnostics_are_fixed_size",
+    )
+    if not all(bool(short_result.get(name)) for name in required_checks):
+        raise ValueError("short D5 replay does not satisfy semantic diagnostics gates")
+    if not all(bool(long_result.get(name)) for name in required_checks):
+        raise ValueError("long D5 replay does not satisfy semantic diagnostics gates")
+    short_duration = float(short_result["simulation_duration_s"])
+    long_duration = float(long_result["simulation_duration_s"])
+    if short_duration <= 0.0 or long_duration <= 0.0:
+        raise ValueError("replay duration must be positive")
+    short_frames = int(short_result["frame_count"])
+    long_frames = int(long_result["frame_count"])
+    short_rates = short_result["operation_counts_per_frame"]
+    long_rates = long_result["operation_counts_per_frame"]
+    operation_growth = {
+        name: _growth_ratio(float(long_rates[name]), float(short_rates[name]))
+        for name in _OPERATION_RATE_FIELDS
+    }
+    short_counts = short_result["operation_counts"]
+    long_counts = long_result["operation_counts"]
+    history_growth = {
+        name: _growth_ratio(float(long_counts[name]), float(short_counts[name]))
+        for name in (
+            "active_camera_stream_peak",
+            "active_local_history_peak",
+            "received_timestamp_history_peak",
+        )
+    }
+    return {
+        "short_duration_s": short_duration,
+        "long_duration_s": long_duration,
+        "duration_ratio": long_duration / short_duration,
+        "short_frame_count": short_frames,
+        "long_frame_count": long_frames,
+        "call_density_per_simulation_second": {
+            "short": short_frames / short_duration,
+            "long": long_frames / long_duration,
+            "growth": _growth_ratio(
+                long_frames / long_duration,
+                short_frames / short_duration,
+            ),
+        },
+        "mean_call_ms": {
+            "short": float(short_result["mean_call_ms"]),
+            "long": float(long_result["mean_call_ms"]),
+            "growth": _growth_ratio(
+                float(long_result["mean_call_ms"]),
+                float(short_result["mean_call_ms"]),
+            ),
+        },
+        "median_call_ms": {
+            "short": float(short_result["median_call_ms"]),
+            "long": float(long_result["median_call_ms"]),
+            "growth": _growth_ratio(
+                float(long_result["median_call_ms"]),
+                float(short_result["median_call_ms"]),
+            ),
+        },
+        "operation_per_frame_growth": operation_growth,
+        "history_peak_growth": history_growth,
+        "short_operation_counts_sha256": short_result["operation_counts_sha256"],
+        "long_operation_counts_sha256": long_result["operation_counts_sha256"],
+        "short_business_hash_equivalent": all(
+            bool(short_result[name])
+            for name in (
+                "semantic_match",
+                "final_core_semantic_match",
+                "final_binding_semantic_match",
+            )
+        ),
+        "long_business_hash_equivalent": all(
+            bool(long_result[name])
+            for name in (
+                "semantic_match",
+                "final_core_semantic_match",
+                "final_binding_semantic_match",
+            )
+        ),
+        "online_truth_use_count": int(short_result["online_truth_use_count"])
+        + int(long_result["online_truth_use_count"]),
+        "global_track_id_mutation_count": int(
+            short_result["global_track_id_mutation_count"]
+        )
+        + int(long_result["global_track_id_mutation_count"]),
+    }
+
+
+def run_scalable_3d_d5_duration_comparison(
+    short_online_log: str | Path,
+    long_online_log: str | Path,
+    *,
+    repeat_count: int = 3,
+) -> dict[str, Any]:
+    """Replay frozen short/long online logs and compare operation growth."""
+
+    short_replay = load_long_duration_online_replay(short_online_log)
+    long_replay = load_long_duration_online_replay(long_online_log)
+    short_result = benchmark_terminal_replay(short_replay, repeat_count=repeat_count)
+    long_result = benchmark_terminal_replay(long_replay, repeat_count=repeat_count)
+    return {
+        "schema_version": SCALABLE_3D_D5_DURATION_COMPARISON_SCHEMA_VERSION,
+        "sources": {
+            "short": _replay_source_summary(short_replay),
+            "long": _replay_source_summary(long_replay),
+        },
+        "short_terminal_replay": short_result,
+        "long_terminal_replay": long_result,
+        "comparison": compare_terminal_replay_benchmarks(short_result, long_result),
+        "truth_source_loaded": False,
+    }
+
+
+def write_scalable_3d_d5_duration_comparison(
+    report: Mapping[str, Any],
+    *,
+    json_path: str | Path,
+    markdown_path: str | Path,
+) -> None:
+    json_output = Path(json_path)
+    markdown_output = Path(markdown_path)
+    json_output.parent.mkdir(parents=True, exist_ok=True)
+    markdown_output.parent.mkdir(parents=True, exist_ok=True)
+    json_output.write_text(
+        json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    markdown_output.write_text(
+        render_scalable_3d_d5_duration_comparison_markdown(report),
+        encoding="utf-8",
+    )
 
 
 def write_scalable_3d_d5_performance_report(
@@ -476,6 +711,160 @@ def render_scalable_3d_d5_performance_markdown(report: Mapping[str, Any]) -> str
     return "\n".join(lines)
 
 
+def render_scalable_3d_d5_duration_comparison_markdown(
+    report: Mapping[str, Any],
+) -> str:
+    short = report["short_terminal_replay"]
+    long = report["long_terminal_replay"]
+    comparison = report["comparison"]
+    short_counts = short["operation_counts"]
+    long_counts = long["operation_counts"]
+    growth = comparison["operation_per_frame_growth"]
+    return "\n".join(
+        [
+            "# D5 三维长短序列操作数复核",
+            "",
+            "## 结论",
+            "",
+            (
+                f"冻结在线日志的短序列为 {comparison['short_duration_s']:.3f} 秒、"
+                f"{comparison['short_frame_count']} 次调用，长序列为 "
+                f"{comparison['long_duration_s']:.3f} 秒、"
+                f"{comparison['long_frame_count']} 次调用。调用密度增长 "
+                f"{_format_growth(comparison['call_density_per_simulation_second']['growth'])}，"
+                f"平均单次成本增长 {_format_growth(comparison['mean_call_ms']['growth'])}。"
+            ),
+            (
+                "两组逐帧 TerminalAssociation 核心输出和最终 binding 均与原在线发布记录"
+                "一致。在线真值使用与 global_track_id 改写均为 0。"
+            ),
+            "",
+            "## 操作数",
+            "",
+            "| 项目 | 短序列 | 长序列 | 每调用增长 |",
+            "| --- | ---: | ---: | ---: |",
+            _operation_row("相机批次", short_counts, long_counts, growth, "camera_batch_count"),
+            _operation_row("输入检测", short_counts, long_counts, growth, "input_detection_count"),
+            _operation_row("局部航迹节点", short_counts, long_counts, growth, "graph_node_count"),
+            _operation_row(
+                "局部历史更新",
+                short_counts,
+                long_counts,
+                growth,
+                "tracker_history_update_count",
+            ),
+            _operation_row(
+                "局部匹配对比较",
+                short_counts,
+                long_counts,
+                growth,
+                "tracker_pair_evaluation_count",
+            ),
+            _operation_row(
+                "候选边输入",
+                short_counts,
+                long_counts,
+                growth,
+                "candidate_edge_generation_count",
+            ),
+            _operation_row(
+                "几何门拒绝",
+                short_counts,
+                long_counts,
+                growth,
+                "geometry_gate_rejection_count",
+            ),
+            _operation_row(
+                "保留图边",
+                short_counts,
+                long_counts,
+                growth,
+                "retained_graph_edge_count",
+            ),
+            _operation_row("图构建", short_counts, long_counts, growth, "graph_build_count"),
+            _operation_row("评分边", short_counts, long_counts, growth, "scored_edge_count"),
+            _operation_row("聚类构建", short_counts, long_counts, growth, "cluster_build_count"),
+            _operation_row("聚类输出", short_counts, long_counts, growth, "cluster_output_count"),
+            _operation_row(
+                "投影矩阵单元",
+                short_counts,
+                long_counts,
+                growth,
+                "projection_matrix_cell_count",
+            ),
+            _operation_row(
+                "绑定矩阵单元",
+                short_counts,
+                long_counts,
+                growth,
+                "binding_matrix_cell_count",
+            ),
+            _operation_row(
+                "匈牙利求解",
+                short_counts,
+                long_counts,
+                growth,
+                "hungarian_solve_count",
+            ),
+            _operation_row(
+                "绑定输出",
+                short_counts,
+                long_counts,
+                growth,
+                "binding_output_count",
+            ),
+            "",
+            "## 历史与复用",
+            "",
+            (
+                f"活跃相机流峰值为 {short_counts['active_camera_stream_peak']}/"
+                f"{long_counts['active_camera_stream_peak']}，活跃局部历史峰值为 "
+                f"{short_counts['active_local_history_peak']}/"
+                f"{long_counts['active_local_history_peak']}。量测时间戳审计历史峰值为 "
+                f"{short_counts['received_timestamp_history_peak']}/"
+                f"{long_counts['received_timestamp_history_peak']}。这些数值是标量峰值，"
+                "诊断器本身不保存逐帧历史。"
+            ),
+            (
+                f"中心航迹转换缓存命中/未命中为 "
+                f"{short_counts['center_projection_cache_hit_count']}/"
+                f"{short_counts['center_projection_cache_miss_count']} 和 "
+                f"{long_counts['center_projection_cache_hit_count']}/"
+                f"{long_counts['center_projection_cache_miss_count']}。投影矩阵构建为 "
+                f"{short_counts['projection_matrix_build_count']}/"
+                f"{long_counts['projection_matrix_build_count']} 次，均在同一调用内直接复用于"
+                "中心绑定。"
+            ),
+            (
+                f"相机模板完整构建为 {short_counts['camera_template_build_count']}/"
+                f"{long_counts['camera_template_build_count']} 次；同批次相同元数据复用为 "
+                f"{short_counts['camera_template_reuse_count']}/"
+                f"{long_counts['camera_template_reuse_count']} 次。复用只跳过重复校验，"
+                "首份模板仍执行完整内外参、旋转和协方差检查。"
+            ),
+            "",
+            "## 业务等价",
+            "",
+            f"- 短序列业务哈希：`{short['replayed_core_sha256']}`",
+            f"- 长序列业务哈希：`{long['replayed_core_sha256']}`",
+            f"- 短序列最终绑定哈希：`{short['replayed_final_binding_sha256']}`",
+            f"- 长序列最终绑定哈希：`{long['replayed_final_binding_sha256']}`",
+            f"- 短序列操作数哈希：`{short['operation_counts_sha256']}`",
+            f"- 长序列操作数哈希：`{long['operation_counts_sha256']}`",
+            "",
+            "## 证据边界",
+            "",
+            (
+                "该复核只消费在线总线记录，不读取离线真值或仿真实体编号。长短序列的"
+                "目标可见数量不同，因此两组业务哈希不应彼此相同；验收条件是每组重放"
+                "分别与自身原发布记录一致。结果用于解释操作数增长，不代表 AirSim 实时性"
+                "或图模型在线准入。"
+            ),
+            "",
+        ]
+    )
+
+
 def _active_vision_snapshot(
     *,
     now: float,
@@ -628,6 +1017,40 @@ def _terminal_core_from_result(result: Scalable3DStepResult) -> dict[str, Any]:
     }
 
 
+def _replay_source_summary(replay: LongDurationOnlineReplay) -> dict[str, Any]:
+    return {
+        "online_log": str(replay.path),
+        "online_log_size_bytes": replay.path.stat().st_size,
+        "online_log_sha256": replay.online_log_sha256,
+        "terminal_frame_count": len(replay.frames),
+        "unconsumed_vision_batch_count": replay.unconsumed_vision_batch_count,
+        "truth_source_loaded": False,
+    }
+
+
+def _growth_ratio(current: float, baseline: float) -> float | None:
+    if baseline == 0.0:
+        return 1.0 if current == 0.0 else None
+    return current / baseline
+
+
+def _format_growth(value: Any) -> str:
+    return "不可用" if value is None else f"{float(value):.3f} 倍"
+
+
+def _operation_row(
+    label: str,
+    short_counts: Mapping[str, Any],
+    long_counts: Mapping[str, Any],
+    growth: Mapping[str, Any],
+    field: str,
+) -> str:
+    return (
+        f"| {label} | {int(short_counts[field])} | {int(long_counts[field])} | "
+        f"{_format_growth(growth[field])} |"
+    )
+
+
 def _canonical_json(value: Any) -> str:
     return json.dumps(
         value,
@@ -644,13 +1067,18 @@ def _canonical_sha256(value: Any) -> str:
 
 __all__ = [
     "LongDurationOnlineReplay",
+    "SCALABLE_3D_D5_DURATION_COMPARISON_SCHEMA_VERSION",
     "SCALABLE_3D_D5_PERFORMANCE_SCHEMA_VERSION",
     "TerminalReplayFrame",
     "add_scalable_3d_d5_baseline_comparison",
     "benchmark_active_vision_scale",
     "benchmark_terminal_replay",
+    "compare_terminal_replay_benchmarks",
     "load_long_duration_online_replay",
+    "render_scalable_3d_d5_duration_comparison_markdown",
     "render_scalable_3d_d5_performance_markdown",
+    "run_scalable_3d_d5_duration_comparison",
     "run_scalable_3d_d5_performance_benchmark",
+    "write_scalable_3d_d5_duration_comparison",
     "write_scalable_3d_d5_performance_report",
 ]

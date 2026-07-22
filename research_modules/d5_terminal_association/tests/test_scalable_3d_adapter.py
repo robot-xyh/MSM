@@ -1290,3 +1290,121 @@ def test_online_association_reuses_build_projection_distances_for_center_binding
         for item in result.association.bindings
         if item.global_track_id is not None
     } == {"GT-0000", "GT-0001", "GT-0002"}
+
+
+def test_identical_camera_metadata_reuses_one_fully_validated_template(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    original = adapter_module._camera_template
+    template_build_count = 0
+
+    def counted_template(*args: object, **kwargs: object) -> object:
+        nonlocal template_build_count
+        template_build_count += 1
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(adapter_module, "_camera_template", counted_template)
+    adapter = Scalable3DTerminalAdapter()
+    result = adapter.adapt_batch(_projected_batch(0, (0, 1, 2)))
+    snapshot = adapter.performance_snapshot()
+
+    assert len(result.tracklets) == 3
+    assert template_build_count == 1
+    assert snapshot.camera_template_build_count == 1
+    assert snapshot.camera_template_reuse_count == 2
+
+
+def test_camera_template_reuse_does_not_accept_changed_extrinsics() -> None:
+    centers, boxes = _projected_boxes(0, (0, 1))
+    first = _measurement(
+        camera_index=0,
+        center=centers[0],
+        bbox=boxes[0],
+        timestamp=10.0,
+        frame_index=1,
+        detection_index=0,
+    )
+    changed_position = (CAMERA_POSITIONS[0] + np.array([1.0, 0.0, 0.0])).tolist()
+    second = _measurement(
+        camera_index=0,
+        center=centers[1],
+        bbox=boxes[1],
+        timestamp=10.0,
+        frame_index=1,
+        detection_index=1,
+        metadata_updates={"camera_position_ned": changed_position},
+    )
+
+    with pytest.raises(ValueError, match="camera geometry changes within one online batch"):
+        Scalable3DTerminalAdapter().adapt_batch(
+            _batch(0, (first, second), timestamp=10.0, frame_index=1)
+        )
+
+
+def test_performance_snapshot_is_fixed_size_non_business_and_episode_resettable() -> None:
+    adapter = Scalable3DTerminalAdapter()
+    first = adapter.process(
+        (
+            _projected_batch(0, PARTIAL_VISIBILITY[0]),
+            _projected_batch(1, PARTIAL_VISIBILITY[1]),
+        ),
+        _center_tracks(),
+    )
+    first_snapshot = adapter.performance_snapshot()
+    first_counts = first_snapshot.to_dict()
+
+    assert first_snapshot.process_frame_count == 1
+    assert first_snapshot.camera_batch_count == 2
+    assert first_snapshot.input_detection_count == 4
+    assert first_snapshot.emitted_tracklet_count == 4
+    assert first_snapshot.active_camera_stream_current == 2
+    assert first_snapshot.active_local_history_current == 4
+    assert first_snapshot.received_timestamp_history_current == 2
+    assert first_snapshot.center_projection_cache_hit_count == 0
+    assert first_snapshot.center_projection_cache_miss_count == 1
+    assert first_snapshot.graph_build_count == 1
+    assert first_snapshot.graph_node_count == 4
+    assert first_snapshot.projection_matrix_build_count == 1
+    assert first_snapshot.projection_matrix_cell_count == 12
+    assert first_snapshot.projection_matrix_binding_reuse_count == 1
+    assert first_snapshot.binding_matrix_build_count == 1
+    assert first_snapshot.hungarian_solve_count == 1
+    assert first_snapshot.binding_output_count == len(first.association.bindings)
+    assert all(
+        isinstance(value, int) and value >= 0
+        for key, value in first_counts.items()
+        if key != "schema_version"
+    )
+    assert "process_frame_count" not in first.association.diagnostics
+    assert "projection_matrix_cell_count" not in first.association.diagnostics
+
+    adapter.process(
+        (
+            _timed_projected_batch(
+                0,
+                measurement_timestamp=10.1,
+                arrival_timestamp=10.15,
+                frame_index=2,
+            ),
+            _timed_projected_batch(
+                1,
+                measurement_timestamp=10.1,
+                arrival_timestamp=10.15,
+                frame_index=2,
+            ),
+        ),
+        _center_tracks(),
+    )
+    second_snapshot = adapter.performance_snapshot()
+    assert second_snapshot.process_frame_count == 2
+    assert second_snapshot.center_projection_cache_hit_count == 1
+    assert second_snapshot.center_projection_cache_miss_count == 1
+    assert second_snapshot.graph_build_count == 2
+
+    adapter.reset_episode()
+    reset_counts = adapter.performance_snapshot().to_dict()
+    assert all(
+        value == 0
+        for key, value in reset_counts.items()
+        if key != "schema_version"
+    )
