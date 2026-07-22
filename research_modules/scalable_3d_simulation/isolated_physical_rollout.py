@@ -47,7 +47,7 @@ from .world import VectorizedPointMassWorld
 
 
 ISOLATED_PHYSICAL_ROLLOUT_SCHEMA_VERSION = (
-    "scalable3d-checkpoint-paired-physical-rollout-v1"
+    "scalable3d-checkpoint-paired-physical-rollout-v2"
 )
 ISOLATED_PLAN_PUBLICATION_SCHEMA = "d3.isolated-plan-publication.v1"
 ISOLATED_PLAN_CONSUMPTION_SCHEMA = (
@@ -1090,12 +1090,14 @@ def write_checkpoint_paired_physical_rollouts(
                 temporary / "d6_evaluation",
             )
 
+        source_provenance = _source_provenance(execution)
         manifest = temporary / "manifest.json"
         _write_json(
             manifest,
             {
                 "schema_version": execution.schema_version,
                 "created_at_utc": execution.options.created_at_utc,
+                **source_provenance,
                 "pair_count": len(execution.pairs),
                 "seeds": [item.seed for item in execution.pairs],
                 "d3_bundle_loaded": execution.d3_bundle_loaded,
@@ -1354,6 +1356,32 @@ def _pair_summary(pair: IsolatedPhysicalPairResult) -> dict[str, Any]:
     }
 
 
+def _source_provenance(
+    execution: IsolatedPhysicalRolloutExecution,
+) -> dict[str, Any]:
+    """Summarise the immutable source episode repository provenance."""
+
+    source_git_commits = sorted(
+        {str(pair.source.source_git_commit) for pair in execution.pairs}
+    )
+    dirty_source_episode_count = sum(
+        bool(pair.source.source_repository_dirty) for pair in execution.pairs
+    )
+    commit_is_uniform = len(source_git_commits) == 1
+    return {
+        "git_commit": source_git_commits[0] if commit_is_uniform else None,
+        "repository_dirty": bool(dirty_source_episode_count),
+        "source_episode_count": len(execution.pairs),
+        "source_git_commits": source_git_commits,
+        "source_git_commit_uniform": commit_is_uniform,
+        "dirty_source_episode_count": dirty_source_episode_count,
+        "source_episode_manifest_sha256": {
+            str(pair.seed): pair.source.source_episode_manifest_sha256
+            for pair in execution.pairs
+        },
+    }
+
+
 def _render_report(execution: IsolatedPhysicalRolloutExecution) -> str:
     pair_count = len(execution.pairs)
     mapped = sum(
@@ -1387,6 +1415,11 @@ def _render_report(execution: IsolatedPhysicalRolloutExecution) -> str:
         for arm in (pair.control, pair.treatment)
         for item in arm.d4_adoption_records
     )
+    source_provenance = _source_provenance(execution)
+    source_commit = source_provenance["git_commit"] or "mixed"
+    dirty_source_count = int(
+        source_provenance["dirty_source_episode_count"]
+    )
     return "\n".join(
         [
             "# 共同检查点隔离物理续跑报告",
@@ -1405,6 +1438,10 @@ def _render_report(execution: IsolatedPhysicalRolloutExecution) -> str:
             (
                 f"D4 区域采用证据可用数为 `{d4_available_count}/"
                 f"{d4_region_count}`；名义场景没有区域采用记录。"
+            ),
+            (
+                f"源提交为 `{source_commit}`，脏源 episode 为 "
+                f"`{dirty_source_count}/{pair_count}`。"
             ),
             "",
             "## 执行边界",

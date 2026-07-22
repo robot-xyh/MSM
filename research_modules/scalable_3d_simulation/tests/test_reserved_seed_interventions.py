@@ -271,6 +271,30 @@ def test_reserved_seed_runner_emits_forty_fail_closed_arms(tmp_path: Path) -> No
             "d4_adoption_evidence"
         ] == arm_inputs["d4_adoption_evidence"]["sha256"]
     assert physical_manifest["pair_count"] == 20
+    expected_commits = sorted(
+        {item.source.source_git_commit for item in physical.pairs}
+    )
+    expected_dirty_count = sum(
+        item.source.source_repository_dirty for item in physical.pairs
+    )
+    assert physical_manifest["source_episode_count"] == 20
+    assert physical_manifest["source_git_commits"] == expected_commits
+    assert physical_manifest["source_git_commit_uniform"] is (
+        len(expected_commits) == 1
+    )
+    assert physical_manifest["git_commit"] == (
+        expected_commits[0] if len(expected_commits) == 1 else None
+    )
+    assert physical_manifest["dirty_source_episode_count"] == (
+        expected_dirty_count
+    )
+    assert physical_manifest["repository_dirty"] is bool(
+        expected_dirty_count
+    )
+    assert physical_manifest["source_episode_manifest_sha256"] == {
+        str(item.seed): item.source.source_episode_manifest_sha256
+        for item in physical.pairs
+    }
     assert physical_manifest["claim_boundary"]["production_runtime_ack"] is False
     assert d6_sidecar["comparison_scope"] == "paired_isolated_simulation_comparison"
     assert d6_sidecar["audit"]["online_truth_use_count"] == 0
