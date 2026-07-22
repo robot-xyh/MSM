@@ -2,6 +2,31 @@
 
 ## 当前性能治理状态与后续计划（2026-07-22）
 
+第二阶段扫描关联优化已经完成。clean 提交 `492979e` 的 200 规模五 seed 第一阶段默认路径
+D1 fusion 为 10.096/13.693/12.895/11.973/11.856 s，均值 12.103 s。seed 42000 冻结输入
+SHA-256 为 `bc539686b130d96c63b76b9161fadbae2dba59de44cb61ac80d92f2ea1018406`；输入仍为
+86 个扫描、2,051 条匿名观测，在线 truth 使用为 0。
+
+本阶段的实施和验收状态如下：
+
+1. **扫描内模型缓存已实现**：非雷达量测模型按观测构造一次，航迹状态按共同量测时刻取得一次；
+   传感器/相机几何键严格相同时复用预测量测和数值雅可比。每个候选对仍独立执行创新求解和门控。
+2. **扫描语义保持**：current-default 与优化路径的 86 个逐扫描语义哈希、最终 201 条航迹哈希
+   和 consistency evidence 哈希一致；OOSM、fixed-lag、双时间戳、covariance、航迹起始/分级、
+   observer-scan conflict 和 `global_track_id` 均未改变。
+3. **操作数验收通过**：candidate pair 与 innovation solve 均为 371,054；量测模型构造
+   `16,457 -> 82`，投影构造 `16,457 -> 14,648`；radar 状态构造和 16,653 次
+   `GlobalTrack` 物化保持不变。
+4. **模块级结果**：纯融合墙钟 `10.792 s -> 8.635 s`，本机单次 1.25 倍。专项
+   `10 passed in 10.33s`，D1 全量 `161 passed in 38.02s`。墙钟不作为脆弱单测阈值。
+5. **下一验收**：由 main 在当前代码上复跑 clean 200 规模五 seed 和其他预注册规模，冻结硬件、
+   发布频率与配置，比较 P50/P95/max、实时倍率和峰值内存。正式 RMSE/NEES/NIS、AirSim 和
+   物理闭环仍独立验收。
+
+第二阶段报告为 `reports/D1_SCAN_ASSOCIATION_PERFORMANCE_BENCHMARK_CN.md` 及对应 JSON。
+本轮不改变 AirSim producer、Blocks/ComputerVision/SimpleFlight、reset/episode 编排或持久化
+schema，因此 `docs/AIRSIM_INTEGRATION_PLAN.md` 已检查，无需修改。
+
 clean 治理复跑已经完成。提交为 `e4d66db02a0b8f1b867a0e81b4a73de84588426b`；
 20/50/100/200 各 5 个 seed，共 20 个 formal episode，每例 136 帧、33.75 s。20/20
 `repository_dirty=false`，D1 每例重排 12、拒绝/过旧/溢出 0、峰值缓冲 3、结束缓冲 0、在线

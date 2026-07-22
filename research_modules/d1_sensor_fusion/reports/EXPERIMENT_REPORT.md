@@ -1,5 +1,61 @@
 # D1 Sensor Fusion Offline Experiment Report
 
+## 2026-07-22 扫描关联工作区优化
+
+### 基线与输入
+
+第一阶段增量后验默认路径在 clean `492979e` 的 200 规模五个 seed 上，D1 fusion 分别为
+10.096、13.693、12.895、11.973 和 11.856 s，均值 12.103 s。该组是第二阶段开始前的完整
+五 seed 基线，优化后的同组全栈尚未复跑。
+
+专项对照使用 seed 42000 的冻结 `online_observations.jsonl`。文件 SHA-256 为
+`bc539686b130d96c63b76b9161fadbae2dba59de44cb61ac80d92f2ea1018406`，包含 86 个扫描和
+2,051 条匿名观测。扫描输入审计记录 10 次重排，峰值缓冲 33 个扫描/623 条观测，拒绝、过旧和
+溢出均为 0，在线 truth 使用为 0。
+
+### Profiler 结论
+
+current-default 的 cProfile 显示，剩余主要成本位于扫描一对一关联。`process_scan_batch()`
+累计 16.743 s，`_scan_one_to_one_assignments()` 累计 6.876 s，逐候选调用的
+`_association_score()` 累计 5.733 s；其中 `measurement_model_for()` 累计 2.453 s，
+`numerical_jacobian()` 累计 1.685 s。`global_tracks()` 累计 1.387 s，未成为本轮首选改动点。
+cProfile 会放大绝对墙钟，本组数值只用于确认调用结构。
+
+非雷达扫描原先按“航迹数乘观测数”重复校验几何并构造量测模型。优化路径为扫描建立临时工作区：
+量测模型按观测构造一次，航迹状态按共同量测时刻取得一次；仅在实际传感器和相机几何完全相同
+时复用预测量测和数值雅可比。每个候选对的残差、创新协方差、伪逆、门控和 Hungarian 分配保持。
+
+### 语义和操作数
+
+| 指标 | current-default | 优化路径 |
+| --- | ---: | ---: |
+| candidate pair | 371,054 | 371,054 |
+| innovation solve | 371,054 | 371,054 |
+| measurement model build | 16,457 | 82 |
+| projection build | 16,457 | 14,648 |
+| radar track state build | 1,804 | 1,804 |
+| radar observation state build | 1,769 | 1,769 |
+| GlobalTrack materialization | 16,653 | 16,653 |
+| 纯融合墙钟 | 10.792 s | 8.635 s |
+
+量测模型构造下降 99.50%，投影构造下降 10.99%，本机单次墙钟加速 1.25 倍。86 个逐扫描语义
+哈希完全一致；最终 201 条航迹哈希均为
+`a60c8614f5e4dd59d77d1212112e9e0a2750610efed9365a0eb6043a67073457`；一致性证据哈希均为
+`e9bea4499fc82b3e4f354c751fdf2c43d2635eb4fb78e5a7e0e63e04dbb6e52f`。
+
+专项测试覆盖 1/7/200 动态规模、current-default 与优化路径等价、乱序插入、fixed-lag 检查点前
+OOSM、候选对/创新求解保持和模型构造下降，结果为 `10 passed in 10.33s`。D1 全量回归为
+`161 passed in 38.02s`。
+
+### 结论边界
+
+本阶段关闭的是 D1 冻结输入上的非雷达扫描重复模型构造。它没有丢弃观测、降低发布内容、缩短
+fixed-lag、压低 covariance、放宽门控或读取在线 truth。优化后的 clean 五 seed 完整全栈、
+AirSim、RMSE、NEES、NIS 和物理拦截尚未复跑，1.25 倍不能写成 200v200 系统实时结论。
+
+详细结果见 `D1_SCAN_ASSOCIATION_PERFORMANCE_BENCHMARK_CN.md` 和
+`d1_scan_association_performance_benchmark_20260722.json`。
+
 ## 2026-07-22 逐扫描融合性能治理
 
 ### 输入与方法

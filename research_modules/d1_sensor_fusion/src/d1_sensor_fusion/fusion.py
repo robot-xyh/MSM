@@ -21,6 +21,7 @@ from .covariance_contract import validate_online_sensor_observation
 from .ekf import EKFState, ekf_update, predict_to
 from .motion import wrap_residual
 from .observations import (
+    MeasurementModel,
     RadarCovarianceConfig,
     measurement_model_for,
     radar_state_from_observation,
@@ -248,6 +249,12 @@ class _BatchProcessingContext:
     replay_checkpoint_reuse_count: int = 0
     global_track_materialization_count: int = 0
     sensor_health_snapshot_build_count: int = 0
+    association_candidate_pair_count: int = 0
+    association_measurement_model_build_count: int = 0
+    association_projection_build_count: int = 0
+    association_innovation_solve_count: int = 0
+    association_radar_track_state_build_count: int = 0
+    association_radar_observation_state_build_count: int = 0
 
 
 class FusionAdapter:
@@ -285,6 +292,7 @@ class FusionAdapter:
         ] | None = None,
         incremental_replay_cache: bool = True,
         shared_publication_audit_snapshot: bool = True,
+        scan_association_model_cache: bool = True,
     ) -> None:
         self.process_noise = float(process_noise)
         self.bucket_size = float(bucket_size)
@@ -348,6 +356,7 @@ class FusionAdapter:
         self.shared_publication_audit_snapshot = bool(
             shared_publication_audit_snapshot
         )
+        self.scan_association_model_cache = bool(scan_association_model_cache)
         self.tracks: dict[str, TrackRecord] = {}
         self.sensor_health: dict[str, SensorHealthState] = {}
         self.current_time = 0.0
@@ -489,6 +498,24 @@ class FusionAdapter:
             ),
             sensor_health_snapshot_build_count=(
                 context.sensor_health_snapshot_build_count
+            ),
+            association_candidate_pair_count=(
+                context.association_candidate_pair_count
+            ),
+            association_measurement_model_build_count=(
+                context.association_measurement_model_build_count
+            ),
+            association_projection_build_count=(
+                context.association_projection_build_count
+            ),
+            association_innovation_solve_count=(
+                context.association_innovation_solve_count
+            ),
+            association_radar_track_state_build_count=(
+                context.association_radar_track_state_build_count
+            ),
+            association_radar_observation_state_build_count=(
+                context.association_radar_observation_state_build_count
             ),
             deferred_update_replay_avoidance_count=max(
                 0,
@@ -638,6 +665,24 @@ class FusionAdapter:
             ),
             sensor_health_snapshot_build_count=(
                 context.sensor_health_snapshot_build_count
+            ),
+            association_candidate_pair_count=(
+                context.association_candidate_pair_count
+            ),
+            association_measurement_model_build_count=(
+                context.association_measurement_model_build_count
+            ),
+            association_projection_build_count=(
+                context.association_projection_build_count
+            ),
+            association_innovation_solve_count=(
+                context.association_innovation_solve_count
+            ),
+            association_radar_track_state_build_count=(
+                context.association_radar_track_state_build_count
+            ),
+            association_radar_observation_state_build_count=(
+                context.association_radar_observation_state_build_count
             ),
             deferred_update_replay_avoidance_count=max(
                 0,
@@ -1335,6 +1380,12 @@ class FusionAdapter:
         if not track_items:
             return {}
 
+        context = self._batch_context
+        if context is not None:
+            context.association_candidate_pair_count += (
+                len(track_items) * len(observations)
+            )
+
         if all(observation.modality == "radar" for observation in observations):
             measurement_timestamp = observations[0].measurement_timestamp
             track_states = [
@@ -1345,6 +1396,14 @@ class FusionAdapter:
                 radar_state_from_observation(observation, self.radar_covariance_config)
                 for observation in observations
             ]
+            if context is not None:
+                context.association_radar_track_state_build_count += len(track_states)
+                context.association_radar_observation_state_build_count += len(
+                    observation_states
+                )
+                context.association_innovation_solve_count += (
+                    len(track_states) * len(observation_states)
+                )
             track_positions = np.stack([item.state[:3] for item in track_states])
             track_covariances = np.stack(
                 [item.covariance[:3, :3] for item in track_states]
@@ -1367,6 +1426,11 @@ class FusionAdapter:
                 differences,
                 inverses,
                 differences,
+            )
+        elif self.scan_association_model_cache:
+            cost_matrix = self._cached_non_radar_scan_cost_matrix(
+                track_items,
+                observations,
             )
         else:
             cost_matrix = np.empty((len(track_items), len(observations)), dtype=float)
@@ -1412,6 +1476,80 @@ class FusionAdapter:
                 continue
             assignments[int(column)] = track_items[int(row)][0]
         return assignments
+
+    def _cached_non_radar_scan_cost_matrix(
+        self,
+        track_items: list[tuple[str, TrackRecord]],
+        observations: list[SensorObservation],
+    ) -> np.ndarray:
+        """Build one scan cost matrix without rebuilding immutable models per pair."""
+
+        context = self._batch_context
+        states: list[EKFState | None] = []
+        measurement_timestamp = observations[0].measurement_timestamp
+        for _, record in track_items:
+            try:
+                states.append(self._state_at(record, measurement_timestamp))
+            except (ValueError, FloatingPointError, np.linalg.LinAlgError):
+                states.append(None)
+
+        models: list[MeasurementModel | None] = []
+        for observation in observations:
+            if context is not None:
+                context.association_measurement_model_build_count += 1
+            try:
+                models.append(
+                    measurement_model_for(
+                        observation,
+                        self.radar_covariance_config,
+                    )
+                )
+            except (ValueError, FloatingPointError, np.linalg.LinAlgError):
+                models.append(None)
+
+        cost_matrix = np.full(
+            (len(track_items), len(observations)),
+            np.inf,
+            dtype=float,
+        )
+        projection_cache: dict[
+            tuple[int, tuple[Any, ...]],
+            tuple[np.ndarray, np.ndarray] | None,
+        ] = {}
+        for row, state in enumerate(states):
+            if state is None:
+                continue
+            for column, model in enumerate(models):
+                if model is None:
+                    continue
+                geometry_key = model.geometry_key or (
+                    "observation",
+                    observations[column].observation_id,
+                )
+                cache_key = (row, geometry_key)
+                if cache_key not in projection_cache:
+                    if context is not None:
+                        context.association_projection_build_count += 1
+                    try:
+                        projection_cache[cache_key] = (
+                            model.h_fn(state.state),
+                            model.h_jacobian_fn(state.state),
+                        )
+                    except (ValueError, FloatingPointError, np.linalg.LinAlgError):
+                        projection_cache[cache_key] = None
+                projection = projection_cache[cache_key]
+                if projection is None:
+                    continue
+                try:
+                    cost_matrix[row, column] = self._innovation_nis_from_model(
+                        state,
+                        model,
+                        projection[0],
+                        projection[1],
+                    )
+                except (ValueError, FloatingPointError, np.linalg.LinAlgError):
+                    cost_matrix[row, column] = np.inf
+        return cost_matrix
 
     def _record_has_observer_scan(
         self,
@@ -1513,12 +1651,32 @@ class FusionAdapter:
             return np.inf
 
     def _innovation_nis(self, state: EKFState, observation: SensorObservation) -> float:
+        context = self._batch_context
+        if context is not None:
+            context.association_measurement_model_build_count += 1
         model = measurement_model_for(observation, self.radar_covariance_config)
+        if context is not None:
+            context.association_projection_build_count += 1
         h = model.h_fn(state.state)
         h_j = model.h_jacobian_fn(state.state)
-        residual = wrap_residual(model.z - h, model.angle_indices)
-        s = h_j @ state.covariance @ h_j.T + model.r
+        return self._innovation_nis_from_model(state, model, h, h_j)
+
+    def _innovation_nis_from_model(
+        self,
+        state: EKFState,
+        model: MeasurementModel,
+        predicted_measurement: np.ndarray,
+        measurement_jacobian: np.ndarray,
+    ) -> float:
+        residual = wrap_residual(
+            model.z - predicted_measurement,
+            model.angle_indices,
+        )
+        s = measurement_jacobian @ state.covariance @ measurement_jacobian.T + model.r
         s = 0.5 * (s + s.T) + 1e-9 * np.eye(s.shape[0])
+        context = self._batch_context
+        if context is not None:
+            context.association_innovation_solve_count += 1
         return float(residual.T @ np.linalg.pinv(s) @ residual)
 
     def _filter_update(

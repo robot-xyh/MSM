@@ -13,6 +13,7 @@
 | 扫描水位线 clean/formal 复跑 | **已关闭** | 提交 `e4d66db02a0b8f1b867a0e81b4a73de84588426b`；20/50/100/200 各 5 seed，20/20 formal 且 `repository_dirty=false`；每例 136 帧、重排 12、拒绝/过旧/溢出 0、峰值/结束缓冲 3/0、在线 truth 0 | 保持 schema/hash/truth-isolation 回归；AirSim 和完整融合另行验收 |
 | 观测治理内存边界 | 正式快速治理证据已获得 | 200 规模 `estimated_peak_memory_bytes.mean=40,914,828.4 B`，约 40.91 MB；最大 40,926,870 B | 完整融合、长历史和进程常驻集内存仍需单独记录；tracemalloc 值不是生产预算 |
 | 逐小扫描全后验吞吐 | **D1-owned 冻结输入热点已关闭；系统 P1 仍开放** | profiler 定位 `_state_at`/历史 replay 和重复 health snapshot；增量后验检查点与每扫描公共审计快照使 filter update `93,234 -> 1,797`、health snapshot `16,653 -> 86`；逐扫描/终态/evidence 哈希等价；34.701 s -> 9.073 s | main 从 clean commit 复跑完整未见多 seed，冻结硬件、发布频率与周期预算；另验长历史内存和端到端实时倍率 |
+| 扫描关联重复模型构造 | **D1-owned 已关闭；全栈复跑仍开放** | clean `492979e` 五 seed 旧默认均值 12.103 s；seed 42000 current-default 与优化路径逐扫描/终态/evidence 哈希等价；candidate/innovation 均保持 371,054，model build `16,457 -> 82`，projection `16,457 -> 14,648`，墙钟 `10.792 -> 8.635 s` | main 用新默认路径复跑 clean 多 seed；不得用单 seed 1.25 倍替代系统 P95、AirSim 或实时验收 |
 | 正式 200v200 算法效果 | 未验收 | 单次全栈只有 development/dirty seed 42000；正式 sidecar 指标 unavailable | 未见多 seed、正确 D2 canonical mapping、RMSE/NEES/NIS/coverage 与置信区间 |
 | AirSim 状态 | 无变化 | 两批均为合成治理或三维质点制品，未启动 Blocks/CV/SimpleFlight | 按独立 AirSim 计划采集和验收，不得把本批改写为 AirSim 证据 |
 
@@ -20,6 +21,13 @@
 均通过复核。释放后的重复后验计算已在 D1 冻结输入上完成治理；未缓存参考与优化路径保持每扫描
 一对一关联、双时间戳、covariance、OOSM、observer-scan conflict、consistency evidence 和
 完整 `GlobalTrack` 输出。该证据不能替代 clean 完整全栈多 seed、AirSim 和融合精度验收。
+
+第二阶段继续治理第一阶段默认路径中的扫描关联成本。严格几何键只允许在实际量测函数参数一致时
+复用非雷达预测量测和数值雅可比；每个候选对仍独立求创新协方差并参加 Hungarian 分配。冻结
+输入 SHA-256 为 `bc539686b130d96c63b76b9161fadbae2dba59de44cb61ac80d92f2ea1018406`。
+86 个逐扫描语义摘要、最终 201 条航迹和 consistency evidence 完全一致，在线 truth 使用为 0。
+专项 `10 passed in 10.33s`，D1 全量 `161 passed in 38.02s`。当前无新增 D1 P0 blocker；
+优化后 clean 五 seed 全栈复跑和正式效果指标仍为 P1。
 
 ## 0.1 历史 D1-owned GAP 增量（2026-07-16）
 

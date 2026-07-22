@@ -109,6 +109,12 @@ class MeasurementModel:
     h_fn: Callable[[np.ndarray], np.ndarray]
     h_jacobian_fn: Callable[[np.ndarray], np.ndarray]
     angle_indices: tuple[int, ...] = ()
+    geometry_key: tuple[Any, ...] = ()
+
+
+def _geometry_array_key(value: np.ndarray) -> tuple[tuple[int, ...], bytes]:
+    array = np.ascontiguousarray(np.asarray(value, dtype=float))
+    return tuple(int(item) for item in array.shape), array.tobytes()
 
 
 @dataclass(frozen=True)
@@ -427,6 +433,11 @@ def measurement_model_for(
             h_fn=h_fn,
             h_jacobian_fn=lambda x: numerical_jacobian(h_fn, x),
             angle_indices=(1, 2),
+            geometry_key=(
+                "radar",
+                _geometry_array_key(sensor_position),
+                measurement_dimension,
+            ),
         )
 
     if modality == "acoustic":
@@ -442,6 +453,7 @@ def measurement_model_for(
             h_fn=h_fn,
             h_jacobian_fn=lambda x: numerical_jacobian(h_fn, x),
             angle_indices=(0,),
+            geometry_key=("acoustic", _geometry_array_key(sensor_position)),
         )
 
     if modality == "acoustic_3d":
@@ -459,6 +471,7 @@ def measurement_model_for(
             h_fn=h_fn,
             h_jacobian_fn=lambda x: numerical_jacobian(h_fn, x),
             angle_indices=(0, 1),
+            geometry_key=("acoustic_3d", _geometry_array_key(sensor_position)),
         )
 
     if modality == "eo":
@@ -473,6 +486,15 @@ def measurement_model_for(
             h_fn=h_fn,
             h_jacobian_fn=lambda x: numerical_jacobian(h_fn, x),
             angle_indices=(),
+            geometry_key=(
+                "eo",
+                _geometry_array_key(camera.position_ned),
+                _geometry_array_key(camera.rotation_world_to_camera),
+                float(camera.fx),
+                float(camera.fy),
+                float(camera.cx),
+                float(camera.cy),
+            ),
         )
 
     if modality == "lidar":
@@ -487,6 +509,7 @@ def measurement_model_for(
             h_fn=h_fn,
             h_jacobian_fn=lambda x: numerical_jacobian(h_fn, x),
             angle_indices=(),
+            geometry_key=("lidar",),
         )
 
     raise ValueError(f"Unsupported modality: {observation.modality}")

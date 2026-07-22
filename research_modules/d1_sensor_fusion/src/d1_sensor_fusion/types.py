@@ -944,6 +944,12 @@ class FusionBatchSummary:
     replay_checkpoint_reuse_count: int
     global_track_materialization_count: int
     sensor_health_snapshot_build_count: int
+    association_candidate_pair_count: int
+    association_measurement_model_build_count: int
+    association_projection_build_count: int
+    association_innovation_solve_count: int
+    association_radar_track_state_build_count: int
+    association_radar_observation_state_build_count: int
     deferred_update_replay_avoidance_count: int
     published_at: float
     ordering: str = "input_arrival_order"
@@ -970,6 +976,24 @@ class FusionBatchSummary:
             ),
             "sensor_health_snapshot_build_count": (
                 self.sensor_health_snapshot_build_count
+            ),
+            "association_candidate_pair_count": (
+                self.association_candidate_pair_count
+            ),
+            "association_measurement_model_build_count": (
+                self.association_measurement_model_build_count
+            ),
+            "association_projection_build_count": (
+                self.association_projection_build_count
+            ),
+            "association_innovation_solve_count": (
+                self.association_innovation_solve_count
+            ),
+            "association_radar_track_state_build_count": (
+                self.association_radar_track_state_build_count
+            ),
+            "association_radar_observation_state_build_count": (
+                self.association_radar_observation_state_build_count
             ),
             "deferred_update_replay_avoidance_count": (
                 self.deferred_update_replay_avoidance_count

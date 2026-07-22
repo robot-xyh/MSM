@@ -4,6 +4,14 @@
 
 ## 当前证据索引（2026-07-22）
 
+第二阶段扫描关联工作区使用 clean `492979e` 的 seed 42000 冻结输入，SHA-256 为
+`bc539686b130d96c63b76b9161fadbae2dba59de44cb61ac80d92f2ea1018406`。current-default 与
+优化路径保持 86 个逐扫描语义、最终 201 条航迹和 consistency evidence 哈希一致；候选对和
+创新求解均保持 371,054，量测模型构造 `16,457 -> 82`，墙钟 `10.792 s -> 8.635 s`。
+专项 10 项和 D1 全量 161 项通过。详细结果位于
+`../reports/D1_SCAN_ASSOCIATION_PERFORMANCE_BENCHMARK_CN.md` 和对应 JSON。优化后的 clean
+五 seed 全栈尚未复跑，结果不代表 AirSim 或完整系统实时。
+
 最新 D1-owned 性能证据使用 seed 42000 的冻结 200v200 输入：86 个扫描、2,051 条匿名观测，
 输入 SHA-256 为 `38d24429711b67d612f2f398478386ebf0df690fae55cd9dcc36434aac4fb078`。
 增量后验检查点和每扫描公共发布审计快照保持逐扫描、终态航迹及 consistency evidence 哈希
@@ -54,5 +62,7 @@ D1 侧解释见本目录各算法/AirSim 文档和 `../reports/EXPERIMENT_REPORT
 
 - `../reports/D1_SCAN_FUSION_PERFORMANCE_BENCHMARK_CN.md`
 - `../reports/d1_scan_fusion_performance_benchmark_20260722.json`
+- `../reports/D1_SCAN_ASSOCIATION_PERFORMANCE_BENCHMARK_CN.md`
+- `../reports/d1_scan_association_performance_benchmark_20260722.json`
 
 更新文档时不要移动或重命名上述图表，避免破坏报告中的相对链接。

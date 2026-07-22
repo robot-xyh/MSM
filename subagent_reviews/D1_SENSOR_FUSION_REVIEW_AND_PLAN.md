@@ -7,6 +7,20 @@
 
 ## 0. 当前性能与治理状态（2026-07-22）
 
+- 第二阶段以 clean `492979e` 的 200 规模五 seed 为起点；第一阶段默认路径 D1 fusion 分别为
+  10.096、13.693、12.895、11.973、11.856 s，均值 12.103 s。冻结 seed 42000 输入的
+  SHA-256 为 `bc539686b130d96c63b76b9161fadbae2dba59de44cb61ac80d92f2ea1018406`。
+- 当前默认关联路径为非雷达扫描建立工作区：量测模型按观测构造，航迹状态按共同量测时刻取得，
+  仅在传感器位置、相机位置、旋转和内参完全一致时复用预测量测与数值雅可比。残差、创新协方差、
+  伪逆、门控及 Hungarian 一对一分配仍逐候选对执行。
+- current-default 与优化路径的 86 个逐扫描语义哈希、最终 201 条航迹和 consistency evidence
+  哈希一致。candidate pair/innovation solve 均为 371,054；model build `16,457 -> 82`，
+  projection build `16,457 -> 14,648`，`GlobalTrack` 物化保持 16,653。
+- 模块级墙钟 `10.792 s -> 8.635 s`，本机单次 1.25 倍；专项 `10 passed in 10.33s`，D1
+  全量 `161 passed in 38.02s`。墙钟只作说明，正式验收使用语义哈希和操作计数。
+- 第二阶段没有丢弃观测、缩短 fixed-lag、压低 covariance、放宽 gate、使用 truth 或降低发布
+  内容。优化后 clean 五 seed 全栈尚未复跑，系统 P95、AirSim 和完整 200v200 实时性仍开放。
+
 - D1 已在冻结的 seed 42000/200v200 输入上完成函数级 profiler。未缓存路径的主要热点为
   `_state_at` 38.120 s、`_replay_record` 46.097 s、`_filter_update` 37.615 s/93,234 次，以及
   每航迹重复生成 sensor-health 快照 16,653 次。

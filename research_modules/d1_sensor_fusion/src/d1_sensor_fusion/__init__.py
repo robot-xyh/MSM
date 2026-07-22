@@ -142,10 +142,13 @@ from .scan_input import (
     SensorScanFrame,
 )
 from .scan_fusion_performance import (
+    SCAN_ASSOCIATION_PERFORMANCE_SCHEMA_VERSION,
     SCAN_FUSION_PERFORMANCE_SCHEMA_VERSION,
+    compare_scan_association_variants,
     compare_scan_fusion_variants,
     load_frozen_sensor_scans,
     run_scan_fusion_variant,
+    write_scan_association_performance_report,
     write_scan_fusion_performance_report,
 )
 from .types import (
@@ -246,6 +249,7 @@ __all__ = [
     "SCAN_INPUT_CONFIG_SCHEMA_VERSION",
     "SCAN_INPUT_FRAME_SCHEMA_VERSION",
     "SCAN_INPUT_RESULT_SCHEMA_VERSION",
+    "SCAN_ASSOCIATION_PERFORMANCE_SCHEMA_VERSION",
     "SCAN_FUSION_PERFORMANCE_SCHEMA_VERSION",
     "Scalable3DFusionAdapter",
     "ScanInputAuditEvent",
@@ -270,6 +274,7 @@ __all__ = [
     "build_offline_truth_state_sidecar",
     "consistency_payload_sha256",
     "consistency_range_bin",
+    "compare_scan_association_variants",
     "compare_scan_fusion_variants",
     "covariance_intersection",
     "file_sha256",
@@ -308,6 +313,7 @@ __all__ = [
     "write_sensor_observations_csv",
     "write_sensor_observations_jsonl",
     "write_frozen_airsim_replay",
+    "write_scan_association_performance_report",
     "write_scan_fusion_performance_report",
     "summarize_recon_cue_from_tracks",
     "DuplicateScanLineageError",

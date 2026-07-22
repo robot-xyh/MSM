@@ -7,8 +7,30 @@ import numpy as np
 import pytest
 
 from d1_sensor_fusion import Scalable3DFusionAdapter
-from d1_sensor_fusion.observations import acoustic_covariance, radar_covariance_from_range, radar_h
+from d1_sensor_fusion.observations import (
+    CameraModel,
+    acoustic_covariance,
+    eo_project,
+    radar_covariance_from_range,
+    radar_h,
+)
 from d1_sensor_fusion.types import FusionBatchResult, SensorObservation
+
+
+_OPERATION_SUMMARY_FIELDS = (
+    "state_cache_hit_count",
+    "state_cache_miss_count",
+    "replay_filter_update_count",
+    "replay_checkpoint_reuse_count",
+    "global_track_materialization_count",
+    "sensor_health_snapshot_build_count",
+    "association_candidate_pair_count",
+    "association_measurement_model_build_count",
+    "association_projection_build_count",
+    "association_innovation_solve_count",
+    "association_radar_track_state_build_count",
+    "association_radar_observation_state_build_count",
+)
 
 
 def _canonical(value):
@@ -101,6 +123,63 @@ def _acoustic_observation(
     )
 
 
+def _eo_scan(
+    target_count: int,
+    *,
+    measurement_timestamp: float,
+    arrival_timestamp: float,
+    scan_id: str,
+) -> tuple[SensorObservation, ...]:
+    camera = CameraModel(
+        position_ned=np.zeros(3),
+        rotation_world_to_camera=np.array(
+            [
+                [0.0, 1.0, 0.0],
+                [0.0, 0.0, 1.0],
+                [1.0, 0.0, 0.0],
+            ],
+            dtype=float,
+        ),
+        fx=900.0,
+        fy=900.0,
+        cx=640.0,
+        cy=360.0,
+    )
+    observations = []
+    for index in range(target_count):
+        observations.append(
+            SensorObservation(
+                observation_id=f"{scan_id}-target-{index:03d}",
+                sensor_id="eo-performance",
+                modality="eo",
+                measurement_timestamp=measurement_timestamp,
+                arrival_timestamp=arrival_timestamp,
+                frame_id="pixel",
+                measurement=eo_project(
+                    _target_state(index, measurement_timestamp),
+                    camera,
+                ),
+                covariance=np.diag([4.0, 4.0]),
+                classification_hint="unmanned_aircraft",
+                confidence=0.95,
+                metadata={
+                    "camera_id": "eo-performance",
+                    "camera_position_ned": camera.position_ned.copy(),
+                    "rotation_world_to_camera": (
+                        camera.rotation_world_to_camera.copy()
+                    ),
+                    "fx": camera.fx,
+                    "fy": camera.fy,
+                    "cx": camera.cx,
+                    "cy": camera.cy,
+                    "scan_id": scan_id,
+                    "coverage_cell": "performance-cell",
+                },
+            )
+        )
+    return tuple(observations)
+
+
 def _adapters(**kwargs) -> tuple[Scalable3DFusionAdapter, Scalable3DFusionAdapter]:
     common = {"association_gate": 40.0, **kwargs}
     legacy = Scalable3DFusionAdapter(
@@ -118,13 +197,8 @@ def _adapters(**kwargs) -> tuple[Scalable3DFusionAdapter, Scalable3DFusionAdapte
 
 def _semantic_batch(result: FusionBatchResult) -> dict:
     summary = result.summary.to_dict()
-    for key in (
-        "replay_filter_update_count",
-        "replay_checkpoint_reuse_count",
-        "global_track_materialization_count",
-        "sensor_health_snapshot_build_count",
-    ):
-        summary.pop(key)
+    for key in _OPERATION_SUMMARY_FIELDS:
+        summary.pop(key, None)
     return {
         "tracks": _canonical([track.to_dict() for track in result.tracks]),
         "summary": _canonical(summary),
@@ -293,3 +367,119 @@ def test_published_track_arrays_do_not_alias_cached_posterior() -> None:
     republished = optimized.global_tracks()[0]
     np.testing.assert_array_equal(republished.state, expected_state)
     np.testing.assert_array_equal(republished.covariance, expected_covariance)
+
+
+def _association_adapters(
+    **kwargs,
+) -> tuple[Scalable3DFusionAdapter, Scalable3DFusionAdapter]:
+    common = {"association_gate": 40.0, **kwargs}
+    return (
+        Scalable3DFusionAdapter(
+            **common,
+            scan_association_model_cache=False,
+        ),
+        Scalable3DFusionAdapter(
+            **common,
+            scan_association_model_cache=True,
+        ),
+    )
+
+
+@pytest.mark.parametrize("target_count", [1, 7, 200])
+def test_scan_association_model_cache_is_exact_and_reduces_model_builds(
+    target_count: int,
+) -> None:
+    current, optimized = _association_adapters()
+    radar_scan = _radar_scan(
+        target_count,
+        measurement_timestamp=0.0,
+        arrival_timestamp=0.2,
+        scan_id=f"association-radar-{target_count}",
+    )
+    current_result = current.process_scan_batch(radar_scan)
+    optimized_result = optimized.process_scan_batch(radar_scan)
+    _assert_semantically_equal(
+        current,
+        optimized,
+        current_result,
+        optimized_result,
+    )
+
+    eo_scan = _eo_scan(
+        target_count,
+        measurement_timestamp=0.1,
+        arrival_timestamp=0.3,
+        scan_id=f"association-eo-{target_count}",
+    )
+    current_result = current.process_scan_batch(eo_scan)
+    optimized_result = optimized.process_scan_batch(eo_scan)
+    _assert_semantically_equal(
+        current,
+        optimized,
+        current_result,
+        optimized_result,
+    )
+
+    pair_count = target_count * target_count
+    assert current_result.summary.association_candidate_pair_count == pair_count
+    assert optimized_result.summary.association_candidate_pair_count == pair_count
+    assert (
+        current_result.summary.association_measurement_model_build_count
+        == pair_count
+    )
+    assert (
+        optimized_result.summary.association_measurement_model_build_count
+        == target_count
+    )
+    assert current_result.summary.association_projection_build_count == pair_count
+    assert optimized_result.summary.association_projection_build_count == target_count
+    assert current_result.summary.association_innovation_solve_count == pair_count
+    assert optimized_result.summary.association_innovation_solve_count == pair_count
+
+
+def test_scan_association_model_cache_matches_oosm_and_fixed_lag_reference() -> None:
+    current, optimized = _association_adapters(buffer_horizon=0.5)
+    scans = (
+        _radar_scan(
+            1,
+            measurement_timestamp=0.0,
+            arrival_timestamp=0.0,
+            scan_id="association-fixed-lag-origin",
+        ),
+        _radar_scan(
+            1,
+            measurement_timestamp=0.4,
+            arrival_timestamp=0.4,
+            scan_id="association-fixed-lag-middle",
+        ),
+        _eo_scan(
+            1,
+            measurement_timestamp=0.3,
+            arrival_timestamp=0.6,
+            scan_id="association-window-oosm",
+        ),
+        _radar_scan(
+            1,
+            measurement_timestamp=1.0,
+            arrival_timestamp=1.0,
+            scan_id="association-fixed-lag-current",
+        ),
+        _eo_scan(
+            1,
+            measurement_timestamp=0.2,
+            arrival_timestamp=1.3,
+            scan_id="association-pre-checkpoint-oosm",
+        ),
+    )
+    for scan in scans:
+        current_result = current.process_scan_batch(scan)
+        optimized_result = optimized.process_scan_batch(scan)
+        _assert_semantically_equal(
+            current,
+            optimized,
+            current_result,
+            optimized_result,
+        )
+
+    assert current.pre_checkpoint_oosm_replay_count == 1
+    assert optimized.pre_checkpoint_oosm_replay_count == 1
