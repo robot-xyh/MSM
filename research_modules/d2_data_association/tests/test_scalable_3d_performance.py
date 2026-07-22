@@ -3,14 +3,21 @@ from __future__ import annotations
 import csv
 import json
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, Mapping as TypingMapping
 
+import numpy as np
 import pytest
 
+from d2_data_association.scalable_3d_long_duration import (
+    run_scalable_3d_long_duration_metadata_benchmark,
+)
 from d2_data_association.scalable_3d_models import (
     _forbidden_online_key,
     _normalized_key,
     assert_online_metadata_truth_free,
+    assert_online_metadata_batch_truth_free,
+    detections3d_from_d1_global_tracks,
 )
 from d2_data_association.scalable_3d_performance import (
     compare_scalable_3d_d2_performance,
@@ -135,6 +142,96 @@ def test_optimized_recursive_identity_audit_matches_legacy(
     assert outcome(assert_online_metadata_truth_free) == outcome(
         _legacy_assert_online_metadata_truth_free
     )
+
+
+def test_batch_audit_reuses_equal_diagnostics_and_rejects_changed_truth() -> None:
+    shared_health = {
+        "CAM-0001": {
+            "measurement_count": 4,
+            "quality_flags": ["nominal"],
+        }
+    }
+    metadata = [
+        {
+            "latest_observation_id": f"obs-{index}",
+            "sensor_health": json.loads(json.dumps(shared_health)),
+        }
+        for index in range(4)
+    ]
+
+    summary = assert_online_metadata_batch_truth_free(metadata)
+
+    assert summary.metadata_count == 4
+    assert summary.shared_subtree_full_audit_count == 1
+    assert summary.shared_subtree_equivalent_reuse_count == 3
+
+    metadata[-1]["sensor_health"]["CAM-0001"]["truth_id"] = "forbidden"
+    with pytest.raises(ValueError, match="metadata.sensor_health.CAM-0001.truth_id"):
+        assert_online_metadata_batch_truth_free(metadata)
+
+
+def test_batch_audit_does_not_trust_custom_mapping_equality() -> None:
+    class AlwaysEqualMapping(dict[str, Any]):
+        def __eq__(self, other: object) -> bool:
+            return True
+
+    metadata = [
+        {"sensor_health": AlwaysEqualMapping({"quality": "nominal"})},
+        {"sensor_health": AlwaysEqualMapping({"truth_id": "forbidden"})},
+    ]
+
+    with pytest.raises(ValueError, match="metadata.sensor_health.truth_id"):
+        assert_online_metadata_batch_truth_free(metadata)
+
+
+def test_d1_adapter_projects_audited_diagnostics_to_d2_contract() -> None:
+    metadata = {
+        "frame_id": "NED",
+        "latest_measurement_timestamp": 1.0,
+        "latest_arrival_timestamp": 1.1,
+        "latest_observation_id": "radar-observation-1",
+        "latest_sensor_id": "RADAR-CENTER-001",
+        "published_at": 1.2,
+        "sensor_health": {
+            "CAM-0001": {"measurement_count": 100, "quality": "nominal"}
+        },
+    }
+    source = SimpleNamespace(
+        global_track_id="UPSTREAM-MUST-BE-IGNORED",
+        state=np.asarray([10.0, 20.0, -30.0, 2.0, 0.0, 0.0]),
+        covariance=np.eye(6),
+        timestamp=1.2,
+        metadata=metadata,
+    )
+
+    timestamp, detections = detections3d_from_d1_global_tracks([source])
+
+    assert timestamp == pytest.approx(1.2)
+    assert detections[0].metadata["latest_observation_id"] == (
+        "radar-observation-1"
+    )
+    assert detections[0].metadata["source_measurement_timestamp"] == pytest.approx(
+        1.0
+    )
+    assert "sensor_health" not in detections[0].metadata
+    assert "UPSTREAM-MUST-BE-IGNORED" not in str(detections[0].to_dict())
+
+
+def test_long_duration_metadata_benchmark_preserves_semantics() -> None:
+    report = run_scalable_3d_long_duration_metadata_benchmark(
+        track_count=8,
+        cycle_count=6,
+        sensor_count_start=2,
+        sensor_count_end=7,
+    )
+
+    assert report.cycle_semantic_hashes_equal is True
+    assert report.final_track_hash_equal is True
+    assert report.final_claim_hash_equal is True
+    assert report.all_online_truth_free is True
+    assert len(report.cycle_records) == 6
+    assert report.cycle_records[-1]["track_count"] == 8
+    assert report.cycle_records[-1]["claim_count"] == 48
 
 
 def test_episode_comparison_hashes_d2_semantics_and_separates_timing(

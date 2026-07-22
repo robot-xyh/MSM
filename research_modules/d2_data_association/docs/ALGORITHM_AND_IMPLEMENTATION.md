@@ -1507,3 +1507,23 @@ sidecar。运行时计时不进入在线语义哈希。对每个周期生成完�
 `7.5552 -> 2.2033 s`，finalize `2.2747 -> 0.5646 s`，单 episode D2 合计
 `9.8299 -> 2.7679 s`。该比较器验证发布语义等价，不证明不同输入上的轨迹身份正确性；
 后者仍需隔离 truth evaluator 给出 IDSW/continuity availability。
+
+## 25. 长时元数据批审计与合同投影
+
+`detections3d_from_d1_global_tracks()` 先把输入固化为一批 metadata。批审计遍历所有顶层
+键和非共享容器。对 `sensor_health`、`association_audit`、`latency_audit` 三类 D1
+批内共享诊断，维护本批已完整审计的代表值；只有完全由可信内置容器和标量组成、无循环
+且内容相等时才跳过重复递归。未知或自定义 Mapping 不进入代表缓存，即使其 `__eq__`
+恒为 True 也必须完整审计。内容不同同样完整审计。代表集合只在一次函数调用内存在，
+不跨批缓存，也不持有航迹状态。
+
+全部输入通过后，适配器投影到 D2 在线合同字段。投影保留 measurement/arrival/published
+时间、observation/detection/scan 标识、source node/track、modality、frame 和 lineage。
+位置、速度和 6x6 协方差仍直接来自 D1 对象，不从 metadata 重建。D1 的大型健康和融合
+诊断不进入每个 `Detection3D`，避免其大小乘以航迹数和周期数。
+
+安全检查有三层：批输入检查全部原始 metadata；`Detection3D.__post_init__` 检查投影后
+对象；`Scalable3DTracker.step()` 检查构造后可能发生的修改。测试验证共享内容复用、
+单轨变体中的嵌套 `truth_id` 拒绝、上游 `global_track_id` 忽略，以及 48 周期参考/候选
+状态、关联、claim 和生命周期语义一致。恶意自定义 Mapping 的第二项包含 `truth_id`
+时继续 fail closed。

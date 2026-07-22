@@ -904,3 +904,27 @@ clean 提交上的四规模观测治理复跑，但不关闭以下项目：
 仍开放的 P1 证据是固定环境 clean 复跑、真实 AirSim observation ID/时钟分布、代表性
 遮挡/杂波/OOSM、极端全重叠大连通分量和完整离线 IDSW/continuity。以上开放项不得通过
 放宽在线身份审计、claim 或门控来换取时延。
+
+## 2026-07-22 长时重复元数据审计 GAP 收口
+
+### 已关闭
+
+- 10 秒、48 周期 profile 将增长源定位到 D1 批内共享诊断树的逐轨重复递归审计；
+  GNN/Hungarian、claim summary 和 duplicate coalescence 不是本批主要热点。
+- D1 批输入先完整执行禁用身份键审计。内容相等的 `sensor_health`、
+  `association_audit`、`latency_audit` 只递归审计一个代表，任一不同值仍完整审计。
+- 审计后只携带 D2 消费的时间、谱系、来源、模态和帧字段。构造与 tracker step 的二次
+  审计保留，单轨 truth 注入和构造后篡改继续 fail closed。
+- 最终审查加固代码的可复现 200 航迹、48 周期基准为
+  `16.858297 -> 6.472896 s`，加速 `2.604444x`，48/48 周期语义一致。未知或自定义
+  Mapping 始终完整审计，恶意恒真 `__eq__` 且第二项含 `truth_id` 的测试 fail closed。
+- 五 seed 45/45 周期及 10 秒 48/48 周期的完整发布、关联、中心 ID/生命周期、claim/审计
+  哈希一致，在线 truth use 为 0。对应 `13.3842 -> 4.9606 s` 和
+  `37.0072 -> 5.6582 s` 计时属于审查加固前候选，最终加固性能需 main 复跑。
+
+### GAP 判定
+
+D2-owned 长 episode 重复元数据审计 P1 缺口关闭。默认三维门控、GNN/Hungarian、关联
+频率、中心 `global_track_id`、claim/replay/stale、生命周期和显式 IDSW availability
+未改变。真实 AirSim 时钟/observation ID、遮挡/杂波/OOSM、极端大连通分量和固定硬件
+循环分位数仍保持原 P1 状态，不由本批质点回放代替。

@@ -165,9 +165,17 @@ from .scalable_3d_models import (
     STATE_ORDER_3D,
     Detection3D,
     GlobalTrack3D,
+    OnlineMetadataBatchAuditSummary,
+    assert_online_metadata_batch_truth_free,
     assert_online_metadata_truth_free,
     detection3d_from_position_measurement,
     detections3d_from_d1_global_tracks,
+)
+from .scalable_3d_long_duration import (
+    SCALABLE_3D_D2_LONG_DURATION_BENCHMARK_SCHEMA_VERSION,
+    Scalable3DLongDurationBenchmarkReport,
+    run_scalable_3d_long_duration_metadata_benchmark,
+    write_scalable_3d_long_duration_metadata_benchmark,
 )
 from .scalable_3d_performance import (
     SCALABLE_3D_D2_PERFORMANCE_COMPARISON_SCHEMA_VERSION,
@@ -268,6 +276,7 @@ __all__ = [
     "OBSERVATION_GOVERNANCE_BENCHMARK_SCHEMA_VERSION",
     "OOSM_SCAN_ADAPTER_SCHEMA_VERSION",
     "ObservationClaimLedgerConfig",
+    "OnlineMetadataBatchAuditSummary",
     "ReplayCoastConfig",
     "ObservationGovernanceBenchmarkReport",
     "OOSMScanAdapterConfig",
@@ -330,6 +339,9 @@ __all__ = [
     "SCALABLE_3D_IDENTITY_POLICY_VERSION",
     "SCALABLE_3D_OBSERVATION_TRUTH_SCHEMA_VERSION",
     "SCALABLE_3D_D2_PERFORMANCE_COMPARISON_SCHEMA_VERSION",
+    "SCALABLE_3D_D2_LONG_DURATION_BENCHMARK_SCHEMA_VERSION",
+    "Scalable3DLongDurationBenchmarkReport",
+    "assert_online_metadata_batch_truth_free",
     "assert_online_metadata_truth_free",
     "assert_scalable_3d_online_identity_records_truth_free",
     "build_default_dry_run_tracker",
@@ -343,6 +355,7 @@ __all__ = [
     "create_scalable_3d_identity_evidence_bundle",
     "compare_scalable_3d_d2_episode",
     "compare_scalable_3d_d2_performance",
+    "run_scalable_3d_long_duration_metadata_benchmark",
     "d2_labels_from_d1_airsim_offline_truth",
     "align_d1_airsim_offline_truth",
     "evaluate_offline_truth",
@@ -392,4 +405,5 @@ __all__ = [
     "write_scalable_3d_identity_evidence",
     "write_scalable_3d_observation_truth_labels",
     "write_scalable_3d_d2_performance_comparison",
+    "write_scalable_3d_long_duration_metadata_benchmark",
 ]

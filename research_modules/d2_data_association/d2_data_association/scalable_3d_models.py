@@ -16,6 +16,69 @@ STATE_ORDER_3D = ("pN", "pE", "pD", "vN", "vE", "vD")
 POSITION_ORDER_3D = STATE_ORDER_3D[:3]
 POSITION_H_3D = np.hstack((np.eye(3, dtype=float), np.zeros((3, 3), dtype=float)))
 
+# D1 materializes these publication-context diagnostics into every GlobalTrack
+# in one batch.  Their values are equal within that batch but their nested size
+# grows with the number of sensors already seen.  D2 audits one representative
+# of each equal value and audits every non-equal variant before discarding the
+# diagnostics at the adapter boundary.
+_D1_BATCH_SHARED_DIAGNOSTIC_KEYS = frozenset(
+    {
+        "association_audit",
+        "latency_audit",
+        "sensor_health",
+    }
+)
+
+# Only fields that affect the D2 online contract cross the D1 -> D2 boundary.
+# Raw D1 diagnostics remain owned by D1 and are not association inputs.
+_D1_TO_D2_METADATA_KEYS = frozenset(
+    {
+        "arrival_timestamp",
+        "confidence",
+        "detection_id",
+        "frame_id",
+        "latest_arrival_timestamp",
+        "latest_measurement_timestamp",
+        "latest_modality",
+        "latest_observation_id",
+        "latest_sensor_id",
+        "measurement_order",
+        "measurement_timestamp",
+        "modality",
+        "observation_id",
+        "online_batch_id",
+        "published_at",
+        "scan_id",
+        "source_frame_id",
+        "source_measurement_timestamp",
+        "source_modality",
+        "source_node_id",
+        "source_node_ids",
+        "source_track_id",
+        "source_track_ids",
+    }
+)
+
+
+@dataclass(frozen=True, slots=True)
+class OnlineMetadataBatchAuditSummary:
+    """Work counters for one truth-free D1 metadata batch audit."""
+
+    metadata_count: int
+    shared_subtree_full_audit_count: int
+    shared_subtree_equivalent_reuse_count: int
+
+    def to_dict(self) -> dict[str, int]:
+        return {
+            "metadata_count": self.metadata_count,
+            "shared_subtree_full_audit_count": (
+                self.shared_subtree_full_audit_count
+            ),
+            "shared_subtree_equivalent_reuse_count": (
+                self.shared_subtree_equivalent_reuse_count
+            ),
+        }
+
 
 @dataclass(slots=True)
 class Detection3D:
@@ -373,10 +436,17 @@ def detections3d_from_d1_global_tracks(
     canonical identity authority.
     """
 
+    track_list = list(tracks)
+    metadata_list = [
+        _mapping_or_empty(_read(item, "metadata", {})) for item in track_list
+    ]
+    assert_online_metadata_batch_truth_free(metadata_list)
+
     detections: list[Detection3D] = []
     frame_timestamp = 0.0
-    for index, item in enumerate(tracks):
-        metadata = dict(_mapping_or_empty(_read(item, "metadata", {})))
+    for index, (item, metadata) in enumerate(
+        zip(track_list, metadata_list, strict=True)
+    ):
         frame_id = str(metadata.get("frame_id", _read(item, "frame_id", "NED")))
         state = _finite_vector(_read(item, "state"), 6, "D1 track state")
         covariance, _ = govern_covariance(
@@ -430,7 +500,11 @@ def detections3d_from_d1_global_tracks(
                 ),
             )
         )
-        safe_metadata = dict(metadata)
+        safe_metadata = {
+            str(key): value
+            for key, value in metadata.items()
+            if _normalized_key(key) in _D1_TO_D2_METADATA_KEYS
+        }
         safe_metadata.update(
             {
                 "source_format": "d1_six_state_track",
@@ -470,26 +544,179 @@ def assert_online_metadata_truth_free(metadata: Mapping[str, Any]) -> None:
     """Reject evaluator identity recursively at the new online contract edge."""
 
     violations: list[str] = []
-
-    def visit(value: Any, path: str) -> None:
-        if isinstance(value, Mapping):
-            for raw_key, item in value.items():
-                key = _normalized_key(raw_key)
-                child_path = f"{path}.{raw_key}"
-                if _forbidden_online_key(key):
-                    violations.append(child_path)
-                else:
-                    visit(item, child_path)
-        elif isinstance(value, (list, tuple, set, frozenset)):
-            for index, item in enumerate(value):
-                visit(item, f"{path}[{index}]")
-
-    visit(metadata, "metadata")
+    _collect_online_metadata_violations(metadata, "metadata", violations)
     if violations:
         raise ValueError(
             "online Detection3D metadata contains evaluator or external identity: "
             + ", ".join(sorted(set(violations)))
         )
+
+
+def assert_online_metadata_batch_truth_free(
+    metadata_items: Iterable[Mapping[str, Any]],
+) -> OnlineMetadataBatchAuditSummary:
+    """Audit a D1 track batch without rescanning equal global diagnostics.
+
+    Equality is only a reuse condition after the first value has passed the
+    same recursive forbidden-key audit used by ``Detection3D``.  A differing
+    value is always audited in full, so a truth key introduced into one track
+    still fails closed.  The adapter then projects the audited input onto the
+    fields consumed by D2; a later metadata mutation is checked again by
+    ``Scalable3DTracker.step``.
+    """
+
+    representatives: dict[str, list[Any]] = {}
+    metadata_count = 0
+    full_audit_count = 0
+    equivalent_reuse_count = 0
+
+    for metadata in metadata_items:
+        if not isinstance(metadata, Mapping):
+            raise TypeError("online D1 track metadata must be a mapping")
+        metadata_count += 1
+        violations: list[str] = []
+        for raw_key, item in metadata.items():
+            key = _normalized_key(raw_key)
+            child_path = f"metadata.{raw_key}"
+            if _forbidden_online_key(key):
+                violations.append(child_path)
+                continue
+            if not _is_metadata_container(item):
+                continue
+            if key not in _D1_BATCH_SHARED_DIAGNOSTIC_KEYS:
+                _collect_online_metadata_violations(
+                    item,
+                    child_path,
+                    violations,
+                )
+                continue
+
+            variants = representatives.setdefault(key, [])
+            item_is_trusted = _is_trusted_builtin_metadata_tree(item)
+            if item_is_trusted and any(
+                _trusted_builtin_metadata_values_equal(item, value)
+                for value in variants
+            ):
+                equivalent_reuse_count += 1
+                continue
+            _collect_online_metadata_violations(item, child_path, violations)
+            if item_is_trusted:
+                variants.append(item)
+            full_audit_count += 1
+
+        if violations:
+            raise ValueError(
+                "online Detection3D metadata contains evaluator or external "
+                "identity: "
+                + ", ".join(sorted(set(violations)))
+            )
+
+    return OnlineMetadataBatchAuditSummary(
+        metadata_count=metadata_count,
+        shared_subtree_full_audit_count=full_audit_count,
+        shared_subtree_equivalent_reuse_count=equivalent_reuse_count,
+    )
+
+
+def _collect_online_metadata_violations(
+    value: Any,
+    path: str,
+    violations: list[str],
+) -> None:
+    """Iteratively visit container keys while skipping scalar leaf calls."""
+
+    pending: list[tuple[Any, str]] = [(value, path)]
+    while pending:
+        current, current_path = pending.pop()
+        if isinstance(current, Mapping):
+            for raw_key, item in current.items():
+                key = _normalized_key(raw_key)
+                child_path = f"{current_path}.{raw_key}"
+                if _forbidden_online_key(key):
+                    violations.append(child_path)
+                elif _is_metadata_container(item):
+                    pending.append((item, child_path))
+        elif isinstance(current, (list, tuple, set, frozenset)):
+            for index, item in enumerate(current):
+                if _is_metadata_container(item):
+                    pending.append((item, f"{current_path}[{index}]"))
+
+
+def _is_metadata_container(value: Any) -> bool:
+    value_type = type(value)
+    if value_type in {dict, list, tuple, set, frozenset}:
+        return True
+    return isinstance(value, Mapping)
+
+
+def _metadata_values_equal(left: Any, right: Any) -> bool:
+    if not (
+        _is_trusted_builtin_metadata_tree(left)
+        and _is_trusted_builtin_metadata_tree(right)
+    ):
+        return False
+    return _trusted_builtin_metadata_values_equal(left, right)
+
+
+def _trusted_builtin_metadata_values_equal(left: Any, right: Any) -> bool:
+    """Compare trees already proven to contain only trusted built-in types."""
+
+    if type(left) is not type(right):
+        return False
+    if left is right:
+        return True
+    try:
+        result = left == right
+    except (RecursionError, TypeError, ValueError):
+        return False
+    return bool(result) if isinstance(result, (bool, np.bool_)) else False
+
+
+def _is_trusted_builtin_metadata_tree(value: Any) -> bool:
+    """Allow equality reuse only for acyclic, built-in metadata trees."""
+
+    scalar_types = {str, int, float, bool, type(None)}
+    container_types = {dict, list, tuple, set, frozenset}
+    pending: list[tuple[Any, bool]] = [(value, False)]
+    active_container_ids: set[int] = set()
+    completed_container_ids: set[int] = set()
+
+    while pending:
+        current, exiting = pending.pop()
+        current_type = type(current)
+        if current_type not in container_types:
+            return False
+
+        container_id = id(current)
+        if exiting:
+            active_container_ids.remove(container_id)
+            completed_container_ids.add(container_id)
+            continue
+        if container_id in completed_container_ids:
+            continue
+        if container_id in active_container_ids:
+            return False
+
+        active_container_ids.add(container_id)
+        pending.append((current, True))
+        if current_type is dict:
+            for key, item in current.items():
+                if type(key) not in scalar_types:
+                    return False
+                item_type = type(item)
+                if item_type in container_types:
+                    pending.append((item, False))
+                elif item_type not in scalar_types:
+                    return False
+        else:
+            for item in current:
+                item_type = type(item)
+                if item_type in container_types:
+                    pending.append((item, False))
+                elif item_type not in scalar_types:
+                    return False
+
+    return True
 
 
 @lru_cache(maxsize=1024)

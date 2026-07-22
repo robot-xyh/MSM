@@ -689,3 +689,19 @@ clean 基线目录的 `nominal/200v200` seeds 42000--42004 与候选重跑形成
 专项报告见 `docs/D2_SCALABLE_3D_PERFORMANCE_BENCHMARK_CN.md`，机器可读比较 schema 为
 `d2-scalable3d-performance-comparison-v1`。候选运行仍是未提交开发态，不构成实时 SLA、
 AirSim 或完整 200v200 闭环验收。
+
+### 2026-07-22 长时元数据审计收口
+
+10 秒、48 周期的 200v200 profile 进一步确认，随时长增长的主要成本来自 D1 在每条
+`GlobalTrack` 上重复携带 `sensor_health`、`association_audit` 和 `latency_audit`，D2
+逐轨递归审计同内容诊断树。D1 批输入现在先完整审计身份安全；批内内容相同的共享诊断
+只审计一个代表，任一不同值仍完整审计。通过后只把双时间戳、观测谱系、来源和帧等 D2
+实际消费字段带入 `Detection3D`。
+
+最终审查加固代码的可复现 200 航迹、48 周期基准为
+`16.858297 -> 6.472896 s`，加速 `2.604444x`，48/48 周期语义一致。既有 10 秒对照
+`35.8121 -> 5.5057 s` 和五 seed 对照是在自定义 Mapping 等价审查加固前运行；其
+48/48、45/45 周期语义哈希和在线 truth use 为 0 的证据仍有效，最终加固性能需 main
+复跑。审查加固后的专项为 `25 passed`，加固前全量为 `214 passed, 1 warning`。默认
+GNN/Hungarian、三维门控、中心 ID、claim/replay/stale、生命周期和显式 IDSW 语义未改。
+详见 `docs/D2_SCALABLE_3D_LONG_DURATION_PERFORMANCE_CN.md`。
