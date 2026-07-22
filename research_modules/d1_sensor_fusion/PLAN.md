@@ -1,5 +1,24 @@
 # D1 多传感器融合与目标配准实施计划
 
+## 同一运行时刻延迟物化状态（2026-07-22）
+
+D1-owned 接口已完成。`process_scan_batch()` 默认行为保持不变；显式
+`materialize_tracks=False` 时返回 `FusionStateUpdateResult`，其中
+`tracks_materialized=False`、`tracks=[]`、`track_count=0`、准确的 `current_track_count`、
+`state_updated_at` 和扫描摘要可用于轻量审计。对象属性 `tracks` 访问会失败，不会把未物化误写
+成零航迹。main 在同一 runtime tick 内处理完
+全部已释放扫描后，调用 `materialize_global_tracks()` 一次，取得完整 `FusionTrackSnapshot`。
+
+状态-only 路径不得跳过扫描级关联、fixed-lag/OOSM、双时间戳、covariance、门控、health、
+consistency evidence、lineage 或累计诊断。4 扫描、3 目标、检查点前 OOSM 构造回归中，参考路径
+和延迟物化路径终态完全一致，物化数 `12 -> 3`。混合发布 audit 使用
+`d1.fused_track_publication_audit.v2` 区分总发布、完整快照、状态更新和航迹记录数，并兼容缺少
+新字段的 v1 日志。定向测试 `30 passed`，D1 全量 `168 passed in 29.43s`。
+
+剩余工作属于 main-owned 集成 P1：按 released scan 顺序调用 state-only 接口，中间扫描保存轻量
+audit，最后扫描的 summary 与一次完整快照合并后交给 D2；随后用同一冻结输入从 clean commit 比较
+墙钟、峰值内存、日志体积和语义哈希。D1 不在本任务中修改 main/scalable runtime。
+
 ## 当前性能治理状态与后续计划（2026-07-22）
 
 长时固定滞后专项已经完成 D1-owned 等价优化。冻结输入 SHA-256 为
@@ -18,14 +37,14 @@
    冻结输入实际记录状态查询 152,861、后缀复用 110,891、合法前缀快路径 300,024 和缓存一致性
    刷新 194,916 次。
 5. **发布边界明确**：764 条全量快照约 186.2 MiB，407 个唯一融合时刻，357 条同融合时刻可合并，
-   294 条连续未变化。按唯一融合时刻保留最后后验是 main 调度建议，当前未实现；D1 不直接修改
-   main 发布策略。
-6. **剩余系统 P1**：main 需在不丢规范状态、身份、生命周期和 lineage 事件的前提下评估发布合并，
-   并从 clean commit 复跑完整多 seed 全栈。D1-only 1.463 倍不能写成 200v200 系统实时。
+   294 条连续未变化。D1 已提供同一 tick 延迟物化接口；跨 tick 合并和 heartbeat/lineage sidecar
+   仍只是 main 调度建议。
+6. **剩余系统 P1**：main 需接入 state-only/末尾快照合同，并从 clean commit 复跑完整多 seed
+   全栈。D1-only 1.463 倍和构造回归中的 `12 -> 3` 物化数都不能写成 200v200 系统实时。
 
-专项报告为 `reports/D1_LONG_DURATION_PERFORMANCE_BENCHMARK_CN.md` 及对应 JSON。本阶段没有
-AirSim producer、topic、reset/episode 或相机接口变化，因此 `docs/AIRSIM_INTEGRATION_PLAN.md`
-已检查，无需修改。
+专项报告为 `reports/D1_LONG_DURATION_PERFORMANCE_BENCHMARK_CN.md` 及对应 JSON。延迟物化接口
+改变 main 的推荐调用方式，因此 `docs/AIRSIM_INTEGRATION_PLAN.md` 已同步；没有改变 AirSim
+producer、topic、reset/episode、相机接口或已有实验结果。
 
 第二阶段扫描关联优化已经完成。clean 提交 `492979e` 的 200 规模五 seed 第一阶段默认路径
 D1 fusion 为 10.096/13.693/12.895/11.973/11.856 s，均值 12.103 s。seed 42000 冻结输入

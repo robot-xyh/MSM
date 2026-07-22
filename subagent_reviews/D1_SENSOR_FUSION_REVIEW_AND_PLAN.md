@@ -7,6 +7,20 @@
 
 ## 0. 当前性能与治理状态（2026-07-22）
 
+- D1 已完成同一 runtime tick 内的延迟物化接口。`process_scan_batch()` 默认完整返回不变；显式
+  state-only 仍完成扫描关联、fixed-lag/OOSM、双时间戳、covariance、门控、health、consistency
+  evidence、lineage 和累计诊断，只不构造中间 `GlobalTrack`。
+- `FusionStateUpdateResult` 提供 `tracks_materialized=false`、准确 `current_track_count`、
+  `track_count=0` 和空 `tracks` 数组；直接访问 `tracks` 抛错。末尾
+  `materialize_global_tracks()` 返回完整 `FusionTrackSnapshot`，其中 `track_count` 与
+  `current_track_count` 相等。
+- 三目标四扫描回归覆盖默认 6 s fixed-lag 和检查点前 OOSM。逐扫描完整发布与中间 state-only、
+  末尾一次物化的终态航迹、协方差、元数据、时延、健康和 consistency evidence 相同；物化数
+  `12 -> 3`。定向 `30 passed`，D1 全量 `168 passed in 29.43s`。
+- publication audit 已升级为 v2，区分总发布、完整快照、state-only 和完整航迹记录数。旧 v1
+  日志继续按完整快照处理；state-only 的 `track_count=0` 不代表当前总航迹数，当前数量只读取
+  `current_track_count`。main 尚未接线，clean 全栈多 seed 验收仍开放。
+
 - 长时专项使用 10 s 冻结输入，包含 764 个扫描、12,107 条匿名观测和 202 条终态航迹；重排
   49 次，峰值缓冲 64 个扫描/825 条观测，在线 truth 使用为 0。
 - 完整检查点二分查询、固定滞后后缀复用、可信前缀快路径和缓存一致性证据刷新已进入默认路径。
@@ -18,9 +32,9 @@
   checkpoint reuse、状态查询、重基和物化次数。当前优化路径的状态查询、固定滞后后缀复用、
   合法前缀快路径和缓存一致性刷新计数分别为 152,861、110,891、300,024 和 194,916。main
   summary 当前未采样该接口，不影响 D1 模块级复测；后续可由 main profiler sidecar 接入。
-- 764 条 D1 全量快照约 186.2 MiB，其中 357 条同融合时刻可合并，294 条连续未变化。按唯一
-  融合时刻保留最后后验只是 main 调度建议，尚未实现。D1 仍逐扫描融合并返回完整结果，本轮不
-  修改 main 发布策略。
+- 764 条 D1 全量快照约 186.2 MiB，其中 357 条同融合时刻可合并，294 条连续未变化。这是延迟
+  物化接口前的历史基线；D1 已实现同一 tick 末尾快照能力，但 main 尚未接线。跨 tick 合并仍是
+  main 调度建议。
 - D1-owned 长时重复计算缺口据此关闭。clean 完整全栈多 seed、系统 P95/实时倍率、发布节流、
   AirSim 和正式 RMSE/NEES/NIS 仍是独立 P1 验收项。
 

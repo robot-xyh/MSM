@@ -20,7 +20,7 @@ from .scan_input import SensorScanFrame
 
 LONG_DURATION_PERFORMANCE_SCHEMA_VERSION = "d1.long_duration_performance.v1"
 FUSED_TRACK_PUBLICATION_AUDIT_SCHEMA_VERSION = (
-    "d1.fused_track_publication_audit.v1"
+    "d1.fused_track_publication_audit.v2"
 )
 
 _BATCH_OPERATION_FIELDS = (
@@ -251,10 +251,12 @@ def compare_long_duration_variants(
 
 
 def audit_fused_track_publications(source: str | Path) -> dict[str, Any]:
-    """Audit full D1 snapshots without changing the main-owned runtime."""
+    """Audit legacy full snapshots and explicit state-only D1 publications."""
 
     path = Path(source)
     publication_count = 0
+    materialized_snapshot_count = 0
+    state_only_count = 0
     serialized_bytes = 0
     track_record_count = 0
     fusion_timestamps: set[float] = set()
@@ -273,11 +275,44 @@ def audit_fused_track_publications(source: str | Path) -> dict[str, Any]:
             publication_count += 1
             serialized_bytes += len(raw_line)
             payload = record["payload"]
-            tracks = payload.get("tracks", ())
-            track_record_count += len(tracks)
             runtime_timestamps.add(float(record["timestamp"]))
             fusion_timestamps.add(float(payload["summary"]["published_at"]))
             lineage_record_count += len(payload.get("observation_lineage", ()))
+            tracks_materialized = payload.get("tracks_materialized", True)
+            if not isinstance(tracks_materialized, bool):
+                raise ValueError("tracks_materialized must be a boolean when present")
+            tracks = payload.get("tracks", ())
+            if not tracks_materialized:
+                if tracks is not None and tracks != []:
+                    raise ValueError(
+                        "state-only D1 publication must encode tracks as [] or null"
+                    )
+                if int(payload.get("track_count", 0)) != 0:
+                    raise ValueError("state-only D1 publication track_count must be zero")
+                current_track_count = payload.get("current_track_count")
+                if current_track_count is None or int(current_track_count) < 0:
+                    raise ValueError(
+                        "state-only D1 publication requires non-negative current_track_count"
+                    )
+                state_only_count += 1
+                continue
+            if tracks is None:
+                raise ValueError(
+                    "materialized D1 publication must contain a track sequence"
+                )
+            payload_track_count = int(payload.get("track_count", len(tracks)))
+            if payload_track_count != len(tracks):
+                raise ValueError(
+                    "materialized D1 publication track_count must match len(tracks)"
+                )
+            if "current_track_count" in payload and int(
+                payload["current_track_count"]
+            ) != payload_track_count:
+                raise ValueError(
+                    "materialized D1 publication current_track_count must match track_count"
+                )
+            materialized_snapshot_count += 1
+            track_record_count += len(tracks)
             snapshot_hash = _json_sha256(tracks)
             snapshot_hashes.add(snapshot_hash)
             if snapshot_hash == previous_snapshot_hash:
@@ -293,6 +328,8 @@ def audit_fused_track_publications(source: str | Path) -> dict[str, Any]:
         "source_path": str(path),
         "source_sha256": _sha256_file(path),
         "publication_count": publication_count,
+        "materialized_snapshot_count": materialized_snapshot_count,
+        "state_only_count": state_only_count,
         "serialized_bytes": serialized_bytes,
         "serialized_mebibytes": serialized_bytes / (1024.0 * 1024.0),
         "track_record_count": track_record_count,
@@ -499,6 +536,8 @@ def _markdown_report(report: Mapping[str, Any]) -> str:
                 "## 发布审计",
                 "",
                 f"`modules.d1.fused_tracks` 共 {audit['publication_count']:,} 条，"
+                f"其中完整快照 {audit.get('materialized_snapshot_count', audit['publication_count']):,} 条、"
+                f"状态更新 {audit.get('state_only_count', 0):,} 条，"
                 f"序列化体积 {audit['serialized_mebibytes']:.1f} MiB。"
                 f"唯一融合时刻 {audit['unique_fusion_timestamp_count']:,} 个，"
                 f"连续未变化快照 {audit['consecutive_unchanged_snapshot_count']:,} 条。",

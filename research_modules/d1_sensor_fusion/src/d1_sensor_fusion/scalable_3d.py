@@ -9,7 +9,7 @@ import numpy as np
 from .fusion import FusionAdapter
 from .observations import RadarCovarianceConfig, radar_covariance_from_range
 from .online_anonymization import assert_online_observations_identity_free
-from .types import FusionBatchResult, SensorObservation
+from .types import FusionBatchResult, FusionStateUpdateResult, SensorObservation
 
 
 SCALABLE_3D_FUSION_SCHEMA_VERSION = "d1-scalable3d-fusion-v1"
@@ -69,7 +69,12 @@ class Scalable3DFusionAdapter(FusionAdapter):
         )
         super().__init__(use_truth_hints_for_association=False, **kwargs)
 
-    def process_online_sensor_batch(self, batch: Any) -> FusionBatchResult:
+    def process_online_sensor_batch(
+        self,
+        batch: Any,
+        *,
+        materialize_tracks: bool = True,
+    ) -> FusionBatchResult | FusionStateUpdateResult:
         observations = sensor_observations_from_online_batch(
             batch,
             radar_covariance_config=self.radar_covariance_config,
@@ -78,14 +83,18 @@ class Scalable3DFusionAdapter(FusionAdapter):
             ),
             position_only_radar_nis_gate=self.position_only_radar_nis_gate,
         )
-        return self.process_scan_batch(observations)
+        return self.process_scan_batch(
+            observations,
+            materialize_tracks=materialize_tracks,
+        )
 
     def process_measurement_scan(
         self,
         measurements: Iterable[Any],
         *,
         batch_id: str,
-    ) -> FusionBatchResult:
+        materialize_tracks: bool = True,
+    ) -> FusionBatchResult | FusionStateUpdateResult:
         items = tuple(measurements)
         if not items:
             raise ValueError("measurement scan must contain at least one measurement")
@@ -97,7 +106,10 @@ class Scalable3DFusionAdapter(FusionAdapter):
             "arrival_timestamp": _field(first, "arrival_timestamp"),
             "measurements": items,
         }
-        return self.process_online_sensor_batch(batch)
+        return self.process_online_sensor_batch(
+            batch,
+            materialize_tracks=materialize_tracks,
+        )
 
 
 def sensor_observations_from_online_batch(

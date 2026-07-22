@@ -6,7 +6,11 @@ from enum import Enum
 import numpy as np
 import pytest
 
-from d1_sensor_fusion import Scalable3DFusionAdapter
+from d1_sensor_fusion import (
+    FusionStateUpdateResult,
+    Scalable3DFusionAdapter,
+    TracksNotMaterializedError,
+)
 from d1_sensor_fusion.observations import (
     CameraModel,
     acoustic_covariance,
@@ -218,6 +222,151 @@ def _assert_semantically_equal(
     assert _canonical(
         [item.to_dict() for item in optimized.consistency_evidence_records()]
     ) == _canonical([item.to_dict() for item in legacy.consistency_evidence_records()])
+
+
+def test_default_scan_api_still_returns_materialized_batch_result() -> None:
+    adapter = Scalable3DFusionAdapter(association_gate=40.0)
+
+    result = adapter.process_scan_batch(
+        _radar_scan(
+            3,
+            measurement_timestamp=0.0,
+            arrival_timestamp=0.1,
+            scan_id="default-materialized-scan",
+        )
+    )
+
+    assert isinstance(result, FusionBatchResult)
+    assert result.tracks_materialized is True
+    assert len(result.tracks) == 3
+    assert result.track_count == result.current_track_count == 3
+    assert set(result.to_dict()) == {"tracks", "summary"}
+    assert result.summary.global_track_materialization_count == 3
+
+
+def test_state_only_result_exposes_count_and_fails_closed_on_tracks() -> None:
+    adapter = Scalable3DFusionAdapter(association_gate=40.0)
+
+    result = adapter.process_scan_batch(
+        _radar_scan(
+            3,
+            measurement_timestamp=0.0,
+            arrival_timestamp=0.1,
+            scan_id="state-only-scan",
+        ),
+        materialize_tracks=False,
+    )
+
+    assert isinstance(result, FusionStateUpdateResult)
+    assert result.tracks_materialized is False
+    assert result.current_track_count == 3
+    assert result.state_updated_at == pytest.approx(0.1)
+    assert result.summary.global_track_materialization_count == 0
+    assert adapter.fusion_performance_diagnostics().global_track_materialization_count == 0
+    assert result.to_dict()["tracks"] == []
+    assert result.to_dict()["track_count"] == 0
+    assert result.to_dict()["current_track_count"] == 3
+    with pytest.raises(TracksNotMaterializedError, match="materialize_global_tracks"):
+        _ = result.tracks
+
+
+def test_state_only_scans_then_explicit_snapshot_match_per_scan_publication() -> None:
+    scans = (
+        _radar_scan(
+            3,
+            measurement_timestamp=0.0,
+            arrival_timestamp=0.1,
+            scan_id="deferred-materialization-origin",
+        ),
+        _radar_scan(
+            3,
+            measurement_timestamp=3.0,
+            arrival_timestamp=3.1,
+            scan_id="deferred-materialization-middle",
+        ),
+        _radar_scan(
+            3,
+            measurement_timestamp=10.0,
+            arrival_timestamp=10.1,
+            scan_id="deferred-materialization-fixed-lag",
+        ),
+        _radar_scan(
+            3,
+            measurement_timestamp=1.5,
+            arrival_timestamp=10.2,
+            scan_id="deferred-materialization-pre-checkpoint-oosm",
+        ),
+    )
+    reference = Scalable3DFusionAdapter(
+        association_gate=40.0,
+        buffer_horizon=6.0,
+    )
+    deferred = Scalable3DFusionAdapter(
+        association_gate=40.0,
+        buffer_horizon=6.0,
+    )
+
+    reference_result: FusionBatchResult | None = None
+    for scan in scans:
+        candidate = reference.process_scan_batch(scan)
+        assert isinstance(candidate, FusionBatchResult)
+        reference_result = candidate
+
+        update = deferred.process_scan_batch(scan, materialize_tracks=False)
+        assert isinstance(update, FusionStateUpdateResult)
+        assert update.current_track_count == len(reference_result.tracks)
+        assert update.summary.global_track_materialization_count == 0
+        reference_summary = reference_result.summary.to_dict()
+        deferred_summary = update.summary.to_dict()
+        for publication_only_field in (
+            "global_track_materialization_count",
+            "sensor_health_snapshot_build_count",
+        ):
+            reference_summary.pop(publication_only_field)
+            deferred_summary.pop(publication_only_field)
+        assert deferred_summary == reference_summary
+
+    assert reference_result is not None
+    snapshot = deferred.materialize_global_tracks()
+
+    assert snapshot.tracks_materialized is True
+    assert snapshot.track_count == snapshot.current_track_count == 3
+    assert len(snapshot.to_dict()["tracks"]) == 3
+    assert snapshot.to_dict()["track_count"] == snapshot.to_dict()[
+        "current_track_count"
+    ]
+    assert snapshot.published_at == pytest.approx(reference_result.summary.published_at)
+    assert _canonical([track.to_dict() for track in snapshot.tracks]) == _canonical(
+        [track.to_dict() for track in reference_result.tracks]
+    )
+    assert _canonical(
+        [item.to_dict() for item in deferred.consistency_evidence_records()]
+    ) == _canonical([item.to_dict() for item in reference.consistency_evidence_records()])
+    assert deferred.latency_audit_summary().to_dict() == reference.latency_audit_summary().to_dict()
+    assert [item.to_dict() for item in deferred.sensor_health_summaries()] == [
+        item.to_dict() for item in reference.sensor_health_summaries()
+    ]
+    assert deferred._processed_lineage_keys == reference._processed_lineage_keys
+    assert deferred.pre_checkpoint_oosm_replay_count == (
+        reference.pre_checkpoint_oosm_replay_count
+    ) == 3
+
+    reference_diagnostics = reference.fusion_performance_diagnostics()
+    deferred_diagnostics = deferred.fusion_performance_diagnostics()
+    assert reference_diagnostics.global_track_materialization_count == 12
+    assert deferred_diagnostics.global_track_materialization_count == 3
+    assert snapshot.global_track_materialization_count == 3
+    assert deferred_diagnostics.sensor_health_snapshot_build_count == 1
+    assert reference_diagnostics.sensor_health_snapshot_build_count == 4
+    reference_diagnostics_payload = reference_diagnostics.to_dict()
+    deferred_diagnostics_payload = deferred_diagnostics.to_dict()
+    for publication_only_field in (
+        "global_track_materialization_count",
+        "sensor_health_snapshot_build_count",
+    ):
+        reference_diagnostics_payload.pop(publication_only_field)
+        deferred_diagnostics_payload.pop(publication_only_field)
+    assert deferred_diagnostics_payload == reference_diagnostics_payload
 
 
 @pytest.mark.parametrize("target_count", [1, 7, 200])

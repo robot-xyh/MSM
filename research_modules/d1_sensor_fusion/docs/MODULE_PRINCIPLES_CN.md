@@ -6,6 +6,29 @@
 
 ## 当前权威增量（2026-07-22）
 
+### 状态更新与发布分离原则
+
+D1 的扫描语义不能为了减少日志而合并。每个 released scan 仍独立完成扫描前航迹门控、一对一
+关联、固定时滞乱序重放、双时间戳和协方差治理。可以延迟的是 `GlobalTrack` 对象构造，而非状态
+更新。`process_scan_batch()` 因此保留默认完整返回，并增加显式
+`materialize_tracks=False` 模式。
+
+状态-only 结果以 `tracks_materialized=False` 表明没有航迹快照，并直接提供
+`current_track_count`。访问 `tracks` 会抛出错误，不能把未物化结果解释成零航迹。main 完成本
+运行时刻的全部扫描后，通过 `materialize_global_tracks()` 生成一次完整快照。该快照仍包含 NED
+六状态、6×6 协方差、分级、量测/到达时间、来源谱系、健康和关联审计；内部状态与发布数组不共享。
+
+三目标四扫描构造序列覆盖默认 6 秒 fixed-lag 和检查点前 OOSM。参考路径物化 12 条航迹对象，
+延迟路径物化 3 条；终态航迹、协方差、元数据、健康、时延和一致性证据相同。D1 全量
+`168 passed in 29.43s`。这一结果证明接口等价和操作数下降，main 接线后的全栈墙钟、内存和日志
+收益仍需 clean 多随机种子验证。
+
+发布审计 v2 将 `publication_count` 拆为 `materialized_snapshot_count` 和
+`state_only_count`，`track_record_count` 只统计完整快照内的航迹。无新标记的旧 v1 日志继续按
+完整快照处理。新 writer 使用 `tracks_materialized=false / tracks=[] / track_count=0`，并以
+`current_track_count` 表示真实内部航迹数；audit 同时兼容过渡期 `tracks=null`。state-only 不参与
+航迹快照哈希，也不计作零航迹状态。
+
 ### 长时固定滞后缓存原则
 
 10 s 冻结回放包含 764 个扫描和 12,107 条匿名观测。随着 episode 变长，已完成滤波的历史前缀
@@ -26,8 +49,9 @@
 已经实时。
 
 `FusionPerformanceDiagnostics` 只包含固定数量的累计标量，适合 episode profiler 低频采样。
-发布侧 764 条全量快照约 186.2 MiB，其中 357 条具有相同融合时刻，294 条与上一条航迹快照
-相同。D1 必须逐扫描融合；按融合时刻合并持久化记录属于 main 的后续调度选择，本阶段没有实现。
+发布侧历史基线的 764 条全量快照约 186.2 MiB，其中 357 条具有相同融合时刻，294 条与上一条
+航迹快照相同。D1 必须逐扫描融合；当前已可在同一 tick 延迟中间物化。跨 tick 合并持久化记录
+仍属于 main 的后续调度选择。
 
 第二阶段针对第一阶段默认路径中的扫描关联重复计算。clean `492979e` 的 200 规模五个 seed 中，
 D1 fusion 均值为 12.103 s。冻结 seed 42000 输入 SHA-256 为

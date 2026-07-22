@@ -171,6 +171,8 @@ from .types import (
     FusionPerformanceDiagnostics,
     FusionQualityRegionSummary,
     FusionQualityRegionWindowSummary,
+    FusionStateUpdateResult,
+    FusionTrackSnapshot,
     GlobalTrack,
     LatencyAuditSummary,
     LosIntersectionAngle,
@@ -180,6 +182,7 @@ from .types import (
     SensorObservation,
     SensorTimingExpectation,
     TrackLevel,
+    TracksNotMaterializedError,
     TrackUncertaintySummary,
 )
 
@@ -213,6 +216,8 @@ __all__ = [
     "FusionPerformanceDiagnostics",
     "FusionQualityRegionSummary",
     "FusionQualityRegionWindowSummary",
+    "FusionStateUpdateResult",
+    "FusionTrackSnapshot",
     "FUSED_TRACK_PUBLICATION_AUDIT_SCHEMA_VERSION",
     "GlobalTrack",
     "LONG_REPLAY_CONFIG_VERSION",
@@ -275,6 +280,7 @@ __all__ = [
     "SensorScanFrame",
     "SensorTimingExpectation",
     "TrackLevel",
+    "TracksNotMaterializedError",
     "TrackUncertaintySummary",
     "annotate_covariance_growth_rates",
     "audit_fused_track_publications",

@@ -293,11 +293,27 @@ frame = SensorScanFrame.from_observations(
 )
 decision = scan_organizer.ingest(frame)
 
-latest_fused = None
-for released in decision.released_scans:
-    latest_fused = fusion_adapter.process_scan_batch(released.observations)
-if latest_fused is not None:
-    publish_fused_tracks_to_d2(latest_fused.tracks)
+last_state_result = None
+for scan_index, released in enumerate(decision.released_scans):
+    state_result = fusion_adapter.process_scan_batch(
+        released.observations,
+        materialize_tracks=False,
+    )
+    if scan_index + 1 < len(decision.released_scans):
+        publish_d1_audit(
+            tracks_materialized=False,
+            tracks=[],
+            track_count=0,
+            current_track_count=state_result.current_track_count,
+            summary=state_result.summary.to_dict(),
+        )
+    last_state_result = state_result
+if last_state_result is not None:
+    snapshot = fusion_adapter.materialize_global_tracks()
+    full_payload = last_state_result.to_dict()
+    full_payload.update(snapshot.to_dict())
+    persist_full_d1_publication(full_payload)
+    publish_fused_tracks_to_d2(snapshot.tracks)
 
 write_scan_events(decision.events)
 write_scan_audit(decision.audit)
@@ -320,14 +336,21 @@ write_scan_audit(decision.audit)
    `events`、累计 `audit`、D1 fusion summary 分开写入日志。
 7. D6 可统计 too-late、reordered、buffer peak、overflow 和 expiry。未经长 episode 标定的计数
    不直接触发 D4 主动降级。
+8. 同一 runtime tick 释放多个扫描时，每个扫描仍按顺序调用 state-only 接口；不得把扫描拼接。
+   中间日志为 `tracks_materialized=false`、`tracks=[]`、`track_count=0`，实际内部航迹数写入
+   `current_track_count`。D2 v1 可继续校验数组长度，且不会把未物化记录当成规范航迹快照。
+9. 本 tick 最后调用一次 `materialize_global_tracks()`。完整发布的 `track_count`、
+   `current_track_count` 和 `len(tracks)` 必须相等。旧日志无 `tracks_materialized` 时按完整快照
+   解释；`tracks=None` 仅由 D1 audit 作为过渡兼容输入，不作为新 writer 推荐格式。
 
 推荐初始参数只可作为开发配置，不可写成传感器指标。`max_lateness_s` 应覆盖正常 sensor-specific
 抖动而不是平均固定链路延迟；`max_buffer_residence_s` 和数量上限需按扫描率、传感器数、最大 N
 及日志压力共同计算。20/50/100/200 长 episode 各自记录水位线、缓冲峰值、误拒、尾部释放和
 处理耗时后再冻结 profile。
 
-`ScanInputOrganizer` 是纯 Python 扫描输入合同，不依赖 AirSim SDK。2026-07-22 仅完成 15 项
-构造测试和 D1 `151 passed` 全量回归；没有启动 Blocks/CV、没有修改 settings、launch/reset 或
+`ScanInputOrganizer` 和延迟物化接口均为纯 Python 合同，不依赖 AirSim SDK。延迟物化构造回归
+覆盖三目标四扫描、默认 6 s fixed-lag 和检查点前 OOSM；D1 全量 `168 passed in 29.43s`。本轮
+没有启动 Blocks/CV、没有修改 settings、launch/reset 或
 episode 顺序。随后 main 从 clean 提交
 `e4d66db02a0b8f1b867a0e81b4a73de84588426b` 对 scalable 快速治理路径完成
 20/50/100/200 各 5 seed 的 formal 复跑；20/20 `repository_dirty=false`，扫描拒绝、过旧和

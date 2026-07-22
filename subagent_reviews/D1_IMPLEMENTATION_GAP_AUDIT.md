@@ -11,7 +11,8 @@
 | GAP/合同 | 当前状态 | 2026-07-22 证据 | 剩余关闭条件 |
 | --- | --- | --- | --- |
 | 长时 fixed-lag 超线性增长 | **D1-owned 冻结输入缺口已关闭；系统 P1 仍开放** | 10 s/764 scans/12,107 obs 对照中，history replay `170,106 -> 13,397`、filter update `120,440 -> 9,549`、墙钟 `157.237 -> 107.449 s`；状态查询/后缀复用/前缀快路径/一致性刷新分别为 `152,861/110,891/300,024/194,916`；逐扫描/终态/evidence 哈希等价 | main 从 clean commit 复跑完整多 seed，冻结硬件和周期预算；D1 不以丢观测、缩短 6 s fixed-lag、放宽 gate 或使用 truth 换性能 |
-| D1 全量快照持久化 | **审计完成，main 建议未实现** | 764 条约 186.2 MiB；407 个唯一融合时刻、357 条同融合时刻可合并、294 条连续未变化 | main 评估按融合时刻保留最后后验和 heartbeat/lineage sidecar；必须保留状态/身份/生命周期/质量/lineage 事件并支持 D6 重建。D1 本轮不修改 main 发布器 |
+| 同一 tick 重复全量快照物化 | **D1-owned 接口缺口已关闭；main 集成 P1 开放** | 默认 API 不变；state-only 返回准确 `current_track_count` 且禁止访问 `tracks`；3 目标、4 扫描、6 s fixed-lag/检查点前 OOSM 中终态/evidence 等价，物化 `12 -> 3`；D1 全量 `168 passed` | main 按 released scan 顺序处理；中间扫描发布 `tracks_materialized=false, tracks=[], track_count=0, current_track_count=N`，末扫描 summary 与一次完整快照合并；从 clean commit 复跑全栈多 seed 墙钟/内存/日志/语义哈希 |
+| D1 全量快照持久化 | **审计 v2 已实现；跨 tick 策略仍开放** | 旧基线 764 条约 186.2 MiB；新 audit 分别统计 publication/materialized/state-only/track records，兼容 v1 数组日志和 state-only 的空数组或过渡 null | main 后续评估跨 tick heartbeat/lineage sidecar；必须保留状态/身份/生命周期/质量/lineage 事件并支持 D6 重建。D1 不修改 main 发布器 |
 | 扫描水位线 clean/formal 复跑 | **已关闭** | 提交 `e4d66db02a0b8f1b867a0e81b4a73de84588426b`；20/50/100/200 各 5 seed，20/20 formal 且 `repository_dirty=false`；每例 136 帧、重排 12、拒绝/过旧/溢出 0、峰值/结束缓冲 3/0、在线 truth 0 | 保持 schema/hash/truth-isolation 回归；AirSim 和完整融合另行验收 |
 | 观测治理内存边界 | 正式快速治理证据已获得 | 200 规模 `estimated_peak_memory_bytes.mean=40,914,828.4 B`，约 40.91 MB；最大 40,926,870 B | 完整融合、长历史和进程常驻集内存仍需单独记录；tracemalloc 值不是生产预算 |
 | 逐小扫描全后验吞吐 | **D1-owned 冻结输入热点已关闭；系统 P1 仍开放** | profiler 定位 `_state_at`/历史 replay 和重复 health snapshot；增量后验检查点与每扫描公共审计快照使 filter update `93,234 -> 1,797`、health snapshot `16,653 -> 86`；逐扫描/终态/evidence 哈希等价；34.701 s -> 9.073 s | main 从 clean commit 复跑完整未见多 seed，冻结硬件、发布频率与周期预算；另验长历史内存和端到端实时倍率 |
@@ -21,8 +22,9 @@
 
 本轮没有新增 D1 P0 blocker。长时冻结输入优化新增固定大小的
 `FusionPerformanceDiagnostics`，可由 profiler 读取累计 filter update/checkpoint reuse 等计数，
-无需在 episode summary 内保存逐扫描历史。main 当前没有采样该接口，发布合并也尚未实现；二者
-保留为 main-owned 集成 P1，不回退 D1 已完成的长时语义等价优化。clean/formal 治理复跑缺口已
+无需在 episode summary 内保存逐扫描历史。D1 已提供同一 tick state-only/末尾快照接口和
+publication audit v2；main 当前尚未接线，保留为 main-owned 集成 P1，不回退 D1 已完成的长时
+语义等价优化。clean/formal 治理复跑缺口已
 关闭，输入 SHA-256 及 60 个引用制品
 均通过复核。释放后的重复后验计算已在 D1 冻结输入上完成治理；未缓存参考与优化路径保持每扫描
 一对一关联、双时间戳、covariance、OOSM、observer-scan conflict、consistency evidence 和

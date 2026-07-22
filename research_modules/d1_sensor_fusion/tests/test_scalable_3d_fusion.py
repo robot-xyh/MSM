@@ -8,6 +8,7 @@ import numpy as np
 import pytest
 
 from d1_sensor_fusion import (
+    FusionStateUpdateResult,
     SCALABLE_3D_POSITION_ONLY_RADAR_NIS_GATE,
     SCALABLE_3D_UNOBSERVED_VELOCITY_VARIANCE_M2PS2,
     Scalable3DFusionAdapter,
@@ -74,6 +75,28 @@ def _radar_measurement(
             "range_dependent_covariance": True,
         },
     )
+
+
+def test_online_batch_can_update_state_without_materializing_tracks() -> None:
+    measurement = _radar_measurement(
+        "radar-state-only",
+        np.array([1_000.0, 80.0, -120.0]),
+        measurement_timestamp=1.0,
+        arrival_timestamp=1.2,
+    )
+    adapter = Scalable3DFusionAdapter()
+
+    result = adapter.process_online_sensor_batch(
+        _online_batch("radar-state-only-batch", (measurement,)),
+        materialize_tracks=False,
+    )
+
+    assert isinstance(result, FusionStateUpdateResult)
+    assert result.current_track_count == 1
+    assert result.tracks_materialized is False
+    snapshot = adapter.materialize_global_tracks()
+    assert len(snapshot.tracks) == 1
+    assert snapshot.tracks[0].global_track_id == "global_track_001"
 
 
 @pytest.mark.parametrize("target_count", [5, 20, 50, 100, 200])

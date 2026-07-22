@@ -1079,10 +1079,108 @@ class FusionBatchResult:
     tracks: tuple[GlobalTrack, ...]
     summary: FusionBatchSummary
 
+    @property
+    def tracks_materialized(self) -> bool:
+        """Return whether this result contains a concrete track snapshot."""
+
+        return True
+
+    @property
+    def track_count(self) -> int:
+        return len(self.tracks)
+
+    @property
+    def current_track_count(self) -> int:
+        return self.track_count
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "tracks": tuple(track.to_dict() for track in self.tracks),
             "summary": self.summary.to_dict(),
+        }
+
+
+class TracksNotMaterializedError(RuntimeError):
+    """Raised when a state-only fusion result is consumed as a track snapshot."""
+
+
+@dataclass(frozen=True)
+class FusionStateUpdateResult:
+    """Audit result for a scan whose internal state was updated without publication.
+
+    ``tracks`` deliberately raises instead of returning an empty tuple. A caller
+    must invoke ``FusionAdapter.materialize_global_tracks()`` after processing the
+    final released scan for its runtime tick.
+    """
+
+    summary: FusionBatchSummary
+    current_track_count: int
+    tracks_materialized: bool = field(default=False, init=False)
+
+    def __post_init__(self) -> None:
+        if int(self.current_track_count) < 0:
+            raise ValueError("current_track_count must be non-negative")
+        object.__setattr__(self, "current_track_count", int(self.current_track_count))
+
+    @property
+    def state_updated_at(self) -> float:
+        return float(self.summary.published_at)
+
+    @property
+    def track_count(self) -> int:
+        """Serialized track-array length; always zero without materialization."""
+
+        return 0
+
+    @property
+    def tracks(self) -> tuple[GlobalTrack, ...]:
+        raise TracksNotMaterializedError(
+            "tracks were not materialized; call materialize_global_tracks() "
+            "after the final state-only scan"
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "tracks_materialized": False,
+            "tracks": [],
+            "track_count": self.track_count,
+            "state_updated_at": self.state_updated_at,
+            "current_track_count": self.current_track_count,
+            "summary": self.summary.to_dict(),
+        }
+
+
+@dataclass(frozen=True)
+class FusionTrackSnapshot:
+    """Explicitly materialized current ``GlobalTrack`` publication."""
+
+    tracks: tuple[GlobalTrack, ...]
+    published_at: float
+    global_track_materialization_count: int
+    sensor_health_snapshot_build_count: int
+    tracks_materialized: bool = field(default=True, init=False)
+
+    @property
+    def track_count(self) -> int:
+        return len(self.tracks)
+
+    @property
+    def current_track_count(self) -> int:
+        return self.track_count
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "tracks_materialized": True,
+            "tracks": [track.to_dict() for track in self.tracks],
+            "track_count": self.track_count,
+            "current_track_count": self.current_track_count,
+            "published_at": self.published_at,
+            "global_track_materialization_count": (
+                self.global_track_materialization_count
+            ),
+            "sensor_health_snapshot_build_count": (
+                self.sensor_health_snapshot_build_count
+            ),
         }
 
 

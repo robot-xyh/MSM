@@ -8,6 +8,46 @@
 
 ## 当前权威增量（2026-07-22）
 
+### 扫描状态更新与航迹物化分离
+
+同一运行时刻可能由扫描整理器释放多个不同传感器或不同量测时刻的扫描。扫描不能拼接成一个伪
+扫描，因为每个扫描都有独立 observer-scan key、一对一关联集合、双时间戳和乱序语义。当前实现
+保持逐扫描状态更新，只把完整航迹对象构造从中间扫描移到本 tick 末尾：
+
+```text
+released scan 1 -> process_scan_batch(..., materialize_tracks=False) -> state/audit
+released scan 2 -> process_scan_batch(..., materialize_tracks=False) -> state/audit
+released scan n -> process_scan_batch(..., materialize_tracks=False) -> state/audit
+                                                            |
+                                                            v
+                                         materialize_global_tracks() once
+                                                            |
+                                                            v
+                                  GlobalTrack snapshot -> D2 / persistence
+```
+
+状态-only 调用完整执行观测校验、扫描级代价矩阵和一对一分配、航迹起始、固定时滞重放、检查点
+前 OOSM、预测、协方差限制、健康统计、一致性证据修订、来源谱系和性能计数。它只不调用
+`global_tracks()`。返回的 `FusionStateUpdateResult` 包含准确的 `current_track_count`，因此 main
+可记录轻量状态，而无须从 `tracks` 推导数量。`tracks` 属性主动抛出
+`TracksNotMaterializedError`，防止空列表被解释为当前没有航迹。
+
+显式物化接口在当前内部后验上构造 `FusionTrackSnapshot`。它共享一次 association/latency/
+sensor-health 发布上下文，再逐航迹复制状态、协方差、生命周期、支持来源和元数据。物化不执行
+新关联或新滤波，也不改变 `global_track_id`。实际航迹物化数和健康快照构造数进入累计性能诊断。
+
+测试序列包含 3 个目标、量测时刻 0/3/10 秒的扫描和一帧量测时刻 1.5 秒、到达时刻 10.2 秒的
+检查点前 OOSM。默认 6 秒固定时滞使检查点推进到 3 秒。逐扫描完整发布与四次 state-only 后一次
+物化的终态航迹、协方差、分级、元数据、时延审计、健康摘要和 consistency evidence 相同；
+物化数从 12 降到 3。
+
+发布日志审计 schema 升为 `d1.fused_track_publication_audit.v2`。没有
+`tracks_materialized` 的旧记录按完整快照读取。新状态记录使用
+`tracks_materialized=false`、`tracks=[]`、`track_count=0` 和准确的 `current_track_count`；
+audit 仍兼容过渡期的 `tracks=null`。审计分别统计总发布数、完整快照数、状态更新数和完整快照
+内航迹记录数。定向测试 `30 passed`，D1 全量 `168 passed in 29.43s`。没有运行
+AirSim，也没有形成完整 200v200 运行时加速结论。
+
 ### 长时固定滞后检查点复用
 
 长时专项使用同一份 10 s 冻结扫描序列对照旧路径和优化路径。输入包含 764 个扫描、12,107 条
@@ -30,9 +70,9 @@
 合法前缀快路径 300,024 和缓存一致性刷新 194,916 次；该接口不保留逐扫描快照，不要求修改 main
 合同。
 
-冻结日志的 764 条全量航迹发布约 186.2 MiB，只有 407 个唯一融合时刻。main 可在后续设计中
-评估同一融合时刻只持久化最后后验，并用轻量 heartbeat/lineage 记录未变化状态。该方案必须保留
-规范状态、身份、生命周期、质量跨档和来源谱系事件，且 **当前仅为建议，D1 未修改 main 发布器**。
+冻结日志的 764 条全量航迹发布约 186.2 MiB，只有 407 个唯一融合时刻。该数据来自延迟物化接口
+引入前。D1 现已提供同一 tick 中间状态更新和末尾快照接口；main 尚未接线。跨 tick 合并和轻量
+heartbeat/lineage 仍是后续建议，必须保留规范状态、身份、生命周期、质量跨档和来源谱系事件。
 
 ### 第二阶段扫描关联工作区
 

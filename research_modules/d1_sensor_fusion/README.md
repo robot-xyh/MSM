@@ -4,6 +4,32 @@ Offline research module for radar, acoustic, EO, and optional synthetic lidar he
 
 ## 当前性能与治理证据（2026-07-22）
 
+### 第四阶段：同一运行时刻延迟物化
+
+`process_scan_batch(observations)` 的默认返回、字段和序列化保持不变，仍生成完整
+`FusionBatchResult`。当 `ScanInputOrganizer` 在一个 main runtime tick 内释放多个扫描时，调用方
+可对每个扫描显式传入 `materialize_tracks=False`。D1 仍逐扫描完成一对一关联、固定时滞重放、
+双时间戳审计、协方差限制、传感器健康、一致性证据、来源谱系和累计诊断，只跳过中间
+`GlobalTrack` 快照构造。
+
+状态更新返回 `FusionStateUpdateResult`。该结果明确给出 `tracks_materialized=False`、
+`current_track_count`、`state_updated_at` 和完整扫描摘要；`tracks` 不是空元组，访问时抛出
+`TracksNotMaterializedError`。最后一个扫描处理完后，调用
+`materialize_global_tracks()` 得到 `FusionTrackSnapshot`。快照包含完整航迹、协方差、生命周期、
+元数据和发布审计，并把实际物化数计入 `fusion_performance_diagnostics()`。
+
+构造回归使用 4 个扫描、3 个目标和默认 6 s fixed-lag，其中最后一帧是检查点前 OOSM。逐扫描均
+物化与中间 state-only、末尾一次物化的终态航迹、传感器健康、时延审计和一致性证据完全相同；
+物化数由 12 降为 3。新旧接口及混合发布审计定向测试 `30 passed`，D1 全量
+`168 passed in 29.43s`。这是确定性合同测试，不是完整 200v200 墙钟或 AirSim 结果。
+
+`audit_fused_track_publications()` 输出 schema 已升级为
+`d1.fused_track_publication_audit.v2`，分别统计 `publication_count`、
+`materialized_snapshot_count`、`state_only_count` 和 `track_record_count`。无
+`tracks_materialized` 字段的 v1 日志继续按完整快照读取。新 state-only writer 使用
+`tracks=[]`、`track_count=0` 和准确的 `current_track_count`；audit 也兼容过渡期的
+`tracks=None`。main-owned runtime 尚未接入该接口，接线和 clean 多 seed 性能复跑仍是系统 P1。
+
 ### 第三阶段：长时固定滞后检查点复用
 
 本阶段直接回放 clean 长时对照的冻结 `sensor.observations`，不重新生成场景，也不读取在线
@@ -26,9 +52,9 @@ filter update 为 `120,440 -> 9,549`。候选对和创新求解均保持 2,393,9
 缓存一致性刷新 194,916 次；调用方可按 episode 采样，不需要保存逐扫描历史。
 
 发布审计记录 764 条 `modules.d1.fused_tracks`，共 186.2 MiB；其中只有 407 个唯一融合时刻，
-357 条可在同一融合时刻保留最后后验，另有 294 条连续未变化快照。D1 仍逐扫描完成有序融合并
-生成完整结果。按融合时刻合并全量快照、以 heartbeat/lineage sidecar 记录未变化状态只是给 main
-的调度建议，**本阶段未修改 main，也未实现发布节流或合并**。详细证据见
+357 条可在同一融合时刻保留最后后验，另有 294 条连续未变化快照。这是延迟物化接口引入前的
+历史基线；D1 后续已提供同一 runtime tick 内的显式 state-only 接口，但 main 尚未接线，也未
+实现跨 tick 发布节流或 heartbeat/lineage sidecar。详细证据见
 `reports/D1_LONG_DURATION_PERFORMANCE_BENCHMARK_CN.md` 和对应 JSON。
 
 ### 第二阶段：扫描关联工作区
@@ -828,13 +854,21 @@ frame = SensorScanFrame.from_observations(
 )
 decision = scan_input_organizer.ingest(frame)
 
-latest_fusion_result = None
-for released_frame in decision.released_scans:
-    latest_fusion_result = fusion_adapter.process_scan_batch(
-        released_frame.observations
+last_state_result = None
+for scan_index, released_frame in enumerate(decision.released_scans):
+    state_result = fusion_adapter.process_scan_batch(
+        released_frame.observations,
+        materialize_tracks=False,
     )
-if latest_fusion_result is not None:
-    publish_to_d2(latest_fusion_result.tracks)
+    if scan_index + 1 < len(decision.released_scans):
+        publish_lightweight_d1_audit(state_result.to_dict())
+    last_state_result = state_result
+if last_state_result is not None:
+    track_snapshot = fusion_adapter.materialize_global_tracks()
+    full_payload = last_state_result.to_dict()
+    full_payload.update(track_snapshot.to_dict())
+    persist_full_d1_publication(full_payload)
+    publish_to_d2(track_snapshot.tracks)
 
 scan_events = [event.to_dict() for event in decision.events]
 scan_audit = decision.audit.to_dict()

@@ -33,6 +33,8 @@ from .types import (
     FusionBatchSummary,
     FusionPerformanceDiagnostics,
     FusionQualityRegionSummary,
+    FusionStateUpdateResult,
+    FusionTrackSnapshot,
     GlobalTrack,
     LatencyAuditSummary,
     SensorHealthSummary,
@@ -556,7 +558,9 @@ class FusionAdapter:
     def process_scan_batch(
         self,
         observations: Iterable[SensorObservation],
-    ) -> FusionBatchResult:
+        *,
+        materialize_tracks: bool = True,
+    ) -> FusionBatchResult | FusionStateUpdateResult:
         """Fuse one identity-free observer scan with one-to-one association.
 
         Unlike :meth:`process_batch`, this entry point intentionally does not
@@ -564,6 +568,12 @@ class FusionAdapter:
         the pre-scan track set at once, and every unmatched radar detection may
         start its own track. This prevents a loose single-observation gate from
         suppressing nearby but distinct detections during dense-track birth.
+
+        The default remains a fully materialized :class:`FusionBatchResult`.
+        Runtime orchestrators that release several scans in one tick may pass
+        ``materialize_tracks=False`` for each scan, then call
+        :meth:`materialize_global_tracks` once after the final state update.
+        State-only results fail closed if their ``tracks`` property is accessed.
         """
 
         if self._batch_context is not None:
@@ -585,8 +595,12 @@ class FusionAdapter:
             if self._observer_scan_key(observation) != self._observer_scan_key(first):
                 raise ValueError("scan batch observations must share one observer scan key")
 
+        if not isinstance(materialize_tracks, bool):
+            raise TypeError("materialize_tracks must be a bool")
+
         duplicate_before = self.duplicate_observation_count
         context = _BatchProcessingContext()
+        tracks: tuple[GlobalTrack, ...] | None = None
         self._batch_context = context
         try:
             previous_time = float(self.current_time)
@@ -662,7 +676,8 @@ class FusionAdapter:
                 self._finalize_record_replay(record, self.current_time)
                 context.finalization_replay_count += 1
             self._predict_all_to(self.current_time)
-            tracks = tuple(self.global_tracks())
+            if materialize_tracks:
+                tracks = tuple(self.global_tracks())
         finally:
             self._batch_context = None
 
@@ -723,7 +738,44 @@ class FusionAdapter:
             observation_count=len(prepared),
             scan_batch=True,
         )
+        if tracks is None:
+            return FusionStateUpdateResult(
+                summary=summary,
+                current_track_count=len(self.tracks),
+            )
         return FusionBatchResult(tracks=tracks, summary=summary)
+
+    def materialize_global_tracks(self) -> FusionTrackSnapshot:
+        """Build one explicit full snapshot after one or more state-only scans.
+
+        This method does not update, replay, or reassociate observations. It
+        only copies the current state, covariance, lifecycle classification,
+        lineage, health, latency, and publication metadata into detached track
+        objects. Its operation counts enter cumulative fusion diagnostics
+        without creating a synthetic observation batch.
+        """
+
+        if self._batch_context is not None:
+            raise RuntimeError(
+                "global tracks cannot be materialized inside an active fusion batch"
+            )
+        context = _BatchProcessingContext()
+        self._batch_context = context
+        try:
+            tracks = tuple(self.global_tracks())
+        finally:
+            self._batch_context = None
+            self._accumulate_materialization_performance(context)
+        return FusionTrackSnapshot(
+            tracks=tracks,
+            published_at=float(self.current_time),
+            global_track_materialization_count=(
+                context.global_track_materialization_count
+            ),
+            sensor_health_snapshot_build_count=(
+                context.sensor_health_snapshot_build_count
+            ),
+        )
 
     def _process_prepared_batch_observation(
         self,
@@ -1126,6 +1178,18 @@ class FusionAdapter:
             "association_innovation_solve_count",
         ):
             totals[name] += int(getattr(context, name))
+
+    def _accumulate_materialization_performance(
+        self,
+        context: _BatchProcessingContext,
+    ) -> None:
+        totals = self._performance_totals
+        totals["global_track_materialization_count"] += int(
+            context.global_track_materialization_count
+        )
+        totals["sensor_health_snapshot_build_count"] += int(
+            context.sensor_health_snapshot_build_count
+        )
 
     def _track_publication_context(self) -> _TrackPublicationContext:
         context = self._batch_context
