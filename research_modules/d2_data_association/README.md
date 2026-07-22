@@ -199,6 +199,7 @@ D2 是 C-UAS 多目标数据关联研究模块，目标是在离线仿真和日�
 - `d2_data_association/scalable_3d_models.py`：truth-free `Detection3D`、六维 `GlobalTrack3D` 和松耦合 D1/scalable 量测适配器。
 - `d2_data_association/sparse_3d.py`：KD-tree 稀疏 GNN/Hungarian、六维 CV Tracker、风险摘要和有界审计。
 - `d2_data_association/scalable_3d_offline.py`：关联完成后才可调用的 3D truth sidecar IDSW/continuity evaluator。
+- `d2_data_association/scalable_3d_performance.py`：冻结 episode 的 D2 发布语义哈希和阶段墙钟比较器。
 - `d2_data_association/dry_run_adapter.py`：D1/AirSim-style dry-run 输入适配和 bus message 输出。
 - `d2_data_association/d1_governed_adapter.py`：D1 frozen manifest/records 到在线安全 D2 radar/N-E frames 的转换和跳过诊断。
 - `d2_data_association/replay.py`：离线 JSON/JSONL replay 读取、association report/log 输出和阈值敏感性 helper。
@@ -211,6 +212,7 @@ D2 是 C-UAS 多目标数据关联研究模块，目标是在离线仿真和日�
 - `scripts/run_simulation.py`：CLI benchmark runner。
 - `scripts/run_dense_crossing_calibration.py`：P1 多 seed 校准 CLI，单独输出 truth JSONL 和聚合 JSON。
 - `scripts/run_p2_optional_benchmark.py`：读取 frozen replay/truth 文件并输出 P2 adapter comparison JSON。
+- `scripts/run_scalable_3d_performance_comparison.py`：生成 200 规模 current-default-vs-optimized JSON 和中文曲线。
 - `docs/ALGORITHM_AND_IMPLEMENTATION.md`：中文算法和实现说明。
 - `docs/EXPERIMENT_REPORT.md`：离线仿真结果和解释。
 - `docs/AIRSIM_INTEGRATION_PLAN.md`：AirSim 离线回放接入计划。
@@ -668,3 +670,22 @@ overflow/too-old 均为 0。离线评估侧近邻召回率均为 1.0，误抑制
 保留 seed 1011 和 1019 在 1.0 s 干预帧只有 4 条在线航迹，后续新鲜观测到达后终态恢复
 5 条 confirmed。scalable 验收仍应以实际 D2 库存连接 D3，并单独报告相对场景目标数的
 可见性缺口；不得用离线 truth 补轨或硬编码目标数。
+
+## 2026-07-22 200 规模关联热路径收敛
+
+clean 基线目录的 `nominal/200v200` seeds 42000--42004 与候选重跑形成 5 组冻结输入
+对照，每组 8 个常规关联周期和 1 个尾部收束周期。候选只优化在线身份 metadata 审计：
+有界缓存键归一化和禁用键分类，使用原生前后缀判断，并删除 D1 adapter 的一次冗余
+预扫描。`Detection3D.__post_init__` 与 `Scalable3DTracker.step()` 的双边界审计仍保留，
+构造后篡改继续 fail closed。
+
+常规关联平均累计墙钟从 `7.5552 s` 降至 `2.2033 s`，尾部收束从 `2.2747 s` 降至
+`0.5646 s`；单 episode D2 合计从 `9.8299 s` 降至 `2.7679 s`。五组总墙钟为
+`49.1497 -> 13.8397 s`，总体加速 `3.551x`。45/45 周期的完整发布、关联、规范 ID/
+生命周期、claim/审计哈希一致，在线 truth use 为 0。默认 GNN/Hungarian、3D 门控、
+中心 `global_track_id`、claim ledger、生命周期和显式 IDSW/continuity unavailable 语义
+均未改变。
+
+专项报告见 `docs/D2_SCALABLE_3D_PERFORMANCE_BENCHMARK_CN.md`，机器可读比较 schema 为
+`d2-scalable3d-performance-comparison-v1`。候选运行仍是未提交开发态，不构成实时 SLA、
+AirSim 或完整 200v200 闭环验收。

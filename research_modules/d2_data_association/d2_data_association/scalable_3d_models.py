@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
-from typing import Any, Iterable, Mapping
+from functools import lru_cache
+from typing import Any, Iterable
 
 import numpy as np
 
@@ -375,7 +377,6 @@ def detections3d_from_d1_global_tracks(
     frame_timestamp = 0.0
     for index, item in enumerate(tracks):
         metadata = dict(_mapping_or_empty(_read(item, "metadata", {})))
-        assert_online_metadata_truth_free(metadata)
         frame_id = str(metadata.get("frame_id", _read(item, "frame_id", "NED")))
         state = _finite_vector(_read(item, "state"), 6, "D1 track state")
         covariance, _ = govern_covariance(
@@ -491,6 +492,7 @@ def assert_online_metadata_truth_free(metadata: Mapping[str, Any]) -> None:
         )
 
 
+@lru_cache(maxsize=1024)
 def _forbidden_online_key(key: str) -> bool:
     collapsed = key.replace("_", "")
     if (
@@ -520,15 +522,18 @@ def _forbidden_online_key(key: str) -> bool:
         return True
     if "globaltrackid" in collapsed or "canonicaltrackid" in collapsed:
         return True
-    identity_suffixes = ("id", "ids", "identity", "name", "uuid")
-    return any(
-        collapsed.startswith(domain) and collapsed.endswith(identity_suffixes)
-        for domain in ("actor", "object", "entity", "target", "airsim")
-    )
+    return collapsed.startswith(
+        ("actor", "object", "entity", "target", "airsim")
+    ) and collapsed.endswith(("id", "ids", "identity", "name", "uuid"))
 
 
 def _normalized_key(value: Any) -> str:
-    return str(value).strip().lower().replace("-", "_").replace(" ", "_")
+    return _normalized_key_text(str(value))
+
+
+@lru_cache(maxsize=1024)
+def _normalized_key_text(value: str) -> str:
+    return value.strip().lower().replace("-", "_").replace(" ", "_")
 
 
 def _finite_vector(value: Any, size: int, name: str) -> np.ndarray:

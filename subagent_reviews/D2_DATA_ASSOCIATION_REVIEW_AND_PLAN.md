@@ -902,3 +902,35 @@ seed1005 测试验收口径已同步，clean 治理复跑也已关闭。后续 P
 seed、真实或代表性漏检/遮挡/杂波/OOSM 分布、离线 IDSW/continuity、真实 AirSim 和
 完整闭环时延。D2 默认 GNN/Hungarian、中心 `global_track_id` ownership 和 fail-closed
 边界保持不变。
+
+## 34. 200v200 关联热路径评审
+
+### 34.1 评审决定
+
+五 seed profile 显示，当前 200v200 nominal 输入的主要开销不是 Hungarian，而是在线
+metadata 身份键归一化、禁用键判断及 D1 adapter 的重复递归扫描。本轮只允许优化这些
+等价审计操作。三维候选图、马氏门控、代价、GNN/Hungarian、航迹更新、claim ledger 和
+生命周期均不得改变。
+
+实施结果为有界字符串分类缓存、原生元组前后缀判断和删除 adapter 的冗余预扫描。
+`Detection3D.__post_init__` 继续执行完整审计，Tracker step 继续阻断构造后 metadata
+篡改。缓存最多 1024 项，不持有 detection、track、claim 或 episode 对象。
+
+### 34.2 对照结果
+
+clean 基线和候选均使用 `nominal/200v200` seeds 42000--42004，每 seed 8 个常规周期和
+1 个 finalize 周期。常规关联平均累计墙钟 `7.5552 -> 2.2033 s`，finalize
+`2.2747 -> 0.5646 s`，单 episode D2 合计 `9.8299 -> 2.7679 s`。五 seed 总墙钟
+`49.1497 -> 13.8397 s`，总体加速 `3.551x`。
+
+比较器对完整发布、关联、规范 ID/生命周期、claim/审计及每周期记录分别计算哈希。
+45/45 周期全部一致，场景配置和离线 truth sidecar 也逐 seed 一致；两侧在线 truth use
+均为 0。完整 D2 回归为 `211 passed, 1 warning`，warning 是既有 Matplotlib `Axes3D`
+环境提示。
+
+### 34.3 状态结论
+
+D2 第二阶段热路径优化在开发态候选上通过。没有调整默认算法，也没有降低身份安全。
+候选未提交、未完成固定环境 clean-tree promotion，因此不宣称实时 SLA、真实 AirSim
+或完整 200v200 闭环通过。后续若继续性能晋级，只做同输入 clean 复跑和更困难输入验证，
+不在本任务内继续扩展实现。

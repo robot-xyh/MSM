@@ -1471,3 +1471,39 @@ claim peak/capacity 随规模依次为 2390/4800、6020/12000、12070/24000 和
 该运行验证的是已有 claim ledger、安全淘汰和离线指标合同在 clean 来源上的多规模行为，
 没有改变 GNN/Hungarian、门控、coast、生命周期或中心 ID ownership。它是受控质点治理
 benchmark，不是完整融合、真实 AirSim、多场景 IDSW/连续性、实时服务等级或物理拦截验收。
+
+## 24. 200 规模身份审计热路径
+
+### 24.1 处理顺序
+
+六维在线输入仍按以下顺序处理：递归检查 metadata 中的真值/外部身份键，校验状态、
+协方差和时间，进入 observation claim 分区，再执行 KD-tree 候选生成、三维马氏门控、
+分量级 Hungarian、状态更新和生命周期推进。本轮没有改变上述顺序。
+
+原 D1 adapter 在创建 `Detection3D` 前递归扫描一次 metadata；`Detection3D.__post_init__`
+随后执行相同完整扫描。adapter 预扫描没有产生额外状态或审计字段，因此删除后，非法
+metadata 仍在对象构造时以相同异常拒绝。Tracker step 保留第三方可能在构造后修改对象
+时的再次审计。
+
+### 24.2 有界分类缓存
+
+禁用键判定只依赖归一化后的字符串。实现把字符串归一化和禁用键分类分别放入
+`lru_cache(maxsize=1024)`。缓存值是字符串或布尔值，不含量测、航迹、声明或真值对象。
+容量固定，最坏常驻项数不随 episode 长度增长。域名前缀和身份后缀判定使用 Python 原生
+元组形式的 `startswith`/`endswith`，与原生成器 `any()` 的分类结果等价。
+
+专项测试保留旧分类器作为测试参考，对真值键、actor/object/entity/target/AirSim 身份键、
+中心 ID、合法 observation/source/audit 键和嵌套容器执行新旧结果对照。另有回归验证
+D1 adapter 仍拒绝嵌套 `truthId`，Tracker 仍拒绝构造后注入的身份 metadata。
+
+### 24.3 性能与语义比较器
+
+`scalable_3d_performance.py` 从两侧 episode 读取 D2 topic、阶段计时、场景配置和离线真值
+sidecar。运行时计时不进入在线语义哈希。对每个周期生成完整记录哈希，并分别生成关联、
+规范 ID/生命周期、claim/审计域哈希。场景配置或 sidecar 文件哈希不一致时，
+`semantics_equal` 为 false。
+
+五 seed、45 周期对照中，全部域哈希一致。常规关联平均累计墙钟
+`7.5552 -> 2.2033 s`，finalize `2.2747 -> 0.5646 s`，单 episode D2 合计
+`9.8299 -> 2.7679 s`。该比较器验证发布语义等价，不证明不同输入上的轨迹身份正确性；
+后者仍需隔离 truth evaluator 给出 IDSW/continuity availability。

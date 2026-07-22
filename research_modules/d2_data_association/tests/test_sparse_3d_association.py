@@ -373,6 +373,23 @@ def test_online_contract_rejects_truth_and_upstream_global_id_is_not_authority()
     assert result.risk_summary.truth_metrics_available is False
 
 
+def test_d1_track_adapter_still_rejects_nested_truth_metadata() -> None:
+    d1_track = SimpleNamespace(
+        global_track_id="UPSTREAM-IGNORED",
+        state=np.zeros(6, dtype=float),
+        covariance=np.eye(6, dtype=float),
+        timestamp=1.0,
+        metadata={
+            "frame_id": "NED",
+            "published_at": 1.0,
+            "sensor_health": {"radar": {"truthId": "forbidden"}},
+        },
+    )
+
+    with pytest.raises(ValueError, match="evaluator or external identity"):
+        detections3d_from_d1_global_tracks([d1_track])
+
+
 def test_scalable_measurement_adapter_accepts_only_cartesian_ned() -> None:
     cartesian = SimpleNamespace(
         observation_id="obs-1",

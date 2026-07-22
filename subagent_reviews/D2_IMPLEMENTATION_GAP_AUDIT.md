@@ -6,7 +6,7 @@
 
 **本轮状态同步来源**：截至 2026-07-22 的 D2 代码与测试、main 尾部合并后的 seed1005
 回归、200v200 单 seed development 制品、20/50/100/200 各 5 seed 快速治理制品，并保留
-既有 AirSim/EVAL 审计结论。
+既有 AirSim/EVAL 审计结论；本次新增 clean 基线与候选的 200v200 五 seed 热路径对照。
 
 **结论摘要**：截至 2026-07-22，D2 无运行算法 P0 blocker。既有二维默认
 GNN/Hungarian 与历史 AirSim replay 证据保持不变；显式六维路径已闭合 D2-owned
@@ -16,8 +16,9 @@ truth 隔离、完整 D1 source-posterior covariance、固定权重 CI、速度�
 `5.082/6.401/7.218 m/s`、Pvv trace `101.181`，位置 RMSE `48.364 m`、IDSW 0、
 continuity 1.0；200 条 seed 41 保持 `200/40,000` 候选/全对、IDSW 0、continuity 1.0。
 历史完整回归 `139 passed, 1 warning`。当前 main 尾部合并使 seed1005 replay 合法变为 0；
-D2 v3 复现和测试验收已同步，完整回归为 `189 passed, 1 warning`。P0 验证 blocker 已关闭，
-关联算法未修改。固定 CI weight `0.5` 尚未多 seed 标定；六维
+D2 v3 复现和测试验收已同步。五 seed 200v200 候选在 45/45 周期保持完整发布语义，D2
+总墙钟均值 `9.8299 -> 2.7679 s`。P0 验证 blocker 已关闭，关联算法未修改。固定 CI
+weight `0.5` 尚未多 seed 标定；六维
 NIS/NEES coverage、高机动、main 修复后端到端复跑、完整 JPDA/MHT 和外部框架 tracker
 仍开放。
 
@@ -56,8 +57,8 @@ D2 当前实现符合“先用规则 GNN/Hungarian 做工程主线，密集交�
 - **2026-07-20 历史模块回归**：原六维专项 13 个和新增速度稳定性专项 3 个通过，
   完整结果为 `139 passed, 1 warning`；warning 是环境 Matplotlib `Axes3D`，不影响
   六维数值状态。
-- **2026-07-22 当前权威模块回归**：main 尾部合并验收同步后为
-  `189 passed, 1 warning`；warning 仍为环境 `Axes3D`。
+- **2026-07-22 当前权威模块回归**：200v200 热路径收敛后为
+  `211 passed, 1 warning`；warning 仍为环境 `Axes3D`。
 - **2026-07-12 AirSim 证据**：PNG delivery candidate 的 2v2 10 seeds 为 20/20 pair、在线 truth 使用为 0；锁定后两帧 dropout 沿原 global/local track 和原计划上下文预测，没有 truth ID 或本地 ID 重写。M5N2 8 s 短窗口为 0/9，报告明确其几何与时间窗不足且不可与长时高净空基线直接比较。这些是 D2 下游合同的非退化证据，不是 D2 新算法或长期标定完成证据。
 - **P0/P1 开放项**：P0 无开放项。P1 synthetic long replay、独立 offline truth、至少 10-seed 的 IDSW/continuity/false-track/RMSE/NIS/NEES availability、版本治理和 strict 4 m/2 m 各 20-seed 首轮真实标定已闭合；仍开放更长 OOSM/遮挡/杂波 replay 下的 gate/risk/M-of-N 生命周期参数冻结，以及跨节点 D1 exact/CI posterior 回写、高歧义 replay 和 owner/epoch failover 验证。
 - **下一验收条件**：沿 2026-07-13 冻结 replay/truth/profile/预算合同扩展困难度和时间窗；逐 seed 及聚合报告 IDSW、identity/coverage continuity、duplicate、false-track、初始化延迟、NIS/NEES availability/coverage、runtime 和在线 truth 泄漏数。任何候选必须同时满足全部门限，不能只凭 IDSW 改善晋级。跨节点验收还必须证明 canonical ID 连续、duplicate payload 拒绝、owner/epoch 切换可恢复，并由 D1/D6 给出融合 posterior 与 NEES/ANEES。
@@ -877,3 +878,29 @@ clean 提交上的四规模观测治理复跑，但不关闭以下项目：
 - 最坏大连通分量、循环时延预算和实时服务等级。
 
 本次没有改变 GNN/Hungarian、门限、claim/coast 算法、中心 ID ownership 或控制接口。
+
+## 2026-07-22 200v200 关联热路径 GAP 收口
+
+### 已关闭
+
+- 以 clean 基线 `nominal/200v200` seeds 42000--42004 建立冻结输入和阶段 profile，确认
+  主要热点位于在线 metadata 身份递归审计及 adapter 重复扫描；稀疏 GNN/Hungarian
+  不是本批主要开销。
+- 优化限于等价身份审计：容量 1024 的字符串分类缓存、原生前后缀判断和删除 adapter
+  冗余预扫描。`Detection3D` 构造审计与 Tracker step 审计都保留，构造后篡改仍拒绝。
+- 新增 `d2-scalable3d-performance-comparison-v1` 对照合同。45/45 周期的完整发布、关联、
+  中心 ID/生命周期、claim/审计和逐周期哈希一致；场景配置及 offline truth sidecar 哈希
+  一致，在线 truth use 为 0。
+- 常规关联、finalize 和合计平均墙钟分别为
+  `7.5552 -> 2.2033 s`、`2.2747 -> 0.5646 s`、`9.8299 -> 2.7679 s`；五 seed
+  D2 总墙钟 `49.1497 -> 13.8397 s`。
+
+### GAP 判定
+
+第二阶段 D2-owned 热路径性能 GAP 已在开发态候选上收敛。默认 GNN/Hungarian、三维门控、
+中心 `global_track_id`、claim ledger、生命周期和显式 ID switch/continuity availability
+语义均未改变。候选尚未形成 clean-tree promotion，因而不把本结果写成正式实时 SLA。
+
+仍开放的 P1 证据是固定环境 clean 复跑、真实 AirSim observation ID/时钟分布、代表性
+遮挡/杂波/OOSM、极端全重叠大连通分量和完整离线 IDSW/continuity。以上开放项不得通过
+放宽在线身份审计、claim 或门控来换取时延。

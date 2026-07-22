@@ -1238,3 +1238,22 @@ active-risk seed 1005 当前保持 5 条规范航迹且不再经历第 6 条错�
 3. **容量验收不等于全系统验收**：20/50/100/200 规模的 claim peak 都低于对应
    capacity，安全淘汰已发生且 overflow/too-old 为 0。这关闭 clean 治理复跑，不代表完整
    D1-D7 融合、真实 AirSim、多场景身份连续性、实时服务等级或物理拦截已通过。
+
+## 二十四、性能优化的语义等价原则（2026-07-22）
+
+1. **先定位热点**：阶段墙钟与函数 profile 分开记录。嵌套函数累计时间不能相加成总
+   墙钟；优化对象必须由同一冻结输入上的 profile 确认。本批热点是 metadata 身份审计，
+   不是稀疏 Hungarian。
+2. **身份审计不能旁路**：可以缓存纯字符串的归一化和禁用键分类，但缓存必须有界；
+   `Detection3D` 构造和 Tracker step 两道审计都保留。删除 adapter 预扫描不等于删除
+   输入审计，构造后篡改仍应 fail closed。
+3. **算法语义逐域比较**：性能对照分别哈希完整发布、关联、中心 ID/生命周期、claim/
+   审计和逐周期记录。只比较航迹数或终态 ID 不足以证明等价。
+4. **真值只校验输入**：比较器可校验两侧 offline truth sidecar 的文件哈希，确认输入
+   相同；在线关联不得读取 sidecar。在线无真值时 IDSW 和 continuity 继续 unavailable。
+5. **墙钟不等于 SLA**：五 seed 墙钟只描述当前主机和 nominal 200v200 输入。候选未在
+   clean-tree 固定环境晋级前，不能写成实时保证，也不能外推到 AirSim 或极端全重叠图。
+
+本批 45/45 周期语义哈希一致，在线 truth use 为 0。单 episode D2 总墙钟均值
+`9.8299 -> 2.7679 s`，五 seed 合计 `49.1497 -> 13.8397 s`。GNN/Hungarian、三维
+门控、中心 `global_track_id`、claim ledger 和生命周期没有改变。

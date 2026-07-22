@@ -671,3 +671,32 @@ SHA-256，60/60 与登记值一致。
 覆盖完整 D1-D7 融合、真实 AirSim、多场景身份连续性、实时服务等级或物理拦截闭环。
 后续仍需扩大未见 seed，加入代表性漏检、遮挡、杂波和 OOSM 分布，并以独立离线
 身份标签验证 IDSW 和连续性。
+
+## 23. 200v200 五 seed 热路径对照（2026-07-22）
+
+本批使用 clean 基线 `nominal/200v200` seeds 42000--42004。候选以同一场景配置和离线
+真值 sidecar 运行。每个 episode 有 8 个常规 D2 关联周期和 1 个尾部收束周期，共比较
+45 个发布周期。
+
+![D2 五 seed 分阶段墙钟](d2_scalable_3d_performance_by_seed.png)
+
+| 阶段 | 基线均值（秒） | 候选均值（秒） | 加速 |
+| --- | ---: | ---: | ---: |
+| 常规关联累计 | 7.5552 | 2.2033 | 3.429 倍 |
+| 尾部收束累计 | 2.2747 | 0.5646 | 4.029 倍 |
+| 单 episode D2 合计 | 9.8299 | 2.7679 | 3.551 倍 |
+| 五 seed D2 总墙钟 | 49.1497 | 13.8397 | 3.551 倍 |
+
+profile 将热点定位到在线 metadata 身份审计和 adapter 重复扫描。候选采用容量 1024 的
+键归一化/禁用键分类缓存、原生前后缀判断，并删除 adapter 的一次冗余预扫描。
+`Detection3D` 构造与 Tracker step 审计保持，GNN/Hungarian、三维门控、航迹更新、claim
+ledger 和生命周期没有调整。
+
+比较器分别校验完整 D2 发布、关联、规范 ID/生命周期、claim/审计和逐周期哈希。45/45
+周期全部一致；五组场景配置和离线 truth sidecar 的 SHA-256 也一致，在线 truth use 为
+0。机器可读结果 SHA-256 为
+`955c1e5e3d5e113e6ffe11f0524d4f38a02bbaa8ea5c3eca33682faff28539d2`。
+
+完整方法、逐 seed 数据和复现命令见
+`D2_SCALABLE_3D_PERFORMANCE_BENCHMARK_CN.md`。候选来自未提交开发态工作树；本批没有
+真实 AirSim、极端全重叠候选图或固定环境 clean-tree promotion，不能据此声明实时 SLA。

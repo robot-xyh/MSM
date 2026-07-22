@@ -55,7 +55,7 @@ D2 只负责离线科研仿真、日志回放和多目标数据关联评估。�
 - **P1 ceiling-aware 完整冻结证据已生成，长期标定仍开放**：2026-07-15 使用 2026-07-13 冻结的六档真实 D1 governed replay 离线重算，screening 为 6x10 seeds、confirmation 为 6x20 seeds；未启动 AirSim。最佳候选 `gnn-g5.99-qa1-ld3_7-mw0.5x` 把平均 IDSW 从 `1.358333` 降至 `0.616667`（下降 `54.6012%`），identity continuity 从 `0.981046` 提高至 `0.983954`，消除 `15.3448%` 的剩余错误；false-track 0、P95 `15.470 ms`、truth leakage 0。总体五项联合 gate 全部通过并形成 promotion review recommendation，但默认 GNN/Hungarian 配置不变。分档只有 clutter/combined 完整通过，其余四档因 baseline IDSW=0 fail-closed；dropout truth alignment 为 partial。更长 OOSM/遮挡/杂波 replay、gate/risk、M-of-N 生命周期、NIS/NEES 和跨节点标定仍是 P1。
 - **2026-07-14 truth/lifecycle P0 收口**：`Tracker` 默认 online fail-closed，offline evaluator 显式 opt-in truth；main owner 可传入布尔型 `online_truth_isolated/online_truth_hints_used/truth_metrics_available/continuity_available`，非布尔值、身份字段和 offline truth payload 仍拒绝。truthless IDSW/continuity/RMSE 为 `None` 并带逐指标 availability/reason，truth 可用时零 IDSW 仍为 available `0`；birth/lost/drop/rebirth 计数和 transitions 由 truth-free 状态事件产生。完整回归 `98 passed, 1 warning`。本批没有调整 gate/lost/drop，`T001 -> T005` 生命周期参数标定仍为 P1。
 - **2026-07-12 历史代码状态**：`33e6fa0` 只增强 main/runtime 与 D4-D7 的 PNG delivery 链路；其后的 D2-owned P1 任务增加 long governed replay runner/schema，但默认在线路径仍为 GNN/Hungarian。当时指定模块回归为 `69 passed, 1 warning`，仅作为历史阶段记录；warning 是本机 Matplotlib `Axes3D` 多版本导入问题。
-- **2026-07-14 历史回归状态**：Post-batch episode 审计后当时完整 D2 模块为 `99 passed, 1 warning`。当前权威结果见第 22 节的 `189 passed, 1 warning`。
+- **2026-07-14 历史回归状态**：Post-batch episode 审计后当时完整 D2 模块为 `99 passed, 1 warning`。当前权威结果见第 24 节。
 - **2026-07-12 AirSim 证据边界**：PNG delivery 报告记录 2v2 candidate 10 seeds 为 20/20 pair、在线 truth 使用为 0；锁定后两帧 dropout 沿原 global/local track 与计划上下文预测，没有 truth ID 或本地 ID 重写。M5N2 8 s 短窗口为 0/9，且报告明确该批次不是同几何、同时间窗的长期对照。以上证明下游身份/truth-isolation 合同未退化，但报告没有 D2 专项 association log、隔离 offline IDSW/continuity 或真实 dense/crossing 长回放，不能新增 D2 算法完成项。
 - **开放 P0/P1 与下一验收**：P0 无开放项。P1 synthetic 长 replay、独立 offline truth、至少 10 seeds 的 IDSW/continuity/false-track/RMSE/NIS/NEES availability 与 risk/gate/scenario version 已闭合；首轮严格 4 m/2 m 真实 dense crossing 标定也已完成，但候选未通过完整晋级门限。性能 backlog 是扩展 OOSM/遮挡/杂波和更长时间窗，标定 gate/risk/M-of-N/false-track/NIS/NEES，并复核 continuity 改善。跨节点部分还需 D1 数值 exact/CI posterior 回写、多 seed 高歧义 replay 和 owner/epoch failover 验证。
 - **2026-07-15 admission 回归与证据**：专项覆盖理论上限、完美基线、continuity 退化、缺指标、baseline IDSW=0、false-track、latency、truth leakage 和“仅 IDSW 改善”拒绝；D2 全量结果 `113 passed, 1 warning`。冻结输入的 v2 完整联合报告、中文报告和真实数据图已生成，下一步是 main/D6 对 promotion review recommendation 做跨模块评审，而不是 runner 自动改默认路径。
@@ -850,3 +850,30 @@ active-risk 5v5 seed 1005 在 0.439 s 由 5 条航迹扩张为 6 条。新增航
 4. 该批次关闭 clean 来源的四规模治理复跑。仍需用更多未见 seed、代表性漏检/
    遮挡/杂波/OOSM 分布和独立身份标签验证 IDSW/continuity。该批次不是
    AirSim、实时 SLA 或完整 200v200 感知到物理拦截验收。
+
+## 24. 200 规模关联热路径收敛
+
+### 24.1 已完成
+
+- 冻结 clean 基线 `nominal/200v200` seeds 42000--42004，并以同配置、同离线真值
+  sidecar 运行候选；每个 episode 含 8 个常规 D2 周期和 1 个 finalize 周期。
+- 通过 `cProfile` 定位到真实热点是递归 metadata 身份审计和 adapter 重复扫描，不是
+  稀疏 Hungarian。实施有界键分类缓存、原生前后缀判断和一次冗余预扫描删除。
+- 新增版本化比较器，分别哈希完整 D2 发布、关联、规范 ID/生命周期、claim/审计和
+  逐周期记录，并校验场景配置及离线 truth sidecar 的 SHA-256。
+- 45/45 周期全部语义哈希一致，在线 truth use 为 0。GNN/Hungarian、三维门控、中心
+  ID、claim ledger、生命周期和显式 IDSW/continuity unavailable 语义未改变。
+
+### 24.2 性能结果
+
+- 常规关联平均累计墙钟 `7.5552 -> 2.2033 s`，加速 `3.429x`。
+- finalize 平均累计墙钟 `2.2747 -> 0.5646 s`，加速 `4.029x`。
+- 单 episode D2 合计均值 `9.8299 -> 2.7679 s`，五 seed 总墙钟
+  `49.1497 -> 13.8397 s`，总体加速 `3.551x`。
+
+### 24.3 后续边界
+
+本轮性能任务到此收敛，不继续调整算法。候选仍需由 main 在 clean-tree、固定运行环境下
+复跑后才能晋级。后续性能证据应覆盖极端大连通分量、遮挡/杂波/OOSM 和真实 AirSim，
+并同时报告循环时延分布与身份指标 availability。不得用本轮墙钟替代实时 SLA，也不得
+为追求速度放宽身份审计、门控或 claim 约束。
