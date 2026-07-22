@@ -274,16 +274,23 @@ GAP、算法文档和系统总报告。
    `PPO/assist/authority=false`。
 4. 5v5 专项回归覆盖 20 个 seed、D3/D4 各 40 个 arm、缺 bundle 回退、原子写盘和重复输出
    拒绝。D3 的控制臂精确重放由模块全量测试另行覆盖。
-5. 当前脏工作树开发预演完成。D3 treatment 为 0/20 applied、20/20 OOD fallback；D4
-   treatment 为 0/20 safe adopted、20/20 threshold fallback；在线真值使用为 0。
+5. detached clean 提交 `6d5bfea` 的 v1 正式证据已完成。20 个源 episode 均为干净、有限状态，
+   在线真值使用为 0；D6 已独立校验制品和收据。D3 treatment 为 0/20 applied、20/20 OOD
+   fallback；D4 treatment 为 0/20 safe adopted、20/20 aggregate threshold fallback。
+6. D3 已确认旧 OOD 拒绝来自把二元 `previous_binding=1` 当作连续高斯特征。合法 0/1 现按端点
+   检查，其余 11 个连续特征仍使用原 6σ 门；不写盘复验为 20/20 applied、0 fallback。
+7. D4 evidence 已升级为 v2。v1 正式记录的只读分解结果为 OOD、finite、50 ms latency 各
+   20/20 通过，confidence 0/20 通过冻结门限 0.6；不降低门限，继续规则回退。
+8. main 运行器升级为 `scalable3d-reserved-seed-interventions-v2` 和 D3 safety shell v2，
+   manifest/report 增加 D4 分门统计。学习权限和规则回退边界不变。
 
 ### 下一步
 
-1. 提交 D3 修复和 main runner 后，在干净 worktree 用相同 5v5、2.2 秒、20 seed 配置重跑，
-   要求所有 `source_repository_dirty=false` 且制品哈希通过。
-2. D6 只读消费正式 manifest、来源谱系和两类收据，生成 outcome availability sidecar。
-   候选未实际采用时不得伪造 treatment outcome、反事实或因果收益。
-3. 依据 D3 OOD 和 D4 threshold 拒绝的逐 seed 特征诊断，决定扩充训练分布、重新标定门限或
-   保持规则路径。任何调整均先形成新 bundle/version，不修改冻结 development 制品。
-4. 完成 5v5 正式审计后再扩展 5/20/50/100/200 规模。PPO、assist 和 authority 在独立
+1. 在包含 D3 二元门、D4 v2 诊断和 main v2 runner 的干净提交上，以相同 5v5、2.2 秒、
+   20 seed 配置生成新目录，要求所有 `source_repository_dirty=false` 且制品哈希通过。
+2. D6 扩展只读消费者以识别 v2 schema 和实际采用的 D3 treatment；仍缺运行确认和物理结果时，
+   paired outcome/effect 必须保持 unavailable，不能用同帧代价差替代。
+3. D4 后续在独立 calibration split 校准或重训 confidence head，不使用保留 seed 下调 0.6 门限；
+   降级策略效果另用中心失效/二级失效快照和独立干预时刻评估。
+4. 完成 v2 5v5 正式审计后再扩展 5/20/50/100/200 规模。PPO、assist 和 authority 在独立
    非退化评审前保持关闭。

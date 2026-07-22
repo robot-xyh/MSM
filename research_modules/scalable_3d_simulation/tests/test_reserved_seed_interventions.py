@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from research_modules.scalable_3d_simulation.reserved_seed_interventions import (
+    D3_SAFETY_SHELL_VERSION,
     D3DevelopmentBundleBinding,
     RESERVED_EVALUATION_SEEDS,
     RESERVED_SEED_INTERVENTION_SCHEMA_VERSION,
@@ -56,6 +57,16 @@ def test_reserved_seed_runner_emits_forty_fail_closed_arms(tmp_path: Path) -> No
     assert execution.d4_manifest.observed_outcome_available is False
     assert execution.d4_manifest.counterfactual_available is False
     assert execution.d4_manifest.causal_effect_available is False
+    assert D3_SAFETY_SHELL_VERSION == "d3-offline-intervention-safety-shell-v2"
+    assert all(
+        item.arm_specification.safety_shell_version == D3_SAFETY_SHELL_VERSION
+        for item in execution.d3_execution.arms
+    )
+    assert all(
+        item.schema == "d4-region-resource-paired-arm-evidence-v2"
+        and item.candidate_gate_diagnostics_available is True
+        for item in execution.d4_manifest.arm_evidence
+    )
 
     output = tmp_path / "published"
     paths = write_reserved_seed_intervention_execution(output, execution)
@@ -93,9 +104,22 @@ def test_reserved_seed_runner_emits_forty_fail_closed_arms(tmp_path: Path) -> No
     assert manifest["d3_treatment_summary"]["applied_count"] == 0
     assert manifest["d3_treatment_summary"]["rule_fallback_count"] == 20
     assert manifest["d3_treatment_summary"]["fallback_reason_counts"]
+    assert manifest["d3_treatment_summary"]["safety_shell_version"] == (
+        D3_SAFETY_SHELL_VERSION
+    )
     assert manifest["d4_treatment_summary"]["safe_adopted_count"] == 0
     assert manifest["d4_treatment_summary"]["rule_fallback_count"] == 20
     assert manifest["d4_treatment_summary"]["rejection_reason_counts"]
+    gate_summary = manifest["d4_treatment_summary"]["candidate_gate_summary"]
+    assert gate_summary["arm_evidence_schema_versions"] == [
+        "d4-region-resource-paired-arm-evidence-v2"
+    ]
+    assert gate_summary["diagnostics_available_count"] == 20
+    assert gate_summary["candidate_considered_count"] == 0
+    assert gate_summary["minimum_confidence_values"] == [0.6]
+    assert gate_summary["candidate_latency_limit_ms_values"] == [50.0]
+    assert gate_summary["candidate_confidence"]["sample_count"] == 0
+    assert gate_summary["candidate_confidence"]["mean"] is None
     assert manifest["d4_bundle"]["loaded"] is False
     assert manifest["d4_bundle"]["load_rejection_reasons"]
     assert d4_payload["admission"]["runtime_publication_allowed"] is False
@@ -107,6 +131,9 @@ def test_reserved_seed_runner_emits_forty_fail_closed_arms(tmp_path: Path) -> No
     assert "物理结果、反事实和因果收益均未生成" in paths[
         "report_cn"
     ].read_text(encoding="utf-8")
+    report_text = paths["report_cn"].read_text(encoding="utf-8")
+    assert D3_SAFETY_SHELL_VERSION in report_text
+    assert "候选门诊断" in report_text
     with pytest.raises(FileExistsError):
         write_reserved_seed_intervention_execution(output, execution)
 

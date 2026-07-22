@@ -378,12 +378,18 @@ runner 的 checkpoint 已升级为逐 episode 原子推进并兼容严格校验�
 包含 20 条来源谱系、D3/D4 各 40 条隔离收据、顶层 manifest、中文报告和 SHA-256 清单。
 任何臂均不可发布到在线总线，也不生成运行确认、物理结果、反事实或因果结论。
 
-2026-07-21 在当前脏工作树完成 nominal 5v5、2.2 秒开发预演。20 个源 episode 均为有限
-状态，在线真值使用为 0。D3 和 D4 冻结 development bundle 均通过身份校验；D3 的 20 个
-treatment 全部因 `out_of_distribution` 回退规则，D4 的 20 个 treatment 全部因
-`candidate_threshold_or_finite_gate_rejected` 回退规则。该结果证明失败关闭和制品链有效，
-也说明当前候选没有形成可比较的实际采用。20/20 脏来源不能作为正式证据；下一步在提交后的
-干净 worktree 重跑，再由 D6 生成独立结果侧车。
+2026-07-21 已在 detached clean worktree 的提交 `6d5bfea` 上完成 nominal 5v5、2.2 秒、
+seed `1000-1019` 的 v1 正式运行。20 个源 episode 均为干净、有限状态，在线真值使用为 0。
+D6 已独立校验输入清单、lineage、D3/D4 各 40 条收据和全部 SHA-256。v1 中 D3 的 20 个
+treatment 均因旧 OOD 门回退；复核确认 `previous_binding` 是二元特征，合法值 1 被错误套用
+连续高斯 z 门。D3 已按二元端点修复，连续 6σ 门、模型和权重未变。D4 的候选分布外、有限值
+和 50 ms 时延门均为 20/20 通过，置信度范围为 `0.508893-0.569492`，低于冻结门限 `0.6`，
+因此 20/20 继续规则回退。D6 对 v1 的 paired outcome/effect 保持 `unavailable/null`。
+
+运行器现升级为 `scalable3d-reserved-seed-interventions-v2`。D3 安全外壳标识升级为
+`d3-offline-intervention-safety-shell-v2`，绑定二元端点与连续特征分离检查；顶层 manifest
+和中文报告增加 D4 v2 的 confidence/OOD/latency/finite 分门统计。v2 正式重跑和 D6 新侧车
+仍待干净提交后生成。学习权限继续固定为 `PPO/assist/authority=false`、`rule_fallback=true`。
 
 ## 版本
 
@@ -405,7 +411,7 @@ treatment 全部因 `out_of_distribution` 回退规则，D4 的 20 个 treatment
 - D2 身份评估清单：`scalable3d-offline-identity-evaluation-manifest-v1`
 - D6 真值隔离清单：`scalable3d-d6-truth-isolated-manifest-v1`
 - 跨模块共享 seed 切分：`scalable3d-shared-seed-split-registry-v1`
-- 保留 seed 隔离干预：`scalable3d-reserved-seed-interventions-v1`
+- 保留 seed 隔离干预：新制品使用 `scalable3d-reserved-seed-interventions-v2`；历史正式证据保留 v1
 
 每个 episode 的 `manifest.json` 记录上述版本、Git commit、配置 SHA256、seed、模型版本和
 阈值版本。在线总线拒绝任何包含 truth/actor/object identity 字段的观测负载。

@@ -16,6 +16,15 @@
 冻结 900 episode 保持只读，在线真值使用为 0。学习运行状态继续固定为
 `PPO=false`、`assist=false`、`authority=false`、`rule_fallback=true`。
 
+同日完成 D3/D4 保留 seed v1 正式证据及 D6 独立审计。detached clean 提交 `6d5bfea` 的
+nominal 5v5、2.2 秒、seed `1000-1019` 共有 20 个干净源 episode，在线真值使用为 0，
+D3/D4 各 40 条收据及 SHA-256 全部通过。D3 的 20 次 OOD 回退已定位为二元
+`previous_binding=1` 被错误套用连续 z 门；D3 owner 已按端点语义修复，连续 6σ、冻结 bundle
+和规则回退未变。D4 owner 已将 arm evidence 升级为 v2：旧正式记录的 OOD、finite 和 50 ms
+latency 各 20/20 通过，confidence 为 `0.508893-0.569492`，0/20 达到冻结门限 0.6，因此仍
+全部规则回退。D6 对旧证据的 outcome/effect 保持 `unavailable/null`。main runner 已准备 v2
+制品和分门汇总，新的干净正式重跑与 D6 v2 审计仍为当前 P1；D4 降级效果需另用故障场景评估。
+
 D4 新增 `d4-region-resource-runtime-ack-evidence-v2`。它把区域建议采用分为
 `new_execution_plan_applied` 和 `evaluation_refresh_applied`。真实 main 5v5、seed 41 的同计划
 刷新链为 source D3 seq 10、current D3 seq 94、consumption seq 96、D7 seq 99、ACK seq 100。
@@ -948,7 +957,7 @@ D1 NumPy EKF/FusionAdapter
 | D1/D2/D3/main | 长 replay 治理阈值 | 版本化 replay/CLI 已具备；D2 10 seeds 的 IDSW=138.1、continuity=0.694 | 默认 GNN 未通过阈值；继续调 gate/lifecycle/model，不用 truth 或本地重绑掩盖问题 |
 | D4/main | 联盟重构、二级接管和恢复实测 | 9/9 确定性矩阵通过，含 member replacement、partition recovery 和双轨合并；严格二级 readiness 已统一到所有入口 | 映射到真实 AirSim 通信延迟/丢包/乱序/时钟漂移多 seed，并量化 failover time；不得以 heartbeat-only 作为正例 |
 | D5/D6 | M 对 N 视觉鲁棒性 | 确定性 10/10，外参漂移/时间偏差保守拒绝，ID rewrite=0 | 在真实多视角 AirSim/相机同步和持续 detect 下复验，不以确定性 fixture 代替实测 |
-| D3/D4/D5/D6/main | 学习数据全样本与运行证据 | canonical seed 60/20/20 和全样本审计已完成；D5 20-seed paired shadow 已完成但有合成可分性限制；D3/D4 5v5 写盘预演完成，真值使用为 0，候选分别为 20/20 OOD 回退和 20/20 threshold 回退 | 在干净 worktree 重跑 D3/D4 正式制品；D6 生成 availability/outcome sidecar；候选未实际采用时 outcome/counterfactual/causal 保持 unavailable；随后诊断训练分布和门限，再决定是否扩展多规模；PPO/assist/authority 保持关闭 |
+| D3/D4/D5/D6/main | 学习数据全样本与运行证据 | canonical seed 60/20/20 和全样本审计已完成；D5 20-seed paired shadow 已完成但有合成可分性限制；D3/D4 v1 clean 5v5 正式制品与 D6 availability sidecar 已完成，真值使用为 0；D3 二元 OOD 误拒绝已修复，D4 已确认 20/20 为低置信回退 | 用 main v2 runner 在新 clean 提交重跑并由 D6 识别 D3 实际采用；缺 runtime ACK/物理窗口时 paired outcome/effect 继续 unavailable；D4 confidence 只在独立 calibration split 校准，不用保留 seed 降门限；故障策略另跑 degraded snapshot；完成前 PPO/assist/authority 保持关闭 |
 | D6/main | 场景库与长期趋势 | cross-seed、paired effect、bootstrap、联盟 lifecycle 和证据路径已具备 | 固化 scenario version，生成长期 CI、失败漏斗和 active-degradation review 趋势 |
 | D7 | 成员安全与独立到达 | role/wave/window、active/standby、commit-aware gate 和 N/M topology 已有 | 当前不要求同时到达；先验证独立 primary 的 terminal sector、minimum separation 和 member loss，协同到达时间后置 |
 

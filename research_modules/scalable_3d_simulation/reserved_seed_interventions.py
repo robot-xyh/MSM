@@ -29,7 +29,7 @@ from .scenarios import make_curriculum_scenario
 
 
 RESERVED_SEED_INTERVENTION_SCHEMA_VERSION = (
-    "scalable3d-reserved-seed-interventions-v1"
+    "scalable3d-reserved-seed-interventions-v2"
 )
 RESERVED_SEED_SOURCE_LINEAGE_SCHEMA_VERSION = (
     "scalable3d-reserved-seed-source-lineage-v1"
@@ -37,7 +37,7 @@ RESERVED_SEED_SOURCE_LINEAGE_SCHEMA_VERSION = (
 RESERVED_EVALUATION_SEEDS = tuple(range(1000, 1020))
 INTERVENTION_SELECTION_POLICY = "first-common-frame-after-prior-plan-v1"
 D1_D2_LINEAGE_CONTRACT_VERSION = "scalable3d-d1-d2-planning-evidence-v1"
-D3_SAFETY_SHELL_VERSION = "d3-offline-intervention-safety-shell-v1"
+D3_SAFETY_SHELL_VERSION = "d3-offline-intervention-safety-shell-v2"
 
 
 @dataclass(frozen=True, slots=True)
@@ -447,11 +447,14 @@ def _build_d3_specification(
     bundle: D3DevelopmentBundleBinding,
 ) -> Any:
     from research_modules.d3_assignment_planner.src.d3_assignment_planner import (
+        BINARY_EDGE_FEATURE_NAMES,
+        BINARY_FEATURE_ENDPOINT_TOLERANCE,
         CONTROL_ARM,
         CONTROL_PLANNER_PATH,
         D3_RUNTIME_PLAN_ACK_EVIDENCE_SCHEMA_V1,
         D3_RUNTIME_PLAN_WINDOW_REWARD_EVIDENCE_SCHEMA_V1,
         D6_SIDECAR_OWNER,
+        FEATURE_DISTRIBUTION_ASSESSMENT_SCHEMA_V1,
         OFFLINE_INTERVENTION_SCOPE,
         PAIRED_INTERVENTION_RESERVED_SEED_POLICY_V1,
         PAIRED_INTERVENTION_RESERVED_SEEDS_V1,
@@ -500,6 +503,14 @@ def _build_d3_specification(
                 "capacity_gate": True,
                 "hysteresis_gate": True,
                 "rule_fallback": True,
+                "feature_distribution_diagnostic_schema": (
+                    FEATURE_DISTRIBUTION_ASSESSMENT_SCHEMA_V1
+                ),
+                "binary_feature_names": list(BINARY_EDGE_FEATURE_NAMES),
+                "binary_feature_endpoint_tolerance": (
+                    BINARY_FEATURE_ENDPOINT_TOLERANCE
+                ),
+                "continuous_feature_z_gate_unchanged": True,
             }
         )
         valid_until = source.intervention_timestamp_s + max(
@@ -662,6 +673,10 @@ def _validate_source_episode(result: EpisodeResult, *, seed: int) -> None:
 def _validate_execution_boundaries(
     execution: ReservedSeedInterventionExecution,
 ) -> None:
+    from research_modules.d4_distributed_fallback.d4_distributed_fallback import (
+        REGION_RESOURCE_PAIRED_ARM_EVIDENCE_SCHEMA,
+    )
+
     if execution.source_nonfinite_count != 0:
         raise ValueError("reserved source set contains non-finite episodes")
     if execution.source_truth_violation_count != 0:
@@ -670,6 +685,17 @@ def _validate_execution_boundaries(
         raise ValueError("D3 execution must contain forty arms")
     if len(execution.d4_manifest.arm_evidence) != 40:
         raise ValueError("D4 execution must contain forty arms")
+    if any(
+        item.arm_specification.safety_shell_version != D3_SAFETY_SHELL_VERSION
+        for item in execution.d3_execution.arms
+    ):
+        raise ValueError("D3 execution used an incompatible safety shell")
+    if any(
+        item.schema != REGION_RESOURCE_PAIRED_ARM_EVIDENCE_SCHEMA
+        or not item.candidate_gate_diagnostics_available
+        for item in execution.d4_manifest.arm_evidence
+    ):
+        raise ValueError("D4 execution did not emit v2 candidate gate diagnostics")
     d3_payload = execution.d3_execution.to_dict()
     admission = d3_payload["admission"]
     if any(
@@ -728,6 +754,7 @@ def _top_level_manifest(
     )
     d3_treatment = _d3_treatment_arms(execution)
     d4_treatment = _d4_treatment_arms(execution)
+    d4_gate_summary = _d4_candidate_gate_summary(d4_treatment)
     return {
         "schema_version": RESERVED_SEED_INTERVENTION_SCHEMA_VERSION,
         "experiment_scope": "reserved_seed_isolated_d3_d4_execution",
@@ -757,6 +784,10 @@ def _top_level_manifest(
             "state_dict_sha256": execution.d3_execution.bundle_state_dict_sha256,
         },
         "d3_treatment_summary": {
+            "safety_shell_version": d3_expected_bundle.safety_shell_version,
+            "safety_shell_config_sha256": (
+                d3_expected_bundle.safety_shell_config_sha256
+            ),
             "applied_count": sum(item.learning_cost_applied for item in d3_treatment),
             "rule_fallback_count": sum(
                 item.rule_fallback_applied for item in d3_treatment
@@ -782,6 +813,7 @@ def _top_level_manifest(
                 for item in d4_treatment
                 for reason in item.rejection_reasons
             ),
+            "candidate_gate_summary": d4_gate_summary,
         },
         "evidence_availability": {
             "execution_receipts": True,
@@ -814,6 +846,9 @@ def _render_report(execution: ReservedSeedInterventionExecution) -> str:
         for item in d4_treatment
         for reason in item.rejection_reasons
     )
+    d4_gate_summary = _d4_candidate_gate_summary(d4_treatment)
+    confidence_summary = d4_gate_summary["candidate_confidence"]
+    latency_summary = d4_gate_summary["candidate_latency_ms"]
     report = execution.d3_execution.paired_evaluator_report
     lines = [
         "# 保留种子隔离干预报告",
@@ -845,6 +880,7 @@ def _render_report(execution: ReservedSeedInterventionExecution) -> str:
         "",
         "## D3 分配干预",
         "",
+        f"- 安全外壳：`{D3_SAFETY_SHELL_VERSION}`。",
         f"- 处理臂实际应用学习代价修正：`{d3_applied}/20`。",
         f"- 处理臂规则回退：`{d3_fallback}/20`。",
         f"- 回退原因：{_format_reason_counts(d3_fallback_reasons)}。",
@@ -867,6 +903,20 @@ def _render_report(execution: ReservedSeedInterventionExecution) -> str:
         f"- 处理臂通过隔离安全投影：`{d4_applied}/20`。",
         f"- 处理臂规则回退：`{d4_fallback}/20`。",
         f"- 拒绝原因：{_format_reason_counts(d4_rejection_reasons)}。",
+        (
+            "- 候选门诊断：已考虑 "
+            f"`{d4_gate_summary['candidate_considered_count']}/20`，"
+            f"置信度通过 `{d4_gate_summary['confidence_gate_passed_count']}`，"
+            f"分布外门通过 `{d4_gate_summary['ood_gate_passed_count']}`，"
+            f"时延门通过 `{d4_gate_summary['latency_gate_passed_count']}`，"
+            f"有限值门通过 `{d4_gate_summary['finite_gate_passed_count']}`。"
+        ),
+        (
+            "- 候选置信度 min/mean/max："
+            f"`{_format_optional_triplet(confidence_summary)}`；"
+            "候选时延 mean/P95/max："
+            f"`{_format_optional_latency(latency_summary)}` ms。"
+        ),
         "",
         "## 权限边界",
         "",
@@ -898,6 +948,103 @@ def _d4_treatment_arms(
         item
         for item in execution.d4_manifest.arm_evidence
         if item.arm.value == "treatment_candidate"
+    )
+
+
+def _d4_candidate_gate_summary(
+    treatment_arms: Sequence[Any],
+) -> dict[str, Any]:
+    diagnostics = tuple(
+        item
+        for item in treatment_arms
+        if item.candidate_gate_diagnostics_available
+    )
+    considered = tuple(item for item in diagnostics if item.candidate_considered)
+    confidences = tuple(
+        float(item.candidate_confidence)
+        for item in considered
+        if item.candidate_confidence is not None
+    )
+    latencies = tuple(float(item.candidate_latency_ms) for item in considered)
+    minimum_confidences = sorted(
+        {
+            float(item.minimum_confidence)
+            for item in diagnostics
+            if item.minimum_confidence is not None
+        }
+    )
+    latency_limits = sorted(
+        {
+            float(item.candidate_latency_limit_ms)
+            for item in diagnostics
+            if item.candidate_latency_limit_ms is not None
+        }
+    )
+    return {
+        "arm_evidence_schema_versions": sorted(
+            {str(item.schema) for item in treatment_arms}
+        ),
+        "diagnostics_available_count": len(diagnostics),
+        "candidate_considered_count": len(considered),
+        "minimum_confidence_values": minimum_confidences,
+        "candidate_latency_limit_ms_values": latency_limits,
+        "aggregate_gate_passed_count": sum(
+            item.candidate_thresholds_passed is True for item in considered
+        ),
+        "confidence_gate_passed_count": sum(
+            item.candidate_confidence_gate_passed is True for item in considered
+        ),
+        "ood_gate_passed_count": sum(
+            item.candidate_ood_gate_passed is True for item in considered
+        ),
+        "latency_gate_passed_count": sum(
+            item.candidate_latency_gate_passed is True for item in considered
+        ),
+        "finite_gate_passed_count": sum(
+            item.candidate_finite_gate_passed is True for item in considered
+        ),
+        "failure_gate_passed_count": sum(
+            item.candidate_failure_gate_passed is True for item in considered
+        ),
+        "candidate_confidence": _numeric_summary(confidences),
+        "candidate_latency_ms": _numeric_summary(latencies),
+    }
+
+
+def _numeric_summary(values: Sequence[float]) -> dict[str, float | int | None]:
+    if not values:
+        return {
+            "sample_count": 0,
+            "minimum": None,
+            "mean": None,
+            "p95": None,
+            "maximum": None,
+        }
+    array = np.asarray(values, dtype=float)
+    return {
+        "sample_count": int(array.size),
+        "minimum": float(np.min(array)),
+        "mean": float(np.mean(array)),
+        "p95": float(np.percentile(array, 95.0)),
+        "maximum": float(np.max(array)),
+    }
+
+
+def _format_optional_triplet(summary: Mapping[str, Any]) -> str:
+    if int(summary["sample_count"]) == 0:
+        return "unavailable"
+    return "/".join(
+        f"{float(summary[name]):.6f}"
+        for name in ("minimum", "mean", "maximum")
+    )
+
+
+def _format_optional_latency(summary: Mapping[str, Any]) -> str:
+    if int(summary["sample_count"]) == 0:
+        return "unavailable"
+    return "/".join(
+        f"{float(summary[name]):.3f}"
+        for name in ("mean", "p95", "maximum")
     )
 
 

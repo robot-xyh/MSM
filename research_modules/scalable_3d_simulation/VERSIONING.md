@@ -51,6 +51,7 @@ main
 | D2 身份评估清单 | `scalable3d-offline-identity-evaluation-manifest-v1` | 谱系映射、身份指标或来源校验改变 |
 | D6 真值隔离清单 | `scalable3d-d6-truth-isolated-manifest-v1` | D1/D2 适配、availability 或批量聚合口径改变 |
 | D6 跨模块学习准入 | `d6.cross-module-learning-data-admission.v1` | 正式/补充/离线标签/运行 ACK 分层、canonical view 绑定、动作覆盖或训练准入矩阵语义改变 |
+| 保留 seed 隔离干预 | `scalable3d-reserved-seed-interventions-v2` | v2 绑定 D3 二元/连续分布门语义，并在 manifest/report 中持久化 D4 v2 分门诊断；历史 `6d5bfea` 正式证据保持 v1 |
 | D5 补充主动视觉全样本审计 | `d5.active-vision-supplemental-bc-full-sample-audit.v1` | 文件清单、逐样本特征、身份/版本、离线标签和权限门控语义改变 |
 | D5 模型 | `d5-crossview-gnn-v0.1.0` | 网络、特征、权重或训练集改变 |
 | D5 主动视觉 | `d5-active-vision-rule-v1` 或模型语义版本加指纹 | 特征、动作空间、权重或准入报告改变 |
@@ -145,7 +146,11 @@ D5 补充主动视觉课程已完成 100 episode、1200 sample 的全样本审�
 `complete`，D3/D4 仍为 `pending`，跨模块总状态为 `partial`；该状态不开放 PPO、assist 或
 authority。
 
-保留 seed 隔离干预使用 `scalable3d-reserved-seed-interventions-v1`。一次制品必须完整绑定
+保留 seed 隔离干预的新制品使用 `scalable3d-reserved-seed-interventions-v2`。v2 将 D3
+`d3-offline-intervention-safety-shell-v2` 的二元端点检查纳入安全配置哈希，并要求 D4
+`d4-region-resource-paired-arm-evidence-v2` 保存 confidence/OOD/latency/finite 分门结果。
+提交 `6d5bfea` 生成的历史正式制品继续按 `scalable3d-reserved-seed-interventions-v1` 只读解释，
+不得就地改写。一次制品必须完整绑定
 seed `1000-1019`、源 episode 的 Git 提交和 dirty 状态、场景/初始状态/通信/故障/D3 输入/
 D4 区域快照 SHA-256、D3/D4 冻结 bundle 身份，以及每个 treatment 的采用、回退和拒绝
 原因。control 与 treatment 必须共享同一来源 episode；不得把两个独立重跑称为 paired。
