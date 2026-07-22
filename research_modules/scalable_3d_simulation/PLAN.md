@@ -260,3 +260,30 @@ commit。
 交付三维仿真代码、D1-D7 适配器、单元和集成测试、图神经网络与强化学习训练产物、
 5/20/50/100/200 实验、多 seed 报告、三维图和 GIF/MP4，以及同步后的 README、PLAN、
 GAP、算法文档和系统总报告。
+
+## 9. 保留种子隔离执行（2026-07-21）
+
+### 已完成
+
+1. main 新增 seed `1000-1019` 的 D3/D4 同源双臂运行器。每个 seed 只生成一个规则源
+   episode，control/treatment 共享 D1/D2 输入、规划帧、D4 区域快照、通信和故障日程。
+2. D3 冻结 bundle 默认绑定已登记的策略版本、manifest SHA-256 和权重身份；D4 使用模块
+   冻结的 development binding。身份变化、文件缺失或加载异常均失败关闭。
+3. 输出按临时目录完成后原子发布，包含来源谱系、D3/D4 执行收据、顶层 manifest、中文
+   报告和 `SHA256SUMS`。manifest 显式记录源提交、脏工作树数量、模型身份、回退原因和
+   `PPO/assist/authority=false`。
+4. 5v5 专项回归覆盖 20 个 seed、D3/D4 各 40 个 arm、缺 bundle 回退、原子写盘和重复输出
+   拒绝。D3 的控制臂精确重放由模块全量测试另行覆盖。
+5. 当前脏工作树开发预演完成。D3 treatment 为 0/20 applied、20/20 OOD fallback；D4
+   treatment 为 0/20 safe adopted、20/20 threshold fallback；在线真值使用为 0。
+
+### 下一步
+
+1. 提交 D3 修复和 main runner 后，在干净 worktree 用相同 5v5、2.2 秒、20 seed 配置重跑，
+   要求所有 `source_repository_dirty=false` 且制品哈希通过。
+2. D6 只读消费正式 manifest、来源谱系和两类收据，生成 outcome availability sidecar。
+   候选未实际采用时不得伪造 treatment outcome、反事实或因果收益。
+3. 依据 D3 OOD 和 D4 threshold 拒绝的逐 seed 特征诊断，决定扩充训练分布、重新标定门限或
+   保持规则路径。任何调整均先形成新 bundle/version，不修改冻结 development 制品。
+4. 完成 5v5 正式审计后再扩展 5/20/50/100/200 规模。PPO、assist 和 authority 在独立
+   非退化评审前保持关闭。

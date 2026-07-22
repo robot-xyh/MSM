@@ -320,12 +320,13 @@ seed 17 复测：
 航迹。D2 没有继续放大 D1 速度均值，200 条航迹和 ID 集保持稳定。上面的原 0.25 秒表是
 稀疏分配优化前的历史短测，仅保留作性能演进参照。
 
-当前尚未完成保留 seed `1000-1019` 上的 NIS/NEES、门控率、长期速度 coverage 和最终
-20-seed 验收，也未完成满足困难负样本门限的 200-camera 图数据。D3、D4 和 D5 已具备
-模块内数据集、训练、bundle 与规则回退管线，并完成首轮开发训练；现有 bundle 均未获得
-assist 准入。D6 已能离线消费规模化 episode 并输出逐 seed、聚合、中文报告和曲线。当前
-剩余条件是统一跨模块 split、补足 D4 动作多样性和 D5 重叠视场困难负样本、形成可归因运行
-ACK/reward，再进行 paired shadow、联合训练和保留 seed 验收。
+保留 seed `1000-1019` 上的 D1/D2 NIS、NEES、门控率和长期速度 coverage 仍未完成。
+D5 已完成 20-seed paired shadow，但 `shared_global_track_count=0` 且尺度特征接近确定性
+可分，满分结果只说明当前合成保留集可分，不能外推到真实跨视角泛化。D3、D4 和 D5 均已
+具备模块内数据、训练、bundle 与规则回退管线；现有 bundle 均未获得 assist 准入。D6 已能
+离线消费规模化 episode 并输出逐 seed、聚合、中文报告和曲线。当前剩余条件是取得真实
+adoption、运行确认和结果窗口，完成 D3/D4 干净工作树保留集证据及 D6 sidecar，再决定是否
+需要扩充训练分布。PPO、assist 和 authority 保持关闭。
 
 同日完成主动视觉运行时接线后，5v5、1.4 秒开发冒烟发出并确认 84 条相机命令，拒绝数为
 0。200v200、seed 17、1.2 秒开发诊断发出并确认 1872 条命令，主动视觉 9 次调用累计约
@@ -369,6 +370,21 @@ runner 的 checkpoint 已升级为逐 episode 原子推进并兼容严格校验�
 写入 `offline_proximity_intercepts.jsonl`，不进入在线总线；D6 还需结合分配与身份映射
 判断该物理接近是否属于正确任务。
 
+### 保留种子隔离干预
+
+`run_reserved_seed_interventions.py` 对 seed `1000-1019` 各运行一个规则源 episode，固定
+`entity_fixed_v1` 传感器随机流，并在同一个 D3/D4 时刻派生 control 和 treatment 两臂。
+每个源 episode 只运行一次，两臂共享量测、规划帧、区域快照、通信日程和故障日程。输出
+包含 20 条来源谱系、D3/D4 各 40 条隔离收据、顶层 manifest、中文报告和 SHA-256 清单。
+任何臂均不可发布到在线总线，也不生成运行确认、物理结果、反事实或因果结论。
+
+2026-07-21 在当前脏工作树完成 nominal 5v5、2.2 秒开发预演。20 个源 episode 均为有限
+状态，在线真值使用为 0。D3 和 D4 冻结 development bundle 均通过身份校验；D3 的 20 个
+treatment 全部因 `out_of_distribution` 回退规则，D4 的 20 个 treatment 全部因
+`candidate_threshold_or_finite_gate_rejected` 回退规则。该结果证明失败关闭和制品链有效，
+也说明当前候选没有形成可比较的实际采用。20/20 脏来源不能作为正式证据；下一步在提交后的
+干净 worktree 重跑，再由 D6 生成独立结果侧车。
+
 ## 版本
 
 - 世界：`scalable3d-world-v1`
@@ -389,6 +405,7 @@ runner 的 checkpoint 已升级为逐 episode 原子推进并兼容严格校验�
 - D2 身份评估清单：`scalable3d-offline-identity-evaluation-manifest-v1`
 - D6 真值隔离清单：`scalable3d-d6-truth-isolated-manifest-v1`
 - 跨模块共享 seed 切分：`scalable3d-shared-seed-split-registry-v1`
+- 保留 seed 隔离干预：`scalable3d-reserved-seed-interventions-v1`
 
 每个 episode 的 `manifest.json` 记录上述版本、Git commit、配置 SHA256、seed、模型版本和
 阈值版本。在线总线拒绝任何包含 truth/actor/object identity 字段的观测负载。

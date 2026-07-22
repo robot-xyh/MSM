@@ -145,6 +145,14 @@ D5 补充主动视觉课程已完成 100 episode、1200 sample 的全样本审�
 `complete`，D3/D4 仍为 `pending`，跨模块总状态为 `partial`；该状态不开放 PPO、assist 或
 authority。
 
+保留 seed 隔离干预使用 `scalable3d-reserved-seed-interventions-v1`。一次制品必须完整绑定
+seed `1000-1019`、源 episode 的 Git 提交和 dirty 状态、场景/初始状态/通信/故障/D3 输入/
+D4 区域快照 SHA-256、D3/D4 冻结 bundle 身份，以及每个 treatment 的采用、回退和拒绝
+原因。control 与 treatment 必须共享同一来源 episode；不得把两个独立重跑称为 paired。
+运行器只生成隔离执行收据，不生成 runtime ACK、physical outcome、counterfactual 或 causal
+字段。顶层目录通过临时目录原子发布并附 `SHA256SUMS`。正式证据要求 20 个源 episode 均为
+`repository_dirty=false`；脏工作树输出只可用于调试。
+
 每个持久化 episode 的 D1、D2 和 D6 子目录分别保存独立 manifest。D1 结果必须绑定在线
 总线、离线真值状态和 D2 规范映射；D2 结果必须绑定原始 D1/D2 记录、观测真值标签和身份
 证据；D6 在消费前重新校验结果文件及 D2 四类来源文件 SHA256。缺文件、哈希不一致或真值

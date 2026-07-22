@@ -948,7 +948,7 @@ D1 NumPy EKF/FusionAdapter
 | D1/D2/D3/main | 长 replay 治理阈值 | 版本化 replay/CLI 已具备；D2 10 seeds 的 IDSW=138.1、continuity=0.694 | 默认 GNN 未通过阈值；继续调 gate/lifecycle/model，不用 truth 或本地重绑掩盖问题 |
 | D4/main | 联盟重构、二级接管和恢复实测 | 9/9 确定性矩阵通过，含 member replacement、partition recovery 和双轨合并；严格二级 readiness 已统一到所有入口 | 映射到真实 AirSim 通信延迟/丢包/乱序/时钟漂移多 seed，并量化 failover time；不得以 heartbeat-only 作为正例 |
 | D5/D6 | M 对 N 视觉鲁棒性 | 确定性 10/10，外参漂移/时间偏差保守拒绝，ID rewrite=0 | 在真实多视角 AirSim/相机同步和持续 detect 下复验，不以确定性 fixture 代替实测 |
-| D3/D4/D5/D6/main | 学习数据全样本与运行证据 | canonical seed 60/20/20、正式/补充证据分层和规则动作课程已通过联合只读审计；D5 补充主动视觉 100/1200 全样本子项已完成 | 逐样本核对 D3/D4 canonical views；持久化真实 adoption/版本/ACK/outcome/reward；完成 paired shadow 与保留 seed 1000-1019 验收；PPO/assist/authority 保持关闭 |
+| D3/D4/D5/D6/main | 学习数据全样本与运行证据 | canonical seed 60/20/20 和全样本审计已完成；D5 20-seed paired shadow 已完成但有合成可分性限制；D3/D4 5v5 写盘预演完成，真值使用为 0，候选分别为 20/20 OOD 回退和 20/20 threshold 回退 | 在干净 worktree 重跑 D3/D4 正式制品；D6 生成 availability/outcome sidecar；候选未实际采用时 outcome/counterfactual/causal 保持 unavailable；随后诊断训练分布和门限，再决定是否扩展多规模；PPO/assist/authority 保持关闭 |
 | D6/main | 场景库与长期趋势 | cross-seed、paired effect、bootstrap、联盟 lifecycle 和证据路径已具备 | 固化 scenario version，生成长期 CI、失败漏斗和 active-degradation review 趋势 |
 | D7 | 成员安全与独立到达 | role/wave/window、active/standby、commit-aware gate 和 N/M topology 已有 | 当前不要求同时到达；先验证独立 primary 的 terminal sector、minimum separation 和 member loss，协同到达时间后置 |
 

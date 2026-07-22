@@ -87,6 +87,20 @@ from .shared_seed_split import (
     load_shared_seed_split_registry,
     write_shared_seed_split_registry,
 )
+from .reserved_seed_interventions import (
+    INTERVENTION_SELECTION_POLICY,
+    RESERVED_EVALUATION_SEEDS,
+    RESERVED_SEED_INTERVENTION_SCHEMA_VERSION,
+    D3DevelopmentBundleBinding,
+    ReservedSeedInterventionExecution,
+    ReservedSeedInterventionOptions,
+    ReservedSeedSourceBatch,
+    ReservedSeedSourceEvidence,
+    collect_reserved_seed_sources,
+    execute_reserved_seed_interventions,
+    resolve_d3_development_bundle_binding,
+    write_reserved_seed_intervention_execution,
+)
 from .world import ProximityInterceptEvent, VectorizedPointMassWorld
 from .animation import write_trajectory_animation
 
@@ -135,6 +149,14 @@ __all__ = [
     "RuntimeStepInput",
     "RuntimeStepOutput",
     "ResolvedLearningRuntime",
+    "RESERVED_EVALUATION_SEEDS",
+    "RESERVED_SEED_INTERVENTION_SCHEMA_VERSION",
+    "INTERVENTION_SELECTION_POLICY",
+    "D3DevelopmentBundleBinding",
+    "ReservedSeedInterventionExecution",
+    "ReservedSeedInterventionOptions",
+    "ReservedSeedSourceBatch",
+    "ReservedSeedSourceEvidence",
     "SHARED_SEED_SPLIT_POLICY_VERSION",
     "SHARED_SEED_SPLIT_SCHEMA_VERSION",
     "SCENARIO_SCHEMA_VERSION",
@@ -159,6 +181,9 @@ __all__ = [
     "make_curriculum_scenario",
     "project_points",
     "resolve_learning_runtime",
+    "resolve_d3_development_bundle_binding",
+    "collect_reserved_seed_sources",
+    "execute_reserved_seed_interventions",
     "run_episode",
     "run_experiment_matrix",
     "runtime_options_for_variant",
@@ -166,4 +191,5 @@ __all__ = [
     "write_trajectory_animation",
     "write_episode_learning_artifacts",
     "write_shared_seed_split_registry",
+    "write_reserved_seed_intervention_execution",
 ]
