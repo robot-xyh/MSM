@@ -53,6 +53,7 @@ main
 | D6 真值隔离清单 | `scalable3d-d6-truth-isolated-manifest-v1` | D1/D2 适配、availability 或批量聚合口径改变 |
 | D6 跨模块学习准入 | `d6.cross-module-learning-data-admission.v1` | 正式/补充/离线标签/运行 ACK 分层、canonical view 绑定、动作覆盖或训练准入矩阵语义改变 |
 | 保留 seed 隔离干预 | `scalable3d-reserved-seed-interventions-v2` | v2 绑定 D3 二元/连续分布门语义，并在 manifest/report 中持久化 D4 v2 分门诊断；历史 `6d5bfea` 正式证据保持 v1 |
+| 共同检查点隔离物理续跑 | `scalable3d-checkpoint-paired-physical-rollout-v2` | v2 在顶层清单持久化唯一源提交、源提交集合、提交一致性、源 episode 数、脏源计数和逐 seed 源清单 SHA-256；v1 不具备自证 clean-tree 来源的字段 |
 | D6 保留 seed 可用性审计 | `d6.reserved-seed-intervention-outcome-availability.v2` | v2 严格绑定源 schema/commit/摘要，区分同帧 assignment comparison 与 runtime/physical/counterfactual/causal availability；历史 v1 保持只读 |
 | D5 补充主动视觉全样本审计 | `d5.active-vision-supplemental-bc-full-sample-audit.v1` | 文件清单、逐样本特征、身份/版本、离线标签和权限门控语义改变 |
 | D5 模型 | `d5-crossview-gnn-v0.1.0` | 网络、特征、权重或训练集改变 |

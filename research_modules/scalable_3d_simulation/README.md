@@ -409,15 +409,17 @@ D2 现以不透明观测标识和传感器命名空间判定新鲜度，重复�
 隔离、时间冲突、重复合并和累计暂定删除审计，在线消息仍不包含目标真值。
 
 单 seed 复现最终恢复为五条 confirmed 航迹，隔离 9 次、删除伪航迹 1 条、在线真值使用
-为 0。随后在当前脏工作树上对 seed `1000-1019` 运行共同检查点双臂物理续跑，D6 的
-`physical_window`、`d4_degraded_adoption`、`paired_physical_effect`、
-`paired_non_degradation` 和 `degraded_paired_physical_comparison` 均为 `20/20`；D4
-区域采用为 `188/188`，control/treatment 各执行 1960 条命令。seed 1005 的离线映射重新
-覆盖 `GT3D-000001` 至 `GT3D-000005`。counterfactual/causal 仍不可用，本次结果也不是
-production runtime ACK。
+为 0。开发工作树上的 seed `1000-1019` 复跑先恢复了全部物理窗，随后在 detached clean
+提交 `0fa7c00c3514c4fa87a17953ab66fdfb73489b0b` 上完成同配置正式复验。物理续跑清单已升级
+为 `scalable3d-checkpoint-paired-physical-rollout-v2`，自证 20 个源 episode 来自同一提交，
+`repository_dirty=false`，脏源计数为 0。
 
-该输出位于临时开发目录，没有作为正式制品提交。形成干净提交后需同配置复跑，才可替代
-此前 `19/20` 的开发判断。长时 claim 容量、误抑制率、完整乱序量测和 AirSim 标定仍开放。
+D6 的计划消费、导引血缘、物理窗、D4 降级采用、配对物理比较和非退化证据均为 `20/20`；
+D4 区域采用为 `188/188`，control/treatment 各执行 1960 条命令。seed 1005 的离线映射唯一
+覆盖 `GT3D-000001` 至 `GT3D-000005`，在线真值使用为 0，全部制品 SHA-256 校验通过。
+两臂在 1 秒计划有效窗内均无 5 米成功，平均最近距离约 3822.36 米，不能据此宣称拦截效果
+或降级收益。counterfactual、causal 和 production runtime ACK 继续不可用。长时 claim
+容量、误抑制率、完整乱序量测和 AirSim 标定仍开放。
 
 ## 版本
 
@@ -441,6 +443,7 @@ production runtime ACK。
 - D6 真值隔离清单：`scalable3d-d6-truth-isolated-manifest-v1`
 - 跨模块共享 seed 切分：`scalable3d-shared-seed-split-registry-v1`
 - 保留 seed 隔离干预：新制品使用 `scalable3d-reserved-seed-interventions-v2`；历史正式证据保留 v1
+- 共同检查点隔离物理续跑：`scalable3d-checkpoint-paired-physical-rollout-v2`，记录源 Git 提交、源提交一致性、源 episode 数和脏源计数
 
 每个 episode 的 `manifest.json` 记录上述版本、Git commit、配置 SHA256、seed、模型版本和
 阈值版本。在线总线拒绝任何包含 truth/actor/object identity 字段的观测负载。
