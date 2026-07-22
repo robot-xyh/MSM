@@ -37,6 +37,7 @@ from .scalable_3d_models import (
 
 CHI2_GATE_3D_99_PERCENT = 11.344866730144373
 LARGE_SPARSE_COST = 1.0e12
+_NO_PRECOMPUTED_NIS = object()
 
 
 @dataclass(frozen=True, slots=True)
@@ -47,6 +48,21 @@ class _SparseEdge:
     mahalanobis_squared: float
     velocity_mahalanobis_squared: float | None
     velocity_cost_gated: bool
+
+
+@dataclass(slots=True)
+class _SparseAssociationResult(AssociationResult):
+    """Association result with tracker-only edge diagnostics.
+
+    The inherited public serializer intentionally excludes this transient map.
+    It only avoids solving the same matched velocity innovation again during
+    the immediately following track update.
+    """
+
+    matched_velocity_nis: dict[tuple[str, str], float | None] = field(
+        default_factory=dict,
+        repr=False,
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -121,11 +137,12 @@ class Sparse3DGNNHungarianAssociator:
         dense_pair_count = len(track_list) * len(detection_list)
 
         index_started = perf_counter()
-        tree = (
-            cKDTree(np.asarray([item.position_ned for item in detection_list]))
+        detection_positions = (
+            np.asarray([item.position_ned for item in detection_list])
             if detection_list
-            else None
+            else np.empty((0, 3), dtype=float)
         )
+        tree = cKDTree(detection_positions) if detection_list else None
         index_seconds = perf_counter() - index_started
 
         candidate_started = perf_counter()
@@ -141,19 +158,20 @@ class Sparse3DGNNHungarianAssociator:
         query_radius_by_track: dict[str, float] = {}
         maximum_detection_variance = _maximum_position_variance(detection_list)
 
-        if tree is not None:
+        if tree is not None and track_list:
+            query_radii = self._conservative_query_radii(
+                track_list,
+                maximum_detection_variance,
+            )
+            queried_detection_indices = tree.query_ball_point(
+                np.asarray([item.position_ned for item in track_list]),
+                r=query_radii,
+            )
             for track_index, track in enumerate(track_list):
-                query_radius = self._conservative_query_radius(
-                    track,
-                    maximum_detection_variance,
-                )
+                query_radius = float(query_radii[track_index])
                 query_radius_by_track[track.global_track_id] = query_radius
                 candidate_indices = sorted(
-                    int(index)
-                    for index in tree.query_ball_point(
-                        track.position_ned,
-                        r=query_radius,
-                    )
+                    int(index) for index in queried_detection_indices[track_index]
                 )
                 queried_pair_count += len(candidate_indices)
                 for detection_index in candidate_indices:
@@ -210,6 +228,7 @@ class Sparse3DGNNHungarianAssociator:
         matched_pairs: list[MatchedPair] = []
         matched_track_indices: set[int] = set()
         matched_detection_indices: set[int] = set()
+        matched_velocity_nis: dict[tuple[str, str], float | None] = {}
         component_matrix_pair_count = 0
         peak_component_pair_count = 0
 
@@ -217,17 +236,23 @@ class Sparse3DGNNHungarianAssociator:
             pair_count = len(track_indices) * len(detection_indices)
             component_matrix_pair_count += pair_count
             peak_component_pair_count = max(peak_component_pair_count, pair_count)
-            local_costs = np.full(
-                (len(track_indices), len(detection_indices)),
-                self.large_cost,
-                dtype=float,
-            )
-            for local_row, track_index in enumerate(track_indices):
-                for local_column, detection_index in enumerate(detection_indices):
-                    edge = edges.get((track_index, detection_index))
-                    if edge is not None:
-                        local_costs[local_row, local_column] = edge.cost
-            rows, columns = linear_sum_assignment(local_costs)
+            if len(track_indices) == 1 and len(detection_indices) == 1:
+                rows = (0,)
+                columns = (0,)
+            else:
+                local_costs = np.full(
+                    (len(track_indices), len(detection_indices)),
+                    self.large_cost,
+                    dtype=float,
+                )
+                for local_row, track_index in enumerate(track_indices):
+                    for local_column, detection_index in enumerate(
+                        detection_indices
+                    ):
+                        edge = edges.get((track_index, detection_index))
+                        if edge is not None:
+                            local_costs[local_row, local_column] = edge.cost
+                rows, columns = linear_sum_assignment(local_costs)
             for local_row, local_column in zip(rows, columns, strict=True):
                 track_index = track_indices[int(local_row)]
                 detection_index = detection_indices[int(local_column)]
@@ -241,6 +266,13 @@ class Sparse3DGNNHungarianAssociator:
                         cost=edge.cost,
                         probability=1.0,
                     )
+                )
+                pair_key = (
+                    track_list[track_index].global_track_id,
+                    detection_list[detection_index].detection_id,
+                )
+                matched_velocity_nis[pair_key] = (
+                    edge.velocity_mahalanobis_squared
                 )
                 matched_track_indices.add(track_index)
                 matched_detection_indices.add(detection_index)
@@ -358,7 +390,7 @@ class Sparse3DGNNHungarianAssociator:
                 "graph_neural_network_used": False,
             },
         )
-        return AssociationResult(
+        return _SparseAssociationResult(
             timestamp=timestamp,
             matched_pairs=matched_pairs,
             unmatched_track_ids=unmatched_track_ids,
@@ -372,6 +404,7 @@ class Sparse3DGNNHungarianAssociator:
             source_node_id=risk_summary.source_node_id,
             link_type=risk_summary.link_type,
             risk_summary=risk_summary,
+            matched_velocity_nis=matched_velocity_nis,
         )
 
     def _conservative_query_radius(
@@ -384,6 +417,33 @@ class Sparse3DGNNHungarianAssociator:
         return max(
             self.minimum_query_radius_m,
             sqrt(self.gate_threshold * covariance_bound),
+        )
+
+    def _conservative_query_radii(
+        self,
+        tracks: list[GlobalTrack3D],
+        maximum_detection_variance: float,
+    ) -> np.ndarray:
+        position_covariances = np.asarray(
+            [track.covariance[:3, :3] for track in tracks]
+        )
+        track_variances = np.linalg.eigvalsh(position_covariances)[:, -1]
+        return np.asarray(
+            [
+                max(
+                    self.minimum_query_radius_m,
+                    sqrt(
+                        self.gate_threshold
+                        * max(
+                            0.0,
+                            float(track_variance)
+                            + maximum_detection_variance,
+                        )
+                    ),
+                )
+                for track_variance in track_variances
+            ],
+            dtype=float,
         )
 
     @staticmethod
@@ -611,11 +671,25 @@ class Scalable3DTracker:
         detection_to_track: dict[str, str] = {}
         source_binding_conflicts: list[dict[str, str]] = []
         state_update_diagnostics: list[dict[str, Any]] = []
+        matched_velocity_nis = (
+            result.matched_velocity_nis
+            if isinstance(result, _SparseAssociationResult)
+            else {}
+        )
 
         for pair in result.matched_pairs:
             track = self.tracks[pair.track_id]
             detection = detections_by_id[pair.detection_id]
-            state_update_diagnostics.append(self._update_track(track, detection))
+            state_update_diagnostics.append(
+                self._update_track(
+                    track,
+                    detection,
+                    precomputed_velocity_nis=matched_velocity_nis.get(
+                        (pair.track_id, pair.detection_id),
+                        _NO_PRECOMPUTED_NIS,
+                    ),
+                )
+            )
             detection_to_track[detection.detection_id] = track.global_track_id
             conflict = self._bind_source(track, detection)
             if conflict is not None:
@@ -984,10 +1058,13 @@ class Scalable3DTracker:
         self,
         track: GlobalTrack3D,
         detection: Detection3D,
+        *,
+        precomputed_velocity_nis: float | None | object = _NO_PRECOMPUTED_NIS,
     ) -> dict[str, Any]:
         velocity_nis, velocity_inflation = self._velocity_model_gate(
             track,
             detection,
+            precomputed_velocity_nis=precomputed_velocity_nis,
         )
         if detection.state_estimate_covariance is not None:
             source_state = detection.state_estimate
@@ -996,7 +1073,11 @@ class Scalable3DTracker:
                 detection.state_estimate_covariance,
                 velocity_inflation,
             )
-            track.state, track.covariance = _covariance_intersection(
+            (
+                track.state,
+                track.covariance,
+                covariance_consistency,
+            ) = _covariance_intersection(
                 track.state,
                 track.covariance,
                 source_state,
@@ -1033,7 +1114,12 @@ class Scalable3DTracker:
             )
             mode = "position_3d_joseph"
 
-        track.ensure_covariance_consistency()
+        if detection.state_estimate_covariance is not None and (
+            covariance_consistency is not None
+        ):
+            track.covariance_consistency = dict(covariance_consistency)
+        else:
+            track.ensure_covariance_consistency()
         track.timestamp = detection.measurement_timestamp
         track.last_update_time = detection.measurement_timestamp
         track.last_detection_id = detection.detection_id
@@ -1060,12 +1146,19 @@ class Scalable3DTracker:
         self,
         track: GlobalTrack3D,
         detection: Detection3D,
+        *,
+        precomputed_velocity_nis: float | None | object = _NO_PRECOMPUTED_NIS,
     ) -> tuple[float | None, float]:
         if detection.velocity_ned is None or detection.velocity_covariance is None:
             return None, 1.0
-        residual = detection.velocity_ned - track.velocity_ned
-        innovation = track.covariance[3:, 3:] + detection.velocity_covariance
-        nis = _quadratic_form(innovation, residual)
+        if precomputed_velocity_nis is _NO_PRECOMPUTED_NIS:
+            residual = detection.velocity_ned - track.velocity_ned
+            innovation = track.covariance[3:, 3:] + detection.velocity_covariance
+            nis = _quadratic_form(innovation, residual)
+        else:
+            if precomputed_velocity_nis is None:
+                return None, 1.0
+            nis = float(precomputed_velocity_nis)
         inflation = max(1.0, nis / self.velocity_innovation_gate_threshold)
         return nis, inflation
 
@@ -1718,14 +1811,21 @@ class Scalable3DTracker:
         survivor: GlobalTrack3D,
         duplicate: GlobalTrack3D,
     ) -> None:
-        survivor.state, survivor.covariance = _covariance_intersection(
+        (
+            survivor.state,
+            survivor.covariance,
+            covariance_consistency,
+        ) = _covariance_intersection(
             survivor.state,
             survivor.covariance,
             duplicate.state,
             duplicate.covariance,
             first_weight=0.5,
         )
-        survivor.ensure_covariance_consistency()
+        if covariance_consistency is None:
+            survivor.ensure_covariance_consistency()
+        else:
+            survivor.covariance_consistency = dict(covariance_consistency)
         survivor.hits = max(survivor.hits, duplicate.hits)
         survivor.consecutive_hits = max(
             survivor.consecutive_hits,
@@ -1884,7 +1984,7 @@ def _covariance_intersection(
     second_covariance: np.ndarray,
     *,
     first_weight: float,
-) -> tuple[np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray, dict[str, Any] | None]:
     """Fuse correlated estimates without assuming independent information."""
 
     first_precision = _symmetric_inverse(first_covariance)
@@ -1899,12 +1999,15 @@ def _covariance_intersection(
         + second_weight * second_precision @ second_state
     )
     combined_state = combined_covariance @ information_state
-    combined_covariance, _ = govern_covariance(
+    combined_covariance, consistency = govern_covariance(
         combined_covariance,
         (6, 6),
         "covariance-intersection posterior",
     )
-    return combined_state, combined_covariance
+    prevalidated_consistency = (
+        consistency if not consistency["covariance_regularized"] else None
+    )
+    return combined_state, combined_covariance, prevalidated_consistency
 
 
 def _inflate_velocity_covariance(
@@ -2035,10 +2138,10 @@ def _candidate_components(
 def _maximum_position_variance(detections: list[Detection3D]) -> float:
     if not detections:
         return 0.0
-    return max(
-        max(0.0, float(np.linalg.eigvalsh(item.covariance)[-1]))
-        for item in detections
+    covariance_eigenvalues = np.linalg.eigvalsh(
+        np.asarray([item.covariance for item in detections])
     )
+    return max(0.0, float(np.max(covariance_eigenvalues[:, -1])))
 
 
 def _ambiguity_from_sparse_edges(

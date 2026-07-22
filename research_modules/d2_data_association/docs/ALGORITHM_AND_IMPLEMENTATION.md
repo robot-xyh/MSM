@@ -1527,3 +1527,41 @@ sidecar。运行时计时不进入在线语义哈希。对每个周期生成完�
 单轨变体中的嵌套 `truth_id` 拒绝、上游 `global_track_id` 忽略，以及 48 周期参考/候选
 状态、关联、claim 和生命周期语义一致。恶意自定义 Mapping 的第二项包含 `truth_id`
 时继续 fail closed。
+
+## 26. 关联内核批处理与可信复用
+
+### 26.1 候选生成
+
+`Sparse3DGNNHungarianAssociator.associate()` 将全部 detection 位置组成一个 KD-tree，并对
+本周期所有航迹的 3x3 位置 covariance 批量调用 `eigvalsh`。每条航迹仍使用原公式
+`sqrt(gate * (lambda_max(track) + max_detection_variance))` 和原最小半径；
+`query_ball_point` 只由逐航迹调用改为向量调用，返回索引仍排序。候选随后逐条执行原
+3D innovation covariance 和马氏门控，不截断结果。只有连通分量为 1x1 时直接选择其
+唯一已门控边；其他分量仍调用 `linear_sum_assignment()`。
+
+### 26.2 Innovation 与 covariance 复用
+
+稀疏边保存关联阶段已经计算的 velocity NIS。关联器返回私有
+`_SparseAssociationResult`，其 `matched_velocity_nis` 不在继承的公开 serializer 中；
+Tracker 只在紧随其后的匹配更新使用该值。外部提供普通 `AssociationResult` 时仍执行原
+计算。
+
+D1 adapter 先完整治理 6x6 covariance。consistent 结果由内部
+`_detection3d_from_governed_d1_track()` 在对象初始化前预置，且要求与传入
+`state_estimate_covariance` 为同一 ndarray；对应 dataclass field 为 `init=False`，普通
+构造签名无法传入。若第一次治理发生 regularization，则 adapter 使用普通构造，保留原
+第二次 full governance。CI posterior 同样只复用本函数刚产生的 consistent diagnostics；
+regularized 情况继续调用 `ensure_covariance_consistency()`。
+
+### 26.3 验证器
+
+`scripts/run_scalable_3d_association_hotpath_benchmark.py` 从冻结 online bus 中恢复 D1 输入、
+claim/replay 状态和 48 个 D2 周期，不读取 truth sidecar。每周期与冻结 D2 输出比较公开
+航迹、匹配/未匹配、ambiguity、候选数、claim ledger 和 coalescence，并对完整 tracker/
+result 状态计算去除计时字段后的 SHA-256。报告同时固定 dense pair、空间候选、位置和
+速度 innovation 求解、边、分量及匹配数量。
+
+普通构造负例提供 3x3 位置/速度单位阵和 2 倍单位交叉块；两个 marginal 均正定，但 6x6
+矩阵非 PSD。即使传入伪造的 public consistency 字典，构造仍在 full covariance
+governance 中拒绝；旧的私有预验证关键字现在直接触发 `TypeError`。公开 DTO 和
+`to_dict()` 未增加字段。

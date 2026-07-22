@@ -899,3 +899,35 @@ active-risk 5v5 seed 1005 在 0.439 s 由 5 条航迹扩张为 6 条。新增航
 seed 计时属于审查加固前候选；语义哈希仍有效，最终性能由 main 复跑。本项 D2-owned
 长时重复审计缺口关闭。后续仍按原计划在真实 AirSim、遮挡/杂波/OOSM 和极端大连通
 分量上校准；本轮不调整关联频率、门限、生命周期或 claim 策略。
+
+## 26. 关联内核严格等价热路径收口
+
+### 26.1 已完成
+
+1. 从 clean 基线 `8f86192` 的 10 秒、200v200、seed 42000 冻结在线日志重建 48 个 D2
+   周期；runner 只读 online observations，不读 truth sidecar。
+2. 固定 dense pair、空间候选、三维马氏求解、合法边、连通分量、匹配、fresh/replay 等
+   操作数，并对完整公开结果、航迹状态、协方差诊断、claim、历史和生命周期逐周期哈希。
+3. 批量执行 covariance 特征值和 KD-tree 半径查询；复用匹配边 velocity NIS、consistent
+   D1 full covariance 治理诊断，并跳过 1x1 Hungarian。regularized covariance 保留完整
+   校验回退，不减少输入、频率或合法候选。
+4. D1 covariance 复用改为内部预置状态，`Detection3D(...)` 普通构造签名不含预验证参数。
+   伪造 consistency 且 6x6 整体非 PSD 的负例仍被 full governance 拒绝。
+
+### 26.2 验收
+
+- 48/48 周期语义 SHA-256 均为
+  `dd3f65f01fd5e0941fe5c37def42650edd7107213f7ae97c528c64688a8721ab`，固定操作数逐项
+  相等，online truth use 为 0。
+- 7 次计时、1 次 warmup 的合计中位数为 `4.859477 -> 4.018963 s`，加速
+  `1.209137x`；tracker 中位数为 `2.747088 -> 2.118685 s`，7/7 对应样本更快。
+- `govern_covariance` 调用从 66,090 降至 47,434，`eigvalsh` 从 84,789 降至 47,529，
+  匹配更新路径重复 `_quadratic_form` 从 9012 降为 0。
+- 安全专项 `18 passed`；完整 D2 为 `219 passed, 1 warning in 41.91s`。
+
+### 26.3 剩余 P1
+
+1. 真实 AirSim observation ID、源时钟偏差、雷达周期及迟到分布标定。
+2. 代表性遮挡、杂波、漏检和 OOSM 多 seed 回放，以及离线 IDSW/continuity 置信区间。
+3. 极端全重叠大连通分量的候选预算、召回和最坏耗时。
+4. 固定硬件逐周期 P50/P95/P99 与实时预算，以及完整 200v200 D1-D7 闭环复跑。

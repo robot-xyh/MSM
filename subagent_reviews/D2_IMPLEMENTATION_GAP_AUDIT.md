@@ -928,3 +928,30 @@ D2-owned 长 episode 重复元数据审计 P1 缺口关闭。默认三维门控�
 频率、中心 `global_track_id`、claim/replay/stale、生命周期和显式 IDSW availability
 未改变。真实 AirSim 时钟/observation ID、遮挡/杂波/OOSM、极端大连通分量和固定硬件
 循环分位数仍保持原 P1 状态，不由本批质点回放代替。
+
+## 2026-07-22 关联内核重复计算 GAP 收口
+
+### 已关闭的 D2-owned 缺口
+
+- 以 clean 基线 `8f86192` 的 10 秒、200v200、seed 42000 frozen online observations
+  重建 48 周期。只读取 online bus，不读取 truth sidecar，online truth use 为 0。
+- baseline/candidate 的 1,820,766 个 dense pair、9215 个空间候选/位置马氏求解、9017
+  条合法边、9012 个匹配及全部 fresh/replay/分量诊断相等；峰值 component matrix size 2。
+- 实施批量 covariance eigenvalue/KD-tree query、匹配 velocity NIS 复用、consistent D1
+  covariance governance 复用和 1x1 assignment 快路。regularized covariance 仍走完整
+  fallback，不减少输入、频率或合法候选，不放宽门控。
+- 修复初版预验证构造参数绕过：最终 dataclass field 为 `init=False`，普通构造不能声明
+  trusted covariance。边缘正定但整体非 PSD 的 6x6 交叉 covariance 及伪造 consistency
+  负例仍被 full governance 拒绝；公开 DTO/序列化不变。
+- 48/48 周期完整语义 SHA-256 同为
+  `dd3f65f01fd5e0941fe5c37def42650edd7107213f7ae97c528c64688a8721ab`。7 次计时中位数
+  `4.859477 -> 4.018963 s`，加速 `1.209137x`；完整测试
+  `219 passed, 1 warning in 41.91s`。
+
+### GAP 判定与剩余 P1
+
+nominal frozen point-mass replay 上的 D2 association 内部重复计算缺口关闭，不提升为
+AirSim、实时 SLA 或完整闭环结论。以下 P1 不变：真实 observation ID/时钟/雷达周期，
+遮挡、杂波、漏检和 OOSM 多 seed 分布，最坏全重叠大连通分量，固定硬件逐周期
+P50/P95/P99，多场景 offline IDSW/continuity，以及完整 200v200 D1-D7 闭环。不得通过
+减少输入、降低频率、截断合法候选、放宽门控或使用 truth 关闭这些项目。

@@ -108,6 +108,9 @@ class Detection3D:
     state_estimate_covariance_consistency: dict[str, Any] = field(
         default_factory=dict
     )
+    _prevalidated_state_estimate_covariance: (
+        tuple[np.ndarray, dict[str, Any]] | None
+    ) = field(init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         self.detection_id = str(self.detection_id).strip()
@@ -147,14 +150,34 @@ class Detection3D:
                 "3D detection velocity covariance",
             )
             if self.state_estimate_covariance is not None:
-                (
-                    self.state_estimate_covariance,
-                    self.state_estimate_covariance_consistency,
-                ) = govern_covariance(
-                    self.state_estimate_covariance,
-                    (6, 6),
-                    "3D source state-estimate covariance",
+                prevalidated = getattr(
+                    self,
+                    "_prevalidated_state_estimate_covariance",
+                    None,
                 )
+                if prevalidated is None:
+                    (
+                        self.state_estimate_covariance,
+                        self.state_estimate_covariance_consistency,
+                    ) = govern_covariance(
+                        self.state_estimate_covariance,
+                        (6, 6),
+                        "3D source state-estimate covariance",
+                    )
+                else:
+                    governed, consistency = prevalidated
+                    if governed is not self.state_estimate_covariance:
+                        raise ValueError(
+                            "prevalidated covariance must reference the supplied "
+                            "state_estimate_covariance"
+                        )
+                    if bool(consistency.get("covariance_regularized", True)):
+                        raise ValueError(
+                            "regularized covariance cannot use the consistent "
+                            "validation fast path"
+                        )
+                    self.state_estimate_covariance = governed
+                    self.state_estimate_covariance_consistency = dict(consistency)
                 if not np.allclose(
                     self.state_estimate_covariance[:3, :3],
                     self.covariance,
@@ -190,6 +213,7 @@ class Detection3D:
 
         self.metadata = dict(self.metadata)
         assert_online_metadata_truth_free(self.metadata)
+        self._prevalidated_state_estimate_covariance = None
 
     @property
     def timestamp(self) -> float:
@@ -449,7 +473,7 @@ def detections3d_from_d1_global_tracks(
     ):
         frame_id = str(metadata.get("frame_id", _read(item, "frame_id", "NED")))
         state = _finite_vector(_read(item, "state"), 6, "D1 track state")
-        covariance, _ = govern_covariance(
+        covariance, covariance_consistency = govern_covariance(
             _read(item, "covariance"),
             (6, 6),
             "D1 track covariance",
@@ -515,29 +539,54 @@ def detections3d_from_d1_global_tracks(
                 "state_order": list(STATE_ORDER_3D),
             }
         )
-        detections.append(
-            Detection3D(
-                detection_id=detection_id,
-                measurement_timestamp=state_timestamp,
-                arrival_timestamp=arrival_timestamp,
-                position_ned=state[:3],
-                covariance=covariance[:3, :3],
-                confidence=float(metadata.get("confidence", 1.0)),
-                velocity_ned=state[3:],
-                velocity_covariance=covariance[3:, 3:],
-                state_estimate_covariance=covariance,
-                source_node_id=_optional_identifier(metadata.get("source_node_id")),
-                source_track_id=_optional_identifier(metadata.get("source_track_id")),
-                frame_id=frame_id,
-                metadata=safe_metadata,
+        detection_kwargs = {
+            "detection_id": detection_id,
+            "measurement_timestamp": state_timestamp,
+            "arrival_timestamp": arrival_timestamp,
+            "position_ned": state[:3],
+            "covariance": covariance[:3, :3],
+            "confidence": float(metadata.get("confidence", 1.0)),
+            "velocity_ned": state[3:],
+            "velocity_covariance": covariance[3:, 3:],
+            "state_estimate_covariance": covariance,
+            "source_node_id": _optional_identifier(metadata.get("source_node_id")),
+            "source_track_id": _optional_identifier(metadata.get("source_track_id")),
+            "frame_id": frame_id,
+            "metadata": safe_metadata,
+        }
+        if covariance_consistency["covariance_regularized"]:
+            detection = Detection3D(**detection_kwargs)
+        else:
+            detection = _detection3d_from_governed_d1_track(
+                covariance_consistency=covariance_consistency,
+                **detection_kwargs,
             )
-        )
+        detections.append(detection)
     if detections and any(
         abs(item.measurement_timestamp - frame_timestamp) > 1.0e-9
         for item in detections
     ):
         raise ValueError("D1 track batch must share one state-valid timestamp")
     return frame_timestamp, detections
+
+
+def _detection3d_from_governed_d1_track(
+    *,
+    covariance_consistency: dict[str, Any],
+    **detection_kwargs: Any,
+) -> Detection3D:
+    """Construct from the covariance governed immediately above in the adapter."""
+
+    state_covariance = detection_kwargs.get("state_estimate_covariance")
+    if not isinstance(state_covariance, np.ndarray):
+        raise TypeError("governed D1 state covariance must be an ndarray")
+    detection = object.__new__(Detection3D)
+    detection._prevalidated_state_estimate_covariance = (
+        state_covariance,
+        covariance_consistency,
+    )
+    Detection3D.__init__(detection, **detection_kwargs)
+    return detection
 
 
 def assert_online_metadata_truth_free(metadata: Mapping[str, Any]) -> None:

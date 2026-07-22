@@ -724,3 +724,47 @@ seed 42000 的 10 秒长时回放中，加固前候选的常规关联为
 
 全量 D2 回归为 `214 passed, 1 warning in 48.48s`。该批没有 AirSim、极端全重叠图或
 固定硬件循环分位数，因此不声明实时 SLA。
+
+## 25. 200v200 关联内核冻结回放对照（2026-07-22）
+
+### 25.1 输入与归因
+
+输入来自 clean 代码 `8f86192` 的 10 秒、200v200、seed 42000
+`online_observations.jsonl`，SHA-256 为
+`3d2b4ae9f8036ae036d877a9f0e48fc7b7b1d9555bc9662b909cc9df2206924e`。runner 只读
+online records，`truth_sidecar_read=false`、`online_truth_used=false`。原 episode 常规
+D2 association 为 `8.062584 s`，finalize 为 `0.208472 s`；长短归一化增长
+`1.993045x`。
+
+48 周期共有 9644 条输入，其中 fresh 9233、replay quarantine 411；dense pair
+1,820,766，空间候选/位置马氏求解 9215，reject 198，合法边/速度 NIS 求解 9017，匹配
+9012。分量矩阵单元总数 9017、峰值 2，表明该 nominal 输入没有大型候选连通分量。
+
+### 25.2 计时和 profile
+
+同一主机 Python 3.12.3、NumPy 2.5.0、SciPy 1.17.1，各 1 次 warmup、7 次样本：
+
+| 阶段 | baseline 中位数 / s | candidate 中位数 / s | 加速 |
+|---|---:|---:|---:|
+| D1->D2 adapter | 2.127001 | 1.913712 | 1.111x |
+| Tracker | 2.747088 | 2.118685 | 1.297x |
+| 合计 | 4.859477 | 4.018963 | 1.209x |
+
+候选在 7/7 对应样本中更快，合计中位墙钟降低 17.3%。单次 profile 中
+`govern_covariance` 调用 `66,090 -> 47,434`、`eigvalsh` `84,789 -> 47,529`，
+`associate` 累计 `1.0850 -> 0.6531 s`，`_update_track` `2.3741 -> 1.2788 s`；更新路径
+重复 `_quadratic_form` 调用 `9012 -> 0`。
+
+### 25.3 等价与边界
+
+baseline/candidate 固定操作数完全相等，48/48 周期与冻结输出相等，重复运行哈希一致；
+双方语义 SHA-256 为
+`dd3f65f01fd5e0941fe5c37def42650edd7107213f7ae97c528c64688a8721ab`。安全补充测试确认
+普通 `Detection3D` 构造不能伪造 full covariance 预验证，整体非 PSD 的交叉 covariance
+仍被拒绝。完整回归为 `219 passed, 1 warning in 41.91s`，warning 是环境中的 Matplotlib
+`Axes3D` 版本冲突。
+
+机器报告为 `d2_association_hotpath_benchmark_20260722.json`，文件 SHA-256 为
+`785233fdf8f861307d54f4f85b895494f0325b93b4f72760c8eabf1cbae8297c`。该报告是冻结
+质点回放，不是 AirSim、固定硬件实时 SLA、最坏全重叠候选图、多 seed 身份评分或完整
+200v200 闭环结果。

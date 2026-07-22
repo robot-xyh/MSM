@@ -6,6 +6,8 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
+import d2_data_association.scalable_3d_models as scalable_3d_models
+import d2_data_association.sparse_3d as sparse_3d
 from d2_data_association import (
     Detection3D,
     GlobalTrack3D,
@@ -17,6 +19,7 @@ from d2_data_association import (
     detections3d_from_d1_global_tracks,
     mahalanobis_squared_3d,
 )
+from d2_data_association.models import govern_covariance
 
 
 def _grid_state(count: int) -> tuple[np.ndarray, np.ndarray]:
@@ -388,6 +391,173 @@ def test_d1_track_adapter_still_rejects_nested_truth_metadata() -> None:
 
     with pytest.raises(ValueError, match="evaluator or external identity"):
         detections3d_from_d1_global_tracks([d1_track])
+
+
+def test_d1_adapter_reuses_only_consistent_full_covariance(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    covariance = np.block(
+        [
+            [np.eye(3) * 2.0, np.eye(3) * 0.1],
+            [np.eye(3) * 0.1, np.eye(3) * 3.0],
+        ]
+    )
+    source = SimpleNamespace(
+        state=np.arange(6, dtype=float),
+        covariance=covariance,
+        timestamp=1.0,
+        metadata={},
+    )
+    original = scalable_3d_models.govern_covariance
+    calls: list[str] = []
+
+    def recording_governance(
+        value: object,
+        shape: tuple[int, int],
+        name: str = "covariance",
+    ) -> tuple[np.ndarray, dict[str, object]]:
+        calls.append(name)
+        return original(value, shape, name)
+
+    monkeypatch.setattr(
+        scalable_3d_models,
+        "govern_covariance",
+        recording_governance,
+    )
+
+    _, detections = detections3d_from_d1_global_tracks([source])
+
+    assert calls == [
+        "D1 track covariance",
+        "3D detection covariance",
+        "3D detection velocity covariance",
+    ]
+    expected_covariance, expected_consistency = original(
+        covariance,
+        (6, 6),
+        "D1 track covariance",
+    )
+    assert np.array_equal(
+        detections[0].state_estimate_covariance,
+        expected_covariance,
+    )
+    assert (
+        detections[0].state_estimate_covariance_consistency
+        == expected_consistency
+    )
+
+
+def test_d1_adapter_regularized_covariance_uses_full_fallback_validation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    covariance = np.eye(6, dtype=float)
+    covariance[-1, -1] = -1.0e-12
+    source = SimpleNamespace(
+        state=np.arange(6, dtype=float),
+        covariance=covariance,
+        timestamp=1.0,
+        metadata={},
+    )
+    original = scalable_3d_models.govern_covariance
+    calls: list[str] = []
+
+    def recording_governance(
+        value: object,
+        shape: tuple[int, int],
+        name: str = "covariance",
+    ) -> tuple[np.ndarray, dict[str, object]]:
+        calls.append(name)
+        return original(value, shape, name)
+
+    monkeypatch.setattr(
+        scalable_3d_models,
+        "govern_covariance",
+        recording_governance,
+    )
+
+    _, detections = detections3d_from_d1_global_tracks([source])
+
+    assert calls == [
+        "D1 track covariance",
+        "3D detection covariance",
+        "3D detection velocity covariance",
+        "3D source state-estimate covariance",
+    ]
+    assert detections[0].state_estimate_covariance_consistency[
+        "covariance_regularized"
+    ] is False
+
+
+def test_detection3d_constructor_cannot_forge_prevalidated_full_covariance() -> None:
+    marginal = np.eye(3, dtype=float)
+    non_psd_full_covariance = np.block(
+        [
+            [marginal, marginal * 2.0],
+            [marginal * 2.0, marginal],
+        ]
+    )
+    kwargs = {
+        "detection_id": "forged-full-covariance",
+        "measurement_timestamp": 1.0,
+        "arrival_timestamp": 1.0,
+        "position_ned": np.zeros(3, dtype=float),
+        "covariance": marginal,
+        "velocity_ned": np.zeros(3, dtype=float),
+        "velocity_covariance": marginal,
+        "state_estimate_covariance": non_psd_full_covariance,
+        "state_estimate_covariance_consistency": {
+            "covariance_regularized": False,
+            "status": "consistent",
+        },
+    }
+
+    with pytest.raises(TypeError, match="unexpected keyword argument"):
+        Detection3D(
+            **kwargs,
+            _prevalidated_state_estimate_covariance=(
+                non_psd_full_covariance,
+                {"covariance_regularized": False},
+            ),
+        )
+    with pytest.raises(ValueError, match="positive semidefinite"):
+        Detection3D(**kwargs)
+
+
+def test_matched_velocity_nis_is_reused_without_public_result_change(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    positions, velocities = _grid_state(8)
+    tracker = Scalable3DTracker()
+    tracker.step(_detections(0.0, positions, velocities))
+    quadratic_form_calls = 0
+    original = sparse_3d._quadratic_form
+
+    def recording_quadratic_form(
+        covariance: np.ndarray,
+        residual: np.ndarray,
+    ) -> float:
+        nonlocal quadratic_form_calls
+        quadratic_form_calls += 1
+        return original(covariance, residual)
+
+    monkeypatch.setattr(
+        sparse_3d,
+        "_quadratic_form",
+        recording_quadratic_form,
+    )
+
+    result = tracker.step(_detections(1.0, positions + velocities, velocities))
+
+    assert len(result.matched_pairs) == 8
+    assert quadratic_form_calls == 0
+    assert "matched_velocity_nis" not in result.to_dict()
+    for track in tracker.active_tracks():
+        _, expected_consistency = govern_covariance(
+            track.covariance,
+            (6, 6),
+            "3D track covariance",
+        )
+        assert track.covariance_consistency == expected_consistency
 
 
 def test_scalable_measurement_adapter_accepts_only_cartesian_ned() -> None:

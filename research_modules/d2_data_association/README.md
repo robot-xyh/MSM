@@ -705,3 +705,36 @@ AirSim 或完整 200v200 闭环验收。
 复跑。审查加固后的专项为 `25 passed`，加固前全量为 `214 passed, 1 warning`。默认
 GNN/Hungarian、三维门控、中心 ID、claim/replay/stale、生命周期和显式 IDSW 语义未改。
 详见 `docs/D2_SCALABLE_3D_LONG_DURATION_PERFORMANCE_CN.md`。
+
+## 2026-07-22 关联内核操作数归因与严格等价优化
+
+针对 clean 代码基线 `8f86192` 的 200v200、seed 42000 长短增长信号，冻结比较文件中
+10 秒常规 D2 association 为 `8.062584 s`，finalize 为 `0.208472 s`；常规阶段相对
+2.2 秒 episode 的归一化增长为 `1.993045x`。本轮不重新运行场景，只读取同一 10 秒
+episode 的 `online_observations.jsonl`，文件 SHA-256 为
+`3d2b4ae9f8036ae036d877a9f0e48fc7b7b1d9555bc9662b909cc9df2206924e`；未读取 truth
+sidecar，在线 truth use 为 0。
+
+48 周期固定操作数为：输入 9644、fresh 9233、replay quarantine 411、dense pair
+1,820,766、空间候选/位置马氏求解 9215、合法边 9017、匹配 9012。9012 个候选连通
+分量的峰值矩阵只有 2 个单元，说明该输入的主要重复成本是 covariance/innovation，
+不是大型 Hungarian。候选批量计算检测/航迹最大特征值和 KD-tree 查询半径，复用关联边
+已计算的 velocity NIS，跳过 1x1 Hungarian，并只复用刚由 D1 adapter 完整治理且
+`covariance_regularized=false` 的 6x6 covariance 结果。regularized 输入继续完整回退。
+
+预验证状态不是 `Detection3D` 构造参数；普通构造无法传入。负例使用位置和速度边缘各自
+正定、但交叉项使整体最小特征值为负的 6x6 矩阵，并伪造 consistency 字典，仍由完整
+6x6 governance 拒绝。公开 DTO、`to_dict()`、门控、合法候选、关联频率、中心
+`global_track_id`、`id_switch_count` 和生命周期语义均未改变。
+
+同一输入各 1 次 warmup、7 次计时中，adapter 中位数 `2.127001 -> 1.913712 s`，tracker
+`2.747088 -> 2.118685 s`，合计 `4.859477 -> 4.018963 s`，加速 `1.209137x`、墙钟降低
+17.3%，7/7 对应样本更快。baseline/candidate 固定诊断逐项相等，48/48 周期完整公开结果
+及 tracker 状态严格相等，双方语义 SHA-256 均为
+`dd3f65f01fd5e0941fe5c37def42650edd7107213f7ae97c528c64688a8721ab`。机器报告见
+`docs/d2_association_hotpath_benchmark_20260722.json`；完整 D2 回归为
+`219 passed, 1 warning in 41.91s`。
+
+该结果仅是当前主机上的冻结质点在线回放，不是 AirSim、实时 SLA 或完整 200v200 闭环
+证据。真实 observation ID/时钟、代表性遮挡/杂波/OOSM、极端大连通分量、固定硬件周期
+分位数、多 seed 离线 IDSW/continuity 和完整闭环仍为 P1。

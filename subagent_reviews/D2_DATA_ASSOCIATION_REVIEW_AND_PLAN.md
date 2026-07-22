@@ -964,3 +964,33 @@ SHA-256 为 `8a8f9781955e22e91f87aecdeb1cb9f049fda43e1bbd0340ae62da6d5583afa5`�
 最终全量由 main 复跑。本轮关闭 D2-owned 长时重复诊断审计 P1 缺口，不构成 AirSim、
 实时 SLA、极端候选图或完整 200v200 闭环验收。下一步保持原有真实时钟、遮挡/杂波/
 OOSM 和最坏连通分量标定计划，不再扩展本轮实现。
+
+## 36. 关联内核等价优化与可信构造复核
+
+### 36.1 决策
+
+冻结操作数表明 48 周期的 dense pair 为 1,820,766，但 KD-tree 后只有 9215 次位置马氏
+求解、9017 条合法边、9012 个匹配，峰值 component matrix size 为 2。因此保留现有稀疏
+候选和全部门控，仅合并 covariance 特征值/KD-tree 调用，复用同周期匹配 velocity NIS
+与 consistent covariance governance，跳过 1x1 Hungarian。输入、频率、合法候选、门限、
+truth isolation、中心 ID 和 IDSW 语义不得变化。
+
+主控复核发现初版把 `_prevalidated_state_estimate_covariance` 暴露为 dataclass 构造参数，
+可伪造 consistency 绕过整体 6x6 PSD 检查。最终实现将该 field 设为 `init=False` 且无构造
+默认赋值，只允许 D1 adapter 在同一调用内预置刚治理的同一 ndarray；regularized 输入走
+普通构造和完整回退。负例证明边缘正定、交叉项导致整体非 PSD 的矩阵即使带伪造诊断仍
+被拒绝，旧关键字由普通构造直接拒绝。公开 DTO/序列化不变。
+
+### 36.2 证据
+
+输入 SHA-256 为 `3d2b4ae9f8036ae036d877a9f0e48fc7b7b1d9555bc9662b909cc9df2206924e`，
+truth sidecar 未读。固定操作数逐项相等，48/48 周期语义 SHA-256 均为
+`dd3f65f01fd5e0941fe5c37def42650edd7107213f7ae97c528c64688a8721ab`。7 次计时合计中位数
+`4.859477 -> 4.018963 s`，`1.209137x`，7/7 对应样本更快；tracker 为
+`2.747088 -> 2.118685 s`。完整 D2 为 `219 passed, 1 warning in 41.91s`。
+
+### 36.3 状态
+
+D2-owned nominal 冻结回放关联内核重复计算缺口关闭。真实 AirSim observation ID/时钟、
+代表性遮挡/杂波/OOSM、极端大连通分量、固定硬件周期分位数、多 seed offline
+IDSW/continuity 和完整 200v200 闭环继续保留为 P1；本结果不构成实时 promotion。
