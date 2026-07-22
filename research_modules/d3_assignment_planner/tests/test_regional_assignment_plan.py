@@ -14,6 +14,7 @@ from d3_assignment_planner import (
     ResourceState,
     TargetDemand,
     TargetTrack,
+    validated_assignment_plan_payload_sha256,
 )
 
 
@@ -140,6 +141,260 @@ def test_multiple_secondary_owners_publish_one_monotonic_regional_plan() -> None
         and item.metadata["regional_commit_evidence_present"] is False
         for item in regional.assignments
     )
+
+
+def test_regional_authority_preserves_bindings_and_carries_explicit_pending_target() -> None:
+    planner = _planner()
+    tracks = tuple(
+        _track(f"T-{index}", "A", 100.0 + index * 20.0)
+        for index in range(5)
+    )
+    initial_resources = tuple(
+        _resource(f"R-{index}", "A", index * 20.0) for index in range(4)
+    )
+    resources = (*initial_resources, _resource("R-4", "A", 80.0))
+    previous = planner.plan(tracks, initial_resources, timestamp=0.0)
+    assert previous.unassigned_target_ids == ("T-4",)
+    assert previous.incomplete_target_ids == ("T-4",)
+    previous_by_target = previous.assignments_by_target()
+    assigned_by_target = {
+        target_id: (items[0].resource_id,)
+        for target_id, items in previous_by_target.items()
+    }
+    authority = RegionalAuthorityInput(
+        adjudicated_at_s=1.0,
+        grants=(
+            RegionalAuthorityGrant(
+                region_id="A",
+                owner_layer="secondary",
+                owner_node_id="RECON-A",
+                owner_role="mobile_high_recon",
+                epoch=previous.version + 1,
+                source_plan_id=previous.plan_id,
+                source_plan_version=previous.version,
+                lease_expires_at_s=10.0,
+                target_ids=tuple(assigned_by_target),
+                assigned_resource_ids_by_target=assigned_by_target,
+            ),
+        ),
+    )
+
+    regional = planner.plan_regional_authority(
+        tracks,
+        resources,
+        timestamp=1.0,
+        previous_plan=previous,
+        authority=authority,
+        expected_previous_version=previous.version,
+    )
+
+    assert regional.version == previous.version + 1
+    assert {
+        (item.target_id, item.resource_id) for item in regional.assignments
+    } == {
+        (item.target_id, item.resource_id) for item in previous.assignments
+    }
+    assert regional.target_count == 5
+    assert regional.unassigned_target_ids == ("T-4",)
+    assert regional.incomplete_target_ids == ("T-4",)
+    assert len(regional.demand_summaries) == 5
+    assert regional.metadata["regional_unassigned_target_ids"] == ("T-4",)
+    assert regional.metadata[
+        "regional_pending_without_authority_target_ids"
+    ] == ("T-4",)
+    assert regional.metadata["regional_authority_target_ids"] == (
+        "T-0",
+        "T-1",
+        "T-2",
+        "T-3",
+    )
+    contracts = {
+        item["target_id"]: item
+        for item in regional.metadata["regional_target_commit_contracts"]
+    }
+    assert contracts["T-4"]["authority_granted"] is False
+    assert contracts["T-4"]["commit_mode"] == "unassigned_fail_closed"
+    assert contracts["T-4"]["commit_evidence_present"] is False
+    assert contracts["T-4"]["execution_authorized"] is False
+    assert all(item.target_id != "T-4" for item in regional.coalitions)
+    assert all(
+        "T-4" not in record["target_ids"]
+        for record in regional.metadata["regional_authorities"]
+    )
+    pending_summary = next(
+        item for item in regional.demand_summaries if item.target_id == "T-4"
+    )
+    assert (
+        pending_summary.demand_required,
+        pending_summary.demand_assigned,
+        pending_summary.demand_shortfall,
+        pending_summary.coalition_complete,
+    ) == (1, 0, 1, False)
+    validated_assignment_plan_payload_sha256(regional)
+    assert planner.latest_planning_evidence.available is True
+
+
+def test_regional_authority_cannot_omit_a_previously_assigned_target() -> None:
+    planner = _planner()
+    tracks = tuple(
+        _track(f"T-{index}", "A", 100.0 + index * 20.0)
+        for index in range(5)
+    )
+    resources = tuple(
+        _resource(f"R-{index}", "A", index * 20.0) for index in range(5)
+    )
+    previous = planner.plan(tracks, resources, timestamp=0.0)
+    previous_by_target = previous.assignments_by_target()
+    covered_target_ids = tuple(track.track_id for track in tracks[:-1])
+    grant = RegionalAuthorityGrant(
+        region_id="A",
+        owner_layer="secondary",
+        owner_node_id="RECON-A",
+        owner_role="mobile_high_recon",
+        epoch=previous.version + 1,
+        source_plan_id=previous.plan_id,
+        source_plan_version=previous.version,
+        lease_expires_at_s=10.0,
+        target_ids=covered_target_ids,
+        assigned_resource_ids_by_target={
+            target_id: (previous_by_target[target_id][0].resource_id,)
+            for target_id in covered_target_ids
+        },
+    )
+
+    with pytest.raises(RegionalPlanAuthorityError) as error:
+        planner.plan_regional_authority(
+            tracks,
+            resources,
+            timestamp=1.0,
+            previous_plan=previous,
+            authority=RegionalAuthorityInput(1.0, (grant,)),
+            expected_previous_version=previous.version,
+        )
+    assert error.value.reason == "regional_authority_target_set_mismatch"
+
+
+def test_regional_authority_rejects_previous_only_executable_binding() -> None:
+    planner = _planner()
+    previous_tracks = tuple(
+        _track(f"T-{index}", "A", 100.0 + index * 20.0)
+        for index in range(5)
+    )
+    resources = tuple(
+        _resource(f"R-{index}", "A", index * 20.0) for index in range(5)
+    )
+    previous = planner.plan(previous_tracks, resources, timestamp=0.0)
+    current_tracks = previous_tracks[:-1]
+    previous_by_target = previous.assignments_by_target()
+    current_target_ids = tuple(track.track_id for track in current_tracks)
+    grant = RegionalAuthorityGrant(
+        region_id="A",
+        owner_layer="secondary",
+        owner_node_id="RECON-A",
+        owner_role="mobile_high_recon",
+        epoch=previous.version + 1,
+        source_plan_id=previous.plan_id,
+        source_plan_version=previous.version,
+        lease_expires_at_s=10.0,
+        target_ids=current_target_ids,
+        assigned_resource_ids_by_target={
+            target_id: (previous_by_target[target_id][0].resource_id,)
+            for target_id in current_target_ids
+        },
+    )
+
+    with pytest.raises(RegionalPlanAuthorityError) as error:
+        planner.plan_regional_authority(
+            current_tracks,
+            resources,
+            timestamp=1.0,
+            previous_plan=previous,
+            authority=RegionalAuthorityInput(1.0, (grant,)),
+            expected_previous_version=previous.version,
+        )
+    assert error.value.reason == (
+        "regional_authority_previous_execution_target_missing"
+    )
+
+
+def test_regional_authority_cannot_omit_an_unproven_current_target() -> None:
+    planner = _planner()
+    previous_tracks = tuple(
+        _track(f"T-{index}", "A", 100.0 + index * 20.0)
+        for index in range(4)
+    )
+    resources = tuple(
+        _resource(f"R-{index}", "A", index * 20.0) for index in range(5)
+    )
+    previous = planner.plan(previous_tracks, resources, timestamp=0.0)
+    previous_by_target = previous.assignments_by_target()
+    grant = RegionalAuthorityGrant(
+        region_id="A",
+        owner_layer="secondary",
+        owner_node_id="RECON-A",
+        owner_role="mobile_high_recon",
+        epoch=previous.version + 1,
+        source_plan_id=previous.plan_id,
+        source_plan_version=previous.version,
+        lease_expires_at_s=10.0,
+        target_ids=tuple(previous_by_target),
+        assigned_resource_ids_by_target={
+            target_id: (items[0].resource_id,)
+            for target_id, items in previous_by_target.items()
+        },
+    )
+    current_tracks = (*previous_tracks, _track("T-4", "A", 180.0))
+
+    with pytest.raises(RegionalPlanAuthorityError) as error:
+        planner.plan_regional_authority(
+            current_tracks,
+            resources,
+            timestamp=1.0,
+            previous_plan=previous,
+            authority=RegionalAuthorityInput(1.0, (grant,)),
+            expected_previous_version=previous.version,
+        )
+    assert error.value.reason == "regional_authority_target_set_mismatch"
+
+
+def test_regional_authority_rejects_tampered_pending_inventory_evidence() -> None:
+    planner = _planner()
+    tracks = tuple(
+        _track(f"T-{index}", "A", 100.0 + index * 20.0)
+        for index in range(5)
+    )
+    resources = tuple(
+        _resource(f"R-{index}", "A", index * 20.0) for index in range(4)
+    )
+    previous = planner.plan(tracks, resources, timestamp=0.0)
+    previous_by_target = previous.assignments_by_target()
+    grant = RegionalAuthorityGrant(
+        region_id="A",
+        owner_layer="secondary",
+        owner_node_id="RECON-A",
+        owner_role="mobile_high_recon",
+        epoch=previous.version + 1,
+        source_plan_id=previous.plan_id,
+        source_plan_version=previous.version,
+        lease_expires_at_s=10.0,
+        target_ids=tuple(previous_by_target),
+        assigned_resource_ids_by_target={
+            target_id: (items[0].resource_id,)
+            for target_id, items in previous_by_target.items()
+        },
+    )
+    tampered = replace(previous, incomplete_target_ids=())
+
+    with pytest.raises(RegionalPlanAuthorityError) as error:
+        planner.plan_regional_authority(
+            tracks,
+            resources,
+            timestamp=1.0,
+            previous_plan=tampered,
+            authority=RegionalAuthorityInput(1.0, (grant,)),
+            expected_previous_version=previous.version,
+        )
+    assert error.value.reason == "regional_authority_target_set_mismatch"
 
 
 @pytest.mark.parametrize(

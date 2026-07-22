@@ -19,6 +19,10 @@ from .models import (
     TargetDemand,
     TargetTrack,
 )
+from .runtime_plan_ack import (
+    canonical_runtime_payload_sha256,
+    validated_assignment_plan_payload_sha256,
+)
 
 
 PLANNING_FRAME_EVIDENCE_SCHEMA_V1 = "d3_planning_frame_evidence_v1"
@@ -107,6 +111,7 @@ class PlanningFrameEvidence:
     resources: tuple[ResourceState, ...] = ()
     plan: AssignmentPlan | None = None
     previous_plan: AssignmentPlan | None = None
+    recorded_authority_transition_sha256: str | None = None
     forced_replan: bool = False
     schema_version: str = PLANNING_FRAME_EVIDENCE_SCHEMA_V1
 
@@ -253,6 +258,22 @@ def build_planning_frame_evidence(
             node_tokens,
         )
     )
+    recorded_authority_transition_sha256 = None
+    if path == "regional_authority":
+        if anonymous_previous is None:
+            return PlanningFrameEvidence.unavailable(
+                reason="regional_authority_previous_plan_missing",
+                planning_path=path,
+            )
+        recorded_authority_transition_sha256 = (
+            canonical_recorded_authority_transition_sha256(
+                planning_path=path,
+                selection_source=source,
+                timestamp_s=timestamp,
+                plan=anonymous_plan,
+                previous_plan=anonymous_previous,
+            )
+        )
 
     return PlanningFrameEvidence(
         available=True,
@@ -286,7 +307,52 @@ def build_planning_frame_evidence(
         resources=anonymous_resources,
         plan=anonymous_plan,
         previous_plan=anonymous_previous,
+        recorded_authority_transition_sha256=(
+            recorded_authority_transition_sha256
+        ),
         forced_replan=bool(forced_replan),
+    )
+
+
+def canonical_recorded_authority_transition_sha256(
+    *,
+    planning_path: str,
+    selection_source: str,
+    timestamp_s: float,
+    plan: AssignmentPlan,
+    previous_plan: AssignmentPlan,
+) -> str:
+    """Bind one recorded regional authority transition without exposing truth.
+
+    Regional ownership is an external adjudication input to offline replay.  Its
+    recorded output plan is therefore hashed together with the exact prior plan
+    and frame identity.  Other planning paths continue to treat the output plan
+    only as a replay result.
+    """
+
+    path = _required_text(planning_path, "planning_path")
+    source = _required_text(selection_source, "selection_source")
+    timestamp = float(timestamp_s)
+    if path != "regional_authority" or source != "regional_authority":
+        raise ValueError("recorded authority transition requires regional_authority")
+    if not isfinite(timestamp):
+        raise ValueError("recorded authority transition timestamp must be finite")
+    previous_sha256 = validated_assignment_plan_payload_sha256(previous_plan)
+    plan_sha256 = validated_assignment_plan_payload_sha256(plan)
+    return canonical_runtime_payload_sha256(
+        {
+            "schema": "d3_recorded_regional_authority_transition_v1",
+            "planning_path": path,
+            "selection_source": source,
+            "timestamp_s": timestamp,
+            "previous_plan_id": previous_plan.plan_id,
+            "previous_plan_version": previous_plan.version,
+            "previous_plan_payload_sha256": previous_sha256,
+            "plan_id": plan.plan_id,
+            "plan_version": plan.version,
+            "plan_previous_plan_id": plan.previous_plan_id,
+            "plan_payload_sha256": plan_sha256,
+        }
     )
 
 

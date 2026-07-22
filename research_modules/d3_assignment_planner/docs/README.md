@@ -81,3 +81,39 @@ test 只作开发诊断，不是最终准入证据。行为克隆训练、分档
 消费缺口；runtime ACK、物理结果、paired non-degradation、反事实、因果和 production
 promotion 仍不可用。证据目录、双哈希和逐项结果见 `EXPERIMENT_REPORT.md`，实现口径见
 `ALGORITHM_AND_IMPLEMENTATION.md` 第 44 节。
+
+2026-07-22 新增隔离计划消费合同。接口使用独立 schema 确认 control/treatment 克隆世界
+消费了指定 plan，并固定声明其不是 production runtime ACK。重复、旧版本、错 arm、错
+source snapshot、错 receipt 和 payload 篡改均失败关闭。专项 `8 passed`，D3 全量
+`380 passed, 1 skipped`。算法见第 45 节，软件合同试验见 `EXPERIMENT_REPORT.md`；本次
+没有启动 AirSim 或生成物理结果。
+
+2026-07-22 在线故障代际目标库存已同步。中心、增量和区域授权路径现以当前规划帧形成
+版本化完整库存；故障 fence 可在匹配规划上下文存在时保留旧绑定并登记新增未分配目标。
+算法见 `ALGORITHM_AND_IMPLEMENTATION.md` 第 47 节，原则见
+`MODULE_PRINCIPLES_CN.md`，5v5、seed 1011/1019 的三维质点结果见
+`EXPERIMENT_REPORT.md`。D3 全量为 `385 passed, 1 skipped`；本轮没有 AirSim 证据。
+
+2026-07-22 故障代际离线 replay 已同步。authority frame 现先按 previous owner 重建规划
+候选，再调用在线相同的二级接管/延续 helper；control 精确匹配和严格 payload 校验未放宽。
+算法见 `ALGORITHM_AND_IMPLEMENTATION.md` 第 48 节，20-seed `center_failure` 结果见
+`EXPERIMENT_REPORT.md`。D3 全量为 `386 passed, 1 skipped`；本轮仍无 AirSim 或生产 ACK。
+
+2026-07-22 区域授权待分配库存已同步。D4 grant 可以只覆盖上一计划中的可执行绑定目标；
+未覆盖目标必须由前序计划严格证明为零绑定、未分配且不完整。D3 保留其需求短缺，但不生成
+区域 owner、commit 或执行许可。算法见 `ALGORITHM_AND_IMPLEMENTATION.md` 第 49 节，
+原则和两 seed 三维质点结果分别见 `MODULE_PRINCIPLES_CN.md` 与 `EXPERIMENT_REPORT.md`。
+D3 全量为 `390 passed, 1 skipped`；本轮仍无 AirSim 或生产 ACK。
+
+2026-07-22 非生产隔离执行计划合同已升级为双源规划帧绑定。规划帧 `previous_plan` 作为
+离线求解源，`plan` 作为正式权威；输出采用 `formal_authority.version + 1`，并保存完整帧、
+两个源计划、候选和执行计划摘要。算法见 `ALGORITHM_AND_IMPLEMENTATION.md` 第 50 节，原则
+见 `MODULE_PRINCIPLES_CN.md`，专项结果见 `EXPERIMENT_REPORT.md`。专项为 `18 passed`，D3
+全量为 `408 passed, 1 skipped`；普通 5v5 与中心失效各完成 20 seed、40 arm 离线扫描。
+AirSim 接入边界已检查，本轮未运行 AirSim，也未生成生产 ACK、D4 adoption 或物理结果。
+
+2026-07-22，`secondary_failure` 区域权威离线重放已闭合。记录帧新增前序计划与区域计划的
+转换摘要；离线执行通过记录 assignment 重建区域授权，并复用线上区域规划校验。算法见
+`ALGORITHM_AND_IMPLEMENTATION.md` 第 51 节，原则见 `MODULE_PRINCIPLES_CN.md`，真实 20-seed
+结果见 `EXPERIMENT_REPORT.md`，AirSim 边界见 `AIRSIM_INTEGRATION_PLAN.md`。离线干预专项
+`23 passed`，D3 全量 `419 passed, 1 skipped`。本轮未运行 AirSim 或生产 ACK。

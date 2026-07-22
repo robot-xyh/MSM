@@ -1271,3 +1271,205 @@ OR-Tools，零失败满足门限。
    physical effect/non-degradation、counterfactual 和 causal 仍为 unavailable。
 2. promotion 仍为 unavailable；`PPO=false`、`assist=false`、`authority=false`、
    `rule_fallback=true`。D3 不因 sidecar 可用而改变默认 Hungarian、在线准入或发布权限。
+
+## 41. 隔离计划消费合同（2026-07-22）
+
+### 已完成
+
+1. 新增 `d3.isolated-plan-consumption-evidence.v1` 和版本化 source lineage。证据绑定
+   experiment/version、pair/seed/arm/isolation、场景与初始世界摘要、匿名观测输入摘要、
+   D1/D2 lineage、执行 receipt、plan id/version/schema/payload SHA，以及消费周期和时刻。
+2. 计划载荷摘要复用 runtime ACK 的计划结构验证：资源和目标清单、重复 binding、计划
+   schema、规模和 metadata 先通过同一 fail-closed 检查，再计算规范 SHA-256。该复用只
+   共享安全检查，不生成 runtime ACK。
+3. 构造器要求计划带 `isolated_simulation=true`、`runtime_execution_allowed=false`，且
+   PPO、online assist、online authority 均为 false。accepted consumption 必须覆盖全部
+   assignment binding；不完整计数直接拒绝。
+4. `IsolatedPlanConsumptionValidator` 维护每个 experiment/seed/arm/isolation 的消费账本。
+   重复计划、旧 plan version、相同版本二次消费、周期回退和时间回退均失败关闭。错 arm、
+   source snapshot、receipt、plan identity 或 payload SHA 也不会进入账本。
+5. 输出采用独立状态 `accepted_by_isolated_simulation_consumer`，并固定
+   `production_runtime_ack=false`、`control_applied_to_production_world=false`、
+   `physical_outcome_available=false`、`reward_available=false`、
+   `causal_evidence_available=false`。离线 receipt 不会被提升为生产 ACK。
+6. 2026-07-22 新增 8 项专项，覆盖正常 JSON 往返、payload 篡改、重复、错 arm、错版本、
+   版本回退、source snapshot 篡改和生产 ACK 越权声明；专项全部通过。D3 全量结果为
+   `380 passed, 1 skipped`，skip 仅为可选 OR-Tools。
+
+### main 后续接线
+
+1. main 为 control/treatment 分别创建独立世界和独立 validator，在一次性计划消费确认
+   通过后，才允许该 arm 进入后续多周期质点推进。两个 arm 不能共享可变状态或消费账本。
+2. main 需另行记录 D7 命令 lineage、隔离世界执行确认和干预后状态窗口。隔离消费证据
+   不能命名为 production runtime ACK，也不能直接填充 physical outcome 或 reward。
+3. D6 只有在 source lineage、消费确认、命令 lineage 和完整结果窗口均可验证时，才可
+   计算 availability-aware paired physical effect。counterfactual、causal 和 promotion
+   在证据不足时继续 unavailable。
+4. 需增加能改变最终 binding 的边界场景，并分别运行正常中心与 D4 degraded 场景。当前
+   nominal 5v5 的 0/20 binding change 不足以评估多周期策略效果。
+
+## 42. 离线计划库存规范化（2026-07-21）
+
+### 已完成
+
+1. 离线 arm 在计划编号和 receipt 哈希生成前，以当前匿名目标快照作为唯一 roster，补齐
+   迟滞保持期间未进入旧执行计划的新目标。
+2. 无绑定目标标为未分配且不完整；部分 M-to-N 需求只标为不完整。需求摘要按当前
+   `TargetDemand` 与实际 binding 数重建，目标只按唯一编号计数。
+3. previous-only 诊断项从当前库存移除；previous-only 可执行 binding、目标计数不符、联盟
+   需求不符和摘要不符均失败关闭。
+4. 离线执行器在生成 receipt 时直接调用严格计划载荷校验。生产 runtime ACK 校验规则和
+   API 未改，离线消费仍不产生线上 ACK、物理结果或奖励。
+5. 缺失 bundle 的 20 seed、40 arm 扫描通过；`seed=1011/1019` 的第五个目标均显式进入
+   未分配和不完整清单。D3 全量为 `382 passed, 1 skipped`。
+
+### 仍开放
+
+main 的多周期隔离世界推进、D7 命令 lineage 和 D6 物理结果连接仍按第 41 节执行。本项只
+关闭 offline plan-consumption 兼容阻塞，不改变生产准入或控制权限。生产 planner 的保持
+计划若包含仅供审计的新候选目标，仍由严格 runtime ACK 失败关闭；在线 roster 语义需另行
+形成版本化合同后再修改。
+
+## 43. 在线故障代际目标库存（2026-07-22）
+
+### 已完成
+
+1. 中心、增量和区域授权规划在身份最终化前，统一以当前 `TargetTrack` 集合规范化
+   `target_count`、未分配清单、不完整清单和需求摘要。
+2. 迟滞保持只保留合法执行绑定。新增目标进入当前库存时，计划严格升版并生成新计划编号；
+   不再以旧计划身份携带新的 `target_count`。
+3. `advance_authority_generation()` 复用与当前已发布计划匹配的最近规划上下文，在故障 fence
+   前补齐新增目标，再执行严格载荷校验和发布。previous-only 执行绑定仍直接拒绝。
+4. 不完整 M-to-N 联盟区分候选成员数和可执行绑定数。候选成员用于需求摘要和 shortfall；
+   可执行绑定保持为 0，目标同时标记为未分配和不完整。完整联盟仍要求两类计数一致。
+5. 匹配成本帧的二级 owner 身份转换可重建 planning evidence；绑定、成本、联盟或库存任一
+   变化时不允许重绑定证据。
+
+### 验收
+
+定向 5 项通过。D3 全量共 386 项，结果为 `385 passed, 1 skipped`，skip 为可选 OR-Tools。
+只读运行 `center_failure`、5v5、3.2 秒、seed 1011/1019，两组均形成二级 v3 计划和 2 个
+故障后可用规划帧。最终均为 4 个保留绑定、1 个未分配且不完整目标、5 条需求摘要，严格
+载荷摘要通过，在线真值使用为 0。
+
+### 后续
+
+当前闭合的是 D3 目标库存和规划证据合同。若故障 fence 前没有与已发布计划匹配的规划
+上下文，D3 不推测未知目标；调用方必须先提供当前规划帧或进入区域授权规划。仍需 main
+扩大故障 seed 和规模，并另行完成 AirSim 运行验证。生产 ACK、D4 执行许可和 D7 控制
+许可保持独立。
+
+## 44. 故障代际离线重放（2026-07-22）
+
+### 已完成
+
+1. authority planning frame 的离线 replay 使用 `previous_plan` 还原规划器求解阶段的 owner、
+   source、target 和 link，再应用冻结规则矩阵及 control/treatment 代价。
+2. 求解完成后按记录 evidence 重放二级首次接管或活动二级延续。owner、激活时刻、lease、
+   epoch 和 link 缺失、非法或不支持时失败关闭。
+3. 重放 authority 后先执行严格计划载荷校验，再调用未放宽的 control 精确匹配器。离线
+   authority replay 不生成生产 ACK，不开启 PPO、assist 或 authority。
+4. 新增 20-reserved-seed 模块回归，覆盖稳定 5v5 二级接管的决策身份；原 4→5 库存和篡改
+   负例继续保留。
+
+### 验收
+
+用户指定的 main 命令以 `center_failure`、5v5、3.2 秒运行 seed 1000-1019，执行成功。
+40/40 arm 有 authority replay 和严格回执，20/20 control 重现
+`replan_ack_no_change/changed=false`。seed 1011/1019 的 control/treatment 均为 4 个绑定、
+1 个未分配且不完整目标和 5 条需求摘要。在线真值使用为 0，5 个输出文件校验通过。
+D3 全量为 `386 passed, 1 skipped`，共 387 项。
+
+### 后续
+
+当前只验证中心失效到二级接管。二级再次失效、distributed 区域计划、通信退化和 AirSim
+重放仍由 main 后续覆盖。离线重放只证明计划身份可复现，不证明控制采用或物理效果。
+
+## 45. 区域授权显式待分配库存（2026-07-22）
+
+### 已完成
+
+1. `plan_regional_authority()` 将当前目标分成 D4 已授权目标和未授权差集。差集只接受上一
+   计划已证明的零绑定、未分配、不完整目标；需求摘要和可选联盟库存必须相互一致。
+2. 区域计划只为授权目标构造 assignment 和 coalition。显式待分配目标进入当前
+   `target_count`、未分配清单、不完整清单及 `0/required` 需求摘要，不生成 owner、lease、
+   commit 或执行许可。
+3. 漏掉上一计划已分配目标、新增但未证明目标、篡改待分配诊断、未知授权目标和
+   previous-only 可执行绑定均失败关闭。旧版本、旧 epoch、过期 lease、缺 commit/ACK 的
+   既有门控保持不变。
+4. 元数据增加实际授权目标、无授权待分配目标和逐目标 `authority_granted` 状态，供 main
+   和 D6 区分“区域执行目标”与“仅库存保留目标”。生产 runtime ACK 验证器没有修改。
+
+### 验收
+
+区域计划专项覆盖 4 个授权绑定加 1 个显式待分配目标、漏授权、未证明新增目标、库存篡改
+和 previous-only 可执行绑定。输出通过 `validated_assignment_plan_payload_sha256()`。
+三维质点 `secondary_failure` 集成测试使用 5 目标、4 绑定、4.2 秒、seed 1011/1019，完整
+测试文件为 `10 passed`。D3 全量收集 391 项，结果为 `390 passed, 1 skipped`。
+
+### 后续
+
+本项关闭 D3 区域计划目标集合不匹配缺口。main 仍需扩大 secondary-to-distributed 的 seed、
+规模、通信退化和目标生命周期组合，并在 AirSim 中验证同一合同。D4 的区域裁决、生产
+runtime ACK、D7 控制采用和物理结果继续作为独立证据。
+
+## 46. 非生产隔离执行计划严格升版（2026-07-22）
+
+### 已完成
+
+1. 保留 `d3.isolated-execution-plan.v1`，将转换证据升级为
+   `d3.isolated-execution-plan-conversion.v2`。接口明确区分规划帧 `previous_plan` 对应的
+   `offline_solve_source_plan` 和规划帧 `plan` 对应的 `formal_authority_plan`，并保存输入
+   快照摘要、完整帧转换摘要及两个源计划摘要。
+2. 新执行计划严格采用 `formal_authority_plan.version + 1`、新 `plan_id`、
+   `previous_plan_id=formal_authority_plan.plan_id`。`created_at` 严格晚于正式权威创建时刻和
+   干预时刻；有效期受 arm、lease、stale 和已有权威有效期的最早截止约束。
+3. 转换完整保留候选 binding、显式未分配/不完整库存、coalition、demand summary、
+   `resource_count` 和 `target_count`。计划身份字段和正式源 authority 字段按新代际重签，
+   不创建候选之外的资源目标绑定。
+4. 隔离消费构造器的转换上下文包含规划帧、求解源、正式权威、原候选和转换证据。原
+   receipt 仍只证明离线候选；转换证据证明候选如何形成新执行计划；消费证据最后绑定新
+   计划 SHA-256。三类证据不互相冒充。
+5. 生产 runtime ACK、在线 planner、stale/previous-plan/version/authority 门均保持原状。
+   新路径固定关闭生产发布、生产执行、在线 authority、物理结果、reward 和 causal claim。
+6. 专项 18 项、普通 5v5 与 `center_failure` 各 20-seed/40-arm 扫描和 D3 全量回归通过；
+   全量为 `408 passed, 1 skipped`，skip 为可选 OR-Tools。该证据是 D3 单元和离线合同
+   回归，不是 AirSim 或物理效果。
+
+### main 后续接线
+
+1. main 必须把同一 planning frame 的 `previous_plan` 作为求解源、`plan` 作为正式权威，
+   再与 `OfflineInterventionArmExecution.plan/receipt` 一起调用 D3 转换 API，不再自行改写
+   plan id/version。
+2. D7、D4 和 D6 应使用返回计划的同一 `plan_id/version/payload SHA-256`。D4 场景 lineage
+   应作为外层证据，不得静默修改 D3 计划后继续复用原 SHA-256。
+3. 本项只完成模块合同和单元回归。真实隔离多周期 rollout、D4 adoption、D7 控制应用及
+   D6 物理结果仍由 main 后续集成验收。
+
+## 47. 区域权威离线重放（2026-07-22）
+
+### 已完成
+
+1. 区域规划证据新增记录权威转换摘要，绑定同一匿名帧的前序计划、记录计划、路径和时刻。
+   载荷替换、跨帧或摘要篡改在离线求解前拒绝。
+2. `regional_authority` 离线路径从记录 assignment 严格重建 D3 区域授权 DTO，并复用线上
+   `plan_regional_authority()` 的 source/version、epoch、lease、commit、成员和库存门控。
+3. 区域重放只能采用记录的授权 binding。处理臂仍计算冻结规则矩阵上的代价修正，但不能
+   更换 D4 已裁决的区域成员，也不能越过 action mask。
+4. 显式零绑定目标只保留在未分配、不完整和需求摘要库存中。它不会获得区域 owner、lease、
+   commit 或执行权限。
+5. 生成计划继续通过严格载荷校验和未放宽的 control 精确匹配。离线标记不构成生产 ACK、
+   线上 authority、物理结果、奖励或因果证据。
+
+### 验收
+
+真实 `secondary_failure`、规模 5、3.2 秒、seed 1000-1019 已完成，40/40 control/treatment
+arm 均生成。seed 1011/1019 均为 4 个绑定加 `target_0004` 显式未分配且不完整，待分配
+目标无区域 assignment。在线真值使用为 0。离线干预专项 `23 passed`，D3 全量
+`419 passed, 1 skipped`，skip 为可选 OR-Tools。
+
+### 后续
+
+D3 本地 secondary-failure 区域回放断点已关闭。仍需 main 把同一结果接入隔离物理 rollout，
+核对 D4 adoption、D7 命令 lineage 和 D6 结果侧车。当前真实 reserved-seed 数据为单成员
+区域授权；M-to-N 原子联盟的区域离线重放仍需独立多 seed 场景验证。AirSim 未运行。

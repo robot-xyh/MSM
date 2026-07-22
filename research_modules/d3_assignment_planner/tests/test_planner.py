@@ -12,6 +12,7 @@ from d3_assignment_planner import (
     assignment_validity_summary_from_plan,
     evaluate_terminal_feedback,
     guidance_bindings_from_assignment_plan,
+    validated_assignment_plan_payload_sha256,
 )
 from d3_assignment_planner.models import ResourceState, TargetTrack
 from d3_assignment_planner.solver import HungarianAssignmentSolver
@@ -209,7 +210,7 @@ def test_hysteresis_holds_when_dwell_time_is_too_short() -> None:
     assert record.hysteresis_candidate_change_count == 2
 
 
-def test_hysteresis_hold_audits_new_target_without_versioning_it() -> None:
+def test_hysteresis_hold_versions_new_target_as_unassigned_inventory() -> None:
     config = PlannerConfig(delta=0.2, min_dwell=2.0)
     planner = _planner(config)
     resources = _resources()
@@ -265,13 +266,18 @@ def test_hysteresis_hold_audits_new_target_without_versioning_it() -> None:
     )
 
     assert held.decision_state == "held_by_hysteresis"
-    assert held.plan_id == first.plan_id
-    assert held.version == first.version
-    assert held.execution_signature() == first.execution_signature()
-    assert held.unassigned_target_ids == first.unassigned_target_ids == ()
+    assert held.plan_id != first.plan_id
+    assert held.version == first.version + 1
+    assert held.previous_plan_id == first.plan_id
+    assert held.assignment_signature() == first.assignment_signature()
+    assert held.execution_signature() != first.execution_signature()
+    assert held.unassigned_target_ids == ("T3",)
+    assert held.incomplete_target_ids == ("T3",)
     assert held.target_count == 3
     assert held.metadata["hysteresis_candidate_unassigned_target_ids"] == ("T3",)
     assert held.metadata["hysteresis_pending_new_target_ids"] == ("T3",)
+    assert held.metadata["versioned_target_inventory_normalized"] is True
+    validated_assignment_plan_payload_sha256(held)
 
 
 def test_hysteresis_accepts_when_gain_and_dwell_pass() -> None:

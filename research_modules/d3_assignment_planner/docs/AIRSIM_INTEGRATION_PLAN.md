@@ -475,3 +475,87 @@ ACK。真值只存在于 D6 离线来源中；D3 输出会删除 truth target �
 
 当前验收日期为 2026-07-21，样本为 1 个三维质点 3v3 seed，不是 Blocks、SimpleFlight
 或 ComputerVision 试验。AirSim seed 数、结果值和正式奖励均待验证。
+
+## 隔离计划消费与 AirSim 边界（2026-07-22）
+
+新增 `d3.isolated-plan-consumption-evidence.v1` 面向 main 的 control/treatment 克隆质点
+世界，不是 AirSim runtime ACK。AirSim 后续若复用同一离线实验方法，每个 reset 后的 arm
+仍需独立保存 source snapshot、plan payload SHA 和消费账本；该记录只能说明隔离 episode
+接收了计划，不能替代 `runtime.assignment_plan_ack`、D7 控制命令或 SimpleFlight 执行
+记录。
+
+本次只运行 D3 单元与回归测试，没有启动 Blocks、ComputerVision 或 SimpleFlight，也未
+修改 AirSim adapter、settings、actor、相机、episode 顺序和控制命令。故本节不增加
+AirSim 性能证据。生产 ACK 和物理结果仍按前两节的完整来源 envelope 与 D6 sidecar 规则
+处理。
+
+2026-07-21 补充：离线 arm 现于 receipt 生成前按当前匿名 track roster 规范化目标库存。
+AirSim 若复用 control/treatment reset 流程，无 binding 的当前目标会显式进入未分配和不
+完整清单，生命周期已移除目标不会残留。该变更未修改 AirSim runtime、相机、actor、飞控
+或生产 ACK；本轮证据仍是质点 reserved-seed 接口验证，不是 AirSim 实验结果。
+
+## 在线故障库存的 AirSim 接入要求（2026-07-22）
+
+在线 D3 计划现可在故障代际中表达“旧绑定继续有效、当前又出现新目标”。AirSim runtime
+接入时，main 必须在同一 assignment 周期向 D3 提供当前 D2 tracks，并保留形成该计划的
+planning frame。中心故障后，先由 D3 推进带完整库存的新代际，再由 D4 选择二级或分布式
+owner。若 planning frame 不可用，不允许从 actor 真值或检测真实编号补写目标。
+
+本轮只读验证使用三维质点 `center_failure`、5v5、3.2 秒、seed 1011/1019。两个场景均形成
+二级 v3 计划和故障后可用规划证据。没有启动 Blocks、ComputerVision 或 SimpleFlight，
+没有验证 AirSim 总线时序、reset、通信丢包、actor 生命周期或控制执行。AirSim 后续验收应
+至少覆盖目标在故障前后增删、规划帧丢失、旧版本重放和二级再次失效，并保存严格计划摘要
+及生产 runtime ACK 作为不同记录。
+
+## 故障 authority 重放的 AirSim 边界（2026-07-22）
+
+离线 executor 已能重放 center-to-secondary 的两阶段计划身份，但本次验收使用三维质点
+reserved-seed 场景。没有启动 Blocks、ComputerVision 或 SimpleFlight。AirSim 复用时，
+main 仍需保存转换前的 previous plan、转换后的 planning frame、D4 二级裁决时间、lease、
+epoch 和来源 envelope；只保存最终 secondary plan 无法证明求解阶段使用了正确 owner。
+
+AirSim 验收必须继续保留生产 `runtime_plan_ack`。本次新增的
+`offline_authority_identity_replayed` 只说明隔离重放执行了同一 D3 helper，不能替代总线
+采用、D7 命令或物理结果。后续还应覆盖二级再次失效和 distributed authority；当前实现
+遇到不支持的 authority owner 会失败关闭。
+
+## 区域待分配库存的 AirSim 接入（2026-07-22）
+
+main 构造 D4 区域授权输入时，只应为上一计划中已有可执行绑定的目标生成 grant。上一计划
+已明确为零绑定且未满足的目标可以不生成 grant，但必须原样进入当前 D3 航迹输入。D3 会
+验证其前序库存并在新区域计划中继续标记未分配。main 不得根据 AirSim actor 标识、检测
+真实编号或当前可见性临时补写区域 owner。
+
+本轮只在三维质点 `secondary_failure`、5 目标、4 个授权绑定、seed 1011/1019 中验证该
+接线，未启动 AirSim。后续 Blocks 验收应保存前序计划、D4 grant、D3 区域计划和生产
+runtime ACK 四类独立记录，并检查待分配目标没有 assignment、coalition、commit 或 owner。
+目标重新获得 D4 grant 后，必须通过新的计划版本进入执行集合。
+
+## 隔离执行计划升版的 AirSim 边界（2026-07-22）
+
+本次新增的是 D3 计划合同，不修改 AirSim settings、actor、检测、飞控或 episode 调度。
+已检查 AirSim 接入文档，现有接口无需调整。后续 main 在 AirSim 或三维质点克隆世界使用
+离线候选前，应把同一 planning frame 的 `previous_plan` 作为
+`offline_solve_source_plan`、`plan` 作为 `formal_authority_plan`，连同完整 planning frame、
+arm、receipt 和候选调用 `build_isolated_execution_plan(...)`。返回的同一计划对象交给
+D7、D4 和 D6 适配层，禁止各适配层再次独立改写 plan id/version。
+
+运行记录应保存 planning frame 输入摘要与转换摘要、求解源摘要、正式权威摘要、候选摘要、
+转换证据摘要、执行计划摘要和隔离消费证据。隔离消费时刻不得早于新计划的严格递增创建
+时刻。这些记录必须继续标明非生产。只有实际命令应用和状态窗口另有可验证日志时，D6 才
+能报告物理结果。本轮未启动 AirSim，也没有新增 AirSim seed、轨迹或拦截指标。
+
+## 区域权威离线重放的 AirSim 边界（2026-07-22）
+
+AirSim 或三维质点 main 无需新增 D3 调用接口。main 继续把完整 `PlanningFrameEvidence`
+交给现有离线干预执行器；D3 内部根据 `planning_path=regional_authority` 恢复记录授权并
+调用线上区域规划函数。main 不应复制 owner、epoch、lease、commit，也不应自行放宽处理臂
+的成员集合。
+
+episode 记录应保留区域权威转换摘要、前序和记录计划摘要、arm action-mask 摘要及最终计划
+摘要。待分配目标应在库存日志中出现，但在区域 binding 和控制命令日志中为零。若 AirSim
+后续验证发现 D4 或 D7 使用了该目标，D6 应将其报告为授权边界违规，而不是补写 D3 binding。
+
+2026-07-22 的验收来自三维质点 `secondary_failure` 20 seed，不是 AirSim。当前没有新增
+相机、飞行控制、网络时延或物理拦截指标；AirSim reset、episode 调度和结果采集仍由 main
+负责。

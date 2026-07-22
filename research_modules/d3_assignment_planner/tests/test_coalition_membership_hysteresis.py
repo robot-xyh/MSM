@@ -5,6 +5,7 @@ from d3_assignment_planner import (
     TargetDemand,
     TargetTrack,
     assignment_records_from_plan,
+    validated_assignment_plan_payload_sha256,
 )
 
 
@@ -136,7 +137,7 @@ def test_cost_evaluation_refresh_keeps_plan_and_membership_epoch() -> None:
     }
 
 
-def test_membership_hold_does_not_admit_new_target_into_execution_identity() -> None:
+def test_membership_hold_versions_new_target_without_executable_binding() -> None:
     planner = _planner()
     resources = [ResourceState(f"R{i}") for i in range(1, 6)]
     first = planner.plan(
@@ -166,12 +167,13 @@ def test_membership_hold_does_not_admit_new_target_into_execution_identity() -> 
     )
 
     assert held.decision_state == "held_by_coalition_membership_hysteresis"
-    assert held.plan_id == first.plan_id
-    assert held.version == first.version
-    assert held.execution_signature() == first.execution_signature()
-    assert held.stable_signature == first.stable_signature
-    assert held.unassigned_target_ids == first.unassigned_target_ids == ()
-    assert held.incomplete_target_ids == first.incomplete_target_ids == ()
+    assert held.plan_id != first.plan_id
+    assert held.version == first.version + 1
+    assert held.previous_plan_id == first.plan_id
+    assert held.assignment_signature() == first.assignment_signature()
+    assert held.execution_signature() != first.execution_signature()
+    assert held.unassigned_target_ids == ("NEW",)
+    assert held.incomplete_target_ids == ("NEW",)
     assert held.target_count == 2
     assert held.metadata["hysteresis_candidate_target_ids"] == ("HIGH", "NEW")
     assert held.metadata["hysteresis_pending_new_target_ids"] == ("NEW",)
@@ -179,3 +181,5 @@ def test_membership_hold_does_not_admit_new_target_into_execution_identity() -> 
     assert held.metadata["hysteresis_scope_policy"] == (
         "candidate_audit_only_until_execution_release"
     )
+    assert held.metadata["versioned_target_inventory_normalized"] is True
+    validated_assignment_plan_payload_sha256(held)

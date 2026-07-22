@@ -466,6 +466,18 @@ def canonical_runtime_payload_sha256(value: Any) -> str:
     return sha256(encoded).hexdigest()
 
 
+def validated_assignment_plan_payload_sha256(plan: AssignmentPlan) -> str:
+    """Validate a plan with the runtime-ACK checks, then hash its payload.
+
+    This helper exposes the plan-only subset of the production ACK validator
+    for other D3 evidence contracts.  It does not create or imply a runtime
+    acknowledgement.
+    """
+
+    _validate_expected_plan(plan)
+    return canonical_runtime_payload_sha256(plan)
+
+
 def validate_assignment_plan_runtime_ack(
     *,
     envelope_schema: str,

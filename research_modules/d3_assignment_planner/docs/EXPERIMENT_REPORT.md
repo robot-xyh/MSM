@@ -1010,3 +1010,248 @@ D6 将 `same_frame_offline_assignment_comparison` 标为 available，关闭 D3 �
 独立消费缺口。该结果只覆盖同帧规划输出。runtime ACK、post-intervention physical
 outcome、paired physical effect/non-degradation、counterfactual 和 causal 仍为
 unavailable。promotion 不可用；PPO、assist、authority 保持 false，规则回退保持 true。
+
+## 隔离计划消费合同试验（2026-07-22）
+
+### 方法
+
+试验构造完整 seed `1000-1019` paired specification，并选取其中一个 control arm 生成两个
+资源、两个中心航迹的离线 `AssignmentPlan` 和匹配 execution receipt。测试只运行 D3
+软件合同，没有启动 AirSim，也没有推进质点世界。正常样本经 JSON 编码和解码后，交给
+有状态 validator 记录。
+
+负例覆盖计划 payload SHA 篡改、同一计划重复消费、control 证据按 treatment arm 校验、
+预期计划版本不一致、先消费 v3 后提交另一 v2、source snapshot SHA 篡改，以及将
+`production_runtime_ack` 改为 true。所有负例的预期结果均为失败关闭，且失败记录不能
+进入消费账本。
+
+### 结果
+
+| 项目 | 结果 |
+| --- | ---: |
+| 专项测试 | 8 passed |
+| D3 全量 | 380 passed, 1 skipped |
+| 正常 assignment / binding | 2 / 2 |
+| 重复消费接受数 | 0 |
+| 旧版本消费接受数 | 0 |
+| 错 arm / 错快照 / 错摘要接受数 | 0 |
+| production runtime ACK 声明接受数 | 0 |
+
+唯一 skip 为当前环境未安装的可选 OR-Tools，不影响该合同。正常证据明确输出隔离仿真、
+非生产 ACK、非生产控制；physical outcome、reward 和 causal evidence 均为 false。
+
+### 限制
+
+本次结果只验证 D3 构造、校验、去重和版本门控。main 尚未运行 control/treatment 两套
+克隆世界的多周期状态推进，也没有记录 D7 command lineage 或干预后物理窗口。当前结果
+不能替代生产 runtime ACK，不能说明物理非退化，也不能形成反事实、因果或 promotion
+结论。
+
+## 离线目标库存兼容试验（2026-07-21）
+
+### 方法
+
+使用 missing development bundle 的规则回退路径运行真实 reserved seed `1000-1019`，对
+每个 control/treatment arm 依次调用严格计划载荷摘要和隔离消费构造。诊断记录 arm index、
+seed、arm、dataclass 类身份、`target_count`、binding 目标、未分配目标、不完整目标和需求
+摘要。另构造不可分配当前目标、previous-only 诊断目标和部分 M-to-N 需求，并删除规范化
+后的库存项验证失败关闭。
+
+### 结果
+
+| 项目 | 结果 |
+| --- | ---: |
+| reserved seed | 20 |
+| 严格扫描 arm | 40/40 通过 |
+| `seed=1000/control` | 5 binding，未分配 0，不完整 0 |
+| `seed=1011/1019` control+treatment | 各 4 binding，`target_0004` 未分配且不完整 |
+| 删除缺失目标库存后的接受数 | 0 |
+| D3 专项 | 19 passed |
+| D3 全量 | 382 passed, 1 skipped |
+
+首个历史失败位置为 `arm index=22, seed=1011, control`。修复后计划类身份仍为允许的 D3
+`AssignmentPlan`，receipt payload SHA 与严格重算一致。篡改库存后返回
+`expected_plan_target_count_invalid`。唯一 skip 为未安装的可选 OR-Tools。
+
+### 限制
+
+试验确认离线计划可被严格消费，并未执行生产总线 ACK 或物理控制。多周期世界状态、D7
+命令 lineage、post-intervention outcome、reward 和 causal evidence 仍不可用。
+
+## 在线故障代际库存试验（2026-07-22）
+
+### 方法
+
+先运行覆盖迟滞新增目标、增量需求变化、不完整联盟、区域授权和故障 fence 的 D3 定向测试，
+再运行 D3 完整测试集。集成复核只读调用 main 的三维质点栈，不修改其代码或输出。场景为
+`center_failure`，规模 5v5，时长 3.2 秒，seed 为 1011 和 1019。故障时刻为 1.067 秒。
+
+复核项包括故障后可用规划帧数量、计划 owner、版本、二级 epoch、绑定数、目标库存、需求
+摘要、严格载荷摘要和在线真值使用计数。严格摘要直接调用 D3 既有计划校验入口。
+
+### 结果
+
+| 项目 | seed 1011 | seed 1019 |
+| --- | ---: | ---: |
+| 故障后可用规划帧 | 2 | 2 |
+| 最终 owner | secondary / RECON-001 | secondary / RECON-001 |
+| 计划版本 / 二级 epoch | 3 / 3 | 3 / 3 |
+| 可执行绑定 | 4 | 4 |
+| 未分配且不完整目标 | GT3D-000005 | GT3D-000005 |
+| 需求摘要 | 5 | 5 |
+| 严格摘要通过帧 | 2 | 2 |
+| 在线真值使用 | 0 | 0 |
+
+D3 定向 5 项全部通过。完整测试集共收集 386 项，结果为 `385 passed, 1 skipped`。唯一
+skip 是当前环境未安装可选 OR-Tools。
+
+### 判断
+
+故障后的二级计划保留了 4 个合法旧绑定，第 5 个当前目标没有从库存消失。该目标没有获得
+执行绑定，计划明确记录未分配和需求不完整。二级 owner 身份发布后仍有对应的当前成本帧，
+严格计划摘要可以重算。
+
+本次结果只证明 D3 合同和三维质点集成路径。样本只有 2 个 seed，未覆盖二级再次失效、通信
+退化和大规模目标增删，也没有 AirSim 或物理拦截结果。
+
+## 故障代际离线重放试验（2026-07-22）
+
+### 方法
+
+使用 main reserved-seed 入口运行 `center_failure`，规模 5v5，时长 3.2 秒，seed 固定为
+1000-1019。输出写入临时验收目录，不作为生产数据。D3 对每个 source frame 分别运行 control
+和 treatment，并在 control 路径严格比较在线记录计划与离线重放计划。
+
+检查项包括 authority 重放标志、计划版本和窗口、决策状态、changed、binding、未分配和
+不完整目标、需求摘要、严格回执、在线真值使用及输出文件 SHA-256。另运行 D3 模块专项和
+完整测试集。
+
+### 结果
+
+| 项目 | 结果 |
+| --- | ---: |
+| reserved seed | 20 |
+| D3 arm | 40 |
+| authority identity replay | 40/40 |
+| control 决策状态 | 20/20 `replan_ack_no_change` |
+| 严格计划回执 | 40/40 |
+| treatment 离线代价应用 | 20/20 |
+| 在线真值使用 | 0 |
+| 输出 SHA-256 | 5/5 通过 |
+| D3 offline 专项 | 12 passed |
+| D3 全量 | 386 passed, 1 skipped |
+
+seed 1000 的 control 为 version 2、window 2、`changed=false`，5 个目标均有 binding。seed
+1011/1019 的 control 和 treatment 为 version 3、window 3，保留 4 个 binding；
+`target_0004` 同时进入未分配和不完整清单，需求摘要均为 5 条。四个计划均通过严格回执。
+
+### 判断
+
+原失败来自 owner 应用顺序不同，不是 Hungarian binding 差异。两阶段重放恢复后，稳定
+binding 不再被误判为 replan。4→5 库存仍完整，严格匹配器和 payload 校验均保持。
+
+本轮未验证 secondary-to-distributed、通信退化、大规模或 AirSim，也没有生产 ACK 和物理
+结果。D4 treatment 在该临时运行中回退不属于 D3 本项验收结论。
+
+## 区域授权待分配库存试验（2026-07-22）
+
+### 条件
+
+模块正例使用 5 个当前目标和上一计划的 4 个可执行绑定。第 5 个目标在上一计划中同时标为
+未分配和不完整，需求摘要为 required 1、assigned 0、shortfall 1。D4 grant 只覆盖 4 个
+已有绑定目标。集成复核使用三维质点 `secondary_failure`、规模 5、时长 4.2 秒、seed
+1011/1019。
+
+### 结果
+
+| 项目 | 结果 |
+| --- | ---: |
+| 区域授权绑定 | 4 |
+| 无授权待分配目标 | 1 |
+| 待分配需求摘要 | 0/1，shortfall 1 |
+| 待分配 assignment/coalition/owner/commit | 0/0/0/0 |
+| 严格计划载荷校验 | 通过 |
+| 区域计划与规划证据专项 | 34 passed |
+| main 集成测试文件 | 10 passed |
+| D3 全量 | 390 passed, 1 skipped |
+
+负例覆盖漏掉上一计划已绑定目标、未证明的当前新增目标、篡改待分配清单、grant 引用未知
+目标和 previous-only 可执行绑定。旧 epoch、过期 lease、旧来源计划和缺少 commit/ACK 的
+既有测试继续通过。
+
+### 判断
+
+原失败由“grant 目标集合必须等于当前航迹集合”的条件触发。D4 已按安全语义只为 4 个执行
+目标提供区域授权，第 5 个目标没有执行绑定，不应获得虚构授权。D3 现把这类目标作为严格
+证明的库存差集处理，同时保持计划载荷完整。
+
+证据只覆盖两个指定 seed 的三维质点集成和模块回归。尚无 AirSim、生产 runtime ACK、D7
+控制采用或物理结果；更大规模、更多 seed 和通信退化仍待 main 验证。
+
+## 隔离执行计划升版合同试验（2026-07-22）
+
+### 条件
+
+专项夹具使用 version 3 的离线求解源、version 4 的正式二级权威、同 arm 的 version 3 离线
+候选和合法 receipt。两个源计划由同一 `PlanningFrameEvidence` 绑定。
+候选包含 1 个 binding、1 个显式未分配且不完整目标、非空 coalition 和 2 条需求摘要。
+正式权威提供 secondary owner、source/link、epoch 7 和 lease 30 秒；干预时刻为 12 秒，
+计划有效期至 25 秒。
+
+### 结果
+
+| 项目 | 结果 |
+| --- | ---: |
+| 输出版本 | 5，即正式权威版本 + 1 |
+| 新 plan id / 正确 previous plan | 通过 |
+| 规划帧双源载荷绑定 | 通过 |
+| assignment 与目标库存保留 | 通过 |
+| coalition 与需求摘要保留 | 通过 |
+| 正式源 authority 语义保留 | 通过 |
+| 转换证据 JSON/哈希稳定 | 通过 |
+| 新计划隔离消费绑定 | 通过 |
+| 普通 5v5 离线 arm 扫描 | 20 seed、40/40 通过 |
+| center_failure 离线 arm 扫描 | 20 seed、40/40 通过，版本 1 -> 2 -> 3 |
+| 篡改专项 | 18 passed |
+| D3 全量 | 408 passed, 1 skipped |
+
+负例覆盖同版本换新计划号、错误前序计划、创建时刻不递增、有效期篡改、binding/未分配/
+不完整/coalition/需求摘要篡改、同 ID/version 权威载荷替换、错误 authority 前序链、跨
+frame、跨 arm、跨 seed、跨源、无时间空间、lease 不足、过期源和 truth 字段。所有负例均
+在转换或消费前失败关闭。唯一 skip 为可选 OR-Tools，与本合同无关。
+
+### 边界
+
+结果只证明 D3 升版和证据合同。没有运行 AirSim 或系统级多周期 rollout，也没有形成生产
+runtime ACK、D7 实际控制应用、D4 adoption 结果、物理拦截、奖励或因果结论。
+
+## 区域权威离线重放试验（2026-07-22）
+
+### 条件
+
+- 场景：三维质点 `secondary_failure`。
+- 规模：5 个资源、5 个目标。
+- 时长：3.2 秒。
+- 种子：1000-1019，共 20 个。
+- 干预：每个种子一个 control 和一个 treatment，共 40 个 arm。
+- 安全状态：生产 ACK、线上 assist、PPO 和线上 authority 均关闭。
+
+### 结果
+
+40/40 arm 均生成，在线真值使用计数为 0。记录帧路径均为区域授权时，离线执行恢复同帧
+owner、区域、epoch、lease 和 commit，并通过线上区域规划校验及原 control 精确匹配器。
+处理臂仍受记录区域成员集合和 action mask 约束。
+
+seed 1011 和 1019 的 control/treatment 均为 4 个执行 binding。`target_0004` 同时保留在
+`unassigned_target_ids` 和 `incomplete_target_ids`，需求摘要为 `assigned=0`、
+`shortfall=1`，没有对应区域 assignment。其余种子为 5 个执行 binding。
+
+新增回归覆盖记录摘要、source、link、owner、epoch、lease、commit、前序计划、版本和时间
+篡改。离线干预专项结果为 `23 passed`；D3 全量收集 420 项，结果为
+`419 passed, 1 skipped`，skip 为未安装的可选 OR-Tools。
+
+### 边界
+
+本试验证明 D3 可以在匿名离线帧中复现 D4 已记录的区域权威，不证明 D4 物理采用、D7 控制
+应用或拦截成功。真实 seed 均为单成员目标授权；M-to-N 区域原子联盟仍需单独的多 seed
+验证。本轮未运行 AirSim。

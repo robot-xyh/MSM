@@ -6,6 +6,11 @@
 
 **保留 seed 证据状态 2026-07-22**: nominal 5v5、duration 2.2、seeds 1000-1019 的 D3 control 精确重放阻塞已关闭，v2 正式产物已落盘并通过 D3 独立复核。D6 profile-bound v2 sidecar 状态为 `pass_offline_assignment_comparison_only`，现已把 same-frame offline assignment comparison 标为 available，关闭 D3 assignment 层可用性和独立消费缺口。runtime ACK、post-intervention physical outcome、paired physical effect/non-degradation、反事实、因果和生产晋级仍为 unavailable；PPO、assist、authority 保持 false，规则回退保持 true。
 
+**隔离消费状态 2026-07-22**: D3 已提供独立 schema 的 plan-consumption 构造、校验与去重
+账本，绑定 experiment/seed/arm、source snapshot、receipt 和 plan payload。该记录固定
+`production_runtime_ack=false`，不能提供 physical outcome 或 reward。main 多周期世界、D7
+命令应用 lineage 和 D6 paired physical effect 仍待跨模块闭合。
+
 **P1 switch-penalty 状态 2026-07-10**: done。`reassignment_switch_penalty` 已从 solve 后追加改为 solve 前进入可行改配边；同 resource、不可行边、无历史 assignment 的 target 和 unassigned cost 不变。solver matrix、breakdown total、objective、Assignment 和 evidence 使用同一成本且无双重计费。新 current plan binding 即使发生改配仍为 `active/current`，旧 plan 由 current plan id/version gate 失效。
 
 当前 D3 P0/P1 缺口清单：
@@ -21,6 +26,8 @@
 - P1 evidence update：历史 40-case 保留为旧预筛；最新 M5N2 baseline/candidate 各 10 seeds 已由 main 写盘 canonical history。20/20 case、3725/3725 record 可用，plan-version/member-roster/owner transition 均为 0；membership audit 数量不得直接当成 churn。物理第二 primary/coalition 仍开放。
 - P1 formal reserved-seed evidence done：v2 正式产物已独立复核；treatment applied=`20/20`、fallback=`0`，cost-matrix changed=`20/20`，final-binding changed=`0/20`。安全计数和规则评分未退化，但未形成 runtime/physical/causal/promotion 证据。
 - P1 D6 independent consumption done：profile-bound v2 availability sidecar 已存在，same-frame offline assignment comparison 为 available；runtime ACK、physical outcome、paired non-degradation、counterfactual 和 causal 仍明确 unavailable。
+- P1 isolated plan consumption contract done：D3 构造/校验 API 和 replay/stale ledger 已
+  通过 8 项专项；main 克隆世界推进、D7 command lineage 和 D6 物理窗口仍开放。
 - P1：D5 feedback 权重与 dwell/迟滞阈值仍需用逐时刻 D6 records 配对标定。
 - P1 增量接口 done：输入快照、changed-set 完整性、独立连通分量局部求解、全量 fallback reason、全局迟滞、M-to-N all-or-none 和增量/全量 comparison summary 已测试；仍缺真实非等量 3v5/5v3、目标新增、资源失效和 crossing/dense 动态 N/M 多 seed 校准。
 - P1 deterministic calibration support done：versioned 8-scenario matrix 新增高威胁需求变化、D5 reserve feedback 和 hard-window；paired runner 统一比较 full/incremental latency、churn、unassigned high-threat、coalition shortfall 和 fallback/reject，8/8 转换 assignment/cost 等价。
@@ -1041,3 +1048,153 @@ final binding changed=`0/20`。rule/treatment 同帧 cost mean 均为
 paired physical effect/non-degradation、counterfactual、causal 和 promotion 仍为
 unavailable；`PPO=false`、`assist=false`、`authority=false`、`rule_fallback=true`。本批
 binding 未变化不能解释为候选策略有效，也不能解释为物理无退化。
+
+## 41. 隔离计划消费合同复核（2026-07-22）
+
+D3 已增加与生产 runtime ACK 分离的计划消费合同。构造器首先调用 runtime ACK 路径共享的
+计划结构检查，确认计划 schema、N/M 规模、binding 唯一性和 metadata 可规范编码，再核对
+paired arm、execution receipt、输入快照和输出计划载荷 SHA。共享检查不共享证据身份；新
+输出采用 `d3.isolated-plan-consumption-evidence.v1`，状态固定为隔离 consumer 接受。
+
+证据携带 experiment/version、pair/seed/arm/isolation、场景配置、初始世界、匿名观测快照、
+D1/D2 lineage、plan id/version/schema、payload SHA、消费周期和时刻、assignment/binding
+计数及 binding inventory SHA。有状态 validator 按 arm 维护已消费版本。重复计划、版本
+回退、相同版本换计划、非单调周期/时间以及任一 lineage 或摘要不一致均失败关闭，失败项
+不会污染账本。
+
+权限边界为强制字段，不由调用方选择。`production_runtime_ack=false`、
+`isolated_simulation_only=true`、生产世界控制为 false；physical outcome、reward、causal
+均 unavailable，PPO、online assist、online authority 保持关闭。由此，原 offline
+execution receipt 仍是离线执行声明，新记录也只是在克隆世界入口处的消费确认，两者都
+不能转换为线上 ACK。
+
+专项 8 项及 D3 全量回归通过，全量为 `380 passed, 1 skipped`。当前 D3-owned 接口可以
+交给 main 集成。仍需 main 建立两套多周期世界并保存 D7 command lineage 和状态窗口，D6
+再完成 paired physical effect 的 availability-aware 联接。nominal 5v5 的 final binding
+仍为 0/20 变化，因此还需边界场景；D4 degraded effectiveness 需单独实验。
+
+## 42. 离线目标库存兼容复核（2026-07-21）
+
+兼容阻塞来自特定迟滞路径，不是 dataclass 类身份或跨 arm mutation。main 实际产物使用
+`research_modules.d3_assignment_planner.src.d3_assignment_planner.models.AssignmentPlan`，
+该身份在严格白名单内；冻结 dataclass 由 `replace` 生成新计划。`seed=1000/control` 的
+5 个 binding 和 5 个需求摘要始终完整。首个异常位于 `index=22, seed=1011, control`：
+当前 roster 为 5，旧执行绑定为 4，`target_0004` 只在候选审计范围中。
+
+修复限定在 D3 offline intervention 生成边界。离线计划先按当前匿名 track roster 重建
+未分配、不完整和需求摘要，再生成不可发布 plan id 与 receipt SHA。生产 runtime ACK
+验证器未修改。缺失 bundle 条件下逐 seed/arm 严格扫描为 `40/40`，`seed=1011/1019` 的
+control/treatment 均保留 4 个绑定并显式登记 `target_0004`。删除该库存项后严格校验仍以
+`expected_plan_target_count_invalid` 失败关闭。
+
+D3 专项 `19 passed`，全量 `382 passed, 1 skipped`。本项关闭 main 隔离 rollout 的计划
+消费兼容阻塞；多周期控制、物理结果、reward、causal evidence 和生产 ACK 仍不属于该证据。
+
+## 43. 在线故障代际库存复核（2026-07-22）
+
+故障接管断点来自计划身份与当前目标库存不同步。seed 1011/1019 在故障前保留 4 个旧绑定，
+故障时当前规划帧已经有 5 个目标。原 fence 只复制已发布计划，无法为第 5 个目标生成库存
+条目，二级 owner 转换后也没有匹配的新规划证据。
+
+D3 现把当前目标 roster 纳入执行身份。中心、增量和区域授权计划均在身份最终化前规范库存。
+`advance_authority_generation()` 只在最近规划上下文与当前已发布计划身份匹配时使用该上下文，
+保留原绑定并补齐零绑定目标；否则不推测目标。库存变化形成新计划编号和严格递增版本，
+previous-only 可执行绑定仍失败关闭。发布前调用既有严格载荷摘要校验，未修改生产 ACK 的
+接受条件。
+
+M-to-N 的两个计数已经分开。不完整联盟的 `assigned_resource_count` 表示已找到的候选成员，
+需求摘要据此计算 shortfall；`AssignmentPlan.assignments` 只保存可执行绑定。联盟未完整时
+assignment 必须为 0，成员必须标记不可执行，目标保持未分配且不完整。联盟完整时，候选
+成员数必须与可执行绑定数一致。
+
+定向 5 项和 D3 全量通过。全量共 386 项，结果为 `385 passed, 1 skipped`。只读三维质点
+`center_failure` 复核使用 5v5、3.2 秒、seed 1011/1019。两组最终计划均为二级 owner、
+v3/epoch 3，保留 4 个绑定，第 5 个目标未分配且不完整，需求摘要 5 条；各有 2 个故障后
+可用规划帧，严格计划摘要通过，在线真值使用为 0。
+
+该结果关闭 D3-owned 在线 roster 和故障代际规划证据缺口。后续由 main 扩大 seed、规模及
+二级再次失效场景，并运行 AirSim。D4 接管许可、D7 控制许可、生产 runtime ACK 和物理结果
+仍是独立证据，不能由 D3 计划库存推导。
+
+## 44. 故障代际离线重放复核（2026-07-22）
+
+新增断点位于离线 replay 的 owner 时序。记录帧已经完成 center 到 secondary 的身份转换，
+但原 replay 直接用记录计划的 secondary source/link 配置规划器。在线实际先由中心配置求解
+候选，再由 D3 helper 写入 secondary owner、lease 和 epoch。提前带入新 owner 会使相同
+5/5 binding 被判为执行签名变化，control 因而得到 `replan_applied/changed=true`。
+
+修复后，authority frame 先从 `previous_plan` 恢复求解阶段配置。冻结矩阵、版本 fence、
+迟滞和普通 planner 决策保持原样。候选形成后，再依据 recorded plan 的二级合同调用
+`prepare_secondary_takeover_plan()` 或 `continue_active_secondary_plan()`。二级状态、owner、
+激活时刻、lease、epoch 和 link 均为硬条件。重放计划通过严格 payload 校验后，继续由原
+control matcher 比较完整执行签名和决策身份。
+
+真实 `center_failure` 运行覆盖 seed 1000-1019。40 个 arm 全部完成；20 个 control 均重现
+`replan_ack_no_change`，40 个 arm 均有严格回执。seed 1011/1019 的 control/treatment 各保留
+4 个 binding，并登记 `target_0004` 未分配且不完整。在线真值使用为 0，输出清单 5/5 通过。
+D3 全量 387 项，结果为 `386 passed, 1 skipped`。
+
+该结果关闭 center-to-secondary 离线 replay 的 D3-owned 缺口。secondary-to-distributed、
+通信退化、大规模和 AirSim 尚未验证。离线 authority identity 仍是仿真重放事实，不是
+生产 runtime ACK、控制许可或物理结果。
+
+## 45. 区域授权待分配库存复核（2026-07-22）
+
+main 的区域 adapter 现只为上一计划已有可执行绑定的目标生成 D4 grant。seed 1011/1019
+在二级再次失效时有 5 个当前目标，其中 4 个保留执行绑定，`target_0004` 已在上一计划中
+明确为零绑定、未分配且不完整。旧 D3 校验要求 grant 覆盖全部 5 个目标，因此把正确的
+4 目标授权误判为 `regional_authority_target_set_mismatch`。
+
+D3 现将未授权差集限制为“前序显式待分配库存”。校验同时核对 assignment、未分配清单、
+不完整清单、需求摘要和可选联盟成员；任何一项不一致都失败关闭。通过后只为 4 个 grant
+目标构造区域 assignment 和 coalition。第 5 个目标保留 `0/1` 短缺，并明确记录
+`authority_granted=false`，不获得 owner、lease、commit 或执行许可。
+
+正例、漏授权、未证明新增目标、库存篡改和 previous-only 可执行绑定测试均通过。模块区域
+专项及规划证据为 `34 passed`；三维质点 `secondary_failure`、规模 5、4.2 秒、seed
+1011/1019 的 main 集成测试文件为 `10 passed`。D3 全量为 `390 passed, 1 skipped`。
+
+该结果关闭区域目标集合的 D3-owned P1 断点。生产 runtime ACK 校验没有放宽。本轮不包含
+AirSim、D7 控制采用或物理结果；更多 seed、规模和通信退化由 main 后续验证。
+
+## 46. 非生产隔离执行计划升版复核（2026-07-22）
+
+原离线 arm receipt 绑定的是求解候选。候选虽然使用新 `plan_id`，version 仍可能等于正式
+源计划，不能直接作为 D4 接受的新执行代际。由 main 临时修改 version 会破坏 receipt、
+候选载荷和后续消费者之间的哈希关系，也会把调用方变成计划身份所有者。
+
+D3 现以 `build_isolated_execution_plan(...)` 统一完成该转换。构造器验证同一
+`PlanningFrameEvidence` 中的两个角色：`previous_plan` 是离线求解源，继续约束 arm、receipt
+和候选哈希；`plan` 是当前正式权威，决定新计划应超越的版本、前序计划和降级权威。完整帧
+转换摘要同时绑定两个计划载荷，调用方不能以同 ID/version 的其他载荷替换任一来源。
+
+输出版本固定为正式权威版本加一，`previous_plan_id` 固定为正式权威计划号。创建时刻严格
+晚于正式权威和干预时刻，有效期由 arm 与 authority lease/stale 的最早截止约束。正式权威
+的 owner/source/link/epoch/lease 被保留；候选的资源目标绑定和完整目标库存被保留。计划中
+的生产发布、生产执行和在线 authority 均显式关闭。
+
+`validate_isolated_execution_plan_conversion(...)` 可重建预期计划并核对计划和证据摘要。
+隔离消费接口仅在同时提供规划帧、求解源、正式权威、原候选和转换证据时接受升版计划；
+缺任一项即失败关闭。原直接消费路径保留兼容。专项 18 项、全量
+`408 passed, 1 skipped`。普通 5v5 和 `center_failure` 均完成 20 seed、40 arm 扫描；中心
+失效链路验证版本 `1 -> 2 -> 3`。下一步由 main 按新签名完成真实 rollout 接线和 D4/D7/D6
+联合验证。本轮没有运行 AirSim，不据离线合同结果声明 adoption、控制采用或物理效果。
+
+## 47. 区域权威离线重放复核（2026-07-22）
+
+`secondary_failure` 的记录规划帧已经由 D4 裁决为区域 owner，但旧离线执行仍调用普通
+中心求解，再保留原中心或二级 authority。绑定集合、版本和决策状态相同，assignment 的
+owner、区域、epoch、lease 和 commit 不同，因此原完整执行签名正确拒绝。
+
+D3 现把匿名记录区域计划作为该类离线帧的固定安全输入。规划证据保存前序计划与记录计划
+的转换摘要。执行器从记录 assignment 恢复区域授权 DTO，再调用线上
+`plan_regional_authority()`。重放计划必须复现同一 binding、库存、联盟执行语义、版本、
+前序计划、窗口和决策身份。最终 control matcher 保持原实现。
+
+处理臂不能借学习残差改变 D4 已裁决成员。显式待分配目标不进入 grant；seed 1011/1019
+因此保持 4 个授权 binding 加 1 个无授权待分配目标。真实 20-seed、40-arm 运行全部生成，
+在线真值使用为 0。离线干预专项 `23 passed`，D3 全量 `419 passed, 1 skipped`。
+
+该修复位于既有离线执行接口内部，main 无需更改调用签名。main 后续仍需验证升版计划进入
+D4 adoption、D7 控制和 D6 结果侧车后的同一 lineage。当前没有 AirSim、生产 ACK 或物理
+拦截证据；M-to-N 区域原子联盟仍需单独多 seed 验收。

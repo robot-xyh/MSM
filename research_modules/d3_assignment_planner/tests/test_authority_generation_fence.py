@@ -12,6 +12,8 @@ from d3_assignment_planner import (
     StalePlanError,
     TargetDemand,
     TargetTrack,
+    prepare_secondary_takeover_plan,
+    validated_assignment_plan_payload_sha256,
 )
 
 
@@ -79,6 +81,119 @@ def test_authority_generation_fence_publishes_new_identity_without_reassignment(
     with pytest.raises(StalePlanError) as error:
         planner.plan([], [], timestamp=2.0, previous_plan=current)
     assert error.value.reason == "stale_previous_version"
+
+
+def test_authority_generation_fence_normalizes_four_to_five_target_roster() -> None:
+    planner = AssignmentPlanner(
+        config=PlannerConfig(
+            enable_hysteresis=True,
+            delta=0.2,
+            min_dwell=30.0,
+            human_authorization_state="approved",
+        )
+    )
+    resources = tuple(ResourceState(f"R-{index}") for index in range(5))
+    initial_tracks = tuple(
+        TargetTrack(
+            f"T-{index}",
+            threat_score=0.2,
+            covariance=0.1,
+            window_cost=0.0,
+            fov_difficulty_by_resource={
+                resource.resource_id: (
+                    0.0 if resource.resource_id == f"R-{index}" else 1.0
+                )
+                for resource in resources
+            },
+        )
+        for index in range(4)
+    )
+    current = planner.plan(initial_tracks, resources, timestamp=0.0)
+    held = planner.plan(
+        (
+            *initial_tracks,
+            TargetTrack(
+                "T-4",
+                threat_score=0.2,
+                covariance=0.1,
+                window_cost=0.0,
+                fov_difficulty_by_resource={
+                    resource.resource_id: (
+                        0.0 if resource.resource_id == "R-4" else 1.0
+                    )
+                    for resource in resources
+                },
+            ),
+        ),
+        resources,
+        timestamp=1.0,
+        previous_plan=current,
+        expected_previous_version=current.version,
+        forced_replan=True,
+    )
+    fenced = planner.advance_authority_generation(
+        held,
+        timestamp=2.0,
+        expected_previous_version=held.version,
+        fence_reason="center_failure_before_regional_adjudication",
+    )
+
+    assert fenced.version == held.version + 1
+    assert fenced.assignment_signature() == held.assignment_signature()
+    assert fenced.target_count == 5
+    assert fenced.unassigned_target_ids == ("T-4",)
+    assert fenced.incomplete_target_ids == ("T-4",)
+    assert {item.target_id for item in fenced.demand_summaries} == {
+        f"T-{index}" for index in range(5)
+    }
+    assert fenced.metadata["target_count"] == 5
+    assert fenced.metadata["current_plan_version"] == fenced.version
+    assert fenced.metadata["fault_authority_fence_generation"] == 1
+    validated_assignment_plan_payload_sha256(fenced)
+    evidence = planner.latest_planning_evidence
+    assert evidence.available is True
+    assert evidence.plan_id == fenced.plan_id
+    assert evidence.plan_version == fenced.version
+
+
+def test_secondary_owner_publish_rebases_matching_planning_evidence() -> None:
+    planner = AssignmentPlanner(
+        config=PlannerConfig(
+            enable_hysteresis=True,
+            min_dwell=30.0,
+            human_authorization_state="approved",
+        )
+    )
+    tracks = (TargetTrack("T", 0.5, 0.1, 0.0),)
+    resources = (ResourceState("R"),)
+    previous = planner.plan(tracks, resources, timestamp=0.0)
+    candidate = planner.plan(
+        tracks,
+        resources,
+        timestamp=1.0,
+        previous_plan=previous,
+        expected_previous_version=previous.version,
+        publish=False,
+    )
+    takeover = prepare_secondary_takeover_plan(
+        candidate,
+        supersedes_plan=previous,
+        secondary_node_id="RECON-A",
+        readiness_class="takeover_ready",
+        readiness_sustained=True,
+        activated_at_s=1.0,
+        lease_expires_at_s=5.0,
+        leader_epoch=previous.version + 1,
+    )
+
+    published = planner.publish_plan(takeover)
+
+    validated_assignment_plan_payload_sha256(published)
+    evidence = planner.latest_planning_evidence
+    assert evidence.available is True
+    assert evidence.planning_path == "authority_identity_publish"
+    assert evidence.plan_id == published.plan_id
+    assert evidence.plan_version == published.version
 
 
 def test_authority_generation_fence_rejects_expected_version_mismatch() -> None:

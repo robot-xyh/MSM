@@ -47,6 +47,7 @@ from .regional_hint import (
     RegionalPlanningHint,
     RegionalPlanningHintError,
 )
+from .runtime_plan_ack import validated_assignment_plan_payload_sha256
 
 
 @dataclass(frozen=True)
@@ -86,8 +87,23 @@ class _RegionalHintContext:
     ]
 
 
+@dataclass(frozen=True)
+class _PlanningContext:
+    planning_path: str
+    selection_source: str
+    timestamp_s: float
+    rule_matrix_result: CostMatrixResult
+    effective_matrix_result: CostMatrixResult
+    tracks: tuple[TargetTrack, ...]
+    resources: tuple[ResourceState, ...]
+    plan: AssignmentPlan
+    previous_plan: AssignmentPlan | None
+    forced_replan: bool
+
+
 _HYSTERESIS_COST_BASIS_SCHEMA = "d3_hysteresis_current_objective_v1"
 _WINDOW_CHANGE_BUDGET_SCHEMA = "d3_cumulative_window_change_budget_v1"
+_VERSIONED_TARGET_INVENTORY_SCHEMA = "d3_versioned_target_inventory_v1"
 FAULT_AUTHORITY_GENERATION_FENCE_SCHEMA_V1 = (
     "d3_fault_authority_generation_fence_v1"
 )
@@ -196,6 +212,7 @@ class AssignmentPlanner:
             reason="no_planning_frame",
             planning_path="none",
         )
+        self._latest_planning_context: _PlanningContext | None = None
 
     @property
     def latest_planning_evidence(self) -> PlanningFrameEvidence:
@@ -204,6 +221,7 @@ class AssignmentPlanner:
         return self._latest_planning_evidence
 
     def _begin_planning_evidence(self, planning_path: str) -> None:
+        self._latest_planning_context = None
         self._latest_planning_evidence = PlanningFrameEvidence.unavailable(
             reason="planning_in_progress",
             planning_path=planning_path,
@@ -214,6 +232,7 @@ class AssignmentPlanner:
         planning_path: str,
         error: Exception,
     ) -> None:
+        self._latest_planning_context = None
         detail = getattr(error, "reason", None)
         if detail is None:
             detail = type(error).__name__
@@ -255,6 +274,22 @@ class AssignmentPlanner:
                 planning_path=planning_path,
             )
         self._latest_planning_evidence = evidence
+        self._latest_planning_context = (
+            _PlanningContext(
+                planning_path=planning_path,
+                selection_source=selection_source,
+                timestamp_s=float(timestamp),
+                rule_matrix_result=rule_matrix_result,
+                effective_matrix_result=effective_matrix_result,
+                tracks=tracks,
+                resources=resources,
+                plan=plan,
+                previous_plan=previous_plan,
+                forced_replan=forced_replan,
+            )
+            if evidence.available
+            else None
+        )
 
     def _invalidate_evidence_for_unmatched_publish(
         self,
@@ -265,9 +300,96 @@ class AssignmentPlanner:
             return
         if evidence.plan_id == plan.plan_id and evidence.plan_version == plan.version:
             return
+        if self._rebase_planning_evidence_after_authority_publish(plan):
+            return
+        self._latest_planning_context = None
         self._latest_planning_evidence = PlanningFrameEvidence.unavailable(
             reason="published_plan_has_no_matching_cost_frame",
             planning_path="publish_plan",
+        )
+
+    def _rebase_planning_evidence_after_authority_publish(
+        self,
+        plan: AssignmentPlan,
+    ) -> bool:
+        context = self._latest_planning_context
+        if context is None:
+            return False
+        source = context.plan
+        if (
+            self._authority_rebase_binding_signature(source.assignments)
+            != self._authority_rebase_binding_signature(plan.assignments)
+            or source.unassigned_target_ids != plan.unassigned_target_ids
+            or source.incomplete_target_ids != plan.incomplete_target_ids
+            or source.coalitions != plan.coalitions
+            or source.demand_summaries != plan.demand_summaries
+            or source.target_count != plan.target_count
+            or source.resource_count != plan.resource_count
+            or source.total_cost != plan.total_cost
+            or source.solver_name != plan.solver_name
+        ):
+            return False
+        try:
+            validated_assignment_plan_payload_sha256(plan)
+        except Exception:
+            return False
+        published_at = max(
+            float(context.timestamp_s),
+            float(plan.metadata.get("last_evaluated_at_s", plan.created_at)),
+        )
+        evidence = build_planning_frame_evidence(
+            planning_path="authority_identity_publish",
+            selection_source=(
+                f"{context.selection_source}_authority_identity_rebase"
+            ),
+            timestamp_s=published_at,
+            rule_matrix_result=context.rule_matrix_result,
+            effective_matrix_result=context.effective_matrix_result,
+            tracks=context.tracks,
+            resources=context.resources,
+            plan=plan,
+            previous_plan=context.previous_plan,
+            forced_replan=context.forced_replan,
+        )
+        if not evidence.available:
+            return False
+        self._latest_planning_evidence = evidence
+        self._latest_planning_context = replace(
+            context,
+            planning_path="authority_identity_publish",
+            selection_source=evidence.selection_source,
+            timestamp_s=published_at,
+            plan=plan,
+        )
+        return True
+
+    @classmethod
+    def _authority_rebase_binding_signature(
+        cls,
+        assignments: tuple[Assignment, ...],
+    ) -> tuple[tuple[Any, ...], ...]:
+        """Compare planning results while ignoring authority transport stamps."""
+
+        return tuple(
+            sorted(
+                (
+                    assignment.target_id,
+                    assignment.resource_id,
+                    assignment.coalition_id,
+                    assignment.coalition_version,
+                    assignment.member_role,
+                    assignment.wave_id,
+                    assignment.arrival_window_start_s,
+                    assignment.arrival_window_end_s,
+                    assignment.required_resource_count,
+                    assignment.terminal_authorization_scope,
+                    assignment.arrival_coordination_required,
+                    assignment.cost,
+                    cls._stable_input_value(assignment.cost_breakdown),
+                    assignment.feasibility_state,
+                )
+                for assignment in assignments
+            )
         )
 
     def plan(
@@ -384,10 +506,6 @@ class AssignmentPlanner:
         immediately reject the fenced source generation.
         """
 
-        self._latest_planning_evidence = PlanningFrameEvidence.unavailable(
-            reason="authority_generation_fence_has_no_cost_frame",
-            planning_path="authority_generation_fence",
-        )
         self._validate_previous_plan(previous_plan, expected_previous_version)
         latest = self._latest_published_plan
         if latest is None:
@@ -424,11 +542,28 @@ class AssignmentPlanner:
         if not reason:
             raise ValueError("fence_reason must not be empty")
 
+        context = self._latest_planning_context
+        source_plan = latest
+        if (
+            context is not None
+            and context.plan.plan_id == latest.plan_id
+            and context.plan.version == latest.version
+        ):
+            source_plan = self._normalize_versioned_target_inventory(
+                latest,
+                tracks=context.tracks,
+                timestamp=evaluated_at_s,
+                source="authority_generation_fence",
+            )
+
         version = latest.version + 1
         plan_id = f"d3-plan-{uuid4().hex[:12]}"
         fence_generation = int(
             latest.metadata.get("fault_authority_fence_generation", 0)
         ) + 1
+        target_inventory_changed = (
+            source_plan.execution_signature() != latest.execution_signature()
+        )
         fence_metadata = {
             "fault_authority_fence_schema": (
                 FAULT_AUTHORITY_GENERATION_FENCE_SCHEMA_V1
@@ -439,6 +574,9 @@ class AssignmentPlanner:
             "fault_authority_fence_source_plan_id": latest.plan_id,
             "fault_authority_fence_source_plan_version": latest.version,
             "fault_authority_fence_non_reassignment": True,
+            "fault_authority_fence_target_inventory_changed": (
+                target_inventory_changed
+            ),
             "fault_authority_fence_execution_authorization": False,
             "fault_authority_fence_requires_d4_gate": True,
             "fault_authority_fence_d7_directive": "defer_to_d4_hold_or_continue",
@@ -456,17 +594,17 @@ class AssignmentPlanner:
                     "last_evaluated_at_s": evaluated_at_s,
                 },
             )
-            for assignment in latest.assignments
+            for assignment in source_plan.assignments
         )
         metadata = {
-            **dict(latest.metadata),
+            **dict(source_plan.metadata),
             **fence_metadata,
             "current_plan_id": plan_id,
             "current_plan_version": version,
             "plan_version": version,
             "identity_created_at_s": evaluated_at_s,
             "last_evaluated_at_s": evaluated_at_s,
-            "execution_signature_changed": False,
+            "execution_signature_changed": target_inventory_changed,
             "plan_published": True,
             "plan_refresh_only": False,
             "evaluation_refresh_only": False,
@@ -475,17 +613,22 @@ class AssignmentPlanner:
             "execution_authorization_changed": False,
         }
         fenced = replace(
-            latest,
+            source_plan,
             plan_id=plan_id,
             version=version,
             assignments=assignments,
             created_at=evaluated_at_s,
-            last_changed_at=latest.last_changed_at,
+            last_changed_at=(
+                evaluated_at_s
+                if target_inventory_changed
+                else source_plan.last_changed_at
+            ),
             previous_plan_id=latest.plan_id,
             changed=False,
             decision_state="authority_generation_fenced",
             metadata=metadata,
         )
+        validated_assignment_plan_payload_sha256(fenced)
         return self.publish_plan(fenced)
 
     def plan_regional_authority(
@@ -559,7 +702,7 @@ class AssignmentPlanner:
         self._validate_previous_plan(previous_plan, expected_previous_version)
         track_items = tuple(tracks)
         resource_items = tuple(resources)
-        self._validate_regional_authority(
+        pending_target_ids = self._validate_regional_authority(
             authority,
             tracks=track_items,
             previous_plan=previous_plan,
@@ -578,6 +721,29 @@ class AssignmentPlanner:
             matrix_result=matrix_result,
             previous_plan=previous_plan,
             timestamp=timestamp,
+            pending_target_ids=pending_target_ids,
+        )
+        previous_summary_by_target = {
+            summary.target_id: summary
+            for summary in previous_plan.demand_summaries
+        }
+        pending_summaries = tuple(
+            DemandSatisfactionSummary(
+                target_id=track.track_id,
+                demand_required=track.effective_demand.required_resource_count,
+                demand_assigned=0,
+                demand_shortfall=track.effective_demand.required_resource_count,
+                coalition_complete=False,
+                coalition_id=previous_summary_by_target[track.track_id].coalition_id,
+                coalition_version=(
+                    previous_summary_by_target[track.track_id].coalition_version
+                ),
+                primary_resource_count=(
+                    track.effective_demand.primary_resource_count
+                ),
+            )
+            for track in track_items
+            if track.track_id in pending_target_ids
         )
         objective = float(sum(item.cost for item in assignments))
         candidate = self._build_plan(
@@ -595,10 +761,12 @@ class AssignmentPlanner:
             decision_state="accepted_regional_authority",
             changed=True,
             assignments=assignments,
-            unassigned_target_ids=(),
+            unassigned_target_ids=pending_target_ids,
             coalitions=coalitions,
-            incomplete_target_ids=(),
-            demand_summaries=tuple(item.summary for item in coalitions),
+            incomplete_target_ids=pending_target_ids,
+            demand_summaries=(
+                tuple(item.summary for item in coalitions) + pending_summaries
+            ),
             reported_target_count=len(track_items),
         )
         candidate = self._annotate_regional_authority(candidate, authority)
@@ -621,6 +789,12 @@ class AssignmentPlanner:
             track_items,
             resource_items,
         )
+        candidate = self._normalize_versioned_target_inventory(
+            candidate,
+            tracks=track_items,
+            timestamp=timestamp,
+            source="regional_authority",
+        )
         result = self._finalize_and_publish(
             candidate,
             previous_plan=previous_plan,
@@ -637,15 +811,79 @@ class AssignmentPlanner:
         tracks: tuple[TargetTrack, ...],
         previous_plan: AssignmentPlan,
         timestamp: float,
-    ) -> None:
+    ) -> tuple[str, ...]:
         if authority.adjudicated_at_s > float(timestamp):
             raise RegionalPlanAuthorityError("regional_authority_from_future")
-        track_ids = {track.track_id for track in tracks}
+        track_by_id = {track.track_id: track for track in tracks}
+        track_ids = set(track_by_id)
         granted_target_ids = {
             target_id for grant in authority.grants for target_id in grant.target_ids
         }
-        if granted_target_ids != track_ids:
+        if granted_target_ids - track_ids:
             raise RegionalPlanAuthorityError("regional_authority_target_set_mismatch")
+
+        previous_assignments_by_target = previous_plan.assignments_by_target()
+        if set(previous_assignments_by_target) - track_ids:
+            raise RegionalPlanAuthorityError(
+                "regional_authority_previous_execution_target_missing"
+            )
+
+        pending_target_ids = tuple(
+            track.track_id
+            for track in tracks
+            if track.track_id not in granted_target_ids
+        )
+        previous_unassigned = tuple(previous_plan.unassigned_target_ids)
+        previous_incomplete = tuple(previous_plan.incomplete_target_ids)
+        previous_summaries = tuple(previous_plan.demand_summaries)
+        previous_summary_by_target = {
+            summary.target_id: summary for summary in previous_summaries
+        }
+        previous_coalitions = tuple(previous_plan.coalitions)
+        previous_coalition_by_target = {
+            coalition.target_id: coalition for coalition in previous_coalitions
+        }
+        if (
+            len(previous_summary_by_target) != len(previous_summaries)
+            or len(previous_coalition_by_target) != len(previous_coalitions)
+        ):
+            raise RegionalPlanAuthorityError(
+                "regional_authority_target_set_mismatch"
+            )
+
+        for target_id in pending_target_ids:
+            summary = previous_summary_by_target.get(target_id)
+            track = track_by_id[target_id]
+            required_count = int(
+                track.effective_demand.required_resource_count
+            )
+            coalition = previous_coalition_by_target.get(target_id)
+            explicit_pending = (
+                not previous_assignments_by_target.get(target_id)
+                and previous_unassigned.count(target_id) == 1
+                and previous_incomplete.count(target_id) == 1
+                and summary is not None
+                and summary.demand_required == required_count
+                and summary.demand_assigned == 0
+                and summary.demand_shortfall == required_count
+                and not summary.coalition_complete
+                and summary.primary_resource_count
+                == track.effective_demand.primary_resource_count
+                and (
+                    coalition is None
+                    or (
+                        coalition.required_resource_count == required_count
+                        and coalition.assigned_resource_count == 0
+                        and coalition.shortfall == required_count
+                        and not coalition.complete
+                        and not coalition.members
+                    )
+                )
+            )
+            if not explicit_pending:
+                raise RegionalPlanAuthorityError(
+                    "regional_authority_target_set_mismatch"
+                )
 
         previous_epoch_by_region: dict[str, int] = {}
         previous_records = previous_plan.metadata.get("regional_authorities", ())
@@ -675,6 +913,7 @@ class AssignmentPlanner:
             )
             if grant.epoch < minimum_epoch:
                 raise RegionalPlanAuthorityError("regional_authority_old_epoch")
+        return pending_target_ids
 
     def _regional_assignments(
         self,
@@ -685,6 +924,7 @@ class AssignmentPlanner:
         matrix_result: CostMatrixResult,
         previous_plan: AssignmentPlan,
         timestamp: float,
+        pending_target_ids: tuple[str, ...] = (),
     ) -> tuple[tuple[Assignment, ...], tuple[CoalitionPlan, ...]]:
         grant_by_target = {
             target_id: grant
@@ -705,17 +945,28 @@ class AssignmentPlanner:
         used_resources: set[str] = set()
         assignments: list[Assignment] = []
         coalitions: list[CoalitionPlan] = []
+        pending_target_set = set(pending_target_ids)
 
         for track in tracks:
-            grant = grant_by_target[track.track_id]
+            grant = grant_by_target.get(track.track_id)
+            if grant is None:
+                if track.track_id not in pending_target_set:
+                    raise RegionalPlanAuthorityError(
+                        "regional_authority_target_set_mismatch"
+                    )
+                continue
             assigned_resource_ids = grant.assigned_resource_ids_by_target[
                 track.track_id
             ]
             demand = track.effective_demand
-            if len(assigned_resource_ids) != demand.required_resource_count:
+            if len(assigned_resource_ids) not in {
+                0,
+                demand.required_resource_count,
+            }:
                 raise RegionalPlanAuthorityError(
-                    "regional_authority_demand_unsatisfied"
+                    "regional_authority_partial_demand_forbidden"
                 )
+            target_unassigned = not assigned_resource_ids
             if used_resources.intersection(assigned_resource_ids):
                 raise RegionalPlanAuthorityError(
                     "regional_authority_duplicate_resource_assignment"
@@ -781,12 +1032,18 @@ class AssignmentPlanner:
             coalition = self._coalition_plan(
                 track=track,
                 members=tuple(members),
-                complete=True,
+                complete=not target_unassigned,
                 previous=previous_coalition_by_target.get(track.track_id),
                 timestamp=timestamp,
             )
             commit = grant.commit_by_target.get(track.track_id)
-            commit_required = demand.required_resource_count > 1
+            commit_required = (
+                not target_unassigned and demand.required_resource_count > 1
+            )
+            if target_unassigned and commit is not None:
+                raise RegionalPlanAuthorityError(
+                    "regional_unassigned_target_commit_forbidden"
+                )
             if commit_required and commit is None:
                 raise RegionalPlanAuthorityError("regional_coalition_commit_missing")
             if commit is not None:
@@ -837,16 +1094,27 @@ class AssignmentPlanner:
                     "regional_lease_expires_at_s": grant.lease_expires_at_s,
                     "regional_commit_required": commit_required,
                     "regional_commit_mode": (
-                        "atomic_coalition_commit"
-                        if commit_required
-                        else "single_member_authority"
+                        "unassigned_fail_closed"
+                        if target_unassigned
+                        else (
+                            "atomic_coalition_commit"
+                            if commit_required
+                            else "single_member_authority"
+                        )
                     ),
                     "regional_commit_state": (
-                        "single_member_authority"
-                        if commit is None
-                        else commit.state
+                        "unassigned"
+                        if target_unassigned
+                        else (
+                            "single_member_authority"
+                            if commit is None
+                            else commit.state
+                        )
                     ),
                     "regional_commit_evidence_present": commit is not None,
+                    "regional_target_execution_allowed": (
+                        not target_unassigned
+                    ),
                 },
             )
             coalitions.append(coalition)
@@ -871,8 +1139,12 @@ class AssignmentPlanner:
             for target_id in grant.target_ids
         }
         required_count_by_target = {
-            assignment.target_id: assignment.required_resource_count
-            for assignment in plan.assignments
+            summary.target_id: summary.demand_required
+            for summary in plan.demand_summaries
+        }
+        assigned_count_by_target = {
+            summary.target_id: summary.demand_assigned
+            for summary in plan.demand_summaries
         }
         commit_by_target = {
             commit.target_id: commit
@@ -882,26 +1154,43 @@ class AssignmentPlanner:
 
         def commit_contract(target_id: str) -> dict[str, Any]:
             required_count = required_count_by_target[target_id]
-            commit_required = required_count > 1
+            assigned_count = assigned_count_by_target[target_id]
+            target_unassigned = assigned_count == 0
+            authority_granted = target_id in grant_by_target
+            commit_required = not target_unassigned and required_count > 1
             commit = commit_by_target.get(target_id)
             return {
                 "target_id": target_id,
                 "required_resource_count": required_count,
+                "assigned_resource_count": assigned_count,
+                "authority_granted": authority_granted,
                 "commit_required": commit_required,
                 "commit_mode": (
-                    "atomic_coalition_commit"
-                    if commit_required
-                    else "single_member_authority"
+                    "unassigned_fail_closed"
+                    if target_unassigned
+                    else (
+                        "atomic_coalition_commit"
+                        if commit_required
+                        else "single_member_authority"
+                    )
                 ),
                 "commit_state": (
-                    "single_member_authority" if commit is None else commit.state
+                    "unassigned"
+                    if target_unassigned
+                    else (
+                        "single_member_authority"
+                        if commit is None
+                        else commit.state
+                    )
                 ),
                 "commit_evidence_present": commit is not None,
                 "atomic_committed": bool(
                     commit is not None and commit.atomic_committed
                 ),
                 "execution_authorized": bool(
-                    commit is None or commit.execution_authorized
+                    authority_granted
+                    and not target_unassigned
+                    and (commit is None or commit.execution_authorized)
                 ),
             }
 
@@ -948,6 +1237,16 @@ class AssignmentPlanner:
         atomic_coalition_commit_count = sum(
             contract["commit_mode"] == "atomic_coalition_commit"
             for contract in target_commit_contracts.values()
+        )
+        unassigned_target_ids = tuple(
+            sorted(
+                target_id
+                for target_id, contract in target_commit_contracts.items()
+                if contract["commit_mode"] == "unassigned_fail_closed"
+            )
+        )
+        pending_without_authority_target_ids = tuple(
+            sorted(set(required_count_by_target) - set(grant_by_target))
         )
         assignments = tuple(
             replace(
@@ -1010,6 +1309,16 @@ class AssignmentPlanner:
             "regional_atomic_coalition_commit_count": (
                 atomic_coalition_commit_count
             ),
+            "regional_target_commit_contracts": tuple(
+                target_commit_contracts[target_id]
+                for target_id in sorted(target_commit_contracts)
+            ),
+            "regional_unassigned_target_ids": unassigned_target_ids,
+            "regional_pending_without_authority_target_ids": (
+                pending_without_authority_target_ids
+            ),
+            "regional_authority_target_ids": tuple(sorted(grant_by_target)),
+            "regional_all_targets_assigned": not unassigned_target_ids,
             "plan_owner": "regional",
             "active_plan_owner": "regional",
             "owner_node_id": (
@@ -1238,6 +1547,12 @@ class AssignmentPlanner:
             },
         )
         result = self._annotate_input_snapshot(result, track_items, resource_items)
+        result = self._normalize_versioned_target_inventory(
+            result,
+            tracks=track_items,
+            timestamp=timestamp,
+            source="incremental_plan",
+        )
         result = self._finalize_and_publish(
             result,
             previous_plan=previous_plan,
@@ -1275,7 +1590,199 @@ class AssignmentPlanner:
             window_id=window_id,
             tracks=tracks,
         )
+        result = self._normalize_versioned_target_inventory(
+            result,
+            tracks=tuple(tracks),
+            timestamp=timestamp,
+            source="central_plan",
+        )
         return result, rule_matrix_result, matrix_result
+
+    @staticmethod
+    def _normalize_versioned_target_inventory(
+        plan: AssignmentPlan,
+        *,
+        tracks: tuple[TargetTrack, ...],
+        timestamp: float,
+        source: str,
+    ) -> AssignmentPlan:
+        """Make current-roster diagnostics explicit without changing bindings."""
+
+        target_ids = tuple(track.track_id for track in tracks)
+        if len(target_ids) != len(set(target_ids)):
+            raise ValueError("versioned target inventory contains duplicate targets")
+        target_set = set(target_ids)
+        track_by_id = {track.track_id: track for track in tracks}
+        assignments_by_target = plan.assignments_by_target()
+        previous_only_bindings = tuple(
+            sorted(set(assignments_by_target) - target_set)
+        )
+        if previous_only_bindings:
+            raise ValueError(
+                "versioned target inventory contains previous-only executable bindings"
+            )
+
+        coalition_by_target: dict[str, CoalitionPlan] = {}
+        for coalition in plan.coalitions:
+            if coalition.target_id in coalition_by_target:
+                raise ValueError("duplicate coalition target in versioned inventory")
+            coalition_by_target[coalition.target_id] = coalition
+        prior_summary_by_target = {
+            summary.target_id: summary for summary in plan.demand_summaries
+        }
+        if len(prior_summary_by_target) != len(plan.demand_summaries):
+            raise ValueError("duplicate demand summary target in versioned inventory")
+
+        unassigned: list[str] = []
+        incomplete: list[str] = []
+        summaries: list[DemandSatisfactionSummary] = []
+        for target_id in target_ids:
+            track = track_by_id[target_id]
+            demand = track.effective_demand
+            assignments = assignments_by_target.get(target_id, ())
+            executable_count = len(assignments)
+            required_count = int(demand.required_resource_count)
+            if executable_count > required_count:
+                raise ValueError("target assignments exceed current demand")
+            if any(
+                assignment.required_resource_count != required_count
+                for assignment in assignments
+            ):
+                raise ValueError("assignment demand does not match current target demand")
+            coalition = coalition_by_target.get(target_id)
+            inventory_assigned_count = executable_count
+            if coalition is not None:
+                tentative_count = int(coalition.assigned_resource_count)
+                if coalition.required_resource_count != required_count:
+                    raise ValueError("coalition demand does not match current demand")
+                if tentative_count < 0 or tentative_count > required_count:
+                    raise ValueError("coalition assigned count exceeds current demand")
+                if len(coalition.members) != tentative_count:
+                    raise ValueError("coalition member inventory is inconsistent")
+                expected_shortfall = required_count - tentative_count
+                if coalition.shortfall != expected_shortfall:
+                    raise ValueError("coalition shortfall is inconsistent")
+                if coalition.complete != (expected_shortfall == 0):
+                    raise ValueError("coalition completion state is inconsistent")
+                if coalition.complete:
+                    if tentative_count != executable_count:
+                        raise ValueError(
+                            "complete coalition does not match executable bindings"
+                        )
+                else:
+                    if executable_count != 0 or any(
+                        member.executable for member in coalition.members
+                    ):
+                        raise ValueError(
+                            "incomplete coalition cannot publish executable bindings"
+                        )
+                inventory_assigned_count = tentative_count
+            shortfall = max(0, required_count - inventory_assigned_count)
+            if executable_count == 0:
+                unassigned.append(target_id)
+            if shortfall > 0:
+                incomplete.append(target_id)
+            prior_summary = prior_summary_by_target.get(target_id)
+            summaries.append(
+                DemandSatisfactionSummary(
+                    target_id=target_id,
+                    demand_required=required_count,
+                    demand_assigned=inventory_assigned_count,
+                    demand_shortfall=shortfall,
+                    coalition_complete=shortfall == 0,
+                    coalition_id=(
+                        coalition.coalition_id
+                        if coalition is not None
+                        else (
+                            None
+                            if prior_summary is None
+                            else prior_summary.coalition_id
+                        )
+                    ),
+                    coalition_version=(
+                        coalition.version
+                        if coalition is not None
+                        else (
+                            None
+                            if prior_summary is None
+                            else prior_summary.coalition_version
+                        )
+                    ),
+                    primary_resource_count=int(demand.primary_resource_count),
+                )
+            )
+
+        normalized_unassigned = tuple(unassigned)
+        normalized_incomplete = tuple(incomplete)
+        normalized_coalitions = tuple(
+            coalition
+            for coalition in plan.coalitions
+            if coalition.target_id in target_set
+        )
+        normalized_summaries = tuple(summaries)
+        previous_inventory = {
+            *(assignment.target_id for assignment in plan.assignments),
+            *plan.unassigned_target_ids,
+            *plan.incomplete_target_ids,
+            *(coalition.target_id for coalition in plan.coalitions),
+            *(summary.target_id for summary in plan.demand_summaries),
+        }
+        inventory_changed = (
+            plan.target_count != len(target_ids)
+            or plan.unassigned_target_ids != normalized_unassigned
+            or plan.incomplete_target_ids != normalized_incomplete
+            or plan.coalitions != normalized_coalitions
+            or plan.demand_summaries != normalized_summaries
+        )
+        summary_metadata = tuple(
+            {
+                "target_id": summary.target_id,
+                "demand_required": summary.demand_required,
+                "demand_assigned": summary.demand_assigned,
+                "demand_shortfall": summary.demand_shortfall,
+                "coalition_complete": summary.coalition_complete,
+                "coalition_id": summary.coalition_id,
+                "coalition_version": summary.coalition_version,
+                "primary_resource_count": summary.primary_resource_count,
+            }
+            for summary in normalized_summaries
+        )
+        return replace(
+            plan,
+            target_count=len(target_ids),
+            unassigned_target_ids=normalized_unassigned,
+            incomplete_target_ids=normalized_incomplete,
+            coalitions=normalized_coalitions,
+            demand_summaries=normalized_summaries,
+            last_changed_at=(float(timestamp) if inventory_changed else plan.last_changed_at),
+            metadata={
+                **dict(plan.metadata),
+                "target_count": len(target_ids),
+                "unassigned_target_ids": normalized_unassigned,
+                "incomplete_target_ids": normalized_incomplete,
+                "demand_summaries": summary_metadata,
+                "versioned_target_inventory_schema": (
+                    _VERSIONED_TARGET_INVENTORY_SCHEMA
+                ),
+                "versioned_target_inventory_source": str(source),
+                "versioned_target_inventory_ids": target_ids,
+                "versioned_target_inventory_normalized": inventory_changed,
+                "versioned_target_inventory_added_unassigned_ids": tuple(
+                    target_id
+                    for target_id in normalized_unassigned
+                    if target_id not in set(plan.unassigned_target_ids)
+                ),
+                "versioned_target_inventory_added_incomplete_ids": tuple(
+                    target_id
+                    for target_id in normalized_incomplete
+                    if target_id not in set(plan.incomplete_target_ids)
+                ),
+                "versioned_target_inventory_removed_previous_only_ids": tuple(
+                    sorted(previous_inventory - target_set)
+                ),
+                "versioned_target_inventory_fail_closed": True,
+            },
+        )
 
     def _solve_candidate(
         self,
@@ -2889,10 +3396,18 @@ class AssignmentPlanner:
             or plan.link_type != latest.link_type
         ):
             raise ValueError("authority generation fence cannot change owner or authorization")
+        validated_assignment_plan_payload_sha256(plan)
         if plan.execution_signature() != latest.execution_signature():
-            raise ValueError(
-                "authority generation fence cannot change execution semantics"
-            )
+            if not metadata.get("fault_authority_fence_target_inventory_changed"):
+                raise ValueError(
+                    "authority generation fence inventory change is not declared"
+                )
+            if metadata.get("versioned_target_inventory_schema") != (
+                _VERSIONED_TARGET_INVENTORY_SCHEMA
+            ):
+                raise ValueError(
+                    "authority generation fence inventory schema is missing"
+                )
 
     def _finalize_identity(
         self,

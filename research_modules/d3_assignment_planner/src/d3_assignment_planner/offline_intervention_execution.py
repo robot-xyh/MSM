@@ -28,7 +28,15 @@ from .learning_bundle import (
     load_model_bundle,
     unavailable_promotion_manifest,
 )
-from .models import AssignmentPlan, CostWeights, PlannerConfig
+from .models import (
+    AssignmentPlan,
+    CostWeights,
+    DemandSatisfactionSummary,
+    PlannerConfig,
+    TargetTrack,
+    continue_active_secondary_plan,
+    prepare_secondary_takeover_plan,
+)
 from .paired_intervention import (
     CONTROL_ARM,
     OFFLINE_INTERVENTION_SCOPE,
@@ -42,8 +50,20 @@ from .paired_intervention import (
     canonical_paired_intervention_sha256,
 )
 from .planner import AssignmentPlanner
-from .planning_evidence import PlanningFrameEvidence
-from .runtime_plan_ack import canonical_runtime_payload_sha256
+from .planning_evidence import (
+    PlanningFrameEvidence,
+    canonical_recorded_authority_transition_sha256,
+)
+from .regional import (
+    REGIONAL_OWNER_LAYERS,
+    RegionalAuthorityGrant,
+    RegionalAuthorityInput,
+    RegionalCoalitionCommitEvidence,
+)
+from .runtime_plan_ack import (
+    canonical_runtime_payload_sha256,
+    validated_assignment_plan_payload_sha256,
+)
 from .shadow_evaluation import (
     SHADOW_EVALUATION_SCHEMA_V2,
     ShadowEvaluationReport,
@@ -56,6 +76,9 @@ OFFLINE_PAIRED_INTERVENTION_EXECUTION_SCHEMA_V1 = (
 )
 OFFLINE_PAIRED_INTERVENTION_REPORT_KIND_V1 = (
     "reserved_seed_rule_vs_development_bundle_intervention"
+)
+OFFLINE_ISOLATED_TARGET_INVENTORY_SCHEMA_V1 = (
+    "d3.offline-isolated-target-inventory.v1"
 )
 
 _FORBIDDEN_INPUT_KEYS = frozenset(
@@ -71,6 +94,35 @@ _FORBIDDEN_INPUT_KEYS = frozenset(
         "object_name",
         "airsim_id",
         "offline_truth_labels",
+    }
+)
+
+_REGIONAL_PLAN_EXECUTION_METADATA_KEYS = frozenset(
+    {
+        "plan_schema",
+        "plan_owner",
+        "active_plan_owner",
+        "owner_node_id",
+        "current_plan_owner",
+        "current_plan_owner_node_id",
+        "secondary_takeover_state",
+        "secondary_plan_executable",
+        "secondary_activated_at_s",
+        "secondary_lease_expires_at_s",
+        "secondary_leader_epoch",
+        "activation_state",
+        "activation_at_s",
+        "executable",
+        "regional_plan_schema",
+        "regional_authorities",
+        "regional_owner_layers",
+        "regional_owner_node_ids",
+        "regional_min_lease_expires_at_s",
+        "regional_max_epoch",
+        "regional_execution_allowed",
+        "regional_commit_modes",
+        "regional_single_member_authority_count",
+        "regional_atomic_coalition_commit_count",
     }
 )
 
@@ -260,6 +312,9 @@ def canonical_planning_frame_snapshot_sha256(
         "timestamp_s": evidence.timestamp_s,
         "forced_replan": evidence.forced_replan,
         "previous_plan_version": evidence.previous_plan_version,
+        "recorded_authority_transition_sha256": (
+            evidence.recorded_authority_transition_sha256
+        ),
         "tracks": evidence.tracks,
         "resources": evidence.resources,
         "previous_plan": evidence.previous_plan,
@@ -582,16 +637,31 @@ def _execute_arm(
     previous_plan = evidence.previous_plan
     if previous_plan is not None:
         previous_plan = planner.publish_plan(previous_plan)
-    plan = planner.plan(
-        evidence.tracks,
-        evidence.resources,
-        timestamp=float(evidence.timestamp_s),
-        previous_plan=previous_plan,
-        window_id=None if evidence.plan is None else evidence.plan.window_id,
-        expected_previous_version=arm.expected_previous_plan_version,
-        forced_replan=evidence.forced_replan,
-        publish=False,
-    )
+    if evidence.planning_path == "regional_authority":
+        if previous_plan is None:
+            _fail("offline_regional_authority_replay_previous_plan_missing")
+        authority = _recorded_regional_authority_input(evidence)
+        plan = planner.plan_regional_authority(
+            evidence.tracks,
+            evidence.resources,
+            timestamp=float(evidence.timestamp_s),
+            previous_plan=previous_plan,
+            authority=authority,
+            expected_previous_version=arm.expected_previous_plan_version,
+            window_id=None if evidence.plan is None else evidence.plan.window_id,
+            publish=False,
+        )
+    else:
+        plan = planner.plan(
+            evidence.tracks,
+            evidence.resources,
+            timestamp=float(evidence.timestamp_s),
+            previous_plan=previous_plan,
+            window_id=None if evidence.plan is None else evidence.plan.window_id,
+            expected_previous_version=arm.expected_previous_plan_version,
+            forced_replan=evidence.forced_replan,
+            publish=False,
+        )
     replay = planner.latest_planning_evidence
     if not replay.available:
         _fail("offline_replay_evidence_unavailable", replay.reason)
@@ -605,6 +675,7 @@ def _execute_arm(
     )
     if replay_action_hash != action_mask_hash:
         _fail("action_mask_replay_mismatch")
+    plan = _replay_recorded_authority_identity(plan, evidence=evidence)
     if arm.arm_kind == CONTROL_ARM and evidence.plan is not None:
         if not _control_plan_replay_matches(plan, evidence.plan):
             _fail("control_plan_replay_mismatch")
@@ -633,11 +704,15 @@ def _execute_arm(
         plan,
         pair=pair,
         arm=arm,
+        planning_frame_evidence=evidence,
+        offline_solve_source_plan=evidence.previous_plan,
+        formal_authority_plan=evidence.plan,
+        current_tracks=evidence.tracks,
         bundle_loaded=bundle_loaded,
         learning_applied=learning_applied,
         fallback_reason=fallback_reason,
     )
-    canonical_runtime_payload_sha256(plan)
+    validated_assignment_plan_payload_sha256(plan)
     return _RawArmExecution(
         pair=pair,
         arm=arm,
@@ -657,19 +732,64 @@ def _annotate_isolated_plan(
     *,
     pair: PairedInterventionSeedPair,
     arm: PairedInterventionArmSpecification,
+    planning_frame_evidence: PlanningFrameEvidence,
+    offline_solve_source_plan: AssignmentPlan | None,
+    formal_authority_plan: AssignmentPlan | None,
+    current_tracks: tuple[TargetTrack, ...],
     bundle_loaded: bool,
     learning_applied: bool,
     fallback_reason: str | None,
 ) -> AssignmentPlan:
+    plan = _normalize_isolated_plan_target_inventory(
+        plan,
+        current_tracks=current_tracks,
+    )
     identity_digest = canonical_paired_intervention_sha256(
         {
             "pair_id": pair.pair_id,
             "arm_spec_sha256": arm.fingerprint,
             "output_plan_version": plan.version,
             "binding_signature": tuple(sorted(_binding_signature(plan))),
+            "target_inventory": {
+                "target_count": plan.target_count,
+                "unassigned_target_ids": plan.unassigned_target_ids,
+                "incomplete_target_ids": plan.incomplete_target_ids,
+            },
         }
     )
     plan_id = f"d3-offline-{arm.seed}-{arm.arm_kind}-{identity_digest[:12]}"
+    solve_source_plan_sha256 = (
+        None
+        if offline_solve_source_plan is None
+        else validated_assignment_plan_payload_sha256(
+            offline_solve_source_plan
+        )
+    )
+    authority_plan_sha256 = (
+        None
+        if formal_authority_plan is None
+        else validated_assignment_plan_payload_sha256(formal_authority_plan)
+    )
+    frame_snapshot_sha256 = canonical_planning_frame_snapshot_sha256(
+        planning_frame_evidence
+    )
+    frame_transition_schema = None
+    frame_transition_sha256 = None
+    if (
+        offline_solve_source_plan is not None
+        and formal_authority_plan is not None
+    ):
+        from .isolated_execution_plan import (
+            ISOLATED_EXECUTION_PLANNING_FRAME_SCHEMA_V1,
+            canonical_isolated_execution_planning_frame_sha256,
+        )
+
+        frame_transition_schema = ISOLATED_EXECUTION_PLANNING_FRAME_SCHEMA_V1
+        frame_transition_sha256 = (
+            canonical_isolated_execution_planning_frame_sha256(
+                planning_frame_evidence
+            )
+        )
     assignments = tuple(
         replace(
             assignment,
@@ -682,6 +802,9 @@ def _annotate_isolated_plan(
                 "current_plan_version": plan.version,
                 "intervention_scope": OFFLINE_INTERVENTION_SCOPE,
                 "isolated_simulation": True,
+                "isolated_simulation_only": True,
+                "production_runtime_ack": False,
+                "runtime_publication_allowed": False,
                 "runtime_execution_allowed": False,
             },
         )
@@ -701,18 +824,230 @@ def _annotate_isolated_plan(
             "intervention_scope": OFFLINE_INTERVENTION_SCOPE,
             "isolated_simulation": True,
             "paired_intervention_pair_id": pair.pair_id,
+            "paired_intervention_arm_id": arm.arm_id,
             "paired_intervention_arm_kind": arm.arm_kind,
+            "paired_intervention_seed": arm.seed,
+            "paired_intervention_arm_spec_sha256": arm.fingerprint,
+            "source_snapshot_sha256": arm.observation_input_snapshot_sha256,
+            "planning_frame_schema_version": (
+                planning_frame_evidence.schema_version
+            ),
+            "planning_frame_transition_schema_version": (
+                frame_transition_schema
+            ),
+            "planning_frame_path": planning_frame_evidence.planning_path,
+            "planning_frame_timestamp_s": float(
+                planning_frame_evidence.timestamp_s
+            ),
+            "planning_frame_snapshot_sha256": frame_snapshot_sha256,
+            "planning_frame_transition_sha256": frame_transition_sha256,
+            "offline_solve_source_plan_id": arm.source_plan_id,
+            "offline_solve_source_plan_version": arm.source_plan_version,
+            "offline_solve_source_plan_payload_sha256": (
+                solve_source_plan_sha256
+            ),
+            "formal_authority_plan_id": (
+                None
+                if formal_authority_plan is None
+                else formal_authority_plan.plan_id
+            ),
+            "formal_authority_plan_version": (
+                None
+                if formal_authority_plan is None
+                else formal_authority_plan.version
+            ),
+            "formal_authority_plan_payload_sha256": authority_plan_sha256,
             "learning_bundle_loaded_for_offline_intervention": bundle_loaded,
             "learning_cost_intervention_applied": learning_applied,
             "learning_fallback_reason": fallback_reason,
             "ppo_enabled": False,
             "online_assist_enabled": False,
             "online_authority_enabled": False,
+            "isolated_simulation_only": True,
+            "production_runtime_ack": False,
+            "runtime_publication_allowed": False,
             "runtime_execution_allowed": False,
             "runtime_ack_available": False,
             "outcome_available": False,
             "counterfactual_available": False,
             "causal_available": False,
+        },
+    )
+
+
+def _normalize_isolated_plan_target_inventory(
+    plan: AssignmentPlan,
+    *,
+    current_tracks: tuple[TargetTrack, ...],
+) -> AssignmentPlan:
+    """Make the offline arm inventory explicit without changing bindings.
+
+    A hysteresis hold can preserve the previous executable bindings while the
+    current planning snapshot already contains new or unassignable targets.
+    Those targets are pending execution, but they still belong to the current
+    offline input roster and must be represented as unassigned/incomplete.
+    """
+
+    current_target_ids = tuple(track.track_id for track in current_tracks)
+    if len(current_target_ids) != len(set(current_target_ids)):
+        _fail("offline_plan_current_target_inventory_duplicate")
+    if plan.target_count != len(current_target_ids):
+        _fail(
+            "offline_plan_target_count_snapshot_mismatch",
+            "offline plan target_count does not match the current input roster",
+        )
+    current_target_set = set(current_target_ids)
+    track_by_id = {track.track_id: track for track in current_tracks}
+    assigned_counts = Counter(assignment.target_id for assignment in plan.assignments)
+    previous_only_assignment_ids = tuple(
+        sorted(set(assigned_counts) - current_target_set)
+    )
+    if previous_only_assignment_ids:
+        _fail(
+            "offline_plan_previous_only_executable_target",
+            "offline plan contains an executable binding outside the current roster",
+        )
+
+    coalition_by_target = {}
+    for coalition in plan.coalitions:
+        if coalition.target_id in coalition_by_target:
+            _fail("offline_plan_duplicate_target_coalition")
+        coalition_by_target[coalition.target_id] = coalition
+    summary_by_target = {}
+    for summary in plan.demand_summaries:
+        if summary.target_id in summary_by_target:
+            _fail("offline_plan_duplicate_target_demand_summary")
+        summary_by_target[summary.target_id] = summary
+
+    normalized_summaries: list[DemandSatisfactionSummary] = []
+    unassigned_target_ids: list[str] = []
+    incomplete_target_ids: list[str] = []
+    for target_id in current_target_ids:
+        demand = track_by_id[target_id].effective_demand
+        required = int(demand.required_resource_count)
+        assigned = int(assigned_counts.get(target_id, 0))
+        if assigned > required:
+            _fail("offline_plan_target_assignment_exceeds_demand")
+        coalition = coalition_by_target.get(target_id)
+        if coalition is not None:
+            if coalition.required_resource_count != required:
+                _fail("offline_plan_coalition_demand_mismatch")
+            if coalition.assigned_resource_count != assigned:
+                _fail("offline_plan_coalition_assignment_count_mismatch")
+        prior_summary = summary_by_target.get(target_id)
+        if prior_summary is not None and (
+            prior_summary.demand_required != required
+            or prior_summary.demand_assigned != assigned
+            or prior_summary.demand_shortfall != max(0, required - assigned)
+        ):
+            _fail("offline_plan_demand_summary_mismatch")
+
+        shortfall = max(0, required - assigned)
+        if assigned == 0:
+            unassigned_target_ids.append(target_id)
+        if shortfall > 0:
+            incomplete_target_ids.append(target_id)
+        normalized_summaries.append(
+            DemandSatisfactionSummary(
+                target_id=target_id,
+                demand_required=required,
+                demand_assigned=assigned,
+                demand_shortfall=shortfall,
+                coalition_complete=shortfall == 0,
+                coalition_id=(
+                    coalition.coalition_id
+                    if coalition is not None
+                    else (
+                        None
+                        if prior_summary is None
+                        else prior_summary.coalition_id
+                    )
+                ),
+                coalition_version=(
+                    coalition.version
+                    if coalition is not None
+                    else (
+                        None
+                        if prior_summary is None
+                        else prior_summary.coalition_version
+                    )
+                ),
+                primary_resource_count=int(demand.primary_resource_count),
+            )
+        )
+
+    normalized_unassigned = tuple(unassigned_target_ids)
+    normalized_incomplete = tuple(incomplete_target_ids)
+    normalized_coalitions = tuple(
+        coalition
+        for coalition in plan.coalitions
+        if coalition.target_id in current_target_set
+    )
+    previous_inventory = {
+        *(assignment.target_id for assignment in plan.assignments),
+        *plan.unassigned_target_ids,
+        *plan.incomplete_target_ids,
+        *(coalition.target_id for coalition in plan.coalitions),
+        *(summary.target_id for summary in plan.demand_summaries),
+    }
+    added_unassigned = tuple(
+        target_id
+        for target_id in normalized_unassigned
+        if target_id not in set(plan.unassigned_target_ids)
+    )
+    added_incomplete = tuple(
+        target_id
+        for target_id in normalized_incomplete
+        if target_id not in set(plan.incomplete_target_ids)
+    )
+    removed_previous_only = tuple(sorted(previous_inventory - current_target_set))
+    changed = (
+        normalized_unassigned != tuple(plan.unassigned_target_ids)
+        or normalized_incomplete != tuple(plan.incomplete_target_ids)
+        or normalized_coalitions != tuple(plan.coalitions)
+        or tuple(normalized_summaries) != tuple(plan.demand_summaries)
+    )
+    normalized_summary_metadata = tuple(
+        {
+            "target_id": summary.target_id,
+            "demand_required": summary.demand_required,
+            "demand_assigned": summary.demand_assigned,
+            "demand_shortfall": summary.demand_shortfall,
+            "coalition_complete": summary.coalition_complete,
+            "coalition_id": summary.coalition_id,
+            "coalition_version": summary.coalition_version,
+            "primary_resource_count": summary.primary_resource_count,
+        }
+        for summary in normalized_summaries
+    )
+    return replace(
+        plan,
+        unassigned_target_ids=normalized_unassigned,
+        incomplete_target_ids=normalized_incomplete,
+        coalitions=normalized_coalitions,
+        demand_summaries=tuple(normalized_summaries),
+        metadata={
+            **dict(plan.metadata),
+            "target_count": len(current_target_ids),
+            "unassigned_target_ids": normalized_unassigned,
+            "incomplete_target_ids": normalized_incomplete,
+            "demand_summaries": normalized_summary_metadata,
+            "isolated_target_inventory_schema": (
+                OFFLINE_ISOLATED_TARGET_INVENTORY_SCHEMA_V1
+            ),
+            "isolated_target_inventory_ids": current_target_ids,
+            "isolated_target_inventory_normalized": changed,
+            "isolated_target_inventory_added_unassigned_ids": (
+                added_unassigned
+            ),
+            "isolated_target_inventory_added_incomplete_ids": (
+                added_incomplete
+            ),
+            "isolated_target_inventory_removed_previous_only_ids": (
+                removed_previous_only
+            ),
+            "isolated_target_inventory_production_runtime_ack": False,
+            "isolated_target_inventory_simulation_only": True,
         },
     )
 
@@ -724,6 +1059,13 @@ def _offline_replay_planner_config(
     plan = evidence.plan
     if plan is None:
         _fail("offline_execution_planning_frame_incomplete")
+    if evidence.planning_path == "authority_identity_publish":
+        if evidence.previous_plan is None:
+            _fail("offline_authority_replay_previous_plan_missing")
+        # The online planner first emits an owner-neutral candidate and only
+        # then applies the D4-selected authority identity. Replay that same
+        # ordering instead of planning directly as the recorded new owner.
+        plan = evidence.previous_plan
     return replace(
         config,
         human_authorization_state=plan.human_authorization_state,
@@ -731,6 +1073,439 @@ def _offline_replay_planner_config(
         target_node_id=plan.target_node_id,
         link_type=plan.link_type,
     )
+
+
+def _recorded_regional_authority_input(
+    evidence: PlanningFrameEvidence,
+) -> RegionalAuthorityInput:
+    """Rebuild the anonymous D4 authority input recorded in one D3 frame."""
+
+    recorded = evidence.plan
+    previous = evidence.previous_plan
+    timestamp = evidence.timestamp_s
+    if (
+        evidence.planning_path != "regional_authority"
+        or evidence.selection_source != "regional_authority"
+        or recorded is None
+        or previous is None
+        or timestamp is None
+    ):
+        _fail("offline_regional_authority_replay_evidence_incomplete")
+    try:
+        recorded_sha256 = validated_assignment_plan_payload_sha256(recorded)
+        previous_sha256 = validated_assignment_plan_payload_sha256(previous)
+        transition_sha256 = canonical_recorded_authority_transition_sha256(
+            planning_path=evidence.planning_path,
+            selection_source=evidence.selection_source,
+            timestamp_s=float(timestamp),
+            plan=recorded,
+            previous_plan=previous,
+        )
+    except Exception as exc:
+        _fail("offline_regional_authority_replay_payload_invalid", str(exc))
+    if not recorded_sha256 or not previous_sha256:
+        _fail("offline_regional_authority_replay_payload_invalid")
+    if transition_sha256 != evidence.recorded_authority_transition_sha256:
+        _fail("offline_regional_authority_replay_transition_sha256_mismatch")
+    if (
+        recorded.version != previous.version + 1
+        or recorded.previous_plan_id != previous.plan_id
+    ):
+        _fail("offline_regional_authority_replay_plan_lineage_invalid")
+    if (
+        abs(float(recorded.created_at) - float(timestamp)) > 1.0e-9
+        or float(recorded.created_at) <= float(previous.created_at)
+    ):
+        _fail("offline_regional_authority_replay_plan_time_invalid")
+
+    metadata = dict(recorded.metadata)
+    if any(
+        metadata.get(key) != "regional"
+        for key in ("plan_owner", "active_plan_owner", "current_plan_owner")
+    ):
+        _fail("offline_regional_authority_replay_owner_invalid")
+    if (
+        metadata.get("activation_state") != "active"
+        or metadata.get("executable") is not True
+        or not str(recorded.source_node_id or "").strip()
+        or recorded.link_type != "regional_multi_owner"
+    ):
+        _fail("offline_regional_authority_replay_plan_contract_invalid")
+    try:
+        activation_at_s = float(metadata["activation_at_s"])
+        plan_lease_expires_at_s = float(metadata["secondary_lease_expires_at_s"])
+        plan_epoch = int(metadata["secondary_leader_epoch"])
+    except (KeyError, TypeError, ValueError) as exc:
+        _fail("offline_regional_authority_replay_plan_contract_invalid", str(exc))
+    if (
+        not isfinite(activation_at_s)
+        or activation_at_s > float(timestamp)
+        or not isfinite(plan_lease_expires_at_s)
+        or plan_lease_expires_at_s <= float(timestamp)
+        or plan_epoch < 0
+    ):
+        _fail("offline_regional_authority_replay_plan_contract_invalid")
+
+    track_ids = tuple(track.track_id for track in evidence.tracks)
+    target_set = set(track_ids)
+    pending = set(recorded.unassigned_target_ids)
+    if pending != set(recorded.incomplete_target_ids):
+        _fail("offline_regional_authority_replay_pending_inventory_invalid")
+    assignments_by_target = recorded.assignments_by_target()
+    if set(assignments_by_target).intersection(pending):
+        _fail("offline_regional_authority_replay_pending_target_authorized")
+    if set(assignments_by_target) | pending != target_set:
+        _fail("offline_regional_authority_replay_target_inventory_mismatch")
+
+    summary_by_target = {
+        summary.target_id: summary for summary in recorded.demand_summaries
+    }
+    if set(summary_by_target) != target_set:
+        _fail("offline_regional_authority_replay_demand_inventory_mismatch")
+    coalition_by_target = {
+        coalition.target_id: coalition for coalition in recorded.coalitions
+    }
+    if len(coalition_by_target) != len(recorded.coalitions):
+        _fail("offline_regional_authority_replay_coalition_inventory_invalid")
+
+    groups: dict[
+        tuple[str, str, str, int, float],
+        dict[str, Any],
+    ] = {}
+    region_contracts: dict[str, tuple[str, str, str, int, float]] = {}
+    assignment_epochs: list[int] = []
+    assignment_leases: list[float] = []
+    for target_id in track_ids:
+        target_assignments = assignments_by_target.get(target_id, ())
+        summary = summary_by_target[target_id]
+        if not target_assignments:
+            if (
+                target_id not in pending
+                or summary.demand_assigned != 0
+                or summary.demand_shortfall != summary.demand_required
+                or summary.coalition_complete
+            ):
+                _fail("offline_regional_authority_replay_pending_inventory_invalid")
+            coalition = coalition_by_target.get(target_id)
+            if coalition is not None and (
+                coalition.members
+                or coalition.assigned_resource_count != 0
+                or coalition.complete
+            ):
+                _fail("offline_regional_authority_replay_pending_coalition_invalid")
+            continue
+
+        if summary.demand_assigned != len(target_assignments):
+            _fail("offline_regional_authority_replay_assignment_count_mismatch")
+        first_metadata = dict(target_assignments[0].metadata)
+        try:
+            owner_layer = str(first_metadata["regional_owner_layer"]).strip().lower()
+            region_id = str(first_metadata["regional_region_id"]).strip()
+            owner_node_id = str(first_metadata["owner_node_id"]).strip()
+            epoch = int(first_metadata["regional_epoch"])
+            lease_expires_at_s = float(
+                first_metadata["regional_lease_expires_at_s"]
+            )
+            commit_required = bool(first_metadata["regional_commit_required"])
+            commit_mode = str(first_metadata["regional_commit_mode"]).strip()
+            commit_state = str(first_metadata["regional_commit_state"]).strip()
+            commit_evidence_present = bool(
+                first_metadata["regional_commit_evidence_present"]
+            )
+        except (KeyError, TypeError, ValueError) as exc:
+            _fail("offline_regional_authority_replay_assignment_contract_invalid", str(exc))
+        if (
+            owner_layer not in REGIONAL_OWNER_LAYERS
+            or not region_id
+            or not owner_node_id
+            or epoch < previous.version
+            or not isfinite(lease_expires_at_s)
+            or lease_expires_at_s <= float(timestamp)
+        ):
+            _fail("offline_regional_authority_replay_assignment_contract_invalid")
+
+        resource_ids: list[str] = []
+        for assignment in target_assignments:
+            item_metadata = dict(assignment.metadata)
+            item_contract = (
+                str(item_metadata.get("regional_owner_layer", "")).strip().lower(),
+                str(item_metadata.get("regional_region_id", "")).strip(),
+                str(item_metadata.get("owner_node_id", "")).strip(),
+                int(item_metadata.get("regional_epoch", -1)),
+                float(item_metadata.get("regional_lease_expires_at_s", float("nan"))),
+                bool(item_metadata.get("regional_commit_required", False)),
+                str(item_metadata.get("regional_commit_mode", "")).strip(),
+                str(item_metadata.get("regional_commit_state", "")).strip(),
+                bool(item_metadata.get("regional_commit_evidence_present", False)),
+            )
+            expected_contract = (
+                owner_layer,
+                region_id,
+                owner_node_id,
+                epoch,
+                lease_expires_at_s,
+                commit_required,
+                commit_mode,
+                commit_state,
+                commit_evidence_present,
+            )
+            if item_contract != expected_contract:
+                _fail("offline_regional_authority_replay_assignment_contract_mismatch")
+            if (
+                item_metadata.get("plan_owner") != "regional"
+                or item_metadata.get("active_plan_owner") != "regional"
+                or item_metadata.get("activation_state") != "active"
+                or item_metadata.get("executable") is not True
+                or assignment.source_node_id != owner_node_id
+                or assignment.target_node_id != assignment.resource_id
+                or assignment.link_type != f"regional_{owner_layer}"
+            ):
+                _fail("offline_regional_authority_replay_assignment_identity_invalid")
+            resource_ids.append(assignment.resource_id)
+
+        expected_commit_required = summary.demand_required > 1
+        expected_commit_mode = (
+            "atomic_coalition_commit"
+            if expected_commit_required
+            else "single_member_authority"
+        )
+        if (
+            commit_required != expected_commit_required
+            or commit_mode != expected_commit_mode
+        ):
+            _fail("offline_regional_authority_replay_commit_contract_invalid")
+        if commit_required:
+            if not commit_evidence_present or commit_state != "committed":
+                _fail("offline_regional_authority_replay_commit_contract_invalid")
+        elif commit_evidence_present:
+            if commit_state != "single_member_authorized":
+                _fail("offline_regional_authority_replay_commit_contract_invalid")
+        elif commit_state != "single_member_authority":
+            _fail("offline_regional_authority_replay_commit_contract_invalid")
+
+        group_key = (
+            region_id,
+            owner_layer,
+            owner_node_id,
+            epoch,
+            lease_expires_at_s,
+        )
+        prior_region_contract = region_contracts.setdefault(region_id, group_key)
+        if prior_region_contract != group_key:
+            _fail("offline_regional_authority_replay_region_contract_conflict")
+        group = groups.setdefault(
+            group_key,
+            {"target_ids": [], "assignment_map": {}, "commits": []},
+        )
+        group["target_ids"].append(target_id)
+        group["assignment_map"][target_id] = tuple(resource_ids)
+        if commit_evidence_present:
+            coalition = coalition_by_target.get(target_id)
+            group["commits"].append(
+                RegionalCoalitionCommitEvidence(
+                    target_id=target_id,
+                    coordinator_id=owner_node_id,
+                    epoch=epoch,
+                    lease_expires_at_s=lease_expires_at_s,
+                    required_member_ids=tuple(resource_ids),
+                    acked_member_ids=tuple(resource_ids),
+                    commit_required=commit_required,
+                    state=commit_state,
+                    atomic_committed=commit_required,
+                    execution_authorized=True,
+                    coalition_id=(None if coalition is None else coalition.coalition_id),
+                    coalition_version=(None if coalition is None else coalition.version),
+                )
+            )
+        assignment_epochs.append(epoch)
+        assignment_leases.append(lease_expires_at_s)
+
+    if not groups:
+        _fail("offline_regional_authority_replay_no_executable_grants")
+    if (
+        plan_epoch != max(assignment_epochs)
+        or abs(plan_lease_expires_at_s - min(assignment_leases)) > 1.0e-9
+    ):
+        _fail("offline_regional_authority_replay_plan_authority_mismatch")
+    owner_ids = {key[2] for key in groups}
+    plan_owner_node_id = str(metadata.get("owner_node_id", "")).strip()
+    if len(owner_ids) == 1 and plan_owner_node_id != next(iter(owner_ids)):
+        _fail("offline_regional_authority_replay_plan_owner_mismatch")
+    if metadata.get("current_plan_owner_node_id") != plan_owner_node_id:
+        _fail("offline_regional_authority_replay_plan_owner_mismatch")
+
+    grants = tuple(
+        RegionalAuthorityGrant(
+            region_id=region_id,
+            owner_layer=owner_layer,
+            owner_node_id=owner_node_id,
+            owner_role=f"{owner_layer}_owner",
+            epoch=epoch,
+            source_plan_id=previous.plan_id,
+            source_plan_version=previous.version,
+            lease_expires_at_s=lease_expires_at_s,
+            target_ids=tuple(group["target_ids"]),
+            assigned_resource_ids_by_target=dict(group["assignment_map"]),
+            coalition_commits=tuple(group["commits"]),
+            decision_reason="offline_recorded_authority_replay",
+        )
+        for (
+            region_id,
+            owner_layer,
+            owner_node_id,
+            epoch,
+            lease_expires_at_s,
+        ), group in sorted(groups.items())
+    )
+    return RegionalAuthorityInput(
+        adjudicated_at_s=activation_at_s,
+        grants=grants,
+    )
+
+
+def _replay_recorded_regional_authority_identity(
+    plan: AssignmentPlan,
+    *,
+    evidence: PlanningFrameEvidence,
+) -> AssignmentPlan:
+    """Project a validated online regional replay onto its recorded identity."""
+
+    recorded = evidence.plan
+    previous = evidence.previous_plan
+    if recorded is None or previous is None:
+        _fail("offline_regional_authority_replay_evidence_incomplete")
+    _recorded_regional_authority_input(evidence)
+    validated_assignment_plan_payload_sha256(plan)
+    if (
+        _binding_signature(plan) != _binding_signature(recorded)
+        or plan.assignment_signature() != recorded.assignment_signature()
+        or plan.unassigned_target_ids != recorded.unassigned_target_ids
+        or plan.incomplete_target_ids != recorded.incomplete_target_ids
+        or plan.demand_summaries != recorded.demand_summaries
+        or plan.version != recorded.version
+        or plan.previous_plan_id != previous.plan_id
+        or plan.window_id != recorded.window_id
+        or plan.decision_state != recorded.decision_state
+        or plan.changed != recorded.changed
+        or plan.resource_count != recorded.resource_count
+        or plan.target_count != recorded.target_count
+        or abs(float(plan.created_at) - float(recorded.created_at)) > 1.0e-9
+    ):
+        _fail("offline_regional_authority_replay_solver_semantics_mismatch")
+
+    projected_metadata = dict(plan.metadata)
+    for key in _REGIONAL_PLAN_EXECUTION_METADATA_KEYS:
+        projected_metadata.pop(key, None)
+    projected_metadata.update(
+        {
+            key: value
+            for key, value in recorded.metadata.items()
+            if key in _REGIONAL_PLAN_EXECUTION_METADATA_KEYS
+        }
+    )
+    replayed = replace(
+        plan,
+        source_node_id=recorded.source_node_id,
+        target_node_id=recorded.target_node_id,
+        link_type=recorded.link_type,
+        metadata={
+            **projected_metadata,
+            "offline_regional_authority_identity_replayed": True,
+            "offline_regional_authority_transition_sha256": (
+                evidence.recorded_authority_transition_sha256
+            ),
+            "offline_regional_authority_production_ack": False,
+        },
+    )
+    validated_assignment_plan_payload_sha256(replayed)
+    if not _control_plan_replay_matches(replayed, recorded):
+        _fail("offline_regional_authority_replay_execution_signature_mismatch")
+    return replayed
+
+
+def _replay_recorded_authority_identity(
+    plan: AssignmentPlan,
+    *,
+    evidence: PlanningFrameEvidence,
+) -> AssignmentPlan:
+    """Reapply a recorded D3 authority transform after deterministic solving."""
+
+    if evidence.planning_path == "regional_authority":
+        return _replay_recorded_regional_authority_identity(
+            plan,
+            evidence=evidence,
+        )
+    if evidence.planning_path != "authority_identity_publish":
+        return plan
+    recorded = evidence.plan
+    previous = evidence.previous_plan
+    if recorded is None or previous is None or evidence.timestamp_s is None:
+        _fail("offline_authority_replay_evidence_incomplete")
+    validated_assignment_plan_payload_sha256(recorded)
+    metadata = dict(recorded.metadata)
+    if metadata.get("active_plan_owner") != "secondary":
+        _fail("offline_authority_replay_owner_unsupported")
+    if metadata.get("secondary_takeover_state") != "secondary_plan_active":
+        _fail("offline_authority_replay_state_invalid")
+    if metadata.get("secondary_plan_executable") is not True:
+        _fail("offline_authority_replay_not_executable")
+
+    owner_node_id = str(
+        metadata.get("owner_node_id") or recorded.source_node_id or ""
+    ).strip()
+    link_type = str(recorded.link_type or "").strip()
+    try:
+        activated_at_s = float(metadata["secondary_activated_at_s"])
+        lease_expires_at_s = float(metadata["secondary_lease_expires_at_s"])
+        leader_epoch = int(metadata["secondary_leader_epoch"])
+    except (KeyError, TypeError, ValueError) as exc:
+        _fail("offline_authority_replay_contract_invalid", str(exc))
+    if (
+        not owner_node_id
+        or not link_type
+        or not isfinite(activated_at_s)
+        or not isfinite(lease_expires_at_s)
+        or leader_epoch <= 0
+    ):
+        _fail("offline_authority_replay_contract_invalid")
+
+    previous_owner = str(
+        previous.metadata.get("active_plan_owner", "center")
+    ).strip()
+    if previous_owner == "secondary":
+        replayed = continue_active_secondary_plan(
+            plan,
+            previous_plan=previous,
+            readiness_class="takeover_ready",
+            readiness_sustained=True,
+            published_at_s=float(evidence.timestamp_s),
+            lease_expires_at_s=lease_expires_at_s,
+            leader_epoch=leader_epoch,
+        )
+    else:
+        replayed = prepare_secondary_takeover_plan(
+            plan,
+            supersedes_plan=previous,
+            secondary_node_id=owner_node_id,
+            readiness_class="takeover_ready",
+            readiness_sustained=True,
+            activated_at_s=activated_at_s,
+            lease_expires_at_s=lease_expires_at_s,
+            leader_epoch=leader_epoch,
+            target_node_id=recorded.target_node_id,
+            link_type=link_type,
+        )
+    replayed = replace(
+        replayed,
+        metadata={
+            **dict(replayed.metadata),
+            "offline_authority_identity_replayed": True,
+            "offline_authority_identity_source_path": evidence.planning_path,
+            "offline_authority_identity_production_ack": False,
+        },
+    )
+    validated_assignment_plan_payload_sha256(replayed)
+    return replayed
 
 
 def _paired_frame_metrics(
@@ -881,7 +1656,9 @@ def _finalize_arm_execution(
         current_plan_version=raw.arm.current_plan_version,
         output_plan_id=raw.plan.plan_id,
         output_plan_version=raw.plan.version,
-        output_plan_payload_sha256=canonical_runtime_payload_sha256(raw.plan),
+        output_plan_payload_sha256=(
+            validated_assignment_plan_payload_sha256(raw.plan)
+        ),
         isolated_simulation=True,
         learning_cost_applied=raw.learning_cost_applied,
         rule_matrix_unchanged=True,
@@ -956,6 +1733,28 @@ def _validate_planning_frame_basics(evidence: PlanningFrameEvidence) -> None:
     _validate_matrix_result(evidence.rule_matrix_result)
     _assert_truth_free(evidence)
     _assert_all_finite(evidence)
+    if evidence.planning_path == "regional_authority":
+        if evidence.plan is None or evidence.previous_plan is None:
+            _fail("offline_regional_authority_replay_evidence_incomplete")
+        try:
+            expected_transition_sha256 = (
+                canonical_recorded_authority_transition_sha256(
+                    planning_path=evidence.planning_path,
+                    selection_source=evidence.selection_source,
+                    timestamp_s=float(evidence.timestamp_s),
+                    plan=evidence.plan,
+                    previous_plan=evidence.previous_plan,
+                )
+            )
+        except Exception as exc:
+            _fail("offline_regional_authority_replay_payload_invalid", str(exc))
+        if (
+            evidence.recorded_authority_transition_sha256
+            != expected_transition_sha256
+        ):
+            _fail("offline_regional_authority_replay_transition_sha256_mismatch")
+    elif evidence.recorded_authority_transition_sha256 is not None:
+        _fail("offline_recorded_authority_transition_unexpected")
 
 
 def _validate_matrix_result(result: CostMatrixResult) -> None:
