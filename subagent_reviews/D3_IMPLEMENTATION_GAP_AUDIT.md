@@ -667,3 +667,32 @@ assignment/binding/control 为 3/3/3，held=0，online truth use=0。D3 全量 3
 
 本轮没有新增 P0。原“D6 离线 join 尚无 D3 consumer”改为已关闭；“正式可归因 reward”
 继续为 P1，且缺失原因已由版本化合同固定。
+
+## 32. 保留 Seed 配对干预 GAP 更新（2026-07-21）
+
+### 已关闭
+
+- **P1 D3 配对实验清单边界**：新增版本化 specification/manifest，严格覆盖 seed
+  `1000-1019` 和每 seed 两个隔离 arm。场景配置、初始状态、输入快照、D1/D2 lineage、
+  规则代价、bundle、阈值、安全外壳及计划版本均按 SHA/版本配对。
+- **P1 control/treatment 语义**：control 固定走规则/Hungarian；treatment 只在离线仿真
+  干预 arm 内允许有界学习残差影响计划。它不开放 online assist 或 authority。
+- **P1 安全与失败关闭**：动作掩码、可达性、容量、版本、迟滞、安全门和规则回退进入
+  执行收据合同。缺 arm、seed 重复、配对哈希不等价、bundle/阈值未冻结、stale plan、
+  非有限值、在线 truth key 和非法身份改写均拒绝。
+- **P1 证据分层**：manifest 分别报告 paired input equivalence、isolated treatment applied、
+  runtime ACK、outcome、counterfactual 和 causal。ACK 引用复用现有 verified ACK 对象；
+  D3 不计算 D6 outcome、反事实或因果值。
+
+### 仍开放
+
+- **P1 正式执行证据**：本轮没有运行 seed `1000-1019`，因此 execution receipt、完整
+  runtime ACK inventory 和 treatment applied 结果仍为 unavailable。
+- **P1 D6 结果与因果统计**：outcome、counterfactual、causal 仍需 main/D6 以独立
+  sidecar 按 pair/arm/hash 联接。D3 合同不能自行关闭该缺口。
+- **P1 准入结论**：尚无正式同 seed 性能和非退化结果。PPO、assist、online authority
+  继续关闭，规则回退继续启用；冻结 900-episode 数据不修改、不回填。
+
+本项关闭了“D3 没有正式保留 seed 配对干预 specification/manifest”的接口缺口，没有
+关闭正式实验和因果证据缺口，也没有新增 P0。2026-07-21 专项 `36 passed`，D3 全量
+`355 passed, 1 skipped`；唯一 skip 为可选 OR-Tools。

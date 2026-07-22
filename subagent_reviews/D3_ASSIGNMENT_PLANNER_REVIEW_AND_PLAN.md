@@ -902,3 +902,25 @@ counterfactual、causal、formal reward 全部 unavailable，PPO/assist/authorit
 专项 16 项和真实 main 3v3、seed 41、1.2 秒集成样本通过；D3 全量为
 `319 passed, 1 skipped`。下一步由 main/D6 生成规则/候选同 seed 配对 episode 和计划级
 结果 sidecar，再由 D3 定义后续 reward schema 版本；不得在 v1 上放宽门限。
+
+## 35. 保留 Seed 配对干预复核（2026-07-21）
+
+D3 已补齐规则基线与学习代价修正的保留 seed 实验合同。固定目录为 `1000-1019`，每个
+seed 必须有一条 control 和一条 treatment，且使用不同 isolation id。两条 arm 共享相同
+场景、初始世界状态、观测输入、D1/D2 lineage、规则代价配置、D3 bundle、阈值、安全外壳
+和 source/current plan 版本。任一字段或 SHA 不同都不再被解释为同 seed 配对。
+
+control 的求解路径固定为现有规则代价和 Hungarian。treatment 只在离线仿真 arm 内允许
+`C_final=C_rule+alpha*tanh(delta_C)` 影响求解输入。执行收据要求确定性动作掩码、可达性、
+容量、版本、迟滞和安全门全部生效，模型异常时仍可回退规则路径。该语义不改变线上权限：
+PPO、assist 和 authority 均为 false，规则回退为 true。
+
+manifest 复用现有 paired evaluator、runtime ACK 和 runtime reward 证据 schema。输入
+等价性可由 D3 specification 独立确认；treatment 是否实际应用必须有完整 40 条 arm 收据；
+runtime ACK 只引用经过现有验证器确认的 ACK。outcome、counterfactual 和 causal 仍由 D6
+sidecar 独立提供，没有 sidecar 时保持 unavailable。
+
+本轮完成的是接口、JSON 往返和失败关闭测试，没有执行正式 20-seed 配对实验，也没有
+生成性能或因果结论。main 后续负责隔离 episode 和运行时记录，D6 负责 outcome join 与
+统计；D3 不扩展为跨模块 runner。专项为 `36 passed`，D3 全量为
+`355 passed, 1 skipped`；唯一 skip 为可选 OR-Tools。

@@ -1763,3 +1763,56 @@ window 执行下列检查：
 在线真值泄漏、缺字段、自报 reward/反事实/因果、错误 binding、序号错误、双包导入和真实
 main-D6 集成。真实样本为三维质点 3v3、seed 41、1.2 秒。D3 全量为
 `319 passed, 1 skipped`，唯一 skip 是可选 OR-Tools。
+
+## 保留 Seed 配对干预合同（2026-07-21）
+
+### 规范结构
+
+`PairedInterventionSpecification` 固定 seed `1000-1019`。每个
+`PairedInterventionSeedPair` 由 control/treatment 两条
+`PairedInterventionArmSpecification` 组成。arm 重复保存输入 lineage，使校验器可以直接
+发现两条路径的场景配置、初始状态、观测快照、D1/D2 lineage、规则代价、bundle、阈值、
+安全外壳或计划版本不一致。bundle 和阈值除版本外还必须携带 SHA-256 和 frozen 标志。
+
+计划时序同时约束 source plan version、expected previous version、current version、计划
+创建时刻、干预时刻和有效期。版本不相等或干预发生在有效期外时返回 stale 错误。规范还
+固定 `PPO=false`、`online_assist=false`、`online_authority=false` 和
+`rule_fallback=true`，因此 treatment 的实验行为不能被解释为线上授权。
+
+### 执行收据
+
+control 的 planner path 固定为 `rule_cost_then_hungarian`，不得声明学习代价已应用。
+treatment 固定为 `bounded_residual_then_hungarian`。学习输出只改变隔离 arm 的候选代价：
+
+```text
+C_treatment = C_rule + alpha * tanh(delta_C)
+```
+
+收据绑定 arm SHA、paired evaluator report SHA、输入快照、规则矩阵、动作掩码和输出计划
+SHA。动作掩码、可达性、容量、版本、迟滞和安全门必须全部标记为已执行；原规则矩阵必须
+保持不变。若学习输出不可用，treatment 必须记录规则回退和原因，不能同时声称 residual
+已应用。非有限值、在线标签字段或 `global_track_id` 改写计数非零时拒绝收据。
+
+完整执行层必须一次提供 20 个 seed 的 40 条 arm 收据，缺一条即失败关闭。运行时 ACK
+引用通过 `PairedInterventionRuntimeAckReference.from_verified_ack(...)` 从既有
+`AssignmentPlanRuntimeAckEvidence` 建立，并再次核对输出 plan id/version 和学习采用状态。
+部分 ACK 可以被记录为 partial，但不能声明完整运行 ACK 可用。
+
+### 可用性和命令行
+
+manifest 的可用性分为 paired input equivalence、isolated treatment applied、runtime
+ACK、outcome、counterfactual 和 causal。前三层分别由规范、执行收据和已验证 ACK 决定。
+D3 manifest 不接收 D6 结果，因此后三层在本版本固定为 unavailable。
+
+现有学习命令行增加：
+
+```bash
+python3 -m d3_assignment_planner.learning_cli \
+  validate-paired-intervention \
+  --input paired_manifest.json \
+  --output paired_manifest.canonical.json
+```
+
+该入口只做严格载入、哈希复核和规范化 JSON 输出，不运行 PPO、不启动仿真、不产生实际
+20-seed 结果。2026-07-21 专项测试为 `36 passed`，D3 全量为
+`355 passed, 1 skipped`；唯一 skip 为可选 OR-Tools。

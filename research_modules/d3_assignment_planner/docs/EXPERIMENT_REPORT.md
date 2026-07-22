@@ -796,3 +796,20 @@ OR-Tools 对照。冻结 900 episode/1604 帧正式数据没有新 ACK，本次�
 ACK 到 observed outcome 的合同断点已关闭。正式 reward 仍缺计划级运行分项、同 seed
 配对结果、反事实和因果证据，因此尚不能启动 PPO。五米事件和距离改善可用于诊断窗口
 是否有结果，不用于宣称分配策略收益。
+
+## 保留 Seed 配对干预合同测试（2026-07-21）
+
+本轮只验证 D3 配对干预的软件合同，没有运行 seed `1000-1019` 的实际 episode。测试构造
+完整的 20 组 control/treatment 规范，检查 JSON 往返、规范哈希、隔离 arm、输入等价、
+执行收据和既有 runtime ACK 引用。验收门限为所有正例通过、所有篡改负例失败关闭、
+outcome/counterfactual/causal 在无 D6 sidecar 时保持 unavailable。
+
+专项共 36 项，覆盖缺 arm、seed 重复或缺失、场景/初始状态/观测快照不一致、bundle 或
+阈值未冻结、PPO/assist/authority 非法开启、规则回退关闭、stale plan、非有限值、在线
+truth key、安全门缺失、非法身份改写、收据不完整和 ACK/输出计划不一致。专项结果为
+`36 passed`。D3 全量结果为 `355 passed, 1 skipped`，唯一 skip 为未安装的可选
+OR-Tools 检查。
+
+这些测试证明合同能够拒绝不等价或不安全的配对声明，不代表学习代价修正取得性能收益。
+本轮没有生成正式 treatment applied 比例、运行 ACK 覆盖率、计划结果、反事实或因果指标，
+也没有修改冻结的 900-episode 数据。实际 20-seed 运行和 D6 sidecar 联接仍是后续工作。

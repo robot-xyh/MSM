@@ -1098,3 +1098,35 @@ OR-Tools，零失败满足门限。
    `rule_fallback=true`。
 4. 冻结 900-episode 数据生成于 ACK producer 之前，保持原样；新证据必须来自新 episode，
    不得回填旧数据。
+
+## 32. 保留 Seed 配对干预合同（2026-07-21）
+
+### 已完成
+
+1. 冻结 `d3.paired-intervention-specification.v1` 和
+   `d3.paired-intervention-manifest.v1`。seed 目录严格为 `1000-1019`；每个 seed 只有一组
+   control/treatment，缺失、重复或额外 seed 均失败关闭。
+2. 每条 arm 显式绑定 scenario version、scenario config SHA、initial world state SHA、
+   observation/input snapshot SHA、D1/D2 lineage、规则代价配置、D3 bundle、阈值、安全
+   外壳和 source/current plan version。配对字段不等价时不允许生成有效 manifest。
+3. control 固定为规则代价加 Hungarian。treatment 仅标记为离线仿真干预，不改变在线
+   assist/authority 状态；执行收据必须证明现有动作掩码、可达性、容量、版本、迟滞和安全
+   门均被执行，并保留规则回退。
+4. 复用现有 paired evaluator schema、runtime ACK evidence schema 和 runtime reward
+   evidence schema。ACK 引用只能从已验证的不可变 ACK 对象建立；D3 不在该合同内读取
+   truth、计算 observed-window reward 或接管 D6 sidecar。
+5. 可用性分层为 paired input equivalence、isolated treatment applied、runtime ACK、
+   outcome、counterfactual 和 causal。没有执行收据或 D6 sidecar 时对应层保持
+   unavailable，不补零、不推断。
+6. 增加严格 JSON round-trip CLI 和失败关闭单元测试。本阶段没有运行 PPO，没有执行
+   正式 20-seed 配对 episode，也没有改动冻结的 900-episode 数据。2026-07-21 专项
+   `36 passed`，D3 全量 `355 passed, 1 skipped`，唯一 skip 为可选 OR-Tools。
+
+### 后续接口
+
+1. main 负责按 specification 建立两套隔离世界、冻结输入快照并产生完整执行收据和运行
+   ACK。该工作不属于本轮 D3 收敛任务。
+2. D6 负责按 pair/seed/arm 和全部 SHA 连接 outcome sidecar，计算结果差、反事实和因果
+   统计。D3 manifest 本身不能将这些层改为 available。
+3. 在真实 20-seed 结果和 D6 非退化判定完成前，继续保持 `PPO=false`、
+   `assist=false`、`authority=false`、`rule_fallback=true`。

@@ -21,6 +21,10 @@ from .learning_data import (
 )
 from .learning_training import train_behavior_cloning, train_native_ppo
 from .native_ppo import SharedEdgeActorCriticPolicy
+from .paired_intervention import (
+    load_paired_intervention_manifest,
+    write_paired_intervention_manifest,
+)
 from .shared_seed_registry import validate_shared_seed_split_binding
 from .shadow_evaluation import (
     evaluate_shadow_pairs,
@@ -44,6 +48,13 @@ def build_parser() -> argparse.ArgumentParser:
     generate.add_argument("--episodes-per-seed", type=int, default=2)
     generate.add_argument("--frames-per-episode", type=int, default=4)
     generate.add_argument("--scenario-version", default="d3_synthetic_sparse_v1")
+
+    paired = subparsers.add_parser(
+        "validate-paired-intervention",
+        help="strictly validate and canonicalize a reserved-seed paired manifest",
+    )
+    paired.add_argument("--input", type=Path, required=True)
+    paired.add_argument("--output", type=Path, required=True)
 
     bc = subparsers.add_parser("train-bc", help="train rule behavior cloning bundle")
     bc.add_argument("--dataset", type=Path, required=True)
@@ -106,6 +117,32 @@ def main(argv: Sequence[str] | None = None) -> int:
             scenario_version=args.scenario_version,
         )
         _print_json(manifest.to_dict())
+        return 0
+
+    if args.command == "validate-paired-intervention":
+        manifest = load_paired_intervention_manifest(args.input)
+        write_paired_intervention_manifest(args.output, manifest)
+        _print_json(
+            {
+                "command": args.command,
+                "output": str(args.output),
+                "manifest_sha256": manifest.fingerprint,
+                "reserved_seeds": list(manifest.specification.reserved_seeds),
+                "paired_input_equivalence": manifest.availability[
+                    "paired_input_equivalence"
+                ],
+                "treatment_safely_applied_in_isolated_simulation": (
+                    manifest.availability[
+                        "treatment_safely_applied_in_isolated_simulation"
+                    ]
+                ),
+                "runtime_ack": manifest.availability["runtime_ack"],
+                "outcome": manifest.availability["outcome"],
+                "counterfactual": manifest.availability["counterfactual"],
+                "causal": manifest.availability["causal"],
+                "admission": manifest.admission,
+            }
+        )
         return 0
 
     if (args.shared_seed_registry is None) != (

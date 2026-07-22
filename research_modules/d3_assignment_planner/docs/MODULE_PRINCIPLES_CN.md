@@ -1153,3 +1153,16 @@ D6 的五米事件回答“该资源在窗口内是否接近离线映射的指�
 
 专项 16 项及 3v3、seed 41、1.2 秒真实 main 三维质点集成测试已验证该原则的代码合同。
 当前结论是归因边界已实现，正式 reward 尚不可用。PPO、assist 和 authority 保持关闭。
+
+## 保留 Seed 配对干预原则（2026-07-21）
+
+规则路径和学习路径只有在输入完全等价时才具备配对意义。D3 将 seed `1000-1019` 的每个
+样本拆成两个隔离 arm，并要求场景配置、初始世界状态、观测输入快照、D1/D2 lineage、
+规则代价、模型 bundle、阈值、安全外壳和计划版本逐项相同。control 使用规则代价和
+Hungarian；treatment 只在离线仿真 arm 中应用有界代价残差，再经过同一动作掩码、可达性、
+容量、版本、迟滞和安全门。两条 arm 不共享可变世界状态，避免 treatment 污染 control。
+
+实验干预不等于线上权限。即使 treatment 在隔离仿真中改变了候选计划，PPO、online
+assist 和 online authority 仍保持关闭，模型失败时必须回退规则路径。D3 只证明输入和
+计划 lineage，运行 ACK 继续由既有验证器确认。执行后的 outcome、反事实和因果统计由
+D6 sidecar 管理；未接 sidecar 时对应可用性保持 unavailable。

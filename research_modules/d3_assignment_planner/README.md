@@ -14,6 +14,7 @@ Boundary: this module only supports offline simulation, evaluation, and human-re
 - `src/d3_assignment_planner/learning.py`: optional shared candidate-edge PyTorch residual, behavior-cloning warm-up, shadow/assist inference, masks, and rule fallback.
 - `src/d3_assignment_planner/runtime_plan_ack.py`: strict read-only validation of main runtime plan adoption ACKs.
 - `src/d3_assignment_planner/runtime_reward_evidence.py`: hash-bound adopted-window to observed-outcome attribution contract; formal reward remains fail-closed.
+- `src/d3_assignment_planner/paired_intervention.py`: strict seed 1000-1019 control/treatment specification, isolated execution receipt, and verified runtime-ACK reference contract.
 - `tests/`: unit tests.
 - `simulations/run_rolling_assignment.py`: 100 s, 2 Hz rolling simulation.
 - `docs/ALGORITHM_AND_IMPLEMENTATION.md`: Chinese algorithm principles and implementation guide.
@@ -993,3 +994,24 @@ availability/reason，当前不补零。缺 ACK、owner、来源序号/哈希、
 仍缺同 seed 配对运行、反事实结果、因果归因、计划级六项运行结果和外部保留 seed 证据。
 这些条件闭合前，`formal_d3_runtime_reward` 保持 unavailable，PPO 不启动，规则回退保持
 启用。冻结的 900-episode 数据没有新 ACK，未被回填或修改。
+
+## 2026-07-21 保留 Seed 配对干预合同
+
+`paired_intervention.py` 已实现规则基线与学习代价修正的正式实验边界。规范固定使用
+seed `1000-1019`，每个 seed 必须同时声明相互隔离的 `control` 和 `treatment` arm。
+两条 arm 必须绑定同一场景版本、场景配置、初始世界状态、观测输入快照、D1/D2 lineage、
+规则代价配置、D3 bundle、阈值、安全外壳和当前计划版本。control 固定走规则代价加
+Hungarian；treatment 只在离线仿真 arm 内允许有界残差影响 Hungarian 输入，且必须声明
+动作掩码、可达性、容量、版本、迟滞和安全门均已执行。
+
+规范和 manifest 均可严格 JSON 往返，并通过
+`validate-paired-intervention` 命令校验。缺 arm、seed 重复或缺失、任一配对哈希不一致、
+bundle/阈值未冻结、stale plan、非有限值、在线真值字段、规则回退关闭和安全门缺失均
+失败关闭。输出把 `paired_input_equivalence`、隔离 treatment 是否实际应用、运行时 ACK、
+outcome、counterfactual 和 causal 分层；未连接 D6 sidecar 时后三项固定为 unavailable。
+
+本轮只完成合同和失败关闭测试，没有运行正式 20-seed episode，也没有产生性能、收益、
+反事实或因果结论。`PPO=false`、`online_assist=false`、`online_authority=false`、
+`rule_fallback=true` 保持不变，默认执行路径仍为规则代价与需求槽 Hungarian。2026-07-21
+专项结果为 `36 passed`，D3 全量结果为 `355 passed, 1 skipped`；唯一 skip 为未安装的
+可选 OR-Tools 检查。
