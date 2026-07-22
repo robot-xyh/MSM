@@ -961,7 +961,7 @@ D1 NumPy EKF/FusionAdapter
 | D5/main | YOLOv8/native MOT 校准 | adapter、Results 连续历史和离线 benchmark 已有；当前在线明确继续使用 AirSim detect | 等数据集补充后再校准类别、尺度、置信度、远距召回、IDSW/continuity、GPU/CPU P95 延时和失败回退；代码级历史累计已关闭，不阻塞 detect-first P1 |
 | D1/D2/D5/main | 通用图像来源谱系真实运行标定 | 局部观测合同、D5 离线适配、D1 EO 入口、D1 `source_track_ids`、main NED-only D2 handoff 和 D2 三项来源治理计数已实现 | 接入真实可见光/红外 producer 与 D5 拒绝计数，冻结内外参/时间同步/像素协方差；至少 10 个来源扰动 AirSim case 评估 false-suppression、recall 和离线 IDSW/continuity |
 | D1/D2/D3/main | 长 replay 治理阈值 | 版本化 replay/CLI 已具备；D2 10 seeds 的 IDSW=138.1、continuity=0.694 | 默认 GNN 未通过阈值；继续调 gate/lifecycle/model，不用 truth 或本地重绑掩盖问题 |
-| D1/D2/main/D6 | 陈旧观测治理长期标定 | 有界扫描排序、声明账本、安全淘汰、replay coast、main 持久化和 D6 严格 consumer 已实现；development 四档各 5 seed 中 200 规模 peak claim 24170/48000、evicted 2985、overflow 0、near recall 1.0、false suppression/merge 0 | 在干净提交复跑同一 20-episode manifest，并增加完整质点多 seed、真实 AirSim 时钟/遮挡/杂波分档；当前 development fixture 不关闭正式阈值冻结或完整 200v200 验收 |
+| D1/D2/main/D6 | 陈旧观测治理长期标定 | 有界扫描排序、声明账本、安全淘汰、replay coast、main 持久化和 D6 严格 consumer 已实现；commit `e4d66db` 的 clean/formal 四档各 5 seed 中 200 规模 peak claim 24170/48000、evicted 2985、overflow 0、near recall 1.0、false suppression/merge 0 | clean 治理复跑已关闭；继续增加完整质点多 seed、真实 AirSim 时钟/遮挡/杂波分档。该 fixture 不关闭融合精度、正式阈值冻结或完整 200v200 验收 |
 | D4/main | 联盟重构、二级接管和恢复实测 | 9/9 确定性矩阵通过，含 member replacement、partition recovery 和双轨合并；严格二级 readiness 已统一到所有入口 | 映射到真实 AirSim 通信延迟/丢包/乱序/时钟漂移多 seed，并量化 failover time；不得以 heartbeat-only 作为正例 |
 | D5/D6 | M 对 N 视觉鲁棒性 | 确定性 10/10，外参漂移/时间偏差保守拒绝，ID rewrite=0 | 在真实多视角 AirSim/相机同步和持续 detect 下复验，不以确定性 fixture 代替实测 |
 | D3/D4/D5/D6/main | 学习数据全样本与运行证据 | canonical seed 60/20/20 和全样本审计已完成；D5 20-seed paired shadow 已完成但有合成可分性限制；D3/D4 v2 clean 5v5 正式制品和 D6 profile-bound availability sidecar 已完成，真值使用为 0；D3 20/20 隔离应用且 binding 未变，D4 20/20 因低置信回退 | 取得严格绑定的 runtime ACK 和采用后物理窗口后再计算 paired physical outcome/effect；D4 confidence 只在独立 calibration split 校准，不用保留 seed 降门限；故障策略另跑 degraded snapshot；完成前 PPO/assist/authority 保持关闭 |
@@ -1011,8 +1011,15 @@ development 快速标定覆盖 20、50、100、200 四档各 5 seed。每例 136
 D2 合计峰值 `tracemalloc` 约 58.99 MB，在线真值使用为 0。该批是治理 fixture 和脏工作树
 证据，不能替代完整融合精度或正式 200v200 验收。
 
+同一配置已在 detached clean 提交 `e4d66db02a0b8f1b867a0e81b4a73de84588426b` 完成 20 个
+episode 正式复跑。四档各 5 seed 均通过 `formal_only` 准入，`repository_dirty=false`、在线
+真值使用 0、D1 结束缓冲 0、D1/D2 溢出 0；容量、淘汰和 evaluator-only 指标与 development
+批次一致。200 规模合计峰值内存均值 58996981 B、最大 59007120 B。聚合 JSON SHA-256 为
+`6fb64252292aaedd3c68d1bfea64b76496136ce6edb32add61a281d511c4ed22`。该证据只关闭 clean
+治理复跑，不升级融合精度、AirSim、实时性或物理闭环状态。
+
 同 seed 的 200v200、2.2 秒全栈质点烟测在尾部合并前后分别用时 95.41 秒和 60.21 秒，
 实时倍率从 0.0231 提高到 0.0365，D2 尾部调用由 31 次降为 1 次。当前主要瓶颈为 D1 融合
-35.12 秒和 D3 三次分配 7.33 秒。下一步先完成模块性能优化，再在干净提交上复跑四档五
-seed，并增加完整质点多 seed、AirSim 时钟/遮挡/杂波和物理闭环。此前提交 `0fa7c00c...`
+35.12 秒和 D3 三次分配 7.33 秒。下一步先完成模块性能优化，再增加完整质点多 seed、AirSim
+时钟/遮挡/杂波和物理闭环。此前提交 `0fa7c00c...`
 的 clean active-risk 物理窗证据继续保留，但不与本批 development 标定混写。
