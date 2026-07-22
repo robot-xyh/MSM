@@ -1,8 +1,72 @@
 # D5 终端视觉配准与身份认证算法原理与实施文档
 
-**状态日期：2026-07-21**
+**状态日期：2026-07-22**
 
-## 候选邻居预算修复
+## 正式同图 paired shadow v2
+
+### 输入与冻结条件
+
+`tracklet_paired_shadow.py` 只接受显式 corpus、held-out 报告、模型 bundle、输出目录和全部带外
+SHA-256。正式输入固定为 seed `1000-1019` 的 held-out corpus、既有 held-out 评估报告和冻结模型
+bundle。加载器复核 20×45 笛卡尔积、全部图/标签/lineage 哈希、默认候选门、模型 manifest、权重
+和校验清单。评估前后再次计算输入哈希；不允许相邻目录自动发现、覆盖已有输出、调温度、改阈值、
+更新权重或改变候选门。
+
+v2 同时绑定首次输出的 report 与 lineage SHA。新报告状态为 `authoritative`，旧输出状态为
+`superseded_preserved`，旧目录不修改、不删除。该版本关系表示“当前实现对应哪个评估制品”，不
+表示图模型已经获得在线权限。
+
+### 同图执行
+
+每帧从 truth-free NPZ 构造一次 `SparseTrackletGraph`。图数组包含匿名 tracklet 节点、相机命名
+空间、双时间戳和 14 维边特征。规则臂计算
+
+\[
+p_e^{rule}=\exp\!\left(-\max(0,g_e)/T_r\right),
+\]
+
+当且仅当候选边共享一个中心投影时再应用既有概率下限。模型臂使用冻结网络、validation 温度和
+validation 阈值计算 (p_e^{gnn})。两臂都调用 `constrained_tracklet_clusters()`，禁止同一相机的
+两个 tracklet 合并到同一簇。图对象没有复制给不同分支；规则评分、模型评分和聚类后分别复算图
+数组与候选边 SHA，任何不一致立即失败关闭。
+
+两臂推理及聚类完成后才访问 `evaluator_labels.by_tracklet_key`。同一只读目标数组用于两臂边评分，
+同一标签映射用于簇对评分，评分前后标签内容 SHA 必须一致。专项测试用带访问哨兵的 episode 验证
+标签访问顺序，并记录两臂收到的 Python 图对象 identity 相同。
+
+### 指标与分层
+
+边级统计直接在 74,024 条冻结候选边上计算。簇级统计遍历跨相机节点对：同簇且同真值为真阳性，
+同簇异真值为错误合并，异簇同真值为拆分。候选召回分母是同一真值在不同相机间的全部 tracklet
+pair，分子是进入候选图的同目标 pair。时延分别记录规则/模型评分和聚类的 P50/P95。
+
+报告另按 `shared_global_track_count=0/1/other` 输出边级指标。该字段只对已保留候选边定义，因此
+不重新计算分层簇，也不改变候选召回分母。本次 `=0` 有 74,024 条边，`=1` 与 `other` 均无样本；
+`=1` 指标明确为 unavailable。
+
+### 特征标签诊断
+
+所有帧的两臂预测完成后，evaluator 对每个边特征计算正/负类范围、零值比例、点二列相关系数和
+单特征受试者工作特征曲线下面积。该分析不重新推理，不改变冻结结果，也不是模型归因。v2 中
+`shared_global_track_count` 恒为 0，标签互信息为 0 bit。边界框对数尺度差、尺度变化率差和角速度
+差的最佳方向 AUC 为 0.997319、0.997340、0.997340；同目标的后两项全为 0。该结构可使合成图
+过易，必须在结论中保留泛化限制。
+
+### 正式结果与权限
+
+900 帧、20 seed、45 cell 均完整。图/候选/标签 identity 为 900/900，同相机边、未标注边、在线
+真值和 `global_track_id` 改写为 0。冻结模型边级和簇对级 F1 均为 1.0，规则为 0.367980 和
+0.239234；模型 CPU 评分 P95 为 3.292009 ms。v2 report/lineage 文件 SHA 为
+`b1528af8...40e1` / `03f92ad1...4c1d`。
+
+评估状态为 pass，权限状态仍为 `pending_d6_external_audit`。代码固定输出 `G1=false`、
+`assist=false`、`authority=false`、`rule_fallback=true`。更困难独立数据和代表性真实多相机回放
+完成前，不提出线上主线替换。
+
+当前最终源码的 paired-shadow 专项回归为 `5 passed in 3.21s`，D5 全量回归为
+`534 passed in 141.66s`。后续历史章节保留当时的设计与证据，当前正式结果只引用 v2。
+
+## 候选邻居预算修复（2026-07-21 历史阶段）
 
 `build_sparse_tracklet_graph()` 包含两级有界稀疏化。相机重叠索引后的 tracklet 候选生成先使用
 `max_tracklet_candidate_edges_per_node` 限制度数，所有几何安全门通过后，再由
@@ -31,7 +95,7 @@ evaluator truth。中心 `global_track_id` 仍只读。
 最大度数不超过 2、边数不超过 `floor(2V/2)`，且各几何门计数与默认图相同。当前只完成代码和内存
 测试，未重建 clean corpus、未重训、未运行 held-out 或 paired shadow。
 
-## 保留 seed 跨视角图评估
+## 保留 seed 跨视角图评估（2026-07-21 管线阶段）
 
 `tracklet_heldout_evaluation.py` 定义独立于训练数据的 held-out 合同。正式 profile 的 seed 目录固定为
 `1000-1019`，场景目录固定为 `FORMAL_SCENARIO_CELLS` 的 9×5 组合。生产数量为
@@ -91,7 +155,7 @@ PYTHONPATH=research_modules/d5_terminal_association/src python3 \
 本轮只完成 1 seed × 2 cell smoke 和 17 项专项测试。正式 900 帧、正式模型指标及 paired shadow
 仍为开放项。
 
-## Composite 只读训练流程
+## Composite 只读训练流程（2026-07-21 预检阶段）
 
 `load_composite_training_corpus()` 重新计算 formal、supplemental、canonical subview、composite view、
 admission report 和两份 registry 的绑定。加载完成后，`audit_composite_training_dataset()` 逐 episode

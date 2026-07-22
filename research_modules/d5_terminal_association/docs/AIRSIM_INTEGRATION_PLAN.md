@@ -1,5 +1,25 @@
 # AirSim 离线集成计划
 
+## 2026-07-22 paired shadow v2 与 AirSim 边界
+
+D5 已完成 20 seed、45 cell、900 帧的离线合成同图 paired shadow v2。该执行没有启动 AirSim，
+没有读取 AirSim 图像或 detection truth ID，也没有修改 launcher、settings、相机分辨率、视场角、
+外参、detector、MOT、actor、reset 顺序或云台命令。结果只验证冻结匿名 tracklet 图上的规则/模型
+评分差异。
+
+v2 模型边级和簇对级 F1 均为 1.0，但后验审查显示尺度差、尺度变化率差和角速度差对合成标签接近
+确定性可分；`shared_global_track_count=1` 没有样本。因此 paired shadow 软件与冻结合成证据已完成，
+真实 AirSim 多相机泛化仍开放。下一轮 AirSim 代表性子场景应保存匿名 camera-local tracklet、双
+时间戳、外参和像素协方差，保持 actor/object truth 只进入 D6 离线评分，并复用冻结模型与阈值做
+同图 shadow。
+
+D6 独立审计和真实多相机困难回放前，`G1=false`、`assist=false`、`authority=false`、
+`rule_fallback=true`。本次 v2 不能替代 M5N2 第二 primary、二级侦察覆盖、真实检测/MOT、视觉 PNG
+接管或物理拦截验收。
+
+当前最终源码已通过 paired-shadow 专项 5 项和 D5 全量 534 项测试；这些测试没有启动 AirSim，
+不能计入真实相机或运行时验收。
+
 ## 2026-07-21 Supplemental curriculum B1b2 与 AirSim 边界
 
 B1b2 新增的是 D5 离线 synthetic curriculum producer 和 CLI，没有修改 AirSim launcher、settings、
@@ -19,8 +39,9 @@ reward/counterfactual/causal evaluator label 仍须按既有 online/offline 分�
 supplemental BC 全样本审计已按 100 episode/1200 sample、302/302 文件 SHA、1200/1200 有限特征和
 零违规阈值通过，内容 SHA 为
 `a11b65596a4c416deba6d0cb35dcc0c32342a5bae0481291d43e8de0e26550dd`；该离线证据没有运行 AirSim，
-不能替代真实 ACK/outcome。下一步由 main/D6 做跨模块准入审计并建设 runtime/paired shadow 数据；
-paired shadow 通过前保持 assist/PPO/online/camera authority=false，规则回退必需。
+不能替代真实 ACK/outcome。D5 后续已完成 2026-07-22 权威 v2 paired shadow；下一步由 D6 独立审计
+该制品并建设真实 runtime shadow 数据。离线合成 paired 通过不开放 assist/PPO/online/camera
+authority，规则回退仍为必需路径。
 
 ## 2026-07-20 主动视觉 episode dataset 接线边界
 

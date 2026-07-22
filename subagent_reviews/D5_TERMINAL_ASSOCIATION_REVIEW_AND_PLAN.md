@@ -1,6 +1,33 @@
 # D5 末端视觉配准与协同身份认证综述及子方案
 
-## 2026-07-21 候选图预算复核
+## 2026-07-22 同图配对影子复核
+
+D5 已用当前最终源码完成 seed `1000-1019`、900 帧和 45 个场景规模单元的 paired shadow v2。
+冻结 held-out corpus、held-out 评估报告和开发模型 bundle 通过显式路径及带外 SHA 绑定。每帧只构造
+一个只读图对象，规则评分、冻结模型评分和双方受约束聚类使用同一图；各阶段图数组与候选边 SHA
+复核为 900/900 一致。truth 只在两臂推理和聚类后由 evaluator 评分，不进入在线特征或概率路径。
+
+冻结模型在 74,024 条候选边上取得边级和簇对级 precision/recall/F1 全 1.0，错误合并和同目标拆分
+均为 0。确定性规则的边 F1 为 0.367980、错误合并率 0.774516；簇对 F1 为 0.239234、错误合并率
+0.762462。候选召回为 1.0，模型 CPU 评分 P95 为 3.292009 ms。45/45 cell 和 20/20 seed 均满足
+当前非退化门。该结论仅适用于同一冻结合成候选图。
+
+补充特征审查否定了 `shared_global_track_count` 的直接解释：该特征在全部边上恒为 0，与标签互信息
+为 0 bit，取值 1 的性能无法评价。边界框对数尺度差、尺度变化率差和角速度差的单特征最佳方向
+AUC 为 0.997319、0.997340 和 0.997340；同目标样本的尺度率差与角速度差全部为 0。这些线索使
+合成保留集偏易，满分不能外推为真实相机、真实目标外观、真实时钟/外参漂移或 M 对 N 联盟条件下
+的泛化。统计不是冻结模型的因果特征归因。
+
+v2 report/lineage SHA 为 `b1528af8...40e1` / `03f92ad1...4c1d`，证据状态为
+`authoritative`。首次输出保留为 `superseded_preserved`。本轮没有运行 AirSim，没有修改在线关联
+默认值，也没有开放 G1、辅助或控制权限。下一步由 D6 独立审计 v2，再建设不同生成机制的困难集、
+`shared_global_track_count=1` 分层和代表性真实多相机回放。
+
+当前最终源码的 paired-shadow 专项为 `5 passed in 3.21s`，D5 全量为
+`534 passed in 141.66s`。下列 2026-07-21 及更早章节是阶段复核记录，其中未完成表述不覆盖本节
+v2 当前状态。
+
+## 2026-07-21 候选图预算复核（历史，已由 v2 更新）
 
 旧 clean supplemental 的 candidate recall 为 `11409/16698=0.683255`。逐级计数显示，370,211 个
 可能跨相机 pair 中只有 21 个被几何门拒绝，最终 8 邻居预算却删除 125,158 条门后边。该结果已
@@ -14,7 +41,7 @@ cap 回归确认图仍严格有界。D5 全量 `529 passed in 122.96s`。
 组合视图或重训模型。旧 clean 数据准入只能作为历史记录；held-out、paired shadow 和 G1/assist/
 authority 结论不变，中心 `global_track_id` 所有权不变。
 
-## 2026-07-21 保留 seed 独立评估复核
+## 2026-07-21 保留 seed 独立评估复核（历史管线阶段）
 
 D5 已实现专用 `held_out_evaluation` 数据合同。正式目录只接受 seed `1000-1019`，每个 seed 必须
 覆盖 45 个冻结场景规模单元。producer 不使用训练 split registry，不复制或回写 formal/supplemental，
@@ -30,7 +57,7 @@ development bundle evaluator 使用模型包既有 validation 温度和阈值，
 执行规则/模型 paired shadow。两项完成前，D5 图模型保持 development/shadow-only，G1、assist、
 在线身份和相机控制权限均关闭。D5 不创建、改写或换绑 `global_track_id`。
 
-## 2026-07-21 Composite 内部训练入口复核
+## 2026-07-21 Composite 内部训练入口复核（历史预检）
 
 D5 已把 clean composite corpus 接入现有原生 PyTorch 图模型管线。入口只读复载正式完整帧和补充
 语料，并绑定 view、admission 与共享 seed registry；`60/20/20`、45 cell、标签和同相机互斥均为
@@ -41,7 +68,7 @@ D5 已把 clean composite corpus 接入现有原生 PyTorch 图模型管线。�
 或 paired shadow 证据，也不授予 G1/assist/authority。本轮专项 `12 passed in 1.05s`，D5 全量
 `510 passed in 121.82s`；正式模型、`.pt`、保留 seed 和 paired shadow 仍未完成。
 
-## 2026-07-21 Tracklet 困难样本复核
+## 2026-07-21 Tracklet 困难样本复核（历史首轮语料）
 
 正式语料的 99 条未标注边已逐条复核。冻结导出缺少可同时绑定 episode、匿名 tracklet、量测时刻和
 source observation 的离线来源链，可靠补标为 0；99 条边继续 unavailable，正式源未改动。D5 随后

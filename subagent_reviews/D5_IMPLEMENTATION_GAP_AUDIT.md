@@ -1,6 +1,31 @@
 # D5 实现差距审计
 
-## 2026-07-21 候选召回 P1 状态
+## 2026-07-22 正式 paired shadow v2 状态
+
+| 缺口 | 当前状态 | 权威证据与剩余边界 |
+| --- | --- | --- |
+| 20 seed × 45 cell 正式 paired shadow | **D5-owned 实现与执行已关闭** | v2 覆盖 900 帧、13,344 节点、74,024 边；目录完整，45/45 cell 非退化。report/lineage SHA 为 `b1528af8...40e1` / `03f92ad1...4c1d`。 |
+| 同图、同候选、同标签 identity | **关闭** | 900/900 帧图数组在规则、模型和聚类 checkpoint 一致；两臂候选边与 evaluator 标签哈希一致。 |
+| 真值隔离与 ID 所有权 | **关闭并保持回归** | 标签评分在两臂推理后执行；同相机边、未标注边、在线真值特征、`global_track_id` 改写均为 0。 |
+| 旧/新证据版本一致性 | **关闭** | v2 `authoritative`；旧目录 `superseded_preserved`，旧 report/lineage 哈希保持 `71de83fe...e9a` / `d71bd144...0eb`，未覆盖或删除。 |
+| D6 独立审计 | **P1 开放** | v2 仍标记 `pending_d6_external_audit`。D6 必须独立复算输入、report、lineage、实现和 45 cell 门控，不能由 D5 自评自动开放 G1。 |
+| 合成保留集难度与真实泛化 | **P1 开放** | 图模型边/簇 F1 为 1.0，但尺度差、尺度率差、角速度差的单特征最佳方向 AUC 约 0.9973；结果可能受合成器近确定性线索驱动。 |
+| `shared_global_track_count=1` 覆盖 | **P1 开放** | 当前 74,024 条边全部为 0，互信息 0 bit；取值 1 分层不可用。需新增独立生成机制和该分层样本。 |
+| 真实多相机与 M 对 N 运行时准入 | **P1 开放** | 本次是离线合成图评估，不证明真实外观/时钟/外参漂移下的跨视角泛化，也不证明联盟锁定、视觉接管或物理拦截。 |
+
+冻结模型相对规则基线的边 F1 为 `1.000000 vs 0.367980`，簇对 F1 为
+`1.000000 vs 0.239234`，模型错误合并对和同目标拆分对均为 0。规则基线错误合并很高，说明该
+对照能证明冻结模型在同一合成候选图上优于当前简单规则评分，但不能证明绝对工程性能。特征标签
+审查只反映保留集可分性，不是模型归因。后续不得把满分写成真实跨视角泛化或线上准入。
+
+当前没有新增 P0。运行权限保持 `G1=false`、`assist=false`、`authority=false`、
+`rule_fallback=true`。D6 独立审计完成也只形成研究影子资格；真实多相机困难数据与失效回退门仍需
+单独验收。
+
+当前最终源码已通过 paired-shadow 专项 `5 passed in 3.21s` 和 D5 全量
+`534 passed in 141.66s`。后续历史章节按其标题日期保留，不代表 v2 之后的当前缺口状态。
+
+## 2026-07-21 候选召回 P1 状态（历史，已由 v2 更新）
 
 **代码根因已关闭，clean 数据与模型证据重新开放。** 修复前 4,500 帧 clean supplemental 的
 370,211 个可能跨相机 pair 中，几何门只拒绝 21 个；最终 8 邻居 cap 从 370,190 条门后边删除
@@ -17,7 +42,7 @@ P1 仍开放：main 需在 clean commit 上重建 4,500 帧 supplemental，重�
 paired shadow。旧 245,032 边、旧 manifest/view SHA 和 `training_readiness=pass` 是修复前证据，
 不能晋级当前实现。G1、assist、authority 保持关闭。
 
-## 2026-07-21 保留 seed 评估管线状态
+## 2026-07-21 保留 seed 评估管线状态（历史，已由 v2 更新）
 
 | 项目 | 状态 | 证据与边界 |
 | --- | --- | --- |
@@ -32,7 +57,7 @@ paired shadow。旧 245,032 边、旧 manifest/view SHA 和 `training_readiness=
 评估能力，不改变 AirSim、实时关联、相机命令或 D7 交接合同。45 帧成本 smoke 得到生成与复载
 0.686 s、613,567 bytes；正式 900 帧仅有约 14 s/12.3 MB 的线性估算，仍缺实际制品和全量指标。
 
-## 2026-07-21 Composite 训练适配器 GAP 状态
+## 2026-07-21 Composite 训练适配器 GAP 状态（历史预检）
 
 **只读训练入口与预检子项已关闭，模型证据仍是 P1。** D5 已实现 formal + supplemental strict
 loader、固定训练 profile、完整 seed/cell/标签/同相机互斥审计和脏工作树正式训练阻断。实际
@@ -48,7 +73,7 @@ D6 当前仍只能消费 data support，不能取得实际 internal model test �
 `1000-1019` 独立评估；同 seed paired shadow。全部完成前 G1、assist、在线与相机控制权限保持关闭。
 本轮专项 `12 passed in 1.05s`，D5 全量 `510 passed in 121.82s`。
 
-## 2026-07-21 Tracklet 困难样本 GAP 状态
+## 2026-07-21 Tracklet 困难样本 GAP 状态（历史首轮语料）
 
 **困难样本 producer、clean 数据来源和训练数据支持子项已闭合；模型与 G1 未闭合。** 冻结正式语料 99 条未标注边的
 194 个缺失端点均没有可精确证明的 offline observation lineage，可靠回填为 0，全部继续

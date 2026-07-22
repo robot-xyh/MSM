@@ -1,5 +1,31 @@
 # D5 终端视觉配准与身份认证计划
 
+## 2026-07-22 同图配对影子评估收敛
+
+- [x] 完成 `tracklet_paired_shadow.py`、命令行入口和专项测试。输入路径与带外 SHA 显式给定；目标
+  目录必须不存在，发布过程原子化，已有证据不覆盖。
+- [x] 对每帧构造一个只读 `SparseTrackletGraph`，将同一对象送入确定性几何规则和冻结模型。分别在
+  规则评分、模型评分和受约束聚类后复算图数组及候选边 SHA；900/900 帧一致。
+- [x] 将 evaluator 标签评分移到两臂概率推理和聚类之后。边标签与簇标签不进入任一预测路径；专项
+  哨兵测试同时确认标签访问顺序和两臂图对象 identity。
+- [x] 在当前源码上完成正式 v2：20 seed、45 cell、900 帧、13,344 节点、74,024 条候选边，目录
+  完整且无重复/缺失。旧输出按 `superseded_preserved` 保留，v2 为 `authoritative`。
+- [x] 输出边级和簇级精确率、召回率、F1、错误合并、同目标拆分、候选覆盖和 CPU 时延。冻结模型
+  边/簇 F1 均为 1.0，规则边/簇 F1 为 0.367980/0.239234；45/45 cell 无质量退化。
+- [x] 增加后验特征标签审查，不改变候选图、权重、温度或阈值。`shared_global_track_count=0` 覆盖
+  74,024 条边，`=1` 无样本；尺度差、尺度率差和角速度差单特征最佳方向 AUC 约为 0.9973。
+- [x] 保持同相机候选边、未标注边、在线真值和 `global_track_id` 改写为 0；保持 `G1/assist/
+  authority=false`、`rule_fallback=true`。
+- [x] 完成当前最终源码回归：paired-shadow 专项 `5 passed in 3.21s`，D5 全量
+  `534 passed in 141.66s`。早期章节中的未完成项是历史快照，当前状态以本节 v2 清单为准。
+- [ ] 由 D6 对 v2 report、lineage、输入 SHA、900 帧目录、同图 checkpoint 和 45 cell 非退化门做
+  独立消费与审计。D6 完成前不改变任何在线权限。
+- [ ] 建设独立于当前合成器的困难评估集。重点加入跨相机尺度偏差、目标外形差异、异步采样、外参
+  漂移、遮挡重入和同运动困难负样本，并覆盖 `shared_global_track_count=1`。不得在该数据上重选本次
+  冻结阈值；新模型或新阈值必须形成独立版本。
+- [ ] 在真实或代表性 AirSim 多相机匿名 tracklet 回放上完成同图对照，再讨论 G1 研究影子资格。
+  本次合成满分不构成真实跨视角泛化、M 对 N 联盟完成或线上准入。
+
 ## 2026-07-21 候选图邻居预算收敛
 
 - [x] 对 clean supplemental 逐级归因：370,211 个可能跨相机 pair 中几何门仅拒绝 21 个，最终
@@ -12,11 +38,10 @@
 - [x] 完成软件回归。seed 5、`delayed_noisy`、scale 200 四相机困难帧保留 15/15 个同目标 pair，
   候选召回 1.0、最终 cap 删除 0、实际最大度数 12；小 cap=2 时保持确定性和严格度数上界。专项
   `20 passed`、`13 passed`，D5 全量 `529 passed in 122.96s`。
-- [ ] main 在包含本修复的 clean commit 上重建 4,500 帧 supplemental，重生成 composite view 和
-  admission report，并用实际全样本计数确认各 split 候选召回率不低于 0.95。修复前
-  245,032 边及 `training_readiness=pass` 只保留为历史证据。
-- [ ] 新语料准入后重新执行 30-epoch 内部开发训练，再运行 seed `1000-1019` 独立 held-out 与
-  paired shadow。以上完成前 G1、assist、在线和相机控制权限保持关闭。
+- [x] main 已在 clean commit 上重建 4,500 帧 supplemental 和 composite view。补充集 370,190 边，
+  组合视图 370,198 边，三个 split 候选召回均为 1.0；修复前 245,032 边只保留为历史证据。
+- [x] 已完成 30-epoch 内部开发训练、seed `1000-1019` held-out 和权威 paired shadow v2。该完成只
+  关闭合成离线证据；G1、assist、在线和相机控制权限仍保持关闭。
 
 ## 2026-07-21 保留 seed 独立评估
 
@@ -34,10 +59,10 @@
   全量为 `527 passed in 120.93s`。
 - [x] 运行 1 seed × 2 cell 的代表性 smoke；2 个图帧均通过数据复载和 evaluator 安全审计。随机开发
   bundle 指标不足时保持 `fail_closed`，G1/assist/authority 未开放。
-- [ ] main 完成当前 clean 内部训练并提交可复核 bundle 后，在 detached clean worktree 生成正式
-  900 帧 held-out corpus，运行全样本评估并保存 JSON、中文 Markdown、精确 SHA 和实际成本。
-- [ ] 在同一 `1000-1019` seed 上完成规则路径与开发模型的 paired shadow 非退化对照。该项完成前
-  G1、assist、在线身份和相机控制权限保持关闭。
+- [x] 已生成正式 900 帧 held-out corpus 并完成冻结模型全样本评估。20 seed、45 cell 完整，
+  held-out manifest/report SHA 为 `496f8b31...4d2f` / `8095acc3...15c`。
+- [x] 已在同一 `1000-1019` seed 上完成权威 paired shadow v2。45/45 cell 非退化；v2 仍要求 D6
+  独立审计，G1、assist、在线身份和相机控制权限保持关闭。
 
 ## 2026-07-21 Composite 内部训练入口
 
@@ -53,10 +78,10 @@
 - [x] 增加成功预检、报告/view/hash 绑定、registry/split、保留 seed、同相机边、未标注边、权限
   分层和 D6 三件套正负测试。专项 `12 passed in 1.05s`；D5 全量
   `510 passed in 121.82s`。
-- [ ] main 提交实现后，在 detached clean worktree 执行固定 30-epoch 内部开发训练并保存实际
-  model report、weights 和 config 三件套。本轮不执行该步骤。
-- [ ] 使用保留 seed `1000-1019` 做独立评估，并完成同 seed paired shadow。两项完成前保持
-  G1、assist、在线和相机控制权限关闭。
+- [x] 已在 clean worktree 执行固定 30-epoch 内部开发训练，最佳 epoch 25；模型 manifest/weights
+  SHA 为 `d7feb248...921` / `4f5e8cee...1e50`，内部测试 F1 为 1.0。
+- [x] 已完成保留 seed `1000-1019` 独立评估和同 seed paired shadow v2。结果受合成集近确定性特征
+  限制，G1、assist、在线和相机控制权限继续关闭。
 
 ## 2026-07-21 跨视角困难样本课程与准入视图
 
@@ -84,9 +109,8 @@
   为 `4b9875fee86b5c425f683a6da23e6af1308bcf2383d3633d4fd6207fe2f25a32` 和
   `11e8acbdbe268574ead402f2be5c9aa8e3459a7e4147a18e0570df3402892415`。dirty=false，数据支持与
   `training_readiness` 均 pass，dirty provenance blocker 关闭。
-- [ ] 当前 pass 只适用于训练数据来源和数据支持。仍需单独训练新模型、使用保留 seed 做独立评估
-  并完成同 seed 影子对照，才可讨论 model promotion。当前没有 `.pt`，G1、assist 和在线/相机控制
-  权限均为 false。
+- [x] 已完成新模型、保留 seed 独立评估和同 seed 影子对照。该完成不等于 model promotion；合成
+  特征可分性、D6 独立审计和真实多相机泛化仍开放，G1、assist 和在线/相机控制权限均为 false。
 - [x] 主工作区严格复载 clean supplemental 与 composite view，实测 manifest/view SHA 命中、
   `data_support=pass`、`training_readiness=pass`、promotion 等待模型证据；专项测试
   `12 passed in 5.40s`。正式源全树指纹复载前后不变。

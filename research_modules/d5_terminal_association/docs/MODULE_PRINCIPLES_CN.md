@@ -1,6 +1,35 @@
 # 第五研究模块末端视觉关联（Terminal Association, D5）原理
 
-**状态日期：2026-07-21**
+**状态日期：2026-07-22**
+
+## 同图配对与证据分层
+
+paired shadow 的目标是隔离“候选图不同”与“边评分器不同”两个因素。对第 (k) 个保留帧只构造
+一个不可变图 (G_k=(V_k,E_k,X_k))。确定性规则和冻结图神经网络读取相同的节点、边、候选顺序
+与几何特征，分别输出 (p_k^{rule}) 和 (p_k^{gnn})。双方再使用同一个受约束聚类器，且同一相机
+最多有一个 tracklet 进入同一簇。规则、模型和聚类执行后都复算图数组及候选边哈希；任一变化均
+失败关闭。
+
+离线标签 (y_k) 不参与候选构造、规则评分、模型评分或聚类。两臂预测完成后，evaluator 才用
+(y_k) 计算边级精确率、召回率、F1、错误合并率，以及簇对级错误合并和同目标拆分。该顺序把
+真值限定在评分域。中心 `global_track_id` 不在图模型输出空间内，D5 不创建或换绑全局身份。
+
+正式 v2 覆盖 20 个保留 seed、45 个场景规模单元和 900 帧。冻结模型在该合成集上边级、簇对级
+F1 均为 1.0，规则基线分别为 0.367980 和 0.239234。这个结果证明冻结模型在同一候选图上没有
+质量退化，但不证明真实跨视角泛化。规则基线只按几何门分数和单一共享投影下限产生概率，错误
+合并率较高，不能把二者差值直接解释为真实系统收益。
+
+满分数据必须进行后验可分性审查。`shared_global_track_count` 在本保留集全部为 0，互信息为 0，
+取值 1 的分层不可用。尺度差、尺度变化率差和角速度差的单特征最佳方向 AUC 约为 0.9973，说明
+合成器使同目标运动尺度特征过于一致。该统计只描述数据，不是模型归因。真实准入还需要独立生成
+机制、异步与标定漂移、同运动困难负样本、外观变化和代表性多相机回放。
+
+证据状态与运行权限分离。v2 是本输入绑定下的 `authoritative` 评估，旧版仅
+`superseded_preserved`；但 `G1=false`、`assist=false`、`authority=false`、`rule_fallback=true`。
+D6 独立审计和更困难数据验收前，满分不能用于改变在线默认路径。
+
+当前最终源码已通过 paired-shadow 专项 5 项和 D5 全量 534 项测试。该软件回归只验证实现与既有
+合同，不增加真实跨视角泛化证据。
 
 ## 稀疏候选图预算
 
@@ -19,7 +48,8 @@
 
 2026-07-21 的内存回归在 seed 5、`delayed_noisy`、scale 200 四相机帧上得到 15/15 同目标 pair、
 候选召回率 1.0，实际最大度数 12。小 cap=2 回归证明度数上界和确定性仍成立。4,500 帧 clean 语料、
-内部训练、900 帧保留集和 paired shadow 尚未重跑，旧 `training_readiness=pass` 不代表新配置已准入。
+后续已经基于 24 邻居配置重建 supplemental/composite、完成内部训练、900 帧 held-out 和 paired
+shadow v2。该完成只证明当前合成数据链闭合；近确定性特征可分性和真实泛化仍阻断线上准入。
 
 ## 保留集评估边界
 
@@ -34,8 +64,8 @@ lineage 计算同目标边、异目标边、候选召回和错误合并。一个
 
 模型评估沿用训练阶段在 validation 上确定的温度和阈值。整体及每个场景规模单元均输出精确率、
 召回率、F1、错误合并率、候选召回率、期望校准误差和推理延迟。任何指标不足只会形成
-`fail_closed` 证据。即使保留集通过，仍须完成同 seed paired shadow，G1、辅助关联和控制权限不会
-由 D5 单独开启。
+`fail_closed` 证据。2026-07-22 已完成同 seed paired shadow v2；G1、辅助关联和控制权限仍不会由
+D5 单独开启，后续还需 D6 独立审计和更困难数据验证。
 
 ## Composite 训练证据分层
 
@@ -45,11 +75,11 @@ lineage 计算同目标边、异目标边、候选召回和错误合并。一个
 仍只含匿名 camera-local tracklet、双时间戳、协方差和几何特征。truth 只参与物理分离的离线标签，
 D5 不创建或改写中心 `global_track_id`。
 
-证据分为数据支持、内部模型测试、保留 seed、paired shadow 和 G1/assist 五层。2026-07-21 的实际
-preflight 已验证 4,972 帧和 245,040 条边，数据支持通过；它没有训练模型。未来 clean 内部训练可
-生成 D6 三件套，其中模型报告严格来自 test 评估和 bundle。cell 的样本口径为已标注候选边数，
-避免把一帧 episode 误写成一个分类样本。即使内部 test 全部门限通过，保留 seed 和 paired shadow
-未完成时 G1、assist、在线及相机控制权限仍为 false，规则与几何回退继续生效。
+证据分为数据支持、内部模型测试、保留 seed、paired shadow 和 G1/assist 五层。首轮 preflight 的
+4,972 帧、245,040 边属于预算修复前历史。修复后 clean supplemental/composite 为 4,500/4,972 帧、
+370,190/370,198 边，三个 split 候选召回均为 1.0；固定 30 epoch 内部训练、held-out 和 paired
+shadow v2 已完成。cell 样本口径仍为已标注候选边数。即使前四层通过，合成特征偏易、共享中心
+线索取值 1 未覆盖和 D6 外部审计未闭合时，G1、assist、在线及相机控制权限仍为 false。
 
 ## 跨视角困难样本准入原则
 
@@ -65,13 +95,11 @@ camera-local tracklet、双时间戳、像素量测、协方差和几何特征�
 
 准入分为数据支持、训练和模型晋级三层。formal + supplemental 只读视图以完整 numeric seed 为原子
 按共享 registry 切分，并复核保留 seed、source hash、标签完整性、边支持、candidate recall 分母和
-双类场景覆盖。实际 4,500 帧补充语料含 245,032 条边，正/负/未标注为
-`57292/187740/0`；组合视图 4,972 帧的全部数据门通过。main 随后基于 clean commit
-`79b2550ce2ef407c7cfcc653ce04a80fe2226c06` 同配置复生，来源 dirty=false，数据支持和
-`training_readiness` 均 pass。该状态只关闭 producer、数据来源和训练数据支持。
+双类场景覆盖。首轮 245,032 边是修复前历史；当前 clean supplemental 为 370,190 边，组合视图为
+370,198 边，候选召回 1.0，未标注和保留 seed 重叠为 0。
 
-训练数据准入与模型晋级保持分层。当前没有模型训练或 `.pt`，promotion 仍等待新模型证据，保留
-seed 独立评估和同 seed shadow 未完成。G1、assist 和在线/相机控制权限继续关闭，中心
+训练数据准入与模型晋级保持分层。模型、保留 seed 和同 seed shadow 已有 v2 证据，但 promotion
+仍等待 D6 审计和更困难、独立生成的数据。G1、assist 和在线/相机控制权限继续关闭，中心
 `global_track_id` 所有权及既有几何、安全门不变。
 
 ## Supplemental BC 全样本审计原则
@@ -95,8 +123,9 @@ supplemental 树保持 308 files/约 2.2 MiB，正式 900-episode 树保持 4397
 
 该审计只关闭 supplemental behavior-cloning full-sample 子项。补充课程是 synthetic 规则教师数据，
 不是正式观测语料；`400/400/400` 是故障注入覆盖，不是真实 runtime ACK。四类离线标签仍 unavailable，
-不得补零。D6 跨模块准入、真实 ACK/outcome attribution、reward/counterfactual/causal 与 paired shadow
-仍未完成，因此 PPO、assist、在线/相机 authority 保持 false，规则回退必需。
+不得补零。paired shadow v2 已完成；D6 跨模块准入、真实 ACK/outcome attribution 和
+reward/counterfactual/causal 仍未完成，因此 PPO、assist、在线/相机 authority 保持 false，规则
+回退必需。
 
 ## Supplemental curriculum 生成原则
 
