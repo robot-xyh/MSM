@@ -1522,21 +1522,28 @@ def _center_projection_distance_matrix(
     for index, node in enumerate(nodes):
         groups[(node.camera_key, node.measurement_timestamp)].append(index)
 
+    track_positions = np.vstack([track.position for track in tracks])
+    track_velocities = np.vstack([track.velocity for track in tracks])
+    track_covariances = np.stack([track.covariance for track in tracks])
+    track_timestamps = np.asarray([track.timestamp for track in tracks], dtype=float)
+    predicted_by_timestamp: dict[float, tuple[np.ndarray, np.ndarray]] = {}
+    identity_2d = np.eye(2, dtype=float)
+
     for (camera_key, timestamp), node_indices in groups.items():
         geometry = camera_by_key[camera_key]
         camera = geometry.camera
-        positions = np.vstack(
-            [track.position + track.velocity * (timestamp - track.timestamp) for track in tracks]
-        )
-        covariances = np.stack(
-            [
-                track.covariance
-                + np.eye(3, dtype=float)
-                * config.global_process_noise_m2_s4
-                * (timestamp - track.timestamp) ** 2
-                for track in tracks
-            ]
-        )
+        predicted = predicted_by_timestamp.get(timestamp)
+        if predicted is None:
+            predicted = _predict_center_track_states(
+                track_positions,
+                track_velocities,
+                track_covariances,
+                track_timestamps,
+                timestamp=timestamp,
+                process_noise_m2_s4=config.global_process_noise_m2_s4,
+            )
+            predicted_by_timestamp[timestamp] = predicted
+        positions, covariances = predicted
         camera_points = positions @ camera.R.T + camera.t[None, :]
         depths = camera_points[:, 2]
         valid = depths > _EPS
@@ -1570,7 +1577,7 @@ def _center_projection_distance_matrix(
         focal_mean = 0.5 * (camera.K[0, 0] + camera.K[1, 1])
         attitude_variance_px = focal_mean**2 * float(np.trace(geometry.attitude_covariance_rad2) / 3.0)
         covariance_px += camera.measurement_cov[None, :, :]
-        covariance_px += np.eye(2, dtype=float)[None, :, :] * (
+        covariance_px += identity_2d[None, :, :] * (
             attitude_variance_px + config.covariance_regularization
         )
 
@@ -1581,6 +1588,28 @@ def _center_projection_distance_matrix(
             d2[~valid] = np.inf
             distances[node_index] = np.sqrt(np.maximum(d2, 0.0))
     return distances
+
+
+def _predict_center_track_states(
+    positions: np.ndarray,
+    velocities: np.ndarray,
+    covariances: np.ndarray,
+    timestamps: np.ndarray,
+    *,
+    timestamp: float,
+    process_noise_m2_s4: float,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Materialize one read-only center prediction shared by same-time cameras."""
+
+    deltas = timestamp - timestamps
+    predicted_positions = positions + velocities * deltas[:, None]
+    predicted_covariances = (
+        covariances
+        + np.eye(3, dtype=float)[None, :, :]
+        * process_noise_m2_s4
+        * deltas[:, None, None] ** 2
+    )
+    return _read_only(predicted_positions), _read_only(predicted_covariances)
 
 
 def _projection_support_by_node(

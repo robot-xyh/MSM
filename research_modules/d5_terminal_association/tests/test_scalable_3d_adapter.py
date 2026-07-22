@@ -1292,6 +1292,41 @@ def test_online_association_reuses_build_projection_distances_for_center_binding
     } == {"GT-0000", "GT-0001", "GT-0002"}
 
 
+def test_center_prediction_state_is_read_only_and_reused_by_same_time_cameras(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    original = graph_module._predict_center_track_states
+    prediction_timestamps: list[float] = []
+
+    def counted_prediction(*args: object, **kwargs: object) -> tuple[np.ndarray, np.ndarray]:
+        prediction_timestamps.append(float(kwargs["timestamp"]))
+        positions, covariances = original(*args, **kwargs)
+        assert positions.flags.writeable is False
+        assert covariances.flags.writeable is False
+        return positions, covariances
+
+    monkeypatch.setattr(
+        graph_module,
+        "_predict_center_track_states",
+        counted_prediction,
+    )
+    result = Scalable3DTerminalAdapter().process(
+        (
+            _projected_batch(0, PARTIAL_VISIBILITY[0]),
+            _projected_batch(1, PARTIAL_VISIBILITY[1]),
+        ),
+        _center_tracks(),
+    )
+
+    assert prediction_timestamps == [pytest.approx(10.0)]
+    assert result.association.graph.node_count == 4
+    assert {
+        item.global_track_id
+        for item in result.association.bindings
+        if item.global_track_id is not None
+    } == {"GT-0000", "GT-0001", "GT-0002"}
+
+
 def test_identical_camera_metadata_reuses_one_fully_validated_template(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

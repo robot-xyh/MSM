@@ -17,14 +17,14 @@
     "long_frame_count": 116,
     "long_operation_counts_sha256": "2577b18169ab23db9600e449ebb2c2e6b01ac78ca601b52c4021dbf534d639cf",
     "mean_call_ms": {
-      "growth": 2.134523442133638,
-      "long": 19.56389563113997,
-      "short": 9.16546299982735
+      "growth": 2.365872543732793,
+      "long": 20.16278933322234,
+      "short": 8.522348081105916
     },
     "median_call_ms": {
-      "growth": 2.647016986185466,
-      "long": 21.98777749435976,
-      "short": 8.306625008117408
+      "growth": 2.5552458307620225,
+      "long": 23.023115005344152,
+      "short": 9.010137000586838
     },
     "online_truth_use_count": 0,
     "operation_per_frame_growth": {
@@ -69,11 +69,11 @@
       "unbound": 384
     },
     "elapsed_s": [
-      2.276767004048452,
-      2.28946401696885,
-      2.2266132610384375,
-      2.298338057997171,
-      2.34865128895035
+      2.4267503779847175,
+      2.3642627289518714,
+      2.292938823986333,
+      2.2153244399814866,
+      2.3938464860548265
     ],
     "final_binding_semantic_match": true,
     "final_core_semantic_match": true,
@@ -83,12 +83,12 @@
     "graph_edge_count": 135,
     "graph_node_count": 2493,
     "last_terminal_timestamp": 9.95,
-    "maximum_call_ms": 38.860659988131374,
-    "maximum_elapsed_s": 2.34865128895035,
-    "mean_call_ms": 19.56389563113997,
-    "median_call_ms": 21.98777749435976,
-    "median_elapsed_s": 2.28946401696885,
-    "minimum_elapsed_s": 2.2266132610384375,
+    "maximum_call_ms": 60.12513698078692,
+    "maximum_elapsed_s": 2.4267503779847175,
+    "mean_call_ms": 20.16278933322234,
+    "median_call_ms": 23.023115005344152,
+    "median_elapsed_s": 2.3642627289518714,
+    "minimum_elapsed_s": 2.2153244399814866,
     "online_truth_use_count": 0,
     "operation_counts": {
       "active_camera_stream_current": 180,
@@ -161,7 +161,7 @@
     },
     "operation_counts_sha256": "2577b18169ab23db9600e449ebb2c2e6b01ac78ca601b52c4021dbf534d639cf",
     "operation_diagnostics_are_fixed_size": true,
-    "p95_call_ms": 33.99443552189041,
+    "p95_call_ms": 34.00906626484357,
     "recorded_core_sha256": "7f212c56a6b477f58a37a692f7f3f2c227509dd1f485100f2b1c1a61435254e4",
     "recorded_final_binding_sha256": "20b3680b26ebe3cca6bd9252141f6a24c651f5c0ffd09e65a40872dfa825d61f",
     "recorded_final_core_sha256": "d2738a9a5c377379e99bd78a5f3d6e7eff56eec9ece6b72e4c2b013c9acc15f7",
@@ -181,11 +181,11 @@
       "unbound": 65
     },
     "elapsed_s": [
-      0.5071147450362332,
-      0.19362851104233414,
-      0.201575679006055,
-      0.21420029597356915,
-      0.21341947495238855
+      0.5511556090204976,
+      0.19904792396118864,
+      0.19935580395394936,
+      0.19520785100758076,
+      0.1967792509822175
     ],
     "final_binding_semantic_match": true,
     "final_core_semantic_match": true,
@@ -195,12 +195,12 @@
     "graph_edge_count": 1,
     "graph_node_count": 85,
     "last_terminal_timestamp": 2.15,
-    "maximum_call_ms": 29.67743598856032,
-    "maximum_elapsed_s": 0.5071147450362332,
-    "mean_call_ms": 9.16546299982735,
-    "median_call_ms": 8.306625008117408,
-    "median_elapsed_s": 0.21341947495238855,
-    "minimum_elapsed_s": 0.19362851104233414,
+    "maximum_call_ms": 24.409433943219483,
+    "maximum_elapsed_s": 0.5511556090204976,
+    "mean_call_ms": 8.522348081105916,
+    "median_call_ms": 9.010137000586838,
+    "median_elapsed_s": 0.19904792396118864,
+    "minimum_elapsed_s": 0.19520785100758076,
     "online_truth_use_count": 0,
     "operation_counts": {
       "active_camera_stream_current": 63,
@@ -273,7 +273,7 @@
     },
     "operation_counts_sha256": "a8e7a6dc2b26f20da3765364f6e7c6769393873520a47b966ed5def2a7f622b4",
     "operation_diagnostics_are_fixed_size": true,
-    "p95_call_ms": 18.656646512681615,
+    "p95_call_ms": 15.943130792584268,
     "recorded_core_sha256": "14b86bee3a13582d97e885fcb59876716a44a13ddf1c5101215b9a1f0d93d9d1",
     "recorded_final_binding_sha256": "8cd7bb99076eec1cddf8f1ad1a1c03c31eb54a5c44269f1b80ab8ff323266591",
     "recorded_final_core_sha256": "4c85546d001968b420cefb0fb2bef737b217f4c6af2ecf6ae64735e4fe53312f",
@@ -281,7 +281,7 @@
     "replayed_core_sha256": "14b86bee3a13582d97e885fcb59876716a44a13ddf1c5101215b9a1f0d93d9d1",
     "replayed_final_binding_sha256": "8cd7bb99076eec1cddf8f1ad1a1c03c31eb54a5c44269f1b80ab8ff323266591",
     "replayed_final_core_sha256": "4c85546d001968b420cefb0fb2bef737b217f4c6af2ecf6ae64735e4fe53312f",
-    "representative_timing_repeat_index": 4,
+    "representative_timing_repeat_index": 1,
     "semantic_match": true,
     "simulation_duration_s": 2.15,
     "tracklet_count": 85
