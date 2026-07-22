@@ -1,0 +1,95 @@
+{
+  "active_vision_scale": {
+    "assignment_count": 199,
+    "camera_count": 208,
+    "decision_count": 4160,
+    "decision_sha256": "a9d3d3f299ecbe8fd6c3d33cdbbe7803e8959b9055faf8b38fc2b62ff7ff58f6",
+    "elapsed_s": [
+      0.5108735190005973,
+      0.5857453380012885,
+      0.5183516920078546
+    ],
+    "intent_counts": {
+      "observe_target": 3980,
+      "search_sector": 180
+    },
+    "iteration_count": 20,
+    "learning_assist_authorized": false,
+    "median_elapsed_s": 0.5183516920078546,
+    "median_iteration_ms": 25.91758460039273,
+    "online_truth_use_count": 0,
+    "repeat_count": 3,
+    "rule_path_preserved": true,
+    "track_count": 205
+  },
+  "baseline_comparison": {
+    "active_vision_median_iteration_ms": {
+      "baseline": 37.4311243504053,
+      "current": 25.91758460039273,
+      "speedup": 1.4442366033537748
+    },
+    "baseline_label": "c0460e0",
+    "checks": {
+      "same_active_decision_sha256": true,
+      "same_binding_state_counts": true,
+      "same_online_log_sha256": true,
+      "same_recorded_terminal_core_sha256": true,
+      "same_replayed_terminal_core_sha256": true
+    },
+    "terminal_median_elapsed_s": {
+      "baseline": 4.132718070002738,
+      "current": 2.776239375001751,
+      "speedup": 1.4886029307181525
+    }
+  },
+  "recorded_publications": {
+    "modules.d5.active_vision": {
+      "line_bytes": 8273001,
+      "line_count": 93
+    },
+    "modules.d5.terminal_association": {
+      "line_bytes": 779439,
+      "line_count": 116
+    }
+  },
+  "schema_version": "d5-scalable3d-performance-v1",
+  "source": {
+    "online_log": "/home/linux/Documents/MSM/research_modules/scalable_3d_simulation/outputs/scalable_3d_long_duration_calibration_20260722_clean_c0460e0/10p0s_seed_42000/online_observations.jsonl",
+    "online_log_sha256": "3efa561a07bf0cdcd74d23570ee23ca173f56ddaf632c89258d02c20c299a51a",
+    "online_log_size_bytes": 362816076,
+    "truth_source_loaded": false,
+    "unconsumed_vision_batch_count": 0
+  },
+  "terminal_replay": {
+    "binding_state_counts": {
+      "ambiguous": 36,
+      "bound": 1938,
+      "unbound": 384
+    },
+    "elapsed_s": [
+      2.9908362519927323,
+      2.658660647983197,
+      2.776239375001751
+    ],
+    "frame_count": 116,
+    "global_track_id_mutation_count": 0,
+    "graph_edge_count": 135,
+    "graph_node_count": 2493,
+    "maximum_call_ms": 321.4748110040091,
+    "maximum_elapsed_s": 2.9908362519927323,
+    "median_call_ms": 27.151916990987957,
+    "median_elapsed_s": 2.776239375001751,
+    "minimum_elapsed_s": 2.658660647983197,
+    "online_truth_use_count": 0,
+    "recorded_core_sha256": "7f212c56a6b477f58a37a692f7f3f2c227509dd1f485100f2b1c1a61435254e4",
+    "repeat_count": 3,
+    "replayed_core_sha256": "7f212c56a6b477f58a37a692f7f3f2c227509dd1f485100f2b1c1a61435254e4",
+    "semantic_match": true,
+    "tracklet_count": 2493
+  },
+  "timing_boundary": {
+    "module_stage_excludes_bus_serialization": true,
+    "module_stage_excludes_publication_builder": true,
+    "publication_payload_requires_separate_main_bus_audit": true
+  }
+}

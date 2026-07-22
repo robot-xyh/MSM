@@ -7,6 +7,7 @@ import numpy as np
 import pytest
 
 import d5_terminal_association.scalable_3d_adapter as adapter_module
+import d5_terminal_association.sparse_tracklet_graph as graph_module
 from d5_terminal_association.scalable_3d_adapter import (
     Scalable3DTerminalAdapter,
     global_track3d_to_projection_track,
@@ -1180,3 +1181,112 @@ def test_offline_observation_join_marks_unlabeled_false_alarm_incomplete() -> No
     )
     assert joined.tracklet_labels[0].tracklet_key == labeled_tracklet.tracklet_key
     assert joined.tracklet_labels[0].truth_entity_id == "EVALUATOR-ENTITY-1"
+
+
+def test_repeated_center_snapshot_reuses_only_content_equivalent_projection_tracks(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    adapter = Scalable3DTerminalAdapter()
+    source_tracks = _center_tracks()
+    original = adapter_module.global_tracks3d_to_projection_tracks
+    conversion_count = 0
+
+    def counted_conversion(tracks: object) -> object:
+        nonlocal conversion_count
+        conversion_count += 1
+        return original(tracks)
+
+    monkeypatch.setattr(
+        adapter_module,
+        "global_tracks3d_to_projection_tracks",
+        counted_conversion,
+    )
+    first = adapter.process(
+        (
+            _timed_projected_batch(
+                0,
+                measurement_timestamp=10.0,
+                arrival_timestamp=10.05,
+                frame_index=1,
+            ),
+        ),
+        source_tracks,
+    )
+    second = adapter.process(
+        (
+            _timed_projected_batch(
+                0,
+                measurement_timestamp=10.1,
+                arrival_timestamp=10.15,
+                frame_index=2,
+            ),
+        ),
+        source_tracks,
+    )
+
+    assert conversion_count == 1
+    assert second.center_projection_tracks is first.center_projection_tracks
+
+    source_tracks[0].state[0] += 2.0
+    third = adapter.process(
+        (
+            _timed_projected_batch(
+                0,
+                measurement_timestamp=10.2,
+                arrival_timestamp=10.25,
+                frame_index=3,
+            ),
+        ),
+        source_tracks,
+    )
+    assert conversion_count == 2
+    assert third.center_projection_tracks is not second.center_projection_tracks
+    assert third.center_projection_tracks[0].position[0] == pytest.approx(
+        second.center_projection_tracks[0].position[0] + 2.0
+    )
+
+    adapter.reset_episode()
+    adapter.process(
+        (
+            _timed_projected_batch(
+                0,
+                measurement_timestamp=10.3,
+                arrival_timestamp=10.35,
+                frame_index=4,
+            ),
+        ),
+        source_tracks,
+    )
+    assert conversion_count == 3
+
+
+def test_online_association_reuses_build_projection_distances_for_center_binding(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    original = graph_module._center_projection_distance_matrix
+    projection_call_count = 0
+
+    def counted_projection(*args: object, **kwargs: object) -> np.ndarray:
+        nonlocal projection_call_count
+        projection_call_count += 1
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(
+        graph_module,
+        "_center_projection_distance_matrix",
+        counted_projection,
+    )
+    result = Scalable3DTerminalAdapter().process(
+        (
+            _projected_batch(0, PARTIAL_VISIBILITY[0]),
+            _projected_batch(1, PARTIAL_VISIBILITY[1]),
+        ),
+        _center_tracks(),
+    )
+
+    assert projection_call_count == 1
+    assert {
+        item.global_track_id
+        for item in result.association.bindings
+        if item.global_track_id is not None
+    } == {"GT-0000", "GT-0001", "GT-0002"}

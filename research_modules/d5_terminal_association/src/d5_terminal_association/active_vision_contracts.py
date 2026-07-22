@@ -8,13 +8,15 @@ failure returns the already-computed rule action.
 
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, fields, is_dataclass
 from enum import Enum
+from functools import cached_property, lru_cache
 import math
 import re
 import time
 from types import MappingProxyType
-from typing import Any, Mapping, Protocol, Sequence, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
 import numpy as np
 
@@ -39,6 +41,15 @@ _FORBIDDEN_INPUT_KEYS = frozenset(
         "target_truth_id",
         "airsim_id",
     }
+)
+_FORBIDDEN_INPUT_SUFFIXES = (
+    "_actor_id",
+    "_actor_name",
+    "_object_id",
+    "_object_name",
+    "_truth_id",
+    "_entity_id",
+    "_entity_name",
 )
 _TRUTH_LIKE_INPUT_VALUE = re.compile(
     r"truth|actor|object|(?:^|[^a-z0-9])(?:tgt|target(?:drone|uav)?|intruder)[_.\- ]*\d+",
@@ -369,30 +380,44 @@ class ActiveVisionSnapshotV1:
         object.__setattr__(self, "projections", projections)
 
     def camera(self, camera_id: str) -> ActiveVisionCameraState:
-        matches = tuple(item for item in self.cameras if item.camera_id == camera_id)
-        if len(matches) != 1:
+        camera = self._camera_by_id.get(camera_id)
+        if camera is None:
             raise ValueError("camera_id is not a member of the active-vision snapshot")
-        return matches[0]
+        return camera
 
     def projection(
         self, camera_id: str, global_track_id: str
     ) -> ActiveVisionProjectionEvidence | None:
-        return next(
-            (
-                item
-                for item in self.projections
-                if item.camera_id == camera_id and item.global_track_id == global_track_id
-            ),
-            None,
-        )
+        return self._projection_by_key.get((camera_id, global_track_id))
 
     def assigned_target_ids(self, camera_id: str) -> tuple[str, ...]:
-        return tuple(
-            sorted(
-                item.global_track_id
-                for item in self.plan.assignments
-                if item.camera_id == camera_id
-            )
+        return self._assigned_targets_by_camera.get(camera_id, ())
+
+    @cached_property
+    def _camera_by_id(self) -> Mapping[str, ActiveVisionCameraState]:
+        return MappingProxyType({item.camera_id: item for item in self.cameras})
+
+    @cached_property
+    def _projection_by_key(
+        self,
+    ) -> Mapping[tuple[str, str], ActiveVisionProjectionEvidence]:
+        return MappingProxyType(
+            {
+                (item.camera_id, item.global_track_id): item
+                for item in self.projections
+            }
+        )
+
+    @cached_property
+    def _assigned_targets_by_camera(self) -> Mapping[str, tuple[str, ...]]:
+        target_ids: dict[str, list[str]] = {}
+        for item in self.plan.assignments:
+            target_ids.setdefault(item.camera_id, []).append(item.global_track_id)
+        return MappingProxyType(
+            {
+                camera_id: tuple(sorted(values))
+                for camera_id, values in target_ids.items()
+            }
         )
 
 
@@ -1568,21 +1593,16 @@ def _wide_or_current(camera: ActiveVisionCameraState) -> ActiveVisionFovMode:
     return camera.current_fov_mode
 
 
+@lru_cache(maxsize=512)
 def _forbidden_input_key(key: str) -> bool:
-    return key in _FORBIDDEN_INPUT_KEYS or key.startswith("truth_") or any(
-        key.endswith(suffix)
-        for suffix in (
-            "_actor_id",
-            "_actor_name",
-            "_object_id",
-            "_object_name",
-            "_truth_id",
-            "_entity_id",
-            "_entity_name",
-        )
+    return (
+        key in _FORBIDDEN_INPUT_KEYS
+        or key.startswith("truth_")
+        or key.endswith(_FORBIDDEN_INPUT_SUFFIXES)
     )
 
 
+@lru_cache(maxsize=512)
 def _normalise_key(value: str) -> str:
     return value.strip().lower().replace("-", "_").replace(" ", "_")
 

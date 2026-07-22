@@ -11,11 +11,13 @@ from __future__ import annotations
 
 from bisect import bisect_left
 from collections import defaultdict
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, fields, is_dataclass
+from functools import lru_cache
 import math
 import re
 from types import MappingProxyType
-from typing import Any, Iterable, Mapping, Sequence
+from typing import Any
 
 import numpy as np
 
@@ -89,6 +91,20 @@ _LOCAL_ID_KEYS = frozenset(
         "tracklet_id",
     }
 )
+_FORBIDDEN_ONLINE_SUFFIXES = (
+    "_truth_id",
+    "_actor_id",
+    "_actor_name",
+    "_entity_id",
+    "_entity_name",
+    "_intruder_id",
+    "_intruder_name",
+    "_object_id",
+    "_object_name",
+    "_target_id",
+    "_target_name",
+)
+_LOCAL_ID_SUFFIXES = ("_local_track_id", "_local_tracklet_id")
 _TRUTH_LIKE_LOCAL_ID = re.compile(
     r"(?:^|[^a-z0-9])"
     r"(?:tgt|target(?:[\s_.-]*(?:drone|uav|uas|aircraft|vehicle))?|intruder)"
@@ -968,6 +984,24 @@ def build_sparse_tracklet_graph(
     center_tracks: Iterable[GlobalTrack] = (),
     config: SparseTrackletGraphConfig | None = None,
 ) -> SparseTrackletGraph:
+    """Build one public sparse graph while keeping build artifacts internal."""
+
+    graph, _ = _build_sparse_tracklet_graph_with_projection_distances(
+        tracklets,
+        camera_geometries,
+        center_tracks=center_tracks,
+        config=config,
+    )
+    return graph
+
+
+def _build_sparse_tracklet_graph_with_projection_distances(
+    tracklets: Iterable[CameraLocalTracklet],
+    camera_geometries: Iterable[TrackletCameraGeometry],
+    *,
+    center_tracks: Iterable[GlobalTrack] = (),
+    config: SparseTrackletGraphConfig | None = None,
+) -> tuple[SparseTrackletGraph, np.ndarray]:
     """Build sparse cross-camera candidates without using evaluator identity."""
 
     cfg = config or SparseTrackletGraphConfig()
@@ -1280,13 +1314,16 @@ def build_sparse_tracklet_graph(
         if retained
         else np.empty((0, len(EDGE_FEATURE_NAMES)), dtype=np.float32)
     )
-    return SparseTrackletGraph(
-        nodes=nodes,
-        node_features=node_features,
-        edge_index=edge_index,
-        edge_features=edge_features,
-        edges=retained,
-        candidate_counts=counts,
+    return (
+        SparseTrackletGraph(
+            nodes=nodes,
+            node_features=node_features,
+            edge_index=edge_index,
+            edge_features=edge_features,
+            edges=retained,
+            candidate_counts=counts,
+        ),
+        projection_distances,
     )
 
 
@@ -1358,6 +1395,7 @@ def bind_clusters_to_center_tracks(
     max_binding_mahalanobis: float = 6.0,
     ambiguity_margin: float = 0.5,
     config: SparseTrackletGraphConfig | None = None,
+    projection_distances: np.ndarray | None = None,
 ) -> tuple[CenterTrackBindingDecision, ...]:
     """Hungarian-bind clusters only to IDs supplied by the center."""
 
@@ -1387,7 +1425,19 @@ def bind_clusters_to_center_tracks(
             for cluster in cluster_items
         )
 
-    distances = _center_projection_distance_matrix(graph.nodes, camera_by_key, tracks, cfg)
+    if projection_distances is None:
+        distances = _center_projection_distance_matrix(
+            graph.nodes,
+            camera_by_key,
+            tracks,
+            cfg,
+        )
+    else:
+        distances = np.asarray(projection_distances, dtype=float)
+        if distances.shape != (len(graph.nodes), len(tracks)):
+            raise ValueError("projection_distances shape does not match graph and tracks")
+        if np.any(np.isnan(distances)) or np.any(distances < 0.0):
+            raise ValueError("projection_distances must contain non-negative values or infinity")
     costs = np.full((len(cluster_items), len(tracks)), np.inf, dtype=float)
     for row, cluster in enumerate(cluster_items):
         cluster_distances = distances[np.asarray(cluster.node_indices, dtype=int)]
@@ -1817,35 +1867,21 @@ def _read_only(array: np.ndarray) -> np.ndarray:
     return array
 
 
+@lru_cache(maxsize=512)
 def _normalise_key(value: str) -> str:
     return value.strip().lower().replace("-", "_").replace(" ", "_")
 
 
+@lru_cache(maxsize=512)
 def _is_forbidden_online_key(key: str) -> bool:
     if key in _FORBIDDEN_ONLINE_KEYS:
         return True
-    return (
-        key.startswith("truth_")
-        or key.endswith("_truth_id")
-        or key.endswith("_actor_id")
-        or key.endswith("_actor_name")
-        or key.endswith("_entity_id")
-        or key.endswith("_entity_name")
-        or key.endswith("_intruder_id")
-        or key.endswith("_intruder_name")
-        or key.endswith("_object_id")
-        or key.endswith("_object_name")
-        or key.endswith("_target_id")
-        or key.endswith("_target_name")
-    )
+    return key.startswith("truth_") or key.endswith(_FORBIDDEN_ONLINE_SUFFIXES)
 
 
+@lru_cache(maxsize=512)
 def _is_local_id_key(key: str) -> bool:
-    return (
-        key in _LOCAL_ID_KEYS
-        or key.endswith("_local_track_id")
-        or key.endswith("_local_tracklet_id")
-    )
+    return key in _LOCAL_ID_KEYS or key.endswith(_LOCAL_ID_SUFFIXES)
 
 
 def is_truth_like_local_track_id(value: Any) -> bool:

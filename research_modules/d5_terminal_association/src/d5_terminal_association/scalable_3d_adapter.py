@@ -8,12 +8,13 @@ are validated but are never reused as camera-local tracker identifiers.
 from __future__ import annotations
 
 from bisect import bisect_left, insort
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, fields, is_dataclass
 import math
 import re
 import time
 from types import MappingProxyType
-from typing import Any, Iterable, Mapping, Sequence
+from typing import Any
 
 import numpy as np
 
@@ -26,8 +27,8 @@ from .sparse_tracklet_graph import (
     TrackletCameraGeometry,
     TrackletCluster,
     assert_anonymous_online_payload,
+    _build_sparse_tracklet_graph_with_projection_distances,
     bind_clusters_to_center_tracks,
-    build_sparse_tracklet_graph,
     constrained_tracklet_clusters,
     is_truth_like_local_track_id,
 )
@@ -433,6 +434,7 @@ class _AnonymousCameraTracker:
         )
         assignments = self._match(ordered_detections)
         matched_sequences = set(assignments.values())
+        emitted_sequences: set[int] = set()
         output: list[CameraLocalTracklet] = []
 
         for detection_index, detection in enumerate(ordered_detections):
@@ -503,11 +505,10 @@ class _AnonymousCameraTracker:
                     },
                 )
             )
+            emitted_sequences.add(sequence)
 
         for sequence, state in list(self._tracks.items()):
-            if sequence in matched_sequences or any(
-                tracklet.local_track_id == f"trk-{sequence:06d}" for tracklet in output
-            ):
+            if sequence in matched_sequences or sequence in emitted_sequences:
                 continue
             state.missed_frames += 1
             if state.missed_frames > self.config.max_missed_frames:
@@ -546,6 +547,8 @@ class Scalable3DTerminalAdapter:
     def __init__(self, config: Scalable3DAdapterConfig | None = None) -> None:
         self.config = config or Scalable3DAdapterConfig()
         self._trackers: dict[tuple[str, str], _AnonymousCameraTracker] = {}
+        self._center_track_source_signature: tuple[Any, ...] | None = None
+        self._center_projection_tracks: tuple[GlobalTrack, ...] = ()
 
     def adapt_batch(self, batch: Any) -> Scalable3DAdaptedCameraBatch:
         return self.adapt_batches((batch,))[0]
@@ -635,7 +638,17 @@ class Scalable3DTerminalAdapter:
         edge_model: Any | None = None,
     ) -> Scalable3DStepResult:
         adapted_batches = self.adapt_batches(batches)
-        center_tracks = global_tracks3d_to_projection_tracks(center_tracks_3d)
+        center_track_items = tuple(center_tracks_3d)
+        source_signature = _center_track_content_signature(center_track_items)
+        if (
+            source_signature is not None
+            and source_signature == self._center_track_source_signature
+        ):
+            center_tracks = self._center_projection_tracks
+        else:
+            center_tracks = global_tracks3d_to_projection_tracks(center_track_items)
+            self._center_track_source_signature = source_signature
+            self._center_projection_tracks = center_tracks
         association_batches = _latest_state_update_batches(adapted_batches)
         association = run_scalable_3d_online_association(
             tuple(tracklet for batch in association_batches for tracklet in batch.tracklets),
@@ -656,6 +669,8 @@ class Scalable3DTerminalAdapter:
 
     def reset_episode(self) -> None:
         self._trackers.clear()
+        self._center_track_source_signature = None
+        self._center_projection_tracks = ()
 
     def _commit_prepared_batch(
         self,
@@ -769,6 +784,41 @@ def global_tracks3d_to_projection_tracks(tracks: Iterable[Any]) -> tuple[GlobalT
     return adapted
 
 
+def _center_track_content_signature(
+    tracks: Sequence[Any],
+) -> tuple[Any, ...] | None:
+    """Fingerprint every field consumed by center-track adaptation.
+
+    The cache is used only after the full adapter has accepted a snapshot.
+    Unsupported or malformed values return ``None`` so the original validation
+    path remains authoritative.
+    """
+
+    signature: list[tuple[Any, ...]] = []
+    try:
+        for track in tracks:
+            global_track_id = _field(track, "global_track_id")
+            state = np.asarray(_field(track, "state"), dtype=float)
+            covariance = np.asarray(_field(track, "covariance"), dtype=float)
+            timestamp = float(_field(track, "timestamp"))
+            track_version = int(_field(track, "track_version", 0))
+            signature.append(
+                (
+                    type(global_track_id),
+                    global_track_id,
+                    state.shape,
+                    state.tobytes(order="C"),
+                    covariance.shape,
+                    covariance.tobytes(order="C"),
+                    timestamp,
+                    track_version,
+                )
+            )
+    except (AttributeError, TypeError, ValueError):
+        return None
+    return tuple(signature)
+
+
 def run_scalable_3d_online_association(
     tracklets: Iterable[CameraLocalTracklet],
     camera_geometries: Iterable[TrackletCameraGeometry],
@@ -784,7 +834,7 @@ def run_scalable_3d_online_association(
     geometry_items = tuple(camera_geometries)
     center_items = tuple(center_tracks)
     center_ids_before = tuple(track.global_track_id for track in center_items)
-    graph = build_sparse_tracklet_graph(
+    graph, projection_distances = _build_sparse_tracklet_graph_with_projection_distances(
         tracklet_items,
         geometry_items,
         center_tracks=center_items,
@@ -815,6 +865,7 @@ def run_scalable_3d_online_association(
         max_binding_mahalanobis=cfg.max_binding_mahalanobis,
         ambiguity_margin=cfg.binding_ambiguity_margin,
         config=cfg.graph_config,
+        projection_distances=projection_distances,
     )
     if tuple(track.global_track_id for track in center_items) != center_ids_before:
         raise RuntimeError("D5 association mutated a center global_track_id")

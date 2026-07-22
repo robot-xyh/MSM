@@ -323,3 +323,18 @@ def test_stability_state_is_isolated_per_camera() -> None:
     assert _select(policy, _snapshot(10.1, assignments_by_camera=assignments), camera_id="CAM-0").fov_mode is ActiveVisionFovMode.ZOOM
     assert _select(policy, _snapshot(10.1, assignments_by_camera=assignments), camera_id="CAM-1").fov_mode is ActiveVisionFovMode.WIDE
     assert _select(policy, _snapshot(10.2, assignments_by_camera=assignments), camera_id="CAM-1").fov_mode is ActiveVisionFovMode.ZOOM
+
+
+def test_snapshot_indexes_preserve_camera_assignment_and_projection_semantics() -> None:
+    snapshot = _snapshot(10.0)
+
+    camera = snapshot.camera("CAM-0")
+    projection = snapshot.projection("CAM-0", "GT-A")
+
+    assert camera.camera_id == "CAM-0"
+    assert projection is not None
+    assert projection.global_track_id == "GT-A"
+    assert snapshot.assigned_target_ids("CAM-0") == ("GT-A",)
+    assert snapshot.camera("CAM-0") is camera
+    assert snapshot.projection("CAM-0", "GT-A") is projection
+    assert snapshot.assigned_target_ids("CAM-UNKNOWN") == ()
