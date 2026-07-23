@@ -9,6 +9,12 @@ from typing import Any, Iterable
 
 import numpy as np
 
+from .ambiguity_hold import (
+    D1_DEFAULT_PUBLISHER_EPOCH,
+    D1_DEFAULT_PUBLISHER_NODE_ID,
+    D1_OPAQUE_SOURCE_TOKEN_POLICY_VERSION,
+    opaque_d1_source_track_id,
+)
 from .models import TrackLifecycleState, govern_covariance
 
 
@@ -40,12 +46,14 @@ _D1_TO_D2_METADATA_KEYS = frozenset(
         "latest_arrival_timestamp",
         "latest_measurement_timestamp",
         "latest_modality",
+        "latest_observation_evidence_key",
         "latest_observation_id",
         "latest_sensor_id",
         "measurement_order",
         "measurement_timestamp",
         "modality",
         "observation_id",
+        "observation_evidence_key",
         "online_batch_id",
         "published_at",
         "scan_id",
@@ -473,14 +481,27 @@ def detections3d_from_d1_global_tracks(
     tracks: Iterable[Any],
     *,
     detection_id_prefix: str = "d1-3d",
+    use_opaque_d1_source_tokens: bool = False,
+    publisher_node_id: str = D1_DEFAULT_PUBLISHER_NODE_ID,
+    publisher_epoch: str | None = None,
 ) -> tuple[float, list[Detection3D]]:
     """Adapt D1 six-state tracks while ignoring any upstream global ID value.
 
     The adapter deliberately allocates anonymous observation IDs by scan order.
     An upstream object's ``global_track_id`` is neither copied nor used as D2's
-    canonical identity authority.
+    canonical identity authority. The optional opaque-source-token path is
+    disabled by default so baseline association and serialization remain
+    unchanged for clean A/B evaluation.
     """
 
+    if not isinstance(use_opaque_d1_source_tokens, bool):
+        raise TypeError("use_opaque_d1_source_tokens must be a bool")
+    effective_publisher_epoch = (
+        D1_DEFAULT_PUBLISHER_EPOCH
+        if publisher_epoch is None
+        else str(publisher_epoch).strip()
+    )
+    publisher_epoch_defaulted = publisher_epoch is None
     track_list = list(tracks)
     metadata_list = [
         _mapping_or_empty(_read(item, "metadata", {})) for item in track_list
@@ -560,6 +581,33 @@ def detections3d_from_d1_global_tracks(
                 "state_order": list(STATE_ORDER_3D),
             }
         )
+        source_node_id = _optional_identifier(metadata.get("source_node_id"))
+        source_track_id = _optional_identifier(metadata.get("source_track_id"))
+        if use_opaque_d1_source_tokens:
+            local_track_id = _d1_local_track_id(item, metadata)
+            source_node_id = str(publisher_node_id).strip()
+            source_track_id = opaque_d1_source_track_id(
+                source_node_id,
+                effective_publisher_epoch,
+                local_track_id,
+            )
+            safe_metadata.update(
+                {
+                    "source_node_id": source_node_id,
+                    "source_track_id": source_track_id,
+                    "source_publisher_node_id": source_node_id,
+                    "source_publisher_epoch": effective_publisher_epoch,
+                    "source_publisher_epoch_defaulted": (
+                        publisher_epoch_defaulted
+                    ),
+                    "source_publisher_epoch_rotation_required_on_restart": True,
+                    "opaque_source_token_policy": (
+                        D1_OPAQUE_SOURCE_TOKEN_POLICY_VERSION
+                    ),
+                    "opaque_source_tokens_enabled": True,
+                    "upstream_identity_ignored": True,
+                }
+            )
         detection_kwargs = {
             "detection_id": detection_id,
             "measurement_timestamp": state_timestamp,
@@ -570,8 +618,8 @@ def detections3d_from_d1_global_tracks(
             "velocity_ned": state[3:],
             "velocity_covariance": covariance[3:, 3:],
             "state_estimate_covariance": covariance,
-            "source_node_id": _optional_identifier(metadata.get("source_node_id")),
-            "source_track_id": _optional_identifier(metadata.get("source_track_id")),
+            "source_node_id": source_node_id,
+            "source_track_id": source_track_id,
             "frame_id": frame_id,
             "metadata": safe_metadata,
         }
@@ -589,6 +637,25 @@ def detections3d_from_d1_global_tracks(
     ):
         raise ValueError("D1 track batch must share one state-valid timestamp")
     return frame_timestamp, detections
+
+
+def _d1_local_track_id(item: Any, metadata: Mapping[str, Any]) -> str:
+    """Read a D1-local token only as input to the irreversible hash."""
+
+    for name in (
+        "d1_local_track_id",
+        "local_track_id",
+        "local_track_token",
+    ):
+        candidate = metadata.get(name, _read(item, name, None))
+        if candidate is not None and str(candidate).strip():
+            return str(candidate).strip()
+    candidate = _read(item, "global_track_id", None)
+    if candidate is None or not str(candidate).strip():
+        raise ValueError(
+            "opaque D1 source tokens require a D1-local track identifier"
+        )
+    return str(candidate).strip()
 
 
 def _detection3d_from_governed_d1_track(

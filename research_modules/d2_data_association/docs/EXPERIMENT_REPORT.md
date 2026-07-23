@@ -1,5 +1,50 @@
 # D2 多目标跟踪与数据关联实验报告
 
+## 2026-07-23 结构歧义保持租约模块验证
+
+本批验证 D1/D2 接口、prediction-only 保持不变式和来源绑定更新顺序。未启动 AirSim，
+未运行 main clean 200v200 A/B，未使用在线 truth。候选配置和 D1 不透明来源适配均
+默认关闭。
+
+| 验证项 | 模块结果 | 结论边界 |
+|---|---:|---|
+| D1 固定摘要向量与三段式 `source_key` | 通过 | D2 字节级镜像 D1 公开规则 |
+| D1 v1 `member_states/observations/candidate_edges` payload | 通过 | 原始 observation ID 不进入 D2 |
+| 默认关闭 adapter 等价 | 通过 | 默认 Detection 序列化不变 |
+| 随机上游本地 ID | 通过 | 只进入摘要，D2 ID 仍为 `GT3D-*` |
+| 2x2、3x2、1xN 完整分量 | 通过 | 均可建立有界预留，不写死目标数 |
+| 量测/状态有效 `0.40 s`、到达/发布与 D2 消费 `0.65 s` | 接受 | `component_age_seconds=0.25 s`，租约从 `0.65 s` 起算 |
+| 状态有效时刻晚于 D2 epoch | 拒绝 | 原因为 `component_from_future`，不建立租约 |
+| 分量年龄超过显式上限 | 拒绝 | 原因为 `component_stale_age_exceeded`，不建立租约 |
+| 双时间戳与发布时刻序列化 | 不变 | D2 不重写 D1 measurement/state-valid/arrival/published |
+| 保持期间 update/hit/miss/birth/rebind | 全部阻断 | 航迹只预测，ID 与身份置信度不变 |
+| 协方差半正定与不收缩 | 通过 | 保持期间无重复 posterior 收缩 |
+| replay/generation 回退 | 拒绝 | 不刷新软截止 |
+| 新原始 evidence | 通过 | 只延长至首次硬上限 |
+| 硬上限后递增 generation | 拒绝 | 不允许重置硬截止 |
+| publisher epoch 轮换与回退 | 轮换接受、回退拒绝 | 旧 epoch 不延长租约 |
+| 来源绑定关联前硬掩码 | 通过 | 错误航迹未先更新，同源 shadow birth 为零 |
+| truth key、缺协方差、posterior 已更新 | 拒绝 | 坏侧车不建立或延长租约 |
+| D2 完整测试 | `271 passed` | 零失败 |
+
+完整命令为：
+
+```bash
+PYTHONPATH=research_modules/d2_data_association \
+  pytest -q research_modules/d2_data_association/tests
+```
+
+运行时间为 `28.75 s`，另有 1 条环境 warning：Matplotlib `Axes3D` 因本机多版本安装
+无法导入。该 warning 不影响 D2 数值、关联或合同测试。
+
+本批只能确认模块内合同和状态不变式。它没有证明 D1 v1/v2 被拒绝的 clean 200v200
+系统退化已经恢复，也没有提供 IDSW 或 continuity 改善数据。下一批由 main 使用同一
+冻结输入分别运行 baseline 和显式开启候选，比较 D2 航迹数、D3 目标数、离线
+continuity、重复 posterior hit/birth、逐帧时延和 truth leakage。首版自动消歧、
+component-level JPDA 和 bounded MHT 仍未实现。`max_component_age_seconds=1.0`
+是覆盖当前 main 常见 `0.5 s` D1 scan lateness 和传输余量的开发默认值，尚未用真实
+时延分布标定。
+
 ## 0. 2026-07-15 M5N2 20-case 补充结果
 
 | 项目 | 结果 | D2 解释 |

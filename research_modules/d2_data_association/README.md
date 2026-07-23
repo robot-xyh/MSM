@@ -6,6 +6,53 @@ D2 是 C-UAS 多目标数据关联研究模块，目标是在离线仿真和日�
 
 规模边界：D2 消费每帧传入的 `tracks`、`detections` 和当前 `active_tracks` 集合，不从场景名推断目标数量，不写死 2v2 或 5v5。`crossing_dense_5v5` 等名称只是可重复 baseline fixture；main runtime 的 `--drone-count N` 只应体现为传入 D2 的输入集合长度。
 
+### 2026-07-23 D1 结构歧义保持租约候选
+
+- 六维稀疏路径新增 `AmbiguityComponent3D.from_mapping()`，只接受冻结的
+  `d1.structural-ambiguity-evidence.v1` 公开侧车。合同严格校验分量代次、双时间戳、
+  NED 状态和协方差、完整成员/观测/候选边、`posterior_update_applied=false`、
+  prediction-only 更新方式及 deferred birth。观测预留键直接使用不可逆
+  `d1-observation-sha256:<digest>`，不要求或恢复原始 observation ID 和来源命名空间。
+- D1 成员来源合同与上游规则逐字节一致：默认发布者为 `D1_FUSION`，兼容默认 epoch
+  为 `d1-default-epoch-v1`，成员令牌为
+  `d1-track-sha256:` 加规范 JSON
+  `[publisher_node_id,publisher_epoch,d1_local_track_id]` 的 SHA-256。D2
+  `source_key` 固定为
+  `publisher_node_id::publisher_epoch::opaque_member_track_token`。原始 D1 本地 ID
+  只进入不可逆摘要，不复制为 D2 `global_track_id`。
+- `detections3d_from_d1_global_tracks(..., use_opaque_d1_source_tokens=True)`
+  才启用上述来源适配。默认值为关闭，默认调用的 Detection 序列化与原行为保持相同。
+  未显式提供 publisher epoch 时，元数据记录使用兼容默认 epoch，并标明发布者重启时
+  必须轮换；D2 不能自行感知外部进程重启。
+- `Scalable3DTracker.step(..., ambiguity_components=())` 保持旧调用兼容。
+  `AmbiguityHoldLeaseConfig` 默认 `enabled=False`；开启后使用 2 个等效扫描周期的软
+  间隔和 5 个周期的硬上限，也可显式配置秒值。只有新的原始不可逆观测证据可延长软
+  截止，重复 evidence、重复或回退 generation、回放 posterior 和坏合同均不能刷新
+  租约。硬截止保存在有界历史中，同一分量不能通过递增 generation 重置硬上限。
+- 侧车的 `state_valid_timestamp` 按 D1 合同保持为原
+  `measurement_timestamp`，不再要求与延迟补偿后的 D2 扫描时刻相等。D2 计算
+  `component_age_seconds = d2_consumption_timestamp - state_valid_timestamp`：
+  未来证据拒绝，超过 `max_component_age_seconds` 的过旧证据拒绝，年龄窗内的延迟
+  证据按当前 D2 扫描时刻建租约。开发默认年龄上限为 `1.0 s`，用于覆盖当前 main
+  常见的 `0.5 s` D1 scan lateness 和传输余量；正式运行应按实测时延显式配置。
+  事件同时保留原 measurement/arrival/state-valid/published 时刻、D2 消费时刻、
+  分量年龄和时间判定。
+- 活动租约内，已绑定 canonical track 只做预测，不 update、不增 hit、不增 miss、
+  不 birth、不 rebind，身份置信度不增加，协方差不收缩。未绑定成员和分量观测被预留，
+  不得建轨。首版只支持租约到期释放，没有实现连续双向唯一证据自动消歧，也没有接入
+  JPDA/MHT。
+- 正常六维路径的来源绑定约束已前移到候选边生成阶段。已绑定 source 只能连接原
+  `GT3D-*`；若原绑定边不满足几何门限，则该输入被隔离并只让原航迹预测，不允许错误
+  航迹先更新后记录冲突，也不允许另建影子航迹。
+- 逐帧和累计诊断包括 accepted/rejected/expired component、活动保持航迹、预留证据、
+  阻止的 hit/miss/birth/rebind、关联前 binding rejection、软硬截止及原因。活动分量
+  将 `AssociationRiskSummary` 标为高歧义，但在线 `id_switch_count` 仍保持
+  unavailable，不伪造改善。
+- 2026-07-23 D2 完整模块结果为 `271 passed, 1 warning in 28.75s`，验收阈值为零
+  失败；warning 是环境 Matplotlib `Axes3D` 导入问题。该结果只证明模块合同和不变式，
+  候选默认仍关闭，尚未完成 main clean 200v200 A/B，也没有证明系统级 IDSW、
+  continuity 或航迹数改善。
+
 ### 2026-07-23 clean `4ac3bb2` seed 1000 profiler 与等价优化
 
 - 本轮针对 nominal 200v200、seed 1000、10.0 s 的 clean `4ac3bb2` 冻结在线总线做
@@ -114,6 +161,9 @@ D2 是 C-UAS 多目标数据关联研究模块，目标是在离线仿真和日�
 - 六维稀疏路径使用 `Detection3D`、`GlobalTrack3D`、完整 source 6x6 covariance、相关
   posterior CI、独立量测 Joseph update、速度创新 NIS 门控、3D 马氏门控、KD-tree
   候选图和分量级 Hungarian；航迹事件历史与逐帧审计均有配置上限，不保存无条件全密集代价/距离历史。
+- 六维路径提供默认关闭的 D1 结构歧义保持租约。公开 DTO 不 import D1 私有实现；
+  observation claim 明确区分 `unseen/reserved_ambiguous/consumed`，source binding
+  在状态更新前执行权威硬掩码。
 - GNN/Hungarian 主线在保留马氏门控和 `linear_sum_assignment` 的基础上，加入速度方向、短时历史和加速度异常组成的轻量运动一致性代价，并输出 motion consistency diagnostics。
 - 在线 D1 track-to-track 输入增加非真值 `source_global_track_id` 连续性代价和来源谱系治理：已落入现有门限但未被一对一分配的上游影子航迹不立即 birth，仍绑定活动 D2 航迹但发生统计大跳的同源输入先隔离并记录原因；该保护不读取 actor/truth ID，不替代马氏门控或 GNN/Hungarian。
 - quality-aware gate baseline：按 track quality、局部目标密度、位置协方差和上一帧 association risk 对每条 track 的 gate 做保守放宽或收紧；这不是完整自适应门控框架。
@@ -200,6 +250,9 @@ D2 是 C-UAS 多目标数据关联研究模块，目标是在离线仿真和日�
   main-owned scalable point-mass 总线已有只读运行证据，但修复后端到端复跑、版本化输出
   验收与多 seed 标定尚未完成。
 - cross-node registry 已完成低歧义 GNN/Hungarian 注册基础，但尚无多帧 JPDA/MHT 歧义保持、owner/epoch failover 或数值融合回写。
+- 结构歧义保持租约只实现 prediction-only 有界保持与到期释放。连续双向唯一自动消歧、
+  component-level JPDA、bounded MHT、跨进程 publisher epoch 协商和 main clean
+  200v200 A/B 尚未完成。
 - Stone Soup `Detection` adapter 与 FilterPy CV `KalmanFilter` adapter 已可选执行并记录对象转换/更新 latency；它们是 adapter smoke，不是端到端 tracker，IDSW/continuity 必须标记 unavailable。
 
 未实现：
@@ -225,6 +278,8 @@ D2 是 C-UAS 多目标数据关联研究模块，目标是在离线仿真和日�
 - `d2_data_association/cross_node_registry.py`：公共时刻传播、track-to-track Hungarian 和中心 canonical registry。
 - `d2_data_association/cross_node_metrics.py`：truth-free registry 指标和隔离的 offline cross-node evaluator。
 - `d2_data_association/scalable_3d_models.py`：truth-free `Detection3D`、六维 `GlobalTrack3D` 和松耦合 D1/scalable 量测适配器。
+- `d2_data_association/ambiguity_hold.py`：冻结 D1 结构歧义 DTO、不可逆来源令牌合同和
+  默认关闭的租约配置。
 - `d2_data_association/sparse_3d.py`：KD-tree 稀疏 GNN/Hungarian、六维 CV Tracker、风险摘要和有界审计。
 - `d2_data_association/scalable_3d_offline.py`：关联完成后才可调用的 3D truth sidecar IDSW/continuity evaluator。
 - `d2_data_association/scalable_3d_performance.py`：冻结 episode 的 D2 发布语义哈希和阶段墙钟比较器。

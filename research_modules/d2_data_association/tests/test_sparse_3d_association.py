@@ -59,7 +59,7 @@ def _detections(
             velocity_ned=velocity,
             velocity_covariance=np.eye(3, dtype=float) * 0.25,
             source_node_id="d1-center",
-            source_track_id=f"local-{index:04d}",
+            source_track_id=f"{prefix}-local-{index:04d}",
             metadata={"frame_index": int(round(timestamp * 10.0))},
         )
         for index, (position, velocity) in enumerate(

@@ -24,6 +24,41 @@ This plan is for offline log ingestion and replay-based evaluation only. The D2 
 
 Convert AirSim-recorded sensor/truth logs into D2 `Detection` inputs and evaluator-only truth metadata so the default GNN/Hungarian path and optional JPDA/MHT research adapters can be evaluated on frozen replay without leaking truth online.
 
+## 2026-07-23 Ambiguity-Hold Candidate Wiring
+
+The real AirSim/runtime owner remains main. D2 now exposes two opt-in interfaces for a clean
+baseline/candidate comparison:
+
+- `detections3d_from_d1_global_tracks(..., use_opaque_d1_source_tokens=True,
+  publisher_node_id=..., publisher_epoch=...)`;
+- `Scalable3DTracker.step(..., ambiguity_components=...)` with
+`AmbiguityHoldLeaseConfig(enabled=True)`.
+
+Main must enable both interfaces only in the candidate arm. The baseline arm must retain the
+default adapter call and disabled hold config. D1 sidecars must be transported as the public
+`d1.structural-ambiguity-evidence.v1` mapping; D2 does not import D1 implementation classes.
+The publisher epoch must rotate after a D1 publisher restart. If main omits it in the explicit
+Detection adapter, D2 records the compatibility default `d1-default-epoch-v1`; that fallback
+cannot detect a restart and is not a production epoch-governance result.
+
+Main must not retime the sidecar to the compensated D1 GlobalTrack publication epoch.
+`measurement_timestamp` and `state_valid_timestamp` remain the original D1 measurement
+epoch. D2 accepts a sidecar only when its state-valid time is not in the future and
+`d2_tracker_epoch - state_valid_timestamp` does not exceed
+`AmbiguityHoldLeaseConfig.max_component_age_seconds`. The D2 development default is
+`1.0 s`, covering the current main `0.5 s` D1 scan-lateness budget plus ordinary transport
+margin; an AirSim candidate run should set it explicitly from the recorded end-to-end delay
+distribution. Lease deadlines use the D2 consumption epoch. Events retain the original
+measurement, arrival, state-valid and publication timestamps for audit.
+
+AirSim actor/object identity remains offline truth. The online candidate may consume only
+opaque D1 member tokens, opaque observation evidence keys, timestamps, NED state/covariance,
+and candidate-edge evidence. The next main-owned acceptance run must freeze one clean
+200v200 input and compare baseline/candidate track count, D3 target count, offline continuity,
+duplicate posterior hit/birth counts, latency, and online truth leakage. The 2026-07-23 D2
+module suite passed 271 tests; no AirSim or clean 200v200 system A/B was run in that module
+validation.
+
 ## Inputs
 
 Expected offline files:

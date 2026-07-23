@@ -6,6 +6,53 @@
 
 ---
 
+## 2026-07-23 歧义保持租约评审
+
+D2 已实现默认关闭的 `ambiguity-hold-lease v1`，用于承接 D1 在歧义期不做硬身份承诺
+的公开侧车。实现仅位于六维 `Scalable3DTracker` 路径，不替换二维默认入口，不引入
+JPDA/MHT。
+
+接口按 D1 冻结规则对齐：
+
+- schema 为 `d1.structural-ambiguity-evidence.v1`；
+- 默认发布者/兼容 epoch 为 `D1_FUSION` / `d1-default-epoch-v1`；
+- member token 为规范 JSON 三元组的 SHA-256，前缀 `d1-track-sha256:`；
+- source key 为 `publisher_node_id::publisher_epoch::opaque_member_track_token`；
+- observation reservation key 为公开的 `d1-observation-sha256:<digest>`，不恢复
+  原始 observation ID 或 source namespace。
+
+`detections3d_from_d1_global_tracks()` 只有显式
+`use_opaque_d1_source_tokens=True` 才注入上述来源键。默认关闭调用保持旧序列化。
+随机上游字符串不能被复制为 Detection 或 D2 canonical ID；D2 仍只生成
+`GT3D-*`。若显式候选未传 epoch，adapter 记录兼容默认及发布者重启必须轮换 epoch；
+这不等同于已实现跨进程重启检测。
+
+租约使用软间隔和首次硬上限。只有新原始 observation evidence 可延长软截止；重复
+evidence、replay、同代/旧代 generation、坏 schema、缺时间戳/协方差、
+posterior 已更新和退休 epoch 均 fail-closed，不延长租约。活动成员映射到已有
+canonical binding 后只预测，不 update/hit/miss/birth/rebind/coalesce。未绑定成员和
+分量观测不能 birth。正常来源绑定也已前移为关联前硬掩码，几何不相容时隔离并禁止
+shadow birth。
+
+时间准入已按 D1 延迟侧车语义修正。D1
+`measurement_timestamp == state_valid_timestamp` 保留原量测时刻，D2 不要求它与
+延迟补偿后的 tracker epoch 相等。D2 计算
+`component_age_seconds = d2_consumption_timestamp - state_valid_timestamp`；
+future 和超过 `max_component_age_seconds` 的 stale 分量拒绝，年龄窗内的延迟分量
+按 D2 消费时刻建租约。默认 `1.0 s` 覆盖当前 main 常见 `0.5 s` scan lateness 与
+传输余量，仍需 clean A/B 按真实时延标定。原 arrival/published 时刻仅作审计，不参与
+重定时。
+
+当前实现逐帧和累计输出 accepted/rejected/expired component、hold track、reserved
+evidence、prevented action、pre-update binding rejection、deadline/reason 和
+truth-free 状态，并显式携带原四类时间、D2 消费时刻、分量年龄和时间判定。活动分量
+标记高歧义，但不伪造在线 IDSW 改善。
+
+2026-07-23 D2 完整模块测试为 `271 passed, 1 warning in 28.75s`。该结果只证明模块
+合同和状态不变式。main clean 200v200 baseline/candidate A/B 尚未执行，不能据此声称
+已恢复 D2 tracks、D3 targets 或 continuity。首版只按到期释放；连续双向唯一自动
+消歧、component-level JPDA、bounded MHT 和生产级 epoch 协商仍开放。
+
 ## 0. P0/P1 缺口快照
 
 - **P0**：无开放 blocker。GNN/Hungarian、显式 `id_switch_count`、`track_continuity`、risk summary、replay helper、按输入集合长度运行、航迹质量评分、运动一致性约束和 quality-aware gate baseline 已是当前主线。seed1005 v3 验收已允许 replay=0 或有界 replay，见第 32 节。
@@ -32,7 +79,8 @@
   冻结回放的 48/48 周期旧/新业务语义严格相等，D2 core 中位数
   `2.928830 -> 2.204672 s`，但早/晚 regular 窗口比
   `1.119661x -> 1.123036x`。本轮只关闭三个可证明的常数成本热点，长窗口 P1 保持
-  开放；完整 D2 回归为 `234 passed, 1 warning in 34.83s`。
+  开放；该阶段完整 D2 回归为 `234 passed, 1 warning in 34.83s`。歧义保持增量后的
+  当前完整回归为 `271 passed, 1 warning in 28.75s`。
 
 ## 1. 研究问题
 
@@ -72,6 +120,10 @@ D2/D6 的系统规则必须保留：`id_switch_count` 是强制显式指标，�
 - **covariance 输入治理**：Detection/GlobalTrack 和门控边界拒绝非有限、明显非对称、明显非 PSD covariance，仅对容差内缺陷正则化；`covariance_consistency` 始终表示最新检查，`regularization_ever_applied`/`last_regularization` 保留历史修复证据。
 - **replay governance**：默认在线检测、航迹和 association log 不含 simulator truth，源 detection/actor ID 按帧匿名化；online innovation 独立输出 NIS，offline evaluator 输出 IDSW/continuity、2-of-3 初始化、false-track 和 NEES。缺 truth 时 NEES 与 truth 指标保持 unavailable，但 NIS 仍可用。
 - **truth-isolated main runtime 合同**：真实短 episode 已验证在线 `truth_id=None` 时 D2 航迹仍可进入 D3，且 `d2_governance_summary` 可被 D6 消费。在线风险摘要不需要 truth；truth-based `id_switch_count`、identity/coverage continuity 和 NEES 仍只能在离线评估层产生。
+- **六维结构歧义候选**：严格 D1 v1 sidecar adapter、不可逆 member/observation
+  token、claim reservation、soft/hard lease、prediction-only hold、epoch rollback
+  rejection、关联前 source binding hard mask 和审计诊断已实现；配置与来源适配均
+  默认关闭，待 main clean A/B。
 
 ### 2.2 部分实现
 
@@ -88,6 +140,8 @@ D2/D6 的系统规则必须保留：`id_switch_count` 是强制显式指标，�
 - **自动算法升级**：当前由 CLI 或调用方显式选择 GNN/JPDA/MHT，`Tracker` 未按风险阈值自动切换。
 - **真实 AirSim runtime 采集链路**：D2 已能消费离线 JSON/JSONL AirSim-like replay，但不连接 AirSim runtime，不采集真实 `simGetDetections`/ComputerVision 图像 metadata，也不负责 main/D6 episode JSONL 生产。
 - **OOSM 与六维高阶跟踪**：六维线性 CV 已实现；异步量测回溯平滑、六维 JPDA/MHT、EKF/UKF/IMM 和极端高密度预算未实现。
+- **歧义自动解除与高阶关联**：保持租约当前只在截止时释放，没有连续双向唯一自动
+  resolution、component-level JPDA、bounded MHT 或跨进程 publisher epoch 共识。
 
 ---
 

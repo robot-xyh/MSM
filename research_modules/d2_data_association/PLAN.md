@@ -23,6 +23,21 @@ D2 只负责离线科研仿真、日志回放和多目标数据关联评估。�
   使用 3D NED Joseph update，独立六维量测使用 6D Joseph update，相关 D1 source
   posterior 使用固定权重 CI 和速度创新 NIS 门控；`GT3D-*` 仍只由中心 D2 分配，每条
   航迹历史和逐帧审计均有配置上限。
+- 六维路径新增默认关闭的
+  `AmbiguityHoldLeaseConfig`。`Scalable3DTracker.step()` 以可选关键字
+  `ambiguity_components=()` 消费严格的
+  `d1.structural-ambiguity-evidence.v1`；有效租约冻结已绑定 `GT3D-*` 的 update/hit/
+  miss/birth/rebind，只允许常速度预测和协方差传播。首版仅到期释放，不包含
+  component-level JPDA、MHT 或自动改绑。侧车量测/状态有效时刻允许早于当前 D2
+  扫描时刻；`max_component_age_seconds` 对延迟做有界准入，未来和超龄分量
+  fail-closed。租约首次时刻与后续新证据时刻均使用 D2 消费时钟。
+- D1 不透明来源适配由
+  `detections3d_from_d1_global_tracks(..., use_opaque_d1_source_tokens=True)`
+  显式启用，默认关闭以保持 baseline 可归因。令牌和三段式 `source_key` 严格镜像 D1
+  冻结规则；原始 D1 本地 ID 只参与 SHA-256，不进入 Detection 序列化或 D2
+  canonical ID。
+- 六维来源绑定已从匹配后冲突记录前移为关联候选边硬掩码。已绑定来源的原边若几何
+  门控失败，则输入隔离、原航迹预测且禁止 shadow birth。
 - `Sparse3DGNNHungarianAssociator` 用 KD-tree 生成保守空间候选，执行 3D 位置创新马氏门控，再按稀疏二部图连通分量运行 Hungarian；不分配全局 `N_t x N_z` 代价/距离矩阵。GNN 仅表示 Global Nearest Neighbor，未在 D2 引入图神经网络。
 - `TrackLifecycleState` 当前枚举为 `tentative -> confirmed -> engageable -> lost -> dropped`，没有 `engaged` 状态。
 - 每条 `GlobalTrack` 输出 `track_quality`、`association_risk` 和 `quality_metadata`；`AssociationResult.metadata`、association logs、risk summary metadata 与 `MetricsRecorder.summary()` 同步输出 track-level 质量/风险字段。
@@ -50,7 +65,7 @@ D2 只负责离线科研仿真、日志回放和多目标数据关联评估。�
 
 ### 2.1 P0/P1 缺口快照
 
-- **P0**：无开放 blocker。GNN/Hungarian、马氏门控、可插拔 `DataAssociator`、显式 online/offline `TrackerTruthPolicy`、truthless 指标 unavailable 语义、truth-free lifecycle event 导出、risk summary、D1/AirSim adapter、按输入集合长度运行、P0-B `track_quality`/`association_risk`、motion consistency cost 和 P0-C quality-aware gate baseline 均是当前主线并已有测试覆盖。seed1005 验收已升级为允许 replay=0 或有界 replay，见第 22 节。
+- **P0**：无开放 blocker。GNN/Hungarian、马氏门控、可插拔 `DataAssociator`、显式 online/offline `TrackerTruthPolicy`、truthless 指标 unavailable 语义、truth-free lifecycle event 导出、risk summary、D1/AirSim adapter、按输入集合长度运行、P0-B `track_quality`/`association_risk`、motion consistency cost 和 P0-C quality-aware gate baseline 均是当前主线并已有测试覆盖。六维来源绑定在 `_update_track` 前硬掩码，同源几何不相容输入不再先污染状态。seed1005 验收已升级为允许 replay=0 或有界 replay，见第 22 节。
 - **P1 合同层已闭合**：D1 governed adapter、association log schema/profile、在线 truth isolation、独立 offline evaluator、`d2-offline-truth-label/v1`、N-target dense/crossing fixture、至少 10-seed calibration runner、availability-aware summary、M-of-N/false-track/NIS/NEES 接口及 cross-node canonical registry 基础均已实现并回归。
 - **P1 ceiling-aware 完整冻结证据已生成，长期标定仍开放**：2026-07-15 使用 2026-07-13 冻结的六档真实 D1 governed replay 离线重算，screening 为 6x10 seeds、confirmation 为 6x20 seeds；未启动 AirSim。最佳候选 `gnn-g5.99-qa1-ld3_7-mw0.5x` 把平均 IDSW 从 `1.358333` 降至 `0.616667`（下降 `54.6012%`），identity continuity 从 `0.981046` 提高至 `0.983954`，消除 `15.3448%` 的剩余错误；false-track 0、P95 `15.470 ms`、truth leakage 0。总体五项联合 gate 全部通过并形成 promotion review recommendation，但默认 GNN/Hungarian 配置不变。分档只有 clutter/combined 完整通过，其余四档因 baseline IDSW=0 fail-closed；dropout truth alignment 为 partial。更长 OOSM/遮挡/杂波 replay、gate/risk、M-of-N 生命周期、NIS/NEES 和跨节点标定仍是 P1。
 - **2026-07-14 truth/lifecycle P0 收口**：`Tracker` 默认 online fail-closed，offline evaluator 显式 opt-in truth；main owner 可传入布尔型 `online_truth_isolated/online_truth_hints_used/truth_metrics_available/continuity_available`，非布尔值、身份字段和 offline truth payload 仍拒绝。truthless IDSW/continuity/RMSE 为 `None` 并带逐指标 availability/reason，truth 可用时零 IDSW 仍为 available `0`；birth/lost/drop/rebirth 计数和 transitions 由 truth-free 状态事件产生。完整回归 `98 passed, 1 warning`。本批没有调整 gate/lost/drop，`T001 -> T005` 生命周期参数标定仍为 P1。
@@ -73,6 +88,14 @@ D2 只负责离线科研仿真、日志回放和多目标数据关联评估。�
 - **2026-07-11 合同验收证据**：M=5、N=2 ComputerVision 的 T001 双 primary 共识/计划授权为 8/10；`id_switch_count=0`、错误 duplicate=0、`global_track_id` 改写/重绑=0 均为 10/10。二级与完全分布式 commit 正例通过，缺 ACK 时 fail-closed；这验证下游使用 D2 中心 ID 的合同，不表示 D2 本地重绑 ID。
 - **P2 边界保持原状态**：P2 仅是隔离 benchmark；模块内 JPDA/MHT 是显式研究近似，Stone Soup 1.9.1/FilterPy 1.4.5 仅对象 adapter smoke，默认在线 GNN 路径未替换。
 - **2026-07-20 六维局部基线闭合**：D2-owned 六维 CV、3D 马氏门控、空间索引、稀疏分量 Hungarian、truth-free 在线合同和离线身份评分已实现；main-owned episode-bus 接入、真实多 seed 标定和极端高密度预算仍开放。
+- **2026-07-23 歧义保持候选状态**：D1 v1 侧车、不可逆来源令牌、三段式
+  `source_key`、观测预留、软/硬租约、prediction-only 不变式、epoch 回退拒绝和
+  关联前 binding freeze 已在 D2 模块实现。延迟侧车按
+  `D2消费时刻 - D1 state-valid时刻` 做有界年龄准入，开发默认上限为 `1.0 s`。
+  完整回归为 `271 passed, 1 warning in 28.75s`。配置与 adapter 均默认关闭；该结果不关闭系统
+  P1，下一验收由 main 在同一 clean 200v200 输入上运行 baseline/candidate A/B，检查
+  `tracks 203 -> 199`、D3 `200 -> 196` 和 continuity `.865 -> .830` 是否恢复，同时
+  要求 truth use、重复 posterior hit/birth 和 canonical ID 复制均为零。
 
 ## 3. 输入输出合同
 
@@ -89,6 +112,18 @@ D2 只负责离线科研仿真、日志回放和多目标数据关联评估。�
 - `metadata`：保留来源、frame、timestamp、truth_position、`global_track_id` 等调试和回放信息。
 
 六维路径输入为不含 truth 字段的 `Detection3D`：3D NED 位置、3x3 位置协方差、双时间戳、置信度，以及可选速度/速度协方差和 namespaced source key。元数据递归拒绝 truth/actor/object/entity、上游 canonical ID；D1 fused-track adapter 使用 state-valid timestamp 作为关联 epoch，并保留原始 source measurement/arrival timestamp。原始 radar 球坐标和 visual pixel 必须先由 D1 投影或融合。
+
+结构歧义候选另接受 `AmbiguityComponent3D` 或其公开 mapping。D1 侧车必须携带
+`publisher_node_id/publisher_epoch`、分量 generation、双时间戳、NED member
+state/covariance、不可逆 observation evidence key、完整 candidate edges 和
+prediction-only 治理字段。D2 不 import D1 私有类，不接受原始 observation ID，
+不把 D1 `global_track_id` 作为 canonical ID。发布者缺 epoch 的兼容仅存在于显式
+Detection adapter：使用 `d1-default-epoch-v1` 并记录 defaulted；公开侧车缺 epoch
+直接拒绝。D1 的 `measurement_timestamp == state_valid_timestamp` 保持原值；D2
+允许该时刻早于当前 tracker epoch，但不允许来自未来或超过
+`max_component_age_seconds`。默认 `1.0 s` 仅是当前 main 时序预算下的开发值，
+正式配置需覆盖已标定的 D1 scan lateness 与传输延迟。原 arrival/published 时刻不参与
+租约重定时，只进入审计；soft/hard deadline 从 D2 首次消费和新鲜证据消费时刻起算。
 
 D2 Tracker 假设每次输入是共同量测时刻且调用顺序单调；直接遇到乱序 scan 仍 fail
 closed。模块已提供前置 `Scalable3DOOSMScanAdapter` 对有界迟到的完整 scan 做排序；原始

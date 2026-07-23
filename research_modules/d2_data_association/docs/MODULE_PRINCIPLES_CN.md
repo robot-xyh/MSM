@@ -1,6 +1,6 @@
 # D2 数据关联模块原理与当前实现说明
 
-**状态日期**：2026-07-20
+**状态日期**：2026-07-23
 
 **适用范围**：科研仿真、受治理日志回放、离线评估与跨节点航迹注册基础
 
@@ -118,8 +118,68 @@ D1 受治理观测或二维 Detection
 - 六维在线 truth-free 合同、中心 `GT3D-*` 所有权、有界历史和独立离线身份评分。
 - D1 六维 source posterior 的完整 6x6 covariance、固定权重 CI 更新、速度创新 NIS 门控
   和有限速度 tie-break cost。
+- 默认关闭的结构歧义保持租约、D1 不透明来源令牌适配和关联前来源绑定硬约束。
 
-### 2.3 部分实现
+### 2.3 结构歧义保持候选
+
+D1 在最大匹配允许边图不能给出唯一身份时，可以发布
+`d1.structural-ambiguity-evidence.v1` 侧车。D2 复制公开常量和摘要算法，不 import
+D1 私有实现。成员令牌按
+`SHA-256(canonical JSON [publisher_node_id,publisher_epoch,d1_local_track_id])`
+生成，前缀固定为 `d1-track-sha256:`；来源键固定为
+`publisher_node_id::publisher_epoch::opaque_member_track_token`。该来源键只用于
+binding 和 ambiguity membership，D2 canonical ID 仍由 `GT3D-*` 序列分配。
+
+侧车中的观测只携带 `d1-observation-sha256:<digest>`、NED 位置和协方差。D2 不要求
+原始 observation ID 或 source namespace，也不尝试反解谱系。claim ledger 将证据状态
+显式分为 `unseen`、`reserved_ambiguous` 和 `consumed`。同一不可逆证据不能被不兼容
+分量重复预留。
+
+开启租约后，D2 把歧义成员经已有 source binding 映射到 canonical track。租约期间这些
+航迹只执行常速度预测：
+
+```text
+D1 完整歧义分量
+  -> schema / bounded age / covariance / generation / epoch 校验
+  -> opaque member source_key 查询已有 D2 binding
+  -> observation evidence reservation
+  -> 已绑定航迹 prediction-only hold
+  -> 新原始 evidence 延长 soft deadline
+  -> soft/hard deadline 到期释放
+```
+
+保持期间不做量测更新，不增加 hit 或 miss，不生成新航迹，不改绑来源，不提高身份置信度。
+协方差只按预测传播，不能因重复 posterior 收缩。未绑定成员和分量观测禁止 birth。重复
+evidence、同代或旧代 generation、坏 schema、缺时间戳/协方差、
+`posterior_update_applied=true` 和已退休 publisher epoch 均拒绝，且不刷新截止时间。
+
+侧车时间不按等时刻匹配。D1 的 `measurement_timestamp` 和
+`state_valid_timestamp` 保持相等并代表原量测物理时刻；D2 tracker epoch 代表延迟补偿
+后的当前消费时刻。D2 使用
+
+\[
+\Delta t_{\mathrm{age}}
+=t_{\mathrm{D2,consume}}-t_{\mathrm{D1,state-valid}}
+\]
+
+做有界准入。容差外的负值表示未来证据，超过 `max_component_age_seconds` 表示过旧
+证据，两者均拒绝且不建立或刷新租约。年龄窗内的延迟证据可接受，soft/hard deadline
+仍从 D2 首次消费时刻和后续新原始证据消费时刻起算。默认年龄上限 `1.0 s` 用于覆盖
+当前 main 常见 `0.5 s` D1 scan lateness 与传输余量，后续必须按实测时延标定。
+原 measurement/arrival/state-valid/published 时刻不被改写，并与 D2 消费时刻、分量
+年龄和时间判定一起写入诊断。
+
+默认配置为关闭。`detections3d_from_d1_global_tracks()` 也只有在显式设置
+`use_opaque_d1_source_tokens=True` 时生成 D1 三段式来源键。缺 publisher epoch 时使用
+兼容默认 `d1-default-epoch-v1` 并记录 defaulted；发布者重启必须由集成层显式轮换
+epoch，D2 无法从默认值自行判断重启。首版消歧方式是到期释放，没有连续双向唯一自动
+解除、component-level JPDA 或 bounded MHT。
+
+来源绑定的正常路径同时改为关联前硬约束。已绑定来源只允许连接原 canonical track；
+若原边不满足几何门控，该观测被隔离，原航迹按预测继续，禁止错误航迹先更新后报冲突和
+同源 shadow birth。
+
+### 2.4 部分实现
 
 1. **JPDA**：能输出边缘概率和非冲突匹配，但 `Tracker` 仍对选出的单个匹配做普通卡尔曼更新；没有完整概率混合状态更新、协方差混合、航迹合并抑制和生产级分簇。
 2. **MHT**：能保留有限分支和有限历史，但没有 N 扫描剪枝、长期假设树、分簇、确认逻辑和中心算力调度。
@@ -128,8 +188,10 @@ D1 受治理观测或二维 Detection
    诊断，但修复后跨模块 schema、多 seed 和端到端验收仍未冻结。
 4. **跨节点注册**：中心规范注册、相关性决策和融合请求已实现；数值状态融合结果没有在 D2 内计算或回写。
 5. **质量感知门控**：已实现轻量、带上下界的门限调整；它不是经过完整多场景标定的通用自适应门控框架。
+6. **结构歧义保持**：有界 prediction-only 租约和到期释放已实现；自动消歧、JPDA/MHT
+   状态融合、跨进程 epoch 协商及 clean 200v200 系统 A/B 尚未实现。
 
-### 2.4 明确未实现
+### 2.5 明确未实现
 
 - 完整 JPDA 滤波器和完整 MHT；
 - 根据在线风险自动切换 GNN、JPDA 或 MHT，以及该切换所需的迟滞；

@@ -1,6 +1,6 @@
 # D2 多目标数据关联算法与实施方案
 
-**状态日期**：2026-07-20
+**状态日期**：2026-07-23
 **适用范围**：科研仿真、受治理日志回放、六维稀疏规则关联、离线评估和跨节点航迹注册基础
 **默认主线**：全局最近邻（Global Nearest Neighbor，GNN）与匈牙利算法的一对一硬关联
 **安全边界**：本文不包含真实飞控、自动处置、毁伤评估或绕过人工授权的能力
@@ -93,6 +93,9 @@ D2 不承担以下工作：
 | 多假设跟踪 | 有界研究近似 | 否 | 没有完整长期假设树和 N 次扫描剪枝 |
 | Stone Soup/FilterPy | 对象适配和冒烟测试 | 否 | 不是端到端关联跟踪器 |
 | 六维规则跟踪 | 已实现基础 | 显式选择 | main 总线接入、真实多 seed 和极端密度预算未完成 |
+| D1 结构歧义保持租约 | 已实现候选 | 否 | 默认关闭，只做 prediction-only 有界保持和到期释放 |
+| D1 不透明来源令牌 | 已实现候选 | 否 | 显式启用，严格镜像 D1，不能成为 canonical ID |
+| 来源绑定关联前硬约束 | 已实现 | 六维路径 | 几何不相容时隔离并禁止 shadow birth |
 | 扩展/无迹滤波、交互多模型 | 未实现 | 否 | 只能作为后续研究项 |
 
 优先级零、优先级一和优先级二（Priority 0 / Priority 1 / Priority 2，P0 / P1 / P2）表示工程优先级，不表示算法自动进入默认主线。
@@ -199,6 +202,91 @@ D2 规范航迹的默认状态为：
 - `history`、`transition_log`：状态历史和转移审计。
 
 新航迹按 `T001`、`T002` 等中心序号创建。源观测 ID、本地航迹 ID、仿真对象名称和离线真值 ID 都不能替代该编号。
+
+### 3.6 结构歧义侧车与保持租约
+
+D1 公开侧车版本固定为 `d1.structural-ambiguity-evidence.v1`。D2 在自己的模块内复制
+公开常量和规范 JSON 摘要算法，不依赖 D1 私有 Python 类。成员不透明令牌为
+
+\[
+t_i=\texttt{d1-track-sha256:}\,
+\operatorname{SHA256}\left(
+\operatorname{CanonicalJSON}
+([n_p,e_p,\ell_i])
+\right),
+\]
+
+其中 \(n_p\) 是发布节点，\(e_p\) 是发布 epoch，\(\ell_i\) 是 D1 本地航迹标识。D2
+来源键为
+
+\[
+s_i=n_p\mathbin{::}e_p\mathbin{::}t_i.
+\]
+
+\(\ell_i\) 只进入不可逆摘要。`Detection3D.source_key` 使用 \(s_i\) 做来源连续性和
+歧义成员查询，D2 canonical `global_track_id` 仍按 `GT3D-000001` 等中心序列产生。
+固定合同向量测试锁定 JSON 编码、前缀、摘要和三段式键，防止 D1/D2 独立实现漂移。
+
+观测侧车只公开 `d1-observation-sha256:<digest>`。该值直接作为 claim reservation
+主键。D2 不拼接 `namespace::observation_id`，也不恢复原始 observation ID。分量级
+`sensor_id`、`measurement_timestamp`、`arrival_timestamp` 和
+`state_valid_timestamp` 用于时间与来源治理。
+
+侧车准入不要求 `state_valid_timestamp` 与 D2 tracker epoch 相等。D1 保持
+`state_valid_timestamp == measurement_timestamp`，D2 定义
+
+\[
+\Delta t_{\mathrm{component}}
+=t_{\mathrm{D2,consume}}-t_{\mathrm{D1,state-valid}}.
+\]
+
+若 \(\Delta t_{\mathrm{component}}\) 小于负时间容差，则以
+`component_from_future` 拒绝；若其超过
+`max_component_age_seconds` 加时间容差，则以
+`component_stale_age_exceeded` 拒绝。其余延迟侧车可进入租约处理。开发默认
+`max_component_age_seconds=1.0`，用于覆盖当前 main 的 `0.5 s` D1 scan lateness
+及传输余量；该值不是传感器性能指标，运行集成应按端到端延迟分布显式配置。
+
+租约首次接受时定义
+
+\[
+T_h=t_0+\Delta_h,\qquad
+T_s=\min(T_h,t_{\mathrm{new}}+\Delta_g),
+\]
+
+其中 \(T_h\) 为硬截止，\(T_s\) 为软截止，\(\Delta_h\) 和 \(\Delta_g\) 分别为硬上限
+和新证据间隔。默认等效值为 5 个和 2 个扫描周期。只有此前未见的原始 observation
+evidence key 可以更新 \(t_{\mathrm{new}}\)。重复 evidence、相同或回退 generation、
+重复 posterior 及坏合同都不更新 \(T_s\)。首次硬截止保存在有界历史中，不能通过增加
+generation 重新起算。
+
+这里的 \(t_0\) 和 \(t_{\mathrm{new}}\) 都是 D2 消费时刻，不是 D1 量测时刻、到达时刻
+或发布时刻。接受与拒绝事件保留原
+`measurement_timestamp/arrival_timestamp/state_valid_timestamp/published_at`，
+另记 `d2_consumption_timestamp`、`component_age_seconds` 和 `time_decision`。
+重放 evidence 或旧 generation 即使仍在年龄窗内也不能更新 soft deadline。
+
+活动租约执行以下状态约束：
+
+```text
+validated component
+  -> reserve opaque observation evidence
+  -> map opaque member source_key to existing GT3D binding
+  -> exclude held tracks and member detections from association/update
+  -> predict state and propagate covariance
+  -> prevent hit, miss, birth, rebind and duplicate coalescence
+  -> release reservations at soft/hard expiry
+```
+
+该机制不产生概率 posterior，也不声称完成联合概率数据关联。首版没有“连续两帧双向
+唯一”自动解除逻辑；租约到期后恢复普通 miss/lost/drop。若同一发布节点出现新 epoch，
+旧 epoch 租约释放并记为 retired；后续旧 epoch 回流被拒绝。Detection adapter 缺 epoch
+时仅在显式候选模式使用 `d1-default-epoch-v1` 并记录 defaulted，集成层必须在发布者
+重启时轮换 epoch。
+
+来源绑定硬约束在状态更新前执行。若来源 \(s_i\) 已绑定航迹 \(g_i\)，候选边只保留
+\((g_i,z_i)\)。该边若未通过三维马氏门控，则观测隔离、\(g_i\) 只预测，且该观测不能
+建立新航迹。这一顺序避免“错误航迹已经更新，随后才记录 binding conflict”。
 
 ## 4. 默认算法主线
 

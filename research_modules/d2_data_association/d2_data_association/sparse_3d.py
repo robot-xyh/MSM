@@ -7,12 +7,17 @@ from collections import Counter, defaultdict, deque
 from dataclasses import dataclass, field
 from math import exp, sqrt
 from time import perf_counter
-from typing import Any, Iterable
+from typing import Any, Iterable, Mapping
 
 import numpy as np
 from scipy.optimize import linear_sum_assignment
 from scipy.spatial import cKDTree
 
+from .ambiguity_hold import (
+    AmbiguityComponent3D,
+    AmbiguityComponentValidationError,
+    AmbiguityHoldLeaseConfig,
+)
 from .models import (
     AssociationResult,
     AssociationRiskSummary,
@@ -82,9 +87,51 @@ class _ObservationClaim:
     evidence: _ObservationEvidence
     first_detection_id: str
     first_state_timestamp: float
+    status: str = "unseen"
     global_track_id: str | None = None
+    ambiguity_component_key: str | None = None
     replay_count: int = 0
     last_replay_state_timestamp: float | None = None
+
+
+@dataclass(slots=True)
+class _AmbiguityLease:
+    """One bounded prediction-only hold over a complete D1 component."""
+
+    component_key: str
+    component_id: str
+    evidence_id: str
+    generation: int
+    publisher_node_id: str
+    publisher_epoch: str
+    first_seen_timestamp: float
+    last_new_evidence_timestamp: float
+    soft_deadline: float
+    hard_deadline: float
+    member_source_keys: set[str]
+    observation_evidence_keys: set[str]
+    track_ids: set[str]
+    latest_reason: str
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "component_key": self.component_key,
+            "component_id": self.component_id,
+            "evidence_id": self.evidence_id,
+            "generation": self.generation,
+            "publisher_node_id": self.publisher_node_id,
+            "publisher_epoch": self.publisher_epoch,
+            "first_seen_timestamp": self.first_seen_timestamp,
+            "last_new_evidence_timestamp": self.last_new_evidence_timestamp,
+            "soft_deadline": self.soft_deadline,
+            "hard_deadline": self.hard_deadline,
+            "member_source_keys": sorted(self.member_source_keys),
+            "observation_evidence_keys": sorted(
+                self.observation_evidence_keys
+            ),
+            "track_ids": sorted(self.track_ids),
+            "latest_reason": self.latest_reason,
+        }
 
 
 @dataclass(slots=True)
@@ -126,12 +173,21 @@ class Sparse3DGNNHungarianAssociator:
         tracks: Iterable[GlobalTrack3D],
         detections: Iterable[Detection3D],
         timestamp: float,
+        *,
+        authoritative_source_bindings: Mapping[str, str] | None = None,
     ) -> AssociationResult:
         """Solve sparse GNN/Hungarian without allocating a full pair matrix."""
 
         started = perf_counter()
         track_list = sorted(tracks, key=lambda item: item.global_track_id)
         detection_list = sorted(detections, key=lambda item: item.detection_id)
+        source_bindings = {
+            str(source_key): str(track_id)
+            for source_key, track_id in (
+                {} if authoritative_source_bindings is None
+                else authoritative_source_bindings
+            ).items()
+        }
         timestamp = float(timestamp)
         self._validate_epoch(track_list, detection_list, timestamp)
         dense_pair_count = len(track_list) * len(detection_list)
@@ -176,6 +232,24 @@ class Sparse3DGNNHungarianAssociator:
                 queried_pair_count += len(candidate_indices)
                 for detection_index in candidate_indices:
                     detection = detection_list[detection_index]
+                    bound_track_id = (
+                        None
+                        if detection.source_key is None
+                        else source_bindings.get(detection.source_key)
+                    )
+                    if (
+                        bound_track_id is not None
+                        and bound_track_id != track.global_track_id
+                    ):
+                        rejected_pairs.append(
+                            RejectedPair(
+                                track_id=track.global_track_id,
+                                detection_id=detection.detection_id,
+                                reason="source_binding_pre_update",
+                                value=0.0,
+                            )
+                        )
+                        continue
                     distance = mahalanobis_squared_3d(track, detection)
                     if distance > self.gate_threshold:
                         rejected_pairs.append(
@@ -318,6 +392,10 @@ class Sparse3DGNNHungarianAssociator:
         velocity_cost_gated_edge_count = sum(
             int(edge.velocity_cost_gated) for edge in edges.values()
         )
+        binding_pre_update_rejection_count = sum(
+            item.reason == "source_binding_pre_update"
+            for item in rejected_pairs
+        )
         candidate_density = _rate(candidate_edge_count, dense_pair_count)
         metadata: dict[str, Any] = {
             "state_order": list(STATE_ORDER_3D),
@@ -341,6 +419,10 @@ class Sparse3DGNNHungarianAssociator:
             "candidate_density": candidate_density,
             "candidate_pruning_ratio": 1.0 - candidate_density,
             "rejected_spatial_candidate_count": len(rejected_pairs),
+            "binding_pre_update_rejection_count": (
+                binding_pre_update_rejection_count
+            ),
+            "source_binding_mode": "authoritative_pre_update_hard_mask",
             "component_count": len(components),
             "component_matrix_pair_count": component_matrix_pair_count,
             "peak_component_pair_count": peak_component_pair_count,
@@ -494,6 +576,9 @@ class Scalable3DTracker:
     replay_coast_config: ReplayCoastConfig = field(
         default_factory=ReplayCoastConfig
     )
+    ambiguity_hold_config: AmbiguityHoldLeaseConfig = field(
+        default_factory=AmbiguityHoldLeaseConfig
+    )
     create_tracks_from_unmatched_detections: bool = True
     track_history_limit: int = 32
     frame_log_limit: int = 256
@@ -530,6 +615,10 @@ class Scalable3DTracker:
     _observation_claim_evicted_count: int = field(default=0, init=False)
     _observation_claim_peak_count: int = field(default=0, init=False)
     _observation_claim_undated_count: int = field(default=0, init=False)
+    _observation_claim_status_counts: Counter[str] = field(
+        default_factory=Counter,
+        init=False,
+    )
     _track_observation_key_count: int = field(default=0, init=False)
     _observation_rejection_reason_counts: Counter[str] = field(
         default_factory=Counter, init=False
@@ -548,6 +637,49 @@ class Scalable3DTracker:
     _tentative_stale_drop_count: int = field(default=0, init=False)
     _latest_risk_summary: AssociationRiskSummary | None = field(
         default=None, init=False
+    )
+    _ambiguity_leases: dict[str, _AmbiguityLease] = field(
+        default_factory=dict,
+        init=False,
+    )
+    _ambiguity_component_generations: dict[str, int] = field(
+        default_factory=dict,
+        init=False,
+    )
+    _ambiguity_component_hard_deadlines: dict[str, float] = field(
+        default_factory=dict,
+        init=False,
+    )
+    _ambiguity_component_history_order: deque[str] = field(
+        init=False,
+    )
+    _ambiguity_evidence_history: set[str] = field(
+        default_factory=set,
+        init=False,
+    )
+    _ambiguity_evidence_history_order: deque[str] = field(init=False)
+    _ambiguity_publisher_current_epochs: dict[str, str] = field(
+        default_factory=dict,
+        init=False,
+    )
+    _ambiguity_publisher_retired_epochs: set[tuple[str, str]] = field(
+        default_factory=set,
+        init=False,
+    )
+    _ambiguity_retired_epoch_order: deque[tuple[str, str]] = field(
+        init=False,
+    )
+    _ambiguity_component_event_counts: Counter[str] = field(
+        default_factory=Counter,
+        init=False,
+    )
+    _ambiguity_prevented_counts: Counter[str] = field(
+        default_factory=Counter,
+        init=False,
+    )
+    _binding_pre_update_rejection_count: int = field(
+        default=0,
+        init=False,
     )
 
     def __post_init__(self) -> None:
@@ -593,6 +725,10 @@ class Scalable3DTracker:
             )
         if not isinstance(self.replay_coast_config, ReplayCoastConfig):
             raise TypeError("replay_coast_config must be ReplayCoastConfig")
+        if not isinstance(self.ambiguity_hold_config, AmbiguityHoldLeaseConfig):
+            raise TypeError(
+                "ambiguity_hold_config must be AmbiguityHoldLeaseConfig"
+            )
         for name in (
             "confirmation_hits",
             "engageable_hits",
@@ -611,6 +747,9 @@ class Scalable3DTracker:
             raise ValueError("global_track_id_prefix must be non-empty")
         self._frame_logs = deque(maxlen=self.frame_log_limit)
         self._runtime_seconds = deque(maxlen=self.frame_log_limit)
+        self._ambiguity_component_history_order = deque()
+        self._ambiguity_evidence_history_order = deque()
+        self._ambiguity_retired_epoch_order = deque()
 
     def active_tracks(self) -> list[GlobalTrack3D]:
         return sorted(
@@ -632,6 +771,10 @@ class Scalable3DTracker:
         self,
         detections: Iterable[Detection3D],
         timestamp: float | None = None,
+        *,
+        ambiguity_components: Iterable[
+            AmbiguityComponent3D | Mapping[str, Any]
+        ] = (),
     ) -> AssociationResult:
         """Process one common-epoch scan; no truth labels are accepted here."""
 
@@ -649,21 +792,56 @@ class Scalable3DTracker:
             raise ValueError("out-of-sequence scans require an explicit OOSM adapter")
 
         claim_eviction_events = self._advance_observation_claim_watermark(timestamp)
+        ambiguity_diagnostics = self._process_ambiguity_components(
+            ambiguity_components,
+            timestamp,
+        )
+        held_track_ids = set(ambiguity_diagnostics["hold_track_ids"])
+        held_source_keys = set(ambiguity_diagnostics["hold_source_keys"])
+        (
+            association_input_detections,
+            held_member_detection_events,
+        ) = self._partition_ambiguity_member_detections(
+            detection_list,
+            held_source_keys=held_source_keys,
+            held_track_ids=held_track_ids,
+            timestamp=timestamp,
+        )
+        for event in held_member_detection_events:
+            counter_name = str(event["prevented_action"])
+            ambiguity_diagnostics["prevented_counts"][counter_name] += 1
+            self._ambiguity_prevented_counts[counter_name] += 1
 
         (
             fresh_detections,
             replay_quarantine_events,
             observation_evidence_by_detection,
-        ) = self._partition_observation_freshness(detection_list, timestamp)
+        ) = self._partition_observation_freshness(
+            association_input_detections,
+            timestamp,
+        )
         frame_rejection_reason_counts = Counter(
             str(item["reason"]) for item in replay_quarantine_events
         )
 
         self.predict_all(timestamp)
+        associable_tracks = [
+            track
+            for track in self.active_tracks()
+            if track.global_track_id not in held_track_ids
+        ]
+        authoritative_bindings = self._active_source_bindings()
         result = self.associator.associate(
-            self.active_tracks(),
+            associable_tracks,
             fresh_detections,
             timestamp,
+            authoritative_source_bindings=authoritative_bindings,
+        )
+        frame_binding_pre_update_rejections = int(
+            result.metadata.get("binding_pre_update_rejection_count", 0)
+        )
+        self._binding_pre_update_rejection_count += (
+            frame_binding_pre_update_rejections
         )
         eligible_replay_coasts = self._eligible_replay_coasts(
             replay_quarantine_events,
@@ -700,6 +878,11 @@ class Scalable3DTracker:
 
         replay_coast_events: list[dict[str, Any]] = []
         missed_track_ids: list[str] = []
+        if held_track_ids:
+            ambiguity_diagnostics["prevented_counts"]["miss"] += len(
+                held_track_ids
+            )
+            self._ambiguity_prevented_counts["miss"] += len(held_track_ids)
         for track_id in result.unmatched_track_ids:
             track = self.tracks.get(track_id)
             if track is not None and track.lifecycle_state != TrackLifecycleState.DROPPED:
@@ -719,9 +902,18 @@ class Scalable3DTracker:
         )
 
         created_track_ids_by_detection: dict[str, str] = {}
+        binding_suppressed_births: dict[str, str] = {}
         if self.create_tracks_from_unmatched_detections:
             for detection_id in result.unmatched_detection_ids:
                 detection = detections_by_id[detection_id]
+                bound_track_id = (
+                    None
+                    if detection.source_key is None
+                    else authoritative_bindings.get(detection.source_key)
+                )
+                if bound_track_id is not None:
+                    binding_suppressed_births[detection_id] = bound_track_id
+                    continue
                 track = self._create_track(detection)
                 detection_to_track[detection_id] = track.global_track_id
                 created_track_ids_by_detection[detection_id] = track.global_track_id
@@ -738,6 +930,7 @@ class Scalable3DTracker:
         coalescence_events, track_aliases = self._coalesce_duplicate_tracks(
             timestamp,
             updated_track_ids=updated_track_ids,
+            protected_track_ids=held_track_ids,
         )
         suppressed_births_by_detection: dict[str, str] = {}
         if track_aliases:
@@ -774,6 +967,15 @@ class Scalable3DTracker:
             {
                 "detection_to_track": dict(sorted(detection_to_track.items())),
                 "input_detection_count": len(detection_list),
+                "association_input_detection_count": len(
+                    association_input_detections
+                ),
+                "ambiguity_held_member_detection_count": len(
+                    held_member_detection_events
+                ),
+                "ambiguity_held_member_detection_events": (
+                    held_member_detection_events
+                ),
                 "fresh_detection_count": len(fresh_detections),
                 "observation_freshness_available_count": (
                     len(observation_evidence_by_detection)
@@ -813,6 +1015,9 @@ class Scalable3DTracker:
                 "created_track_ids_by_detection": dict(
                     sorted(created_track_ids_by_detection.items())
                 ),
+                "binding_suppressed_births": dict(
+                    sorted(binding_suppressed_births.items())
+                ),
                 "suppressed_births_by_detection": dict(
                     sorted(suppressed_births_by_detection.items())
                 ),
@@ -823,6 +1028,15 @@ class Scalable3DTracker:
                 ),
                 "source_track_bindings": dict(sorted(self._source_bindings.items())),
                 "source_binding_conflicts": source_binding_conflicts,
+                "binding_pre_update_rejection_count": (
+                    frame_binding_pre_update_rejections
+                ),
+                "binding_pre_update_rejection_count_cumulative": (
+                    self._binding_pre_update_rejection_count
+                ),
+                "ambiguity_hold": self._finalize_ambiguity_diagnostics(
+                    ambiguity_diagnostics
+                ),
                 "active_track_count": len(self.active_tracks()),
                 "tracker_runtime_seconds": tracker_runtime,
                 "track_history_limit": self.track_history_limit,
@@ -891,6 +1105,12 @@ class Scalable3DTracker:
                     "observation_claim_ledger": dict(observation_claim_ledger),
                     "duplicate_coalescence_count": len(coalescence_events),
                     "source_binding_conflict_count": len(source_binding_conflicts),
+                    "binding_pre_update_rejection_count": (
+                        frame_binding_pre_update_rejections
+                    ),
+                    "ambiguity_hold": self._finalize_ambiguity_diagnostics(
+                        ambiguity_diagnostics
+                    ),
                     "global_track_id_owner": "D2_center",
                     "state_update_mode_counts": dict(
                         sorted(update_mode_counts.items())
@@ -902,6 +1122,38 @@ class Scalable3DTracker:
                     "coverage_continuity": None,
                     "continuity_available": False,
                 }
+            )
+            if ambiguity_diagnostics["active_component_count"]:
+                result.risk_summary.association_ambiguity = max(
+                    result.risk_summary.association_ambiguity,
+                    1.0,
+                )
+                result.risk_summary.metadata["risk_level"] = "high"
+                result.risk_summary.metadata["risk_score"] = max(
+                    0.85,
+                    float(
+                        result.risk_summary.metadata.get(
+                            "risk_score",
+                            0.0,
+                        )
+                    ),
+                )
+                result.risk_summary.metadata["risk_reason"] = (
+                    "active_structural_ambiguity_hold"
+                )
+        if ambiguity_diagnostics["active_component_count"]:
+            ambiguity_score_before_hold = float(result.ambiguity_score)
+            result.ambiguity_score = max(result.ambiguity_score, 1.0)
+            result.metadata["ambiguity_score_before_hold_override"] = float(
+                ambiguity_score_before_hold
+            )
+            result.metadata["risk_score"] = max(
+                0.85,
+                float(result.metadata.get("risk_score", 0.0)),
+            )
+            result.metadata["risk_level"] = "high"
+            result.metadata["risk_reason"] = (
+                "active_structural_ambiguity_hold"
             )
         self._frame_count += 1
         self._birth_count += len(created_track_ids_by_detection)
@@ -931,6 +1183,16 @@ class Scalable3DTracker:
                 "candidate_edge_count": int(result.metadata["candidate_edge_count"]),
                 "dense_pair_count": int(result.metadata["dense_pair_count"]),
                 "risk_score": float(result.metadata["risk_score"]),
+                "ambiguity_hold_track_count": len(held_track_ids),
+                "ambiguity_hold_component_count": int(
+                    ambiguity_diagnostics["active_component_count"]
+                ),
+                "ambiguity_reserved_evidence_count": int(
+                    ambiguity_diagnostics["reserved_evidence_count"]
+                ),
+                "binding_pre_update_rejection_count": (
+                    frame_binding_pre_update_rejections
+                ),
                 "state_update_mode_counts": dict(sorted(update_mode_counts.items())),
                 "velocity_innovation_gate_count": velocity_gate_count,
                 "tracker_runtime_seconds": tracker_runtime,
@@ -981,6 +1243,30 @@ class Scalable3DTracker:
                 sorted(self._replay_coast_reason_counts.items())
             ),
             "replay_coast_config": self.replay_coast_config.to_dict(),
+            "ambiguity_hold_config": self.ambiguity_hold_config.to_dict(),
+            "ambiguity_hold_active_component_count": len(
+                self._ambiguity_leases
+            ),
+            "ambiguity_hold_active_track_count": len(
+                self._active_ambiguity_hold_track_ids()
+            ),
+            "ambiguity_hold_reserved_evidence_count": (
+                self._observation_claim_status_counts.get(
+                    "reserved_ambiguous",
+                    0,
+                )
+            ),
+            "ambiguity_hold_component_event_counts": dict(
+                sorted(self._ambiguity_component_event_counts.items())
+            ),
+            "ambiguity_hold_prevented_counts": dict(
+                sorted(self._ambiguity_prevented_counts.items())
+            ),
+            "binding_pre_update_rejection_count": (
+                self._binding_pre_update_rejection_count
+            ),
+            "ambiguity_hold_resolution_mode": "lease_expiry_only_v1",
+            "ambiguity_hold_online_truth_used": False,
             "observation_timestamp_conflict_count": (
                 self._observation_timestamp_conflict_count
             ),
@@ -1293,7 +1579,11 @@ class Scalable3DTracker:
             existing = self._observation_claims.get(evidence_key)
             if existing is not None:
                 for detection, evidence in candidates:
-                    reason = self._replay_reason(existing.evidence, evidence)
+                    reason = (
+                        "observation_reserved_ambiguous"
+                        if existing.status == "reserved_ambiguous"
+                        else self._replay_reason(existing.evidence, evidence)
+                    )
                     existing.replay_count += 1
                     existing.last_replay_state_timestamp = float(timestamp)
                     self._record_observation_rejection(reason)
@@ -1431,6 +1721,33 @@ class Scalable3DTracker:
         detection: Detection3D,
     ) -> _ObservationEvidence | None:
         metadata = detection.metadata
+        raw_opaque_evidence_key = metadata.get(
+            "latest_observation_evidence_key",
+            metadata.get("observation_evidence_key"),
+        )
+        if raw_opaque_evidence_key is not None:
+            opaque_key = str(raw_opaque_evidence_key).strip()
+            if not opaque_key.startswith("d1-observation-sha256:"):
+                raise ValueError(
+                    "D1 observation_evidence_key must use the frozen opaque prefix"
+                )
+            raw_timestamp = metadata.get(
+                "source_measurement_timestamp",
+                metadata.get("latest_measurement_timestamp"),
+            )
+            source_timestamp = _optional_nonnegative_timestamp(raw_timestamp)
+            namespace = str(
+                metadata.get(
+                    "latest_sensor_id",
+                    detection.source_node_id or "d1-online-observation",
+                )
+            ).strip()
+            return _ObservationEvidence(
+                key=opaque_key,
+                observation_id=opaque_key,
+                source_namespace=namespace,
+                source_measurement_timestamp=source_timestamp,
+            )
         raw_observation_id = metadata.get(
             "latest_observation_id",
             metadata.get("observation_id"),
@@ -1454,11 +1771,7 @@ class Scalable3DTracker:
             "source_measurement_timestamp",
             metadata.get("latest_measurement_timestamp"),
         )
-        source_timestamp: float | None = None
-        if raw_timestamp is not None:
-            candidate = float(raw_timestamp)
-            if np.isfinite(candidate) and candidate >= 0.0:
-                source_timestamp = candidate
+        source_timestamp = _optional_nonnegative_timestamp(raw_timestamp)
         return _ObservationEvidence(
             key=f"{source_namespace}::{observation_id}",
             observation_id=observation_id,
@@ -1498,6 +1811,10 @@ class Scalable3DTracker:
             "arrival_timestamp": detection.arrival_timestamp,
             "claimed_global_track_id": (
                 None if claim is None else claim.global_track_id
+            ),
+            "claim_status": None if claim is None else claim.status,
+            "ambiguity_component_key": (
+                None if claim is None else claim.ambiguity_component_key
             ),
             "first_detection_id": (
                 None if claim is None else claim.first_detection_id
@@ -1583,8 +1900,14 @@ class Scalable3DTracker:
     def _store_observation_claim(self, claim: _ObservationClaim) -> bool:
         if len(self._observation_claims) >= self.observation_claim_config.max_count:
             return False
+        if claim.status not in {"unseen", "reserved_ambiguous", "consumed"}:
+            raise ValueError("unsupported observation claim status")
         self._observation_claims[claim.evidence.key] = claim
-        if claim.evidence.source_measurement_timestamp is not None:
+        self._observation_claim_status_counts[claim.status] += 1
+        if (
+            claim.status != "reserved_ambiguous"
+            and claim.evidence.source_measurement_timestamp is not None
+        ):
             heapq.heappush(
                 self._observation_claim_eviction_heap,
                 (
@@ -1592,7 +1915,10 @@ class Scalable3DTracker:
                     claim.evidence.key,
                 ),
             )
-        else:
+        elif (
+            claim.status != "reserved_ambiguous"
+            and claim.evidence.source_measurement_timestamp is None
+        ):
             self._observation_claim_undated_count += 1
         self._observation_claim_peak_count = max(
             self._observation_claim_peak_count,
@@ -1631,9 +1957,12 @@ class Scalable3DTracker:
             claim = self._observation_claims.get(key)
             if claim is None:
                 continue
+            if claim.status == "reserved_ambiguous":
+                continue
             if claim.evidence.source_measurement_timestamp != source_timestamp:
                 continue
             self._observation_claims.pop(key)
+            self._decrement_observation_claim_status(claim.status)
             if claim.global_track_id is not None:
                 track_keys = self._track_observation_keys.get(claim.global_track_id)
                 if track_keys is not None:
@@ -1705,6 +2034,14 @@ class Scalable3DTracker:
             ),
             "tombstone_count": 0,
             "anti_replay_mode": "trusted_measurement_time_safe_watermark",
+            "claim_status_counts": {
+                status: int(self._observation_claim_status_counts.get(status, 0))
+                for status in (
+                    "unseen",
+                    "reserved_ambiguous",
+                    "consumed",
+                )
+            },
             "online_truth_used": False,
         }
 
@@ -1714,30 +2051,747 @@ class Scalable3DTracker:
         global_track_id: str,
     ) -> None:
         claim = self._observation_claims[evidence.key]
+        self._transition_observation_claim_status(claim, "consumed")
         claim.global_track_id = str(global_track_id)
         track_keys = self._track_observation_keys[str(global_track_id)]
         before = len(track_keys)
         track_keys.add(evidence.key)
         self._track_observation_key_count += len(track_keys) - before
 
+    def _process_ambiguity_components(
+        self,
+        components: Iterable[
+            AmbiguityComponent3D | Mapping[str, Any]
+        ],
+        timestamp: float,
+    ) -> dict[str, Any]:
+        raw_components = list(components)
+        diagnostics: dict[str, Any] = {
+            "enabled": self.ambiguity_hold_config.enabled,
+            "input_component_count": len(raw_components),
+            "accepted_component_count": 0,
+            "rejected_component_count": 0,
+            "expired_component_count": 0,
+            "component_events": [],
+            "prevented_counts": Counter(
+                {
+                    "hit": 0,
+                    "miss": 0,
+                    "birth": 0,
+                    "rebind": 0,
+                }
+            ),
+        }
+        if not self.ambiguity_hold_config.enabled:
+            diagnostics.update(
+                {
+                    "ignored_component_count": len(raw_components),
+                    "active_component_count": 0,
+                    "hold_track_ids": [],
+                    "hold_source_keys": [],
+                    "reserved_evidence_count": 0,
+                    "active_leases": [],
+                }
+            )
+            return diagnostics
+
+        expired_events = self._expire_ambiguity_leases(timestamp)
+        diagnostics["component_events"].extend(expired_events)
+        diagnostics["expired_component_count"] += len(expired_events)
+
+        for raw_component in raw_components:
+            try:
+                component = AmbiguityComponent3D.from_mapping(
+                    raw_component.to_dict()
+                    if isinstance(raw_component, AmbiguityComponent3D)
+                    else raw_component
+                )
+            except (AmbiguityComponentValidationError, TypeError, ValueError) as exc:
+                event = {
+                    "decision": "rejected",
+                    "reason": "component_contract_rejected",
+                    "detail": str(exc),
+                    "measurement_timestamp": None,
+                    "arrival_timestamp": None,
+                    "state_valid_timestamp": None,
+                    "published_at": None,
+                    "d2_consumption_timestamp": float(timestamp),
+                    "component_age_seconds": None,
+                    "time_decision": "component_contract_unavailable",
+                    "lease_extended": False,
+                    "online_truth_used": False,
+                }
+                diagnostics["component_events"].append(event)
+                diagnostics["rejected_component_count"] += 1
+                self._ambiguity_component_event_counts[
+                    "rejected:component_contract_rejected"
+                ] += 1
+                continue
+
+            event, forced_expirations = self._admit_ambiguity_component(
+                component,
+                timestamp,
+            )
+            if forced_expirations:
+                diagnostics["component_events"].extend(forced_expirations)
+                diagnostics["expired_component_count"] += len(
+                    forced_expirations
+                )
+            diagnostics["component_events"].append(event)
+            decision = str(event["decision"])
+            if decision == "accepted":
+                diagnostics["accepted_component_count"] += 1
+            else:
+                diagnostics["rejected_component_count"] += 1
+
+        hold_track_ids = self._active_ambiguity_hold_track_ids()
+        hold_source_keys = {
+            source_key
+            for lease in self._ambiguity_leases.values()
+            for source_key in lease.member_source_keys
+        }
+        diagnostics.update(
+            {
+                "ignored_component_count": 0,
+                "active_component_count": len(self._ambiguity_leases),
+                "hold_track_ids": sorted(hold_track_ids),
+                "hold_source_keys": sorted(hold_source_keys),
+                "reserved_evidence_count": int(
+                    self._observation_claim_status_counts.get(
+                        "reserved_ambiguous",
+                        0,
+                    )
+                ),
+                "active_leases": [
+                    self._ambiguity_leases[key].to_dict()
+                    for key in sorted(self._ambiguity_leases)
+                ],
+            }
+        )
+        return diagnostics
+
+    def _admit_ambiguity_component(
+        self,
+        component: AmbiguityComponent3D,
+        timestamp: float,
+    ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+        config = self.ambiguity_hold_config
+        _, _, rejection_reason = self._ambiguity_component_time_assessment(
+            component,
+            timestamp,
+        )
+        if (
+            rejection_reason is None
+            and len(component.members) > config.max_members_per_component
+        ):
+            rejection_reason = "component_member_capacity_exceeded"
+        elif (
+            rejection_reason is None
+            and len(component.observations)
+            > config.max_observations_per_component
+        ):
+            rejection_reason = "component_observation_capacity_exceeded"
+        elif (
+            rejection_reason is None
+            and len(component.candidate_edges)
+            > config.max_candidate_edges_per_component
+        ):
+            rejection_reason = "component_edge_capacity_exceeded"
+        elif (
+            rejection_reason is None
+            and component.lease_key not in self._ambiguity_leases
+            and len(self._ambiguity_leases) >= config.max_active_components
+        ):
+            rejection_reason = "active_component_capacity_exceeded"
+
+        highest_generation = self._ambiguity_component_generations.get(
+            component.lease_key,
+            0,
+        )
+        active_lease = self._ambiguity_leases.get(component.lease_key)
+        epoch_decision = self._ambiguity_epoch_decision(component)
+        rotating_component_keys = {
+            key
+            for key, lease in self._ambiguity_leases.items()
+            if epoch_decision == "rotate"
+            and lease.publisher_node_id == component.publisher_node_id
+            and lease.publisher_epoch != component.publisher_epoch
+        }
+        if rejection_reason is None and component.evidence_id in (
+            self._ambiguity_evidence_history
+        ):
+            rejection_reason = "evidence_replay"
+        elif (
+            rejection_reason is None
+            and component.generation <= highest_generation
+        ):
+            rejection_reason = "component_generation_replay_or_rollback"
+        elif (
+            rejection_reason is None
+            and active_lease is None
+            and component.lease_key
+            in self._ambiguity_component_hard_deadlines
+            and timestamp + self.observation_timestamp_tolerance_s
+            >= self._ambiguity_component_hard_deadlines[
+                component.lease_key
+            ]
+        ):
+            rejection_reason = "component_hard_cap_exhausted"
+        elif (
+            rejection_reason is None
+            and active_lease is not None
+            and set(component.member_source_keys)
+            != active_lease.member_source_keys
+        ):
+            rejection_reason = "component_membership_changed"
+
+        for other_key, other_lease in self._ambiguity_leases.items():
+            if rejection_reason is not None or other_key == component.lease_key:
+                continue
+            if other_key in rotating_component_keys:
+                continue
+            if (
+                set(component.observation_evidence_keys)
+                & other_lease.observation_evidence_keys
+            ):
+                rejection_reason = "observation_reserved_by_incompatible_component"
+            elif (
+                set(component.member_source_keys)
+                & other_lease.member_source_keys
+            ):
+                rejection_reason = "member_held_by_incompatible_component"
+
+        if rejection_reason is None and epoch_decision == "rollback":
+            rejection_reason = "publisher_epoch_rollback"
+
+        new_observation_keys = set(component.observation_evidence_keys)
+        if active_lease is not None:
+            new_observation_keys -= active_lease.observation_evidence_keys
+        for evidence_key in new_observation_keys:
+            if rejection_reason is not None:
+                break
+            existing_claim = self._observation_claims.get(evidence_key)
+            if (
+                existing_claim is not None
+                and existing_claim.ambiguity_component_key
+                not in rotating_component_keys
+            ):
+                rejection_reason = (
+                    "observation_claim_conflicts_with_ambiguity_reservation"
+                )
+
+        rotating_reserved_count = sum(
+            len(self._ambiguity_leases[key].observation_evidence_keys)
+            for key in rotating_component_keys
+        )
+        reserved_count = max(
+            0,
+            int(
+            self._observation_claim_status_counts.get(
+                "reserved_ambiguous",
+                0,
+            )
+            )
+            - rotating_reserved_count,
+        )
+        if (
+            rejection_reason is None
+            and reserved_count + len(new_observation_keys)
+            > config.max_reserved_evidence
+        ):
+            rejection_reason = "reserved_evidence_capacity_exceeded"
+        if (
+            rejection_reason is None
+            and len(self._observation_claims)
+            - rotating_reserved_count
+            + len(new_observation_keys)
+            > self.observation_claim_config.max_count
+        ):
+            rejection_reason = "observation_claim_ledger_capacity_exceeded"
+
+        if rejection_reason is not None:
+            self._ambiguity_component_event_counts[
+                f"rejected:{rejection_reason}"
+            ] += 1
+            return (
+                self._ambiguity_component_event(
+                    component,
+                    decision="rejected",
+                    reason=rejection_reason,
+                    timestamp=timestamp,
+                    lease=None,
+                    lease_extended=False,
+                ),
+                [],
+            )
+
+        forced_expirations: list[dict[str, Any]] = []
+        if epoch_decision == "rotate":
+            forced_expirations = self._rotate_ambiguity_publisher_epoch(
+                component.publisher_node_id,
+                component.publisher_epoch,
+                timestamp,
+            )
+        elif epoch_decision == "initialize":
+            self._ambiguity_publisher_current_epochs[
+                component.publisher_node_id
+            ] = component.publisher_epoch
+
+        if active_lease is None:
+            hard_deadline = self._ambiguity_component_hard_deadlines.get(
+                component.lease_key,
+                timestamp + config.effective_hard_seconds,
+            )
+            self._ambiguity_component_hard_deadlines[
+                component.lease_key
+            ] = hard_deadline
+            soft_deadline = min(
+                hard_deadline,
+                timestamp + config.effective_gap_seconds,
+            )
+            track_ids = self._bound_track_ids(
+                component.member_source_keys
+            )
+            lease = _AmbiguityLease(
+                component_key=component.lease_key,
+                component_id=component.component_id,
+                evidence_id=component.evidence_id,
+                generation=component.generation,
+                publisher_node_id=component.publisher_node_id,
+                publisher_epoch=component.publisher_epoch,
+                first_seen_timestamp=timestamp,
+                last_new_evidence_timestamp=timestamp,
+                soft_deadline=soft_deadline,
+                hard_deadline=hard_deadline,
+                member_source_keys=set(component.member_source_keys),
+                observation_evidence_keys=set(),
+                track_ids=track_ids,
+                latest_reason="new_component_with_original_evidence",
+            )
+            self._ambiguity_leases[component.lease_key] = lease
+        else:
+            lease = active_lease
+
+        lease_extended = bool(new_observation_keys)
+        for observation in component.observations:
+            evidence_key = observation.observation_evidence_key
+            if evidence_key not in new_observation_keys:
+                continue
+            claim = _ObservationClaim(
+                evidence=_ObservationEvidence(
+                    key=evidence_key,
+                    observation_id=evidence_key,
+                    source_namespace=component.sensor_id,
+                    source_measurement_timestamp=(
+                        component.measurement_timestamp
+                    ),
+                ),
+                first_detection_id=f"ambiguity:{component.evidence_id}",
+                first_state_timestamp=float(timestamp),
+                status="reserved_ambiguous",
+                ambiguity_component_key=component.lease_key,
+            )
+            if not self._store_observation_claim(claim):
+                raise RuntimeError(
+                    "ambiguity reservation capacity changed during admission"
+                )
+            lease.observation_evidence_keys.add(evidence_key)
+
+        lease.evidence_id = component.evidence_id
+        lease.generation = component.generation
+        lease.track_ids.update(
+            self._bound_track_ids(component.member_source_keys)
+        )
+        if lease_extended:
+            lease.last_new_evidence_timestamp = timestamp
+            lease.soft_deadline = min(
+                lease.hard_deadline,
+                timestamp + config.effective_gap_seconds,
+            )
+            lease.latest_reason = "new_original_observation_evidence"
+        else:
+            lease.latest_reason = "new_generation_without_new_observation"
+
+        self._remember_ambiguity_component_generation(
+            component.lease_key,
+            component.generation,
+        )
+        self._remember_ambiguity_evidence(component.evidence_id)
+        self._ambiguity_component_event_counts["accepted"] += 1
+        if lease_extended:
+            self._ambiguity_component_event_counts[
+                "accepted:lease_extended"
+            ] += 1
+        else:
+            self._ambiguity_component_event_counts[
+                "accepted:lease_not_extended"
+            ] += 1
+        return (
+            self._ambiguity_component_event(
+                component,
+                decision="accepted",
+                reason=lease.latest_reason,
+                timestamp=timestamp,
+                lease=lease,
+                lease_extended=lease_extended,
+            ),
+            forced_expirations,
+        )
+
+    def _ambiguity_component_time_assessment(
+        self,
+        component: AmbiguityComponent3D,
+        timestamp: float,
+    ) -> tuple[float, str, str | None]:
+        component_age_seconds = float(
+            timestamp - component.state_valid_timestamp
+        )
+        tolerance = self.observation_timestamp_tolerance_s
+        if component_age_seconds < -tolerance:
+            return (
+                component_age_seconds,
+                "future_state_valid_timestamp_rejected",
+                "component_from_future",
+            )
+        if (
+            component_age_seconds
+            > self.ambiguity_hold_config.max_component_age_seconds + tolerance
+        ):
+            return (
+                component_age_seconds,
+                "stale_component_age_rejected",
+                "component_stale_age_exceeded",
+            )
+        if component_age_seconds > tolerance:
+            time_decision = "bounded_delayed_component_within_age"
+        else:
+            time_decision = "same_epoch_component_within_age"
+        return component_age_seconds, time_decision, None
+
+    def _ambiguity_epoch_decision(
+        self,
+        component: AmbiguityComponent3D,
+    ) -> str:
+        node = component.publisher_node_id
+        epoch = component.publisher_epoch
+        current = self._ambiguity_publisher_current_epochs.get(node)
+        if current is None:
+            return "initialize"
+        if current == epoch:
+            return "current"
+        if (node, epoch) in self._ambiguity_publisher_retired_epochs:
+            return "rollback"
+        return "rotate"
+
+    def _rotate_ambiguity_publisher_epoch(
+        self,
+        publisher_node_id: str,
+        publisher_epoch: str,
+        timestamp: float,
+    ) -> list[dict[str, Any]]:
+        previous = self._ambiguity_publisher_current_epochs.get(
+            publisher_node_id
+        )
+        if previous is not None:
+            retired_epoch = (publisher_node_id, previous)
+            if retired_epoch not in self._ambiguity_publisher_retired_epochs:
+                self._ambiguity_publisher_retired_epochs.add(retired_epoch)
+                self._ambiguity_retired_epoch_order.append(retired_epoch)
+            capacity = self.ambiguity_hold_config.max_component_history
+            while len(self._ambiguity_publisher_retired_epochs) > capacity:
+                oldest = self._ambiguity_retired_epoch_order.popleft()
+                self._ambiguity_publisher_retired_epochs.discard(oldest)
+        self._ambiguity_publisher_current_epochs[
+            publisher_node_id
+        ] = publisher_epoch
+        keys = [
+            key
+            for key, lease in self._ambiguity_leases.items()
+            if lease.publisher_node_id == publisher_node_id
+            and lease.publisher_epoch != publisher_epoch
+        ]
+        return [
+            self._expire_one_ambiguity_lease(
+                key,
+                timestamp,
+                reason="publisher_epoch_rotated",
+            )
+            for key in keys
+        ]
+
+    def _expire_ambiguity_leases(
+        self,
+        timestamp: float,
+    ) -> list[dict[str, Any]]:
+        expired: list[dict[str, Any]] = []
+        tolerance = self.observation_timestamp_tolerance_s
+        for key in sorted(tuple(self._ambiguity_leases)):
+            lease = self._ambiguity_leases[key]
+            deadline = min(lease.soft_deadline, lease.hard_deadline)
+            if timestamp + tolerance < deadline:
+                continue
+            reason = (
+                "hard_deadline_reached"
+                if lease.hard_deadline <= lease.soft_deadline + tolerance
+                else "soft_deadline_reached"
+            )
+            expired.append(
+                self._expire_one_ambiguity_lease(
+                    key,
+                    timestamp,
+                    reason=reason,
+                )
+            )
+        return expired
+
+    def _expire_one_ambiguity_lease(
+        self,
+        component_key: str,
+        timestamp: float,
+        *,
+        reason: str,
+    ) -> dict[str, Any]:
+        lease = self._ambiguity_leases.pop(component_key)
+        released = 0
+        for evidence_key in lease.observation_evidence_keys:
+            claim = self._observation_claims.get(evidence_key)
+            if (
+                claim is None
+                or claim.status != "reserved_ambiguous"
+                or claim.ambiguity_component_key != component_key
+            ):
+                continue
+            self._observation_claims.pop(evidence_key)
+            self._decrement_observation_claim_status(claim.status)
+            released += 1
+        self._ambiguity_component_event_counts["expired"] += 1
+        self._ambiguity_component_event_counts[f"expired:{reason}"] += 1
+        return {
+            "decision": "expired",
+            "reason": reason,
+            "component_key": component_key,
+            "component_id": lease.component_id,
+            "evidence_id": lease.evidence_id,
+            "generation": lease.generation,
+            "state_valid_timestamp": float(timestamp),
+            "soft_deadline": lease.soft_deadline,
+            "hard_deadline": lease.hard_deadline,
+            "released_reserved_evidence_count": released,
+            "lease_extended": False,
+            "online_truth_used": False,
+        }
+
+    def _ambiguity_component_event(
+        self,
+        component: AmbiguityComponent3D,
+        *,
+        decision: str,
+        reason: str,
+        timestamp: float,
+        lease: _AmbiguityLease | None,
+        lease_extended: bool,
+    ) -> dict[str, Any]:
+        (
+            component_age_seconds,
+            time_decision,
+            _time_rejection_reason,
+        ) = self._ambiguity_component_time_assessment(component, timestamp)
+        return {
+            "decision": decision,
+            "reason": reason,
+            "component_key": component.lease_key,
+            "component_id": component.component_id,
+            "evidence_id": component.evidence_id,
+            "generation": component.generation,
+            "publisher_node_id": component.publisher_node_id,
+            "publisher_epoch": component.publisher_epoch,
+            "state_valid_timestamp": component.state_valid_timestamp,
+            "measurement_timestamp": component.measurement_timestamp,
+            "arrival_timestamp": component.arrival_timestamp,
+            "published_at": component.published_at,
+            "d2_consumption_timestamp": float(timestamp),
+            "component_age_seconds": component_age_seconds,
+            "time_decision": time_decision,
+            "max_component_age_seconds": (
+                self.ambiguity_hold_config.max_component_age_seconds
+            ),
+            "member_count": len(component.members),
+            "observation_count": len(component.observations),
+            "lease_extended": bool(lease_extended),
+            "soft_deadline": None if lease is None else lease.soft_deadline,
+            "hard_deadline": None if lease is None else lease.hard_deadline,
+            "online_truth_used": False,
+        }
+
+    def _remember_ambiguity_component_generation(
+        self,
+        component_key: str,
+        generation: int,
+    ) -> None:
+        if component_key not in self._ambiguity_component_generations:
+            self._ambiguity_component_history_order.append(component_key)
+        self._ambiguity_component_generations[component_key] = generation
+        capacity = self.ambiguity_hold_config.max_component_history
+        while len(self._ambiguity_component_generations) > capacity:
+            oldest = self._ambiguity_component_history_order.popleft()
+            if oldest in self._ambiguity_leases:
+                self._ambiguity_component_history_order.append(oldest)
+                continue
+            self._ambiguity_component_generations.pop(oldest, None)
+            self._ambiguity_component_hard_deadlines.pop(oldest, None)
+
+    def _remember_ambiguity_evidence(self, evidence_id: str) -> None:
+        if evidence_id in self._ambiguity_evidence_history:
+            return
+        self._ambiguity_evidence_history.add(evidence_id)
+        self._ambiguity_evidence_history_order.append(evidence_id)
+        capacity = self.ambiguity_hold_config.max_component_history
+        while len(self._ambiguity_evidence_history) > capacity:
+            oldest = self._ambiguity_evidence_history_order.popleft()
+            self._ambiguity_evidence_history.discard(oldest)
+
+    def _bound_track_ids(
+        self,
+        source_keys: Iterable[str],
+    ) -> set[str]:
+        active_bindings = self._active_source_bindings()
+        return {
+            active_bindings[source_key]
+            for source_key in source_keys
+            if source_key in active_bindings
+        }
+
+    def _active_source_bindings(self) -> dict[str, str]:
+        active_ids = {
+            track.global_track_id for track in self.active_tracks()
+        }
+        return {
+            source_key: track_id
+            for source_key, track_id in self._source_bindings.items()
+            if track_id in active_ids
+        }
+
+    def _active_ambiguity_hold_track_ids(self) -> set[str]:
+        active_bindings = self._active_source_bindings()
+        active_ids = set(active_bindings.values())
+        held: set[str] = set()
+        for lease in self._ambiguity_leases.values():
+            lease.track_ids.update(
+                active_bindings[source_key]
+                for source_key in lease.member_source_keys
+                if source_key in active_bindings
+            )
+            lease.track_ids.intersection_update(active_ids)
+            held.update(lease.track_ids)
+        return held
+
+    def _partition_ambiguity_member_detections(
+        self,
+        detections: list[Detection3D],
+        *,
+        held_source_keys: set[str],
+        held_track_ids: set[str],
+        timestamp: float,
+    ) -> tuple[list[Detection3D], list[dict[str, Any]]]:
+        if not held_source_keys:
+            return list(detections), []
+        accepted: list[Detection3D] = []
+        events: list[dict[str, Any]] = []
+        active_bindings = self._active_source_bindings()
+        for detection in detections:
+            source_key = detection.source_key
+            if source_key is None or source_key not in held_source_keys:
+                accepted.append(detection)
+                continue
+            bound_track_id = active_bindings.get(source_key)
+            if bound_track_id in held_track_ids:
+                prevented_action = "hit"
+            elif bound_track_id is None:
+                prevented_action = "birth"
+            else:
+                prevented_action = "rebind"
+            events.append(
+                {
+                    "detection_id": detection.detection_id,
+                    "source_key": source_key,
+                    "bound_global_track_id": bound_track_id,
+                    "state_valid_timestamp": float(timestamp),
+                    "decision": "prediction_only_ambiguity_hold",
+                    "prevented_action": prevented_action,
+                    "measurement_update_applied": False,
+                    "hit_added": False,
+                    "miss_added": False,
+                    "birth_allowed": False,
+                    "rebind_allowed": False,
+                    "online_truth_used": False,
+                }
+            )
+        return accepted, events
+
+    def _transition_observation_claim_status(
+        self,
+        claim: _ObservationClaim,
+        new_status: str,
+    ) -> None:
+        if claim.status == new_status:
+            return
+        self._decrement_observation_claim_status(claim.status)
+        claim.status = new_status
+        self._observation_claim_status_counts[new_status] += 1
+
+    def _decrement_observation_claim_status(self, status: str) -> None:
+        self._observation_claim_status_counts[status] -= 1
+        if self._observation_claim_status_counts[status] <= 0:
+            self._observation_claim_status_counts.pop(status, None)
+
+    def _finalize_ambiguity_diagnostics(
+        self,
+        diagnostics: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        result = dict(diagnostics)
+        result["prevented_counts"] = dict(
+            sorted(dict(diagnostics["prevented_counts"]).items())
+        )
+        result["component_event_counts_cumulative"] = dict(
+            sorted(self._ambiguity_component_event_counts.items())
+        )
+        result["prevented_counts_cumulative"] = dict(
+            sorted(self._ambiguity_prevented_counts.items())
+        )
+        result["config"] = self.ambiguity_hold_config.to_dict()
+        result["claim_states"] = [
+            "unseen",
+            "reserved_ambiguous",
+            "consumed",
+        ]
+        result["resolution_mode"] = "lease_expiry_only_v1"
+        result["online_truth_used"] = False
+        return result
+
     def _coalesce_duplicate_tracks(
         self,
         timestamp: float,
         *,
         updated_track_ids: set[str],
+        protected_track_ids: set[str] | None = None,
     ) -> tuple[list[dict[str, Any]], dict[str, str]]:
         """Merge only provenance-linked, statistically compatible duplicates."""
 
+        protected = set() if protected_track_ids is None else protected_track_ids
         events: list[dict[str, Any]] = []
         aliases: dict[str, str] = {}
         active = self.active_tracks()
         for left_index, left in enumerate(active):
             if left.lifecycle_state == TrackLifecycleState.DROPPED:
                 continue
+            if left.global_track_id in protected:
+                continue
             for right in active[left_index + 1 :]:
                 if left.lifecycle_state == TrackLifecycleState.DROPPED:
                     break
                 if right.lifecycle_state == TrackLifecycleState.DROPPED:
+                    continue
+                if right.global_track_id in protected:
                     continue
                 if (
                     left.global_track_id in updated_track_ids
@@ -2075,6 +3129,15 @@ def _finite_value_summary(values: Iterable[float | None]) -> dict[str, Any]:
         "p90": float(np.percentile(array, 90.0)),
         "maximum": float(np.max(array)),
     }
+
+
+def _optional_nonnegative_timestamp(value: Any) -> float | None:
+    if value is None:
+        return None
+    candidate = float(value)
+    if not np.isfinite(candidate) or candidate < 0.0:
+        return None
+    return candidate
 
 
 def mahalanobis_squared_3d(

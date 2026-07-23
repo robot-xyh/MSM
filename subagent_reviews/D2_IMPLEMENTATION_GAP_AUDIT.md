@@ -27,6 +27,47 @@ D2 v3 复现和测试验收已同步。五 seed 200v200 候选在 45/45 周期�
 `2.928830 -> 2.204672 s`，但早/晚窗口比 `1.119661x -> 1.123036x`，因此只关闭三个
 可证明的常数成本热点，长窗口 P1 不关闭。
 
+## 2026-07-23 D1 歧义侧车与 D2 保持租约增量
+
+- **问题来源**：D1 v1/v2 在 clean 200v200 A/B 中把整歧义分量 suppression 作为硬
+  身份处理后，D2 tracks `203 -> 199`、D3 targets `200 -> 196`、continuity
+  `.865 -> .830`，候选被拒绝。下一候选把“歧义期不做硬身份承诺”下移到 D2
+  canonical 生命周期，不再要求 D1 产生可消费的重复 posterior hit。
+- **接口阻断已关闭**：D2 公开合同严格镜像冻结的 D1
+  `d1.structural-ambiguity-evidence.v1`。默认发布节点为 `D1_FUSION`，默认兼容 epoch
+  为 `d1-default-epoch-v1`；成员令牌、三段式 `source_key` 和不可逆
+  `d1-observation-sha256:<digest>` 均有固定合同向量测试。D2 不 import D1 私有类，
+  不要求原始 observation ID/source namespace。
+- **A/B 隔离已关闭**：D1 本地 ID 到不透明来源键的转换只有显式
+  `use_opaque_d1_source_tokens=True` 才启用；默认 adapter 调用和 Detection 序列化
+  保持等价。随机上游字符串只进入 SHA-256，D2 canonical ID 仍由 `GT3D-*` 产生。
+  缺 publisher epoch 时显式记录兼容默认值和 restart rotation 要求，不能宣称 D2
+  已自动发现外部重启。
+- **P1 模块实现已完成**：`AmbiguityHoldLeaseConfig` 默认关闭；开启后提供 soft/hard
+  deadline、`max_component_age_seconds`、容量上限、generation/evidence replay
+  拒绝、epoch 回退拒绝、观测 reservation 和 prediction-only hold。D1
+  measurement/state-valid 时刻允许早于 D2 tracker epoch；未来分量和超过年龄上限的
+  分量 fail-closed。保持轨不 update、不 hit、不 miss、不 birth、不 rebind、不
+  coalesce，身份置信度不增加，协方差不因 posterior 收缩。未绑定成员和分量观测禁止
+  birth。
+- **P0 正常路径硬化已完成**：六维 source binding 在关联候选边生成时硬掩码，已绑定
+  source 只能连原 canonical track。原边几何不通过时隔离并禁止 shadow birth，不再
+  先调用 `_update_track()` 再记录 conflict；合法已有 binding 保持可更新。
+- **诊断已完成**：逐帧/累计输出 component accepted/rejected/expired、hold track、
+  reserved evidence、prevented hit/miss/birth/rebind、pre-update binding rejection、
+  deadline/reason、原 measurement/arrival/state-valid/published 时刻、D2 消费时刻、
+  `component_age_seconds/time_decision`、schema/policy 和
+  `online_truth_used=false`。活动分量显式提高
+  `AssociationRiskSummary.association_ambiguity`，在线 IDSW 仍为 unavailable。
+- **模块证据**：2026-07-23 D2 完整回归为
+  `271 passed, 1 warning in 28.75s`。专项覆盖 `0.40 -> 0.65 s` 合法延迟接受、
+  future/stale 拒绝、原双时间戳不变和 replay 不刷新租约。warning 为环境 Matplotlib `Axes3D`，不影响
+  合同和数值验收。该结果只关闭代码、合同和单元/模块不变式。
+- **仍开放 P1**：main 必须在同一 clean 200v200 冻结输入运行默认关闭 baseline 与
+  显式开启 candidate，复核 D2/D3 数量、离线 IDSW/continuity、重复 posterior
+  hit/birth、时延和 truth leakage。首版只有 lease expiry release；连续双向唯一自动
+  resolution、component-level JPDA、bounded MHT 和跨进程 epoch 协商未实现。
+
 ## 0. 2026-07-15 M5N2 20-case GAP 判定
 
 - **新增已闭合证据**：SimpleFlight M5N2 baseline/candidate 各 10 seed，20/20 case
@@ -64,11 +105,12 @@ D2 当前实现符合“先用规则 GNN/Hungarian 做工程主线，密集交�
   六维数值状态。
 - **2026-07-22 历史模块回归**：三 seed clean 集成证据同步后为
   `219 passed, 1 warning in 49.75s`；warning 仍为环境 `Axes3D`。
-- **2026-07-23 当前权威模块回归**：clean `4ac3bb2` seed 1000 profiler 与等价优化
-  文档同步后的完整结果为 `234 passed, 1 warning in 34.83s`，验收阈值为零失败；
-  warning 仍为环境 `Axes3D`。
+- **2026-07-23 当前权威模块回归**：歧义保持租约、D1 不透明来源合同、延迟侧车
+  有界年龄准入和关联前 binding hard mask 的完整结果为
+  `271 passed, 1 warning in 28.75s`，验收阈值为零失败；warning 仍为环境
+  `Axes3D`。此前 `234 passed` 是 profiler 等价优化阶段的历史结果。
 - **2026-07-12 AirSim 证据**：PNG delivery candidate 的 2v2 10 seeds 为 20/20 pair、在线 truth 使用为 0；锁定后两帧 dropout 沿原 global/local track 和原计划上下文预测，没有 truth ID 或本地 ID 重写。M5N2 8 s 短窗口为 0/9，报告明确其几何与时间窗不足且不可与长时高净空基线直接比较。这些是 D2 下游合同的非退化证据，不是 D2 新算法或长期标定完成证据。
-- **P0/P1 开放项**：P0 无开放项。P1 synthetic long replay、独立 offline truth、至少 10-seed 的 IDSW/continuity/false-track/RMSE/NIS/NEES availability、版本治理和 strict 4 m/2 m 各 20-seed 首轮真实标定已闭合；仍开放更长 OOSM/遮挡/杂波 replay 下的 gate/risk/M-of-N 生命周期参数冻结，以及跨节点 D1 exact/CI posterior 回写、高歧义 replay 和 owner/epoch failover 验证。
+- **P0/P1 开放项**：P0 无开放项。P1 synthetic long replay、独立 offline truth、至少 10-seed 的 IDSW/continuity/false-track/RMSE/NIS/NEES availability、版本治理和 strict 4 m/2 m 各 20-seed 首轮真实标定已闭合；结构歧义保持租约已完成 D2 模块实现但 clean 200v200 A/B 尚未执行。仍开放更长 OOSM/遮挡/杂波 replay 下的 gate/risk/M-of-N 生命周期参数冻结，以及跨节点 D1 exact/CI posterior 回写、高歧义 replay 和 owner/epoch failover 验证。
 - **下一验收条件**：沿 2026-07-13 冻结 replay/truth/profile/预算合同扩展困难度和时间窗；逐 seed 及聚合报告 IDSW、identity/coverage continuity、duplicate、false-track、初始化延迟、NIS/NEES availability/coverage、runtime 和在线 truth 泄漏数。任何候选必须同时满足全部门限，不能只凭 IDSW 改善晋级。跨节点验收还必须证明 canonical ID 连续、duplicate payload 拒绝、owner/epoch 切换可恢复，并由 D1/D6 给出融合 posterior 与 NEES/ANEES。
 - **历史基线**：2026-07-10 的 5v5/2v2 批次和 2026-07-11 早期的 seeds 7/17/27 当时不足以关闭 D2 P1，且 T001 双 primary 为 0。本条仅保留实施前/过渡证据边界，不代表当前状态。
 - **2026-07-11 合同验收证据**：M=5、N=2 ComputerVision 的 T001 双 primary 共识/计划授权为 8/10；D2 `id_switch_count=0`、错误 duplicate=0、`global_track_id` 改写/重绑=0 均为 10/10。
