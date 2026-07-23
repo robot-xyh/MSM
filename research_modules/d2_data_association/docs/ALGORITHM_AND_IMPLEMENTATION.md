@@ -1594,3 +1594,62 @@ version、coalition、`global_track_id` 和 command 业务字段保持精确比�
 D2 association 累计耗时三 seed 均值为 `8.317513 -> 7.671266 s`，减少约 `7.77%`；
 终态航迹数依次为 `205/204/203`，两侧相同。该验证证明 nominal 三 seed clean 集成
 非退化。短长对照仍将 D2 association 列为超线性，因此实时预算和困难场景标定尚未完成。
+
+## 28. 部分身份诊断算法
+
+### 28.1 映射分类
+
+评估器先保留逐帧 mapping 的原始 `available/ambiguous/unavailable` 计数。身份评分集合
+只取 association state 为 `created` 或 `matched` 的映射。映射同时满足以下条件时记为
+可评估：
+
+1. mapping status 为 available；
+2. 只有一个 `truth_target_id`；
+3. 该真值出现在本帧 truth-presence 时间窗。
+
+映射覆盖率为可评估映射数除以受评分映射数。受评分集合为空时，值和 availability 分别为
+`None/false`，原因固定为 `no_scored_identity_mappings`。缺失计数只覆盖
+`source_lineage_missing`、`truth_label_missing` 和
+`truth_mapping_evidence_unavailable`；其他时间、生命周期和冲突原因仍保存在 reason
+counts，不混入缺失数。
+
+### 28.2 帧和转移
+
+完整可评估帧要求 truth presence 非空，且本帧每条受评分映射都可评估。帧内一个真值有
+多条有效航迹时，两类指标采用不同处理。strict metrics 继续使用已冻结的“持久化证据
+顺序第一条”为代表航迹，并保留 duplicate 语义。部分下界不复用该代表：只有某真值帧
+恰好存在一个唯一可评估 `global_track_id` 时才建立锚点；存在两个及以上唯一航迹时排除
+该真值帧，并按
+`multiple_evaluable_global_tracks_for_truth_frame` 计数。该排除按真值帧计数，不按
+映射条数计数；即使同帧另有缺失或歧义证据，也保留重复映射排除审计。
+
+对每个真值按帧序列建立两种转移：
+
+- 转移机会数为真值存在帧数减一；
+- 相邻可评估转移要求相邻真值存在帧都为完整可评估帧，且该真值在两端各有一个唯一锚点。
+
+IDSW 下界使用连续唯一锚点。若两端唯一航迹 ID 不同，则该不相交时间区间至少发生一次
+切换。公式为
+
+\[
+L_{\mathrm{IDSW}} =
+\sum_u \sum_{j=2}^{K_u}
+\mathbf{1}\!\left[g_{u,j} \ne g_{u,j-1}\right],
+\]
+
+其中 \(g_{u,j}\) 是真值 \(u\) 的第 \(j\) 个唯一锚点航迹，\(K_u\) 是锚点数。每个求和
+区间互不重叠，端点唯一且 ID 不同，因此每项 1 至少对应一次身份变化。重复映射帧没有
+唯一端点，不能证明发生切换，也不能贡献下界。当所有 \(K_u<2\) 时，下界 unavailable。
+当前不计算上界，因为缺失侧车不能证明完整真值基数和所有转移机会。
+
+### 28.3 序列化与防篡改
+
+`partial_identity_diagnostics` 是 evaluation v1 的可选附加块，schema 为
+`d2.scalable3d_partial_identity_diagnostics.v1`。旧 evaluation v1 无该块时仍可读取；
+新 producer 始终写出。loader 校验状态计数总和、评分分类总和、coverage 分子分母、唯一
+锚点排除数及原因、下界范围和固定分母定义，并从逐帧 mapping 重新计算后逐项比较。任何
+矛盾都会拒绝制品。
+
+该块不进入 online D2 DTO、association log 或 tracker state。唯一身份来源仍是离线
+`observation_id -> truth_target_id` 谱系侧车；最近距离、目标名称、actor ID 和终端邻近
+均未使用。

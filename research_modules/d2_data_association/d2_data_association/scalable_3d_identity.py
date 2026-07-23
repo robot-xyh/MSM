@@ -36,6 +36,9 @@ SCALABLE_3D_GLOBAL_TRACK_TRUTH_MAPPING_SCHEMA_VERSION = (
 SCALABLE_3D_IDENTITY_METRICS_SCHEMA_VERSION = (
     "d2.scalable3d_identity_metrics.v1"
 )
+SCALABLE_3D_PARTIAL_IDENTITY_DIAGNOSTICS_SCHEMA_VERSION = (
+    "d2.scalable3d_partial_identity_diagnostics.v1"
+)
 SCALABLE_3D_IDENTITY_POLICY_VERSION = "d2.scalable3d_identity_policy.v1"
 SCALABLE_3D_IDENTITY_HASH_ALGORITHM = "sha256"
 
@@ -57,6 +60,68 @@ _IDENTITY_METRIC_NAMES = (
     "coverage_continuity",
     "duplicate_truth_to_track_count",
 )
+_MISSING_IDENTITY_EVIDENCE_REASONS = frozenset(
+    {
+        "source_lineage_missing",
+        "truth_label_missing",
+        "truth_mapping_evidence_unavailable",
+    }
+)
+_LOWER_BOUND_ANCHOR_EXCLUSION_REASONS = frozenset(
+    {"multiple_evaluable_global_tracks_for_truth_frame"}
+)
+_PARTIAL_IDENTITY_DIAGNOSTIC_DEFINITIONS = {
+    "mapping_denominator": (
+        "scored_mapping_count counts created or matched global-track/frame "
+        "mappings; lost, dropped, and unmatched audit rows are not scored"
+    ),
+    "evaluable_mapping": (
+        "a scored mapping with status available, exactly one truth target, "
+        "and that truth target present in the frame sidecar window"
+    ),
+    "frame_denominator": (
+        "evaluated_frame_count counts every persisted D2 frame represented "
+        "by the evidence bundle or verified source records"
+    ),
+    "evaluable_frame": (
+        "a frame with non-empty truth presence where every scored mapping is "
+        "evaluable; a frame may be evaluable with zero assigned tracks"
+    ),
+    "transition_denominator": (
+        "transition_opportunity_count is the sum over truth targets of "
+        "max(number of truth-present frames minus one, zero)"
+    ),
+    "evaluable_transition": (
+        "an adjacent pair of truth-present frames whose endpoints are both "
+        "evaluable and each have exactly one unique evaluable global track "
+        "for that truth target"
+    ),
+    "lower_bound_anchor": (
+        "a truth-target/frame pair in an evaluable frame with exactly one "
+        "unique evaluable global track; pairs with multiple evaluable global "
+        "tracks are excluded rather than ordered into a representative"
+    ),
+    "lower_bound_anchor_exclusion": (
+        "lower_bound_anchor_excluded_truth_frame_count counts truth-target/"
+        "frame pairs with more than one unique evaluable global track; such "
+        "pairs never become lower-bound anchors even when the frame is "
+        "otherwise incomplete"
+    ),
+    "id_switch_lower_bound": (
+        "changes of the unique global_track_id between consecutive "
+        "lower-bound anchors for each truth target; anchor intervals are "
+        "disjoint and duplicate mappings never select a representative, so "
+        "the count is a conservative episode lower bound"
+    ),
+    "missing_identity_evidence_mapping": (
+        "a scored mapping carrying source_lineage_missing, "
+        "truth_label_missing, or truth_mapping_evidence_unavailable"
+    ),
+    "id_switch_upper_bound": (
+        "not emitted because missing or ambiguous sidecar evidence does not "
+        "establish a complete truth-assignment transition universe"
+    ),
+}
 _REQUIRED_EVALUATION_SOURCE_HASHES = {
     "online_d1_records",
     "online_d2_records",
@@ -853,6 +918,484 @@ class Scalable3DIdentityMetrics:
 
 
 @dataclass(frozen=True, slots=True)
+class Scalable3DPartialIdentityDiagnostics:
+    """Auditable partial identity evidence without relaxing strict metrics."""
+
+    total_mapping_count: int
+    available_mapping_count: int
+    ambiguous_mapping_count: int
+    unavailable_mapping_count: int
+    scored_mapping_count: int
+    non_scored_mapping_count: int
+    evaluable_mapping_count: int
+    ambiguous_scored_mapping_count: int
+    unavailable_scored_mapping_count: int
+    mapped_truth_not_present_mapping_count: int
+    missing_identity_evidence_mapping_count: int
+    evaluable_mapping_coverage: float | None
+    evaluable_mapping_coverage_reason: str | None
+    evaluated_frame_count: int
+    evaluable_frame_count: int
+    evaluable_frame_coverage: float | None
+    evaluable_frame_coverage_reason: str | None
+    transition_opportunity_count: int
+    evaluable_transition_count: int
+    evaluable_transition_coverage: float | None
+    evaluable_transition_coverage_reason: str | None
+    lower_bound_anchor_excluded_truth_frame_count: int
+    lower_bound_anchor_exclusion_reason_counts: Mapping[str, int]
+    lower_bound_anchor_transition_count: int
+    id_switch_lower_bound: int | None
+    id_switch_lower_bound_reason: str | None
+    excluded_scored_mapping_reason_counts: Mapping[str, int]
+    schema_version: str = (
+        SCALABLE_3D_PARTIAL_IDENTITY_DIAGNOSTICS_SCHEMA_VERSION
+    )
+
+    def __post_init__(self) -> None:
+        if (
+            self.schema_version
+            != SCALABLE_3D_PARTIAL_IDENTITY_DIAGNOSTICS_SCHEMA_VERSION
+        ):
+            raise ValueError(
+                "unsupported scalable 3D partial identity diagnostics schema"
+            )
+        count_names = (
+            "total_mapping_count",
+            "available_mapping_count",
+            "ambiguous_mapping_count",
+            "unavailable_mapping_count",
+            "scored_mapping_count",
+            "non_scored_mapping_count",
+            "evaluable_mapping_count",
+            "ambiguous_scored_mapping_count",
+            "unavailable_scored_mapping_count",
+            "mapped_truth_not_present_mapping_count",
+            "missing_identity_evidence_mapping_count",
+            "evaluated_frame_count",
+            "evaluable_frame_count",
+            "transition_opportunity_count",
+            "evaluable_transition_count",
+            "lower_bound_anchor_excluded_truth_frame_count",
+            "lower_bound_anchor_transition_count",
+        )
+        counts = {
+            name: _nonnegative_int(getattr(self, name), name)
+            for name in count_names
+        }
+        if (
+            counts["available_mapping_count"]
+            + counts["ambiguous_mapping_count"]
+            + counts["unavailable_mapping_count"]
+            != counts["total_mapping_count"]
+        ):
+            raise ValueError(
+                "partial identity mapping status counts must sum to total"
+            )
+        if counts["scored_mapping_count"] > counts["total_mapping_count"]:
+            raise ValueError("scored mapping count exceeds total mapping count")
+        if (
+            counts["scored_mapping_count"]
+            + counts["non_scored_mapping_count"]
+            != counts["total_mapping_count"]
+        ):
+            raise ValueError(
+                "scored and non-scored mapping counts must sum to total"
+            )
+        if (
+            counts["evaluable_mapping_count"]
+            + counts["ambiguous_scored_mapping_count"]
+            + counts["unavailable_scored_mapping_count"]
+            + counts["mapped_truth_not_present_mapping_count"]
+            != counts["scored_mapping_count"]
+        ):
+            raise ValueError(
+                "partial identity scored mapping categories are incomplete"
+            )
+        if counts["missing_identity_evidence_mapping_count"] > (
+            counts["ambiguous_scored_mapping_count"]
+            + counts["unavailable_scored_mapping_count"]
+        ):
+            raise ValueError(
+                "missing identity evidence count exceeds unresolved scored mappings"
+            )
+        if counts["evaluable_frame_count"] > counts["evaluated_frame_count"]:
+            raise ValueError("evaluable frame count exceeds evaluated frame count")
+        if (
+            counts["evaluable_transition_count"]
+            > counts["transition_opportunity_count"]
+        ):
+            raise ValueError(
+                "evaluable transition count exceeds transition opportunities"
+            )
+        if (
+            counts["lower_bound_anchor_transition_count"]
+            > counts["transition_opportunity_count"]
+        ):
+            raise ValueError(
+                "lower-bound anchor transitions exceed transition opportunities"
+            )
+        anchor_exclusion_reason_counts = _count_mapping(
+            self.lower_bound_anchor_exclusion_reason_counts,
+            "lower_bound_anchor_exclusion_reason_counts",
+        )
+        unsupported_anchor_exclusion_reasons = (
+            set(anchor_exclusion_reason_counts)
+            - _LOWER_BOUND_ANCHOR_EXCLUSION_REASONS
+        )
+        if unsupported_anchor_exclusion_reasons:
+            raise ValueError(
+                "unsupported lower-bound anchor exclusion reasons: "
+                f"{sorted(unsupported_anchor_exclusion_reasons)}"
+            )
+        if sum(anchor_exclusion_reason_counts.values()) != counts[
+            "lower_bound_anchor_excluded_truth_frame_count"
+        ]:
+            raise ValueError(
+                "lower-bound anchor exclusion reason counts must sum to "
+                "the excluded truth-frame count"
+            )
+
+        mapping_coverage, mapping_reason = _validated_partial_coverage(
+            self.evaluable_mapping_coverage,
+            self.evaluable_mapping_coverage_reason,
+            numerator=counts["evaluable_mapping_count"],
+            denominator=counts["scored_mapping_count"],
+            unavailable_reason="no_scored_identity_mappings",
+            name="evaluable_mapping_coverage",
+        )
+        frame_coverage, frame_reason = _validated_partial_coverage(
+            self.evaluable_frame_coverage,
+            self.evaluable_frame_coverage_reason,
+            numerator=counts["evaluable_frame_count"],
+            denominator=counts["evaluated_frame_count"],
+            unavailable_reason="no_evaluated_identity_frames",
+            name="evaluable_frame_coverage",
+        )
+        transition_coverage, transition_reason = _validated_partial_coverage(
+            self.evaluable_transition_coverage,
+            self.evaluable_transition_coverage_reason,
+            numerator=counts["evaluable_transition_count"],
+            denominator=counts["transition_opportunity_count"],
+            unavailable_reason="no_truth_presence_transition_opportunities",
+            name="evaluable_transition_coverage",
+        )
+
+        lower_bound_reason = _optional_reason(self.id_switch_lower_bound_reason)
+        if counts["lower_bound_anchor_transition_count"] == 0:
+            if self.id_switch_lower_bound is not None:
+                raise ValueError(
+                    "ID-switch lower bound requires an evaluable anchor transition"
+                )
+            if lower_bound_reason != "no_evaluable_identity_transitions":
+                raise ValueError(
+                    "unavailable ID-switch lower bound has an invalid reason"
+                )
+            lower_bound = None
+        else:
+            lower_bound = _nonnegative_int(
+                self.id_switch_lower_bound,
+                "id_switch_lower_bound",
+            )
+            if lower_bound > counts["lower_bound_anchor_transition_count"]:
+                raise ValueError(
+                    "ID-switch lower bound exceeds evaluated anchor transitions"
+                )
+            if lower_bound_reason is not None:
+                raise ValueError(
+                    "available ID-switch lower bound must not carry a reason"
+                )
+
+        for name, value in counts.items():
+            object.__setattr__(self, name, value)
+        object.__setattr__(
+            self,
+            "evaluable_mapping_coverage",
+            mapping_coverage,
+        )
+        object.__setattr__(
+            self,
+            "evaluable_mapping_coverage_reason",
+            mapping_reason,
+        )
+        object.__setattr__(self, "evaluable_frame_coverage", frame_coverage)
+        object.__setattr__(
+            self,
+            "evaluable_frame_coverage_reason",
+            frame_reason,
+        )
+        object.__setattr__(
+            self,
+            "evaluable_transition_coverage",
+            transition_coverage,
+        )
+        object.__setattr__(
+            self,
+            "evaluable_transition_coverage_reason",
+            transition_reason,
+        )
+        object.__setattr__(self, "id_switch_lower_bound", lower_bound)
+        object.__setattr__(
+            self,
+            "id_switch_lower_bound_reason",
+            lower_bound_reason,
+        )
+        object.__setattr__(
+            self,
+            "lower_bound_anchor_exclusion_reason_counts",
+            anchor_exclusion_reason_counts,
+        )
+        object.__setattr__(
+            self,
+            "excluded_scored_mapping_reason_counts",
+            _count_mapping(
+                self.excluded_scored_mapping_reason_counts,
+                "excluded_scored_mapping_reason_counts",
+            ),
+        )
+
+    @classmethod
+    def from_mapping(
+        cls,
+        payload: Mapping[str, Any],
+    ) -> "Scalable3DPartialIdentityDiagnostics":
+        allowed = {
+            "schema_version",
+            "scope",
+            "denominator_definitions",
+            "total_mapping_count",
+            "available_mapping_count",
+            "ambiguous_mapping_count",
+            "unavailable_mapping_count",
+            "scored_mapping_count",
+            "non_scored_mapping_count",
+            "evaluable_mapping_count",
+            "ambiguous_scored_mapping_count",
+            "unavailable_scored_mapping_count",
+            "mapped_truth_not_present_mapping_count",
+            "missing_identity_evidence_mapping_count",
+            "evaluable_mapping_coverage",
+            "evaluable_mapping_coverage_available",
+            "evaluable_mapping_coverage_reason",
+            "evaluated_frame_count",
+            "evaluable_frame_count",
+            "evaluable_frame_coverage",
+            "evaluable_frame_coverage_available",
+            "evaluable_frame_coverage_reason",
+            "transition_opportunity_count",
+            "evaluable_transition_count",
+            "evaluable_transition_coverage",
+            "evaluable_transition_coverage_available",
+            "evaluable_transition_coverage_reason",
+            "lower_bound_anchor_excluded_truth_frame_count",
+            "lower_bound_anchor_exclusion_reason_counts",
+            "lower_bound_anchor_transition_count",
+            "id_switch_lower_bound",
+            "id_switch_lower_bound_available",
+            "id_switch_lower_bound_reason",
+            "id_switch_upper_bound",
+            "id_switch_upper_bound_available",
+            "id_switch_upper_bound_reason",
+            "excluded_scored_mapping_reason_counts",
+        }
+        _reject_unknown_keys(payload, allowed, "partial identity diagnostics")
+        missing = allowed - set(payload)
+        if missing:
+            raise ValueError(
+                "partial identity diagnostics are missing required fields: "
+                f"{sorted(missing)}"
+            )
+        if payload.get("scope") != "offline_lineage_truth_sidecar_only":
+            raise ValueError("partial identity diagnostics use an invalid scope")
+        definitions = {
+            str(key): str(value)
+            for key, value in _as_mapping(
+                payload.get("denominator_definitions"),
+                "partial identity denominator definitions",
+            ).items()
+        }
+        if definitions != _PARTIAL_IDENTITY_DIAGNOSTIC_DEFINITIONS:
+            raise ValueError(
+                "partial identity denominator definitions do not match policy"
+            )
+        for coverage_name in (
+            "evaluable_mapping_coverage",
+            "evaluable_frame_coverage",
+            "evaluable_transition_coverage",
+        ):
+            available = _strict_bool(
+                payload[f"{coverage_name}_available"],
+                f"{coverage_name}_available",
+            )
+            if available != (payload.get(coverage_name) is not None):
+                raise ValueError(
+                    f"{coverage_name} availability contradicts its value"
+                )
+        lower_available = _strict_bool(
+            payload["id_switch_lower_bound_available"],
+            "id_switch_lower_bound_available",
+        )
+        if lower_available != (payload.get("id_switch_lower_bound") is not None):
+            raise ValueError(
+                "ID-switch lower-bound availability contradicts its value"
+            )
+        if (
+            payload.get("id_switch_upper_bound") is not None
+            or payload.get("id_switch_upper_bound_available") is not False
+            or payload.get("id_switch_upper_bound_reason")
+            != "not_provided_incomplete_identity_evidence"
+        ):
+            raise ValueError(
+                "partial identity diagnostics must not fabricate an upper bound"
+            )
+        return cls(
+            schema_version=str(payload.get("schema_version", "")),
+            total_mapping_count=payload["total_mapping_count"],
+            available_mapping_count=payload["available_mapping_count"],
+            ambiguous_mapping_count=payload["ambiguous_mapping_count"],
+            unavailable_mapping_count=payload["unavailable_mapping_count"],
+            scored_mapping_count=payload["scored_mapping_count"],
+            non_scored_mapping_count=payload["non_scored_mapping_count"],
+            evaluable_mapping_count=payload["evaluable_mapping_count"],
+            ambiguous_scored_mapping_count=payload[
+                "ambiguous_scored_mapping_count"
+            ],
+            unavailable_scored_mapping_count=payload[
+                "unavailable_scored_mapping_count"
+            ],
+            mapped_truth_not_present_mapping_count=payload[
+                "mapped_truth_not_present_mapping_count"
+            ],
+            missing_identity_evidence_mapping_count=payload[
+                "missing_identity_evidence_mapping_count"
+            ],
+            evaluable_mapping_coverage=_optional_float(
+                payload.get("evaluable_mapping_coverage")
+            ),
+            evaluable_mapping_coverage_reason=_optional_reason(
+                payload.get("evaluable_mapping_coverage_reason")
+            ),
+            evaluated_frame_count=payload["evaluated_frame_count"],
+            evaluable_frame_count=payload["evaluable_frame_count"],
+            evaluable_frame_coverage=_optional_float(
+                payload.get("evaluable_frame_coverage")
+            ),
+            evaluable_frame_coverage_reason=_optional_reason(
+                payload.get("evaluable_frame_coverage_reason")
+            ),
+            transition_opportunity_count=payload[
+                "transition_opportunity_count"
+            ],
+            evaluable_transition_count=payload["evaluable_transition_count"],
+            evaluable_transition_coverage=_optional_float(
+                payload.get("evaluable_transition_coverage")
+            ),
+            evaluable_transition_coverage_reason=_optional_reason(
+                payload.get("evaluable_transition_coverage_reason")
+            ),
+            lower_bound_anchor_excluded_truth_frame_count=payload[
+                "lower_bound_anchor_excluded_truth_frame_count"
+            ],
+            lower_bound_anchor_exclusion_reason_counts=_as_mapping(
+                payload.get("lower_bound_anchor_exclusion_reason_counts"),
+                "lower-bound anchor exclusion reason counts",
+            ),
+            lower_bound_anchor_transition_count=payload[
+                "lower_bound_anchor_transition_count"
+            ],
+            id_switch_lower_bound=_optional_int(
+                payload.get("id_switch_lower_bound")
+            ),
+            id_switch_lower_bound_reason=_optional_reason(
+                payload.get("id_switch_lower_bound_reason")
+            ),
+            excluded_scored_mapping_reason_counts=_as_mapping(
+                payload.get("excluded_scored_mapping_reason_counts"),
+                "excluded scored mapping reason counts",
+            ),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema_version": self.schema_version,
+            "scope": "offline_lineage_truth_sidecar_only",
+            "denominator_definitions": dict(
+                _PARTIAL_IDENTITY_DIAGNOSTIC_DEFINITIONS
+            ),
+            "total_mapping_count": self.total_mapping_count,
+            "available_mapping_count": self.available_mapping_count,
+            "ambiguous_mapping_count": self.ambiguous_mapping_count,
+            "unavailable_mapping_count": self.unavailable_mapping_count,
+            "scored_mapping_count": self.scored_mapping_count,
+            "non_scored_mapping_count": self.non_scored_mapping_count,
+            "evaluable_mapping_count": self.evaluable_mapping_count,
+            "ambiguous_scored_mapping_count": (
+                self.ambiguous_scored_mapping_count
+            ),
+            "unavailable_scored_mapping_count": (
+                self.unavailable_scored_mapping_count
+            ),
+            "mapped_truth_not_present_mapping_count": (
+                self.mapped_truth_not_present_mapping_count
+            ),
+            "missing_identity_evidence_mapping_count": (
+                self.missing_identity_evidence_mapping_count
+            ),
+            "evaluable_mapping_coverage": self.evaluable_mapping_coverage,
+            "evaluable_mapping_coverage_available": (
+                self.evaluable_mapping_coverage is not None
+            ),
+            "evaluable_mapping_coverage_reason": (
+                self.evaluable_mapping_coverage_reason
+            ),
+            "evaluated_frame_count": self.evaluated_frame_count,
+            "evaluable_frame_count": self.evaluable_frame_count,
+            "evaluable_frame_coverage": self.evaluable_frame_coverage,
+            "evaluable_frame_coverage_available": (
+                self.evaluable_frame_coverage is not None
+            ),
+            "evaluable_frame_coverage_reason": (
+                self.evaluable_frame_coverage_reason
+            ),
+            "transition_opportunity_count": self.transition_opportunity_count,
+            "evaluable_transition_count": self.evaluable_transition_count,
+            "evaluable_transition_coverage": (
+                self.evaluable_transition_coverage
+            ),
+            "evaluable_transition_coverage_available": (
+                self.evaluable_transition_coverage is not None
+            ),
+            "evaluable_transition_coverage_reason": (
+                self.evaluable_transition_coverage_reason
+            ),
+            "lower_bound_anchor_excluded_truth_frame_count": (
+                self.lower_bound_anchor_excluded_truth_frame_count
+            ),
+            "lower_bound_anchor_exclusion_reason_counts": dict(
+                sorted(
+                    self.lower_bound_anchor_exclusion_reason_counts.items()
+                )
+            ),
+            "lower_bound_anchor_transition_count": (
+                self.lower_bound_anchor_transition_count
+            ),
+            "id_switch_lower_bound": self.id_switch_lower_bound,
+            "id_switch_lower_bound_available": (
+                self.id_switch_lower_bound is not None
+            ),
+            "id_switch_lower_bound_reason": self.id_switch_lower_bound_reason,
+            "id_switch_upper_bound": None,
+            "id_switch_upper_bound_available": False,
+            "id_switch_upper_bound_reason": (
+                "not_provided_incomplete_identity_evidence"
+            ),
+            "excluded_scored_mapping_reason_counts": dict(
+                sorted(self.excluded_scored_mapping_reason_counts.items())
+            ),
+        }
+
+
+@dataclass(frozen=True, slots=True)
 class Scalable3DIdentityEvaluation:
     """Portable evaluator artifact consumed by main and D6."""
 
@@ -862,6 +1405,9 @@ class Scalable3DIdentityEvaluation:
     metrics: Scalable3DIdentityMetrics
     configuration: Mapping[str, Any]
     audit: Mapping[str, Any]
+    partial_identity_diagnostics: (
+        Scalable3DPartialIdentityDiagnostics | None
+    ) = None
     schema_version: str = SCALABLE_3D_IDENTITY_EVALUATION_SCHEMA_VERSION
     policy_version: str = SCALABLE_3D_IDENTITY_POLICY_VERSION
 
@@ -895,6 +1441,32 @@ class Scalable3DIdentityEvaluation:
             raise ValueError(
                 "identity metric evaluated_frame_count does not match frames"
             )
+        partial_diagnostics = self.partial_identity_diagnostics
+        if partial_diagnostics is not None:
+            if not isinstance(
+                partial_diagnostics,
+                Scalable3DPartialIdentityDiagnostics,
+            ):
+                raise ValueError(
+                    "partial identity diagnostics use an unsupported type"
+                )
+            expected_partial_diagnostics = _partial_identity_diagnostics(
+                {
+                    frame.frame_index: frame.mappings
+                    for frame in frames
+                },
+                {
+                    frame.frame_index: frame.truth_target_ids_present
+                    for frame in frames
+                },
+            )
+            if (
+                partial_diagnostics.to_dict()
+                != expected_partial_diagnostics.to_dict()
+            ):
+                raise ValueError(
+                    "partial identity diagnostics contradict frame mappings"
+                )
         object.__setattr__(
             self,
             "source_hashes",
@@ -904,6 +1476,11 @@ class Scalable3DIdentityEvaluation:
             ),
         )
         object.__setattr__(self, "frames", frames)
+        object.__setattr__(
+            self,
+            "partial_identity_diagnostics",
+            partial_diagnostics,
+        )
         object.__setattr__(self, "configuration", dict(self.configuration))
         object.__setattr__(self, "audit", dict(self.audit))
 
@@ -924,6 +1501,7 @@ class Scalable3DIdentityEvaluation:
                 "frames",
                 "metrics",
                 "audit",
+                "partial_identity_diagnostics",
             },
             "identity evaluation",
         )
@@ -948,10 +1526,20 @@ class Scalable3DIdentityEvaluation:
                 _as_mapping(payload.get("metrics"), "metrics")
             ),
             audit=_as_mapping(payload.get("audit", {}), "audit"),
+            partial_identity_diagnostics=(
+                None
+                if payload.get("partial_identity_diagnostics") is None
+                else Scalable3DPartialIdentityDiagnostics.from_mapping(
+                    _as_mapping(
+                        payload.get("partial_identity_diagnostics"),
+                        "partial_identity_diagnostics",
+                    )
+                )
+            ),
         )
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        payload = {
             "schema_version": self.schema_version,
             "policy_version": self.policy_version,
             "hash_algorithm": SCALABLE_3D_IDENTITY_HASH_ALGORITHM,
@@ -962,6 +1550,11 @@ class Scalable3DIdentityEvaluation:
             "metrics": self.metrics.to_dict(),
             "audit": dict(self.audit),
         }
+        if self.partial_identity_diagnostics is not None:
+            payload["partial_identity_diagnostics"] = (
+                self.partial_identity_diagnostics.to_dict()
+            )
+        return payload
 
 
 @dataclass(slots=True)
@@ -1312,6 +1905,10 @@ def _evaluate_scalable_3d_identity(
             )
         )
 
+    partial_identity_diagnostics = _partial_identity_diagnostics(
+        mapping_by_frame,
+        truth_presence_by_frame,
+    )
     all_mappings = [mapping for frame in frames for mapping in frame.mappings]
     all_refs = [ref for record in bundle.records for ref in record.source_observations]
     audit = {
@@ -1354,6 +1951,10 @@ def _evaluate_scalable_3d_identity(
             set(label_index) - referenced_observation_ids
         ),
         "identity_metrics_blocking_reasons": sorted(metric_blockers),
+        "partial_identity_diagnostics_available": True,
+        "partial_identity_diagnostics_schema_version": (
+            SCALABLE_3D_PARTIAL_IDENTITY_DIAGNOSTICS_SCHEMA_VERSION
+        ),
     }
     source_hashes = {
         **bundle.source_hashes,
@@ -1366,6 +1967,7 @@ def _evaluate_scalable_3d_identity(
         source_hashes=source_hashes,
         frames=tuple(frames),
         metrics=metrics,
+        partial_identity_diagnostics=partial_identity_diagnostics,
         configuration={
             "timestamp_tolerance_s": tolerance,
             "lineage_time_window_s": lineage_window,
@@ -1374,6 +1976,9 @@ def _evaluate_scalable_3d_identity(
                 "first_assignment_in_persisted_frame_evidence_order"
             ),
             "metric_contract": "MetricsRecorder-compatible-v1",
+            "partial_identity_diagnostic_contract": (
+                SCALABLE_3D_PARTIAL_IDENTITY_DIAGNOSTICS_SCHEMA_VERSION
+            ),
         },
         audit=audit,
     )
@@ -1696,6 +2301,201 @@ def _map_track_group(
         unique_lineage_count=len(unique_refs),
         labeled_evidence_count=labeled_evidence_count,
         replayed_lineage_count=group.replayed_lineage_count,
+    )
+
+
+def _partial_identity_diagnostics(
+    mappings_by_frame: Mapping[int, Sequence[GlobalTrackTruthMapping]],
+    truth_presence_by_frame: Mapping[int, Sequence[str]],
+) -> Scalable3DPartialIdentityDiagnostics:
+    frame_indices = sorted(set(mappings_by_frame) | set(truth_presence_by_frame))
+    all_mappings = [
+        mapping
+        for frame_index in frame_indices
+        for mapping in mappings_by_frame.get(frame_index, ())
+    ]
+    available_mapping_count = sum(
+        mapping.status == "available" for mapping in all_mappings
+    )
+    ambiguous_mapping_count = sum(
+        mapping.status == "ambiguous" for mapping in all_mappings
+    )
+    unavailable_mapping_count = sum(
+        mapping.status == "unavailable" for mapping in all_mappings
+    )
+
+    scored_by_frame = {
+        frame_index: tuple(
+            mapping
+            for mapping in mappings_by_frame.get(frame_index, ())
+            if mapping.association_state in _OBSERVED_ASSOCIATION_STATES
+        )
+        for frame_index in frame_indices
+    }
+    scored_mappings = [
+        mapping
+        for frame_index in frame_indices
+        for mapping in scored_by_frame[frame_index]
+    ]
+    evaluable_mapping_count = 0
+    ambiguous_scored_mapping_count = 0
+    unavailable_scored_mapping_count = 0
+    mapped_truth_not_present_mapping_count = 0
+    missing_identity_evidence_mapping_count = 0
+    excluded_reason_counts: Counter[str] = Counter()
+    anchor_exclusion_reason_counts: Counter[str] = Counter()
+    frame_evaluable: dict[int, bool] = {}
+    lower_bound_anchor_by_frame: dict[int, dict[str, str]] = {}
+
+    for frame_index in frame_indices:
+        present = set(truth_presence_by_frame.get(frame_index, ()))
+        scored = scored_by_frame[frame_index]
+        frame_is_evaluable = bool(present)
+        tracks_by_truth: dict[str, list[str]] = defaultdict(list)
+        for mapping in scored:
+            mapping_is_evaluable = (
+                mapping.status == "available"
+                and mapping.truth_target_id is not None
+                and mapping.truth_target_id in present
+            )
+            if mapping_is_evaluable:
+                evaluable_mapping_count += 1
+                tracks_by_truth[mapping.truth_target_id].append(
+                    mapping.global_track_id
+                )
+                continue
+
+            frame_is_evaluable = False
+            if mapping.status == "ambiguous":
+                ambiguous_scored_mapping_count += 1
+            elif mapping.status == "unavailable":
+                unavailable_scored_mapping_count += 1
+            else:
+                mapped_truth_not_present_mapping_count += 1
+                excluded_reason_counts["mapped_truth_not_present_in_frame"] += 1
+            if (
+                set(mapping.unavailable_reasons)
+                & _MISSING_IDENTITY_EVIDENCE_REASONS
+            ):
+                missing_identity_evidence_mapping_count += 1
+            excluded_reason_counts.update(mapping.unavailable_reasons)
+
+        frame_evaluable[frame_index] = frame_is_evaluable
+        lower_bound_anchor_by_frame[frame_index] = {}
+        for truth_id, track_ids in tracks_by_truth.items():
+            unique_track_ids = tuple(dict.fromkeys(track_ids))
+            if len(unique_track_ids) > 1:
+                anchor_exclusion_reason_counts[
+                    "multiple_evaluable_global_tracks_for_truth_frame"
+                ] += 1
+            elif frame_is_evaluable and len(unique_track_ids) == 1:
+                lower_bound_anchor_by_frame[frame_index][truth_id] = (
+                    unique_track_ids[0]
+                )
+
+    presence_frames_by_truth: dict[str, list[int]] = defaultdict(list)
+    for frame_index in frame_indices:
+        for truth_target_id in dict.fromkeys(
+            truth_presence_by_frame.get(frame_index, ())
+        ):
+            presence_frames_by_truth[str(truth_target_id)].append(frame_index)
+
+    transition_opportunity_count = 0
+    evaluable_transition_count = 0
+    lower_bound_anchor_transition_count = 0
+    id_switch_lower_bound = 0
+    for truth_target_id, presence_frames in presence_frames_by_truth.items():
+        transition_opportunity_count += max(len(presence_frames) - 1, 0)
+        for previous_frame, current_frame in zip(
+            presence_frames,
+            presence_frames[1:],
+        ):
+            if (
+                truth_target_id
+                in lower_bound_anchor_by_frame[previous_frame]
+                and truth_target_id
+                in lower_bound_anchor_by_frame[current_frame]
+            ):
+                evaluable_transition_count += 1
+
+        anchors = [
+            (
+                frame_index,
+                lower_bound_anchor_by_frame[frame_index][truth_target_id],
+            )
+            for frame_index in presence_frames
+            if truth_target_id in lower_bound_anchor_by_frame[frame_index]
+        ]
+        lower_bound_anchor_transition_count += max(len(anchors) - 1, 0)
+        id_switch_lower_bound += sum(
+            previous_track_id != current_track_id
+            for (_, previous_track_id), (_, current_track_id) in zip(
+                anchors,
+                anchors[1:],
+            )
+        )
+
+    mapping_coverage, mapping_reason = _partial_coverage(
+        evaluable_mapping_count,
+        len(scored_mappings),
+        unavailable_reason="no_scored_identity_mappings",
+    )
+    evaluable_frame_count = sum(frame_evaluable.values())
+    frame_coverage, frame_reason = _partial_coverage(
+        evaluable_frame_count,
+        len(frame_indices),
+        unavailable_reason="no_evaluated_identity_frames",
+    )
+    transition_coverage, transition_reason = _partial_coverage(
+        evaluable_transition_count,
+        transition_opportunity_count,
+        unavailable_reason="no_truth_presence_transition_opportunities",
+    )
+    lower_bound_available = lower_bound_anchor_transition_count > 0
+    return Scalable3DPartialIdentityDiagnostics(
+        total_mapping_count=len(all_mappings),
+        available_mapping_count=available_mapping_count,
+        ambiguous_mapping_count=ambiguous_mapping_count,
+        unavailable_mapping_count=unavailable_mapping_count,
+        scored_mapping_count=len(scored_mappings),
+        non_scored_mapping_count=len(all_mappings) - len(scored_mappings),
+        evaluable_mapping_count=evaluable_mapping_count,
+        ambiguous_scored_mapping_count=ambiguous_scored_mapping_count,
+        unavailable_scored_mapping_count=unavailable_scored_mapping_count,
+        mapped_truth_not_present_mapping_count=(
+            mapped_truth_not_present_mapping_count
+        ),
+        missing_identity_evidence_mapping_count=(
+            missing_identity_evidence_mapping_count
+        ),
+        evaluable_mapping_coverage=mapping_coverage,
+        evaluable_mapping_coverage_reason=mapping_reason,
+        evaluated_frame_count=len(frame_indices),
+        evaluable_frame_count=evaluable_frame_count,
+        evaluable_frame_coverage=frame_coverage,
+        evaluable_frame_coverage_reason=frame_reason,
+        transition_opportunity_count=transition_opportunity_count,
+        evaluable_transition_count=evaluable_transition_count,
+        evaluable_transition_coverage=transition_coverage,
+        evaluable_transition_coverage_reason=transition_reason,
+        lower_bound_anchor_excluded_truth_frame_count=sum(
+            anchor_exclusion_reason_counts.values()
+        ),
+        lower_bound_anchor_exclusion_reason_counts=dict(
+            anchor_exclusion_reason_counts
+        ),
+        lower_bound_anchor_transition_count=(
+            lower_bound_anchor_transition_count
+        ),
+        id_switch_lower_bound=(
+            id_switch_lower_bound if lower_bound_available else None
+        ),
+        id_switch_lower_bound_reason=(
+            None
+            if lower_bound_available
+            else "no_evaluable_identity_transitions"
+        ),
+        excluded_scored_mapping_reason_counts=dict(excluded_reason_counts),
     )
 
 
@@ -2457,6 +3257,42 @@ def _unit_interval(value: Any, name: str) -> float:
     if not isfinite(result) or not 0.0 <= result <= 1.0:
         raise ValueError(f"{name} must be finite and within [0, 1]")
     return result
+
+
+def _partial_coverage(
+    numerator: int,
+    denominator: int,
+    *,
+    unavailable_reason: str,
+) -> tuple[float | None, str | None]:
+    if denominator == 0:
+        return None, unavailable_reason
+    return float(numerator / denominator), None
+
+
+def _validated_partial_coverage(
+    value: Any,
+    reason: Any,
+    *,
+    numerator: int,
+    denominator: int,
+    unavailable_reason: str,
+    name: str,
+) -> tuple[float | None, str | None]:
+    normalized_reason = _optional_reason(reason)
+    if denominator == 0:
+        if value is not None:
+            raise ValueError(f"{name} must be unavailable for a zero denominator")
+        if normalized_reason != unavailable_reason:
+            raise ValueError(f"{name} has an invalid unavailable reason")
+        return None, normalized_reason
+    normalized_value = _unit_interval(value, name)
+    expected = numerator / denominator
+    if abs(normalized_value - expected) > 1.0e-12:
+        raise ValueError(f"{name} contradicts its numerator and denominator")
+    if normalized_reason is not None:
+        raise ValueError(f"available {name} must not carry a reason")
+    return normalized_value, None
 
 
 def _optional_reason(value: Any) -> str | None:

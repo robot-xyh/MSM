@@ -801,3 +801,42 @@ covariance governance 复用和 1x1 component bypass 没有改变 nominal 集成
 短长对照仍把 D2 association 列为超线性阶段，因而不能据此声明系统达到实时速度或 D2
 性能 P1 已关闭。文档同步后的完整 D2 回归为 `219 passed, 1 warning in 49.75s`，验收
 阈值为零失败；warning 为环境 Matplotlib `Axes3D` 导入提示。
+
+## 27. seed 1000 部分身份诊断复算（2026-07-22）
+
+本次使用 clean source commit `0d2da25` 已生成的 nominal 200v200、10.0 s、seed 1000
+持久化文件，只读调用更新后的 D2 evaluator。没有重跑场景，也没有把该结果扩展到其他
+19 个 seed。配置沿用 `lineage_time_window_s=0.9` 和
+`truth_presence_window_s=0.9`。
+
+| 项目 | 数值 |
+| --- | ---: |
+| 评估帧 | 48 |
+| 全部 track/frame mapping | 9644 |
+| available / ambiguous / unavailable | 8906 / 13 / 725 |
+| 受评分 mapping | 9038 |
+| 非评分状态审计 mapping | 606 |
+| 可评估 mapping | 8906 |
+| mapping coverage | 0.985395 |
+| missing identity evidence mapping | 119 |
+| 完整可评估帧 | 3 / 48 |
+| 相邻可评估转移 | 0 / 9400 |
+| 多航迹真值帧锚点排除 | 1 |
+| 排除原因 | multiple_evaluable_global_tracks_for_truth_frame |
+| lower-bound anchor transition | 385 |
+| IDSW lower bound | 7 |
+
+严格 `id_switch_count`、continuity、duplicate 和 confusion matrix 仍为 unavailable，
+首要原因为 `multiple_truth_targets_for_global_track`；另一阻断为
+`truth_label_missing`。修正后的下界只使用每个真值帧恰好一条可评估全局航迹的锚点。
+本批发现 1 个重复映射真值帧；该帧同时存在其他不完整证据，原本就未进入锚点集合，因此
+385 个区间和下界 7 没有变化。下界 7 只表示这些区间中至少有 7 次唯一航迹变化，不能
+解释为完整 IDSW，也不能用于计算严格 continuity。未计算上界。
+
+相关身份测试共 32 项，覆盖全可用、部分缺失、歧义、双目标交叉、一真值多航迹、
+不完整帧中的重复映射、零可评估转移、在线 DTO 真值隔离、制品篡改和旧 v1 兼容。重复
+映射顺序互换场景中，strict metrics 仍按冻结策略得到 `IDSW=1`、duplicate=2；部分诊断
+得到 0 个锚点转移和 unavailable 下界，证明两条路径没有互相改写。完整 D2 回归为
+`228 passed, 1 warning in 29.26s`。验收要求是 strict metrics 原值不变、零分母不写
+0、重复映射不产生伪下界、部分计数与逐帧 mapping 一致。正式多 seed 复算和 D6 聚合
+尚未执行。

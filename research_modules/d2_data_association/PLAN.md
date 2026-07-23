@@ -959,3 +959,41 @@ nominal 200v200 三 seed 的 clean 跨构建 D2 语义等价复跑已经完成�
 不关闭实时性 P1：短长对照仍将 D2 association 判为超线性。下一轮继续验证真实 AirSim
 observation ID/源时钟、遮挡/杂波/漏检/OOSM、多场景 offline IDSW/continuity、极端大
 连通分量，以及固定硬件逐周期 P50/P95/P99。完整任务效果和物理拦截由 main/D6 另行验收。
+
+## 28. 部分可评估身份合同
+
+### 28.1 已完成
+
+1. 在 evaluation v1 中增加可选
+   `d2.scalable3d_partial_identity_diagnostics.v1`，不修改严格 metrics schema、字段、
+   availability、reason 或数值。
+2. 分开记录全部 mapping、`created/matched` 受评分 mapping、可评估 mapping、歧义、
+   unavailable、truth 不在本帧以及缺 identity evidence 数量。
+3. 固化 mapping、完整帧和相邻真值转移三个分母。零分母时 coverage 为 unavailable；
+   不能以 0 代替。
+4. 只对谱系 truth sidecar 能证明的连续唯一锚点统计 IDSW lower bound。一个真值帧必须
+   恰好对应一个唯一可评估 `global_track_id` 才能成为锚点；多航迹重复映射单独计入
+   exclusion reason，不能按持久化顺序选代表来形成部分下界。未建立完整 truth
+   assignment 转移全集，不输出 upper bound。
+5. public loader 校验诊断计数、coverage、原因和逐帧 mapping 一致性，篡改后 fail
+   closed；在线 DTO/log 未增加 truth 或诊断字段。
+
+### 28.2 当前证据
+
+2026-07-22 对 clean source commit `0d2da25` 的 nominal 200v200、10.0 s、seed 1000
+做单 seed 只读复算。48 帧、9644 条 mapping 的原状态计数为 `8906/13/725`；9038 条
+进入身份评分，606 条只保留状态审计。受评分映射中 8906 条可评估，coverage 为
+`0.985395`，119 条缺 truth label。严格 IDSW 仍因多真值歧义为 unavailable。385 个
+唯一锚点区间得到 lower bound 7；另有 1 个真值帧因多条可评估航迹被排除，该帧原本也
+不是完整可评估帧，所以 385/7 未变化。该值只是下界，不是完整 IDSW。相关身份测试共
+32 项；完整 D2 为 `228 passed, 1 warning in 29.26s`，验收阈值为零失败且 strict
+metrics 不退化。
+
+### 28.3 后续
+
+1. main 用新 producer 重算正式多 seed 制品，并冻结每 seed source hash、coverage 和
+   blocker 分布；本轮单 seed 结果不得扩写成 20-seed 结论。
+2. D6 接入 mapping/frame/transition coverage、ambiguous/missing、lower-bound
+   availability/reason；严格 IDSW 与部分诊断必须分栏。
+3. 继续补真实 AirSim observation ID/时钟、遮挡/杂波/漏检/OOSM 数据。只有所有 strict
+   blocker 消失后，完整 IDSW/continuity 才可恢复 available。

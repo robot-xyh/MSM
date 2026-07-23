@@ -391,3 +391,17 @@ closed，并要求 sequence 绑定六维 D2-owned track 与完整 track-frame �
 failover、分布式临时 ID 共识或数值 CI/exact fusion，也没有形成 M-to-N AirSim 多 seed
 身份性能证据。main producer 跳过无 lineage track/frame 的接线仍需修正；默认
 GNN/Hungarian 与 one canonical-to-many source 原则不变。
+
+## 15. 2026-07-22 部分身份证据补充
+
+M-to-N 输入规模下，单个不完整映射不再使全部可审计证据消失，但仍会阻断严格 IDSW。
+evaluation v1 的附加诊断分别报告受评分 mapping coverage、完整帧 coverage、相邻转移
+coverage、ambiguous/missing 数量、重复映射真值帧排除数和可证明 IDSW lower bound。
+部分下界只接受每个真值帧唯一的可评估全局航迹；多航迹时不按持久化顺序选代表。严格
+metrics 继续全局 fail closed，部分结果不进入中心 registry、跨节点 binding 或在线风险。
+
+nominal 200v200、seed 1000 的单 seed 只读复算得到 9038 条受评分 mapping，其中 8906
+条可评估；严格 IDSW unavailable。1 个真值帧因对应多条可评估航迹被排除，该帧原本也
+不完整，修正后仍由 385 个唯一锚点区间证明 lower bound 7。该结果说明 M-to-N/大规模
+评估需要同时给 coverage、exclusion 和 availability，不能把部分样本中的低切换数写成
+完整性能。D6 多 seed 汇总、跨 owner failover 和分布式临时身份仍保持开放。

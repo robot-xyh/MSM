@@ -1022,3 +1022,30 @@ command 等业务字段保持精确比较。D2 发布自身未忽略字段。文
 待办关闭，实时和复杂度待办不关闭：短长对照仍将 D2 association 判为超线性。真实
 AirSim 时钟、遮挡/杂波/OOSM、极端大分量、固定硬件周期分位数和离线 IDSW/continuity
 继续保留为 P1。
+
+## 38. 2026-07-22 部分身份诊断评审
+
+评审接受在 evaluation v1 中增加可选
+`d2.scalable3d_partial_identity_diagnostics.v1`，前提是 strict metrics 完全不变。
+新块只使用 evaluator-only lineage truth sidecar，禁止最近距离、actor/object/target
+名称和终端邻近。在线 D2 发布、风险摘要和中心 ID registry 不消费该块。
+
+分母已经冻结：mapping coverage 只评分 `created/matched`；完整帧 coverage 要求本帧
+truth presence 非空且全部受评分映射可评估；转移 coverage 统计相邻 truth-presence
+帧的唯一锚点。只有同一真值帧恰好对应一个唯一可评估 `global_track_id` 时才建立下界
+锚点；多航迹帧被排除并记录原因，不使用 strict metrics 的持久化代表顺序。IDSW lower
+bound 可比较跨不完整帧的连续唯一锚点，锚点区间不重叠。零锚点转移时不输出 0；由于
+侧车不完整，upper bound 固定 unavailable。
+
+单 seed 只读复算使用 clean source commit `0d2da25`、nominal 200v200、10.0 s、
+seed 1000。原 `8906 available / 13 ambiguous / 725 unavailable` 不变；受评分 9038、
+非评分状态审计 606、可评估 8906、coverage `98.5395%`、missing 119。严格 IDSW 仍
+unavailable；1 个重复映射真值帧被排除，385 个唯一锚点区间仍得到部分下界 7。该重复
+帧原本也不完整，因此修正未改变 385/7。该下界不是完整 IDSW，不能参与 promotion 或
+continuity 计算。
+
+相关身份测试共 32 项，覆盖全可用、缺失、歧义、交叉、duplicate truth mapping、不完整
+帧重复映射、零转移、truth-free online DTO、tamper rejection 和旧 v1 兼容；完整 D2 为
+`228 passed, 1 warning in 29.26s`。重复映射顺序互换专项保留 strict `IDSW=1` 和
+duplicate=2，同时使部分下界 unavailable。main/D6 尚未重算 20-seed，因此评审状态是
+“D2 producer 合同完成，跨模块聚合待接线”，不写成多 seed 性能完成。

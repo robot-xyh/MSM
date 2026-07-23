@@ -763,3 +763,38 @@ observation ID、遮挡/杂波/OOSM、多 seed 离线 IDSW/continuity、极端�
 硬件周期分位数继续作为 P1。2026-07-22 当前工作区完整 D2 回归为
 `219 passed, 1 warning in 49.75s`，验收阈值为零失败；warning 仍是环境中的 Matplotlib
 `Axes3D` 导入提示。
+
+## 2026-07-22 scalable 3D 部分身份诊断
+
+`d2.scalable3d_identity_evaluation.v1` 现可附带
+`d2.scalable3d_partial_identity_diagnostics.v1`。原 `metrics` 合同没有变化：只要存在
+歧义、缺标签或完整性阻断，`id_switch_count`、continuity、duplicate 和 confusion
+matrix 仍为 `None + unavailable`。新增块只描述可证明的离线证据，不参与在线关联、
+门控、生命周期或 `global_track_id` 绑定。
+
+映射覆盖率的分母只包含 `created/matched` 映射；lost、dropped 和 unmatched 记录保留在
+总状态计数中，但不进入身份评分。完整可评估帧要求本帧真值存在集合非空，且每条受评分
+映射都唯一对应本帧存在的真值。部分下界锚点另有更严格条件：同一真值在该帧必须恰好
+对应一个唯一可评估 `global_track_id`。同一真值对应多条航迹时，严格指标仍按既有持久化
+顺序保留 duplicate 和代表航迹语义；部分诊断不从中选代表，而是排除该真值帧并记录
+`multiple_evaluable_global_tracks_for_truth_frame`。转移覆盖率使用相邻真值存在帧；
+IDSW 下界比较每个真值连续的唯一锚点。锚点区间互不重叠，唯一航迹变化至少证明一次
+切换。没有唯一锚点转移时下界保持 unavailable，不写 0。缺失或歧义证据不能确定完整
+转移全集，因此不发布上界。
+
+本次只读复算 clean source commit `0d2da25` 的 nominal 200v200、10.0 s、seed 1000，
+共 48 帧和 9644 条 track/frame 映射。原状态计数保持
+available/ambiguous/unavailable=`8906/13/725`。其中 9038 条属于受评分映射，606 条
+lost/dropped/unmatched 审计映射不评分；8906 条可评估，映射覆盖率为 `98.5395%`；
+119 条受评分映射缺 truth label。完整可评估帧为
+`3/48`，相邻真值转移覆盖为 `0/9400`；1 个真值帧因对应两条可评估航迹被明确排除。
+该帧原本也不是完整可评估帧，因此修正后仍有 385 个唯一锚点区间，证明 IDSW 下界为 7。
+严格 IDSW 仍因 `multiple_truth_targets_for_global_track` 为 unavailable，7 不能写成
+完整 IDSW。该复算是单 seed producer 合同检查，不是 20-seed 结果。
+
+专项测试覆盖全可用、部分缺失、歧义、双目标交叉、一真值多航迹、零转移分母、在线真值
+隔离、诊断篡改和旧 v1 制品兼容，相关身份测试共 32 项；完整 D2 回归为
+`228 passed, 1 warning in 29.26s`。重复映射专项保留严格 `IDSW=1` 和 duplicate=2，
+同时验证部分下界 unavailable。main 后续需重新生成正式批次制品；D6 需显式接入
+`partial_identity_diagnostics` 后才能汇总覆盖率和下界。当前变更不关闭真实 AirSim、
+困难场景多 seed IDSW/continuity 或固定硬件时延 P1。

@@ -366,3 +366,25 @@ main 还需持久化 `replay_coast_count/events/track_ids/reason_counts/config` 
 时钟抖动留出已测裕量；不得按 episode 时长设置。超过 grace 后 D2 自动恢复 miss，main
 不应在外层重置 `last_update_time`。整帧乱序仍先由 OOSM adapter 排序，coast 不承担乱序
 回溯职责。
+
+## 离线部分身份诊断接线
+
+AirSim 在线 episode 不增加任何 truth 字段。main 继续在 episode 结束后，把匿名 D1/D2
+records、identity evidence 和独立 truth sidecar 交给 D2 evaluator。新制品在原
+`d2.scalable3d_identity_evaluation.v1` 中附带
+`partial_identity_diagnostics`，供 D6 读取以下字段：
+
+- mapping 总数、受评分数、可评估数、ambiguous、unavailable 和 missing 数；
+- mapping、完整帧和相邻转移 coverage 及各自 availability/reason；
+- 因一真值帧对应多条可评估航迹而排除的锚点数及 reason counts；
+- lower-bound anchor transition 数、IDSW lower bound 及 availability/reason；
+- 不可评估映射 reason counts。
+
+D6 必须将 strict `id_switch_count` 与 `id_switch_lower_bound` 分开存储和展示。严格指标
+unavailable 时不得用下界填充；下界为 0 也不得改写成完整 IDSW=0。当前没有 upper
+bound。D6 也不得从重复映射的持久化顺序推导部分下界。main 需把新 evaluation 文件
+SHA-256 写回 manifest，再由 D6 校验。
+
+2026-07-22 的 seed 1000 只读复算用于接口检查，没有启动 AirSim，也没有生成新批次。
+真实 AirSim 后续应按场景、seed、遮挡、杂波、漏检和 OOSM 分组统计 coverage 与
+blocker；在 D6 完成接线前，新字段只属于 D2 producer 证据。

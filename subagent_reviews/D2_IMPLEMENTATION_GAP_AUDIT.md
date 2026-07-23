@@ -984,3 +984,36 @@ bypass 获得三 seed 非退化证据。以下 P1 继续开放：
 - 遮挡、杂波、漏检、OOSM 和极端大连通分量的多 seed identity/runtime 联合标定；
 - 隔离 offline IDSW/continuity 置信区间、六维 NIS/NEES 和 CI 权重；
 - 完整任务效果及物理拦截验收。三 seed nominal 语义相等不能替代这些证据。
+
+## 2026-07-22 部分离线身份证据 GAP 收口
+
+### 已关闭
+
+- evaluation v1 新增可选 `d2.scalable3d_partial_identity_diagnostics.v1`。严格
+  `id_switch_count`、continuity、duplicate、confusion matrix 的字段和值及全局
+  fail-closed 语义未修改。
+- 新诊断明确区分全部 mapping、`created/matched` 受评分 mapping、可评估 mapping、
+  ambiguous、unavailable、mapped-truth-not-present 和 missing identity evidence。
+- mapping、完整帧、相邻真值转移三个 coverage 都带分母、availability 和 reason。
+  零分母保持 unavailable。
+- 只发布可证明 IDSW lower bound。每个真值帧必须恰好有一个唯一可评估全局航迹才能成为
+  锚点；多航迹重复映射被排除并带 reason count，不能复用严格指标的代表顺序。没有唯一
+  锚点转移时下界 unavailable；缺失/歧义证据下不发布 upper bound。
+- loader 从逐帧 mapping 复算诊断并拒绝矛盾制品。在线 DTO/log 不含 truth 或部分诊断。
+  相关身份测试共 32 项；完整 D2 为 `228 passed, 1 warning in 29.26s`。
+
+### 单 seed 证据
+
+clean source commit `0d2da25` 的 nominal 200v200、10.0 s、seed 1000 只读复算保持
+9644 条 mapping 的 `8906/13/725` 状态计数。受评分 9038、非评分状态审计 606、
+可评估 8906，coverage `0.985395`；missing 119，完整帧 3/48，相邻转移 0/9400，
+1 个真值帧因多条可评估航迹被排除。该帧原本也不完整，因此仍由 385 个唯一锚点区间证明
+lower bound 7。严格 IDSW 仍因 `multiple_truth_targets_for_global_track` 为 unavailable。
+本节没有验证其余 19 个 seed。
+
+### 仍开放
+
+1. main 重新生成正式多 seed evaluation 和 manifest hash。
+2. D6 接入部分诊断并与 strict IDSW 分栏汇总；不能以下界填充严格指标。
+3. 真实 AirSim、遮挡/杂波/漏检/OOSM 和不同目标密度下的 coverage/blocker/下界分布。
+4. 完整 sidecar 条件下的严格 IDSW/continuity 置信区间。upper bound 当前明确不可用。
