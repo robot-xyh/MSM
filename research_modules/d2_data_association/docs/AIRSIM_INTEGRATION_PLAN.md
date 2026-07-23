@@ -53,11 +53,28 @@ measurement, arrival, state-valid and publication timestamps for audit.
 
 AirSim actor/object identity remains offline truth. The online candidate may consume only
 opaque D1 member tokens, opaque observation evidence keys, timestamps, NED state/covariance,
-and candidate-edge evidence. The next main-owned acceptance run must freeze one clean
-200v200 input and compare baseline/candidate track count, D3 target count, offline continuity,
-duplicate posterior hit/birth counts, latency, and online truth leakage. The 2026-07-23 D2
-module suite passed 271 tests; no AirSim or clean 200v200 system A/B was run in that module
-validation.
+and candidate-edge evidence.
+
+Main completed the first clean point-mass gate at commit `9cd2a79` with nominal 200v200,
+seed 1100, duration 2.2 s and `recon_count=2`. The candidate consumed all 46 received D1
+evidence records over seven D2 cycles and accepted 33 component events. It prevented
+69 hits, 69 misses and four births. D2 tracks changed `203 -> 201`, D3 assignments
+`200 -> 197`, available/unavailable mappings changed `1566/230 -> 1492/294`, and RTF
+changed `0.2245 -> 0.2112`. Candidate identity metrics were unavailable because of
+`source_observation_outside_lineage_window`; online truth use remained zero. The candidate
+failed the pre-registered availability and operational non-regression gate, so seeds
+1101/1102 were stopped and the default remains disabled.
+
+This result is not an AirSim run. Before an AirSim candidate arm is scheduled, D2 must first
+freeze a scoreable lineage contract for ambiguity-held frames. The evaluator must distinguish
+`identity_uncommitted/ambiguity_hold` from ordinary `lineage_missing`, retain component and
+evidence audit, and must not hard-assign candidate observations to a `global_track_id`.
+Only after that contract is fixed may measured evidence age be used to calibrate the lineage
+window and soft/hard lease together. Increasing the current `0.9 s` lineage window alone is
+forbidden as an admission fix because it can hide long-lived dependence on old observations.
+D2 must also explain the track, mapping and D3 assignment losses. The repaired candidate
+should first pass the same seed 1100 gate with a valid scoring denominator. The 2026-07-23
+D2 module suite passed 271 tests; that module validation proves contracts and invariants only.
 
 ## Inputs
 

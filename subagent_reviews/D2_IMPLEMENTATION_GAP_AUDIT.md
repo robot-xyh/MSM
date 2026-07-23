@@ -60,13 +60,25 @@ D2 v3 复现和测试验收已同步。五 seed 200v200 候选在 45/45 周期�
   `online_truth_used=false`。活动分量显式提高
   `AssociationRiskSummary.association_ambiguity`，在线 IDSW 仍为 unavailable。
 - **模块证据**：2026-07-23 D2 完整回归为
-  `271 passed, 1 warning in 28.75s`。专项覆盖 `0.40 -> 0.65 s` 合法延迟接受、
+  `271 passed, 1 warning in 28.82s`。专项覆盖 `0.40 -> 0.65 s` 合法延迟接受、
   future/stale 拒绝、原双时间戳不变和 replay 不刷新租约。warning 为环境 Matplotlib `Axes3D`，不影响
   合同和数值验收。该结果只关闭代码、合同和单元/模块不变式。
-- **仍开放 P1**：main 必须在同一 clean 200v200 冻结输入运行默认关闭 baseline 与
-  显式开启 candidate，复核 D2/D3 数量、离线 IDSW/continuity、重复 posterior
-  hit/birth、时延和 truth leakage。首版只有 lease expiry release；连续双向唯一自动
-  resolution、component-level JPDA、bounded MHT 和跨进程 epoch 协商未实现。
+- **单 seed 集成候选已拒绝**：main 在固定提交 `9cd2a79` 运行 nominal 200v200、
+  seed 1100、2.2 s、`recon_count=2` 对照。候选 D1 evidence received/consumed
+  `46/46`，7 次 D2 消费产生 33 个 accepted component event，prevented
+  hit/miss/birth 为 `69/69/4`；在线 truth use 为 0。D2 航迹 `203 -> 201`、D3 分配
+  `200 -> 197`、available/unavailable mapping
+  `1566/230 -> 1492/294`、RTF `0.2245 -> 0.2112`。候选身份评分因
+  `source_observation_outside_lineage_window` unavailable，不能与 baseline IDSW
+  `9`、track/identity continuity `0.865`、coverage continuity `0.870` 数值比较。
+- **仍开放 P1**：候选未达到业务可用性不退化和身份指标 available 门槛，seeds
+  1101/1102 已停止，默认关闭。下一步先定义歧义保活帧的可评分谱系合同：
+  `identity_uncommitted/ambiguity_hold` 与普通 `lineage_missing` 分离，候选观测在
+  身份未承诺期间不得硬分给 `global_track_id`。合同冻结后再联合校准 lineage window
+  与 lease，并定位保持对航迹数、mapping 和 D3 分配的退化。禁止仅放宽当前 `0.9 s`
+  window 作为准入修复；同 seed 1100 复核通过后才允许多 seed。首版只有 lease expiry
+  release；连续双向唯一自动 resolution、component-level JPDA、bounded MHT 和跨进程
+  epoch 协商未实现。
 
 ## 0. 2026-07-15 M5N2 20-case GAP 判定
 
@@ -107,10 +119,10 @@ D2 当前实现符合“先用规则 GNN/Hungarian 做工程主线，密集交�
   `219 passed, 1 warning in 49.75s`；warning 仍为环境 `Axes3D`。
 - **2026-07-23 当前权威模块回归**：歧义保持租约、D1 不透明来源合同、延迟侧车
   有界年龄准入和关联前 binding hard mask 的完整结果为
-  `271 passed, 1 warning in 28.75s`，验收阈值为零失败；warning 仍为环境
+  `271 passed, 1 warning in 28.82s`，验收阈值为零失败；warning 仍为环境
   `Axes3D`。此前 `234 passed` 是 profiler 等价优化阶段的历史结果。
 - **2026-07-12 AirSim 证据**：PNG delivery candidate 的 2v2 10 seeds 为 20/20 pair、在线 truth 使用为 0；锁定后两帧 dropout 沿原 global/local track 和原计划上下文预测，没有 truth ID 或本地 ID 重写。M5N2 8 s 短窗口为 0/9，报告明确其几何与时间窗不足且不可与长时高净空基线直接比较。这些是 D2 下游合同的非退化证据，不是 D2 新算法或长期标定完成证据。
-- **P0/P1 开放项**：P0 无开放项。P1 synthetic long replay、独立 offline truth、至少 10-seed 的 IDSW/continuity/false-track/RMSE/NIS/NEES availability、版本治理和 strict 4 m/2 m 各 20-seed 首轮真实标定已闭合；结构歧义保持租约已完成 D2 模块实现但 clean 200v200 A/B 尚未执行。仍开放更长 OOSM/遮挡/杂波 replay 下的 gate/risk/M-of-N 生命周期参数冻结，以及跨节点 D1 exact/CI posterior 回写、高歧义 replay 和 owner/epoch failover 验证。
+- **P0/P1 开放项**：P0 无开放项。P1 synthetic long replay、独立 offline truth、至少 10-seed 的 IDSW/continuity/false-track/RMSE/NIS/NEES availability、版本治理和 strict 4 m/2 m 各 20-seed 首轮真实标定已闭合；结构歧义保持租约的 D2 模块实现已完成，但首个 clean 200v200 单 seed 集成候选因 lineage 指标 unavailable 和业务可用性退化被拒绝。仍开放该候选的 ambiguity-hold 可评分谱系合同、window/lease 联合标定、availability/分配退化归因与重测，以及更长 OOSM/遮挡/杂波 replay 下的 gate/risk/M-of-N 生命周期参数冻结、跨节点 D1 exact/CI posterior 回写、高歧义 replay 和 owner/epoch failover 验证；仅放宽 `0.9 s` window 不关闭该 GAP。
 - **下一验收条件**：沿 2026-07-13 冻结 replay/truth/profile/预算合同扩展困难度和时间窗；逐 seed 及聚合报告 IDSW、identity/coverage continuity、duplicate、false-track、初始化延迟、NIS/NEES availability/coverage、runtime 和在线 truth 泄漏数。任何候选必须同时满足全部门限，不能只凭 IDSW 改善晋级。跨节点验收还必须证明 canonical ID 连续、duplicate payload 拒绝、owner/epoch 切换可恢复，并由 D1/D6 给出融合 posterior 与 NEES/ANEES。
 - **历史基线**：2026-07-10 的 5v5/2v2 批次和 2026-07-11 早期的 seeds 7/17/27 当时不足以关闭 D2 P1，且 T001 双 primary 为 0。本条仅保留实施前/过渡证据边界，不代表当前状态。
 - **2026-07-11 合同验收证据**：M=5、N=2 ComputerVision 的 T001 双 primary 共识/计划授权为 8/10；D2 `id_switch_count=0`、错误 duplicate=0、`global_track_id` 改写/重绑=0 均为 10/10。

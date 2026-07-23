@@ -1,10 +1,49 @@
 # D2 多目标跟踪与数据关联实验报告
 
+## 2026-07-23 结构歧义保持单 seed 集成门槛
+
+main 在固定提交 `9cd2a79` 上完成 nominal 200v200、seed 1100、2.2 s、
+`recon_count=2` 的 baseline/candidate 对照。candidate 仅显式启用
+`--d1-d2-structural-ambiguity-hold`，默认配置未改变。该试验属于三维质点全栈集成，
+不是 AirSim 或实飞。
+
+| 指标 | baseline | hold candidate | 判定 |
+|---|---:|---:|---|
+| D1 evidence received/consumed | 未启用 | 46/46 | 候选接线实际生效 |
+| D2 消费周期 | 未启用 | 7 | 7 个周期处理侧车 |
+| accepted component event | 未启用 | 33 | 合法分量进入租约 |
+| prevented hit/miss/birth | 未启用 | 69/69/4 | prediction-only hold 实际执行 |
+| D2 终态航迹数 | 203 | 201 | 候选减少 2 条 |
+| D3 分配数 | 200 | 197 | 候选减少 3 条 |
+| available mapping | 1566 | 1492 | 候选减少 74 条 |
+| unavailable mapping | 230 | 294 | 候选增加 64 条 |
+| IDSW | 9 | unavailable | 候选不能作数值比较 |
+| track/identity continuity | 0.865 | unavailable | 候选不能作数值比较 |
+| coverage continuity | 0.870 | unavailable | 候选不能作数值比较 |
+| RTF | 0.2245 | 0.2112 | 候选未形成运行收益 |
+| online truth use | 本次指令未单列 | 0 | 候选在线真值隔离保持 |
+
+候选身份指标不可用的直接原因是
+`source_observation_outside_lineage_window`。该原因不能直接归结为当前 `0.9 s`
+lineage window 太小，因为航迹也可能在较长时间内依赖旧观测。候选 IDSW 或
+continuity 不能记为零，也不能从本批判断身份连续性变好或变坏。另一方面，D2 航迹、
+D3 分配和 mapping availability 已出现明确退化，因此即使暂不使用身份指标，候选也
+没有达到业务可用性不退化门槛。
+
+本候选不晋级，seeds 1101/1102 停止，默认 `enabled=False` 保持。下一轮先定义歧义
+保活帧的可评分谱系合同，而不是直接放宽 window。歧义保活帧应标记为
+`identity_uncommitted/ambiguity_hold`，与普通 `lineage_missing` 分开；分量、证据和
+lease 继续审计，但候选观测不得硬分给 `global_track_id`。该合同冻结后，再根据 evidence
+age、soft/hard deadline 和实际评分分母联合校准 window/lease，并定位 4 次 prevented
+birth、保持轨释放和映射缺失对航迹及分配的影响。禁止仅放宽 `0.9 s` window 作为准入
+修复。完成后先复跑同一 seed 1100；只有指标口径有效、在线 truth use 仍为零、航迹/
+分配/映射不退化且联合门槛通过，才继续未见 seed。
+
 ## 2026-07-23 结构歧义保持租约模块验证
 
 本批验证 D1/D2 接口、prediction-only 保持不变式和来源绑定更新顺序。未启动 AirSim，
-未运行 main clean 200v200 A/B，未使用在线 truth。候选配置和 D1 不透明来源适配均
-默认关闭。
+未使用在线 truth。候选配置和 D1 不透明来源适配均默认关闭。本节只记录模块测试；
+后续 main 单 seed 集成门槛见上一节。
 
 | 验证项 | 模块结果 | 结论边界 |
 |---|---:|---|
@@ -34,16 +73,14 @@ PYTHONPATH=research_modules/d2_data_association \
   pytest -q research_modules/d2_data_association/tests
 ```
 
-运行时间为 `28.75 s`，另有 1 条环境 warning：Matplotlib `Axes3D` 因本机多版本安装
+运行时间为 `28.82 s`，另有 1 条环境 warning：Matplotlib `Axes3D` 因本机多版本安装
 无法导入。该 warning 不影响 D2 数值、关联或合同测试。
 
-本批只能确认模块内合同和状态不变式。它没有证明 D1 v1/v2 被拒绝的 clean 200v200
-系统退化已经恢复，也没有提供 IDSW 或 continuity 改善数据。下一批由 main 使用同一
-冻结输入分别运行 baseline 和显式开启候选，比较 D2 航迹数、D3 目标数、离线
-continuity、重复 posterior hit/birth、逐帧时延和 truth leakage。首版自动消歧、
-component-level JPDA 和 bounded MHT 仍未实现。`max_component_age_seconds=1.0`
-是覆盖当前 main 常见 `0.5 s` D1 scan lateness 和传输余量的开发默认值，尚未用真实
-时延分布标定。
+本批只能确认模块内合同和状态不变式。main 后续单 seed 集成门槛已证明候选路径可执行，
+但因可用性和分配退化且身份指标 unavailable 而被拒绝，没有提供 IDSW 或 continuity
+改善数据。首版自动消歧、component-level JPDA 和 bounded MHT 仍未实现。
+`max_component_age_seconds=1.0` 是覆盖当前 main 常见 `0.5 s` D1 scan lateness 和
+传输余量的开发默认值，尚未用真实时延分布标定。
 
 ## 0. 2026-07-15 M5N2 20-case 补充结果
 

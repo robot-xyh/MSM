@@ -48,15 +48,34 @@ evidence、prevented action、pre-update binding rejection、deadline/reason 和
 truth-free 状态，并显式携带原四类时间、D2 消费时刻、分量年龄和时间判定。活动分量
 标记高歧义，但不伪造在线 IDSW 改善。
 
-2026-07-23 D2 完整模块测试为 `271 passed, 1 warning in 28.75s`。该结果只证明模块
-合同和状态不变式。main clean 200v200 baseline/candidate A/B 尚未执行，不能据此声称
-已恢复 D2 tracks、D3 targets 或 continuity。首版只按到期释放；连续双向唯一自动
-消歧、component-level JPDA、bounded MHT 和生产级 epoch 协商仍开放。
+2026-07-23 D2 完整模块测试为 `271 passed, 1 warning in 28.82s`。该结果只证明模块
+合同和状态不变式。
+
+main 随后在固定提交 `9cd2a79` 完成 nominal 200v200、seed 1100、2.2 s、
+`recon_count=2` 单 seed 门槛。候选收到/消费 D1 evidence `46/46`，7 次 D2 消费接受
+33 个 component event，prevented hit/miss/birth 为 `69/69/4`，证明候选在集成路径
+实际执行。D2 航迹 `203 -> 201`、D3 分配 `200 -> 197`、映射
+`1566 available + 230 unavailable -> 1492 + 294`、RTF
+`0.2245 -> 0.2112`。候选 identity metrics 因
+`source_observation_outside_lineage_window` unavailable，不能与 baseline IDSW
+`9`、track/identity continuity `0.865`、coverage continuity `0.870` 比较；在线
+truth use 为 0。
+
+候选不晋级，seeds 1101/1102 停止，默认关闭。下一轮先定义歧义保活帧的可评分谱系
+合同：`identity_uncommitted/ambiguity_hold` 与普通 `lineage_missing` 分离，候选观测
+在身份未承诺期间不得硬分给 `global_track_id`。合同冻结后再按实际 evidence age 联合
+校准 lineage window 和 lease，并定位航迹、映射与分配退化。禁止仅放宽当前 `0.9 s`
+window 作为准入修复；同 seed 1100 联合门槛通过后才恢复多 seed。首版只按到期释放；
+连续双向唯一自动消歧、component-level JPDA、bounded MHT 和生产级 epoch 协商仍开放。
 
 ## 0. P0/P1 缺口快照
 
 - **P0**：无开放 blocker。GNN/Hungarian、显式 `id_switch_count`、`track_continuity`、risk summary、replay helper、按输入集合长度运行、航迹质量评分、运动一致性约束和 quality-aware gate baseline 已是当前主线。seed1005 v3 验收已允许 replay=0 或有界 replay，见第 32 节。
 - **P1 合同层已闭合**：D1 governed adapter、online/offline truth 分离、association log/profile version、`d2-offline-truth-label/v1`、N-target dense/crossing fixture、至少 10-seed runner、availability-aware summary、M-of-N/false-track/NIS/NEES 接口及中心 canonical registry 基础已回归。
+- **结构歧义保持集成 P1 仍开放**：seed 1100 证明 sidecar/lease 接线有效，但候选
+  identity metrics unavailable，D2 tracks、D3 assignments 和 mapping availability
+  退化。该候选已按门槛拒绝并保持默认关闭；ambiguity-hold 可评分谱系合同、
+  window/lease 联合标定和同 seed 重测未完成，单独放宽 `0.9 s` window 不构成修复。
 - **P1 完整冻结 v2 证据已生成，长期标定仍开放**：最佳 GNN 候选 IDSW `1.358333 -> 0.616667`（下降 `54.6012%`），continuity `0.981046 -> 0.983954`，P95 `15.470 ms`；false-track/truth leakage 均为 0。总体联合 gate 全部通过，`promotion_recommended=true`；分档仅 clutter/combined 通过，另外四档 baseline IDSW=0 fail-closed。后续 P1 是跨模块评审、更长 OOSM/遮挡/杂波和生命周期标定，不再是缺少 v2 联合报告。
 - **历史基线**：2026-07-10 的 5v5/2v2 批次和 2026-07-11 早期的 seeds 7/17/27 当时不足以关闭 D2 P1，且 T001 双 primary 尚未通过。这些只作为实施前/过渡基线，不代表当前状态。
 - **当前 ComputerVision 证据**：M=5、N=2 的 10 seeds 中，T001 双 primary 共识/计划授权为 8/10；D2 `id_switch_count=0`、错误 duplicate=0、`global_track_id` 改写/重绑=0 均为 10/10。
@@ -80,7 +99,7 @@ truth-free 状态，并显式携带原四类时间、D2 消费时刻、分量年
   `2.928830 -> 2.204672 s`，但早/晚 regular 窗口比
   `1.119661x -> 1.123036x`。本轮只关闭三个可证明的常数成本热点，长窗口 P1 保持
   开放；该阶段完整 D2 回归为 `234 passed, 1 warning in 34.83s`。歧义保持增量后的
-  当前完整回归为 `271 passed, 1 warning in 28.75s`。
+  当前完整回归为 `271 passed, 1 warning in 28.82s`。
 
 ## 1. 研究问题
 
@@ -123,7 +142,8 @@ D2/D6 的系统规则必须保留：`id_switch_count` 是强制显式指标，�
 - **六维结构歧义候选**：严格 D1 v1 sidecar adapter、不可逆 member/observation
   token、claim reservation、soft/hard lease、prediction-only hold、epoch rollback
   rejection、关联前 source binding hard mask 和审计诊断已实现；配置与来源适配均
-  默认关闭，待 main clean A/B。
+  默认关闭。首个 main clean 单 seed A/B 已执行并拒绝，后续等待 lineage/availability
+  修复和业务可用性非退化复核。
 
 ### 2.2 部分实现
 

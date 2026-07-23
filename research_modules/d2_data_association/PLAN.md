@@ -92,10 +92,25 @@ D2 只负责离线科研仿真、日志回放和多目标数据关联评估。�
   `source_key`、观测预留、软/硬租约、prediction-only 不变式、epoch 回退拒绝和
   关联前 binding freeze 已在 D2 模块实现。延迟侧车按
   `D2消费时刻 - D1 state-valid时刻` 做有界年龄准入，开发默认上限为 `1.0 s`。
-  完整回归为 `271 passed, 1 warning in 28.75s`。配置与 adapter 均默认关闭；该结果不关闭系统
-  P1，下一验收由 main 在同一 clean 200v200 输入上运行 baseline/candidate A/B，检查
-  `tracks 203 -> 199`、D3 `200 -> 196` 和 continuity `.865 -> .830` 是否恢复，同时
-  要求 truth use、重复 posterior hit/birth 和 canonical ID 复制均为零。
+  完整回归为 `271 passed, 1 warning in 28.82s`。合同和模块不变式已实现，配置与
+  adapter 均默认关闭。
+- **2026-07-23 main 单 seed 门槛已执行，候选拒绝**：固定提交 `9cd2a79`、
+  nominal 200v200、seed 1100、2.2 s、`recon_count=2` 的候选实际消费 D1 evidence
+  `46/46`，7 次 D2 消费共接受 33 个 component event，阻止 hit/miss/birth
+  `69/69/4`。D2 航迹 `203 -> 201`、D3 分配 `200 -> 197`，映射
+  `1566 available + 230 unavailable -> 1492 + 294`，RTF
+  `0.2245 -> 0.2112`。候选离线身份评分因
+  `source_observation_outside_lineage_window` 不可用，不能把缺失值解释为零或与
+  baseline IDSW `9`、track/identity continuity `0.865`、coverage continuity
+  `0.870` 比较。在线 truth use 为 0。
+- **下一门槛**：默认 `enabled=False` 保持，停止 seeds 1101/1102。D2 后续先定义
+  歧义保活帧的可评分谱系合同：`identity_uncommitted/ambiguity_hold` 必须与普通
+  `lineage_missing` 分开统计，候选观测在身份未承诺期间不得硬分给
+  `global_track_id`。评估器应保留这类区间及分母/availability 审计，但不得把它计成
+  正确身份或 IDSW。合同冻结后再用实测 evidence age 联合校准当前 `0.9 s` lineage
+  window 与 soft/hard lease，并定位航迹数、映射可用性和 D3 分配退化。仅放宽
+  `0.9 s` window 禁止作为准入修复。完成后先复跑同一 seed 1100；只有指标口径有效、
+  业务可用性不退化且预注册联合门槛通过，才进入未见 seed 和长时实验。
 
 ## 3. 输入输出合同
 

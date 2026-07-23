@@ -48,10 +48,24 @@ D2 是 C-UAS 多目标数据关联研究模块，目标是在离线仿真和日�
   阻止的 hit/miss/birth/rebind、关联前 binding rejection、软硬截止及原因。活动分量
   将 `AssociationRiskSummary` 标为高歧义，但在线 `id_switch_count` 仍保持
   unavailable，不伪造改善。
-- 2026-07-23 D2 完整模块结果为 `271 passed, 1 warning in 28.75s`，验收阈值为零
+- main 已在固定提交 `9cd2a79` 对 nominal 200v200、seed 1100、2.2 s、
+  `recon_count=2` 运行 baseline/candidate 单 seed 门槛。候选收到并消费 D1 evidence
+  `46/46`，在 7 个 D2 周期产生 33 个 accepted component event，阻止
+  hit/miss/birth `69/69/4`，证明侧车和保持状态机在集成路径实际生效。候选 D2 航迹
+  `203 -> 201`、D3 分配 `200 -> 197`、available/unavailable mapping
+  `1566/230 -> 1492/294`、RTF `0.2245 -> 0.2112`。候选离线身份指标因
+  `source_observation_outside_lineage_window` 不可用，不能与 baseline 的 IDSW `9`、
+  track/identity continuity `0.865` 和 coverage continuity `0.870` 作数值比较。
+  在线 truth use 为 0。
+- 2026-07-23 D2 完整模块结果为 `271 passed, 1 warning in 28.82s`，验收阈值为零
   失败；warning 是环境 Matplotlib `Axes3D` 导入问题。该结果只证明模块合同和不变式，
-  候选默认仍关闭，尚未完成 main clean 200v200 A/B，也没有证明系统级 IDSW、
-  continuity 或航迹数改善。
+  不证明系统级 IDSW、continuity 或航迹数改善。seed 1100 候选未达到晋级门槛，
+  seeds 1101/1102 已停止，默认 `enabled=False` 保持。下一轮先定义歧义保活帧的
+  可评分谱系合同：用 `identity_uncommitted/ambiguity_hold` 区分普通
+  `lineage_missing`，保留分量和证据审计，但不把候选观测硬分给
+  `global_track_id`。该合同冻结后再联合校准 lineage window 与 lease，并排查映射和
+  分配退化。禁止仅放宽当前 `0.9 s` window 作为准入修复或晋级依据；通过同 seed 门槛
+  后才恢复多 seed。
 
 ### 2026-07-23 clean `4ac3bb2` seed 1000 profiler 与等价优化
 
@@ -251,8 +265,9 @@ D2 是 C-UAS 多目标数据关联研究模块，目标是在离线仿真和日�
   验收与多 seed 标定尚未完成。
 - cross-node registry 已完成低歧义 GNN/Hungarian 注册基础，但尚无多帧 JPDA/MHT 歧义保持、owner/epoch failover 或数值融合回写。
 - 结构歧义保持租约只实现 prediction-only 有界保持与到期释放。连续双向唯一自动消歧、
-  component-level JPDA、bounded MHT、跨进程 publisher epoch 协商和 main clean
-  200v200 A/B 尚未完成。
+  component-level JPDA、bounded MHT 和跨进程 publisher epoch 协商尚未完成。main
+  clean 200v200 单 seed A/B 已执行，但候选因 lineage 指标 unavailable 及映射/分配
+  退化被拒绝；修复与重测尚未完成。
 - Stone Soup `Detection` adapter 与 FilterPy CV `KalmanFilter` adapter 已可选执行并记录对象转换/更新 latency；它们是 adapter smoke，不是端到端 tracker，IDSW/continuity 必须标记 unavailable。
 
 未实现：
