@@ -27,6 +27,10 @@ from research_modules.d1_sensor_fusion.src.d1_sensor_fusion import (
 from research_modules.d2_data_association.d2_data_association import (
     AmbiguityComponent3D,
     AmbiguityHoldLeaseConfig,
+    D2_IDENTITY_EVIDENCE_COMMITMENT_POLICY_VERSION,
+    D2_IDENTITY_EVIDENCE_COMMITMENT_SCHEMA_VERSION,
+    IdentityCommitmentState,
+    IdentityEvidenceCommitment,
     ObservationClaimLedgerConfig,
     ReplayCoastConfig,
     Scalable3DTracker,
@@ -3417,6 +3421,69 @@ class IntegratedScalableModuleStack:
                     "ambiguity_hold": dict(
                         association_metadata.get("ambiguity_hold", {})
                     ),
+                    "identity_commitment": {
+                        "schema_version": str(
+                            association_metadata.get(
+                                "identity_commitment_schema_version",
+                                "",
+                            )
+                        ),
+                        "policy_version": str(
+                            association_metadata.get(
+                                "identity_commitment_policy_version",
+                                "",
+                            )
+                        ),
+                        "state_counts": dict(
+                            association_metadata.get(
+                                "identity_commitment_state_counts",
+                                {},
+                            )
+                        ),
+                        "transition_counts_cumulative": dict(
+                            association_metadata.get(
+                                "identity_commitment_transition_counts_cumulative",
+                                {},
+                            )
+                        ),
+                        "blocked_recovery_counts_cumulative": dict(
+                            association_metadata.get(
+                                "identity_commitment_blocked_recovery_counts_cumulative",
+                                {},
+                            )
+                        ),
+                        "suppressed_association_count": int(
+                            association_metadata.get(
+                                "identity_commitment_suppressed_association_count",
+                                0,
+                            )
+                        ),
+                        "suppressed_association_reason_counts": dict(
+                            association_metadata.get(
+                                "identity_commitment_suppressed_association_reason_counts",
+                                {},
+                            )
+                        ),
+                        "suppressed_births": dict(
+                            association_metadata.get(
+                                "identity_commitment_suppressed_births",
+                                {},
+                            )
+                        ),
+                        "recovery_config": dict(
+                            association_metadata.get(
+                                "identity_commitment_recovery_config",
+                                {},
+                            )
+                        ),
+                        "recovery_barrier": dict(
+                            association_metadata.get(
+                                "identity_commitment_recovery_barrier",
+                                {},
+                            )
+                        ),
+                        "online_truth_used": False,
+                    },
                     "structural_ambiguity_evidence_consumed_total": int(
                         self._structural_ambiguity_evidence_consumed_count
                     ),
@@ -3545,7 +3612,7 @@ class IntegratedScalableModuleStack:
                 "id_switch_count_available": False,
                 "identity_lineage": self._d2_identity_lineage_payload(result),
                 "identity_lineage_policy": (
-                    "d2_center_track_to_d1_source_observation_v1"
+                    "d2_center_track_to_d1_source_observation_commitment_v2"
                 ),
             },
             copy_payload=False,
@@ -3559,6 +3626,7 @@ class IntegratedScalableModuleStack:
         """Retain truth-free D1 observation lineage for each D2-owned track."""
 
         self._d2_identity_lineage_by_track.clear()
+        commitment_by_track = self._d2_identity_commitments(result)
         detection_by_id = {item.detection_id: item for item in detections}
         d1_track_id_by_detection = {
             detection.detection_id: str(source_track.global_track_id)
@@ -3571,6 +3639,18 @@ class IntegratedScalableModuleStack:
         for detection_id, global_track_id in dict(
             result.metadata.get("detection_to_track", {})
         ).items():
+            commitment = commitment_by_track.get(str(global_track_id))
+            if commitment is None:
+                raise RuntimeError(
+                    "D2 detection mapping lacks identity commitment"
+                )
+            if (
+                commitment.identity_commitment_state
+                != IdentityCommitmentState.COMMITTED
+            ):
+                raise RuntimeError(
+                    "D2 uncommitted track cannot expose detection binding"
+                )
             detection = detection_by_id.get(str(detection_id))
             if detection is None:
                 continue
@@ -3584,9 +3664,31 @@ class IntegratedScalableModuleStack:
                 d1_track_id or "",
                 {},
             )
+            committed_measurement_timestamp = (
+                commitment.measurement_timestamp
+            )
+            if committed_measurement_timestamp is None:
+                raise RuntimeError(
+                    "committed D2 observed identity lacks measurement timestamp"
+                )
+            timestamp_tolerance = max(
+                _EPS,
+                float(self.d2.observation_timestamp_tolerance_s),
+            )
+            lineage_candidates = pending_by_observation.values()
+            if commitment.ambiguity_component_key is not None:
+                lineage_candidates = (
+                    item
+                    for item in lineage_candidates
+                    if abs(
+                        float(item["measurement_timestamp"])
+                        - committed_measurement_timestamp
+                    )
+                    <= timestamp_tolerance
+                )
             lineage_records = tuple(
                 sorted(
-                    pending_by_observation.values(),
+                    lineage_candidates,
                     key=lambda item: (
                         float(item["measurement_timestamp"]),
                         str(item["observation_id"]),
@@ -3597,8 +3699,17 @@ class IntegratedScalableModuleStack:
                 latest_record = self._d1_latest_lineage_by_observation.get(
                     observation_id
                 )
-                if latest_record is None:
-                    continue
+                if (
+                    latest_record is None
+                    or abs(
+                        float(latest_record["measurement_timestamp"])
+                        - committed_measurement_timestamp
+                    )
+                    > timestamp_tolerance
+                ):
+                    raise RuntimeError(
+                        "committed D2 observation has no matching D1 lineage"
+                    )
                 lineage_records = (latest_record,)
 
             canonical_id = str(global_track_id)
@@ -3616,12 +3727,31 @@ class IntegratedScalableModuleStack:
                 if emitted_observation_id not in emitted_ids:
                     accumulated.append(dict(lineage_record))
                     emitted_ids.add(emitted_observation_id)
-                pending_by_observation.pop(emitted_observation_id, None)
+            if commitment.ambiguity_component_key is None:
+                for lineage_record in lineage_records:
+                    pending_by_observation.pop(
+                        str(lineage_record["observation_id"]),
+                        None,
+                    )
+            else:
+                for pending_observation_id, pending_record in tuple(
+                    pending_by_observation.items()
+                ):
+                    if (
+                        float(pending_record["measurement_timestamp"])
+                        <= committed_measurement_timestamp
+                        + timestamp_tolerance
+                    ):
+                        pending_by_observation.pop(
+                            pending_observation_id,
+                            None,
+                        )
             if d1_track_id and not pending_by_observation:
                 self._d1_pending_lineage_by_track.pop(d1_track_id, None)
             self._d2_identity_lineage_by_track[canonical_id] = tuple(accumulated)
 
     def _d2_identity_lineage_payload(self, result: Any) -> list[dict[str, Any]]:
+        commitment_by_track = self._d2_identity_commitments(result)
         detection_to_track = dict(result.metadata.get("detection_to_track", {}))
         created = set(result.metadata.get("created_track_ids_by_detection", {}).values())
         updated_track_ids = set(str(item) for item in detection_to_track.values())
@@ -3639,21 +3769,83 @@ class IntegratedScalableModuleStack:
                 association_state = "dropped"
             else:
                 association_state = "unmatched"
+            commitment = commitment_by_track[global_track_id]
+            if commitment.association_state != association_state:
+                raise RuntimeError(
+                    "D2 identity commitment association_state conflicts with "
+                    "the published association result"
+                )
+            source_observations = (
+                [
+                    dict(item)
+                    for item in self._d2_identity_lineage_by_track.get(
+                        global_track_id,
+                        (),
+                    )
+                ]
+                if (
+                    commitment.identity_commitment_state
+                    == IdentityCommitmentState.COMMITTED
+                )
+                else []
+            )
+            if (
+                association_state in {"created", "matched"}
+                and commitment.identity_commitment_state
+                == IdentityCommitmentState.COMMITTED
+                and not source_observations
+            ):
+                raise RuntimeError(
+                    "committed D2 observed identity lacks D1 source lineage"
+                )
             payload.append(
                 {
                     "global_track_id": global_track_id,
                     "lifecycle_state": lifecycle_state,
                     "association_state": association_state,
-                    "source_observations": [
-                        dict(item)
-                        for item in self._d2_identity_lineage_by_track.get(
-                            global_track_id,
-                            (),
-                        )
-                    ],
+                    "identity_commitment": commitment.to_dict(),
+                    "source_observations": source_observations,
                 }
             )
         return payload
+
+    def _d2_identity_commitments(
+        self,
+        result: Any,
+    ) -> dict[str, IdentityEvidenceCommitment]:
+        raw = result.metadata.get("identity_commitment_by_track")
+        if not isinstance(raw, Mapping):
+            raise RuntimeError("D2 identity commitment map is unavailable")
+        commitments: dict[str, IdentityEvidenceCommitment] = {}
+        for raw_track_id, raw_commitment in raw.items():
+            track_id = str(raw_track_id)
+            if not isinstance(raw_commitment, Mapping):
+                raise RuntimeError("D2 identity commitment must be a mapping")
+            commitment = IdentityEvidenceCommitment.from_mapping(
+                raw_commitment
+            )
+            if commitment.global_track_id != track_id:
+                raise RuntimeError(
+                    "D2 identity commitment key conflicts with global_track_id"
+                )
+            if (
+                commitment.schema_version
+                != D2_IDENTITY_EVIDENCE_COMMITMENT_SCHEMA_VERSION
+                or commitment.policy_version
+                != D2_IDENTITY_EVIDENCE_COMMITMENT_POLICY_VERSION
+            ):
+                raise RuntimeError(
+                    "D2 identity commitment schema or policy is unsupported"
+                )
+            commitments[track_id] = commitment
+        active_ids = {
+            str(track.global_track_id) for track in self.latest_d2_tracks
+        }
+        if set(commitments) != active_ids:
+            raise RuntimeError(
+                "D2 identity commitment map does not cover active tracks exactly"
+            )
+        return commitments
 
     def _d3_publication(self, now: float) -> RuntimePublication:
         plan = self.latest_plan

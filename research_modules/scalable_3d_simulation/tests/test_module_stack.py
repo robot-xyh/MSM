@@ -174,6 +174,7 @@ def _d1_track_stub(
     timestamp: float,
     position_ned: tuple[float, float, float],
 ) -> SimpleNamespace:
+    observation_id = f"OBS-{local_track_id}-{timestamp:.3f}"
     state = np.array([*position_ned, 0.0, 0.0, 0.0], dtype=float)
     return SimpleNamespace(
         global_track_id=local_track_id,
@@ -186,8 +187,38 @@ def _d1_track_stub(
             "arrival_timestamp": float(timestamp),
             "published_at": float(timestamp),
             "confidence": 1.0,
+            "latest_observation_id": observation_id,
+            "latest_measurement_timestamp": float(timestamp),
+            "latest_sensor_id": "RADAR-TEST",
         },
     )
+
+
+def _seed_d1_lineage_for_tracks(
+    stack: IntegratedScalableModuleStack,
+    tracks: tuple[SimpleNamespace, ...],
+) -> None:
+    for track in tracks:
+        observation_id = str(track.metadata["latest_observation_id"])
+        record = {
+            "observation_id": observation_id,
+            "measurement_timestamp": float(
+                track.metadata["latest_measurement_timestamp"]
+            ),
+            "source_lineage": [
+                "opaque_online_lineage",
+                "sensor:RADAR-TEST",
+                observation_id,
+            ],
+            "replay_generation": 0,
+        }
+        stack._d1_latest_lineage_by_observation[observation_id] = dict(
+            record
+        )
+        stack._d1_pending_lineage_by_track.setdefault(
+            str(track.global_track_id),
+            {},
+        )[observation_id] = dict(record)
 
 
 def _structural_ambiguity_fixture(
@@ -306,7 +337,7 @@ def test_atomic_d1_d2_ambiguity_hold_consumes_delayed_sidecar_once() -> None:
         (100.0, 20.0, -10.0),
     )
     for generation, timestamp in enumerate((0.0, 0.2), start=1):
-        stack.latest_d1_tracks = tuple(
+        tracks = tuple(
             _d1_track_stub(local_id, timestamp, position)
             for local_id, position in zip(
                 ("D1-LOCAL-A", "D1-LOCAL-B"),
@@ -314,6 +345,19 @@ def test_atomic_d1_d2_ambiguity_hold_consumes_delayed_sidecar_once() -> None:
                 strict=True,
             )
         )
+        stack.latest_d1_tracks = tracks
+        _seed_d1_lineage_for_tracks(stack, tracks)
+        if generation == 2:
+            for track in tracks:
+                stale_id = f"OBS-STALE-{track.global_track_id}"
+                stack._d1_pending_lineage_by_track[
+                    str(track.global_track_id)
+                ][stale_id] = {
+                    "observation_id": stale_id,
+                    "measurement_timestamp": 0.1,
+                    "source_lineage": [stale_id],
+                    "replay_generation": 0,
+                }
         stack._d1_posterior_generation = generation
         assert stack._associate_latest_d1_tracks(
             publications,
@@ -322,6 +366,15 @@ def test_atomic_d1_d2_ambiguity_hold_consumes_delayed_sidecar_once() -> None:
             source_d1_posterior_generation=generation,
         )
 
+    committed_lineage = publications[-1].payload["identity_lineage"]
+    assert all(
+        {
+            item["measurement_timestamp"]
+            for item in track_item["source_observations"]
+        }
+        == {0.1, 0.2}
+        for track_item in committed_lineage
+    )
     before = {
         track.global_track_id: (
             track.hits,
@@ -338,7 +391,7 @@ def test_atomic_d1_d2_ambiguity_hold_consumes_delayed_sidecar_once() -> None:
     stack._latch_structural_ambiguity_evidence(
         SimpleNamespace(structural_ambiguity_evidence=(evidence,))
     )
-    stack.latest_d1_tracks = tuple(
+    tracks = tuple(
         _d1_track_stub(local_id, 0.65, position)
         for local_id, position in zip(
             ("D1-LOCAL-A", "D1-LOCAL-B"),
@@ -346,6 +399,8 @@ def test_atomic_d1_d2_ambiguity_hold_consumes_delayed_sidecar_once() -> None:
             strict=True,
         )
     )
+    stack.latest_d1_tracks = tracks
+    _seed_d1_lineage_for_tracks(stack, tracks)
     stack._d1_posterior_generation = 3
 
     assert stack._associate_latest_d1_tracks(
@@ -363,6 +418,15 @@ def test_atomic_d1_d2_ambiguity_hold_consumes_delayed_sidecar_once() -> None:
     assert stack._structural_ambiguity_evidence_received_count == 1
     assert stack._structural_ambiguity_evidence_consumed_count == 1
     assert stack._structural_ambiguity_d2_consumption_count == 1
+    lineage = stack._d2_identity_lineage_payload(
+        stack.latest_d2_result
+    )
+    assert lineage
+    assert {
+        item["identity_commitment"]["identity_commitment_state"]
+        for item in lineage
+    } == {"identity_uncommitted_ambiguity_hold"}
+    assert all(item["source_observations"] == [] for item in lineage)
     for track in stack.d2.active_tracks():
         previous_hits, previous_misses, previous_trace = before[
             track.global_track_id

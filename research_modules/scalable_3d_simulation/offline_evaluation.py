@@ -72,6 +72,8 @@ def write_offline_identity_evaluation(
         return {"offline_identity_manifest": manifest_path}
 
     from research_modules.d2_data_association.d2_data_association import (
+        SCALABLE_3D_IDENTITY_EVIDENCE_SCHEMA_VERSION_V1,
+        SCALABLE_3D_IDENTITY_EVIDENCE_SCHEMA_VERSION_V2,
         GlobalTrackLineageEvidence,
         ObservationLineageRef,
         Scalable3DObservationTruthLabel,
@@ -114,12 +116,22 @@ def write_offline_identity_evaluation(
     d1_sha = sha256_file(d1_path)
     d2_sha = sha256_file(d2_path)
     d1_sequences_by_observation = _d1_sequences_by_observation(d1_messages)
-    evidence_records, incomplete_count = _identity_evidence_records(
+    (
+        evidence_records,
+        incomplete_count,
+        identity_evidence_schema_version,
+    ) = _identity_evidence_records(
         episode_id=str(episode_id),
         d2_messages=d2_messages,
         d1_sequences_by_observation=d1_sequences_by_observation,
         evidence_type=GlobalTrackLineageEvidence,
         observation_type=ObservationLineageRef,
+        evidence_schema_v1=(
+            SCALABLE_3D_IDENTITY_EVIDENCE_SCHEMA_VERSION_V1
+        ),
+        evidence_schema_v2=(
+            SCALABLE_3D_IDENTITY_EVIDENCE_SCHEMA_VERSION_V2
+        ),
     )
     if not evidence_records:
         _write_json(
@@ -155,6 +167,7 @@ def write_offline_identity_evaluation(
         online_d1_records_sha256=d1_sha,
         online_d2_records_sha256=d2_sha,
         observation_truth_labels_sha256=truth_sha,
+        schema_version=identity_evidence_schema_version,
     )
     evidence_path = root / "identity_evidence.json"
     evidence_sha = write_scalable_3d_identity_evidence(evidence_path, bundle)
@@ -191,6 +204,13 @@ def write_offline_identity_evaluation(
             "evidence_record_count": len(evidence_records),
             "lineage_incomplete_record_count": incomplete_count,
             "truth_label_count": len(truth_records),
+            "identity_evidence_schema_version": bundle.schema_version,
+            "identity_evaluation_schema_version": evaluation.schema_version,
+            "identity_commitment_audit_schema_version": (
+                evaluation.audit.get(
+                    "identity_commitment_audit_schema_version"
+                )
+            ),
             "source_hashes": source_hashes,
             "online_truth_isolation_verified": bool(
                 evaluation.audit.get("online_truth_isolation_verified", False)
@@ -448,15 +468,46 @@ def _identity_evidence_records(
     d1_sequences_by_observation: Mapping[str, tuple[int, ...]],
     evidence_type: Any,
     observation_type: Any,
-) -> tuple[tuple[Any, ...], int]:
+    evidence_schema_v1: str,
+    evidence_schema_v2: str,
+) -> tuple[tuple[Any, ...], int, str]:
     records = []
     incomplete_count = 0
+    evidence_schemas: set[str] = set()
     for frame_index, message in enumerate(d2_messages):
         payload = _mapping(message.payload, "D2 publication payload")
         association = _mapping(payload.get("association"), "D2 association payload")
         frame_timestamp = float(association["timestamp"])
+        lineage_policy = str(payload.get("identity_lineage_policy", "")).strip()
         for raw in payload.get("identity_lineage", ()):
             item = _mapping(raw, "D2 identity lineage")
+            raw_commitment = item.get("identity_commitment")
+            commitment = (
+                None
+                if raw_commitment is None
+                else _mapping(
+                    raw_commitment,
+                    "D2 identity commitment",
+                )
+            )
+            schema_version = (
+                evidence_schema_v1
+                if commitment is None
+                else evidence_schema_v2
+            )
+            evidence_schemas.add(schema_version)
+            if commitment is None and lineage_policy.endswith(
+                "_commitment_v2"
+            ):
+                raise ValueError(
+                    "D2 commitment-v2 lineage lacks identity commitment"
+                )
+            if commitment is not None and lineage_policy and not (
+                lineage_policy.endswith("_commitment_v2")
+            ):
+                raise ValueError(
+                    "D2 identity commitment conflicts with lineage policy"
+                )
             observations = tuple(
                 observation_type.from_mapping(
                     _mapping(value, "D2 source observation lineage")
@@ -476,24 +527,50 @@ def _identity_evidence_records(
                 )
             )
             association_state = str(item["association_state"]).strip().lower()
-            if association_state in {"created", "matched"} and (
-                not observations or not d1_sequences
+            commitment_state = (
+                "committed"
+                if commitment is None
+                else str(
+                    commitment.get("identity_commitment_state", "")
+                ).strip()
+            )
+            if commitment_state != "committed" and (
+                observations or d1_sequences
+            ):
+                raise ValueError(
+                    "uncommitted D2 identity lineage cannot bind observations"
+                )
+            if (
+                association_state in {"created", "matched"}
+                and commitment_state == "committed"
+                and (not observations or not d1_sequences)
             ):
                 incomplete_count += 1
             records.append(
                 evidence_type(
+                    schema_version=schema_version,
                     episode_id=episode_id,
                     frame_index=frame_index,
                     frame_timestamp=frame_timestamp,
                     global_track_id=str(item["global_track_id"]),
                     lifecycle_state=str(item["lifecycle_state"]),
                     association_state=association_state,
+                    identity_commitment=commitment,
                     source_observations=observations,
                     d1_record_sequences=d1_sequences,
                     d2_record_sequence=int(message.sequence),
                 )
             )
-    return tuple(records), incomplete_count
+    if len(evidence_schemas) > 1:
+        raise ValueError(
+            "D2 identity evidence cannot mix v1 and v2 records"
+        )
+    selected_schema = (
+        next(iter(evidence_schemas))
+        if evidence_schemas
+        else evidence_schema_v1
+    )
+    return tuple(records), incomplete_count, selected_schema
 
 
 def _truth_samples_for_consistency_records(

@@ -6,6 +6,10 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
+from research_modules.d2_data_association.d2_data_association import (
+    IdentityCommitmentState,
+    IdentityEvidenceCommitment,
+)
 from research_modules.scalable_3d_simulation.episode_bus import (
     VersionedEnvelope,
     jsonable,
@@ -318,3 +322,188 @@ def test_d2_adapter_excludes_false_alarms_and_blocks_unknown(tmp_path) -> None:
     assert mappings["GT-2"]["reason"] == "truth_label_unknown"
     assert evaluation["metrics"]["truth_metrics_available"] is False
     assert evaluation["metrics"]["truth_metrics_reason"] == "truth_label_unknown"
+
+
+def test_offline_identity_v2_keeps_uncommitted_gap_explicit(
+    tmp_path,
+) -> None:
+    covariance = np.eye(6, dtype=float).tolist()
+
+    def track(timestamp: float) -> dict[str, object]:
+        return {
+            "global_track_id": "GT3D-000001",
+            "state_ned": [0.0] * 6,
+            "covariance": covariance,
+            "timestamp": timestamp,
+            "track_state": "confirmed",
+        }
+
+    def lineage(
+        observation_id: str,
+        timestamp: float,
+    ) -> dict[str, object]:
+        return {
+            "observation_id": observation_id,
+            "measurement_timestamp": timestamp,
+            "source_lineage": [
+                "opaque_online_lineage",
+                observation_id,
+            ],
+            "replay_generation": 0,
+        }
+
+    committed = IdentityEvidenceCommitment(
+        global_track_id="GT3D-000001",
+        association_state="created",
+        identity_commitment_state=IdentityCommitmentState.COMMITTED,
+        reason="track_created_from_fresh_original_observation",
+        state_timestamp=0.0,
+        measurement_timestamp=0.0,
+        arrival_timestamp=0.01,
+        source_observation_evidence_key="d1-observation-sha256:"
+        + "1" * 64,
+        source_observation_evidence_generation=0,
+        source_observation_disposition="target_candidate",
+    )
+    uncommitted = IdentityEvidenceCommitment(
+        global_track_id="GT3D-000001",
+        association_state="unmatched",
+        identity_commitment_state=(
+            IdentityCommitmentState.UNCOMMITTED_AFTER_HOLD
+        ),
+        reason=(
+            "ambiguity_hold_released_without_fresh_original_observation"
+        ),
+        state_timestamp=1.0,
+        commitment_generation=1,
+        measurement_timestamp=0.6,
+        arrival_timestamp=0.7,
+        ambiguity_component_key="component-1",
+        ambiguity_evidence_id="evidence-1",
+        ambiguity_component_generation=1,
+        publisher_node_id="D1_FUSION",
+        publisher_epoch="epoch-1",
+        lease_first_seen_timestamp=0.7,
+        lease_soft_deadline=0.9,
+        lease_hard_deadline=1.2,
+        lease_expired_timestamp=0.9,
+        lease_expiration_reason="soft_deadline_reached",
+        recovery_blocker_count=2,
+        recovery_not_before_measurement_timestamp=0.6,
+    )
+    messages = (
+        VersionedEnvelope(
+            sequence=1,
+            topic="modules.d1.fused_tracks",
+            source="D1",
+            timestamp=0.0,
+            schema_version="d1-scalable3d-fusion-v1",
+            payload={
+                "timestamp": 0.0,
+                "track_count": 1,
+                "tracks": [track(0.0)],
+                "observation_lineage": [lineage("OBS-0", 0.0)],
+            },
+        ),
+        VersionedEnvelope(
+            sequence=2,
+            topic="modules.d2.associated_tracks",
+            source="D2",
+            timestamp=0.0,
+            schema_version="d2-scalable3d-association-v1",
+            payload={
+                "timestamp": 0.0,
+                "track_count": 1,
+                "tracks": [track(0.0)],
+                "association": {"timestamp": 0.0},
+                "id_switch_count": None,
+                "id_switch_count_available": False,
+                "identity_lineage_policy": (
+                    "d2_center_track_to_d1_source_observation_commitment_v2"
+                ),
+                "identity_lineage": [
+                    {
+                        "global_track_id": "GT3D-000001",
+                        "lifecycle_state": "confirmed",
+                        "association_state": "created",
+                        "identity_commitment": committed.to_dict(),
+                        "source_observations": [lineage("OBS-0", 0.0)],
+                    }
+                ],
+            },
+        ),
+        VersionedEnvelope(
+            sequence=3,
+            topic="modules.d1.fused_tracks",
+            source="D1",
+            timestamp=1.0,
+            schema_version="d1-scalable3d-fusion-v1",
+            payload={
+                "timestamp": 1.0,
+                "track_count": 1,
+                "tracks": [track(1.0)],
+                "observation_lineage": [lineage("OBS-PRESENCE", 1.0)],
+            },
+        ),
+        VersionedEnvelope(
+            sequence=4,
+            topic="modules.d2.associated_tracks",
+            source="D2",
+            timestamp=1.0,
+            schema_version="d2-scalable3d-association-v1",
+            payload={
+                "timestamp": 1.0,
+                "track_count": 1,
+                "tracks": [track(1.0)],
+                "association": {"timestamp": 1.0},
+                "id_switch_count": None,
+                "id_switch_count_available": False,
+                "identity_lineage_policy": (
+                    "d2_center_track_to_d1_source_observation_commitment_v2"
+                ),
+                "identity_lineage": [
+                    {
+                        "global_track_id": "GT3D-000001",
+                        "lifecycle_state": "confirmed",
+                        "association_state": "unmatched",
+                        "identity_commitment": uncommitted.to_dict(),
+                        "source_observations": [],
+                    }
+                ],
+            },
+        ),
+    )
+    labels = (
+        OfflineTruthLabel("OBS-0", "TGT-0001", 0.0),
+        OfflineTruthLabel("OBS-PRESENCE", "TGT-0001", 1.0),
+    )
+
+    paths = write_offline_identity_evaluation(
+        tmp_path,
+        episode_id="identity-commitment-v2",
+        messages=messages,
+        offline_truth_labels=labels,
+        lineage_time_window_s=0.5,
+        truth_presence_window_s=0.1,
+    )
+    manifest = json.loads(
+        paths["offline_identity_manifest"].read_text(encoding="utf-8")
+    )
+    evaluation = json.loads(
+        paths["offline_identity_evaluation"].read_text(encoding="utf-8")
+    )
+
+    assert manifest["identity_evidence_schema_version"].endswith(".v2")
+    assert manifest["identity_evaluation_schema_version"].endswith(".v2")
+    assert evaluation["metrics"]["truth_metrics_available"] is True
+    assert evaluation["metrics"]["coverage_continuity"] == pytest.approx(0.5)
+    assert evaluation["frames"][1]["mappings"][0]["status"] == "uncommitted"
+    assert evaluation["frames"][1]["mappings"][0][
+        "source_observation_ids"
+    ] == []
+    assert evaluation["audit"]["identity_commitment_all_records"][
+        "uncommitted_count"
+    ] == 1
+    assert evaluation["audit"][
+        "uncommitted_source_binding_violation_count"
+    ] == 0
