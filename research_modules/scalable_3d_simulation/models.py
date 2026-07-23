@@ -250,6 +250,17 @@ class ScenarioConfig:
     def entity_count(self) -> int:
         return self.target_count + self.resource_count + self.recon_count
 
+    @property
+    def identity_lineage_freshness_budget_s(self) -> float:
+        """Maximum source-observation age shared by D2 and offline scoring."""
+
+        return max(
+            self.radar_period_s + self.radar_latency_s,
+            self.acoustic_period_s + self.acoustic_latency_s,
+            self.visual_period_s + self.visual_latency_s,
+            self.association_period_s,
+        ) + self.communication_latency_s + abs(self.communication_jitter_s)
+
     def timestamps(self) -> np.ndarray:
         count = int(np.floor(self.duration_s / self.physics_dt_s + 1e-9))
         return np.arange(count + 1, dtype=float) * self.physics_dt_s

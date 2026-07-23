@@ -29,6 +29,7 @@ from research_modules.d2_data_association.d2_data_association import (
     AmbiguityHoldLeaseConfig,
     D2_IDENTITY_EVIDENCE_COMMITMENT_POLICY_VERSION,
     D2_IDENTITY_EVIDENCE_COMMITMENT_SCHEMA_VERSION,
+    IdentityCommitmentRecoveryConfig,
     IdentityCommitmentState,
     IdentityEvidenceCommitment,
     ObservationClaimLedgerConfig,
@@ -418,6 +419,17 @@ class IntegratedScalableModuleStack:
             replay_coast_config=ReplayCoastConfig(
                 config_version="main-scalable3d-replay-coast-policy-v1",
                 grace_seconds=self.stack_config.d2_replay_coast_grace_s,
+            ),
+            identity_commitment_recovery_config=(
+                IdentityCommitmentRecoveryConfig(
+                    config_version=(
+                        "main-scalable3d-identity-recovery-publication-"
+                        "freshness-v1"
+                    ),
+                    max_recovery_evidence_age_seconds=(
+                        config.identity_lineage_freshness_budget_s
+                    ),
+                )
             ),
             ambiguity_hold_config=AmbiguityHoldLeaseConfig(
                 enabled=(

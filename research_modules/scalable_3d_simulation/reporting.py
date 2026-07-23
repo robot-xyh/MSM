@@ -403,13 +403,7 @@ def _write_post_run_timings(
 
 
 def _identity_evaluation_window_s(result: EpisodeResult) -> float:
-    config = result.config
-    return max(
-        config.radar_period_s + config.radar_latency_s,
-        config.acoustic_period_s + config.acoustic_latency_s,
-        config.visual_period_s + config.visual_latency_s,
-        config.association_period_s,
-    ) + config.communication_latency_s + abs(config.communication_jitter_s)
+    return result.config.identity_lineage_freshness_budget_s
 
 
 def _consistency_evaluation_tolerance_s(result: EpisodeResult) -> float:

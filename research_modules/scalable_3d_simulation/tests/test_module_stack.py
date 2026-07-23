@@ -331,6 +331,17 @@ def test_atomic_d1_d2_ambiguity_hold_consumes_delayed_sidecar_once() -> None:
         stack.d2.ambiguity_hold_config.max_component_age_seconds
         == pytest.approx(5.4)
     )
+    assert (
+        stack.d2.identity_commitment_recovery_config.config_version
+        == "main-scalable3d-identity-recovery-publication-freshness-v1"
+    )
+    assert (
+        stack.d2.identity_commitment_recovery_config
+        .max_recovery_evidence_age_seconds
+        == pytest.approx(
+            stack.config.identity_lineage_freshness_budget_s
+        )
+    )
     publications = []
     positions = (
         (100.0, -20.0, -10.0),
