@@ -1,5 +1,27 @@
 # D6 Evaluation Metrics
 
+## 2026-07-22 scalable 3D 阶段分位接入
+
+D6 已接入 `scalable3d-stage-timings-v2`，离线评估输出升级为
+`d6-scalable3d-offline-evaluation-v7`。v2 每个阶段必须给出 schema、累计调用数、累计墙钟、
+单次均值、P50、P95、最大值以及显式分布可用性。分布可用时三个分位值必须齐全、有限、非负，
+满足 `P50 <= P95 <= max`，不可用原因必须为空；分布不可用时三个值必须全部为空并给出原因。
+重复阶段、半缺字段、未知 schema、非有限数、顺序错误和均值大于最大值均失败关闭。
+
+历史无 schema 的 CSV 继续可读。没有分位列时，P50/P95/max 为 `null/unavailable`；有完整三列时
+由三项是否全部存在推断可用性。legacy 半缺三项同样拒绝，不能把缺失值补成 0。
+
+逐 episode CSV 为每个阶段输出三个分位及各自 availability。跨 seed 聚合统计的是“每个 episode
+内部单次调用分位”在不同 seed 上的分布，并记录可用 episode/seed 数和缺失原因。D6 没有原始逐调用
+样本，因此 `pooled_call_quantiles` 固定 unavailable，不把 seed P95 写成所有调用的合并 P95。中文
+报告新增阶段尾延时表，并明确 5v5 冒烟不能作为 200 对 200 验收。
+
+2026-07-22 验证覆盖正常 v2、显式不可用 v2、三类 legacy、半缺字段、未知 schema、非有限值、
+分位顺序、均值上界、重复阶段和跨 seed 混合 availability。D6 全量测试为
+`555 passed, 1 warning`；warning 是既有 Matplotlib `Axes3D` 环境问题。当前只完成 consumer、
+聚合和报告合同。main 仍需用包含 v2 分位的 clean 200 对 200 多 seed episode 重跑，才能形成真实
+阶段尾延时证据。
+
 ## 2026-07-22 clean 20-seed runtime v2 复核
 
 D6 独立复核了 clean commit

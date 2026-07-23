@@ -1,5 +1,12 @@
 # D6 文档索引
 
+2026-07-22 的 `scalable3d-stage-timings-v2` 离线消费见
+`MODULE_PRINCIPLES_CN.md` 和 `ALGORITHM_AND_IMPLEMENTATION.md`，接口验证见根目录
+`../EXPERIMENT_REPORT.md` 2.23 节。D6 v7 严格核对分位值与显式 availability，legacy 缺失保持
+null，跨 seed 只统计各 episode 内调用分位，不生成 pooled quantile。全量回归为
+`555 passed, 1 warning`。当前仍需 main 生成带 v2 分位和冻结稳定窗口定义的 clean 200 对 200
+多 seed 输入；本次不改变 AirSim 接线。
+
 2026-07-22 clean commit `0d2da25` 的 nominal 200 对 200、10.0 s、seed `1000-1019`
 runtime v2 复核见 `MODULE_PRINCIPLES_CN.md`、`ALGORITHM_AND_IMPLEMENTATION.md` 和根目录
 `../EXPERIMENT_REPORT.md` 2.22 节。20/20 episode 的后验代次合同、pending 排空、基础来源门和

@@ -1,5 +1,26 @@
 # D6 系统评估指标综述及子方案
 
+## 2026-07-22 scalable 3D 阶段分位评审
+
+本次改动扩展 D6 的离线性能证据，不改变 D1-D7 控制链。main 的
+`scalable3d-stage-timings-v2` 同时发布累计耗时和单次调用分位。D6 将两类量分开：累计墙钟用于阶段
+占比，P50/P95/max 用于描述 episode 内调用延时分布。两者不能互相反推。
+
+v2 以显式 availability 为准。`distribution_available=true` 时三个分位必须齐全、有序且与最大值
+上界一致；false 时三个字段必须全空并给出原因。legacy 没有 availability 列时只根据完整三元组
+推断；没有分位证据时保留空值。该规则兼容历史文件，同时阻止半缺字段和假零进入报告。
+
+跨 seed 统计的基本样本是每个 episode 内的 P50、P95 或 max。输出中的均值、范围和 bootstrap
+区间描述这些 episode 分位在不同 seed 上的分布。它们不是所有调用样本的 pooled quantile。原始
+逐调用样本未持久化时，D6 明确输出 pooled quantile unavailable。
+
+评审结论是 D6 consumer、逐 episode 行、跨 seed 聚合和中文尾延时表已闭合。全量回归为
+`555 passed, 1 warning`。真实性能证据尚未闭合：main 需用当前 producer 重跑 clean 200 对 200
+多 seed，并显式冻结稳定窗口定义。现有 5v5 冒烟和旧格式 20-seed 输入不能升级为该证据。
+
+`AIRSIM_INTEGRATION_PLAN.md` 已检查。本次不改变 AirSim 日志 schema、reset 或控制接口，未修改该
+文档。
+
 ## 2026-07-22 clean 20-seed 后验代次证据评审
 
 D6 已独立复核 clean commit

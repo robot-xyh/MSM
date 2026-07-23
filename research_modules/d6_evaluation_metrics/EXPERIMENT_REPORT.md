@@ -1,5 +1,54 @@
 # D6 系统级评估指标实验报告
 
+## 2.23 scalable 3D stage timing v2 接口验证
+
+### 验证范围
+
+本节验证 D6 对 `scalable3d-stage-timings-v2` 的读取、逐 episode 输出、跨 seed 聚合和中文报告。
+输入为最小离线 fixture，没有启动 AirSim，也没有重新运行 200 对 200 全栈。验证结果只能说明
+consumer 合同和失败关闭逻辑可用。
+
+正例覆盖 v2 分位可用、v2 分位显式不可用、legacy 无分位列和 legacy 完整三元组。负例覆盖：
+
+1. v2 分位字段半缺；
+2. `NaN` 等非有限值；
+3. `P50 > P95`；
+4. 单次均值大于最大值；
+5. unavailable 状态缺原因或仍携带分位值；
+6. v2 表头半缺和未知 schema；
+7. 同一 CSV 重复 stage。
+
+上述负例均抛出 `Scalable3DOfflineEvaluationError`。legacy 无分位列时，三个分位输出
+`null/unavailable`，没有补 0。
+
+### 混合可用性
+
+两 seed fixture 中，seed 21 提供完整 P50/P95/max，seed 22 声明
+`child_timing_distribution_unavailable`。聚合结果如下：
+
+| 字段 | 结果 |
+| --- | --- |
+| distribution availability | partially_available |
+| 可用 episode | 1/2 |
+| 可用 seed | 1/2 |
+| 缺失原因 | child_timing_distribution_unavailable: 1 |
+| episode P50 均值 | 8.0 ms |
+| pooled call quantile | unavailable |
+| pooled 不可用原因 | raw_per_call_timing_samples_not_persisted |
+
+该 P50 是唯一可用 episode 内调用 P50 的描述值。它不是两 seed 全部调用样本的 pooled P50。原始调用
+样本未落盘，因此 D6 不计算 pooled P50/P95/max。
+
+### 输出
+
+离线评估 schema 升级为 `d6-scalable3d-offline-evaluation-v7`。逐 seed CSV 增加阶段
+P50/P95/max 及 availability；aggregate 增加可用 episode/seed 数、缺失原因分布和 pooled quantile
+不可用声明；中文报告增加阶段尾延时表，并明确稳定窗口和实际规模必须由 main 提供。
+
+2026-07-22 全量测试为 `555 passed, 1 warning`。warning 是既有 Matplotlib `Axes3D` 环境问题。
+当前缺少由 v2 producer 生成的 clean 200 对 200 多 seed 输入，尚不能报告真实阶段尾延时、实时门限
+或稳定窗口性能。
+
 ## 2.22 2026-07-22 clean 20-seed 后验代次校准
 
 ### 输入

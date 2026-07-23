@@ -43,10 +43,11 @@ from .observation_posterior_governance import (
 
 
 SCALABLE_3D_OFFLINE_EVALUATION_SCHEMA_VERSION = (
-    "d6-scalable3d-offline-evaluation-v6"
+    "d6-scalable3d-offline-evaluation-v7"
 )
 SCALABLE_3D_OFFLINE_EVALUATION_DATE = "2026-07-22"
 SCALABLE_3D_SCHEMA_REGISTRY_VERSION = "d6-scalable3d-schema-registry-v1"
+SCALABLE_3D_STAGE_TIMING_SCHEMA_VERSION = "scalable3d-stage-timings-v2"
 SCALABLE_3D_CURRENT_SCHEMA_REGISTRY = {
     "world_schema": "scalable3d-world-v1",
     "bus_schema": "scalable3d-episode-bus-v1",
@@ -86,6 +87,21 @@ _GROUP_FIELDS = (
     "resource_count",
     "recon_count",
     "camera_count",
+)
+_STAGE_TIMING_BASE_FIELDS = (
+    "stage",
+    "call_count",
+    "wall_time_s",
+    "mean_wall_time_ms",
+)
+_STAGE_TIMING_QUANTILE_FIELDS = (
+    "p50_wall_time_ms",
+    "p95_wall_time_ms",
+    "max_wall_time_ms",
+)
+_STAGE_TIMING_AVAILABILITY_FIELDS = (
+    "distribution_available",
+    "distribution_unavailable_reason",
 )
 _FORBIDDEN_ONLINE_KEYS = frozenset(
     {
@@ -655,6 +671,23 @@ def aggregate_scalable_3d_episodes(
         ),
         "groups": groups,
         "scale_stage_time_shares": scale_stage_shares,
+        "stage_timing_quantile_semantics": {
+            "episode_statistic": (
+                "each value is a within-episode quantile over that stage's "
+                "persisted per-call timing samples"
+            ),
+            "cross_seed_statistic": (
+                "group statistics describe the seed distribution of episode-level "
+                "call quantiles; bootstrap intervals are on distinct-seed means"
+            ),
+            "pooled_call_quantiles": (
+                "not computed because raw per-call samples are not persisted"
+            ),
+            "legacy_policy": (
+                "legacy rows infer distribution availability from complete quantile "
+                "triples; absent values remain null and unavailable"
+            ),
+        },
         "experiment_matrix": experiment_matrix,
         "physical_outcome_semantics": {
             "offline_proximity_within_5m_count": (
@@ -1040,6 +1073,67 @@ def render_scalable_3d_offline_markdown(
     lines.extend(
         [
             "",
+            "## 稳定窗口阶段尾延时",
+            "",
+            "表内 P50、P95 和最大值先在每个 episode 内按该阶段的单次调用样本计算，再汇总这些 episode 分位在不同 seed 上的分布。表中数值写为“episode 分位均值 [最小值, 最大值]”，不是把 seed P95 当成全部调用样本的合并 P95。",
+            "D6 没有原始逐调用样本，因此不计算 pooled quantile。只有 main 明确选定稳定窗口 episode 时，本表才可解释为稳定窗口尾延时。缺失、legacy 空分位和 producer 声明不可用均保持 null，并列出原因。",
+            "规模完全取自 episode 合同。5v5 冒烟结果不会被写成 200 对 200 性能验收。",
+            "",
+            "| scenario/version | scale T/R/Rc/Cam | stage | 分位可用 episodes/seeds | 状态 | episode P50 ms | episode P95 ms | episode max ms | 缺失原因 |",
+            "| --- | --- | --- | --- | --- | ---: | ---: | ---: | --- |",
+        ]
+    )
+    for group in aggregate.get("groups", []):
+        scale = "/".join(
+            _fmt(group.get(field))
+            for field in (
+                "target_count",
+                "resource_count",
+                "recon_count",
+                "camera_count",
+            )
+        )
+        for stage, timing in sorted(group.get("stage_timing", {}).items()):
+            reasons = timing.get(
+                "distribution_unavailability_reason_distribution", {}
+            )
+            lines.append(
+                "| {scenario}/{version} | {scale} | {stage} | {episodes}/{total}, "
+                "{seeds}/{seed_total} | {status} | {p50} | {p95} | {maximum} | "
+                "{reasons} |".format(
+                    scenario=_fmt(group.get("scenario_name")),
+                    version=_fmt(group.get("scenario_version")),
+                    scale=scale,
+                    stage=stage,
+                    episodes=timing.get(
+                        "distribution_available_episode_count", 0
+                    ),
+                    total=group.get("episode_count", 0),
+                    seeds=timing.get("distribution_available_seed_count", 0),
+                    seed_total=group.get("seed_count", 0),
+                    status=timing.get(
+                        "distribution_availability", "unavailable"
+                    ),
+                    p50=_fmt_stage_quantile_stat(
+                        timing.get("p50_wall_time_ms")
+                    ),
+                    p95=_fmt_stage_quantile_stat(
+                        timing.get("p95_wall_time_ms")
+                    ),
+                    maximum=_fmt_stage_quantile_stat(
+                        timing.get("max_wall_time_ms")
+                    ),
+                    reasons=(
+                        json.dumps(reasons, ensure_ascii=False, sort_keys=True)
+                        if reasons
+                        else "{}"
+                    ),
+                )
+            )
+
+    lines.extend(
+        [
+            "",
             "## 失败与可用性",
             "",
             f"Episode 失败/证据质量原因分布：`{json.dumps(aggregate.get('failure_reason_distribution', {}), ensure_ascii=False, sort_keys=True)}`。",
@@ -1056,6 +1150,7 @@ def render_scalable_3d_offline_markdown(
             "- D4 advice 单独不证明控制采用；只有通过完整合同与 summary 一致性审计的 main 消费记录，且 D3 明确应用 hint，才计 control adoption。",
             "- D5 主动视觉必须由命令与 `runtime.camera_command_ack` 复合版本键闭合；命令发布、影子建议、辅助采用和 ACK applied 分层统计。",
             "- 即使辅助动作已 applied 且同一 episode 出现五米接近，没有同 seed 配对控制组时，主动视觉物理归因仍为 null/unavailable。",
+            "- 阶段 P50/P95/max 是各 episode 内单次调用分位的跨 seed 描述；没有原始调用样本时，D6 不生成 pooled quantile。",
             "- 报告不把五米接近登记为任务成功；任务成功仍需身份、D4 授权、D7 控制和任务合同的独立证据。",
         ]
     )
@@ -3739,6 +3834,11 @@ def _add_stage_columns(row: dict[str, Any], stage_names: Sequence[str]) -> None:
     for stage in stage_names:
         prefix = f"stage__{_stage_slug(stage)}"
         record = stages.get(stage) if isinstance(stages, Mapping) else None
+        missing_stage_reason = (
+            str(file_reason)
+            if file_reason is not None
+            else f"stage_not_reported:{stage}"
+        )
         for source, suffix in (
             ("call_count", "call_count"),
             ("wall_time_s", "wall_time_s"),
@@ -3748,7 +3848,31 @@ def _add_stage_columns(row: dict[str, Any], stage_names: Sequence[str]) -> None:
             if isinstance(record, Mapping) and record.get(source) is not None:
                 _put_available(row, field, record[source])
             else:
-                _put_unavailable(row, field, f"stage_metric_missing:{stage}:{source}")
+                _put_unavailable(row, field, missing_stage_reason)
+
+        distribution_available = (
+            isinstance(record, Mapping)
+            and record.get("distribution_available") is True
+        )
+        distribution_reason = (
+            record.get("distribution_unavailable_reason")
+            if isinstance(record, Mapping)
+            else missing_stage_reason
+        )
+        if distribution_available:
+            distribution_reason = None
+        elif distribution_reason is None:
+            distribution_reason = f"stage_distribution_unavailable:{stage}"
+        row[f"{prefix}__distribution_availability"] = (
+            "available" if distribution_available else "unavailable"
+        )
+        row[f"{prefix}__distribution_unavailable_reason"] = distribution_reason
+        for source in _STAGE_TIMING_QUANTILE_FIELDS:
+            field = f"{prefix}__{source}"
+            if distribution_available and record.get(source) is not None:
+                _put_available(row, field, record[source])
+            else:
+                _put_unavailable(row, field, str(distribution_reason))
     if file_reason is None:
         _put_available(row, "stage_timings_json", stages)
     else:
@@ -4042,7 +4166,75 @@ def _load_stage_timings(
     records: dict[str, dict[str, Any]] = {}
     try:
         with path.open(newline="", encoding="utf-8") as stream:
-            for line_number, record in enumerate(csv.DictReader(stream), start=2):
+            reader = csv.DictReader(stream)
+            fieldnames = reader.fieldnames
+            if fieldnames is None:
+                raise Scalable3DOfflineEvaluationError(
+                    f"stage timing header missing in {path}"
+                )
+            if any(not str(field).strip() for field in fieldnames):
+                raise Scalable3DOfflineEvaluationError(
+                    f"stage timing header contains an empty field in {path}"
+                )
+            if len(fieldnames) != len(set(fieldnames)):
+                raise Scalable3DOfflineEvaluationError(
+                    f"stage timing header contains duplicate fields in {path}"
+                )
+            missing_base = [
+                field
+                for field in _STAGE_TIMING_BASE_FIELDS
+                if field not in fieldnames
+            ]
+            if missing_base:
+                raise Scalable3DOfflineEvaluationError(
+                    f"stage timing base fields missing in {path}: {missing_base}"
+                )
+
+            has_schema = "schema_version" in fieldnames
+            quantile_columns = [
+                field
+                for field in _STAGE_TIMING_QUANTILE_FIELDS
+                if field in fieldnames
+            ]
+            availability_columns = [
+                field
+                for field in _STAGE_TIMING_AVAILABILITY_FIELDS
+                if field in fieldnames
+            ]
+            if has_schema:
+                missing_v2 = [
+                    field
+                    for field in (
+                        *_STAGE_TIMING_QUANTILE_FIELDS,
+                        *_STAGE_TIMING_AVAILABILITY_FIELDS,
+                    )
+                    if field not in fieldnames
+                ]
+                if missing_v2:
+                    raise Scalable3DOfflineEvaluationError(
+                        f"v2 stage timing fields missing in {path}: {missing_v2}"
+                    )
+                timing_mode = "v2"
+            else:
+                if len(quantile_columns) not in {
+                    0,
+                    len(_STAGE_TIMING_QUANTILE_FIELDS),
+                }:
+                    raise Scalable3DOfflineEvaluationError(
+                        f"legacy stage timing quantile fields are partial in {path}"
+                    )
+                if availability_columns:
+                    raise Scalable3DOfflineEvaluationError(
+                        "legacy stage timing cannot declare distribution availability "
+                        f"without schema_version in {path}"
+                    )
+                timing_mode = "legacy"
+
+            for line_number, record in enumerate(reader, start=2):
+                if None in record:
+                    raise Scalable3DOfflineEvaluationError(
+                        f"stage timing row has extra values at {path}:{line_number}"
+                    )
                 stage = str(record.get("stage", "")).strip()
                 if not stage:
                     raise Scalable3DOfflineEvaluationError(
@@ -4052,31 +4244,196 @@ def _load_stage_timings(
                     raise Scalable3DOfflineEvaluationError(
                         f"duplicate stage {stage!r} in {path}"
                     )
-                parsed: dict[str, Any] = {}
-                for field, converter in (
-                    ("call_count", int),
-                    ("wall_time_s", float),
-                    ("mean_wall_time_ms", float),
-                ):
-                    raw = record.get(field)
-                    if raw in (None, ""):
-                        parsed[field] = None
-                        continue
-                    try:
-                        value = converter(raw)
-                    except (TypeError, ValueError) as exc:
+                parsed: dict[str, Any] = {
+                    "call_count": _parse_stage_timing_number(
+                        record,
+                        "call_count",
+                        path=path,
+                        line_number=line_number,
+                        integer=True,
+                    ),
+                    "wall_time_s": _parse_stage_timing_number(
+                        record,
+                        "wall_time_s",
+                        path=path,
+                        line_number=line_number,
+                    ),
+                    "mean_wall_time_ms": _parse_stage_timing_number(
+                        record,
+                        "mean_wall_time_ms",
+                        path=path,
+                        line_number=line_number,
+                    ),
+                }
+                if timing_mode == "v2":
+                    schema_version = str(record.get("schema_version", "")).strip()
+                    if schema_version != SCALABLE_3D_STAGE_TIMING_SCHEMA_VERSION:
                         raise Scalable3DOfflineEvaluationError(
-                            f"invalid {field} at {path}:{line_number}"
-                        ) from exc
-                    if not _is_finite_number(value) or value < 0:
-                        raise Scalable3DOfflineEvaluationError(
-                            f"nonfinite or negative {field} at {path}:{line_number}"
+                            "unsupported stage timing schema at "
+                            f"{path}:{line_number}: {schema_version or '<empty>'}"
                         )
-                    parsed[field] = value
+                    distribution_available = _parse_stage_timing_bool(
+                        record.get("distribution_available"),
+                        path=path,
+                        line_number=line_number,
+                    )
+                    unavailable_reason = (
+                        str(record.get("distribution_unavailable_reason") or "").strip()
+                        or None
+                    )
+                    raw_quantiles = [
+                        record.get(field) for field in _STAGE_TIMING_QUANTILE_FIELDS
+                    ]
+                    present_count = sum(
+                        value is not None and str(value).strip() != ""
+                        for value in raw_quantiles
+                    )
+                    if distribution_available:
+                        if present_count != len(_STAGE_TIMING_QUANTILE_FIELDS):
+                            raise Scalable3DOfflineEvaluationError(
+                                "available v2 stage timing distribution must provide "
+                                f"all quantiles at {path}:{line_number}"
+                            )
+                        if unavailable_reason is not None:
+                            raise Scalable3DOfflineEvaluationError(
+                                "available v2 stage timing distribution cannot provide "
+                                f"an unavailable reason at {path}:{line_number}"
+                            )
+                    else:
+                        if present_count:
+                            raise Scalable3DOfflineEvaluationError(
+                                "unavailable v2 stage timing distribution must leave "
+                                f"all quantiles empty at {path}:{line_number}"
+                            )
+                        if unavailable_reason is None:
+                            raise Scalable3DOfflineEvaluationError(
+                                "unavailable v2 stage timing distribution requires "
+                                f"a reason at {path}:{line_number}"
+                            )
+                    parsed["schema_version"] = schema_version
+                    parsed["distribution_availability_source"] = "explicit_v2"
+                else:
+                    schema_version = None
+                    unavailable_reason = None
+                    if quantile_columns:
+                        raw_quantiles = [
+                            record.get(field)
+                            for field in _STAGE_TIMING_QUANTILE_FIELDS
+                        ]
+                        present_count = sum(
+                            value is not None and str(value).strip() != ""
+                            for value in raw_quantiles
+                        )
+                        if present_count not in {
+                            0,
+                            len(_STAGE_TIMING_QUANTILE_FIELDS),
+                        }:
+                            raise Scalable3DOfflineEvaluationError(
+                                "legacy stage timing distribution values are partial "
+                                f"at {path}:{line_number}"
+                            )
+                        distribution_available = present_count == len(
+                            _STAGE_TIMING_QUANTILE_FIELDS
+                        )
+                        if not distribution_available:
+                            unavailable_reason = (
+                                "legacy_stage_timing_distribution_values_absent"
+                            )
+                    else:
+                        distribution_available = False
+                        unavailable_reason = (
+                            "legacy_stage_timing_distribution_columns_absent"
+                        )
+                    parsed["schema_version"] = schema_version
+                    parsed["distribution_availability_source"] = "legacy_inferred"
+
+                if distribution_available:
+                    for field in _STAGE_TIMING_QUANTILE_FIELDS:
+                        parsed[field] = _parse_stage_timing_number(
+                            record,
+                            field,
+                            path=path,
+                            line_number=line_number,
+                        )
+                    _validate_stage_timing_distribution(
+                        parsed,
+                        path=path,
+                        line_number=line_number,
+                    )
+                else:
+                    for field in _STAGE_TIMING_QUANTILE_FIELDS:
+                        parsed[field] = None
+                parsed["distribution_available"] = distribution_available
+                parsed["distribution_unavailable_reason"] = unavailable_reason
                 records[stage] = parsed
     except OSError as exc:
         raise Scalable3DOfflineEvaluationError(f"cannot read {path}: {exc}") from exc
     return records, None
+
+
+def _parse_stage_timing_number(
+    record: Mapping[str, Any],
+    field: str,
+    *,
+    path: Path,
+    line_number: int,
+    integer: bool = False,
+) -> int | float:
+    raw = record.get(field)
+    if raw is None or str(raw).strip() == "":
+        raise Scalable3DOfflineEvaluationError(
+            f"required stage timing field {field} missing at {path}:{line_number}"
+        )
+    try:
+        value = int(raw) if integer else float(raw)
+    except (TypeError, ValueError) as exc:
+        raise Scalable3DOfflineEvaluationError(
+            f"invalid {field} at {path}:{line_number}"
+        ) from exc
+    if not _is_finite_number(value) or value < 0:
+        raise Scalable3DOfflineEvaluationError(
+            f"nonfinite or negative {field} at {path}:{line_number}"
+        )
+    return value
+
+
+def _parse_stage_timing_bool(
+    value: Any,
+    *,
+    path: Path,
+    line_number: int,
+) -> bool:
+    normalized = "" if value is None else str(value).strip().lower()
+    if normalized == "true":
+        return True
+    if normalized == "false":
+        return False
+    raise Scalable3DOfflineEvaluationError(
+        "distribution_available must be true or false at "
+        f"{path}:{line_number}"
+    )
+
+
+def _validate_stage_timing_distribution(
+    record: Mapping[str, Any],
+    *,
+    path: Path,
+    line_number: int,
+) -> None:
+    p50 = float(record["p50_wall_time_ms"])
+    p95 = float(record["p95_wall_time_ms"])
+    maximum = float(record["max_wall_time_ms"])
+    mean = float(record["mean_wall_time_ms"])
+    if not p50 <= p95 <= maximum:
+        raise Scalable3DOfflineEvaluationError(
+            f"stage timing distribution must satisfy p50 <= p95 <= max at "
+            f"{path}:{line_number}"
+        )
+    tolerance = max(1.0e-12, abs(maximum) * 1.0e-12)
+    if mean > maximum + tolerance:
+        raise Scalable3DOfflineEvaluationError(
+            f"mean stage timing cannot exceed max at {path}:{line_number}"
+        )
 
 
 def _ordered_online_records(
@@ -4291,6 +4648,37 @@ def _aggregate_stage_timing(
     for stage in stage_names:
         slug = _stage_slug(stage)
         prefix = f"stage__{slug}"
+        timing_rows: list[dict[str, Any]] = []
+        distribution_unavailable = Counter()
+        distribution_available_episode_count = 0
+        distribution_available_seeds: set[int] = set()
+        for row in rows:
+            prepared = dict(row)
+            if f"{prefix}__p50_wall_time_ms_availability" not in prepared:
+                _add_stage_columns(prepared, (stage,))
+            timing_rows.append(prepared)
+            stage_map = row.get("_stage_records", {})
+            record = (
+                stage_map.get(stage)
+                if isinstance(stage_map, Mapping)
+                else None
+            )
+            if (
+                isinstance(record, Mapping)
+                and record.get("distribution_available") is True
+            ):
+                distribution_available_episode_count += 1
+                if _is_int_like(row.get("seed")):
+                    distribution_available_seeds.add(int(row["seed"]))
+            else:
+                reason = (
+                    record.get("distribution_unavailable_reason")
+                    if isinstance(record, Mapping)
+                    else row.get("_stage_file_reason")
+                )
+                distribution_unavailable[
+                    str(reason or f"stage_not_reported:{stage}")
+                ] += 1
         shares: list[float] = []
         share_seed_values: dict[int, list[float]] = defaultdict(list)
         pooled_stage = 0.0
@@ -4335,28 +4723,79 @@ def _aggregate_stage_timing(
             ci_low = ci_high = None
             ci_status = "unavailable"
             ci_reason = "single_seed_descriptive_only"
+        if distribution_available_episode_count == len(rows):
+            distribution_status = "available"
+        elif distribution_available_episode_count:
+            distribution_status = "partially_available"
+        else:
+            distribution_status = "unavailable"
+        quantile_statistics = {
+            field: _metric_statistics(
+                timing_rows,
+                f"{prefix}__{field}",
+                bootstrap_resamples=bootstrap_resamples,
+                bootstrap_rng_seed=bootstrap_rng_seed,
+                group_identity={
+                    **group_identity,
+                    "stage": stage,
+                    "source_statistic": field,
+                },
+            )
+            for field in _STAGE_TIMING_QUANTILE_FIELDS
+        }
+        for field, statistics in quantile_statistics.items():
+            statistics["source_statistic_semantics"] = (
+                f"within_episode_per_call_{field}"
+            )
+            statistics["cross_seed_aggregation_semantics"] = (
+                "distribution_of_episode_level_call_quantiles_across_available_"
+                "episodes_and_distinct_seed_means"
+            )
+            statistics["is_pooled_call_quantile"] = False
+
         output[stage] = {
             "call_count": _metric_statistics(
-                rows,
+                timing_rows,
                 f"{prefix}__call_count",
                 bootstrap_resamples=bootstrap_resamples,
                 bootstrap_rng_seed=bootstrap_rng_seed,
                 group_identity=group_identity,
             ),
             "wall_time_s": _metric_statistics(
-                rows,
+                timing_rows,
                 f"{prefix}__wall_time_s",
                 bootstrap_resamples=bootstrap_resamples,
                 bootstrap_rng_seed=bootstrap_rng_seed,
                 group_identity=group_identity,
             ),
             "mean_wall_time_ms": _metric_statistics(
-                rows,
+                timing_rows,
                 f"{prefix}__mean_wall_time_ms",
                 bootstrap_resamples=bootstrap_resamples,
                 bootstrap_rng_seed=bootstrap_rng_seed,
                 group_identity=group_identity,
             ),
+            **quantile_statistics,
+            "distribution_availability": distribution_status,
+            "distribution_available_episode_count": (
+                distribution_available_episode_count
+            ),
+            "distribution_unavailable_episode_count": (
+                len(rows) - distribution_available_episode_count
+            ),
+            "distribution_available_seed_count": len(
+                distribution_available_seeds
+            ),
+            "distribution_unavailability_reason_distribution": dict(
+                sorted(distribution_unavailable.items())
+            ),
+            "pooled_call_quantiles": {
+                "availability": "unavailable",
+                "unavailable_reason": "raw_per_call_timing_samples_not_persisted",
+                "p50_wall_time_ms": None,
+                "p95_wall_time_ms": None,
+                "max_wall_time_ms": None,
+            },
             "pooled_wall_time_share": (
                 pooled_stage / pooled_total if pooled_total > 0.0 else None
             ),
@@ -4606,6 +5045,16 @@ def _fmt_stat(value: Any) -> str:
     return _fmt(value.get("mean"))
 
 
+def _fmt_stage_quantile_stat(value: Any) -> str:
+    if not isinstance(value, Mapping) or value.get("availability") != "available":
+        return "unavailable"
+    return "{} [{}, {}]".format(
+        _fmt(value.get("mean")),
+        _fmt(value.get("minimum")),
+        _fmt(value.get("maximum")),
+    )
+
+
 __all__ = [
     "DEFAULT_SCALABLE_3D_BOOTSTRAP_RESAMPLES",
     "DEFAULT_SCALABLE_3D_BOOTSTRAP_RNG_SEED",
@@ -4616,6 +5065,7 @@ __all__ = [
     "SCALABLE_3D_OFFLINE_EVALUATION_DATE",
     "SCALABLE_3D_OFFLINE_EVALUATION_SCHEMA_VERSION",
     "SCALABLE_3D_SCHEMA_REGISTRY_VERSION",
+    "SCALABLE_3D_STAGE_TIMING_SCHEMA_VERSION",
     "Scalable3DOfflineEvaluationError",
     "Scalable3DOfflineEvaluationInputs",
     "Scalable3DOfflineReportGenerator",

@@ -1,5 +1,29 @@
 # D6 Evaluation Metrics Plan
 
+## 2026-07-22 scalable 3D stage timing v2 状态
+
+- [x] 严格分派 `scalable3d-stage-timings-v2` 与无 schema legacy CSV。
+- [x] v2 强制校验完整字段、显式 `distribution_available`、缺失原因、有限非负值、
+  `P50 <= P95 <= max`、均值不大于最大值和 stage 唯一性。
+- [x] v2 分布不可用时要求三个分位全空且原因非空；可用时要求三个分位齐全且原因为空。
+- [x] legacy 无分位列时输出 `null/unavailable`；legacy 有完整三列但无 availability 列时按三项
+  完整性推断，半缺数据失败关闭。
+- [x] 逐 episode CSV 输出各阶段 P50/P95/max、逐指标 availability 和分布 availability。
+- [x] 跨 seed 聚合输出 episode 分位的描述统计、可用 episode/seed 数和缺失原因；原始调用样本
+  未落盘时不计算 pooled quantile。
+- [x] 中文报告增加阶段尾延时表，明确其为 episode 内调用分位的 seed 分布，并保留规模和证据边界。
+- [x] 覆盖正常 v2、legacy、半缺、非有限、顺序错误、重复 stage 和混合 availability；D6 全量
+  `555 passed, 1 warning`。
+- [ ] main 使用当前 v2 producer 生成 clean 200 对 200 多 seed episode，并由 D6 v7 重建逐 seed
+  CSV、聚合 JSON 和中文报告。
+- [ ] main 若要正式称为“稳定窗口尾延时”，需在场景/manifest 中冻结稳定窗口定义；D6 不从目录名
+  或 5v5 冒烟自行推断。
+- [ ] 如需 pooled P50/P95/max，main 必须另行持久化可审计的原始逐调用样本；D6 不从 episode
+  分位反推 pooled quantile。
+
+`AIRSIM_INTEGRATION_PLAN.md` 已检查。本次只扩展三维质点 `stage_timings.csv` 的离线消费和报告，
+不改变 AirSim JSONL producer、reset、话题或控制接口，因此无需修改。
+
 ## 2026-07-22 clean 20-seed runtime v2 状态
 
 - [x] 独立读取 source manifest、summary、逐 episode `resource_usage.txt`、D6 v6 逐 seed CSV、

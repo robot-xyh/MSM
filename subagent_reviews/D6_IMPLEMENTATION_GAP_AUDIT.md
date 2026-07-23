@@ -1,5 +1,33 @@
 # D6 实现差距审计
 
+## 2026-07-22 stage timing v2 GAP 更新
+
+### 已关闭的 D6-owned P1
+
+1. `scalable3d-stage-timings-v2` 已进入 scalable 3D 离线 consumer。schema、基础字段、分位字段、
+   显式 availability 和不可用原因均严格校验；重复 stage 和非法分布失败关闭。
+2. v2 可用分布要求 P50/P95/max 全部存在、有限、非负且有序，均值不超过最大值；不可用分布要求
+   三项全空并给出原因。缺失不能补 0。
+3. 无 schema legacy 保持兼容。无分位列或三项全空时保持 unavailable；三项齐全时推断 available；
+   列或值半缺时拒绝。
+4. 逐 episode CSV、跨 seed group aggregate 和中文 Markdown 已接入三个分位及 availability。
+   聚合明确描述各 episode 内单次调用分位在 seed 间的分布，不生成 pooled quantile。
+5. 正常 v2、显式不可用、legacy、半缺、非有限、顺序错误、均值上界、重复 stage 和混合可用性均有
+   回归。D6 全量为 `555 passed, 1 warning`。
+
+### 仍开放的 P1
+
+1. main 尚未提供由当前 v2 producer 生成的 clean 200 对 200 多 seed 正式输入。现有 clean
+   20-seed 产物是旧计时格式，不能据此回填真实阶段 P50/P95/max。
+2. “稳定窗口”必须由 main 冻结并写入场景或 manifest。D6 当前只消费完整 episode 分位，不从路径、
+   时长或场景名猜测稳定窗口。
+3. producer 只落盘 episode 汇总分位，没有逐调用样本。D6 可统计 episode 分位的 seed 分布，但
+   pooled P50/P95/max 必须保持 unavailable。
+4. 正式实验矩阵、实时容量和五米物理闭环仍按既有 GAP 保持开放。5v5 冒烟不能替代 200 对 200
+   性能证据。
+
+当前没有新增 P0。AirSim 接口未改变，`AIRSIM_INTEGRATION_PLAN.md` 检查后无需更新。
+
 ## 2026-07-22 clean 20-seed runtime v2 GAP 更新
 
 ### 已关闭的 D6-owned P1

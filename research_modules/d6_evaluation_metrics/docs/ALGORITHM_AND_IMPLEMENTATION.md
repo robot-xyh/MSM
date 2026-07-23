@@ -1,5 +1,58 @@
 # D6 系统级离线评估：算法原理与实施说明
 
+## scalable 3D 阶段分位消费算法（2026-07-22）
+
+`stage_timings.csv` 先按表头分派。表头包含 `schema_version` 时，只接受
+`scalable3d-stage-timings-v2`，并强制存在累计字段、P50/P95/max、`distribution_available` 和
+`distribution_unavailable_reason`。无 schema 的历史表至少保留 stage、call count、累计墙钟和
+单次均值；分位三列必须全有或全无，legacy 不允许只声明部分 availability 字段。
+
+每行先校验 stage 非空且文件内唯一，再解析非负整数调用数和有限非负耗时。v2 分布状态按以下规则
+处理：
+
+```text
+available = true:
+    P50, P95, max 全部存在
+    unavailable_reason 为空
+    0 <= P50 <= P95 <= max
+    mean <= max
+
+available = false:
+    P50, P95, max 全部为空
+    unavailable_reason 非空
+```
+
+legacy 有完整分位三元组时按 available 处理，并执行同样的数值和顺序检查；三项全空或分位列不存在
+时按 unavailable 处理。任何半缺、非有限、负数、未知 schema、状态和值冲突或重复 stage 均抛出
+`Scalable3DOfflineEvaluationError`，不从其他文件补值。
+
+逐 episode 行使用稳定前缀 `stage__<slug>__`。三个分位各自携带 value、availability 和
+unavailable reason，同时给出阶段级 `distribution_availability`。legacy 无分位时 value 写为 null，
+CSV 单元格为空，JSON 保留 null。
+
+跨 seed 聚合对每个阶段分别计算：
+
+```text
+q_e = episode e 内该阶段全部单次调用样本的 P50、P95 或 max
+group statistics = distribution({q_e | q_e available})
+seed statistic = mean({q_e | episode e belongs to the same seed})
+bootstrap CI = percentile bootstrap over distinct seed statistics
+```
+
+聚合同时输出可用 episode 数、不可用 episode 数、可用 seed 数和不可用原因分布。部分 seed 缺少
+分位时状态为 `partially_available`，不会缩小总 episode 分母。由于输入没有逐调用样本，以下量固定
+不可用：
+
+```text
+pooled P50 over all calls
+pooled P95 over all calls
+pooled max over all calls
+```
+
+中文报告中的 P50/P95/max 写为“各 episode 分位的跨 seed 均值 [最小值, 最大值]”。报告明确该表
+不是 pooled quantile，并只在 main 显式冻结稳定窗口后解释为稳定窗口尾延时。离线评估输出 schema
+由 v6 升级为 `d6-scalable3d-offline-evaluation-v7`。
+
 ## clean 20-seed 批次复核流程（2026-07-22）
 
 复核先枚举批次根目录下同时具有 manifest、scenario config 和 summary 的主 episode，不递归把

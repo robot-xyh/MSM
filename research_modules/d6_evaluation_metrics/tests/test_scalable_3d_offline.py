@@ -17,12 +17,27 @@ from d6_evaluation_metrics.scalable_3d_offline import (
     SCALABLE_3D_OFFLINE_EVALUATION_DATE,
     SCALABLE_3D_OFFLINE_EVALUATION_SCHEMA_VERSION,
     SCALABLE_3D_SCHEMA_REGISTRY_VERSION,
+    SCALABLE_3D_STAGE_TIMING_SCHEMA_VERSION,
+    Scalable3DOfflineEvaluationError,
     Scalable3DOfflineEvaluationInputs,
     Scalable3DOfflineReportGenerator,
     aggregate_scalable_3d_episodes,
     discover_scalable_3d_episode_dirs,
     evaluate_scalable_3d_episode,
 )
+
+_STAGE_TIMING_V2_FIELDS = [
+    "schema_version",
+    "stage",
+    "call_count",
+    "wall_time_s",
+    "mean_wall_time_ms",
+    "p50_wall_time_ms",
+    "p95_wall_time_ms",
+    "max_wall_time_ms",
+    "distribution_available",
+    "distribution_unavailable_reason",
+]
 
 
 def _write_json(path: Path, payload: object) -> None:
@@ -642,6 +657,49 @@ def _write_episode(
     return directory
 
 
+def _replace_stage_timings(
+    episode: Path,
+    rows: list[dict[str, object]],
+    *,
+    fieldnames: list[str] | None = None,
+) -> None:
+    with (episode / "stage_timings.csv").open(
+        "w", newline="", encoding="utf-8"
+    ) as stream:
+        writer = csv.DictWriter(
+            stream,
+            fieldnames=fieldnames or _STAGE_TIMING_V2_FIELDS,
+        )
+        writer.writeheader()
+        writer.writerows(rows)
+
+
+def _v2_stage_timing_row(
+    *,
+    stage: str = "module.d1_fusion",
+    call_count: int = 10,
+    wall_time_s: float = 0.1,
+    mean_wall_time_ms: float = 10.0,
+    p50_wall_time_ms: object = 8.0,
+    p95_wall_time_ms: object = 14.0,
+    max_wall_time_ms: object = 20.0,
+    distribution_available: object = True,
+    distribution_unavailable_reason: object = None,
+) -> dict[str, object]:
+    return {
+        "schema_version": SCALABLE_3D_STAGE_TIMING_SCHEMA_VERSION,
+        "stage": stage,
+        "call_count": call_count,
+        "wall_time_s": wall_time_s,
+        "mean_wall_time_ms": mean_wall_time_ms,
+        "p50_wall_time_ms": p50_wall_time_ms,
+        "p95_wall_time_ms": p95_wall_time_ms,
+        "max_wall_time_ms": max_wall_time_ms,
+        "distribution_available": distribution_available,
+        "distribution_unavailable_reason": distribution_unavailable_reason,
+    }
+
+
 def _apply_producer_matrix_contract(
     episode: Path,
     *,
@@ -1121,7 +1179,11 @@ def test_current_schema_registry_matches_real_producer_contract(tmp_path: Path) 
 
     assert SCALABLE_3D_SCHEMA_REGISTRY_VERSION == "d6-scalable3d-schema-registry-v1"
     assert SCALABLE_3D_OFFLINE_EVALUATION_SCHEMA_VERSION == (
-        "d6-scalable3d-offline-evaluation-v6"
+        "d6-scalable3d-offline-evaluation-v7"
+    )
+    assert (
+        SCALABLE_3D_STAGE_TIMING_SCHEMA_VERSION
+        == "scalable3d-stage-timings-v2"
     )
     assert SCALABLE_3D_OFFLINE_EVALUATION_DATE == "2026-07-22"
     assert row["evaluation_date"] == "2026-07-22"
@@ -1155,6 +1217,305 @@ def test_current_schema_registry_matches_real_producer_contract(tmp_path: Path) 
             "reason": None,
         }
     assert row["formal_acceptance_eligible"] is True
+
+
+def test_stage_timing_v2_exposes_episode_quantiles_and_availability(
+    tmp_path: Path,
+) -> None:
+    episode = _write_episode(tmp_path / "stage_timing_v2", seed=11)
+    _replace_stage_timings(
+        episode,
+        [
+            _v2_stage_timing_row(
+                call_count=20,
+                wall_time_s=0.24,
+                mean_wall_time_ms=12.0,
+                p50_wall_time_ms=9.0,
+                p95_wall_time_ms=18.0,
+                max_wall_time_ms=25.0,
+            )
+        ],
+    )
+
+    row = evaluate_scalable_3d_episode(episode)
+    prefix = "stage__module_d1_fusion"
+
+    assert row[f"{prefix}__p50_wall_time_ms"] == 9.0
+    assert row[f"{prefix}__p95_wall_time_ms"] == 18.0
+    assert row[f"{prefix}__max_wall_time_ms"] == 25.0
+    assert row[f"{prefix}__p95_wall_time_ms_availability"] == "available"
+    assert row[f"{prefix}__distribution_availability"] == "available"
+    timing = row["stage_timings_json"]["module.d1_fusion"]
+    assert timing["schema_version"] == SCALABLE_3D_STAGE_TIMING_SCHEMA_VERSION
+    assert timing["distribution_available"] is True
+    assert timing["distribution_unavailable_reason"] is None
+    assert timing["distribution_availability_source"] == "explicit_v2"
+
+
+def test_stage_timing_legacy_without_quantiles_keeps_distribution_unavailable(
+    tmp_path: Path,
+) -> None:
+    episode = _write_episode(tmp_path / "stage_timing_legacy", seed=12)
+
+    row = evaluate_scalable_3d_episode(episode)
+    prefix = "stage__module_d1_fusion"
+
+    assert row[f"{prefix}__p50_wall_time_ms"] is None
+    assert row[f"{prefix}__p95_wall_time_ms"] is None
+    assert row[f"{prefix}__max_wall_time_ms"] is None
+    assert row[f"{prefix}__distribution_availability"] == "unavailable"
+    assert row[f"{prefix}__p50_wall_time_ms_unavailable_reason"] == (
+        "legacy_stage_timing_distribution_columns_absent"
+    )
+    timing = row["stage_timings_json"]["module.d1_fusion"]
+    assert timing["schema_version"] is None
+    assert timing["distribution_available"] is False
+    assert timing["distribution_availability_source"] == "legacy_inferred"
+
+
+def test_stage_timing_legacy_complete_quantiles_infer_available(
+    tmp_path: Path,
+) -> None:
+    episode = _write_episode(tmp_path / "stage_timing_legacy_quantiles", seed=13)
+    fieldnames = [
+        "stage",
+        "call_count",
+        "wall_time_s",
+        "mean_wall_time_ms",
+        "p50_wall_time_ms",
+        "p95_wall_time_ms",
+        "max_wall_time_ms",
+    ]
+    _replace_stage_timings(
+        episode,
+        [
+            {
+                "stage": "module.d1_fusion",
+                "call_count": 10,
+                "wall_time_s": 0.1,
+                "mean_wall_time_ms": 10.0,
+                "p50_wall_time_ms": 8.0,
+                "p95_wall_time_ms": 16.0,
+                "max_wall_time_ms": 20.0,
+            }
+        ],
+        fieldnames=fieldnames,
+    )
+
+    row = evaluate_scalable_3d_episode(episode)
+    timing = row["stage_timings_json"]["module.d1_fusion"]
+
+    assert timing["distribution_available"] is True
+    assert timing["distribution_availability_source"] == "legacy_inferred"
+    assert row["stage__module_d1_fusion__p95_wall_time_ms"] == 16.0
+
+
+def test_stage_timing_legacy_blank_quantile_triplet_infers_unavailable(
+    tmp_path: Path,
+) -> None:
+    episode = _write_episode(tmp_path / "stage_timing_legacy_blank", seed=131)
+    fieldnames = [
+        "stage",
+        "call_count",
+        "wall_time_s",
+        "mean_wall_time_ms",
+        "p50_wall_time_ms",
+        "p95_wall_time_ms",
+        "max_wall_time_ms",
+    ]
+    _replace_stage_timings(
+        episode,
+        [
+            {
+                "stage": "module.d1_fusion",
+                "call_count": 10,
+                "wall_time_s": 0.1,
+                "mean_wall_time_ms": 10.0,
+                "p50_wall_time_ms": "",
+                "p95_wall_time_ms": "",
+                "max_wall_time_ms": "",
+            }
+        ],
+        fieldnames=fieldnames,
+    )
+
+    row = evaluate_scalable_3d_episode(episode)
+    timing = row["stage_timings_json"]["module.d1_fusion"]
+
+    assert timing["distribution_available"] is False
+    assert timing["distribution_unavailable_reason"] == (
+        "legacy_stage_timing_distribution_values_absent"
+    )
+    assert row["stage__module_d1_fusion__max_wall_time_ms"] is None
+
+
+@pytest.mark.parametrize(
+    ("changes", "message"),
+    [
+        ({"p95_wall_time_ms": ""}, "must provide all quantiles"),
+        ({"p95_wall_time_ms": "nan"}, "nonfinite or negative p95_wall_time_ms"),
+        (
+            {"p50_wall_time_ms": 15.0, "p95_wall_time_ms": 14.0},
+            "p50 <= p95 <= max",
+        ),
+        (
+            {"mean_wall_time_ms": 21.0, "max_wall_time_ms": 20.0},
+            "mean stage timing cannot exceed max",
+        ),
+        (
+            {
+                "distribution_available": False,
+                "p50_wall_time_ms": "",
+                "p95_wall_time_ms": "",
+                "max_wall_time_ms": "",
+                "distribution_unavailable_reason": None,
+            },
+            "requires a reason",
+        ),
+        (
+            {
+                "distribution_available": False,
+                "distribution_unavailable_reason": "samples_unavailable",
+            },
+            "must leave all quantiles empty",
+        ),
+    ],
+)
+def test_stage_timing_v2_rejects_invalid_distribution_contract(
+    tmp_path: Path,
+    changes: dict[str, object],
+    message: str,
+) -> None:
+    episode = _write_episode(tmp_path / f"invalid_{len(changes)}", seed=14)
+    row = _v2_stage_timing_row()
+    row.update(changes)
+    _replace_stage_timings(episode, [row])
+
+    with pytest.raises(Scalable3DOfflineEvaluationError, match=message):
+        evaluate_scalable_3d_episode(episode)
+
+
+def test_stage_timing_v2_rejects_partial_header_and_unknown_schema(
+    tmp_path: Path,
+) -> None:
+    partial = _write_episode(tmp_path / "partial_header", seed=15)
+    fields = [
+        field
+        for field in _STAGE_TIMING_V2_FIELDS
+        if field != "max_wall_time_ms"
+    ]
+    row = _v2_stage_timing_row()
+    row.pop("max_wall_time_ms")
+    _replace_stage_timings(partial, [row], fieldnames=fields)
+    with pytest.raises(
+        Scalable3DOfflineEvaluationError,
+        match="v2 stage timing fields missing",
+    ):
+        evaluate_scalable_3d_episode(partial)
+
+    unknown = _write_episode(tmp_path / "unknown_schema", seed=16)
+    row = _v2_stage_timing_row()
+    row["schema_version"] = "scalable3d-stage-timings-v99"
+    _replace_stage_timings(unknown, [row])
+    with pytest.raises(
+        Scalable3DOfflineEvaluationError,
+        match="unsupported stage timing schema",
+    ):
+        evaluate_scalable_3d_episode(unknown)
+
+
+def test_stage_timing_v2_rejects_duplicate_stage(tmp_path: Path) -> None:
+    episode = _write_episode(tmp_path / "duplicate_stage", seed=17)
+    _replace_stage_timings(
+        episode,
+        [_v2_stage_timing_row(), _v2_stage_timing_row()],
+    )
+
+    with pytest.raises(Scalable3DOfflineEvaluationError, match="duplicate stage"):
+        evaluate_scalable_3d_episode(episode)
+
+
+def test_stage_timing_cross_seed_mixed_availability_is_not_pooled_quantile(
+    tmp_path: Path,
+) -> None:
+    available = _write_episode(tmp_path / "mixed" / "seed_21", seed=21)
+    unavailable = _write_episode(tmp_path / "mixed" / "seed_22", seed=22)
+    _replace_stage_timings(
+        available,
+        [
+            _v2_stage_timing_row(
+                p50_wall_time_ms=8.0,
+                p95_wall_time_ms=14.0,
+                max_wall_time_ms=20.0,
+            )
+        ],
+    )
+    _replace_stage_timings(
+        unavailable,
+        [
+            _v2_stage_timing_row(
+                p50_wall_time_ms="",
+                p95_wall_time_ms="",
+                max_wall_time_ms="",
+                distribution_available=False,
+                distribution_unavailable_reason=(
+                    "child_timing_distribution_unavailable"
+                ),
+            )
+        ],
+    )
+
+    outputs = Scalable3DOfflineReportGenerator().write_report_bundle(
+        tmp_path / "mixed_report",
+        inputs=Scalable3DOfflineEvaluationInputs((available, unavailable)),
+        bootstrap_resamples=100,
+        bootstrap_rng_seed=20260722,
+    )
+    aggregate = json.loads(outputs["aggregate_json"].read_text(encoding="utf-8"))
+    timing = aggregate["groups"][0]["stage_timing"]["module.d1_fusion"]
+
+    assert timing["distribution_availability"] == "partially_available"
+    assert timing["distribution_available_episode_count"] == 1
+    assert timing["distribution_unavailable_episode_count"] == 1
+    assert timing["distribution_available_seed_count"] == 1
+    assert timing["distribution_unavailability_reason_distribution"] == {
+        "child_timing_distribution_unavailable": 1
+    }
+    assert timing["p50_wall_time_ms"]["episode_value_count"] == 1
+    assert timing["p50_wall_time_ms"]["seed_value_count"] == 1
+    assert timing["p50_wall_time_ms"]["mean"] == 8.0
+    assert timing["p50_wall_time_ms"]["is_pooled_call_quantile"] is False
+    assert timing["pooled_call_quantiles"] == {
+        "availability": "unavailable",
+        "unavailable_reason": "raw_per_call_timing_samples_not_persisted",
+        "p50_wall_time_ms": None,
+        "p95_wall_time_ms": None,
+        "max_wall_time_ms": None,
+    }
+    assert "seed distribution of episode-level call quantiles" in aggregate[
+        "stage_timing_quantile_semantics"
+    ]["cross_seed_statistic"]
+
+    with outputs["per_episode_seed_csv"].open(
+        newline="", encoding="utf-8"
+    ) as stream:
+        per_episode = list(csv.DictReader(stream))
+    unavailable_row = next(row for row in per_episode if row["seed"] == "22")
+    prefix = "stage__module_d1_fusion"
+    assert unavailable_row[f"{prefix}__p95_wall_time_ms"] == ""
+    assert unavailable_row[f"{prefix}__p95_wall_time_ms_availability"] == (
+        "unavailable"
+    )
+    assert unavailable_row[f"{prefix}__distribution_availability"] == (
+        "unavailable"
+    )
+
+    markdown = outputs["markdown"].read_text(encoding="utf-8")
+    assert "## 稳定窗口阶段尾延时" in markdown
+    assert "不是把 seed P95 当成全部调用样本的合并 P95" in markdown
+    assert "不计算 pooled quantile" in markdown
+    assert "child_timing_distribution_unavailable" in markdown
+    assert "5v5 冒烟结果不会被写成 200 对 200 性能验收" in markdown
 
 
 def test_v2_posterior_governance_is_integrated_and_fails_formal_on_repeat(
