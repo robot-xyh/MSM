@@ -1558,3 +1558,20 @@ clean source commit `0d2da25` 的 seed 1000 只读复算中，严格 IDSW 保持
 5. **后续未见 seed 由首个 gate seed 控制**：seed 1100 是首个预留的未见 gate seed；
    它未同时满足 strict 指标可用、D2/D3 非退化和绑定违规为 0，因此扩展 seeds
    1101/1102 停止。候选继续默认关闭。
+
+## 三十四、恢复发布新鲜度原则（2026-07-23）
+
+1. **水位线和发布年龄是两个条件**：原始证据时刻晚于歧义水位线，只证明它不是歧义期
+   的旧证据。当前 D2 tracker frame 减原始量测时刻还必须不超过 `0.9 s`，否则该证据
+   到发布时已经超出固定谱系新鲜度预算。
+2. **当前时钟必须由 tracker 明示**：恢复门控使用 `Scalable3DTracker.step()` 的统一
+   frame timestamp。`Detection3D.measurement_timestamp` 是延迟补偿后的状态有效时刻，
+   必须与该 frame 相等；原始传感器量测时刻保存在独立 metadata。状态时刻不一致的输入
+   由 OOSM 合同拒绝。
+3. **超龄恢复继续未提交**：超龄证据在量测更新前撤回，不增加 hit、不更新状态、不绑定
+   claim、不建新航迹。航迹保持 `identity_uncommitted_after_hold`，等待新的原始证据。
+4. **兼容关闭不用于准入**：配置 v2 允许显式关闭发布新鲜度门控，以复现旧版本只检查
+   水位线和 replay 的行为。默认值保持开启；候选准入不能使用兼容关闭。
+5. **模块通过不等于系统通过**：2026-07-23 的确定性专项为 `32 passed`，完整 D2 为
+   `291 passed, 1 warning in 29.48s`。新的 clean seed 1100 A/B 尚未执行，strict 指标和
+   D2/D3 非退化仍需 main 复核，seeds 1101/1102 继续停止。

@@ -947,6 +947,7 @@ class Scalable3DTracker:
                 track,
                 detection,
                 evidence,
+                tracker_frame_timestamp=timestamp,
             )
             if block_reason is None:
                 accepted_pairs.append(pair)
@@ -998,6 +999,7 @@ class Scalable3DTracker:
                     detection,
                     evidence,
                     association_state="matched",
+                    tracker_frame_timestamp=timestamp,
                 )
 
         replay_coast_events: list[dict[str, Any]] = []
@@ -1729,6 +1731,8 @@ class Scalable3DTracker:
         track: GlobalTrack3D,
         detection: Detection3D,
         evidence: _ObservationEvidence | None,
+        *,
+        tracker_frame_timestamp: float,
     ) -> str | None:
         previous = self._identity_commitments.get(track.global_track_id)
         barrier = self._identity_recovery_blockers.get(
@@ -1779,6 +1783,17 @@ class Scalable3DTracker:
             + self.observation_timestamp_tolerance_s
         ):
             return "source_measurement_not_after_ambiguity_watermark"
+        recovery_config = self.identity_commitment_recovery_config
+        if (
+            recovery_config.publication_freshness_gate_enabled
+            and tracker_frame_timestamp - source_timestamp
+            > recovery_config.max_recovery_evidence_age_seconds
+            + self.observation_timestamp_tolerance_s
+        ):
+            return (
+                "source_observation_outside_recovery_publication_"
+                "freshness_window"
+            )
         return None
 
     def _first_accepted_original_evidence_block_reason(
@@ -2040,12 +2055,14 @@ class Scalable3DTracker:
         evidence: _ObservationEvidence,
         *,
         association_state: str,
+        tracker_frame_timestamp: float,
     ) -> None:
         previous = self._identity_commitments.get(track.global_track_id)
         block_reason = self._identity_observation_acceptance_block_reason(
             track,
             detection,
             evidence,
+            tracker_frame_timestamp=tracker_frame_timestamp,
         )
         if block_reason is not None:
             self._record_identity_recovery_block(

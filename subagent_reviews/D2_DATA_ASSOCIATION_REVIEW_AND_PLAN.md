@@ -77,12 +77,14 @@ D2-owned 修复已经实现。`Scalable3DTracker` 不再把 lease expiry 当作�
 相关 component 的最大 measurement timestamp。lease 释放 claim reservation 时不删除
 这组状态。恢复要求 key 未被阻断、source timestamp 严格晚于水位线、claim 为本扫描首次
 接纳且 replay count 为 0、活动 lease 为 0、truth-free disposition 为
-`target_candidate`。
+`target_candidate`，并要求当前 D2 tracker frame timestamp 减原始 source
+measurement timestamp 不超过版本化发布新鲜度预算。
 
 恢复门控已放在量测更新之前。旧候选 key 在 reservation 删除后重新送入，不再更新状态、
-增加 hit、写入 `detection_to_track` 或绑定 observation claim。容量默认限制为每航迹
-2048 个、全局 250000 个。未溢出状态在合法恢复后清理；溢出保持 fail-closed，只在永久
-drop 时清理。
+增加 hit、写入 `detection_to_track` 或绑定 observation claim。恢复配置 schema 为
+`d2.identity-commitment-recovery-config.v2`，默认预算 `0.9 s`；显式关闭仅用于复现旧
+水位线/replay 行为。容量默认限制为每航迹 2048 个、全局 250000 个。未溢出状态在合法
+恢复后清理；溢出保持 fail-closed，只在永久 drop 时清理。
 
 公开 DTO 为 `d2.identity-evidence-commitment.v2`。每帧输出关联状态、承诺原因、双
 时间戳、commitment/component/evidence generation、publisher epoch、lease key、
@@ -99,10 +101,11 @@ v1 构造和序列化保持原样。
 `known_false_alarm/unknown` 在本合同中只表示不读取离线 truth sidecar 的上游传感器
 处置。D2 在线路径不从 actor/truth label 推导该字段。
 
-2026-07-23 D2 当前完整回归为 `286 passed, 1 warning in 29.01s`。专项覆盖 hold、到期、旧 key 在
+2026-07-23 D2 当前完整回归为 `291 passed, 1 warning in 29.48s`。专项覆盖 hold、到期、旧 key 在
 reservation 释放后重入、同水位线新 key、更晚新 key、容量溢出、重复、超龄、已知假警、
-未知处置、未来来源时刻、新鲜恢复、无 hold 正常路径、37 目标、v1/v2 评分和 audit
-独立重算。该证据关闭 D2-owned 合同缺口。
+未知处置、未来来源时刻、发布超龄保持未提交、后续合格证据恢复、Detection/tracker
+frame 不一致拒绝、兼容关闭、无 hold 正常路径、37 目标、v1/v2 评分和 audit 独立重算。
+该证据关闭 D2-owned 合同缺口。
 
 main 和 D6 已在 clean 提交 `909669b` 完成 v2 原子持久化、聚合，以及以首个预留的
 未见 gate seed 1100 开展的 A/B。
@@ -114,17 +117,18 @@ binding violation 均为 0，online truth use 为 0。
 
 三个恢复航迹 `GT3D-000185/000186/000202` 的新原始雷达量测时刻为 `1.2 s`，在
 `2.130815 s` 评分时超过固定 `0.9 s` lineage window 约 `0.030815 s`。candidate
-strict IDSW/continuity 仍 unavailable。评审接受 v2 合同和 fail-closed 行为，不接受
-算法晋级；候选保持默认关闭，seeds 1101/1102 停止，且不得扩大 `0.9 s` window。
+strict IDSW/continuity 在该次 A/B 中 unavailable。D2 已针对该阻断加入恢复发布新鲜度
+门控，但新的 clean A/B 尚未执行。评审继续不接受算法晋级；候选保持默认关闭，seeds
+1101/1102 停止，且不得扩大 `0.9 s` window。
 
 ## 0. P0/P1 缺口快照
 
 - **P0**：无开放 blocker。GNN/Hungarian、显式 `id_switch_count`、`track_continuity`、risk summary、replay helper、按输入集合长度运行、航迹质量评分、运动一致性约束和 quality-aware gate baseline 已是当前主线。seed1005 v3 验收已允许 replay=0 或有界 replay，见第 32 节。
 - **P1 合同层已闭合**：D1 governed adapter、online/offline truth 分离、association log/profile version、`d2-offline-truth-label/v1`、N-target dense/crossing fixture、至少 10-seed runner、availability-aware summary、M-of-N/false-track/NIS/NEES 接口及中心 canonical registry 基础已回归。
 - **结构歧义保持集成 P1 仍开放**：D2-owned commitment v2、main 持久化和 D6 聚合
-  已实现；seed 1100 已按 v2 重测。未提交绑定违规和在线 truth use 均为 0，但三个恢复
-  航迹超出固定 lineage window `0.030815 s`，strict 指标仍不可用，D2/D3 数量也从
-  `203/200` 降至 `201/197`。候选继续默认关闭；扩大 `0.9 s` window 不构成修复。
+  已实现；恢复发布新鲜度门控已通过模块测试。旧 seed 1100 A/B 的未提交绑定违规和在线
+  truth use 均为 0，但 strict 指标不可用，D2/D3 数量也从 `203/200` 降至 `201/197`。
+  新门控尚未复跑 clean seed 1100，候选继续默认关闭；扩大 `0.9 s` window 不构成修复。
 - **P1 完整冻结 v2 证据已生成，长期标定仍开放**：最佳 GNN 候选 IDSW `1.358333 -> 0.616667`（下降 `54.6012%`），continuity `0.981046 -> 0.983954`，P95 `15.470 ms`；false-track/truth leakage 均为 0。总体联合 gate 全部通过，`promotion_recommended=true`；分档仅 clutter/combined 通过，另外四档 baseline IDSW=0 fail-closed。后续 P1 是跨模块评审、更长 OOSM/遮挡/杂波和生命周期标定，不再是缺少 v2 联合报告。
 - **历史基线**：2026-07-10 的 5v5/2v2 批次和 2026-07-11 早期的 seeds 7/17/27 当时不足以关闭 D2 P1，且 T001 双 primary 尚未通过。这些只作为实施前/过渡基线，不代表当前状态。
 - **当前 ComputerVision 证据**：M=5、N=2 的 10 seeds 中，T001 双 primary 共识/计划授权为 8/10；D2 `id_switch_count=0`、错误 duplicate=0、`global_track_id` 改写/重绑=0 均为 10/10。
@@ -148,9 +152,9 @@ strict IDSW/continuity 仍 unavailable。评审接受 v2 合同和 fail-closed �
   `2.928830 -> 2.204672 s`，但早/晚 regular 窗口比
   `1.119661x -> 1.123036x`。本轮只关闭三个可证明的常数成本热点，长窗口 P1 保持
   开放；该阶段完整 D2 回归为 `234 passed, 1 warning in 34.83s`。歧义保持增量后的
-  保持租约阶段回归为 `271 passed, 1 warning in 28.82s`；身份证据承诺 v2、恢复
-  水位线和 evaluator audit 加固后当前完整回归为
-  `286 passed, 1 warning in 29.01s`。
+  保持租约阶段回归为 `271 passed, 1 warning in 28.82s`；身份证据承诺 v2 与
+  evaluator audit 阶段为 `286 passed, 1 warning in 29.01s`；恢复发布新鲜度门控加入后
+  当前完整回归为 `291 passed, 1 warning in 29.48s`。
 
 ## 1. 研究问题
 

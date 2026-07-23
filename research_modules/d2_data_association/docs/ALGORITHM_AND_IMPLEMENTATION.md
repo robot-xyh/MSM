@@ -353,7 +353,16 @@ watermark 的观测均不能恢复。
 `IdentityCommitmentRecoveryConfig` 默认限制每航迹 2048 个阻断 key、全局 250000 个。
 容量溢出置位后保持 fail-closed，因为未保存的历史 key 无法再被证明为新证据。真正恢复
 只清理未溢出的集合；溢出集合在航迹永久 dropped 后清理。重复航迹合并时取集合并集和
-最大水位线。在线
+最大水位线。配置 schema v2 另定义恢复发布新鲜度预算。设当前 D2 tracker frame 为
+`t_k`，原始传感器量测时刻为 `t_s`，默认要求：
+
+\[
+0 \le t_k-t_s \le 0.9\ \mathrm{s}
+\]
+
+该门控只在 hold 后恢复身份承诺时启用。超出预算的首次原始证据仍被记录为恢复阻断，
+但不能更新航迹、增加 hit 或提交身份；后续具有新 key、晚于水位线且满足年龄预算的
+证据才可恢复。显式关闭门控只复现旧水位线/replay 行为。在线
 `identity_evidence_disposition` 只允许 `target_candidate`、`known_false_alarm` 和
 `unknown`。它是传感器、杂波分类器或人工规则给出的 truth-free 处置，不读取离线仿真
 truth sidecar。
@@ -412,6 +421,17 @@ after hold；未提交 source/candidate binding violation 均为 0，online trut
 `0.030815 s`，使 candidate strict IDSW 和 continuity 仍为 unavailable。该结果验证
 上述状态机、v1/v2 兼容、evaluator 口径和 fail-closed 绑定约束，但没有通过算法准入。
 不得通过扩大 `0.9 s` window 消除阻断；候选保持默认关闭，seeds 1101/1102 停止。
+
+2026-07-23 已在 D2 内实现上述发布新鲜度门控。门控接收显式 tracker frame timestamp，
+不从原始 source timestamp 推断当前发布时刻。`Detection3D.measurement_timestamp`
+仍表示 D1 延迟补偿后的统一状态有效时刻，必须与本次 tracker frame 相等；原始量测时刻
+由 `source_measurement_timestamp` 单独携带。状态时刻滞后的 Detection 直接进入 OOSM
+合同拒绝，不能利用较早时钟绕过发布新鲜度判定。
+
+完整 D2 回归为 `291 passed, 1 warning in 29.48s`。该结果证明模块行为，不代表 clean
+seed 1100 已重新通过。此前三条超窗恢复发生在旧候选制品中；main 仍需用新代码复跑同一
+baseline/candidate，并同时检查 strict 指标可用、绑定违规为 0、在线 truth use 为 0 和
+D2/D3 非退化。
 
 ## 4. 默认算法主线
 

@@ -17,6 +17,7 @@ from d2_data_association import (
     D1_STRUCTURAL_AMBIGUITY_MEMBER_TOKEN_RULE,
     D1_STRUCTURAL_AMBIGUITY_SOURCE_KEY_RULE,
     D1_STRUCTURAL_AMBIGUITY_UPDATE_MODE,
+    D2_IDENTITY_COMMITMENT_RECOVERY_CONFIG_SCHEMA_VERSION,
     D2_IDENTITY_EVIDENCE_COMMITMENT_SCHEMA_VERSION,
     AmbiguityComponent3D,
     AmbiguityComponentValidationError,
@@ -837,6 +838,257 @@ def test_released_hold_candidate_key_cannot_recommit_until_newer_key_arrives() -
     assert recovered.metadata["identity_commitment_recovery_barrier"][
         "stored_blocked_key_count"
     ] == 0
+
+
+def test_publication_stale_recovery_waits_for_newer_original_evidence() -> None:
+    tracker = Scalable3DTracker(
+        ambiguity_hold_config=AmbiguityHoldLeaseConfig(
+            enabled=True,
+            gap_seconds=0.2,
+            hard_seconds=0.5,
+        ),
+        lost_miss_threshold=10,
+        drop_miss_threshold=20,
+        tentative_drop_miss_threshold=10,
+    )
+    initial = _source_detection(
+        "local-a",
+        0.0,
+        (0.0, 0.0, -100.0),
+        observation_evidence_key=_digest(
+            "d1-observation-sha256:",
+            ["publication-freshness-initial"],
+        ),
+    )
+    first = tracker.step([initial])
+    track_id = first.metadata["detection_to_track"][initial.detection_id]
+    tracker.step(
+        [
+            _source_detection(
+                "local-a",
+                0.05,
+                (0.05, 0.0, -100.0),
+                observation_evidence_key=_digest(
+                    "d1-observation-sha256:",
+                    ["publication-freshness-confirm"],
+                ),
+            )
+        ]
+    )
+    held = tracker.step(
+        [],
+        0.1,
+        ambiguity_components=[
+            _component_payload(
+                ("local-a",),
+                ("publication-freshness-held",),
+                0.1,
+                1,
+            )
+        ],
+    )
+    deadline = held.metadata["ambiguity_hold"]["active_leases"][0][
+        "soft_deadline"
+    ]
+    tracker.step([], deadline + 0.01)
+
+    stale_key = _digest(
+        "d1-observation-sha256:",
+        ["publication-stale-after-watermark"],
+    )
+    stale = _source_detection(
+        "local-a",
+        1.05,
+        (1.05, 0.0, -100.0),
+        observation_evidence_key=stale_key,
+    )
+    stale.metadata["source_measurement_timestamp"] = 0.11
+    stale_result = tracker.step([stale])
+    stale_commitment = stale_result.metadata[
+        "identity_commitment_by_track"
+    ][track_id]
+
+    assert stale_result.metadata[
+        "identity_commitment_suppressed_association_reason_counts"
+    ] == {
+        "source_observation_outside_recovery_publication_freshness_window": 1
+    }
+    assert stale.detection_id not in stale_result.metadata[
+        "detection_to_track"
+    ]
+    assert stale_commitment["identity_commitment_state"] == (
+        "identity_uncommitted_after_hold"
+    )
+    assert stale_commitment["source_observation_evidence_key"] is None
+
+    fresh_key = _digest(
+        "d1-observation-sha256:",
+        ["publication-fresh-after-stale"],
+    )
+    fresh = _source_detection(
+        "local-a",
+        1.06,
+        (1.06, 0.0, -100.0),
+        observation_evidence_key=fresh_key,
+    )
+    fresh.metadata["source_measurement_timestamp"] = 0.2
+    recovered = tracker.step([fresh])
+    recovered_commitment = recovered.metadata[
+        "identity_commitment_by_track"
+    ][track_id]
+
+    assert recovered_commitment["identity_commitment_state"] == "committed"
+    assert recovered_commitment["source_observation_evidence_key"] == fresh_key
+    assert recovered_commitment["measurement_timestamp"] == pytest.approx(0.2)
+    assert recovered_commitment["recovery_blocker_count"] == 0
+
+
+def test_lagged_detection_timestamp_cannot_bypass_tracker_frame_contract() -> None:
+    tracker = Scalable3DTracker()
+    lagged = _source_detection(
+        "local-a",
+        0.1,
+        (0.1, 0.0, -100.0),
+        observation_evidence_key=_digest(
+            "d1-observation-sha256:",
+            ["lagged-detection-state"],
+        ),
+    )
+    lagged.metadata["source_measurement_timestamp"] = 0.05
+
+    with pytest.raises(
+        ValueError,
+        match="all detections in a scan must share measurement_timestamp",
+    ):
+        tracker.step([lagged], timestamp=1.0)
+
+    assert tracker.state_timestamp is None
+    assert tracker.active_tracks() == []
+
+
+def test_publication_freshness_config_is_versioned_and_validated() -> None:
+    config = IdentityCommitmentRecoveryConfig()
+    payload = config.to_dict()
+
+    assert payload["schema_version"] == (
+        D2_IDENTITY_COMMITMENT_RECOVERY_CONFIG_SCHEMA_VERSION
+    )
+    assert payload["schema_version"].endswith(".v2")
+    assert payload["config_version"] == (
+        "d2-identity-recovery-publication-freshness-v2"
+    )
+    assert payload["publication_freshness_gate_enabled"] is True
+    assert payload["max_recovery_evidence_age_seconds"] == pytest.approx(0.9)
+    assert payload["publication_freshness_clock"] == (
+        "d2_tracker_frame_timestamp_minus_source_measurement_timestamp"
+    )
+    assert payload["publication_stale_behavior"] == (
+        "remain_uncommitted_until_newer_original_evidence"
+    )
+
+    with pytest.raises(ValueError, match="schema_version"):
+        IdentityCommitmentRecoveryConfig(
+            schema_version="d2.identity-commitment-recovery-config.v1"
+        )
+    with pytest.raises(TypeError, match="must be a bool"):
+        IdentityCommitmentRecoveryConfig(
+            publication_freshness_gate_enabled=1  # type: ignore[arg-type]
+        )
+    with pytest.raises(ValueError, match="finite and non-negative"):
+        IdentityCommitmentRecoveryConfig(
+            max_recovery_evidence_age_seconds=float("nan")
+        )
+
+
+def test_publication_freshness_gate_can_be_explicitly_disabled_for_compatibility() -> None:
+    tracker = Scalable3DTracker(
+        ambiguity_hold_config=AmbiguityHoldLeaseConfig(
+            enabled=True,
+            gap_seconds=0.2,
+            hard_seconds=0.5,
+        ),
+        identity_commitment_recovery_config=(
+            IdentityCommitmentRecoveryConfig(
+                config_version="legacy-watermark-only-test-v1",
+                publication_freshness_gate_enabled=False,
+            )
+        ),
+        lost_miss_threshold=10,
+        drop_miss_threshold=20,
+        tentative_drop_miss_threshold=10,
+    )
+    initial = _source_detection(
+        "local-a",
+        0.0,
+        (0.0, 0.0, -100.0),
+        observation_evidence_key=_digest(
+            "d1-observation-sha256:",
+            ["compatibility-initial"],
+        ),
+    )
+    first = tracker.step([initial])
+    track_id = first.metadata["detection_to_track"][initial.detection_id]
+    held = tracker.step(
+        [],
+        0.1,
+        ambiguity_components=[
+            _component_payload(
+                ("local-a",),
+                ("compatibility-held",),
+                0.1,
+                1,
+            )
+        ],
+    )
+    deadline = held.metadata["ambiguity_hold"]["active_leases"][0][
+        "soft_deadline"
+    ]
+    tracker.step([], deadline + 0.01)
+
+    stale = _source_detection(
+        "local-a",
+        1.05,
+        (1.05, 0.0, -100.0),
+        observation_evidence_key=_digest(
+            "d1-observation-sha256:",
+            ["compatibility-stale"],
+        ),
+    )
+    stale.metadata["source_measurement_timestamp"] = 0.11
+    result = tracker.step([stale])
+    commitment = result.metadata["identity_commitment_by_track"][track_id]
+
+    assert commitment["identity_commitment_state"] == "committed"
+    assert result.metadata["identity_commitment_recovery_config"][
+        "publication_freshness_gate_enabled"
+    ] is False
+    assert result.metadata["identity_commitment_recovery_config"][
+        "compatibility_behavior_when_disabled"
+    ] == "watermark_and_replay_gates_only"
+
+
+def test_publication_freshness_budget_does_not_change_non_hold_path() -> None:
+    tracker = Scalable3DTracker()
+    detection = _source_detection(
+        "local-a",
+        1.0,
+        (1.0, 0.0, -100.0),
+        observation_evidence_key=_digest(
+            "d1-observation-sha256:",
+            ["non-hold-aged-source"],
+        ),
+    )
+    detection.metadata["source_measurement_timestamp"] = 0.05
+
+    result = tracker.step([detection])
+    track_id = result.metadata["detection_to_track"][detection.detection_id]
+    commitment = result.metadata["identity_commitment_by_track"][track_id]
+
+    assert commitment["identity_commitment_state"] == "committed"
+    assert commitment["reason"] == (
+        "track_created_from_fresh_original_observation"
+    )
+    assert commitment["measurement_timestamp"] == pytest.approx(0.05)
 
 
 def test_identity_recovery_blocker_capacity_overflow_stays_fail_closed() -> None:

@@ -503,3 +503,21 @@ violation 字段。seed 1100 candidate 的两个 violation 均为 0，但三个�
 `1.2 s` 新雷达量测在 `2.130815 s` 评分时超过固定 `0.9 s` lineage window
 `0.030815 s`，strict 指标仍不可用。本候选真实 AirSim episode 与扩展 seeds 1101/1102
 尚未执行；候选在同 seed 恢复严格指标可用性和 D2/D3 非退化前保持禁用。
+
+## Recovery publication freshness gate 接线
+
+D2 已把恢复配置升级为 `d2.identity-commitment-recovery-config.v2`，默认发布年龄预算
+为 `0.9 s`。main 传入 D2 的 Detection batch 必须继续以延迟补偿后的统一状态有效时刻
+作为 `Detection3D.measurement_timestamp`，并令它与本次 tracker frame timestamp
+相等。原始雷达、视觉或声学量测时刻保存在 `source_measurement_timestamp`，不能被
+状态传播后的时刻覆盖。
+
+AirSim adapter 若收到状态有效时刻早于当前 D2 frame 的输入，不得直接送入
+`Scalable3DTracker.step()`；应先由现有 OOSM/状态传播边界处理并保留原双时间戳。
+恢复门控计算 tracker frame 与原始 source measurement 的年龄。超龄时航迹保持
+uncommitted，D6 应从既有恢复原因计数中展示阻断，不把它写成 IDSW 0。
+
+2026-07-23 仅完成 D2 确定性模块测试：专项 `32 passed`，完整模块
+`291 passed, 1 warning in 29.48s`。没有启动 AirSim，也没有生成新的 AirSim replay。
+clean seed 1100 A/B、真实 AirSim 多 seed 和 D2/D3 非退化验收仍由 main 执行；候选在
+这些门槛通过前保持禁用。

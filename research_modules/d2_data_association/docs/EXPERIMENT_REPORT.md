@@ -47,11 +47,33 @@ count 为 0，活动 lease 为 0，处置为 truth-free `target_candidate`。
 - committed 锚点跨一个未提交空窗从 `GT3D-000001` 变为
   `GT3D-000002` 时，IDSW 记 1，coverage 为 `2/3`。
 
-当前完整 D2 回归结果为 `286 passed, 1 warning in 29.01s`，验收阈值为零失败。warning
+当前完整 D2 回归结果为 `291 passed, 1 warning in 29.48s`，验收阈值为零失败。warning
 来自本机 Matplotlib `Axes3D` 多版本环境，不影响本专项。
 
 本批结论只适用于 D2 模块合同。main 原子持久化、D6 汇总和 clean seed 1100 已在后续
 提交 `909669b` 执行，但候选仍未通过系统级 P1 晋级门槛。
+
+### 发布新鲜度补充验证
+
+clean seed 1100 的旧候选允许三条晚于水位线的雷达证据恢复，但这些证据到评分帧时年龄
+为 `0.930815 s`，超过固定 `0.9 s` 谱系窗口。D2 随后把恢复配置升级为
+`d2.identity-commitment-recovery-config.v2`，默认增加同一 `0.9 s` 发布新鲜度门控。
+
+专项使用确定性六维质点夹具，无随机 seed、未启动 AirSim。测试构造一个水位线
+`0.1 s`、原始证据时刻 `0.11 s`、tracker frame `1.05 s` 的恢复样例。证据虽然晚于
+水位线，但发布年龄为 `0.94 s`，结果保持
+`identity_uncommitted_after_hold`，阻断原因为
+`source_observation_outside_recovery_publication_freshness_window`。下一帧使用原始
+时刻 `0.2 s`、tracker frame `1.06 s` 的新 key，发布年龄 `0.86 s`，恢复为 committed。
+
+专项文件共 `32 passed`。测试还确认 same/older timestamp、同 key replay 和未来来源
+时刻继续阻断；无 hold 正常路径不受恢复预算影响；Detection 状态时刻与 tracker frame
+不一致时整帧拒绝；显式兼容关闭可复现旧行为。完整模块为
+`291 passed, 1 warning in 29.48s`，零失败门槛通过。
+
+本节没有复跑 clean seed 1100，不提供新的 IDSW、continuity、D2 航迹数或 D3 分配数。
+候选仍默认关闭，seeds 1101/1102 继续停止。main 复跑同一 seed 并满足 strict 指标可用、
+在线真值使用为 0、未提交绑定违规为 0 和 D2/D3 非退化后，才能重新进入算法准入评审。
 
 ## 2026-07-23 结构歧义保持单 seed 集成门槛
 

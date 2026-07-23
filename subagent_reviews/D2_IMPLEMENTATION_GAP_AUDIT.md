@@ -28,8 +28,9 @@ D2 v3 复现和测试验收已同步。五 seed 200v200 候选在 45/45 周期�
 最新 seed 1000 profiler 在 48/48 周期严格等价下将 D2 core 中位数
 `2.928830 -> 2.204672 s`，但早/晚窗口比 `1.119661x -> 1.123036x`，因此只关闭三个
 可证明的常数成本热点，长窗口 P1 不关闭。身份承诺 v2 的 main/D6 接线和 fail-closed
-行为已由 seed 1100 验证；candidate strict 指标仍因固定谱系窗口不可用，D2/D3 数量也
-未达到 baseline，算法候选继续拒绝。
+行为已由 seed 1100 验证。该次 candidate strict 指标因恢复证据超过固定谱系窗口而
+不可用，D2/D3 数量也未达到 baseline。D2 已补充发布新鲜度门控，但新的 clean A/B
+尚未执行，算法候选继续拒绝。
 
 ## 2026-07-23 D1 歧义侧车与 D2 保持租约增量
 
@@ -96,22 +97,25 @@ D2 v3 复现和测试验收已同步。五 seed 200v200 候选在 45/45 周期�
   更新状态、绑定 claim 或进入 `detection_to_track`。
 - **恢复门控已关闭**：恢复同时要求 key 不在阻断集合、source timestamp 严格晚于水位线、
   claim 是本扫描首次 accepted original evidence 且 replay count 为 0、活动 lease 为 0、
-  disposition 为 truth-free `target_candidate`。重复、同扫描 duplicate、超龄、
+  disposition 为 truth-free `target_candidate`，并且当前 tracker frame 减 source
+  measurement timestamp 不超过版本化发布新鲜度预算。重复、同扫描 duplicate、超龄、
   future/stale component、旧/重复 generation、仅预测和显式
   `known_false_alarm/unknown` 均不能恢复。后两类处置来自不读取离线 truth sidecar 的
   上游传感器治理。
 - **容量边界已关闭**：`IdentityCommitmentRecoveryConfig` 默认每航迹 2048 个阻断 key、
   全局 250000 个；未溢出状态在成功恢复后清理，溢出持续 fail-closed 并只在永久 drop
-  清理。重复航迹合并取集合并集与最大水位线。公开 DTO 只给出 blocker count、水位线和
-  overflow，不公开 key。
+  清理。恢复配置 schema 已升级为 v2，默认发布年龄预算为 `0.9 s`；显式关闭只提供旧
+  水位线/replay 兼容。重复航迹合并取集合并集与最大水位线。公开 DTO 只给出 blocker
+  count、水位线和 overflow，不公开 key。
 - **候选绑定缺口已关闭**：未提交 DTO 与 v2 evidence record 都禁止携带 source
   observation binding。离线 evaluator 不为未提交帧生成 truth candidate；coverage
   继续受罚，IDSW 跨未提交空窗比较 committed 锚点。普通 lineage 缺失和完整性错误
   继续 fail-closed。
 - **兼容与规模已验证**：v1 默认构造、round-trip 和评分不变；v1 拒绝 v2 字段。
   专项覆盖 37 目标动态输入，无 2/5/200 固定规模。2026-07-23 完整 D2 回归为
-  `281 passed, 1 warning in 29.46s`，验收阈值为零失败。新增回归覆盖旧 key 释放后重入、同
-  水位线不同 key、未来来源时刻、更晚新 key 恢复和容量溢出。
+  `291 passed, 1 warning in 29.48s`，验收阈值为零失败。新增回归覆盖旧 key 释放后重入、
+  同水位线不同 key、未来来源时刻、发布超龄阻断、后续合格证据恢复、Detection/tracker
+  frame 不一致拒绝、兼容关闭和容量溢出。
 - **系统接线已关闭**：clean 提交 `909669b` 已原子持久化
   `identity_commitment_by_track`，D6 已聚合 commitment coverage、uncommitted
   counts、恢复原因、水位线、overflow 和 binding violation。seed 1100 已按 v2 重测。
@@ -121,11 +125,13 @@ D2 v3 复现和测试验收已同步。五 seed 200v200 候选在 45/45 周期�
   committed、73 条 uncommitted，其中 69 条 active hold、4 条 after hold。未提交
   source/candidate binding violation 均为 0，online truth use 为 0，说明 v2
   fail-closed 合同通过。
-- **当前 P1 阻断**：`GT3D-000185/000186/000202` 由
+- **前次 P1 阻断及当前状态**：`GT3D-000185/000186/000202` 由
   `measurement_timestamp=1.2 s` 的新原始雷达量测恢复，但评分帧为 `2.130815 s`，
   谱系年龄约 `0.930815 s`，超过固定 `0.9 s` window 约 `0.030815 s`。candidate
-  strict IDSW/continuity 仍 unavailable，且 D2/D3 数量未达到非退化门槛。默认仍为
-  disabled，seeds 1101/1102 停止；禁止扩大 `0.9 s` window。
+  strict IDSW/continuity 当时 unavailable，且 D2/D3 数量未达到非退化门槛。D2 模块
+  已在恢复前加入同一 `0.9 s` 发布新鲜度门控；新的 clean seed 1100 尚未复跑，故
+  strict 可用性和业务非退化仍开放。默认仍为 disabled，seeds 1101/1102 停止；禁止扩大
+  `0.9 s` window。
 
 ## 0. 2026-07-15 M5N2 20-case GAP 判定
 
@@ -164,12 +170,12 @@ D2 当前实现符合“先用规则 GNN/Hungarian 做工程主线，密集交�
   六维数值状态。
 - **2026-07-22 历史模块回归**：三 seed clean 集成证据同步后为
   `219 passed, 1 warning in 49.75s`；warning 仍为环境 `Axes3D`。
-- **2026-07-23 当前权威模块回归**：身份承诺 v2、恢复水位线和独立 audit 重算后的
-  完整结果为 `286 passed, 1 warning in 29.01s`，验收阈值为零失败；warning 仍为
+- **2026-07-23 当前权威模块回归**：身份承诺 v2、恢复水位线、发布新鲜度门控和独立
+  audit 重算后的完整结果为 `291 passed, 1 warning in 29.48s`，验收阈值为零失败；warning 仍为
   环境 `Axes3D`。此前 `271 passed` 是保持租约阶段，`234 passed` 是 profiler
   等价优化阶段的历史结果。
 - **2026-07-12 AirSim 证据**：PNG delivery candidate 的 2v2 10 seeds 为 20/20 pair、在线 truth 使用为 0；锁定后两帧 dropout 沿原 global/local track 和原计划上下文预测，没有 truth ID 或本地 ID 重写。M5N2 8 s 短窗口为 0/9，报告明确其几何与时间窗不足且不可与长时高净空基线直接比较。这些是 D2 下游合同的非退化证据，不是 D2 新算法或长期标定完成证据。
-- **P0/P1 开放项**：P0 无开放项。P1 synthetic long replay、独立 offline truth、至少 10-seed 的 IDSW/continuity/false-track/RMSE/NIS/NEES availability、版本治理和 strict 4 m/2 m 各 20-seed 首轮真实标定已闭合；结构歧义保持租约、身份承诺 v2、main 持久化和 D6 聚合也已完成。算法候选仍因三个恢复航迹在评分帧超出固定 lineage window `0.030815 s` 而 strict unavailable，且 D2/D3 数量退化。仍开放恢复量测到评分帧的调度/发布边界修复、同 seed 指标可用性与业务非退化复核，以及更长 OOSM/遮挡/杂波 replay 下的 gate/risk/M-of-N 生命周期参数冻结、跨节点 D1 exact/CI posterior 回写、高歧义 replay 和 owner/epoch failover 验证；扩大 `0.9 s` window 不关闭该 GAP。
+- **P0/P1 开放项**：P0 无开放项。P1 synthetic long replay、独立 offline truth、至少 10-seed 的 IDSW/continuity/false-track/RMSE/NIS/NEES availability、版本治理和 strict 4 m/2 m 各 20-seed 首轮真实标定已闭合；结构歧义保持租约、身份承诺 v2、发布新鲜度门控、main 持久化和 D6 聚合也已完成。当前仍开放新门控的 clean seed 1100 指标可用性与 D2/D3 业务非退化复核；通过前不得启动 1101/1102。更长 OOSM/遮挡/杂波 replay 下的 gate/risk/M-of-N 生命周期参数冻结、跨节点 D1 exact/CI posterior 回写、高歧义 replay 和 owner/epoch failover 验证仍开放；扩大 `0.9 s` window 不关闭该 GAP。
 - **下一验收条件**：沿 2026-07-13 冻结 replay/truth/profile/预算合同扩展困难度和时间窗；逐 seed 及聚合报告 IDSW、identity/coverage continuity、duplicate、false-track、初始化延迟、NIS/NEES availability/coverage、runtime 和在线 truth 泄漏数。任何候选必须同时满足全部门限，不能只凭 IDSW 改善晋级。跨节点验收还必须证明 canonical ID 连续、duplicate payload 拒绝、owner/epoch 切换可恢复，并由 D1/D6 给出融合 posterior 与 NEES/ANEES。
 - **历史基线**：2026-07-10 的 5v5/2v2 批次和 2026-07-11 早期的 seeds 7/17/27 当时不足以关闭 D2 P1，且 T001 双 primary 为 0。本条仅保留实施前/过渡证据边界，不代表当前状态。
 - **2026-07-11 合同验收证据**：M=5、N=2 ComputerVision 的 T001 双 primary 共识/计划授权为 8/10；D2 `id_switch_count=0`、错误 duplicate=0、`global_track_id` 改写/重绑=0 均为 10/10。

@@ -118,17 +118,21 @@ D2 只负责离线科研仿真、日志回放和多目标数据关联评估。�
   保存 `identity_uncommitted_after_hold`。每条受影响航迹持久化歧义 observation key
   阻断集合和最大 component measurement timestamp；claim reservation 释放不删除该
   历史。恢复还要求新 key、source 时刻严格晚于水位线、本扫描首次 accepted original
-  claim、零 replay、零活动 lease 和 truth-free `target_candidate` disposition。
+  claim、零 replay、零活动 lease、truth-free `target_candidate` disposition，以及
+  `当前 D2 tracker frame timestamp - 原始 source measurement timestamp` 不超过版本化
+  发布新鲜度预算。
   未提交候选在状态更新前撤回，不进入 hit、claim binding 或 `detection_to_track`。
 - **容量与公开边界**：`IdentityCommitmentRecoveryConfig` 默认限制每航迹 2048 个阻断
   key、全局 250000 个。未溢出状态可在合法恢复后清理；溢出保持 fail-closed，只在永久
-  drop 后清理。公开 DTO 只携带
+  drop 后清理。配置 schema 为 `d2.identity-commitment-recovery-config.v2`，默认启用
+  `0.9 s` 发布新鲜度门控；显式关闭仅用于旧水位线/replay 行为兼容。公开 DTO 只携带
   blocker count、水位线和 overflow，不携带 key。`known_false_alarm/unknown` 必须由不
   读取离线 truth sidecar 的上游传感器处置产生。
-- **本轮验收边界**：D2 完整模块回归为 `286 passed, 1 warning in 29.01s`，专项另覆盖
+- **本轮验收边界**：D2 完整模块回归为 `291 passed, 1 warning in 29.48s`，专项另覆盖
   37 目标动态规模、旧候选 key 在 reservation 释放后重入、同水位线新 key、严格更晚
-  新 key、未来来源时刻拒绝、容量溢出和 v2 审计重算。该结果完成 D2-owned typed
-  payload、状态迁移和 evaluator 语义。
+  新 key、晚于水位线但发布超龄继续未提交、后续合格证据恢复、Detection 与 tracker
+  frame 不一致拒绝、兼容关闭、未来来源时刻拒绝、容量溢出和 v2 审计重算。该结果完成
+  D2-owned typed payload、状态迁移和 evaluator 语义。
 - **2026-07-23 evaluator v2 审计已完成**：
   `d2.scalable3d_identity_evaluation.v2` 嵌入受 evidence bundle SHA-256 约束的
   `identity_evidence_records`，并由每条 `IdentityEvidenceCommitment` 重算 all-record
@@ -1243,3 +1247,35 @@ strict IDSW、track/identity continuity 和 coverage continuity 因
    use 为 0、未提交绑定违规为 0、D2/D3 可用性不退化，才允许启动后续未见 seed。
 4. 文档与评审必须持续区分两项结论：身份承诺 v2 合同已实现并通过 fail-closed 验证；
    结构歧义算法候选尚未通过准入。
+
+## 33. 恢复承诺发布新鲜度门控
+
+### 33.1 已实施
+
+1. `IdentityCommitmentRecoveryConfig` 升级为
+   `d2.identity-commitment-recovery-config.v2`。默认配置版本为
+   `d2-identity-recovery-publication-freshness-v2`，发布新鲜度门控默认开启，冻结预算
+   为 `0.9 s`。
+2. hold 后恢复承诺必须同时满足原有 key、水位线、claim、replay、活动租约和
+   truth-free disposition 条件，以及
+   `tracker_frame_timestamp - source_measurement_timestamp <= 0.9 s`。超龄证据在
+   量测更新前撤回，航迹保持未提交并等待更新的原始证据。
+3. `Scalable3DTracker.step()` 的统一状态时刻显式传入恢复门控。当前在线合同继续要求
+   Detection 的状态有效时刻与 tracker frame 相等；原始传感器量测时刻单独保存在
+   `source_measurement_timestamp`。二者不相等的 Detection 扫描被拒绝，OOSM 输入仍须
+   走显式适配器。
+4. 配置允许显式关闭发布新鲜度门控以复现旧水位线/replay 行为。默认保持开启；兼容关闭
+   不能作为结构歧义候选准入配置。
+
+### 33.2 验证与下一门槛
+
+2026-07-23 使用确定性 D2 六维质点夹具验证，无随机 seed、未启动 AirSim。专项文件
+`test_ambiguity_hold_lease.py` 为 `32 passed`；完整 D2 为
+`291 passed, 1 warning in 29.48s`，验收阈值为零失败。warning 是既有 Matplotlib
+`Axes3D` 环境提示。
+
+模块测试证明发布超龄恢复保持未提交、后续合格原始证据可恢复、same/older/replay 继续
+阻断、无 hold 路径不受恢复预算影响、配置版本和非法值校验有效。尚未完成新的 clean
+seed 1100 A/B，不能把本节写成候选准入。main 应先复跑 baseline/candidate seed 1100；
+只有 strict 指标 available、在线 truth use 和绑定违规为 0、D2/D3 可用性不退化时，
+才恢复 seeds 1101/1102。

@@ -15,7 +15,7 @@ D2_IDENTITY_EVIDENCE_COMMITMENT_POLICY_VERSION = (
     "d2-structural-ambiguity-commitment-v2"
 )
 D2_IDENTITY_COMMITMENT_RECOVERY_CONFIG_SCHEMA_VERSION = (
-    "d2.identity-commitment-recovery-config.v1"
+    "d2.identity-commitment-recovery-config.v2"
 )
 
 
@@ -41,9 +41,11 @@ _SOURCE_OBSERVATION_DISPOSITIONS = frozenset(
 class IdentityCommitmentRecoveryConfig:
     """Bound unresolved ambiguity evidence while keeping recovery fail-closed."""
 
-    config_version: str = "d2-identity-recovery-barrier-v1"
+    config_version: str = "d2-identity-recovery-publication-freshness-v2"
     max_blocked_keys_per_track: int = 2_048
     max_total_blocked_keys: int = 250_000
+    publication_freshness_gate_enabled: bool = True
+    max_recovery_evidence_age_seconds: float = 0.9
     schema_version: str = (
         D2_IDENTITY_COMMITMENT_RECOVERY_CONFIG_SCHEMA_VERSION
     )
@@ -68,9 +70,24 @@ class IdentityCommitmentRecoveryConfig:
             self.max_total_blocked_keys,
             "max_total_blocked_keys",
         )
+        if not isinstance(self.publication_freshness_gate_enabled, bool):
+            raise TypeError(
+                "publication_freshness_gate_enabled must be a bool"
+            )
+        max_evidence_age = float(self.max_recovery_evidence_age_seconds)
+        if not isfinite(max_evidence_age) or max_evidence_age < 0.0:
+            raise ValueError(
+                "max_recovery_evidence_age_seconds must be finite and "
+                "non-negative"
+            )
         object.__setattr__(self, "config_version", version)
         object.__setattr__(self, "max_blocked_keys_per_track", per_track)
         object.__setattr__(self, "max_total_blocked_keys", total)
+        object.__setattr__(
+            self,
+            "max_recovery_evidence_age_seconds",
+            max_evidence_age,
+        )
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -78,6 +95,22 @@ class IdentityCommitmentRecoveryConfig:
             "config_version": self.config_version,
             "max_blocked_keys_per_track": self.max_blocked_keys_per_track,
             "max_total_blocked_keys": self.max_total_blocked_keys,
+            "publication_freshness_gate_enabled": (
+                self.publication_freshness_gate_enabled
+            ),
+            "max_recovery_evidence_age_seconds": (
+                self.max_recovery_evidence_age_seconds
+            ),
+            "publication_freshness_clock": (
+                "d2_tracker_frame_timestamp_minus_"
+                "source_measurement_timestamp"
+            ),
+            "publication_stale_behavior": (
+                "remain_uncommitted_until_newer_original_evidence"
+            ),
+            "compatibility_behavior_when_disabled": (
+                "watermark_and_replay_gates_only"
+            ),
             "overflow_behavior": "fail_closed_until_track_retirement",
         }
 
