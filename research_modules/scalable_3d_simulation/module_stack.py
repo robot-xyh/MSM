@@ -322,6 +322,7 @@ class IntegratedScalableModuleStack:
         self._d1_scan_input_closed = False
         self._stage_wall_time_s: dict[str, float] = {}
         self._stage_call_count: dict[str, int] = {}
+        self._stage_samples_s: dict[str, list[float]] = {}
 
     def reset(self, config: ScenarioConfig) -> None:
         self.config = config
@@ -435,6 +436,7 @@ class IntegratedScalableModuleStack:
         self._d1_scan_input_closed = False
         self._stage_wall_time_s.clear()
         self._stage_call_count.clear()
+        self._stage_samples_s.clear()
 
     def step(self, step_input: RuntimeStepInput) -> RuntimeStepOutput:
         config = self._require_ready()
@@ -639,7 +641,10 @@ class IntegratedScalableModuleStack:
                 ),
                 recon_acceleration_ned=np.zeros((config.recon_count, 3), dtype=float),
                 publications=(),
-                diagnostics=self._diagnostics(now),
+                diagnostics=self._diagnostics(
+                    now,
+                    include_timing_distribution=True,
+                ),
             )
 
         publications: list[RuntimePublication] = []
@@ -673,7 +678,10 @@ class IntegratedScalableModuleStack:
             ),
             recon_acceleration_ned=np.zeros((config.recon_count, 3), dtype=float),
             publications=tuple(publications),
-            diagnostics=self._diagnostics(now),
+            diagnostics=self._diagnostics(
+                now,
+                include_timing_distribution=True,
+            ),
         )
 
     def observation_governance_audit(self) -> dict[str, Any]:
@@ -3604,8 +3612,38 @@ class IntegratedScalableModuleStack:
             copy_payload=False,
         )
 
-    def _diagnostics(self, now: float) -> dict[str, Any]:
+    def _diagnostics(
+        self,
+        now: float,
+        *,
+        include_timing_distribution: bool = False,
+    ) -> dict[str, Any]:
         governance = self.observation_governance_audit()
+        stage_timings: dict[str, dict[str, float | int]] = {}
+        for stage in sorted(self._stage_wall_time_s):
+            record: dict[str, float | int] = {
+                "call_count": self._stage_call_count[stage],
+                "wall_time_s": self._stage_wall_time_s[stage],
+                "mean_wall_time_ms": (
+                    1_000.0
+                    * self._stage_wall_time_s[stage]
+                    / self._stage_call_count[stage]
+                ),
+            }
+            if include_timing_distribution:
+                samples = np.asarray(self._stage_samples_s[stage], dtype=float)
+                record.update(
+                    {
+                        "p50_wall_time_ms": (
+                            1_000.0 * float(np.percentile(samples, 50.0))
+                        ),
+                        "p95_wall_time_ms": (
+                            1_000.0 * float(np.percentile(samples, 95.0))
+                        ),
+                        "max_wall_time_ms": 1_000.0 * float(np.max(samples)),
+                    }
+                )
+            stage_timings[stage] = record
         return {
             "schema_version": INTEGRATED_STACK_SCHEMA_VERSION,
             "timestamp": now,
@@ -3701,25 +3739,16 @@ class IntegratedScalableModuleStack:
             "learning_runtime": dict(self.learning_runtime_diagnostics),
             "observation_governance": governance,
             "online_truth_use_count": 0,
-            "stage_timings": {
-                stage: {
-                    "call_count": self._stage_call_count[stage],
-                    "wall_time_s": self._stage_wall_time_s[stage],
-                    "mean_wall_time_ms": (
-                        1_000.0
-                        * self._stage_wall_time_s[stage]
-                        / self._stage_call_count[stage]
-                    ),
-                }
-                for stage in sorted(self._stage_wall_time_s)
-            },
+            "stage_timings": stage_timings,
         }
 
     def _record_timing(self, stage: str, elapsed_s: float) -> None:
+        elapsed = float(elapsed_s)
         self._stage_wall_time_s[stage] = (
-            self._stage_wall_time_s.get(stage, 0.0) + float(elapsed_s)
+            self._stage_wall_time_s.get(stage, 0.0) + elapsed
         )
         self._stage_call_count[stage] = self._stage_call_count.get(stage, 0) + 1
+        self._stage_samples_s.setdefault(stage, []).append(elapsed)
 
     def _validate_navigation(
         self,

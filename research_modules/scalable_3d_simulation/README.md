@@ -167,6 +167,15 @@ D6 v6 对 20/20 给出基础 clean provenance 可用、generation integrity=true
 `descriptive_clean_source_calibration`。它不是正式 R0/G1/A1/A2/A3/C1/F1 算法比较，也不
 证明物理拦截或学习策略采用。
 
+后续诊断代码将 `stage_timings.csv` 升级为
+`scalable3d-stage-timings-v2`。每个阶段除总耗时、调用次数和均值外，新增单次调用
+`P50/P95/max` 及 availability；缺少调用样本时保留空值和原因，不回填为 0。模块内分布
+只在 episode 收束时计算，在线 step 不执行重复分位计算。
+5v5、1.2 秒、seed 41 冒烟验证了新列、有限状态和在线真值使用为 0；该冒烟只验证记录
+合同。长时对照输出同步升级为 `scalable3d-long-duration-comparison-v2`，可读取无分位列的
+历史 CSV，但将其明确标为 unavailable。200 对 200 的稳定窗口分布仍需在下一 clean 候选上
+重新测量。
+
 ## 2026-07-21 正式数据与开发训练状态
 
 修复逐 episode checkpoint 和 D5 同流多批次边界后，新的正式生成目录已经完成全部

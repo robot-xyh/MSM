@@ -5,13 +5,14 @@ from __future__ import annotations
 import csv
 from hashlib import sha256
 import json
+import math
 from pathlib import Path
 import re
 from typing import Any, Mapping
 
 
 LONG_DURATION_COMPARISON_SCHEMA_VERSION = (
-    "scalable3d-long-duration-comparison-v1"
+    "scalable3d-long-duration-comparison-v2"
 )
 _CORE_FILES = (
     "manifest.json",
@@ -99,6 +100,28 @@ def compare_long_duration_episodes(
                 "normalized_per_call_cost_growth": _optional_ratio(
                     long_call_cost_s, short_call_cost_s
                 ),
+                "short_p50_wall_time_ms": short_stage["p50_wall_time_ms"],
+                "long_p50_wall_time_ms": long_stage["p50_wall_time_ms"],
+                "p50_wall_time_growth": _optional_ratio(
+                    long_stage["p50_wall_time_ms"],
+                    short_stage["p50_wall_time_ms"],
+                ),
+                "short_p95_wall_time_ms": short_stage["p95_wall_time_ms"],
+                "long_p95_wall_time_ms": long_stage["p95_wall_time_ms"],
+                "p95_wall_time_growth": _optional_ratio(
+                    long_stage["p95_wall_time_ms"],
+                    short_stage["p95_wall_time_ms"],
+                ),
+                "short_max_wall_time_ms": short_stage["max_wall_time_ms"],
+                "long_max_wall_time_ms": long_stage["max_wall_time_ms"],
+                "max_wall_time_growth": _optional_ratio(
+                    long_stage["max_wall_time_ms"],
+                    short_stage["max_wall_time_ms"],
+                ),
+                "distribution_available": bool(
+                    short_stage["distribution_available"]
+                    and long_stage["distribution_available"]
+                ),
                 "superlinear": bool(
                     normalized_growth is not None
                     and normalized_growth >= superlinear_threshold
@@ -134,13 +157,14 @@ def compare_long_duration_episodes(
         if short_rss is not None and long_rss is not None
         else None
     )
+    clean_source = not short["repository_dirty"] and not long["repository_dirty"]
     acceptance = {
         "same_git_commit": short["git_commit"] == long["git_commit"],
         "same_scenario_except_duration": (
             short["scenario_without_duration_sha256"]
             == long["scenario_without_duration_sha256"]
         ),
-        "clean_source": not short["repository_dirty"] and not long["repository_dirty"],
+        "clean_source": clean_source,
         "finite_state": short["finite_state"] and long["finite_state"],
         "online_truth_use_zero": (
             short["online_truth_use_count"] == 0
@@ -167,7 +191,11 @@ def compare_long_duration_episodes(
     }
     return {
         "schema_version": LONG_DURATION_COMPARISON_SCHEMA_VERSION,
-        "evidence_class": "descriptive_clean_source_calibration",
+        "evidence_class": (
+            "descriptive_clean_source_calibration"
+            if clean_source
+            else "descriptive_dirty_source_development"
+        ),
         "short_episode": short,
         "long_episode": long,
         "comparison": {
@@ -307,8 +335,9 @@ def render_long_duration_comparison_markdown(report: Mapping[str, Any]) -> str:
         "## 结论",
         "",
         (
-            f"同一 clean 提交、同一 seed 的 {short['duration_s']:.1f} 秒与 "
-            f"{long['duration_s']:.1f} 秒 200 对 200 episode 已完成。"
+            f"同一提交、同一 seed 的 {short['duration_s']:.1f} 秒与 "
+            f"{long['duration_s']:.1f} 秒 "
+            f"{short['resource_count']} 对 {short['target_count']} episode 已完成。"
             f"长 episode 状态有限，在线真值使用为 {long['online_truth_use_count']}。"
         ),
         (
@@ -382,6 +411,31 @@ def render_long_duration_comparison_markdown(report: Mapping[str, Any]) -> str:
             f"{_format_ratio(call_cost_growth)} | "
             f"{'是' if item['superlinear'] else '否'} |"
         )
+    distribution_rows = [
+        item
+        for item in comparison["stage_comparisons"]
+        if item["distribution_available"]
+    ]
+    if distribution_rows:
+        lines.extend(
+            [
+                "",
+                "## 阶段单次延时",
+                "",
+                "| 阶段 | 短时P50/ms | 长时P50/ms | 短时P95/ms | 长时P95/ms | 短时max/ms | 长时max/ms |",
+                "| --- | ---: | ---: | ---: | ---: | ---: | ---: |",
+            ]
+        )
+        for item in distribution_rows:
+            lines.append(
+                f"| `{item['stage']}` | "
+                f"{item['short_p50_wall_time_ms']:.3f} | "
+                f"{item['long_p50_wall_time_ms']:.3f} | "
+                f"{item['short_p95_wall_time_ms']:.3f} | "
+                f"{item['long_p95_wall_time_ms']:.3f} | "
+                f"{item['short_max_wall_time_ms']:.3f} | "
+                f"{item['long_max_wall_time_ms']:.3f} |"
+            )
     if comparison["post_run_stage_comparisons"]:
         lines.extend(
             [
@@ -413,8 +467,12 @@ def render_long_duration_comparison_markdown(report: Mapping[str, Any]) -> str:
             "",
             "## 证据边界",
             "",
-            "本报告是 clean-source 描述性性能校准，不是正式实验矩阵证据。"
-            "单 seed 不能证明 P95、融合精度、身份连续性或物理拦截成功率。",
+            (
+                "本报告是 clean-source 描述性性能校准，不是正式实验矩阵证据。"
+                if comparison["acceptance"]["clean_source"]
+                else "本报告来自脏工作树，只作为开发期性能诊断，不进入正式验收。"
+            )
+            + "单 seed 不能证明跨 seed P95、融合精度、身份连续性或物理拦截成功率。",
             "",
         ]
     )
@@ -508,17 +566,67 @@ def _elapsed_seconds(value: str) -> float:
     raise ValueError(f"unsupported elapsed time: {value}")
 
 
-def _load_stage_timings(path: Path) -> dict[str, dict[str, float | int]]:
+def _load_stage_timings(path: Path) -> dict[str, dict[str, Any]]:
     with path.open(newline="", encoding="utf-8") as stream:
         rows = csv.DictReader(stream)
-        return {
-            str(row["stage"]): {
+        result: dict[str, dict[str, Any]] = {}
+        for row in rows:
+            distribution = {
+                name: _optional_nonnegative_float(row.get(name))
+                for name in (
+                    "p50_wall_time_ms",
+                    "p95_wall_time_ms",
+                    "max_wall_time_ms",
+                )
+            }
+            available_count = sum(value is not None for value in distribution.values())
+            if available_count not in {0, 3}:
+                raise ValueError("stage timing distribution fields must be all present or all absent")
+            if available_count == 3 and not (
+                distribution["p50_wall_time_ms"]
+                <= distribution["p95_wall_time_ms"]
+                <= distribution["max_wall_time_ms"]
+            ):
+                raise ValueError("stage timing distribution must satisfy p50 <= p95 <= max")
+            declared_available = _optional_csv_bool(
+                row.get("distribution_available")
+            )
+            distribution_available = (
+                available_count == 3
+                if declared_available is None
+                else declared_available
+            )
+            unavailable_reason = (
+                row.get("distribution_unavailable_reason") or None
+            )
+            if distribution_available != (available_count == 3):
+                raise ValueError(
+                    "stage timing distribution availability conflicts with values"
+                )
+            if distribution_available and unavailable_reason is not None:
+                raise ValueError(
+                    "available stage timing distribution cannot have an unavailable reason"
+                )
+            if (
+                declared_available is False
+                and unavailable_reason is None
+            ):
+                raise ValueError(
+                    "unavailable stage timing distribution must provide a reason"
+                )
+            stage = str(row["stage"])
+            if stage in result:
+                raise ValueError(f"duplicate stage timing: {stage}")
+            result[stage] = {
+                "schema_version": row.get("schema_version") or None,
                 "call_count": int(row["call_count"]),
                 "wall_time_s": float(row["wall_time_s"]),
                 "mean_wall_time_ms": float(row["mean_wall_time_ms"]),
+                **distribution,
+                "distribution_available": distribution_available,
+                "distribution_unavailable_reason": unavailable_reason,
             }
-            for row in rows
-        }
+        return result
 
 
 def _load_post_run_timings(path: Path) -> dict[str, Any]:
@@ -642,6 +750,26 @@ def _positive_float(value: Any, name: str) -> float:
     if result <= 0.0:
         raise ValueError(f"{name} must be positive")
     return result
+
+
+def _optional_nonnegative_float(value: Any) -> float | None:
+    if value is None or str(value).strip() == "":
+        return None
+    result = float(value)
+    if not math.isfinite(result) or result < 0.0:
+        raise ValueError("optional timing values must be finite and non-negative")
+    return result
+
+
+def _optional_csv_bool(value: Any) -> bool | None:
+    if value is None or str(value).strip() == "":
+        return None
+    normalized = str(value).strip().lower()
+    if normalized == "true":
+        return True
+    if normalized == "false":
+        return False
+    raise ValueError("optional CSV boolean must be true or false")
 
 
 def _safe_ratio(numerator: float, denominator: float) -> float | None:

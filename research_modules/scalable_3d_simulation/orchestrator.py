@@ -44,6 +44,11 @@ class StageTiming:
     stage: str
     call_count: int
     wall_time_s: float
+    p50_wall_time_ms: float | None = None
+    p95_wall_time_ms: float | None = None
+    max_wall_time_ms: float | None = None
+    distribution_available: bool = False
+    distribution_unavailable_reason: str | None = "timing_samples_unavailable"
 
     @property
     def mean_wall_time_ms(self) -> float:
@@ -78,24 +83,88 @@ class _TimingAccumulator:
     def __init__(self) -> None:
         self.total: dict[str, float] = {}
         self.calls: dict[str, int] = {}
+        self.samples: dict[str, list[float]] = {}
+        self.merged_distributions_ms: dict[str, tuple[float, float, float]] = {}
 
     def add(self, stage: str, elapsed_s: float) -> None:
-        self.total[stage] = self.total.get(stage, 0.0) + float(elapsed_s)
+        elapsed = float(elapsed_s)
+        self.total[stage] = self.total.get(stage, 0.0) + elapsed
         self.calls[stage] = self.calls.get(stage, 0) + 1
+        self.samples.setdefault(stage, []).append(elapsed)
 
-    def merge_total(self, stage: str, *, wall_time_s: float, call_count: int) -> None:
+    def merge_total(
+        self,
+        stage: str,
+        *,
+        wall_time_s: float,
+        call_count: int,
+        p50_wall_time_ms: float | None = None,
+        p95_wall_time_ms: float | None = None,
+        max_wall_time_ms: float | None = None,
+    ) -> None:
         """Merge a cumulative child-stage record without losing its call count."""
 
         if call_count < 0 or wall_time_s < 0.0:
             raise ValueError("timing totals must be non-negative")
         self.total[stage] = self.total.get(stage, 0.0) + float(wall_time_s)
         self.calls[stage] = self.calls.get(stage, 0) + int(call_count)
+        distribution = (p50_wall_time_ms, p95_wall_time_ms, max_wall_time_ms)
+        present_count = sum(value is not None for value in distribution)
+        if present_count not in {0, 3}:
+            raise ValueError(
+                "timing distribution fields must be all present or all absent"
+            )
+        if all(value is not None for value in distribution):
+            values = tuple(float(value) for value in distribution)
+            if any(not np.isfinite(value) or value < 0.0 for value in values):
+                raise ValueError("timing distributions must be finite and non-negative")
+            if not values[0] <= values[1] <= values[2]:
+                raise ValueError("timing distributions must satisfy p50 <= p95 <= max")
+            self.merged_distributions_ms[stage] = values
 
     def records(self) -> tuple[StageTiming, ...]:
-        return tuple(
-            StageTiming(stage, self.calls[stage], self.total[stage])
-            for stage in sorted(self.total)
-        )
+        records: list[StageTiming] = []
+        for stage in sorted(self.total):
+            if stage in self.samples:
+                p50_ms, p95_ms, max_ms = _timing_distribution_ms(
+                    self.samples[stage]
+                )
+                distribution_available = True
+                unavailable_reason = None
+            elif stage in self.merged_distributions_ms:
+                p50_ms, p95_ms, max_ms = self.merged_distributions_ms[stage]
+                distribution_available = True
+                unavailable_reason = None
+            else:
+                p50_ms = None
+                p95_ms = None
+                max_ms = None
+                distribution_available = False
+                unavailable_reason = "child_timing_distribution_unavailable"
+            records.append(
+                StageTiming(
+                    stage=stage,
+                    call_count=self.calls[stage],
+                    wall_time_s=self.total[stage],
+                    p50_wall_time_ms=p50_ms,
+                    p95_wall_time_ms=p95_ms,
+                    max_wall_time_ms=max_ms,
+                    distribution_available=distribution_available,
+                    distribution_unavailable_reason=unavailable_reason,
+                )
+            )
+        return tuple(records)
+
+
+def _timing_distribution_ms(samples_s: list[float]) -> tuple[float, float, float]:
+    if not samples_s:
+        return 0.0, 0.0, 0.0
+    values = np.asarray(samples_s, dtype=float)
+    return (
+        1_000.0 * float(np.percentile(values, 50.0)),
+        1_000.0 * float(np.percentile(values, 95.0)),
+        1_000.0 * float(np.max(values)),
+    )
 
 
 class Scalable3DEpisodeRunner:
@@ -475,6 +544,15 @@ class Scalable3DEpisodeRunner:
                     f"module.{stage}",
                     wall_time_s=float(record.get("wall_time_s", 0.0)),
                     call_count=int(record.get("call_count", 0)),
+                    p50_wall_time_ms=_optional_float(
+                        record.get("p50_wall_time_ms")
+                    ),
+                    p95_wall_time_ms=_optional_float(
+                        record.get("p95_wall_time_ms")
+                    ),
+                    max_wall_time_ms=_optional_float(
+                        record.get("max_wall_time_ms")
+                    ),
                 )
         summary: dict[str, Any] = {
             "episode_id": self.manifest.episode_id,
@@ -1126,6 +1204,15 @@ def _nonnegative_int(value: Any, name: str) -> int:
 
 def _optional_bool(value: Any) -> bool | None:
     return value if isinstance(value, bool) else None
+
+
+def _optional_float(value: Any) -> float | None:
+    if value is None:
+        return None
+    result = float(value)
+    if not np.isfinite(result):
+        raise ValueError("optional float must be finite")
+    return result
 
 
 def _camera_platform_position(state: CameraRuntimeState, snapshot: Any) -> np.ndarray:

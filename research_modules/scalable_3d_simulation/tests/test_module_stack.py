@@ -26,7 +26,10 @@ from research_modules.scalable_3d_simulation.module_stack import (
     IntegratedStackConfig,
 )
 from research_modules.scalable_3d_simulation.orchestrator import run_episode
-from research_modules.scalable_3d_simulation.reporting import write_batch_outputs
+from research_modules.scalable_3d_simulation.reporting import (
+    STAGE_TIMING_SCHEMA_VERSION,
+    write_batch_outputs,
+)
 from research_modules.scalable_3d_simulation.scenarios import make_curriculum_scenario
 
 
@@ -345,6 +348,33 @@ def test_5v5_online_stack_connects_d1_to_d7_without_truth_identity(tmp_path) -> 
     assert timings["module.d1_fusion"].call_count > 0
     assert timings["module.d3_assignment"].wall_time_s > 0.0
     assert timings["module.main_d4_adapter"].mean_wall_time_ms > 0.0
+    fusion_timing = timings["module.d1_fusion"]
+    assert fusion_timing.distribution_available is True
+    assert fusion_timing.distribution_unavailable_reason is None
+    assert (
+        0.0
+        < fusion_timing.p50_wall_time_ms
+        <= fusion_timing.p95_wall_time_ms
+        <= fusion_timing.max_wall_time_ms
+    )
+    with (tmp_path / "stage_timings.csv").open(
+        newline="",
+        encoding="utf-8",
+    ) as stream:
+        timing_rows = list(csv.DictReader(stream))
+    fusion_row = next(
+        row for row in timing_rows if row["stage"] == "module.d1_fusion"
+    )
+    assert fusion_row["schema_version"] == STAGE_TIMING_SCHEMA_VERSION
+    assert fusion_row["distribution_available"] == "True"
+    assert fusion_row["distribution_unavailable_reason"] == ""
+    assert float(fusion_row["p50_wall_time_ms"]) > 0.0
+    assert float(fusion_row["p95_wall_time_ms"]) >= float(
+        fusion_row["p50_wall_time_ms"]
+    )
+    assert float(fusion_row["max_wall_time_ms"]) >= float(
+        fusion_row["p95_wall_time_ms"]
+    )
     report = (tmp_path / "SCALABLE_3D_EPISODE_REPORT_CN.md").read_text(
         encoding="utf-8"
     )

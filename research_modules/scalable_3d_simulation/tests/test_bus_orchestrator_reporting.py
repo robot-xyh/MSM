@@ -22,7 +22,10 @@ from research_modules.scalable_3d_simulation.models import (
     OfflineTruthLabel,
     ScenarioConfig,
 )
-from research_modules.scalable_3d_simulation.orchestrator import run_episode
+from research_modules.scalable_3d_simulation.orchestrator import (
+    _TimingAccumulator,
+    run_episode,
+)
 from research_modules.scalable_3d_simulation.offline_evaluation import (
     PrewrittenIdentityRecordPaths,
     write_offline_identity_evaluation,
@@ -41,6 +44,40 @@ def test_recursive_truth_guard_rejects_nested_fields_and_truth_dataclasses() -> 
         assert_online_payload_truth_free({"nested": [{"actor_id": "TargetActor_1"}]})
     with pytest.raises(ValueError, match="truth fields"):
         assert_online_payload_truth_free(OfflineTruthLabel("obs", "TGT-0001", 0.0))
+
+
+def test_timing_accumulator_does_not_backfill_missing_child_distribution() -> None:
+    timings = _TimingAccumulator()
+    timings.add("direct", 0.002)
+    timings.add("direct", 0.004)
+    timings.merge_total("module.legacy", wall_time_s=0.006, call_count=2)
+
+    records = {item.stage: item for item in timings.records()}
+
+    assert records["direct"].distribution_available is True
+    assert records["direct"].p50_wall_time_ms == pytest.approx(3.0)
+    assert records["module.legacy"].distribution_available is False
+    assert records["module.legacy"].p50_wall_time_ms is None
+    assert records["module.legacy"].p95_wall_time_ms is None
+    assert records["module.legacy"].max_wall_time_ms is None
+    assert records["module.legacy"].distribution_unavailable_reason == (
+        "child_timing_distribution_unavailable"
+    )
+
+
+def test_timing_accumulator_rejects_partial_child_distribution() -> None:
+    timings = _TimingAccumulator()
+
+    with pytest.raises(
+        ValueError,
+        match="timing distribution fields must be all present or all absent",
+    ):
+        timings.merge_total(
+            "module.partial",
+            wall_time_s=0.006,
+            call_count=2,
+            p50_wall_time_ms=2.0,
+        )
 
 
 def test_recursive_truth_guard_handles_cycles_without_weakening_nested_checks() -> None:

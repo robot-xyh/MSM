@@ -39,6 +39,8 @@ main
 | 世界模型 | `scalable3d-world-v1` | 状态语义、坐标或动力学改变 |
 | 总线合同 | `scalable3d-episode-bus-v1` | 跨模块消息出现不兼容变更 |
 | 场景配置 | `scalable3d-scenario-v1` | 配置字段语义或默认场景改变 |
+| 阶段耗时 | `scalable3d-stage-timings-v2` | 阶段调用计数、总耗时、均值、P50/P95/max 或 availability 语义改变 |
+| 长时对照 | `scalable3d-long-duration-comparison-v2` | 长短 episode 可比条件、耗时增长或证据等级语义改变 |
 | 在线观测 | `scalable3d-observation-v1` | 观测字段、单位或时序语义改变 |
 | 离线真值 | `scalable3d-offline-truth-v1` | 标签结构或评分口径改变 |
 | 学习导出 | `scalable3d-learning-export-v2` | D3/D4/D5 训练制品布局或真值隔离规则改变；v2 增加 D5 主动视觉整 episode 在线记录与独立离线标签 |

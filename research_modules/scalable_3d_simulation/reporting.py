@@ -17,6 +17,7 @@ from .orchestrator import EpisodeResult
 
 
 POST_RUN_TIMING_SCHEMA_VERSION = "scalable3d-post-run-timings-v1"
+STAGE_TIMING_SCHEMA_VERSION = "scalable3d-stage-timings-v2"
 
 
 def write_episode_outputs(
@@ -331,16 +332,35 @@ def _write_stage_timings(path: Path, result: EpisodeResult) -> Path:
     with path.open("w", newline="", encoding="utf-8") as stream:
         writer = csv.DictWriter(
             stream,
-            fieldnames=["stage", "call_count", "wall_time_s", "mean_wall_time_ms"],
+            fieldnames=[
+                "schema_version",
+                "stage",
+                "call_count",
+                "wall_time_s",
+                "mean_wall_time_ms",
+                "p50_wall_time_ms",
+                "p95_wall_time_ms",
+                "max_wall_time_ms",
+                "distribution_available",
+                "distribution_unavailable_reason",
+            ],
         )
         writer.writeheader()
         for timing in result.stage_timings:
             writer.writerow(
                 {
+                    "schema_version": STAGE_TIMING_SCHEMA_VERSION,
                     "stage": timing.stage,
                     "call_count": timing.call_count,
                     "wall_time_s": timing.wall_time_s,
                     "mean_wall_time_ms": timing.mean_wall_time_ms,
+                    "p50_wall_time_ms": timing.p50_wall_time_ms,
+                    "p95_wall_time_ms": timing.p95_wall_time_ms,
+                    "max_wall_time_ms": timing.max_wall_time_ms,
+                    "distribution_available": timing.distribution_available,
+                    "distribution_unavailable_reason": (
+                        timing.distribution_unavailable_reason
+                    ),
                 }
             )
     return path

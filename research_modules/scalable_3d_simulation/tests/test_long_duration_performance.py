@@ -22,12 +22,14 @@ def _write_episode(
     rss_kb: int,
     elapsed: str,
     git_commit: str = "a" * 40,
+    stage_timing_v2: bool = True,
+    repository_dirty: bool = False,
 ) -> Path:
     root.mkdir(parents=True)
     manifest = {
         "episode_id": f"episode-{duration}",
         "git_commit": git_commit,
-        "repository_dirty": False,
+        "repository_dirty": repository_dirty,
     }
     scenario = {
         "scenario_name": "nominal_200v200",
@@ -99,28 +101,56 @@ def _write_episode(
     ):
         (root / name).write_text(json.dumps(payload), encoding="utf-8")
     with (root / "stage_timings.csv").open("w", newline="", encoding="utf-8") as stream:
+        timing_fields = [
+            "stage",
+            "call_count",
+            "wall_time_s",
+            "mean_wall_time_ms",
+        ]
+        if stage_timing_v2:
+            timing_fields = [
+                "schema_version",
+                *timing_fields,
+                "p50_wall_time_ms",
+                "p95_wall_time_ms",
+                "max_wall_time_ms",
+                "distribution_available",
+                "distribution_unavailable_reason",
+            ]
         writer = csv.DictWriter(
             stream,
-            fieldnames=["stage", "call_count", "wall_time_s", "mean_wall_time_ms"],
+            fieldnames=timing_fields,
         )
         writer.writeheader()
         stage_time = wall_time * 0.5
-        writer.writerow(
+        rows = [
             {
                 "stage": "module.d1_fusion",
                 "call_count": int(duration * 10),
                 "wall_time_s": stage_time,
                 "mean_wall_time_ms": 1000 * stage_time / (duration * 10),
-            }
-        )
-        writer.writerow(
+            },
             {
                 "stage": "module.d2_association",
                 "call_count": int(duration * 5),
                 "wall_time_s": wall_time * 0.2,
                 "mean_wall_time_ms": 40 * wall_time / duration,
-            }
-        )
+            },
+        ]
+        for row in rows:
+            if stage_timing_v2:
+                mean_ms = float(row["mean_wall_time_ms"])
+                row.update(
+                    {
+                        "schema_version": "scalable3d-stage-timings-v2",
+                        "p50_wall_time_ms": 0.8 * mean_ms,
+                        "p95_wall_time_ms": 1.2 * mean_ms,
+                        "max_wall_time_ms": 1.6 * mean_ms,
+                        "distribution_available": True,
+                        "distribution_unavailable_reason": None,
+                    }
+                )
+            writer.writerow(row)
     with (root / "post_run_timings.csv").open(
         "w", newline="", encoding="utf-8"
     ) as stream:
@@ -176,6 +206,7 @@ def test_compare_long_duration_episodes_reports_normalized_growth(tmp_path: Path
     report = compare_long_duration_episodes(short, long)
 
     comparison = report["comparison"]
+    assert report["schema_version"] == "scalable3d-long-duration-comparison-v2"
     assert comparison["duration_ratio"] == 5.0
     assert comparison["wall_time_ratio"] == 10.0
     assert comparison["normalized_wall_time_growth"] == 2.0
@@ -190,6 +221,10 @@ def test_compare_long_duration_episodes_reports_normalized_growth(tmp_path: Path
     )
     assert d1["normalized_call_density_growth"] == 1.0
     assert d1["normalized_per_call_cost_growth"] == 2.0
+    assert d1["distribution_available"] is True
+    assert d1["p50_wall_time_growth"] == 2.0
+    assert d1["p95_wall_time_growth"] == 2.0
+    assert d1["max_wall_time_growth"] == 2.0
     assert comparison["short_measured_post_run_wall_time_s"] == 0.6
     assert comparison["long_measured_post_run_wall_time_s"] == 3.0
     assert comparison["normalized_measured_post_run_growth"] == 1.0
@@ -211,6 +246,55 @@ def test_loader_marks_missing_process_usage_unavailable(tmp_path: Path) -> None:
         "elapsed_wall_time_s": None,
         "unavailable_reason": "process_resource_usage_missing",
     }
+
+
+def test_dirty_comparison_is_labeled_development_evidence(tmp_path: Path) -> None:
+    short = _write_episode(
+        tmp_path / "short",
+        duration=2.0,
+        wall_time=20.0,
+        rss_kb=1_000,
+        elapsed="22.0",
+        repository_dirty=True,
+    )
+    long = _write_episode(
+        tmp_path / "long",
+        duration=10.0,
+        wall_time=200.0,
+        rss_kb=4_000,
+        elapsed="220.0",
+        repository_dirty=True,
+    )
+
+    report = compare_long_duration_episodes(short, long)
+    markdown = render_long_duration_comparison_markdown(report)
+
+    assert report["evidence_class"] == "descriptive_dirty_source_development"
+    assert report["comparison"]["acceptance"]["clean_source"] is False
+    assert "脏工作树" in markdown
+
+
+def test_loader_keeps_legacy_stage_timing_distribution_unavailable(
+    tmp_path: Path,
+) -> None:
+    episode = _write_episode(
+        tmp_path / "episode",
+        duration=2.0,
+        wall_time=20.0,
+        rss_kb=1_000,
+        elapsed="22.0",
+        stage_timing_v2=False,
+    )
+
+    loaded = load_long_duration_episode(episode)
+    timing = loaded["stage_timings"]["module.d1_fusion"]
+
+    assert timing["schema_version"] is None
+    assert timing["distribution_available"] is False
+    assert timing["p50_wall_time_ms"] is None
+    assert timing["p95_wall_time_ms"] is None
+    assert timing["max_wall_time_ms"] is None
+    assert timing["distribution_unavailable_reason"] is None
 
 
 def test_loader_keeps_legacy_episode_without_post_run_timings_compatible(
@@ -266,3 +350,4 @@ def test_report_bundle_writes_json_and_chinese_markdown(tmp_path: Path) -> None:
     assert "clean-source" in markdown
     assert "已测结束后处理" in markdown
     assert "## 结束后处理耗时" in markdown
+    assert "## 阶段单次延时" in markdown

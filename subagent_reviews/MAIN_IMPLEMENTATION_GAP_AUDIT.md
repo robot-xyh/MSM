@@ -981,7 +981,7 @@ D1 NumPy EKF/FusionAdapter
 
 | Owner | 当前缺口 | 已有基础 | 缺少条件/下一验收 |
 | --- | --- | --- | --- |
-| main/D1/D2/D3/D5/D6 | 分阶段实时性能与长时增长达标 | clean `0d2da25` 已完成带 generation 审计的三 seed 基线和 20 个保留 seed 描述性校准；20-seed 核心墙钟均值 `96.391 s`、实时倍率 `0.1039`，20/20 代次守恒通过。D1 独立回放平均 `1.231x`，D5 占用桶优化冻结三 seed 中位耗时均值下降 16.45% | 仍未实时；D1 融合/扫描输入、D2/D5 长时增长、结束后处理和稳定窗口 P50/P95/max 仍需关闭。正式七变体矩阵仍为 0 episode，不得把 R0 nominal 描述性校准当算法验收 |
+| main/D1/D2/D3/D5/D6 | 分阶段实时性能与长时增长达标 | clean `0d2da25` 已完成带 generation 审计的三 seed 基线和 20 个保留 seed 描述性校准；20-seed 核心墙钟均值 `96.391 s`、实时倍率 `0.1039`，20/20 代次守恒通过。D1 独立回放平均 `1.231x`，D5 占用桶优化冻结三 seed 中位耗时均值下降 16.45%。main 已增加 `scalable3d-stage-timings-v2` 的逐阶段 P50/P95/max 记录，5v5 冒烟通过 | 仍未实时；D1 融合/扫描输入、D2/D5 长时增长和结束后处理仍需关闭，新分位字段还需在 clean 200 对 200 候选上冻结。正式七变体矩阵仍为 0 episode，不得把 R0 nominal 描述性校准当算法验收 |
 | D2/D6/main | v2 关联候选评审与跨 difficulty 证据 | 正式 v2 联合报告已生成；总体五项 gate 通过，IDSW 下降 54.6%，P95 15.47 ms，truth leakage=0；默认在线主线未改变 | 仅 `clutter/combined` 通过，四个零 baseline-IDSW difficulty fail-closed，dropout truth alignment 为 partial；需补同 case/seed 完整多源 system bundle 后再决定是否晋级，JPDA 保持不准入 |
 | D3/D5/D7/main | M5N2 协同物理闭环 | 同条件 10-seed paired 和四层日志已完成；baseline 7/30 pair，candidate 4/30，联盟均 0/10 | 分离第二 primary 中段重捕、D5 共识、D7 gate 和成员安全根因；candidate 保持关闭 |
 | D5/D7/main | 单帧 dropout 尾部 | 2-5 帧逐 seed 全通过，物理结果 100/100，truth/ID/version 无违规 | 复核 seed 2 在 0.8 s 注入时没有进入 image-KF 的锁定时序；不得用聚合计数掩盖 |
