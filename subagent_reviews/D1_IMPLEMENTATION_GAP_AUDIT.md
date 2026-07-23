@@ -10,6 +10,7 @@
 
 | GAP/合同 | 当前状态 | 2026-07-22 证据 | 剩余关闭条件 |
 | --- | --- | --- | --- |
+| 缓存一致性证据重复完整校验 | **D1-owned 热点已关闭；系统 P1 仍开放** | clean `f80b5bd` 10 s seeds 42000-42002；完整重验/受限复制纯融合均值 `64.844/52.657 s`，加速 `1.231x`，3/3 更快。逐扫描状态/协方差/时间戳/谱系/分级、终态、一致性证据和全部操作计数严格一致，在线 truth 0；代表 seed 刷新累计 `27.122 -> 1.664 s`，D1 全量 `178 passed` | 当前新热点为非雷达代价矩阵和航迹物化；扩展长于 10 s、未见 seed、固定硬件 P50/P95/max、RSS、scan input 和端到端实时倍率，不得把 standalone 墙钟写成 integrated 实时证据 |
 | 最终跨提交 integrated 语义复核 | **当前三 seed 已关闭；系统 P1 仍开放** | clean `8f86192 -> f80b5bd`，200v200 nominal、10 s、seeds 42000-42002；逐条总线语义审计 3/3 通过，D1 终态航迹均为 `202/207/203`，finite 且在线 truth 0。仅按 occurrence/version 归一化 opaque `plan_id`，ACK 原始载荷 SHA 先校验，owner/version/coalition/global track/command 仍参与比较 | 扩展未见 seed 和时长；保持相同跨提交审计规则，不能以数量相同替代逐条语义比较 |
 | 长时 fixed-lag 超线性增长 | **D1-owned 冻结输入缺口已关闭；系统 P1 仍开放** | 10 s/764 scans/12,107 obs 对照中，history replay `170,106 -> 13,397`、filter update `120,440 -> 9,549`、墙钟 `157.237 -> 107.449 s`；clean 三 seed 全栈 D1 fusion 均值进一步为 `103.339 -> 92.991 s` | 扩展更长时和未见 seed，冻结硬件和周期预算；D1 不以丢观测、缩短 6 s fixed-lag、放宽 gate 或使用 truth 换性能 |
 | 同一 fusion timestamp 重复全量快照物化 | **D1-owned 接口与 main 质点集成项已关闭** | 默认 API 不变；clean `8f86192` 三 seed 的 state-only/完整快照为 `310/454`、`328/516`、`278/504`，逐例合计全部扫描；事件、scan input、共享摘要和世界真值与旧 clean 相同 | 保持语义回归；AirSim writer、跨 tick heartbeat/lineage 和实时预算另行验收 |
@@ -38,6 +39,12 @@ publication audit v2；main 已在 clean `8f86192` 三种子质点全栈接线�
 但 scan input 增加约 3.68%。精确创新求解下降约 77.86%，该字段只作性能诊断。三个 seed 的
 D1 fused-track 规范哈希和全部在线业务语义审计通过，终态 D1 航迹数均保持 `202/207/203`。
 该证据不改变系统实时与长时归一化超线性 P1 的开放状态。
+
+后续 D1-owned 剖析进一步把合法缓存证据刷新定位为剩余重放热点。受限复制仅更新两个非负 replay
+计数，不绕过新证据或变化证据的完整校验。clean `f80b5bd` 三 seed 冻结 A/B 的参考/候选均值
+为 `64.844/52.657 s`，全部严格语义与操作数检查通过。代表 seed 中
+`_replay_record` 累计 `35.348 -> 9.410 s`。本项可以从 P1 实现缺口移为持续回归项；整体实时、
+长于 10 s 的归一化增长、非雷达候选成本、航迹物化、scan input 与正式精度继续保持 P1。
 
 第二阶段继续治理第一阶段默认路径中的扫描关联成本。严格几何键只允许在实际量测函数参数一致时
 复用非雷达预测量测和数值雅可比；每个候选对仍独立求创新协方差并参加 Hungarian 分配。冻结

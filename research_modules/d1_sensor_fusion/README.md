@@ -4,6 +4,32 @@ Offline research module for radar, acoustic, EO, and optional synthetic lidar he
 
 ## 当前性能与治理证据（2026-07-22）
 
+### 第七阶段：一致性证据计数刷新
+
+在 clean `f80b5bd` 的 10 s、200v200 冻结输入上，函数级剖析显示当前默认路径仍有大量已缓存
+证据刷新。固定滞后历史的模型、后验、门控、协方差和来源谱系均未变化时，旧实现仍调用
+`dataclasses.replace()`，使不可变记录重新执行完整构造校验。代表 seed 42000 共发生
+194,916 次这类刷新；旧路径 `_refresh_cached_consistency_evidence_if_enabled()` 累计
+27.122 s，成为固定滞后重放链的主要成本。
+
+`OnlineConsistencyEvidenceRecord.with_replay_counters()` 只接受一个已经通过完整构造校验的冻结
+记录，并只校验新的非负 `replay_revision/replay_count`。其余槽位逐项复用；双时间戳、状态、
+协方差、可用性、来源谱系和由谱系生成的 `evidence_id` 均不重算。新建证据、真实滤波更新、
+重复观测、OOSM 标记和不可用记录仍执行完整校验。融合器保留
+`trusted_consistency_counter_refresh=False` 参考开关，便于冻结 A/B。
+
+seeds 42000、42001、42002 的扫描/观测数分别为 `764/12,107`、`844/11,922`、
+`782/11,825`。完整重验与受限复制纯融合墙钟均值为 `64.844/52.657 s`，加速 `1.231x`，
+3/3 候选更快。每一扫描的状态、协方差、时间戳、来源谱系和航迹分级，以及终态航迹、逐观测
+一致性证据、物化计划和全部融合操作计数均严格一致；在线 truth 使用为 0。代表 seed 的
+cProfile 中，证据刷新累计 `27.122 -> 1.664 s`，`_replay_record` 累计
+`35.348 -> 9.410 s`。D1 全量回归为 `178 passed in 14.80s`。
+
+详细证据见 `reports/D1_CONSISTENCY_COUNTER_REFRESH_PERFORMANCE_BENCHMARK_CN.md`、
+`reports/D1_CONSISTENCY_COUNTER_REFRESH_PROFILE_10S_CN.md` 及对应 JSON。本阶段关闭的是已缓存
+一致性证据的重复完整校验热点。优化后 10 s standalone 纯融合仍需 52.657 s；非雷达扫描代价
+矩阵、航迹物化、scan input、长于 10 s 的增长率和系统实时倍率仍为 P1。
+
 ### 第六阶段：最终跨提交全栈语义审计
 
 main 使用相同的 `200v200-nominal-v1` 配置，在 clean 参考提交 `8f86192` 与 clean 候选提交

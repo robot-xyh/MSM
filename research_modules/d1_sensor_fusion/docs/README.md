@@ -4,6 +4,12 @@
 
 ## 当前证据索引（2026-07-22）
 
+最新 D1-owned 长时优化处理合法缓存一致性证据的重复完整校验。clean `f80b5bd` 10 s seeds
+42000-42002 的完整重验/受限复制纯融合均值为 `64.844/52.657 s`，3/3 更快，聚合加速
+`1.231x`。逐扫描状态、协方差、时间戳、谱系和分级，终态航迹、最终证据及操作计数严格一致；
+在线 truth 使用为 0。代表 seed 的证据刷新累计 `27.122 -> 1.664 s`。D1 全量
+`178 passed in 14.80s`。该结果不关闭实时、AirSim、长于 10 s 的增长率或正式精度。
+
 最新 D1-owned 雷达关联优化使用 clean `8f86192` 的 10 s 冻结输入 seeds 42000-42002。
 预门控只处理通过有限性、严格对称、Gershgorin 严格正定和 `pinv` cutoff 安全裕量认证的创新
 协方差；其余矩阵全部回退旧精确 `pinv`。非正定交叉协方差和近奇异截断负例均证明 rejection
@@ -96,5 +102,9 @@ D1 侧解释见本目录各算法/AirSim 文档和 `../reports/EXPERIMENT_REPORT
 - `../reports/d1_coalesced_release_performance_benchmark_20260722.json`
 - `../reports/D1_COALESCED_RELEASE_PROFILE_2P2_CN.md`
 - `../reports/d1_coalesced_release_profile_2p2_20260722.json`
+- `../reports/D1_CONSISTENCY_COUNTER_REFRESH_PERFORMANCE_BENCHMARK_CN.md`
+- `../reports/d1_consistency_counter_refresh_performance_benchmark_20260722.json`
+- `../reports/D1_CONSISTENCY_COUNTER_REFRESH_PROFILE_10S_CN.md`
+- `../reports/d1_consistency_counter_refresh_profile_10s_20260722.json`
 
 更新文档时不要移动或重命名上述图表，避免破坏报告中的相对链接。
