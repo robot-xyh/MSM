@@ -497,12 +497,16 @@ main 在持久化 `d2.scalable3d_identity_evidence.v2` 后，应使用同一 evi
 manifest。D6 只读取 evaluation 的 `audit` 和公开
 `identity_evidence_records`，不得读取 tracker 私有 blocked-key 集合。
 
-D6 已在 clean 提交 `909669b` 汇总 all-record 与 created/matched observed-record
-coverage、恢复拒绝原因、blocker count、水位线年龄、overflow 和两个未提交 binding
-violation 字段。seed 1100 candidate 的两个 violation 均为 0，但三个恢复航迹的
-`1.2 s` 新雷达量测在 `2.130815 s` 评分时超过固定 `0.9 s` lineage window
-`0.030815 s`，strict 指标仍不可用。本候选真实 AirSim episode 与扩展 seeds 1101/1102
-尚未执行；候选在同 seed 恢复严格指标可用性和 D2/D3 非退化前保持禁用。
+D6 已在 clean 提交 `65568579c99e4ef9939f0519f66c46d3076ef035` 汇总 all-record
+与 created/matched observed-record coverage、恢复拒绝原因、blocker count、水位线年龄、
+overflow 和两个未提交 binding violation 字段。seed 1100 candidate 的两个 violation
+均为 0，三条超龄恢复由发布新鲜度门控保持为未提交。strict IDSW、track continuity 和
+coverage continuity 恢复为可用值 `3/0.8266667/0.8283333`，baseline 为
+`9/0.865/0.870`。
+
+该次运行是三维质点 clean A/B，不是 AirSim。candidate 的 D2 航迹和 D3 分配仍由
+`203/200` 降至 `201/197`，两项 continuity 也退化，因此算法候选保持禁用。真实 AirSim
+episode 与扩展 seeds 1101/1102 未执行。
 
 ## Recovery publication freshness gate 接线
 
@@ -517,7 +521,8 @@ AirSim adapter 若收到状态有效时刻早于当前 D2 frame 的输入，不�
 恢复门控计算 tracker frame 与原始 source measurement 的年龄。超龄时航迹保持
 uncommitted，D6 应从既有恢复原因计数中展示阻断，不把它写成 IDSW 0。
 
-2026-07-23 仅完成 D2 确定性模块测试：专项 `32 passed`，完整模块
-`291 passed, 1 warning in 29.48s`。没有启动 AirSim，也没有生成新的 AirSim replay。
-clean seed 1100 A/B、真实 AirSim 多 seed 和 D2/D3 非退化验收仍由 main 执行；候选在
-这些门槛通过前保持禁用。
+2026-07-23 已完成 D2 确定性模块测试：专项 `32 passed`，完整模块
+`291 passed, 1 warning in 29.05s`；并完成上述三维质点 clean seed 1100 A/B。没有启动
+AirSim，也没有生成新的 AirSim replay。由于首个 gate seed 已出现 D2/D3 数量和
+continuity 退化，本候选不进入真实 AirSim 多 seed；固定 `0.9 s` 不扩大，seeds
+1101/1102、10 s 和 20-seed 矩阵停止。

@@ -408,30 +408,30 @@ coverage、各状态计数、未提交 mapping 数和未提交候选绑定违规
 严格更晚新 key 恢复、未来来源时刻拒绝、容量溢出持续 fail-closed，以及 v2 audit 的
 独立重算和篡改拒绝。
 
-main 与 D6 随后在 clean 提交 `909669b` 完成 nominal 200v200、2.2 s、
-`recon_count=2`、seed 1100（首个预留的未见 gate seed）的 v2 A/B。baseline 的
-D2/D3 数量为 `203/200`，strict
-IDSW、track continuity、coverage continuity 分别为 `9/0.865/0.870`，承诺覆盖率
-`1.0`。candidate 的 D2/D3 数量为 `201/197`；全部 1787 条记录中 committed 1714、
-uncommitted 73，承诺覆盖率 `0.9591494124`。69 条未提交处于 active hold，4 条处于
-after hold；未提交 source/candidate binding violation 均为 0，online truth use 为 0。
-
-三条恢复航迹 `GT3D-000185/000186/000202` 使用的新原始雷达量测时刻为 `1.2 s`，评分
-帧为 `2.130815 s`。约 `0.930815 s` 的谱系年龄超过固定 `0.9 s` window
-`0.030815 s`，使 candidate strict IDSW 和 continuity 仍为 unavailable。该结果验证
-上述状态机、v1/v2 兼容、evaluator 口径和 fail-closed 绑定约束，但没有通过算法准入。
-不得通过扩大 `0.9 s` window 消除阻断；候选保持默认关闭，seeds 1101/1102 停止。
-
-2026-07-23 已在 D2 内实现上述发布新鲜度门控。门控接收显式 tracker frame timestamp，
+旧 clean 提交 `909669b` 的 seed 1100 A/B 发现三条恢复航迹在评分帧超出固定
+`0.9 s` 谱系窗口，使 candidate strict 指标不可用。2026-07-23 已在 D2 内实现上述发布
+新鲜度门控。门控接收显式 tracker frame timestamp，
 不从原始 source timestamp 推断当前发布时刻。`Detection3D.measurement_timestamp`
 仍表示 D1 延迟补偿后的统一状态有效时刻，必须与本次 tracker frame 相等；原始量测时刻
 由 `source_measurement_timestamp` 单独携带。状态时刻滞后的 Detection 直接进入 OOSM
 合同拒绝，不能利用较早时钟绕过发布新鲜度判定。
 
-完整 D2 回归为 `291 passed, 1 warning in 29.48s`。该结果证明模块行为，不代表 clean
-seed 1100 已重新通过。此前三条超窗恢复发生在旧候选制品中；main 仍需用新代码复跑同一
-baseline/candidate，并同时检查 strict 指标可用、绑定违规为 0、在线 truth use 为 0 和
-D2/D3 非退化。
+main 与 D6 随后在 clean 提交
+`65568579c99e4ef9939f0519f66c46d3076ef035` 复跑相同 nominal 200v200、2.2 s、
+`recon_count=2`、seed 1100。baseline 的 D2/D3 数量为 `203/200`，strict IDSW、track
+continuity、coverage continuity 为 `9/0.865/0.870`，承诺覆盖率为 `1.0`。candidate
+的 D2/D3 数量为 `201/197`，strict IDSW、track continuity、coverage continuity 为
+`3/0.8266667/0.8283333`；三项严格指标均可用。
+
+candidate 的 1787 条记录中 committed 1711、active hold 69、after hold 7，承诺覆盖率
+`0.9574706212`。三条 after-hold 恢复被
+`source_observation_outside_recovery_publication_freshness_window` 阻断。未提交
+source/candidate binding violation 为 `0/0`，online truth use 为 0，duplicate
+assignment 为 0。完整 D2 回归为 `291 passed, 1 warning in 29.05s`。
+
+该结果接受发布新鲜度合同修复，不接受结构歧义算法候选。IDSW 从 9 降至 3，但 D2 航迹、
+D3 分配和两项连续性退化。候选保持默认关闭，固定 `0.9 s` 不扩大，seeds 1101/1102、
+10 s 和 20-seed 矩阵停止。
 
 ## 4. 默认算法主线
 

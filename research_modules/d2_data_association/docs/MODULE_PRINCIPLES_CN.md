@@ -1546,18 +1546,18 @@ clean source commit `0d2da25` 的 seed 1000 只读复算中，严格 IDSW 保持
    v2 的 fail-closed 行为。
 2. **准入同时检查身份和业务可用性**：baseline 的 D2 航迹、D3 分配、strict IDSW、
    track continuity 和 coverage continuity 分别为 `203/200/9/0.865/0.870`；
-   candidate 的 D2 航迹和 D3 分配为 `201/197`，strict 指标 unavailable。即使承诺审计
-   完整，候选也不能晋级。
-3. **承诺覆盖率必须带分母解释**：candidate 全部 1787 条记录中 1714 条 committed、
-   73 条 uncommitted，coverage 为 `0.9591494124`。73 条未提交记录由 69 条 active hold
-   和 4 条 after hold 组成；不能只报告覆盖率而省略状态分布。
-4. **固定谱系窗口不能为单个候选放宽**：三个恢复航迹的新原始雷达量测时刻为 `1.2 s`，
-   评分帧为 `2.130815 s`，谱系年龄约 `0.930815 s`。它超过固定 `0.9 s` window
-   `0.030815 s`，strict 指标按合同不可用。后续应修复调度、发布或评分边界，不能扩大
-   window 来制造可用指标。
+   发布新鲜度修复后的 candidate 为 `201/197/3/0.8266667/0.8283333`。IDSW 改善，
+   但两项连续性和 D2/D3 数量退化，候选不能晋级。
+3. **承诺覆盖率必须带分母解释**：candidate 全部 1787 条记录中 1711 条 committed、
+   76 条 uncommitted，coverage 为 `0.9574706212`。未提交记录由 69 条 active hold 和
+   7 条 after hold 组成；其中三条 after-hold 恢复被发布新鲜度门控阻断。
+4. **固定谱系窗口不能为单个候选放宽**：恢复发布新鲜度门控已经在 tracker 发布帧检查
+   原始证据年龄，三条超龄证据继续未提交，strict 指标恢复可用。该结果说明正确做法是
+   阻断超龄恢复，而不是扩大固定 `0.9 s` window。
 5. **后续未见 seed 由首个 gate seed 控制**：seed 1100 是首个预留的未见 gate seed；
-   它未同时满足 strict 指标可用、D2/D3 非退化和绑定违规为 0，因此扩展 seeds
-   1101/1102 停止。候选继续默认关闭。
+   修复后 strict 指标和绑定合同通过，但 D2/D3 数量、track continuity 和 coverage
+   continuity 未达到非退化门槛，因此扩展 seeds 1101/1102、10 s 和 20-seed 矩阵停止。
+   候选继续默认关闭。
 
 ## 三十四、恢复发布新鲜度原则（2026-07-23）
 
@@ -1572,6 +1572,7 @@ clean source commit `0d2da25` 的 seed 1000 只读复算中，严格 IDSW 保持
    claim、不建新航迹。航迹保持 `identity_uncommitted_after_hold`，等待新的原始证据。
 4. **兼容关闭不用于准入**：配置 v2 允许显式关闭发布新鲜度门控，以复现旧版本只检查
    水位线和 replay 的行为。默认值保持开启；候选准入不能使用兼容关闭。
-5. **模块通过不等于系统通过**：2026-07-23 的确定性专项为 `32 passed`，完整 D2 为
-   `291 passed, 1 warning in 29.48s`。新的 clean seed 1100 A/B 尚未执行，strict 指标和
-   D2/D3 非退化仍需 main 复核，seeds 1101/1102 继续停止。
+5. **模块通过不等于算法准入**：2026-07-23 的确定性专项为 `32 passed`，完整 D2 为
+   `291 passed, 1 warning in 29.05s`。clean 提交 `6556857` 的新 seed 1100 A/B 已确认
+   strict 指标可用、绑定违规为 0、在线真值使用为 0；候选仍因 D2/D3 数量及连续性退化
+   被拒绝，seeds 1101/1102 继续停止。

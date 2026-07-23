@@ -128,7 +128,7 @@ D2 只负责离线科研仿真、日志回放和多目标数据关联评估。�
   `0.9 s` 发布新鲜度门控；显式关闭仅用于旧水位线/replay 行为兼容。公开 DTO 只携带
   blocker count、水位线和 overflow，不携带 key。`known_false_alarm/unknown` 必须由不
   读取离线 truth sidecar 的上游传感器处置产生。
-- **本轮验收边界**：D2 完整模块回归为 `291 passed, 1 warning in 29.48s`，专项另覆盖
+- **本轮验收边界**：D2 完整模块回归为 `291 passed, 1 warning in 29.05s`，专项另覆盖
   37 目标动态规模、旧候选 key 在 reservation 释放后重入、同水位线新 key、严格更晚
   新 key、晚于水位线但发布超龄继续未提交、后续合格证据恢复、Detection 与 tracker
   frame 不一致拒绝、兼容关闭、未来来源时刻拒绝、容量溢出和 v2 审计重算。该结果完成
@@ -139,18 +139,17 @@ D2 只负责离线科研仿真、日志回放和多目标数据关联评估。�
   与 created/matched observed-record 两套承诺分母、reason counts、恢复阻断器数量、
   水位线年龄和 overflow。loader 对聚合篡改、负水位线年龄和未提交候选/来源绑定失败
   关闭。v1 继续输出 legacy unavailable/`None`。
-- **clean seed 1100 v2 门槛已执行，候选仍拒绝**：main 与 D6 已在 clean 提交
-  `909669b` 原子持久化并消费 v2 字段。nominal 200v200、2.2 s、`recon_count=2`
-  baseline 为 D2 航迹 203、D3 分配 200、strict IDSW 9、track continuity `0.865`、
-  coverage continuity `0.870`、承诺覆盖率 `1.0`。candidate 为 D2 航迹 201、D3
-  分配 197、all-record commitment coverage `0.9591494124`，状态计数为
-  committed 1714、active hold 69、after hold 4；未提交 source/candidate binding
-  violation 均为 0，online truth use 为 0。
-- **准入阻断保持**：三个恢复航迹 `GT3D-000185/000186/000202` 的新原始雷达量测
-  `measurement_timestamp=1.2 s`，在评分帧 `2.130815 s` 超出固定 `0.9 s` lineage
-  window 约 `0.030815 s`，因此 candidate strict IDSW/continuity 仍 unavailable。
-  不扩大 `0.9 s` window。合同和 fail-closed 行为已通过，算法候选未通过指标可用性和
-  D2/D3 非退化门槛；默认关闭并停止 seeds 1101/1102。
+- **发布新鲜度修复后的 clean seed 1100 已执行**：main 与 D6 在 clean 提交
+  `65568579c99e4ef9939f0519f66c46d3076ef035` 复跑 nominal 200v200、2.2 s、
+  `recon_count=2`。baseline 为 D2 航迹 203、D3 分配 200、strict IDSW 9、track
+  continuity `0.865`、coverage continuity `0.870`、承诺覆盖率 `1.0`。candidate 为
+  D2 航迹 201、D3 分配 197、strict IDSW 3、track continuity `0.8266667`、coverage
+  continuity `0.8283333`、all-record commitment coverage `0.9574706212`。
+- **合同修复通过，算法候选仍拒绝**：candidate 1787 条记录中 committed 1711、
+  active hold 69、after hold 7。三条恢复被发布新鲜度门控阻断，严格身份指标恢复可用；
+  未提交 source/candidate binding violation 均为 0，online truth use 为 0，
+  duplicate assignment 为 0。IDSW 改善不能抵消 D2/D3 数量及两项 continuity 退化。
+  固定 `0.9 s` 不扩大，候选保持默认关闭；seeds 1101/1102、10 s 和 20-seed 矩阵停止。
 
 ## 3. 输入输出合同
 
@@ -1271,11 +1270,18 @@ strict IDSW、track/identity continuity 和 coverage continuity 因
 
 2026-07-23 使用确定性 D2 六维质点夹具验证，无随机 seed、未启动 AirSim。专项文件
 `test_ambiguity_hold_lease.py` 为 `32 passed`；完整 D2 为
-`291 passed, 1 warning in 29.48s`，验收阈值为零失败。warning 是既有 Matplotlib
+`291 passed, 1 warning in 29.05s`，验收阈值为零失败。warning 是既有 Matplotlib
 `Axes3D` 环境提示。
 
 模块测试证明发布超龄恢复保持未提交、后续合格原始证据可恢复、same/older/replay 继续
-阻断、无 hold 路径不受恢复预算影响、配置版本和非法值校验有效。尚未完成新的 clean
-seed 1100 A/B，不能把本节写成候选准入。main 应先复跑 baseline/candidate seed 1100；
-只有 strict 指标 available、在线 truth use 和绑定违规为 0、D2/D3 可用性不退化时，
-才恢复 seeds 1101/1102。
+阻断、无 hold 路径不受恢复预算影响、配置版本和非法值校验有效。
+
+main 已在 clean 提交 `65568579c99e4ef9939f0519f66c46d3076ef035` 完成新的 seed
+1100 A/B，制品位于
+`/tmp/MSM-identity-freshness-ab-6556857/{baseline,candidate}`。发布新鲜度门控把三条
+超龄恢复保持为 `identity_uncommitted_after_hold`，strict 指标由旧候选的 unavailable
+恢复为可用；candidate IDSW 为 3，baseline 为 9。该候选仍未通过联合门槛：D2 航迹
+`203 -> 201`、D3 分配 `200 -> 197`、track continuity
+`0.865 -> 0.8266667`、coverage continuity `0.870 -> 0.8283333`。因此下一步不是扩展
+seed，而是形成新的结构歧义算法候选并先关闭数量、连续性和覆盖退化。当前继续停止
+seeds 1101/1102、10 s 和 20-seed 运行。

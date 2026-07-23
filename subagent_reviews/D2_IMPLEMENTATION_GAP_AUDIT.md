@@ -9,8 +9,9 @@
 既有 AirSim/EVAL 审计结论；本次新增 clean 基线与候选的 200v200 五 seed 热路径对照，
 `8f86192` 对 `f80b5bd` 的 10.0 s 三 seed clean 集成逐条语义审计，以及 clean
 `4ac3bb2` nominal 200v200、seed 1000、10.0 s 冻结总线的 profiler 和旧/新等价比较；
-同时纳入 clean 提交 `909669b`、nominal 200v200、2.2 s、`recon_count=2`、seed 1100
-的身份承诺 v2 A/B。
+同时纳入 clean 提交 `909669b` 的身份承诺 v2 首轮 A/B，以及发布新鲜度修复后 clean
+提交 `65568579c99e4ef9939f0519f66c46d3076ef035`、nominal 200v200、2.2 s、
+`recon_count=2`、seed 1100 的复核 A/B。
 
 **结论摘要**：截至 2026-07-23，D2 无运行算法 P0 blocker。既有二维默认
 GNN/Hungarian 与历史 AirSim replay 证据保持不变；显式六维路径已闭合 D2-owned
@@ -28,9 +29,10 @@ D2 v3 复现和测试验收已同步。五 seed 200v200 候选在 45/45 周期�
 最新 seed 1000 profiler 在 48/48 周期严格等价下将 D2 core 中位数
 `2.928830 -> 2.204672 s`，但早/晚窗口比 `1.119661x -> 1.123036x`，因此只关闭三个
 可证明的常数成本热点，长窗口 P1 不关闭。身份承诺 v2 的 main/D6 接线和 fail-closed
-行为已由 seed 1100 验证。该次 candidate strict 指标因恢复证据超过固定谱系窗口而
-不可用，D2/D3 数量也未达到 baseline。D2 已补充发布新鲜度门控，但新的 clean A/B
-尚未执行，算法候选继续拒绝。
+行为已由 seed 1100 验证。发布新鲜度修复后的 clean A/B 已使 candidate strict 指标恢复
+可用，三条超龄恢复保持未提交；未提交绑定违规和在线 truth use 均为 0。candidate
+IDSW `9 -> 3`，但 D2/D3 数量 `203/200 -> 201/197`、track/coverage continuity
+`0.865/0.870 -> 0.8266667/0.8283333`。合同修复通过，算法候选继续拒绝。
 
 ## 2026-07-23 D1 歧义侧车与 D2 保持租约增量
 
@@ -113,25 +115,23 @@ D2 v3 复现和测试验收已同步。五 seed 200v200 候选在 45/45 周期�
   继续 fail-closed。
 - **兼容与规模已验证**：v1 默认构造、round-trip 和评分不变；v1 拒绝 v2 字段。
   专项覆盖 37 目标动态输入，无 2/5/200 固定规模。2026-07-23 完整 D2 回归为
-  `291 passed, 1 warning in 29.48s`，验收阈值为零失败。新增回归覆盖旧 key 释放后重入、
+  `291 passed, 1 warning in 29.05s`，验收阈值为零失败。新增回归覆盖旧 key 释放后重入、
   同水位线不同 key、未来来源时刻、发布超龄阻断、后续合格证据恢复、Detection/tracker
   frame 不一致拒绝、兼容关闭和容量溢出。
 - **系统接线已关闭**：clean 提交 `909669b` 已原子持久化
   `identity_commitment_by_track`，D6 已聚合 commitment coverage、uncommitted
-  counts、恢复原因、水位线、overflow 和 binding violation。seed 1100 已按 v2 重测。
+  counts、恢复原因、水位线、overflow 和 binding violation。clean 提交 `6556857` 已
+  按发布新鲜度修复后的 v2 再次重测 seed 1100。
 - **合同通过、算法准入仍开放**：baseline 的 D2 航迹/D3 分配为 `203/200`，strict
   IDSW、track continuity、coverage continuity 为 `9/0.865/0.870`，承诺覆盖率 `1.0`。
-  candidate 为 `201/197`，all-record commitment coverage `0.9591494124`，1714 条
-  committed、73 条 uncommitted，其中 69 条 active hold、4 条 after hold。未提交
-  source/candidate binding violation 均为 0，online truth use 为 0，说明 v2
-  fail-closed 合同通过。
-- **前次 P1 阻断及当前状态**：`GT3D-000185/000186/000202` 由
-  `measurement_timestamp=1.2 s` 的新原始雷达量测恢复，但评分帧为 `2.130815 s`，
-  谱系年龄约 `0.930815 s`，超过固定 `0.9 s` window 约 `0.030815 s`。candidate
-  strict IDSW/continuity 当时 unavailable，且 D2/D3 数量未达到非退化门槛。D2 模块
-  已在恢复前加入同一 `0.9 s` 发布新鲜度门控；新的 clean seed 1100 尚未复跑，故
-  strict 可用性和业务非退化仍开放。默认仍为 disabled，seeds 1101/1102 停止；禁止扩大
-  `0.9 s` window。
+  candidate 为 `201/197`，strict 三项为 `3/0.8266667/0.8283333`，all-record
+  commitment coverage `0.9574706212`，1711 条 committed、76 条 uncommitted，其中
+  69 条 active hold、7 条 after hold。未提交 source/candidate binding violation 均为
+  0，online truth use 为 0，说明 v2 fail-closed 合同通过。
+- **当前 P1 阻断**：`GT3D-000185/000186/000202` 的超龄恢复已由同一 `0.9 s` 发布
+  新鲜度门控阻断，strict 可用性缺口关闭。算法候选仍因 D2/D3 数量及两项 continuity
+  退化未达到联合非退化门槛。默认仍为 disabled，seeds 1101/1102、10 s 和 20-seed
+  矩阵停止；禁止扩大 `0.9 s` window。
 
 ## 0. 2026-07-15 M5N2 20-case GAP 判定
 
@@ -171,7 +171,7 @@ D2 当前实现符合“先用规则 GNN/Hungarian 做工程主线，密集交�
 - **2026-07-22 历史模块回归**：三 seed clean 集成证据同步后为
   `219 passed, 1 warning in 49.75s`；warning 仍为环境 `Axes3D`。
 - **2026-07-23 当前权威模块回归**：身份承诺 v2、恢复水位线、发布新鲜度门控和独立
-  audit 重算后的完整结果为 `291 passed, 1 warning in 29.48s`，验收阈值为零失败；warning 仍为
+  audit 重算后的完整结果为 `291 passed, 1 warning in 29.05s`，验收阈值为零失败；warning 仍为
   环境 `Axes3D`。此前 `271 passed` 是保持租约阶段，`234 passed` 是 profiler
   等价优化阶段的历史结果。
 - **2026-07-12 AirSim 证据**：PNG delivery candidate 的 2v2 10 seeds 为 20/20 pair、在线 truth 使用为 0；锁定后两帧 dropout 沿原 global/local track 和原计划上下文预测，没有 truth ID 或本地 ID 重写。M5N2 8 s 短窗口为 0/9，报告明确其几何与时间窗不足且不可与长时高净空基线直接比较。这些是 D2 下游合同的非退化证据，不是 D2 新算法或长期标定完成证据。
@@ -1253,26 +1253,34 @@ P50/P95/P99、多 seed 长短窗口、main-owned lineage/publication 分离，�
 
 ### 系统接线证据
 
-- main 已在 clean 提交 `909669b` 将真实 scalable episode 的
-  `identity_commitment_by_track` 原子持久化为 v2 evidence/evaluation；D6 已消费两类
-  denominator、恢复原因、水位线年龄、overflow 和 violation 字段。
+- main 已将真实 scalable episode 的 `identity_commitment_by_track` 原子持久化为 v2
+  evidence/evaluation；D6 已消费两类 denominator、恢复原因、水位线年龄、overflow 和
+  violation 字段。发布新鲜度配置已升级为
+  `d2.identity-commitment-recovery-config.v2`，默认使用固定 `0.9 s` 预算。
+- clean 提交 `65568579c99e4ef9939f0519f66c46d3076ef035` 已复跑 nominal 200v200、
+  2.2 s、`recon_count=2`、seed 1100。D2 离线评估与 D6 episode record 均确认 strict
+  指标 available，且没有回填 strict IDSW。
 - nominal 200v200、2.2 s、`recon_count=2`、seed 1100（首个预留的未见 gate seed）
   的 baseline 为 D2 航迹 203、D3 分配 200、strict IDSW 9、track continuity
   `0.865`、coverage continuity
   `0.870`、commitment coverage `1.0`。
-- candidate 为 D2 航迹 201、D3 分配 197；all-record commitment coverage
-  `0.9591494124`，1714 条 committed、73 条 uncommitted。未提交状态为 69 条 active
-  hold 和 4 条 after hold；source/candidate binding violation 均为 0，online truth
-  use 为 0。
+- candidate 为 D2 航迹 201、D3 分配 197，strict IDSW 3、track continuity
+  `0.8266667`、coverage continuity `0.8283333`；all-record commitment coverage
+  `0.9574706212`，1711 条 committed、76 条 uncommitted。未提交状态为 69 条 active
+  hold 和 7 条 after hold；source/candidate binding violation 均为 0，online truth
+  use 为 0，duplicate assignment 为 0。
+- 三条恢复航迹 `GT3D-000185/000186/000202` 被
+  `source_observation_outside_recovery_publication_freshness_window` 阻断，保持
+  `identity_uncommitted_after_hold`。该结果关闭发布超龄证据导致 strict-unavailable
+  的合同缺口。
 
 ### 仍开放的 P1
 
-- v2 合同和 fail-closed 行为通过，算法候选未通过准入。三个恢复航迹
-  `GT3D-000185/000186/000202` 使用 `measurement_timestamp=1.2 s` 的新原始雷达量测，
-  在 `2.130815 s` 评分时超过固定 `0.9 s` lineage window 约 `0.030815 s`；strict
-  IDSW/continuity 仍 unavailable。
-- 固定 `0.9 s` window 不扩大。后续先定位恢复量测到评分帧之间的调度、发布和评分边界，
-  再复跑同一 seed；同时要求 D2/D3 数量不退化、online truth use 为 0、两个未提交
-  binding violation 为 0。
-- 候选保持默认关闭，seeds 1101/1102 停止。本候选真实 AirSim 与扩展 seeds
-  1101/1102 尚未执行。
+- v2 合同、发布新鲜度门控、strict 指标可用性和 fail-closed 行为通过。算法候选仍未
+  通过准入：D2 航迹 `203 -> 201`、D3 分配 `200 -> 197`、track continuity
+  `0.865 -> 0.8266667`、coverage continuity `0.870 -> 0.8283333`。
+- IDSW 单项由 9 降至 3 不能覆盖数量、连续性和覆盖退化。后续结构歧义候选必须先解释
+  hold 对航迹维持、建轨和下游分配的影响，并满足联合非退化门槛。
+- 固定 `0.9 s` window 不扩大。候选保持默认关闭，seeds 1101/1102、10 s 和 20-seed
+  矩阵停止。本候选真实 AirSim 尚未执行；当前不以更多 seed 掩盖首个 gate seed 的明确
+  退化。

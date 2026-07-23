@@ -47,7 +47,7 @@ count 为 0，活动 lease 为 0，处置为 truth-free `target_candidate`。
 - committed 锚点跨一个未提交空窗从 `GT3D-000001` 变为
   `GT3D-000002` 时，IDSW 记 1，coverage 为 `2/3`。
 
-当前完整 D2 回归结果为 `291 passed, 1 warning in 29.48s`，验收阈值为零失败。warning
+当前完整 D2 回归结果为 `291 passed, 1 warning in 29.05s`，验收阈值为零失败。warning
 来自本机 Matplotlib `Axes3D` 多版本环境，不影响本专项。
 
 本批结论只适用于 D2 模块合同。main 原子持久化、D6 汇总和 clean seed 1100 已在后续
@@ -69,11 +69,11 @@ clean seed 1100 的旧候选允许三条晚于水位线的雷达证据恢复，�
 专项文件共 `32 passed`。测试还确认 same/older timestamp、同 key replay 和未来来源
 时刻继续阻断；无 hold 正常路径不受恢复预算影响；Detection 状态时刻与 tracker frame
 不一致时整帧拒绝；显式兼容关闭可复现旧行为。完整模块为
-`291 passed, 1 warning in 29.48s`，零失败门槛通过。
+`291 passed, 1 warning in 29.05s`，零失败门槛通过。
 
-本节没有复跑 clean seed 1100，不提供新的 IDSW、continuity、D2 航迹数或 D3 分配数。
-候选仍默认关闭，seeds 1101/1102 继续停止。main 复跑同一 seed 并满足 strict 指标可用、
-在线真值使用为 0、未提交绑定违规为 0 和 D2/D3 非退化后，才能重新进入算法准入评审。
+本节在当时没有复跑 clean seed 1100，因此只形成模块合同结论。main 后续复跑结果见
+第 33 节：strict 指标恢复可用，在线真值使用和未提交绑定违规均为 0，但 D2/D3 数量及
+两项 continuity 退化，候选仍未通过算法准入。
 
 ## 2026-07-23 结构歧义保持单 seed 集成门槛
 
@@ -1201,3 +1201,66 @@ coverage continuity 保持 unavailable。缺失值不能写成 0，也不能据�
 非退化门槛。固定 `0.9 s` window 不扩大。candidate 保持默认关闭，seeds 1101/1102
 停止；后续先分析恢复量测到评分帧之间约 `0.030815 s` 的调度与发布边界，再在同 seed
 复核。
+
+## 33. 发布新鲜度修复后的 clean seed 1100 A/B（2026-07-23）
+
+### 33.1 试验条件
+
+- clean 提交：`65568579c99e4ef9939f0519f66c46d3076ef035`；
+- baseline：`/tmp/MSM-identity-freshness-ab-6556857/baseline`；
+- candidate：`/tmp/MSM-identity-freshness-ab-6556857/candidate`；
+- 场景：nominal 200v200；
+- 时长：`2.2 s`；
+- 侦察节点数：`recon_count=2`；
+- 随机种子：1100；
+- 发布新鲜度预算：固定 `0.9 s`，未放宽。
+
+本次仍是三维质点全栈试验，不是 AirSim 或实飞。复核同时读取 `summary.json`、
+`offline_identity/identity_evaluation.json` 和
+`d6_truth_isolated/episode_record.json`。三份制品登记同一 clean 提交，D6 的严格身份
+指标保持 `available=true`，且 `strict_id_switch_count_backfilled=false`。
+
+### 33.2 结果
+
+| 指标 | baseline | candidate | 判定 |
+|---|---:|---:|---|
+| D2 终态航迹数 | 203 | 201 | candidate 少 2 条 |
+| D3 分配数 | 200 | 197 | candidate 少 3 条 |
+| 可用身份映射 | 1566 | 1491 | candidate 少 75 条 |
+| strict IDSW | 9 | 3 | 可用，下降 6 次 |
+| track continuity | 0.8650000 | 0.8266667 | 绝对下降 0.0383333 |
+| coverage continuity | 0.8700000 | 0.8283333 | 绝对下降 0.0416667 |
+| duplicate assignment | 0 | 0 | 无新增重复分配 |
+| all-record commitment coverage | 1.0000000 | 0.9574706212 | 候选存在显式未承诺区间 |
+| commitment records | 1800 | 1787 | candidate 少 13 条 |
+| committed records | 1800 | 1711 | candidate 另有 76 条未提交 |
+| active-hold uncommitted | 0 | 69 | 与结构歧义保持一致 |
+| after-hold uncommitted | 0 | 7 | 其中 3 条由发布新鲜度门控阻断 |
+| uncommitted source/candidate binding violation | 0/0 | 0/0 | 通过 |
+| online truth use | 0 | 0 | 通过 |
+| real-time factor | 0.2203106 | 0.2075997 | 本短窗口不作为性能晋级依据 |
+
+candidate 的三条阻断航迹为 `GT3D-000185`、`GT3D-000186` 和
+`GT3D-000202`。在最终评分帧 `2.130815 s`，三条航迹保持
+`identity_uncommitted_after_hold`，原因统一为
+`source_observation_outside_recovery_publication_freshness_window`。公开 evidence 不
+携带 source observation 或 truth candidate，两个绑定违规计数为 0。
+
+candidate 共 1787 条承诺记录，其中 1711 条 committed、69 条 active hold、7 条
+after hold。D6 独立适配结果与 D2 离线评估一致：strict IDSW 为 3，track continuity
+为 `0.8266667`，coverage continuity 为 `0.8283333`。严格指标没有使用部分诊断回填，
+也没有把未提交空窗当作零 IDSW。
+
+### 33.3 判定
+
+发布新鲜度门控修复通过。它消除了旧 A/B 中
+`source_observation_outside_lineage_window` 导致的 strict-unavailable 阻断，并把超龄
+恢复留在未承诺状态。在线真值隔离、来源绑定、候选绑定和重复分配合同均未退化。
+
+结构歧义算法候选仍被拒绝。IDSW 由 9 降至 3，但 D2 航迹、D3 分配、track continuity
+和 coverage continuity 同时下降。联合准入要求身份指标可用、安全合同通过且业务可用性
+不退化；该候选只满足前两项。
+
+候选继续默认关闭。固定 `0.9 s` 不放宽，seeds 1101/1102、10 s 和 20-seed 矩阵不运行。
+后续若提出新候选，应先解释并修复航迹数量、分配数量及连续性下降，再从 seed 1100
+重新进入准入评审。

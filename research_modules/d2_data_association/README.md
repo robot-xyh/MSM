@@ -40,30 +40,33 @@ D2 是 C-UAS 多目标数据关联研究模块，目标是在离线仿真和日�
   中；IDSW 继续比较未提交空窗前后的 committed 锚点。普通
   `source_lineage_missing`、未来/超窗观测、未知标签和冲突谱系仍 fail-closed。
   audit 新增 commitment coverage、状态计数、未提交 mapping 数和候选绑定违规数。
-- 2026-07-23 模块回归为 `291 passed, 1 warning in 29.48s`，验收阈值为零失败。专项覆盖活动
+- 2026-07-23 模块回归为 `291 passed, 1 warning in 29.05s`，验收阈值为零失败。专项覆盖活动
   hold、租约释放后旧候选 key 重入仍阻断、不同 key 但时间未越过水位线仍阻断、更晚新
   key 恢复、晚于水位线但到发布帧已超过 `0.9 s` 的证据继续未提交、后续合格证据恢复、
   Detection 状态时刻与 tracker frame 不一致时拒绝、兼容关闭、容量溢出 fail-closed、
   未来来源时刻/重复/超龄/已知假警/未知处置不恢复、无 hold 正常路径、37 目标动态规模、
   v1 round-trip 和跨未提交空窗 IDSW/coverage。warning 是本机 Matplotlib `Axes3D`
   环境问题。
-- 提交 `909669b` 已完成 main 原子持久化、D6 v2 聚合，以及以首个预留的未见 gate
-  seed 1100 开展的 clean A/B。场景为
-  nominal 200v200、2.2 s、`recon_count=2`。baseline 输出 D2 航迹 203、D3 分配 200、
-  strict IDSW 9、track continuity `0.865`、coverage continuity `0.870`，承诺覆盖率
-  `1.0`。
-- candidate 输出 D2 航迹 201、D3 分配 197；1787 条全部记录中 1714 条 committed、
-  73 条 uncommitted，承诺覆盖率 `0.9591494124`。未提交状态包括 69 条 active hold 和
-  4 条 after hold；未提交 source/candidate binding violation 均为 0，在线 truth use
-  为 0。合同持久化和 fail-closed 行为通过。
-- candidate 的 strict IDSW、track continuity 和 coverage continuity 仍为 unavailable。
-  `GT3D-000185`、`GT3D-000186`、`GT3D-000202` 在评分帧 `2.130815 s` 使用的新原始
-  雷达量测时刻为 `1.2 s`，比固定 `0.9 s` lineage window 多 `0.030815 s`。不得扩大
-  该窗口作为修复。候选未满足指标可用性和 D2/D3 非退化门槛，继续默认关闭；seeds
-  1101/1102 停止。上述结论证明合同实现，不构成算法准入。
-- 上述 clean A/B 之后，D2 已实现恢复发布新鲜度门控。该模块修复尚未在新的 clean
-  seed 1100 A/B 中验证，因此不能据此宣称三个超窗航迹已消失、strict 指标已恢复或
-  D2/D3 非退化门槛已通过。main 仍需先复跑 seed 1100，再决定是否启动 1101/1102。
+- 旧提交 `909669b` 的 clean A/B 暴露了恢复证据在发布帧超出固定 `0.9 s` 谱系窗口的
+  问题。D2 随后增加发布新鲜度门控，main 在 clean 提交
+  `65568579c99e4ef9939f0519f66c46d3076ef035` 复跑相同
+  nominal 200v200、2.2 s、`recon_count=2`、seed 1100。baseline 输出 D2 航迹 203、
+  D3 分配 200、strict IDSW 9、track continuity `0.865`、coverage continuity
+  `0.870`，承诺覆盖率 `1.0`。
+- 新 candidate 输出 D2 航迹 201、D3 分配 197；1787 条记录中 1711 条 committed、
+  69 条 `identity_uncommitted_ambiguity_hold`、7 条
+  `identity_uncommitted_after_hold`，承诺覆盖率 `0.9574706212`。其中
+  `GT3D-000185`、`GT3D-000186`、`GT3D-000202` 的恢复被
+  `source_observation_outside_recovery_publication_freshness_window` 正确阻断。
+  未提交 source/candidate binding violation 均为 0，在线 truth use 为 0。
+- 发布新鲜度门控解决了旧制品的 strict-unavailable 阻断。candidate strict IDSW 为 3，
+  track continuity 为 `0.8266667`，coverage continuity 为 `0.8283333`，三项均可用；
+  duplicate assignment 仍为 0。IDSW 虽由 9 降至 3，但 track continuity 和 coverage
+  continuity 分别从 `0.865/0.870` 降至 `0.8266667/0.8283333`，D2 航迹和 D3 分配也
+  分别少 2 条和 3 条。候选未满足联合非退化门槛，继续默认关闭。
+- 本轮只接受恢复发布新鲜度合同修复，不接受结构歧义算法候选准入。固定 `0.9 s` 不
+  放宽，seeds 1101/1102、10 s 和 20-seed 矩阵停止。三维质点 A/B 不是 AirSim 或实飞
+  结果；后续算法候选必须先解决连续性、覆盖和下游分配退化，再从 seed 1100 重新评审。
 
 ### 2026-07-23 D1 结构歧义保持租约候选
 
@@ -1022,5 +1025,7 @@ loader 会从 `IdentityEvidenceCommitment` 和逐帧 mapping 重算上述字段�
 不一致、水位线年龄为负、未提交 mapping 携带候选或来源绑定时直接拒绝。旧 evaluation
 v1 不嵌入 v2 evidence，新增审计项保持 unavailable/`None`。该阶段 2026-07-23 D2 全量
 测试为 `286 passed, 1 warning in 29.22s`；随后 main/D6 已完成接线和旧候选 clean
-seed 1100 A/B，结果见本文件开头。发布新鲜度门控加入后的当前回归为
-`291 passed, 1 warning in 29.48s`，新的 clean A/B 尚未执行。
+seed 1100 A/B。发布新鲜度门控加入后的模块回归为
+`291 passed, 1 warning in 29.05s`。main 已在 clean 提交 `6556857` 完成相同 seed 的
+新 A/B；strict 指标恢复可用，但候选因 D2/D3 数量和 continuity/coverage 退化被拒绝，
+结果见本文件开头。
