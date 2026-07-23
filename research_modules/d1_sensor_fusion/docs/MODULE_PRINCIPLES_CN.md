@@ -66,7 +66,10 @@ SHA-256；D2 source key 为
 候选开关 `radar_assignment_ambiguity_hold_evidence` 默认关闭，并与 v1/v2 互斥。专项
 `17 passed`、D1 全量 `237 passed in 17.42s` 已验证 DTO、计数、逐边角色、排列不变、名称/
 离线 identity metadata 不变、lineage 隔离、双时间戳、协方差和默认关闭兼容。这是模块证据；
-D2 消费和 main clean A/B 尚未完成，当前不能推导身份连续性或下游可用性已经改善。
+D2 有界保活消费和 main 单 seed A/B 已完成。固定提交 `9cd2a79` 的 seed 1100 候选产生并一次
+消费 46 个 evidence，说明证据链路正常；D2/D3 数量和映射可用性下降，候选身份指标又因
+`source_observation_outside_lineage_window` 不可用。候选未达到预注册门槛，停止后续 seed
+并保持默认关闭。该结果不能推导身份连续性或下游可用性已经改善。
 
 ### 最大匹配允许边决定匿名关联的不确定边界
 

@@ -1,6 +1,6 @@
 # D1 多传感器融合与目标配准实施计划
 
-## 结构歧义证据侧车候选与验收计划（2026-07-23）
+## 结构歧义证据侧车候选验收结论（2026-07-23）
 
 D1 已完成默认关闭的
 `prediction_only_maximum_matching_component_evidence_v3` 模块实现。配置
@@ -27,18 +27,26 @@ D1 已完成默认关闭的
 7. 专项 `17 passed`，D1 全量 `237 passed in 17.42s`，语法检查通过；改变 observation 名称
    及 truth/actor/D6 离线元数据时，侧车保持完全一致。
 
-后续由 main 和 D2 分阶段验收：
+main 和 D2 已完成首轮接入与系统验收：
 
-1. D2 先定义只消费 `source_node_id/source_track_id/source_key` 的有界保活适配，不把 D1
-   source token 重写为规范 `global_track_id`，也不把相关成员当作统计独立后验；
-2. main 在同一 clean commit、同一 seed/config/input digest 下运行 baseline/candidate，
-   treatment 只改变新开关并显式记录 publisher epoch；
-3. A/B 必须同时核对在线 truth 使用为 0、侧车 completeness、排列稳定性、free-column birth
-   数量、D1/D2 航迹连续性、ID switch、可用映射、D3 分配可用性和运行开销；
-4. 若 evidence 发布减少错误身份提交但引入不可接受的长期 coast、重复 birth、D2 航迹膨胀或
-   下游可用性下降，候选停止，不用模块测试替代系统收益；
-5. main clean A/B 通过前，开关保持默认关闭，审计状态保持
-   `experimental_hold_evidence_enabled_pending_main_clean_ab`。
+1. D2 有界保活只消费 `source_node_id/source_track_id/source_key`，没有把 D1 source token
+   重写为规范 `global_track_id`；
+2. main 在固定提交 `9cd2a79` 运行同配置 baseline/candidate。场景为
+   `nominal_200v200`、seed 1100、2.2 s、`recon_count=2`，候选只增加
+   `--d1-d2-structural-ambiguity-hold`；
+3. D1 航迹数均为 202。候选侧车 received/consumed 为 `46/46`，D2 接受 33 个分量事件并阻止
+   hit/miss/birth `69/69/4`，证明 D1 结构证据生成和一次消费链路正常；
+4. D2 航迹 `203 -> 201`，D3 分配 `200 -> 197`，available/unavailable mappings 从
+   `1566/230` 变为 `1492/294`，实时倍率从 `0.2245` 降至 `0.2112`；
+5. baseline ID switch 为 9，track/identity continuity 为 0.865，coverage continuity 为
+   0.870。候选身份指标因 `source_observation_outside_lineage_window` 不可用，不能证明身份
+   改善；两组在线 truth use 均为 0；
+6. 候选未达到“身份指标可评估且改善、下游可用性不退化”的预注册门槛。seeds 1101/1102
+   已停止，默认开关继续关闭。
+
+后续不扩大本候选的 seed 矩阵。若继续研究，应先把 D2/D6 身份 lineage 窗口的可评估性作为
+新候选前置条件，再重新设计保活强度或分量释放策略，并以新的预注册 seed 验收。D1 侧车合同
+和单元测试保持回归，但不能用 evidence 数量替代 ID switch、连续性或下游可用性。
 
 本候选不实现联合概率数据关联、多假设跟踪或分量联合协方差更新。
 `cross_covariance_available=false` 明确表示下游不得把成员边缘协方差当作相互独立。当前

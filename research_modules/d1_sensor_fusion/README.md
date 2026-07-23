@@ -54,8 +54,29 @@ free-row `3x2` 分量均为 0，free-column `2x3` 示例为 1。
 新增专项 `17 passed`，D1 全量 `237 passed in 17.42s`。覆盖平衡/非平衡分量、唯一匹配、
 首扫、门外独立 birth、输入排列不变、来源谱系隔离、truth 字段拒绝、未观测径向速度不参与
 更新、observation 名称和离线 identity metadata 不变性、默认关闭兼容、DTO roundtrip 和
-协方差 shape/半正定校验。该结果只证明 D1 合同和模块行为。D2 尚未接入有界保活消费，main
-尚未执行 clean A/B；候选保持默认关闭，不宣称系统收益或主线晋级。
+协方差 shape/半正定校验。该结果证明 D1 合同和模块行为，不单独证明系统身份收益。
+
+main 已在固定提交 `9cd2a79` 完成首个预注册全栈 A/B。两组均为
+`nominal_200v200`、seed 1100、2.2 s、`recon_count=2`。候选通过
+`--d1-d2-structural-ambiguity-hold` 显式启用；默认路径不变。
+
+| 指标 | baseline | 候选 |
+| --- | ---: | ---: |
+| D1 航迹数 | 202 | 202 |
+| D1 evidence received / consumed | 0 / 0 | 46 / 46 |
+| D2 accepted component events | 0 | 33 |
+| D2 prevented hit / miss / birth | 0 / 0 / 0 | 69 / 69 / 4 |
+| D2 航迹数 | 203 | 201 |
+| D3 分配数 | 200 | 197 |
+| available / unavailable mappings | 1,566 / 230 | 1,492 / 294 |
+| 实时倍率 | 0.2245 | 0.2112 |
+
+baseline 的 ID switch 为 9，track/identity continuity 为 0.865，coverage continuity 为
+0.870。候选身份指标因 `source_observation_outside_lineage_window` 不可用，不能据此判断
+ID switch 或身份连续性改善。候选保持在线 truth use 为 0，且 46 个 D1 evidence 均被一次
+消费，说明 D1 侧车生成、发布和一次消费链路正常；D2 航迹、D3 分配和映射可用性下降，运行
+倍率也没有改善。预注册晋级门槛未通过，main 已停止 seeds 1101/1102。候选保持默认关闭，
+不得从 D1 模块测试或侧车消费计数宣称系统身份改善。
 
 ### 第十四阶段：最大匹配允许边分量 v2 模块通过与系统候选拒绝
 

@@ -4,7 +4,7 @@
 
 **证据日期：2026-07-23**
 
-**范围：D1 单元测试；未运行系统 episode、AirSim 或 clean A/B**
+**范围：D1 单元测试，以及固定提交 `9cd2a79` 的单 seed 三维质点全栈 A/B；未运行 AirSim**
 
 本轮验证默认关闭的
 `prediction_only_maximum_matching_component_evidence_v3`。候选复用最大匹配允许边图，
@@ -36,15 +36,48 @@ edge 和 source key。成员令牌由显式 publisher node/epoch 与 D1 本地 t
 对应。观测 key 只使用数值量测证据和双时间戳，不使用通用 source lineage；后者可能在合成
 回放中携带离线标签。
 
-### 判定
+### 模块判定
 
 两项 main 复核语义已进入断言：
 
 1. `structural_ambiguity_deferred_birth_count` 只统计自由列，不统计分量中已匹配观测；
 2. 每条 edge 保留自己的结构角色，参考匹配边不复制分量级 kinds。
 
-模块合同通过。该结果不包含 D2 消费、长期 coast、D3 可用性、身份连续性或实时开销证据。
-候选保持默认关闭，等待 main 在 clean 同配置 A/B 中验收。
+模块合同通过。该结果只确认 D1 侧车结构、默认关闭兼容和 prediction-only 行为，不确认身份
+连续性或全栈收益。
+
+### 全栈 A/B
+
+main 在固定提交 `9cd2a79` 上使用 `nominal_200v200`、seed 1100、2.2 s、
+`recon_count=2` 运行 baseline 和
+`--d1-d2-structural-ambiguity-hold` 候选。候选开关之外的实验条件保持一致。
+
+| 指标 | baseline | 候选 |
+| --- | ---: | ---: |
+| D1 航迹数 | 202 | 202 |
+| D1 evidence received / consumed | 0 / 0 | 46 / 46 |
+| D2 accepted component events | 0 | 33 |
+| D2 prevented hit / miss / birth | 0 / 0 / 0 | 69 / 69 / 4 |
+| D2 航迹数 | 203 | 201 |
+| D3 分配数 | 200 | 197 |
+| available mappings | 1,566 | 1,492 |
+| unavailable mappings | 230 | 294 |
+| 实时倍率 | 0.2245 | 0.2112 |
+
+baseline 可计算的 ID switch 为 9，track/identity continuity 为 0.865，coverage continuity
+为 0.870。候选身份指标因 `source_observation_outside_lineage_window` 被标记为不可用，
+不能将缺失值解释为 0，也不能比较身份改善。两组在线 truth use 均为 0。
+
+46 个 evidence 均被一次消费，证明 D1 侧车在该 episode 中正常生成并越过 D1-D2 接口。D2
+接受 33 个分量事件后确实阻止了对应 hit、miss 和 birth。候选同时减少 D2 航迹和 D3 分配，
+available mappings 减少 74，unavailable mappings 增加 64，实时倍率下降。身份指标又不具备
+可评估性，因此没有达到预注册晋级条件。
+
+### 系统判定
+
+候选不晋级，保持默认关闭。预注册停止条件已触发，不运行 seeds 1101/1102。D1 结构证据合同
+和模块单测继续保留；本次结果不能支持“结构歧义侧车改善身份连续性”的结论。若提出后续候选，
+应先恢复身份 lineage 指标的可用性，再同时验收身份收益、下游可用性和运行开销。
 
 ## 匿名跨模态几何门控
 

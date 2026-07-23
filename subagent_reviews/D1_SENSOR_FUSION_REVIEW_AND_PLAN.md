@@ -31,8 +31,27 @@
   修改 observation 名称或 truth/actor/D6 离线元数据不会改变参考匹配或完整侧车。
 - 新专项 `17 passed`，D1 全量 `237 passed in 17.42s`，语法检查通过。该证据确认默认关闭
   兼容、排列稳定、名称/离线 identity metadata 不变、lineage/identity 隔离、双时间戳、
-  协方差和 DTO roundtrip；不确认系统收益。D2 有界保活消费和 main clean A/B 尚未完成，
-  候选保持默认关闭，P1 身份连续性开放。
+  协方差和 DTO roundtrip；不单独确认系统收益。
+- main 已在固定提交 `9cd2a79` 完成 `nominal_200v200`、seed 1100、2.2 s、
+  `recon_count=2` 的 baseline/candidate A/B。候选仅显式增加
+  `--d1-d2-structural-ambiguity-hold`，在线 truth use 保持 0。
+
+| 指标 | baseline | 候选 |
+| --- | ---: | ---: |
+| D1 tracks | 202 | 202 |
+| D1 evidence received / consumed | 0 / 0 | 46 / 46 |
+| D2 accepted component events | 0 | 33 |
+| D2 prevented hit / miss / birth | 0 / 0 / 0 | 69 / 69 / 4 |
+| D2 tracks | 203 | 201 |
+| D3 assignments | 200 | 197 |
+| available / unavailable mappings | 1,566 / 230 | 1,492 / 294 |
+| 实时倍率 | 0.2245 | 0.2112 |
+
+- baseline ID switch 为 9，track/identity continuity 为 0.865，coverage continuity 为
+  0.870。候选身份指标因 `source_observation_outside_lineage_window` 不可用，不能比较身份
+  收益。46 个 D1 evidence 全部一次消费，说明侧车生成和 D1-D2 传递正常；下游航迹、分配、
+  映射可用性及运行倍率均未达到晋级条件。候选被拒绝，seeds 1101/1102 停止，默认开关继续
+  关闭。D1 合同保留，P1 身份连续性和 lineage 可评估性开放。
 
 - Radar-only 开发专项已把 seed 1000/1002 定位为 scan Hungarian
   swap/保持/swap-back；零延迟对照排除 OOSM，20:1 likelihood margin 也已证明不能在 coast

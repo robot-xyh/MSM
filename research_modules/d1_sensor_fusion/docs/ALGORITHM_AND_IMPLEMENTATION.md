@@ -137,10 +137,15 @@ prediction-only member。
 未观测零径向速度不更新、默认关闭兼容、两种结果 DTO、roundtrip 和 covariance shape/半正定
 拒绝。D1 全量为 `237 passed in 17.42s`，`py_compile` 通过。
 
-该测试没有运行系统 episode，也没有 D2 有界保活消费者。候选状态为
-`experimental_hold_evidence_enabled_pending_main_clean_ab`，保持默认关闭。main 必须在
-clean 同配置 A/B 中评估身份连续性、birth/recall、D2/D3 可用性和运行成本；模块测试不能复用
-v2 的图论 oracle 结果来宣称系统收益。
+模块测试本身没有运行系统 episode。D2 有界保活消费者和 main A/B 已在固定提交 `9cd2a79`
+接入：`nominal_200v200`、seed 1100、2.2 s、`recon_count=2` 的候选产生并一次消费 46 个
+evidence，D2 接受 33 个分量事件。D2 航迹 `203 -> 201`、D3 分配 `200 -> 197`，
+available/unavailable mappings 从 `1566/230` 变为 `1492/294`，实时倍率从 `0.2245` 变为
+`0.2112`。候选身份指标因 `source_observation_outside_lineage_window` 不可用。
+
+预注册门槛要求身份指标可评估且改善，同时下游可用性不退化。本候选未通过，停止 seeds
+1101/1102，并保持默认关闭。D1 算法和 DTO 实现继续保留为实验能力；模块测试和 evidence
+消费计数不能用来宣称系统身份收益。
 
 ### Radar assignment ambiguity 实验候选 v2
 
