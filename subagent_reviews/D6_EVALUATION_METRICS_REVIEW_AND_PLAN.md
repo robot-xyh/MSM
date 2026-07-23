@@ -1,5 +1,31 @@
 # D6 系统评估指标综述及子方案
 
+## 2026-07-22 200 对 200 长时三 seed 集成评审
+
+main 提供的 reference `8f86192` 与 candidate `f80b5bd` 使用相同 nominal 200 对 200 配置、10.0 s
+世界时长和 seed `42000/42001/42002`，两组来源均为 clean。candidate 三个 episode 均为有限状态，
+在线真值使用为 0，D1/D2/D3/D5/D7 最终数量与 reference 相同。逐条审计先核验 ACK 原始载荷 SHA-256，
+再按计划 occurrence/version 规范 D3 随机 `plan_id`；owner、version、coalition、`global_track_id`、
+command 和其他业务字段不被忽略。三 seed 的规范业务语义全部相同。
+
+核心墙钟均值为 `155.895422 -> 150.874890 s`，进程总墙钟为
+`222.780 -> 195.363 s`，峰值 RSS 为 `2.888697 -> 2.359147 GiB`，进程残差约
+`66.885 -> 44.488 s`。candidate `total_before_timing_artifact` 分别为
+`39.274048705/41.663056382/40.982858311 s`，均值 `40.639988 s`。reference 缺同构
+`post_run_timings.csv`，残差改善只能作为核心外整体成本变化，不归因于单个 D6 函数。
+
+D6 的 JSONL streaming 保持主题过滤前的全记录真值检查，降低整文件常驻内存；D2 identity index 在
+严格校验后复用不可变身份映射；main 的规范 D1/D2 视图在写在线总线时同步生成，并由离线 identity
+消费者复用。三项优化与其他模块优化共同作用，当前进程级 A/B 不支持分解单项贡献。
+
+D6 aggregate 为 episode 3、基础 formal provenance eligibility 3、dirty 0、运行失败原因分布为空。
+三个 episode 的证据状态仍为 `descriptive_clean_source_calibration`，没有完整实验矩阵 metadata。
+实时因子仅约 `0.064-0.068`，七个在线/模块栈阶段仍通过超线性判据。结论是集成等价和资源用量得到
+三 seed clean 证据；正式 20 未见 seed、实时 P1、五米物理闭环和学习效果仍开放。
+
+文档同步后 D6 全量回归为 `530 passed, 1 warning`，耗时 33.75 s。既有 Matplotlib `Axes3D` warning
+不影响本批文件合同。AirSim 计划和 M 对 N 专项已检查；本次无对应接口或指标变化，保持不改。
+
 ## 2026-07-22 runtime outcome join 性能与安全复核
 
 本轮选择默认严格路径优化，没有接受“main 已检查”的无结构声明。在线文件仍从带外 SHA 开始逐条

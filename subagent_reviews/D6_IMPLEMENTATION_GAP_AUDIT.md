@@ -1,5 +1,39 @@
 # D6 实现差距审计
 
+## 2026-07-22 长时三 seed 集成 GAP 更新
+
+### 已闭合的 D6 证据缺口
+
+1. reference `8f86192` 与 candidate `f80b5bd` 已在相同 nominal 200 对 200、10.0 s、seed
+   `42000/42001/42002` 的 clean 输入上完成集成复核。candidate 三 seed 均有限、在线真值使用为 0，
+   D1/D2/D3/D5/D7 最终数量相同。
+2. main 的逐条语义审计没有把随机计划号直接删去。审计先验证原始 ACK 载荷 SHA-256 和运行内版本链，
+   再按 occurrence/version 规范 D3 不透明 `plan_id`；owner/version/coalition/`global_track_id`/command
+   等业务字段精确比较。三个 seed 均通过。
+3. D6 单 seed runtime outcome 优化已获得长时集成侧证：JSONL streaming 继续全记录真值检查，D2
+   identity index 保持来源重算和 freshness 语义，main 规范 D1/D2 视图避免离线身份阶段再次遍历完整
+   总线。
+4. 三 seed D6 aggregate 已生成：episode 3、基础 formal provenance eligibility 3、dirty 0、
+   `failure_reason_distribution={}`。三个来源仍明确归类为描述性 clean-source calibration。
+5. 性能口径已拆分为核心、进程、残差和 candidate 写盘后处理。核心均值下降 3.22%，进程总墙钟下降
+   12.31%，峰值 RSS 下降 18.33%，进程残差下降 33.49%。candidate 后处理总量均值固定为
+   `40.639988 s`；reference 缺相同制品，因此没有伪造单阶段跨提交结论。
+
+### 仍开放的 P1
+
+1. **正式统计覆盖。** 当前只有 3 个校准 seed，不是至少 20 个未见 seed。输入缺完整实验矩阵 metadata，
+   `formal_acceptance_eligible_episode_count=3` 仅表示基础来源门通过。
+2. **实时与增长率。** candidate 三 seed 实时因子约 `0.064-0.068`。D1 扫描输入/融合、D2 关联、
+   D5 主动视觉/终端关联、D7 导引和模块栈仍为超线性，实时及归一化长时 P1 未关闭。
+3. **同构后处理基线。** reference 没有 `scalable3d-post-run-timings-v1`。进程残差包含 D6 之外的写盘、
+   离线身份、一致性和一般进程开销；需要两版同 schema 计时后才能冻结阶段预算。
+4. **任务效果。** 空运行失败原因分布不等于物理成功。本批没有五米拦截、学习采用或因果效果证据，
+   对应指标继续 unavailable。
+
+当前没有新增 P0。此次只闭合三 seed clean 集成等价、真值隔离和资源量测证据，不把描述性校准提升为
+最终规模化验收。文档同步后 D6 全量回归为 `530 passed, 1 warning`；warning 为既有 Matplotlib
+`Axes3D` 环境问题。
+
 ## 2026-07-22 runtime outcome join 性能 GAP 更新
 
 ### 已关闭的 D6-owned P1 子项

@@ -1,5 +1,13 @@
 # D6 文档索引
 
+2026-07-22 nominal 200 对 200、10.0 s、seed `42000/42001/42002` 的 clean 长时集成校准见
+`MODULE_PRINCIPLES_CN.md`、`ALGORITHM_AND_IMPLEMENTATION.md` 和根目录 `../EXPERIMENT_REPORT.md`
+2.20 节。reference 为 `8f86192`，candidate 为 `f80b5bd`。三 seed 的有限状态、在线真值隔离和跨提交
+业务语义审计均通过；进程总墙钟均值下降 12.31%，峰值常驻内存下降 18.33%。candidate 写盘后处理
+均值为 `40.639988 s`，但 reference 缺相同计时制品，不能做单阶段归因。该批仍是三 seed 描述性
+clean-source calibration，不关闭 20 未见 seed、实时性、实验矩阵或物理拦截 P1。文档同步后 D6
+全量回归为 `530 passed, 1 warning`；warning 为既有 Matplotlib `Axes3D` 环境问题。
+
 2026-07-22 runtime plan outcome join 的严格等价性能优化见
 `MODULE_PRINCIPLES_CN.md` 和 `ALGORITHM_AND_IMPLEMENTATION.md`，固定 3380 条 development A/B 结果见
 `../EXPERIMENT_REPORT.md` 2.19 节。实现对全部在线记录继续执行真值键审计，只在审计后最小化留存，

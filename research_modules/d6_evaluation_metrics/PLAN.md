@@ -1,5 +1,44 @@
 # D6 Evaluation Metrics Plan
 
+## 2026-07-22 200 对 200 长时三 seed 集成证据
+
+### 已完成
+
+- [x] 复核 main 提供的 clean reference `8f86192` 与 candidate `f80b5bd`，固定 nominal 200 对 200、
+  10.0 s、seed `42000/42001/42002`，不混入误配置的 CLI 冒烟目录。
+- [x] 确认 candidate 三个 episode 均 `finite_state=true`、`online_truth_use_count=0`、
+  `repository_dirty=false`，D1/D2/D3/D5/D7 最终数量与 reference 相同。
+- [x] 接受 main 的逐条跨提交语义审计：先验证原始 ACK 载荷 SHA-256，再仅按计划 occurrence/version
+  规范 D3 不透明 `plan_id`；owner/version/coalition/`global_track_id`/command 业务字段不归一化，
+  三个 seed 均通过。
+- [x] 记录 D6 aggregate：episode 3、基础 formal provenance eligibility 3、dirty 0、运行失败原因
+  分布为空；证据类别仍为 3 个 `descriptive_clean_source_calibration`。
+- [x] 对齐三类性能量测：核心墙钟 `155.895422 -> 150.874890 s`，进程总墙钟
+  `222.780 -> 195.363 s`，峰值 RSS `2.888697 -> 2.359147 GiB`，进程残差约
+  `66.885 -> 44.488 s`。
+- [x] 固定 candidate 写盘后处理总量测
+  `39.274048705/41.663056382/40.982858311 s`，均值 `40.639988 s`；reference 缺
+  `post_run_timings.csv`，不做跨提交单阶段归因。
+- [x] 说明 JSONL 流式校验、D2 identity 一次建索引和 main 规范 D1/D2 视图复用的作用，同时保留
+  全记录 truth-like key 扫描、来源 SHA 复算和 D6 offline-only 边界。
+- [x] 文档同步后运行 D6 全量回归：`530 passed, 1 warning`；warning 为既有 Matplotlib `Axes3D`
+  环境问题，不影响本批无新增图形输出的离线证据。
+- [x] 检查 `AIRSIM_INTEGRATION_PLAN.md` 和 `subagent_reviews/D6_M_TO_N_EVALUATION_FRAMEWORK_REVIEW.md`。
+  本批是三维质点 nominal 一对一校准，不改变 AirSim 接线或 M 对 N 指标，因而不修改这两份文件。
+- [x] 检查文档布局。D6 以根目录 `EXPERIMENT_REPORT.md` 为唯一实验报告，`docs/README.md` 已指向
+  该文件；不新建重复且易漂移的 `docs/EXPERIMENT_REPORT.md`。
+
+### 仍开放的 P1
+
+1. 当前只有 3 个描述性校准 seed，未达到至少 20 个未见 seed 的最终验收要求，也没有完整冻结的实验
+   矩阵 metadata；`formal_acceptance_eligible` 不得写成最终实验矩阵通过。
+2. candidate 实时因子约为 `0.064-0.068`。D1 扫描输入/融合、D2 关联、D5 主动视觉/终端关联、
+   D7 导引和总模块栈仍通过超线性判据，实时和长时归一化 P1 未关闭。
+3. reference 没有分阶段后处理计时。进程残差包含输出写盘、离线身份/一致性、D6 评估和其他进程
+   开销；后续只有在两版都具备同 schema 计时制品时，才能比较单阶段收益。
+4. 本批没有形成五米物理拦截、学习策略采用或因果效果证据。缺失层继续保持 unavailable，不从
+   `failure_reason_distribution={}` 推断任务成功。
+
 ## 2026-07-22 runtime plan outcome join 离线性能闭环
 
 ### 已完成

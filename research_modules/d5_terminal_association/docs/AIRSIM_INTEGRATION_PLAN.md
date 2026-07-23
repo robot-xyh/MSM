@@ -1,5 +1,13 @@
 # AirSim 离线集成计划
 
+## 2026-07-22 f80b5bd 集成证据与 AirSim 边界
+
+main 已在 clean `8f86192 -> f80b5bd` 上完成 nominal 200v200、10.0 秒、seeds `42000-42002` 的统一三维质点集成对照。D5 终端关联累计耗时三 seed 均值由 `2.545876 s` 降至 `1.974446 s`，主动视觉由 `4.174315 s` 变为 `4.183797 s`；最终 binding 为 `22/29/28`，逐条视觉 binding 和主动视觉载荷语义相同。三个候选 episode 均为有限状态，在线真值使用为 0。
+
+该结果没有启动 AirSim，也没有改变 settings、相机分辨率、视场角、内外参、检测器、MOT、actor、云台或 reset 顺序。单次 `process()` 内的同时间戳只读 center prediction 复用可以直接保留到后续 AirSim adapter，因为它不跨调用、不减少候选、不修改 `global_track_id`；但本次计时不能作为 AirSim 帧率、真实图像可见性或机载硬件实时性证据。
+
+AirSim 代表性子场景仍需单独验证相机双时间戳、变化外参、像素协方差、匿名局部轨迹和实际检测负载。跨提交审计中的 D3 `plan_id` 归一化只服务独立运行对照，在线运行仍必须拒绝过时版本，并保留 owner、coalition、`global_track_id`、command 与原始 ACK 来源完整性。D5 长时超线性 P1 和真实相机准入均保持开放。
+
 ## 2026-07-22 paired shadow v2 与 AirSim 边界
 
 D5 已完成 20 seed、45 cell、900 帧的离线合成同图 paired shadow v2。该执行没有启动 AirSim，

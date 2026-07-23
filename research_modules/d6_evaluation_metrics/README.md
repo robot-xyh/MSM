@@ -1,5 +1,35 @@
 # D6 Evaluation Metrics
 
+## 2026-07-22 200 对 200 长时三 seed 集成校准
+
+main 在 clean worktree 上使用相同 nominal 200 对 200 配置、10.0 s 世界时长和 seed
+`42000/42001/42002`，对 reference `8f86192` 与 candidate `f80b5bd` 做了跨提交复核。candidate
+三个 episode 均为有限状态，`online_truth_use_count=0`，D1、D2、D3、D5、D7 最终输出数量与
+reference 一致。逐条语义审计在校验原始 ACK 载荷 SHA-256 后，只把 D3 的不透明随机 `plan_id`
+按计划出现次序和版本规范化；owner、version、coalition、`global_track_id`、命令及其他业务字段均未
+忽略。三个 seed 全部通过。
+
+| 进程级口径 | reference 均值 | candidate 均值 | 变化 |
+| --- | ---: | ---: | ---: |
+| 仿真核心墙钟时间 | 155.895422 s | 150.874890 s | -3.22% |
+| 进程总墙钟时间 | 222.780 s | 195.363 s | -12.31% |
+| 峰值常驻内存 | 2.888697 GiB | 2.359147 GiB | -18.33% |
+| 进程残差，进程总墙钟减核心墙钟 | 约 66.885 s | 约 44.488 s | -33.49% |
+
+candidate 的 `post_run_timings.csv` 将写盘后处理总量测为
+`39.274048705/41.663056382/40.982858311 s`，均值 `40.639988 s`。reference 没有该制品，因而
+跨提交残差只能表示核心计时之外的整体成本，不能称为某个 D6 函数的耗时或加速比。D6 的 JSONL
+流式校验避免整文件常驻内存，D2 identity 索引避免每个绑定窗口重复扫描；main 同次序列化写出的
+规范 D1/D2 视图供离线身份评估复用，避免再次遍历完整在线总线。这三项共同减少后处理时间和内存，
+但不能从当前进程级数据中拆分各自贡献。
+
+D6 三 seed 聚合结果为 `episode_count=3`、`formal_acceptance_eligible_episode_count=3`、
+`repository_dirty_episode_count=0`、`failure_reason_distribution={}`。三个 episode 的证据状态仍是
+`descriptive_clean_source_calibration`，且没有冻结实验矩阵 metadata。该结果不是正式 20 个未见
+seed 验收。candidate 三个 seed 的实时因子约为 `0.067/0.064/0.068`，长时比较仍标记 D1 扫描输入、
+D1 融合、D2 关联、D5 主动视觉、D5 终端关联、D7 导引和模块栈为超线性阶段，因此实时 P1 保持开放。
+本次文档同步后 D6 全量回归为 `530 passed, 1 warning`；warning 是既有 Matplotlib `Axes3D` 环境问题。
+
 ## 2026-07-22 runtime plan outcome join 严格等价性能优化
 
 `runtime_plan_outcome_join.py` 现逐行解析完整在线 JSONL。每条记录仍校验唯一 JSON key、有限数、

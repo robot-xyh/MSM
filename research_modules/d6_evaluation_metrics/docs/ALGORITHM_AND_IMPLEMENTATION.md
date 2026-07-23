@@ -1,5 +1,63 @@
 # D6 系统级离线评估：算法原理与实施说明
 
+## 长时三 seed 集成校准算法（2026-07-22）
+
+### 在线证据最小留存
+
+运行结果先由 main 在一次消息遍历中写出完整 `online_observations.jsonl`。同一条已经规范序列化的
+D1 fused-track 或 D2 associated-track 行同时写入离线身份视图，因此完整总线与 D1/D2 视图不存在
+二次编码差异。离线身份生成器接收这两个预写视图，不再从内存消息或完整总线重新筛选 D1/D2。
+
+D6 `runtime_plan_outcome_join` 仍逐行解析完整在线 JSONL。处理顺序固定为：
+
+1. JSON 唯一键与有限数检查；
+2. envelope 精确字段、sequence 和 schema 检查；
+3. 全层 truth-like key 检查；
+4. 主题过滤；
+5. D1/D2 规范整行 SHA-256 留存，D3/D7/ACK 业务载荷留存。
+
+过滤后的 D2 identity 文件独立重算摘要，并完成帧时间、mapping 顺序、重复中心航迹和来源绑定校验。
+随后一次构造：
+
+```text
+global_track_id -> [(frame_time, identity_mapping), ...]
+```
+
+每个 assignment binding window 只在对应中心航迹的有序序列上应用 freshness 和边界判断。索引改变查询
+成本，不改变窗口、歧义或 availability 公式。
+
+### 跨提交语义比较
+
+每个运行先独立验证 episode、seed、场景摘要、时间轴、计划发布序列和 ACK 原始载荷 SHA-256。D3
+不透明随机计划号按首次出现顺序映射为 `P0000/P0001/...`，同一计划刷新复用 token，版本和父子次序
+必须连续。由计划号派生的 binding/decision 引用使用规范 token 重建后再计算比较摘要。
+
+以下字段始终精确比较，不进入 token 映射：owner、plan version、coalition ID/version、epoch、lease、
+`global_track_id`、resource、target、node、member role、assignment cost、迟滞状态、D7 command 和 ACK
+业务状态。2026-07-22 reference `8f86192` 与 candidate `f80b5bd` 的 seed
+`42000/42001/42002` 均通过该审计。
+
+### 计时与聚合
+
+三个进程级量定义为：
+
+```text
+core_wall_s = summary.wall_time_s
+process_elapsed_s = /usr/bin/time elapsed wall clock
+process_residual_s = process_elapsed_s - core_wall_s
+```
+
+candidate 另写 `post_run_timings.csv`，逐阶段记录从核心结束到报告写盘的时间，并以
+`total_before_timing_artifact` 保存总量。三 seed 值为
+`39.274048705/41.663056382/40.982858311 s`，算术均值 `40.639988 s`。reference 没有相同 schema，
+所以算法只展示 candidate 分解，不计算 reference/candidate 单阶段比值。
+
+三 seed 进程均值为：核心墙钟 `155.895422 -> 150.874890 s`，进程总墙钟
+`222.780 -> 195.363 s`，峰值 RSS `2.888697 -> 2.359147 GiB`，残差约
+`66.885 -> 44.488 s`。D6 aggregate 保留 episode 3、基础 formal provenance eligibility 3、dirty 0、
+空运行失败原因分布，同时保留 `descriptive_clean_source_calibration` 和实验矩阵缺失原因。聚合器不会
+因为来源 clean 或失败原因为空，将三 seed 提升为 20 未见 seed 正式验收。
+
 ## Runtime plan outcome join 的流式安全实现（2026-07-22）
 
 ### 在线解析

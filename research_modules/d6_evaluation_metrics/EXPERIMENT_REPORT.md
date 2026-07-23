@@ -1,5 +1,76 @@
 # D6 系统级评估指标实验报告
 
+## 2.20 2026-07-22 200 对 200 长时三 seed 集成校准
+
+### 实验设计
+
+reference 使用提交 `8f86192`，candidate 使用提交 `f80b5bd`。两组均在 clean worktree 上运行
+nominal 200 对 200 三维质点集成栈，世界时长 10.0 s，seed 为 `42000/42001/42002`。本节只使用
+三组配置身份一致的长时 episode；带重复数量参数、导致场景身份变化的 CLI 冒烟不进入比较。
+
+验收分为三层。第一层核对 manifest、配置、seed、有限状态、在线真值使用和 D1/D2/D3/D5/D7 最终
+数量。第二层逐条比较跨提交业务语义。D3 独立 planner 会生成随机 `plan_id`，审计先验证每条原始
+ACK 载荷 SHA-256 和各运行自身版本链，再按计划出现次序与版本映射为规范 token。owner、version、
+coalition、`global_track_id`、command 和其他业务字段保持原值。第三层比较核心墙钟、进程墙钟、峰值
+常驻内存和 candidate 写盘后处理计时。
+
+### 合同结果
+
+candidate 三个 episode 均为有限状态，在线真值使用次数均为 0，来源提交为 `f80b5bd`，工作树均为
+clean。D1/D2/D3/D5/D7 最终数量与 reference 一致。跨提交逐条语义审计三 seed 全部通过，没有通过
+删除 owner、版本、联盟、中心航迹号或控制命令字段获得等价结论。
+
+D6 聚合输出如下：
+
+| 字段 | 结果 |
+| --- | ---: |
+| `episode_count` | 3 |
+| `formal_acceptance_eligible_episode_count` | 3 |
+| `repository_dirty_episode_count` | 0 |
+| `failure_reason_distribution` | `{}` |
+| `descriptive_clean_source_calibration` | 3 |
+
+`formal_acceptance_eligible_episode_count=3` 只表示三条来源通过基础 clean provenance 门。当前输入没有
+完整实验矩阵 metadata，聚合状态仍为描述性 clean-source calibration；空运行失败原因分布也不表示
+所有任务指标可用。
+
+### 性能结果
+
+| 口径 | reference 均值 | candidate 均值 | 相对变化 |
+| --- | ---: | ---: | ---: |
+| 仿真核心墙钟时间 | 155.895422 s | 150.874890 s | -3.22% |
+| 进程总墙钟时间 | 222.780 s | 195.363 s | -12.31% |
+| 峰值常驻内存 | 2.888697 GiB | 2.359147 GiB | -18.33% |
+| 进程残差 | 约 66.885 s | 约 44.488 s | -33.49% |
+
+进程残差定义为 `/usr/bin/time` 进程总墙钟减去仿真核心墙钟。它覆盖核心计时外的全部成本，包括在线
+总线写盘、规范 D1/D2 视图、离线身份和一致性评估、D6 报告以及未单列的进程开销。该值不是
+`evaluate_runtime_plan_outcomes()` 或其他单个 D6 函数的耗时。
+
+candidate 的 `post_run_timings.csv` 给出：
+
+| seed | `total_before_timing_artifact` |
+| ---: | ---: |
+| 42000 | 39.274048705 s |
+| 42001 | 41.663056382 s |
+| 42002 | 40.982858311 s |
+| 均值 | 40.639988 s |
+
+reference 生成时还没有 `post_run_timings.csv`。因此本节只报告 candidate 的写盘后处理构成，不计算
+跨提交后处理阶段降幅。JSONL 流式校验减少整文件常驻内存；D2 identity 一次建索引减少绑定窗口对
+不可变映射的重复扫描；main 在写完整在线总线的同一序列化循环中同步生成规范 D1/D2 视图，离线身份
+评估直接复用这些逐行等价记录。当前 A/B 只能评价三项优化叠加后的进程结果，不能拆分单项贡献。
+
+### 结论边界
+
+candidate 三个 seed 的实时因子分别约为 `0.067/0.064/0.068`，仍明显低于 1。短长时归一化比较虽
+通过安全合同，但 D1 扫描输入、D1 融合、D2 关联、D5 主动视觉、D5 终端关联、D7 导引和模块栈仍被
+判为超线性。本批关闭的是三 seed clean 集成回归、真值隔离、跨提交业务等价和资源用量描述缺口。
+至少 20 个未见 seed、冻结实验矩阵、实时 P1、五米物理闭环和学习策略效果仍未完成。
+
+文档同步后执行 D6 全量回归，结果为 `530 passed, 1 warning`，耗时 33.75 s。warning 来自本机
+Matplotlib `Axes3D` 导入环境，不影响 JSON、JSONL、CSV 或 Markdown 评估合同。
+
 ## 2.19 2026-07-22 runtime plan outcome join 严格等价性能验证
 
 ### 场景与验收
