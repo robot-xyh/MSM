@@ -74,7 +74,6 @@ def write_offline_identity_evaluation(
     from research_modules.d2_data_association.d2_data_association import (
         GlobalTrackLineageEvidence,
         ObservationLineageRef,
-        SCALABLE_3D_EXTERNAL_TRUTH_SCHEMA_VERSION,
         Scalable3DObservationTruthLabel,
         create_scalable_3d_identity_evidence_bundle,
         evaluate_scalable_3d_identity_files,
@@ -103,7 +102,7 @@ def write_offline_identity_evaluation(
             observation_id=item.observation_id,
             truth_target_id=item.truth_entity_id,
             measurement_timestamp=item.measurement_timestamp,
-            source_schema_version=SCALABLE_3D_EXTERNAL_TRUTH_SCHEMA_VERSION,
+            disposition=item.disposition,
         )
         for item in offline_truth_labels
     )

@@ -14,7 +14,18 @@ WORLD_SCHEMA_VERSION = "scalable3d-world-v1"
 BUS_SCHEMA_VERSION = "scalable3d-episode-bus-v1"
 SCENARIO_SCHEMA_VERSION = "scalable3d-scenario-v1"
 ONLINE_OBSERVATION_SCHEMA_VERSION = "scalable3d-observation-v1"
-OFFLINE_TRUTH_SCHEMA_VERSION = "scalable3d-offline-truth-v1"
+OFFLINE_TRUTH_SCHEMA_VERSION_V1 = "scalable3d-offline-truth-v1"
+OFFLINE_TRUTH_SCHEMA_VERSION = "scalable3d-offline-truth-v2"
+OFFLINE_TRUTH_DISPOSITION_TARGET = "target"
+OFFLINE_TRUTH_DISPOSITION_KNOWN_FALSE_ALARM = "known_false_alarm"
+OFFLINE_TRUTH_DISPOSITION_UNKNOWN = "unknown"
+OFFLINE_TRUTH_DISPOSITIONS = frozenset(
+    {
+        OFFLINE_TRUTH_DISPOSITION_TARGET,
+        OFFLINE_TRUTH_DISPOSITION_KNOWN_FALSE_ALARM,
+        OFFLINE_TRUTH_DISPOSITION_UNKNOWN,
+    }
+)
 DEFAULT_THRESHOLD_VERSION = "scalable3d-thresholds-v1"
 SENSOR_RANDOM_SCHEDULE_VERSIONS = frozenset(
     {"sequential_v1", "entity_fixed_v1"}
@@ -343,12 +354,84 @@ class SensorMeasurement:
 
 @dataclass(frozen=True)
 class OfflineTruthLabel:
-    """Evaluator-only mapping separated from online observation payloads."""
+    """Evaluator-only observation disposition kept outside online payloads."""
 
     observation_id: str
-    truth_entity_id: str
+    truth_entity_id: str | None
     measurement_timestamp: float
     schema_version: str = OFFLINE_TRUTH_SCHEMA_VERSION
+    disposition: str = OFFLINE_TRUTH_DISPOSITION_TARGET
+
+    def __post_init__(self) -> None:
+        observation_id = str(self.observation_id).strip()
+        if not observation_id:
+            raise ValueError("offline truth observation_id must be non-empty")
+        timestamp = float(self.measurement_timestamp)
+        if not np.isfinite(timestamp) or timestamp < 0.0:
+            raise ValueError(
+                "offline truth measurement_timestamp must be finite and non-negative"
+            )
+        schema_version = str(self.schema_version)
+        if schema_version not in {
+            OFFLINE_TRUTH_SCHEMA_VERSION_V1,
+            OFFLINE_TRUTH_SCHEMA_VERSION,
+        }:
+            raise ValueError(f"unsupported offline truth schema: {schema_version!r}")
+        disposition = str(self.disposition).strip().lower()
+        if disposition not in OFFLINE_TRUTH_DISPOSITIONS:
+            raise ValueError(
+                f"unsupported offline truth disposition: {self.disposition!r}"
+            )
+        if (
+            schema_version == OFFLINE_TRUTH_SCHEMA_VERSION_V1
+            and disposition != OFFLINE_TRUTH_DISPOSITION_TARGET
+        ):
+            raise ValueError("offline truth v1 supports target labels only")
+        if disposition == OFFLINE_TRUTH_DISPOSITION_TARGET:
+            if self.truth_entity_id is None:
+                raise ValueError("target truth labels require truth_entity_id")
+            truth_entity_id = str(self.truth_entity_id).strip()
+            if not truth_entity_id:
+                raise ValueError("target truth_entity_id must be non-empty")
+        else:
+            if self.truth_entity_id is not None:
+                raise ValueError(
+                    f"{disposition} truth labels must not carry truth_entity_id"
+                )
+            truth_entity_id = None
+        object.__setattr__(self, "observation_id", observation_id)
+        object.__setattr__(self, "truth_entity_id", truth_entity_id)
+        object.__setattr__(self, "measurement_timestamp", timestamp)
+        object.__setattr__(self, "schema_version", schema_version)
+        object.__setattr__(self, "disposition", disposition)
+
+    @classmethod
+    def known_false_alarm(
+        cls,
+        *,
+        observation_id: str,
+        measurement_timestamp: float,
+    ) -> "OfflineTruthLabel":
+        return cls(
+            observation_id=observation_id,
+            truth_entity_id=None,
+            measurement_timestamp=measurement_timestamp,
+            disposition=OFFLINE_TRUTH_DISPOSITION_KNOWN_FALSE_ALARM,
+        )
+
+    @classmethod
+    def unknown(
+        cls,
+        *,
+        observation_id: str,
+        measurement_timestamp: float,
+    ) -> "OfflineTruthLabel":
+        return cls(
+            observation_id=observation_id,
+            truth_entity_id=None,
+            measurement_timestamp=measurement_timestamp,
+            disposition=OFFLINE_TRUTH_DISPOSITION_UNKNOWN,
+        )
 
 
 @dataclass(frozen=True)

@@ -23,6 +23,7 @@ import numpy as np
 
 from .episode_bus import jsonable
 from .learning_runtime import LearningRuntimeOptions, resolve_learning_runtime
+from .models import OFFLINE_TRUTH_DISPOSITION_TARGET
 from .module_stack import IntegratedStackConfig
 from .orchestrator import EpisodeResult, Scalable3DEpisodeRunner
 from .scenarios import make_curriculum_scenario
@@ -1017,6 +1018,7 @@ def _offline_identity_mapping_at_timestamp(
     truth_by_observation = {
         str(label.observation_id): str(label.truth_entity_id)
         for label in result.offline_truth_labels
+        if label.disposition == OFFLINE_TRUTH_DISPOSITION_TARGET
         if float(label.measurement_timestamp) <= timestamp + 1.0e-9
     }
     allowed_tracks = {str(item) for item in global_track_ids}

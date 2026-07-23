@@ -284,7 +284,12 @@ class SensorScene:
                 )
                 fixed_scale_noise = self.visual_rng.normal(size=target_count)
             if active_indices.size == 0:
-                self._append_false_alarms(view, timestamp, measurements)
+                self._append_false_alarms(
+                    view,
+                    timestamp,
+                    measurements,
+                    labels,
+                )
                 continue
             projection = project_points(
                 active_positions,
@@ -409,7 +414,12 @@ class SensorScene:
                         measurement_timestamp=timestamp,
                     )
                 )
-            self._append_false_alarms(view, timestamp, measurements)
+            self._append_false_alarms(
+                view,
+                timestamp,
+                measurements,
+                labels,
+            )
         return ObservationBatch(tuple(measurements), tuple(labels))
 
     def camera_views(
@@ -509,6 +519,7 @@ class SensorScene:
         view: CameraView,
         timestamp: float,
         measurements: list[SensorMeasurement],
+        labels: list[OfflineTruthLabel],
     ) -> None:
         count = int(self.visual_rng.poisson(self.config.visual_false_alarm_rate))
         for false_index in range(count):
@@ -552,6 +563,12 @@ class SensorScene:
                         self._visual_scan_index,
                         self.config.sensor_random_schedule_version,
                     ),
+                )
+            )
+            labels.append(
+                OfflineTruthLabel.known_false_alarm(
+                    observation_id=observation_id,
+                    measurement_timestamp=timestamp,
                 )
             )
 

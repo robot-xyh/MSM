@@ -11,7 +11,11 @@ import time
 from typing import Any, Iterable, Mapping
 
 from .episode_bus import EpisodeManifest, jsonable
-from .models import OfflineTruthLabel, ScenarioConfig
+from .models import (
+    OFFLINE_TRUTH_DISPOSITION_TARGET,
+    OfflineTruthLabel,
+    ScenarioConfig,
+)
 from .module_stack import IntegratedLearningArtifacts
 
 
@@ -631,6 +635,8 @@ def _write_d5_frames(
 
     label_by_observation: dict[str, OfflineTruthLabel] = {}
     for label in offline_truth_labels:
+        if label.disposition != OFFLINE_TRUTH_DISPOSITION_TARGET:
+            continue
         if label.observation_id in label_by_observation:
             raise ValueError(f"duplicate offline observation label: {label.observation_id}")
         label_by_observation[label.observation_id] = label
