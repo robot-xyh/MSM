@@ -117,43 +117,46 @@ birth 和 recall。v1/v2 均不运行扩大矩阵。v1 机器摘要位于
 v2 评审位于
 `research_modules/scalable_3d_simulation/docs/SCALABLE_3D_RADAR_ASSIGNMENT_V2_CLEAN_AB_REVIEW_CN.md`。
 
-### 2026-07-23 D1-D2 结构歧义保活候选
+### 2026-07-23 D1-D2 结构歧义保活与身份承诺 v2
 
-D1、D2 和 main 已完成默认关闭的原子候选。D1 侧车
-`d1.structural-ambiguity-evidence.v1` 保留双时间戳、NED 六维状态、协方差、完整允许边
-分量和不透明来源令牌；歧义分量不更新后验、不增加命中、不新生。main 跨 state-only/full
-扫描锁存侧车，并在下一次成功 D2 调用中一次消费。D2 使用
-`d2.ambiguity-hold-lease-policy.v1` 执行有界 prediction-only 租约，阻止 hit、miss、
-birth、rebind 和重复合并；未来、超龄、重放、旧代次和来源冲突失败关闭。完整回归为
-D1 `237 passed`、D2 `271 passed`、scalable main `144 passed`。
+D1、D2、D6 和 main 已关闭该候选的合同级缺口。D2 发布
+`d2.identity-evidence-commitment.v2`，明确区分已承诺、hold 未承诺和 hold 后未承诺。
+未承诺记录不携带来源观测或真值候选，不能进入当前 D3 分配窗口。hold 证据键和量测时间
+水位独立于 claim ledger 保留，只有不同、更新且首次接受的原始证据可恢复已承诺状态。
+main 对恢复航迹只发布被接受量测的精确 D1 谱系。D6 使用
+`d2.scalable3d_identity_evidence.v2` 和独立审计重算承诺覆盖、恢复原因、水位、
+overflow 与绑定违规，不回填 strict ID Switch。D2、D6 和 scalable main 回归为
+`286/598/145 passed`。
 
-detached clean `9cd2a798ac8555518522618f00bd85b014a9a0b8` 使用 nominal 200 对 200、
-2.2 秒、`recon_count=2`、未见 seed 1100 完成同构建 A/B。两端
+detached clean `909669b2eefeab2ce30c8ac389d6bf9c0a8cbabc` 使用 nominal 200 对 200、
+2.2 秒、`recon_count=2`、seed 1100 完成同构建 A/B。两端
 `config_sha256=34f5563579d9d2e7d1ea2b57cf353d2465b3bd16c5310570d40e72fc7aeac461`，
-运行配置哈希按开关分离，状态有限且在线真值使用为 0。
+工作树 clean，状态有限，在线真值使用为 0。
 
 | 指标 | baseline | 结构歧义保活候选 | 判定 |
 | --- | ---: | ---: | --- |
 | D1 航迹 | 202 | 202 | 持平 |
 | D2 航迹 | 203 | 201 | 退化 2 |
 | D3 分配 | 200 | 197 | 退化 3 |
-| 可用/不可用映射 | 1566/230 | 1492/294 | 可用映射减少 74 |
+| 可用映射 | 1566 | 1491 | 减少 75 |
+| 全记录承诺覆盖 | 1.000000 | 0.959149 | 73 条显式未承诺 |
+| committed/hold/after-hold | 1800/0/0 | 1714/69/4 | 状态可审计 |
+| 未承诺来源/候选绑定违规 | 0/0 | 0/0 | 安全门通过 |
 | strict ID Switch | 9 | unavailable | 候选不可比较 |
 | track/identity continuity | 0.865/0.865 | unavailable | 候选不可比较 |
 | coverage continuity | 0.870 | unavailable | 候选不可比较 |
-| 实时倍率 | 0.2245 | 0.2112 | 下降 |
+| 实时倍率 | 0.2190 | 0.2068 | 下降 |
 
-候选生成和消费侧车均为 46，D2 在 7 次调用中接受 33 个分量事件；12 个事件因 hard cap
-耗尽拒绝，1 个因 generation replay/rollback 拒绝。累计阻止 hit/miss/birth 为
-`69/69/4`。3 个受评分映射使用的旧来源观测超出 0.9 秒谱系窗口，严格身份指标按
-`source_observation_outside_lineage_window` 失败关闭。partial IDSW lower bound 为 3，
-但不替代 baseline 的 strict 9，也不能据此宣称改善。
+候选生成和消费侧车均为 46，D2 接受 33 个分量事件，累计阻止 hit/miss/birth
+`69/69/4`。v2 已把歧义帧从“谱系缺失”分离为“身份未承诺”。剩余阻断来自三个恢复航迹
+`GT3D-000185/000186/000202`：恢复量测时间为 `1.2 s`，评分帧为 `2.130815 s`，
+年龄 `0.930815 s`，超过固定 `0.9 s` 窗口约 `30.8 ms`。严格指标继续按
+`source_observation_outside_lineage_window` 失败关闭。
 
-当前结论是合同和安全行为实现完成，算法准入仍为开放 P1。候选在首 seed 同时触发身份指标
-不可用、D2/D3 可用性下降和性能下降，已停止 seeds 1101/1102、10 秒和 20-seed。默认开关
-保持关闭。后续若继续研究，必须先定义不做硬身份归属的歧义帧谱系评分合同，并校准租约对
-航迹生命周期和分配的影响；在首 seed 恢复 strict availability 且通过业务不退化门槛前，
-不扩大矩阵。
+当前无新增 P0。身份承诺合同、真值隔离和绑定安全已关闭到实现与单 seed 证据层；算法准入
+仍是开放 P1。seed 1100 未通过，seeds 1101/1102、10 秒和 20-seed 不执行，默认开关保持
+关闭。下一候选不能扩大评分窗口，必须让恢复承诺同时满足 hold 水位和发布时谱系新鲜度，
+并恢复 D2/D3 可用性后再从 seed 1100 开始。
 
 ## 2026-07-22 后验代次与 clean 长时基线
 

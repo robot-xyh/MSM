@@ -1,10 +1,11 @@
 {
-  "schema_version": "scalable3d-structural-ambiguity-hold-clean-ab-review-v1",
+  "schema_version": "scalable3d-structural-ambiguity-hold-clean-ab-review-v2",
   "review_date": "2026-07-23",
   "decision": "candidate_rejected_default_disabled",
+  "contract_v2_validated": true,
   "stop_rule_triggered": true,
   "expanded_seeds_executed": false,
-  "git_commit": "9cd2a798ac8555518522618f00bd85b014a9a0b8",
+  "git_commit": "909669b2eefeab2ce30c8ac389d6bf9c0a8cbabc",
   "repository_dirty": false,
   "scenario": {
     "scenario_name": "nominal_200v200",
@@ -23,15 +24,23 @@
     "d3_assignment_count": 200,
     "available_mapping_count": 1566,
     "unavailable_mapping_count": 230,
+    "uncommitted_mapping_count": 0,
+    "excluded_mapping_count": 4,
+    "identity_commitment_coverage": 1.0,
+    "identity_commitment_state_counts": {
+      "committed": 1800
+    },
+    "uncommitted_source_binding_violation_count": 0,
+    "uncommitted_candidate_binding_violation_count": 0,
     "id_switch_count": 9,
     "track_continuity": 0.865,
     "identity_continuity": 0.865,
     "coverage_continuity": 0.87,
     "duplicate_assignment_count": 0,
     "online_truth_use_count": 0,
-    "real_time_factor": 0.22454660767658113,
-    "summary_sha256": "2bd9b176400d94f52d1220b3fa36b1974a5c6b1f540f23c03e22724146532b48",
-    "identity_evaluation_sha256": "002abdb08c62da710d14dc45ce5f211c1afa68c71f75f85d039069f2bcba8669"
+    "real_time_factor": 0.21902487211646102,
+    "summary_sha256": "ae248c37a9ad4034a44389923d887c1ab884a0a7536a0857ab8b9c3db4ab0740",
+    "identity_evaluation_sha256": "feb3277c64352d8315253e0eb748a4ddeba875b6931f1572d073093c3dbceb1e"
   },
   "candidate": {
     "episode_id": "nominal_200v200-s1100-34f5563579d9-rf23a1fe91f87",
@@ -39,20 +48,27 @@
     "d1_track_count": 202,
     "d2_track_count": 201,
     "d3_assignment_count": 197,
-    "available_mapping_count": 1492,
-    "unavailable_mapping_count": 294,
-    "id_switch_count": null,
-    "track_continuity": null,
-    "identity_continuity": null,
-    "coverage_continuity": null,
-    "duplicate_assignment_count": null,
+    "available_mapping_count": 1491,
+    "unavailable_mapping_count": 221,
+    "uncommitted_mapping_count": 73,
+    "excluded_mapping_count": 2,
+    "identity_commitment_coverage": 0.9591494124230554,
+    "identity_commitment_state_counts": {
+      "committed": 1714,
+      "identity_uncommitted_ambiguity_hold": 69,
+      "identity_uncommitted_after_hold": 4
+    },
+    "uncommitted_source_binding_violation_count": 0,
+    "uncommitted_candidate_binding_violation_count": 0,
     "strict_identity_available": false,
     "strict_identity_unavailable_reason": "source_observation_outside_lineage_window",
     "scored_mapping_outside_lineage_window_count": 3,
-    "partial_id_switch_lower_bound": 3,
-    "partial_id_switch_lower_bound_is_strict_metric": false,
+    "recovery_measurement_timestamp_seconds": 1.2,
+    "recovery_scoring_frame_timestamp_seconds": 2.1308153038551993,
+    "recovery_lineage_age_seconds": 0.9308153038551994,
+    "lineage_window_seconds": 0.9,
     "online_truth_use_count": 0,
-    "real_time_factor": 0.21115287044984635,
+    "real_time_factor": 0.20675636753014684,
     "d1_evidence_received_count": 46,
     "d2_evidence_consumed_count": 46,
     "d2_consumption_count": 7,
@@ -70,22 +86,25 @@
       "miss": 69,
       "birth": 4
     },
-    "summary_sha256": "359029330a72cfa78d77fd22624fd86a163c160e8c3efcf57d84d66c1c72ef10",
-    "identity_evaluation_sha256": "049fd79119b48c7835fabbf0559603e409d43478a736c6108b890364bee5d740"
+    "summary_sha256": "f5f373ff98cc27bffdcedde166701c43704d74465a149c74bac59c52556423fd",
+    "identity_evaluation_sha256": "54ea6adf3d8b386c3a1ffbe9735b6893edc0a840df15ff2d66ce5596174051b8"
   },
   "acceptance": {
+    "identity_commitment_contract_available": true,
+    "uncommitted_binding_safety_preserved": true,
+    "online_truth_isolation_preserved": true,
     "strict_identity_available": false,
     "identity_improvement_demonstrated": false,
     "d2_track_availability_non_degraded": false,
     "d3_assignment_availability_non_degraded": false,
     "mapping_availability_non_degraded": false,
-    "online_truth_isolation_preserved": true,
     "candidate_admitted": false
   },
   "tests": {
-    "d1_passed": 237,
-    "d2_passed": 271,
-    "scalable_3d_passed": 144,
+    "d2_passed": 286,
+    "d6_passed": 598,
+    "scalable_3d_passed": 145,
+    "python_compile_passed": true,
     "git_diff_check_passed": true
   }
 }

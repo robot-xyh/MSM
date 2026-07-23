@@ -57,6 +57,10 @@ main
 | D2 观测证据治理 | `d2-observation-evidence-governance-v1` | D1 观测新鲜度、重放隔离、时间冲突、暂定航迹删除或重复合并审计语义改变 |
 | D2 观测声明账本 | `d2-observation-claim-ledger-v2` | 声明键、水位线、安全淘汰、容量或反重放语义改变 |
 | D2 结构歧义保活策略 | `d2.ambiguity-hold-lease-policy.v1` | 租约时钟、年龄门限、软/硬截止、证据保留或失败关闭语义改变 |
+| D2 身份承诺 | `d2.identity-evidence-commitment.v2` | 承诺状态、恢复水位、阻断键、来源绑定或失败关闭语义改变 |
+| D2 离线身份证据 | `d2.scalable3d_identity_evidence.v2` | 未承诺间隙、来源谱系、D1/D2 序号或承诺快照语义改变 |
+| D2 离线身份评估 | `d2.scalable3d_identity_evaluation.v2` | 承诺覆盖、ID Switch 锚点、未承诺状态或严格指标 availability 语义改变 |
+| D2 身份承诺审计 | `d2.scalable3d_identity_commitment_audit.v2` | 恢复原因、水位年龄、overflow 或绑定违规统计语义改变 |
 | main 观测治理快照（历史） | `scalable3d-observation-governance-runtime-v1` | D1/D2 在线治理汇总或结束排空计数语义改变 |
 | main 观测治理快照（当前） | `scalable3d-observation-governance-runtime-v2` | v2 增加 D1 后验代次、D2 待处理/已消费代次、消费次数和节拍前合并计数；这些字段或 finalize 排空语义改变时升级 |
 | D6 观测治理标定输入 | `scalable3d-observation-governance-calibration-input-v1` | episode 描述、制品哈希、在线审计或 evaluator-only 侧车绑定改变 |
@@ -92,6 +96,11 @@ main 只有在 `d1_d2_structural_ambiguity_hold_enabled=true` 时才把侧车送
 启用不透明 D1 来源令牌；该开关及租约参数全部进入 runtime profile。默认关闭与实验开启
 具有不同的 runtime profile SHA-256 和 episode ID，不能按跨构建语义等价样本合并。当前
 seed 1100 门槛已经拒绝该候选，schema 和测试保留不表示在线主线准入。
+
+启用结构歧义保活的当前 D2 发布物同时携带身份承诺 v2。未承诺状态不得携带
+`source_observations`，main 也不得为其回填 D1 谱系。普通已承诺航迹仍可消费待处理 D1
+来源；经历歧义恢复的航迹只能发布本次被接受量测的精确来源。离线 producer 不能在同一
+episode 混用 v1/v2 身份证据，D6 必须按证据 schema 选择相同版本的评估和审计路径。
 
 ## 实验清单
 
