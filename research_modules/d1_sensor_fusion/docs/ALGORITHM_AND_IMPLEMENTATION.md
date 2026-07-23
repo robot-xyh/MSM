@@ -1,12 +1,41 @@
 # 第一研究模块：多传感器融合与目标配准算法与实施说明
 
-> 文档日期：2026-07-22
+> 文档日期：2026-07-23
 >
 > 适用范围：离线科研仿真、受治理回放和系统接口验证
 >
 > 实现依据：当前第一研究模块代码、`README.md`、`PLAN.md`、模块原理文档和系统总汇总
 
 ## 当前权威增量（2026-07-23）
+
+### Scan claim 单次 JSON 安全物化
+
+`ScanInputOrganizer` 在接纳扫描前构造 `_ScanClaim`。claim 包含逐 observation 谱系摘要、
+整扫描谱系摘要、内容摘要和完整帧摘要。旧路径先构造带 NumPy 数组和冻结 mapping 的 Python
+记录，再由两个 `_digest()` 分别递归执行 `_json_safe()`。共享内容因此被处理两次。
+
+当前 `_claim_for_frame()` 按以下顺序执行：
+
+```text
+只读 SensorScanFrame
+  -> 每条来源谱系转换一次并计算原 SHA-256
+  -> 每条 observation 的共享内容转换一次
+  -> 共享内容 + 到达/转发/scan 字段形成完整帧记录
+  -> 两组记录按相同谱系键排序
+  -> 使用原 JSON 编码参数分别计算内容摘要和帧摘要
+  -> 原 claim registry 与拒绝状态机
+```
+
+`_digest_json_safe()` 只接收已经完成规范化的内部记录；外部任意对象仍通过 `_digest()` 进入完整
+`_json_safe()` 校验。帧专有字段也单独执行一次 `_json_safe()`，因此非有限通信时间戳或不支持
+类型仍会 fail closed。`ScanInputOrganizer._build_claim()` 是受保护覆写点，仅用于冻结性能基准
+运行旧参考实现，生产默认始终使用新路径。
+
+clean `5263e2b` seed 1000 冻结输入的完整参考/候选流水均处理 771 scans 和 11,889
+observations。claim registry、逐输入结果、release schedule、逐 fusion 后验、操作数、累计
+诊断、终态和一致性证据严格一致。5 轮交错计时 P50 由 `3.618 s` 降至 `1.905 s`；
+`_json_safe` cProfile 累计由 `5.781 s` 降至 `1.992 s`。门限、协方差、6 s fixed-lag、观测
+数量和滤波公式没有变化。
 
 ### SensorScanFrame 完整性封印与 organizer 复用
 

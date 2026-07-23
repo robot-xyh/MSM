@@ -37,6 +37,14 @@ def main() -> None:
         "scan_input_p50_speedup="
         f"{report['scan_input_comparison']['interleaved_distribution']['p50_speedup']:.3f}"
     )
+    print(
+        "claim_serialization_passed="
+        f"{report['claim_serialization_comparison']['passed']}"
+    )
+    print(
+        "claim_serialization_p50_speedup="
+        f"{report['claim_serialization_comparison']['interleaved_distribution']['p50_speedup']:.3f}"
+    )
     print(f"json={args.json_output}")
     print(f"markdown={args.markdown_output}")
 

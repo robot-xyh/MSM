@@ -1,5 +1,32 @@
 # D1 多传感器融合与目标配准实施计划
 
+## 扫描 claim 重复规范化关闭与后续计划（2026-07-23）
+
+clean `5263e2b343dc4b96d239f77ef09437eb132f9efb` 的 nominal 200v200、10 s、seed 1000
+冻结输入包含 771 scans/11,889 observations。D1 已完成旧重复 JSON 安全转换与单次物化路径的
+全流水 A/B。两条路径均复用已验证 `SensorScanFrame`，只改变 claim 内部临时对象构造，不改变
+摘要字节格式、claim registry、扫描发布、重复/重放/冲突拒绝或下游融合。
+
+验收覆盖 claim registry、逐输入事件、release schedule、逐扫描状态、协方差、双时间戳、
+来源谱系、航迹分级、操作计数、累计诊断、终态 `GlobalTrack` 和一致性证据。全部通过。
+771 scans 交错 5 轮 P50/P95 为
+`3.618/4.049 s -> 1.905/2.038 s`；cProfile 的 `_json_safe` 累计
+`5.781 -> 1.992 s`。D1 全量回归为 `185 passed in 19.69s`。
+
+当前计划按以下顺序继续：
+
+1. main 用当前提交运行预注册 clean 多 seed 全栈矩阵，确认 scan-input 的 episode
+   P50/P95/max、核心实时倍率和常驻内存收益；本轮单 seed函数级墙钟不替代该验收；
+2. D1 单独设计 `GlobalTrack` 发布级 audit/health 元数据合同，先证明消费者不依赖每航迹可变
+   深副本，再决定能否降低 `_to_global_track` 物化成本；
+3. 对非雷达扫描关联和 fixed-lag replay 继续做冻结输入 profiler，只接受保持 6 s 窗口、
+   全部观测、原门限、原协方差治理及逐扫描严格等价的局部优化；
+4. 正式 RMSE、NEES、NIS 仍等待 D2 canonical mapping；AirSim 和真实传感器标定继续按独立
+   计划执行。
+
+本轮不缩短 fixed-lag 窗口，不丢观测，不降频，不改变 EKF、门控、协方差、NED、双时间戳或
+`global_track_id` 合同。AirSim producer/runtime 接口无变化。
+
 ## 冻结 replay 尾延时归因与剩余计划（2026-07-23）
 
 clean `4ac3bb2c12cc6af6ebd372107ced00bcdc5adf6a` 的
@@ -25,8 +52,8 @@ fixed-lag rebase 峰值为 197。剩余 P1 为：
    scan-input/fusion P50/P95/max、核心 RTF 和 RSS；
 2. D1 继续评估 GlobalTrack 共享 audit metadata、radar candidate/rebase 路径的合同级优化，
    必须保持逐扫描严格等价；不得缩短窗口、丢观测、降频、放宽门控或使用 truth；
-3. scan-input 剩余主要成本是 `_claim_for_frame`、`_digest` 和 `_json_safe`，后续只能在
-   audit/lineage/JSON 合同不变的前提下治理；
+3. 本节识别的 `_claim_for_frame` 重复 JSON 规范化已由上一节关闭；scan-input 后续只继续评估
+   非 claim 的 audit/event 持久化和长期 claim registry 内存，仍须保持 lineage/JSON 合同；
 4. AirSim、正式 RMSE/NEES/NIS 和物理拦截效果继续独立验收。
 
 本轮优化验证来自当前未提交 D1 工作区，不是新的 clean full-stack。它是单 seed 三维质点

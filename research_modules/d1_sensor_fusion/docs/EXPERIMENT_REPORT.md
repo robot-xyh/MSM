@@ -1,5 +1,57 @@
 # 第一研究模块实验结果
 
+## 扫描 claim JSON 单次物化
+
+**证据日期：2026-07-23**
+
+**冻结输入来源：clean `5263e2b343dc4b96d239f77ef09437eb132f9efb`**
+
+**场景与样本：`200v200-nominal-v1`，10 s，seed 1000，771 scans /
+11,889 observations，单 episode**
+
+输入 SHA-256 为
+`5d033a049c2b4e09fb13d7c36e1117055b5b596d9e31f058ad2bf7cbd267ce8f`。参考路径保留旧的
+重复 JSON 安全转换；候选路径对共享内容只规范化一次。两条路径均复用完整
+`SensorScanFrame`，使用相同扫描水位线、6 s fixed-lag、关联门限、滤波模型和发布计划。
+
+### 等价验收
+
+| 验收项 | 结果 |
+| --- | --- |
+| Claim registry SHA-256 | 两端均为 `22a71336...b8fd7` |
+| 逐输入事件、audit、close 和 release schedule | 一致 |
+| 逐 fusion 状态、协方差、双时间戳、谱系和分级 | 一致 |
+| 逐 fusion operation/diagnostic snapshots | `82728a8e...bfb5bf` / `b28df84d...521766`，一致 |
+| 终态 `GlobalTrack` | `b53d506e...63d98`，一致 |
+| 在线一致性证据 | `fc2e5694...fa2ac`，一致 |
+| 在线 truth 使用 | 0 |
+
+全部 acceptance 通过。未缩短固定滞后窗口，未丢观测，未改变扫描频率、门限、协方差治理或
+滤波公式。
+
+### 性能结果
+
+| 指标 | 旧路径 | 新路径 | 变化 |
+| --- | ---: | ---: | ---: |
+| 771 scans 交错 5 轮 P50 | 3.618 s | 1.905 s | 1.899x |
+| 771 scans 交错 5 轮 P95 | 4.049 s | 2.038 s | 下降 49.7% |
+| 单次调用 P95 | 54.575 ms | 25.625 ms | 下降 53.0% |
+| `_json_safe` cProfile 累计 | 5.781 s | 1.992 s | 下降 65.5% |
+| claim 构造 cProfile 累计 | 8.358 s | 3.758 s | 下降 55.0% |
+
+墙钟不参与语义验收。D1 全量回归为 `185 passed in 19.69s`。本轮未运行新的 clean 候选全栈；
+原 clean 20-seed 基线的 scan-input/fusion 累计均值仍为 `9.671/43.774 s`，episode P95
+均值为 `135.454/233.488 ms`。候选多 seed 集成收益待 main 复跑。
+
+### 限制
+
+该实验是单 seed 三维质点冻结 replay，不是 AirSim、真实传感器、正式多 seed 或实时放行证据。
+冻结候选流水中的 D1 fusion 累计仍为 `43.148 s`。GlobalTrack 物化、非雷达扫描关联和
+fixed-lag replay 继续作为 P1 热点。
+
+- `../reports/d1_tail_latency_performance_20260723.json`
+- `../reports/D1_TAIL_LATENCY_PERFORMANCE_20260723_CN.md`
+
 ## 冻结 replay 尾延时 profiler 与完整帧复用
 
 **证据日期：2026-07-23**
@@ -45,7 +97,8 @@ scans 的 P95 为 `343.059 ms`，物化扫描 P95 为 `216.991 ms`。候选对�
 fixed-lag rebase 峰值 197。
 
 该工作区分位只用于和同轮操作数及 cProfile 配对，不与 clean episode 作正式前后比较。
-GlobalTrack 物化、radar candidate/rebase 和剩余 audit/lineage/JSON 摘要继续为 P1。
+该阶段识别的 claim 重复 JSON 规范化已由本报告首节关闭。GlobalTrack 物化、
+radar candidate/rebase、非 claim audit/event 持久化和长期 claim registry 内存继续为 P1。
 
 ### 限制与证据路径
 

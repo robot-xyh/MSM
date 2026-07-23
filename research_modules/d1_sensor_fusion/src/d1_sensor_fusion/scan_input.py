@@ -595,7 +595,7 @@ class ScanInputOrganizer:
 
         self._latest_arrival_timestamp = frame.arrival_timestamp
         events = list(self._expire_buffer(frame.arrival_timestamp))
-        claim = _claim_for_frame(frame)
+        claim = self._build_claim(frame)
         duplicate = False
         replay = False
         timestamp_conflict = False
@@ -961,6 +961,11 @@ class ScanInputOrganizer:
         for lineage in claim.lineage_digests:
             self._lineage_claims[lineage] = claim
 
+    def _build_claim(self, frame: SensorScanFrame) -> _ScanClaim:
+        """Build the immutable claim used by duplicate and replay governance."""
+
+        return _claim_for_frame(frame)
+
     def _update_maximum_buffer_counts(self) -> None:
         self._maximum_buffered_scan_count = max(
             self._maximum_buffered_scan_count,
@@ -987,35 +992,42 @@ class ScanInputOrganizer:
 
 
 def _claim_for_frame(frame: SensorScanFrame) -> _ScanClaim:
-    lineage_digests = tuple(_digest(_json_safe(item)) for item in frame.source_lineage_keys)
-    source_lineage_digest = _digest(sorted(lineage_digests))
+    safe_lineages = tuple(_json_safe(item) for item in frame.source_lineage_keys)
+    lineage_digests = tuple(
+        _digest_json_safe(item) for item in safe_lineages
+    )
+    source_lineage_digest = _digest_json_safe(sorted(lineage_digests))
     content_records: list[dict[str, Any]] = []
     frame_records: list[dict[str, Any]] = []
-    for observation in frame.observations:
+    for observation, safe_lineage in zip(
+        frame.observations,
+        safe_lineages,
+    ):
         content_metadata = {
             str(key): value
             for key, value in observation.metadata.items()
             if str(key) not in _CONTENT_EXCLUDED_METADATA_KEYS
         }
-        content_record = {
-            "sensor_id": observation.sensor_id,
-            "modality": observation.modality,
-            "measurement_timestamp": observation.measurement_timestamp,
-            "frame_id": observation.frame_id,
-            "measurement": observation.measurement,
-            "covariance": observation.covariance,
-            "classification_hint": observation.classification_hint,
-            "confidence": observation.confidence,
-            "quality_flags": observation.quality_flags,
-            "source_node_id": observation.source_node_id,
-            "payload_kind": observation.payload_kind,
-            "source_lineage": observation.source_lineage_key,
-            "metadata": content_metadata,
-        }
-        content_records.append(content_record)
-        frame_records.append(
+        content_record = _json_safe(
             {
-                **content_record,
+                "sensor_id": observation.sensor_id,
+                "modality": observation.modality,
+                "measurement_timestamp": observation.measurement_timestamp,
+                "frame_id": observation.frame_id,
+                "measurement": observation.measurement,
+                "covariance": observation.covariance,
+                "classification_hint": observation.classification_hint,
+                "confidence": observation.confidence,
+                "quality_flags": observation.quality_flags,
+                "source_node_id": observation.source_node_id,
+                "payload_kind": observation.payload_kind,
+                "metadata": content_metadata,
+            }
+        )
+        content_record["source_lineage"] = safe_lineage
+        content_records.append(content_record)
+        frame_only_record = _json_safe(
+            {
                 "observation_id": observation.observation_id,
                 "arrival_timestamp": observation.arrival_timestamp,
                 "target_node_id": observation.target_node_id,
@@ -1025,15 +1037,21 @@ def _claim_for_frame(frame: SensorScanFrame) -> _ScanClaim:
                 "scan_id": frame.scan_id,
             }
         )
-    content_records.sort(key=_record_lineage_sort_key)
-    frame_records.sort(key=_record_lineage_sort_key)
-    content_digest = _digest(content_records)
+        frame_records.append(
+            {
+                **content_record,
+                **frame_only_record,
+            }
+        )
+    content_records.sort(key=_json_safe_record_lineage_sort_key)
+    frame_records.sort(key=_json_safe_record_lineage_sort_key)
+    content_digest = _digest_json_safe(content_records)
     return _ScanClaim(
         scan_key=frame.scan_key,
         lineage_digests=lineage_digests,
         source_lineage_digest=source_lineage_digest,
         content_digest=content_digest,
-        frame_digest=_digest(frame_records),
+        frame_digest=_digest_json_safe(frame_records),
         measurement_timestamp=frame.measurement_timestamp,
         arrival_timestamp=frame.arrival_timestamp,
     )
@@ -1216,6 +1234,15 @@ def _record_lineage_sort_key(record: Mapping[str, Any]) -> str:
     )
 
 
+def _json_safe_record_lineage_sort_key(record: Mapping[str, Any]) -> str:
+    return json.dumps(
+        record["source_lineage"],
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    )
+
+
 def _same_time(left: float, right: float) -> bool:
     return abs(float(left) - float(right)) <= _TIME_EPSILON_S
 
@@ -1233,8 +1260,12 @@ def _source_namespace(observation: SensorObservation) -> str:
 
 
 def _digest(payload: Any) -> str:
+    return _digest_json_safe(_json_safe(payload))
+
+
+def _digest_json_safe(payload: Any) -> str:
     encoded = json.dumps(
-        _json_safe(payload),
+        payload,
         sort_keys=True,
         separators=(",", ":"),
         allow_nan=False,

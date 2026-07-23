@@ -4,6 +4,36 @@ Offline research module for radar, acoustic, EO, and optional synthetic lidar he
 
 ## 当前性能与治理证据（2026-07-23）
 
+### 第十一阶段：扫描 claim JSON 单次物化
+
+本轮使用 clean `5263e2b343dc4b96d239f77ef09437eb132f9efb` 的
+`200v200-nominal-v1`、10 s、seed 1000 冻结在线输入，处理 771 个扫描和
+11,889 条匿名观测。输入 SHA-256 为
+`5d033a049c2b4e09fb13d7c36e1117055b5b596d9e31f058ad2bf7cbd267ce8f`。
+
+`_claim_for_frame()` 原来会为内容摘要和完整帧摘要重复递归转换同一量测、协方差、元数据和
+来源谱系。当前路径先生成一次 JSON 安全内容记录，再复用该记录计算原格式 SHA-256。键排序、
+`allow_nan=False`、内容排除字段、重复/重放/冲突判定及 fail-closed 异常边界均未改变。
+
+完整旧/新 claim 流水严格等价。claim registry 哈希均为
+`sha256:22a713367482532d45e131e2aa9b0e6913d75cc6a7becffa85bf82f0b6eb8fd7`；
+逐扫描融合语义、操作快照和累计诊断哈希分别保持
+`e5d4ec2e...f4244`、`82728a8e...bfb5bf` 和 `b28df84d...521766`。终态航迹和在线一致性
+证据哈希也一致，在线 truth 使用为 0。
+
+771 scans 交错 5 轮计时的 P50/P95 为
+`3.618/4.049 s -> 1.905/2.038 s`，P50 加速 `1.899x`；墙钟不参与等价通过判定。
+cProfile 中 `_json_safe` 累计由 `5.781 s` 降至 `1.992 s`。D1 全量测试为
+`185 passed in 19.69s`。
+
+本项只关闭 scan-input claim 的重复规范化热点。冻结复放的 D1 fusion 仍为
+`43.148 s`，主要开放路径为 `global_tracks/_to_global_track`、非雷达扫描关联和 fixed-lag
+replay。该证据是单 seed 三维质点冻结 replay，不是 AirSim、正式多 seed、clean 候选全栈或
+实时放行。报告仍位于：
+
+- `reports/d1_tail_latency_performance_20260723.json`
+- `reports/D1_TAIL_LATENCY_PERFORMANCE_20260723_CN.md`
+
 ### 第十阶段：冻结 replay 尾延时归因与完整帧复用
 
 本轮以 clean `4ac3bb2c12cc6af6ebd372107ced00bcdc5adf6a` 的
@@ -98,9 +128,9 @@ P50/P95/max 为 `33.25249/224.76351/592.95713 ms`。跨构建审计确认
 `182 passed in 15.92s`，不是当前权威测试计数。
 
 详细证据见 `reports/D1_NON_RADAR_INNOVATION_PERFORMANCE_BENCHMARK_CN.md` 和对应 JSON。
-该结果关闭非雷达逐候选伪逆的 D1-owned 热点，不是完整 D1-D7 实时结论。全栈 20-seed 仍需由
-main 复跑；航迹物化、扫描输入重复 frame/audit/JSON 摘要、长于 10 s 的增长率、常驻内存、
-AirSim 和正式 RMSE/NEES/NIS 仍为 P1。
+该结果关闭非雷达逐候选伪逆的 D1-owned 热点，不是完整 D1-D7 实时结论。其后完整帧再快照和
+claim 重复 JSON 规范化也已关闭；航迹物化、非 claim 的 audit/event 持久化、长期 claim
+registry 内存、长于 10 s 的增长率、常驻内存、AirSim 和正式 RMSE/NEES/NIS 仍为 P1。
 
 ### 第七阶段：一致性证据计数刷新
 

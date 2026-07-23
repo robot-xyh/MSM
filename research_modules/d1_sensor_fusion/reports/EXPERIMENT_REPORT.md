@@ -1,5 +1,29 @@
 # D1 Sensor Fusion Offline Experiment Report
 
+## 2026-07-23 扫描 claim JSON 单次物化
+
+clean `5263e2b343dc4b96d239f77ef09437eb132f9efb` 的
+`200v200-nominal-v1`、10 s、seed 1000 冻结输入包含 771 scans/11,889 anonymous
+observations，SHA-256 为
+`5d033a049c2b4e09fb13d7c36e1117055b5b596d9e31f058ad2bf7cbd267ce8f`。
+
+旧 claim 路径分别为内容摘要和完整帧摘要递归转换共享记录。新路径先生成一份 JSON 安全内容，
+再添加帧专有字段并沿用原 JSON 编码与 SHA-256。claim registry、逐输入事件、release
+schedule、逐 fusion 状态/协方差/双时间戳/谱系/分级、操作计数、累计诊断、终态和一致性证据
+严格一致；在线 truth 使用为 0。
+
+771 scans 交错 5 轮 P50/P95 为
+`3.618/4.049 s -> 1.905/2.038 s`，P50 1.899x。`_json_safe` cProfile 累计
+`5.781 -> 1.992 s`。墙钟不参与等价验收。D1 全量回归为 `185 passed in 19.69s`。
+
+该结果只关闭 claim 重复规范化。它不是新的 AirSim、clean 候选多 seed 或实时证据；D1 fusion
+和 GlobalTrack 物化、非雷达关联、fixed-lag replay 仍保持 P1。
+
+详细证据：
+
+- `d1_tail_latency_performance_20260723.json`
+- `D1_TAIL_LATENCY_PERFORMANCE_20260723_CN.md`
+
 ## 2026-07-23 冻结 replay 尾延时归因与完整帧复用
 
 clean `4ac3bb2c12cc6af6ebd372107ced00bcdc5adf6a` 的

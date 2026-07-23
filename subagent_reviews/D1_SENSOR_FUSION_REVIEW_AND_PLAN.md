@@ -7,6 +7,22 @@
 
 ## 0. 当前性能与治理状态（2026-07-23）
 
+- clean `5263e2b` nominal 200v200、10 s、seed 1000 冻结输入含 771 scans、
+  11,889 observations，源 SHA-256 为 `5d033a04...67ce8f`。原 clean 20-seed 基线的
+  scan-input/fusion 累计均值为 `9.671/43.774 s`，episode P95 均值为
+  `135.454/233.488 ms`，两项仍约占核心 wall 的 62%。
+- 本轮关闭 `_claim_for_frame()` 对同一量测、协方差、元数据和谱系的重复 JSON 安全转换。
+  新路径只物化一次规范内容记录，继续使用原 SHA-256 字节格式、键排序、内容排除字段和
+  `allow_nan=False`。claim registry 与重复、重放、冲突拒绝规则没有变化。
+- 旧/新完整流水的 claim registry、逐输入事件、发布顺序、逐 fusion
+  状态/协方差/双时间戳/谱系/分级、操作计数、累计诊断、终态和一致性证据均严格一致。
+  771 scans 交错 5 轮 P50/P95 `3.618/4.049 -> 1.905/2.038 s`，P50 1.899x；
+  `_json_safe` cProfile `5.781 -> 1.992 s`。墙钟不参与等价通过判定。
+- 评审结论：scan-input claim 重复规范化从 P1 实现缺口转为持续回归项。候选尚未完成 clean
+  多 seed 全栈重跑；冻结 fusion 仍约 43.148 s，GlobalTrack 物化、非雷达扫描关联、
+  fixed-lag replay、正式效果指标和系统实时继续为 P1。D1 全量回归为
+  `185 passed in 19.69s`。
+
 - clean `4ac3bb2` nominal 200v200、10 s、seed 1000 冻结输入含 771 scans、11,889 anonymous
   observations，源 SHA-256 为 `c1dda852...66f77a`。当前未提交 D1 工作区复放不使用在线
   truth，也没有改变固定滞后窗口、观测保留、扫描频率或门控。
@@ -21,8 +37,9 @@
 - fusion 数学路径未改。cProfile 累计主要为 `global_tracks 17.559 s`、扫描关联
   `17.027 s`、`_to_global_track 16.930 s`、非雷达代价矩阵 `14.971 s` 和 replay
   `8.601 s`；峰值扫描有 40,000 candidate pairs，fixed-lag rebase 峰值 197。
-- 评审结论：只关闭重复深快照这一 D1-owned 热点。clean full-stack 20-seed、fusion 尾延时、
-  scan-input 剩余 audit/lineage/JSON、GlobalTrack 物化及 radar/rebase 继续为 P1。本轮是当前
+- 评审结论：该阶段只关闭重复深快照；后续 claim 重复 JSON 规范化已由本节最新增量关闭。
+  clean 多 seed 候选复跑、fusion 尾延时、非 claim audit/event、GlobalTrack 物化及
+  radar/rebase 继续为 P1。本轮是当前
   工作区的单 seed 三维质点 replay，不是 AirSim、正式矩阵或实时放行。
 - main 实测当前 D1 全量回归为 `185 passed`；这是当前工作区权威测试计数。
 

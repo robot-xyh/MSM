@@ -16,7 +16,15 @@ from .long_duration_performance import (
     _semantic_track_snapshot,
 )
 from .scalable_3d import Scalable3DFusionAdapter, sensor_observations_from_online_batch
-from .scan_input import ScanInputOrganizer, SensorScanFrame
+from .scan_input import (
+    _CONTENT_EXCLUDED_METADATA_KEYS,
+    _ScanClaim,
+    _digest,
+    _json_safe,
+    _record_lineage_sort_key,
+    ScanInputOrganizer,
+    SensorScanFrame,
+)
 
 
 TAIL_LATENCY_PERFORMANCE_SCHEMA_VERSION = "d1.tail_latency_performance.v1"
@@ -93,8 +101,23 @@ _SCAN_INPUT_PROFILE_SPECS = (
     ),
     ("_claim_for_frame", "scan_input.py", "_claim_for_frame", None, None),
     ("_digest", "scan_input.py", "_digest", None, None),
+    ("_digest_json_safe", "scan_input.py", "_digest_json_safe", None, None),
     ("_json_safe", "scan_input.py", "_json_safe", None, None),
+    (
+        "_legacy_claim_for_frame",
+        "tail_latency_performance.py",
+        "_legacy_claim_for_frame",
+        None,
+        None,
+    ),
 )
+
+
+class _LegacyClaimScanInputOrganizer(ScanInputOrganizer):
+    """Frozen benchmark reference for the pre-optimization claim builder."""
+
+    def _build_claim(self, frame: SensorScanFrame) -> _ScanClaim:
+        return _legacy_claim_for_frame(frame)
 
 
 def analyze_frozen_tail_latency(
@@ -143,6 +166,23 @@ def analyze_frozen_tail_latency(
         profile_frames=frames,
         profile_directory=profile_dir,
     )
+    legacy_claim = _run_pipeline_variant(
+        frames,
+        variant="legacy_repeated_json_safe_claim",
+        resnapshot_existing_frames=False,
+        organizer=_LegacyClaimScanInputOrganizer(),
+        capture_tail_rows=False,
+    )
+    claim_acceptance = _claim_equivalence_acceptance(
+        legacy_claim,
+        optimized,
+        input_summary=input_summary,
+    )
+    claim_distribution = _interleaved_claim_distribution(
+        frames,
+        repeat_count=scan_input_repeat_count,
+        profile_directory=profile_dir,
+    )
     return {
         "schema_version": TAIL_LATENCY_PERFORMANCE_SCHEMA_VERSION,
         "input": {
@@ -156,6 +196,13 @@ def analyze_frozen_tail_latency(
             "passed": all(acceptance.values()),
             "interleaved_distribution": timing_distribution,
         },
+        "claim_serialization_comparison": {
+            "reference": _compact_pipeline_result(legacy_claim),
+            "optimized": _compact_pipeline_result(optimized),
+            "acceptance": claim_acceptance,
+            "passed": all(claim_acceptance.values()),
+            "interleaved_distribution": claim_distribution,
+        },
         "fusion_tail_attribution": _fusion_tail_attribution(
             optimized["fusion_tail_rows"],
             reference["fusion_profile"],
@@ -166,6 +213,8 @@ def analyze_frozen_tail_latency(
             "observation_drop_enabled": False,
             "scan_frequency_changed": False,
             "association_gate_changed": False,
+            "claim_digest_format_changed": False,
+            "claim_registry_or_rejection_policy_changed": False,
             "online_truth_use_count": input_summary["online_truth_use_count"],
             "replay_execution_is_clean_full_stack_evidence": False,
             "replay_execution_scope": "current_uncommitted_d1_worktree",
@@ -206,6 +255,78 @@ def load_frozen_sensor_frames(
     }
 
 
+def _legacy_claim_for_frame(frame: SensorScanFrame) -> _ScanClaim:
+    """Reference implementation retained only for frozen-input A/B evidence."""
+
+    lineage_digests = tuple(
+        _digest(_json_safe(item)) for item in frame.source_lineage_keys
+    )
+    source_lineage_digest = _digest(sorted(lineage_digests))
+    content_records: list[dict[str, Any]] = []
+    frame_records: list[dict[str, Any]] = []
+    for observation in frame.observations:
+        content_metadata = {
+            str(key): value
+            for key, value in observation.metadata.items()
+            if str(key) not in _CONTENT_EXCLUDED_METADATA_KEYS
+        }
+        content_record = {
+            "sensor_id": observation.sensor_id,
+            "modality": observation.modality,
+            "measurement_timestamp": observation.measurement_timestamp,
+            "frame_id": observation.frame_id,
+            "measurement": observation.measurement,
+            "covariance": observation.covariance,
+            "classification_hint": observation.classification_hint,
+            "confidence": observation.confidence,
+            "quality_flags": observation.quality_flags,
+            "source_node_id": observation.source_node_id,
+            "payload_kind": observation.payload_kind,
+            "source_lineage": observation.source_lineage_key,
+            "metadata": content_metadata,
+        }
+        content_records.append(content_record)
+        frame_records.append(
+            {
+                **content_record,
+                "observation_id": observation.observation_id,
+                "arrival_timestamp": observation.arrival_timestamp,
+                "target_node_id": observation.target_node_id,
+                "relay_node_id": observation.relay_node_id,
+                "sent_timestamp": observation.sent_timestamp,
+                "received_timestamp": observation.received_timestamp,
+                "scan_id": frame.scan_id,
+            }
+        )
+    content_records.sort(key=_record_lineage_sort_key)
+    frame_records.sort(key=_record_lineage_sort_key)
+    return _ScanClaim(
+        scan_key=frame.scan_key,
+        lineage_digests=lineage_digests,
+        source_lineage_digest=source_lineage_digest,
+        content_digest=_digest(content_records),
+        frame_digest=_digest(frame_records),
+        measurement_timestamp=frame.measurement_timestamp,
+        arrival_timestamp=frame.arrival_timestamp,
+    )
+
+
+def _scan_claims_sha256(organizer: ScanInputOrganizer) -> str:
+    claims = [
+        {
+            "scan_key": claim.scan_key,
+            "lineage_digests": claim.lineage_digests,
+            "source_lineage_digest": claim.source_lineage_digest,
+            "content_digest": claim.content_digest,
+            "frame_digest": claim.frame_digest,
+            "measurement_timestamp": claim.measurement_timestamp,
+            "arrival_timestamp": claim.arrival_timestamp,
+        }
+        for _, claim in sorted(organizer._scan_claims.items())
+    ]
+    return _json_sha256(claims)
+
+
 def write_tail_latency_report(
     report: Mapping[str, Any],
     *,
@@ -233,6 +354,11 @@ def render_tail_latency_report_cn(report: Mapping[str, Any]) -> str:
     reference = comparison["reference"]
     optimized = comparison["optimized"]
     distribution = comparison["interleaved_distribution"]
+    claim_comparison = report["claim_serialization_comparison"]
+    claim_reference = claim_comparison["reference"]
+    claim_optimized = claim_comparison["optimized"]
+    claim_distribution = claim_comparison["interleaved_distribution"]
+    claim_profiles = claim_distribution.get("profile_selected_functions", {})
     fusion = report["fusion_tail_attribution"]
     profile = fusion["profile_selected_functions"]
     scan_profiles = distribution.get("profile_selected_functions", {})
@@ -312,6 +438,54 @@ def render_tail_latency_report_cn(report: Mapping[str, Any]) -> str:
     lines.extend(
         [
             "",
+            "## Claim JSON 单次物化",
+            "",
+            "旧 claim 路径分别为内容摘要和完整帧摘要递归转换相同的量测、协方差、"
+            "元数据与谱系。新路径先生成一份 JSON 安全内容记录，再由该记录生成两个"
+            "原格式 SHA-256；`allow_nan=False`、键排序和异常拒绝保持不变。",
+            "",
+            f"全流水严格等价验收：`{claim_comparison['passed']}`。claim registry "
+            "摘要、逐输入事件、发布顺序、逐 fusion 状态/协方差/双时间戳/谱系/分级、"
+            "操作计数、累计诊断、终态 GlobalTrack 和一致性证据均一致。",
+            "",
+            f"- 旧 claim registry：`{claim_reference['scan_claims_sha256']}`",
+            f"- 新 claim registry：`{claim_optimized['scan_claims_sha256']}`",
+            f"- {claim_distribution['scan_count']:,} scans / "
+            f"{claim_distribution['observation_count']:,} observations，交错 "
+            f"{claim_distribution['repeat_count']} 轮 P50/P95：旧路径 "
+            f"`{claim_distribution['reference']['p50_s']:.3f}/"
+            f"{claim_distribution['reference']['p95_s']:.3f} s`，新路径 "
+            f"`{claim_distribution['optimized']['p50_s']:.3f}/"
+            f"{claim_distribution['optimized']['p95_s']:.3f} s`，P50 加速 "
+            f"`{claim_distribution['p50_speedup']:.3f}x`。墙钟不参与等价通过判定。",
+            "",
+            "| Claim 调用链 | 旧路径 cProfile 累计 / s | 新路径 cProfile 累计 / s |",
+            "| --- | ---: | ---: |",
+        ]
+    )
+    for function_name in (
+        "_legacy_claim_for_frame",
+        "_claim_for_frame",
+        "_digest",
+        "_digest_json_safe",
+        "_json_safe",
+    ):
+        reference_item = claim_profiles.get("reference", {}).get(
+            function_name,
+            {},
+        )
+        optimized_item = claim_profiles.get("optimized", {}).get(
+            function_name,
+            {},
+        )
+        lines.append(
+            f"| `{function_name}` | "
+            f"{float(reference_item.get('cumulative_time_s', 0.0)):.3f} | "
+            f"{float(optimized_item.get('cumulative_time_s', 0.0)):.3f} |"
+        )
+    lines.extend(
+        [
+            "",
             "## Fusion 归因",
             "",
             f"工作区复放分位 P50/P95/max 为 "
@@ -376,10 +550,11 @@ def _run_pipeline_variant(
     *,
     variant: str,
     resnapshot_existing_frames: bool,
+    organizer: ScanInputOrganizer | None = None,
     fusion_profile_path: Path | None = None,
     capture_tail_rows: bool,
 ) -> dict[str, Any]:
-    organizer = ScanInputOrganizer()
+    organizer = ScanInputOrganizer() if organizer is None else organizer
     adapter = Scalable3DFusionAdapter()
     scan_input_digests: list[str] = []
     fusion_digests: list[str] = []
@@ -494,6 +669,7 @@ def _run_pipeline_variant(
         "scan_input_close_digest": close_digest,
         "scan_input_audit": organizer.audit_summary().to_dict(),
         "scan_input_performance_diagnostics": organizer.performance_diagnostics(),
+        "scan_claims_sha256": _scan_claims_sha256(organizer),
         "release_group_sizes": release_group_sizes,
         "fusion_digests": fusion_digests,
         "fusion_digests_sha256": _json_sha256(fusion_digests),
@@ -605,6 +781,82 @@ def _equivalence_acceptance(
     }
 
 
+def _claim_equivalence_acceptance(
+    reference: Mapping[str, Any],
+    optimized: Mapping[str, Any],
+    *,
+    input_summary: Mapping[str, Any],
+) -> dict[str, bool]:
+    reference_diagnostics = reference["scan_input_performance_diagnostics"]
+    optimized_diagnostics = optimized["scan_input_performance_diagnostics"]
+    frame_count = int(input_summary["input_batch_count"])
+    observation_count = int(input_summary["input_observation_count"])
+    return {
+        "per_input_scan_result_equivalence": (
+            optimized["scan_input_digests"] == reference["scan_input_digests"]
+        ),
+        "scan_input_close_result_equivalence": (
+            optimized["scan_input_close_digest"]
+            == reference["scan_input_close_digest"]
+        ),
+        "scan_input_audit_equivalence": (
+            optimized["scan_input_audit"] == reference["scan_input_audit"]
+        ),
+        "claim_registry_digest_equivalence": (
+            optimized["scan_claims_sha256"] == reference["scan_claims_sha256"]
+        ),
+        "release_group_schedule_equivalence": (
+            optimized["release_group_sizes"] == reference["release_group_sizes"]
+        ),
+        "per_fusion_state_covariance_timestamp_lineage_level_equivalence": (
+            optimized["fusion_digests"] == reference["fusion_digests"]
+        ),
+        "fusion_operation_totals_equivalence": (
+            optimized["fusion_operation_totals"]
+            == reference["fusion_operation_totals"]
+        ),
+        "per_fusion_operation_counts_equivalence": (
+            optimized["fusion_operation_snapshots"]
+            == reference["fusion_operation_snapshots"]
+        ),
+        "per_fusion_cumulative_diagnostics_equivalence": (
+            optimized["fusion_diagnostic_snapshots"]
+            == reference["fusion_diagnostic_snapshots"]
+        ),
+        "fusion_cumulative_diagnostics_equivalence": (
+            optimized["fusion_cumulative_diagnostics"]
+            == reference["fusion_cumulative_diagnostics"]
+        ),
+        "final_global_track_equivalence": (
+            optimized["final_tracks_sha256"] == reference["final_tracks_sha256"]
+        ),
+        "consistency_evidence_equivalence": (
+            optimized["consistency_evidence_sha256"]
+            == reference["consistency_evidence_sha256"]
+        ),
+        "both_variants_reuse_all_validated_frames": (
+            int(reference_diagnostics["validated_frame_reuse_count"])
+            == frame_count
+            and int(optimized_diagnostics["validated_frame_reuse_count"])
+            == frame_count
+            and int(reference_diagnostics["iterable_frame_build_count"]) == 0
+            and int(optimized_diagnostics["iterable_frame_build_count"]) == 0
+            and int(
+                reference_diagnostics["organizer_observation_snapshot_count"]
+            )
+            == 0
+            and int(
+                optimized_diagnostics["organizer_observation_snapshot_count"]
+            )
+            == 0
+            and observation_count >= frame_count
+        ),
+        "online_truth_use_count_zero": (
+            int(input_summary["online_truth_use_count"]) == 0
+        ),
+    }
+
+
 def _compact_pipeline_result(result: Mapping[str, Any]) -> dict[str, Any]:
     return {
         key: result[key]
@@ -615,6 +867,7 @@ def _compact_pipeline_result(result: Mapping[str, Any]) -> dict[str, Any]:
             "scan_input_close_digest",
             "scan_input_audit",
             "scan_input_performance_diagnostics",
+            "scan_claims_sha256",
             "release_group_sizes",
             "fusion_digests_sha256",
             "fusion_operation_snapshots_sha256",
@@ -702,12 +955,101 @@ def _interleaved_scan_input_distribution(
     return result
 
 
+def _interleaved_claim_distribution(
+    frames: Sequence[SensorScanFrame],
+    *,
+    repeat_count: int,
+    profile_directory: Path | None,
+) -> dict[str, Any]:
+    _time_scan_input_variant(
+        frames,
+        resnapshot_existing_frames=False,
+        legacy_claim_serialization=True,
+    )
+    _time_scan_input_variant(
+        frames,
+        resnapshot_existing_frames=False,
+        legacy_claim_serialization=False,
+    )
+    samples: dict[str, list[float]] = {"reference": [], "optimized": []}
+    per_call: dict[str, list[float]] = {"reference": [], "optimized": []}
+    for repeat_index in range(repeat_count):
+        order = (
+            ("reference", True),
+            ("optimized", False),
+        )
+        if repeat_index % 2:
+            order = tuple(reversed(order))
+        for name, legacy in order:
+            result = _time_scan_input_variant(
+                frames,
+                resnapshot_existing_frames=False,
+                legacy_claim_serialization=legacy,
+            )
+            samples[name].append(result["total_wall_time_s"])
+            per_call[name].extend(result["per_call_wall_time_ms"])
+    result = {
+        "scan_count": len(frames),
+        "observation_count": sum(len(frame.observations) for frame in frames),
+        "repeat_count": repeat_count,
+        "execution_order": "alternating_legacy_optimized",
+        "reference": _distribution_summary(samples["reference"], suffix="s"),
+        "optimized": _distribution_summary(samples["optimized"], suffix="s"),
+        "reference_per_call": _distribution_summary(
+            per_call["reference"],
+            suffix="ms",
+        ),
+        "optimized_per_call": _distribution_summary(
+            per_call["optimized"],
+            suffix="ms",
+        ),
+        "p50_speedup": (
+            float(np.quantile(samples["reference"], 0.5))
+            / float(np.quantile(samples["optimized"], 0.5))
+        ),
+        "wall_time_used_for_acceptance": False,
+    }
+    if profile_directory is not None:
+        profile_directory.mkdir(parents=True, exist_ok=True)
+        profiles = {}
+        for name, legacy in (
+            ("reference", True),
+            ("optimized", False),
+        ):
+            path = profile_directory / f"d1_scan_claim_{name}.prof"
+            profiles[name] = _profile_scan_input_variant(
+                frames,
+                resnapshot_existing_frames=False,
+                legacy_claim_serialization=legacy,
+                profile_path=path,
+            )
+        result["profile_selected_functions"] = {
+            name: profile["selected_functions"]
+            for name, profile in profiles.items()
+        }
+        result["profile_total_time_s"] = {
+            name: profile["profile_total_time_s"]
+            for name, profile in profiles.items()
+        }
+        result["profile_paths"] = {
+            name: profile["profile_path"]
+            for name, profile in profiles.items()
+        }
+        result["profile_timing_used_for_acceptance"] = False
+    return result
+
+
 def _time_scan_input_variant(
     frames: Sequence[SensorScanFrame],
     *,
     resnapshot_existing_frames: bool,
+    legacy_claim_serialization: bool = False,
 ) -> dict[str, Any]:
-    organizer = ScanInputOrganizer()
+    organizer = (
+        _LegacyClaimScanInputOrganizer()
+        if legacy_claim_serialization
+        else ScanInputOrganizer()
+    )
     per_call: list[float] = []
     started_total = perf_counter()
     for frame in frames:
@@ -731,6 +1073,7 @@ def _profile_scan_input_variant(
     frames: Sequence[SensorScanFrame],
     *,
     resnapshot_existing_frames: bool,
+    legacy_claim_serialization: bool = False,
     profile_path: Path,
 ) -> dict[str, Any]:
     profiler = cProfile.Profile()
@@ -738,6 +1081,7 @@ def _profile_scan_input_variant(
     _time_scan_input_variant(
         frames,
         resnapshot_existing_frames=resnapshot_existing_frames,
+        legacy_claim_serialization=legacy_claim_serialization,
     )
     profiler.disable()
     profiler.dump_stats(str(profile_path))

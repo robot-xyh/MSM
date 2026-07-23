@@ -124,7 +124,35 @@ def test_tail_latency_replay_preserves_strict_per_scan_semantics(
         "organizer_observation_snapshot_count"
     ] == 0
     assert comparison["interleaved_distribution"]["wall_time_used_for_acceptance"] is False
+    claim_comparison = report["claim_serialization_comparison"]
+    assert claim_comparison["passed"] is True
+    assert all(claim_comparison["acceptance"].values())
+    assert claim_comparison["acceptance"]["claim_registry_digest_equivalence"]
+    assert claim_comparison["acceptance"][
+        "per_fusion_state_covariance_timestamp_lineage_level_equivalence"
+    ]
+    assert claim_comparison["acceptance"][
+        "per_fusion_operation_counts_equivalence"
+    ]
+    assert claim_comparison["acceptance"][
+        "per_fusion_cumulative_diagnostics_equivalence"
+    ]
+    assert (
+        claim_comparison["reference"]["scan_claims_sha256"]
+        == claim_comparison["optimized"]["scan_claims_sha256"]
+    )
+    assert (
+        claim_comparison["interleaved_distribution"][
+            "wall_time_used_for_acceptance"
+        ]
+        is False
+    )
     assert report["constraints"]["online_truth_use_count"] == 0
+    assert report["constraints"]["claim_digest_format_changed"] is False
+    assert (
+        report["constraints"]["claim_registry_or_rejection_policy_changed"]
+        is False
+    )
     assert report["fusion_tail_attribution"]["profile_selected_functions"][
         "process_scan_batch"
     ]["primitive_call_count"] == 6
