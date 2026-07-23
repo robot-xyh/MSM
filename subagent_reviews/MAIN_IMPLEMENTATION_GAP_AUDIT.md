@@ -37,6 +37,27 @@ ACK 来源一致。核心墙钟均值由 `96.391 s` 降至 `86.099 s`，20/20 se
 也不得形成上界。不能通过降低传感器、融合、关联、视觉或导引频率关闭实时缺口。紧凑机器证据位于
 `research_modules/scalable_3d_simulation/docs/SCALABLE_3D_20SEED_PERFORMANCE_CALIBRATION_20260723.json`。
 
+### 2026-07-23 后续复核
+
+| P1 项 | 新证据 | 当前状态 |
+| --- | --- | --- |
+| D1 scan-input claim 重复序列化 | 771 scans、11,889 observations，旧/新 claim registry 和完整融合语义相同；五轮交错 P50/P95 `3.618/4.049 -> 1.905/2.038 s` | 局部热点关闭；clean 多 seed 全栈收益待复测 |
+| D2 严格身份映射 | 20/20 producer 重放通过；118 个多真值航迹帧、107 个连续区间、83 个受影响 episode/航迹组合；2,464 个缺显式标签的受评分映射 | 根因已定位，strict IDSW 仍开放且 unavailable |
+| D1 真值精度映射 | 191,425 条可用估计中 188,951 条有唯一候选，2,474 条因 `truth_label_missing` 未解析；可消费 episode `0/20` | 开放 P1；禁止输出不完整 sidecar |
+| D7 历史阶段增长 | 固定 200 pair、185 frame、37,000 条命令，两构建各 6 次；变化 `+0.626%`，95% 区间 `[-1.828%, +3.178%]` | 未确认 D7 内核回归，不改导引公式和门控 |
+| main publication bus | 四组交错 clean 2.2 秒复测中位数 `0.887 -> 0.775 s`，下降 12.69%；核心墙钟中位数只下降 0.44% | 局部键规范化热点关闭；系统实时 P1 不关闭 |
+
+组合 clean 提交 `d79aba3` 的 nominal 200 对 200、2.2 秒、seed 1000 smoke
+状态有限，在线真值使用为 0，实时倍率为 `0.204`。与 `5263e2b` 的 3,430 条规范在线
+记录、真值状态、计划谱系和内容地址语义等价。该单 seed 结果只证明集成和语义边界，
+不替代 20-seed 性能验收。
+
+下一优先级调整为：D1 先在不读取在线真值的前提下增加雷达/视觉跨模态一致性门控和
+混轨分裂回归；main/sensor producer 再扩展离线 truth sidecar，使每条观测明确属于真实
+目标、已知虚警或标签未知。修复后由 D2/D6 重跑 strict IDSW、continuity 和 D1
+RMSE/NEES。实时性能仍需另行处理 `GlobalTrack` 物化、固定滞后 replay、D2 尾延时及
+结束后处理，不能用本轮局部微基准关闭。
+
 ## 2026-07-22 后验代次与 clean 长时基线
 
 main 已在 detached clean `0d2da25` 上完成 nominal 200 对 200、10 秒、seeds

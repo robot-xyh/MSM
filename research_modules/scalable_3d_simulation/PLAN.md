@@ -123,16 +123,34 @@ partial mapping/frame/adjacent-transition coverage 为
 但不回填 strict。D1 RMSE/NEES 同样因 `d2_lineage_mapping_missing` 不可用。紧凑证据见
 `docs/SCALABLE_3D_20SEED_PERFORMANCE_CALIBRATION_20260723.json`。
 
+同日后续完成三项归因。D1 的 claim JSON 单次物化在 771 个扫描、11,889 条观测
+冻结输入上保持 claim registry、融合状态、协方差、双时间戳和最终航迹严格一致，
+五轮交错 P50 由 `3.618 s` 降至 `1.905 s`。D7 的固定 200-pair/185-frame replay
+中，两个历史构建各 6 次的内核变化为 `+0.626%`，95% 区间
+`[-1.828%, +3.178%]`，未确认模块回归，不修改导引算法。
+
+D2 对 20 个 episode 的离线身份 producer 完成重放和来源校验。严格 ID Switch
+仍为 `0/20` 可用；118 个多真值航迹帧、2,464 个缺标签受评分映射和 2,474 条
+D1 未解析估计证明阻断来自上游混轨与标签合同，不是 evaluator 分母。partial lower
+bound 继续只作诊断。下一轮身份主线改为：先由 D1 治理雷达/视觉跨模态混轨，再由
+main/sensor truth sidecar 明确标注目标、已知虚警或未知标签，最后重新运行 D2/D6
+严格指标。
+
+main 真值守卫键布局缓存已通过完整测试、嵌套可变负例和跨构建语义审计。四组交错
+clean 2.2 秒复测的 publication bus 中位数下降 12.69%，核心墙钟中位数只下降
+0.44%。该项关闭局部重复键规范化，不关闭 200 对 200 实时 P1。组合 clean
+`d79aba3` smoke 的实时倍率为 `0.204`，状态有限且在线真值使用为 0。
+
 当前执行顺序调整为：
 
 1. D1 扫描输入和融合合计仍占候选核心墙钟约 62%。下一轮优先治理 scan-input
-   claim/audit/JSON、固定滞后回放、检查点查询和 `GlobalTrack` 物化；不得缩短 6 秒窗口、
+   `GlobalTrack` 物化、非雷达扫描关联、固定滞后回放和检查点查询；不得缩短 6 秒窗口、
    丢观测或放宽协方差治理。D1 融合 episode P95 均值仍为 `233.488 ms`。
 2. D2 关联 episode P95 均值为 `142.627 ms`，超过 100 ms 预算。继续分离 covariance
-   governance、重复航迹合并和 publication 成本，同时修复 D1/D2 真值指标所需的
-   `global_track_id -> truth_target_id` 离线唯一性证据；不得从距离或名称补算身份。
-3. D7 累计时间出现稳定小幅回归，main publication bus 也有增长。先做固定输入 profiler，
-   区分业务计算、DTO 物化、哈希和日志写入；控制公式、PN/PNG 门控和发布频率本轮不改。
+   governance、重复航迹合并和 publication 成本。严格身份先修复 D1 跨模态混轨和
+   truth sidecar 标签合同；不得从距离或名称补算身份。
+3. D7 固定输入没有确认内核回归，核心公式保持不变。main publication bus 已关闭重复键
+   规范化，后续只在新的 clean 多 seed 中复核阶段分位和总墙钟。
 4. D5 已关闭 history gauge、匿名审计和 singleton binding 的局部重复成本。下一步用正交
    多 seed 控制检测数、活跃相机数、中心候选数和时长，分离 tracker pair 与投影/绑定矩阵
    增长，不减少视觉帧、不放宽投影与身份门限。

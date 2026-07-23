@@ -534,17 +534,54 @@ D1 的 20 个 episode 均为 partial。创新平方、归一化创新平方和�
 `5fdc78ba...316a1`。D6 truth-isolated aggregate 与中文报告 SHA-256 为
 `a0a22786...eb40` 和 `4cf127c3...c005`。
 
+## 第十轮局部热点与身份阻断复核
+
+D1 在扫描 claim 中先物化一次 JSON 安全的量测、协方差、元数据和谱系记录，再由同一
+记录生成内容摘要与完整帧摘要。冻结 seed 1000 的 771 个扫描、11,889 条观测上，旧/新
+claim registry SHA-256 相同，逐输入事件、融合状态、协方差、双时间戳、谱系、分级和
+最终航迹均一致。五轮交错 P50/P95 由 `3.618/4.049 s` 降至
+`1.905/2.038 s`，P50 加速 1.899 倍。该结果不改变 6 秒固定滞后窗口、关联门限或
+观测频率。
+
+D2 对第九轮 20 个候选 episode 重新执行 producer 重放、来源 SHA-256 和真值隔离检查，
+20/20 通过。严格 ID Switch 仍为 0/20 可用。阻断细分为：
+
+- 118 个航迹帧中，同一 `global_track_id` 的持久化谱系对应多个真实目标；
+- 上述混轨形成 107 个连续区间，涉及 83 个 episode/航迹组合；
+- 2,464 个受评分映射缺少明确的真实目标、已知虚警或标签未知标记；
+- D1 的 191,425 条可用估计中，188,951 条可形成唯一候选映射，2,474 条因
+  `truth_label_missing` 未解析。
+
+诊断器在任一估计缺失唯一标签或 D2 声明时不发布部分 `d2_lineage_mapping`，因此
+可消费 episode 仍为 0/20。部分映射覆盖、完整帧覆盖、相邻转换覆盖和保守下界保持
+第九轮数值，不回填 strict，也不生成上界。在线 D2 关联器、马氏门控、Hungarian、
+航迹生命周期和 `global_track_id` 均未修改。
+
+D7 使用固定 200 pair、185 frame replay 对 `0d2da25` 和 `5263e2b` 各运行 6 次。
+37,000 条命令、世界加速度、最终 pair 状态、模式和拒绝原因严格一致。内核均值为
+`1.837673/1.849179 s`，变化 `+0.626%`，95% bootstrap 区间
+`[-1.828%, +3.178%]`。该结果没有确认 D7 内核回归；第九轮整栈增长保留为系统调度、
+缓存或同进程负载告警，不修改 PN/PNG、LOS/TTC 或安全门。
+
+main 对在线真值守卫增加重复映射键布局缓存，嵌套值仍在每次发布时递归检查。3,430 条
+持久化载荷微基准中，中位数由 `0.596713 s` 降至 `0.477764 s`。四组同 seed、同配置、
+交错 clean 2.2 秒复测中，publication bus 累计耗时中位数由 `0.887 s` 降至
+`0.775 s`，下降 12.69%；核心墙钟中位数由 `10.824 s` 变为 `10.776 s`，只下降
+0.44%。组合 clean `d79aba3` smoke 的实时倍率为 `0.204`，状态有限、在线真值使用为 0，
+并通过 3,430 条在线记录和真值制品的跨构建语义等价审计。该证据只关闭发布守卫的局部
+重复键规范化，不关闭系统实时 P1。
+
 ## 后续工作
 
-1. D1 同一融合时刻快照合并和完整帧重复快照热点已关闭。下一步继续治理 scan-input
-   claim/audit/JSON、固定滞后滤波、检查点查询和剩余 `GlobalTrack` 物化成本，不得缩短
-   6 秒窗口、丢观测或放宽门控。20-seed 的融合 P95 均值仍为 233.488 ms。
+1. D1 同一融合时刻快照合并、完整帧重复快照和 claim 重复 JSON 规范化已经关闭。
+   下一步治理 `GlobalTrack` 物化、非雷达扫描关联、固定滞后 replay 和检查点查询，
+   不得缩短 6 秒窗口、丢观测或放宽门控。20-seed 的融合 P95 均值仍为 233.488 ms。
 2. main 发布总线接近线性，但 10 秒在线日志仍约 207-230 MiB，结束后处理均值仍为
    30.150 秒，是总进程耗时的重要部分。
    下一轮应设计版本化 heartbeat/lineage sidecar，并保持旧 schema consumer 兼容。
-3. D2 三项固定操作数热点已关闭；20-seed P95 均值仍为 142.627 ms。下一轮继续分离
-   covariance governance、重复航迹合并与 main publication 成本，并补齐严格身份映射证据，
-   保持候选和身份语义。
+3. D2 三项固定操作数热点已关闭；20-seed P95 均值仍为 142.627 ms。严格身份阻断已经
+   定位到上游多真值混轨和 truth sidecar 标签不完整。下一轮先修复 D1 跨模态一致性和
+   离线标签合同，再重跑 strict IDSW、continuity 与 D1 RMSE/NEES。
 4. D5 已关闭 history gauge、匿名审计和 singleton binding 的局部重复成本。下一步正交
    控制检测数、活跃相机数、中心候选数和时长，分离 tracker pair 与投影/绑定矩阵增长，
    不能减少视觉帧或放宽几何门限。
@@ -573,6 +610,8 @@ D1 的 20 个 episode 均为 partial。创新平方、归一化创新平方和�
 - 第八轮 D6 部分身份分栏：`research_modules/d6_evaluation_metrics/outputs/scalable3d_partial_identity_seed1000_20260723/`
 - 第八轮 D1 尾延时报告：`research_modules/d1_sensor_fusion/reports/d1_tail_latency_performance_20260723.json`
 - 第八轮 D2 热点报告：`research_modules/d2_data_association/docs/d2_clean_4ac3bb2_seed1000_hotpath_20260723.json`
+- 第十轮 D2 身份阻断报告：`research_modules/d2_data_association/docs/D2_SCALABLE_3D_IDENTITY_BLOCKER_AUDIT_CN.md`
+- 第十轮 D7 固定输入报告：`subagent_reviews/D7_SCALABLE_3D_GUIDANCE_PERFORMANCE_AUDIT_20260723.md`
 - 第八轮 D5 操作数报告：`research_modules/d5_terminal_association/results/scalable_3d_seed1000_duration_operation_20260723.json`
 - 跨构建审计：`outputs/scalable_3d_long_duration_candidate_20260722_clean_f80b5bd/cross_build_semantics/`
 - 长短比较：`comparison_candidate/long_duration_comparison.json`
