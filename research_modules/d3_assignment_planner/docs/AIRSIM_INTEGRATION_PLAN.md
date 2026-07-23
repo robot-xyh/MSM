@@ -132,7 +132,7 @@ Output candidate plan record:
 ## Validation Gates
 
 - Unit tests must pass before AirSim adapter tests.
-- Adapter tests should replay a short fixture and verify stable IDs, normalized ranges, and deterministic planner output.
+- Adapter tests should replay a short fixture and verify stable track/resource IDs, normalized ranges, and deterministic planner business output. Fresh planner instances intentionally create different UUID-based `plan_id` values; independent AirSim episodes must compare a validated, occurrence-normalized plan lineage rather than raw plan IDs.
 - No output channel may be connected to vehicle control or hardware control.
 - Every published candidate plan must preserve the configured `human_authorization_state`; the default remains `"required"`, while record-only AirSim gates may use `"recorded"`.
 - Logs must include `decision_state`, version, total cost, and per-assignment cost breakdown.

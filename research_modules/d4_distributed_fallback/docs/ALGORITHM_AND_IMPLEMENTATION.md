@@ -660,7 +660,17 @@ epoch_{new}>epoch_{old}\quad\land\quad planVersion_{new}>planVersion_{old}.
 
 `validate_for_consumption()` 在下一轮 planning boundary 对 current snapshot 和可选 current formal verdict 重验。旧 snapshot/plan/epoch、严格 lease 到期、非 projected、ACK 不完整、fault fence、formal commit 数变化、总量或逐区 transfer delta 不守恒、reserve/committed 保护失败，以及未知、非邻接、不可用、partition 或超 capacity edge 均为拒绝。`RegionResourceAdvisoryGate` 在首次成功后记录 `advisory_id`，同一进程内再次消费返回 `advisory_already_consumed`；跨进程 ledger 由 main 持久化。`consumable=true` 仅允许 main 将区域聚合建议作为下一轮 D3 输入，D4 不创建或修改 `AssignmentPlan`。
 
-#### 10.5.1 运行时应用确认
+#### 10.5.1 跨独立运行的内容身份
+
+区域 authority 摘要对按 `region_id` 排序的以下载荷计算 SHA256：owner、layer、plan id/version、epoch、lease、owner active、coalition ACK、committed resources 和 fault fence。正式裁决摘要对完整 `RegionalFailoverDecision.to_dict()` 计算 SHA256。`advisory_id` 对移除自身字段后的完整 `RegionResourceAdvisoryContract` 计算 SHA256。因此独立 D3 planner 只要生成不同的原始 `plan_id`，三类摘要就会级联变化。
+
+该变化只在跨独立运行的派生比较视图中允许规范化。原始运行先执行四项验证：正式裁决事件与 advice 使用同一时间戳和确定顺序；before/after 摘要相等且可由正式裁决原文回算；authority 摘要可由完整区域 authority payload 回算，且 recommendation、region、transfer 中的副本全部相等；`RegionResourceAdvisoryContract.from_dict()` 可回算原始内容地址。任一检查失败即停止比较。
+
+通过后，比较器使用 D3 已审计的谱系映射替换所有 source plan 引用。它依次重算规范 authority 摘要、规范正式裁决摘要和规范 advisory 内容地址，再比较完整载荷。`advisory_id` 不能替换为事件序号；事件序号只负责对齐。owner、layer、role、plan version、epoch、lease、ACK、fault fence、region/task/global-track/resource/node/coalition identity、正式动作以及 recommendation 内容均不得规范化。若制品没有完整 authority payload，只有候选重建载荷能够精确回算原始摘要时才可继续；否则结果为不可比较。
+
+2026-07-22 对 clean `8f86192` 与 `f80b5bd` 的 seed 42000-42002 进行只读复核。两侧各 30 条正式裁决和建议均通过上述原始检查，30/30 对规范重算载荷相同。该结果只证明同输入跨提交业务语义等价，不提供 D4 降级性能或学习策略收益证据。
+
+#### 10.5.2 运行时应用确认
 
 `RegionResourceRuntimeAckParser` 解决“建议通过消费门”和“建议在运行时被采纳”之间的证据缺口。它不导入 main、D3 或 D7，只读取冻结对象、`to_dict()` 结果或版本化 envelope。输入包括 D4 advisory/result、main 区域消费记录、main 计划运行时确认、当前 D3 计划与 D7 导引源 envelope；同代刷新还必须提供 advisory 对应的前序 D3 source-plan envelope。
 

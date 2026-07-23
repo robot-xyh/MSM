@@ -1764,6 +1764,13 @@ window 执行下列检查：
 main-D6 集成。真实样本为三维质点 3v3、seed 41、1.2 秒。D3 全量为
 `319 passed, 1 skipped`，唯一 skip 是可选 OR-Tools。
 
+2026-07-22 的当前重放不再假定最后一条 ACK 必然代表控制采用。测试在每次 D3 发布时保存
+只读计划快照，以来源计划载荷 SHA-256 将 ACK 对回当时的 `AssignmentPlan`，再依次执行
+完整 ACK 验证。验证后的首个非保持 binding 用于 D6 结果窗口；当前末条 ACK 的 3 个
+binding 均为 `global_track_stale`，只证明 D7 按 `0.75 s` 时效门失败关闭。选择过程不使用
+真值身份，不伪造时间戳，也不更改 D7 门限或 PN/PNG 算法。2026-07-22 当前全量 439 项
+结果为 `438 passed, 1 skipped, 0 failed`。
+
 ## 保留 Seed 配对干预合同（2026-07-21）
 
 ### 规范结构
@@ -2516,9 +2523,10 @@ current_cost_breakdowns_by_edge_ref = cost_breakdowns_by_edge
 按 v2 字段投影后为 5,147,795 字节，减少 48.03%。测试确认完整边内容、assignment、稳定
 签名、执行签名和 plan id/version 一致。
 
-专项 5 项通过。全量收集 430 项，结果为 427 passed、1 skipped、2 failed。skip 是可选
-OR-Tools；两个失败仍是 main/D7 `global_track_stale` 跨模块时序用例，在本轮前已存在。
-本项未放宽 stale，也未运行新 schema 的完整长时 episode。
+专项 5 项通过。该阶段全量收集 430 项，结果为 427 passed、1 skipped、2 failed。skip 是
+可选 OR-Tools；两个失败表现为 main/D7 `global_track_stale`，在本轮前已存在。本项未放宽
+stale，也未运行新 schema 的完整长时 episode。后续调度和测试取样分别修复后，当前 439 项
+全量结果为 `438 passed, 1 skipped, 0 failed`。
 
 ## 54. 冻结输入性能诊断与签名复用
 
@@ -2610,3 +2618,105 @@ hold 摘要分别保持为 `1983/1983/199`、`1977/1977/0`、`1980/1980/400`。�
 本节记录完整 episode 的累计阶段墙钟。第 54 节冻结 benchmark 仍记录单次固定输入的结构
 操作数和 `334.735 ms` 默认上一计划帧中位，两者是独立证据。当前只可判定 D3 集成耗时基本
 持平和执行语义不变；不能声明性能晋级、AirSim 实时性、物理拦截能力或长期资源上限。
+
+## 56. 独立运行计划谱系规范化
+
+### 56.1 随机身份与确定性业务
+
+`_build_plan()`、authority generation fence 和 secondary takeover 在建立新执行谱系时调用
+`uuid4`。随机部分只用于对象身份隔离。同一 planner 的 `_finalize_identity()` 会在
+`execution_signature()` 不变时恢复上一计划的 `plan_id/version/created_at`；发布器还要求
+同身份载荷保持相同执行签名。新身份必须严格接在最新已发布版本之后，并由
+`previous_plan_id` 指向父计划。由此得到两个不同层次：
+
+1. **运行内身份相等**要求原始 `plan_id/version` 精确相等，用于 stale、ACK 和当前计划门控。
+2. **独立运行业务等价**允许随机计划号不同，但要求执行语义、版本拓扑和所有外部业务标识
+   相等。
+
+两个层次不能混用。把计划号改成 seed 派生值会削弱跨 episode 隔离；把全部标识删除又会
+掩盖旧计划接受、错误父关系、owner 冲突和 coalition 错绑。
+
+### 56.2 单运行链验证
+
+比较前，分别对每个运行执行以下验证：
+
+1. 以 `PlanningTickHistoryRecord.sequence_index` 为首选顺序；没有该记录时使用总线 sequence，
+   timestamp 只作同序号校验，不能单独决定代际顺序。
+2. 第一个已发布计划应有初始版本和空父关系。再次出现同一个 `plan_id` 时，version 和执行
+   签名必须保持不变，事件只能是刷新或同身份重发布。
+3. 首次出现的新 `plan_id` 必须满足 `version=parent.version+1`，其
+   `previous_plan_id` 或 `supersedes_plan_id` 应解析到当时的最新已发布父计划。未发布候选也
+   单独记录 `published=False`，不能推进 active parent。
+4. 普通新身份应对应执行签名变化。签名不变的新身份只接受声明完整的 authority generation
+   fence；同身份签名变化一律失败。
+5. `current/latest/source/supersedes` 的版本必须与被引用计划一致。stale reject、rollback、
+   secondary epoch/lease 和 regional commit 继续按原值验证。
+
+任一步失败时，该运行自身已不满足 D3 合同，不进入跨运行等价判断。
+
+### 56.3 规范身份图
+
+每个 episode 独立建立映射。伪代码如下：
+
+```text
+active = null
+mapping = {}
+next_ordinal = 0
+
+for event in ordered_d3_events:
+    raw = event.plan_id
+    if raw not in mapping:
+        token = "P" + zero_pad(next_ordinal, 4)
+        parent = resolve(event.previous_plan_id or event.supersedes_plan_id)
+        validate_new_identity(event, active, parent)
+        mapping[raw] = (token, event.version, parent.token if parent else null)
+        next_ordinal += 1
+    else:
+        validate_same_identity_refresh(event, mapping[raw])
+    if event.plan_published:
+        active = mapping[raw]
+```
+
+两次运行按 `(episode, first_occurrence_ordinal, version, parent_ordinal)` 对齐，而非按 UUID 或仅按
+version 对齐。仅按 version 对齐会漏掉未发布候选和重复版本；仅按执行签名对齐会错误合并
+authority fence。
+
+### 56.4 字段分类
+
+允许映射的字段限于明确引用 D3 计划身份的字段：`plan_id`、`current_plan_id`、
+`previous_plan_id`、`supersedes_plan_id`、`latest_plan_id`、fault fence source plan、regional
+hint source plan，以及隔离执行证据中的 source/candidate/authority/execution plan 引用。
+字段必须同时校验其配对版本，不能只替换字符串。
+
+由计划身份派生的字段采用结构化重建：
+
+- `binding_id/assignment_id/id`：替换计划号部分，保留 version、resource、target 和序号；
+- `decision_id`：以规范计划 token 和原 version 重建；
+- plan/guidance/transition payload SHA-256：先规范化源载荷，再按原规范 JSON 规则重算；
+- D4/D7/ACK 中复制的 plan 引用：使用同一 episode 映射，仍精确比较状态和版本。
+
+必须原样比较的字段包括：
+
+- `version/window_id/created_at/last_evaluated_at` 和事件 sequence/timestamp；
+- assignments、unassigned/incomplete、成本、迟滞、decision、changed、published；
+- owner/source/target node/link、activation、epoch、lease、stale/reject/rollback；
+- coalition id/version/epoch/state/members/roles/waves/windows/commit；
+- resource、target、`global_track_id`、node、region、advisory 和 schema/profile 标识。
+
+`coalition_id=d3-coalition-{target_id}` 是业务标识，不是随机谱系。任何递归删除全部 `*_id` 的
+比较都会掩盖真实错误，禁止使用。
+
+### 56.5 摘要与当前产物限制
+
+`canonical_plan_business_sha256()` 为冻结 D3 性能基准服务。它证明简单中心计划在去除少量
+随机身份后业务相同，但不构造父子图，也不完整规范 secondary、regional、fault fence 和
+ACK 的全部 plan 引用。main 的长时审计应按本节先验证关系、再规范载荷、最后重算摘要。
+
+当前 scalable D3 publication 只输出 `plan_id/version/current_plan_id` 等简化字段，没有顶层
+`previous_plan_id`。对既有 8f86192 与 f80b5bd 产物，如果每个 episode 的 D3 publication
+序列完整、版本严格连续且每次新身份均为当前发布，可把前一 publication 作为推导父计划。
+报告必须注明 `lineage_relation_source=derived_from_contiguous_publication_order`。若版本跳跃、
+事件缺失、存在未发布候选或 owner 并行发布，则证据不足，不能宣称谱系等价。后续应持久化
+现有 `d3_plan_history_record_v1`，直接使用其中的 previous/supersedes/latest 字段。简化
+publication 也不是完整 `AssignmentPlan.execution_signature()` 的序列化形式；只比较现有
+JSON 能证明发布业务载荷等价，不能替代完整 D3 对象或规范计划载荷的执行签名比较。

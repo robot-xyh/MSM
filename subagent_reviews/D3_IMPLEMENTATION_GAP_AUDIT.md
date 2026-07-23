@@ -1071,8 +1071,9 @@ seed 42000 的三次 D3 规划由 `7.329949 s` 降至 `1.013593 s`。breakdown �
 
 1. 完整 200v200 多 seed、候选上限扫描、长周期 previous-plan、AirSim 和物理拦截仍是 main
    侧系统验收 P1，不由本次 D3 微基准关闭。
-2. D3 完整收集中的两项 `global_track_stale` 在未修改 HEAD 可复现，归属 main/D7 的既有
-   跨模块时序断点。D3 stale 拒绝不放宽。
+2. D3 完整收集中的两项 `global_track_stale` 在该阶段未修改 HEAD 可复现。后续确认 seed 7
+   是 main 未消费后验调度问题，seed 41 是 D3 测试错误选择末条保持 ACK；两项均已按真实
+   原因修复，D3 stale 拒绝未放宽。
 3. 更大规模 sparse flow、区域分解和复杂容量求解保持 P2/P3 optional，不进入默认主线。
 4. 当前没有新增 D3 P0。
 
@@ -1104,7 +1105,8 @@ seed 42000 的三次 D3 规划由 `7.329949 s` 降至 `1.013593 s`。breakdown �
 1. main 已在 clean commit `8f86192` 完成 10 秒、seed 42000-42002 新 episode。每组 D3
    发布和计划 ACK 均为 10，计划业务摘要与旧提交一致，clean/finite/truth0 门通过。总线
    长时复跑和 runtime ACK 证据已补齐；长期内存峰值仍需单独测量。
-2. 两项 `global_track_stale` 属于 main/D7 时序断点。D3 不通过放宽 stale 门控关闭。
+2. 该阶段的两项 `global_track_stale` 后续分别由 main 修复未消费后验调度、D3 修复 ACK
+   取样口径；当前全量零失败，且未通过放宽 stale 门关闭。
 3. 外部直接读取旧别名的未知消费者需迁移到规范字段或公共导出函数。仓库内没有此类
    Python 消费者。
 
@@ -1138,8 +1140,9 @@ seed 42000 的三次 D3 规划由 `7.329949 s` 降至 `1.013593 s`。breakdown �
 
 三条路径的 binding SHA-256、计划版本和规范业务 SHA-256 一致，刷新帧均复用原计划号。
 身份缓存、区域异常优先级、直接发布、authority fence 和性能诊断定向组合为 `46 passed`。
-D3 全量收集 439 项，结果为 `436 passed, 1 skipped, 2 failed`。skip 是可选 OR-Tools；
-两个失败均为已在基线复现的 main/D7 `global_track_stale` 跨模块失败。
+D3 全量收集 439 项，初次结果为 `436 passed, 1 skipped, 2 failed`。skip 是可选 OR-Tools；
+两个失败均表现为 main/D7 `global_track_stale`。后续按真实根因修复后，当前结果为
+`438 passed, 1 skipped, 0 failed`。
 
 ### clean 集成复核与仍开放
 
@@ -1151,5 +1154,47 @@ D3 全量收集 439 项，结果为 `436 passed, 1 skipped, 2 failed`。skip 是
    执行语义。
 3. 冻结 benchmark 的 `334.735 ms` 等原数字继续用于固定输入归因；clean episode 只提供
    累计墙钟与业务一致性证据。长期内存峰值、AirSim、物理拦截和系统实时预算仍开放。
-4. 两项 `global_track_stale` 仍由 main/D7 时序链路处理。D3 不放宽 stale 门控。
+4. 初次两项 `global_track_stale` 已分别通过 main 调度修复和 D3 测试取样修复关闭。D3 未
+   放宽 stale 门控。
 5. 当前没有新增 D3 P0。clean 三种子集成复测这一 P1 证据项已关闭。
+
+## 48. 独立运行计划谱系比较 GAP 更新（2026-07-22）
+
+### 结论
+
+1. **D3 身份合同无缺口**：`_build_plan()`、secondary takeover 和 authority fence 为新谱系
+   使用 `uuid4`；独立 planner 的原始 `plan_id` 不相同是有意行为。单实例 refresh 保持身份，
+   执行变化严格升版，publish/stale/previous-plan 校验继续失败关闭。
+2. **文档口径缺口已关闭**：README、PLAN、算法文档、模块原理和 review 现统一规定跨运行
+   比较必须先验证单运行链，再按首次出现序号规范 plan identity，并精确保留版本、父关系、
+   owner、stale、coalition、epoch/lease/commit 和全部外部业务标识。
+3. **旧快速哈希的适用边界已澄清**：`canonical_plan_business_sha256()` 适用于冻结中心规划
+   benchmark，不验证完整 lineage 图，不能独立证明 D4/D7/ACK 的跨运行等价。原始 payload
+   摘要仍用于单运行 ACK 完整性，跨运行摘要须从规范载荷重算。
+
+### main 集成限制
+
+当前 scalable publication 未直接输出顶层 `previous_plan_id`，而 D3 的
+`PlanningTickHistoryRecord` 已有 previous/supersedes/latest 和配对版本。对现有 clean 线性
+episode，main 可在 D3 发布事件完整、版本逐一递增且 owner 唯一时按相邻发布推导父关系，
+但必须标记 `lineage_relation_source=derived_from_contiguous_publication_order`。存在事件缺失、
+版本跳跃、未发布候选或并行 owner 时应判证据不足。把 planning-tick history 接入 scalable
+持久化及完整规范计划载荷接线属于 main-owned P1 集成项，不通过固定或删除 D3 UUID 处理。
+
+本次没有修改算法代码、schema 或默认配置，没有新增 D3 P0。该阶段初次全量运行结果为
+`436 passed, 1 skipped, 2 failed`；两项失败均表现为 main/D7 `global_track_stale`。其中 seed 7
+已由 main 的未消费 D1 posterior 锁存恢复，D3 没有改写航迹时间戳。seed 41 在末条 ACK 前
+确实没有新后验，D7 保持是正确安全行为，不应作为待放宽的门控缺口。
+
+## 49. ACK 结果窗口取样口径修复（2026-07-22）
+
+旧 D3 集成用例固定选择 seed 41 的最后一条 ACK，再从中查找非保持 binding。当前真实时序下，
+首条 ACK 有 3 个非保持 binding，末条 ACK 的 3 个 binding 因航迹年龄约 `0.770941 s` 超过
+`0.75 s` 门限而全部保持，因此旧取样会错误失败。
+
+D3 测试现保存每次发布时的只读计划快照，按来源计划载荷 SHA-256 对回 ACK，验证全部 D3、
+D7 来源和 ACK 后，再按总线顺序选择首个非保持 binding 接入 D6 observed-only 窗口。测试
+同时断言末条 ACK 的保持原因是 `global_track_stale`。未修改 D3 生产代码、计划 schema、
+Hungarian、迟滞、时间戳、D7 时效门或 PN/PNG。定向测试通过；D3 全量 439 项为
+`438 passed, 1 skipped, 0 failed`，唯一跳过仍是可选 OR-Tools。该测试口径缺口已关闭，
+没有形成新的 P0/P1 算法缺口。

@@ -782,10 +782,16 @@ ACK 覆盖率仍为 0。当前结论只证明验证接口和新 producer 的小�
 ### 结果
 
 专项结果为 `16 passed`。真实 main 集成样本由当前 runtime 自动生成 D3 计划、D7 命令、
-ACK 和 D6 `runtime_plan_outcome_join.json`。D3 对最后一条 ACK 的一个 active binding
-完成来源、消费、ACK、owner、资源-航迹、执行签名和时间窗联接，在线真值使用为 0。
+ACK 和 D6 `runtime_plan_outcome_join.json`。当前重放产生两条 ACK。D3 使用各自发布时的
+计划快照验证两条 ACK，首条总线序号为 16，包含 3 个非保持 binding；末条总线序号为 33，
+3 个 binding 均因 `global_track_stale` 保持。D3 选择首条 ACK 的一个 active binding，完成
+来源、消费、ACK、owner、资源-航迹、执行签名和时间窗联接，在线真值使用为 0。
 输出中 command 和 ACK applied 可用；观测诊断按 D6 实际状态保留；paired、
 counterfactual、causal 和 formal reward 均不可用。
+
+2026-07-22 修复后的定向用例通过。D3 全量共 439 项，结果为
+`438 passed, 1 skipped, 0 failed`，最终 JUnit 记录耗时 `24.793 s`。唯一跳过项为未安装的可选
+OR-Tools；Matplotlib `Axes3D` 环境警告不影响本用例的 ACK 与窗口联接。
 
 D3 全量收集 320 项，结果 `319 passed, 1 skipped`。唯一 skip 是当前环境未安装的可选
 OR-Tools 对照。冻结 900 episode/1604 帧正式数据没有新 ACK，本次没有修改或回填这些
@@ -795,7 +801,8 @@ OR-Tools 对照。冻结 900 episode/1604 帧正式数据没有新 ACK，本次�
 
 ACK 到 observed outcome 的合同断点已关闭。正式 reward 仍缺计划级运行分项、同 seed
 配对结果、反事实和因果证据，因此尚不能启动 PPO。五米事件和距离改善可用于诊断窗口
-是否有结果，不用于宣称分配策略收益。
+是否有结果，不用于宣称分配策略收益。末条保持 ACK 不构成故障；它证明 D7 在真实航迹年龄
+超过 `0.75 s` 时拒绝继续制导。旧用例固定取最后 ACK 的取样口径已修正，没有调整安全门。
 
 ## 保留 Seed 配对干预合同测试（2026-07-21）
 
@@ -1315,9 +1322,10 @@ episode 总耗时变化全部归因于 D3。完整 200v200 多 seed、AirSim、�
 成本内容相同。v2 记录的 6,400 条计数和规范 SHA-256 可重算。v1 仅旧别名仍可由 D3 导出
 函数读取。计数或摘要篡改会被拒绝。
 
-专项 `5 passed`。全量收集 430 项，结果为 `427 passed, 1 skipped, 2 failed`。skip 是未
-安装的可选 OR-Tools。两个失败是既有真实主总线用例中的 `global_track_stale`，未修改 HEAD
-已记录可复现；本项没有调整 D7 gate 或 stale 规则。
+专项 `5 passed`。该阶段全量收集 430 项，结果为 `427 passed, 1 skipped, 2 failed`。skip
+是未安装的可选 OR-Tools。两个失败表现为真实主总线用例中的 `global_track_stale`，未修改
+HEAD 已记录可复现；本项没有调整 D7 gate 或 stale 规则。后续修复见本报告的 ACK 取样记录，
+当前 439 项全量为 `438 passed, 1 skipped, 0 failed`。
 
 ### 边界
 
@@ -1364,15 +1372,16 @@ runtime ACK。结果不属于 AirSim 或物理拦截证据。
 三条路径的资源目标 binding、计划版本和规范业务 SHA-256 一致。刷新帧都复用首帧
 `plan_id`。latest published execution signature 来自 planner-owned cache，caller previous
 只做一致性校验。身份、区域、直接发布、authority fence 和性能诊断定向组合为
-`46 passed`。D3 全量 439 项，结果为 `436 passed, 1 skipped, 2 failed`；两个失败均为已在
-基线复现的 `global_track_stale`。
+`46 passed`。该阶段 D3 全量 439 项初次结果为 `436 passed, 1 skipped, 2 failed`；两个失败
+均表现为 `global_track_stale`。后续 seed 7 调度修复和 seed 41 取样修复未改变本试验的性能
+数据，当前全量结果为 `438 passed, 1 skipped, 0 failed`。
 
 ### 边界
 
 关闭离线证据仅用于归因，不是生产开关。墙钟来自当前机器的三次暖启动样本，不能据此声明
 实时上限，也不能单独解释 clean 10 秒 seed 42000-42002 的累计时间变化。该集成复测已在
-下一节单独记录。D3 全量中的两项 `global_track_stale` 失败属于既有 main/D7 时序链路，
-本试验没有放宽 stale 门控。
+下一节单独记录。初次全量中的两项 `global_track_stale` 已按真实原因分别处理；本试验和后续
+修复均没有放宽 stale 门控。
 
 ## clean 10 秒三种子集成复核（2026-07-22）
 

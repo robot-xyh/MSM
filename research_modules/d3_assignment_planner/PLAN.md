@@ -1087,7 +1087,11 @@ OR-Tools，零失败满足门限。
    `formal_reward_eligible=false`。paired、counterfactual、causal 和 formal reward 当前
    均 unavailable。
 6. 真实 main 3v3、seed 41、1.2 秒集成样本验证 producer、D6 join 和 D3 consumer 可以
-   对接，且在线真值使用为 0。专项 16 项和 D3 全量 320 项通过零失败门限。
+   对接，且在线真值使用为 0。consumer 验证全部 ACK 与各自发布时计划快照，按总线顺序
+   选择首个非保持 ACK 的 binding 建立 D6 窗口。当前末条 ACK 因
+   `global_track_stale` 全部保持，保留为安全证据，不进入 `ack_applied` 取样。专项 16 项和
+   历史 D3 全量 320 项通过零失败门限；2026-07-22 当前全量 439 项结果为
+   `438 passed, 1 skipped, 0 failed`。
 
 ### 后续证据
 
@@ -1580,9 +1584,10 @@ main 应在 clean worktree 重跑 10 秒以上 200v200，确认总线文件、D6
 
 ### 验收与后续
 
-身份、区域、authority fence 和性能诊断定向组合 `46 passed`。D3 共收集 439 项，正式结果
-为 `436 passed, 1 skipped, 2 failed`；两项失败是已在基线复现的 main/D7
-`global_track_stale` 集成断点，skip 是可选 OR-Tools。D3 不放宽 stale 门控。
+身份、区域、authority fence 和性能诊断定向组合 `46 passed`。该阶段初次收集 439 项，结果
+为 `436 passed, 1 skipped, 2 failed`；两项失败表现为 main/D7 `global_track_stale`，skip
+是可选 OR-Tools。后续 main 修复 seed 7 的未消费后验调度，D3 修复 seed 41 的 ACK 取样；
+当前全量为 `438 passed, 1 skipped, 0 failed`。D3 未放宽 stale 门控。
 
 ## 51. clean 10 秒三种子集成复核（2026-07-22）
 
@@ -1603,3 +1608,36 @@ main 应在 clean worktree 重跑 10 秒以上 200v200，确认总线文件、D6
 三种子结果用于完整 episode 的累计墙钟和业务一致性。两组证据不得互相替代。后续由 main
 继续验证 AirSim、物理拦截、长期内存峰值和系统实时预算；D3 不基于本次 1.8% 差异调整规则
 代价、迟滞或发布合同。
+
+## 52. 独立运行计划谱系等价规则（2026-07-22）
+
+### 合同结论
+
+1. 新 planner 实例的首份计划使用独立 `uuid4` 身份。同 seed、同输入的两个独立实例产生
+   不同原始 `plan_id` 是有意合同；版本、执行签名和业务决策仍应一致。
+2. 同一实例内，evaluation refresh 保留原身份；执行语义变化建立新身份并严格升一版。
+   authority generation fence 可在执行签名不变时升版，但必须保留专用 fence schema、原因
+   和父计划引用，不能与普通 refresh 合并。
+3. `execution_signature()` 不包含随机 `plan_id`，但包含 assignment、coalition、未分配和
+   不完整集合、人工授权，以及 owner、activation、regional commit、epoch/lease 等执行
+   元数据。跨运行应直接比较该签名或其等价规范载荷。
+
+### main 比较流程
+
+1. 先核对 episode、seed、输入摘要、场景版本、时间轴和 D3 事件数，再按权威总线序号排序。
+2. 分别验证两个运行自身的 identity/version/parent 链。链不合法时直接判失败，禁止先删 ID
+   再比较。
+3. 对每个运行按计划号首次出现顺序建立 `raw_plan_id -> Pxxxx` 映射。刷新沿用原 token；
+   新身份同时记录 `(token, version, parent_token, owner, transition_reason, published)`。
+4. 只替换已声明的计划引用字段和由计划号确定性派生的 binding/decision 标识。资源、目标、
+   全局航迹、节点、区域、advisory 和 coalition 标识保持原值。
+5. 对替换后的载荷重算规范摘要，再逐事件比较业务字段、版本、父关系、stale/owner/coalition
+   语义。原始 payload/ACK 摘要只用于各自运行内部完整性校验。
+
+### 证据边界
+
+D3 的 `AssignmentPlan`、`AssignmentRecord`、`AssignmentEvidenceExport` 和
+`PlanningTickHistoryRecord` 已携带前序、supersede、latest 和版本字段。当前 main-owned
+scalable publication 是简化投影，未直接输出顶层 `previous_plan_id`。现有产物仅在线性版本
+连续、无丢失发布记录时允许由相邻发布推导父关系，并必须标注为推导证据；正式长期对比应
+改用 planning-tick history。该接线属于 main 集成范围，不通过修改 D3 身份生成器解决。

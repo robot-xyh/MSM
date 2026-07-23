@@ -186,6 +186,8 @@ D1 仍以北-东-地（North-East-Down，NED）坐标系作为融合工作坐标
 
 消费门严格使用 `evaluated_at < valid_until`。旧 snapshot/plan/epoch、lease 到期、非 projected、ACK 不完整、fault fence、formal verdict 变化、资源不守恒、reserve/committed 保护失败、未知/非邻接/不可用/超 capacity transfer，或已在 gate 中成功消费过的 `advisory_id`，均输出 `consumable=false`。当前 gate 的 replay ledger 是进程内集合；跨进程运行时由 main 持久化。D4 不借此创建或修改 D3 `AssignmentPlan`。
 
+独立 planner 的不透明 `plan_id` 会进入区域 authority 摘要、正式裁决摘要和 advisory 内容地址。跨提交比较必须保留原始记录，先回算三层摘要并验证同一运行内的副本关系，再在只读比较视图中使用 D3 已审计的谱系 token 重算三层身份。`advisory_id` 不能直接删除或改成事件序号。owner/layer、版本、epoch、lease、ACK/fence、区域/任务/航迹/资源/节点/联盟身份和建议动作仍须严格相等。缺完整 authority payload 且无法从现有证明精确回算原摘要时，比较失败关闭。
+
 ### 3.8 区域学习 episode 数据治理
 
 `d4-region-learning-dataset-v1` 以完整 episode 为最小持久化和 split 单元。source 必须记录 scenario/version/scale、数值 seed、episode ID、Git commit/dirty 与 config SHA256；每帧 `target` 容器只能保存区域级 `rule|formal` 教师建议或带原因的 unavailable，reward 同样必须显式 available/unavailable，可选 recommendation 只作记录。`target` 字段名和 `target.kind=rule` 本身不是 truth；被拒绝的是 actor/target/object/global-track/evaluator/offline truth 标识及其键变体，不能让真实身份进入在线特征。

@@ -1,5 +1,13 @@
 # D4 分布式协同与降级接管计划
 
+## 2026-07-22 跨提交谱系比较计划
+
+- **D4 结论**：独立 planner 的原始 `plan_id` 可以不同。D4 `authority_digest`、`formal_decision_digest` 和 `advisory_id` 因包含或间接包含该计划号而确定性变化，不构成业务差异；原始值在单次运行内仍必须完整保留并通过内容校验。
+- **main 比较顺序**：先验证同 seed/场景/配置/时间轴、D3 计划谱系、D4 formal-advice 配对、原始 before/after digest、原始 authority payload digest 和原始 advisory 内容地址；再在只读副本中规范 D3 计划号，并按 D4 原算法重算三类派生身份。禁止按事件号覆盖 `advisory_id`，禁止只保留摘要相等类。
+- **强比较字段**：owner/layer/role、region/task/global-track/resource/node/coalition identity、plan version、epoch、lease、ACK、fault fence、正式动作和 recommendation 全部保持原业务语义并逐字段相等。只有经 D3 审计的 plan identity 及其确定性派生摘要可进入规范视图。
+- **当前证据**：clean `8f86192` 与 `f80b5bd` 的 seed 42000-42002，各 30 条 D4 正式裁决和建议均通过单运行完整性；30/30 对规范重算结果相同。该结果是跨提交描述性等价证据，不是降级性能、学习收益或真实网络证据。
+- **后续集成**：main 的通用比较器应优先读取完整 `RegionResourceSnapshot` authority payload。若制品只含 advisory，只有用 `source_version + protected_committed_resources` 回算并精确匹配原始 authority digest 时才可继续；否则标记不可比较并失败关闭。
+
 ## 2026-07-22 计划代际适配复核
 
 - **已确认**：`RegionResourceIsolatedAdoptionVerifier` 的严格后继和评估刷新分支语义正确，无需调整安全门。隔离专项 26/26、D4 全量 508/508 通过。

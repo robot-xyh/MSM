@@ -10,6 +10,8 @@
 
 同日增加保留 seed 配对干预合同、冻结候选只读加载和候选门诊断。arm evidence 升级为 v2，保存 candidate confidence、冻结最小置信门、OOD、latency/limit、finite 和逐项 gate；v1 reader 在验证旧 manifest content ID 后迁移，未知诊断保持 unavailable。专项现为 33/33，D4 全量 482/482。当前权威 `formal_7891296` 已生成 nominal 5v5 seed 1000-1019 的正式 v2 execution receipts；D4 仅做只读复核，不改写该输出。2026-07-22，D6 在 `research_modules/d6_evaluation_metrics/outputs/reserved_seed_interventions_nominal_5v5_1000_1019_formal_7891296_d6_profile_bound_v2_audit_20260722/` 生成 profile-bound v2 outcome-availability sidecar，状态为 `pass_offline_assignment_comparison_only`；sidecar 文件 SHA256 为 `f3852251daf02ec87fe878e7fb80aad6f381d8c0756a5c956a32e737a3871c3b`，规范内容 SHA256 为 `c02a345c46ddc642dea7fb6bfcfb24184e7dc2a9f35b754c90324d074b445d2d`。该 sidecar 只使同帧离线分配比较可用；`formal_twenty_seed_performance_completed=false`，runtime ACK、物理结果、paired effect/non-degradation、counterfactual 和 causal 均保持 unavailable。
 
+2026-07-22 又对 clean `8f86192` 与 `f80b5bd` 的 seed 42000-42002、三组 10 秒 200v200 运行执行 D4 跨提交只读审计。两侧各 30 条正式裁决和 30 条区域建议均通过原始 advisory 内容地址、正式裁决摘要、authority 摘要和摘要副本一致性检查。独立 D3 planner 的原始计划号规范化后，重新计算 authority、正式裁决和 advisory 三层内容身份，30/30 对载荷逐字段相同。该结果是同输入描述性等价证据；它不改变运行时原始 `advisory_id`，也不证明降级性能、真实通信或学习策略收益。
+
 ## 2. 实验目的
 
 D4 验证中心节点异常时的保底策略：

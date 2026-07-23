@@ -1218,8 +1218,9 @@ M-to-N、迟滞、版本、stale、联盟和 D7 binding 均未改。
 `422 passed, 1 skipped, 2 deselected`。
 
 结论：D3-owned P1 规划证据确定性热点已关闭。墙钟仍是 development benchmark，后续由
-main 运行完整 200v200 多 seed 和 AirSim 系统验收。两项既有 `global_track_stale` 跨模块
-失败不属于本次回归，D3 不放宽 stale 门。更大规模求解器替换不纳入本轮工作。
+main 运行完整 200v200 多 seed 和 AirSim 系统验收。该阶段两项 `global_track_stale` 后续
+分别由 main 修复未消费后验调度、D3 修复 ACK 取样口径；当前全量零失败，D3 未放宽 stale
+门。更大规模求解器替换不纳入本轮工作。
 
 ## 49. AssignmentPlan 成本证据单副本复核（2026-07-22）
 
@@ -1265,9 +1266,10 @@ Hungarian 的局部实边和未分配虚拟列共准备 80,000 个单元。规�
 为 `389.673 ms`，关闭离线证据的离线参考为 `223.147 ms`。后一个参考不满足生产审计要求，
 没有运行时入口。各阶段计时为包含式边界，不能相加解释端到端时间。
 
-身份、区域、直接发布、authority fence 和性能诊断定向组合 `46 passed`。D3 全量 439 项中
-436 项通过、1 项可选 OR-Tools 跳过；两项真实主总线测试仍因 `global_track_stale` 将 3 个
-binding 全部保持为 held。该断点已在基线复现，本轮未调整 stale 门。main 应在隔离环境用
+身份、区域、直接发布、authority fence 和性能诊断定向组合 `46 passed`。D3 全量 439 项
+初次有 436 项通过、1 项可选 OR-Tools 跳过和 2 项 `global_track_stale` 失败。后续 seed 7
+由 main 的未消费后验锁存恢复；seed 41 保留正确 stale 结果，并由 D3 改为选择首个非保持
+ACK。当前结果为 `438 passed, 1 skipped, 0 failed`，未调整 stale 门。main 应在隔离环境用
 同一提交复测 seed 42000-42002，只有单次输入操作数、调用密度和累计耗时能够相互解释后，
 才可形成集成性能结论。
 
@@ -1285,3 +1287,34 @@ D3 assignment 累计墙钟为 `3.437/3.319/3.110 s`，均值 `3.289 s`。旧提�
 冻结 200x200 benchmark 与本次集成复核分别保留。前者的默认上一计划帧 `334.735 ms` 等
 数字用于固定输入热点归因；后者用于累计阶段时间和业务一致性。clean 三种子复测项已关闭，
 AirSim、物理拦截、长期资源峰值和生产实时预算继续保持开放。
+
+## 52. 独立运行计划身份审计（2026-07-22）
+
+代码和既有测试确认，D3 的新执行谱系由 `uuid4` 生成。两个独立 planner 对相同输入产生
+不同 `plan_id` 是当前有意合同；`test_planner_performance_diagnostics.py` 已显式断言原始
+计划号不同而 binding/business 哈希相同。同一 planner 内的 refresh、执行变化、secondary
+takeover、authority fence 和 stale publish 规则由 identity/authority 专项测试覆盖。
+
+原文档只说明了运行内 identity 保持，没有定义跨独立 episode 的比较口径。本次补充的口径
+要求 main 先验证各自版本链，再按计划号首次出现顺序生成规范 token，并保留 parent、version、
+owner、coalition 和 stale 语义。原始 plan-derived binding/decision ID 与 payload SHA 需在
+规范化后重建；resource、target、global track、node、region、advisory 和 coalition ID 不得
+删除或映射。
+
+当前 main-owned scalable publication 未直接包含 `previous_plan_id`。8f86192 与 f80b5bd 的
+现有线性长时产物只有在发布序列完整、版本连续且无并行 owner 时，才能以前一发布推导父关系，
+并应在报告中标为 derived。该简化 publication 也不能完整重建 execution signature。D3 已有
+`PlanningTickHistoryRecord` 能提供完整关系；后续由 main 决定是否接入规范计划载荷。该限制
+不要求改写 D3 随机身份合同，也没有形成新的 D3 P0。
+
+## 53. seed 41 运行 ACK 取样复核（2026-07-22）
+
+复核确认旧失败来自测试取样，不是 D3 规划或 D7 安全门退化。当前 3v3、seed 41、1.2 秒
+episode 有两条可完整验证的 ACK。首条有 3 个非保持 binding；末条在没有新 D1 后验的条件下，
+以约 `0.770941 s` 航迹年龄触发 D7 的 `0.75 s` stale 门并全部保持。
+
+D3 用例现把每条来源计划与其发布时快照绑定，逐条验证来源序号、载荷摘要、计划内容和 D7
+命令，再选首个非保持 binding 验证 D6 observed-only join。末条保持 ACK 继续作为失败关闭
+证据，不作为 `ack_applied` 样本。修复只涉及 D3 测试和文档，没有放宽 stale 门、改写时间戳
+或修改比例导引。定向测试通过；D3 全量 439 项为 `438 passed, 1 skipped, 0 failed`，唯一
+跳过为可选 OR-Tools。

@@ -988,9 +988,13 @@ availability/reason，当前不补零。缺 ACK、owner、来源序号/哈希、
 
 2026-07-21 的专项测试为 `16 passed`。其中一项运行真实 main 三维质点 3v3、seed 41、
 1.2 秒，并消费 main 自动生成的 D6 结果；选定 binding 的命令、采用和结果窗口连接成功，
-正式 reward 仍为 unavailable。D3 全量收集 320 项，结果为
+正式 reward 仍为 unavailable。2026-07-22 按当前调度重放时，总线包含两条来源完整的 ACK：
+首条 ACK 有 3 个非保持 binding，末条 ACK 因航迹年龄超过 D7 的 `0.75 s` 门限而以
+`global_track_stale` 保持。consumer 先逐条验证 ACK 及其发布时计划快照，再按总线顺序选择
+首个非保持 binding 接入 D6；保持 ACK 不作为 `ack_applied` 样本。D3 全量收集 320 项，结果为
 `319 passed, 1 skipped`；唯一 skip 是未安装的可选 OR-Tools。Hungarian、
 `C_final=C_rule+alpha*tanh(delta_C)`、确定性安全外壳、PPO/assist/authority 状态均未改变。
+当前修复后的 2026-07-22 全量回归共 439 项，结果为 `438 passed, 1 skipped, 0 failed`。
 
 仍缺同 seed 配对运行、反事实结果、因果归因、计划级六项运行结果和外部保留 seed 证据。
 这些条件闭合前，`formal_d3_runtime_reward` 保持 unavailable，PPO 不启动，规则回退保持
@@ -1368,9 +1372,11 @@ Hungarian 准备矩阵单元。首帧匿名证据复制 80,000 个数值单元�
 `results/d3_planner_performance_attribution_20260722.json`，中文说明见
 `reports/D3_PLANNER_PERFORMANCE_ATTRIBUTION_20260722_CN.md`。
 
-本地 D3 共收集 439 项，结果为 `436 passed, 1 skipped, 2 failed`。skip 是可选 OR-Tools；
-两个失败是已在基线复现的 main/D7 `global_track_stale` 真实主总线断点。身份缓存、直接发布、
-authority fence、区域错误优先级和性能诊断定向组合为 `46 passed`。
+该性能阶段初次收集 439 项，结果为 `436 passed, 1 skipped, 2 failed`。skip 是可选
+OR-Tools；两个失败表现为 main/D7 `global_track_stale`。后续 seed 7 由 main 的未消费后验
+锁存恢复，seed 41 由本模块修正 ACK 取样口径；当前同一全量集为
+`438 passed, 1 skipped, 0 failed`，且没有放宽 stale 门。身份缓存、直接发布、authority
+fence、区域错误优先级和性能诊断定向组合为 `46 passed`。
 
 ## 2026-07-22 clean 10 秒三种子集成复核
 
@@ -1388,3 +1394,37 @@ main 已在 clean commit `8f86192` 上完成 200v200、10 秒、seed 42000-42002
 `334.735 ms` 等原始数字，用于固定输入下的热点归因；后者记录完整 10 秒 episode 中 10 次
 D3 调用的累计墙钟和业务一致性。当前仍未证明 AirSim、物理拦截、长期内存上限或生产实时
 能力。
+
+## 2026-07-22 独立运行计划身份等价审计
+
+`AssignmentPlanner` 有意使用 `uuid4` 为每个新执行谱系生成 `d3-plan-*`。因此，同一 seed、
+同一输入和同一时间轴交给两个全新的 planner 实例时，首份计划及后续新谱系的原始
+`plan_id` 应不同。这个随机身份用于避免不同 episode 或不同发布者把计划误认为同一对象，
+不是规划算法的随机动作。单个 planner 实例内，纯成本或评估刷新必须复用原
+`plan_id/version`；assignment、owner、activation 或 coalition 执行语义变化时才建立新
+谱系。在线计划发布链路中，authority generation fence 是唯一允许“执行签名不变但身份升版”的显式隔离事件，
+它必须保留专用原因和前序关系。
+
+跨独立运行比较不得直接比较原始 `plan_id`，也不得递归删除所有 `*_id`。先按 D3 发布记录
+的 `sequence_index` 或总线序号排序，对每个原始计划号按首次出现依次映射为
+`P0000/P0001/...`。同一原始计划号的刷新继续映射到同一规范号；新计划必须保留
+`version=parent.version+1` 和 `previous_plan_id/supersedes_plan_id -> parent` 的关系。
+`current_plan_id`、`latest_plan_id`、区域提示的 source plan 引用及 fault fence source 引用
+使用同一映射。由计划号拼接出的 binding/decision 标识应在替换计划号后重建，完整 payload
+摘要也应对规范载荷重新计算。
+
+下列内容仍须精确一致：计划版本与窗口、执行签名、目标-资源绑定、未分配和不完整目标、
+成本与迟滞结果、decision/changed/published 状态、owner/source/link、stale/reject 原因、
+coalition id/version/epoch/member/role/wave/commit/lease，以及 resource、target、
+`global_track_id` 和节点标识。`coalition_id` 当前由目标标识确定，不属于随机计划身份，不能
+归一化。原始 runtime payload SHA-256 包含随机计划号，跨运行不要求相同；同一运行内 ACK
+仍必须精确匹配收到的原始摘要。
+
+现有 `canonical_plan_business_sha256(...)` 是冻结 D3 基准的快速业务哈希，只删除少量计划
+身份字段，不验证完整前序图、stale 引用或二级 owner 转换，不能单独作为跨模块长时运行的
+谱系等价证明。完整算法和字段分类见 `docs/ALGORITHM_AND_IMPLEMENTATION.md`。当前
+scalable runtime 的简化 D3 publication 未直接携带顶层 `previous_plan_id`；main 对现有
+产物只能在版本连续且发布事件无缺失时用前一份已发布计划推导父关系，并应将证据标记为
+`derived`。该简化载荷也不是完整 `AssignmentPlan.execution_signature()` 的序列化形式，
+因此现有日志只能证明规范化后的发布业务载荷等价。后续正式审计优先持久化 D3 已提供的
+`PlanningTickHistoryRecord`，需要完整签名证明时同时保留规范计划载荷。

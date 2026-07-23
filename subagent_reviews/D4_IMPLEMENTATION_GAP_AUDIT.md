@@ -1,5 +1,13 @@
 # D4 实现差距审计：分布式协同与降级接管
 
+## 2026-07-22 跨提交内容身份审计
+
+- **D4 P0 无新增代码缺口**：原始 `formal_decision_digest`、`authority_digest` 和内容寻址 `advisory_id` 的生成及校验语义正确。三者在单次运行内必须保持原值，消费 ledger 继续使用原始 advisory identity。
+- **条件规范化边界已明确**：跨独立 episode 仅允许先把经 D3 谱系审计的原始 `plan_id` 映射为规范 token，再从规范正式裁决、完整规范 authority payload 和完整规范 advisory contract 重算三个摘要。事件序号只用于一一配对；直接写成事件 token、删除 advisory identity 或只比较摘要等价类均不满足 D4 完整性要求。
+- **必须原值比较的语义**：region/task/global-track/resource/node/coalition identity、owner/layer/role、plan version、epoch、lease、ACK、active/fault fence、正式 decision/action/reason、策略/模型身份、动作、转移和安全证明均不可归一化。任一缺失或变化均为业务差异。
+- **当前证据**：clean `8f86192` 与 `f80b5bd` 的 seed 42000-42002 中，两侧各 30 条 advice 均通过原始内容地址、formal digest、authority digest 和内部副本一致性校验；30/30 对 formal/advice 在严格规范重算后逐字段相同。
+- **main P1 证据完备性仍开放**：当前 60 条原始 advice 可用 `source_version + protected_committed_resources` 精确回算 authority digest，因此本批次可审计。通用制品没有单独持久化完整 `RegionResourceSnapshot`；若 formal committed protection 与 snapshot `committed_resources` 不同，仅凭 advisory 不能无歧义恢复 authority 输入。main 后续应持久化 authority payload 或其可验证来源，缺失时必须输出不可比较，不能宽松归一化。
+
 ## 2026-07-22 中心失效物理续跑代际审计
 
 - **D4 P0 安全门无缺口**：`RegionResourceIsolatedAdoptionVerifier` 正确拒绝不同 plan ID、相同 plan version 的执行变化。strictly-new、formal owner、epoch、lease、binding、ACK 和 `production_runtime_ack=false` 均保持不变。

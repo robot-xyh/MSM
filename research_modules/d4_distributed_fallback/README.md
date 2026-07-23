@@ -1,5 +1,15 @@
 # D4 分布式协同与降级接管
 
+## 2026-07-22 跨独立运行内容身份边界
+
+D3 使用不透明计划号区分独立执行谱系。同 seed、同输入的两个独立 planner 可以产生不同的原始 `plan_id`。D4 的 `authority_digest` 包含区域 `plan_id`，`formal_decision_digest` 包含正式裁决中的计划号，`advisory_id` 又对完整建议合同做内容寻址，因此三类值会随 D3 原始计划号确定性变化。它们仍是单次运行内的正式身份和完整性字段，不能从原始日志、消费 ledger 或运行时回执中删除或改写。
+
+跨提交业务等价比较只允许生成独立的规范比较视图。比较器必须先验证原始运行：D3 谱系连续；同时间正式裁决可重算出 advice 的 before/after digest 且二者相等；`RegionResourceAdvisoryContract.from_dict()` 能从原始合同重算相同 `advisory_id`；顶层、recommendation、每个 region 和 transfer 的 authority digest 一致，并可由完整 authority payload 重算。随后只把已经通过 D3 谱系审计的原始计划号映射为规范计划 token，重算规范 authority digest、正式裁决 digest 和 `d4-rr-advisory-<SHA256>`。事件序号只用于配对，不得替代 `advisory_id`，也不得把任意摘要改成“同一摘要类别”。
+
+以下字段不得归一化：区域、任务、全局航迹、资源、节点和联盟身份；owner/layer/role；plan version、epoch、lease、ACK、active/fault fence；正式 action/reason/decision；recommendation 的策略、模型、置信度、区域动作、转移和安全证明。任一源事件缺失、原始哈希不闭合、未知计划引用、谱系不连续或上述字段不同，比较均失败关闭。
+
+本次只读复核覆盖 clean `8f86192` 与 `f80b5bd` 的 seed 42000-42002、三组 10 秒 200v200 episode。两侧各 30 条正式裁决和 30 条建议中，原始 advisory 内容地址、正式裁决摘要、authority 摘要和摘要副本一致性均为 30/30；按上述规则重算后，30/30 对正式裁决和建议逐字段相同。当前制品可由 `source_version + protected_committed_resources` 回算原始 authority 摘要；未来若该回算不成立，必须持久化完整 `RegionResourceSnapshot` authority payload 后才能比较。
+
 ## 2026-07-22 隔离物理续跑计划代际复核
 
 main 的中心失效 20-seed 物理续跑共形成 20 个 pair、196 条区域记录，D7 世界命令已经应用，但 D4 区域采用全部以 `isolated_execution_plan_not_strictly_new` 拒绝。该结果不是 owner、epoch、lease 或物理消费失败。适配器把同帧 `d3_planning_frame.plan` 作为 formal source，同时把从 `previous_plan` 重新求解得到的同版本 arm plan 作为 applied plan。两者计划标识不同而版本相同，不满足严格后继，也不属于同身份刷新。
