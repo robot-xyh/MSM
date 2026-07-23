@@ -127,10 +127,17 @@ authority digest、正式裁决 digest 和 advisory ID 不按事件号删除或�
 联盟、动作和下游引用仍逐条比较。三个 seed 均通过在线记录数、主题计数、逐主题规范哈希、
 真值数组、离线标签、接近事件和 summary 合同检查。
 
-当前开发工作树另修复了 D1 posterior 在 D2 调度周期之间被遗漏的问题。main 只锁存尚未
-消费的真实后验，并在下一关联 tick 交给 D2；不把航迹时间改为控制时刻，也不放宽 D7 的
-`max_track_age_s`。可扩展模块回归为 123 passed。该调度修复尚未形成新的 clean 200 对 200
-性能制品，因此不与上述 `f80b5bd` 计时合并。
+提交 `12c5073` 已为 D1 posterior 跨 D2 调度周期的漏消费建立新的行为基线。main 只锁存
+尚未消费的真实后验，并在下一关联 tick 交给 D2；不把航迹时间改为控制时刻，也不放宽
+D7 的 `max_track_age_s`。seed 42000 的两次 clean 10 秒运行通过逐主题载荷、计划谱系、
+真值数组和摘要合同的同提交语义等价审计，核心墙钟为 `107.853/122.032 s`，波动约 13%。
+
+该修复有意改变旧的漏消费行为。`f80b5bd` 在 `1.00 s` 仍以旧 D2 后验形成 197 条分配，
+`12c5073` 在同一时刻消费待处理后验并形成 200 条分配，控制状态从下一积分步开始分叉；
+两者不能再要求跨提交业务等价。main 随后在 `b681c8f` 增加后验代次、D2 消费代次、
+节拍前合并计数和结束排空回归，观测治理快照升级为
+`scalable3d-observation-governance-runtime-v2`。新代次字段不改 D1/D2 算法、量测时间或
+协方差，只提供可回放的消费血缘。
 
 ## 2026-07-21 正式数据与开发训练状态
 
@@ -558,7 +565,7 @@ SHA-256 分别为 `6fb64252292aaedd3c68d1bfea64b76496136ce6edb32add61a281d511c4e
 - D2 身份评估清单：`scalable3d-offline-identity-evaluation-manifest-v1`
 - D2 观测证据治理：`d2-observation-evidence-governance-v1`
 - D2 观测声明账本：`d2-observation-claim-ledger-v2`
-- main 观测治理快照：`scalable3d-observation-governance-runtime-v1`
+- main 观测治理快照：`scalable3d-observation-governance-runtime-v2`
 - D1 融合性能诊断：`d1.fusion_performance_diagnostics.v1`
 - D5 终端操作数诊断：`d5-scalable3d-operation-counts-v1`
 - D6 观测治理标定输入：`scalable3d-observation-governance-calibration-input-v1`

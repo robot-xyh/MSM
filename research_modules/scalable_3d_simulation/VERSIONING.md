@@ -52,7 +52,8 @@ main
 | D2 身份评估清单 | `scalable3d-offline-identity-evaluation-manifest-v1` | 谱系映射、身份指标或来源校验改变 |
 | D2 观测证据治理 | `d2-observation-evidence-governance-v1` | D1 观测新鲜度、重放隔离、时间冲突、暂定航迹删除或重复合并审计语义改变 |
 | D2 观测声明账本 | `d2-observation-claim-ledger-v2` | 声明键、水位线、安全淘汰、容量或反重放语义改变 |
-| main 观测治理快照 | `scalable3d-observation-governance-runtime-v1` | D1/D2 在线治理汇总或结束排空计数语义改变 |
+| main 观测治理快照（历史） | `scalable3d-observation-governance-runtime-v1` | D1/D2 在线治理汇总或结束排空计数语义改变 |
+| main 观测治理快照（当前） | `scalable3d-observation-governance-runtime-v2` | v2 增加 D1 后验代次、D2 待处理/已消费代次、消费次数和节拍前合并计数；这些字段或 finalize 排空语义改变时升级 |
 | D6 观测治理标定输入 | `scalable3d-observation-governance-calibration-input-v1` | episode 描述、制品哈希、在线审计或 evaluator-only 侧车绑定改变 |
 | D6 真值隔离清单 | `scalable3d-d6-truth-isolated-manifest-v1` | D1/D2 适配、availability 或批量聚合口径改变 |
 | D6 跨模块学习准入 | `d6.cross-module-learning-data-admission.v1` | 正式/补充/离线标签/运行 ACK 分层、canonical view 绑定、动作覆盖或训练准入矩阵语义改变 |
