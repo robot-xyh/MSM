@@ -136,6 +136,17 @@ bound 继续只作诊断。下一轮身份主线改为：先由 D1 治理雷达/
 main/sensor truth sidecar 明确标注目标、已知虚警或未知标签，最后重新运行 D2/D6
 严格指标。
 
+上述第一轮实现已经落地。D1 修复冻结只读相机元数据、旋转字段和嵌套内参解析后，seed 1000
+冻结回放中的 17 条已知视觉污染观测全部离开原错误航迹。main producer、D2 和 D6 已共同
+采用三态离线标签，D5 学习导出和保留 seed 身份桥只消费目标标签。D1、D2、D6 和 scalable
+回归分别为 `191/249/586/134 passed`。
+
+detached clean 提交 `488dc39` 中，三个 2.2 秒 seed 的已知虚警标签为 `100/103/109`，缺失身份
+证据均为 0，严格 ID Switch 可用率为 `1/3`；10 秒 seed 1000 的 402 条已知虚警均通过 D6
+排除审计，但仍有 7 个雷达多真值映射。四组 manifest 均为 clean；这批仍是描述性校准，
+不是 formal acceptance。当前身份主线转为 D1 雷达扫描间歧义治理，完成后再决定是否启动
+20-seed，不得把部分身份下界回填为严格结果。
+
 main 真值守卫键布局缓存已通过完整测试、嵌套可变负例和跨构建语义审计。四组交错
 clean 2.2 秒复测的 publication bus 中位数下降 12.69%，核心墙钟中位数只下降
 0.44%。该项关闭局部重复键规范化，不关闭 200 对 200 实时 P1。组合 clean
@@ -147,8 +158,8 @@ clean 2.2 秒复测的 publication bus 中位数下降 12.69%，核心墙钟中�
    `GlobalTrack` 物化、非雷达扫描关联、固定滞后回放和检查点查询；不得缩短 6 秒窗口、
    丢观测或放宽协方差治理。D1 融合 episode P95 均值仍为 `233.488 ms`。
 2. D2 关联 episode P95 均值为 `142.627 ms`，超过 100 ms 预算。继续分离 covariance
-   governance、重复航迹合并和 publication 成本。严格身份先修复 D1 跨模态混轨和
-   truth sidecar 标签合同；不得从距离或名称补算身份。
+   governance、重复航迹合并和 publication 成本。三态 truth sidecar 与视觉几何解析已完成，
+   严格身份当前先处理 D1 雷达扫描间多真值谱系；不得从距离或名称补算身份。
 3. D7 固定输入没有确认内核回归，核心公式保持不变。main publication bus 已关闭重复键
    规范化，后续只在新的 clean 多 seed 中复核阶段分位和总墙钟。
 4. D5 已关闭 history gauge、匿名审计和 singleton binding 的局部重复成本。下一步用正交

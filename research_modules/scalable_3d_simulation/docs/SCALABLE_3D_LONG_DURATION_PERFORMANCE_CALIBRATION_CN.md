@@ -571,6 +571,42 @@ main 对在线真值守卫增加重复映射键布局缓存，嵌套值仍在每
 并通过 3,430 条在线记录和真值制品的跨构建语义等价审计。该证据只关闭发布守卫的局部
 重复键规范化，不关闭系统实时 P1。
 
+## 第十一轮离线三态与几何治理
+
+D1 对第十轮身份阻断进行冻结回放。根因之一是扫描帧冻结后嵌套相机模型成为只读
+`Mapping`，旧解析器只接受普通 `dict`，导致旋转矩阵和内参退回默认值。修复后按实际
+`rotation_camera_from_ned` 和嵌套内参投影，并对非法外参、相机后方点和非有限投影失败
+关闭。seed 1000 的 771 个扫描、11,889 条匿名观测中，17 条已知视觉污染观测全部离开原错误
+航迹。真值只在回放结束后用于核验。
+
+main 将离线 sidecar 升级为 `scalable3d-offline-truth-v2`，显式区分目标、已知虚警和未知。
+D2 统一写出规范 v2，已知虚警从严格身份分母排除，未知和证据冲突继续阻断；D6 在
+truth-isolated、scalable offline 和 runtime outcome 三条路径独立验证三态计数，不回填严格
+ID Switch。D5 旧训练数据和保留 seed 身份桥只使用目标标签。D1、D2、D6 和 main scalable
+测试分别为 `191/249/586/134 passed`。
+
+detached clean 提交 `488dc39` 的三组 2.2 秒回放结果如下：
+
+| seed | 目标标签 | 已知虚警 | 缺失身份证据 | 多真值映射 | 严格 ID Switch |
+| ---: | ---: | ---: | ---: | ---: | --- |
+| 1000 | 2,365 | 100 | 0 | 2 | unavailable |
+| 1001 | 2,372 | 103 | 0 | 0 | 9 |
+| 1002 | 2,361 | 109 | 0 | 2 | unavailable |
+
+三组状态有限，在线禁用身份字段命中和 `online_truth_use_count` 均为 0，实时倍率为
+`0.222/0.218/0.209`。10 秒 seed 1000 生成 10,829 条目标标签和 402 条已知虚警标签，
+缺失身份证据仍为 0；剩余 7 个多真值映射分布在 6 帧和 6 条航迹，来源均为雷达观测。
+严格身份继续因 `multiple_truth_targets_for_global_track` 保持 unavailable，49 个身份交换
+下界只作诊断。
+
+四组 manifest 均正确记录 `git_commit=488dc39`、
+`offline_truth_schema=scalable3d-offline-truth-v2` 和 `repository_dirty=false`。本轮属于
+clean 描述性校准，不替代 formal 或 20-seed 验收。当前剩余身份 P1 已收敛到雷达扫描间
+关联歧义。紧凑机器摘要见
+`SCALABLE_3D_IDENTITY_DISPOSITION_RECALIBRATION_20260723.json`。该摘要记录每组 manifest
+配置摘要哈希，以及在线观测、离线标签和身份评估文件的 SHA-256；本轮收尾已按 detached
+clean 原始制品逐项复核文件哈希。
+
 ## 后续工作
 
 1. D1 同一融合时刻快照合并、完整帧重复快照和 claim 重复 JSON 规范化已经关闭。
@@ -579,9 +615,9 @@ main 对在线真值守卫增加重复映射键布局缓存，嵌套值仍在每
 2. main 发布总线接近线性，但 10 秒在线日志仍约 207-230 MiB，结束后处理均值仍为
    30.150 秒，是总进程耗时的重要部分。
    下一轮应设计版本化 heartbeat/lineage sidecar，并保持旧 schema consumer 兼容。
-3. D2 三项固定操作数热点已关闭；20-seed P95 均值仍为 142.627 ms。严格身份阻断已经
-   定位到上游多真值混轨和 truth sidecar 标签不完整。下一轮先修复 D1 跨模态一致性和
-   离线标签合同，再重跑 strict IDSW、continuity 与 D1 RMSE/NEES。
+3. D2 三项固定操作数热点已关闭；20-seed P95 均值仍为 142.627 ms。三态 sidecar 和 D1
+   相机几何解析已经落地，当前严格身份阻断是雷达扫描间多真值谱系。下一轮先由 D1 关闭或
+   明确该 blocker，再重跑 strict IDSW、continuity 与 D1 RMSE/NEES。
 4. D5 已关闭 history gauge、匿名审计和 singleton binding 的局部重复成本。下一步正交
    控制检测数、活跃相机数、中心候选数和时长，分离 tracker pair 与投影/绑定矩阵增长，
    不能减少视觉帧或放宽几何门限。

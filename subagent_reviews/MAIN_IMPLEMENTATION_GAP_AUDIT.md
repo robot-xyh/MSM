@@ -58,6 +58,21 @@ ACK 来源一致。核心墙钟均值由 `96.391 s` 降至 `86.099 s`，20/20 se
 RMSE/NEES。实时性能仍需另行处理 `GlobalTrack` 物化、固定滞后 replay、D2 尾延时及
 结束后处理，不能用本轮局部微基准关闭。
 
+### 2026-07-23 三态标签与 D1 几何治理
+
+| P1 项 | 新实现与证据 | 当前状态 |
+| --- | --- | --- |
+| D1 视觉跨模态污染 | 冻结 771 scans/11,889 observations 中，17/17 已知视觉污染观测离开原错误航迹；相机只读映射、真实旋转和嵌套内参按值解析，非法几何失败关闭；detached clean 四组回放未再出现该视觉谱系污染 | 复现缺陷和 clean 描述性复验均关闭；正式多 seed 验收未启动 |
+| 离线观测标签覆盖 | main v2 显式输出 target/known_false_alarm/unknown；detached clean 三组 2.2 秒虚警标签 `100/103/109`，10 秒 seed 1000 为 402，四组 `missing_identity_evidence=0` | 新 producer、消费合同和 clean 描述性复验关闭；旧 20-seed v1 制品不追认 |
+| D2/D6 分母语义 | 已知虚警不进入严格 IDSW，unknown/冲突/缺失继续失败关闭，D6 不回填 strict；D5 旧训练导出和保留 seed 桥忽略非目标标签 | 合同与测试关闭 |
+| 严格身份可用性 | 三个 2.2 秒 seed 仅 1/3 可用；seed 1000、1002 各剩 2 个雷达混轨映射。10 秒 seed 1000 剩 7 个映射、6 帧、6 航迹 | 开放 P1，当前 owner 为 D1 雷达扫描关联 |
+| 本轮证据等级 | detached clean `488dc39`，四组状态有限、在线禁用字段和 truth use 均为 0，manifest 均为 clean | 描述性 clean 校准，尚非 formal acceptance |
+
+独立回归为 D1 `191 passed`、D2 `249 passed`、D6 `586 passed`、scalable main
+`134 passed`。当前没有新增 P0。下一步只处理雷达扫描间身份歧义，再决定是否启动 20-seed。
+严格 IDSW 不可用不得记为 0，部分下界不得替代严格指标。机器摘要位于
+`research_modules/scalable_3d_simulation/docs/SCALABLE_3D_IDENTITY_DISPOSITION_RECALIBRATION_20260723.json`。
+
 ## 2026-07-22 后验代次与 clean 长时基线
 
 main 已在 detached clean `0d2da25` 上完成 nominal 200 对 200、10 秒、seeds

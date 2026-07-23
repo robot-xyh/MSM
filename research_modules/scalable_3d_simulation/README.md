@@ -79,6 +79,33 @@ main 对 3,430 条持久化在线载荷缓存真值守卫的重复键布局，�
 组合提交 `d79aba3` 的 clean smoke 状态有限、在线真值使用为 0、实时倍率为
 `0.204`，跨构建 3,430 条规范在线记录和真值制品全部等价。
 
+## 2026-07-23 离线三态与几何治理复测
+
+D1 已修复冻结相机元数据的解析边界。扫描帧中的只读 `Mapping`、
+`rotation_camera_from_ned` 和嵌套相机内参不再退回默认相机模型；非法外参、相机后方目标
+和非有限投影失败关闭。冻结 seed 1000 的 771 个扫描和 11,889 条匿名观测中，D2 先前定位的
+17 条视觉污染观测全部离开原错误航迹。该核验只在在线回放结束后使用离线标签，没有把真值
+身份送入 D1。
+
+main 离线真值合同升级为 `scalable3d-offline-truth-v2`。每条标签显式标记 `target`、
+`known_false_alarm` 或 `unknown`；合成视觉虚警与在线量测一一生成，但处置类型仍只写入
+离线 sidecar。D2 规范化为 `d2.scalable3d_observation_truth.v2`，已知虚警不进入严格身份
+交换分母，未知或冲突标签继续阻断指标。D5 旧训练导出和保留 seed 身份桥只消费 `target`
+标签。D6 三个消费入口分别报告三态数量，不从名称、距离或在线状态推断处置，也不回填严格
+ID Switch。
+
+detached clean 提交 `488dc39` 包括三组 2.2 秒和一组 10 秒 nominal 200 对 200。四组状态有限，
+在线禁用身份字段命中和 `online_truth_use_count` 均为 0。三组短回放共生成 7,098 条目标
+标签和 312 条已知虚警标签，缺失身份映射均为 0；seed 1001 的严格 ID Switch 可用且为 9，
+seed 1000、1002 各有 2 个雷达多真值映射。10 秒 seed 1000 生成 10,829 条目标标签和
+402 条已知虚警标签，剩余 7 个多真值映射，分布在 6 帧和 6 条航迹；来源均为雷达谱系。
+严格指标因此继续保持 unavailable，部分下界 49 只用于诊断。
+
+四个 episode 的 manifest 均为 `repository_dirty=false`。该批属于 clean 描述性校准，
+尚不是 formal acceptance；它证明标签缺失已从新 producer 消失，并把剩余身份阻断收敛到
+雷达扫描间关联。下一步先由 D1 完成雷达歧义专项，再决定是否启动后续 20-seed 批次。紧凑
+机器摘要见 `docs/SCALABLE_3D_IDENTITY_DISPOSITION_RECALIBRATION_20260723.json`。
+
 ## 2026-07-22 规则全栈性能校准
 
 提交 `33101656b0cf1967a778cdb36a440611e02109b1` 已完成 20、50、100、200 四档 clean-source
@@ -707,7 +734,7 @@ SHA-256 分别为 `6fb64252292aaedd3c68d1bfea64b76496136ce6edb32add61a281d511c4e
 - 总线：`scalable3d-episode-bus-v1`
 - 场景：`scalable3d-scenario-v1`
 - 在线观测：`scalable3d-observation-v1`
-- 离线真值：`scalable3d-offline-truth-v1`
+- 离线真值：`scalable3d-offline-truth-v2`，读取端继续兼容 target-only v1
 - D4 区域策略：`d4-region-resource-rule-v1` 或带权重 SHA256 的显式模型版本
 - 学习导出：`scalable3d-learning-export-v2`
 - 学习生成计划：`scalable3d-learning-generation-plan-v1`
