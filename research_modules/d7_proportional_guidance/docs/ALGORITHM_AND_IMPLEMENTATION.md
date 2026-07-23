@@ -1,5 +1,18 @@
 # D7 比例导引与末端视觉导引算法及实施方案
 
+## 2026-07-22 性能计时边界复核
+
+main 的 `module.d7_guidance` 计时从 `_guidance_inputs()` 之前开始，在
+`to_world_acceleration()` 之后结束。它同时包含上游对象查找、D4 permission 组装、
+输入 DTO 分配、D7 batch 和世界数组复制；D7 publication 与 JSON 序列化位于计时外。
+因此该名称不能解释为纯导引公式耗时。
+
+clean `8f86192 -> f80b5bd` 没有 D7 或计时路径代码差异，调用和业务输出也一致。
+200-pair 冻结输入的同源码交错复测仍出现约 `6.58%` 人为组间差，足以覆盖历史
+`+7.337%` 的量级。当前不引入缓存、对象复用或排序捷径；这些改变只有在独立分段
+benchmark 证明稳定收益，并逐项保持命令数组、mode、gate reason、pair state 和状态
+迁移后才能评估。位置 PN、视觉 PNG、LOS/TTC、0.75 秒 stale 门和安全合同均未改变。
+
 ## 2026-07-21 隔离双臂实施
 
 `isolated_arm_guidance.py` 在 `ScalableGuidanceController3D` 外增加严格执行外壳。

@@ -1,5 +1,25 @@
 # D7 比例导引与末端视觉 PNG 实现差距审计
 
+## 2026-07-22 GAP 更新：三维导引 `+7.337%` 未形成代码缺口
+
+clean `8f86192 -> f80b5bd` 三 seed 中，D7 累计 guidance 均值由 `4.991960 s` 增至
+`5.358198 s`。专项审计确认两个提交的 D7 文件、terminal gate 和 main 计时路径 blob
+相同；三 seed 的 185 次调用、逐帧 pair 数、命令、mode、gate reason 和规范化 D7
+topic 哈希均一致。seed 42002 的单点 `+21.430%` 主导汇总，前两个 seed 合并只变化
+`+0.328%`。
+
+200-pair 冻结复测覆盖中段、持续中段、stale hold、lost hold、恢复和计划版本切换。
+两个独立 controller 的命令数组、完整命令、pair snapshot 和状态迁移逐项相同。同一
+源码 12 次平衡交错墙钟测量的总体变异系数为 `12.26%`，人为标签组仍可相差约
+`6.58%`。因此没有证据把历史变化归因于 D7 新增重复工作，不新增 D7 P0/P1 代码
+blocker，不修改核心代码。
+
+开放性能 GAP 仍是系统级 200 对实时 P1：需要 main 保存 per-call 分布，并把输入查找
+和 D4 permission、D7 内核、数组复制、publication 分段。历史私有 pair filter 快照未
+写盘，跨构建只直接证明公开命令序列一致；冻结输入补充的是确定性证据，不能替代未来
+正式未见 seed 运行。专项详情见
+`D7_SCALABLE_3D_GUIDANCE_PERFORMANCE_AUDIT_20260722.md`。
+
 ## 2026-07-21 GAP 更新：隔离双臂命令合同关闭
 
 D7-owned 的“control/treatment 各自消费计划并保留可审计命令血缘”缺口已关闭。

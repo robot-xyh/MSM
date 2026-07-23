@@ -1,5 +1,22 @@
 # D7 比例导引与末端视觉 PNG 模块
 
+## 2026-07-22 三维导引性能波动审计
+
+对 clean `8f86192 -> f80b5bd` 三 seed 的 `module.d7_guidance` 进行了专项复核。累计
+均值从 `4.991960 s` 增至 `5.358198 s`（`+7.337%`），但两个提交的全部 D7 文件和
+main 计时路径 blob 相同；三 seed 均为 185 次调用，逐 seed pair 总数、命令数组、
+mode、gate reason 和规范化总线哈希均一致。增长主要来自 seed 42002 单点
+`4.973757 -> 6.039633 s`，其余两个 seed 合并变化仅 `+0.328%`。
+
+补充的 200-pair 冻结输入以同一源码作 12 次平衡交错复测。人为 A/B 标签仍产生约
+`6.58%` 均值差，总体变异系数为 `12.26%`，所有命令和 pair 状态摘要相同。历史阶段
+包含 main 输入组装、D7 batch 和世界数组复制，不包含 publication/JSON 序列化；冻结
+测得输入 DTO 构造约 `0.293 ms/batch`、D7 内核约 `9.244-13.500 ms/batch`、JSON
+序列化约 `0.499 ms/batch` 且位于计时外。现有证据不能证明新增重复开销，因此该变化
+登记为未归因单机墙钟波动，不修改 PN、视觉 PNG、LOS/TTC、`0.75 s` stale 门或
+D3/D4/D5 安全门。详细记录见
+`subagent_reviews/D7_SCALABLE_3D_GUIDANCE_PERFORMANCE_AUDIT_20260722.md`。
+
 ## 2026-07-21 隔离双臂命令血缘
 
 D7 新增 `isolated_arm_guidance.py`，作为既有 `ScalableGuidanceController3D` 外侧的

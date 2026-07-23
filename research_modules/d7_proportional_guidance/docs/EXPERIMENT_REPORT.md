@@ -1,5 +1,26 @@
 # D7 末端切换诊断实验记录
 
+## 2026-07-22 200-pair guidance 性能复核
+
+本轮未启动 AirSim，也未修改 D7 代码。复核对象为 clean `8f86192` 与 `f80b5bd` 的
+10 秒、200 对 200、seeds 42000-42002 既有输出。三 seed guidance 累计均值为
+`4.991960 -> 5.358198 s`，变化 `+7.337%`；调用数均为 185，pair 总数逐 seed 为
+36640、36544、36619，并在两个提交间一致。命令、mode、gate reason 和规范化 D7
+topic 哈希逐 seed 一致。
+
+冻结输入复测使用 200 pair、185 calls/trial、12 个单核交错 trial。同一源码的人为
+A/B 组均值为 `1.9404/2.0681 s`，差 `6.58%`，总体变异系数 `12.26%`；全部 trial
+共享同一命令和状态摘要。六阶段状态序列又覆盖 stale、lost、恢复和 plan version
+切换，命令数组、命令对象、pair snapshot、mode 和 transition 全部相同。单个冷启动
+batch 的跟踪分配峰值约 `826 kB`；publication 载荷物化约 `0.097 ms/batch`，约
+64.2 kB JSON 序列化约 `0.499 ms/batch`，两者均不在历史 guidance 计时内。
+
+seed 42002 的 `+21.430%` 单点主导三 seed 汇总，但候选整场核心墙钟和进程用户态
+时间均下降。结合完全相同的源码和业务结果，本轮结论为未归因单机墙钟波动。没有
+达到小优化准入条件，PN、视觉 PNG、LOS/TTC、`0.75 s` stale 门和 D3/D4/D5 gate
+保持原样。该结果不关闭 200 对实时 P1。完整表格和证据限制见
+`subagent_reviews/D7_SCALABLE_3D_GUIDANCE_PERFORMANCE_AUDIT_20260722.md`。
+
 ## 2026-07-21 隔离双臂命令合同验证
 
 本轮未启动 AirSim。验证对象为隔离质点 paired rollout 的 D7 命令血缘、arm 状态
