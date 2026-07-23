@@ -103,8 +103,30 @@ seed 1000、1002 各有 2 个雷达多真值映射。10 秒 seed 1000 生成 10,
 
 四个 episode 的 manifest 均为 `repository_dirty=false`。该批属于 clean 描述性校准，
 尚不是 formal acceptance；它证明标签缺失已从新 producer 消失，并把剩余身份阻断收敛到
-雷达扫描间关联。下一步先由 D1 完成雷达歧义专项，再决定是否启动后续 20-seed 批次。紧凑
-机器摘要见 `docs/SCALABLE_3D_IDENTITY_DISPOSITION_RECALIBRATION_20260723.json`。
+雷达扫描间关联。该批机器摘要见
+`docs/SCALABLE_3D_IDENTITY_DISPOSITION_RECALIBRATION_20260723.json`，后续雷达候选评审见
+下一节。
+
+## 2026-07-23 雷达交替环候选评审
+
+main 对 baseline `488dc39` 和 D1 v1 candidate `d967c96` 完成同配置 clean A/B。设置固定为
+nominal 200 对 200、2.2 秒、`recon_count=2`、seeds 1000/1001/1002，各 seed 的配置哈希
+在两端相同。候选把 ambiguous mapping 从 `2/0/2` 降到 `0/0/0`，严格身份指标可用 seed
+由 `1/3` 增至 `3/3`。代价是 D2 航迹数由 `201/202/200` 降至 `200/194/197`，D3 分配数由
+`200/200/200` 降至 `198/190/193`；seed 1001 的 continuity 由 `0.869444` 降至
+`0.814444`。候选还抑制 `22/130/78` 条雷达观测，占各 seed 雷达量测的
+`1.12%/6.61%/3.98%`。
+
+v1 因航迹、分配和连续性退化不晋级，默认在线路径保持原 Hungarian。提交 `8f17c5d` 将
+候选改为默认关闭后，同配置三 seed 的全部业务指标恢复 baseline；跨构建审计
+`3/3 passed=True` 且规范在线载荷 `3/3` 相等。早先使用 8 架侦察机的结果只保留为
+stress 诊断，不能与本次 `recon_count=2` A/B 比较。该诊断揭示 v1 尚未覆盖最大匹配图中的
+free-row 和 free-column 交替路径，雷达量测也没有可用于消歧的真实径向速度。
+
+严格身份 P1 继续开放。下一候选必须同时覆盖交替环、free-row 和 free-column 路径，并联合
+验收身份可用性、D1/D2 航迹、D3 分配、连续性、抑制率、birth 和 recall。在新的短时 clean
+候选通过前，不运行被拒绝 v1 的 10 秒或 20-seed 批次。机器摘要见
+`docs/SCALABLE_3D_RADAR_ASSIGNMENT_CANDIDATE_REVIEW_20260723.json`。
 
 ## 2026-07-22 规则全栈性能校准
 

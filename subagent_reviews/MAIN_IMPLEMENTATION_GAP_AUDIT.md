@@ -69,9 +69,34 @@ RMSE/NEES。实时性能仍需另行处理 `GlobalTrack` 物化、固定滞后 r
 | 本轮证据等级 | detached clean `488dc39`，四组状态有限、在线禁用字段和 truth use 均为 0，manifest 均为 clean | 描述性 clean 校准，尚非 formal acceptance |
 
 独立回归为 D1 `191 passed`、D2 `249 passed`、D6 `586 passed`、scalable main
-`134 passed`。当前没有新增 P0。下一步只处理雷达扫描间身份歧义，再决定是否启动 20-seed。
-严格 IDSW 不可用不得记为 0，部分下界不得替代严格指标。机器摘要位于
+`134 passed`。当前没有新增 P0。严格 IDSW 不可用不得记为 0，部分下界不得替代严格指标。
+三态与几何治理机器摘要位于
 `research_modules/scalable_3d_simulation/docs/SCALABLE_3D_IDENTITY_DISPOSITION_RECALIBRATION_20260723.json`。
+
+### 2026-07-23 D1 雷达交替环候选阻断
+
+main 对 baseline `488dc39` 与 D1 v1 candidate `d967c96` 完成相同
+200 对 200、2.2 秒、`recon_count=2`、seeds 1000/1001/1002 的 detached clean A/B。
+逐 seed 配置哈希完全一致，三组状态有限、来源干净、在线真值使用为 0，缺失身份证据为 0，
+目标与已知虚警标签数相同。
+
+| seed | ambiguous | strict identity | D2 航迹 | D3 分配 | suppression |
+| ---: | ---: | --- | ---: | ---: | ---: |
+| 1000 | `2 -> 0` | unavailable -> available；候选 IDSW 3、continuity 0.8600 | `201 -> 200` | `200 -> 198` | `22/1962 = 1.12%` |
+| 1001 | `0 -> 0` | IDSW `9 -> 7`；continuity `0.869444 -> 0.814444` | `202 -> 194` | `200 -> 190` | `130/1966 = 6.61%` |
+| 1002 | `2 -> 0` | unavailable -> available；候选 IDSW 4、continuity 0.8350 | `200 -> 197` | `200 -> 193` | `78/1958 = 3.98%` |
+
+strict availability 虽由 `1/3` 增至 `3/3`，D2 航迹、D3 分配和 seed 1001 continuity
+出现退化。v1 不晋级，默认在线路径不变。提交 `8f17c5d` 将实验候选设为默认关闭后，三 seed
+业务指标全部恢复 baseline；跨构建 `3/3 passed=True` 且规范在线载荷 `3/3` 相等。
+
+早先 `/tmp/msm-clean-radar-d967c96` 遗漏 `--recon-count 2`，实际使用 8 架侦察机，只保留
+为 stress 数学诊断。该诊断确认 v1 遗漏最大匹配中的 free-row/free-column 替代路径，雷达
+零径向速度为未观测占位，不能用于消歧。严格身份 P1 保持开放。下一候选必须同时覆盖
+cycle、free-row 和 free-column allowed edges，并联合验收身份、D1/D2 航迹、D3 分配、
+continuity、suppression、birth 和 recall。被拒绝 v1 不再运行 10 秒或 20-seed。
+机器摘要位于
+`research_modules/scalable_3d_simulation/docs/SCALABLE_3D_RADAR_ASSIGNMENT_CANDIDATE_REVIEW_20260723.json`。
 
 ## 2026-07-22 后验代次与 clean 长时基线
 

@@ -144,8 +144,20 @@ main/sensor truth sidecar 明确标注目标、已知虚警或未知标签，最
 detached clean 提交 `488dc39` 中，三个 2.2 秒 seed 的已知虚警标签为 `100/103/109`，缺失身份
 证据均为 0，严格 ID Switch 可用率为 `1/3`；10 秒 seed 1000 的 402 条已知虚警均通过 D6
 排除审计，但仍有 7 个雷达多真值映射。四组 manifest 均为 clean；这批仍是描述性校准，
-不是 formal acceptance。当前身份主线转为 D1 雷达扫描间歧义治理，完成后再决定是否启动
-20-seed，不得把部分身份下界回填为严格结果。
+不是 formal acceptance。
+
+D1 雷达交替环 v1 已完成 main 同配置 clean 阻断评审。baseline `488dc39` 与 candidate
+`d967c96` 均使用 200 对 200、2.2 秒、`recon_count=2` 和 seeds 1000/1001/1002，逐 seed
+配置哈希相同。候选把严格身份可用率从 `1/3` 提高到 `3/3`，但 D2 航迹分别减少
+`1/8/3`，D3 分配分别减少 `2/10/7`，seed 1001 continuity 下降 `0.055`，并抑制
+`1.12%/6.61%/3.98%` 的雷达量测。因此 v1 不晋级。
+
+提交 `8f17c5d` 已把 v1 设为默认关闭；同配置三 seed 全部恢复 baseline，跨构建
+`3/3 passed=True` 且规范在线载荷相同。严格身份 P1 保持开放。下一候选须证明最大匹配
+allowed-edge 图中的 cycle、free-row 和 free-column 路径，并在未用于开发的 clean seed 上
+同时验收身份、航迹、分配、连续性、抑制、birth 和 recall。当前不运行被拒绝 v1 的 10 秒
+或 20-seed；10 秒 baseline 中的 7 个歧义映射继续作为长期跨模态验收目标。机器摘要见
+`docs/SCALABLE_3D_RADAR_ASSIGNMENT_CANDIDATE_REVIEW_20260723.json`。
 
 main 真值守卫键布局缓存已通过完整测试、嵌套可变负例和跨构建语义审计。四组交错
 clean 2.2 秒复测的 publication bus 中位数下降 12.69%，核心墙钟中位数只下降
@@ -159,7 +171,8 @@ clean 2.2 秒复测的 publication bus 中位数下降 12.69%，核心墙钟中�
    丢观测或放宽协方差治理。D1 融合 episode P95 均值仍为 `233.488 ms`。
 2. D2 关联 episode P95 均值为 `142.627 ms`，超过 100 ms 预算。继续分离 covariance
    governance、重复航迹合并和 publication 成本。三态 truth sidecar 与视觉几何解析已完成，
-   严格身份当前先处理 D1 雷达扫描间多真值谱系；不得从距离或名称补算身份。
+   严格身份仍由 D1 雷达扫描间多真值谱系阻断；v1 已拒绝，下一候选必须覆盖完整交替路径，
+   不得从距离、名称或零径向速度占位补算身份。
 3. D7 固定输入没有确认内核回归，核心公式保持不变。main publication bus 已关闭重复键
    规范化，后续只在新的 clean 多 seed 中复核阶段分位和总墙钟。
 4. D5 已关闭 history gauge、匿名审计和 singleton binding 的局部重复成本。下一步用正交

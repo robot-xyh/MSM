@@ -1,0 +1,206 @@
+{
+  "schema_version": "scalable3d-radar-assignment-candidate-review-v1",
+  "evidence_date": "2026-07-23",
+  "evidence_tier": "descriptive_clean_source_candidate_review",
+  "scenario": {
+    "name": "nominal_200v200_cli_200v200",
+    "version": "200v200-nominal-v1-cli-200v200",
+    "duration_s": 2.2,
+    "target_count": 200,
+    "resource_count": 200,
+    "recon_count": 2,
+    "seeds": [
+      1000,
+      1001,
+      1002
+    ],
+    "online_truth_use_count": 0
+  },
+  "implementations": {
+    "baseline": {
+      "git_commit": "488dc39bcd3d15e39f8a37a9cd9e6ede13803dbf",
+      "radar_assignment_ambiguity_governance": false,
+      "evidence_path": "/tmp/msm-clean-disposition-488dc39-t0eXta"
+    },
+    "candidate": {
+      "git_commit": "d967c960b85b57717162723327746a5b3cb2870b",
+      "policy_version": "fail_closed_gate_feasible_alternating_cycle_v1",
+      "radar_assignment_ambiguity_governance": true,
+      "evidence_path": "/tmp/msm-clean-radar-d967c96-r2"
+    },
+    "default_off_fallback": {
+      "git_commit": "8f17c5d8520b11525423d3b1580575d614dec752",
+      "radar_assignment_ambiguity_governance": false,
+      "evidence_path": "/tmp/msm-clean-default-8f17c5d-r2"
+    }
+  },
+  "episodes": [
+    {
+      "seed": 1000,
+      "config_sha256": "c379bad4ab6d0847abbc8977d5bd745bb28d6259b1592a0bc61cbbde94d7dcb7",
+      "radar_observation_count": 1962,
+      "suppressed_radar_observation_count": 22,
+      "suppression_rate": 0.011213047910295617,
+      "baseline": {
+        "finite_state": true,
+        "ambiguous_mapping_count": 2,
+        "strict_id_switch_available": false,
+        "strict_id_switch_count": null,
+        "track_continuity": null,
+        "d1_track_count": 203,
+        "d2_track_count": 201,
+        "d3_assignment_count": 200
+      },
+      "candidate": {
+        "finite_state": true,
+        "ambiguous_mapping_count": 0,
+        "strict_id_switch_available": true,
+        "strict_id_switch_count": 3,
+        "track_continuity": 0.86,
+        "d1_track_count": 203,
+        "d2_track_count": 200,
+        "d3_assignment_count": 198
+      },
+      "default_off_matches_baseline": true
+    },
+    {
+      "seed": 1001,
+      "config_sha256": "99fd64b8a12679ab346f9f636d3565a76a0abdb07b94b4736e16bf539a07bc08",
+      "radar_observation_count": 1966,
+      "suppressed_radar_observation_count": 130,
+      "suppression_rate": 0.06612410986775179,
+      "baseline": {
+        "finite_state": true,
+        "ambiguous_mapping_count": 0,
+        "strict_id_switch_available": true,
+        "strict_id_switch_count": 9,
+        "track_continuity": 0.8694444444444445,
+        "d1_track_count": 201,
+        "d2_track_count": 202,
+        "d3_assignment_count": 200
+      },
+      "candidate": {
+        "finite_state": true,
+        "ambiguous_mapping_count": 0,
+        "strict_id_switch_available": true,
+        "strict_id_switch_count": 7,
+        "track_continuity": 0.8144444444444444,
+        "d1_track_count": 201,
+        "d2_track_count": 194,
+        "d3_assignment_count": 190
+      },
+      "default_off_matches_baseline": true
+    },
+    {
+      "seed": 1002,
+      "config_sha256": "9b1a005a6ccb5112674def430f8a181e8d26a97df7b534ad1eeb19ecb245febe",
+      "radar_observation_count": 1958,
+      "suppressed_radar_observation_count": 78,
+      "suppression_rate": 0.03983656792645557,
+      "baseline": {
+        "finite_state": true,
+        "ambiguous_mapping_count": 2,
+        "strict_id_switch_available": false,
+        "strict_id_switch_count": null,
+        "track_continuity": null,
+        "d1_track_count": 201,
+        "d2_track_count": 200,
+        "d3_assignment_count": 200
+      },
+      "candidate": {
+        "finite_state": true,
+        "ambiguous_mapping_count": 0,
+        "strict_id_switch_available": true,
+        "strict_id_switch_count": 4,
+        "track_continuity": 0.835,
+        "d1_track_count": 201,
+        "d2_track_count": 197,
+        "d3_assignment_count": 193
+      },
+      "default_off_matches_baseline": true
+    }
+  ],
+  "aggregate_review": {
+    "strict_identity_available_seed_count": {
+      "baseline": 1,
+      "candidate": 3
+    },
+    "candidate_ambiguous_mapping_count": 0,
+    "candidate_d2_track_count_delta": [
+      -1,
+      -8,
+      -3
+    ],
+    "candidate_d3_assignment_count_delta": [
+      -2,
+      -10,
+      -7
+    ],
+    "seed_1001_track_continuity_delta": -0.055,
+    "finite_state_all": true,
+    "repository_dirty_any": false,
+    "missing_identity_evidence_mapping_count": 0,
+    "target_and_known_false_alarm_labels_equal_per_seed": true
+  },
+  "default_off_cross_build_audit": {
+    "schema_version": "scalable3d-cross-build-semantic-equivalence-v1",
+    "reference_commit": "488dc39bcd3d15e39f8a37a9cd9e6ede13803dbf",
+    "candidate_commit": "8f17c5d8520b11525423d3b1580575d614dec752",
+    "seed_count": 3,
+    "passed_seed_count": 3,
+    "normalized_online_payloads_equal_seed_count": 3,
+    "evidence_path": "/tmp/msm-default-off-cross-build-8f17c5d-r2"
+  },
+  "stress_diagnostic": {
+    "evidence_path": "/tmp/msm-clean-radar-d967c96",
+    "recon_count": 8,
+    "comparable_to_primary_review": false,
+    "reason": "The earlier command omitted --recon-count 2.",
+    "seed_1001_gate_graph": {
+      "row_count": 200,
+      "column_count": 199,
+      "gate_valid_edge_count": 209,
+      "matched_edge_count": 198,
+      "free_row_count": 2,
+      "free_column_count": 1,
+      "current_edge_cost": 0.80058,
+      "free_row_alternative_cost": 1.58216
+    },
+    "radar_measurement_semantics": {
+      "dimension": 3,
+      "components": [
+        "range",
+        "azimuth",
+        "elevation"
+      ],
+      "radial_velocity_observed": false
+    }
+  },
+  "decision": {
+    "candidate_promoted": false,
+    "default_online_path_changed": false,
+    "default_candidate_enabled": false,
+    "p1_identity_gap_closed": false,
+    "reason_codes": [
+      "d2_track_availability_regressed",
+      "d3_assignment_availability_regressed",
+      "track_continuity_regressed",
+      "radar_observation_suppression_not_acceptable",
+      "free_row_and_free_column_paths_not_covered"
+    ],
+    "next_candidate_requirements": [
+      "Cover alternating cycles and free-row and free-column paths in the maximum-cardinality allowed-edge graph.",
+      "Preserve strict identity availability without reducing D1/D2 track availability or D3 assignment availability.",
+      "Report suppression, birth, recall, continuity and downstream availability on unused clean seeds.",
+      "Include a 10-second cross-modal consequence check before any multi-seed promotion review."
+    ],
+    "ten_second_candidate_run_required": false,
+    "twenty_seed_candidate_run_required": false
+  },
+  "tests": {
+    "d1": "204 passed",
+    "scalable_3d_simulation": "134 passed, 1 existing Matplotlib Axes3D warning",
+    "python_compile": "passed",
+    "git_diff_check": "passed"
+  }
+}
