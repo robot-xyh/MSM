@@ -14,6 +14,35 @@ D1 融合均值由 103.339 秒降至 92.991 秒，D5 终端配准均值由 2.699
 同 seed 长短对照的单位仿真时间成本增长由 2.036 倍降至 1.830 倍，仍高于 1.25 的告警
 门限。当前结果证明发布边界优化有效，但不支持把 200 对 200 写成实时能力。
 
+## 第五轮候选
+
+clean 提交 `f80b5bd42e2c1beb707fd68bfb820d9607c80df3` 使用相同的 10 秒场景和
+seeds 42000-42002 复测。该轮重点减少 D1 重复创新方程求解，并保持 D1-D7 业务结果不变。
+
+| 指标 | `8f86192` 三 seed 均值 | `f80b5bd` 三 seed 均值 | 变化 |
+| --- | ---: | ---: | ---: |
+| 核心墙钟/s | 155.895 | 150.875 | -3.22% |
+| 实时倍率 | 0.0642 | 0.0663 | 提高 |
+| 进程总耗时/s | 222.780 | 195.363 | -12.31% |
+| 峰值驻留内存/GiB | 2.889 | 2.359 | -18.33% |
+| 结束后残余耗时/s | 66.885 | 44.488 | -33.49% |
+| D1 融合/s | 92.991 | 88.330 | -5.01% |
+| D2 关联/s | 8.318 | 7.671 | -7.77% |
+| D5 终端关联/s | 2.546 | 1.974 | -22.45% |
+| 模块栈合计/s | 139.010 | 134.409 | -3.31% |
+
+D1 实际创新求解总数由 7,130,228 次降至 1,578,677 次，下降 77.86%。D3 分配均值由
+3.289 秒增至 3.379 秒，D7 导引由 4.992 秒增至 5.358 秒。两项增长没有改变计划、门控或
+控制结果，当前按描述性运行波动处理。系统实时倍率仍低于 0.1，不能据此关闭实时 P1。
+
+main 使用流式跨构建审计器比较两个 clean build。D3 的随机计划编号先按首次发布顺序建立
+一一映射；计划版本、前后关系、owner、联盟和所有下游引用仍保留。D3/D7 ACK 的原始载荷
+SHA-256 在归一化前验证。D4 的 authority digest、正式裁决 digest 和 advisory ID 也先按
+原始内容回算，再对规范计划谱系重新计算，未采用事件序号占位。三个 seed 的在线记录数、
+topic 数量、逐 topic 规范哈希、summary 合同、离线真值标签、三维真值数组和接近事件全部
+一致。该结果证明 `f80b5bd` 性能改动没有改变已审计业务语义，仍只属于三个 seed 的描述性
+证据。
+
 ## 试验条件
 
 两次候选运行使用同一配置和同一代码提交，只有 `duration_s` 不同。
@@ -170,6 +199,8 @@ JSON SHA-256 为 `58bae9caf93936a7763653cd35434a092774f24b48630b042e655aa58a0a58
 - 旧基线：`outputs/scalable_3d_long_duration_calibration_20260722_clean_c0460e0/`
 - 上一候选：`outputs/scalable_3d_long_duration_candidate_20260722_clean_3bac3ff/`
 - 当前候选：`outputs/scalable_3d_long_duration_candidate_20260722_clean_8f86192/`
+- 第五轮候选：`outputs/scalable_3d_long_duration_candidate_20260722_clean_f80b5bd/`
+- 跨构建审计：`outputs/scalable_3d_long_duration_candidate_20260722_clean_f80b5bd/cross_build_semantics/`
 - 长短比较：`comparison_candidate/long_duration_comparison.json`
 - D6 聚合：`d6_offline_pair/scalable_3d_offline_aggregate.json`
 - 三 seed D6 聚合：`d6_offline_3seed/scalable_3d_offline_aggregate.json`

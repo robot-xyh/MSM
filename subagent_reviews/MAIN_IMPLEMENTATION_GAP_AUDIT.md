@@ -935,25 +935,26 @@ D1 NumPy EKF/FusionAdapter
 - 现有 \(k_j=1\) 主线继续可用；M 对 N 的 demand-slot、合法多机锁定、二级/完全分布式原子联盟和成员级 D7 门控合同已实现。
 - 历史 ComputerVision 合同验收为 8/10；当前已完成 5 m 成功判据、detect-first truth 隔离、1-5 帧硬窗口、D6 分层指标、2v2 `png_ttc` 20/20 和同条件 M5N2 paired。M5N2 candidate 退化且联盟 0/10，下一步是物理协同和阈值根因修复，不再扩展成功语义。
 - P2 隔离 benchmark 已覆盖 D1-D7 的当前可运行范围；不可用外部依赖均显式记录 `unavailable_reason`，不得宣称为主线算法替换。
+- main 已修复 D1 新后验在 D2 调度 tick 之间被遗漏的问题。锁存只保存未消费的真实 posterior，D2 使用原有效时刻，D7 过期门和 PN/PNG 公式不变；无新后验的 seed 继续 fail-closed。
 
 ### 7.2 P0 保持矩阵
 
 | Owner | P0 状态 | 必须保持的合同 | 验收 |
 | --- | --- | --- | --- |
-| D1 | 无新增 blocker | 双时间戳、NED、协方差、OOSM、source de-dup、局部图像航迹 fail-closed 适配和 GlobalTrack | D1 `168 passed` |
-| D2 | 无新增 blocker | GNN/Hungarian、稳定 global_track_id、id_switch_count、continuity、陈旧观测隔离和来源身份治理显式计数 | D2 `215 passed, 1 warning` |
-| D3 | 无新增 blocker | 版本化 AssignmentPlan、迟滞、stale rejection、D7 binding | D3 `436 passed, 1 skipped`；2 个既有 `global_track_stale` main/D7 集成用例仍失败 |
+| D1 | 无新增 blocker | 双时间戳、NED、协方差、OOSM、source de-dup、局部图像航迹 fail-closed 适配和 GlobalTrack | D1 `175 passed` |
+| D2 | 无新增 blocker | GNN/Hungarian、稳定 global_track_id、id_switch_count、continuity、陈旧观测隔离和来源身份治理显式计数 | D2 `219 passed, 1 warning` |
+| D3 | 无新增 blocker | 版本化 AssignmentPlan、迟滞、stale rejection、D7 binding；运行证据按各 ACK 对应的计划快照验证，真实 stale ACK 保持 fail-closed | D3 `438 passed, 1 skipped, 0 failed` |
 | D4 | 无新增 blocker | C2Health、主动/被动降级、二级 lifecycle；active secondary helper/owner 必须对 sustained readiness、expected/actual source、plan/required epoch、expiry/current time 和 plan monotonicity exact-true；冲突或缺失证据 fail-closed | D4 `508 passed` |
-| D5 | 无新增 blocker | 不改写 global_track_id、truth 隔离、friend/duplicate 保守门控；原生 MOT 连续实测历史按 stream/backend/ID 隔离并在空帧/reset 后重计；离线人工记录转换重复坍缩 fail-closed；补充课程全样本审计不得开放在线权限 | D5 `543 passed` |
-| D6 | 无新增 blocker | 只消费日志；实际规模、id_switch_count、unavailable/zero 分离；逐 pair physical evidence/result/source、联盟完整性和跨模块学习准入严格门控；D5 全样本证据需带外 SHA，报告不得写入正式 generation 根 | D6 `521 passed, 1 warning` |
+| D5 | 无新增 blocker | 不改写 global_track_id、truth 隔离、friend/duplicate 保守门控；原生 MOT 连续实测历史按 stream/backend/ID 隔离并在空帧/reset 后重计；离线人工记录转换重复坍缩 fail-closed；补充课程全样本审计不得开放在线权限 | D5 `544 passed` |
+| D6 | 无新增 blocker | 只消费日志；实际规模、id_switch_count、unavailable/zero 分离；逐 pair physical evidence/result/source、联盟完整性和跨模块学习准入严格门控；D5 全样本证据需带外 SHA，报告不得写入正式 generation 根 | D6 `530 passed, 1 warning` |
 | D7 | 核心公式无 blocker；控制输入 P0 由 main/runtime 持有 | 不分配目标；D3/D4/D5 gate 失败时阻断视觉 PNG；不修改 PN/PNG 核心公式 | D7 `213 passed` + truth-isolated control contract |
-| main/runtime | 无新增 blocker | episode bus 可回放；在线 truth identity/state 均为 0；SimpleFlight 只消费 D2 estimate；二级 communication 只消费上一完整 D4 readiness；actor truth 仅离线 5 m scorer；默认不保存 PNG | scalable main `116 passed, 1 warning`；既有 AirSim runtime `147 passed` |
+| main/runtime | 无新增 blocker | episode bus 可回放；在线 truth identity/state 均为 0；SimpleFlight 只消费 D2 estimate；未消费 D1 posterior 跨 tick 锁存但不改写时间戳；二级 communication 只消费上一完整 D4 readiness；actor truth 仅离线 5 m scorer；默认不保存 PNG | scalable main `123 passed, 1 warning`；既有 AirSim runtime `147 passed` |
 
 ### 7.3 当前 P1 清单
 
 | Owner | 当前缺口 | 已有基础 | 缺少条件/下一验收 |
 | --- | --- | --- | --- |
-| main/D1/D2/D3/D5/D6 | 分阶段实时性能与长时增长达标 | clean `8f86192` 完成同 seed 2.2/10 s 和三组 10 s；三 seed 核心墙钟/峰值内存均值为 `155.895 s/2.889 GiB`，相对上一候选下降 9.4%/5.4%。D1 同融合时刻 state-only/full 发布保持逐扫描融合与谱系，D3 冻结输入归因和可信签名缓存、D5 定长操作数诊断已完成；3/3 truth/overflow 为 0，既有业务摘要与真值文件一致 | 实时倍率均值仍仅 `0.0642`，长短单位时间成本仍增长 `1.830x`；D1 固定滞后与剩余物化、D2 长时关联、D5 2.423x 单次成本、结束后处理和稳定窗口 P50/P95/max 仍需关闭。不得把三 seed 描述性校准当实时或正式验收 |
+| main/D1/D2/D3/D5/D6 | 分阶段实时性能与长时增长达标 | clean `f80b5bd` 完成 seeds 42000-42002 三组 10 s；核心墙钟/进程总耗时/峰值内存均值为 `150.875 s/195.363 s/2.359 GiB`，相对 `8f86192` 变化 `-3.22%/-12.31%/-18.33%`。D1 实际创新求解下降 77.86%，D2 与 D5 终端耗时下降；三个 seed 经原始 ACK 哈希、D3 计划谱系和 D4 内容地址重算后逐条语义等价，truth/overflow 为 0 | 实时倍率均值仍仅 `0.0663`；D1 融合/扫描输入、D2/D5 长时增长、D7 波动、结束后处理和稳定窗口 P50/P95/max 仍需关闭。当前 D1→D2 调度锁存只有开发回归，下一 clean candidate 需重跑长时门；不得把三 seed 描述性校准当实时或正式验收 |
 | D2/D6/main | v2 关联候选评审与跨 difficulty 证据 | 正式 v2 联合报告已生成；总体五项 gate 通过，IDSW 下降 54.6%，P95 15.47 ms，truth leakage=0；默认在线主线未改变 | 仅 `clutter/combined` 通过，四个零 baseline-IDSW difficulty fail-closed，dropout truth alignment 为 partial；需补同 case/seed 完整多源 system bundle 后再决定是否晋级，JPDA 保持不准入 |
 | D3/D5/D7/main | M5N2 协同物理闭环 | 同条件 10-seed paired 和四层日志已完成；baseline 7/30 pair，candidate 4/30，联盟均 0/10 | 分离第二 primary 中段重捕、D5 共识、D7 gate 和成员安全根因；candidate 保持关闭 |
 | D5/D7/main | 单帧 dropout 尾部 | 2-5 帧逐 seed 全通过，物理结果 100/100，truth/ID/version 无违规 | 复核 seed 2 在 0.8 s 注入时没有进入 image-KF 的锁定时序；不得用聚合计数掩盖 |
