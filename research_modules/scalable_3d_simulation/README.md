@@ -30,6 +30,27 @@ main 现已把该确认链自动接入 D6 离线结果联接。存在运行时�
 每个窗口输出起始、结束、最小三维距离和五米事件；距离进展只记为诊断，不作为 D3 正式奖励。
 输入清单、联接结果、中文报告和 main provenance manifest 均随 episode 保存。
 
+## 2026-07-23 当前优化 20-seed 校准
+
+detached clean `5263e2b343dc4b96d239f77ef09437eb132f9efb` 已完成
+seed `1000-1019`、nominal 200 对 200、10 秒规则全栈顺序运行。20/20 状态有限，
+在线真值使用总数为 0，D1-D2 后验代次和 D6 schema/provenance 审计通过。候选与已有
+`0d2da25` 同 seed 参考的 20/20 直接跨构建审计均通过，规范在线载荷、真值和计划/确认
+语义一致。
+
+核心墙钟均值由 `96.391 s` 降至 `86.099 s`，20/20 seed 均改善；配对变化均值为
+`-10.63%`，95% seed bootstrap 区间为 `[-11.71%, -9.61%]`。实时倍率均值由
+`0.1039` 提升到 `0.1163`，仍未达到实时。D1 扫描输入、D1 融合和 D2 关联分别下降
+`22.06%/15.15%/6.41%`。严格 `id_switch_count` 在 20/20 seed 上继续为
+unavailable。部分身份映射/完整帧/相邻转换覆盖为
+`98.5760%/10.7404%/0.6118%`，19 个 episode 的保守下界合计 199；该值未回填 strict。
+D1 RMSE/NEES 因同一 lineage mapping 缺口不可用。学习 bundle、正式七变体矩阵和五米
+物理结果均不属于本轮证据。
+
+完整结果见
+`docs/SCALABLE_3D_LONG_DURATION_PERFORMANCE_CALIBRATION_CN.md`，机器摘要见
+`docs/SCALABLE_3D_20SEED_PERFORMANCE_CALIBRATION_20260723.json`。
+
 ## 2026-07-22 规则全栈性能校准
 
 提交 `33101656b0cf1967a778cdb36a440611e02109b1` 已完成 20、50、100、200 四档 clean-source

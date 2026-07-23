@@ -1,6 +1,6 @@
 # 200 对 200 三维质点仿真实施计划
 
-## 当前执行状态（2026-07-22）
+## 当前执行状态（2026-07-23）
 
 第四轮规则全栈性能收敛已完成三 seed 长时复测。D1 在保持逐扫描融合和逐扫描发布的前提下，
 把同一融合时刻的中间发布改为 state-only，并只为最后一个后验构造完整航迹数组；D3 已建立
@@ -99,23 +99,49 @@ singleton cluster 直接复用投影距离行，79 个多节点 cluster 仍执�
 在线 truth 使用与 `global_track_id` 改写均为 0。pre-fix profiler 只能作方向归因；
 当前全量为 `551 passed`，完整集成、多 seed 和长窗口实时性 P1 不关闭。
 
+detached clean `5263e2b343dc4b96d239f77ef09437eb132f9efb` 已完成当前优化后的
+seed `1000-1019`、nominal 200 对 200、10 秒规则全栈复测。20/20 状态有限，在线真值使用
+总数为 0，D1-D2 后验代次完整，D6 failure reason 为空。核心墙钟均值由 `0d2da25` 同 seed
+参考的 `96.391 s` 降至 `86.099 s`，20/20 seed 均改善；配对变化均值为 `-10.63%`，
+95% seed bootstrap 区间为 `[-11.71%, -9.61%]`。实时倍率均值由 `0.1039` 提升到
+`0.1163`，仍约需 8.6 倍吞吐提升才能达到 1.0。
+
+当前候选的 D1 扫描输入、D1 融合和 D2 关联累计均值为
+`9.671/43.774/5.139 s`，相对参考分别变化 `-22.06%/-15.15%/-6.41%`，且三项均为
+20/20 seed 改善。D3 分配和 D5 主动视觉变化区间跨过零，尚不能认定稳定退化；D7 导引累计
+均值由 `3.638 s` 增至 `3.859 s`，配对变化 `+6.24%`，但规范控制输出保持一致，需作为
+性能回归单独归因。main publication bus 增加 `4.44%`，在线日志均值仍为
+222,974,342 字节，没有因优化减小。
+
+`0d2da25 -> 5263e2b` 的 20/20 直接跨构建审计全部通过。规范在线载荷、真值状态与标签、
+D3 计划谱系、D4 内容地址和 ACK 来源一致。D6 对 20 个候选 episode 的 clean provenance、
+generation integrity 和 schema 审计均为 20/20，通过后仍将其归类为
+`descriptive_clean_source_calibration`；正式实验矩阵 episode 数为 0。严格
+`id_switch_count` 在 20/20 seed 上仍为 unavailable，不能用部分身份下界代替。D6 复算的
+partial mapping/frame/adjacent-transition coverage 为
+`178531/181110`、`103/959`、`1149/187800`；19 个 episode 的保守下界合计 199，
+但不回填 strict。D1 RMSE/NEES 同样因 `d2_lineage_mapping_missing` 不可用。紧凑证据见
+`docs/SCALABLE_3D_20SEED_PERFORMANCE_CALIBRATION_20260723.json`。
+
 当前执行顺序调整为：
 
-1. D1 已关闭完整帧重复快照热点，继续治理融合尾延时、scan-input claim/audit/JSON 和
-   剩余航迹物化成本；不得因模块回放加速而忽略 `592.957 ms` 的融合最大值。下一版轻量
-   heartbeat/lineage sidecar 必须版本化并兼容旧 consumer。
-2. D2 已关闭三项常数成本热点；下一步在固定硬件完整阶段复测 P50/P95/P99，并分离
-   covariance governance、重复航迹合并和 main publication 成本。不得减少合法候选、
-   降低关联频率或改变 ID/claim/version 语义。
-3. D5 已关闭 history gauge、匿名审计和 singleton binding 的局部重复成本；下一步用正交
+1. D1 扫描输入和融合合计仍占候选核心墙钟约 62%。下一轮优先治理 scan-input
+   claim/audit/JSON、固定滞后回放、检查点查询和 `GlobalTrack` 物化；不得缩短 6 秒窗口、
+   丢观测或放宽协方差治理。D1 融合 episode P95 均值仍为 `233.488 ms`。
+2. D2 关联 episode P95 均值为 `142.627 ms`，超过 100 ms 预算。继续分离 covariance
+   governance、重复航迹合并和 publication 成本，同时修复 D1/D2 真值指标所需的
+   `global_track_id -> truth_target_id` 离线唯一性证据；不得从距离或名称补算身份。
+3. D7 累计时间出现稳定小幅回归，main publication bus 也有增长。先做固定输入 profiler，
+   区分业务计算、DTO 物化、哈希和日志写入；控制公式、PN/PNG 门控和发布频率本轮不改。
+4. D5 已关闭 history gauge、匿名审计和 singleton binding 的局部重复成本。下一步用正交
    多 seed 控制检测数、活跃相机数、中心候选数和时长，分离 tracker pair 与投影/绑定矩阵
    增长，不减少视觉帧、不放宽投影与身份门限。
-4. D3 冻结输入归因已完成。集成三 seed 累计时间基本持平，当前不修改规则代价、迟滞或
-   Hungarian 主线。`scalable3d-stage-timings-v2` 已有单 seed clean 证据，下一轮至少
-   20 个固定 seed 必须用同一版本汇总 episode 分位分布。
-5. 完成当前吞吐治理后，再扩展 D4 故障、D5 跨视角和 D7 五米接近的长时多 seed 验收。
-6. 学习策略继续保持 disabled/shadow；性能优化不得用学习模型、降采样或放宽安全门控替代。
-7. 20 个保留 seed 的规则基线已经完成。下一批必须由正式矩阵 runner 冻结 variant、scenario、
+5. D3 冻结输入归因和 20-seed 分位已完成。当前不修改规则代价、迟滞或 Hungarian 主线；
+   先处理 D1、D2、D7 和 publication bus 的明确热点。
+6. 完成下一轮吞吐和严格身份治理后，再扩展 D4 故障、D5 跨视角和 D7 五米接近的长时多
+   seed 验收。
+7. 学习策略继续保持 disabled/shadow；性能优化不得用学习模型、降采样或放宽安全门控替代。
+8. 20 个保留 seed 的规则参考和当前候选均已完成。下一批必须由正式矩阵 runner 冻结 variant、scenario、
    scale、comparison key、训练 seed registry 和学习 bundle；D4 内容地址、D3 计划谱系、来源
    ACK、generation 守恒或 assist adoption 任一不可回算时必须判为不可比较。
 

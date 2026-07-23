@@ -9,6 +9,34 @@
 **当前状态修订（2026-07-20）**：上段“无开放 P0”只对应此前 AirSim 审计。900-episode
 正式生成在第 210 项发现 D5 同流多批次阻塞；以下专项记录为当前状态，优先级高于历史摘要。
 
+## 2026-07-23 当前优化 20-seed 全栈校准
+
+当前没有新增 P0。detached clean `5263e2b343dc4b96d239f77ef09437eb132f9efb`
+已顺序完成 seed `1000-1019`、nominal 200 对 200、10 秒规则全栈。20/20 状态有限，
+在线真值使用总数为 0，generation integrity 和 D6 schema/provenance 审计通过，failure
+reason 为空。D6 将 20/20 归类为 `descriptive_clean_source_calibration`；正式实验矩阵
+episode 数仍为 0。
+
+已有 clean `0d2da25` 的同 seed 20 组作为性能参考。`0d2da25 -> 5263e2b` 的 20/20
+直接跨构建审计全部通过，规范在线载荷、真值状态与标签、D3 计划谱系、D4 内容地址和
+ACK 来源一致。核心墙钟均值由 `96.391 s` 降至 `86.099 s`，20/20 seed 均改善；
+配对变化均值 `-10.63%`，95% seed bootstrap 区间 `[-11.71%, -9.61%]`。实时倍率
+由 `0.1039` 提升到 `0.1163`，仍约差 8.6 倍，系统实时 P1 不关闭。
+
+| P1 项 | 当前证据 | 状态 |
+| --- | --- | --- |
+| D1/D2/D5 局部优化转化为全栈收益 | D1 扫描输入、D1 融合、D2 关联分别变化 `-22.06%/-15.15%/-6.41%`，三项均 20/20 seed 改善；D5 终端配准变化区间跨零 | 当前实现的多 seed 性能证据已闭合 |
+| 200 对 200 实时能力 | 核心墙钟均值 `86.099 s/10 s`，实时倍率均值 `0.1163` | 开放 P1 |
+| D1/D2 尾延时 | D1 融合 P95 均值 `233.488 ms`，D2 关联 P95 均值 `142.627 ms` | 开放 P1 |
+| D7 与 publication bus 性能 | 业务输出不变，累计时间分别增加 `6.24%/4.44%` | 开放 P1，需固定输入归因 |
+| D1/D2 严格真值映射 | strict ID Switch 0/20 可用；partial mapping/frame/transition coverage 为 `98.5760%/10.7404%/0.6118%`，19 个 lower-bound 合计 199；D1 RMSE/NEES 因 `d2_lineage_mapping_missing` 不可用 | 开放 P1 |
+| 正式学习和物理效果 | 学习 bundle 未加载，正式矩阵为 0，10 秒名义场景无五米接近 | 开放 P1 |
+
+当前优先级为：先治理 D1 融合/扫描输入和 D2 尾延时；同时补齐 D1/D2 严格真值映射所需的
+离线唯一性证据；随后归因 D7/发布总线的小幅性能增长。partial lower bound 不得回填 strict，
+也不得形成上界。不能通过降低传感器、融合、关联、视觉或导引频率关闭实时缺口。紧凑机器证据位于
+`research_modules/scalable_3d_simulation/docs/SCALABLE_3D_20SEED_PERFORMANCE_CALIBRATION_20260723.json`。
+
 ## 2026-07-22 后验代次与 clean 长时基线
 
 main 已在 detached clean `0d2da25` 上完成 nominal 200 对 200、10 秒、seeds
