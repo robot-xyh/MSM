@@ -301,6 +301,11 @@ class IntegratedScalableModuleStack:
         self._d2_observation_replay_generation: dict[str, int] = {}
         self._latest_d2_input_signature: tuple[tuple[Any, ...], ...] | None = None
         self._d2_pending_d1_update = False
+        self._d1_posterior_generation = 0
+        self._d2_pending_d1_posterior_generation: int | None = None
+        self._d2_consumed_d1_posterior_generation = 0
+        self._d2_posterior_consumption_count = 0
+        self._d2_pre_tick_posterior_merge_count = 0
         self._d2_finalize_unchanged_posterior_skip_count = 0
         self._d2_finalize_coalesced_release_count = 0
         self._d1_latest_lineage_by_observation: dict[str, dict[str, Any]] = {}
@@ -413,6 +418,11 @@ class IntegratedScalableModuleStack:
         self._d2_observation_replay_generation.clear()
         self._latest_d2_input_signature = None
         self._d2_pending_d1_update = False
+        self._d1_posterior_generation = 0
+        self._d2_pending_d1_posterior_generation = None
+        self._d2_consumed_d1_posterior_generation = 0
+        self._d2_posterior_consumption_count = 0
+        self._d2_pre_tick_posterior_merge_count = 0
         self._d2_finalize_unchanged_posterior_skip_count = 0
         self._d2_finalize_coalesced_release_count = 0
         self._d1_latest_lineage_by_observation.clear()
@@ -471,13 +481,11 @@ class IntegratedScalableModuleStack:
         scan_clock_result = self.d1_scan_input.advance_arrival_time(now)
         self._record_timing("d1_scan_input_clock", perf_counter() - started)
         self._record_d1_scan_events(scan_clock_result.events)
-        d1_updated = self._consume_d1_released_scans(
+        self._consume_d1_released_scans(
             released_scans,
             publications=publications,
             publication_timestamp=now,
         )
-        if d1_updated:
-            self._d2_pending_d1_update = True
 
         if (
             self._d2_pending_d1_update
@@ -497,9 +505,15 @@ class IntegratedScalableModuleStack:
                     self.latest_d2_result,
                     detections,
                 )
+                self._d2_consumed_d1_posterior_generation = int(
+                    self._d2_pending_d1_posterior_generation
+                    or self._d1_posterior_generation
+                )
+                self._d2_posterior_consumption_count += 1
                 publications.append(self._d2_publication(now))
             self._record_timing("d2_association", perf_counter() - started)
             self._d2_pending_d1_update = False
+            self._d2_pending_d1_posterior_generation = None
             self._next_association_s = _advance_schedule(
                 self._next_association_s,
                 config.association_period_s,
@@ -638,14 +652,19 @@ class IntegratedScalableModuleStack:
             publication_timestamp=now,
         )
         released_count = len(scan_result.released_scans)
-        if released_count:
+        if released_count or self._d2_pending_d1_update:
             self._d2_finalize_coalesced_release_count += max(0, released_count - 1)
             self._associate_latest_d1_tracks(
                 publications,
                 publication_timestamp=now,
                 timing_stage="d2_association_finalize",
                 skip_unchanged_posterior=True,
+                source_d1_posterior_generation=(
+                    self._d2_pending_d1_posterior_generation
+                ),
             )
+            self._d2_pending_d1_update = False
+            self._d2_pending_d1_posterior_generation = None
         self._d1_scan_input_closed = True
 
         return RuntimeStepOutput(
@@ -664,7 +683,7 @@ class IntegratedScalableModuleStack:
         d1_audit = self.d1_scan_input.audit_summary().to_dict()
         d2_summary = self.d2.summary()
         return {
-            "schema_version": "scalable3d-observation-governance-runtime-v1",
+            "schema_version": "scalable3d-observation-governance-runtime-v2",
             "d1_scan_input": d1_audit,
             "d1_scan_event_total_count": self._d1_scan_event_total_count,
             "d1_scan_event_retained_count": len(self._d1_scan_events),
@@ -700,6 +719,21 @@ class IntegratedScalableModuleStack:
             ),
             "d2_replay_coast_config": dict(
                 d2_summary.get("replay_coast_config", {})
+            ),
+            "d1_posterior_generation": int(self._d1_posterior_generation),
+            "d2_pending_d1_posterior_generation": (
+                None
+                if self._d2_pending_d1_posterior_generation is None
+                else int(self._d2_pending_d1_posterior_generation)
+            ),
+            "d2_consumed_d1_posterior_generation": int(
+                self._d2_consumed_d1_posterior_generation
+            ),
+            "d2_posterior_consumption_count": int(
+                self._d2_posterior_consumption_count
+            ),
+            "d2_pre_tick_posterior_merge_count": int(
+                self._d2_pre_tick_posterior_merge_count
             ),
             "d2_finalize_unchanged_posterior_skip_count": int(
                 self._d2_finalize_unchanged_posterior_skip_count
@@ -747,7 +781,7 @@ class IntegratedScalableModuleStack:
         if not scans:
             return False
 
-        processed: list[tuple[Any, Any]] = []
+        processed: list[tuple[Any, Any, int | None]] = []
         for index, released_scan in enumerate(scans):
             fusion_timestamp = max(
                 float(self.d1.current_time),
@@ -773,22 +807,34 @@ class IntegratedScalableModuleStack:
             if materialize_tracks:
                 self.latest_d1_tracks = tuple(result.tracks)
                 self._d1_materialized_snapshot_count += 1
+                self._d1_posterior_generation += 1
+                if self._d2_pending_d1_update:
+                    self._d2_pre_tick_posterior_merge_count += 1
+                self._d2_pending_d1_update = True
+                self._d2_pending_d1_posterior_generation = int(
+                    self._d1_posterior_generation
+                )
+                posterior_generation: int | None = int(
+                    self._d1_posterior_generation
+                )
             else:
                 self._d1_state_only_scan_count += 1
                 self._d1_same_fusion_time_coalesced_scan_count += 1
-            processed.append((result, released_scan))
+                posterior_generation = None
+            processed.append((result, released_scan, posterior_generation))
 
         evidence_by_observation = {
             item.observation_id: item
             for item in self.d1.consistency_evidence_records()
         }
-        for result, released_scan in processed:
+        for result, released_scan, posterior_generation in processed:
             publications.append(
                 self._d1_publication(
                     result,
                     released_scan,
                     publication_timestamp,
                     evidence_by_observation=evidence_by_observation,
+                    posterior_generation=posterior_generation,
                 )
             )
         return True
@@ -805,6 +851,7 @@ class IntegratedScalableModuleStack:
         publication_timestamp: float,
         timing_stage: str,
         skip_unchanged_posterior: bool = False,
+        source_d1_posterior_generation: int | None = None,
     ) -> bool:
         if not self.latest_d1_tracks:
             return False
@@ -832,6 +879,12 @@ class IntegratedScalableModuleStack:
         self._latest_d2_input_signature = input_signature
         self.latest_d2_tracks = tuple(self.d2.active_tracks())
         self._update_d2_identity_lineage(self.latest_d2_result, detections)
+        self._d2_consumed_d1_posterior_generation = int(
+            self._d1_posterior_generation
+            if source_d1_posterior_generation is None
+            else source_d1_posterior_generation
+        )
+        self._d2_posterior_consumption_count += 1
         publications.append(self._d2_publication(publication_timestamp))
         self._record_timing(timing_stage, perf_counter() - started)
         return True
@@ -2973,6 +3026,7 @@ class IntegratedScalableModuleStack:
         now: float,
         *,
         evidence_by_observation: Mapping[str, Any] | None = None,
+        posterior_generation: int | None = None,
     ) -> RuntimePublication:
         if evidence_by_observation is None:
             evidence_by_observation = {
@@ -3084,6 +3138,7 @@ class IntegratedScalableModuleStack:
                 "track_count": len(tracks),
                 "current_track_count": current_track_count,
                 "tracks_materialized": tracks_materialized,
+                "posterior_generation": posterior_generation,
                 "snapshot_kind": (
                     "full_posterior" if tracks_materialized else "state_update"
                 ),
@@ -3105,6 +3160,9 @@ class IntegratedScalableModuleStack:
             schema_version="d2-scalable3d-association-v1",
             payload={
                 "timestamp": now,
+                "source_d1_posterior_generation": int(
+                    self._d2_consumed_d1_posterior_generation
+                ),
                 "track_count": len(self.latest_d2_tracks),
                 "tracks": [_track_summary(track) for track in self.latest_d2_tracks],
                 "association": {

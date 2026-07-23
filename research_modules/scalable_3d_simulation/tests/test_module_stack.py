@@ -93,6 +93,20 @@ def test_d2_consumes_pending_d1_posterior_at_next_association_tick() -> None:
         and abs(message.timestamp - 1.0) <= 1.0e-9
     )
     assert len(scheduled_d2) == 1
+    d2_publications = tuple(
+        message
+        for message in result.online_messages
+        if message.topic == "modules.d2.associated_tracks"
+    )
+    consumed_generations = tuple(
+        int(message.payload["source_d1_posterior_generation"])
+        for message in d2_publications
+    )
+    assert consumed_generations == tuple(sorted(set(consumed_generations)))
+    assert not any(
+        abs(message.timestamp - 1.05) <= 1.0e-9
+        for message in d2_publications
+    )
     assert min(
         float(track["timestamp"])
         for track in scheduled_d2[0].payload["tracks"]
@@ -107,6 +121,79 @@ def test_d2_consumes_pending_d1_posterior_at_next_association_tick() -> None:
     assert all(
         command["gate_reason"] != "global_track_stale"
         for command in scheduled_guidance.payload["commands"]
+    )
+    full_d1_publications = tuple(
+        message
+        for message in result.online_messages
+        if message.topic == "modules.d1.fused_tracks"
+        and message.payload["tracks_materialized"]
+    )
+    d1_generations = tuple(
+        int(message.payload["posterior_generation"])
+        for message in full_d1_publications
+    )
+    assert d1_generations == tuple(range(1, len(d1_generations) + 1))
+    assert set(consumed_generations).issubset(set(d1_generations))
+
+    governance = result.observation_governance_audit
+    assert governance["schema_version"] == (
+        "scalable3d-observation-governance-runtime-v2"
+    )
+    assert governance["d1_posterior_generation"] == d1_generations[-1]
+    assert governance["d2_consumed_d1_posterior_generation"] == (
+        consumed_generations[-1]
+    )
+    assert governance["d2_posterior_consumption_count"] == len(
+        d2_publications
+    )
+    assert governance["d2_pending_d1_posterior_generation"] is None
+    assert governance["d2_pre_tick_posterior_merge_count"] >= 1
+
+
+def test_finalize_consumes_pending_d1_posterior_without_emitting_control() -> None:
+    config = ScenarioConfig(
+        scenario_name="pending_d1_finalize_3v3",
+        scenario_version="pending-d1-finalize-v1",
+        target_count=3,
+        resource_count=3,
+        recon_count=1,
+        region_count=2,
+        duration_s=0.95,
+        seed=7,
+        radar_detection_probability=1.0,
+    )
+
+    result = run_episode(config, module_stack=IntegratedScalableModuleStack())
+
+    final_d2 = tuple(
+        message
+        for message in result.online_messages
+        if message.topic == "modules.d2.associated_tracks"
+        and abs(message.timestamp - config.duration_s) <= 1.0e-9
+    )
+    assert len(final_d2) == 1
+    final_generation = int(
+        final_d2[0].payload["source_d1_posterior_generation"]
+    )
+    full_d1_generations = tuple(
+        int(message.payload["posterior_generation"])
+        for message in result.online_messages
+        if message.topic == "modules.d1.fused_tracks"
+        and message.payload["tracks_materialized"]
+    )
+    assert final_generation == full_d1_generations[-1]
+    assert not any(
+        message.topic in {
+            "modules.d5.active_vision",
+            "modules.d7.guidance_commands",
+        }
+        and abs(message.timestamp - config.duration_s) <= 1.0e-9
+        for message in result.online_messages
+    )
+    governance = result.observation_governance_audit
+    assert governance["d2_pending_d1_posterior_generation"] is None
+    assert governance["d2_consumed_d1_posterior_generation"] == (
+        governance["d1_posterior_generation"]
     )
 
 
