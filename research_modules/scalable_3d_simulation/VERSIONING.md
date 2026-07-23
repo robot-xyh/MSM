@@ -52,9 +52,11 @@ main
 | 实验矩阵 | `scalable3d-experiment-matrix-v1` | 变体语义、配对键或正式准入条件改变 |
 | D1 一致性评估清单 | `scalable3d-offline-consistency-evaluation-manifest-v1` | 在线证据、真值状态、D2 映射或哈希绑定改变 |
 | D1 扫描输入审计 | `d1.scan_input.audit_summary.v1` | 水位线、扫描拒绝、缓冲容量或结束排空语义改变 |
+| D1 结构歧义证据 | `d1.structural-ambiguity-evidence.v1` | 允许边分量、成员不透明令牌、双时间戳、状态/协方差或候选边语义改变 |
 | D2 身份评估清单 | `scalable3d-offline-identity-evaluation-manifest-v1` | 谱系映射、身份指标或来源校验改变 |
 | D2 观测证据治理 | `d2-observation-evidence-governance-v1` | D1 观测新鲜度、重放隔离、时间冲突、暂定航迹删除或重复合并审计语义改变 |
 | D2 观测声明账本 | `d2-observation-claim-ledger-v2` | 声明键、水位线、安全淘汰、容量或反重放语义改变 |
+| D2 结构歧义保活策略 | `d2.ambiguity-hold-lease-policy.v1` | 租约时钟、年龄门限、软/硬截止、证据保留或失败关闭语义改变 |
 | main 观测治理快照（历史） | `scalable3d-observation-governance-runtime-v1` | D1/D2 在线治理汇总或结束排空计数语义改变 |
 | main 观测治理快照（当前） | `scalable3d-observation-governance-runtime-v2` | v2 增加 D1 后验代次、D2 待处理/已消费代次、消费次数和节拍前合并计数；这些字段或 finalize 排空语义改变时升级 |
 | D6 观测治理标定输入 | `scalable3d-observation-governance-calibration-input-v1` | episode 描述、制品哈希、在线审计或 evaluator-only 侧车绑定改变 |
@@ -84,6 +86,12 @@ main
 `track_count == len(tracks)`；需要完整快照的 consumer 必须检查 `tracks_materialized`，不能
 把 state update 的空数组解释为当前航迹库存归零。该新增不删除旧字段，因此保持总线 v1；
 后续若改变 `track_count` 语义或取消完整快照，则必须升级总线主版本。
+
+结构歧义侧车是 D1 发布物中的兼容新增字段，消费者必须按 schema 显式选择是否处理。
+main 只有在 `d1_d2_structural_ambiguity_hold_enabled=true` 时才把侧车送入 D2，并同时
+启用不透明 D1 来源令牌；该开关及租约参数全部进入 runtime profile。默认关闭与实验开启
+具有不同的 runtime profile SHA-256 和 episode ID，不能按跨构建语义等价样本合并。当前
+seed 1100 门槛已经拒绝该候选，schema 和测试保留不表示在线主线准入。
 
 ## 实验清单
 

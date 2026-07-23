@@ -117,6 +117,44 @@ birth 和 recall。v1/v2 均不运行扩大矩阵。v1 机器摘要位于
 v2 评审位于
 `research_modules/scalable_3d_simulation/docs/SCALABLE_3D_RADAR_ASSIGNMENT_V2_CLEAN_AB_REVIEW_CN.md`。
 
+### 2026-07-23 D1-D2 结构歧义保活候选
+
+D1、D2 和 main 已完成默认关闭的原子候选。D1 侧车
+`d1.structural-ambiguity-evidence.v1` 保留双时间戳、NED 六维状态、协方差、完整允许边
+分量和不透明来源令牌；歧义分量不更新后验、不增加命中、不新生。main 跨 state-only/full
+扫描锁存侧车，并在下一次成功 D2 调用中一次消费。D2 使用
+`d2.ambiguity-hold-lease-policy.v1` 执行有界 prediction-only 租约，阻止 hit、miss、
+birth、rebind 和重复合并；未来、超龄、重放、旧代次和来源冲突失败关闭。完整回归为
+D1 `237 passed`、D2 `271 passed`、scalable main `144 passed`。
+
+detached clean `9cd2a798ac8555518522618f00bd85b014a9a0b8` 使用 nominal 200 对 200、
+2.2 秒、`recon_count=2`、未见 seed 1100 完成同构建 A/B。两端
+`config_sha256=34f5563579d9d2e7d1ea2b57cf353d2465b3bd16c5310570d40e72fc7aeac461`，
+运行配置哈希按开关分离，状态有限且在线真值使用为 0。
+
+| 指标 | baseline | 结构歧义保活候选 | 判定 |
+| --- | ---: | ---: | --- |
+| D1 航迹 | 202 | 202 | 持平 |
+| D2 航迹 | 203 | 201 | 退化 2 |
+| D3 分配 | 200 | 197 | 退化 3 |
+| 可用/不可用映射 | 1566/230 | 1492/294 | 可用映射减少 74 |
+| strict ID Switch | 9 | unavailable | 候选不可比较 |
+| track/identity continuity | 0.865/0.865 | unavailable | 候选不可比较 |
+| coverage continuity | 0.870 | unavailable | 候选不可比较 |
+| 实时倍率 | 0.2245 | 0.2112 | 下降 |
+
+候选生成和消费侧车均为 46，D2 在 7 次调用中接受 33 个分量事件；12 个事件因 hard cap
+耗尽拒绝，1 个因 generation replay/rollback 拒绝。累计阻止 hit/miss/birth 为
+`69/69/4`。3 个受评分映射使用的旧来源观测超出 0.9 秒谱系窗口，严格身份指标按
+`source_observation_outside_lineage_window` 失败关闭。partial IDSW lower bound 为 3，
+但不替代 baseline 的 strict 9，也不能据此宣称改善。
+
+当前结论是合同和安全行为实现完成，算法准入仍为开放 P1。候选在首 seed 同时触发身份指标
+不可用、D2/D3 可用性下降和性能下降，已停止 seeds 1101/1102、10 秒和 20-seed。默认开关
+保持关闭。后续若继续研究，必须先定义不做硬身份归属的歧义帧谱系评分合同，并校准租约对
+航迹生命周期和分配的影响；在首 seed 恢复 strict availability 且通过业务不退化门槛前，
+不扩大矩阵。
+
 ## 2026-07-22 后验代次与 clean 长时基线
 
 main 已在 detached clean `0d2da25` 上完成 nominal 200 对 200、10 秒、seeds

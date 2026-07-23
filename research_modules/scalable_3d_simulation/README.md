@@ -145,6 +145,30 @@ v2 保持默认关闭。评审见
 `docs/SCALABLE_3D_RADAR_ASSIGNMENT_V2_CLEAN_AB_REVIEW_CN.md`，机器摘要见
 `docs/SCALABLE_3D_RADAR_ASSIGNMENT_V2_CLEAN_AB_REVIEW_20260723.json`。
 
+## 2026-07-23 D1-D2 结构歧义保活评审
+
+D1 和 D2 已实现一条默认关闭的原子候选链路。D1 在最大匹配允许边分量出现歧义时，不提交
+硬身份、不更新后验、不增加命中、不创建新航迹，只发布带双时间戳、六维状态、协方差和候选
+边的 `d1.structural-ambiguity-evidence.v1` 侧车。main 跨 state-only/full posterior
+锁存全部侧车，在下一次成功 D2 调用中一次性消费。D2 按发布节点、发布 epoch 和不透明成员
+令牌绑定已有中心航迹，在有界租约内只预测，并阻止 hit、miss、birth、rebind 和重复合并。
+未来、超龄、重放、旧代次和来源冲突均失败关闭。开关为
+`--d1-d2-structural-ambiguity-hold`，与已拒绝的 v2 全分量抑制开关互斥。
+
+detached clean `9cd2a798ac8555518522618f00bd85b014a9a0b8` 已完成未见 seed 1100 的
+nominal 200 对 200、2.2 秒、`recon_count=2` 同构建 A/B。候选生成并向 D2 一次消费
+46 个分量侧车，D2 接受 33 个事件，阻止 hit/miss/birth 各 `69/69/4` 次，在线真值使用为
+0。候选 D2 航迹由 `203` 降至 `201`，D3 分配由 `200` 降至 `197`，可用身份映射由
+`1566` 降至 `1492`；3 个受评分映射因 `source_observation_outside_lineage_window`
+使严格 ID Switch 和 continuity 变为 unavailable。实时倍率由 `0.2245` 降至 `0.2112`。
+
+候选未达到“身份指标可用且业务可用性不退化”的首 seed 门槛，seeds 1101/1102、10 秒和
+20-seed 均停止。默认路径继续关闭该开关。当前实现保留为实验合同和后续研究基线，不能宣称
+身份改善。后续须解决歧义期间可评分谱系表达，并重新校准租约对航迹和分配可用性的影响。
+完整评审见
+`docs/SCALABLE_3D_STRUCTURAL_AMBIGUITY_HOLD_CLEAN_AB_REVIEW_CN.md`，机器摘要见
+`docs/SCALABLE_3D_STRUCTURAL_AMBIGUITY_HOLD_CLEAN_AB_REVIEW_20260723.json`。
+
 ## 2026-07-22 规则全栈性能校准
 
 提交 `33101656b0cf1967a778cdb36a440611e02109b1` 已完成 20、50、100、200 四档 clean-source
