@@ -8,6 +8,140 @@
 
 ## 当前权威增量（2026-07-23）
 
+### 结构歧义证据侧车实验候选 v3
+
+#### 配置与作用域
+
+候选策略版本为
+`prediction_only_maximum_matching_component_evidence_v3`，证据 schema 为
+`d1.structural-ambiguity-evidence.v1`。严格布尔参数
+`radar_assignment_ambiguity_hold_evidence=False` 默认关闭，并与 v1/v2 互斥。默认关闭时不
+构造侧车，不改变原更新或 birth，`FusionBatchResult.to_dict()` 和
+`FusionStateUpdateResult.to_dict()` 也不增加空 evidence 字段。
+
+显式启用后，关联器使用 v2 已验证的最大匹配允许边分解。分量包含交替环、free-row 路径或
+free-column 路径时，从本扫描 `assignments` 中移除分量列，但不沿用 v1/v2 suppression
+干预：
+
+```text
+member track:
+  prediction to measurement/arrival time
+  no hit increment
+  no observation append
+  no measurement posterior
+  no covariance contraction
+
+component observation:
+  no observation-to-member identity commit
+  no member source-lineage append
+  no immediate track birth
+
+output:
+  original track snapshot + StructuralAmbiguityEvidence sidecar
+```
+
+唯一匹配和完全门外的独立 observation 不进入侧车，继续执行原 update/birth。首扫没有既有
+track，不形成歧义分量，仍按原规则初始化。
+
+#### 发布者和成员键
+
+侧车必须能与 D2 收到的 D1 track snapshot 一一对应，同时不能把 D1 本地编号冒充规范身份。
+构造规则为：
+
+```text
+opaque_member_track_token =
+  "d1-track-sha256:" +
+  SHA256(canonical_json([
+    publisher_node_id,
+    publisher_epoch,
+    d1_local_track_id
+  ]))
+
+source_track_id =
+  publisher_epoch + "::" + opaque_member_track_token
+
+source_key =
+  publisher_node_id + "::" + source_track_id
+```
+
+默认值为 `D1_FUSION` 和 `d1-default-epoch-v1`。两者均经过严格标识符校验。默认 epoch 稳定且
+显式，不能从 observation、target、actor 或 truth 名称推导；正式 episode 应由 main 配置
+实际 epoch。启用候选时，`GlobalTrack.metadata` 同时发布
+`source_node_id/source_track_id/publisher_epoch/opaque_member_track_token/source_key`。
+D1 本地 `global_track_###` 只在哈希函数内部使用，不进入侧车，也不成为 D2 canonical
+`global_track_id`。
+
+#### DTO 结构与校验
+
+`StructuralAmbiguityEvidence` 至少包含：
+
+- `evidence_id/component_id/component_generation`；
+- 发布者 node/epoch、member-token/source-key 构造规则；
+- measurement/arrival/state-valid/published 四类时间；
+- sensor/scan、`frame_id=NED`；
+- member `6` 维状态、`6x6` 协方差及 source key；
+- observation NED 三维位置、`3x3` 协方差、径向速度是否真实观测、是否延迟 birth；
+- candidate edge 的 member token、observation key、NIS、门限和逐边角色；
+- component kinds、成员/观测/边计数、free-row/free-column 数和最大匹配基数；
+- 固定 prediction-only、deferred-birth、complete 和 cross-covariance 状态。
+
+`from_dict()` 要求键集合精确，拒绝额外 truth/actor/target identity 字段。数组必须有限、shape
+正确，协方差必须对称半正定；candidate NIS 必须有限、非负且不超过门限。成员、观测、边按
+opaque key 排序，输入行列排列不影响最终侧车。`evidence_id` 还包含 generation、四类时刻、
+scan 和有序边内容；同一来源分量跨扫描以 `component_generation` 递增。
+
+观测 key 不调用通用 `source_lineage_key`。后者服务于全模块重复投递治理，在合成数据缺少
+payload id 时可能包含离线标签指纹，不适合作为该候选的规范排序输入。当前 observation key
+只哈希 sensor/modality/frame、measurement/arrival timestamp、雷达转换后的 NED 位置、
+`3x3` 协方差、径向速度是否真实观测和同内容 occurrence。该信息全部来自在线量测合同。
+测试会改变 observation id 及 truth/actor/D6 metadata，并要求完整 evidence 不变。
+
+`cross_covariance_available=false` 是约束，不是缺省说明。侧车只提供各成员边缘协方差，没有
+成员间交叉协方差；D2 不得把这些成员当成统计独立量测进行协方差融合。
+
+#### 分量、边和 birth 计数
+
+`component_kinds` 是分量并集。`candidate_edges[*].edge_roles` 只记录该边实际角色：
+
+```text
+reference matched edge:
+  maximum_matching_allowed
+  matched_reference
+
+unmatched allowed edge:
+  maximum_matching_allowed
+  + alternating_cycle and/or
+    free_row_alternating_path and/or
+    free_column_alternating_path
+```
+
+参考匹配边不继承替代边的 cycle/free-row/free-column 标签。该分离允许 D2 重建“本次参考匹配”
+与“可替代边”，避免把整个 component kinds 误读为每条边都满足全部结构。
+
+分量级 `birth_disposition=deferred_component_birth` 表明 free-column birth 被该策略接管。
+逐观测 `birth_deferred` 只对参考最大匹配中未匹配的列为真。因此：
+
+- `2x2` 平衡 cycle：0 个 deferred birth；
+- `3x2` free-row：0 个 deferred birth；
+- `2x3` free-column：1 个 deferred birth。
+
+`structural_ambiguity_deferred_birth_count` 对逐观测布尔值求和，不使用分量 observation_count。
+旧 `radar_assignment_ambiguity_observation_suppression_count` 和 track-coast 计数不冒充新
+策略结果。新计数分别记录 evidence component、observation、member、deferred birth 和
+prediction-only member。
+
+#### 模块验证与限制
+
+专项 `17 passed`，覆盖 `2x2`、`3x2`、`2x3`、唯一匹配、首扫、门外独立 birth、输入排列
+不变、lineage 不污染、truth 字段拒绝、observation 名称及离线 identity metadata 不变、
+未观测零径向速度不更新、默认关闭兼容、两种结果 DTO、roundtrip 和 covariance shape/半正定
+拒绝。D1 全量为 `237 passed in 17.42s`，`py_compile` 通过。
+
+该测试没有运行系统 episode，也没有 D2 有界保活消费者。候选状态为
+`experimental_hold_evidence_enabled_pending_main_clean_ab`，保持默认关闭。main 必须在
+clean 同配置 A/B 中评估身份连续性、birth/recall、D2/D3 可用性和运行成本；模块测试不能复用
+v2 的图论 oracle 结果来宣称系统收益。
+
 ### Radar assignment ambiguity 实验候选 v2
 
 #### 输入与最大匹配

@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from bisect import bisect_right
-from collections import Counter, deque
+from collections import Counter, defaultdict, deque
 from dataclasses import asdict, dataclass, field, is_dataclass, replace
+import hashlib
+import json
 from typing import Any, Iterable
 
 import numpy as np
@@ -29,6 +31,8 @@ from .observations import (
 )
 from .types import (
     COMMUNICATION_METADATA_KEYS,
+    DEFAULT_STRUCTURAL_AMBIGUITY_PUBLISHER_EPOCH,
+    DEFAULT_STRUCTURAL_AMBIGUITY_PUBLISHER_NODE_ID,
     FusionBatchResult,
     FusionBatchSummary,
     FusionPerformanceDiagnostics,
@@ -40,8 +44,16 @@ from .types import (
     SensorHealthSummary,
     SensorObservation,
     SensorTimingExpectation,
+    StructuralAmbiguityCandidateEdge,
+    StructuralAmbiguityEvidence,
+    StructuralAmbiguityMemberState,
+    StructuralAmbiguityObservationEvidence,
+    STRUCTURAL_AMBIGUITY_HOLD_POLICY_VERSION,
     TrackLevel,
     TrackUncertaintySummary,
+    structural_ambiguity_member_track_token,
+    structural_ambiguity_source_key,
+    structural_ambiguity_source_track_id,
 )
 
 CHI2_2_95 = 5.991464547107979
@@ -149,6 +161,9 @@ RADAR_ASSIGNMENT_AMBIGUITY_CANDIDATE_POLICY_VERSIONS = (
 )
 RADAR_ASSIGNMENT_AMBIGUITY_V2_GOVERNANCE_STATUS = (
     "experimental_v2_enabled_rejected_candidate"
+)
+RADAR_ASSIGNMENT_AMBIGUITY_HOLD_EVIDENCE_STATUS = (
+    "experimental_hold_evidence_enabled_pending_main_clean_ab"
 )
 
 
@@ -488,11 +503,24 @@ class _BatchProcessingContext:
 
 
 @dataclass(frozen=True)
+class _RadarAmbiguityCandidateEdge:
+    track_id: str
+    observation_index: int
+    nis: float
+    edge_roles: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class _RadarAssignmentAmbiguity:
     track_ids: tuple[str, ...]
     component_size: int
     observation_indices: tuple[int, ...] = ()
     observation_count: int = 0
+    candidate_edges: tuple[_RadarAmbiguityCandidateEdge, ...] = ()
+    deferred_birth_observation_indices: tuple[int, ...] = ()
+    free_row_count: int = 0
+    free_column_count: int = 0
+    maximum_matching_cardinality: int = 0
     component_kinds: tuple[str, ...] = ("alternating_cycle",)
     reason: str = "gate_feasible_alternating_cycle"
     policy_version: str = RADAR_ASSIGNMENT_AMBIGUITY_POLICY_VERSION
@@ -552,6 +580,9 @@ class FusionAdapter:
         trusted_consistency_counter_refresh: bool = True,
         radar_assignment_ambiguity_governance: bool = False,
         radar_assignment_ambiguity_governance_v2: bool = False,
+        radar_assignment_ambiguity_hold_evidence: bool = False,
+        publisher_node_id: str = DEFAULT_STRUCTURAL_AMBIGUITY_PUBLISHER_NODE_ID,
+        publisher_epoch: str = DEFAULT_STRUCTURAL_AMBIGUITY_PUBLISHER_EPOCH,
     ) -> None:
         self.process_noise = float(process_noise)
         self.bucket_size = float(bucket_size)
@@ -575,6 +606,13 @@ class FusionAdapter:
         self.radar_assignment_ambiguity_governance_v2 = (
             radar_assignment_ambiguity_governance_v2
         )
+        if not isinstance(radar_assignment_ambiguity_hold_evidence, bool):
+            raise TypeError(
+                "radar_assignment_ambiguity_hold_evidence must be a bool"
+            )
+        self.radar_assignment_ambiguity_hold_evidence = (
+            radar_assignment_ambiguity_hold_evidence
+        )
         if (
             self.radar_assignment_ambiguity_governance
             and self.radar_assignment_ambiguity_governance_v2
@@ -582,6 +620,25 @@ class FusionAdapter:
             raise ValueError(
                 "radar assignment ambiguity v1 and v2 cannot both be enabled"
             )
+        enabled_ambiguity_policies = sum(
+            (
+                self.radar_assignment_ambiguity_governance,
+                self.radar_assignment_ambiguity_governance_v2,
+                self.radar_assignment_ambiguity_hold_evidence,
+            )
+        )
+        if enabled_ambiguity_policies > 1:
+            raise ValueError(
+                "radar assignment ambiguity hold evidence is mutually exclusive "
+                "with v1 and v2"
+            )
+        structural_ambiguity_member_track_token(
+            publisher_node_id,
+            publisher_epoch,
+            "__configuration_validation__",
+        )
+        self.publisher_node_id = str(publisher_node_id).strip()
+        self.publisher_epoch = str(publisher_epoch).strip()
         self.radar_covariance_config = (
             radar_covariance_config
             if isinstance(radar_covariance_config, RadarCovarianceConfig)
@@ -680,6 +737,11 @@ class FusionAdapter:
         self.radar_assignment_ambiguity_observation_suppression_count = 0
         self.radar_assignment_ambiguity_track_coast_count = 0
         self.max_radar_assignment_ambiguity_component_size = 0
+        self.structural_ambiguity_evidence_component_count = 0
+        self.structural_ambiguity_evidence_observation_count = 0
+        self.structural_ambiguity_evidence_member_count = 0
+        self.structural_ambiguity_deferred_birth_count = 0
+        self.structural_ambiguity_prediction_only_member_count = 0
         self.non_range_state_correction_rejection_count = 0
         self.pre_checkpoint_oosm_replay_count = 0
         self.max_non_range_position_correction_score = 0.0
@@ -690,6 +752,8 @@ class FusionAdapter:
         self.max_eo_projection_gate_pass_nis = 0.0
         self._latest_eo_projection_rejection_reason: str | None = None
         self._latest_radar_assignment_ambiguity_track_ids: tuple[str, ...] = ()
+        self._structural_ambiguity_component_generations: Counter[str] = Counter()
+        self._latest_structural_ambiguity_component_ids: tuple[str, ...] = ()
         self._last_association_rejection_reason: str | None = None
         self._last_association_rejection_track_ids: tuple[str, ...] = ()
         self._batch_context: _BatchProcessingContext | None = None
@@ -890,6 +954,9 @@ class FusionAdapter:
         duplicate_before = self.duplicate_observation_count
         context = _BatchProcessingContext()
         tracks: tuple[GlobalTrack, ...] | None = None
+        structural_ambiguity_evidence: tuple[
+            StructuralAmbiguityEvidence, ...
+        ] = ()
         self._batch_context = context
         try:
             previous_time = float(self.current_time)
@@ -931,10 +998,23 @@ class FusionAdapter:
                 effective,
                 pre_scan_track_ids,
             )
-            self._record_radar_assignment_ambiguity_tracks(
-                effective,
-                association_result,
-            )
+            if self.radar_assignment_ambiguity_hold_evidence:
+                structural_ambiguity_evidence = (
+                    self._build_structural_ambiguity_evidence(
+                        effective,
+                        association_result,
+                        published_at=current_time,
+                    )
+                )
+                self._record_structural_ambiguity_prediction_only(
+                    association_result,
+                    structural_ambiguity_evidence,
+                )
+            else:
+                self._record_radar_assignment_ambiguity_tracks(
+                    effective,
+                    association_result,
+                )
             for observation_index, observation in enumerate(effective):
                 ambiguity = association_result.radar_ambiguities.get(
                     observation_index
@@ -942,7 +1022,11 @@ class FusionAdapter:
                 if ambiguity is not None:
                     self._record_association_rejection(
                         observation,
-                        "radar_assignment_ambiguity_suppressed",
+                        (
+                            "structural_ambiguity_prediction_only"
+                            if self.radar_assignment_ambiguity_hold_evidence
+                            else "radar_assignment_ambiguity_suppressed"
+                        ),
                         ambiguity.track_ids,
                     )
                     self._mark_observation_processed(observation)
@@ -1047,8 +1131,13 @@ class FusionAdapter:
             return FusionStateUpdateResult(
                 summary=summary,
                 current_track_count=len(self.tracks),
+                structural_ambiguity_evidence=structural_ambiguity_evidence,
             )
-        return FusionBatchResult(tracks=tracks, summary=summary)
+        return FusionBatchResult(
+            tracks=tracks,
+            summary=summary,
+            structural_ambiguity_evidence=structural_ambiguity_evidence,
+        )
 
     def materialize_global_tracks(self) -> FusionTrackSnapshot:
         """Build one explicit full snapshot after one or more state-only scans.
@@ -1679,6 +1768,45 @@ class FusionAdapter:
             "latest_radar_assignment_ambiguity_track_ids": (
                 self._latest_radar_assignment_ambiguity_track_ids
             ),
+            "radar_assignment_ambiguity_hold_evidence_enabled": (
+                self.radar_assignment_ambiguity_hold_evidence
+            ),
+            "structural_ambiguity_evidence_policy_version": (
+                STRUCTURAL_AMBIGUITY_HOLD_POLICY_VERSION
+            ),
+            "structural_ambiguity_evidence_status": (
+                RADAR_ASSIGNMENT_AMBIGUITY_HOLD_EVIDENCE_STATUS
+                if self.radar_assignment_ambiguity_hold_evidence
+                else "disabled"
+            ),
+            "structural_ambiguity_evidence_component_count": (
+                self.structural_ambiguity_evidence_component_count
+            ),
+            "structural_ambiguity_evidence_observation_count": (
+                self.structural_ambiguity_evidence_observation_count
+            ),
+            "structural_ambiguity_evidence_member_count": (
+                self.structural_ambiguity_evidence_member_count
+            ),
+            "structural_ambiguity_deferred_birth_count": (
+                self.structural_ambiguity_deferred_birth_count
+            ),
+            "structural_ambiguity_prediction_only_member_count": (
+                self.structural_ambiguity_prediction_only_member_count
+            ),
+            "latest_structural_ambiguity_component_ids": (
+                self._latest_structural_ambiguity_component_ids
+            ),
+            "structural_ambiguity_publisher_node_id": (
+                self.publisher_node_id
+                if self.radar_assignment_ambiguity_hold_evidence
+                else None
+            ),
+            "structural_ambiguity_publisher_epoch": (
+                self.publisher_epoch
+                if self.radar_assignment_ambiguity_hold_evidence
+                else None
+            ),
             "non_range_state_correction_rejection_count": (
                 self.non_range_state_correction_rejection_count
             ),
@@ -1910,14 +2038,17 @@ class FusionAdapter:
         if not observations or not pre_scan_track_ids:
             return _ScanAssociationResult(assignments={})
 
-        track_items = [
-            (track_id, self.tracks[track_id])
-            for track_id in pre_scan_track_ids
-            if not self._record_has_observer_scan(
-                self.tracks[track_id],
-                observations[0],
-            )
-        ]
+        track_items = sorted(
+            (
+                (track_id, self.tracks[track_id])
+                for track_id in pre_scan_track_ids
+                if not self._record_has_observer_scan(
+                    self.tracks[track_id],
+                    observations[0],
+                )
+            ),
+            key=lambda item: item[0],
+        )
         if not track_items:
             return _ScanAssociationResult(assignments={})
 
@@ -1990,23 +2121,49 @@ class FusionAdapter:
             (
                 self.radar_assignment_ambiguity_governance
                 or self.radar_assignment_ambiguity_governance_v2
+                or self.radar_assignment_ambiguity_hold_evidence
             )
             and all(observation.modality == "radar" for observation in observations)
         ):
-            if self.radar_assignment_ambiguity_governance_v2:
+            if (
+                self.radar_assignment_ambiguity_governance_v2
+                or self.radar_assignment_ambiguity_hold_evidence
+            ):
                 row_by_track_id = {
                     track_id: row
                     for row, (track_id, _) in enumerate(track_items)
                 }
-                preferred_row_to_column = {
-                    row_by_track_id[track_id]: observation_index
-                    for observation_index, track_id in assignments.items()
-                }
-                maximum_row_to_column = _maximum_cardinality_assignment(
-                    valid,
-                    preferred_row_to_column,
-                    cost_matrix,
-                )
+                if self.radar_assignment_ambiguity_hold_evidence:
+                    structural_observation_keys = (
+                        self._structural_ambiguity_observation_keys(observations)
+                    )
+                    canonical_columns = tuple(
+                        sorted(
+                            range(len(observations)),
+                            key=structural_observation_keys.__getitem__,
+                        )
+                    )
+                    canonical_valid = valid[:, canonical_columns]
+                    canonical_cost = cost_matrix[:, canonical_columns]
+                    canonical_matching = _maximum_cardinality_assignment(
+                        canonical_valid,
+                        {},
+                        canonical_cost,
+                    )
+                    maximum_row_to_column = {
+                        row: canonical_columns[column]
+                        for row, column in canonical_matching.items()
+                    }
+                else:
+                    preferred_row_to_column = {
+                        row_by_track_id[track_id]: observation_index
+                        for observation_index, track_id in assignments.items()
+                    }
+                    maximum_row_to_column = _maximum_cardinality_assignment(
+                        valid,
+                        preferred_row_to_column,
+                        cost_matrix,
+                    )
                 assignments = {
                     column: track_items[row][0]
                     for row, column in maximum_row_to_column.items()
@@ -2015,6 +2172,7 @@ class FusionAdapter:
                     track_items,
                     valid,
                     maximum_row_to_column,
+                    cost_matrix,
                 )
             else:
                 radar_ambiguities = self._radar_assignment_ambiguities(
@@ -2086,6 +2244,7 @@ class FusionAdapter:
         track_items: list[tuple[str, TrackRecord]],
         valid: np.ndarray,
         row_to_column: dict[int, int],
+        cost_matrix: np.ndarray,
     ) -> dict[int, _RadarAssignmentAmbiguity]:
         """Find complete maximum-matching uncertainty components.
 
@@ -2220,18 +2379,352 @@ class FusionAdapter:
             if not kinds:
                 continue
             track_ids = tuple(sorted(track_items[row][0] for row in rows))
+            candidate_edges = tuple(
+                sorted(
+                    (
+                        _RadarAmbiguityCandidateEdge(
+                            track_id=track_items[row][0],
+                            observation_index=column,
+                            nis=float(cost_matrix[row, column]),
+                            edge_roles=tuple(
+                                sorted(
+                                    {
+                                        "maximum_matching_allowed",
+                                        *(
+                                            ("matched_reference",)
+                                            if row_to_column.get(row) == column
+                                            else alternative_kinds[(row, column)]
+                                        ),
+                                    }
+                                )
+                            ),
+                        )
+                        for row in rows
+                        for column in columns
+                        if bool(valid[row, column])
+                        and (
+                            row_to_column.get(row) == column
+                            or (row, column) in alternative_kinds
+                        )
+                    ),
+                    key=lambda item: (
+                        item.track_id,
+                        item.observation_index,
+                        item.edge_roles,
+                    ),
+                )
+            )
+            matching_cardinality = sum(
+                1
+                for row in rows
+                if row_to_column.get(row) in set(columns)
+            )
             ambiguity = _RadarAssignmentAmbiguity(
                 track_ids=track_ids,
                 component_size=len(track_ids),
                 observation_indices=columns,
                 observation_count=len(columns),
+                candidate_edges=candidate_edges,
+                deferred_birth_observation_indices=tuple(
+                    column for column in columns if column not in column_to_row
+                ),
+                free_row_count=len(rows) - matching_cardinality,
+                free_column_count=len(columns) - matching_cardinality,
+                maximum_matching_cardinality=matching_cardinality,
                 component_kinds=kinds,
                 reason="maximum_matching_allowed_edge_component",
-                policy_version=RADAR_ASSIGNMENT_AMBIGUITY_POLICY_V2_VERSION,
+                policy_version=(
+                    STRUCTURAL_AMBIGUITY_HOLD_POLICY_VERSION
+                    if self.radar_assignment_ambiguity_hold_evidence
+                    else RADAR_ASSIGNMENT_AMBIGUITY_POLICY_V2_VERSION
+                ),
             )
             for column in columns:
                 ambiguities[column] = ambiguity
         return ambiguities
+
+    def _build_structural_ambiguity_evidence(
+        self,
+        observations: list[SensorObservation],
+        result: _ScanAssociationResult,
+        *,
+        published_at: float,
+    ) -> tuple[StructuralAmbiguityEvidence, ...]:
+        """Build complete component sidecars without assigning observation identity."""
+
+        if not result.radar_ambiguities:
+            return ()
+        if not observations:
+            raise ValueError(
+                "structural ambiguity evidence requires the source scan observations"
+            )
+
+        unique_components = {
+            (
+                ambiguity.track_ids,
+                ambiguity.observation_indices,
+                ambiguity.policy_version,
+            ): ambiguity
+            for ambiguity in result.radar_ambiguities.values()
+        }
+        all_observation_keys = self._structural_ambiguity_observation_keys(
+            observations
+        )
+        observation_keys = {
+            index: all_observation_keys[index]
+            for ambiguity in unique_components.values()
+            for index in ambiguity.observation_indices
+        }
+        track_tokens = {
+            track_id: structural_ambiguity_member_track_token(
+                self.publisher_node_id,
+                self.publisher_epoch,
+                track_id,
+            )
+            for ambiguity in unique_components.values()
+            for track_id in ambiguity.track_ids
+        }
+        ordered_components = sorted(
+            unique_components.values(),
+            key=lambda item: (
+                tuple(track_tokens[track_id] for track_id in item.track_ids),
+                tuple(observation_keys[index] for index in item.observation_indices),
+                item.component_kinds,
+            ),
+        )
+        measurement_timestamp = float(observations[0].measurement_timestamp)
+        arrival_timestamp = float(observations[0].arrival_timestamp)
+        scan_id = _opaque_structural_digest(
+            "d1-scan-sha256:",
+            self._observer_scan_key(observations[0]),
+        )
+
+        evidence_items: list[StructuralAmbiguityEvidence] = []
+        for ambiguity in ordered_components:
+            members = tuple(
+                sorted(
+                    (
+                        StructuralAmbiguityMemberState(
+                            opaque_member_track_token=track_tokens[track_id],
+                            source_key=structural_ambiguity_source_key(
+                                self.publisher_node_id,
+                                self.publisher_epoch,
+                                track_tokens[track_id],
+                            ),
+                            state=state.state,
+                            covariance=state.covariance,
+                        )
+                        for track_id in ambiguity.track_ids
+                        for state in (
+                            self._state_at(
+                                self.tracks[track_id],
+                                measurement_timestamp,
+                            ),
+                        )
+                    ),
+                    key=lambda item: item.opaque_member_track_token,
+                )
+            )
+            component_observations = tuple(
+                sorted(
+                    (
+                        StructuralAmbiguityObservationEvidence(
+                            observation_evidence_key=observation_keys[index],
+                            position_ned=state[:3],
+                            covariance_ned=covariance[:3, :3],
+                            radial_velocity_observed=bool(
+                                observations[index].metadata.get(
+                                    "radial_velocity_observed",
+                                    observations[index].measurement.size >= 4,
+                                )
+                                and observations[index].measurement.size >= 4
+                            ),
+                            birth_deferred=(
+                                index
+                                in ambiguity.deferred_birth_observation_indices
+                            ),
+                            velocity_evidence_used=False,
+                        )
+                        for index in ambiguity.observation_indices
+                        for state, covariance in (
+                            radar_state_from_observation(
+                                observations[index],
+                                self.radar_covariance_config,
+                            ),
+                        )
+                    ),
+                    key=lambda item: item.observation_evidence_key,
+                )
+            )
+            candidate_edges = tuple(
+                sorted(
+                    (
+                        StructuralAmbiguityCandidateEdge(
+                            opaque_member_track_token=track_tokens[edge.track_id],
+                            observation_evidence_key=observation_keys[
+                                edge.observation_index
+                            ],
+                            nis=edge.nis,
+                            gate_threshold=float(self.association_gate),
+                            edge_roles=edge.edge_roles,
+                        )
+                        for edge in ambiguity.candidate_edges
+                    ),
+                    key=lambda item: (
+                        item.opaque_member_track_token,
+                        item.observation_evidence_key,
+                        item.edge_roles,
+                    ),
+                )
+            )
+            component_id = _opaque_structural_digest(
+                "d1-component-sha256:",
+                (
+                    self.publisher_node_id,
+                    self.publisher_epoch,
+                    observations[0].sensor_id,
+                    tuple(item.source_key for item in members),
+                ),
+            )
+            self._structural_ambiguity_component_generations[component_id] += 1
+            generation = int(
+                self._structural_ambiguity_component_generations[component_id]
+            )
+            evidence_id = _opaque_structural_digest(
+                "d1-evidence-sha256:",
+                (
+                    component_id,
+                    generation,
+                    measurement_timestamp,
+                    arrival_timestamp,
+                    float(published_at),
+                    scan_id,
+                    tuple(
+                        (
+                            item.opaque_member_track_token,
+                            item.observation_evidence_key,
+                            item.nis,
+                            item.gate_threshold,
+                            item.edge_roles,
+                        )
+                        for item in candidate_edges
+                    ),
+                ),
+            )
+            evidence_items.append(
+                StructuralAmbiguityEvidence(
+                    evidence_id=evidence_id,
+                    component_id=component_id,
+                    component_generation=generation,
+                    publisher_node_id=self.publisher_node_id,
+                    publisher_epoch=self.publisher_epoch,
+                    measurement_timestamp=measurement_timestamp,
+                    arrival_timestamp=arrival_timestamp,
+                    state_valid_timestamp=measurement_timestamp,
+                    published_at=float(published_at),
+                    sensor_id=observations[0].sensor_id,
+                    scan_id=scan_id,
+                    member_states=members,
+                    observations=component_observations,
+                    candidate_edges=candidate_edges,
+                    component_kinds=ambiguity.component_kinds,
+                    member_count=len(members),
+                    observation_count=len(component_observations),
+                    candidate_edge_count=len(candidate_edges),
+                    free_row_count=ambiguity.free_row_count,
+                    free_column_count=ambiguity.free_column_count,
+                    maximum_matching_cardinality=(
+                        ambiguity.maximum_matching_cardinality
+                    ),
+                    policy_version=STRUCTURAL_AMBIGUITY_HOLD_POLICY_VERSION,
+                )
+            )
+        return tuple(evidence_items)
+
+    def _structural_ambiguity_observation_keys(
+        self,
+        observations: list[SensorObservation],
+    ) -> dict[int, str]:
+        """Build permutation-stable keys from numeric online evidence only."""
+
+        signatures: list[tuple[str, int]] = []
+        for index, observation in enumerate(observations):
+            state, covariance = radar_state_from_observation(
+                observation,
+                self.radar_covariance_config,
+            )
+            radial_velocity_observed = bool(
+                observation.metadata.get(
+                    "radial_velocity_observed",
+                    observation.measurement.size >= 4,
+                )
+                and observation.measurement.size >= 4
+            )
+            signature = (
+                observation.sensor_id,
+                observation.modality,
+                observation.frame_id,
+                float(observation.measurement_timestamp),
+                float(observation.arrival_timestamp),
+                state[:3],
+                covariance[:3, :3],
+                radial_velocity_observed,
+            )
+            signatures.append(
+                (
+                    _opaque_structural_digest(
+                        "d1-observation-content-sha256:",
+                        signature,
+                    ),
+                    index,
+                )
+            )
+
+        occurrence_by_signature: defaultdict[str, int] = defaultdict(int)
+        keys: dict[int, str] = {}
+        for content_digest, index in sorted(signatures):
+            occurrence = occurrence_by_signature[content_digest]
+            occurrence_by_signature[content_digest] += 1
+            keys[index] = _opaque_structural_digest(
+                "d1-observation-sha256:",
+                (content_digest, occurrence),
+            )
+        return keys
+
+    def _record_structural_ambiguity_prediction_only(
+        self,
+        result: _ScanAssociationResult,
+        evidence: tuple[StructuralAmbiguityEvidence, ...],
+    ) -> None:
+        if not evidence:
+            return
+        self.structural_ambiguity_evidence_component_count += len(evidence)
+        self.structural_ambiguity_evidence_observation_count += sum(
+            item.observation_count for item in evidence
+        )
+        self.structural_ambiguity_evidence_member_count += sum(
+            item.member_count for item in evidence
+        )
+        self.structural_ambiguity_deferred_birth_count += sum(
+            int(observation.birth_deferred)
+            for item in evidence
+            for observation in item.observations
+        )
+        self.structural_ambiguity_prediction_only_member_count += sum(
+            item.member_count for item in evidence
+        )
+        self._latest_structural_ambiguity_component_ids = tuple(
+            item.component_id for item in evidence
+        )
+        track_ids = {
+            track_id
+            for ambiguity in result.radar_ambiguities.values()
+            for track_id in ambiguity.track_ids
+        }
+        for track_id in track_ids:
+            self.tracks[track_id].association_diagnostics[
+                "structural_ambiguity_prediction_only"
+            ] += 1
 
     def _record_radar_assignment_ambiguity_tracks(
         self,
@@ -3544,6 +4037,28 @@ class FusionAdapter:
                 },
             }
         )
+        if self.radar_assignment_ambiguity_hold_evidence:
+            member_token = structural_ambiguity_member_track_token(
+                self.publisher_node_id,
+                self.publisher_epoch,
+                record.track_id,
+            )
+            metadata.update(
+                {
+                    "source_node_id": self.publisher_node_id,
+                    "source_track_id": structural_ambiguity_source_track_id(
+                        self.publisher_epoch,
+                        member_token,
+                    ),
+                    "publisher_epoch": self.publisher_epoch,
+                    "opaque_member_track_token": member_token,
+                    "source_key": structural_ambiguity_source_key(
+                        self.publisher_node_id,
+                        self.publisher_epoch,
+                        member_token,
+                    ),
+                }
+            )
         self._update_metadata_covariance_reasons(
             metadata,
             tuple(sorted(record.covariance_limit_reasons)),
@@ -4137,3 +4652,35 @@ def _jsonable_metadata_value(value: Any) -> Any:
     if isinstance(value, (list, tuple)):
         return [_jsonable_metadata_value(item) for item in value]
     return value
+
+
+def _opaque_structural_digest(prefix: str, value: Any) -> str:
+    canonical = _canonical_structural_value(value)
+    payload = json.dumps(
+        canonical,
+        ensure_ascii=True,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("ascii")
+    return f"{prefix}{hashlib.sha256(payload).hexdigest()}"
+
+
+def _canonical_structural_value(value: Any) -> Any:
+    if isinstance(value, np.ndarray):
+        return _canonical_structural_value(value.tolist())
+    if isinstance(value, np.generic):
+        return _canonical_structural_value(value.item())
+    if isinstance(value, dict):
+        return {
+            str(key): _canonical_structural_value(item)
+            for key, item in sorted(value.items(), key=lambda pair: str(pair[0]))
+        }
+    if isinstance(value, (list, tuple)):
+        return [_canonical_structural_value(item) for item in value]
+    if isinstance(value, float):
+        if not np.isfinite(value):
+            raise ValueError("structural ambiguity digest values must be finite")
+        return float(value)
+    if value is None or isinstance(value, (str, int, bool)):
+        return value
+    return str(value)

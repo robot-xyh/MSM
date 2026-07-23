@@ -1,5 +1,50 @@
 # D1 多传感器融合与目标配准实施计划
 
+## 结构歧义证据侧车候选与验收计划（2026-07-23）
+
+D1 已完成默认关闭的
+`prediction_only_maximum_matching_component_evidence_v3` 模块实现。配置
+`radar_assignment_ambiguity_hold_evidence=False` 与 v1/v2 互斥。候选复用 v2 已验证的最大
+匹配允许边分解，在歧义分量内停止单航迹身份提交和量测更新，保留 prediction-only 成员状态，
+并发布 `d1.structural-ambiguity-evidence.v1` 侧车。
+
+当前完成项：
+
+1. `FusionBatchResult` 与 `FusionStateUpdateResult` 均可携带 evidence tuple；默认关闭且 tuple
+   为空时，既有序列化不增加字段；
+2. 侧车完整保存双时间戳、NED 状态、成员/观测协方差、候选边、分量结构、匹配基数和
+   prediction-only/birth/cross-covariance 审计状态；observation key 只由数值量测证据和双
+   时间戳生成，不复用可能携带离线标签的通用 source lineage；
+3. 歧义 observation 不写入单航迹 lineage，不增加 hit，不 update，不 birth；唯一匹配和门外
+   独立 observation 保持原路径；
+4. `publisher_node_id/publisher_epoch` 显式配置；成员不透明令牌由发布者、epoch 和 D1 本地
+   track id 哈希生成，D1 快照发布可供 D2 一一映射的 source key，但不宣称该键是规范
+   `global_track_id`；
+5. `component_kinds` 与逐边 `edge_roles` 分离。参考匹配边只携带
+   `maximum_matching_allowed/matched_reference`；替代边只增加自身成立的 cycle/free-row/
+   free-column 角色；
+6. 延迟新生计数只累计自由列。平衡 `2x2` 和 free-row `3x2` 为 0，free-column `2x3` 为 1；
+7. 专项 `17 passed`，D1 全量 `237 passed in 17.42s`，语法检查通过；改变 observation 名称
+   及 truth/actor/D6 离线元数据时，侧车保持完全一致。
+
+后续由 main 和 D2 分阶段验收：
+
+1. D2 先定义只消费 `source_node_id/source_track_id/source_key` 的有界保活适配，不把 D1
+   source token 重写为规范 `global_track_id`，也不把相关成员当作统计独立后验；
+2. main 在同一 clean commit、同一 seed/config/input digest 下运行 baseline/candidate，
+   treatment 只改变新开关并显式记录 publisher epoch；
+3. A/B 必须同时核对在线 truth 使用为 0、侧车 completeness、排列稳定性、free-column birth
+   数量、D1/D2 航迹连续性、ID switch、可用映射、D3 分配可用性和运行开销；
+4. 若 evidence 发布减少错误身份提交但引入不可接受的长期 coast、重复 birth、D2 航迹膨胀或
+   下游可用性下降，候选停止，不用模块测试替代系统收益；
+5. main clean A/B 通过前，开关保持默认关闭，审计状态保持
+   `experimental_hold_evidence_enabled_pending_main_clean_ab`。
+
+本候选不实现联合概率数据关联、多假设跟踪或分量联合协方差更新。
+`cross_covariance_available=false` 明确表示下游不得把成员边缘协方差当作相互独立。当前
+`birth_disposition` 是分量策略名称；实际延迟新生的观测必须以逐观测 `birth_deferred=true`
+和对应计数判断。
+
 ## 最大匹配允许边分量 v2 验收结论与后续计划（2026-07-23）
 
 D1 已完成

@@ -6,6 +6,68 @@
 
 ## 当前权威增量（2026-07-23）
 
+### 结构歧义可以发布为证据，不能强行变成单航迹后验
+
+v1/v2 已证明两个边界。门内最大匹配可能不是唯一身份解释；把整个允许边分量全部丢弃又会减少
+下游可用信息。当前第三条实验路径保留 v2 的图论判定，只改变干预方式：
+
+```text
+最大匹配允许边分量
+  -> 不提交 observation 到单个 D1 航迹
+  -> 成员保持 prediction-only，协方差不做量测收缩
+  -> 分量 observation 不进入单航迹来源谱系
+  -> 自由列 observation 延迟 birth
+  -> 发布完整结构歧义侧车
+```
+
+该路径不计算混合后验，不假设成员之间相互独立，也不输出多个身份假设。它向 D2 提供当前扫描
+中可复核的结构证据，使 D2 后续可以在有限时间窗内保活已有身份，而不要求 D1 当场选定一条
+observation-to-track 边。
+
+侧车 schema 为 `d1.structural-ambiguity-evidence.v1`。成员状态在
+`measurement_timestamp` 有效，保留 `arrival_timestamp` 和 `published_at`；成员为六维 NED
+状态和 `6x6` 协方差，观测为三维 NED 位置和 `3x3` 协方差。固定状态为：
+
+```text
+posterior_update_applied = false
+update_mode = prediction_only
+birth_disposition = deferred_component_birth
+component_complete = true
+cross_covariance_available = false
+```
+
+`birth_disposition` 说明分量采用延迟新生策略，不表示分量中的每条观测都曾准备 birth。逐观测
+`birth_deferred` 只在该观测是参考最大匹配的 free column 时为真；累计 deferred-birth 计数
+使用同一口径。平衡 `2x2` 分量的两条已匹配观测均为假，`2x3` 分量只把一个自由列计为真。
+
+分量级 `component_kinds` 与边级 `edge_roles` 分开。参考匹配边只说明它属于最大匹配允许边并
+且是本次参考匹配：
+
+```text
+maximum_matching_allowed + matched_reference
+```
+
+非匹配候选边才按自身所在结构增加 `alternating_cycle`、
+`free_row_alternating_path` 或 `free_column_alternating_path`。一个分量可以同时包含多种
+结构，但不能把这些标签复制给分量内每条边。
+
+发布者身份属于来源合同，不属于目标身份。默认发布者为 `D1_FUSION`，默认 epoch 为
+`d1-default-epoch-v1`。不透明成员令牌按发布者、epoch 和 D1 本地 track id 的规范 JSON 做
+SHA-256；D2 source key 为
+`publisher_node_id::publisher_epoch::opaque_member_track_token`。D1 本地编号只作为哈希
+输入，不能被下游解释为中心规范 `global_track_id`。正式运行应由 main 为 episode 注入稳定、
+可审计且不从 truth/actor 名称派生的 epoch。
+
+观测 evidence key 使用 sensor/modality/frame、双时间戳、雷达转换后的 NED 位置和协方差、
+径向速度观测状态及同内容 occurrence。通用 source lineage 在合成回放中可能携带离线标签，
+因此不用于该侧车的键或排列规范化。改变 observation 名称和 truth/actor/D6 元数据不会改变
+参考最大匹配、候选边或 evidence。
+
+候选开关 `radar_assignment_ambiguity_hold_evidence` 默认关闭，并与 v1/v2 互斥。专项
+`17 passed`、D1 全量 `237 passed in 17.42s` 已验证 DTO、计数、逐边角色、排列不变、名称/
+离线 identity metadata 不变、lineage 隔离、双时间戳、协方差和默认关闭兼容。这是模块证据；
+D2 消费和 main clean A/B 尚未完成，当前不能推导身份连续性或下游可用性已经改善。
+
 ### 最大匹配允许边决定匿名关联的不确定边界
 
 实验候选 v2 不再只检查 Hungarian 已匹配行列。设门内二部图为
@@ -147,8 +209,8 @@ v1 和 v2 不能同时启用。审计同时发布 enabled、候选 policy versio
 提交 `8f17c5d` 按 recon=2 同配置重跑后，三 seed 全部业务指标恢复 baseline；main 跨构建审计
 `3/3 passed=True` 且 `normalized_online_payloads_equal=True`，输出位于
 `/tmp/msm-default-off-cross-build-8f17c5d-r2`。这证明默认回退无业务回归，不证明 v1 可晋级。
-v2 目前只通过模块测试，尚无 clean 系统证据。P1 保持开放。10 s radar+vision ambiguous
-不能单独证明 radar-only 根因，但长期 coast 和
+v2 后续已完成 seed 1100 clean A/B，并因无身份收益且降低下游可用性被拒绝。P1 保持开放。
+10 s radar+vision ambiguous 不能单独证明 radar-only 根因，但长期 coast 和
 跨模态传播必须进入集成验收，不能被排除。
 
 ### 跨模态融合先保证几何语义完整

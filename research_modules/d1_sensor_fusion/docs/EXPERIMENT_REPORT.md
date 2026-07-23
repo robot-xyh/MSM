@@ -1,5 +1,51 @@
 # 第一研究模块实验结果
 
+## 结构歧义证据侧车模块验证
+
+**证据日期：2026-07-23**
+
+**范围：D1 单元测试；未运行系统 episode、AirSim 或 clean A/B**
+
+本轮验证默认关闭的
+`prediction_only_maximum_matching_component_evidence_v3`。候选复用最大匹配允许边图，
+对结构歧义分量停止单航迹身份提交和量测更新，并发布
+`d1.structural-ambiguity-evidence.v1` 侧车。测试输入只含在线可得状态、协方差、双时间戳、
+门内边和匹配结构。
+
+### 结果
+
+| 验收项 | 结果 |
+| --- | --- |
+| 专项测试 | `17 passed` |
+| D1 全量 | `237 passed in 17.42s` |
+| Python 语法检查 | 通过 |
+| 默认关闭序列化 | 与显式 `False` 一致，空侧车不增加字段 |
+| 平衡 `2x2` deferred birth | 0 |
+| free-row `3x2` deferred birth | 0 |
+| free-column `2x3` deferred birth | 1 |
+| 参考匹配边角色 | `maximum_matching_allowed + matched_reference` |
+| 替代边角色 | 只含该边成立的 cycle/free-row/free-column 标签 |
+| truth/actor/target identity | 侧车严格 DTO 拒绝；在线使用为 0 |
+| observation 名称及离线 identity metadata | 改变后完整 evidence 不变 |
+| 单航迹 lineage | 歧义 observation 未写入 |
+| 未观测零径向速度 | 未用于状态更新 |
+
+输入排列不变测试同时置换 observation 顺序和 track 输入顺序，得到相同 evidence、component、
+edge 和 source key。成员令牌由显式 publisher node/epoch 与 D1 本地 track id 哈希得到；侧车
+不公开本地编号。启用候选的 track snapshot 使用相同 source key，验证了成员到 D1 快照的一一
+对应。观测 key 只使用数值量测证据和双时间戳，不使用通用 source lineage；后者可能在合成
+回放中携带离线标签。
+
+### 判定
+
+两项 main 复核语义已进入断言：
+
+1. `structural_ambiguity_deferred_birth_count` 只统计自由列，不统计分量中已匹配观测；
+2. 每条 edge 保留自己的结构角色，参考匹配边不复制分量级 kinds。
+
+模块合同通过。该结果不包含 D2 消费、长期 coast、D3 可用性、身份连续性或实时开销证据。
+候选保持默认关闭，等待 main 在 clean 同配置 A/B 中验收。
+
 ## 匿名跨模态几何门控
 
 **证据日期：2026-07-23**

@@ -7,6 +7,33 @@
 
 ## 0. 当前性能与治理状态（2026-07-23）
 
+- D1 已实现默认关闭的第三条候选
+  `prediction_only_maximum_matching_component_evidence_v3`。新开关
+  `radar_assignment_ambiguity_hold_evidence=False` 与 v1/v2 互斥；关闭时结果和序列化保持
+  基线。候选复用 v2 最大匹配允许边图，不再把整个分量计入旧 suppression。
+- 歧义分量内不提交 observation-to-track 身份，不增加 hit，不做量测更新或 birth，也不把
+  observation lineage 写入任一单航迹。成员继续 prediction-only；边缘 covariance 不收缩，
+  `cross_covariance_available=false`。
+- 公开侧车 schema 为 `d1.structural-ambiguity-evidence.v1`。它保存 publisher node/epoch、
+  双时间戳、NED 成员状态和协方差、观测位置和协方差、候选边 NIS/门限、分量结构、匹配基数及
+  固定 update/birth 状态。DTO 精确拒绝额外 truth/actor/target identity 字段。
+- 默认发布者为 `D1_FUSION`，epoch 为 `d1-default-epoch-v1`。成员 token 由
+  publisher node、epoch 和 D1 local track id 做 SHA-256；D2 source key 为
+  `publisher_node_id::publisher_epoch::opaque_member_track_token`。该键可与 D1 snapshot
+  一一对应，但不声明为 D2 canonical `global_track_id`。正式 episode 需由 main 注入可审计
+  epoch。
+- main 复核的两项审计语义已修正并加入断言。`structural_ambiguity_deferred_birth_count`
+  只累计 free-column observation，`2x2/3x2/2x3` 分别为 `0/0/1`。candidate edge 只保留
+  自身角色：reference matched edge 为
+  `maximum_matching_allowed + matched_reference`，替代边才携带实际成立的 cycle/free-row/
+  free-column 标签；component kinds 不复制给每条边。
+- observation evidence key 已与通用 source lineage 解耦，只由数值量测证据和双时间戳生成。
+  修改 observation 名称或 truth/actor/D6 离线元数据不会改变参考匹配或完整侧车。
+- 新专项 `17 passed`，D1 全量 `237 passed in 17.42s`，语法检查通过。该证据确认默认关闭
+  兼容、排列稳定、名称/离线 identity metadata 不变、lineage/identity 隔离、双时间戳、
+  协方差和 DTO roundtrip；不确认系统收益。D2 有界保活消费和 main clean A/B 尚未完成，
+  候选保持默认关闭，P1 身份连续性开放。
+
 - Radar-only 开发专项已把 seed 1000/1002 定位为 scan Hungarian
   swap/保持/swap-back；零延迟对照排除 OOSM，20:1 likelihood margin 也已证明不能在 coast
   后建立身份确定性。开发冻结回放只用于复现根因和验证候选机制。

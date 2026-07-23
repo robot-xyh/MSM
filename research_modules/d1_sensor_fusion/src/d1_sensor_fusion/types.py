@@ -1,10 +1,31 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from enum import Enum
+import hashlib
+import json
 from typing import Any
 
 import numpy as np
+
+
+STRUCTURAL_AMBIGUITY_EVIDENCE_SCHEMA_VERSION = (
+    "d1.structural-ambiguity-evidence.v1"
+)
+STRUCTURAL_AMBIGUITY_HOLD_POLICY_VERSION = (
+    "prediction_only_maximum_matching_component_evidence_v3"
+)
+STRUCTURAL_AMBIGUITY_MEMBER_TOKEN_RULE = (
+    "sha256(canonical_json([publisher_node_id,publisher_epoch,d1_local_track_id]))"
+)
+STRUCTURAL_AMBIGUITY_SOURCE_KEY_RULE = (
+    "publisher_node_id::publisher_epoch::opaque_member_track_token"
+)
+STRUCTURAL_AMBIGUITY_UPDATE_MODE = "prediction_only"
+STRUCTURAL_AMBIGUITY_BIRTH_DISPOSITION = "deferred_component_birth"
+DEFAULT_STRUCTURAL_AMBIGUITY_PUBLISHER_NODE_ID = "D1_FUSION"
+DEFAULT_STRUCTURAL_AMBIGUITY_PUBLISHER_EPOCH = "d1-default-epoch-v1"
 
 
 CANONICAL_OBSERVATION_FRAMES = {
@@ -355,6 +376,611 @@ class GlobalTrack:
             "last_nis": self.last_nis,
             "metadata": dict(self.metadata),
         }
+
+
+@dataclass(frozen=True)
+class StructuralAmbiguityCandidateEdge:
+    """One truth-free allowed edge inside an ambiguous matching component."""
+
+    opaque_member_track_token: str
+    observation_evidence_key: str
+    nis: float
+    gate_threshold: float
+    edge_roles: tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "opaque_member_track_token",
+            _opaque_digest_token(
+                self.opaque_member_track_token,
+                "d1-track-sha256:",
+                "opaque_member_track_token",
+            ),
+        )
+        object.__setattr__(
+            self,
+            "observation_evidence_key",
+            _opaque_digest_token(
+                self.observation_evidence_key,
+                "d1-observation-sha256:",
+                "observation_evidence_key",
+            ),
+        )
+        nis = _finite_nonnegative(self.nis, "candidate edge nis")
+        gate = _finite_positive(self.gate_threshold, "candidate edge gate_threshold")
+        if nis > gate + 1.0e-9:
+            raise ValueError("candidate edge nis must be within gate_threshold")
+        roles = tuple(sorted({_identifier(item, "edge role") for item in self.edge_roles}))
+        if "maximum_matching_allowed" not in roles:
+            raise ValueError(
+                "candidate edge roles must include maximum_matching_allowed"
+            )
+        object.__setattr__(self, "nis", nis)
+        object.__setattr__(self, "gate_threshold", gate)
+        object.__setattr__(self, "edge_roles", roles)
+
+    @classmethod
+    def from_dict(
+        cls,
+        payload: Mapping[str, Any],
+    ) -> "StructuralAmbiguityCandidateEdge":
+        _require_exact_keys(
+            payload,
+            {
+                "opaque_member_track_token",
+                "observation_evidence_key",
+                "nis",
+                "gate_threshold",
+                "edge_roles",
+            },
+            "structural ambiguity candidate edge",
+        )
+        return cls(
+            opaque_member_track_token=payload["opaque_member_track_token"],
+            observation_evidence_key=payload["observation_evidence_key"],
+            nis=payload["nis"],
+            gate_threshold=payload["gate_threshold"],
+            edge_roles=tuple(payload["edge_roles"]),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "opaque_member_track_token": self.opaque_member_track_token,
+            "observation_evidence_key": self.observation_evidence_key,
+            "nis": self.nis,
+            "gate_threshold": self.gate_threshold,
+            "edge_roles": list(self.edge_roles),
+        }
+
+
+@dataclass(frozen=True)
+class StructuralAmbiguityMemberState:
+    """Prediction-only state of one D1-local component member."""
+
+    opaque_member_track_token: str
+    source_key: str
+    state: np.ndarray
+    covariance: np.ndarray
+
+    def __post_init__(self) -> None:
+        token = _opaque_digest_token(
+            self.opaque_member_track_token,
+            "d1-track-sha256:",
+            "opaque_member_track_token",
+        )
+        source_key = _identifier(self.source_key, "source_key")
+        state = _finite_array(self.state, (6,), "member state")
+        covariance = _strict_covariance(
+            self.covariance,
+            (6, 6),
+            "member covariance",
+        )
+        object.__setattr__(self, "opaque_member_track_token", token)
+        object.__setattr__(self, "source_key", source_key)
+        object.__setattr__(self, "state", state)
+        object.__setattr__(self, "covariance", covariance)
+
+    @classmethod
+    def from_dict(
+        cls,
+        payload: Mapping[str, Any],
+    ) -> "StructuralAmbiguityMemberState":
+        _require_exact_keys(
+            payload,
+            {
+                "opaque_member_track_token",
+                "source_key",
+                "state",
+                "covariance",
+            },
+            "structural ambiguity member state",
+        )
+        return cls(
+            opaque_member_track_token=payload["opaque_member_track_token"],
+            source_key=payload["source_key"],
+            state=payload["state"],
+            covariance=payload["covariance"],
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "opaque_member_track_token": self.opaque_member_track_token,
+            "source_key": self.source_key,
+            "state": self.state.tolist(),
+            "covariance": self.covariance.tolist(),
+        }
+
+
+@dataclass(frozen=True)
+class StructuralAmbiguityObservationEvidence:
+    """Cartesian NED evidence retained without an identity assignment."""
+
+    observation_evidence_key: str
+    position_ned: np.ndarray
+    covariance_ned: np.ndarray
+    radial_velocity_observed: bool
+    birth_deferred: bool
+    velocity_evidence_used: bool = False
+
+    def __post_init__(self) -> None:
+        key = _opaque_digest_token(
+            self.observation_evidence_key,
+            "d1-observation-sha256:",
+            "observation_evidence_key",
+        )
+        if not isinstance(self.radial_velocity_observed, bool):
+            raise TypeError("radial_velocity_observed must be a bool")
+        if not isinstance(self.birth_deferred, bool):
+            raise TypeError("birth_deferred must be a bool")
+        if not isinstance(self.velocity_evidence_used, bool):
+            raise TypeError("velocity_evidence_used must be a bool")
+        if self.velocity_evidence_used:
+            raise ValueError(
+                "prediction-only structural ambiguity evidence cannot use velocity"
+            )
+        object.__setattr__(self, "observation_evidence_key", key)
+        object.__setattr__(
+            self,
+            "position_ned",
+            _finite_array(self.position_ned, (3,), "observation position_ned"),
+        )
+        object.__setattr__(
+            self,
+            "covariance_ned",
+            _strict_covariance(
+                self.covariance_ned,
+                (3, 3),
+                "observation covariance_ned",
+            ),
+        )
+
+    @classmethod
+    def from_dict(
+        cls,
+        payload: Mapping[str, Any],
+    ) -> "StructuralAmbiguityObservationEvidence":
+        _require_exact_keys(
+            payload,
+            {
+                "observation_evidence_key",
+                "position_ned",
+                "covariance_ned",
+                "radial_velocity_observed",
+                "birth_deferred",
+                "velocity_evidence_used",
+            },
+            "structural ambiguity observation evidence",
+        )
+        return cls(
+            observation_evidence_key=payload["observation_evidence_key"],
+            position_ned=payload["position_ned"],
+            covariance_ned=payload["covariance_ned"],
+            radial_velocity_observed=payload["radial_velocity_observed"],
+            birth_deferred=payload["birth_deferred"],
+            velocity_evidence_used=payload["velocity_evidence_used"],
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "observation_evidence_key": self.observation_evidence_key,
+            "position_ned": self.position_ned.tolist(),
+            "covariance_ned": self.covariance_ned.tolist(),
+            "radial_velocity_observed": self.radial_velocity_observed,
+            "birth_deferred": self.birth_deferred,
+            "velocity_evidence_used": self.velocity_evidence_used,
+        }
+
+
+@dataclass(frozen=True)
+class StructuralAmbiguityEvidence:
+    """Complete truth-free sidecar for one allowed-edge ambiguity component."""
+
+    evidence_id: str
+    component_id: str
+    component_generation: int
+    publisher_node_id: str
+    publisher_epoch: str
+    measurement_timestamp: float
+    arrival_timestamp: float
+    state_valid_timestamp: float
+    published_at: float
+    sensor_id: str
+    scan_id: str
+    member_states: tuple[StructuralAmbiguityMemberState, ...]
+    observations: tuple[StructuralAmbiguityObservationEvidence, ...]
+    candidate_edges: tuple[StructuralAmbiguityCandidateEdge, ...]
+    component_kinds: tuple[str, ...]
+    member_count: int
+    observation_count: int
+    candidate_edge_count: int
+    free_row_count: int
+    free_column_count: int
+    maximum_matching_cardinality: int
+    policy_version: str = STRUCTURAL_AMBIGUITY_HOLD_POLICY_VERSION
+    frame_id: str = "NED"
+    member_token_rule: str = STRUCTURAL_AMBIGUITY_MEMBER_TOKEN_RULE
+    source_key_rule: str = STRUCTURAL_AMBIGUITY_SOURCE_KEY_RULE
+    posterior_update_applied: bool = False
+    update_mode: str = STRUCTURAL_AMBIGUITY_UPDATE_MODE
+    birth_disposition: str = STRUCTURAL_AMBIGUITY_BIRTH_DISPOSITION
+    component_complete: bool = True
+    cross_covariance_available: bool = False
+    schema_version: str = STRUCTURAL_AMBIGUITY_EVIDENCE_SCHEMA_VERSION
+
+    def __post_init__(self) -> None:
+        if self.schema_version != STRUCTURAL_AMBIGUITY_EVIDENCE_SCHEMA_VERSION:
+            raise ValueError(
+                f"unsupported structural ambiguity schema: {self.schema_version!r}"
+            )
+        if self.policy_version != STRUCTURAL_AMBIGUITY_HOLD_POLICY_VERSION:
+            raise ValueError(
+                f"unsupported structural ambiguity policy: {self.policy_version!r}"
+            )
+        evidence_id = _opaque_digest_token(
+            self.evidence_id,
+            "d1-evidence-sha256:",
+            "evidence_id",
+        )
+        component_id = _opaque_digest_token(
+            self.component_id,
+            "d1-component-sha256:",
+            "component_id",
+        )
+        generation = _nonnegative_integer(
+            self.component_generation,
+            "component_generation",
+        )
+        if generation < 1:
+            raise ValueError("component_generation must be at least one")
+        publisher_node_id = _publisher_identifier(
+            self.publisher_node_id,
+            "publisher_node_id",
+        )
+        publisher_epoch = _publisher_identifier(
+            self.publisher_epoch,
+            "publisher_epoch",
+        )
+        measurement_timestamp = _finite_timestamp(
+            self.measurement_timestamp,
+            "measurement_timestamp",
+        )
+        arrival_timestamp = _finite_timestamp(
+            self.arrival_timestamp,
+            "arrival_timestamp",
+        )
+        state_valid_timestamp = _finite_timestamp(
+            self.state_valid_timestamp,
+            "state_valid_timestamp",
+        )
+        published_at = _finite_timestamp(self.published_at, "published_at")
+        if arrival_timestamp + 1.0e-12 < measurement_timestamp:
+            raise ValueError("arrival_timestamp cannot precede measurement_timestamp")
+        if abs(state_valid_timestamp - measurement_timestamp) > 1.0e-9:
+            raise ValueError(
+                "prediction-only member state must be valid at measurement_timestamp"
+            )
+        if published_at + 1.0e-12 < arrival_timestamp:
+            raise ValueError("published_at cannot precede arrival_timestamp")
+        sensor_id = _identifier(self.sensor_id, "sensor_id")
+        scan_id = _opaque_digest_token(
+            self.scan_id,
+            "d1-scan-sha256:",
+            "scan_id",
+        )
+        frame_id = _identifier(self.frame_id, "frame_id").upper()
+        if frame_id != "NED":
+            raise ValueError("structural ambiguity evidence requires frame_id=NED")
+
+        members = tuple(
+            item
+            if isinstance(item, StructuralAmbiguityMemberState)
+            else StructuralAmbiguityMemberState.from_dict(
+                _as_mapping(item, "member state")
+            )
+            for item in self.member_states
+        )
+        observations = tuple(
+            item
+            if isinstance(item, StructuralAmbiguityObservationEvidence)
+            else StructuralAmbiguityObservationEvidence.from_dict(
+                _as_mapping(item, "observation evidence")
+            )
+            for item in self.observations
+        )
+        edges = tuple(
+            item
+            if isinstance(item, StructuralAmbiguityCandidateEdge)
+            else StructuralAmbiguityCandidateEdge.from_dict(
+                _as_mapping(item, "candidate edge")
+            )
+            for item in self.candidate_edges
+        )
+        members = tuple(
+            sorted(members, key=lambda item: item.opaque_member_track_token)
+        )
+        observations = tuple(
+            sorted(observations, key=lambda item: item.observation_evidence_key)
+        )
+        edges = tuple(
+            sorted(
+                edges,
+                key=lambda item: (
+                    item.opaque_member_track_token,
+                    item.observation_evidence_key,
+                    item.edge_roles,
+                ),
+            )
+        )
+        kinds = tuple(
+            sorted({_identifier(item, "component kind") for item in self.component_kinds})
+        )
+        if not kinds:
+            raise ValueError("component_kinds must not be empty")
+        if not members or not observations or not edges:
+            raise ValueError(
+                "structural ambiguity evidence requires members, observations, and edges"
+            )
+
+        member_tokens = [item.opaque_member_track_token for item in members]
+        observation_keys = [
+            item.observation_evidence_key for item in observations
+        ]
+        edge_pairs = [
+            (item.opaque_member_track_token, item.observation_evidence_key)
+            for item in edges
+        ]
+        if len(set(member_tokens)) != len(member_tokens):
+            raise ValueError("member track tokens must be unique")
+        if len(set(observation_keys)) != len(observation_keys):
+            raise ValueError("observation evidence keys must be unique")
+        if len(set(edge_pairs)) != len(edge_pairs):
+            raise ValueError("candidate edge pairs must be unique")
+        if any(
+            token not in set(member_tokens) or key not in set(observation_keys)
+            for token, key in edge_pairs
+        ):
+            raise ValueError("candidate edges must reference component members")
+        if set(member_tokens) != {token for token, _ in edge_pairs}:
+            raise ValueError("every component member must have a candidate edge")
+        if set(observation_keys) != {key for _, key in edge_pairs}:
+            raise ValueError("every component observation must have a candidate edge")
+        for member in members:
+            expected_source_key = structural_ambiguity_source_key(
+                publisher_node_id,
+                publisher_epoch,
+                member.opaque_member_track_token,
+            )
+            if member.source_key != expected_source_key:
+                raise ValueError(
+                    "member source_key does not follow the declared source_key_rule"
+                )
+
+        member_count = _nonnegative_integer(self.member_count, "member_count")
+        observation_count = _nonnegative_integer(
+            self.observation_count,
+            "observation_count",
+        )
+        edge_count = _nonnegative_integer(
+            self.candidate_edge_count,
+            "candidate_edge_count",
+        )
+        free_rows = _nonnegative_integer(self.free_row_count, "free_row_count")
+        free_columns = _nonnegative_integer(
+            self.free_column_count,
+            "free_column_count",
+        )
+        matching_cardinality = _nonnegative_integer(
+            self.maximum_matching_cardinality,
+            "maximum_matching_cardinality",
+        )
+        if member_count != len(members):
+            raise ValueError("member_count does not match member_states")
+        if observation_count != len(observations):
+            raise ValueError("observation_count does not match observations")
+        if edge_count != len(edges):
+            raise ValueError("candidate_edge_count does not match candidate_edges")
+        if matching_cardinality != member_count - free_rows:
+            raise ValueError("free_row_count is inconsistent with matching cardinality")
+        if matching_cardinality != observation_count - free_columns:
+            raise ValueError(
+                "free_column_count is inconsistent with matching cardinality"
+            )
+
+        for name, value, expected in (
+            ("posterior_update_applied", self.posterior_update_applied, False),
+            ("component_complete", self.component_complete, True),
+            ("cross_covariance_available", self.cross_covariance_available, False),
+        ):
+            if not isinstance(value, bool):
+                raise TypeError(f"{name} must be a bool")
+            if value is not expected:
+                raise ValueError(f"{name} must be {expected}")
+        if self.update_mode != STRUCTURAL_AMBIGUITY_UPDATE_MODE:
+            raise ValueError("structural ambiguity update_mode must be prediction_only")
+        if self.birth_disposition != STRUCTURAL_AMBIGUITY_BIRTH_DISPOSITION:
+            raise ValueError(
+                "structural ambiguity birth_disposition must defer component birth"
+            )
+        if self.member_token_rule != STRUCTURAL_AMBIGUITY_MEMBER_TOKEN_RULE:
+            raise ValueError("unsupported member_token_rule")
+        if self.source_key_rule != STRUCTURAL_AMBIGUITY_SOURCE_KEY_RULE:
+            raise ValueError("unsupported source_key_rule")
+
+        object.__setattr__(self, "evidence_id", evidence_id)
+        object.__setattr__(self, "component_id", component_id)
+        object.__setattr__(self, "component_generation", generation)
+        object.__setattr__(self, "publisher_node_id", publisher_node_id)
+        object.__setattr__(self, "publisher_epoch", publisher_epoch)
+        object.__setattr__(self, "measurement_timestamp", measurement_timestamp)
+        object.__setattr__(self, "arrival_timestamp", arrival_timestamp)
+        object.__setattr__(self, "state_valid_timestamp", state_valid_timestamp)
+        object.__setattr__(self, "published_at", published_at)
+        object.__setattr__(self, "sensor_id", sensor_id)
+        object.__setattr__(self, "scan_id", scan_id)
+        object.__setattr__(self, "frame_id", frame_id)
+        object.__setattr__(self, "member_states", members)
+        object.__setattr__(self, "observations", observations)
+        object.__setattr__(self, "candidate_edges", edges)
+        object.__setattr__(self, "component_kinds", kinds)
+        object.__setattr__(self, "member_count", member_count)
+        object.__setattr__(self, "observation_count", observation_count)
+        object.__setattr__(self, "candidate_edge_count", edge_count)
+        object.__setattr__(self, "free_row_count", free_rows)
+        object.__setattr__(self, "free_column_count", free_columns)
+        object.__setattr__(
+            self,
+            "maximum_matching_cardinality",
+            matching_cardinality,
+        )
+
+    @classmethod
+    def from_dict(
+        cls,
+        payload: Mapping[str, Any],
+    ) -> "StructuralAmbiguityEvidence":
+        required = {
+            "schema_version",
+            "evidence_id",
+            "component_id",
+            "component_generation",
+            "publisher_node_id",
+            "publisher_epoch",
+            "member_token_rule",
+            "source_key_rule",
+            "measurement_timestamp",
+            "arrival_timestamp",
+            "state_valid_timestamp",
+            "published_at",
+            "sensor_id",
+            "scan_id",
+            "frame_id",
+            "member_states",
+            "observations",
+            "candidate_edges",
+            "component_kinds",
+            "member_count",
+            "observation_count",
+            "candidate_edge_count",
+            "free_row_count",
+            "free_column_count",
+            "maximum_matching_cardinality",
+            "posterior_update_applied",
+            "update_mode",
+            "birth_disposition",
+            "component_complete",
+            "cross_covariance_available",
+            "policy_version",
+        }
+        _require_exact_keys(payload, required, "structural ambiguity evidence")
+        return cls(
+            **{
+                key: payload[key]
+                for key in required
+            }
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema_version": self.schema_version,
+            "evidence_id": self.evidence_id,
+            "component_id": self.component_id,
+            "component_generation": self.component_generation,
+            "publisher_node_id": self.publisher_node_id,
+            "publisher_epoch": self.publisher_epoch,
+            "member_token_rule": self.member_token_rule,
+            "source_key_rule": self.source_key_rule,
+            "measurement_timestamp": self.measurement_timestamp,
+            "arrival_timestamp": self.arrival_timestamp,
+            "state_valid_timestamp": self.state_valid_timestamp,
+            "published_at": self.published_at,
+            "sensor_id": self.sensor_id,
+            "scan_id": self.scan_id,
+            "frame_id": self.frame_id,
+            "member_states": [item.to_dict() for item in self.member_states],
+            "observations": [item.to_dict() for item in self.observations],
+            "candidate_edges": [item.to_dict() for item in self.candidate_edges],
+            "component_kinds": list(self.component_kinds),
+            "member_count": self.member_count,
+            "observation_count": self.observation_count,
+            "candidate_edge_count": self.candidate_edge_count,
+            "free_row_count": self.free_row_count,
+            "free_column_count": self.free_column_count,
+            "maximum_matching_cardinality": self.maximum_matching_cardinality,
+            "posterior_update_applied": self.posterior_update_applied,
+            "update_mode": self.update_mode,
+            "birth_disposition": self.birth_disposition,
+            "component_complete": self.component_complete,
+            "cross_covariance_available": self.cross_covariance_available,
+            "policy_version": self.policy_version,
+        }
+
+
+def structural_ambiguity_member_track_token(
+    publisher_node_id: str,
+    publisher_epoch: str,
+    d1_local_track_id: str,
+) -> str:
+    """Build the stable opaque source token used by evidence and D2 snapshots."""
+
+    node = _publisher_identifier(publisher_node_id, "publisher_node_id")
+    epoch = _publisher_identifier(publisher_epoch, "publisher_epoch")
+    local_track_id = _identifier(d1_local_track_id, "d1_local_track_id")
+    payload = json.dumps(
+        [node, epoch, local_track_id],
+        ensure_ascii=True,
+        separators=(",", ":"),
+    ).encode("ascii")
+    return f"d1-track-sha256:{hashlib.sha256(payload).hexdigest()}"
+
+
+def structural_ambiguity_source_track_id(
+    publisher_epoch: str,
+    opaque_member_track_token: str,
+) -> str:
+    """Return the D2-compatible source_track_id portion of the source key."""
+
+    epoch = _publisher_identifier(publisher_epoch, "publisher_epoch")
+    token = _opaque_digest_token(
+        opaque_member_track_token,
+        "d1-track-sha256:",
+        "opaque_member_track_token",
+    )
+    return f"{epoch}::{token}"
+
+
+def structural_ambiguity_source_key(
+    publisher_node_id: str,
+    publisher_epoch: str,
+    opaque_member_track_token: str,
+) -> str:
+    """Return `source_node_id::source_track_id` consumed by the D2 adapter."""
+
+    node = _publisher_identifier(publisher_node_id, "publisher_node_id")
+    return (
+        f"{node}::"
+        f"{structural_ambiguity_source_track_id(publisher_epoch, opaque_member_track_token)}"
+    )
 
 
 @dataclass(frozen=True)
@@ -1078,6 +1704,18 @@ class FusionBatchResult:
 
     tracks: tuple[GlobalTrack, ...]
     summary: FusionBatchSummary
+    structural_ambiguity_evidence: tuple[StructuralAmbiguityEvidence, ...] = ()
+
+    def __post_init__(self) -> None:
+        evidence = tuple(
+            item
+            if isinstance(item, StructuralAmbiguityEvidence)
+            else StructuralAmbiguityEvidence.from_dict(
+                _as_mapping(item, "structural ambiguity evidence")
+            )
+            for item in self.structural_ambiguity_evidence
+        )
+        object.__setattr__(self, "structural_ambiguity_evidence", evidence)
 
     @property
     def tracks_materialized(self) -> bool:
@@ -1094,10 +1732,15 @@ class FusionBatchResult:
         return self.track_count
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        payload = {
             "tracks": tuple(track.to_dict() for track in self.tracks),
             "summary": self.summary.to_dict(),
         }
+        if self.structural_ambiguity_evidence:
+            payload["structural_ambiguity_evidence"] = [
+                item.to_dict() for item in self.structural_ambiguity_evidence
+            ]
+        return payload
 
 
 class TracksNotMaterializedError(RuntimeError):
@@ -1115,12 +1758,22 @@ class FusionStateUpdateResult:
 
     summary: FusionBatchSummary
     current_track_count: int
+    structural_ambiguity_evidence: tuple[StructuralAmbiguityEvidence, ...] = ()
     tracks_materialized: bool = field(default=False, init=False)
 
     def __post_init__(self) -> None:
         if int(self.current_track_count) < 0:
             raise ValueError("current_track_count must be non-negative")
         object.__setattr__(self, "current_track_count", int(self.current_track_count))
+        evidence = tuple(
+            item
+            if isinstance(item, StructuralAmbiguityEvidence)
+            else StructuralAmbiguityEvidence.from_dict(
+                _as_mapping(item, "structural ambiguity evidence")
+            )
+            for item in self.structural_ambiguity_evidence
+        )
+        object.__setattr__(self, "structural_ambiguity_evidence", evidence)
 
     @property
     def state_updated_at(self) -> float:
@@ -1140,7 +1793,7 @@ class FusionStateUpdateResult:
         )
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        payload = {
             "tracks_materialized": False,
             "tracks": [],
             "track_count": self.track_count,
@@ -1148,6 +1801,11 @@ class FusionStateUpdateResult:
             "current_track_count": self.current_track_count,
             "summary": self.summary.to_dict(),
         }
+        if self.structural_ambiguity_evidence:
+            payload["structural_ambiguity_evidence"] = [
+                item.to_dict() for item in self.structural_ambiguity_evidence
+            ]
+        return payload
 
 
 @dataclass(frozen=True)
@@ -1361,3 +2019,106 @@ def _lineage_scalar(value: Any) -> Any:
     if isinstance(value, float):
         return round(value, 9)
     return value
+
+
+def _as_mapping(value: Any, name: str) -> Mapping[str, Any]:
+    if not isinstance(value, Mapping):
+        raise TypeError(f"{name} must be a mapping")
+    return value
+
+
+def _require_exact_keys(
+    payload: Mapping[str, Any],
+    expected: set[str],
+    name: str,
+) -> None:
+    actual = {str(key) for key in payload}
+    missing = expected - actual
+    unknown = actual - expected
+    if missing or unknown:
+        raise ValueError(
+            f"{name} keys mismatch: missing={sorted(missing)}, "
+            f"unknown={sorted(unknown)}"
+        )
+
+
+def _identifier(value: Any, name: str) -> str:
+    normalized = str(value).strip()
+    if not normalized:
+        raise ValueError(f"{name} must be non-empty")
+    if any(ord(character) < 32 for character in normalized):
+        raise ValueError(f"{name} must not contain control characters")
+    return normalized
+
+
+def _publisher_identifier(value: Any, name: str) -> str:
+    normalized = _identifier(value, name)
+    if "::" in normalized:
+        raise ValueError(f"{name} must not contain the source-key delimiter")
+    lowered = normalized.lower()
+    if any(marker in lowered for marker in ("truth", "actor", "target_id")):
+        raise ValueError(f"{name} must not encode truth, actor, or target identity")
+    return normalized
+
+
+def _opaque_digest_token(value: Any, prefix: str, name: str) -> str:
+    token = _identifier(value, name)
+    if not token.startswith(prefix):
+        raise ValueError(f"{name} must start with {prefix!r}")
+    digest = token[len(prefix) :]
+    if len(digest) != 64 or any(character not in "0123456789abcdef" for character in digest):
+        raise ValueError(f"{name} must contain a lowercase SHA-256 digest")
+    return token
+
+
+def _finite_timestamp(value: Any, name: str) -> float:
+    timestamp = float(value)
+    if not np.isfinite(timestamp):
+        raise ValueError(f"{name} must be finite")
+    return timestamp
+
+
+def _finite_nonnegative(value: Any, name: str) -> float:
+    number = float(value)
+    if not np.isfinite(number) or number < 0.0:
+        raise ValueError(f"{name} must be finite and non-negative")
+    return number
+
+
+def _finite_positive(value: Any, name: str) -> float:
+    number = float(value)
+    if not np.isfinite(number) or number <= 0.0:
+        raise ValueError(f"{name} must be finite and positive")
+    return number
+
+
+def _nonnegative_integer(value: Any, name: str) -> int:
+    if isinstance(value, bool):
+        raise TypeError(f"{name} must be an integer")
+    integer = int(value)
+    if integer != value or integer < 0:
+        raise ValueError(f"{name} must be a non-negative integer")
+    return integer
+
+
+def _finite_array(value: Any, shape: tuple[int, ...], name: str) -> np.ndarray:
+    array = np.asarray(value, dtype=float)
+    if array.shape != shape:
+        raise ValueError(f"{name} must have shape {shape}; got {array.shape}")
+    if not np.isfinite(array).all():
+        raise ValueError(f"{name} must contain only finite values")
+    return array.copy()
+
+
+def _strict_covariance(
+    value: Any,
+    shape: tuple[int, int],
+    name: str,
+) -> np.ndarray:
+    covariance = _finite_array(value, shape, name)
+    if not np.allclose(covariance, covariance.T, rtol=0.0, atol=1.0e-10):
+        raise ValueError(f"{name} must be symmetric")
+    minimum_eigenvalue = float(np.linalg.eigvalsh(covariance).min())
+    if minimum_eigenvalue < -1.0e-9:
+        raise ValueError(f"{name} must be positive semidefinite")
+    return 0.5 * (covariance + covariance.T)

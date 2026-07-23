@@ -4,6 +4,59 @@ Offline research module for radar, acoustic, EO, and optional synthetic lidar he
 
 ## 当前性能与治理证据（2026-07-23）
 
+### 第十五阶段：结构歧义证据侧车与 prediction-only 分量候选
+
+D1 已实现第三条默认关闭的实验路径
+`prediction_only_maximum_matching_component_evidence_v3`。独立严格布尔开关
+`radar_assignment_ambiguity_hold_evidence=False` 与已拒绝的 v1/v2 互斥。开关关闭时，
+原 Hungarian 更新、birth、航迹 metadata 和结果序列化保持基线；空 evidence tuple 不写入
+`to_dict()`。显式启用时，融合器复用已经通过图论 oracle 的 v2 最大匹配允许边分解，但不再
+执行整分量 suppression 计数。
+
+含结构歧义的分量按以下方式处理：
+
+1. 不提交 observation 到单航迹的身份归属，不增加 hit，不执行量测更新；
+2. 分量成员按运动模型继续 prediction-only，成员协方差不做虚假的独立量测收缩；
+3. 分量 observation 不写入任一成员的 source lineage；
+4. 分量内自由列 observation 延迟 birth；已被参考最大匹配占用的 observation 不计为
+   deferred birth；
+5. 唯一匹配和完全门外的独立 observation 继续走原更新或 birth 路径。
+
+每个分量发布严格可序列化的 `StructuralAmbiguityEvidence`，schema 固定为
+`d1.structural-ambiguity-evidence.v1`。侧车保留
+`measurement_timestamp`、`arrival_timestamp`、状态有效时刻、发布时间、NED 成员状态及
+`6x6` 协方差、观测 NED 位置及 `3x3` 协方差、候选边 NIS/门限、分量结构、匹配基数和
+free-row/free-column 数量。固定语义包括
+`posterior_update_applied=false`、`update_mode=prediction_only`、
+`birth_disposition=deferred_component_birth`、`component_complete=true` 和
+`cross_covariance_available=false`。
+观测 evidence key 只由 sensor/modality/frame、双时间戳、雷达转换后的 NED 位置/协方差、
+径向速度是否真实观测和同内容 occurrence 生成。该路径不复用可能携带离线标签的通用
+`source_lineage_key`；改变 observation 名称或 truth/actor/D6 元数据不会改变侧车或参考匹配。
+
+发布者默认值为 `publisher_node_id=D1_FUSION`、
+`publisher_epoch=d1-default-epoch-v1`。成员令牌按
+`SHA-256([publisher_node_id, publisher_epoch, D1 local track id])` 生成；
+`source_track_id=publisher_epoch::opaque_member_track_token`，
+`source_key=publisher_node_id::source_track_id`。D1 本地 track id 只作为哈希输入，不在侧车
+中公开，也不声明为 D2 规范 `global_track_id`。启用候选时，D1 航迹快照发布同一
+`source_node_id/source_track_id/source_key`，使 D2 可将侧车成员与快照一一对应。默认 epoch
+是显式稳定配置，不从 truth、actor 或 observation 名称派生；正式 episode 应由 main 显式
+注入可审计 epoch。
+
+`component_kinds` 描述整个分量包含哪些结构。每条候选边的 `edge_roles` 只描述该边：
+参考匹配边为 `maximum_matching_allowed + matched_reference`；替代边按实际情况携带
+`alternating_cycle`、`free_row_alternating_path` 或
+`free_column_alternating_path`。分量标签不会复制到每条边。逐观测 `birth_deferred` 和
+`structural_ambiguity_deferred_birth_count` 只统计参考最大匹配中的自由列；平衡 `2x2` 和
+free-row `3x2` 分量均为 0，free-column `2x3` 示例为 1。
+
+新增专项 `17 passed`，D1 全量 `237 passed in 17.42s`。覆盖平衡/非平衡分量、唯一匹配、
+首扫、门外独立 birth、输入排列不变、来源谱系隔离、truth 字段拒绝、未观测径向速度不参与
+更新、observation 名称和离线 identity metadata 不变性、默认关闭兼容、DTO roundtrip 和
+协方差 shape/半正定校验。该结果只证明 D1 合同和模块行为。D2 尚未接入有界保活消费，main
+尚未执行 clean A/B；候选保持默认关闭，不宣称系统收益或主线晋级。
+
 ### 第十四阶段：最大匹配允许边分量 v2 模块通过与系统候选拒绝
 
 D1 已实现默认关闭的实验策略
