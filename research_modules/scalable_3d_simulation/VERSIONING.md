@@ -53,7 +53,7 @@ main
 | D1 一致性评估清单 | `scalable3d-offline-consistency-evaluation-manifest-v1` | 在线证据、真值状态、D2 映射或哈希绑定改变 |
 | D1 扫描输入审计 | `d1.scan_input.audit_summary.v1` | 水位线、扫描拒绝、缓冲容量或结束排空语义改变 |
 | D1 结构歧义证据 | `d1.structural-ambiguity-evidence.v1` | 允许边分量、成员不透明令牌、双时间戳、状态/协方差或候选边语义改变 |
-| D2 身份评估清单 | `scalable3d-offline-identity-evaluation-manifest-v1` | 谱系映射、身份指标或来源校验改变 |
+| D2 身份评估清单 | `scalable3d-offline-identity-evaluation-manifest-v2` | v2 在原来源哈希外绑定逐发布一致的身份恢复配置快照、配置 SHA-256、记录数和来源路径；谱系映射、身份指标、恢复配置或来源校验改变时升级 |
 | D2 观测证据治理 | `d2-observation-evidence-governance-v1` | D1 观测新鲜度、重放隔离、时间冲突、暂定航迹删除或重复合并审计语义改变 |
 | D2 观测声明账本 | `d2-observation-claim-ledger-v2` | 声明键、水位线、安全淘汰、容量或反重放语义改变 |
 | D2 结构歧义保活策略 | `d2.ambiguity-hold-lease-policy.v1` | 租约时钟、年龄门限、软/硬截止、证据保留或失败关闭语义改变 |
@@ -101,6 +101,13 @@ seed 1100 门槛已经拒绝该候选，schema 和测试保留不表示在线主
 `source_observations`，main 也不得为其回填 D1 谱系。普通已承诺航迹仍可消费待处理 D1
 来源；经历歧义恢复的航迹只能发布本次被接受量测的精确来源。离线 producer 不能在同一
 episode 混用 v1/v2 身份证据，D6 必须按证据 schema 选择相同版本的评估和审计路径。
+
+离线身份清单 v2 要求每条 D2 发布都携带
+`payload.association.identity_commitment.recovery_config`。同一 episode 的快照必须完全
+一致；缺失、非规范 JSON 或帧间漂移直接失败关闭。清单保存规范快照、SHA-256、记录数和
+固定来源路径。D6 对清单文件、在线 D2 JSONL 哈希和逐条快照独立复核，并在 episode、
+batch 和 runtime provenance 中暴露结果。历史 v1 清单可继续读取严格和部分身份指标，但
+恢复配置谱系必须标记为 unavailable，不能补算。
 
 ## 实验清单
 

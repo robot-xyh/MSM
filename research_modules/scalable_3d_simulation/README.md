@@ -155,21 +155,23 @@ D1 和 D2 的默认关闭候选链路现已增加显式身份承诺合同。D1 �
 保留窗口内 D1 谱系；经历歧义恢复的航迹只发布本次被接受量测的精确谱系。D6 使用 v2
 证据独立重算承诺覆盖、恢复水位和绑定违规，不回填严格身份指标。
 
-detached clean `909669b2eefeab2ce30c8ac389d6bf9c0a8cbabc` 使用 nominal 200 对 200、
-2.2 秒、`recon_count=2` 和 seed 1100 完成同构建 A/B。候选消费 46 个侧车，产生
-`1714` 条已承诺记录、`69` 条 hold 未承诺记录和 `4` 条 hold 后未承诺记录；全部记录的
-身份承诺覆盖率为 `0.959149`，未承诺来源绑定和候选绑定违规均为 0，在线真值使用为 0。
+发布新鲜度门已加入 D2 恢复承诺。量测必须晚于 hold 水位，并且
+`D2 帧时刻 - measurement_timestamp <= 0.9 s`。超龄证据保持未承诺，等待更新的原始
+观测。完整恢复配置由每条 D2 发布携带；离线身份清单升级为
+`scalable3d-offline-identity-evaluation-manifest-v2`，绑定本 episode 的规范配置快照、
+配置 SHA-256 和记录数。D6 同时验证清单、在线 D2 JSONL 和逐发布配置，历史 v1 清单保持
+只读兼容。
 
-新合同解决了歧义期记录被误判为谱系缺失的问题，但没有使候选通过准入。三个恢复航迹
-`GT3D-000185/000186/000202` 的被接受雷达量测时间为 `1.2 s`，最终评分帧为
-`2.130815 s`，相差 `0.930815 s`，超过固定 `0.9 s` 谱系窗口约 `30.8 ms`。严格
-ID Switch 和连续性继续按 `source_observation_outside_lineage_window` 失败关闭。
-候选 D2 航迹由 `203` 降至 `201`，D3 分配由 `200` 降至 `197`，可用身份映射由
-`1566` 降至 `1491`，实时倍率由 `0.2190` 降至 `0.2068`。
+detached clean `ff881316243ff5a2991a4659ab78637ed625d123` 使用相同 nominal 200 对 200、
+2.2 秒、`recon_count=2` 和 seed 1100 完成最终同构建 A/B。候选形成
+`1711/69/7` 条 committed/hold/after-hold 记录；其中 3 条超龄恢复证据被新鲜度门阻断。
+严格 ID Switch 由 `9` 降至 `3`，重复分配保持为 0，未承诺来源和候选绑定违规为 0。
+两组清单均绑定 9 条 D2 发布，D6 episode 与 runtime provenance 均验证通过。
 
-seed 1100 未达到严格指标可用和下游可用性不退化门槛，seeds 1101/1102、10 秒和
-20-seed 继续停止。默认路径不变。下一候选必须在 D2 恢复承诺时同时检查 hold 水位和
-发布时谱系新鲜度；超过 `0.9 s` 的恢复证据保持未承诺，不能通过扩大评分窗口放行。
+候选仍未通过准入。D2 航迹由 `203` 降至 `201`，D3 分配由 `200` 降至 `197`，可用
+身份映射由 `1566` 降至 `1491`，航迹连续性由 `0.865` 降至 `0.826667`，覆盖连续性由
+`0.870` 降至 `0.828333`。seeds 1101/1102、10 秒和 20-seed 按停止规则不执行，默认
+路径不变。配置谱系缺口已关闭；结构歧义保活的算法准入仍是 P1。
 完整评审见
 `docs/SCALABLE_3D_STRUCTURAL_AMBIGUITY_HOLD_CLEAN_AB_REVIEW_CN.md`，机器摘要见
 `docs/SCALABLE_3D_STRUCTURAL_AMBIGUITY_HOLD_CLEAN_AB_REVIEW_20260723.json`。
@@ -814,7 +816,7 @@ SHA-256 分别为 `6fb64252292aaedd3c68d1bfea64b76496136ce6edb32add61a281d511c4e
 - 实验矩阵：`scalable3d-experiment-matrix-v1`
 - D1 离线一致性清单：`scalable3d-offline-consistency-evaluation-manifest-v1`
 - D1 扫描输入审计：`d1.scan_input.audit_summary.v1`
-- D2 身份评估清单：`scalable3d-offline-identity-evaluation-manifest-v1`
+- D2 身份评估清单：当前 producer 使用 `scalable3d-offline-identity-evaluation-manifest-v2`，D6 只读兼容 v1
 - D2 观测证据治理：`d2-observation-evidence-governance-v1`
 - D2 观测声明账本：`d2-observation-claim-ledger-v2`
 - main 观测治理快照：`scalable3d-observation-governance-runtime-v2`

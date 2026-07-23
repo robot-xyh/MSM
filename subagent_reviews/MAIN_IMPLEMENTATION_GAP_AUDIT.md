@@ -125,10 +125,12 @@ D1、D2、D6 和 main 已关闭该候选的合同级缺口。D2 发布
 水位独立于 claim ledger 保留，只有不同、更新且首次接受的原始证据可恢复已承诺状态。
 main 对恢复航迹只发布被接受量测的精确 D1 谱系。D6 使用
 `d2.scalable3d_identity_evidence.v2` 和独立审计重算承诺覆盖、恢复原因、水位、
-overflow 与绑定违规，不回填 strict ID Switch。D2、D6 和 scalable main 回归为
-`286/598/145 passed`。
+overflow 与绑定违规，不回填 strict ID Switch。D2 恢复承诺现在额外检查发布新鲜度：
+量测晚于 hold 水位且在当前帧内不超过 `0.9 s` 才可恢复。离线身份清单 v2 绑定完整恢复
+配置和全部 D2 发布，D6 从在线 JSONL 独立复核。D2、D6 和 scalable main 回归为
+`291/611/146 passed`。
 
-detached clean `909669b2eefeab2ce30c8ac389d6bf9c0a8cbabc` 使用 nominal 200 对 200、
+detached clean `ff881316243ff5a2991a4659ab78637ed625d123` 使用 nominal 200 对 200、
 2.2 秒、`recon_count=2`、seed 1100 完成同构建 A/B。两端
 `config_sha256=34f5563579d9d2e7d1ea2b57cf353d2465b3bd16c5310570d40e72fc7aeac461`，
 工作树 clean，状态有限，在线真值使用为 0。
@@ -139,24 +141,25 @@ detached clean `909669b2eefeab2ce30c8ac389d6bf9c0a8cbabc` 使用 nominal 200 对
 | D2 航迹 | 203 | 201 | 退化 2 |
 | D3 分配 | 200 | 197 | 退化 3 |
 | 可用映射 | 1566 | 1491 | 减少 75 |
-| 全记录承诺覆盖 | 1.000000 | 0.959149 | 73 条显式未承诺 |
-| committed/hold/after-hold | 1800/0/0 | 1714/69/4 | 状态可审计 |
+| 全记录承诺覆盖 | 1.000000 | 0.957471 | 76 条显式未承诺 |
+| committed/hold/after-hold | 1800/0/0 | 1711/69/7 | 状态可审计 |
 | 未承诺来源/候选绑定违规 | 0/0 | 0/0 | 安全门通过 |
-| strict ID Switch | 9 | unavailable | 候选不可比较 |
-| track/identity continuity | 0.865/0.865 | unavailable | 候选不可比较 |
-| coverage continuity | 0.870 | unavailable | 候选不可比较 |
-| 实时倍率 | 0.2190 | 0.2068 | 下降 |
+| strict ID Switch | 9 | 3 | 改善 6 |
+| track/identity continuity | 0.865/0.865 | 0.826667/0.826667 | 退化 |
+| coverage continuity | 0.870 | 0.828333 | 退化 |
+| 重复分配 | 0 | 0 | 持平 |
+| 实时倍率 | 0.2204 | 0.2076 | 下降 |
 
 候选生成和消费侧车均为 46，D2 接受 33 个分量事件，累计阻止 hit/miss/birth
-`69/69/4`。v2 已把歧义帧从“谱系缺失”分离为“身份未承诺”。剩余阻断来自三个恢复航迹
-`GT3D-000185/000186/000202`：恢复量测时间为 `1.2 s`，评分帧为 `2.130815 s`，
-年龄 `0.930815 s`，超过固定 `0.9 s` 窗口约 `30.8 ms`。严格指标继续按
-`source_observation_outside_lineage_window` 失败关闭。
+`69/69/4`。三个恢复航迹 `GT3D-000185/000186/000202` 的 `0.930815 s` 超龄证据已被
+`source_observation_outside_recovery_publication_freshness_window` 阻断，严格指标恢复
+可用。baseline/candidate 的清单均绑定 9 条 D2 发布和相同恢复配置摘要，D6 episode 与
+runtime provenance 均通过。
 
-当前无新增 P0。身份承诺合同、真值隔离和绑定安全已关闭到实现与单 seed 证据层；算法准入
-仍是开放 P1。seed 1100 未通过，seeds 1101/1102、10 秒和 20-seed 不执行，默认开关保持
-关闭。下一候选不能扩大评分窗口，必须让恢复承诺同时满足 hold 水位和发布时谱系新鲜度，
-并恢复 D2/D3 可用性后再从 seed 1100 开始。
+当前无新增 P0。身份承诺、发布新鲜度、恢复配置谱系、真值隔离和绑定安全已关闭；算法准入
+仍是开放 P1。seed 1100 因 D2/D3 可用性和连续性退化未通过，seeds 1101/1102、10 秒和
+20-seed 不执行，默认开关保持关闭。下一候选不能扩大评分窗口，应优先校准 gap/hard lease、
+birth 抑制和恢复等待，再从 seed 1100 开始。
 
 ## 2026-07-22 后验代次与 clean 长时基线
 
