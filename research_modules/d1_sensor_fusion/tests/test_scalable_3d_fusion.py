@@ -38,18 +38,6 @@ def _online_batch(batch_id: str, measurements: tuple[SensorMeasurement, ...]) ->
     )
 
 
-class _CurriculumScaleAdapter(Scalable3DFusionAdapter):
-    """Keep curriculum throughput coverage on the pre-governance association."""
-
-    def _radar_assignment_ambiguities(
-        self,
-        track_items,
-        valid,
-        assignments,
-    ) -> dict:
-        return {}
-
-
 def _radar_measurement(
     observation_id: str,
     position_ned: np.ndarray,
@@ -123,7 +111,7 @@ def test_scan_batch_preserves_all_tracks_at_curriculum_scales(target_count: int)
     )
     world = VectorizedPointMassWorld(config)
     scene = SensorScene(config)
-    adapter = _CurriculumScaleAdapter(association_gate=40.0)
+    adapter = Scalable3DFusionAdapter(association_gate=40.0)
 
     first_measurements = scene.radar_scan(world.snapshot()).measurements
     first = adapter.process_online_sensor_batch(
@@ -153,6 +141,9 @@ def test_scan_batch_preserves_all_tracks_at_curriculum_scales(target_count: int)
     assert second.summary.created_track_count == 0
     assert second.summary.updated_track_count == target_count
     assert second.summary.unaccepted_observation_count == 0
+    audit = adapter.association_audit_summary()
+    assert audit["radar_assignment_ambiguity_governance_enabled"] is False
+    assert audit["radar_assignment_ambiguity_governance_status"] == "disabled"
     if target_count == 200:
         assert len(second.tracks) > 5 * 34
 

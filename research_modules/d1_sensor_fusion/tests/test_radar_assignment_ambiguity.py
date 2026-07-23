@@ -107,16 +107,6 @@ class _PresetRadarCostAdapter(FusionAdapter):
         return preset.copy()
 
 
-class _LegacyPresetRadarCostAdapter(_PresetRadarCostAdapter):
-    def _radar_assignment_ambiguities(
-        self,
-        track_items,
-        valid,
-        assignments,
-    ) -> dict:
-        return {}
-
-
 def _seed_tracks(
     adapter: FusionAdapter,
     positions: tuple[np.ndarray, ...],
@@ -142,21 +132,31 @@ def _seed_tracks(
     return tuple(track.global_track_id for track in second.tracks)
 
 
-def test_two_by_two_hungarian_swap_is_suppressed_without_lineage_merge() -> None:
+@pytest.mark.parametrize("value", (None, 0, 1, "true"))
+def test_ambiguity_governance_requires_a_strict_bool(value: object) -> None:
+    with pytest.raises(
+        TypeError,
+        match="radar_assignment_ambiguity_governance must be a bool",
+    ):
+        FusionAdapter(radar_assignment_ambiguity_governance=value)  # type: ignore[arg-type]
+
+
+def test_default_hungarian_swap_and_explicit_v1_suppression() -> None:
     positions = (
         np.array([1_000.0, -120.0, -100.0]),
         np.array([1_000.0, 120.0, -100.0]),
     )
     crossing_costs = np.array([[2.0, 1.0], [1.0, 2.0]], dtype=float)
-    legacy = _LegacyPresetRadarCostAdapter(
+    baseline = _PresetRadarCostAdapter(
         association_gate=40.0,
         preset_costs={2: crossing_costs},
     )
     governed = _PresetRadarCostAdapter(
         association_gate=40.0,
+        radar_assignment_ambiguity_governance=True,
         preset_costs={2: crossing_costs},
     )
-    legacy_ids = _seed_tracks(legacy, positions)
+    baseline_ids = _seed_tracks(baseline, positions)
     governed_ids = _seed_tracks(governed, positions)
     ambiguous_scan = _scan(
         2,
@@ -165,7 +165,7 @@ def test_two_by_two_hungarian_swap_is_suppressed_without_lineage_merge() -> None
         arrival_timestamp=0.65,
     )
 
-    legacy_result = legacy.process_scan_batch(ambiguous_scan)
+    baseline_result = baseline.process_scan_batch(ambiguous_scan)
     governed_before = {
         track.global_track_id: track
         for track in governed.global_tracks()
@@ -176,16 +176,27 @@ def test_two_by_two_hungarian_swap_is_suppressed_without_lineage_merge() -> None
     }
     governed_result = governed.process_scan_batch(ambiguous_scan)
 
-    assert legacy_ids == governed_ids
+    assert baseline_ids == governed_ids
     assert [
         item.observation_id
-        for item in legacy.tracks[legacy_ids[0]].observations
+        for item in baseline.tracks[baseline_ids[0]].observations
     ][-1] == ambiguous_scan[1].observation_id
     assert [
         item.observation_id
-        for item in legacy.tracks[legacy_ids[1]].observations
+        for item in baseline.tracks[baseline_ids[1]].observations
     ][-1] == ambiguous_scan[0].observation_id
-    assert legacy_result.summary.updated_observation_count == 2
+    assert baseline_result.summary.accepted_observation_count == 2
+    assert baseline_result.summary.updated_observation_count == 2
+    assert baseline_result.summary.unaccepted_observation_count == 0
+    assert baseline_result.summary.created_track_count == 0
+    baseline_audit = baseline.association_audit_summary()
+    assert baseline_audit["radar_assignment_ambiguity_governance_enabled"] is False
+    assert baseline_audit["radar_assignment_ambiguity_governance_status"] == "disabled"
+    assert baseline_audit["radar_assignment_ambiguity_scan_count"] == 0
+    assert (
+        baseline_audit["radar_assignment_ambiguity_policy_version"]
+        == RADAR_ASSIGNMENT_AMBIGUITY_POLICY_VERSION
+    )
 
     assert governed_result.summary.accepted_observation_count == 0
     assert governed_result.summary.unaccepted_observation_count == 2
@@ -237,6 +248,11 @@ def test_two_by_two_hungarian_swap_is_suppressed_without_lineage_merge() -> None
         np.testing.assert_allclose(track.covariance, expected.covariance)
 
     audit = governed.association_audit_summary()
+    assert audit["radar_assignment_ambiguity_governance_enabled"] is True
+    assert (
+        audit["radar_assignment_ambiguity_governance_status"]
+        == "experimental_enabled"
+    )
     assert audit["radar_assignment_ambiguity_scan_count"] == 1
     assert audit["radar_assignment_ambiguity_observation_suppression_count"] == 2
     assert audit["radar_assignment_ambiguity_track_coast_count"] == 2
@@ -272,6 +288,7 @@ def test_greedy_fallback_preserves_fail_closed_cycle_policy(
     )
     adapter = _PresetRadarCostAdapter(
         association_gate=40.0,
+        radar_assignment_ambiguity_governance=True,
         preset_costs={2: np.array([[2.0, 1.0], [1.0, 2.0]])},
     )
     track_ids = _seed_tracks(adapter, positions)
@@ -302,6 +319,50 @@ def test_greedy_fallback_preserves_fail_closed_cycle_policy(
     assert audit["radar_assignment_ambiguity_track_coast_count"] == 2
 
 
+def test_explicit_v1_documents_gate_valid_free_row_path_blocker() -> None:
+    positions = (
+        np.array([1_000.0, -250.0, -100.0]),
+        np.array([1_000.0, 0.0, -100.0]),
+        np.array([1_000.0, 250.0, -100.0]),
+    )
+    invalid = 1_000.0
+    adapter = _PresetRadarCostAdapter(
+        association_gate=40.0,
+        radar_assignment_ambiguity_governance=True,
+        preset_costs={
+            2: np.array(
+                [
+                    [1.58, invalid],
+                    [0.80, invalid],
+                    [invalid, 0.50],
+                ]
+            )
+        },
+    )
+    track_ids = _seed_tracks(adapter, positions)
+    scan = _scan(
+        2,
+        positions[1:],
+        measurement_timestamp=0.4,
+        arrival_timestamp=0.6,
+    )
+
+    result = adapter.process_scan_batch(scan)
+
+    assert result.summary.accepted_observation_count == 2
+    assert result.summary.updated_observation_count == 2
+    assert result.summary.unaccepted_observation_count == 0
+    assert result.summary.created_track_count == 0
+    assert len(adapter.tracks[track_ids[0]].observations) == 2
+    assert adapter.tracks[track_ids[1]].observations[-1].observation_id == (
+        scan[0].observation_id
+    )
+    audit = adapter.association_audit_summary()
+    assert audit["radar_assignment_ambiguity_governance_enabled"] is True
+    assert audit["radar_assignment_ambiguity_scan_count"] == 0
+    assert audit["radar_assignment_ambiguity_observation_suppression_count"] == 0
+
+
 def test_rectangular_more_tracks_suppresses_only_matched_cycle_rows() -> None:
     positions = (
         np.array([1_000.0, -250.0, -100.0]),
@@ -311,6 +372,7 @@ def test_rectangular_more_tracks_suppresses_only_matched_cycle_rows() -> None:
     invalid = 1_000.0
     adapter = _PresetRadarCostAdapter(
         association_gate=40.0,
+        radar_assignment_ambiguity_governance=True,
         preset_costs={
             2: np.array(
                 [
@@ -351,6 +413,7 @@ def test_rectangular_more_observations_does_not_birth_suppressed_columns() -> No
     invalid = 1_000.0
     adapter = _PresetRadarCostAdapter(
         association_gate=40.0,
+        radar_assignment_ambiguity_governance=True,
         preset_costs={
             2: np.array(
                 [
@@ -406,6 +469,7 @@ def test_three_track_alternating_cycle_fails_closed_as_one_component() -> None:
     )
     adapter = _PresetRadarCostAdapter(
         association_gate=40.0,
+        radar_assignment_ambiguity_governance=True,
         preset_costs={2: cycle_costs},
     )
     track_ids = _seed_tracks(adapter, positions)
@@ -437,7 +501,10 @@ def test_gate_unique_formation_updates_without_ambiguity_suppression() -> None:
         np.array([1_000.0, 0.0, -100.0]),
         np.array([1_000.0, 500.0, -100.0]),
     )
-    adapter = FusionAdapter(association_gate=40.0)
+    adapter = FusionAdapter(
+        association_gate=40.0,
+        radar_assignment_ambiguity_governance=True,
+    )
     track_ids = _seed_tracks(adapter, positions)
     moved = tuple(
         position + np.array([2.0, 0.5, 0.0])
@@ -469,7 +536,10 @@ def test_dense_first_scan_births_all_tracks_without_ambiguity_suppression() -> N
         np.array([1_500.0, -1_200.0 + 100.0 * index, -120.0])
         for index in range(25)
     )
-    adapter = FusionAdapter(association_gate=40.0)
+    adapter = FusionAdapter(
+        association_gate=40.0,
+        radar_assignment_ambiguity_governance=True,
+    )
 
     result = adapter.process_scan_batch(
         _scan(
@@ -498,7 +568,10 @@ def test_gate_unique_oosm_scan_preserves_dual_timestamps_and_track_ids() -> None
         np.array([4.0, 1.0, 0.0]),
         np.array([-3.0, 1.0, 0.0]),
     )
-    adapter = FusionAdapter(association_gate=40.0)
+    adapter = FusionAdapter(
+        association_gate=40.0,
+        radar_assignment_ambiguity_governance=True,
+    )
     first_ids = _seed_tracks(adapter, positions)
     later_positions = tuple(
         position + velocity

@@ -443,6 +443,7 @@ class FusionAdapter:
         trusted_replay_checkpoint_prefix: bool = True,
         cached_consistency_prefix_refresh: bool = True,
         trusted_consistency_counter_refresh: bool = True,
+        radar_assignment_ambiguity_governance: bool = False,
     ) -> None:
         self.process_noise = float(process_noise)
         self.bucket_size = float(bucket_size)
@@ -452,6 +453,13 @@ class FusionAdapter:
         self.association_gate = float(association_gate)
         self.latency_compensation = bool(latency_compensation)
         self.use_truth_hints_for_association = bool(use_truth_hints_for_association)
+        if not isinstance(radar_assignment_ambiguity_governance, bool):
+            raise TypeError(
+                "radar_assignment_ambiguity_governance must be a bool"
+            )
+        self.radar_assignment_ambiguity_governance = (
+            radar_assignment_ambiguity_governance
+        )
         self.radar_covariance_config = (
             radar_covariance_config
             if isinstance(radar_covariance_config, RadarCovarianceConfig)
@@ -1508,8 +1516,16 @@ class FusionAdapter:
             "max_radar_assignment_ambiguity_component_size": (
                 self.max_radar_assignment_ambiguity_component_size
             ),
+            "radar_assignment_ambiguity_governance_enabled": (
+                self.radar_assignment_ambiguity_governance
+            ),
             "radar_assignment_ambiguity_policy_version": (
                 RADAR_ASSIGNMENT_AMBIGUITY_POLICY_VERSION
+            ),
+            "radar_assignment_ambiguity_governance_status": (
+                "experimental_enabled"
+                if self.radar_assignment_ambiguity_governance
+                else "disabled"
             ),
             "latest_radar_assignment_ambiguity_track_ids": (
                 self._latest_radar_assignment_ambiguity_track_ids
@@ -1821,7 +1837,10 @@ class FusionAdapter:
                 continue
             assignments[int(column)] = track_items[int(row)][0]
         radar_ambiguities: dict[int, _RadarAssignmentAmbiguity] = {}
-        if all(observation.modality == "radar" for observation in observations):
+        if (
+            self.radar_assignment_ambiguity_governance
+            and all(observation.modality == "radar" for observation in observations)
+        ):
             radar_ambiguities = self._radar_assignment_ambiguities(
                 track_items,
                 valid,

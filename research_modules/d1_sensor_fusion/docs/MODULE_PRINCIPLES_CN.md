@@ -13,9 +13,9 @@
 物理身份。seed 1000/1002 的 radar-only 谱系污染正是扫描间 swap/保持/swap-back，零延迟
 对照排除了 OOSM 因果。
 
-保守候选 v1 在 Hungarian 后把每个已匹配 track 行作为节点。若 track `i` 也能通过原门限匹配
+实验候选 v1 在 Hungarian 后把每个已匹配 track 行作为节点。若 track `i` 也能通过原门限匹配
 track `k` 当前占有的 observation，则添加 `i -> k`；大小至少 2 的强连通分量包含门内交替环。
-处理原则是：
+显式启用时的处理原则是：
 
 ```text
 全 radar scan
@@ -36,9 +36,43 @@ likelihood margin 在开发回放中失败：首次抑制改变状态后，后�
 用同一真值输入调 margin 并宣称身份已确定。
 
 开发冻结 A/B 的 radar 混合谱系代理在 seeds 1000/1001/1002 均为 `2 -> 0`，终态/创建航迹
-保持 `203/201/201`；代价是抑制 `1.12%/6.61%/3.98%` 的 target radar observations。该代价
-说明 fail-closed 并非免费，也说明模块测试不能替代 detached clean 泛化验收。当前状态只能写为
-“保守候选 v1，P1 开放”。
+保持 `203/201/201`；代价是抑制 `1.12%/6.61%/3.98%` 的 target radar observations。这只是
+开发复现。`d967c96` detached clean 2.2 s 的实际结果是：
+
+| Seed | ambiguous | strict IDSW | D1 tracks | 关键下游 | suppression |
+| --- | ---: | --- | ---: | --- | ---: |
+| 1000 | `2 -> 0` | 候选 `available=12` | `203 -> 202` | D3 `200` | `16` |
+| 1001 | `0 -> 1` | `available=9 -> unavailable` | `201 -> 201` | D2 `202 -> 198`；D3 `200 -> 188` | `114` |
+| 1002 | `2 -> 0` | 候选 `available=3` | `201 -> 200` | D3 `200 -> 193` | `78` |
+
+seed1001 揭示 v1 的数学边界。其 scan 8 门内图是 `200x199`，有 209 条合法边、198 个匹配、
+2 个 free row 和 1 个 free column。Hungarian 匹配边代价 `0.80058`；同一 observation 对
+free row 的代价 `1.58216`。以下替换保持匹配基数：
+
+```text
+当前：track_187 -> observation，track_186 free
+替代：track_186 -> observation，track_187 free
+```
+
+这是一条 free-row alternating path，不是已匹配行 SCC 中的 cycle。一般最大基数匹配还可能
+通过 free-column 路径更换 observation 所有权；若不抑制相关未匹配 observation，还可能进入
+birth。v1 没有证明这些 allowed edges，因此不能作为完整匿名身份治理。
+
+clean seed1001 的全部 1,966 条 radar 原始量测都是三维 range/azimuth/elevation；转换后的
+零 radial velocity 是未观测 placeholder。没有合法的独立径向速度及其协方差时，不能用该值
+缩小门内图。
+
+当前生产原则是 fail safe 回退到基线 Hungarian：
+
+```text
+radar_assignment_ambiguity_governance = False  -> 基线 Hungarian
+radar_assignment_ambiguity_governance = True   -> 显式实验 v1
+```
+
+审计同时发布 enabled、候选 policy version 和 `disabled/experimental_enabled` 状态。seed
+1000/1002 的改善不能抵消 seed1001 新增 ambiguous、strict unavailable 与下游退化；P1 保持
+开放。10 s radar+vision ambiguous 不能单独证明 radar-only 根因，但长期 coast 和跨模态传播
+必须进入集成验收，不能被排除。
 
 ### 跨模态融合先保证几何语义完整
 

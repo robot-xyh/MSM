@@ -10,7 +10,7 @@
 
 | GAP/合同 | 当前状态 | 2026-07-23 证据 | 剩余关闭条件 |
 | --- | --- | --- | --- |
-| Radar-only 扫描间 Hungarian 交叉换绑 | **保守候选 v1 已实现并通过模块回归；身份连续性 P1 未关闭** | seed 1000/1002 的 swap/保持/swap-back 已复现；零延迟对照分配/代价不变且 OOSM 为 0。全 radar scan 的门内交替环现 fail closed：环内 observation 不更新、不 birth，track 只预测。开发冻结 A/B 的 radar 混合谱系代理：seeds 1000/1001/1002 均 `2 -> 0`；终态/创建 track 保持 `203/201/201`；抑制 `22/1962=1.12%`、`130/1966=6.61%`、`78/1958=3.98%`。200 个 truth radar 谱系仍均有覆盖。truth 仅在两端回放后连接；全量 `199 passed`，`py_compile`/`git diff --check` 通过 | main 在 detached clean 候选上重跑预注册 seed/时长；D2 离线复核 ambiguous mappings、continuity、split/merge/ID switch；核对重复 birth、召回和抑制代价。当前三 seed 是开发复现，不是泛化集；seed 1001 的发布 D2 ambiguous 仍为 0。20:1 margin 已证实会在 coast 后提交看似唯一但谱系错误的排列，不得据同输入调阈值 |
+| Radar-only 扫描间 Hungarian 交叉换绑 | **v1 detached clean 阻断；生产默认关闭；身份连续性 P1 开放** | 开发冻结 A/B 曾得到三 seed D1 历史代理 `2 -> 0` 和 `1.12%/6.61%/3.98%` 抑制率，但 `d967c96` clean 2.2 s 结果为：seed1000 ambiguous `2 -> 0`、D1 `203 -> 202`、suppression 16；seed1001 ambiguous `0 -> 1`、strict `available=9 -> unavailable`、D2 `202 -> 198`、D3 `200 -> 188`、suppression 114；seed1002 ambiguous `2 -> 0`、D1 `201 -> 200`、D3 `200 -> 193`、suppression 78。三组 finite=true、online truth=0、missing identity evidence=0。seed1001 残余是 D1 既有 `global_track_187` 在 `200x199` 图中沿 v1 未覆盖的 gate-valid free-row alternating path 接受错误 radar update，不是 D1 birth。1,966 条 radar 均无真实 radial velocity。当前严格布尔开关默认 False；显式 True 才运行 `fail_closed_gate_feasible_alternating_cycle_v1`。专项 `13 passed`，全量 `204 passed` | 不晋级 v1，不宣称 P1 关闭。下一候选须证明最大基数 matching allowed-edge 的 cycle/free-row/free-column 边界，并在未用于调参的 detached clean 上同时验收 ambiguous、strict identity、D1/D2 continuity、D3 availability、suppression、birth/recall 和 10 s 长期跨模态后果。20:1 margin 与 3D radar 零速度 placeholder 均不得作为身份治理 |
 | 匿名雷达/视觉跨模态混轨 | **已复现的 D1 解析缺陷关闭；20-seed 系统复核 P1 开放** | clean `5263e2b` nominal 200v200/10 s/seed 1000，771 scans/11,889 anonymous obs，在线 truth 0。冻结 `camera_model` 为只读 `Mapping` 时，旧解析丢失旋转/内参并使用默认投影；候选恢复真实几何，非法外参和相机后方投影 fail closed。D2 标出的 17 条视觉污染观测 17/17 离开原错误航迹并进入离线标签单一谱系。终态 `201 -> 202`，新增雷达出生 `radar-s000030-d0116`；规范状态/谱系 hash `39d0cdf5...02d7 -> b0d6c4ac...d717`。D1 全量 `191 passed` | main 在 clean 候选上重跑 seeds 1000-1019，D2 重新审计历史 118 个多真值航迹帧。完整 sidecar 前严格身份指标保持 unavailable；不得将单 seed 17/17 外推为 20-seed 关闭 |
 | Scan-input claim 重复 JSON 规范化 | **D1-owned 热点已关闭；clean 多 seed 集成收益 P1 开放** | clean `5263e2b` nominal 200v200/10 s/seed 1000 冻结输入，771 scans/11,889 obs/SHA-256 `5d033a04...67ce8f`。旧/新 claim registry、逐输入事件、发布顺序、逐 fusion 状态/协方差/双时间戳/谱系/分级、操作计数、累计诊断、终态和一致性证据严格一致；registry hash 均为 `22a71336...b8fd7`。771 scans 交错 5 轮 P50/P95 `3.618/4.049 -> 1.905/2.038 s`，P50 1.899x；`_json_safe` cProfile `5.781 -> 1.992 s`。全量 `185 passed`。原 clean 20-seed 基线 scan-input/fusion 累计均值为 `9.671/43.774 s`，episode P95 均值 `135.454/233.488 ms` | main 在当前候选提交复跑预注册多 seed clean full-stack，比较 episode scan-input P50/P95/max、核心 RTF 和 RSS。不得把单 seed函数级计时直接外推成 20-seed 或实时收益 |
 | 尾延时 profiler 与完整帧复用 | **重复 frame/observation 快照热点已在 D1 冻结 replay 关闭；fusion 与 clean full-stack P1 开放** | clean `4ac3bb2` nominal 200v200/10 s/seed 1000 冻结输入，771 scans/11,889 obs/SHA-256 `c1dda852...66f77a`；帧重建 `771 -> 0`、再快照 `11,889 -> 0`；前 256 scans 交错 5 轮 P50/P95 `1.942/1.968 -> 0.881/0.894 s`，墙钟不参与验收。逐输入、逐 fusion 状态/协方差/双时间戳/谱系/分级、物化航迹、终态、证据、逐扫描操作数及累计诊断全部严格一致；operation hash `82728a8e...bfb5bf`；main 实测当前 D1 全量 `185 passed`。fusion cProfile 仍由 GlobalTrack 物化、扫描关联、代价矩阵和 replay 主导 | claim 重复 JSON 规范化已由最新一项关闭；继续治理非 claim audit/event、长期 claim registry 内存、GlobalTrack 物化及 radar/rebase，但不得缩窗口、丢观测、降频、放宽门控或使用 truth。当前工作区复放非 clean 放行、非 AirSim、非正式多 seed、未实时 |
@@ -29,11 +29,12 @@
 | 正式 200v200 算法效果 | 未验收 | clean 三 seed 全栈已运行，但正式 RMSE/NEES/NIS sidecar 和 D2 canonical mapping 指标仍 unavailable | 更多未见 seed、正确 D2 canonical mapping、RMSE/NEES/NIS/coverage 与置信区间 |
 | AirSim 状态 | 无变化 | 两批均为合成治理或三维质点制品，未启动 Blocks/CV/SimpleFlight | 按独立 AirSim 计划采集和验收，不得把本批改写为 AirSim 证据 |
 
-最新 radar-only 增量不关闭 GAP。它把所有门内可交换环视为身份不可判定，不使用 observation
-名称、target/actor/truth、D6 或 likelihood 排名生成在线身份。该规则的安全代价是会抑制
-likelihood winner 很尖锐但门拓扑仍可交换的扫描；开发回放 1.12%/6.61%/3.98% 必须在
-detached clean 上重新校准。10 s 制品的 7 个 ambiguous mappings 是 radar+vision 混合，不是
-本 radar-only 候选的关闭证据。
+最新 radar-only 增量不关闭 GAP。v1 不使用 observation 名称、target/actor/truth、D6 或
+likelihood 排名生成在线身份，但它只覆盖已匹配行 SCC，遗漏 free-row/free-column 同基数
+交替路径。`d967c96` clean 已证明该遗漏会新增 seed1001 ambiguous mapping，并使 strict identity
+和下游可用性下降；因此生产默认恢复基线 Hungarian，v1 仅保留为显式实验候选。10 s 的 7 个
+radar+vision ambiguous mappings 不能单独证明 radar-only 根因，但长期 coast 与跨模态传播属于
+后续集成验收，不能从关闭条件中排除。
 
 前一轮先关闭冻结相机元数据解析导致的跨模态混轨。修复只恢复在线可得的真实相机旋转和内参，
 并对非法/后方投影 fail closed；未增加 truth 或对象名称门控。单 seed 定向 17/17 通过，但

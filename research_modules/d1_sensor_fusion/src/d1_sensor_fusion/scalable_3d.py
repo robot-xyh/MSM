@@ -53,6 +53,7 @@ class Scalable3DFusionAdapter(FusionAdapter):
             SCALABLE_3D_UNOBSERVED_VELOCITY_VARIANCE_M2PS2
         ),
         position_only_radar_nis_gate: float = SCALABLE_3D_POSITION_ONLY_RADAR_NIS_GATE,
+        radar_assignment_ambiguity_governance: bool = False,
         **kwargs: Any,
     ) -> None:
         if bool(kwargs.pop("use_truth_hints_for_association", False)):
@@ -67,7 +68,13 @@ class Scalable3DFusionAdapter(FusionAdapter):
             position_only_radar_nis_gate,
             "position_only_radar_nis_gate",
         )
-        super().__init__(use_truth_hints_for_association=False, **kwargs)
+        super().__init__(
+            use_truth_hints_for_association=False,
+            radar_assignment_ambiguity_governance=(
+                radar_assignment_ambiguity_governance
+            ),
+            **kwargs,
+        )
 
     def process_online_sensor_batch(
         self,

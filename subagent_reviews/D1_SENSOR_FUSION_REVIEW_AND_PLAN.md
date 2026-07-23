@@ -7,27 +7,33 @@
 
 ## 0. 当前性能与治理状态（2026-07-23）
 
-- Radar-only 专项已把 seed 1000 的 `global_track_100/101` 和 seed 1002 的
-  `global_track_187/188` 定位为 scan Hungarian swap/保持/swap-back。radar-only 零延迟对照
-  保持相同分配/代价且 OOSM 归零，排除 birth、重捕获和 OOSM 为根因。
-- 当前 `fail_closed_gate_feasible_alternating_cycle_v1` 只在全 radar scan 上检查 Hungarian
-  已匹配子图。强连通分量大小至少 2 表明存在另一组等基数门内匹配；分量内观测被 processed
-  后跳过 update/birth，原 track 只预测。非 radar、首扫、门拓扑唯一、单目标重捕获不受影响；
-  greedy fallback 和矩形矩阵边界执行相同规则。
-- 20:1 likelihood margin 已否决：一次抑制改变状态后，后续会提交代价看似唯一但离线谱系错误
-  的排列。v1 不把单帧代价差解释成身份确定性，也不解析 observation/source 名称。
-- 实际候选实现的开发冻结 A/B：seeds 1000/1001/1002 的 radar 混合谱系代理均
-  `2 -> 0`，终态/创建 track 分别保持 `203/201/201`，抑制
-  `22/1962=1.12%`、`130/1966=6.61%`、`78/1958=3.98%`。三组仍覆盖全部 200 个 truth
-  radar 谱系，且未新增 birth。truth 只在两端在线回放结束后连接。
-- seed 1001 的原发布 D2 ambiguous 指标为 0；上述 `2 -> 0` 仅是完整 D1 历史代理。当前三 seed
-  是开发复现，不能兼作泛化验收。10 s 制品的 7 个 ambiguous mappings 是 radar+vision 混合。
-- 审计新增双时间戳、component size、observation suppression、track coast、reason、track IDs
-  和 policy version。专项含 2x2/三目标环、唯一编队、密集首扫、OOSM、重捕获、greedy 和矩形
-  边界；D1 全量 `199 passed in 16.74s`，`py_compile` 与 `git diff --check` 通过。
-- 评审结论：接受为保守候选 v1，不关闭 P1。1.12%/6.61%/3.98% 是待 main detached clean
-  校准的显式信息代价；clean 还须由 D2 离线复核 ambiguous mapping、continuity、split/merge、
-  ID switch、重复 birth 和召回。
+- Radar-only 开发专项已把 seed 1000/1002 定位为 scan Hungarian
+  swap/保持/swap-back；零延迟对照排除 OOSM，20:1 likelihood margin 也已证明不能在 coast
+  后建立身份确定性。开发冻结 v1 A/B 的 `2 -> 0` 和
+  `1.12%/6.61%/3.98%` 只属于复现输入。
+- main 对 `d967c96` 的 detached clean 2.2 s 三 seed 复验未通过。seed1000 ambiguous
+  `2 -> 0`、D1 tracks `203 -> 202`、suppression 16；seed1001 ambiguous `0 -> 1`、strict
+  `available=9 -> unavailable`、D1 `201 -> 201`、D2 `202 -> 198`、D3
+  `200 -> 188`、suppression 114；seed1002 ambiguous `2 -> 0`、D1 `201 -> 200`、D3
+  `200 -> 193`、suppression 78。三组 finite=true、online truth=0、missing identity
+  evidence=0。
+- seed1001 的 `GT3D-000210` 不是 D1 birth，而是 D1 既有 `global_track_187` 接受 scan 8
+  错误 radar update 后，由 D2 在末帧重建。scan 8 的 `200x199` 门内图有 209 条合法边、
+  198 个匹配、2 个 free row 和 1 个 free column；当前边代价 `0.80058`，同 observation 对
+  free row 的代价 `1.58216`，存在等基数 free-row alternating path。v1 的已匹配行 SCC
+  无法检测该路径。
+- clean seed1001 的 1,966 条 radar 原始量测均为三维 range/azimuth/elevation 和 `3x3`
+  covariance。零 radial velocity 由 D1 标为未观测 placeholder，不能用于候选缩图。
+- 生产默认已恢复基线 Hungarian。严格布尔参数
+  `radar_assignment_ambiguity_governance=False` 时不运行 v1；仅显式 True 才运行
+  `fail_closed_gate_feasible_alternating_cycle_v1`。审计输出 enabled、policy version 和
+  `disabled/experimental_enabled` 状态。
+- 专项 `13 passed`，覆盖默认换绑、显式 v1 suppression、严格参数校验及 gate-valid `3x2`
+  free-row blocker；D1 全量 `204 passed in 17.42s`。未实现未验证的 full alternating-path v2。
+- 评审结论：v1 仅保留为实验候选，P1 blocker 开放。下一候选必须覆盖最大基数 matching 的
+  cycle/free-row/free-column allowed edges，并在新 detached clean 上联合验收 strict identity、
+  continuity、D3 availability、suppression、birth/recall。10 s radar+vision ambiguous 不是
+  纯 radar 根因证据，但其长期 coast/跨模态后果仍属于集成验收范围。
 
 - D2 nominal 200v200 身份阻断审计在 seed 1000 给出 17 条可复核的雷达/视觉混轨观测。D1 在
   clean `5263e2b` 的 771 scans/11,889 anonymous observations 冻结回放中复现。

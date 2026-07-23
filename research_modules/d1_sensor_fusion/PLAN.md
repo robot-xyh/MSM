@@ -1,38 +1,45 @@
 # D1 多传感器融合与目标配准实施计划
 
-## 匿名雷达交替环保守候选与后续计划（2026-07-23）
+## 匿名雷达交替环 v1 阻断与后续计划（2026-07-23）
 
-D1 已在 seed 1000/1002 冻结输入和 radar-only 零延迟对照中确认：异常来自 scan Hungarian
-交叉换绑，不是 birth、重捕获或 OOSM。seed 1000 的 `global_track_100/101` 在 scans 8--10
-发生 swap/保持/swap-back；seed 1002 的 `global_track_187/188` 同构。20:1 单扫描 likelihood
-margin 在一次抑制后仍会提交离线谱系错误但代价看似唯一的排列，因此不作为身份确定性门。
+开发冻结和零延迟 A/B 已确认 seed 1000/1002 的 radar-only 问题是 scan Hungarian
+swap/保持/swap-back；20:1 likelihood margin 不能在 coast 后证明身份。开发回放中，显式 v1
+曾把三 seed 的 D1 历史混合谱系代理均从 `2 -> 0`，终态 track 保持 `203/201/201`，抑制率为
+`1.12%/6.61%/3.98%`。该结果只用于复现和候选开发。
 
-当前实现接受为 `fail_closed_gate_feasible_alternating_cycle_v1` 保守候选：仅在全 radar
-scan 上检查 Hungarian 已匹配行列的门内交替环；环内观测全部抑制且不能 birth，航迹只预测，
-非 radar、首扫、门拓扑唯一和单目标重捕获保持原路径。审计保留双时间戳、component size、
-observation suppression、track coast、受影响 track IDs、reason 和 policy version。
+提交 `d967c96` 的 detached clean 2.2 s 复验未通过：
 
-当前未提交工作区的开发冻结 A/B 为：
+| Seed | D2 ambiguous | strict IDSW | D1 tracks | 下游变化 | suppression |
+| --- | ---: | --- | ---: | --- | ---: |
+| 1000 | `2 -> 0` | 候选 `available=12` | `203 -> 202` | D3 assignments `200` | `16` |
+| 1001 | `0 -> 1` | `available=9 -> unavailable` | `201 -> 201` | D2 `202 -> 198`；D3 `200 -> 188` | `114` |
+| 1002 | `2 -> 0` | 候选 `available=3` | `201 -> 200` | D3 `200 -> 193` | `78` |
 
-| Seed | 混合 radar 谱系代理 | 终态/创建航迹 | 抑制率 |
-| --- | ---: | ---: | ---: |
-| 1000 | `2 -> 0` | `203 -> 203` | `22/1,962 = 1.12%` |
-| 1001 | `2 -> 0` | `201 -> 201` | `130/1,966 = 6.61%` |
-| 1002 | `2 -> 0` | `201 -> 201` | `78/1,958 = 3.98%` |
+三组 finite=true、online truth=0、missing identity evidence=0。seed 1001 的
+`GT3D-000210` 来自既有 D1 `global_track_187`，不是 D1 birth：scan 8 接受另一离线谱系的
+radar observation，scan 9 回到原谱系，后续两条 vision 延续该后验，D2 在末帧重建 canonical
+track。
 
-truth 只在两条在线回放完成后核验。seed 1001 的原发布 D2 ambiguous 为 0，表中结果仅是完整
-D1 历史代理；三组输入均是开发复现，不能兼作泛化验收。D1 全量
-`199 passed in 16.74s`，`py_compile` 与 `git diff --check` 通过。
+scan 8 的 `200x199` 门内图有 209 条合法边、198 个匹配、2 个 free row 和 1 个 free column。
+当前匹配边代价 `0.80058`；同一 observation 对 free row 的代价 `1.58216`，可通过 free-row
+alternating path 保持匹配基数。v1 只检查已匹配行 SCC，因此数学边界不完整。clean seed 1001
+的 1,966 条 radar 原始量测均为三维 range/azimuth/elevation；零 radial velocity 是未观测
+placeholder，不能作为运动一致性证据。
 
-后续顺序固定为：
+当前生产计划为：
 
-1. main 在 detached clean 候选上重跑预注册 seed/时长，保存策略计数、抑制分母和输入摘要；
-2. D2 只在回放后复核 ambiguous mappings、continuity、split/merge 和 ID switch；
-3. 同时核对创建/终态航迹、重复 birth、召回和 1.12%/6.61%/3.98% 信息代价是否泛化；
-4. clean 结果通过前，身份连续性 P1 保持开放；不继续在 seeds 1000--1002 上调代价阈值。
+1. `radar_assignment_ambiguity_governance=False` 保持生产默认，执行基线 Hungarian；
+2. 仅在显式实验中设为 `True`，运行
+   `fail_closed_gate_feasible_alternating_cycle_v1` 并读取 enabled/status/version 审计；
+3. 不提交刚才未验证的 v2；下一候选先独立证明最大基数匹配上的 cycle、free-row 和
+   free-column allowed-edge 边界，再评估 suppression；
+4. 新候选必须在未用于调参的 detached clean 输入上同时通过 ambiguous、strict identity、
+   D1/D2 track continuity、D3 availability、birth/recall 和长期跨模态后果；
+5. 10 s radar+vision ambiguous 不能证明纯 radar 根因，但属于长期 coast 的集成验收范围；
+6. 身份连续性 P1 保持开放，不再用 seeds 1000--1002 调代价阈值。
 
-本候选不改变 6 s fixed-lag、扫描频率、关联门限、协方差治理、`global_track_id`、D7/PNG 或
-AirSim producer/runtime 合同。
+专项 `13 passed`，D1 全量 `204 passed in 17.42s`。本 follow-up 不改变 6 s fixed-lag、
+扫描频率、关联门限、协方差治理、`global_track_id`、D7/PNG 或 AirSim producer/runtime 合同。
 
 ## 匿名跨模态几何门控收口与后续计划（2026-07-23）
 
