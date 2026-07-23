@@ -4,6 +4,28 @@ Offline research module for radar, acoustic, EO, and optional synthetic lidar he
 
 ## 当前性能与治理证据（2026-07-22）
 
+### 第六阶段：最终跨提交全栈语义审计
+
+main 使用相同的 `200v200-nominal-v1` 配置，在 clean 参考提交 `8f86192` 与 clean 候选提交
+`f80b5bd` 上分别运行 10 s seeds 42000、42001、42002。三组运行均保持有限状态和
+`online_truth_use_count=0`；候选与参考的 D1 终态航迹数逐 seed 均为 `202/207/203`。
+
+D1 fusion 累计耗时的三 seed 均值为 `92.991088 -> 88.330438 s`，下降约 5.01%。D1 scan
+input 同期为 `16.902643 -> 17.524242 s`，增加约 3.68%，因此不能把融合分项改善解释成 D1
+全部阶段同比改善。雷达关联的精确创新求解总数由 `7,130,228` 降至 `1,578,677`，下降约
+77.86%；该计数只描述执行成本，不是业务输出或精度指标。
+
+main 对两个提交的在线总线执行逐条语义审计。三个 seed 全部通过。审计只把 D3 每次规划生成的
+不透明 `plan_id` 按出现次序和版本归一化；归一化前先校验 ACK 原始载荷摘要，且 owner、version、
+coalition、`global_track_id`、导引命令等业务字段仍参与比较。D1 fused-track 主题的逐条规范哈希
+一致，说明 certified radar pre-gating 没有改变本组业务语义。未通过有限性、严格对称、
+Gershgorin 正定下界和 `pinv` cutoff 认证的创新协方差仍完整回退原精确 `np.linalg.pinv` 路径。
+
+证据目录为
+`../scalable_3d_simulation/outputs/scalable_3d_long_duration_candidate_20260722_clean_f80b5bd/`。
+该结果关闭当前三 seed 的跨提交 D1 业务等价复核，不关闭系统实时预算、长时归一化超线性、
+AirSim 或正式 RMSE/NEES/NIS P1。
+
 ### 第五阶段：可证明雷达预门控与单次 A95 物化
 
 本阶段继续使用 clean 候选提交 `8f86192` 的冻结在线观测，不重新生成场景，也不读取在线

@@ -1,5 +1,25 @@
 # D1 多传感器融合与目标配准实施计划
 
+## 最终 integrated 三 seed 证据与剩余计划（2026-07-22）
+
+main 已完成 clean 参考提交 `8f86192` 与 clean 候选提交 `f80b5bd` 的同配置跨提交复跑。
+`200v200-nominal-v1`、10 s、seeds 42000/42001/42002 均为有限状态，在线 truth 使用为 0；D1
+终态航迹数逐例保持 `202/207/203`。D1 fusion 累计耗时三 seed 均值
+`92.991088 -> 88.330438 s`，下降约 5.01%；scan input
+`16.902643 -> 17.524242 s`，增加约 3.68%。精确创新求解合计
+`7,130,228 -> 1,578,677`，下降约 77.86%。求解次数只进入性能诊断，不参与业务等价判定。
+
+三个 seed 的逐条跨提交业务语义审计全部通过。审计按规划 occurrence/version 归一化 D3 的不透明
+`plan_id`，但先验证 ACK 原始载荷 SHA，并继续比较 owner/version/coalition/`global_track_id`/
+command 等业务字段。D1 fused-track 主题的规范哈希逐 seed 一致。该证据把 certified radar
+pre-gating 从冻结纯融合回放扩展到当前 integrated D1-D7 总线；未认证创新协方差仍使用原精确
+`pinv` fallback。
+
+当前关闭的是三 seed 集成语义复核，不是吞吐预算。后续 P1 保持为：在冻结硬件和预注册预算下
+扩展时长及未见 seed，分别报告 D1 fusion、scan input、进程常驻集和端到端实时倍率；继续核验
+真实异常协方差的认证/回退比例，并通过独立 truth sidecar 与正确 D2 canonical mapping 形成
+RMSE/NEES/NIS。系统长时归一化超线性和实时性仍开放，不调整预门控数学边界。
+
 ## 雷达关联预门控验收与剩余计划（2026-07-22）
 
 D1 已在不改变默认完整 API 和 state-only/full 合同的前提下加入雷达候选预门控。适用性认证要求

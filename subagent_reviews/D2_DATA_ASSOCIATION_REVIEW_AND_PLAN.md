@@ -22,8 +22,12 @@
   `collision_stop`，但碰撞对象未持久化，不归因于 D2。默认 GNN/Hungarian 和中心
   `global_track_id` 所有权不变；终止前额外完成的一个 `png_ttc_2v2_seed001` 被排除，
   dropout case 为 0。
-- **2026-07-22 当前回归**：main 尾部合并后 seed1005 的 replay 合法为 0；复现和测试
-  验收已同步，完整 D2 为 `189 passed, 1 warning`。关联算法未修改。
+- **2026-07-22 当前集成证据**：main 在 clean reference `8f86192` 和 candidate
+  `f80b5bd` 上完成 nominal 200v200、10.0 s、seeds 42000/42001/42002 对照。每 seed
+  D2 association 调用 47 次，累计耗时均值 `8.317513 -> 7.671266 s`，终态航迹数
+  `205/204/203` 逐 seed 相同；在线逐条语义和 topic counts 全部通过，truth use 为 0。
+  短长对照仍把 D2 列为超线性，不宣称实时 promotion。当前完整 D2 回归为
+  `219 passed, 1 warning in 49.75s`。
 
 ## 1. 研究问题
 
@@ -68,7 +72,7 @@ D2/D6 的系统规则必须保留：`id_switch_count` 是强制显式指标，�
 
 - **JPDA**：`JPDAAssociator` 已能枚举小规模联合假设、计算边缘概率并输出接口兼容 `AssociationResult`。它是可执行研究对照，不是完整 JPDA filter；当前没有概率混合状态更新、完整协方差融合、track coalescence 抑制或大规模分簇策略。
 - **MHT**：`MHTAssociator` 已维护有界 branch、短历史、漏检/虚警惩罚和 pruning 参数。它是 MHT-compatible research placeholder，不是完整 MHT；当前没有 N-scan pruning、长期假设树管理、分簇或中心算力策略。
-- **3D NED 双路径**：旧 D1 adapter/`Tracker` 继续投影到二维；2026-07-20 新增独立 `Detection3D`/`GlobalTrack3D`/`Scalable3DTracker`，固定六维 NED、3D 马氏门控和稀疏 GNN/Hungarian。main scalable bus 接入尚未完成。
+- **3D NED 双路径**：旧 D1 adapter/`Tracker` 继续投影到二维；2026-07-20 新增独立 `Detection3D`/`GlobalTrack3D`/`Scalable3DTracker`，固定六维 NED、3D 马氏门控和稀疏 GNN/Hungarian。main scalable bus 已接入并完成三 seed nominal clean 非退化复核；困难场景、实时预算和离线身份标定仍开放。
 - **D6 集成**：D2 summary/logs 已含 IDSW、continuity、duplicate、risk/profile version、gate pass/reject、motion/quality 和 dense/crossing sensitivity 字段，并有 D2/D6 `id_switch_count` 合同测试。当前 P1 CV 批次已由 main/runtime/D6 生产与评分；后续专用 dense/crossing 分组标定属性能研究，不是 P1 合同缺口。
 
 ### 2.3 未实现
@@ -994,3 +998,27 @@ truth sidecar 未读。固定操作数逐项相等，48/48 周期语义 SHA-256 
 D2-owned nominal 冻结回放关联内核重复计算缺口关闭。真实 AirSim observation ID/时钟、
 代表性遮挡/杂波/OOSM、极端大连通分量、固定硬件周期分位数、多 seed offline
 IDSW/continuity 和完整 200v200 闭环继续保留为 P1；本结果不构成实时 promotion。
+
+## 37. 三 seed clean 集成晋级评审
+
+### 37.1 评审输入
+
+main 比较 `8f86192` 与 `f80b5bd` 的独立 clean 输出。三组均为 nominal 200v200、
+10.0 s，seeds 42000/42001/42002；有限状态和在线 truth use 为 0。每组 D2 association
+均调用 47 次，终态航迹数分别为 205、204、203，两侧逐 seed 一致。
+
+### 37.2 结果
+
+D2 association 累计耗时三 seed 均值 `8.317513 -> 7.671266 s`，约下降 `7.77%`。
+跨提交逐条语义审计和 topic counts 三组均通过。D3 随机 `plan_id` 只按 occurrence/version
+规范化，且先核对 ACK 原始载荷 SHA；owner、version、coalition、`global_track_id`、
+command 等业务字段保持精确比较。D2 发布自身未忽略字段。文档同步后的完整回归为
+`219 passed, 1 warning in 49.75s`，零测试失败。
+
+### 37.3 决定
+
+接受 `f80b5bd` 上 D2 批量 KD-tree/eigenvalue、velocity innovation/covariance governance
+复用和已门控 1x1 component bypass 的三 seed clean 集成非退化证据。nominal 集成复跑
+待办关闭，实时和复杂度待办不关闭：短长对照仍将 D2 association 判为超线性。真实
+AirSim 时钟、遮挡/杂波/OOSM、极端大分量、固定硬件周期分位数和离线 IDSW/continuity
+继续保留为 P1。

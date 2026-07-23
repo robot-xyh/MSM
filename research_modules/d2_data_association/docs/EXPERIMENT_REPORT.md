@@ -768,3 +768,36 @@ baseline/candidate 固定操作数完全相等，48/48 周期与冻结输出相�
 `785233fdf8f861307d54f4f85b895494f0325b93b4f72760c8eabf1cbae8297c`。该报告是冻结
 质点回放，不是 AirSim、固定硬件实时 SLA、最坏全重叠候选图、多 seed 身份评分或完整
 200v200 闭环结果。
+
+## 26. 200v200 三 seed clean 集成复核（2026-07-22）
+
+### 26.1 配置
+
+main 在独立 clean worktree 中比较 reference `8f86192` 与 candidate `f80b5bd`。场景为
+nominal 200v200，时长 10.0 s，随机种子为 42000、42001、42002。三个 candidate
+episode 均记录有限状态、`online_truth_use_count=0`，每个 seed 的 D2 association 调用
+数均为 47。
+
+| 项目 | reference `8f86192` | candidate `f80b5bd` | 结果 |
+| --- | ---: | ---: | --- |
+| D2 association 累计耗时三 seed 均值 | 8.317513 s | 7.671266 s | 下降约 7.77% |
+| 每 seed association 调用数 | 47 | 47 | 相同 |
+| seed 42000 终态 D2 航迹数 | 205 | 205 | 相同 |
+| seed 42001 终态 D2 航迹数 | 204 | 204 | 相同 |
+| seed 42002 终态 D2 航迹数 | 203 | 203 | 相同 |
+
+### 26.2 语义审计
+
+三组在线逐条语义和 topic counts 均相同。跨提交审计只对独立 D3 planner 产生的不透明
+`plan_id` 按 plan occurrence/version 做规范化，并在规范化前验证 ACK 原始载荷 SHA。
+owner、version、coalition、`global_track_id` 和 command 业务字段仍逐项比较，D2 发布
+记录本身没有通过忽略字段取得相等结果。
+
+### 26.3 结论
+
+三 seed clean 复核确认批量 KD-tree/eigenvalue、同周期 velocity innovation 复用、可信
+covariance governance 复用和 1x1 component bypass 没有改变 nominal 集成语义。该批
+没有加入真实 AirSim observation ID/时钟、遮挡、杂波、OOSM 或极端全重叠候选图。
+短长对照仍把 D2 association 列为超线性阶段，因而不能据此声明系统达到实时速度或 D2
+性能 P1 已关闭。文档同步后的完整 D2 回归为 `219 passed, 1 warning in 49.75s`，验收
+阈值为零失败；warning 为环境 Matplotlib `Axes3D` 导入提示。

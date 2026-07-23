@@ -738,3 +738,28 @@ sidecar，在线 truth use 为 0。
 该结果仅是当前主机上的冻结质点在线回放，不是 AirSim、实时 SLA 或完整 200v200 闭环
 证据。真实 observation ID/时钟、代表性遮挡/杂波/OOSM、极端大连通分量、固定硬件周期
 分位数、多 seed 离线 IDSW/continuity 和完整闭环仍为 P1。
+
+## 2026-07-22 三 seed 集成候选复核
+
+main 在独立 clean worktree 中比较 reference `8f86192` 与 candidate `f80b5bd`。场景固定为
+nominal 200v200、10.0 s，随机种子为 42000、42001、42002。三个 seed 均为有限状态，
+`online_truth_use_count=0`；每个 seed 的 D2 association 调用数均为 47。D2 association
+累计耗时的三 seed 均值从 `8.317513 s` 降至 `7.671266 s`，减少 `0.646247 s`，相对下降
+约 `7.77%`。三组终态 D2 航迹数分别为 `205/204/203`，reference 与 candidate 完全相同。
+
+main 的跨提交逐条审计确认 D2 在线发布语义和 topic counts 三组均一致。下游比较只按
+D3 plan occurrence/version 规范化独立运行产生的不透明 `plan_id`；规范化前先验证 ACK
+原始载荷 SHA。审计没有忽略 owner、version、coalition、`global_track_id`、command 等
+业务字段，D2 发布记录本身不依赖该计划号规范化。
+
+候选仍采用批量 KD-tree 查询和 covariance 特征值计算，复用同周期匹配边的 velocity
+innovation 与已由 D1 adapter 完成的 consistent covariance governance；只有通过全部
+门控的 1x1 连通分量绕过 Hungarian。regularized、非对称、非 PSD 或其他不能证明可信的
+covariance 继续走完整治理路径，候选集合、门限、关联频率和中心身份权威均未放宽。
+
+这批数据把 D2 单 seed 冻结回放优化提升为三 seed clean 集成非退化证据，但不构成系统
+实时性结论。短长对照仍把 `module.d2_association` 列为超线性阶段；真实 AirSim 时钟与
+observation ID、遮挡/杂波/OOSM、多 seed 离线 IDSW/continuity、极端大连通分量和固定
+硬件周期分位数继续作为 P1。2026-07-22 当前工作区完整 D2 回归为
+`219 passed, 1 warning in 49.75s`，验收阈值为零失败；warning 仍是环境中的 Matplotlib
+`Axes3D` 导入提示。

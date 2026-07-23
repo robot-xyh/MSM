@@ -7,6 +7,16 @@
 
 ## 0. 当前性能与治理状态（2026-07-22）
 
+- main 已完成 clean `8f86192 -> f80b5bd` 的最终 integrated 三 seed 跨提交复核。10 s、
+  200v200 nominal seeds 42000-42002 均 finite、在线 truth 0，D1 终态航迹数逐例保持
+  `202/207/203`。
+- D1 fusion 三 seed 累计耗时均值 `92.991088 -> 88.330438 s`，约下降 5.01%；scan input
+  `16.902643 -> 17.524242 s`，约增加 3.68%；精确创新求解总计
+  `7,130,228 -> 1,578,677`，约下降 77.86%。求解次数仅为性能诊断。
+- 三 seed 逐条在线业务语义审计全部通过。只按规划 occurrence/version 归一化 D3 opaque
+  `plan_id`，ACK 原始载荷 SHA 在归一化前校验；owner/version/coalition/`global_track_id`/command
+  等业务字段仍参与比较。该结果不关闭系统实时或长时归一化超线性 P1。
+
 - D1 已完成同一 fusion timestamp 内的延迟物化接口。`process_scan_batch()` 默认完整返回不变；显式
   state-only 仍完成扫描关联、fixed-lag/OOSM、双时间戳、covariance、门控、health、consistency
   evidence、lineage 和累计诊断，只不构造中间 `GlobalTrack`。
@@ -1062,3 +1072,35 @@ clean `8f86192` 的 10 s seeds 42000-42002 中，参考/候选纯融合墙钟均
 评审结论为 D1-owned 数学等价边界和当前冻结输入优化均通过。10 s 输入仍平均耗时 88.619 s，
 实时预算未关闭。后续 P1 是固定硬件多 seed/长时周期、真实异常协方差认证/回退比例、正式
 RMSE/NEES/NIS 和 AirSim 独立验收；不继续放宽预门控条件。
+
+## 32. 最终 integrated 三 seed 评审（2026-07-22）
+
+### 32.1 证据范围
+
+参考提交 `8f86192` 与候选提交 `f80b5bd` 分别从 clean 工作区运行相同的
+`200v200-nominal-v1` 10 s 场景。seeds 42000、42001、42002 的 D1 终态航迹数在两条路径均为
+`202/207/203`，所有状态有限，在线 truth 使用为 0。
+
+逐条语义审计同时覆盖 D1-D7 和运行时 ACK。D3 独立运行产生的不透明 `plan_id` 按 occurrence/
+version 归一化；ACK 原始载荷 SHA 在归一化前独立验证。计划 owner/version/coalition、规范
+`global_track_id`、command 及其余业务字段没有被移出比较。三组审计全部通过，D1 fused-track
+主题规范哈希逐 seed 一致。
+
+### 32.2 性能判断
+
+| 指标 | 参考 `8f86192` | 候选 `f80b5bd` | 变化 |
+| --- | ---: | ---: | ---: |
+| D1 fusion 三 seed 累计耗时均值 | 92.991088 s | 88.330438 s | -5.01% |
+| D1 scan input 三 seed 累计耗时均值 | 16.902643 s | 17.524242 s | +3.68% |
+| 精确创新求解总数 | 7,130,228 | 1,578,677 | -77.86% |
+
+精确创新求解次数只反映 certified radar pre-gating 跳过的伪逆工作量，不代表定位精度或业务
+质量。未通过有限性、严格对称、Gershgorin 正定和 `pinv` cutoff 认证的矩阵仍走原精确 fallback。
+scan input 没有改善，当前系统也未达到实时，长时归一化比较仍把 D1 scan input、D1 fusion 和
+module stack 列为超线性项。
+
+### 32.3 评审结论
+
+当前三 seed 的 D1 集成业务等价项关闭。系统实时、长时归一化超线性、真实异常 covariance
+认证/回退分布、AirSim 和正式 RMSE/NEES/NIS 保持 P1 开放。下一轮不得通过放宽预门控认证、
+缩短固定时滞、丢弃观测或改变双时间戳语义换取吞吐。

@@ -1565,3 +1565,32 @@ result 状态计算去除计时字段后的 SHA-256。报告同时固定 dense p
 矩阵非 PSD。即使传入伪造的 public consistency 字典，构造仍在 full covariance
 governance 中拒绝；旧的私有预验证关键字现在直接触发 `TypeError`。公开 DTO 和
 `to_dict()` 未增加字段。
+
+## 27. 三 seed 集成等价验证
+
+### 27.1 验证输入
+
+main 使用 reference `8f86192` 和 candidate `f80b5bd` 的独立 clean worktree，固定
+nominal 200v200、10.0 s 和 seeds 42000/42001/42002。每个 episode 的 D2 association
+均调用 47 次。两侧按同一 seed 比较，在线路径不读取 truth sidecar，三组
+`online_truth_use_count` 均为 0。
+
+### 27.2 优化边界
+
+候选把同一周期的 covariance 最大特征值和 KD-tree 查询合并为批处理。已经为匹配边
+计算的 velocity innovation 由紧随其后的更新复用；D1 adapter 刚完成且结果为 consistent
+的 covariance governance 才能在内部复用。发生 regularization 或无法证明可信时仍执行
+完整 6x6 检查。只有候选图连通分量为 1x1 且唯一边已经通过全部门控时才绕过
+`linear_sum_assignment()`。这些处理不改变查询半径、候选排序、合法边、状态更新或
+`global_track_id` 所有权。
+
+### 27.3 跨提交审计
+
+main 的审计器逐条比较在线 topic 载荷和 topic counts。D3 独立运行产生的随机
+`plan_id` 按计划出现顺序和 version 规范化，原始 ACK 载荷 SHA 在规范化前校验；owner、
+version、coalition、`global_track_id` 和 command 业务字段保持精确比较。D2 在线记录
+无需该规范化，三组语义比较均通过。
+
+D2 association 累计耗时三 seed 均值为 `8.317513 -> 7.671266 s`，减少约 `7.77%`；
+终态航迹数依次为 `205/204/203`，两侧相同。该验证证明 nominal 三 seed clean 集成
+非退化。短长对照仍将 D2 association 列为超线性，因此实时预算和困难场景标定尚未完成。

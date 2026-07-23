@@ -8,6 +8,27 @@
 
 ## 当前权威增量（2026-07-22）
 
+### 集成执行与等价验收
+
+certified radar pre-gating 在扫描代价矩阵构造阶段工作。通过认证且保守下界已越过原门限的候选
+不再执行伪逆；其余候选仍进入原精确 `np.linalg.pinv`、原门限和 Hungarian 一对一分配。该优化
+没有更改 `SensorObservation`、固定时滞重放、`GlobalTrack` 或下游 D2-D7 合同。
+
+main 以 clean `8f86192` 为参考、clean `f80b5bd` 为候选，对 10 s、200v200 nominal seeds
+42000/42001/42002 独立运行完整总线。三组 D1 终态航迹数在两条路径均为 `202/207/203`，有限
+状态和在线 truth 使用 0 均保持。D1 fusion 累计耗时均值由 `92.991088 s` 降至
+`88.330438 s`；scan input 由 `16.902643 s` 增至 `17.524242 s`。精确创新求解总数由
+`7,130,228` 降至 `1,578,677`。
+
+业务等价检查逐条比较在线总线。独立运行产生的 D3 `plan_id` 按规划出现次序和版本建立一一
+映射；映射前先校验 ACK 原始载荷 SHA，映射后仍比较 predecessor、owner、version、coalition、
+`global_track_id` 和 command 等业务字段。三个 seed 的全部主题检查均通过，D1 fused-track 主题
+规范哈希一致。`association_innovation_solve_count` 是实现成本计数，明确不参与业务等价比较，
+不能用来解释融合精度。
+
+该验收说明预门控和 A95 复用在当前 integrated 三 seed 上保持业务语义。它不证明 D1 已实时，
+也不解决当前长时归一化超线性、AirSim 接线或正式 RMSE/NEES/NIS。
+
 ### 雷达候选的可证明预门控
 
 雷达扫描中每个航迹和观测候选原本都计算

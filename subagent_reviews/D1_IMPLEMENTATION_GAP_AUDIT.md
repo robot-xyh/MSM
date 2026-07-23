@@ -10,6 +10,7 @@
 
 | GAP/合同 | 当前状态 | 2026-07-22 证据 | 剩余关闭条件 |
 | --- | --- | --- | --- |
+| 最终跨提交 integrated 语义复核 | **当前三 seed 已关闭；系统 P1 仍开放** | clean `8f86192 -> f80b5bd`，200v200 nominal、10 s、seeds 42000-42002；逐条总线语义审计 3/3 通过，D1 终态航迹均为 `202/207/203`，finite 且在线 truth 0。仅按 occurrence/version 归一化 opaque `plan_id`，ACK 原始载荷 SHA 先校验，owner/version/coalition/global track/command 仍参与比较 | 扩展未见 seed 和时长；保持相同跨提交审计规则，不能以数量相同替代逐条语义比较 |
 | 长时 fixed-lag 超线性增长 | **D1-owned 冻结输入缺口已关闭；系统 P1 仍开放** | 10 s/764 scans/12,107 obs 对照中，history replay `170,106 -> 13,397`、filter update `120,440 -> 9,549`、墙钟 `157.237 -> 107.449 s`；clean 三 seed 全栈 D1 fusion 均值进一步为 `103.339 -> 92.991 s` | 扩展更长时和未见 seed，冻结硬件和周期预算；D1 不以丢观测、缩短 6 s fixed-lag、放宽 gate 或使用 truth 换性能 |
 | 同一 fusion timestamp 重复全量快照物化 | **D1-owned 接口与 main 质点集成项已关闭** | 默认 API 不变；clean `8f86192` 三 seed 的 state-only/完整快照为 `310/454`、`328/516`、`278/504`，逐例合计全部扫描；事件、scan input、共享摘要和世界真值与旧 clean 相同 | 保持语义回归；AirSim writer、跨 tick heartbeat/lineage 和实时预算另行验收 |
 | D1 全量快照持久化 | **审计 v2 已实现；跨 tick 策略仍开放** | 旧基线 764 条约 186.2 MiB；新 audit 分别统计 publication/materialized/state-only/track records，兼容 v1 数组日志和 state-only 的空数组或过渡 null | main 后续评估跨 tick heartbeat/lineage sidecar；必须保留状态/身份/生命周期/质量/lineage 事件并支持 D6 重建。D1 不修改 main 发布器 |
@@ -17,7 +18,7 @@
 | 观测治理内存边界 | 正式快速治理证据已获得 | 200 规模 `estimated_peak_memory_bytes.mean=40,914,828.4 B`，约 40.91 MB；最大 40,926,870 B | 完整融合、长历史和进程常驻集内存仍需单独记录；tracemalloc 值不是生产预算 |
 | 逐小扫描全后验吞吐 | **D1-owned 冻结输入热点已关闭；系统 P1 仍开放** | profiler 定位 `_state_at`/历史 replay 和重复 health snapshot；增量后验检查点与公共审计快照使 filter update `93,234 -> 1,797`、health snapshot `16,653 -> 86`；clean 三 seed 全栈已完成 | 冻结硬件、发布频率与周期预算并扩展更长时；另验长历史内存和端到端实时倍率 |
 | 扫描关联重复模型构造 | **D1-owned 与 clean 三 seed 复跑已关闭** | seed 42000 冻结对照中 model build `16,457 -> 82`、墙钟 `10.792 -> 8.635 s`；clean `8f86192` 三 seed 全栈安全与语义回归通过 | 不得用模块单 seed 1.25 倍或全栈 D1 分项 10.0% 替代系统 P95、AirSim 或实时验收 |
-| 雷达候选精确创新求解成本 | **D1-owned 严格等价优化已关闭；系统实时 P1 仍开放** | 仅对有限、严格对称、Gershgorin 严格正定且高于 `pinv` cutoff 的矩阵预门控；非正定交叉协方差和近奇异截断负例均回退旧精确求解。10 s 三 seed 精确求解合计 `7,130,228 -> 1,578,677`，逐扫描/终态/evidence 哈希一致，墙钟均值 `91.313 -> 88.619 s`，3/3 更快 | 记录真实异常 covariance 的认证/回退比例，扩展未见 seed、时长和固定硬件周期统计；优化后仍非实时，不得放宽 gate、cutoff 或 `pinv` 语义 |
+| 雷达候选精确创新求解成本 | **D1-owned 严格等价优化已关闭；系统实时 P1 仍开放** | 仅对有限、严格对称、Gershgorin 严格正定且高于 `pinv` cutoff 的矩阵预门控；非正定交叉协方差和近奇异截断负例均回退旧精确求解。冻结纯融合墙钟均值 `91.313 -> 88.619 s`；最终 integrated 三 seed D1 fusion 均值 `92.991088 -> 88.330438 s`、scan input `16.902643 -> 17.524242 s`，精确求解合计 `7,130,228 -> 1,578,677`，业务语义审计 3/3 通过 | 记录真实异常 covariance 的认证/回退比例，扩展未见 seed、时长和固定硬件周期统计；scan input 与长时超线性仍开放，不得放宽 gate、cutoff 或 `pinv` 语义 |
 | 正式 200v200 算法效果 | 未验收 | clean 三 seed 全栈已运行，但正式 RMSE/NEES/NIS sidecar 和 D2 canonical mapping 指标仍 unavailable | 更多未见 seed、正确 D2 canonical mapping、RMSE/NEES/NIS/coverage 与置信区间 |
 | AirSim 状态 | 无变化 | 两批均为合成治理或三维质点制品，未启动 Blocks/CV/SimpleFlight | 按独立 AirSim 计划采集和验收，不得把本批改写为 AirSim 证据 |
 
@@ -32,6 +33,11 @@ publication audit v2；main 已在 clean `8f86192` 三种子质点全栈接线�
 一对一关联、双时间戳、covariance、OOSM、observer-scan conflict、consistency evidence 和
 完整 `GlobalTrack` 输出。clean 三 seed 已补充全栈接线证据，但仍不能替代实时预算、AirSim 和
 融合精度验收。
+
+最终跨提交复核进一步确认：相对 `8f86192`，`f80b5bd` 的 D1 fusion 三 seed 均值下降约 5.01%，
+但 scan input 增加约 3.68%。精确创新求解下降约 77.86%，该字段只作性能诊断。三个 seed 的
+D1 fused-track 规范哈希和全部在线业务语义审计通过，终态 D1 航迹数均保持 `202/207/203`。
+该证据不改变系统实时与长时归一化超线性 P1 的开放状态。
 
 第二阶段继续治理第一阶段默认路径中的扫描关联成本。严格几何键只允许在实际量测函数参数一致时
 复用非雷达预测量测和数值雅可比；每个候选对仍独立求创新协方差并参加 Hungarian 分配。冻结
@@ -793,3 +799,17 @@ AirSim 和完整 200v200 实时性保持开放。性能专项 `6 passed`，main 
 本轮没有新增 D1 P0。clean 三 seed 已关闭“main 尚未接入延迟物化”和“没有 clean 全栈语义
 复跑”的旧表述；实时、长历史资源、正式精度、真实时延分布和 AirSim 仍是开放 P1。证据目录为
 `research_modules/scalable_3d_simulation/outputs/scalable_3d_long_duration_candidate_20260722_clean_8f86192/`。
+
+## 30. 2026-07-22 最终跨提交集成 GAP 状态
+
+| GAP/合同 | 当前状态 | 证据 | 剩余关闭条件 |
+| --- | --- | --- | --- |
+| certified radar pre-gating 集成等价 | **当前三 seed 已关闭** | clean `8f86192 -> f80b5bd`；三个 seed 的 D1 fused-track 规范哈希一致，终态航迹 `202/207/203` 一致；未认证矩阵保留精确 `pinv` fallback | 对更多未见 seed、异常 covariance 和更长历史保持同一审计 |
+| 跨提交业务语义 | **当前三 seed 已关闭** | 逐条总线语义 3/3 通过；仅归一化 opaque `plan_id`，且 ACK 原始载荷 SHA 先验证；owner/version/coalition/`global_track_id`/command 未忽略 | 后续任何算法变更继续执行逐条语义审计，不能只比较最终数量 |
+| D1 fusion 性能 | 已形成描述性改善 | 三 seed 累计耗时均值 `92.991088 -> 88.330438 s`，约 -5.01%；精确求解总数约 -77.86% | 固定硬件预算、P50/P95/max、更多 seed 和长时增长 |
+| D1 scan input 性能 | **P1 开放** | 三 seed 累计耗时均值 `16.902643 -> 17.524242 s`，约 +3.68% | 剖析增长来源并在不改变双时间戳、水位线、拒绝/释放语义的条件下治理 |
+| 系统实时与长时超线性 | **P1 开放** | 候选仍未达到实时，当前长时归一化检查继续标记 D1 scan input、D1 fusion 和 module stack | 达到预注册固定硬件预算，并通过更长时、多 seed 归一化增长验收 |
+
+证据位于
+`research_modules/scalable_3d_simulation/outputs/scalable_3d_long_duration_candidate_20260722_clean_f80b5bd/`。
+本轮没有新增 D1 P0 blocker，也没有新增 AirSim 或正式 RMSE/NEES/NIS 证据。

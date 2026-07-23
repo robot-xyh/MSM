@@ -931,3 +931,31 @@ seed 计时属于审查加固前候选；语义哈希仍有效，最终性能由
 2. 代表性遮挡、杂波、漏检和 OOSM 多 seed 回放，以及离线 IDSW/continuity 置信区间。
 3. 极端全重叠大连通分量的候选预算、召回和最坏耗时。
 4. 固定硬件逐周期 P50/P95/P99 与实时预算，以及完整 200v200 D1-D7 闭环复跑。
+
+## 27. 三 seed clean 集成晋级复核
+
+### 27.1 已完成
+
+1. main 以 `8f86192` 为 reference、`f80b5bd` 为 candidate，在独立 clean worktree 中运行
+   nominal 200v200、10.0 s、seeds 42000/42001/42002。三个 episode 均保持有限状态，
+   online truth use 为 0。
+2. 每个 seed 的 D2 association 调用数均为 47。累计 association 耗时三 seed 均值为
+   `8.317513 -> 7.671266 s`，下降约 `7.77%`；终态 D2 航迹数按 seed 为
+   `205/204/203`，两侧逐 seed 相同。
+3. main 新增跨提交逐条语义审计，三 seed 的 D2 在线记录和 topic counts 均通过。独立
+   D3 planner 产生的 opaque `plan_id` 只按 plan occurrence/version 规范化；原始 ACK
+   载荷 SHA 在规范化前验证，owner/version/coalition/`global_track_id`/command 业务字段
+   不被忽略。
+4. D2 候选边界保持：批量 KD-tree/eigenvalue、同周期 velocity innovation 复用、可信
+   consistent covariance governance 复用和已完整门控的 1x1 component bypass。不能证明
+   可信或发生 regularization 的 covariance 仍走完整回退，不减少合法候选或调用频率。
+5. 当前工作区完整 D2 回归为 `219 passed, 1 warning in 49.75s`，零测试失败；warning
+   为环境 Matplotlib `Axes3D` 导入提示，不影响关联、身份治理或本轮文档证据。
+
+### 27.2 GAP 状态
+
+nominal 200v200 三 seed 的 clean 跨构建 D2 语义等价复跑已经完成，替代第二十六节中
+“尚缺完整集成复跑”的旧待办口径。该证据只关闭集成非退化和最终加固代码 clean 复跑，
+不关闭实时性 P1：短长对照仍将 D2 association 判为超线性。下一轮继续验证真实 AirSim
+observation ID/源时钟、遮挡/杂波/漏检/OOSM、多场景 offline IDSW/continuity、极端大
+连通分量，以及固定硬件逐周期 P50/P95/P99。完整任务效果和物理拦截由 main/D6 另行验收。
