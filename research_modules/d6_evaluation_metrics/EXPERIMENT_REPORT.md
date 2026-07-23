@@ -1732,6 +1732,54 @@ runtime 正例中，第一个 binding 返回
 `Axes3D` 环境问题，不影响 JSON/CSV/Markdown 或 SHA 验证。
 
 这些结果只证明 D6-owned v1/v2 consumer、聚合、报告和 runtime join 合同已实现并测试。
-clean seed 1100 baseline/candidate、真实 AirSim 和多 seed A/B 尚未执行，因此没有新的真实
-commitment coverage、strict IDSW、D2 track count、D3 assignment count 或系统 promotion
-结论。
+该合同阶段尚未运行 clean seed 1100；随后完成的真实 producer episode A/B 见第 12 节。
+
+## 12. 身份承诺 v2 clean seed 1100 A/B（2026-07-23）
+
+### 实验配置
+
+事实来源为 clean commit `909669b2eefeab2ce30c8ac389d6bf9c0a8cbabc`，输出位于
+`/tmp/MSM-identity-commitment-ab-909669b/{baseline,candidate}`。两组使用相同 seed 1100、
+nominal 200 对 200、200 个资源、200 个目标、2 个侦察节点和 2.2 秒仿真时长。该实验是
+scalable 3D 三维质点 producer episode，不是 AirSim 实验。两组
+`online_truth_use_count=0`，且 v2 evaluation/audit schema 均已实际持久化。
+
+### 对比结果
+
+| 指标 | baseline | candidate | 判定 |
+| --- | ---: | ---: | --- |
+| strict IDSW | 9 | unavailable | candidate 不满足准入 |
+| track continuity | 0.865 | unavailable | candidate 不满足准入 |
+| coverage continuity | 0.870 | unavailable | candidate 不满足准入 |
+| commitment coverage | 1.000000 | 0.9591494124 | candidate 显式反映未承诺空档 |
+| committed records | 1800 | 1714 | 可独立复算 |
+| uncommitted records | 0 | 73 | 69 hold、4 after hold |
+| source binding violation | 0 | 0 | 通过 |
+| candidate binding violation | 0 | 0 | 通过 |
+| online truth isolation | true | true | 通过 |
+| D2 track count | 203 | 201 | candidate 下降 2 |
+| D3 assignment count | 200 | 197 | candidate 下降 3 |
+
+candidate 的 73 条未承诺记录没有携带 source observation 或 truth candidate，D6 独立审计得到
+零绑定违规。这一结果验证了显式未承诺覆盖和安全绑定合同。它不证明候选关联性能优于
+baseline。
+
+### 严格指标不可用原因
+
+`GT3D-000185`、`GT3D-000186` 和 `GT3D-000202` 在最终评分帧
+`2.1308153038551993 s` 恢复为 committed，但其接受证据的
+`measurement_timestamp=1.2 s`。两者相差 `0.9308153038551994 s`，超过冻结的
+`0.9 s` lineage window。evaluation 将三条 mapping 标为
+`source_observation_outside_lineage_window`，strict IDSW、track continuity 和 coverage
+continuity 因此 unavailable。
+
+D6 没有扩大时间窗，没有把 partial lower bound 当作 strict IDSW，也没有从相邻帧或真值
+sidecar 回填缺失值。该失败是候选准入失败，不是 `IDSW=0`。
+
+### 结论
+
+v2 evidence、evaluation、audit 和 manifest 的真实 episode 持久化已通过。commitment
+coverage、状态计数、恢复原因、零 binding violation 和在线真值隔离均可独立审计。候选组未能
+在固定评分窗口内保持 strict identity metrics 可用，且 D2/D3 数量低于 baseline。因此停止
+seed 1101/1102，不形成多 seed 性能结论。后续应由上游修正恢复证据时序或发布逻辑，D6 保持
+`0.9 s` 窗口和 fail-closed 评分语义。

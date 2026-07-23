@@ -311,9 +311,15 @@ partial mapping/frame/transition coverage 为 `8906/9038`、`3/48`、`0/9400`，
 `MODULE_PRINCIPLES_CN.md` 第 13 节，校验与聚合公式见
 `ALGORITHM_AND_IMPLEMENTATION.md` 第 19 节，main/AirSim 写盘要求见
 `../AIRSIM_INTEGRATION_PLAN.md` 第 12 节，合同测试结果见
-`../EXPERIMENT_REPORT.md` 第 11 节。D6 对 v2 内嵌 evidence bundle 做 SHA-256 复算并验证
+`../EXPERIMENT_REPORT.md` 第 11～12 节。D6 对 v2 内嵌 evidence bundle 做 SHA-256 复算并验证
 commitment denominator、coverage、reason、watermark、overflow 和零 binding violation；
 v1 commitment 保持 unavailable。逐 seed CSV、aggregate JSON 和中文报告把 strict IDSW、
 commitment coverage、partial diagnostics 分栏。runtime join 命中显式 uncommitted 时只关闭
-对应 binding，不回填 truth。D6 全量为 `598 passed, 1 warning in 21.44s`；clean seed 1100
-和真实 AirSim 均未执行。
+对应 binding，不回填 truth。D6 全量为 `598 passed, 1 warning in 21.44s`。
+
+clean commit `909669b2…` 的 seed 1100 A/B 已实际持久化 v2 evaluation/audit。baseline
+strict IDSW/track continuity/coverage continuity 为 `9/0.865/0.870`。candidate
+commitment coverage 为 `1714/1787=0.9591494124`，69 条 hold、4 条 after hold，两个
+binding violation 为 0；但三个恢复航迹超出固定 `0.9 s` lineage window，strict identity
+metrics unavailable，D2/D3 数量由 `203/200` 降至 `201/197`。候选准入失败，seed
+1101/1102 停止。该验证不是 AirSim，真实 AirSim 仍未执行。

@@ -1646,6 +1646,24 @@ runtime 2-window fixture 验证第一个 binding 局部 unavailable、第二个 
 专项结果为 truth-isolated `39 passed`、runtime join `31 passed`；D6 全量
 `598 passed, 1 warning in 21.44s`，验收门限零失败。warning 为既有 Matplotlib 环境提示。
 
-评审结论为“D6-owned v2 consumer、聚合、报告与 runtime 局部不可用合同完成”。clean seed
-1100、真实 AirSim、main 原子持久化和多 seed A/B 尚未执行；因此只关闭 D6 接线 GAP，不关闭
-结构歧义候选的系统 P1 或 promotion gate。
+评审结论为“D6-owned v2 consumer、聚合、报告与 runtime 局部不可用合同完成”。
+
+### clean seed 1100 A/B 复核
+
+main 随后在 clean commit `909669b2eefeab2ce30c8ac389d6bf9c0a8cbabc` 完成 nominal
+200 对 200、2 个侦察节点、2.2 秒的 seed 1100 A/B，并实际持久化 v2
+evidence/evaluation/audit/manifest。baseline strict IDSW、track continuity、coverage
+continuity 和 commitment coverage 为 `9/0.865/0.870/1.0`，D2/D3 数量为 `203/200`。
+
+candidate commitment coverage 为 `1714/1787=0.9591494124`，1714 条 committed、69 条
+ambiguity hold、4 条 after hold。source/candidate binding violation 为 `0/0`，online truth
+isolation 为 true。这三项接受为真实 episode 证据。
+
+candidate 的 `GT3D-000185/186/202` 在 `2.1308153039 s` 评分帧只携带
+`measurement_timestamp=1.2 s` 的恢复来源，差值 `0.9308153039 s` 超过固定 `0.9 s`
+window。strict identity metrics 因
+`source_observation_outside_lineage_window` unavailable，D6 不扩大窗口、不回填 strict
+IDSW。candidate D2/D3 数量为 `201/197`。评审拒绝候选准入并停止 seed 1101/1102。
+
+当前关闭的是 main v2 原子持久化和 D6 真实 episode 消费子项。结构歧义候选的 promotion
+gate 仍开放且本次判定为失败。该实验不是 AirSim，真实 AirSim 与多 seed 证据仍开放。

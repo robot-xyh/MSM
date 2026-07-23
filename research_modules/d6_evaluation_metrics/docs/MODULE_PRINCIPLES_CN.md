@@ -1883,6 +1883,15 @@ mapping。episode 中其他合法 binding 可继续评估。缺 schema/字段、
 局部缺测，而是证据合同破坏，必须拒绝输入。
 
 2026-07-23 上述原则已由 D6 单元/集成 fixture 验证，全量为
-`598 passed, 1 warning in 21.44s`，验收阈值零失败。本轮没有运行 AirSim，也没有执行新的
-clean seed 1100 A/B；implemented/tested 仅指 D6-owned consumer、聚合、报告和 runtime join
-行为，不表示候选性能或系统 promotion GAP 已关闭。
+`598 passed, 1 warning in 21.44s`，验收阈值零失败。
+
+同日 clean commit `909669b2…` 的 seed 1100 A/B 将该原则用于真实 producer episode。
+baseline strict IDSW、track continuity、coverage continuity 为 `9`、`0.865`、`0.870`，
+commitment coverage 为 `1.0`。candidate 的 commitment coverage 为
+`1714/1787=0.9591494124`，73 条未承诺记录未产生 source/candidate binding violation，在线
+真值隔离通过。这证明“未承诺即不绑定”和独立审计原则能落到持久化制品。
+
+candidate 三个恢复航迹的证据与评分帧相差 `0.9308153039 s`，超过固定 `0.9 s` lineage
+window。strict identity metrics 必须 unavailable，不能因恢复状态重新变为 committed 就放宽
+评分证据要求。D2/D3 数量从 `203/200` 降至 `201/197`，候选准入失败并停止后续 seed。
+该结果不表示候选性能或系统 promotion GAP 已关闭，也不构成 AirSim 证据。

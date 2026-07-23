@@ -703,5 +703,15 @@ member role、wave、arrival、通信或安全分母。all/observed committed/un
 
 D6 已对 v2 SHA、分母、恢复诊断和零 binding violation 做独立验证，并在 runtime join 中把
 uncommitted 限制为命中 plan binding 的局部 unavailable。2026-07-23 全量
-`598 passed, 1 warning`。本轮没有 M-to-N AirSim、clean seed 1100、联盟 A/B 或多 seed 性能
-证据，因此既有四路线 x 三中心层级实验矩阵和系统 P1 状态不变。
+`598 passed, 1 warning`。
+
+同日 clean commit `909669b2…` 的 seed 1100、nominal 200 对 200 A/B 已实际持久化 v2
+evaluation/audit。baseline strict IDSW/continuity/coverage 为 `9/0.865/0.870`；
+candidate commitment coverage 为 `1714/1787=0.9591494124`，零 binding violation 且在线
+真值隔离通过。candidate 三个恢复航迹超出固定 `0.9 s` lineage window，strict identity
+metrics unavailable，D2/D3 数量由 `203/200` 降至 `201/197`，因此候选准入失败并停止后续
+seed。
+
+该场景仍是一对一名义 200 对 200，不含高威胁 `k_j>1` 联盟、M-to-N AirSim、联盟 A/B 或物理
+拦截证据。identity commitment 实测不改变 M-to-N demand 与 coalition 分母，既有四路线 x
+三中心层级实验矩阵和系统 P1 状态保持开放。

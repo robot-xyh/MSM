@@ -1551,14 +1551,26 @@ OSPA/GOSPA 或 AirSim 原生 recording parser。
 6. 合法、兼容、缺字段、篡改、负年龄、overflow、binding 违规、跨 gap、报告和 runtime 专项
    已覆盖。2026-07-23 D6 全量 `598 passed, 1 warning in 21.44s`，零失败。
 
+### 2026-07-23 已补充证据
+
+1. main 已在 clean commit `909669b2eefeab2ce30c8ac389d6bf9c0a8cbabc` 将 seed 1100
+   baseline/candidate 的 `identity_commitment_by_track`、v2 evidence、evaluation、audit 和
+   manifest 原子持久化。D6 v2 consumer 和独立审计已实际消费，不再是 fixture-only。
+2. baseline strict IDSW、track continuity、coverage continuity、commitment coverage 为
+   `9/0.865/0.870/1.0`；D2/D3 数量为 `203/200`。
+3. candidate commitment coverage 为 `1714/1787=0.9591494124`，1714 committed、69 hold、
+   4 after hold。source/candidate binding violation 为 `0/0`，在线真值隔离通过。
+4. candidate 三个恢复航迹的 measurement timestamp 与评分帧相差 `0.9308153039 s`，超过固定
+   `0.9 s` lineage window。strict identity metrics 按合同 unavailable；D6 未扩大窗口，也未
+   回填 strict IDSW。D2/D3 数量为 `201/197`。
+
 ### 仍开放的跨模块 P1
 
-1. main 尚未把真实 episode 的 `identity_commitment_by_track`、v2 evidence records、
-   evaluation 和 manifest 原子持久化并传给 D6；该项属于 main integration，不是 D6 producer。
-2. clean seed 1100 baseline/candidate A/B 尚未执行。D2 track count、D3 assignment count、
-   strict IDSW availability 和真实 commitment coverage 没有新证据。
+1. 结构歧义候选的 promotion gate 仍失败。上游需在固定 `0.9 s` 合同内恢复 strict identity
+   availability，并解释 D2/D3 数量下降；D6 不通过改评分口径掩盖该问题。
+2. seed 1101/1102 已停止。单 seed 候选准入通过前，不启动该候选的多 seed 性能统计。
 3. 真实 AirSim、多 seed、多规模、困难谱系、长时 blocker/watermark/overflow 分布及最终统一
    scalable 3D 报告仍开放。
 
-GAP 状态：D6 consumer P1 已关闭；main 持久化与系统性能 P1 保持开放。P0、外部 evaluator
-P2/P3 状态不变。
+GAP 状态：D6 consumer 和 main v2 真实 episode 持久化子项已关闭；候选算法准入与系统性能 P1
+保持开放。当前无新增 P0，外部 evaluator P2/P3 状态不变。

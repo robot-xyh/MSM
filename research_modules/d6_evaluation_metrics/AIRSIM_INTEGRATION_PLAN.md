@@ -750,7 +750,7 @@ assignment window 命中 uncommitted mapping 时，D6 只令该 binding 的 iden
 unavailable，并在 JSON/Markdown 保留 reason/details；不得回填 truth，也不得因这个合法显式状态
 终止整个 episode。文件缺失、SHA 不符、audit 缺字段或违反零 binding policy 仍失败关闭。
 
-接线后的首个验收应为 clean seed 1100 baseline/candidate A/B，而不是直接启动多 seed AirSim：
+接线后的首个验收为 clean seed 1100 baseline/candidate A/B，而不是直接启动多 seed AirSim：
 
 - evaluation/evidence/manifest SHA 链全部通过；
 - strict IDSW availability 与 D2 原值一致，跨 uncommitted gap 不由 D6 重算；
@@ -758,5 +758,14 @@ unavailable，并在 JSON/Markdown 保留 reason/details；不得回填 truth，
 - candidate/source binding violation 均为 0，online truth use 为 0；
 - D2 track count、D3 assignment count 和 runtime binding 可用性不比 baseline 退化。
 
-2026-07-23 仅完成 D6-owned 实现与 `598 passed, 1 warning` 回归。clean seed 1100、新
-AirSim episode 和多 seed A/B 尚未执行；当前不能填写真实 commitment coverage 或性能结论。
+2026-07-23 已在 clean commit `909669b2eefeab2ce30c8ac389d6bf9c0a8cbabc` 完成该首个
+验收。baseline strict IDSW/track continuity/coverage continuity 为 `9/0.865/0.870`，
+commitment coverage 为 `1.0`。candidate commitment coverage 为
+`1714/1787=0.9591494124`，69 条 hold、4 条 after hold，两个 binding violation 为 0，在线
+真值隔离通过。
+
+candidate 未通过后两项准入要求：三个恢复航迹的证据与评分帧相差
+`0.9308153039 s`，超过固定 `0.9 s` window，strict identity metrics 因此 unavailable；
+D2/D3 数量也由 `203/200` 降至 `201/197`。不得通过扩大窗口或回填 strict IDSW 使其通过。
+seed 1101/1102 已停止。本次是三维质点 episode，不是 AirSim；新 AirSim episode、AirSim
+多 seed 及其 runtime binding 证据仍未执行。

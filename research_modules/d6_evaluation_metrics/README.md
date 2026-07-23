@@ -1861,5 +1861,22 @@ details；truth/state/距离诊断不回填，其他合法 binding 和 episode �
 
 2026-07-23 D6 全量回归为 `598 passed, 1 warning in 21.44s`，验收门限为零失败；warning
 是既有 Matplotlib `Axes3D` 环境提示。该结果证明 D6-owned consumer、报告和 runtime join
-合同已实现并测试。本轮没有启动 AirSim，也没有执行新的 clean seed 1100 baseline/candidate
-A/B；main 尚需原子持久化真实 episode 的 v2 evidence/evaluation/manifest 并按相同合同重跑。
+合同已实现并测试。
+
+同日 main 在 clean commit `909669b2eefeab2ce30c8ac389d6bf9c0a8cbabc` 上完成 seed 1100、
+nominal 200 对 200、2 个侦察节点、2.2 秒的 baseline/candidate A/B。两组均实际持久化
+`d2.scalable3d_identity_evaluation.v2` 和
+`d2.scalable3d_identity_commitment_audit.v2`，在线真值使用为 0。baseline strict
+`IDSW=9`、track continuity `0.865`、coverage continuity `0.870`，commitment coverage
+为 `1.0`。candidate commitment coverage 为 `1714/1787=0.9591494124`，其中 69 条
+`identity_uncommitted_ambiguity_hold`、4 条 `identity_uncommitted_after_hold`；未提交
+source/candidate binding violation 均为 0，在线真值隔离通过。
+
+candidate 的 `GT3D-000185`、`GT3D-000186`、`GT3D-000202` 在评分帧
+`2.1308153039 s` 使用 `measurement_timestamp=1.2 s` 的恢复证据，时间差
+`0.9308153039 s` 超过固定 `0.9 s` lineage window。D6 因此按合同将 strict IDSW、
+continuity 和 coverage 标为 unavailable，原因是
+`source_observation_outside_lineage_window`，没有扩大窗口或回填 strict IDSW。D2/D3 数量
+由 baseline 的 `203/200` 降至 candidate 的 `201/197`。本次只证明 v2 显式未承诺覆盖、
+独立审计和安全绑定在真实 producer episode 中可工作；结构歧义候选未通过准入，seed
+1101/1102 未继续执行。该 episode 属于 clean 三维质点验证，不是 AirSim 实验。

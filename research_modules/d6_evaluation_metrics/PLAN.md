@@ -1832,7 +1832,7 @@ availability、假零拒绝和规模分组正确；未运行 AirSim，未运行
    CSV/JSON/Markdown 和 runtime 局部不可用。2026-07-23 D6 全量结果为
    `598 passed, 1 warning in 21.44s`，零失败。
 
-### main 接线计划
+### main 接线与实测状态
 
 1. main 必须把每帧 `identity_commitment_by_track` 与 D2 track/frame 原子持久化，生成
    `d2.scalable3d_identity_evidence.v2` 和
@@ -1847,10 +1847,29 @@ availability、假零拒绝和规模分组正确；未运行 AirSim，未运行
    检查 strict IDSW availability、all/observed commitment coverage、D2 track count、D3
    assignment count、两个 binding violation 为 0 和 online truth use 为 0。
 
+### 2026-07-23 clean seed 1100 结果
+
+1. main 已在 clean commit `909669b2eefeab2ce30c8ac389d6bf9c0a8cbabc` 上原子持久化
+   baseline/candidate 的 v2 evidence、evaluation、audit 和 manifest。场景为 nominal
+   200 对 200、2 个侦察节点、2.2 秒，在线真值使用为 0。
+2. baseline strict IDSW、track continuity、coverage continuity 和 commitment coverage
+   分别为 `9`、`0.865`、`0.870` 和 `1.0`；D2/D3 数量为 `203/200`。
+3. candidate commitment coverage 为 `1714/1787=0.9591494124`，73 条未承诺记录由 69 条
+   ambiguity hold 和 4 条 after hold 组成。source/candidate binding violation 均为 0，
+   online truth isolation 为 true；D2/D3 数量为 `201/197`。
+4. candidate 的三个恢复航迹 `GT3D-000185/186/202` 在评分帧 `2.1308153039 s` 使用
+   `measurement_timestamp=1.2 s` 的证据，差值 `0.9308153039 s` 超过固定 `0.9 s`
+   lineage window。D6 按合同令 strict identity metrics unavailable，不扩大窗口，也不回填
+   strict IDSW。
+5. v2 真实 episode 持久化、独立审计和安全绑定验收通过；候选算法 promotion gate 未通过。
+   seed 1101/1102 已停止，不形成多 seed 性能结论。
+
 ### 仍开放 P1
 
-- clean seed 1100 新 v2 A/B 尚未执行，当前没有新的业务或性能数值；本轮只关闭 D6 consumer
-  和报告合同 GAP。
+- 上游需先使 candidate 在固定 `0.9 s` 评分合同内提供可评分的恢复证据，并恢复 strict
+  IDSW/continuity availability；D6 不通过放宽窗口或后验回填规避该问题。
+- 候选还需解释或消除 D2 track count `203 -> 201`、D3 assignment count `200 -> 197` 的
+  可用性下降。单 seed 准入通过前不恢复 1101/1102。
 - 真实 AirSim、多 seed、多规模、困难谱系和长时 blocker/watermark/overflow 分布仍需 main
   生成冻结制品。commitment coverage 不能替代 strict IDSW、partial lower bound、物理成功或
   promotion gate。

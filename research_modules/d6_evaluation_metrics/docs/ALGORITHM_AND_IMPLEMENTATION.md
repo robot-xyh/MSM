@@ -2772,5 +2772,31 @@ identity_mapping.details =
 年龄、overflow 矛盾、未提交 binding 违规、普通 lineage missing、跨 gap strict IDSW 消费、
 CSV/JSON/中文 Markdown、runtime 局部不可用及 v2 audit 篡改。D6 全量为
 `598 passed, 1 warning in 21.44s`，零失败；warning 为既有 Matplotlib `Axes3D` 环境提示。
-本轮没有执行 AirSim 或 clean seed 1100，因此没有新的 commitment coverage、IDSW、D2 track
-或 D3 assignment 性能数值。
+### 19.7 clean seed 1100 实测
+
+clean commit `909669b2eefeab2ce30c8ac389d6bf9c0a8cbabc` 的 baseline/candidate 均写出
+v2 evidence、evaluation、audit 和 manifest。场景为 nominal 200 对 200、2 个侦察节点、
+2.2 秒、seed 1100，在线真值使用为 0。
+
+baseline 的 strict IDSW、track continuity、coverage continuity 和 commitment coverage 为
+`9`、`0.865`、`0.870`、`1.0`。candidate 的 committed/uncommitted/denominator 为
+`1714/73/1787`，commitment coverage 为 `0.9591494124`；状态计数为 69 条
+`identity_uncommitted_ambiguity_hold` 和 4 条
+`identity_uncommitted_after_hold`。D6 从 records 独立复算得到 source/candidate binding
+violation 均为 0，online truth isolation 为 true。
+
+candidate 最终帧 `t_f=2.1308153038551993 s` 中，`GT3D-000185/186/202` 的恢复承诺使用
+`t_m=1.2 s` 的 source observation。评分时间差为：
+
+```text
+delta_t = t_f - t_m
+        = 2.1308153038551993 - 1.2
+        = 0.9308153038551994 s
+        > 0.9 s
+```
+
+因此三条 mapping 的 exclusion reason 为
+`source_observation_outside_lineage_window`，strict IDSW、continuity 和 coverage 全部
+unavailable。实现保持冻结窗口，不回填 strict 指标。candidate 的 D2/D3 数量为 `201/197`，
+低于 baseline 的 `203/200`。候选算法未通过准入，seed 1101/1102 停止。本次实测不是
+AirSim。
