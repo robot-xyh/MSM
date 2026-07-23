@@ -164,11 +164,24 @@ def _consume(chain: dict[str, dict[str, Any]]):
 def test_real_main_5v5_evaluation_refresh_is_adoption_ack(
     real_refresh_chain: dict[str, dict[str, Any]],
 ) -> None:
-    assert real_refresh_chain["source_plan"]["sequence"] == 10
-    assert real_refresh_chain["current_plan"]["sequence"] == 94
-    assert real_refresh_chain["consumption"]["sequence"] == 96
-    assert real_refresh_chain["current_guidance"]["sequence"] == 99
-    assert real_refresh_chain["ack"]["sequence"] == 100
+    sequences = {
+        name: int(real_refresh_chain[name]["sequence"])
+        for name in (
+            "source_plan",
+            "advisory",
+            "current_plan",
+            "consumption",
+            "current_guidance",
+            "ack",
+        )
+    }
+    assert list(sequences.values()) == sorted(sequences.values())
+    assert real_refresh_chain["ack"]["payload"]["source_plan_bus_sequence"] == (
+        sequences["current_plan"]
+    )
+    assert real_refresh_chain["ack"]["payload"]["source_guidance_bus_sequence"] == (
+        sequences["current_guidance"]
+    )
     source_payload = real_refresh_chain["source_plan"]["payload"]
     current_payload = real_refresh_chain["current_plan"]["payload"]
     assert current_payload["plan_id"] == source_payload["plan_id"]

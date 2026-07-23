@@ -691,6 +691,18 @@ def test_real_main_d6_report_builds_observed_only_d3_evidence(tmp_path) -> None:
     from research_modules.scalable_3d_simulation.orchestrator import run_episode
 
     stack = IntegratedScalableModuleStack()
+    plan_by_source_payload_sha256: dict[str, AssignmentPlan] = {}
+    original_d3_publication = stack._d3_publication
+
+    def capture_d3_plan_at_publication(now: float):
+        publication = original_d3_publication(now)
+        assert stack.latest_plan is not None
+        plan_by_source_payload_sha256[
+            canonical_runtime_payload_sha256(publication.payload)
+        ] = deepcopy(stack.latest_plan)
+        return publication
+
+    stack._d3_publication = capture_d3_plan_at_publication
     result = run_episode(
         ScenarioConfig(
             scenario_name="d3-runtime-reward-real-join",
@@ -714,22 +726,40 @@ def test_real_main_d6_report_builds_observed_only_d3_evidence(tmp_path) -> None:
         if item.topic == "runtime.assignment_plan_ack"
     )
     assert acknowledgements
-    ack_envelope = acknowledgements[-1]
-    ack_payload = ack_envelope.payload
     by_sequence = {item.sequence: item for item in result.online_messages}
-    plan_source = by_sequence[ack_payload["source_plan_bus_sequence"]]
-    guidance_source = by_sequence[ack_payload["source_guidance_bus_sequence"]]
-    verified_ack = validate_assignment_plan_runtime_ack(
-        envelope_schema=ack_envelope.schema_version,
-        acknowledgement=ack_payload,
-        d3_source_publication=plan_source.to_dict(),
-        d7_source_publication=guidance_source.to_dict(),
-        expected_plan=stack.latest_plan,
+    verified_acknowledgements = []
+    for ack_envelope in acknowledgements:
+        ack_payload = ack_envelope.payload
+        plan_source = by_sequence[ack_payload["source_plan_bus_sequence"]]
+        guidance_source = by_sequence[ack_payload["source_guidance_bus_sequence"]]
+        expected_plan = plan_by_source_payload_sha256[
+            canonical_runtime_payload_sha256(plan_source.payload)
+        ]
+        verified_acknowledgements.append(
+            (
+                ack_envelope,
+                validate_assignment_plan_runtime_ack(
+                    envelope_schema=ack_envelope.schema_version,
+                    acknowledgement=ack_payload,
+                    d3_source_publication=plan_source.to_dict(),
+                    d7_source_publication=guidance_source.to_dict(),
+                    expected_plan=expected_plan,
+                ),
+            )
+        )
+
+    ack_envelope, verified_ack, binding = next(
+        (ack_envelope, verified_ack, binding)
+        for ack_envelope, verified_ack in verified_acknowledgements
+        for binding in verified_ack.binding_acks
+        if binding.guidance_command_present and not binding.held
     )
-    binding = next(
-        item
-        for item in verified_ack.binding_acks
-        if item.guidance_command_present and not item.held
+    assert ack_envelope.sequence == acknowledgements[0].sequence
+    last_binding_acks = verified_acknowledgements[-1][1].binding_acks
+    assert last_binding_acks
+    assert all(
+        item.held and item.guidance_gate_reason == "global_track_stale"
+        for item in last_binding_acks
     )
     report = json.loads(
         (
