@@ -8,6 +8,119 @@
 
 ## 当前权威增量（2026-07-23）
 
+### Radar assignment ambiguity 实验候选 v2
+
+#### 输入与最大匹配
+
+v2 的策略版本为
+`fail_closed_maximum_matching_allowed_edge_component_v2`。配置
+`radar_assignment_ambiguity_governance_v2=False` 默认关闭，并与 v1 开关互斥。默认关闭时不
+执行新增图运算，原 Hungarian 分配、更新、birth 和审计值保持基线行为。
+
+对一批匿名雷达扫描，设既有航迹数为 `m`，观测数为 `n`。原在线关联已在共同量测时刻使用状态、
+协方差和雷达位置创新得到代价矩阵 `Q` 与门内矩阵：
+
+```text
+A[i,j] = finite(Q[i,j]) and Q[i,j] <= association_gate
+```
+
+候选不重新解释原始量测，不读取 observation 名称或离线标签。SciPy 路径保留原 Hungarian
+结果。由于门外惩罚远大于门内代价，该结果先最大化门内匹配基数，再最小化当前代价。SciPy
+不可用时，历史 greedy 结果可能不是最大匹配；v2 从该匹配出发，以确定性深度优先增广路径补齐
+基数。增广过程只遍历 `A=True` 的边，列顺序由在线代价和列号确定，不枚举排列。
+
+#### 允许边判定
+
+记补齐后的一个最大匹配为 `M`。在含 `m+n` 个顶点的有向图中：
+
+```text
+(i,j) in M       : observation_j -> track_i
+(i,j) in E \ M   : track_i -> observation_j
+```
+
+任意另一个最大匹配 `M'` 与 `M` 的对称差可分解为交替环或偶数长度交替路径。两组匹配基数
+相同，因此路径端点位于二部图同一侧。非匹配门内边能够出现在某个最大匹配中，当且仅当至少满足
+以下一个条件：
+
+1. `track_i` 与 `observation_j` 位于同一强连通分量，对应交替环；
+2. `track_i` 可由某个未匹配 track row 到达，对应 free-row 交替路径；
+3. `observation_j` 可以到达某个未匹配 observation column，对应 free-column 交替路径。
+
+第三项在实现中通过反向图从 free columns 做可达搜索。当前匹配边始终属于允许边。该判定与
+Dulmage-Mendelsohn 分解的最大匹配允许边边界等价，复杂度由一次最大匹配补齐、强连通分量和
+线性可达搜索构成，不使用固定 likelihood margin。
+
+#### 不确定分量和 birth 边界
+
+实现把允许边转成无向图。只含一条固定匹配边的分量没有替代关系，继续正常更新。分量只要包含
+一条非当前允许边，就被标记为不确定分量：
+
+```text
+不确定分量中的全部 observation
+  -> 从 assignments 删除
+  -> 记录 radar_assignment_ambiguity_suppressed
+  -> 标记 processed
+  -> 跳过 EKF update
+  -> 跳过 _create_track()
+
+不确定分量中的全部既有 track
+  -> 只传播到 arrival_timestamp
+  -> 不做量测协方差收缩
+  -> 记录统一的 component kinds、双时间戳和 policy version
+```
+
+该处理对 matched 和 unmatched observation 一致。`2x3` 图中，若 free column 可通过交替路径
+替换当前匹配列，当前匹配 observation 与 free observation 同属一个分量，二者都被抑制；
+free observation 不会绕过关联治理形成重复 birth。完全门外或不在替代分量中的 free
+observation 仍可按原雷达初始化规则 birth。
+
+#### 审计和边界
+
+v2 继续使用现有真值无关审计字段。显式启用时：
+
+```text
+radar_assignment_ambiguity_governance_enabled = true
+radar_assignment_ambiguity_policy_version =
+  fail_closed_maximum_matching_allowed_edge_component_v2
+radar_assignment_ambiguity_governance_status =
+  experimental_v2_enabled_pending_main_clean_ab
+```
+
+为保持 `d1.association_audit.v1` 的既有消费者兼容，历史
+`radar_assignment_ambiguity_policy_version` 在两种开关均关闭时仍返回 v1。新增字段消除其
+语义歧义：
+
+```text
+radar_assignment_ambiguity_selected_policy_version =
+  None | fail_closed_gate_feasible_alternating_cycle_v1 |
+  fail_closed_maximum_matching_allowed_edge_component_v2
+
+radar_assignment_ambiguity_candidate_policy_versions = (v1, v2)
+```
+
+下游判断顺序为 selected、enabled、status。`selected=None` 明确表示没有运行 v1 或 v2；
+不得因兼容字段仍为 v1 就把基线标记为 v1 实验。
+
+相关 track metadata 额外记录 observation component count 和以下一种或多种结构原因：
+
+- `alternating_cycle`
+- `free_row_alternating_path`
+- `free_column_alternating_path`
+
+算法只使用在线状态、协方差、双时间戳、门内边、在线代价和匹配结构。雷达第四维为零且
+`radial_velocity_observed=False` 时，该值不进入消歧。`global_track_id` 只作为既有航迹引用
+和审计输出，不由 D1 重写。
+
+模块回归包括 `2x2` cycle、`3x2` free-row、`2x3` free-column、唯一最大匹配、门外边、
+首扫无 track、greedy fallback、OOSM 和 200 航迹稀疏图。专项 v1/v2 共 `29 passed`，D1
+全量 `220 passed in 17.36s`。测试检查双时间戳、有限半正定 `6x6` covariance 和既有
+`global_track_id` 集合。开发期间的小规模随机图还与穷举最大匹配 oracle 对照增广基数及
+允许边分量；穷举代码不属于运行路径。
+
+本实现只达到模块候选状态。尚未运行新的 detached clean A/B、10 s、20-seed 或 AirSim，不能
+宣称 strict identity、continuity 或 D3 availability 改善。main 必须用未见输入同时验收
+identity、D1/D2 航迹、D3 分配、suppression、birth/recall 和长期跨模态后果。
+
 ### Radar assignment ambiguity 实验候选 v1
 
 生产默认 `radar_assignment_ambiguity_governance=False`，完全跳过本节候选并执行基线
@@ -104,8 +217,8 @@ Hungarian: global_track_187 -> observation，cost = 0.80058
 
 替代边占用 observation 并释放 `global_track_187`，匹配基数不变。这是 free-row alternating
 path；v1 的已匹配行 SCC 看不到它。一般矩形图还存在通向 free column 的同基数路径，相关
-unmatched observation 若不治理可能落入 birth。刚才未验证的 full alternating-path v2 已撤销，
-当前没有实现该边界。
+unmatched observation 若不治理可能落入 birth。full alternating-path v2 现已按上一节完成
+模块实现，但尚未经过 main detached clean A/B。
 
 同一 recon=8 stress seed1001 的 1,966 条 radar 原始量测全部是三维
 range/azimuth/elevation 和 `3x3` covariance。转换后的第 4 维零值明确是
@@ -123,8 +236,8 @@ suppression；性能和规模 fixture 不再 subclass override 生产逻辑。�
 `/tmp/msm-default-off-cross-build-8f17c5d-r2`。该结果证明默认回退无业务回归，不证明 v1
 可晋级。
 
-结论是 v1 默认关闭、仅作实验候选，P1 未关闭。下一候选须严格覆盖最大基数 matching allowed
-edges 的 cycle/free-row/free-column，并在新的 detached clean 输入上联合验收 ambiguous、
+结论是 v1 默认关闭且已被 clean A/B 拒绝，P1 未关闭。v2 已覆盖最大基数 matching allowed
+edges 的 cycle/free-row/free-column，但仍须在新的 detached clean 输入上联合验收 ambiguous、
 strict identity、continuity、D3 availability、suppression、birth/recall。10 s radar+vision
 ambiguous 不能单独证明 radar-only 根因，但长期 coast 与跨模态传播仍必须进入集成验收。
 

@@ -6,6 +6,48 @@
 
 ## 当前权威增量（2026-07-23）
 
+### 最大匹配允许边决定匿名关联的不确定边界
+
+实验候选 v2 不再只检查 Hungarian 已匹配行列。设门内二部图为
+`G=(R,C,E)`，`R` 是既有雷达航迹行，`C` 是当前扫描 observation 列，`M` 是一个最大匹配。
+候选按以下方向构造交替图：
+
+```text
+匹配边 (r,c) in M      : c -> r
+其他门内边 (r,c) in E\M: r -> c
+```
+
+另一最大匹配与 `M` 的对称差只能由交替环和等长交替路径组成。由此得到三类可替代边：
+
+1. 行列顶点位于同一强连通分量，说明该边在交替环上；
+2. 行顶点可从 free row 到达，说明该边在保持基数的 free-row 路径上；
+3. 列顶点能够到达 free column，说明该边在保持基数的 free-column 路径上。
+
+匹配边本身总是允许边。把全部允许边转为无向图后，任何含非当前允许边的连通分量都存在身份
+替代。v2 将分量内所有 observation 一起抑制，相关 track 一起 coast。free column 若属于该
+分量，也被标记 processed，不能随后进入 birth。门外 observation 或不属于替代分量的独立
+free column 仍按原初始化规则处理。
+
+SciPy 可用时，原 Hungarian 已给出最大基数门内匹配。无 SciPy 时，候选从 greedy 结果继续找
+增广路径，直到获得最大匹配，再做分解。在线实现不枚举匹配排列，主要图运算随门内边数和顶点
+数增长。代价只用于原分配和 fallback 的确定性遍历顺序，不用固定 margin 把排序差值解释成
+身份置信度。
+
+v2 的严格布尔开关默认为 `False`，并与 v1 互斥。显式启用时，策略版本为
+`fail_closed_maximum_matching_allowed_edge_component_v2`，审计状态为
+`experimental_v2_enabled_pending_main_clean_ab`。模块专项覆盖 `2x2` cycle、`3x2`
+free-row、`2x3` free-column、唯一匹配、门外 birth、首扫、greedy fallback、OOSM 和 200
+规模稀疏图；D1 全量 `220 passed in 17.36s`。
+
+审计中的历史 `policy_version` 在全部关闭时仍返回 v1，以维持既有数据格式和值。实际策略必须
+读取 `selected_policy_version`：关闭时为 `None`，v1/v2 启用时为对应版本。候选列表由
+`candidate_policy_versions` 给出。这样可以区分“系统知道 v1/v2 候选”和“当前确实运行某个
+候选”。
+
+这些结果证明模块中的图论边界和数据合同，不证明系统收益。候选没有运行新的 10 s、20-seed
+或 AirSim。main 仍需在 detached clean 输入上联合检查身份连续性、航迹可用性、分配可用性、
+suppression 和 birth/recall，之后才能决定是否晋级。
+
 ### 匿名雷达近交叉时，门内排序不能自动升级为身份事实
 
 同一扫描的 Hungarian 只能给出总代价最小的一对一匹配。若门内二部图还存在交替环，沿环交换
@@ -75,13 +117,15 @@ range/azimuth/elevation；转换后的
 ```text
 radar_assignment_ambiguity_governance = False  -> 基线 Hungarian
 radar_assignment_ambiguity_governance = True   -> 显式实验 v1
+radar_assignment_ambiguity_governance_v2 = True -> 显式实验 v2，待 main clean A/B
 ```
 
-审计同时发布 enabled、候选 policy version 和 `disabled/experimental_enabled` 状态。默认关闭
+v1 和 v2 不能同时启用。审计同时发布 enabled、候选 policy version 和实验状态。默认关闭
 提交 `8f17c5d` 按 recon=2 同配置重跑后，三 seed 全部业务指标恢复 baseline；main 跨构建审计
 `3/3 passed=True` 且 `normalized_online_payloads_equal=True`，输出位于
 `/tmp/msm-default-off-cross-build-8f17c5d-r2`。这证明默认回退无业务回归，不证明 v1 可晋级。
-P1 保持开放。10 s radar+vision ambiguous 不能单独证明 radar-only 根因，但长期 coast 和
+v2 目前只通过模块测试，尚无 clean 系统证据。P1 保持开放。10 s radar+vision ambiguous
+不能单独证明 radar-only 根因，但长期 coast 和
 跨模态传播必须进入集成验收，不能被排除。
 
 ### 跨模态融合先保证几何语义完整

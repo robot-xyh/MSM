@@ -54,6 +54,7 @@ class Scalable3DFusionAdapter(FusionAdapter):
         ),
         position_only_radar_nis_gate: float = SCALABLE_3D_POSITION_ONLY_RADAR_NIS_GATE,
         radar_assignment_ambiguity_governance: bool = False,
+        radar_assignment_ambiguity_governance_v2: bool = False,
         **kwargs: Any,
     ) -> None:
         if bool(kwargs.pop("use_truth_hints_for_association", False)):
@@ -72,6 +73,9 @@ class Scalable3DFusionAdapter(FusionAdapter):
             use_truth_hints_for_association=False,
             radar_assignment_ambiguity_governance=(
                 radar_assignment_ambiguity_governance
+            ),
+            radar_assignment_ambiguity_governance_v2=(
+                radar_assignment_ambiguity_governance_v2
             ),
             **kwargs,
         )

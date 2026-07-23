@@ -40,12 +40,25 @@
 - 默认关闭提交 `8f17c5d` 按 recon=2 同配置重跑后，三 seed 全部业务指标恢复 baseline。
   main 跨构建审计 `3/3 passed=True` 且 `normalized_online_payloads_equal=True`，输出位于
   `/tmp/msm-default-off-cross-build-8f17c5d-r2`；这证明回退无业务回归，不证明 v1 可晋级。
-- 专项 `13 passed`，覆盖默认换绑、显式 v1 suppression、严格参数校验及 gate-valid `3x2`
-  free-row blocker；D1 全量 `204 passed in 16.70s`。未实现未验证的 full alternating-path v2。
-- 评审结论：v1 仅保留为实验候选，P1 blocker 开放。下一候选必须覆盖最大基数 matching 的
-  cycle/free-row/free-column allowed edges，并在新 detached clean 上联合验收 strict identity、
-  continuity、D3 availability、suppression、birth/recall。10 s radar+vision ambiguous 不是
-  纯 radar 根因证据，但其长期 coast/跨模态后果仍属于集成验收范围。
+- D1 已实现默认关闭的
+  `fail_closed_maximum_matching_allowed_edge_component_v2`。它从最大匹配构造交替有向图，
+  以强连通分量、free-row 正向可达和 free-column 反向可达识别所有可进入某个最大匹配的门内
+  边。含替代边的允许边分量统一抑制 matched/unmatched observations、阻断 birth，并让相关
+  tracks coast。
+- v2 不解析 observation 名称，不读取 truth/actor/D6，不使用未观测零径向速度。SciPy 缺失时
+  先以增广路径把 greedy 结果补成最大匹配。严格布尔开关
+  `radar_assignment_ambiguity_governance_v2=False` 与 v1 互斥；显式启用时审计状态为
+  `experimental_v2_enabled_pending_main_clean_ab`。
+- 审计保留历史 `policy_version` 字段和值。新增 `selected_policy_version` 和
+  `candidate_policy_versions`；两种开关均关闭时 selected 明确为 `None`。main 应以 selected、
+  enabled 和 status 判定实际策略，不能把兼容字段的 v1 值解释为基线正在运行 v1。
+- v1/v2 专项 `29 passed`，覆盖 `2x2` cycle、`3x2` free-row、`2x3` free-column、唯一匹配、
+  门外 birth、首扫、greedy fallback、OOSM、双时间戳、协方差、ID 所有权和 200 稀疏图；
+  D1 全量 `220 passed in 17.36s`。
+- 评审结论：v1 已被 clean A/B 拒绝；v2 仅达到模块实验候选，P1 blocker 开放。main 必须在新
+  detached clean 上联合验收 strict identity、D1/D2 continuity、D3 availability、
+  suppression、birth/recall。10 s radar+vision ambiguous 不是纯 radar 根因证据，但其长期
+  coast/跨模态后果仍属于集成验收范围。本阶段不运行 10 s 或 20-seed。
 
 - D2 nominal 200v200 身份阻断审计在 seed 1000 给出 17 条可复核的雷达/视觉混轨观测。D1 在
   clean `5263e2b` 的 771 scans/11,889 anonymous observations 冻结回放中复现。

@@ -4,6 +4,46 @@ Offline research module for radar, acoustic, EO, and optional synthetic lidar he
 
 ## 当前性能与治理证据（2026-07-23）
 
+### 第十四阶段：最大匹配允许边分量 v2 模块候选
+
+D1 已实现默认关闭的实验策略
+`fail_closed_maximum_matching_allowed_edge_component_v2`。新开关
+`radar_assignment_ambiguity_governance_v2` 默认为 `False`，与 v1 开关互斥。两者均关闭时，
+融合、分配及既有审计字段和值与当前基线一致；本轮只增加策略选择审计字段。显式启用 v2 时，
+审计状态为
+`experimental_v2_enabled_pending_main_clean_ab`。
+
+审计保留历史字段 `radar_assignment_ambiguity_policy_version` 及其关闭时的 v1 默认值，避免
+破坏既有消费者。该字段不能单独解释为“正在运行 v1”。新增
+`radar_assignment_ambiguity_selected_policy_version`：两种开关均关闭时为 `None`，显式启用
+时为实际版本；`radar_assignment_ambiguity_candidate_policy_versions` 列出可选 v1/v2。
+下游应结合 selected、enabled 和 status 判断运行状态。
+
+v2 只读取在线关联已有的门内布尔矩阵、当前最大匹配、量测时刻航迹状态和协方差。对于一般
+`m x n` 矩形二部图，匹配边按 observation 到 track 反向，其他门内边按 track 到 observation
+正向。可进入某个最大匹配的非当前边分为三类：
+
+1. 位于有向交替环中的边；
+2. 从 free track row 可达的交替路径边；
+3. 可通向 free observation column 的交替路径边。
+
+实现先保留 Hungarian 的最大匹配；SciPy 不可用且原 greedy 结果基数不足时，以增广路径补成
+最大匹配。它不枚举排列，也不使用固定代价 margin。所有允许边形成无向分量；只要分量含一条
+可替代的非匹配边，该分量的全部 observation 都跳过 update 和 birth，全部相关 track 同时
+coast。这样 free column 对应的 observation 不会在抑制关联后绕行进入新航迹。
+
+模块测试覆盖 `2x2` 交替环、`3x2` free-row、`2x3` free-column、唯一最大匹配、门外独立
+birth、首扫无航迹、greedy fallback、OOSM 和 200 航迹稀疏门图。测试同时检查
+`measurement_timestamp`、`arrival_timestamp`、`6x6` covariance 和中心拥有的
+`global_track_id` 不变。v1/v2 专项共 `29 passed`，D1 全量
+`220 passed in 17.36s`。小规模随机图开发审计还将增广基数和允许边分量与穷举 oracle 对照，
+没有发现漏边或误纳边；穷举只用于开发审计，不在在线算法中。
+
+候选不解析 observation 名称，不读取 target/actor/truth/D6，也不使用未观测的零径向速度。
+本阶段仅完成 D1 实现和单元测试，没有运行 10 s、20-seed 或 AirSim。v2 仍是实验候选，待
+main 在新的 detached clean 输入上完成同配置 A/B；在 strict identity、D1/D2 continuity、
+D3 availability、suppression、birth/recall 和长期跨模态后果同时通过前，不进入默认主线。
+
 ### 第十三阶段：匿名雷达交替环 v1 clean 阻断与默认回退
 
 D1 在开发冻结输入和零延迟对照中确认 seed 1000/1002 的 radar-only 污染来自扫描间 Hungarian
@@ -57,8 +97,9 @@ suppression 和 gate-valid `3x2` free-row blocker；D1 全量 `204 passed in 16.
 `normalized_online_payloads_equal=True`，证据位于
 `/tmp/msm-default-off-cross-build-8f17c5d-r2`。这证明默认回退无业务回归，不证明 v1 可晋级。
 
-未实现未验证的 full alternating-path v2。后续候选必须覆盖最大基数匹配的交替环、free-row 与
-free-column 路径，并以新的 detached clean 验证 suppression、birth、continuity 和下游可用性。
+full alternating-path v2 现已完成模块实现和单元测试，但尚未完成 detached clean 集成验证。
+候选已覆盖最大基数匹配的交替环、free-row 与 free-column 路径；main 仍需验证 suppression、
+birth、continuity 和下游可用性。
 10 s 的 7 个 radar+vision ambiguous mappings 不能单独证明 radar-only 根因，但长期 coast 和
 跨模态后果属于集成验收范围，不能因其非纯 radar 而排除。
 

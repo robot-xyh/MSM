@@ -1,5 +1,37 @@
 # D1 多传感器融合与目标配准实施计划
 
+## 最大匹配允许边分量 v2 验收计划（2026-07-23）
+
+D1 已完成
+`fail_closed_maximum_matching_allowed_edge_component_v2` 的模块实现。配置
+`radar_assignment_ambiguity_governance_v2=False` 保持默认关闭，并与历史 v1 开关互斥。显式
+启用时，v2 从一个最大匹配构造有向交替图，识别交替环、从 free row 出发的交替路径和通向
+free column 的交替路径。含替代允许边的连通分量整体执行 observation suppression、birth
+阻断和相关 track coast。
+
+当前完成项：
+
+1. 保留 SciPy Hungarian 结果；无 SciPy 且 greedy 基数不足时，用增广路径恢复最大匹配；
+2. 仅消费门内边、匹配结构、在线状态、协方差和双时间戳，不读取名称、truth、actor 或 D6；
+3. 不把 `radial_velocity_observed=False` 的零占位值作为消歧证据；
+4. 完成 `2x2`、`3x2`、`2x3`、唯一匹配、门外边、首扫、fallback、OOSM 和 200 稀疏图回归；
+5. 增加显式审计选择字段：关闭时 selected 为 `None`，启用时为 v1 或 v2；历史
+   `policy_version` 仅为兼容字段，不能单独用于判断运行策略；
+6. v1/v2 专项 `29 passed`，D1 全量 `220 passed in 17.36s`。
+
+main 后续验收按以下顺序执行：
+
+1. 在未用于开发的 detached clean 提交上冻结 baseline 和 v2 配置、输入摘要及配置哈希；
+2. 先运行 200v200、2.2 s、`recon_count=2` 的未见 seed 小矩阵，禁止复用 v1 的三 seed调参；
+3. 同时统计 strict identity、ambiguous mapping、D1/D2 航迹和 continuity、D3 assignment、
+   suppression、birth/recall、有限性和在线 truth 使用；
+4. 只有短时业务可用性不退化后，才进入 10 s 跨模态后果与更多 seed；本模块任务不运行这些
+   集成实验；
+5. 任一 identity 改善伴随航迹或分配显著下降时，保持默认关闭并记录拒绝原因。
+
+当前状态是“实验候选、待 main clean A/B”，不构成 P1 关闭或主线晋级。默认行为继续使用基线
+Hungarian，D1 不改写 `global_track_id`，不改变固定滞后、协方差、NED 或双时间戳合同。
+
 ## 匿名雷达交替环 v1 阻断与后续计划（2026-07-23）
 
 开发冻结和零延迟 A/B 已确认 seed 1000/1002 的 radar-only 问题是 scan Hungarian
@@ -33,8 +65,8 @@ range/azimuth/elevation；零 radial velocity 是未观测 placeholder，不能�
 1. `radar_assignment_ambiguity_governance=False` 保持生产默认，执行基线 Hungarian；
 2. 仅在显式实验中设为 `True`，运行
    `fail_closed_gate_feasible_alternating_cycle_v1` 并读取 enabled/status/version 审计；
-3. 不提交刚才未验证的 v2；下一候选先独立证明最大基数匹配上的 cycle、free-row 和
-   free-column allowed-edge 边界，再评估 suppression；
+3. v2 已作为独立、默认关闭的模块候选实现，已证明最大基数匹配上的 cycle、free-row 和
+   free-column allowed-edge 边界；是否接受 suppression 仍由新的 clean A/B 决定；
 4. 新候选必须在未用于调参的 detached clean 输入上同时通过 ambiguous、strict identity、
    D1/D2 track continuity、D3 availability、birth/recall 和长期跨模态后果；
 5. 10 s radar+vision ambiguous 不能证明纯 radar 根因，但属于长期 coast 的集成验收范围；

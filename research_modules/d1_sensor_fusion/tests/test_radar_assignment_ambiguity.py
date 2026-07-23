@@ -9,6 +9,7 @@ import pytest
 from d1_sensor_fusion.ekf import predict_to
 from d1_sensor_fusion.fusion import (
     CHI2_3_999,
+    RADAR_ASSIGNMENT_AMBIGUITY_CANDIDATE_POLICY_VERSIONS,
     RADAR_ASSIGNMENT_AMBIGUITY_POLICY_VERSION,
     FusionAdapter,
 )
@@ -192,6 +193,13 @@ def test_default_hungarian_swap_and_explicit_v1_suppression() -> None:
     baseline_audit = baseline.association_audit_summary()
     assert baseline_audit["radar_assignment_ambiguity_governance_enabled"] is False
     assert baseline_audit["radar_assignment_ambiguity_governance_status"] == "disabled"
+    assert (
+        baseline_audit["radar_assignment_ambiguity_selected_policy_version"]
+        is None
+    )
+    assert baseline_audit[
+        "radar_assignment_ambiguity_candidate_policy_versions"
+    ] == RADAR_ASSIGNMENT_AMBIGUITY_CANDIDATE_POLICY_VERSIONS
     assert baseline_audit["radar_assignment_ambiguity_scan_count"] == 0
     assert (
         baseline_audit["radar_assignment_ambiguity_policy_version"]
@@ -249,6 +257,9 @@ def test_default_hungarian_swap_and_explicit_v1_suppression() -> None:
 
     audit = governed.association_audit_summary()
     assert audit["radar_assignment_ambiguity_governance_enabled"] is True
+    assert audit["radar_assignment_ambiguity_selected_policy_version"] == (
+        RADAR_ASSIGNMENT_AMBIGUITY_POLICY_VERSION
+    )
     assert (
         audit["radar_assignment_ambiguity_governance_status"]
         == "experimental_enabled"
