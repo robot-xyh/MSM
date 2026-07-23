@@ -1,0 +1,117 @@
+{
+  "schema_version": "scalable3d-radar-assignment-v2-clean-ab-review-v1",
+  "evaluation_date": "2026-07-23",
+  "evidence_class": "clean_same_build_single_unseen_seed_engineering_gate",
+  "source_commit": "c928727ffa9fdbeee4d9d14184116c1ed178e2fa",
+  "scenario": {
+    "scenario_name": "nominal_200v200_cli_200v200",
+    "resource_count": 200,
+    "target_count": 200,
+    "recon_count": 2,
+    "duration_s": 2.2,
+    "seed": 1100,
+    "config_sha256": "20ef5248c8b45ff5aced9080c8d47e65a43aaba54f18ce824dc50fac7a52b840"
+  },
+  "comparability": {
+    "same_git_commit": true,
+    "source_clean": true,
+    "same_scenario_config": true,
+    "same_online_observation_count": true,
+    "same_truth_label_dispositions": true,
+    "only_intended_treatment_changed": true
+  },
+  "baseline": {
+    "episode_id": "nominal_200v200_cli_200v200-s1100-20ef5248c8b4-rb508f67547f5",
+    "runtime_profile_sha256": "b508f67547f52a1122bffd810fc6a1c16152818a48721c7bdec1a8ea6efd12a8",
+    "radar_assignment_ambiguity_selected_policy_version": null,
+    "finite_state": true,
+    "online_truth_use_count": 0,
+    "online_observation_count": 2035,
+    "radar_observation_count": 1954,
+    "target_truth_label_count": 2352,
+    "known_false_alarm_label_count": 90,
+    "ambiguous_mapping_count": 0,
+    "id_switch_count": 9,
+    "track_continuity": 0.865,
+    "coverage_continuity": 0.87,
+    "available_mapping_count": 1566,
+    "unavailable_mapping_count": 230,
+    "d1_track_count": 202,
+    "d2_track_count": 203,
+    "d3_assignment_count": 200,
+    "radar_ambiguity_scan_count": 0,
+    "radar_observation_suppression_count": 0,
+    "radar_track_coast_count": 0
+  },
+  "candidate_v2": {
+    "episode_id": "nominal_200v200_cli_200v200-s1100-20ef5248c8b4-r9680c45bca7b",
+    "runtime_profile_sha256": "9680c45bca7b9db4d01d147d60cb5d458a99ae088f4e9a1a2400b55462a5f9f4",
+    "radar_assignment_ambiguity_selected_policy_version": "fail_closed_maximum_matching_allowed_edge_component_v2",
+    "finite_state": true,
+    "online_truth_use_count": 0,
+    "online_observation_count": 2035,
+    "radar_observation_count": 1954,
+    "target_truth_label_count": 2352,
+    "known_false_alarm_label_count": 90,
+    "ambiguous_mapping_count": 0,
+    "id_switch_count": 9,
+    "track_continuity": 0.83,
+    "coverage_continuity": 0.835,
+    "available_mapping_count": 1503,
+    "unavailable_mapping_count": 266,
+    "d1_track_count": 202,
+    "d2_track_count": 199,
+    "d3_assignment_count": 196,
+    "radar_ambiguity_scan_count": 9,
+    "radar_observation_suppression_count": 77,
+    "radar_observation_suppression_ratio": 0.03940635,
+    "radar_track_coast_count": 91
+  },
+  "candidate_minus_baseline": {
+    "id_switch_count": 0,
+    "track_continuity": -0.035,
+    "coverage_continuity": -0.035,
+    "available_mapping_count": -63,
+    "unavailable_mapping_count": 36,
+    "d1_track_count": 0,
+    "d2_track_count": -4,
+    "d3_assignment_count": -4,
+    "radar_observation_suppression_count": 77
+  },
+  "acceptance_gate": {
+    "identity_improvement_required": true,
+    "track_continuity_non_regression_required": true,
+    "d2_track_availability_non_regression_required": true,
+    "d3_assignment_availability_non_regression_required": true,
+    "identity_improvement_passed": false,
+    "track_continuity_non_regression_passed": false,
+    "d2_track_availability_non_regression_passed": false,
+    "d3_assignment_availability_non_regression_passed": false
+  },
+  "decision": {
+    "status": "rejected_after_first_unseen_seed_gate",
+    "default_enabled": false,
+    "remaining_short_seed_runs_executed": false,
+    "ten_second_matrix_executed": false,
+    "twenty_seed_matrix_executed": false,
+    "reason_codes": [
+      "no_id_switch_improvement",
+      "track_continuity_regression",
+      "available_mapping_regression",
+      "d2_track_availability_regression",
+      "d3_assignment_availability_regression",
+      "whole_component_suppression_too_conservative"
+    ],
+    "interpretation": "Maximum-matching allowed-edge detection passed module and oracle checks, but suppressing every observation in each ambiguous component did not pass the system intervention gate."
+  },
+  "module_verification": {
+    "d1_test_count": 220,
+    "scalable_3d_test_count": 142,
+    "independent_oracle_graph_count": 2666,
+    "independent_oracle_mismatch_count": 0
+  },
+  "artifact_locations": {
+    "baseline": "/tmp/msm-radar-v2-clean-ab-c928727/seed1100/baseline",
+    "candidate_v2": "/tmp/msm-radar-v2-clean-ab-c928727/seed1100/v2"
+  }
+}

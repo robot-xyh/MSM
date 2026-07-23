@@ -137,6 +137,14 @@ main 运行时现提供显式
 因此相同场景的基线与 treatment 不会共用身份。该接线允许同一代码提交分别运行规则基线和
 实验候选，不再通过修改模块默认值制造 A/B。
 
+detached clean `c928727` 已用未见 seed 1100 运行首个 200 对 200、2.2 秒、
+`recon_count=2` 同构建门槛。v2 的身份交换保持 `9`，航迹连续性由 `0.865` 降至
+`0.830`，D2 航迹由 `203` 降至 `199`，D3 分配由 `200` 降至 `196`；77 条雷达观测被抑制。
+候选没有身份收益且下游可用性下降，因此按预注册门槛停止剩余短 seed、10 秒和 20-seed。
+v2 保持默认关闭。评审见
+`docs/SCALABLE_3D_RADAR_ASSIGNMENT_V2_CLEAN_AB_REVIEW_CN.md`，机器摘要见
+`docs/SCALABLE_3D_RADAR_ASSIGNMENT_V2_CLEAN_AB_REVIEW_20260723.json`。
+
 ## 2026-07-22 规则全栈性能校准
 
 提交 `33101656b0cf1967a778cdb36a440611e02109b1` 已完成 20、50、100、200 四档 clean-source

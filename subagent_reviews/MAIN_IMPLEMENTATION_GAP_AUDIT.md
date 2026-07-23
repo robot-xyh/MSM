@@ -97,16 +97,25 @@ runtime profile、SHA-256 和 episode ID 后缀，后续 A/B 不再依赖修改 
 不同 treatment 共用 episode 身份。
 D1 v2 已完成模块实现；main 独立穷举 `2,666` 个小规模二部图，最大匹配允许边分量与穷举
 oracle 全部一致。D1 全量 `220 passed`，scalable 3D 全量 `142 passed`。这些结果只证明图论
-边界和运行时接线，尚未证明 200v200 下的航迹、分配或身份收益。
+边界和运行时接线。
+
+detached clean `c928727` 的首个未见 seed 1100 已完成 200v200、2.2 秒、
+`recon_count=2` 同构建 A/B。两组配置哈希相同、来源干净、状态有限、在线真值使用为 0；
+目标/已知虚警标签均为 `2352/90`。v2 的 ID Switch `9 -> 9`，track continuity
+`0.865 -> 0.830`，available mappings `1566 -> 1503`，D1 航迹 `202 -> 202`，
+D2 航迹 `203 -> 199`，D3 分配 `200 -> 196`；9 个歧义扫描抑制
+`77/1954=3.94%` 雷达观测并产生 91 次 track coast。候选无身份收益且业务可用性下降，
+已在首个 gate 失败后停止 seeds 1101/1102、10 秒和 20-seed。v2 不晋级并保持默认关闭。
 
 早先 `/tmp/msm-clean-radar-d967c96` 遗漏 `--recon-count 2`，实际使用 8 架侦察机，只保留
 为 stress 数学诊断。该诊断确认 v1 遗漏最大匹配中的 free-row/free-column 替代路径，雷达
-零径向速度为未观测占位，不能用于消歧。严格身份 P1 保持开放。下一候选必须同时覆盖
-cycle、free-row 和 free-column allowed edges，并联合验收身份、D1/D2 航迹、D3 分配、
-continuity、suppression、birth 和 recall。v2 先进入未见 seed 的 clean 短时 A/B；短时
-业务可用性通过前不运行 10 秒或 20-seed。被拒绝 v1 不再运行扩大矩阵。
-机器摘要位于
-`research_modules/scalable_3d_simulation/docs/SCALABLE_3D_RADAR_ASSIGNMENT_CANDIDATE_REVIEW_20260723.json`。
+零径向速度为未观测占位，不能用于消歧。严格身份 P1 保持开放。下一候选应保留 v2 的
+allowed-edge 结构证据，但不能继续整分量全抑制；需要研究多假设、概率关联或“冻结身份承诺、
+保守更新状态”的接口，并联合验收身份、D1/D2 航迹、D3 分配、continuity、suppression、
+birth 和 recall。v1/v2 均不运行扩大矩阵。v1 机器摘要位于
+`research_modules/scalable_3d_simulation/docs/SCALABLE_3D_RADAR_ASSIGNMENT_CANDIDATE_REVIEW_20260723.json`；
+v2 评审位于
+`research_modules/scalable_3d_simulation/docs/SCALABLE_3D_RADAR_ASSIGNMENT_V2_CLEAN_AB_REVIEW_CN.md`。
 
 ## 2026-07-22 后验代次与 clean 长时基线
 

@@ -166,6 +166,12 @@ observation-governance audit 必须写出 D1 实际 selected policy version、en
 manifest 必须写入完整 runtime profile 和独立 SHA-256，episode ID 绑定该哈希。基线和候选
 应从同一 clean 提交、相同场景配置和相同 seed 启动；除该实验开关外不得改变输入。
 
+上述 v2 门槛已在 detached clean `c928727` 的未见 seed 1100 执行。候选 ID Switch
+`9 -> 9`，continuity `0.865 -> 0.830`，D2 航迹 `203 -> 199`，D3 分配
+`200 -> 196`，并抑制 `77/1954=3.94%` 的雷达观测。该结果未达到身份改善和业务可用性
+不退化门槛，v2 不晋级；剩余短 seed、10 秒和 20-seed 不执行。下一方案应分离结构歧义检测
+与状态量测利用，避免把允许边分量直接转换为整分量全抑制。
+
 main 真值守卫键布局缓存已通过完整测试、嵌套可变负例和跨构建语义审计。四组交错
 clean 2.2 秒复测的 publication bus 中位数下降 12.69%，核心墙钟中位数只下降
 0.44%。该项关闭局部重复键规范化，不关闭 200 对 200 实时 P1。组合 clean

@@ -136,7 +136,7 @@ def test_d1_radar_assignment_ambiguity_governance_v2_is_explicit_and_audited() -
         experimental_audit["d1_fusion_association"][
             "radar_assignment_ambiguity_governance_status"
         ]
-        == "experimental_v2_enabled_pending_main_clean_ab"
+        == "experimental_v2_enabled_rejected_candidate"
     )
     assert (
         experimental_audit["d1_fusion_association"][
