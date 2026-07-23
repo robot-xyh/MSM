@@ -89,6 +89,21 @@ def test_recursive_truth_guard_handles_cycles_without_weakening_nested_checks() 
         assert_online_payload_truth_free(cyclic)
 
 
+def test_truth_guard_layout_cache_still_checks_new_nested_values_and_keys() -> None:
+    assert_online_payload_truth_free({"nested": [{"status": "safe"}]})
+
+    with pytest.raises(ValueError, match="truth fields"):
+        assert_online_payload_truth_free(
+            {"nested": [{"actor_id": "TargetActor_1"}]}
+        )
+
+    mutable = {"status": "safe"}
+    assert_online_payload_truth_free(mutable)
+    mutable["actor-id"] = "TargetActor_1"
+    with pytest.raises(ValueError, match="truth fields"):
+        assert_online_payload_truth_free(mutable)
+
+
 def test_manifest_hash_and_episode_id_change_with_configuration() -> None:
     first = build_episode_manifest(
         ScenarioConfig(target_count=5, resource_count=5, recon_count=1, seed=7)

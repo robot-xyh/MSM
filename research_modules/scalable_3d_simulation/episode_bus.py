@@ -184,14 +184,14 @@ def assert_online_payload_truth_free(payload: Any) -> None:
             continue
         if isinstance(value, Mapping):
             visited.add(value_id)
-            for raw_key, item in value.items():
-                key = _normalise_key(str(raw_key))
-                if _is_forbidden_key(key):
-                    raise ValueError(
-                        "online payload contains evaluator-only truth fields: "
-                        f"{raw_key}"
-                    )
-                pending.append(item)
+            raw_keys = tuple(str(raw_key) for raw_key in value.keys())
+            forbidden_key = _first_forbidden_mapping_key(raw_keys)
+            if forbidden_key is not None:
+                raise ValueError(
+                    "online payload contains evaluator-only truth fields: "
+                    f"{forbidden_key}"
+                )
+            pending.extend(value.values())
             continue
         if isinstance(value, (list, tuple, set, frozenset)):
             visited.add(value_id)
@@ -270,6 +270,15 @@ def _dataclass_field_keys(cls: type[Any]) -> tuple[tuple[str, str], ...]:
     return tuple((item.name, _normalise_key(item.name)) for item in fields(cls))
 
 
+@lru_cache(maxsize=4096)
+def _first_forbidden_mapping_key(raw_keys: tuple[str, ...]) -> str | None:
+    for raw_key in raw_keys:
+        if _is_forbidden_key(_normalise_key(raw_key)):
+            return raw_key
+    return None
+
+
+@lru_cache(maxsize=2048)
 def _is_forbidden_key(key: str) -> bool:
     if key in _FORBIDDEN_ONLINE_KEYS:
         return True
