@@ -1,6 +1,20 @@
 # D1 AirSim 集成计划
 
-## 0. 当前权威状态（2026-07-15）
+## 0. 融合性能接口状态（2026-07-22）
+
+- D1 默认启用非雷达创新协方差矩阵栈。该变化位于
+  `Scalable3DFusionAdapter.process_scan_batch()` 内部，AirSim producer、runtime bus、
+  topic、reset 顺序和 `SensorObservation` 字段不变。
+- 未见 seed 1000 的三维质点冻结输入含 771 个扫描和 11,889 条匿名观测。完整回放纯融合墙钟
+  `50.458 -> 39.994 s`，逐扫描摘要、终态航迹、一致性证据、操作计数和累计诊断相同。
+  该输入不是 AirSim 证据，不能替代 Blocks/CV/SimpleFlight 复跑。
+- 后续由 main 在同一 AirSim 输入上比较新旧开关，至少报告 D1 fusion、scan input、总 tick、
+  实时倍率和 RSS。D1 不通过减少检测框、跳扫描或改变 `measurement_timestamp`、
+  `arrival_timestamp`、covariance、NED、门限和 `global_track_id` 所有权换取速度。
+- AirSim 上游无需新增配置项。若 NumPy 对异常矩阵栈拒绝批量伪逆，D1 会在该扫描内回退逐候选
+  求解；错误不会通过放宽门控或删除观测被隐藏。
+
+## 0.1 历史权威状态（2026-07-15）
 
 - main 已完成真实 AirSim M5N2 baseline/candidate 各 10 case，共 20 case；在线
   `truth_identity` 与 `truth_state` 使用计数均为 0。
@@ -18,7 +32,7 @@
 航迹数、fixed-lag replay/cache/finalization 成本；由 main 复测完整 control tick。不得以此前
 D1-only 3.17 倍重放加速替代真实运行时验收。
 
-### 0.1 历史 Dense Crossing 状态（2026-07-13）
+### 0.2 历史 Dense Crossing 状态（2026-07-13）
 
 - strict dense crossing 已完成 nominal 4 m 与 tight 2 m 各 20 seeds，共 40 个真实 AirSim
   episode；每个 episode 51 帧、5 个目标。

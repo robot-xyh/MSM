@@ -4,6 +4,13 @@
 
 ## 当前证据索引（2026-07-22）
 
+最新 D1-owned 非雷达关联优化使用未见 seed 1000 的 10 s 冻结输入。前 256 个扫描和
+4,087 条观测在同进程预热后交错运行 7 次，逐候选/矩阵栈路径 P50 为
+`12.242/10.238 s`，P95 为 `13.340/11.248 s`。完整 771 扫描、11,889 条观测的单次墙钟
+`50.458/39.994 s`；逐扫描、终态、一致性证据、操作计数和累计诊断严格一致，在线 truth 0。
+完整 cProfile 的 `pinv` 调用由 496,625 降至 1,018。D1 全量 `182 passed in 15.92s`。
+该结果不关闭完整系统实时、AirSim 或正式精度。
+
 最新 D1-owned 长时优化处理合法缓存一致性证据的重复完整校验。clean `f80b5bd` 10 s seeds
 42000-42002 的完整重验/受限复制纯融合均值为 `64.844/52.657 s`，3/3 更快，聚合加速
 `1.231x`。逐扫描状态、协方差、时间戳、谱系和分级，终态航迹、最终证据及操作计数严格一致；
@@ -92,6 +99,8 @@ D1 侧解释见本目录各算法/AirSim 文档和 `../reports/EXPERIMENT_REPORT
 
 逐扫描性能基准另提供：
 
+- `../reports/D1_NON_RADAR_INNOVATION_PERFORMANCE_BENCHMARK_CN.md`
+- `../reports/d1_non_radar_innovation_performance_benchmark_20260722.json`
 - `../reports/D1_SCAN_FUSION_PERFORMANCE_BENCHMARK_CN.md`
 - `../reports/d1_scan_fusion_performance_benchmark_20260722.json`
 - `../reports/D1_SCAN_ASSOCIATION_PERFORMANCE_BENCHMARK_CN.md`

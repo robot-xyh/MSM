@@ -99,6 +99,11 @@ from .long_duration_performance import (
     write_long_duration_performance_report,
 )
 from .local_image_track import sensor_observation_from_local_image_track
+from .non_radar_performance import (
+    NON_RADAR_INNOVATION_PERFORMANCE_SCHEMA_VERSION,
+    benchmark_batched_non_radar_innovation,
+    render_non_radar_innovation_benchmark_cn,
+)
 from .observations import RadarCovarianceConfig
 from .online_anonymization import (
     anonymize_online_observations,
@@ -239,6 +244,7 @@ __all__ = [
     "LONG_REPLAY_SUMMARY_SCHEMA_VERSION",
     "LONG_REPLAY_THRESHOLD_PROFILE_VERSION",
     "LONG_DURATION_PERFORMANCE_SCHEMA_VERSION",
+    "NON_RADAR_INNOVATION_PERFORMANCE_SCHEMA_VERSION",
     "LatencyAuditSummary",
     "LosIntersectionAngle",
     "LongReplayConfig",
@@ -303,6 +309,7 @@ __all__ = [
     "build_d2_lineage_mapping_sidecar",
     "build_long_replay_scenario",
     "build_offline_truth_state_sidecar",
+    "benchmark_batched_non_radar_innovation",
     "consistency_payload_sha256",
     "consistency_range_bin",
     "compare_scan_association_variants",
@@ -332,6 +339,7 @@ __all__ = [
     "replay_blocks_sensor_observations_jsonl",
     "replay_sensor_observations_csv",
     "replay_sensor_observations_jsonl",
+    "render_non_radar_innovation_benchmark_cn",
     "run_p2_isolated_benchmark",
     "run_scan_fusion_variant",
     "run_coalesced_release_schedule_variant",

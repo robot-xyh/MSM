@@ -4,6 +4,33 @@ Offline research module for radar, acoustic, EO, and optional synthetic lidar he
 
 ## 当前性能与治理证据（2026-07-22）
 
+### 第八阶段：非雷达创新矩阵栈批处理
+
+未见 seed 1000 的 10 s、200v200 冻结输入含 771 个扫描和 11,889 条匿名观测，终态为
+201 条航迹，在线 truth 使用为 0。cProfile 将当前最大融合热点定位到
+`_cached_non_radar_scan_cost_matrix()`：旧路径累计 34.307 s，其中 496,625 次
+`numpy.linalg.pinv()` 累计 14.837 s。对应扫描内的相机几何和航迹投影可复用，但每个
+航迹-观测候选仍通过 Python 单独调用伪逆。
+
+默认路径现按量测几何、量测/协方差形状和角度残差维度分组。每条观测继续保留自己的量测和
+协方差，每条航迹继续保留自己的预测状态、投影和雅可比；只把形状一致的创新协方差组成矩阵栈，
+一次调用 `numpy.linalg.pinv()`。每个候选的残差包角和马氏二次型仍按旧操作顺序计算。
+批处理失败时整组回退逐候选求解。`batched_non_radar_innovation_solve=False` 保留旧路径用于
+冻结对照。EKF、门限、Hungarian 分配、双时间戳、NED、协方差、固定滞后、
+`global_track_id` 和后验 generation 语义均未改变。
+
+同进程稳定性基准选取该输入的前 256 个已释放扫描和 4,087 条观测。每个变体先预热
+128 个扫描一次，再交错运行 7 次。逐候选/批处理 P50 为 `12.242/10.238 s`，P95 为
+`13.340/11.248 s`，均值为 `12.506/10.385 s`；P50 加速 `1.196x`。完整 771 扫描单次
+交叉验证的无 profiler 纯融合墙钟为 `50.458/39.994 s`，加速 `1.262x`。逐扫描语义摘要、
+终态航迹、一致性证据、操作计数和累计诊断全部严格相同。完整输入 cProfile 中非雷达代价矩阵
+降至 17.320 s，`pinv` 调用降至 1,018 次。D1 全量回归为 `182 passed in 15.92s`。
+
+详细证据见 `reports/D1_NON_RADAR_INNOVATION_PERFORMANCE_BENCHMARK_CN.md` 和对应 JSON。
+该结果关闭非雷达逐候选伪逆的 D1-owned 热点，不是完整 D1-D7 实时结论。全栈 20-seed 仍需由
+main 复跑；航迹物化、扫描输入重复 frame/audit/JSON 摘要、长于 10 s 的增长率、常驻内存、
+AirSim 和正式 RMSE/NEES/NIS 仍为 P1。
+
 ### 第七阶段：一致性证据计数刷新
 
 在 clean `f80b5bd` 的 10 s、200v200 冻结输入上，函数级剖析显示当前默认路径仍有大量已缓存
@@ -27,8 +54,8 @@ cProfile 中，证据刷新累计 `27.122 -> 1.664 s`，`_replay_record` 累计
 
 详细证据见 `reports/D1_CONSISTENCY_COUNTER_REFRESH_PERFORMANCE_BENCHMARK_CN.md`、
 `reports/D1_CONSISTENCY_COUNTER_REFRESH_PROFILE_10S_CN.md` 及对应 JSON。本阶段关闭的是已缓存
-一致性证据的重复完整校验热点。优化后 10 s standalone 纯融合仍需 52.657 s；非雷达扫描代价
-矩阵、航迹物化、scan input、长于 10 s 的增长率和系统实时倍率仍为 P1。
+一致性证据的重复完整校验热点。其后非雷达逐候选伪逆已由第八阶段关闭；航迹物化、scan input、
+长于 10 s 的增长率和系统实时倍率仍为 P1。
 
 ### 第六阶段：最终跨提交全栈语义审计
 

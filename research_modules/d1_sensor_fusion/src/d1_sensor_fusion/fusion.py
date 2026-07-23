@@ -374,6 +374,7 @@ class FusionAdapter:
         incremental_replay_cache: bool = True,
         shared_publication_audit_snapshot: bool = True,
         scan_association_model_cache: bool = True,
+        batched_non_radar_innovation_solve: bool = True,
         radar_association_lower_bound_gate: bool = True,
         reuse_track_classification_a95: bool = True,
         direct_checkpoint_state_queries: bool = True,
@@ -445,6 +446,9 @@ class FusionAdapter:
             shared_publication_audit_snapshot
         )
         self.scan_association_model_cache = bool(scan_association_model_cache)
+        self.batched_non_radar_innovation_solve = bool(
+            batched_non_radar_innovation_solve
+        )
         self.radar_association_lower_bound_gate = bool(
             radar_association_lower_bound_gate
         )
@@ -1819,6 +1823,15 @@ class FusionAdapter:
             tuple[int, tuple[Any, ...]],
             tuple[np.ndarray, np.ndarray] | None,
         ] = {}
+        if self.batched_non_radar_innovation_solve:
+            return self._batched_non_radar_scan_cost_matrix(
+                observations,
+                states,
+                models,
+                cost_matrix,
+                projection_cache,
+            )
+
         for row, state in enumerate(states):
             if state is None:
                 continue
@@ -1853,6 +1866,197 @@ class FusionAdapter:
                 except (ValueError, FloatingPointError, np.linalg.LinAlgError):
                     cost_matrix[row, column] = np.inf
         return cost_matrix
+
+    def _batched_non_radar_scan_cost_matrix(
+        self,
+        observations: list[SensorObservation],
+        states: list[EKFState | None],
+        models: list[MeasurementModel | None],
+        cost_matrix: np.ndarray,
+        projection_cache: dict[
+            tuple[int, tuple[Any, ...]],
+            tuple[np.ndarray, np.ndarray] | None,
+        ],
+    ) -> np.ndarray:
+        """Batch identical-shape innovation inversions without changing costs.
+
+        A scan may contain many observations from one camera geometry.  Their
+        projected mean and Jacobian are identical for a given track, while
+        their measurement and covariance remain observation-specific.  NumPy
+        ``pinv`` accepts a stack of matrices and returns the same per-matrix
+        pseudoinverse as individual calls.  Residual wrapping and each scalar
+        quadratic form deliberately retain the legacy operation order.
+        """
+
+        grouped_columns: dict[
+            tuple[tuple[Any, ...], tuple[int, ...], tuple[int, ...], tuple[int, ...]],
+            list[int],
+        ] = {}
+        for column, model in enumerate(models):
+            if model is None:
+                continue
+            geometry_key = model.geometry_key or (
+                "observation",
+                observations[column].observation_id,
+            )
+            group_key = (
+                geometry_key,
+                tuple(int(item) for item in model.z.shape),
+                tuple(int(item) for item in model.r.shape),
+                tuple(int(item) for item in model.angle_indices),
+            )
+            grouped_columns.setdefault(group_key, []).append(column)
+
+        context = self._batch_context
+        for group_key, columns in grouped_columns.items():
+            geometry_key = group_key[0]
+            representative = models[columns[0]]
+            if representative is None:
+                continue
+            measurement_dimension = int(representative.z.size)
+            identity = np.eye(measurement_dimension, dtype=float)
+            valid_rows: list[int] = []
+            predicted_measurements: list[np.ndarray] = []
+            base_innovation_covariances: list[np.ndarray] = []
+
+            for row, state in enumerate(states):
+                if state is None:
+                    continue
+                cache_key = (row, geometry_key)
+                if cache_key not in projection_cache:
+                    if context is not None:
+                        context.association_projection_build_count += 1
+                    try:
+                        projection_cache[cache_key] = (
+                            representative.h_fn(state.state),
+                            representative.h_jacobian_fn(state.state),
+                        )
+                    except (ValueError, FloatingPointError, np.linalg.LinAlgError):
+                        projection_cache[cache_key] = None
+                projection = projection_cache[cache_key]
+                if projection is None:
+                    continue
+                try:
+                    base_covariance = (
+                        projection[1]
+                        @ state.covariance
+                        @ projection[1].T
+                    )
+                except (ValueError, FloatingPointError, np.linalg.LinAlgError):
+                    continue
+                valid_rows.append(row)
+                predicted_measurements.append(projection[0])
+                base_innovation_covariances.append(base_covariance)
+
+            if not valid_rows:
+                continue
+
+            try:
+                innovation_covariances = np.empty(
+                    (
+                        len(valid_rows),
+                        len(columns),
+                        measurement_dimension,
+                        measurement_dimension,
+                    ),
+                    dtype=float,
+                )
+                for local_row, base_covariance in enumerate(
+                    base_innovation_covariances
+                ):
+                    for local_column, column in enumerate(columns):
+                        model = models[column]
+                        if model is None:
+                            raise RuntimeError("grouped measurement model disappeared")
+                        innovation_covariance = base_covariance + model.r
+                        innovation_covariances[local_row, local_column] = (
+                            0.5
+                            * (
+                                innovation_covariance
+                                + innovation_covariance.T
+                            )
+                            + 1.0e-9 * identity
+                        )
+                inverses = np.linalg.pinv(innovation_covariances)
+            except (
+                ValueError,
+                FloatingPointError,
+                np.linalg.LinAlgError,
+                RuntimeError,
+            ):
+                self._fill_non_radar_group_scalar(
+                    models,
+                    valid_rows,
+                    columns,
+                    predicted_measurements,
+                    base_innovation_covariances,
+                    cost_matrix,
+                )
+                continue
+
+            if context is not None:
+                context.association_innovation_solve_count += (
+                    len(valid_rows) * len(columns)
+                )
+            for local_row, row in enumerate(valid_rows):
+                predicted_measurement = predicted_measurements[local_row]
+                for local_column, column in enumerate(columns):
+                    model = models[column]
+                    if model is None:
+                        continue
+                    residual = wrap_residual(
+                        model.z - predicted_measurement,
+                        model.angle_indices,
+                    )
+                    cost_matrix[row, column] = float(
+                        residual.T
+                        @ inverses[local_row, local_column]
+                        @ residual
+                    )
+        return cost_matrix
+
+    def _fill_non_radar_group_scalar(
+        self,
+        models: list[MeasurementModel | None],
+        valid_rows: list[int],
+        columns: list[int],
+        predicted_measurements: list[np.ndarray],
+        base_innovation_covariances: list[np.ndarray],
+        cost_matrix: np.ndarray,
+    ) -> None:
+        """Preserve per-pair failure isolation if a batched solve is rejected."""
+
+        context = self._batch_context
+        for local_row, row in enumerate(valid_rows):
+            predicted_measurement = predicted_measurements[local_row]
+            for column in columns:
+                model = models[column]
+                if model is None:
+                    continue
+                try:
+                    residual = wrap_residual(
+                        model.z - predicted_measurement,
+                        model.angle_indices,
+                    )
+                    innovation_covariance = (
+                        base_innovation_covariances[local_row] + model.r
+                    )
+                    innovation_covariance = (
+                        0.5
+                        * (
+                            innovation_covariance
+                            + innovation_covariance.T
+                        )
+                        + 1.0e-9 * np.eye(innovation_covariance.shape[0])
+                    )
+                    if context is not None:
+                        context.association_innovation_solve_count += 1
+                    inverse = np.linalg.pinv(innovation_covariance)
+                    cost_matrix[row, column] = float(
+                        residual.T @ inverse @ residual
+                    )
+                except (ValueError, FloatingPointError, np.linalg.LinAlgError):
+                    cost_matrix[row, column] = np.inf
 
     def _record_has_observer_scan(
         self,

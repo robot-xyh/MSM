@@ -796,6 +796,116 @@ def test_scan_association_model_cache_matches_oosm_and_fixed_lag_reference() -> 
     assert optimized.pre_checkpoint_oosm_replay_count == 1
 
 
+def test_batched_non_radar_innovation_solve_is_exact_and_reduces_pinv_calls() -> None:
+    target_count = 200
+    reference = Scalable3DFusionAdapter(
+        association_gate=40.0,
+        batched_non_radar_innovation_solve=False,
+    )
+    optimized = Scalable3DFusionAdapter(
+        association_gate=40.0,
+        batched_non_radar_innovation_solve=True,
+    )
+    radar_scan = _radar_scan(
+        target_count,
+        measurement_timestamp=0.0,
+        arrival_timestamp=0.2,
+        scan_id="batched-innovation-radar-origin",
+    )
+    _assert_semantically_equal(
+        reference,
+        optimized,
+        reference.process_scan_batch(radar_scan),
+        optimized.process_scan_batch(radar_scan),
+    )
+    eo_scan = list(
+        _eo_scan(
+            target_count,
+            measurement_timestamp=0.1,
+            arrival_timestamp=0.3,
+            scan_id="batched-innovation-eo",
+        )
+    )
+    for index, observation in enumerate(eo_scan):
+        variance = 4.0 + 0.01 * index
+        observation.covariance = np.diag([variance, variance])
+
+    original_pinv = np.linalg.pinv
+    with patch.object(
+        fusion_module.np.linalg,
+        "pinv",
+        wraps=original_pinv,
+    ) as reference_pinv:
+        reference_result = reference.process_scan_batch(eo_scan)
+    with patch.object(
+        fusion_module.np.linalg,
+        "pinv",
+        wraps=original_pinv,
+    ) as optimized_pinv:
+        optimized_result = optimized.process_scan_batch(eo_scan)
+
+    _assert_semantically_equal(
+        reference,
+        optimized,
+        reference_result,
+        optimized_result,
+    )
+    assert optimized_result.summary.to_dict() == reference_result.summary.to_dict()
+    assert reference_pinv.call_count == target_count * target_count
+    assert optimized_pinv.call_count == 1
+
+
+def test_batched_non_radar_innovation_solve_falls_back_per_pair() -> None:
+    reference = Scalable3DFusionAdapter(
+        association_gate=40.0,
+        batched_non_radar_innovation_solve=False,
+    )
+    optimized = Scalable3DFusionAdapter(
+        association_gate=40.0,
+        batched_non_radar_innovation_solve=True,
+    )
+    radar_scan = _radar_scan(
+        7,
+        measurement_timestamp=0.0,
+        arrival_timestamp=0.2,
+        scan_id="batched-fallback-radar-origin",
+    )
+    _assert_semantically_equal(
+        reference,
+        optimized,
+        reference.process_scan_batch(radar_scan),
+        optimized.process_scan_batch(radar_scan),
+    )
+    eo_scan = _eo_scan(
+        7,
+        measurement_timestamp=0.1,
+        arrival_timestamp=0.3,
+        scan_id="batched-fallback-eo",
+    )
+    original_pinv = np.linalg.pinv
+
+    def reject_batched(values, *args, **kwargs):
+        if np.asarray(values).ndim > 2:
+            raise np.linalg.LinAlgError("forced batched solve rejection")
+        return original_pinv(values, *args, **kwargs)
+
+    reference_result = reference.process_scan_batch(eo_scan)
+    with patch.object(
+        fusion_module.np.linalg,
+        "pinv",
+        side_effect=reject_batched,
+    ):
+        optimized_result = optimized.process_scan_batch(eo_scan)
+
+    _assert_semantically_equal(
+        reference,
+        optimized,
+        reference_result,
+        optimized_result,
+    )
+    assert optimized_result.summary.to_dict() == reference_result.summary.to_dict()
+
+
 def test_radar_lower_bound_rejects_only_pairs_above_exact_gate() -> None:
     rng = np.random.default_rng(20260722)
     differences = rng.normal(0.0, 300.0, size=(7, 11, 3))
