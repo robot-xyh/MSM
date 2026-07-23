@@ -676,3 +676,17 @@ sensor/range 提供 RMSE、NEES、NIS，D2 可提供显式 IDSW、continuity、d
 duplicate 指标反推。D1 来源摘要现规范为 `d2_lineage_mapping`，旧名称只输入兼容，不改变
 M 对 N 分母或指标定义。2026-07-20 D6 全量 `334 passed`；本轮未运行 M 对 N AirSim 或正式
 多 seed 物理闭环，M 对 N 性能状态保持原结论。
+
+## 11. 部分身份诊断对 M-to-N 框架的影响（2026-07-23）
+
+D6 已能在 strict IDSW unavailable 时独立报告 mapping/frame/adjacent-transition coverage、
+conservative IDSW lower bound、anchor interval 和 exclusion reasons。这补充了大规模 M-to-N
+身份可观测性诊断，但不改变 demand、coalition、wave、arrival、通信或安全分母，也不能用
+lower bound 代替 strict IDSW、联盟完成或物理成功。
+
+partial 必须通过 identity manifest/evaluation SHA/source provenance、schema、有限值和计数守恒
+才进入聚合；缺失 episode 不补零。2026-07-23 专项 `26 passed`、D6 全量
+`567 passed, 1 warning in 22.96s`。同日真实 nominal 200 对 200 单 seed 制品验证了 strict
+unavailable 与 partial coverage/lower-bound 分栏，但该输入是一对一名义场景，不是高威胁
+`k_j>1` 的 M-to-N 联盟实验。本批没有 M-to-N AirSim 或正式多 seed 制品，因此框架的物理性能
+状态和四路线 x 三中心层级实验矩阵保持开放。

@@ -2433,3 +2433,116 @@ lineage mapping 新字段、旧字段兼容、冲突/缺失 fail-closed、外部
 文件/来源 SHA-256、内部摘要篡改、跨 episode 混用、缺制品、D1 availability 冲突、D2
 零帧假零和真值隔离 fail-closed。本轮没有
 AirSim 或正式训练/评估数据，不能形成算法性能结论。
+
+## 18. D2 部分身份诊断适配与聚合（2026-07-23）
+
+### 18.1 输入与归一化记录
+
+`truth_isolated_offline.py` 新增
+`D2PartialIdentityDiagnosticsRecord`，其 D6 schema 为
+`d6.d2_scalable3d_partial_identity_adapter.v1`，只接受 producer schema
+`d2.scalable3d_partial_identity_diagnostics.v1`。记录包含：
+
+```text
+availability / unavailable_reason
+mapping, frame, adjacent-transition coverage
+id_switch_lower_bound
+anchor_interval_count
+all diagnostic count fields
+anchor exclusion reason counts
+excluded scored-mapping reason counts
+identity manifest/evaluation SHA provenance
+```
+
+D6 输出不包含数值 upper bound。`to_dict()` 只保留
+`id_switch_upper_bound_reported=false`，并固定
+`strict_id_switch_count_backfilled=false`、`offline_only=true`、
+`evaluator_only=true` 和 `control_consumed=false`。
+
+### 18.2 Fail-closed 校验
+
+adapter 先验证 partial 内部合同：
+
+```text
+available + ambiguous + unavailable mappings = total mappings
+scored + non_scored mappings = total mappings
+evaluable + ambiguous_scored + unavailable_scored
+  + mapped_truth_not_present = scored mappings
+sum(anchor exclusion reasons) = excluded truth-frame anchors
+0 <= lower_bound <= anchor_interval_count <= transition opportunities
+```
+
+三类 coverage 都校验有限性、`[0,1]` 范围、availability/reason 和
+`value = numerator / denominator`。分母为零时值必须为 null，并携带冻结 reason。strict IDSW
+与 lower bound 同时可用时，还要求 `lower_bound <= strict_id_switch_count`。producer 若携带
+任何 upper-bound 数值或 available 标记，partial 直接 unavailable。
+
+然后验证 provenance：
+
+1. evaluation config/audit 必须声明同一 partial schema；
+2. audit 必须证明 raw source hash/record sequence、online truth isolation 和无 identity
+   heuristic；
+3. identity manifest schema 必须为
+   `scalable3d-offline-identity-evaluation-manifest-v1`，episode 和 strict metric availability
+   必须一致；
+4. manifest 的 `identity_evaluation` SHA 必须等于当前文件或规范 payload 摘要；
+5. manifest 的 `online_d1_records/online_d2_records/observation_truth_labels/identity_evidence`
+   必须分别等于 evaluation 的四类 source hash，其中最后一项映射到
+   `identity_evidence_bundle`。
+
+路径输入自动读取同目录 `manifest.json`，也支持调用方显式提供 manifest 及其带外 SHA。旧
+evaluation 缺 partial 时不拒绝 strict 输入，而是生成
+`unavailable/partial_identity_diagnostics_missing` 子记录。partial 的结构或 provenance 失败
+同样只关闭该子记录，避免它改变既有 strict 指标。
+
+### 18.3 Episode 与 batch 输出
+
+逐 seed CSV 使用 `d2_partial_identity_*` 独立列。batch 的通用 metrics 键为：
+
+```text
+d2.partial_identity.evaluable_mapping_coverage
+d2.partial_identity.evaluable_frame_coverage
+d2.partial_identity.adjacent_transition_coverage
+d2.partial_identity.id_switch_lower_bound
+d2.partial_identity.anchor_interval_count
+```
+
+除 per-seed 描述统计/bootstrap 外，`d2_partial_identity_diagnostics` 分组块对所有
+provenance-verified episode 汇总 count，并按
+
+\[
+C_{\mathrm{micro}}=\frac{\sum_e n_e}{\sum_e d_e}
+\]
+
+计算 mapping/frame/adjacent-transition micro coverage。缺失或失败 episode 只进入
+unavailability reason distribution，不进入分子、分母或 lower-bound 合计。lower bound 合计
+仅覆盖自身 available 的 episode，并同时报告不可用原因；anchor exclusion reasons 按 episode
+计数求和。
+
+### 18.4 验证证据与限制
+
+2026-07-23 的专项 26 项测试覆盖有效 strict-unavailable、strict/partial 并存、legacy 缺块、
+manifest 缺失、schema 错版本、evaluation/source SHA 不符、NaN、计数不守恒和文件篡改。
+D6 全量为 `567 passed, 1 warning in 22.96s`，验收门限零失败。全量较上一版 555 项增加
+12 项，来源为 3 项独立部分身份测试和 9 项篡改参数化用例。
+
+真实制品复核进一步使用 clean `4ac3bb2`、nominal 200 对 200、seed 1000、10 秒 episode。
+调用方显式提供 evaluation SHA `b743cd7f...f83a1`、manifest SHA `5b9238fe...e3463` 及四项
+实际源文件摘要；D6 复核后得到：
+
+```text
+truth_isolation_verified = true
+strict id_switch_count = null / unavailable
+strict unavailable reason = multiple_truth_targets_for_global_track
+partial mapping coverage = 8906 / 9038
+partial frame coverage = 3 / 48
+partial adjacent-transition coverage = 0 / 9400
+partial IDSW lower bound = 7 / 385 anchor intervals
+strict_id_switch_count_backfilled = false
+id_switch_upper_bound_reported = false
+control_consumed = false
+```
+
+逐 seed CSV、aggregate JSON 和中文 Markdown 的 availability 与上述结果一致。该输入只有一个
+seed，没有运行 AirSim 或正式困难场景矩阵；正式 coverage/lower-bound 分布和完整 sidecar 下
+strict IDSW/continuity 仍是 P1 数据任务。

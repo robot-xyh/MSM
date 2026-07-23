@@ -17,10 +17,11 @@ D6 已接入 `scalable3d-stage-timings-v2`，离线评估输出升级为
 报告新增阶段尾延时表，并明确 5v5 冒烟不能作为 200 对 200 验收。
 
 2026-07-22 验证覆盖正常 v2、显式不可用 v2、三类 legacy、半缺字段、未知 schema、非有限值、
-分位顺序、均值上界、重复阶段和跨 seed 混合 availability。D6 全量测试为
-`555 passed, 1 warning`；warning 是既有 Matplotlib `Axes3D` 环境问题。当前只完成 consumer、
-聚合和报告合同。main 仍需用包含 v2 分位的 clean 200 对 200 多 seed episode 重跑，才能形成真实
-阶段尾延时证据。
+分位顺序、均值上界、重复阶段和跨 seed 混合 availability。2026-07-23 当前权威 D6 全量测试为
+`567 passed, 1 warning in 22.96s`；相较上一版 555 项，新增 12 项均来自
+`test_truth_isolated_offline.py` 的部分身份合同，其中 3 项为独立正负合同，9 项为篡改参数化用例。
+warning 是既有 Matplotlib `Axes3D` 环境问题。阶段分位当前只完成 consumer、聚合和报告合同。
+main 仍需用包含 v2 分位的 clean 200 对 200 多 seed episode 重跑，才能形成真实阶段尾延时证据。
 
 ## 2026-07-22 clean 20-seed runtime v2 复核
 
@@ -1711,3 +1712,48 @@ JSON 和中文 Markdown 均使用稳定的 `input_digests.d2_lineage_mapping` �
 当前工作树的 main-owned scalable 3D reporting 已写出 D1/D2 制品、校验 manifest/source
 hash 并调用本接口生成单 episode/batch bundle；该接线不属于 D6 owned path，本轮未代改。
 D6 侧公共合同已实现；20 个未见 seed 的正式阈值、置信区间和性能结论仍开放。
+
+## D2 evaluator-only 部分身份诊断（2026-07-23）
+
+`adapt_d2_scalable_3d_identity()` 现接入
+`d2.scalable3d_partial_identity_diagnostics.v1`。该块与 strict
+`id_switch_count`/continuity/duplicate/confusion 完全分离：strict 不可用时，D6 仍可独立
+保留 mapping、完整 frame、adjacent-transition 三类 coverage、保守 IDSW lower bound、
+anchor interval count 和排除原因；lower bound 永不回填 strict `id_switch_count`，D6 不输出
+IDSW upper bound，也不让该离线块参与控制。
+
+partial 只有在以下条件全部满足时才为 available：
+
+- block schema、scope、固定 denominator definitions、availability/reason 和计数守恒通过；
+- coverage 为有限数且与分子/分母一致，lower bound 不超过 anchor interval；strict 可用时
+  lower bound 还不得超过 strict IDSW；
+- D2 audit/config 明确绑定同一 partial schema，在线 truth 隔离和无 identity heuristic 已验证；
+- `scalable3d-offline-identity-evaluation-manifest-v1` 的 episode、availability、strict metric
+  availability、evaluation SHA-256 以及 D1/D2/truth/evidence 四类来源摘要与 evaluation 一致。
+
+文件输入默认查找 evaluation 同目录的 `manifest.json`；调用方也可显式传
+`identity_manifest` 和 `expected_identity_manifest_sha256`。旧 evaluation v1 不含 partial
+块时继续读取，strict 字段保持原值，partial 单独写为
+`unavailable/partial_identity_diagnostics_missing`。错版本、manifest 缺失、evaluation/source
+hash 不符、非有限 coverage、计数不守恒等情况也只关闭 partial，并在 DTO、逐 seed CSV、
+aggregate JSON 和中文 Markdown 中保留稳定 reason。
+
+2026-07-23 的确定性合同 fixture 使用 10 帧汇总和 12 条 mapping 计数，验证 coverage
+`8/10`、`4/10`、`3/5`、4 个 anchor interval、lower bound 2 和 1 个重复映射 anchor 排除。
+另一正例同时保留 strict IDSW 3 与 lower bound 2，证明两列不互相覆盖。专项测试
+`26 passed`，D6 全量 `567 passed, 1 warning in 22.96s`，验收门限为零失败；warning 是既有
+Matplotlib `Axes3D` 环境提示。全量从 555 增至 567 的 12 项均来自本专项新增的 3 项独立测试和
+9 项篡改参数化用例。
+
+同日 D6 只读消费 clean `4ac3bb2` 的 nominal 200 对 200、seed 1000、10 秒真实 producer
+episode。manifest/evaluation 文件 SHA-256 分别为 `5b9238fe...e3463` 和
+`b743cd7f...f83a1`，online D1、online D2、observation truth labels、identity evidence
+四项源文件 SHA-256 均经独立复算并与两份制品一致。输出确认
+`truth_isolation_verified=true`，但 strict `id_switch_count` 因
+`multiple_truth_targets_for_global_track` 保持 `None/unavailable`，没有被 partial 回填。
+partial provenance 可用，mapping coverage 为 `8906/9038=0.985395`，完整 frame coverage 为
+`3/48=0.0625`，adjacent-transition coverage 为 `0/9400=0`，385 个 anchor interval 上的
+保守 IDSW lower bound 为 7；upper bound 未生成，`control_consumed=false`。
+
+该真实制品只有一个 seed，且不是 AirSim 或正式困难场景矩阵。它关闭“consumer 尚未读取真实
+producer 制品”的接口子项，不形成 strict IDSW、coverage 稳定性、算法优劣或多 seed 性能结论。

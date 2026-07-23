@@ -12,8 +12,9 @@
 - [x] 跨 seed 聚合输出 episode 分位的描述统计、可用 episode/seed 数和缺失原因；原始调用样本
   未落盘时不计算 pooled quantile。
 - [x] 中文报告增加阶段尾延时表，明确其为 episode 内调用分位的 seed 分布，并保留规模和证据边界。
-- [x] 覆盖正常 v2、legacy、半缺、非有限、顺序错误、重复 stage 和混合 availability；D6 全量
-  `555 passed, 1 warning`。
+- [x] 覆盖正常 v2、legacy、半缺、非有限、顺序错误、重复 stage 和混合 availability；2026-07-23
+  当前权威 D6 全量为 `567 passed, 1 warning in 22.96s`。相较 555 项新增的 12 项来自
+  `test_truth_isolated_offline.py` 的 3 项独立部分身份合同和 9 项篡改参数化用例。
 - [ ] main 使用当前 v2 producer 生成 clean 200 对 200 多 seed episode，并由 D6 v7 重建逐 seed
   CSV、聚合 JSON 和中文报告。
 - [ ] main 若要正式称为“稳定窗口尾延时”，需在场景/manifest 中冻结稳定窗口定义；D6 不从目录名
@@ -605,8 +606,13 @@ episode 编排、控制或 AirSim 输入合同，因此不修改该计划。
   shadow、assist、control 和 physical 五层跨提交趋势；fixture 或 dirty smoke 不作为模型验收。
 - [x] producer 已发布独立 `d4-region-resource-consumption-v1`，携带完整建议合同、当前 snapshot、时间、
   consumable/rejection、bridge reason 和 D3 hint applied；D6 不从 advice 或模式字段推断采用。
-- [ ] producer 增加 evaluator-only `global_track_id -> truth_target_id` 显式映射；D2 IDSW 继续只接受
-  producer 明确 available 值，二者均不得从名称、终态或邻近事件补算。
+- [x] D2 producer 已发布 evaluator-only lineage identity evaluation，并新增版本化 partial
+  diagnostics；D6 只消费 producer 的 coverage/count/lower-bound 汇总，不从名称、终态、距离或
+  邻近事件补算映射。strict IDSW 继续只接受 producer 明确 available 值，partial lower bound
+  不回填 strict 指标。
+- [ ] main 重新生成正式多规模、多 seed identity evaluation/manifest 后，再把 partial coverage、
+  blocker、anchor exclusion 和 lower-bound 分布接入学习运行时最终证据；当前合同 fixture 不作
+  模型或物理效果验收。
 
 ## 2026-07-15 legacy provenance 与三档 comparator 完成状态
 
@@ -1712,9 +1718,42 @@ availability、假零拒绝和规模分组正确；未运行 AirSim，未运行
 
 1. 当前工作树 main-owned reporting 已持久化 D1/D2 公开制品并调用 D6 episode/batch builder；
    D6 不接入在线总线，也不在本任务修改该接线。
-2. main 仍需冻结正式 producer 文件名、manifest key 和跨制品 source hash 关系，并将 D6
-   结果纳入最终统一 scalable 3D 总报告，而不复制 producer 私有 schema。
+2. 单 episode 的 producer 文件名、manifest key 和跨制品 source hash 已实际验证；main 仍需将
+   同一合同扩展到正式多规模、多 seed 输入，并纳入最终统一 scalable 3D 总报告。
 3. 在 5/20/50/100/200 正式多 seed 数据具备后，报告 sensor/range RMSE、NEES、NIS 与
    IDSW/continuity/duplicate 的置信区间和不可用原因分布。
 4. 在以上证据完成前，GAP 状态为“D6 适配合同与当前工作树接线已闭合、正式多 seed
    性能验收和最终统一报告仍开放”。
+
+## 15. D2 部分身份诊断接入（2026-07-23）
+
+### 已完成
+
+1. 新增 `d6.d2_scalable3d_partial_identity_adapter.v1` 归一化记录；旧
+   `d2.scalable3d_identity_evaluation.v1` 不含 partial 时继续兼容读取。
+2. 独立输出 mapping/frame/adjacent-transition coverage、IDSW lower bound、anchor interval
+   count、anchor exclusion 和 scored-mapping exclusion reason；strict IDSW 的字段、availability
+   和聚合路径不变。
+3. 校验 partial schema/scope/denominator policy、有限 coverage、availability/reason、全部计数
+   守恒、lower-bound 范围以及 strict/partial 并存时的保守关系；不接受或构造 upper bound。
+4. 校验 identity manifest schema、episode、availability、strict metric availability、
+   evaluation SHA-256、四类 source hash、audit/config 和 evaluator-only provenance。任一失败只将
+   partial 标为 unavailable，并给出稳定 reason。
+5. 逐 seed CSV、aggregate JSON、中文 Markdown 均新增独立 partial 栏和来源状态；输出固定声明
+   `strict_id_switch_count_backfilled=false`、`id_switch_upper_bound_reported=false` 和
+   `control_consumed=false`。
+6. 2026-07-23 专项 `26 passed`，D6 全量 `567 passed, 1 warning in 22.96s`；验收门限零失败。
+7. 只读消费 clean `4ac3bb2` 的 nominal 200 对 200、seed 1000、10 秒真实 producer episode。
+   manifest/evaluation 和四项源文件 SHA-256 全部一致；strict IDSW 保持 unavailable，partial
+   mapping/frame/adjacent coverage 为 `8906/9038`、`3/48`、`0/9400`，385 个 anchor interval
+   上的保守 lower bound 为 7，未回填 strict，也未生成 upper bound。
+
+### 仍开放 P1
+
+1. 单个真实 200 对 200 producer episode 已通过消费合同。main/D2 仍需生成正式
+   5/20/50/100/200 多 seed evaluation 和 identity manifest，D6 再报告 coverage、blocker、
+   anchor exclusion、lower-bound 分布与置信区间；单 seed 不替代正式数据。
+2. strict IDSW/continuity 的多 seed 可用性仍取决于完整 lineage truth sidecar。partial lower
+   bound 不能关闭 strict 指标 unavailable，也不能支持 promotion、控制切换或算法优劣结论。
+3. 真实 AirSim、遮挡/杂波/漏检/OOSM 和不同目标密度下的 partial coverage 仍无正式证据；D6
+   不从现有单 seed producer 复算记录外推。

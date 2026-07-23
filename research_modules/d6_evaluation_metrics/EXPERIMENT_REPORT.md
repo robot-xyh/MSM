@@ -45,9 +45,10 @@ consumer 合同和失败关闭逻辑可用。
 P50/P95/max 及 availability；aggregate 增加可用 episode/seed 数、缺失原因分布和 pooled quantile
 不可用声明；中文报告增加阶段尾延时表，并明确稳定窗口和实际规模必须由 main 提供。
 
-2026-07-22 全量测试为 `555 passed, 1 warning`。warning 是既有 Matplotlib `Axes3D` 环境问题。
-当前缺少由 v2 producer 生成的 clean 200 对 200 多 seed 输入，尚不能报告真实阶段尾延时、实时门限
-或稳定窗口性能。
+2026-07-23 当前权威全量测试为 `567 passed, 1 warning in 22.96s`。相较上一版 555 项，新增
+12 项来自 `test_truth_isolated_offline.py` 的 3 项独立部分身份合同和 9 项篡改参数化用例。
+warning 是既有 Matplotlib `Axes3D` 环境问题。当前缺少由 v2 producer 生成的 clean 200 对 200
+多 seed 输入，尚不能报告真实阶段尾延时、实时门限或稳定窗口性能。
 
 ## 2.22 2026-07-22 clean 20-seed 后验代次校准
 
@@ -1530,3 +1531,79 @@ Matplotlib `Axes3D` 本机环境 warning。本批没有 AirSim 图像或曲线�
 专项测试为 `14 passed`，D6 全量为 `334 passed`，另有一条既有 Matplotlib `Axes3D` 环境
 warning。验收门限是全部合同测试通过，当前已经满足。正式 D1 RMSE/NEES/NIS、D2 IDSW/
 continuity 和 200 对 200 运行性能没有证据，仍待 main 按至少 20 个未见 seed 评估。
+
+## 10. D2 evaluator-only 部分身份诊断合同验证（2026-07-23）
+
+合同验证使用 D6 离线单元测试，没有启动 AirSim。正负用例输入为确定性
+evaluation/manifest fixture；验收门限为所有合同用例零失败。合同验证后，D6 另行只读消费
+一份真实 200 对 200、单 seed producer 制品，验证实际文件摘要和输出 availability。
+
+有效 partial fixture 的汇总口径如下：
+
+| 指标 | 分子/分母或数值 | D6 结果 |
+| --- | ---: | --- |
+| mapping coverage | 8/10 | 0.8，available |
+| frame coverage | 4/10 | 0.4，available |
+| adjacent-transition coverage | 3/5 | 0.6，available |
+| anchor interval count | 4 | 4，available |
+| conservative IDSW lower bound | 2/4 anchor intervals | 2，available |
+| anchor exclusion | 1 truth-frame | `multiple_evaluable_global_tracks_for_truth_frame=1` |
+
+专项用例同时覆盖 strict unavailable + lower bound 2，以及 strict IDSW 3 + lower bound 2。
+前者证明 partial 可独立报告，后者证明 CSV/JSON/Markdown 的 strict 与 lower-bound 分栏；两者
+都固定 `strict_id_switch_count_backfilled=false`、`id_switch_upper_bound_reported=false` 和
+`control_consumed=false`。
+
+| 负例 | 预期 fail-closed reason | 结果 |
+| --- | --- | --- |
+| legacy evaluation 无 partial | `partial_identity_diagnostics_missing` | 通过，strict 保持兼容 |
+| partial 存在但 manifest 缺失 | `d2_identity_manifest_missing` | 通过，strict 不隐藏 |
+| partial schema 错版本 | `unsupported_partial_identity_diagnostics_schema` | 通过 |
+| mapping 分类计数不守恒 | `partial_identity_count_conservation_failed` | 通过 |
+| coverage 为 NaN | `partial_identity_diagnostics_non_finite_value` | 通过 |
+| identity manifest 错版本 | `unsupported_d2_identity_manifest_schema` | 通过 |
+| manifest 的 evaluation SHA 不符 | `d2_identity_manifest_evaluation_sha256_mismatch` | 通过 |
+| manifest 的 evidence source SHA 不符 | `d2_identity_manifest_source_hash_mismatch` | 通过 |
+| evaluation 文件内容篡改 | 顶层 SHA-256 mismatch 并拒绝制品 | 通过 |
+
+### 真实制品复核
+
+输入来自 clean `4ac3bb2` 的 nominal 200 对 200、seed 1000、10 秒 episode
+`nominal_200v200-s1000-d3b592d8e14a`。D6 对 manifest、evaluation 和四项实际源文件分别计算
+SHA-256，再将这些带外摘要传入公共 consumer。
+
+| 制品 | SHA-256 |
+| --- | --- |
+| identity manifest | `5b9238fe42767250312e6d5d7200a314a847f04b9202282a7fd2bff5823e3463` |
+| identity evaluation | `b743cd7f489c5d4799f330212e44c6035860bb8630e5bbbfe843f33cb3ff83a1` |
+| online D1 records | `89d2029283c71043f9f3b0d4806608720e32cd5ccc272c1a381bca72909e20ae` |
+| online D2 records | `86d80158b264d1150f58371d5b23edb88640b65b586107d01f2b82238c9e05ee` |
+| observation truth labels | `e0292402ed1486dd61c3d9c44e01f98205e6f91cf06639e2438e1221fc4a58fd` |
+| identity evidence | `09591869fe66b2098517b56872c334f3aa4f2e56062ecb9529d40edf2ccb4a55` |
+
+manifest 的 evaluation 摘要与实际 evaluation 文件一致；manifest 和 evaluation 中四项来源摘要
+逐项一致，并与四个实际文件的独立摘要一致。consumer 输出
+`truth_isolation_verified=true`。完整身份指标证据仍为 false，原因是
+`multiple_truth_targets_for_global_track`，因此 strict `id_switch_count` 为空且 availability
+为 unavailable。
+
+| 部分身份指标 | 结果 | availability |
+| --- | ---: | --- |
+| mapping coverage | `8906/9038 = 0.9853949989` | available |
+| 完整 frame coverage | `3/48 = 0.0625` | available |
+| adjacent-transition coverage | `0/9400 = 0` | available |
+| anchor interval count | `385` | available |
+| conservative IDSW lower bound | `7` | available |
+| 排除的重复 anchor | `1` | available |
+
+逐 seed CSV 中 strict IDSW 单元格为空并携带原始不可用原因；partial 指标位于独立列。聚合 JSON
+中的 strict 指标保持 unavailable，partial 块固定
+`strict_id_switch_count_backfilled=false`、`id_switch_upper_bound_reported=false` 和
+`control_consumed=false`。中文报告同样分栏显示，不生成身份切换上界。
+
+`test_truth_isolated_offline.py` 为 `26 passed`；D6 全量为
+`567 passed, 1 warning in 22.96s`。warning 是既有 Matplotlib `Axes3D` 环境提示，与本次
+无图离线验证无关。全量较 555 项增加的 12 项由 3 项独立测试和一个包含 9 个失败模式的参数化
+测试组成。该结果只证明 D6 schema/provenance/availability/报告接入及真实单 episode 消费完成，
+不证明正式场景的 coverage、lower bound 或 strict IDSW 达到任何阈值。剩余 P1 是 main/D2
+生成正式多规模、多 seed evaluation/manifest，以及完整 sidecar 下 strict IDSW/continuity 的统计。

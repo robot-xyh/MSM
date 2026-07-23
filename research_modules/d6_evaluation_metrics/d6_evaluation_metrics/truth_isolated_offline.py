@@ -35,7 +35,10 @@ D6_D1_SENSOR_RANGE_RECORD_SCHEMA_VERSION = (
 D6_D2_IDENTITY_ADAPTER_SCHEMA_VERSION = (
     "d6.d2_scalable3d_identity_adapter.v1"
 )
-D6_TRUTH_ISOLATED_EVALUATION_DATE = "2026-07-20"
+D6_D2_PARTIAL_IDENTITY_ADAPTER_SCHEMA_VERSION = (
+    "d6.d2_scalable3d_partial_identity_adapter.v1"
+)
+D6_TRUTH_ISOLATED_EVALUATION_DATE = "2026-07-23"
 
 D1_OFFLINE_CONSISTENCY_RESULT_SCHEMA_VERSION = (
     "d1.consistency.offline_result.v1"
@@ -54,6 +57,12 @@ D2_SCALABLE_3D_IDENTITY_METRICS_SCHEMA_VERSION = (
 )
 D2_SCALABLE_3D_IDENTITY_POLICY_VERSION = (
     "d2.scalable3d_identity_policy.v1"
+)
+D2_SCALABLE_3D_PARTIAL_IDENTITY_DIAGNOSTICS_SCHEMA_VERSION = (
+    "d2.scalable3d_partial_identity_diagnostics.v1"
+)
+D2_OFFLINE_IDENTITY_MANIFEST_SCHEMA_VERSION = (
+    "scalable3d-offline-identity-evaluation-manifest-v1"
 )
 
 DEFAULT_TRUTH_ISOLATED_BOOTSTRAP_RESAMPLES = 2_000
@@ -93,11 +102,120 @@ _D2_REQUIRED_SOURCE_HASHES = (
     "observation_truth_labels",
     "identity_evidence_bundle",
 )
+_D2_PARTIAL_METRIC_NAMES = (
+    "evaluable_mapping_coverage",
+    "evaluable_frame_coverage",
+    "adjacent_transition_coverage",
+    "id_switch_lower_bound",
+    "anchor_interval_count",
+)
+_D2_PARTIAL_COUNT_NAMES = (
+    "total_mapping_count",
+    "available_mapping_count",
+    "ambiguous_mapping_count",
+    "unavailable_mapping_count",
+    "scored_mapping_count",
+    "non_scored_mapping_count",
+    "evaluable_mapping_count",
+    "ambiguous_scored_mapping_count",
+    "unavailable_scored_mapping_count",
+    "mapped_truth_not_present_mapping_count",
+    "missing_identity_evidence_mapping_count",
+    "evaluated_frame_count",
+    "evaluable_frame_count",
+    "transition_opportunity_count",
+    "evaluable_transition_count",
+    "lower_bound_anchor_excluded_truth_frame_count",
+    "lower_bound_anchor_transition_count",
+)
+_D2_PARTIAL_PAYLOAD_KEYS = frozenset(
+    {
+        "schema_version",
+        "scope",
+        "denominator_definitions",
+        *_D2_PARTIAL_COUNT_NAMES,
+        "evaluable_mapping_coverage",
+        "evaluable_mapping_coverage_available",
+        "evaluable_mapping_coverage_reason",
+        "evaluable_frame_coverage",
+        "evaluable_frame_coverage_available",
+        "evaluable_frame_coverage_reason",
+        "evaluable_transition_coverage",
+        "evaluable_transition_coverage_available",
+        "evaluable_transition_coverage_reason",
+        "lower_bound_anchor_exclusion_reason_counts",
+        "id_switch_lower_bound",
+        "id_switch_lower_bound_available",
+        "id_switch_lower_bound_reason",
+        "id_switch_upper_bound",
+        "id_switch_upper_bound_available",
+        "id_switch_upper_bound_reason",
+        "excluded_scored_mapping_reason_counts",
+    }
+)
+D2_PARTIAL_IDENTITY_DENOMINATOR_DEFINITIONS = {
+    "mapping_denominator": (
+        "scored_mapping_count counts created or matched global-track/frame "
+        "mappings; lost, dropped, and unmatched audit rows are not scored"
+    ),
+    "evaluable_mapping": (
+        "a scored mapping with status available, exactly one truth target, "
+        "and that truth target present in the frame sidecar window"
+    ),
+    "frame_denominator": (
+        "evaluated_frame_count counts every persisted D2 frame represented "
+        "by the evidence bundle or verified source records"
+    ),
+    "evaluable_frame": (
+        "a frame with non-empty truth presence where every scored mapping is "
+        "evaluable; a frame may be evaluable with zero assigned tracks"
+    ),
+    "transition_denominator": (
+        "transition_opportunity_count is the sum over truth targets of "
+        "max(number of truth-present frames minus one, zero)"
+    ),
+    "evaluable_transition": (
+        "an adjacent pair of truth-present frames whose endpoints are both "
+        "evaluable and each have exactly one unique evaluable global track "
+        "for that truth target"
+    ),
+    "lower_bound_anchor": (
+        "a truth-target/frame pair in an evaluable frame with exactly one "
+        "unique evaluable global track; pairs with multiple evaluable global "
+        "tracks are excluded rather than ordered into a representative"
+    ),
+    "lower_bound_anchor_exclusion": (
+        "lower_bound_anchor_excluded_truth_frame_count counts truth-target/"
+        "frame pairs with more than one unique evaluable global track; such "
+        "pairs never become lower-bound anchors even when the frame is "
+        "otherwise incomplete"
+    ),
+    "id_switch_lower_bound": (
+        "changes of the unique global_track_id between consecutive "
+        "lower-bound anchors for each truth target; anchor intervals are "
+        "disjoint and duplicate mappings never select a representative, so "
+        "the count is a conservative episode lower bound"
+    ),
+    "missing_identity_evidence_mapping": (
+        "a scored mapping carrying source_lineage_missing, "
+        "truth_label_missing, or truth_mapping_evidence_unavailable"
+    ),
+    "id_switch_upper_bound": (
+        "not emitted because missing or ambiguous sidecar evidence does not "
+        "establish a complete truth-assignment transition universe"
+    ),
+}
 _SHA256_PREFIX = "sha256:"
 
 
 class TruthIsolatedEvaluationError(ValueError):
     """Raised when a public evaluator artifact violates its frozen contract."""
+
+
+class _PartialIdentityValidationError(ValueError):
+    def __init__(self, reason: str, message: str) -> None:
+        super().__init__(message)
+        self.reason = str(reason)
 
 
 @dataclass(frozen=True, slots=True)
@@ -157,6 +275,143 @@ class PublicMetricEvidence:
             "unavailability_reason_counts": dict(
                 self.unavailability_reason_counts or {}
             ),
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class D2PartialIdentityDiagnosticsRecord:
+    """D6 view of provenance-verified evaluator-only partial identity evidence."""
+
+    available: bool
+    unavailable_reason: str | None
+    metrics: Mapping[str, PublicMetricEvidence]
+    counts: Mapping[str, int]
+    lower_bound_anchor_exclusion_reason_counts: Mapping[str, int]
+    excluded_scored_mapping_reason_counts: Mapping[str, int]
+    producer_schema_version: str | None
+    identity_manifest_schema_version: str | None
+    identity_manifest_sha256: str | None
+    identity_evaluation_sha256: str | None
+    provenance_verified: bool
+    verification_mode: str
+    schema_version: str = D6_D2_PARTIAL_IDENTITY_ADAPTER_SCHEMA_VERSION
+
+    def __post_init__(self) -> None:
+        if self.schema_version != D6_D2_PARTIAL_IDENTITY_ADAPTER_SCHEMA_VERSION:
+            raise ValueError("unsupported D2 partial identity adapter schema")
+        available = bool(self.available)
+        reason = (
+            None
+            if self.unavailable_reason is None
+            else str(self.unavailable_reason).strip()
+        )
+        metrics = dict(self.metrics)
+        if set(metrics) != set(_D2_PARTIAL_METRIC_NAMES):
+            raise ValueError("D2 partial identity metric set is incomplete")
+        counts = _validated_count_mapping(
+            self.counts,
+            "D2 partial identity counts",
+        )
+        anchor_reasons = _validated_count_mapping(
+            self.lower_bound_anchor_exclusion_reason_counts,
+            "D2 partial identity anchor exclusion reasons",
+        )
+        excluded_reasons = _validated_count_mapping(
+            self.excluded_scored_mapping_reason_counts,
+            "D2 partial identity excluded mapping reasons",
+        )
+        if available:
+            if reason is not None or not self.provenance_verified:
+                raise ValueError(
+                    "available D2 partial identity evidence requires verified provenance"
+                )
+            if set(counts) != set(_D2_PARTIAL_COUNT_NAMES):
+                raise ValueError("D2 partial identity count set is incomplete")
+            if (
+                self.producer_schema_version
+                != D2_SCALABLE_3D_PARTIAL_IDENTITY_DIAGNOSTICS_SCHEMA_VERSION
+            ):
+                raise ValueError("available D2 partial identity schema is unsupported")
+            if (
+                self.identity_manifest_schema_version
+                != D2_OFFLINE_IDENTITY_MANIFEST_SCHEMA_VERSION
+            ):
+                raise ValueError(
+                    "available D2 partial identity manifest schema is unsupported"
+                )
+            if (
+                self.identity_manifest_sha256 is None
+                or self.identity_evaluation_sha256 is None
+            ):
+                raise ValueError(
+                    "available D2 partial identity evidence requires SHA-256 bindings"
+                )
+        else:
+            if not reason:
+                raise ValueError(
+                    "unavailable D2 partial identity evidence requires a reason"
+                )
+            if counts or anchor_reasons or excluded_reasons:
+                raise ValueError(
+                    "unavailable D2 partial identity evidence must not retain counts"
+                )
+            if any(metric.available for metric in metrics.values()):
+                raise ValueError(
+                    "unavailable D2 partial identity evidence cannot expose metrics"
+                )
+            if self.provenance_verified:
+                raise ValueError(
+                    "unavailable D2 partial identity evidence cannot verify provenance"
+                )
+        object.__setattr__(self, "available", available)
+        object.__setattr__(self, "unavailable_reason", reason)
+        object.__setattr__(self, "metrics", dict(sorted(metrics.items())))
+        object.__setattr__(self, "counts", counts)
+        object.__setattr__(
+            self,
+            "lower_bound_anchor_exclusion_reason_counts",
+            anchor_reasons,
+        )
+        object.__setattr__(
+            self,
+            "excluded_scored_mapping_reason_counts",
+            excluded_reasons,
+        )
+        object.__setattr__(
+            self,
+            "verification_mode",
+            str(self.verification_mode).strip() or "unavailable",
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema_version": self.schema_version,
+            "producer_schema_version": self.producer_schema_version,
+            "availability": "available" if self.available else "unavailable",
+            "available": self.available,
+            "unavailable_reason": self.unavailable_reason,
+            "offline_only": True,
+            "evaluator_only": True,
+            "control_consumed": False,
+            "provenance_verified": self.provenance_verified,
+            "verification_mode": self.verification_mode,
+            "identity_manifest_schema_version": (
+                self.identity_manifest_schema_version
+            ),
+            "identity_manifest_sha256": self.identity_manifest_sha256,
+            "identity_evaluation_sha256": self.identity_evaluation_sha256,
+            "metrics": {
+                name: metric.to_dict() for name, metric in self.metrics.items()
+            },
+            "counts": dict(self.counts),
+            "lower_bound_anchor_exclusion_reason_counts": dict(
+                self.lower_bound_anchor_exclusion_reason_counts
+            ),
+            "excluded_scored_mapping_reason_counts": dict(
+                self.excluded_scored_mapping_reason_counts
+            ),
+            "strict_id_switch_count_backfilled": False,
+            "id_switch_upper_bound_reported": False,
         }
 
 
@@ -345,6 +600,7 @@ class D2IdentityEvaluationRecord:
     source_verification: str
     configuration: Mapping[str, Any]
     audit: Mapping[str, Any]
+    partial_identity_diagnostics: D2PartialIdentityDiagnosticsRecord
     verification_mode: str
     schema_version: str = D6_D2_IDENTITY_ADAPTER_SCHEMA_VERSION
 
@@ -373,6 +629,13 @@ class D2IdentityEvaluationRecord:
                 self,
                 "confusion_matrix",
                 _validated_confusion_matrix(self.confusion_matrix),
+            )
+        if not isinstance(
+            self.partial_identity_diagnostics,
+            D2PartialIdentityDiagnosticsRecord,
+        ):
+            raise ValueError(
+                "D2 partial identity diagnostics use an unsupported type"
             )
         object.__setattr__(self, "source_hashes", dict(sorted(self.source_hashes.items())))
         object.__setattr__(self, "configuration", dict(self.configuration))
@@ -422,6 +685,9 @@ class D2IdentityEvaluationRecord:
                     truth_id: dict(track_counts)
                     for truth_id, track_counts in self.confusion_matrix.items()
                 }
+            ),
+            "partial_identity_diagnostics": (
+                self.partial_identity_diagnostics.to_dict()
             ),
             "audit": dict(self.audit),
         }
@@ -635,6 +901,8 @@ def adapt_d2_scalable_3d_identity(
     *,
     expected_sha256: str | None = None,
     expected_source_hashes: Mapping[str, str] | None = None,
+    identity_manifest: object | Mapping[str, Any] | str | Path | None = None,
+    expected_identity_manifest_sha256: str | None = None,
 ) -> D2IdentityEvaluationRecord:
     """Adapt a public D2 identity DTO without reconstructing identity mappings."""
 
@@ -775,7 +1043,28 @@ def adapt_d2_scalable_3d_identity(
         availability_blocker=availability_blocker,
     )
     retain_truth_details = availability_blocker is None
-    artifact_digest = _canonical_payload_sha256(payload)
+    try:
+        artifact_digest = _canonical_payload_sha256(payload)
+    except (TypeError, ValueError):
+        artifact_digest = None
+    partial_identity_diagnostics = _adapt_d2_partial_identity_diagnostics(
+        payload.get("partial_identity_diagnostics"),
+        identity_payload=payload,
+        identity_source=source,
+        identity_evaluation_sha256=external_hash or artifact_digest,
+        identity_manifest=identity_manifest,
+        expected_identity_manifest_sha256=(
+            expected_identity_manifest_sha256
+        ),
+        source_hashes=source_hashes,
+        strict_metrics=metrics,
+        strict_truth_metrics_available=truth_available,
+        strict_evaluated_frame_count=evaluated_frame_count,
+        audit=audit,
+        configuration=_mapping(
+            payload.get("configuration", {}), "D2 identity configuration"
+        ),
+    )
     return D2IdentityEvaluationRecord(
         episode_id=_identifier(payload.get("episode_id"), "D2 episode_id"),
         metrics=metrics,
@@ -801,6 +1090,7 @@ def adapt_d2_scalable_3d_identity(
             payload.get("configuration", {}), "D2 identity configuration"
         ),
         audit=audit,
+        partial_identity_diagnostics=partial_identity_diagnostics,
         verification_mode=verification_mode,
     )
 
@@ -813,6 +1103,10 @@ def build_truth_isolated_episode_record(
     d1_expected_sha256: str | None = None,
     d2_expected_sha256: str | None = None,
     d2_expected_source_hashes: Mapping[str, str] | None = None,
+    d2_identity_manifest: (
+        object | Mapping[str, Any] | str | Path | None
+    ) = None,
+    d2_expected_identity_manifest_sha256: str | None = None,
 ) -> TruthIsolatedEpisodeEvaluationRecord:
     """Build one episode record from public DTOs or verified artifacts."""
 
@@ -831,6 +1125,10 @@ def build_truth_isolated_episode_record(
             d2_evaluation,
             expected_sha256=d2_expected_sha256,
             expected_source_hashes=d2_expected_source_hashes,
+            identity_manifest=d2_identity_manifest,
+            expected_identity_manifest_sha256=(
+                d2_expected_identity_manifest_sha256
+            ),
         )
     )
     return TruthIsolatedEpisodeEvaluationRecord(context=context, d1=d1, d2=d2)
@@ -908,6 +1206,20 @@ def aggregate_truth_isolated_episode_records(
                 bootstrap_resamples=int(bootstrap_resamples),
                 bootstrap_rng_seed=int(bootstrap_rng_seed),
             )
+        for name in _D2_PARTIAL_METRIC_NAMES:
+            metrics[f"d2.partial_identity.{name}"] = _aggregate_metric(
+                [
+                    (
+                        record.context.seed,
+                        record.d2.partial_identity_diagnostics.metrics[name],
+                    )
+                    for record in group_records
+                ],
+                metric_name=f"d2.partial_identity.{name}",
+                group_identity=identity,
+                bootstrap_resamples=int(bootstrap_resamples),
+                bootstrap_rng_seed=int(bootstrap_rng_seed),
+            )
         groups.append(
             {
                 **identity,
@@ -967,6 +1279,9 @@ def aggregate_truth_isolated_episode_records(
                         for record in group_records
                     ),
                 },
+                "d2_partial_identity_diagnostics": (
+                    _aggregate_d2_partial_identity(group_records)
+                ),
             }
         )
 
@@ -1034,6 +1349,125 @@ def aggregate_truth_isolated_episode_records(
     )
 
 
+def _aggregate_d2_partial_identity(
+    records: Sequence[TruthIsolatedEpisodeEvaluationRecord],
+) -> dict[str, Any]:
+    diagnostics = [
+        record.d2.partial_identity_diagnostics for record in records
+    ]
+    available = [item for item in diagnostics if item.available]
+    unavailable_reasons = Counter(
+        item.unavailable_reason or "reason_unavailable"
+        for item in diagnostics
+        if not item.available
+    )
+    count_totals = (
+        {
+            name: sum(item.counts[name] for item in available)
+            for name in _D2_PARTIAL_COUNT_NAMES
+        }
+        if available
+        else {}
+    )
+    anchor_exclusion_reasons: Counter[str] = Counter()
+    excluded_mapping_reasons: Counter[str] = Counter()
+    for item in available:
+        anchor_exclusion_reasons.update(
+            item.lower_bound_anchor_exclusion_reason_counts
+        )
+        excluded_mapping_reasons.update(
+            item.excluded_scored_mapping_reason_counts
+        )
+
+    coverage_specs = {
+        "mapping": ("evaluable_mapping_count", "scored_mapping_count"),
+        "frame": ("evaluable_frame_count", "evaluated_frame_count"),
+        "adjacent_transition": (
+            "evaluable_transition_count",
+            "transition_opportunity_count",
+        ),
+    }
+    coverage_totals = {
+        name: _aggregate_partial_coverage_counts(
+            numerator=sum(item.counts[numerator_name] for item in available),
+            denominator=sum(
+                item.counts[denominator_name] for item in available
+            ),
+            unavailable_reason=(
+                "no_provenance_verified_partial_identity_episodes"
+                if not available
+                else f"no_{name}_coverage_denominator"
+            ),
+        )
+        for name, (numerator_name, denominator_name) in coverage_specs.items()
+    }
+    lower_bounds = [
+        item.metrics["id_switch_lower_bound"]
+        for item in diagnostics
+    ]
+    lower_values = [
+        int(metric.value)
+        for metric in lower_bounds
+        if metric.available and metric.value is not None
+    ]
+    lower_reasons = Counter(
+        metric.unavailable_reason or "reason_unavailable"
+        for metric in lower_bounds
+        if not metric.available
+    )
+    return {
+        "schema_version": D6_D2_PARTIAL_IDENTITY_ADAPTER_SCHEMA_VERSION,
+        "availability": "available" if available else "unavailable",
+        "available_episode_count": len(available),
+        "unavailable_episode_count": len(diagnostics) - len(available),
+        "unavailability_reason_distribution": dict(
+            sorted(unavailable_reasons.items())
+        ),
+        "count_totals": count_totals,
+        "coverage_totals": coverage_totals,
+        "anchor_interval_count": count_totals.get(
+            "lower_bound_anchor_transition_count",
+            None,
+        ),
+        "id_switch_lower_bound": {
+            "availability": (
+                "available" if lower_values else "unavailable"
+            ),
+            "value": sum(lower_values) if lower_values else None,
+            "available_episode_count": len(lower_values),
+            "unavailability_reason_distribution": dict(
+                sorted(lower_reasons.items())
+            ),
+        },
+        "lower_bound_anchor_exclusion_reason_counts": dict(
+            sorted(anchor_exclusion_reasons.items())
+        ),
+        "excluded_scored_mapping_reason_counts": dict(
+            sorted(excluded_mapping_reasons.items())
+        ),
+        "strict_id_switch_count_backfilled": False,
+        "id_switch_upper_bound_reported": False,
+        "control_consumed": False,
+    }
+
+
+def _aggregate_partial_coverage_counts(
+    *,
+    numerator: int,
+    denominator: int,
+    unavailable_reason: str,
+) -> dict[str, Any]:
+    return {
+        "availability": "available" if denominator > 0 else "unavailable",
+        "value": (
+            float(numerator / denominator) if denominator > 0 else None
+        ),
+        "numerator": numerator,
+        "denominator": denominator,
+        "unavailable_reason": None if denominator > 0 else unavailable_reason,
+    }
+
+
 def render_truth_isolated_markdown(
     records: Sequence[TruthIsolatedEpisodeEvaluationRecord],
     summary: TruthIsolatedBatchSummary,
@@ -1084,6 +1518,50 @@ def render_truth_isolated_markdown(
                 continuity=_fmt_metric(record.d2.metrics["identity_continuity"]),
                 duplicate=_fmt_metric(
                     record.d2.metrics["duplicate_truth_to_track_count"]
+                ),
+            )
+        )
+
+    lines.extend(
+        [
+            "",
+            "## Evaluator-only 部分身份诊断",
+            "",
+            "| episode | partial 证据 | strict ID Switch | mapping coverage | frame coverage | adjacent-transition coverage | IDSW lower bound | anchor 区间 | anchor 排除原因 |",
+            "| --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+        ]
+    )
+    for record in records:
+        partial = record.d2.partial_identity_diagnostics
+        lines.append(
+            "| {episode} | {availability} | {strict_idsw} | {mapping} | "
+            "{frame} | {transition} | {lower} | {anchors} | {reasons} |".format(
+                episode=record.context.episode_id,
+                availability=(
+                    "可用"
+                    if partial.available
+                    else f"不可用（{partial.unavailable_reason}）"
+                ),
+                strict_idsw=_fmt_metric(
+                    record.d2.metrics["id_switch_count"]
+                ),
+                mapping=_fmt_metric(
+                    partial.metrics["evaluable_mapping_coverage"]
+                ),
+                frame=_fmt_metric(
+                    partial.metrics["evaluable_frame_coverage"]
+                ),
+                transition=_fmt_metric(
+                    partial.metrics["adjacent_transition_coverage"]
+                ),
+                lower=_fmt_metric(
+                    partial.metrics["id_switch_lower_bound"]
+                ),
+                anchors=_fmt_metric(
+                    partial.metrics["anchor_interval_count"]
+                ),
+                reasons=_fmt_count_mapping(
+                    partial.lower_bound_anchor_exclusion_reason_counts
                 ),
             )
         )
@@ -1163,6 +1641,55 @@ def render_truth_isolated_markdown(
     lines.extend(
         [
             "",
+            "## 部分身份分组汇总",
+            "",
+            "| 场景/版本 | 规模 T/R/Rc/Cam | partial episode | mapping coverage | frame coverage | adjacent-transition coverage | IDSW lower bound 合计 | anchor 区间合计 | anchor 排除原因 |",
+            "| --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+        ]
+    )
+    for group in summary.groups:
+        partial = group["d2_partial_identity_diagnostics"]
+        coverage = partial["coverage_totals"]
+        scale = "/".join(
+            str(group[name])
+            for name in (
+                "target_count",
+                "resource_count",
+                "recon_count",
+                "camera_count",
+            )
+        )
+        lines.append(
+            "| {scenario}/{version} | {scale} | {available}/{episodes} | "
+            "{mapping} | {frame} | {transition} | {lower} | {anchors} | "
+            "{reasons} |".format(
+                scenario=group["scenario_id"],
+                version=group["scenario_version"],
+                scale=scale,
+                available=partial["available_episode_count"],
+                episodes=group["episode_count"],
+                mapping=_fmt_partial_coverage_total(coverage["mapping"]),
+                frame=_fmt_partial_coverage_total(coverage["frame"]),
+                transition=_fmt_partial_coverage_total(
+                    coverage["adjacent_transition"]
+                ),
+                lower=_fmt_partial_total(partial["id_switch_lower_bound"]),
+                anchors=(
+                    "—"
+                    if partial["availability"] != "available"
+                    else str(partial["anchor_interval_count"])
+                ),
+                reasons=_fmt_count_mapping(
+                    partial[
+                        "lower_bound_anchor_exclusion_reason_counts"
+                    ]
+                ),
+            )
+        )
+
+    lines.extend(
+        [
+            "",
             "## D1 传感器与距离分档",
             "",
             "| 场景/规模 | 传感器 | 距离分档 | episode/seed | 位置 RMSE | NEES | NIS 覆盖 |",
@@ -1196,6 +1723,7 @@ def render_truth_isolated_markdown(
             "本报告只说明公开评估合同和输入证据中的数值。单 seed 分组只给描述统计，不输出自助法置信区间。正式 5、20、50、100、200 规模结论仍需 main 提供冻结配置和多 seed 制品。",
             "完整来源摘要同时保存在逐 seed CSV 和聚合 JSON；路径制品必须由 main 提供文件摘要及 D2 四类来源摘要。",
             "D2 混淆矩阵和覆盖计数保存在聚合 JSON 中。它们用于离线诊断，不能回流到在线关联、分配或导引链路。",
+            "部分身份诊断只有在 sidecar schema、identity manifest、评估文件 SHA-256、四类来源摘要及 evaluator-only audit 全部绑定后才可用。lower bound 与 strict `id_switch_count` 始终分栏，绝不回填；D6 不构造 upper bound，partial block 不参与控制。",
             "",
         ]
     )
@@ -1681,6 +2209,677 @@ def _d2_metric_evidence(
     return output
 
 
+def _adapt_d2_partial_identity_diagnostics(
+    raw: Any,
+    *,
+    identity_payload: Mapping[str, Any],
+    identity_source: object | Mapping[str, Any] | str | Path,
+    identity_evaluation_sha256: str | None,
+    identity_manifest: object | Mapping[str, Any] | str | Path | None,
+    expected_identity_manifest_sha256: str | None,
+    source_hashes: Mapping[str, str],
+    strict_metrics: Mapping[str, PublicMetricEvidence],
+    strict_truth_metrics_available: bool,
+    strict_evaluated_frame_count: int,
+    audit: Mapping[str, Any],
+    configuration: Mapping[str, Any],
+) -> D2PartialIdentityDiagnosticsRecord:
+    if raw is None:
+        return _unavailable_d2_partial_identity(
+            "partial_identity_diagnostics_missing"
+        )
+    if not isinstance(raw, Mapping):
+        return _unavailable_d2_partial_identity(
+            "partial_identity_diagnostics_invalid_type"
+        )
+
+    producer_schema = (
+        None
+        if raw.get("schema_version") is None
+        else str(raw.get("schema_version"))
+    )
+    manifest_schema: str | None = None
+    manifest_sha: str | None = None
+    verification_mode = "partial_payload_validation_failed"
+    try:
+        counts, metrics, anchor_reasons, excluded_reasons = (
+            _validate_d2_partial_identity_payload(
+                raw,
+                strict_metrics=strict_metrics,
+                strict_evaluated_frame_count=strict_evaluated_frame_count,
+                audit=audit,
+                configuration=configuration,
+            )
+        )
+        manifest_payload, manifest_sha, verification_mode = (
+            _load_d2_partial_identity_manifest(
+                identity_source=identity_source,
+                identity_manifest=identity_manifest,
+                expected_sha256=expected_identity_manifest_sha256,
+            )
+        )
+        manifest_schema = (
+            None
+            if manifest_payload.get("schema_version") is None
+            else str(manifest_payload.get("schema_version"))
+        )
+        _validate_d2_partial_identity_manifest(
+            manifest_payload,
+            identity_payload=identity_payload,
+            identity_evaluation_sha256=identity_evaluation_sha256,
+            source_hashes=source_hashes,
+            strict_truth_metrics_available=strict_truth_metrics_available,
+        )
+    except _PartialIdentityValidationError as exc:
+        return _unavailable_d2_partial_identity(
+            exc.reason,
+            producer_schema_version=producer_schema,
+            identity_manifest_schema_version=manifest_schema,
+            identity_manifest_sha256=manifest_sha,
+            identity_evaluation_sha256=identity_evaluation_sha256,
+            verification_mode=verification_mode,
+        )
+
+    return D2PartialIdentityDiagnosticsRecord(
+        available=True,
+        unavailable_reason=None,
+        metrics=metrics,
+        counts=counts,
+        lower_bound_anchor_exclusion_reason_counts=anchor_reasons,
+        excluded_scored_mapping_reason_counts=excluded_reasons,
+        producer_schema_version=producer_schema,
+        identity_manifest_schema_version=manifest_schema,
+        identity_manifest_sha256=manifest_sha,
+        identity_evaluation_sha256=identity_evaluation_sha256,
+        provenance_verified=True,
+        verification_mode=verification_mode,
+    )
+
+
+def _validate_d2_partial_identity_payload(
+    payload: Mapping[str, Any],
+    *,
+    strict_metrics: Mapping[str, PublicMetricEvidence],
+    strict_evaluated_frame_count: int,
+    audit: Mapping[str, Any],
+    configuration: Mapping[str, Any],
+) -> tuple[
+    dict[str, int],
+    dict[str, PublicMetricEvidence],
+    dict[str, int],
+    dict[str, int],
+]:
+    schema = payload.get("schema_version")
+    if schema != D2_SCALABLE_3D_PARTIAL_IDENTITY_DIAGNOSTICS_SCHEMA_VERSION:
+        _partial_identity_error(
+            "unsupported_partial_identity_diagnostics_schema",
+            "D2 partial identity diagnostics schema is unsupported",
+        )
+    missing = _D2_PARTIAL_PAYLOAD_KEYS - set(payload)
+    if missing:
+        _partial_identity_error(
+            "partial_identity_diagnostics_missing_fields",
+            "D2 partial identity diagnostics are missing required fields",
+        )
+    unexpected = set(payload) - _D2_PARTIAL_PAYLOAD_KEYS
+    if unexpected:
+        _partial_identity_error(
+            "partial_identity_diagnostics_unexpected_fields",
+            "D2 partial identity diagnostics contain unsupported fields",
+        )
+    if payload.get("scope") != "offline_lineage_truth_sidecar_only":
+        _partial_identity_error(
+            "partial_identity_diagnostics_invalid_scope",
+            "D2 partial identity diagnostics are not evaluator-only",
+        )
+    definitions = payload.get("denominator_definitions")
+    if (
+        not isinstance(definitions, Mapping)
+        or dict(definitions) != D2_PARTIAL_IDENTITY_DENOMINATOR_DEFINITIONS
+    ):
+        _partial_identity_error(
+            "partial_identity_denominator_policy_mismatch",
+            "D2 partial identity denominator definitions do not match policy",
+        )
+
+    counts = {
+        name: _partial_nonnegative_int(payload.get(name), name)
+        for name in _D2_PARTIAL_COUNT_NAMES
+    }
+    if (
+        counts["available_mapping_count"]
+        + counts["ambiguous_mapping_count"]
+        + counts["unavailable_mapping_count"]
+        != counts["total_mapping_count"]
+    ):
+        _partial_count_conservation_error("mapping status counts")
+    if (
+        counts["scored_mapping_count"] + counts["non_scored_mapping_count"]
+        != counts["total_mapping_count"]
+    ):
+        _partial_count_conservation_error("scored mapping counts")
+    if (
+        counts["evaluable_mapping_count"]
+        + counts["ambiguous_scored_mapping_count"]
+        + counts["unavailable_scored_mapping_count"]
+        + counts["mapped_truth_not_present_mapping_count"]
+        != counts["scored_mapping_count"]
+    ):
+        _partial_count_conservation_error("scored mapping categories")
+    if counts["missing_identity_evidence_mapping_count"] > (
+        counts["ambiguous_scored_mapping_count"]
+        + counts["unavailable_scored_mapping_count"]
+    ):
+        _partial_count_conservation_error("missing identity evidence mappings")
+    if counts["evaluable_frame_count"] > counts["evaluated_frame_count"]:
+        _partial_count_conservation_error("evaluable frame count")
+    if (
+        counts["evaluable_transition_count"]
+        > counts["transition_opportunity_count"]
+        or counts["lower_bound_anchor_transition_count"]
+        > counts["transition_opportunity_count"]
+    ):
+        _partial_count_conservation_error("identity transition counts")
+
+    anchor_reasons = _partial_count_mapping(
+        payload.get("lower_bound_anchor_exclusion_reason_counts"),
+        "lower_bound anchor exclusion reasons",
+    )
+    if set(anchor_reasons) - {
+        "multiple_evaluable_global_tracks_for_truth_frame"
+    }:
+        _partial_identity_error(
+            "partial_identity_exclusion_reason_unsupported",
+            "D2 partial identity anchor exclusion reason is unsupported",
+        )
+    if sum(anchor_reasons.values()) != counts[
+        "lower_bound_anchor_excluded_truth_frame_count"
+    ]:
+        _partial_count_conservation_error("anchor exclusion reasons")
+    excluded_reasons = _partial_count_mapping(
+        payload.get("excluded_scored_mapping_reason_counts"),
+        "excluded scored mapping reasons",
+    )
+
+    metrics = {
+        "evaluable_mapping_coverage": _partial_coverage_metric(
+            payload,
+            source_name="evaluable_mapping_coverage",
+            numerator=counts["evaluable_mapping_count"],
+            denominator=counts["scored_mapping_count"],
+            zero_reason="no_scored_identity_mappings",
+        ),
+        "evaluable_frame_coverage": _partial_coverage_metric(
+            payload,
+            source_name="evaluable_frame_coverage",
+            numerator=counts["evaluable_frame_count"],
+            denominator=counts["evaluated_frame_count"],
+            zero_reason="no_evaluated_identity_frames",
+        ),
+        "adjacent_transition_coverage": _partial_coverage_metric(
+            payload,
+            source_name="evaluable_transition_coverage",
+            numerator=counts["evaluable_transition_count"],
+            denominator=counts["transition_opportunity_count"],
+            zero_reason="no_truth_presence_transition_opportunities",
+        ),
+    }
+    anchor_interval_count = counts["lower_bound_anchor_transition_count"]
+    metrics["anchor_interval_count"] = PublicMetricEvidence(
+        value=anchor_interval_count,
+        available=True,
+        sample_count=anchor_interval_count,
+    )
+    metrics["id_switch_lower_bound"] = _partial_lower_bound_metric(
+        payload,
+        anchor_interval_count=anchor_interval_count,
+    )
+    strict_id_switch = strict_metrics["id_switch_count"]
+    lower_bound = metrics["id_switch_lower_bound"]
+    if (
+        strict_id_switch.available
+        and lower_bound.available
+        and int(lower_bound.value) > int(strict_id_switch.value)
+    ):
+        _partial_identity_error(
+            "partial_identity_lower_bound_exceeds_strict_id_switch_count",
+            "D2 ID-switch lower bound exceeds the available strict count",
+        )
+
+    upper_bound = payload.get("id_switch_upper_bound")
+    if isinstance(upper_bound, float) and not math.isfinite(upper_bound):
+        _partial_identity_error(
+            "partial_identity_diagnostics_non_finite_value",
+            "D2 partial identity upper bound contains a non-finite value",
+        )
+    if (
+        upper_bound is not None
+        or payload.get("id_switch_upper_bound_available") is not False
+        or payload.get("id_switch_upper_bound_reason")
+        != "not_provided_incomplete_identity_evidence"
+    ):
+        _partial_identity_error(
+            "partial_identity_upper_bound_forbidden",
+            "D2 partial identity diagnostics must not publish an upper bound",
+        )
+
+    if counts["evaluated_frame_count"] != strict_evaluated_frame_count:
+        _partial_identity_error(
+            "partial_identity_evaluated_frame_count_mismatch",
+            "D2 partial and strict evaluated frame counts differ",
+        )
+    if (
+        configuration.get("partial_identity_diagnostic_contract")
+        != D2_SCALABLE_3D_PARTIAL_IDENTITY_DIAGNOSTICS_SCHEMA_VERSION
+    ):
+        _partial_identity_error(
+            "partial_identity_configuration_binding_mismatch",
+            "D2 partial identity configuration contract is not bound",
+        )
+    if (
+        audit.get("partial_identity_diagnostics_available") is not True
+        or audit.get("partial_identity_diagnostics_schema_version")
+        != D2_SCALABLE_3D_PARTIAL_IDENTITY_DIAGNOSTICS_SCHEMA_VERSION
+    ):
+        _partial_identity_error(
+            "partial_identity_audit_binding_mismatch",
+            "D2 partial identity audit contract is not bound",
+        )
+    if (
+        audit.get("online_truth_isolation_verified") is not True
+        or audit.get("source_verification")
+        != "raw_source_hashes_and_record_sequences_verified"
+        or audit.get("identity_heuristics_used") is not False
+    ):
+        _partial_identity_error(
+            "partial_identity_truth_isolation_not_verified",
+            "D2 partial identity evaluator-only isolation is not verified",
+        )
+    audit_count_bindings = {
+        "evaluated_frame_count": "evaluated_frame_count",
+        "available_mapping_count": "available_mapping_count",
+        "ambiguous_mapping_count": "ambiguous_mapping_count",
+        "unavailable_mapping_count": "unavailable_mapping_count",
+    }
+    for audit_name, count_name in audit_count_bindings.items():
+        try:
+            audit_count = _partial_nonnegative_int(
+                audit.get(audit_name),
+                f"audit {audit_name}",
+            )
+        except _PartialIdentityValidationError:
+            _partial_identity_error(
+                "partial_identity_audit_binding_mismatch",
+                "D2 partial identity audit count is missing or invalid",
+            )
+        if audit_count != counts[count_name]:
+            _partial_identity_error(
+                "partial_identity_audit_binding_mismatch",
+                "D2 partial identity audit counts contradict diagnostics",
+            )
+    return counts, metrics, anchor_reasons, excluded_reasons
+
+
+def _partial_coverage_metric(
+    payload: Mapping[str, Any],
+    *,
+    source_name: str,
+    numerator: int,
+    denominator: int,
+    zero_reason: str,
+) -> PublicMetricEvidence:
+    available = payload.get(f"{source_name}_available")
+    if not isinstance(available, bool):
+        _partial_identity_error(
+            "partial_identity_coverage_availability_invalid",
+            f"{source_name} availability must be boolean",
+        )
+    value = payload.get(source_name)
+    reason = _partial_optional_reason(payload.get(f"{source_name}_reason"))
+    if denominator == 0:
+        if value is not None or available or reason != zero_reason:
+            _partial_identity_error(
+                "partial_identity_coverage_inconsistent",
+                f"{source_name} must be unavailable for a zero denominator",
+            )
+        return PublicMetricEvidence(
+            value=None,
+            available=False,
+            sample_count=0,
+            unavailable_reason=reason,
+        )
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        _partial_identity_error(
+            "partial_identity_coverage_value_invalid",
+            f"{source_name} must be numeric",
+        )
+    normalized = float(value)
+    if not math.isfinite(normalized):
+        _partial_identity_error(
+            "partial_identity_diagnostics_non_finite_value",
+            f"{source_name} must be finite",
+        )
+    expected = numerator / denominator
+    if (
+        not available
+        or reason is not None
+        or not 0.0 <= normalized <= 1.0
+        or abs(normalized - expected) > 1.0e-12
+    ):
+        _partial_identity_error(
+            "partial_identity_coverage_inconsistent",
+            f"{source_name} contradicts its numerator or denominator",
+        )
+    return PublicMetricEvidence(
+        value=normalized,
+        available=True,
+        sample_count=denominator,
+    )
+
+
+def _partial_lower_bound_metric(
+    payload: Mapping[str, Any],
+    *,
+    anchor_interval_count: int,
+) -> PublicMetricEvidence:
+    available = payload.get("id_switch_lower_bound_available")
+    if not isinstance(available, bool):
+        _partial_identity_error(
+            "partial_identity_lower_bound_availability_invalid",
+            "D2 ID-switch lower-bound availability must be boolean",
+        )
+    value = payload.get("id_switch_lower_bound")
+    reason = _partial_optional_reason(
+        payload.get("id_switch_lower_bound_reason")
+    )
+    if anchor_interval_count == 0:
+        if (
+            value is not None
+            or available
+            or reason != "no_evaluable_identity_transitions"
+        ):
+            _partial_identity_error(
+                "partial_identity_lower_bound_inconsistent",
+                "D2 ID-switch lower bound requires an anchor interval",
+            )
+        return PublicMetricEvidence(
+            value=None,
+            available=False,
+            sample_count=0,
+            unavailable_reason=reason,
+        )
+    lower_bound = _partial_nonnegative_int(value, "id_switch_lower_bound")
+    if (
+        not available
+        or reason is not None
+        or lower_bound > anchor_interval_count
+    ):
+        _partial_identity_error(
+            "partial_identity_lower_bound_inconsistent",
+            "D2 ID-switch lower bound exceeds its anchor intervals",
+        )
+    return PublicMetricEvidence(
+        value=lower_bound,
+        available=True,
+        sample_count=anchor_interval_count,
+    )
+
+
+def _load_d2_partial_identity_manifest(
+    *,
+    identity_source: object | Mapping[str, Any] | str | Path,
+    identity_manifest: object | Mapping[str, Any] | str | Path | None,
+    expected_sha256: str | None,
+) -> tuple[dict[str, Any], str, str]:
+    selected = identity_manifest
+    mode = "explicit_identity_manifest"
+    if selected is None and isinstance(identity_source, (str, Path)):
+        candidate = Path(identity_source).parent / "manifest.json"
+        if candidate.is_file():
+            selected = candidate
+            mode = "sibling_identity_manifest"
+    if selected is None:
+        _partial_identity_error(
+            "d2_identity_manifest_missing",
+            "D2 identity manifest is required for partial diagnostics",
+        )
+
+    if isinstance(selected, (str, Path)):
+        path = Path(selected)
+        try:
+            manifest_sha = _sha256_file(path)
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+            raise _PartialIdentityValidationError(
+                "d2_identity_manifest_unreadable",
+                "D2 identity manifest cannot be loaded",
+            ) from exc
+        if not isinstance(payload, Mapping):
+            _partial_identity_error(
+                "d2_identity_manifest_invalid_type",
+                "D2 identity manifest must be a mapping",
+            )
+        verification_mode = f"{mode}_sha256_bound"
+    else:
+        if isinstance(selected, Mapping):
+            payload = dict(selected)
+        else:
+            to_dict = getattr(selected, "to_dict", None)
+            if not callable(to_dict):
+                _partial_identity_error(
+                    "d2_identity_manifest_invalid_type",
+                    "D2 identity manifest must be a public DTO, mapping, or path",
+                )
+            mapped = to_dict()
+            if not isinstance(mapped, Mapping):
+                _partial_identity_error(
+                    "d2_identity_manifest_invalid_type",
+                    "D2 identity manifest DTO must return a mapping",
+                )
+            payload = dict(mapped)
+        try:
+            manifest_sha = _canonical_payload_sha256(payload)
+        except (TypeError, ValueError) as exc:
+            raise _PartialIdentityValidationError(
+                "d2_identity_manifest_non_canonical",
+                "D2 identity manifest is not canonically hashable",
+            ) from exc
+        verification_mode = "canonical_identity_manifest_bound"
+
+    if expected_sha256 is not None:
+        try:
+            expected = _normalized_sha256(expected_sha256)
+        except TruthIsolatedEvaluationError as exc:
+            raise _PartialIdentityValidationError(
+                "d2_identity_manifest_sha256_invalid",
+                "D2 identity manifest expected SHA-256 is invalid",
+            ) from exc
+        if manifest_sha != expected:
+            _partial_identity_error(
+                "d2_identity_manifest_sha256_mismatch",
+                "D2 identity manifest SHA-256 does not match",
+            )
+    return dict(payload), manifest_sha, verification_mode
+
+
+def _validate_d2_partial_identity_manifest(
+    manifest: Mapping[str, Any],
+    *,
+    identity_payload: Mapping[str, Any],
+    identity_evaluation_sha256: str | None,
+    source_hashes: Mapping[str, str],
+    strict_truth_metrics_available: bool,
+) -> None:
+    if (
+        manifest.get("schema_version")
+        != D2_OFFLINE_IDENTITY_MANIFEST_SCHEMA_VERSION
+    ):
+        _partial_identity_error(
+            "unsupported_d2_identity_manifest_schema",
+            "D2 identity manifest schema is unsupported",
+        )
+    if (
+        manifest.get("available") is not True
+        or manifest.get("reason") is not None
+    ):
+        _partial_identity_error(
+            "d2_identity_manifest_unavailable",
+            "D2 identity manifest is unavailable",
+        )
+    if manifest.get("episode_id") != identity_payload.get("episode_id"):
+        _partial_identity_error(
+            "d2_identity_manifest_episode_mismatch",
+            "D2 identity manifest episode does not match evaluation",
+        )
+    if manifest.get("online_truth_isolation_verified") is not True:
+        _partial_identity_error(
+            "d2_identity_manifest_truth_isolation_not_verified",
+            "D2 identity manifest did not verify truth isolation",
+        )
+    if (
+        not isinstance(manifest.get("identity_metrics_available"), bool)
+        or manifest.get("identity_metrics_available")
+        is not strict_truth_metrics_available
+    ):
+        _partial_identity_error(
+            "d2_identity_manifest_metric_availability_mismatch",
+            "D2 identity manifest strict metric availability is inconsistent",
+        )
+    manifest_hashes = manifest.get("source_hashes")
+    if not isinstance(manifest_hashes, Mapping):
+        _partial_identity_error(
+            "d2_identity_manifest_source_hashes_missing",
+            "D2 identity manifest source hashes are missing",
+        )
+    if identity_evaluation_sha256 is None:
+        _partial_identity_error(
+            "d2_identity_evaluation_sha256_unavailable",
+            "D2 identity evaluation SHA-256 cannot be bound",
+        )
+    try:
+        evaluation_manifest_hash = _normalized_sha256(
+            manifest_hashes.get("identity_evaluation")
+        )
+    except TruthIsolatedEvaluationError as exc:
+        raise _PartialIdentityValidationError(
+            "d2_identity_manifest_source_hash_invalid",
+            "D2 identity manifest evaluation SHA-256 is invalid",
+        ) from exc
+    if evaluation_manifest_hash != identity_evaluation_sha256:
+        _partial_identity_error(
+            "d2_identity_manifest_evaluation_sha256_mismatch",
+            "D2 identity manifest does not bind the evaluation artifact",
+        )
+    source_bindings = {
+        "online_d1_records": "online_d1_records",
+        "online_d2_records": "online_d2_records",
+        "observation_truth_labels": "observation_truth_labels",
+        "identity_evidence_bundle": "identity_evidence",
+    }
+    for evaluation_name, manifest_name in source_bindings.items():
+        try:
+            manifest_hash = _normalized_sha256(
+                manifest_hashes.get(manifest_name)
+            )
+        except TruthIsolatedEvaluationError as exc:
+            raise _PartialIdentityValidationError(
+                "d2_identity_manifest_source_hash_invalid",
+                f"D2 identity manifest source SHA-256 is invalid: {manifest_name}",
+            ) from exc
+        if manifest_hash != source_hashes[evaluation_name]:
+            _partial_identity_error(
+                "d2_identity_manifest_source_hash_mismatch",
+                f"D2 identity manifest source hash mismatch: {manifest_name}",
+            )
+
+
+def _partial_nonnegative_int(value: Any, name: str) -> int:
+    if isinstance(value, float) and not math.isfinite(value):
+        _partial_identity_error(
+            "partial_identity_diagnostics_non_finite_value",
+            f"{name} must be finite",
+        )
+    if isinstance(value, bool) or not isinstance(value, int):
+        _partial_identity_error(
+            "partial_identity_diagnostics_invalid_count",
+            f"{name} must be an integer",
+        )
+    if value < 0:
+        _partial_identity_error(
+            "partial_identity_diagnostics_invalid_count",
+            f"{name} must be non-negative",
+        )
+    return value
+
+
+def _partial_count_mapping(value: Any, name: str) -> dict[str, int]:
+    if not isinstance(value, Mapping):
+        _partial_identity_error(
+            "partial_identity_diagnostics_invalid_count_mapping",
+            f"{name} must be a mapping",
+        )
+    output: dict[str, int] = {}
+    for key, raw in value.items():
+        identifier = str(key).strip()
+        if not identifier:
+            _partial_identity_error(
+                "partial_identity_diagnostics_invalid_count_mapping",
+                f"{name} keys must be non-empty",
+            )
+        output[identifier] = _partial_nonnegative_int(raw, f"{name} count")
+    return dict(sorted(output.items()))
+
+
+def _partial_optional_reason(value: Any) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str) or not value.strip():
+        _partial_identity_error(
+            "partial_identity_diagnostics_invalid_reason",
+            "D2 partial identity reason must be a non-empty string or null",
+        )
+    return value.strip()
+
+
+def _partial_count_conservation_error(name: str) -> None:
+    _partial_identity_error(
+        "partial_identity_count_conservation_failed",
+        f"D2 partial identity {name} do not conserve counts",
+    )
+
+
+def _partial_identity_error(reason: str, message: str) -> None:
+    raise _PartialIdentityValidationError(reason, message)
+
+
+def _unavailable_d2_partial_identity(
+    reason: str,
+    *,
+    producer_schema_version: str | None = None,
+    identity_manifest_schema_version: str | None = None,
+    identity_manifest_sha256: str | None = None,
+    identity_evaluation_sha256: str | None = None,
+    verification_mode: str = "unavailable",
+) -> D2PartialIdentityDiagnosticsRecord:
+    return D2PartialIdentityDiagnosticsRecord(
+        available=False,
+        unavailable_reason=reason,
+        metrics={
+            name: _unavailable_metric(reason)
+            for name in _D2_PARTIAL_METRIC_NAMES
+        },
+        counts={},
+        lower_bound_anchor_exclusion_reason_counts={},
+        excluded_scored_mapping_reason_counts={},
+        producer_schema_version=producer_schema_version,
+        identity_manifest_schema_version=identity_manifest_schema_version,
+        identity_manifest_sha256=identity_manifest_sha256,
+        identity_evaluation_sha256=identity_evaluation_sha256,
+        provenance_verified=False,
+        verification_mode=verification_mode,
+    )
+
+
 def _missing_d1_record(
     context: TruthIsolatedEpisodeContext,
 ) -> D1ConsistencyEvaluationRecord:
@@ -1726,6 +2925,9 @@ def _missing_d2_record(
         source_verification="artifact_missing",
         configuration={},
         audit={},
+        partial_identity_diagnostics=_unavailable_d2_partial_identity(
+            reason
+        ),
         verification_mode="artifact_missing",
     )
 
@@ -1864,6 +3066,31 @@ def _episode_source_provenance(
         "d2_truth_metric_evidence_reason": (
             record.d2.truth_metric_evidence_reason
         ),
+        "d2_partial_identity_diagnostics": {
+            "availability": (
+                "available"
+                if record.d2.partial_identity_diagnostics.available
+                else "unavailable"
+            ),
+            "unavailable_reason": (
+                record.d2.partial_identity_diagnostics.unavailable_reason
+            ),
+            "producer_schema_version": (
+                record.d2.partial_identity_diagnostics.producer_schema_version
+            ),
+            "identity_manifest_schema_version": (
+                record.d2.partial_identity_diagnostics.identity_manifest_schema_version
+            ),
+            "identity_manifest_sha256": (
+                record.d2.partial_identity_diagnostics.identity_manifest_sha256
+            ),
+            "identity_evaluation_sha256": (
+                record.d2.partial_identity_diagnostics.identity_evaluation_sha256
+            ),
+            "provenance_verified": (
+                record.d2.partial_identity_diagnostics.provenance_verified
+            ),
+        },
     }
 
 
@@ -1894,6 +3121,29 @@ def _episode_csv_row(record: TruthIsolatedEpisodeEvaluationRecord) -> dict[str, 
         "d2_truth_identity_stable_frame_count_json": (
             record.d2.truth_identity_stable_frame_count
         ),
+        "d2_partial_identity_availability": (
+            "available"
+            if record.d2.partial_identity_diagnostics.available
+            else "unavailable"
+        ),
+        "d2_partial_identity_unavailable_reason": (
+            record.d2.partial_identity_diagnostics.unavailable_reason
+        ),
+        "d2_partial_identity_provenance_verified": (
+            record.d2.partial_identity_diagnostics.provenance_verified
+        ),
+        "d2_partial_identity_manifest_sha256": (
+            record.d2.partial_identity_diagnostics.identity_manifest_sha256
+        ),
+        "d2_partial_identity_counts_json": (
+            record.d2.partial_identity_diagnostics.counts
+        ),
+        "d2_partial_identity_anchor_exclusion_reasons_json": (
+            record.d2.partial_identity_diagnostics.lower_bound_anchor_exclusion_reason_counts
+        ),
+        "d2_partial_identity_excluded_mapping_reasons_json": (
+            record.d2.partial_identity_diagnostics.excluded_scored_mapping_reason_counts
+        ),
     }
     for prefix, metrics in (("d1", record.d1.metrics), ("d2", record.d2.metrics)):
         for name, metric in metrics.items():
@@ -1903,6 +3153,14 @@ def _episode_csv_row(record: TruthIsolatedEpisodeEvaluationRecord) -> dict[str, 
             )
             row[f"{prefix}_{name}_sample_count"] = metric.sample_count
             row[f"{prefix}_{name}_unavailable_reason"] = metric.unavailable_reason
+    for name, metric in record.d2.partial_identity_diagnostics.metrics.items():
+        column = f"d2_partial_identity_{name}"
+        row[column] = metric.value
+        row[f"{column}_availability"] = (
+            "available" if metric.available else "unavailable"
+        )
+        row[f"{column}_sample_count"] = metric.sample_count
+        row[f"{column}_unavailable_reason"] = metric.unavailable_reason
     if "d2_id_switch_count" not in row:
         raise AssertionError("D6 must always emit explicit d2_id_switch_count")
     return row
@@ -2228,6 +3486,33 @@ def _fmt_aggregate(metric: Mapping[str, Any]) -> str:
     return f"{mean}（95% CI {_fmt_number(low)}～{_fmt_number(high)}）"
 
 
+def _fmt_partial_coverage_total(metric: Mapping[str, Any]) -> str:
+    if metric.get("availability") != "available":
+        return f"不可用（{metric.get('unavailable_reason')}）"
+    return "{}（{}/{}）".format(
+        _fmt_number(metric.get("value")),
+        metric.get("numerator"),
+        metric.get("denominator"),
+    )
+
+
+def _fmt_partial_total(metric: Mapping[str, Any]) -> str:
+    if metric.get("availability") != "available":
+        reasons = _fmt_count_mapping(
+            metric.get("unavailability_reason_distribution", {})
+        )
+        return f"不可用（{reasons}）"
+    return _fmt_number(metric.get("value"))
+
+
+def _fmt_count_mapping(values: Mapping[str, int]) -> str:
+    if not values:
+        return "无"
+    return "<br>".join(
+        f"{name}={count}" for name, count in sorted(values.items())
+    )
+
+
 def _fmt_number(value: Any) -> str:
     if value is None:
         return "—"
@@ -2242,10 +3527,14 @@ __all__ = [
     "D6_D1_CONSISTENCY_ADAPTER_SCHEMA_VERSION",
     "D6_D1_SENSOR_RANGE_RECORD_SCHEMA_VERSION",
     "D6_D2_IDENTITY_ADAPTER_SCHEMA_VERSION",
+    "D6_D2_PARTIAL_IDENTITY_ADAPTER_SCHEMA_VERSION",
     "D6_TRUTH_ISOLATED_BATCH_SCHEMA_VERSION",
     "D6_TRUTH_ISOLATED_EPISODE_SCHEMA_VERSION",
     "D6_TRUTH_ISOLATED_EVALUATION_DATE",
+    "D2_PARTIAL_IDENTITY_DENOMINATOR_DEFINITIONS",
+    "D2_SCALABLE_3D_PARTIAL_IDENTITY_DIAGNOSTICS_SCHEMA_VERSION",
     "D2IdentityEvaluationRecord",
+    "D2PartialIdentityDiagnosticsRecord",
     "DEFAULT_TRUTH_ISOLATED_BOOTSTRAP_RESAMPLES",
     "DEFAULT_TRUTH_ISOLATED_BOOTSTRAP_RNG_SEED",
     "PublicMetricEvidence",

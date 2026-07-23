@@ -13,7 +13,8 @@
 4. 逐 episode CSV、跨 seed group aggregate 和中文 Markdown 已接入三个分位及 availability。
    聚合明确描述各 episode 内单次调用分位在 seed 间的分布，不生成 pooled quantile。
 5. 正常 v2、显式不可用、legacy、半缺、非有限、顺序错误、均值上界、重复 stage 和混合可用性均有
-   回归。D6 全量为 `555 passed, 1 warning`。
+   回归。2026-07-23 当前权威 D6 全量为 `567 passed, 1 warning in 22.96s`。相较 555 项新增的
+   12 项来自部分身份合同的 3 项独立测试和 9 项篡改参数化用例。
 
 ### 仍开放的 P1
 
@@ -1463,3 +1464,40 @@ git diff --check -- research_modules/d6_evaluation_metrics subagent_reviews/D6_*
 
 当前无新增 P0。P2 外部 evaluator 状态不变；本轮没有引入 Stone Soup、TrackEval、HOTA、
 OSPA/GOSPA 或 AirSim 原生 recording parser。
+
+## 2026-07-23 D2 部分身份诊断消费 GAP
+
+### 已闭合的 D6-owned 项
+
+1. `d2.scalable3d_partial_identity_diagnostics.v1` 已接入 truth-isolated adapter；旧 v1
+   evaluation 无 partial 时继续读取并给出独立 missing reason。
+2. mapping/frame/adjacent-transition coverage、IDSW lower bound、anchor interval count 和
+   exclusion reason 已进入 DTO、逐 seed CSV、aggregate JSON 和中文 Markdown 的独立栏。
+3. strict IDSW 与 partial lower bound 的数据路径和 availability 完全分离。D6 固定声明不回填
+   strict、不发布 upper bound、不参与控制。
+4. sidecar schema/scope/denominator、有限值、availability/reason、计数守恒、lower-bound 范围、
+   audit/config 均已 fail-closed 校验。
+5. identity manifest schema/episode/availability、evaluation SHA-256、D1/D2/truth/evidence 四类
+   source hash 和 truth-isolation provenance 已绑定。manifest 缺失、错版本、hash 不符或制品
+   篡改均有明确 reason。
+6. 2026-07-23 专项 `26 passed`、D6 全量
+   `567 passed, 1 warning in 22.96s`，零测试失败。
+7. clean `4ac3bb2` 的 nominal 200 对 200、seed 1000、10 秒真实 producer episode 已只读消费。
+   manifest/evaluation 及四个实际源文件摘要全部匹配；strict IDSW 因
+   `multiple_truth_targets_for_global_track` 保持 unavailable。partial mapping/frame/transition
+   coverage 为 `8906/9038`、`3/48`、`0/9400`，lower bound 为 7/385 anchor intervals，
+   strict 未回填且 upper bound 未生成。
+
+### 仍开放的 P1
+
+1. 单个真实 200 对 200 episode 已可发布为描述性接口证据，但 main/D2 尚未生成正式多规模、
+   多 seed partial evaluation/manifest；D6 仍没有可验收的 coverage、blocker、anchor exclusion
+   或 lower-bound 性能分布。
+2. 完整 sidecar 下的 strict IDSW/continuity 多 seed 统计仍开放。partial lower bound 不能关闭
+   strict unavailable，也不能作为 promotion 或控制证据。
+3. 真实 AirSim、遮挡/杂波/漏检/OOSM、目标密度变化和长时 episode 的 coverage 稳定性尚未验证。
+4. main 已完成单 episode 紧凑汇总，仍需把新 partial 分栏纳入正式多 seed 统一 scalable 3D 报告
+   并冻结跨提交 reason taxonomy；D6 不复制 producer 私有 frame mapping。
+
+当前无新增 P0。D6 consumer GAP 已关闭，数据与系统性能 P1 保持开放；P2/P3 外部 evaluator
+状态不变。

@@ -1755,3 +1755,48 @@ episode context 直接记录实际目标、资源、侦察节点和相机数量�
 2026-07-20 的验证覆盖五档规模和 14 项专项用例，D6 全量为 `334 passed`。本轮仅证明公共
 合同、哈希校验、availability 和报告输出可用，没有运行 AirSim 或正式多 seed，因此不能
 据此判断 D1 精度、D2 身份连续率或 200 对 200 性能达标。
+
+## 12. 部分身份证据的独立性原则（2026-07-23）
+
+### 12.1 Strict 与 partial 不可互换
+
+strict `id_switch_count` 表示 producer 在完整身份合同下给出的正式计数。partial
+`id_switch_lower_bound` 只表示若干互不重叠唯一 anchor 区间中可证明的最少切换数。即使
+lower bound 有数值，strict 仍可保持 `None/unavailable`；D6 不允许用 lower bound 填充
+strict，不由 lower bound 推导 continuity，也不构造 upper bound。
+
+partial 只用于 episode 结束后的 evaluator-only 诊断。它不能修改 `global_track_id`，不能进入
+D2 关联、D3 分配、D4 降级、D5 末端关联或 D7 导引，也不能触发 promotion 或默认路径切换。
+D6 输出固定记录 `control_consumed=false`。
+
+### 12.2 三类 coverage 必须带分母
+
+- mapping coverage 的分母是 `created/matched` scored mapping，不包含 lost/dropped/unmatched；
+- frame coverage 的分母是持久化 evaluation frame，分子要求 truth presence 非空且该帧全部
+  scored mapping 可评估；
+- adjacent-transition coverage 的分母是真值相邻 presence-frame 机会，分子要求两端均为完整
+  可评估帧且该真值各有唯一 anchor。
+
+零分母必须为 `None/unavailable + reason`。跨 episode 汇总用已验证分子和分母求 micro
+coverage，同时保留 available/unavailable episode 数和原因分布；缺 partial episode 不贡献
+零值。
+
+### 12.3 Provenance 先于数值
+
+partial available 必须同时通过 block schema/scope/denominator policy、有限数检查、计数守恒、
+audit/config 绑定和 identity manifest 链。manifest 必须把同一 episode 的 evaluation SHA-256
+以及 online D1、online D2、observation truth、identity evidence 四类摘要绑定到 evaluation。
+任一项缺失、错版本或不一致时，partial 全块 fail-closed；strict 指标继续按自身合同处理。
+
+2026-07-23 的确定性验证覆盖 valid、legacy missing、manifest missing、错版本、evaluation/source
+hash 篡改、NaN、计数不守恒和 strict/partial 并存，专项 `26 passed`、D6 全量
+`567 passed, 1 warning in 22.96s`。本批没有 AirSim 或正式多 seed 数据，原则实现完成不等于
+任何身份性能门通过。
+
+同日的真实制品复核使用 clean `4ac3bb2`、nominal 200 对 200、seed 1000、10 秒 episode。
+manifest、evaluation 及 online D1、online D2、observation truth、identity evidence 四项源文件
+摘要全部匹配。在线真值隔离验证通过，但完整身份指标因一条全局航迹对应多个真值目标而不可用。
+D6 保留 `id_switch_count=None/unavailable`，同时独立报告 mapping coverage
+`8906/9038`、完整 frame coverage `3/48`、adjacent-transition coverage `0/9400` 和
+7/385 anchor intervals 的保守下界。该结果体现本节的核心原则：证据不完整时仍可报告有严格
+定义的部分诊断，但不能据此补齐严格值、构造上界或形成控制结论。

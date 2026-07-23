@@ -3,8 +3,9 @@
 2026-07-22 的 `scalable3d-stage-timings-v2` 离线消费见
 `MODULE_PRINCIPLES_CN.md` 和 `ALGORITHM_AND_IMPLEMENTATION.md`，接口验证见根目录
 `../EXPERIMENT_REPORT.md` 2.23 节。D6 v7 严格核对分位值与显式 availability，legacy 缺失保持
-null，跨 seed 只统计各 episode 内调用分位，不生成 pooled quantile。全量回归为
-`555 passed, 1 warning`。当前仍需 main 生成带 v2 分位和冻结稳定窗口定义的 clean 200 对 200
+null，跨 seed 只统计各 episode 内调用分位，不生成 pooled quantile。2026-07-23 当前权威全量回归
+为 `567 passed, 1 warning in 22.96s`；相较 555 项新增的 12 项来自部分身份合同的 3 项独立测试
+和 9 项篡改参数化用例。当前仍需 main 生成带 v2 分位和冻结稳定窗口定义的 clean 200 对 200
 多 seed 输入；本次不改变 AirSim 接线。
 
 2026-07-22 clean commit `0d2da25` 的 nominal 200 对 200、10.0 s、seed `1000-1019`
@@ -282,3 +283,18 @@ JSON、中文 Markdown 输出。算法边界见 `ALGORITHM_AND_IMPLEMENTATION.md
 摘要，零帧/无 truth-frame 不得产生 available IDSW=0。D1 规范字段为
 `d2_lineage_mapping`，旧 `canonical_mapping` 仅输入兼容且冲突 fail-closed。专项
 `14 passed`、D6 全量 `334 passed`；本轮只验证合同和报告，不代表正式多 seed 性能达标。
+
+2026-07-23 已同步 D2 evaluator-only partial identity diagnostics。实现位于
+`../d6_evaluation_metrics/truth_isolated_offline.py`；原则见
+`MODULE_PRINCIPLES_CN.md` 第 12 节，字段校验和聚合公式见
+`ALGORITHM_AND_IMPLEMENTATION.md` 第 18 节，合同测试结果见
+`../EXPERIMENT_REPORT.md` 第 10 节。D6 现在把 mapping/frame/adjacent-transition coverage、
+conservative IDSW lower bound、anchor interval 和 exclusion reasons 与 strict IDSW 分栏输出，
+并校验 identity manifest、evaluation SHA、四类 source hash、audit/config、有限值和计数守恒。
+旧 evaluation 缺块保持兼容；partial 失败只标 unavailable，不回填 strict、不构造 upper bound、
+不参与控制。专项 `26 passed`、D6 全量 `567 passed, 1 warning in 22.96s`。D6 已补充读取 clean
+`4ac3bb2` 的 200 对 200、seed 1000、10 秒真实 producer episode：manifest/evaluation 和四项
+来源 SHA 全部匹配；strict IDSW 因 `multiple_truth_targets_for_global_track` 保持 unavailable，
+partial mapping/frame/transition coverage 为 `8906/9038`、`3/48`、`0/9400`，lower bound 为
+7/385 anchor intervals。该单 seed 结果只证明真实制品接入；本批无 AirSim 或正式多 seed
+性能证据。

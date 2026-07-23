@@ -14,9 +14,11 @@ v2 以显式 availability 为准。`distribution_available=true` 时三个分位
 区间描述这些 episode 分位在不同 seed 上的分布。它们不是所有调用样本的 pooled quantile。原始
 逐调用样本未持久化时，D6 明确输出 pooled quantile unavailable。
 
-评审结论是 D6 consumer、逐 episode 行、跨 seed 聚合和中文尾延时表已闭合。全量回归为
-`555 passed, 1 warning`。真实性能证据尚未闭合：main 需用当前 producer 重跑 clean 200 对 200
-多 seed，并显式冻结稳定窗口定义。现有 5v5 冒烟和旧格式 20-seed 输入不能升级为该证据。
+评审结论是 D6 consumer、逐 episode 行、跨 seed 聚合和中文尾延时表已闭合。2026-07-23 当前权威
+全量回归为 `567 passed, 1 warning in 22.96s`；相较 555 项新增的 12 项来自部分身份合同的
+3 项独立测试和 9 项篡改参数化用例。阶段尾延时真实性能证据尚未闭合：main 需用当前 producer
+重跑 clean 200 对 200 多 seed，并显式冻结稳定窗口定义。现有 5v5 冒烟和旧格式 20-seed 输入
+不能升级为该证据。
 
 `AIRSIM_INTEGRATION_PLAN.md` 已检查。本次不改变 AirSim 日志 schema、reset 或控制接口，未修改该
 文档。
@@ -1542,3 +1544,45 @@ D6 新增 `d6.execution-metrics-merge.v1`。该接口解决历史 integrated rep
 2026-07-20 专项 `14 passed`、D6 全量 `334 passed`。该结果只支持“D6 公共适配合同已完成”。
 当前工作树 main-owned reporting 已调用 episode/batch API；20 个未见 seed 尚未运行，D1/D2
 性能未作闭合声明。下一步由 main 冻结文件名、manifest/hash 关系并接入最终统一规模化报告。
+
+## 17. D2 evaluator-only 部分身份诊断评审（2026-07-23）
+
+本轮评审接受 D6 接入
+`d2.scalable3d_partial_identity_diagnostics.v1`，但不改变 2026-07-20 冻结的 strict
+identity adapter 语义。
+
+评审结论：
+
+1. partial 的 mapping/frame/adjacent-transition coverage 均保留分子、分母、availability 和
+   reason；零分母不写 0。
+2. conservative IDSW lower bound 与 strict `id_switch_count` 分栏。strict unavailable 时
+   lower bound 可独立 available；strict available 时校验 lower bound 不超过 strict。lower bound
+   不进入 continuity、promotion 或控制。
+3. anchor interval count 和
+   `multiple_evaluable_global_tracks_for_truth_frame` 等 exclusion reason 单独报告；重复映射不由
+   D6 选择代表航迹。
+4. D6 不解析 frame mapping 重算身份。它只验证 producer 汇总的 schema、固定 denominator
+   definitions、有限值、计数守恒和 audit/config，再校验 identity manifest 对 evaluation SHA 和
+   四类 source hash 的绑定。
+5. legacy missing、manifest missing、错版本、hash mismatch、NaN、计数不守恒均只关闭 partial，
+   strict 保持原 availability/value。evaluation 文件自身 SHA 篡改仍由顶层 adapter 直接拒绝。
+6. DTO、CSV、aggregate JSON 和 Markdown 固定声明
+   `strict_id_switch_count_backfilled=false`、`id_switch_upper_bound_reported=false`、
+   `control_consumed=false`。
+
+确定性正例使用 10 帧、12 mapping 汇总，得到 mapping/frame/adjacent coverage
+`8/10`、`4/10`、`3/5`，4 个 anchor interval、lower bound 2 和 1 个 anchor exclusion。另一
+正例保留 strict IDSW 3 与 lower bound 2。该数值只用于合同测试，不是 D2 正式实验结果。
+专项 `26 passed`，D6 全量 `567 passed, 1 warning in 22.96s`，验收门限零失败。
+
+真实制品复核使用 clean `4ac3bb2` 的 nominal 200 对 200、seed 1000、10 秒 episode。
+manifest/evaluation 文件摘要为 `5b9238fe...e3463`、`b743cd7f...f83a1`；online D1、online D2、
+observation truth labels、identity evidence 四项实际文件摘要逐项匹配。输出中在线真值隔离为真，
+完整身份指标证据为假；strict IDSW 保持 unavailable。partial mapping/frame/transition coverage
+为 `8906/9038`、`3/48`、`0/9400`，IDSW lower bound 为 7/385 anchor intervals。逐 seed CSV、
+聚合 JSON 和中文 Markdown 均保持 strict/partial 分栏，未回填 strict、未生成 upper bound。
+
+评审状态为“D6 consumer、报告合同和真实单 episode 接入完成，正式多 seed 数据待生成”。剩余 P1
+是 main/D2 的正式多规模、多 seed evaluation/manifest、完整 sidecar 下 strict
+IDSW/continuity、真实困难场景 coverage 稳定性和最终统一报告；不得引用该单 seed 结果作为
+D6 多 seed 结论。
