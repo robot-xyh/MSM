@@ -128,6 +128,15 @@ free-row 和 free-column 交替路径，雷达量测也没有可用于消歧的�
 候选通过前，不运行被拒绝 v1 的 10 秒或 20-seed 批次。机器摘要见
 `docs/SCALABLE_3D_RADAR_ASSIGNMENT_CANDIDATE_REVIEW_20260723.json`。
 
+main 运行时现提供显式
+`--d1-radar-assignment-ambiguity-governance-v2` 实验开关。默认不传入时保持关闭；启用后，
+`summary.json` 和 `observation_governance_audit.json` 会记录 D1 的
+`selected_policy_version`、enabled/status 及抑制诊断。兼容字段
+`policy_version` 不能单独用于判断实际启用策略。`manifest.json` 另存完整
+`scalable3d-integrated-stack-runtime-profile-v1` 和 SHA-256，episode ID 同时携带该哈希前缀，
+因此相同场景的基线与 treatment 不会共用身份。该接线允许同一代码提交分别运行规则基线和
+实验候选，不再通过修改模块默认值制造 A/B。
+
 ## 2026-07-22 规则全栈性能校准
 
 提交 `33101656b0cf1967a778cdb36a440611e02109b1` 已完成 20、50、100、200 四档 clean-source

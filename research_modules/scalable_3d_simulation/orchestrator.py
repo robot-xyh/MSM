@@ -189,8 +189,11 @@ class Scalable3DEpisodeRunner:
                 bandwidth_bytes_per_s=config.communication_bandwidth_bytes_per_s,
             ),
         )
-        self.manifest = build_episode_manifest(config)
         self.module_stack = module_stack
+        self.manifest = build_episode_manifest(
+            config,
+            runtime_profile=_runtime_manifest_profile(module_stack),
+        )
 
     def run(self) -> EpisodeResult:
         """Run a world/sensor baseline without D1-D7 algorithm shortcuts."""
@@ -809,6 +812,20 @@ def _d1_consistency_evidence_records(
     if not callable(provider):
         return ()
     return tuple(provider())
+
+
+def _runtime_manifest_profile(
+    module_stack: ScalableModuleStack | None,
+) -> dict[str, Any] | None:
+    if module_stack is None:
+        return None
+    provider = getattr(module_stack, "runtime_manifest_profile", None)
+    if not callable(provider):
+        return None
+    profile = provider()
+    if not isinstance(profile, Mapping):
+        raise TypeError("runtime manifest profile must be a mapping")
+    return dict(profile)
 
 
 def _observation_governance_audit(

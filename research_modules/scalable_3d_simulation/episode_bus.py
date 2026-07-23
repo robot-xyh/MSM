@@ -94,6 +94,9 @@ class EpisodeManifest:
     d5_active_vision_policy_version: str
     d7_model_version: str
     threshold_version: str
+    runtime_profile_schema: str | None = None
+    runtime_profile_sha256: str | None = None
+    runtime_profile: dict[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -202,6 +205,7 @@ def build_episode_manifest(
     config: ScenarioConfig,
     *,
     repository_root: Path | None = None,
+    runtime_profile: Mapping[str, Any] | None = None,
 ) -> EpisodeManifest:
     """Build a manifest from canonical configuration and repository state."""
 
@@ -217,9 +221,29 @@ def build_episode_manifest(
         separators=(",", ":"),
     ).encode("utf-8")
     config_sha = hashlib.sha256(config_json).hexdigest()
+    normalized_runtime_profile = (
+        None
+        if runtime_profile is None
+        else jsonable(dict(runtime_profile))
+    )
+    runtime_profile_sha: str | None = None
+    runtime_profile_schema: str | None = None
+    if normalized_runtime_profile is not None:
+        runtime_profile_json = json.dumps(
+            normalized_runtime_profile,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+        runtime_profile_sha = hashlib.sha256(runtime_profile_json).hexdigest()
+        runtime_profile_schema = str(
+            normalized_runtime_profile.get("schema_version", "")
+        ) or None
     git_commit = _git_output(root, ["rev-parse", "HEAD"], default="unknown")
     dirty_output = _git_output(root, ["status", "--porcelain"], default="")
     episode_id = f"{config.scenario_name}-s{config.seed}-{config_sha[:12]}"
+    if runtime_profile_sha is not None:
+        episode_id = f"{episode_id}-r{runtime_profile_sha[:12]}"
     return EpisodeManifest(
         episode_id=episode_id,
         git_commit=git_commit,
@@ -241,6 +265,9 @@ def build_episode_manifest(
         d5_active_vision_policy_version=config.d5_active_vision_policy_version,
         d7_model_version=config.d7_model_version,
         threshold_version=config.threshold_version,
+        runtime_profile_schema=runtime_profile_schema,
+        runtime_profile_sha256=runtime_profile_sha,
+        runtime_profile=normalized_runtime_profile,
     )
 
 

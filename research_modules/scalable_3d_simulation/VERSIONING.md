@@ -39,6 +39,7 @@ main
 | 世界模型 | `scalable3d-world-v1` | 状态语义、坐标或动力学改变 |
 | 总线合同 | `scalable3d-episode-bus-v1` | 跨模块消息出现不兼容变更 |
 | 场景配置 | `scalable3d-scenario-v1` | 配置字段语义或默认场景改变 |
+| 集成运行配置 | `scalable3d-integrated-stack-runtime-profile-v1` | main 运行时 treatment、D1-D7 适配器开关或调度参数改变 |
 | 阶段耗时 | `scalable3d-stage-timings-v2` | 阶段调用计数、总耗时、均值、P50/P95/max 或 availability 语义改变 |
 | 长时对照 | `scalable3d-long-duration-comparison-v2` | 长短 episode 可比条件、耗时增长或证据等级语义改变 |
 | 在线观测 | `scalable3d-observation-v1` | 观测字段、单位或时序语义改变 |
@@ -93,6 +94,8 @@ main
   "git_commit": "<commit>",
   "repository_dirty": false,
   "config_sha256": "<sha256>",
+  "runtime_profile_schema": "scalable3d-integrated-stack-runtime-profile-v1",
+  "runtime_profile_sha256": "<sha256>",
   "scenario_version": "200v200-nominal-v1",
   "seed": 17,
   "world_schema": "scalable3d-world-v1",
@@ -103,6 +106,12 @@ main
   "threshold_version": "scalable3d-thresholds-v1"
 }
 ```
+
+`config_sha256` 只绑定外生场景配置。启用集成模块栈时，manifest 另存完整 runtime profile
+及其 SHA-256，episode ID 增加 `-r<hash-prefix>`。规则基线和实验 treatment 可以共享场景
+配置哈希，但不能共享 runtime profile 哈希或 episode ID。跨构建语义等价审计要求 runtime
+profile 相同；有意改变策略开关的候选评审应使用专门的 treatment 对照，不得伪装成语义等价。
+任一侧缺少合法的 64 位 runtime profile SHA-256 时，跨构建审计按不可比处理并失败关闭。
 
 观测治理另写独立子清单，绑定 D1 扫描审计、D2 声明账本、在线治理快照、源总线和
 evaluator-only 侧车的 schema 与 SHA-256。通用 episode manifest 不重复嵌入这些运行期

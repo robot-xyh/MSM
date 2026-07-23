@@ -9,7 +9,7 @@ shared episode clock and translates only versioned, truth-free DTOs.
 from __future__ import annotations
 
 from collections import Counter, deque
-from dataclasses import dataclass, replace
+from dataclasses import asdict, dataclass, replace
 import math
 from time import perf_counter
 from typing import Any, Iterable, Mapping
@@ -128,6 +128,7 @@ class IntegratedStackConfig:
     d2_replay_coast_grace_s: float = 0.5
     d1_scan_event_log_limit: int = 4_096
     d1_coalesce_same_fusion_time: bool = True
+    d1_radar_assignment_ambiguity_governance_v2: bool = False
 
     def __post_init__(self) -> None:
         if self.assignment_lease_multiplier <= 1.0:
@@ -173,6 +174,13 @@ class IntegratedStackConfig:
             raise ValueError("d1_scan_event_log_limit must be positive")
         if not isinstance(self.d1_coalesce_same_fusion_time, bool):
             raise TypeError("d1_coalesce_same_fusion_time must be a bool")
+        if not isinstance(
+            self.d1_radar_assignment_ambiguity_governance_v2,
+            bool,
+        ):
+            raise TypeError(
+                "d1_radar_assignment_ambiguity_governance_v2 must be a bool"
+            )
         for name in ("secondary_coverage_ratio", "secondary_network_full_view_rate"):
             value = float(getattr(self, name))
             if not 0.0 <= value <= 1.0:
@@ -324,9 +332,22 @@ class IntegratedScalableModuleStack:
         self._stage_call_count: dict[str, int] = {}
         self._stage_samples_s: dict[str, list[float]] = {}
 
+    def runtime_manifest_profile(self) -> dict[str, Any]:
+        """Return the main-owned runtime treatment profile for episode hashing."""
+
+        return {
+            "schema_version": "scalable3d-integrated-stack-runtime-profile-v1",
+            "module_stack_schema_version": INTEGRATED_STACK_SCHEMA_VERSION,
+            "configuration": asdict(self.stack_config),
+        }
+
     def reset(self, config: ScenarioConfig) -> None:
         self.config = config
-        self.d1 = Scalable3DFusionAdapter()
+        self.d1 = Scalable3DFusionAdapter(
+            radar_assignment_ambiguity_governance_v2=(
+                self.stack_config.d1_radar_assignment_ambiguity_governance_v2
+            )
+        )
         self.d1_scan_input = ScanInputOrganizer(
             _scan_input_config(config, self.stack_config)
         )
@@ -700,6 +721,7 @@ class IntegratedScalableModuleStack:
             "d1_coalesce_same_fusion_time_enabled": bool(
                 self.stack_config.d1_coalesce_same_fusion_time
             ),
+            "d1_fusion_association": self.d1.association_audit_summary(),
             "d1_state_only_scan_count": int(self._d1_state_only_scan_count),
             "d1_materialized_snapshot_count": int(
                 self._d1_materialized_snapshot_count
@@ -3667,6 +3689,9 @@ class IntegratedScalableModuleStack:
             ),
             "d1_fusion_performance": (
                 self.d1.fusion_performance_diagnostics().to_dict()
+            ),
+            "d1_fusion_association": dict(
+                governance["d1_fusion_association"]
             ),
             "d5_terminal_performance": self.d5.performance_snapshot().to_dict(),
             "d5_active_vision_command_count": len(

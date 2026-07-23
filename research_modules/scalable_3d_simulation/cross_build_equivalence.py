@@ -22,6 +22,7 @@ _D4_ADVICE_TOPIC = "modules.d4.region_resource_advice"
 _D7_TOPIC = "modules.d7.guidance_commands"
 _ACK_TOPIC = "runtime.assignment_plan_ack"
 _ADVISORY_ID_PATTERN = re.compile(r"^d4-rr-advisory-[0-9a-f]{64}$")
+_SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 _SUMMARY_CONTRACT_FIELDS = (
     "scenario_name",
     "scenario_version",
@@ -283,6 +284,7 @@ def _episode_descriptor(episode: Mapping[str, Any]) -> dict[str, Any]:
         "episode_id": str(summary.get("episode_id", manifest.get("episode_id", ""))),
         "git_commit": str(manifest.get("git_commit", "")),
         "repository_dirty": bool(manifest.get("repository_dirty")),
+        "runtime_profile_sha256": manifest.get("runtime_profile_sha256"),
         "scenario_version": str(summary.get("scenario_version", "")),
         "seed": int(summary.get("seed")),
         "duration_s": float(summary.get("simulated_duration_s")),
@@ -294,6 +296,8 @@ def _comparability(
 ) -> dict[str, bool]:
     ref_descriptor = _episode_descriptor(reference)
     cand_descriptor = _episode_descriptor(candidate)
+    reference_runtime_profile = ref_descriptor["runtime_profile_sha256"]
+    candidate_runtime_profile = cand_descriptor["runtime_profile_sha256"]
     return {
         "reference_source_clean": not ref_descriptor["repository_dirty"],
         "candidate_source_clean": not cand_descriptor["repository_dirty"],
@@ -305,6 +309,13 @@ def _comparability(
         "same_scenario_config": (
             _canonical_sha256(reference["scenario"])
             == _canonical_sha256(candidate["scenario"])
+        ),
+        "same_runtime_profile": (
+            isinstance(reference_runtime_profile, str)
+            and isinstance(candidate_runtime_profile, str)
+            and _SHA256_PATTERN.fullmatch(reference_runtime_profile) is not None
+            and _SHA256_PATTERN.fullmatch(candidate_runtime_profile) is not None
+            and reference_runtime_profile == candidate_runtime_profile
         ),
     }
 

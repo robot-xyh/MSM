@@ -159,6 +159,13 @@ allowed-edge 图中的 cycle、free-row 和 free-column 路径，并在未用于
 或 20-seed；10 秒 baseline 中的 7 个歧义映射继续作为长期跨模态验收目标。机器摘要见
 `docs/SCALABLE_3D_RADAR_ASSIGNMENT_CANDIDATE_REVIEW_20260723.json`。
 
+main 验收入口使用显式
+`--d1-radar-assignment-ambiguity-governance-v2`，默认关闭。每个 episode 的 summary 和
+observation-governance audit 必须写出 D1 实际 selected policy version、enabled/status 与
+抑制计数；兼容 policy version 字段不能单独判定实际启用策略。
+manifest 必须写入完整 runtime profile 和独立 SHA-256，episode ID 绑定该哈希。基线和候选
+应从同一 clean 提交、相同场景配置和相同 seed 启动；除该实验开关外不得改变输入。
+
 main 真值守卫键布局缓存已通过完整测试、嵌套可变负例和跨构建语义审计。四组交错
 clean 2.2 秒复测的 publication bus 中位数下降 12.69%，核心墙钟中位数只下降
 0.44%。该项关闭局部重复键规范化，不关闭 200 对 200 实时 P1。组合 clean

@@ -117,6 +117,38 @@ def test_manifest_hash_and_episode_id_change_with_configuration() -> None:
     assert first.d5_active_vision_policy_version == "d5-active-vision-rule-v1"
 
 
+def test_manifest_hashes_runtime_treatment_separately_from_scenario() -> None:
+    config = ScenarioConfig(
+        target_count=5,
+        resource_count=5,
+        recon_count=1,
+        seed=7,
+    )
+    baseline = build_episode_manifest(
+        config,
+        runtime_profile={
+            "schema_version": "test-runtime-profile-v1",
+            "d1_radar_assignment_ambiguity_governance_v2": False,
+        },
+    )
+    candidate = build_episode_manifest(
+        config,
+        runtime_profile={
+            "schema_version": "test-runtime-profile-v1",
+            "d1_radar_assignment_ambiguity_governance_v2": True,
+        },
+    )
+
+    assert baseline.config_sha256 == candidate.config_sha256
+    assert baseline.runtime_profile_sha256 != candidate.runtime_profile_sha256
+    assert baseline.episode_id != candidate.episode_id
+    assert baseline.runtime_profile_schema == "test-runtime-profile-v1"
+    assert candidate.runtime_profile == {
+        "schema_version": "test-runtime-profile-v1",
+        "d1_radar_assignment_ambiguity_governance_v2": True,
+    }
+
+
 def test_bus_sequences_messages_and_network_applies_transport_delay() -> None:
     bus = InMemoryEpisodeBus()
     envelope = bus.publish(

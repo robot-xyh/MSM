@@ -69,6 +69,42 @@ def test_cross_build_audit_rejects_guidance_business_change(tmp_path: Path) -> N
     )
 
 
+def test_cross_build_audit_rejects_runtime_profile_change(tmp_path: Path) -> None:
+    reference = _write_episode(
+        tmp_path / "reference",
+        plan_id="d3-plan-reference",
+        runtime_profile_sha256="a" * 64,
+    )
+    candidate = _write_episode(
+        tmp_path / "candidate",
+        plan_id="d3-plan-candidate",
+        runtime_profile_sha256="b" * 64,
+    )
+
+    report = compare_cross_build_episodes(reference, candidate)
+
+    assert report["passed"] is False
+    assert report["checks"]["same_runtime_profile"] is False
+
+
+def test_cross_build_audit_rejects_missing_runtime_profile(tmp_path: Path) -> None:
+    reference = _write_episode(
+        tmp_path / "reference",
+        plan_id="d3-plan-reference",
+        runtime_profile_sha256=None,
+    )
+    candidate = _write_episode(
+        tmp_path / "candidate",
+        plan_id="d3-plan-candidate",
+        runtime_profile_sha256=None,
+    )
+
+    report = compare_cross_build_episodes(reference, candidate)
+
+    assert report["passed"] is False
+    assert report["checks"]["same_runtime_profile"] is False
+
+
 def test_cross_build_audit_fails_closed_on_tampered_ack_hash(tmp_path: Path) -> None:
     reference = _write_episode(tmp_path / "reference", plan_id="d3-plan-reference")
     candidate = _write_episode(
@@ -104,12 +140,14 @@ def _write_episode(
     guidance_acceleration: float = 1.0,
     tamper_ack_hash: bool = False,
     tamper_d4_advisory_id: bool = False,
+    runtime_profile_sha256: str | None = "c" * 64,
 ) -> Path:
     root.mkdir(parents=True)
     manifest = {
         "episode_id": "equivalence-fixture",
         "git_commit": f"commit-{plan_id}",
         "repository_dirty": False,
+        "runtime_profile_sha256": runtime_profile_sha256,
     }
     scenario = {
         "scenario_name": "nominal_2v2",

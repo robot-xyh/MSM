@@ -74,6 +74,91 @@ def test_recon_track_cues_are_fail_closed_by_default() -> None:
     assert IntegratedStackConfig().d5_recon_track_cues_enabled is False
 
 
+def test_d1_radar_assignment_ambiguity_governance_v2_is_explicit_and_audited() -> None:
+    default = IntegratedScalableModuleStack()
+    default.reset(
+        ScenarioConfig(
+            scenario_name="d1_ambiguity_default",
+            scenario_version="d1-ambiguity-default-v1",
+            target_count=2,
+            resource_count=2,
+            recon_count=1,
+            region_count=1,
+            duration_s=0.2,
+            seed=13,
+        )
+    )
+    default_audit = default.observation_governance_audit()
+    assert (
+        default_audit["d1_fusion_association"][
+            "radar_assignment_ambiguity_governance_enabled"
+        ]
+        is False
+    )
+    assert (
+        default_audit["d1_fusion_association"][
+            "radar_assignment_ambiguity_governance_status"
+        ]
+        == "disabled"
+    )
+    assert (
+        default_audit["d1_fusion_association"][
+            "radar_assignment_ambiguity_selected_policy_version"
+        ]
+        is None
+    )
+
+    experimental = IntegratedScalableModuleStack(
+        config=IntegratedStackConfig(
+            d1_radar_assignment_ambiguity_governance_v2=True
+        )
+    )
+    experimental.reset(
+        ScenarioConfig(
+            scenario_name="d1_ambiguity_experimental",
+            scenario_version="d1-ambiguity-experimental-v1",
+            target_count=2,
+            resource_count=2,
+            recon_count=1,
+            region_count=1,
+            duration_s=0.2,
+            seed=13,
+        )
+    )
+    experimental_audit = experimental.observation_governance_audit()
+    assert (
+        experimental_audit["d1_fusion_association"][
+            "radar_assignment_ambiguity_governance_enabled"
+        ]
+        is True
+    )
+    assert (
+        experimental_audit["d1_fusion_association"][
+            "radar_assignment_ambiguity_governance_status"
+        ]
+        == "experimental_v2_enabled_pending_main_clean_ab"
+    )
+    assert (
+        experimental_audit["d1_fusion_association"][
+            "radar_assignment_ambiguity_selected_policy_version"
+        ]
+        == "fail_closed_maximum_matching_allowed_edge_component_v2"
+    )
+
+
+@pytest.mark.parametrize("value", (None, 0, 1, "true"))
+def test_d1_radar_assignment_ambiguity_governance_v2_requires_bool(
+    value: object,
+) -> None:
+    with pytest.raises(
+        TypeError,
+        match="d1_radar_assignment_ambiguity_governance_v2 must be a bool",
+    ):
+        IntegratedStackConfig(
+            d1_radar_assignment_ambiguity_governance_v2=value,  # type: ignore[arg-type]
+        )
+
+
 def test_d2_consumes_pending_d1_posterior_at_next_association_tick() -> None:
     config = ScenarioConfig(
         scenario_name="pending_d1_to_d2_schedule_3v3",

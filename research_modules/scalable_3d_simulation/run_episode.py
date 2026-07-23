@@ -66,6 +66,14 @@ def parse_args() -> argparse.Namespace:
             "versioned assignment plan; disabled by default"
         ),
     )
+    parser.add_argument(
+        "--d1-radar-assignment-ambiguity-governance-v2",
+        action="store_true",
+        help=(
+            "enable the experimental D1 radar assignment ambiguity v2 policy; "
+            "disabled by default"
+        ),
+    )
     add_learning_runtime_arguments(parser)
     return parser.parse_args()
 
@@ -116,6 +124,9 @@ def main() -> int:
             stack_config=IntegratedStackConfig(
                 capture_learning_artifacts=args.export_learning_data,
                 d5_recon_track_cues_enabled=args.d5_recon_track_cues,
+                d1_radar_assignment_ambiguity_governance_v2=(
+                    args.d1_radar_assignment_ambiguity_governance_v2
+                ),
             ),
         )
         config = resolved_runtime.config

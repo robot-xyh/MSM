@@ -89,12 +89,22 @@ main 对 baseline `488dc39` 与 D1 v1 candidate `d967c96` 完成相同
 strict availability 虽由 `1/3` 增至 `3/3`，D2 航迹、D3 分配和 seed 1001 continuity
 出现退化。v1 不晋级，默认在线路径不变。提交 `8f17c5d` 将实验候选设为默认关闭后，三 seed
 业务指标全部恢复 baseline；跨构建 `3/3 passed=True` 且规范在线载荷 `3/3` 相等。
+main 已增加默认关闭的同构建实验开关
+`--d1-radar-assignment-ambiguity-governance-v2`，并在 summary 与 observation-governance
+audit 中记录实际 selected policy version、enabled/status 和抑制诊断。兼容 policy version
+字段不单独用于判断运行策略。manifest 同时绑定完整
+runtime profile、SHA-256 和 episode ID 后缀，后续 A/B 不再依赖修改 D1 默认值，也不会让
+不同 treatment 共用 episode 身份。
+D1 v2 已完成模块实现；main 独立穷举 `2,666` 个小规模二部图，最大匹配允许边分量与穷举
+oracle 全部一致。D1 全量 `220 passed`，scalable 3D 全量 `142 passed`。这些结果只证明图论
+边界和运行时接线，尚未证明 200v200 下的航迹、分配或身份收益。
 
 早先 `/tmp/msm-clean-radar-d967c96` 遗漏 `--recon-count 2`，实际使用 8 架侦察机，只保留
 为 stress 数学诊断。该诊断确认 v1 遗漏最大匹配中的 free-row/free-column 替代路径，雷达
 零径向速度为未观测占位，不能用于消歧。严格身份 P1 保持开放。下一候选必须同时覆盖
 cycle、free-row 和 free-column allowed edges，并联合验收身份、D1/D2 航迹、D3 分配、
-continuity、suppression、birth 和 recall。被拒绝 v1 不再运行 10 秒或 20-seed。
+continuity、suppression、birth 和 recall。v2 先进入未见 seed 的 clean 短时 A/B；短时
+业务可用性通过前不运行 10 秒或 20-seed。被拒绝 v1 不再运行扩大矩阵。
 机器摘要位于
 `research_modules/scalable_3d_simulation/docs/SCALABLE_3D_RADAR_ASSIGNMENT_CANDIDATE_REVIEW_20260723.json`。
 
