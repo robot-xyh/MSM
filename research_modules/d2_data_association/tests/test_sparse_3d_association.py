@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from copy import deepcopy
 from dataclasses import fields
 from types import SimpleNamespace
 
@@ -447,6 +448,55 @@ def test_d1_adapter_reuses_only_consistent_full_covariance(
     )
 
 
+def test_d1_adapter_trusted_marginals_match_direct_validation_without_allclose(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    covariance = np.block(
+        [
+            [np.eye(3) * 2.0, np.eye(3) * 0.1],
+            [np.eye(3) * 0.1, np.eye(3) * 3.0],
+        ]
+    )
+    source = SimpleNamespace(
+        state=np.arange(6, dtype=float),
+        covariance=covariance,
+        timestamp=1.0,
+        metadata={"latest_observation_id": "observation-1"},
+    )
+    original_allclose = np.allclose
+    allclose_calls = 0
+
+    def recording_allclose(*args: object, **kwargs: object) -> bool:
+        nonlocal allclose_calls
+        allclose_calls += 1
+        return bool(original_allclose(*args, **kwargs))
+
+    monkeypatch.setattr(scalable_3d_models.np, "allclose", recording_allclose)
+
+    _, detections = detections3d_from_d1_global_tracks([source])
+    adapted = detections[0]
+
+    assert allclose_calls == 0
+    reference = Detection3D(
+        detection_id=adapted.detection_id,
+        measurement_timestamp=adapted.measurement_timestamp,
+        arrival_timestamp=adapted.arrival_timestamp,
+        position_ned=adapted.position_ned,
+        covariance=adapted.covariance,
+        confidence=adapted.confidence,
+        velocity_ned=adapted.velocity_ned,
+        velocity_covariance=adapted.velocity_covariance,
+        state_estimate_covariance=adapted.state_estimate_covariance,
+        source_node_id=adapted.source_node_id,
+        source_track_id=adapted.source_track_id,
+        frame_id=adapted.frame_id,
+        metadata=adapted.metadata,
+    )
+
+    assert allclose_calls == 2
+    assert adapted.to_dict() == reference.to_dict()
+
+
 def test_d1_adapter_regularized_covariance_uses_full_fallback_validation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -558,6 +608,48 @@ def test_matched_velocity_nis_is_reused_without_public_result_change(
             "3D track covariance",
         )
         assert track.covariance_consistency == expected_consistency
+
+
+def test_predict_all_reuses_cv_model_per_unique_dt_without_state_change(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    positions, velocities = _grid_state(20)
+    tracker = Scalable3DTracker()
+    tracker.step(_detections(0.0, positions, velocities))
+    reference = deepcopy(tracker)
+    original = sparse_3d._cv_transition_and_process_noise
+
+    for track in reference.active_tracks():
+        transition, process = original(1.0, reference.process_noise_acceleration)
+        track.state = transition @ track.state
+        track.covariance = (
+            transition @ track.covariance @ transition.T + process
+        )
+        track.ensure_covariance_consistency()
+        track.timestamp = 1.0
+        track.age += 1
+
+    model_build_count = 0
+
+    def recording_model(
+        dt: float,
+        acceleration_noise: float,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        nonlocal model_build_count
+        model_build_count += 1
+        return original(dt, acceleration_noise)
+
+    monkeypatch.setattr(
+        sparse_3d,
+        "_cv_transition_and_process_noise",
+        recording_model,
+    )
+    tracker.predict_all(1.0)
+
+    assert model_build_count == 1
+    assert [track.to_dict() for track in tracker.active_tracks()] == [
+        track.to_dict() for track in reference.active_tracks()
+    ]
 
 
 def test_scalable_measurement_adapter_accepts_only_cartesian_ned() -> None:

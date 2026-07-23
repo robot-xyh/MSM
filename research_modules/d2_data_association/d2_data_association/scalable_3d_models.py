@@ -111,8 +111,27 @@ class Detection3D:
     _prevalidated_state_estimate_covariance: (
         tuple[np.ndarray, dict[str, Any]] | None
     ) = field(init=False, repr=False, compare=False)
+    _prevalidated_state_estimate_marginals: (
+        tuple[np.ndarray, np.ndarray, np.ndarray] | None
+    ) = field(init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
+        prevalidated_marginals = getattr(
+            self,
+            "_prevalidated_state_estimate_marginals",
+            None,
+        )
+        if prevalidated_marginals is not None:
+            full, position, velocity = prevalidated_marginals
+            if (
+                full is not self.state_estimate_covariance
+                or position is not self.covariance
+                or velocity is not self.velocity_covariance
+            ):
+                raise ValueError(
+                    "prevalidated marginals must reference the supplied "
+                    "state-estimate covariance and marginals"
+                )
         self.detection_id = str(self.detection_id).strip()
         if not self.detection_id:
             raise ValueError("detection_id must be non-empty")
@@ -178,26 +197,27 @@ class Detection3D:
                         )
                     self.state_estimate_covariance = governed
                     self.state_estimate_covariance_consistency = dict(consistency)
-                if not np.allclose(
-                    self.state_estimate_covariance[:3, :3],
-                    self.covariance,
-                    rtol=1.0e-9,
-                    atol=1.0e-10,
-                ):
-                    raise ValueError(
-                        "state_estimate_covariance position marginal must match "
-                        "covariance"
-                    )
-                if not np.allclose(
-                    self.state_estimate_covariance[3:, 3:],
-                    self.velocity_covariance,
-                    rtol=1.0e-9,
-                    atol=1.0e-10,
-                ):
-                    raise ValueError(
-                        "state_estimate_covariance velocity marginal must match "
-                        "velocity_covariance"
-                    )
+                if prevalidated_marginals is None:
+                    if not np.allclose(
+                        self.state_estimate_covariance[:3, :3],
+                        self.covariance,
+                        rtol=1.0e-9,
+                        atol=1.0e-10,
+                    ):
+                        raise ValueError(
+                            "state_estimate_covariance position marginal must match "
+                            "covariance"
+                        )
+                    if not np.allclose(
+                        self.state_estimate_covariance[3:, 3:],
+                        self.velocity_covariance,
+                        rtol=1.0e-9,
+                        atol=1.0e-10,
+                    ):
+                        raise ValueError(
+                            "state_estimate_covariance velocity marginal must match "
+                            "velocity_covariance"
+                        )
         elif self.velocity_covariance is not None:
             raise ValueError("velocity_covariance requires velocity_ned")
         elif self.state_estimate_covariance is not None:
@@ -214,6 +234,7 @@ class Detection3D:
         self.metadata = dict(self.metadata)
         assert_online_metadata_truth_free(self.metadata)
         self._prevalidated_state_estimate_covariance = None
+        self._prevalidated_state_estimate_marginals = None
 
     @property
     def timestamp(self) -> float:
@@ -578,12 +599,26 @@ def _detection3d_from_governed_d1_track(
     """Construct from the covariance governed immediately above in the adapter."""
 
     state_covariance = detection_kwargs.get("state_estimate_covariance")
-    if not isinstance(state_covariance, np.ndarray):
-        raise TypeError("governed D1 state covariance must be an ndarray")
+    position_covariance = detection_kwargs.get("covariance")
+    velocity_covariance = detection_kwargs.get("velocity_covariance")
+    if not all(
+        isinstance(item, np.ndarray)
+        for item in (
+            state_covariance,
+            position_covariance,
+            velocity_covariance,
+        )
+    ):
+        raise TypeError("governed D1 state covariance and marginals must be ndarrays")
     detection = object.__new__(Detection3D)
     detection._prevalidated_state_estimate_covariance = (
         state_covariance,
         covariance_consistency,
+    )
+    detection._prevalidated_state_estimate_marginals = (
+        state_covariance,
+        position_covariance,
+        velocity_covariance,
     )
     Detection3D.__init__(detection, **detection_kwargs)
     return detection

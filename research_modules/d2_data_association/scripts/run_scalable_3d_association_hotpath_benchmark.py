@@ -8,6 +8,7 @@ from collections import Counter
 import cProfile
 from hashlib import sha256
 import json
+import os
 from pathlib import Path
 import platform
 import pstats
@@ -29,7 +30,7 @@ from d2_data_association.scalable_3d_models import (
 from d2_data_association.sparse_3d import Scalable3DTracker
 
 
-SCHEMA_VERSION = "d2-scalable3d-association-hotpath-benchmark-v1"
+SCHEMA_VERSION = "d2-scalable3d-association-hotpath-benchmark-v2"
 _TIMING_METADATA_KEYS = frozenset(
     {
         "association_runtime_seconds",
@@ -54,11 +55,18 @@ _PROFILE_FUNCTIONS = frozenset(
         "_conservative_query_radii",
         "_conservative_query_radius",
         "_covariance_intersection",
+        "_cv_transition_and_process_noise",
+        "_advance_observation_claim_watermark",
+        "_assign_observation_claim",
         "_maximum_position_variance",
+        "_observation_claim_ledger_summary",
+        "_partition_observation_freshness",
         "_quadratic_form",
+        "_store_observation_claim",
         "_update_track",
         "_velocity_mahalanobis_squared",
         "_velocity_model_gate",
+        "allclose",
         "associate",
         "detections3d_from_d1_global_tracks",
         "eigvalsh",
@@ -114,6 +122,13 @@ def main() -> None:
             "numpy": np.__version__,
             "scipy": scipy.__version__,
             "platform": platform.platform(),
+            "cpu_affinity": (
+                sorted(os.sched_getaffinity(0))
+                if hasattr(os, "sched_getaffinity")
+                else None
+            ),
+            "openblas_num_threads": os.environ.get("OPENBLAS_NUM_THREADS"),
+            "omp_num_threads": os.environ.get("OMP_NUM_THREADS"),
         },
         "cycle_count": len(frames),
         "semantic_equivalence": {
@@ -130,6 +145,7 @@ def main() -> None:
             "tracker_seconds": _sample_summary(tracker_samples),
             "total_seconds": _sample_summary(total_samples),
         },
+        "cycle_timing_diagnostics": _cycle_timing_diagnostics(runs),
         "profile": None,
         "comparison": None,
     }
@@ -155,17 +171,18 @@ def _load_online_d1_d2_pairs(
     path: Path,
 ) -> tuple[tuple[dict[str, Any], dict[str, Any]], ...]:
     pairs: list[tuple[dict[str, Any], dict[str, Any]]] = []
-    previous: dict[str, Any] | None = None
+    latest_d1: dict[str, Any] | None = None
     with path.open("r", encoding="utf-8") as handle:
         for line_number, line in enumerate(handle, start=1):
             record = json.loads(line)
+            if record.get("source") == "D1":
+                latest_d1 = record
             if record.get("source") == "D2":
-                if previous is None or previous.get("source") != "D1":
+                if latest_d1 is None:
                     raise ValueError(
-                        f"D2 record at line {line_number} is not preceded by D1"
+                        f"D2 record at line {line_number} has no preceding D1"
                     )
-                pairs.append((previous, record))
-            previous = record
+                pairs.append((latest_d1, record))
     if not pairs:
         raise ValueError("online bus does not contain D2 records")
     return tuple(pairs)
@@ -291,15 +308,19 @@ def _run_replay(
     cycle_hashes: list[str] = []
     equal_cycle_count = 0
     cycle_count = 0
+    cycle_records: list[dict[str, Any]] = []
 
     for sources, expected_record in frames:
+        cycle_index = cycle_count
         cycle_count += 1
         started = perf_counter()
         timestamp, detections = detections3d_from_d1_global_tracks(sources)
-        adapter_seconds += perf_counter() - started
+        adapter_elapsed = perf_counter() - started
+        adapter_seconds += adapter_elapsed
         started = perf_counter()
         result = tracker.step(detections, timestamp)
-        tracker_seconds += perf_counter() - started
+        tracker_elapsed = perf_counter() - started
+        tracker_seconds += tracker_elapsed
 
         metadata = result.metadata
         for key in _OPERATION_KEYS:
@@ -328,6 +349,23 @@ def _run_replay(
             equal_cycle_count += 1
         if collect_semantics:
             cycle_hashes.append(_semantic_hash(tracker, result))
+        cycle_records.append(
+            {
+                "cycle_index": cycle_index,
+                "source_sequence": int(expected_record.get("sequence", -1)),
+                "timestamp": float(result.timestamp),
+                "input_detection_count": int(metadata["input_detection_count"]),
+                "fresh_detection_count": int(metadata["fresh_detection_count"]),
+                "active_track_count": int(metadata["active_track_count"]),
+                "candidate_edge_count": int(metadata["candidate_edge_count"]),
+                "observation_claim_count": int(
+                    metadata["observation_claim_ledger"]["current_count"]
+                ),
+                "adapter_seconds": adapter_elapsed,
+                "tracker_seconds": tracker_elapsed,
+                "total_seconds": adapter_elapsed + tracker_elapsed,
+            }
+        )
 
     semantic_sha = sha256(
         json.dumps(cycle_hashes, separators=(",", ":")).encode("utf-8")
@@ -339,6 +377,7 @@ def _run_replay(
         "all_cycles_equal": equal_cycle_count == cycle_count if verify else None,
         "equal_cycle_count": equal_cycle_count,
         "semantic_sha256": semantic_sha,
+        "cycle_records": cycle_records,
         "fixed_size_diagnostics": {
             **dict(sorted(operation_totals.items())),
             "peak_candidate_edge_count": peak_candidate_edge_count,
@@ -390,7 +429,46 @@ def _profile_replay(
     return {
         "selected_function_count": len(selected),
         "selected_functions": dict(sorted(selected.items())),
+        "top_cumulative_functions": _top_profile_functions(
+            stats,
+            metric_index=3,
+        ),
+        "top_own_time_functions": _top_profile_functions(
+            stats,
+            metric_index=2,
+        ),
     }
+
+
+def _top_profile_functions(
+    stats: pstats.Stats,
+    *,
+    metric_index: int,
+    limit: int = 25,
+) -> list[dict[str, Any]]:
+    ranked = sorted(
+        stats.stats.items(),
+        key=lambda item: (
+            -float(item[1][metric_index]),
+            item[0][0],
+            item[0][1],
+            item[0][2],
+        ),
+    )
+    result: list[dict[str, Any]] = []
+    for (filename, line_number, function_name), values in ranked[:limit]:
+        primitive_calls, total_calls, own_time, cumulative_time, _ = values
+        result.append(
+            {
+                "function": function_name,
+                "location": f"{filename}:{line_number}",
+                "primitive_calls": int(primitive_calls),
+                "total_calls": int(total_calls),
+                "own_seconds": float(own_time),
+                "cumulative_seconds": float(cumulative_time),
+            }
+        )
+    return result
 
 
 def _new_tracker() -> Scalable3DTracker:
@@ -512,6 +590,102 @@ def _sample_summary(values: list[float]) -> dict[str, Any]:
     }
 
 
+def _cycle_timing_diagnostics(runs: list[dict[str, Any]]) -> dict[str, Any]:
+    cycle_count = len(runs[0]["cycle_records"])
+    if any(len(run["cycle_records"]) != cycle_count for run in runs):
+        raise RuntimeError("repeated replay cycle counts differ")
+
+    timing_keys = ("adapter_seconds", "tracker_seconds", "total_seconds")
+    records: list[dict[str, Any]] = []
+    for cycle_index in range(cycle_count):
+        reference = {
+            key: value
+            for key, value in runs[0]["cycle_records"][cycle_index].items()
+            if key not in timing_keys
+        }
+        for run in runs[1:]:
+            candidate = {
+                key: value
+                for key, value in run["cycle_records"][cycle_index].items()
+                if key not in timing_keys
+            }
+            if candidate != reference:
+                raise RuntimeError(
+                    f"repeated replay cycle {cycle_index} diagnostics differ"
+                )
+        records.append(
+            {
+                **reference,
+                **{
+                    key: _sample_summary(
+                        [
+                            float(run["cycle_records"][cycle_index][key])
+                            for run in runs
+                        ]
+                    )
+                    for key in timing_keys
+                },
+            }
+        )
+
+    regular_cycle_count = max(0, cycle_count - 1)
+    window_size = min(8, regular_cycle_count // 2)
+    window_comparison: dict[str, Any] | None = None
+    if window_size > 0:
+        early = records[:window_size]
+        late = records[regular_cycle_count - window_size : regular_cycle_count]
+        early_summary = _cycle_window_summary(early)
+        late_summary = _cycle_window_summary(late)
+        early_total = float(early_summary["mean_cycle_total_seconds"])
+        window_comparison = {
+            "last_cycle_excluded_as_finalize": True,
+            "window_size": window_size,
+            "early_cycle_indices": [item["cycle_index"] for item in early],
+            "late_cycle_indices": [item["cycle_index"] for item in late],
+            "early": early_summary,
+            "late": late_summary,
+            "late_to_early_mean_cycle_total_ratio": (
+                float(late_summary["mean_cycle_total_seconds"]) / early_total
+                if early_total > 0.0
+                else None
+            ),
+        }
+
+    return {
+        "timing_assertion_policy": "diagnostic_only_no_wall_clock_pass_fail",
+        "repeat_count": len(runs),
+        "cycle_count": cycle_count,
+        "cycles": records,
+        "regular_window_comparison": window_comparison,
+    }
+
+
+def _cycle_window_summary(records: list[dict[str, Any]]) -> dict[str, Any]:
+    def mean_medians(key: str) -> float:
+        return mean(float(item[key]["median"]) for item in records)
+
+    return {
+        "mean_cycle_adapter_seconds": mean_medians("adapter_seconds"),
+        "mean_cycle_tracker_seconds": mean_medians("tracker_seconds"),
+        "mean_cycle_total_seconds": mean_medians("total_seconds"),
+        "mean_input_detection_count": mean(
+            int(item["input_detection_count"]) for item in records
+        ),
+        "mean_fresh_detection_count": mean(
+            int(item["fresh_detection_count"]) for item in records
+        ),
+        "mean_active_track_count": mean(
+            int(item["active_track_count"]) for item in records
+        ),
+        "mean_candidate_edge_count": mean(
+            int(item["candidate_edge_count"]) for item in records
+        ),
+        "mean_observation_claim_count": mean(
+            int(item["observation_claim_count"]) for item in records
+        ),
+    }
+
+
 def _compare_report(
     baseline: dict[str, Any],
     candidate: dict[str, Any],
@@ -530,6 +704,44 @@ def _compare_report(
         "baseline_total_median_seconds": baseline_median,
         "candidate_total_median_seconds": candidate_median,
         "speedup": baseline_median / candidate_median,
+        "baseline_timing": baseline["timing"],
+        "candidate_timing": candidate["timing"],
+        "baseline_regular_window_comparison": baseline.get(
+            "cycle_timing_diagnostics",
+            {},
+        ).get("regular_window_comparison"),
+        "candidate_regular_window_comparison": candidate.get(
+            "cycle_timing_diagnostics",
+            {},
+        ).get("regular_window_comparison"),
+        "selected_profile_functions": _selected_profile_comparison(
+            baseline,
+            candidate,
+        ),
+    }
+
+
+def _selected_profile_comparison(
+    baseline: dict[str, Any],
+    candidate: dict[str, Any],
+) -> dict[str, Any] | None:
+    baseline_selected = (baseline.get("profile") or {}).get(
+        "selected_functions"
+    )
+    candidate_selected = (candidate.get("profile") or {}).get(
+        "selected_functions"
+    )
+    if not isinstance(baseline_selected, dict) or not isinstance(
+        candidate_selected,
+        dict,
+    ):
+        return None
+    return {
+        name: {
+            "baseline": baseline_selected.get(name),
+            "candidate": candidate_selected.get(name),
+        }
+        for name in sorted(set(baseline_selected) | set(candidate_selected))
     }
 
 

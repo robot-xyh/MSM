@@ -1337,3 +1337,34 @@ clean source commit `0d2da25` 的 seed 1000 只读复算中，严格 IDSW 保持
 8906/9038 条受评分映射可评估，完整帧 3/48。1 个真值帧因多条可评估航迹被排除；该帧
 本来就不完整，因此仍由 385 个唯一锚点区间证明下界 7。该证据用于验证 producer 合同，
 不代表 20-seed 性能，也不允许进入在线风险或身份绑定。
+
+## 二十九、冻结回放 profiler 与长窗口判定原则（2026-07-23）
+
+1. **先证明输入恢复正确**：在线总线允许 D1 与 MAIN/D5/D7 记录交错。D2 profiler 必须
+   使用每条 D2 输出之前最新的 D1 发布，不能假定两者物理相邻。clean `4ac3bb2`、
+   nominal 200v200、seed 1000、10.0 s 冻结输入恢复出 48 个周期，输入 SHA-256 为
+   `c1dda8523e48c255bbeef48d9516b05863eb1bbb3a3ae2e09733259e6a66f77a`。
+2. **优化必须有可数热点**：本轮只处理 cProfile 能直接归因的三项重复工作，即相同
+   `dt` 的 CV 矩阵重建、可信 adapter 内同源 covariance marginal 的重复 `allclose`，
+   以及 claim ledger summary 的重复生成和容器扫描。优化后调用数分别由
+   `9246 -> 46`、`19252 -> 0`、`96 -> 48`；候选、匹配、门控和发布频率不变。
+3. **可信复用只存在于同一构造边界**：D1 adapter 先治理完整 6x6 covariance，再从该
+   同一 ndarray 直接取得位置和速度 marginal。只有三个对象引用都与本次构造参数一致时
+   才可跳过边缘相等检查；普通构造不能声明该状态，regularized covariance 仍执行完整
+   fallback。CV 矩阵只在同一 `predict_all()` 调用内按精确 `dt` 复用。
+4. **账本摘要必须精确而非近似**：undated claim 数和 track-observation key 总数随插入、
+   绑定、淘汰及 duplicate coalescence 精确更新；每帧生成一次 summary 后复制到两个
+   既有发布位置。字段、版本、淘汰语义、上限和逐条声明均不改变。
+5. **语义验收优先于墙钟**：同输入旧/新 48/48 周期完整公开结果和 tracker 状态必须严格
+   相等，固定诊断也必须相等。本轮语义 SHA-256 为
+   `b2334c619b9d2f7c467387ad27b62614d028af83f0b7842b867cab1c4aa9824b`，
+   `online_truth_used=false`。`global_track_id`、`id_switch_count` availability、门控、
+   版本、claim 和真值隔离不能为了性能调整。
+6. **墙钟只作可复现诊断**：CPU 0、BLAS/OMP 单线程、1 次 warmup、7 次重复下，D2 core
+   总中位数 `2.928830 -> 2.204672 s`，只表示本机该冻结输入的 `1.328465x` 描述性
+   加速。测试不得设置脆弱墙钟阈值。机器报告 SHA-256 为
+   `2256d6fdd29223ed5dd75351cd6bb208a4d67c55925eeba047620ac865b6c7da`。
+7. **绝对下降不等于增长闭合**：候选早/晚 regular 窗口比 `1.123036x`，基线
+   `1.119661x`，长窗口趋势未改善。原完整阶段 10.0 s 相对 2.2 s 单次成本约
+   `1.579x` 的 P1 继续开放；单 seed 质点回放不能替代 AirSim、完整 D1-D7、多 seed
+   身份评估、极端候选图或固定硬件实时预算。

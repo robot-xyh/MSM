@@ -6,6 +6,34 @@ D2 是 C-UAS 多目标数据关联研究模块，目标是在离线仿真和日�
 
 规模边界：D2 消费每帧传入的 `tracks`、`detections` 和当前 `active_tracks` 集合，不从场景名推断目标数量，不写死 2v2 或 5v5。`crossing_dense_5v5` 等名称只是可重复 baseline fixture；main runtime 的 `--drone-count N` 只应体现为传入 D2 的输入集合长度。
 
+### 2026-07-23 clean `4ac3bb2` seed 1000 profiler 与等价优化
+
+- 本轮针对 nominal 200v200、seed 1000、10.0 s 的 clean `4ac3bb2` 冻结在线总线做
+  D2-owned 归因。原完整阶段有 47 次 regular association，P50/P95/max 为
+  `121.972/137.335/145.966 ms`，10.0 s 相对 2.2 s 的单次成本约为 `1.579x`。
+  profiler 从 48 条 D2 输出恢复最新前置 D1 输入，允许 MAIN/D5/D7 记录交错，不读取
+  truth sidecar。输入 SHA-256 为
+  `c1dda8523e48c255bbeef48d9516b05863eb1bbb3a3ae2e09733259e6a66f77a`。
+- `cProfile` 将明确的重复成本定位为：相同 `dt` 下逐轨重建 CV transition/process
+  matrix、可信 D1 适配器已经从同一完整 6x6 covariance 切出的 marginal 再做两次
+  `np.allclose`，以及 claim ledger 每帧重复汇总和线性扫描。本轮只复用每个唯一 `dt`
+  的 CV 矩阵、在同一可信构造边界跳过两次冗余 marginal 比较，并以精确增量计数生成
+  ledger summary；普通构造、regularized covariance 和未知输入仍走完整验证。
+- 同输入旧/新比较的 48/48 周期公开输出与 tracker 状态完全相等，重复语义哈希均为
+  `b2334c619b9d2f7c467387ad27b62614d028af83f0b7842b867cab1c4aa9824b`。
+  input/fresh/replay/candidate/matched 分别保持
+  `9626/9038/588/8862/8823`，在线 truth use 为 0；`global_track_id`、
+  `id_switch_count` availability、门控、版本、逐条发布、claim 与真值隔离均未改变。
+- CPU 0 绑定、BLAS/OMP 单线程、1 次 warmup 和 7 次计时下，D2 core 回放总中位数为
+  `2.928830 -> 2.204672 s`，描述性加速 `1.328465x`。CV model build
+  `9246 -> 46`，marginal `allclose` `19252 -> 0`，ledger summary
+  `96 -> 48` 次且 cProfile 累计 `63.184 -> 0.405 ms`。早/晚 regular 窗口比却为
+  `1.119661x -> 1.123036x`，没有改善长窗口增长，因此性能 P1 保持开放。
+- 机器报告为 `docs/d2_clean_4ac3bb2_seed1000_hotpath_20260723.json`，SHA-256 为
+  `2256d6fdd29223ed5dd75351cd6bb208a4d67c55925eeba047620ac865b6c7da`。墙钟只作诊断，
+  不设脆弱硬断言；该单 seed 冻结质点回放不是 AirSim、完整 D1-D7、多 seed 身份标定
+  或实时 SLA。完整 D2 回归为 `234 passed, 1 warning in 34.83s`，验收阈值为零失败。
+
 ### 2026-07-20 六维稀疏关联路径
 
 - 新增显式选择的 `Scalable3DTracker`：航迹状态和协方差采用

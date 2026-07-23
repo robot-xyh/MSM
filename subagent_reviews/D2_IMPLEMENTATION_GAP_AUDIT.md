@@ -4,12 +4,13 @@
 
 **审计边界**：仅评估 D2 离线科研仿真与数据关联模块，不涉及真实飞控、硬件、火控、毁伤或自动处置逻辑。
 
-**本轮状态同步来源**：截至 2026-07-22 的 D2 代码与测试、main 尾部合并后的 seed1005
+**本轮状态同步来源**：截至 2026-07-23 的 D2 代码与测试、main 尾部合并后的 seed1005
 回归、200v200 单 seed development 制品、20/50/100/200 各 5 seed 快速治理制品，并保留
 既有 AirSim/EVAL 审计结论；本次新增 clean 基线与候选的 200v200 五 seed 热路径对照，
-以及 `8f86192` 对 `f80b5bd` 的 10.0 s 三 seed clean 集成逐条语义审计。
+`8f86192` 对 `f80b5bd` 的 10.0 s 三 seed clean 集成逐条语义审计，以及 clean
+`4ac3bb2` nominal 200v200、seed 1000、10.0 s 冻结总线的 profiler 和旧/新等价比较。
 
-**结论摘要**：截至 2026-07-22，D2 无运行算法 P0 blocker。既有二维默认
+**结论摘要**：截至 2026-07-23，D2 无运行算法 P0 blocker。既有二维默认
 GNN/Hungarian 与历史 AirSim replay 证据保持不变；显式六维路径已闭合 D2-owned
 `[pN,pE,pD,vN,vE,vD]`、3D 马氏门控、KD-tree 候选图、分量 Hungarian、中心 ID、在线
 truth 隔离、完整 D1 source-posterior covariance、固定权重 CI、速度创新 NIS 门控和
@@ -22,6 +23,9 @@ D2 v3 复现和测试验收已同步。五 seed 200v200 候选在 45/45 周期�
 `8.317513 -> 7.671266 s`，终态航迹数 `205/204/203` 相同，逐条在线语义和 topic counts
 均通过。P0 验证 blocker 已关闭，关联算法未修改。固定 CI weight `0.5` 尚未多 seed 标定；
 六维 NIS/NEES coverage、高机动、实时/超线性、完整 JPDA/MHT 和外部框架 tracker 仍开放。
+最新 seed 1000 profiler 在 48/48 周期严格等价下将 D2 core 中位数
+`2.928830 -> 2.204672 s`，但早/晚窗口比 `1.119661x -> 1.123036x`，因此只关闭三个
+可证明的常数成本热点，长窗口 P1 不关闭。
 
 ## 0. 2026-07-15 M5N2 20-case GAP 判定
 
@@ -58,8 +62,11 @@ D2 当前实现符合“先用规则 GNN/Hungarian 做工程主线，密集交�
 - **2026-07-20 历史模块回归**：原六维专项 13 个和新增速度稳定性专项 3 个通过，
   完整结果为 `139 passed, 1 warning`；warning 是环境 Matplotlib `Axes3D`，不影响
   六维数值状态。
-- **2026-07-22 当前权威模块回归**：三 seed clean 集成证据同步后为
+- **2026-07-22 历史模块回归**：三 seed clean 集成证据同步后为
   `219 passed, 1 warning in 49.75s`；warning 仍为环境 `Axes3D`。
+- **2026-07-23 当前权威模块回归**：clean `4ac3bb2` seed 1000 profiler 与等价优化
+  文档同步后的完整结果为 `234 passed, 1 warning in 34.83s`，验收阈值为零失败；
+  warning 仍为环境 `Axes3D`。
 - **2026-07-12 AirSim 证据**：PNG delivery candidate 的 2v2 10 seeds 为 20/20 pair、在线 truth 使用为 0；锁定后两帧 dropout 沿原 global/local track 和原计划上下文预测，没有 truth ID 或本地 ID 重写。M5N2 8 s 短窗口为 0/9，报告明确其几何与时间窗不足且不可与长时高净空基线直接比较。这些是 D2 下游合同的非退化证据，不是 D2 新算法或长期标定完成证据。
 - **P0/P1 开放项**：P0 无开放项。P1 synthetic long replay、独立 offline truth、至少 10-seed 的 IDSW/continuity/false-track/RMSE/NIS/NEES availability、版本治理和 strict 4 m/2 m 各 20-seed 首轮真实标定已闭合；仍开放更长 OOSM/遮挡/杂波 replay 下的 gate/risk/M-of-N 生命周期参数冻结，以及跨节点 D1 exact/CI posterior 回写、高歧义 replay 和 owner/epoch failover 验证。
 - **下一验收条件**：沿 2026-07-13 冻结 replay/truth/profile/预算合同扩展困难度和时间窗；逐 seed 及聚合报告 IDSW、identity/coverage continuity、duplicate、false-track、初始化延迟、NIS/NEES availability/coverage、runtime 和在线 truth 泄漏数。任何候选必须同时满足全部门限，不能只凭 IDSW 改善晋级。跨节点验收还必须证明 canonical ID 连续、duplicate payload 拒绝、owner/epoch 切换可恢复，并由 D1/D6 给出融合 posterior 与 NEES/ANEES。
@@ -1017,3 +1024,38 @@ lower bound 7。严格 IDSW 仍因 `multiple_truth_targets_for_global_track` 为
 2. D6 接入部分诊断并与 strict IDSW 分栏汇总；不能以下界填充严格指标。
 3. 真实 AirSim、遮挡/杂波/漏检/OOSM 和不同目标密度下的 coverage/blocker/下界分布。
 4. 完整 sidecar 条件下的严格 IDSW/continuity 置信区间。upper bound 当前明确不可用。
+
+## 2026-07-23 clean `4ac3bb2` seed 1000 性能 P1 归因与重分类
+
+### 新增证据与实现
+
+- 原完整阶段在 nominal 200v200、seed 1000、10.0 s 有 47 次 regular association，
+  P50/P95/max 为 `121.972/137.335/145.966 ms`；10.0 s 相对 2.2 s 的单次成本约
+  `1.579x`。本轮未改 main-owned lineage/publication，也未重跑完整阶段。
+- v2 profiler 正确处理 D1 与 MAIN/D5/D7 交错记录，从冻结在线总线恢复 48 个 D2 周期。
+  输入 SHA-256 为
+  `c1dda8523e48c255bbeef48d9516b05863eb1bbb3a3ae2e09733259e6a66f77a`，
+  truth sidecar 未读，online truth use 为 0。
+- profile 定位到三个低风险热点：相同 `dt` 的 CV matrix 重建、可信 D1 covariance
+  marginal 的两次冗余 `allclose`、claim ledger summary 的重复扫描/生成。候选分别采用
+  单周期唯一 `dt` 复用、仅限同一已治理 ndarray 原生 marginal 的可信跳过、增量精确
+  ledger 计数和每帧一次 summary。普通/regularized covariance 仍完整验证。
+- 同输入旧/新 48/48 周期公开输出与 tracker 状态严格相等，语义 SHA-256 均为
+  `b2334c619b9d2f7c467387ad27b62614d028af83f0b7842b867cab1c4aa9824b`。
+  input/fresh/replay/candidate/matched 为 `9626/9038/588/8862/8823`，两侧相同。
+  逐条发布、中心 `global_track_id`、显式 IDSW availability、门控、版本、claim ledger
+  和 truth isolation 未改变。
+- CPU 0、BLAS/OMP 单线程、1 次 warmup、7 次计时下，D2 core 中位数
+  `2.928830 -> 2.204672 s`，描述性加速 `1.328465x`。报告 SHA-256 为
+  `2256d6fdd29223ed5dd75351cd6bb208a4d67c55925eeba047620ac865b6c7da`；测试策略不以
+  墙钟作硬断言。完整 D2 为 `234 passed, 1 warning in 34.83s`。
+
+### GAP 判定
+
+“缺少可复现 clean seed 1000 profiler”以及上述三个固定操作数热点已关闭。性能增长 P1
+保持开放：基线/候选早晚 regular 窗口比分别为 `1.119661x/1.123036x`，候选没有改善
+窗口增长；完整阶段的 `1.579x` 也未由本轮 D2 core 回放替代。后续仍需固定硬件完整阶段
+P50/P95/P99、多 seed 长短窗口、main-owned lineage/publication 分离，以及真实 AirSim
+时钟、困难观测分布、极端大连通分量和 offline IDSW/continuity 联合验收。不得通过
+降采样、减少合法候选、放宽门限、降低关联频率、修改 ID/claim/version 语义或在线 truth
+关闭该 P1。

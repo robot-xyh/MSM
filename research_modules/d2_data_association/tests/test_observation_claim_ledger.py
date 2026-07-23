@@ -260,6 +260,49 @@ def test_undated_claims_fail_closed_at_capacity_and_remain_bounded() -> None:
     assert ledger["overflow_rejection_count"] == 5
 
 
+def test_ledger_summary_uses_exact_incremental_counts_without_scanning() -> None:
+    tracker = Scalable3DTracker()
+    tracker.step(
+        [
+            _detection(
+                0,
+                0,
+                0.0,
+                source_measurement_timestamp=0.0,
+            ),
+            _detection(
+                1,
+                0,
+                0.0,
+                source_measurement_timestamp=0.0,
+            ),
+            _detection(2, 0, 0.0),
+        ],
+        0.0,
+    )
+    expected_undated = sum(
+        claim.evidence.source_measurement_timestamp is None
+        for claim in tracker._observation_claims.values()
+    )
+    expected_track_keys = sum(
+        len(keys) for keys in tracker._track_observation_keys.values()
+    )
+
+    class NoValuesDict(dict):
+        def values(self) -> object:
+            raise AssertionError("ledger summary must not scan container values")
+
+    tracker._observation_claims = NoValuesDict(tracker._observation_claims)
+    tracker._track_observation_keys = NoValuesDict(
+        tracker._track_observation_keys
+    )
+
+    ledger = tracker._observation_claim_ledger_summary()
+
+    assert ledger["undated_non_evictable_count"] == expected_undated == 1
+    assert ledger["track_observation_key_count"] == expected_track_keys == 3
+
+
 @pytest.mark.parametrize(
     ("target_count", "frame_count"),
     [(5, 500), (40, 200)],

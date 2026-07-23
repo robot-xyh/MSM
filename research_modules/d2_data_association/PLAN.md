@@ -997,3 +997,49 @@ metrics 不退化。
    availability/reason；严格 IDSW 与部分诊断必须分栏。
 3. 继续补真实 AirSim observation ID/时钟、遮挡/杂波/漏检/OOSM 数据。只有所有 strict
    blocker 消失后，完整 IDSW/continuity 才可恢复 available。
+
+## 29. clean `4ac3bb2` seed 1000 性能 P1 归因与局部收敛
+
+### 29.1 已完成
+
+1. 对 nominal 200v200、seed 1000、10.0 s 的冻结
+   `online_observations.jsonl` 建立 `d2-scalable3d-association-hotpath-benchmark-v2`。
+   runner 将每条 D2 记录与最新前置 D1 记录配对，允许 MAIN/D5/D7 交错；共恢复 48 个
+   D2 周期，不读取 truth sidecar。输入 SHA-256 为
+   `c1dda8523e48c255bbeef48d9516b05863eb1bbb3a3ae2e09733259e6a66f77a`。
+2. 增加 top cumulative/own-time profile、adapter/tracker 逐周期计时、前后各 8 个
+   regular 周期窗口、CPU affinity 和线程环境记录。计时策略显式为
+   `diagnostic_only_no_wall_clock_pass_fail`，测试只固定业务语义和操作数。
+3. 对明确热点实施三项等价优化：每个 `predict_all()` 周期按唯一 `dt` 复用 CV
+   transition/process matrix；可信 D1 adapter 对同一已治理 6x6 covariance 及其原生
+   marginal 跳过两次冗余 `allclose`；claim ledger 用增量维护的 undated/key 数量并且
+   每帧只生成一次 summary。普通 `Detection3D`、regularized covariance、门控、候选、
+   claim 淘汰和身份审计路径不变。
+
+### 29.2 验收
+
+- 旧/新对照使用同一冻结输入，48/48 周期公开结果和 tracker 状态严格相等，重复运行
+  语义 SHA-256 均为
+  `b2334c619b9d2f7c467387ad27b62614d028af83f0b7842b867cab1c4aa9824b`。
+- input/fresh/replay/candidate/matched 操作数为
+  `9626/9038/588/8862/8823`，两侧逐项相等；逐条在线输出、中心
+  `global_track_id`、显式 `id_switch_count` availability、门控、版本、claim ledger
+  声明和 truth isolation 均未变化，`online_truth_used=false`。
+- CPU 0、BLAS/OMP 单线程、1 次 warmup、7 次计时的 D2 core 总中位数为
+  `2.928830 -> 2.204672 s`，描述性加速 `1.328465x`。机器报告
+  `docs/d2_clean_4ac3bb2_seed1000_hotpath_20260723.json` 的 SHA-256 为
+  `2256d6fdd29223ed5dd75351cd6bb208a4d67c55925eeba047620ac865b6c7da`。
+- 完整 D2 回归为 `234 passed, 1 warning in 34.83s`，验收阈值为零失败；warning 是
+  既有 Matplotlib `Axes3D` 环境提示。
+
+### 29.3 GAP 状态与下一验收
+
+本轮关闭“缺少可复现 profiler”和上述三个已证明等价的常数成本热点，不关闭长窗口性能
+P1。候选早/晚 regular 窗口比为 `1.123036x`，基线为 `1.119661x`；原完整阶段 47 次
+regular association 的 P50/P95/max `121.972/137.335/145.966 ms` 以及 10.0 s 相对
+2.2 s 的 `1.579x` 仍是 main-owned 全阶段证据，本轮未重跑或改写。
+
+下一验收限于固定硬件的完整阶段逐周期 P50/P95/P99、多 seed 长短窗口，以及 main-owned
+lineage/publication 成本分离；同时保留真实 AirSim 时钟、遮挡/杂波/漏检/OOSM、极端
+大连通分量和 offline IDSW/continuity。不得用降采样、减少候选、放宽门限、降低关联
+频率或在线 truth 换取性能。

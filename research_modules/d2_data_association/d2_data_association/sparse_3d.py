@@ -529,6 +529,8 @@ class Scalable3DTracker:
     _observation_claim_overflow_count: int = field(default=0, init=False)
     _observation_claim_evicted_count: int = field(default=0, init=False)
     _observation_claim_peak_count: int = field(default=0, init=False)
+    _observation_claim_undated_count: int = field(default=0, init=False)
+    _track_observation_key_count: int = field(default=0, init=False)
     _observation_rejection_reason_counts: Counter[str] = field(
         default_factory=Counter, init=False
     )
@@ -767,6 +769,7 @@ class Scalable3DTracker:
         self._state_update_mode_counts.update(update_mode_counts)
         self._velocity_innovation_gate_count += velocity_gate_count
         tracker_runtime = perf_counter() - started
+        observation_claim_ledger = self._observation_claim_ledger_summary()
         result.metadata.update(
             {
                 "detection_to_track": dict(sorted(detection_to_track.items())),
@@ -804,7 +807,7 @@ class Scalable3DTracker:
                 "observation_rejection_reason_counts_cumulative": dict(
                     sorted(self._observation_rejection_reason_counts.items())
                 ),
-                "observation_claim_ledger": self._observation_claim_ledger_summary(),
+                "observation_claim_ledger": observation_claim_ledger,
                 "observation_claim_eviction_count": len(claim_eviction_events),
                 "observation_claim_eviction_events": claim_eviction_events,
                 "created_track_ids_by_detection": dict(
@@ -885,9 +888,7 @@ class Scalable3DTracker:
                     "observation_rejection_reason_counts": dict(
                         sorted(frame_rejection_reason_counts.items())
                     ),
-                    "observation_claim_ledger": (
-                        self._observation_claim_ledger_summary()
-                    ),
+                    "observation_claim_ledger": dict(observation_claim_ledger),
                     "duplicate_coalescence_count": len(coalescence_events),
                     "source_binding_conflict_count": len(source_binding_conflicts),
                     "global_track_id_owner": "D2_center",
@@ -939,14 +940,19 @@ class Scalable3DTracker:
         return result
 
     def predict_all(self, timestamp: float) -> None:
+        models_by_dt: dict[float, tuple[np.ndarray, np.ndarray]] = {}
         for track in self.active_tracks():
             dt = max(float(timestamp) - track.timestamp, 0.0)
             if dt <= 0.0:
                 continue
-            transition, process = _cv_transition_and_process_noise(
-                dt,
-                self.process_noise_acceleration,
-            )
+            model = models_by_dt.get(dt)
+            if model is None:
+                model = _cv_transition_and_process_noise(
+                    dt,
+                    self.process_noise_acceleration,
+                )
+                models_by_dt[dt] = model
+            transition, process = model
             track.state = transition @ track.state
             track.covariance = (
                 transition @ track.covariance @ transition.T + process
@@ -1586,6 +1592,8 @@ class Scalable3DTracker:
                     claim.evidence.key,
                 ),
             )
+        else:
+            self._observation_claim_undated_count += 1
         self._observation_claim_peak_count = max(
             self._observation_claim_peak_count,
             len(self._observation_claims),
@@ -1629,7 +1637,9 @@ class Scalable3DTracker:
             if claim.global_track_id is not None:
                 track_keys = self._track_observation_keys.get(claim.global_track_id)
                 if track_keys is not None:
-                    track_keys.discard(key)
+                    if key in track_keys:
+                        track_keys.remove(key)
+                        self._track_observation_key_count -= 1
                     if not track_keys:
                         self._track_observation_keys.pop(claim.global_track_id, None)
             self._observation_claim_evicted_count += 1
@@ -1662,10 +1672,6 @@ class Scalable3DTracker:
         )
 
     def _observation_claim_ledger_summary(self) -> dict[str, Any]:
-        undated_count = sum(
-            claim.evidence.source_measurement_timestamp is None
-            for claim in self._observation_claims.values()
-        )
         return {
             **self.observation_claim_config.to_dict(),
             "schema_version": OBSERVATION_CLAIM_LEDGER_SCHEMA_VERSION,
@@ -1691,11 +1697,9 @@ class Scalable3DTracker:
             "admission_watermark_measurement_timestamp": (
                 self._observation_admission_watermark
             ),
-            "undated_non_evictable_count": int(undated_count),
+            "undated_non_evictable_count": self._observation_claim_undated_count,
             "eviction_index_count": len(self._observation_claim_eviction_heap),
-            "track_observation_key_count": sum(
-                len(keys) for keys in self._track_observation_keys.values()
-            ),
+            "track_observation_key_count": self._track_observation_key_count,
             "track_observation_index_track_count": len(
                 self._track_observation_keys
             ),
@@ -1711,7 +1715,10 @@ class Scalable3DTracker:
     ) -> None:
         claim = self._observation_claims[evidence.key]
         claim.global_track_id = str(global_track_id)
-        self._track_observation_keys[str(global_track_id)].add(evidence.key)
+        track_keys = self._track_observation_keys[str(global_track_id)]
+        before = len(track_keys)
+        track_keys.add(evidence.key)
+        self._track_observation_key_count += len(track_keys) - before
 
     def _coalesce_duplicate_tracks(
         self,
@@ -1858,8 +1865,11 @@ class Scalable3DTracker:
             duplicate.global_track_id,
             set(),
         )
-        self._track_observation_keys[survivor.global_track_id].update(
-            duplicate_keys
+        survivor_keys = self._track_observation_keys[survivor.global_track_id]
+        survivor_count_before = len(survivor_keys)
+        survivor_keys.update(duplicate_keys)
+        self._track_observation_key_count += (
+            len(survivor_keys) - survivor_count_before - len(duplicate_keys)
         )
         for observation_key in duplicate_keys:
             claim = self._observation_claims.get(observation_key)

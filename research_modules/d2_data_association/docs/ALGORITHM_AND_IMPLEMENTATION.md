@@ -1653,3 +1653,59 @@ L_{\mathrm{IDSW}} =
 该块不进入 online D2 DTO、association log 或 tracker state。唯一身份来源仍是离线
 `observation_id -> truth_target_id` 谱系侧车；最近距离、目标名称、actor ID 和终端邻近
 均未使用。
+
+## 29. clean `4ac3bb2` 冻结热路径 profiler 与等价优化
+
+### 29.1 输入恢复与诊断器
+
+`run_scalable_3d_association_hotpath_benchmark.py` 的 v2 schema 从在线 JSONL 顺序扫描，
+保存最新 D1 record，并在遇到 D2 record 时形成输入/输出对。MAIN、D5 或 D7 插入记录
+不会破坏配对；首条 D2 之前没有 D1 时 fail closed。随后使用原有 source frame 恢复、
+tracker 配置和去计时语义比较器重建 48 个周期，不读取 truth sidecar。
+
+除总 adapter/tracker 时间外，v2 记录每周期输入、fresh、active track、candidate edge、
+claim count 和分阶段样本，并将最后一个周期作为 finalize 从前后 regular 窗口比较中
+排除。`cProfile` 同时导出指定函数及全局 top cumulative/own-time 列表。CPU affinity、
+`OPENBLAS_NUM_THREADS` 和 `OMP_NUM_THREADS` 写入报告；墙钟策略固定为
+`diagnostic_only_no_wall_clock_pass_fail`。
+
+### 29.2 三项实现
+
+`Scalable3DTracker.predict_all()` 在单次调用内维护
+`dt -> (transition, process_noise)` 字典。具有相同精确 `dt` 的航迹使用同一对只读计算
+结果，各航迹的矩阵乘法、covariance governance、timestamp 和 age 更新顺序不变；缓存
+不跨帧保存。
+
+D1 adapter 已先对完整 6x6 covariance 调用 `govern_covariance()`。consistent 情况下，
+内部构造器同时预置 full、position marginal 和 velocity marginal 的对象引用；
+`Detection3D.__post_init__()` 只有在这些引用分别就是当前三个构造参数时才跳过两次
+`np.allclose`。完整 6x6 governance、metadata truth 审计和后续字段校验仍执行。普通
+dataclass 构造无法传入该私有状态，引用不一致立即拒绝，regularized 输入继续走原完整
+验证。
+
+claim ledger 新增 `_observation_claim_undated_count` 和
+`_track_observation_key_count`。前者随无时间 claim 成功插入更新；后者随绑定、安全淘汰
+和 duplicate coalescence 的集合净变化更新。summary 不再遍历 claim/key 容器，并在每帧
+只计算一次，再以相同内容写入 `result.metadata` 和逐帧 audit。ledger schema、字段、
+watermark、容量、淘汰事件及拒绝原因不变。
+
+### 29.3 等价检查与结果边界
+
+单元测试分别用旧逐轨公式构造 CV 参考状态、完整直接 `Detection3D` 校验构造 adapter
+参考输出，并把 claim/key 容器替换为禁止 `values()` 扫描的字典，验证三项优化的操作数
+和结果。profiler 测试覆盖交错总线配对、无前置 D1 拒绝、固定业务诊断和无墙钟断言。
+
+冻结输入 SHA-256 为
+`c1dda8523e48c255bbeef48d9516b05863eb1bbb3a3ae2e09733259e6a66f77a`。旧/新 48/48 周期
+完整语义 SHA-256 均为
+`b2334c619b9d2f7c467387ad27b62614d028af83f0b7842b867cab1c4aa9824b`；
+input/fresh/replay/candidate/matched 为 `9626/9038/588/8862/8823`，逐项不变，
+在线 truth use 为 0。
+
+CPU 0、BLAS/OMP 单线程、1 次 warmup、7 次重复下，总中位数
+`2.928830 -> 2.204672 s`，描述性加速 `1.328465x`。早/晚 regular 窗口比从
+`1.119661x` 变为 `1.123036x`，没有关闭长窗口增长。报告文件
+`d2_clean_4ac3bb2_seed1000_hotpath_20260723.json` 的 SHA-256 为
+`2256d6fdd29223ed5dd75351cd6bb208a4d67c55925eeba047620ac865b6c7da`。本实现没有改变
+逐条在线输出、中心 `global_track_id`、`id_switch_count` availability、门控、版本、
+观测声明账本或真值隔离；也不把单 seed 冻结回放外推为 AirSim、完整链路或实时 SLA。

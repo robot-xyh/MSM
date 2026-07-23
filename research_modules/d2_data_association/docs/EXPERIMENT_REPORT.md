@@ -840,3 +840,61 @@ covariance governance 复用和 1x1 component bypass 没有改变 nominal 集成
 `228 passed, 1 warning in 29.26s`。验收要求是 strict metrics 原值不变、零分母不写
 0、重复映射不产生伪下界、部分计数与逐帧 mapping 一致。正式多 seed 复算和 D6 聚合
 尚未执行。
+
+## 28. clean `4ac3bb2` seed 1000 热路径归因实验（2026-07-23）
+
+### 28.1 输入、方法与验收
+
+原始问题来自 clean `4ac3bb2` nominal 200v200、seed 1000、10.0 s 完整阶段：
+47 次 regular D2 association 的 P50/P95/max 为
+`121.972/137.335/145.966 ms`，10.0 s 相对 2.2 s 的单次成本约 `1.579x`。本轮没有
+重跑或修改 main-owned lineage/publication 阶段，而是只读同一 10.0 s 冻结在线总线，
+恢复 48 条 D2 输出对应的最新前置 D1 输入。
+
+输入文件 SHA-256 为
+`c1dda8523e48c255bbeef48d9516b05863eb1bbb3a3ae2e09733259e6a66f77a`。
+`truth_sidecar_read=false`、`online_truth_used=false`。环境为 Python 3.12.3、
+NumPy 2.5.0、SciPy 1.17.1；CPU affinity 固定为 0，
+`OPENBLAS_NUM_THREADS=1`、`OMP_NUM_THREADS=1`，两侧各 1 次 warmup 和 7 次计时。
+墙钟仅作描述性诊断；验收硬条件是同输入、48/48 业务语义相等、重复哈希相等、固定
+操作数相等和 truth isolation，不设置墙钟 pass/fail 阈值。
+
+### 28.2 归因与改动
+
+profile 确认三项明确的重复成本：
+
+| 热点 | baseline | candidate | 处理 |
+| --- | ---: | ---: | --- |
+| CV transition/process build | 9246 次 | 46 次 | 每周期按唯一 `dt` 复用 |
+| trusted marginal `allclose` | 19252 次 | 0 次 | 同一已治理 6x6 covariance 原生切片跳过冗余比较 |
+| claim ledger summary | 96 次 / 63.184 ms | 48 次 / 0.405 ms | 增量精确计数，每帧汇总一次 |
+
+普通 `Detection3D`、regularized covariance、完整 6x6 governance、metadata truth
+审计、candidate generation、三维马氏门控、velocity gate、Hungarian、claim watermark/
+淘汰、生命周期和逐条发布均保持原路径。
+
+### 28.3 结果
+
+| 阶段 | baseline 中位数 / s | candidate 中位数 / s |
+| --- | ---: | ---: |
+| D1 -> D2 adapter | 1.365946 | 0.990528 |
+| tracker | 1.562883 | 1.206957 |
+| D2 core 合计 | 2.928830 | 2.204672 |
+
+合计描述性加速为 `1.328465x`。固定诊断两侧一致：
+input/fresh/replay quarantine/candidate edge/matched 分别为
+`9626/9038/588/8862/8823`。48/48 周期公开输出和完整 tracker 状态相等，重复语义
+SHA-256 均为
+`b2334c619b9d2f7c467387ad27b62614d028af83f0b7842b867cab1c4aa9824b`。
+`global_track_id`、`id_switch_count` availability、门控、版本、claim ledger 字段及
+在线 truth use 均无变化。
+
+早 8 个与晚 8 个 regular 周期的平均中位总成本比，baseline 为 `1.119661x`，
+candidate 为 `1.123036x`。因此本轮降低了绝对常数成本，但没有改善长窗口增长率，
+性能 P1 继续开放。完整 D2 回归为 `234 passed, 1 warning in 34.83s`，验收阈值为零
+失败；warning 是既有 Matplotlib `Axes3D` 环境提示。
+
+机器报告为 `d2_clean_4ac3bb2_seed1000_hotpath_20260723.json`，文件 SHA-256 为
+`2256d6fdd29223ed5dd75351cd6bb208a4d67c55925eeba047620ac865b6c7da`。该实验只有一个
+seed，使用冻结质点总线，没有运行真实 AirSim、完整 D1-D7、多 seed offline
+IDSW/continuity 或极端大连通分量，不能声明实时 SLA。

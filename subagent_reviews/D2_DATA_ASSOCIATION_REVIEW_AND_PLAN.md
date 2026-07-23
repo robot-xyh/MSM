@@ -22,12 +22,17 @@
   `collision_stop`，但碰撞对象未持久化，不归因于 D2。默认 GNN/Hungarian 和中心
   `global_track_id` 所有权不变；终止前额外完成的一个 `png_ttc_2v2_seed001` 被排除，
   dropout case 为 0。
-- **2026-07-22 当前集成证据**：main 在 clean reference `8f86192` 和 candidate
+- **2026-07-22 集成证据**：main 在 clean reference `8f86192` 和 candidate
   `f80b5bd` 上完成 nominal 200v200、10.0 s、seeds 42000/42001/42002 对照。每 seed
   D2 association 调用 47 次，累计耗时均值 `8.317513 -> 7.671266 s`，终态航迹数
   `205/204/203` 逐 seed 相同；在线逐条语义和 topic counts 全部通过，truth use 为 0。
-  短长对照仍把 D2 列为超线性，不宣称实时 promotion。当前完整 D2 回归为
+  短长对照仍把 D2 列为超线性，不宣称实时 promotion。当时完整 D2 回归为
   `219 passed, 1 warning in 49.75s`。
+- **2026-07-23 当前性能证据**：clean `4ac3bb2` nominal 200v200、seed 1000、10.0 s
+  冻结回放的 48/48 周期旧/新业务语义严格相等，D2 core 中位数
+  `2.928830 -> 2.204672 s`，但早/晚 regular 窗口比
+  `1.119661x -> 1.123036x`。本轮只关闭三个可证明的常数成本热点，长窗口 P1 保持
+  开放；完整 D2 回归为 `234 passed, 1 warning in 34.83s`。
 
 ## 1. 研究问题
 
@@ -1049,3 +1054,49 @@ continuity 计算。
 `228 passed, 1 warning in 29.26s`。重复映射顺序互换专项保留 strict `IDSW=1` 和
 duplicate=2，同时使部分下界 unavailable。main/D6 尚未重算 20-seed，因此评审状态是
 “D2 producer 合同完成，跨模块聚合待接线”，不写成多 seed 性能完成。
+
+## 39. 2026-07-23 clean `4ac3bb2` seed 1000 性能评审
+
+### 39.1 归因决定
+
+评审输入是 nominal 200v200、seed 1000、10.0 s 的冻结在线总线。原完整阶段 47 次
+regular association 的 P50/P95/max 为 `121.972/137.335/145.966 ms`，10.0 s 相对
+2.2 s 单次成本约 `1.579x`。本轮只允许 D2-owned 冻结回放 profiler 和已证明不改变
+操作数的优化，不修改 main-owned lineage/publication，不调整算法频率、候选、门限、
+生命周期、版本、claim 或身份权威。
+
+v2 profiler 使用每条 D2 之前最新的 D1 发布，允许 MAIN/D5/D7 交错。profile 将重复成本
+定位到相同 `dt` 的 CV matrix 构造、可信 D1 full covariance 原生 marginal 的重复
+`allclose`，以及 claim ledger summary 的重复扫描/生成。评审接受：
+
+1. 在单次 `predict_all()` 内按唯一精确 `dt` 复用 transition/process matrix；
+2. 只在 D1 adapter 刚治理的同一 6x6 ndarray 及其原生 marginal 引用一致时跳过两次
+   比较，普通构造和 regularized covariance 仍完整校验；
+3. 用随 claim 插入、绑定、淘汰和合并更新的精确计数生成 ledger summary，每帧只生成
+   一次并写入两个既有位置。
+
+### 39.2 语义与性能证据
+
+冻结输入 SHA-256 为
+`c1dda8523e48c255bbeef48d9516b05863eb1bbb3a3ae2e09733259e6a66f77a`，truth sidecar
+未读。旧/新 48/48 周期公开输出和完整 tracker 状态相等，重复语义 SHA-256 均为
+`b2334c619b9d2f7c467387ad27b62614d028af83f0b7842b867cab1c4aa9824b`。
+input/fresh/replay/candidate/matched 固定为 `9626/9038/588/8862/8823`；
+`online_truth_used=false`。逐条发布、中心 `global_track_id`、显式
+`id_switch_count` availability、三维门控、版本和 observation claim ledger 语义不变。
+
+CPU 0、BLAS/OMP 单线程、1 次 warmup、7 次计时的 D2 core 中位数
+`2.928830 -> 2.204672 s`，描述性加速 `1.328465x`。CV model build
+`9246 -> 46`、marginal `allclose` `19252 -> 0`、ledger summary
+`96 -> 48` 且 profile 累计 `63.184 -> 0.405 ms`。报告文件 SHA-256 为
+`2256d6fdd29223ed5dd75351cd6bb208a4d67c55925eeba047620ac865b6c7da`，墙钟不进入
+测试硬断言。完整 D2 为 `234 passed, 1 warning in 34.83s`。
+
+### 39.3 评审结论
+
+接受三项低风险等价优化和 v2 可复现诊断器。性能 P1 不关闭：baseline/candidate 的
+早晚 regular 窗口比分别为 `1.119661x/1.123036x`，候选没有降低长窗口增长；原完整阶段
+`1.579x` 也未被本轮 core-only 回放重测。单 seed 质点证据不能外推为 AirSim、完整
+D1-D7、多 seed 身份标定、极端大连通分量或实时 SLA。下一验收仍是固定硬件完整阶段
+P50/P95/P99、多 seed 长短窗口和 main-owned lineage/publication 分离，且不得通过
+降采样、减少候选、放宽门限、降低频率、修改 ID/claim/version 或在线 truth 换取通过。
