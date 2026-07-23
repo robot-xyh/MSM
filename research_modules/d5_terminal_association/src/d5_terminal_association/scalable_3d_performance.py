@@ -38,6 +38,16 @@ SCALABLE_3D_D5_DURATION_COMPARISON_SCHEMA_VERSION = (
 )
 _TERMINAL_TOPIC = "modules.d5.terminal_association"
 _ACTIVE_VISION_TOPIC = "modules.d5.active_vision"
+_LEGACY_OPERATION_SCHEMA_VERSION = "d5-scalable3d-operation-counts-v1"
+_OPTIMIZATION_DIAGNOSTIC_FIELDS = frozenset(
+    {
+        "history_gauge_incremental_refresh_count",
+        "history_gauge_tracker_scan_avoided_count",
+        "binding_singleton_projection_row_reuse_count",
+        "binding_multi_node_aggregation_count",
+        "binding_without_matrix_count",
+    }
+)
 _OPERATION_RATE_FIELDS = (
     "camera_batch_count",
     "input_detection_count",
@@ -47,6 +57,8 @@ _OPERATION_RATE_FIELDS = (
     "tracker_pair_evaluation_count",
     "tracker_match_candidate_count",
     "tracker_history_update_count",
+    "history_gauge_incremental_refresh_count",
+    "history_gauge_tracker_scan_avoided_count",
     "center_track_input_count",
     "center_projection_cache_hit_count",
     "center_projection_cache_miss_count",
@@ -65,6 +77,9 @@ _OPERATION_RATE_FIELDS = (
     "projection_matrix_binding_reuse_count",
     "binding_matrix_build_count",
     "binding_matrix_cell_count",
+    "binding_singleton_projection_row_reuse_count",
+    "binding_multi_node_aggregation_count",
+    "binding_without_matrix_count",
     "hungarian_solve_count",
     "binding_output_count",
 )
@@ -211,6 +226,9 @@ def benchmark_terminal_replay(
         )
         for name in _OPERATION_RATE_FIELDS
     }
+    operation_equivalence_counts = _legacy_operation_equivalence_counts(
+        first_operation_counts
+    )
     binding_state_counts = Counter(
         binding["decision_state"]
         for frame in first_actual
@@ -272,10 +290,30 @@ def benchmark_terminal_replay(
         "binding_state_counts": dict(sorted(binding_state_counts.items())),
         "operation_counts": first_operation_counts,
         "operation_counts_sha256": _canonical_sha256(first_operation_counts),
+        "operation_equivalence_counts": operation_equivalence_counts,
+        "operation_equivalence_counts_sha256": _canonical_sha256(
+            operation_equivalence_counts
+        ),
         "operation_counts_per_frame": operation_counts_per_frame,
         "operation_diagnostics_are_fixed_size": True,
         "global_track_id_mutation_count": 0,
         "online_truth_use_count": 0,
+    }
+
+
+def _legacy_operation_equivalence_counts(
+    operation_counts: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Project v2 cache diagnostics onto the frozen v1 operation surface."""
+
+    return {
+        "schema_version": _LEGACY_OPERATION_SCHEMA_VERSION,
+        **{
+            str(name): int(value)
+            for name, value in operation_counts.items()
+            if name != "schema_version"
+            and name not in _OPTIMIZATION_DIAGNOSTIC_FIELDS
+        },
     }
 
 
@@ -437,6 +475,7 @@ def compare_terminal_replay_benchmarks(
     operation_growth = {
         name: _growth_ratio(float(long_rates[name]), float(short_rates[name]))
         for name in _OPERATION_RATE_FIELDS
+        if name in short_rates and name in long_rates
     }
     short_counts = short_result["operation_counts"]
     long_counts = long_result["operation_counts"]

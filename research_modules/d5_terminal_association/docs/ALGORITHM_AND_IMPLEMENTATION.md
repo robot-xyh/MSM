@@ -1,6 +1,26 @@
 # D5 终端视觉配准与身份认证算法原理与实施文档
 
-**状态日期：2026-07-22**
+**状态日期：2026-07-23**
+
+## 长窗口局部缓存与物化收敛
+
+clean `4ac3bb2` nominal 200v200 seed 1000 的匿名 9.95 秒日志包含 114 帧、723 个相机批次、2479 个局部检测/图节点和 2400 个 binding。热态 cProfile 只包围已经加载到内存的 `benchmark_terminal_replay()`，避免把 218.6 MB JSON 解析和依赖导入混入 D5 归因。旧实现的 `process()`/`adapt_batches()` 累计为 `2.320/1.428 s`，边界修复前候选为 `1.987/1.122 s`；该 profile 对应 `sparse_tracklet_graph.py` 的 `dc6bcd81...b4c4c`。
+
+历史 gauge 原来每提交一个相机批次都对 `self._trackers.values()` 求和。当前 adapter 在 tracker 成功更新前后读取 active history 和 received timestamp 数量，以差量维护两个非负标量；stream reset 扣除被移除 tracker 的当前计数，episode reset 同时清空 tracker 与账本。current/peak 输出与旧全扫描逐次核对。长日志 723 次刷新避免重新遍历累计 91,871 个 tracker 引用，gauge 累计约 `0.0544→0.00288 s`。
+
+匿名审计保持失败关闭。`is_truth_like_local_track_id()` 只对字符串进入 8192 项有界 LRU，缓存值仍由原 `_IDENTITY_TOKEN` 与 `_TRUTH_LIKE_LOCAL_ID` 两条正则对 strip 后文本计算。payload walker 只对 `type(value)` 精确属于 `str/bytes/int/float/bool/NoneType` 的叶子返回；这些类型的子类仍检查 dataclass、mapping、sequence、`__dict__` 和 forbidden 字段。匿名 payload 与 transport truth 隔离累计分别约 `0.358→0.162 s`、`0.400→0.239 s`。
+
+binding 继续物化形状为 `cluster_count × center_track_count` 的完整代价矩阵。若 cluster 只有节点 (i)，旧公式
+
+\[
+c_{kj}=\frac{\sum_{i\in C_k,\ d_{ij}<\infty}d_{ij}}{|C_k|}
+\]
+
+在唯一节点有限时等于 (d_{ij})，非有限时仍为正无穷，因此可以逐行复制既有 projection distance。最终实现对有限 singleton 行执行 `+0.0` 规范化，使合法 `-0.0` 输入与旧求和路径的符号位也完全一致。多节点 cluster 继续执行原 finite count/sum/valid 聚合。长日志复用 2289 个 singleton 行，保留 79 个多节点聚合、476401 个 binding 单元和 108 次 Hungarian 求解；边界修复前 binding 累计约 `0.0578→0.0312 s`。
+
+性能 schema 升为 `d5-scalable3d-operation-counts-v2`，只增加历史增量刷新/避免扫描、singleton 行复用、多节点聚合和无矩阵输出五个固定整数。`operation_equivalence_counts` 去除这些纯优化诊断并投影回 v1 schema，使旧、新操作面可直接哈希比较。当前 `sparse_tracklet_graph.py` 为 `0e8a5880...19d5b`；机器 JSON 已增加最终源码 `post_boundary_fix_verification`。长序列逐帧业务、最终 binding、v1 操作面哈希分别保持 `d9629adc...35ca0`、`996763e3...24b6`、`c8a19ee8...affc`，truth use 与 ID mutation 为 0。
+
+边界修复前两轮各 7 次描述性 A/B 的长日志中位值均值由 `1.149362 s` 降至 `0.929495 s`，约下降 `19.13%`。它不是最终源码测试硬门，也不替代完整集成准入。main 对最终源码的权威全量结果为 `551 passed in 100.83s`；`550 passed in 102.41s` 仅为 boundary-fix 前历史值。原 clean 集成 10 秒 P50/P95/max 约 `11.497/15.969/18.632 ms`、相对短窗约 `2.556x` 的 P1 继续开放。
 
 ## 占用桶相机重叠索引
 

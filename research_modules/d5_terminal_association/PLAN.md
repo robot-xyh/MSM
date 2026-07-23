@@ -1,5 +1,18 @@
 # D5 终端视觉配准与身份认证计划
 
+## 2026-07-23 clean 4ac3bb2 seed 1000 profiler 收敛
+
+- [x] 用 nominal 200v200 seed 1000 的冻结匿名 2.15 秒/9.95 秒在线日志归因长窗口成本；长日志 SHA-256 为 `c1dda852...6f77a`，覆盖 114 帧、723 个相机批次、2479 个检测/图节点和 2400 个 binding，truth source 未加载。
+- [x] 热态 cProfile 定位历史 gauge 全 tracker 扫描、匿名 payload/ID 审计和 singleton binding 物化。`process()` 累计 `2.320→1.987 s`，`adapt_batches()` `1.428→1.122 s`，匿名 payload 审计 `0.358→0.162 s`，历史 gauge `0.0544→0.00288 s`，binding `0.0578→0.0312 s`。该证据对应最终零符号边界修复前的 `dc6bcd81...b4c4c`，不外推为当前源码 cProfile。
+- [x] 实施四项局部等价优化：历史 gauge 增量账本、8192 项匿名 ID 正则 LRU、精确内建叶子审计快路径、singleton cluster 投影行复用。长日志固定诊断记录避免 91,871 次 tracker 引用扫描、复用 2289 个 singleton 行；79 个多节点聚合与 32 个无矩阵输出保持。
+- [x] 增加旧/新规则等价回归和 `d5-scalable3d-operation-counts-v2` 固定诊断；冻结 v1 操作面通过投影哈希继续审计。短/长逐帧业务、最终 binding 和 v1 操作数哈希与 clean 记录逐项一致，online truth use、`global_track_id` mutation、降帧、降候选和门控变化均为 0。
+- [x] 完成 singleton `-0.0` 边界修复和最终源码复核。当前 `sparse_tracklet_graph.py` SHA-256 为 `0e8a5880...19d5b`；机器 JSON 已增加 `post_boundary_fix_verification`，最终短/长业务、binding、v2 操作数和冻结 v1 operation-equivalence 哈希保持，truth use 与 ID mutation 为 0。
+- [x] 两轮各 7 次描述性 A/B 的长日志中位值均值为 `1.149362→0.929495 s`，下降约 `19.13%`。墙钟只辅助确认 profiler 方向，测试不设不稳定硬时限。
+- [x] main 对最终源码运行 D5 全量 pytest，权威结果为 `551 passed in 100.83s`，零失败。`550 passed in 102.41s` 是 boundary-fix 前历史值，不再代表当前源码。
+- [ ] 长窗口单次成本 P1 保持开放。原完整集成 10 秒 P50/P95/max 约 `11.497/15.969/18.632 ms`、相对短窗约 `2.556x`，本轮没有当前源码完整集成复跑；后续仍需 main/D6 预注册正交多 seed 联合准入。
+
+本轮不修改 AirSim、main、D6 或其他模块，不减少视觉帧、候选或门控，也不改变友方冲突、身份门、`global_track_id` 所有权和输出载荷。
+
 ## 2026-07-22 相机重叠索引局部收敛
 
 - [x] 用 clean `f80b5bd` nominal 200v200、10 秒、seeds `42000-42002` 的冻结在线日志定位图候选阶段热点。seed 42000 的 116 次相机重叠索引累计约 `0.357 s`，旧三维空网格探测自身约 `0.248 s`。

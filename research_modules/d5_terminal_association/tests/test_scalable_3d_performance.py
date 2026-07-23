@@ -6,10 +6,30 @@ import pytest
 
 from d5_terminal_association.scalable_3d_performance import (
     SCALABLE_3D_D5_DURATION_COMPARISON_SCHEMA_VERSION,
+    _legacy_operation_equivalence_counts,
     compare_terminal_replay_benchmarks,
     render_scalable_3d_d5_duration_comparison_markdown,
     write_scalable_3d_d5_duration_comparison,
 )
+
+
+def test_v2_cache_diagnostics_project_to_frozen_v1_operation_surface() -> None:
+    counts = {
+        "schema_version": "d5-scalable3d-operation-counts-v2",
+        "process_frame_count": 3,
+        "graph_node_count": 7,
+        "history_gauge_incremental_refresh_count": 5,
+        "history_gauge_tracker_scan_avoided_count": 11,
+        "binding_singleton_projection_row_reuse_count": 4,
+        "binding_multi_node_aggregation_count": 1,
+        "binding_without_matrix_count": 2,
+    }
+
+    assert _legacy_operation_equivalence_counts(counts) == {
+        "schema_version": "d5-scalable3d-operation-counts-v1",
+        "process_frame_count": 3,
+        "graph_node_count": 7,
+    }
 
 
 def _terminal_result(*, duration: float, frames: int, scale: int) -> dict[str, object]:

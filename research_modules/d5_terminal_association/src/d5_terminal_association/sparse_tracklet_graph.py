@@ -111,6 +111,9 @@ _TRUTH_LIKE_LOCAL_ID = re.compile(
     r"[\s_.-]*\d+(?:$|[^a-z0-9])",
     re.IGNORECASE,
 )
+_ANONYMOUS_PAYLOAD_LEAF_TYPES = frozenset(
+    {str, bytes, int, float, bool, type(None)}
+)
 _EPS = 1.0e-9
 
 
@@ -120,6 +123,8 @@ def assert_anonymous_online_payload(payload: Any) -> None:
     violations: list[str] = []
 
     def visit(value: Any, path: str) -> None:
+        if type(value) in _ANONYMOUS_PAYLOAD_LEAF_TYPES:
+            return
         type_name = type(value).__name__
         if type_name in _FORBIDDEN_ONLINE_TYPES:
             violations.append(f"{path}<{type_name}>")
@@ -1448,13 +1453,11 @@ def bind_clusters_to_center_tracks(
             raise ValueError("projection_distances shape does not match graph and tracks")
         if np.any(np.isnan(distances)) or np.any(distances < 0.0):
             raise ValueError("projection_distances must contain non-negative values or infinity")
-    costs = np.full((len(cluster_items), len(tracks)), np.inf, dtype=float)
-    for row, cluster in enumerate(cluster_items):
-        cluster_distances = distances[np.asarray(cluster.node_indices, dtype=int)]
-        finite_count = np.sum(np.isfinite(cluster_distances), axis=0)
-        finite_sum = np.sum(np.where(np.isfinite(cluster_distances), cluster_distances, 0.0), axis=0)
-        valid = finite_count == len(cluster.node_indices)
-        costs[row, valid] = finite_sum[valid] / finite_count[valid]
+    costs = _cluster_binding_cost_matrix(
+        cluster_items,
+        distances,
+        center_track_count=len(tracks),
+    )
 
     assignments = _unique_assignment(costs)
     assigned_by_row = {row: col for row, col in assignments if costs[row, col] <= max_binding_mahalanobis}
@@ -1487,6 +1490,42 @@ def bind_clusters_to_center_tracks(
     if not output_ids.issubset(set(center_ids)):
         raise RuntimeError("D5 center binding attempted to create a global_track_id")
     return tuple(decisions)
+
+
+def _cluster_binding_cost_matrix(
+    clusters: Sequence[TrackletCluster],
+    projection_distances: np.ndarray,
+    *,
+    center_track_count: int,
+) -> np.ndarray:
+    """Materialize every binding cell while reusing singleton projection rows."""
+
+    costs = np.full((len(clusters), center_track_count), np.inf, dtype=float)
+    singleton_rows: list[int] = []
+    singleton_node_indices: list[int] = []
+    for row, cluster in enumerate(clusters):
+        if len(cluster.node_indices) == 1:
+            singleton_rows.append(row)
+            singleton_node_indices.append(cluster.node_indices[0])
+            continue
+        cluster_distances = projection_distances[
+            np.asarray(cluster.node_indices, dtype=int)
+        ]
+        finite = np.isfinite(cluster_distances)
+        finite_count = np.sum(finite, axis=0)
+        finite_sum = np.sum(np.where(finite, cluster_distances, 0.0), axis=0)
+        valid = finite_count == len(cluster.node_indices)
+        costs[row, valid] = finite_sum[valid] / finite_count[valid]
+    if singleton_rows:
+        singleton_distances = projection_distances[
+            np.asarray(singleton_node_indices, dtype=int)
+        ]
+        costs[np.asarray(singleton_rows, dtype=int)] = np.where(
+            np.isfinite(singleton_distances),
+            singleton_distances + 0.0,
+            np.inf,
+        )
+    return costs
 
 
 def _node_feature_vector(
@@ -1926,6 +1965,11 @@ def _is_local_id_key(key: str) -> bool:
 def is_truth_like_local_track_id(value: Any) -> bool:
     if not isinstance(value, str):
         return False
+    return _is_truth_like_local_track_id_text(value)
+
+
+@lru_cache(maxsize=8_192)
+def _is_truth_like_local_track_id_text(value: str) -> bool:
     local_track_id = value.strip()
     return bool(
         local_track_id

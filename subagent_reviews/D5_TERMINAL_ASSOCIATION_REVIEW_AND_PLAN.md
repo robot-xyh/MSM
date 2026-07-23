@@ -1,5 +1,19 @@
 # D5 末端视觉配准与协同身份认证综述及子方案
 
+## 2026-07-23 clean 4ac3bb2 seed 1000 profiler 复核
+
+D5 使用 nominal 200v200 seed 1000 的冻结匿名在线制品复核长窗口 P1。短/长日志分别覆盖 25/114 次调用，长日志包含 723 个相机批次、2479 个检测/图节点和 2400 个 binding。输入只来自 online bus，长日志 SHA-256 为 `c1dda852...6f77a`，truth source 未加载。
+
+热态 cProfile 将 114 帧 `process()` 累计从 `2.320 s` 定位到 `adapt_batches=1.428 s`、transport truth 隔离审计 `0.400 s`、匿名 payload 审计 `0.358 s`、历史 gauge `0.0544 s` 和 binding `0.0578 s` 等局部项。边界修复前候选对应累计为 `1.987/1.122/0.239/0.162/0.00288/0.0312 s`。该 profile 的 `sparse_tracklet_graph.py` 为 `dc6bcd81...b4c4c`；实现只引入增量历史账本、8192 项匿名 ID 正则 LRU、精确内建叶子审计快路径和 singleton cluster 投影行复用。
+
+固定诊断确认 723 次 gauge 刷新避免扫描 91,871 个 tracker 引用，2289 个 singleton 行复用；79 个多节点 cluster 仍执行旧有限性聚合，32 个无 binding matrix 输出仍物化完整结果。两轮各 7 次描述性 A/B 的长日志中位值均值为 `1.149362→0.929495 s`，约下降 `19.13%`；墙钟不设为测试硬门。
+
+最终源码增加 singleton 有限行零符号规范化，当前 `sparse_tracklet_graph.py` 为 `0e8a5880...19d5b`。机器 JSON 的 `post_boundary_fix_verification` 重新消费同一短/长日志；逐帧核心、最终 binding、v2 操作数和冻结 v1 operation-equivalence 哈希与原记录一致。长序列业务、binding 和 v1 操作面哈希为 `d9629adc...35ca0`、`996763e3...24b6`、`c8a19ee8...affc`；online truth use 与 `global_track_id` mutation 均为 0。几何门、身份门、友方冲突、唯一绑定和输出载荷逐条保持。
+
+本轮关闭冻结日志范围内的 profiler 归因和四个局部重复工作子项，不关闭完整集成长窗口 P1。原 10 秒集成 P50/P95/max 约 `11.497/15.969/18.632 ms`、相对短窗约 `2.556x`；当前源码没有完整系统复跑。后续仍由 main/D6 预注册检测数、活跃相机数、中心候选数和时长的正交多 seed 操作数/耗时联合准入。本轮不改变 AirSim、M-to-N、G1/assist/authority 或 D7 权限。
+
+2026-07-23 main 对最终源码完成 D5 全量回归，权威结果为 `551 passed in 100.83s`，接受阈值为零失败。`550 passed in 102.41s` 仅为 boundary-fix 前历史值。
+
 ## 2026-07-22 相机重叠索引专项复核
 
 seed 42000 的函数剖析把 116 次相机重叠索引累计定位为约 `0.357 s`，旧实现约 `0.248 s` 用于探测没有相机的三维网格位置。当前实现保留已建立的占用桶只读索引，直接枚举占用桶对并检查与旧实现相同的切比雪夫搜索半径。视锥描述、时间窗、包围盒相交、预算和候选排序未变。

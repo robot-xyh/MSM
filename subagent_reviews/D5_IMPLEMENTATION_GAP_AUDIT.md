@@ -1,5 +1,21 @@
 # D5 实现差距审计
 
+## 2026-07-23 clean 4ac3bb2 seed 1000 profiler 状态
+
+| 缺口 | 当前状态 | 权威证据与剩余边界 |
+| --- | --- | --- |
+| 长窗口成本 profiler 归因 | **D5-owned 已关闭到冻结日志范围** | nominal 200v200 seed 1000 的 9.95 秒匿名日志覆盖 114 帧、723 batches、2479 节点和 2400 bindings；热态 cProfile 定位历史 gauge 扫描、匿名 payload/ID 审计和 singleton binding 物化。该 profile 对应 boundary-fix 前 `dc6bcd81...b4c4c`，truth source 未加载，不作为最终源码 profile。 |
+| 历史 gauge 全 tracker 扫描 | **局部子项关闭** | 增量账本在长日志 723 次刷新中避免扫描 91,871 个 tracker 引用；回归逐步与旧全扫描 current/peak 结果核对，stream/episode reset 继续清零。 |
+| 匿名审计重复工作 | **局部子项关闭** | 8192 项有界 LRU 复用匿名 local ID 正则结果；精确内建叶子直接返回，内建子类仍完整递归并对 truth 字段失败关闭。online truth use=0。 |
+| singleton binding 物化 | **局部子项关闭** | 2289 个 singleton cluster 复用投影距离行；79 个多节点聚合、32 个无矩阵输出、476401 个 binding 单元和 108 次 Hungarian 求解均保留。 |
+| 最终边界修复 | **关闭并保持回归** | singleton 有限行按旧求和语义规范零符号；当前 `sparse_tracklet_graph.py` 为 `0e8a5880...19d5b`。机器 JSON 已增加独立 `post_boundary_fix_verification`，没有复用旧源码哈希冒充当前候选。 |
+| 业务与操作数等价 | **关闭并保持回归** | 最终源码短/长逐帧业务、最终 binding、v2 操作数和冻结 v1 operation-equivalence 哈希与原记录一致；长哈希为 `d9629adc...35ca0`、`996763e3...24b6`、`c8a19ee8...affc`。truth/ID mutation/降帧/降候选/门控变化为 0。 |
+| 描述性性能方向 | **通过非硬时限 A/B** | 两轮各 7 次长日志中位值均值 `1.149362→0.929495 s`，下降约 `19.13%`；热态 `process()` 累计 `2.320→1.987 s`。墙钟不作为测试硬门。 |
+| 完整集成长窗口准入 | **P1 开放** | 原 10 秒集成 P50/P95/max 约 `11.497/15.969/18.632 ms`、相对短窗约 `2.556x`。本轮没有当前源码完整集成复跑；冻结模块重放不能关闭 main/D6 正交多 seed 联合准入。 |
+| AirSim/硬件实时性 | **P1 开放且无变化** | 没有修改 launcher、reset、帧率、相机/检测合同或运行时接口，也没有启动 AirSim 或测机载硬件。 |
+
+验证日期为 2026-07-23。结构化证据为 `results/scalable_3d_seed1000_duration_operation_20260723.json`，中文归因为 `reports/D5_SCALABLE_3D_SEED1000_DURATION_OPERATION_20260723.md`。main 对最终源码完成 D5 全量回归，权威结果为 `551 passed in 100.83s`，零失败门通过；`550 passed in 102.41s` 仅为 boundary-fix 前历史值。本轮没有新增 P0。
+
 ## 2026-07-22 相机重叠索引优化状态
 
 | 项目 | 状态 | 证据与边界 |

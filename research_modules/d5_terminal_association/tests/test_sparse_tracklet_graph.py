@@ -15,10 +15,12 @@ from d5_terminal_association.sparse_tracklet_graph import (
     SparseTrackletGraph,
     SparseTrackletGraphConfig,
     TrackletCameraGeometry,
+    TrackletCluster,
     assert_anonymous_online_payload,
     bind_clusters_to_center_tracks,
     build_sparse_tracklet_graph,
     constrained_tracklet_clusters,
+    is_truth_like_local_track_id,
 )
 from d5_terminal_association.tracklet_gnn import (
     NativeTrackletEdgeClassifier,
@@ -27,6 +29,7 @@ from d5_terminal_association.tracklet_gnn import (
     train_small_sample,
 )
 import d5_terminal_association.tracklet_gnn as tracklet_gnn_module
+import d5_terminal_association.sparse_tracklet_graph as graph_module
 from research_modules.scalable_3d_simulation.camera_projection import (
     CameraIntrinsics,
     CameraPose,
@@ -41,6 +44,106 @@ CAMERA_POSITIONS = (
     np.array([-100.0, 0.0, -160.0]),
     np.array([80.0, 0.0, 80.0]),
 )
+
+
+def test_truth_like_id_cache_preserves_legacy_rule_and_reuses_strings() -> None:
+    values: tuple[object, ...] = (
+        None,
+        7,
+        "",
+        "trk-000001",
+        "RESOURCE-17",
+        "target-17",
+        "camera_actor_3",
+        "intruder.42",
+    )
+    graph_module._is_truth_like_local_track_id_text.cache_clear()
+
+    def legacy(value: object) -> bool:
+        if not isinstance(value, str):
+            return False
+        text = value.strip()
+        return bool(
+            text
+            and (
+                graph_module._IDENTITY_TOKEN.search(text)
+                or graph_module._TRUTH_LIKE_LOCAL_ID.search(text)
+            )
+        )
+
+    first = tuple(is_truth_like_local_track_id(value) for value in values)
+    second = tuple(is_truth_like_local_track_id(value) for value in values)
+
+    assert first == tuple(legacy(value) for value in values)
+    assert second == first
+    cache_info = graph_module._is_truth_like_local_track_id_text.cache_info()
+    assert cache_info.hits == sum(isinstance(value, str) for value in values)
+    assert cache_info.currsize == sum(isinstance(value, str) for value in values)
+
+
+def test_anonymous_payload_leaf_fast_path_still_audits_builtin_subclasses() -> None:
+    class StringWithMetadata(str):
+        pass
+
+    value = StringWithMetadata("anonymous")
+    value.truth_entity_id = "offline-only"
+
+    assert_anonymous_online_payload(
+        {"safe": ["trk-000001", 1, 2.0, True, None, b"bytes"]}
+    )
+    with pytest.raises(ValueError, match="truth_entity_id"):
+        assert_anonymous_online_payload({"nested": value})
+
+
+def test_singleton_binding_rows_match_legacy_cost_materialization_exactly() -> None:
+    clusters = (
+        TrackletCluster(
+            cluster_key="cluster:a",
+            node_indices=(0,),
+            tracklet_keys=("camera:a",),
+            camera_keys=("camera",),
+        ),
+        TrackletCluster(
+            cluster_key="cluster:b|c",
+            node_indices=(1, 2),
+            tracklet_keys=("camera:b", "other:c"),
+            camera_keys=("camera", "other"),
+        ),
+        TrackletCluster(
+            cluster_key="cluster:d",
+            node_indices=(3,),
+            tracklet_keys=("third:d",),
+            camera_keys=("third",),
+        ),
+    )
+    distances = np.asarray(
+        [
+            [-0.0, np.inf, 4.0, 7.0],
+            [2.0, 3.0, np.inf, 8.0],
+            [4.0, 5.0, np.inf, 6.0],
+            [np.inf, 1.5, 2.5, 9.0],
+        ],
+        dtype=float,
+    )
+    legacy = np.full((len(clusters), distances.shape[1]), np.inf, dtype=float)
+    for row, cluster in enumerate(clusters):
+        cluster_distances = distances[np.asarray(cluster.node_indices, dtype=int)]
+        finite_count = np.sum(np.isfinite(cluster_distances), axis=0)
+        finite_sum = np.sum(
+            np.where(np.isfinite(cluster_distances), cluster_distances, 0.0),
+            axis=0,
+        )
+        valid = finite_count == len(cluster.node_indices)
+        legacy[row, valid] = finite_sum[valid] / finite_count[valid]
+
+    candidate = graph_module._cluster_binding_cost_matrix(
+        clusters,
+        distances,
+        center_track_count=distances.shape[1],
+    )
+
+    assert np.array_equal(candidate, legacy)
+    assert np.array_equal(np.signbit(candidate), np.signbit(legacy))
 
 
 def _projected_inputs(

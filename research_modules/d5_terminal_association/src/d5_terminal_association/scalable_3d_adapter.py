@@ -54,7 +54,7 @@ _MEASUREMENT_NAME_ALIASES = {
     "y_min": "ymin",
 }
 _CAMERA_SENSOR_PATTERN = re.compile(r"^CAM-(INT-\d+|RECON-\d+)(?:-|$)", re.IGNORECASE)
-SCALABLE_3D_PERFORMANCE_SCHEMA_VERSION = "d5-scalable3d-operation-counts-v1"
+SCALABLE_3D_PERFORMANCE_SCHEMA_VERSION = "d5-scalable3d-operation-counts-v2"
 
 
 @dataclass(frozen=True)
@@ -140,6 +140,8 @@ class Scalable3DPerformanceSnapshot:
     active_local_history_peak: int = 0
     received_timestamp_history_current: int = 0
     received_timestamp_history_peak: int = 0
+    history_gauge_incremental_refresh_count: int = 0
+    history_gauge_tracker_scan_avoided_count: int = 0
     tracker_pair_evaluation_count: int = 0
     tracker_match_candidate_count: int = 0
     tracker_history_update_count: int = 0
@@ -161,6 +163,9 @@ class Scalable3DPerformanceSnapshot:
     projection_matrix_binding_reuse_count: int = 0
     binding_matrix_build_count: int = 0
     binding_matrix_cell_count: int = 0
+    binding_singleton_projection_row_reuse_count: int = 0
+    binding_multi_node_aggregation_count: int = 0
+    binding_without_matrix_count: int = 0
     hungarian_solve_count: int = 0
     binding_output_count: int = 0
 
@@ -659,6 +664,8 @@ class Scalable3DTerminalAdapter:
         self._trackers: dict[tuple[str, str], _AnonymousCameraTracker] = {}
         self._center_track_source_signature: tuple[Any, ...] | None = None
         self._center_projection_tracks: tuple[GlobalTrack, ...] = ()
+        self._active_local_history_count = 0
+        self._received_timestamp_history_count = 0
         self._performance_counts = _empty_performance_counts()
 
     def performance_snapshot(self) -> Scalable3DPerformanceSnapshot:
@@ -786,13 +793,18 @@ class Scalable3DTerminalAdapter:
 
     def reset_stream(self, resource_id: str, camera_id: str) -> None:
         key = (str(resource_id).strip(), str(camera_id).strip())
-        self._trackers.pop(key, None)
+        tracker = self._trackers.pop(key, None)
+        if tracker is not None:
+            self._active_local_history_count -= tracker.active_history_count
+            self._received_timestamp_history_count -= tracker.received_timestamp_count
         self._refresh_history_gauges()
 
     def reset_episode(self) -> None:
         self._trackers.clear()
         self._center_track_source_signature = None
         self._center_projection_tracks = ()
+        self._active_local_history_count = 0
+        self._received_timestamp_history_count = 0
         self._performance_counts = _empty_performance_counts()
 
     def _increment_performance(self, name: str, value: int = 1) -> None:
@@ -805,11 +817,14 @@ class Scalable3DTerminalAdapter:
 
     def _refresh_history_gauges(self) -> None:
         active_streams = len(self._trackers)
-        active_histories = sum(
-            tracker.active_history_count for tracker in self._trackers.values()
-        )
-        received_timestamps = sum(
-            tracker.received_timestamp_count for tracker in self._trackers.values()
+        active_histories = self._active_local_history_count
+        received_timestamps = self._received_timestamp_history_count
+        if min(active_histories, received_timestamps) < 0:
+            raise RuntimeError("incremental D5 history gauges cannot be negative")
+        self._increment_performance("history_gauge_incremental_refresh_count")
+        self._increment_performance(
+            "history_gauge_tracker_scan_avoided_count",
+            active_streams,
         )
         gauges = (
             ("active_camera_stream_current", "active_camera_stream_peak", active_streams),
@@ -835,6 +850,9 @@ class Scalable3DTerminalAdapter:
         graph = association.graph
         candidate_counts = graph.candidate_counts
         cluster_count = len(association.clusters)
+        singleton_cluster_count = sum(
+            len(cluster.node_indices) == 1 for cluster in association.clusters
+        )
         has_binding_matrix = cluster_count > 0 and center_track_count > 0
         self._increment_performance("graph_build_count")
         self._increment_performance("graph_node_count", graph.node_count)
@@ -864,7 +882,20 @@ class Scalable3DTerminalAdapter:
                 "binding_matrix_cell_count",
                 cluster_count * center_track_count,
             )
+            self._increment_performance(
+                "binding_singleton_projection_row_reuse_count",
+                singleton_cluster_count,
+            )
+            self._increment_performance(
+                "binding_multi_node_aggregation_count",
+                cluster_count - singleton_cluster_count,
+            )
             self._increment_performance("hungarian_solve_count")
+        else:
+            self._increment_performance(
+                "binding_without_matrix_count",
+                cluster_count,
+            )
         self._increment_performance("binding_output_count", len(association.bindings))
 
     def _commit_prepared_batch(
@@ -873,7 +904,12 @@ class Scalable3DTerminalAdapter:
         temporal_status: str,
     ) -> Scalable3DAdaptedCameraBatch:
         key = prepared.stream_key
-        tracker = self._trackers.setdefault(key, _AnonymousCameraTracker(self.config))
+        tracker = self._trackers.get(key)
+        if tracker is None:
+            tracker = _AnonymousCameraTracker(self.config)
+            self._trackers[key] = tracker
+        previous_history_count = tracker.active_history_count
+        previous_timestamp_count = tracker.received_timestamp_count
         template = prepared.camera_template
         tracklets = tracker.update(
             prepared.detections,
@@ -882,6 +918,12 @@ class Scalable3DTerminalAdapter:
             measurement_timestamp=prepared.measurement_timestamp,
             arrival_timestamp=prepared.arrival_timestamp,
             camera_template=template,
+        )
+        self._active_local_history_count += (
+            tracker.active_history_count - previous_history_count
+        )
+        self._received_timestamp_history_count += (
+            tracker.received_timestamp_count - previous_timestamp_count
         )
         tracker_operations = tracker.last_operation_counts
         self._increment_performance("camera_batch_count")

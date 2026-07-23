@@ -1,5 +1,47 @@
 # D5 末端视觉配准与身份认证实验报告
 
+## 2026-07-23 clean 4ac3bb2 seed 1000 profiler 与等价 A/B
+
+### 条件与接受门
+
+输入为 clean `4ac3bb2c12cc6af6ebd372107ced00bcdc5adf6a` nominal 200v200 seed 1000 的冻结 online bus 日志。短日志 SHA-256 为 `223bd225...ca0c`，覆盖 2.15 秒、25 次调用、100 个相机批次和 106 个检测；长日志 SHA-256 为 `c1dda852...6f77a`，覆盖 9.95 秒、114 次调用、723 个相机批次和 2479 个检测。两组均未加载 truth source。
+
+业务接受阈值为逐帧核心、最终 binding 和冻结 v1 操作数哈希与各自 clean 记录完全一致，online truth use、`global_track_id` mutation、减少帧/候选/门控均为 0。性能测试只断言固定操作数、缓存命中/避免量和旧/新公式等价，不设置硬墙钟阈值。
+
+### Profiler 归因
+
+加载、JSON 解析和依赖导入完成后，只对同一内存 replay 的一次 `benchmark_terminal_replay()` 开启 cProfile。该 profile 对应最终零符号边界修复前的 `sparse_tracklet_graph.py`（`dc6bcd81...b4c4c`），不作为最终源码 profile。
+
+| 累计项 | 旧实现 | 边界修复前候选 |
+| --- | ---: | ---: |
+| `process()` | 2.320 s | 1.987 s |
+| `adapt_batches()` | 1.428 s | 1.122 s |
+| 匿名 payload 审计 | 0.358 s | 0.162 s |
+| transport truth 隔离审计 | 0.400 s | 0.239 s |
+| 历史 gauge 刷新 | 0.0544 s | 0.00288 s |
+| cluster binding | 0.0578 s | 0.0312 s |
+| profiler 函数调用 | 7,646,774 | 5,786,264 |
+
+实施项均为局部等价优化：历史 gauge 使用 tracker 更新差量；匿名 ID 正则使用 8192 项有界 LRU；payload 对精确内建叶子直接返回但继续审计子类；singleton cluster 复制现有 projection distance 行。长日志固定诊断记录 723 次增量刷新避免扫描 91,871 个 tracker 引用、复用 2289 个 singleton 行；79 个多节点聚合、32 个无矩阵输出、476401 个 binding 单元和 108 次 Hungarian 求解保留。
+
+### A/B 与语义审计
+
+两轮旧/新各 7 次长日志描述性 A/B 的中位总耗时分别为 `1.221619→0.947894 s`、`1.077104→0.911096 s`。两轮中位值均值为 `1.149362→0.929495 s`，下降约 `19.13%`。该墙钟只用于确认 profiler 方向。
+
+边界修复前候选短/长平均单次成本为 `4.057/8.263 ms`、增长 `2.036x`；中位单次成本为 `3.535/9.061 ms`、增长 `2.563x`。短/长逐帧业务哈希为 `e9903257...5d23` / `d9629adc...35ca0`，最终 binding 哈希为 `3ee4ea36...946d` / `996763e3...24b6`，冻结 v1 操作数哈希为 `8d8d7c1e...062a` / `c8a19ee8...affc`。全部与各自 clean 记录一致；truth/ID mutation/帧/候选/门控变化为 0。
+
+### 最终边界修复
+
+singleton 有限投影行增加 `+0.0` 规范化，以保持合法 `-0.0` 输入与旧求和路径的符号位一致。当前 `sparse_tracklet_graph.py` SHA-256 为 `0e8a5880...19d5b`。机器 JSON 已增加独立 `post_boundary_fix_verification`，没有把旧 `dc6b...` 哈希写成当前候选，也没有复用旧 cProfile 形成新的性能结论。
+
+最终源码对同一短/长日志各重放 7 次。短、长逐帧业务哈希、最终 binding 哈希、v2 操作数哈希和冻结 v1 operation-equivalence 哈希均与原记录一致；online truth use 和 `global_track_id` mutation 均为 0。main 随后完成 D5 全量回归，当前权威结果为 `551 passed in 100.83s`。`550 passed in 102.41s` 只代表 boundary-fix 前源码。
+
+结构化结果为 `results/scalable_3d_seed1000_duration_operation_20260723.json`，中文明细为 `reports/D5_SCALABLE_3D_SEED1000_DURATION_OPERATION_20260723.md`。
+
+### 结论边界
+
+本实验关闭冻结日志范围内的 profiler 归因及历史 gauge、匿名审计、singleton binding 三类低风险重复工作子项。它没有重跑当前源码的完整 clean 集成。原 10 秒集成 P50/P95/max 约 `11.497/15.969/18.632 ms`、相对 2.2 秒约 `2.556x` 的 P1 保持开放；后续仍需 main/D6 对检测数、活跃相机数、中心候选数和时长做预注册正交多 seed 操作数/阶段耗时联合准入。本轮未运行 AirSim，也不形成硬件实时性结论。
+
 ## 2026-07-22 相机重叠索引配对实验
 
 ### 条件

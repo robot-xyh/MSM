@@ -2,6 +2,20 @@
 
 科研模块，用于把末端相机视场中的本地视觉轨迹保守关联到中心分配的 `global_track_id`。模块可在统一三维 episode 中在线运行；训练标签和真值评分仍保持离线。D5 只输出视觉关联与相机观察意图，不修改、重写或重新分配任何全局轨迹 ID。
 
+## 2026-07-23 seed 1000 长窗口 profiler 收敛
+
+本轮使用 clean `4ac3bb2` nominal 200v200 seed 1000 的冻结匿名在线日志归因 2.2 秒/10 秒长短窗口成本。10 秒输入覆盖 114 次终端调用、723 个相机批次、2479 个检测/图节点和 2400 个 binding；日志 SHA-256 为 `c1dda852...6f77a`，未加载 truth source。
+
+热态 cProfile 将低风险重复工作定位到历史 gauge 全 tracker 扫描、匿名 payload/ID 审计和 singleton cluster binding 物化。当前实现用增量账本替代 gauge 扫描，对匿名 ID 正则使用 8192 项有界 LRU，对精确内建叶子采用审计快路径，并让 singleton cluster 复用已有投影距离行。长日志固定诊断记录避免 91,871 次 tracker 引用扫描、复用 2289 个 singleton 行；79 个多节点聚合和 32 个无矩阵 binding 输出仍走完整语义。
+
+热态 cProfile 的 `process()` 累计为 `2.320→1.987 s`，`adapt_batches()` 为 `1.428→1.122 s`，匿名 payload 审计为 `0.358→0.162 s`，历史 gauge 为 `0.0544→0.00288 s`，binding 为 `0.0578→0.0312 s`。两轮各 7 次描述性 A/B 的长日志中位值均值为 `1.149362→0.929495 s`，约下降 `19.13%`；墙钟不作为测试硬门。该组 cProfile 和 A/B 对应 singleton 有限行零符号边界修复前的源码，`sparse_tracklet_graph.py` SHA-256 为 `dc6bcd81...b4c4c`，不得作为最终源码的性能剖析结果。
+
+最终边界修复把 singleton 有限投影行按旧求和路径规范为 `+0.0`，当前 `sparse_tracklet_graph.py` SHA-256 为 `0e8a5880...19d5b`。机器 JSON 的 `post_boundary_fix_verification` 使用最终源码重新消费同一冻结短/长日志；逐帧业务哈希、最终 binding 哈希、v2 操作数哈希和冻结 v1 operation-equivalence 哈希均与修复前记录一致。长序列业务、binding 和 v1 操作面哈希仍为 `d9629adc...35ca0`、`996763e3...24b6`、`c8a19ee8...affc`，online truth use 与 `global_track_id` mutation 均为 0。结构化证据见 `results/scalable_3d_seed1000_duration_operation_20260723.json`，归因报告见 `reports/D5_SCALABLE_3D_SEED1000_DURATION_OPERATION_20260723.md`。
+
+本轮没有在当前源码上重跑完整 clean 集成。原 10 秒集成 P50/P95/max 约 `11.497/15.969/18.632 ms`、相对短窗约 `2.556x` 的 P1 继续开放；模块冻结重放的候选中位增长 `2.563x` 也未达到线性准入。后续仍需 main/D6 做预注册正交多 seed 操作数/阶段耗时联合验收。
+
+2026-07-23 main 对最终边界修复后的当前源码完成 D5 全量回归，权威结果为 `551 passed in 100.83s`，接受阈值为零失败。`550 passed in 102.41s` 只保留为边界修复前的历史结果。
+
 ## 2026-07-22 相机重叠索引占用桶复用
 
 长日志函数剖析显示，116 次 `build_camera_overlap_index()` 累计约 `0.357 s`，其中约 `0.248 s` 消耗在从已占用桶向三维空网格枚举偏移。当前实现复用已经建立的只读占用桶序列，直接检查占用桶对的切比雪夫距离。该条件与旧整数偏移搜索严格等价，视锥、时间、包围盒、相机对预算、轨迹候选和全部后续几何门保持不变。

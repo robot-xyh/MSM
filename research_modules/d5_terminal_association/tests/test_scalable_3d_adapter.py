@@ -9,6 +9,7 @@ import pytest
 import d5_terminal_association.scalable_3d_adapter as adapter_module
 import d5_terminal_association.sparse_tracklet_graph as graph_module
 from d5_terminal_association.scalable_3d_adapter import (
+    Scalable3DAdapterConfig,
     Scalable3DTerminalAdapter,
     global_track3d_to_projection_track,
     global_tracks3d_to_projection_tracks,
@@ -1395,6 +1396,8 @@ def test_performance_snapshot_is_fixed_size_non_business_and_episode_resettable(
     assert first_snapshot.active_camera_stream_current == 2
     assert first_snapshot.active_local_history_current == 4
     assert first_snapshot.received_timestamp_history_current == 2
+    assert first_snapshot.history_gauge_incremental_refresh_count == 2
+    assert first_snapshot.history_gauge_tracker_scan_avoided_count == 3
     assert first_snapshot.center_projection_cache_hit_count == 0
     assert first_snapshot.center_projection_cache_miss_count == 1
     assert first_snapshot.graph_build_count == 1
@@ -1403,6 +1406,12 @@ def test_performance_snapshot_is_fixed_size_non_business_and_episode_resettable(
     assert first_snapshot.projection_matrix_cell_count == 12
     assert first_snapshot.projection_matrix_binding_reuse_count == 1
     assert first_snapshot.binding_matrix_build_count == 1
+    assert (
+        first_snapshot.binding_singleton_projection_row_reuse_count
+        + first_snapshot.binding_multi_node_aggregation_count
+        + first_snapshot.binding_without_matrix_count
+        == first_snapshot.binding_output_count
+    )
     assert first_snapshot.hungarian_solve_count == 1
     assert first_snapshot.binding_output_count == len(first.association.bindings)
     assert all(
@@ -1443,3 +1452,162 @@ def test_performance_snapshot_is_fixed_size_non_business_and_episode_resettable(
         for key, value in reset_counts.items()
         if key != "schema_version"
     )
+
+
+def test_incremental_history_gauges_match_legacy_full_tracker_scan() -> None:
+    adapter = Scalable3DTerminalAdapter()
+
+    def assert_matches_legacy_scan() -> None:
+        snapshot = adapter.performance_snapshot()
+        assert snapshot.active_camera_stream_current == len(adapter._trackers)
+        assert snapshot.active_local_history_current == sum(
+            tracker.active_history_count for tracker in adapter._trackers.values()
+        )
+        assert snapshot.received_timestamp_history_current == sum(
+            tracker.received_timestamp_count for tracker in adapter._trackers.values()
+        )
+
+    adapter.process(
+        (
+            _projected_batch(0, PARTIAL_VISIBILITY[0]),
+            _projected_batch(1, PARTIAL_VISIBILITY[1]),
+        ),
+        _center_tracks(),
+    )
+    assert_matches_legacy_scan()
+    first = adapter.performance_snapshot()
+    assert first.history_gauge_incremental_refresh_count == 2
+    assert first.history_gauge_tracker_scan_avoided_count == 3
+
+    adapter.process(
+        (
+            _timed_projected_batch(
+                0,
+                measurement_timestamp=10.1,
+                arrival_timestamp=10.15,
+                frame_index=2,
+            ),
+            _timed_projected_batch(
+                1,
+                measurement_timestamp=10.1,
+                arrival_timestamp=10.15,
+                frame_index=2,
+            ),
+        ),
+        _center_tracks(),
+    )
+    assert_matches_legacy_scan()
+    second = adapter.performance_snapshot()
+    assert second.history_gauge_incremental_refresh_count == 4
+    assert second.history_gauge_tracker_scan_avoided_count == 7
+
+    adapter.reset_stream("RESOURCE-0", "CAM-0")
+    assert_matches_legacy_scan()
+    reset_stream = adapter.performance_snapshot()
+    assert reset_stream.history_gauge_incremental_refresh_count == 5
+    assert reset_stream.history_gauge_tracker_scan_avoided_count == 8
+
+
+def test_incremental_history_gauges_cover_empty_coast_eviction_and_stream_replacement() -> None:
+    adapter = Scalable3DTerminalAdapter(
+        Scalable3DAdapterConfig(max_missed_frames=1)
+    )
+
+    def assert_matches_legacy_scan(
+        *,
+        streams: int,
+        histories: int,
+        timestamps: int,
+    ) -> None:
+        snapshot = adapter.performance_snapshot()
+        assert snapshot.active_camera_stream_current == streams
+        assert snapshot.active_local_history_current == histories
+        assert snapshot.received_timestamp_history_current == timestamps
+        assert snapshot.active_camera_stream_current == len(adapter._trackers)
+        assert snapshot.active_local_history_current == sum(
+            tracker.active_history_count for tracker in adapter._trackers.values()
+        )
+        assert snapshot.received_timestamp_history_current == sum(
+            tracker.received_timestamp_count for tracker in adapter._trackers.values()
+        )
+
+    first = adapter.adapt_batch(
+        _timed_projected_batch(
+            0,
+            measurement_timestamp=10.0,
+            arrival_timestamp=10.05,
+            frame_index=1,
+        )
+    )
+    assert first.tracklets[0].local_track_id == "trk-000001"
+    assert_matches_legacy_scan(streams=1, histories=1, timestamps=1)
+
+    first_empty = adapter.adapt_batch(
+        _batch(
+            0,
+            (),
+            timestamp=10.1,
+            arrival_timestamp=10.15,
+            frame_index=2,
+        )
+    )
+    assert first_empty.status == "empty_geometry_unavailable"
+    assert_matches_legacy_scan(streams=1, histories=1, timestamps=2)
+
+    second_empty = adapter.adapt_batch(
+        _batch(
+            0,
+            (),
+            timestamp=10.2,
+            arrival_timestamp=10.25,
+            frame_index=3,
+        )
+    )
+    assert second_empty.status == "empty_geometry_unavailable"
+    assert_matches_legacy_scan(streams=1, histories=0, timestamps=3)
+
+    oosm = adapter.adapt_batch(
+        _batch(
+            0,
+            (),
+            timestamp=10.15,
+            arrival_timestamp=10.3,
+            frame_index=4,
+        )
+    )
+    assert oosm.status == "oosm_ignored"
+    assert_matches_legacy_scan(streams=1, histories=0, timestamps=4)
+
+    adapter.reset_stream("RESOURCE-0", "CAM-0")
+    assert_matches_legacy_scan(streams=0, histories=0, timestamps=0)
+
+    replacement = adapter.adapt_batch(
+        _timed_projected_batch(
+            0,
+            measurement_timestamp=20.0,
+            arrival_timestamp=20.05,
+            frame_index=5,
+        )
+    )
+    assert replacement.tracklets[0].local_track_id == "trk-000001"
+    assert_matches_legacy_scan(streams=1, histories=1, timestamps=1)
+
+    adapter.reset_episode()
+    assert_matches_legacy_scan(streams=0, histories=0, timestamps=0)
+    reset_snapshot = adapter.performance_snapshot()
+    assert reset_snapshot.active_camera_stream_peak == 0
+    assert reset_snapshot.active_local_history_peak == 0
+    assert reset_snapshot.received_timestamp_history_peak == 0
+    assert reset_snapshot.history_gauge_incremental_refresh_count == 0
+    assert reset_snapshot.history_gauge_tracker_scan_avoided_count == 0
+
+    adapter.adapt_batch(
+        _batch(
+            0,
+            (),
+            timestamp=30.0,
+            arrival_timestamp=30.05,
+            frame_index=6,
+        )
+    )
+    assert_matches_legacy_scan(streams=1, histories=0, timestamps=1)

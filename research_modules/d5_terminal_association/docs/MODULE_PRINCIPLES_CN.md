@@ -1,6 +1,16 @@
 # 第五研究模块末端视觉关联（Terminal Association, D5）原理
 
-**状态日期：2026-07-22**
+**状态日期：2026-07-23**
+
+## 长窗口性能优化的等价边界
+
+2026-07-23 对 clean `4ac3bb2` nominal 200v200 seed 1000 的匿名冻结在线日志完成热态 profiler 归因。长日志为 9.95 秒、114 次终端调用、723 个相机批次、2479 个检测/图节点和 2400 个 binding；truth source 未加载。该 profile 对应最终零符号边界修复前的 `sparse_tracklet_graph.py`（`dc6bcd81...b4c4c`），用于说明热点来源，不冒充最终源码性能证据。
+
+允许复用的对象必须是已经证明内容相同或公式严格退化的内部中间量。本轮只维护历史 gauge 的更新差量、缓存匿名字符串的同一正则结果、跳过精确内建叶子的空递归、让 singleton cluster 复制已算投影行。不得缓存中心身份判断、友方冲突结论、跨帧相机几何或旧 binding；不得减少帧、检测、相机候选、中心候选、几何/身份/友方门或 Hungarian 唯一绑定。
+
+固定诊断显示长日志避免 91,871 次 tracker 引用扫描，复用 2289 个 singleton 行；79 个多节点聚合、32 个无 binding matrix 输出、476401 个 binding 单元和 108 次 Hungarian 求解保持。最终实现进一步把 singleton 有限行的 `-0.0` 按旧求和路径规范为 `+0.0`，当前源码哈希为 `0e8a5880...19d5b`。机器 JSON 的 post-boundary-fix 重放确认短/长逐帧业务、最终 binding、v2 操作数和冻结 v1 operation-equivalence 哈希逐项一致，online truth use 与 `global_track_id` mutation 为 0。增量账本在 reset、空帧、coast、淘汰和 stream replacement 后与旧全扫描 current/peak 一致；内建类型子类仍接受完整 truth 字段审计。
+
+边界修复前热态 `process()` 累计约 `2.320→1.987 s`；两轮各 7 次长日志 A/B 的中位值均值约 `1.149362→0.929495 s`。这些值只支持局部优化方向，不作为最终源码硬墙钟测试或完整系统准入。main 对最终源码的权威全量回归为 `551 passed in 100.83s`；此前 `550 passed in 102.41s` 是 boundary-fix 前历史值。原 10 秒集成 P50/P95/max 约 `11.497/15.969/18.632 ms`、相对短窗约 `2.556x` 的 P1 保持开放，必须由 main/D6 通过正交规模、多 seed 和预注册阈值关闭。
 
 ## 相机重叠索引等价优化
 
