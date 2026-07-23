@@ -33,6 +33,19 @@ from research_modules.scalable_3d_simulation.reserved_seed_interventions import 
 from research_modules.scalable_3d_simulation.sensor_scene import SensorScene
 from research_modules.scalable_3d_simulation.world import VectorizedPointMassWorld
 
+_TEST_IDENTITY_RECOVERY_CONFIG = {
+    "schema_version": "d2.identity-commitment-recovery-config.v2",
+    "config_version": "test-identity-recovery-config-v1",
+    "publication_freshness_gate_enabled": True,
+    "max_recovery_evidence_age_seconds": 0.9,
+    "publication_freshness_clock": (
+        "d2_tracker_frame_timestamp_minus_source_measurement_timestamp"
+    ),
+    "publication_stale_behavior": (
+        "remain_uncommitted_until_newer_original_evidence"
+    ),
+}
+
 
 def test_offline_truth_v1_target_and_v2_dispositions_validate() -> None:
     legacy = OfflineTruthLabel(
@@ -247,7 +260,14 @@ def test_d2_adapter_excludes_false_alarms_and_blocks_unknown(tmp_path) -> None:
                 "timestamp": 0.1,
                 "track_count": 2,
                 "tracks": [track("GT-1"), track("GT-2")],
-                "association": {"timestamp": 0.0},
+                "association": {
+                    "timestamp": 0.0,
+                    "identity_commitment": {
+                        "recovery_config": dict(
+                            _TEST_IDENTITY_RECOVERY_CONFIG
+                        )
+                    },
+                },
                 "id_switch_count": None,
                 "id_switch_count_available": False,
                 "identity_lineage_policy": (
@@ -415,7 +435,14 @@ def test_offline_identity_v2_keeps_uncommitted_gap_explicit(
                 "timestamp": 0.0,
                 "track_count": 1,
                 "tracks": [track(0.0)],
-                "association": {"timestamp": 0.0},
+                "association": {
+                    "timestamp": 0.0,
+                    "identity_commitment": {
+                        "recovery_config": dict(
+                            _TEST_IDENTITY_RECOVERY_CONFIG
+                        )
+                    },
+                },
                 "id_switch_count": None,
                 "id_switch_count_available": False,
                 "identity_lineage_policy": (
@@ -455,7 +482,14 @@ def test_offline_identity_v2_keeps_uncommitted_gap_explicit(
                 "timestamp": 1.0,
                 "track_count": 1,
                 "tracks": [track(1.0)],
-                "association": {"timestamp": 1.0},
+                "association": {
+                    "timestamp": 1.0,
+                    "identity_commitment": {
+                        "recovery_config": dict(
+                            _TEST_IDENTITY_RECOVERY_CONFIG
+                        )
+                    },
+                },
                 "id_switch_count": None,
                 "id_switch_count_available": False,
                 "identity_lineage_policy": (

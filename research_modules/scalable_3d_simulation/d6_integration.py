@@ -60,6 +60,12 @@ def build_truth_isolated_episode_record(
 
     d1_path, d1_sha = _d1_result_source(paths)
     d2_path, d2_sha, d2_source_hashes = _d2_identity_source(paths)
+    (
+        d2_manifest_path,
+        d2_manifest_sha,
+        d2_online_records_path,
+        d2_online_records_sha,
+    ) = _d2_identity_provenance_sources(paths, d2_evaluation_path=d2_path)
     return build_d6_record(
         context,
         d1_result=d1_path,
@@ -67,6 +73,10 @@ def build_truth_isolated_episode_record(
         d1_expected_sha256=d1_sha,
         d2_expected_sha256=d2_sha,
         d2_expected_source_hashes=d2_source_hashes,
+        d2_identity_manifest=d2_manifest_path,
+        d2_expected_identity_manifest_sha256=d2_manifest_sha,
+        d2_online_d2_records=d2_online_records_path,
+        d2_expected_online_d2_records_sha256=d2_online_records_sha,
     )
 
 
@@ -325,6 +335,27 @@ def _d2_identity_source(
         _verify_file_hash(source_path, expected, public_name)
         expected_source_hashes[public_name] = expected
     return Path(evaluation_path), evaluation_sha, expected_source_hashes
+
+
+def _d2_identity_provenance_sources(
+    paths: Mapping[str, Path],
+    *,
+    d2_evaluation_path: Path | None,
+) -> tuple[Path | None, str | None, Path | None, str | None]:
+    if d2_evaluation_path is None:
+        return None, None, None, None
+    manifest_path = paths.get("offline_identity_manifest")
+    online_d2_records_path = paths.get("offline_identity_d2_records")
+    if manifest_path is None:
+        raise ValueError("D2 identity manifest path is missing")
+    if online_d2_records_path is None:
+        raise ValueError("D2 online record path is missing")
+    return (
+        Path(manifest_path),
+        _sha256_file(manifest_path),
+        Path(online_d2_records_path),
+        _sha256_file(online_d2_records_path),
+    )
 
 
 def _source_hash_summary(paths: Mapping[str, Path]) -> dict[str, str | None]:

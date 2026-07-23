@@ -848,6 +848,24 @@ def test_5v5_online_stack_connects_d1_to_d7_without_truth_identity(tmp_path) -> 
         "available"
     )
     assert d6_record["d2_identity"]["truth_isolation_verified"] is True
+    recovery_provenance = d6_record["d2_identity"][
+        "identity_recovery_config_provenance"
+    ]
+    assert recovery_provenance["availability"] == "available"
+    assert recovery_provenance["provenance_verified"] is True
+    assert recovery_provenance["online_d2_records_verified"] is True
+    assert recovery_provenance[
+        "identity_commitment_recovery_config_consistency_verified"
+    ] is True
+    assert recovery_provenance[
+        "identity_commitment_recovery_config_record_count"
+    ] == len(d2_lines)
+    assert recovery_provenance["d2_record_count"] == len(d2_lines)
+    assert recovery_provenance[
+        "identity_commitment_recovery_config"
+    ]["max_recovery_evidence_age_seconds"] == pytest.approx(
+        config.identity_lineage_freshness_budget_s
+    )
     runtime_root = tmp_path / "d6_runtime_plan_outcomes"
     runtime_inputs = json.loads(
         (runtime_root / "input_specification.json").read_text(encoding="utf-8")
@@ -869,6 +887,9 @@ def test_5v5_online_stack_connects_d1_to_d7_without_truth_identity(tmp_path) -> 
     assert runtime_result["runtime_ack_evidence"]["ack_count"] >= 1
     assert runtime_result["runtime_ack_evidence"]["binding_count"] >= 5
     assert runtime_result["runtime_ack_evidence"]["online_truth_use_count"] == 0
+    assert runtime_result["d2_identity_recovery_config_provenance"][
+        "provenance_verified"
+    ] is True
     assert runtime_result["admission"]["ppo_allowed"] is False
     assert runtime_result["admission"]["assist_allowed"] is False
     assert runtime_result["admission"]["authority_allowed"] is False

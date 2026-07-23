@@ -15,8 +15,14 @@ from .episode_bus import VersionedEnvelope
 from .models import OfflineTruthLabel
 
 
-OFFLINE_IDENTITY_MANIFEST_SCHEMA_VERSION = (
+OFFLINE_IDENTITY_MANIFEST_SCHEMA_VERSION_V1 = (
     "scalable3d-offline-identity-evaluation-manifest-v1"
+)
+OFFLINE_IDENTITY_MANIFEST_SCHEMA_VERSION_V2 = (
+    "scalable3d-offline-identity-evaluation-manifest-v2"
+)
+OFFLINE_IDENTITY_MANIFEST_SCHEMA_VERSION = (
+    OFFLINE_IDENTITY_MANIFEST_SCHEMA_VERSION_V2
 )
 OFFLINE_CONSISTENCY_MANIFEST_SCHEMA_VERSION = (
     "scalable3d-offline-consistency-evaluation-manifest-v1"
@@ -70,6 +76,24 @@ def write_offline_identity_evaluation(
             },
         )
         return {"offline_identity_manifest": manifest_path}
+
+    (
+        identity_commitment_recovery_config,
+        identity_commitment_recovery_config_sha256,
+    ) = _identity_commitment_recovery_config_snapshot(d2_messages)
+    recovery_config_manifest_fields = {
+        "identity_commitment_recovery_config": (
+            identity_commitment_recovery_config
+        ),
+        "identity_commitment_recovery_config_sha256": (
+            identity_commitment_recovery_config_sha256
+        ),
+        "identity_commitment_recovery_config_record_count": len(d2_messages),
+        "identity_commitment_recovery_config_consistency_verified": True,
+        "identity_commitment_recovery_config_source": (
+            "payload.association.identity_commitment.recovery_config"
+        ),
+    }
 
     from research_modules.d2_data_association.d2_data_association import (
         SCALABLE_3D_IDENTITY_EVIDENCE_SCHEMA_VERSION_V1,
@@ -153,6 +177,7 @@ def write_offline_identity_evaluation(
                 },
                 "online_truth_isolation_verified": False,
                 "identity_metrics_available": False,
+                **recovery_config_manifest_fields,
             },
         )
         return {
@@ -216,6 +241,7 @@ def write_offline_identity_evaluation(
                 evaluation.audit.get("online_truth_isolation_verified", False)
             ),
             "identity_metrics_available": bool(evaluation.metrics.available),
+            **recovery_config_manifest_fields,
         },
     )
     return {
@@ -735,6 +761,65 @@ def _write_message_jsonl(
     return path
 
 
+def _identity_commitment_recovery_config_snapshot(
+    d2_messages: Sequence[VersionedEnvelope],
+) -> tuple[dict[str, Any], str]:
+    """Return one configuration snapshot after exact per-publication agreement."""
+
+    snapshots: list[dict[str, Any]] = []
+    canonical_snapshots: list[str] = []
+    for index, message in enumerate(d2_messages):
+        payload = _mapping(
+            message.payload,
+            f"D2 publication {index} payload",
+        )
+        association = _mapping(
+            payload.get("association"),
+            f"D2 publication {index} association",
+        )
+        identity_commitment = _mapping(
+            association.get("identity_commitment"),
+            f"D2 publication {index} identity commitment",
+        )
+        recovery_config = _mapping(
+            identity_commitment.get("recovery_config"),
+            f"D2 publication {index} identity commitment recovery config",
+        )
+        if not recovery_config:
+            raise ValueError(
+                "D2 identity commitment recovery config must be non-empty"
+            )
+        snapshot = dict(recovery_config)
+        try:
+            canonical = json.dumps(
+                snapshot,
+                allow_nan=False,
+                ensure_ascii=True,
+                separators=(",", ":"),
+                sort_keys=True,
+            )
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                "D2 identity commitment recovery config must be canonical JSON"
+            ) from exc
+        snapshots.append(snapshot)
+        canonical_snapshots.append(canonical)
+
+    if not snapshots:
+        raise ValueError(
+            "at least one D2 identity commitment recovery config is required"
+        )
+    if any(
+        canonical != canonical_snapshots[0]
+        for canonical in canonical_snapshots[1:]
+    ):
+        raise ValueError(
+            "D2 identity commitment recovery config changed within the episode"
+        )
+    digest = sha256(canonical_snapshots[0].encode("utf-8")).hexdigest()
+    return snapshots[0], f"sha256:{digest}"
+
+
 def _write_jsonl(path: Path, payloads: Iterable[Mapping[str, Any]]) -> Path:
     with path.open("w", encoding="utf-8") as stream:
         for payload in payloads:
@@ -784,6 +869,8 @@ def _mapping(value: Any, name: str) -> Mapping[str, Any]:
 __all__ = [
     "OFFLINE_CONSISTENCY_MANIFEST_SCHEMA_VERSION",
     "OFFLINE_IDENTITY_MANIFEST_SCHEMA_VERSION",
+    "OFFLINE_IDENTITY_MANIFEST_SCHEMA_VERSION_V1",
+    "OFFLINE_IDENTITY_MANIFEST_SCHEMA_VERSION_V2",
     "PrewrittenIdentityRecordPaths",
     "write_offline_consistency_evaluation",
     "write_offline_identity_evaluation",

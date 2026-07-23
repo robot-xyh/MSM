@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+from hashlib import sha256
 import json
 from pathlib import Path
 
@@ -27,6 +28,7 @@ from research_modules.scalable_3d_simulation.orchestrator import (
     run_episode,
 )
 from research_modules.scalable_3d_simulation.offline_evaluation import (
+    OFFLINE_IDENTITY_MANIFEST_SCHEMA_VERSION_V2,
     PrewrittenIdentityRecordPaths,
     write_offline_identity_evaluation,
 )
@@ -36,6 +38,19 @@ from research_modules.scalable_3d_simulation.runtime_ports import (
     RuntimeStepInput,
     RuntimeStepOutput,
 )
+
+_TEST_IDENTITY_RECOVERY_CONFIG = {
+    "schema_version": "d2.identity-commitment-recovery-config.v2",
+    "config_version": "test-identity-recovery-config-v1",
+    "publication_freshness_gate_enabled": True,
+    "max_recovery_evidence_age_seconds": 0.9,
+    "publication_freshness_clock": (
+        "d2_tracker_frame_timestamp_minus_source_measurement_timestamp"
+    ),
+    "publication_stale_behavior": (
+        "remain_uncommitted_until_newer_original_evidence"
+    ),
+}
 
 
 def test_recursive_truth_guard_rejects_nested_fields_and_truth_dataclasses() -> None:
@@ -274,7 +289,14 @@ def test_offline_identity_marks_incomplete_lineage_unavailable(tmp_path: Path) -
                         "track_state": "tentative",
                     }
                 ],
-                "association": {"timestamp": 0.0},
+                "association": {
+                    "timestamp": 0.0,
+                    "identity_commitment": {
+                        "recovery_config": dict(
+                            _TEST_IDENTITY_RECOVERY_CONFIG
+                        )
+                    },
+                },
                 "id_switch_count": None,
                 "id_switch_count_available": False,
                 "identity_lineage_policy": (
@@ -311,6 +333,30 @@ def test_offline_identity_marks_incomplete_lineage_unavailable(tmp_path: Path) -
     assert manifest["identity_metrics_available"] is False
     assert manifest["evidence_record_count"] == 1
     assert manifest["lineage_incomplete_record_count"] == 1
+    assert (
+        manifest["schema_version"]
+        == OFFLINE_IDENTITY_MANIFEST_SCHEMA_VERSION_V2
+    )
+    assert manifest["identity_commitment_recovery_config"] == (
+        _TEST_IDENTITY_RECOVERY_CONFIG
+    )
+    canonical_config = json.dumps(
+        _TEST_IDENTITY_RECOVERY_CONFIG,
+        allow_nan=False,
+        ensure_ascii=True,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+    assert manifest["identity_commitment_recovery_config_sha256"] == (
+        f"sha256:{sha256(canonical_config).hexdigest()}"
+    )
+    assert (
+        manifest[
+            "identity_commitment_recovery_config_consistency_verified"
+        ]
+        is True
+    )
+    assert manifest["identity_commitment_recovery_config_record_count"] == 1
     assert evaluation["metrics"]["truth_metrics_available"] is False
     assert "source_lineage_missing" in evaluation["audit"][
         "identity_metrics_blocking_reasons"
@@ -335,7 +381,17 @@ def test_offline_identity_rejects_mismatched_prewritten_record_counts(
             source="D2",
             timestamp=0.1,
             schema_version="d2-scalable3d-association-v1",
-            payload={"tracks": [], "identity_lineage": []},
+            payload={
+                "tracks": [],
+                "identity_lineage": [],
+                "association": {
+                    "identity_commitment": {
+                        "recovery_config": dict(
+                            _TEST_IDENTITY_RECOVERY_CONFIG
+                        )
+                    }
+                },
+            },
         ),
     )
     d1_path = tmp_path / "online_d1_records.jsonl"
@@ -355,6 +411,52 @@ def test_offline_identity_rejects_mismatched_prewritten_record_counts(
                 d1_record_count=2,
                 d2_record_count=1,
             ),
+        )
+
+
+def test_offline_identity_rejects_recovery_config_change_within_episode(
+    tmp_path: Path,
+) -> None:
+    d1 = VersionedEnvelope(
+        sequence=1,
+        topic="modules.d1.fused_tracks",
+        source="D1",
+        timestamp=0.1,
+        schema_version="d1-scalable3d-fusion-v1",
+        payload={"tracks": [], "observation_lineage": []},
+    )
+
+    def d2(sequence: int, max_age_s: float) -> VersionedEnvelope:
+        config = {
+            **_TEST_IDENTITY_RECOVERY_CONFIG,
+            "max_recovery_evidence_age_seconds": max_age_s,
+        }
+        return VersionedEnvelope(
+            sequence=sequence,
+            topic="modules.d2.associated_tracks",
+            source="D2",
+            timestamp=float(sequence) / 10.0,
+            schema_version="d2-scalable3d-association-v1",
+            payload={
+                "tracks": [],
+                "identity_lineage": [],
+                "association": {
+                    "identity_commitment": {
+                        "recovery_config": config,
+                    }
+                },
+            },
+        )
+
+    with pytest.raises(
+        ValueError,
+        match="recovery config changed within the episode",
+    ):
+        write_offline_identity_evaluation(
+            tmp_path,
+            episode_id="recovery-config-change",
+            messages=(d1, d2(2, 0.9), d2(3, 1.0)),
+            offline_truth_labels=(),
         )
 
 
