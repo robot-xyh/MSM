@@ -285,6 +285,31 @@ def test_oosm_replay_revises_evidence_and_preserves_measurement_time() -> None:
         np.testing.assert_allclose(right.covariance_ned, left.covariance_ned, atol=1.0e-9)
 
 
+def test_validated_replay_counter_copy_matches_full_dataclass_revalidation() -> None:
+    record = _online_bundle().records[1]
+
+    expected = replace(
+        record,
+        replay_revision=record.replay_revision + 7,
+        replay_count=record.replay_count + 11,
+    )
+    actual = record.with_replay_counters(
+        replay_revision=record.replay_revision + 7,
+        replay_count=record.replay_count + 11,
+    )
+
+    assert actual == expected
+    assert actual.to_dict() == expected.to_dict()
+    assert actual.evidence_id == record.evidence_id
+    assert actual.state_ned is record.state_ned
+    assert actual.covariance_ned is record.covariance_ned
+    assert actual.availability is record.availability
+    with pytest.raises(ValueError, match="must be non-negative"):
+        record.with_replay_counters(replay_revision=-1, replay_count=0)
+    with pytest.raises(ValueError, match="must be non-negative"):
+        record.with_replay_counters(replay_revision=0, replay_count=-1)
+
+
 def test_radar_range_bins_and_record_count_scale_with_input() -> None:
     adapter = Scalable3DFusionAdapter()
     ranges = (500.0, 1_500.0, 3_500.0, 5_500.0)

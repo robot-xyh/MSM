@@ -26,6 +26,9 @@ LONG_DURATION_PERFORMANCE_SCHEMA_VERSION = "d1.long_duration_performance.v1"
 COALESCED_RELEASE_PERFORMANCE_SCHEMA_VERSION = (
     "d1.coalesced_release_performance.v1"
 )
+CONSISTENCY_COUNTER_REFRESH_PERFORMANCE_SCHEMA_VERSION = (
+    "d1.consistency_counter_refresh_performance.v1"
+)
 FUSED_TRACK_PUBLICATION_AUDIT_SCHEMA_VERSION = (
     "d1.fused_track_publication_audit.v2"
 )
@@ -547,6 +550,145 @@ def compare_coalesced_release_performance_sources(
     }
 
 
+def compare_consistency_counter_refresh_variants(
+    source: str | Path,
+    *,
+    profile_directory: str | Path | None = None,
+) -> dict[str, Any]:
+    """Compare full record revalidation with validated replay-counter copies."""
+
+    release_groups, input_summary = load_frozen_sensor_scan_release_groups(source)
+    profile_root = None if profile_directory is None else Path(profile_directory)
+    reference = run_coalesced_release_schedule_variant(
+        release_groups,
+        variant="full_consistency_record_revalidation",
+        adapter_options={"trusted_consistency_counter_refresh": False},
+        profile_path=(
+            None if profile_root is None else profile_root / "reference.prof"
+        ),
+    )
+    optimized = run_coalesced_release_schedule_variant(
+        release_groups,
+        variant="validated_consistency_counter_copy",
+        adapter_options={"trusted_consistency_counter_refresh": True},
+        profile_path=(
+            None if profile_root is None else profile_root / "optimized.prof"
+        ),
+    )
+
+    reference_ops = reference["operation_totals"]
+    optimized_ops = optimized["operation_totals"]
+    acceptance = {
+        "per_scan_state_covariance_timestamp_lineage_and_level_equivalence": (
+            optimized["per_scan_semantic_digests"]
+            == reference["per_scan_semantic_digests"]
+        ),
+        "final_track_equivalence": (
+            optimized["final_tracks_sha256"]
+            == reference["final_tracks_sha256"]
+        ),
+        "consistency_evidence_equivalence": (
+            optimized["consistency_evidence_sha256"]
+            == reference["consistency_evidence_sha256"]
+        ),
+        "operation_counts_preserved": all(
+            int(optimized_ops[name]) == int(reference_ops[name])
+            for name in _BATCH_OPERATION_FIELDS
+        ),
+        "cumulative_diagnostics_preserved": (
+            optimized["cumulative_diagnostics"]
+            == reference["cumulative_diagnostics"]
+        ),
+        "materialization_schedule_preserved": (
+            optimized["materialized_snapshot_count"]
+            == reference["materialized_snapshot_count"]
+            and optimized["state_only_scan_count"]
+            == reference["state_only_scan_count"]
+        ),
+        "scan_and_observation_count_preserved": (
+            optimized["scan_count"] == reference["scan_count"]
+            and optimized["observation_count"] == reference["observation_count"]
+        ),
+        "cached_consistency_refresh_exercised": (
+            int(
+                optimized["cumulative_diagnostics"][
+                    "cached_consistency_refresh_count"
+                ]
+            )
+            > 0
+        ),
+        "online_truth_use_count_zero": input_summary["online_truth_use_count"] == 0,
+    }
+    return {
+        "schema_version": CONSISTENCY_COUNTER_REFRESH_PERFORMANCE_SCHEMA_VERSION,
+        "input": input_summary,
+        "reference": reference,
+        "optimized": optimized,
+        "comparison": {
+            "fusion_wall_time_speedup": (
+                float(reference["process_wall_time_s"])
+                / float(optimized["process_wall_time_s"])
+                if float(optimized["process_wall_time_s"]) > 0.0
+                else None
+            ),
+            "acceptance": acceptance,
+            "passed": all(acceptance.values()),
+        },
+    }
+
+
+def compare_consistency_counter_refresh_sources(
+    sources: Sequence[str | Path],
+    *,
+    profile_directory: str | Path | None = None,
+) -> dict[str, Any]:
+    """Run strict replay-counter A/B across deterministic frozen seeds."""
+
+    source_paths = tuple(Path(item) for item in sources)
+    if not source_paths:
+        raise ValueError("at least one frozen source is required")
+    runs = [
+        compare_consistency_counter_refresh_variants(
+            source,
+            profile_directory=profile_directory if index == 0 else None,
+        )
+        for index, source in enumerate(source_paths)
+    ]
+    reference_times = [
+        float(item["reference"]["process_wall_time_s"]) for item in runs
+    ]
+    optimized_times = [
+        float(item["optimized"]["process_wall_time_s"]) for item in runs
+    ]
+    speedups = [
+        before / after for before, after in zip(reference_times, optimized_times)
+    ]
+    candidate_faster_count = sum(
+        after < before
+        for before, after in zip(reference_times, optimized_times)
+    )
+    semantic_passed = all(item["comparison"]["passed"] for item in runs)
+    aggregate_speedup = fmean(reference_times) / fmean(optimized_times)
+    stable_wall_time_improvement = (
+        candidate_faster_count == len(runs) and aggregate_speedup >= 1.02
+    )
+    return {
+        "schema_version": CONSISTENCY_COUNTER_REFRESH_PERFORMANCE_SCHEMA_VERSION,
+        "runs": runs,
+        "aggregate": {
+            "run_count": len(runs),
+            "reference_mean_fusion_wall_time_s": fmean(reference_times),
+            "optimized_mean_fusion_wall_time_s": fmean(optimized_times),
+            "aggregate_fusion_wall_time_speedup": aggregate_speedup,
+            "per_run_fusion_wall_time_speedups": speedups,
+            "candidate_faster_count": candidate_faster_count,
+            "semantic_and_operation_acceptance_passed": semantic_passed,
+            "stable_wall_time_improvement": stable_wall_time_improvement,
+            "passed": semantic_passed and stable_wall_time_improvement,
+        },
+    }
+
+
 def audit_fused_track_publications(source: str | Path) -> dict[str, Any]:
     """Audit legacy full snapshots and explicit state-only D1 publications."""
 
@@ -691,6 +833,27 @@ def write_coalesced_release_performance_report(
     )
 
 
+def write_consistency_counter_refresh_performance_report(
+    report: Mapping[str, Any],
+    *,
+    json_path: str | Path,
+    markdown_path: str | Path,
+) -> None:
+    json_destination = Path(json_path)
+    markdown_destination = Path(markdown_path)
+    json_destination.parent.mkdir(parents=True, exist_ok=True)
+    markdown_destination.parent.mkdir(parents=True, exist_ok=True)
+    json_destination.write_text(
+        json.dumps(report, ensure_ascii=False, indent=2, default=_json_default)
+        + "\n",
+        encoding="utf-8",
+    )
+    markdown_destination.write_text(
+        _consistency_counter_refresh_markdown_report(report),
+        encoding="utf-8",
+    )
+
+
 def _coalesced_scan_semantic_digest(adapter: Any, result: Any) -> str:
     summary = result.summary.to_dict()
     for name in _BATCH_OPERATION_FIELDS:
@@ -749,12 +912,24 @@ def _internal_posterior_snapshot(adapter: Any) -> dict[str, Any]:
                 "accepted_observer_scan_keys": tuple(
                     sorted(record.accepted_observer_scan_keys)
                 ),
+                "track_level": adapter._classify(record).value,
             }
         )
     return {
         "current_time": adapter.current_time,
         "next_track_id": adapter._next_track_id,
         "records": records,
+        "consistency_lineage_records": [
+            {
+                "observation_id": item.observation_id,
+                "evidence_id": item.evidence_id,
+                "source_lineage": item.source_lineage,
+                "measurement_timestamp": item.measurement_timestamp,
+                "arrival_timestamp": item.arrival_timestamp,
+                "source_global_track_id": item.source_global_track_id,
+            }
+            for item in adapter.consistency_evidence_records()
+        ],
     }
 
 
@@ -837,6 +1012,9 @@ def _profile_summary(path: Path) -> dict[str, Any]:
         "_to_global_track",
         "covariance_a95",
         "pinv",
+        "_refresh_cached_consistency_evidence_if_enabled",
+        "with_replay_counters",
+        "replace",
     }
     selected: dict[str, dict[str, float | int]] = {}
     for (_, _, function_name), values in stats.stats.items():
@@ -972,6 +1150,97 @@ def _coalesced_release_markdown_report(report: Mapping[str, Any]) -> str:
             "",
             "结果证明当前冻结三维质点输入上的语义等价和本机性能收益。它不证明 AirSim 实时性、"
             "真实雷达精度、正式系统容量或 200 对 200 闭环实时性。",
+            "",
+        ]
+    )
+    return "\n".join(lines)
+
+
+def _consistency_counter_refresh_markdown_report(
+    report: Mapping[str, Any],
+) -> str:
+    aggregate = report["aggregate"]
+    runs = report["runs"]
+    lines = [
+        "# D1 一致性证据计数刷新性能基准",
+        "",
+        "## 结论",
+        "",
+        (
+            f"冻结输入共 {aggregate['run_count']} 个 seed。完整记录重验路径纯融合墙钟均值为 "
+            f"{aggregate['reference_mean_fusion_wall_time_s']:.3f} 秒，受限计数复制路径为 "
+            f"{aggregate['optimized_mean_fusion_wall_time_s']:.3f} 秒，均值加速 "
+            f"{aggregate['aggregate_fusion_wall_time_speedup']:.3f} 倍。"
+        ),
+        (
+            "每一扫描的状态、协方差、时间戳、来源谱系和航迹分级，以及终态航迹、"
+            "逐观测一致性证据和全部融合操作计数均执行严格比较。"
+        ),
+        "",
+        "## 分 seed 结果",
+        "",
+        "| 输入 | 扫描/观测 | 完整重验 / s | 受限复制 / s | 加速 | 一致性刷新 | 语义验收 |",
+        "| --- | ---: | ---: | ---: | ---: | ---: | --- |",
+    ]
+    for item in runs:
+        source = Path(item["input"]["source_path"])
+        reference = item["reference"]
+        optimized = item["optimized"]
+        refresh_count = optimized["cumulative_diagnostics"][
+            "cached_consistency_refresh_count"
+        ]
+        lines.append(
+            f"| `{source.parent.name}` | {optimized['scan_count']:,}/"
+            f"{optimized['observation_count']:,} | "
+            f"{reference['process_wall_time_s']:.3f} | "
+            f"{optimized['process_wall_time_s']:.3f} | "
+            f"{item['comparison']['fusion_wall_time_speedup']:.3f}x | "
+            f"{refresh_count:,} | "
+            f"{'通过' if item['comparison']['passed'] else '失败'} |"
+        )
+
+    first = runs[0]
+    reference_profile = first["reference"].get("profile")
+    optimized_profile = first["optimized"].get("profile")
+    if reference_profile is not None and optimized_profile is not None:
+        before = reference_profile["selected_functions"]
+        after = optimized_profile["selected_functions"]
+        lines.extend(
+            [
+                "",
+                "## 代表 seed 剖析",
+                "",
+                "cProfile 绝对时间受剖析开销影响，仅用于定位调用链。",
+                "",
+                "| 函数 | 完整重验累计 / s | 受限复制累计 / s |",
+                "| --- | ---: | ---: |",
+            ]
+        )
+        for name in (
+            "_refresh_cached_consistency_evidence_if_enabled",
+            "replace",
+            "with_replay_counters",
+            "_replay_record",
+            "process_scan_batch",
+        ):
+            lines.append(
+                f"| `{name}` | "
+                f"{float(before.get(name, {}).get('cumulative_time_s', 0.0)):.3f} | "
+                f"{float(after.get(name, {}).get('cumulative_time_s', 0.0)):.3f} |"
+            )
+
+    lines.extend(
+        [
+            "",
+            "## 实施边界",
+            "",
+            "优化只适用于已通过构造校验、且固定滞后缓存确认估计内容未变化的证据记录。"
+            "新路径仅校验并更新非负的 replay_revision 与 replay_count；观测、估计、协方差、"
+            "可用性、双时间戳、来源谱系和 evidence_id 复用原不可变值。新建证据、滤波更新、"
+            "重复观测、OOSM 标记和不可用记录仍执行完整构造校验。",
+            "",
+            "该结果只证明冻结三维质点输入上的语义等价与本机性能变化。"
+            "实时倍率、长于 10 秒的增长率、AirSim 和真实传感器性能仍需单独验收。",
             "",
         ]
     )

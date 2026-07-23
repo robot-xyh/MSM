@@ -390,6 +390,35 @@ class OnlineConsistencyEvidenceRecord:
             "availability": self.availability.to_dict(),
         }
 
+    def with_replay_counters(
+        self,
+        *,
+        replay_revision: int,
+        replay_count: int,
+    ) -> "OnlineConsistencyEvidenceRecord":
+        """Copy a validated record while changing only replay counters.
+
+        Cached fixed-lag replay leaves every measurement, estimate, covariance,
+        availability, timestamp, and lineage field unchanged. Re-running the
+        complete constructor validation for that case is redundant and costly.
+        The source instance has already passed ``__post_init__``; this method
+        therefore validates the only two changed fields and copies the frozen
+        slots verbatim. ``evidence_id`` remains valid because replay counters do
+        not participate in its lineage-derived identity.
+        """
+
+        revision = int(replay_revision)
+        count = int(replay_count)
+        if revision < 0 or count < 0:
+            raise ValueError("replay_revision and replay_count must be non-negative")
+
+        refreshed = object.__new__(type(self))
+        for name in self.__slots__:
+            object.__setattr__(refreshed, name, getattr(self, name))
+        object.__setattr__(refreshed, "replay_revision", revision)
+        object.__setattr__(refreshed, "replay_count", count)
+        return refreshed
+
     @classmethod
     def from_mapping(cls, payload: Mapping[str, Any]) -> "OnlineConsistencyEvidenceRecord":
         _reject_unknown_keys(

@@ -642,6 +642,60 @@ def _association_adapters(
     )
 
 
+def test_trusted_consistency_counter_refresh_matches_full_validation_per_scan() -> None:
+    reference = Scalable3DFusionAdapter(
+        association_gate=40.0,
+        buffer_horizon=0.5,
+        trusted_consistency_counter_refresh=False,
+    )
+    optimized = Scalable3DFusionAdapter(
+        association_gate=40.0,
+        buffer_horizon=0.5,
+        trusted_consistency_counter_refresh=True,
+    )
+    scans = (
+        _radar_scan(
+            4,
+            measurement_timestamp=0.0,
+            arrival_timestamp=0.1,
+            scan_id="consistency-refresh-origin",
+        ),
+        _eo_scan(
+            4,
+            measurement_timestamp=0.2,
+            arrival_timestamp=0.3,
+            scan_id="consistency-refresh-eo",
+        ),
+        _radar_scan(
+            4,
+            measurement_timestamp=1.0,
+            arrival_timestamp=1.1,
+            scan_id="consistency-refresh-fixed-lag",
+        ),
+        _eo_scan(
+            4,
+            measurement_timestamp=0.4,
+            arrival_timestamp=1.2,
+            scan_id="consistency-refresh-oosm",
+        ),
+    )
+
+    for scan in scans:
+        reference_result = reference.process_scan_batch(scan)
+        optimized_result = optimized.process_scan_batch(scan)
+        _assert_semantically_equal(
+            reference,
+            optimized,
+            reference_result,
+            optimized_result,
+        )
+
+    reference_diagnostics = reference.fusion_performance_diagnostics().to_dict()
+    optimized_diagnostics = optimized.fusion_performance_diagnostics().to_dict()
+    assert optimized_diagnostics == reference_diagnostics
+    assert optimized_diagnostics["cached_consistency_refresh_count"] > 0
+
+
 @pytest.mark.parametrize("target_count", [1, 7, 200])
 def test_scan_association_model_cache_is_exact_and_reduces_model_builds(
     target_count: int,

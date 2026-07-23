@@ -380,6 +380,7 @@ class FusionAdapter:
         fixed_lag_checkpoint_suffix_reuse: bool = True,
         trusted_replay_checkpoint_prefix: bool = True,
         cached_consistency_prefix_refresh: bool = True,
+        trusted_consistency_counter_refresh: bool = True,
     ) -> None:
         self.process_noise = float(process_noise)
         self.bucket_size = float(bucket_size)
@@ -459,6 +460,9 @@ class FusionAdapter:
         )
         self.cached_consistency_prefix_refresh = bool(
             cached_consistency_prefix_refresh
+        )
+        self.trusted_consistency_counter_refresh = bool(
+            trusted_consistency_counter_refresh
         )
         self.tracks: dict[str, TrackRecord] = {}
         self.sensor_health: dict[str, SensorHealthState] = {}
@@ -2197,11 +2201,18 @@ class FusionAdapter:
         previous = self._consistency_evidence.get(observation.observation_id)
         if previous is None or previous.source_global_track_id != record.track_id:
             return False
-        self._consistency_evidence[observation.observation_id] = replace(
-            previous,
-            replay_revision=context[1],
-            replay_count=previous.replay_count + 1,
-        )
+        if self.trusted_consistency_counter_refresh:
+            refreshed = previous.with_replay_counters(
+                replay_revision=context[1],
+                replay_count=previous.replay_count + 1,
+            )
+        else:
+            refreshed = replace(
+                previous,
+                replay_revision=context[1],
+                replay_count=previous.replay_count + 1,
+            )
+        self._consistency_evidence[observation.observation_id] = refreshed
         if self._batch_context is not None:
             self._batch_context.cached_consistency_refresh_count += 1
         return True

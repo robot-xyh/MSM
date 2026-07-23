@@ -9,6 +9,7 @@ from d1_sensor_fusion import (
     SensorObservation,
     audit_fused_track_publications,
     compare_long_duration_variants,
+    compare_consistency_counter_refresh_variants,
 )
 from d1_sensor_fusion.observations import radar_covariance_from_range, radar_h
 
@@ -155,6 +156,27 @@ def test_frozen_long_duration_benchmark_and_publication_audit(tmp_path: Path) ->
     assert audit["unique_fusion_timestamp_count"] == 2
     assert audit["consecutive_unchanged_snapshot_count"] == 1
     assert audit["coalescible_same_fusion_timestamp_count"] == 1
+
+
+def test_consistency_counter_refresh_benchmark_preserves_strict_semantics(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "online_observations.jsonl"
+    _write_frozen_input(source)
+
+    report = compare_consistency_counter_refresh_variants(source)
+
+    assert report["comparison"]["passed"] is True
+    assert all(report["comparison"]["acceptance"].values())
+    assert report["reference"]["operation_totals"] == report["optimized"][
+        "operation_totals"
+    ]
+    assert (
+        report["optimized"]["cumulative_diagnostics"][
+            "cached_consistency_refresh_count"
+        ]
+        > 0
+    )
 
 
 def test_publication_audit_distinguishes_state_only_and_materialized_records(
