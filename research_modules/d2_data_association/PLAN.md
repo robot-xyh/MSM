@@ -125,20 +125,28 @@ D2 只负责离线科研仿真、日志回放和多目标数据关联评估。�
   drop 后清理。公开 DTO 只携带
   blocker count、水位线和 overflow，不携带 key。`known_false_alarm/unknown` 必须由不
   读取离线 truth sidecar 的上游传感器处置产生。
-- **本轮验收边界**：D2 完整模块回归为 `281 passed, 1 warning in 29.46s`，专项另覆盖 37 目标
-  动态规模、旧候选 key 在 reservation 释放后重入、同水位线新 key、严格更晚新 key 和
-  未来来源时刻拒绝、容量溢出。该结果只完成 D2-owned typed payload、状态迁移和 evaluator 语义。main 仍需
-  把 `identity_commitment_by_track` 原子持久化到每个 D2 track/frame，随后才能复跑
-  clean seed 1100。在该复跑证明严格指标 available、在线 truth use 为 0、D2/D3
-  可用性不退化之前，结构歧义候选继续默认关闭，P1 集成门槛保持开放。
+- **本轮验收边界**：D2 完整模块回归为 `286 passed, 1 warning in 29.01s`，专项另覆盖
+  37 目标动态规模、旧候选 key 在 reservation 释放后重入、同水位线新 key、严格更晚
+  新 key、未来来源时刻拒绝、容量溢出和 v2 审计重算。该结果完成 D2-owned typed
+  payload、状态迁移和 evaluator 语义。
 - **2026-07-23 evaluator v2 审计已完成**：
   `d2.scalable3d_identity_evaluation.v2` 嵌入受 evidence bundle SHA-256 约束的
   `identity_evidence_records`，并由每条 `IdentityEvidenceCommitment` 重算 all-record
   与 created/matched observed-record 两套承诺分母、reason counts、恢复阻断器数量、
   水位线年龄和 overflow。loader 对聚合篡改、负水位线年龄和未提交候选/来源绑定失败
-  关闭。v1 继续输出 legacy unavailable/`None`。D2 全量回归为
-  `286 passed, 1 warning in 29.22s`；main/D6 尚未消费这些新字段，也未执行 clean
-  seed 1100 A/B，因此系统 P1 状态不变。
+  关闭。v1 继续输出 legacy unavailable/`None`。
+- **clean seed 1100 v2 门槛已执行，候选仍拒绝**：main 与 D6 已在 clean 提交
+  `909669b` 原子持久化并消费 v2 字段。nominal 200v200、2.2 s、`recon_count=2`
+  baseline 为 D2 航迹 203、D3 分配 200、strict IDSW 9、track continuity `0.865`、
+  coverage continuity `0.870`、承诺覆盖率 `1.0`。candidate 为 D2 航迹 201、D3
+  分配 197、all-record commitment coverage `0.9591494124`，状态计数为
+  committed 1714、active hold 69、after hold 4；未提交 source/candidate binding
+  violation 均为 0，online truth use 为 0。
+- **准入阻断保持**：三个恢复航迹 `GT3D-000185/000186/000202` 的新原始雷达量测
+  `measurement_timestamp=1.2 s`，在评分帧 `2.130815 s` 超出固定 `0.9 s` lineage
+  window 约 `0.030815 s`，因此 candidate strict IDSW/continuity 仍 unavailable。
+  不扩大 `0.9 s` window。合同和 fail-closed 行为已通过，算法候选未通过指标可用性和
+  D2/D3 非退化门槛；默认关闭并停止 seeds 1101/1102。
 
 ## 3. 输入输出合同
 
@@ -1198,3 +1206,40 @@ D2-owned schema、load/write/hash、评估和诊断实现已闭合。main/传感
 观测全集实际写出 v2，尤其是 `_append_false_alarms` 产生的视觉虚警；随后重跑
 seed 1000--1019。D1 的真实多目标混轨不因虚警处置被跳过，strict IDSW 只有在混轨、
 unknown、冲突、缺标签和时间问题全部消失后才可用。
+
+## 32. 身份承诺 v2 clean seed 1100 复核
+
+### 32.1 已完成
+
+1. main 在 clean 提交 `909669b` 上完成 nominal 200v200、2.2 s、
+   `recon_count=2`、seed 1100（首个预留的未见 gate seed）的 baseline/candidate A/B；
+   运行制品位于
+   `/tmp/MSM-identity-commitment-ab-909669b/{baseline,candidate}`。
+2. baseline 为 D2 航迹 203、D3 分配 200、strict IDSW 9、track continuity
+   `0.865`、coverage continuity `0.870`，all-record commitment coverage 为 `1.0`。
+3. candidate 为 D2 航迹 201、D3 分配 197。1787 条 evidence 中 1714 条 committed、
+   73 条 uncommitted，all-record commitment coverage 为 `0.9591494124`；未提交记录
+   分为 69 条 active hold 和 4 条 after hold。
+4. candidate 的未提交 source binding violation 与 candidate binding violation 均为
+   0，online truth use 为 0。该结果确认 v2 原子持久化、公开审计和 fail-closed 约束按
+   合同执行。
+
+### 32.2 未通过项
+
+`GT3D-000185`、`GT3D-000186`、`GT3D-000202` 已由新原始雷达观测恢复 committed。
+三条观测的 `measurement_timestamp=1.2 s`，评分帧为 `2.130815 s`，对应谱系年龄
+约 `0.930815 s`，比固定 `0.9 s` lineage window 多约 `0.030815 s`。candidate 的
+strict IDSW、track/identity continuity 和 coverage continuity 因
+`source_observation_outside_lineage_window` 保持 unavailable。D2 航迹和 D3 分配也
+分别比 baseline 少 2 条和 3 条，未满足业务可用性非退化门槛。
+
+### 32.3 后续计划
+
+1. 结构歧义候选保持 `enabled=False`，停止 seeds 1101/1102；本轮不进入 AirSim 或扩展
+   seed 晋级试验。
+2. 固定 `0.9 s` lineage window 不扩大。后续先分析评分帧与恢复量测之间约
+   `0.030815 s` 的调度、发布和评分边界，修复必须保持谱系唯一性和时间合同。
+3. 下一候选仍需在同 seed 同时满足 strict identity metrics available、online truth
+   use 为 0、未提交绑定违规为 0、D2/D3 可用性不退化，才允许启动后续未见 seed。
+4. 文档与评审必须持续区分两项结论：身份承诺 v2 合同已实现并通过 fail-closed 验证；
+   结构歧义算法候选尚未通过准入。

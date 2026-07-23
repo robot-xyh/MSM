@@ -99,21 +99,32 @@ v1 构造和序列化保持原样。
 `known_false_alarm/unknown` 在本合同中只表示不读取离线 truth sidecar 的上游传感器
 处置。D2 在线路径不从 actor/truth label 推导该字段。
 
-2026-07-23 D2 完整回归为 `281 passed, 1 warning in 29.46s`。专项覆盖 hold、到期、旧 key 在
+2026-07-23 D2 当前完整回归为 `286 passed, 1 warning in 29.01s`。专项覆盖 hold、到期、旧 key 在
 reservation 释放后重入、同水位线新 key、更晚新 key、容量溢出、重复、超龄、已知假警、
-未知处置、未来来源时刻、新鲜恢复、无 hold 正常路径、37 目标和 v1/v2 评分。该证据只关闭 D2-owned
-合同缺口。main 持久化、D6 聚合以及 clean seed 1100 重测仍未完成；结构歧义候选默认
-关闭，系统级 P1 继续开放。
+未知处置、未来来源时刻、新鲜恢复、无 hold 正常路径、37 目标、v1/v2 评分和 audit
+独立重算。该证据关闭 D2-owned 合同缺口。
+
+main 和 D6 已在 clean 提交 `909669b` 完成 v2 原子持久化、聚合，以及以首个预留的
+未见 gate seed 1100 开展的 A/B。
+baseline 的 D2 航迹/D3 分配为 `203/200`，strict IDSW、track continuity、coverage
+continuity 为 `9/0.865/0.870`，承诺覆盖率为 `1.0`。candidate 为 `201/197`；
+all-record commitment coverage `0.9591494124`，1714 条 committed、73 条
+uncommitted，其中 69 条 active hold、4 条 after hold。未提交 source/candidate
+binding violation 均为 0，online truth use 为 0。
+
+三个恢复航迹 `GT3D-000185/000186/000202` 的新原始雷达量测时刻为 `1.2 s`，在
+`2.130815 s` 评分时超过固定 `0.9 s` lineage window 约 `0.030815 s`。candidate
+strict IDSW/continuity 仍 unavailable。评审接受 v2 合同和 fail-closed 行为，不接受
+算法晋级；候选保持默认关闭，seeds 1101/1102 停止，且不得扩大 `0.9 s` window。
 
 ## 0. P0/P1 缺口快照
 
 - **P0**：无开放 blocker。GNN/Hungarian、显式 `id_switch_count`、`track_continuity`、risk summary、replay helper、按输入集合长度运行、航迹质量评分、运动一致性约束和 quality-aware gate baseline 已是当前主线。seed1005 v3 验收已允许 replay=0 或有界 replay，见第 32 节。
 - **P1 合同层已闭合**：D1 governed adapter、online/offline truth 分离、association log/profile version、`d2-offline-truth-label/v1`、N-target dense/crossing fixture、至少 10-seed runner、availability-aware summary、M-of-N/false-track/NIS/NEES 接口及中心 canonical registry 基础已回归。
-- **结构歧义保持集成 P1 仍开放**：D2-owned 可评分 commitment v2 合同已经实现并
-  通过模块回归；main/D6 尚未持久化和聚合。seed 1100 的旧候选仍有 D2 tracks、
-  D3 assignments 和 mapping availability 退化，尚未按 v2 重测。该候选继续默认关闭；
-  window/lease 联合标定和同 seed 业务可用性门槛未完成，单独放宽 `0.9 s` window
-  不构成修复。
+- **结构歧义保持集成 P1 仍开放**：D2-owned commitment v2、main 持久化和 D6 聚合
+  已实现；seed 1100 已按 v2 重测。未提交绑定违规和在线 truth use 均为 0，但三个恢复
+  航迹超出固定 lineage window `0.030815 s`，strict 指标仍不可用，D2/D3 数量也从
+  `203/200` 降至 `201/197`。候选继续默认关闭；扩大 `0.9 s` window 不构成修复。
 - **P1 完整冻结 v2 证据已生成，长期标定仍开放**：最佳 GNN 候选 IDSW `1.358333 -> 0.616667`（下降 `54.6012%`），continuity `0.981046 -> 0.983954`，P95 `15.470 ms`；false-track/truth leakage 均为 0。总体联合 gate 全部通过，`promotion_recommended=true`；分档仅 clutter/combined 通过，另外四档 baseline IDSW=0 fail-closed。后续 P1 是跨模块评审、更长 OOSM/遮挡/杂波和生命周期标定，不再是缺少 v2 联合报告。
 - **历史基线**：2026-07-10 的 5v5/2v2 批次和 2026-07-11 早期的 seeds 7/17/27 当时不足以关闭 D2 P1，且 T001 双 primary 尚未通过。这些只作为实施前/过渡基线，不代表当前状态。
 - **当前 ComputerVision 证据**：M=5、N=2 的 10 seeds 中，T001 双 primary 共识/计划授权为 8/10；D2 `id_switch_count=0`、错误 duplicate=0、`global_track_id` 改写/重绑=0 均为 10/10。
@@ -137,8 +148,9 @@ reservation 释放后重入、同水位线新 key、更晚新 key、容量溢出
   `2.928830 -> 2.204672 s`，但早/晚 regular 窗口比
   `1.119661x -> 1.123036x`。本轮只关闭三个可证明的常数成本热点，长窗口 P1 保持
   开放；该阶段完整 D2 回归为 `234 passed, 1 warning in 34.83s`。歧义保持增量后的
-  保持租约阶段回归为 `271 passed, 1 warning in 28.82s`；身份证据承诺 v2 与恢复
-  水位线加固后当前完整回归为 `281 passed, 1 warning in 29.46s`。
+  保持租约阶段回归为 `271 passed, 1 warning in 28.82s`；身份证据承诺 v2、恢复
+  水位线和 evaluator audit 加固后当前完整回归为
+  `286 passed, 1 warning in 29.01s`。
 
 ## 1. 研究问题
 
@@ -1288,6 +1300,18 @@ anchor 口径未变化。
 record/track `2/1`。D2 完整回归为 `286 passed, 1 warning in 29.22s`，warning 为既有
 Matplotlib `Axes3D` 环境提示。
 
-D2-owned 审计缺口关闭。main 尚未原子持久化真实 episode 的 v2 evidence/evaluation，
-D6 尚未消费新字段，clean seed 1100 和多 seed A/B 尚未重跑。因此结构歧义候选保持
-默认关闭，系统 P1 不因本次模块测试而关闭。
+D2-owned 审计缺口关闭。main 与 D6 随后在 clean 提交 `909669b` 完成真实 scalable
+episode 的 v2 evidence/evaluation 原子持久化、聚合，以及以首个预留的未见 gate
+seed 1100 开展的 A/B。
+
+baseline 的 D2 航迹、D3 分配、strict IDSW、track continuity、coverage continuity
+和 commitment coverage 分别为 `203/200/9/0.865/0.870/1.0`。candidate 的 D2 航迹和
+D3 分配为 `201/197`；1787 条记录中 committed/uncommitted 为 `1714/73`，coverage
+为 `0.9591494124`。73 条未提交记录分为 69 条 active hold 和 4 条 after hold；未提交
+source/candidate binding violation 均为 0，online truth use 为 0。
+
+评审据此接受身份承诺 v2 的系统接线和 fail-closed 合同，不接受结构歧义算法候选晋级。
+`GT3D-000185/000186/000202` 的新原始雷达量测时刻为 `1.2 s`，评分帧为
+`2.130815 s`，约 `0.930815 s` 的谱系年龄超过固定 `0.9 s` window
+`0.030815 s`，使 strict 指标继续 unavailable。固定 window 不扩大。候选保持默认关闭，
+seeds 1101/1102 停止；后续先修复调度/发布/评分边界并复跑同 seed。

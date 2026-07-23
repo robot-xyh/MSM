@@ -86,14 +86,23 @@ dispositions. They must not be populated from the offline AirSim truth sidecar. 
 rejects truth metadata online; AirSim actor identity remains available only to the offline
 evaluator.
 
-Main must next persist `AssociationResult.metadata.identity_commitment_by_track` atomically
-with every D2 track/frame. For v2 uncommitted records it must emit an empty
-`source_observations` list even when the track object still retains historical source keys.
-D6 must aggregate commitment coverage, uncommitted counts, blocked-recovery reasons, blocker
-overflow, and watermark age before the same clean seed 1100 gate is repeated. Increasing the
-current `0.9 s` lineage window alone remains forbidden.
-AirSim execution must wait until the point-mass seed 1100 rerun has available strict metrics,
-zero online truth use, and no D2/D3 availability regression.
+Main and D6 completed that persistence and audit path at clean commit `909669b`. The repeated
+nominal 200v200, 2.2-second, `recon_count=2`, seed-1100 gate, using seed 1100 as the first
+reserved unseen gate seed, produced 203 D2 tracks and 200 D3
+assignments for baseline, versus 201 and 197 for the candidate. Baseline strict IDSW, track
+continuity and coverage continuity were `9`, `0.865` and `0.870`; baseline commitment coverage
+was `1.0`. Candidate all-record commitment coverage was `0.9591494124`, with 1714 committed
+and 73 uncommitted records. The uncommitted records comprised 69 active-hold and four
+after-hold records. Both uncommitted binding-violation counts and online truth use were zero.
+
+The v2 persistence and fail-closed contract therefore passed. Algorithm admission did not.
+Tracks `GT3D-000185`, `GT3D-000186` and `GT3D-000202` recovered on fresh radar observations
+with measurement time `1.2 s`; evaluation occurred at `2.130815 s`. Their approximately
+`0.930815 s` lineage age exceeded the fixed `0.9 s` window by `0.030815 s`, so candidate strict
+IDSW and continuity remained unavailable. The window must not be increased to clear this
+gate. The candidate remains disabled and seeds 1101/1102 remain stopped. Candidate AirSim
+execution must wait for a same-seed repair that preserves zero binding violations and zero
+online truth use while restoring strict metric availability and D2/D3 non-regression.
 
 ## Inputs
 
@@ -488,7 +497,9 @@ main 在持久化 `d2.scalable3d_identity_evidence.v2` 后，应使用同一 evi
 manifest。D6 只读取 evaluation 的 `audit` 和公开
 `identity_evidence_records`，不得读取 tracker 私有 blocked-key 集合。
 
-D6 后续需分别汇总 all-record 与 created/matched observed-record coverage、恢复拒绝
-reason counts、blocker count、水位线年龄和 overflow。两个未提交 binding violation
-字段必须恒为 0。当前 D2 producer/loader 和模块测试已完成；main runtime 持久化、
-D6 报告接入、真实 AirSim episode 与 clean seed 1100 A/B 尚未执行。
+D6 已在 clean 提交 `909669b` 汇总 all-record 与 created/matched observed-record
+coverage、恢复拒绝原因、blocker count、水位线年龄、overflow 和两个未提交 binding
+violation 字段。seed 1100 candidate 的两个 violation 均为 0，但三个恢复航迹的
+`1.2 s` 新雷达量测在 `2.130815 s` 评分时超过固定 `0.9 s` lineage window
+`0.030815 s`，strict 指标仍不可用。本候选真实 AirSim episode 与扩展 seeds 1101/1102
+尚未执行；候选在同 seed 恢复严格指标可用性和 D2/D3 非退化前保持禁用。

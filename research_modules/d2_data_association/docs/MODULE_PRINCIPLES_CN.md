@@ -1538,3 +1538,23 @@ clean source commit `0d2da25` 的 seed 1000 只读复算中，严格 IDSW 保持
    从记录和帧 mapping 重算审计，拒绝缺字段或篡改值。
 6. **跨空档锚点口径不变**：IDSW 继续比较未提交空档前后相邻的 committed truth
    anchors。未提交帧降低覆盖率，不成为正确身份锚点，也不切断可证明的前后比较。
+
+## 三十三、身份承诺准入原则（2026-07-23）
+
+1. **合同通过不等于算法准入**：clean seed 1100 已证明未提交帧不携带 source 或 truth
+   candidate binding，两个违规计数均为 0，在线 truth use 为 0。这些结果只确认身份承诺
+   v2 的 fail-closed 行为。
+2. **准入同时检查身份和业务可用性**：baseline 的 D2 航迹、D3 分配、strict IDSW、
+   track continuity 和 coverage continuity 分别为 `203/200/9/0.865/0.870`；
+   candidate 的 D2 航迹和 D3 分配为 `201/197`，strict 指标 unavailable。即使承诺审计
+   完整，候选也不能晋级。
+3. **承诺覆盖率必须带分母解释**：candidate 全部 1787 条记录中 1714 条 committed、
+   73 条 uncommitted，coverage 为 `0.9591494124`。73 条未提交记录由 69 条 active hold
+   和 4 条 after hold 组成；不能只报告覆盖率而省略状态分布。
+4. **固定谱系窗口不能为单个候选放宽**：三个恢复航迹的新原始雷达量测时刻为 `1.2 s`，
+   评分帧为 `2.130815 s`，谱系年龄约 `0.930815 s`。它超过固定 `0.9 s` window
+   `0.030815 s`，strict 指标按合同不可用。后续应修复调度、发布或评分边界，不能扩大
+   window 来制造可用指标。
+5. **后续未见 seed 由首个 gate seed 控制**：seed 1100 是首个预留的未见 gate seed；
+   它未同时满足 strict 指标可用、D2/D3 非退化和绑定违规为 0，因此扩展 seeds
+   1101/1102 停止。候选继续默认关闭。

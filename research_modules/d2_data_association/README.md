@@ -37,14 +37,25 @@ D2 是 C-UAS 多目标数据关联研究模块，目标是在离线仿真和日�
   中；IDSW 继续比较未提交空窗前后的 committed 锚点。普通
   `source_lineage_missing`、未来/超窗观测、未知标签和冲突谱系仍 fail-closed。
   audit 新增 commitment coverage、状态计数、未提交 mapping 数和候选绑定违规数。
-- 2026-07-23 模块回归为 `281 passed, 1 warning in 29.46s`，验收阈值为零失败。专项覆盖活动
+- 2026-07-23 模块回归为 `286 passed, 1 warning in 29.01s`，验收阈值为零失败。专项覆盖活动
   hold、租约释放后旧候选 key 重入仍阻断、不同 key 但时间未越过水位线仍阻断、更晚新
   key 恢复、容量溢出 fail-closed、未来来源时刻/重复/超龄/已知假警/未知处置不恢复、无
   hold 正常路径、37 目标动态规模、v1 round-trip 和跨未提交空窗 IDSW/coverage。warning 是本机
   Matplotlib `Axes3D` 环境问题。
-- 已实现和已测试仅指 D2-owned 合同与状态机。main 尚未把 v2 payload 写入 scalable
-  episode，D6 尚未聚合 commitment coverage，clean seed 1100 A/B 也尚未复跑。
-  候选继续默认关闭，不能据此宣称 lineage blocker、D3 分配退化或系统晋级已经关闭。
+- 提交 `909669b` 已完成 main 原子持久化、D6 v2 聚合，以及以首个预留的未见 gate
+  seed 1100 开展的 clean A/B。场景为
+  nominal 200v200、2.2 s、`recon_count=2`。baseline 输出 D2 航迹 203、D3 分配 200、
+  strict IDSW 9、track continuity `0.865`、coverage continuity `0.870`，承诺覆盖率
+  `1.0`。
+- candidate 输出 D2 航迹 201、D3 分配 197；1787 条全部记录中 1714 条 committed、
+  73 条 uncommitted，承诺覆盖率 `0.9591494124`。未提交状态包括 69 条 active hold 和
+  4 条 after hold；未提交 source/candidate binding violation 均为 0，在线 truth use
+  为 0。合同持久化和 fail-closed 行为通过。
+- candidate 的 strict IDSW、track continuity 和 coverage continuity 仍为 unavailable。
+  `GT3D-000185`、`GT3D-000186`、`GT3D-000202` 在评分帧 `2.130815 s` 使用的新原始
+  雷达量测时刻为 `1.2 s`，比固定 `0.9 s` lineage window 多 `0.030815 s`。不得扩大
+  该窗口作为修复。候选未满足指标可用性和 D2/D3 非退化门槛，继续默认关闭；seeds
+  1101/1102 停止。上述结论证明合同实现，不构成算法准入。
 
 ### 2026-07-23 D1 结构歧义保持租约候选
 
@@ -98,14 +109,10 @@ D2 是 C-UAS 多目标数据关联研究模块，目标是在离线仿真和日�
   track/identity continuity `0.865` 和 coverage continuity `0.870` 作数值比较。
   在线 truth use 为 0。
 - 2026-07-23 D2 完整模块结果为 `271 passed, 1 warning in 28.82s`，验收阈值为零
-  失败；warning 是环境 Matplotlib `Axes3D` 导入问题。该结果只证明模块合同和不变式，
-  不证明系统级 IDSW、continuity 或航迹数改善。seed 1100 候选未达到晋级门槛，
-  seeds 1101/1102 已停止，默认 `enabled=False` 保持。下一轮先定义歧义保活帧的
-  可评分谱系合同：用 `identity_uncommitted/ambiguity_hold` 区分普通
-  `lineage_missing`，保留分量和证据审计，但不把候选观测硬分给
-  `global_track_id`。该合同冻结后再联合校准 lineage window 与 lease，并排查映射和
-  分配退化。禁止仅放宽当前 `0.9 s` window 作为准入修复或晋级依据；通过同 seed 门槛
-  后才恢复多 seed。
+  失败；warning 是环境 Matplotlib `Axes3D` 导入问题。该段记录身份承诺 v2 实现前的
+  历史门槛，当时由此确定需要把歧义保活帧与普通 `lineage_missing` 分离。该合同现已
+  实现并完成同 seed v2 复测，当前判定见本文件开头。候选仍未晋级，且禁止仅放宽
+  `0.9 s` window。
 
 ### 2026-07-23 clean `4ac3bb2` seed 1000 profiler 与等价优化
 

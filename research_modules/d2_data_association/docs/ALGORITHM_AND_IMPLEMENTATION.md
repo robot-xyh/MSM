@@ -394,11 +394,24 @@ recovery_blocker_overflow
 越界、未知标签、冲突 claim 和非法 lifecycle 继续 fail-closed。audit 另输出 commitment
 coverage、各状态计数、未提交 mapping 数和未提交候选绑定违规数。
 
-2026-07-23 模块回归为 `281 passed, 1 warning in 29.46s`。新增回归明确覆盖 reservation 释放后
-同一旧 key 再送入、不同 key 但 source measurement timestamp 不晚于水位线、严格更晚
-新 key 恢复、未来来源时刻拒绝，以及容量溢出持续 fail-closed。该证据只验证 D2-owned 状态机、v1/v2
-兼容和 evaluator 口径。main 尚未持久化 v2，D6 尚未聚合新字段，同 seed 1100 clean
-A/B 尚未复跑。
+2026-07-23 模块回归为 `286 passed, 1 warning in 29.01s`。新增回归明确覆盖 reservation
+释放后同一旧 key 再送入、不同 key 但 source measurement timestamp 不晚于水位线、
+严格更晚新 key 恢复、未来来源时刻拒绝、容量溢出持续 fail-closed，以及 v2 audit 的
+独立重算和篡改拒绝。
+
+main 与 D6 随后在 clean 提交 `909669b` 完成 nominal 200v200、2.2 s、
+`recon_count=2`、seed 1100（首个预留的未见 gate seed）的 v2 A/B。baseline 的
+D2/D3 数量为 `203/200`，strict
+IDSW、track continuity、coverage continuity 分别为 `9/0.865/0.870`，承诺覆盖率
+`1.0`。candidate 的 D2/D3 数量为 `201/197`；全部 1787 条记录中 committed 1714、
+uncommitted 73，承诺覆盖率 `0.9591494124`。69 条未提交处于 active hold，4 条处于
+after hold；未提交 source/candidate binding violation 均为 0，online truth use 为 0。
+
+三条恢复航迹 `GT3D-000185/000186/000202` 使用的新原始雷达量测时刻为 `1.2 s`，评分
+帧为 `2.130815 s`。约 `0.930815 s` 的谱系年龄超过固定 `0.9 s` window
+`0.030815 s`，使 candidate strict IDSW 和 continuity 仍为 unavailable。该结果验证
+上述状态机、v1/v2 兼容、evaluator 口径和 fail-closed 绑定约束，但没有通过算法准入。
+不得通过扩大 `0.9 s` window 消除阻断；候选保持默认关闭，seeds 1101/1102 停止。
 
 ## 4. 默认算法主线
 
