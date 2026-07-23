@@ -1845,3 +1845,44 @@ mapping、完整 frame、adjacent-transition coverage 分别为 `178531/181110`�
 `103/959`、`1149/187800`，lower bound 合计 199/15215 anchor intervals。strict IDSW
 仍为 0/20 可用。这组数据把单 seed 接口验证扩展为批量描述性证据，但较低的 frame/transition
 coverage 仍不足以支持身份性能判决。
+
+## 13. 身份提交证据、严格 IDSW 与局部不可用原则（2026-07-23）
+
+身份提交是“本帧 D2 是否允许发布可绑定身份”的证据，不是 ID Switch 计数本身。D6 必须把
+三类证据分开：
+
+1. strict `id_switch_count` 只来自 D2 冻结 evaluation metrics；
+2. commitment coverage 描述 committed/uncommitted 记录覆盖；
+3. partial diagnostics 描述不完整谱系下可证明的覆盖率和 IDSW lower bound。
+
+因此，uncommitted gap 会进入 all-record 或 observed-record 分母并降低 coverage，但不能被解释
+为“没有切换”，也不能生成 `IDSW=0`。D2 若在 gap 前后发布 committed anchors，其 strict
+比较结果由 `compare_consecutive_committed_truth_anchors_across_uncommitted_gaps` policy
+给出；D6 只消费该值，不读取在线 truth，不重放候选绑定，不改写 `global_track_id`。
+
+v2 commitment 只有在以下证据同时成立时才可聚合：
+
+- evaluation、evidence、commitment 和 audit schema/policy 精确匹配；
+- evaluation 四类 source hash 合法，内嵌 records 重建出的规范 evidence bundle SHA-256
+  与 `identity_evidence_bundle` 相同；
+- all/observed denominator 满足
+  `committed + uncommitted = denominator`，coverage 与 count 一致；
+- state/reason/recovery-blocked counts 可从逐记录重算；
+- blocker summary 与 watermark age summary 有限，水位线年龄非负，overflow
+  record/track 不越界且与唯一 track 集合一致；
+- uncommitted mapping 不含 truth candidate、source observation/lineage 或 evidence count，
+  两个 binding violation count 都为 0。
+
+v1 没有 commitment 语义。D6 即使看到兼容 `record_count=0/state_counts={}`，仍把所有 commitment
+metrics 设为 `None/unavailable`，避免把“合同不存在”伪造成“存在且结果为零”。
+
+runtime join 同样遵守局部不可用原则。合法 v2 assignment window 命中显式 uncommitted 时，
+只关闭该 binding 的 identity mapping、truth-state window、距离与 proximity 诊断，并保留
+track、frame timestamp、commitment reason 和 policy details；不得借用窗口前后的 truth
+mapping。episode 中其他合法 binding 可继续评估。缺 schema/字段、SHA 篡改或 audit 矛盾不是
+局部缺测，而是证据合同破坏，必须拒绝输入。
+
+2026-07-23 上述原则已由 D6 单元/集成 fixture 验证，全量为
+`598 passed, 1 warning in 21.44s`，验收阈值零失败。本轮没有运行 AirSim，也没有执行新的
+clean seed 1100 A/B；implemented/tested 仅指 D6-owned consumer、聚合、报告和 runtime join
+行为，不表示候选性能或系统 promotion GAP 已关闭。

@@ -29,6 +29,14 @@ from .observation_truth_sidecar import (
     TRUTH_DISPOSITION_UNKNOWN,
     audit_observation_truth_sidecar,
 )
+from .truth_isolated_offline import (
+    D2_SCALABLE_3D_IDENTITY_EVALUATION_SCHEMA_VERSION_V1,
+    D2_SCALABLE_3D_IDENTITY_EVALUATION_SCHEMA_VERSION_V2,
+    D2_SCALABLE_3D_IDENTITY_POLICY_VERSION_V1,
+    D2_SCALABLE_3D_IDENTITY_POLICY_VERSION_V2,
+    TruthIsolatedEvaluationError,
+    validate_d2_identity_commitment_evaluation,
+)
 
 
 RUNTIME_PLAN_OUTCOME_INPUT_SCHEMA_VERSION = (
@@ -49,8 +57,18 @@ D7_GUIDANCE_SCHEMA = "d7-scalable3d-guidance-v1"
 D2_IDENTITY_MANIFEST_SCHEMA = (
     "scalable3d-offline-identity-evaluation-manifest-v1"
 )
-D2_IDENTITY_EVALUATION_SCHEMA = "d2.scalable3d_identity_evaluation.v1"
-D2_IDENTITY_POLICY = "d2.scalable3d_identity_policy.v1"
+D2_IDENTITY_EVALUATION_SCHEMA = (
+    D2_SCALABLE_3D_IDENTITY_EVALUATION_SCHEMA_VERSION_V1
+)
+D2_IDENTITY_EVALUATION_SCHEMA_V2 = (
+    D2_SCALABLE_3D_IDENTITY_EVALUATION_SCHEMA_VERSION_V2
+)
+D2_IDENTITY_POLICY = D2_SCALABLE_3D_IDENTITY_POLICY_VERSION_V1
+D2_IDENTITY_POLICY_V2 = D2_SCALABLE_3D_IDENTITY_POLICY_VERSION_V2
+_D2_IDENTITY_POLICY_BY_SCHEMA = {
+    D2_IDENTITY_EVALUATION_SCHEMA: D2_IDENTITY_POLICY,
+    D2_IDENTITY_EVALUATION_SCHEMA_V2: D2_IDENTITY_POLICY_V2,
+}
 EPISODE_BUS_SCHEMA = "scalable3d-episode-bus-v1"
 SCENARIO_SCHEMA = "scalable3d-scenario-v1"
 WORLD_SCHEMA = "scalable3d-world-v1"
@@ -293,6 +311,7 @@ class _TruthState:
 @dataclass(frozen=True, slots=True)
 class _IdentityIndex:
     lineage_time_window_s: float
+    evaluation_schema_version: str
     by_global_track_id: Mapping[
         str,
         tuple[tuple[float, Mapping[str, Any]], ...],
@@ -571,11 +590,7 @@ def render_runtime_plan_outcome_join_markdown(
                 decision=item["decision_id"],
                 resource=item["resource_id"],
                 track=item["global_track_id"],
-                truth=(
-                    identity.get("truth_target_id")
-                    if identity.get("available")
-                    else f"不可用（{identity.get('reason')}）"
-                ),
+                truth=_format_identity_mapping(identity),
                 start=_format_metric(item.get("start_3d_distance_m")),
                 minimum=_format_metric(item.get("min_3d_distance_m")),
                 correct=_format_bool(item.get("assigned_pair_proximity_event_observed")),
@@ -607,6 +622,18 @@ def _disposition_count(payload: Mapping[str, Any], name: str) -> str:
         reason = item.get("reason") if isinstance(item, Mapping) else "unavailable"
         return f"不可用（{reason}）"
     return str(item.get("count"))
+
+
+def _format_identity_mapping(payload: Mapping[str, Any]) -> str:
+    if payload.get("available"):
+        return str(payload.get("truth_target_id"))
+    details = payload.get("details")
+    detail_text = (
+        ""
+        if not isinstance(details, list) or not details
+        else "；" + "；".join(str(value) for value in details)
+    )
+    return f"不可用（{payload.get('reason')}{detail_text}）"
 
 
 def _verify_all_inputs(
@@ -1304,9 +1331,11 @@ def _load_and_validate_d2_identity(
         "unsupported_d2_identity_manifest_schema",
         "D2 identity manifest schema is unsupported",
     )
+    evaluation_schema = str(evaluation.get("schema_version", ""))
     _expect(
-        evaluation.get("schema_version") == D2_IDENTITY_EVALUATION_SCHEMA
-        and evaluation.get("policy_version") == D2_IDENTITY_POLICY
+        evaluation_schema in _D2_IDENTITY_POLICY_BY_SCHEMA
+        and evaluation.get("policy_version")
+        == _D2_IDENTITY_POLICY_BY_SCHEMA.get(evaluation_schema)
         and evaluation.get("hash_algorithm") == "sha256",
         "unsupported_d2_identity_evaluation_contract",
         "D2 identity evaluation schema, policy, or hash algorithm is unsupported",
@@ -1358,6 +1387,19 @@ def _load_and_validate_d2_identity(
             _normalise_sha256(evaluation_hashes.get(name)) == expected,
             "d2_evaluation_source_hash_mismatch",
             f"D2 evaluation source hash mismatch for {name}",
+        )
+    try:
+        validate_d2_identity_commitment_evaluation(
+            evaluation,
+            source_hashes={
+                str(name): _normalise_sha256(value)
+                for name, value in evaluation_hashes.items()
+            },
+        )
+    except TruthIsolatedEvaluationError as exc:
+        _fail(
+            "d2_identity_commitment_contract_invalid",
+            str(exc),
         )
     audit = _mapping(evaluation.get("audit"), "D2 identity audit")
     _expect(
@@ -1908,6 +1950,7 @@ def _build_identity_index(
             )
     return _IdentityIndex(
         lineage_time_window_s=lineage_window,
+        evaluation_schema_version=str(evaluation.get("schema_version", "")),
         by_global_track_id={
             track_id: tuple(values)
             for track_id, values in by_global_track_id.items()
@@ -1940,6 +1983,33 @@ def _identity_mapping_for_window(
         )
         or math.isclose(item[0], selected_time, abs_tol=1.0e-9)
     ]
+    uncommitted = [
+        (timestamp, item)
+        for timestamp, item in relevant
+        if item.get("status") == "uncommitted"
+    ]
+    if uncommitted:
+        details = [
+            (
+                f"frame_timestamp={timestamp:.12g};status=uncommitted;"
+                f"reason={item.get('reason') or 'identity_uncommitted'};"
+                f"global_track_id={global_track_id}"
+            )
+            for timestamp, item in uncommitted
+        ]
+        return _unavailable_identity(
+            "d2_identity_uncommitted_in_assignment_window",
+            details=details,
+            global_track_id=global_track_id,
+            source_frame_timestamp=selected_time,
+            evidence_frame_count=len(relevant),
+            policy=(
+                "d2_identity_commitment_window_v2"
+                if identity.evaluation_schema_version
+                == D2_IDENTITY_EVALUATION_SCHEMA_V2
+                else "d2_source_observation_lineage_unique_window_v1"
+            ),
+        )
     unavailable = [
         item
         for _, item in relevant
@@ -1997,16 +2067,20 @@ def _unavailable_identity(
     reason: str,
     *,
     details: Sequence[str] = (),
+    global_track_id: str | None = None,
+    source_frame_timestamp: float | None = None,
+    evidence_frame_count: int = 0,
+    policy: str = "d2_source_observation_lineage_unique_window_v1",
 ) -> dict[str, Any]:
     return {
         "available": False,
         "reason": reason,
         "details": list(details),
-        "global_track_id": None,
+        "global_track_id": global_track_id,
         "truth_target_id": None,
-        "policy": "d2_source_observation_lineage_unique_window_v1",
-        "source_frame_timestamp": None,
-        "evidence_frame_count": 0,
+        "policy": policy,
+        "source_frame_timestamp": source_frame_timestamp,
+        "evidence_frame_count": evidence_frame_count,
         "source_observation_ids": [],
         "source_lineage_hashes": [],
         "online_exposure_allowed": False,

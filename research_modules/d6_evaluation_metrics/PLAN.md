@@ -1809,3 +1809,48 @@ availability、假零拒绝和规模分组正确；未运行 AirSim，未运行
    bound 不能关闭 strict 指标 unavailable，也不能支持 promotion、控制切换或算法优劣结论。
 3. 真实 AirSim、遮挡/杂波/漏检/OOSM 和不同目标密度下的 partial coverage 仍无正式证据；D6
    不从当前 nominal 20 seed 结果外推。
+
+## 16. D2 identity commitment v2 接入（2026-07-23）
+
+### 已实现并测试
+
+1. `truth_isolated_offline.py` 按冻结 schema/policy 严格区分 evaluation v1/v2。v1 commitment
+   metrics 全部显式 unavailable；v2 独立复算嵌入 evidence bundle SHA-256、all/observed
+   分母、coverage、state/reason、blocker/watermark/overflow 和 binding violation。
+2. 新 typed commitment record 已进入 episode DTO、逐 seed CSV、aggregate JSON 和中文
+   Markdown；aggregate 对 coverage 使用 committed/denominator micro 口径，对 blocker 和
+   watermark mean 使用 record count 加权，不把 episode coverage 简单平均冒充总体 coverage。
+3. strict IDSW 继续只消费 D2 `metrics.id_switch_count`。跨 uncommitted gap 的 strict 值由
+   D2 冻结 policy 提供；D6 固定输出
+   `strict_id_switch_count_backfilled=false` 和
+   `uncommitted_gap_treated_as_zero_id_switch=false`。
+4. `runtime_plan_outcome_join.py` 已兼容 v2。显式 uncommitted 只关闭命中的 plan binding
+   identity/state/距离诊断，保留 reason/details 且不暴露 truth；普通缺失保持 unavailable，
+   schema、source hash、embedded evidence hash 或 audit 篡改仍全局拒绝。
+5. 测试覆盖合法 v2、v1 compatibility、缺审计字段、分母/coverage 篡改、负水位线年龄、
+   overflow 矛盾、candidate binding 违规、普通 lineage missing、跨空档 strict IDSW 消费、
+   CSV/JSON/Markdown 和 runtime 局部不可用。2026-07-23 D6 全量结果为
+   `598 passed, 1 warning in 21.44s`，零失败。
+
+### main 接线计划
+
+1. main 必须把每帧 `identity_commitment_by_track` 与 D2 track/frame 原子持久化，生成
+   `d2.scalable3d_identity_evidence.v2` 和
+   `d2.scalable3d_identity_evaluation.v2`；不得丢弃 evaluation 内嵌
+   `identity_evidence_records` 或降级伪装为 v1。
+2. 调用 `build_truth_isolated_episode_record()` 时传入 evaluation path、外部 evaluation
+   SHA-256、四类 `expected_source_hashes`、identity manifest path 和 manifest SHA-256。
+   runtime join 的 input spec 继续提供 11 类独立 `HashedArtifact`。
+3. uncommitted mapping 必须保持 truth candidate、source observation/lineage 和三个 evidence
+   count 为空/零；main 不得从 tracker 历史 key、actor 名称、距离或 truth sidecar 回填。
+4. 接线后先重跑 clean seed 1100 baseline/candidate，再决定是否继续多 seed。验收必须同时
+   检查 strict IDSW availability、all/observed commitment coverage、D2 track count、D3
+   assignment count、两个 binding violation 为 0 和 online truth use 为 0。
+
+### 仍开放 P1
+
+- clean seed 1100 新 v2 A/B 尚未执行，当前没有新的业务或性能数值；本轮只关闭 D6 consumer
+  和报告合同 GAP。
+- 真实 AirSim、多 seed、多规模、困难谱系和长时 blocker/watermark/overflow 分布仍需 main
+  生成冻结制品。commitment coverage 不能替代 strict IDSW、partial lower bound、物理成功或
+  promotion gate。

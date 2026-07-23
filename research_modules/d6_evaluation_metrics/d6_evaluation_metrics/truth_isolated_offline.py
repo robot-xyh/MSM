@@ -38,6 +38,9 @@ D6_D2_IDENTITY_ADAPTER_SCHEMA_VERSION = (
 D6_D2_PARTIAL_IDENTITY_ADAPTER_SCHEMA_VERSION = (
     "d6.d2_scalable3d_partial_identity_adapter.v1"
 )
+D6_D2_IDENTITY_COMMITMENT_ADAPTER_SCHEMA_VERSION = (
+    "d6.d2_scalable3d_identity_commitment_adapter.v1"
+)
 D6_TRUTH_ISOLATED_EVALUATION_DATE = "2026-07-23"
 
 D1_OFFLINE_CONSISTENCY_RESULT_SCHEMA_VERSION = (
@@ -49,14 +52,38 @@ D1_OFFLINE_CONSISTENCY_RECORD_SCHEMA_VERSION = (
 D1_OFFLINE_CONSISTENCY_AGGREGATION_SCHEMA_VERSION = (
     "d1.consistency.offline_aggregation_record.v1"
 )
-D2_SCALABLE_3D_IDENTITY_EVALUATION_SCHEMA_VERSION = (
+D2_SCALABLE_3D_IDENTITY_EVALUATION_SCHEMA_VERSION_V1 = (
     "d2.scalable3d_identity_evaluation.v1"
+)
+D2_SCALABLE_3D_IDENTITY_EVALUATION_SCHEMA_VERSION_V2 = (
+    "d2.scalable3d_identity_evaluation.v2"
+)
+D2_SCALABLE_3D_IDENTITY_EVALUATION_SCHEMA_VERSION = (
+    D2_SCALABLE_3D_IDENTITY_EVALUATION_SCHEMA_VERSION_V1
 )
 D2_SCALABLE_3D_IDENTITY_METRICS_SCHEMA_VERSION = (
     "d2.scalable3d_identity_metrics.v1"
 )
-D2_SCALABLE_3D_IDENTITY_POLICY_VERSION = (
+D2_SCALABLE_3D_IDENTITY_POLICY_VERSION_V1 = (
     "d2.scalable3d_identity_policy.v1"
+)
+D2_SCALABLE_3D_IDENTITY_POLICY_VERSION_V2 = (
+    "d2.scalable3d_identity_commitment_policy.v2"
+)
+D2_SCALABLE_3D_IDENTITY_POLICY_VERSION = (
+    D2_SCALABLE_3D_IDENTITY_POLICY_VERSION_V1
+)
+D2_SCALABLE_3D_IDENTITY_EVIDENCE_SCHEMA_VERSION_V2 = (
+    "d2.scalable3d_identity_evidence.v2"
+)
+D2_IDENTITY_EVIDENCE_COMMITMENT_SCHEMA_VERSION_V2 = (
+    "d2.identity-evidence-commitment.v2"
+)
+D2_IDENTITY_EVIDENCE_COMMITMENT_POLICY_VERSION_V2 = (
+    "d2-structural-ambiguity-commitment-v2"
+)
+D2_SCALABLE_3D_IDENTITY_COMMITMENT_AUDIT_SCHEMA_VERSION_V2 = (
+    "d2.scalable3d_identity_commitment_audit.v2"
 )
 D2_SCALABLE_3D_PARTIAL_IDENTITY_DIAGNOSTICS_SCHEMA_VERSION = (
     "d2.scalable3d_partial_identity_diagnostics.v1"
@@ -133,6 +160,32 @@ _D2_PARTIAL_COUNT_NAMES = (
     "evaluable_transition_count",
     "lower_bound_anchor_excluded_truth_frame_count",
     "lower_bound_anchor_transition_count",
+)
+_D2_COMMITMENT_METRIC_NAMES = (
+    "all_commitment_coverage",
+    "observed_commitment_coverage",
+    "all_record_count",
+    "all_committed_count",
+    "all_uncommitted_count",
+    "observed_record_count",
+    "observed_committed_count",
+    "observed_uncommitted_count",
+    "uncommitted_mapping_count",
+    "recovery_blocker_record_count",
+    "recovery_blocker_positive_record_count",
+    "recovery_blocker_count_sum",
+    "recovery_blocker_count_min",
+    "recovery_blocker_count_mean",
+    "recovery_blocker_count_max",
+    "recovery_watermark_age_record_count",
+    "recovery_watermark_age_seconds_min",
+    "recovery_watermark_age_seconds_mean",
+    "recovery_watermark_age_seconds_max",
+    "recovery_blocker_overflow_record_count",
+    "recovery_blocker_overflow_track_count",
+    "uncommitted_candidate_binding_count",
+    "uncommitted_candidate_binding_violation_count",
+    "uncommitted_source_binding_violation_count",
 )
 _D2_PARTIAL_PAYLOAD_KEYS = frozenset(
     {
@@ -211,6 +264,98 @@ D2_PARTIAL_IDENTITY_DENOMINATOR_DEFINITIONS = {
         "establish a complete truth-assignment transition universe"
     ),
 }
+D2_IDENTITY_COMMITMENT_DENOMINATOR_POLICY = {
+    "all_records": "all_persisted_v2_identity_evidence_records",
+    "observed_records": (
+        "v2_identity_evidence_records_with_association_state_created_or_matched"
+    ),
+    "committed": "identity_commitment_state_equals_committed",
+    "uncommitted": "all_other_v2_identity_commitment_states",
+    "recovery_blocker_count": (
+        "all_v2_identity_evidence_records_including_zero"
+    ),
+    "watermark_age": (
+        "frame_timestamp_minus_recovery_not_before_measurement_timestamp_"
+        "for_records_with_watermark"
+    ),
+}
+D2_UNCOMMITTED_BINDING_VIOLATION_POLICY = {
+    "candidate": (
+        "uncommitted_frame_mapping_carries_truth_target_or_candidate"
+    ),
+    "source": (
+        "uncommitted_v2_evidence_or_frame_mapping_carries_source_"
+        "observation_lineage"
+    ),
+    "required_value": 0,
+}
+D2_COMMITTED_ANCHOR_ACROSS_UNCOMMITTED_GAP_POLICY = (
+    "compare_consecutive_committed_truth_anchors_across_uncommitted_gaps"
+)
+_D2_EVALUATION_POLICY_BY_SCHEMA = {
+    D2_SCALABLE_3D_IDENTITY_EVALUATION_SCHEMA_VERSION_V1: (
+        D2_SCALABLE_3D_IDENTITY_POLICY_VERSION_V1
+    ),
+    D2_SCALABLE_3D_IDENTITY_EVALUATION_SCHEMA_VERSION_V2: (
+        D2_SCALABLE_3D_IDENTITY_POLICY_VERSION_V2
+    ),
+}
+_D2_COMMITMENT_STATES = frozenset(
+    {
+        "committed",
+        "identity_uncommitted_ambiguity_hold",
+        "identity_uncommitted_after_hold",
+    }
+)
+_D2_OBSERVED_ASSOCIATION_STATES = frozenset({"created", "matched"})
+_D2_V2_EVIDENCE_RECORD_KEYS = frozenset(
+    {
+        "schema_version",
+        "episode_id",
+        "frame_index",
+        "frame_timestamp",
+        "global_track_id",
+        "lifecycle_state",
+        "association_state",
+        "identity_commitment",
+        "source_observations",
+        "d1_record_sequences",
+        "d2_record_sequence",
+    }
+)
+_D2_V2_COMMITMENT_KEYS = frozenset(
+    {
+        "schema_version",
+        "policy_version",
+        "global_track_id",
+        "association_state",
+        "identity_commitment_state",
+        "reason",
+        "state_timestamp",
+        "commitment_generation",
+        "measurement_timestamp",
+        "arrival_timestamp",
+        "source_observation_evidence_key",
+        "source_observation_evidence_generation",
+        "source_observation_disposition",
+        "ambiguity_component_key",
+        "ambiguity_evidence_id",
+        "ambiguity_component_generation",
+        "publisher_node_id",
+        "publisher_epoch",
+        "active_lease_count",
+        "active_lease_keys",
+        "lease_first_seen_timestamp",
+        "lease_soft_deadline",
+        "lease_hard_deadline",
+        "lease_expired_timestamp",
+        "lease_expiration_reason",
+        "recovery_blocker_count",
+        "recovery_not_before_measurement_timestamp",
+        "recovery_blocker_overflow",
+        "online_truth_used",
+    }
+)
 _SHA256_PREFIX = "sha256:"
 
 
@@ -281,6 +426,198 @@ class PublicMetricEvidence:
             "unavailability_reason_counts": dict(
                 self.unavailability_reason_counts or {}
             ),
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class D2IdentityCommitmentEvidenceRecord:
+    """D6-owned, availability-aware view of D2 identity commitment audit v2."""
+
+    available: bool
+    unavailable_reason: str | None
+    metrics: Mapping[str, PublicMetricEvidence]
+    state_counts: Mapping[str, int]
+    reason_counts: Mapping[str, int]
+    recovery_blocked_reason_counts: Mapping[str, int]
+    denominator_policy: Mapping[str, Any] | None
+    uncommitted_binding_violation_policy: Mapping[str, Any] | None
+    committed_anchor_across_uncommitted_gap_policy: str | None
+    producer_evaluation_schema_version: str | None
+    producer_evaluation_policy_version: str | None
+    producer_evidence_schema_version: str | None
+    producer_commitment_schema_version: str | None
+    producer_commitment_policy_version: str | None
+    producer_audit_schema_version: str | None
+    evidence_bundle_sha256_verified: bool
+    schema_version: str = (
+        D6_D2_IDENTITY_COMMITMENT_ADAPTER_SCHEMA_VERSION
+    )
+
+    def __post_init__(self) -> None:
+        if (
+            self.schema_version
+            != D6_D2_IDENTITY_COMMITMENT_ADAPTER_SCHEMA_VERSION
+        ):
+            raise ValueError("unsupported D2 identity commitment adapter schema")
+        available = bool(self.available)
+        reason = (
+            None
+            if self.unavailable_reason is None
+            else str(self.unavailable_reason).strip()
+        )
+        metrics = dict(self.metrics)
+        if set(metrics) != set(_D2_COMMITMENT_METRIC_NAMES):
+            raise ValueError("D2 identity commitment metric set is incomplete")
+        state_counts = _validated_count_mapping(
+            self.state_counts,
+            "D2 identity commitment state counts",
+        )
+        reason_counts = _validated_count_mapping(
+            self.reason_counts,
+            "D2 identity commitment reason counts",
+        )
+        blocked_reasons = _validated_count_mapping(
+            self.recovery_blocked_reason_counts,
+            "D2 identity commitment recovery blocked reasons",
+        )
+        if available:
+            if reason is not None:
+                raise ValueError(
+                    "available D2 identity commitment evidence cannot carry a reason"
+                )
+            if (
+                self.producer_evaluation_schema_version
+                != D2_SCALABLE_3D_IDENTITY_EVALUATION_SCHEMA_VERSION_V2
+                or self.producer_evaluation_policy_version
+                != D2_SCALABLE_3D_IDENTITY_POLICY_VERSION_V2
+                or self.producer_evidence_schema_version
+                != D2_SCALABLE_3D_IDENTITY_EVIDENCE_SCHEMA_VERSION_V2
+                or self.producer_commitment_schema_version
+                != D2_IDENTITY_EVIDENCE_COMMITMENT_SCHEMA_VERSION_V2
+                or self.producer_commitment_policy_version
+                != D2_IDENTITY_EVIDENCE_COMMITMENT_POLICY_VERSION_V2
+                or self.producer_audit_schema_version
+                != D2_SCALABLE_3D_IDENTITY_COMMITMENT_AUDIT_SCHEMA_VERSION_V2
+            ):
+                raise ValueError(
+                    "available D2 identity commitment evidence has incompatible versions"
+                )
+            if not self.evidence_bundle_sha256_verified:
+                raise ValueError(
+                    "available D2 identity commitment evidence requires SHA provenance"
+                )
+            if self.denominator_policy != D2_IDENTITY_COMMITMENT_DENOMINATOR_POLICY:
+                raise ValueError(
+                    "D2 identity commitment denominator policy is inconsistent"
+                )
+            if (
+                self.uncommitted_binding_violation_policy
+                != D2_UNCOMMITTED_BINDING_VIOLATION_POLICY
+            ):
+                raise ValueError(
+                    "D2 uncommitted binding violation policy is inconsistent"
+                )
+            if (
+                self.committed_anchor_across_uncommitted_gap_policy
+                != D2_COMMITTED_ANCHOR_ACROSS_UNCOMMITTED_GAP_POLICY
+            ):
+                raise ValueError(
+                    "D2 committed-anchor gap policy is inconsistent"
+                )
+        else:
+            if not reason:
+                raise ValueError(
+                    "unavailable D2 identity commitment evidence requires a reason"
+                )
+            if any(metric.available for metric in metrics.values()):
+                raise ValueError(
+                    "unavailable D2 identity commitment evidence exposes metrics"
+                )
+            if state_counts or reason_counts or blocked_reasons:
+                raise ValueError(
+                    "unavailable D2 identity commitment evidence exposes counts"
+                )
+            if self.evidence_bundle_sha256_verified:
+                raise ValueError(
+                    "unavailable D2 identity commitment evidence cannot verify SHA provenance"
+                )
+        object.__setattr__(self, "available", available)
+        object.__setattr__(self, "unavailable_reason", reason)
+        object.__setattr__(self, "metrics", dict(sorted(metrics.items())))
+        object.__setattr__(self, "state_counts", state_counts)
+        object.__setattr__(self, "reason_counts", reason_counts)
+        object.__setattr__(
+            self,
+            "recovery_blocked_reason_counts",
+            blocked_reasons,
+        )
+        object.__setattr__(
+            self,
+            "denominator_policy",
+            (
+                None
+                if self.denominator_policy is None
+                else dict(self.denominator_policy)
+            ),
+        )
+        object.__setattr__(
+            self,
+            "uncommitted_binding_violation_policy",
+            (
+                None
+                if self.uncommitted_binding_violation_policy is None
+                else dict(self.uncommitted_binding_violation_policy)
+            ),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema_version": self.schema_version,
+            "availability": "available" if self.available else "unavailable",
+            "available": self.available,
+            "unavailable_reason": self.unavailable_reason,
+            "producer_evaluation_schema_version": (
+                self.producer_evaluation_schema_version
+            ),
+            "producer_evaluation_policy_version": (
+                self.producer_evaluation_policy_version
+            ),
+            "producer_evidence_schema_version": (
+                self.producer_evidence_schema_version
+            ),
+            "producer_commitment_schema_version": (
+                self.producer_commitment_schema_version
+            ),
+            "producer_commitment_policy_version": (
+                self.producer_commitment_policy_version
+            ),
+            "producer_audit_schema_version": (
+                self.producer_audit_schema_version
+            ),
+            "evidence_bundle_sha256_verified": (
+                self.evidence_bundle_sha256_verified
+            ),
+            "denominator_policy": self.denominator_policy,
+            "state_counts": dict(self.state_counts),
+            "reason_counts": dict(self.reason_counts),
+            "recovery_blocked_reason_counts": dict(
+                self.recovery_blocked_reason_counts
+            ),
+            "uncommitted_binding_violation_policy": (
+                self.uncommitted_binding_violation_policy
+            ),
+            "committed_anchor_across_uncommitted_gap_policy": (
+                self.committed_anchor_across_uncommitted_gap_policy
+            ),
+            "metrics": {
+                name: metric.to_dict()
+                for name, metric in self.metrics.items()
+            },
+            "strict_id_switch_count_backfilled": False,
+            "uncommitted_gap_treated_as_zero_id_switch": False,
+            "offline_only": True,
+            "evaluator_only": True,
+            "control_consumed": False,
         }
 
 
@@ -591,6 +928,8 @@ class D2IdentityEvaluationRecord:
     """D6-normalized view of one public D2 identity evaluation artifact."""
 
     episode_id: str
+    producer_schema_version: str | None
+    producer_policy_version: str | None
     metrics: Mapping[str, PublicMetricEvidence]
     evaluated_frame_count: int
     truth_frame_count: Mapping[str, int]
@@ -606,6 +945,7 @@ class D2IdentityEvaluationRecord:
     source_verification: str
     configuration: Mapping[str, Any]
     audit: Mapping[str, Any]
+    identity_commitment: D2IdentityCommitmentEvidenceRecord
     partial_identity_diagnostics: D2PartialIdentityDiagnosticsRecord
     verification_mode: str
     schema_version: str = D6_D2_IDENTITY_ADAPTER_SCHEMA_VERSION
@@ -637,6 +977,13 @@ class D2IdentityEvaluationRecord:
                 _validated_confusion_matrix(self.confusion_matrix),
             )
         if not isinstance(
+            self.identity_commitment,
+            D2IdentityCommitmentEvidenceRecord,
+        ):
+            raise ValueError(
+                "D2 identity commitment evidence uses an unsupported type"
+            )
+        if not isinstance(
             self.partial_identity_diagnostics,
             D2PartialIdentityDiagnosticsRecord,
         ):
@@ -650,9 +997,8 @@ class D2IdentityEvaluationRecord:
     def to_dict(self) -> dict[str, Any]:
         return {
             "schema_version": self.schema_version,
-            "producer_schema_version": (
-                D2_SCALABLE_3D_IDENTITY_EVALUATION_SCHEMA_VERSION
-            ),
+            "producer_schema_version": self.producer_schema_version,
+            "producer_policy_version": self.producer_policy_version,
             "episode_id": self.episode_id,
             "artifact_digest": self.artifact_digest,
             "external_file_sha256": self.external_file_sha256,
@@ -695,6 +1041,7 @@ class D2IdentityEvaluationRecord:
             "partial_identity_diagnostics": (
                 self.partial_identity_diagnostics.to_dict()
             ),
+            "identity_commitment": self.identity_commitment.to_dict(),
             "audit": dict(self.audit),
         }
 
@@ -917,14 +1264,16 @@ def adapt_d2_scalable_3d_identity(
         expected_sha256=expected_sha256,
         artifact_name="D2 scalable 3D identity evaluation",
     )
-    if (
-        payload.get("schema_version")
-        != D2_SCALABLE_3D_IDENTITY_EVALUATION_SCHEMA_VERSION
-    ):
+    producer_schema_version = str(payload.get("schema_version", ""))
+    if producer_schema_version not in _D2_EVALUATION_POLICY_BY_SCHEMA:
         raise TruthIsolatedEvaluationError(
             "unsupported D2 identity evaluation schema"
         )
-    if payload.get("policy_version") != D2_SCALABLE_3D_IDENTITY_POLICY_VERSION:
+    producer_policy_version = str(payload.get("policy_version", ""))
+    if (
+        producer_policy_version
+        != _D2_EVALUATION_POLICY_BY_SCHEMA[producer_schema_version]
+    ):
         raise TruthIsolatedEvaluationError("unsupported D2 identity policy")
     if payload.get("hash_algorithm") != "sha256":
         raise TruthIsolatedEvaluationError("D2 identity artifact requires sha256")
@@ -973,6 +1322,10 @@ def adapt_d2_scalable_3d_identity(
     ):
         raise TruthIsolatedEvaluationError("unsupported D2 identity metrics schema")
     audit = dict(_mapping(payload.get("audit"), "D2 identity audit"))
+    identity_commitment = validate_d2_identity_commitment_evaluation(
+        payload,
+        source_hashes=source_hashes,
+    )
     source_verification = str(audit.get("source_verification", "")).strip()
     truth_isolation_verified = (
         audit.get("online_truth_isolation_verified") is True
@@ -1082,6 +1435,8 @@ def adapt_d2_scalable_3d_identity(
     )
     return D2IdentityEvaluationRecord(
         episode_id=_identifier(payload.get("episode_id"), "D2 episode_id"),
+        producer_schema_version=producer_schema_version,
+        producer_policy_version=producer_policy_version,
         metrics=metrics,
         evaluated_frame_count=evaluated_frame_count,
         truth_frame_count=truth_frame_count if retain_truth_details else {},
@@ -1105,9 +1460,913 @@ def adapt_d2_scalable_3d_identity(
             payload.get("configuration", {}), "D2 identity configuration"
         ),
         audit=audit,
+        identity_commitment=identity_commitment,
         partial_identity_diagnostics=partial_identity_diagnostics,
         verification_mode=verification_mode,
     )
+
+
+def validate_d2_identity_commitment_evaluation(
+    payload: Mapping[str, Any],
+    *,
+    source_hashes: Mapping[str, str] | None = None,
+) -> D2IdentityCommitmentEvidenceRecord:
+    """Independently validate the frozen D2 v1/v2 commitment boundary.
+
+    D6 never derives identity or IDSW here.  For v2 it reconstructs the
+    embedded evidence-bundle digest and every commitment audit aggregate.  For
+    v1 it emits an explicitly unavailable record even when the producer
+    carries legacy compatibility counters.
+    """
+
+    schema = str(payload.get("schema_version", ""))
+    policy = str(payload.get("policy_version", ""))
+    expected_policy = _D2_EVALUATION_POLICY_BY_SCHEMA.get(schema)
+    if expected_policy is None:
+        raise TruthIsolatedEvaluationError(
+            "unsupported D2 identity evaluation schema"
+        )
+    if policy != expected_policy:
+        raise TruthIsolatedEvaluationError(
+            "unsupported D2 identity evaluation policy"
+        )
+    audit = _mapping(payload.get("audit"), "D2 identity audit")
+    if schema == D2_SCALABLE_3D_IDENTITY_EVALUATION_SCHEMA_VERSION_V1:
+        return _validate_d2_identity_commitment_v1(
+            payload=payload,
+            audit=audit,
+            policy=policy,
+        )
+    return _validate_d2_identity_commitment_v2(
+        payload=payload,
+        audit=audit,
+        policy=policy,
+        source_hashes=source_hashes,
+    )
+
+
+def _validate_d2_identity_commitment_v1(
+    *,
+    payload: Mapping[str, Any],
+    audit: Mapping[str, Any],
+    policy: str,
+) -> D2IdentityCommitmentEvidenceRecord:
+    if "identity_evidence_records" in payload:
+        raise TruthIsolatedEvaluationError(
+            "D2 identity evaluation v1 cannot carry v2 evidence records"
+        )
+    legacy_expected = {
+        "identity_commitment_contract_available": False,
+        "identity_commitment_schema_version": None,
+        "identity_commitment_policy_version": None,
+        "identity_commitment_audit_schema_version": None,
+        "identity_commitment_denominator_policy": None,
+        "identity_commitment_record_count": 0,
+        "identity_commitment_state_counts": {},
+        "identity_commitment_coverage": None,
+        "identity_commitment_all_records": None,
+        "identity_commitment_observed_records": None,
+        "identity_commitment_reason_counts": None,
+        "identity_recovery_blocked_reason_counts": None,
+        "identity_recovery_blocker_count_summary": None,
+        "identity_recovery_watermark_age_seconds_summary": None,
+        "identity_recovery_blocker_overflow_record_count": None,
+        "identity_recovery_blocker_overflow_track_count": None,
+        "uncommitted_mapping_count": None,
+        "uncommitted_candidate_binding_count": None,
+        "uncommitted_candidate_binding_violation_count": None,
+        "uncommitted_source_binding_violation_count": None,
+        "uncommitted_binding_violation_policy": None,
+        "identity_switch_anchor_policy": None,
+        "committed_anchor_across_uncommitted_gap_policy": None,
+    }
+    for name, expected in legacy_expected.items():
+        if name in audit and not _commitment_audit_value_matches(
+            audit[name],
+            expected,
+        ):
+            raise TruthIsolatedEvaluationError(
+                f"D2 identity evaluation v1 commitment field must remain "
+                f"unavailable: {name}"
+            )
+    return _unavailable_d2_identity_commitment(
+        "identity_commitment_unavailable_for_d2_evaluation_v1",
+        producer_evaluation_schema_version=(
+            D2_SCALABLE_3D_IDENTITY_EVALUATION_SCHEMA_VERSION_V1
+        ),
+        producer_evaluation_policy_version=policy,
+    )
+
+
+def _validate_d2_identity_commitment_v2(
+    *,
+    payload: Mapping[str, Any],
+    audit: Mapping[str, Any],
+    policy: str,
+    source_hashes: Mapping[str, str] | None,
+) -> D2IdentityCommitmentEvidenceRecord:
+    episode_id = _identifier(payload.get("episode_id"), "D2 episode_id")
+    raw_records = _mapping_sequence(
+        payload.get("identity_evidence_records"),
+        "D2 identity commitment evidence records",
+    )
+    configuration = _mapping(
+        payload.get("configuration", {}),
+        "D2 identity configuration",
+    )
+    tolerance = _d2_commitment_nonnegative_float(
+        configuration.get("timestamp_tolerance_s", 1.0e-9),
+        "D2 identity commitment timestamp_tolerance_s",
+    )
+
+    commitments: list[Mapping[str, Any]] = []
+    observed_commitments: list[Mapping[str, Any]] = []
+    blocker_counts: list[int] = []
+    watermark_ages: list[float] = []
+    overflow_track_ids: set[str] = set()
+    source_binding_violations = 0
+    for raw_record in raw_records:
+        if set(raw_record) != set(_D2_V2_EVIDENCE_RECORD_KEYS):
+            missing = sorted(
+                set(_D2_V2_EVIDENCE_RECORD_KEYS) - set(raw_record)
+            )
+            extra = sorted(set(raw_record) - set(_D2_V2_EVIDENCE_RECORD_KEYS))
+            raise TruthIsolatedEvaluationError(
+                "D2 v2 identity evidence record keys mismatch; "
+                f"missing={missing}, extra={extra}"
+            )
+        if (
+            raw_record.get("schema_version")
+            != D2_SCALABLE_3D_IDENTITY_EVIDENCE_SCHEMA_VERSION_V2
+        ):
+            raise TruthIsolatedEvaluationError(
+                "D2 v2 identity evidence record schema is unsupported"
+            )
+        if raw_record.get("episode_id") != episode_id:
+            raise TruthIsolatedEvaluationError(
+                "D2 v2 identity evidence episode_id mismatch"
+            )
+        _nonnegative_int(
+            raw_record.get("frame_index"),
+            "D2 v2 identity evidence frame_index",
+        )
+        frame_timestamp = _d2_commitment_nonnegative_float(
+            raw_record.get("frame_timestamp"),
+            "D2 v2 identity evidence frame_timestamp",
+        )
+        global_track_id = _identifier(
+            raw_record.get("global_track_id"),
+            "D2 v2 identity evidence global_track_id",
+        )
+        association_state = _identifier(
+            raw_record.get("association_state"),
+            "D2 v2 identity evidence association_state",
+        ).lower()
+        if association_state not in {
+            "created",
+            "matched",
+            "unmatched",
+            "lost",
+            "dropped",
+        }:
+            raise TruthIsolatedEvaluationError(
+                "D2 v2 identity evidence association_state is unsupported"
+            )
+        _identifier(
+            raw_record.get("lifecycle_state"),
+            "D2 v2 identity evidence lifecycle_state",
+        )
+        source_observations = _mapping_sequence(
+            raw_record.get("source_observations"),
+            "D2 v2 identity evidence source_observations",
+        )
+        d1_sequences = raw_record.get("d1_record_sequences")
+        if not isinstance(d1_sequences, Sequence) or isinstance(
+            d1_sequences,
+            (str, bytes),
+        ):
+            raise TruthIsolatedEvaluationError(
+                "D2 v2 d1_record_sequences must be a sequence"
+            )
+        normalized_d1_sequences = [
+            _nonnegative_int(value, "D2 v2 D1 record sequence")
+            for value in d1_sequences
+        ]
+        if len(normalized_d1_sequences) != len(set(normalized_d1_sequences)):
+            raise TruthIsolatedEvaluationError(
+                "D2 v2 D1 record sequences contain duplicates"
+            )
+        if raw_record.get("d2_record_sequence") is not None:
+            _nonnegative_int(
+                raw_record.get("d2_record_sequence"),
+                "D2 v2 D2 record sequence",
+            )
+
+        commitment = _mapping(
+            raw_record.get("identity_commitment"),
+            "D2 v2 identity commitment",
+        )
+        if set(commitment) != set(_D2_V2_COMMITMENT_KEYS):
+            missing = sorted(set(_D2_V2_COMMITMENT_KEYS) - set(commitment))
+            extra = sorted(set(commitment) - set(_D2_V2_COMMITMENT_KEYS))
+            raise TruthIsolatedEvaluationError(
+                "D2 v2 identity commitment keys mismatch; "
+                f"missing={missing}, extra={extra}"
+            )
+        if (
+            commitment.get("schema_version")
+            != D2_IDENTITY_EVIDENCE_COMMITMENT_SCHEMA_VERSION_V2
+            or commitment.get("policy_version")
+            != D2_IDENTITY_EVIDENCE_COMMITMENT_POLICY_VERSION_V2
+        ):
+            raise TruthIsolatedEvaluationError(
+                "D2 v2 identity commitment schema or policy is unsupported"
+            )
+        if commitment.get("online_truth_used") is not False:
+            raise TruthIsolatedEvaluationError(
+                "D2 v2 identity commitment exposed online truth"
+            )
+        if commitment.get("global_track_id") != global_track_id:
+            raise TruthIsolatedEvaluationError(
+                "D2 v2 identity commitment global_track_id mismatch"
+            )
+        if str(commitment.get("association_state", "")).lower() != (
+            association_state
+        ):
+            raise TruthIsolatedEvaluationError(
+                "D2 v2 identity commitment association_state mismatch"
+            )
+        state_timestamp = _d2_commitment_nonnegative_float(
+            commitment.get("state_timestamp"),
+            "D2 v2 identity commitment state_timestamp",
+        )
+        if abs(state_timestamp - frame_timestamp) > 1.0e-9:
+            raise TruthIsolatedEvaluationError(
+                "D2 v2 identity commitment state_timestamp mismatch"
+            )
+        state = str(commitment.get("identity_commitment_state", ""))
+        if state not in _D2_COMMITMENT_STATES:
+            raise TruthIsolatedEvaluationError(
+                "D2 v2 identity commitment state is unsupported"
+            )
+        reason = _identifier(
+            commitment.get("reason"),
+            "D2 v2 identity commitment reason",
+        )
+        _nonnegative_int(
+            commitment.get("commitment_generation"),
+            "D2 v2 identity commitment generation",
+        )
+        _validate_d2_commitment_timestamp_pair(commitment)
+        active_lease_count = _nonnegative_int(
+            commitment.get("active_lease_count"),
+            "D2 v2 identity commitment active_lease_count",
+        )
+        active_lease_keys = commitment.get("active_lease_keys")
+        if not isinstance(active_lease_keys, Sequence) or isinstance(
+            active_lease_keys,
+            (str, bytes),
+        ):
+            raise TruthIsolatedEvaluationError(
+                "D2 v2 identity commitment active_lease_keys must be a sequence"
+            )
+        normalized_lease_keys = [
+            _identifier(value, "D2 v2 identity commitment active lease key")
+            for value in active_lease_keys
+        ]
+        if (
+            len(normalized_lease_keys) != active_lease_count
+            or len(normalized_lease_keys) != len(set(normalized_lease_keys))
+        ):
+            raise TruthIsolatedEvaluationError(
+                "D2 v2 identity commitment active lease count is inconsistent"
+            )
+        blocker_count = _nonnegative_int(
+            commitment.get("recovery_blocker_count"),
+            "D2 v2 identity commitment recovery_blocker_count",
+        )
+        overflow = commitment.get("recovery_blocker_overflow")
+        if not isinstance(overflow, bool):
+            raise TruthIsolatedEvaluationError(
+                "D2 v2 recovery_blocker_overflow must be boolean"
+            )
+        watermark_raw = commitment.get(
+            "recovery_not_before_measurement_timestamp"
+        )
+        watermark = (
+            None
+            if watermark_raw is None
+            else _d2_commitment_nonnegative_float(
+                watermark_raw,
+                "D2 v2 identity recovery watermark",
+            )
+        )
+        if (blocker_count > 0 or overflow) and watermark is None:
+            raise TruthIsolatedEvaluationError(
+                "D2 v2 identity recovery blockers require a watermark"
+            )
+        if state == "committed":
+            if (
+                blocker_count != 0
+                or overflow
+                or watermark is not None
+                or active_lease_count != 0
+            ):
+                raise TruthIsolatedEvaluationError(
+                    "D2 committed identity retains recovery blockers or leases"
+                )
+            if (
+                association_state in _D2_OBSERVED_ASSOCIATION_STATES
+                and not source_observations
+            ):
+                raise TruthIsolatedEvaluationError(
+                    "D2 committed observed identity lacks source observations"
+                )
+        else:
+            if watermark is None:
+                raise TruthIsolatedEvaluationError(
+                    "D2 uncommitted identity requires a recovery watermark"
+                )
+            if commitment.get("source_observation_evidence_key") is not None:
+                source_binding_violations += 1
+            if source_observations:
+                source_binding_violations += 1
+        if watermark is not None:
+            age = frame_timestamp - watermark
+            if not math.isfinite(age) or age < -tolerance:
+                raise TruthIsolatedEvaluationError(
+                    "D2 identity recovery watermark age must be finite and non-negative"
+                )
+            watermark_ages.append(max(age, 0.0))
+        if overflow:
+            overflow_track_ids.add(global_track_id)
+        commitments.append(commitment)
+        blocker_counts.append(blocker_count)
+        if association_state in _D2_OBSERVED_ASSOCIATION_STATES:
+            observed_commitments.append(commitment)
+
+    normalized_source_hashes = (
+        {
+            str(name): _normalized_sha256(value)
+            for name, value in source_hashes.items()
+        }
+        if source_hashes is not None
+        else {
+            str(name): _normalized_sha256(value)
+            for name, value in _mapping(
+                payload.get("source_hashes"),
+                "D2 identity source_hashes",
+            ).items()
+        }
+    )
+    for name in _D2_REQUIRED_SOURCE_HASHES:
+        if name not in normalized_source_hashes:
+            raise TruthIsolatedEvaluationError(
+                f"D2 v2 identity source hash is missing: {name}"
+            )
+    evidence_bundle = {
+        "schema_version": D2_SCALABLE_3D_IDENTITY_EVIDENCE_SCHEMA_VERSION_V2,
+        "policy_version": D2_SCALABLE_3D_IDENTITY_POLICY_VERSION_V2,
+        "hash_algorithm": "sha256",
+        "episode_id": episode_id,
+        "source_hashes": {
+            name: normalized_source_hashes[name]
+            for name in (
+                "online_d1_records",
+                "online_d2_records",
+                "observation_truth_labels",
+            )
+        },
+        "records": [dict(record) for record in raw_records],
+    }
+    if (
+        _canonical_payload_sha256_with_newline(evidence_bundle)
+        != normalized_source_hashes["identity_evidence_bundle"]
+    ):
+        raise TruthIsolatedEvaluationError(
+            "D2 v2 embedded identity evidence bundle SHA-256 mismatch"
+        )
+
+    frames = _mapping_sequence(
+        payload.get("frames"),
+        "D2 identity frames",
+    )
+    uncommitted_mapping_count = 0
+    candidate_binding_violations = 0
+    legacy_combined_binding_count = 0
+    for raw_frame in frames:
+        _nonnegative_int(
+            raw_frame.get("frame_index"),
+            "D2 identity frame_index",
+        )
+        _d2_commitment_nonnegative_float(
+            raw_frame.get("frame_timestamp"),
+            "D2 identity frame_timestamp",
+        )
+        for raw_mapping in _mapping_sequence(
+            raw_frame.get("mappings"),
+            "D2 identity frame mappings",
+        ):
+            if raw_mapping.get("status") != "uncommitted":
+                continue
+            uncommitted_mapping_count += 1
+            required_mapping_fields = {
+                "global_track_id",
+                "truth_target_id",
+                "reason",
+                "candidate_truth_target_ids",
+                "source_observation_ids",
+                "source_lineage_hashes",
+                "evidence_count",
+                "unique_lineage_count",
+                "labeled_evidence_count",
+            }
+            missing = required_mapping_fields - set(raw_mapping)
+            if missing:
+                raise TruthIsolatedEvaluationError(
+                    "D2 uncommitted mapping is missing binding audit fields: "
+                    + ",".join(sorted(missing))
+                )
+            _identifier(
+                raw_mapping.get("global_track_id"),
+                "D2 uncommitted mapping global_track_id",
+            )
+            _identifier(
+                raw_mapping.get("reason"),
+                "D2 uncommitted mapping reason",
+            )
+            candidates = _commitment_sequence(
+                raw_mapping.get("candidate_truth_target_ids"),
+                "D2 uncommitted candidate_truth_target_ids",
+            )
+            source_observations = _commitment_sequence(
+                raw_mapping.get("source_observation_ids"),
+                "D2 uncommitted source_observation_ids",
+            )
+            source_hash_values = _commitment_sequence(
+                raw_mapping.get("source_lineage_hashes"),
+                "D2 uncommitted source_lineage_hashes",
+            )
+            evidence_count = _nonnegative_int(
+                raw_mapping.get("evidence_count"),
+                "D2 uncommitted evidence_count",
+            )
+            unique_lineage_count = _nonnegative_int(
+                raw_mapping.get("unique_lineage_count"),
+                "D2 uncommitted unique_lineage_count",
+            )
+            labeled_evidence_count = _nonnegative_int(
+                raw_mapping.get("labeled_evidence_count"),
+                "D2 uncommitted labeled_evidence_count",
+            )
+            candidate_violation = bool(
+                raw_mapping.get("truth_target_id") or candidates
+            )
+            source_violation = bool(
+                source_observations
+                or source_hash_values
+                or evidence_count
+                or unique_lineage_count
+                or labeled_evidence_count
+            )
+            candidate_binding_violations += int(candidate_violation)
+            source_binding_violations += int(source_violation)
+            legacy_combined_binding_count += int(
+                candidate_violation or source_violation
+            )
+
+    all_summary = _d2_commitment_denominator_summary(commitments)
+    observed_summary = _d2_commitment_denominator_summary(
+        observed_commitments
+    )
+    state_counts = dict(
+        sorted(
+            Counter(
+                str(item["identity_commitment_state"])
+                for item in commitments
+            ).items()
+        )
+    )
+    reason_counts = dict(
+        sorted(Counter(str(item["reason"]) for item in commitments).items())
+    )
+    blocked_reason_counts = {
+        reason: count
+        for reason, count in reason_counts.items()
+        if reason.startswith("identity_recovery_blocked_")
+    }
+    blocker_summary = _d2_commitment_numeric_summary(
+        blocker_counts,
+        count_key="record_count",
+        include_positive_count=True,
+    )
+    watermark_summary = _d2_commitment_numeric_summary(
+        watermark_ages,
+        count_key="count",
+        include_positive_count=False,
+    )
+    overflow_record_count = sum(
+        item.get("recovery_blocker_overflow") is True
+        for item in commitments
+    )
+    expected_audit = {
+        "identity_commitment_contract_available": True,
+        "identity_commitment_schema_version": (
+            D2_IDENTITY_EVIDENCE_COMMITMENT_SCHEMA_VERSION_V2
+        ),
+        "identity_commitment_policy_version": (
+            D2_IDENTITY_EVIDENCE_COMMITMENT_POLICY_VERSION_V2
+        ),
+        "identity_commitment_audit_schema_version": (
+            D2_SCALABLE_3D_IDENTITY_COMMITMENT_AUDIT_SCHEMA_VERSION_V2
+        ),
+        "identity_commitment_denominator_policy": (
+            D2_IDENTITY_COMMITMENT_DENOMINATOR_POLICY
+        ),
+        "identity_commitment_record_count": len(commitments),
+        "identity_commitment_state_counts": state_counts,
+        "identity_commitment_coverage": all_summary["coverage"],
+        "identity_commitment_all_records": all_summary,
+        "identity_commitment_observed_records": observed_summary,
+        "identity_commitment_reason_counts": reason_counts,
+        "identity_recovery_blocked_reason_counts": blocked_reason_counts,
+        "identity_recovery_blocker_count_summary": blocker_summary,
+        "identity_recovery_watermark_age_seconds_summary": watermark_summary,
+        "identity_recovery_blocker_overflow_record_count": (
+            overflow_record_count
+        ),
+        "identity_recovery_blocker_overflow_track_count": len(
+            overflow_track_ids
+        ),
+        "uncommitted_mapping_count": uncommitted_mapping_count,
+        "uncommitted_candidate_binding_count": (
+            legacy_combined_binding_count
+        ),
+        "uncommitted_candidate_binding_violation_count": (
+            candidate_binding_violations
+        ),
+        "uncommitted_source_binding_violation_count": (
+            source_binding_violations
+        ),
+        "uncommitted_binding_violation_policy": (
+            D2_UNCOMMITTED_BINDING_VIOLATION_POLICY
+        ),
+        "identity_switch_anchor_policy": (
+            D2_COMMITTED_ANCHOR_ACROSS_UNCOMMITTED_GAP_POLICY
+        ),
+        "committed_anchor_across_uncommitted_gap_policy": (
+            D2_COMMITTED_ANCHOR_ACROSS_UNCOMMITTED_GAP_POLICY
+        ),
+    }
+    for name, expected in expected_audit.items():
+        if name not in audit:
+            raise TruthIsolatedEvaluationError(
+                f"D2 identity commitment audit is missing required field: {name}"
+            )
+        if not _commitment_audit_value_matches(audit[name], expected):
+            raise TruthIsolatedEvaluationError(
+                "D2 identity commitment audit contradicts embedded v2 "
+                f"evidence: {name}"
+            )
+    if not (
+        0
+        <= overflow_record_count
+        <= len(commitments)
+        and 0
+        <= len(overflow_track_ids)
+        <= overflow_record_count
+    ):
+        raise TruthIsolatedEvaluationError(
+            "D2 identity commitment overflow counts exceed their bounds"
+        )
+    if candidate_binding_violations or source_binding_violations:
+        raise TruthIsolatedEvaluationError(
+            "D2 uncommitted identity binding violation count must be zero"
+        )
+
+    metrics = _d2_identity_commitment_metrics(
+        all_summary=all_summary,
+        observed_summary=observed_summary,
+        uncommitted_mapping_count=uncommitted_mapping_count,
+        blocker_summary=blocker_summary,
+        watermark_summary=watermark_summary,
+        overflow_record_count=overflow_record_count,
+        overflow_track_count=len(overflow_track_ids),
+        uncommitted_candidate_binding_count=legacy_combined_binding_count,
+        candidate_binding_violations=candidate_binding_violations,
+        source_binding_violations=source_binding_violations,
+    )
+    return D2IdentityCommitmentEvidenceRecord(
+        available=True,
+        unavailable_reason=None,
+        metrics=metrics,
+        state_counts=state_counts,
+        reason_counts=reason_counts,
+        recovery_blocked_reason_counts=blocked_reason_counts,
+        denominator_policy=D2_IDENTITY_COMMITMENT_DENOMINATOR_POLICY,
+        uncommitted_binding_violation_policy=(
+            D2_UNCOMMITTED_BINDING_VIOLATION_POLICY
+        ),
+        committed_anchor_across_uncommitted_gap_policy=(
+            D2_COMMITTED_ANCHOR_ACROSS_UNCOMMITTED_GAP_POLICY
+        ),
+        producer_evaluation_schema_version=(
+            D2_SCALABLE_3D_IDENTITY_EVALUATION_SCHEMA_VERSION_V2
+        ),
+        producer_evaluation_policy_version=policy,
+        producer_evidence_schema_version=(
+            D2_SCALABLE_3D_IDENTITY_EVIDENCE_SCHEMA_VERSION_V2
+        ),
+        producer_commitment_schema_version=(
+            D2_IDENTITY_EVIDENCE_COMMITMENT_SCHEMA_VERSION_V2
+        ),
+        producer_commitment_policy_version=(
+            D2_IDENTITY_EVIDENCE_COMMITMENT_POLICY_VERSION_V2
+        ),
+        producer_audit_schema_version=(
+            D2_SCALABLE_3D_IDENTITY_COMMITMENT_AUDIT_SCHEMA_VERSION_V2
+        ),
+        evidence_bundle_sha256_verified=True,
+    )
+
+
+def _validate_d2_commitment_timestamp_pair(
+    commitment: Mapping[str, Any],
+) -> None:
+    measurement_raw = commitment.get("measurement_timestamp")
+    arrival_raw = commitment.get("arrival_timestamp")
+    if (measurement_raw is None) != (arrival_raw is None):
+        raise TruthIsolatedEvaluationError(
+            "D2 commitment measurement and arrival timestamps must be paired"
+        )
+    if measurement_raw is None:
+        return
+    measurement = _d2_commitment_nonnegative_float(
+        measurement_raw,
+        "D2 commitment measurement_timestamp",
+    )
+    arrival = _d2_commitment_nonnegative_float(
+        arrival_raw,
+        "D2 commitment arrival_timestamp",
+    )
+    if arrival + 1.0e-12 < measurement:
+        raise TruthIsolatedEvaluationError(
+            "D2 commitment arrival_timestamp precedes measurement_timestamp"
+        )
+
+
+def _d2_commitment_denominator_summary(
+    commitments: Sequence[Mapping[str, Any]],
+) -> dict[str, Any]:
+    denominator = len(commitments)
+    committed_count = sum(
+        item.get("identity_commitment_state") == "committed"
+        for item in commitments
+    )
+    return {
+        "denominator": denominator,
+        "committed_count": committed_count,
+        "uncommitted_count": denominator - committed_count,
+        "coverage": (
+            committed_count / denominator if denominator else None
+        ),
+        "coverage_available": bool(denominator),
+        "coverage_reason": (
+            None if denominator else "no_v2_identity_evidence_records"
+        ),
+    }
+
+
+def _d2_commitment_numeric_summary(
+    values: Sequence[int | float],
+    *,
+    count_key: str,
+    include_positive_count: bool,
+) -> dict[str, Any]:
+    output: dict[str, Any] = {count_key: len(values)}
+    if include_positive_count:
+        output["positive_record_count"] = sum(float(value) > 0 for value in values)
+        output["sum"] = sum(values)
+    output.update(
+        {
+            "min": min(values) if values else None,
+            "mean": sum(values) / len(values) if values else None,
+            "max": max(values) if values else None,
+        }
+    )
+    return output
+
+
+def _d2_identity_commitment_metrics(
+    *,
+    all_summary: Mapping[str, Any],
+    observed_summary: Mapping[str, Any],
+    uncommitted_mapping_count: int,
+    blocker_summary: Mapping[str, Any],
+    watermark_summary: Mapping[str, Any],
+    overflow_record_count: int,
+    overflow_track_count: int,
+    uncommitted_candidate_binding_count: int,
+    candidate_binding_violations: int,
+    source_binding_violations: int,
+) -> dict[str, PublicMetricEvidence]:
+    all_denominator = int(all_summary["denominator"])
+    observed_denominator = int(observed_summary["denominator"])
+    blocker_record_count = int(blocker_summary["record_count"])
+    watermark_count = int(watermark_summary["count"])
+    metrics = {
+        "all_commitment_coverage": _commitment_optional_metric(
+            all_summary["coverage"],
+            sample_count=all_denominator,
+            unavailable_reason=str(
+                all_summary["coverage_reason"]
+                or "no_v2_identity_evidence_records"
+            ),
+        ),
+        "observed_commitment_coverage": _commitment_optional_metric(
+            observed_summary["coverage"],
+            sample_count=observed_denominator,
+            unavailable_reason=str(
+                observed_summary["coverage_reason"]
+                or "no_v2_observed_identity_evidence_records"
+            ),
+        ),
+        "all_record_count": _commitment_count_metric(all_denominator),
+        "all_committed_count": _commitment_count_metric(
+            int(all_summary["committed_count"])
+        ),
+        "all_uncommitted_count": _commitment_count_metric(
+            int(all_summary["uncommitted_count"])
+        ),
+        "observed_record_count": _commitment_count_metric(
+            observed_denominator
+        ),
+        "observed_committed_count": _commitment_count_metric(
+            int(observed_summary["committed_count"])
+        ),
+        "observed_uncommitted_count": _commitment_count_metric(
+            int(observed_summary["uncommitted_count"])
+        ),
+        "uncommitted_mapping_count": _commitment_count_metric(
+            uncommitted_mapping_count
+        ),
+        "recovery_blocker_record_count": _commitment_count_metric(
+            blocker_record_count
+        ),
+        "recovery_blocker_positive_record_count": _commitment_count_metric(
+            int(blocker_summary["positive_record_count"])
+        ),
+        "recovery_blocker_count_sum": _commitment_count_metric(
+            int(blocker_summary["sum"])
+        ),
+        "recovery_blocker_count_min": _commitment_optional_metric(
+            blocker_summary["min"],
+            sample_count=blocker_record_count,
+            unavailable_reason="no_v2_identity_evidence_records",
+        ),
+        "recovery_blocker_count_mean": _commitment_optional_metric(
+            blocker_summary["mean"],
+            sample_count=blocker_record_count,
+            unavailable_reason="no_v2_identity_evidence_records",
+        ),
+        "recovery_blocker_count_max": _commitment_optional_metric(
+            blocker_summary["max"],
+            sample_count=blocker_record_count,
+            unavailable_reason="no_v2_identity_evidence_records",
+        ),
+        "recovery_watermark_age_record_count": _commitment_count_metric(
+            watermark_count
+        ),
+        "recovery_watermark_age_seconds_min": _commitment_optional_metric(
+            watermark_summary["min"],
+            sample_count=watermark_count,
+            unavailable_reason="no_identity_recovery_watermark_records",
+        ),
+        "recovery_watermark_age_seconds_mean": _commitment_optional_metric(
+            watermark_summary["mean"],
+            sample_count=watermark_count,
+            unavailable_reason="no_identity_recovery_watermark_records",
+        ),
+        "recovery_watermark_age_seconds_max": _commitment_optional_metric(
+            watermark_summary["max"],
+            sample_count=watermark_count,
+            unavailable_reason="no_identity_recovery_watermark_records",
+        ),
+        "recovery_blocker_overflow_record_count": _commitment_count_metric(
+            overflow_record_count
+        ),
+        "recovery_blocker_overflow_track_count": _commitment_count_metric(
+            overflow_track_count
+        ),
+        "uncommitted_candidate_binding_count": _commitment_count_metric(
+            uncommitted_candidate_binding_count
+        ),
+        "uncommitted_candidate_binding_violation_count": (
+            _commitment_count_metric(candidate_binding_violations)
+        ),
+        "uncommitted_source_binding_violation_count": (
+            _commitment_count_metric(source_binding_violations)
+        ),
+    }
+    if set(metrics) != set(_D2_COMMITMENT_METRIC_NAMES):
+        raise AssertionError("D2 commitment metric construction is incomplete")
+    return metrics
+
+
+def _commitment_count_metric(value: int) -> PublicMetricEvidence:
+    return PublicMetricEvidence(
+        value=value,
+        available=True,
+        sample_count=1,
+    )
+
+
+def _commitment_optional_metric(
+    value: int | float | None,
+    *,
+    sample_count: int,
+    unavailable_reason: str,
+) -> PublicMetricEvidence:
+    if value is None:
+        return PublicMetricEvidence(
+            value=None,
+            available=False,
+            sample_count=0,
+            unavailable_reason=unavailable_reason,
+        )
+    return PublicMetricEvidence(
+        value=value,
+        available=True,
+        sample_count=sample_count,
+    )
+
+
+def _commitment_audit_value_matches(actual: Any, expected: Any) -> bool:
+    if expected is None:
+        return actual is None
+    if isinstance(expected, bool):
+        return isinstance(actual, bool) and actual is expected
+    if isinstance(expected, int):
+        return (
+            isinstance(actual, int)
+            and not isinstance(actual, bool)
+            and actual == expected
+        )
+    if isinstance(expected, float):
+        return (
+            isinstance(actual, (int, float))
+            and not isinstance(actual, bool)
+            and math.isfinite(float(actual))
+            and abs(float(actual) - expected) <= 1.0e-12
+        )
+    if isinstance(expected, Mapping):
+        return (
+            isinstance(actual, Mapping)
+            and set(actual) == set(expected)
+            and all(
+                _commitment_audit_value_matches(actual[name], value)
+                for name, value in expected.items()
+            )
+        )
+    return actual == expected
+
+
+def _d2_commitment_nonnegative_float(value: Any, name: str) -> float:
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, (int, float))
+        or not math.isfinite(float(value))
+        or float(value) < 0.0
+    ):
+        raise TruthIsolatedEvaluationError(
+            f"{name} must be finite and non-negative"
+        )
+    return float(value)
+
+
+def _commitment_sequence(value: Any, name: str) -> Sequence[Any]:
+    if not isinstance(value, Sequence) or isinstance(value, (str, bytes)):
+        raise TruthIsolatedEvaluationError(f"{name} must be a sequence")
+    return value
+
+
+def _canonical_payload_sha256_with_newline(value: Any) -> str:
+    try:
+        encoded = (
+            json.dumps(
+                value,
+                allow_nan=False,
+                ensure_ascii=True,
+                separators=(",", ":"),
+                sort_keys=True,
+            ).encode("utf-8")
+            + b"\n"
+        )
+    except (TypeError, ValueError) as exc:
+        raise TruthIsolatedEvaluationError(
+            "D2 v2 identity evidence bundle is not canonically hashable"
+        ) from exc
+    return f"sha256:{hashlib.sha256(encoded).hexdigest()}"
 
 
 def build_truth_isolated_episode_record(
@@ -1235,6 +2494,20 @@ def aggregate_truth_isolated_episode_records(
                 bootstrap_resamples=int(bootstrap_resamples),
                 bootstrap_rng_seed=int(bootstrap_rng_seed),
             )
+        for name in _D2_COMMITMENT_METRIC_NAMES:
+            metrics[f"d2.identity_commitment.{name}"] = _aggregate_metric(
+                [
+                    (
+                        record.context.seed,
+                        record.d2.identity_commitment.metrics[name],
+                    )
+                    for record in group_records
+                ],
+                metric_name=f"d2.identity_commitment.{name}",
+                group_identity=identity,
+                bootstrap_resamples=int(bootstrap_resamples),
+                bootstrap_rng_seed=int(bootstrap_rng_seed),
+            )
         groups.append(
             {
                 **identity,
@@ -1296,6 +2569,9 @@ def aggregate_truth_isolated_episode_records(
                 },
                 "d2_partial_identity_diagnostics": (
                     _aggregate_d2_partial_identity(group_records)
+                ),
+                "d2_identity_commitment": (
+                    _aggregate_d2_identity_commitment(group_records)
                 ),
             }
         )
@@ -1466,6 +2742,193 @@ def _aggregate_d2_partial_identity(
     }
 
 
+def _aggregate_d2_identity_commitment(
+    records: Sequence[TruthIsolatedEpisodeEvaluationRecord],
+) -> dict[str, Any]:
+    evidence = [record.d2.identity_commitment for record in records]
+    available = [item for item in evidence if item.available]
+    unavailable_reasons = Counter(
+        item.unavailable_reason or "reason_unavailable"
+        for item in evidence
+        if not item.available
+    )
+    reason_counts: Counter[str] = Counter()
+    blocked_reason_counts: Counter[str] = Counter()
+    state_counts: Counter[str] = Counter()
+    for item in available:
+        reason_counts.update(item.reason_counts)
+        blocked_reason_counts.update(item.recovery_blocked_reason_counts)
+        state_counts.update(item.state_counts)
+
+    def total(name: str) -> int:
+        return sum(
+            int(item.metrics[name].value)
+            for item in available
+            if item.metrics[name].available
+            and item.metrics[name].value is not None
+        )
+
+    all_denominator = total("all_record_count")
+    all_committed = total("all_committed_count")
+    all_uncommitted = total("all_uncommitted_count")
+    observed_denominator = total("observed_record_count")
+    observed_committed = total("observed_committed_count")
+    observed_uncommitted = total("observed_uncommitted_count")
+    blocker_record_count = total("recovery_blocker_record_count")
+    blocker_sum = total("recovery_blocker_count_sum")
+    watermark_count = total("recovery_watermark_age_record_count")
+    watermark_weighted_sum = sum(
+        float(item.metrics["recovery_watermark_age_seconds_mean"].value)
+        * int(item.metrics["recovery_watermark_age_record_count"].value)
+        for item in available
+        if item.metrics["recovery_watermark_age_seconds_mean"].available
+        and item.metrics["recovery_watermark_age_seconds_mean"].value
+        is not None
+        and item.metrics["recovery_watermark_age_record_count"].value
+        is not None
+    )
+    blocker_min_values = [
+        float(item.metrics["recovery_blocker_count_min"].value)
+        for item in available
+        if item.metrics["recovery_blocker_count_min"].available
+        and item.metrics["recovery_blocker_count_min"].value is not None
+    ]
+    blocker_max_values = [
+        float(item.metrics["recovery_blocker_count_max"].value)
+        for item in available
+        if item.metrics["recovery_blocker_count_max"].available
+        and item.metrics["recovery_blocker_count_max"].value is not None
+    ]
+    watermark_min_values = [
+        float(item.metrics["recovery_watermark_age_seconds_min"].value)
+        for item in available
+        if item.metrics["recovery_watermark_age_seconds_min"].available
+        and item.metrics["recovery_watermark_age_seconds_min"].value
+        is not None
+    ]
+    watermark_max_values = [
+        float(item.metrics["recovery_watermark_age_seconds_max"].value)
+        for item in available
+        if item.metrics["recovery_watermark_age_seconds_max"].available
+        and item.metrics["recovery_watermark_age_seconds_max"].value
+        is not None
+    ]
+    return {
+        "schema_version": D6_D2_IDENTITY_COMMITMENT_ADAPTER_SCHEMA_VERSION,
+        "availability": "available" if available else "unavailable",
+        "available_episode_count": len(available),
+        "unavailable_episode_count": len(evidence) - len(available),
+        "unavailability_reason_distribution": dict(
+            sorted(unavailable_reasons.items())
+        ),
+        "all_records": {
+            "denominator": all_denominator if available else None,
+            "committed_count": all_committed if available else None,
+            "uncommitted_count": all_uncommitted if available else None,
+            "coverage": (
+                all_committed / all_denominator
+                if all_denominator > 0
+                else None
+            ),
+            "availability": (
+                "available" if all_denominator > 0 else "unavailable"
+            ),
+            "unavailable_reason": (
+                None
+                if all_denominator > 0
+                else "no_v2_identity_evidence_records"
+            ),
+        },
+        "observed_records": {
+            "denominator": observed_denominator if available else None,
+            "committed_count": observed_committed if available else None,
+            "uncommitted_count": observed_uncommitted if available else None,
+            "coverage": (
+                observed_committed / observed_denominator
+                if observed_denominator > 0
+                else None
+            ),
+            "availability": (
+                "available" if observed_denominator > 0 else "unavailable"
+            ),
+            "unavailable_reason": (
+                None
+                if observed_denominator > 0
+                else "no_v2_observed_identity_evidence_records"
+            ),
+        },
+        "uncommitted_mapping_count": (
+            total("uncommitted_mapping_count") if available else None
+        ),
+        "state_counts": dict(sorted(state_counts.items())),
+        "reason_counts": dict(sorted(reason_counts.items())),
+        "recovery_blocked_reason_counts": dict(
+            sorted(blocked_reason_counts.items())
+        ),
+        "recovery_blocker_count_summary": {
+            "record_count": blocker_record_count if available else None,
+            "positive_record_count": (
+                total("recovery_blocker_positive_record_count")
+                if available
+                else None
+            ),
+            "sum": blocker_sum if available else None,
+            "min": min(blocker_min_values) if blocker_min_values else None,
+            "mean": (
+                blocker_sum / blocker_record_count
+                if blocker_record_count > 0
+                else None
+            ),
+            "max": max(blocker_max_values) if blocker_max_values else None,
+        },
+        "recovery_watermark_age_seconds_summary": {
+            "count": watermark_count if available else None,
+            "min": (
+                min(watermark_min_values) if watermark_min_values else None
+            ),
+            "mean": (
+                watermark_weighted_sum / watermark_count
+                if watermark_count > 0
+                else None
+            ),
+            "max": (
+                max(watermark_max_values) if watermark_max_values else None
+            ),
+        },
+        "recovery_blocker_overflow_record_count": (
+            total("recovery_blocker_overflow_record_count")
+            if available
+            else None
+        ),
+        "recovery_blocker_overflow_track_count": (
+            total("recovery_blocker_overflow_track_count")
+            if available
+            else None
+        ),
+        "uncommitted_candidate_binding_count": (
+            total("uncommitted_candidate_binding_count")
+            if available
+            else None
+        ),
+        "uncommitted_candidate_binding_violation_count": (
+            total("uncommitted_candidate_binding_violation_count")
+            if available
+            else None
+        ),
+        "uncommitted_source_binding_violation_count": (
+            total("uncommitted_source_binding_violation_count")
+            if available
+            else None
+        ),
+        "evidence_bundle_sha256_verified_episode_count": sum(
+            item.evidence_bundle_sha256_verified for item in available
+        ),
+        "strict_id_switch_count_backfilled": False,
+        "uncommitted_gap_treated_as_zero_id_switch": False,
+        "control_consumed": False,
+    }
+
+
 def _aggregate_partial_coverage_counts(
     *,
     numerator: int,
@@ -1501,6 +2964,7 @@ def render_truth_isolated_markdown(
         f"本次读取 {len(records)} 个 episode，按实际目标、资源、侦察节点和相机数量分组。场景名称不参与规模推断。",
         "D1 指标来自公开离线一致性结果及其逐观测聚合记录。D2 指标只来自公开身份评估制品；D6 未重新构造航迹与真值映射。",
         "缺少来源摘要、在线真值隔离审计或有效样本时，指标保持空值并记录原因。`id_switch_count` 在所有记录中显式存在，缺证据时不会写成零。",
+        "严格 IDSW、identity commitment coverage 与 evaluator-only partial diagnostics 是三类独立证据。未提交空档降低 coverage，但不等于 `IDSW=0`；严格 IDSW 只消费 D2 已发布值，D6 不回算或覆盖。",
         "",
         "## Episode 结果",
         "",
@@ -1575,6 +3039,93 @@ def render_truth_isolated_markdown(
                     "是"
                     if disposition.get("strict_id_switch_backfilled") is True
                     else "否"
+                ),
+            )
+        )
+
+    lines.extend(
+        [
+            "",
+            "## 身份提交 v2 证据",
+            "",
+            "D6 仅对 `d2.scalable3d_identity_evaluation.v2` 复核并聚合本节。v1 显式显示不可用；兼容字段中的零记录数不会转写为可用的零 coverage。两个 binding violation 必须恒为 0。",
+            "",
+            "| episode | evaluation schema | commitment | strict IDSW | all coverage (C/U) | observed coverage (C/U) | uncommitted mapping | blocked reasons | blocker sum/mean/max | watermark age min/mean/max | overflow record/track | binding violation candidate/source |",
+            "| --- | --- | --- | --- | --- | --- | ---: | --- | --- | --- | --- | --- |",
+        ]
+    )
+    for record in records:
+        commitment = record.d2.identity_commitment
+        metrics = commitment.metrics
+        lines.append(
+            "| {episode} | {schema} | {availability} | {idsw} | "
+            "{all_coverage} ({all_committed}/{all_uncommitted}) | "
+            "{observed_coverage} ({observed_committed}/{observed_uncommitted}) | "
+            "{uncommitted_mapping} | {blocked} | {blocker_summary} | "
+            "{watermark_summary} | {overflow} | {violations} |".format(
+                episode=record.context.episode_id,
+                schema=record.d2.producer_schema_version or "不可用",
+                availability=(
+                    "可用"
+                    if commitment.available
+                    else f"不可用（{commitment.unavailable_reason}）"
+                ),
+                idsw=_fmt_metric(record.d2.metrics["id_switch_count"]),
+                all_coverage=_fmt_metric(
+                    metrics["all_commitment_coverage"]
+                ),
+                all_committed=_fmt_metric(
+                    metrics["all_committed_count"]
+                ),
+                all_uncommitted=_fmt_metric(
+                    metrics["all_uncommitted_count"]
+                ),
+                observed_coverage=_fmt_metric(
+                    metrics["observed_commitment_coverage"]
+                ),
+                observed_committed=_fmt_metric(
+                    metrics["observed_committed_count"]
+                ),
+                observed_uncommitted=_fmt_metric(
+                    metrics["observed_uncommitted_count"]
+                ),
+                uncommitted_mapping=_fmt_metric(
+                    metrics["uncommitted_mapping_count"]
+                ),
+                blocked=_fmt_count_mapping(
+                    commitment.recovery_blocked_reason_counts
+                ),
+                blocker_summary=_fmt_metric_triplet(
+                    metrics,
+                    "recovery_blocker_count",
+                ),
+                watermark_summary=_fmt_metric_triplet(
+                    metrics,
+                    "recovery_watermark_age_seconds",
+                ),
+                overflow="{}/{}".format(
+                    _fmt_metric(
+                        metrics[
+                            "recovery_blocker_overflow_record_count"
+                        ]
+                    ),
+                    _fmt_metric(
+                        metrics[
+                            "recovery_blocker_overflow_track_count"
+                        ]
+                    ),
+                ),
+                violations="{}/{}".format(
+                    _fmt_metric(
+                        metrics[
+                            "uncommitted_candidate_binding_violation_count"
+                        ]
+                    ),
+                    _fmt_metric(
+                        metrics[
+                            "uncommitted_source_binding_violation_count"
+                        ]
+                    ),
                 ),
             )
         )
@@ -1698,6 +3249,79 @@ def render_truth_isolated_markdown(
     lines.extend(
         [
             "",
+            "## 身份提交分组汇总",
+            "",
+            "| 场景/版本 | 规模 T/R/Rc/Cam | v2 episode | all coverage (C/U/D) | observed coverage (C/U/D) | uncommitted mapping | blocked reasons | blocker sum/mean/max | watermark min/mean/max | overflow record/track | binding violation candidate/source |",
+            "| --- | --- | --- | --- | --- | ---: | --- | --- | --- | --- | --- |",
+        ]
+    )
+    for group in summary.groups:
+        commitment = group["d2_identity_commitment"]
+        all_records = commitment["all_records"]
+        observed_records = commitment["observed_records"]
+        scale = "/".join(
+            str(group[name])
+            for name in (
+                "target_count",
+                "resource_count",
+                "recon_count",
+                "camera_count",
+            )
+        )
+        lines.append(
+            "| {scenario}/{version} | {scale} | {available}/{episodes} | "
+            "{all_coverage} ({all_committed}/{all_uncommitted}/{all_denominator}) | "
+            "{observed_coverage} ({observed_committed}/{observed_uncommitted}/"
+            "{observed_denominator}) | {uncommitted_mapping} | {blocked} | "
+            "{blocker} | {watermark} | {overflow_record}/{overflow_track} | "
+            "{candidate_violation}/{source_violation} |".format(
+                scenario=group["scenario_id"],
+                version=group["scenario_version"],
+                scale=scale,
+                available=commitment["available_episode_count"],
+                episodes=group["episode_count"],
+                all_coverage=_fmt_commitment_aggregate_coverage(all_records),
+                all_committed=all_records["committed_count"],
+                all_uncommitted=all_records["uncommitted_count"],
+                all_denominator=all_records["denominator"],
+                observed_coverage=_fmt_commitment_aggregate_coverage(
+                    observed_records
+                ),
+                observed_committed=observed_records["committed_count"],
+                observed_uncommitted=observed_records["uncommitted_count"],
+                observed_denominator=observed_records["denominator"],
+                uncommitted_mapping=commitment[
+                    "uncommitted_mapping_count"
+                ],
+                blocked=_fmt_count_mapping(
+                    commitment["recovery_blocked_reason_counts"]
+                ),
+                blocker=_fmt_summary_mapping(
+                    commitment["recovery_blocker_count_summary"]
+                ),
+                watermark=_fmt_summary_mapping(
+                    commitment[
+                        "recovery_watermark_age_seconds_summary"
+                    ]
+                ),
+                overflow_record=commitment[
+                    "recovery_blocker_overflow_record_count"
+                ],
+                overflow_track=commitment[
+                    "recovery_blocker_overflow_track_count"
+                ],
+                candidate_violation=commitment[
+                    "uncommitted_candidate_binding_violation_count"
+                ],
+                source_violation=commitment[
+                    "uncommitted_source_binding_violation_count"
+                ],
+            )
+        )
+
+    lines.extend(
+        [
+            "",
             "## 部分身份分组汇总",
             "",
             "| 场景/版本 | 规模 T/R/Rc/Cam | partial episode | mapping coverage | frame coverage | adjacent-transition coverage | IDSW lower bound 合计 | anchor 区间合计 | anchor 排除原因 |",
@@ -1780,6 +3404,7 @@ def render_truth_isolated_markdown(
             "本报告只说明公开评估合同和输入证据中的数值。单 seed 分组只给描述统计，不输出自助法置信区间。正式 5、20、50、100、200 规模结论仍需 main 提供冻结配置和多 seed 制品。",
             "完整来源摘要同时保存在逐 seed CSV 和聚合 JSON；路径制品必须由 main 提供文件摘要及 D2 四类来源摘要。",
             "D2 混淆矩阵和覆盖计数保存在聚合 JSON 中。它们用于离线诊断，不能回流到在线关联、分配或导引链路。",
+            "identity commitment v2 只有在 evaluation/evidence/commitment/audit schema 与 policy 全部匹配、嵌入 evidence bundle SHA-256 可复算、分母与 coverage 守恒、恢复统计有限且两个 binding violation 为 0 时才可用。显式 uncommitted 只降低 coverage；普通谱系缺失继续使 D2 strict 指标失败关闭。",
             "部分身份诊断只有在 sidecar schema、identity manifest、评估文件 SHA-256、四类来源摘要及 evaluator-only audit 全部绑定后才可用。lower bound 与 strict `id_switch_count` 始终分栏，绝不回填；D6 不构造 upper bound，partial block 不参与控制。",
             "",
         ]
@@ -3151,6 +4776,39 @@ def _unavailable_d2_partial_identity(
     )
 
 
+def _unavailable_d2_identity_commitment(
+    reason: str,
+    *,
+    producer_evaluation_schema_version: str | None = None,
+    producer_evaluation_policy_version: str | None = None,
+) -> D2IdentityCommitmentEvidenceRecord:
+    return D2IdentityCommitmentEvidenceRecord(
+        available=False,
+        unavailable_reason=reason,
+        metrics={
+            name: _unavailable_metric(reason)
+            for name in _D2_COMMITMENT_METRIC_NAMES
+        },
+        state_counts={},
+        reason_counts={},
+        recovery_blocked_reason_counts={},
+        denominator_policy=None,
+        uncommitted_binding_violation_policy=None,
+        committed_anchor_across_uncommitted_gap_policy=None,
+        producer_evaluation_schema_version=(
+            producer_evaluation_schema_version
+        ),
+        producer_evaluation_policy_version=(
+            producer_evaluation_policy_version
+        ),
+        producer_evidence_schema_version=None,
+        producer_commitment_schema_version=None,
+        producer_commitment_policy_version=None,
+        producer_audit_schema_version=None,
+        evidence_bundle_sha256_verified=False,
+    )
+
+
 def _missing_d1_record(
     context: TruthIsolatedEpisodeContext,
 ) -> D1ConsistencyEvaluationRecord:
@@ -3181,6 +4839,8 @@ def _missing_d2_record(
     reason = "d2_identity_evaluation_artifact_missing"
     return D2IdentityEvaluationRecord(
         episode_id=context.episode_id,
+        producer_schema_version=None,
+        producer_policy_version=None,
         metrics={name: _unavailable_metric(reason) for name in _D2_METRIC_NAMES},
         evaluated_frame_count=0,
         truth_frame_count={},
@@ -3196,6 +4856,7 @@ def _missing_d2_record(
         source_verification="artifact_missing",
         configuration={},
         audit={},
+        identity_commitment=_unavailable_d2_identity_commitment(reason),
         partial_identity_diagnostics=_unavailable_d2_partial_identity(
             reason
         ),
@@ -3337,6 +4998,30 @@ def _episode_source_provenance(
         "d2_truth_metric_evidence_reason": (
             record.d2.truth_metric_evidence_reason
         ),
+        "d2_producer_schema_version": record.d2.producer_schema_version,
+        "d2_producer_policy_version": record.d2.producer_policy_version,
+        "d2_identity_commitment": {
+            "availability": (
+                "available"
+                if record.d2.identity_commitment.available
+                else "unavailable"
+            ),
+            "unavailable_reason": (
+                record.d2.identity_commitment.unavailable_reason
+            ),
+            "producer_evidence_schema_version": (
+                record.d2.identity_commitment.producer_evidence_schema_version
+            ),
+            "producer_commitment_schema_version": (
+                record.d2.identity_commitment.producer_commitment_schema_version
+            ),
+            "producer_audit_schema_version": (
+                record.d2.identity_commitment.producer_audit_schema_version
+            ),
+            "evidence_bundle_sha256_verified": (
+                record.d2.identity_commitment.evidence_bundle_sha256_verified
+            ),
+        },
         "d2_partial_identity_diagnostics": {
             "availability": (
                 "available"
@@ -3391,6 +5076,8 @@ def _episode_csv_row(record: TruthIsolatedEpisodeEvaluationRecord) -> dict[str, 
             record.d2.truth_metric_evidence_reason
         ),
         "d2_source_verification": record.d2.source_verification,
+        "d2_producer_schema_version": record.d2.producer_schema_version,
+        "d2_producer_policy_version": record.d2.producer_policy_version,
         "d2_source_hashes_json": record.d2.source_hashes,
         "d2_confusion_matrix_json": record.d2.confusion_matrix,
         "d2_truth_frame_count_json": record.d2.truth_frame_count,
@@ -3420,6 +5107,26 @@ def _episode_csv_row(record: TruthIsolatedEpisodeEvaluationRecord) -> dict[str, 
         ),
         "d2_partial_identity_excluded_mapping_reasons_json": (
             record.d2.partial_identity_diagnostics.excluded_scored_mapping_reason_counts
+        ),
+        "d2_identity_commitment_availability": (
+            "available"
+            if record.d2.identity_commitment.available
+            else "unavailable"
+        ),
+        "d2_identity_commitment_unavailable_reason": (
+            record.d2.identity_commitment.unavailable_reason
+        ),
+        "d2_identity_commitment_evidence_bundle_sha256_verified": (
+            record.d2.identity_commitment.evidence_bundle_sha256_verified
+        ),
+        "d2_identity_commitment_state_counts_json": (
+            record.d2.identity_commitment.state_counts
+        ),
+        "d2_identity_commitment_reason_counts_json": (
+            record.d2.identity_commitment.reason_counts
+        ),
+        "d2_identity_commitment_recovery_blocked_reason_counts_json": (
+            record.d2.identity_commitment.recovery_blocked_reason_counts
         ),
         "d2_observation_truth_disposition_availability": disposition.get(
             "availability",
@@ -3462,6 +5169,14 @@ def _episode_csv_row(record: TruthIsolatedEpisodeEvaluationRecord) -> dict[str, 
             row[f"{prefix}_{name}_unavailable_reason"] = metric.unavailable_reason
     for name, metric in record.d2.partial_identity_diagnostics.metrics.items():
         column = f"d2_partial_identity_{name}"
+        row[column] = metric.value
+        row[f"{column}_availability"] = (
+            "available" if metric.available else "unavailable"
+        )
+        row[f"{column}_sample_count"] = metric.sample_count
+        row[f"{column}_unavailable_reason"] = metric.unavailable_reason
+    for name, metric in record.d2.identity_commitment.metrics.items():
+        column = f"d2_identity_commitment_{name}"
         row[column] = metric.value
         row[f"{column}_availability"] = (
             "available" if metric.available else "unavailable"
@@ -3832,6 +5547,30 @@ def _fmt_partial_total(metric: Mapping[str, Any]) -> str:
     return _fmt_number(metric.get("value"))
 
 
+def _fmt_metric_triplet(
+    metrics: Mapping[str, PublicMetricEvidence],
+    prefix: str,
+) -> str:
+    return "/".join(
+        _fmt_metric(metrics[f"{prefix}_{suffix}"])
+        for suffix in ("min", "mean", "max")
+    )
+
+
+def _fmt_commitment_aggregate_coverage(
+    payload: Mapping[str, Any],
+) -> str:
+    if payload.get("availability") != "available":
+        return f"不可用（{payload.get('unavailable_reason')}）"
+    return _fmt_number(payload.get("coverage"))
+
+
+def _fmt_summary_mapping(payload: Mapping[str, Any]) -> str:
+    return "/".join(
+        _fmt_number(payload.get(name)) for name in ("min", "mean", "max")
+    )
+
+
 def _fmt_count_mapping(values: Mapping[str, int]) -> str:
     if not values:
         return "无"
@@ -3854,13 +5593,16 @@ __all__ = [
     "D6_D1_CONSISTENCY_ADAPTER_SCHEMA_VERSION",
     "D6_D1_SENSOR_RANGE_RECORD_SCHEMA_VERSION",
     "D6_D2_IDENTITY_ADAPTER_SCHEMA_VERSION",
+    "D6_D2_IDENTITY_COMMITMENT_ADAPTER_SCHEMA_VERSION",
     "D6_D2_PARTIAL_IDENTITY_ADAPTER_SCHEMA_VERSION",
     "D6_TRUTH_ISOLATED_BATCH_SCHEMA_VERSION",
     "D6_TRUTH_ISOLATED_EPISODE_SCHEMA_VERSION",
     "D6_TRUTH_ISOLATED_EVALUATION_DATE",
     "D2_PARTIAL_IDENTITY_DENOMINATOR_DEFINITIONS",
+    "D2_IDENTITY_COMMITMENT_DENOMINATOR_POLICY",
     "D2_SCALABLE_3D_PARTIAL_IDENTITY_DIAGNOSTICS_SCHEMA_VERSION",
     "D2IdentityEvaluationRecord",
+    "D2IdentityCommitmentEvidenceRecord",
     "D2PartialIdentityDiagnosticsRecord",
     "DEFAULT_TRUTH_ISOLATED_BOOTSTRAP_RESAMPLES",
     "DEFAULT_TRUTH_ISOLATED_BOOTSTRAP_RNG_SEED",
@@ -3876,4 +5618,5 @@ __all__ = [
     "aggregate_truth_isolated_episode_records",
     "build_truth_isolated_episode_record",
     "render_truth_isolated_markdown",
+    "validate_d2_identity_commitment_evaluation",
 ]

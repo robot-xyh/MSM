@@ -1534,3 +1534,31 @@ OSPA/GOSPA 或 AirSim 原生 recording parser。
 
 当前无新增 P0。D6 consumer GAP 已关闭，数据与系统性能 P1 保持开放；P2/P3 外部 evaluator
 状态不变。
+
+## 2026-07-23 D2 identity commitment v2 消费 GAP
+
+### 已闭合的 D6-owned 项
+
+1. evaluation v1/v2 精确分流和 v1 commitment unavailable 兼容已实现；不存在 missing-to-zero。
+2. v2 embedded evidence bundle SHA、四类 source provenance、all/observed denominator、
+   coverage、state/reason、blocker/watermark/overflow 和零 binding violation 已独立复算。
+3. typed commitment evidence 已进入 episode DTO、逐 seed CSV、aggregate JSON 和中文
+   Markdown；专用 aggregate 使用 micro denominator 与 count-weighted summary。
+4. strict IDSW 只消费 D2 值，跨 uncommitted gap 不回算；普通 lineage missing 继续
+   fail-closed unavailable，partial lower bound 也不回填 strict。
+5. runtime plan outcome join 已接受 evaluation v2。显式 uncommitted 只使命中 binding
+   identity/state/距离诊断 unavailable，保留 reason/details 且 truth 为 null；合同篡改仍拒绝。
+6. 合法、兼容、缺字段、篡改、负年龄、overflow、binding 违规、跨 gap、报告和 runtime 专项
+   已覆盖。2026-07-23 D6 全量 `598 passed, 1 warning in 21.44s`，零失败。
+
+### 仍开放的跨模块 P1
+
+1. main 尚未把真实 episode 的 `identity_commitment_by_track`、v2 evidence records、
+   evaluation 和 manifest 原子持久化并传给 D6；该项属于 main integration，不是 D6 producer。
+2. clean seed 1100 baseline/candidate A/B 尚未执行。D2 track count、D3 assignment count、
+   strict IDSW availability 和真实 commitment coverage 没有新证据。
+3. 真实 AirSim、多 seed、多规模、困难谱系、长时 blocker/watermark/overflow 分布及最终统一
+   scalable 3D 报告仍开放。
+
+GAP 状态：D6 consumer P1 已关闭；main 持久化与系统性能 P1 保持开放。P0、外部 evaluator
+P2/P3 状态不变。

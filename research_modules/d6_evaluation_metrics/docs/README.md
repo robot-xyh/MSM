@@ -305,3 +305,15 @@ conservative IDSW lower bound、anchor interval 和 exclusion reasons 与 strict
 partial mapping/frame/transition coverage 为 `8906/9038`、`3/48`、`0/9400`，lower bound 为
 7/385 anchor intervals。该单 seed 结果只证明真实制品接入；本批无 AirSim 或正式多 seed
 性能证据。
+
+2026-07-23 已同步 D2 identity commitment evaluation v2。实现仍位于
+`../d6_evaluation_metrics/truth_isolated_offline.py`，原则见
+`MODULE_PRINCIPLES_CN.md` 第 13 节，校验与聚合公式见
+`ALGORITHM_AND_IMPLEMENTATION.md` 第 19 节，main/AirSim 写盘要求见
+`../AIRSIM_INTEGRATION_PLAN.md` 第 12 节，合同测试结果见
+`../EXPERIMENT_REPORT.md` 第 11 节。D6 对 v2 内嵌 evidence bundle 做 SHA-256 复算并验证
+commitment denominator、coverage、reason、watermark、overflow 和零 binding violation；
+v1 commitment 保持 unavailable。逐 seed CSV、aggregate JSON 和中文报告把 strict IDSW、
+commitment coverage、partial diagnostics 分栏。runtime join 命中显式 uncommitted 时只关闭
+对应 binding，不回填 truth。D6 全量为 `598 passed, 1 warning in 21.44s`；clean seed 1100
+和真实 AirSim 均未执行。

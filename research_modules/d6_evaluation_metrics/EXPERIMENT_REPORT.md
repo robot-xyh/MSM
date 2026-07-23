@@ -1678,3 +1678,60 @@ Markdown。aggregate JSON 的 SHA-256 为
 本轮 D6 全量回归为 `567 passed, 1 warning in 22.01s`。warning 是既有 Matplotlib
 `Axes3D` 环境提示。该结果证明批量 consumer 和来源校验可工作，也显示当前身份完整帧和相邻
 转换证据不足。strict 指标、多规模困难场景和长时稳定性仍未闭合。
+
+## 11. D2 identity commitment v2 消费合同验证（2026-07-23）
+
+### 验证范围
+
+本轮是 D6 consumer 和报告合同测试，没有启动 AirSim，没有读取在线 truth，也没有重跑 clean
+seed 1100。确定性 v2 fixture 含 3 条 evidence records：frame 0 committed、frame 1
+uncommitted、frame 2 重新 committed；`created/matched` observed 子集为 2 条。D2 strict
+fixture 已发布 `id_switch_count=1`，用于验证 D6 在 uncommitted gap 前后只消费 strict 值。
+runtime fixture 含 2 个连续 plan binding windows，其中第一个窗口命中显式 uncommitted，
+第二个保持 available。
+
+验收阈值为：
+
+- 所有合法 v2、v1 compatibility 和输出用例通过；
+- 缺 audit 字段、分母/coverage 篡改、负水位线年龄、overflow 矛盾、binding violation 和
+  v2 runtime audit 篡改全部被拒绝；
+- 普通 `source_lineage_missing` 时 strict IDSW 保持 `None/unavailable`；
+- runtime 显式 uncommitted 只关闭命中 binding，不回填 truth，不使合法 episode 崩溃；
+- 全量 D6 pytest 零失败，Python 编译和 diff format 检查通过。
+
+### 确定性数值
+
+| 字段 | 合法 v2 fixture | 验证结论 |
+| --- | ---: | --- |
+| all committed/uncommitted/denominator | `2/1/3` | coverage `0.666667` |
+| observed committed/uncommitted/denominator | `2/0/2` | coverage `1.0` |
+| strict IDSW | `1` | 跨 uncommitted gap 直接消费 D2 值 |
+| uncommitted mapping | `1` | 不进入 truth candidate binding |
+| blocker record/positive/sum/mean/max | `3/1/2/0.666667/2` | 与 records 重算一致 |
+| watermark age count/min/mean/max | `1/0.5/0.5/0.5 s` | 有限且非负 |
+| overflow record/track | `1/1` | 边界与唯一 track 一致 |
+| candidate/source binding violation | `0/0` | 必须恒为 0 |
+
+逐 seed CSV 同时保留 `d2_id_switch_count=1`、
+`d2_identity_commitment_all_commitment_coverage=0.666667`、
+`observed_commitment_coverage=1.0` 和 uncommitted mapping/count。aggregate JSON 的
+`d2_identity_commitment` 块按 committed/denominator micro 汇总，中文 Markdown 分别展示
+strict、commitment 和 partial 三层证据，明确“未提交空档不等于 IDSW=0”。
+
+runtime 正例中，第一个 binding 返回
+`reason=d2_identity_uncommitted_in_assignment_window`、`truth_target_id=null`，details
+包含 frame timestamp、status、producer reason 和 `GT-0001`；其 state/distance/proximity
+诊断均 unavailable。第二个 `GT-0002 -> TGT-0002` binding 保持 available，episode
+`audit.passed=true`。
+
+### 测试结果与证据边界
+
+`test_truth_isolated_offline.py` 为 `39 passed`，
+`test_runtime_plan_outcome_join.py` 为 `31 passed`。2026-07-23 D6 全量为
+`598 passed, 1 warning in 21.44s`，验收阈值零失败。warning 为既有 Matplotlib
+`Axes3D` 环境问题，不影响 JSON/CSV/Markdown 或 SHA 验证。
+
+这些结果只证明 D6-owned v1/v2 consumer、聚合、报告和 runtime join 合同已实现并测试。
+clean seed 1100 baseline/candidate、真实 AirSim 和多 seed A/B 尚未执行，因此没有新的真实
+commitment coverage、strict IDSW、D2 track count、D3 assignment count 或系统 promotion
+结论。

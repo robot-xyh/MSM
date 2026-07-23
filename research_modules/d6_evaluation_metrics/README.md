@@ -1832,3 +1832,34 @@ adjacent-transition coverage 为 `1149/187800=0.006118`。19 个 episode 的 low
 该批量复核证明 D6 可以在不信任持久化汇总值的前提下重新验证 producer 制品并聚合 20 个 seed。
 它仍是单一 nominal 规模和短时质点场景。frame/transition coverage 较低，strict 身份指标仍缺失，
 因此不能作为算法晋级、控制切换或正式 200 对 200 性能结论。
+
+## D2 identity commitment v2 消费与聚合（2026-07-23）
+
+D6 已实现对 `d2.scalable3d_identity_evaluation.v1/v2` 的严格分流。v1 保持原有 strict
+身份指标行为，新增 commitment 子记录固定为 `unavailable`；即使 producer 提供兼容
+`identity_commitment_record_count=0`，D6 也不会把 commitment coverage 或 count 伪造为
+可用零值。v2 必须同时满足 evaluation/evidence/commitment/audit schema 与 policy、四类
+source SHA-256、嵌入 evidence bundle 规范哈希、全部与 `created/matched` 两组分母守恒、
+coverage 与 count 一致、reason counts 可复算、水位线年龄有限且非负、overflow
+record/track 边界一致，以及 candidate/source binding violation 均为 0；缺字段或篡改直接
+失败关闭。
+
+新增 `D2IdentityCommitmentEvidenceRecord` 以 availability-aware metrics 输出并聚合：
+
+- all/observed commitment coverage、denominator、committed/uncommitted count；
+- uncommitted mapping count、commitment state/reason 和 recovery-blocked reason counts；
+- blocker count record/positive/sum/min/mean/max 与 watermark age count/min/mean/max；
+- overflow record/track count、兼容 binding count 和两个 binding violation count。
+
+上述字段已进入逐 seed CSV、aggregate JSON 和中文 Markdown。strict `id_switch_count`、
+commitment coverage 与 partial diagnostics 始终分栏；未提交空档降低 coverage，但 D6 不把它
+当作 `IDSW=0`，也不回算或覆盖 D2 已发布的 strict 值。`runtime_plan_outcome_join.py` 同时接受
+evaluation v2：assignment window 命中 `status=uncommitted` 时，仅该 binding 的
+`identity_mapping` 变为 unavailable，并保留 frame timestamp、reason、track 和 policy
+details；truth/state/距离诊断不回填，其他合法 binding 和 episode 继续评估。普通缺失仍保持
+原 fail-closed unavailable，SHA 或 audit 篡改仍拒绝整个输入。
+
+2026-07-23 D6 全量回归为 `598 passed, 1 warning in 21.44s`，验收门限为零失败；warning
+是既有 Matplotlib `Axes3D` 环境提示。该结果证明 D6-owned consumer、报告和 runtime join
+合同已实现并测试。本轮没有启动 AirSim，也没有执行新的 clean seed 1100 baseline/candidate
+A/B；main 尚需原子持久化真实 episode 的 v2 evidence/evaluation/manifest 并按相同合同重跑。

@@ -1616,3 +1616,36 @@ strict IDSW 仍为 0/20 可用，逐 episode 原因为
 剩余 P1 是 main/D2 的正式多规模/困难场景 evaluation、完整 sidecar 下 strict
 IDSW/continuity、真实 AirSim coverage 稳定性和最终统一报告。当前 20 seed 结果不能作为
 算法晋级或控制证据。
+
+## 2026-07-23 identity commitment evaluation v2 消费评审
+
+### 接受项
+
+1. 接受 D6 对 `d2.scalable3d_identity_evaluation.v1/v2` 的精确版本分流。v1 commitment
+   全部 unavailable，v2 必须通过 evaluation/evidence/commitment/audit schema/policy 和
+   embedded evidence bundle SHA-256。
+2. 接受 `D2IdentityCommitmentEvidenceRecord` 及其 all/observed coverage、committed/
+   uncommitted count、uncommitted mapping、blocked reasons、blocker/watermark summary、
+   overflow 和两个 binding violation 指标。逐 seed CSV、aggregate JSON 和中文报告均已接入。
+3. 接受 D6 复算所有 v2 commitment 聚合，不信任持久化 audit。缺字段、count/coverage 篡改、
+   负水位线年龄、overflow 矛盾和未提交 candidate/source binding 均 fail-closed。
+4. 接受 strict IDSW、commitment coverage 和 partial diagnostics 三层分栏。D6 不把
+   uncommitted gap 当 IDSW=0，不重算 committed anchors，不覆盖 D2 strict 值；普通
+   lineage missing 继续使 strict unavailable。
+5. 接受 runtime join 的局部不可用语义。assignment window 命中 uncommitted 时保留
+   track/frame/reason/policy details、truth 为 null，只关闭该 binding；其他合法 binding 和
+   episode 继续处理。v2 audit/SHA 篡改仍全局拒绝。
+
+### 验证与状态
+
+确定性 3-record fixture 得到 all committed/uncommitted `2/1`、coverage `2/3`，observed
+`2/0`、coverage `1.0`，blocker sum/mean/max `2/0.666667/2`，watermark age `0.5 s`，
+overflow record/track `1/1`，binding violation `0/0`；D2 strict IDSW `1` 原样消费。
+runtime 2-window fixture 验证第一个 binding 局部 unavailable、第二个 available。
+
+专项结果为 truth-isolated `39 passed`、runtime join `31 passed`；D6 全量
+`598 passed, 1 warning in 21.44s`，验收门限零失败。warning 为既有 Matplotlib 环境提示。
+
+评审结论为“D6-owned v2 consumer、聚合、报告与 runtime 局部不可用合同完成”。clean seed
+1100、真实 AirSim、main 原子持久化和多 seed A/B 尚未执行；因此只关闭 D6 接线 GAP，不关闭
+结构歧义候选的系统 P1 或 promotion gate。

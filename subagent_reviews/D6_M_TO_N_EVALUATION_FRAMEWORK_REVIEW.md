@@ -692,3 +692,16 @@ mapping/frame/transition micro coverage 为 `178531/181110`、`103/959`、`1149/
 strict IDSW 仍为 0/20 可用。该输入是一对一名义场景，不是高威胁 `k_j>1` 的 M-to-N 联盟实验。
 本批没有 M-to-N AirSim、联盟完成或物理拦截证据，因此框架的物理性能状态和四路线 x 三中心
 层级实验矩阵保持开放。
+
+## 12. Identity commitment v2 对 M-to-N 框架的影响（2026-07-23）
+
+commitment coverage 新增的是 D2 身份发布可用性分母，不改变 M-to-N demand、coalition、
+member role、wave、arrival、通信或安全分母。all/observed committed/uncommitted count 可用于
+解释“身份为何暂不可绑定”，但不能代替 strict IDSW、canonical duplicate、联盟需求满足或物理
+成功。多个合法资源指向同一 committed canonical track 仍不是 duplicate target；D6 不修改
+`global_track_id`。
+
+D6 已对 v2 SHA、分母、恢复诊断和零 binding violation 做独立验证，并在 runtime join 中把
+uncommitted 限制为命中 plan binding 的局部 unavailable。2026-07-23 全量
+`598 passed, 1 warning`。本轮没有 M-to-N AirSim、clean seed 1100、联盟 A/B 或多 seed 性能
+证据，因此既有四路线 x 三中心层级实验矩阵和系统 P1 状态不变。

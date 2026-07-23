@@ -64,6 +64,20 @@ def _write_json(path: Path, payload: Mapping[str, Any]) -> None:
     )
 
 
+def _write_canonical_json(path: Path, payload: Mapping[str, Any]) -> None:
+    path.write_text(
+        json.dumps(
+            payload,
+            ensure_ascii=True,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+
 def _write_jsonl(path: Path, rows: list[Mapping[str, Any]]) -> None:
     path.write_text(
         "".join(
@@ -537,6 +551,281 @@ def _refresh_identity_manifest(
         inputs.d2_identity_evaluation.path
     )
     _write_json(manifest_path, manifest)
+    inputs = _refresh(inputs, "d2_identity_evaluation")
+    return _refresh(inputs, "d2_identity_manifest")
+
+
+def _runtime_v2_commitment(
+    *,
+    track_id: str,
+    timestamp: float,
+    committed: bool,
+) -> dict[str, Any]:
+    observation_id = f"OBS-{track_id}"
+    return {
+        "schema_version": "d2.identity-evidence-commitment.v2",
+        "policy_version": "d2-structural-ambiguity-commitment-v2",
+        "global_track_id": track_id,
+        "association_state": "matched",
+        "identity_commitment_state": (
+            "committed"
+            if committed
+            else "identity_uncommitted_after_hold"
+        ),
+        "reason": (
+            "fresh_original_observation_accepted"
+            if committed
+            else "identity_recovery_blocked_measurement_not_newer_than_hold"
+        ),
+        "state_timestamp": timestamp,
+        "commitment_generation": 1,
+        "measurement_timestamp": timestamp,
+        "arrival_timestamp": timestamp + 0.01,
+        "source_observation_evidence_key": (
+            f"evidence:{observation_id}" if committed else None
+        ),
+        "source_observation_evidence_generation": (
+            0 if committed else None
+        ),
+        "source_observation_disposition": (
+            "target_candidate" if committed else None
+        ),
+        "ambiguity_component_key": None if committed else "component-1",
+        "ambiguity_evidence_id": None if committed else "ambiguity-1",
+        "ambiguity_component_generation": None if committed else 1,
+        "publisher_node_id": None if committed else "D1_FUSION",
+        "publisher_epoch": None if committed else "epoch-1",
+        "active_lease_count": 0,
+        "active_lease_keys": [],
+        "lease_first_seen_timestamp": (
+            None if committed else timestamp - 0.2
+        ),
+        "lease_soft_deadline": None if committed else timestamp - 0.1,
+        "lease_hard_deadline": None if committed else timestamp + 0.1,
+        "lease_expired_timestamp": None if committed else timestamp - 0.1,
+        "lease_expiration_reason": (
+            None if committed else "soft_deadline_reached"
+        ),
+        "recovery_blocker_count": 0 if committed else 1,
+        "recovery_not_before_measurement_timestamp": (
+            None if committed else timestamp - 0.5
+        ),
+        "recovery_blocker_overflow": False,
+        "online_truth_used": False,
+    }
+
+
+def _upgrade_identity_to_v2_with_uncommitted_window(
+    inputs: RuntimePlanOutcomeJoinInputs,
+) -> RuntimePlanOutcomeJoinInputs:
+    identity_path = inputs.d2_identity_evaluation.path
+    identity = json.loads(identity_path.read_text(encoding="utf-8"))
+    records: list[dict[str, Any]] = []
+    for frame in identity["frames"]:
+        timestamp = float(frame["frame_timestamp"])
+        frame_index = int(frame["frame_index"])
+        for mapping in frame["mappings"]:
+            track_id = str(mapping["global_track_id"])
+            committed = not (frame_index == 1 and track_id == "GT-0001")
+            if not committed:
+                mapping.update(
+                    {
+                        "status": "uncommitted",
+                        "truth_target_id": None,
+                        "reason": "identity_uncommitted_after_hold",
+                        "unavailable_reasons": [
+                            "identity_uncommitted_after_hold"
+                        ],
+                        "candidate_truth_target_ids": [],
+                        "source_observation_ids": [],
+                        "source_lineage_hashes": [],
+                        "evidence_count": 0,
+                        "unique_lineage_count": 0,
+                        "labeled_evidence_count": 0,
+                        "replayed_lineage_count": 0,
+                    }
+                )
+                frame["available_mapping_count"] = 1
+                frame["unavailable_mapping_count"] = 1
+                frame["reason_counts"] = {
+                    "identity_uncommitted_after_hold": 1
+                }
+            observation_id = f"OBS-{track_id}"
+            records.append(
+                {
+                    "schema_version": (
+                        "d2.scalable3d_identity_evidence.v2"
+                    ),
+                    "episode_id": identity["episode_id"],
+                    "frame_index": frame_index,
+                    "frame_timestamp": timestamp,
+                    "global_track_id": track_id,
+                    "lifecycle_state": "confirmed",
+                    "association_state": "matched",
+                    "identity_commitment": _runtime_v2_commitment(
+                        track_id=track_id,
+                        timestamp=timestamp,
+                        committed=committed,
+                    ),
+                    "source_observations": (
+                        []
+                        if not committed
+                        else [
+                            {
+                                "observation_id": observation_id,
+                                "measurement_timestamp": timestamp,
+                                "source_lineage": [observation_id],
+                                "replay_generation": 0,
+                            }
+                        ]
+                    ),
+                    "d1_record_sequences": [],
+                    "d2_record_sequence": None,
+                }
+            )
+
+    bundle = {
+        "schema_version": "d2.scalable3d_identity_evidence.v2",
+        "policy_version": "d2.scalable3d_identity_commitment_policy.v2",
+        "hash_algorithm": "sha256",
+        "episode_id": identity["episode_id"],
+        "source_hashes": {
+            name: identity["source_hashes"][name]
+            for name in (
+                "online_d1_records",
+                "online_d2_records",
+                "observation_truth_labels",
+            )
+        },
+        "records": records,
+    }
+    _write_canonical_json(inputs.d2_identity_evidence.path, bundle)
+    evidence_hash = _file_hash(inputs.d2_identity_evidence.path)
+    identity.update(
+        {
+            "schema_version": "d2.scalable3d_identity_evaluation.v2",
+            "policy_version": (
+                "d2.scalable3d_identity_commitment_policy.v2"
+            ),
+            "identity_evidence_records": records,
+        }
+    )
+    identity["source_hashes"]["identity_evidence_bundle"] = evidence_hash
+    identity["audit"].update(
+        {
+            "identity_commitment_contract_available": True,
+            "identity_commitment_schema_version": (
+                "d2.identity-evidence-commitment.v2"
+            ),
+            "identity_commitment_policy_version": (
+                "d2-structural-ambiguity-commitment-v2"
+            ),
+            "identity_commitment_audit_schema_version": (
+                "d2.scalable3d_identity_commitment_audit.v2"
+            ),
+            "identity_commitment_denominator_policy": {
+                "all_records": (
+                    "all_persisted_v2_identity_evidence_records"
+                ),
+                "observed_records": (
+                    "v2_identity_evidence_records_with_association_state_"
+                    "created_or_matched"
+                ),
+                "committed": "identity_commitment_state_equals_committed",
+                "uncommitted": "all_other_v2_identity_commitment_states",
+                "recovery_blocker_count": (
+                    "all_v2_identity_evidence_records_including_zero"
+                ),
+                "watermark_age": (
+                    "frame_timestamp_minus_recovery_not_before_measurement_"
+                    "timestamp_for_records_with_watermark"
+                ),
+            },
+            "identity_commitment_record_count": 6,
+            "identity_commitment_state_counts": {
+                "committed": 5,
+                "identity_uncommitted_after_hold": 1,
+            },
+            "identity_commitment_coverage": 5.0 / 6.0,
+            "identity_commitment_all_records": {
+                "denominator": 6,
+                "committed_count": 5,
+                "uncommitted_count": 1,
+                "coverage": 5.0 / 6.0,
+                "coverage_available": True,
+                "coverage_reason": None,
+            },
+            "identity_commitment_observed_records": {
+                "denominator": 6,
+                "committed_count": 5,
+                "uncommitted_count": 1,
+                "coverage": 5.0 / 6.0,
+                "coverage_available": True,
+                "coverage_reason": None,
+            },
+            "identity_commitment_reason_counts": {
+                "fresh_original_observation_accepted": 5,
+                (
+                    "identity_recovery_blocked_"
+                    "measurement_not_newer_than_hold"
+                ): 1,
+            },
+            "identity_recovery_blocked_reason_counts": {
+                (
+                    "identity_recovery_blocked_"
+                    "measurement_not_newer_than_hold"
+                ): 1,
+            },
+            "identity_recovery_blocker_count_summary": {
+                "record_count": 6,
+                "positive_record_count": 1,
+                "sum": 1,
+                "min": 0,
+                "mean": 1.0 / 6.0,
+                "max": 1,
+            },
+            "identity_recovery_watermark_age_seconds_summary": {
+                "count": 1,
+                "min": 0.5,
+                "mean": 0.5,
+                "max": 0.5,
+            },
+            "identity_recovery_blocker_overflow_record_count": 0,
+            "identity_recovery_blocker_overflow_track_count": 0,
+            "uncommitted_mapping_count": 1,
+            "uncommitted_candidate_binding_count": 0,
+            "uncommitted_candidate_binding_violation_count": 0,
+            "uncommitted_source_binding_violation_count": 0,
+            "uncommitted_binding_violation_policy": {
+                "candidate": (
+                    "uncommitted_frame_mapping_carries_truth_target_or_candidate"
+                ),
+                "source": (
+                    "uncommitted_v2_evidence_or_frame_mapping_carries_source_"
+                    "observation_lineage"
+                ),
+                "required_value": 0,
+            },
+            "identity_switch_anchor_policy": (
+                "compare_consecutive_committed_truth_anchors_across_"
+                "uncommitted_gaps"
+            ),
+            "committed_anchor_across_uncommitted_gap_policy": (
+                "compare_consecutive_committed_truth_anchors_across_"
+                "uncommitted_gaps"
+            ),
+        }
+    )
+    _write_json(identity_path, identity)
+
+    manifest_path = inputs.d2_identity_manifest.path
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["source_hashes"]["identity_evidence"] = evidence_hash
+    manifest["source_hashes"]["identity_evaluation"] = _file_hash(
+        identity_path
+    )
+    _write_json(manifest_path, manifest)
+    inputs = _refresh(inputs, "d2_identity_evidence")
     inputs = _refresh(inputs, "d2_identity_evaluation")
     return _refresh(inputs, "d2_identity_manifest")
 
@@ -1143,6 +1432,53 @@ def test_d2_mapping_missing_or_ambiguous_keeps_score_unavailable(
     assert first["start_3d_distance_m"] is None
     assert first["bounded_pair_progress_diagnostic"]["available"] is False
     assert first["formal_d3_ppo_reward"] is None
+
+
+def test_d2_v2_uncommitted_mapping_is_local_outcome_unavailable(
+    tmp_path: Path,
+) -> None:
+    inputs, _ = _make_fixture(tmp_path / "sources")
+    inputs = _upgrade_identity_to_v2_with_uncommitted_window(inputs)
+
+    result = evaluate_runtime_plan_outcomes(inputs)
+
+    assert result["audit"]["passed"] is True
+    assert len(result["binding_windows"]) == 2
+    first, second = result["binding_windows"]
+    mapping = first["identity_mapping"]
+    assert mapping["available"] is False
+    assert mapping["reason"] == (
+        "d2_identity_uncommitted_in_assignment_window"
+    )
+    assert mapping["global_track_id"] == "GT-0001"
+    assert mapping["truth_target_id"] is None
+    assert mapping["policy"] == "d2_identity_commitment_window_v2"
+    assert mapping["evidence_frame_count"] == 2
+    assert any("status=uncommitted" in item for item in mapping["details"])
+    assert first["state_window_available"] is False
+    assert first["assigned_pair_proximity_event_observed"] is None
+    assert first["bounded_pair_progress_diagnostic"]["available"] is False
+    assert first["bounded_pair_progress_diagnostic"]["reason"] == (
+        "d2_identity_uncommitted_in_assignment_window"
+    )
+    assert second["identity_mapping"]["available"] is True
+    assert second["identity_mapping"]["truth_target_id"] == "TGT-0002"
+
+
+def test_d2_v2_commitment_audit_tamper_still_fails_closed(
+    tmp_path: Path,
+) -> None:
+    inputs, _ = _make_fixture(tmp_path / "sources")
+    inputs = _upgrade_identity_to_v2_with_uncommitted_window(inputs)
+    identity_path = inputs.d2_identity_evaluation.path
+    identity = json.loads(identity_path.read_text(encoding="utf-8"))
+    identity["audit"]["identity_commitment_all_records"]["coverage"] = 0.0
+    _write_json(identity_path, identity)
+    inputs = _refresh_identity_manifest(inputs)
+
+    with pytest.raises(RuntimePlanOutcomeJoinError) as captured:
+        evaluate_runtime_plan_outcomes(inputs)
+    assert captured.value.code == "d2_identity_commitment_contract_invalid"
 
 
 def test_duplicate_d2_track_mapping_in_one_frame_is_rejected(tmp_path: Path) -> None:

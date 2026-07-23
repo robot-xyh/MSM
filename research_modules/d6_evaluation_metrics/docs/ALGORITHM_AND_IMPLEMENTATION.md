@@ -2623,3 +2623,154 @@ lower-bound available episodes = 19 / 20
 `strict_id_switch_count_backfilled=false`、`id_switch_upper_bound_reported=false` 和
 `control_consumed=false`。该批次只覆盖单一 nominal 规模，不能替代完整 sidecar、困难场景或
 AirSim 身份评估。
+
+## 19. D2 identity commitment v2 独立验证与聚合（2026-07-23）
+
+### 19.1 版本分流与 typed evidence
+
+`adapt_d2_scalable_3d_identity()` 现在接受以下精确组合：
+
+```text
+d2.scalable3d_identity_evaluation.v1
+  + d2.scalable3d_identity_policy.v1
+
+d2.scalable3d_identity_evaluation.v2
+  + d2.scalable3d_identity_commitment_policy.v2
+```
+
+其他组合直接拒绝。v1 不允许携带 `identity_evidence_records`；commitment 兼容字段若存在，
+必须保持 producer 冻结的 unavailable/`None` 语义。D6 输出
+`D2IdentityCommitmentEvidenceRecord(available=false)`，其所有
+`PublicMetricEvidence.value=None`，不会保留可用零 count。
+
+v2 输出 `d6.d2_scalable3d_identity_commitment_adapter.v1` typed record。其 metric keys
+覆盖：
+
+```text
+all/observed_commitment_coverage
+all/observed_record_count
+all/observed_committed_count
+all/observed_uncommitted_count
+uncommitted_mapping_count
+recovery_blocker_record_count / positive_record_count
+recovery_blocker_count_sum / min / mean / max
+recovery_watermark_age_record_count
+recovery_watermark_age_seconds_min / mean / max
+recovery_blocker_overflow_record_count / track_count
+uncommitted_candidate_binding_count
+uncommitted_candidate_binding_violation_count
+uncommitted_source_binding_violation_count
+```
+
+state counts、all reason counts、recovery-blocked reason counts、denominator policy、
+binding violation policy 和 committed-anchor gap policy 作为 typed record 的结构字段输出。
+
+### 19.2 嵌入 evidence bundle SHA-256
+
+evaluation v2 必须携带完整 `identity_evidence_records`。D6 不导入或调用 D2 tracker，而是从
+公开 records 重建：
+
+```text
+bundle = {
+  schema_version: d2.scalable3d_identity_evidence.v2,
+  policy_version: d2.scalable3d_identity_commitment_policy.v2,
+  hash_algorithm: sha256,
+  episode_id,
+  source_hashes: {
+    online_d1_records,
+    online_d2_records,
+    observation_truth_labels
+  },
+  records
+}
+
+digest = "sha256:" + SHA256(
+  json.dumps(bundle, ensure_ascii=true, sort_keys=true,
+             separators=(",", ":"), allow_nan=false) + "\n"
+)
+```
+
+`digest` 必须等于 evaluation 的 `source_hashes.identity_evidence_bundle`。文件模式仍先验证
+evaluation 外部 SHA-256 和调用方提供的四类 expected source hashes，因此嵌入聚合值不能通过
+同步修改单个 audit 字段规避 provenance。
+
+### 19.3 分母、恢复诊断和 fail-closed 复算
+
+设 v2 records 为 \(R\)，其中 association state 为 `created/matched` 的子集为
+\(R_{\mathrm{obs}}\)，commitment state 为 `committed` 的指示函数为 \(I_c(r)\)。D6 复算：
+
+\[
+C_{\mathrm{all}} =
+\frac{\sum_{r\in R} I_c(r)}{|R|}, \qquad
+C_{\mathrm{obs}} =
+\frac{\sum_{r\in R_{\mathrm{obs}}} I_c(r)}
+{|R_{\mathrm{obs}}|}.
+\]
+
+分母为零时 coverage 是 unavailable/`None`，不是 0。每组必须满足
+`committed + uncommitted = denominator`。blocker count 对全部 records（包括零值）统计
+record count、positive count、sum/min/mean/max。带 recovery watermark 的记录单独计算：
+
+\[
+a_r = t_{\mathrm{frame},r}
+      - t_{\mathrm{recovery\_not\_before},r}.
+\]
+
+允许在 producer timestamp tolerance 内把微小负数夹为 0；超过 tolerance、NaN 或 infinity
+直接拒绝。overflow record count 从逐记录布尔值复算，track count 从这些记录的唯一
+`global_track_id` 复算，必须满足
+`0 <= track_count <= record_count <= |R|`。
+
+uncommitted frame mapping 必须显式包含空 `truth_target_id`、空 candidate/source/lineage
+数组和零 evidence/unique-lineage/labeled-evidence count。D6 分开复算 candidate 与 source
+violation；任一非零即拒绝，即使持久化 audit 同步声称非零也不接纳。普通
+`source_lineage_missing` 等 strict blocker 不因 commitment diagnostics 可用而消失；
+`metrics.id_switch_count` 保持 D2 发布的 `None/unavailable`。
+
+### 19.4 逐 seed 与 batch 聚合
+
+逐 seed CSV 使用 `d2_identity_commitment_*` 独立列，同时保留 strict
+`d2_id_switch_count` 和 `d2_partial_identity_*`。aggregate JSON 的通用 metrics 提供逐 seed
+描述统计，专用 `d2_identity_commitment` 块按计数做 micro 聚合：
+
+```text
+all coverage = sum(all committed) / sum(all denominator)
+observed coverage = sum(observed committed) / sum(observed denominator)
+blocker mean = sum(blocker count) / sum(blocker record count)
+watermark age mean =
+  sum(per-episode watermark mean * watermark count) / sum(watermark count)
+```
+
+reason/state counts、uncommitted mapping、overflow 和 violation 均求和。中文 Markdown 分别
+展示 episode commitment 表、分组 micro 汇总和 partial 表，固定声明
+`strict_id_switch_count_backfilled=false`、
+`uncommitted_gap_treated_as_zero_id_switch=false` 和 `control_consumed=false`。
+
+### 19.5 runtime plan outcome join
+
+`runtime_plan_outcome_join.py` 在原 11 类外部 SHA-256 输入基础上接受 evaluation v1/v2，并复用
+同一 commitment validator。对一个 assignment window，若相关 mapping 中存在
+`status=uncommitted`，返回：
+
+```text
+identity_mapping.available = false
+identity_mapping.reason =
+  d2_identity_uncommitted_in_assignment_window
+identity_mapping.truth_target_id = null
+identity_mapping.details =
+  [frame timestamp, status, producer reason, global_track_id]
+```
+
+随后 state window、正确/错误目标 proximity 和 bounded pair progress 均为 unavailable；
+不读取窗口前后的 truth 回填。该结果只作用于命中的 binding，其他 binding 和合法 episode
+继续输出。schema/policy、source hash、embedded evidence hash 或 commitment audit 篡改仍抛出
+`d2_identity_commitment_contract_invalid`。
+
+### 19.6 验证证据与限制
+
+2026-07-23 测试覆盖合法 v2、v1 compatibility、缺 audit 字段、分母/coverage 篡改、负水位线
+年龄、overflow 矛盾、未提交 binding 违规、普通 lineage missing、跨 gap strict IDSW 消费、
+CSV/JSON/中文 Markdown、runtime 局部不可用及 v2 audit 篡改。D6 全量为
+`598 passed, 1 warning in 21.44s`，零失败；warning 为既有 Matplotlib `Axes3D` 环境提示。
+本轮没有执行 AirSim 或 clean seed 1100，因此没有新的 commitment coverage、IDSW、D2 track
+或 D3 assignment 性能数值。

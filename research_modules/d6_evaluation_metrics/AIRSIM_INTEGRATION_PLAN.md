@@ -725,3 +725,38 @@ D6 仅为历史 D1 制品读取 `canonical_mapping/canonical_mapping_digest` 别
 子场景运行；200 对 200 的正式验证由三维质点环境承担。当前工作树的 main-owned scalable
 3D reporting 已调用 D6 生成单 episode/batch bundle；AirSim 正式 producer、稳定文件名/
 manifest key 和真实多 seed 证据仍待 main 冻结与验收。
+
+## 12. Identity commitment v2 与 runtime outcome 接线（2026-07-23）
+
+该变化影响跨运行时评估，因此本计划需要同步。main 在 point-mass 或 AirSim episode 结束后
+必须原子写出：
+
+1. `d2.scalable3d_identity_evidence.v2`，每个 D2-owned track/frame 含公开
+   `identity_commitment`；uncommitted records 的 `source_observations` 必须为空；
+2. `d2.scalable3d_identity_evaluation.v2`，保留同一批完整
+   `identity_evidence_records`、frames、strict metrics 和 commitment audit；
+3. identity manifest，绑定 evaluation、evidence、online D1、online D2 和 observation truth
+   五项文件 SHA-256，并保留 episode、availability 与 online truth isolation；
+4. D6 truth-isolated manifest/input，向
+   `build_truth_isolated_episode_record()` 传 evaluation SHA、四类 expected source hashes、
+   identity manifest path 与 manifest SHA。
+
+main 不得把 v2 内嵌 records 从 evaluation 删除，也不得把 v2 文件仅改 schema 字符串降为 v1。
+`known_false_alarm/unknown` 仍只能来自 truth-free 上游 disposition；AirSim actor/object 名称和
+offline truth sidecar 不得进入 online commitment。
+
+runtime plan outcome join 的 11 类 `HashedArtifact` 输入不变，但 D2 evaluation 可以是 v2。
+assignment window 命中 uncommitted mapping 时，D6 只令该 binding 的 identity/state/距离诊断
+unavailable，并在 JSON/Markdown 保留 reason/details；不得回填 truth，也不得因这个合法显式状态
+终止整个 episode。文件缺失、SHA 不符、audit 缺字段或违反零 binding policy 仍失败关闭。
+
+接线后的首个验收应为 clean seed 1100 baseline/candidate A/B，而不是直接启动多 seed AirSim：
+
+- evaluation/evidence/manifest SHA 链全部通过；
+- strict IDSW availability 与 D2 原值一致，跨 uncommitted gap 不由 D6 重算；
+- all/observed commitment coverage 和 uncommitted mapping count 可用；
+- candidate/source binding violation 均为 0，online truth use 为 0；
+- D2 track count、D3 assignment count 和 runtime binding 可用性不比 baseline 退化。
+
+2026-07-23 仅完成 D6-owned 实现与 `598 passed, 1 warning` 回归。clean seed 1100、新
+AirSim episode 和多 seed A/B 尚未执行；当前不能填写真实 commitment coverage 或性能结论。
