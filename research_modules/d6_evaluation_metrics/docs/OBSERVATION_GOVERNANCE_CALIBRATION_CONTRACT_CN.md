@@ -207,7 +207,7 @@ estimated_peak_memory_bytes
     "producer": "offline-truth-evaluator",
     "evaluator_git_commit": "<40 lowercase hex>",
     "config_sha256": "sha256:<64 lowercase hex>",
-    "truth_schema": "scalable3d-offline-truth-v1",
+    "truth_schema": "scalable3d-offline-truth-v2",
     "truth_artifact_sha256": "sha256:<truth artifact hash>",
     "episode_manifest_sha256": "sha256:<manifest file hash>",
     "online_audit_sha256": "sha256:<online audit file hash>"
@@ -243,6 +243,10 @@ estimated_peak_memory_bytes
 比例指标只有在正分母下才能标记为 available。确认时延只有在至少一个 evaluator 样本下才能
 标记为 available。无评估机会时应使用 `unavailable`、空值和具体原因。D6 不读取原始真值，
 只核验真值制品摘要并消费侧车中的已计算统计量。
+
+`scalable3d-offline-truth-v2` 的逐观测记录必须显式使用 `target`、
+`known_false_alarm` 或 `unknown`。known false alarm 不作为目标样本，unknown 使依赖完整身份的
+统计保持 unavailable。v1 历史侧车可只读兼容，但不能据此声明非目标两态计数为零。
 
 ## 7. 哈希和一致性规则
 

@@ -458,6 +458,98 @@ def test_public_dto_adapters_preserve_d1_d2_metrics() -> None:
     )
 
 
+def test_d2_v2_disposition_audit_is_provenance_bound_and_reported() -> None:
+    payload = _d2_payload()
+    audit = payload["audit"]
+    assert isinstance(audit, dict)
+    audit.update(
+        {
+            "observation_truth_schema_version": (
+                "d2.scalable3d_observation_truth.v2"
+            ),
+            "truth_label_count": 4,
+            "observation_truth_disposition_counts": {
+                "target": 3,
+                "known_false_alarm": 1,
+            },
+            "known_false_alarm_only_mapping_count": 0,
+            "identity_metrics_blocking_reasons": [],
+        }
+    )
+
+    record = adapt_d2_scalable_3d_identity(payload)
+    disposition = record.audit[
+        "d6_observation_truth_disposition_acceptance"
+    ]
+
+    assert disposition["availability"] == "available"
+    assert disposition["source_schema_version"] == (
+        "d2.scalable3d_observation_truth.v2"
+    )
+    assert disposition["source_sha256"] == _sha("f")
+    assert disposition["target_label"]["count"] == 3
+    assert disposition["known_false_alarm"]["count"] == 1
+    assert disposition["unknown"]["count"] == 0
+    assert disposition["missing_disposition"]["count"] == 0
+    assert disposition["known_false_alarm_treated_as_target"] is False
+    assert disposition["strict_id_switch_backfilled"] is False
+
+
+def test_d2_v2_unknown_disposition_keeps_strict_id_switch_unavailable() -> None:
+    payload = _d2_payload(available=False)
+    audit = payload["audit"]
+    assert isinstance(audit, dict)
+    audit.update(
+        {
+            "observation_truth_schema_version": (
+                "d2.scalable3d_observation_truth.v2"
+            ),
+            "truth_label_count": 4,
+            "observation_truth_disposition_counts": {
+                "target": 3,
+                "unknown": 1,
+            },
+            "known_false_alarm_only_mapping_count": 0,
+            "identity_metrics_blocking_reasons": ["truth_label_unknown"],
+        }
+    )
+
+    record = adapt_d2_scalable_3d_identity(payload)
+    disposition = record.audit[
+        "d6_observation_truth_disposition_acceptance"
+    ]
+
+    assert disposition["unknown"]["count"] == 1
+    assert record.metrics["id_switch_count"].available is False
+    assert record.metrics["id_switch_count"].value is None
+    assert disposition["strict_id_switch_backfilled"] is False
+
+
+def test_d2_v2_disposition_count_tampering_is_rejected() -> None:
+    payload = _d2_payload()
+    audit = payload["audit"]
+    assert isinstance(audit, dict)
+    audit.update(
+        {
+            "observation_truth_schema_version": (
+                "d2.scalable3d_observation_truth.v2"
+            ),
+            "truth_label_count": 4,
+            "observation_truth_disposition_counts": {
+                "target": 4,
+                "known_false_alarm": 1,
+            },
+            "known_false_alarm_only_mapping_count": 0,
+        }
+    )
+
+    with pytest.raises(
+        TruthIsolatedEvaluationError,
+        match="disposition counts do not cover",
+    ):
+        adapt_d2_scalable_3d_identity(payload)
+
+
 def test_d2_unverified_truth_isolation_fails_metrics_closed() -> None:
     d2 = adapt_d2_scalable_3d_identity(
         _d2_payload(truth_isolation_verified=False)

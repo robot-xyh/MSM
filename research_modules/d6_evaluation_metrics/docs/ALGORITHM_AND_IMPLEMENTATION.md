@@ -1,5 +1,47 @@
 # D6 系统级离线评估：算法原理与实施说明
 
+## 离线观测三态消费（2026-07-23）
+
+`observation_truth_sidecar.py` 独立接受 main
+`scalable3d-offline-truth-v1/v2` 和 D2
+`d2.scalable3d_observation_truth.v1/v2`，不导入生产者。一个 sidecar 只能使用一个 schema。
+v1 是 target-only 合同；v2 必须显式给出
+`target`、`known_false_alarm` 或 `unknown`。
+
+v2 校验规则如下：
+
+```text
+target                -> truth identity 必须存在
+known_false_alarm     -> truth identity 必须为空
+unknown               -> truth identity 必须为空
+```
+
+缺 disposition、非法状态、混合 schema、未知字段、非有限时间戳、重复 observation、同一
+observation 的状态或目标冲突均失败关闭。解析器不读取 observation ID 文本、距离、actor/object
+名称或在线状态。
+
+`evaluate_scalable_3d_episode()` 始终校验 `offline_truth_labels.jsonl`，分别输出 target、
+known false alarm、unknown 和 missing disposition 的 availability/count/reason。v1 的 target
+count 可用，无法表达的两类非目标计数保持 unavailable。当前 registry 为
+`d6-scalable3d-schema-registry-v2`，当前 offline truth 为
+`scalable3d-offline-truth-v2`，评估输出为 `d6-scalable3d-offline-evaluation-v8`。v1 仍可读取，
+但不通过 current-schema formal acceptance。
+
+`runtime_plan_outcome_join` 先验证 D2 sidecar 文件 SHA-256，再与 identity evaluation 和 identity
+manifest 中的来源摘要交叉核对。D2 v2 audit 的三态计数必须与 sidecar 相同。标记为
+`known_false_alarm_only` 的 mapping 必须为 `excluded`，且不携带真值或候选目标。unknown 数量
+大于 0 时，D2 strict identity 和 `id_switch_count` 必须 unavailable。
+
+`truth_isolated_offline` 只拿到 D2 evaluation 时，从
+`audit.observation_truth_disposition_counts` 读取计数，从
+`source_hashes.observation_truth_labels` 接受 provenance。旧 D2 audit 未声明 schema 时，三态计数
+保持 unavailable。三条路径均固定输出 `strict_id_switch_backfilled=false`；known false alarm、
+partial lower bound 和距离证据均不用于补算严格 IDSW。
+
+2026-07-23 回归结果为新增处置及相关专项 `130 passed`、D6 全量
+`586 passed, 1 warning in 21.99s`、scalable learning export
+`5 passed, 1 warning in 3.13s`。
+
 ## scalable 3D 阶段分位消费算法（2026-07-22）
 
 `stage_timings.csv` 先按表头分派。表头包含 `schema_version` 时，只接受

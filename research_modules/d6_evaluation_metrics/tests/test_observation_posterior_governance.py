@@ -232,8 +232,8 @@ def test_chinese_report_renders_v2_audit_and_descriptive_boundary() -> None:
     )
 
     assert "D1-D2 后验代次审计" in report
-    assert SCALABLE_3D_OFFLINE_EVALUATION_DATE == "2026-07-22"
-    assert "评估日期：2026-07-22" in report
+    assert SCALABLE_3D_OFFLINE_EVALUATION_DATE == "2026-07-23"
+    assert "评估日期：2026-07-23" in report
     assert "v1 没有这些字段，结果保持 unavailable，不按 0 处理" in report
     assert "不等同于 D1-D7 全栈实时能力" in report
 

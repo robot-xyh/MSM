@@ -21,12 +21,21 @@ from typing import Any, Iterable, Mapping, Sequence
 
 import numpy as np
 
+from .observation_truth_sidecar import (
+    D2_OBSERVATION_TRUTH_SCHEMA_V2,
+    ObservationTruthSidecarError,
+    TRUTH_DISPOSITION_KNOWN_FALSE_ALARM,
+    TRUTH_DISPOSITION_TARGET,
+    TRUTH_DISPOSITION_UNKNOWN,
+    audit_observation_truth_sidecar,
+)
+
 
 RUNTIME_PLAN_OUTCOME_INPUT_SCHEMA_VERSION = (
     "d6.runtime-plan-outcome-join-inputs.v1"
 )
-RUNTIME_PLAN_OUTCOME_JOIN_SCHEMA_VERSION = "d6.runtime-plan-outcome-join.v1"
-RUNTIME_PLAN_OUTCOME_JOIN_DATE = "2026-07-21"
+RUNTIME_PLAN_OUTCOME_JOIN_SCHEMA_VERSION = "d6.runtime-plan-outcome-join.v2"
+RUNTIME_PLAN_OUTCOME_JOIN_DATE = "2026-07-23"
 RUNTIME_PLAN_OUTCOME_DIAGNOSTIC_NAME = (
     "bounded_assigned_pair_best_distance_progress_v1"
 )
@@ -333,6 +342,13 @@ def evaluate_runtime_plan_outcomes(
         manifest=manifest,
         online_envelopes=envelopes_by_sequence,
     )
+    observation_truth_disposition = (
+        _load_and_validate_observation_truth_disposition(
+            source,
+            artifact_hashes=artifact_hashes,
+            identity=identity,
+        )
+    )
     truth = _load_truth_state(
         source.offline_truth_state.path,
         config=config,
@@ -412,6 +428,7 @@ def evaluate_runtime_plan_outcomes(
             "d3_learning_applied_ack_count": applied_learning_count,
             "d4_regional_applied_ack_count": applied_regional_count,
         },
+        "offline_observation_truth_disposition": observation_truth_disposition,
         "binding_windows": windows,
         "observed_diagnostics": {
             "bounded_pair_progress_name": RUNTIME_PLAN_OUTCOME_DIAGNOSTIC_NAME,
@@ -502,6 +519,10 @@ def render_runtime_plan_outcome_join_markdown(
     runtime = _mapping(payload.get("runtime_ack_evidence"), "runtime evidence")
     diagnostics = _mapping(payload.get("observed_diagnostics"), "diagnostics")
     admission = _mapping(payload.get("admission"), "admission")
+    disposition = _mapping(
+        payload.get("offline_observation_truth_disposition"),
+        "offline observation truth disposition",
+    )
     windows = _sequence(payload.get("binding_windows"), "binding windows")
     lines = [
         "# 运行时计划确认与离线观测结果联接",
@@ -519,6 +540,18 @@ def render_runtime_plan_outcome_join_markdown(
         ),
         "该诊断只描述已观测距离变化，不是 D3 正式强化学习奖励，也不构成因果或反事实证据。",
         "强化学习近端策略优化、辅助模式和控制权准入继续关闭，规则回退保持启用。",
+        "",
+        "## 离线观测处置",
+        "",
+        (
+            f"已验证 `{disposition['source_schema_version']}` sidecar 及来源哈希。"
+            f"目标标签 {_disposition_count(disposition, 'target_label')} 条，"
+            "已知虚警 "
+            f"{_disposition_count(disposition, 'known_false_alarm')} 条，未知 "
+            f"{_disposition_count(disposition, 'unknown')} 条，缺失处置 "
+            f"{_disposition_count(disposition, 'missing_disposition')} 条。"
+        ),
+        "已知虚警不作为目标身份，D6 不从在线字段推断处置，也不回填 D2 严格 ID Switch。",
         "",
         "## 绑定结果",
         "",
@@ -566,6 +599,14 @@ def render_runtime_plan_outcome_join_markdown(
         ]
     )
     return "\n".join(lines)
+
+
+def _disposition_count(payload: Mapping[str, Any], name: str) -> str:
+    item = payload.get(name)
+    if not isinstance(item, Mapping) or item.get("availability") != "available":
+        reason = item.get("reason") if isinstance(item, Mapping) else "unavailable"
+        return f"不可用（{reason}）"
+    return str(item.get("count"))
 
 
 def _verify_all_inputs(
@@ -1366,6 +1407,146 @@ def _load_and_validate_d2_identity(
             )
             frame_track_ids.add(track_id)
     return evaluation
+
+
+def _load_and_validate_observation_truth_disposition(
+    inputs: RuntimePlanOutcomeJoinInputs,
+    *,
+    artifact_hashes: Mapping[str, str],
+    identity: Mapping[str, Any],
+) -> Mapping[str, Any]:
+    """Validate D2's normalized sidecar and cross-check its identity audit."""
+
+    rows = tuple(
+        _iter_jsonl(
+            inputs.d2_observation_truth_labels.path,
+            "D2 normalized observation truth labels",
+            empty_code="d2_observation_truth_labels_empty",
+        )
+    )
+    try:
+        disposition = audit_observation_truth_sidecar(
+            rows,
+            accepted_contract="d2_normalized",
+        )
+    except ObservationTruthSidecarError as exc:
+        _fail(exc.code, str(exc))
+
+    identity_audit = _mapping(identity.get("audit"), "D2 identity audit")
+    audit_cross_check = "legacy_v1_not_reported_by_d2"
+    known_false_alarm_mapping_count = 0
+    if disposition.source_schema_version == D2_OBSERVATION_TRUTH_SCHEMA_V2:
+        _expect(
+            identity_audit.get("observation_truth_schema_version")
+            == D2_OBSERVATION_TRUTH_SCHEMA_V2,
+            "d2_observation_truth_audit_schema_mismatch",
+            "D2 identity audit does not identify its normalized v2 sidecar",
+        )
+        raw_counts = _mapping(
+            identity_audit.get("observation_truth_disposition_counts"),
+            "D2 observation truth disposition counts",
+        )
+        unsupported = set(raw_counts) - {
+            TRUTH_DISPOSITION_TARGET,
+            TRUTH_DISPOSITION_KNOWN_FALSE_ALARM,
+            TRUTH_DISPOSITION_UNKNOWN,
+        }
+        _expect(
+            not unsupported,
+            "d2_observation_truth_audit_disposition_unknown",
+            f"D2 identity audit reports unsupported dispositions: {sorted(unsupported)}",
+        )
+        reported_counts = {
+            name: _nonnegative_int(
+                raw_counts.get(name, 0),
+                f"D2 disposition count {name}",
+            )
+            for name in (
+                TRUTH_DISPOSITION_TARGET,
+                TRUTH_DISPOSITION_KNOWN_FALSE_ALARM,
+                TRUTH_DISPOSITION_UNKNOWN,
+            )
+        }
+        expected_counts = {
+            TRUTH_DISPOSITION_TARGET: disposition.target_label_count,
+            TRUTH_DISPOSITION_KNOWN_FALSE_ALARM: (
+                disposition.known_false_alarm_count
+            ),
+            TRUTH_DISPOSITION_UNKNOWN: disposition.unknown_count,
+        }
+        _expect(
+            reported_counts == expected_counts,
+            "d2_observation_truth_audit_count_mismatch",
+            "D2 identity audit disposition counts contradict the hashed sidecar",
+        )
+        _expect(
+            sum(reported_counts.values()) == disposition.record_count,
+            "d2_observation_truth_audit_total_mismatch",
+            "D2 disposition counts do not cover the normalized sidecar",
+        )
+        audit_cross_check = "schema_and_disposition_counts_match_hashed_sidecar"
+
+        for raw_frame in _sequence(identity.get("frames"), "D2 identity frames"):
+            frame = _mapping(raw_frame, "D2 identity frame")
+            for raw_mapping in _sequence(
+                frame.get("mappings"),
+                "D2 identity frame mappings",
+            ):
+                mapping = _mapping(raw_mapping, "D2 identity mapping")
+                if mapping.get("reason") != "known_false_alarm_only":
+                    continue
+                known_false_alarm_mapping_count += 1
+                _expect(
+                    mapping.get("status") == "excluded"
+                    and mapping.get("truth_target_id") is None
+                    and not mapping.get("candidate_truth_target_ids"),
+                    "d2_known_false_alarm_promoted_to_target",
+                    "D2 mapped known false alarm evidence into a target identity",
+                )
+        _expect(
+            _nonnegative_int(
+                identity_audit.get("known_false_alarm_only_mapping_count", 0),
+                "D2 known-false-alarm-only mapping count",
+            )
+            == known_false_alarm_mapping_count,
+            "d2_known_false_alarm_mapping_audit_mismatch",
+            "D2 known-false-alarm exclusion count contradicts its mappings",
+        )
+
+        if disposition.unknown_count:
+            metrics = _mapping(identity.get("metrics"), "D2 identity metrics")
+            blockers = identity_audit.get("identity_metrics_blocking_reasons")
+            _expect(
+                metrics.get("truth_metrics_available") is False
+                and metrics.get("id_switch_count_available") is False
+                and metrics.get("id_switch_count") is None
+                and isinstance(blockers, list)
+                and "truth_label_unknown" in blockers,
+                "d2_unknown_disposition_did_not_fail_closed",
+                "D2 strict identity metrics remained available with unknown labels",
+            )
+
+    payload = disposition.to_dict()
+    payload.update(
+        {
+            "availability": "available",
+            "source_artifact": "d2_observation_truth_labels",
+            "source_sha256": artifact_hashes["d2_observation_truth_labels"],
+            "source_hash_verified": True,
+            "d2_identity_audit_cross_check": audit_cross_check,
+            "known_false_alarm_only_mapping_count": (
+                known_false_alarm_mapping_count
+            ),
+            "known_false_alarm_exclusion_verified": (
+                disposition.source_schema_version
+                == D2_OBSERVATION_TRUTH_SCHEMA_V2
+            ),
+            "strict_id_switch_source": "d2_identity_evaluation_only",
+            "strict_id_switch_backfilled": False,
+            "online_bus_contains_disposition_or_truth": False,
+        }
+    )
+    return payload
 
 
 def _validate_filtered_online_source(

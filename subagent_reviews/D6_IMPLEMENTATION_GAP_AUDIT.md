@@ -1,5 +1,33 @@
 # D6 实现差距审计
 
+## 2026-07-23 observation truth v2 GAP 更新
+
+### 已关闭
+
+1. D6 已接受 external 与 D2 normalized 的 v1/v2 sidecar，并对 v2 三态执行字段、身份和重复冲突
+   校验。
+2. target、known false alarm、unknown、missing disposition 已分别输出 availability/count/reason。
+   v1 无法表达的非目标计数保持 unavailable。
+3. known false alarm 不进入 target mapping；unknown 强制 strict identity/IDSW fail-closed；D6
+   不回填 strict IDSW。
+4. runtime outcome 已把 sidecar 文件、D2 evaluation、D2 manifest 的 SHA-256 和 audit count
+   交叉绑定。truth-isolated adapter 已明确仅从 D2 audit 获取计数，并保存来源摘要。
+5. 缺 disposition、非法状态、identity 冲突、重复冲突、schema 和 audit 篡改均有负例。
+6. 2026-07-23 新增处置及相关专项 `130 passed`，D6 全量 `586 passed, 1 warning in 21.99s`，
+   scalable learning export 联调 `5 passed, 1 warning in 3.13s`。warning 为既有 Matplotlib
+   `Axes3D` 环境问题。
+
+### 仍开放 P1
+
+1. 当前 20-seed 证据来自旧 target-only sidecar，尚未用 v2 producer 重跑，不能据此报告真实虚警和
+   unknown 分布。
+2. D2 strict IDSW 仍受上游混轨和 truth label 缺口阻断；处置计数与 partial lower bound 不能关闭
+   该缺口。
+3. AirSim 视觉虚警尚需由 evaluator-only sidecar 显式标为 known false alarm，并验证在线总线保持
+   truth/disposition 为零泄漏。
+
+当前无新增 P0。D6 consumer 代码缺口已关闭，真实多 seed、AirSim 和 strict 身份证据保持 P1。
+
 ## 2026-07-22 stage timing v2 GAP 更新
 
 ### 已关闭的 D6-owned P1

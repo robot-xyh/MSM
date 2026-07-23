@@ -358,8 +358,18 @@ def _make_fixture(
     _write_jsonl(
         truth_labels_path,
         [
-            {"observation_id": "OBS-GT-0001", "truth_target_id": "TGT-0001", "measurement_timestamp": 0.8},
-            {"observation_id": "OBS-GT-0002", "truth_target_id": "TGT-0002", "measurement_timestamp": 0.8},
+            {
+                "schema_version": "d2.scalable3d_observation_truth.v1",
+                "observation_id": "OBS-GT-0001",
+                "truth_target_id": "TGT-0001",
+                "measurement_timestamp": 0.8,
+            },
+            {
+                "schema_version": "d2.scalable3d_observation_truth.v1",
+                "observation_id": "OBS-GT-0002",
+                "truth_target_id": "TGT-0002",
+                "measurement_timestamp": 0.8,
+            },
         ],
     )
     _write_json(evidence_path, {"episode_id": episode_id, "records": []})
@@ -531,6 +541,87 @@ def _refresh_identity_manifest(
     return _refresh(inputs, "d2_identity_manifest")
 
 
+def _rewrite_d2_truth_as_v2(
+    inputs: RuntimePlanOutcomeJoinInputs,
+    *,
+    include_unknown: bool = False,
+) -> RuntimePlanOutcomeJoinInputs:
+    truth_path = inputs.d2_observation_truth_labels.path
+    rows: list[dict[str, Any]] = [
+        {
+            "schema_version": "d2.scalable3d_observation_truth.v2",
+            "observation_id": "OBS-GT-0001",
+            "truth_target_id": "TGT-0001",
+            "measurement_timestamp": 0.8,
+            "disposition": "target",
+        },
+        {
+            "schema_version": "d2.scalable3d_observation_truth.v2",
+            "observation_id": "OBS-GT-0002",
+            "truth_target_id": "TGT-0002",
+            "measurement_timestamp": 0.8,
+            "disposition": "target",
+        },
+        {
+            "schema_version": "d2.scalable3d_observation_truth.v2",
+            "observation_id": "OBS-FA",
+            "measurement_timestamp": 0.8,
+            "disposition": "known_false_alarm",
+        },
+    ]
+    if include_unknown:
+        rows.append(
+            {
+                "schema_version": "d2.scalable3d_observation_truth.v2",
+                "observation_id": "OBS-UNKNOWN",
+                "measurement_timestamp": 0.8,
+                "disposition": "unknown",
+            }
+        )
+    _write_jsonl(truth_path, rows)
+    truth_hash = _file_hash(truth_path)
+
+    identity_path = inputs.d2_identity_evaluation.path
+    identity = json.loads(identity_path.read_text(encoding="utf-8"))
+    identity["source_hashes"]["observation_truth_labels"] = truth_hash
+    identity["audit"].update(
+        {
+            "observation_truth_schema_version": (
+                "d2.scalable3d_observation_truth.v2"
+            ),
+            "observation_truth_disposition_counts": {
+                "target": 2,
+                "known_false_alarm": 1,
+                **({"unknown": 1} if include_unknown else {}),
+            },
+            "known_false_alarm_only_mapping_count": 0,
+            "target_with_known_false_alarm_mapping_count": 0,
+            "unknown_disposition_mapping_count": 0,
+            "identity_metrics_blocking_reasons": (
+                ["truth_label_unknown"] if include_unknown else []
+            ),
+        }
+    )
+    if include_unknown:
+        identity["metrics"].update(
+            {
+                "truth_metrics_available": False,
+                "id_switch_count_available": False,
+                "id_switch_count": None,
+            }
+        )
+    _write_json(identity_path, identity)
+
+    manifest_path = inputs.d2_identity_manifest.path
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["source_hashes"]["observation_truth_labels"] = truth_hash
+    manifest["source_hashes"]["identity_evaluation"] = _file_hash(identity_path)
+    _write_json(manifest_path, manifest)
+    inputs = _refresh(inputs, "d2_observation_truth_labels")
+    inputs = _refresh(inputs, "d2_identity_evaluation")
+    return _refresh(inputs, "d2_identity_manifest")
+
+
 def _episode_output_inputs(root: Path) -> RuntimePlanOutcomeJoinInputs:
     paths = {
         "online_observations": root / "online_observations.jsonl",
@@ -599,6 +690,13 @@ def test_normal_join_builds_nonoverlapping_windows_and_keeps_admission_closed(
 
     assert result["runtime_ack_evidence"]["ack_count"] == 2
     assert result["runtime_ack_evidence"]["binding_count"] == 2
+    truth_audit = result["offline_observation_truth_disposition"]
+    assert truth_audit["source_schema_version"] == (
+        "d2.scalable3d_observation_truth.v1"
+    )
+    assert truth_audit["target_label"]["count"] == 2
+    assert truth_audit["known_false_alarm"]["availability"] == "unavailable"
+    assert truth_audit["strict_id_switch_backfilled"] is False
     first, second = result["binding_windows"]
     assert first["window_start_timestamp"] == 1.0
     assert first["window_end_timestamp"] == 2.0
@@ -633,6 +731,93 @@ def test_normal_join_builds_nonoverlapping_windows_and_keeps_admission_closed(
     )
 
 
+def test_v2_truth_dispositions_are_hash_bound_and_known_false_alarm_is_excluded(
+    tmp_path: Path,
+) -> None:
+    inputs, _ = _make_fixture(tmp_path / "sources")
+    inputs = _rewrite_d2_truth_as_v2(inputs)
+
+    result = evaluate_runtime_plan_outcomes(inputs)
+
+    audit = result["offline_observation_truth_disposition"]
+    assert audit["source_schema_version"] == (
+        "d2.scalable3d_observation_truth.v2"
+    )
+    assert audit["target_label"]["count"] == 2
+    assert audit["known_false_alarm"]["count"] == 1
+    assert audit["unknown"]["count"] == 0
+    assert audit["source_hash_verified"] is True
+    assert audit["d2_identity_audit_cross_check"] == (
+        "schema_and_disposition_counts_match_hashed_sidecar"
+    )
+    assert audit["known_false_alarm_exclusion_verified"] is True
+    assert audit["strict_id_switch_backfilled"] is False
+
+
+def test_v2_unknown_disposition_keeps_d2_strict_identity_fail_closed(
+    tmp_path: Path,
+) -> None:
+    inputs, _ = _make_fixture(tmp_path / "sources")
+    inputs = _rewrite_d2_truth_as_v2(inputs, include_unknown=True)
+
+    result = evaluate_runtime_plan_outcomes(inputs)
+
+    audit = result["offline_observation_truth_disposition"]
+    assert audit["unknown"]["count"] == 1
+    assert audit["strict_identity_eligible"] is False
+    assert audit["strict_id_switch_backfilled"] is False
+
+
+@pytest.mark.parametrize(
+    ("mutation", "error_code"),
+    [
+        (
+            {
+                "schema_version": "d2.scalable3d_observation_truth.v2",
+                "observation_id": "OBS-BAD",
+                "measurement_timestamp": 0.8,
+            },
+            "observation_truth_disposition_missing",
+        ),
+        (
+            {
+                "schema_version": "d2.scalable3d_observation_truth.v2",
+                "observation_id": "OBS-BAD",
+                "measurement_timestamp": 0.8,
+                "disposition": "unreviewed",
+            },
+            "unsupported_observation_truth_disposition",
+        ),
+    ],
+)
+def test_runtime_join_rejects_tampered_v2_disposition_sidecar(
+    tmp_path: Path,
+    mutation: dict[str, Any],
+    error_code: str,
+) -> None:
+    inputs, _ = _make_fixture(tmp_path / error_code)
+    truth_path = inputs.d2_observation_truth_labels.path
+    _write_jsonl(truth_path, [mutation])
+    truth_hash = _file_hash(truth_path)
+    identity_path = inputs.d2_identity_evaluation.path
+    identity = json.loads(identity_path.read_text(encoding="utf-8"))
+    identity["source_hashes"]["observation_truth_labels"] = truth_hash
+    _write_json(identity_path, identity)
+    manifest_path = inputs.d2_identity_manifest.path
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["source_hashes"]["observation_truth_labels"] = truth_hash
+    manifest["source_hashes"]["identity_evaluation"] = _file_hash(identity_path)
+    _write_json(manifest_path, manifest)
+    inputs = _refresh(inputs, "d2_observation_truth_labels")
+    inputs = _refresh(inputs, "d2_identity_evaluation")
+    inputs = _refresh(inputs, "d2_identity_manifest")
+
+    with pytest.raises(RuntimePlanOutcomeJoinError) as exc:
+        evaluate_runtime_plan_outcomes(inputs)
+
+    assert exc.value.code == error_code
+
+
 def test_candidate_report_matches_pre_streaming_baseline_business_hash(
     tmp_path: Path,
 ) -> None:
@@ -641,7 +826,7 @@ def test_candidate_report_matches_pre_streaming_baseline_business_hash(
     result = evaluate_runtime_plan_outcomes(inputs)
 
     assert _report_business_hash(result) == (
-        "sha256:800c90c1e9e7c34a7f26e5b2c620f15cfc65cfbc1f3b5e6286be584ae534adaa"
+        "sha256:7b271562cfb62a4145f7d0e7883b4e14b5ad523b3c4b2ae2d9cb9365f572675f"
     )
 
 

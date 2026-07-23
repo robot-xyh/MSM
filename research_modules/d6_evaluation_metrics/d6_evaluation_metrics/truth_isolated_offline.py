@@ -64,6 +64,12 @@ D2_SCALABLE_3D_PARTIAL_IDENTITY_DIAGNOSTICS_SCHEMA_VERSION = (
 D2_OFFLINE_IDENTITY_MANIFEST_SCHEMA_VERSION = (
     "scalable3d-offline-identity-evaluation-manifest-v1"
 )
+D2_OBSERVATION_TRUTH_SCHEMA_VERSION_V2 = (
+    "d2.scalable3d_observation_truth.v2"
+)
+D2_OBSERVATION_TRUTH_SCHEMA_VERSION_V1 = (
+    "d2.scalable3d_observation_truth.v1"
+)
 
 DEFAULT_TRUTH_ISOLATED_BOOTSTRAP_RESAMPLES = 2_000
 DEFAULT_TRUTH_ISOLATED_BOOTSTRAP_RNG_SEED = 20260720
@@ -966,7 +972,7 @@ def adapt_d2_scalable_3d_identity(
         != D2_SCALABLE_3D_IDENTITY_METRICS_SCHEMA_VERSION
     ):
         raise TruthIsolatedEvaluationError("unsupported D2 identity metrics schema")
-    audit = _mapping(payload.get("audit"), "D2 identity audit")
+    audit = dict(_mapping(payload.get("audit"), "D2 identity audit"))
     source_verification = str(audit.get("source_verification", "")).strip()
     truth_isolation_verified = (
         audit.get("online_truth_isolation_verified") is True
@@ -978,6 +984,15 @@ def adapt_d2_scalable_3d_identity(
         metrics_payload,
         "truth_metrics_available",
         context="D2 identity metrics",
+    )
+    audit["d6_observation_truth_disposition_acceptance"] = (
+        _d2_observation_truth_disposition_acceptance(
+            payload=payload,
+            audit=audit,
+            source_hashes=source_hashes,
+            truth_metrics_available=truth_available,
+            metrics_payload=metrics_payload,
+        )
     )
     evaluated_frame_count = _nonnegative_int(
         metrics_payload.get("evaluated_frame_count"),
@@ -1518,6 +1533,48 @@ def render_truth_isolated_markdown(
                 continuity=_fmt_metric(record.d2.metrics["identity_continuity"]),
                 duplicate=_fmt_metric(
                     record.d2.metrics["duplicate_truth_to_track_count"]
+                ),
+            )
+        )
+
+    lines.extend(
+        [
+            "",
+            "## 观测处置证据",
+            "",
+            "D6 只接受 D2 已归一化且由 SHA-256 绑定的评估结果。三态计数来自 D2 identity audit；D6 不读取在线目标身份，不从观测编号、距离或 actor 名称推断处置，也不利用该计数回填严格 ID Switch。",
+            "",
+            "| episode | schema | target | known false alarm | unknown | missing disposition | count source | IDSW backfill |",
+            "| --- | --- | ---: | ---: | ---: | ---: | --- | :---: |",
+        ]
+    )
+    for record in records:
+        disposition = record.d2.audit.get(
+            "d6_observation_truth_disposition_acceptance",
+            {},
+        )
+        if not isinstance(disposition, Mapping):
+            disposition = {}
+        lines.append(
+            "| {episode} | {schema} | {target} | {false_alarm} | {unknown} | "
+            "{missing} | {source} | {backfill} |".format(
+                episode=record.context.episode_id,
+                schema=disposition.get("source_schema_version") or "不可用",
+                target=_fmt_disposition_count(disposition, "target_label"),
+                false_alarm=_fmt_disposition_count(
+                    disposition,
+                    "known_false_alarm",
+                ),
+                unknown=_fmt_disposition_count(disposition, "unknown"),
+                missing=_fmt_disposition_count(
+                    disposition,
+                    "missing_disposition",
+                ),
+                source=disposition.get("count_source") or "不可用",
+                backfill=(
+                    "是"
+                    if disposition.get("strict_id_switch_backfilled") is True
+                    else "否"
                 ),
             )
         )
@@ -2207,6 +2264,220 @@ def _d2_metric_evidence(
             "D2 duplicate assignment availability mismatch"
         )
     return output
+
+
+def _d2_observation_truth_disposition_acceptance(
+    *,
+    payload: Mapping[str, Any],
+    audit: Mapping[str, Any],
+    source_hashes: Mapping[str, str],
+    truth_metrics_available: bool,
+    metrics_payload: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Validate disposition evidence reported by D2 without reopening truth."""
+
+    source_hash = source_hashes.get("observation_truth_labels")
+    if source_hash is None:
+        raise TruthIsolatedEvaluationError(
+            "D2 observation truth source hash is missing"
+        )
+    schema = audit.get("observation_truth_schema_version")
+    if schema is None:
+        return {
+            "availability": "unavailable",
+            "unavailable_reason": (
+                "d2_observation_truth_schema_not_reported_by_legacy_evaluation"
+            ),
+            "source_schema_version": None,
+            "source_sha256": source_hash,
+            "source_hash_bound": True,
+            "count_source": None,
+            "target_label": {
+                "availability": "unavailable",
+                "count": None,
+                "reason": "legacy_d2_audit_does_not_report_disposition_schema",
+            },
+            "known_false_alarm": {
+                "availability": "unavailable",
+                "count": None,
+                "reason": "legacy_d2_audit_does_not_report_disposition_schema",
+            },
+            "unknown": {
+                "availability": "unavailable",
+                "count": None,
+                "reason": "legacy_d2_audit_does_not_report_disposition_schema",
+            },
+            "missing_disposition": {
+                "availability": "unavailable",
+                "count": None,
+                "reason": "legacy_d2_audit_does_not_report_disposition_schema",
+            },
+            "known_false_alarm_treated_as_target": False,
+            "strict_id_switch_source": "d2_identity_evaluation_only",
+            "strict_id_switch_backfilled": False,
+            "inference_sources_used": [],
+        }
+    if schema == D2_OBSERVATION_TRUTH_SCHEMA_VERSION_V1:
+        target_count = _nonnegative_int(
+            audit.get("truth_label_count"),
+            "D2 v1 truth_label_count",
+        )
+        return {
+            "availability": "available",
+            "unavailable_reason": None,
+            "source_schema_version": schema,
+            "source_sha256": source_hash,
+            "source_hash_bound": True,
+            "count_source": "D2 identity audit truth_label_count",
+            "target_label": {
+                "availability": "available",
+                "count": target_count,
+                "reason": None,
+            },
+            "known_false_alarm": {
+                "availability": "unavailable",
+                "count": None,
+                "reason": (
+                    "v1_target_only_schema_cannot_report_non_target_dispositions"
+                ),
+            },
+            "unknown": {
+                "availability": "unavailable",
+                "count": None,
+                "reason": (
+                    "v1_target_only_schema_cannot_report_non_target_dispositions"
+                ),
+            },
+            "missing_disposition": {
+                "availability": "available",
+                "count": 0,
+                "reason": None,
+            },
+            "known_false_alarm_treated_as_target": False,
+            "strict_id_switch_source": "d2_identity_evaluation_only",
+            "strict_id_switch_backfilled": False,
+            "inference_sources_used": [],
+        }
+    if schema != D2_OBSERVATION_TRUTH_SCHEMA_VERSION_V2:
+        raise TruthIsolatedEvaluationError(
+            f"unsupported D2 observation truth audit schema: {schema!r}"
+        )
+
+    raw_counts = _mapping(
+        audit.get("observation_truth_disposition_counts"),
+        "D2 observation truth disposition counts",
+    )
+    allowed = {"target", "known_false_alarm", "unknown"}
+    unsupported = set(raw_counts) - allowed
+    if unsupported:
+        raise TruthIsolatedEvaluationError(
+            "D2 observation truth audit reports unsupported dispositions: "
+            + ",".join(sorted(unsupported))
+        )
+    counts = {
+        name: _nonnegative_int(
+            raw_counts.get(name, 0),
+            f"D2 observation truth disposition count {name}",
+        )
+        for name in sorted(allowed)
+    }
+    total = _nonnegative_int(
+        audit.get("truth_label_count"),
+        "D2 truth_label_count",
+    )
+    if sum(counts.values()) != total:
+        raise TruthIsolatedEvaluationError(
+            "D2 observation truth disposition counts do not cover the sidecar"
+        )
+
+    known_false_alarm_mapping_count = 0
+    frames = payload.get("frames")
+    if not isinstance(frames, Sequence) or isinstance(frames, (str, bytes)):
+        raise TruthIsolatedEvaluationError("D2 identity frames must be a sequence")
+    for raw_frame in frames:
+        frame = _mapping(raw_frame, "D2 identity frame")
+        mappings = frame.get("mappings")
+        if not isinstance(mappings, Sequence) or isinstance(
+            mappings,
+            (str, bytes),
+        ):
+            raise TruthIsolatedEvaluationError(
+                "D2 identity frame mappings must be a sequence"
+            )
+        for raw_mapping in mappings:
+            mapping = _mapping(raw_mapping, "D2 identity mapping")
+            if mapping.get("reason") != "known_false_alarm_only":
+                continue
+            known_false_alarm_mapping_count += 1
+            if not (
+                mapping.get("status") == "excluded"
+                and mapping.get("truth_target_id") is None
+                and not mapping.get("candidate_truth_target_ids")
+            ):
+                raise TruthIsolatedEvaluationError(
+                    "D2 known false alarm was promoted to a target identity"
+                )
+    reported_exclusion_count = _nonnegative_int(
+        audit.get("known_false_alarm_only_mapping_count", 0),
+        "D2 known-false-alarm-only mapping count",
+    )
+    if reported_exclusion_count != known_false_alarm_mapping_count:
+        raise TruthIsolatedEvaluationError(
+            "D2 known-false-alarm exclusion count contradicts frame mappings"
+        )
+
+    blockers = audit.get("identity_metrics_blocking_reasons")
+    if counts["unknown"] > 0:
+        if not (
+            truth_metrics_available is False
+            and metrics_payload.get("id_switch_count_available") is False
+            and metrics_payload.get("id_switch_count") is None
+            and isinstance(blockers, Sequence)
+            and not isinstance(blockers, (str, bytes))
+            and "truth_label_unknown" in blockers
+        ):
+            raise TruthIsolatedEvaluationError(
+                "D2 unknown truth dispositions did not block strict identity metrics"
+            )
+
+    return {
+        "availability": "available",
+        "unavailable_reason": None,
+        "source_schema_version": schema,
+        "source_sha256": source_hash,
+        "source_hash_bound": True,
+        "count_source": (
+            "D2 identity evaluation audit "
+            "observation_truth_disposition_counts"
+        ),
+        "target_label": {
+            "availability": "available",
+            "count": counts["target"],
+            "reason": None,
+        },
+        "known_false_alarm": {
+            "availability": "available",
+            "count": counts["known_false_alarm"],
+            "reason": None,
+        },
+        "unknown": {
+            "availability": "available",
+            "count": counts["unknown"],
+            "reason": None,
+        },
+        "missing_disposition": {
+            "availability": "available",
+            "count": 0,
+            "reason": None,
+        },
+        "known_false_alarm_only_mapping_count": (
+            known_false_alarm_mapping_count
+        ),
+        "known_false_alarm_treated_as_target": False,
+        "strict_id_switch_source": "d2_identity_evaluation_only",
+        "strict_id_switch_backfilled": False,
+        "inference_sources_used": [],
+    }
 
 
 def _adapt_d2_partial_identity_diagnostics(
@@ -3095,6 +3366,12 @@ def _episode_source_provenance(
 
 
 def _episode_csv_row(record: TruthIsolatedEpisodeEvaluationRecord) -> dict[str, Any]:
+    disposition = record.d2.audit.get(
+        "d6_observation_truth_disposition_acceptance",
+        {},
+    )
+    if not isinstance(disposition, Mapping):
+        disposition = {}
     row = {
         **record.context.to_dict(),
         "schema_version": record.schema_version,
@@ -3144,6 +3421,36 @@ def _episode_csv_row(record: TruthIsolatedEpisodeEvaluationRecord) -> dict[str, 
         "d2_partial_identity_excluded_mapping_reasons_json": (
             record.d2.partial_identity_diagnostics.excluded_scored_mapping_reason_counts
         ),
+        "d2_observation_truth_disposition_availability": disposition.get(
+            "availability",
+            "unavailable",
+        ),
+        "d2_observation_truth_disposition_schema": disposition.get(
+            "source_schema_version"
+        ),
+        "d2_observation_truth_disposition_source_sha256": disposition.get(
+            "source_sha256"
+        ),
+        "d2_observation_truth_target_label_count": _nested_count(
+            disposition,
+            "target_label",
+        ),
+        "d2_observation_truth_known_false_alarm_count": _nested_count(
+            disposition,
+            "known_false_alarm",
+        ),
+        "d2_observation_truth_unknown_count": _nested_count(
+            disposition,
+            "unknown",
+        ),
+        "d2_observation_truth_missing_disposition_count": _nested_count(
+            disposition,
+            "missing_disposition",
+        ),
+        "d2_observation_truth_strict_id_switch_backfilled": disposition.get(
+            "strict_id_switch_backfilled",
+            False,
+        ),
     }
     for prefix, metrics in (("d1", record.d1.metrics), ("d2", record.d2.metrics)):
         for name, metric in metrics.items():
@@ -3164,6 +3471,18 @@ def _episode_csv_row(record: TruthIsolatedEpisodeEvaluationRecord) -> dict[str, 
     if "d2_id_switch_count" not in row:
         raise AssertionError("D6 must always emit explicit d2_id_switch_count")
     return row
+
+
+def _nested_count(payload: Mapping[str, Any], name: str) -> int | None:
+    item = payload.get(name)
+    if not isinstance(item, Mapping) or item.get("availability") != "available":
+        return None
+    value = item.get("count")
+    return (
+        int(value)
+        if isinstance(value, int) and not isinstance(value, bool) and value >= 0
+        else None
+    )
 
 
 def _d1_group_csv_row(
@@ -3461,6 +3780,14 @@ def _fmt_metric(metric: PublicMetricEvidence) -> str:
     if not metric.available:
         return f"不可用（{metric.unavailable_reason}）"
     return _fmt_number(metric.value)
+
+
+def _fmt_disposition_count(payload: Mapping[str, Any], name: str) -> str:
+    item = payload.get(name)
+    if not isinstance(item, Mapping) or item.get("availability") != "available":
+        reason = item.get("reason") if isinstance(item, Mapping) else "unavailable"
+        return f"不可用（{reason}）"
+    return str(item.get("count"))
 
 
 def _fmt_hash(value: str | None) -> str:

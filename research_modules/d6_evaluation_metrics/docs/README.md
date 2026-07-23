@@ -1,5 +1,12 @@
 # D6 文档索引
 
+2026-07-23 observation truth v2 消费见 `MODULE_PRINCIPLES_CN.md` 和
+`ALGORITHM_AND_IMPLEMENTATION.md`，验证见根目录 `../EXPERIMENT_REPORT.md` 2.24 节。D6 接受
+external/D2 normalized v1/v2，v2 分别报告 target、known false alarm、unknown 和 missing
+disposition；v1 的非目标计数保持 unavailable。known false alarm 不进入目标身份，unknown 关闭
+strict IDSW，D6 不执行推断或回填。本轮 D6 全量为 `586 passed, 1 warning`，scalable
+learning export 为 `5 passed, 1 warning`。
+
 2026-07-22 的 `scalable3d-stage-timings-v2` 离线消费见
 `MODULE_PRINCIPLES_CN.md` 和 `ALGORITHM_AND_IMPLEMENTATION.md`，接口验证见根目录
 `../EXPERIMENT_REPORT.md` 2.23 节。D6 v7 严格核对分位值与显式 availability，legacy 缺失保持

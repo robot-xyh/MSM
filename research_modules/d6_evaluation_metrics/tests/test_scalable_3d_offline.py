@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 import subprocess
 import sys
+from typing import Any
 
 import pytest
 
@@ -337,6 +338,7 @@ def _write_episode(
     d4_lease_expired: bool = False,
     physical_proximity: bool = False,
     learning_profile: str = "disabled",
+    offline_truth_schema: str = "scalable3d-offline-truth-v2",
 ) -> Path:
     directory.mkdir(parents=True)
     camera_count = resource_count + recon_count
@@ -373,7 +375,7 @@ def _write_episode(
         "bus_schema": "scalable3d-episode-bus-v1",
         "scenario_schema": "scalable3d-scenario-v1",
         "online_observation_schema": "scalable3d-observation-v1",
-        "offline_truth_schema": "scalable3d-offline-truth-v1",
+        "offline_truth_schema": offline_truth_schema,
         "d1_model_version": "d1-scalable3d-fusion-v1",
         "d2_model_version": "d2-scalable3d-association-v1",
         **learning_versions,
@@ -621,7 +623,12 @@ def _write_episode(
             "observation_id": "obs-0001",
             "truth_entity_id": "TGT-0001",
             "measurement_timestamp": 0.2,
-            "schema_version": "scalable3d-offline-truth-v1",
+            "schema_version": offline_truth_schema,
+            **(
+                {"disposition": "target"}
+                if offline_truth_schema == "scalable3d-offline-truth-v2"
+                else {}
+            ),
         }
     ]
     _write_json(directory / "manifest.json", manifest)
@@ -1177,22 +1184,22 @@ def test_current_schema_registry_matches_real_producer_contract(tmp_path: Path) 
 
     row = evaluate_scalable_3d_episode(episode)
 
-    assert SCALABLE_3D_SCHEMA_REGISTRY_VERSION == "d6-scalable3d-schema-registry-v1"
+    assert SCALABLE_3D_SCHEMA_REGISTRY_VERSION == "d6-scalable3d-schema-registry-v2"
     assert SCALABLE_3D_OFFLINE_EVALUATION_SCHEMA_VERSION == (
-        "d6-scalable3d-offline-evaluation-v7"
+        "d6-scalable3d-offline-evaluation-v8"
     )
     assert (
         SCALABLE_3D_STAGE_TIMING_SCHEMA_VERSION
         == "scalable3d-stage-timings-v2"
     )
-    assert SCALABLE_3D_OFFLINE_EVALUATION_DATE == "2026-07-22"
-    assert row["evaluation_date"] == "2026-07-22"
+    assert SCALABLE_3D_OFFLINE_EVALUATION_DATE == "2026-07-23"
+    assert row["evaluation_date"] == "2026-07-23"
     assert SCALABLE_3D_CURRENT_SCHEMA_REGISTRY == {
         "world_schema": "scalable3d-world-v1",
         "bus_schema": "scalable3d-episode-bus-v1",
         "scenario_schema": "scalable3d-scenario-v1",
         "online_observation_schema": "scalable3d-observation-v1",
-        "offline_truth_schema": "scalable3d-offline-truth-v1",
+        "offline_truth_schema": "scalable3d-offline-truth-v2",
         "scenario_config_schema": "scalable3d-scenario-v1",
     }
     assert row["schema_contract_registry_version"] == (
@@ -1217,6 +1224,145 @@ def test_current_schema_registry_matches_real_producer_contract(tmp_path: Path) 
             "reason": None,
         }
     assert row["formal_acceptance_eligible"] is True
+
+
+def test_offline_truth_v1_is_readable_but_non_target_counts_are_unavailable(
+    tmp_path: Path,
+) -> None:
+    episode = _write_episode(
+        tmp_path / "truth_v1",
+        offline_truth_schema="scalable3d-offline-truth-v1",
+    )
+
+    row = evaluate_scalable_3d_episode(episode)
+
+    assert row["offline_truth_disposition_contract_valid"] is True
+    assert row["offline_truth_target_label_count"] == 1
+    assert row["offline_truth_known_false_alarm_count"] is None
+    assert row["offline_truth_known_false_alarm_count_availability"] == (
+        "unavailable"
+    )
+    assert row["offline_truth_unknown_count"] is None
+    assert row["offline_truth_missing_disposition_count"] == 0
+    assert row["offline_truth_strict_id_switch_backfilled"] is False
+    assert row["current_schema_contract_match"] is False
+    assert row["formal_acceptance_eligible"] is False
+
+
+def test_offline_truth_v2_reports_three_states_and_unknown_blocks_strict_identity(
+    tmp_path: Path,
+) -> None:
+    episode = _write_episode(tmp_path / "truth_v2_three_states")
+    _write_jsonl(
+        episode / "offline_truth_labels.jsonl",
+        [
+            {
+                "schema_version": "scalable3d-offline-truth-v2",
+                "observation_id": "OBS-T",
+                "measurement_timestamp": 0.2,
+                "truth_entity_id": "TGT-0001",
+                "disposition": "target",
+            },
+            {
+                "schema_version": "scalable3d-offline-truth-v2",
+                "observation_id": "OBS-FA",
+                "measurement_timestamp": 0.2,
+                "truth_entity_id": None,
+                "disposition": "known_false_alarm",
+            },
+            {
+                "schema_version": "scalable3d-offline-truth-v2",
+                "observation_id": "OBS-U",
+                "measurement_timestamp": 0.2,
+                "truth_entity_id": None,
+                "disposition": "unknown",
+            },
+        ],
+    )
+
+    row = evaluate_scalable_3d_episode(episode)
+
+    assert row["offline_truth_label_count"] == 3
+    assert row["offline_truth_target_label_count"] == 1
+    assert row["offline_truth_known_false_alarm_count"] == 1
+    assert row["offline_truth_unknown_count"] == 1
+    assert row["offline_truth_missing_disposition_count"] == 0
+    assert row["offline_truth_strict_identity_eligible"] is False
+    assert row["offline_truth_known_false_alarm_treated_as_target"] is False
+    assert row["offline_truth_strict_id_switch_backfilled"] is False
+    assert row["d2_id_switch_count"] is None
+
+
+@pytest.mark.parametrize(
+    ("records", "reason", "missing_count"),
+    [
+        (
+            [
+                {
+                    "schema_version": "scalable3d-offline-truth-v2",
+                    "observation_id": "OBS-MISSING",
+                    "measurement_timestamp": 0.2,
+                    "truth_entity_id": "TGT-0001",
+                }
+            ],
+            "observation_truth_disposition_missing",
+            1,
+        ),
+        (
+            [
+                {
+                    "schema_version": "scalable3d-offline-truth-v2",
+                    "observation_id": "OBS-BAD",
+                    "measurement_timestamp": 0.2,
+                    "truth_entity_id": None,
+                    "disposition": "unreviewed",
+                }
+            ],
+            "unsupported_observation_truth_disposition",
+            0,
+        ),
+        (
+            [
+                {
+                    "schema_version": "scalable3d-offline-truth-v2",
+                    "observation_id": "OBS-CONFLICT",
+                    "measurement_timestamp": 0.2,
+                    "truth_entity_id": "TGT-0001",
+                    "disposition": "target",
+                },
+                {
+                    "schema_version": "scalable3d-offline-truth-v2",
+                    "observation_id": "OBS-CONFLICT",
+                    "measurement_timestamp": 0.2,
+                    "truth_entity_id": None,
+                    "disposition": "unknown",
+                },
+            ],
+            "observation_truth_conflicting_duplicate",
+            0,
+        ),
+    ],
+)
+def test_invalid_v2_disposition_sidecars_fail_closed_without_backfill(
+    tmp_path: Path,
+    records: list[dict[str, Any]],
+    reason: str,
+    missing_count: int,
+) -> None:
+    episode = _write_episode(tmp_path / reason)
+    _write_jsonl(episode / "offline_truth_labels.jsonl", records)
+
+    row = evaluate_scalable_3d_episode(episode)
+
+    assert row["offline_truth_disposition_contract_valid"] is False
+    assert row["offline_truth_missing_disposition_count"] == missing_count
+    assert row["offline_truth_target_label_count"] is None
+    assert row["offline_truth_strict_id_switch_backfilled"] is False
+    assert row["formal_acceptance_eligible"] is False
+    assert (
+        f"offline_truth_disposition_contract:{reason}"
+        in row["episode_failure_reasons_json"]
+    )
 
 
 def test_stage_timing_v2_exposes_episode_quantiles_and_availability(
@@ -2499,7 +2645,7 @@ def test_report_bundle_bootstraps_distinct_seeds_and_writes_all_artifacts(
     assert "bundle 能加载" in markdown
     assert "`assist_eligible` 不是控制生效" in markdown
     assert "control adoption 只接受通过合同与 summary 审计" in markdown
-    assert "d6-scalable3d-schema-registry-v1" in markdown
+    assert "d6-scalable3d-schema-registry-v2" in markdown
     assert "schema current" in markdown
     assert "descriptive clean-source calibration" in markdown
 

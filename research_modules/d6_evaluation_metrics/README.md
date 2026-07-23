@@ -1,5 +1,49 @@
 # D6 Evaluation Metrics
 
+## 2026-07-23 离线观测三态处置
+
+D6 已将可扩展三维离线观测真值从 target-only v1 扩展为 disposition-aware v2 消费合同。
+`observation_truth_sidecar.py` 独立校验 main 原始 sidecar 和 D2 归一化 sidecar，不导入
+main、D1 或 D2 运行代码。当前 schema registry 为 `d6-scalable3d-schema-registry-v2`，
+正式当前值为 `scalable3d-offline-truth-v2`；离线评估输出升级为
+`d6-scalable3d-offline-evaluation-v8`。
+
+main 原始 v2 记录必须包含：
+
+```text
+schema_version = scalable3d-offline-truth-v2
+observation_id
+measurement_timestamp
+disposition = target | known_false_alarm | unknown
+truth_entity_id = 仅 target 非空；其余两态必须为 null
+```
+
+D2 归一化 v2 使用 `d2.scalable3d_observation_truth.v2`。target 记录携带
+`truth_target_id`，known false alarm 和 unknown 记录不得携带该字段。D6 不从
+`observation_id`、距离、actor/object 名称或在线状态推断 disposition。sidecar 混用 schema、v2
+缺 disposition、非法状态、目标身份与状态冲突、重复 observation 或 manifest 声明与记录不一致时
+失败关闭。
+
+每个 episode 分别输出 target label、known false alarm、unknown 和 missing disposition 的
+availability、count 与 reason。v1 继续可读，全部记录按 v1 schema 合同视为 target；v1 无法表达的
+known false alarm 和 unknown 计数保持 `null/unavailable`，不得写成 0。v2 的 known false alarm
+不进入目标身份映射；存在 unknown 时 strict identity eligibility 为 false。D6 只消费 D2 strict
+IDSW 的原 availability/value，不使用部分映射或处置计数回填。
+
+`runtime_plan_outcome_join` 对 D2 sidecar 文件、identity evaluation 和 identity manifest 的
+SHA-256 逐项绑定，再交叉核对 D2 audit 中的 schema 和三态计数。`truth_isolated_offline` 只拿到
+D2 已归一化结果时，计数来源明确记录为
+`identity_evaluation.audit.observation_truth_disposition_counts`，来源摘要为
+`source_hashes.observation_truth_labels`；旧 D2 audit 未声明 schema 时，三态计数保持 unavailable，
+既有 strict 指标仍按原合同读取。
+
+本轮没有重跑历史 20-seed episode，也没有将旧 v1 证据宣称为 v2 结果。确定性专项覆盖 v1、v2 三态、
+缺 disposition、非法状态、身份冲突、重复冲突、schema 篡改、D2 audit 计数篡改和 unknown
+fail-closed。新增处置及相关专项 `130 passed`，D6 全量
+`586 passed, 1 warning in 21.99s`，scalable learning export 联调
+`5 passed, 1 warning in 3.13s`。warning 为既有 Matplotlib `Axes3D` 环境问题。AirSim 日志、
+reset、话题和控制接口未变化。
+
 ## 2026-07-22 scalable 3D 阶段分位接入
 
 D6 已接入 `scalable3d-stage-timings-v2`，离线评估输出升级为
@@ -652,14 +696,17 @@ R0/nominal/2v2/seed101 开发 smoke 复读结果为 metadata/execution valid=tru
 该 episode `repository_dirty=true`，不属于正式矩阵。另一个临时 5v5 producer smoke 的 D4 消费为
 1 条合法、1 次 D3 hint applied、1 次 control adoption。正式全矩阵尚未运行。
 
-## 2026-07-20 scalable 3D 当前 schema 合同准入
+## 2026-07-20 scalable 3D 历史 schema 合同准入
 
-当前 `d6-scalable3d-offline-evaluation-v5` 延续 D6 内维护的
-`d6-scalable3d-schema-registry-v1`，不导入 main 控制或仿真运行逻辑。当前合同固定为 world
+该阶段的 `d6-scalable3d-offline-evaluation-v5` 使用 D6 内维护的
+`d6-scalable3d-schema-registry-v1`，不导入 main 控制或仿真运行逻辑。当时合同固定为 world
 `scalable3d-world-v1`、bus `scalable3d-episode-bus-v1`、scenario
 `scalable3d-scenario-v1`、online observation `scalable3d-observation-v1`、offline truth
 `scalable3d-offline-truth-v1`，并要求 scenario config 自身 schema 同为
 `scalable3d-scenario-v1`。
+
+该段保留 2026-07-20 的历史证据。2026-07-23 起当前 registry 和 offline truth 合同分别为 v2，
+见本文顶部“离线观测三态处置”。
 
 manifest 和 config 的原始 schema 字段继续原样输出，便于读取历史数据。每项另输出 expected、match、
 status 和 failure reason；旧值、未知值、篡改值或缺字段只能作为 descriptive evidence，不能通过 clean

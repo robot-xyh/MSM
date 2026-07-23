@@ -1,5 +1,35 @@
 # D6 系统级评估指标实验报告
 
+## 2.24 离线观测三态合同验证
+
+### 范围
+
+本轮验证 D6 对 observation truth v1/v2 的读取、三态计数、D2 provenance 交叉核对和失败关闭。
+输入为确定性 fixture 及 scalable `test_learning_export` 集成用例，没有启动 AirSim，也没有重跑
+历史 20-seed episode。
+
+正例覆盖 external v1、external v2、D2 normalized v1/v2，以及 target、known false alarm、
+unknown 三种状态。负例覆盖 v2 缺 disposition、非法状态、非目标携带 truth identity、重复冲突、
+manifest/schema 不一致、D2 audit 计数篡改和 unknown 未关闭 strict IDSW。
+
+### 结果
+
+| 检查 | 结果 |
+| --- | ---: |
+| 新增处置及相关 D6 专项 | 130 passed |
+| D6 全量回归 | 586 passed |
+| scalable learning export 联调 | 5 passed |
+| 测试失败 | 0 |
+| warning | 既有 Matplotlib `Axes3D` 环境 warning |
+
+v2 输出分别保留 target、known false alarm、unknown 和 missing disposition 的
+availability/count/reason。known false alarm 未进入目标映射；unknown 保持 strict identity
+unavailable；D6 未回填 strict IDSW。v1 可读取，非目标两类计数保持 unavailable。两个此前的集成
+`NameError` 已由 D6-owned helper 接线关闭。
+
+本轮只验证消费合同和集成接口。真实 v2 多 seed 三态分布、AirSim 虚警标注质量及上游混轨修复后的
+strict IDSW 仍待后续实验。
+
 ## 2.23 scalable 3D stage timing v2 接口验证
 
 ### 验证范围

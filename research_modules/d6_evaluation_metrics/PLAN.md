@@ -1,5 +1,48 @@
 # D6 Evaluation Metrics Plan
 
+## 2026-07-23 observation truth v2 状态
+
+### 已完成
+
+- [x] 新增 D6-owned sidecar 校验器，分别接受 main
+  `scalable3d-offline-truth-v1/v2` 与 D2
+  `d2.scalable3d_observation_truth.v1/v2`，不 import 生产者。
+- [x] v1 保留 target-only 兼容；known false alarm 和 unknown 计数为 unavailable，不将缺失能力
+  写成 0。
+- [x] v2 强制显式 `target | known_false_alarm | unknown`，校验 target identity 的存在性和非目标
+  identity 的缺失性。
+- [x] 分别输出 target、known false alarm、unknown、missing disposition 的 availability、count
+  和 reason，并记录 sidecar schema、来源 SHA-256 和计数来源。
+- [x] main sidecar 与 manifest 声明不一致、v2 缺 disposition、未知状态、混合 schema、重复或冲突
+  observation 时失败关闭。
+- [x] known false alarm 不进入 target mapping；D2 标记为 `known_false_alarm_only` 的 mapping
+  必须是 `excluded`、无 truth target、无候选目标。
+- [x] unknown 出现时核对 D2 strict identity 与 `id_switch_count` 均 unavailable；D6 不回填 strict
+  IDSW。
+- [x] `runtime_plan_outcome_join` 校验 raw file hash、D2 manifest/evaluation source hash 和 D2
+  disposition audit 三方一致。
+- [x] `truth_isolated_offline` 在只消费 D2 归一化结果时，明确从 D2 audit 读取计数，从
+  `source_hashes.observation_truth_labels` 接受 provenance；旧 audit 缺 schema 时计数 unavailable。
+- [x] scalable episode CSV/aggregate/中文 Markdown、runtime outcome JSON/Markdown 和
+  truth-isolated JSON/CSV/Markdown 已接入。
+- [x] v1/v2、三态、缺字段、非法状态、identity 冲突、重复冲突、schema/hash/audit 篡改和 unknown
+  fail-closed 均有回归。
+- [x] 2026-07-23 新增处置及相关专项 `130 passed`，D6 全量
+  `586 passed, 1 warning in 21.99s`，scalable learning export
+  `5 passed, 1 warning in 3.13s`。
+
+### 后续验证
+
+- [ ] main/D2 用当前 v2 producer 重跑 clean 多 seed episode，D6 再报告真实三态分布、unknown
+  原因和 strict IDSW availability；旧 20-seed v1 结果不回写为 v2。
+- [ ] 将 AirSim 视觉虚警显式写为 evaluator-only known false alarm，并保持在线总线无
+  disposition/truth 后，再做真实 AirSim 回放验收。
+- [ ] D2 上游混轨和缺 truth label 修复后，重新计算 strict IDSW/continuity；处置计数和 partial
+  lower bound 仍不得替代严格指标。
+
+`AIRSIM_INTEGRATION_PLAN.md` 已检查。本轮只改变离线 evaluator sidecar 消费，不改变 AirSim
+运行时消息、相机/检测接口、reset 或控制链，因此不修改该文档。
+
 ## 2026-07-22 scalable 3D stage timing v2 状态
 
 - [x] 严格分派 `scalable3d-stage-timings-v2` 与无 schema legacy CSV。
@@ -540,7 +583,7 @@ episode 编排、控制或 AirSim 输入合同，因此不修改该计划。
 - [ ] 若要发现整个 comparison key 完全缺失，main 需把 matrix manifest 作为显式 D6 输入；D6 不从
   目录结构重建未出现的 key。
 
-## 2026-07-20 scalable 3D schema registry 窄修复状态
+## 2026-07-20 scalable 3D schema registry 历史状态
 
 - [x] 将两套 D6 fixture 的 online observation schema 对齐真实 producer：
   `scalable3d-observation-v1`。
@@ -553,6 +596,9 @@ episode 编排、控制或 AirSim 输入合同，因此不修改该计划。
 - [x] 复读 6v6/seed37 当前 producer smoke，schema match=true；formal 仍只因
   `repository_dirty=true` 被拒绝。
 - [ ] 后续新增 producer schema 时，必须先更新 registry 版本和迁移说明；未知版本不得自动准入。
+
+该段记录 v1 registry 的历史实施。2026-07-23 已按本文顶部计划升级为 registry v2 和 offline truth
+v2，并保留 v1 只读兼容。
 
 ## 2026-07-20 scalable 3D 主动视觉证据闭环状态
 

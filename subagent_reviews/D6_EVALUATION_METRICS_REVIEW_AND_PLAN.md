@@ -1,5 +1,26 @@
 # D6 系统评估指标综述及子方案
 
+## 2026-07-23 离线观测处置评审
+
+D6 当前以 schema 为唯一处置语义来源。v2 将观测分为 target、known false alarm 和 unknown。
+known false alarm 从身份映射分母中排除，unknown 关闭严格身份指标。v1 继续按 target-only 合同
+读取，但不把缺少非目标标签能力解释为两类计数均为零。
+
+直接 sidecar 路径逐行校验 main v1/v2；D2 路径验证 normalized v1/v2、来源文件 SHA-256、
+identity evaluation、identity manifest 和 audit count。D6 不从 observation ID、距离、
+actor/object 名称或在线状态推断 disposition，也不利用处置计数或部分身份下界回填 strict IDSW。
+
+评审结论为 consumer、报告和失败关闭合同已完成。2026-07-23 新增处置及相关专项 `130 passed`，
+D6 全量 `586 passed, 1 warning in 21.99s`，scalable learning export 联调
+`5 passed, 1 warning in 3.13s`。当前证据是确定性接口验证，不是实际虚警率或身份性能结论。
+
+后续由 main/D2 生成 clean v2 多 seed sidecar，D6 再统计三态分布和 strict availability。AirSim
+虚警需显式离线标注，在线总线继续禁止 truth/disposition。上游混轨未修复前，strict IDSW 保持
+unavailable。
+
+`AIRSIM_INTEGRATION_PLAN.md` 与 `D6_M_TO_N_EVALUATION_FRAMEWORK_REVIEW.md` 已检查。本轮没有改变
+AirSim 运行时接口或 M-to-N 指标分母，因此不修改这两份文档。
+
 ## 2026-07-22 scalable 3D 阶段分位评审
 
 本次改动扩展 D6 的离线性能证据，不改变 D1-D7 控制链。main 的

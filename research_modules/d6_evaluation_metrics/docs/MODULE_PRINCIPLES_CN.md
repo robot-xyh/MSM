@@ -1,5 +1,42 @@
 # D6 系统级离线评估模块原理
 
+## 观测处置与身份指标边界（2026-07-23）
+
+离线观测 sidecar 描述“这条观测在评估侧属于什么”，不属于在线感知状态。v2 使用三个互斥状态：
+
+- `target`：观测对应一个明确目标，必须携带唯一真值目标编号；
+- `known_false_alarm`：评估侧已确认是虚警，不携带真值目标编号；
+- `unknown`：现有离线证据不足以确定目标或虚警，不携带真值目标编号。
+
+对一个通过 schema 校验的 v2 sidecar，D6 按记录直接计算：
+
+```text
+N_total = N_target + N_known_false_alarm + N_unknown
+N_missing_disposition = 0
+```
+
+这些计数只描述标签构成。known false alarm 不进入航迹到真值目标的映射，因此不会形成身份转换或
+ID Switch。unknown 表示严格身份评估的分母不完整，D2 strict IDSW、continuity 和 duplicate 必须
+保持 unavailable。D6 可以保留已定义的部分诊断，但不能用处置计数或下界填充 strict 指标。
+
+v1 是 target-only 历史合同。D6 可确认 v1 记录均为 target，并报告 target count；v1 没有表达
+known false alarm 和 unknown 的能力，因此这两项为 `null/unavailable`。该规则区分“明确为零”和
+“旧 schema 未采集”，避免将历史 sidecar 的信息缺口解释为没有虚警或未知观测。
+
+处置只能来自版本化 evaluator sidecar。D6 禁止使用 observation ID 文本、空间距离、actor/object
+名称、检测返回的真实身份或在线航迹状态补标签。v2 缺 disposition、状态非法、非目标仍携带
+truth identity、同一 observation 出现冲突标签或声明 schema 与记录不一致时，相关身份证据失败关闭。
+
+D6 有两种 provenance 路径。直接读取 main sidecar 时，逐行校验 `scalable3d-offline-truth-v1/v2`。
+消费 D2 归一化结果时，接受 `d2.scalable3d_observation_truth.v1/v2`，并要求 sidecar 文件摘要同时
+出现在 D2 identity evaluation 和 identity manifest。D6 只拿到 evaluation DTO 时，三态计数来源
+固定为 D2 audit，来源摘要固定为 `source_hashes.observation_truth_labels`；未声明 schema 的旧 audit
+保持计数 unavailable。
+
+2026-07-23 的确定性验证结果为处置及相关专项 `130 passed`、D6 全量 `586 passed`、scalable
+learning export `5 passed`。这些结果证明消费合同和失败关闭路径可运行，不代表真实传感器虚警率或
+身份连续性性能。
+
 ## 阶段尾延时的统计层级（2026-07-22）
 
 阶段累计墙钟、单次调用均值和单次调用分位属于不同统计量。累计墙钟回答一个阶段占用多少总时间；

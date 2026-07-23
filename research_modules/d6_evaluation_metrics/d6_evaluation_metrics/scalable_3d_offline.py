@@ -40,20 +40,26 @@ from .observation_posterior_governance import (
     evaluate_posterior_governance,
     register_module_performance_evidence,
 )
+from .observation_truth_sidecar import (
+    ObservationTruthDispositionAudit,
+    ObservationTruthSidecarError,
+    SCALABLE_3D_OFFLINE_TRUTH_SCHEMA_V2,
+    audit_observation_truth_sidecar,
+)
 
 
 SCALABLE_3D_OFFLINE_EVALUATION_SCHEMA_VERSION = (
-    "d6-scalable3d-offline-evaluation-v7"
+    "d6-scalable3d-offline-evaluation-v8"
 )
-SCALABLE_3D_OFFLINE_EVALUATION_DATE = "2026-07-22"
-SCALABLE_3D_SCHEMA_REGISTRY_VERSION = "d6-scalable3d-schema-registry-v1"
+SCALABLE_3D_OFFLINE_EVALUATION_DATE = "2026-07-23"
+SCALABLE_3D_SCHEMA_REGISTRY_VERSION = "d6-scalable3d-schema-registry-v2"
 SCALABLE_3D_STAGE_TIMING_SCHEMA_VERSION = "scalable3d-stage-timings-v2"
 SCALABLE_3D_CURRENT_SCHEMA_REGISTRY = {
     "world_schema": "scalable3d-world-v1",
     "bus_schema": "scalable3d-episode-bus-v1",
     "scenario_schema": "scalable3d-scenario-v1",
     "online_observation_schema": "scalable3d-observation-v1",
-    "offline_truth_schema": "scalable3d-offline-truth-v1",
+    "offline_truth_schema": SCALABLE_3D_OFFLINE_TRUTH_SCHEMA_V2,
     "scenario_config_schema": "scalable3d-scenario-v1",
 }
 DEFAULT_SCALABLE_3D_BOOTSTRAP_RESAMPLES = 2_000
@@ -210,6 +216,16 @@ _METRIC_FIELDS = (
     "d7_command_count",
     "d7_hold_count",
     "d7_reject_count",
+    "offline_truth_disposition_contract_valid",
+    "offline_truth_label_count",
+    "offline_truth_target_label_count",
+    "offline_truth_known_false_alarm_count",
+    "offline_truth_unknown_count",
+    "offline_truth_missing_disposition_count",
+    "offline_truth_complete_disposition_available",
+    "offline_truth_strict_identity_eligible",
+    "offline_truth_known_false_alarm_treated_as_target",
+    "offline_truth_strict_id_switch_backfilled",
     "offline_proximity_within_5m_count",
     "offline_proximity_unique_target_count",
     "offline_proximity_identity_evaluable_count",
@@ -382,6 +398,9 @@ def evaluate_scalable_3d_episode(episode_dir: str | Path) -> dict[str, Any]:
     proximity, proximity_reason = _load_jsonl(
         directory / "offline_proximity_intercepts.jsonl"
     )
+    truth_labels, truth_labels_reason = _load_jsonl(
+        directory / _OPTIONAL_TRUTH_ARTIFACT
+    )
     stages, stages_reason = _load_stage_timings(directory / "stage_timings.csv")
 
     row: dict[str, Any] = {
@@ -399,6 +418,7 @@ def evaluate_scalable_3d_episode(episode_dir: str | Path) -> dict[str, Any]:
         "stage_timings.csv": stages_reason,
         "online_observations.jsonl": online_reason,
         "offline_proximity_intercepts.jsonl": proximity_reason,
+        _OPTIONAL_TRUTH_ARTIFACT: truth_labels_reason,
     }
     row["artifact_availability_json"] = {
         name: {
@@ -443,12 +463,19 @@ def evaluate_scalable_3d_episode(episode_dir: str | Path) -> dict[str, Any]:
     row["_failure_reasons"].extend(active_vision_evidence.failure_reasons)
     _extract_d7_metrics(row, ordered_online)
     _extract_camera_count(row, config, ordered_online)
+    truth_disposition = _extract_observation_truth_disposition_metrics(
+        row,
+        labels=truth_labels,
+        labels_reason=truth_labels_reason,
+    )
     _extract_proximity_metrics(
         row,
-        directory=directory,
         proximity_records=proximity,
         proximity_reason=proximity_reason,
         online_records=ordered_online,
+        truth_labels=truth_labels,
+        truth_labels_reason=truth_labels_reason,
+        truth_disposition=truth_disposition,
     )
     _put_unavailable(
         row,
@@ -791,6 +818,58 @@ def render_scalable_3d_offline_markdown(
                 rejects=_fmt_available(row, "d7_reject_count"),
                 proximity=_fmt_available(row, "offline_proximity_within_5m_count"),
                 identity=identity,
+            )
+        )
+
+    lines.extend(
+        [
+            "",
+            "## 离线观测处置",
+            "",
+            "v2 sidecar 对每条观测显式区分目标、已知虚警和未知。已知虚警不进入目标身份映射，未知状态关闭严格身份可用性。D6 不从观测编号、距离、actor 名称或在线状态推断处置，也不利用部分证据回填 D2 严格 ID Switch。",
+            "",
+            "| seed | schema | contract | total | target | known false alarm | unknown | missing disposition | strict identity eligible | IDSW backfill |",
+            "| ---: | --- | :---: | ---: | ---: | ---: | ---: | ---: | :---: | :---: |",
+        ]
+    )
+    for row in rows:
+        lines.append(
+            "| {seed} | {schema} | {contract} | {total} | {target} | {false_alarm} | "
+            "{unknown} | {missing} | {strict} | {backfill} |".format(
+                seed=_fmt(row.get("seed")),
+                schema=_fmt(
+                    row.get("offline_truth_disposition_audit_json", {}).get(
+                        "source_schema_version"
+                    )
+                    if isinstance(
+                        row.get("offline_truth_disposition_audit_json"),
+                        Mapping,
+                    )
+                    else None
+                ),
+                contract=_fmt_available(
+                    row,
+                    "offline_truth_disposition_contract_valid",
+                ),
+                total=_fmt_available(row, "offline_truth_label_count"),
+                target=_fmt_available(row, "offline_truth_target_label_count"),
+                false_alarm=_fmt_available(
+                    row,
+                    "offline_truth_known_false_alarm_count",
+                ),
+                unknown=_fmt_available(row, "offline_truth_unknown_count"),
+                missing=_fmt_available(
+                    row,
+                    "offline_truth_missing_disposition_count",
+                ),
+                strict=_fmt_available(
+                    row,
+                    "offline_truth_strict_identity_eligible",
+                ),
+                backfill=_fmt_available(
+                    row,
+                    "offline_truth_strict_id_switch_backfilled",
+                ),
             )
         )
 
@@ -3659,13 +3738,164 @@ def _extract_camera_count(
         _put_unavailable(row, "camera_count", "camera_count_evidence_missing")
 
 
+def _extract_observation_truth_disposition_metrics(
+    row: dict[str, Any],
+    *,
+    labels: Sequence[Mapping[str, Any]] | None,
+    labels_reason: str | None,
+) -> ObservationTruthDispositionAudit | None:
+    """Validate the evaluator sidecar and expose version-aware availability."""
+
+    if labels is None:
+        reason = labels_reason or "offline_truth_labels_missing"
+        for field in (
+            "offline_truth_disposition_contract_valid",
+            "offline_truth_label_count",
+            "offline_truth_target_label_count",
+            "offline_truth_known_false_alarm_count",
+            "offline_truth_unknown_count",
+            "offline_truth_missing_disposition_count",
+            "offline_truth_complete_disposition_available",
+            "offline_truth_strict_identity_eligible",
+        ):
+            _put_unavailable(row, field, reason)
+        _put_available(
+            row,
+            "offline_truth_known_false_alarm_treated_as_target",
+            False,
+        )
+        _put_available(row, "offline_truth_strict_id_switch_backfilled", False)
+        row["offline_truth_inference_sources_json"] = []
+        row["offline_truth_disposition_audit_json"] = {
+            "availability": "unavailable",
+            "reason": reason,
+            "strict_id_switch_backfilled": False,
+            "inference_sources_used": [],
+        }
+        return None
+
+    declared_schema = (
+        str(row["offline_truth_schema"])
+        if row.get("offline_truth_schema_availability") == "available"
+        else None
+    )
+    try:
+        audit = audit_observation_truth_sidecar(
+            labels,
+            accepted_contract="external",
+            declared_schema_version=declared_schema,
+        )
+    except ObservationTruthSidecarError as exc:
+        missing_count = 0
+        if declared_schema == SCALABLE_3D_OFFLINE_TRUTH_SCHEMA_V2:
+            missing_count = sum(
+                isinstance(item, Mapping) and "disposition" not in item
+                for item in labels
+            )
+        reason = exc.code
+        for field in (
+            "offline_truth_label_count",
+            "offline_truth_target_label_count",
+            "offline_truth_known_false_alarm_count",
+            "offline_truth_unknown_count",
+            "offline_truth_complete_disposition_available",
+            "offline_truth_strict_identity_eligible",
+        ):
+            _put_unavailable(row, field, reason)
+        _put_available(row, "offline_truth_disposition_contract_valid", False)
+        _put_available(
+            row,
+            "offline_truth_missing_disposition_count",
+            missing_count,
+        )
+        _put_available(
+            row,
+            "offline_truth_known_false_alarm_treated_as_target",
+            False,
+        )
+        _put_available(row, "offline_truth_strict_id_switch_backfilled", False)
+        row["offline_truth_inference_sources_json"] = []
+        row["offline_truth_disposition_audit_json"] = {
+            "availability": "unavailable",
+            "reason": reason,
+            "error": str(exc),
+            "missing_disposition_count": missing_count,
+            "strict_id_switch_backfilled": False,
+            "inference_sources_used": [],
+        }
+        row["_failure_reasons"].append(
+            f"offline_truth_disposition_contract:{reason}"
+        )
+        return None
+
+    _put_available(row, "offline_truth_disposition_contract_valid", True)
+    _put_available(row, "offline_truth_label_count", audit.record_count)
+    _put_available(
+        row,
+        "offline_truth_target_label_count",
+        audit.target_label_count,
+    )
+    if audit.complete_disposition_available:
+        _put_available(
+            row,
+            "offline_truth_known_false_alarm_count",
+            audit.known_false_alarm_count,
+        )
+        _put_available(row, "offline_truth_unknown_count", audit.unknown_count)
+    else:
+        reason = audit.complete_disposition_reason or (
+            "offline_truth_complete_disposition_unavailable"
+        )
+        _put_unavailable(
+            row,
+            "offline_truth_known_false_alarm_count",
+            reason,
+        )
+        _put_unavailable(row, "offline_truth_unknown_count", reason)
+    _put_available(
+        row,
+        "offline_truth_missing_disposition_count",
+        audit.missing_disposition_count,
+    )
+    _put_available(
+        row,
+        "offline_truth_complete_disposition_available",
+        audit.complete_disposition_available,
+    )
+    row[
+        "offline_truth_complete_disposition_reason"
+    ] = audit.complete_disposition_reason
+    _put_available(
+        row,
+        "offline_truth_strict_identity_eligible",
+        audit.strict_identity_eligible,
+    )
+    row["offline_truth_strict_identity_blockers_json"] = list(
+        audit.strict_identity_blockers
+    )
+    _put_available(
+        row,
+        "offline_truth_known_false_alarm_treated_as_target",
+        False,
+    )
+    _put_available(row, "offline_truth_strict_id_switch_backfilled", False)
+    row["offline_truth_inference_sources_json"] = []
+    row["offline_truth_disposition_audit_json"] = {
+        "availability": "available",
+        **audit.to_dict(),
+    }
+    return audit
+
+
 def _extract_proximity_metrics(
     row: dict[str, Any],
     *,
-    directory: Path,
     proximity_records: Sequence[Mapping[str, Any]] | None,
     proximity_reason: str | None,
     online_records: Sequence[Mapping[str, Any]],
+    truth_labels: Sequence[Mapping[str, Any]] | None,
+    truth_labels_reason: str | None,
+    truth_disposition: ObservationTruthDispositionAudit | None,
 ) -> None:
     if proximity_records is None:
         for field in (
@@ -3731,23 +3961,34 @@ def _extract_proximity_metrics(
         )
         return
 
-    labels, label_reason = _load_jsonl(directory / _OPTIONAL_TRUTH_ARTIFACT)
     row["offline_truth_labels_read"] = True
     row["offline_truth_labels_read_reason"] = "five_meter_identity_scoring_requested"
-    if labels is None:
+    if truth_labels is None:
         _put_available(row, "offline_proximity_identity_evaluable_count", 0)
         _put_unavailable(
             row,
             "offline_proximity_identity_correct_count",
-            label_reason or "offline_truth_labels_missing",
+            truth_labels_reason or "offline_truth_labels_missing",
         )
         _put_unavailable(
             row,
             "offline_proximity_identity_correct_rate",
-            label_reason or "offline_truth_labels_missing",
+            truth_labels_reason or "offline_truth_labels_missing",
         )
         return
-    truth_map, map_reason = _offline_global_track_truth_map(labels)
+    if truth_disposition is None:
+        reason = "offline_truth_disposition_contract_invalid"
+        _put_available(row, "offline_proximity_identity_evaluable_count", 0)
+        _put_unavailable(row, "offline_proximity_identity_correct_count", reason)
+        _put_unavailable(row, "offline_proximity_identity_correct_rate", reason)
+        return
+    if not truth_disposition.strict_identity_eligible:
+        reason = "offline_truth_disposition_not_strict_identity_eligible"
+        _put_available(row, "offline_proximity_identity_evaluable_count", 0)
+        _put_unavailable(row, "offline_proximity_identity_correct_count", reason)
+        _put_unavailable(row, "offline_proximity_identity_correct_rate", reason)
+        return
+    truth_map, map_reason = _offline_global_track_truth_map(truth_labels)
     if map_reason is not None:
         _put_available(row, "offline_proximity_identity_evaluable_count", 0)
         _put_unavailable(row, "offline_proximity_identity_correct_count", map_reason)
@@ -3930,6 +4171,7 @@ def _finalize_episode_status(row: dict[str, Any]) -> None:
         "repository_dirty",
         "config_hash_match",
         "current_schema_contract_match",
+        "offline_truth_disposition_contract_valid",
         "d4_policy_version",
         "online_truth_use_count",
         "online_truth_field_violation_count",
@@ -3943,6 +4185,7 @@ def _finalize_episode_status(row: dict[str, Any]) -> None:
         and row.get("repository_dirty") is False
         and row.get("config_hash_match") is True
         and row.get("current_schema_contract_match") is True
+        and row.get("offline_truth_disposition_contract_valid") is True
         and row.get("online_truth_use_count") == 0
         and row.get("online_truth_field_violation_count") == 0
         and not any(
@@ -3965,6 +4208,7 @@ def _finalize_episode_status(row: dict[str, Any]) -> None:
                     "d4_region_consumption_",
                     "d5_active_vision_",
                     "observation_governance_generation_integrity:",
+                    "offline_truth_disposition_contract:",
                 )
             )
             for reason in failures
