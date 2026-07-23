@@ -300,6 +300,7 @@ class IntegratedScalableModuleStack:
         self._d2_identity_lineage_by_track: dict[str, tuple[dict[str, Any], ...]] = {}
         self._d2_observation_replay_generation: dict[str, int] = {}
         self._latest_d2_input_signature: tuple[tuple[Any, ...], ...] | None = None
+        self._d2_pending_d1_update = False
         self._d2_finalize_unchanged_posterior_skip_count = 0
         self._d2_finalize_coalesced_release_count = 0
         self._d1_latest_lineage_by_observation: dict[str, dict[str, Any]] = {}
@@ -411,6 +412,7 @@ class IntegratedScalableModuleStack:
         self._d2_identity_lineage_by_track.clear()
         self._d2_observation_replay_generation.clear()
         self._latest_d2_input_signature = None
+        self._d2_pending_d1_update = False
         self._d2_finalize_unchanged_posterior_skip_count = 0
         self._d2_finalize_coalesced_release_count = 0
         self._d1_latest_lineage_by_observation.clear()
@@ -474,9 +476,11 @@ class IntegratedScalableModuleStack:
             publications=publications,
             publication_timestamp=now,
         )
+        if d1_updated:
+            self._d2_pending_d1_update = True
 
         if (
-            d1_updated
+            self._d2_pending_d1_update
             and self.latest_d1_tracks
             and now + _EPS >= self._next_association_s
         ):
@@ -495,6 +499,7 @@ class IntegratedScalableModuleStack:
                 )
                 publications.append(self._d2_publication(now))
             self._record_timing("d2_association", perf_counter() - started)
+            self._d2_pending_d1_update = False
             self._next_association_s = _advance_schedule(
                 self._next_association_s,
                 config.association_period_s,

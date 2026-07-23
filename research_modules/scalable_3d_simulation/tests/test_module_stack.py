@@ -71,6 +71,45 @@ def test_recon_track_cues_are_fail_closed_by_default() -> None:
     assert IntegratedStackConfig().d5_recon_track_cues_enabled is False
 
 
+def test_d2_consumes_pending_d1_posterior_at_next_association_tick() -> None:
+    config = ScenarioConfig(
+        scenario_name="pending_d1_to_d2_schedule_3v3",
+        scenario_version="pending-d1-to-d2-schedule-v1",
+        target_count=3,
+        resource_count=3,
+        recon_count=1,
+        region_count=2,
+        duration_s=1.2,
+        seed=7,
+        radar_detection_probability=1.0,
+    )
+
+    result = run_episode(config, module_stack=IntegratedScalableModuleStack())
+
+    scheduled_d2 = tuple(
+        message
+        for message in result.online_messages
+        if message.topic == "modules.d2.associated_tracks"
+        and abs(message.timestamp - 1.0) <= 1.0e-9
+    )
+    assert len(scheduled_d2) == 1
+    assert min(
+        float(track["timestamp"])
+        for track in scheduled_d2[0].payload["tracks"]
+    ) > 0.4
+
+    scheduled_guidance = next(
+        message
+        for message in result.online_messages
+        if message.topic == "modules.d7.guidance_commands"
+        and abs(message.timestamp - 1.0) <= 1.0e-9
+    )
+    assert all(
+        command["gate_reason"] != "global_track_stale"
+        for command in scheduled_guidance.payload["commands"]
+    )
+
+
 def test_5v5_online_stack_connects_d1_to_d7_without_truth_identity(tmp_path) -> None:
     config = ScenarioConfig(
         scenario_name="integrated_5v5",
@@ -602,9 +641,34 @@ def test_secondary_failure_reissues_a_distributed_regional_plan() -> None:
         assignment.metadata["regional_owner_layer"] == "distributed"
         for assignment in stack.latest_plan.assignments
     )
+    distributed_plan = next(
+        message
+        for message in reversed(result.online_messages)
+        if message.topic == "modules.d3.assignment_plan"
+        and tuple(
+            message.payload["metadata"].get("regional_owner_layers", ())
+        ) == ("distributed",)
+    )
+    distributed_guidance = next(
+        message
+        for message in result.online_messages
+        if message.topic == "modules.d7.guidance_commands"
+        and abs(message.timestamp - distributed_plan.timestamp) <= 1.0e-9
+    )
     assert Counter(
-        command.mode.value for command in stack.latest_guidance_batch.pair_commands
+        command["mode"] for command in distributed_guidance.payload["commands"]
     ) == {"midcourse_pn_3d": 5}
+    distributed_ack = next(
+        message
+        for message in result.online_messages
+        if message.topic == "runtime.assignment_plan_ack"
+        and abs(message.timestamp - distributed_plan.timestamp) <= 1.0e-9
+    )
+    assert distributed_ack.payload["held_binding_count"] == 0
+    assert Counter(
+        (command.mode.value, command.gate_reason)
+        for command in stack.latest_guidance_batch.pair_commands
+    ) == {("hold", "global_track_stale"): 5}
     assert stack._regional_plan_rejection_reason is None
     target_id = stack.latest_plan.assignments[0].target_id
     permission = stack._d4_permission(target_id)
