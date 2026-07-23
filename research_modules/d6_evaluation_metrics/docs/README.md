@@ -1,5 +1,12 @@
 # D6 文档索引
 
+2026-07-22 clean commit `0d2da25` 的 nominal 200 对 200、10.0 s、seed `1000-1019`
+runtime v2 复核见 `MODULE_PRINCIPLES_CN.md`、`ALGORITHM_AND_IMPLEMENTATION.md` 和根目录
+`../EXPERIMENT_REPORT.md` 2.22 节。20/20 episode 的后验代次合同、pending 排空、基础来源门和
+在线真值隔离通过；D3 覆盖率均值为 `0.989606`，D5 绑定数均值为 `25.95`，5 m 接近为 0。全部证据
+仍是 `descriptive_clean_source_calibration`，实验矩阵 episode 为 0。本批关闭 clean 未见
+20-seed 代次合同输入缺口，不形成正式算法矩阵或物理拦截结论。
+
 2026-07-22 的 D1-D2 后验代次被动审计见 `MODULE_PRINCIPLES_CN.md` 和
 `ALGORITHM_AND_IMPLEMENTATION.md`，接口验证见根目录 `../EXPERIMENT_REPORT.md` 2.21 节。
 runtime v2 核对 D1 完整后验连续代次、D2 来源代次唯一递增、先发布后引用、最终 pending 排空、
@@ -10,8 +17,8 @@ consumed 等于 D1，以及消费数加合并数等于 D1；runtime v1 保持 un
 同日 main 已提供 clean commit `0d2da25` 的 nominal 200 对 200、10.0 s、三 seed runtime v2
 episode。三次后验代次完整性、基础 formal provenance gate、pending 排空和在线真值隔离均通过，
 失败原因空。输出见 `../outputs/scalable3d_posterior_v2_clean_0d2da25_20260722/`。该证据是三 seed
-描述性 clean 校准；没有实验矩阵 metadata，也未达到 20 未见 seed。v6 报告日期已修正并重生成为
-`2026-07-22`。
+描述性 clean 校准，是后续 20-seed 复核前的首批正例；该目录本身没有实验矩阵 metadata。v6
+报告日期已修正并重生成为 `2026-07-22`。
 
 2026-07-22 nominal 200 对 200、10.0 s、seed `42000/42001/42002` 的 clean 长时集成校准见
 `MODULE_PRINCIPLES_CN.md`、`ALGORITHM_AND_IMPLEMENTATION.md` 和根目录 `../EXPERIMENT_REPORT.md`

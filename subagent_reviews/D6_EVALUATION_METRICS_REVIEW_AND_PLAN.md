@@ -1,5 +1,31 @@
 # D6 系统评估指标综述及子方案
 
+## 2026-07-22 clean 20-seed 后验代次证据评审
+
+D6 已独立复核 clean commit
+`0d2da25c14e50f8f9a10ad47a7bd74e5c5e577fb` 的 nominal 200 对 200、10.0 s、
+seed `1000-1019` 批次。20 个主 episode 与 20 行 D6 v6 逐 seed 记录一一对应；来源均 clean、
+状态有限、在线真值使用为 0、分配 hold 为 0，源进程退出码为 0。
+
+20/20 episode 的 D1 完整后验序列连续。D2 来源代次严格递增、无重复，并且只引用此前已发布的
+D1 完整后验。最终 pending 全部排空，D1 generation 等于 D2 consumed generation，D2 consumption
+等于 D2 publication，consumption 加 pre-tick merge 等于 D1 generation。generation contract
+均为 verified，integrity 均为 true。
+
+D1 generation 均值为 `471.65`，范围 `410-499`；D2 consumption 均值为 `47.95`，范围
+`47-48`；pre-tick merge 均值为 `423.7`。D3 coverage 均值为 `0.989606`，95% bootstrap
+区间为 `[0.987144, 0.991813]`。D5 binding 均值为 `25.95`，范围 `9-41`，只代表本批
+10.0 s 名义窗口。20 个 episode 均无 5 m 接近。
+
+评审结论是 clean 未见 20-seed runtime v2 代次合同输入缺口已经关闭。基础
+`formal_acceptance_eligible_episode_count=20` 不等于正式算法验收：20 个 episode 全部仍是
+`descriptive_clean_source_calibration`，experiment-matrix episode 为 0。正式变体矩阵、D2
+ID switch、物理接近身份、物理拦截和学习效果保持开放。
+
+聚合与报告 SHA-256 已独立复算。main 给出的 D6 墙钟 `3:20.42` 和峰值 RSS
+`1,448,612 KiB` 未持久化在 D6 五个输出制品中，只登记为外部运行诊断。`AIRSIM_INTEGRATION_PLAN.md`
+和 `D6_M_TO_N_EVALUATION_FRAMEWORK_REVIEW.md` 已检查；本批不改变对应接口、层级或分母，无需修改。
+
 ## 2026-07-22 后验代次合同评审
 
 runtime v2 使 D6 可以判断 D1 后验是否被 D2 按发布代次消费。评审同时使用在线总线和 episode 最终
@@ -22,8 +48,9 @@ final/consumption/publication 为 `453/48/48`、`516/48/48`、`505/48/48`；pre-
 `405/468/457`，pending 全部排空。三次 integrity 与基础 formal provenance gate 均通过，失败原因空，
 在线真值使用为 0。
 
-该批归类为三个 `descriptive_clean_source_calibration`。没有实验矩阵 metadata，正式矩阵 episode
-数为 0，也未达到 20 未见 seed。clean runtime v2 输入缺口已经关闭；正式矩阵和统计泛化仍为 P1。
+该批归类为三个 `descriptive_clean_source_calibration`，是首批 runtime v2 正例。后续同一 clean
+commit 的 20 个未见 seed 已由本页上一节复核，输入数量子项关闭。两批均没有实验矩阵 metadata，
+正式矩阵 episode 数仍为 0；正式矩阵和算法差异验收仍为 P1。
 
 `AIRSIM_INTEGRATION_PLAN.md` 和 `D6_M_TO_N_EVALUATION_FRAMEWORK_REVIEW.md` 已检查。后验代次合同不
 改变 AirSim 接口，也不改变 M 对 N 联盟分母和物理结果口径，因此两份文档无需修改。

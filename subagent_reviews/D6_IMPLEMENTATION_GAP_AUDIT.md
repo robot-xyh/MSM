@@ -1,5 +1,36 @@
 # D6 实现差距审计
 
+## 2026-07-22 clean 20-seed runtime v2 GAP 更新
+
+### 已关闭的 D6-owned P1
+
+1. main 已提供 clean commit `0d2da25c14e50f8f9a10ad47a7bd74e5c5e577fb` 的 nominal
+   200 对 200、10.0 s、seed `1000-1019` 输入。D6 已独立核对 20 个主 episode，未把 80 个
+   sidecar manifest 混入分母。
+2. 20/20 episode 有限、工作树 clean、在线真值使用为 0、分配 hold 为 0，源进程退出码为 0。
+3. 20/20 generation contract 为 verified、integrity 为 true、pending 为空。D1 generation 与
+   D2 consumed generation 相等；D2 consumption 与 publication 相等；consumption 加 pre-tick
+   merge 与 D1 generation 相等。
+4. D1 generation 均值/范围为 `471.65 / 410-499`；D2 consumption 为
+   `47.95 / 47-48`；pre-tick merge 均值为 `423.7`。D3 coverage 均值和 95% bootstrap 区间为
+   `0.989606 / [0.987144, 0.991813]`。D5 binding 为 `25.95 / 9-41`。
+5. D6 v6 聚合、逐 seed CSV 和中文报告已生成，failure reason 为空；输出哈希已独立复算一致。
+
+因此，“runtime v2 尚无 clean 未见 20-seed 输入”的 P1 子项关闭。此前三 seed 正例保留为历史
+接口验证，不再作为当前样本量缺口。
+
+### 仍开放的 P1
+
+1. 20 个 episode 全部为 `descriptive_clean_source_calibration`。实验矩阵 episode 为 0，尚无
+   R0/变体完整矩阵、同 seed 配对和正式算法差异验收。
+2. D2 ID switch 由 producer 声明 unavailable；D6 不把缺失证据补成 0。
+3. 5 m 接近事件为 0，物理接近身份和物理拦截没有证据。D5 binding 只适用于当前 10.0 s 名义窗口。
+4. D6 评估器的 `3:20.42` 和 `1,448,612 KiB` 是 main 侧进程测量，未进入可哈希输出 provenance；
+   正式容量门仍需持久化运行资源字段和冻结硬件环境。
+
+当前没有新增 P0。本批只关闭 clean 20-seed 后验代次合同输入缺口，不关闭正式实验矩阵、实时容量、
+算法效果或物理闭环。
+
 ## 2026-07-22 后验代次治理 GAP 更新
 
 ### 已关闭的 D6-owned P1
@@ -22,9 +53,9 @@ D2 final/consumption/publication 为 `453/48/48`、`516/48/48`、`505/48/48`；p
 
 ### 仍开放的 P1
 
-当前仅有三个 seed，证据类别为 `descriptive_clean_source_calibration`。输入没有实验矩阵 metadata，
-正式矩阵 episode 数为 0。仍需至少 20 个未见 seed 和完整矩阵声明，才能评价统计泛化或算法差异。
-clean runtime v2 三 seed 缺口已关闭，正式多 seed 矩阵缺口保持开放。
+本节三 seed 是首批 runtime v2 正例。后续 clean 20-seed 输入已由本页上一节复核，样本输入子项关闭。
+两批输入都没有实验矩阵 metadata，正式矩阵 episode 数仍为 0。仍需完整矩阵声明和配对变体，
+才能评价算法差异；clean runtime v2 合同通过不能替代正式矩阵验收。
 
 专项 `58 passed`，D6 全量 `542 passed, 1 warning`。当前没有新增 P0。AirSim 计划已检查；本次未
 改变其 producer 或指标口径，因此无需修改。

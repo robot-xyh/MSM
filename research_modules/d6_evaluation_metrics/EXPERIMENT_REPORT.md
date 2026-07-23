@@ -1,5 +1,69 @@
 # D6 系统级评估指标实验报告
 
+## 2.22 2026-07-22 clean 20-seed 后验代次校准
+
+### 输入
+
+本次复核使用 clean commit
+`0d2da25c14e50f8f9a10ad47a7bd74e5c5e577fb` 生成的 nominal 200 对 200
+三维质点 episode。世界时长为 10.0 s，seed 为 `1000-1019`。20 份 manifest 均声明
+`repository_dirty=false`；summary 均为有限状态，在线真值使用为 0，分配 hold 为 0。
+逐 episode `resource_usage.txt` 的退出码均为 0。
+
+D6 使用 `d6-scalable3d-offline-evaluation-v6` 只读消费 20 个主 episode。输入未声明
+experiment-matrix metadata。评估没有导入运行时模块，也没有读取在线真值。
+
+### 代次合同
+
+20/20 episode 的 generation contract 状态为 `verified`，integrity 为 true，失败原因为空，
+最终 pending 均为空。逐 seed 同时满足：
+
+```text
+D1 final generation = D1 full-posterior publication count
+D1 final generation = D2 consumed D1 generation
+D2 consumption count = D2 association publication count
+D1 final generation = D2 consumption count + pre-tick merge count
+```
+
+| 指标 | 均值 | 最小值 | 最大值 |
+| --- | ---: | ---: | ---: |
+| D1 最终后验代次 | 471.65 | 410 | 499 |
+| D2 后验消费次数 | 47.95 | 47 | 48 |
+| D2 节拍前合并次数 | 423.70 | 362 | 451 |
+
+D1 在线完整后验序列逐 episode 均为 `1..G`。D2 来源代次严格递增、无重复，且每个来源都引用此前
+已发布的 D1 完整后验。D2 最终已消费代次与 D1 最终代次逐 seed 相等。
+
+### 描述性结果
+
+| 指标 | 结果 | 解释边界 |
+| --- | ---: | --- |
+| 基础 clean/formal provenance gate | 20/20 | 只表示来源、schema、真值隔离和合同可验 |
+| 证据类别 | 20 个 descriptive clean calibration | 不是正式实验矩阵 |
+| 实验矩阵 episode | 0 | 没有变体完整性和配对验收 |
+| D3 计划覆盖率均值 | 0.989606 | 95% bootstrap CI `[0.987144, 0.991813]` |
+| D5 绑定数均值 | 25.95 | 范围 `9-41`，只适用于本批 10.0 s 名义窗口 |
+| 5 m 接近事件 | 0 | 不证明物理拦截 |
+
+`formal_acceptance_eligible_episode_count=20` 不能解释为完整 20-seed 算法验收。全部输入的最终
+证据分类仍为 `descriptive_clean_source_calibration`，`failure_reason_distribution={}` 只说明
+基础失败关闭门未触发。D2 ID switch 仍由 producer 声明 unavailable；没有 5 m 接近时，接近身份
+正确性也保持 unavailable。
+
+### 制品核对
+
+输出目录为
+`outputs/scalable3d_posterior_v2_unseen_20seed_clean_0d2da25_20260722/`。聚合 JSON SHA-256 为
+`da9525ac0f189e2a1f281f5baa4af2ab22d12c43c0f3a2f5738ff06a446c9022`，中文报告 SHA-256 为
+`924745063e9f443bba0ea36cf5263eb6ed6ccf1ae52fe0d768abc204c840f734`。输出目录保持生成制品状态，
+不作为源码提交。
+
+main 记录的 D6 评估器墙钟为 `3:20.42`，峰值常驻内存为 `1,448,612 KiB`。这两个进程级值没有
+写入上述五个 D6 输出文件，当前只能作为 main 侧运行诊断，不能由 aggregate 或报告独立恢复。
+
+本批关闭 clean 未见 20-seed runtime v2 代次合同输入缺口。正式实验矩阵、算法变体比较、D2
+身份连续性、5 m 物理接近及物理拦截仍需单独证据。
+
 ## 2.21 2026-07-22 后验代次合同接口验证
 
 本次验证对象是 D6 被动 consumer，不是运行时性能。合成在线总线覆盖正常 v2、D2 重复消费、引用

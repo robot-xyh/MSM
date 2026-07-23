@@ -1,5 +1,27 @@
 # D6 Evaluation Metrics Plan
 
+## 2026-07-22 clean 20-seed runtime v2 状态
+
+- [x] 独立读取 source manifest、summary、逐 episode `resource_usage.txt`、D6 v6 逐 seed CSV、
+  聚合 JSON 和中文报告，确认 seed `1000-1019` 无重复，来源提交和 clean 状态一致。
+- [x] 确认 20/20 episode 有限、在线真值使用为 0、分配 hold 为 0、进程退出码为 0。
+- [x] 逐 seed 复核 D1 连续完整后验、D2 严格递增且已发布的来源代次、pending 排空，以及两条最终
+  守恒恒等式；20/20 generation contract 为 verified、integrity 为 true。
+- [x] 确认 D6 schema 为 `d6-scalable3d-offline-evaluation-v6`，基础
+  `formal_acceptance_eligible_episode_count=20`，failure reason 分布为空。
+- [x] 将 D1/D2 代次统计、D3 覆盖率、D5 绑定数、无 5 m 接近和证据边界同步到 D6 文档。
+- [x] 关闭“runtime v2 尚无 clean 未见 20-seed 输入”的 D6-owned P1 子项。
+- [ ] 由 main 提供带冻结 experiment-matrix metadata 的完整变体矩阵；当前 matrix episode 为 0，
+  20 个输入仍全部是 `descriptive_clean_source_calibration`。
+- [ ] 在正式矩阵中补齐 D2 ID switch、物理接近身份、规则/学习配对和因果归因。当前无 5 m 接近，
+  不形成物理拦截结论。
+- [ ] 将 D6 进程墙钟和峰值内存写入可哈希的运行 provenance。当前 `3:20.42` 和
+  `1,448,612 KiB` 仅有 main 侧进程测量，聚合制品不能独立恢复。
+
+`AIRSIM_INTEGRATION_PLAN.md` 和 `subagent_reviews/D6_M_TO_N_EVALUATION_FRAMEWORK_REVIEW.md` 已检查。
+本批是三维质点 nominal 200 对 200 的离线证据复核，不改变 AirSim 接口，也不改变 M 对 N 的
+pair/target/coalition 分母，因此无需修改。
+
 ## 2026-07-22 后验代次合同评估状态
 
 - [x] 分派 runtime v1/v2；v1 字段缺失保持 unavailable。
@@ -13,8 +35,9 @@
 - [x] 复核 clean commit `0d2da25` 的 nominal 200 对 200、10.0 s、三 seed runtime v2：
   3/3 integrity/formal provenance gate 通过，pending 全部排空，失败原因空，在线真值使用为 0。
 - [x] 将 v6 评估日期从历史值修正为实际验证日期 `2026-07-22`，并重生成三 seed 报告。
-- [ ] 扩展到至少 20 个未见 seed，并由 main 提供完整实验矩阵 metadata。当前三 seed 只属于
-  `descriptive_clean_source_calibration`，不关闭正式矩阵或统计泛化 P1。
+- [x] 已扩展到 clean commit `0d2da25` 的 20 个未见 seed；20/20 代次完整性和基础来源门通过。
+- [ ] 由 main 提供完整实验矩阵 metadata。当前 20 个 seed 仍属于
+  `descriptive_clean_source_calibration`，不关闭正式矩阵、算法差异或物理效果 P1。
 
 `AIRSIM_INTEGRATION_PLAN.md` 已检查。本次只扩展质点可扩展三维持久化制品的离线消费，不改变
 AirSim producer、话题、reset 或控制接口，因此无需修改。

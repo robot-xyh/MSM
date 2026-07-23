@@ -1,5 +1,36 @@
 # D6 Evaluation Metrics
 
+## 2026-07-22 clean 20-seed runtime v2 复核
+
+D6 独立复核了 clean commit
+`0d2da25c14e50f8f9a10ad47a7bd74e5c5e577fb` 的 nominal 200 对 200、10.0 s、
+seed `1000-1019` 批次。20/20 episode 状态有限，`repository_dirty=false`，
+`online_truth_use_count=0`，分配 hold 为 0，源进程退出码为 0。D6 v6 输出中 20/20
+episode 均通过后验代次合同，pending 全部排空：
+
+- D1 最终代次、D2 最终消费代次逐 seed 相等；D1 完整后验发布数也与最终代次相等；
+- D2 消费次数与实际 D2 发布数相等；
+- D2 消费次数加节拍前合并次数与 D1 最终代次相等；
+- D1 最终代次均值为 `471.65`，范围 `410-499`；D2 消费次数均值为 `47.95`，
+  范围 `47-48`；节拍前合并次数均值为 `423.7`。
+
+D3 计划覆盖率均值为 `0.989606`，按不同 seed 重采样的 95% bootstrap 置信区间为
+`[0.987144, 0.991813]`。D5 绑定数均值为 `25.95`，范围 `9-41`；该数值只描述
+10.0 s 名义窗口。20 个 episode 均无 5 m 接近事件，不能证明物理拦截。
+
+聚合中的 `formal_acceptance_eligible_episode_count=20` 只表示基础 clean provenance、schema、
+真值隔离和代次合同通过。全部 episode 仍归类为
+`descriptive_clean_source_calibration`，实验矩阵 episode 数为 0，不能称为正式算法矩阵或完整
+20-seed 算法验收。聚合 JSON 和中文报告 SHA-256 分别为
+`da9525ac0f189e2a1f281f5baa4af2ab22d12c43c0f3a2f5738ff06a446c9022` 和
+`924745063e9f443bba0ea36cf5263eb6ed6ccf1ae52fe0d768abc204c840f734`。输出位于
+`outputs/scalable3d_posterior_v2_unseen_20seed_clean_0d2da25_20260722/`，作为生成制品不纳入源码
+追踪。
+
+D6 评估器的 `3:20.42` 墙钟和 `1,448,612 KiB` 峰值常驻内存来自 main 侧进程测量，不是上述五个
+D6 输出制品中的可恢复字段，因此只作为运行诊断登记。此前三 seed 结果仍保留为 runtime v2 首批
+正例；本批关闭的是 clean 未见 20-seed 代次合同输入缺口，不改变正式实验矩阵和物理效果边界。
+
 ## 2026-07-22 D1-D2 后验代次被动审计
 
 D6 已在可扩展三维离线评估中接入 `scalable3d-observation-governance-runtime-v2`。评估同时读取

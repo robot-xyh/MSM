@@ -1,5 +1,36 @@
 # D6 系统级离线评估：算法原理与实施说明
 
+## clean 20-seed 批次复核流程（2026-07-22）
+
+复核先枚举批次根目录下同时具有 manifest、scenario config 和 summary 的主 episode，不递归把
+D6 truth-isolated、offline identity 等 sidecar manifest 计为新样本。seed 必须全局唯一并精确覆盖
+`1000-1019`。每个 manifest 绑定完整提交
+`0d2da25c14e50f8f9a10ad47a7bd74e5c5e577fb` 和 clean 状态；summary 必须为有限状态，在线真值、
+分配 hold 均为 0。源进程退出状态从每个 episode 的 `resource_usage.txt` 单独核对。
+
+D6 v6 逐行读取在线总线，生成 D1 完整后验代次序列和 D2 来源代次序列，再与最终
+`observation_governance` 快照交叉核对。批内每个 episode 均执行以下恒等式：
+
+```text
+full_publication_count == d1_generation
+d2_consumed_generation == d1_generation
+d2_consumption_count == d2_publication_count
+d2_consumption_count + pre_tick_merge_count == d1_generation
+pending_generation is empty
+```
+
+任一序列断点、重复、未知引用、累计不一致或 pending 未排空都会加入 episode failure reason，并使
+基础 formal acceptance 失败关闭。20 个 episode 全部通过；D1 generation 均值/范围为
+`471.65 / 410-499`，D2 consumption 为 `47.95 / 47-48`，pre-tick merge 均值为 `423.7`。
+
+聚合继续按实际规模和不同 seed 计算。D3 覆盖率均值为 `0.989606`，固定 2000 次 bootstrap 的
+95% 区间为 `[0.987144, 0.991813]`；D5 绑定数为 `25.95 / 9-41`。这些统计进入描述性
+clean-source calibration。由于 experiment-matrix episode 为 0，算法不会把基础
+`formal_acceptance_eligible=20` 提升为变体矩阵验收。5 m 事件为 0 时，物理拦截结论保持缺失。
+
+聚合和报告内容分别以 SHA-256 固定。外部 `/usr/bin/time` 类进程测量若未写入 D6 输出 manifest，
+只能在文档中注明来源，不能作为 aggregate 内生指标参与验收。
+
 ## 后验代次审计算法（2026-07-22）
 
 输入由最终快照和在线发布序列组成。最终快照来自
