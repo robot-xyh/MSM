@@ -4391,13 +4391,12 @@ def _validate_d2_partial_identity_payload(
             "partial_identity_truth_isolation_not_verified",
             "D2 partial identity evaluator-only isolation is not verified",
         )
-    audit_count_bindings = {
+    direct_audit_count_bindings = {
         "evaluated_frame_count": "evaluated_frame_count",
         "available_mapping_count": "available_mapping_count",
         "ambiguous_mapping_count": "ambiguous_mapping_count",
-        "unavailable_mapping_count": "unavailable_mapping_count",
     }
-    for audit_name, count_name in audit_count_bindings.items():
+    for audit_name, count_name in direct_audit_count_bindings.items():
         try:
             audit_count = _partial_nonnegative_int(
                 audit.get(audit_name),
@@ -4413,6 +4412,46 @@ def _validate_d2_partial_identity_payload(
                 "partial_identity_audit_binding_mismatch",
                 "D2 partial identity audit counts contradict diagnostics",
             )
+
+    audit_unavailable_categories: dict[str, int] = {}
+    for audit_name in (
+        "unavailable_mapping_count",
+        "excluded_mapping_count",
+        "uncommitted_mapping_count",
+    ):
+        raw_count = audit.get(audit_name)
+        if raw_count is None and audit_name != "unavailable_mapping_count":
+            audit_unavailable_categories[audit_name] = 0
+            continue
+        try:
+            audit_unavailable_categories[audit_name] = (
+                _partial_nonnegative_int(
+                    raw_count,
+                    f"audit {audit_name}",
+                )
+            )
+        except _PartialIdentityValidationError:
+            _partial_identity_error(
+                "partial_identity_audit_binding_mismatch",
+                "D2 partial identity audit count is missing or invalid",
+            )
+
+    partial_unavailable_count = sum(audit_unavailable_categories.values())
+    if partial_unavailable_count != counts["unavailable_mapping_count"]:
+        _partial_identity_error(
+            "partial_identity_audit_binding_mismatch",
+            "D2 partial identity unavailable categories contradict diagnostics",
+        )
+    if (
+        counts["available_mapping_count"]
+        + counts["ambiguous_mapping_count"]
+        + partial_unavailable_count
+        != counts["total_mapping_count"]
+    ):
+        _partial_identity_error(
+            "partial_identity_audit_binding_mismatch",
+            "D2 partial identity audit categories do not cover all mappings",
+        )
     return counts, metrics, anchor_reasons, excluded_reasons
 
 

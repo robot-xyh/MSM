@@ -1359,6 +1359,93 @@ def test_strict_idsw_and_partial_lower_bound_coexist_in_separate_report_columns(
     assert "lower bound 与 strict `id_switch_count` 始终分栏" in markdown
 
 
+def test_partial_identity_accepts_partitioned_unavailable_audit_counts(
+    tmp_path: Path,
+) -> None:
+    payload = _d2_v2_payload()
+    partial = _attach_partial_identity(payload, lower_bound=1)
+    partial.update(
+        {
+            "total_mapping_count": 3,
+            "available_mapping_count": 2,
+            "ambiguous_mapping_count": 0,
+            "unavailable_mapping_count": 1,
+            "scored_mapping_count": 2,
+            "non_scored_mapping_count": 1,
+            "evaluable_mapping_count": 2,
+            "ambiguous_scored_mapping_count": 0,
+            "unavailable_scored_mapping_count": 0,
+            "mapped_truth_not_present_mapping_count": 0,
+            "missing_identity_evidence_mapping_count": 0,
+            "evaluable_mapping_coverage": 1.0,
+            "evaluated_frame_count": 3,
+            "evaluable_frame_count": 3,
+            "evaluable_frame_coverage": 1.0,
+            "transition_opportunity_count": 2,
+            "evaluable_transition_count": 1,
+            "evaluable_transition_coverage": 0.5,
+            "lower_bound_anchor_excluded_truth_frame_count": 0,
+            "lower_bound_anchor_exclusion_reason_counts": {},
+            "lower_bound_anchor_transition_count": 1,
+            "id_switch_lower_bound": 1,
+            "excluded_scored_mapping_reason_counts": {},
+        }
+    )
+    audit = payload["audit"]
+    assert isinstance(audit, dict)
+    audit["evaluated_frame_count"] = 3
+    audit["available_mapping_count"] = 2
+    audit["ambiguous_mapping_count"] = 0
+    audit["unavailable_mapping_count"] = 0
+    audit["excluded_mapping_count"] = 0
+    audit["uncommitted_mapping_count"] = 1
+    path, expected, source_hashes, _ = _write_d2_identity_with_manifest(
+        tmp_path,
+        payload,
+    )
+
+    record = adapt_d2_scalable_3d_identity(
+        path,
+        expected_sha256=expected,
+        expected_source_hashes=source_hashes,
+    )
+
+    partial = record.partial_identity_diagnostics
+    assert partial.available is True
+    assert partial.provenance_verified is True
+    assert partial.counts["unavailable_mapping_count"] == 1
+    assert partial.metrics["id_switch_lower_bound"].value == 1
+
+
+def test_partial_identity_rejects_incomplete_unavailable_audit_partition(
+    tmp_path: Path,
+) -> None:
+    payload = _d2_payload(id_switch_count=3)
+    _attach_partial_identity(payload, lower_bound=2)
+    audit = payload["audit"]
+    assert isinstance(audit, dict)
+    audit["unavailable_mapping_count"] = 0
+    audit["excluded_mapping_count"] = 1
+    path, expected, source_hashes, _ = _write_d2_identity_with_manifest(
+        tmp_path,
+        payload,
+    )
+
+    record = adapt_d2_scalable_3d_identity(
+        path,
+        expected_sha256=expected,
+        expected_source_hashes=source_hashes,
+    )
+
+    partial = record.partial_identity_diagnostics
+    assert partial.available is False
+    assert (
+        partial.unavailable_reason
+        == "partial_identity_audit_binding_mismatch"
+    )
+    assert partial.metrics["id_switch_lower_bound"].value is None
+
+
 def test_partial_identity_missing_manifest_fails_closed_without_hiding_strict(
     tmp_path: Path,
 ) -> None:
