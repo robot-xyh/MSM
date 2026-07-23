@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Iterable, Mapping
-from dataclasses import dataclass, fields, is_dataclass
+from dataclasses import dataclass, field, fields, is_dataclass
 from enum import Enum
 from types import MappingProxyType
 from typing import Any
@@ -19,6 +19,9 @@ SCAN_INPUT_FRAME_SCHEMA_VERSION = "d1.scan_input.frame.v1"
 SCAN_INPUT_AUDIT_EVENT_SCHEMA_VERSION = "d1.scan_input.audit_event.v1"
 SCAN_INPUT_AUDIT_SUMMARY_SCHEMA_VERSION = "d1.scan_input.audit_summary.v1"
 SCAN_INPUT_RESULT_SCHEMA_VERSION = "d1.scan_input.result.v1"
+SCAN_INPUT_PERFORMANCE_DIAGNOSTICS_SCHEMA_VERSION = (
+    "d1.scan_input.performance_diagnostics.v1"
+)
 
 _TIME_EPSILON_S = 1.0e-9
 _SCAN_ID_METADATA_KEYS = ("scan_id", "online_batch_id")
@@ -95,6 +98,11 @@ class SensorScanFrame:
     scan_id: str
     observations: tuple[SensorObservation, ...]
     schema_version: str = SCAN_INPUT_FRAME_SCHEMA_VERSION
+    _snapshot_integrity: tuple[Any, ...] = field(
+        init=False,
+        repr=False,
+        compare=False,
+    )
 
     def __post_init__(self) -> None:
         if self.schema_version != SCAN_INPUT_FRAME_SCHEMA_VERSION:
@@ -166,6 +174,11 @@ class SensorScanFrame:
         source_namespaces = {_source_namespace(item) for item in observations}
         if len(source_namespaces) != 1:
             raise ValueError("scan observations must share source namespace")
+        object.__setattr__(
+            self,
+            "_snapshot_integrity",
+            _frame_snapshot_integrity(self),
+        )
 
     @classmethod
     def from_observations(
@@ -440,6 +453,10 @@ class ScanInputOrganizer:
         self._invalid_frame_scan_count = 0
         self._maximum_buffered_scan_count = 0
         self._maximum_buffered_observation_count = 0
+        self._validated_frame_reuse_count = 0
+        self._mutated_frame_rebuild_count = 0
+        self._iterable_frame_build_count = 0
+        self._organizer_observation_snapshot_count = 0
 
     def ingest(
         self,
@@ -452,6 +469,14 @@ class ScanInputOrganizer:
         if isinstance(scan, SensorScanFrame):
             if scan_id is not None and str(scan_id) != scan.scan_id:
                 raise ValueError("scan_id must not override a SensorScanFrame identity")
+            if _frame_snapshot_is_intact(scan):
+                # SensorScanFrame construction already creates an alias-free,
+                # read-only observation snapshot and validates truth, covariance,
+                # timestamps, frame identity, and lineage.
+                self._validated_frame_reuse_count += 1
+                return self._ingest_frame(scan)
+            self._mutated_frame_rebuild_count += 1
+            self._organizer_observation_snapshot_count += len(scan.observations)
             try:
                 validated = SensorScanFrame(
                     scan_id=scan.scan_id,
@@ -463,6 +488,8 @@ class ScanInputOrganizer:
             return self._ingest_frame(validated)
 
         items = tuple(scan)
+        self._iterable_frame_build_count += 1
+        self._organizer_observation_snapshot_count += len(items)
         try:
             frame = SensorScanFrame.from_observations(items, scan_id=scan_id)
         except (ScanTimestampConflictError, DuplicateScanLineageError, ValueError) as exc:
@@ -529,6 +556,19 @@ class ScanInputOrganizer:
             measurement_watermark=self._measurement_watermark,
             closed=self._closed,
         )
+
+    def performance_diagnostics(self) -> dict[str, int | str]:
+        """Return bounded operation counts for frame validation reuse."""
+
+        return {
+            "schema_version": SCAN_INPUT_PERFORMANCE_DIAGNOSTICS_SCHEMA_VERSION,
+            "validated_frame_reuse_count": self._validated_frame_reuse_count,
+            "mutated_frame_rebuild_count": self._mutated_frame_rebuild_count,
+            "iterable_frame_build_count": self._iterable_frame_build_count,
+            "organizer_observation_snapshot_count": (
+                self._organizer_observation_snapshot_count
+            ),
+        }
 
     def _ingest_frame(self, frame: SensorScanFrame) -> ScanInputResult:
         if self._closed:
@@ -996,6 +1036,70 @@ def _claim_for_frame(frame: SensorScanFrame) -> _ScanClaim:
         frame_digest=_digest(frame_records),
         measurement_timestamp=frame.measurement_timestamp,
         arrival_timestamp=frame.arrival_timestamp,
+    )
+
+
+def _frame_snapshot_integrity(frame: SensorScanFrame) -> tuple[Any, ...]:
+    return (
+        frame.scan_id,
+        frame.schema_version,
+        id(frame.observations),
+        tuple(_observation_snapshot_integrity(item) for item in frame.observations),
+    )
+
+
+def _frame_snapshot_is_intact(frame: SensorScanFrame) -> bool:
+    expected = getattr(frame, "_snapshot_integrity", None)
+    try:
+        return expected is not None and expected == _frame_snapshot_integrity(frame)
+    except (AttributeError, TypeError, ValueError):
+        return False
+
+
+def _observation_snapshot_integrity(
+    observation: SensorObservation,
+) -> tuple[Any, ...]:
+    covariance = observation.covariance
+    return (
+        id(observation),
+        observation.observation_id,
+        observation.sensor_id,
+        observation.modality,
+        observation.measurement_timestamp,
+        observation.arrival_timestamp,
+        observation.frame_id,
+        _array_snapshot_integrity(observation.measurement),
+        None if covariance is None else _array_snapshot_integrity(covariance),
+        observation.classification_hint,
+        observation.confidence,
+        tuple(observation.quality_flags),
+        id(observation.metadata),
+        isinstance(observation.metadata, MappingProxyType),
+        observation.source_node_id,
+        observation.target_node_id,
+        observation.relay_node_id,
+        observation.link_type,
+        observation.sent_timestamp,
+        observation.received_timestamp,
+        observation.payload_kind,
+        observation.stale_after_s,
+        id(observation.source_support),
+        (
+            observation.source_support is None
+            or isinstance(observation.source_support, MappingProxyType)
+        ),
+        observation.timestamp_uncertainty_s,
+    )
+
+
+def _array_snapshot_integrity(value: np.ndarray) -> tuple[Any, ...]:
+    array = np.asarray(value)
+    return (
+        id(value),
+        tuple(array.shape),
+        tuple(array.strides),
+        array.dtype.str,
+        bool(array.flags.writeable),
     )
 
 

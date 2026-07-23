@@ -1,5 +1,117 @@
 # 第一研究模块实验结果
 
+## 冻结 replay 尾延时 profiler 与完整帧复用
+
+**证据日期：2026-07-23**
+
+**冻结输入来源：clean `4ac3bb2c12cc6af6ebd372107ced00bcdc5adf6a`**
+
+**场景与样本：`200v200-nominal-v1`，10 s，seed 1000，771 scans /
+11,889 observations，单 episode**
+
+冻结输入 SHA-256 为
+`c1dda8523e48c255bbeef48d9516b05863eb1bbb3a3ae2e09733259e6a66f77a`。clean episode
+原始 D1 fusion P50/P95/max 为 `33.252/224.764/592.957 ms`，scan-input 为
+`1.747/177.084/361.536 ms`。
+
+### Scan-input 结果与验收
+
+| 项目 | 再快照参考路径 | 完整帧复用路径 |
+| --- | ---: | ---: |
+| organizer 内帧重建 | 771 | 0 |
+| organizer 内 observation 快照 | 11,889 | 0 |
+| `ScanInputOrganizer.ingest` cProfile 累计 | 15.545 s | 5.754 s |
+| `SensorScanFrame.__post_init__` cProfile 累计 | 9.710 s | 0 s |
+| `_claim_for_frame` cProfile 累计 | 5.681 s | 5.580 s |
+
+前 256 scans 交错 5 轮的总耗时 P50/P95 为
+`1.942/1.968 s -> 0.881/0.894 s`，P50 比 2.204x。墙钟不参与通过判定。14 项严格 acceptance
+全部通过，包括逐输入结果、close/audit、release schedule、逐 fusion 状态/协方差/双时间戳/
+谱系/分级、物化航迹、终态、一致性证据、逐 fusion 操作数及累计诊断。关键哈希：
+
+- fusion semantic：`sha256:e5d4ec2ee902b1fa9e423f7b08380e14a08efec254cea193fad4611a022f4244`
+- operation snapshots：`sha256:82728a8e0fed0adedd0254368e29a3c117157b066158595d7ca6dac558bfb5bf`
+- diagnostic snapshots：`sha256:b28df84d6664ba17d097990f7186a2a611f2e3469394e3d2a12122dbec521766`
+- final tracks：`sha256:b53d506ee3bd4d9a50a3635387832db0c5321f74ccf3f77c18993e3892763d98`
+
+main 实测当前 D1 全量回归为 `185 passed`；这是当前工作区权威测试结果。
+
+### Fusion 归因
+
+fusion 数学路径未修改。cProfile 主要累计路径为 `global_tracks 17.559 s`、扫描一对一关联
+`17.027 s`、`_to_global_track 16.930 s`、非雷达代价矩阵 `14.971 s` 和 replay
+`8.601 s`。未剖析工作区复放 P50/P95/max 为 `34.108/178.420/354.413 ms`；48 个 radar
+scans 的 P95 为 `343.059 ms`，物化扫描 P95 为 `216.991 ms`。候选对峰值 40,000，单扫描
+fixed-lag rebase 峰值 197。
+
+该工作区分位只用于和同轮操作数及 cProfile 配对，不与 clean episode 作正式前后比较。
+GlobalTrack 物化、radar candidate/rebase 和剩余 audit/lineage/JSON 摘要继续为 P1。
+
+### 限制与证据路径
+
+clean/commit 仅描述冻结输入来源；优化和等价复放运行在当前未提交 D1 工作区。该实验是单 seed
+三维质点 replay，不是新的 clean full-stack、AirSim、正式多 seed 或实时放行，且不新增
+RMSE/NEES/NIS 或物理拦截效果证据。
+
+- `../reports/d1_tail_latency_performance_20260723.json`
+- `../reports/D1_TAIL_LATENCY_PERFORMANCE_20260723_CN.md`
+
+## Nominal 200v200 clean 单 seed 全栈校准
+
+**证据日期：2026-07-22**
+
+**参考/候选提交：clean `0d2da25c14e50f8f9a10ad47a7bd74e5c5e577fb` / detached clean
+`4ac3bb2c12cc6af6ebd372107ced00bcdc5adf6a`**
+
+**场景与样本：`200v200-nominal-v1`，10 s，seed 1000，200 个目标、200 个资源，单 episode**
+
+### 验收方法
+
+本轮是描述性 clean 校准。接受条件是参考与候选均来自 clean source，seed、场景版本、时长和
+配置相同，候选状态有限且在线 truth 使用为 0，并且跨构建审计中的规范在线载荷、离线 truth
+state、计划谱系模式及两端计划谱系有效性全部通过。性能数据用于同口径描述，不构成正式放行
+门限；实时判断仍要求核心 RTF 至少达到 1。
+
+两端各处理 771 个 D1 扫描和 11,889 条匿名在线观测。跨构建审计结果为
+`normalized_online_payloads_equal=true`、`truth_state_equal=true`、
+`plan_lineage_pattern_equal=true`、`reference_plan_lineage_valid=true` 和
+`candidate_plan_lineage_valid=true`，总审计 `passed=true`。
+
+### 结果
+
+| 指标 | clean `0d2da25` | clean `4ac3bb2` | 候选变化 |
+| --- | ---: | ---: | ---: |
+| 核心 wall | 94.104939744 s | 85.002427712 s | 下降 9.6727%，1.1071x |
+| 核心 RTF | 0.1062643 | 0.1176437 | 仍未实时 |
+| D1 fusion 累计 | 49.697406826 s | 40.272795088 s | 下降 18.9640%，1.2340x |
+| D1 scan input 累计 | 12.315225105 s | 12.560936034 s | 增加 1.9952% |
+| 在线观测数 | 11,889 | 11,889 | 相同 |
+| 在线 truth 使用 | 0 | 0 | 相同 |
+
+候选 771 次 D1 fusion 调用的 P50/P95/max 为
+`33.25249/224.76351/592.95713 ms`。参考计时 schema 没有阶段分布字段，因此本次不构造参考
+分位数，也不把候选累计下降解释为尾延时已关闭。
+
+### 进程资源口径
+
+候选核心 wall 85.002427712 s 来自 `summary.json.wall_time_s`。外部 `/usr/bin/time` 记录的
+总进程 elapsed 为 `1:55.95`，峰值 RSS 为 `2,468,928 KiB`。外部 elapsed 还包含解释器启动、
+离线后处理和制品落盘，不能与核心 wall 混写，也没有用于 9.6727%/1.1071x 的核心比较。
+
+### 判定与限制
+
+语义接受条件全部通过，候选核心和 fusion 累计时间较同 seed 基线下降；但核心 RTF 只有
+0.1176437，fusion P95/max 为 224.76351/592.95713 ms，scan input 反而增加 1.9952%。因此
+D1 融合尾延时和 scan-input 均继续作为 P1。
+
+本批只有 seed 1000，是单 seed 描述性 clean 校准，不是 20-seed，不是正式性能矩阵，未达到
+实时。它不新增 AirSim、真实传感器精度、正式 RMSE/NEES/NIS 或物理拦截效果证据。
+
+只读证据目录：
+
+- `/tmp/MSM-scalable3d-candidate-4ac3bb2/research_modules/scalable_3d_simulation/outputs/scalable_3d_timing_v2_clean_4ac3bb2_20260722/10p0s_seed_1000_nominal/`
+- `/tmp/MSM-scalable3d-candidate-4ac3bb2/research_modules/scalable_3d_simulation/outputs/scalable_3d_timing_v2_clean_4ac3bb2_20260722/cross_build_seed_1000_nominal/`
+
 ## 非雷达创新批处理
 
 **证据日期：2026-07-22**
@@ -21,8 +133,8 @@
 
 稳定性基准在同一 Python 进程中执行，每个变体先预热 128 个扫描一次，再交错运行 7 次。所用
 前缀含 256 个扫描和 4,087 条观测，终态 201 条航迹。逐扫描语义摘要、终态航迹、一致性证据、
-全部操作计数和累计诊断严格一致，在线 truth 使用为 0。D1 全量测试
-`182 passed in 15.92s`。
+全部操作计数和累计诊断严格一致，在线 truth 使用为 0。该 2026-07-22 非雷达专项当次历史
+回归为 `182 passed in 15.92s`，不是当前权威测试计数。
 
 证据见 `../reports/D1_NON_RADAR_INNOVATION_PERFORMANCE_BENCHMARK_CN.md` 和对应 JSON。本组关闭
 D1 冻结回放的逐候选伪逆热点，不证明完整 D1-D7 实时、AirSim 性能或真实融合精度。

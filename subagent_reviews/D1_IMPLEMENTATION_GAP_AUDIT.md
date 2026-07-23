@@ -4,13 +4,15 @@
 **范围**: 对照 `subagent_reviews/D1_SENSOR_FUSION_REVIEW_AND_PLAN.md`、`C_UAS_MAINSTREAM_SOLUTIONS_AND_DIFFICULTIES.md`、`research_modules/d1_sensor_fusion` 源码和测试，审计共识算法、开源方案和当前实现差距。  
 **边界**: 本审计只覆盖离线科研仿真、数据合同、传感器观测、航迹融合和评估接口；不涉及真实飞控、硬件驱动、火控、毁伤或自动处置。
 
-**更新时间**: 2026-07-22。
+**更新时间**: 2026-07-23。
 
-## 0. 当前正式治理 GAP 增量（2026-07-22）
+## 0. 当前正式治理 GAP 增量（2026-07-23）
 
-| GAP/合同 | 当前状态 | 2026-07-22 证据 | 剩余关闭条件 |
+| GAP/合同 | 当前状态 | 2026-07-23 证据 | 剩余关闭条件 |
 | --- | --- | --- | --- |
-| 非雷达逐候选创新伪逆 | **D1-owned 热点已关闭；全栈实时 P1 仍开放** | 未见 seed 1000 的 10 s 冻结输入为 771 scans/11,889 obs/201 tracks。前 256 scans 同进程预热后交错 7 次，P50 `12.242 -> 10.238 s`、P95 `13.340 -> 11.248 s`；完整输入 `50.458 -> 39.994 s`。逐扫描、终态、证据哈希及全部操作计数/累计诊断相同，在线 truth 0；`pinv` 调用 `496,625 -> 1,018`，D1 全量 `182 passed` | main 复跑 clean 20-seed 全栈并重算 RTF/RSS；继续治理航迹物化和 scan input 重复 frame/audit/JSON 摘要。不得把 D1 模块基准写成系统实时结论 |
+| 尾延时 profiler 与完整帧复用 | **重复 frame/observation 快照热点已在 D1 冻结 replay 关闭；fusion 与 clean full-stack P1 开放** | clean `4ac3bb2` nominal 200v200/10 s/seed 1000 冻结输入，771 scans/11,889 obs/SHA-256 `c1dda852...66f77a`；帧重建 `771 -> 0`、再快照 `11,889 -> 0`；前 256 scans 交错 5 轮 P50/P95 `1.942/1.968 -> 0.881/0.894 s`，墙钟不参与验收。逐输入、逐 fusion 状态/协方差/双时间戳/谱系/分级、物化航迹、终态、证据、逐扫描操作数及累计诊断全部严格一致；operation hash `82728a8e...bfb5bf`；main 实测当前 D1 全量 `185 passed`。fusion cProfile 仍由 GlobalTrack 物化、扫描关联、代价矩阵和 replay 主导 | 在 clean full-stack 20-seed 矩阵重测 scan-input/fusion 分布与 RTF；继续治理 audit/lineage/JSON、GlobalTrack 物化及 radar/rebase，但不得缩窗口、丢观测、降频、放宽门控或使用 truth。当前工作区复放非 clean 放行、非 AirSim、非正式多 seed、未实时 |
+| Nominal 200v200 clean 性能校准 | **单 seed 语义校准通过；fusion 尾延时、scan-input 与正式矩阵 P1 开放** | detached clean `4ac3bb2` 对 clean `0d2da25`，10 s/seed 1000/11,889 online obs，finite 且 online truth 0；核心 wall `94.104939744 -> 85.002427712 s`（-9.6727%，1.1071x），D1 fusion `49.697406826 -> 40.272795088 s`（-18.9640%，1.2340x），scan input `12.315225105 -> 12.560936034 s`（+1.9952%），候选 RTF `0.1176437`，fusion P50/P95/max `33.25249/224.76351/592.95713 ms`；规范在线载荷、truth state、计划谱系均通过。外部总进程 `1:55.95`、峰值 RSS `2,468,928 KiB` 与核心 wall 分列 | 执行冻结硬件/配置的预注册 20-seed 正式矩阵；RTF 达到实时目标并收敛 fusion P95/max；单独治理 scan-input。当前不是正式矩阵，不关闭 AirSim 或 RMSE/NEES/NIS |
+| 非雷达逐候选创新伪逆 | **D1-owned 热点已关闭；全栈实时 P1 仍开放** | 未见 seed 1000 的 10 s 冻结输入为 771 scans/11,889 obs/201 tracks。前 256 scans 同进程预热后交错 7 次，P50 `12.242 -> 10.238 s`、P95 `13.340 -> 11.248 s`；完整输入 `50.458 -> 39.994 s`。逐扫描、终态、证据哈希及全部操作计数/累计诊断相同，在线 truth 0；`pinv` 调用 `496,625 -> 1,018`；2026-07-22 专项当次历史回归 `182 passed`，不是当前权威计数 | main 复跑 clean 20-seed 全栈并重算 RTF/RSS；继续治理航迹物化和 scan input 重复 frame/audit/JSON 摘要。不得把 D1 模块基准写成系统实时结论 |
 | 缓存一致性证据重复完整校验 | **D1-owned 热点已关闭；系统 P1 仍开放** | clean `f80b5bd` 10 s seeds 42000-42002；完整重验/受限复制纯融合均值 `64.844/52.657 s`，加速 `1.231x`，3/3 更快。逐扫描状态/协方差/时间戳/谱系/分级、终态、一致性证据和全部操作计数严格一致，在线 truth 0；代表 seed 刷新累计 `27.122 -> 1.664 s`，D1 全量 `178 passed` | 非雷达逐候选伪逆已由后续项关闭；当前扩展长于 10 s、未见 seed、固定硬件 P50/P95/max、RSS、航迹物化、scan input 和端到端实时倍率，不得把 standalone 墙钟写成 integrated 实时证据 |
 | 最终跨提交 integrated 语义复核 | **当前三 seed 已关闭；系统 P1 仍开放** | clean `8f86192 -> f80b5bd`，200v200 nominal、10 s、seeds 42000-42002；逐条总线语义审计 3/3 通过，D1 终态航迹均为 `202/207/203`，finite 且在线 truth 0。仅按 occurrence/version 归一化 opaque `plan_id`，ACK 原始载荷 SHA 先校验，owner/version/coalition/global track/command 仍参与比较 | 扩展未见 seed 和时长；保持相同跨提交审计规则，不能以数量相同替代逐条语义比较 |
 | 长时 fixed-lag 超线性增长 | **D1-owned 冻结输入缺口已关闭；系统 P1 仍开放** | 10 s/764 scans/12,107 obs 对照中，history replay `170,106 -> 13,397`、filter update `120,440 -> 9,549`、墙钟 `157.237 -> 107.449 s`；clean 三 seed 全栈 D1 fusion 均值进一步为 `103.339 -> 92.991 s` | 扩展更长时和未见 seed，冻结硬件和周期预算；D1 不以丢观测、缩短 6 s fixed-lag、放宽 gate 或使用 truth 换性能 |
@@ -23,6 +25,17 @@
 | 雷达候选精确创新求解成本 | **D1-owned 严格等价优化已关闭；系统实时 P1 仍开放** | 仅对有限、严格对称、Gershgorin 严格正定且高于 `pinv` cutoff 的矩阵预门控；非正定交叉协方差和近奇异截断负例均回退旧精确求解。冻结纯融合墙钟均值 `91.313 -> 88.619 s`；最终 integrated 三 seed D1 fusion 均值 `92.991088 -> 88.330438 s`、scan input `16.902643 -> 17.524242 s`，精确求解合计 `7,130,228 -> 1,578,677`，业务语义审计 3/3 通过 | 记录真实异常 covariance 的认证/回退比例，扩展未见 seed、时长和固定硬件周期统计；scan input 与长时超线性仍开放，不得放宽 gate、cutoff 或 `pinv` 语义 |
 | 正式 200v200 算法效果 | 未验收 | clean 三 seed 全栈已运行，但正式 RMSE/NEES/NIS sidecar 和 D2 canonical mapping 指标仍 unavailable | 更多未见 seed、正确 D2 canonical mapping、RMSE/NEES/NIS/coverage 与置信区间 |
 | AirSim 状态 | 无变化 | 两批均为合成治理或三维质点制品，未启动 Blocks/CV/SimpleFlight | 按独立 AirSim 计划采集和验收，不得把本批改写为 AirSim 证据 |
+
+本轮只关闭 organizer 对已验证完整帧的重复深快照热点，不关闭 scan-input 整体或 fusion 尾延时
+GAP。旧/新完整复放的 14 项 acceptance 均通过；本机未剖析 fusion
+P50/P95/max `34.108/178.420/354.413 ms` 仅用于同轮归因，不能与 clean episode
+`33.252/224.764/592.957 ms` 作正式前后比较。当前优化验证来自未提交 D1 工作区，证据文件为
+`research_modules/d1_sensor_fusion/reports/d1_tail_latency_performance_20260723.json`。
+
+新增的 clean seed 1000 校准只增加描述性全栈证据，不关闭既有系统性能 GAP。核心 wall 与外部
+总进程 elapsed 已按来源分列；由于核心 RTF 仅 0.1176437、fusion P95/max 仍为
+224.76351/592.95713 ms，且 scan input 同比增加 1.9952%，融合尾延时和 scan-input 均继续保持
+P1。20-seed 正式矩阵、AirSim 和正式 RMSE/NEES/NIS 状态不变。
 
 本轮没有新增 D1 P0 blocker。长时冻结输入优化新增固定大小的
 `FusionPerformanceDiagnostics`，可由 profiler 读取累计 filter update/checkpoint reuse 等计数，

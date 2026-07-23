@@ -6,7 +6,78 @@
 >
 > 实现依据：当前第一研究模块代码、`README.md`、`PLAN.md`、模块原理文档和系统总汇总
 
-## 当前权威增量（2026-07-22）
+## 当前权威增量（2026-07-23）
+
+### SensorScanFrame 完整性封印与 organizer 复用
+
+`SensorScanFrame.__post_init__` 继续执行原有完整流程：逐 observation alias-free 快照、只读
+数组和递归冻结 metadata、在线 truth 隔离、协方差合同、双时间戳、统一 frame/scan identity
+及 source lineage 校验。新增 `_snapshot_integrity` 只描述该已验证快照的对象和不可变结构，
+不替代上述校验。
+
+`ScanInputOrganizer.ingest()` 收到 `SensorScanFrame` 时先调用
+`_frame_snapshot_is_intact()`。封印完整则直接进入原 `_ingest_frame()`，继续生成相同
+claim、content/frame digest、audit event、watermark 和 release schedule；封印不完整则按
+原路径重新构造 `SensorScanFrame`。`performance_diagnostics()` 记录完整帧复用、变异帧重建、
+iterable 帧构造和 organizer 内 observation 快照数，供冻结 benchmark 使用。
+
+测试覆盖完整帧对象直接复用、数组恢复可写后的 alias-free 回退，以及 metadata 注入 truth 后
+的 fail-closed 拒绝。完整 `4ac3bb2` seed 1000 冻结复放进一步比较：
+
+- 771 个逐输入 organizer 结果、close 结果、audit 和 94 个 release groups；
+- 771 个逐 fusion posterior，包括状态、协方差、时间戳、source lineage 和 track level；
+- 每次物化的 `GlobalTrack`、201 条终态航迹和一致性证据；
+- 每个 fusion 的 batch operation counts 与累计 `FusionPerformanceDiagnostics`。
+
+所有语义检查相等。逐 fusion operation snapshot hash 为
+`sha256:82728a8e0fed0adedd0254368e29a3c117157b066158595d7ca6dac558bfb5bf`，累计诊断
+snapshot hash 为
+`sha256:b28df84d6664ba17d097990f7186a2a611f2e3469394e3d2a12122dbec521766`。
+main 实测当前 D1 全量回归为 `185 passed`，作为本工作区当前权威测试计数。
+
+### Fusion profiler 结论
+
+fusion 算法代码本轮未改。完整 cProfile 的主要累计路径为
+`global_tracks 17.559 s`、`_scan_one_to_one_assignments 17.027 s`、
+`_to_global_track 16.930 s`、`_cached_non_radar_scan_cost_matrix 14.971 s`、
+`_replay_record 8.601 s`、`_state_at 5.023 s` 和完整 checkpoint 查询 `3.735 s`。
+累计操作数与 clean episode 相同：2,345,793 candidate pairs、505,926 innovation solves、
+152,799 checkpoint queries、3,837 fixed-lag rebases、286,792 checkpoint reuses 和
+91,151 次 GlobalTrack 物化。
+
+48 个 radar scans 的未剖析 P95 为 `343.059 ms`，候选对峰值 40,000，单扫描 rebase 峰值
+197；308 次同 fusion timestamp 调用保持 state-only，463 次完整物化。进一步减少
+GlobalTrack audit metadata 或 radar/rebase 成本需要单独合同设计，本轮不实施不确定优化。
+
+当前优化验证运行在未提交 D1 工作区，并使用 clean `4ac3bb2` 的单 seed 三维质点冻结输入；
+不是新的 clean full-stack、AirSim、正式多 seed 或实时证据。
+
+## 前一权威增量（2026-07-22）
+
+### Nominal 200v200 clean 单 seed 全栈校准
+
+算法实现完成后，main 在 detached clean
+`4ac3bb2c12cc6af6ebd372107ced00bcdc5adf6a` 上运行 10 s、seed 1000 的
+`200v200-nominal-v1` 全栈，并以 clean
+`0d2da25c14e50f8f9a10ad47a7bd74e5c5e577fb` 的同 seed、同配置运行作为基线。候选世界状态
+有限，11,889 条匿名在线观测均保持 truth 隔离，`online_truth_use_count=0`。
+
+| 计时口径 | 基线 | 候选 | 变化 |
+| --- | ---: | ---: | ---: |
+| episode 核心 wall | 94.104939744 s | 85.002427712 s | -9.6727%，1.1071x |
+| D1 fusion 累计 | 49.697406826 s | 40.272795088 s | -18.9640%，1.2340x |
+| D1 scan input 累计 | 12.315225105 s | 12.560936034 s | +1.9952% |
+
+候选核心 RTF 为 `0.1176437`。`stage_timings.csv` 对 771 次 D1 fusion 调用给出的
+P50/P95/max 为 `33.25249/224.76351/592.95713 ms`。跨构建审计的规范在线载荷、离线 truth
+state 和计划谱系比较全部通过；因此当前结果支持同 seed 业务语义保持，但 fusion 尾部仍有
+显著长调用，scan-input 也没有同步改善。
+
+外部 `/usr/bin/time` 总进程 elapsed `1:55.95`、峰值 RSS `2,468,928 KiB` 是不同层次的
+资源证据。总进程包含解释器启动、离线后处理和写盘，不能与核心 wall 混用。验收范围只覆盖
+两端 clean、同 seed/配置、有限状态、在线 truth 0 和跨构建语义一致。这是单 seed 描述性 clean
+校准，不是 20-seed 或正式性能矩阵，且 RTF 小于 1；fusion P95/max 尾延时与 scan-input 成本
+仍是 P1，不扩展为 AirSim、RMSE/NEES/NIS 或物理效果结论。
 
 ### 非雷达创新协方差矩阵栈
 

@@ -5,7 +5,41 @@
 
 ---
 
-## 0. 当前性能与治理状态（2026-07-22）
+## 0. 当前性能与治理状态（2026-07-23）
+
+- clean `4ac3bb2` nominal 200v200、10 s、seed 1000 冻结输入含 771 scans、11,889 anonymous
+  observations，源 SHA-256 为 `c1dda852...66f77a`。当前未提交 D1 工作区复放不使用在线
+  truth，也没有改变固定滞后窗口、观测保留、扫描频率或门控。
+- profiler 将 scan-input 尾部归因到 organizer 对已验证 `SensorScanFrame` 的二次深快照。
+  完整帧复用后，帧重建 `771 -> 0`、observation 再快照 `11,889 -> 0`；
+  `ScanInputOrganizer.ingest` cProfile 累计 `15.545 -> 5.754 s`。
+- 前 256 scans 交错 5 轮 P50/P95 为
+  `1.942/1.968 -> 0.881/0.894 s`，P50 比 2.204x，墙钟不参与验收。逐输入/audit/release、
+  逐 fusion posterior/物化航迹、终态/一致性证据、逐 fusion 操作数和累计诊断严格一致；
+  operation/diagnostic snapshot hashes 分别为 `82728a8e...bfb5bf` /
+  `b28df84d...521766`。
+- fusion 数学路径未改。cProfile 累计主要为 `global_tracks 17.559 s`、扫描关联
+  `17.027 s`、`_to_global_track 16.930 s`、非雷达代价矩阵 `14.971 s` 和 replay
+  `8.601 s`；峰值扫描有 40,000 candidate pairs，fixed-lag rebase 峰值 197。
+- 评审结论：只关闭重复深快照这一 D1-owned 热点。clean full-stack 20-seed、fusion 尾延时、
+  scan-input 剩余 audit/lineage/JSON、GlobalTrack 物化及 radar/rebase 继续为 P1。本轮是当前
+  工作区的单 seed 三维质点 replay，不是 AirSim、正式矩阵或实时放行。
+- main 实测当前 D1 全量回归为 `185 passed`；这是当前工作区权威测试计数。
+
+- main 已完成 detached clean `4ac3bb2c12cc6af6ebd372107ced00bcdc5adf6a` 的
+  `200v200-nominal-v1`、10 s、seed 1000 全栈校准，并与 clean
+  `0d2da25c14e50f8f9a10ad47a7bd74e5c5e577fb` 同 seed 对照。两端各有 771 个 D1 扫描、
+  11,889 条匿名在线观测；候选状态有限，在线 truth 使用为 0。
+- 核心 wall `94.104939744 -> 85.002427712 s`，下降 9.6727%、加速 1.1071x；D1 fusion
+  `49.697406826 -> 40.272795088 s`，下降 18.9640%、加速 1.2340x；scan input
+  `12.315225105 -> 12.560936034 s`，增加 1.9952%。候选核心 RTF 为 `0.1176437`。
+- 候选 771 次 fusion 调用的 P50/P95/max 为
+  `33.25249/224.76351/592.95713 ms`。规范在线载荷、离线 truth state、计划谱系模式和两端
+  谱系有效性跨构建检查全部通过。
+- 外部总进程 elapsed `1:55.95`、峰值 RSS `2,468,928 KiB` 包含启动、离线后处理和落盘，
+  与 85.002427712 s 核心 wall 分属不同口径，不能混写。
+- 评审结论：本批仅为单 seed 描述性 clean 校准，不是 20-seed 或正式矩阵，且未实时。
+  D1 fusion P95/max 尾延时和 scan-input 继续为 P1；本批不增加 AirSim 或正式精度结论。
 
 - 当前最新 D1-owned 优化处理非雷达扫描的逐候选伪逆。未见 seed 1000 的完整冻结输入含
   771 个扫描、11,889 条匿名观测和 201 条终态航迹。旧 cProfile 中非雷达代价矩阵累计
@@ -16,7 +50,8 @@
 - 前 256 个扫描/4,087 条观测在同进程预热后交错 7 次，逐候选/批处理 P50
   `12.242/10.238 s`、P95 `13.340/11.248 s`。完整 771 扫描墙钟
   `50.458/39.994 s`；三类语义哈希、操作计数和累计诊断相同。`pinv` 调用
-  `496,625 -> 1,018`，D1 全量 `182 passed in 15.92s`。
+  `496,625 -> 1,018`。该 2026-07-22 非雷达专项当次历史回归为
+  `182 passed in 15.92s`，不是当前权威计数。
 - 本项关闭 D1 非雷达逐候选伪逆热点。main 尚未在候选上复跑 20-seed 全栈，因此实时倍率、
   RSS、航迹物化、scan input、AirSim 和正式精度继续作为 P1，不从模块基准外推。
 

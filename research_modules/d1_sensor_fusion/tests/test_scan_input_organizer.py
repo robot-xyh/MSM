@@ -450,6 +450,53 @@ def test_truth_bearing_frame_is_fail_closed_before_lineage_or_release() -> None:
     assert result.audit.current_buffered_scan_count == 0
     assert result.audit.claimed_scan_count == 0
     assert any(event.invalid_frame for event in result.events)
+    diagnostics = organizer.performance_diagnostics()
+    assert diagnostics["validated_frame_reuse_count"] == 0
+    assert diagnostics["mutated_frame_rebuild_count"] == 1
+    assert diagnostics["organizer_observation_snapshot_count"] == 1
+
+
+def test_intact_frame_reuses_validated_snapshot_without_second_copy() -> None:
+    frame = _scan(
+        "reuse-intact-frame",
+        0.0,
+        0.1,
+        observation_count=3,
+    )
+    organizer = ScanInputOrganizer()
+
+    organizer.ingest(frame)
+    released = organizer.close()
+
+    assert released.released_scans == (frame,)
+    assert released.released_scans[0] is frame
+    assert organizer.performance_diagnostics() == {
+        "schema_version": "d1.scan_input.performance_diagnostics.v1",
+        "validated_frame_reuse_count": 1,
+        "mutated_frame_rebuild_count": 0,
+        "iterable_frame_build_count": 0,
+        "organizer_observation_snapshot_count": 0,
+    }
+
+
+def test_writable_array_frame_falls_back_to_alias_free_resnapshot() -> None:
+    frame = _scan("reuse-array-fallback", 0.0, 0.1)
+    original = frame.observations[0]
+    original.measurement.setflags(write=True)
+    organizer = ScanInputOrganizer()
+
+    organizer.ingest(frame)
+    released = organizer.close().released_scans[0]
+    released_value = float(released.observations[0].measurement[0])
+    original.measurement[0] = -999.0
+
+    assert released is not frame
+    assert released.observations[0].measurement[0] == released_value
+    assert released.observations[0].measurement.flags.writeable is False
+    diagnostics = organizer.performance_diagnostics()
+    assert diagnostics["validated_frame_reuse_count"] == 0
+    assert diagnostics["mutated_frame_rebuild_count"] == 1
+    assert diagnostics["organizer_observation_snapshot_count"] == 1
 
 
 def test_nested_mappingproxy_metadata_is_snapshotted_without_aliases() -> None:

@@ -1,5 +1,77 @@
 # D1 Sensor Fusion Offline Experiment Report
 
+## 2026-07-23 冻结 replay 尾延时归因与完整帧复用
+
+clean `4ac3bb2c12cc6af6ebd372107ced00bcdc5adf6a` 的
+`200v200-nominal-v1`、10 s、seed 1000 冻结输入包含 771 scans/11,889 anonymous
+observations，SHA-256 为
+`c1dda8523e48c255bbeef48d9516b05863eb1bbb3a3ae2e09733259e6a66f77a`。源 episode 的
+fusion P50/P95/max 是 `33.252/224.764/592.957 ms`，scan-input 是
+`1.747/177.084/361.536 ms`。
+
+profiler 显示 organizer 重建了已经完成深快照和合同校验的 `SensorScanFrame`。完整帧复用将
+帧重建从 771 降为 0、organizer 内 observation 再快照从 11,889 降为 0。
+`ScanInputOrganizer.ingest` cProfile 累计 `15.545 -> 5.754 s`；剩余主要路径为
+`_claim_for_frame 5.580 s`、`_json_safe 3.910 s` 和 `_digest 3.507 s`。
+
+前 256 scans 交错 5 轮 P50/P95 `1.942/1.968 -> 0.881/0.894 s`，P50 比 2.204x；
+墙钟不参与验收。旧/新完整 replay 的 14 项 acceptance 全部通过，覆盖逐输入
+organizer/audit/release、逐 fusion 状态/协方差/双时间戳/谱系/分级和物化航迹、终态、
+一致性证据、逐 fusion operation counts 及累计 diagnostics。operation/diagnostic snapshot
+hashes 分别为 `82728a8e...bfb5bf` 和 `b28df84d...521766`。
+main 实测当前 D1 全量回归为 `185 passed`，这是当前工作区权威测试计数。
+
+fusion 算法本轮未修改。cProfile 主要累计路径为 GlobalTrack 物化 `17.559 s`、扫描关联
+`17.027 s`、`_to_global_track 16.930 s`、非雷达代价矩阵 `14.971 s`、replay
+`8.601 s`。工作区未剖析 replay P50/P95/max 为 `34.108/178.420/354.413 ms`，radar P95
+为 `343.059 ms`；峰值为 40,000 candidate pairs 和单扫描 197 次 fixed-lag rebase。
+
+clean/commit 只描述冻结输入。优化验证来自当前未提交 D1 工作区，是单 seed 三维质点 replay，
+不是新的 clean full-stack、AirSim、正式多 seed 或实时放行。剩余 P1 是 clean 20-seed
+full-stack 重测、fusion GlobalTrack/radar/rebase 和 scan-input audit/lineage/JSON 治理。
+
+详细证据：
+
+- `d1_tail_latency_performance_20260723.json`
+- `D1_TAIL_LATENCY_PERFORMANCE_20260723_CN.md`
+
+## 2026-07-22 Nominal 200v200 clean 单 seed 全栈校准
+
+main 在 detached clean `4ac3bb2c12cc6af6ebd372107ced00bcdc5adf6a` 上完成
+`200v200-nominal-v1`、10 s、seed 1000 的全栈运行。参考是 clean
+`0d2da25c14e50f8f9a10ad47a7bd74e5c5e577fb` 的同 seed、同配置运行。两端各包含 200 个目标、
+200 个资源、771 个 D1 扫描和 11,889 条匿名在线观测。
+
+接受条件为：两端 source clean、配置/seed/时长一致、状态有限、在线 truth 使用为 0，并且规范
+在线载荷、离线 truth state、计划谱系模式及两端谱系有效性跨构建审计全部通过。候选满足
+`finite_state=true`、`online_truth_use_count=0`；跨构建报告 `passed=true`，上述语义检查均为
+true。
+
+| 指标 | 参考 `0d2da25` | 候选 `4ac3bb2` | 变化 |
+| --- | ---: | ---: | ---: |
+| 核心 wall | 94.104939744 s | 85.002427712 s | -9.6727%，1.1071x |
+| 核心 RTF | 0.1062643 | 0.1176437 | 候选仍小于 1 |
+| D1 fusion 累计 | 49.697406826 s | 40.272795088 s | -18.9640%，1.2340x |
+| D1 scan input 累计 | 12.315225105 s | 12.560936034 s | +1.9952% |
+
+候选 D1 fusion 共 771 次调用，P50/P95/max 为
+`33.25249/224.76351/592.95713 ms`。参考旧计时 schema 没有分位数字段，故不推算参考尾分布。
+在线规范载荷、truth state 和计划谱系全部通过只证明同 seed 业务语义保持，不证明性能矩阵或
+定位精度。
+
+资源数据使用两种独立口径。`summary.json.wall_time_s=85.002427712` 是核心 episode wall；
+外部 `/usr/bin/time` 的总进程 elapsed 为 `1:55.95`、峰值 RSS 为 `2,468,928 KiB`，包含启动、
+离线后处理和落盘。外部 elapsed 不参与核心 wall 的 9.6727%/1.1071x 比较，二者不得混写。
+
+本批只有一个 seed，是描述性 clean 校准，不是 20-seed，也不是正式矩阵。核心 RTF 为
+0.1176437，未实时；D1 fusion P95/max 尾延时和 scan-input 增长继续作为 P1。AirSim、
+RMSE/NEES/NIS 和物理拦截效果均未在本批验收。
+
+只读证据：
+
+- `/tmp/MSM-scalable3d-candidate-4ac3bb2/research_modules/scalable_3d_simulation/outputs/scalable_3d_timing_v2_clean_4ac3bb2_20260722/10p0s_seed_1000_nominal/`
+- `/tmp/MSM-scalable3d-candidate-4ac3bb2/research_modules/scalable_3d_simulation/outputs/scalable_3d_timing_v2_clean_4ac3bb2_20260722/cross_build_seed_1000_nominal/`
+
 ## 2026-07-22 非雷达创新批处理对照
 
 未见 seed 1000 的完整 10 s 冻结输入含 771 个扫描、11,889 条匿名观测和 201 条终态航迹。
@@ -12,8 +84,8 @@
 计数、累计诊断和物化计划也相同；在线 truth 使用为 0。
 
 完整 cProfile 中，非雷达代价矩阵累计 `34.307 -> 17.320 s`，`numpy.linalg.pinv` 调用
-`496,625 -> 1,018`，累计 `14.837 -> 0.589 s`。D1 全量回归
-`182 passed in 15.92s`。详细证据见
+`496,625 -> 1,018`，累计 `14.837 -> 0.589 s`。该 2026-07-22 非雷达专项当次历史回归为
+`182 passed in 15.92s`，不是当前权威测试计数。详细证据见
 `D1_NON_RADAR_INNOVATION_PERFORMANCE_BENCHMARK_CN.md` 和对应 JSON。本组不是全栈实时、
 AirSim 或正式 RMSE/NEES/NIS 结论。
 

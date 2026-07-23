@@ -2,7 +2,77 @@
 
 Offline research module for radar, acoustic, EO, and optional synthetic lidar heterogeneous observation fusion. The module estimates six-state NED `GlobalTrack` objects with covariance.
 
-## 当前性能与治理证据（2026-07-22）
+## 当前性能与治理证据（2026-07-23）
+
+### 第十阶段：冻结 replay 尾延时归因与完整帧复用
+
+本轮以 clean `4ac3bb2c12cc6af6ebd372107ced00bcdc5adf6a` 的
+`200v200-nominal-v1`、10 s、seed 1000 冻结输入复放 771 个扫描和 11,889 条匿名在线观测；
+输入 SHA-256 为
+`c1dda8523e48c255bbeef48d9516b05863eb1bbb3a3ae2e09733259e6a66f77a`。
+clean episode 原始 D1 fusion P50/P95/max 为
+`33.252/224.764/592.957 ms`，scan-input 为
+`1.747/177.084/361.536 ms`。
+
+profiler 确认 scan-input 重复成本来自已完成深快照和合同校验的 `SensorScanFrame` 被 organizer
+再次构造。当前实现对完整帧核对轻量完整性封印后直接复用；对象或标量被替换、数组恢复可写时
+回退原完整重建和 fail-closed 校验。完整复放操作数如下：
+
+| Scan-input 操作数 | 旧路径 | 新路径 |
+| --- | ---: | ---: |
+| organizer 内帧重建 | 771 | 0 |
+| organizer 内 observation 再快照 | 11,889 | 0 |
+| 已验证完整帧直接复用 | 0 | 771 |
+
+前 256 scans 交错 5 轮总耗时 P50/P95 为
+`1.942/1.968 s -> 0.881/0.894 s`，P50 比为 2.204x；墙钟不参与验收。完整旧/新复放的逐输入
+结果、close/audit、94 个 release groups、逐 fusion posterior（状态、协方差、时间戳、谱系、
+分级）、物化 `GlobalTrack`、终态、一致性证据、逐 fusion 操作数和累计诊断全部严格一致。
+逐 fusion 操作快照哈希均为
+`sha256:82728a8e0fed0adedd0254368e29a3c117157b066158595d7ca6dac558bfb5bf`。
+main 实测当前 D1 全量回归为 `185 passed`，这是本工作区的当前权威测试计数。
+
+fusion 数学路径未修改。cProfile 主要累计路径仍为 `global_tracks 17.559 s`、
+`_scan_one_to_one_assignments 17.027 s`、`_to_global_track 16.930 s`、
+`_cached_non_radar_scan_cost_matrix 14.971 s` 和 `_replay_record 8.601 s`。本机未剖析复放
+P50/P95/max 为 `34.108/178.420/354.413 ms`，只用于和同轮操作数配对，不能与 clean episode
+作正式前后比较。当前验证运行在未提交 D1 工作区，是单 seed 三维质点 replay，不是新的 clean
+full-stack、AirSim、正式多 seed 或实时放行。证据：
+
+- `reports/d1_tail_latency_performance_20260723.json`
+- `reports/D1_TAIL_LATENCY_PERFORMANCE_20260723_CN.md`
+- `scripts/run_tail_latency_performance.py`
+
+### 第九阶段：nominal 200v200 clean 单 seed 全栈校准
+
+main 在 detached clean 提交
+`4ac3bb2c12cc6af6ebd372107ced00bcdc5adf6a` 上运行
+`200v200-nominal-v1`、10 s、seed 1000 的 D1-D7 全栈，并与同 seed、同配置的 clean
+`0d2da25c14e50f8f9a10ad47a7bd74e5c5e577fb` 对照。两次运行各处理 771 个 D1 扫描和
+11,889 条匿名在线观测；候选世界状态有限，`online_truth_use_count=0`。
+
+| 指标 | clean `0d2da25` | clean `4ac3bb2` | 候选变化 |
+| --- | ---: | ---: | ---: |
+| 核心 wall（`summary.json.wall_time_s`） | 94.104939744 s | 85.002427712 s | 下降 9.6727%，1.1071x |
+| `module.d1_fusion` 累计 | 49.697406826 s | 40.272795088 s | 下降 18.9640%，1.2340x |
+| `module.d1_scan_input` 累计 | 12.315225105 s | 12.560936034 s | 增加 1.9952% |
+
+候选核心实时倍率为 `0.1176437`。771 次 `module.d1_fusion` 调用的
+P50/P95/max 为 `33.25249/224.76351/592.95713 ms`。跨构建审计确认
+`normalized_online_payloads_equal=true`、`truth_state_equal=true`、
+`plan_lineage_pattern_equal=true`，参考与候选计划谱系也分别有效。
+
+外部 `/usr/bin/time` 记录的候选总进程 elapsed 为 `1:55.95`，峰值 RSS 为
+`2,468,928 KiB`。该 elapsed 包含解释器启动、核心 episode、离线后处理和制品落盘，不能与
+85.002427712 s 的核心 wall 混写或用于上述同口径加速比。
+
+本批接受条件仅为同 seed/配置、两端 clean、状态有限、在线 truth 为 0，以及规范在线载荷、
+离线 truth state 和计划谱系审计全部通过；这些条件均通过。它仍只是单 seed 描述性 clean
+校准，不是 20-seed，不是正式性能矩阵，也未达到实时。D1 融合尾延时和 scan-input 成本继续
+保持 P1；本批不新增 AirSim、正式 RMSE/NEES/NIS 或物理拦截效果证据。只读证据位于：
+
+- `/tmp/MSM-scalable3d-candidate-4ac3bb2/research_modules/scalable_3d_simulation/outputs/scalable_3d_timing_v2_clean_4ac3bb2_20260722/10p0s_seed_1000_nominal/`
+- `/tmp/MSM-scalable3d-candidate-4ac3bb2/research_modules/scalable_3d_simulation/outputs/scalable_3d_timing_v2_clean_4ac3bb2_20260722/cross_build_seed_1000_nominal/`
 
 ### 第八阶段：非雷达创新矩阵栈批处理
 
@@ -24,7 +94,8 @@ Offline research module for radar, acoustic, EO, and optional synthetic lidar he
 `13.340/11.248 s`，均值为 `12.506/10.385 s`；P50 加速 `1.196x`。完整 771 扫描单次
 交叉验证的无 profiler 纯融合墙钟为 `50.458/39.994 s`，加速 `1.262x`。逐扫描语义摘要、
 终态航迹、一致性证据、操作计数和累计诊断全部严格相同。完整输入 cProfile 中非雷达代价矩阵
-降至 17.320 s，`pinv` 调用降至 1,018 次。D1 全量回归为 `182 passed in 15.92s`。
+降至 17.320 s，`pinv` 调用降至 1,018 次。该 2026-07-22 非雷达专项当次历史回归为
+`182 passed in 15.92s`，不是当前权威测试计数。
 
 详细证据见 `reports/D1_NON_RADAR_INNOVATION_PERFORMANCE_BENCHMARK_CN.md` 和对应 JSON。
 该结果关闭非雷达逐候选伪逆的 D1-owned 热点，不是完整 D1-D7 实时结论。全栈 20-seed 仍需由
