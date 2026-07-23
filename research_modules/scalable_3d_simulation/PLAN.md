@@ -58,18 +58,64 @@ D1 扫描输入、D2 关联、D3 分配、D5 终端配准和 D7 导引均值为
 `descriptive_clean_source_calibration`，正式实验矩阵 episode 仍为 0。这关闭规则基线的
 20-seed 描述性稳定性和代次审计子项，不关闭实时、学习算法比较或物理拦截验收。
 
+detached clean `4ac3bb2` 已使用新的阶段分位合同完成 seed 1000 的 2.2 秒与 10 秒
+200 对 200 同源校准。10 秒核心墙钟 `85.002 s`，相对 `0d2da25` 同 seed 下降 `9.67%`；
+D1 融合从 `49.697 s` 降到 `40.273 s`。跨构建审计确认规范在线载荷、真值状态和计划
+谱系完全一致。D1 融合 `P50/P95/max` 为 `33.252/224.764/592.957 ms`，D2 关联为
+`121.972/137.335/145.966 ms`。这关闭 stage-timing-v2 的 clean 200 对 200 producer/
+consumer 接线，不关闭多 seed 分位、超线性增长或实时性。
+原始制品不提交；版本化紧凑摘要位于
+`docs/SCALABLE_3D_STAGE_TIMING_CALIBRATION_20260722.json`。
+
+D1 在同一 seed 1000 冻结输入上完成 scan-input profiler 和完整帧复用。输入包含
+771 个扫描、11,889 条匿名观测；已校验且快照完整的 `SensorScanFrame` 直接进入
+organizer，发生对象、标量或数组可写状态变化时仍回退完整快照和 fail-closed 校验。
+帧重建由 771 次降至 0，organizer 内 observation 再快照由 11,889 次降至 0。
+前 256 个扫描交错 5 轮的 P50/P95 由 `1.942/1.968 s` 降至
+`0.881/0.894 s`，P50 描述性加速 `2.204x`。14 项逐输入、审计、融合状态、协方差、
+双时间戳、谱系、分级和终态等价验收全部通过。该运行来自当前 D1 工作区，不是 clean
+full-stack、AirSim 或正式多 seed 证据；全栈尾延时 P1 不关闭。
+
+D6 新的真值隔离入口已对同一 seed 1000 制品完成实际消费。严格 `id_switch_count` 继续因
+`multiple_truth_targets_for_global_track` 为 unavailable；部分诊断独立报告映射覆盖率
+`0.985395`、帧覆盖率 `0.0625`、相邻转移覆盖率 `0`、385 个锚点区间和保守 ID Switch
+下界 7。来源 manifest、evaluation 和四项 source SHA 均通过，严格值未回填，也未生成上界。
+本项关闭 D2 partial block 到 D6 truth-isolated 报告的单 seed 接线，不关闭严格身份指标或
+多 seed P1。
+
+D2 已在同一冻结在线总线上完成 profiler v2 与三项语义等价优化：按周期内唯一 `dt`
+复用常速度模型矩阵、对已治理的 D1 六维协方差跳过重复 marginal 比较、增量维护 claim
+ledger 计数并每帧汇总一次。48/48 周期公开输出和 tracker 状态严格相等，D2 core
+中位数由 `2.928830 s` 降至 `2.204672 s`，描述性加速 `1.328465x`。常速度矩阵构造
+由 9,246 次降至 46 次，冗余 marginal `allclose` 由 19,252 次降至 0，ledger summary
+由 96 次降至 48 次。候选早晚窗口成本比为 `1.123036x`，没有改善原有长窗口增长，
+因此只关闭三个固定操作数热点，不关闭完整阶段实时性或多 seed 性能 P1。
+
+D5 已在同一 seed 1000 的 25 帧短序列和 114 帧长序列上完成操作数归因及局部等价优化。
+历史 gauge 改为增量维护，长序列 723 次刷新避免扫描 91,871 个 tracker 引用；2,289 个
+singleton cluster 直接复用投影距离行，79 个多节点 cluster 仍执行完整聚合；匿名 payload
+叶子快路径和 8,192 项有界 local-ID 正则缓存保持 truth fail-closed。最终源码在修复
+`-0.0` 符号位边界后重新复放，短/长业务、binding 和冻结 v1 操作数哈希分别相等，
+在线 truth 使用与 `global_track_id` 改写均为 0。pre-fix profiler 只能作方向归因；
+当前全量为 `551 passed`，完整集成、多 seed 和长窗口实时性 P1 不关闭。
+
 当前执行顺序调整为：
 
-1. D1/main 继续分离固定滞后滤波、检查点查询、剩余航迹物化和 JSON 写出成本；下一版轻量
+1. D1 已关闭完整帧重复快照热点，继续治理融合尾延时、scan-input claim/audit/JSON 和
+   剩余航迹物化成本；不得因模块回放加速而忽略 `592.957 ms` 的融合最大值。下一版轻量
    heartbeat/lineage sidecar 必须版本化并兼容旧 consumer。
-2. D5 按局部历史、图节点、投影单元和 binding 单元治理剩余 2.423 倍单次成本增长，不减少
-   视觉帧、不放宽投影与身份门限。
-3. D3 冻结输入归因已完成。集成三 seed 累计时间基本持平，当前不修改规则代价、迟滞或
-   Hungarian 主线。`scalable3d-stage-timings-v2` 已补齐逐阶段单次调用 P50/P95/max，
-   下一 clean 200 对 200 候选必须使用该版本冻结稳定窗口分布。
-4. 完成当前吞吐治理后，再扩展 D4 故障、D5 跨视角和 D7 五米接近的长时多 seed 验收。
-5. 学习策略继续保持 disabled/shadow；性能优化不得用学习模型、降采样或放宽安全门控替代。
-6. 20 个保留 seed 的规则基线已经完成。下一批必须由正式矩阵 runner 冻结 variant、scenario、
+2. D2 已关闭三项常数成本热点；下一步在固定硬件完整阶段复测 P50/P95/P99，并分离
+   covariance governance、重复航迹合并和 main publication 成本。不得减少合法候选、
+   降低关联频率或改变 ID/claim/version 语义。
+3. D5 已关闭 history gauge、匿名审计和 singleton binding 的局部重复成本；下一步用正交
+   多 seed 控制检测数、活跃相机数、中心候选数和时长，分离 tracker pair 与投影/绑定矩阵
+   增长，不减少视觉帧、不放宽投影与身份门限。
+4. D3 冻结输入归因已完成。集成三 seed 累计时间基本持平，当前不修改规则代价、迟滞或
+   Hungarian 主线。`scalable3d-stage-timings-v2` 已有单 seed clean 证据，下一轮至少
+   20 个固定 seed 必须用同一版本汇总 episode 分位分布。
+5. 完成当前吞吐治理后，再扩展 D4 故障、D5 跨视角和 D7 五米接近的长时多 seed 验收。
+6. 学习策略继续保持 disabled/shadow；性能优化不得用学习模型、降采样或放宽安全门控替代。
+7. 20 个保留 seed 的规则基线已经完成。下一批必须由正式矩阵 runner 冻结 variant、scenario、
    scale、comparison key、训练 seed registry 和学习 bundle；D4 内容地址、D3 计划谱系、来源
    ACK、generation 守恒或 assist adoption 任一不可回算时必须判为不可比较。
 

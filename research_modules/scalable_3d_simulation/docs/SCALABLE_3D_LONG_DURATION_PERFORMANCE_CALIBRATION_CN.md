@@ -293,19 +293,184 @@ failure reason 为空；全部仍为 `descriptive_clean_source_calibration`，�
 该结果关闭规则基线的 20-seed 描述性稳定性和 generation 消费审计，不关闭七变体正式比较、
 学习采用、实时性或五米物理结果。
 
+## 第八轮阶段分位与 D1 批处理校准
+
+detached clean 提交 `4ac3bb2c12cc6af6ebd372107ced00bcdc5adf6a` 使用 nominal
+200 对 200、seed 1000 顺序运行 2.2 秒和 10 秒。两组 manifest 均为 clean source，
+状态有限，在线真值使用、D1/D2 overflow 和五米接近事件均为 0。10 秒 episode 产生
+11,889 条匿名观测、201 条 D1 航迹、204 条 D2 航迹、200 条分配和 26 条 D5 绑定。
+
+同 seed 的 `0d2da25` 参考 episode 与 `4ac3bb2` 候选各有 21,366 条在线记录。跨构建审计
+对 D3 不透明计划标识做规范谱系映射，并重新核对 D4 内容地址。规范在线载荷、真值状态、
+离线标签、计划谱系和运行确认全部一致。第一次带 `--drone-count 200` 的诊断运行改变了
+scenario name/version，因此比较器按合同拒绝；改用原 nominal 配置后审计通过。该拒绝说明
+场景来源必须由 manifest 和配置确定，不能按对象数量推断可比性。
+
+| 指标 | `0d2da25` 同 seed | `4ac3bb2` | 变化 |
+| --- | ---: | ---: | ---: |
+| 核心墙钟/s | 94.105 | 85.002 | -9.67% |
+| 实时倍率 | 0.1063 | 0.1176 | +10.71% |
+| D1 融合/s | 49.697 | 40.273 | -18.96% |
+| D1 扫描输入/s | 12.315 | 12.561 | +2.00% |
+| D2 常规关联/s | 5.521 | 5.281 | -4.34% |
+| D5 终端配准/s | 1.143 | 1.148 | +0.40% |
+| D7 导引/s | 3.461 | 3.734 | +7.89% |
+
+D1 的非雷达创新协方差矩阵栈批处理减少了逐候选伪逆调用。完整全栈收益小于 D1 独立回放
+收益，符合 D1 只占总墙钟一部分的结构。D1 扫描输入没有随融合优化下降，仍需单独治理。
+外部 `/usr/bin/time -v` 记录的 10 秒进程总时长为 `1:55.95`，峰值驻留内存为
+`2,468,928 KiB`。核心墙钟与报告、真值隔离评估、压缩和写出时间继续分栏记录。
+
+### D1 扫描输入等价优化
+
+D1 随后使用同一 seed 1000 在线总线恢复 771 个扫描和 11,889 条匿名观测。原路径在
+`SensorScanFrame` 构造后，organizer 内再次重建帧并复制全部观测。候选路径为已校验帧
+保存只读快照完整性标记；对象、标量或数组可写状态发生变化时，完整性检查失败并回退原有
+快照和校验路径。双时间戳、协方差、NED、OOSM 排序、来源谱系和 truth 隔离均未放宽。
+
+| 操作 | reference | candidate |
+| --- | ---: | ---: |
+| organizer 内帧重建 | 771 | 0 |
+| organizer 内 observation 再快照 | 11,889 | 0 |
+| 已验证完整帧直接复用 | 0 | 771 |
+| `ScanInputOrganizer.ingest` cProfile 累计/s | 15.545 | 5.754 |
+
+前 256 个扫描按 reference/candidate 交错运行 5 轮。P50/P95 由
+`1.942/1.968 s` 降至 `0.881/0.894 s`，P50 描述性加速为 `2.204x`。墙钟不参与硬验收。
+逐输入结果、close、audit、释放分组、逐 fusion 状态/协方差/双时间戳/谱系/分级、逐 fusion
+操作数和累计诊断、终态航迹及一致性证据共 14 项全部相等，在线 truth 使用为 0。
+
+优化后 scan-input 剩余主要累计成本为 `_claim_for_frame 5.580 s`、
+`_json_safe 3.910 s` 和 `_digest 3.507 s`。fusion 本轮没有实施不确定优化，仍由
+`global_tracks 17.559 s`、扫描关联 `17.027 s`、`_to_global_track 16.930 s`、
+非雷达代价矩阵 `14.971 s` 和 replay `8.601 s` 主导。峰值扫描有 40,000 个候选对；
+一次扫描发生 197 次 fixed-lag rebase。
+
+机器报告 SHA-256 为
+`9510bd60b862be98a3816f238cd27c08c942e501e9dec27b96d598c45dc2d1df`。
+该专项来自当前未提交 D1 工作区，不是 clean full-stack、多 seed、AirSim 或实时放行证据。
+D1 完整回归为 `185 passed`。
+
+`scalable3d-stage-timings-v2` 首次在 clean 200 对 200 episode 中给出逐阶段调用分布。
+
+| 阶段 | 调用数 | P50/ms | P95/ms | max/ms |
+| --- | ---: | ---: | ---: | ---: |
+| D1 扫描输入 | 771 | 1.747 | 177.084 | 361.536 |
+| D1 融合 | 771 | 33.252 | 224.764 | 592.957 |
+| D2 常规关联 | 47 | 121.972 | 137.335 | 145.966 |
+| D3 分配 | 10 | 206.920 | 371.865 | 459.924 |
+| D5 主动视觉 | 93 | 31.528 | 33.484 | 258.289 |
+| D5 终端配准 | 114 | 11.497 | 15.969 | 18.632 |
+| D7 导引 | 185 | 18.789 | 20.318 | 201.706 |
+
+2.2 秒与 10 秒长短比较的安全合同全部通过。10 秒相对短窗口的调用密度已经改变，因此不能
+把总墙钟归一化增长直接当作算法复杂度。单次成本仍显示 D1 融合约 `1.466x`、D2 关联约
+`1.579x`、D5 终端配准约 `2.556x` 的增长。D1、D2 和 D5 的尾延时仍是 P1。
+
+D6 v7 独立消费 10 秒 episode，成功保留全部阶段分位和 availability。D6 进程耗时
+`10.24 s`，峰值驻留内存 `936,056 KiB`。报告明确这些值是单个 episode 内调用分位；
+没有原始逐调用样本时不生成 pooled quantile。该 episode 仍归类为
+`descriptive_clean_source_calibration`，正式实验矩阵 episode 数为 0。
+
+D2 的同一 clean episode 身份侧车已经输出部分可评估诊断。9,038 条受评分映射中
+8,906 条可唯一解释，映射覆盖率为 `98.54%`；完整可评估帧为 `3/48`，相邻可评估转移为
+`0/9,400`。385 个唯一锚点区间给出保守 ID Switch 下界 7，一处同真值多航迹帧被显式
+排除。严格 ID Switch 仍因 `multiple_truth_targets_for_global_track` 保持 unavailable。
+D6 新的 truth-isolated consumer 已在 2026-07-23 复读该真实制品。来源 manifest、evaluation
+和四项 source SHA 均验证通过；逐 seed CSV、聚合 JSON 和中文报告分别保留严格值与 partial
+block。输出为映射/帧/相邻转移覆盖率 `0.985395/0.0625/0`、锚点区间 385、保守下界 7，
+`strict_id_switch_count_backfilled=false`、`id_switch_upper_bound_reported=false`。原
+scalable offline v7 报告仍保持既有严格列；truth-isolated 分栏接线已闭合，严格身份指标和
+多 seed 证据未闭合。D6 当前全量回归为 `567 passed, 1 warning in 22.07s`；新增 12 项由
+3 项独立合同测试和 9 项来源篡改参数化测试组成。warning 是既有 Matplotlib `Axes3D`
+环境提示。
+
+### D2 热点等价优化
+
+D2 使用同一 clean `4ac3bb2` seed 1000 在线总线恢复 48 个关联周期。profiler v2 能够
+配对 D1 与 MAIN/D5/D7 交错记录，并分别统计 adapter、tracker、逐周期早晚窗口和固定
+操作数。测试固定 CPU 0、BLAS/OMP 单线程，两侧各执行 1 次预热和 7 次计时。墙钟仅用于
+描述，硬验收条件为同输入、业务语义相等、固定操作数一致和在线真值使用为 0。
+
+三项优化均不改变关联模型。每周期按唯一 `dt` 复用常速度转移和过程噪声矩阵；D1 已治理的
+六维协方差使用原生 marginal，普通或正则化协方差仍执行完整一致性检查；claim ledger 改为
+增量精确计数，并将 summary 从每帧两次降为一次。常速度矩阵构造由 9,246 次降至 46 次，
+可信 marginal 的 `allclose` 由 19,252 次降至 0，ledger summary 由 96 次降至 48 次。
+
+| 阶段 | baseline 中位数/s | candidate 中位数/s | 变化 |
+| --- | ---: | ---: | ---: |
+| D1 到 D2 适配 | 1.365946 | 0.990528 | -27.49% |
+| tracker | 1.562883 | 1.206957 | -22.77% |
+| D2 core | 2.928830 | 2.204672 | -24.73% |
+
+D2 core 的描述性加速为 `1.328465x`。48/48 周期公开输出和完整 tracker 状态严格相等，
+重复语义 SHA-256 均为
+`b2334c619b9d2f7c467387ad27b62614d028af83f0b7842b867cab1c4aa9824b`。输入、
+fresh、replay quarantine、候选边和匹配数保持 `9626/9038/588/8862/8823`。
+`global_track_id`、ID Switch availability、门控、版本、claim ledger 和在线 truth use
+均未变化。
+
+早 8 个与晚 8 个 regular 周期的平均成本比由 `1.119661x` 变为 `1.123036x`。本轮降低
+了常数成本，没有改善长窗口增长。完整阶段原 P50/P95/max
+`121.972/137.335/145.966 ms` 及 10 秒相对 2.2 秒的 `1.579x` 仍是 P1。D2 完整回归为
+`234 passed, 1 warning in 34.83s`；warning 是既有 Matplotlib `Axes3D` 环境提示。
+机器报告 SHA-256 为
+`2256d6fdd29223ed5dd75351cd6bb208a4d67c55925eeba047620ac865b6c7da`。
+
+### D5 操作数归因与边界验证
+
+D5 从同一 seed 1000 在线总线提取 25 帧短序列和 114 帧长序列。两组均只消费匿名在线
+记录，不加载 truth sidecar。局部优化包括增量 history gauge、匿名 payload 内建叶子快
+路径、8,192 项有界 local-ID 正则缓存，以及 singleton cluster 投影距离行复用。多节点
+cluster、完整 binding matrix、Hungarian 求解、几何门和中心身份所有权均保留。
+
+pre-boundary-fix profiler 给出以下方向性结果：
+
+| 累计项 | baseline/s | candidate/s | 变化 |
+| --- | ---: | ---: | ---: |
+| `process()` | 2.320 | 1.987 | -14.4% |
+| `adapt_batches()` | 1.428 | 1.122 | -21.4% |
+| 匿名 payload 审计 | 0.358 | 0.162 | -54.7% |
+| history gauge 刷新 | 0.0544 | 0.00288 | -94.7% |
+| cluster binding | 0.0578 | 0.0312 | -46.0% |
+
+两轮各 7 次 A/B 的中位值均值由 `1.149362 s` 降至 `0.929495 s`，下降 `19.13%`。
+该 profiler 不含后续 `-0.0` 符号位边界修复，只能用于热点方向归因，不能绑定最终源码
+或作为实时准入。
+
+最终源码在独立 post-boundary-fix 重放中验证。短序列 25 帧、106 个图节点；长序列
+114 帧、2,479 个图节点和 80 条图边。两组业务、最终 binding 和冻结 v1 操作数哈希均与
+原发布记录相同，在线 truth 使用和 `global_track_id` 改写均为 0。D5 当前全量回归为
+`551 passed in 100.83s`。
+
+操作数仍显示输入组成带来的增长。长序列每帧 tracker pair 比较相对短序列为
+`155.04x`，投影矩阵和绑定矩阵单元为 `7.295x/7.060x`；长短序列可见目标和历史规模
+不同，不能把该比值直接解释为时间复杂度。下一轮需要正交控制检测数、活跃相机数、中心
+候选数和时长，再做多 seed 分位。机器报告 SHA-256 为
+`7be68d15a982f720355e30b631cf44b860a5b017a6b4221819d9c9c08b26c449`。
+
+本轮原始制品约 1.1 GiB，按生成物规则不提交。紧凑证据摘要
+`SCALABLE_3D_STAGE_TIMING_CALIBRATION_20260722.json` 固化参考与候选提交、场景配置、
+manifest/summary/online 产物哈希、跨构建审计哈希和阶段分位。下列本地输出路径用于复核
+原始制品，不作为报告唯一证据。
+
 ## 后续工作
 
-1. D1 同一融合时刻快照合并已关闭代码和三 seed 描述性证据缺口。下一步继续分离固定滞后
-   滤波、检查点查询和剩余 `GlobalTrack` 物化成本，不得缩短 6 秒窗口、丢观测或放宽门控。
+1. D1 同一融合时刻快照合并和完整帧重复快照热点已关闭。下一步继续治理 scan-input
+   claim/audit/JSON、固定滞后滤波、检查点查询和剩余 `GlobalTrack` 物化成本，不得缩短
+   6 秒窗口、丢观测或放宽门控。
 2. main 发布总线接近线性，但 10 秒在线日志仍为 221-238 MiB，结束后处理仍为 66-69 秒。
    下一轮应设计版本化 heartbeat/lineage sidecar，并保持旧 schema consumer 兼容。
-3. D5 操作数诊断已经建立；长时单次成本仍为短时的 2.423 倍。下一步按局部航迹历史、投影
-   单元和 binding 单元分别治理，不能减少视觉帧或放宽几何门限。
-4. D3 冻结输入归因已经建立。集成累计时间基本持平，下一轮优先处理 D1/D2/D5 和写出边界，
+3. D2 三项固定操作数热点已关闭；下一轮在完整阶段和多 seed 下复测 P50/P95/P99，并继续
+   分离 covariance governance、重复航迹合并与 main publication 成本，保持候选和身份语义。
+4. D5 已关闭 history gauge、匿名审计和 singleton binding 的局部重复成本。下一步正交
+   控制检测数、活跃相机数、中心候选数和时长，分离 tracker pair 与投影/绑定矩阵增长，
+   不能减少视觉帧或放宽几何门限。
+5. D3 冻结输入归因已经建立。集成累计时间基本持平，下一轮优先处理 D1/D2/D5 和写出边界，
    不因单机墙钟噪声修改规则代价、迟滞或匈牙利主线。
-5. 规则全栈达到可接受吞吐后，再运行 D4 故障、D5 跨视角压力和 D7 五米物理闭环，不将本轮
+6. 规则全栈达到可接受吞吐后，再运行 D4 故障、D5 跨视角压力和 D7 五米物理闭环，不将本轮
    性能校准写成拦截效果验收。
-6. 同一 clean `0d2da25` 的 seed `1000-1019` 长时规则批次已经完成。下一轮不重复运行相同
+7. 同一 clean `0d2da25` 的 seed `1000-1019` 长时规则批次已经完成。下一轮不重复运行相同
    R0 nominal 校准；应先关闭吞吐热点，再由正式矩阵 runner 运行有冻结 metadata 和学习 bundle
    的配对单元。保留 seed 继续禁止回流训练。
 
@@ -318,6 +483,12 @@ failure reason 为空；全部仍为 `descriptive_clean_source_calibration`，�
 - 第六轮带代次基线：`outputs/scalable_3d_integrated_candidate_20260722_clean_0d2da25/`
 - 第六轮 D6：`research_modules/d6_evaluation_metrics/outputs/scalable3d_posterior_v2_clean_0d2da25_20260722/`
 - 第七轮 20-seed D6：`research_modules/d6_evaluation_metrics/outputs/scalable3d_posterior_v2_unseen_20seed_clean_0d2da25_20260722/`
+- 第八轮阶段分位：`outputs/scalable_3d_timing_v2_clean_4ac3bb2_20260722/`
+- 第八轮 D6：`research_modules/d6_evaluation_metrics/outputs/scalable3d_timing_v2_clean_4ac3bb2_seed1000_20260722/`
+- 第八轮 D6 部分身份分栏：`research_modules/d6_evaluation_metrics/outputs/scalable3d_partial_identity_seed1000_20260723/`
+- 第八轮 D1 尾延时报告：`research_modules/d1_sensor_fusion/reports/d1_tail_latency_performance_20260723.json`
+- 第八轮 D2 热点报告：`research_modules/d2_data_association/docs/d2_clean_4ac3bb2_seed1000_hotpath_20260723.json`
+- 第八轮 D5 操作数报告：`research_modules/d5_terminal_association/results/scalable_3d_seed1000_duration_operation_20260723.json`
 - 跨构建审计：`outputs/scalable_3d_long_duration_candidate_20260722_clean_f80b5bd/cross_build_semantics/`
 - 长短比较：`comparison_candidate/long_duration_comparison.json`
 - D6 聚合：`d6_offline_pair/scalable_3d_offline_aggregate.json`

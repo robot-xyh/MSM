@@ -968,20 +968,21 @@ D1 NumPy EKF/FusionAdapter
 
 | Owner | P0 状态 | 必须保持的合同 | 验收 |
 | --- | --- | --- | --- |
-| D1 | 无新增 blocker | 双时间戳、NED、协方差、OOSM、source de-dup、局部图像航迹 fail-closed 适配和 GlobalTrack | D1 `175 passed` |
-| D2 | 无新增 blocker | GNN/Hungarian、稳定 global_track_id、id_switch_count、continuity、陈旧观测隔离和来源身份治理显式计数 | D2 `219 passed, 1 warning` |
+| D1 | 无新增 blocker | 双时间戳、NED、协方差、OOSM、source de-dup、局部图像航迹 fail-closed 适配和 GlobalTrack | D1 `185 passed` |
+| D2 | 无新增 blocker | GNN/Hungarian、稳定 global_track_id、id_switch_count、continuity、陈旧观测隔离和来源身份治理显式计数 | D2 `234 passed, 1 warning` |
 | D3 | 无新增 blocker | 版本化 AssignmentPlan、迟滞、stale rejection、D7 binding；运行证据按各 ACK 对应的计划快照验证，真实 stale ACK 保持 fail-closed | D3 `438 passed, 1 skipped, 0 failed` |
 | D4 | 无新增 blocker | C2Health、主动/被动降级、二级 lifecycle；active secondary helper/owner 必须对 sustained readiness、expected/actual source、plan/required epoch、expiry/current time 和 plan monotonicity exact-true；冲突或缺失证据 fail-closed | D4 `508 passed` |
-| D5 | 无新增 blocker | 不改写 global_track_id、truth 隔离、friend/duplicate 保守门控；原生 MOT 连续实测历史按 stream/backend/ID 隔离并在空帧/reset 后重计；离线人工记录转换重复坍缩 fail-closed；补充课程全样本审计不得开放在线权限 | D5 `544 passed` |
-| D6 | 无新增 blocker | 只消费日志；实际规模、id_switch_count、unavailable/zero 分离；逐 pair physical evidence/result/source、联盟完整性和跨模块学习准入严格门控；runtime v1 generation 保持 unavailable，v2 重复、倒序、未知引用、计数不守恒或 pending 未排空均失败关闭 | D6 `542 passed, 1 warning` |
+| D5 | 无新增 blocker | 不改写 global_track_id、truth 隔离、friend/duplicate 保守门控；原生 MOT 连续实测历史按 stream/backend/ID 隔离并在空帧/reset 后重计；离线人工记录转换重复坍缩 fail-closed；补充课程全样本审计不得开放在线权限 | D5 `551 passed` |
+| D6 | 无新增 blocker | 只消费日志；实际规模、id_switch_count、unavailable/zero 分离；逐 pair physical evidence/result/source、联盟完整性和跨模块学习准入严格门控；runtime v1 generation 保持 unavailable，v2 重复、倒序、未知引用、计数不守恒或 pending 未排空均失败关闭 | D6 `567 passed, 1 warning` |
 | D7 | 核心公式无 blocker；控制输入 P0 由 main/runtime 持有 | 不分配目标；D3/D4/D5 gate 失败时阻断视觉 PNG；不修改 PN/PNG 核心公式 | D7 `213 passed` + truth-isolated control contract |
-| main/runtime | 无新增 blocker | episode bus 可回放；在线 truth identity/state 均为 0；SimpleFlight 只消费 D2 estimate；未消费 D1 posterior 跨 tick 锁存但不改写时间戳；v2 治理快照记录 D1/D2 generation 消费血缘并在 finalize 排空；二级 communication 只消费上一完整 D4 readiness；actor truth 仅离线 5 m scorer；默认不保存 PNG | scalable main `124 passed, 1 warning`；既有 AirSim runtime `147 passed` |
+| main/runtime | 无新增 blocker | episode bus 可回放；在线 truth identity/state 均为 0；SimpleFlight 只消费 D2 estimate；未消费 D1 posterior 跨 tick 锁存但不改写时间戳；v2 治理快照记录 D1/D2 generation 消费血缘并在 finalize 排空；二级 communication 只消费上一完整 D4 readiness；actor truth 仅离线 5 m scorer；默认不保存 PNG | scalable main `128 passed, 1 warning`；既有 AirSim runtime `147 passed` |
 
 ### 7.3 当前 P1 清单
 
 | Owner | 当前缺口 | 已有基础 | 缺少条件/下一验收 |
 | --- | --- | --- | --- |
-| main/D1/D2/D3/D5/D6 | 分阶段实时性能与长时增长达标 | clean `0d2da25` 已完成带 generation 审计的三 seed 基线和 20 个保留 seed 描述性校准；20-seed 核心墙钟均值 `96.391 s`、实时倍率 `0.1039`，20/20 代次守恒通过。D1 独立回放平均 `1.231x`，D5 占用桶优化冻结三 seed 中位耗时均值下降 16.45%。main 已增加 `scalable3d-stage-timings-v2` 的逐阶段 P50/P95/max 记录，5v5 冒烟通过 | 仍未实时；D1 融合/扫描输入、D2/D5 长时增长和结束后处理仍需关闭，新分位字段还需在 clean 200 对 200 候选上冻结。正式七变体矩阵仍为 0 episode，不得把 R0 nominal 描述性校准当算法验收 |
+| main/D1/D2/D3/D5/D6 | 分阶段实时性能与长时增长达标 | clean `0d2da25` 已完成带 generation 审计的三 seed 基线和 20 个保留 seed 描述性校准；20-seed 核心墙钟均值 `96.391 s`、实时倍率 `0.1039`，20/20 代次守恒通过。clean `4ac3bb2` 同 seed 1000 核心墙钟从 `94.105 s` 降至 `85.002 s`，D1 融合从 `49.697 s` 降至 `40.273 s`，跨构建规范载荷一致；D1 冻结回放将 scan-input 前 256 扫描 P50 从 `1.942 s` 降至 `0.881 s`，14 项语义验收通过；D2 冻结总线等价优化将 core 中位数从 `2.928830 s` 降至 `2.204672 s`，48/48 周期语义一致；D5 最终源码短/长重放的业务、binding 和冻结操作数哈希相等，truth/ID 改写为 0；`scalable3d-stage-timings-v2` 已由 D6 v7 消费真实 200 对 200 分位 | 仍未实时；D1/D2/D5 候选都缺 clean full-stack 多 seed。D1 融合 P95/max 为 `224.764/592.957 ms`，D2 完整阶段 P95 为 `137.335 ms`；D2 长窗口增长未改善，D5 tracker pair 和投影/绑定矩阵仍随输入组成显著增长。结束后处理仍需关闭，正式七变体矩阵仍为 0 episode。不得把冻结回放加速或 R0 nominal 描述性校准当算法验收 |
+| D2/D6/main | 不完整身份真值的可评估范围与保守 IDSW 下界 | D2 已输出版本化 evaluator-only partial diagnostics；clean `4ac3bb2` seed 1000 的映射/帧/相邻转移覆盖为 `8906/9038`、`3/48`、`0/9400`，385 个唯一锚点区间给出 IDSW 下界 7，并排除 1 个重复映射真值帧。D6 truth-isolated consumer 已在 identity manifest、evaluation 与四项 source SHA 验证后分栏输出，且 `strict_id_switch_count_backfilled=false`、`id_switch_upper_bound_reported=false`。strict IDSW 继续因一条航迹对应多个真值而 unavailable | 单 seed producer-consumer 接线已关闭；仍需正式多规模、多 seed 制品和完整 sidecar，形成 strict IDSW/continuity 统计。不得把 partial 下界写成 strict 值或伪造上界 |
 | D2/D6/main | v2 关联候选评审与跨 difficulty 证据 | 正式 v2 联合报告已生成；总体五项 gate 通过，IDSW 下降 54.6%，P95 15.47 ms，truth leakage=0；默认在线主线未改变 | 仅 `clutter/combined` 通过，四个零 baseline-IDSW difficulty fail-closed，dropout truth alignment 为 partial；需补同 case/seed 完整多源 system bundle 后再决定是否晋级，JPDA 保持不准入 |
 | D3/D5/D7/main | M5N2 协同物理闭环 | 同条件 10-seed paired 和四层日志已完成；baseline 7/30 pair，candidate 4/30，联盟均 0/10 | 分离第二 primary 中段重捕、D5 共识、D7 gate 和成员安全根因；candidate 保持关闭 |
 | D5/D7/main | 单帧 dropout 尾部 | 2-5 帧逐 seed 全通过，物理结果 100/100，truth/ID/version 无违规 | 复核 seed 2 在 0.8 s 注入时没有进入 image-KF 的锁定时序；不得用聚合计数掩盖 |

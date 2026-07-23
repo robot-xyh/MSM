@@ -176,6 +176,73 @@ D6 v6 对 20/20 给出基础 clean provenance 可用、generation integrity=true
 历史 CSV，但将其明确标为 unavailable。200 对 200 的稳定窗口分布仍需在下一 clean 候选上
 重新测量。
 
+detached clean `4ac3bb2` 已完成 nominal 200 对 200、seed 1000 的 2.2 秒与 10 秒同源
+校准。10 秒核心墙钟为 `85.002 s`，实时倍率为 `0.1176`；相对 `0d2da25` 同 seed 的
+`94.105 s` 下降 `9.67%`。D1 融合从 `49.697 s` 降至 `40.273 s`，下降 `18.96%`；
+D1 扫描输入从 `12.315 s` 增至 `12.561 s`。跨构建审计确认 21,366 条在线记录的规范载荷、
+真值状态、计划谱系和运行确认一致。该结果证明优化没有改变当前规则基线业务语义，但仍是
+单 seed 描述性校准。
+
+10 秒 episode 的 D1 融合单次调用 `P50/P95/max` 为
+`33.252/224.764/592.957 ms`，D2 关联为 `121.972/137.335/145.966 ms`。2.2 秒与 10 秒
+长短对照安全合同全部通过，但 D1 融合、D2 关联和 D5 终端配准的单次成本仍随 episode
+展开增长。外部进程总时长为 `1:55.95`，峰值驻留内存为 `2,468,928 KiB`；这两个值与
+`summary.wall_time_s` 分栏解释。D6 v7 对该 episode 的离线消费耗时为 `10.24 s`、峰值
+驻留内存为 `936,056 KiB`。正式七变体矩阵仍为 0 episode，实时性和多 seed 尾延时 P1
+继续开放。
+
+原始 episode 约 1.1 GiB，继续按生成物规则保存在忽略目录，不提交 Git。仓库内的紧凑证据
+摘要为 `docs/SCALABLE_3D_STAGE_TIMING_CALIBRATION_20260722.json`，记录两端 clean
+提交、场景配置哈希、manifest/summary/online 产物哈希、跨构建审计哈希、阶段分位和验收
+边界。报告结论不依赖临时目录路径本身。
+
+D1 使用该 seed 1000 冻结输入完成 scan-input 尾延时专项。771 个已校验
+`SensorScanFrame` 在快照完整时直接复用，检测到对象、标量或数组可写状态变化时回退原有
+完整快照和 fail-closed 校验。帧重建由 771 次降至 0，organizer 内 observation 再快照由
+11,889 次降至 0。前 256 个扫描交错 5 轮的 P50/P95 由
+`1.942/1.968 s` 降至 `0.881/0.894 s`，P50 描述性加速 `2.204x`；
+`ScanInputOrganizer.ingest` cProfile 累计由 `15.545 s` 降至 `5.754 s`。
+
+逐输入结果、审计、释放顺序、融合状态与协方差、双时间戳、谱系、分级、物化航迹、
+终态及操作数共 14 项等价条件全部通过，在线 truth 使用为 0。机器报告 SHA-256 为
+`9510bd60b862be98a3816f238cd27c08c942e501e9dec27b96d598c45dc2d1df`。
+该专项运行来自当前未提交 D1 工作区，只关闭重复快照热点；clean full-stack、多 seed、
+AirSim、实时性和融合 P95/max 仍未验收。
+
+D6 更新后的真值隔离入口已实际复读同一 seed 1000 身份制品。严格 ID Switch 仍为
+unavailable；部分诊断在来源 SHA 和 identity manifest 校验通过后给出映射/帧/相邻转移覆盖率
+`98.54%/6.25%/0%`、385 个锚点区间和保守下界 7。报告明确
+`strict_id_switch_count_backfilled=false`、`id_switch_upper_bound_reported=false`。该结果只关闭
+单 seed partial consumer 接线。D6 当前全量回归为 `567 passed, 1 warning`；新增 12 项包含
+3 项独立合同测试和 9 项来源篡改参数化测试。
+
+D2 随后在同一 seed 1000 冻结总线上完成 profiler v2 和语义等价热点优化。48/48 周期
+公开输出、完整 tracker 状态及重复语义哈希一致；输入、fresh、replay quarantine、候选边和
+匹配数保持 `9626/9038/588/8862/8823`。D2 core 中位数由 `2.928830 s` 降至
+`2.204672 s`，描述性加速 `1.328465x`。优化消除了相同 `dt` 的 9,200 次重复常速度矩阵
+构造、19,252 次可信 marginal 冗余比较和每帧一次重复 ledger 全量汇总。`global_track_id`、
+ID Switch availability、门控、版本、claim ledger 和在线 truth 隔离语义均未变化。
+
+该回放不构成实时验收。候选早晚 regular 窗口比为 `1.123036x`，与基线
+`1.119661x` 基本相同；绝对常数成本下降，长窗口增长没有改善。报告固定在
+`research_modules/d2_data_association/docs/d2_clean_4ac3bb2_seed1000_hotpath_20260723.json`，
+SHA-256 为 `2256d6fdd29223ed5dd75351cd6bb208a4d67c55925eeba047620ac865b6c7da`。
+
+D5 使用同一 seed 1000 的 25 帧短序列和 114 帧长序列完成热点归因。增量 history gauge
+在长序列 723 次刷新中避免扫描 91,871 个 tracker 引用；2,289 个 singleton cluster
+直接复用投影距离行，79 个多节点 cluster 保留完整有限性聚合；匿名 payload 内建叶子
+快路径和 8,192 项有界 local-ID 缓存保持原 truth 审计与正则规则。pre-boundary-fix
+cProfile 中 `process()` 累计由 `2.320 s` 降至 `1.987 s`，两轮 A/B 中位值均值由
+`1.149 s` 降至 `0.929 s`。这些墙钟只用于方向归因。
+
+最终源码另行修复了 singleton 行复用的 `-0.0` 符号位边界。修复后冻结短/长重放的业务、
+最终 binding 和冻结 v1 操作数哈希均与原发布记录一致；在线 truth 使用和
+`global_track_id` 改写均为 0。当前 D5 全量为 `551 passed`。机器报告明确区分 pre-fix
+profiler 与 post-fix 语义验证，SHA-256 为
+`7be68d15a982f720355e30b631cf44b860a5b017a6b4221819d9c9c08b26c449`。
+长序列中 tracker pair、投影矩阵和绑定矩阵仍随输入组成显著增长；完整集成、多 seed、
+AirSim 和固定硬件实时性 P1 保持开放。
+
 ## 2026-07-21 正式数据与开发训练状态
 
 修复逐 episode checkpoint 和 D5 同流多批次边界后，新的正式生成目录已经完成全部

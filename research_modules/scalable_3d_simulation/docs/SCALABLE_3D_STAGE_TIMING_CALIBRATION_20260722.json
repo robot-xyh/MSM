@@ -1,0 +1,300 @@
+{
+  "schema_version": "scalable3d-stage-timing-calibration-summary-v1",
+  "created_at": "2026-07-22",
+  "evidence_class": "descriptive_clean_source_calibration",
+  "acceptance_scope": [
+    "same_seed_and_scenario",
+    "clean_source",
+    "finite_state",
+    "online_truth_use_zero",
+    "cross_build_semantic_equivalence",
+    "stage_timing_v2_producer_consumer"
+  ],
+  "not_accepted_as": [
+    "formal_experiment_matrix",
+    "multi_seed_candidate_calibration",
+    "real_time_acceptance",
+    "airsim_evidence",
+    "physical_intercept_evidence"
+  ],
+  "scenario": {
+    "name": "nominal_200v200",
+    "version": "200v200-nominal-v1",
+    "seed": 1000,
+    "duration_s": 10.0,
+    "target_count": 200,
+    "resource_count": 200,
+    "scenario_config_sha256": "07d9c07ba90b8bf47224a1b5633791d24d39d42a54695d799d67ec1e1c7b551d"
+  },
+  "reference": {
+    "git_commit": "0d2da25c14e50f8f9a10ad47a7bd74e5c5e577fb",
+    "repository_dirty": false,
+    "manifest_sha256": "7d0ec66e1e13a73be7317d827d730b8244b54d790d4484ab6a1283ef5b4b359e",
+    "summary_sha256": "bdb36b531b6094746c44dcca28950776faa2b7912fb13a3ea00341bc87dea860",
+    "online_observations_file_sha256": "0bcbfb1e64d19a687682105db763c0575377c7d1c6ba583c1276d1aa191af3cd",
+    "wall_time_s": 94.10493974405108,
+    "real_time_factor": 0.10626434730417175
+  },
+  "candidate": {
+    "git_commit": "4ac3bb2c12cc6af6ebd372107ced00bcdc5adf6a",
+    "repository_dirty": false,
+    "manifest_sha256": "98c796785bac836cce55fe289996a215d54aeeafd04f98eee3d31c90ec7f4452",
+    "summary_sha256": "0177c78651218deb3096f709f3f21889b51c8bd4d05e569b8a05307a82f4c586",
+    "stage_timings_sha256": "1071083d10a1d8db6d73f30ed3a2249940ae34211f698cda7ccb7e08696e2839",
+    "online_observations_file_sha256": "c1dda8523e48c255bbeef48d9516b05863eb1bbb3a3ae2e09733259e6a66f77a",
+    "wall_time_s": 85.00242771202466,
+    "real_time_factor": 0.1176436987644457,
+    "external_process_elapsed_s": 115.95,
+    "external_process_maximum_rss_kib": 2468928,
+    "finite_state": true,
+    "online_truth_use_count": 0
+  },
+  "comparison": {
+    "wall_time_reduction_percent": 9.672724999116582,
+    "wall_time_speedup": 1.107085318349546,
+    "cross_build_audit_passed": true,
+    "cross_build_audit_sha256": "c5d74837c22604a40c7a8c9386a787ac70073754babf7eaf40f94f046ac63acc",
+    "long_duration_comparison_sha256": "50092c89912e9c8a68b6febcb91bd4b7dac2b50ade88c6ddacc4263f1bec7578",
+    "normalized_online_payloads_equal": true,
+    "online_record_count_equal": true,
+    "truth_state_equal": true,
+    "truth_labels_semantically_equal": true,
+    "plan_lineage_pattern_equal": true,
+    "reference_plan_lineage_valid": true,
+    "candidate_plan_lineage_valid": true
+  },
+  "module_cumulative_wall_time_s": {
+    "reference": {
+      "module.d1_fusion": 49.69740682578413,
+      "module.d1_scan_input": 12.315225104510318,
+      "module.d2_association": 5.520542190875858,
+      "module.d5_terminal_association": 1.1430959200952202,
+      "module.d7_guidance": 3.4613692050916143
+    },
+    "candidate": {
+      "module.d1_fusion": 40.27279508812353,
+      "module.d1_scan_input": 12.560936034366023,
+      "module.d2_association": 5.281159519043285,
+      "module.d5_terminal_association": 1.1476668898249045,
+      "module.d7_guidance": 3.7344044878846034
+    }
+  },
+  "d1_scan_input_equivalence_optimization": {
+    "evaluation_date": "2026-07-23",
+    "schema_version": "d1.tail_latency_performance.v1",
+    "source_episode_git_commit": "4ac3bb2c12cc6af6ebd372107ced00bcdc5adf6a",
+    "source_online_observations_sha256": "c1dda8523e48c255bbeef48d9516b05863eb1bbb3a3ae2e09733259e6a66f77a",
+    "source_scan_count": 771,
+    "source_observation_count": 11889,
+    "benchmark_scan_count": 256,
+    "repeat_count": 5,
+    "reference_p50_s": 1.9419343380141072,
+    "candidate_p50_s": 0.8810671379906125,
+    "reference_p95_s": 1.9677937962231227,
+    "candidate_p95_s": 0.8940014211693779,
+    "descriptive_p50_speedup": 2.204070784484074,
+    "wall_time_used_for_acceptance": false,
+    "operation_counts": {
+      "frame_rebuild_reference": 771,
+      "frame_rebuild_candidate": 0,
+      "observation_resnapshot_reference": 11889,
+      "observation_resnapshot_candidate": 0,
+      "validated_frame_reuse_reference": 0,
+      "validated_frame_reuse_candidate": 771
+    },
+    "acceptance_check_count": 14,
+    "all_acceptance_checks_passed": true,
+    "online_truth_use_count": 0,
+    "fusion_semantic_sha256": "e5d4ec2ee902b1fa9e423f7b08380e14a08efec254cea193fad4611a022f4244",
+    "fusion_operation_snapshot_sha256": "82728a8e0fed0adedd0254368e29a3c117157b066158595d7ca6dac558bfb5bf",
+    "fusion_diagnostic_snapshot_sha256": "b28df84d6664ba17d097990f7186a2a611f2e3469394e3d2a12122dbec521766",
+    "report_sha256": "9510bd60b862be98a3816f238cd27c08c942e501e9dec27b96d598c45dc2d1df",
+    "acceptance_scope": [
+      "frozen_bus_replay",
+      "scan_input_operation_reduction",
+      "per_scan_and_fusion_semantic_equivalence",
+      "truth_isolation"
+    ],
+    "not_accepted_as": [
+      "clean_full_stack_candidate",
+      "multi_seed_performance",
+      "airsim_evidence",
+      "real_time_acceptance",
+      "fusion_tail_latency_closure"
+    ]
+  },
+  "d2_hotpath_equivalence_optimization": {
+    "evaluation_date": "2026-07-23",
+    "schema_version": "d2-scalable3d-association-hotpath-benchmark-v2",
+    "source_episode_git_commit": "4ac3bb2c12cc6af6ebd372107ced00bcdc5adf6a",
+    "source_online_observations_sha256": "c1dda8523e48c255bbeef48d9516b05863eb1bbb3a3ae2e09733259e6a66f77a",
+    "cycle_count": 48,
+    "repeat_count": 7,
+    "warmup_count": 1,
+    "baseline_core_median_s": 2.9288297868915834,
+    "candidate_core_median_s": 2.20467216958059,
+    "descriptive_speedup": 1.328464987812113,
+    "baseline_early_late_ratio": 1.119660898582382,
+    "candidate_early_late_ratio": 1.123035678277116,
+    "long_window_growth_improved": false,
+    "all_cycles_semantically_equal": true,
+    "semantic_sha256": "b2334c619b9d2f7c467387ad27b62614d028af83f0b7842b867cab1c4aa9824b",
+    "online_truth_used": false,
+    "operation_counts": {
+      "cv_model_build_baseline": 9246,
+      "cv_model_build_candidate": 46,
+      "trusted_marginal_allclose_baseline": 19252,
+      "trusted_marginal_allclose_candidate": 0,
+      "claim_ledger_summary_baseline": 96,
+      "claim_ledger_summary_candidate": 48
+    },
+    "fixed_diagnostics": {
+      "input_detection_count": 9626,
+      "fresh_detection_count": 9038,
+      "replay_quarantined_detection_count": 588,
+      "candidate_edge_count": 8862,
+      "matched_pair_count": 8823
+    },
+    "report_sha256": "2256d6fdd29223ed5dd75351cd6bb208a4d67c55925eeba047620ac865b6c7da",
+    "acceptance_scope": [
+      "frozen_bus_replay",
+      "fixed_operation_hotspots",
+      "cycle_by_cycle_semantic_equivalence",
+      "truth_isolation"
+    ],
+    "not_accepted_as": [
+      "full_stack_stage_timing",
+      "multi_seed_performance",
+      "airsim_evidence",
+      "real_time_acceptance",
+      "long_window_growth_closure"
+    ]
+  },
+  "d5_operation_equivalence_optimization": {
+    "evaluation_date": "2026-07-23",
+    "schema_version": "d5-scalable3d-duration-operation-comparison-v1",
+    "source_episode_git_commit": "4ac3bb2c12cc6af6ebd372107ced00bcdc5adf6a",
+    "short_online_log_sha256": "223bd22559d1731a0068cb87d21755e176222b221ee2f87d122e54a0d4e8ca0c",
+    "long_online_log_sha256": "c1dda8523e48c255bbeef48d9516b05863eb1bbb3a3ae2e09733259e6a66f77a",
+    "truth_source_loaded": false,
+    "post_boundary_fix_source_sha256": {
+      "scalable_3d_adapter.py": "91abc7c63aac32d24ff010c8d25de790c2f8880847b27e6ad672246d2a6c1e3a",
+      "scalable_3d_performance.py": "aef67a4c845d6ddb38df3b0e80a76420e83ae1a00120f3c2d3a88e518642ed79",
+      "sparse_tracklet_graph.py": "0e8a5880df52a6451158f3f07f384e993d3e0ff913e64d4f2b587db893219d5b"
+    },
+    "short_frame_count": 25,
+    "long_frame_count": 114,
+    "short_semantic_match": true,
+    "long_semantic_match": true,
+    "short_final_binding_semantic_match": true,
+    "long_final_binding_semantic_match": true,
+    "short_operation_equivalence_sha256": "8d8d7c1e6c60dcc91e203172f547ef182a7535f0099a0b18def2100abcda062a",
+    "long_operation_equivalence_sha256": "c8a19ee83cf084d811f46d45d62500880527c9bca269cda579613abb7bf3affc",
+    "online_truth_use_count": 0,
+    "global_track_id_mutation_count": 0,
+    "d5_full_test_count": 551,
+    "pre_boundary_fix_profile_regenerated": false,
+    "pre_boundary_fix_ab_reduction_fraction": 0.1912934972170991,
+    "wall_time_used_for_acceptance": false,
+    "operation_diagnostics": {
+      "history_gauge_tracker_scan_avoided_count": 91871,
+      "binding_singleton_projection_row_reuse_count": 2289,
+      "binding_multi_node_aggregation_count": 79,
+      "anonymous_local_id_rule_call_count": 45670
+    },
+    "report_sha256": "7be68d15a982f720355e30b631cf44b860a5b017a6b4221819d9c9c08b26c449",
+    "acceptance_scope": [
+      "frozen_short_and_long_bus_replay",
+      "post_boundary_fix_semantic_equivalence",
+      "operation_equivalence",
+      "truth_and_global_track_id_invariants"
+    ],
+    "not_accepted_as": [
+      "clean_full_stack_candidate",
+      "multi_seed_performance",
+      "airsim_evidence",
+      "real_time_acceptance",
+      "long_window_growth_closure"
+    ]
+  },
+  "candidate_stage_call_distribution_ms": {
+    "module.d1_scan_input": {
+      "call_count": 771,
+      "p50": 1.747042988,
+      "p95": 177.084190014,
+      "max": 361.536413024
+    },
+    "module.d1_fusion": {
+      "call_count": 771,
+      "p50": 33.252489986,
+      "p95": 224.7635065,
+      "max": 592.957129003
+    },
+    "module.d2_association": {
+      "call_count": 47,
+      "p50": 121.972402965,
+      "p95": 137.334770529,
+      "max": 145.966076991
+    },
+    "module.d3_assignment": {
+      "call_count": 10,
+      "p50": 206.919502991,
+      "p95": 371.865165897,
+      "max": 459.924108
+    },
+    "module.d5_active_vision": {
+      "call_count": 93,
+      "p50": 31.527985993,
+      "p95": 33.484336012,
+      "max": 258.289067016
+    },
+    "module.d5_terminal_association": {
+      "call_count": 114,
+      "p50": 11.497120984,
+      "p95": 15.96920146,
+      "max": 18.631801009
+    },
+    "module.d7_guidance": {
+      "call_count": 185,
+      "p50": 18.788508023,
+      "p95": 20.317630202,
+      "max": 201.705577027
+    }
+  },
+  "d6_consumption": {
+    "offline_schema_version": "d6-scalable3d-offline-evaluation-v7",
+    "stage_timing_schema_version": "scalable3d-stage-timings-v2",
+    "process_elapsed_s": 10.24,
+    "maximum_rss_kib": 936056,
+    "formal_matrix_episode_count": 0,
+    "partial_identity_truth_isolated_evaluation": {
+      "evaluation_date": "2026-07-23",
+      "provenance_verified": true,
+      "strict_id_switch_count": null,
+      "strict_id_switch_count_unavailable_reason": "multiple_truth_targets_for_global_track",
+      "evaluable_mapping_count": 8906,
+      "scored_mapping_count": 9038,
+      "evaluable_mapping_coverage": 0.9853949988935605,
+      "evaluable_frame_count": 3,
+      "evaluated_frame_count": 48,
+      "evaluable_frame_coverage": 0.0625,
+      "evaluable_transition_count": 0,
+      "transition_opportunity_count": 9400,
+      "adjacent_transition_coverage": 0.0,
+      "anchor_interval_count": 385,
+      "id_switch_lower_bound": 7,
+      "strict_id_switch_count_backfilled": false,
+      "id_switch_upper_bound_reported": false,
+      "d6_full_test_count": 567,
+      "d6_test_warning_count": 1,
+      "aggregate_json_sha256": "f8e0d8139cf8c61604b5b6224be44e0c293d3cb6d5ad059f7016073ce705367b",
+      "markdown_sha256": "0fdca6cad90b9feb5c2ff2c724f59b8b351d9a34b761a7c18fa9f08a956d320b",
+      "per_seed_csv_sha256": "1d297afa9a3755ea80ce59bc7884fa90d7c637864137b431e6324f05bb40132b"
+    }
+  },
+  "raw_artifact_retention": {
+    "committed_to_git": false,
+    "reason": "raw episode artifacts are approximately 1.1 GiB and are generated outputs",
+    "retained_summary": "this file records immutable source hashes and the accepted descriptive metrics"
+  }
+}
