@@ -686,7 +686,9 @@ lower bound 代替 strict IDSW、联盟完成或物理成功。
 
 partial 必须通过 identity manifest/evaluation SHA/source provenance、schema、有限值和计数守恒
 才进入聚合；缺失 episode 不补零。2026-07-23 专项 `26 passed`、D6 全量
-`567 passed, 1 warning in 22.96s`。同日真实 nominal 200 对 200 单 seed 制品验证了 strict
-unavailable 与 partial coverage/lower-bound 分栏，但该输入是一对一名义场景，不是高威胁
-`k_j>1` 的 M-to-N 联盟实验。本批没有 M-to-N AirSim 或正式多 seed 制品，因此框架的物理性能
-状态和四路线 x 三中心层级实验矩阵保持开放。
+`567 passed, 1 warning`。同日真实 nominal 200 对 200 制品先完成单 seed 接口验证，随后对
+clean `5263e2b` 的 seed `1000-1019` 完成 20 episode 描述性聚合。partial
+mapping/frame/transition micro coverage 为 `178531/181110`、`103/959`、`1149/187800`，
+strict IDSW 仍为 0/20 可用。该输入是一对一名义场景，不是高威胁 `k_j>1` 的 M-to-N 联盟实验。
+本批没有 M-to-N AirSim、联盟完成或物理拦截证据，因此框架的物理性能状态和四路线 x 三中心
+层级实验矩阵保持开放。

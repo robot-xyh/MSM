@@ -1709,9 +1709,10 @@ JSON 和中文 Markdown 均使用稳定的 `input_digests.d2_lineage_mapping` �
 离线 fixture，没有启动 AirSim，没有运行正式多 seed，也没有形成 D1 精度或 D2 身份连续
 性能结论。
 
-当前工作树的 main-owned scalable 3D reporting 已写出 D1/D2 制品、校验 manifest/source
-hash 并调用本接口生成单 episode/batch bundle；该接线不属于 D6 owned path，本轮未代改。
-D6 侧公共合同已实现；20 个未见 seed 的正式阈值、置信区间和性能结论仍开放。
+main-owned scalable 3D reporting 已写出 D1/D2 制品、校验 manifest/source hash 并调用本接口
+生成 episode/batch bundle；该接线不属于 D6 owned path，本轮未代改。D6 侧公共合同已实现。
+2026-07-23 已补充 clean 200 对 200、20 seed 的描述性批量复核；正式多规模矩阵、严格身份指标
+和工程阈值仍开放。
 
 ## D2 evaluator-only 部分身份诊断（2026-07-23）
 
@@ -1757,3 +1758,30 @@ partial provenance 可用，mapping coverage 为 `8906/9038=0.985395`，完整 f
 
 该真实制品只有一个 seed，且不是 AirSim 或正式困难场景矩阵。它关闭“consumer 尚未读取真实
 producer 制品”的接口子项，不形成 strict IDSW、coverage 稳定性、算法优劣或多 seed 性能结论。
+
+### 20 seed 批量复核
+
+2026-07-23 对 clean commit `5263e2b` 的 nominal 200 对 200、10 秒、seed `1000-1019`
+执行持久化批量复核。每个 episode 均复算 D1 consistency、D2 identity 和 D6 truth-isolated
+三层 manifest 的来源/输出 SHA-256，再从 producer 制品重新构建 D6 episode record。20/20
+manifest 链通过，20/20 重建记录与已持久化 `episode_record.json` 完全一致，20/20
+`online_truth_isolation_verified=true`。批量产物写入同批输出根下
+`d6_truth_isolated_20seed/`。
+
+D1 的 20 个 episode 均为 `partial`。NIS、归一化 NIS 和 NIS 门覆盖率可用，跨 seed 均值分别为
+`3.385237`、`1.146517` 和 `0.991315`；RMSE、NEES 和归一化 NEES 因
+`d2_lineage_mapping_missing` 保持 unavailable。D2 strict `id_switch_count`、
+continuity 和 duplicate 为 0/20 可用，逐 episode 原因均为
+`multiple_truth_targets_for_global_track`。
+
+partial 证据为 20/20 可用。micro mapping coverage 为
+`178531/181110=0.985760`，完整 frame coverage 为 `103/959=0.107404`，
+adjacent-transition coverage 为 `1149/187800=0.006118`。19 个 episode 的 lower bound
+可用，合计为 199；另 1 个 episode 因 `no_evaluable_identity_transitions` 不可用。汇总包含
+15215 个 anchor interval、9 个重复 anchor 排除，并保持
+`strict_id_switch_count_backfilled=false`、`id_switch_upper_bound_reported=false` 和
+`control_consumed=false`。
+
+该批量复核证明 D6 可以在不信任持久化汇总值的前提下重新验证 producer 制品并聚合 20 个 seed。
+它仍是单一 nominal 规模和短时质点场景。frame/transition coverage 较低，strict 身份指标仍缺失，
+因此不能作为算法晋级、控制切换或正式 200 对 200 性能结论。

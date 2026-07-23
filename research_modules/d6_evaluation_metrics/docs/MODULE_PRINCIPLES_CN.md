@@ -1800,3 +1800,11 @@ D6 保留 `id_switch_count=None/unavailable`，同时独立报告 mapping covera
 `8906/9038`、完整 frame coverage `3/48`、adjacent-transition coverage `0/9400` 和
 7/385 anchor intervals 的保守下界。该结果体现本节的核心原则：证据不完整时仍可报告有严格
 定义的部分诊断，但不能据此补齐严格值、构造上界或形成控制结论。
+
+同日又对 clean `5263e2b` 的 seed `1000-1019` 执行 20 episode 批量复核。D6 不直接信任
+每个 episode 已持久化的汇总，而是复算 D1、D2、D6 三层 manifest/hash，并从 producer 制品
+重新构建记录。20/20 哈希链和记录一致性通过，20/20 在线真值隔离通过。partial 的 micro
+mapping、完整 frame、adjacent-transition coverage 分别为 `178531/181110`、
+`103/959`、`1149/187800`，lower bound 合计 199/15215 anchor intervals。strict IDSW
+仍为 0/20 可用。这组数据把单 seed 接口验证扩展为批量描述性证据，但较低的 frame/transition
+coverage 仍不足以支持身份性能判决。

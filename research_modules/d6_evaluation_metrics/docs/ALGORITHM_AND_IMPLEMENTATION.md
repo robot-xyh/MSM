@@ -2546,3 +2546,38 @@ control_consumed = false
 逐 seed CSV、aggregate JSON 和中文 Markdown 的 availability 与上述结果一致。该输入只有一个
 seed，没有运行 AirSim 或正式困难场景矩阵；正式 coverage/lower-bound 分布和完整 sidecar 下
 strict IDSW/continuity 仍是 P1 数据任务。
+
+### 18.5 持久化 20 seed 重验与聚合
+
+2026-07-23 的批量输入为 clean commit `5263e2b`、nominal 200 对 200、10 秒、seed
+`1000-1019`。本次不增加 loader，也不从 `episode_record.json` 反序列化指标。调用流程为：
+
+1. 复算每个 episode 的 D1 consistency manifest、D2 identity manifest 和 D6 truth-isolated
+   manifest 所声明的全部来源/输出 SHA-256；
+2. 从已验证的 `offline_result.json`、`identity_evaluation.json` 和四类 D2 来源文件调用
+   `build_truth_isolated_episode_record()`；
+3. 要求新记录的 `to_dict()` 与 manifest 绑定的持久化 `episode_record.json` 完全相同；
+4. 只有 20 个 episode 全部通过时，才调用 `TruthIsolatedOfflineReportGenerator` 写出批量
+   CSV、JSON 和中文 Markdown。
+
+该流程的 20/20 manifest 链、20/20 重建一致性和 20/20 在线真值隔离均通过。D1 总体状态均为
+partial；NIS、归一化 NIS 和 NIS gate coverage 跨 seed 均值为 `3.385237`、`1.146517`、
+`0.991315`，RMSE/NEES 因缺 D2 lineage mapping 不可用。D2 strict IDSW/continuity/duplicate
+均为 0/20 可用。
+
+partial 聚合使用计数 micro average：
+
+```text
+mapping coverage = 178531 / 181110 = 0.985760
+complete-frame coverage = 103 / 959 = 0.107404
+adjacent-transition coverage = 1149 / 187800 = 0.006118
+IDSW lower-bound sum = 199 / 15215 anchor intervals
+lower-bound available episodes = 19 / 20
+```
+
+剩余 1 个 episode 的 lower bound 原因为 `no_evaluable_identity_transitions`。重复 anchor 排除为
+9，scored mapping 排除原因为
+`multiple_truth_targets_for_global_track=118` 和 `truth_label_missing=2464`。输出继续固定
+`strict_id_switch_count_backfilled=false`、`id_switch_upper_bound_reported=false` 和
+`control_consumed=false`。该批次只覆盖单一 nominal 规模，不能替代完整 sidecar、困难场景或
+AirSim 身份评估。

@@ -1607,3 +1607,44 @@ manifest 的 evaluation 摘要与实际 evaluation 文件一致；manifest 和 e
 测试组成。该结果只证明 D6 schema/provenance/availability/报告接入及真实单 episode 消费完成，
 不证明正式场景的 coverage、lower bound 或 strict IDSW 达到任何阈值。剩余 P1 是 main/D2
 生成正式多规模、多 seed evaluation/manifest，以及完整 sidecar 下 strict IDSW/continuity 的统计。
+
+### 20 seed 描述性复核
+
+2026-07-23 使用 clean commit `5263e2b` 的 nominal 200 对 200、10 秒、seed `1000-1019`
+完成批量复核。源目录中每个 episode 已包含 D1 offline consistency、D2 offline identity 和
+D6 truth-isolated 制品。D6 逐项复算三层 manifest 的来源/输出 SHA-256，从 producer 制品重新
+构建 episode record，并与已持久化记录比对。20 个 episode 全部通过哈希链、记录一致性和在线
+真值隔离检查。
+
+| 检查项 | 结果 |
+| --- | ---: |
+| episode 数 | 20 |
+| manifest 链通过 | 20/20 |
+| 重建记录等于持久化记录 | 20/20 |
+| 在线真值隔离通过 | 20/20 |
+| D1 状态 | partial 20/20 |
+| strict IDSW 可用 | 0/20 |
+| partial 诊断可用 | 20/20 |
+
+D1 的 NIS、归一化 NIS 和 NIS gate coverage 可用，跨 seed 均值分别为 `3.385237`、
+`1.146517` 和 `0.991315`。位置/速度 RMSE、NEES 和归一化 NEES 因
+`d2_lineage_mapping_missing` 不可用。D2 strict IDSW、continuity 和 duplicate 的逐 episode
+不可用原因均为 `multiple_truth_targets_for_global_track`。
+
+| 部分身份指标 | 汇总结果 | availability |
+| --- | ---: | --- |
+| mapping coverage | `178531/181110 = 0.985760` | 20/20 episode 可用 |
+| 完整 frame coverage | `103/959 = 0.107404` | 20/20 episode 可用 |
+| adjacent-transition coverage | `1149/187800 = 0.006118` | 20/20 episode 可用 |
+| anchor interval count | `15215` | available |
+| conservative IDSW lower bound | `199` | 19/20 episode 可用 |
+| 重复 anchor 排除 | `9` | available |
+
+1 个 episode 因 `no_evaluable_identity_transitions` 没有 lower bound。输出目录为候选批次下的
+`d6_truth_isolated_20seed/`，包含 20 行逐 seed CSV、D1 sensor-range CSV、聚合 JSON 和中文
+Markdown。aggregate JSON 的 SHA-256 为
+`a0a2278643045db8bb7836991b7785449f755c74a0a8e3be91ecd5fc837deb40`。
+
+本轮 D6 全量回归为 `567 passed, 1 warning in 22.01s`。warning 是既有 Matplotlib
+`Axes3D` 环境提示。该结果证明批量 consumer 和来源校验可工作，也显示当前身份完整帧和相邻
+转换证据不足。strict 指标、多规模困难场景和长时稳定性仍未闭合。

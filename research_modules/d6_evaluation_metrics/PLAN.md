@@ -1716,14 +1716,15 @@ availability、假零拒绝和规模分组正确；未运行 AirSim，未运行
 
 ### 后续计划
 
-1. 当前工作树 main-owned reporting 已持久化 D1/D2 公开制品并调用 D6 episode/batch builder；
-   D6 不接入在线总线，也不在本任务修改该接线。
-2. 单 episode 的 producer 文件名、manifest key 和跨制品 source hash 已实际验证；main 仍需将
-   同一合同扩展到正式多规模、多 seed 输入，并纳入最终统一 scalable 3D 总报告。
-3. 在 5/20/50/100/200 正式多 seed 数据具备后，报告 sensor/range RMSE、NEES、NIS 与
+1. main-owned reporting 已持久化 D1/D2 公开制品并调用 D6 episode/batch builder；D6 不接入
+   在线总线，也不修改该接线。
+2. clean `5263e2b` 的 nominal 200 对 200、seed `1000-1019` 已完成 20 episode 描述性聚合。
+   三层 manifest/hash 链和“重新构建记录等于持久化记录”均为 20/20。
+3. main 仍需把同一合同扩展到 5/20/50/100/200 正式多规模矩阵，并纳入最终统一 scalable 3D
+   总报告。届时再报告 sensor/range RMSE、NEES、NIS 与 strict
    IDSW/continuity/duplicate 的置信区间和不可用原因分布。
-4. 在以上证据完成前，GAP 状态为“D6 适配合同与当前工作树接线已闭合、正式多 seed
-   性能验收和最终统一报告仍开放”。
+4. GAP 状态为“D6 适配合同、20 seed nominal 描述性聚合已闭合；正式多规模性能验收、strict
+   身份证据和最终统一报告仍开放”。
 
 ## 15. D2 部分身份诊断接入（2026-07-23）
 
@@ -1747,13 +1748,18 @@ availability、假零拒绝和规模分组正确；未运行 AirSim，未运行
    manifest/evaluation 和四项源文件 SHA-256 全部一致；strict IDSW 保持 unavailable，partial
    mapping/frame/adjacent coverage 为 `8906/9038`、`3/48`、`0/9400`，385 个 anchor interval
    上的保守 lower bound 为 7，未回填 strict，也未生成 upper bound。
+8. 对 clean `5263e2b` 的同类 seed `1000-1019` 运行 20 episode 批量复核。manifest 链、
+   重建记录一致性和在线真值隔离均为 20/20；partial mapping/frame/adjacent micro coverage
+   为 `178531/181110`、`103/959`、`1149/187800`。lower bound 在 19 个 episode 可用，合计
+   199/15215 anchor intervals。逐 seed CSV、聚合 JSON 和中文 Markdown 已写入候选批次的
+   `d6_truth_isolated_20seed/`；strict 未回填，也未生成 upper bound。
 
 ### 仍开放 P1
 
-1. 单个真实 200 对 200 producer episode 已通过消费合同。main/D2 仍需生成正式
-   5/20/50/100/200 多 seed evaluation 和 identity manifest，D6 再报告 coverage、blocker、
-   anchor exclusion、lower-bound 分布与置信区间；单 seed 不替代正式数据。
+1. nominal 200 对 200 的 20 seed producer evaluation/identity manifest 已通过描述性聚合。
+   main/D2 仍需生成正式 5/20/50/100/200 多规模、困难场景和长时数据，D6 再比较 coverage、
+   blocker、anchor exclusion、lower-bound 分布与置信区间。
 2. strict IDSW/continuity 的多 seed 可用性仍取决于完整 lineage truth sidecar。partial lower
    bound 不能关闭 strict 指标 unavailable，也不能支持 promotion、控制切换或算法优劣结论。
 3. 真实 AirSim、遮挡/杂波/漏检/OOSM 和不同目标密度下的 partial coverage 仍无正式证据；D6
-   不从现有单 seed producer 复算记录外推。
+   不从当前 nominal 20 seed 结果外推。

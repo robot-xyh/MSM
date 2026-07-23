@@ -1542,8 +1542,9 @@ D6 新增 `d6.execution-metrics-merge.v1`。该接口解决历史 integrated rep
    sensor/range 指标，评估 truth 不进入在线链路。
 
 2026-07-20 专项 `14 passed`、D6 全量 `334 passed`。该结果只支持“D6 公共适配合同已完成”。
-当前工作树 main-owned reporting 已调用 episode/batch API；20 个未见 seed 尚未运行，D1/D2
-性能未作闭合声明。下一步由 main 冻结文件名、manifest/hash 关系并接入最终统一规模化报告。
+main-owned reporting 已调用 episode/batch API；2026-07-23 又完成 nominal 200 对 200 的
+20 seed 描述性批量复核。D1/D2 strict 性能仍未闭合。下一步由 main 将已冻结的
+manifest/hash 关系和 partial 分栏接入最终统一规模化报告。
 
 ## 17. D2 evaluator-only 部分身份诊断评审（2026-07-23）
 
@@ -1582,7 +1583,15 @@ observation truth labels、identity evidence 四项实际文件摘要逐项匹�
 为 `8906/9038`、`3/48`、`0/9400`，IDSW lower bound 为 7/385 anchor intervals。逐 seed CSV、
 聚合 JSON 和中文 Markdown 均保持 strict/partial 分栏，未回填 strict、未生成 upper bound。
 
-评审状态为“D6 consumer、报告合同和真实单 episode 接入完成，正式多 seed 数据待生成”。剩余 P1
-是 main/D2 的正式多规模、多 seed evaluation/manifest、完整 sidecar 下 strict
-IDSW/continuity、真实困难场景 coverage 稳定性和最终统一报告；不得引用该单 seed 结果作为
-D6 多 seed 结论。
+随后对 clean `5263e2b` 的 nominal 200 对 200、seed `1000-1019` 执行 20 episode 批量复核。
+每个 episode 的 D1/D2/D6 manifest 来源与输出摘要均重新计算，producer 制品重建记录与
+`episode_record.json` 完全一致。manifest 链、记录一致性和在线真值隔离均为 20/20。
+partial mapping/frame/transition micro coverage 为 `178531/181110`、`103/959`、
+`1149/187800`，lower bound 在 19 个 episode 可用并合计 199/15215 anchor intervals。
+strict IDSW 仍为 0/20 可用，逐 episode 原因为
+`multiple_truth_targets_for_global_track`。报告保持不回填 strict、不生成 upper bound。
+
+评审状态更新为“D6 consumer、报告合同和 nominal 200 对 200 的 20 seed 描述性聚合完成”。
+剩余 P1 是 main/D2 的正式多规模/困难场景 evaluation、完整 sidecar 下 strict
+IDSW/continuity、真实 AirSim coverage 稳定性和最终统一报告。当前 20 seed 结果不能作为
+算法晋级或控制证据。

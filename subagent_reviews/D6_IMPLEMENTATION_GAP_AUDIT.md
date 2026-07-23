@@ -1487,17 +1487,22 @@ OSPA/GOSPA 或 AirSim 原生 recording parser。
    `multiple_truth_targets_for_global_track` 保持 unavailable。partial mapping/frame/transition
    coverage 为 `8906/9038`、`3/48`、`0/9400`，lower bound 为 7/385 anchor intervals，
    strict 未回填且 upper bound 未生成。
+8. clean `5263e2b` 的 seed `1000-1019` 已形成 nominal 200 对 200、20 episode 描述性汇总。
+   manifest 链、producer 重建与持久化记录一致性、在线真值隔离均为 20/20。partial
+   mapping/frame/transition micro coverage 为 `178531/181110`、`103/959`、
+   `1149/187800`，lower bound 合计 199/15215 anchor intervals，并继续保持 strict/partial
+   分栏。
 
 ### 仍开放的 P1
 
-1. 单个真实 200 对 200 episode 已可发布为描述性接口证据，但 main/D2 尚未生成正式多规模、
-   多 seed partial evaluation/manifest；D6 仍没有可验收的 coverage、blocker、anchor exclusion
-   或 lower-bound 性能分布。
+1. nominal 200 对 200 的 20 seed partial evaluation/manifest 已可发布为描述性批量证据。
+   main/D2 尚未生成正式 5/20/50/100/200 多规模、困难场景和长时输入；当前 coverage、
+   blocker、anchor exclusion 和 lower-bound 分布不能外推。
 2. 完整 sidecar 下的 strict IDSW/continuity 多 seed 统计仍开放。partial lower bound 不能关闭
    strict unavailable，也不能作为 promotion 或控制证据。
 3. 真实 AirSim、遮挡/杂波/漏检/OOSM、目标密度变化和长时 episode 的 coverage 稳定性尚未验证。
-4. main 已完成单 episode 紧凑汇总，仍需把新 partial 分栏纳入正式多 seed 统一 scalable 3D 报告
-   并冻结跨提交 reason taxonomy；D6 不复制 producer 私有 frame mapping。
+4. D6 已生成独立 20 seed truth-isolated bundle。main 仍需把 partial 分栏纳入最终统一
+   scalable 3D 总报告，并冻结跨提交 reason taxonomy；D6 不复制 producer 私有 frame mapping。
 
 当前无新增 P0。D6 consumer GAP 已关闭，数据与系统性能 P1 保持开放；P2/P3 外部 evaluator
 状态不变。
