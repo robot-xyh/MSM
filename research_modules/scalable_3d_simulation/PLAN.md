@@ -35,7 +35,28 @@ main-owned D1→D2 待处理 posterior 锁存已在 clean `12c5073` 建立新的
 提交 `b681c8f` 已补充 D1 完整后验代次、D2 最后消费代次、消费次数和节拍前合并次数。
 同一代次不能重复产生 D2 发布，没有新后验时不得调用 D2，发布时刻不能改写状态有效时刻；
 episode 在下一关联 tick 前结束时，finalize 只排空最后后验，不产生相机或控制命令。下一
-clean candidate 需以该审计合同建立新基线，再运行 seeds 42000-42002 和 20 个未见 seed。
+clean candidate 已以该审计合同建立三 seed 基线和 20 个保留 seed 描述性校准。
+
+detached clean `0d2da25` 的 seeds `42000-42002` 已完成 10 秒运行。三 seed 核心墙钟均值
+`101.298 s`，实时倍率均值 `0.0988`，D1 融合均值 `55.275 s`，D5 终端配准均值
+`1.247 s`。3/3 状态有限、在线真值为 0、分配保持为 0。D1 最终/完整发布代次为
+`453/453`、`516/516`、`505/505`；D2 最终消费均追平 D1，消费/发布均为 48 次，节拍前
+合并数为 `405/468/457`，pending 均为空。D6 v6 对三个真实 runtime v2 episode 的审计
+全部通过，证据级别仍为 `descriptive_clean_source_calibration`。
+
+seed 42000 同提交重复运行核心墙钟为 `96.787/96.704 s`，全量在线载荷、真值和计划谱系
+语义等价。`12c5073` 与 `0d2da25` 的跨提交审计只有 811 个新增字段差异：763 个 D1
+`posterior_generation` 和 48 个 D2 `source_d1_posterior_generation`；其余业务合同和真值
+一致。D1/D5 独立 A/B 支持各自优化有效，但集成墙钟仍受主机波动影响，不能把全部下降归因
+于单一模块。
+
+同一 detached clean `0d2da25` 已顺序完成 seed `1000-1019` 的 20 组 nominal 200 对 200、
+10 秒规则全栈。20/20 进程退出为 0、状态有限、在线真值使用为 0、分配保持为 0，D1-D2
+后验代次守恒且 pending 为空。核心墙钟均值 `96.391 s`，实时倍率均值 `0.1039`；D1 融合、
+D1 扫描输入、D2 关联、D3 分配、D5 终端配准和 D7 导引均值为
+`51.649/12.418/5.492/2.448/1.185/3.638 s`。D6 v6 将 20/20 归类为
+`descriptive_clean_source_calibration`，正式实验矩阵 episode 仍为 0。这关闭规则基线的
+20-seed 描述性稳定性和代次审计子项，不关闭实时、学习算法比较或物理拦截验收。
 
 当前执行顺序调整为：
 
@@ -47,11 +68,12 @@ clean candidate 需以该审计合同建立新基线，再运行 seeds 42000-420
    Hungarian 主线，后续补稳定窗口周期 P50/P95/max。
 4. 完成当前吞吐治理后，再扩展 D4 故障、D5 跨视角和 D7 五米接近的长时多 seed 验收。
 5. 学习策略继续保持 disabled/shadow；性能优化不得用学习模型、降采样或放宽安全门控替代。
-6. 下一 clean candidate 先复跑三 seed 跨构建与长时性能门，再扩展到 20 个未见 seed；
-   D4 内容地址、D3 计划谱系和来源 ACK 任一不可回算时必须判为不可比较。
+6. 20 个保留 seed 的规则基线已经完成。下一批必须由正式矩阵 runner 冻结 variant、scenario、
+   scale、comparison key、训练 seed registry 和学习 bundle；D4 内容地址、D3 计划谱系、来源
+   ACK、generation 守恒或 assist adoption 任一不可回算时必须判为不可比较。
 
 本批属于干净来源的描述性校准，未声明正式实验矩阵。详细结果见
-`docs/SCALABLE_3D_RULE_PERFORMANCE_CALIBRATION_CN.md`。
+`docs/SCALABLE_3D_LONG_DURATION_PERFORMANCE_CALIBRATION_CN.md`。
 
 ### 长时性能收敛门槛
 
@@ -186,8 +208,11 @@ commit。
   四类规则示范覆盖并形成 canonical 行为克隆只读视图；该课程没有 reward，不能用于 PPO
   或 assist。D5 正式跨视角图的 97.52% 图帧无候选边且困难负样本不足，原开发模型不能
   晋级；独立 clean 困难样本课程已补充 4500 帧、245032 条默认几何门候选边，正/负/
-  未标注为 `57292/187740/0`，数据支持与训练数据来源门已通过。新模型尚未训练，三者
-  均未获得 assist 准入。
+  未标注为 `57292/187740/0`，数据支持与训练数据来源门已通过。D5 后续已完成 clean
+  composite 模型训练，以及 seed `1000-1019`、45 个场景规模单元、900 帧的 paired shadow
+  v2。模型边/簇 F1 为 1.0，但尺度与运动特征的单特征最佳方向曲线下面积约为 0.9973，
+  合成集接近确定性可分；G1、assist 和 authority 继续关闭，下一步是 D6 独立审计和更困难的
+  真实误差扰动集，不重复训练同一语料。
 - D5 主动视觉已完成 1,153,242 样本的完整行为克隆。总体测试精确动作准确率为
   `0.955978`，但 `observe_target` 测试召回率为 0、hold 无正样本、侦察相机精确动作
   准确率为 `0.621823`，因此 bundle 仅允许 development shadow。

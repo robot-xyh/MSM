@@ -14,6 +14,11 @@ D1 融合均值由 103.339 秒降至 92.991 秒，D5 终端配准均值由 2.699
 同 seed 长短对照的单位仿真时间成本增长由 2.036 倍降至 1.830 倍，仍高于 1.25 的告警
 门限。当前结果证明发布边界优化有效，但不支持把 200 对 200 写成实时能力。
 
+后续 clean `0d2da25` 已在修复 D1 后验漏消费的新调度语义上建立三 seed 基线，并顺序完成
+20 个保留 seed 的 10 秒规则全栈校准。20/20 runtime v2 后验代次审计通过，核心墙钟均值为
+`96.391 s`，实时倍率均值为 `0.1039`。该结果关闭规则基线的 20-seed 描述性稳定性和代次
+审计子项；实时性能、正式实验矩阵、学习算法比较和物理拦截验收仍未关闭。
+
 ## 第五轮候选
 
 clean 提交 `f80b5bd42e2c1beb707fd68bfb820d9607c80df3` 使用相同的 10 秒场景和
@@ -59,8 +64,85 @@ D2 航迹并形成 197 条分配。三维拦截资源状态从 `1.05 s` 开始�
 `107.853 s` 和 `122.032 s`，实时倍率为 `0.0927/0.0819`，峰值驻留内存约
 `2.341/2.337 GiB`。13% 左右的墙钟差说明单次 `107.853 s` 不能单独归因于调度修复。
 两次最终 D1/D2/D3/D5/D7 数量均为 `201/203/200/31/200`，在线真值使用和计划保持均为
-0。提交 `b681c8f` 又增加后验 generation 消费血缘和 finalize 排空测试；该提交仍需在
-后续 clean 三 seed 中建立新的带审计字段基线。
+0。提交 `b681c8f` 又增加后验 generation 消费血缘和 finalize 排空测试；以下第六轮已在
+clean 三 seed 中建立新的带审计字段基线。
+
+## 第六轮带代次审计基线
+
+detached clean 提交 `0d2da25c14e50f8f9a10ad47a7bd74e5c5e577fb` 使用相同 nominal
+200 对 200、10 秒条件运行 seeds `42000-42002`。该提交包含 D1 受限复制优化、D5 空相机
+重叠桶跳过和 main 后验代次审计，不修改 D3 规则代价、D7 PN/PNG/LOS/TTC 公式或安全门。
+
+| seed | 核心墙钟/s | 实时倍率 | 进程总耗时/s | 峰值内存/GiB | D1/D2/D3/D5/D7 数量 |
+| ---: | ---: | ---: | ---: | ---: | --- |
+| 42000 | 96.787 | 0.1033 | 129.21 | 2.341 | 201/203/200/31/200 |
+| 42001 | 103.472 | 0.0966 | 137.57 | 2.390 | 210/206/200/29/200 |
+| 42002 | 103.633 | 0.0965 | 136.78 | 2.319 | 203/204/200/32/200 |
+| 均值 | 101.298 | 0.0988 | 134.52 | 2.350 | 204.7/204.3/200/30.7/200 |
+
+三 seed 的 D1 融合、扫描输入、D2 关联、D3 分配、D5 终端配准、D7 导引和模块栈均值为
+`55.275/12.743/5.679/2.455/1.247/3.981/89.766 s`。结束收束均值为 `4.160 s`。
+与旧行为提交的整体墙钟只能作描述比较；`12c5073` 已改变 D1 到 D2 的消费时序，且同提交
+历史波动曾达到约 13%。D1 与 D5 的独立冻结回放分别给出 `1.231x` 平均加速和 `16.45%`
+平均中位耗时下降，可支持模块局部优化结论，不支持把集成下降全部归因于这两项。
+
+后验代次审计结果如下：
+
+| seed | D1 final/full publication | D2 final/consumption/publication | pre-tick merge | pending |
+| ---: | --- | --- | ---: | --- |
+| 42000 | 453/453 | 453/48/48 | 405 | empty |
+| 42001 | 516/516 | 516/48/48 | 468 | empty |
+| 42002 | 505/505 | 505/48/48 | 457 | empty |
+
+D6 `d6-scalable3d-offline-evaluation-v6` 对三行均给出 integrity=true、failure reason 为空，
+在线真值使用为 0。seed 42000 的第二次同提交运行核心墙钟为 `96.704 s`，全量在线载荷、
+计划谱系、真值状态和离线标签语义等价。与 `12c5073` 的跨提交审计共有 811 处差异，全部
+为新加入的 763 个 D1 后验代次字段和 48 个 D2 来源代次字段；summary 合同、真值、主题数、
+计划谱系和其他在线载荷一致。
+
+## 第七轮 20 个保留 seed 校准
+
+同一 detached clean `0d2da25` 顺序运行 seed `1000-1019`，场景固定为 nominal 200 对 200、
+10.0 秒，学习运行时保持 disabled/shadow，不加载 D3、D4、D5 学习 bundle。20 个目录均包含
+manifest、场景配置、summary、在线记录、离线真值、阶段耗时、后处理耗时和进程资源记录；
+20/20 进程退出码为 0，来源 commit 相同且 `repository_dirty=false`。
+
+| 指标 | 均值 | 最小 | 最大 |
+| --- | ---: | ---: | ---: |
+| 核心墙钟/s | 96.391 | 88.035 | 102.573 |
+| 实时倍率 | 0.1039 | 0.0975 | 0.1136 |
+| 在线观测数 | 11926.85 | 11293 | 12518 |
+| D1 最终航迹数 | 203.45 | 201 | 207 |
+| D2 最终航迹数 | 203.50 | 201 | 209 |
+| D3 最终分配数 | 199.55 | 198 | 200 |
+| D5 最终 binding 数 | 25.95 | 9 | 41 |
+| D7 最终命令对数 | 199.35 | 198 | 200 |
+
+20 组峰值驻留内存均值为 `2,512,279 KiB`，范围为 `2,180,756-2,726,996 KiB`。阶段均值中，
+D1 融合为 `51.649 s`，D1 扫描输入为 `12.418 s`，D2 关联为 `5.492 s`，D3 分配为
+`2.448 s`，D5 主动视觉为 `3.107 s`，D5 终端配准为 `1.185 s`，D7 导引为 `3.638 s`，
+模块栈合计为 `84.903 s`，结束收束为 `4.232 s`。实时倍率仍只有约 0.1，实时 P1 保持开放。
+
+D6 v6 使用固定 bootstrap seed `20260722` 和 2000 次重采样。20/20 基础 clean provenance
+可用，failure reason 分布为空；20/20 generation contract 为 `verified`、integrity=true、
+pending empty。D1 后验代次均值/范围为 `471.65/410-499`，D2 消费次数均值/范围为
+`47.95/47-48`，节拍前合并均值为 `423.70`，逐组满足
+`D1 generation = D2 consumed = consumption + pre-tick merge`。
+
+D3 计划覆盖率均值为 `0.989606`，95% bootstrap 区间为 `[0.987144, 0.991813]`。D5 binding
+数均值为 `25.95`，区间为 `[23.1, 28.5]`。这两个量只描述 10 秒 nominal 规则窗口，不能
+替代身份正确率、跨视角图模型泛化或任务成功率。本批没有五米接近事件，D2 生产者明确将
+ID switch 标为 unavailable，D6 没有把缺失证据回填为 0。
+
+全部 episode 缺少实验矩阵 metadata，因此证据分类为
+`descriptive_clean_source_calibration`，实验矩阵 episode 数为 0。seed `1000-1019` 确实与
+训练 seed registry 隔离，但“使用保留 seed”本身不等于正式实验矩阵；正式比较还需由 matrix
+runner 同时冻结七种变体、完整场景/规模、学习 bundle、配对外生配置和 assist adoption。
+
+main 侧使用外部 `/usr/bin/time` 测得 D6 进程墙钟为 `3:20.42`，峰值驻留内存为
+`1,448,612 KiB`。这两个值没有写入 D6 的可哈希输出清单，只作为本机运行诊断。聚合 JSON
+SHA-256 为 `da9525ac0f189e2a1f281f5baa4af2ab22d12c43c0f3a2f5738ff06a446c9022`，
+中文报告 SHA-256 为 `924745063e9f443bba0ea36cf5263eb6ed6ccf1ae52fe0d768abc204c840f734`。
 
 ## 试验条件
 
@@ -200,6 +282,17 @@ D6 独立消费三组 10 秒候选 episode 后，将三者均归类为
 `01caf63b56ee094b4160e09f8442a75e37e4f3bdbd54c561f90e2269ba266f7b`。三 seed D6 聚合
 JSON SHA-256 为 `58bae9caf93936a7763653cd35434a092774f24b48630b042e655aa58a0a582c`。
 
+第六轮由 D6 v6 再次独立消费 `0d2da25` 的三个 runtime v2 episode。3/3
+`formal_acceptance_eligible=true`，后验 generation integrity 通过，pending 排空，failure reason
+为空。证据分类仍为 `descriptive_clean_source_calibration`，正式实验矩阵 episode 数为 0。
+该结果关闭 D6 consumer 和三 seed 实际代次审计子项，不关闭实时性、20 个未见 seed、学习
+策略采用或五米物理结果。
+
+第七轮由同一 D6 v6 独立消费 20 个保留 seed。20/20 基础 clean 准入和后验代次审计通过，
+failure reason 为空；全部仍为 `descriptive_clean_source_calibration`，正式矩阵 episode 数为 0。
+该结果关闭规则基线的 20-seed 描述性稳定性和 generation 消费审计，不关闭七变体正式比较、
+学习采用、实时性或五米物理结果。
+
 ## 后续工作
 
 1. D1 同一融合时刻快照合并已关闭代码和三 seed 描述性证据缺口。下一步继续分离固定滞后
@@ -212,6 +305,9 @@ JSON SHA-256 为 `58bae9caf93936a7763653cd35434a092774f24b48630b042e655aa58a0a58
    不因单机墙钟噪声修改规则代价、迟滞或匈牙利主线。
 5. 规则全栈达到可接受吞吐后，再运行 D4 故障、D5 跨视角压力和 D7 五米物理闭环，不将本轮
    性能校准写成拦截效果验收。
+6. 同一 clean `0d2da25` 的 seed `1000-1019` 长时规则批次已经完成。下一轮不重复运行相同
+   R0 nominal 校准；应先关闭吞吐热点，再由正式矩阵 runner 运行有冻结 metadata 和学习 bundle
+   的配对单元。保留 seed 继续禁止回流训练。
 
 ## 证据路径
 
@@ -219,6 +315,9 @@ JSON SHA-256 为 `58bae9caf93936a7763653cd35434a092774f24b48630b042e655aa58a0a58
 - 上一候选：`outputs/scalable_3d_long_duration_candidate_20260722_clean_3bac3ff/`
 - 当前候选：`outputs/scalable_3d_long_duration_candidate_20260722_clean_8f86192/`
 - 第五轮候选：`outputs/scalable_3d_long_duration_candidate_20260722_clean_f80b5bd/`
+- 第六轮带代次基线：`outputs/scalable_3d_integrated_candidate_20260722_clean_0d2da25/`
+- 第六轮 D6：`research_modules/d6_evaluation_metrics/outputs/scalable3d_posterior_v2_clean_0d2da25_20260722/`
+- 第七轮 20-seed D6：`research_modules/d6_evaluation_metrics/outputs/scalable3d_posterior_v2_unseen_20seed_clean_0d2da25_20260722/`
 - 跨构建审计：`outputs/scalable_3d_long_duration_candidate_20260722_clean_f80b5bd/cross_build_semantics/`
 - 长短比较：`comparison_candidate/long_duration_comparison.json`
 - D6 聚合：`d6_offline_pair/scalable_3d_offline_aggregate.json`

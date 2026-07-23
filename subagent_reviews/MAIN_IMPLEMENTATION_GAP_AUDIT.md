@@ -9,6 +9,33 @@
 **当前状态修订（2026-07-20）**：上段“无开放 P0”只对应此前 AirSim 审计。900-episode
 正式生成在第 210 项发现 D5 同流多批次阻塞；以下专项记录为当前状态，优先级高于历史摘要。
 
+## 2026-07-22 后验代次与 clean 长时基线
+
+main 已在 detached clean `0d2da25` 上完成 nominal 200 对 200、10 秒、seeds
+`42000-42002`。三组均为有限状态、在线真值使用 0、分配保持 0。核心墙钟均值
+`101.298 s`，实时倍率均值 `0.0988`，因此实时性能 P1 保持开放。
+
+D1 final/full posterior publication 为 `453/453`、`516/516`、`505/505`；D2 final/
+consumption/publication 为 `453/48/48`、`516/48/48`、`505/48/48`，pre-tick merge 为
+`405/468/457`，pending 均为空。D6 v6 被动评估 3/3 integrity 通过、failure reason 为空。
+seed 42000 同提交重复运行通过全量语义等价审计。与 `12c5073` 的 811 处在线差异全部是新增
+D1/D2 generation 字段，summary、真值、计划谱系和其余载荷一致。
+
+该项关闭 main/D6 的 runtime v2 三 seed 实际消费审计子缺口。它仍是
+`descriptive_clean_source_calibration`，正式矩阵 episode 数为 0。
+
+同一 detached clean `0d2da25` 随后顺序完成 seed `1000-1019` 的 20 组 200 对 200、10 秒
+规则全栈。20/20 进程退出 0、状态有限、在线真值使用 0、分配保持 0、generation integrity
+通过且 pending 为空。核心墙钟均值/范围为 `96.391/88.035-102.573 s`，实时倍率均值/范围为
+`0.1039/0.0975-0.1136`。D1 融合、扫描输入、D2 关联、D3 分配、D5 终端配准和 D7 导引均值
+为 `51.649/12.418/5.492/2.448/1.185/3.638 s`；实时 P1 保持开放。
+
+D6 v6 将 20/20 判为基础 clean provenance 可用，failure reason 为空。D3 计划覆盖率均值为
+`0.989606`，95% seed bootstrap 区间为 `[0.987144, 0.991813]`；D5 最终 binding 数均值/范围
+为 `25.95/9-41`。本批没有五米接近，学习 bundle 未加载，实验矩阵 metadata 缺失，因此全部
+仍为 `descriptive_clean_source_calibration`，正式矩阵 episode 数为 0。该批关闭规则基线
+20-seed 描述性稳定性与代次消费审计，不关闭算法优劣、学习采用、实时或物理拦截验收。
+
 ## 2026-07-21 运行采用、离线结果与跨视角数据收敛
 
 当前没有新增 P0。D3、D4、D5 的学习数据 producer 已完成全样本结构审计，main 的配对实验
@@ -935,7 +962,7 @@ D1 NumPy EKF/FusionAdapter
 - 现有 \(k_j=1\) 主线继续可用；M 对 N 的 demand-slot、合法多机锁定、二级/完全分布式原子联盟和成员级 D7 门控合同已实现。
 - 历史 ComputerVision 合同验收为 8/10；当前已完成 5 m 成功判据、detect-first truth 隔离、1-5 帧硬窗口、D6 分层指标、2v2 `png_ttc` 20/20 和同条件 M5N2 paired。M5N2 candidate 退化且联盟 0/10，下一步是物理协同和阈值根因修复，不再扩展成功语义。
 - P2 隔离 benchmark 已覆盖 D1-D7 的当前可运行范围；不可用外部依赖均显式记录 `unavailable_reason`，不得宣称为主线算法替换。
-- main 已修复 D1 新后验在 D2 调度 tick 之间被遗漏的问题。clean `12c5073` 同 seed 重复运行全量语义等价；D2 owner 已确认这是漏消费修复而非过关联。锁存只保存未消费的真实 posterior，D2 使用原有效时刻，D7 过期门和 PN/PNG 公式不变；`b681c8f` 又增加后验代次、消费代次、节拍前合并计数和 finalize 排空合同。
+- main 已修复 D1 新后验在 D2 调度 tick 之间被遗漏的问题。clean `12c5073` 同 seed 重复运行全量语义等价；D2 owner 已确认这是漏消费修复而非过关联。锁存只保存未消费的真实 posterior，D2 使用原有效时刻，D7 过期门和 PN/PNG 公式不变；`0d2da25` 三 seed 已通过后验代次、消费代次、节拍前合并计数和 finalize 排空的实际 D6 审计。
 
 ### 7.2 P0 保持矩阵
 
@@ -946,7 +973,7 @@ D1 NumPy EKF/FusionAdapter
 | D3 | 无新增 blocker | 版本化 AssignmentPlan、迟滞、stale rejection、D7 binding；运行证据按各 ACK 对应的计划快照验证，真实 stale ACK 保持 fail-closed | D3 `438 passed, 1 skipped, 0 failed` |
 | D4 | 无新增 blocker | C2Health、主动/被动降级、二级 lifecycle；active secondary helper/owner 必须对 sustained readiness、expected/actual source、plan/required epoch、expiry/current time 和 plan monotonicity exact-true；冲突或缺失证据 fail-closed | D4 `508 passed` |
 | D5 | 无新增 blocker | 不改写 global_track_id、truth 隔离、friend/duplicate 保守门控；原生 MOT 连续实测历史按 stream/backend/ID 隔离并在空帧/reset 后重计；离线人工记录转换重复坍缩 fail-closed；补充课程全样本审计不得开放在线权限 | D5 `544 passed` |
-| D6 | 无新增 blocker | 只消费日志；实际规模、id_switch_count、unavailable/zero 分离；逐 pair physical evidence/result/source、联盟完整性和跨模块学习准入严格门控；D5 全样本证据需带外 SHA，报告不得写入正式 generation 根 | D6 `530 passed, 1 warning` |
+| D6 | 无新增 blocker | 只消费日志；实际规模、id_switch_count、unavailable/zero 分离；逐 pair physical evidence/result/source、联盟完整性和跨模块学习准入严格门控；runtime v1 generation 保持 unavailable，v2 重复、倒序、未知引用、计数不守恒或 pending 未排空均失败关闭 | D6 `542 passed, 1 warning` |
 | D7 | 核心公式无 blocker；控制输入 P0 由 main/runtime 持有 | 不分配目标；D3/D4/D5 gate 失败时阻断视觉 PNG；不修改 PN/PNG 核心公式 | D7 `213 passed` + truth-isolated control contract |
 | main/runtime | 无新增 blocker | episode bus 可回放；在线 truth identity/state 均为 0；SimpleFlight 只消费 D2 estimate；未消费 D1 posterior 跨 tick 锁存但不改写时间戳；v2 治理快照记录 D1/D2 generation 消费血缘并在 finalize 排空；二级 communication 只消费上一完整 D4 readiness；actor truth 仅离线 5 m scorer；默认不保存 PNG | scalable main `124 passed, 1 warning`；既有 AirSim runtime `147 passed` |
 
@@ -954,7 +981,7 @@ D1 NumPy EKF/FusionAdapter
 
 | Owner | 当前缺口 | 已有基础 | 缺少条件/下一验收 |
 | --- | --- | --- | --- |
-| main/D1/D2/D3/D5/D6 | 分阶段实时性能与长时增长达标 | clean `f80b5bd` 三 seed 仍是创新求解优化的等价基线；clean `12c5073` 建立修复漏消费后的新行为基线，同 seed 两次核心墙钟 `107.853/122.032 s` 且全量语义等价。D5 占用桶优化冻结三 seed 中位耗时均值下降 16.45%，D7 `+7.337%` 已审计为未归因单机波动 | 实时倍率仍低于 0.1；D1 融合/扫描输入、D2/D5 长时增长、结束后处理和稳定窗口 P50/P95/max 仍需关闭。`b681c8f` 的 generation 审计、D1/D5 优化需形成新 clean 三 seed；20 个未见 seed 尚未运行，不得把描述性校准当正式验收 |
+| main/D1/D2/D3/D5/D6 | 分阶段实时性能与长时增长达标 | clean `0d2da25` 已完成带 generation 审计的三 seed 基线和 20 个保留 seed 描述性校准；20-seed 核心墙钟均值 `96.391 s`、实时倍率 `0.1039`，20/20 代次守恒通过。D1 独立回放平均 `1.231x`，D5 占用桶优化冻结三 seed 中位耗时均值下降 16.45% | 仍未实时；D1 融合/扫描输入、D2/D5 长时增长、结束后处理和稳定窗口 P50/P95/max 仍需关闭。正式七变体矩阵仍为 0 episode，不得把 R0 nominal 描述性校准当算法验收 |
 | D2/D6/main | v2 关联候选评审与跨 difficulty 证据 | 正式 v2 联合报告已生成；总体五项 gate 通过，IDSW 下降 54.6%，P95 15.47 ms，truth leakage=0；默认在线主线未改变 | 仅 `clutter/combined` 通过，四个零 baseline-IDSW difficulty fail-closed，dropout truth alignment 为 partial；需补同 case/seed 完整多源 system bundle 后再决定是否晋级，JPDA 保持不准入 |
 | D3/D5/D7/main | M5N2 协同物理闭环 | 同条件 10-seed paired 和四层日志已完成；baseline 7/30 pair，candidate 4/30，联盟均 0/10 | 分离第二 primary 中段重捕、D5 共识、D7 gate 和成员安全根因；candidate 保持关闭 |
 | D5/D7/main | 单帧 dropout 尾部 | 2-5 帧逐 seed 全通过，物理结果 100/100，truth/ID/version 无违规 | 复核 seed 2 在 0.8 s 注入时没有进入 image-KF 的锁定时序；不得用聚合计数掩盖 |
