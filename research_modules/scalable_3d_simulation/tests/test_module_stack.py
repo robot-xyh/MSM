@@ -4,10 +4,20 @@ from collections import Counter
 from dataclasses import replace
 import csv
 import json
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
 
+from research_modules.d1_sensor_fusion.src.d1_sensor_fusion import (
+    DEFAULT_STRUCTURAL_AMBIGUITY_PUBLISHER_NODE_ID,
+    StructuralAmbiguityCandidateEdge,
+    StructuralAmbiguityEvidence,
+    StructuralAmbiguityMemberState,
+    StructuralAmbiguityObservationEvidence,
+    structural_ambiguity_member_track_token,
+    structural_ambiguity_source_key,
+)
 from research_modules.d3_assignment_planner.src.d3_assignment_planner import (
     RegionalPlanAuthorityError,
 )
@@ -156,6 +166,228 @@ def test_d1_radar_assignment_ambiguity_governance_v2_requires_bool(
     ):
         IntegratedStackConfig(
             d1_radar_assignment_ambiguity_governance_v2=value,  # type: ignore[arg-type]
+        )
+
+
+def _d1_track_stub(
+    local_track_id: str,
+    timestamp: float,
+    position_ned: tuple[float, float, float],
+) -> SimpleNamespace:
+    state = np.array([*position_ned, 0.0, 0.0, 0.0], dtype=float)
+    return SimpleNamespace(
+        global_track_id=local_track_id,
+        state=state,
+        covariance=np.eye(6, dtype=float) * 4.0,
+        timestamp=float(timestamp),
+        metadata={
+            "frame_id": "ned",
+            "measurement_timestamp": float(timestamp),
+            "arrival_timestamp": float(timestamp),
+            "published_at": float(timestamp),
+            "confidence": 1.0,
+        },
+    )
+
+
+def _structural_ambiguity_fixture(
+    *,
+    publisher_epoch: str,
+    measurement_timestamp: float,
+    arrival_timestamp: float,
+) -> StructuralAmbiguityEvidence:
+    local_ids = ("D1-LOCAL-A", "D1-LOCAL-B")
+    positions = (
+        np.array([100.0, -20.0, -10.0]),
+        np.array([100.0, 20.0, -10.0]),
+    )
+    tokens = tuple(
+        structural_ambiguity_member_track_token(
+            DEFAULT_STRUCTURAL_AMBIGUITY_PUBLISHER_NODE_ID,
+            publisher_epoch,
+            local_id,
+        )
+        for local_id in local_ids
+    )
+    members = tuple(
+        StructuralAmbiguityMemberState(
+            opaque_member_track_token=token,
+            source_key=structural_ambiguity_source_key(
+                DEFAULT_STRUCTURAL_AMBIGUITY_PUBLISHER_NODE_ID,
+                publisher_epoch,
+                token,
+            ),
+            state=np.concatenate((position, np.zeros(3, dtype=float))),
+            covariance=np.eye(6, dtype=float) * 4.0,
+        )
+        for token, position in zip(tokens, positions, strict=True)
+    )
+    observation_keys = (
+        f"d1-observation-sha256:{1:064x}",
+        f"d1-observation-sha256:{2:064x}",
+    )
+    observations = tuple(
+        StructuralAmbiguityObservationEvidence(
+            observation_evidence_key=key,
+            position_ned=position,
+            covariance_ned=np.eye(3, dtype=float) * 4.0,
+            radial_velocity_observed=False,
+            birth_deferred=False,
+        )
+        for key, position in zip(observation_keys, positions, strict=True)
+    )
+    edges = tuple(
+        StructuralAmbiguityCandidateEdge(
+            opaque_member_track_token=token,
+            observation_evidence_key=observation_key,
+            nis=1.0 if member_index == observation_index else 2.0,
+            gate_threshold=40.0,
+            edge_roles=(
+                ("matched_reference", "maximum_matching_allowed")
+                if member_index == observation_index
+                else ("alternating_cycle", "maximum_matching_allowed")
+            ),
+        )
+        for member_index, token in enumerate(tokens)
+        for observation_index, observation_key in enumerate(observation_keys)
+    )
+    return StructuralAmbiguityEvidence(
+        evidence_id=f"d1-evidence-sha256:{3:064x}",
+        component_id=f"d1-component-sha256:{4:064x}",
+        component_generation=1,
+        publisher_node_id=DEFAULT_STRUCTURAL_AMBIGUITY_PUBLISHER_NODE_ID,
+        publisher_epoch=publisher_epoch,
+        measurement_timestamp=measurement_timestamp,
+        arrival_timestamp=arrival_timestamp,
+        state_valid_timestamp=measurement_timestamp,
+        published_at=arrival_timestamp,
+        sensor_id="radar-main",
+        scan_id=f"d1-scan-sha256:{5:064x}",
+        member_states=members,
+        observations=observations,
+        candidate_edges=edges,
+        component_kinds=("alternating_cycle",),
+        member_count=2,
+        observation_count=2,
+        candidate_edge_count=4,
+        free_row_count=0,
+        free_column_count=0,
+        maximum_matching_cardinality=2,
+    )
+
+
+def test_atomic_d1_d2_ambiguity_hold_consumes_delayed_sidecar_once() -> None:
+    stack = IntegratedScalableModuleStack(
+        config=IntegratedStackConfig(
+            d1_d2_structural_ambiguity_hold_enabled=True,
+        )
+    )
+    stack.reset(
+        ScenarioConfig(
+            scenario_name="main_ambiguity_hold_bridge_2v2",
+            scenario_version="main-ambiguity-hold-bridge-v1",
+            target_count=2,
+            resource_count=2,
+            recon_count=1,
+            region_count=1,
+            duration_s=1.0,
+            radar_period_s=0.2,
+            association_period_s=0.2,
+            seed=31,
+        )
+    )
+    assert (
+        stack.d2.ambiguity_hold_config.max_component_age_seconds
+        == pytest.approx(5.4)
+    )
+    publications = []
+    positions = (
+        (100.0, -20.0, -10.0),
+        (100.0, 20.0, -10.0),
+    )
+    for generation, timestamp in enumerate((0.0, 0.2), start=1):
+        stack.latest_d1_tracks = tuple(
+            _d1_track_stub(local_id, timestamp, position)
+            for local_id, position in zip(
+                ("D1-LOCAL-A", "D1-LOCAL-B"),
+                positions,
+                strict=True,
+            )
+        )
+        stack._d1_posterior_generation = generation
+        assert stack._associate_latest_d1_tracks(
+            publications,
+            publication_timestamp=timestamp,
+            timing_stage="test_d2_seed",
+            source_d1_posterior_generation=generation,
+        )
+
+    before = {
+        track.global_track_id: (
+            track.hits,
+            track.misses,
+            float(np.trace(track.covariance)),
+        )
+        for track in stack.d2.active_tracks()
+    }
+    evidence = _structural_ambiguity_fixture(
+        publisher_epoch=stack._d1_publisher_epoch,
+        measurement_timestamp=0.4,
+        arrival_timestamp=0.65,
+    )
+    stack._latch_structural_ambiguity_evidence(
+        SimpleNamespace(structural_ambiguity_evidence=(evidence,))
+    )
+    stack.latest_d1_tracks = tuple(
+        _d1_track_stub(local_id, 0.65, position)
+        for local_id, position in zip(
+            ("D1-LOCAL-A", "D1-LOCAL-B"),
+            positions,
+            strict=True,
+        )
+    )
+    stack._d1_posterior_generation = 3
+
+    assert stack._associate_latest_d1_tracks(
+        publications,
+        publication_timestamp=0.65,
+        timing_stage="test_d2_hold",
+        source_d1_posterior_generation=3,
+    )
+
+    hold = stack.latest_d2_result.metadata["ambiguity_hold"]
+    assert hold["accepted_component_count"] == 1
+    assert hold["active_component_count"] == 1
+    assert len(hold["hold_track_ids"]) == 2
+    assert stack._pending_structural_ambiguity_evidence == {}
+    assert stack._structural_ambiguity_evidence_received_count == 1
+    assert stack._structural_ambiguity_evidence_consumed_count == 1
+    assert stack._structural_ambiguity_d2_consumption_count == 1
+    for track in stack.d2.active_tracks():
+        previous_hits, previous_misses, previous_trace = before[
+            track.global_track_id
+        ]
+        assert track.hits == previous_hits
+        assert track.misses == previous_misses
+        assert float(np.trace(track.covariance)) >= previous_trace
+
+
+def test_atomic_ambiguity_treatment_rejects_partial_or_invalid_config() -> None:
+    with pytest.raises(
+        ValueError,
+        match="cannot both be enabled",
+    ):
+        IntegratedStackConfig(
+            d1_radar_assignment_ambiguity_governance_v2=True,
+            d1_d2_structural_ambiguity_hold_enabled=True,
+        )
+    with pytest.raises(
+        ValueError,
+        match="hard hold cannot be shorter",
+    ):
+        IntegratedStackConfig(
+            d2_ambiguity_hold_gap_scan_periods=5,
+            d2_ambiguity_hold_hard_scan_periods=2,
         )
 
 

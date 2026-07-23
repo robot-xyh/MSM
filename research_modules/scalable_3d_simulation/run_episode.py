@@ -74,6 +74,14 @@ def parse_args() -> argparse.Namespace:
             "disabled by default"
         ),
     )
+    parser.add_argument(
+        "--d1-d2-structural-ambiguity-hold",
+        action="store_true",
+        help=(
+            "enable the experimental atomic D1 evidence and D2 bounded-hold "
+            "candidate; disabled by default"
+        ),
+    )
     add_learning_runtime_arguments(parser)
     return parser.parse_args()
 
@@ -126,6 +134,9 @@ def main() -> int:
                 d5_recon_track_cues_enabled=args.d5_recon_track_cues,
                 d1_radar_assignment_ambiguity_governance_v2=(
                     args.d1_radar_assignment_ambiguity_governance_v2
+                ),
+                d1_d2_structural_ambiguity_hold_enabled=(
+                    args.d1_d2_structural_ambiguity_hold
                 ),
             ),
         )

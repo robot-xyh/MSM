@@ -17,6 +17,7 @@ from typing import Any, Iterable, Mapping
 import numpy as np
 
 from research_modules.d1_sensor_fusion.src.d1_sensor_fusion import (
+    DEFAULT_STRUCTURAL_AMBIGUITY_PUBLISHER_NODE_ID,
     ScanInputConfig,
     ScanInputOrganizer,
     Scalable3DFusionAdapter,
@@ -24,6 +25,8 @@ from research_modules.d1_sensor_fusion.src.d1_sensor_fusion import (
     sensor_observations_from_online_batch,
 )
 from research_modules.d2_data_association.d2_data_association import (
+    AmbiguityComponent3D,
+    AmbiguityHoldLeaseConfig,
     ObservationClaimLedgerConfig,
     ReplayCoastConfig,
     Scalable3DTracker,
@@ -129,6 +132,10 @@ class IntegratedStackConfig:
     d1_scan_event_log_limit: int = 4_096
     d1_coalesce_same_fusion_time: bool = True
     d1_radar_assignment_ambiguity_governance_v2: bool = False
+    d1_d2_structural_ambiguity_hold_enabled: bool = False
+    d2_ambiguity_hold_gap_scan_periods: int = 2
+    d2_ambiguity_hold_hard_scan_periods: int = 5
+    d1_ambiguity_pending_evidence_limit: int = 4_096
 
     def __post_init__(self) -> None:
         if self.assignment_lease_multiplier <= 1.0:
@@ -180,6 +187,36 @@ class IntegratedStackConfig:
         ):
             raise TypeError(
                 "d1_radar_assignment_ambiguity_governance_v2 must be a bool"
+            )
+        if not isinstance(
+            self.d1_d2_structural_ambiguity_hold_enabled,
+            bool,
+        ):
+            raise TypeError(
+                "d1_d2_structural_ambiguity_hold_enabled must be a bool"
+            )
+        if (
+            self.d1_radar_assignment_ambiguity_governance_v2
+            and self.d1_d2_structural_ambiguity_hold_enabled
+        ):
+            raise ValueError(
+                "rejected D1 ambiguity v2 and D1-D2 ambiguity hold "
+                "cannot both be enabled"
+            )
+        for name in (
+            "d2_ambiguity_hold_gap_scan_periods",
+            "d2_ambiguity_hold_hard_scan_periods",
+            "d1_ambiguity_pending_evidence_limit",
+        ):
+            value = getattr(self, name)
+            if isinstance(value, bool) or int(value) != value or int(value) <= 0:
+                raise ValueError(f"{name} must be a positive integer")
+        if (
+            self.d2_ambiguity_hold_hard_scan_periods
+            < self.d2_ambiguity_hold_gap_scan_periods
+        ):
+            raise ValueError(
+                "d2 ambiguity hard hold cannot be shorter than the gap hold"
             )
         for name in ("secondary_coverage_ratio", "secondary_network_full_view_rate"):
             value = float(getattr(self, name))
@@ -316,6 +353,12 @@ class IntegratedScalableModuleStack:
         self._d2_pre_tick_posterior_merge_count = 0
         self._d2_finalize_unchanged_posterior_skip_count = 0
         self._d2_finalize_coalesced_release_count = 0
+        self._d1_publisher_reset_generation = 0
+        self._d1_publisher_epoch = "main-stack-not-reset"
+        self._pending_structural_ambiguity_evidence: dict[str, Any] = {}
+        self._structural_ambiguity_evidence_received_count = 0
+        self._structural_ambiguity_evidence_consumed_count = 0
+        self._structural_ambiguity_d2_consumption_count = 0
         self._d1_latest_lineage_by_observation: dict[str, dict[str, Any]] = {}
         self._d1_pending_lineage_by_track: dict[
             str, dict[str, dict[str, Any]]
@@ -343,10 +386,22 @@ class IntegratedScalableModuleStack:
 
     def reset(self, config: ScenarioConfig) -> None:
         self.config = config
+        self._d1_publisher_reset_generation += 1
+        self._d1_publisher_epoch = (
+            "main-stack-reset-"
+            f"{self._d1_publisher_reset_generation:08d}-v1"
+        )
         self.d1 = Scalable3DFusionAdapter(
             radar_assignment_ambiguity_governance_v2=(
                 self.stack_config.d1_radar_assignment_ambiguity_governance_v2
-            )
+            ),
+            radar_assignment_ambiguity_hold_evidence=(
+                self.stack_config.d1_d2_structural_ambiguity_hold_enabled
+            ),
+            publisher_node_id=(
+                DEFAULT_STRUCTURAL_AMBIGUITY_PUBLISHER_NODE_ID
+            ),
+            publisher_epoch=self._d1_publisher_epoch,
         )
         self.d1_scan_input = ScanInputOrganizer(
             _scan_input_config(config, self.stack_config)
@@ -359,6 +414,23 @@ class IntegratedScalableModuleStack:
             replay_coast_config=ReplayCoastConfig(
                 config_version="main-scalable3d-replay-coast-policy-v1",
                 grace_seconds=self.stack_config.d2_replay_coast_grace_s,
+            ),
+            ambiguity_hold_config=AmbiguityHoldLeaseConfig(
+                enabled=(
+                    self.stack_config.d1_d2_structural_ambiguity_hold_enabled
+                ),
+                equivalent_scan_period_seconds=config.radar_period_s,
+                gap_scan_periods=(
+                    self.stack_config.d2_ambiguity_hold_gap_scan_periods
+                ),
+                hard_scan_periods=(
+                    self.stack_config.d2_ambiguity_hold_hard_scan_periods
+                ),
+                max_component_age_seconds=(
+                    config.radar_latency_s
+                    + self.stack_config.d1_scan_max_buffer_residence_s
+                    + config.association_period_s
+                ),
             ),
         )
         self.d3 = AssignmentPlanner(
@@ -447,6 +519,10 @@ class IntegratedScalableModuleStack:
         self._d2_pre_tick_posterior_merge_count = 0
         self._d2_finalize_unchanged_posterior_skip_count = 0
         self._d2_finalize_coalesced_release_count = 0
+        self._pending_structural_ambiguity_evidence.clear()
+        self._structural_ambiguity_evidence_received_count = 0
+        self._structural_ambiguity_evidence_consumed_count = 0
+        self._structural_ambiguity_d2_consumption_count = 0
         self._d1_latest_lineage_by_observation.clear()
         self._d1_pending_lineage_by_track.clear()
         self._d1_scan_events.clear()
@@ -515,33 +591,22 @@ class IntegratedScalableModuleStack:
             and self.latest_d1_tracks
             and now + _EPS >= self._next_association_s
         ):
-            started = perf_counter()
-            _, detections = detections3d_from_d1_global_tracks(
-                self.latest_d1_tracks
-            )
-            if detections:
-                d2_timestamp = max(item.measurement_timestamp for item in detections)
-                self.latest_d2_result = self.d2.step(detections, d2_timestamp)
-                self._latest_d2_input_signature = _d2_input_signature(detections)
-                self.latest_d2_tracks = tuple(self.d2.active_tracks())
-                self._update_d2_identity_lineage(
-                    self.latest_d2_result,
-                    detections,
-                )
-                self._d2_consumed_d1_posterior_generation = int(
+            associated = self._associate_latest_d1_tracks(
+                publications,
+                publication_timestamp=now,
+                timing_stage="d2_association",
+                source_d1_posterior_generation=(
                     self._d2_pending_d1_posterior_generation
-                    or self._d1_posterior_generation
-                )
-                self._d2_posterior_consumption_count += 1
-                publications.append(self._d2_publication(now))
-            self._record_timing("d2_association", perf_counter() - started)
-            self._d2_pending_d1_update = False
-            self._d2_pending_d1_posterior_generation = None
-            self._next_association_s = _advance_schedule(
-                self._next_association_s,
-                config.association_period_s,
-                now,
+                ),
             )
+            if associated:
+                self._d2_pending_d1_update = False
+                self._d2_pending_d1_posterior_generation = None
+                self._next_association_s = _advance_schedule(
+                    self._next_association_s,
+                    config.association_period_s,
+                    now,
+                )
 
         if vision_batches:
             started = perf_counter()
@@ -680,7 +745,7 @@ class IntegratedScalableModuleStack:
         released_count = len(scan_result.released_scans)
         if released_count or self._d2_pending_d1_update:
             self._d2_finalize_coalesced_release_count += max(0, released_count - 1)
-            self._associate_latest_d1_tracks(
+            associated = self._associate_latest_d1_tracks(
                 publications,
                 publication_timestamp=now,
                 timing_stage="d2_association_finalize",
@@ -689,6 +754,14 @@ class IntegratedScalableModuleStack:
                     self._d2_pending_d1_posterior_generation
                 ),
             )
+            if (
+                not associated
+                and self._pending_structural_ambiguity_evidence
+            ):
+                raise RuntimeError(
+                    "finalization cannot discard pending structural "
+                    "ambiguity evidence"
+                )
             self._d2_pending_d1_update = False
             self._d2_pending_d1_posterior_generation = None
         self._d1_scan_input_closed = True
@@ -749,6 +822,57 @@ class IntegratedScalableModuleStack:
             ),
             "d2_replay_coast_config": dict(
                 d2_summary.get("replay_coast_config", {})
+            ),
+            "d1_d2_structural_ambiguity_hold_enabled": bool(
+                self.stack_config.d1_d2_structural_ambiguity_hold_enabled
+            ),
+            "d1_structural_ambiguity_publisher_node_id": (
+                DEFAULT_STRUCTURAL_AMBIGUITY_PUBLISHER_NODE_ID
+            ),
+            "d1_structural_ambiguity_publisher_epoch": (
+                self._d1_publisher_epoch
+            ),
+            "d1_structural_ambiguity_evidence_received_count": int(
+                self._structural_ambiguity_evidence_received_count
+            ),
+            "d1_structural_ambiguity_pending_evidence_count": len(
+                self._pending_structural_ambiguity_evidence
+            ),
+            "d2_structural_ambiguity_evidence_consumed_count": int(
+                self._structural_ambiguity_evidence_consumed_count
+            ),
+            "d2_structural_ambiguity_consumption_count": int(
+                self._structural_ambiguity_d2_consumption_count
+            ),
+            "d2_ambiguity_hold_config": dict(
+                d2_summary.get("ambiguity_hold_config", {})
+            ),
+            "d2_ambiguity_hold_active_component_count": int(
+                d2_summary.get(
+                    "ambiguity_hold_active_component_count",
+                    0,
+                )
+            ),
+            "d2_ambiguity_hold_active_track_count": int(
+                d2_summary.get("ambiguity_hold_active_track_count", 0)
+            ),
+            "d2_ambiguity_hold_reserved_evidence_count": int(
+                d2_summary.get(
+                    "ambiguity_hold_reserved_evidence_count",
+                    0,
+                )
+            ),
+            "d2_ambiguity_hold_component_event_counts": dict(
+                d2_summary.get(
+                    "ambiguity_hold_component_event_counts",
+                    {},
+                )
+            ),
+            "d2_ambiguity_hold_prevented_counts": dict(
+                d2_summary.get("ambiguity_hold_prevented_counts", {})
+            ),
+            "d2_binding_pre_update_rejection_count": int(
+                d2_summary.get("binding_pre_update_rejection_count", 0)
             ),
             "d1_posterior_generation": int(self._d1_posterior_generation),
             "d2_pending_d1_posterior_generation": (
@@ -834,6 +958,7 @@ class IntegratedScalableModuleStack:
                 materialize_tracks=materialize_tracks,
             )
             self._record_timing("d1_fusion", perf_counter() - started)
+            self._latch_structural_ambiguity_evidence(result)
             if materialize_tracks:
                 self.latest_d1_tracks = tuple(result.tracks)
                 self._d1_materialized_snapshot_count += 1
@@ -869,6 +994,33 @@ class IntegratedScalableModuleStack:
             )
         return True
 
+    def _latch_structural_ambiguity_evidence(self, result: Any) -> None:
+        """Retain every D1 sidecar until one successful D2 consumption."""
+
+        evidence_items = tuple(
+            getattr(result, "structural_ambiguity_evidence", ())
+        )
+        for evidence in evidence_items:
+            evidence_id = str(evidence.evidence_id)
+            existing = self._pending_structural_ambiguity_evidence.get(
+                evidence_id
+            )
+            if existing is not None:
+                if existing.to_dict() != evidence.to_dict():
+                    raise RuntimeError(
+                        "conflicting structural ambiguity evidence_id"
+                    )
+                continue
+            if (
+                len(self._pending_structural_ambiguity_evidence)
+                >= self.stack_config.d1_ambiguity_pending_evidence_limit
+            ):
+                raise RuntimeError(
+                    "structural ambiguity pending evidence limit exceeded"
+                )
+            self._pending_structural_ambiguity_evidence[evidence_id] = evidence
+            self._structural_ambiguity_evidence_received_count += 1
+
     def _record_d1_scan_events(self, events: Iterable[Any]) -> None:
         records = tuple(item.to_dict() for item in events)
         self._d1_scan_event_total_count += len(records)
@@ -886,7 +1038,30 @@ class IntegratedScalableModuleStack:
         if not self.latest_d1_tracks:
             return False
         started = perf_counter()
-        _, detections = detections3d_from_d1_global_tracks(self.latest_d1_tracks)
+        hold_enabled = bool(
+            self.stack_config.d1_d2_structural_ambiguity_hold_enabled
+        )
+        if self._pending_structural_ambiguity_evidence and not hold_enabled:
+            raise RuntimeError(
+                "D1 structural ambiguity evidence requires the atomic "
+                "D1-D2 hold treatment"
+            )
+        ambiguity_components = tuple(
+            AmbiguityComponent3D.from_mapping(evidence.to_dict())
+            for _, evidence in sorted(
+                self._pending_structural_ambiguity_evidence.items()
+            )
+        )
+        _, detections = detections3d_from_d1_global_tracks(
+            self.latest_d1_tracks,
+            use_opaque_d1_source_tokens=hold_enabled,
+            publisher_node_id=(
+                DEFAULT_STRUCTURAL_AMBIGUITY_PUBLISHER_NODE_ID
+            ),
+            publisher_epoch=(
+                self._d1_publisher_epoch if hold_enabled else None
+            ),
+        )
         if not detections:
             self._record_timing(timing_stage, perf_counter() - started)
             return False
@@ -894,6 +1069,7 @@ class IntegratedScalableModuleStack:
         if (
             skip_unchanged_posterior
             and input_signature == self._latest_d2_input_signature
+            and not ambiguity_components
         ):
             self._d2_finalize_unchanged_posterior_skip_count += 1
             self._record_timing(timing_stage, perf_counter() - started)
@@ -905,7 +1081,11 @@ class IntegratedScalableModuleStack:
         ):
             self._record_timing(timing_stage, perf_counter() - started)
             return False
-        self.latest_d2_result = self.d2.step(detections, d2_timestamp)
+        self.latest_d2_result = self.d2.step(
+            detections,
+            d2_timestamp,
+            ambiguity_components=ambiguity_components,
+        )
         self._latest_d2_input_signature = input_signature
         self.latest_d2_tracks = tuple(self.d2.active_tracks())
         self._update_d2_identity_lineage(self.latest_d2_result, detections)
@@ -915,6 +1095,13 @@ class IntegratedScalableModuleStack:
             else source_d1_posterior_generation
         )
         self._d2_posterior_consumption_count += 1
+        if ambiguity_components:
+            consumed_count = len(ambiguity_components)
+            self._structural_ambiguity_evidence_consumed_count += (
+                consumed_count
+            )
+            self._structural_ambiguity_d2_consumption_count += 1
+            self._pending_structural_ambiguity_evidence.clear()
         publications.append(self._d2_publication(publication_timestamp))
         self._record_timing(timing_stage, perf_counter() - started)
         return True
@@ -3072,6 +3259,9 @@ class IntegratedScalableModuleStack:
             if tracks_materialized
             else int(getattr(result, "current_track_count"))
         )
+        structural_ambiguity_evidence = tuple(
+            getattr(result, "structural_ambiguity_evidence", ())
+        )
         source_observations = tuple(
             getattr(batch, "measurements", getattr(batch, "observations", ()))
         )
@@ -3175,6 +3365,12 @@ class IntegratedScalableModuleStack:
                 "tracks": [_track_summary(track) for track in tracks],
                 "summary": result.summary.to_dict(),
                 "observation_lineage": observation_lineage,
+                "structural_ambiguity_evidence_count": len(
+                    structural_ambiguity_evidence
+                ),
+                "structural_ambiguity_evidence": [
+                    item.to_dict() for item in structural_ambiguity_evidence
+                ],
             },
             copy_payload=False,
         )
@@ -3211,6 +3407,21 @@ class IntegratedScalableModuleStack:
                     ),
                     "source_binding_conflicts": list(
                         association_metadata.get("source_binding_conflicts", ())
+                    ),
+                    "binding_pre_update_rejection_count": int(
+                        association_metadata.get(
+                            "binding_pre_update_rejection_count",
+                            0,
+                        )
+                    ),
+                    "ambiguity_hold": dict(
+                        association_metadata.get("ambiguity_hold", {})
+                    ),
+                    "structural_ambiguity_evidence_consumed_total": int(
+                        self._structural_ambiguity_evidence_consumed_count
+                    ),
+                    "structural_ambiguity_d2_consumption_count": int(
+                        self._structural_ambiguity_d2_consumption_count
                     ),
                     "observation_evidence_governance": {
                         "schema_version": (
