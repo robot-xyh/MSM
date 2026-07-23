@@ -1391,3 +1391,20 @@ clean source commit `0d2da25` 的 seed 1000 只读复算中，严格 IDSW 保持
 6. **上游修复分开验收**：D1 负责跨模态门控和混轨分裂；传感器/main 负责观测全集的
    显式 truth/non-target/unknown 处置；D1 负责定义带覆盖率的部分 RMSE/NEES。D2 只在
    新证据满足唯一、完整、可审计条件后改变 strict availability。
+
+## 三十一、离线标签处置原则（2026-07-23）
+
+1. **处置必须由 producer 明示**：v2 sidecar 只接受 `target`、
+   `known_false_alarm` 和 `unknown`。D2 不从 `vision-...-fa...` 等 observation ID、
+   位置、距离、actor 名称或在线航迹状态推断虚警。
+2. **身份候选只来自 target**：target 必须对应唯一 `truth_target_id`。已知虚警没有
+   目标身份，不能制造 IDSW、不能进入混淆矩阵，也不能生成 D1 truth mapping。
+3. **混合谱系保留可证明目标**：一个航迹帧同时包含唯一 target 和已知虚警时，target
+   候选保持有效，虚警另行计数。该规则不能消除同帧两个不同 target 形成的真实混轨。
+4. **纯虚警不构成身份帧**：只有已知虚警的航迹帧保留为
+   `known_false_alarm_only` 审计记录，从 strict 和 partial lower-bound 分母中排除。
+5. **unknown 继续失败关闭**：unknown、标签处置冲突、重复记录和时间戳不一致均阻断
+   strict。partial 只报告其可证明覆盖和下界，不把未知区间补成零或上界。
+6. **D1 映射单独解释**：target 记录满足唯一标签、时间和 D2 claim 后才可输出；
+   known false alarm 只进入 exclusion 计数。任一 unknown 或完整性错误都会清空全部
+   consumer records，防止部分 sidecar 被误当成完整误差真值。

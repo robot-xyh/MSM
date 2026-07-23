@@ -1761,3 +1761,34 @@ strict IDSW 为 `0/20` 可用；partial mapping/frame/transition 为
 `199/15215` anchor intervals。D1 候选为 `188951/191425`，2474 个未解决 observation
 全部为 `truth_label_missing`，完整 sidecar 为 `0/20`。本实现不改变在线 D2、不使用
 真值控制关联，也不通过最新、多数或最近邻选择一个真值。
+
+## 31. observation truth v2 实现
+
+规范记录采用：
+
+```json
+{"schema_version":"d2.scalable3d_observation_truth.v2","observation_id":"obs-1","measurement_timestamp":1.2,"disposition":"target","truth_target_id":"TGT-001"}
+{"schema_version":"d2.scalable3d_observation_truth.v2","observation_id":"obs-2","measurement_timestamp":1.2,"disposition":"known_false_alarm"}
+{"schema_version":"d2.scalable3d_observation_truth.v2","observation_id":"obs-3","measurement_timestamp":1.2,"disposition":"unknown"}
+```
+
+loader 将 D2 v1 和 `scalable3d-offline-truth-v1` 的 target-only 记录规范化为 v2。
+writer 输出排序稳定的 v2 JSONL；规范哈希覆盖规范化记录，文件入口同时校验 manifest
+保存的原始 SHA-256。诊断器接受已验证的源表示哈希或规范化哈希，并继续校验 evidence、
+evaluation 和在线 D1/D2 来源。
+
+对每个唯一 observation lineage，评估器先按 observation ID 找标签，再按
+`measurement_timestamp` 容差验证。target 进入候选集合；known false alarm 只增加处置
+计数；unknown 加入 `truth_label_unknown` 阻断。目标候选超过一个仍判为真实混轨。
+候选唯一且没有阻断时映射可用，即使谱系中同时存在已知虚警。没有目标、只有已知虚警时
+映射状态为 `excluded`，原因是 `known_false_alarm_only`。
+
+strict evaluator 跳过纯虚警映射，但不会跳过 unknown、冲突或多目标混轨。partial
+diagnostics 同样不把纯虚警放入 scored mapping 分母；unknown 作为 unavailable mapping
+保留原因。D1 sidecar builder 只为 target 生成
+`d1.consistency.d2_lineage_mapping_record.v1`，已知虚警进入 exclusion 字段。只要存在
+unknown、时间错误、重复冲突或 target claim 不完整，consumer records 全部为空。
+
+blocker diagnostics v2 增加 sidecar disposition 总数、纯虚警映射数、目标与虚警混合
+映射数和逐航迹处置审计。在线 GNN/Hungarian、门限、生命周期和 `global_track_id` 没有
+调用这些 API。

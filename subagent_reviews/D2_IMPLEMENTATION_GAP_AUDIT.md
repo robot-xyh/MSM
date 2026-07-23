@@ -1097,3 +1097,29 @@ P50/P95/P99、多 seed 长短窗口、main-owned lineage/publication 分离，�
 本轮完整 D2 为 `238 passed, 1 warning in 32.88s`；warning 为既有 Matplotlib
 `Axes3D` 环境提示。`AIRSIM_INTEGRATION_PLAN.md` 已检查，本次未改变 AirSim 输入、话题
 或运行接口，因此不更新。
+
+## 2026-07-23 observation truth v2 GAP 收口
+
+### D2-owned 已关闭
+
+- `d2.scalable3d_observation_truth.v2` 已定义 target、known false alarm 和 unknown
+  三种显式处置；旧 D2/producer v1 target-only 输入兼容。
+- load/write/hash、文件来源校验、严格 evaluator、partial diagnostics、blocker
+  diagnostics 和 D1 mapping audit 已接入。禁止名称、距离、actor 或在线状态推断。
+- 纯虚警不进入身份分母；target 与虚警混合保留 target 并审计；unknown、冲突、重复和
+  时间戳不一致继续 fail closed。该改动未触碰在线关联路径。
+- 新增 11 项专项测试；完整 D2 `249 passed, 1 warning in 32.08s`。冻结
+  `5263e2b` seed 1000 的旧 v1 producer evaluation 重放一致。
+
+### 仍开放的 P1
+
+- main/传感器 producer 尚未实际为 `_append_false_alarms` 等虚警生成 v2
+  `known_false_alarm` 记录，也未提供 observation 全集完整性摘要。
+- 旧 20-seed strict 仍为 `0/20` 可用。v2 只能消除真实虚警造成的缺标签，不能跳过
+  118 个多目标混轨帧；D1 跨模态门控和航迹分裂仍开放。
+- main 生成新 v2 制品后，需重跑 seed 1000--1019，校验 missing/unknown/conflict、
+  disposition audit、D1 mapping coverage 和 strict availability。
+- 固定硬件时延、真实 AirSim 时钟、遮挡/杂波/OOSM 和极端候选图 P1 保持不变。
+
+本次接口变化已同步 `AIRSIM_INTEGRATION_PLAN.md`。D1 partial RMSE/NEES 如何排除已知
+虚警仍由 D1/main 定义，D2 只发布 target mapping 与 exclusion audit。

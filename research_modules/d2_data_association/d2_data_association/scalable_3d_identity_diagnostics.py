@@ -20,30 +20,40 @@ from typing import Any
 
 from .scalable_3d_identity import (
     GlobalTrackLineageEvidence,
+    OBSERVATION_TRUTH_DISPOSITION_KNOWN_FALSE_ALARM,
+    OBSERVATION_TRUTH_DISPOSITION_TARGET,
+    OBSERVATION_TRUTH_DISPOSITION_UNKNOWN,
     Scalable3DIdentityEvaluation,
     Scalable3DIdentityEvidenceBundle,
     Scalable3DObservationTruthLabel,
     hash_scalable_3d_identity_evidence,
+    hash_scalable_3d_observation_truth_label_sources,
     hash_scalable_3d_observation_truth_labels,
 )
 
 
 SCALABLE_3D_IDENTITY_BLOCKER_DIAGNOSTICS_SCHEMA_VERSION = (
-    "d2.scalable3d_identity_blocker_diagnostics.v1"
+    "d2.scalable3d_identity_blocker_diagnostics.v2"
 )
 SCALABLE_3D_D1_LINEAGE_MAPPING_AUDIT_SCHEMA_VERSION = (
-    "d2.scalable3d_d1_lineage_mapping_audit.v1"
+    "d2.scalable3d_d1_lineage_mapping_audit.v2"
 )
 D1_LINEAGE_MAPPING_RECORD_SCHEMA_VERSION = (
     "d1.consistency.d2_lineage_mapping_record.v1"
 )
 _OBSERVED_ASSOCIATION_STATES = frozenset({"created", "matched"})
-_NON_BLOCKING_AUDIT_REASONS = frozenset({"track_not_assigned_in_frame"})
+_NON_BLOCKING_AUDIT_REASONS = frozenset(
+    {
+        "known_false_alarm_only",
+        "track_not_assigned_in_frame",
+    }
+)
 _D1_REASON_PRIORITY = (
     "d1_estimate_observation_duplicate",
     "truth_label_conflict",
     "truth_label_duplicate",
     "truth_label_timestamp_mismatch",
+    "truth_label_unknown",
     "truth_label_missing",
     "d2_lineage_claim_conflict",
     "d2_lineage_claim_timestamp_mismatch",
@@ -65,6 +75,10 @@ class Scalable3DIdentityBlockerDiagnostics:
     blocking_reason_counts: Mapping[str, int]
     root_cause_counts: Mapping[str, int]
     blocker_intervals: tuple[Mapping[str, Any], ...]
+    truth_label_disposition_counts: Mapping[str, int]
+    known_false_alarm_only_mapping_count: int
+    target_with_known_false_alarm_mapping_count: int
+    lineage_disposition_audit: tuple[Mapping[str, Any], ...]
     d1_lineage_mapping_audit: Mapping[str, Any] | None = None
     schema_version: str = (
         SCALABLE_3D_IDENTITY_BLOCKER_DIAGNOSTICS_SCHEMA_VERSION
@@ -103,6 +117,18 @@ class Scalable3DIdentityBlockerDiagnostics:
             self.root_cause_counts,
             "root_cause_counts",
         )
+        disposition_counts = _nonnegative_count_mapping(
+            self.truth_label_disposition_counts,
+            "truth_label_disposition_counts",
+        )
+        known_false_alarm_only_mapping_count = _nonnegative_int(
+            self.known_false_alarm_only_mapping_count,
+            "known_false_alarm_only_mapping_count",
+        )
+        target_with_known_false_alarm_mapping_count = _nonnegative_int(
+            self.target_with_known_false_alarm_mapping_count,
+            "target_with_known_false_alarm_mapping_count",
+        )
         strict_available = bool(self.strict_identity_metrics_available)
         reason = (
             None
@@ -127,6 +153,26 @@ class Scalable3DIdentityBlockerDiagnostics:
             reason_counts,
         )
         object.__setattr__(self, "root_cause_counts", root_counts)
+        object.__setattr__(
+            self,
+            "truth_label_disposition_counts",
+            disposition_counts,
+        )
+        object.__setattr__(
+            self,
+            "known_false_alarm_only_mapping_count",
+            known_false_alarm_only_mapping_count,
+        )
+        object.__setattr__(
+            self,
+            "target_with_known_false_alarm_mapping_count",
+            target_with_known_false_alarm_mapping_count,
+        )
+        object.__setattr__(
+            self,
+            "lineage_disposition_audit",
+            tuple(dict(item) for item in self.lineage_disposition_audit),
+        )
         object.__setattr__(
             self,
             "blocker_intervals",
@@ -180,6 +226,18 @@ class Scalable3DIdentityBlockerDiagnostics:
                 sorted(self.blocking_reason_counts.items())
             ),
             "root_cause_counts": dict(sorted(self.root_cause_counts.items())),
+            "truth_label_disposition_counts": dict(
+                sorted(self.truth_label_disposition_counts.items())
+            ),
+            "known_false_alarm_only_mapping_count": (
+                self.known_false_alarm_only_mapping_count
+            ),
+            "target_with_known_false_alarm_mapping_count": (
+                self.target_with_known_false_alarm_mapping_count
+            ),
+            "lineage_disposition_audit": [
+                dict(item) for item in self.lineage_disposition_audit
+            ],
             "blocker_interval_count": len(self.blocker_intervals),
             "blocker_intervals": [
                 dict(item) for item in self.blocker_intervals
@@ -234,9 +292,64 @@ def build_scalable_3d_identity_blocker_diagnostics(
     root_cause_counts: Counter[str] = Counter()
     scored_mapping_count = 0
     blocking_mapping_count = 0
+    known_false_alarm_only_mapping_count = 0
+    target_with_known_false_alarm_mapping_count = 0
+    lineage_disposition_audit: list[dict[str, Any]] = []
     for frame in evaluation.frames:
         for mapping in frame.mappings:
             if mapping.association_state not in _OBSERVED_ASSOCIATION_STATES:
+                continue
+            observations = _observation_evidence(
+                evidence_by_key.get(
+                    (frame.frame_index, mapping.global_track_id),
+                    (),
+                ),
+                label_index,
+                tolerance=tolerance,
+            )
+            disposition_counts: Counter[str] = Counter(
+                disposition
+                for observation in observations
+                for disposition in observation[
+                    "truth_label_dispositions"
+                ]
+            )
+            has_target = (
+                disposition_counts[OBSERVATION_TRUTH_DISPOSITION_TARGET] > 0
+            )
+            has_known_false_alarm = (
+                disposition_counts[
+                    OBSERVATION_TRUTH_DISPOSITION_KNOWN_FALSE_ALARM
+                ]
+                > 0
+            )
+            has_unknown = (
+                disposition_counts[OBSERVATION_TRUTH_DISPOSITION_UNKNOWN] > 0
+            )
+            if has_known_false_alarm or has_unknown:
+                lineage_disposition_audit.append(
+                    {
+                        "frame_index": frame.frame_index,
+                        "frame_timestamp": frame.frame_timestamp,
+                        "global_track_id": mapping.global_track_id,
+                        "mapping_status": mapping.status,
+                        "mapping_reason": mapping.reason,
+                        "candidate_truth_target_ids": list(
+                            mapping.candidate_truth_target_ids
+                        ),
+                        "disposition_counts": dict(
+                            sorted(disposition_counts.items())
+                        ),
+                        "source_observations": observations,
+                    }
+                )
+            if has_target and has_known_false_alarm:
+                target_with_known_false_alarm_mapping_count += 1
+            if (
+                mapping.status == "excluded"
+                and mapping.reason == "known_false_alarm_only"
+            ):
+                known_false_alarm_only_mapping_count += 1
                 continue
             scored_mapping_count += 1
             reasons = tuple(
@@ -252,22 +365,17 @@ def build_scalable_3d_identity_blocker_diagnostics(
                 root_cause_counts["persisted_multi_truth_track_frame"] += 1
             if "truth_label_missing" in reasons:
                 root_cause_counts["truth_sidecar_label_absent"] += 1
+            if "truth_label_unknown" in reasons:
+                root_cause_counts["truth_sidecar_label_unknown"] += 1
             if not (
                 set(reasons)
                 & {
                     "multiple_truth_targets_for_global_track",
                     "truth_label_missing",
+                    "truth_label_unknown",
                 }
             ):
                 root_cause_counts["other_identity_integrity_blocker"] += 1
-            observations = _observation_evidence(
-                evidence_by_key.get(
-                    (frame.frame_index, mapping.global_track_id),
-                    (),
-                ),
-                label_index,
-                tolerance=tolerance,
-            )
             for reason in reasons:
                 events.append(
                     {
@@ -326,6 +434,16 @@ def build_scalable_3d_identity_blocker_diagnostics(
         blocking_reason_counts=reason_counts,
         root_cause_counts=root_cause_counts,
         blocker_intervals=intervals,
+        truth_label_disposition_counts=Counter(
+            label.disposition for label in labels
+        ),
+        known_false_alarm_only_mapping_count=(
+            known_false_alarm_only_mapping_count
+        ),
+        target_with_known_false_alarm_mapping_count=(
+            target_with_known_false_alarm_mapping_count
+        ),
+        lineage_disposition_audit=tuple(lineage_disposition_audit),
         d1_lineage_mapping_audit=d1_audit,
     )
 
@@ -359,10 +477,28 @@ def _validate_source_contract(
         hash_scalable_3d_identity_evidence(evidence)
     ):
         raise ValueError("identity evaluation evidence bundle hash mismatch")
-    if evidence.source_hashes["observation_truth_labels"] != (
-        hash_scalable_3d_observation_truth_labels(labels)
-    ):
+    normalized_truth_hash = hash_scalable_3d_observation_truth_labels(labels)
+    source_truth_hash = hash_scalable_3d_observation_truth_label_sources(
+        labels
+    )
+    persisted_truth_hash = evidence.source_hashes[
+        "observation_truth_labels"
+    ]
+    if persisted_truth_hash not in {
+        normalized_truth_hash,
+        source_truth_hash,
+    }:
         raise ValueError("identity diagnostics truth sidecar hash mismatch")
+    audited_normalized_hash = evaluation.audit.get(
+        "normalized_observation_truth_labels_sha256"
+    )
+    if (
+        audited_normalized_hash is not None
+        and audited_normalized_hash != normalized_truth_hash
+    ):
+        raise ValueError(
+            "identity diagnostics normalized truth sidecar hash mismatch"
+        )
     if not bool(
         evaluation.audit.get("online_truth_isolation_verified", False)
     ):
@@ -408,7 +544,11 @@ def _observation_evidence(
                 label_status = "timestamp_mismatch"
             elif len(
                 {
-                    (item.truth_target_id, item.measurement_timestamp)
+                    (
+                        item.disposition,
+                        item.truth_target_id,
+                        item.measurement_timestamp,
+                    )
                     for item in labels
                 }
             ) > 1:
@@ -424,8 +564,19 @@ def _observation_evidence(
                         list(ref.source_lineage)
                     ),
                     "truth_label_status": label_status,
+                    "truth_label_dispositions": sorted(
+                        {item.disposition for item in matching}
+                    ),
                     "truth_target_ids": sorted(
-                        {item.truth_target_id for item in matching}
+                        {
+                            item.truth_target_id
+                            for item in matching
+                            if (
+                                item.disposition
+                                == OBSERVATION_TRUTH_DISPOSITION_TARGET
+                                and item.truth_target_id is not None
+                            )
+                        }
                     ),
                 }
             )
@@ -592,6 +743,8 @@ def _build_d1_lineage_mapping_audit(
 
     reason_to_observations: dict[str, list[str]] = defaultdict(list)
     candidate_records: list[dict[str, Any]] = []
+    target_observation_ids: list[str] = []
+    known_false_alarm_observation_ids: list[str] = []
     for observation_id, observation_records in sorted(
         records_by_observation.items()
     ):
@@ -631,38 +784,74 @@ def _build_d1_lineage_mapping_audit(
                 reasons.add("truth_label_timestamp_mismatch")
             if len(
                 {
-                    (label.truth_target_id, label.measurement_timestamp)
+                    (
+                        label.disposition,
+                        label.truth_target_id,
+                        label.measurement_timestamp,
+                    )
                     for label in observation_labels
                 }
             ) > 1:
                 reasons.add("truth_label_conflict")
 
-        all_claims = lineage_claims_by_observation.get(
-            observation_id,
-            set(),
+        resolved_label = (
+            matching_labels[0]
+            if len(observation_labels) == 1
+            and len(matching_labels) == 1
+            else None
         )
-        matching_claims = {
-            claim
-            for claim in all_claims
-            if abs(claim[1] - measurement_timestamp) <= tolerance
-        }
-        if not all_claims:
-            reasons.add("d2_lineage_claim_missing")
-        elif not matching_claims:
-            reasons.add("d2_lineage_claim_timestamp_mismatch")
-        elif len(
-            {claim[0] for claim in matching_claims}
-        ) != 1:
-            reasons.add("d2_lineage_claim_conflict")
+        if (
+            resolved_label is not None
+            and resolved_label.disposition
+            == OBSERVATION_TRUTH_DISPOSITION_UNKNOWN
+        ):
+            reasons.add("truth_label_unknown")
+
+        matching_claims: set[tuple[str, float]] = set()
+        if (
+            resolved_label is not None
+            and resolved_label.disposition
+            == OBSERVATION_TRUTH_DISPOSITION_TARGET
+        ):
+            target_observation_ids.append(observation_id)
+            all_claims = lineage_claims_by_observation.get(
+                observation_id,
+                set(),
+            )
+            matching_claims = {
+                claim
+                for claim in all_claims
+                if abs(claim[1] - measurement_timestamp) <= tolerance
+            }
+            if not all_claims:
+                reasons.add("d2_lineage_claim_missing")
+            elif not matching_claims:
+                reasons.add("d2_lineage_claim_timestamp_mismatch")
+            elif len(
+                {claim[0] for claim in matching_claims}
+            ) != 1:
+                reasons.add("d2_lineage_claim_conflict")
+        elif (
+            resolved_label is not None
+            and resolved_label.disposition
+            == OBSERVATION_TRUTH_DISPOSITION_KNOWN_FALSE_ALARM
+        ):
+            known_false_alarm_observation_ids.append(observation_id)
 
         if reasons:
             for reason in reasons:
                 reason_to_observations[reason].append(observation_id)
             continue
+        if (
+            resolved_label is not None
+            and resolved_label.disposition
+            == OBSERVATION_TRUTH_DISPOSITION_KNOWN_FALSE_ALARM
+        ):
+            continue
         global_track_id = next(iter({claim[0] for claim in matching_claims}))
-        truth_id = next(
-            iter({label.truth_target_id for label in matching_labels})
-        )
+        if resolved_label is None or resolved_label.truth_target_id is None:
+            raise ValueError("resolved D1 target label lacks truth_target_id")
+        truth_id = resolved_label.truth_target_id
         candidate_records.append(
             {
                 "schema_version": D1_LINEAGE_MAPPING_RECORD_SCHEMA_VERSION,
@@ -681,7 +870,12 @@ def _build_d1_lineage_mapping_audit(
     consumable = (
         not reason_counts
         and bool(candidate_records)
-        and len(candidate_records) == unique_estimate_count
+        and len(candidate_records) == len(target_observation_ids)
+        and (
+            len(target_observation_ids)
+            + len(known_false_alarm_observation_ids)
+            == unique_estimate_count
+        )
     )
     reason = None
     if not consumable:
@@ -708,6 +902,13 @@ def _build_d1_lineage_mapping_audit(
         "estimate_record_count": len(estimate_records),
         "unique_estimate_observation_count": unique_estimate_count,
         "available_candidate_mapping_count": len(candidate_records),
+        "target_observation_count": len(target_observation_ids),
+        "known_false_alarm_exclusion_count": len(
+            known_false_alarm_observation_ids
+        ),
+        "known_false_alarm_observation_ids": sorted(
+            known_false_alarm_observation_ids
+        ),
         "unresolved_observation_count": len(
             set().union(
                 *(

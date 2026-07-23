@@ -949,3 +949,23 @@ JSON 为 `docs/D2_SCALABLE_3D_IDENTITY_BLOCKER_AUDIT_CN.md` 与
 `docs/d2_scalable_3d_identity_blocker_audit_20260723.json`；本机逐 episode 明细保存在
 模块输出目录。完整 D2 回归为
 `238 passed, 1 warning in 32.88s`，warning 为既有 Matplotlib `Axes3D` 环境提示。
+
+## 30. observation truth v2 合同验证（2026-07-23）
+
+本轮没有启动 AirSim，也没有改写旧 20-seed 制品。验证对象是离线 sidecar 合同和已有
+冻结 producer 的兼容性。
+
+新增 11 项测试覆盖 D2 v1 target-only 规范化、v2 三种处置 round-trip、target 与已知
+虚警混合、纯虚警排除、unknown、处置冲突、时间戳不一致、sidecar 文件哈希篡改、
+内存评估哈希篡改，以及 D1 target-only mapping 和 false-alarm exclusion。完整 D2
+回归为 `249 passed, 1 warning in 32.08s`；warning 是既有 Matplotlib `Axes3D` 环境
+提示。
+
+另使用 clean `5263e2b` nominal 200v200、10 秒、seed 1000 的旧 v1 sidecar 运行真实
+producer/evaluator 重放。来源和持久化 evaluation 一致，strict 仍 unavailable；该
+结果只证明 v1 兼容，不表示虚警缺口已在 producer 侧修复。
+
+当前已验证的行为是：已知虚警不生成目标身份；target 与虚警混合时保留唯一 target；
+纯虚警不进入 strict 或 partial scored denominator；unknown、冲突和时间错误阻断。
+尚待 main 生成包含显式 `known_false_alarm` 的 20-seed v2 sidecar，再确认原
+`truth_label_missing` 是否按预期消失。真实多目标混轨必须继续单独保留。

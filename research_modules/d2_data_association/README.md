@@ -857,3 +857,29 @@ D1 一致性证据有 191425 条可用估计，其中 188951 条可通过精确�
 `238 passed, 1 warning in 32.88s`，warning 为既有 Matplotlib `Axes3D` 环境提示。
 剩余修复属于上游边界：D1 跨模态门控/航迹分裂、离线标签对每条观测的显式处置，以及
 main/D1 对带覆盖率部分误差指标的单独合同。D2 不用多数投票或最近邻伪造严格身份值。
+
+## 2026-07-23 observation truth v2 处置合同
+
+离线 sidecar 当前规范版本为 `d2.scalable3d_observation_truth.v2`。每条记录必须携带
+`observation_id`、`measurement_timestamp` 和 `disposition`：
+
+- `target` 必须且只能携带一个 `truth_target_id`；
+- `known_false_alarm` 不携带 `truth_target_id`；
+- `unknown` 不携带 `truth_target_id`，并继续阻断严格身份指标。
+
+旧 `d2.scalable3d_observation_truth.v1` 和 `scalable3d-offline-truth-v1` 仍可读取，
+其 target-only 记录按 `target` 规范化；writer 统一写出 v2。producer 必须显式提供
+处置，D2 不读取 observation ID 中的 `fa` 文本，也不使用位置、距离、actor 名称或在线
+状态推断。
+
+目标观测与已知虚警出现在同一谱系时，唯一目标候选继续有效，虚警数量进入离线审计。
+只有已知虚警的航迹帧标为 `excluded/known_false_alarm_only`，不进入严格 IDSW 或
+partial lower-bound 分母。`unknown`、标签冲突、重复标签和时间戳不一致仍 fail closed。
+D1 lineage mapping 只输出 target 记录；已知虚警作为显式排除项计数，不生成
+`truth_id`，unknown 使全部 consumer records 保持空。
+
+`Scalable3DObservationTruthLabel.target()`、`known_false_alarm()` 和 `unknown()` 是
+main 可调用的构造 API。2026-07-23 新增 11 项专项测试，完整 D2 回归为
+`249 passed, 1 warning in 32.08s`。冻结 `5263e2b` seed 1000 的 v1 producer 制品也完成
+重放一致性检查。当前尚未取得 main 写出 v2 虚警处置后的 20-seed 新制品，因此旧报告中
+strict IDSW `0/20` 可用的结论保持不变。

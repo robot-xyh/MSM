@@ -1077,9 +1077,34 @@ clean `5263e2b` nominal 200v200、10 秒、seed 1000--1019 的 20/20 来源和�
 
 1. D1 使用本次多真值区间校准雷达/视觉跨模态门控，必要时分裂航迹，避免不同目标的
    观测进入同一融合后验。
-2. main/传感器 producer 为观测全集写显式 `truth_target`、`known_false_alarm` 或
-   `label_unknown` 处置和完整性摘要。D2 继续禁止从名称、位置或距离补标签。
+2. main/传感器 producer 为观测全集写显式 `target`、`known_false_alarm` 或
+   `unknown` 处置和完整性摘要。D2 继续禁止从名称、位置或距离补标签。
 3. D1 若要在已知虚警存在时报告 RMSE/NEES，应另设带 coverage 的部分误差合同；该合同
    不能改变 D2 strict IDSW availability。
 4. D2 后续在新 producer 制品上重跑同一 CLI。验收要求 strict 指标只有在唯一、完整、
    全时序映射成立时才可用，同时保留来源哈希和在线真值使用为 0。
+
+## 31. observation truth v2 标签处置
+
+### 31.1 已实施
+
+1. 将规范 sidecar 升级为 `d2.scalable3d_observation_truth.v2`，处置集合固定为
+   `target`、`known_false_alarm`、`unknown`。v1 D2 和 producer target-only 输入继续
+   兼容读取，write/hash 使用规范化 v2。
+2. `target` 强制唯一 `truth_target_id`；另外两类禁止携带目标 ID。冲突、重复、时间戳
+   不一致和 unknown 均保持 fail-closed。没有从 observation 名称或几何信息推断处置。
+3. 目标与已知虚警混合谱系保留唯一目标候选并进入 disposition audit。纯已知虚警航迹帧
+   作为非身份 `excluded` 记录，不进入 strict 或 partial lower-bound 分母。
+4. D1 mapping 只发布 target 记录。已知虚警进入 exclusion 计数；unknown 或其他不完整
+   证据使全部 mapping records 为空。blocker diagnostics 和 D1 audit 版本升级为 v2。
+
+### 31.2 验证与后续
+
+2026-07-23 新增 11 项处置合同测试，完整 D2 为
+`249 passed, 1 warning in 32.08s`。冻结 `5263e2b` nominal 200v200、seed 1000 的旧 v1
+producer evaluation 重放一致，证明 target-only 输入兼容。
+
+D2-owned schema、load/write/hash、评估和诊断实现已闭合。main/传感器 producer 仍需为
+观测全集实际写出 v2，尤其是 `_append_false_alarms` 产生的视觉虚警；随后重跑
+seed 1000--1019。D1 的真实多目标混轨不因虚警处置被跳过，strict IDSW 只有在混轨、
+unknown、冲突、缺标签和时间问题全部消失后才可用。

@@ -1130,3 +1130,25 @@ partial mapping/frame/transition coverage 为
 跨模态门控/航迹分裂，由 main/传感器 producer 增加完整 observation disposition，由
 D1 定义部分 RMSE/NEES coverage。D2 在新制品上复跑同一合同，不修改在线身份权威。
 完整 D2 为 `238 passed, 1 warning in 32.88s`。
+
+## 41. 2026-07-23 observation truth v2 评审
+
+### 41.1 接受项
+
+接受 `d2.scalable3d_observation_truth.v2` 及其三类处置。target 必须唯一绑定
+`truth_target_id`；known false alarm 和 unknown 禁止携带目标 ID。旧 v1 target-only
+记录兼容读取并由 writer 规范化为 v2。main 可使用三个类工厂或直接构造 v2 JSONL。
+
+接受以下评估语义：target 与已知虚警混合时保留唯一 target；纯虚警航迹帧作为非身份
+审计排除；unknown、处置冲突、重复和时间戳不一致阻断 strict。partial lower bound 不
+吸收纯虚警，也不把 unknown 补成零。D1 mapping 只发布 target，已知虚警只记录 exclusion。
+
+### 41.2 证据与边界
+
+新增 11 项专项测试，完整 D2 为 `249 passed, 1 warning in 32.08s`。冻结 clean
+`5263e2b` seed 1000 的旧 v1 producer evaluation 重放一致。在线 GNN/Hungarian、
+门限、生命周期和中心 `global_track_id` 无变化。
+
+D2 合同实现可接受，但系统 GAP 尚未关闭。main producer 仍需显式写出视觉虚警处置并
+重跑 20 seeds。v2 不改变已有多 target 混轨证据；strict IDSW 在上游混轨、unknown、
+冲突和缺失全部消失前继续 unavailable。

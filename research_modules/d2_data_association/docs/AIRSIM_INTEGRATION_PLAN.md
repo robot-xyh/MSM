@@ -388,3 +388,24 @@ SHA-256 写回 manifest，再由 D6 校验。
 2026-07-22 的 seed 1000 只读复算用于接口检查，没有启动 AirSim，也没有生成新批次。
 真实 AirSim 后续应按场景、seed、遮挡、杂波、漏检和 OOSM 分组统计 coverage 与
 blocker；在 D6 完成接线前，新字段只属于 D2 producer 证据。
+
+## Observation Truth v2 接线
+
+main 在 episode 结束后为每条在线 observation 写一条独立离线记录。目标记录携带
+`disposition="target"` 和唯一 `truth_target_id`；由场景 producer 明确生成的虚警写
+`disposition="known_false_alarm"`，不写目标 ID；无法确认的观测写
+`disposition="unknown"`。三类记录都使用
+`d2.scalable3d_observation_truth.v2`、原 observation ID 和原
+`measurement_timestamp`。
+
+AirSim actor/detection ID 只能在离线 producer 内用于形成 target 标签，不能进入在线
+D1/D2 DTO。虚警处置必须由生成虚警的 producer 分支显式写出，禁止按 observation 名称
+中的 `fa`、目标距离或在线关联结果补写。main 应使用
+`write_scalable_3d_observation_truth_labels()` 生成规范 JSONL，把返回的 SHA-256 写入
+identity evidence manifest；也可调用 `Scalable3DObservationTruthLabel.target()`、
+`known_false_alarm()` 和 `unknown()` 构造记录。
+
+D6 展示时分开 strict、partial 和 disposition audit。纯虚警映射不进入身份分母；
+unknown 仍使 strict unavailable。main 更新 producer 后应先重跑 seed 1000，检查旧
+缺标签样例转为 `known_false_alarm_only`，再运行 1000--1019；真实多 target 混轨计数
+不得因虚警合同上线而被删除。

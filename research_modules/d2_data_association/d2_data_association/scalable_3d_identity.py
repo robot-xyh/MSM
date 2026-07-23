@@ -23,8 +23,11 @@ from typing import Any
 SCALABLE_3D_IDENTITY_EVIDENCE_SCHEMA_VERSION = (
     "d2.scalable3d_identity_evidence.v1"
 )
-SCALABLE_3D_OBSERVATION_TRUTH_SCHEMA_VERSION = (
+SCALABLE_3D_OBSERVATION_TRUTH_SCHEMA_VERSION_V1 = (
     "d2.scalable3d_observation_truth.v1"
+)
+SCALABLE_3D_OBSERVATION_TRUTH_SCHEMA_VERSION = (
+    "d2.scalable3d_observation_truth.v2"
 )
 SCALABLE_3D_EXTERNAL_TRUTH_SCHEMA_VERSION = "scalable3d-offline-truth-v1"
 SCALABLE_3D_IDENTITY_EVALUATION_SCHEMA_VERSION = (
@@ -41,6 +44,16 @@ SCALABLE_3D_PARTIAL_IDENTITY_DIAGNOSTICS_SCHEMA_VERSION = (
 )
 SCALABLE_3D_IDENTITY_POLICY_VERSION = "d2.scalable3d_identity_policy.v1"
 SCALABLE_3D_IDENTITY_HASH_ALGORITHM = "sha256"
+OBSERVATION_TRUTH_DISPOSITION_TARGET = "target"
+OBSERVATION_TRUTH_DISPOSITION_KNOWN_FALSE_ALARM = "known_false_alarm"
+OBSERVATION_TRUTH_DISPOSITION_UNKNOWN = "unknown"
+OBSERVATION_TRUTH_DISPOSITIONS = frozenset(
+    {
+        OBSERVATION_TRUTH_DISPOSITION_TARGET,
+        OBSERVATION_TRUTH_DISPOSITION_KNOWN_FALSE_ALARM,
+        OBSERVATION_TRUTH_DISPOSITION_UNKNOWN,
+    }
+)
 
 _SHA256_PATTERN = re.compile(r"^sha256:[0-9a-f]{64}$")
 _ACTIVE_LIFECYCLE_STATES = frozenset(
@@ -396,13 +409,15 @@ class Scalable3DIdentityEvidenceBundle:
 
 @dataclass(frozen=True, slots=True)
 class Scalable3DObservationTruthLabel:
-    """Evaluator-only observation-to-truth label, never an online DTO."""
+    """Evaluator-only disposition for one observation, never an online DTO."""
 
     observation_id: str
-    truth_target_id: str
+    truth_target_id: str | None
     measurement_timestamp: float
+    disposition: str = OBSERVATION_TRUTH_DISPOSITION_TARGET
     schema_version: str = SCALABLE_3D_OBSERVATION_TRUTH_SCHEMA_VERSION
     source_schema_version: str = SCALABLE_3D_OBSERVATION_TRUTH_SCHEMA_VERSION
+    source_truth_identity_field: str | None = None
 
     def __post_init__(self) -> None:
         if self.schema_version != SCALABLE_3D_OBSERVATION_TRUTH_SCHEMA_VERSION:
@@ -411,26 +426,67 @@ class Scalable3DObservationTruthLabel:
             )
         if self.source_schema_version not in {
             SCALABLE_3D_OBSERVATION_TRUTH_SCHEMA_VERSION,
+            SCALABLE_3D_OBSERVATION_TRUTH_SCHEMA_VERSION_V1,
             SCALABLE_3D_EXTERNAL_TRUTH_SCHEMA_VERSION,
         }:
             raise ValueError(
                 f"unsupported observation truth schema: {self.source_schema_version!r}"
+            )
+        disposition = str(self.disposition).strip().lower()
+        if disposition not in OBSERVATION_TRUTH_DISPOSITIONS:
+            raise ValueError(
+                f"unsupported observation truth disposition: {self.disposition!r}"
+            )
+        if (
+            self.source_schema_version
+            != SCALABLE_3D_OBSERVATION_TRUTH_SCHEMA_VERSION
+            and disposition != OBSERVATION_TRUTH_DISPOSITION_TARGET
+        ):
+            raise ValueError(
+                "legacy observation truth schemas support target labels only"
             )
         object.__setattr__(
             self,
             "observation_id",
             _identifier(self.observation_id, "observation_id"),
         )
-        object.__setattr__(
-            self,
-            "truth_target_id",
-            _identifier(self.truth_target_id, "truth_target_id"),
-        )
+        truth_target_id: str | None
+        if disposition == OBSERVATION_TRUTH_DISPOSITION_TARGET:
+            if self.truth_target_id is None:
+                raise ValueError(
+                    "target observation truth labels require truth_target_id"
+                )
+            truth_target_id = _identifier(
+                self.truth_target_id,
+                "truth_target_id",
+            )
+        else:
+            if self.truth_target_id is not None:
+                raise ValueError(
+                    f"{disposition} observation truth labels must not carry "
+                    "truth_target_id"
+                )
+            truth_target_id = None
         object.__setattr__(
             self,
             "measurement_timestamp",
             _timestamp(self.measurement_timestamp, "truth measurement_timestamp"),
         )
+        source_identity_field = self.source_truth_identity_field
+        if self.source_schema_version == SCALABLE_3D_EXTERNAL_TRUTH_SCHEMA_VERSION:
+            if source_identity_field not in {
+                "truth_target_id",
+                "truth_entity_id",
+            }:
+                raise ValueError(
+                    "external v1 truth labels require their source identity field"
+                )
+        elif source_identity_field is not None:
+            raise ValueError(
+                "source_truth_identity_field is only valid for external v1 labels"
+            )
+        object.__setattr__(self, "truth_target_id", truth_target_id)
+        object.__setattr__(self, "disposition", disposition)
 
     @classmethod
     def from_mapping(
@@ -438,6 +494,7 @@ class Scalable3DObservationTruthLabel:
         payload: Mapping[str, Any],
     ) -> "Scalable3DObservationTruthLabel":
         version = str(payload.get("schema_version", ""))
+        source_truth_identity_field: str | None = None
         if version == SCALABLE_3D_EXTERNAL_TRUTH_SCHEMA_VERSION:
             _reject_unknown_keys(
                 payload,
@@ -459,8 +516,10 @@ class Scalable3DObservationTruthLabel:
                 raise ValueError(
                     "external truth label requires exactly one truth identity field"
                 )
-            truth_target_id = payload[truth_keys[0]]
-        elif version == SCALABLE_3D_OBSERVATION_TRUTH_SCHEMA_VERSION:
+            source_truth_identity_field = truth_keys[0]
+            truth_target_id = payload[source_truth_identity_field]
+            disposition = OBSERVATION_TRUTH_DISPOSITION_TARGET
+        elif version == SCALABLE_3D_OBSERVATION_TRUTH_SCHEMA_VERSION_V1:
             _reject_unknown_keys(
                 payload,
                 {
@@ -469,25 +528,126 @@ class Scalable3DObservationTruthLabel:
                     "measurement_timestamp",
                     "truth_target_id",
                 },
-                "D2 observation truth label",
+                "D2 v1 observation truth label",
             )
             truth_target_id = payload["truth_target_id"]
+            disposition = OBSERVATION_TRUTH_DISPOSITION_TARGET
+        elif version == SCALABLE_3D_OBSERVATION_TRUTH_SCHEMA_VERSION:
+            _reject_unknown_keys(
+                payload,
+                {
+                    "schema_version",
+                    "observation_id",
+                    "measurement_timestamp",
+                    "disposition",
+                    "truth_target_id",
+                },
+                "D2 v2 observation truth label",
+            )
+            if "disposition" not in payload:
+                raise ValueError(
+                    "D2 v2 observation truth label requires disposition"
+                )
+            disposition = str(payload["disposition"]).strip().lower()
+            if disposition == OBSERVATION_TRUTH_DISPOSITION_TARGET:
+                if "truth_target_id" not in payload:
+                    raise ValueError(
+                        "target observation truth label requires truth_target_id"
+                    )
+                truth_target_id = payload["truth_target_id"]
+            else:
+                if "truth_target_id" in payload:
+                    raise ValueError(
+                        f"{disposition} observation truth label must not carry "
+                        "truth_target_id"
+                    )
+                truth_target_id = None
         else:
             raise ValueError(f"unsupported observation truth schema: {version!r}")
         return cls(
             observation_id=payload["observation_id"],
             truth_target_id=truth_target_id,
             measurement_timestamp=payload["measurement_timestamp"],
+            disposition=disposition,
             source_schema_version=version,
+            source_truth_identity_field=source_truth_identity_field,
         )
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        payload = {
             "schema_version": self.schema_version,
             "observation_id": self.observation_id,
             "measurement_timestamp": self.measurement_timestamp,
-            "truth_target_id": self.truth_target_id,
+            "disposition": self.disposition,
         }
+        if self.disposition == OBSERVATION_TRUTH_DISPOSITION_TARGET:
+            payload["truth_target_id"] = self.truth_target_id
+        return payload
+
+    def to_source_dict(self) -> dict[str, Any]:
+        """Reconstruct the accepted source record for provenance checks."""
+
+        if (
+            self.source_schema_version
+            == SCALABLE_3D_OBSERVATION_TRUTH_SCHEMA_VERSION
+        ):
+            return self.to_dict()
+        payload = {
+            "schema_version": self.source_schema_version,
+            "observation_id": self.observation_id,
+            "measurement_timestamp": self.measurement_timestamp,
+        }
+        if (
+            self.source_schema_version
+            == SCALABLE_3D_EXTERNAL_TRUTH_SCHEMA_VERSION
+        ):
+            payload[str(self.source_truth_identity_field)] = self.truth_target_id
+        else:
+            payload["truth_target_id"] = self.truth_target_id
+        return payload
+
+    @classmethod
+    def target(
+        cls,
+        *,
+        observation_id: str,
+        measurement_timestamp: float,
+        truth_target_id: str,
+    ) -> "Scalable3DObservationTruthLabel":
+        return cls(
+            observation_id=observation_id,
+            truth_target_id=truth_target_id,
+            measurement_timestamp=measurement_timestamp,
+            disposition=OBSERVATION_TRUTH_DISPOSITION_TARGET,
+        )
+
+    @classmethod
+    def known_false_alarm(
+        cls,
+        *,
+        observation_id: str,
+        measurement_timestamp: float,
+    ) -> "Scalable3DObservationTruthLabel":
+        return cls(
+            observation_id=observation_id,
+            truth_target_id=None,
+            measurement_timestamp=measurement_timestamp,
+            disposition=OBSERVATION_TRUTH_DISPOSITION_KNOWN_FALSE_ALARM,
+        )
+
+    @classmethod
+    def unknown(
+        cls,
+        *,
+        observation_id: str,
+        measurement_timestamp: float,
+    ) -> "Scalable3DObservationTruthLabel":
+        return cls(
+            observation_id=observation_id,
+            truth_target_id=None,
+            measurement_timestamp=measurement_timestamp,
+            disposition=OBSERVATION_TRUTH_DISPOSITION_UNKNOWN,
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -1761,7 +1921,7 @@ def _evaluate_scalable_3d_identity(
         for observation_id, items in label_index.items()
         if len(
             {
-                (item.truth_target_id, item.measurement_timestamp)
+                _truth_label_semantic_key(item)
                 for item in items
             }
         )
@@ -1779,6 +1939,10 @@ def _evaluate_scalable_3d_identity(
 
     referenced_observation_ids: set[str] = set()
     mapping_by_frame: dict[int, tuple[GlobalTrackTruthMapping, ...]] = {}
+    mapping_disposition_audit: dict[
+        tuple[int, str],
+        Mapping[str, int],
+    ] = {}
     frame_timestamps = {
         _nonnegative_int(index, "source frame index"): _timestamp(
             timestamp,
@@ -1813,6 +1977,13 @@ def _evaluate_scalable_3d_identity(
                 conflicting_truth_label_ids=conflicting_truth_label_ids,
             )
             mappings.append(mapping)
+            mapping_disposition_audit[
+                (group.frame_index, group.global_track_id)
+            ] = _track_group_disposition_counts(
+                group,
+                label_index,
+                tolerance=tolerance,
+            )
             referenced_observation_ids.update(mapping.source_observation_ids)
             if (
                 group.association_state not in _OBSERVED_ASSOCIATION_STATES
@@ -1832,8 +2003,15 @@ def _evaluate_scalable_3d_identity(
                 {
                     label.truth_target_id
                     for label in labels
-                    if abs(label.measurement_timestamp - frame_timestamp)
-                    <= presence_window
+                    if (
+                        label.disposition
+                        == OBSERVATION_TRUTH_DISPOSITION_TARGET
+                        and label.truth_target_id is not None
+                        and abs(
+                            label.measurement_timestamp - frame_timestamp
+                        )
+                        <= presence_window
+                    )
                 }
             )
         )
@@ -1847,6 +2025,11 @@ def _evaluate_scalable_3d_identity(
         metric_blockers.add("duplicate_observation_truth_labels")
     if conflicting_truth_label_ids:
         metric_blockers.add("conflicting_observation_truth_labels")
+    if any(
+        label.disposition == OBSERVATION_TRUTH_DISPOSITION_UNKNOWN
+        for label in labels
+    ):
+        metric_blockers.add("truth_label_unknown")
     if not any(truth_presence_by_frame.values()):
         metric_blockers.add("truth_presence_unavailable_for_d2_frames")
 
@@ -1854,6 +2037,11 @@ def _evaluate_scalable_3d_identity(
         present = set(truth_presence_by_frame[frame_index])
         for mapping in mappings:
             if mapping.association_state not in _OBSERVED_ASSOCIATION_STATES:
+                continue
+            if (
+                mapping.status == "excluded"
+                and mapping.reason == "known_false_alarm_only"
+            ):
                 continue
             if mapping.status != "available":
                 metric_blockers.update(mapping.unavailable_reasons)
@@ -1956,6 +2144,71 @@ def _evaluate_scalable_3d_identity(
             SCALABLE_3D_PARTIAL_IDENTITY_DIAGNOSTICS_SCHEMA_VERSION
         ),
     }
+    if any(
+        label.source_schema_version
+        == SCALABLE_3D_OBSERVATION_TRUTH_SCHEMA_VERSION
+        for label in labels
+    ):
+        sidecar_disposition_counts = Counter(
+            label.disposition for label in labels
+        )
+        audit.update(
+            {
+                "observation_truth_schema_version": (
+                    SCALABLE_3D_OBSERVATION_TRUTH_SCHEMA_VERSION
+                ),
+                "observation_truth_disposition_counts": dict(
+                    sorted(sidecar_disposition_counts.items())
+                ),
+                "normalized_observation_truth_labels_sha256": (
+                    hash_scalable_3d_observation_truth_labels(labels)
+                ),
+                "known_false_alarm_only_mapping_count": sum(
+                    counts.get(
+                        OBSERVATION_TRUTH_DISPOSITION_KNOWN_FALSE_ALARM,
+                        0,
+                    )
+                    > 0
+                    and counts.get(
+                        OBSERVATION_TRUTH_DISPOSITION_TARGET,
+                        0,
+                    )
+                    == 0
+                    and counts.get(
+                        OBSERVATION_TRUTH_DISPOSITION_UNKNOWN,
+                        0,
+                    )
+                    == 0
+                    for counts in mapping_disposition_audit.values()
+                ),
+                "excluded_mapping_count": sum(
+                    mapping.status == "excluded"
+                    for mappings in mapping_by_frame.values()
+                    for mapping in mappings
+                ),
+                "target_with_known_false_alarm_mapping_count": sum(
+                    counts.get(
+                        OBSERVATION_TRUTH_DISPOSITION_TARGET,
+                        0,
+                    )
+                    > 0
+                    and counts.get(
+                        OBSERVATION_TRUTH_DISPOSITION_KNOWN_FALSE_ALARM,
+                        0,
+                    )
+                    > 0
+                    for counts in mapping_disposition_audit.values()
+                ),
+                "unknown_disposition_mapping_count": sum(
+                    counts.get(
+                        OBSERVATION_TRUTH_DISPOSITION_UNKNOWN,
+                        0,
+                    )
+                    > 0
+                    for counts in mapping_disposition_audit.values()
+                ),
+            }
+        )
     source_hashes = {
         **bundle.source_hashes,
         "identity_evidence_bundle": _normalized_sha256(
@@ -2216,6 +2469,7 @@ def _map_track_group(
 
     candidates: list[str] = []
     labeled_evidence_count = 0
+    disposition_counts: Counter[str] = Counter()
     for ref in unique_refs.values():
         if ref.measurement_timestamp > group.frame_timestamp + tolerance:
             issues.add("source_observation_from_future")
@@ -2239,7 +2493,21 @@ def _map_track_group(
             issues.add("truth_label_timestamp_mismatch")
             continue
         labeled_evidence_count += 1
-        candidates.extend(label.truth_target_id for label in matching)
+        disposition_counts.update(label.disposition for label in matching)
+        candidates.extend(
+            label.truth_target_id
+            for label in matching
+            if (
+                label.disposition
+                == OBSERVATION_TRUTH_DISPOSITION_TARGET
+                and label.truth_target_id is not None
+            )
+        )
+        if any(
+            label.disposition == OBSERVATION_TRUTH_DISPOSITION_UNKNOWN
+            for label in matching
+        ):
+            issues.add("truth_label_unknown")
 
     candidate_truth_ids = tuple(sorted(set(candidates)))
     if len(candidate_truth_ids) > 1:
@@ -2269,6 +2537,16 @@ def _map_track_group(
     elif len(candidate_truth_ids) == 1:
         status = "available"
         truth_target_id = candidate_truth_ids[0]
+    elif (
+        disposition_counts[
+            OBSERVATION_TRUTH_DISPOSITION_KNOWN_FALSE_ALARM
+        ]
+        > 0
+        and disposition_counts[OBSERVATION_TRUTH_DISPOSITION_UNKNOWN] == 0
+    ):
+        status = "excluded"
+        truth_target_id = None
+        issues.add("known_false_alarm_only")
     else:
         status = "unavailable"
         truth_target_id = None
@@ -2304,6 +2582,38 @@ def _map_track_group(
     )
 
 
+def _track_group_disposition_counts(
+    group: _TrackFrameGroup,
+    label_index: Mapping[str, Sequence[Scalable3DObservationTruthLabel]],
+    *,
+    tolerance: float,
+) -> Mapping[str, int]:
+    counts: Counter[str] = Counter()
+    unique_refs: dict[tuple[str, ...], ObservationLineageRef] = {}
+    for ref in group.refs:
+        unique_refs.setdefault(ref.source_lineage, ref)
+    for ref in unique_refs.values():
+        counts.update(
+            label.disposition
+            for label in label_index.get(ref.observation_id, ())
+            if abs(
+                label.measurement_timestamp - ref.measurement_timestamp
+            )
+            <= tolerance
+        )
+    return dict(counts)
+
+
+def _truth_label_semantic_key(
+    label: Scalable3DObservationTruthLabel,
+) -> tuple[str, str | None, float]:
+    return (
+        label.disposition,
+        label.truth_target_id,
+        label.measurement_timestamp,
+    )
+
+
 def _partial_identity_diagnostics(
     mappings_by_frame: Mapping[int, Sequence[GlobalTrackTruthMapping]],
     truth_presence_by_frame: Mapping[int, Sequence[str]],
@@ -2321,14 +2631,18 @@ def _partial_identity_diagnostics(
         mapping.status == "ambiguous" for mapping in all_mappings
     )
     unavailable_mapping_count = sum(
-        mapping.status == "unavailable" for mapping in all_mappings
+        mapping.status in {"unavailable", "excluded"}
+        for mapping in all_mappings
     )
 
     scored_by_frame = {
         frame_index: tuple(
             mapping
             for mapping in mappings_by_frame.get(frame_index, ())
-            if mapping.association_state in _OBSERVED_ASSOCIATION_STATES
+            if (
+                mapping.association_state in _OBSERVED_ASSOCIATION_STATES
+                and mapping.status != "excluded"
+            )
         )
         for frame_index in frame_indices
     }
@@ -2617,7 +2931,7 @@ def write_scalable_3d_observation_truth_labels(
     path: str | Path,
     labels: Iterable[Scalable3DObservationTruthLabel | Mapping[str, Any]],
 ) -> str:
-    """Write the normalized evaluator-only observation truth JSONL."""
+    """Write normalized v2 evaluator-only observation truth JSONL."""
 
     records = _coerce_truth_labels(labels)
     output = Path(path)
@@ -2695,6 +3009,17 @@ def hash_scalable_3d_observation_truth_labels(
     records = _coerce_truth_labels(labels)
     return _sha256_bytes(
         _canonical_jsonl_bytes(item.to_dict() for item in records)
+    )
+
+
+def hash_scalable_3d_observation_truth_label_sources(
+    labels: Iterable[Scalable3DObservationTruthLabel | Mapping[str, Any]],
+) -> str:
+    """Hash the accepted source representation retained by loaded labels."""
+
+    records = _coerce_truth_labels(labels)
+    return _sha256_bytes(
+        _canonical_jsonl_bytes(item.to_source_dict() for item in records)
     )
 
 
@@ -3111,11 +3436,13 @@ def _reason_sort_key(reason: str) -> tuple[int, str]:
         "observation_claimed_by_multiple_tracks": 4,
         "lineage_rebound_to_different_track": 5,
         "duplicate_lineage_within_track_frame": 6,
-        "truth_label_missing": 7,
-        "truth_label_timestamp_mismatch": 8,
-        "source_observation_from_future": 9,
-        "source_observation_outside_lineage_window": 10,
-        "source_lineage_missing": 11,
+        "truth_label_unknown": 7,
+        "truth_label_missing": 8,
+        "truth_label_timestamp_mismatch": 9,
+        "source_observation_from_future": 10,
+        "source_observation_outside_lineage_window": 11,
+        "source_lineage_missing": 12,
+        "known_false_alarm_only": 98,
         "track_not_assigned_in_frame": 99,
     }
     return priority.get(reason, 50), reason
