@@ -6,6 +6,46 @@ D2 是 C-UAS 多目标数据关联研究模块，目标是在离线仿真和日�
 
 规模边界：D2 消费每帧传入的 `tracks`、`detections` 和当前 `active_tracks` 集合，不从场景名推断目标数量，不写死 2v2 或 5v5。`crossing_dense_5v5` 等名称只是可重复 baseline fixture；main runtime 的 `--drone-count N` 只应体现为传入 D2 的输入集合长度。
 
+### 2026-07-23 身份证据承诺 v2
+
+- 新增 truth-free `d2.identity-evidence-commitment.v2` DTO 和
+  `d2.scalable3d_identity_evidence.v2` 外层证据合同。v1 常量、默认构造、序列化和
+  评分行为保持兼容；v2 必须显式携带 `identity_commitment`。
+- 每条六维规范航迹现在独立保存
+  `committed -> identity_uncommitted_ambiguity_hold ->
+  identity_uncommitted_after_hold -> committed` 状态。租约到期或硬上限释放只改变
+  hold 状态，不恢复身份承诺。每条受 hold 影响的航迹另保存有界的歧义候选 key 集合和
+  最大分量量测时间水位线；reservation 从 claim ledger 删除后，该集合仍存在。恢复要求
+  key 不在阻断集合、source measurement timestamp 严格晚于水位线、claim 是本扫描首次
+  接纳且 replay count 为 0、活动租约为 0，并且 truth-free disposition 为
+  `target_candidate`。
+- 恢复门控在量测更新之前执行。旧 hold 候选即使在 reservation 释放后再次通过 freshness，
+  也不会 update、增加 hit、写入 `detection_to_track` 或绑定 observation claim。阻断集合
+  默认每航迹最多 2048 个 key、全局最多 250000 个；未溢出状态在真正的新证据恢复后
+  清理。溢出后保持 fail-closed，只在航迹永久 dropped 时释放。
+- 每帧 `AssociationResult.metadata.identity_commitment_by_track` 稳定输出
+  `association_state`、承诺状态和原因、状态时刻、量测/到达双时间戳、commitment/
+  component/evidence generation、publisher epoch、active lease、soft/hard deadline
+  和 expiry 信息，并公开 blocker count、recovery watermark 和 overflow，不公开阻断
+  key。未提交 payload 不含 source observation evidence key，main 不得再通过当前
+  `hold_track_ids` 推断历史承诺状态。
+- `known_false_alarm/unknown` 是传感器、杂波分类器或人工规则给出的 truth-free 上游
+  disposition。在线 D2 不读取仿真 truth sidecar，也禁止生产者用离线 truth label 回填
+  这两个字段；两类证据不能更新航迹、建轨或恢复身份承诺。
+- 离线 v2 evaluator 将显式未提交帧排除在
+  `global_track_id -> truth candidate` 身份赋值之外，但保留在 truth-presence 覆盖分母
+  中；IDSW 继续比较未提交空窗前后的 committed 锚点。普通
+  `source_lineage_missing`、未来/超窗观测、未知标签和冲突谱系仍 fail-closed。
+  audit 新增 commitment coverage、状态计数、未提交 mapping 数和候选绑定违规数。
+- 2026-07-23 模块回归为 `281 passed, 1 warning in 29.46s`，验收阈值为零失败。专项覆盖活动
+  hold、租约释放后旧候选 key 重入仍阻断、不同 key 但时间未越过水位线仍阻断、更晚新
+  key 恢复、容量溢出 fail-closed、未来来源时刻/重复/超龄/已知假警/未知处置不恢复、无
+  hold 正常路径、37 目标动态规模、v1 round-trip 和跨未提交空窗 IDSW/coverage。warning 是本机
+  Matplotlib `Axes3D` 环境问题。
+- 已实现和已测试仅指 D2-owned 合同与状态机。main 尚未把 v2 payload 写入 scalable
+  episode，D6 尚未聚合 commitment coverage，clean seed 1100 A/B 也尚未复跑。
+  候选继续默认关闭，不能据此宣称 lineage blocker、D3 分配退化或系统晋级已经关闭。
+
 ### 2026-07-23 D1 结构歧义保持租约候选
 
 - 六维稀疏路径新增 `AmbiguityComponent3D.from_mapping()`，只接受冻结的
@@ -570,12 +610,14 @@ baseline/candidate 分别得到 IDSW 0、continuity 0.985915/0.985816；差异�
 
 D2 新增 `scalable_3d_identity.py`，只用于在线关联结束后的 evaluator。公开版本为：
 
-- evidence bundle：`d2.scalable3d_identity_evidence.v1`；
-- observation truth adapter：`d2.scalable3d_observation_truth.v1`，并严格适配现有
+- evidence bundle：`d2.scalable3d_identity_evidence.v1/v2`；
+- observation truth adapter：`d2.scalable3d_observation_truth.v2`，并严格适配现有
+  v1 和
   `scalable3d-offline-truth-v1` 的 `observation_id -> truth_entity_id` sidecar；
 - frame mapping：`d2.scalable3d_global_track_truth_mapping.v1`；
 - metrics：`d2.scalable3d_identity_metrics.v1`；
-- evaluation artifact：`d2.scalable3d_identity_evaluation.v1`。
+- evaluation artifact：legacy `d2.scalable3d_identity_evaluation.v1` 和带承诺审计的
+  `d2.scalable3d_identity_evaluation.v2`。
 
 公开入口包括 `ObservationLineageRef`、`GlobalTrackLineageEvidence`、
 `create_scalable_3d_identity_evidence_bundle()`、
@@ -864,7 +906,7 @@ observation ID、遮挡/杂波/OOSM、多 seed 离线 IDSW/continuity、极端�
 
 ## 2026-07-22 scalable 3D 部分身份诊断
 
-`d2.scalable3d_identity_evaluation.v1` 现可附带
+`d2.scalable3d_identity_evaluation.v1/v2` 均可附带
 `d2.scalable3d_partial_identity_diagnostics.v1`。原 `metrics` 合同没有变化：只要存在
 歧义、缺标签或完整性阻断，`id_switch_count`、continuity、duplicate 和 confusion
 matrix 仍为 `None + unavailable`。新增块只描述可证明的离线证据，不参与在线关联、
@@ -953,3 +995,16 @@ main 可调用的构造 API。2026-07-23 新增 11 项专项测试，完整 D2 �
 `249 passed, 1 warning in 32.08s`。冻结 `5263e2b` seed 1000 的 v1 producer 制品也完成
 重放一致性检查。当前尚未取得 main 写出 v2 虚警处置后的 20-seed 新制品，因此旧报告中
 strict IDSW `0/20` 可用的结论保持不变。
+
+## 2026-07-23 身份承诺评估审计
+
+身份承诺 evidence 现在生成 `d2.scalable3d_identity_evaluation.v2`。评估产物保留经
+evidence bundle SHA-256 约束的 v2 evidence records，`audit` 分开统计全部记录和
+`created/matched` 观测记录的 committed/uncommitted 分母与覆盖率，同时输出承诺原因、
+恢复拒绝原因、blocker count、水位线年龄及 overflow 的记录数和航迹数。
+
+loader 会从 `IdentityEvidenceCommitment` 和逐帧 mapping 重算上述字段。持久化聚合值
+不一致、水位线年龄为负、未提交 mapping 携带候选或来源绑定时直接拒绝。旧 evaluation
+v1 不嵌入 v2 evidence，新增审计项保持 unavailable/`None`。2026-07-23 D2 全量测试为
+`286 passed, 1 warning in 29.22s`；该结果是模块合同验证，main/D6 接线和 clean seed
+1100 A/B 尚未执行。

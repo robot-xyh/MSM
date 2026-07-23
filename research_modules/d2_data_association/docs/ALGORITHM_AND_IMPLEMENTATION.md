@@ -288,6 +288,118 @@ validated component
 \((g_i,z_i)\)。该边若未通过三维马氏门控，则观测隔离、\(g_i\) 只预测，且该观测不能
 建立新航迹。这一顺序避免“错误航迹已经更新，随后才记录 binding conflict”。
 
+### 3.7 身份证据承诺
+
+租约到期只表示 D2 可以重新运行普通关联，不表示旧谱系重新变得可信。为避免预测轨在
+hard-cap 释放后继续携带旧观测并被离线评估器解释为当前身份，D2 为每条六维规范航迹
+维护状态 \(c_g(k)\)：
+
+\[
+c_g(k)\in
+\{\text{committed},
+\text{uncommitted-hold},
+\text{uncommitted-after-hold}\}.
+\]
+
+状态迁移为：
+
+\[
+\begin{aligned}
+\text{committed}
+&\xrightarrow{\text{valid ambiguity lease}}
+\text{uncommitted-hold},\\
+\text{uncommitted-hold}
+&\xrightarrow{\text{soft/hard expiry}}
+\text{uncommitted-after-hold},\\
+\text{uncommitted-after-hold}
+&\xrightarrow{\text{accepted fresh original observation}}
+\text{committed}.
+\end{aligned}
+\]
+
+第二个迁移不会因 lease release 自动跳回 `committed`。实现使用
+`Scalable3DTracker._identity_commitments` 按 `global_track_id` 保存状态。活动 lease
+只用于更新 `uncommitted-hold` 的 component generation 和 deadline；lease 被删除后，
+状态对象仍保存 expiry time/reason，直到恢复条件满足。
+
+对每条受 hold 影响的航迹 \(g\)，D2 另保存私有状态
+\(\mathcal{B}_g\) 和 \(\tau_g\)。\(\mathcal{B}_g\) 是自上次成功恢复以来出现过的歧义
+observation evidence key 集合，\(\tau_g\) 是相关 ambiguity component 的最大
+measurement timestamp。lease 释放只删除 claim reservation，不删除
+\(\mathcal{B}_g,\tau_g\)。
+
+恢复条件定义为：
+
+\[
+\mathrm{recover}(z)=
+\bigl(k_z\notin\mathcal{B}_g\bigr)\land
+\bigl(t_z>\tau_g+\epsilon_t\bigr)\land
+\mathrm{firstAcceptedOriginal}(z)\land
+\bigl(n_{\mathrm{lease}}(g)=0\bigr)\land
+\bigl(d_z=\mathrm{targetCandidate}\bigr).
+\]
+
+其中 `firstAcceptedOriginal` 要求 claim 在量测更新前存在、状态为 `unseen`、
+`global_track_id` 和 ambiguity reservation 均为空、`replay_count=0`、
+`first_detection_id` 等于本帧获胜 detection，且 `first_state_timestamp` 与当前扫描时刻
+在现有容差内一致。重复 key、同扫描 duplicate、旧 claim、时间冲突和超过 admission
+watermark 的观测均不能恢复。
+
+恢复判断位于 Hungarian 提议匹配和航迹量测更新之间。若不满足条件，该提议从公开
+`matched_pairs` 撤回，航迹按 unmatched 路径继续，不增加 hit、不更新状态、不发布
+`detection_to_track`，也不把 claim 绑定到 `global_track_id`。这一步阻止 lease 到期后
+刚被 ledger 删除 reservation 的旧 key 在同一扫描重新成为 committed evidence。
+
+`IdentityCommitmentRecoveryConfig` 默认限制每航迹 2048 个阻断 key、全局 250000 个。
+容量溢出置位后保持 fail-closed，因为未保存的历史 key 无法再被证明为新证据。真正恢复
+只清理未溢出的集合；溢出集合在航迹永久 dropped 后清理。重复航迹合并时取集合并集和
+最大水位线。在线
+`identity_evidence_disposition` 只允许 `target_candidate`、`known_false_alarm` 和
+`unknown`。它是传感器、杂波分类器或人工规则给出的 truth-free 处置，不读取离线仿真
+truth sidecar。
+
+公开 DTO 为 `d2.identity-evidence-commitment.v2`，主要字段如下：
+
+```text
+global_track_id
+association_state
+identity_commitment_state / reason
+state_timestamp
+measurement_timestamp / arrival_timestamp
+commitment_generation
+source_observation_evidence_key / generation / disposition
+ambiguity_component_key / evidence_id / generation
+publisher_node_id / publisher_epoch
+active_lease_count / active_lease_keys
+lease_first_seen / soft_deadline / hard_deadline
+lease_expired_timestamp / lease_expiration_reason
+recovery_blocker_count
+recovery_not_before_measurement_timestamp
+recovery_blocker_overflow
+```
+
+未提交 DTO 的 source observation evidence key 必须为空。每帧 payload 进入
+`AssociationResult.metadata.identity_commitment_by_track`，并输出状态计数、迁移计数和
+恢复阻断原因。阻断 key 始终为 D2 私有数据，payload 只输出计数、水位线和溢出状态。
+该 payload 不改写 `global_track_id`。
+
+外层离线合同新增 `d2.scalable3d_identity_evidence.v2`。v1 继续使用原 schema 和 policy，
+不接受 v2 字段。v2 record 必须携带 commitment DTO；commitment 的 track、关联状态和
+时刻必须与 record 一致。未提交 record 的 `source_observations` 必须为空；已提交且
+`created/matched` 的 record 仍必须携带新鲜原始谱系。
+
+离线映射将未提交记录标为 `uncommitted`，不生成候选真值。该帧仍进入真值存在分母，
+因此 coverage 会下降。IDSW 的历史锚点只在 committed mapping 上更新，空窗后出现不同
+规范 ID 仍计切换。显式未提交不会把严格指标整体置为 unavailable；普通缺谱系、时间窗
+越界、未知标签、冲突 claim 和非法 lifecycle 继续 fail-closed。audit 另输出 commitment
+coverage、各状态计数、未提交 mapping 数和未提交候选绑定违规数。
+
+2026-07-23 模块回归为 `281 passed, 1 warning in 29.46s`。新增回归明确覆盖 reservation 释放后
+同一旧 key 再送入、不同 key 但 source measurement timestamp 不晚于水位线、严格更晚
+新 key 恢复、未来来源时刻拒绝，以及容量溢出持续 fail-closed。该证据只验证 D2-owned 状态机、v1/v2
+兼容和 evaluator 口径。main 尚未持久化 v2，D6 尚未聚合新字段，同 seed 1100 clean
+A/B 尚未复跑。
+
 ## 4. 默认算法主线
 
 ### 4.1 每帧执行流程
@@ -1880,3 +1992,35 @@ unknown、时间错误、重复冲突或 target claim 不完整，consumer recor
 blocker diagnostics v2 增加 sidecar disposition 总数、纯虚警映射数、目标与虚警混合
 映射数和逐航迹处置审计。在线 GNN/Hungarian、门限、生命周期和 `global_track_id` 没有
 调用这些 API。
+
+## 32. identity commitment evaluator v2
+
+`d2.scalable3d_identity_evaluation.v2` 在原 frames、metrics 和 audit 之外嵌入
+`identity_evidence_records`。这些记录仍是 truth-free 的
+`GlobalTrackLineageEvidence`，并通过 evaluation `source_hashes` 中的
+`identity_evidence_bundle` SHA-256 与原 evidence bundle 绑定。v1 evaluation 不携带
+该字段。
+
+审计先遍历每条 v2 record 的 `IdentityEvidenceCommitment`。全部记录形成
+`identity_commitment_all_records`；association state 为 `created` 或 `matched` 的
+记录形成 `identity_commitment_observed_records`。每组独立计算 denominator、
+committed/uncommitted count 和 coverage。reason counter 同时保留全量原因和
+`identity_recovery_blocked_` 前缀的恢复拒绝原因。
+
+恢复 blocker count 对全部 v2 record 统计，零值也进入均值。水位线年龄只对带
+`recovery_not_before_measurement_timestamp` 的记录计算：
+
+```text
+watermark_age = frame_timestamp
+              - recovery_not_before_measurement_timestamp
+```
+
+小于负时间容差的年龄直接拒绝。overflow 分别按 record 和唯一 `global_track_id` 计数。
+未提交 evidence 携带 source observations，或未提交 frame mapping 携带 source/candidate
+binding，均形成 violation；任一 violation 大于 0 时 evaluation 构造和 loader 都失败。
+
+反序列化不信任持久化 aggregate。loader 先验证 evaluation 文件哈希和 evidence bundle
+哈希，再从嵌入 records 与 frame mappings 重算所有 v2 audit 字段并逐项比较。v1 新字段
+按 legacy unavailable/`None` 处理。严格 IDSW 的锚点仍采用
+`compare_consecutive_committed_truth_anchors_across_uncommitted_gaps`，因此本改动不
+改变既有身份指标公式。

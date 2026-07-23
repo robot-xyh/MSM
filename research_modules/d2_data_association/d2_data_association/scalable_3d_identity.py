@@ -19,9 +19,24 @@ from pathlib import Path
 import re
 from typing import Any
 
+from .identity_commitment import (
+    D2_IDENTITY_EVIDENCE_COMMITMENT_POLICY_VERSION,
+    D2_IDENTITY_EVIDENCE_COMMITMENT_SCHEMA_VERSION,
+    IdentityCommitmentState,
+    IdentityEvidenceCommitment,
+)
 
-SCALABLE_3D_IDENTITY_EVIDENCE_SCHEMA_VERSION = (
+SCALABLE_3D_IDENTITY_EVIDENCE_SCHEMA_VERSION_V1 = (
     "d2.scalable3d_identity_evidence.v1"
+)
+SCALABLE_3D_IDENTITY_EVIDENCE_SCHEMA_VERSION_V2 = (
+    "d2.scalable3d_identity_evidence.v2"
+)
+SCALABLE_3D_IDENTITY_EVIDENCE_SCHEMA_VERSION = (
+    SCALABLE_3D_IDENTITY_EVIDENCE_SCHEMA_VERSION_V1
+)
+SCALABLE_3D_IDENTITY_EVIDENCE_LATEST_SCHEMA_VERSION = (
+    SCALABLE_3D_IDENTITY_EVIDENCE_SCHEMA_VERSION_V2
 )
 SCALABLE_3D_OBSERVATION_TRUTH_SCHEMA_VERSION_V1 = (
     "d2.scalable3d_observation_truth.v1"
@@ -30,8 +45,17 @@ SCALABLE_3D_OBSERVATION_TRUTH_SCHEMA_VERSION = (
     "d2.scalable3d_observation_truth.v2"
 )
 SCALABLE_3D_EXTERNAL_TRUTH_SCHEMA_VERSION = "scalable3d-offline-truth-v1"
-SCALABLE_3D_IDENTITY_EVALUATION_SCHEMA_VERSION = (
+SCALABLE_3D_IDENTITY_EVALUATION_SCHEMA_VERSION_V1 = (
     "d2.scalable3d_identity_evaluation.v1"
+)
+SCALABLE_3D_IDENTITY_EVALUATION_SCHEMA_VERSION_V2 = (
+    "d2.scalable3d_identity_evaluation.v2"
+)
+SCALABLE_3D_IDENTITY_EVALUATION_SCHEMA_VERSION = (
+    SCALABLE_3D_IDENTITY_EVALUATION_SCHEMA_VERSION_V1
+)
+SCALABLE_3D_IDENTITY_EVALUATION_LATEST_SCHEMA_VERSION = (
+    SCALABLE_3D_IDENTITY_EVALUATION_SCHEMA_VERSION_V2
 )
 SCALABLE_3D_GLOBAL_TRACK_TRUTH_MAPPING_SCHEMA_VERSION = (
     "d2.scalable3d_global_track_truth_mapping.v1"
@@ -42,7 +66,16 @@ SCALABLE_3D_IDENTITY_METRICS_SCHEMA_VERSION = (
 SCALABLE_3D_PARTIAL_IDENTITY_DIAGNOSTICS_SCHEMA_VERSION = (
     "d2.scalable3d_partial_identity_diagnostics.v1"
 )
-SCALABLE_3D_IDENTITY_POLICY_VERSION = "d2.scalable3d_identity_policy.v1"
+SCALABLE_3D_IDENTITY_POLICY_VERSION_V1 = (
+    "d2.scalable3d_identity_policy.v1"
+)
+SCALABLE_3D_IDENTITY_POLICY_VERSION_V2 = (
+    "d2.scalable3d_identity_commitment_policy.v2"
+)
+SCALABLE_3D_IDENTITY_POLICY_VERSION = SCALABLE_3D_IDENTITY_POLICY_VERSION_V1
+SCALABLE_3D_IDENTITY_COMMITMENT_AUDIT_SCHEMA_VERSION = (
+    "d2.scalable3d_identity_commitment_audit.v2"
+)
 SCALABLE_3D_IDENTITY_HASH_ALGORITHM = "sha256"
 OBSERVATION_TRUTH_DISPOSITION_TARGET = "target"
 OBSERVATION_TRUTH_DISPOSITION_KNOWN_FALSE_ALARM = "known_false_alarm"
@@ -66,6 +99,40 @@ _ASSOCIATION_STATES = _OBSERVED_ASSOCIATION_STATES | {
     "lost",
     "dropped",
 }
+_IDENTITY_EVIDENCE_POLICY_BY_SCHEMA = {
+    SCALABLE_3D_IDENTITY_EVIDENCE_SCHEMA_VERSION_V1: (
+        SCALABLE_3D_IDENTITY_POLICY_VERSION_V1
+    ),
+    SCALABLE_3D_IDENTITY_EVIDENCE_SCHEMA_VERSION_V2: (
+        SCALABLE_3D_IDENTITY_POLICY_VERSION_V2
+    ),
+}
+_IDENTITY_EVALUATION_POLICY_BY_SCHEMA = {
+    SCALABLE_3D_IDENTITY_EVALUATION_SCHEMA_VERSION_V1: (
+        SCALABLE_3D_IDENTITY_POLICY_VERSION_V1
+    ),
+    SCALABLE_3D_IDENTITY_EVALUATION_SCHEMA_VERSION_V2: (
+        SCALABLE_3D_IDENTITY_POLICY_VERSION_V2
+    ),
+}
+_IDENTITY_COMMITMENT_DENOMINATOR_POLICY = {
+    "all_records": "all_persisted_v2_identity_evidence_records",
+    "observed_records": (
+        "v2_identity_evidence_records_with_association_state_created_or_matched"
+    ),
+    "committed": "identity_commitment_state_equals_committed",
+    "uncommitted": "all_other_v2_identity_commitment_states",
+    "recovery_blocker_count": (
+        "all_v2_identity_evidence_records_including_zero"
+    ),
+    "watermark_age": (
+        "frame_timestamp_minus_recovery_not_before_measurement_timestamp_"
+        "for_records_with_watermark"
+    ),
+}
+_COMMITTED_ANCHOR_ACROSS_GAP_POLICY = (
+    "compare_consecutive_committed_truth_anchors_across_uncommitted_gaps"
+)
 _IDENTITY_METRIC_NAMES = (
     "id_switch_count",
     "track_continuity",
@@ -225,13 +292,14 @@ class GlobalTrackLineageEvidence:
     global_track_id: str
     lifecycle_state: str
     association_state: str
+    identity_commitment: IdentityEvidenceCommitment | None = None
     source_observations: tuple[ObservationLineageRef, ...] = ()
     d1_record_sequences: tuple[int, ...] = ()
     d2_record_sequence: int | None = None
     schema_version: str = SCALABLE_3D_IDENTITY_EVIDENCE_SCHEMA_VERSION
 
     def __post_init__(self) -> None:
-        if self.schema_version != SCALABLE_3D_IDENTITY_EVIDENCE_SCHEMA_VERSION:
+        if self.schema_version not in _IDENTITY_EVIDENCE_POLICY_BY_SCHEMA:
             raise ValueError(
                 f"unsupported identity evidence schema: {self.schema_version!r}"
             )
@@ -257,6 +325,62 @@ class GlobalTrackLineageEvidence:
             else ObservationLineageRef.from_mapping(_as_mapping(item, "source observation"))
             for item in self.source_observations
         )
+        commitment = (
+            self.identity_commitment
+            if isinstance(self.identity_commitment, IdentityEvidenceCommitment)
+            else (
+                None
+                if self.identity_commitment is None
+                else IdentityEvidenceCommitment.from_mapping(
+                    _as_mapping(
+                        self.identity_commitment,
+                        "identity commitment",
+                    )
+                )
+            )
+        )
+        if (
+            self.schema_version
+            == SCALABLE_3D_IDENTITY_EVIDENCE_SCHEMA_VERSION_V1
+        ):
+            if commitment is not None:
+                raise ValueError(
+                    "identity evidence v1 cannot carry a v2 commitment"
+                )
+        else:
+            if commitment is None:
+                raise ValueError(
+                    "identity evidence v2 requires identity_commitment"
+                )
+            if commitment.global_track_id != global_track_id:
+                raise ValueError(
+                    "identity commitment global_track_id mismatch"
+                )
+            if commitment.association_state != association_state:
+                raise ValueError(
+                    "identity commitment association_state mismatch"
+                )
+            if abs(commitment.state_timestamp - frame_timestamp) > 1.0e-9:
+                raise ValueError(
+                    "identity commitment state_timestamp mismatch"
+                )
+            if (
+                commitment.identity_commitment_state
+                != IdentityCommitmentState.COMMITTED
+                and observations
+            ):
+                raise ValueError(
+                    "uncommitted identity evidence cannot bind observations"
+                )
+            if (
+                commitment.identity_commitment_state
+                == IdentityCommitmentState.COMMITTED
+                and association_state in _OBSERVED_ASSOCIATION_STATES
+                and not observations
+            ):
+                raise ValueError(
+                    "committed observed identity requires source observations"
+                )
         d1_sequences = tuple(int(item) for item in self.d1_record_sequences)
         if any(item < 0 for item in d1_sequences):
             raise ValueError("d1_record_sequences must be non-negative")
@@ -275,6 +399,7 @@ class GlobalTrackLineageEvidence:
         object.__setattr__(self, "global_track_id", global_track_id)
         object.__setattr__(self, "lifecycle_state", lifecycle_state)
         object.__setattr__(self, "association_state", association_state)
+        object.__setattr__(self, "identity_commitment", commitment)
         object.__setattr__(self, "source_observations", observations)
         object.__setattr__(self, "d1_record_sequences", d1_sequences)
         object.__setattr__(self, "d2_record_sequence", d2_sequence)
@@ -291,6 +416,7 @@ class GlobalTrackLineageEvidence:
                 "global_track_id",
                 "lifecycle_state",
                 "association_state",
+                "identity_commitment",
                 "source_observations",
                 "d1_record_sequences",
                 "d2_record_sequence",
@@ -305,13 +431,14 @@ class GlobalTrackLineageEvidence:
             global_track_id=payload["global_track_id"],
             lifecycle_state=payload["lifecycle_state"],
             association_state=payload["association_state"],
+            identity_commitment=payload.get("identity_commitment"),
             source_observations=tuple(payload.get("source_observations", ())),
             d1_record_sequences=tuple(payload.get("d1_record_sequences", ())),
             d2_record_sequence=payload.get("d2_record_sequence"),
         )
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        payload = {
             "schema_version": self.schema_version,
             "episode_id": self.episode_id,
             "frame_index": self.frame_index,
@@ -325,6 +452,11 @@ class GlobalTrackLineageEvidence:
             "d1_record_sequences": list(self.d1_record_sequences),
             "d2_record_sequence": self.d2_record_sequence,
         }
+        if self.identity_commitment is not None:
+            payload["identity_commitment"] = (
+                self.identity_commitment.to_dict()
+            )
+        return payload
 
 
 @dataclass(frozen=True, slots=True)
@@ -338,11 +470,14 @@ class Scalable3DIdentityEvidenceBundle:
     policy_version: str = SCALABLE_3D_IDENTITY_POLICY_VERSION
 
     def __post_init__(self) -> None:
-        if self.schema_version != SCALABLE_3D_IDENTITY_EVIDENCE_SCHEMA_VERSION:
+        if self.schema_version not in _IDENTITY_EVIDENCE_POLICY_BY_SCHEMA:
             raise ValueError(
                 f"unsupported identity evidence schema: {self.schema_version!r}"
             )
-        if self.policy_version != SCALABLE_3D_IDENTITY_POLICY_VERSION:
+        expected_policy = _IDENTITY_EVIDENCE_POLICY_BY_SCHEMA[
+            self.schema_version
+        ]
+        if self.policy_version != expected_policy:
             raise ValueError(
                 f"unsupported identity policy: {self.policy_version!r}"
             )
@@ -357,6 +492,10 @@ class Scalable3DIdentityEvidenceBundle:
         )
         if any(item.episode_id != episode_id for item in records):
             raise ValueError("all evidence records must use the bundle episode_id")
+        if any(item.schema_version != self.schema_version for item in records):
+            raise ValueError(
+                "identity evidence record schema must match bundle schema"
+            )
         source_hashes = _validated_source_hashes(
             self.source_hashes,
             required={
@@ -1568,22 +1707,26 @@ class Scalable3DIdentityEvaluation:
     partial_identity_diagnostics: (
         Scalable3DPartialIdentityDiagnostics | None
     ) = None
+    identity_evidence_records: tuple[GlobalTrackLineageEvidence, ...] = ()
     schema_version: str = SCALABLE_3D_IDENTITY_EVALUATION_SCHEMA_VERSION
     policy_version: str = SCALABLE_3D_IDENTITY_POLICY_VERSION
 
     def __post_init__(self) -> None:
-        if self.schema_version != SCALABLE_3D_IDENTITY_EVALUATION_SCHEMA_VERSION:
+        if self.schema_version not in _IDENTITY_EVALUATION_POLICY_BY_SCHEMA:
             raise ValueError(
                 f"unsupported identity evaluation schema: {self.schema_version!r}"
             )
-        if self.policy_version != SCALABLE_3D_IDENTITY_POLICY_VERSION:
+        expected_policy = _IDENTITY_EVALUATION_POLICY_BY_SCHEMA[
+            self.schema_version
+        ]
+        if self.policy_version != expected_policy:
             raise ValueError(
                 f"unsupported identity policy: {self.policy_version!r}"
             )
-        object.__setattr__(
-            self,
-            "episode_id",
-            _identifier(self.episode_id, "episode_id"),
+        episode_id = _identifier(self.episode_id, "episode_id")
+        source_hashes = _validated_source_hashes(
+            self.source_hashes,
+            required=_REQUIRED_EVALUATION_SOURCE_HASHES,
         )
         frames = tuple(self.frames)
         if any(not isinstance(item, FrameGlobalTrackTruthMapping) for item in frames):
@@ -1627,22 +1770,82 @@ class Scalable3DIdentityEvaluation:
                 raise ValueError(
                     "partial identity diagnostics contradict frame mappings"
                 )
-        object.__setattr__(
-            self,
-            "source_hashes",
-            _validated_source_hashes(
-                self.source_hashes,
-                required=_REQUIRED_EVALUATION_SOURCE_HASHES,
+        identity_evidence_records = tuple(
+            item
+            if isinstance(item, GlobalTrackLineageEvidence)
+            else GlobalTrackLineageEvidence.from_mapping(
+                _as_mapping(item, "identity evidence record")
+            )
+            for item in self.identity_evidence_records
+        )
+        if self.schema_version == SCALABLE_3D_IDENTITY_EVALUATION_SCHEMA_VERSION_V1:
+            if identity_evidence_records:
+                raise ValueError(
+                    "identity evaluation v1 cannot carry v2 evidence records"
+                )
+        else:
+            if any(
+                item.schema_version
+                != SCALABLE_3D_IDENTITY_EVIDENCE_SCHEMA_VERSION_V2
+                for item in identity_evidence_records
+            ):
+                raise ValueError(
+                    "identity evaluation v2 requires v2 evidence records"
+                )
+            if any(
+                item.episode_id != episode_id
+                for item in identity_evidence_records
+            ):
+                raise ValueError(
+                    "identity evaluation evidence episode_id mismatch"
+                )
+            embedded_bundle = Scalable3DIdentityEvidenceBundle(
+                episode_id=episode_id,
+                records=identity_evidence_records,
+                source_hashes={
+                    name: source_hashes[name]
+                    for name in (
+                        "online_d1_records",
+                        "online_d2_records",
+                        "observation_truth_labels",
+                    )
+                },
+                schema_version=SCALABLE_3D_IDENTITY_EVIDENCE_SCHEMA_VERSION_V2,
+                policy_version=SCALABLE_3D_IDENTITY_POLICY_VERSION_V2,
+            )
+            if (
+                hash_scalable_3d_identity_evidence(embedded_bundle)
+                != source_hashes["identity_evidence_bundle"]
+            ):
+                raise ValueError(
+                    "identity evaluation v2 evidence records contradict "
+                    "identity_evidence_bundle hash"
+                )
+        audit = _validated_identity_commitment_evaluation_audit(
+            audit=self.audit,
+            evaluation_schema_version=self.schema_version,
+            records=identity_evidence_records,
+            frames=frames,
+            timestamp_tolerance_s=self.configuration.get(
+                "timestamp_tolerance_s",
+                1.0e-9,
             ),
         )
+        object.__setattr__(self, "episode_id", episode_id)
+        object.__setattr__(self, "source_hashes", source_hashes)
         object.__setattr__(self, "frames", frames)
         object.__setattr__(
             self,
             "partial_identity_diagnostics",
             partial_diagnostics,
         )
+        object.__setattr__(
+            self,
+            "identity_evidence_records",
+            identity_evidence_records,
+        )
         object.__setattr__(self, "configuration", dict(self.configuration))
-        object.__setattr__(self, "audit", dict(self.audit))
+        object.__setattr__(self, "audit", audit)
 
     @classmethod
     def from_mapping(
@@ -1662,6 +1865,7 @@ class Scalable3DIdentityEvaluation:
                 "metrics",
                 "audit",
                 "partial_identity_diagnostics",
+                "identity_evidence_records",
             },
             "identity evaluation",
         )
@@ -1686,6 +1890,9 @@ class Scalable3DIdentityEvaluation:
                 _as_mapping(payload.get("metrics"), "metrics")
             ),
             audit=_as_mapping(payload.get("audit", {}), "audit"),
+            identity_evidence_records=tuple(
+                payload.get("identity_evidence_records", ())
+            ),
             partial_identity_diagnostics=(
                 None
                 if payload.get("partial_identity_diagnostics") is None
@@ -1714,7 +1921,298 @@ class Scalable3DIdentityEvaluation:
             payload["partial_identity_diagnostics"] = (
                 self.partial_identity_diagnostics.to_dict()
             )
+        if (
+            self.schema_version
+            == SCALABLE_3D_IDENTITY_EVALUATION_SCHEMA_VERSION_V2
+        ):
+            payload["identity_evidence_records"] = [
+                item.to_dict() for item in self.identity_evidence_records
+            ]
         return payload
+
+
+def _commitment_denominator_summary(
+    commitments: Sequence[IdentityEvidenceCommitment],
+) -> dict[str, Any]:
+    denominator = len(commitments)
+    committed_count = sum(
+        item.identity_commitment_state == IdentityCommitmentState.COMMITTED
+        for item in commitments
+    )
+    return {
+        "denominator": denominator,
+        "committed_count": committed_count,
+        "uncommitted_count": denominator - committed_count,
+        "coverage": (
+            committed_count / denominator if denominator else None
+        ),
+        "coverage_available": bool(denominator),
+        "coverage_reason": (
+            None if denominator else "no_v2_identity_evidence_records"
+        ),
+    }
+
+
+def _identity_commitment_evaluation_audit(
+    *,
+    evaluation_schema_version: str,
+    records: Sequence[GlobalTrackLineageEvidence],
+    frames: Sequence[FrameGlobalTrackTruthMapping],
+    timestamp_tolerance_s: float,
+) -> dict[str, Any]:
+    if (
+        evaluation_schema_version
+        == SCALABLE_3D_IDENTITY_EVALUATION_SCHEMA_VERSION_V1
+    ):
+        return {
+            "identity_commitment_contract_available": False,
+            "identity_commitment_schema_version": None,
+            "identity_commitment_policy_version": None,
+            "identity_commitment_audit_schema_version": None,
+            "identity_commitment_denominator_policy": None,
+            "identity_commitment_record_count": 0,
+            "identity_commitment_state_counts": {},
+            "identity_commitment_coverage": None,
+            "identity_commitment_all_records": None,
+            "identity_commitment_observed_records": None,
+            "identity_commitment_reason_counts": None,
+            "identity_recovery_blocked_reason_counts": None,
+            "identity_recovery_blocker_count_summary": None,
+            "identity_recovery_watermark_age_seconds_summary": None,
+            "identity_recovery_blocker_overflow_record_count": None,
+            "identity_recovery_blocker_overflow_track_count": None,
+            "uncommitted_mapping_count": None,
+            "uncommitted_candidate_binding_count": None,
+            "uncommitted_candidate_binding_violation_count": None,
+            "uncommitted_source_binding_violation_count": None,
+            "uncommitted_binding_violation_policy": None,
+            "identity_switch_anchor_policy": None,
+            "committed_anchor_across_uncommitted_gap_policy": None,
+        }
+
+    tolerance = _nonnegative_finite(
+        timestamp_tolerance_s,
+        "identity commitment audit timestamp_tolerance_s",
+    )
+    commitments = []
+    observed_commitments = []
+    watermark_ages: list[float] = []
+    source_binding_violations = 0
+    for record in records:
+        commitment = record.identity_commitment
+        if commitment is None:
+            raise ValueError(
+                "identity evaluation v2 record lacks IdentityEvidenceCommitment"
+            )
+        commitments.append(commitment)
+        if record.association_state in _OBSERVED_ASSOCIATION_STATES:
+            observed_commitments.append(commitment)
+        if (
+            commitment.identity_commitment_state
+            != IdentityCommitmentState.COMMITTED
+            and record.source_observations
+        ):
+            source_binding_violations += 1
+        watermark = (
+            commitment.recovery_not_before_measurement_timestamp
+        )
+        if watermark is None:
+            continue
+        age = record.frame_timestamp - watermark
+        if age < -tolerance:
+            raise ValueError(
+                "identity recovery watermark age cannot be negative"
+            )
+        watermark_ages.append(max(age, 0.0))
+
+    all_summary = _commitment_denominator_summary(commitments)
+    observed_summary = _commitment_denominator_summary(
+        observed_commitments
+    )
+    state_counts = Counter(
+        item.identity_commitment_state.value for item in commitments
+    )
+    reason_counts = Counter(item.reason for item in commitments)
+    blocker_counts = [
+        item.recovery_blocker_count for item in commitments
+    ]
+    overflow_records = [
+        record
+        for record in records
+        if (
+            record.identity_commitment is not None
+            and record.identity_commitment.recovery_blocker_overflow
+        )
+    ]
+    uncommitted_mappings = [
+        mapping
+        for frame in frames
+        for mapping in frame.mappings
+        if mapping.status == "uncommitted"
+    ]
+    candidate_binding_violations = sum(
+        bool(mapping.truth_target_id)
+        or bool(mapping.candidate_truth_target_ids)
+        for mapping in uncommitted_mappings
+    )
+    source_binding_violations += sum(
+        bool(mapping.source_observation_ids)
+        or bool(mapping.source_lineage_hashes)
+        or mapping.evidence_count > 0
+        or mapping.unique_lineage_count > 0
+        or mapping.labeled_evidence_count > 0
+        for mapping in uncommitted_mappings
+    )
+    legacy_combined_binding_count = sum(
+        bool(mapping.truth_target_id)
+        or bool(mapping.candidate_truth_target_ids)
+        or bool(mapping.source_observation_ids)
+        or bool(mapping.source_lineage_hashes)
+        or mapping.evidence_count > 0
+        or mapping.unique_lineage_count > 0
+        or mapping.labeled_evidence_count > 0
+        for mapping in uncommitted_mappings
+    )
+    blocker_summary = {
+        "record_count": len(blocker_counts),
+        "positive_record_count": sum(
+            value > 0 for value in blocker_counts
+        ),
+        "sum": sum(blocker_counts),
+        "min": min(blocker_counts) if blocker_counts else None,
+        "mean": (
+            sum(blocker_counts) / len(blocker_counts)
+            if blocker_counts
+            else None
+        ),
+        "max": max(blocker_counts) if blocker_counts else None,
+    }
+    watermark_summary = {
+        "count": len(watermark_ages),
+        "min": min(watermark_ages) if watermark_ages else None,
+        "mean": (
+            sum(watermark_ages) / len(watermark_ages)
+            if watermark_ages
+            else None
+        ),
+        "max": max(watermark_ages) if watermark_ages else None,
+    }
+    return {
+        "identity_commitment_contract_available": True,
+        "identity_commitment_schema_version": (
+            D2_IDENTITY_EVIDENCE_COMMITMENT_SCHEMA_VERSION
+        ),
+        "identity_commitment_policy_version": (
+            D2_IDENTITY_EVIDENCE_COMMITMENT_POLICY_VERSION
+        ),
+        "identity_commitment_audit_schema_version": (
+            SCALABLE_3D_IDENTITY_COMMITMENT_AUDIT_SCHEMA_VERSION
+        ),
+        "identity_commitment_denominator_policy": dict(
+            _IDENTITY_COMMITMENT_DENOMINATOR_POLICY
+        ),
+        "identity_commitment_record_count": len(commitments),
+        "identity_commitment_state_counts": dict(
+            sorted(state_counts.items())
+        ),
+        "identity_commitment_coverage": all_summary["coverage"],
+        "identity_commitment_all_records": all_summary,
+        "identity_commitment_observed_records": observed_summary,
+        "identity_commitment_reason_counts": dict(
+            sorted(reason_counts.items())
+        ),
+        "identity_recovery_blocked_reason_counts": dict(
+            sorted(
+                (reason, count)
+                for reason, count in reason_counts.items()
+                if reason.startswith("identity_recovery_blocked_")
+            )
+        ),
+        "identity_recovery_blocker_count_summary": blocker_summary,
+        "identity_recovery_watermark_age_seconds_summary": (
+            watermark_summary
+        ),
+        "identity_recovery_blocker_overflow_record_count": len(
+            overflow_records
+        ),
+        "identity_recovery_blocker_overflow_track_count": len(
+            {item.global_track_id for item in overflow_records}
+        ),
+        "uncommitted_mapping_count": len(uncommitted_mappings),
+        "uncommitted_candidate_binding_count": (
+            legacy_combined_binding_count
+        ),
+        "uncommitted_candidate_binding_violation_count": (
+            candidate_binding_violations
+        ),
+        "uncommitted_source_binding_violation_count": (
+            source_binding_violations
+        ),
+        "uncommitted_binding_violation_policy": {
+            "candidate": (
+                "uncommitted_frame_mapping_carries_truth_target_or_candidate"
+            ),
+            "source": (
+                "uncommitted_v2_evidence_or_frame_mapping_carries_source_"
+                "observation_lineage"
+            ),
+            "required_value": 0,
+        },
+        "identity_switch_anchor_policy": (
+            _COMMITTED_ANCHOR_ACROSS_GAP_POLICY
+        ),
+        "committed_anchor_across_uncommitted_gap_policy": (
+            _COMMITTED_ANCHOR_ACROSS_GAP_POLICY
+        ),
+    }
+
+
+def _validated_identity_commitment_evaluation_audit(
+    *,
+    audit: Mapping[str, Any],
+    evaluation_schema_version: str,
+    records: Sequence[GlobalTrackLineageEvidence],
+    frames: Sequence[FrameGlobalTrackTruthMapping],
+    timestamp_tolerance_s: float,
+) -> dict[str, Any]:
+    normalized = dict(audit)
+    expected = _identity_commitment_evaluation_audit(
+        evaluation_schema_version=evaluation_schema_version,
+        records=records,
+        frames=frames,
+        timestamp_tolerance_s=timestamp_tolerance_s,
+    )
+    if (
+        evaluation_schema_version
+        == SCALABLE_3D_IDENTITY_EVALUATION_SCHEMA_VERSION_V1
+    ):
+        for name, value in expected.items():
+            if name in normalized and normalized[name] != value:
+                raise ValueError(
+                    f"legacy identity commitment audit field {name!r} "
+                    "must remain unavailable"
+                )
+            normalized.setdefault(name, value)
+        return normalized
+
+    for name, value in expected.items():
+        if name not in normalized:
+            raise ValueError(
+                f"identity commitment audit is missing required field {name!r}"
+            )
+        if normalized[name] != value:
+            raise ValueError(
+                "identity commitment audit contradicts v2 evidence records: "
+                f"{name}"
+            )
+    if (
+        expected["uncommitted_candidate_binding_violation_count"] != 0
+        or expected["uncommitted_source_binding_violation_count"] != 0
+    ):
+        raise ValueError(
+            "uncommitted candidate/source binding violation count must be zero"
+        )
+    return normalized
 
 
 @dataclass(slots=True)
@@ -1748,6 +2246,10 @@ class _TrackFrameGroup:
     def association_state(self) -> str:
         return self.records[0][1].association_state
 
+    @property
+    def identity_commitment(self) -> IdentityEvidenceCommitment | None:
+        return self.records[0][1].identity_commitment
+
 
 def create_scalable_3d_identity_evidence_bundle(
     *,
@@ -1756,12 +2258,38 @@ def create_scalable_3d_identity_evidence_bundle(
     online_d1_records_sha256: str,
     online_d2_records_sha256: str,
     observation_truth_labels_sha256: str,
+    schema_version: str | None = None,
+    policy_version: str | None = None,
 ) -> Scalable3DIdentityEvidenceBundle:
     """Create the public D2 evidence bundle without reading private tracker state."""
 
+    normalized_records = tuple(
+        item
+        if isinstance(item, GlobalTrackLineageEvidence)
+        else GlobalTrackLineageEvidence.from_mapping(
+            _as_mapping(item, "identity evidence record")
+        )
+        for item in records
+    )
+    if schema_version is None:
+        record_schemas = {item.schema_version for item in normalized_records}
+        if len(record_schemas) > 1:
+            raise ValueError("identity evidence records use mixed schemas")
+        schema_version = (
+            next(iter(record_schemas))
+            if record_schemas
+            else SCALABLE_3D_IDENTITY_EVIDENCE_SCHEMA_VERSION
+        )
+    if schema_version not in _IDENTITY_EVIDENCE_POLICY_BY_SCHEMA:
+        raise ValueError("unsupported identity evidence schema_version")
+    expected_policy = _IDENTITY_EVIDENCE_POLICY_BY_SCHEMA[schema_version]
+    if policy_version is None:
+        policy_version = expected_policy
     return Scalable3DIdentityEvidenceBundle(
         episode_id=episode_id,
-        records=tuple(records),
+        records=normalized_records,
+        schema_version=schema_version,
+        policy_version=policy_version,
         source_hashes={
             "online_d1_records": online_d1_records_sha256,
             "online_d2_records": online_d2_records_sha256,
@@ -1987,6 +2515,7 @@ def _evaluate_scalable_3d_identity(
             referenced_observation_ids.update(mapping.source_observation_ids)
             if (
                 group.association_state not in _OBSERVED_ASSOCIATION_STATES
+                and mapping.status != "uncommitted"
                 and any(
                     reason != "track_not_assigned_in_frame"
                     for reason in mapping.unavailable_reasons
@@ -2038,6 +2567,8 @@ def _evaluate_scalable_3d_identity(
         for mapping in mappings:
             if mapping.association_state not in _OBSERVED_ASSOCIATION_STATES:
                 continue
+            if mapping.status == "uncommitted":
+                continue
             if (
                 mapping.status == "excluded"
                 and mapping.reason == "known_false_alarm_only"
@@ -2087,7 +2618,8 @@ def _evaluate_scalable_3d_identity(
                     item.status == "ambiguous" for item in mappings
                 ),
                 unavailable_mapping_count=sum(
-                    item.status == "unavailable" for item in mappings
+                    item.status in {"unavailable", "uncommitted"}
+                    for item in mappings
                 ),
                 reason_counts=dict(sorted(reasons.items())),
             )
@@ -2099,6 +2631,20 @@ def _evaluate_scalable_3d_identity(
     )
     all_mappings = [mapping for frame in frames for mapping in frame.mappings]
     all_refs = [ref for record in bundle.records for ref in record.source_observations]
+    evaluation_schema_version = (
+        SCALABLE_3D_IDENTITY_EVALUATION_SCHEMA_VERSION_V2
+        if (
+            bundle.schema_version
+            == SCALABLE_3D_IDENTITY_EVIDENCE_SCHEMA_VERSION_V2
+        )
+        else SCALABLE_3D_IDENTITY_EVALUATION_SCHEMA_VERSION_V1
+    )
+    commitment_audit = _identity_commitment_evaluation_audit(
+        evaluation_schema_version=evaluation_schema_version,
+        records=bundle.records,
+        frames=frames,
+        timestamp_tolerance_s=tolerance,
+    )
     audit = {
         "source_verification": source_verification,
         "online_truth_isolation_verified": online_truth_isolation_verified,
@@ -2143,6 +2689,7 @@ def _evaluate_scalable_3d_identity(
         "partial_identity_diagnostics_schema_version": (
             SCALABLE_3D_PARTIAL_IDENTITY_DIAGNOSTICS_SCHEMA_VERSION
         ),
+        **commitment_audit,
     }
     if any(
         label.source_schema_version
@@ -2216,11 +2763,23 @@ def _evaluate_scalable_3d_identity(
         ),
     }
     return Scalable3DIdentityEvaluation(
+        schema_version=evaluation_schema_version,
+        policy_version=_IDENTITY_EVALUATION_POLICY_BY_SCHEMA[
+            evaluation_schema_version
+        ],
         episode_id=bundle.episode_id,
         source_hashes=source_hashes,
         frames=tuple(frames),
         metrics=metrics,
         partial_identity_diagnostics=partial_identity_diagnostics,
+        identity_evidence_records=(
+            bundle.records
+            if (
+                evaluation_schema_version
+                == SCALABLE_3D_IDENTITY_EVALUATION_SCHEMA_VERSION_V2
+            )
+            else ()
+        ),
         configuration={
             "timestamp_tolerance_s": tolerance,
             "lineage_time_window_s": lineage_window,
@@ -2229,6 +2788,16 @@ def _evaluate_scalable_3d_identity(
                 "first_assignment_in_persisted_frame_evidence_order"
             ),
             "metric_contract": "MetricsRecorder-compatible-v1",
+            "identity_evidence_schema_version": bundle.schema_version,
+            "identity_commitment_policy": (
+                "explicit_uncommitted_frames_reduce_coverage_and_do_not_bind_"
+                "truth_candidates"
+                if (
+                    evaluation_schema_version
+                    == SCALABLE_3D_IDENTITY_EVALUATION_SCHEMA_VERSION_V2
+                )
+                else "legacy_v1_lineage_only"
+            ),
             "partial_identity_diagnostic_contract": (
                 SCALABLE_3D_PARTIAL_IDENTITY_DIAGNOSTICS_SCHEMA_VERSION
             ),
@@ -2273,10 +2842,15 @@ def _group_evidence(
         association_states = {
             record.association_state for _, record in group.records
         }
+        identity_commitments = {
+            record.identity_commitment for _, record in group.records
+        }
         if len(lifecycle_states) > 1:
             group.issues.add("conflicting_track_lifecycle_records")
         if len(association_states) > 1:
             group.issues.add("conflicting_track_association_records")
+        if len(identity_commitments) > 1:
+            group.issues.add("conflicting_identity_commitment_records")
         lineage_counts = Counter(ref.source_lineage for ref in group.refs)
         if any(count > 1 for count in lineage_counts.values()):
             group.issues.add("duplicate_lineage_within_track_frame")
@@ -2334,9 +2908,22 @@ def _mark_lifecycle_conflicts(
     ):
         association_state = group.association_state
         lifecycle_state = group.lifecycle_state
-        if association_state in _OBSERVED_ASSOCIATION_STATES and not group.refs:
+        commitment = group.identity_commitment
+        identity_is_uncommitted = bool(
+            commitment is not None
+            and commitment.identity_commitment_state
+            != IdentityCommitmentState.COMMITTED
+        )
+        if (
+            association_state in _OBSERVED_ASSOCIATION_STATES
+            and not group.refs
+            and not identity_is_uncommitted
+        ):
             group.issues.add("source_lineage_missing")
-        if association_state not in _OBSERVED_ASSOCIATION_STATES and group.refs:
+        if (
+            association_state not in _OBSERVED_ASSOCIATION_STATES
+            and group.refs
+        ):
             group.issues.add("lineage_on_unassigned_track")
         if (
             association_state in _OBSERVED_ASSOCIATION_STATES
@@ -2463,6 +3050,37 @@ def _map_track_group(
 ) -> GlobalTrackTruthMapping:
     issues = set(group.issues)
     refs = group.refs
+    commitment = group.identity_commitment
+    if (
+        commitment is not None
+        and commitment.identity_commitment_state
+        != IdentityCommitmentState.COMMITTED
+        and not issues
+    ):
+        reasons = tuple(
+            dict.fromkeys(
+                (
+                    commitment.identity_commitment_state.value,
+                    commitment.reason,
+                )
+            )
+        )
+        return GlobalTrackTruthMapping(
+            global_track_id=group.global_track_id,
+            lifecycle_state=group.lifecycle_state,
+            association_state=group.association_state,
+            status="uncommitted",
+            truth_target_id=None,
+            reason=reasons[0],
+            unavailable_reasons=reasons,
+            candidate_truth_target_ids=(),
+            source_observation_ids=(),
+            source_lineage_hashes=(),
+            evidence_count=0,
+            unique_lineage_count=0,
+            labeled_evidence_count=0,
+            replayed_lineage_count=0,
+        )
     unique_refs: dict[tuple[str, ...], ObservationLineageRef] = {}
     for ref in refs:
         unique_refs.setdefault(ref.source_lineage, ref)
@@ -2518,6 +3136,7 @@ def _map_track_group(
     ambiguity_reasons = {
         "conflicting_track_lifecycle_records",
         "conflicting_track_association_records",
+        "conflicting_identity_commitment_records",
         "conflicting_truth_labels",
         "duplicate_lineage_within_track_frame",
         "duplicate_track_frame_record",
@@ -2631,7 +3250,7 @@ def _partial_identity_diagnostics(
         mapping.status == "ambiguous" for mapping in all_mappings
     )
     unavailable_mapping_count = sum(
-        mapping.status in {"unavailable", "excluded"}
+        mapping.status in {"unavailable", "uncommitted", "excluded"}
         for mapping in all_mappings
     )
 
@@ -2682,7 +3301,7 @@ def _partial_identity_diagnostics(
             frame_is_evaluable = False
             if mapping.status == "ambiguous":
                 ambiguous_scored_mapping_count += 1
-            elif mapping.status == "unavailable":
+            elif mapping.status in {"unavailable", "uncommitted"}:
                 unavailable_scored_mapping_count += 1
             else:
                 mapped_truth_not_present_mapping_count += 1
@@ -3156,7 +3775,12 @@ def _validate_source_record_references(
                 raise ValueError("identity evidence D2 sequence/frame mismatch")
             if abs(item.frame_timestamp - frame_timestamp) > 1.0e-9:
                 raise ValueError("identity evidence D2 frame timestamp mismatch")
-            lifecycle_state, association_state, source_observations = identity
+            (
+                lifecycle_state,
+                association_state,
+                source_observations,
+                identity_commitment,
+            ) = identity
             if (
                 item.lifecycle_state != lifecycle_state
                 or item.association_state != association_state
@@ -3164,6 +3788,10 @@ def _validate_source_record_references(
                 raise ValueError("identity evidence D2 lifecycle/association mismatch")
             if item.source_observations != source_observations:
                 raise ValueError("identity evidence D2 source lineage mismatch")
+            if item.identity_commitment != identity_commitment:
+                raise ValueError(
+                    "identity evidence D2 commitment mismatch"
+                )
 
             expected_d1_sequences = {
                 source_sequence
@@ -3281,7 +3909,15 @@ def _d1_observation_index(
 def _d2_identity_index(
     payload: Mapping[str, Any],
     tracks: Mapping[str, Mapping[str, Any]],
-) -> dict[str, tuple[str, str, tuple[ObservationLineageRef, ...]]]:
+) -> dict[
+    str,
+    tuple[
+        str,
+        str,
+        tuple[ObservationLineageRef, ...],
+        IdentityEvidenceCommitment | None,
+    ],
+]:
     if "id_switch_count" not in payload or "id_switch_count_available" not in payload:
         raise ValueError("online D2 record lacks explicit id_switch_count availability")
     if (
@@ -3291,32 +3927,45 @@ def _d2_identity_index(
         raise ValueError(
             "truth-free online D2 id_switch_count must be null and unavailable"
         )
-    if payload.get("identity_lineage_policy") != (
-        "d2_center_track_to_d1_source_observation_v1"
-    ):
+    identity_lineage_policy = payload.get("identity_lineage_policy")
+    if identity_lineage_policy not in {
+        "d2_center_track_to_d1_source_observation_v1",
+        "d2_center_track_to_d1_source_observation_commitment_v2",
+    }:
         raise ValueError("online D2 identity lineage policy is unsupported")
+    commitment_v2 = (
+        identity_lineage_policy
+        == "d2_center_track_to_d1_source_observation_commitment_v2"
+    )
     association = _as_mapping(payload.get("association"), "D2 association payload")
-    _timestamp(association.get("timestamp"), "D2 association timestamp")
+    association_timestamp = _timestamp(
+        association.get("timestamp"),
+        "D2 association timestamp",
+    )
 
     output: dict[
         str,
-        tuple[str, str, tuple[ObservationLineageRef, ...]],
+        tuple[
+            str,
+            str,
+            tuple[ObservationLineageRef, ...],
+            IdentityEvidenceCommitment | None,
+        ],
     ] = {}
     for raw in _as_sequence(
         payload.get("identity_lineage"),
         "online D2 identity_lineage",
     ):
         item = _as_mapping(raw, "online D2 identity lineage")
-        _reject_unknown_keys(
-            item,
-            {
-                "global_track_id",
-                "lifecycle_state",
-                "association_state",
-                "source_observations",
-            },
-            "online D2 identity lineage",
-        )
+        allowed = {
+            "global_track_id",
+            "lifecycle_state",
+            "association_state",
+            "source_observations",
+        }
+        if commitment_v2:
+            allowed.add("identity_commitment")
+        _reject_unknown_keys(item, allowed, "online D2 identity lineage")
         global_track_id = _identifier(
             item.get("global_track_id"),
             "online D2 identity global_track_id",
@@ -3338,17 +3987,52 @@ def _d2_identity_index(
                 "online D2 source observations",
             )
         )
+        commitment = (
+            IdentityEvidenceCommitment.from_mapping(
+                _as_mapping(
+                    item.get("identity_commitment"),
+                    "online D2 identity commitment",
+                )
+            )
+            if commitment_v2
+            else None
+        )
+        if commitment is not None:
+            if commitment.global_track_id != global_track_id:
+                raise ValueError(
+                    "online D2 identity commitment track mismatch"
+                )
+            if commitment.association_state != association_state:
+                raise ValueError(
+                    "online D2 identity commitment association mismatch"
+                )
+            if (
+                abs(commitment.state_timestamp - association_timestamp)
+                > 1.0e-9
+            ):
+                raise ValueError(
+                    "online D2 identity commitment timestamp mismatch"
+                )
+            if (
+                commitment.identity_commitment_state
+                != IdentityCommitmentState.COMMITTED
+                and observations
+            ):
+                raise ValueError(
+                    "online uncommitted identity cannot expose observations"
+                )
         output[global_track_id] = (
             lifecycle_state,
             association_state,
             observations,
+            commitment,
         )
 
     if set(output) != set(tracks):
         raise ValueError(
             "online D2 identity_lineage must cover exactly the D2-owned tracks"
         )
-    for global_track_id, (lifecycle_state, _, _) in output.items():
+    for global_track_id, (lifecycle_state, _, _, _) in output.items():
         track_state = str(tracks[global_track_id]["track_state"]).strip().lower()
         if track_state != lifecycle_state:
             raise ValueError("online D2 track and identity lifecycle mismatch")

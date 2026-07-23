@@ -17,10 +17,13 @@ from d2_data_association import (
     D1_STRUCTURAL_AMBIGUITY_MEMBER_TOKEN_RULE,
     D1_STRUCTURAL_AMBIGUITY_SOURCE_KEY_RULE,
     D1_STRUCTURAL_AMBIGUITY_UPDATE_MODE,
+    D2_IDENTITY_EVIDENCE_COMMITMENT_SCHEMA_VERSION,
     AmbiguityComponent3D,
     AmbiguityComponentValidationError,
     AmbiguityHoldLeaseConfig,
     Detection3D,
+    IdentityCommitmentRecoveryConfig,
+    ObservationClaimLedgerConfig,
     Scalable3DTracker,
     detections3d_from_d1_global_tracks,
     opaque_d1_member_track_token,
@@ -496,6 +499,16 @@ def test_hold_preserves_canonical_track_and_only_predicts_covariance() -> None:
     }
     assert result.metadata["risk_level"] == "high"
     assert result.metadata["id_switch_count"] is None
+    commitment = result.metadata["identity_commitment_by_track"][track_id]
+    assert commitment["schema_version"] == (
+        D2_IDENTITY_EVIDENCE_COMMITMENT_SCHEMA_VERSION
+    )
+    assert commitment["identity_commitment_state"] == (
+        "identity_uncommitted_ambiguity_hold"
+    )
+    assert commitment["ambiguity_component_generation"] == 1
+    assert commitment["active_lease_count"] == 1
+    assert commitment["source_observation_evidence_key"] is None
 
 
 def test_unbound_ambiguity_member_cannot_birth() -> None:
@@ -554,6 +567,383 @@ def test_replay_does_not_refresh_soft_lease_and_expiry_restores_miss() -> None:
     assert expired.metadata["ambiguity_hold"]["expired_component_count"] == 1
     assert tracker.tracks[track_id].misses == 1
     assert expired.metadata["ambiguity_hold"]["reserved_evidence_count"] == 0
+    commitment = expired.metadata["identity_commitment_by_track"][track_id]
+    assert commitment["identity_commitment_state"] == (
+        "identity_uncommitted_after_hold"
+    )
+    assert commitment["lease_expiration_reason"] == "soft_deadline_reached"
+    assert commitment["source_observation_evidence_key"] is None
+
+
+def test_after_hold_requires_fresh_original_observation_to_recommit() -> None:
+    tracker = Scalable3DTracker(
+        ambiguity_hold_config=AmbiguityHoldLeaseConfig(
+            enabled=True,
+            gap_seconds=0.2,
+            hard_seconds=0.5,
+        ),
+        observation_claim_config=ObservationClaimLedgerConfig(
+            retention_seconds=0.1,
+            max_lateness_seconds=0.1,
+        ),
+    )
+    initial_key = _digest(
+        "d1-observation-sha256:",
+        ["initial", "local-a"],
+    )
+    initial = _source_detection(
+        "local-a",
+        0.0,
+        (0.0, 0.0, -100.0),
+        observation_evidence_key=initial_key,
+    )
+    first = tracker.step([initial])
+    track_id = first.metadata["detection_to_track"][initial.detection_id]
+    confirm_key = _digest(
+        "d1-observation-sha256:",
+        ["confirm", "local-a"],
+    )
+    tracker.step(
+        [
+            _source_detection(
+                "local-a",
+                0.05,
+                (0.05, 0.0, -100.0),
+                observation_evidence_key=confirm_key,
+            )
+        ]
+    )
+    payload = _component_payload(("local-a",), ("held-obs",), 0.1, 1)
+    held = tracker.step([], 0.1, ambiguity_components=[payload])
+    deadline = held.metadata["ambiguity_hold"]["active_leases"][0][
+        "soft_deadline"
+    ]
+    expired = tracker.step([], deadline + 0.01)
+
+    assert expired.metadata["identity_commitment_by_track"][track_id][
+        "identity_commitment_state"
+    ] == "identity_uncommitted_after_hold"
+
+    replay = _source_detection(
+        "local-a",
+        deadline + 0.02,
+        (0.1, 0.0, -100.0),
+        observation_evidence_key=initial_key,
+    )
+    replay.metadata["source_measurement_timestamp"] = 0.0
+    replay_result = tracker.step([replay])
+    assert replay_result.metadata["identity_commitment_by_track"][track_id][
+        "identity_commitment_state"
+    ] == "identity_uncommitted_after_hold"
+
+    old_key = _digest(
+        "d1-observation-sha256:",
+        ["old-unique", "local-a"],
+    )
+    old = _source_detection(
+        "local-a",
+        deadline + 0.025,
+        (0.15, 0.0, -100.0),
+        observation_evidence_key=old_key,
+    )
+    old.metadata["source_measurement_timestamp"] = 0.0
+    old_result = tracker.step([old])
+    assert old_result.metadata["replay_quarantine_events"][0]["reason"] == (
+        "observation_measurement_too_old"
+    )
+    assert old_result.metadata["identity_commitment_by_track"][track_id][
+        "identity_commitment_state"
+    ] == "identity_uncommitted_after_hold"
+
+    false_alarm_key = _digest(
+        "d1-observation-sha256:",
+        ["known-false-alarm", "local-a"],
+    )
+    false_alarm = _source_detection(
+        "local-a",
+        deadline + 0.03,
+        (0.2, 0.0, -100.0),
+        observation_evidence_key=false_alarm_key,
+    )
+    false_alarm.metadata["identity_evidence_disposition"] = (
+        "known_false_alarm"
+    )
+    false_alarm_result = tracker.step([false_alarm])
+    assert false_alarm_result.metadata["identity_commitment_by_track"][
+        track_id
+    ]["identity_commitment_state"] == "identity_uncommitted_after_hold"
+    assert false_alarm_result.metadata[
+        "identity_commitment_blocked_recovery_counts_cumulative"
+    ]["known_false_alarm"] == 1
+
+    fresh_key = _digest(
+        "d1-observation-sha256:",
+        ["fresh", "local-a"],
+    )
+    fresh = _source_detection(
+        "local-a",
+        deadline + 0.04,
+        (0.3, 0.0, -100.0),
+        observation_evidence_key=fresh_key,
+    )
+    recovered = tracker.step([fresh])
+    commitment = recovered.metadata["identity_commitment_by_track"][track_id]
+    assert commitment["identity_commitment_state"] == "committed"
+    assert commitment["reason"] == "fresh_original_observation_accepted"
+    assert commitment["source_observation_evidence_key"] == fresh_key
+    assert commitment["source_observation_evidence_generation"] == 0
+
+
+def test_released_hold_candidate_key_cannot_recommit_until_newer_key_arrives() -> None:
+    tracker = Scalable3DTracker(
+        ambiguity_hold_config=AmbiguityHoldLeaseConfig(
+            enabled=True,
+            gap_seconds=0.2,
+            hard_seconds=0.5,
+        ),
+        observation_claim_config=ObservationClaimLedgerConfig(
+            retention_seconds=1.0,
+            max_lateness_seconds=1.0,
+        ),
+        lost_miss_threshold=10,
+        drop_miss_threshold=20,
+        tentative_drop_miss_threshold=10,
+    )
+    initial = _source_detection(
+        "local-a",
+        0.0,
+        (0.0, 0.0, -100.0),
+        observation_evidence_key=_digest(
+            "d1-observation-sha256:",
+            ["recovery-barrier-initial"],
+        ),
+    )
+    first = tracker.step([initial])
+    track_id = first.metadata["detection_to_track"][initial.detection_id]
+    tracker.step(
+        [
+            _source_detection(
+                "local-a",
+                0.05,
+                (0.05, 0.0, -100.0),
+                observation_evidence_key=_digest(
+                    "d1-observation-sha256:",
+                    ["recovery-barrier-confirm"],
+                ),
+            )
+        ]
+    )
+
+    payload = _component_payload(
+        ("local-a",),
+        ("held-candidate",),
+        0.1,
+        1,
+    )
+    old_candidate_key = str(
+        payload["observations"][0]["observation_evidence_key"]
+    )
+    held = tracker.step([], 0.1, ambiguity_components=[payload])
+    held_commitment = held.metadata["identity_commitment_by_track"][track_id]
+    assert held_commitment["recovery_blocker_count"] == 1
+    assert held_commitment[
+        "recovery_not_before_measurement_timestamp"
+    ] == pytest.approx(0.1)
+    deadline = held.metadata["ambiguity_hold"]["active_leases"][0][
+        "soft_deadline"
+    ]
+    expired = tracker.step([], deadline + 0.01)
+    assert expired.metadata["ambiguity_hold"]["reserved_evidence_count"] == 0
+
+    old_candidate = _source_detection(
+        "local-a",
+        deadline + 0.02,
+        (0.1, 0.0, -100.0),
+        observation_evidence_key=old_candidate_key,
+    )
+    old_candidate.metadata["source_measurement_timestamp"] = 0.1
+    old_result = tracker.step([old_candidate])
+    assert old_result.metadata["fresh_detection_count"] == 1
+    assert old_result.metadata[
+        "identity_commitment_suppressed_association_reason_counts"
+    ] == {"blocked_ambiguity_evidence_key": 1}
+    assert old_candidate.detection_id not in old_result.metadata[
+        "detection_to_track"
+    ]
+    old_commitment = old_result.metadata[
+        "identity_commitment_by_track"
+    ][track_id]
+    assert old_commitment["identity_commitment_state"] == (
+        "identity_uncommitted_after_hold"
+    )
+    assert old_commitment["source_observation_evidence_key"] is None
+
+    same_time_key = _digest(
+        "d1-observation-sha256:",
+        ["different-key-same-ambiguity-time"],
+    )
+    same_time = _source_detection(
+        "local-a",
+        deadline + 0.03,
+        (0.15, 0.0, -100.0),
+        observation_evidence_key=same_time_key,
+    )
+    same_time.metadata["source_measurement_timestamp"] = 0.1
+    same_time_result = tracker.step([same_time])
+    assert same_time_result.metadata[
+        "identity_commitment_suppressed_association_reason_counts"
+    ] == {"source_measurement_not_after_ambiguity_watermark": 1}
+    assert same_time_result.metadata["identity_commitment_by_track"][track_id][
+        "identity_commitment_state"
+    ] == "identity_uncommitted_after_hold"
+
+    future_key = _digest(
+        "d1-observation-sha256:",
+        ["different-key-future-source-time"],
+    )
+    future = _source_detection(
+        "local-a",
+        deadline + 0.035,
+        (0.18, 0.0, -100.0),
+        observation_evidence_key=future_key,
+    )
+    future.metadata["source_measurement_timestamp"] = deadline + 1.0
+    future_result = tracker.step([future])
+    assert future_result.metadata[
+        "identity_commitment_suppressed_association_reason_counts"
+    ] == {"source_measurement_timestamp_from_future": 1}
+    assert future_result.metadata["identity_commitment_by_track"][track_id][
+        "identity_commitment_state"
+    ] == "identity_uncommitted_after_hold"
+
+    newer_key = _digest(
+        "d1-observation-sha256:",
+        ["different-key-after-ambiguity-time"],
+    )
+    newer = _source_detection(
+        "local-a",
+        deadline + 0.04,
+        (0.2, 0.0, -100.0),
+        observation_evidence_key=newer_key,
+    )
+    newer.metadata["source_measurement_timestamp"] = 0.11
+    recovered = tracker.step([newer])
+    commitment = recovered.metadata["identity_commitment_by_track"][track_id]
+    assert commitment["identity_commitment_state"] == "committed"
+    assert commitment["source_observation_evidence_key"] == newer_key
+    assert commitment["recovery_blocker_count"] == 0
+    assert commitment["recovery_not_before_measurement_timestamp"] is None
+    assert commitment["recovery_blocker_overflow"] is False
+    assert recovered.metadata["identity_commitment_recovery_barrier"][
+        "stored_blocked_key_count"
+    ] == 0
+
+
+def test_identity_recovery_blocker_capacity_overflow_stays_fail_closed() -> None:
+    tracker = Scalable3DTracker(
+        ambiguity_hold_config=AmbiguityHoldLeaseConfig(
+            enabled=True,
+            gap_seconds=0.1,
+            hard_seconds=0.2,
+        ),
+        identity_commitment_recovery_config=(
+            IdentityCommitmentRecoveryConfig(
+                max_blocked_keys_per_track=1,
+                max_total_blocked_keys=2,
+            )
+        ),
+        lost_miss_threshold=10,
+        drop_miss_threshold=20,
+        tentative_drop_miss_threshold=10,
+    )
+    initial = _source_detection("local-a", 0.0, (0.0, 0.0, -100.0))
+    first = tracker.step([initial])
+    track_id = first.metadata["detection_to_track"][initial.detection_id]
+    payload = _component_payload(
+        ("local-a",),
+        ("held-a", "held-b"),
+        0.1,
+        1,
+    )
+    held = tracker.step([], 0.1, ambiguity_components=[payload])
+    held_commitment = held.metadata["identity_commitment_by_track"][track_id]
+    assert held_commitment["recovery_blocker_count"] == 1
+    assert held_commitment["recovery_blocker_overflow"] is True
+    deadline = held.metadata["ambiguity_hold"]["active_leases"][0][
+        "soft_deadline"
+    ]
+    tracker.step([], deadline + 0.01)
+
+    future = _source_detection(
+        "local-a",
+        deadline + 0.02,
+        (0.1, 0.0, -100.0),
+        observation_evidence_key=_digest(
+            "d1-observation-sha256:",
+            ["capacity-overflow-future"],
+        ),
+    )
+    result = tracker.step([future])
+
+    assert result.metadata[
+        "identity_commitment_suppressed_association_reason_counts"
+    ] == {"identity_recovery_blocker_capacity_overflow": 1}
+    assert result.metadata["identity_commitment_by_track"][track_id][
+        "identity_commitment_state"
+    ] == "identity_uncommitted_after_hold"
+    assert result.metadata["identity_commitment_recovery_barrier"][
+        "overflow_track_count"
+    ] == 1
+
+
+def test_future_source_timestamp_cannot_create_a_normal_track() -> None:
+    tracker = Scalable3DTracker()
+    detection = _source_detection(
+        "local-a",
+        0.1,
+        (0.0, 0.0, -100.0),
+        observation_evidence_key=_digest(
+            "d1-observation-sha256:",
+            ["future-source-birth"],
+        ),
+    )
+    detection.metadata["source_measurement_timestamp"] = 0.2
+
+    result = tracker.step([detection])
+
+    assert tracker.active_tracks() == []
+    assert result.metadata["detection_to_track"] == {}
+    assert result.metadata["identity_commitment_suppressed_births"] == {
+        detection.detection_id: "source_measurement_timestamp_from_future"
+    }
+
+
+def test_identity_commitment_normal_path_and_dynamic_size_do_not_regress() -> None:
+    target_count = 37
+    tracker = Scalable3DTracker()
+    detections = [
+        _source_detection(
+            f"local-{index}",
+            0.0,
+            (float(index * 20), 0.0, -100.0),
+            observation_evidence_key=_digest(
+                "d1-observation-sha256:",
+                ["normal", index],
+            ),
+        )
+        for index in range(target_count)
+    ]
+
+    result = tracker.step(detections)
+
+    commitments = result.metadata["identity_commitment_by_track"]
+    assert len(commitments) == target_count
+    assert set(
+        item["identity_commitment_state"] for item in commitments.values()
+    ) == {"committed"}
+    assert set(
+        item["association_state"] for item in commitments.values()
+    ) == {"created"}
 
 
 def test_new_raw_evidence_extends_only_to_hard_deadline() -> None:

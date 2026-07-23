@@ -103,14 +103,42 @@ D2 只负责离线科研仿真、日志回放和多目标数据关联评估。�
   `source_observation_outside_lineage_window` 不可用，不能把缺失值解释为零或与
   baseline IDSW `9`、track/identity continuity `0.865`、coverage continuity
   `0.870` 比较。在线 truth use 为 0。
-- **下一门槛**：默认 `enabled=False` 保持，停止 seeds 1101/1102。D2 后续先定义
-  歧义保活帧的可评分谱系合同：`identity_uncommitted/ambiguity_hold` 必须与普通
+- **seed 1100 拒绝时的下一门槛**：默认 `enabled=False` 保持，停止 seeds
+  1101/1102。当时确定先定义歧义保活帧的可评分谱系合同：
+  `identity_uncommitted/ambiguity_hold` 必须与普通
   `lineage_missing` 分开统计，候选观测在身份未承诺期间不得硬分给
   `global_track_id`。评估器应保留这类区间及分母/availability 审计，但不得把它计成
   正确身份或 IDSW。合同冻结后再用实测 evidence age 联合校准当前 `0.9 s` lineage
   window 与 soft/hard lease，并定位航迹数、映射可用性和 D3 分配退化。仅放宽
   `0.9 s` window 禁止作为准入修复。完成后先复跑同一 seed 1100；只有指标口径有效、
   业务可用性不退化且预注册联合门槛通过，才进入未见 seed 和长时实验。
+- **2026-07-23 D2-owned 合同增量已完成**：新增
+  `d2.identity-evidence-commitment.v2` 和
+  `d2.scalable3d_identity_evidence.v2`。六维 tracker 跨 soft/hard lease expiry
+  保存 `identity_uncommitted_after_hold`。每条受影响航迹持久化歧义 observation key
+  阻断集合和最大 component measurement timestamp；claim reservation 释放不删除该
+  历史。恢复还要求新 key、source 时刻严格晚于水位线、本扫描首次 accepted original
+  claim、零 replay、零活动 lease 和 truth-free `target_candidate` disposition。
+  未提交候选在状态更新前撤回，不进入 hit、claim binding 或 `detection_to_track`。
+- **容量与公开边界**：`IdentityCommitmentRecoveryConfig` 默认限制每航迹 2048 个阻断
+  key、全局 250000 个。未溢出状态可在合法恢复后清理；溢出保持 fail-closed，只在永久
+  drop 后清理。公开 DTO 只携带
+  blocker count、水位线和 overflow，不携带 key。`known_false_alarm/unknown` 必须由不
+  读取离线 truth sidecar 的上游传感器处置产生。
+- **本轮验收边界**：D2 完整模块回归为 `281 passed, 1 warning in 29.46s`，专项另覆盖 37 目标
+  动态规模、旧候选 key 在 reservation 释放后重入、同水位线新 key、严格更晚新 key 和
+  未来来源时刻拒绝、容量溢出。该结果只完成 D2-owned typed payload、状态迁移和 evaluator 语义。main 仍需
+  把 `identity_commitment_by_track` 原子持久化到每个 D2 track/frame，随后才能复跑
+  clean seed 1100。在该复跑证明严格指标 available、在线 truth use 为 0、D2/D3
+  可用性不退化之前，结构歧义候选继续默认关闭，P1 集成门槛保持开放。
+- **2026-07-23 evaluator v2 审计已完成**：
+  `d2.scalable3d_identity_evaluation.v2` 嵌入受 evidence bundle SHA-256 约束的
+  `identity_evidence_records`，并由每条 `IdentityEvidenceCommitment` 重算 all-record
+  与 created/matched observed-record 两套承诺分母、reason counts、恢复阻断器数量、
+  水位线年龄和 overflow。loader 对聚合篡改、负水位线年龄和未提交候选/来源绑定失败
+  关闭。v1 继续输出 legacy unavailable/`None`。D2 全量回归为
+  `286 passed, 1 warning in 29.22s`；main/D6 尚未消费这些新字段，也未执行 clean
+  seed 1100 A/B，因此系统 P1 状态不变。
 
 ## 3. 输入输出合同
 
@@ -139,6 +167,17 @@ Detection adapter：使用 `d1-default-epoch-v1` 并记录 defaulted；公开侧
 `max_component_age_seconds`。默认 `1.0 s` 仅是当前 main 时序预算下的开发值，
 正式配置需覆盖已标定的 D1 scan lateness 与传输延迟。原 arrival/published 时刻不参与
 租约重定时，只进入审计；soft/hard deadline 从 D2 首次消费和新鲜证据消费时刻起算。
+
+结构歧义候选启用时，D2 每帧另输出
+`d2.identity-evidence-commitment.v2`。字段固定包含 `global_track_id`、
+`association_state`、`identity_commitment_state/reason`、状态时刻、量测/到达双时间戳、
+commitment/component/evidence generation、publisher node/epoch、active lease key、
+soft/hard deadline、expiry、recovery blocker count、measurement watermark 和 overflow。
+阻断 key 是 D2 私有状态，不进入 payload。`identity_uncommitted_ambiguity_hold` 与
+`identity_uncommitted_after_hold` 均不得携带 source observation evidence key。main
+生成 `d2.scalable3d_identity_evidence.v2` 时也必须把该帧
+`source_observations` 置空；只有 `committed` 的 observed frame 才可携带实际接受的原始
+观测谱系。普通 v1 producer 可继续使用原 schema，但不能伪装成 v2。
 
 D2 Tracker 假设每次输入是共同量测时刻且调用顺序单调；直接遇到乱序 scan 仍 fail
 closed。模块已提供前置 `Scalable3DOOSMScanAdapter` 对有界迟到的完整 scan 做排序；原始
@@ -734,8 +773,9 @@ MHT、Stone Soup/FilterPy 仅保留为 P2 optional/offline benchmark，不进入
   一项为 observation ID。只发布本帧实际关联证据；累计历史重复使用必须递增 replay
   generation。
 - main episode manifest 需保存 evidence bundle SHA-256；bundle 自身绑定 D1、D2、truth
-  三个源文件 SHA-256。D6 后续只加载 `d2.scalable3d_identity_evaluation.v1` public
-  artifact，不解析 tracker 私有 metadata。
+  三个源文件 SHA-256。D6 后续只加载 public evaluation artifact：legacy evidence
+  使用 `d2.scalable3d_identity_evaluation.v1`，identity commitment evidence 使用
+  `d2.scalable3d_identity_evaluation.v2`；两者都不得解析 tracker 私有 metadata。
 - main 当前 `_identity_evidence_records()` 会跳过无 lineage 的 D2 track/frame，与完整性
   校验不一致；需保留这些记录并以 unavailable/unassigned 语义发布，不能通过删行得到
   假可用 IDSW。

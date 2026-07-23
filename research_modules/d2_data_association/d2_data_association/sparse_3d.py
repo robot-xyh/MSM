@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import heapq
 from collections import Counter, defaultdict, deque
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from math import exp, sqrt
 from time import perf_counter
 from typing import Any, Iterable, Mapping
@@ -25,6 +25,13 @@ from .models import (
     RejectedPair,
     TrackLifecycleState,
     govern_covariance,
+)
+from .identity_commitment import (
+    D2_IDENTITY_EVIDENCE_COMMITMENT_POLICY_VERSION,
+    D2_IDENTITY_EVIDENCE_COMMITMENT_SCHEMA_VERSION,
+    IdentityCommitmentState,
+    IdentityCommitmentRecoveryConfig,
+    IdentityEvidenceCommitment,
 )
 from .observation_governance import (
     OBSERVATION_CLAIM_LEDGER_SCHEMA_VERSION,
@@ -78,6 +85,11 @@ class _ObservationEvidence:
     observation_id: str
     source_namespace: str
     source_measurement_timestamp: float | None
+    identity_evidence_disposition: str = "target_candidate"
+
+    @property
+    def identity_commitment_eligible(self) -> bool:
+        return self.identity_evidence_disposition == "target_candidate"
 
 
 @dataclass(slots=True)
@@ -104,6 +116,8 @@ class _AmbiguityLease:
     generation: int
     publisher_node_id: str
     publisher_epoch: str
+    measurement_timestamp: float
+    arrival_timestamp: float
     first_seen_timestamp: float
     last_new_evidence_timestamp: float
     soft_deadline: float
@@ -121,6 +135,8 @@ class _AmbiguityLease:
             "generation": self.generation,
             "publisher_node_id": self.publisher_node_id,
             "publisher_epoch": self.publisher_epoch,
+            "measurement_timestamp": self.measurement_timestamp,
+            "arrival_timestamp": self.arrival_timestamp,
             "first_seen_timestamp": self.first_seen_timestamp,
             "last_new_evidence_timestamp": self.last_new_evidence_timestamp,
             "soft_deadline": self.soft_deadline,
@@ -132,6 +148,15 @@ class _AmbiguityLease:
             "track_ids": sorted(self.track_ids),
             "latest_reason": self.latest_reason,
         }
+
+
+@dataclass(slots=True)
+class _IdentityRecoveryBlockers:
+    """Private irreversible evidence barrier for one uncommitted D2 track."""
+
+    evidence_keys: set[str] = field(default_factory=set)
+    recovery_not_before_measurement_timestamp: float = 0.0
+    overflow: bool = False
 
 
 @dataclass(slots=True)
@@ -579,6 +604,9 @@ class Scalable3DTracker:
     ambiguity_hold_config: AmbiguityHoldLeaseConfig = field(
         default_factory=AmbiguityHoldLeaseConfig
     )
+    identity_commitment_recovery_config: IdentityCommitmentRecoveryConfig = (
+        field(default_factory=IdentityCommitmentRecoveryConfig)
+    )
     create_tracks_from_unmatched_detections: bool = True
     track_history_limit: int = 32
     frame_log_limit: int = 256
@@ -681,6 +709,31 @@ class Scalable3DTracker:
         default=0,
         init=False,
     )
+    _identity_commitments: dict[str, IdentityEvidenceCommitment] = field(
+        default_factory=dict,
+        init=False,
+    )
+    _identity_commitment_transition_counts: Counter[str] = field(
+        default_factory=Counter,
+        init=False,
+    )
+    _identity_commitment_blocked_recovery_counts: Counter[str] = field(
+        default_factory=Counter,
+        init=False,
+    )
+    _identity_recovery_blockers: dict[
+        str,
+        _IdentityRecoveryBlockers,
+    ] = field(default_factory=dict, init=False)
+    _identity_recovery_blocked_key_count: int = field(default=0, init=False)
+    _identity_recovery_blocked_key_peak_count: int = field(
+        default=0,
+        init=False,
+    )
+    _identity_recovery_capacity_overflow_count: int = field(
+        default=0,
+        init=False,
+    )
 
     def __post_init__(self) -> None:
         for name in (
@@ -729,6 +782,14 @@ class Scalable3DTracker:
             raise TypeError(
                 "ambiguity_hold_config must be AmbiguityHoldLeaseConfig"
             )
+        if not isinstance(
+            self.identity_commitment_recovery_config,
+            IdentityCommitmentRecoveryConfig,
+        ):
+            raise TypeError(
+                "identity_commitment_recovery_config must be "
+                "IdentityCommitmentRecoveryConfig"
+            )
         for name in (
             "confirmation_hits",
             "engageable_hits",
@@ -767,6 +828,18 @@ class Scalable3DTracker:
 
         return self._last_timestamp
 
+    def identity_commitments(self) -> dict[str, IdentityEvidenceCommitment]:
+        """Return current truth-free identity commitment by active D2 track."""
+
+        active_ids = {
+            track.global_track_id for track in self.active_tracks()
+        }
+        return {
+            track_id: self._identity_commitments[track_id]
+            for track_id in sorted(active_ids)
+            if track_id in self._identity_commitments
+        }
+
     def step(
         self,
         detections: Iterable[Detection3D],
@@ -798,6 +871,10 @@ class Scalable3DTracker:
         )
         held_track_ids = set(ambiguity_diagnostics["hold_track_ids"])
         held_source_keys = set(ambiguity_diagnostics["hold_source_keys"])
+        self._reconcile_identity_commitment_holds(
+            timestamp,
+            ambiguity_diagnostics["component_events"],
+        )
         (
             association_input_detections,
             held_member_detection_events,
@@ -856,6 +933,43 @@ class Scalable3DTracker:
             if isinstance(result, _SparseAssociationResult)
             else {}
         )
+        identity_suppressed_association_reasons: dict[str, str] = {}
+        accepted_pairs: list[MatchedPair] = []
+        suppressed_track_ids: set[str] = set()
+        suppressed_detection_ids: set[str] = set()
+        for pair in result.matched_pairs:
+            track = self.tracks[pair.track_id]
+            detection = detections_by_id[pair.detection_id]
+            evidence = observation_evidence_by_detection.get(
+                detection.detection_id
+            )
+            block_reason = self._identity_observation_acceptance_block_reason(
+                track,
+                detection,
+                evidence,
+            )
+            if block_reason is None:
+                accepted_pairs.append(pair)
+                continue
+            suppressed_track_ids.add(pair.track_id)
+            suppressed_detection_ids.add(pair.detection_id)
+            identity_suppressed_association_reasons[
+                pair.detection_id
+            ] = block_reason
+            self._record_identity_recovery_block(
+                track,
+                timestamp,
+                block_reason,
+            )
+        if suppressed_track_ids or suppressed_detection_ids:
+            result.matched_pairs = accepted_pairs
+            result.unmatched_track_ids = sorted(
+                set(result.unmatched_track_ids) | suppressed_track_ids
+            )
+            result.unmatched_detection_ids = sorted(
+                set(result.unmatched_detection_ids)
+                | suppressed_detection_ids
+            )
 
         for pair in result.matched_pairs:
             track = self.tracks[pair.track_id]
@@ -875,6 +989,16 @@ class Scalable3DTracker:
             if conflict is not None:
                 source_binding_conflicts.append(conflict)
             self._advance_after_hit(track)
+            evidence = observation_evidence_by_detection.get(
+                detection.detection_id
+            )
+            if evidence is not None:
+                self._recover_identity_commitment(
+                    track,
+                    detection,
+                    evidence,
+                    association_state="matched",
+                )
 
         replay_coast_events: list[dict[str, Any]] = []
         missed_track_ids: list[str] = []
@@ -903,9 +1027,30 @@ class Scalable3DTracker:
 
         created_track_ids_by_detection: dict[str, str] = {}
         binding_suppressed_births: dict[str, str] = {}
+        identity_suppressed_births: dict[str, str] = {}
         if self.create_tracks_from_unmatched_detections:
             for detection_id in result.unmatched_detection_ids:
                 detection = detections_by_id[detection_id]
+                evidence = observation_evidence_by_detection.get(detection_id)
+                if detection_id in identity_suppressed_association_reasons:
+                    identity_suppressed_births[detection_id] = (
+                        identity_suppressed_association_reasons[detection_id]
+                    )
+                    continue
+                birth_block_reason = (
+                    self._first_accepted_original_evidence_block_reason(
+                        detection,
+                        evidence,
+                    )
+                )
+                if birth_block_reason is not None:
+                    identity_suppressed_births[
+                        detection_id
+                    ] = birth_block_reason
+                    self._identity_commitment_blocked_recovery_counts[
+                        birth_block_reason
+                    ] += 1
+                    continue
                 bound_track_id = (
                     None
                     if detection.source_key is None
@@ -950,8 +1095,17 @@ class Scalable3DTracker:
                 if survivor_id is not None:
                     suppressed_births_by_detection[detection_id] = track_id
                     created_track_ids_by_detection.pop(detection_id)
+            self._merge_identity_commitments_for_aliases(
+                track_aliases,
+                timestamp,
+            )
 
         self._refresh_track_quality(result, set(created_track_ids_by_detection.values()))
+        frame_identity_commitments = self._identity_commitment_frame_payloads(
+            timestamp,
+            created_track_ids=set(created_track_ids_by_detection.values()),
+            updated_track_ids=set(detection_to_track.values()),
+        )
         update_mode_counts = Counter(
             str(item["mode"]) for item in state_update_diagnostics
         )
@@ -1018,6 +1172,19 @@ class Scalable3DTracker:
                 "binding_suppressed_births": dict(
                     sorted(binding_suppressed_births.items())
                 ),
+                "identity_commitment_suppressed_births": dict(
+                    sorted(identity_suppressed_births.items())
+                ),
+                "identity_commitment_suppressed_association_count": len(
+                    identity_suppressed_association_reasons
+                ),
+                "identity_commitment_suppressed_association_reason_counts": dict(
+                    sorted(
+                        Counter(
+                            identity_suppressed_association_reasons.values()
+                        ).items()
+                    )
+                ),
                 "suppressed_births_by_detection": dict(
                     sorted(suppressed_births_by_detection.items())
                 ),
@@ -1036,6 +1203,35 @@ class Scalable3DTracker:
                 ),
                 "ambiguity_hold": self._finalize_ambiguity_diagnostics(
                     ambiguity_diagnostics
+                ),
+                "identity_commitment_schema_version": (
+                    D2_IDENTITY_EVIDENCE_COMMITMENT_SCHEMA_VERSION
+                ),
+                "identity_commitment_policy_version": (
+                    D2_IDENTITY_EVIDENCE_COMMITMENT_POLICY_VERSION
+                ),
+                "identity_commitment_by_track": frame_identity_commitments,
+                "identity_commitment_state_counts": dict(
+                    sorted(
+                        Counter(
+                            item["identity_commitment_state"]
+                            for item in frame_identity_commitments.values()
+                        ).items()
+                    )
+                ),
+                "identity_commitment_transition_counts_cumulative": dict(
+                    sorted(self._identity_commitment_transition_counts.items())
+                ),
+                "identity_commitment_blocked_recovery_counts_cumulative": dict(
+                    sorted(
+                        self._identity_commitment_blocked_recovery_counts.items()
+                    )
+                ),
+                "identity_commitment_recovery_config": (
+                    self.identity_commitment_recovery_config.to_dict()
+                ),
+                "identity_commitment_recovery_barrier": (
+                    self._identity_recovery_barrier_summary()
                 ),
                 "active_track_count": len(self.active_tracks()),
                 "tracker_runtime_seconds": tracker_runtime,
@@ -1190,6 +1386,14 @@ class Scalable3DTracker:
                 "ambiguity_reserved_evidence_count": int(
                     ambiguity_diagnostics["reserved_evidence_count"]
                 ),
+                "identity_commitment_state_counts": dict(
+                    sorted(
+                        Counter(
+                            item["identity_commitment_state"]
+                            for item in frame_identity_commitments.values()
+                        ).items()
+                    )
+                ),
                 "binding_pre_update_rejection_count": (
                     frame_binding_pre_update_rejections
                 ),
@@ -1267,6 +1471,38 @@ class Scalable3DTracker:
             ),
             "ambiguity_hold_resolution_mode": "lease_expiry_only_v1",
             "ambiguity_hold_online_truth_used": False,
+            "identity_commitment_schema_version": (
+                D2_IDENTITY_EVIDENCE_COMMITMENT_SCHEMA_VERSION
+            ),
+            "identity_commitment_policy_version": (
+                D2_IDENTITY_EVIDENCE_COMMITMENT_POLICY_VERSION
+            ),
+            "identity_commitment_by_track": {
+                track_id: item.to_dict()
+                for track_id, item in self.identity_commitments().items()
+            },
+            "identity_commitment_state_counts": dict(
+                sorted(
+                    Counter(
+                        item.identity_commitment_state.value
+                        for item in self.identity_commitments().values()
+                    ).items()
+                )
+            ),
+            "identity_commitment_transition_counts": dict(
+                sorted(self._identity_commitment_transition_counts.items())
+            ),
+            "identity_commitment_blocked_recovery_counts": dict(
+                sorted(
+                    self._identity_commitment_blocked_recovery_counts.items()
+                )
+            ),
+            "identity_commitment_recovery_config": (
+                self.identity_commitment_recovery_config.to_dict()
+            ),
+            "identity_commitment_recovery_barrier": (
+                self._identity_recovery_barrier_summary()
+            ),
             "observation_timestamp_conflict_count": (
                 self._observation_timestamp_conflict_count
             ),
@@ -1345,6 +1581,664 @@ class Scalable3DTracker:
             "frame_log_limit": self.frame_log_limit,
             "track_history_limit": self.track_history_limit,
         }
+
+    def _register_identity_recovery_blockers(
+        self,
+        track_id: str,
+        evidence_keys: Iterable[str],
+        measurement_timestamp: float,
+    ) -> None:
+        """Persist hold evidence independently from the expiring claim ledger."""
+
+        track = self.tracks.get(track_id)
+        if track is None or track.lifecycle_state == TrackLifecycleState.DROPPED:
+            return
+        barrier = self._identity_recovery_blockers.get(track_id)
+        if barrier is None:
+            barrier = _IdentityRecoveryBlockers(
+                recovery_not_before_measurement_timestamp=float(
+                    measurement_timestamp
+                )
+            )
+            self._identity_recovery_blockers[track_id] = barrier
+        else:
+            barrier.recovery_not_before_measurement_timestamp = max(
+                barrier.recovery_not_before_measurement_timestamp,
+                float(measurement_timestamp),
+            )
+
+        config = self.identity_commitment_recovery_config
+        if not barrier.overflow:
+            for evidence_key in sorted(set(evidence_keys)):
+                if evidence_key in barrier.evidence_keys:
+                    continue
+                if (
+                    len(barrier.evidence_keys)
+                    >= config.max_blocked_keys_per_track
+                    or self._identity_recovery_blocked_key_count
+                    >= config.max_total_blocked_keys
+                ):
+                    barrier.overflow = True
+                    self._identity_recovery_capacity_overflow_count += 1
+                    break
+                barrier.evidence_keys.add(evidence_key)
+                self._identity_recovery_blocked_key_count += 1
+        self._identity_recovery_blocked_key_peak_count = max(
+            self._identity_recovery_blocked_key_peak_count,
+            self._identity_recovery_blocked_key_count,
+        )
+
+    def _register_identity_recovery_lease(
+        self,
+        lease: _AmbiguityLease,
+    ) -> None:
+        lease.track_ids.update(
+            self._bound_track_ids(lease.member_source_keys)
+        )
+        for track_id in sorted(lease.track_ids):
+            self._register_identity_recovery_blockers(
+                track_id,
+                lease.observation_evidence_keys,
+                lease.measurement_timestamp,
+            )
+
+    def _clear_identity_recovery_blockers(self, track_id: str) -> None:
+        barrier = self._identity_recovery_blockers.pop(track_id, None)
+        if barrier is None:
+            return
+        self._identity_recovery_blocked_key_count -= len(
+            barrier.evidence_keys
+        )
+        if self._identity_recovery_blocked_key_count < 0:
+            raise RuntimeError("identity recovery blocker count underflow")
+
+    def _merge_identity_recovery_blockers(
+        self,
+        duplicate_id: str,
+        survivor_id: str,
+    ) -> None:
+        duplicate = self._identity_recovery_blockers.get(duplicate_id)
+        survivor = self._identity_recovery_blockers.get(survivor_id)
+        if duplicate is None:
+            return
+        combined_keys = set(duplicate.evidence_keys)
+        watermarks = [
+            duplicate.recovery_not_before_measurement_timestamp
+        ]
+        overflow = duplicate.overflow
+        if survivor is not None:
+            combined_keys.update(survivor.evidence_keys)
+            watermarks.append(
+                survivor.recovery_not_before_measurement_timestamp
+            )
+            overflow = overflow or survivor.overflow
+        self._clear_identity_recovery_blockers(duplicate_id)
+        self._clear_identity_recovery_blockers(survivor_id)
+        self._register_identity_recovery_blockers(
+            survivor_id,
+            combined_keys,
+            max(watermarks),
+        )
+        merged = self._identity_recovery_blockers[survivor_id]
+        if overflow and not merged.overflow:
+            merged.overflow = True
+            self._identity_recovery_capacity_overflow_count += 1
+
+    def _identity_recovery_public_fields(
+        self,
+        track_id: str,
+    ) -> dict[str, Any]:
+        barrier = self._identity_recovery_blockers.get(track_id)
+        if barrier is None:
+            return {
+                "recovery_blocker_count": 0,
+                "recovery_not_before_measurement_timestamp": None,
+                "recovery_blocker_overflow": False,
+            }
+        return {
+            "recovery_blocker_count": len(barrier.evidence_keys),
+            "recovery_not_before_measurement_timestamp": (
+                barrier.recovery_not_before_measurement_timestamp
+            ),
+            "recovery_blocker_overflow": barrier.overflow,
+        }
+
+    def _identity_recovery_barrier_summary(self) -> dict[str, Any]:
+        return {
+            **self.identity_commitment_recovery_config.to_dict(),
+            "active_track_count": len(self._identity_recovery_blockers),
+            "stored_blocked_key_count": (
+                self._identity_recovery_blocked_key_count
+            ),
+            "peak_stored_blocked_key_count": (
+                self._identity_recovery_blocked_key_peak_count
+            ),
+            "overflow_track_count": sum(
+                int(item.overflow)
+                for item in self._identity_recovery_blockers.values()
+            ),
+            "capacity_overflow_count": (
+                self._identity_recovery_capacity_overflow_count
+            ),
+            "blocked_keys_publicly_exposed": False,
+            "online_truth_used": False,
+        }
+
+    def _identity_observation_acceptance_block_reason(
+        self,
+        track: GlobalTrack3D,
+        detection: Detection3D,
+        evidence: _ObservationEvidence | None,
+    ) -> str | None:
+        previous = self._identity_commitments.get(track.global_track_id)
+        barrier = self._identity_recovery_blockers.get(
+            track.global_track_id
+        )
+        recovery_required = bool(
+            barrier is not None
+            or (
+                previous is not None
+                and previous.identity_commitment_state
+                != IdentityCommitmentState.COMMITTED
+            )
+        )
+        if evidence is None:
+            return (
+                "original_observation_evidence_unavailable"
+                if recovery_required
+                else None
+            )
+        admission_block = (
+            self._first_accepted_original_evidence_block_reason(
+                detection,
+                evidence,
+            )
+        )
+        if admission_block is not None:
+            return admission_block
+
+        if not recovery_required:
+            return None
+        if any(
+            track.global_track_id in lease.track_ids
+            for lease in self._ambiguity_leases.values()
+        ):
+            return "active_ambiguity_lease"
+        if barrier is None:
+            return "identity_recovery_barrier_unavailable"
+        if barrier.overflow:
+            return "identity_recovery_blocker_capacity_overflow"
+        if evidence.key in barrier.evidence_keys:
+            return "blocked_ambiguity_evidence_key"
+        source_timestamp = evidence.source_measurement_timestamp
+        if source_timestamp is None:
+            return "source_measurement_timestamp_unavailable"
+        if (
+            source_timestamp
+            <= barrier.recovery_not_before_measurement_timestamp
+            + self.observation_timestamp_tolerance_s
+        ):
+            return "source_measurement_not_after_ambiguity_watermark"
+        return None
+
+    def _first_accepted_original_evidence_block_reason(
+        self,
+        detection: Detection3D,
+        evidence: _ObservationEvidence | None,
+    ) -> str | None:
+        if evidence is None:
+            return None
+        if not evidence.identity_commitment_eligible:
+            return evidence.identity_evidence_disposition
+        if (
+            evidence.source_measurement_timestamp is not None
+            and evidence.source_measurement_timestamp
+            > detection.measurement_timestamp
+            + self.observation_timestamp_tolerance_s
+        ):
+            return "source_measurement_timestamp_from_future"
+
+        claim = self._observation_claims.get(evidence.key)
+        if claim is None:
+            return "first_acceptance_claim_unavailable"
+        if claim.status != "unseen":
+            return "evidence_claim_not_unseen"
+        if claim.global_track_id is not None:
+            return "evidence_claim_already_bound"
+        if claim.ambiguity_component_key is not None:
+            return "ambiguity_reserved_evidence"
+        if claim.replay_count != 0:
+            return "duplicate_or_replayed_evidence"
+        if claim.first_detection_id != detection.detection_id:
+            return "evidence_not_first_accepted_detection"
+        if (
+            abs(
+                claim.first_state_timestamp
+                - detection.measurement_timestamp
+            )
+            > self.observation_timestamp_tolerance_s
+        ):
+            return "evidence_not_first_accepted_in_current_scan"
+        return None
+
+    def _record_identity_recovery_block(
+        self,
+        track: GlobalTrack3D,
+        timestamp: float,
+        reason: str,
+    ) -> None:
+        self._identity_commitment_blocked_recovery_counts[reason] += 1
+        previous = self._identity_commitments.get(track.global_track_id)
+        if (
+            previous is None
+            or previous.identity_commitment_state
+            == IdentityCommitmentState.COMMITTED
+        ):
+            return
+        self._identity_commitments[track.global_track_id] = replace(
+            previous,
+            association_state="unmatched",
+            reason=f"identity_recovery_blocked_{reason}",
+            state_timestamp=float(timestamp),
+            **self._identity_recovery_public_fields(
+                track.global_track_id
+            ),
+        )
+
+    def _reconcile_identity_commitment_holds(
+        self,
+        timestamp: float,
+        component_events: Iterable[Mapping[str, Any]],
+    ) -> None:
+        """Persist uncommitted state beyond the lifetime of active leases."""
+
+        expirations_by_track: dict[str, Mapping[str, Any]] = {}
+        for event in component_events:
+            if event.get("decision") != "expired":
+                continue
+            for raw_track_id in event.get("track_ids", ()):
+                track_id = str(raw_track_id)
+                previous = expirations_by_track.get(track_id)
+                if previous is None or int(event.get("generation", 0)) >= int(
+                    previous.get("generation", 0)
+                ):
+                    expirations_by_track[track_id] = event
+
+        leases_by_track: dict[str, list[_AmbiguityLease]] = defaultdict(list)
+        for lease in self._ambiguity_leases.values():
+            self._register_identity_recovery_lease(lease)
+            for track_id in lease.track_ids:
+                track = self.tracks.get(track_id)
+                if (
+                    track is not None
+                    and track.lifecycle_state != TrackLifecycleState.DROPPED
+                ):
+                    leases_by_track[track_id].append(lease)
+
+        for track_id, leases in sorted(leases_by_track.items()):
+            ordered = sorted(
+                leases,
+                key=lambda item: (
+                    item.generation,
+                    item.component_key,
+                ),
+            )
+            primary = ordered[-1]
+            previous = self._identity_commitments.get(track_id)
+            old_state = (
+                None
+                if previous is None
+                else previous.identity_commitment_state
+            )
+            generation = (
+                1
+                if previous is None
+                else previous.commitment_generation
+                + int(
+                    old_state
+                    != IdentityCommitmentState.UNCOMMITTED_AMBIGUITY_HOLD
+                )
+            )
+            commitment = IdentityEvidenceCommitment(
+                global_track_id=track_id,
+                association_state=(
+                    "unmatched"
+                    if previous is None
+                    else previous.association_state
+                ),
+                identity_commitment_state=(
+                    IdentityCommitmentState.UNCOMMITTED_AMBIGUITY_HOLD
+                ),
+                reason="active_structural_ambiguity_hold",
+                state_timestamp=timestamp,
+                commitment_generation=generation,
+                measurement_timestamp=primary.measurement_timestamp,
+                arrival_timestamp=primary.arrival_timestamp,
+                ambiguity_component_key=primary.component_key,
+                ambiguity_evidence_id=primary.evidence_id,
+                ambiguity_component_generation=primary.generation,
+                publisher_node_id=primary.publisher_node_id,
+                publisher_epoch=primary.publisher_epoch,
+                active_lease_count=len(ordered),
+                active_lease_keys=tuple(
+                    lease.component_key for lease in ordered
+                ),
+                lease_first_seen_timestamp=primary.first_seen_timestamp,
+                lease_soft_deadline=primary.soft_deadline,
+                lease_hard_deadline=primary.hard_deadline,
+                **self._identity_recovery_public_fields(track_id),
+            )
+            self._identity_commitments[track_id] = commitment
+            self._record_identity_commitment_transition(
+                old_state,
+                commitment.identity_commitment_state,
+            )
+
+        for track_id, previous in tuple(self._identity_commitments.items()):
+            if (
+                previous.identity_commitment_state
+                != IdentityCommitmentState.UNCOMMITTED_AMBIGUITY_HOLD
+                or track_id in leases_by_track
+            ):
+                continue
+            expiration = expirations_by_track.get(track_id)
+            expiry_reason = (
+                "lease_no_longer_active"
+                if expiration is None
+                else str(expiration["reason"])
+            )
+            expiry_timestamp = (
+                float(timestamp)
+                if expiration is None
+                else float(
+                    expiration.get("d2_consumption_timestamp", timestamp)
+                )
+            )
+            after_hold = IdentityEvidenceCommitment(
+                global_track_id=track_id,
+                association_state=previous.association_state,
+                identity_commitment_state=(
+                    IdentityCommitmentState.UNCOMMITTED_AFTER_HOLD
+                ),
+                reason=(
+                    "ambiguity_hold_released_without_fresh_original_observation"
+                ),
+                state_timestamp=timestamp,
+                commitment_generation=previous.commitment_generation + 1,
+                measurement_timestamp=previous.measurement_timestamp,
+                arrival_timestamp=previous.arrival_timestamp,
+                ambiguity_component_key=previous.ambiguity_component_key,
+                ambiguity_evidence_id=previous.ambiguity_evidence_id,
+                ambiguity_component_generation=(
+                    previous.ambiguity_component_generation
+                ),
+                publisher_node_id=previous.publisher_node_id,
+                publisher_epoch=previous.publisher_epoch,
+                active_lease_count=0,
+                active_lease_keys=(),
+                lease_first_seen_timestamp=(
+                    previous.lease_first_seen_timestamp
+                ),
+                lease_soft_deadline=previous.lease_soft_deadline,
+                lease_hard_deadline=previous.lease_hard_deadline,
+                lease_expired_timestamp=expiry_timestamp,
+                lease_expiration_reason=expiry_reason,
+                **self._identity_recovery_public_fields(track_id),
+            )
+            self._identity_commitments[track_id] = after_hold
+            self._record_identity_commitment_transition(
+                previous.identity_commitment_state,
+                after_hold.identity_commitment_state,
+            )
+
+    def _initialize_normal_identity_commitment(
+        self,
+        track: GlobalTrack3D,
+        detection: Detection3D,
+    ) -> None:
+        evidence = self._observation_evidence(detection)
+        if evidence is None:
+            commitment = IdentityEvidenceCommitment(
+                global_track_id=track.global_track_id,
+                association_state="created",
+                identity_commitment_state=IdentityCommitmentState.COMMITTED,
+                reason="normal_path_not_subject_to_ambiguity_hold",
+                state_timestamp=detection.measurement_timestamp,
+            )
+        else:
+            if not evidence.identity_commitment_eligible:
+                raise RuntimeError(
+                    "known false alarm or unknown evidence reached track birth"
+                )
+            commitment = IdentityEvidenceCommitment(
+                global_track_id=track.global_track_id,
+                association_state="created",
+                identity_commitment_state=IdentityCommitmentState.COMMITTED,
+                reason="track_created_from_fresh_original_observation",
+                state_timestamp=detection.measurement_timestamp,
+                measurement_timestamp=(
+                    evidence.source_measurement_timestamp
+                    if evidence.source_measurement_timestamp is not None
+                    else detection.measurement_timestamp
+                ),
+                arrival_timestamp=detection.arrival_timestamp,
+                source_observation_evidence_key=evidence.key,
+                source_observation_evidence_generation=0,
+                source_observation_disposition=(
+                    evidence.identity_evidence_disposition
+                ),
+            )
+        self._identity_commitments[track.global_track_id] = commitment
+        self._identity_commitment_transition_counts[
+            "initialized:committed"
+        ] += 1
+
+    def _recover_identity_commitment(
+        self,
+        track: GlobalTrack3D,
+        detection: Detection3D,
+        evidence: _ObservationEvidence,
+        *,
+        association_state: str,
+    ) -> None:
+        previous = self._identity_commitments.get(track.global_track_id)
+        block_reason = self._identity_observation_acceptance_block_reason(
+            track,
+            detection,
+            evidence,
+        )
+        if block_reason is not None:
+            self._record_identity_recovery_block(
+                track,
+                detection.measurement_timestamp,
+                block_reason,
+            )
+            return
+
+        claim = self._observation_claims.get(evidence.key)
+        if claim is None:
+            raise RuntimeError(
+                "accepted identity evidence lost its first-consumption claim"
+            )
+        evidence_generation = claim.replay_count
+        old_state = (
+            None
+            if previous is None
+            else previous.identity_commitment_state
+        )
+        commitment = IdentityEvidenceCommitment(
+            global_track_id=track.global_track_id,
+            association_state=association_state,
+            identity_commitment_state=IdentityCommitmentState.COMMITTED,
+            reason="fresh_original_observation_accepted",
+            state_timestamp=detection.measurement_timestamp,
+            commitment_generation=(
+                0
+                if previous is None
+                else previous.commitment_generation + 1
+            ),
+            measurement_timestamp=(
+                evidence.source_measurement_timestamp
+                if evidence.source_measurement_timestamp is not None
+                else detection.measurement_timestamp
+            ),
+            arrival_timestamp=detection.arrival_timestamp,
+            source_observation_evidence_key=evidence.key,
+            source_observation_evidence_generation=evidence_generation,
+            source_observation_disposition=(
+                evidence.identity_evidence_disposition
+            ),
+            ambiguity_component_key=(
+                None if previous is None else previous.ambiguity_component_key
+            ),
+            ambiguity_evidence_id=(
+                None if previous is None else previous.ambiguity_evidence_id
+            ),
+            ambiguity_component_generation=(
+                None
+                if previous is None
+                else previous.ambiguity_component_generation
+            ),
+            publisher_node_id=(
+                None if previous is None else previous.publisher_node_id
+            ),
+            publisher_epoch=(
+                None if previous is None else previous.publisher_epoch
+            ),
+            lease_first_seen_timestamp=(
+                None
+                if previous is None
+                else previous.lease_first_seen_timestamp
+            ),
+            lease_soft_deadline=(
+                None if previous is None else previous.lease_soft_deadline
+            ),
+            lease_hard_deadline=(
+                None if previous is None else previous.lease_hard_deadline
+            ),
+            lease_expired_timestamp=(
+                None
+                if previous is None
+                else previous.lease_expired_timestamp
+            ),
+            lease_expiration_reason=(
+                None
+                if previous is None
+                else previous.lease_expiration_reason
+            ),
+        )
+        self._clear_identity_recovery_blockers(track.global_track_id)
+        self._identity_commitments[track.global_track_id] = commitment
+        if old_state == IdentityCommitmentState.COMMITTED:
+            self._identity_commitment_transition_counts[
+                "committed:fresh_original_observation_refresh"
+            ] += 1
+        else:
+            self._record_identity_commitment_transition(
+                old_state,
+                commitment.identity_commitment_state,
+            )
+
+    def _identity_commitment_frame_payloads(
+        self,
+        timestamp: float,
+        *,
+        created_track_ids: set[str],
+        updated_track_ids: set[str],
+    ) -> dict[str, dict[str, Any]]:
+        payloads: dict[str, dict[str, Any]] = {}
+        for track in self.active_tracks():
+            track_id = track.global_track_id
+            commitment = self._identity_commitments.get(track_id)
+            if commitment is None:
+                commitment = IdentityEvidenceCommitment(
+                    global_track_id=track_id,
+                    association_state="unmatched",
+                    identity_commitment_state=(
+                        IdentityCommitmentState.COMMITTED
+                    ),
+                    reason="legacy_normal_path_not_subject_to_ambiguity_hold",
+                    state_timestamp=timestamp,
+                )
+                self._identity_commitments[track_id] = commitment
+                self._identity_commitment_transition_counts[
+                    "initialized:committed"
+                ] += 1
+            if track.lifecycle_state == TrackLifecycleState.LOST:
+                association_state = "lost"
+            elif track_id in created_track_ids:
+                association_state = "created"
+            elif track_id in updated_track_ids:
+                association_state = "matched"
+            else:
+                association_state = "unmatched"
+            commitment = replace(
+                commitment,
+                association_state=association_state,
+                state_timestamp=timestamp,
+            )
+            self._identity_commitments[track_id] = commitment
+            payloads[track_id] = commitment.to_dict()
+        return payloads
+
+    def _merge_identity_commitments_for_aliases(
+        self,
+        aliases: Mapping[str, str],
+        timestamp: float,
+    ) -> None:
+        priority = {
+            IdentityCommitmentState.COMMITTED: 0,
+            IdentityCommitmentState.UNCOMMITTED_AFTER_HOLD: 1,
+            IdentityCommitmentState.UNCOMMITTED_AMBIGUITY_HOLD: 2,
+        }
+        for duplicate_id, survivor_id in sorted(aliases.items()):
+            duplicate = self._identity_commitments.get(duplicate_id)
+            survivor = self._identity_commitments.get(survivor_id)
+            self._merge_identity_recovery_blockers(
+                duplicate_id,
+                survivor_id,
+            )
+            if duplicate is None:
+                continue
+            if (
+                survivor is None
+                or priority[duplicate.identity_commitment_state]
+                > priority[survivor.identity_commitment_state]
+            ):
+                self._identity_commitments[survivor_id] = replace(
+                    duplicate,
+                    global_track_id=survivor_id,
+                    state_timestamp=timestamp,
+                )
+                self._identity_commitment_transition_counts[
+                    "coalescence:conservative_uncommitted_transfer"
+                ] += int(
+                    duplicate.identity_commitment_state
+                    != IdentityCommitmentState.COMMITTED
+                )
+            self._identity_commitments.pop(duplicate_id, None)
+            merged = self._identity_commitments.get(survivor_id)
+            if (
+                merged is not None
+                and merged.identity_commitment_state
+                != IdentityCommitmentState.COMMITTED
+            ):
+                self._identity_commitments[survivor_id] = replace(
+                    merged,
+                    **self._identity_recovery_public_fields(survivor_id),
+                )
+
+    def _record_identity_commitment_transition(
+        self,
+        previous: IdentityCommitmentState | None,
+        current: IdentityCommitmentState,
+    ) -> None:
+        if previous == current:
+            return
+        previous_value = "none" if previous is None else previous.value
+        self._identity_commitment_transition_counts[
+            f"{previous_value}->{current.value}"
+        ] += 1
 
     def _update_track(
         self,
@@ -1494,6 +2388,7 @@ class Scalable3DTracker:
         )
         track.append_history("create", detection)
         self.tracks[track_id] = track
+        self._initialize_normal_identity_commitment(track, detection)
         self._advance_after_hit(track)
         return track
 
@@ -1538,6 +2433,7 @@ class Scalable3DTracker:
             self._drop_count += 1
             if tentative_stale_drop:
                 self._tentative_stale_drop_count += 1
+            self._clear_identity_recovery_blockers(track.global_track_id)
             for source_key in tuple(track.source_track_keys):
                 if self._source_bindings.get(source_key) == track.global_track_id:
                     self._source_bindings.pop(source_key, None)
@@ -1721,6 +2617,7 @@ class Scalable3DTracker:
         detection: Detection3D,
     ) -> _ObservationEvidence | None:
         metadata = detection.metadata
+        identity_disposition = self._identity_evidence_disposition(metadata)
         raw_opaque_evidence_key = metadata.get(
             "latest_observation_evidence_key",
             metadata.get("observation_evidence_key"),
@@ -1747,6 +2644,7 @@ class Scalable3DTracker:
                 observation_id=opaque_key,
                 source_namespace=namespace,
                 source_measurement_timestamp=source_timestamp,
+                identity_evidence_disposition=identity_disposition,
             )
         raw_observation_id = metadata.get(
             "latest_observation_id",
@@ -1777,7 +2675,28 @@ class Scalable3DTracker:
             observation_id=observation_id,
             source_namespace=source_namespace,
             source_measurement_timestamp=source_timestamp,
+            identity_evidence_disposition=identity_disposition,
         )
+
+    @staticmethod
+    def _identity_evidence_disposition(
+        metadata: Mapping[str, Any],
+    ) -> str:
+        raw = metadata.get(
+            "identity_evidence_disposition",
+            "target_candidate",
+        )
+        disposition = str(raw).strip().lower()
+        if disposition not in {
+            "target_candidate",
+            "known_false_alarm",
+            "unknown",
+        }:
+            raise ValueError(
+                "identity_evidence_disposition must be target_candidate, "
+                "known_false_alarm, or unknown"
+            )
+        return disposition
 
     def _replay_reason(
         self,
@@ -2359,6 +3278,8 @@ class Scalable3DTracker:
                 generation=component.generation,
                 publisher_node_id=component.publisher_node_id,
                 publisher_epoch=component.publisher_epoch,
+                measurement_timestamp=component.measurement_timestamp,
+                arrival_timestamp=component.arrival_timestamp,
                 first_seen_timestamp=timestamp,
                 last_new_evidence_timestamp=timestamp,
                 soft_deadline=soft_deadline,
@@ -2399,9 +3320,12 @@ class Scalable3DTracker:
 
         lease.evidence_id = component.evidence_id
         lease.generation = component.generation
+        lease.measurement_timestamp = component.measurement_timestamp
+        lease.arrival_timestamp = component.arrival_timestamp
         lease.track_ids.update(
             self._bound_track_ids(component.member_source_keys)
         )
+        self._register_identity_recovery_lease(lease)
         if lease_extended:
             lease.last_new_evidence_timestamp = timestamp
             lease.soft_deadline = min(
@@ -2551,7 +3475,9 @@ class Scalable3DTracker:
         *,
         reason: str,
     ) -> dict[str, Any]:
-        lease = self._ambiguity_leases.pop(component_key)
+        lease = self._ambiguity_leases[component_key]
+        self._register_identity_recovery_lease(lease)
+        self._ambiguity_leases.pop(component_key)
         released = 0
         for evidence_key in lease.observation_evidence_keys:
             claim = self._observation_claims.get(evidence_key)
@@ -2573,9 +3499,16 @@ class Scalable3DTracker:
             "component_id": lease.component_id,
             "evidence_id": lease.evidence_id,
             "generation": lease.generation,
+            "publisher_node_id": lease.publisher_node_id,
+            "publisher_epoch": lease.publisher_epoch,
+            "measurement_timestamp": lease.measurement_timestamp,
+            "arrival_timestamp": lease.arrival_timestamp,
             "state_valid_timestamp": float(timestamp),
+            "d2_consumption_timestamp": float(timestamp),
             "soft_deadline": lease.soft_deadline,
             "hard_deadline": lease.hard_deadline,
+            "first_seen_timestamp": lease.first_seen_timestamp,
+            "track_ids": sorted(lease.track_ids),
             "released_reserved_evidence_count": released,
             "lease_extended": False,
             "online_truth_used": False,

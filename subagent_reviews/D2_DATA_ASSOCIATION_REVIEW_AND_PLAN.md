@@ -68,14 +68,52 @@ truth use 为 0。
 window 作为准入修复；同 seed 1100 联合门槛通过后才恢复多 seed。首版只按到期释放；
 连续双向唯一自动消歧、component-level JPDA、bounded MHT 和生产级 epoch 协商仍开放。
 
+### 2026-07-23 身份承诺合同补充
+
+D2-owned 修复已经实现。`Scalable3DTracker` 不再把 lease expiry 当作身份重新承诺；
+每条规范航迹跨帧保存 `committed`、
+`identity_uncommitted_ambiguity_hold` 和
+`identity_uncommitted_after_hold`。每条受 hold 影响航迹另保存私有候选 key 集合和
+相关 component 的最大 measurement timestamp。lease 释放 claim reservation 时不删除
+这组状态。恢复要求 key 未被阻断、source timestamp 严格晚于水位线、claim 为本扫描首次
+接纳且 replay count 为 0、活动 lease 为 0、truth-free disposition 为
+`target_candidate`。
+
+恢复门控已放在量测更新之前。旧候选 key 在 reservation 删除后重新送入，不再更新状态、
+增加 hit、写入 `detection_to_track` 或绑定 observation claim。容量默认限制为每航迹
+2048 个、全局 250000 个。未溢出状态在合法恢复后清理；溢出保持 fail-closed，只在永久
+drop 时清理。
+
+公开 DTO 为 `d2.identity-evidence-commitment.v2`。每帧输出关联状态、承诺原因、双
+时间戳、commitment/component/evidence generation、publisher epoch、lease key、
+soft/hard deadline、expiry、blocker count、恢复水位线和 overflow。阻断 key 不公开，
+未提交 DTO 不携带 source observation key。外层
+`d2.scalable3d_identity_evidence.v2` 要求未提交 record 的 `source_observations` 为空；
+v1 构造和序列化保持原样。
+
+离线 v2 evaluator 不把未提交帧硬分给任何 truth candidate。该帧仍进入 coverage 分母，
+并保留空窗前后的 committed 锚点用于 IDSW。普通谱系缺失、未来/超窗观测、未知标签和
+冲突记录继续 fail-closed。audit 输出 commitment coverage、状态计数、未提交 mapping
+和候选绑定违规。
+
+`known_false_alarm/unknown` 在本合同中只表示不读取离线 truth sidecar 的上游传感器
+处置。D2 在线路径不从 actor/truth label 推导该字段。
+
+2026-07-23 D2 完整回归为 `281 passed, 1 warning in 29.46s`。专项覆盖 hold、到期、旧 key 在
+reservation 释放后重入、同水位线新 key、更晚新 key、容量溢出、重复、超龄、已知假警、
+未知处置、未来来源时刻、新鲜恢复、无 hold 正常路径、37 目标和 v1/v2 评分。该证据只关闭 D2-owned
+合同缺口。main 持久化、D6 聚合以及 clean seed 1100 重测仍未完成；结构歧义候选默认
+关闭，系统级 P1 继续开放。
+
 ## 0. P0/P1 缺口快照
 
 - **P0**：无开放 blocker。GNN/Hungarian、显式 `id_switch_count`、`track_continuity`、risk summary、replay helper、按输入集合长度运行、航迹质量评分、运动一致性约束和 quality-aware gate baseline 已是当前主线。seed1005 v3 验收已允许 replay=0 或有界 replay，见第 32 节。
 - **P1 合同层已闭合**：D1 governed adapter、online/offline truth 分离、association log/profile version、`d2-offline-truth-label/v1`、N-target dense/crossing fixture、至少 10-seed runner、availability-aware summary、M-of-N/false-track/NIS/NEES 接口及中心 canonical registry 基础已回归。
-- **结构歧义保持集成 P1 仍开放**：seed 1100 证明 sidecar/lease 接线有效，但候选
-  identity metrics unavailable，D2 tracks、D3 assignments 和 mapping availability
-  退化。该候选已按门槛拒绝并保持默认关闭；ambiguity-hold 可评分谱系合同、
-  window/lease 联合标定和同 seed 重测未完成，单独放宽 `0.9 s` window 不构成修复。
+- **结构歧义保持集成 P1 仍开放**：D2-owned 可评分 commitment v2 合同已经实现并
+  通过模块回归；main/D6 尚未持久化和聚合。seed 1100 的旧候选仍有 D2 tracks、
+  D3 assignments 和 mapping availability 退化，尚未按 v2 重测。该候选继续默认关闭；
+  window/lease 联合标定和同 seed 业务可用性门槛未完成，单独放宽 `0.9 s` window
+  不构成修复。
 - **P1 完整冻结 v2 证据已生成，长期标定仍开放**：最佳 GNN 候选 IDSW `1.358333 -> 0.616667`（下降 `54.6012%`），continuity `0.981046 -> 0.983954`，P95 `15.470 ms`；false-track/truth leakage 均为 0。总体联合 gate 全部通过，`promotion_recommended=true`；分档仅 clutter/combined 通过，另外四档 baseline IDSW=0 fail-closed。后续 P1 是跨模块评审、更长 OOSM/遮挡/杂波和生命周期标定，不再是缺少 v2 联合报告。
 - **历史基线**：2026-07-10 的 5v5/2v2 批次和 2026-07-11 早期的 seeds 7/17/27 当时不足以关闭 D2 P1，且 T001 双 primary 尚未通过。这些只作为实施前/过渡基线，不代表当前状态。
 - **当前 ComputerVision 证据**：M=5、N=2 的 10 seeds 中，T001 双 primary 共识/计划授权为 8/10；D2 `id_switch_count=0`、错误 duplicate=0、`global_track_id` 改写/重绑=0 均为 10/10。
@@ -99,7 +137,8 @@ window 作为准入修复；同 seed 1100 联合门槛通过后才恢复多 seed
   `2.928830 -> 2.204672 s`，但早/晚 regular 窗口比
   `1.119661x -> 1.123036x`。本轮只关闭三个可证明的常数成本热点，长窗口 P1 保持
   开放；该阶段完整 D2 回归为 `234 passed, 1 warning in 34.83s`。歧义保持增量后的
-  当前完整回归为 `271 passed, 1 warning in 28.82s`。
+  保持租约阶段回归为 `271 passed, 1 warning in 28.82s`；身份证据承诺 v2 与恢复
+  水位线加固后当前完整回归为 `281 passed, 1 warning in 29.46s`。
 
 ## 1. 研究问题
 
@@ -1226,3 +1265,29 @@ D1 定义部分 RMSE/NEES coverage。D2 在新制品上复跑同一合同，不�
 D2 合同实现可接受，但系统 GAP 尚未关闭。main producer 仍需显式写出视觉虚警处置并
 重跑 20 seeds。v2 不改变已有多 target 混轨证据；strict IDSW 在上游混轨、unknown、
 冲突和缺失全部消失前继续 unavailable。
+
+## 42. 2026-07-23 identity commitment evaluator v2 评审
+
+### 42.1 接受项
+
+接受 `d2.scalable3d_identity_evaluation.v2` 和
+`d2.scalable3d_identity_commitment_audit.v2`。evaluation v2 嵌入经原 evidence bundle
+SHA-256 约束的 truth-free records，audit 由每条
+`IdentityEvidenceCommitment` 重算。全部记录与 `created/matched` 记录分别形成承诺
+coverage 分母；原因、恢复阻断器、水位线年龄和 overflow 均有稳定字段。
+
+loader 不信任持久化聚合值。缺字段、聚合篡改、负水位线年龄、未提交候选或来源绑定均
+失败关闭。v1 仍使用原 evaluation schema，新增字段为 unavailable/`None`。blocked
+evidence keys 没有进入公开制品，`global_track_id` 权威和跨未提交空档的 committed
+anchor 口径未变化。
+
+### 42.2 证据与边界
+
+专项审计样例验证 all-record `2/4`、observed-record `2/3`、blocker sum/mean/max
+`6/1.5/4`、watermark age min/mean/max `0.5/0.625/0.75 s` 和 overflow
+record/track `2/1`。D2 完整回归为 `286 passed, 1 warning in 29.22s`，warning 为既有
+Matplotlib `Axes3D` 环境提示。
+
+D2-owned 审计缺口关闭。main 尚未原子持久化真实 episode 的 v2 evidence/evaluation，
+D6 尚未消费新字段，clean seed 1100 和多 seed A/B 尚未重跑。因此结构歧义候选保持
+默认关闭，系统 P1 不因本次模块测试而关闭。

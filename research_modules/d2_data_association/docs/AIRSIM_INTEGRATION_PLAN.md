@@ -65,16 +65,35 @@ changed `0.2245 -> 0.2112`. Candidate identity metrics were unavailable because 
 failed the pre-registered availability and operational non-regression gate, so seeds
 1101/1102 were stopped and the default remains disabled.
 
-This result is not an AirSim run. Before an AirSim candidate arm is scheduled, D2 must first
-freeze a scoreable lineage contract for ambiguity-held frames. The evaluator must distinguish
-`identity_uncommitted/ambiguity_hold` from ordinary `lineage_missing`, retain component and
-evidence audit, and must not hard-assign candidate observations to a `global_track_id`.
-Only after that contract is fixed may measured evidence age be used to calibrate the lineage
-window and soft/hard lease together. Increasing the current `0.9 s` lineage window alone is
-forbidden as an admission fix because it can hide long-lived dependence on old observations.
-D2 must also explain the track, mapping and D3 assignment losses. The repaired candidate
-should first pass the same seed 1100 gate with a valid scoring denominator. The 2026-07-23
-D2 module suite passed 271 tests; that module validation proves contracts and invariants only.
+This result is not an AirSim run. D2 has now frozen the module-owned repair as
+`d2.identity-evidence-commitment.v2` and
+`d2.scalable3d_identity_evidence.v2`. A track remains
+`identity_uncommitted_after_hold` after soft/hard expiry until a fresh original observation is
+actually accepted. D2 now retains each affected track's private ambiguity-evidence keys and
+maximum component measurement-time watermark after the reservation leaves the claim ledger.
+Recovery requires a different key, a source timestamp strictly after that watermark, a
+first-accepted original claim with zero replay count, no active lease, and a truth-free
+`target_candidate` disposition. An old candidate that re-enters after reservation release is
+removed before state update, hit accounting, claim binding, or `detection_to_track` publication.
+Uncommitted frames expose no source-observation binding, reduce identity coverage, and leave
+ID-switch comparison anchored across the gap. The public payload exposes only blocker count,
+watermark, and overflow status; blocker keys remain private. Capacity overflow stays fail-closed.
+Ordinary lineage failures still fail closed. The D2 suite passed 281 tests in 29.46 seconds on
+2026-07-23; this proves only the module contract and state transitions.
+
+`known_false_alarm` and `unknown` in the online commitment path are truth-free upstream sensor
+dispositions. They must not be populated from the offline AirSim truth sidecar. D2 recursively
+rejects truth metadata online; AirSim actor identity remains available only to the offline
+evaluator.
+
+Main must next persist `AssociationResult.metadata.identity_commitment_by_track` atomically
+with every D2 track/frame. For v2 uncommitted records it must emit an empty
+`source_observations` list even when the track object still retains historical source keys.
+D6 must aggregate commitment coverage, uncommitted counts, blocked-recovery reasons, blocker
+overflow, and watermark age before the same clean seed 1100 gate is repeated. Increasing the
+current `0.9 s` lineage window alone remains forbidden.
+AirSim execution must wait until the point-mass seed 1100 rerun has available strict metrics,
+zero online truth use, and no D2/D3 availability regression.
 
 ## Inputs
 
@@ -422,9 +441,9 @@ main 还需持久化 `replay_coast_count/events/track_ids/reason_counts/config` 
 ## 离线部分身份诊断接线
 
 AirSim 在线 episode 不增加任何 truth 字段。main 继续在 episode 结束后，把匿名 D1/D2
-records、identity evidence 和独立 truth sidecar 交给 D2 evaluator。新制品在原
-`d2.scalable3d_identity_evaluation.v1` 中附带
-`partial_identity_diagnostics`，供 D6 读取以下字段：
+records、identity evidence 和独立 truth sidecar 交给 D2 evaluator。legacy evidence
+生成 `d2.scalable3d_identity_evaluation.v1`；identity commitment evidence 生成 v2。
+两种制品都可附带 `partial_identity_diagnostics`，供 D6 读取以下字段：
 
 - mapping 总数、受评分数、可评估数、ambiguous、unavailable 和 missing 数；
 - mapping、完整帧和相邻转移 coverage 及各自 availability/reason；
@@ -461,3 +480,15 @@ D6 展示时分开 strict、partial 和 disposition audit。纯虚警映射不�
 unknown 仍使 strict unavailable。main 更新 producer 后应先重跑 seed 1000，检查旧
 缺标签样例转为 `known_false_alarm_only`，再运行 1000--1019；真实多 target 混轨计数
 不得因虚警合同上线而被删除。
+
+## Identity commitment evaluation v2 接线
+
+main 在持久化 `d2.scalable3d_identity_evidence.v2` 后，应使用同一 evidence bundle
+生成 `d2.scalable3d_identity_evaluation.v2`，并把 evaluation SHA-256 写入 episode
+manifest。D6 只读取 evaluation 的 `audit` 和公开
+`identity_evidence_records`，不得读取 tracker 私有 blocked-key 集合。
+
+D6 后续需分别汇总 all-record 与 created/matched observed-record coverage、恢复拒绝
+reason counts、blocker count、水位线年龄和 overflow。两个未提交 binding violation
+字段必须恒为 0。当前 D2 producer/loader 和模块测试已完成；main runtime 持久化、
+D6 报告接入、真实 AirSim episode 与 clean seed 1100 A/B 尚未执行。

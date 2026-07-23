@@ -1,5 +1,59 @@
 # D2 多目标跟踪与数据关联实验报告
 
+## 2026-07-23 身份证据承诺 v2 模块验证
+
+本批修复结构歧义 hold/hard-cap 释放后，航迹仍携带旧 source observation 并触发
+`source_observation_outside_lineage_window` 的合同缺口。没有启动 AirSim，也没有复跑
+200v200 seed 1100。输入均为 D2-owned 确定性 DTO 和六维质点观测。
+
+实现新增三态承诺：
+
+```text
+committed
+  -> identity_uncommitted_ambiguity_hold
+  -> identity_uncommitted_after_hold
+  -> committed
+```
+
+租约到期后，航迹继续保持 `identity_uncommitted_after_hold`。重复观测、超龄观测、旧
+generation、仅预测和显式已知假警不能恢复。只有通过新鲜性检查且实际被匹配或用于合法
+建轨的新原始观测恢复 `committed`。本次加固后，D2 还保存歧义候选 key 阻断集合和最大
+component measurement timestamp。reservation 删除不清理这两项状态。恢复必须使用未
+出现过的新 key，source timestamp 严格晚于水位线，claim 是本扫描首次接纳且 replay
+count 为 0，活动 lease 为 0，处置为 truth-free `target_candidate`。
+
+恢复判定在量测更新前执行。被阻断的匹配不更新航迹、不增加 hit、不绑定 claim，也不进入
+`detection_to_track`。公开未提交 payload 只给出 blocker count、水位线和 overflow，不
+输出候选 key 或 source observation binding。默认容量为每航迹 2048 个 key、全局
+250000 个；溢出保持 fail-closed。
+
+专项验证覆盖：
+
+- 活动 hold 时 prediction-only 和 `identity_uncommitted_ambiguity_hold`；
+- soft deadline 到期后仍为 `identity_uncommitted_after_hold`；
+- reservation 释放后再次送入同一旧候选 key，freshness 可接纳但身份恢复被阻断；
+- 不同 key 的 source timestamp 未严格晚于水位线时仍阻断，严格更晚的新 key 才恢复；
+- source timestamp 晚于当前扫描时刻时按未来证据阻断；
+- 阻断集合容量溢出后保持 fail-closed；
+- 重复、超龄和 `known_false_alarm` 证据不恢复；
+- `known_false_alarm/unknown` 不能构造 committed DTO，在线处置不读取离线 truth
+  sidecar；
+- 新鲜原始证据恢复并记录 measurement/arrival timestamp 与 evidence generation；
+- 无 hold 的正常路径保持 `committed`；
+- 37 目标输入按实际集合长度输出 37 条承诺记录；
+- v1 evidence round-trip 不变，v1 拒绝 v2 字段；
+- v2 未提交帧不绑定候选真值，严格指标仍可用；
+- committed 锚点跨一个未提交空窗从 `GT3D-000001` 变为
+  `GT3D-000002` 时，IDSW 记 1，coverage 为 `2/3`。
+
+完整 D2 回归结果为 `281 passed, 1 warning in 29.46s`，验收阈值为零失败。warning 来自本机
+Matplotlib `Axes3D` 多版本环境，不影响本专项。
+
+本批结论只适用于 D2 模块合同。main 尚未把
+`identity_commitment_by_track` 写入真实 scalable episode，D6 尚未汇总 commitment
+coverage，clean seed 1100 的严格身份指标、D2 航迹数和 D3 分配数尚未复核。候选继续
+默认关闭，本节不关闭系统级 P1 晋级门槛。
+
 ## 2026-07-23 结构歧义保持单 seed 集成门槛
 
 main 在固定提交 `9cd2a79` 上完成 nominal 200v200、seed 1100、2.2 s、
@@ -1051,3 +1105,21 @@ producer/evaluator 重放。来源和持久化 evaluation 一致，strict 仍 un
 纯虚警不进入 strict 或 partial scored denominator；unknown、冲突和时间错误阻断。
 尚待 main 生成包含显式 `known_false_alarm` 的 20-seed v2 sidecar，再确认原
 `truth_label_missing` 是否按预期消失。真实多目标混轨必须继续单独保留。
+
+## 31. identity commitment evaluator v2 合同验证（2026-07-23）
+
+本轮没有启动 AirSim，也没有重跑 seed 1100。专项测试构造 committed、hold 释放后
+uncommitted、恢复拒绝、后续新观测重新 committed 和同一航迹多次 overflow 记录。审计
+结果按全部 4 条记录得到 committed/uncommitted=`2/2`、coverage=`0.5`；按
+`created/matched` 3 条记录得到 `2/1`、coverage=`0.666667`。blocker count 的
+sum/mean/max 为 `6/1.5/4`，两条水位线年龄的 min/mean/max 为
+`0.5/0.625/0.75 s`；overflow record/track 为 `2/1`。
+
+测试还覆盖 v1 unavailable/`None`、负水位线年龄拒绝、持久化 audit 篡改拒绝，以及在
+同步篡改 audit 后仍拒绝未提交 candidate binding。两个未提交 binding violation count
+均为 0。D2 全量回归为 `286 passed, 1 warning in 29.22s`，warning 是既有 Matplotlib
+`Axes3D` 环境提示。
+
+这些结果证明 D2 evaluation v2 的计算和反序列化自洽，不代表 main 已持久化新制品，
+也不代表 D6 已完成聚合。clean seed 1100、真实 AirSim 和多 seed A/B 仍按原 P1 门槛
+开放。

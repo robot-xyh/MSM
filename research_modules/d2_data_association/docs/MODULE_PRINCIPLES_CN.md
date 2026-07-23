@@ -179,6 +179,56 @@ epoch，D2 无法从默认值自行判断重启。首版消歧方式是到期释
 若原边不满足几何门控，该观测被隔离，原航迹按预测继续，禁止错误航迹先更新后报冲突和
 同源 shadow birth。
 
+#### 身份承诺状态
+
+活动租约集合只说明“当前是否还在 hold”，不能说明一条航迹在此前歧义后是否重新获得了
+可用的身份观测。D2 因此新增独立的身份证据承诺状态：
+
+```text
+committed
+  -> identity_uncommitted_ambiguity_hold
+  -> identity_uncommitted_after_hold
+  -> committed
+```
+
+`identity_uncommitted_ambiguity_hold` 表示结构歧义租约仍有效，航迹只预测。
+`identity_uncommitted_after_hold` 表示软截止、硬上限或 publisher epoch 轮换已经释放
+租约，但 D2 尚未实际接受新的原始观测。释放租约只允许恢复普通关联计算，不自动恢复身份
+承诺。该状态跨帧保存，不通过当前 `hold_track_ids` 临时推导。
+
+活动 hold 首次影响航迹时，D2 把该分量的 observation evidence key 保存到航迹私有阻断
+集合，并把恢复水位线更新为相关分量 measurement timestamp 的最大值。claim ledger 在
+租约释放时删除 reservation，阻断集合不随之删除。因此同一个旧 key 再次入场时仍能被
+识别，不能依靠 ledger 生命周期绕过 hold。
+
+恢复 `committed` 同时满足五项条件：候选 key 不在阻断集合；source measurement
+timestamp 严格晚于恢复水位线和容差；claim 为本扫描首次接纳的 original evidence，
+状态仍为 `unseen` 且 replay count 为 0；活动 lease 为 0；上游 disposition 为
+`target_candidate`。判断在航迹量测更新之前完成。失败观测不增加 hit、不更新状态、不
+形成 `detection_to_track` 或 observation claim binding。
+
+阻断集合由 `IdentityCommitmentRecoveryConfig` 限制容量。默认每航迹 2048 个、全局
+250000 个；溢出后该航迹保持 fail-closed，不能因丢弃了部分 key 而恢复。真正的新证据
+只清理未溢出的集合；溢出集合在永久 dropped 时释放。`target_candidate`、`known_false_alarm`
+和 `unknown` 都是 truth-free 上游处置。在线 D2 不读取离线 truth sidecar；生产者也不得
+用仿真真值反向生成这些处置。
+
+`d2.identity-evidence-commitment.v2` 为每条航迹输出关联状态、承诺状态和原因、D2 状态
+时刻、量测/到达双时间戳、commitment/component/evidence generation、发布节点与
+epoch、活动租约键、软硬截止和释放信息。未提交状态不输出 source observation evidence
+key，并只公开 blocker count、恢复水位线和 overflow，不公开阻断 key，避免 main 或离线
+评估器把歧义候选绑定到 `global_track_id`。
+
+离线 `d2.scalable3d_identity_evidence.v2` 显式携带上述承诺 DTO。未提交帧不形成
+`global_track_id` 到候选真值的映射，但仍进入真值存在帧的覆盖分母。评估器比较空窗前后
+两个 committed 锚点，因此换成新 `global_track_id` 时仍计一次身份切换。普通 v1 谱系
+合同、缺失谱系、未来/超窗观测和冲突标签的 fail-closed 行为不变。
+
+2026-07-23 D2 模块回归为 `281 passed, 1 warning in 29.46s`。测试覆盖 37 目标动态规模以及
+hold、到期、reservation 释放后的旧 key 重入、同水位线新 key、更晚新 key、容量溢出、
+未来来源时刻、重复、超龄、已知假警、未知处置和正常恢复。本结果尚未包含 main 持久化、D6 汇总或
+clean seed 1100 重测，结构歧义候选仍默认关闭。
+
 ### 2.4 部分实现
 
 1. **JPDA**：能输出边缘概率和非冲突匹配，但 `Tracker` 仍对选出的单个匹配做普通卡尔曼更新；没有完整概率混合状态更新、协方差混合、航迹合并抑制和生产级分簇。
@@ -1472,3 +1522,19 @@ clean source commit `0d2da25` 的 seed 1000 只读复算中，严格 IDSW 保持
 6. **D1 映射单独解释**：target 记录满足唯一标签、时间和 D2 claim 后才可输出；
    known false alarm 只进入 exclusion 计数。任一 unknown 或完整性错误都会清空全部
    consumer records，防止部分 sidecar 被误当成完整误差真值。
+
+## 三十二、身份承诺审计原则（2026-07-23）
+
+1. **分母必须分层**：全部 v2 evidence records 用于描述状态持续性；
+   `created/matched` 子集用于描述实际观测更新。两者各自公开 denominator、
+   committed/uncommitted count 和 coverage，禁止混用。
+2. **恢复诊断来自公开承诺 DTO**：reason、recovery blocker count、水位线和 overflow
+   只从 `IdentityEvidenceCommitment` 计算。私有 blocked evidence keys 不进入评估产物。
+3. **水位线年龄不可为负**：年龄固定为 frame timestamp 减
+   recovery-not-before measurement timestamp。超出时间容差的负值视为合同错误。
+4. **未提交状态不绑定身份候选**：未提交 evidence 和 mapping 均不得携带 source
+   observation、truth candidate 或 truth target。审计中的两类 violation count 必须为 0。
+5. **聚合值必须可重算**：evaluation v2 嵌入经来源哈希约束的 evidence records。loader
+   从记录和帧 mapping 重算审计，拒绝缺字段或篡改值。
+6. **跨空档锚点口径不变**：IDSW 继续比较未提交空档前后相邻的 committed truth
+   anchors。未提交帧降低覆盖率，不成为正确身份锚点，也不切断可证明的前后比较。

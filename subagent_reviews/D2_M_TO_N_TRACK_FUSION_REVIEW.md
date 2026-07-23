@@ -381,8 +381,9 @@ global tracks 和 observations：一个 truth 可对应多条由不同 lineage �
 duplicate 计数；一条 track 指向多个 truth 时保持 ambiguous。资源数、目标数、2v2/5v5
 场景名均不参与 mapping shape 或 truth 选择。
 
-新增 `d2.scalable3d_identity_evaluation.v1` public artifact 让 main/D6 后续只消费 D2
-公开合同，不需要读取 canonical registry 或 tracker 私有状态。文件 evaluator 对 D1/D2
+`d2.scalable3d_identity_evaluation.v1/v2` public artifact 让 main/D6 后续只消费 D2
+公开合同，不需要读取 canonical registry 或 tracker 私有状态；v2 仅在 identity
+commitment evidence 存在时使用。文件 evaluator 对 D1/D2
 records、evidence、truth sidecar 的 hash/schema/sequence/truth isolation 统一 fail
 closed，并要求 sequence 绑定六维 D2-owned track 与完整 track-frame 集合。23 个专项含
 37 目标 x 2 帧动态规模，完整 D2 为 `162 passed, 1 warning in 30.63s`。

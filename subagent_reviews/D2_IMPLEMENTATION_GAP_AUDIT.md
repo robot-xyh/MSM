@@ -80,6 +80,41 @@ D2 v3 复现和测试验收已同步。五 seed 200v200 候选在 45/45 周期�
   release；连续双向唯一自动 resolution、component-level JPDA、bounded MHT 和跨进程
   epoch 协商未实现。
 
+### 2026-07-23 身份承诺 v2 修复判定
+
+- **D2-owned 合同缺口已关闭**：新增
+  `d2.identity-evidence-commitment.v2` 和
+  `d2.scalable3d_identity_evidence.v2`。每条 `GT3D-*` 航迹跨 lease expiry 保存
+  `identity_uncommitted_after_hold`；soft/hard release 不再自动恢复身份承诺。
+- **旧 reservation 重入缺口已关闭**：每条受 hold 影响航迹保存私有候选 key 集合和
+  最大 component measurement timestamp。lease 到期释放 claim reservation 不清理该
+  状态。同一旧 key 即使再次被 freshness 接纳，也在量测更新前撤回，不能增加 hit、
+  更新状态、绑定 claim 或进入 `detection_to_track`。
+- **恢复门控已关闭**：恢复同时要求 key 不在阻断集合、source timestamp 严格晚于水位线、
+  claim 是本扫描首次 accepted original evidence 且 replay count 为 0、活动 lease 为 0、
+  disposition 为 truth-free `target_candidate`。重复、同扫描 duplicate、超龄、
+  future/stale component、旧/重复 generation、仅预测和显式
+  `known_false_alarm/unknown` 均不能恢复。后两类处置来自不读取离线 truth sidecar 的
+  上游传感器治理。
+- **容量边界已关闭**：`IdentityCommitmentRecoveryConfig` 默认每航迹 2048 个阻断 key、
+  全局 250000 个；未溢出状态在成功恢复后清理，溢出持续 fail-closed 并只在永久 drop
+  清理。重复航迹合并取集合并集与最大水位线。公开 DTO 只给出 blocker count、水位线和
+  overflow，不公开 key。
+- **候选绑定缺口已关闭**：未提交 DTO 与 v2 evidence record 都禁止携带 source
+  observation binding。离线 evaluator 不为未提交帧生成 truth candidate；coverage
+  继续受罚，IDSW 跨未提交空窗比较 committed 锚点。普通 lineage 缺失和完整性错误
+  继续 fail-closed。
+- **兼容与规模已验证**：v1 默认构造、round-trip 和评分不变；v1 拒绝 v2 字段。
+  专项覆盖 37 目标动态输入，无 2/5/200 固定规模。2026-07-23 完整 D2 回归为
+  `281 passed, 1 warning in 29.46s`，验收阈值为零失败。新增回归覆盖旧 key 释放后重入、同
+  水位线不同 key、未来来源时刻、更晚新 key 恢复和容量溢出。
+- **系统级 P1 仍开放**：main 尚未原子持久化
+  `identity_commitment_by_track`，D6 尚未聚合 commitment coverage 和 uncommitted
+  counts、blocked recovery reason 和 watermark/overflow，clean seed 1100 尚未按 v2
+  重测。因此旧
+  `source_observation_outside_lineage_window` 集成阻断、D2/D3 availability 退化和
+  候选晋级均不能标记为已关闭。默认仍为 disabled，禁止单独放宽 `0.9 s` window。
+
 ## 0. 2026-07-15 M5N2 20-case GAP 判定
 
 - **新增已闭合证据**：SimpleFlight M5N2 baseline/candidate 各 10 seed，20/20 case
@@ -765,7 +800,9 @@ availability 拒绝。没有 AirSim 或正式多 seed 运行。
 - main 需按 public DTO 持久化 source observation lineage、record sequence 和 evidence
   bundle hash；当前 producer 会跳过无 lineage 的 D2 track/frame，必须保留其
   unavailable/unassigned evidence 才满足完整性合同。D2 不跨模块代改 producer。
-- D6 需只消费 `d2.scalable3d_identity_evaluation.v1`，不得解析 D2 tracker 私有状态。
+- D6 需只消费 public evaluation artifact；legacy 路径为
+  `d2.scalable3d_identity_evaluation.v1`，identity commitment 路径为 v2。不得解析 D2
+  tracker 私有状态。
 - 正式 scalable 3D episode 的多 seed IDSW/continuity/duplicate 性能、阈值对照和置信区间
   未完成。
 - 在线 GNN/Hungarian、门限、`global_track_id` owner、JPDA/MHT、控制路径和 online truth
@@ -1177,3 +1214,30 @@ P50/P95/P99、多 seed 长短窗口、main-owned lineage/publication 分离，�
 
 本次接口变化已同步 `AIRSIM_INTEGRATION_PLAN.md`。D1 partial RMSE/NEES 如何排除已知
 虚警仍由 D1/main 定义，D2 只发布 target mapping 与 exclusion audit。
+
+## 2026-07-23 identity commitment evaluator audit GAP 收口
+
+### D2-owned 已关闭
+
+- 新增 `d2.scalable3d_identity_evaluation.v2` 和
+  `d2.scalable3d_identity_commitment_audit.v2`。v2 evaluation 嵌入受 evidence bundle
+  SHA-256 约束的 truth-free `identity_evidence_records`；v1 保持原 schema。
+- audit 明确输出 all-record 与 created/matched observed-record 两套 denominator、
+  committed/uncommitted count 和 coverage，并输出 commitment reason counts、
+  `identity_recovery_blocked_*` counts、blocker count summary、水位线年龄 summary、
+  overflow record/track count。
+- 未提交 candidate/source binding violation count 必须为 0。loader 从 v2 records 和
+  frame mappings 重算审计，拒绝缺字段、篡改值和负水位线年龄。私有 blocked keys 不
+  进入公开制品，跨未提交空档的 committed anchor 规则未变。
+- 新增 5 项 evaluator 专项测试；完整 D2 为
+  `286 passed, 1 warning in 29.22s`。验收阈值为零失败，warning 为既有 Matplotlib
+  `Axes3D` 环境提示。
+
+### 仍开放的 P1
+
+- main 需把真实 scalable episode 的 `identity_commitment_by_track` 原子持久化为 v2
+  evidence/evaluation，并把 evaluation SHA-256 写入 manifest。
+- D6 需消费两类 denominator、恢复拒绝原因、水位线年龄、overflow 和 violation 字段；
+  本轮按要求未修改 main/D6。
+- clean seed 1100 A/B、未见 seed 和真实 AirSim 尚未执行。严格指标 availability、
+  D2/D3 可用性和结构歧义候选晋级状态均未改变。
