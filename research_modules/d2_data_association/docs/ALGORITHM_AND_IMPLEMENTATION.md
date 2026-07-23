@@ -1709,3 +1709,55 @@ CPU 0、BLAS/OMP 单线程、1 次 warmup、7 次重复下，总中位数
 `2256d6fdd29223ed5dd75351cd6bb208a4d67c55925eeba047620ac865b6c7da`。本实现没有改变
 逐条在线输出、中心 `global_track_id`、`id_switch_count` availability、门控、版本、
 观测声明账本或真值隔离；也不把单 seed 冻结回放外推为 AirSim、完整链路或实时 SLA。
+
+## 30. 严格身份阻断诊断与 D1 映射审计
+
+### 30.1 输入验证
+
+诊断入口接收 `Scalable3DIdentityEvidenceBundle`、持久化
+`Scalable3DIdentityEvaluation`、独立 observation-to-truth labels 和可选 D1 consistency
+evidence。入口先验证 episode、D1/D2/label/evidence/evaluation SHA-256、在线真值隔离
+状态和 `identity_heuristics_used=false`。20-seed CLI 另外重新调用
+`evaluate_scalable_3d_identity_files()`，将重建结果与持久化 evaluation 做完整字典比较。
+
+### 30.2 原因和时间段
+
+对每个 `created/matched` 航迹帧，诊断器读取 evaluator 已给出的 unavailable reasons。
+当候选真值集合大小超过 1 时，回到同帧 `GlobalTrackLineageEvidence`，逐条记录：
+
+```text
+global_track_id
+  -> frame index / frame timestamp
+  -> observation_id / measurement_timestamp
+  -> source_lineage SHA-256
+  -> independent truth label status / truth_target_id
+```
+
+同一 `global_track_id`、同一 reason 和同一候选真值集合在相邻帧出现时，合并为一个连续
+时间段。候选集合改变或帧号不连续时新建区间。这样既能统计 118 个多真值帧，也能定位为
+107 个可复核区间；缺标签的 2464 个受评分映射对应 2451 个区间。区间只保存身份谱系，
+不复制位置、状态或距离。
+
+### 30.3 D1 consumer 审计
+
+对 D1 consistency evidence 中 `availability.estimate.available=true` 的每条记录，算法
+按 observation ID 建立索引，并分别检查：
+
+1. D1 estimate observation ID 和 measurement timestamp 是否唯一；
+2. 独立 sidecar 是否存在唯一、同量测时刻的 truth label；
+3. D2 `created/matched` 谱系是否存在同 observation ID、同量测时刻的唯一
+   `global_track_id` 声明。
+
+三个条件均成立才形成 D1 record 候选。所有可用估计均通过后，
+`mapping_records_emitted=true`；否则候选只计数，不序列化为 consumer records，
+`mapping_records=[]`。该策略允许诊断器确认混轨帧内每条观测本身的真值，但不会把
+观测级唯一性误写成 D2 航迹级全时序唯一性。
+
+### 30.4 实测结果和边界
+
+clean `5263e2b` nominal 200v200、10 秒、seed 1000--1019 的 20/20 重放通过。
+strict IDSW 为 `0/20` 可用；partial mapping/frame/transition 为
+`178531/181110`、`103/959`、`1149/187800`，下界为
+`199/15215` anchor intervals。D1 候选为 `188951/191425`，2474 个未解决 observation
+全部为 `truth_label_missing`，完整 sidecar 为 `0/20`。本实现不改变在线 D2、不使用
+真值控制关联，也不通过最新、多数或最近邻选择一个真值。

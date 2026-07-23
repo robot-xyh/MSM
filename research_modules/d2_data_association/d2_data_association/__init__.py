@@ -221,6 +221,14 @@ from .scalable_3d_identity import (
     write_scalable_3d_identity_evidence,
     write_scalable_3d_observation_truth_labels,
 )
+from .scalable_3d_identity_diagnostics import (
+    D1_LINEAGE_MAPPING_RECORD_SCHEMA_VERSION,
+    SCALABLE_3D_D1_LINEAGE_MAPPING_AUDIT_SCHEMA_VERSION,
+    SCALABLE_3D_IDENTITY_BLOCKER_DIAGNOSTICS_SCHEMA_VERSION,
+    Scalable3DIdentityBlockerDiagnostics,
+    build_scalable_3d_identity_blocker_diagnostics,
+    write_scalable_3d_identity_blocker_diagnostics,
+)
 from .sparse_3d import (
     CHI2_GATE_3D_99_PERCENT,
     Scalable3DTracker,
@@ -317,6 +325,7 @@ __all__ = [
     "Scalable3DIdentityEvaluation",
     "Scalable3DIdentityEvidenceBundle",
     "Scalable3DIdentityMetrics",
+    "Scalable3DIdentityBlockerDiagnostics",
     "Scalable3DObservationTruthLabel",
     "Scalable3DPartialIdentityDiagnostics",
     "Scalable3DTracker",
@@ -342,6 +351,9 @@ __all__ = [
     "SCALABLE_3D_IDENTITY_POLICY_VERSION",
     "SCALABLE_3D_OBSERVATION_TRUTH_SCHEMA_VERSION",
     "SCALABLE_3D_PARTIAL_IDENTITY_DIAGNOSTICS_SCHEMA_VERSION",
+    "SCALABLE_3D_IDENTITY_BLOCKER_DIAGNOSTICS_SCHEMA_VERSION",
+    "SCALABLE_3D_D1_LINEAGE_MAPPING_AUDIT_SCHEMA_VERSION",
+    "D1_LINEAGE_MAPPING_RECORD_SCHEMA_VERSION",
     "SCALABLE_3D_D2_PERFORMANCE_COMPARISON_SCHEMA_VERSION",
     "SCALABLE_3D_D2_LONG_DURATION_BENCHMARK_SCHEMA_VERSION",
     "Scalable3DLongDurationBenchmarkReport",
@@ -357,6 +369,7 @@ __all__ = [
     "detections3d_from_d1_global_tracks",
     "d2_frames_from_d1_governed_replay",
     "create_scalable_3d_identity_evidence_bundle",
+    "build_scalable_3d_identity_blocker_diagnostics",
     "compare_scalable_3d_d2_episode",
     "compare_scalable_3d_d2_performance",
     "run_scalable_3d_long_duration_metadata_benchmark",
@@ -407,6 +420,7 @@ __all__ = [
     "write_p1_identity_calibration_report",
     "write_scalable_3d_identity_evaluation",
     "write_scalable_3d_identity_evidence",
+    "write_scalable_3d_identity_blocker_diagnostics",
     "write_scalable_3d_observation_truth_labels",
     "write_scalable_3d_d2_performance_comparison",
     "write_scalable_3d_long_duration_metadata_benchmark",

@@ -1368,3 +1368,26 @@ clean source commit `0d2da25` 的 seed 1000 只读复算中，严格 IDSW 保持
    `1.119661x`，长窗口趋势未改善。原完整阶段 10.0 s 相对 2.2 s 单次成本约
    `1.579x` 的 P1 继续开放；单 seed 质点回放不能替代 AirSim、完整 D1-D7、多 seed
    身份评估、极端候选图或固定硬件实时预算。
+
+## 三十、严格身份阻断诊断原则（2026-07-23）
+
+1. **阻断原因必须回到持久化观测谱系**：诊断只连接 D2 航迹帧、D1 来源观测、量测时刻
+   和独立离线标签。每个多真值结论必须至少由两个不同 observation ID 的唯一标签证明。
+   位置、距离、名称、actor ID、终端接近和后验最近邻不能作为身份补全证据。
+2. **当前多真值是数据混轨，不是分母误差**：clean `5263e2b` 的 20 个 nominal
+   200v200 episode 中有 118 个航迹帧同时携带多个真值，形成 107 个连续时间段。典型
+   情况是同一 D1/D2 航迹帧同时携带雷达目标 A 和视觉目标 B；也存在相邻雷达观测在同一
+   航迹内交换真值。改变评分窗口、选最新观测或多数投票都会掩盖该证据。
+3. **标签缺失和虚警必须显式区分**：2464 个受评分映射缺 sidecar 标签；D1 可用估计侧
+   为 2474 条。虽然 producer 中这批观测来自视觉虚警生成路径，冻结 sidecar 没有写出
+   `known_false_alarm` 状态，离线 evaluator 不能依赖 observation ID 的文本形式推断。
+4. **严格指标保持全时序唯一性**：任一受评分映射歧义、缺标签或违反完整性时，strict
+   IDSW、continuity、duplicate 和 confusion matrix 继续为 unavailable。部分 mapping、
+   frame、transition coverage 和保守下界只用于诊断；下界不回填 strict，不计算上界。
+5. **D1 映射采用全覆盖发布**：D2 可为每条观测形成
+   `(observation_id, measurement_timestamp, global_track_id, truth_id)` 候选。只有全部
+   estimate-available D1 观测都唯一映射时才输出 consumer records。本批
+   `188951/191425` 可形成候选，完整 episode 为 `0/20`，因此未发布 sidecar。
+6. **上游修复分开验收**：D1 负责跨模态门控和混轨分裂；传感器/main 负责观测全集的
+   显式 truth/non-target/unknown 处置；D1 负责定义带覆盖率的部分 RMSE/NEES。D2 只在
+   新证据满足唯一、完整、可审计条件后改变 strict availability。

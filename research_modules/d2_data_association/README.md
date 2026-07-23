@@ -826,3 +826,34 @@ lost/dropped/unmatched 审计映射不评分；8906 条可评估，映射覆盖�
 同时验证部分下界 unavailable。main 后续需重新生成正式批次制品；D6 需显式接入
 `partial_identity_diagnostics` 后才能汇总覆盖率和下界。当前变更不关闭真实 AirSim、
 困难场景多 seed IDSW/continuity 或固定硬件时延 P1。
+
+## 2026-07-23 20-seed 严格身份阻断复核
+
+新增 `d2.scalable3d_identity_blocker_diagnostics.v1` 离线诊断合同和
+`run_scalable_3d_identity_blocker_audit.py`。诊断器重新校验 D1/D2 在线记录、独立
+观测真值 sidecar、身份 evidence 和 evaluation 的 SHA-256，并重放 producer。它只使用
+`observation_id`、量测时刻、D1/D2 来源谱系和独立离线标签；位置、距离、目标名称、
+actor ID、末端接近和后验最近邻均被排除。在线 Tracker、中心 `global_track_id` 和严格
+指标公式未修改。
+
+clean `5263e2b` nominal 200v200、10 秒、seed 1000--1019 的 20 组制品均通过来源哈希、
+在线真值隔离和 producer 重建一致性检查。严格 IDSW 为 `0/20` 可用。逐条谱系确认
+118 个受评分航迹帧确实把多个真实目标混入同一全局航迹，形成 107 个连续时间段；另有
+2464 个受评分映射缺少显式真值或非目标标签，形成 2451 个时间段。该结果不是分母定义
+造成的伪阻断。严格指标继续 fail closed，部分下界不回填 strict，也不生成上界。
+
+部分证据汇总为 mapping `178531/181110`、完整帧 `103/959`、相邻转换
+`1149/187800`。19 个 episode 的保守 IDSW 下界合计为 `199/15215` 个唯一锚点区间。
+D1 一致性证据有 191425 条可用估计，其中 188951 条可通过精确谱系形成唯一候选；
+剩余 2474 条全部缺显式 truth/non-target 标签。由于 D1 v1 consumer 要求全部可用估计
+都有映射，完整 `d2_lineage_mapping` 为 `0/20` 可发布。诊断器在不完整时输出空
+`mapping_records` 和原因，不发布会被误用的部分 sidecar。
+
+提交内中文报告和聚合 JSON 为
+`docs/D2_SCALABLE_3D_IDENTITY_BLOCKER_AUDIT_CN.md` 与
+`docs/d2_scalable_3d_identity_blocker_audit_20260723.json`；本机逐 episode 明细位于
+`outputs/scalable_3d_identity_blocker_audit_20260723/`。新增 4 项专项测试覆盖多真值
+连续时间段、D1 完整映射正例、缺标签和缺谱系 fail-closed；完整 D2 回归为
+`238 passed, 1 warning in 32.88s`，warning 为既有 Matplotlib `Axes3D` 环境提示。
+剩余修复属于上游边界：D1 跨模态门控/航迹分裂、离线标签对每条观测的显式处置，以及
+main/D1 对带覆盖率部分误差指标的单独合同。D2 不用多数投票或最近邻伪造严格身份值。

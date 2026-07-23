@@ -898,3 +898,54 @@ candidate 为 `1.123036x`。因此本轮降低了绝对常数成本，但没有�
 `2256d6fdd29223ed5dd75351cd6bb208a4d67c55925eeba047620ac865b6c7da`。该实验只有一个
 seed，使用冻结质点总线，没有运行真实 AirSim、完整 D1-D7、多 seed offline
 IDSW/continuity 或极端大连通分量，不能声明实时 SLA。
+
+## 29. nominal 200v200 严格身份阻断复核（2026-07-23）
+
+### 29.1 输入和方法
+
+输入为 clean commit `5263e2b343dc4b96d239f77ef09437eb132f9efb` 生成的 nominal
+200v200、10 秒、seed 1000--1019，共 20 个 episode。每组重新校验 identity manifest
+登记的 D1/D2 在线记录、observation truth labels、identity evidence 和 evaluation
+SHA-256，重新执行 D2 evaluator，并与持久化 evaluation 逐项比较。D1 consistency
+`online_evidence.json` 也按其 manifest SHA-256 校验。20/20 重建一致，20/20 在线真值
+隔离通过。
+
+### 29.2 严格和部分指标
+
+| 指标 | 结果 |
+| --- | ---: |
+| strict IDSW 可用 episode | 0/20 |
+| 多真值航迹帧 | 118 |
+| 多真值连续区间 | 107 |
+| 缺标签受评分映射 | 2464 |
+| 缺标签连续区间 | 2451 |
+| 部分 mapping coverage | 178531/181110，98.5760% |
+| 完整帧 coverage | 103/959，10.7404% |
+| 相邻转换 coverage | 1149/187800，0.6118% |
+| 保守 IDSW 下界 | 199/15215 anchor intervals |
+
+118 个多真值帧均能由同帧 observation ID、measurement timestamp、谱系哈希和独立标签
+复核。常见情况是雷达观测对应真值 A，视觉观测对应真值 B，但两者进入同一融合/关联
+航迹。seed 1016 还出现相邻雷达观测在两个近邻真值间互换。该现象属于持久化数据中的
+真实混轨，不是 evaluator 分母过严。strict 指标未回填，部分下界未生成上界。
+
+### 29.3 D1 映射检查
+
+D1 evidence 中有 191425 条可用估计。通过 observation ID、量测时刻、D2 谱系和独立
+标签可形成 188951 条唯一候选；2474 条无法形成候选，原因全部为
+`truth_label_missing`。20 个 episode 均未满足 D1 v1 的全观测覆盖要求，因而
+`d2_lineage_mapping` 可消费 episode 为 `0/20`，诊断器没有输出部分 mapping records。
+
+受评分缺标签映射为 2464，D1 estimate 缺标签观测为 2474。差额来自没有进入 D2
+`created/matched` 评分映射的 D1 可用估计。冻结 sidecar 没有显式 non-target
+disposition，因此不能通过 observation 名称把这些记录排除。
+
+### 29.4 结论
+
+本批关闭“strict unavailable 原因不清”和“D1 mapping 缺口未分型”两项诊断缺口。
+严格身份指标本身仍开放：D1 需先修复跨模态混轨，标签 producer 需覆盖真实目标、
+已知虚警和未知状态，D1/main 需决定部分误差指标的 coverage 合同。提交内报告和聚合
+JSON 为 `docs/D2_SCALABLE_3D_IDENTITY_BLOCKER_AUDIT_CN.md` 与
+`docs/d2_scalable_3d_identity_blocker_audit_20260723.json`；本机逐 episode 明细保存在
+模块输出目录。完整 D2 回归为
+`238 passed, 1 warning in 32.88s`，warning 为既有 Matplotlib `Axes3D` 环境提示。

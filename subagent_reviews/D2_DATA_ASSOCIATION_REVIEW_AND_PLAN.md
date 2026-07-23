@@ -1100,3 +1100,33 @@ CPU 0、BLAS/OMP 单线程、1 次 warmup、7 次计时的 D2 core 中位数
 D1-D7、多 seed 身份标定、极端大连通分量或实时 SLA。下一验收仍是固定硬件完整阶段
 P50/P95/P99、多 seed 长短窗口和 main-owned lineage/publication 分离，且不得通过
 降采样、减少候选、放宽门限、降低频率、修改 ID/claim/version 或在线 truth 换取通过。
+
+## 40. 2026-07-23 20-seed 严格身份阻断评审
+
+### 40.1 评审结论
+
+接受 D2 新增的离线 blocker diagnostics 和 D1 mapping completeness audit。两者只消费
+持久化 observation lineage、measurement timestamp 和独立 truth labels，不进入在线
+Tracker、风险门控、中心 ID 或控制链。评审拒绝以下做法：按多数观测选 truth、只取最新
+观测、使用位置/距离/actor 名称、把部分下界写入 strict IDSW、在证据不全时输出部分
+D1 sidecar。
+
+### 40.2 证据判断
+
+clean `5263e2b` nominal 200v200、10 秒、seed 1000--1019 的 20/20 producer 重放、
+来源 SHA 和在线真值隔离通过。strict IDSW `0/20` 可用。118 个多真值航迹帧形成
+107 个连续区间，均有至少两个独立 observation label 证明；这是 D1/D2 输入中的真实
+混轨。2464 个受评分映射缺显式标签，不能从 ID 文本推断为虚警。
+
+partial mapping/frame/transition coverage 为
+`178531/181110`、`103/959`、`1149/187800`；19 个 episode 的保守下界合计
+`199/15215` anchor intervals。D1 完整映射候选为 `188951/191425`，剩余 2474 条全部
+`truth_label_missing`，consumer-ready episode 为 `0/20`。
+
+### 40.3 GAP 决定
+
+关闭 P1“strict unavailable 缺少按原因、航迹、时间段诊断”和“D1 mapping blocker 未
+区分标签/谱系”两项。strict IDSW/continuity 真实可用性不关闭。上游后续由 D1 修复
+跨模态门控/航迹分裂，由 main/传感器 producer 增加完整 observation disposition，由
+D1 定义部分 RMSE/NEES coverage。D2 在新制品上复跑同一合同，不修改在线身份权威。
+完整 D2 为 `238 passed, 1 warning in 32.88s`。

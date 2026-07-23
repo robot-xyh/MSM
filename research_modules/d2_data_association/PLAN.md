@@ -1043,3 +1043,43 @@ regular association 的 P50/P95/max `121.972/137.335/145.966 ms` 以及 10.0 s �
 lineage/publication 成本分离；同时保留真实 AirSim 时钟、遮挡/杂波/漏检/OOSM、极端
 大连通分量和 offline IDSW/continuity。不得用降采样、减少候选、放宽门限、降低关联
 频率或在线 truth 换取性能。
+
+## 30. 20-seed 严格身份阻断诊断与上游交接
+
+### 30.1 已实施
+
+1. 新增独立离线诊断合同，按原因、`global_track_id` 和连续帧区间汇总阻断。每个区间
+   固化起止帧/时刻、候选真值、观测号、量测时刻和来源谱系哈希，可回到冻结 producer
+   制品复核。
+2. 新增 D1 `d2_lineage_mapping` 完整性审计。只有每条 estimate-available D1 观测都具有
+   唯一量测时刻、唯一离线标签和唯一 D2 航迹声明时，才输出
+   `d1.consistency.d2_lineage_mapping_record.v1` 记录。任一缺口使全部 mapping records
+   保持空，避免部分 sidecar 被当成完整映射。
+3. CLI 对每个 episode 重新执行 source SHA、在线真值隔离、D1/D2 记录语义和 producer
+   evaluation 重放，并与持久化 evaluation 逐项比较。在线 Tracker、门控、关联、生命周期
+   和 `global_track_id` 均不读取该诊断。
+
+### 30.2 20-seed 结果
+
+clean `5263e2b` nominal 200v200、10 秒、seed 1000--1019 的 20/20 来源和重放检查通过。
+严格 IDSW 仍为 `0/20` 可用。阻断分为：
+
+- 118 个真实多真值航迹帧，107 个连续时间段。不同真值均由独立 observation ID、
+  measurement timestamp 和 sidecar 标签支撑，不能通过 evaluator 分母调整消除。
+- 2464 个受评分映射缺显式 truth/non-target 标签。D1 estimate 侧共有 2474 条此类观测；
+  现有 sidecar 没有“已知虚警”处置，D2 不从观测名称推断。
+- 部分 mapping/frame/adjacent-transition coverage 为
+  `178531/181110`、`103/959`、`1149/187800`；19 个 episode 的下界合计
+  `199/15215` anchor intervals。strict 未回填，upper bound 未生成。
+- D1 唯一候选为 `188951/191425`；完整可消费 sidecar 为 `0/20`。
+
+### 30.3 下一步责任
+
+1. D1 使用本次多真值区间校准雷达/视觉跨模态门控，必要时分裂航迹，避免不同目标的
+   观测进入同一融合后验。
+2. main/传感器 producer 为观测全集写显式 `truth_target`、`known_false_alarm` 或
+   `label_unknown` 处置和完整性摘要。D2 继续禁止从名称、位置或距离补标签。
+3. D1 若要在已知虚警存在时报告 RMSE/NEES，应另设带 coverage 的部分误差合同；该合同
+   不能改变 D2 strict IDSW availability。
+4. D2 后续在新 producer 制品上重跑同一 CLI。验收要求 strict 指标只有在唯一、完整、
+   全时序映射成立时才可用，同时保留来源哈希和在线真值使用为 0。

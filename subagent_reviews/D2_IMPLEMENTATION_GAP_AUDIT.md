@@ -1059,3 +1059,41 @@ P50/P95/P99、多 seed 长短窗口、main-owned lineage/publication 分离，�
 时钟、困难观测分布、极端大连通分量和 offline IDSW/continuity 联合验收。不得通过
 降采样、减少合法候选、放宽门限、降低关联频率、修改 ID/claim/version 语义或在线 truth
 关闭该 P1。
+
+## 2026-07-23 20-seed 严格身份阻断 GAP 重分类
+
+### 已关闭
+
+- 新增 `d2.scalable3d_identity_blocker_diagnostics.v1`，按 reason、航迹和连续时间段
+  固化 observation ID、量测时刻、谱系哈希和独立 truth label 状态。
+- 新增 D1 `d2_lineage_mapping` 完整性审计。只有全量 estimate observations 都具有唯一
+  label 和唯一 D2 track claim 时才输出 D1-compatible records；不完整时 records 为空。
+- clean `5263e2b` nominal 200v200、10 秒、20 seed 的 source SHA、producer replay 和
+  online truth isolation 均为 `20/20` 通过。strict unavailable 原因已从单 seed 推断
+  提升为正式多 seed 可复核证据。
+
+### 证据分型
+
+1. **真实混轨**：118 个多真值航迹帧、107 个连续区间。不同真值由同帧独立 observation
+   lineage 支撑，不能通过放宽 evaluator 分母修复。
+2. **sidecar 信息不足**：2464 个受评分映射缺显式 label；D1 可用估计侧为 2474 条。
+   现有 schema 没有覆盖已知虚警和未知标签的 disposition，D2 不从名称推断。
+3. **D1 consumer coverage**：188951/191425 条可形成唯一候选，完整 episode 为
+   `0/20`。没有发现独立于标签缺失之外的 D2 lineage claim 缺口。
+4. **部分诊断**：mapping/frame/transition 为
+   `178531/181110`、`103/959`、`1149/187800`；IDSW lower bound 合计
+   `199/15215` anchor intervals。strict 未回填，upper bound 未生成。
+
+### 仍开放的 P1
+
+- D1 雷达/视觉跨模态门控和混轨航迹分裂；D2 只提供精确失败区间，不跨模块修改。
+- 传感器/main producer 对 observation 全集的 truth target、known false alarm 和
+  unknown label 显式处置与完整性摘要。
+- D1/main 对已知虚警存在时的部分 RMSE/NEES coverage 合同，以及新制品上的
+  `d2_lineage_mapping` 全覆盖验收。
+- strict IDSW/continuity 在修复后 producer 上的多 seed 可用性和困难场景置信区间。
+- 原有固定硬件时延、AirSim 时钟、遮挡/杂波/OOSM 和极端候选图 P1 状态不变。
+
+本轮完整 D2 为 `238 passed, 1 warning in 32.88s`；warning 为既有 Matplotlib
+`Axes3D` 环境提示。`AIRSIM_INTEGRATION_PLAN.md` 已检查，本次未改变 AirSim 输入、话题
+或运行接口，因此不更新。
