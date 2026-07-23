@@ -4,6 +4,49 @@ Offline research module for radar, acoustic, EO, and optional synthetic lidar he
 
 ## 当前性能与治理证据（2026-07-23）
 
+### 第十三阶段：匿名雷达交替环 fail-closed 保守候选 v1
+
+D1 在 `/tmp/msm-disposition-seed1000-hz7V4C` 的冻结输入上逐扫描复现既有在线记录：
+103 scans、2,058 observations、203 条终态航迹。`global_track_100/101` 在 scan 8 把
+`TGT-0105/0106` 交叉换绑，scan 9 保持交换，scan 10 再换回；source evidence 只来自 radar
+scans 8--10。seed 1002 的 `global_track_187/188` 对 `TGT-0193/0194` 有同样模式。把
+arrival delay 置零后，Hungarian 分配和代价不变而 OOSM 计数归零，因此根因是匿名雷达扫描间
+换绑，不是 birth、重捕获、缺失证据或 OOSM。
+
+保守候选 `fail_closed_gate_feasible_alternating_cycle_v1` 在全 radar scan 的 Hungarian 结果上
+构造门内二部图。若匹配行之间形成强连通交替环，则同一组观测存在另一组等基数门内匹配；D1
+不把代价排序解释成身份确定性，而是抑制该分量全部已匹配观测。被抑制观测标记 processed，
+不能 birth；已有航迹只按到达时刻预测/coast，不执行量测更新或协方差收缩。首扫无既有航迹、
+门拓扑唯一的扫描、单目标重捕获和非 radar scan 不进入该分支。矩形矩阵只检查已匹配行列，
+未匹配列仍按原规则处理；SciPy 不可用时的 greedy fallback 也执行相同环检测。
+
+20:1 likelihood-margin 候选已否决：首次近等价抑制改变后验后，seed 1000 的后续扫描出现
+“代价上唯一、离线谱系仍错误”的排列。单帧 margin 会制造虚假确定性，因此 v1 不按同一开发
+输入调一个代价阈值。
+
+同一冻结输入的实际候选实现开发 A/B 如下。truth sidecar 只在参考与候选在线回放均结束后连接：
+
+| Seed | scans / observations | 雷达混合谱系代理 | 终态/创建航迹 | 抑制 target radar |
+| --- | ---: | ---: | ---: | ---: |
+| 1000 | 103 / 2,058 | `2 -> 0` | `203 -> 203` | `22/1,962`（1.12%） |
+| 1001 | 101 / 2,058 | `2 -> 0` | `201 -> 201` | `130/1,966`（6.61%） |
+| 1002 | 112 / 2,061 | `2 -> 0` | `201 -> 201` | `78/1,958`（3.98%） |
+
+三组均保留 200 个至少有一条 radar observation 的离线真值谱系；split-lineage proxy 分别
+`5 -> 3`、`3 -> 1`、`3 -> 1`，没有新增 birth 或终态航迹。seed 1001 的原发布 D2 指标为
+0 ambiguous；表中的 `2 -> 0` 是完整 D1 历史代理，不能改写成发布指标。10 s 制品中的 7 个
+ambiguous mappings 是 radar+vision 混合，不是本候选的 radar-only 验收对象。
+
+在线审计记录 suppression/track-coast/component-size、双时间戳、受影响 track IDs、reason 和
+policy version。专项覆盖 legacy 2x2 swap、三目标环、gate-unique 编队、密集首扫、OOSM、
+重捕获、greedy fallback 与 `3x2`/`2x3` 边界。D1 全量为
+`199 passed in 16.74s`，变更 Python 文件 `py_compile` 和 `git diff --check` 通过。
+
+该策略会抑制所有门内可交换环，即使当前 likelihood winner 很尖锐；1.12%/6.61%/3.98% 是
+必须由 clean 校准决定是否可接受的显式信息代价。当前只接受为保守候选 v1，不关闭身份连续性
+P1。main 仍须在 detached clean 候选上重跑预注册 seed/时长，复核 D2 ambiguous mappings、
+continuity、重复 birth、召回和抑制率；不得把本开发输入再次作为泛化验收。
+
 ### 第十二阶段：匿名跨模态几何门控
 
 D2 的 nominal 200v200 身份阻断审计表明，seed 1000 中存在视觉观测与另一目标雷达观测写入

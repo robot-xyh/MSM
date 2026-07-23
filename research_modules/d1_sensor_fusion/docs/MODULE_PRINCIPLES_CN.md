@@ -6,6 +6,40 @@
 
 ## 当前权威增量（2026-07-23）
 
+### 匿名雷达近交叉时，门内排序不能自动升级为身份事实
+
+同一扫描的 Hungarian 只能给出总代价最小的一对一匹配。若门内二部图还存在交替环，沿环交换
+边即可得到另一组等基数合法匹配；即使两组代价不同，当前在线状态也不足以证明哪一组延续了
+物理身份。seed 1000/1002 的 radar-only 谱系污染正是扫描间 swap/保持/swap-back，零延迟
+对照排除了 OOSM 因果。
+
+保守候选 v1 在 Hungarian 后把每个已匹配 track 行作为节点。若 track `i` 也能通过原门限匹配
+track `k` 当前占有的 observation，则添加 `i -> k`；大小至少 2 的强连通分量包含门内交替环。
+处理原则是：
+
+```text
+全 radar scan
+  -> 原在线状态/速度传播、协方差与雷达创新
+  -> 原门限和一对一分配
+  -> 已匹配门内图的交替环
+  -> 环内 observation 全部抑制并禁止 birth
+  -> 已有 track 只预测/coast，协方差不做量测收缩
+```
+
+首扫没有既有 track，门拓扑唯一时强连通分量为单点，非 radar scan 也不进入该分支。矩形矩阵
+只治理已匹配行列；环内列不能 birth，独立未匹配列仍执行原初始化规则。SciPy 不可用时，
+greedy fallback 的匹配结果仍经过同一检查。审计必须保留 measurement/arrival timestamp、
+component size、suppression/track-coast counter、reason 和 policy version。
+
+该规则不解析 observation/source 名称，不读取 truth、actor、target 或 D6。20:1 单扫描
+likelihood margin 在开发回放中失败：首次抑制改变状态后，后续错误排列会显得唯一。因此不能
+用同一真值输入调 margin 并宣称身份已确定。
+
+开发冻结 A/B 的 radar 混合谱系代理在 seeds 1000/1001/1002 均为 `2 -> 0`，终态/创建航迹
+保持 `203/201/201`；代价是抑制 `1.12%/6.61%/3.98%` 的 target radar observations。该代价
+说明 fail-closed 并非免费，也说明模块测试不能替代 detached clean 泛化验收。当前状态只能写为
+“保守候选 v1，P1 开放”。
+
 ### 跨模态融合先保证几何语义完整
 
 光电观测与雷达航迹关联时，像素残差只有在相机内外参正确的前提下才有意义。扫描输入会把嵌套

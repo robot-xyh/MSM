@@ -137,7 +137,10 @@ def test_recent_unique_radar_reacquisition_does_not_create_duplicate_birth() -> 
 
     assert len(tracks) == 1
     assert tracks[0].source_support["radar"] == 4
-    assert adapter.association_audit_summary()["radar_reacquisition_count"] == 1
+    audit = adapter.association_audit_summary()
+    assert audit["radar_reacquisition_count"] == 1
+    assert audit["radar_assignment_ambiguity_scan_count"] == 0
+    assert audit["radar_assignment_ambiguity_observation_suppression_count"] == 0
     assert tracks[0].metadata["latest_radar_reacquisition_score"] == score
 
 

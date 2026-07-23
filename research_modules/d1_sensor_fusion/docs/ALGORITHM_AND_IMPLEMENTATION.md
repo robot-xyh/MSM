@@ -8,6 +8,90 @@
 
 ## 当前权威增量（2026-07-23）
 
+### Radar assignment ambiguity fail-closed v1
+
+该候选只挂在 `process_scan_batch()` 的全 radar 分支。原关联先在共同
+`measurement_timestamp` 取得每条航迹的六维状态预测和协方差，以雷达三维位置创新构造：
+
+```text
+d_ij = z_position_j - x_position_i(t_measurement)
+S_ij = P_position_i(t_measurement) + R_position_j + epsilon I
+q_ij = d_ij^T pinv(S_ij) d_ij
+valid_ij = finite(q_ij) and q_ij <= association_gate
+```
+
+原 Hungarian 或 SciPy 不可用时的 greedy fallback 先产生一对一集合 `M`。候选不修改
+`q_ij`、门限或分配求解，而是在已匹配行列上构造有向图：
+
+```text
+column_by_row[i] = M 中分给 track row i 的 observation column
+i -> k  当 i != k 且 valid[i, column_by_row[k]]
+```
+
+图中大小至少 2 的 strongly connected component 包含一条交替环。把该环上的匹配边替换为
+交叉门内边，会得到另一组同基数匹配，因此当前扫描不能安全声明身份唯一。实现把整个强连通
+分量作为保守治理单元：
+
+1. 从 `assignments` 删除分量内 observation columns；
+2. 为每条 observation 记录 `radar_assignment_ambiguity_suppressed` 并标记 processed；
+3. 直接跳过 update 和 `_create_track()`，所以被抑制 observation 不能 birth；
+4. track 只保留扫描前到 `arrival_timestamp` 的 CV prediction，不执行 EKF update；
+5. 记录 component size、track IDs、measurement/arrival timestamp 和 policy version。
+
+矩形矩阵只把 Hungarian/greedy 实际匹配的行列放入图。未匹配行不增加 ambiguity coast 计数；
+未匹配列仍按原规则独立 birth，但分量内被抑制列不会落入 birth。首扫或空 track set 直接返回，
+门拓扑唯一时所有 SCC 都是单点。扫描 API 已要求同 sensor、同 modality、同双时间戳和同
+observer-scan key，所以 acoustic/EO/lidar 不进入该规则。
+
+`association_audit_summary()` 的新增在线字段为：
+
+- `radar_assignment_ambiguity_scan_count`
+- `radar_assignment_ambiguity_observation_suppression_count`
+- `radar_assignment_ambiguity_track_coast_count`
+- `max_radar_assignment_ambiguity_component_size`
+- `radar_assignment_ambiguity_policy_version`
+- `latest_radar_assignment_ambiguity_track_ids`
+
+track metadata 另保留 latest reason、双时间戳、component size 和 policy version。字段不含
+truth 或 observation 名称派生身份。策略版本为
+`fail_closed_gate_feasible_alternating_cycle_v1`。
+
+#### 根因与候选排除
+
+seed 1000 中 `global_track_100/101` 在 scans 8--10 对两个 radar 谱系
+swap/保持/swap-back；seed 1002 的 `global_track_187/188` 同构。相同 radar-only 输入把 delay
+置零后，分配和代价保持而 OOSM 归零，说明不是 fixed-lag/OOSM。birth、重捕获和缺失 identity
+evidence 也与事件时序不符。
+
+20:1 likelihood-margin 原型只在首次近等价扫描抑制。coast 改变后验后，后续错误排列的单帧
+代价会显得唯一并被提交，因此该门不能证明身份。v1 使用门拓扑可交换性而不是同一开发输入上的
+真值调参。其代价是只要存在门内交替环就抑制，即使 winner 的代价明显更低。
+
+#### 开发冻结回放与测试边界
+
+truth sidecar 在参考和候选在线回放均结束后才连接。实际候选实现结果为：
+
+| Seed | 输入 SHA-256 | 混合 radar track | 终态/创建 track | suppression |
+| --- | --- | ---: | ---: | ---: |
+| 1000 | `d745ae88...2de54` | `2 -> 0` | `203 -> 203` | `22/1962=1.12%` |
+| 1001 | `8db20a1c...60b5a` | `2 -> 0` | `201 -> 201` | `130/1966=6.61%` |
+| 1002 | `d0341147...6190` | `2 -> 0` | `201 -> 201` | `78/1958=3.98%` |
+
+三组均保留 200 个 represented radar truth lineages，split proxy 分别
+`5 -> 3`、`3 -> 1`、`3 -> 1`。seed 1001 的正式发布 D2 ambiguous 为 0，表中只是完整 D1
+历史代理。以上输入是开发复现，不是未见 seed 泛化。
+
+专项测试比较 legacy 2x2 swap 与 v1 抑制，并覆盖三目标环、门拓扑唯一编队、25 目标首扫、
+唯一 OOSM、单目标重捕获、forced greedy fallback、`3x2` 未匹配行和 `2x3` 未匹配列。预测-only
+测试把候选状态/协方差逐项与 CV prediction 比较，并断言 `global_track_id`、双时间戳和所有
+审计计数。纯 replay/规模性能测试使用 test-only pre-governance adapter 保持其原操作数测试
+目的；生产默认候选由上述身份专项覆盖。
+
+D1 全量为 `199 passed in 16.74s`，变更 Python 的 `py_compile` 与
+`git diff --check` 通过。该结果只支持“保守候选 v1”；1.12%/6.61%/3.98% 信息损失、
+正式 D2 ambiguous mapping、continuity、重复 birth、召回和未见 seed 均待 main detached clean
+复验，P1 未关闭。
+
 ### 匿名跨模态几何门控
 
 雷达初始化的航迹在视觉扫描到达时，D1 先在 `measurement_timestamp` 取得该航迹的 NED 后验

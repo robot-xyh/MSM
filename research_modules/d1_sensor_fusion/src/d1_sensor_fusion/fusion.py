@@ -137,6 +137,9 @@ MEASUREMENT_COVARIANCE_FLOORS = {
 }
 RADAR_ASSOCIATION_LOWER_BOUND_RELATIVE_MARGIN = 1.0e-12
 RADAR_ASSOCIATION_PINV_RCOND = 1.0e-15
+RADAR_ASSIGNMENT_AMBIGUITY_POLICY_VERSION = (
+    "fail_closed_gate_feasible_alternating_cycle_v1"
+)
 
 
 def _radar_lower_bound_applicability(
@@ -239,6 +242,50 @@ def _observation_sort_key(
     )
 
 
+def _strongly_connected_assignment_components(
+    adjacency: dict[int, tuple[int, ...]],
+) -> tuple[tuple[int, ...], ...]:
+    """Return deterministic strongly connected components for assignment rows."""
+
+    next_index = 0
+    indices: dict[int, int] = {}
+    low_links: dict[int, int] = {}
+    stack: list[int] = []
+    on_stack: set[int] = set()
+    components: list[tuple[int, ...]] = []
+
+    def visit(node: int) -> None:
+        nonlocal next_index
+        indices[node] = next_index
+        low_links[node] = next_index
+        next_index += 1
+        stack.append(node)
+        on_stack.add(node)
+
+        for neighbor in adjacency.get(node, ()):
+            if neighbor not in indices:
+                visit(neighbor)
+                low_links[node] = min(low_links[node], low_links[neighbor])
+            elif neighbor in on_stack:
+                low_links[node] = min(low_links[node], indices[neighbor])
+
+        if low_links[node] != indices[node]:
+            return
+        component: list[int] = []
+        while stack:
+            member = stack.pop()
+            on_stack.remove(member)
+            component.append(member)
+            if member == node:
+                break
+        components.append(tuple(sorted(component)))
+
+    for node in sorted(adjacency):
+        if node not in indices:
+            visit(node)
+    return tuple(sorted(components, key=lambda item: item[0]))
+
+
 @dataclass
 class TrackRecord:
     track_id: str
@@ -336,6 +383,20 @@ class _BatchProcessingContext:
     fixed_lag_checkpoint_suffix_reuse_count: int = 0
     replay_checkpoint_prefix_fast_path_count: int = 0
     cached_consistency_refresh_count: int = 0
+
+
+@dataclass(frozen=True)
+class _RadarAssignmentAmbiguity:
+    track_ids: tuple[str, ...]
+    component_size: int
+
+
+@dataclass(frozen=True)
+class _ScanAssociationResult:
+    assignments: dict[int, str]
+    radar_ambiguities: dict[int, _RadarAssignmentAmbiguity] = field(
+        default_factory=dict
+    )
 
 
 class FusionAdapter:
@@ -485,6 +546,10 @@ class FusionAdapter:
         self.observer_scan_suppression_count = 0
         self.radar_reacquisition_count = 0
         self.ambiguous_radar_birth_suppression_count = 0
+        self.radar_assignment_ambiguity_scan_count = 0
+        self.radar_assignment_ambiguity_observation_suppression_count = 0
+        self.radar_assignment_ambiguity_track_coast_count = 0
+        self.max_radar_assignment_ambiguity_component_size = 0
         self.non_range_state_correction_rejection_count = 0
         self.pre_checkpoint_oosm_replay_count = 0
         self.max_non_range_position_correction_score = 0.0
@@ -494,6 +559,7 @@ class FusionAdapter:
         self.eo_one_to_one_unassigned_count = 0
         self.max_eo_projection_gate_pass_nis = 0.0
         self._latest_eo_projection_rejection_reason: str | None = None
+        self._latest_radar_assignment_ambiguity_track_ids: tuple[str, ...] = ()
         self._last_association_rejection_reason: str | None = None
         self._last_association_rejection_track_ids: tuple[str, ...] = ()
         self._batch_context: _BatchProcessingContext | None = None
@@ -731,12 +797,28 @@ class FusionAdapter:
 
             self._predict_all_to(current_time)
             pre_scan_track_ids = tuple(sorted(self.tracks))
-            assignments = self._scan_one_to_one_assignments(
+            association_result = self._scan_one_to_one_assignments(
                 effective,
                 pre_scan_track_ids,
             )
+            self._record_radar_assignment_ambiguity_tracks(
+                effective,
+                association_result,
+            )
             for observation_index, observation in enumerate(effective):
-                track_id = assignments.get(observation_index)
+                ambiguity = association_result.radar_ambiguities.get(
+                    observation_index
+                )
+                if ambiguity is not None:
+                    self._record_association_rejection(
+                        observation,
+                        "radar_assignment_ambiguity_suppressed",
+                        ambiguity.track_ids,
+                    )
+                    self._mark_observation_processed(observation)
+                    continue
+
+                track_id = association_result.assignments.get(observation_index)
                 if track_id is not None:
                     if self._apply_associated_observation(
                         self.tracks[track_id],
@@ -1414,6 +1496,24 @@ class FusionAdapter:
             "ambiguous_radar_birth_suppression_count": (
                 self.ambiguous_radar_birth_suppression_count
             ),
+            "radar_assignment_ambiguity_scan_count": (
+                self.radar_assignment_ambiguity_scan_count
+            ),
+            "radar_assignment_ambiguity_observation_suppression_count": (
+                self.radar_assignment_ambiguity_observation_suppression_count
+            ),
+            "radar_assignment_ambiguity_track_coast_count": (
+                self.radar_assignment_ambiguity_track_coast_count
+            ),
+            "max_radar_assignment_ambiguity_component_size": (
+                self.max_radar_assignment_ambiguity_component_size
+            ),
+            "radar_assignment_ambiguity_policy_version": (
+                RADAR_ASSIGNMENT_AMBIGUITY_POLICY_VERSION
+            ),
+            "latest_radar_assignment_ambiguity_track_ids": (
+                self._latest_radar_assignment_ambiguity_track_ids
+            ),
             "non_range_state_correction_rejection_count": (
                 self.non_range_state_correction_rejection_count
             ),
@@ -1641,9 +1741,9 @@ class FusionAdapter:
         self,
         observations: list[SensorObservation],
         pre_scan_track_ids: tuple[str, ...],
-    ) -> dict[int, str]:
+    ) -> _ScanAssociationResult:
         if not observations or not pre_scan_track_ids:
-            return {}
+            return _ScanAssociationResult(assignments={})
 
         track_items = [
             (track_id, self.tracks[track_id])
@@ -1654,7 +1754,7 @@ class FusionAdapter:
             )
         ]
         if not track_items:
-            return {}
+            return _ScanAssociationResult(assignments={})
 
         context = self._batch_context
         if context is not None:
@@ -1688,7 +1788,7 @@ class FusionAdapter:
                 cost_matrix,
                 {},
             )
-            return {}
+            return _ScanAssociationResult(assignments={})
         penalty = max(1.0e9, abs(self.association_gate) * 1.0e6)
         gated_cost = np.where(valid, cost_matrix, penalty)
         try:
@@ -1720,12 +1820,132 @@ class FusionAdapter:
             if not valid[row, column]:
                 continue
             assignments[int(column)] = track_items[int(row)][0]
+        radar_ambiguities: dict[int, _RadarAssignmentAmbiguity] = {}
+        if all(observation.modality == "radar" for observation in observations):
+            radar_ambiguities = self._radar_assignment_ambiguities(
+                track_items,
+                valid,
+                assignments,
+            )
+            for observation_index in radar_ambiguities:
+                assignments.pop(observation_index, None)
         self._record_eo_projection_scan_diagnostics(
             observations,
             cost_matrix,
             assignments,
         )
-        return assignments
+        return _ScanAssociationResult(
+            assignments=assignments,
+            radar_ambiguities=radar_ambiguities,
+        )
+
+    def _radar_assignment_ambiguities(
+        self,
+        track_items: list[tuple[str, TrackRecord]],
+        valid: np.ndarray,
+        assignments: dict[int, str],
+    ) -> dict[int, _RadarAssignmentAmbiguity]:
+        """Find assigned radar observations that belong to alternating cycles.
+
+        The gate-valid bipartite graph can admit another same-cardinality
+        matching even when Hungarian ranks one matching first. Each directed
+        cycle below is exactly such an identity permutation. The observation
+        is therefore withheld instead of turning a likelihood ranking into a
+        deterministic identity claim.
+        """
+
+        row_by_track_id = {
+            track_id: row
+            for row, (track_id, _) in enumerate(track_items)
+        }
+        column_by_row = {
+            row_by_track_id[track_id]: observation_index
+            for observation_index, track_id in assignments.items()
+        }
+        adjacency: dict[int, tuple[int, ...]] = {}
+        assigned_rows = tuple(sorted(column_by_row))
+        for row in assigned_rows:
+            alternatives = tuple(
+                other_row
+                for other_row in assigned_rows
+                if other_row != row
+                and bool(valid[row, column_by_row[other_row]])
+            )
+            adjacency[row] = alternatives
+
+        ambiguities: dict[int, _RadarAssignmentAmbiguity] = {}
+        for component in _strongly_connected_assignment_components(adjacency):
+            if len(component) < 2:
+                continue
+            track_ids = tuple(sorted(track_items[row][0] for row in component))
+            ambiguity = _RadarAssignmentAmbiguity(
+                track_ids=track_ids,
+                component_size=len(component),
+            )
+            for row in component:
+                ambiguities[column_by_row[row]] = ambiguity
+        return ambiguities
+
+    def _record_radar_assignment_ambiguity_tracks(
+        self,
+        observations: list[SensorObservation],
+        result: _ScanAssociationResult,
+    ) -> None:
+        if not result.radar_ambiguities:
+            return
+
+        unique_components = {
+            ambiguity.track_ids: ambiguity
+            for ambiguity in result.radar_ambiguities.values()
+        }
+        track_ids = tuple(
+            sorted(
+                {
+                    track_id
+                    for ambiguity in unique_components.values()
+                    for track_id in ambiguity.track_ids
+                }
+            )
+        )
+        self.radar_assignment_ambiguity_scan_count += 1
+        self.radar_assignment_ambiguity_track_coast_count += len(track_ids)
+        self.max_radar_assignment_ambiguity_component_size = max(
+            self.max_radar_assignment_ambiguity_component_size,
+            max(item.component_size for item in unique_components.values()),
+        )
+        self._latest_radar_assignment_ambiguity_track_ids = track_ids
+
+        measurement_timestamp = float(observations[0].measurement_timestamp)
+        arrival_timestamp = float(observations[0].arrival_timestamp)
+        for track_id in track_ids:
+            record = self.tracks[track_id]
+            component_sizes = [
+                item.component_size
+                for item in unique_components.values()
+                if track_id in item.track_ids
+            ]
+            record.association_diagnostics[
+                "radar_assignment_ambiguity_suppressed"
+            ] += 1
+            record.metadata.update(
+                {
+                    "latest_radar_assignment_ambiguity_reason": (
+                        "gate_feasible_alternating_cycle"
+                    ),
+                    "latest_radar_assignment_ambiguity_policy_version": (
+                        RADAR_ASSIGNMENT_AMBIGUITY_POLICY_VERSION
+                    ),
+                    "latest_radar_assignment_ambiguity_measurement_timestamp": (
+                        measurement_timestamp
+                    ),
+                    "latest_radar_assignment_ambiguity_arrival_timestamp": (
+                        arrival_timestamp
+                    ),
+                    "latest_radar_assignment_ambiguity_component_size": max(
+                        component_sizes
+                    ),
+                }
+            )
 
     def _record_eo_projection_scan_diagnostics(
         self,
@@ -2178,6 +2398,8 @@ class FusionAdapter:
             self.observer_scan_suppression_count += 1
         elif reason == "ambiguous_radar_birth_suppressed":
             self.ambiguous_radar_birth_suppression_count += 1
+        elif reason == "radar_assignment_ambiguity_suppressed":
+            self.radar_assignment_ambiguity_observation_suppression_count += 1
 
     def _non_range_position_correction_score(
         self,

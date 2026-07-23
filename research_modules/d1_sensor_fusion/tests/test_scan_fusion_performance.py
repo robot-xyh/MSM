@@ -193,14 +193,26 @@ def _eo_scan(
     return tuple(observations)
 
 
+class _ReplayPerformanceAdapter(Scalable3DFusionAdapter):
+    """Keep replay-operation tests independent of ambiguity suppression."""
+
+    def _radar_assignment_ambiguities(
+        self,
+        track_items,
+        valid,
+        assignments,
+    ) -> dict:
+        return {}
+
+
 def _adapters(**kwargs) -> tuple[Scalable3DFusionAdapter, Scalable3DFusionAdapter]:
     common = {"association_gate": 40.0, **kwargs}
-    legacy = Scalable3DFusionAdapter(
+    legacy = _ReplayPerformanceAdapter(
         **common,
         incremental_replay_cache=False,
         shared_publication_audit_snapshot=False,
     )
-    optimized = Scalable3DFusionAdapter(
+    optimized = _ReplayPerformanceAdapter(
         **common,
         incremental_replay_cache=True,
         shared_publication_audit_snapshot=True,
@@ -303,11 +315,11 @@ def test_state_only_scans_then_explicit_snapshot_match_per_scan_publication() ->
             scan_id="deferred-materialization-pre-checkpoint-oosm",
         ),
     )
-    reference = Scalable3DFusionAdapter(
+    reference = _ReplayPerformanceAdapter(
         association_gate=40.0,
         buffer_horizon=6.0,
     )
-    deferred = Scalable3DFusionAdapter(
+    deferred = _ReplayPerformanceAdapter(
         association_gate=40.0,
         buffer_horizon=6.0,
     )

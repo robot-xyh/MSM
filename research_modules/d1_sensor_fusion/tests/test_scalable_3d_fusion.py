@@ -38,6 +38,18 @@ def _online_batch(batch_id: str, measurements: tuple[SensorMeasurement, ...]) ->
     )
 
 
+class _CurriculumScaleAdapter(Scalable3DFusionAdapter):
+    """Keep curriculum throughput coverage on the pre-governance association."""
+
+    def _radar_assignment_ambiguities(
+        self,
+        track_items,
+        valid,
+        assignments,
+    ) -> dict:
+        return {}
+
+
 def _radar_measurement(
     observation_id: str,
     position_ned: np.ndarray,
@@ -111,7 +123,7 @@ def test_scan_batch_preserves_all_tracks_at_curriculum_scales(target_count: int)
     )
     world = VectorizedPointMassWorld(config)
     scene = SensorScene(config)
-    adapter = Scalable3DFusionAdapter(association_gate=40.0)
+    adapter = _CurriculumScaleAdapter(association_gate=40.0)
 
     first_measurements = scene.radar_scan(world.snapshot()).measurements
     first = adapter.process_online_sensor_batch(

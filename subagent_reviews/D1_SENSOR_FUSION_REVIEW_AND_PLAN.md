@@ -7,6 +7,28 @@
 
 ## 0. 当前性能与治理状态（2026-07-23）
 
+- Radar-only 专项已把 seed 1000 的 `global_track_100/101` 和 seed 1002 的
+  `global_track_187/188` 定位为 scan Hungarian swap/保持/swap-back。radar-only 零延迟对照
+  保持相同分配/代价且 OOSM 归零，排除 birth、重捕获和 OOSM 为根因。
+- 当前 `fail_closed_gate_feasible_alternating_cycle_v1` 只在全 radar scan 上检查 Hungarian
+  已匹配子图。强连通分量大小至少 2 表明存在另一组等基数门内匹配；分量内观测被 processed
+  后跳过 update/birth，原 track 只预测。非 radar、首扫、门拓扑唯一、单目标重捕获不受影响；
+  greedy fallback 和矩形矩阵边界执行相同规则。
+- 20:1 likelihood margin 已否决：一次抑制改变状态后，后续会提交代价看似唯一但离线谱系错误
+  的排列。v1 不把单帧代价差解释成身份确定性，也不解析 observation/source 名称。
+- 实际候选实现的开发冻结 A/B：seeds 1000/1001/1002 的 radar 混合谱系代理均
+  `2 -> 0`，终态/创建 track 分别保持 `203/201/201`，抑制
+  `22/1962=1.12%`、`130/1966=6.61%`、`78/1958=3.98%`。三组仍覆盖全部 200 个 truth
+  radar 谱系，且未新增 birth。truth 只在两端在线回放结束后连接。
+- seed 1001 的原发布 D2 ambiguous 指标为 0；上述 `2 -> 0` 仅是完整 D1 历史代理。当前三 seed
+  是开发复现，不能兼作泛化验收。10 s 制品的 7 个 ambiguous mappings 是 radar+vision 混合。
+- 审计新增双时间戳、component size、observation suppression、track coast、reason、track IDs
+  和 policy version。专项含 2x2/三目标环、唯一编队、密集首扫、OOSM、重捕获、greedy 和矩形
+  边界；D1 全量 `199 passed in 16.74s`，`py_compile` 与 `git diff --check` 通过。
+- 评审结论：接受为保守候选 v1，不关闭 P1。1.12%/6.61%/3.98% 是待 main detached clean
+  校准的显式信息代价；clean 还须由 D2 离线复核 ambiguous mapping、continuity、split/merge、
+  ID switch、重复 birth 和召回。
+
 - D2 nominal 200v200 身份阻断审计在 seed 1000 给出 17 条可复核的雷达/视觉混轨观测。D1 在
   clean `5263e2b` 的 771 scans/11,889 anonymous observations 冻结回放中复现。
 - 根因是扫描帧冻结后的嵌套相机模型为只读 `Mapping`，旧解析器只接受普通 `dict`。相机位置

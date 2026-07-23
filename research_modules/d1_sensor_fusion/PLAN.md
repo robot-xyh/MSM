@@ -1,5 +1,39 @@
 # D1 多传感器融合与目标配准实施计划
 
+## 匿名雷达交替环保守候选与后续计划（2026-07-23）
+
+D1 已在 seed 1000/1002 冻结输入和 radar-only 零延迟对照中确认：异常来自 scan Hungarian
+交叉换绑，不是 birth、重捕获或 OOSM。seed 1000 的 `global_track_100/101` 在 scans 8--10
+发生 swap/保持/swap-back；seed 1002 的 `global_track_187/188` 同构。20:1 单扫描 likelihood
+margin 在一次抑制后仍会提交离线谱系错误但代价看似唯一的排列，因此不作为身份确定性门。
+
+当前实现接受为 `fail_closed_gate_feasible_alternating_cycle_v1` 保守候选：仅在全 radar
+scan 上检查 Hungarian 已匹配行列的门内交替环；环内观测全部抑制且不能 birth，航迹只预测，
+非 radar、首扫、门拓扑唯一和单目标重捕获保持原路径。审计保留双时间戳、component size、
+observation suppression、track coast、受影响 track IDs、reason 和 policy version。
+
+当前未提交工作区的开发冻结 A/B 为：
+
+| Seed | 混合 radar 谱系代理 | 终态/创建航迹 | 抑制率 |
+| --- | ---: | ---: | ---: |
+| 1000 | `2 -> 0` | `203 -> 203` | `22/1,962 = 1.12%` |
+| 1001 | `2 -> 0` | `201 -> 201` | `130/1,966 = 6.61%` |
+| 1002 | `2 -> 0` | `201 -> 201` | `78/1,958 = 3.98%` |
+
+truth 只在两条在线回放完成后核验。seed 1001 的原发布 D2 ambiguous 为 0，表中结果仅是完整
+D1 历史代理；三组输入均是开发复现，不能兼作泛化验收。D1 全量
+`199 passed in 16.74s`，`py_compile` 与 `git diff --check` 通过。
+
+后续顺序固定为：
+
+1. main 在 detached clean 候选上重跑预注册 seed/时长，保存策略计数、抑制分母和输入摘要；
+2. D2 只在回放后复核 ambiguous mappings、continuity、split/merge 和 ID switch；
+3. 同时核对创建/终态航迹、重复 birth、召回和 1.12%/6.61%/3.98% 信息代价是否泛化；
+4. clean 结果通过前，身份连续性 P1 保持开放；不继续在 seeds 1000--1002 上调代价阈值。
+
+本候选不改变 6 s fixed-lag、扫描频率、关联门限、协方差治理、`global_track_id`、D7/PNG 或
+AirSim producer/runtime 合同。
+
 ## 匿名跨模态几何门控收口与后续计划（2026-07-23）
 
 D1 已使用 clean `5263e2b` nominal 200v200、10 s、seed 1000 的冻结在线输入复现 D2 报告中的
