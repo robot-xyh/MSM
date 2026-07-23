@@ -169,6 +169,15 @@ from .observation_governance_calibration import (
     main_producer_required_json_paths,
     render_observation_governance_calibration_markdown,
 )
+from .observation_posterior_governance import (
+    MODULE_PERFORMANCE_EVIDENCE_REGISTRY_SCHEMA_VERSION,
+    OBSERVATION_GOVERNANCE_RUNTIME_V1,
+    OBSERVATION_GOVERNANCE_RUNTIME_V2,
+    POSTERIOR_GOVERNANCE_AUDIT_SCHEMA_VERSION,
+    PosteriorGovernanceEvidence,
+    evaluate_posterior_governance,
+    register_module_performance_evidence,
+)
 from .standard_mapping import (
     STANDARD_MAPPING_VERSION,
     StandardMetricMapping,

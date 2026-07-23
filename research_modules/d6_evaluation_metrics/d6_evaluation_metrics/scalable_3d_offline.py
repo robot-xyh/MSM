@@ -36,12 +36,16 @@ from .experiment_matrix_offline import (
     finalize_experiment_matrix_evidence,
     render_experiment_matrix_markdown_lines,
 )
+from .observation_posterior_governance import (
+    evaluate_posterior_governance,
+    register_module_performance_evidence,
+)
 
 
 SCALABLE_3D_OFFLINE_EVALUATION_SCHEMA_VERSION = (
-    "d6-scalable3d-offline-evaluation-v5"
+    "d6-scalable3d-offline-evaluation-v6"
 )
-SCALABLE_3D_OFFLINE_EVALUATION_DATE = "2026-07-20"
+SCALABLE_3D_OFFLINE_EVALUATION_DATE = "2026-07-22"
 SCALABLE_3D_SCHEMA_REGISTRY_VERSION = "d6-scalable3d-schema-registry-v1"
 SCALABLE_3D_CURRENT_SCHEMA_REGISTRY = {
     "world_schema": "scalable3d-world-v1",
@@ -114,6 +118,14 @@ _METRIC_FIELDS = (
     "current_schema_contract_match",
     "online_truth_use_count",
     "online_truth_field_violation_count",
+    "observation_governance_generation_integrity",
+    "d1_posterior_generation",
+    "d1_full_posterior_publication_count",
+    "d2_consumed_d1_posterior_generation",
+    "d2_posterior_consumption_count",
+    "d2_association_publication_count",
+    "d2_pre_tick_posterior_merge_count",
+    "d2_pending_generation_empty",
     "d1_track_count",
     "d1_speed_p50_mps",
     "d1_speed_p90_mps",
@@ -199,6 +211,7 @@ class Scalable3DOfflineEvaluationInputs:
     """Explicit episode directories supplied by main."""
 
     episode_dirs: tuple[Path, ...]
+    module_performance_json_paths: tuple[Path, ...] = ()
 
     def __post_init__(self) -> None:
         directories = tuple(Path(value).resolve() for value in self.episode_dirs)
@@ -207,6 +220,16 @@ class Scalable3DOfflineEvaluationInputs:
         if len(set(directories)) != len(directories):
             raise ValueError("episode directories must be unique")
         object.__setattr__(self, "episode_dirs", directories)
+        performance_paths = tuple(
+            Path(value).resolve() for value in self.module_performance_json_paths
+        )
+        if len(set(performance_paths)) != len(performance_paths):
+            raise ValueError("module performance JSON paths must be unique")
+        object.__setattr__(
+            self,
+            "module_performance_json_paths",
+            performance_paths,
+        )
 
 
 class Scalable3DOfflineReportGenerator:
@@ -249,6 +272,10 @@ class Scalable3DOfflineReportGenerator:
             bootstrap_rng_seed=int(bootstrap_rng_seed),
         )
         public_rows = [_public_row(row) for row in rows]
+        module_performance_evidence = register_module_performance_evidence(
+            inputs.module_performance_json_paths
+        )
+        aggregate["module_performance_evidence"] = module_performance_evidence
 
         csv_path = output_path / "scalable_3d_offline_per_episode_seed.csv"
         _write_rows_csv(csv_path, public_rows)
@@ -256,6 +283,18 @@ class Scalable3DOfflineReportGenerator:
         aggregate_path = output_path / "scalable_3d_offline_aggregate.json"
         aggregate_path.write_text(
             json.dumps(aggregate, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+
+        module_performance_path = output_path / "module_performance_evidence.json"
+        module_performance_path.write_text(
+            json.dumps(
+                module_performance_evidence,
+                ensure_ascii=False,
+                indent=2,
+                sort_keys=True,
+            )
+            + "\n",
             encoding="utf-8",
         )
 
@@ -275,6 +314,7 @@ class Scalable3DOfflineReportGenerator:
         return {
             "per_episode_seed_csv": csv_path,
             "aggregate_json": aggregate_path,
+            "module_performance_evidence": module_performance_path,
             "markdown": markdown_path,
             "stage_timing_curve": plot_path,
         }
@@ -361,6 +401,13 @@ def evaluate_scalable_3d_episode(episode_dir: str | Path) -> dict[str, Any]:
         summary,
         online_unavailable_reason=online_reason,
     )
+    posterior_governance = evaluate_posterior_governance(
+        ordered_online,
+        summary,
+        online_unavailable_reason=online_reason,
+    )
+    row.update(posterior_governance.metrics)
+    row["_failure_reasons"].extend(posterior_governance.failure_reasons)
     _extract_track_metrics(row, ordered_online, module="d1")
     _extract_track_metrics(row, ordered_online, module="d2")
     _extract_d2_id_switch(row, ordered_online)
@@ -713,6 +760,74 @@ def render_scalable_3d_offline_markdown(
                 identity=identity,
             )
         )
+
+    lines.extend(
+        [
+            "",
+            "## D1-D2 后验代次审计",
+            "",
+            "运行时 v2 同时核对最终治理快照和在线总线。D1 完整后验代次必须从 1 连续递增；D2 来源代次必须严格递增、不得重复，并且只能引用此前发布的完整后验。episode 结束时待处理代次必须为空，累计消费次数必须等于实际 D2 发布数。v1 没有这些字段，结果保持 unavailable，不按 0 处理。",
+            "",
+            "| seed | runtime schema | integrity | D1 final/full pub | D2 final/consumption/pub | pre-tick merge | pending empty | status/reasons |",
+            "| ---: | --- | :---: | --- | --- | ---: | :---: | --- |",
+        ]
+    )
+    for row in rows:
+        lines.append(
+            "| {seed} | {schema} | {integrity} | {d1}/{d1_pub} | "
+            "{d2}/{consume}/{d2_pub} | {merge} | {pending} | {status}/{reasons} |".format(
+                seed=_fmt(row.get("seed")),
+                schema=_fmt_available(
+                    row, "observation_governance_runtime_schema"
+                ),
+                integrity=_fmt_available(
+                    row, "observation_governance_generation_integrity"
+                ),
+                d1=_fmt_available(row, "d1_posterior_generation"),
+                d1_pub=_fmt_available(
+                    row, "d1_full_posterior_publication_count"
+                ),
+                d2=_fmt_available(
+                    row, "d2_consumed_d1_posterior_generation"
+                ),
+                consume=_fmt_available(row, "d2_posterior_consumption_count"),
+                d2_pub=_fmt_available(row, "d2_association_publication_count"),
+                merge=_fmt_available(row, "d2_pre_tick_posterior_merge_count"),
+                pending=_fmt_available(row, "d2_pending_generation_empty"),
+                status=_fmt_available(
+                    row, "observation_governance_generation_contract_status"
+                ),
+                reasons=_fmt_available(
+                    row,
+                    "observation_governance_generation_integrity_reasons_json",
+                ),
+            )
+        )
+
+    performance_registry = aggregate.get("module_performance_evidence", {})
+    lines.extend(
+        [
+            "",
+            "## 模块性能描述性证据",
+            "",
+            "以下登记项来自 D1 或 D5 的独立回放、微基准或 A/B 性能 JSON。D6 只记录来源 schema 和文件哈希；这些结果不等同于 D1-D7 全栈实时能力，也不证明控制效果。",
+            "",
+            "| 模块 | 来源 schema | SHA-256 | 证据类别 | 全栈实时声明 |",
+            "| --- | --- | --- | --- | :---: |",
+        ]
+    )
+    for evidence in performance_registry.get("records", []):
+        lines.append(
+            "| {module} | {schema} | `{digest}` | {evidence_class} | {claim} |".format(
+                module=_fmt(evidence.get("module")),
+                schema=_fmt(evidence.get("source_schema_version")),
+                digest=_fmt(evidence.get("sha256")),
+                evidence_class=_fmt(evidence.get("evidence_class")),
+                claim=_fmt(evidence.get("full_stack_realtime_claim")),
+            )
+        )
+    if not performance_registry.get("records"):
+        lines.append("| unavailable | unavailable | unavailable | 未显式提供模块性能 JSON | false |")
 
     lines.extend(["", *render_experiment_matrix_markdown_lines(
         aggregate.get("experiment_matrix", {})
@@ -3725,6 +3840,7 @@ def _finalize_episode_status(row: dict[str, Any]) -> None:
                     "d4_advice_formal_decision_mutation",
                     "d4_region_consumption_",
                     "d5_active_vision_",
+                    "observation_governance_generation_integrity:",
                 )
             )
             for reason in failures

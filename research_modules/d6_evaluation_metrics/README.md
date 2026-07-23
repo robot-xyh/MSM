@@ -1,5 +1,38 @@
 # D6 Evaluation Metrics
 
+## 2026-07-22 D1-D2 后验代次被动审计
+
+D6 已在可扩展三维离线评估中接入 `scalable3d-observation-governance-runtime-v2`。评估同时读取
+`summary.module_final_diagnostics.observation_governance` 和持久化在线总线，不导入 D1/D2 运行时，
+不读取在线真值。D1 完整后验的 `posterior_generation` 必须从 1 连续递增；D2 的
+`source_d1_posterior_generation` 必须严格递增、不得重复，并且只能引用此前已发布的完整后验。
+
+最终快照还需满足 pending generation 为空，D2 consumed generation 等于 D1 generation，
+consumption count 等于实际 D2 publication 数，且 consumption count 加 pre-tick merge count 等于
+D1 generation。最终 consumed generation 同时与最后一次 D2 来源一致。
+任一矛盾进入 episode 失败原因并使 formal acceptance 失败关闭。历史 runtime v1 因未发布这些
+字段，所有代次指标为 `null/unavailable`，不会被写成 0。
+
+离线评估 schema 升级为 `d6-scalable3d-offline-evaluation-v6`。报告新增后验代次表。CLI 可用
+`--module-performance-json` 显式登记 D1/D5 独立性能 JSON；登记项固定为描述性模块证据，不能解释为
+全栈实时能力或控制效果。专项测试 `58 passed`，D6 全量测试 `542 passed, 1 warning`，耗时
+21.82 s。warning 是既有 Matplotlib `Axes3D` 环境问题。
+
+main 随后在 clean commit `0d2da25c14e50f8f9a10ad47a7bd74e5c5e577fb` 上完成 nominal
+200 对 200、10.0 s、seed `42000/42001/42002` 的 runtime v2 校准。v6 consumer 得到：
+
+| seed | D1 final/full pub | D2 final/consumption/pub | pre-tick merge | pending empty |
+| ---: | --- | --- | ---: | :---: |
+| 42000 | 453/453 | 453/48/48 | 405 | true |
+| 42001 | 516/516 | 516/48/48 | 468 | true |
+| 42002 | 505/505 | 505/48/48 | 457 | true |
+
+三个 episode 均 `formal_acceptance_eligible=true`、失败原因空、在线真值使用为 0。证据分类为
+`descriptive_clean_source_calibration`，没有实验矩阵 metadata，不能写成 20 未见 seed 验收或正式
+算法矩阵。报告位于
+`outputs/scalable3d_posterior_v2_clean_0d2da25_20260722/`。v6 评估日期已修正为
+`2026-07-22` 并重生成该目录的 CSV、aggregate 和中文报告。
+
 ## 2026-07-22 200 对 200 长时三 seed 集成校准
 
 main 在 clean worktree 上使用相同 nominal 200 对 200 配置、10.0 s 世界时长和 seed

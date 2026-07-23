@@ -1,5 +1,34 @@
 # D6 实现差距审计
 
+## 2026-07-22 后验代次治理 GAP 更新
+
+### 已关闭的 D6-owned P1
+
+1. runtime v1/v2 已分派。v1 缺少后验代次证据时保持 null/unavailable，不会被误读为 0。
+2. v2 已逐条核对 D1 完整后验代次连续性，以及 D2 来源代次严格递增、不重复和先发布后引用。
+3. 最终 pending、D1/D2 最终代次、D2 消费次数、实际 D2 发布数及节拍前合并数已进入交叉审计；
+   pending 为空时 consumed 必须等于 D1，消费数加合并数也必须等于 D1。
+4. 异常原因写入 episode failure，formal acceptance 失败关闭；D6 不参与控制，不读取在线真值。
+5. 逐 seed CSV、聚合 JSON 和中文 Markdown 已包含代次、计数、完整性和 availability。
+6. D1/D5 模块性能 JSON 可显式登记，但固定为 standalone descriptive evidence，不形成全栈实时声明。
+
+### 已补充的 clean 运行证据
+
+main 已在 clean commit `0d2da25` 上完成 nominal 200 对 200、10.0 s、seed
+`42000/42001/42002`。三次 D1 final/full publication 为 `453/453`、`516/516`、`505/505`；
+D2 final/consumption/publication 为 `453/48/48`、`516/48/48`、`505/48/48`；pre-tick merge 为
+`405/468/457`；pending 全部为空。3/3 基础 formal provenance gate 和 integrity 通过，失败原因空，
+在线真值使用为 0。
+
+### 仍开放的 P1
+
+当前仅有三个 seed，证据类别为 `descriptive_clean_source_calibration`。输入没有实验矩阵 metadata，
+正式矩阵 episode 数为 0。仍需至少 20 个未见 seed 和完整矩阵声明，才能评价统计泛化或算法差异。
+clean runtime v2 三 seed 缺口已关闭，正式多 seed 矩阵缺口保持开放。
+
+专项 `58 passed`，D6 全量 `542 passed, 1 warning`。当前没有新增 P0。AirSim 计划已检查；本次未
+改变其 producer 或指标口径，因此无需修改。
+
 ## 2026-07-22 长时三 seed 集成 GAP 更新
 
 ### 已闭合的 D6 证据缺口

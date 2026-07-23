@@ -1,5 +1,33 @@
 # D6 系统评估指标综述及子方案
 
+## 2026-07-22 后验代次合同评审
+
+runtime v2 使 D6 可以判断 D1 后验是否被 D2 按发布代次消费。评审同时使用在线总线和 episode 最终
+summary。只看 summary 无法发现中间重复或倒序；只看总线无法证明 finalize 后 pending 已排空。
+
+D1 完整后验代次从 1 连续递增。D2 来源代次严格递增且已在此前 D1 完整后验集合中。pending 为空时
+最终消费代次必须等于 D1，消费次数必须等于 D2 发布数。D1 在一个 D2 节拍前产生多个后验属于允许
+的合并，但消费次数加 pre-tick merge 必须等于 D1。
+
+历史 v1 不能完成上述判断，报告保持 unavailable。v2 的重复、未知引用、非单调、累计矛盾和 pending
+未排空均失败关闭。D6 只读消费持久化制品，不读取 truth，不更改 D1/D2 调度。
+
+独立 D1/D5 性能 JSON 只说明模块在指定回放或微基准中的描述性结果。登记包含 schema 和文件
+SHA-256，明确排除全栈实时和控制效果声明。专项 `58 passed`，D6 全量
+`542 passed, 1 warning`。
+
+main 已用 clean commit `0d2da25` 完成 nominal 200 对 200、10.0 s、seed
+`42000/42001/42002`。D1 final/full publication 为 `453/453`、`516/516`、`505/505`；D2
+final/consumption/publication 为 `453/48/48`、`516/48/48`、`505/48/48`；pre-tick merge 为
+`405/468/457`，pending 全部排空。三次 integrity 与基础 formal provenance gate 均通过，失败原因空，
+在线真值使用为 0。
+
+该批归类为三个 `descriptive_clean_source_calibration`。没有实验矩阵 metadata，正式矩阵 episode
+数为 0，也未达到 20 未见 seed。clean runtime v2 输入缺口已经关闭；正式矩阵和统计泛化仍为 P1。
+
+`AIRSIM_INTEGRATION_PLAN.md` 和 `D6_M_TO_N_EVALUATION_FRAMEWORK_REVIEW.md` 已检查。后验代次合同不
+改变 AirSim 接口，也不改变 M 对 N 联盟分母和物理结果口径，因此两份文档无需修改。
+
 ## 2026-07-22 200 对 200 长时三 seed 集成评审
 
 main 提供的 reference `8f86192` 与 candidate `f80b5bd` 使用相同 nominal 200 对 200 配置、10.0 s

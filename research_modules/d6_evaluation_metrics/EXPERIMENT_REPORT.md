@@ -1,5 +1,41 @@
 # D6 系统级评估指标实验报告
 
+## 2.21 2026-07-22 后验代次合同接口验证
+
+本次验证对象是 D6 被动 consumer，不是运行时性能。合成在线总线覆盖正常 v2、D2 重复消费、引用
+未发布代次、D2 代次倒序、episode 结束 pending 未排空、pending 为空但 consumed 未追平 D1、消费数
+加合并数不等于 D1，以及历史 v1。正常 v2 的 D1 序列为
+`[1,2,3]`，D2 来源序列为 `[1,3]`，最终 D1/D2 代次为 `3/3`，消费/发布数为 `2/2`，节拍前合并数
+为 1，审计通过。
+
+重复、未知、倒序和未排空四类异常均产生明确原因，integrity 为 false，并通过 scalable 三维报告
+集成测试确认 `formal_acceptance_eligible=false`。v1 的代次、消费和完整性均为 null/unavailable，
+没有写成 0。中文报告可展示 schema、累计值、发布数、合并数、pending 和失败原因。
+
+D1/D5 性能 JSON 登记测试确认只接受对应 schema，记录 SHA-256，且
+`full_stack_realtime_claim=false`、`control_effect_claim=false`。专项测试 `58 passed`；D6 全量
+`542 passed, 1 warning`，耗时 21.82 s。warning 为既有 Matplotlib `Axes3D` 环境问题。
+
+main 随后在 clean commit `0d2da25c14e50f8f9a10ad47a7bd74e5c5e577fb` 上运行 nominal
+200 对 200、10.0 s、seed `42000/42001/42002`。三次 manifest 均
+`repository_dirty=false`，summary 的在线真值使用均为 0。v6 consumer 结果如下：
+
+| seed | D1 final/full pub | D2 final/consumption/pub | pre-tick merge | pending |
+| ---: | --- | --- | ---: | --- |
+| 42000 | 453/453 | 453/48/48 | 405 | empty |
+| 42001 | 516/516 | 516/48/48 | 468 | empty |
+| 42002 | 505/505 | 505/48/48 | 457 | empty |
+
+三次 `observation_governance_generation_integrity=true`，基础
+`formal_acceptance_eligible=true`，`failure_reason_distribution={}`。D1 final 与完整发布数一致；
+D2 final 与 D1 final 一致；D2 consumption 与 publication 均为 48；consumption 加 merge 分别等于
+453、516、505；pending 全部为空。
+
+输出位于 `outputs/scalable3d_posterior_v2_clean_0d2da25_20260722/`。该目录的 v6 CSV、aggregate 和
+中文报告已按实际日期 `2026-07-22` 重生成。三个 episode 均归类为
+`descriptive_clean_source_calibration`。实验矩阵 episode 数为 0，因此本次只关闭 clean 三 seed
+runtime v2 证据缺口，不构成 20 未见 seed 验收、正式实验矩阵或算法优劣结论。
+
 ## 2.20 2026-07-22 200 对 200 长时三 seed 集成校准
 
 ### 实验设计

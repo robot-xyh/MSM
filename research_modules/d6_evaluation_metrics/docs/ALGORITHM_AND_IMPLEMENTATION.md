@@ -1,5 +1,30 @@
 # D6 系统级离线评估：算法原理与实施说明
 
+## 后验代次审计算法（2026-07-22）
+
+输入由最终快照和在线发布序列组成。最终快照来自
+`summary.module_final_diagnostics.observation_governance`。在线序列只读取 D1 融合航迹和 D2 关联
+航迹主题的公共字段，不读取在线真值或离线 truth sidecar。
+
+runtime v1 的代次字段输出 `null/unavailable`。runtime v2 要求四个非负累计值和显式 pending 字段。
+扫描在线序列时，只对 `snapshot_kind=full_posterior` 的 D1 发布读取 `posterior_generation`，期望
+序列为 `1,2,...,G`。D2 的 `source_d1_posterior_generation` 必须大于上一值，并已存在于扫描到该
+位置为止的 D1 发布集合中。
+
+最终核对 D1 代次与完整后验发布数、D2 消费次数与 D2 发布数、最后 D2 来源与最终 consumed 代次。
+pending 为空时，最终 consumed 必须等于 D1；消费次数加 pre-tick merge count 也必须等于 D1。
+原因集合非空时，integrity 为 false，并以明确原因阻断正式资格。离线评估 schema 升级到 v6，新增
+字段进入逐 episode CSV、多 seed 聚合和中文报告。
+
+性能登记入口显式接收 D1/D5 JSON 路径，校验顶层对象和 schema 前缀并计算 SHA-256。输出证据类别
+固定为 `descriptive_standalone_module_performance`，全栈实时和控制效果声明均为 false。
+
+clean commit `0d2da25` 的三个 10.0 s、200 对 200 episode 已由同一 v6 consumer 读取。逐 seed 的
+D1 final/full publication、D2 final/consumption/publication、pre-tick merge 和 pending 分别为
+`453/453, 453/48/48, 405, empty`、`516/516, 516/48/48, 468, empty`、
+`505/505, 505/48/48, 457, empty`。三行均通过全部恒等式，failure reason 为空。报告日期常量已更新
+为 `2026-07-22`，测试同时断言 row 和中文 Markdown 的日期。
+
 ## 长时三 seed 集成校准算法（2026-07-22）
 
 ### 在线证据最小留存

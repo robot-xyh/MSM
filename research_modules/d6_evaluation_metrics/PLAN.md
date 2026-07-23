@@ -1,5 +1,24 @@
 # D6 Evaluation Metrics Plan
 
+## 2026-07-22 后验代次合同评估状态
+
+- [x] 分派 runtime v1/v2；v1 字段缺失保持 unavailable。
+- [x] 核对 D1 完整后验代次连续性和 D2 来源代次严格递增、唯一及先发布后引用。
+- [x] 交叉核对 pending 排空、最终 consumed 等于 D1、D2 消费/发布数，以及消费数加节拍前合并数
+  等于 D1 generation。
+- [x] 将异常加入 episode 失败原因并阻断 formal acceptance，不修改控制链。
+- [x] 将代次、完整性和 availability 写入 CSV、聚合 JSON 与中文报告。
+- [x] 增加 D1/D5 性能 JSON 的可选描述性登记，不形成全栈实时声明。
+- [x] 规定正负例和报告集成专项 `58 passed`；D6 全量 `542 passed, 1 warning`。
+- [x] 复核 clean commit `0d2da25` 的 nominal 200 对 200、10.0 s、三 seed runtime v2：
+  3/3 integrity/formal provenance gate 通过，pending 全部排空，失败原因空，在线真值使用为 0。
+- [x] 将 v6 评估日期从历史值修正为实际验证日期 `2026-07-22`，并重生成三 seed 报告。
+- [ ] 扩展到至少 20 个未见 seed，并由 main 提供完整实验矩阵 metadata。当前三 seed 只属于
+  `descriptive_clean_source_calibration`，不关闭正式矩阵或统计泛化 P1。
+
+`AIRSIM_INTEGRATION_PLAN.md` 已检查。本次只扩展质点可扩展三维持久化制品的离线消费，不改变
+AirSim producer、话题、reset 或控制接口，因此无需修改。
+
 ## 2026-07-22 200 对 200 长时三 seed 集成证据
 
 ### 已完成

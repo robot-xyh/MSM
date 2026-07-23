@@ -1,5 +1,18 @@
 # D6 文档索引
 
+2026-07-22 的 D1-D2 后验代次被动审计见 `MODULE_PRINCIPLES_CN.md` 和
+`ALGORITHM_AND_IMPLEMENTATION.md`，接口验证见根目录 `../EXPERIMENT_REPORT.md` 2.21 节。
+runtime v2 核对 D1 完整后验连续代次、D2 来源代次唯一递增、先发布后引用、最终 pending 排空、
+consumed 等于 D1，以及消费数加合并数等于 D1；runtime v1 保持 unavailable。D1/D5 独立性能 JSON
+只登记为描述性证据，不升级为全栈实时能力。专项 `58 passed`，D6 全量
+`542 passed, 1 warning`。AirSim 接口未改变。
+
+同日 main 已提供 clean commit `0d2da25` 的 nominal 200 对 200、10.0 s、三 seed runtime v2
+episode。三次后验代次完整性、基础 formal provenance gate、pending 排空和在线真值隔离均通过，
+失败原因空。输出见 `../outputs/scalable3d_posterior_v2_clean_0d2da25_20260722/`。该证据是三 seed
+描述性 clean 校准；没有实验矩阵 metadata，也未达到 20 未见 seed。v6 报告日期已修正并重生成为
+`2026-07-22`。
+
 2026-07-22 nominal 200 对 200、10.0 s、seed `42000/42001/42002` 的 clean 长时集成校准见
 `MODULE_PRINCIPLES_CN.md`、`ALGORITHM_AND_IMPLEMENTATION.md` 和根目录 `../EXPERIMENT_REPORT.md`
 2.20 节。reference 为 `8f86192`，candidate 为 `f80b5bd`。三 seed 的有限状态、在线真值隔离和跨提交

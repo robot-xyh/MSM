@@ -38,6 +38,15 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("--output-dir", required=True)
     parser.add_argument(
+        "--module-performance-json",
+        action="append",
+        default=[],
+        help=(
+            "optional D1/D5 standalone performance JSON; repeat to register "
+            "descriptive evidence without claiming full-stack real-time capability"
+        ),
+    )
+    parser.add_argument(
         "--bootstrap-resamples",
         type=int,
         default=DEFAULT_SCALABLE_3D_BOOTSTRAP_RESAMPLES,
@@ -58,7 +67,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     outputs = Scalable3DOfflineReportGenerator().write_report_bundle(
         args.output_dir,
-        inputs=Scalable3DOfflineEvaluationInputs(episode_dirs=episode_dirs),
+        inputs=Scalable3DOfflineEvaluationInputs(
+            episode_dirs=episode_dirs,
+            module_performance_json_paths=tuple(
+                Path(value) for value in args.module_performance_json
+            ),
+        ),
         bootstrap_resamples=args.bootstrap_resamples,
         bootstrap_rng_seed=args.bootstrap_seed,
     )

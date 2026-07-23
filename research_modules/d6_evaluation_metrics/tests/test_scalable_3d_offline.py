@@ -14,6 +14,7 @@ from d6_evaluation_metrics.scalable_3d_offline import (
     EXPERIMENT_MATRIX_SCHEMA_VERSION,
     EXPERIMENT_MATRIX_VARIANTS,
     SCALABLE_3D_CURRENT_SCHEMA_REGISTRY,
+    SCALABLE_3D_OFFLINE_EVALUATION_DATE,
     SCALABLE_3D_OFFLINE_EVALUATION_SCHEMA_VERSION,
     SCALABLE_3D_SCHEMA_REGISTRY_VERSION,
     Scalable3DOfflineEvaluationInputs,
@@ -1120,8 +1121,10 @@ def test_current_schema_registry_matches_real_producer_contract(tmp_path: Path) 
 
     assert SCALABLE_3D_SCHEMA_REGISTRY_VERSION == "d6-scalable3d-schema-registry-v1"
     assert SCALABLE_3D_OFFLINE_EVALUATION_SCHEMA_VERSION == (
-        "d6-scalable3d-offline-evaluation-v5"
+        "d6-scalable3d-offline-evaluation-v6"
     )
+    assert SCALABLE_3D_OFFLINE_EVALUATION_DATE == "2026-07-22"
+    assert row["evaluation_date"] == "2026-07-22"
     assert SCALABLE_3D_CURRENT_SCHEMA_REGISTRY == {
         "world_schema": "scalable3d-world-v1",
         "bus_schema": "scalable3d-episode-bus-v1",
@@ -1152,6 +1155,51 @@ def test_current_schema_registry_matches_real_producer_contract(tmp_path: Path) 
             "reason": None,
         }
     assert row["formal_acceptance_eligible"] is True
+
+
+def test_v2_posterior_governance_is_integrated_and_fails_formal_on_repeat(
+    tmp_path: Path,
+) -> None:
+    episode = _write_episode(tmp_path / "posterior_generation_repeat")
+    summary_path = episode / "summary.json"
+    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    summary["module_final_diagnostics"]["observation_governance"] = {
+        "schema_version": "scalable3d-observation-governance-runtime-v2",
+        "d1_posterior_generation": 1,
+        "d2_pending_d1_posterior_generation": None,
+        "d2_consumed_d1_posterior_generation": 1,
+        "d2_posterior_consumption_count": 2,
+        "d2_pre_tick_posterior_merge_count": 0,
+    }
+    _write_json(summary_path, summary)
+
+    online_path = episode / "online_observations.jsonl"
+    records = [
+        json.loads(line)
+        for line in online_path.read_text(encoding="utf-8").splitlines()
+    ]
+    d1 = next(item for item in records if item["topic"] == "modules.d1.fused_tracks")
+    d2 = next(item for item in records if item["topic"] == "modules.d2.associated_tracks")
+    d1["payload"].update(
+        snapshot_kind="full_posterior",
+        posterior_generation=1,
+    )
+    d2["payload"]["source_d1_posterior_generation"] = 1
+    repeated = copy.deepcopy(d2)
+    repeated["sequence"] = max(int(item["sequence"]) for item in records) + 1
+    repeated["timestamp"] = 0.9
+    repeated["payload"]["timestamp"] = 0.9
+    records.append(repeated)
+    _write_jsonl(online_path, records)
+
+    row = evaluate_scalable_3d_episode(episode)
+
+    assert row["observation_governance_generation_integrity"] is False
+    assert row["formal_acceptance_eligible"] is False
+    assert any(
+        "d2_source_generation_not_strictly_increasing" in reason
+        for reason in row["episode_failure_reasons_json"]
+    )
 
 
 @pytest.mark.parametrize(
@@ -2044,6 +2092,7 @@ def test_report_bundle_bootstraps_distinct_seeds_and_writes_all_artifacts(
     assert set(outputs) == {
         "per_episode_seed_csv",
         "aggregate_json",
+        "module_performance_evidence",
         "markdown",
         "stage_timing_curve",
     }
