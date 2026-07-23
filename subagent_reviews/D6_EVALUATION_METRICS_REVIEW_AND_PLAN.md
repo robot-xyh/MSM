@@ -1719,6 +1719,24 @@ SHA-256、manifest schema/SHA、evaluation/manifest/调用方文件摘要、配�
 Matplotlib 环境提示。真实 main 三维质点 3 对 3、seed 70、1.2 秒用例生成 manifest v2 和
 3 条 D2 发布，逐条谱系验证通过。评审关闭 D6 配置谱系 consumer P1。
 
-main 尚未按 producer manifest v2 重跑 seed 1100 baseline/candidate。上一节旧 A/B 制品缺
-配置快照的判断仍成立；不能把本轮合同测试写成最终 A/B 证据。候选算法准入、AirSim、多 seed
-和长时性能项继续开放。
+上述合同测试阶段尚未形成最终 A/B 证据。main 随后在 detached clean
+`ff881316243ff5a2991a4659ab78637ed625d123` 上完成同一 seed 1100 baseline/candidate
+重跑。两组均为 nominal 200 对 200、2 个侦察节点、2.2 秒三维质点 episode，场景 SHA 为
+`34f5563579d9d2e7d1ea2b57cf353d2465b3bd16c5310570d40e72fc7aeac461`。
+
+最终评审接受：
+
+1. 两组 identity manifest 均为 v2，完整 recovery config 规范 SHA 均为
+   `sha256:bd8e362ec4ca128ed902826750b26d862286770d3c0c4d0b75960a50911a201a`，
+   配置记录数与 D2 记录数均为 9。
+2. D6 episode 和 runtime outcome join 均验证 manifest SHA、在线 D2 JSONL SHA、逐条配置、
+   consistency/source 和记录数，provenance 均为 verified。
+3. baseline/candidate strict IDSW 为 `9/3`，partial lower bound 为 `9/3`，partial
+   unavailable mappings 为 `234/296`，严格指标未回填。
+4. candidate 的 3 条 stale recovery 正确失败关闭，两类 binding violation 为 `0/0`，
+   在线真值使用为 `0/0`。
+
+评审关闭配置谱系 P1。结构歧义保活候选仍不准入：D2 航迹 `203 -> 201`、D3 分配
+`200 -> 197`、track continuity `0.865 -> 0.8266667`、coverage continuity
+`0.870 -> 0.8283333`。候选保持默认关闭，不运行 seeds 1101/1102、10 秒或 20-seed
+矩阵。该证据不是 AirSim；AirSim、多规模、困难谱系和长时性能项继续开放。

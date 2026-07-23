@@ -1634,13 +1634,33 @@ manifest v2 绑定 3 条 D2 发布；该证据不是 AirSim 或 200 对 200 性�
 
 ### 仍开放 P1
 
-1. main 需使用 producer manifest v2 重跑 clean seed 1100 baseline/candidate，并将新配置
-   谱系写入最终 D6 episode record 和 aggregate。该重跑尚未进行。
-2. 结构歧义候选仍需先解决 D2/D3 数量与 continuity 退化，再决定是否恢复 seeds
+1. 结构歧义候选仍需先解决 D2/D3 数量与 continuity 退化，再决定是否恢复 seeds
    1101/1102。
-3. 真实 AirSim、多 seed、多规模、困难谱系和长时 recovery/blocker/overflow 证据未完成。
-4. 新 producer episode 的配置 SHA、online D2 records SHA 和记录数需要由 main 的跨模块
-   manifest 再做端到端绑定；D6 API 已就绪。
+2. 真实 AirSim、多 seed、多规模、困难谱系和长时 recovery/blocker/overflow 证据未完成。
 
 当前无 D6-owned P0。P2/P3 外部 evaluator 状态不变。旧 A/B 制品的配置谱系不可用属于历史
 证据限制，不应重新归类为 consumer 缺口。
+
+### 最终端到端证据更新
+
+main 已在 detached clean `ff881316243ff5a2991a4659ab78637ed625d123` 上完成 seed 1100
+baseline/candidate 重跑。两组 identity manifest 均为 v2，配置 SHA 均为
+`sha256:bd8e362ec4ca128ed902826750b26d862286770d3c0c4d0b75960a50911a201a`，
+配置记录数、D2 记录数和在线 JSONL 实际记录数均为 9。D6 episode 与 runtime provenance
+均 verified，关闭“新 producer episode 尚未端到端绑定”的 P1。
+
+最终 baseline/candidate 的 strict IDSW 为 `9/3`，track continuity 为
+`0.865/0.8266667`，coverage continuity 为 `0.870/0.8283333`，D2/D3 数量为
+`203/200` 和 `201/197`。partial lower bound 为 `9/3`，未回填 strict；在线真值使用和两类
+binding violation 均为 0。
+
+GAP 分类更新：
+
+- **已关闭 P1**：恢复配置快照、规范 SHA、online D2 records SHA、逐条配置和 D6
+  episode/runtime provenance 的端到端绑定。
+- **仍开放 P1**：结构歧义保活算法准入。candidate 未通过 D2/D3 可用性与 continuity
+  非退化门，保持默认关闭。
+- **仍开放 P1**：AirSim、多 seed、多规模、困难谱系和长时 recovery/blocker/overflow
+  性能证据。
+
+按冻结停止规则未运行 seeds 1101/1102、10 秒或 20-seed 矩阵。当前无新增 D6-owned P0。

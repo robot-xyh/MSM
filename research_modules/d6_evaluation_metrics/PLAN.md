@@ -1937,18 +1937,25 @@ strict-unavailable 阻断关闭，但候选仍不准入。D2 航迹 `203 -> 201`
 
 ### 当前状态
 
-配置谱系 consumer P1 已闭合。上一节所述旧 seed 1100 A/B 制品仍不含 manifest v2 配置，
-因此其配置谱系继续显示不可用，这是历史证据状态，不是新 consumer 回归。main 已升级 producer
-manifest 后，需重新运行同条件 baseline/candidate，并生成新的 D6 episode record、CSV 和
-aggregate JSON；该重跑尚未进行，不能写成已完成。
+配置谱系 consumer P1 已闭合，生产端到 D6 的最终端到端证据也已补齐。main 在 detached clean
+commit `ff881316243ff5a2991a4659ab78637ed625d123` 上完成 nominal 200 对 200、2 个侦察
+节点、2.2 秒、seed 1100 baseline/candidate 重跑。两组 manifest 均为 v2，配置规范 SHA
+均为 `sha256:bd8e362ec4ca128ed902826750b26d862286770d3c0c4d0b75960a50911a201a`，
+配置记录数与 D2 记录数均为 9。D6 episode 和 runtime provenance 均验证通过。
 
-### 后续验收
+旧 `65568579...` A/B 缺配置快照仍是历史事实，不覆盖也不改写。最终 A/B 使用新目录和新
+manifest 形成独立证据。
 
-1. main 以新 manifest v2、identity evaluation、online D2 JSONL 及四类来源 SHA 调用
-   `build_truth_isolated_episode_record()`；
-2. clean seed 1100 baseline/candidate 的配置谱系均应为 available，配置 SHA 和记录数应在
-   episode JSON、CSV、batch provenance 与 runtime outcome 中一致；
-3. partial consumer 修正继续通过，strict IDSW 不从 partial 或配置谱系回填；
-4. 保持既有停止规则。若 candidate 的 D2/D3 可用性或 continuity 仍退化，不启动 seeds
-   1101/1102；
-5. AirSim 与多 seed 验收仍由 main 后续调度，本轮不形成物理性能结论。
+### 最终判定与后续
+
+1. baseline/candidate 的 D1 航迹为 `202/202`，D2 航迹为 `203/201`，D3 分配为
+   `200/197`，runtime binding windows 为 `593/587`。
+2. strict IDSW 为 `9/3`，track continuity 为 `0.865/0.8266667`，coverage continuity
+   为 `0.870/0.8283333`。partial lower bound 同为 `9/3`，但保持
+   `strict_id_switch_count_backfilled=false`。
+3. baseline/candidate 配置谱系在 episode JSON 和 runtime outcome 中均 available；
+   `online_d2_records_verified=true`、`provenance_verified=true`，两组在线真值使用均为 0。
+4. 配置谱系 P1 关闭。结构歧义保活算法准入 P1 未关闭：candidate D2/D3 可用性和 continuity
+   仍退化，候选保持默认关闭。
+5. 按冻结停止规则不运行 seeds 1101/1102、10 秒或 20-seed 矩阵。AirSim、多规模、困难谱系
+   和长时性能证据继续由 main 后续调度。

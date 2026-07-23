@@ -832,7 +832,14 @@ AirSim runtime outcome join 已采用同一验证器。manifest v2 的任一缺�
 `identity_recovery_config_not_manifest_bound_v1`。该兼容状态不改变旧 episode 的 strict 或
 partial 指标。
 
-本轮只执行 Python 合同测试，没有启动 Blocks 或 ComputerVision。AirSim 下一轮需要确认
-online D2 JSONL 中每条发布均携带相同配置，并在 reset-separated episode 之间重新生成
-manifest，禁止沿用上一 episode 的配置 SHA。最终 seed 1100 A/B 也尚未按新 manifest v2
-重跑。
+配置谱系合同实现阶段只执行 Python 合同测试，没有启动 Blocks 或 ComputerVision。随后 main
+已在 detached clean `ff881316243ff5a2991a4659ab78637ed625d123` 上完成 seed 1100
+baseline/candidate 的三维质点最终 A/B。两组 online D2 JSONL 均为 9 条，manifest v2 配置
+SHA 均为
+`sha256:bd8e362ec4ca128ed902826750b26d862286770d3c0c4d0b75960a50911a201a`；
+D6 episode 和 runtime provenance 均为 verified。配置谱系 P1 已关闭。
+
+该重跑不是 AirSim。AirSim 下一轮仍需确认每个 reset-separated episode 重新生成 manifest，
+逐条 D2 发布携带同一配置，并保留真实传感器 measurement/arrival/frame timestamp。不得沿用
+上一 episode 的配置 SHA。结构歧义候选因 D2/D3 可用性和 continuity 退化保持默认关闭，
+因此没有继续 seeds 1101/1102、10 秒或 20-seed 矩阵。

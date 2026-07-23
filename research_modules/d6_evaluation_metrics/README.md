@@ -1960,4 +1960,40 @@ strict IDSW。
 `611 passed, 1 warning in 21.55s`，验收门限为零失败。warning 仍是既有 Matplotlib
 `Axes3D` 环境提示。真实 main 三维质点 3 对 3、seed 70、1.2 秒接线用例也通过，manifest v2
 绑定 3 条 D2 发布。本轮没有重跑 seed 1100 最终 A/B，也没有启动 AirSim。旧 A/B 制品仍缺
-v2 配置快照；main 需用新 producer manifest 和本 D6 consumer 重新生成最终派生结果。
+v2 配置快照；该实现阶段的待办已由下一节最终 A/B 复核关闭。
+
+## 身份恢复配置谱系最终 A/B 证据（2026-07-23）
+
+main 在 detached clean commit `ff881316243ff5a2991a4659ab78637ed625d123` 上重跑同一
+seed 1100 baseline/candidate。两组均为 nominal 200 对 200、2 个侦察节点、2.2 秒三维质点
+episode，场景配置 SHA-256 为
+`34f5563579d9d2e7d1ea2b57cf353d2465b3bd16c5310570d40e72fc7aeac461`。baseline/candidate
+runtime profile SHA-256 分别为
+`5cd76663352d169a96e5a8b9ef6843c51bbff1dc89fe2f9673f2365d133d3c53` 和
+`f23a1fe91f87e23b4644d8909683d4fd61c6785ca1242396e6b521eef782cf85`。
+
+两组 identity manifest 均为
+`scalable3d-offline-identity-evaluation-manifest-v2`。D6 episode adapter 和 runtime
+outcome join 均独立验证：
+
+- recovery config schema 为 `d2.identity-commitment-recovery-config.v2`；
+- 规范配置 SHA-256 为
+  `sha256:bd8e362ec4ca128ed902826750b26d862286770d3c0c4d0b75960a50911a201a`；
+- 配置记录数、`d2_record_count` 和在线 D2 JSONL 实际记录数均为 9；
+- consistency/source 声明、manifest SHA、在线文件 SHA 和逐条配置均通过，
+  episode/runtime provenance 均为 `verified=true`。
+
+最终 baseline/candidate 的 D1 航迹为 `202/202`，D2 航迹为 `203/201`，D3 分配为
+`200/197`，runtime binding windows 为 `593/587`。strict IDSW 为 `9/3`，track continuity
+为 `0.865/0.8266667`，coverage continuity 为 `0.870/0.8283333`，duplicate assignment
+为 `0/0`。partial IDSW lower bound 为 `9/3`，partial unavailable mappings 为
+`234/296`，并保持 `strict_id_switch_count_backfilled=false`。
+
+candidate 有 1711 条 committed、69 条 ambiguity hold 和 7 条 after hold，all-record
+commitment coverage 为 `0.9574706212`。其中 3 条 stale recovery 被
+`source_observation_outside_recovery_publication_freshness_window` 阻断；两类 binding
+violation 仍为 `0/0`。两组在线真值使用均为 0。
+
+配置谱系 P1 至此完成生产端到 D6 episode/runtime 两条链的端到端闭合。结构歧义保活候选仍因
+D2/D3 可用性和两类 continuity 退化而拒绝，保持默认关闭。按冻结门限不运行 seeds
+1101/1102、10 秒或 20-seed 矩阵。本次证据不是 AirSim。

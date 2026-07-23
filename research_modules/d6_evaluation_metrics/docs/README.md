@@ -344,5 +344,8 @@ runtime admission 中暴露结果。
 
 历史 manifest v1 的 strict/partial 指标保持兼容，配置谱系单独显示不可用。manifest v2
 异常在 runtime join 中 fail closed。专项 `83 passed`，全量
-`611 passed, 1 warning in 21.55s`。最终 A/B 和 AirSim 尚未重跑，旧制品缺配置快照的记录不
-改写。
+`611 passed, 1 warning in 21.55s`。随后 detached clean `ff881316...` 的 seed 1100
+baseline/candidate 已完成最终三维质点 A/B。两组 manifest v2 均绑定相同配置 SHA，9 条
+在线 D2 发布逐条一致；D6 episode/runtime provenance 均验证通过。配置谱系 P1 已关闭。
+旧制品缺配置快照的记录不改写，AirSim 尚未执行。候选因 D2/D3 数量与 continuity 退化保持
+默认关闭，结构歧义保活算法准入 P1 仍开放。

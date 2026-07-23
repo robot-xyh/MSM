@@ -1967,5 +1967,14 @@ runtime outcome join 对 v2 采用强拒绝，因为它承担计划与结果的�
 episode adapter 采用字段级失败关闭：配置谱系不可用，已由独立来源链验证的 strict/partial
 指标仍可报告。两种行为都不使用 truth ID 做在线判断，不改变控制命令。
 
-2026-07-23 的 `611 passed` 只证明合同实现和回归稳定。最终 seed 1100 A/B 与 AirSim 尚未按
-manifest v2 重跑。旧制品缺配置快照的事实保持不变。
+2026-07-23 的 `611 passed` 只证明合同实现和回归稳定。随后 detached clean
+`ff881316243ff5a2991a4659ab78637ed625d123` 的 seed 1100 baseline/candidate 已按
+manifest v2 完成三维质点重跑。两组配置规范 SHA 相同，配置记录数与 D2 记录数均为 9；
+D6 episode 和 runtime provenance 均验证通过。旧 `65568579...` 制品缺配置快照的事实保持
+不变，但不再构成当前配置谱系 P1。
+
+最终证据继续体现“配置可验证不等于算法可准入”。baseline/candidate strict IDSW 为
+`9/3`，partial lower bound 也为 `9/3`，D6 没有在两层之间回填。candidate 的 track
+continuity 与 coverage continuity 分别从 `0.865/0.870` 降至
+`0.8266667/0.8283333`，D2/D3 数量从 `203/200` 降至 `201/197`。配置谱系 P1 关闭，
+结构歧义保活算法准入 P1 仍开放。该证据不是 AirSim。

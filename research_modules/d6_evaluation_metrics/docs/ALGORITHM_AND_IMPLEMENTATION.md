@@ -2987,5 +2987,22 @@ build_truth_isolated_episode_record(
 
 2026-07-23 专项 `83 passed`，D6 全量
 `611 passed, 1 warning in 21.55s`。验收门限为零失败。warning 是既有 Matplotlib
-三维投影环境提示。本轮没有执行最终 A/B 重跑或 AirSim；配置谱系 consumer 已完成，新的真实
-episode 证据仍由 main 生成。
+三维投影环境提示。该阶段完成配置谱系 consumer，没有执行 AirSim；最终生产端 A/B 证据见
+下一节。
+
+### 21.6 最终生产端 A/B 验证
+
+main 在 detached clean `ff881316243ff5a2991a4659ab78637ed625d123` 上生成同一 seed 1100
+baseline/candidate。两组 identity manifest 均为 v2，D6 分别从 identity manifest、
+identity evaluation 和在线 D2 JSONL 独立读取并验证配置。规范配置 SHA 均为
+`sha256:bd8e362ec4ca128ed902826750b26d862286770d3c0c4d0b75960a50911a201a`，
+配置记录数、D2 记录数和实际 JSONL 记录数均为 9。episode adapter 与 runtime join 的
+`online_d2_records_verified`、`provenance_verified` 均为 true。
+
+partial adapter 同时验证 baseline/candidate 的 available/unavailable mappings
+`1566/234` 和 `1491/296`，IDSW lower bound 为 `9/3`。严格 IDSW 也为 `9/3`，但输出继续
+声明 `strict_id_switch_count_backfilled=false`。配置谱系验证没有参与 strict 指标计算。
+
+最终验证关闭配置谱系 P1。算法准入仍失败：candidate D2 航迹 `203 -> 201`、D3 分配
+`200 -> 197`、track continuity `0.865 -> 0.8266667`、coverage continuity
+`0.870 -> 0.8283333`。因此候选保持默认关闭，不扩展到后续 seed、长时或 AirSim。

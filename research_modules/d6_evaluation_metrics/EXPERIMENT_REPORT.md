@@ -1915,7 +1915,86 @@ episode。producer 生成 manifest v2 和 3 条 D2 在线记录；runtime outcom
 
 ### 证据边界
 
-本轮证明 D6 consumer 能处理 producer manifest v2，并能拒绝配置篡改和帧间漂移。上一节
-clean A/B 制品仍是 manifest v1/未绑定配置快照的历史制品。main 尚未用新 producer manifest
-重跑 baseline/candidate，因此当前没有新的 IDSW、continuity、commitment coverage 或 D2/D3
-数量结果。候选拒绝判定和 seeds 1101/1102 停止规则保持不变。
+本轮证明 D6 consumer 能处理 producer manifest v2，并能拒绝配置篡改和帧间漂移。截至该合同
+测试阶段，上一节 clean A/B 制品仍是 manifest v1/未绑定配置快照的历史制品，尚无新 manifest
+下的性能结果。随后完成的最终 producer A/B 证据见第 15 节；旧制品不改写。
+
+## 15. 身份恢复配置谱系最终 clean A/B（2026-07-23）
+
+### 实验条件
+
+最终事实来源为 detached clean commit
+`ff881316243ff5a2991a4659ab78637ed625d123`：
+
+```text
+/tmp/MSM-identity-freshness-final-ff88131/baseline
+/tmp/MSM-identity-freshness-final-ff88131/candidate
+```
+
+两组使用同一 nominal 200 对 200 场景、200 个资源、200 个目标、2 个侦察节点、seed 1100
+和 2.2 秒仿真时长。场景配置 SHA-256 为
+`34f5563579d9d2e7d1ea2b57cf353d2465b3bd16c5310570d40e72fc7aeac461`。baseline/candidate
+runtime profile SHA-256 分别为
+`5cd76663352d169a96e5a8b9ef6843c51bbff1dc89fe2f9673f2365d133d3c53` 和
+`f23a1fe91f87e23b4644d8909683d4fd61c6785ca1242396e6b521eef782cf85`。两组
+root manifest 均声明 `repository_dirty=false`。本实验为三维质点仿真，没有启动 AirSim。
+
+### 运行与身份结果
+
+| 指标 | baseline | candidate | 判定 |
+| --- | ---: | ---: | --- |
+| D1 航迹数 | 202 | 202 | 持平 |
+| D2 航迹数 | 203 | 201 | candidate 减少 2 |
+| D3 分配数 | 200 | 197 | candidate 减少 3 |
+| runtime binding windows | 593 | 587 | candidate 减少 6 |
+| available mappings | 1566 | 1491 | candidate 减少 75 |
+| strict IDSW | 9 | 3 | 两组均 available |
+| track continuity | 0.8650000 | 0.8266667 | candidate 下降 0.0383333 |
+| coverage continuity | 0.8700000 | 0.8283333 | candidate 下降 0.0416667 |
+| duplicate assignment | 0 | 0 | 通过 |
+| all commitment coverage | 1.0000000 | 0.9574706212 | candidate 下降 |
+| committed records | 1800 | 1711 | candidate 减少 89 |
+| ambiguity hold | 0 | 69 | 显式保活 |
+| after hold | 0 | 7 | 其中 3 条恢复被阻断 |
+| source/candidate binding violation | 0/0 | 0/0 | 通过 |
+| online truth use | 0 | 0 | 通过 |
+| real-time factor | 0.2203524 | 0.2076423 | 描述值 |
+
+candidate 的三条 stale recovery 被
+`source_observation_outside_recovery_publication_freshness_window` 阻断。D6 partial
+diagnostics 在两组均可用，IDSW lower bound 为 `9/3`，unavailable mappings 为 `234/296`。
+`strict_id_switch_count_backfilled=false`，严格指标没有由 partial 下界或配置谱系补写。
+
+### 配置谱系
+
+两组 identity manifest schema 均为
+`scalable3d-offline-identity-evaluation-manifest-v2`。完整恢复配置非空，schema 为
+`d2.identity-commitment-recovery-config.v2`，规范 JSON SHA-256 均为：
+
+```text
+sha256:bd8e362ec4ca128ed902826750b26d862286770d3c0c4d0b75960a50911a201a
+```
+
+配置记录数、`d2_record_count` 和在线 D2 JSONL 实际记录数均为 9。consistency 为 true，
+source 为 `payload.association.identity_commitment.recovery_config`。D6 episode record
+和 runtime outcome join 均得到 `online_d2_records_verified=true`、
+`provenance_verified=true`。
+
+主要制品 SHA-256 如下：
+
+| 制品 | baseline | candidate |
+| --- | --- | --- |
+| summary | `9ae1b79dcdcd1012ff4cc258cb3deea7af61a08504dc289aecab59d0e0a6df28` | `8cac4a1ec6694ae0203be6e379718a7ad5dc8b668fa1d57dc0d4df546a6f3b22` |
+| identity evaluation | `10618ea73a671af1c591ba81870bc45b64f305f8dc1cd7f93a6698f812f70151` | `1a82a7c5f598eca40420dac85dd8ea19d2fadeec1bee04858f210f958aba4dd4` |
+| identity manifest | `59eb3355cc3abe5d0567bd0037679bc8690d8d6afadd36f449e5bc27c9d91c82` | `aeee640dc780162e3461a9735dc2cf4d82aa2f8b3629204e2198d6afcb3b0fab` |
+| D6 episode record | `06cfb1eed0f281d9e0f09d4ec4fffd2382f6f53154ccbe74891d0dc150d09f24` | `accd239b52fb103d16e1ae909b20578c03abf68bcd13b880dfbff18b77e3da55` |
+
+### 判定
+
+配置谱系 P1 已关闭。生产 manifest、在线 D2 文件、逐条配置、D6 episode 和 runtime
+provenance 形成完整来源链。
+
+结构歧义保活算法准入 P1 未关闭。candidate 虽将 strict IDSW 从 9 降至 3，但 D2 航迹、
+D3 分配、runtime bindings、available mappings 和两类 continuity 同时下降，未通过冻结的
+可用性与连续性非退化门。候选保持默认关闭。按停止规则不运行 seeds 1101/1102、10 秒或
+20-seed 矩阵。本结果不构成 AirSim 或工程物理性能结论。
