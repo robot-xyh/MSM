@@ -50,6 +50,20 @@ def _file_hash(path: Path) -> str:
     return f"sha256:{hashlib.sha256(path.read_bytes()).hexdigest()}"
 
 
+_IDENTITY_RECOVERY_CONFIG = {
+    "schema_version": "d2.identity-commitment-recovery-config.v2",
+    "config_version": "test-identity-recovery-config-v1",
+    "publication_freshness_gate_enabled": True,
+    "max_recovery_evidence_age_seconds": 0.9,
+    "publication_freshness_clock": (
+        "d2_tracker_frame_timestamp_minus_source_measurement_timestamp"
+    ),
+    "publication_stale_behavior": (
+        "remain_uncommitted_until_newer_original_evidence"
+    ),
+}
+
+
 def _report_business_hash(payload: Mapping[str, Any]) -> str:
     normalized = copy.deepcopy(payload)
     for name, artifact in normalized["source_artifacts"].items():
@@ -555,6 +569,98 @@ def _refresh_identity_manifest(
     return _refresh(inputs, "d2_identity_manifest")
 
 
+def _upgrade_identity_manifest_to_v2_recovery_config(
+    inputs: RuntimePlanOutcomeJoinInputs,
+    *,
+    record_configs: list[dict[str, Any]] | None = None,
+    manifest_config: dict[str, Any] | None = None,
+    config_sha_override: str | None = None,
+    config_record_count_override: int | None = None,
+    remove_manifest_field: str | None = None,
+) -> RuntimePlanOutcomeJoinInputs:
+    online_path = inputs.online_observations.path
+    online_rows = [
+        json.loads(line)
+        for line in online_path.read_text(encoding="utf-8").splitlines()
+    ]
+    d2_rows = [
+        json.loads(line)
+        for line in inputs.d2_online_d2_records.path.read_text(
+            encoding="utf-8"
+        ).splitlines()
+    ]
+    configs = record_configs or [
+        dict(_IDENTITY_RECOVERY_CONFIG) for _ in d2_rows
+    ]
+    assert len(configs) == len(d2_rows)
+
+    def attach(row: dict[str, Any], config: Mapping[str, Any]) -> None:
+        row["payload"]["association"] = {
+            "identity_commitment": {
+                "recovery_config": dict(config),
+            }
+        }
+
+    d2_online_rows = [
+        row for row in online_rows if row["topic"] == "modules.d2.associated_tracks"
+    ]
+    assert len(d2_online_rows) == len(d2_rows)
+    for source_row, online_row, config in zip(
+        d2_rows,
+        d2_online_rows,
+        configs,
+        strict=True,
+    ):
+        attach(source_row, config)
+        attach(online_row, config)
+    _write_jsonl(inputs.d2_online_d2_records.path, d2_rows)
+    _write_jsonl(online_path, online_rows)
+    online_d2_sha = _file_hash(inputs.d2_online_d2_records.path)
+
+    identity_path = inputs.d2_identity_evaluation.path
+    identity = json.loads(identity_path.read_text(encoding="utf-8"))
+    identity["source_hashes"]["online_d2_records"] = online_d2_sha
+    _write_json(identity_path, identity)
+
+    snapshot = dict(manifest_config or configs[0])
+    manifest_path = inputs.d2_identity_manifest.path
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest.update(
+        {
+            "schema_version": (
+                "scalable3d-offline-identity-evaluation-manifest-v2"
+            ),
+            "d2_record_count": len(d2_rows),
+            "identity_commitment_recovery_config": snapshot,
+            "identity_commitment_recovery_config_sha256": (
+                config_sha_override
+                or _canonical_hash(snapshot, prefixed=True)
+            ),
+            "identity_commitment_recovery_config_record_count": (
+                len(d2_rows)
+                if config_record_count_override is None
+                else config_record_count_override
+            ),
+            "identity_commitment_recovery_config_consistency_verified": True,
+            "identity_commitment_recovery_config_source": (
+                "payload.association.identity_commitment.recovery_config"
+            ),
+        }
+    )
+    manifest["source_hashes"]["online_d2_records"] = online_d2_sha
+    manifest["source_hashes"]["identity_evaluation"] = _file_hash(
+        identity_path
+    )
+    if remove_manifest_field is not None:
+        manifest.pop(remove_manifest_field, None)
+    _write_json(manifest_path, manifest)
+
+    inputs = _refresh(inputs, "online_observations")
+    inputs = _refresh(inputs, "d2_online_d2_records")
+    inputs = _refresh(inputs, "d2_identity_evaluation")
+    return _refresh(inputs, "d2_identity_manifest")
+
+
 def _runtime_v2_commitment(
     *,
     track_id: str,
@@ -1012,12 +1118,114 @@ def test_normal_join_builds_nonoverlapping_windows_and_keeps_admission_closed(
     assert result["admission"]["ppo_allowed"] is False
     assert result["admission"]["assist_allowed"] is False
     assert result["admission"]["authority_allowed"] is False
+    recovery = result["d2_identity_recovery_config_provenance"]
+    assert recovery["provenance_verified"] is False
+    assert recovery["unavailable_reason"] == (
+        "identity_recovery_config_not_manifest_bound_v1"
+    )
+    assert (
+        result["admission"]["identity_recovery_config_provenance_required"]
+        is False
+    )
 
     output = write_runtime_plan_outcome_join_report(inputs, tmp_path / "report")
     assert output["json"].is_file()
     assert "不是 D3 正式强化学习奖励" in output["markdown"].read_text(
         encoding="utf-8"
     )
+
+
+def test_runtime_join_manifest_v2_verifies_recovery_config_per_record(
+    tmp_path: Path,
+) -> None:
+    inputs, _ = _make_fixture(tmp_path / "sources")
+    inputs = _upgrade_identity_manifest_to_v2_recovery_config(inputs)
+
+    result = evaluate_runtime_plan_outcomes(inputs)
+
+    recovery = result["d2_identity_recovery_config_provenance"]
+    assert recovery["provenance_verified"] is True
+    assert recovery["identity_commitment_recovery_config"] == (
+        _IDENTITY_RECOVERY_CONFIG
+    )
+    assert recovery["identity_commitment_recovery_config_record_count"] == 2
+    assert recovery["d2_record_count"] == 2
+    assert recovery["online_d2_records_verified"] is True
+    assert (
+        result["admission"]["identity_recovery_config_provenance_required"]
+        is True
+    )
+    assert (
+        result["admission"]["identity_recovery_config_provenance_verified"]
+        is True
+    )
+
+
+@pytest.mark.parametrize(
+    ("failure", "error_code"),
+    [
+        (
+            "config_sha",
+            "identity_recovery_config_sha256_mismatch",
+        ),
+        (
+            "config_content",
+            "identity_recovery_config_online_record_drift",
+        ),
+        (
+            "frame_drift",
+            "identity_recovery_config_online_record_drift",
+        ),
+        (
+            "record_count",
+            "identity_recovery_config_record_count_mismatch",
+        ),
+        (
+            "missing_config",
+            "identity_recovery_config_missing",
+        ),
+    ],
+)
+def test_runtime_join_manifest_v2_recovery_config_tamper_fails_closed(
+    tmp_path: Path,
+    failure: str,
+    error_code: str,
+) -> None:
+    inputs, _ = _make_fixture(tmp_path / failure)
+    configs = [
+        dict(_IDENTITY_RECOVERY_CONFIG),
+        dict(_IDENTITY_RECOVERY_CONFIG),
+    ]
+    manifest_config = None
+    config_sha = None
+    count_override = None
+    remove_field = None
+    if failure == "config_sha":
+        config_sha = f"sha256:{'9' * 64}"
+    elif failure == "config_content":
+        manifest_config = {
+            **_IDENTITY_RECOVERY_CONFIG,
+            "max_recovery_evidence_age_seconds": 1.2,
+        }
+    elif failure == "frame_drift":
+        configs[1]["max_recovery_evidence_age_seconds"] = 1.1
+    elif failure == "record_count":
+        count_override = 3
+    elif failure == "missing_config":
+        remove_field = "identity_commitment_recovery_config"
+    inputs = _upgrade_identity_manifest_to_v2_recovery_config(
+        inputs,
+        record_configs=configs,
+        manifest_config=manifest_config,
+        config_sha_override=config_sha,
+        config_record_count_override=count_override,
+        remove_manifest_field=remove_field,
+    )
+
+    with pytest.raises(RuntimePlanOutcomeJoinError) as captured:
+        evaluate_runtime_plan_outcomes(inputs)
+
+    assert captured.value.code == error_code
 
 
 def test_v2_truth_dispositions_are_hash_bound_and_known_false_alarm_is_excluded(
@@ -1115,7 +1323,7 @@ def test_candidate_report_matches_pre_streaming_baseline_business_hash(
     result = evaluate_runtime_plan_outcomes(inputs)
 
     assert _report_business_hash(result) == (
-        "sha256:7b271562cfb62a4145f7d0e7883b4e14b5ad523b3c4b2ae2d9cb9365f572675f"
+        "sha256:8b166869019ac36a8cd1ee72740c010131c9ef95f5a673e7ae19784a5bb14dfc"
     )
 
 
@@ -1246,6 +1454,16 @@ def test_real_main_3v3_refresh_episode_joins_every_ack_occurrence(
     assert {item["occurrence_index"] for item in windows} == {1, 2}
     assert len({item["execution_signature_sha256"] for item in windows}) == 1
     assert result["runtime_ack_evidence"]["online_truth_use_count"] == 0
+    recovery = result["d2_identity_recovery_config_provenance"]
+    assert recovery["identity_manifest_schema_version"] == (
+        "scalable3d-offline-identity-evaluation-manifest-v2"
+    )
+    assert recovery["provenance_verified"] is True
+    assert recovery["online_d2_records_verified"] is True
+    assert recovery["identity_commitment_recovery_config_record_count"] > 0
+    assert recovery["identity_commitment_recovery_config_record_count"] == (
+        recovery["d2_record_count"]
+    )
     assert result["admission"]["ppo_allowed"] is False
     assert result["admission"]["assist_allowed"] is False
     assert result["admission"]["authority_allowed"] is False

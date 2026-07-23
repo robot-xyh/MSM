@@ -41,6 +41,9 @@ D6_D2_PARTIAL_IDENTITY_ADAPTER_SCHEMA_VERSION = (
 D6_D2_IDENTITY_COMMITMENT_ADAPTER_SCHEMA_VERSION = (
     "d6.d2_scalable3d_identity_commitment_adapter.v1"
 )
+D6_D2_IDENTITY_RECOVERY_CONFIG_PROVENANCE_SCHEMA_VERSION = (
+    "d6.d2_identity_recovery_config_provenance.v1"
+)
 D6_TRUTH_ISOLATED_EVALUATION_DATE = "2026-07-23"
 
 D1_OFFLINE_CONSISTENCY_RESULT_SCHEMA_VERSION = (
@@ -88,8 +91,26 @@ D2_SCALABLE_3D_IDENTITY_COMMITMENT_AUDIT_SCHEMA_VERSION_V2 = (
 D2_SCALABLE_3D_PARTIAL_IDENTITY_DIAGNOSTICS_SCHEMA_VERSION = (
     "d2.scalable3d_partial_identity_diagnostics.v1"
 )
-D2_OFFLINE_IDENTITY_MANIFEST_SCHEMA_VERSION = (
+D2_OFFLINE_IDENTITY_MANIFEST_SCHEMA_VERSION_V1 = (
     "scalable3d-offline-identity-evaluation-manifest-v1"
+)
+D2_OFFLINE_IDENTITY_MANIFEST_SCHEMA_VERSION_V2 = (
+    "scalable3d-offline-identity-evaluation-manifest-v2"
+)
+D2_OFFLINE_IDENTITY_MANIFEST_SCHEMA_VERSION = (
+    D2_OFFLINE_IDENTITY_MANIFEST_SCHEMA_VERSION_V1
+)
+D2_OFFLINE_IDENTITY_MANIFEST_SCHEMA_VERSIONS = frozenset(
+    {
+        D2_OFFLINE_IDENTITY_MANIFEST_SCHEMA_VERSION_V1,
+        D2_OFFLINE_IDENTITY_MANIFEST_SCHEMA_VERSION_V2,
+    }
+)
+D2_IDENTITY_COMMITMENT_RECOVERY_CONFIG_SCHEMA_VERSION = (
+    "d2.identity-commitment-recovery-config.v2"
+)
+D2_IDENTITY_COMMITMENT_RECOVERY_CONFIG_SOURCE = (
+    "payload.association.identity_commitment.recovery_config"
 )
 D2_OBSERVATION_TRUTH_SCHEMA_VERSION_V2 = (
     "d2.scalable3d_observation_truth.v2"
@@ -369,6 +390,12 @@ class _PartialIdentityValidationError(ValueError):
         self.reason = str(reason)
 
 
+class _IdentityRecoveryConfigValidationError(ValueError):
+    def __init__(self, reason: str, message: str) -> None:
+        super().__init__(message)
+        self.reason = str(reason)
+
+
 @dataclass(frozen=True, slots=True)
 class PublicMetricEvidence:
     """One availability-aware metric retained without missing-to-zero coercion."""
@@ -622,6 +649,180 @@ class D2IdentityCommitmentEvidenceRecord:
 
 
 @dataclass(frozen=True, slots=True)
+class D2IdentityRecoveryConfigProvenanceRecord:
+    """Manifest- and JSONL-bound D2 identity recovery configuration."""
+
+    available: bool
+    unavailable_reason: str | None
+    config_snapshot: Mapping[str, Any] | None
+    config_sha256: str | None
+    config_schema_version: str | None
+    config_version: str | None
+    identity_manifest_schema_version: str | None
+    identity_manifest_sha256: str | None
+    online_d2_records_sha256: str | None
+    config_record_count: int | None
+    d2_record_count: int | None
+    consistency_verified: bool
+    source: str | None
+    online_records_verified: bool
+    verification_mode: str
+    schema_version: str = (
+        D6_D2_IDENTITY_RECOVERY_CONFIG_PROVENANCE_SCHEMA_VERSION
+    )
+
+    def __post_init__(self) -> None:
+        if (
+            self.schema_version
+            != D6_D2_IDENTITY_RECOVERY_CONFIG_PROVENANCE_SCHEMA_VERSION
+        ):
+            raise ValueError(
+                "unsupported D2 identity recovery config provenance schema"
+            )
+        available = bool(self.available)
+        reason = (
+            None
+            if self.unavailable_reason is None
+            else str(self.unavailable_reason).strip()
+        )
+        snapshot = (
+            None
+            if self.config_snapshot is None
+            else dict(self.config_snapshot)
+        )
+        config_count = (
+            None
+            if self.config_record_count is None
+            else int(self.config_record_count)
+        )
+        d2_count = (
+            None if self.d2_record_count is None else int(self.d2_record_count)
+        )
+        if available:
+            if reason is not None:
+                raise ValueError(
+                    "available recovery config provenance cannot carry a reason"
+                )
+            if not snapshot:
+                raise ValueError(
+                    "available recovery config provenance requires a snapshot"
+                )
+            if (
+                self.config_schema_version
+                != D2_IDENTITY_COMMITMENT_RECOVERY_CONFIG_SCHEMA_VERSION
+                or snapshot.get("schema_version")
+                != D2_IDENTITY_COMMITMENT_RECOVERY_CONFIG_SCHEMA_VERSION
+            ):
+                raise ValueError(
+                    "available recovery config provenance has an unsupported schema"
+                )
+            if (
+                self.identity_manifest_schema_version
+                != D2_OFFLINE_IDENTITY_MANIFEST_SCHEMA_VERSION_V2
+            ):
+                raise ValueError(
+                    "available recovery config provenance requires manifest v2"
+                )
+            if (
+                self.config_sha256 is None
+                or self.identity_manifest_sha256 is None
+                or self.online_d2_records_sha256 is None
+            ):
+                raise ValueError(
+                    "available recovery config provenance requires SHA-256 bindings"
+                )
+            if (
+                _normalized_sha256(self.config_sha256)
+                != _canonical_payload_sha256(snapshot)
+            ):
+                raise ValueError(
+                    "available recovery config provenance has a bad config digest"
+                )
+            _normalized_sha256(self.identity_manifest_sha256)
+            _normalized_sha256(self.online_d2_records_sha256)
+            if (
+                config_count is None
+                or d2_count is None
+                or config_count <= 0
+                or config_count != d2_count
+            ):
+                raise ValueError(
+                    "available recovery config provenance has inconsistent counts"
+                )
+            if (
+                not self.consistency_verified
+                or not self.online_records_verified
+                or self.source
+                != D2_IDENTITY_COMMITMENT_RECOVERY_CONFIG_SOURCE
+            ):
+                raise ValueError(
+                    "available recovery config provenance is not independently verified"
+                )
+        else:
+            if not reason:
+                raise ValueError(
+                    "unavailable recovery config provenance requires a reason"
+                )
+            if snapshot is not None or self.config_sha256 is not None:
+                raise ValueError(
+                    "unavailable recovery config provenance cannot expose a config"
+                )
+            if self.consistency_verified or self.online_records_verified:
+                raise ValueError(
+                    "unavailable recovery config provenance cannot be verified"
+                )
+        object.__setattr__(self, "available", available)
+        object.__setattr__(self, "unavailable_reason", reason)
+        object.__setattr__(self, "config_snapshot", snapshot)
+        object.__setattr__(self, "config_record_count", config_count)
+        object.__setattr__(self, "d2_record_count", d2_count)
+        object.__setattr__(
+            self,
+            "verification_mode",
+            str(self.verification_mode).strip() or "unavailable",
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema_version": self.schema_version,
+            "availability": "available" if self.available else "unavailable",
+            "available": self.available,
+            "unavailable_reason": self.unavailable_reason,
+            "identity_commitment_recovery_config": (
+                None
+                if self.config_snapshot is None
+                else dict(self.config_snapshot)
+            ),
+            "identity_commitment_recovery_config_sha256": (
+                self.config_sha256
+            ),
+            "identity_commitment_recovery_config_schema_version": (
+                self.config_schema_version
+            ),
+            "identity_commitment_recovery_config_version": self.config_version,
+            "identity_commitment_recovery_config_record_count": (
+                self.config_record_count
+            ),
+            "identity_commitment_recovery_config_consistency_verified": (
+                self.consistency_verified
+            ),
+            "identity_commitment_recovery_config_source": self.source,
+            "identity_manifest_schema_version": (
+                self.identity_manifest_schema_version
+            ),
+            "identity_manifest_sha256": self.identity_manifest_sha256,
+            "d2_record_count": self.d2_record_count,
+            "online_d2_records_sha256": self.online_d2_records_sha256,
+            "online_d2_records_verified": self.online_records_verified,
+            "provenance_verified": self.available,
+            "verification_mode": self.verification_mode,
+            "offline_only": True,
+            "evaluator_only": True,
+            "control_consumed": False,
+        }
+
+
+@dataclass(frozen=True, slots=True)
 class D2PartialIdentityDiagnosticsRecord:
     """D6 view of provenance-verified evaluator-only partial identity evidence."""
 
@@ -677,7 +878,7 @@ class D2PartialIdentityDiagnosticsRecord:
                 raise ValueError("available D2 partial identity schema is unsupported")
             if (
                 self.identity_manifest_schema_version
-                != D2_OFFLINE_IDENTITY_MANIFEST_SCHEMA_VERSION
+                not in D2_OFFLINE_IDENTITY_MANIFEST_SCHEMA_VERSIONS
             ):
                 raise ValueError(
                     "available D2 partial identity manifest schema is unsupported"
@@ -946,6 +1147,9 @@ class D2IdentityEvaluationRecord:
     configuration: Mapping[str, Any]
     audit: Mapping[str, Any]
     identity_commitment: D2IdentityCommitmentEvidenceRecord
+    identity_recovery_config_provenance: (
+        D2IdentityRecoveryConfigProvenanceRecord
+    )
     partial_identity_diagnostics: D2PartialIdentityDiagnosticsRecord
     verification_mode: str
     schema_version: str = D6_D2_IDENTITY_ADAPTER_SCHEMA_VERSION
@@ -982,6 +1186,13 @@ class D2IdentityEvaluationRecord:
         ):
             raise ValueError(
                 "D2 identity commitment evidence uses an unsupported type"
+            )
+        if not isinstance(
+            self.identity_recovery_config_provenance,
+            D2IdentityRecoveryConfigProvenanceRecord,
+        ):
+            raise ValueError(
+                "D2 identity recovery config provenance uses an unsupported type"
             )
         if not isinstance(
             self.partial_identity_diagnostics,
@@ -1042,6 +1253,9 @@ class D2IdentityEvaluationRecord:
                 self.partial_identity_diagnostics.to_dict()
             ),
             "identity_commitment": self.identity_commitment.to_dict(),
+            "identity_recovery_config_provenance": (
+                self.identity_recovery_config_provenance.to_dict()
+            ),
             "audit": dict(self.audit),
         }
 
@@ -1256,6 +1470,8 @@ def adapt_d2_scalable_3d_identity(
     expected_source_hashes: Mapping[str, str] | None = None,
     identity_manifest: object | Mapping[str, Any] | str | Path | None = None,
     expected_identity_manifest_sha256: str | None = None,
+    d2_online_d2_records: str | Path | None = None,
+    d2_expected_online_d2_records_sha256: str | None = None,
 ) -> D2IdentityEvaluationRecord:
     """Adapt a public D2 identity DTO without reconstructing identity mappings."""
 
@@ -1433,6 +1649,21 @@ def adapt_d2_scalable_3d_identity(
             payload.get("configuration", {}), "D2 identity configuration"
         ),
     )
+    identity_recovery_config_provenance = (
+        adapt_d2_identity_recovery_config_provenance(
+            producer_evaluation_schema_version=producer_schema_version,
+            identity_source=source,
+            identity_manifest=identity_manifest,
+            expected_identity_manifest_sha256=(
+                expected_identity_manifest_sha256
+            ),
+            d2_online_d2_records=d2_online_d2_records,
+            d2_expected_online_d2_records_sha256=(
+                d2_expected_online_d2_records_sha256
+            ),
+            identity_source_hashes=source_hashes,
+        )
+    )
     return D2IdentityEvaluationRecord(
         episode_id=_identifier(payload.get("episode_id"), "D2 episode_id"),
         producer_schema_version=producer_schema_version,
@@ -1461,6 +1692,9 @@ def adapt_d2_scalable_3d_identity(
         ),
         audit=audit,
         identity_commitment=identity_commitment,
+        identity_recovery_config_provenance=(
+            identity_recovery_config_provenance
+        ),
         partial_identity_diagnostics=partial_identity_diagnostics,
         verification_mode=verification_mode,
     )
@@ -2381,6 +2615,8 @@ def build_truth_isolated_episode_record(
         object | Mapping[str, Any] | str | Path | None
     ) = None,
     d2_expected_identity_manifest_sha256: str | None = None,
+    d2_online_d2_records: str | Path | None = None,
+    d2_expected_online_d2_records_sha256: str | None = None,
 ) -> TruthIsolatedEpisodeEvaluationRecord:
     """Build one episode record from public DTOs or verified artifacts."""
 
@@ -2402,6 +2638,10 @@ def build_truth_isolated_episode_record(
             identity_manifest=d2_identity_manifest,
             expected_identity_manifest_sha256=(
                 d2_expected_identity_manifest_sha256
+            ),
+            d2_online_d2_records=d2_online_d2_records,
+            d2_expected_online_d2_records_sha256=(
+                d2_expected_online_d2_records_sha256
             ),
         )
     )
@@ -2572,6 +2812,11 @@ def aggregate_truth_isolated_episode_records(
                 ),
                 "d2_identity_commitment": (
                     _aggregate_d2_identity_commitment(group_records)
+                ),
+                "d2_identity_recovery_config_provenance": (
+                    _aggregate_d2_identity_recovery_config_provenance(
+                        group_records
+                    )
                 ),
             }
         )
@@ -2929,6 +3174,72 @@ def _aggregate_d2_identity_commitment(
     }
 
 
+def _aggregate_d2_identity_recovery_config_provenance(
+    records: Sequence[TruthIsolatedEpisodeEvaluationRecord],
+) -> dict[str, Any]:
+    evidence = [
+        record.d2.identity_recovery_config_provenance for record in records
+    ]
+    available = [item for item in evidence if item.available]
+    unavailable_reasons = Counter(
+        item.unavailable_reason or "reason_unavailable"
+        for item in evidence
+        if not item.available
+    )
+    config_sha_counts = Counter(
+        str(item.config_sha256) for item in available
+    )
+    manifest_schema_counts = Counter(
+        str(item.identity_manifest_schema_version) for item in evidence
+    )
+    manifest_sha_counts = Counter(
+        str(item.identity_manifest_sha256)
+        for item in evidence
+        if item.identity_manifest_sha256 is not None
+    )
+    online_sha_counts = Counter(
+        str(item.online_d2_records_sha256)
+        for item in available
+        if item.online_d2_records_sha256 is not None
+    )
+    config_snapshots_by_sha256 = {
+        str(item.config_sha256): dict(item.config_snapshot or {})
+        for item in available
+    }
+    return {
+        "schema_version": (
+            D6_D2_IDENTITY_RECOVERY_CONFIG_PROVENANCE_SCHEMA_VERSION
+        ),
+        "availability": "available" if available else "unavailable",
+        "available_episode_count": len(available),
+        "unavailable_episode_count": len(evidence) - len(available),
+        "all_episode_provenance_verified": (
+            bool(evidence) and len(available) == len(evidence)
+        ),
+        "unavailability_reason_distribution": dict(
+            sorted(unavailable_reasons.items())
+        ),
+        "config_sha256_distribution": dict(sorted(config_sha_counts.items())),
+        "config_snapshots_by_sha256": dict(
+            sorted(config_snapshots_by_sha256.items())
+        ),
+        "identity_manifest_schema_distribution": dict(
+            sorted(manifest_schema_counts.items())
+        ),
+        "identity_manifest_sha256_distribution": dict(
+            sorted(manifest_sha_counts.items())
+        ),
+        "online_d2_records_sha256_distribution": dict(
+            sorted(online_sha_counts.items())
+        ),
+        "record_count_total": sum(
+            int(item.config_record_count or 0) for item in available
+        ),
+        "strict_id_switch_count_backfilled": False,
+        "control_consumed": False,
+    }
+
+
 def _aggregate_partial_coverage_counts(
     *,
     numerator: int,
@@ -2998,6 +3309,41 @@ def render_truth_isolated_markdown(
                 duplicate=_fmt_metric(
                     record.d2.metrics["duplicate_truth_to_track_count"]
                 ),
+            )
+        )
+
+    lines.extend(
+        [
+            "",
+            "## 身份恢复配置谱系",
+            "",
+            "D6 对 identity manifest v2 中的恢复配置做独立复核。清单配置、规范 JSON 摘要、D2 在线记录文件摘要、逐帧配置和记录数全部一致后，本节才标记可用。历史 manifest v1 继续保留原有身份指标，本节显示谱系不可用。",
+            "",
+            "| episode | manifest | provenance | config schema | config SHA-256 | records | online JSONL |",
+            "| --- | --- | --- | --- | --- | ---: | --- |",
+        ]
+    )
+    for record in records:
+        provenance = record.d2.identity_recovery_config_provenance
+        lines.append(
+            "| {episode} | {manifest} | {availability} | {schema} | {digest} | "
+            "{records} | {online} |".format(
+                episode=record.context.episode_id,
+                manifest=provenance.identity_manifest_schema_version
+                or "不可用",
+                availability=(
+                    "可用"
+                    if provenance.available
+                    else f"不可用（{provenance.unavailable_reason}）"
+                ),
+                schema=provenance.config_schema_version or "不可用",
+                digest=provenance.config_sha256 or "不可用",
+                records=(
+                    provenance.config_record_count
+                    if provenance.config_record_count is not None
+                    else "不可用"
+                ),
+                online=provenance.online_d2_records_sha256 or "不可用",
             )
         )
 
@@ -4105,6 +4451,386 @@ def _d2_observation_truth_disposition_acceptance(
     }
 
 
+def adapt_d2_identity_recovery_config_provenance(
+    *,
+    producer_evaluation_schema_version: str,
+    identity_source: object | Mapping[str, Any] | str | Path,
+    identity_manifest: object | Mapping[str, Any] | str | Path | None,
+    expected_identity_manifest_sha256: str | None,
+    d2_online_d2_records: str | Path | None,
+    d2_expected_online_d2_records_sha256: str | None,
+    identity_source_hashes: Mapping[str, str],
+) -> D2IdentityRecoveryConfigProvenanceRecord:
+    """Independently bind manifest v2 recovery config to every D2 JSONL row."""
+
+    manifest_schema: str | None = None
+    manifest_sha: str | None = None
+    verification_mode = "identity_recovery_config_manifest_unavailable"
+    try:
+        manifest_payload, manifest_sha, verification_mode = (
+            _load_d2_partial_identity_manifest(
+                identity_source=identity_source,
+                identity_manifest=identity_manifest,
+                expected_sha256=expected_identity_manifest_sha256,
+            )
+        )
+    except _PartialIdentityValidationError as exc:
+        if (
+            exc.reason == "d2_identity_manifest_missing"
+            and producer_evaluation_schema_version
+            == D2_SCALABLE_3D_IDENTITY_EVALUATION_SCHEMA_VERSION_V1
+        ):
+            return _unavailable_d2_identity_recovery_config(
+                "identity_recovery_config_not_manifest_bound_v1",
+                verification_mode="legacy_manifest_v1_compatible",
+            )
+        return _unavailable_d2_identity_recovery_config(
+            exc.reason,
+            verification_mode=verification_mode,
+        )
+
+    manifest_schema = (
+        None
+        if manifest_payload.get("schema_version") is None
+        else str(manifest_payload.get("schema_version"))
+    )
+    if manifest_schema == D2_OFFLINE_IDENTITY_MANIFEST_SCHEMA_VERSION_V1:
+        return _unavailable_d2_identity_recovery_config(
+            "identity_recovery_config_not_manifest_bound_v1",
+            identity_manifest_schema_version=manifest_schema,
+            identity_manifest_sha256=manifest_sha,
+            verification_mode=f"{verification_mode}_legacy_v1_compatible",
+        )
+    if manifest_schema != D2_OFFLINE_IDENTITY_MANIFEST_SCHEMA_VERSION_V2:
+        return _unavailable_d2_identity_recovery_config(
+            "unsupported_d2_identity_manifest_schema",
+            identity_manifest_schema_version=manifest_schema,
+            identity_manifest_sha256=manifest_sha,
+            verification_mode=verification_mode,
+        )
+
+    online_records_sha: str | None = None
+    try:
+        (
+            config_snapshot,
+            config_sha,
+            config_count,
+            d2_record_count,
+            online_records_sha,
+        ) = _validate_d2_identity_recovery_config_v2(
+            manifest_payload,
+            identity_source=identity_source,
+            identity_manifest=identity_manifest,
+            d2_online_d2_records=d2_online_d2_records,
+            d2_expected_online_d2_records_sha256=(
+                d2_expected_online_d2_records_sha256
+            ),
+            identity_source_hashes=identity_source_hashes,
+        )
+    except _IdentityRecoveryConfigValidationError as exc:
+        return _unavailable_d2_identity_recovery_config(
+            exc.reason,
+            identity_manifest_schema_version=manifest_schema,
+            identity_manifest_sha256=manifest_sha,
+            online_d2_records_sha256=online_records_sha,
+            verification_mode=verification_mode,
+        )
+
+    return D2IdentityRecoveryConfigProvenanceRecord(
+        available=True,
+        unavailable_reason=None,
+        config_snapshot=config_snapshot,
+        config_sha256=config_sha,
+        config_schema_version=str(config_snapshot["schema_version"]),
+        config_version=(
+            None
+            if config_snapshot.get("config_version") is None
+            else str(config_snapshot.get("config_version"))
+        ),
+        identity_manifest_schema_version=manifest_schema,
+        identity_manifest_sha256=manifest_sha,
+        online_d2_records_sha256=online_records_sha,
+        config_record_count=config_count,
+        d2_record_count=d2_record_count,
+        consistency_verified=True,
+        source=D2_IDENTITY_COMMITMENT_RECOVERY_CONFIG_SOURCE,
+        online_records_verified=True,
+        verification_mode=f"{verification_mode}_online_jsonl_verified",
+    )
+
+
+def _validate_d2_identity_recovery_config_v2(
+    manifest: Mapping[str, Any],
+    *,
+    identity_source: object | Mapping[str, Any] | str | Path,
+    identity_manifest: object | Mapping[str, Any] | str | Path | None,
+    d2_online_d2_records: str | Path | None,
+    d2_expected_online_d2_records_sha256: str | None,
+    identity_source_hashes: Mapping[str, str],
+) -> tuple[dict[str, Any], str, int, int, str]:
+    if manifest.get("available") is not True or manifest.get("reason") is not None:
+        _identity_recovery_config_error(
+            "d2_identity_manifest_unavailable",
+            "D2 identity manifest v2 is not available",
+        )
+    config_raw = manifest.get("identity_commitment_recovery_config")
+    if not isinstance(config_raw, Mapping) or not config_raw:
+        _identity_recovery_config_error(
+            "identity_recovery_config_missing",
+            "D2 identity manifest v2 recovery config is missing or empty",
+        )
+    config = dict(config_raw)
+    if (
+        config.get("schema_version")
+        != D2_IDENTITY_COMMITMENT_RECOVERY_CONFIG_SCHEMA_VERSION
+    ):
+        _identity_recovery_config_error(
+            "identity_recovery_config_schema_unsupported",
+            "D2 identity recovery config schema is unsupported",
+        )
+    try:
+        calculated_config_sha = _canonical_payload_sha256(config)
+        claimed_config_sha = _normalized_sha256(
+            manifest.get("identity_commitment_recovery_config_sha256")
+        )
+    except (TruthIsolatedEvaluationError, TypeError, ValueError) as exc:
+        raise _IdentityRecoveryConfigValidationError(
+            "identity_recovery_config_sha256_invalid",
+            "D2 identity recovery config SHA-256 is invalid",
+        ) from exc
+    if calculated_config_sha != claimed_config_sha:
+        _identity_recovery_config_error(
+            "identity_recovery_config_sha256_mismatch",
+            "D2 identity recovery config canonical SHA-256 does not match",
+        )
+    config_count = _identity_recovery_positive_int(
+        manifest.get("identity_commitment_recovery_config_record_count"),
+        "identity recovery config record count",
+    )
+    d2_record_count = _identity_recovery_positive_int(
+        manifest.get("d2_record_count"),
+        "D2 record count",
+    )
+    if config_count != d2_record_count:
+        _identity_recovery_config_error(
+            "identity_recovery_config_record_count_mismatch",
+            "D2 identity recovery config count does not match d2_record_count",
+        )
+    if (
+        manifest.get(
+            "identity_commitment_recovery_config_consistency_verified"
+        )
+        is not True
+    ):
+        _identity_recovery_config_error(
+            "identity_recovery_config_consistency_not_verified",
+            "D2 identity recovery config consistency is not verified",
+        )
+    if (
+        manifest.get("identity_commitment_recovery_config_source")
+        != D2_IDENTITY_COMMITMENT_RECOVERY_CONFIG_SOURCE
+    ):
+        _identity_recovery_config_error(
+            "identity_recovery_config_source_mismatch",
+            "D2 identity recovery config source declaration is invalid",
+        )
+
+    manifest_hashes = manifest.get("source_hashes")
+    if not isinstance(manifest_hashes, Mapping):
+        _identity_recovery_config_error(
+            "d2_identity_manifest_source_hashes_missing",
+            "D2 identity manifest source hashes are missing",
+        )
+    try:
+        manifest_online_sha = _normalized_sha256(
+            manifest_hashes.get("online_d2_records")
+        )
+        evaluation_online_sha = _normalized_sha256(
+            identity_source_hashes.get("online_d2_records")
+        )
+    except TruthIsolatedEvaluationError as exc:
+        raise _IdentityRecoveryConfigValidationError(
+            "identity_recovery_config_online_d2_records_source_hash_invalid",
+            "D2 online record source SHA-256 is invalid",
+        ) from exc
+    if manifest_online_sha != evaluation_online_sha:
+        _identity_recovery_config_error(
+            "identity_recovery_config_online_d2_records_source_hash_mismatch",
+            "manifest and identity evaluation disagree on D2 online records",
+        )
+
+    online_path = _resolve_d2_online_records_path(
+        explicit_path=d2_online_d2_records,
+        identity_source=identity_source,
+        identity_manifest=identity_manifest,
+    )
+    if online_path is None or not online_path.is_file():
+        _identity_recovery_config_error(
+            "identity_recovery_config_online_d2_records_missing",
+            "D2 online records JSONL is required for manifest v2",
+        )
+    try:
+        online_sha = _sha256_file(online_path)
+    except TruthIsolatedEvaluationError as exc:
+        raise _IdentityRecoveryConfigValidationError(
+            "identity_recovery_config_online_d2_records_unreadable",
+            "D2 online records JSONL cannot be read",
+        ) from exc
+    if d2_expected_online_d2_records_sha256 is not None:
+        try:
+            expected_online_sha = _normalized_sha256(
+                d2_expected_online_d2_records_sha256
+            )
+        except TruthIsolatedEvaluationError as exc:
+            raise _IdentityRecoveryConfigValidationError(
+                "identity_recovery_config_online_d2_records_sha256_invalid",
+                "expected D2 online records SHA-256 is invalid",
+            ) from exc
+        if online_sha != expected_online_sha:
+            _identity_recovery_config_error(
+                "identity_recovery_config_online_d2_records_sha256_mismatch",
+                "D2 online records file SHA-256 does not match the expected value",
+            )
+    if online_sha != manifest_online_sha:
+        _identity_recovery_config_error(
+            "identity_recovery_config_online_d2_records_source_hash_mismatch",
+            "D2 online records file does not match manifest/evaluation source hash",
+        )
+
+    record_count = _validate_online_d2_recovery_config_records(
+        online_path,
+        expected_config=config,
+    )
+    if record_count != config_count or record_count != d2_record_count:
+        _identity_recovery_config_error(
+            "identity_recovery_config_record_count_mismatch",
+            "D2 online JSONL count does not match manifest record counts",
+        )
+    return config, claimed_config_sha, config_count, d2_record_count, online_sha
+
+
+def _resolve_d2_online_records_path(
+    *,
+    explicit_path: str | Path | None,
+    identity_source: object | Mapping[str, Any] | str | Path,
+    identity_manifest: object | Mapping[str, Any] | str | Path | None,
+) -> Path | None:
+    if explicit_path is not None:
+        return Path(explicit_path)
+    for candidate_source in (identity_manifest, identity_source):
+        if isinstance(candidate_source, (str, Path)):
+            candidate = Path(candidate_source).parent / "online_d2_records.jsonl"
+            if candidate.is_file():
+                return candidate
+    return None
+
+
+def _validate_online_d2_recovery_config_records(
+    path: Path,
+    *,
+    expected_config: Mapping[str, Any],
+) -> int:
+    count = 0
+    try:
+        with path.open("r", encoding="utf-8") as stream:
+            for line_number, line in enumerate(stream, start=1):
+                if not line.strip():
+                    _identity_recovery_config_error(
+                        "identity_recovery_config_online_d2_records_invalid_jsonl",
+                        f"D2 online JSONL line {line_number} is empty",
+                    )
+                try:
+                    raw = json.loads(line)
+                except json.JSONDecodeError as exc:
+                    raise _IdentityRecoveryConfigValidationError(
+                        "identity_recovery_config_online_d2_records_invalid_jsonl",
+                        f"D2 online JSONL line {line_number} is invalid",
+                    ) from exc
+                record = _identity_recovery_mapping(
+                    raw,
+                    f"D2 online JSONL line {line_number}",
+                )
+                if (
+                    record.get("topic") != "modules.d2.associated_tracks"
+                    or record.get("source") != "D2"
+                ):
+                    _identity_recovery_config_error(
+                        "identity_recovery_config_online_d2_record_topic_mismatch",
+                        (
+                            f"D2 online JSONL line {line_number} has the wrong "
+                            "topic or source"
+                        ),
+                    )
+                payload = _identity_recovery_mapping(
+                    record.get("payload"),
+                    f"D2 online JSONL line {line_number} payload",
+                )
+                association = _identity_recovery_mapping(
+                    payload.get("association"),
+                    f"D2 online JSONL line {line_number} association",
+                )
+                commitment = _identity_recovery_mapping(
+                    association.get("identity_commitment"),
+                    f"D2 online JSONL line {line_number} identity commitment",
+                )
+                recovery_config = _identity_recovery_mapping(
+                    commitment.get("recovery_config"),
+                    f"D2 online JSONL line {line_number} recovery config",
+                )
+                if (
+                    not recovery_config
+                    or dict(recovery_config) != dict(expected_config)
+                ):
+                    _identity_recovery_config_error(
+                        "identity_recovery_config_online_record_drift",
+                        "D2 identity recovery config changed within the episode",
+                    )
+                try:
+                    _canonical_payload_sha256(recovery_config)
+                except (TypeError, ValueError) as exc:
+                    raise _IdentityRecoveryConfigValidationError(
+                        "identity_recovery_config_online_record_non_canonical",
+                        "D2 online recovery config is not canonical JSON",
+                    ) from exc
+                count += 1
+    except (OSError, UnicodeError) as exc:
+        raise _IdentityRecoveryConfigValidationError(
+            "identity_recovery_config_online_d2_records_unreadable",
+            "D2 online records JSONL cannot be read",
+        ) from exc
+    if count == 0:
+        _identity_recovery_config_error(
+            "identity_recovery_config_online_d2_records_empty",
+            "D2 online records JSONL is empty",
+        )
+    return count
+
+
+def _identity_recovery_mapping(
+    value: Any,
+    context: str,
+) -> Mapping[str, Any]:
+    if not isinstance(value, Mapping):
+        _identity_recovery_config_error(
+            "identity_recovery_config_online_record_missing_fields",
+            f"{context} must be a mapping",
+        )
+    return value
+
+
+def _identity_recovery_positive_int(value: Any, context: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        _identity_recovery_config_error(
+            "identity_recovery_config_record_count_invalid",
+            f"{context} must be a positive integer",
+        )
+    return value
+
+
+def _identity_recovery_config_error(reason: str, message: str) -> None:
+    raise _IdentityRecoveryConfigValidationError(reason, message)
+
+
 def _adapt_d2_partial_identity_diagnostics(
     raw: Any,
     *,
@@ -4647,7 +5373,7 @@ def _validate_d2_partial_identity_manifest(
 ) -> None:
     if (
         manifest.get("schema_version")
-        != D2_OFFLINE_IDENTITY_MANIFEST_SCHEMA_VERSION
+        not in D2_OFFLINE_IDENTITY_MANIFEST_SCHEMA_VERSIONS
     ):
         _partial_identity_error(
             "unsupported_d2_identity_manifest_schema",
@@ -4848,6 +5574,33 @@ def _unavailable_d2_identity_commitment(
     )
 
 
+def _unavailable_d2_identity_recovery_config(
+    reason: str,
+    *,
+    identity_manifest_schema_version: str | None = None,
+    identity_manifest_sha256: str | None = None,
+    online_d2_records_sha256: str | None = None,
+    verification_mode: str = "unavailable",
+) -> D2IdentityRecoveryConfigProvenanceRecord:
+    return D2IdentityRecoveryConfigProvenanceRecord(
+        available=False,
+        unavailable_reason=reason,
+        config_snapshot=None,
+        config_sha256=None,
+        config_schema_version=None,
+        config_version=None,
+        identity_manifest_schema_version=identity_manifest_schema_version,
+        identity_manifest_sha256=identity_manifest_sha256,
+        online_d2_records_sha256=online_d2_records_sha256,
+        config_record_count=None,
+        d2_record_count=None,
+        consistency_verified=False,
+        source=None,
+        online_records_verified=False,
+        verification_mode=verification_mode,
+    )
+
+
 def _missing_d1_record(
     context: TruthIsolatedEpisodeContext,
 ) -> D1ConsistencyEvaluationRecord:
@@ -4896,6 +5649,9 @@ def _missing_d2_record(
         configuration={},
         audit={},
         identity_commitment=_unavailable_d2_identity_commitment(reason),
+        identity_recovery_config_provenance=(
+            _unavailable_d2_identity_recovery_config(reason)
+        ),
         partial_identity_diagnostics=_unavailable_d2_partial_identity(
             reason
         ),
@@ -5061,6 +5817,9 @@ def _episode_source_provenance(
                 record.d2.identity_commitment.evidence_bundle_sha256_verified
             ),
         },
+        "d2_identity_recovery_config_provenance": (
+            record.d2.identity_recovery_config_provenance.to_dict()
+        ),
         "d2_partial_identity_diagnostics": {
             "availability": (
                 "available"
@@ -5166,6 +5925,47 @@ def _episode_csv_row(record: TruthIsolatedEpisodeEvaluationRecord) -> dict[str, 
         ),
         "d2_identity_commitment_recovery_blocked_reason_counts_json": (
             record.d2.identity_commitment.recovery_blocked_reason_counts
+        ),
+        "d2_identity_recovery_config_availability": (
+            "available"
+            if record.d2.identity_recovery_config_provenance.available
+            else "unavailable"
+        ),
+        "d2_identity_recovery_config_unavailable_reason": (
+            record.d2.identity_recovery_config_provenance.unavailable_reason
+        ),
+        "d2_identity_recovery_config_json": (
+            record.d2.identity_recovery_config_provenance.config_snapshot
+        ),
+        "d2_identity_recovery_config_sha256": (
+            record.d2.identity_recovery_config_provenance.config_sha256
+        ),
+        "d2_identity_recovery_config_manifest_schema": (
+            record.d2.identity_recovery_config_provenance.identity_manifest_schema_version
+        ),
+        "d2_identity_recovery_config_manifest_sha256": (
+            record.d2.identity_recovery_config_provenance.identity_manifest_sha256
+        ),
+        "d2_identity_recovery_config_online_d2_records_sha256": (
+            record.d2.identity_recovery_config_provenance.online_d2_records_sha256
+        ),
+        "d2_identity_recovery_config_record_count": (
+            record.d2.identity_recovery_config_provenance.config_record_count
+        ),
+        "d2_identity_recovery_config_d2_record_count": (
+            record.d2.identity_recovery_config_provenance.d2_record_count
+        ),
+        "d2_identity_recovery_config_consistency_verified": (
+            record.d2.identity_recovery_config_provenance.consistency_verified
+        ),
+        "d2_identity_recovery_config_online_records_verified": (
+            record.d2.identity_recovery_config_provenance.online_records_verified
+        ),
+        "d2_identity_recovery_config_source": (
+            record.d2.identity_recovery_config_provenance.source
+        ),
+        "d2_identity_recovery_config_verification_mode": (
+            record.d2.identity_recovery_config_provenance.verification_mode
         ),
         "d2_observation_truth_disposition_availability": disposition.get(
             "availability",
@@ -5633,15 +6433,20 @@ __all__ = [
     "D6_D1_SENSOR_RANGE_RECORD_SCHEMA_VERSION",
     "D6_D2_IDENTITY_ADAPTER_SCHEMA_VERSION",
     "D6_D2_IDENTITY_COMMITMENT_ADAPTER_SCHEMA_VERSION",
+    "D6_D2_IDENTITY_RECOVERY_CONFIG_PROVENANCE_SCHEMA_VERSION",
     "D6_D2_PARTIAL_IDENTITY_ADAPTER_SCHEMA_VERSION",
     "D6_TRUTH_ISOLATED_BATCH_SCHEMA_VERSION",
     "D6_TRUTH_ISOLATED_EPISODE_SCHEMA_VERSION",
     "D6_TRUTH_ISOLATED_EVALUATION_DATE",
     "D2_PARTIAL_IDENTITY_DENOMINATOR_DEFINITIONS",
     "D2_IDENTITY_COMMITMENT_DENOMINATOR_POLICY",
+    "D2_IDENTITY_COMMITMENT_RECOVERY_CONFIG_SCHEMA_VERSION",
+    "D2_OFFLINE_IDENTITY_MANIFEST_SCHEMA_VERSION_V1",
+    "D2_OFFLINE_IDENTITY_MANIFEST_SCHEMA_VERSION_V2",
     "D2_SCALABLE_3D_PARTIAL_IDENTITY_DIAGNOSTICS_SCHEMA_VERSION",
     "D2IdentityEvaluationRecord",
     "D2IdentityCommitmentEvidenceRecord",
+    "D2IdentityRecoveryConfigProvenanceRecord",
     "D2PartialIdentityDiagnosticsRecord",
     "DEFAULT_TRUTH_ISOLATED_BOOTSTRAP_RESAMPLES",
     "DEFAULT_TRUTH_ISOLATED_BOOTSTRAP_RNG_SEED",
@@ -5654,6 +6459,7 @@ __all__ = [
     "TruthIsolatedOfflineReportGenerator",
     "adapt_d1_offline_consistency",
     "adapt_d2_scalable_3d_identity",
+    "adapt_d2_identity_recovery_config_provenance",
     "aggregate_truth_isolated_episode_records",
     "build_truth_isolated_episode_record",
     "render_truth_isolated_markdown",

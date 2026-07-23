@@ -53,6 +53,30 @@ def _file_sha(path: Path) -> str:
     return f"sha256:{hashlib.sha256(path.read_bytes()).hexdigest()}"
 
 
+_IDENTITY_RECOVERY_CONFIG = {
+    "schema_version": "d2.identity-commitment-recovery-config.v2",
+    "config_version": "test-identity-recovery-config-v1",
+    "publication_freshness_gate_enabled": True,
+    "max_recovery_evidence_age_seconds": 0.9,
+    "publication_freshness_clock": (
+        "d2_tracker_frame_timestamp_minus_source_measurement_timestamp"
+    ),
+    "publication_stale_behavior": (
+        "remain_uncommitted_until_newer_original_evidence"
+    ),
+}
+
+
+def _write_jsonl(path: Path, rows: list[dict[str, object]]) -> None:
+    path.write_text(
+        "".join(
+            json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n"
+            for row in rows
+        ),
+        encoding="utf-8",
+    )
+
+
 def _resign_d1(payload: dict[str, object]) -> None:
     payload.pop("content_digest", None)
     payload["content_digest"] = _canonical_sha(payload)
@@ -750,6 +774,115 @@ def _write_d2_identity_with_manifest(
     return evaluation_path, evaluation_sha, normalized_sources, manifest_path
 
 
+def _d2_recovery_record(
+    sequence: int,
+    config: dict[str, object],
+) -> dict[str, object]:
+    timestamp = float(sequence - 1)
+    return {
+        "sequence": sequence,
+        "topic": "modules.d2.associated_tracks",
+        "source": "D2",
+        "timestamp": timestamp,
+        "schema_version": "d2-scalable3d-association-v1",
+        "payload": {
+            "timestamp": timestamp,
+            "tracks": [],
+            "identity_lineage": [],
+            "association": {
+                "identity_commitment": {
+                    "recovery_config": dict(config),
+                }
+            },
+        },
+    }
+
+
+def _write_d2_identity_with_v2_recovery_manifest(
+    root: Path,
+    payload: dict[str, object],
+    *,
+    record_configs: list[dict[str, object]] | None = None,
+) -> tuple[Path, str, dict[str, str], Path, Path, str]:
+    root.mkdir(parents=True, exist_ok=True)
+    configs = record_configs or [
+        dict(_IDENTITY_RECOVERY_CONFIG),
+        dict(_IDENTITY_RECOVERY_CONFIG),
+    ]
+    online_path = root / "online_d2_records.jsonl"
+    _write_jsonl(
+        online_path,
+        [
+            _d2_recovery_record(index, config)
+            for index, config in enumerate(configs, start=1)
+        ],
+    )
+    online_sha = _file_sha(online_path)
+    source_hashes = payload["source_hashes"]
+    assert isinstance(source_hashes, dict)
+    source_hashes["online_d2_records"] = online_sha
+    if payload["schema_version"] == "d2.scalable3d_identity_evaluation.v2":
+        _resign_v2_evidence(payload)
+
+    evaluation_path = root / "identity_evaluation.json"
+    evaluation_path.write_text(
+        json.dumps(payload, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    evaluation_sha = _file_sha(evaluation_path)
+    normalized_sources = {
+        str(name): str(value) for name, value in source_hashes.items()
+    }
+    manifest_config = dict(configs[0])
+    manifest = {
+        "schema_version": (
+            "scalable3d-offline-identity-evaluation-manifest-v2"
+        ),
+        "available": True,
+        "reason": None,
+        "episode_id": payload["episode_id"],
+        "d1_record_count": len(configs),
+        "d2_record_count": len(configs),
+        "source_hashes": {
+            "online_d1_records": normalized_sources["online_d1_records"],
+            "online_d2_records": online_sha,
+            "observation_truth_labels": normalized_sources[
+                "observation_truth_labels"
+            ],
+            "identity_evidence": normalized_sources[
+                "identity_evidence_bundle"
+            ],
+            "identity_evaluation": evaluation_sha,
+        },
+        "online_truth_isolation_verified": True,
+        "identity_metrics_available": payload["metrics"][
+            "truth_metrics_available"
+        ],
+        "identity_commitment_recovery_config": manifest_config,
+        "identity_commitment_recovery_config_sha256": _canonical_sha(
+            manifest_config
+        ),
+        "identity_commitment_recovery_config_record_count": len(configs),
+        "identity_commitment_recovery_config_consistency_verified": True,
+        "identity_commitment_recovery_config_source": (
+            "payload.association.identity_commitment.recovery_config"
+        ),
+    }
+    manifest_path = root / "manifest.json"
+    manifest_path.write_text(
+        json.dumps(manifest, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    return (
+        evaluation_path,
+        evaluation_sha,
+        normalized_sources,
+        manifest_path,
+        online_path,
+        online_sha,
+    )
+
+
 class _D1PublicDTO:
     def __init__(self, payload: dict[str, object]) -> None:
         self.payload = payload
@@ -856,6 +989,187 @@ def test_public_dto_adapters_preserve_d1_d2_metrics() -> None:
         d2.identity_commitment.metrics["all_committed_count"].available
         is False
     )
+    recovery = d2.identity_recovery_config_provenance
+    assert recovery.available is False
+    assert recovery.unavailable_reason == (
+        "identity_recovery_config_not_manifest_bound_v1"
+    )
+    assert d2.metrics["id_switch_count"].value == 1
+
+
+def test_manifest_v2_recovery_config_is_bound_to_every_online_d2_record(
+    tmp_path: Path,
+) -> None:
+    d2_payload = _d2_v2_payload()
+    (
+        d2_path,
+        d2_sha,
+        source_hashes,
+        manifest_path,
+        online_path,
+        online_sha,
+    ) = _write_d2_identity_with_v2_recovery_manifest(
+        tmp_path / "identity",
+        d2_payload,
+    )
+
+    episode = build_truth_isolated_episode_record(
+        _context(),
+        d1_result=_d1_payload(),
+        d2_evaluation=d2_path,
+        d2_expected_sha256=d2_sha,
+        d2_expected_source_hashes=source_hashes,
+        d2_identity_manifest=manifest_path,
+        d2_expected_identity_manifest_sha256=_file_sha(manifest_path),
+        d2_online_d2_records=online_path,
+        d2_expected_online_d2_records_sha256=online_sha,
+    )
+
+    recovery = episode.d2.identity_recovery_config_provenance
+    assert recovery.available is True
+    assert recovery.config_snapshot == _IDENTITY_RECOVERY_CONFIG
+    assert recovery.config_sha256 == _canonical_sha(
+        _IDENTITY_RECOVERY_CONFIG
+    )
+    assert recovery.identity_manifest_schema_version == (
+        "scalable3d-offline-identity-evaluation-manifest-v2"
+    )
+    assert recovery.identity_manifest_sha256 == _file_sha(manifest_path)
+    assert recovery.online_d2_records_sha256 == online_sha
+    assert recovery.config_record_count == 2
+    assert recovery.d2_record_count == 2
+    assert recovery.consistency_verified is True
+    assert recovery.online_records_verified is True
+    assert episode.d2.metrics["id_switch_count"].value == 1
+    assert (
+        episode.to_dict()["d2_identity"][
+            "identity_recovery_config_provenance"
+        ]["provenance_verified"]
+        is True
+    )
+
+    summary = aggregate_truth_isolated_episode_records(
+        (episode,),
+        bootstrap_resamples=20,
+    )
+    provenance = summary.groups[0][
+        "d2_identity_recovery_config_provenance"
+    ]
+    assert provenance["available_episode_count"] == 1
+    assert provenance["record_count_total"] == 2
+    assert provenance["config_snapshots_by_sha256"][
+        _canonical_sha(_IDENTITY_RECOVERY_CONFIG)
+    ] == _IDENTITY_RECOVERY_CONFIG
+    assert provenance["strict_id_switch_count_backfilled"] is False
+
+    outputs = TruthIsolatedOfflineReportGenerator().write_report_bundle(
+        tmp_path / "report",
+        records=(episode,),
+        bootstrap_resamples=20,
+    )
+    with outputs["per_seed_csv"].open(
+        "r",
+        encoding="utf-8",
+        newline="",
+    ) as stream:
+        row = next(csv.DictReader(stream))
+    assert row["d2_identity_recovery_config_availability"] == "available"
+    assert row["d2_identity_recovery_config_sha256"] == _canonical_sha(
+        _IDENTITY_RECOVERY_CONFIG
+    )
+    assert row["d2_identity_recovery_config_manifest_schema"] == (
+        "scalable3d-offline-identity-evaluation-manifest-v2"
+    )
+    assert row["d2_identity_recovery_config_manifest_sha256"] == (
+        _file_sha(manifest_path)
+    )
+    assert row[
+        "d2_identity_recovery_config_online_d2_records_sha256"
+    ] == online_sha
+    assert row["d2_identity_recovery_config_record_count"] == "2"
+    assert row[
+        "d2_identity_recovery_config_consistency_verified"
+    ] == "True"
+
+
+@pytest.mark.parametrize(
+    ("failure", "expected_reason"),
+    [
+        (
+            "config_sha",
+            "identity_recovery_config_sha256_mismatch",
+        ),
+        (
+            "config_content",
+            "identity_recovery_config_online_record_drift",
+        ),
+        (
+            "frame_drift",
+            "identity_recovery_config_online_record_drift",
+        ),
+        (
+            "record_count",
+            "identity_recovery_config_record_count_mismatch",
+        ),
+    ],
+)
+def test_manifest_v2_recovery_config_tampering_is_scoped_fail_closed(
+    tmp_path: Path,
+    failure: str,
+    expected_reason: str,
+) -> None:
+    payload = _d2_v2_payload()
+    record_configs = [
+        dict(_IDENTITY_RECOVERY_CONFIG),
+        dict(_IDENTITY_RECOVERY_CONFIG),
+    ]
+    if failure == "frame_drift":
+        record_configs[1]["max_recovery_evidence_age_seconds"] = 1.1
+    (
+        evaluation_path,
+        evaluation_sha,
+        source_hashes,
+        manifest_path,
+        online_path,
+        online_sha,
+    ) = _write_d2_identity_with_v2_recovery_manifest(
+        tmp_path / failure,
+        payload,
+        record_configs=record_configs,
+    )
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    if failure == "config_sha":
+        manifest["identity_commitment_recovery_config_sha256"] = _sha("9")
+    elif failure == "config_content":
+        config = manifest["identity_commitment_recovery_config"]
+        config["max_recovery_evidence_age_seconds"] = 1.2
+        manifest["identity_commitment_recovery_config_sha256"] = (
+            _canonical_sha(config)
+        )
+    elif failure == "record_count":
+        manifest["identity_commitment_recovery_config_record_count"] = 3
+    manifest_path.write_text(
+        json.dumps(manifest, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+    record = adapt_d2_scalable_3d_identity(
+        evaluation_path,
+        expected_sha256=evaluation_sha,
+        expected_source_hashes=source_hashes,
+        identity_manifest=manifest_path,
+        expected_identity_manifest_sha256=_file_sha(manifest_path),
+        d2_online_d2_records=online_path,
+        d2_expected_online_d2_records_sha256=online_sha,
+    )
+
+    recovery = record.identity_recovery_config_provenance
+    assert recovery.available is False
+    assert recovery.unavailable_reason == expected_reason
+    assert record.metrics["id_switch_count"].available is True
+    assert record.metrics["id_switch_count"].value == 1
+    assert recovery.to_dict()["identity_commitment_recovery_config"] is None
+    assert recovery.to_dict()["provenance_verified"] is False
 
 
 def test_d2_identity_commitment_v2_is_sha_bound_and_keeps_strict_gap_idsw() -> None:
@@ -1260,6 +1574,10 @@ def test_partial_identity_remains_available_when_strict_idsw_is_unavailable(
     )
     assert partial.metrics["id_switch_lower_bound"].value == 2
     assert partial.metrics["anchor_interval_count"].value == 4
+    assert record.identity_recovery_config_provenance.available is False
+    assert record.identity_recovery_config_provenance.unavailable_reason == (
+        "identity_recovery_config_not_manifest_bound_v1"
+    )
     assert partial.lower_bound_anchor_exclusion_reason_counts == {
         "multiple_evaluable_global_tracks_for_truth_frame": 1
     }

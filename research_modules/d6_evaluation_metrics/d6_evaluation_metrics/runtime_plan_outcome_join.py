@@ -30,11 +30,14 @@ from .observation_truth_sidecar import (
     audit_observation_truth_sidecar,
 )
 from .truth_isolated_offline import (
+    D2_OFFLINE_IDENTITY_MANIFEST_SCHEMA_VERSION_V1,
+    D2_OFFLINE_IDENTITY_MANIFEST_SCHEMA_VERSION_V2,
     D2_SCALABLE_3D_IDENTITY_EVALUATION_SCHEMA_VERSION_V1,
     D2_SCALABLE_3D_IDENTITY_EVALUATION_SCHEMA_VERSION_V2,
     D2_SCALABLE_3D_IDENTITY_POLICY_VERSION_V1,
     D2_SCALABLE_3D_IDENTITY_POLICY_VERSION_V2,
     TruthIsolatedEvaluationError,
+    adapt_d2_identity_recovery_config_provenance,
     validate_d2_identity_commitment_evaluation,
 )
 
@@ -54,8 +57,14 @@ ASSIGNMENT_PLAN_ACK_TOPIC = "runtime.assignment_plan_ack"
 ASSIGNMENT_PLAN_ACK_SCHEMA = "scalable3d-assignment-plan-runtime-ack-v1"
 D3_PLAN_SCHEMA = "assignment_plan_v2"
 D7_GUIDANCE_SCHEMA = "d7-scalable3d-guidance-v1"
-D2_IDENTITY_MANIFEST_SCHEMA = (
-    "scalable3d-offline-identity-evaluation-manifest-v1"
+D2_IDENTITY_MANIFEST_SCHEMA_V1 = (
+    D2_OFFLINE_IDENTITY_MANIFEST_SCHEMA_VERSION_V1
+)
+D2_IDENTITY_MANIFEST_SCHEMA_V2 = (
+    D2_OFFLINE_IDENTITY_MANIFEST_SCHEMA_VERSION_V2
+)
+D2_IDENTITY_MANIFEST_SCHEMAS = frozenset(
+    {D2_IDENTITY_MANIFEST_SCHEMA_V1, D2_IDENTITY_MANIFEST_SCHEMA_V2}
 )
 D2_IDENTITY_EVALUATION_SCHEMA = (
     D2_SCALABLE_3D_IDENTITY_EVALUATION_SCHEMA_VERSION_V1
@@ -355,11 +364,13 @@ def evaluate_runtime_plan_outcomes(
     envelopes = _load_online_envelopes(source.online_observations.path)
     envelopes_by_sequence = {item.sequence: item for item in envelopes}
     acks = _validate_runtime_acks(envelopes, envelopes_by_sequence)
-    identity = _load_and_validate_d2_identity(
+    identity, identity_recovery_config_provenance = (
+        _load_and_validate_d2_identity(
         source,
         artifact_hashes=artifact_hashes,
         manifest=manifest,
         online_envelopes=envelopes_by_sequence,
+        )
     )
     observation_truth_disposition = (
         _load_and_validate_observation_truth_disposition(
@@ -447,6 +458,9 @@ def evaluate_runtime_plan_outcomes(
             "d3_learning_applied_ack_count": applied_learning_count,
             "d4_regional_applied_ack_count": applied_regional_count,
         },
+        "d2_identity_recovery_config_provenance": (
+            identity_recovery_config_provenance
+        ),
         "offline_observation_truth_disposition": observation_truth_disposition,
         "binding_windows": windows,
         "observed_diagnostics": {
@@ -478,6 +492,18 @@ def evaluate_runtime_plan_outcomes(
             "assist_allowed": False,
             "authority_allowed": False,
             "rule_fallback_required": True,
+            "identity_recovery_config_provenance_required": (
+                identity_recovery_config_provenance[
+                    "identity_manifest_schema_version"
+                ]
+                == D2_IDENTITY_MANIFEST_SCHEMA_V2
+            ),
+            "identity_recovery_config_provenance_verified": (
+                identity_recovery_config_provenance["provenance_verified"]
+            ),
+            "identity_recovery_config_provenance_reason": (
+                identity_recovery_config_provenance["unavailable_reason"]
+            ),
             "status": "runtime_observed_diagnostic_only_admission_closed",
             "promotion_blockers": [
                 "formal_same_seed_paired_shadow_unavailable",
@@ -542,6 +568,10 @@ def render_runtime_plan_outcome_join_markdown(
         payload.get("offline_observation_truth_disposition"),
         "offline observation truth disposition",
     )
+    recovery_config = _mapping(
+        payload.get("d2_identity_recovery_config_provenance"),
+        "D2 identity recovery config provenance",
+    )
     windows = _sequence(payload.get("binding_windows"), "binding windows")
     lines = [
         "# 运行时计划确认与离线观测结果联接",
@@ -559,6 +589,21 @@ def render_runtime_plan_outcome_join_markdown(
         ),
         "该诊断只描述已观测距离变化，不是 D3 正式强化学习奖励，也不构成因果或反事实证据。",
         "强化学习近端策略优化、辅助模式和控制权准入继续关闭，规则回退保持启用。",
+        "",
+        "## 身份恢复配置谱系",
+        "",
+        (
+            "清单模式为 "
+            f"`{recovery_config['identity_manifest_schema_version']}`，"
+            "配置谱系"
+            + (
+                "已通过逐条在线记录校验。"
+                if recovery_config["provenance_verified"]
+                else "不可用，原因："
+                f"`{recovery_config['unavailable_reason']}`。"
+            )
+        ),
+        "该谱系只进入离线审计，不回填严格身份切换指标，也不进入在线控制。",
         "",
         "## 离线观测处置",
         "",
@@ -1321,13 +1366,13 @@ def _load_and_validate_d2_identity(
     artifact_hashes: Mapping[str, str],
     manifest: Mapping[str, Any],
     online_envelopes: Mapping[int, _Envelope],
-) -> Mapping[str, Any]:
+) -> tuple[Mapping[str, Any], Mapping[str, Any]]:
     d2_manifest = _load_json(inputs.d2_identity_manifest.path, "D2 identity manifest")
     evaluation = _load_json(
         inputs.d2_identity_evaluation.path, "D2 identity evaluation"
     )
     _expect(
-        d2_manifest.get("schema_version") == D2_IDENTITY_MANIFEST_SCHEMA,
+        d2_manifest.get("schema_version") in D2_IDENTITY_MANIFEST_SCHEMAS,
         "unsupported_d2_identity_manifest_schema",
         "D2 identity manifest schema is unsupported",
     )
@@ -1387,6 +1432,33 @@ def _load_and_validate_d2_identity(
             _normalise_sha256(evaluation_hashes.get(name)) == expected,
             "d2_evaluation_source_hash_mismatch",
             f"D2 evaluation source hash mismatch for {name}",
+        )
+    recovery_config_provenance = (
+        adapt_d2_identity_recovery_config_provenance(
+            producer_evaluation_schema_version=evaluation_schema,
+            identity_source=inputs.d2_identity_evaluation.path,
+            identity_manifest=inputs.d2_identity_manifest.path,
+            expected_identity_manifest_sha256=artifact_hashes[
+                "d2_identity_manifest"
+            ],
+            d2_online_d2_records=inputs.d2_online_d2_records.path,
+            d2_expected_online_d2_records_sha256=artifact_hashes[
+                "d2_online_d2_records"
+            ],
+            identity_source_hashes={
+                str(name): _normalise_sha256(value)
+                for name, value in evaluation_hashes.items()
+            },
+        )
+    )
+    if (
+        d2_manifest.get("schema_version") == D2_IDENTITY_MANIFEST_SCHEMA_V2
+        and not recovery_config_provenance.available
+    ):
+        _fail(
+            recovery_config_provenance.unavailable_reason
+            or "identity_recovery_config_provenance_unavailable",
+            "D2 identity recovery configuration provenance is invalid",
         )
     try:
         validate_d2_identity_commitment_evaluation(
@@ -1448,7 +1520,7 @@ def _load_and_validate_d2_identity(
                 "D2 identity frame contains duplicate global_track_id mappings",
             )
             frame_track_ids.add(track_id)
-    return evaluation
+    return evaluation, recovery_config_provenance.to_dict()
 
 
 def _load_and_validate_observation_truth_disposition(
