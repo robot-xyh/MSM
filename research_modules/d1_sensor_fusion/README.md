@@ -4,14 +4,15 @@ Offline research module for radar, acoustic, EO, and optional synthetic lidar he
 
 ## 当前性能与治理证据（2026-07-23）
 
-### 第十四阶段：最大匹配允许边分量 v2 模块候选
+### 第十四阶段：最大匹配允许边分量 v2 模块通过与系统候选拒绝
 
 D1 已实现默认关闭的实验策略
 `fail_closed_maximum_matching_allowed_edge_component_v2`。新开关
 `radar_assignment_ambiguity_governance_v2` 默认为 `False`，与 v1 开关互斥。两者均关闭时，
 融合、分配及既有审计字段和值与当前基线一致；本轮只增加策略选择审计字段。显式启用 v2 时，
 审计状态为
-`experimental_v2_enabled_pending_main_clean_ab`。
+`experimental_v2_enabled_rejected_candidate`，表示运行时明确启用了一个已被系统门槛拒绝、
+默认关闭的研究候选。
 
 审计保留历史字段 `radar_assignment_ambiguity_policy_version` 及其关闭时的 v1 默认值，避免
 破坏既有消费者。该字段不能单独解释为“正在运行 v1”。新增
@@ -35,14 +36,39 @@ coast。这样 free column 对应的 observation 不会在抑制关联后绕行�
 模块测试覆盖 `2x2` 交替环、`3x2` free-row、`2x3` free-column、唯一最大匹配、门外独立
 birth、首扫无航迹、greedy fallback、OOSM 和 200 航迹稀疏门图。测试同时检查
 `measurement_timestamp`、`arrival_timestamp`、`6x6` covariance 和中心拥有的
-`global_track_id` 不变。v1/v2 专项共 `29 passed`，D1 全量
-`220 passed in 17.36s`。小规模随机图开发审计还将增广基数和允许边分量与穷举 oracle 对照，
-没有发现漏边或误纳边；穷举只用于开发审计，不在在线算法中。
+`global_track_id` 不变。v1/v2 专项共 `29 passed`，D1 全量 `220 passed`。main 另以
+2,666 个小型二部图做独立穷举 oracle，最大匹配基数和允许边分量全部通过；scalable 模块
+`142 passed`。穷举只用于离线验证，不在在线算法中。这些结果证明图论识别和接口合同，不证明
+整分量 suppression 对系统有收益。
 
 候选不解析 observation 名称，不读取 target/actor/truth/D6，也不使用未观测的零径向速度。
-本阶段仅完成 D1 实现和单元测试，没有运行 10 s、20-seed 或 AirSim。v2 仍是实验候选，待
-main 在新的 detached clean 输入上完成同配置 A/B；在 strict identity、D1/D2 continuity、
-D3 availability、suppression、birth/recall 和长期跨模态后果同时通过前，不进入默认主线。
+main 已在 clean commit `c928727` 完成首个未见 seed A/B。两组均为 200v200、2.2 s、
+`recon_count=2`、seed 1100，同一 git commit，`repository_dirty=false`，
+`config_sha256=20ef5248...b840`。baseline/v2 runtime profile 分别为
+`b508f675...12a8` 与 `9680c45b...f9f4`，差异只来自 v2 treatment。两组均
+finite=true、online truth=0，且 online/radar observations、target labels、known false alarms
+分别保持 `2035/1954/2352/90`。
+
+| 指标 | baseline | v2 |
+| --- | ---: | ---: |
+| ambiguous mappings | 0 | 0 |
+| D1 tracks | 202 | 202 |
+| D2 tracks | 203 | 199 |
+| D3 assignments | 200 | 196 |
+| ID switch | 9 | 9 |
+| track continuity | 0.865 | 0.830 |
+| coverage continuity | 0.870 | 0.835 |
+| available mappings | 1,566 | 1,503 |
+| unavailable mappings | 230 | 266 |
+
+v2 在 9 个 ambiguity scans 中抑制 `77/1954=3.94%` 的雷达观测，相关 track coast 为 91。
+ambiguous mapping 和 ID switch 没有改善，D2 航迹、D3 分配、两项连续性和映射可用性均下降。
+主要原因是允许边识别虽然正确，但“整个 allowed-edge 分量全部 fail closed”把图论不确定性
+直接转换成了过强的信息抑制。
+
+按照预注册门槛，main 已停止 seeds 1101/1102、10 s 和 20-seed，不再扩大被拒绝候选的实验。
+v2 不晋级并保持默认关闭；P1 身份连续性继续开放。后续若设计新 intervention，必须保留当前
+图论边界，同时减少无身份收益的整分量 suppression，并重新作为独立候选验收。
 
 ### 第十三阶段：匿名雷达交替环 v1 clean 阻断与默认回退
 
@@ -97,9 +123,9 @@ suppression 和 gate-valid `3x2` free-row blocker；D1 全量 `204 passed in 16.
 `normalized_online_payloads_equal=True`，证据位于
 `/tmp/msm-default-off-cross-build-8f17c5d-r2`。这证明默认回退无业务回归，不证明 v1 可晋级。
 
-full alternating-path v2 现已完成模块实现和单元测试，但尚未完成 detached clean 集成验证。
-候选已覆盖最大基数匹配的交替环、free-row 与 free-column 路径；main 仍需验证 suppression、
-birth、continuity 和下游可用性。
+full alternating-path v2 已覆盖最大基数匹配的交替环、free-row 与 free-column 路径，并通过
+模块与穷举验证；但 seed 1100 clean A/B 没有身份收益且降低 continuity、D2/D3 和映射可用性，
+系统候选已被拒绝。
 10 s 的 7 个 radar+vision ambiguous mappings 不能单独证明 radar-only 根因，但长期 coast 和
 跨模态后果属于集成验收范围，不能因其非纯 radar 而排除。
 

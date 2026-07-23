@@ -191,7 +191,7 @@ def test_scalable_adapter_exposes_the_explicit_v2_policy() -> None:
         "radar_assignment_ambiguity_candidate_policy_versions"
     ] == RADAR_ASSIGNMENT_AMBIGUITY_CANDIDATE_POLICY_VERSIONS
     assert audit["radar_assignment_ambiguity_governance_status"] == (
-        "experimental_v2_enabled_pending_main_clean_ab"
+        "experimental_v2_enabled_rejected_candidate"
     )
 
 
@@ -283,7 +283,7 @@ def test_v2_two_by_two_alternating_cycle_suppresses_the_component() -> None:
         RADAR_ASSIGNMENT_AMBIGUITY_POLICY_V2_VERSION
     )
     assert audit["radar_assignment_ambiguity_governance_status"] == (
-        "experimental_v2_enabled_pending_main_clean_ab"
+        "experimental_v2_enabled_rejected_candidate"
     )
     assert audit["radar_assignment_ambiguity_observation_suppression_count"] == 2
     assert audit["radar_assignment_ambiguity_track_coast_count"] == 2

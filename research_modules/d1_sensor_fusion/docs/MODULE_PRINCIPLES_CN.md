@@ -35,18 +35,41 @@ SciPy 可用时，原 Hungarian 已给出最大基数门内匹配。无 SciPy �
 
 v2 的严格布尔开关默认为 `False`，并与 v1 互斥。显式启用时，策略版本为
 `fail_closed_maximum_matching_allowed_edge_component_v2`，审计状态为
-`experimental_v2_enabled_pending_main_clean_ab`。模块专项覆盖 `2x2` cycle、`3x2`
+`experimental_v2_enabled_rejected_candidate`。该状态表示运行时显式启用了一个已经完成
+系统评审、未通过晋级门槛且默认关闭的研究候选。模块专项覆盖 `2x2` cycle、`3x2`
 free-row、`2x3` free-column、唯一匹配、门外 birth、首扫、greedy fallback、OOSM 和 200
-规模稀疏图；D1 全量 `220 passed in 17.36s`。
+规模稀疏图；D1 全量 `220 passed`。main 独立穷举 2,666 个小型二部图，最大匹配基数和允许边
+分量与 oracle 一致；scalable 模块 `142 passed`。
 
 审计中的历史 `policy_version` 在全部关闭时仍返回 v1，以维持既有数据格式和值。实际策略必须
 读取 `selected_policy_version`：关闭时为 `None`，v1/v2 启用时为对应版本。候选列表由
 `candidate_policy_versions` 给出。这样可以区分“系统知道 v1/v2 候选”和“当前确实运行某个
 候选”。
 
-这些结果证明模块中的图论边界和数据合同，不证明系统收益。候选没有运行新的 10 s、20-seed
-或 AirSim。main 仍需在 detached clean 输入上联合检查身份连续性、航迹可用性、分配可用性、
-suppression 和 birth/recall，之后才能决定是否晋级。
+这些结果证明模块中的图论边界和数据合同，不证明系统 intervention 合适。main 在 clean
+commit `c928727` 对首个未见 seed 1100 运行 baseline/v2 同配置 A/B：200v200、2.2 s、
+`recon_count=2`，两端 `repository_dirty=false`、`config_sha256=20ef5248...b840`，runtime
+profile 分别为 `b508f675...12a8` 和 `9680c45b...f9f4`，只改变 v2 treatment。两组均
+finite=true、online truth=0，输入统计相同：2,035 条在线观测、1,954 条雷达观测、2,352 个
+target labels 和 90 个 known false alarms。
+
+| 系统指标 | baseline | v2 |
+| --- | ---: | ---: |
+| ambiguous mappings | 0 | 0 |
+| D1/D2 tracks | 202 / 203 | 202 / 199 |
+| D3 assignments | 200 | 196 |
+| ID switch | 9 | 9 |
+| track / coverage continuity | 0.865 / 0.870 | 0.830 / 0.835 |
+| available / unavailable mappings | 1,566 / 230 | 1,503 / 266 |
+
+v2 在 9 个 ambiguity scans 中抑制 77 条雷达观测，占 `77/1954=3.94%`，并让 91 个 track
+coast。图论分量识别正确，但整分量 fail-closed 把所有可替代边都视为需要立即停止信息更新，
+抑制范围超过当前身份收益。ambiguous mapping 和 ID switch 不变，下游航迹、分配、连续性和
+映射可用性下降。
+
+该结果触发预注册停止条件。seeds 1101/1102、10 s 和 20-seed 未继续运行。v2 不晋级并保持
+默认关闭，P1 身份连续性继续开放。后续候选可以复用允许边识别，但必须重新设计 intervention，
+不能把图论边界正确等同于整分量 suppression 有效。
 
 ### 匿名雷达近交叉时，门内排序不能自动升级为身份事实
 
@@ -117,7 +140,7 @@ range/azimuth/elevation；转换后的
 ```text
 radar_assignment_ambiguity_governance = False  -> 基线 Hungarian
 radar_assignment_ambiguity_governance = True   -> 显式实验 v1
-radar_assignment_ambiguity_governance_v2 = True -> 显式实验 v2，待 main clean A/B
+radar_assignment_ambiguity_governance_v2 = True -> 显式实验 v2，系统候选已拒绝
 ```
 
 v1 和 v2 不能同时启用。审计同时发布 enabled、候选 policy version 和实验状态。默认关闭

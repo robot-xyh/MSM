@@ -48,17 +48,36 @@
 - v2 不解析 observation 名称，不读取 truth/actor/D6，不使用未观测零径向速度。SciPy 缺失时
   先以增广路径把 greedy 结果补成最大匹配。严格布尔开关
   `radar_assignment_ambiguity_governance_v2=False` 与 v1 互斥；显式启用时审计状态为
-  `experimental_v2_enabled_pending_main_clean_ab`。
+  `experimental_v2_enabled_rejected_candidate`，表示运行的是已被系统门槛拒绝、默认关闭的
+  研究候选。
 - 审计保留历史 `policy_version` 字段和值。新增 `selected_policy_version` 和
   `candidate_policy_versions`；两种开关均关闭时 selected 明确为 `None`。main 应以 selected、
   enabled 和 status 判定实际策略，不能把兼容字段的 v1 值解释为基线正在运行 v1。
 - v1/v2 专项 `29 passed`，覆盖 `2x2` cycle、`3x2` free-row、`2x3` free-column、唯一匹配、
   门外 birth、首扫、greedy fallback、OOSM、双时间戳、协方差、ID 所有权和 200 稀疏图；
-  D1 全量 `220 passed in 17.36s`。
-- 评审结论：v1 已被 clean A/B 拒绝；v2 仅达到模块实验候选，P1 blocker 开放。main 必须在新
-  detached clean 上联合验收 strict identity、D1/D2 continuity、D3 availability、
-  suppression、birth/recall。10 s radar+vision ambiguous 不是纯 radar 根因证据，但其长期
-  coast/跨模态后果仍属于集成验收范围。本阶段不运行 10 s 或 20-seed。
+  D1 全量 `220 passed`。main 独立穷举 2,666 个小图 oracle 通过，scalable 模块
+  `142 passed`。这组证据只确认允许边图论边界和模块合同。
+- main 在 clean commit `c928727` 完成 v2 首个未见 seed 1100 A/B。两组均为 200v200、
+  2.2 s、`recon_count=2`，同 commit、dirty=false、配置哈希 `20ef5248...b840`；runtime
+  profile `b508f675...12a8 / 9680c45b...f9f4` 只差 v2 treatment。两组 finite、online
+  truth=0，online/radar observations、target labels、known false alarms 均为
+  `2035/1954/2352/90`。
+
+| 指标 | baseline | v2 |
+| --- | ---: | ---: |
+| ambiguous mapping | 0 | 0 |
+| D1 / D2 tracks | 202 / 203 | 202 / 199 |
+| D3 assignments | 200 | 196 |
+| ID switch | 9 | 9 |
+| track / coverage continuity | .865 / .870 | .830 / .835 |
+| available / unavailable mappings | 1,566 / 230 | 1,503 / 266 |
+
+- v2 suppression 为 `77/1954=3.94%`，发生于 9 个 ambiguity scans，track coast=91。身份
+  指标没有收益，下游航迹、分配、连续性和映射可用性下降。整 allowed-edge 分量 fail-closed
+  抑制过保守；图论边界正确不能推出当前 intervention 合适。
+- 评审结论：v1 和 v2 系统候选均不晋级，v2 保持默认关闭，P1 blocker 开放。预注册停止条件已
+  触发，不运行 seeds 1101/1102、10 s 或 20-seed。后续候选可复用允许边识别，但必须重新设计
+  信息保留策略并从新的未见 seed 验收。
 
 - D2 nominal 200v200 身份阻断审计在 seed 1000 给出 17 条可复核的雷达/视觉混轨观测。D1 在
   clean `5263e2b` 的 771 scans/11,889 anonymous observations 冻结回放中复现。

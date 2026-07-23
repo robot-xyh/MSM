@@ -10,7 +10,7 @@
 
 | GAP/合同 | 当前状态 | 2026-07-23 证据 | 剩余关闭条件 |
 | --- | --- | --- | --- |
-| Radar-only 扫描间 Hungarian 交叉换绑 | **v1 已拒绝；v2 模块候选已实现且默认关闭；身份连续性 P1 开放** | v1 的同配置 clean A/B 结论不变：strict availability `1/3 -> 3/3`，但 D2/D3 数量下降，seed1001 continuity `.869444 -> .814444`，因此不晋级；默认关闭 `8f17c5d` 三 seed 恢复 baseline，跨构建 `3/3 passed=True` 且在线载荷归一化相同。v2 `fail_closed_maximum_matching_allowed_edge_component_v2` 从最大匹配构造交替图，覆盖 cycle、free-row 和 free-column 允许边；不确定分量统一 suppression/update/birth/coast。无 SciPy 时以增广路径修复 greedy 基数。新开关默认 False、与 v1 互斥；不读取 observation 名称、truth/actor/D6 或未观测零径向速度。审计新增 selected/candidate 字段；全部关闭时 selected=None，历史 policy_version=v1 只作兼容。`2x2/3x2/2x3`、唯一匹配、门外 birth、首扫、fallback、OOSM、200 稀疏图及合同回归通过；v1/v2 专项 `29 passed`，D1 全量 `220 passed in 17.36s` | v2 仅为实验候选，待 main 在未用于开发的 detached clean 上做同配置 A/B。必须同时验收 ambiguous、strict identity、D1/D2 continuity、D3 availability、suppression、birth/recall 和 10 s 长期跨模态后果；短时业务可用性通过前不运行扩大矩阵。main 和其他消费者应以 selected=None 判定基线未运行候选，不得以兼容 policy_version 误标 v1，也不得以模块单测关闭 P1 |
+| Radar-only 扫描间 Hungarian 交叉换绑 | **v1、v2 系统候选均已拒绝；v2 图论模块验证通过；身份连续性 P1 开放** | v2 的 cycle/free-row/free-column 允许边识别通过 D1 `220 tests`、scalable `142 tests` 和 main 独立 2,666 个小图穷举 oracle。clean commit `c928727` 的首个未见 seed 1100 A/B 为 200v200、2.2 s、`recon_count=2`；两端同 commit、dirty=false、配置哈希 `20ef5248...b840`，runtime profile 为 `b508f675...12a8 / 9680c45b...f9f4`，仅 v2 treatment 不同。两组 finite、online truth=0；online/radar observations、target labels、known false alarms 均为 `2035/1954/2352/90`。ambiguous `0->0`、IDSW `9->9`、D1 tracks `202->202`；D2 `203->199`、D3 `200->196`、track continuity `.865->.830`、coverage continuity `.870->.835`、available `1566->1503`、unavailable `230->266`。v2 suppression `77/1954=3.94%`、ambiguity scans=9、track coast=91 | 整 allowed-edge 分量 fail-closed 干预过保守，无身份收益且降低下游可用性。按预注册门槛停止 seeds 1101/1102、10 s 和 20-seed；v2 不晋级并保持默认关闭。P1 不关闭。后续若提出新 intervention，应复用已验证图论边界，但必须作为新候选从未见 seed 重新验收 |
 | 匿名雷达/视觉跨模态混轨 | **已复现的 D1 解析缺陷关闭；20-seed 系统复核 P1 开放** | clean `5263e2b` nominal 200v200/10 s/seed 1000，771 scans/11,889 anonymous obs，在线 truth 0。冻结 `camera_model` 为只读 `Mapping` 时，旧解析丢失旋转/内参并使用默认投影；候选恢复真实几何，非法外参和相机后方投影 fail closed。D2 标出的 17 条视觉污染观测 17/17 离开原错误航迹并进入离线标签单一谱系。终态 `201 -> 202`，新增雷达出生 `radar-s000030-d0116`；规范状态/谱系 hash `39d0cdf5...02d7 -> b0d6c4ac...d717`。D1 全量 `191 passed` | main 在 clean 候选上重跑 seeds 1000-1019，D2 重新审计历史 118 个多真值航迹帧。完整 sidecar 前严格身份指标保持 unavailable；不得将单 seed 17/17 外推为 20-seed 关闭 |
 | Scan-input claim 重复 JSON 规范化 | **D1-owned 热点已关闭；clean 多 seed 集成收益 P1 开放** | clean `5263e2b` nominal 200v200/10 s/seed 1000 冻结输入，771 scans/11,889 obs/SHA-256 `5d033a04...67ce8f`。旧/新 claim registry、逐输入事件、发布顺序、逐 fusion 状态/协方差/双时间戳/谱系/分级、操作计数、累计诊断、终态和一致性证据严格一致；registry hash 均为 `22a71336...b8fd7`。771 scans 交错 5 轮 P50/P95 `3.618/4.049 -> 1.905/2.038 s`，P50 1.899x；`_json_safe` cProfile `5.781 -> 1.992 s`。全量 `185 passed`。原 clean 20-seed 基线 scan-input/fusion 累计均值为 `9.671/43.774 s`，episode P95 均值 `135.454/233.488 ms` | main 在当前候选提交复跑预注册多 seed clean full-stack，比较 episode scan-input P50/P95/max、核心 RTF 和 RSS。不得把单 seed函数级计时直接外推成 20-seed 或实时收益 |
 | 尾延时 profiler 与完整帧复用 | **重复 frame/observation 快照热点已在 D1 冻结 replay 关闭；fusion 与 clean full-stack P1 开放** | clean `4ac3bb2` nominal 200v200/10 s/seed 1000 冻结输入，771 scans/11,889 obs/SHA-256 `c1dda852...66f77a`；帧重建 `771 -> 0`、再快照 `11,889 -> 0`；前 256 scans 交错 5 轮 P50/P95 `1.942/1.968 -> 0.881/0.894 s`，墙钟不参与验收。逐输入、逐 fusion 状态/协方差/双时间戳/谱系/分级、物化航迹、终态、证据、逐扫描操作数及累计诊断全部严格一致；operation hash `82728a8e...bfb5bf`；main 实测当前 D1 全量 `185 passed`。fusion cProfile 仍由 GlobalTrack 物化、扫描关联、代价矩阵和 replay 主导 | claim 重复 JSON 规范化已由最新一项关闭；继续治理非 claim audit/event、长期 claim registry 内存、GlobalTrack 物化及 radar/rebase，但不得缩窗口、丢观测、降频、放宽门控或使用 truth。当前工作区复放非 clean 放行、非 AirSim、非正式多 seed、未实时 |
@@ -37,10 +37,15 @@ likelihood 排名生成在线身份，但它只覆盖已匹配行 SCC，遗漏 f
 `8f17c5d` 默认关闭的 3/3 跨构建语义等价证明回退无业务回归。
 
 v2 已补齐最大匹配允许边的数学边界。匹配边反向、其他门内边正向后，强连通分量识别交替环，
-free-row 正向可达集和 free-column 反向可达集识别两类等基数路径。允许边无向分量中的 matched
-和 unmatched observations 统一抑制，避免 free column 在 update 被阻断后进入 birth。该能力
-默认关闭，审计状态明确为待 main clean A/B。当前 `220 passed in 17.36s` 只证明 D1 模块行为、双时间戳、
-协方差和 ID 所有权合同，不证明系统航迹与分配可用性。
+free-row 正向可达集和 free-column 反向可达集识别两类等基数路径。D1 `220 tests`、scalable
+`142 tests` 和 2,666 个小图穷举 oracle 共同证明图边界与数据合同，没有证明 suppression
+intervention 有效。
+
+seed 1100 clean A/B 已完成这一系统判定。v2 将允许边无向分量中的 matched/unmatched
+observations 全部抑制，避免 free column birth，但也抑制了 77 条雷达观测并使 91 个 track
+coast。ambiguous mapping 和 ID switch 不变，下游 D2/D3、连续性与映射可用性下降。v2 因而被
+拒绝并保持默认关闭，P1 身份连续性开放。显式启用 v2 时，审计状态固定为
+`experimental_v2_enabled_rejected_candidate`，准确表示运行的是已被系统门槛拒绝的研究候选。
 
 早先 `/tmp/msm-clean-radar-d967c96` 实际是 `recon_count=8` stress，配置哈希
 `cc6/cbb/9f45`，不能与 recon=2 `488dc39` baseline 直接比较。该 stress seed1001 的

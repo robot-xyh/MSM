@@ -1,6 +1,6 @@
 # D1 多传感器融合与目标配准实施计划
 
-## 最大匹配允许边分量 v2 验收计划（2026-07-23）
+## 最大匹配允许边分量 v2 验收结论与后续计划（2026-07-23）
 
 D1 已完成
 `fail_closed_maximum_matching_allowed_edge_component_v2` 的模块实现。配置
@@ -17,20 +17,34 @@ free column 的交替路径。含替代允许边的连通分量整体执行 obse
 4. 完成 `2x2`、`3x2`、`2x3`、唯一匹配、门外边、首扫、fallback、OOSM 和 200 稀疏图回归；
 5. 增加显式审计选择字段：关闭时 selected 为 `None`，启用时为 v1 或 v2；历史
    `policy_version` 仅为兼容字段，不能单独用于判断运行策略；
-6. v1/v2 专项 `29 passed`，D1 全量 `220 passed in 17.36s`。
+6. 显式启用 v2 时，稳定审计状态为
+   `experimental_v2_enabled_rejected_candidate`；它表示运行的是已被系统门槛拒绝的研究候选，
+   不表示候选重新进入验收；
+7. v1/v2 专项 `29 passed`，D1 全量 `220 passed`；main 独立穷举 2,666 个小图 oracle
+   通过，scalable 模块 `142 passed`。
 
-main 后续验收按以下顺序执行：
+main 已在 clean commit `c928727` 执行首个未见 seed A/B：
 
-1. 在未用于开发的 detached clean 提交上冻结 baseline 和 v2 配置、输入摘要及配置哈希；
-2. 先运行 200v200、2.2 s、`recon_count=2` 的未见 seed 小矩阵，禁止复用 v1 的三 seed调参；
-3. 同时统计 strict identity、ambiguous mapping、D1/D2 航迹和 continuity、D3 assignment、
-   suppression、birth/recall、有限性和在线 truth 使用；
-4. 只有短时业务可用性不退化后，才进入 10 s 跨模态后果与更多 seed；本模块任务不运行这些
-   集成实验；
-5. 任一 identity 改善伴随航迹或分配显著下降时，保持默认关闭并记录拒绝原因。
+1. 场景为 200v200、2.2 s、`recon_count=2`、seed 1100；baseline/v2 使用同一 commit，
+   `repository_dirty=false`、`config_sha256=20ef5248...b840`，runtime profile 分别为
+   `b508f675...12a8` 和 `9680c45b...f9f4`，仅 v2 treatment 不同；
+2. 两组 finite=true、online truth=0，online observations=2,035、radar observations=1,954、
+   target labels=2,352、known false alarms=90；
+3. ambiguous mappings `0 -> 0`、D1 tracks `202 -> 202`、ID switch `9 -> 9`，没有身份收益；
+4. D2 tracks `203 -> 199`、D3 assignments `200 -> 196`、track continuity
+   `.865 -> .830`、coverage continuity `.870 -> .835`、available mappings
+   `1566 -> 1503`、unavailable mappings `230 -> 266`；
+5. v2 在 9 个 ambiguity scans 中 suppression `77/1954=3.94%`，track coast=91。
 
-当前状态是“实验候选、待 main clean A/B”，不构成 P1 关闭或主线晋级。默认行为继续使用基线
-Hungarian，D1 不改写 `global_track_id`，不改变固定滞后、协方差、NED 或双时间戳合同。
+预注册门槛要求身份收益和下游可用性同时成立。seed 1100 没有改善 ambiguous mapping 或
+ID switch，却降低 D2/D3、continuity 和映射可用性，因此已停止 seeds 1101/1102、10 s 和
+20-seed。v2 系统候选被拒绝，保持默认关闭；图论模块验证仍有效，不能据此推导 intervention
+有效。P1 身份连续性继续开放。
+
+后续计划不再调 v2 阈值或扩大该候选样本。若提出新候选，应复用已验证的最大匹配允许边边界，
+重新设计比整分量 fail-closed 更节制的证据积累、局部延迟提交或分级 suppression，并从新的
+未见 seed 开始预注册验收。默认行为继续使用基线 Hungarian；D1 不改写 `global_track_id`，
+不改变固定滞后、协方差、NED 或双时间戳合同。
 
 ## 匿名雷达交替环 v1 阻断与后续计划（2026-07-23）
 
@@ -66,7 +80,8 @@ range/azimuth/elevation；零 radial velocity 是未观测 placeholder，不能�
 2. 仅在显式实验中设为 `True`，运行
    `fail_closed_gate_feasible_alternating_cycle_v1` 并读取 enabled/status/version 审计；
 3. v2 已作为独立、默认关闭的模块候选实现，已证明最大基数匹配上的 cycle、free-row 和
-   free-column allowed-edge 边界；是否接受 suppression 仍由新的 clean A/B 决定；
+   free-column allowed-edge 边界；seed 1100 clean A/B 已因无身份收益且下游退化拒绝该
+   suppression intervention；
 4. 新候选必须在未用于调参的 detached clean 输入上同时通过 ambiguous、strict identity、
    D1/D2 track continuity、D3 availability、birth/recall 和长期跨模态后果；
 5. 10 s radar+vision ambiguous 不能证明纯 radar 根因，但属于长期 coast 的集成验收范围；

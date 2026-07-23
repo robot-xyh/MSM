@@ -83,8 +83,11 @@ radar_assignment_ambiguity_governance_enabled = true
 radar_assignment_ambiguity_policy_version =
   fail_closed_maximum_matching_allowed_edge_component_v2
 radar_assignment_ambiguity_governance_status =
-  experimental_v2_enabled_pending_main_clean_ab
+  experimental_v2_enabled_rejected_candidate
 ```
+
+该 status 表示运行时显式启用了已经被系统验收门槛拒绝、默认关闭的研究候选。它不表示 v2
+重新进入 clean A/B，也不改变算法开关的默认值。
 
 为保持 `d1.association_audit.v1` 的既有消费者兼容，历史
 `radar_assignment_ambiguity_policy_version` 在两种开关均关闭时仍返回 v1。新增字段消除其
@@ -113,13 +116,45 @@ radar_assignment_ambiguity_candidate_policy_versions = (v1, v2)
 
 模块回归包括 `2x2` cycle、`3x2` free-row、`2x3` free-column、唯一最大匹配、门外边、
 首扫无 track、greedy fallback、OOSM 和 200 航迹稀疏图。专项 v1/v2 共 `29 passed`，D1
-全量 `220 passed in 17.36s`。测试检查双时间戳、有限半正定 `6x6` covariance 和既有
-`global_track_id` 集合。开发期间的小规模随机图还与穷举最大匹配 oracle 对照增广基数及
-允许边分量；穷举代码不属于运行路径。
+全量 `220 passed`。测试检查双时间戳、有限半正定 `6x6` covariance 和既有
+`global_track_id` 集合。main 独立穷举 2,666 个小型二部图，最大匹配基数与允许边分量均与
+oracle 一致；scalable 模块 `142 passed`。穷举代码不属于运行路径。
 
-本实现只达到模块候选状态。尚未运行新的 detached clean A/B、10 s、20-seed 或 AirSim，不能
-宣称 strict identity、continuity 或 D3 availability 改善。main 必须用未见输入同时验收
-identity、D1/D2 航迹、D3 分配、suppression、birth/recall 和长期跨模态后果。
+#### Clean 系统 A/B 与候选拒绝
+
+main 在 clean commit `c928727` 运行首个未见 seed 1100。baseline/v2 均为 200v200、2.2 s、
+`recon_count=2`，使用同一 commit，`repository_dirty=false`、
+`config_sha256=20ef5248...b840`。runtime profile 分别为 `b508f675...12a8` 和
+`9680c45b...f9f4`，只改变 v2 treatment。两组 finite=true、online truth=0；online
+observations=2,035、radar observations=1,954、target labels=2,352、known false alarms=90，
+说明输入和离线评分标签数量一致。
+
+结果如下：
+
+```text
+ambiguous mappings       0 -> 0
+D1 tracks              202 -> 202
+D2 tracks              203 -> 199
+D3 assignments         200 -> 196
+ID switch                9 -> 9
+track continuity      .865 -> .830
+coverage continuity   .870 -> .835
+available mappings    1566 -> 1503
+unavailable mappings   230 -> 266
+```
+
+v2 检出 9 个 ambiguity scans，抑制 `77/1954=3.94%` 的雷达观测，track coast=91。身份指标
+ambiguous mapping 和 ID switch 均无改善，D1 航迹数量不变，但 D2 航迹、D3 分配、连续性和
+映射可用性下降。
+
+图论算法回答“哪些门内边可能进入某个最大匹配”。当前 intervention 进一步把含替代边的整个
+允许边分量全部停止 update 和 birth。seed 1100 表明后一步过于保守：正确识别不确定边界并不
+意味着所有相关信息都应在该扫描被丢弃。
+
+该结果触发预注册停止门槛。seeds 1101/1102、10 s 和 20-seed 不再运行；v2 不晋级并保持
+默认关闭。模块图论验证继续有效，系统收益结论为拒绝，P1 身份连续性保持开放。后续若设计局部
+延迟提交、跨扫描证据积累或分级 suppression，必须作为新候选重新验收，不能沿用 v2 的系统
+放行结论。
 
 ### Radar assignment ambiguity 实验候选 v1
 
@@ -218,7 +253,7 @@ Hungarian: global_track_187 -> observation，cost = 0.80058
 替代边占用 observation 并释放 `global_track_187`，匹配基数不变。这是 free-row alternating
 path；v1 的已匹配行 SCC 看不到它。一般矩形图还存在通向 free column 的同基数路径，相关
 unmatched observation 若不治理可能落入 birth。full alternating-path v2 现已按上一节完成
-模块实现，但尚未经过 main detached clean A/B。
+模块实现并经过 main seed 1100 detached clean A/B；图论验证通过，系统 intervention 被拒绝。
 
 同一 recon=8 stress seed1001 的 1,966 条 radar 原始量测全部是三维
 range/azimuth/elevation 和 `3x3` covariance。转换后的第 4 维零值明确是
@@ -237,8 +272,8 @@ suppression；性能和规模 fixture 不再 subclass override 生产逻辑。�
 可晋级。
 
 结论是 v1 默认关闭且已被 clean A/B 拒绝，P1 未关闭。v2 已覆盖最大基数 matching allowed
-edges 的 cycle/free-row/free-column，但仍须在新的 detached clean 输入上联合验收 ambiguous、
-strict identity、continuity、D3 availability、suppression、birth/recall。10 s radar+vision
+edges 的 cycle/free-row/free-column，但 seed 1100 clean A/B 已确认当前整分量 suppression
+没有身份收益并降低下游可用性，因此同样不晋级。10 s radar+vision
 ambiguous 不能单独证明 radar-only 根因，但长期 coast 与跨模态传播仍必须进入集成验收。
 
 ### 匿名跨模态几何门控

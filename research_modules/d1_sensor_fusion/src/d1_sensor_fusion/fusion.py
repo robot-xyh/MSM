@@ -147,6 +147,9 @@ RADAR_ASSIGNMENT_AMBIGUITY_CANDIDATE_POLICY_VERSIONS = (
     RADAR_ASSIGNMENT_AMBIGUITY_POLICY_VERSION,
     RADAR_ASSIGNMENT_AMBIGUITY_POLICY_V2_VERSION,
 )
+RADAR_ASSIGNMENT_AMBIGUITY_V2_GOVERNANCE_STATUS = (
+    "experimental_v2_enabled_rejected_candidate"
+)
 
 
 def _radar_lower_bound_applicability(
@@ -1624,7 +1627,7 @@ class FusionAdapter:
                 RADAR_ASSIGNMENT_AMBIGUITY_POLICY_V2_VERSION
             )
             ambiguity_governance_status = (
-                "experimental_v2_enabled_pending_main_clean_ab"
+                RADAR_ASSIGNMENT_AMBIGUITY_V2_GOVERNANCE_STATUS
             )
         else:
             ambiguity_policy_version = RADAR_ASSIGNMENT_AMBIGUITY_POLICY_VERSION
