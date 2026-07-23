@@ -589,27 +589,14 @@ def build_camera_overlap_index(
     for values in buckets.values():
         values.sort()
 
-    occupied = frozenset(buckets)
+    occupied = tuple(sorted(buckets))
     max_radius = max(bucket_radius.values(), default=0)
-    bucket_pairs: set[
-        tuple[tuple[int, int, int], tuple[int, int, int]]
-    ] = set()
-    for left_bucket in sorted(occupied):
-        search_radius = min(
-            cfg.camera_index_max_search_radius_cells,
-            bucket_radius[left_bucket] + max_radius,
-        )
-        for north_offset in range(-search_radius, search_radius + 1):
-            for east_offset in range(-search_radius, search_radius + 1):
-                for down_offset in range(-search_radius, search_radius + 1):
-                    right_bucket = (
-                        left_bucket[0] + north_offset,
-                        left_bucket[1] + east_offset,
-                        left_bucket[2] + down_offset,
-                    )
-                    if right_bucket not in occupied or right_bucket < left_bucket:
-                        continue
-                    bucket_pairs.add((left_bucket, right_bucket))
+    bucket_pairs = _occupied_bucket_pairs(
+        occupied,
+        bucket_radius,
+        max_radius=max_radius,
+        max_search_radius=cfg.camera_index_max_search_radius_cells,
+    )
 
     ordered_bucket_pairs = sorted(
         bucket_pairs,
@@ -707,6 +694,29 @@ def build_camera_overlap_index(
         camera_pairs=tuple(sorted(retained)),
         candidate_counts=counts,
     )
+
+
+def _occupied_bucket_pairs(
+    occupied_buckets: Sequence[tuple[int, int, int]],
+    bucket_radius: Mapping[tuple[int, int, int], int],
+    *,
+    max_radius: int,
+    max_search_radius: int,
+) -> tuple[tuple[tuple[int, int, int], tuple[int, int, int]], ...]:
+    """Return the exact occupied pairs without probing empty lattice cells."""
+
+    pairs: list[tuple[tuple[int, int, int], tuple[int, int, int]]] = []
+    for left_index, left_bucket in enumerate(occupied_buckets):
+        search_radius = min(
+            max_search_radius,
+            int(bucket_radius[left_bucket]) + max_radius,
+        )
+        for right_bucket in occupied_buckets[left_index:]:
+            if max(
+                abs(left_bucket[axis] - right_bucket[axis]) for axis in range(3)
+            ) <= search_radius:
+                pairs.append((left_bucket, right_bucket))
+    return tuple(pairs)
 
 
 def _camera_coverage_descriptor(

@@ -1,0 +1,79 @@
+{
+  "schema_version": "d5-scalable3d-camera-overlap-ab-v1",
+  "date": "2026-07-22",
+  "baseline_commit": "f80b5bd",
+  "candidate_parent_commit": "12c5073",
+  "scenario": "nominal 200v200, 10.0 s, frozen online replay",
+  "optimization": "enumerate occupied camera-index bucket pairs directly",
+  "aggregate": {
+    "legacy_median_elapsed_s_mean": 1.486027946676283,
+    "optimized_median_elapsed_s_mean": 1.2416276134899817,
+    "elapsed_reduction_fraction": 0.16446550263939386,
+    "speedup": 1.196838674116902
+  },
+  "profile_seed_42000": {
+    "legacy_camera_overlap_cumulative_s": 0.357,
+    "legacy_camera_overlap_self_s": 0.248,
+    "optimized_camera_overlap_cumulative_s": 0.117,
+    "optimized_occupied_pair_helper_cumulative_s": 0.005
+  },
+  "seeds": [
+    {
+      "seed": 42000,
+      "online_log_sha256": "32a27d2b319fe7dcb85fa64f0dd491dfd4b7881d1d35dc8f5620da7d8612eee8",
+      "frame_count": 116,
+      "legacy_repeat_count": 8,
+      "optimized_repeat_count": 8,
+      "legacy_elapsed_s": [2.066963061981369, 1.5393426149967127, 1.5154296309920028, 1.570821634028107, 1.5623194630024955, 1.7601133799762465, 1.518897548026871, 1.458818994986359],
+      "optimized_elapsed_s": [1.3025503989774734, 1.2575824750238098, 1.226567153003998, 1.3043784209876321, 1.606398681004066, 2.3396313979756087, 1.3214383769663982, 1.3614790680003352],
+      "legacy_median_elapsed_s": 1.550831038999604,
+      "optimized_median_elapsed_s": 1.3129083989770152,
+      "elapsed_reduction_fraction": 0.15341622268281774,
+      "core_sha256": "7f212c56a6b477f58a37a692f7f3f2c227509dd1f485100f2b1c1a61435254e4",
+      "final_binding_sha256": "20b3680b26ebe3cca6bd9252141f6a24c651f5c0ffd09e65a40872dfa825d61f",
+      "operation_counts_sha256": "2577b18169ab23db9600e449ebb2c2e6b01ac78ca601b52c4021dbf534d639cf"
+    },
+    {
+      "seed": 42001,
+      "online_log_sha256": "6a82ceb48562f47a0224fe8682f1cf67959f1da6b28f3875e4d8b0bb8cc82544",
+      "frame_count": 119,
+      "legacy_repeat_count": 4,
+      "optimized_repeat_count": 4,
+      "legacy_elapsed_s": [1.923814146022778, 1.510289163037669, 1.491421259008348, 1.359671306970995],
+      "optimized_elapsed_s": [1.3756339240353554, 1.3199766810284927, 1.2049947450286709, 1.11151208600495],
+      "legacy_median_elapsed_s": 1.5008552110230085,
+      "optimized_median_elapsed_s": 1.2624857130285818,
+      "elapsed_reduction_fraction": 0.15882244752440178,
+      "core_sha256": "4dc08a636d91438e3b41d177a13e00a425cec77755ce8f307b4d01179acb4e09",
+      "final_binding_sha256": "697470ca86835710e2cc399af7ee0b41f29305423d20f7af4cd7f11803d29a24",
+      "operation_counts_sha256": "8741822e44b8cafe48b7ac5d5bddf9471be8a469430b1d4b45db407d5e73d3b8"
+    },
+    {
+      "seed": 42002,
+      "online_log_sha256": "0bf7b1d9e7657a8dce5e509bdbaf088971c18b8206f76f1073351154711272be",
+      "frame_count": 118,
+      "legacy_repeat_count": 4,
+      "optimized_repeat_count": 4,
+      "legacy_elapsed_s": [1.3104064220096916, 1.3447162969969213, 1.4680788830155507, 1.4946368589880876],
+      "optimized_elapsed_s": [1.135018634959124, 1.1639588219695725, 1.168051397020463, 1.1167376630473882],
+      "legacy_median_elapsed_s": 1.406397590006236,
+      "optimized_median_elapsed_s": 1.1494887284643482,
+      "elapsed_reduction_fraction": 0.18267157407511525,
+      "core_sha256": "da40aaa7fb49978c84b16457737d08a819ad6e17fb5217caa4fa57df5d26a6e7",
+      "final_binding_sha256": "770a607df7181d787afc1d3b88693d993b004afffc7610fe2eb337b65980c1f1",
+      "operation_counts_sha256": "dc8fe434479d98db2dfb13d86ebc308d489079c10e6fdd7b0fd446f689faa689"
+    }
+  ],
+  "semantic_gates": {
+    "recorded_core_match_all_frames": true,
+    "final_binding_match": true,
+    "geometry_diagnostics_match": true,
+    "operation_counts_match": true,
+    "active_vision_command_sha256_match_seed_42000": true,
+    "online_truth_use_count": 0,
+    "global_track_id_mutation_count": 0,
+    "frame_or_candidate_reduction": false,
+    "threshold_change": false,
+    "d7_gate_change": false
+  }
+}

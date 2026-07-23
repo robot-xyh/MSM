@@ -13,6 +13,7 @@ from d5_terminal_association.sparse_tracklet_graph import (
     CameraLocalTracklet,
     SparseTrackletGraphConfig,
     TrackletCameraGeometry,
+    _occupied_bucket_pairs,
     bind_clusters_to_center_tracks,
     build_camera_overlap_index,
     build_sparse_tracklet_graph,
@@ -183,6 +184,52 @@ def test_camera_pair_budget_clipping_order_is_input_order_independent() -> None:
     assert forward.camera_pairs == reverse.camera_pairs
     assert forward.candidate_counts == reverse.candidate_counts
     assert forward.candidate_counts["camera_pair_budget_dropped"] == 183
+
+
+def test_occupied_bucket_pairs_match_legacy_lattice_probe_exactly() -> None:
+    occupied = tuple(
+        sorted(
+            {
+                (-7, 2, 4),
+                (-3, -1, 0),
+                (0, 0, 0),
+                (1, 2, -1),
+                (5, -4, 3),
+                (8, 2, 4),
+            }
+        )
+    )
+    radius = {bucket: 1 + index % 4 for index, bucket in enumerate(occupied)}
+    max_radius = max(radius.values())
+    maximum_search_radius = 7
+
+    legacy: set[tuple[tuple[int, int, int], tuple[int, int, int]]] = set()
+    occupied_set = frozenset(occupied)
+    for left_bucket in occupied:
+        search_radius = min(
+            maximum_search_radius,
+            radius[left_bucket] + max_radius,
+        )
+        for north_offset in range(-search_radius, search_radius + 1):
+            for east_offset in range(-search_radius, search_radius + 1):
+                for down_offset in range(-search_radius, search_radius + 1):
+                    right_bucket = (
+                        left_bucket[0] + north_offset,
+                        left_bucket[1] + east_offset,
+                        left_bucket[2] + down_offset,
+                    )
+                    if right_bucket in occupied_set and right_bucket >= left_bucket:
+                        legacy.add((left_bucket, right_bucket))
+
+    current = _occupied_bucket_pairs(
+        occupied,
+        radius,
+        max_radius=max_radius,
+        max_search_radius=maximum_search_radius,
+    )
+
+    assert set(current) == legacy
+    assert len(current) == len(set(current))
 
 
 def test_tracklet_candidate_degree_is_bounded_before_geometry_and_deterministic() -> None:
