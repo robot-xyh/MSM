@@ -1574,3 +1574,73 @@ OSPA/GOSPA 或 AirSim 原生 recording parser。
 
 GAP 状态：D6 consumer 和 main v2 真实 episode 持久化子项已关闭；候选算法准入与系统性能 P1
 保持开放。当前无新增 P0，外部 evaluator P2/P3 状态不变。
+
+## 2026-07-23 发布新鲜度 A/B 与 partial 分类绑定 GAP
+
+### 已闭合的 D6-owned 项
+
+1. 已独立消费 clean commit `65568579c99e4ef9939f0519f66c46d3076ef035` 的 seed 1100
+   baseline/candidate。episode identity、identity evaluation/manifest SHA、D6 manifest
+   来源摘要和在线真值隔离均通过。
+2. 新 publication-stale recovery reason 已进入 commitment reason/recovery-blocked count。
+   candidate 计数为 3；1711 committed、69 hold、7 after hold，coverage
+   `0.9574706212`，source/candidate binding violation 为 `0/0`。
+3. strict-unavailable 消费缺口已关闭。baseline/candidate 的 strict IDSW 为 `9/3`，
+   track continuity `0.865/0.8266667`，coverage continuity `0.870/0.8283333`，
+   duplicate assignment `0/0`，均保持 producer availability。
+4. 发现并修复明确 D6-owned partial 绑定回归。D2 audit 对
+   `unavailable/excluded/uncommitted` 分栏，partial 将三者合并；D6 现按分类和校验并保持
+   total 守恒。baseline 的 `230+4+0=234`、candidate 的 `218+2+76=296` 均通过。
+5. 修复后两组 partial provenance 均 verified，IDSW lower bound `9/3`，未回填 strict。
+   新增生产分区正例和分类缺口负例；D6 全量
+   `600 passed, 1 warning in 21.55s`。
+
+### 仍开放的跨模块 P1
+
+1. 当前制品没有持久化 `identity_commitment_recovery_config` 完整快照。main/D2 需将
+   schema、config version、门控开关、年龄预算、时钟和 stale behavior 纳入公共
+   runtime profile/manifest；D6 再做 SHA-bound 配置消费。现在只能验证门控行为，不能独立
+   证明配置版本和 `0.9 s` 预算。
+2. 原 A/B 目录的 `d6_truth_isolated/episode_record.json` 由修复前 consumer 生成，partial
+   仍显示 mismatch。main 应在集成 D6 修复后写出新的派生 bundle，不覆盖原 clean 证据目录。
+3. 结构歧义候选仍未准入。D2 tracks `203 -> 201`、D3 assignments `200 -> 197`、
+   track continuity 下降 `0.0383333`、coverage continuity 下降 `0.0416667`。seeds
+   1101/1102 继续停止。
+4. 真实 AirSim、多 seed、多规模、困难谱系、长时 recovery/blocker/overflow 和最终统一
+   scalable 3D 报告仍开放。
+
+截至该轮无新增 P0。D6 partial consumer 回归和 strict availability 子项已经关闭；算法准入、
+旧制品配置 provenance 与正式性能证据仍为 P1。配置 consumer 的后续关闭状态见下一节。
+P2/P3 外部 evaluator 状态不变。
+
+## 2026-07-23 Manifest v2 配置谱系 GAP 更新
+
+### 已闭合
+
+上一节“D6 再做 SHA-bound 配置消费”已完成。D6 现在：
+
+1. 接受 `scalable3d-offline-identity-evaluation-manifest-v1/v2`；
+2. 对 v2 复算完整 recovery config 的规范 SHA-256；
+3. 验证配置 schema、非空快照、记录数、`d2_record_count`、consistency/source 声明；
+4. 验证 online D2 JSONL 文件 SHA 同时匹配调用方、identity evaluation 与 manifest；
+5. 逐条比较 `payload.association.identity_commitment.recovery_config`；
+6. 在 episode JSON、CSV、batch provenance 和 runtime admission 中暴露验证结果；
+7. 对 v1 保留 strict/partial 指标，并将新增谱系标为 unavailable；
+8. 对 v2 篡改、缺字段、错误摘要、帧间漂移和计数不符失败关闭。
+
+专项 `83 passed`，D6 全量 `611 passed, 1 warning in 21.55s`，验收零失败。D6-owned 配置
+谱系 consumer P1 关闭。真实 main 三维质点 3 对 3、seed 70、1.2 秒生产接线用例同时通过，
+manifest v2 绑定 3 条 D2 发布；该证据不是 AirSim 或 200 对 200 性能结论。
+
+### 仍开放 P1
+
+1. main 需使用 producer manifest v2 重跑 clean seed 1100 baseline/candidate，并将新配置
+   谱系写入最终 D6 episode record 和 aggregate。该重跑尚未进行。
+2. 结构歧义候选仍需先解决 D2/D3 数量与 continuity 退化，再决定是否恢复 seeds
+   1101/1102。
+3. 真实 AirSim、多 seed、多规模、困难谱系和长时 recovery/blocker/overflow 证据未完成。
+4. 新 producer episode 的配置 SHA、online D2 records SHA 和记录数需要由 main 的跨模块
+   manifest 再做端到端绑定；D6 API 已就绪。
+
+当前无 D6-owned P0。P2/P3 外部 evaluator 状态不变。旧 A/B 制品的配置谱系不可用属于历史
+证据限制，不应重新归类为 consumer 缺口。

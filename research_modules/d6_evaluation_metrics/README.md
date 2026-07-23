@@ -1880,3 +1880,84 @@ continuity 和 coverage 标为 unavailable，原因是
 由 baseline 的 `203/200` 降至 candidate 的 `201/197`。本次只证明 v2 显式未承诺覆盖、
 独立审计和安全绑定在真实 producer episode 中可工作；结构歧义候选未通过准入，seed
 1101/1102 未继续执行。该 episode 属于 clean 三维质点验证，不是 AirSim 实验。
+
+## 发布新鲜度 A/B 与部分身份计数修正（2026-07-23）
+
+main 在 clean commit `65568579c99e4ef9939f0519f66c46d3076ef035` 上重新执行 seed 1100
+A/B。场景仍为 nominal 200 对 200、2 个侦察节点、2.2 秒三维质点 episode。baseline 和
+candidate 的 root manifest 均为 clean，episode ID 在 summary、identity evaluation、
+identity manifest、D6 episode record 和 D6 manifest 之间一致；identity evaluation 与
+identity manifest 的 SHA-256 绑定、D6 manifest 对两者的来源摘要均通过独立复算。两组
+`online_truth_use_count=0`。
+
+发布新鲜度候选已关闭上一轮 strict-unavailable 阻断。D6 从 D2 evaluation 原样消费到：
+
+- baseline：strict IDSW `9`、track continuity `0.865`、coverage continuity `0.870`、
+  duplicate assignment `0`、D2/D3 数量 `203/200`；
+- candidate：strict IDSW `3`、track continuity `0.8266667`、coverage continuity
+  `0.8283333`、duplicate assignment `0`、D2/D3 数量 `201/197`；
+- candidate 的 1787 条 commitment records 包含 1711 条 committed、69 条 active hold 和
+  7 条 after hold，all-record coverage 为 `0.9574706212`；
+- 3 条 after-hold 恢复以
+  `identity_recovery_blocked_source_observation_outside_recovery_publication_freshness_window`
+  失败关闭，source/candidate binding violation 为 `0/0`。
+
+本轮同时修复了一个 D6-owned partial consumer 回归。D2 audit 将 mapping 分为
+`available/ambiguous/unavailable/excluded/uncommitted`，partial v1 则把后三类合并为
+`unavailable_mapping_count`。旧 D6 错误地把 audit 的单独 `unavailable` 与 partial 合并值
+直接比较，导致 baseline 的 `230+4+0=234` 和 candidate 的 `218+2+76=296` 被误报为
+`partial_identity_audit_binding_mismatch`。现在按分类和校验：
+
+```text
+partial unavailable
+  = audit unavailable + audit excluded + audit uncommitted
+```
+
+并继续要求全部分类覆盖 `total_mapping_count`。修复后直接重读原始 producer 制品，baseline
+和 candidate 的 partial provenance 均通过，IDSW lower bound 分别为 `9` 和 `3`。lower bound
+仍不回填 strict，也不参与控制。原 A/B 目录内既有
+`d6_truth_isolated/episode_record.json` 是修复前输出，其 partial mismatch 仅记录旧 consumer
+状态；main 集成本修复后应从未改动的 producer 制品生成新的 D6 派生 bundle，不覆盖原始 A/B
+证据目录。
+
+当前制品没有持久化 `identity_commitment_recovery_config` 完整快照。D6 可以验证 v2
+commitment/audit schema、新阻断原因和实际 fail-closed 计数，但不能仅凭该制品独立证明运行时
+使用了 `d2.identity-commitment-recovery-config.v2`、门控开启状态和 `0.9 s` 预算。这是
+main/D2 producer 到 D6 provenance 的跨模块 P1，不影响本轮 strict 数值和零绑定违规结论。
+
+候选保持默认关闭。strict availability 门已通过，算法准入仍失败：D2 航迹少 2 条、D3 分配少
+3 条，track continuity 下降 `0.0383333`，coverage continuity 下降 `0.0416667`。按冻结的
+非退化门槛停止 seeds 1101/1102。新增两项分类守恒回归后，D6 全量为
+`600 passed, 1 warning in 21.55s`；warning 是既有 Matplotlib `Axes3D` 环境提示。
+
+## 身份恢复配置谱系 v2（2026-07-23）
+
+D6 已实现 `scalable3d-offline-identity-evaluation-manifest-v2` 的独立消费。新增
+`D2IdentityRecoveryConfigProvenanceRecord`，只在以下条件全部成立时标记配置谱系可用：
+
+1. manifest 声明非空 `d2.identity-commitment-recovery-config.v2` 配置，并给出规范 JSON
+   SHA-256；
+2. `identity_commitment_recovery_config_record_count` 与 `d2_record_count` 相等；
+3. consistency 标志为真，source 严格等于
+   `payload.association.identity_commitment.recovery_config`；
+4. D2 在线 JSONL 的文件 SHA 同时匹配调用方期望值、identity evaluation 和 manifest；
+5. JSONL 每条 `modules.d2.associated_tracks` 记录携带完全相同的配置，实际行数与清单计数
+   相等。
+
+`adapt_d2_scalable_3d_identity()` 和 `build_truth_isolated_episode_record()` 新增可选参数
+`d2_online_d2_records` 与 `d2_expected_online_d2_records_sha256`。文件未显式传入时，可从
+identity evaluation 或 manifest 同目录发现 `online_d2_records.jsonl`。episode JSON、
+逐 seed CSV、batch provenance 和运行时计划结果均暴露配置快照、配置 SHA、manifest
+schema/SHA、在线记录 SHA、记录数、验证状态和失败原因。
+
+历史 manifest v1 路径保持兼容。strict IDSW、continuity 和 partial lower bound 继续按原合同
+计算；新增谱系单独显示
+`identity_recovery_config_not_manifest_bound_v1`。运行时计划结果接受 v1/v2；v2 的配置
+篡改、缺字段、错误摘要、帧间漂移或计数不符均拒绝整个联接。该验证不读取 truth ID，不回填
+strict IDSW。
+
+2026-07-23 完成专项与全量回归：身份离线/运行时专项 `83 passed`，D6 全量
+`611 passed, 1 warning in 21.55s`，验收门限为零失败。warning 仍是既有 Matplotlib
+`Axes3D` 环境提示。真实 main 三维质点 3 对 3、seed 70、1.2 秒接线用例也通过，manifest v2
+绑定 3 条 D2 发布。本轮没有重跑 seed 1100 最终 A/B，也没有启动 AirSim。旧 A/B 制品仍缺
+v2 配置快照；main 需用新 producer manifest 和本 D6 consumer 重新生成最终派生结果。

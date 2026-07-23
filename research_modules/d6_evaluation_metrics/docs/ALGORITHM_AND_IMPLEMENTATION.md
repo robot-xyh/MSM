@@ -2800,3 +2800,192 @@ delta_t = t_f - t_m
 unavailable。实现保持冻结窗口，不回填 strict 指标。candidate 的 D2/D3 数量为 `201/197`，
 低于 baseline 的 `203/200`。候选算法未通过准入，seed 1101/1102 停止。本次实测不是
 AirSim。
+
+## 20. 发布新鲜度 A/B 的 D6 消费修正（2026-07-23）
+
+### 20.1 输入审计
+
+输入为 clean commit `65568579c99e4ef9939f0519f66c46d3076ef035` 的 baseline/candidate。
+D6 独立核对：
+
+1. root manifest、summary、identity evaluation、identity manifest、D6 episode record 和
+   D6 manifest 的 episode ID；
+2. identity manifest 的 `source_hashes.identity_evaluation` 与实际 evaluation 文件；
+3. D6 manifest 的 `offline_identity_evaluation` 和 `offline_identity_manifest` 来源摘要；
+4. evaluation v2、commitment audit v2、embedded evidence bundle 与四类 source hash；
+5. strict availability/value、commitment state/reason、binding violation 和在线真值使用。
+
+上述检查均通过。baseline/candidate strict IDSW 为 `9/3`，track continuity 为
+`0.865/0.8266667`，coverage continuity 为 `0.870/0.8283333`，duplicate assignment 为
+`0/0`。
+
+### 20.2 Partial audit 分类守恒
+
+旧实现使用以下错误关系：
+
+```text
+audit.unavailable_mapping_count
+  == partial.unavailable_mapping_count
+```
+
+D2 producer 的两个字段分区不同。顶层 audit 单独保留 `excluded` 和 `uncommitted`，partial
+则把它们合并进 unavailable。修正后的关系为：
+
+\[
+N_{\mathrm{partial,unavailable}}
+= N_{\mathrm{audit,unavailable}}
++ N_{\mathrm{audit,excluded}}
++ N_{\mathrm{audit,uncommitted}}.
+\]
+
+并继续验证：
+
+\[
+N_{\mathrm{available}} + N_{\mathrm{ambiguous}}
++ N_{\mathrm{partial,unavailable}}
+= N_{\mathrm{total}}.
+\]
+
+legacy evaluation 没有 `excluded/uncommitted` 时，这两项按合同不可表达处理为 0；
+`audit.unavailable_mapping_count` 仍是必填非负整数。任一分区缺失、非法或不守恒继续返回
+`partial_identity_audit_binding_mismatch`。schema、scope、denominator definitions、coverage、
+manifest/SHA、truth isolation 和 lower-bound 校验不变。
+
+实际分区为：
+
+```text
+baseline: 230 unavailable + 4 excluded + 0 uncommitted = 234
+candidate: 218 unavailable + 2 excluded + 76 uncommitted = 296
+```
+
+修复后自动发现并验证同目录 identity manifest，baseline/candidate 的
+`provenance_verified=true`，partial IDSW lower bound 为 `9/3`。strict 指标路径没有变化，
+`strict_id_switch_count_backfilled=false` 保持成立。
+
+### 20.3 Recovery config 可追溯性
+
+candidate evaluation 已发布新阻断原因：
+
+```text
+identity_recovery_blocked_
+source_observation_outside_recovery_publication_freshness_window = 3
+```
+
+D6 commitment adapter 将该原因原样计入 all reason 和 recovery-blocked reason counts，并从
+逐记录复算得到相同结果。candidate 的 all-record commitment coverage 为
+`1711/1787=0.9574706212`，state counts 为 `1711 committed + 69 hold + 7 after hold`，
+两个 binding violation 为 0。
+
+当前 summary/evaluation/manifest 没有持久化完整
+`identity_commitment_recovery_config`。因此本轮只能验证门控行为和结果，不能验证配置 schema、
+config version、enabled 和预算。后续 producer 应将配置快照纳入 SHA-bound runtime profile；
+D6 再增加 availability-aware 配置证据，不从 reason 或默认构造函数反推。
+
+### 20.4 验证与判定
+
+新增两个回归用例：
+
+- v2 audit 将 unavailable/uncommitted 分栏时，partial 合并计数可通过；
+- audit 分类未覆盖 partial unavailable 时，partial 以原 reason 失败关闭。
+
+partial 专项为 `13 passed`，D6 全量为
+`600 passed, 1 warning in 21.55s`。warning 为既有 Matplotlib 环境提示。
+
+strict availability 已恢复，但候选不满足非退化准入：D2 tracks `203 -> 201`、D3
+assignments `200 -> 197`、track continuity 下降 `0.0383333`、coverage continuity 下降
+`0.0416667`。seeds 1101/1102 保持停止。本轮不是 AirSim，也不是多 seed 性能验收。
+
+## 21. 身份恢复配置谱系验证（2026-07-23）
+
+### 21.1 配置摘要
+
+设 manifest 中的恢复配置为 \(C\)。D6 使用固定规范化规则：
+
+\[
+s(C)=\operatorname{JSON}(C;\ \text{ASCII},\ \text{sorted keys},
+\ \text{compact separators},\ \text{NaN forbidden}),
+\]
+
+\[
+h_C=\operatorname{SHA256}(s(C)).
+\]
+
+只有 \(h_C\) 与 manifest 声明摘要一致，配置 schema 为
+`d2.identity-commitment-recovery-config.v2`，且配置非空时，配置内容校验才通过。D6 不从
+阻断 reason、默认构造函数或当前代码常量反推配置。
+
+### 21.2 文件与逐记录绑定
+
+在线 D2 JSONL 文件摘要记为 \(h_R\)。D6 要求：
+
+\[
+h_R=h_{\mathrm{caller}}=h_{\mathrm{evaluation}}=h_{\mathrm{manifest}}.
+\]
+
+调用方期望摘要可以省略；省略时其余三项仍必须一致。随后逐行读取
+`modules.d2.associated_tracks`，只访问：
+
+```text
+payload.association.identity_commitment.recovery_config
+```
+
+第 \(i\) 条发布中的配置记为 \(C_i\)。可用条件为：
+
+\[
+\forall i,\ C_i=C,
+\]
+
+\[
+N_{\mathrm{JSONL}}
+=N_{\mathrm{config\ record}}
+=N_{\mathrm{D2\ record}}>0.
+\]
+
+consistency 标志必须为真，source 声明必须与上述路径完全一致。校验不读取 truth ID、actor
+名称、最近距离或离线目标映射。
+
+### 21.3 数据结构与输出
+
+`D2IdentityRecoveryConfigProvenanceRecord` 保存：
+
+- 配置快照、schema、config version 和规范摘要；
+- identity manifest schema 与文件/规范摘要；
+- online D2 records 文件摘要；
+- 配置记录数和 D2 记录数；
+- consistency、逐记录验证状态、verification mode 和失败原因。
+
+该记录进入 `D2IdentityEvaluationRecord`，因此 episode JSON 原样携带。逐 seed CSV 使用独立
+列；batch JSON 汇总 available/unavailable episode 数、失败原因分布、配置/manifest/在线文件
+摘要分布和记录总数。runtime outcome join 在 provenance 与 admission 两处暴露结果。
+
+### 21.4 兼容与失败关闭
+
+manifest v1 没有配置绑定。D6 返回
+`identity_recovery_config_not_manifest_bound_v1`，同时保留原 strict/partial 指标。manifest
+v2 的配置摘要错误、内容篡改、缺字段、帧间漂移或计数不符，在 runtime join 中直接抛出稳定
+错误码；离线 adapter 将配置谱系单独标为 unavailable。两条路径均不回填 strict IDSW。
+
+公开 API 为：
+
+```text
+adapt_d2_scalable_3d_identity(
+    ...,
+    d2_online_d2_records=...,
+    d2_expected_online_d2_records_sha256=...,
+)
+
+build_truth_isolated_episode_record(
+    ...,
+    d2_identity_manifest=...,
+    d2_expected_identity_manifest_sha256=...,
+    d2_online_d2_records=...,
+    d2_expected_online_d2_records_sha256=...,
+)
+```
+
+### 21.5 验证结果
+
+2026-07-23 专项 `83 passed`，D6 全量
+`611 passed, 1 warning in 21.55s`。验收门限为零失败。warning 是既有 Matplotlib
+三维投影环境提示。本轮没有执行最终 A/B 重跑或 AirSim；配置谱系 consumer 已完成，新的真实
+episode 证据仍由 main 生成。

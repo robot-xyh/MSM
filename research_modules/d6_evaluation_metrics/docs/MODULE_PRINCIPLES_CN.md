@@ -1895,3 +1895,77 @@ candidate 三个恢复航迹的证据与评分帧相差 `0.9308153039 s`，超�
 window。strict identity metrics 必须 unavailable，不能因恢复状态重新变为 committed 就放宽
 评分证据要求。D2/D3 数量从 `203/200` 降至 `201/197`，候选准入失败并停止后续 seed。
 该结果不表示候选性能或系统 promotion GAP 已关闭，也不构成 AirSim 证据。
+
+## 14. 分类计数与发布新鲜度证据（2026-07-23）
+
+### 14.1 同名计数必须先确认分区语义
+
+D2 identity audit 的 mapping 状态分区是：
+
+```text
+available + ambiguous + unavailable + excluded + uncommitted = total
+```
+
+partial identity v1 为便于 coverage 计算，将未进入可评估集合的三类状态合并：
+
+```text
+partial unavailable = unavailable + excluded + uncommitted
+```
+
+D6 不能因字段都叫 `unavailable_mapping_count` 就直接比较不同分区的数值。独立校验应先按
+producer 冻结语义恢复同一分区，再检查分类和等于 total。这个修正不放宽失败关闭：缺任一必要
+计数、出现负数、分类和不守恒、manifest 或 source hash 不一致时，partial 仍为 unavailable。
+
+clean `6556857...` 的 baseline 分区为 `230+4+0=234`，candidate 为
+`218+2+76=296`。修复后两组 partial provenance 均通过，lower bound 为 `9/3`。旧 D6 的
+`partial_identity_audit_binding_mismatch` 是 consumer 对分区语义的误判，不是 producer
+证据缺失。
+
+### 14.2 行为证据不能替代配置证据
+
+candidate 中 3 条
+`source_observation_outside_recovery_publication_freshness_window` 证明运行时确实执行了发布
+超龄失败关闭。它不能独立证明 recovery config 的 schema、config version、门控开关和预算。
+配置快照未进入当前 summary、identity evaluation 或 manifest 时，D6 应报告“行为已验证、配置
+provenance 不可用”，不能从 D2 默认值或文档补出 `0.9 s`。
+
+配置与行为进入同一哈希来源链后，D6 才能检查：
+
+```text
+configured age budget
+observed publication age
+blocked reason/count
+strict metric availability
+```
+
+四者的一致性。D6 仍不修改门控阈值，也不把评估结果回送控制链。
+
+### 14.3 可用不等于准入
+
+本轮 baseline/candidate 的 strict IDSW 均可用，分别为 `9/3`。strict-unavailable 阻断因此
+关闭。候选的 track continuity 从 `0.865` 降为 `0.8266667`，coverage continuity 从
+`0.870` 降为 `0.8283333`，D2/D3 数量从 `203/200` 降为 `201/197`。候选违反非退化门，
+必须保持默认关闭。
+
+该判断只适用于 clean seed 1100、2.2 秒 nominal 200 对 200 三维质点 episode。没有
+AirSim、多 seed、长时和困难场景证据时，D6 不输出置信区间，也不把单 seed IDSW 降低写成
+算法晋级结论。修复后的全量回归为
+`600 passed, 1 warning in 21.55s`。
+
+## 15. 配置谱系独立于性能指标（2026-07-23）
+
+恢复配置回答“本 episode 使用了什么门控规则”，strict IDSW 和 continuity 回答“该规则下
+身份结果如何”。两类证据不能互相替代。D6 将配置谱系作为独立 DTO；配置缺失或篡改不会被
+默认值补齐，也不会用 partial lower bound 或 commitment coverage 回填 strict 指标。
+
+manifest v2 的可用配置必须同时绑定规范配置摘要、在线 D2 文件摘要和每条发布的配置内容。
+任何一项不一致均失败关闭。历史 manifest v1 保留原身份指标，并将配置谱系明确标为
+`identity_recovery_config_not_manifest_bound_v1`。该兼容规则防止新增审计合同抹除既有结果，
+同时避免把未绑定配置写成已验证。
+
+runtime outcome join 对 v2 采用强拒绝，因为它承担计划与结果的正式联接。truth-isolated
+episode adapter 采用字段级失败关闭：配置谱系不可用，已由独立来源链验证的 strict/partial
+指标仍可报告。两种行为都不使用 truth ID 做在线判断，不改变控制命令。
+
+2026-07-23 的 `611 passed` 只证明合同实现和回归稳定。最终 seed 1100 A/B 与 AirSim 尚未按
+manifest v2 重跑。旧制品缺配置快照的事实保持不变。

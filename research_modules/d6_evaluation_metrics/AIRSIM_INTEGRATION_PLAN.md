@@ -769,3 +769,70 @@ candidate 未通过后两项准入要求：三个恢复航迹的证据与评分�
 D2/D3 数量也由 `203/200` 降至 `201/197`。不得通过扩大窗口或回填 strict IDSW 使其通过。
 seed 1101/1102 已停止。本次是三维质点 episode，不是 AirSim；新 AirSim episode、AirSim
 多 seed 及其 runtime binding 证据仍未执行。
+
+## 13. Recovery publication freshness 评估接线（2026-07-23）
+
+clean commit `65568579c99e4ef9939f0519f66c46d3076ef035` 的三维质点 seed 1100 A/B 已证明
+D6 可以消费新的 publication-stale recovery reason，并保持 strict IDSW、continuity、
+commitment coverage 和 binding violation 分栏。该验证没有启动 AirSim，不替代真实传感器
+时间戳和网络迟到标定。
+
+后续 point-mass 与 AirSim producer 应在同一 episode 公共配置中原子持久化：
+
+```text
+identity_commitment_recovery_config.schema_version
+identity_commitment_recovery_config.config_version
+identity_commitment_recovery_config.publication_freshness_gate_enabled
+identity_commitment_recovery_config.max_recovery_evidence_age_seconds
+identity_commitment_recovery_config.publication_freshness_clock
+identity_commitment_recovery_config.publication_stale_behavior
+```
+
+该配置快照必须进入 manifest SHA-256 来源链，并与 D2 每帧 commitment reason 同属一个
+runtime profile。D6 只读验证配置版本、预算和结果计数，不从 reason 字符串反推配置，也不把
+AirSim `ClockSpeed`、墙钟时间或 arrival timestamp 冒充 D2 tracker frame 与 source
+measurement timestamp 的差值。
+
+当前 A/B 制品没有上述完整快照。D6 已确认 3 条
+`source_observation_outside_recovery_publication_freshness_window` 记录和 strict
+availability，但 recovery config v2 的完整 provenance 仍为 P1。main 集成本次 D6 partial
+计数修复后，应从原 producer 制品写出新的 D6 派生 bundle；旧 clean A/B 目录保持只读。
+该段描述旧制品状态，D6 consumer 的完成状态见第 14 节。
+
+真实 AirSim 验收至少需要：
+
+1. 同时保存统一状态有效时刻、source measurement timestamp、arrival timestamp 和 D2 tracker
+   frame timestamp；
+2. 按传感器、距离、遮挡和网络延迟统计 publication age 分布及被阻断恢复数；
+3. 逐 seed 报告 strict IDSW/continuity availability、D2/D3 可用性、commitment coverage 和
+   两类 binding violation；
+4. 配置快照缺失或 SHA 不一致时，将 recovery-config provenance 标为 unavailable，不回填
+   `0.9 s` 默认值；
+5. 单 seed 非退化门未通过前不启动多 seed 算法准入。
+
+## 14. Manifest v2 接线状态（2026-07-23）
+
+D6 配置谱系 consumer 已实现。AirSim/main 调用可向
+`build_truth_isolated_episode_record()` 传入：
+
+```text
+d2_identity_manifest
+d2_expected_identity_manifest_sha256
+d2_online_d2_records
+d2_expected_online_d2_records_sha256
+```
+
+manifest 和在线 D2 JSONL 与 identity evaluation 位于同一目录时，D6 也可自动发现这两个
+文件，但 main 仍应显式传入路径和外部 SHA，以保留完整的 episode 调度证据。manifest v2
+必须绑定配置快照、规范配置 SHA、配置记录数、D2 记录数、consistency/source 声明和
+`source_hashes.online_d2_records`。
+
+AirSim runtime outcome join 已采用同一验证器。manifest v2 的任一缺字段、错误摘要、配置漂移
+或计数不符均阻断联接；manifest v1 继续兼容，并将配置谱系标为
+`identity_recovery_config_not_manifest_bound_v1`。该兼容状态不改变旧 episode 的 strict 或
+partial 指标。
+
+本轮只执行 Python 合同测试，没有启动 Blocks 或 ComputerVision。AirSim 下一轮需要确认
+online D2 JSONL 中每条发布均携带相同配置，并在 reset-separated episode 之间重新生成
+manifest，禁止沿用上一 episode 的配置 SHA。最终 seed 1100 A/B 也尚未按新 manifest v2
+重跑。

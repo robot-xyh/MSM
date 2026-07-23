@@ -715,3 +715,25 @@ seed。
 该场景仍是一对一名义 200 对 200，不含高威胁 `k_j>1` 联盟、M-to-N AirSim、联盟 A/B 或物理
 拦截证据。identity commitment 实测不改变 M-to-N demand 与 coalition 分母，既有四路线 x
 三中心层级实验矩阵和系统 P1 状态保持开放。
+
+## 13. 发布新鲜度复审对 M-to-N 框架的影响（2026-07-23）
+
+clean `65568579...` 的 seed 1100 复审将 strict IDSW 从上一候选的 unavailable 恢复为
+baseline/candidate `9/3`。D6 同时修复 partial audit 分类绑定，修复后 lower bound 也为
+`9/3`。该变化只修正身份评估 availability 和 partial provenance，不改变 M-to-N demand、
+coalition multiplicity、member role、wave、arrival、通信或物理成功分母。
+
+候选 D2/D3 数量 `203/200 -> 201/197`，track/coverage continuity
+`0.865/0.870 -> 0.8266667/0.8283333`，因此仍不准入。场景仍是一对一 nominal 200 对 200，
+没有 `k_j>1` 联盟、M-to-N AirSim、协同到达或物理拦截证据。M-to-N 四路线 x 三中心层级
+矩阵保持开放；本次 D6 全量为 `600 passed, 1 warning`。
+
+## 14. 配置谱系 v2 对 M-to-N 的影响（2026-07-23）
+
+D6 已实现 recovery config 的 manifest v2 和逐条 online D2 JSONL 验证。该能力补齐身份评估
+配置来源链，不改变 M-to-N 的 demand、coalition、member role、wave 或 arrival 分母。
+高威胁多资源协同仍按既有合同评估，配置谱系不得替代 coalition commitment 或物理成功证据。
+
+manifest v1 的 M-to-N 历史指标保持兼容，配置谱系单独不可用；manifest v2 异常在 runtime
+join 中失败关闭。D6 全量为 `611 passed, 1 warning`。本轮没有 M-to-N AirSim、协同到达或
+物理拦截重跑，四路线 x 三中心层级矩阵仍开放。

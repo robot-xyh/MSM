@@ -1667,3 +1667,58 @@ IDSW。candidate D2/D3 数量为 `201/197`。评审拒绝候选准入并停止 s
 
 当前关闭的是 main v2 原子持久化和 D6 真实 episode 消费子项。结构歧义候选的 promotion
 gate 仍开放且本次判定为失败。该实验不是 AirSim，真实 AirSim 与多 seed 证据仍开放。
+
+## 2026-07-23 发布新鲜度候选与 D6 分类绑定复审
+
+main 在 clean commit `65568579c99e4ef9939f0519f66c46d3076ef035` 重跑 seed 1100 后，
+D6 对 baseline/candidate 的 summary、offline identity、truth-isolated episode record 和
+manifest 做了独立复核。episode ID 与 SHA 来源链一致，在线真值使用为 0。
+
+评审接受：
+
+1. 新 publication-stale reason 的消费正确。candidate 有 3 条超龄恢复继续
+   uncommitted，commitment state 为 `1711 committed + 69 hold + 7 after hold`，两个
+   binding violation 为 0。
+2. strict availability 已恢复。baseline/candidate 的 IDSW 为 `9/3`，track continuity 为
+   `0.865/0.8266667`，coverage continuity 为 `0.870/0.8283333`。
+3. D6 partial adapter 的原 mismatch 不是预期可选诊断缺失。根因是 consumer 比较了不同
+   分区的同名计数。修复后的守恒关系为
+   `partial unavailable = audit unavailable + excluded + uncommitted`，并继续要求全分类覆盖
+   total。
+4. 修复后两组 partial manifest/provenance 均通过，lower bound 为 `9/3`。strict 与 partial
+   仍分栏，lower bound 不回填 strict、不进入控制。
+5. 新增两项正负回归；D6 全量 `600 passed, 1 warning in 21.55s`，零失败。
+
+评审不接受结构歧义候选晋级。D2/D3 数量由 `203/200` 降至 `201/197`，track continuity 和
+coverage continuity 分别下降 `0.0383333`、`0.0416667`。IDSW 下降不能抵消可用性与连续性
+退化。候选保持默认关闭，seeds 1101/1102 不执行。
+
+当前制品只持久化了新阻断行为，没有 `identity_commitment_recovery_config` 完整配置快照。
+该轮将配置 schema/version、enabled 和 `0.9 s` 预算的独立 provenance 列为跨模块 P1；
+consumer 的后续关闭状态见下一节。原 A/B 目录中的旧 D6 partial mismatch 是修复前派生结果；
+main 集成后应生成新的 D6 bundle，保留原 producer 制品不变。
+
+## 2026-07-23 Manifest v2 配置谱系复审
+
+D6 已完成上一节开放的 consumer 子项。新增配置谱系记录独立验证 manifest v2 中的完整
+recovery config，并读取 online D2 JSONL 复核每条发布。验证范围包括配置 schema、规范
+SHA-256、manifest schema/SHA、evaluation/manifest/调用方文件摘要、配置记录数、
+`d2_record_count`、consistency 和 source 声明。
+
+评审接受：
+
+1. manifest v1 继续保留 strict/partial 指标，配置谱系以
+   `identity_recovery_config_not_manifest_bound_v1` 显式不可用；
+2. manifest v2 正例在 episode JSON、逐 seed CSV、batch provenance 和 runtime admission
+   中完整暴露；
+3. 配置 SHA 篡改、内容篡改、帧间漂移、缺字段和记录数不符均有稳定失败关闭测试；
+4. runtime join 对 v2 错误拒绝整个联接，离线 adapter 只关闭新增谱系字段；
+5. 全部路径保持在线真值隔离和 `strict_id_switch_count_backfilled=false`。
+
+专项为 `83 passed`，D6 全量为 `611 passed, 1 warning in 21.55s`，零失败。warning 是既有
+Matplotlib 环境提示。真实 main 三维质点 3 对 3、seed 70、1.2 秒用例生成 manifest v2 和
+3 条 D2 发布，逐条谱系验证通过。评审关闭 D6 配置谱系 consumer P1。
+
+main 尚未按 producer manifest v2 重跑 seed 1100 baseline/candidate。上一节旧 A/B 制品缺
+配置快照的判断仍成立；不能把本轮合同测试写成最终 A/B 证据。候选算法准入、AirSim、多 seed
+和长时性能项继续开放。

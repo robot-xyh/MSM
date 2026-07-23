@@ -323,3 +323,26 @@ commitment coverage 为 `1714/1787=0.9591494124`，69 条 hold、4 条 after hol
 binding violation 为 0；但三个恢复航迹超出固定 `0.9 s` lineage window，strict identity
 metrics unavailable，D2/D3 数量由 `203/200` 降至 `201/197`。候选准入失败，seed
 1101/1102 停止。该验证不是 AirSim，真实 AirSim 仍未执行。
+
+2026-07-23 已完成 clean commit `65568579...` 的发布新鲜度 A/B 独立复核。最新算法说明见
+`ALGORITHM_AND_IMPLEMENTATION.md` 第 20 节，原则见 `MODULE_PRINCIPLES_CN.md` 第 14 节，
+实验数值见 `../EXPERIMENT_REPORT.md` 第 13 节，后续写盘要求见
+`../AIRSIM_INTEGRATION_PLAN.md` 第 13 节。baseline/candidate strict IDSW 均 available，
+为 `9/3`；candidate 的 3 条 publication-stale recovery 被失败关闭，零绑定违规。
+
+本轮修复 D6 对 partial unavailable 分类的绑定：producer audit 的
+`unavailable+excluded+uncommitted` 对应 partial 的合并 unavailable。修复后两组 partial
+provenance 均可用，lower bound 为 `9/3`，未回填 strict。D6 全量为
+`600 passed, 1 warning in 21.55s`。候选因 D2/D3 数量和 continuity 退化仍不准入；该轮旧
+制品未持久化 recovery config v2 完整快照。consumer 的关闭状态见下段。
+
+2026-07-23 已完成 manifest v2 配置谱系 consumer。算法说明见
+`ALGORITHM_AND_IMPLEMENTATION.md` 第 21 节，原则见 `MODULE_PRINCIPLES_CN.md` 第 15 节，
+接口与状态见 `../README.md` 和 `../PLAN.md`。D6 现验证配置规范 SHA、manifest/online
+records 来源摘要、逐帧配置一致性和记录数，并在 episode JSON、CSV、batch provenance 与
+runtime admission 中暴露结果。
+
+历史 manifest v1 的 strict/partial 指标保持兼容，配置谱系单独显示不可用。manifest v2
+异常在 runtime join 中 fail closed。专项 `83 passed`，全量
+`611 passed, 1 warning in 21.55s`。最终 A/B 和 AirSim 尚未重跑，旧制品缺配置快照的记录不
+改写。

@@ -1873,3 +1873,82 @@ availability、假零拒绝和规模分组正确；未运行 AirSim，未运行
 - 真实 AirSim、多 seed、多规模、困难谱系和长时 blocker/watermark/overflow 分布仍需 main
   生成冻结制品。commitment coverage 不能替代 strict IDSW、partial lower bound、物理成功或
   promotion gate。
+
+## 17. 发布新鲜度证据与 D6 partial 绑定修正（2026-07-23）
+
+### 已完成
+
+1. 只读审计 clean commit `65568579c99e4ef9939f0519f66c46d3076ef035` 的 nominal
+   200 对 200、2 个侦察节点、2.2 秒、seed 1100 baseline/candidate。episode ID、identity
+   evaluation/manifest SHA 和 D6 manifest 来源摘要全部一致，在线真值使用为 0。
+2. 确认 D6 正确消费新的 publication-stale recovery reason。candidate 中 3 条恢复保持
+   uncommitted；commitment state 为 `1711 committed + 69 hold + 7 after hold`，coverage
+   `0.9574706212`，source/candidate binding violation 为 `0/0`。
+3. 确认 strict availability 已恢复。baseline/candidate 的 strict IDSW 为 `9/3`，track
+   continuity 为 `0.865/0.8266667`，coverage continuity 为 `0.870/0.8283333`，
+   duplicate assignment 为 `0/0`。
+4. 修复 D6 对 partial v1 的 audit 分类绑定。校验改为
+   `partial unavailable = audit unavailable + excluded + uncommitted`，同时要求
+   `available + ambiguous + partial unavailable = total`。没有放宽 schema、manifest、
+   source hash、truth isolation、lower-bound 或 strict/partial 分栏规则。
+5. 新增生产语义正例和分类缺口负例。修复后对两组原始制品重新适配，partial provenance
+   均通过，lower bound 为 `9/3`，strict 值未回填。
+6. 专项 partial 用例为 `13 passed`；D6 全量为
+   `600 passed, 1 warning in 21.55s`，验收门限零失败。
+
+### 准入判定
+
+strict-unavailable 阻断关闭，但候选仍不准入。D2 航迹 `203 -> 201`、D3 分配
+`200 -> 197`、track continuity 下降 `0.0383333`、coverage continuity 下降
+`0.0416667`，违反冻结的可用性与连续性非退化要求。候选继续默认关闭，seeds 1101/1102
+保持停止。
+
+### 仍开放 P1
+
+1. main/D2 将 `identity_commitment_recovery_config` 的 schema、config version、门控开关、
+   `max_recovery_evidence_age_seconds` 和时钟定义写入 episode 公共配置或 identity
+   evaluation/manifest，并由 D6 做 SHA-bound 消费。当前制品只能证明新 reason 实际发生，
+   不能独立证明完整配置快照。
+2. main 在集成 D6 修复后，从原始 A/B producer 制品生成新的 truth-isolated 派生 bundle。
+   原目录内旧 episode record 保留为修复前证据，不原地覆盖。
+3. 上游形成新的结构歧义候选，先在 seed 1100 同时关闭 D2/D3 数量和连续性退化，再决定是否
+   恢复 1101/1102。D6 不调整 `0.9 s` 评分窗口，不用 partial 或 commitment coverage
+   替代 strict。
+4. 真实 AirSim、至少 20 个未见 seed、多规模、困难谱系和长时 blocker/watermark/overflow
+   分布继续开放。本轮单 seed 三维质点结果不形成置信区间或工程性能结论。
+
+## 18. Manifest v2 配置谱系消费（2026-07-23）
+
+### 已完成
+
+1. 新增 D6-owned 配置谱系 DTO，区分 manifest v1 不可用、manifest v2 已验证和 v2
+   验证失败。该 DTO 不参与 strict/partial 指标计算和在线控制。
+2. 对 manifest v2 复算配置规范 JSON SHA-256，检查非空 v2 schema、配置记录数、
+   `d2_record_count`、consistency 与 source 声明。
+3. 新增在线 D2 JSONL 路径和期望 SHA API。实际文件摘要必须同时匹配调用方、identity
+   evaluation 与 manifest；每条 D2 发布的 recovery config 必须与清单完全一致。
+4. 将结果写入 episode JSON、逐 seed CSV、batch source provenance 和配置谱系聚合。
+5. 运行时计划结果同时接受 manifest v1/v2。v1 保留兼容输出；v2 缺字段、配置/摘要篡改、
+   帧间漂移和计数不符均 fail closed，并在 admission 中暴露配置谱系要求和验证状态。
+6. 新增 v1 兼容、v2 正例、配置 SHA 篡改、配置内容篡改、JSONL 帧间漂移、缺字段和记录数
+   不符测试。专项 `83 passed`，D6 全量 `611 passed, 1 warning in 21.55s`，零失败。
+7. 通过真实 main 三维质点 3 对 3、seed 70、1.2 秒 episode 验证 producer manifest v2
+   接线。3 条 D2 发布的配置谱系全部通过；该用例没有启动 AirSim。
+
+### 当前状态
+
+配置谱系 consumer P1 已闭合。上一节所述旧 seed 1100 A/B 制品仍不含 manifest v2 配置，
+因此其配置谱系继续显示不可用，这是历史证据状态，不是新 consumer 回归。main 已升级 producer
+manifest 后，需重新运行同条件 baseline/candidate，并生成新的 D6 episode record、CSV 和
+aggregate JSON；该重跑尚未进行，不能写成已完成。
+
+### 后续验收
+
+1. main 以新 manifest v2、identity evaluation、online D2 JSONL 及四类来源 SHA 调用
+   `build_truth_isolated_episode_record()`；
+2. clean seed 1100 baseline/candidate 的配置谱系均应为 available，配置 SHA 和记录数应在
+   episode JSON、CSV、batch provenance 与 runtime outcome 中一致；
+3. partial consumer 修正继续通过，strict IDSW 不从 partial 或配置谱系回填；
+4. 保持既有停止规则。若 candidate 的 D2/D3 可用性或 continuity 仍退化，不启动 seeds
+   1101/1102；
+5. AirSim 与多 seed 验收仍由 main 后续调度，本轮不形成物理性能结论。
