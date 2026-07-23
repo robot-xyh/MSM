@@ -73,31 +73,27 @@ swap/保持/swap-back；seed 1002 的 `global_track_187/188` 同构。相同 rad
 
 #### 开发回放与 detached clean 阻断
 
-truth sidecar 在参考和候选在线回放均结束后才连接。实际候选实现结果为：
+truth sidecar 在参考和候选在线回放均结束后才连接。开发冻结回放只用于复现根因和候选机制，
+不作为 clean 或泛化验收。main 随后对 baseline `488dc39` 与 v1 candidate `d967c96` 运行
+200v200、2.2 s、`recon_count=2`、seeds 1000/1001/1002 同配置 A/B；每个 seed 的配置哈希
+在两端完全相同：
 
-开发冻结 A/B 曾得到：
+| Seed | D2 ambiguous | strict identity | D1 | D2 | D3 | suppression |
+| --- | ---: | --- | ---: | ---: | ---: | ---: |
+| 1000 | `2 -> 0` | unavailable -> available；候选 IDSW `3`、continuity `.8600` | `203 -> 203` | `201 -> 200` | `200 -> 198` | `22/1962 = 1.12%` |
+| 1001 | `0 -> 0` | available 保持；IDSW `9 -> 7`、continuity `.869444 -> .814444` | `201 -> 201` | `202 -> 194` | `200 -> 190` | `130/1966 = 6.61%` |
+| 1002 | `2 -> 0` | unavailable -> available；候选 IDSW `4`、continuity `.8350` | `201 -> 201` | `200 -> 197` | `200 -> 193` | `78/1958 = 3.98%` |
 
-| Seed | 混合 radar track 代理 | 终态 track | suppression |
-| --- | ---: | ---: | ---: |
-| 1000 | `2 -> 0` | `203 -> 203` | `22/1962=1.12%` |
-| 1001 | `2 -> 0` | `201 -> 201` | `130/1966=6.61%` |
-| 1002 | `2 -> 0` | `201 -> 201` | `78/1958=3.98%` |
+strict availability 从 `1/3` 提升到 `3/3`，但 D2 航迹和 D3 分配均明显下降，seed1001
+continuity 下降约 `0.055`，信息抑制为 `1.12%/6.61%/3.98%`。三组 finite=true、
+`repository_dirty=false`、online truth=0、missing identity evidence=0，
+target/known-false-alarm 标签数相同。因此 v1 不晋级。
 
-这些输入是开发复现，不是泛化验收。main 随后对提交 `d967c96` 运行 detached clean 2.2 s，
-候选 `/tmp/msm-clean-radar-d967c96` 与旧基线
-`/tmp/msm-clean-disposition-488dc39-t0eXta` 的实际集成结果为：
-
-| Seed | D2 ambiguous | strict IDSW | D1 tracks | 关键下游 | suppression |
-| --- | ---: | --- | ---: | --- | ---: |
-| 1000 | `2 -> 0` | 候选 `available=12` | `203 -> 202` | D3 assignments `200` | `16` |
-| 1001 | `0 -> 1` | `available=9 -> unavailable` | `201 -> 201` | D2 `202 -> 198`；D3 `200 -> 188` | `114` |
-| 1002 | `2 -> 0` | 候选 `available=3` | `201 -> 200` | D3 `200 -> 193` | `78` |
-
-三组 finite=true、online truth=0、missing identity evidence=0。seed1000/1002 的改善不足以抵消
-seed1001 新增 ambiguous mapping、strict unavailable 和下游可用性下降。
-
-seed1001 的 `GT3D-000210` 与 D1 既有 `global_track_187` 的终态 state/covariance 相同，不是
-D1 新 birth。该 D1 track 由 scan 1 radar 初始化，scan 8 接受另一离线谱系 radar，scan 9
+早先 `/tmp/msm-clean-radar-d967c96` 的运行遗漏 `--recon-count 2`，实际是
+`recon_count=8` stress，三 seed 配置哈希为 `cc6/cbb/9f45`。它不能与 recon=2 baseline 比较，
+只用于结构诊断。该 stress seed1001 的 `GT3D-000210` 与 D1 既有 `global_track_187` 的终态
+state/covariance 相同，不是 D1 新 birth。该 D1 track 由 scan 1 radar 初始化，scan 8 接受另一
+离线谱系 radar，scan 9
 回到原谱系，随后接入两条 vision；D2 在末帧重建 canonical track。scan 8 的关联矩阵为
 `200x199`，有 209 条 gate-valid edge、198 个匹配、2 个 free row、1 个 free column：
 
@@ -111,15 +107,21 @@ path；v1 的已匹配行 SCC 看不到它。一般矩形图还存在通向 free
 unmatched observation 若不治理可能落入 birth。刚才未验证的 full alternating-path v2 已撤销，
 当前没有实现该边界。
 
-clean seed1001 的 1,966 条 radar 原始量测全部是三维 range/azimuth/elevation 和 `3x3`
-covariance。转换后的第 4 维零值明确是
+同一 recon=8 stress seed1001 的 1,966 条 radar 原始量测全部是三维
+range/azimuth/elevation 和 `3x3` covariance。转换后的第 4 维零值明确是
 `radial_velocity_observed=False`、`filter_measurement_dimension=3` 的 placeholder，不能作为
 独立速度观测缩图。
 
 专项测试现在直接使用生产参数：默认实例复现原 Hungarian 换绑，显式 True 才验证 v1
 suppression；性能和规模 fixture 不再 subclass override 生产逻辑。专项还以 gate-valid `3x2`
 记录 free-row blocker，并覆盖三目标环、门拓扑唯一、首扫、OOSM、greedy fallback、双时间戳、
-协方差和 `global_track_id`。专项 `13 passed`，D1 全量 `204 passed in 17.42s`。
+协方差和 `global_track_id`。专项 `13 passed`，D1 全量 `204 passed in 16.70s`。
+
+默认关闭提交 `8f17c5d` 已按上述 recon=2 同配置重跑，三 seed 的全部业务指标恢复
+`488dc39` baseline。main 跨构建审计 `3/3 passed=True` 且
+`normalized_online_payloads_equal=True`，证据位于
+`/tmp/msm-default-off-cross-build-8f17c5d-r2`。该结果证明默认回退无业务回归，不证明 v1
+可晋级。
 
 结论是 v1 默认关闭、仅作实验候选，P1 未关闭。下一候选须严格覆盖最大基数 matching allowed
 edges 的 cycle/free-row/free-column，并在新的 detached clean 输入上联合验收 ambiguous、

@@ -35,17 +35,24 @@ component size、suppression/track-coast counter、reason 和 policy version。
 likelihood margin 在开发回放中失败：首次抑制改变状态后，后续错误排列会显得唯一。因此不能
 用同一真值输入调 margin 并宣称身份已确定。
 
-开发冻结 A/B 的 radar 混合谱系代理在 seeds 1000/1001/1002 均为 `2 -> 0`，终态/创建航迹
-保持 `203/201/201`；代价是抑制 `1.12%/6.61%/3.98%` 的 target radar observations。这只是
-开发复现。`d967c96` detached clean 2.2 s 的实际结果是：
+开发冻结回放只用于复现根因和验证候选机制。main 的权威同配置 A/B 是 baseline `488dc39`
+到 v1 candidate `d967c96`，设置为 200v200、2.2 s、`recon_count=2`、seeds
+1000/1001/1002；每个 seed 的两端配置哈希完全相同：
 
-| Seed | ambiguous | strict IDSW | D1 tracks | 关键下游 | suppression |
-| --- | ---: | --- | ---: | --- | ---: |
-| 1000 | `2 -> 0` | 候选 `available=12` | `203 -> 202` | D3 `200` | `16` |
-| 1001 | `0 -> 1` | `available=9 -> unavailable` | `201 -> 201` | D2 `202 -> 198`；D3 `200 -> 188` | `114` |
-| 1002 | `2 -> 0` | 候选 `available=3` | `201 -> 200` | D3 `200 -> 193` | `78` |
+| Seed | ambiguous | strict identity | D1 | D2 | D3 | suppression |
+| --- | ---: | --- | ---: | ---: | ---: | ---: |
+| 1000 | `2 -> 0` | unavailable -> available；候选 IDSW `3`、continuity `.8600` | `203 -> 203` | `201 -> 200` | `200 -> 198` | `22/1962 = 1.12%` |
+| 1001 | `0 -> 0` | available 保持；IDSW `9 -> 7`、continuity `.869444 -> .814444` | `201 -> 201` | `202 -> 194` | `200 -> 190` | `130/1966 = 6.61%` |
+| 1002 | `2 -> 0` | unavailable -> available；候选 IDSW `4`、continuity `.8350` | `201 -> 201` | `200 -> 197` | `200 -> 193` | `78/1958 = 3.98%` |
 
-seed1001 揭示 v1 的数学边界。其 scan 8 门内图是 `200x199`，有 209 条合法边、198 个匹配、
+strict availability 从 `1/3` 提升到 `3/3`，但 D2 航迹和 D3 分配均下降，seed1001 continuity
+下降约 `0.055`，并分别抑制 `1.12%/6.61%/3.98%` 的 radar observations。三组 finite=true、
+`repository_dirty=false`、online truth=0、missing identity evidence=0，且
+target/known-false-alarm 标签数相同。该结果不足以晋级 v1。
+
+早先 `/tmp/msm-clean-radar-d967c96` 实际使用 `recon_count=8`，配置哈希为
+`cc6/cbb/9f45`；它不能与 recon=2 baseline 比较，只保留为 stress 数学诊断。该 stress 的
+seed1001 scan 8 门内图是 `200x199`，有 209 条合法边、198 个匹配、
 2 个 free row 和 1 个 free column。Hungarian 匹配边代价 `0.80058`；同一 observation 对
 free row 的代价 `1.58216`。以下替换保持匹配基数：
 
@@ -58,7 +65,8 @@ free row 的代价 `1.58216`。以下替换保持匹配基数：
 通过 free-column 路径更换 observation 所有权；若不抑制相关未匹配 observation，还可能进入
 birth。v1 没有证明这些 allowed edges，因此不能作为完整匿名身份治理。
 
-clean seed1001 的全部 1,966 条 radar 原始量测都是三维 range/azimuth/elevation；转换后的
+同一 recon=8 stress seed1001 的全部 1,966 条 radar 原始量测都是三维
+range/azimuth/elevation；转换后的
 零 radial velocity 是未观测 placeholder。没有合法的独立径向速度及其协方差时，不能用该值
 缩小门内图。
 
@@ -69,10 +77,12 @@ radar_assignment_ambiguity_governance = False  -> 基线 Hungarian
 radar_assignment_ambiguity_governance = True   -> 显式实验 v1
 ```
 
-审计同时发布 enabled、候选 policy version 和 `disabled/experimental_enabled` 状态。seed
-1000/1002 的改善不能抵消 seed1001 新增 ambiguous、strict unavailable 与下游退化；P1 保持
-开放。10 s radar+vision ambiguous 不能单独证明 radar-only 根因，但长期 coast 和跨模态传播
-必须进入集成验收，不能被排除。
+审计同时发布 enabled、候选 policy version 和 `disabled/experimental_enabled` 状态。默认关闭
+提交 `8f17c5d` 按 recon=2 同配置重跑后，三 seed 全部业务指标恢复 baseline；main 跨构建审计
+`3/3 passed=True` 且 `normalized_online_payloads_equal=True`，输出位于
+`/tmp/msm-default-off-cross-build-8f17c5d-r2`。这证明默认回退无业务回归，不证明 v1 可晋级。
+P1 保持开放。10 s radar+vision ambiguous 不能单独证明 radar-only 根因，但长期 coast 和
+跨模态传播必须进入集成验收，不能被排除。
 
 ### 跨模态融合先保证几何语义完整
 

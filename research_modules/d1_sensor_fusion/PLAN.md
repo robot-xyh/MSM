@@ -3,28 +3,30 @@
 ## 匿名雷达交替环 v1 阻断与后续计划（2026-07-23）
 
 开发冻结和零延迟 A/B 已确认 seed 1000/1002 的 radar-only 问题是 scan Hungarian
-swap/保持/swap-back；20:1 likelihood margin 不能在 coast 后证明身份。开发回放中，显式 v1
-曾把三 seed 的 D1 历史混合谱系代理均从 `2 -> 0`，终态 track 保持 `203/201/201`，抑制率为
-`1.12%/6.61%/3.98%`。该结果只用于复现和候选开发。
+swap/保持/swap-back；20:1 likelihood margin 不能在 coast 后证明身份。开发回放只用于复现
+根因和候选机制，不作为晋级验收。
 
-提交 `d967c96` 的 detached clean 2.2 s 复验未通过：
+main 对 baseline `488dc39` 和 v1 candidate `d967c96` 完成同配置 A/B：200v200、2.2 s、
+`recon_count=2`、seeds 1000/1001/1002，三 seed 的两端配置哈希完全一致：
 
-| Seed | D2 ambiguous | strict IDSW | D1 tracks | 下游变化 | suppression |
-| --- | ---: | --- | ---: | --- | ---: |
-| 1000 | `2 -> 0` | 候选 `available=12` | `203 -> 202` | D3 assignments `200` | `16` |
-| 1001 | `0 -> 1` | `available=9 -> unavailable` | `201 -> 201` | D2 `202 -> 198`；D3 `200 -> 188` | `114` |
-| 1002 | `2 -> 0` | 候选 `available=3` | `201 -> 200` | D3 `200 -> 193` | `78` |
+| Seed | D2 ambiguous | strict identity | D1 | D2 | D3 | suppression |
+| --- | ---: | --- | ---: | ---: | ---: | ---: |
+| 1000 | `2 -> 0` | unavailable -> available；候选 IDSW `3`、continuity `.8600` | `203 -> 203` | `201 -> 200` | `200 -> 198` | `22/1962 = 1.12%` |
+| 1001 | `0 -> 0` | available 保持；IDSW `9 -> 7`、continuity `.869444 -> .814444` | `201 -> 201` | `202 -> 194` | `200 -> 190` | `130/1966 = 6.61%` |
+| 1002 | `2 -> 0` | unavailable -> available；候选 IDSW `4`、continuity `.8350` | `201 -> 201` | `200 -> 197` | `200 -> 193` | `78/1958 = 3.98%` |
 
-三组 finite=true、online truth=0、missing identity evidence=0。seed 1001 的
-`GT3D-000210` 来自既有 D1 `global_track_187`，不是 D1 birth：scan 8 接受另一离线谱系的
-radar observation，scan 9 回到原谱系，后续两条 vision 延续该后验，D2 在末帧重建 canonical
-track。
+strict availability 虽由 `1/3` 提升到 `3/3`，但 D2/D3 数量明显下降，seed 1001 continuity
+下降约 `0.055`，信息抑制率为 `1.12%/6.61%/3.98%`。三组 finite=true、
+`repository_dirty=false`、online truth=0、missing identity evidence=0，target/known-false-alarm
+标签数相同。该代价使 v1 不能晋级。
 
-scan 8 的 `200x199` 门内图有 209 条合法边、198 个匹配、2 个 free row 和 1 个 free column。
-当前匹配边代价 `0.80058`；同一 observation 对 free row 的代价 `1.58216`，可通过 free-row
-alternating path 保持匹配基数。v1 只检查已匹配行 SCC，因此数学边界不完整。clean seed 1001
-的 1,966 条 radar 原始量测均为三维 range/azimuth/elevation；零 radial velocity 是未观测
-placeholder，不能作为运动一致性证据。
+早先 `/tmp/msm-clean-radar-d967c96` 实际使用 `recon_count=8`，三 seed 配置哈希为
+`cc6/cbb/9f45`，不能与 recon=2 baseline 比较，只作为 stress 诊断。该 stress 的 seed 1001
+`GT3D-000210` 来自既有 D1 `global_track_187`，不是 D1 birth。scan 8 的 `200x199` 门内图有
+209 条合法边、198 个匹配、2 个 free row 和 1 个 free column；当前边代价 `0.80058`，同一
+observation 对 free row 的代价 `1.58216`，可通过 free-row alternating path 保持匹配基数。
+v1 只检查已匹配行 SCC，因此数学边界不完整。该 stress 的 1,966 条 radar 原始量测均为三维
+range/azimuth/elevation；零 radial velocity 是未观测 placeholder，不能作为运动一致性证据。
 
 当前生产计划为：
 
@@ -38,7 +40,12 @@ placeholder，不能作为运动一致性证据。
 5. 10 s radar+vision ambiguous 不能证明纯 radar 根因，但属于长期 coast 的集成验收范围；
 6. 身份连续性 P1 保持开放，不再用 seeds 1000--1002 调代价阈值。
 
-专项 `13 passed`，D1 全量 `204 passed in 17.42s`。本 follow-up 不改变 6 s fixed-lag、
+默认关闭提交 `8f17c5d` 的同配置三 seed 已恢复 baseline 全部业务指标；main 跨构建审计
+`3/3 passed=True` 且 `normalized_online_payloads_equal=True`，证据位于
+`/tmp/msm-default-off-cross-build-8f17c5d-r2`。该结果关闭默认回退的业务回归风险，不关闭
+v1 的数学与信息利用 blocker。
+
+专项 `13 passed`，D1 全量 `204 passed in 16.70s`。本 follow-up 不改变 6 s fixed-lag、
 扫描频率、关联门限、协方差治理、`global_track_id`、D7/PNG 或 AirSim producer/runtime 合同。
 
 ## 匿名跨模态几何门控收口与后续计划（2026-07-23）

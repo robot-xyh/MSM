@@ -12,34 +12,36 @@ margin 也不能证明身份：一次 coast 改变后验后，后续错误排列
 
 `fail_closed_gate_feasible_alternating_cycle_v1` 只检查全 radar scan 中 Hungarian 已匹配行列
 的门内强连通交替环。显式启用时，环内 observation 被 processed 后跳过 update/birth，相关
-track 只预测且 covariance 不收缩。开发冻结 A/B 曾得到 seeds 1000/1001/1002 的 D1 历史混合
-谱系代理均 `2 -> 0`，终态 track 保持 `203/201/201`，抑制率为
-`1.12%/6.61%/3.98%`；这些是开发复现，不是 clean 或泛化验收。
+track 只预测且 covariance 不收缩。早期开发冻结回放和零延迟对照只用于复现根因及验证候选
+机制，不能替代同配置 clean A/B 或泛化验收。
 
-main 随后对提交 `d967c96` 做 detached clean 2.2 s 三 seed 集成复验。候选位于
-`/tmp/msm-clean-radar-d967c96`，旧基线位于
-`/tmp/msm-clean-disposition-488dc39-t0eXta`：
+main 随后按完全相同配置重跑 baseline `488dc39` 与 v1 candidate `d967c96`：
+200v200、2.2 s、`recon_count=2`、seeds 1000/1001/1002。每个 seed 的配置哈希在两端完全
+一致，结果为：
 
-| Seed | D2 ambiguous | strict IDSW | D1 tracks | 关键下游 | v1 suppression |
-| --- | ---: | --- | ---: | --- | ---: |
-| 1000 | `2 -> 0` | 候选 `available=12` | `203 -> 202` | D3 assignments `200` | `16` |
-| 1001 | `0 -> 1` | `available=9 -> unavailable` | `201 -> 201` | D2 `202 -> 198`；D3 `200 -> 188` | `114` |
-| 1002 | `2 -> 0` | 候选 `available=3` | `201 -> 200` | D3 `200 -> 193` | `78` |
+| Seed | D2 ambiguous | strict identity | D1 tracks | D2 tracks | D3 assignments | v1 suppression |
+| --- | ---: | --- | ---: | ---: | ---: | ---: |
+| 1000 | `2 -> 0` | unavailable -> available；候选 IDSW `3`、continuity `.8600` | `203 -> 203` | `201 -> 200` | `200 -> 198` | `22/1962 = 1.12%` |
+| 1001 | `0 -> 0` | available 保持；IDSW `9 -> 7`、continuity `.869444 -> .814444` | `201 -> 201` | `202 -> 194` | `200 -> 190` | `130/1966 = 6.61%` |
+| 1002 | `2 -> 0` | unavailable -> available；候选 IDSW `4`、continuity `.8350` | `201 -> 201` | `200 -> 197` | `200 -> 193` | `78/1958 = 3.98%` |
 
-三组 finite 均为 true，online truth 使用和 missing identity evidence 均为 0。seed 1000/1002
-消除已有 ambiguous 不能抵消 seed 1001 新增 ambiguous、strict unavailable 和下游可用性下降，
-因此 v1 未晋级，身份连续性 P1 保持开放。
+三组 strict availability 从 `1/3` 提升到 `3/3`，但 D2 航迹和 D3 分配均下降，seed 1001
+continuity 下降约 `0.055`，且三组分别抑制 `1.12%/6.61%/3.98%` 的 radar observations。
+finite=true、`repository_dirty=false`、online truth=0、missing identity evidence=0，
+target/known-false-alarm 离线标签数也保持相同。因此 v1 不晋级，身份连续性 P1 保持开放。
 
-seed 1001 的残余 `GT3D-000210` 不是 D1 新 birth。它与 D1 既有
+早先 `/tmp/msm-clean-radar-d967c96` 的命令遗漏 `--recon-count 2`，实际是
+`recon_count=8`，三 seed 配置哈希为 `cc6/cbb/9f45`；它不能与 recon=2 基线直接比较，只保留为
+独立 stress 数学诊断。该 stress 的 seed 1001 残余 `GT3D-000210` 不是 D1 新 birth。它与 D1 既有
 `global_track_187` 的终态 state/covariance 完全一致；该航迹由 scan 1 radar 初始化，scan 8
 接受另一离线谱系的 radar observation，scan 9 又接受原谱系 observation，随后接入两条 vision，
 最终由 D2 重建 canonical track。scan 8 的门内矩阵为 `200x199`，209 条 gate-valid edge、
 198 个匹配、2 个 free row 和 1 个 free column。Hungarian 给 `global_track_187` 的边代价为
 `0.80058`，同一 observation 对 free row `global_track_186` 也合法，代价 `1.58216`。把该
 observation 转给 free row 并释放原 row 可保持匹配基数；v1 只看已匹配行 SCC，无法发现这条
-free-row alternating path。
+free-row alternating path。该结构性缺口独立于 stress 与 recon=2 之间不可比较的业务指标。
 
-clean seed 1001 的 1,966 条 radar 原始量测全部是三维
+同一 recon=8 stress seed 1001 的 1,966 条 radar 原始量测全部是三维
 `[range, azimuth, elevation]` 和 `3x3` covariance。转换后的零 radial velocity 明确标记为
 `radial_velocity_observed=False`、`filter_measurement_dimension=3`，只是 placeholder，不能
 用于缩小候选图。
@@ -48,7 +50,12 @@ clean seed 1001 的 1,966 条 radar 原始量测全部是三维
 参数 `radar_assignment_ambiguity_governance` 默认为 `False`；只有显式 `True` 才运行 v1。
 `association_audit_summary()` 输出 enabled、候选 policy version 及
 `disabled/experimental_enabled` 状态。专项 `13 passed`，其中包含默认换绑、显式 v1
-suppression 和 gate-valid `3x2` free-row blocker；D1 全量 `204 passed in 17.42s`。
+suppression 和 gate-valid `3x2` free-row blocker；D1 全量 `204 passed in 16.70s`。
+
+默认关闭提交 `8f17c5d` 已按上述 recon=2 同配置重跑，三 seed 的全部业务指标均恢复
+`488dc39` baseline。main 跨构建审计 `3/3 passed=True` 且
+`normalized_online_payloads_equal=True`，证据位于
+`/tmp/msm-default-off-cross-build-8f17c5d-r2`。这证明默认回退无业务回归，不证明 v1 可晋级。
 
 未实现未验证的 full alternating-path v2。后续候选必须覆盖最大基数匹配的交替环、free-row 与
 free-column 路径，并以新的 detached clean 验证 suppression、birth、continuity 和下游可用性。
