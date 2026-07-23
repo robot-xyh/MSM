@@ -10,6 +10,7 @@
 
 | GAP/合同 | 当前状态 | 2026-07-23 证据 | 剩余关闭条件 |
 | --- | --- | --- | --- |
+| 匿名雷达/视觉跨模态混轨 | **已复现的 D1 解析缺陷关闭；20-seed 系统复核 P1 开放** | clean `5263e2b` nominal 200v200/10 s/seed 1000，771 scans/11,889 anonymous obs，在线 truth 0。冻结 `camera_model` 为只读 `Mapping` 时，旧解析丢失旋转/内参并使用默认投影；候选恢复真实几何，非法外参和相机后方投影 fail closed。D2 标出的 17 条视觉污染观测 17/17 离开原错误航迹并进入离线标签单一谱系。终态 `201 -> 202`，新增雷达出生 `radar-s000030-d0116`；规范状态/谱系 hash `39d0cdf5...02d7 -> b0d6c4ac...d717`。D1 全量 `191 passed` | main 在 clean 候选上重跑 seeds 1000-1019，D2 重新审计历史 118 个多真值航迹帧。完整 sidecar 前严格身份指标保持 unavailable；不得将单 seed 17/17 外推为 20-seed 关闭 |
 | Scan-input claim 重复 JSON 规范化 | **D1-owned 热点已关闭；clean 多 seed 集成收益 P1 开放** | clean `5263e2b` nominal 200v200/10 s/seed 1000 冻结输入，771 scans/11,889 obs/SHA-256 `5d033a04...67ce8f`。旧/新 claim registry、逐输入事件、发布顺序、逐 fusion 状态/协方差/双时间戳/谱系/分级、操作计数、累计诊断、终态和一致性证据严格一致；registry hash 均为 `22a71336...b8fd7`。771 scans 交错 5 轮 P50/P95 `3.618/4.049 -> 1.905/2.038 s`，P50 1.899x；`_json_safe` cProfile `5.781 -> 1.992 s`。全量 `185 passed`。原 clean 20-seed 基线 scan-input/fusion 累计均值为 `9.671/43.774 s`，episode P95 均值 `135.454/233.488 ms` | main 在当前候选提交复跑预注册多 seed clean full-stack，比较 episode scan-input P50/P95/max、核心 RTF 和 RSS。不得把单 seed函数级计时直接外推成 20-seed 或实时收益 |
 | 尾延时 profiler 与完整帧复用 | **重复 frame/observation 快照热点已在 D1 冻结 replay 关闭；fusion 与 clean full-stack P1 开放** | clean `4ac3bb2` nominal 200v200/10 s/seed 1000 冻结输入，771 scans/11,889 obs/SHA-256 `c1dda852...66f77a`；帧重建 `771 -> 0`、再快照 `11,889 -> 0`；前 256 scans 交错 5 轮 P50/P95 `1.942/1.968 -> 0.881/0.894 s`，墙钟不参与验收。逐输入、逐 fusion 状态/协方差/双时间戳/谱系/分级、物化航迹、终态、证据、逐扫描操作数及累计诊断全部严格一致；operation hash `82728a8e...bfb5bf`；main 实测当前 D1 全量 `185 passed`。fusion cProfile 仍由 GlobalTrack 物化、扫描关联、代价矩阵和 replay 主导 | claim 重复 JSON 规范化已由最新一项关闭；继续治理非 claim audit/event、长期 claim registry 内存、GlobalTrack 物化及 radar/rebase，但不得缩窗口、丢观测、降频、放宽门控或使用 truth。当前工作区复放非 clean 放行、非 AirSim、非正式多 seed、未实时 |
 | Nominal 200v200 clean 性能校准 | **单 seed 语义校准通过；fusion 尾延时、scan-input 与正式矩阵 P1 开放** | detached clean `4ac3bb2` 对 clean `0d2da25`，10 s/seed 1000/11,889 online obs，finite 且 online truth 0；核心 wall `94.104939744 -> 85.002427712 s`（-9.6727%，1.1071x），D1 fusion `49.697406826 -> 40.272795088 s`（-18.9640%，1.2340x），scan input `12.315225105 -> 12.560936034 s`（+1.9952%），候选 RTF `0.1176437`，fusion P50/P95/max `33.25249/224.76351/592.95713 ms`；规范在线载荷、truth state、计划谱系均通过。外部总进程 `1:55.95`、峰值 RSS `2,468,928 KiB` 与核心 wall 分列 | 执行冻结硬件/配置的预注册 20-seed 正式矩阵；RTF 达到实时目标并收敛 fusion P95/max；单独治理 scan-input。当前不是正式矩阵，不关闭 AirSim 或 RMSE/NEES/NIS |
@@ -27,7 +28,11 @@
 | 正式 200v200 算法效果 | 未验收 | clean 三 seed 全栈已运行，但正式 RMSE/NEES/NIS sidecar 和 D2 canonical mapping 指标仍 unavailable | 更多未见 seed、正确 D2 canonical mapping、RMSE/NEES/NIS/coverage 与置信区间 |
 | AirSim 状态 | 无变化 | 两批均为合成治理或三维质点制品，未启动 Blocks/CV/SimpleFlight | 按独立 AirSim 计划采集和验收，不得把本批改写为 AirSim 证据 |
 
-最新一轮进一步关闭 claim 内同一量测、协方差、元数据和谱系的重复 JSON 安全转换。摘要算法、
+最新一轮先关闭冻结相机元数据解析导致的跨模态混轨。修复只恢复在线可得的真实相机旋转和内参，
+并对非法/后方投影 fail closed；未增加 truth 或对象名称门控。单 seed 定向 17/17 通过，但
+20-seed D2 严格身份复核仍为 P1，不能把该结果写成系统身份连续性已经关闭。
+
+前一轮进一步关闭 claim 内同一量测、协方差、元数据和谱系的重复 JSON 安全转换。摘要算法、
 键排序、`allow_nan=False`、内容排除字段、claim registry 和拒绝策略保持不变。冻结全流水
 acceptance 全部通过；函数级 P50 约 1.899x。该结果不关闭 scan-input 整体或 fusion 尾延时
 GAP。当前冻结复放 fusion 累计为 `43.148 s`，主要热点仍是 GlobalTrack 物化、非雷达扫描关联

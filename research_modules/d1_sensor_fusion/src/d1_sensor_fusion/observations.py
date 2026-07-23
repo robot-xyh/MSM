@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
@@ -38,12 +39,40 @@ class CameraModel:
     width: int = 1280
     height: int = 720
 
+    def __post_init__(self) -> None:
+        self.position_ned = np.asarray(self.position_ned, dtype=float)
+        self.rotation_world_to_camera = np.asarray(
+            self.rotation_world_to_camera,
+            dtype=float,
+        )
+        if self.position_ned.shape != (3,) or not np.isfinite(self.position_ned).all():
+            raise ValueError("camera position_ned must contain three finite values")
+        if (
+            self.rotation_world_to_camera.shape != (3, 3)
+            or not np.isfinite(self.rotation_world_to_camera).all()
+            or abs(float(np.linalg.det(self.rotation_world_to_camera))) <= 1.0e-9
+        ):
+            raise ValueError(
+                "camera rotation_world_to_camera must be a finite nonsingular 3x3 matrix"
+            )
+        for name in ("fx", "fy", "cx", "cy"):
+            value = float(getattr(self, name))
+            if not np.isfinite(value):
+                raise ValueError(f"camera {name} must be finite")
+            setattr(self, name, value)
+        if self.fx <= 0.0 or self.fy <= 0.0:
+            raise ValueError("camera focal lengths must be positive")
+        self.width = int(self.width)
+        self.height = int(self.height)
+        if self.width <= 0 or self.height <= 0:
+            raise ValueError("camera image dimensions must be positive")
+
     @classmethod
-    def from_metadata(cls, metadata: dict) -> "CameraModel":
+    def from_metadata(cls, metadata: Mapping[str, Any]) -> "CameraModel":
         camera_model = _camera_metadata_candidate(metadata)
         if isinstance(camera_model, CameraModel):
             return camera_model
-        if isinstance(camera_model, dict):
+        if isinstance(camera_model, Mapping):
             intrinsics = _mapping_or_empty(camera_model.get("intrinsics"))
             extrinsics = _mapping_or_empty(camera_model.get("extrinsics"))
             return cls(
@@ -62,7 +91,12 @@ class CameraModel:
                         camera_model,
                         extrinsics,
                         metadata,
-                        keys=("rotation_world_to_camera", "R", "rotation_matrix"),
+                        keys=(
+                            "rotation_world_to_camera",
+                            "rotation_camera_from_ned",
+                            "R",
+                            "rotation_matrix",
+                        ),
                         default=[
                             [0.0, 1.0, 0.0],
                             [0.0, 0.0, 1.0],
@@ -78,14 +112,19 @@ class CameraModel:
                 width=int(_camera_dimension(camera_model, intrinsics, metadata, "width", 1280)),
                 height=int(_camera_dimension(camera_model, intrinsics, metadata, "height", 720)),
             )
+        intrinsics = _mapping_or_empty(metadata.get("camera_intrinsics"))
         return cls(
             position_ned=np.asarray(
                 metadata.get("camera_position_ned", [0.0, 0.0, -10.0]), dtype=float
             ),
             rotation_world_to_camera=np.asarray(
-                metadata.get(
-                    "rotation_world_to_camera",
-                    [
+                _first_present(
+                    metadata,
+                    keys=(
+                        "rotation_world_to_camera",
+                        "rotation_camera_from_ned",
+                    ),
+                    default=[
                         [0.0, 1.0, 0.0],
                         [0.0, 0.0, 1.0],
                         [1.0, 0.0, 0.0],
@@ -93,12 +132,12 @@ class CameraModel:
                 ),
                 dtype=float,
             ),
-            fx=float(metadata.get("fx", 900.0)),
-            fy=float(metadata.get("fy", 900.0)),
-            cx=float(metadata.get("cx", 640.0)),
-            cy=float(metadata.get("cy", 360.0)),
-            width=int(metadata.get("width", 1280)),
-            height=int(metadata.get("height", 720)),
+            fx=float(_camera_intrinsic({}, intrinsics, metadata, "fx", 900.0)),
+            fy=float(_camera_intrinsic({}, intrinsics, metadata, "fy", 900.0)),
+            cx=float(_camera_intrinsic({}, intrinsics, metadata, "cx", 640.0)),
+            cy=float(_camera_intrinsic({}, intrinsics, metadata, "cy", 360.0)),
+            width=int(_camera_dimension({}, intrinsics, metadata, "width", 1280)),
+            height=int(_camera_dimension({}, intrinsics, metadata, "height", 720)),
         )
 
 
@@ -367,12 +406,15 @@ def acoustic_covariance(confidence: float) -> np.ndarray:
 def eo_project(state: np.ndarray, camera: CameraModel) -> np.ndarray:
     rel_world = np.asarray(state[:3], dtype=float) - camera.position_ned
     point_camera = camera.rotation_world_to_camera @ rel_world
-    z_forward = point_camera[2]
+    z_forward = float(point_camera[2])
     if z_forward <= 1e-3:
-        z_forward = 1e-3
+        raise ValueError("EO projection target is not in front of the camera")
     u = camera.fx * point_camera[0] / z_forward + camera.cx
     v = camera.fy * point_camera[1] / z_forward + camera.cy
-    return np.array([u, v], dtype=float)
+    projection = np.array([u, v], dtype=float)
+    if not np.isfinite(projection).all():
+        raise ValueError("EO projection is not finite")
+    return projection
 
 
 def eo_covariance_from_bbox(
@@ -523,22 +565,24 @@ def _radar_covariance_config(config: RadarCovarianceConfig | dict | None) -> Rad
     return RadarCovarianceConfig(**dict(config))
 
 
-def _camera_metadata_candidate(metadata: dict[str, Any]) -> CameraModel | dict[str, Any] | None:
+def _camera_metadata_candidate(
+    metadata: Mapping[str, Any],
+) -> CameraModel | Mapping[str, Any] | None:
     for key in ("camera_model", "camera_metadata", "camera"):
         value = metadata.get(key)
         if isinstance(value, CameraModel):
             return value
-        if isinstance(value, dict):
+        if isinstance(value, Mapping):
             return dict(value)
     return None
 
 
 def _mapping_or_empty(value: Any) -> dict[str, Any]:
-    return dict(value) if isinstance(value, dict) else {}
+    return dict(value) if isinstance(value, Mapping) else {}
 
 
 def _first_present(
-    *mappings: dict[str, Any],
+    *mappings: Mapping[str, Any],
     keys: tuple[str, ...],
     default: Any,
 ) -> Any:
@@ -551,9 +595,9 @@ def _first_present(
 
 
 def _camera_intrinsic(
-    camera_model: dict[str, Any],
-    intrinsics: dict[str, Any],
-    metadata: dict[str, Any],
+    camera_model: Mapping[str, Any],
+    intrinsics: Mapping[str, Any],
+    metadata: Mapping[str, Any],
     key: str,
     default: float,
 ) -> float:
@@ -570,9 +614,9 @@ def _camera_intrinsic(
 
 
 def _camera_dimension(
-    camera_model: dict[str, Any],
-    intrinsics: dict[str, Any],
-    metadata: dict[str, Any],
+    camera_model: Mapping[str, Any],
+    intrinsics: Mapping[str, Any],
+    metadata: Mapping[str, Any],
     key: str,
     default: int,
 ) -> int:
@@ -588,7 +632,7 @@ def _camera_dimension(
     return int(default)
 
 
-def _intrinsic_matrix(*mappings: dict[str, Any]) -> np.ndarray | None:
+def _intrinsic_matrix(*mappings: Mapping[str, Any]) -> np.ndarray | None:
     for mapping in mappings:
         value = mapping.get("K")
         if value is None:

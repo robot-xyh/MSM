@@ -1,0 +1,217 @@
+{
+  "schema_version": "d1.cross_modal_geometry_governance.audit.v1",
+  "evidence_date": "2026-07-23",
+  "evidence_tier": "single_seed_frozen_replay",
+  "scenario": {
+    "scenario_id": "200v200-nominal-v1",
+    "duration_s": 10.0,
+    "seed": 1000,
+    "scan_count": 771,
+    "observation_count": 11889
+  },
+  "sources": {
+    "online_observations_sha256": "5d033a049c2b4e09fb13d7c36e1117055b5b596d9e31f058ad2bf7cbd267ce8f",
+    "d2_identity_blocker_json_sha256": "8b12a8ee1967406205ba6105edc01547d10a663e678407149d43377df03ec326",
+    "d2_identity_blocker_report_sha256": "aadab425d3f6810c5d704b775cd621a1fbf2d7c06be8dbc177bc4eaefaf2cccd"
+  },
+  "online_association_contract": {
+    "allowed_inputs": [
+      "measurement_timestamp",
+      "arrival_timestamp",
+      "ned_track_state",
+      "track_covariance",
+      "eo_pixel_measurement",
+      "eo_pixel_covariance",
+      "camera_intrinsics",
+      "camera_extrinsics",
+      "sensor_modality",
+      "existing_track_state"
+    ],
+    "truth_target_id_used": false,
+    "actor_or_object_name_used": false,
+    "truth_range_used": false,
+    "d6_result_used": false,
+    "online_truth_use_count": 0
+  },
+  "root_cause": {
+    "frozen_camera_model_type": "collections.abc.Mapping",
+    "legacy_parser_required_builtin_dict": true,
+    "camera_position_preserved_from_top_level_metadata": true,
+    "legacy_rotation_fallback_used": true,
+    "legacy_intrinsics_fallback_used": true,
+    "legacy_intrinsics": {
+      "fx": 900.0,
+      "fy": 900.0,
+      "cx": 640.0,
+      "cy": 360.0,
+      "width": 1280,
+      "height": 720
+    },
+    "candidate_geometry": {
+      "accepts_frozen_mapping": true,
+      "accepts_rotation_camera_from_ned": true,
+      "accepts_nested_camera_intrinsics": true,
+      "rejects_invalid_explicit_geometry": true,
+      "rejects_target_behind_camera": true
+    }
+  },
+  "ab_results": {
+    "legacy_reference": {
+      "terminal_track_count": 201,
+      "canonical_state_lineage_sha256": "39d0cdf55b0d6bb988b9c5631eb472336e92a0510896ec4d63b602477fcb02d7",
+      "association_audit": {
+        "eo_projection_gate_pass_count": 647,
+        "eo_projection_gate_rejection_count": 1823,
+        "eo_projection_unavailable_count": 0,
+        "eo_one_to_one_unassigned_count": 382,
+        "max_eo_projection_gate_pass_nis": 39.92061527329166,
+        "non_range_state_correction_rejection_count": 126
+      }
+    },
+    "candidate": {
+      "terminal_track_count": 202,
+      "canonical_state_lineage_sha256": "b0d6c4acfbcb776b186014215d236c5050bb7e01385510906d2c42fd2a02d717",
+      "association_audit": {
+        "eo_projection_gate_pass_count": 2255,
+        "eo_projection_gate_rejection_count": 215,
+        "eo_projection_unavailable_count": 0,
+        "eo_one_to_one_unassigned_count": 3,
+        "max_eo_projection_gate_pass_nis": 39.326205460646726,
+        "non_range_state_correction_rejection_count": 44
+      },
+      "additional_radar_birth": {
+        "observation_id": "radar-s000030-d0116",
+        "global_track_id": "global_track_202"
+      }
+    },
+    "digest_definition": "SHA-256 over canonical JSON sorted by global_track_id; each row contains track_id, current state, current covariance, timestamp, and ordered active plus archived observation_id lineage.",
+    "state_change_cause": "Correct camera rotation and intrinsics change EO projection innovations and assignments. The resulting posterior changes later radar association eligibility and creates the additional radar-born track."
+  },
+  "targeted_d2_contamination_check": {
+    "evaluator_only_truth_labels_used_after_replay": true,
+    "targeted_visual_observation_count": 17,
+    "moved_off_reported_wrong_track_count": 17,
+    "candidate_single_truth_lineage_count": 17,
+    "passed": true,
+    "records": [
+      {
+        "observation_id": "vision-s000020-cam-recon-002-d0000",
+        "legacy_global_track_id": "GT3D-000038",
+        "candidate_global_track_id": "global_track_011",
+        "offline_truth_target_id": "TGT-0011"
+      },
+      {
+        "observation_id": "vision-s000020-cam-recon-002-d0001",
+        "legacy_global_track_id": "GT3D-000037",
+        "candidate_global_track_id": "global_track_012",
+        "offline_truth_target_id": "TGT-0012"
+      },
+      {
+        "observation_id": "vision-s000035-cam-recon-001-d0002",
+        "legacy_global_track_id": "GT3D-000032",
+        "candidate_global_track_id": "global_track_006",
+        "offline_truth_target_id": "TGT-0006"
+      },
+      {
+        "observation_id": "vision-s000056-cam-recon-002-d0005",
+        "legacy_global_track_id": "GT3D-000037",
+        "candidate_global_track_id": "global_track_022",
+        "offline_truth_target_id": "TGT-0022"
+      },
+      {
+        "observation_id": "vision-s000076-cam-int-0151-d0000",
+        "legacy_global_track_id": "GT3D-000171",
+        "candidate_global_track_id": "global_track_146",
+        "offline_truth_target_id": "TGT-0152"
+      },
+      {
+        "observation_id": "vision-s000077-cam-int-0151-d0000",
+        "legacy_global_track_id": "GT3D-000171",
+        "candidate_global_track_id": "global_track_146",
+        "offline_truth_target_id": "TGT-0152"
+      },
+      {
+        "observation_id": "vision-s000078-cam-int-0151-d0000",
+        "legacy_global_track_id": "GT3D-000171",
+        "candidate_global_track_id": "global_track_146",
+        "offline_truth_target_id": "TGT-0152"
+      },
+      {
+        "observation_id": "vision-s000079-cam-int-0151-d0000",
+        "legacy_global_track_id": "GT3D-000171",
+        "candidate_global_track_id": "global_track_146",
+        "offline_truth_target_id": "TGT-0152"
+      },
+      {
+        "observation_id": "vision-s000080-cam-int-0151-d0000",
+        "legacy_global_track_id": "GT3D-000171",
+        "candidate_global_track_id": "global_track_146",
+        "offline_truth_target_id": "TGT-0152"
+      },
+      {
+        "observation_id": "vision-s000081-cam-int-0151-d0000",
+        "legacy_global_track_id": "GT3D-000171",
+        "candidate_global_track_id": "global_track_146",
+        "offline_truth_target_id": "TGT-0152"
+      },
+      {
+        "observation_id": "vision-s000083-cam-recon-001-d0004",
+        "legacy_global_track_id": "GT3D-000032",
+        "candidate_global_track_id": "global_track_011",
+        "offline_truth_target_id": "TGT-0011"
+      },
+      {
+        "observation_id": "vision-s000086-cam-int-0151-d0000",
+        "legacy_global_track_id": "GT3D-000171",
+        "candidate_global_track_id": "global_track_146",
+        "offline_truth_target_id": "TGT-0152"
+      },
+      {
+        "observation_id": "vision-s000087-cam-int-0151-d0000",
+        "legacy_global_track_id": "GT3D-000171",
+        "candidate_global_track_id": "global_track_146",
+        "offline_truth_target_id": "TGT-0152"
+      },
+      {
+        "observation_id": "vision-s000090-cam-int-0151-d0000",
+        "legacy_global_track_id": "GT3D-000171",
+        "candidate_global_track_id": "global_track_146",
+        "offline_truth_target_id": "TGT-0152"
+      },
+      {
+        "observation_id": "vision-s000090-cam-recon-002-d0003",
+        "legacy_global_track_id": "GT3D-000213",
+        "candidate_global_track_id": "global_track_020",
+        "offline_truth_target_id": "TGT-0020"
+      },
+      {
+        "observation_id": "vision-s000091-cam-int-0151-d0000",
+        "legacy_global_track_id": "GT3D-000171",
+        "candidate_global_track_id": "global_track_146",
+        "offline_truth_target_id": "TGT-0152"
+      },
+      {
+        "observation_id": "vision-s000097-cam-recon-002-d0011",
+        "legacy_global_track_id": "GT3D-000037",
+        "candidate_global_track_id": "global_track_032",
+        "offline_truth_target_id": "TGT-0033"
+      }
+    ]
+  },
+  "acceptance": {
+    "anonymous_legal_radar_eo_fusion_preserved": true,
+    "crossed_eo_rejected_without_lineage_change": true,
+    "invalid_camera_geometry_rejected": true,
+    "behind_camera_projection_rejected": true,
+    "six_second_oosm_boundary_preserved": true,
+    "measurement_and_arrival_timestamps_preserved": true,
+    "observation_covariance_preserved": true,
+    "global_track_id_rewritten": false
+  },
+  "limitations": [
+    "This is one frozen point-mass episode, not a 20-seed closure.",
+    "D2 strict identity metrics remain unavailable until sidecar coverage and the full candidate rerun are complete.",
+    "The candidate association audit is an additive truth-free diagnostic; thresholds and filter equations are unchanged.",
+    "AirSim and real camera calibration were not exercised."
+  ]
+}

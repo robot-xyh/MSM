@@ -8,6 +8,51 @@
 
 ## 当前权威增量（2026-07-23）
 
+### 匿名跨模态几何门控
+
+雷达初始化的航迹在视觉扫描到达时，D1 先在 `measurement_timestamp` 取得该航迹的 NED 后验
+`(x_i, P_i)`，再使用观测自身的相机模型构造像素预测：
+
+```text
+p_c = R_camera_from_ned * (p_ned - p_camera_ned)
+u = fx * p_c.x / p_c.z + cx
+v = fy * p_c.y / p_c.z + cy
+```
+
+`p_c.z <= 0`、非法外参或非有限投影返回 unavailable。合法候选继续计算：
+
+```text
+r_ij = z_j - h_i
+S_ij = H_i P_i H_i^T + R_j
+NIS_ij = r_ij^T pinv(S_ij) r_ij
+```
+
+其中 `R_j` 是当前视觉观测的像素协方差。`NIS_ij` 仍使用原 `association_gate`，扫描内仍由
+Hungarian 完成一对一分配。更新后的非量距笛卡尔修正还要通过原有状态修正门。量测时刻用于
+历史更新，到达时刻用于 OOSM/延迟审计；六秒 fixed-lag 不变。
+
+根因修复位于 `CameraModel.from_metadata()`：解析器现在接受 `Mapping`，因此
+`SensorScanFrame` 冻结后的嵌套 `camera_model` 不会丢失；同时兼容
+`rotation_camera_from_ned` 和 `camera_intrinsics`。相机模型构造检查位置、旋转、焦距和图像
+尺寸。该变化没有加入任何 truth ID、Actor/Object 名称或 D6 结果。
+
+`association_audit_summary()` 增加以下在线诊断：
+
+- `eo_projection_gate_pass_count`
+- `eo_projection_gate_rejection_count`
+- `eo_projection_unavailable_count`
+- `eo_one_to_one_unassigned_count`
+- `max_eo_projection_gate_pass_nis`
+- `latest_eo_projection_rejection_reason`
+
+字段只反映投影门和一对一分配结果。seed 1000 候选计数为通过 2,255、拒绝 215、不可计算 0、
+一对一冲突 3；最大门内 NIS 为 39.326205。构造负例另行覆盖非法外参和相机后方点，因此该
+episode 的不可计算为 0 不表示拒绝分支未测试。
+
+专项 A/B 使用同一 771 scans/11,889 observations。旧/新规范状态与谱系哈希分别为
+`39d0cdf5...02d7` 和 `b0d6c4ac...d717`。D2 标出的 17 条污染视觉观测 17/17 得到单一离线标签
+谱系；标签只用于回放后核验。D1 全量回归为 `191 passed in 16.88s`。
+
 ### Scan claim 单次 JSON 安全物化
 
 `ScanInputOrganizer` 在接纳扫描前构造 `_ScanClaim`。claim 包含逐 observation 谱系摘要、

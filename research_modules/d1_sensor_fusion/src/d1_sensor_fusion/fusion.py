@@ -488,6 +488,12 @@ class FusionAdapter:
         self.non_range_state_correction_rejection_count = 0
         self.pre_checkpoint_oosm_replay_count = 0
         self.max_non_range_position_correction_score = 0.0
+        self.eo_projection_gate_pass_count = 0
+        self.eo_projection_gate_rejection_count = 0
+        self.eo_projection_unavailable_count = 0
+        self.eo_one_to_one_unassigned_count = 0
+        self.max_eo_projection_gate_pass_nis = 0.0
+        self._latest_eo_projection_rejection_reason: str | None = None
         self._last_association_rejection_reason: str | None = None
         self._last_association_rejection_track_ids: tuple[str, ...] = ()
         self._batch_context: _BatchProcessingContext | None = None
@@ -1415,6 +1421,18 @@ class FusionAdapter:
             "max_non_range_position_correction_score": float(
                 self.max_non_range_position_correction_score
             ),
+            "eo_projection_gate_pass_count": self.eo_projection_gate_pass_count,
+            "eo_projection_gate_rejection_count": (
+                self.eo_projection_gate_rejection_count
+            ),
+            "eo_projection_unavailable_count": self.eo_projection_unavailable_count,
+            "eo_one_to_one_unassigned_count": self.eo_one_to_one_unassigned_count,
+            "max_eo_projection_gate_pass_nis": float(
+                self.max_eo_projection_gate_pass_nis
+            ),
+            "latest_eo_projection_rejection_reason": (
+                self._latest_eo_projection_rejection_reason
+            ),
             "association_gate": float(self.association_gate),
             "radar_reacquisition_gate": float(self.radar_reacquisition_gate),
             "radar_reacquisition_max_gap_s": float(
@@ -1665,6 +1683,11 @@ class FusionAdapter:
 
         valid = np.isfinite(cost_matrix) & (cost_matrix <= self.association_gate)
         if not np.any(valid):
+            self._record_eo_projection_scan_diagnostics(
+                observations,
+                cost_matrix,
+                {},
+            )
             return {}
         penalty = max(1.0e9, abs(self.association_gate) * 1.0e6)
         gated_cost = np.where(valid, cost_matrix, penalty)
@@ -1697,7 +1720,48 @@ class FusionAdapter:
             if not valid[row, column]:
                 continue
             assignments[int(column)] = track_items[int(row)][0]
+        self._record_eo_projection_scan_diagnostics(
+            observations,
+            cost_matrix,
+            assignments,
+        )
         return assignments
+
+    def _record_eo_projection_scan_diagnostics(
+        self,
+        observations: list[SensorObservation],
+        cost_matrix: np.ndarray,
+        assignments: dict[int, str],
+    ) -> None:
+        """Record truth-free outcomes of the existing EO innovation gate."""
+
+        for column, observation in enumerate(observations):
+            if observation.modality != "eo":
+                continue
+            finite_costs = cost_matrix[np.isfinite(cost_matrix[:, column]), column]
+            if finite_costs.size == 0:
+                self.eo_projection_unavailable_count += 1
+                self._latest_eo_projection_rejection_reason = (
+                    "camera_geometry_or_projection_unavailable"
+                )
+                continue
+            best_nis = float(np.min(finite_costs))
+            if best_nis > self.association_gate:
+                self.eo_projection_gate_rejection_count += 1
+                self._latest_eo_projection_rejection_reason = (
+                    "projection_innovation_gate_rejected"
+                )
+                continue
+            self.eo_projection_gate_pass_count += 1
+            self.max_eo_projection_gate_pass_nis = max(
+                self.max_eo_projection_gate_pass_nis,
+                best_nis,
+            )
+            if column not in assignments:
+                self.eo_one_to_one_unassigned_count += 1
+                self._latest_eo_projection_rejection_reason = (
+                    "one_to_one_assignment_conflict"
+                )
 
     def _radar_scan_cost_matrix(
         self,

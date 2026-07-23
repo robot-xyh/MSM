@@ -4,6 +4,40 @@ Offline research module for radar, acoustic, EO, and optional synthetic lidar he
 
 ## 当前性能与治理证据（2026-07-23）
 
+### 第十二阶段：匿名跨模态几何门控
+
+D2 的 nominal 200v200 身份阻断审计表明，seed 1000 中存在视觉观测与另一目标雷达观测写入
+同一 D1 航迹谱系的情况。D1 使用 clean `5263e2b` 的 10 s 冻结输入复现该问题，输入为
+771 scans/11,889 anonymous observations，SHA-256 为
+`5d033a049c2b4e09fb13d7c36e1117055b5b596d9e31f058ad2bf7cbd267ce8f`。
+
+根因是 `SensorScanFrame` 将嵌套相机模型冻结为只读 `Mapping`，旧解析器只接受普通 `dict`。
+clean 输入中的相机位置仍由顶层字段保留，但旋转矩阵和内参退回默认值，造成错误像素投影和低
+创新匹配。当前解析支持冻结 `Mapping`、`rotation_camera_from_ned` 和嵌套
+`camera_intrinsics`，并检查相机几何。显式非法外参、相机后方目标和非有限投影均 fail closed。
+
+在线关联仍只使用双时间戳、NED 航迹状态、像素投影/创新、观测与航迹协方差、传感器类型和已有
+航迹状态。truth target、Actor/Object 名称、距离真值和 D6 结果均未进入在线门控，
+`online_truth_use_count=0`。D2 离线标签只在回放结束后复核结果。
+
+单 seed A/B 中，D2 列出的 17 条视觉污染观测全部离开原错误航迹，且 17/17 进入离线标签单一
+的候选谱系。终态航迹数 `201 -> 202`；候选新增雷达出生
+`radar-s000030-d0116 -> global_track_202`，其原因是修正后的视觉后验改变了后续雷达关联集合。
+规范状态/协方差/时刻/谱系摘要由 `39d0cdf5...02d7` 变为
+`b0d6c4ac...d717`，属于有明确关联因果的业务变化。
+
+`association_audit_summary()` 新增光电投影门通过、拒绝、不可用、一对一冲突和最大门内 NIS
+诊断。候选计数分别为 `2255/215/0/3`，最大门内 NIS 为 `39.326205`。字段不含真值，
+schema 保持 `d1.association_audit.v1` 的兼容性增量。D1 全量回归为
+`191 passed in 16.88s`。专项证据：
+
+- `reports/d1_cross_modal_geometry_governance_20260723.json`
+- `reports/D1_CROSS_MODAL_GEOMETRY_GOVERNANCE_20260723_CN.md`
+
+本项关闭已复现的 D1 相机元数据解析缺陷，不关闭 nominal 20-seed 身份审计。main 仍需在 clean
+候选提交上重跑 seeds 1000-1019，再由 D2 复核 118 个历史多真值航迹帧。该证据不是 AirSim、
+真实相机标定或严格身份指标放行。
+
 ### 第十一阶段：扫描 claim JSON 单次物化
 
 本轮使用 clean `5263e2b343dc4b96d239f77ef09437eb132f9efb` 的
