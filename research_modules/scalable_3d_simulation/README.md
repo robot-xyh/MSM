@@ -30,6 +30,25 @@ main 现已把该确认链自动接入 D6 离线结果联接。存在运行时�
 每个窗口输出起始、结束、最小三维距离和五米事件；距离进展只记为诊断，不作为 D3 正式奖励。
 输入清单、联接结果、中文报告和 main provenance manifest 均随 episode 保存。
 
+## 2026-07-24 D1 多 seed 与长时矩阵预注册
+
+main 已冻结 `configs/d1_covariance_limit_multiseed_v1.json`。矩阵包含 seed
+`1101-1110` 的 10 组 2.2 秒 short pair，以及 seeds `1101-1103` 的 3 组 10 秒 long
+pair。每组均为 200 个目标、200 个资源、2 个侦察节点，并启用同一
+`--d1-d2-structural-ambiguity-hold` 运行配置。reference 固定为 `7cc2d0c`，candidate
+固定为 `95bf46e`。
+
+`scripts/run_d1_covariance_limit_matrix.py` 顺序运行所有 arm，并在相邻 case 间交替
+reference/candidate 先后次序。运行器拒绝提交不匹配或脏 worktree；每个 case 显式保存两条
+命令、episode 目录、GNU `time -v` 资源记录、标准输出、标准错误和跨构建语义文件。生成的
+`evidence_manifest.json` 直接记录 arm 标签和路径，后续 D6 不需要从目录名推断实验臂。
+`--resume` 只复用提交、seed、时长、规模、运行配置、有限状态和真值隔离均通过的 episode。
+
+当前只完成矩阵、运行器和 4 项单元测试，正式 13 组 pair 尚未运行。预注册门要求 short
+组至少 8/10 更快、D1 fusion 均值改善至少 5% 且配对 bootstrap 区间上界低于 0；long 组
+至少 2/3 更快且均值改善至少 5%；长短单位时间成本增长、核心墙钟和内存均有独立上界。
+实时因子未达到 1 时，系统实时 P1 继续开放。
+
 ## 2026-07-24 D1 协方差成对限制 clean 准入
 
 D1 已把六维协方差 15 个非对角元素的逐项标量裁剪改为只读上三角索引上的批量裁剪。旧路径

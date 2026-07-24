@@ -1,0 +1,127 @@
+{
+  "schema_version": "scalable3d-d1-covariance-limit-multiseed-matrix-v1",
+  "experiment_id": "d1-covariance-limit-multiseed-20260724-v1",
+  "reference_commit": "7cc2d0cfd598a72d60c6ba8c7d4a283f4e5a897d",
+  "candidate_commit": "95bf46e34321127313757986bb28bfb14b7e3c59",
+  "target_count": 200,
+  "resource_count": 200,
+  "recon_count": 2,
+  "run_flags": [
+    "--integrated-stack",
+    "--d1-d2-structural-ambiguity-hold"
+  ],
+  "runtime_profile_sha256": "deabac3fbf2a788f68a0b807945e5f1bedacf8c5917c4d3b49c5cffb3c90da70",
+  "cooldown_s": 2.0,
+  "bootstrap_seed": 20260724,
+  "bootstrap_resamples": 10000,
+  "cases": [
+    {
+      "case_id": "short_seed_1101",
+      "group": "short",
+      "seed": 1101,
+      "duration_s": 2.2,
+      "arm_order": ["reference", "candidate"]
+    },
+    {
+      "case_id": "short_seed_1102",
+      "group": "short",
+      "seed": 1102,
+      "duration_s": 2.2,
+      "arm_order": ["candidate", "reference"]
+    },
+    {
+      "case_id": "short_seed_1103",
+      "group": "short",
+      "seed": 1103,
+      "duration_s": 2.2,
+      "arm_order": ["reference", "candidate"]
+    },
+    {
+      "case_id": "short_seed_1104",
+      "group": "short",
+      "seed": 1104,
+      "duration_s": 2.2,
+      "arm_order": ["candidate", "reference"]
+    },
+    {
+      "case_id": "short_seed_1105",
+      "group": "short",
+      "seed": 1105,
+      "duration_s": 2.2,
+      "arm_order": ["reference", "candidate"]
+    },
+    {
+      "case_id": "short_seed_1106",
+      "group": "short",
+      "seed": 1106,
+      "duration_s": 2.2,
+      "arm_order": ["candidate", "reference"]
+    },
+    {
+      "case_id": "short_seed_1107",
+      "group": "short",
+      "seed": 1107,
+      "duration_s": 2.2,
+      "arm_order": ["reference", "candidate"]
+    },
+    {
+      "case_id": "short_seed_1108",
+      "group": "short",
+      "seed": 1108,
+      "duration_s": 2.2,
+      "arm_order": ["candidate", "reference"]
+    },
+    {
+      "case_id": "short_seed_1109",
+      "group": "short",
+      "seed": 1109,
+      "duration_s": 2.2,
+      "arm_order": ["reference", "candidate"]
+    },
+    {
+      "case_id": "short_seed_1110",
+      "group": "short",
+      "seed": 1110,
+      "duration_s": 2.2,
+      "arm_order": ["candidate", "reference"]
+    },
+    {
+      "case_id": "long_seed_1101",
+      "group": "long",
+      "seed": 1101,
+      "duration_s": 10.0,
+      "arm_order": ["candidate", "reference"]
+    },
+    {
+      "case_id": "long_seed_1102",
+      "group": "long",
+      "seed": 1102,
+      "duration_s": 10.0,
+      "arm_order": ["reference", "candidate"]
+    },
+    {
+      "case_id": "long_seed_1103",
+      "group": "long",
+      "seed": 1103,
+      "duration_s": 10.0,
+      "arm_order": ["candidate", "reference"]
+    }
+  ],
+  "admission_gates": {
+    "short_minimum_candidate_faster_count": 8,
+    "short_minimum_fusion_improvement_pct": 5.0,
+    "short_bootstrap_relative_change_upper_bound_pct": 0.0,
+    "long_minimum_candidate_faster_count": 2,
+    "long_minimum_fusion_improvement_pct": 5.0,
+    "maximum_long_short_unit_cost_growth_degradation_pct": 5.0,
+    "maximum_core_wall_mean_increase_pct": 5.0,
+    "maximum_rss_mean_increase_pct": 5.0,
+    "maximum_any_pair_rss_increase_pct": 5.0
+  },
+  "evidence_boundary": {
+    "simulation_mode": "three_dimensional_point_mass",
+    "airsim_evidence": false,
+    "truth_is_online_control_input": false,
+    "system_realtime_requires_real_time_factor_at_least_one": true
+  }
+}

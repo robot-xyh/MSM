@@ -2,6 +2,24 @@
 
 ## 当前执行状态（2026-07-24）
 
+### D1 多 seed 与长时矩阵
+
+- [x] 冻结 reference `7cc2d0c` 和 candidate `95bf46e`；
+- [x] 预注册 short seeds `1101-1110`、2.2 秒、10 组 pair；
+- [x] 预注册 long seeds `1101-1103`、10 秒、3 组 pair；
+- [x] 固定 200 个目标、200 个资源、2 个侦察节点和结构歧义 hold 运行配置；
+- [x] 交替 arm 先后顺序，避免把主机热状态固定偏向同一实验臂；
+- [x] 运行器显式记录命令、提交、episode、资源记录和 cross-build 路径；
+- [x] `--resume` 只接受 clean、有限、真值隔离且配置匹配的既有 episode；
+- [x] main 专项 `4 passed`；
+- [ ] 完成 10 组 short 与 3 组 long clean pair；
+- [ ] 完成 13/13 跨构建业务语义审计；
+- [ ] 由 D6 计算 paired bootstrap 95% 区间和长短单位时间增长；
+- [ ] 根据预注册门更新 D1 多 seed 准入和系统实时 P1。
+
+正式运行前不得改变 seed、时长、arm 顺序或准入门。运行失败可使用同一
+`evidence_manifest.json` 断点续跑；无效或部分 episode 不得作为正式输入。
+
 ### D1 协方差成对限制 clean 准入
 
 - [x] D1 保留标量 reference，并默认使用六维协方差上三角批量裁剪；
