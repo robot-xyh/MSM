@@ -1,5 +1,64 @@
 # D6 系统级离线评估：算法原理与实施说明
 
+## D1 原子影子载荷分派与校验（2026-07-24）
+
+解析器先读取 payload 顶层执行模式。没有模式标记且没有 `canonical_preparation` 时，记录归入
+legacy uninstrumented；没有模式标记但准备块精确等于旧五字段时，归入 legacy prepared handle。
+显式 `atomic_experimental_offline_v1` 只接受以下准备块：
+
+```text
+prepared_publication
+post_integrity_check
+canonical_publication_digest
+shadow_publication_digest
+shadow_materialized
+work
+atomic_failure_reason
+```
+
+任一 atomic 字段在缺少模式标记时出现，或准备块同时含 legacy 与 atomic 字段，整条记录无效。
+解析器不读取 D1 的 evaluation 对象和 shadow 航迹数组，也不导入 D1 类型。
+
+prepared publication 的 `prototype_status` 和 `usage_scope` 使用固定值。准备工作要求
+`full_description_pass_count=1`，`track_count` 与 main 的 canonical track count 相等，完整航迹、
+状态和协方差摘要计数与 validated count 相等。准备没有 validation error 时，validated count
+必须覆盖全部 canonical 航迹。canonical publication digest 必须与 prepared publication 的 base
+digest 相同。
+
+post-integrity 的 match 状态与 mismatch reason 必须互斥。有效准备且 match 时，需要一次完整内容
+复核，并对每条 canonical 航迹计算摘要。post-integrity 的 pass 和 track digest 计数还必须与 atomic
+work 中对应计数相同。该交叉检查用于确认日志没有把不同调用的准备、复核和工作量拼接在一起。
+
+物化规则由最终 decision 数决定：
+
+```text
+accepted_count > 0 and no atomic failure
+    -> shadow_materialized = true
+    -> shadow digest present
+    -> copy/full-digest count = canonical track count
+    -> publication digest count = 1
+
+accepted_count = 0 and no atomic failure
+    -> shadow_materialized = false
+    -> shadow digest absent
+    -> all shadow work counts = 0
+
+atomic failure
+    -> accepted_count = 0
+    -> shadow_materialized = false
+    -> shadow digest absent
+    -> provisional work may remain as audit evidence
+```
+
+聚合先报告三类执行模式数量和准备/完整性可评估数。只有输入中存在 atomic 记录时，atomic failure、
+物化数和七项原子工作量才具有可用数值；否则这些指标写为 `null/unavailable`。完整性失败和 atomic
+failure 进入 D6 failure reasons，但不会触发任何在线状态变化。
+
+2026-07-24 的确定性专项为 `25 passed`，D6 全量为
+`637 passed, 1 warning in 21.89s`。另外只读解析 seed 1100 历史文件，9/9 记录识别为 legacy
+prepared handle，9/9 integrity passed。尚无真实 atomic episode，本算法段只说明 consumer
+合同和测试证据。
+
 ## D1 质心发布影子旁路只读算法（2026-07-23）
 
 ### 输入与隔离

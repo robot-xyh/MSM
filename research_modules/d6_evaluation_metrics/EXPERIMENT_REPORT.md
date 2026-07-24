@@ -1,5 +1,36 @@
 # D6 系统级评估指标实验报告
 
+## 2.26 D1 原子影子旁路兼容验证
+
+### 范围
+
+本轮验证 D6 对三类 v1 记录的只读分派：无准备审计的历史记录、五字段 prepared-handle 历史记录
+和显式 atomic 记录。atomic 正例覆盖 accepted、普通 rejected 和操作后完整性失败。负例覆盖五类
+必填字段缺失、atomic 模式标记缺失、legacy/atomic 字段混用、物化与摘要矛盾、工作量计数矛盾。
+D6 没有启动 main 或 AirSim，也没有修改 D1 控制状态。
+
+### 结果
+
+| 检查 | 结果 |
+| --- | ---: |
+| D1 影子旁路专项 | 25 passed |
+| D6 全量回归 | 637 passed |
+| 失败 | 0 |
+| warning | 1 条既有 Matplotlib `Axes3D` 环境提示 |
+| 历史 seed 1100 prepared 记录 | 9/9 可读，9/9 integrity passed |
+| 真实 atomic episode | 未提供 |
+
+历史无 atomic 字段时，atomic failure 和工作量保持 unavailable。atomic rejected fixture 明确记录
+shadow 复制、完整摘要和发布摘要均为 0；该零值来自原子记录本身，不是缺失回填。完整性失败 fixture
+允许保留临时 shadow 工作计数，但最终 `accepted_count=0`、`shadow_materialized=false` 且 shadow
+摘要为空，D6 同时报告 integrity failure 和 atomic failure。
+
+### 结论
+
+D6 consumer 已兼容 main 拟接入的原子摘要结构，并保留历史 prepared-handle v1。当前验证属于
+确定性接口和失败关闭测试。main 尚未生成真实 atomic episode，A2 的性能门、有效 treatment 和
+结果效果仍按 2026-07-23 结论保持开放。
+
 ## 2.25 D1 质心发布影子旁路复核
 
 ### 验证范围

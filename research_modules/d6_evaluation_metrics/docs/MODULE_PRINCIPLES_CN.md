@@ -1,5 +1,29 @@
 # D6 系统级离线评估模块原理
 
+## 原子影子记录的兼容边界（2026-07-24）
+
+同一运行时 schema 内存在三类历史与新增记录。没有 `canonical_preparation` 的历史记录只能说明
+当时未采集准备审计，D6 将其归为 legacy uninstrumented。携带旧五字段准备块的记录按 legacy
+prepared handle 解释。新增原子记录必须在 payload 顶层声明
+`atomic_experimental_offline_v1`，否则原子字段不能被解释为有效证据。显式模式防止字段名称相近的
+历史记录被误判，也使 mixed shape 和 partial shape 可以失败关闭。
+
+原子记录的证据链分为四段。准备摘要证明 D1 对完整 canonical publication 做过一次描述，并覆盖
+每条航迹的状态、协方差及完整内容摘要。操作后完整性检查证明同一次同步调用结束时，正式输入仍与
+准备对象一致。shadow 物化字段说明是否真的形成脱离正式链路的候选发布。工作量计数把上述遍历和
+摘要次数显式落盘，D6 用交叉关系检查记录是否自洽，不使用机器耗时推测工作量。
+
+accepted、rejected 和 atomic failure 使用不同规则。accepted 必须物化 shadow，复制和摘要计数
+必须覆盖 canonical 航迹。普通 rejected 不得复制或摘要 shadow。atomic failure 可以保留失败前
+已经发生的临时工作量，但必须丢弃 shadow、清除 accepted，并给出非空失败原因。完整性失败和装配
+失败由 D6 作为审计失败报告，但 D6 不改变 D1 状态，也不向分配或导引链发送反馈。
+
+历史记录缺少 atomic 字段时，相关工作量、物化数和失败数为 unavailable。只有实际存在 atomic
+记录时，显式记录的零工作量才可作为数值零参与聚合。2026-07-24 的测试覆盖 legacy、atomic
+accepted/rejected/failure、字段缺失、结构混用和输入不变性。专项 `25 passed`，D6 全量
+`637 passed, 1 warning`。真实 seed 1100 的 9 条旧 prepared-handle 记录兼容读取；当前没有真实
+atomic episode，性能和效果结论保持不变。
+
 ## D1 质心发布影子旁路的评估边界（2026-07-23）
 
 D1 质心发布影子旁路用于观察候选质心修正，不属于正式航迹发布链。D6 只读取

@@ -1,5 +1,11 @@
 # D6 文档索引
 
+2026-07-24 D1 原子影子旁路兼容原理与字段约束见
+`MODULE_PRINCIPLES_CN.md`、`ALGORITHM_AND_IMPLEMENTATION.md`，确定性结果见根目录
+`../EXPERIMENT_REPORT.md` 2.26 节。D6 保留历史 uninstrumented/prepared-handle v1，同时仅在
+显式 atomic mode 下解释准备、操作后完整性、物化、工作量和失败摘要。专项 `25 passed`，D6 全量
+`637 passed, 1 warning`；当前没有真实 atomic episode，不能据此更新 A2 准入结论。
+
 2026-07-23 D1 质心发布影子旁路的评估原则和实现见
 `MODULE_PRINCIPLES_CN.md`、`ALGORITHM_AND_IMPLEMENTATION.md`，真实 seed 1100 开发期复核见根目录
 `../EXPERIMENT_REPORT.md` 2.25 节。D6 只读消费 A2 sidecar、最终诊断和阶段时序，分别报告业务

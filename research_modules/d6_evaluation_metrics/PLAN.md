@@ -1,5 +1,33 @@
 # D6 Evaluation Metrics Plan
 
+## 2026-07-24 D1 原子影子旁路兼容状态
+
+### 已完成
+
+- [x] 保留 `scalable3d-d1-centroid-overlay-shadow-v1` 和历史 prepared-handle 五字段合同；无准备
+  审计的历史记录显式归为 `legacy_uninstrumented_runtime_v1`。
+- [x] 新增显式 `atomic_experimental_offline_v1` 分派。atomic 模式只读取 preparation、post
+  integrity、canonical/shadow digest、materialization、work 和 failure 摘要，不读取
+  `evaluation` 或 `shadow_tracks`。
+- [x] 严格核对准备计数、操作后完整性计数、原子工作量、accepted/rejected、shadow 物化和失败
+  原因。字段半缺、legacy/atomic 混用、未知模式及交叉关系矛盾均失败关闭。
+- [x] 历史缺失原子证据时，原子失败与工作量指标保持 unavailable，不补零；D6 仍为只读消费者，
+  不参与状态更新、计划、分配或导引。
+- [x] 2026-07-24 专项 `25 passed`，D6 全量
+  `637 passed, 1 warning in 21.89s`；seed 1100 的 9 条历史 prepared-handle 记录完成只读兼容
+  复核，9/9 完整性检查通过。
+
+### 后续验证
+
+- [ ] main 按显式 atomic mode 和精确 `canonical_preparation` 结构生成至少一个 rejected、一个
+  accepted、一个 fail-closed episode 后，D6 只读复核真实工作量和 failure 分布。
+- [ ] 原子入口仍需由 main 在 clean/frozen 同输入 pair 上重跑性能门。当前只完成 D6 consumer
+  单测，不能据此声称 A2 的 `+5%` 性能门、有效 treatment 或 overall admission 已通过。
+- [ ] A3/A4 与后续 seed 仍服从 main/D1 的准入顺序；D6 不使用本次兼容接口改变实验调度。
+
+`AIRSIM_INTEGRATION_PLAN.md` 已检查。本轮只扩展可扩展三维离线日志的读取与审计，不改变 AirSim
+话题、相机、检测、reset、actor 或控制接口，因此无需修改。
+
 ## 2026-07-23 D1 质心发布影子旁路状态
 
 ### 已完成

@@ -4,7 +4,13 @@ import copy
 import hashlib
 import json
 
+import pytest
+
 from d6_evaluation_metrics.d1_centroid_overlay_shadow import (
+    D1_CENTROID_OVERLAY_SHADOW_ATOMIC_EXECUTION_MODE,
+    D1_CENTROID_OVERLAY_SHADOW_EXECUTION_MODE_FIELD,
+    D1_CENTROID_OVERLAY_SHADOW_LEGACY_EXECUTION_MODE,
+    D1_CENTROID_OVERLAY_SHADOW_LEGACY_UNINSTRUMENTED_EXECUTION_MODE,
     D1_CENTROID_OVERLAY_SHADOW_RUNTIME_SCHEMA,
     D1_CENTROID_OVERLAY_SHADOW_TIMING_STAGE,
     D1_CENTROID_OVERLAY_SHADOW_TOPIC,
@@ -206,6 +212,137 @@ def _evaluate(
         _timings() if timings is None else timings,
         online_unavailable_reason=None,
         stage_unavailable_reason=None,
+    )
+
+
+def _with_legacy_preparation(
+    record: dict[str, object],
+) -> dict[str, object]:
+    payload = record["payload"]
+    assert isinstance(payload, dict)
+    track_count = int(payload["canonical_track_count"])
+    payload["canonical_preparation"] = {
+        "explicit_prepared_handle_used": True,
+        "base_publication_digest": f"sha256:{'1' * 64}",
+        "validation_error": None,
+        "work": {
+            "full_description_pass_count": 1,
+            "track_count": track_count,
+            "validated_track_count": track_count,
+            "full_track_digest_count": track_count,
+            "state_digest_count": track_count,
+            "covariance_digest_count": track_count,
+            "publication_digest_count": 1,
+        },
+        "evaluation_integrity_check": {
+            "matches": True,
+            "mismatch_reason": None,
+            "object_binding_pass_count": 1,
+            "full_content_digest_pass_count": 1,
+            "track_digest_count": track_count,
+        },
+    }
+    return record
+
+
+def _with_atomic_preparation(
+    record: dict[str, object],
+    *,
+    integrity_matches: bool = True,
+    atomic_failure_reason: str | None = None,
+    provisional_shadow_work: bool = False,
+) -> dict[str, object]:
+    payload = record["payload"]
+    assert isinstance(payload, dict)
+    track_count = int(payload["canonical_track_count"])
+    accepted_count = int(payload["accepted_count"])
+    materialized = accepted_count > 0 and atomic_failure_reason is None
+    if atomic_failure_reason is not None:
+        assert accepted_count == 0
+    if materialized or provisional_shadow_work:
+        shadow_copies = track_count
+        shadow_digests = track_count
+        shadow_publication_digests = 1
+    else:
+        shadow_copies = 0
+        shadow_digests = 0
+        shadow_publication_digests = 0
+    post_track_digests = track_count if integrity_matches else 1
+    base_digest = f"sha256:{'2' * 64}"
+    payload[D1_CENTROID_OVERLAY_SHADOW_EXECUTION_MODE_FIELD] = (
+        D1_CENTROID_OVERLAY_SHADOW_ATOMIC_EXECUTION_MODE
+    )
+    payload["canonical_preparation"] = {
+        "prepared_publication": {
+            "prototype_status": (
+                "experimental_design_prototype_not_online_schema"
+            ),
+            "usage_scope": "experimental_offline_atomic_only",
+            "base_publication_digest": base_digest,
+            "validation_error": None,
+            "track_count": track_count,
+            "work": {
+                "full_description_pass_count": 1,
+                "track_count": track_count,
+                "validated_track_count": track_count,
+                "full_track_digest_count": track_count,
+                "state_digest_count": track_count,
+                "covariance_digest_count": track_count,
+                "publication_digest_count": 1,
+            },
+        },
+        "post_integrity_check": {
+            "matches": integrity_matches,
+            "mismatch_reason": (
+                None
+                if integrity_matches
+                else "track_content_digest_mismatch"
+            ),
+            "object_binding_pass_count": 1,
+            "full_content_digest_pass_count": 1,
+            "track_digest_count": post_track_digests,
+        },
+        "canonical_publication_digest": base_digest,
+        "shadow_publication_digest": (
+            f"sha256:{'3' * 64}" if materialized else None
+        ),
+        "shadow_materialized": materialized,
+        "work": {
+            "canonical_full_description_pass_count": 1,
+            "canonical_description_track_digest_count": track_count,
+            "canonical_post_integrity_pass_count": 1,
+            "canonical_post_integrity_track_digest_count": (
+                post_track_digests
+            ),
+            "shadow_track_copy_count": shadow_copies,
+            "shadow_full_track_digest_count": shadow_digests,
+            "shadow_publication_digest_count": (
+                shadow_publication_digests
+            ),
+        },
+        "atomic_failure_reason": atomic_failure_reason,
+    }
+    return record
+
+
+def _one_record_summary(
+    *,
+    accepted: bool,
+    rejection_reason_counts: dict[str, int] | None = None,
+    error_count: int = 0,
+) -> dict[str, object]:
+    return _summary(
+        evaluation_count=1,
+        decision_count=1,
+        accepted_count=int(accepted),
+        rejected_count=int(not accepted),
+        error_count=error_count,
+        rejection_reason_counts=(
+            {} if accepted else rejection_reason_counts or {"oosm_scan": 1}
+        ),
+        current_watermark=1,
+        peak_watermark=1,
+        payload_bytes_peak=420,
     )
 
 
@@ -517,3 +654,328 @@ def test_input_records_are_not_mutated() -> None:
     _evaluate(records)
 
     assert records == before
+
+
+def test_historical_prepared_handle_v1_remains_readable() -> None:
+    record = _with_legacy_preparation(
+        _record(1, accepted=True, watermark_count=1, payload_bytes=420)
+    )
+
+    evidence = _evaluate(
+        [record],
+        summary=_one_record_summary(accepted=True),
+        timings=_timings(call_count=1),
+    )
+
+    metrics = evidence.metrics
+    assert evidence.failure_reasons == ()
+    assert metrics[
+        "d1_centroid_overlay_shadow_execution_mode_distribution_json"
+    ] == {D1_CENTROID_OVERLAY_SHADOW_LEGACY_EXECUTION_MODE: 1}
+    assert metrics[
+        "d1_centroid_overlay_shadow_legacy_prepared_handle_count"
+    ] == 1
+    assert metrics[
+        "d1_centroid_overlay_shadow_preparation_audit_evaluable_count"
+    ] == 1
+    assert metrics[
+        "d1_centroid_overlay_shadow_integrity_check_passed_count"
+    ] == 1
+    atomic_metric = "d1_centroid_overlay_shadow_atomic_failure_count"
+    assert metrics[atomic_metric] is None
+    assert metrics[f"{atomic_metric}_availability"] == "unavailable"
+    assert metrics[f"{atomic_metric}_unavailable_reason"] == (
+        "atomic_overlay_records_not_present"
+    )
+
+
+def test_historical_uninstrumented_v1_does_not_invent_atomic_zeroes() -> None:
+    record = _record(
+        1,
+        accepted=False,
+        watermark_count=1,
+        payload_bytes=420,
+    )
+
+    evidence = _evaluate(
+        [record],
+        summary=_one_record_summary(accepted=False),
+        timings=_timings(call_count=1),
+    )
+
+    metrics = evidence.metrics
+    assert evidence.failure_reasons == ()
+    assert metrics[
+        "d1_centroid_overlay_shadow_execution_mode_distribution_json"
+    ] == {
+        D1_CENTROID_OVERLAY_SHADOW_LEGACY_UNINSTRUMENTED_EXECUTION_MODE: 1
+    }
+    assert metrics[
+        "d1_centroid_overlay_shadow_preparation_audit_evaluable_count"
+    ] == 0
+    assert metrics[
+        "d1_centroid_overlay_shadow_preparation_audit_unavailable_count"
+    ] == 1
+    integrity_metric = (
+        "d1_centroid_overlay_shadow_integrity_check_passed_count"
+    )
+    assert metrics[integrity_metric] is None
+    assert metrics[f"{integrity_metric}_availability"] == "unavailable"
+    atomic_work_metric = (
+        "d1_centroid_overlay_shadow_atomic_shadow_track_copy_count"
+    )
+    assert metrics[atomic_work_metric] is None
+    assert metrics[f"{atomic_work_metric}_availability"] == "unavailable"
+
+
+def test_atomic_accepted_record_reports_strict_work_and_materialization() -> None:
+    record = _with_atomic_preparation(
+        _record(1, accepted=True, watermark_count=1, payload_bytes=420)
+    )
+
+    evidence = _evaluate(
+        [record],
+        summary=_one_record_summary(accepted=True),
+        timings=_timings(call_count=1),
+    )
+
+    metrics = evidence.metrics
+    assert evidence.failure_reasons == ()
+    assert metrics["d1_centroid_overlay_shadow_atomic_count"] == 1
+    assert metrics[
+        "d1_centroid_overlay_shadow_atomic_shadow_materialized_count"
+    ] == 1
+    assert metrics[
+        "d1_centroid_overlay_shadow_atomic_canonical_description_pass_count"
+    ] == 1
+    assert metrics[
+        "d1_centroid_overlay_shadow_atomic_canonical_description_track_digest_count"
+    ] == 2
+    assert metrics[
+        "d1_centroid_overlay_shadow_atomic_post_integrity_pass_count"
+    ] == 1
+    assert metrics[
+        "d1_centroid_overlay_shadow_atomic_post_integrity_track_digest_count"
+    ] == 2
+    assert metrics[
+        "d1_centroid_overlay_shadow_atomic_shadow_track_copy_count"
+    ] == 2
+    assert metrics[
+        "d1_centroid_overlay_shadow_atomic_shadow_full_track_digest_count"
+    ] == 2
+    assert metrics[
+        "d1_centroid_overlay_shadow_atomic_shadow_publication_digest_count"
+    ] == 1
+
+
+def test_atomic_rejected_record_proves_no_shadow_work() -> None:
+    record = _with_atomic_preparation(
+        _record(1, accepted=False, watermark_count=1, payload_bytes=420)
+    )
+
+    evidence = _evaluate(
+        [record],
+        summary=_one_record_summary(accepted=False),
+        timings=_timings(call_count=1),
+    )
+
+    metrics = evidence.metrics
+    assert evidence.failure_reasons == ()
+    assert metrics[
+        "d1_centroid_overlay_shadow_atomic_shadow_materialized_count"
+    ] == 0
+    assert metrics[
+        "d1_centroid_overlay_shadow_atomic_shadow_track_copy_count"
+    ] == 0
+    assert metrics[
+        "d1_centroid_overlay_shadow_atomic_shadow_full_track_digest_count"
+    ] == 0
+    assert metrics[
+        "d1_centroid_overlay_shadow_atomic_shadow_publication_digest_count"
+    ] == 0
+
+
+def test_atomic_post_integrity_failure_is_readable_and_flagged() -> None:
+    record = _record(
+        1,
+        accepted=False,
+        watermark_count=1,
+        payload_bytes=420,
+    )
+    payload = record["payload"]
+    assert isinstance(payload, dict)
+    decision = payload["decisions"][0]
+    assert isinstance(decision, dict)
+    decision["reject_reason"] = "prepared_canonical_publication_mismatch"
+    payload["rejection_reason_counts"] = {
+        "prepared_canonical_publication_mismatch": 1
+    }
+    payload["evaluation_error"] = (
+        "RuntimeError:post_integrity_mismatch:"
+        "track_content_digest_mismatch"
+    )
+    _with_atomic_preparation(
+        record,
+        integrity_matches=False,
+        atomic_failure_reason=(
+            "post_integrity_mismatch:track_content_digest_mismatch"
+        ),
+        provisional_shadow_work=True,
+    )
+
+    evidence = _evaluate(
+        [record],
+        summary=_one_record_summary(
+            accepted=False,
+            rejection_reason_counts={
+                "prepared_canonical_publication_mismatch": 1
+            },
+            error_count=1,
+        ),
+        timings=_timings(call_count=1),
+    )
+
+    metrics = evidence.metrics
+    assert metrics[
+        "d1_centroid_overlay_shadow_integrity_check_failed_count"
+    ] == 1
+    assert metrics["d1_centroid_overlay_shadow_atomic_failure_count"] == 1
+    assert metrics[
+        "d1_centroid_overlay_shadow_atomic_shadow_materialized_count"
+    ] == 0
+    assert metrics[
+        "d1_centroid_overlay_shadow_atomic_shadow_track_copy_count"
+    ] == 2
+    assert (
+        "d1_centroid_overlay_shadow_preparation_integrity_failed"
+        in evidence.failure_reasons
+    )
+    assert (
+        "d1_centroid_overlay_shadow_atomic_failure_reported"
+        in evidence.failure_reasons
+    )
+
+
+@pytest.mark.parametrize(
+    ("surface", "field"),
+    [
+        ("canonical_preparation", "post_integrity_check"),
+        ("prepared_publication", "work"),
+        ("post_integrity_check", "track_digest_count"),
+        ("work", "canonical_post_integrity_pass_count"),
+        ("canonical_preparation", "atomic_failure_reason"),
+    ],
+)
+def test_atomic_missing_required_field_fails_closed(
+    surface: str,
+    field: str,
+) -> None:
+    record = _with_atomic_preparation(
+        _record(1, accepted=True, watermark_count=1, payload_bytes=420)
+    )
+    payload = record["payload"]
+    assert isinstance(payload, dict)
+    preparation = payload["canonical_preparation"]
+    assert isinstance(preparation, dict)
+    if surface == "canonical_preparation":
+        target = preparation
+    else:
+        target = preparation[surface]
+        assert isinstance(target, dict)
+    del target[field]
+
+    evidence = _evaluate(
+        [record],
+        summary=_one_record_summary(accepted=True),
+        timings=_timings(call_count=1),
+    )
+
+    metric = "d1_centroid_overlay_shadow_atomic_count"
+    assert evidence.metrics[metric] is None
+    assert evidence.metrics[f"{metric}_availability"] == "unavailable"
+    assert any(
+        reason.startswith("d1_centroid_overlay_shadow_record_invalid:")
+        for reason in evidence.failure_reasons
+    )
+
+
+def test_atomic_shape_without_mode_marker_fails_closed() -> None:
+    record = _with_atomic_preparation(
+        _record(1, accepted=True, watermark_count=1, payload_bytes=420)
+    )
+    payload = record["payload"]
+    assert isinstance(payload, dict)
+    del payload[D1_CENTROID_OVERLAY_SHADOW_EXECUTION_MODE_FIELD]
+
+    evidence = _evaluate(
+        [record],
+        summary=_one_record_summary(accepted=True),
+        timings=_timings(call_count=1),
+    )
+
+    assert any(
+        "atomic_execution_mode_marker_missing" in reason
+        for reason in evidence.failure_reasons
+    )
+
+
+def test_atomic_integrity_failure_reason_must_bind_mismatch() -> None:
+    record = _record(
+        1,
+        accepted=False,
+        watermark_count=1,
+        payload_bytes=420,
+    )
+    _with_atomic_preparation(
+        record,
+        integrity_matches=False,
+        atomic_failure_reason="post_integrity_mismatch:wrong_reason",
+    )
+
+    evidence = _evaluate(
+        [record],
+        summary=_one_record_summary(accepted=False),
+        timings=_timings(call_count=1),
+    )
+
+    assert any(
+        "atomic_integrity_failure_reason_mismatch" in reason
+        for reason in evidence.failure_reasons
+    )
+
+
+def test_mixed_legacy_and_atomic_preparation_shape_fails_closed() -> None:
+    record = _with_atomic_preparation(
+        _record(1, accepted=True, watermark_count=1, payload_bytes=420)
+    )
+    payload = record["payload"]
+    assert isinstance(payload, dict)
+    preparation = payload["canonical_preparation"]
+    assert isinstance(preparation, dict)
+    preparation["explicit_prepared_handle_used"] = True
+
+    evidence = _evaluate(
+        [record],
+        summary=_one_record_summary(accepted=True),
+        timings=_timings(call_count=1),
+    )
+
+    assert any(
+        "atomic_canonical_preparation_fields_invalid" in reason
+        for reason in evidence.failure_reasons
+    )
+
+
+def test_atomic_evaluation_does_not_mutate_nested_input() -> None:
+    record = _with_atomic_preparation(
+        _record(1, accepted=True, watermark_count=1, payload_bytes=420)
+    )
+    before = copy.deepcopy(record)
+
+    _evaluate(
+        [record],
+        summary=_one_record_summary(accepted=True),
+        timings=_timings(call_count=1),
+    )
+
+    assert record == before

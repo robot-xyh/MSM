@@ -33,6 +33,27 @@ D1_CENTROID_OVERLAY_SHADOW_MAX_WALL_TIME_OVERHEAD_RATIO = 0.05
 D1_CENTROID_OVERLAY_SHADOW_DIGEST_SEMANTICS = (
     "sha256_of_canonical_track_and_evidence_digest_manifest_v1"
 )
+D1_CENTROID_OVERLAY_SHADOW_PREPARATION_AUDIT_SCHEMA = (
+    "d6.d1-centroid-overlay-preparation-readonly.v1"
+)
+D1_CENTROID_OVERLAY_SHADOW_EXECUTION_MODE_FIELD = (
+    "overlay_execution_mode"
+)
+D1_CENTROID_OVERLAY_SHADOW_ATOMIC_EXECUTION_MODE = (
+    "atomic_experimental_offline_v1"
+)
+D1_CENTROID_OVERLAY_SHADOW_LEGACY_EXECUTION_MODE = (
+    "legacy_prepared_handle_v1"
+)
+D1_CENTROID_OVERLAY_SHADOW_LEGACY_UNINSTRUMENTED_EXECUTION_MODE = (
+    "legacy_uninstrumented_runtime_v1"
+)
+_D1_CENTROID_OVERLAY_PROTOTYPE_STATUS = (
+    "experimental_design_prototype_not_online_schema"
+)
+_D1_CENTROID_OVERLAY_ATOMIC_USAGE_SCOPE = (
+    "experimental_offline_atomic_only"
+)
 
 D1_CENTROID_OVERLAY_SHADOW_NUMERIC_METRIC_FIELDS = (
     "d1_centroid_overlay_shadow_enabled",
@@ -68,6 +89,23 @@ D1_CENTROID_OVERLAY_SHADOW_NUMERIC_METRIC_FIELDS = (
     "d1_centroid_overlay_shadow_online_truth_use_count",
     "d1_centroid_overlay_shadow_summary_counter_consistent",
     "d1_centroid_overlay_shadow_business_nonintervention_passed",
+    "d1_centroid_overlay_shadow_preparation_audit_evaluable_count",
+    "d1_centroid_overlay_shadow_preparation_audit_unavailable_count",
+    "d1_centroid_overlay_shadow_integrity_check_evaluable_count",
+    "d1_centroid_overlay_shadow_integrity_check_passed_count",
+    "d1_centroid_overlay_shadow_integrity_check_failed_count",
+    "d1_centroid_overlay_shadow_legacy_uninstrumented_count",
+    "d1_centroid_overlay_shadow_legacy_prepared_handle_count",
+    "d1_centroid_overlay_shadow_atomic_count",
+    "d1_centroid_overlay_shadow_atomic_failure_count",
+    "d1_centroid_overlay_shadow_atomic_shadow_materialized_count",
+    "d1_centroid_overlay_shadow_atomic_canonical_description_pass_count",
+    "d1_centroid_overlay_shadow_atomic_canonical_description_track_digest_count",
+    "d1_centroid_overlay_shadow_atomic_post_integrity_pass_count",
+    "d1_centroid_overlay_shadow_atomic_post_integrity_track_digest_count",
+    "d1_centroid_overlay_shadow_atomic_shadow_track_copy_count",
+    "d1_centroid_overlay_shadow_atomic_shadow_full_track_digest_count",
+    "d1_centroid_overlay_shadow_atomic_shadow_publication_digest_count",
 )
 
 _SHA256_RE = re.compile(r"^(?:sha256:)?[0-9a-f]{64}$")
@@ -132,6 +170,103 @@ _OVERHEAD_FIELDS = (
     "d1_centroid_overlay_shadow_overhead_max_ms",
 )
 
+_PREPARATION_RECORD_METRIC_FIELDS = (
+    "d1_centroid_overlay_shadow_execution_mode_distribution_json",
+    "d1_centroid_overlay_shadow_preparation_audit_evaluable_count",
+    "d1_centroid_overlay_shadow_preparation_audit_unavailable_count",
+    "d1_centroid_overlay_shadow_integrity_check_evaluable_count",
+    "d1_centroid_overlay_shadow_integrity_check_passed_count",
+    "d1_centroid_overlay_shadow_integrity_check_failed_count",
+    "d1_centroid_overlay_shadow_legacy_uninstrumented_count",
+    "d1_centroid_overlay_shadow_legacy_prepared_handle_count",
+    "d1_centroid_overlay_shadow_atomic_count",
+    "d1_centroid_overlay_shadow_atomic_failure_count",
+    "d1_centroid_overlay_shadow_atomic_failure_reason_distribution_json",
+    "d1_centroid_overlay_shadow_atomic_shadow_materialized_count",
+    "d1_centroid_overlay_shadow_atomic_canonical_description_pass_count",
+    "d1_centroid_overlay_shadow_atomic_canonical_description_track_digest_count",
+    "d1_centroid_overlay_shadow_atomic_post_integrity_pass_count",
+    "d1_centroid_overlay_shadow_atomic_post_integrity_track_digest_count",
+    "d1_centroid_overlay_shadow_atomic_shadow_track_copy_count",
+    "d1_centroid_overlay_shadow_atomic_shadow_full_track_digest_count",
+    "d1_centroid_overlay_shadow_atomic_shadow_publication_digest_count",
+)
+
+_ATOMIC_ONLY_METRIC_FIELDS = (
+    "d1_centroid_overlay_shadow_atomic_failure_count",
+    "d1_centroid_overlay_shadow_atomic_failure_reason_distribution_json",
+    "d1_centroid_overlay_shadow_atomic_shadow_materialized_count",
+    "d1_centroid_overlay_shadow_atomic_canonical_description_pass_count",
+    "d1_centroid_overlay_shadow_atomic_canonical_description_track_digest_count",
+    "d1_centroid_overlay_shadow_atomic_post_integrity_pass_count",
+    "d1_centroid_overlay_shadow_atomic_post_integrity_track_digest_count",
+    "d1_centroid_overlay_shadow_atomic_shadow_track_copy_count",
+    "d1_centroid_overlay_shadow_atomic_shadow_full_track_digest_count",
+    "d1_centroid_overlay_shadow_atomic_shadow_publication_digest_count",
+)
+
+_LEGACY_PREPARATION_FIELDS = frozenset(
+    {
+        "explicit_prepared_handle_used",
+        "base_publication_digest",
+        "validation_error",
+        "work",
+        "evaluation_integrity_check",
+    }
+)
+_ATOMIC_PREPARATION_FIELDS = frozenset(
+    {
+        "prepared_publication",
+        "post_integrity_check",
+        "canonical_publication_digest",
+        "shadow_publication_digest",
+        "shadow_materialized",
+        "work",
+        "atomic_failure_reason",
+    }
+)
+_PREPARATION_WORK_FIELDS = frozenset(
+    {
+        "full_description_pass_count",
+        "track_count",
+        "validated_track_count",
+        "full_track_digest_count",
+        "state_digest_count",
+        "covariance_digest_count",
+        "publication_digest_count",
+    }
+)
+_INTEGRITY_CHECK_FIELDS = frozenset(
+    {
+        "matches",
+        "mismatch_reason",
+        "object_binding_pass_count",
+        "full_content_digest_pass_count",
+        "track_digest_count",
+    }
+)
+_ATOMIC_PREPARED_PUBLICATION_FIELDS = frozenset(
+    {
+        "prototype_status",
+        "usage_scope",
+        "base_publication_digest",
+        "validation_error",
+        "track_count",
+        "work",
+    }
+)
+_ATOMIC_WORK_FIELDS = frozenset(
+    {
+        "canonical_full_description_pass_count",
+        "canonical_description_track_digest_count",
+        "canonical_post_integrity_pass_count",
+        "canonical_post_integrity_track_digest_count",
+        "shadow_track_copy_count",
+        "shadow_full_track_digest_count",
+        "shadow_publication_digest_count",
+    }
+)
+
 
 @dataclass(frozen=True)
 class D1CentroidOverlayShadowEvidence:
@@ -147,6 +282,16 @@ class D1CentroidOverlayShadowPairPerformanceEvidence:
 
     metrics: dict[str, Any]
     failure_reasons: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class _ParsedPreparationAudit:
+    execution_mode: str
+    preparation_instrumented: bool
+    integrity_matches: bool | None
+    atomic_failure_reason: str | None
+    atomic_shadow_materialized: bool | None
+    atomic_work: Mapping[str, int] | None
 
 
 @dataclass(frozen=True)
@@ -171,6 +316,7 @@ class _ParsedShadowRecord:
     payload_bytes: int
     evaluation_wall_time_ms: float
     status_is_nonconsumed_shadow: bool
+    preparation_audit: _ParsedPreparationAudit
 
 
 def evaluate_d1_centroid_overlay_shadow_evidence(
@@ -189,6 +335,11 @@ def evaluate_d1_centroid_overlay_shadow_evidence(
         metrics,
         "d1_centroid_overlay_shadow_evaluation_schema_version",
         D1_CENTROID_OVERLAY_SHADOW_EVALUATION_SCHEMA,
+    )
+    _put_available(
+        metrics,
+        "d1_centroid_overlay_shadow_preparation_audit_schema_version",
+        D1_CENTROID_OVERLAY_SHADOW_PREPARATION_AUDIT_SCHEMA,
     )
     shadow_records = [
         record
@@ -331,6 +482,7 @@ def evaluate_d1_centroid_overlay_shadow_evidence(
         return D1CentroidOverlayShadowEvidence(metrics, tuple(failures))
     for field, value in aggregates.items():
         _put_available(metrics, field, value)
+    _mark_absent_preparation_metrics_unavailable(metrics, parsed)
 
     summary_consistent: bool | None
     if summary_values is None:
@@ -460,6 +612,26 @@ def evaluate_d1_centroid_overlay_shadow_evidence(
     if aggregates["d1_centroid_overlay_shadow_error_count"] > 0:
         failures.append(
             "d1_centroid_overlay_shadow_evaluation_error_nonzero"
+        )
+    if (
+        aggregates.get(
+            "d1_centroid_overlay_shadow_integrity_check_failed_count",
+            0,
+        )
+        > 0
+    ):
+        failures.append(
+            "d1_centroid_overlay_shadow_preparation_integrity_failed"
+        )
+    if (
+        aggregates.get(
+            "d1_centroid_overlay_shadow_atomic_failure_count",
+            0,
+        )
+        > 0
+    ):
+        failures.append(
+            "d1_centroid_overlay_shadow_atomic_failure_reported"
         )
     return D1CentroidOverlayShadowEvidence(
         metrics,
@@ -769,6 +941,15 @@ def _parse_record(record: Mapping[str, Any]) -> _ParsedShadowRecord:
         not isinstance(error, str) or not error.strip()
     ):
         raise ValueError("evaluation_error_invalid")
+    preparation_audit = _parse_preparation_audit(
+        payload,
+        canonical_track_count=int(payload["canonical_track_count"]),
+        shadow_track_count=int(payload["shadow_track_count"]),
+        accepted_count=int(payload["accepted_count"]),
+        canonical_hash=canonical_hash,
+        shadow_hash=shadow_hash,
+        evaluation_error=error,
+    )
 
     declared_measurement = _required_timestamp_array(
         payload,
@@ -907,7 +1088,433 @@ def _parse_record(record: Mapping[str, Any]) -> _ParsedShadowRecord:
         payload_bytes=payload_bytes,
         evaluation_wall_time_ms=evaluation_wall_time_ms,
         status_is_nonconsumed_shadow=True,
+        preparation_audit=preparation_audit,
     )
+
+
+def _parse_preparation_audit(
+    payload: Mapping[str, Any],
+    *,
+    canonical_track_count: int,
+    shadow_track_count: int,
+    accepted_count: int,
+    canonical_hash: str,
+    shadow_hash: str,
+    evaluation_error: object,
+) -> _ParsedPreparationAudit:
+    mode_present = D1_CENTROID_OVERLAY_SHADOW_EXECUTION_MODE_FIELD in payload
+    mode = payload.get(D1_CENTROID_OVERLAY_SHADOW_EXECUTION_MODE_FIELD)
+    preparation_present = "canonical_preparation" in payload
+    preparation = payload.get("canonical_preparation")
+
+    if not mode_present:
+        if not preparation_present:
+            return _ParsedPreparationAudit(
+                execution_mode=(
+                    D1_CENTROID_OVERLAY_SHADOW_LEGACY_UNINSTRUMENTED_EXECUTION_MODE
+                ),
+                preparation_instrumented=False,
+                integrity_matches=None,
+                atomic_failure_reason=None,
+                atomic_shadow_materialized=None,
+                atomic_work=None,
+            )
+        if not isinstance(preparation, Mapping):
+            raise ValueError("canonical_preparation_missing_or_invalid")
+        if set(preparation) != _LEGACY_PREPARATION_FIELDS:
+            if set(preparation) & _ATOMIC_PREPARATION_FIELDS:
+                raise ValueError("atomic_execution_mode_marker_missing")
+            raise ValueError("legacy_canonical_preparation_fields_invalid")
+        return _parse_legacy_preparation_audit(
+            preparation,
+            canonical_track_count=canonical_track_count,
+            accepted_count=accepted_count,
+            evaluation_error=evaluation_error,
+        )
+
+    if mode == D1_CENTROID_OVERLAY_SHADOW_LEGACY_UNINSTRUMENTED_EXECUTION_MODE:
+        if preparation_present:
+            raise ValueError(
+                "legacy_uninstrumented_mode_has_canonical_preparation"
+            )
+        return _ParsedPreparationAudit(
+            execution_mode=(
+                D1_CENTROID_OVERLAY_SHADOW_LEGACY_UNINSTRUMENTED_EXECUTION_MODE
+            ),
+            preparation_instrumented=False,
+            integrity_matches=None,
+            atomic_failure_reason=None,
+            atomic_shadow_materialized=None,
+            atomic_work=None,
+        )
+    if mode == D1_CENTROID_OVERLAY_SHADOW_LEGACY_EXECUTION_MODE:
+        if not isinstance(preparation, Mapping):
+            raise ValueError("legacy_canonical_preparation_missing_or_invalid")
+        return _parse_legacy_preparation_audit(
+            preparation,
+            canonical_track_count=canonical_track_count,
+            accepted_count=accepted_count,
+            evaluation_error=evaluation_error,
+        )
+    if mode != D1_CENTROID_OVERLAY_SHADOW_ATOMIC_EXECUTION_MODE:
+        raise ValueError("overlay_execution_mode_unsupported")
+    if not isinstance(preparation, Mapping):
+        raise ValueError("atomic_canonical_preparation_missing_or_invalid")
+    return _parse_atomic_preparation_audit(
+        preparation,
+        canonical_track_count=canonical_track_count,
+        shadow_track_count=shadow_track_count,
+        accepted_count=accepted_count,
+        canonical_hash=canonical_hash,
+        shadow_hash=shadow_hash,
+    )
+
+
+def _parse_legacy_preparation_audit(
+    preparation: Mapping[str, Any],
+    *,
+    canonical_track_count: int,
+    accepted_count: int,
+    evaluation_error: object,
+) -> _ParsedPreparationAudit:
+    _require_exact_fields(
+        preparation,
+        _LEGACY_PREPARATION_FIELDS,
+        "legacy_canonical_preparation",
+    )
+    explicitly_prepared = _required_bool(
+        preparation,
+        "explicit_prepared_handle_used",
+    )
+    if not explicitly_prepared:
+        if any(
+            preparation[field] is not None
+            for field in (
+                "base_publication_digest",
+                "validation_error",
+                "work",
+                "evaluation_integrity_check",
+            )
+        ):
+            raise ValueError("legacy_unprepared_fields_must_be_null")
+        return _ParsedPreparationAudit(
+            execution_mode=D1_CENTROID_OVERLAY_SHADOW_LEGACY_EXECUTION_MODE,
+            preparation_instrumented=False,
+            integrity_matches=None,
+            atomic_failure_reason=None,
+            atomic_shadow_materialized=None,
+            atomic_work=None,
+        )
+
+    _required_sha256(preparation, "base_publication_digest")
+    validation_error = _optional_nonempty_string(
+        preparation,
+        "validation_error",
+    )
+    work = _parse_preparation_work(
+        preparation.get("work"),
+        context="legacy_preparation_work",
+        canonical_track_count=canonical_track_count,
+        validation_error=validation_error,
+    )
+    integrity_value = preparation.get("evaluation_integrity_check")
+    if integrity_value is None:
+        if evaluation_error is None:
+            raise ValueError(
+                "legacy_evaluation_integrity_check_missing_without_error"
+            )
+        integrity_matches = None
+    else:
+        integrity = _parse_integrity_check(
+            integrity_value,
+            context="legacy_evaluation_integrity_check",
+            canonical_track_count=canonical_track_count,
+            validation_error=validation_error,
+        )
+        integrity_matches = bool(integrity["matches"])
+        if not integrity_matches and accepted_count > 0:
+            raise ValueError("legacy_integrity_failure_has_accepted_decision")
+        if (
+            int(work["full_track_digest_count"])
+            != int(work["validated_track_count"])
+        ):
+            raise ValueError("legacy_preparation_work_digest_count_mismatch")
+    return _ParsedPreparationAudit(
+        execution_mode=D1_CENTROID_OVERLAY_SHADOW_LEGACY_EXECUTION_MODE,
+        preparation_instrumented=True,
+        integrity_matches=integrity_matches,
+        atomic_failure_reason=None,
+        atomic_shadow_materialized=None,
+        atomic_work=None,
+    )
+
+
+def _parse_atomic_preparation_audit(
+    preparation: Mapping[str, Any],
+    *,
+    canonical_track_count: int,
+    shadow_track_count: int,
+    accepted_count: int,
+    canonical_hash: str,
+    shadow_hash: str,
+) -> _ParsedPreparationAudit:
+    _require_exact_fields(
+        preparation,
+        _ATOMIC_PREPARATION_FIELDS,
+        "atomic_canonical_preparation",
+    )
+    prepared = preparation.get("prepared_publication")
+    if not isinstance(prepared, Mapping):
+        raise ValueError("atomic_prepared_publication_missing_or_invalid")
+    _require_exact_fields(
+        prepared,
+        _ATOMIC_PREPARED_PUBLICATION_FIELDS,
+        "atomic_prepared_publication",
+    )
+    if (
+        _required_nonempty_string(prepared, "prototype_status")
+        != _D1_CENTROID_OVERLAY_PROTOTYPE_STATUS
+    ):
+        raise ValueError("atomic_prepared_publication_status_unsupported")
+    if (
+        _required_nonempty_string(prepared, "usage_scope")
+        != _D1_CENTROID_OVERLAY_ATOMIC_USAGE_SCOPE
+    ):
+        raise ValueError("atomic_prepared_publication_scope_unsupported")
+    base_digest = _required_sha256(prepared, "base_publication_digest")
+    validation_error = _optional_nonempty_string(
+        prepared,
+        "validation_error",
+    )
+    prepared_track_count = _required_nonnegative_int(
+        prepared,
+        "track_count",
+    )
+    if prepared_track_count != canonical_track_count:
+        raise ValueError("atomic_prepared_track_count_mismatch")
+    preparation_work = _parse_preparation_work(
+        prepared.get("work"),
+        context="atomic_preparation_work",
+        canonical_track_count=canonical_track_count,
+        validation_error=validation_error,
+    )
+
+    canonical_publication_digest = _required_sha256(
+        preparation,
+        "canonical_publication_digest",
+    )
+    if canonical_publication_digest != base_digest:
+        raise ValueError("atomic_canonical_publication_digest_mismatch")
+    integrity = _parse_integrity_check(
+        preparation.get("post_integrity_check"),
+        context="atomic_post_integrity_check",
+        canonical_track_count=canonical_track_count,
+        validation_error=validation_error,
+    )
+    atomic_work = _parse_atomic_work(preparation.get("work"))
+    if (
+        atomic_work["canonical_full_description_pass_count"]
+        != preparation_work["full_description_pass_count"]
+    ):
+        raise ValueError("atomic_description_pass_count_mismatch")
+    if (
+        atomic_work["canonical_description_track_digest_count"]
+        != preparation_work["full_track_digest_count"]
+    ):
+        raise ValueError("atomic_description_track_digest_count_mismatch")
+    if (
+        atomic_work["canonical_post_integrity_pass_count"]
+        != integrity["full_content_digest_pass_count"]
+    ):
+        raise ValueError("atomic_post_integrity_pass_count_mismatch")
+    if (
+        atomic_work["canonical_post_integrity_track_digest_count"]
+        != integrity["track_digest_count"]
+    ):
+        raise ValueError("atomic_post_integrity_track_digest_count_mismatch")
+
+    shadow_materialized = _required_bool(
+        preparation,
+        "shadow_materialized",
+    )
+    shadow_digest = _optional_sha256(
+        preparation,
+        "shadow_publication_digest",
+    )
+    if shadow_materialized != (shadow_digest is not None):
+        raise ValueError("atomic_shadow_digest_materialization_mismatch")
+    failure_reason = _optional_nonempty_string(
+        preparation,
+        "atomic_failure_reason",
+    )
+    integrity_matches = bool(integrity["matches"])
+    if not integrity_matches:
+        if failure_reason is None:
+            raise ValueError("atomic_integrity_failure_reason_missing")
+        expected_failure = (
+            "post_integrity_mismatch:"
+            f"{integrity['mismatch_reason']}"
+        )
+        if failure_reason != expected_failure:
+            raise ValueError("atomic_integrity_failure_reason_mismatch")
+    elif failure_reason is not None:
+        # A detached shadow assembly failure may follow a valid post-check.
+        if not failure_reason.startswith("shadow_assembly_failed:"):
+            raise ValueError("atomic_failure_reason_inconsistent")
+
+    if validation_error is not None and accepted_count > 0:
+        raise ValueError("atomic_invalid_preparation_has_accepted_decision")
+    if failure_reason is not None:
+        if accepted_count > 0:
+            raise ValueError("atomic_failure_has_accepted_decision")
+        if shadow_materialized:
+            raise ValueError("atomic_failure_exposes_shadow")
+    elif shadow_materialized != (accepted_count > 0):
+        raise ValueError("atomic_accepted_materialization_mismatch")
+
+    if shadow_materialized:
+        if shadow_track_count != canonical_track_count:
+            raise ValueError("atomic_materialized_track_count_mismatch")
+        if (
+            atomic_work["shadow_track_copy_count"] != canonical_track_count
+            or atomic_work["shadow_full_track_digest_count"]
+            != canonical_track_count
+            or atomic_work["shadow_publication_digest_count"] != 1
+        ):
+            raise ValueError("atomic_materialized_shadow_work_mismatch")
+    elif failure_reason is None:
+        if canonical_hash != shadow_hash:
+            raise ValueError("atomic_rejected_shadow_hash_mismatch")
+        if shadow_track_count != canonical_track_count:
+            raise ValueError("atomic_rejected_shadow_track_count_mismatch")
+        if any(
+            atomic_work[field] != 0
+            for field in (
+                "shadow_track_copy_count",
+                "shadow_full_track_digest_count",
+                "shadow_publication_digest_count",
+            )
+        ):
+            raise ValueError("atomic_rejected_shadow_work_nonzero")
+    else:
+        if canonical_hash != shadow_hash:
+            raise ValueError("atomic_failure_shadow_hash_mismatch")
+        if shadow_track_count != canonical_track_count:
+            raise ValueError("atomic_failure_shadow_track_count_mismatch")
+        if atomic_work["shadow_track_copy_count"] > canonical_track_count:
+            raise ValueError("atomic_failure_shadow_copy_count_invalid")
+        if (
+            atomic_work["shadow_full_track_digest_count"]
+            > atomic_work["shadow_track_copy_count"]
+        ):
+            raise ValueError("atomic_failure_shadow_digest_count_invalid")
+        if atomic_work["shadow_publication_digest_count"] > 1:
+            raise ValueError("atomic_failure_publication_digest_count_invalid")
+
+    return _ParsedPreparationAudit(
+        execution_mode=D1_CENTROID_OVERLAY_SHADOW_ATOMIC_EXECUTION_MODE,
+        preparation_instrumented=True,
+        integrity_matches=integrity_matches,
+        atomic_failure_reason=failure_reason,
+        atomic_shadow_materialized=shadow_materialized,
+        atomic_work=dict(atomic_work),
+    )
+
+
+def _parse_preparation_work(
+    value: object,
+    *,
+    context: str,
+    canonical_track_count: int,
+    validation_error: str | None,
+) -> dict[str, int]:
+    if not isinstance(value, Mapping):
+        raise ValueError(f"{context}_missing_or_invalid")
+    _require_exact_fields(value, _PREPARATION_WORK_FIELDS, context)
+    work = {
+        field: _required_nonnegative_int(value, field)
+        for field in _PREPARATION_WORK_FIELDS
+    }
+    if work["full_description_pass_count"] != 1:
+        raise ValueError(f"{context}_description_pass_count_invalid")
+    if work["track_count"] != canonical_track_count:
+        raise ValueError(f"{context}_track_count_mismatch")
+    validated = work["validated_track_count"]
+    if validated > canonical_track_count:
+        raise ValueError(f"{context}_validated_track_count_invalid")
+    for field in (
+        "full_track_digest_count",
+        "state_digest_count",
+        "covariance_digest_count",
+    ):
+        if work[field] != validated:
+            raise ValueError(f"{context}_{field}_mismatch")
+    if work["publication_digest_count"] != 1:
+        raise ValueError(f"{context}_publication_digest_count_invalid")
+    if validation_error is None and validated != canonical_track_count:
+        raise ValueError(f"{context}_valid_publication_not_fully_described")
+    return work
+
+
+def _parse_integrity_check(
+    value: object,
+    *,
+    context: str,
+    canonical_track_count: int,
+    validation_error: str | None,
+) -> dict[str, Any]:
+    if not isinstance(value, Mapping):
+        raise ValueError(f"{context}_missing_or_invalid")
+    _require_exact_fields(value, _INTEGRITY_CHECK_FIELDS, context)
+    matches = _required_bool(value, "matches")
+    mismatch_reason = _optional_nonempty_string(value, "mismatch_reason")
+    if matches == (mismatch_reason is not None):
+        raise ValueError(f"{context}_match_reason_inconsistent")
+    object_passes = _required_nonnegative_int(
+        value,
+        "object_binding_pass_count",
+    )
+    full_passes = _required_nonnegative_int(
+        value,
+        "full_content_digest_pass_count",
+    )
+    track_digests = _required_nonnegative_int(value, "track_digest_count")
+    if object_passes != 1:
+        raise ValueError(f"{context}_object_binding_pass_count_invalid")
+    if full_passes > 1:
+        raise ValueError(f"{context}_full_content_pass_count_invalid")
+    if track_digests > canonical_track_count:
+        raise ValueError(f"{context}_track_digest_count_invalid")
+    if full_passes == 0 and track_digests != 0:
+        raise ValueError(f"{context}_track_digest_without_full_pass")
+    if matches:
+        if validation_error is None and (
+            full_passes != 1 or track_digests != canonical_track_count
+        ):
+            raise ValueError(f"{context}_valid_content_not_fully_checked")
+        if validation_error is not None and (
+            full_passes != 0 or track_digests != 0
+        ):
+            raise ValueError(f"{context}_invalid_content_rehashed")
+    elif validation_error is not None:
+        raise ValueError(f"{context}_invalid_preparation_mismatch_impossible")
+    return {
+        "matches": matches,
+        "mismatch_reason": mismatch_reason,
+        "object_binding_pass_count": object_passes,
+        "full_content_digest_pass_count": full_passes,
+        "track_digest_count": track_digests,
+    }
+
+
+def _parse_atomic_work(value: object) -> dict[str, int]:
+    if not isinstance(value, Mapping):
+        raise ValueError("atomic_work_missing_or_invalid")
+    _require_exact_fields(value, _ATOMIC_WORK_FIELDS, "atomic_work")
+    return {
+        field: _required_nonnegative_int(value, field)
+        for field in _ATOMIC_WORK_FIELDS
+    }
 
 
 def _aggregate_records(
@@ -922,7 +1529,7 @@ def _aggregate_records(
     overhead_samples = sorted(
         item.evaluation_wall_time_ms for item in records
     )
-    return {
+    aggregates: dict[str, Any] = {
         "d1_centroid_overlay_shadow_evaluation_count": len(records),
         "d1_centroid_overlay_shadow_decision_count": sum(
             item.decision_count for item in records
@@ -1006,6 +1613,114 @@ def _aggregate_records(
             overhead_samples
         ),
     }
+    mode_counts = Counter(
+        item.preparation_audit.execution_mode for item in records
+    )
+    preparation_evaluable_count = sum(
+        item.preparation_audit.preparation_instrumented
+        for item in records
+    )
+    integrity_values = [
+        item.preparation_audit.integrity_matches
+        for item in records
+        if item.preparation_audit.integrity_matches is not None
+    ]
+    atomic = [
+        item.preparation_audit
+        for item in records
+        if item.preparation_audit.execution_mode
+        == D1_CENTROID_OVERLAY_SHADOW_ATOMIC_EXECUTION_MODE
+    ]
+    aggregates.update(
+        {
+            "d1_centroid_overlay_shadow_execution_mode_distribution_json": dict(
+                sorted(mode_counts.items())
+            ),
+            "d1_centroid_overlay_shadow_preparation_audit_evaluable_count": (
+                preparation_evaluable_count
+            ),
+            "d1_centroid_overlay_shadow_preparation_audit_unavailable_count": (
+                len(records) - preparation_evaluable_count
+            ),
+            "d1_centroid_overlay_shadow_integrity_check_evaluable_count": len(
+                integrity_values
+            ),
+            "d1_centroid_overlay_shadow_legacy_uninstrumented_count": (
+                mode_counts[
+                    D1_CENTROID_OVERLAY_SHADOW_LEGACY_UNINSTRUMENTED_EXECUTION_MODE
+                ]
+            ),
+            "d1_centroid_overlay_shadow_legacy_prepared_handle_count": (
+                mode_counts[D1_CENTROID_OVERLAY_SHADOW_LEGACY_EXECUTION_MODE]
+            ),
+            "d1_centroid_overlay_shadow_atomic_count": len(atomic),
+        }
+    )
+    if integrity_values:
+        aggregates.update(
+            {
+                "d1_centroid_overlay_shadow_integrity_check_passed_count": sum(
+                    value is True for value in integrity_values
+                ),
+                "d1_centroid_overlay_shadow_integrity_check_failed_count": sum(
+                    value is False for value in integrity_values
+                ),
+            }
+        )
+    if atomic:
+        atomic_failure_reasons = Counter(
+            item.atomic_failure_reason
+            for item in atomic
+            if item.atomic_failure_reason is not None
+        )
+        atomic_work = [
+            item.atomic_work
+            for item in atomic
+            if item.atomic_work is not None
+        ]
+        if len(atomic_work) != len(atomic):
+            raise ValueError("atomic_work_internal_parse_mismatch")
+        aggregates.update(
+            {
+                "d1_centroid_overlay_shadow_atomic_failure_count": sum(
+                    item.atomic_failure_reason is not None for item in atomic
+                ),
+                "d1_centroid_overlay_shadow_atomic_failure_reason_distribution_json": dict(
+                    sorted(atomic_failure_reasons.items())
+                ),
+                "d1_centroid_overlay_shadow_atomic_shadow_materialized_count": sum(
+                    item.atomic_shadow_materialized is True for item in atomic
+                ),
+                "d1_centroid_overlay_shadow_atomic_canonical_description_pass_count": sum(
+                    item["canonical_full_description_pass_count"]
+                    for item in atomic_work
+                ),
+                "d1_centroid_overlay_shadow_atomic_canonical_description_track_digest_count": sum(
+                    item["canonical_description_track_digest_count"]
+                    for item in atomic_work
+                ),
+                "d1_centroid_overlay_shadow_atomic_post_integrity_pass_count": sum(
+                    item["canonical_post_integrity_pass_count"]
+                    for item in atomic_work
+                ),
+                "d1_centroid_overlay_shadow_atomic_post_integrity_track_digest_count": sum(
+                    item["canonical_post_integrity_track_digest_count"]
+                    for item in atomic_work
+                ),
+                "d1_centroid_overlay_shadow_atomic_shadow_track_copy_count": sum(
+                    item["shadow_track_copy_count"] for item in atomic_work
+                ),
+                "d1_centroid_overlay_shadow_atomic_shadow_full_track_digest_count": sum(
+                    item["shadow_full_track_digest_count"]
+                    for item in atomic_work
+                ),
+                "d1_centroid_overlay_shadow_atomic_shadow_publication_digest_count": sum(
+                    item["shadow_publication_digest_count"]
+                    for item in atomic_work
+                ),
+            }
+        )
+    return aggregates
 
 
 def _parse_summary(
@@ -1155,6 +1870,8 @@ def _evaluate_without_publications(
         "d1_centroid_overlay_shadow_arrival_timestamp_value_count",
         "d1_centroid_overlay_shadow_online_truth_use_count",
     ):
+        _put_unavailable(metrics, field, record_reason)
+    for field in _PREPARATION_RECORD_METRIC_FIELDS:
         _put_unavailable(metrics, field, record_reason)
     summary_consistent = bool(
         summary_values["evaluation_count"] == 0
@@ -1323,6 +2040,7 @@ def _mark_all_unavailable(metrics: dict[str, Any], reason: str) -> None:
         "d1_centroid_overlay_shadow_status",
         "d1_centroid_overlay_shadow_publication_count",
         *_RECORD_METRIC_FIELDS,
+        *_PREPARATION_RECORD_METRIC_FIELDS,
         "d1_centroid_overlay_shadow_generation_watermark_current",
         *_OVERHEAD_FIELDS,
         "d1_centroid_overlay_shadow_overhead_stage_consistent",
@@ -1338,7 +2056,38 @@ def _mark_record_metrics_unavailable(
     metrics: dict[str, Any],
     reason: str,
 ) -> None:
-    for field in _RECORD_METRIC_FIELDS:
+    for field in (*_RECORD_METRIC_FIELDS, *_PREPARATION_RECORD_METRIC_FIELDS):
+        _put_unavailable(metrics, field, reason)
+
+
+def _mark_absent_preparation_metrics_unavailable(
+    metrics: dict[str, Any],
+    records: Sequence[_ParsedShadowRecord],
+) -> None:
+    integrity_present = any(
+        item.preparation_audit.integrity_matches is not None
+        for item in records
+    )
+    atomic_present = any(
+        item.preparation_audit.execution_mode
+        == D1_CENTROID_OVERLAY_SHADOW_ATOMIC_EXECUTION_MODE
+        for item in records
+    )
+    for field in _PREPARATION_RECORD_METRIC_FIELDS:
+        if field in metrics:
+            continue
+        reason = (
+            "atomic_overlay_records_not_present"
+            if field in _ATOMIC_ONLY_METRIC_FIELDS and not atomic_present
+            else "preparation_integrity_evidence_not_present"
+            if field
+            in {
+                "d1_centroid_overlay_shadow_integrity_check_passed_count",
+                "d1_centroid_overlay_shadow_integrity_check_failed_count",
+            }
+            and not integrity_present
+            else "preparation_audit_metric_not_evaluable"
+        )
         _put_unavailable(metrics, field, reason)
 
 
@@ -1372,6 +2121,24 @@ def _semantics() -> dict[str, str]:
             "online truth use"
         ),
         "control_authority": "none; metrics consume persisted logs only",
+        "preparation_compatibility": (
+            "runtime v1 records without preparation evidence remain explicit "
+            "legacy-uninstrumented evidence; legacy prepared-handle records "
+            "retain their exact five-field contract"
+        ),
+        "atomic_execution_mode": (
+            "atomic preparation, post-integrity, work, materialization, and "
+            "failure evidence is accepted only with the explicit "
+            "atomic_experimental_offline_v1 mode marker"
+        ),
+        "missing_atomic_evidence": (
+            "atomic metrics are unavailable when atomic records are absent; "
+            "missing evidence is never backfilled with zero"
+        ),
+        "atomic_failure_authority": (
+            "D6 reports valid fail-closed atomic failures but cannot alter "
+            "D1 state, publication, assignment, or guidance"
+        ),
         "performance_admission": (
             "requires an explicitly paired control episode and is independent "
             "from business nonintervention"
@@ -1430,6 +2197,18 @@ def _required_sha256(payload: Mapping[str, Any], field: str) -> str:
     return value
 
 
+def _optional_sha256(
+    payload: Mapping[str, Any],
+    field: str,
+) -> str | None:
+    value = payload.get(field)
+    if value is None:
+        return None
+    if not isinstance(value, str) or _SHA256_RE.fullmatch(value) is None:
+        raise ValueError(f"{field}_invalid")
+    return value
+
+
 def _required_bool(payload: Mapping[str, Any], field: str) -> bool:
     value = payload.get(field)
     if not isinstance(value, bool):
@@ -1469,6 +2248,38 @@ def _required_nonempty_string(
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"{field}_missing_or_invalid")
     return value.strip()
+
+
+def _optional_nonempty_string(
+    payload: Mapping[str, Any],
+    field: str,
+) -> str | None:
+    value = payload.get(field)
+    if value is None:
+        return None
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"{field}_invalid")
+    return value.strip()
+
+
+def _require_exact_fields(
+    payload: Mapping[str, Any],
+    expected: frozenset[str],
+    context: str,
+) -> None:
+    actual = set(payload)
+    if actual != expected:
+        missing = sorted(expected - actual)
+        unexpected = sorted(str(item) for item in actual - expected)
+        detail = []
+        if missing:
+            detail.append(f"missing={','.join(missing)}")
+        if unexpected:
+            detail.append(f"unexpected={','.join(unexpected)}")
+        raise ValueError(
+            f"{context}_fields_invalid"
+            + (f":{';'.join(detail)}" if detail else "")
+        )
 
 
 def _required_counter(
@@ -1539,10 +2350,15 @@ def _put_unavailable(
 
 
 __all__ = [
+    "D1_CENTROID_OVERLAY_SHADOW_ATOMIC_EXECUTION_MODE",
     "D1_CENTROID_OVERLAY_SHADOW_DIGEST_SEMANTICS",
     "D1_CENTROID_OVERLAY_SHADOW_EVALUATION_SCHEMA",
+    "D1_CENTROID_OVERLAY_SHADOW_EXECUTION_MODE_FIELD",
+    "D1_CENTROID_OVERLAY_SHADOW_LEGACY_EXECUTION_MODE",
+    "D1_CENTROID_OVERLAY_SHADOW_LEGACY_UNINSTRUMENTED_EXECUTION_MODE",
     "D1_CENTROID_OVERLAY_SHADOW_MAX_WALL_TIME_OVERHEAD_RATIO",
     "D1_CENTROID_OVERLAY_SHADOW_NUMERIC_METRIC_FIELDS",
+    "D1_CENTROID_OVERLAY_SHADOW_PREPARATION_AUDIT_SCHEMA",
     "D1_CENTROID_OVERLAY_SHADOW_RUNTIME_SCHEMA",
     "D1_CENTROID_OVERLAY_SHADOW_TIMING_STAGE",
     "D1_CENTROID_OVERLAY_SHADOW_TOPIC",

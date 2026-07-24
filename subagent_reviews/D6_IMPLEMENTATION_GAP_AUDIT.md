@@ -1,5 +1,31 @@
 # D6 实现差距审计
 
+## 2026-07-24 D1 原子影子旁路兼容 GAP 更新
+
+### 已关闭
+
+1. D6 已在现有 runtime v1 consumer 内区分 legacy uninstrumented、legacy prepared handle 和
+   显式 atomic 三类记录，历史 episode 无需迁移。
+2. atomic 记录的 preparation、post-integrity、canonical/shadow digest、materialization、work
+   和 failure 字段均执行精确字段及交叉关系校验。atomic 字段没有显式模式标记、半缺或混入 legacy
+   字段时失败关闭。
+3. historical missing 保持 unavailable。只有 atomic 记录真实存在时，其失败数和各项工作量才
+   输出可用数值；D6 没有把缺失字段补成 0。
+4. D6 只读消费持久化日志，不导入 D1/main，不写控制状态。accepted/rejected/atomic failure 的
+   shadow 物化和工作量边界已有正负回归。
+5. 2026-07-24 专项 `25 passed`，D6 全量
+   `637 passed, 1 warning in 21.89s`。seed 1100 的 9 条历史 prepared-handle 记录全部兼容读取，
+   9/9 integrity passed。
+
+### 仍开放 P1
+
+1. main 尚未提供真实 atomic mode episode。D6 当前只证明 consumer 合同，尚未验证真实 atomic
+   accepted、rejected 和 failure 分布。
+2. A2 的 clean/frozen 多 seed 性能门、有效 accepted treatment 和独立 outcome effect 仍未闭合。
+   本轮 D6 兼容改动不能关闭这些上游和系统级 P1。
+
+当前无新增 P0。D6-owned 的原子载荷兼容缺口已关闭，真实生产端证据保持 P1。
+
 ## 2026-07-23 D1 质心发布影子旁路 GAP 更新
 
 ### 已关闭

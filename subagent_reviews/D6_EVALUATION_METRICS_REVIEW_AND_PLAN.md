@@ -1,5 +1,30 @@
 # D6 系统评估指标综述及子方案
 
+## 2026-07-24 D1 原子影子旁路兼容评审
+
+D6 继续使用 `scalable3d-d1-centroid-overlay-shadow-v1`，并在 payload 内按显式执行模式分派。
+旧五字段 `canonical_preparation` 仍按 prepared-handle v1 读取；没有准备字段的旧记录保留为
+uninstrumented。原子模式要求固定七字段准备块，D6 不读取 evaluation 或 shadow tracks，也不根据
+缺失字段推断零工作量。
+
+评审重点是原子记录内部一致性。准备摘要、操作后完整性和原子工作量的遍历计数必须相互对应。
+accepted 必须物化 detached shadow，普通 rejected 的 shadow 工作必须为 0。atomic failure 必须
+取消 accepted 并隐藏 shadow；失败前已经发生的临时复制或摘要工作可以保留为审计计数。任何字段
+缺失、模式混用、摘要/物化冲突和计数矛盾均使记录失败关闭。
+
+2026-07-24 专项 `25 passed`，D6 全量
+`637 passed, 1 warning in 21.89s`。seed 1100 的 9 条既有 prepared-handle 记录均可读且完整性
+检查通过。尚无真实 atomic episode，因此本轮不改变 `performance_gate=false`、
+`overall_admitted=false` 和零 accepted treatment 的既有结论。D6 仍无控制权限。
+
+后续由 main 按精确 atomic payload 产生 clean/frozen 输入，至少覆盖正常 rejected、accepted 和
+fail-closed 三类 episode。D6 再只读核对工作量、failure 分布、业务非干预与配对性能。当前无新增
+P0；consumer 兼容已关闭，真实原子运行证据和 A2 准入保持 P1。
+
+`AIRSIM_INTEGRATION_PLAN.md` 已检查。本轮未改变 AirSim 日志、检测、相机、reset、actor 或控制
+接口，因此不修改。`D6_M_TO_N_EVALUATION_FRAMEWORK_REVIEW.md` 也已检查；原子 D1 影子旁路不改变
+M 对 N 物理分母、联盟状态或五米成功口径，保持不改。
+
 ## 2026-07-23 D1 质心发布影子旁路评审
 
 D6 已建立 A2 旁路的只读评估边界。输入仅来自持久化 main 总线、最终模块诊断和阶段时序，输出为

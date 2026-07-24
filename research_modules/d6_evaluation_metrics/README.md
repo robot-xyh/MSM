@@ -1,5 +1,26 @@
 # D6 Evaluation Metrics
 
+## 2026-07-24 D1 原子影子旁路只读兼容
+
+D6 在既有 `scalable3d-d1-centroid-overlay-shadow-v1` 消费器内增加执行模式分派。历史无准备
+审计记录继续按 `legacy_uninstrumented_runtime_v1` 读取；历史五字段
+`canonical_preparation` 按 `legacy_prepared_handle_v1` 严格校验。新记录只有在 payload 顶层显式
+声明 `overlay_execution_mode=atomic_experimental_offline_v1` 时，才按原子入口解释
+`prepared_publication`、`post_integrity_check`、canonical/shadow publication digest、
+`shadow_materialized`、原子工作量和 `atomic_failure_reason`。
+
+原子记录要求字段集合完整且无 legacy 混入。准备工作必须完成一次全发布描述，航迹、状态、协方差
+摘要计数需与有效航迹数一致；操作后完整性计数需与原子工作量一致。accepted 记录必须物化一个脱离
+正式链路的 shadow 并给出摘要，普通 rejected 记录不得产生 shadow 工作，原子失败必须保持
+accepted 为 0 且不暴露可用 shadow。缺字段、未知模式、摘要与物化冲突或计数矛盾均使该记录失败
+关闭。历史记录没有原子字段时，原子工作量和失败指标保持 `null/unavailable`，不补零。
+
+D6 只读取持久化日志，不向 D1、main、D2/D3 或控制链返回结果。2026-07-24 确定性专项
+`25 passed`，D6 全量 `637 passed, 1 warning in 21.89s`。既有 seed 1100 prepared-handle 文件的
+9 条记录均按 legacy 模式读取，9/9 完整性检查通过。当前尚无 main 生成的原子模式 episode，因此
+本轮只证明消费合同和失败关闭路径可运行，不证明 A2 性能门、有效 treatment 或准入通过。warning
+为既有 Matplotlib `Axes3D` 环境提示。
+
 ## 2026-07-23 D1 质心发布影子旁路只读评估
 
 D6 新增 `d1_centroid_overlay_shadow.py`，只读取 main episode 总线中的
