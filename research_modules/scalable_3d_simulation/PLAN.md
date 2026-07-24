@@ -4,28 +4,33 @@
 
 ### D1 多 seed 与长时矩阵
 
-- [x] 冻结 reference `7cc2d0c` 和 candidate `95bf46e`；
+- [x] V1/V2 失败定位完成，D2 仅虚警排除计数由 `14` 修正为持久化 frame mapping 的 `11`；
+- [x] D1 修复逐项相关裁剪可能破坏六维协方差正半定性的缺陷；
+- [x] V3 reference `a5a472c` 与 candidate `064cbb9` 共同包含 D1 正半定修复和 D2 审计修复；
 - [x] 预注册 short seeds `1101-1110`、2.2 秒、10 组 pair；
 - [x] 预注册 long seeds `1101-1103`、10 秒、3 组 pair；
 - [x] 固定 200 个目标、200 个资源、2 个侦察节点和结构歧义 hold 运行配置；
 - [x] 交替 arm 先后顺序，避免把主机热状态固定偏向同一实验臂；
 - [x] 运行器显式记录命令、提交、episode、资源记录和 cross-build 路径；
 - [x] `--resume` 只接受 clean、有限、真值隔离且配置匹配的既有 episode；
-- [x] main 专项 `5 passed`，异常状态会持久化到 evidence manifest；
-- [x] 首次诊断完成 10 组 short 和 long seed 1101，11/11 跨构建审计通过；
-- [x] long seed 1102 reference 以 D2 仅虚警排除计数 `14` 与 frame mapping `11` 矛盾
-  失败关闭，矩阵未继续；
-- [x] D2 修复 producer 计数口径，真实重放由 `14 -> 11`，其余身份评估载荷不变；
-- [x] D2 修复提交 `e4147b8` 已分别叠加到 reference/candidate；
-- [x] 冻结 v2 clean 提交 `3c134c3` / `8c11882` 和 v2 矩阵，case、顺序、门限不变；
-- [ ] D6 保持 exact-match 严格 consumer，并完成 10,000 次 bootstrap 与 manifest 入口；
-- [ ] 从头完成 10 组 short 与 3 组 long clean pair；
-- [ ] 完成新矩阵 13/13 跨构建业务语义审计；
-- [ ] 由 D6 计算 paired bootstrap 95% 区间和长短单位时间增长；
-- [ ] 根据预注册门更新 D1 多 seed 准入和系统实时 P1。
+- [x] D6 exact-match consumer 完成 10,000 次 paired bootstrap 和 manifest 入口；
+- [x] 从头完成 10 组 short 与 3 组 long clean pair，共 26 个 episode；
+- [x] 13/13 跨构建业务语义审计通过，在线真值使用、非有限状态和非零退出均为 0；
+- [x] short D1 fusion 改善 `9.35462%`，10/10 seed 更快，bootstrap 区间上界低于 0；
+- [x] long D1 fusion 改善 `6.631993%`，3/3 seed 更快；
+- [x] 长短单位时间增长、核心墙钟和内存门全部通过；
+- [x] D6 判定 `d1_optimization_admitted=true`，紧凑摘要、中文报告和曲线已登记；
+- [ ] 系统实时 P1：candidate 最低实时因子 `0.143397`，尚未达到 `1.0`；
+- [ ] 精度 P1：RMSE、NEES、NIS 和严格身份指标尚未进入本性能矩阵；
+- [ ] 环境 P1：AirSim 与冻结目标硬件容量尚未验证。
 
-首次 v1 运行只作失败定位，不能与修复后的提交混合。v2 仍保持相同 seed、时长、arm 顺序和
-准入门，只更新两端共同 D2 修复后的提交号及证据版本。无效或部分 episode 不得作为正式输入。
+V1/V2 只作失败定位，正式结论使用 V3 证据。V3 不复用旧 episode，reference 与 candidate
+共同包含正半定修复，唯一 treatment 是标量/向量化协方差限制路径。结果见
+`docs/SCALABLE_3D_D1_COVARIANCE_MULTISEED_V3_REVIEW_CN.md`。
+
+下一性能轮先处理 D1 扫描输入。V3 candidate 的 short/long 累计均值为
+`1.220624/6.572076 s`；D2 关联 long 均值为 `5.815163 s`，列为第二候选。任何优化均继续
+使用同一冻结矩阵，不改变量测频率、双时间戳、协方差、固定滞后窗口或身份合同。
 
 ### D1 协方差成对限制 clean 准入
 
@@ -39,16 +44,17 @@
 - [x] D1 fusion P95 `184.228658 -> 173.330868 ms`，下降 `5.9154%`；
 - [x] 核心墙钟、外部 elapsed 和 RSS 分别下降 `3.1417%/3.6310%/0.1429%`；
 - [x] D6 独立准入门全部通过，`d1_optimization_admitted=true`；
-- [ ] 多个独立 seed 与长稳定窗口；
+- [x] 多个独立 seed 与长稳定窗口：V3 完成 short 10 seed 和 long 3 seed；
 - [ ] D1 均方根误差、归一化估计误差平方、归一化创新平方和 D2 严格身份指标；
 - [ ] AirSim 或冻结目标硬件容量验证；
-- [ ] 200 对 200 系统实时闭合。候选实时因子均值为 `0.215065`，
+- [ ] 200 对 200 系统实时闭合。V3 candidate 最低实时因子为 `0.143397`，
   `system_realtime_gap_closed=false`。
 
 该项关闭 D1 标量协方差裁剪热点的 clean 全栈准入，不关闭系统实时、精度、AirSim 或物理
-拦截 P1。下一轮先在不改变传感器频率、量测门限和 fixed-lag 窗口的条件下执行多个独立 seed
-与长时回放，再根据阶段分位、内存增长和严格离线精度决定后续 D1/D2 热点。结果见
-`docs/SCALABLE_3D_D1_COVARIANCE_LIMIT_CLEAN_AB_REVIEW_CN.md` 和同名 JSON。
+拦截 P1。V3 已补齐多个独立 seed 和长时回放。下一轮保持传感器频率、量测门限和 fixed-lag
+窗口不变，先补严格离线精度，并在 D1 扫描输入、D2 关联和发布链之间按阶段墙钟选择下一热点。
+早期结果见 `docs/SCALABLE_3D_D1_COVARIANCE_LIMIT_CLEAN_AB_REVIEW_CN.md`，正式结果见
+`docs/SCALABLE_3D_D1_COVARIANCE_MULTISEED_V3_REVIEW_CN.md`。
 
 ### D1 共同质心原子影子复核
 

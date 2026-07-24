@@ -30,7 +30,29 @@ main 现已把该确认链自动接入 D6 离线结果联接。存在运行时�
 每个窗口输出起始、结束、最小三维距离和五米事件；距离进展只记为诊断，不作为 D3 正式奖励。
 输入清单、联接结果、中文报告和 main provenance manifest 均随 episode 保存。
 
-## 2026-07-24 D1 多 seed 与长时矩阵预注册
+## 2026-07-24 D1 协方差优化正式多 seed 准入
+
+PSD-safe V3 矩阵已完成 10 组 short pair 和 3 组 long pair，共 26 个 200 对 200 episode。
+reference `a5a472cf81496d94a98db3deb88a3d5c6951f0ce` 与 candidate
+`064cbb979d3bab68fee995e476df25709eb666db` 共同包含正半定修复，只在标量或向量化协方差
+限制路径上存在处理差异。13/13 跨构建业务语义检查通过，进程退出、有限状态、D2 审计和
+在线真值隔离均通过。
+
+short 的 D1 融合累计墙钟由 `4.029165 s` 降至 `3.652252 s`，改善 `9.35462%`，
+10/10 seed 更快，原始配对变化 bootstrap 95% 区间为 `[-10.914359%, -8.113134%]`。
+long 由 `32.954357 s` 降至 `30.768826 s`，改善 `6.631993%`，3/3 seed 更快，区间为
+`[-7.279095%, -5.406805%]`。预注册 12 项门全部通过，D6 判定
+`d1_optimization_admitted=true`。
+
+系统实时 P1 未关闭。candidate 的 short/long 实时因子均值为 `0.212769/0.149857`，最低
+值为 `0.143397`；矩阵也不包含 AirSim、目标硬件、均方根误差、归一化估计误差平方或
+归一化创新平方。紧凑证据、中文复核和曲线位于
+`docs/SCALABLE_3D_D1_COVARIANCE_MULTISEED_V3_SUMMARY_20260724.json`、
+`docs/SCALABLE_3D_D1_COVARIANCE_MULTISEED_V3_REVIEW_CN.md` 和
+`docs/figures/d1_covariance_limit_multiseed_v3_improvements.png`。原始 4.2 GB episode
+仅作为临时复核材料，不提交到源码目录。
+
+## 2026-07-24 D1 多 seed 与长时矩阵预注册历史
 
 main 已冻结 `configs/d1_covariance_limit_multiseed_v1.json`。矩阵包含 seed
 `1101-1110` 的 10 组 2.2 秒 short pair，以及 seeds `1101-1103` 的 3 组 10 秒 long
@@ -44,7 +66,7 @@ reference/candidate 先后次序。运行器拒绝提交不匹配或脏 worktree
 `evidence_manifest.json` 直接记录 arm 标签和路径，后续 D6 不需要从目录名推断实验臂。
 `--resume` 只复用提交、seed、时长、规模、运行配置、有限状态和真值隔离均通过的 episode。
 
-当前只完成矩阵、运行器和 4 项单元测试，正式 13 组 pair 尚未运行。预注册门要求 short
+预注册时只完成矩阵、运行器和 4 项单元测试，正式 13 组 pair 尚未运行。预注册门要求 short
 组至少 8/10 更快、D1 fusion 均值改善至少 5% 且配对 bootstrap 区间上界低于 0；long 组
 至少 2/3 更快且均值改善至少 5%；长短单位时间成本增长、核心墙钟和内存均有独立上界。
 实时因子未达到 1 时，系统实时 P1 继续开放。
@@ -55,10 +77,9 @@ reference/candidate 先后次序。运行器拒绝提交不匹配或脏 worktree
 报告 14 个仅虚警排除映射，持久化 frame 中实际只有 11 个；进程按合同以 1 退出，矩阵立即
 停止。该批只作故障定位，不进入正式性能评估。
 
-运行器现会在进程启动前持久化 running 状态，并在异常时写入 case、arm、异常类型和消息；
-专项回归增至 5 项。待 D2 owner 修复计数口径并由 D6 保持严格复核后，main 将同一修复叠加到
-reference/candidate 两端，以新的 clean 提交和新矩阵版本完整重跑，不能混用已完成的旧提交
-episode。
+运行器随后在进程启动前持久化 running 状态，并在异常时写入 case、arm、异常类型和消息；
+专项回归增至 5 项。D2 owner 修复计数口径后，main 将同一修复叠加到 reference/candidate
+两端，以新的 clean 提交和新矩阵版本重跑，未混用已完成的旧提交 episode。
 
 D2 修复现已提交为 `e4147b8`。真实 seed 1102 离线重放把
 `known_false_alarm_only_mapping_count` 从 14 修正为 11，等于最终持久化排除映射数；其余
@@ -68,7 +89,9 @@ D2 修复现已提交为 `e4147b8`。真实 seed 1102 离线重放把
 `configs/d1_covariance_limit_multiseed_v2.json`，保持全部 case、顺序和门限不变，
 明确禁止复用 v1 episode。
 
-## 2026-07-24 D1 协方差成对限制 clean 准入
+上述 V1/V2 记录保留为阻断定位历史。正式准入以本页前述 PSD-safe V3 矩阵为准。
+
+## 2026-07-24 D1 协方差成对限制单 seed clean 准入
 
 D1 已把六维协方差 15 个非对角元素的逐项标量裁剪改为只读上三角索引上的批量裁剪。旧路径
 通过 `vectorized_covariance_limit=False` 保留为 reference，默认使用优化路径。两条路径执行
@@ -86,7 +109,7 @@ D1 融合累计墙钟均值由 `4.014714 s` 降至 `3.595533 s`，下降 `10.441
 `3.1417%`，外部进程 elapsed 下降 `3.6310%`，最大常驻内存下降 `0.1429%`。D6 判定
 `d1_optimization_admitted=true`。
 
-候选实时因子均值为 `0.215065`，本批只有单 seed 的三次短回放，也没有 AirSim、
+候选实时因子均值为 `0.215065`。该早期批次只有单 seed 的三次短回放，也没有 AirSim、
 均方根误差、归一化估计误差平方、归一化创新平方或严格身份指标。因此
 `system_realtime_gap_closed=false`。完整复核见
 `docs/SCALABLE_3D_D1_COVARIANCE_LIMIT_CLEAN_AB_REVIEW_CN.md`，D6 独立评估见
