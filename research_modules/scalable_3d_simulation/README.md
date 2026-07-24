@@ -30,6 +30,26 @@ main 现已把该确认链自动接入 D6 离线结果联接。存在运行时�
 每个窗口输出起始、结束、最小三维距离和五米事件；距离进展只记为诊断，不作为 D3 正式奖励。
 输入清单、联接结果、中文报告和 main provenance manifest 均随 episode 保存。
 
+## 2026-07-24 D1 扫描输入正式多 seed 准入
+
+main 在 clean 提交 `d14285e4fdeb2f2e2cd32fad2f6d42e30f9e73a7` 上完成同提交
+`reference_v1/candidate_v2` 对照。矩阵包含 10 组 2.2 秒 short pair 和 3 组 10 秒
+long pair，每个 episode 为 200 个目标、200 个资源和 2 个侦察节点。26 个 arm 全部正常
+退出；13/13 pair 的业务语义、有限状态、在线真值隔离和实现身份检查通过。
+
+short 扫描输入累计墙钟均值由 `1.212452 s` 降至 `1.145650 s`，逐 pair 平均改善
+`5.360122%`，9/10 seed 更快，原始相对变化 bootstrap 95% 区间为
+`[-8.208165%, -3.084141%]`。long 由 `6.687633 s` 降至 `6.340680 s`，改善
+`5.142482%`，3/3 更快，区间为 `[-8.837129%, -1.669361%]`。核心墙钟和内存门通过，
+D6 判定 `d1_optimization_admitted=true`。
+
+系统实时 P1 未关闭。核心墙钟 short/long 只改善 `0.7187%/0.5792%`，候选最低实时因子为
+`0.143427`。当前证据来自三维质点环境，不包含 AirSim、目标硬件、RMSE、NEES、NIS 或严格
+身份指标。报告、紧凑 JSON 和曲线见
+`docs/SCALABLE_3D_D1_SCAN_INPUT_MULTISEED_REVIEW_CN.md`、
+`docs/SCALABLE_3D_D1_SCAN_INPUT_MULTISEED_SUMMARY_20260724.json` 和
+`docs/figures/d1_scan_input_multiseed_improvements.png`。原始 4.2 GB episode 不进入源码目录。
+
 ## 2026-07-24 D1 协方差优化正式多 seed 准入
 
 PSD-safe V3 矩阵已完成 10 组 short pair 和 3 组 long pair，共 26 个 200 对 200 episode。
