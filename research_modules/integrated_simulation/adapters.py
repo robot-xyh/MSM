@@ -155,10 +155,14 @@ def d2_tracks_to_target_tracks(
                 fov_difficulty_by_resource=fov_difficulty,
                 conflict_risk_by_resource=conflict_risk,
                 feasibility_by_resource=feasibility,
+                identity_commitment_state="committed",
                 metadata={
                     "truth_id": track.truth_id,
                     "coverage_cell": truth.coverage_cell,
                     "position": track.position.tolist(),
+                    "identity_commitment_source": (
+                        "integrated_simulation_d2_center_track_contract_v1"
+                    ),
                 },
             )
         )

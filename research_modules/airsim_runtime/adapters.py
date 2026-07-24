@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any
 
 import numpy as np
@@ -280,6 +281,7 @@ def target_tracks_from_online_d2(
     resources: list[ResourcePlatform],
     *,
     default_threat_score: float = 0.75,
+    identity_commitment_by_track: Mapping[str, Any] | None = None,
 ) -> list[TargetTrack]:
     """Build D3 inputs without AirSim actor or truth identity.
 
@@ -288,8 +290,28 @@ def target_tracks_from_online_d2(
     product is available; coverage is inferred from online geometry.
     """
 
+    track_ids = tuple(str(track.global_track_id) for track in tracks)
+    if len(set(track_ids)) != len(track_ids):
+        raise ValueError("D2 target adapter requires unique global_track_id values")
+    commitment_by_track = (
+        {}
+        if identity_commitment_by_track is None
+        else {
+            str(track_id): state
+            for track_id, state in identity_commitment_by_track.items()
+        }
+    )
+    if identity_commitment_by_track is not None and set(commitment_by_track) != set(
+        track_ids
+    ):
+        raise ValueError(
+            "D2 identity commitment map must cover adapted tracks exactly"
+        )
+
     output: list[TargetTrack] = []
     for track in tracks:
+        track_id = str(track.global_track_id)
+        commitment_available = track_id in commitment_by_track
         position = np.asarray(track.state[:2], dtype=float)
         lifecycle = getattr(getattr(track, "lifecycle_state", None), "value", None)
         assignable = lifecycle == "engageable"
@@ -308,7 +330,7 @@ def target_tracks_from_online_d2(
             feasibility[resource.resource_id] = resource.status == "available"
         output.append(
             TargetTrack(
-                track_id=str(track.global_track_id),
+                track_id=track_id,
                 threat_score=float(np.clip(default_threat_score, 0.0, 1.0)),
                 covariance=covariance_norm,
                 window_cost=min(float(np.linalg.norm(position)) / 1000.0, 1.0),
@@ -316,6 +338,7 @@ def target_tracks_from_online_d2(
                 fov_difficulty_by_resource=fov_difficulty,
                 conflict_risk_by_resource=conflict_risk,
                 feasibility_by_resource=feasibility,
+                identity_commitment_state=commitment_by_track.get(track_id),
                 metadata={
                     "coverage_cell": coverage_cell,
                     "position": position.tolist(),
@@ -324,6 +347,11 @@ def target_tracks_from_online_d2(
                     "d2_lifecycle_state": lifecycle or "unknown",
                     "assignment_admission": (
                         "engageable" if assignable else "lifecycle_not_engageable"
+                    ),
+                    "identity_commitment_source": (
+                        "caller_provided_d2_commitment_map"
+                        if commitment_available
+                        else "identity_commitment_unavailable"
                     ),
                     "online_truth_id_used": False,
                 },

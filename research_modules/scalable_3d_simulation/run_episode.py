@@ -82,6 +82,22 @@ def parse_args() -> argparse.Namespace:
             "candidate; disabled by default"
         ),
     )
+    parser.add_argument(
+        "--d1-publish-opaque-source-key",
+        action="store_true",
+        help=(
+            "publish D1 opaque source keys without enabling structural "
+            "ambiguity suppression; intended for the source-only control arm"
+        ),
+    )
+    parser.add_argument(
+        "--d1-identity-neutral-centroid-correction",
+        action="store_true",
+        help=(
+            "enable the experimental D1 identity-neutral centroid state "
+            "correction; requires --d1-d2-structural-ambiguity-hold"
+        ),
+    )
     add_learning_runtime_arguments(parser)
     return parser.parse_args()
 
@@ -137,6 +153,12 @@ def main() -> int:
                 ),
                 d1_d2_structural_ambiguity_hold_enabled=(
                     args.d1_d2_structural_ambiguity_hold
+                ),
+                d1_publish_opaque_source_key=(
+                    args.d1_publish_opaque_source_key
+                ),
+                d1_identity_neutral_centroid_correction_enabled=(
+                    args.d1_identity_neutral_centroid_correction
                 ),
             ),
         )

@@ -266,6 +266,7 @@ class MainAirSimEpisodeBus:
         self._stage_timing_records: list[dict[str, Any]] = []
         self._last_stage_timing_record: dict[str, Any] | None = None
         self._d2_source_kinematics: dict[str, dict[str, Any]] = {}
+        self._d2_identity_commitment_by_track: dict[str, str] = {}
         self._last_episode_timestamp = 0.0
         self._last_secondary_readiness_state: str | None = None
         self._last_secondary_plan_state: str | None = None
@@ -1214,8 +1215,13 @@ class MainAirSimEpisodeBus:
                 "continuity_available": False,
             },
         )
+        active_tracks = self.tracker.active_tracks()
+        self._d2_identity_commitment_by_track = {
+            str(track.global_track_id): "committed"
+            for track in active_tracks
+        }
         detections_by_id = {detection.detection_id: detection for detection in detections}
-        for track in self.tracker.active_tracks():
+        for track in active_tracks:
             detection = detections_by_id.get(track.last_detection_id or "")
             previous = self._d2_source_kinematics.get(
                 str(track.global_track_id),
@@ -1327,6 +1333,9 @@ class MainAirSimEpisodeBus:
             resources,
             default_threat_score=float(
                 self.config.metadata.get("main_bus_default_target_threat_score", 0.75)
+            ),
+            identity_commitment_by_track=(
+                self._d2_identity_commitment_by_track
             ),
         )
         if self.config.cooperative_demand_enabled:

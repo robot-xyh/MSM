@@ -138,6 +138,8 @@ class IntegratedStackConfig:
     d1_coalesce_same_fusion_time: bool = True
     d1_radar_assignment_ambiguity_governance_v2: bool = False
     d1_d2_structural_ambiguity_hold_enabled: bool = False
+    d1_publish_opaque_source_key: bool = False
+    d1_identity_neutral_centroid_correction_enabled: bool = False
     d2_ambiguity_hold_gap_scan_periods: int = 2
     d2_ambiguity_hold_hard_scan_periods: int = 5
     d1_ambiguity_pending_evidence_limit: int = 4_096
@@ -199,6 +201,23 @@ class IntegratedStackConfig:
         ):
             raise TypeError(
                 "d1_d2_structural_ambiguity_hold_enabled must be a bool"
+            )
+        if not isinstance(self.d1_publish_opaque_source_key, bool):
+            raise TypeError("d1_publish_opaque_source_key must be a bool")
+        if not isinstance(
+            self.d1_identity_neutral_centroid_correction_enabled,
+            bool,
+        ):
+            raise TypeError(
+                "d1_identity_neutral_centroid_correction_enabled must be a bool"
+            )
+        if (
+            self.d1_identity_neutral_centroid_correction_enabled
+            and not self.d1_d2_structural_ambiguity_hold_enabled
+        ):
+            raise ValueError(
+                "D1 identity-neutral centroid correction requires "
+                "D1-D2 structural ambiguity hold"
             )
         if (
             self.d1_radar_assignment_ambiguity_governance_v2
@@ -358,6 +377,10 @@ class IntegratedScalableModuleStack:
         self._d2_pre_tick_posterior_merge_count = 0
         self._d2_finalize_unchanged_posterior_skip_count = 0
         self._d2_finalize_coalesced_release_count = 0
+        self._identity_commitment_binding_hold_count = 0
+        self._identity_commitment_binding_hold_event_count = 0
+        self._identity_commitment_binding_hold_target_ids: tuple[str, ...] = ()
+        self._identity_commitment_replan_required = False
         self._d1_publisher_reset_generation = 0
         self._d1_publisher_epoch = "main-stack-not-reset"
         self._pending_structural_ambiguity_evidence: dict[str, Any] = {}
@@ -402,6 +425,13 @@ class IntegratedScalableModuleStack:
             ),
             radar_assignment_ambiguity_hold_evidence=(
                 self.stack_config.d1_d2_structural_ambiguity_hold_enabled
+            ),
+            publish_opaque_source_key=(
+                self.stack_config.d1_publish_opaque_source_key
+            ),
+            radar_assignment_ambiguity_neutral_centroid_correction=(
+                self.stack_config
+                .d1_identity_neutral_centroid_correction_enabled
             ),
             publisher_node_id=(
                 DEFAULT_STRUCTURAL_AMBIGUITY_PUBLISHER_NODE_ID
@@ -535,6 +565,10 @@ class IntegratedScalableModuleStack:
         self._d2_pre_tick_posterior_merge_count = 0
         self._d2_finalize_unchanged_posterior_skip_count = 0
         self._d2_finalize_coalesced_release_count = 0
+        self._identity_commitment_binding_hold_count = 0
+        self._identity_commitment_binding_hold_event_count = 0
+        self._identity_commitment_binding_hold_target_ids = ()
+        self._identity_commitment_replan_required = False
         self._pending_structural_ambiguity_evidence.clear()
         self._structural_ambiguity_evidence_received_count = 0
         self._structural_ambiguity_evidence_consumed_count = 0
@@ -842,6 +876,13 @@ class IntegratedScalableModuleStack:
             "d1_d2_structural_ambiguity_hold_enabled": bool(
                 self.stack_config.d1_d2_structural_ambiguity_hold_enabled
             ),
+            "d1_publish_opaque_source_key": bool(
+                self.stack_config.d1_publish_opaque_source_key
+            ),
+            "d1_identity_neutral_centroid_correction_enabled": bool(
+                self.stack_config
+                .d1_identity_neutral_centroid_correction_enabled
+            ),
             "d1_structural_ambiguity_publisher_node_id": (
                 DEFAULT_STRUCTURAL_AMBIGUITY_PUBLISHER_NODE_ID
             ),
@@ -889,6 +930,18 @@ class IntegratedScalableModuleStack:
             ),
             "d2_binding_pre_update_rejection_count": int(
                 d2_summary.get("binding_pre_update_rejection_count", 0)
+            ),
+            "d3_identity_commitment_binding_hold_count": int(
+                self._identity_commitment_binding_hold_count
+            ),
+            "d3_identity_commitment_binding_hold_event_count": int(
+                self._identity_commitment_binding_hold_event_count
+            ),
+            "d3_identity_commitment_binding_hold_target_ids": (
+                self._identity_commitment_binding_hold_target_ids
+            ),
+            "d3_identity_commitment_replan_required": bool(
+                self._identity_commitment_replan_required
             ),
             "d1_posterior_generation": int(self._d1_posterior_generation),
             "d2_pending_d1_posterior_generation": (
@@ -1105,6 +1158,9 @@ class IntegratedScalableModuleStack:
         self._latest_d2_input_signature = input_signature
         self.latest_d2_tracks = tuple(self.d2.active_tracks())
         self._update_d2_identity_lineage(self.latest_d2_result, detections)
+        self._reconcile_active_bindings_with_identity_commitment(
+            self.latest_d2_result
+        )
         self._d2_consumed_d1_posterior_generation = int(
             self._d1_posterior_generation
             if source_d1_posterior_generation is None
@@ -1229,6 +1285,7 @@ class IntegratedScalableModuleStack:
                     forced_replan=(
                         self._fault_generation_changed
                         or current_target_ids != previous_target_ids
+                        or self._identity_commitment_replan_required
                     ),
                     publish=False,
                     regional_planning_hint=regional_hint,
@@ -1309,6 +1366,7 @@ class IntegratedScalableModuleStack:
                 forced_replan=(
                     self._fault_generation_changed
                     or current_target_ids != previous_target_ids
+                    or self._identity_commitment_replan_required
                 ),
                 regional_planning_hint=regional_hint,
             )
@@ -1329,6 +1387,19 @@ class IntegratedScalableModuleStack:
             current_plan_id=self.latest_plan.plan_id,
             current_plan_version=self.latest_plan.version,
         )
+        plan_identity_changed = bool(
+            previous_plan is None
+            or self.latest_plan.plan_id != previous_plan.plan_id
+            or self.latest_plan.version != previous_plan.version
+        )
+        self._reconcile_active_bindings_with_identity_commitment(
+            self.latest_d2_result
+        )
+        if (
+            plan_identity_changed
+            and not self._identity_commitment_binding_hold_target_ids
+        ):
+            self._identity_commitment_replan_required = False
         adapter_started = perf_counter()
         snapshot = self._d4_snapshot(
             step_input,
@@ -1647,6 +1718,12 @@ class IntegratedScalableModuleStack:
         track_by_id = {
             track.global_track_id: track for track in self.latest_d2_tracks
         }
+        committed_target_ids = self._committed_d2_target_ids()
+        committed_track_by_id = {
+            track_id: track
+            for track_id, track in track_by_id.items()
+            if track_id in committed_target_ids
+        }
         camera_by_resource = {
             camera.resource_id: camera for camera in step_input.cameras
         }
@@ -1658,11 +1735,11 @@ class IntegratedScalableModuleStack:
             )
             for assignment in self.latest_plan.assignments
             if assignment.resource_id in camera_by_resource
-            and assignment.target_id in track_by_id
+            and assignment.target_id in committed_track_by_id
         )
         recon_assignments = self._active_vision_recon_track_cues(
             step_input,
-            track_by_id=track_by_id,
+            track_by_id=committed_track_by_id,
             camera_by_resource=camera_by_resource,
         )
         assignments = interceptor_assignments + recon_assignments
@@ -2493,6 +2570,11 @@ class IntegratedScalableModuleStack:
 
     def _d3_tracks(self) -> tuple[TargetTrack, ...]:
         config = self._require_ready()
+        if self.latest_d2_result is None:
+            raise RuntimeError("D3 track adapter requires a D2 association result")
+        commitment_by_track = self._d2_identity_commitments(
+            self.latest_d2_result
+        )
         usable = tuple(
             track
             for track in self.latest_d2_tracks
@@ -2505,6 +2587,7 @@ class IntegratedScalableModuleStack:
         output: list[TargetTrack] = []
         all_regions = _region_ids(config.region_count)
         for index, track in enumerate(sorted(usable, key=lambda item: item.global_track_id)):
+            commitment = commitment_by_track[track.global_track_id]
             position = np.asarray(track.state[:3], dtype=float)
             region_id = _region_for_position(position, config.region_count)
             self._track_region_by_id[track.global_track_id] = region_id
@@ -2540,10 +2623,14 @@ class IntegratedScalableModuleStack:
                     region_id=region_id,
                     candidate_resource_region_ids=all_regions,
                     demand=demand,
+                    identity_commitment_state=(
+                        commitment.identity_commitment_state.value
+                    ),
                     metadata={
                         "global_track_id_owner": "D2_center",
                         "lifecycle_state": _enum_value(track.lifecycle_state),
                         "track_quality": float(track.track_quality),
+                        "identity_commitment": commitment.to_dict(),
                     },
                 )
             )
@@ -2873,11 +2960,17 @@ class IntegratedScalableModuleStack:
         track_by_id = {
             track.global_track_id: track for track in self.latest_d2_tracks
         }
+        committed_target_ids = self._committed_d2_target_ids()
         output: list[AssignmentPairGuidanceInput3D] = []
         for binding in self.latest_bindings:
             resource_index = self._resource_index_by_id.get(binding.resource_id)
             track = track_by_id.get(binding.assigned_global_track_id)
-            if resource_index is None or track is None:
+            if (
+                resource_index is None
+                or track is None
+                or binding.assigned_global_track_id
+                not in committed_target_ids
+            ):
                 continue
             association_visual = self._latest_terminal_by_pair.get(
                 (binding.resource_id, binding.assigned_global_track_id)
@@ -3859,6 +3952,69 @@ class IntegratedScalableModuleStack:
             )
         return commitments
 
+    def _committed_d2_target_ids(
+        self,
+        result: Any | None = None,
+    ) -> frozenset[str]:
+        source = self.latest_d2_result if result is None else result
+        if source is None:
+            return frozenset()
+        return frozenset(
+            track_id
+            for track_id, commitment in self._d2_identity_commitments(
+                source
+            ).items()
+            if (
+                commitment.identity_commitment_state
+                == IdentityCommitmentState.COMMITTED
+            )
+        )
+
+    def _reconcile_active_bindings_with_identity_commitment(
+        self,
+        result: Any | None,
+    ) -> None:
+        """Hold old bindings as soon as D2 withdraws identity commitment."""
+
+        if result is None or self.latest_plan is None:
+            self._identity_commitment_binding_hold_target_ids = ()
+            return
+        committed_target_ids = self._committed_d2_target_ids(result)
+        uncommitted_assigned_target_ids = tuple(
+            sorted(
+                {
+                    assignment.target_id
+                    for assignment in self.latest_plan.assignments
+                    if assignment.target_id not in committed_target_ids
+                }
+            )
+        )
+        if not uncommitted_assigned_target_ids:
+            self._identity_commitment_binding_hold_target_ids = ()
+            return
+
+        held_target_ids = set(uncommitted_assigned_target_ids)
+        retained_bindings = tuple(
+            binding
+            for binding in self.latest_bindings
+            if binding.assigned_global_track_id not in held_target_ids
+        )
+        removed_binding_count = len(self.latest_bindings) - len(
+            retained_bindings
+        )
+        if (
+            removed_binding_count > 0
+            or uncommitted_assigned_target_ids
+            != self._identity_commitment_binding_hold_target_ids
+        ):
+            self._identity_commitment_binding_hold_event_count += 1
+        self._identity_commitment_binding_hold_count += removed_binding_count
+        self.latest_bindings = retained_bindings
+        self._identity_commitment_binding_hold_target_ids = (
+            uncommitted_assigned_target_ids
+        )
+        self._identity_commitment_replan_required = True
+
     def _d3_publication(self, now: float) -> RuntimePublication:
         plan = self.latest_plan
         return RuntimePublication(
@@ -4088,6 +4244,26 @@ class IntegratedScalableModuleStack:
             "d2_track_count": len(self.latest_d2_tracks),
             "d3_assignment_count": (
                 0 if self.latest_plan is None else len(self.latest_plan.assignments)
+            ),
+            "d3_identity_commitment_binding_hold_count": int(
+                self._identity_commitment_binding_hold_count
+            ),
+            "d3_identity_commitment_binding_hold_event_count": int(
+                self._identity_commitment_binding_hold_event_count
+            ),
+            "d3_identity_commitment_binding_hold_target_ids": (
+                self._identity_commitment_binding_hold_target_ids
+            ),
+            "d3_identity_commitment_replan_required": bool(
+                self._identity_commitment_replan_required
+            ),
+            "d3_identity_commitment_rejected_target_count": int(
+                0
+                if self.latest_plan is None
+                else self.latest_plan.metadata.get(
+                    "identity_commitment_uncommitted_rejected_count",
+                    0,
+                )
             ),
             "d4_region_count": (
                 0

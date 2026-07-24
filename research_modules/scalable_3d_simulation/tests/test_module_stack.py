@@ -84,6 +84,109 @@ def test_recon_track_cues_are_fail_closed_by_default() -> None:
     assert IntegratedStackConfig().d5_recon_track_cues_enabled is False
 
 
+def test_d1_opaque_source_key_control_arm_is_explicit_and_hashed() -> None:
+    stack = IntegratedScalableModuleStack(
+        IntegratedStackConfig(d1_publish_opaque_source_key=True)
+    )
+    stack.reset(
+        ScenarioConfig(
+            scenario_name="d1_source_only_control_2v2",
+            scenario_version="d1-source-only-control-v1",
+            target_count=2,
+            resource_count=2,
+            recon_count=1,
+            region_count=1,
+            duration_s=0.2,
+            seed=19,
+        )
+    )
+
+    assert stack.d1.radar_assignment_ambiguity_hold_evidence is False
+    assert stack.d1.publish_opaque_source_key is True
+    audit = stack.observation_governance_audit()
+    assert audit["d1_publish_opaque_source_key"] is True
+    assert audit["d1_d2_structural_ambiguity_hold_enabled"] is False
+    assert audit["d1_fusion_association"][
+        "opaque_source_key_publication_mode"
+    ] == "source_only"
+    assert stack.runtime_manifest_profile()["configuration"][
+        "d1_publish_opaque_source_key"
+    ] is True
+
+
+@pytest.mark.parametrize("value", (None, 0, 1, "true"))
+def test_d1_opaque_source_key_control_requires_bool(value: object) -> None:
+    with pytest.raises(
+        TypeError,
+        match="d1_publish_opaque_source_key must be a bool",
+    ):
+        IntegratedStackConfig(
+            d1_publish_opaque_source_key=value,  # type: ignore[arg-type]
+        )
+
+
+def test_d1_identity_neutral_centroid_candidate_is_explicit_and_hashed() -> None:
+    stack = IntegratedScalableModuleStack(
+        IntegratedStackConfig(
+            d1_d2_structural_ambiguity_hold_enabled=True,
+            d1_identity_neutral_centroid_correction_enabled=True,
+        )
+    )
+    stack.reset(
+        ScenarioConfig(
+            scenario_name="d1_neutral_centroid_candidate_2v2",
+            scenario_version="d1-neutral-centroid-candidate-v1",
+            target_count=2,
+            resource_count=2,
+            recon_count=1,
+            region_count=1,
+            duration_s=0.2,
+            seed=23,
+        )
+    )
+
+    assert (
+        stack.d1.radar_assignment_ambiguity_neutral_centroid_correction
+        is True
+    )
+    audit = stack.observation_governance_audit()
+    assert audit["d1_d2_structural_ambiguity_hold_enabled"] is True
+    assert (
+        audit["d1_identity_neutral_centroid_correction_enabled"] is True
+    )
+    assert audit["d1_fusion_association"][
+        "neutral_centroid_correction_status"
+    ] == "experimental_identity_neutral_centroid_candidate_not_promoted"
+    assert stack.runtime_manifest_profile()["configuration"][
+        "d1_identity_neutral_centroid_correction_enabled"
+    ] is True
+
+
+@pytest.mark.parametrize("value", (None, 0, 1, "true"))
+def test_d1_identity_neutral_centroid_candidate_requires_bool(
+    value: object,
+) -> None:
+    with pytest.raises(
+        TypeError,
+        match=(
+            "d1_identity_neutral_centroid_correction_enabled must be a bool"
+        ),
+    ):
+        IntegratedStackConfig(
+            d1_identity_neutral_centroid_correction_enabled=value,  # type: ignore[arg-type]
+        )
+
+
+def test_d1_identity_neutral_centroid_candidate_requires_hold() -> None:
+    with pytest.raises(
+        ValueError,
+        match="centroid correction requires",
+    ):
+        IntegratedStackConfig(
+            d1_identity_neutral_centroid_correction_enabled=True
+        )
+
+
 def test_d1_radar_assignment_ambiguity_governance_v2_is_explicit_and_audited() -> None:
     default = IntegratedScalableModuleStack()
     default.reset(
@@ -394,6 +497,26 @@ def test_atomic_d1_d2_ambiguity_hold_consumes_delayed_sidecar_once() -> None:
         )
         for track in stack.d2.active_tracks()
     }
+    committed_track_ids = tuple(sorted(before))
+    stack.latest_plan = SimpleNamespace(
+        plan_id="PLAN-COMMITTED-1",
+        version=1,
+        assignments=tuple(
+            SimpleNamespace(
+                target_id=track_id,
+                resource_id=f"INT-{index:02d}",
+                coalition_version=0,
+            )
+            for index, track_id in enumerate(committed_track_ids, start=1)
+        ),
+    )
+    stack.latest_bindings = tuple(
+        SimpleNamespace(
+            resource_id=f"INT-{index:02d}",
+            assigned_global_track_id=track_id,
+        )
+        for index, track_id in enumerate(committed_track_ids, start=1)
+    )
     evidence = _structural_ambiguity_fixture(
         publisher_epoch=stack._d1_publisher_epoch,
         measurement_timestamp=0.4,
@@ -438,6 +561,27 @@ def test_atomic_d1_d2_ambiguity_hold_consumes_delayed_sidecar_once() -> None:
         for item in lineage
     } == {"identity_uncommitted_ambiguity_hold"}
     assert all(item["source_observations"] == [] for item in lineage)
+    assert stack.latest_bindings == ()
+    assert stack._identity_commitment_binding_hold_count == 2
+    assert stack._identity_commitment_binding_hold_event_count == 1
+    assert stack._identity_commitment_replan_required is True
+    assert set(stack._identity_commitment_binding_hold_target_ids) == set(
+        committed_track_ids
+    )
+    assert stack._committed_d2_target_ids() == frozenset()
+    d3_tracks = stack._d3_tracks()
+    assert {
+        item.identity_commitment_state for item in d3_tracks
+    } == {"identity_uncommitted_ambiguity_hold"}
+    assert stack._run_active_vision(
+        SimpleNamespace(cameras=()),
+        now=0.65,
+    ) == ()
+    assert stack.latest_active_vision_snapshot.plan.assignments == ()
+    assert stack._guidance_inputs(
+        SimpleNamespace(),
+        now=0.65,
+    ) == ()
     for track in stack.d2.active_tracks():
         previous_hits, previous_misses, previous_trace = before[
             track.global_track_id

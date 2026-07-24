@@ -110,7 +110,15 @@ def test_d3_required_plan_cannot_be_handed_to_d5_for_locking() -> None:
         config=config,
     )
     plan = planner.plan(
-        [TargetTrack("G-1", threat_score=0.5, covariance=0.1, window_cost=0.1)],
+        [
+            TargetTrack(
+                "G-1",
+                threat_score=0.5,
+                covariance=0.1,
+                window_cost=0.1,
+                identity_commitment_state="committed",
+            )
+        ],
         [ResourceState("R-1")],
         timestamp=0.0,
     )
@@ -130,7 +138,15 @@ def test_authorized_handoff_locks_terminal_and_is_counted_by_d6() -> None:
         config=config,
     )
     candidate = planner.plan(
-        [TargetTrack("G-1", threat_score=0.5, covariance=0.1, window_cost=0.1)],
+        [
+            TargetTrack(
+                "G-1",
+                threat_score=0.5,
+                covariance=0.1,
+                window_cost=0.1,
+                identity_commitment_state="committed",
+            )
+        ],
         [ResourceState("R-1")],
         timestamp=0.0,
     )

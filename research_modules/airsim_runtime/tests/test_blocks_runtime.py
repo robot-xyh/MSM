@@ -4220,6 +4220,54 @@ def test_d3_adapter_admits_only_engageable_d2_tracks() -> None:
     ]
     assert planned[2].metadata["assignment_admission"] == "engageable"
     assert all(track.metadata["online_truth_id_used"] is False for track in planned)
+    assert all(
+        track.effective_identity_commitment_state
+        == "identity_commitment_missing"
+        for track in planned
+    )
+    assert all(
+        track.metadata["identity_commitment_source"]
+        == "identity_commitment_unavailable"
+        for track in planned
+    )
+
+    committed = target_tracks_from_online_d2(
+        tracks,
+        resources,
+        identity_commitment_by_track={
+            str(track.global_track_id): "committed" for track in tracks
+        },
+    )
+
+    assert all(track.identity_committed for track in committed)
+    assert all(
+        track.metadata["identity_commitment_source"]
+        == "caller_provided_d2_commitment_map"
+        for track in committed
+    )
+
+
+def test_d3_adapter_rejects_partial_identity_commitment_map() -> None:
+    resources = resources_from_blocks_frame(_sample_frame())
+    tracks = [
+        SimpleNamespace(
+            global_track_id=f"T{index:03d}",
+            state=np.asarray((40.0 + index, 8.0, 0.0, 0.0), dtype=float),
+            covariance=np.eye(4, dtype=float),
+            lifecycle_state=SimpleNamespace(value="engageable"),
+        )
+        for index in range(1, 3)
+    ]
+
+    with pytest.raises(
+        ValueError,
+        match="identity commitment map must cover adapted tracks exactly",
+    ):
+        target_tracks_from_online_d2(
+            tracks,
+            resources,
+            identity_commitment_by_track={"T001": "committed"},
+        )
 
 
 def test_truth_isolated_collision_gate_ignores_latched_precontrol_event() -> None:
