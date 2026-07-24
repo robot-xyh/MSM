@@ -30,6 +30,30 @@ main 现已把该确认链自动接入 D6 离线结果联接。存在运行时�
 每个窗口输出起始、结束、最小三维距离和五米事件；距离进展只记为诊断，不作为 D3 正式奖励。
 输入清单、联接结果、中文报告和 main provenance manifest 均随 episode 保存。
 
+## 2026-07-24 D1 协方差成对限制 clean 准入
+
+D1 已把六维协方差 15 个非对角元素的逐项标量裁剪改为只读上三角索引上的批量裁剪。旧路径
+通过 `vectorized_covariance_limit=False` 保留为 reference，默认使用优化路径。两条路径执行
+相同的对角上下界、`0.999` 相关上界、对称化、非有限值重置和六秒 fixed-lag 重放；优化只减少
+Python 层标量调用，不跳过预测、更新或重放。
+
+main 使用 reference `7cc2d0cfd598a72d60c6ba8c7d4a283f4e5a897d` 与 candidate
+`95bf46e34321127313757986bb28bfb14b7e3c59` 完成三轮交错 clean A/B。每轮均为
+seed 1100、200 个目标、200 个资源、2 个侦察节点、2.2 秒和 2,035 条匿名观测。三轮配置
+SHA-256 与运行配置 SHA-256 固定，六个进程均正常退出。跨构建审计确认规范在线载荷、真值
+状态和标签、D3 计划谱系、ACK 来源及 D4 内容地址一致，在线真值使用为 0。
+
+D1 融合累计墙钟均值由 `4.014714 s` 降至 `3.595533 s`，下降 `10.4411%`，三轮均改善；
+单次调用 P95 均值由 `184.228658 ms` 降至 `173.330868 ms`，下降 `5.9154%`。核心墙钟下降
+`3.1417%`，外部进程 elapsed 下降 `3.6310%`，最大常驻内存下降 `0.1429%`。D6 判定
+`d1_optimization_admitted=true`。
+
+候选实时因子均值为 `0.215065`，本批只有单 seed 的三次短回放，也没有 AirSim、
+均方根误差、归一化估计误差平方、归一化创新平方或严格身份指标。因此
+`system_realtime_gap_closed=false`。完整复核见
+`docs/SCALABLE_3D_D1_COVARIANCE_LIMIT_CLEAN_AB_REVIEW_CN.md`，D6 独立评估见
+`../d6_evaluation_metrics/outputs/d1_covariance_limit_clean_pair_20260724/`。
+
 ## 2026-07-24 D1 共同质心原子影子
 
 D1 新增单次同步原子入口。main 的默认关闭审计旁路不再把 prepared handle 暴露在三个公共

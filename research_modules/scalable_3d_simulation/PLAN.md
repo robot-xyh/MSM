@@ -2,6 +2,29 @@
 
 ## 当前执行状态（2026-07-24）
 
+### D1 协方差成对限制 clean 准入
+
+- [x] D1 保留标量 reference，并默认使用六维协方差上三角批量裁剪；
+- [x] floor/ceiling、相关上界、对称化、异常重置、双时间戳、NED、六秒 fixed-lag、谱系和
+  `global_track_id` 合同保持不变；
+- [x] main 固定 reference `7cc2d0c`、candidate `95bf46e`、seed 1100、200 对 200、
+  2 个侦察节点、2.2 秒和 2,035 条观测，完成三轮交错 clean A/B；
+- [x] 3/3 跨构建审计通过，规范在线载荷、真值制品、计划谱系、ACK 来源和 D4 内容地址一致；
+- [x] D1 fusion wall `4.014714 -> 3.595533 s`，下降 `10.4411%`，3/3 更快；
+- [x] D1 fusion P95 `184.228658 -> 173.330868 ms`，下降 `5.9154%`；
+- [x] 核心墙钟、外部 elapsed 和 RSS 分别下降 `3.1417%/3.6310%/0.1429%`；
+- [x] D6 独立准入门全部通过，`d1_optimization_admitted=true`；
+- [ ] 多个独立 seed 与长稳定窗口；
+- [ ] D1 均方根误差、归一化估计误差平方、归一化创新平方和 D2 严格身份指标；
+- [ ] AirSim 或冻结目标硬件容量验证；
+- [ ] 200 对 200 系统实时闭合。候选实时因子均值为 `0.215065`，
+  `system_realtime_gap_closed=false`。
+
+该项关闭 D1 标量协方差裁剪热点的 clean 全栈准入，不关闭系统实时、精度、AirSim 或物理
+拦截 P1。下一轮先在不改变传感器频率、量测门限和 fixed-lag 窗口的条件下执行多个独立 seed
+与长时回放，再根据阶段分位、内存增长和严格离线精度决定后续 D1/D2 热点。结果见
+`docs/SCALABLE_3D_D1_COVARIANCE_LIMIT_CLEAN_AB_REVIEW_CN.md` 和同名 JSON。
+
 ### D1 共同质心原子影子复核
 
 - [x] D1 提供单次同步原子入口，内部 prepared handle 不跨调用方边界；

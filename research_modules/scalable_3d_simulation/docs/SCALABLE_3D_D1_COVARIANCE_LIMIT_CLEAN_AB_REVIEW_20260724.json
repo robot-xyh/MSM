@@ -1,0 +1,117 @@
+{
+  "schema_version": "scalable3d-d1-covariance-limit-clean-ab-review-v1",
+  "review_date": "2026-07-24",
+  "classification": {
+    "d1_optimization_admitted": true,
+    "system_realtime_gap_closed": false
+  },
+  "provenance": {
+    "reference_commit": "7cc2d0cfd598a72d60c6ba8c7d4a283f4e5a897d",
+    "candidate_commit": "95bf46e34321127313757986bb28bfb14b7e3c59",
+    "seed": 1100,
+    "repeat_count": 3,
+    "simulated_duration_s": 2.2,
+    "target_count": 200,
+    "resource_count": 200,
+    "recon_count": 2,
+    "online_observation_count": 2035,
+    "config_sha256": "20ef5248c8b45ff5aced9080c8d47e65a43aaba54f18ce824dc50fac7a52b840",
+    "runtime_profile_sha256": "deabac3fbf2a788f68a0b807945e5f1bedacf8c5917c4d3b49c5cffb3c90da70"
+  },
+  "module_frozen_replay": {
+    "scan_count": 89,
+    "observation_count": 2035,
+    "interleaved_round_count": 5,
+    "reference_mean_s": 3.001196,
+    "candidate_mean_s": 2.610975,
+    "reference_p50_s": 3.01144,
+    "candidate_p50_s": 2.614061,
+    "reference_p95_s": 3.023308,
+    "candidate_p95_s": 2.660813,
+    "limiter_reference_cprofile_s": 1.047145,
+    "limiter_candidate_cprofile_s": 0.426826,
+    "long_semantic_pair": {
+      "simulated_duration_s": 10.0,
+      "scan_count": 771,
+      "observation_count": 11889,
+      "fixed_lag_rebase_count": 4009,
+      "oosm_count": 11888,
+      "semantic_equivalence": true
+    }
+  },
+  "clean_full_stack_aggregate": {
+    "d1_fusion_wall_s": {
+      "reference_mean": 4.014713519291642,
+      "candidate_mean": 3.5955331056223563,
+      "relative_change_pct": -10.441103995466312,
+      "candidate_faster_rounds": 3
+    },
+    "d1_fusion_p95_ms": {
+      "reference_mean": 184.22865833466253,
+      "candidate_mean": 173.33086845076954,
+      "relative_change_pct": -5.915360825185236,
+      "candidate_lower_rounds": 3
+    },
+    "core_wall_s": {
+      "reference_mean": 10.561416472347142,
+      "candidate_mean": 10.229605523655968,
+      "relative_change_pct": -3.1417277176783243,
+      "candidate_faster_rounds": 3
+    },
+    "external_elapsed_s": {
+      "reference_mean": 18.176666666666666,
+      "candidate_mean": 17.516666666666666,
+      "relative_change_pct": -3.6310287914909236,
+      "candidate_faster_rounds": 3
+    },
+    "maximum_rss_kib": {
+      "reference_mean": 1076584.0,
+      "candidate_mean": 1075045.3333333333,
+      "relative_change_pct": -0.14292119023380845,
+      "candidate_lower_rounds": 3
+    },
+    "real_time_factor": {
+      "reference_mean": 0.2083073449106505,
+      "candidate_mean": 0.21506512070941916,
+      "relative_change_pct": 3.244137071435132
+    },
+    "d1_scan_input_wall_s": {
+      "reference_mean": 1.1790722677445349,
+      "candidate_mean": 1.1833246352422673,
+      "relative_change_pct": 0.3606536778162723,
+      "attributed_to_d1_covariance_optimization": false
+    }
+  },
+  "semantic_checks": {
+    "cross_build_rounds_passed": 3,
+    "cross_build_rounds_total": 3,
+    "normalized_online_payloads_equal": true,
+    "truth_artifacts_equal": true,
+    "plan_lineage_valid": true,
+    "ack_sources_valid": true,
+    "d4_content_addresses_valid": true,
+    "finite_state_all_arms": true,
+    "online_truth_use_count_all_arms": 0,
+    "process_exit_zero_count": 6
+  },
+  "limitations": [
+    "single_seed_repeated_three_times",
+    "short_2_2_second_replay",
+    "three_dimensional_point_mass_not_airsim",
+    "rmse_nees_nis_not_evaluated",
+    "strict_identity_metrics_not_evaluated",
+    "candidate_real_time_factor_below_one"
+  ],
+  "d6_artifacts": {
+    "evaluation_json_sha256": "0f14a00b46e24cba910cc8fd55d7015ef26c23bc65cec3ecdf41f74f47fe2b55",
+    "rounds_csv_sha256": "ce2827c5be2aea7dfdea3ab0cc7c8411a4bf67ee8ab1b89a3a3159d00852293d",
+    "report_markdown_sha256": "d9ff9dc07a02f21115d9c44291aeb1c0ce70863f1fe3493d7027060da06d5a74"
+  },
+  "validation": {
+    "d1_full_tests_passed": 342,
+    "scalable_3d_tests_passed": 168,
+    "d6_special_tests_passed": 9,
+    "d6_full_tests_passed": 646,
+    "d6_full_test_warning_count": 1
+  }
+}
