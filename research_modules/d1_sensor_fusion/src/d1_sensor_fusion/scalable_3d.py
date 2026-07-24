@@ -56,6 +56,18 @@ class Scalable3DFusionAdapter(FusionAdapter):
         radar_assignment_ambiguity_governance: bool = False,
         radar_assignment_ambiguity_governance_v2: bool = False,
         radar_assignment_ambiguity_hold_evidence: bool = False,
+        publish_opaque_source_key: bool = False,
+        radar_assignment_ambiguity_neutral_centroid_correction: bool = False,
+        neutral_centroid_max_component_size: int = 8,
+        neutral_centroid_gain: float = 0.5,
+        neutral_centroid_max_translation_m: float = 30.0,
+        neutral_centroid_gate_chi2: float = (
+            SCALABLE_3D_POSITION_ONLY_RADAR_NIS_GATE
+        ),
+        neutral_centroid_shape_gate_m2: float = 2_500.0,
+        neutral_centroid_shape_inflation_scale: float = 0.05,
+        neutral_centroid_min_position_variance_m2: float = 0.25,
+        neutral_centroid_generation_registry_max_entries: int = 1_024,
         **kwargs: Any,
     ) -> None:
         if bool(kwargs.pop("use_truth_hints_for_association", False)):
@@ -80,6 +92,28 @@ class Scalable3DFusionAdapter(FusionAdapter):
             ),
             radar_assignment_ambiguity_hold_evidence=(
                 radar_assignment_ambiguity_hold_evidence
+            ),
+            publish_opaque_source_key=publish_opaque_source_key,
+            radar_assignment_ambiguity_neutral_centroid_correction=(
+                radar_assignment_ambiguity_neutral_centroid_correction
+            ),
+            neutral_centroid_max_component_size=(
+                neutral_centroid_max_component_size
+            ),
+            neutral_centroid_gain=neutral_centroid_gain,
+            neutral_centroid_max_translation_m=(
+                neutral_centroid_max_translation_m
+            ),
+            neutral_centroid_gate_chi2=neutral_centroid_gate_chi2,
+            neutral_centroid_shape_gate_m2=neutral_centroid_shape_gate_m2,
+            neutral_centroid_shape_inflation_scale=(
+                neutral_centroid_shape_inflation_scale
+            ),
+            neutral_centroid_min_position_variance_m2=(
+                neutral_centroid_min_position_variance_m2
+            ),
+            neutral_centroid_generation_registry_max_entries=(
+                neutral_centroid_generation_registry_max_entries
             ),
             **kwargs,
         )

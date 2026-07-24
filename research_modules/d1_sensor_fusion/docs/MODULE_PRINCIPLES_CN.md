@@ -58,18 +58,68 @@ SHA-256；D2 source key 为
 输入，不能被下游解释为中心规范 `global_track_id`。正式运行应由 main 为 episode 注入稳定、
 可审计且不从 truth/actor 名称派生的 epoch。
 
+不透明来源键发布已从结构歧义保持中解耦。严格布尔参数
+`publish_opaque_source_key=False` 默认不改变任何输出。只开启该参数时，D1 仅在航迹发布
+快照中增加来源 node、source track、epoch、成员令牌和 source key；关联矩阵、状态更新、
+协方差、hit、birth、lineage、重放和航迹数量不读取该开关。hold 开启时仍按原合同发布这些
+字段。审计同时给出显式请求值、生效值和运行模式，使 main 可以区分默认基线、source-only
+控制臂和 hold 候选。该键仍是来源键，不是目标身份，也不能替代 `global_track_id`。
+
 观测 evidence key 使用 sensor/modality/frame、双时间戳、雷达转换后的 NED 位置和协方差、
 径向速度观测状态及同内容 occurrence。通用 source lineage 在合成回放中可能携带离线标签，
 因此不用于该侧车的键或排列规范化。改变 observation 名称和 truth/actor/D6 元数据不会改变
 参考最大匹配、候选边或 evidence。
 
-候选开关 `radar_assignment_ambiguity_hold_evidence` 默认关闭，并与 v1/v2 互斥。专项
-`17 passed`、D1 全量 `237 passed in 17.42s` 已验证 DTO、计数、逐边角色、排列不变、名称/
-离线 identity metadata 不变、lineage 隔离、双时间戳、协方差和默认关闭兼容。这是模块证据；
-D2 有界保活消费和 main 单 seed A/B 已完成。固定提交 `9cd2a79` 的 seed 1100 候选产生并一次
-消费 46 个 evidence，说明证据链路正常；D2/D3 数量和映射可用性下降，候选身份指标又因
-`source_observation_outside_lineage_window` 不可用。候选未达到预注册门槛，停止后续 seed
-并保持默认关闭。该结果不能推导身份连续性或下游可用性已经改善。
+候选开关 `radar_assignment_ambiguity_hold_evidence` 默认关闭，并与 v1/v2 互斥。基础阶段专项
+`25 passed`、当时 D1 全量 `245 passed in 17.48s` 已验证 DTO、计数、逐边角色、排列不变、名称/
+离线 identity metadata 不变、lineage 隔离、双时间戳、协方差、默认关闭兼容，以及
+source-only 的状态、协方差、计数、序列化和 OOSM 重放不变。
+
+固定提交 `ff88131` 的最终干净 A/B 已使身份指标可评估。strict ID switch 从 9 降到 3，但
+track/coverage continuity 从 `.865/.870` 降到 `.826667/.828333`，D2 航迹从 203 降到
+201，D3 分配从 200 降到 197。离线因果重放表明，整分量保持阻断 76 次参考更新，其中 69 次
+本来与真实目标一致、7 次错误；另有一个真实目标的新生延迟 0.2 s。候选仍未达到预注册门槛，
+保持默认关闭。
+
+该结果给出新的融合原则：身份未确定不等于所有集合级状态信息都必须丢弃。平衡纯交替环可以
+研究置换不变的共同质心修正，但成员相对几何、速度、hit、lineage 和身份状态必须保持不变，
+协方差只能膨胀，并显式说明成员交叉协方差不可用。free-row、free-column、过期或形状不一致
+分量继续 prediction-only。
+
+D1 已把该原则实现为默认关闭的模块候选。成员和观测先分别求质心，以成员/观测质心边缘
+协方差构造马氏门；去质心二阶矩用于形状门。通过后所有成员施加同一有界位置平移，速度逐元素
+不变。位置协方差只增加共同质心、形状失配和最小不确定度项。任一成员出现协方差上限、非
+半正定、收缩或质量分级变化时，整个分量拒绝。候选不写 observation-to-member 边，不增加
+hit、lineage、source support 或身份 freshness。
+
+该修正只属于当前发布状态。新 generation 先从真实观测历史重放到当前发布时间，再以
+`当前帧基线 + 当前帧一次共同修正` 形成后验。上一帧临时修正不进入重放历史，也不在后续帧
+重复累加。新帧校验失败时发布纯重放基线；相同代、倒退代和固定滞后窗口外证据不改变状态。
+临时修正可随运动模型预测到下一帧；正常身份明确量测接受后，标准量测重放自然替代临时修正。
+
+generation 幂等状态按组件保存最大已见代、最大已应用代和最近量测时刻，默认硬容量为 1024。
+固定滞后窗口内条目不淘汰；容量已满时拒绝新组件。窗口外条目可清理，但对应旧证据同时因超窗
+拒绝，不能借清理重新生效。审计只在候选启用时输出当前/峰值条目、淘汰、容量拒绝、重复代和
+倒退代计数。
+
+专项为 `62 passed`，D1 全量为 `282 passed in 17.81s`。这部分属于模块实现和合同测试。
+main 已在当前未提交工作树接入共同质心开关，并运行 seed 1100 开发门槛。hold-only 与
+hold+共同质心两臂均为 200v200、2.2 s、`recon_count=2`，两臂
+D1/D2/D3、IDSW、track/coverage continuity 和终态可用映射完全相同，分别为
+`202/201/186`、`3`、`.826667/.828333` 和 `191`。candidate 的 46 个组件实际施加 0 个；
+30 个因 OOSM 拒绝，16 个因分量不平衡拒绝。水位表当前/峰值为 `8/8`，没有淘汰或容量拒绝，
+状态有限且在线 truth 使用为 0。
+
+这次运行是 dirty development gate，不是 clean formal acceptance。两臂相同源于零
+treatment，不能说明共同质心修正恢复了 hold 的可用性。停止 seeds 1101/1102，候选保持
+默认关闭，P1 继续开放。后续只有在不放宽 fail-closed 合同的前提下证明存在有效施加窗口后，
+才恢复 clean 冻结输入和未见 seed 验收。
+
+main 先前完成的 seed 1100 baseline/source-only/hold 三臂中，
+D1/D2/D3 分别为 `202/203/200`、`202/201/198`、`202/201/186`，IDSW 为 `9/7/3`，
+track continuity 为 `.865/.865/.826667`，coverage continuity 为
+`.870/.868889/.828333`。首个计划后控制反馈使传感器流分叉，因此这组三臂只说明闭环系统
+效果，不能作为冻结输入下的上游因果证明。
 
 ### 最大匹配允许边决定匿名关联的不确定边界
 

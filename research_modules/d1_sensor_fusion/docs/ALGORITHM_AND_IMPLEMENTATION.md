@@ -71,6 +71,129 @@ source_key =
 D1 本地 `global_track_###` 只在哈希函数内部使用，不进入侧车，也不成为 D2 canonical
 `global_track_id`。
 
+#### 独立来源键控制臂
+
+构造参数 `publish_opaque_source_key: bool = False` 只控制发布元数据。有效发布条件为：
+
+```text
+opaque_source_key_publication_enabled =
+  radar_assignment_ambiguity_hold_evidence
+  or publish_opaque_source_key
+```
+
+四种组合语义如下：
+
+| hold | publish source key | 发布五个来源字段 | 结构歧义干预 |
+| --- | --- | --- | --- |
+| `False` | `False` | 否 | 无 |
+| `False` | `True` | 是 | 无 |
+| `True` | `False` | 是，保持原合同 | prediction-only + evidence |
+| `True` | `True` | 是，保持原合同 | prediction-only + evidence |
+
+source-only 分支只在 `_to_global_track()` 物化发布快照时写入字段。扫描关联、歧义分量检测、
+滤波更新、协方差传播、hit/miss/birth、lineage、固定窗重放和 OOSM 治理均不读取该开关。
+`association_audit_summary()` 增加 requested、enabled、mode、publisher node 和 epoch；
+mode 为 `disabled`、`source_only` 或 `structural_ambiguity_hold`。原
+`structural_ambiguity_publisher_*` 字段仍只描述 hold，不被 source-only 复用。
+
+#### 身份中性共同质心修正
+
+默认关闭参数为：
+
+```text
+radar_assignment_ambiguity_neutral_centroid_correction = False
+```
+
+候选要求 hold 已启用，并拒绝在线 truth hint 模式。它只接受平衡满基数、无自由行列、纯
+交替环、同 radar sensor/scan/双时间戳/NED、未过期、非 OOSM、无重复/冲突来源、规模不超过
+`K_max` 的分量。原始观测或成员元数据含 truth、actor、target identity 或 offline label 时，
+候选 fail closed。
+
+设成员预测位置和观测位置分别为 \(p_i^-\) 与 \(z_j\)，成员数为 \(m\)：
+
+\[
+\bar p^-=\frac{1}{m}\sum_i p_i^-,
+\qquad
+\bar z=\frac{1}{m}\sum_j z_j,
+\qquad
+r_c=\bar z-\bar p^-.
+\]
+
+成员和观测质心边缘协方差相加得到 \(\Sigma_c\)。候选要求
+\(r_c^\mathsf{T}(\Sigma_c+q_{\min}I)^{-1}r_c\leq\gamma_c\)。集合形状使用去质心二阶矩：
+
+\[
+C_p=\frac{1}{m}\sum_i(p_i^--\bar p^-)(p_i^--\bar p^-)^\mathsf{T},
+\qquad
+C_z=\frac{1}{m}\sum_j(z_j-\bar z)(z_j-\bar z)^\mathsf{T}.
+\]
+
+只有 \(\lVert C_z-C_p\rVert_F\leq\tau_{\text{shape}}\) 时才构造修正。对全部成员施加相同
+向量范数截断平移：
+
+\[
+p_i^+=p_i^-+\alpha\,\operatorname{clip}_{\lVert\cdot\rVert}(r_c,r_{\max}),
+\qquad
+v_i^+=v_i^-.
+\]
+
+同一平移使任意成员间相对位置保持不变，也不使用雷达量测中的未观测径向速度占位值。候选不
+读取候选边排序来决定成员归属，不发布 observation-to-member 边。
+
+每个成员只在位置边缘增加：
+
+\[
+\Delta P_{\mathrm{pos}}
+=\alpha^2\Sigma_c+
+\left(
+\lambda_{\mathrm{shape}}\lVert C_z-C_p\rVert_F+q_{\min}
+\right)I_3.
+\]
+
+实现先计算整个分量的候选状态，再逐成员检查有限性、对称半正定、协方差上限、
+\(P_i^+-P_i^-\succeq0\) 和质量分级不变。任一失败时不修改任何成员。成功时不增加 hit，不
+追加观测、lineage 或 source support，不刷新身份 freshness，不新建/删除航迹，也不改
+`global_track_id`。成员间共同平移会引入相关误差，当前实现只提供边缘协方差，继续标记
+`cross_covariance_available=false`。
+
+实验默认参数为 `K_max=8`、`alpha=0.5`、`r_max=30 m`、质心门限
+`16.26623619623813`、形状门限 `2500 m^2`、形状膨胀系数 `0.05` 和
+`q_min=0.25 m^2`。generation 水位表默认容量为 1024，可配置范围为 1 至 1,000,000。这些是
+候选默认值，不是实测标定。参数均严格拒绝布尔冒充整数/实数、字符串数值、非有限值和越界值；
+可配置 `K_max` 范围为 2 至 256。
+
+状态修正采用帧替换语义。证据中的成员状态仍在 `measurement_timestamp` 有效；新 generation
+通过代际准入后，融合器从正式观测历史精确重放到当前 `published_at`，得到
+\(x_{i,k}^{\mathrm{base}},P_{i,k}^{\mathrm{base}}\)。本帧发布后验为：
+
+\[
+x_{i,k}^{\mathrm{pub}}
+=x_{i,k}^{\mathrm{base}}+
+\begin{bmatrix}\Delta p_k\\0\end{bmatrix},
+\qquad
+P_{i,k}^{\mathrm{pub}}
+=P_{i,k}^{\mathrm{base}}+
+\begin{bmatrix}\Delta P_{\mathrm{pos},k}&0\\0&0\end{bmatrix}.
+\]
+
+上一 generation 的临时修正不写入观测历史或重放检查点，因此不会进入
+\(x_{i,k}^{\mathrm{base}}\)。新 generation 校验失败时直接发布该帧基线。相同代或倒退代属于
+重放请求，拒绝时保持当前状态不动，避免同一帧重放撤销已发布修正。`_predict_all_to()` 在新
+证据到来前按运动模型传播当前临时修正；正常身份明确观测接受后，`_finalize_record_replay()`
+从正式观测历史重建后验，临时修正被正常量测替代，不产生额外 hit、lineage 或 source support。
+
+幂等状态不再保存所有 `(component_id, generation)`。每个 `component_id` 只保存最大已见代、
+最大已应用代和最近量测时刻。相同代拒绝为 `duplicate_evidence_generation`，较小代拒绝为
+`regressed_evidence_generation`。只有最近量测时刻严格早于
+`current_time-buffer_horizon` 的条目可以淘汰；对应旧证据同时拒绝为
+`evidence_outside_fixed_lag`，清理不会使有效期内旧代重新生效。容量已满且没有过期条目时，
+新组件拒绝为 `generation_registry_capacity_reached`。
+
+候选显式启用时，审计记录候选、成功、拒绝、成员、重复/倒退 generation、水位表当前/峰值
+条目、淘汰、容量拒绝、线性输入操作数、最大分量规模、质心 NIS、形状差、平移和拒绝原因；
+默认关闭时不增加这些字段。共同质心计算只堆叠当前分量的成员与观测，额外状态计算随 \(m+n\)
+增长，不构造新的全局两两矩阵。
+
 #### DTO 结构与校验
 
 `StructuralAmbiguityEvidence` 至少包含：
@@ -132,20 +255,65 @@ prediction-only member。
 
 #### 模块验证与限制
 
-专项 `17 passed`，覆盖 `2x2`、`3x2`、`2x3`、唯一匹配、首扫、门外独立 birth、输入排列
+结构歧义基础阶段专项 `25 passed`，覆盖 `2x2`、`3x2`、`2x3`、唯一匹配、首扫、门外独立 birth、输入排列
 不变、lineage 不污染、truth 字段拒绝、observation 名称及离线 identity metadata 不变、
 未观测零径向速度不更新、默认关闭兼容、两种结果 DTO、roundtrip 和 covariance shape/半正定
-拒绝。D1 全量为 `237 passed in 17.42s`，`py_compile` 通过。
+拒绝；新增 source-only 只增发布字段、稳定序列化、非法参数和 OOSM 重放不变检查。D1 全量
+当时为 `245 passed in 17.48s`，`py_compile` 通过。
 
-模块测试本身没有运行系统 episode。D2 有界保活消费者和 main A/B 已在固定提交 `9cd2a79`
-接入：`nominal_200v200`、seed 1100、2.2 s、`recon_count=2` 的候选产生并一次消费 46 个
-evidence，D2 接受 33 个分量事件。D2 航迹 `203 -> 201`、D3 分配 `200 -> 197`，
-available/unavailable mappings 从 `1566/230` 变为 `1492/294`，实时倍率从 `0.2245` 变为
-`0.2112`。候选身份指标因 `source_observation_outside_lineage_window` 不可用。
+共同质心候选修复后，结构歧义专项为 `62 passed`，D1 全量为
+`282 passed in 17.81s`。新增断言覆盖共同平移、相对位置和速度不变、hit/lineage/source
+support/质量分级不变、协方差半正定且不收缩、自由行列和混合分量拒绝、过期/OOSM/重复/
+冲突拒绝、连续三代不累加、失败新代恢复 prediction-only、正常明确量测替代临时修正、重复/
+倒退 generation 幂等、24 代单组件存储边界、固定滞后淘汰和容量 fail-closed、在线身份字段
+拒绝、默认关闭等价、`K_max` 和线性操作计数。修复前专项复现中，固定 30 m 质心创新和
+`alpha=0.5` 使首帧偏移约 15 m、第二帧错误累加到约 30 m；修复后三帧均保持单帧偏移。
+该结果尚未包含 main、AirSim 或多 seed 系统试验，只证明 D1 模块语义。
 
-预注册门槛要求身份指标可评估且改善，同时下游可用性不退化。本候选未通过，停止 seeds
-1101/1102，并保持默认关闭。D1 算法和 DTO 实现继续保留为实验能力；模块测试和 evidence
-消费计数不能用来宣称系统身份收益。
+模块测试本身没有运行系统 episode。D2 有界保活消费者和 main 最终 A/B 已在固定提交
+`ff88131` 接入：`nominal_200v200`、seed 1100、2.2 s、`recon_count=2` 的候选产生并一次
+消费 46 个 evidence。D2 航迹 `203 -> 201`、D3 分配 `200 -> 197`，strict ID switch
+`9 -> 3`，track/coverage continuity `.865/.870 -> .826667/.828333`，
+available/partial-unavailable mappings `1566/234 -> 1491/296`，实时倍率
+`.220352 -> .207642`。
+
+冻结在线记录的 89 个 D1 发布批次已逐批重放。76 次参考匹配更新被跳过，其中离线真值判断
+69 次正确、7 次错误；另有一个真实目标新生延迟 0.2 s。13 条可可靠连接真值的既有歧义成员
+平均位置误差从 25.217 m 增至 34.184 m，位置协方差迹中位数约为基线 2.93 倍。协方差增长
+保持保守，但整分量不更新损失了过多正确运动信息。
+
+预注册门槛要求身份改善和下游可用性同时成立。本候选未通过，停止 seeds 1101/1102，并保持
+默认关闭。D1 算法和 DTO 实现继续保留为实验能力。
+
+main 后续 seed 1100 三臂结果为：baseline/source-only/hold 的 D1/D2/D3 分别是
+`202/203/200`、`202/201/198`、`202/201/186`，IDSW 为 `9/7/3`，track continuity 为
+`.865/.865/.826667`，coverage continuity 为 `.870/.868889/.828333`。hold 端 76 条未承诺
+记录使 D3 拒绝 11 个目标，未承诺绑定违规为 0；source-only 终态映射 200 个真实目标并有
+1 条未映射航迹，hold 为 191 个和 10 条。该闭环在首个计划后传感器流随控制分叉，只能解释
+系统效果，不能替代完全冻结输入的上游因果比较。
+
+main 随后在当前未提交工作树接入共同质心开关，运行 seed 1100 开发门槛。hold-only 与
+hold+共同质心使用相同 200v200、2.2 s、`recon_count=2` 配置，显式开启 source key 和
+D1-D2 hold。两臂 D1/D2/D3 都是 `202/201/186`，IDSW 都是 3，track/coverage continuity
+都是 `.826667/.828333`，终态可用映射都是 191，未承诺绑定违规都是 0。candidate 共检查
+46 个组件，实际施加 0 个，拒绝原因为 `oosm_scan=30`、
+`unbalanced_component=16`。generation 水位表当前/峰值为 `8/8`，淘汰和容量拒绝为 0；
+状态有限，在线 truth 使用为 0。
+
+该结果只表明当前线上门控对本场景全部 fail closed。没有实际施加，就没有可归因的状态处理
+差异，也不能据两臂相同推断算法有效。制品位于
+`/tmp/MSM-neutral-centroid-gate-20260723`，属于 dirty development evidence，不是 clean
+formal acceptance。按开发停止条件不再运行 seeds 1101/1102。
+
+#### 身份中性状态修正晋级规则
+
+共同质心候选已完成 D1 模块实现，main 也已完成开发接线，但 seed 1100 的 46 个候选全部被
+OOSM 或非平衡分量门控拒绝。候选继续默认关闭，系统效果 P1 开放。下一次系统试验前先解释
+当前零 treatment，证明在不放宽双时间戳、满基数、OOSM 和 fail-closed 合同的条件下存在
+有效施加窗口。之后才固定同一上游扫描流比较 hold-only 与 hold+共同质心，再运行未见 seed
+闭环。free-row、free-column、OOSM、过期、重复、形状不一致或超规模分量继续
+prediction-only。完整数学规则、测试和 A/B 门槛见
+`../../../subagent_reviews/D1_STRUCTURAL_AMBIGUITY_HOLD_CAUSAL_AUDIT_CN.md`。
 
 ### Radar assignment ambiguity 实验候选 v2
 

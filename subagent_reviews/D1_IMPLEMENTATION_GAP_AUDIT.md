@@ -10,7 +10,8 @@
 
 | GAP/合同 | 当前状态 | 2026-07-23 证据 | 剩余关闭条件 |
 | --- | --- | --- | --- |
-| 结构歧义证据侧车与 prediction-only 分量 | **D1-owned 合同已实现；单 seed 系统候选已拒绝；身份连续性 P1 开放** | 默认关闭的 `prediction_only_maximum_matching_component_evidence_v3` 发布严格 `d1.structural-ambiguity-evidence.v1`；歧义分量不提交单航迹身份、不 hit/update/birth/lineage，成员 prediction-only。专项 `17 passed`，D1 全量 `237 passed in 17.42s`。固定提交 `9cd2a79` 的 `nominal_200v200`、seed 1100、2.2 s、`recon_count=2` A/B 中，候选 evidence received/consumed `46/46`，D2 accepted component events=33，prevented hit/miss/birth=`69/69/4`，在线 truth use=0，说明 D1 生成与一次消费链路正常 | 候选 D2 tracks `203->201`、D3 assignments `200->197`、available/unavailable mappings `1566/230 -> 1492/294`、RTF `.2245->.2112`；候选身份指标因 `source_observation_outside_lineage_window` 不可用，不能证明身份改善。按门槛停止 seeds 1101/1102，默认 disabled。若提出新候选，先恢复身份指标可评估性，再验收 IDSW/continuity、长期 coast、birth/recall、D3 可用性和成本 |
+| 结构歧义证据侧车与 prediction-only 分量 | **D1-owned 侧车和身份中性共同质心候选均已实现；main 开发接线已完成但零 treatment；共同质心系统 P1 开放** | 固定提交 `ff88131` 的旧两臂中，hold 把 strict IDSW `9->3`，但 track/coverage continuity `.865/.870 -> .826667/.828333`。D1 默认关闭候选不选边、不 hit/lineage/identity commit、速度和相对位置不变，且已关闭跨 generation 累积和无界幂等表；专项 `62 passed`，D1 全量 `282 passed in 17.81s`。main 随后在当前 dirty 工作树运行 seed 1100 开发门槛：hold-only 与 hold+centroid 的 D1/D2/D3、IDSW、track/coverage continuity、终态可用映射均相同，为 `202/201/186`、`3`、`.826667/.828333`、`191`；未承诺绑定违规均为 0。candidate `46/0/46` 个候选/施加/拒绝，拒绝原因为 `oosm_scan=30`、`unbalanced_component=16`；水位当前/峰值 `8/8`，淘汰/容量拒绝 `0/0`，finite=true，online truth use=0 | D1-owned 状态语义、存储边界和 main 构造参数接线已完成，系统效果未关闭。该 seed 1100 结果是 dirty development gate，不是 clean acceptance；零实际施加不能证明收益，也没有恢复 hold 可用性。停止 seeds 1101/1102，默认关闭。后续先在不放宽安全合同下解释零 treatment 并证明有效施加窗口，再做 clean 冻结输入、未见 seed、多 seed、RMSE/NEES/NIS、D2/D3 可用性、P95 和长时内存/吞吐验收。完整规则见 `D1_STRUCTURAL_AMBIGUITY_HOLD_CAUSAL_AUDIT_CN.md` |
+| 不透明 source-key 独立控制臂 | **D1 实现与模块回归已完成；单 seed 闭环三臂已有证据，冻结输入因果分离 P1 开放** | `publish_opaque_source_key=False` 经严格类型校验。D1 模块内 source-only 只增加发布字段，状态、协方差、hit/birth 和 OOSM 重放不变。main seed 1100 baseline/source-only/hold 的 D1/D2/D3 为 `202/203/200`、`202/201/198`、`202/201/186`，IDSW `9/7/3`，track continuity `.865/.865/.826667`，coverage `.870/.868889/.828333`；hold 有 76 条未承诺记录、D3 拒绝 11 个目标且绑定违规为 0 | 首个计划后控制反馈使三臂传感器流分叉，不能作为冻结输入上游因果证明。仍需固定同一扫描流重放三臂消费者，解释 source-only 导致 D2/D3 变化的具体治理路径；不得把来源键收益或代价直接归因于 prediction-only |
 | Radar-only 扫描间 Hungarian 交叉换绑 | **v1、v2 系统候选均已拒绝；v2 图论模块验证通过；身份连续性 P1 开放** | v2 的 cycle/free-row/free-column 允许边识别通过 D1 `220 tests`、scalable `142 tests` 和 main 独立 2,666 个小图穷举 oracle。clean commit `c928727` 的首个未见 seed 1100 A/B 为 200v200、2.2 s、`recon_count=2`；两端同 commit、dirty=false、配置哈希 `20ef5248...b840`，runtime profile 为 `b508f675...12a8 / 9680c45b...f9f4`，仅 v2 treatment 不同。两组 finite、online truth=0；online/radar observations、target labels、known false alarms 均为 `2035/1954/2352/90`。ambiguous `0->0`、IDSW `9->9`、D1 tracks `202->202`；D2 `203->199`、D3 `200->196`、track continuity `.865->.830`、coverage continuity `.870->.835`、available `1566->1503`、unavailable `230->266`。v2 suppression `77/1954=3.94%`、ambiguity scans=9、track coast=91 | 整 allowed-edge 分量 fail-closed 干预过保守，无身份收益且降低下游可用性。按预注册门槛停止 seeds 1101/1102、10 s 和 20-seed；v2 不晋级并保持默认关闭。P1 不关闭。后续若提出新 intervention，应复用已验证图论边界，但必须作为新候选从未见 seed 重新验收 |
 | 匿名雷达/视觉跨模态混轨 | **已复现的 D1 解析缺陷关闭；20-seed 系统复核 P1 开放** | clean `5263e2b` nominal 200v200/10 s/seed 1000，771 scans/11,889 anonymous obs，在线 truth 0。冻结 `camera_model` 为只读 `Mapping` 时，旧解析丢失旋转/内参并使用默认投影；候选恢复真实几何，非法外参和相机后方投影 fail closed。D2 标出的 17 条视觉污染观测 17/17 离开原错误航迹并进入离线标签单一谱系。终态 `201 -> 202`，新增雷达出生 `radar-s000030-d0116`；规范状态/谱系 hash `39d0cdf5...02d7 -> b0d6c4ac...d717`。D1 全量 `191 passed` | main 在 clean 候选上重跑 seeds 1000-1019，D2 重新审计历史 118 个多真值航迹帧。完整 sidecar 前严格身份指标保持 unavailable；不得将单 seed 17/17 外推为 20-seed 关闭 |
 | Scan-input claim 重复 JSON 规范化 | **D1-owned 热点已关闭；clean 多 seed 集成收益 P1 开放** | clean `5263e2b` nominal 200v200/10 s/seed 1000 冻结输入，771 scans/11,889 obs/SHA-256 `5d033a04...67ce8f`。旧/新 claim registry、逐输入事件、发布顺序、逐 fusion 状态/协方差/双时间戳/谱系/分级、操作计数、累计诊断、终态和一致性证据严格一致；registry hash 均为 `22a71336...b8fd7`。771 scans 交错 5 轮 P50/P95 `3.618/4.049 -> 1.905/2.038 s`，P50 1.899x；`_json_safe` cProfile `5.781 -> 1.992 s`。全量 `185 passed`。原 clean 20-seed 基线 scan-input/fusion 累计均值为 `9.671/43.774 s`，episode P95 均值 `135.454/233.488 ms` | main 在当前候选提交复跑预注册多 seed clean full-stack，比较 episode scan-input P50/P95/max、核心 RTF 和 RSS。不得把单 seed函数级计时直接外推成 20-seed 或实时收益 |
@@ -52,11 +53,21 @@ coast。ambiguous mapping 和 ID switch 不变，下游 D2/D3、连续性与映�
 prediction-only。逐边角色只描述该边；`component_kinds` 保留分量并集。deferred-birth 计数
 只覆盖参考最大匹配的 free columns，避免把平衡分量中已匹配 observation 误记为待 birth。
 publisher node/epoch 和 opaque source key 可与 D1 snapshot 对齐，但不能升级为 D2 canonical
-identity。固定提交 `9cd2a79` 的 seed 1100 A/B 已确认 46 个 evidence 全部一次消费，D2 接受
-33 个分量事件，D1 DTO 和跨接口传递正常。候选身份指标却因
-`source_observation_outside_lineage_window` 不可用，同时 D2/D3 数量、映射可用性和实时倍率
-下降。预注册门槛未通过，seeds 1101/1102 停止，候选默认关闭。该结果不否定 D1 侧车合同，
-也不支持身份改善结论；P1 身份连续性和可评估 lineage 仍开放。
+identity。固定提交 `ff88131` 的 seed 1100 最终 A/B 已确认 46 个 evidence 全部一次消费，
+D1 DTO 和跨接口传递正常。候选 strict IDSW `9->3`，但 track/coverage continuity
+`.865/.870 -> .826667/.828333`，D2/D3 数量、映射可用性和实时倍率下降。离线 D1 因果重放
+进一步确认 69 次正确参考更新和 7 次错误参考更新同时被阻断，一个真实目标 birth 延迟 0.2 s。
+预注册门槛未通过，seeds 1101/1102 停止，候选默认关闭。P1 转为“身份不提交前提下保留保守
+集合状态信息”，完整约束见 `D1_STRUCTURAL_AMBIGUITY_HOLD_CAUSAL_AUDIT_CN.md`。
+
+该 P1 的 D1-owned 模块候选现已实现。共同质心路径只接受平衡、满基数、无自由行列、纯交替
+环、同扫描双时间戳 NED 合同和通过质心/形状门限的分量；在线身份字段、过期/OOSM、重复/
+冲突 claim、超规模和任何协方差/质量变化风险均 fail closed。连续 generation 采用当前帧
+精确重放基线替换旧临时修正；正常明确量测通过标准重放替代候选。每组件 generation 水位、
+固定滞后淘汰和硬容量已通过长序列回归。D1 全量 `282 passed in 17.81s` 不等于系统晋级。
+main 已接入构造参数，但当前 dirty seed 1100 开发门槛中 46 个候选全部因 OOSM 或分量不平衡
+拒绝，实际施加为 0。两臂业务结果完全相同不能作为收益证据。seeds 1101/1102 已停止；后续
+先证明存在不放宽安全合同的有效施加窗口，再进行 clean 冻结输入与未见 seed 验收。
 
 早先 `/tmp/msm-clean-radar-d967c96` 实际是 `recon_count=8` stress，配置哈希
 `cc6/cbb/9f45`，不能与 recon=2 `488dc39` baseline 直接比较。该 stress seed1001 的

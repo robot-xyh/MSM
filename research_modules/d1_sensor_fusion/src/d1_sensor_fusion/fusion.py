@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 from bisect import bisect_right
+from collections.abc import Mapping
 from collections import Counter, defaultdict, deque
 from dataclasses import asdict, dataclass, field, is_dataclass, replace
 import hashlib
 import json
+from numbers import Integral, Real
 from typing import Any, Iterable
 
 import numpy as np
@@ -165,6 +167,87 @@ RADAR_ASSIGNMENT_AMBIGUITY_V2_GOVERNANCE_STATUS = (
 RADAR_ASSIGNMENT_AMBIGUITY_HOLD_EVIDENCE_STATUS = (
     "experimental_hold_evidence_enabled_pending_main_clean_ab"
 )
+RADAR_ASSIGNMENT_AMBIGUITY_NEUTRAL_CENTROID_STATUS = (
+    "experimental_identity_neutral_centroid_candidate_not_promoted"
+)
+NEUTRAL_CENTROID_MAX_CONFIGURABLE_COMPONENT_SIZE = 256
+NEUTRAL_CENTROID_MAX_GENERATION_REGISTRY_ENTRIES = 1_000_000
+_NEUTRAL_CENTROID_IDENTITY_METADATA_EXACT_KEYS = frozenset(
+    {
+        "actor",
+        "actor_id",
+        "actor_name",
+        "offline_label",
+        "target",
+        "target_id",
+        "target_label",
+        "target_name",
+        "truth",
+        "truth_id",
+        "truth_label",
+    }
+)
+_NEUTRAL_CENTROID_IDENTITY_METADATA_MARKERS = (
+    "actor",
+    "offline",
+    "target_id",
+    "target_label",
+    "target_name",
+    "truth",
+)
+_NEUTRAL_CENTROID_IDENTITY_METADATA_ALLOWED_KEYS = frozenset(
+    {
+        "target_node_id",
+    }
+)
+
+
+def _strict_real_parameter(
+    value: object,
+    name: str,
+    *,
+    minimum: float,
+    maximum: float | None = None,
+    minimum_inclusive: bool = True,
+) -> float:
+    if isinstance(value, bool) or not isinstance(value, Real):
+        raise TypeError(f"{name} must be a real number")
+    number = float(value)
+    if not np.isfinite(number):
+        raise ValueError(f"{name} must be finite")
+    below_minimum = (
+        number < minimum
+        if minimum_inclusive
+        else number <= minimum
+    )
+    if below_minimum:
+        qualifier = "at least" if minimum_inclusive else "greater than"
+        raise ValueError(f"{name} must be {qualifier} {minimum}")
+    if maximum is not None and number > maximum:
+        raise ValueError(f"{name} must be at most {maximum}")
+    return number
+
+
+def _contains_neutral_centroid_identity_metadata(value: object) -> bool:
+    if isinstance(value, Mapping):
+        for raw_key, nested in value.items():
+            key = str(raw_key).strip().lower()
+            if key not in _NEUTRAL_CENTROID_IDENTITY_METADATA_ALLOWED_KEYS and (
+                key in _NEUTRAL_CENTROID_IDENTITY_METADATA_EXACT_KEYS
+                or any(
+                    marker in key
+                    for marker in _NEUTRAL_CENTROID_IDENTITY_METADATA_MARKERS
+                )
+            ):
+                return True
+            if _contains_neutral_centroid_identity_metadata(nested):
+                return True
+    elif isinstance(value, (list, tuple)):
+        return any(
+            _contains_neutral_centroid_identity_metadata(item)
+            for item in value
+        )
+    return False
 
 
 def _radar_lower_bound_applicability(
@@ -534,6 +617,23 @@ class _ScanAssociationResult:
     )
 
 
+@dataclass(frozen=True)
+class _NeutralCentroidCorrection:
+    track_ids: tuple[str, ...]
+    translation_ned: np.ndarray
+    position_covariance_inflation: np.ndarray
+    centroid_nis: float
+    shape_mismatch_m2: float
+    linear_input_operation_count: int
+
+
+@dataclass(frozen=True)
+class _NeutralCentroidGenerationWatermark:
+    max_seen_generation: int
+    max_applied_generation: int
+    last_measurement_timestamp: float
+
+
 class FusionAdapter:
     """NumPy EKF fusion adapter with fixed-lag delay compensation.
 
@@ -581,6 +681,16 @@ class FusionAdapter:
         radar_assignment_ambiguity_governance: bool = False,
         radar_assignment_ambiguity_governance_v2: bool = False,
         radar_assignment_ambiguity_hold_evidence: bool = False,
+        publish_opaque_source_key: bool = False,
+        radar_assignment_ambiguity_neutral_centroid_correction: bool = False,
+        neutral_centroid_max_component_size: int = 8,
+        neutral_centroid_gain: float = 0.5,
+        neutral_centroid_max_translation_m: float = 30.0,
+        neutral_centroid_gate_chi2: float = CHI2_3_999,
+        neutral_centroid_shape_gate_m2: float = 2_500.0,
+        neutral_centroid_shape_inflation_scale: float = 0.05,
+        neutral_centroid_min_position_variance_m2: float = 0.25,
+        neutral_centroid_generation_registry_max_entries: int = 1_024,
         publisher_node_id: str = DEFAULT_STRUCTURAL_AMBIGUITY_PUBLISHER_NODE_ID,
         publisher_epoch: str = DEFAULT_STRUCTURAL_AMBIGUITY_PUBLISHER_EPOCH,
     ) -> None:
@@ -613,6 +723,125 @@ class FusionAdapter:
         self.radar_assignment_ambiguity_hold_evidence = (
             radar_assignment_ambiguity_hold_evidence
         )
+        if not isinstance(publish_opaque_source_key, bool):
+            raise TypeError("publish_opaque_source_key must be a bool")
+        self.publish_opaque_source_key = publish_opaque_source_key
+        self.opaque_source_key_publication_enabled = bool(
+            self.radar_assignment_ambiguity_hold_evidence
+            or self.publish_opaque_source_key
+        )
+        if not isinstance(
+            radar_assignment_ambiguity_neutral_centroid_correction,
+            bool,
+        ):
+            raise TypeError(
+                "radar_assignment_ambiguity_neutral_centroid_correction "
+                "must be a bool"
+            )
+        self.radar_assignment_ambiguity_neutral_centroid_correction = (
+            radar_assignment_ambiguity_neutral_centroid_correction
+        )
+        if (
+            self.radar_assignment_ambiguity_neutral_centroid_correction
+            and not self.radar_assignment_ambiguity_hold_evidence
+        ):
+            raise ValueError(
+                "neutral centroid correction requires "
+                "radar_assignment_ambiguity_hold_evidence=True"
+            )
+        if (
+            self.radar_assignment_ambiguity_neutral_centroid_correction
+            and self.use_truth_hints_for_association
+        ):
+            raise ValueError(
+                "neutral centroid correction is incompatible with "
+                "use_truth_hints_for_association"
+            )
+        if (
+            isinstance(neutral_centroid_max_component_size, bool)
+            or not isinstance(neutral_centroid_max_component_size, Integral)
+        ):
+            raise TypeError(
+                "neutral_centroid_max_component_size must be an integer"
+            )
+        self.neutral_centroid_max_component_size = int(
+            neutral_centroid_max_component_size
+        )
+        if self.neutral_centroid_max_component_size < 2:
+            raise ValueError(
+                "neutral_centroid_max_component_size must be at least 2"
+            )
+        if (
+            self.neutral_centroid_max_component_size
+            > NEUTRAL_CENTROID_MAX_CONFIGURABLE_COMPONENT_SIZE
+        ):
+            raise ValueError(
+                "neutral_centroid_max_component_size must be at most "
+                f"{NEUTRAL_CENTROID_MAX_CONFIGURABLE_COMPONENT_SIZE}"
+            )
+        self.neutral_centroid_gain = _strict_real_parameter(
+            neutral_centroid_gain,
+            "neutral_centroid_gain",
+            minimum=0.0,
+            maximum=1.0,
+        )
+        self.neutral_centroid_max_translation_m = _strict_real_parameter(
+            neutral_centroid_max_translation_m,
+            "neutral_centroid_max_translation_m",
+            minimum=0.0,
+            minimum_inclusive=False,
+        )
+        self.neutral_centroid_gate_chi2 = _strict_real_parameter(
+            neutral_centroid_gate_chi2,
+            "neutral_centroid_gate_chi2",
+            minimum=0.0,
+            minimum_inclusive=False,
+        )
+        self.neutral_centroid_shape_gate_m2 = _strict_real_parameter(
+            neutral_centroid_shape_gate_m2,
+            "neutral_centroid_shape_gate_m2",
+            minimum=0.0,
+        )
+        self.neutral_centroid_shape_inflation_scale = _strict_real_parameter(
+            neutral_centroid_shape_inflation_scale,
+            "neutral_centroid_shape_inflation_scale",
+            minimum=0.0,
+        )
+        self.neutral_centroid_min_position_variance_m2 = (
+            _strict_real_parameter(
+                neutral_centroid_min_position_variance_m2,
+                "neutral_centroid_min_position_variance_m2",
+                minimum=0.0,
+            )
+        )
+        if (
+            isinstance(neutral_centroid_generation_registry_max_entries, bool)
+            or not isinstance(
+                neutral_centroid_generation_registry_max_entries,
+                Integral,
+            )
+        ):
+            raise TypeError(
+                "neutral_centroid_generation_registry_max_entries "
+                "must be an integer"
+            )
+        self.neutral_centroid_generation_registry_max_entries = int(
+            neutral_centroid_generation_registry_max_entries
+        )
+        if self.neutral_centroid_generation_registry_max_entries < 1:
+            raise ValueError(
+                "neutral_centroid_generation_registry_max_entries "
+                "must be at least 1"
+            )
+        if (
+            self.neutral_centroid_generation_registry_max_entries
+            > NEUTRAL_CENTROID_MAX_GENERATION_REGISTRY_ENTRIES
+        ):
+            raise ValueError(
+                "neutral_centroid_generation_registry_max_entries "
+                "must be at most "
+                f"{NEUTRAL_CENTROID_MAX_GENERATION_REGISTRY_ENTRIES}"
+            )
         if (
             self.radar_assignment_ambiguity_governance
             and self.radar_assignment_ambiguity_governance_v2
@@ -754,6 +983,27 @@ class FusionAdapter:
         self._latest_radar_assignment_ambiguity_track_ids: tuple[str, ...] = ()
         self._structural_ambiguity_component_generations: Counter[str] = Counter()
         self._latest_structural_ambiguity_component_ids: tuple[str, ...] = ()
+        self.neutral_centroid_candidate_component_count = 0
+        self.neutral_centroid_applied_component_count = 0
+        self.neutral_centroid_applied_member_count = 0
+        self.neutral_centroid_rejected_component_count = 0
+        self.neutral_centroid_duplicate_generation_rejection_count = 0
+        self.neutral_centroid_regressed_generation_rejection_count = 0
+        self.neutral_centroid_generation_registry_peak_entry_count = 0
+        self.neutral_centroid_generation_registry_eviction_count = 0
+        self.neutral_centroid_generation_registry_capacity_rejection_count = 0
+        self.neutral_centroid_linear_input_operation_count = 0
+        self.max_neutral_centroid_component_size = 0
+        self.max_neutral_centroid_nis = 0.0
+        self.max_neutral_centroid_shape_mismatch_m2 = 0.0
+        self.max_neutral_centroid_translation_m = 0.0
+        self._neutral_centroid_rejection_reasons: Counter[str] = Counter()
+        self._latest_neutral_centroid_rejection_reason: str | None = None
+        self._latest_neutral_centroid_applied_evidence_id: str | None = None
+        self._neutral_centroid_generation_registry: dict[
+            str,
+            _NeutralCentroidGenerationWatermark,
+        ] = {}
         self._last_association_rejection_reason: str | None = None
         self._last_association_rejection_track_ids: tuple[str, ...] = ()
         self._batch_context: _BatchProcessingContext | None = None
@@ -957,6 +1207,8 @@ class FusionAdapter:
         structural_ambiguity_evidence: tuple[
             StructuralAmbiguityEvidence, ...
         ] = ()
+        scan_has_oosm = False
+        scan_has_stale_observation = False
         self._batch_context = context
         try:
             previous_time = float(self.current_time)
@@ -971,6 +1223,10 @@ class FusionAdapter:
                     observation,
                     previous_time,
                     current_time,
+                )
+                scan_has_oosm = scan_has_oosm or is_oosm
+                scan_has_stale_observation = (
+                    scan_has_stale_observation or is_stale
                 )
                 self._record_sensor_observation(
                     observation,
@@ -1010,6 +1266,18 @@ class FusionAdapter:
                     association_result,
                     structural_ambiguity_evidence,
                 )
+                if (
+                    self.radar_assignment_ambiguity_neutral_centroid_correction
+                ):
+                    self._apply_structural_ambiguity_neutral_centroid_corrections(
+                        effective,
+                        association_result,
+                        structural_ambiguity_evidence,
+                        scan_has_oosm=scan_has_oosm,
+                        scan_has_stale_observation=(
+                            scan_has_stale_observation
+                        ),
+                    )
             else:
                 self._record_radar_assignment_ambiguity_tracks(
                     effective,
@@ -1771,6 +2039,31 @@ class FusionAdapter:
             "radar_assignment_ambiguity_hold_evidence_enabled": (
                 self.radar_assignment_ambiguity_hold_evidence
             ),
+            "opaque_source_key_publication_requested": (
+                self.publish_opaque_source_key
+            ),
+            "opaque_source_key_publication_enabled": (
+                self.opaque_source_key_publication_enabled
+            ),
+            "opaque_source_key_publication_mode": (
+                "structural_ambiguity_hold"
+                if self.radar_assignment_ambiguity_hold_evidence
+                else (
+                    "source_only"
+                    if self.publish_opaque_source_key
+                    else "disabled"
+                )
+            ),
+            "opaque_source_key_publisher_node_id": (
+                self.publisher_node_id
+                if self.opaque_source_key_publication_enabled
+                else None
+            ),
+            "opaque_source_key_publisher_epoch": (
+                self.publisher_epoch
+                if self.opaque_source_key_publication_enabled
+                else None
+            ),
             "structural_ambiguity_evidence_policy_version": (
                 STRUCTURAL_AMBIGUITY_HOLD_POLICY_VERSION
             ),
@@ -1806,6 +2099,104 @@ class FusionAdapter:
                 self.publisher_epoch
                 if self.radar_assignment_ambiguity_hold_evidence
                 else None
+            ),
+            **(
+                {
+                    "neutral_centroid_correction_requested": True,
+                    "neutral_centroid_correction_enabled": True,
+                    "neutral_centroid_correction_status": (
+                        RADAR_ASSIGNMENT_AMBIGUITY_NEUTRAL_CENTROID_STATUS
+                    ),
+                    "neutral_centroid_publication_state_semantics": (
+                        "exact_replay_frame_replacement_v1"
+                    ),
+                    "neutral_centroid_generation_registry_policy": (
+                        "per_component_fixed_lag_watermark_hard_capacity_v1"
+                    ),
+                    "neutral_centroid_max_component_size": (
+                        self.neutral_centroid_max_component_size
+                    ),
+                    "neutral_centroid_gain": float(
+                        self.neutral_centroid_gain
+                    ),
+                    "neutral_centroid_max_translation_m": float(
+                        self.neutral_centroid_max_translation_m
+                    ),
+                    "neutral_centroid_gate_chi2": float(
+                        self.neutral_centroid_gate_chi2
+                    ),
+                    "neutral_centroid_shape_gate_m2": float(
+                        self.neutral_centroid_shape_gate_m2
+                    ),
+                    "neutral_centroid_shape_inflation_scale": float(
+                        self.neutral_centroid_shape_inflation_scale
+                    ),
+                    "neutral_centroid_min_position_variance_m2": float(
+                        self.neutral_centroid_min_position_variance_m2
+                    ),
+                    "neutral_centroid_generation_registry_max_entries": (
+                        self.neutral_centroid_generation_registry_max_entries
+                    ),
+                    "neutral_centroid_generation_registry_current_entry_count": (
+                        len(self._neutral_centroid_generation_registry)
+                    ),
+                    "neutral_centroid_generation_registry_peak_entry_count": (
+                        self.neutral_centroid_generation_registry_peak_entry_count
+                    ),
+                    "neutral_centroid_generation_registry_eviction_count": (
+                        self.neutral_centroid_generation_registry_eviction_count
+                    ),
+                    "neutral_centroid_generation_registry_capacity_rejection_count": (
+                        self.neutral_centroid_generation_registry_capacity_rejection_count
+                    ),
+                    "neutral_centroid_candidate_component_count": (
+                        self.neutral_centroid_candidate_component_count
+                    ),
+                    "neutral_centroid_applied_component_count": (
+                        self.neutral_centroid_applied_component_count
+                    ),
+                    "neutral_centroid_applied_member_count": (
+                        self.neutral_centroid_applied_member_count
+                    ),
+                    "neutral_centroid_rejected_component_count": (
+                        self.neutral_centroid_rejected_component_count
+                    ),
+                    "neutral_centroid_duplicate_generation_rejection_count": (
+                        self.neutral_centroid_duplicate_generation_rejection_count
+                    ),
+                    "neutral_centroid_regressed_generation_rejection_count": (
+                        self.neutral_centroid_regressed_generation_rejection_count
+                    ),
+                    "neutral_centroid_linear_input_operation_count": (
+                        self.neutral_centroid_linear_input_operation_count
+                    ),
+                    "max_neutral_centroid_component_size": (
+                        self.max_neutral_centroid_component_size
+                    ),
+                    "max_neutral_centroid_nis": float(
+                        self.max_neutral_centroid_nis
+                    ),
+                    "max_neutral_centroid_shape_mismatch_m2": float(
+                        self.max_neutral_centroid_shape_mismatch_m2
+                    ),
+                    "max_neutral_centroid_translation_m": float(
+                        self.max_neutral_centroid_translation_m
+                    ),
+                    "neutral_centroid_rejection_reasons": dict(
+                        sorted(
+                            self._neutral_centroid_rejection_reasons.items()
+                        )
+                    ),
+                    "latest_neutral_centroid_rejection_reason": (
+                        self._latest_neutral_centroid_rejection_reason
+                    ),
+                    "latest_neutral_centroid_applied_evidence_id": (
+                        self._latest_neutral_centroid_applied_evidence_id
+                    ),
+                    "neutral_centroid_cross_covariance_available": False,
+                }
+                if self.radar_assignment_ambiguity_neutral_centroid_correction
+                else {}
             ),
             "non_range_state_correction_rejection_count": (
                 self.non_range_state_correction_rejection_count
@@ -2640,6 +3031,685 @@ class FusionAdapter:
                 )
             )
         return tuple(evidence_items)
+
+    def _apply_structural_ambiguity_neutral_centroid_corrections(
+        self,
+        observations: list[SensorObservation],
+        result: _ScanAssociationResult,
+        evidence: tuple[StructuralAmbiguityEvidence, ...],
+        *,
+        scan_has_oosm: bool,
+        scan_has_stale_observation: bool,
+    ) -> None:
+        """Apply an identity-neutral translation to eligible hold components.
+
+        The identity sidecar remains prediction-only. This local state
+        correction never chooses an observation-to-member edge and therefore
+        never changes hit, lineage, source-support, or identity freshness.
+        """
+
+        if not evidence or not result.radar_ambiguities:
+            return
+
+        evidence_by_member_tokens = {
+            tuple(
+                sorted(
+                    member.opaque_member_track_token
+                    for member in item.member_states
+                )
+            ): item
+            for item in evidence
+        }
+        unique_components = {
+            (
+                ambiguity.track_ids,
+                ambiguity.observation_indices,
+                ambiguity.policy_version,
+            ): ambiguity
+            for ambiguity in result.radar_ambiguities.values()
+        }
+        ordered_components = sorted(
+            unique_components.values(),
+            key=lambda item: (
+                item.track_ids,
+                item.observation_indices,
+                item.component_kinds,
+            ),
+        )
+
+        for ambiguity in ordered_components:
+            self.neutral_centroid_candidate_component_count += 1
+            self.max_neutral_centroid_component_size = max(
+                self.max_neutral_centroid_component_size,
+                int(
+                    max(
+                        len(ambiguity.track_ids),
+                        len(ambiguity.observation_indices),
+                    )
+                ),
+            )
+            member_tokens = tuple(
+                sorted(
+                    structural_ambiguity_member_track_token(
+                        self.publisher_node_id,
+                        self.publisher_epoch,
+                        track_id,
+                    )
+                    for track_id in ambiguity.track_ids
+                )
+            )
+            component_evidence = evidence_by_member_tokens.get(member_tokens)
+            if component_evidence is None:
+                self._reject_neutral_centroid_component(
+                    "evidence_member_contract_mismatch"
+                )
+                continue
+            generation_rejection = (
+                self._admit_neutral_centroid_evidence_generation(
+                    component_evidence
+                )
+            )
+            if generation_rejection is not None:
+                if (
+                    generation_rejection
+                    == "generation_registry_capacity_reached"
+                ):
+                    publication_bases, _ = (
+                        self._neutral_centroid_publication_base_states(
+                            ambiguity.track_ids
+                        )
+                    )
+                    if publication_bases is not None:
+                        self._replace_neutral_centroid_publication_states(
+                            publication_bases
+                        )
+                self._reject_neutral_centroid_component(
+                    generation_rejection
+                )
+                continue
+
+            publication_bases, base_rejection = (
+                self._neutral_centroid_publication_base_states(
+                    ambiguity.track_ids
+                )
+            )
+            if publication_bases is None:
+                self._reject_neutral_centroid_component(
+                    base_rejection or "publication_base_replay_failed"
+                )
+                continue
+
+            correction, rejection_reason = (
+                self._build_neutral_centroid_correction(
+                    observations,
+                    ambiguity,
+                    component_evidence,
+                    publication_base_states=publication_bases,
+                    scan_has_oosm=scan_has_oosm,
+                    scan_has_stale_observation=(
+                        scan_has_stale_observation
+                    ),
+                )
+            )
+            if correction is None:
+                self._replace_neutral_centroid_publication_states(
+                    publication_bases
+                )
+                self._reject_neutral_centroid_component(
+                    rejection_reason or "candidate_validation_failed"
+                )
+                continue
+
+            for track_id in correction.track_ids:
+                record = self.tracks[track_id]
+                publication_base = publication_bases[track_id]
+                state = publication_base.state.copy()
+                covariance = publication_base.covariance.copy()
+                state[:3] += correction.translation_ned
+                covariance[:3, :3] += (
+                    correction.position_covariance_inflation
+                )
+                covariance = 0.5 * (covariance + covariance.T)
+                record.current_state = EKFState(
+                    state,
+                    covariance,
+                    publication_base.timestamp,
+                )
+                record.current_state_covariance_limited = True
+
+            self._mark_neutral_centroid_generation_applied(
+                component_evidence
+            )
+            self.neutral_centroid_applied_component_count += 1
+            self.neutral_centroid_applied_member_count += len(
+                correction.track_ids
+            )
+            self.neutral_centroid_linear_input_operation_count += (
+                correction.linear_input_operation_count
+            )
+            self.max_neutral_centroid_nis = max(
+                self.max_neutral_centroid_nis,
+                correction.centroid_nis,
+            )
+            self.max_neutral_centroid_shape_mismatch_m2 = max(
+                self.max_neutral_centroid_shape_mismatch_m2,
+                correction.shape_mismatch_m2,
+            )
+            self.max_neutral_centroid_translation_m = max(
+                self.max_neutral_centroid_translation_m,
+                float(np.linalg.norm(correction.translation_ned)),
+            )
+            self._latest_neutral_centroid_applied_evidence_id = (
+                component_evidence.evidence_id
+            )
+
+    def _admit_neutral_centroid_evidence_generation(
+        self,
+        evidence: StructuralAmbiguityEvidence,
+    ) -> str | None:
+        """Admit one strictly newer generation into the bounded registry."""
+
+        self._prune_neutral_centroid_generation_registry()
+        generation = int(evidence.component_generation)
+        if generation < 1:
+            return "invalid_evidence_generation"
+        if (
+            self.buffer_horizon > 0.0
+            and float(evidence.measurement_timestamp)
+            < self.current_time - self.buffer_horizon - 1.0e-9
+        ):
+            return "evidence_outside_fixed_lag"
+
+        component_id = str(evidence.component_id)
+        watermark = self._neutral_centroid_generation_registry.get(
+            component_id
+        )
+        if watermark is not None:
+            if generation == watermark.max_seen_generation:
+                self.neutral_centroid_duplicate_generation_rejection_count += 1
+                return "duplicate_evidence_generation"
+            if generation < watermark.max_seen_generation:
+                self.neutral_centroid_regressed_generation_rejection_count += 1
+                return "regressed_evidence_generation"
+            self._neutral_centroid_generation_registry[component_id] = replace(
+                watermark,
+                max_seen_generation=generation,
+                last_measurement_timestamp=max(
+                    watermark.last_measurement_timestamp,
+                    float(evidence.measurement_timestamp),
+                ),
+            )
+            return None
+
+        if (
+            len(self._neutral_centroid_generation_registry)
+            >= self.neutral_centroid_generation_registry_max_entries
+        ):
+            self.neutral_centroid_generation_registry_capacity_rejection_count += 1
+            return "generation_registry_capacity_reached"
+        self._neutral_centroid_generation_registry[component_id] = (
+            _NeutralCentroidGenerationWatermark(
+                max_seen_generation=generation,
+                max_applied_generation=0,
+                last_measurement_timestamp=float(
+                    evidence.measurement_timestamp
+                ),
+            )
+        )
+        self.neutral_centroid_generation_registry_peak_entry_count = max(
+            self.neutral_centroid_generation_registry_peak_entry_count,
+            len(self._neutral_centroid_generation_registry),
+        )
+        return None
+
+    def _prune_neutral_centroid_generation_registry(self) -> None:
+        """Evict only entries whose evidence is outside the fixed-lag window."""
+
+        if self.buffer_horizon <= 0.0:
+            return
+        cutoff = self.current_time - self.buffer_horizon
+        expired = tuple(
+            component_id
+            for component_id, watermark in (
+                self._neutral_centroid_generation_registry.items()
+            )
+            if watermark.last_measurement_timestamp < cutoff - 1.0e-9
+        )
+        for component_id in expired:
+            del self._neutral_centroid_generation_registry[component_id]
+        self.neutral_centroid_generation_registry_eviction_count += len(
+            expired
+        )
+
+    def _mark_neutral_centroid_generation_applied(
+        self,
+        evidence: StructuralAmbiguityEvidence,
+    ) -> None:
+        component_id = str(evidence.component_id)
+        generation = int(evidence.component_generation)
+        watermark = self._neutral_centroid_generation_registry.get(
+            component_id
+        )
+        if watermark is None or generation != watermark.max_seen_generation:
+            raise RuntimeError(
+                "neutral centroid generation must be admitted before apply"
+            )
+        self._neutral_centroid_generation_registry[component_id] = replace(
+            watermark,
+            max_applied_generation=max(
+                watermark.max_applied_generation,
+                generation,
+            ),
+        )
+
+    def _neutral_centroid_publication_base_states(
+        self,
+        track_ids: Iterable[str],
+    ) -> tuple[dict[str, EKFState] | None, str | None]:
+        """Rebuild exact observation-history states at publication time."""
+
+        publication_bases: dict[str, EKFState] = {}
+        for track_id in track_ids:
+            record = self.tracks.get(track_id)
+            if record is None:
+                return None, "member_track_missing"
+            try:
+                state = self._state_at(record, self.current_time)
+            except (
+                ValueError,
+                FloatingPointError,
+                np.linalg.LinAlgError,
+                RuntimeError,
+            ):
+                return None, "publication_base_replay_failed"
+            covariance = np.asarray(state.covariance, dtype=float)
+            if (
+                state.state.shape != (6,)
+                or covariance.shape != (6, 6)
+                or not np.isfinite(state.state).all()
+                or not np.isfinite(covariance).all()
+                or abs(state.timestamp - self.current_time) > 1.0e-9
+            ):
+                return None, "publication_base_state_invalid"
+            covariance = 0.5 * (covariance + covariance.T)
+            if float(np.linalg.eigvalsh(covariance)[0]) < -1.0e-8:
+                return None, "publication_base_covariance_not_psd"
+            publication_bases[track_id] = EKFState(
+                state.state.copy(),
+                covariance,
+                state.timestamp,
+            )
+        return publication_bases, None
+
+    def _replace_neutral_centroid_publication_states(
+        self,
+        publication_bases: Mapping[str, EKFState],
+    ) -> None:
+        """Remove any older temporary correction from the named members."""
+
+        for track_id, publication_base in publication_bases.items():
+            record = self.tracks[track_id]
+            record.current_state = publication_base.copy()
+            record.current_state_covariance_limited = False
+
+    def _build_neutral_centroid_correction(
+        self,
+        observations: list[SensorObservation],
+        ambiguity: _RadarAssignmentAmbiguity,
+        evidence: StructuralAmbiguityEvidence,
+        *,
+        publication_base_states: Mapping[str, EKFState],
+        scan_has_oosm: bool,
+        scan_has_stale_observation: bool,
+    ) -> tuple[_NeutralCentroidCorrection | None, str | None]:
+        member_count = len(ambiguity.track_ids)
+        observation_count = len(ambiguity.observation_indices)
+        if member_count != observation_count:
+            return None, "unbalanced_component"
+        if member_count < 2:
+            return None, "component_too_small"
+        if member_count > self.neutral_centroid_max_component_size:
+            return None, "component_exceeds_k_max"
+        if (
+            ambiguity.free_row_count != 0
+            or evidence.free_row_count != 0
+        ):
+            return None, "free_row_present"
+        if (
+            ambiguity.free_column_count != 0
+            or evidence.free_column_count != 0
+        ):
+            return None, "free_column_present"
+        if (
+            ambiguity.maximum_matching_cardinality != member_count
+            or evidence.maximum_matching_cardinality != member_count
+        ):
+            return None, "maximum_matching_not_full"
+        if (
+            ambiguity.component_kinds != ("alternating_cycle",)
+            or evidence.component_kinds != ("alternating_cycle",)
+        ):
+            return None, "component_not_pure_alternating_cycle"
+        if scan_has_oosm:
+            return None, "oosm_scan"
+        if scan_has_stale_observation:
+            return None, "stale_scan"
+        if evidence.frame_id != "NED":
+            return None, "frame_contract_mismatch"
+        if (
+            evidence.member_count != member_count
+            or evidence.observation_count != observation_count
+        ):
+            return None, "evidence_cardinality_mismatch"
+
+        try:
+            component_observations = tuple(
+                observations[index]
+                for index in ambiguity.observation_indices
+            )
+        except IndexError:
+            return None, "observation_index_out_of_range"
+        if not component_observations:
+            return None, "empty_component"
+
+        first = component_observations[0]
+        if (
+            first.modality != "radar"
+            or first.frame_id.upper() != "NED"
+            or evidence.sensor_id != first.sensor_id
+        ):
+            return None, "sensor_frame_contract_mismatch"
+        first_scan_key = self._observer_scan_key(first)
+        for observation in component_observations:
+            if (
+                observation.modality != "radar"
+                or observation.sensor_id != first.sensor_id
+                or observation.frame_id.upper() != "NED"
+                or self._observer_scan_key(observation) != first_scan_key
+                or abs(
+                    observation.measurement_timestamp
+                    - first.measurement_timestamp
+                )
+                > 1.0e-9
+                or abs(
+                    observation.arrival_timestamp
+                    - first.arrival_timestamp
+                )
+                > 1.0e-9
+            ):
+                return None, "sensor_scan_time_frame_contract_mismatch"
+        if (
+            abs(
+                evidence.measurement_timestamp
+                - first.measurement_timestamp
+            )
+            > 1.0e-9
+            or abs(evidence.arrival_timestamp - first.arrival_timestamp)
+            > 1.0e-9
+            or abs(
+                evidence.state_valid_timestamp
+                - first.measurement_timestamp
+            )
+            > 1.0e-9
+        ):
+            return None, "evidence_timestamp_contract_mismatch"
+
+        if any(
+            _contains_neutral_centroid_identity_metadata(
+                observation.metadata
+            )
+            for observation in component_observations
+        ):
+            return None, "forbidden_identity_metadata"
+        if any(
+            _contains_neutral_centroid_identity_metadata(
+                self.tracks[track_id].metadata
+            )
+            for track_id in ambiguity.track_ids
+        ):
+            return None, "forbidden_member_identity_metadata"
+
+        lineage_payloads: dict[str, str] = {}
+        for observation in component_observations:
+            lineage_key = _opaque_structural_digest(
+                "d1-neutral-centroid-lineage-sha256:",
+                observation.source_lineage_key,
+            )
+            payload_digest = _opaque_structural_digest(
+                "d1-neutral-centroid-payload-sha256:",
+                (
+                    observation.measurement,
+                    observation.covariance,
+                    observation.measurement_timestamp,
+                    observation.arrival_timestamp,
+                ),
+            )
+            previous_payload = lineage_payloads.get(lineage_key)
+            if previous_payload is not None:
+                if previous_payload == payload_digest:
+                    return None, "duplicate_source_claim"
+                return None, "conflicting_source_claim"
+            lineage_payloads[lineage_key] = payload_digest
+
+        member_positions = np.stack(
+            [item.state[:3] for item in evidence.member_states],
+            axis=0,
+        )
+        observation_positions = np.stack(
+            [item.position_ned for item in evidence.observations],
+            axis=0,
+        )
+        if (
+            member_positions.shape != (member_count, 3)
+            or observation_positions.shape != (observation_count, 3)
+        ):
+            return None, "cartesian_state_shape_mismatch"
+
+        predicted_centroid = np.mean(member_positions, axis=0)
+        observed_centroid = np.mean(observation_positions, axis=0)
+        centroid_innovation = observed_centroid - predicted_centroid
+        centered_members = member_positions - predicted_centroid
+        centered_observations = observation_positions - observed_centroid
+        member_shape = centered_members.T @ centered_members / member_count
+        observation_shape = (
+            centered_observations.T
+            @ centered_observations
+            / observation_count
+        )
+        shape_mismatch_m2 = float(
+            np.linalg.norm(observation_shape - member_shape, ord="fro")
+        )
+        if not np.isfinite(shape_mismatch_m2):
+            return None, "nonfinite_shape_mismatch"
+        self.max_neutral_centroid_shape_mismatch_m2 = max(
+            self.max_neutral_centroid_shape_mismatch_m2,
+            shape_mismatch_m2,
+        )
+        if (
+            shape_mismatch_m2
+            > self.neutral_centroid_shape_gate_m2 + 1.0e-12
+        ):
+            return None, "shape_gate_rejected"
+
+        member_centroid_covariance = sum(
+            (
+                np.asarray(item.covariance[:3, :3], dtype=float)
+                for item in evidence.member_states
+            ),
+            start=np.zeros((3, 3), dtype=float),
+        ) / float(member_count * member_count)
+        observation_centroid_covariance = sum(
+            (
+                np.asarray(item.covariance_ned, dtype=float)
+                for item in evidence.observations
+            ),
+            start=np.zeros((3, 3), dtype=float),
+        ) / float(observation_count * observation_count)
+        centroid_covariance = (
+            member_centroid_covariance
+            + observation_centroid_covariance
+        )
+        centroid_covariance = 0.5 * (
+            centroid_covariance + centroid_covariance.T
+        )
+        if not np.isfinite(centroid_covariance).all():
+            return None, "nonfinite_centroid_covariance"
+        centroid_covariance_eigenvalues = np.linalg.eigvalsh(
+            centroid_covariance
+        )
+        if float(centroid_covariance_eigenvalues[0]) < -1.0e-8:
+            return None, "centroid_covariance_not_psd"
+        if float(centroid_covariance_eigenvalues[0]) < 0.0:
+            eigenvalues, eigenvectors = np.linalg.eigh(
+                centroid_covariance
+            )
+            centroid_covariance = (
+                eigenvectors
+                @ np.diag(np.maximum(eigenvalues, 0.0))
+                @ eigenvectors.T
+            )
+            centroid_covariance = 0.5 * (
+                centroid_covariance + centroid_covariance.T
+            )
+
+        innovation_covariance = (
+            centroid_covariance
+            + max(
+                self.neutral_centroid_min_position_variance_m2,
+                1.0e-12,
+            )
+            * np.eye(3)
+        )
+        try:
+            centroid_nis = float(
+                centroid_innovation.T
+                @ np.linalg.pinv(innovation_covariance)
+                @ centroid_innovation
+            )
+        except np.linalg.LinAlgError:
+            return None, "centroid_innovation_solve_failed"
+        if not np.isfinite(centroid_nis):
+            return None, "nonfinite_centroid_nis"
+        self.max_neutral_centroid_nis = max(
+            self.max_neutral_centroid_nis,
+            centroid_nis,
+        )
+        if centroid_nis > self.neutral_centroid_gate_chi2 + 1.0e-12:
+            return None, "centroid_gate_rejected"
+
+        innovation_norm = float(np.linalg.norm(centroid_innovation))
+        if not np.isfinite(innovation_norm):
+            return None, "nonfinite_centroid_innovation"
+        if innovation_norm > self.neutral_centroid_max_translation_m:
+            clipped_innovation = (
+                centroid_innovation
+                * (
+                    self.neutral_centroid_max_translation_m
+                    / innovation_norm
+                )
+            )
+        else:
+            clipped_innovation = centroid_innovation
+        translation_ned = (
+            self.neutral_centroid_gain * clipped_innovation
+        )
+        position_covariance_inflation = (
+            self.neutral_centroid_gain**2 * centroid_covariance
+            + (
+                self.neutral_centroid_shape_inflation_scale
+                * shape_mismatch_m2
+                + self.neutral_centroid_min_position_variance_m2
+            )
+            * np.eye(3)
+        )
+        position_covariance_inflation = 0.5 * (
+            position_covariance_inflation
+            + position_covariance_inflation.T
+        )
+        if (
+            not np.isfinite(translation_ned).all()
+            or not np.isfinite(position_covariance_inflation).all()
+        ):
+            return None, "nonfinite_correction"
+        inflation_eigenvalues = np.linalg.eigvalsh(
+            position_covariance_inflation
+        )
+        if float(inflation_eigenvalues[0]) < -1.0e-8:
+            return None, "covariance_inflation_not_psd"
+
+        for track_id in ambiguity.track_ids:
+            record = self.tracks.get(track_id)
+            if record is None:
+                return None, "member_track_missing"
+            publication_base = publication_base_states.get(track_id)
+            if publication_base is None:
+                return None, "publication_base_member_missing"
+            prior_covariance = np.asarray(
+                publication_base.covariance,
+                dtype=float,
+            )
+            if (
+                prior_covariance.shape != (6, 6)
+                or not np.isfinite(prior_covariance).all()
+                or not np.isfinite(publication_base.state).all()
+            ):
+                return None, "member_state_invalid"
+            candidate_covariance = prior_covariance.copy()
+            candidate_covariance[:3, :3] += (
+                position_covariance_inflation
+            )
+            candidate_covariance = 0.5 * (
+                candidate_covariance + candidate_covariance.T
+            )
+            if np.any(
+                np.diag(candidate_covariance)
+                > self.covariance_ceiling_diag + 1.0e-9
+            ):
+                return None, "member_covariance_ceiling_exceeded"
+            if float(np.linalg.eigvalsh(candidate_covariance)[0]) < -1.0e-8:
+                return None, "member_covariance_not_psd"
+            covariance_delta = candidate_covariance - prior_covariance
+            covariance_delta = 0.5 * (
+                covariance_delta + covariance_delta.T
+            )
+            if float(np.linalg.eigvalsh(covariance_delta)[0]) < -1.0e-8:
+                return None, "member_covariance_would_contract"
+            prior_level = self._classify(
+                record,
+                a95_m=covariance_a95(prior_covariance),
+            )
+            candidate_level = self._classify(
+                record,
+                a95_m=covariance_a95(candidate_covariance),
+            )
+            if candidate_level != prior_level:
+                return None, "track_level_change_rejected"
+
+        return (
+            _NeutralCentroidCorrection(
+                track_ids=tuple(ambiguity.track_ids),
+                translation_ned=np.asarray(
+                    translation_ned,
+                    dtype=float,
+                ),
+                position_covariance_inflation=np.asarray(
+                    position_covariance_inflation,
+                    dtype=float,
+                ),
+                centroid_nis=centroid_nis,
+                shape_mismatch_m2=shape_mismatch_m2,
+                linear_input_operation_count=(
+                    member_count + observation_count
+                ),
+            ),
+            None,
+        )
+
+    def _reject_neutral_centroid_component(self, reason: str) -> None:
+        normalized = str(reason)
+        self.neutral_centroid_rejected_component_count += 1
+        self._neutral_centroid_rejection_reasons[normalized] += 1
+        self._latest_neutral_centroid_rejection_reason = normalized
 
     def _structural_ambiguity_observation_keys(
         self,
@@ -4037,7 +5107,7 @@ class FusionAdapter:
                 },
             }
         )
-        if self.radar_assignment_ambiguity_hold_evidence:
+        if self.opaque_source_key_publication_enabled:
             member_token = structural_ambiguity_member_track_token(
                 self.publisher_node_id,
                 self.publisher_epoch,

@@ -24,34 +24,87 @@ D1 已完成默认关闭的
    `maximum_matching_allowed/matched_reference`；替代边只增加自身成立的 cycle/free-row/
    free-column 角色；
 6. 延迟新生计数只累计自由列。平衡 `2x2` 和 free-row `3x2` 为 0，free-column `2x3` 为 1；
-7. 专项 `17 passed`，D1 全量 `237 passed in 17.42s`，语法检查通过；改变 observation 名称
-   及 truth/actor/D6 离线元数据时，侧车保持完全一致。
+7. 该阶段专项 `25 passed`，当时 D1 全量 `245 passed in 17.48s`，语法检查通过；改变 observation 名称
+   及 truth/actor/D6 离线元数据时，侧车保持完全一致；
+8. 已增加独立严格布尔参数 `publish_opaque_source_key=False`。`False/False` 保持默认不发布
+   不透明来源字段；`hold=False/source=True` 只增加发布元数据；hold 开启时继续发布原五个
+   字段。source-only 不产生 evidence、不 prediction-only、不抑制 hit/miss/birth，专项已
+   验证普通扫描和 OOSM 重放的状态、协方差、轨迹数及诊断计数与基线一致。
 
-main 和 D2 已完成首轮接入与系统验收：
+main 和 D2 已完成接入，并在最终干净证据上完成因果复核：
 
 1. D2 有界保活只消费 `source_node_id/source_track_id/source_key`，没有把 D1 source token
    重写为规范 `global_track_id`；
-2. main 在固定提交 `9cd2a79` 运行同配置 baseline/candidate。场景为
+2. main 在固定提交 `ff88131` 运行同配置 baseline/candidate。场景为
    `nominal_200v200`、seed 1100、2.2 s、`recon_count=2`，候选只增加
    `--d1-d2-structural-ambiguity-hold`；
-3. D1 航迹数均为 202。候选侧车 received/consumed 为 `46/46`，D2 接受 33 个分量事件并阻止
+3. D1 航迹数均为 202。候选侧车 received/consumed 为 `46/46`，D2 阻止
    hit/miss/birth `69/69/4`，证明 D1 结构证据生成和一次消费链路正常；
-4. D2 航迹 `203 -> 201`，D3 分配 `200 -> 197`，available/unavailable mappings 从
-   `1566/230` 变为 `1492/294`，实时倍率从 `0.2245` 降至 `0.2112`；
-5. baseline ID switch 为 9，track/identity continuity 为 0.865，coverage continuity 为
-   0.870。候选身份指标因 `source_observation_outside_lineage_window` 不可用，不能证明身份
-   改善；两组在线 truth use 均为 0；
+4. D2 航迹 `203 -> 201`，D3 分配 `200 -> 197`，available/partial-unavailable mappings 从
+   `1566/234` 变为 `1491/296`，实时倍率从 `0.220352` 降至 `0.207642`；
+5. strict ID switch 从 9 降到 3，但 track continuity 从 0.865 降到 0.826667，coverage
+   continuity 从 0.870 降到 0.828333，identity commitment coverage 从 1.0 降到
+   0.957471；两组在线 truth use 均为 0；
 6. 候选未达到“身份指标可评估且改善、下游可用性不退化”的预注册门槛。seeds 1101/1102
    已停止，默认开关继续关闭。
 
-后续不扩大本候选的 seed 矩阵。若继续研究，应先把 D2/D6 身份 lineage 窗口的可评估性作为
-新候选前置条件，再重新设计保活强度或分量释放策略，并以新的预注册 seed 验收。D1 侧车合同
-和单元测试保持回归，但不能用 evidence 数量替代 ID switch、连续性或下游可用性。
+main 后续完成 seed 1100 baseline/source-only/hold 闭环三臂。D1/D2/D3 数量为
+`202/203/200`、`202/201/198`、`202/201/186`，strict IDSW 为 `9/7/3`，track continuity
+为 `.865/.865/.826667`，coverage continuity 为 `.870/.868889/.828333`。hold 端有
+69/69/4 次 prevented hit/miss/birth、76 条未承诺记录，D3 门控拒绝 11 个目标，未承诺绑定
+违规为 0。source-only 终态映射 200 个真实目标并有 1 条未映射航迹；hold 映射 191 个真实
+目标并有 10 条未映射航迹。首个计划后控制反馈使传感器流分叉，因此该结果只作为闭环系统效果
+对照，不替代冻结输入因果重放。
+
+冻结发布记录的 D1 因果重放表明：76 次参考更新被阻断，其中 69 次与离线真值一致、7 次为
+错误更新；另有一个真实新生延迟 0.2 s。D2 的四次 prevented birth 均来自同一真实目标的两条
+重复 D1 航迹，不能据此放宽 D1 自由列新生。现有整分量 prediction-only 仍不扩大 seed 矩阵。
+
+身份中性共同质心修正已作为默认关闭的 D1 模块候选实现。它只处理平衡、无自由行列、纯交替
+环分量：
+
+1. 成员保持未提交身份，不选择 observation-to-member 边；
+2. 全部成员只施加相同有界位置平移，速度和相对几何不变；
+3. hit、lineage、source support、质量分级和身份 freshness 不变；
+4. 协方差满足 `P_after - P_before` 半正定，并记录共同模式误差和
+   `cross_covariance_available=false`；
+5. free-row、free-column、过期/OOSM、重复证据、形状不一致或大分量继续 prediction-only；
+6. 每个新 generation 从该帧观测历史精确重放到发布时间，再替换上一帧临时修正；正常身份
+   明确量测通过标准重放替代临时修正；
+7. 每组件 generation 水位只保存最大已见/已应用代和最近量测时刻，固定滞后窗口外才淘汰，
+   容量满时 fail closed；
+8. 默认关闭逐字段兼容，在线继续拒绝 truth/actor/target 字段。
+
+实现新增严格参数校验、质心马氏门限、集合形状门限、相同有界平移、位置边缘协方差膨胀、
+质量分级不变门控、原子提交、帧替换、固定滞后有界 generation 水位和拒绝原因审计。修复前
+连续同创新扫描会把约 15 m 的首帧修正累加为约 30 m；修复后连续三帧保持单帧修正。24 代
+同组件只占一个水位条目，窗口内条目不驱逐，窗口外旧证据仍拒绝。专项 `62 passed`，D1 全量
+`282 passed in 17.81s`。该结果只关闭 D1-owned 模块实现与合同测试，不关闭系统效果 P1。
+
+main 已在当前未提交工作树完成新开关接线和 seed 1100 开发门槛。hold-only 与
+hold+共同质心均为 `nominal_200v200`、`recon_count=2`、2.2 s，并显式开启 source key 和
+D1-D2 hold。两臂 D1/D2/D3 均为 `202/201/186`，strict IDSW、track continuity、coverage
+continuity、终态可用映射分别均为 `3/.826667/.828333/191`，未承诺绑定违规均为 0。
+candidate 的 46 个组件全部拒绝，原因是 `oosm_scan=30` 和
+`unbalanced_component=16`，实际施加数为 0。水位表当前/峰值为 `8/8`，无淘汰或容量拒绝；
+状态有限且在线 truth 使用为 0。
+
+该结果来自 `/tmp/MSM-neutral-centroid-gate-20260723`，属于 dirty development gate，不是
+clean formal acceptance。零实际施加使两臂相同，说明当前在线门控没有形成 treatment，不能
+用于判断共同质心修正收益。停止 seeds 1101/1102，候选保持默认关闭，P1 开放。
+
+后续计划改为先解释 OOSM 和非平衡分量覆盖全部 46 个候选的原因，并在不放宽双时间戳、满基数
+和 fail-closed 合同的前提下证明存在有效施加窗口。满足该前提后，再在 clean 冻结扫描流和
+未见 seed 上恢复 A/B。strict IDSW 不得劣于 hold-only，连续性至少恢复当前损失的 75%，
+多 seed 相对基线差值置信区间下界不得低于 -0.005，D2 航迹和 D3 分配不得低于 hold-only，
+D1 P95 增幅不得超过 5%。详见
+`../../subagent_reviews/D1_STRUCTURAL_AMBIGUITY_HOLD_CAUSAL_AUDIT_CN.md`。
 
 本候选不实现联合概率数据关联、多假设跟踪或分量联合协方差更新。
 `cross_covariance_available=false` 明确表示下游不得把成员边缘协方差当作相互独立。当前
 `birth_disposition` 是分量策略名称；实际延迟新生的观测必须以逐观测 `birth_deferred=true`
-和对应计数判断。
+和对应计数判断。下一阶段仍需由 main 完成冻结扫描流、多 seed、P95 和长时内存验收；本轮
+只同步 D1 文档，没有修改 main 接线或 AirSim 适配。
 
 ## 最大匹配允许边分量 v2 验收结论与后续计划（2026-07-23）
 

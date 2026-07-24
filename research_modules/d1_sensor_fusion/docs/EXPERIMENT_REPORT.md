@@ -1,10 +1,95 @@
 # 第一研究模块实验结果
 
+## 身份中性共同质心候选模块验证
+
+**证据日期：2026-07-23**
+
+**范围：D1 单元测试；未运行 main、AirSim 或多 seed**
+
+候选在结构歧义 hold 的平衡纯交替环分量上计算集合质心和形状。只有满基数、无自由行列、
+同一传感器/扫描/双时间戳/NED、非过期、非 OOSM、无重复/冲突来源、无在线身份字段且两项
+几何门限通过时，才对成员施加同一有界位置平移。
+
+| 验收项 | 结果 |
+| --- | --- |
+| 结构歧义专项 | `62 passed` |
+| D1 全量 | `282 passed in 17.81s` |
+| 默认开关 | `False` |
+| 默认关闭与显式关闭 | 结果、侧车、序列化和审计逐字段一致 |
+| `2x2` 输入排列 | 状态、协方差和审计一致 |
+| 成员位置 | 只增加同一平移，相对位置不变 |
+| 成员速度 | 逐元素不变 |
+| hit/观测历史/source support/质量分级 | 不变 |
+| 协方差 | 有限、对称、半正定，且相对该帧精确重放基线不收缩 |
+| free-row/free-column/混合分量 | fail closed |
+| 过期/OOSM/重复/冲突来源 | fail closed |
+| truth/actor/target/offline identity 字段 | fail closed |
+| 连续新 generation | 每帧替换上一帧临时修正，不跨帧累加 |
+| 同代/倒退 generation 重放 | 拒绝且当前状态逐元素不变 |
+| generation 水位存储 | 24 代同组件保持 1 条记录 |
+| 固定滞后清理 | 窗口内不淘汰；窗口外清理后旧证据仍拒绝 |
+| 容量满 | 没有过期条目时拒绝新组件 |
+| 正常身份明确量测 | 标准重放替代临时修正，只增加正常量测的 hit/lineage/support |
+| `K_max` | 超限拒绝 |
+| 操作计数 | 成功分量按成员数加观测数计数 |
+
+测试还确认未观测径向速度占位值不参与修正，侧车继续为
+`posterior_update_applied=false`、`update_mode=prediction_only` 和
+`cross_covariance_available=false`。这里的 prediction-only 描述身份边。D1 的集合级共同
+状态平移通过独立候选审计字段记录。
+
+修复前先用三帧强制 `2x2` 歧义扫描复现跨 generation 累积。每帧观测质心相对精确重放基线
+固定偏移 30 m，候选增益为 0.5。首帧发布偏移约 15 m，第二帧错误增长到约 30 m。原因是
+创新从不含临时修正的观测历史重算，修正却累加到已修正的 `current_state`。修复后每帧先从
+观测历史重建当前发布基线，再只施加本帧修正，连续三帧均保持单帧偏移。
+
+连续 hold 后的唯一匹配扫描验证了替代路径。临时修正在下一扫描前可以由运动模型传播；
+`_state_at()` 始终返回不含临时修正的正式重放基线。正常量测接受后，两条候选航迹与纯 hold
+对照的状态、协方差和质量重新一致，hit、观测谱系和 radar support 各只增加一次。
+
+候选当前不能晋级。缺少 hold-only 与 hold+共同质心的冻结输入 A/B、未见 seed 多 seed、
+正式均方根误差、归一化估计误差平方、归一化创新平方、D2/D3 下游可用性、D1 P95 和长时
+内存/吞吐证据。本轮证明 generation 注册表具有硬容量和固定滞后安全清理，不等于完成长时
+系统性能验收。
+
+### main 开发门槛
+
+**证据日期：2026-07-23**
+
+**范围：当前未提交工作树上的三维质点单 seed 开发运行；不是 clean formal acceptance**
+
+main 已接入共同质心构造参数。hold-only 与 hold+共同质心两臂均为
+`nominal_200v200`、`recon_count=2`、2.2 s、seed 1100，并显式开启 source key 和 D1-D2
+hold；candidate 只增加共同质心修正。
+
+| 指标 | hold-only | hold+共同质心 |
+| --- | ---: | ---: |
+| D1/D2/D3 | 202/201/186 | 202/201/186 |
+| strict ID switch | 3 | 3 |
+| track continuity | 0.826667 | 0.826667 |
+| coverage continuity | 0.828333 | 0.828333 |
+| 终态可用映射 | 191 | 191 |
+| 未承诺绑定违规 | 0 | 0 |
+| 共同质心候选/施加/拒绝 | 不适用 | 46/0/46 |
+| generation 水位当前/峰值 | 不适用 | 8/8 |
+| 水位淘汰/容量拒绝 | 不适用 | 0/0 |
+| finite / online truth use | true / 0 | true / 0 |
+
+46 个候选中，30 个因 `oosm_scan` 拒绝，16 个因 `unbalanced_component` 拒绝。当前门控没有
+产生一次状态修正，因此两臂相同属于零 treatment 结果。它证明候选在该输入上安全拒绝，没有
+证明共同质心修正能够恢复 hold 的连续性或映射可用性。
+
+临时制品位于 `/tmp/MSM-neutral-centroid-gate-20260723/{hold_only,hold_plus_centroid}`。
+该目录只保留开发证据，不是版本化正式制品。按开发停止条件不运行 seeds 1101/1102。候选
+保持默认关闭，P1 继续开放。后续先解释 OOSM 和非平衡分量覆盖全部候选的原因；只有在不放宽
+安全合同且能够形成实际 treatment 后，才恢复 clean 冻结输入和未见 seed 验收。
+
 ## 结构歧义证据侧车模块验证
 
 **证据日期：2026-07-23**
 
-**范围：D1 单元测试，以及固定提交 `9cd2a79` 的单 seed 三维质点全栈 A/B；未运行 AirSim**
+**范围：D1 单元测试，以及固定提交 `ff88131` 的单 seed 三维质点全栈 A/B 和离线因果审计；
+未运行 AirSim**
 
 本轮验证默认关闭的
 `prediction_only_maximum_matching_component_evidence_v3`。候选复用最大匹配允许边图，
@@ -16,8 +101,8 @@
 
 | 验收项 | 结果 |
 | --- | --- |
-| 专项测试 | `17 passed` |
-| D1 全量 | `237 passed in 17.42s` |
+| 侧车基础阶段专项测试 | `25 passed` |
+| 侧车基础阶段当时 D1 全量 | `245 passed in 17.48s` |
 | Python 语法检查 | 通过 |
 | 默认关闭序列化 | 与显式 `False` 一致，空侧车不增加字段 |
 | 平衡 `2x2` deferred birth | 0 |
@@ -36,6 +121,33 @@ edge 和 source key。成员令牌由显式 publisher node/epoch 与 D1 本地 t
 对应。观测 key 只使用数值量测证据和双时间戳，不使用通用 source lineage；后者可能在合成
 回放中携带离线标签。
 
+### 独立来源键控制臂
+
+本轮增加 `publish_opaque_source_key=False`，用于把来源键治理与 hold 干预分开。专项将同一
+个 `2x2` 门内代价输入分别送入默认基线和 source-only 融合器。source-only 发布五个不透明
+来源字段，但两组的 accepted、updated、created、track count、状态、协方差、hit、观测历史
+长度和关联诊断计数一致，且结构歧义 evidence 数量为 0。
+
+另一组输入先按时间顺序更新，再送入一条量测时刻更早、到达时刻更晚的雷达观测。两组的
+OOSM 数、重放数、最大重放观测数、终态和协方差一致。双实例序列化结果相同；`None`、整数和
+字符串开关均被严格类型校验拒绝。该结果确认 D1 控制臂实现边界，尚未确认 D2 消费 source
+key 后的系统影响。
+
+main 后续完成 seed 1100 的闭环三臂：
+
+| 指标 | baseline | source-only | hold |
+| --- | ---: | ---: | ---: |
+| D1/D2/D3 | 202/203/200 | 202/201/198 | 202/201/186 |
+| strict IDSW | 9 | 7 | 3 |
+| track continuity | 0.865000 | 0.865000 | 0.826667 |
+| coverage continuity | 0.870000 | 0.868889 | 0.828333 |
+| 终态已映射真实目标 | 未单列 | 200 | 191 |
+| 终态未映射航迹 | 未单列 | 1 | 10 |
+
+hold 端有 prevented hit/miss/birth `69/69/4`、76 条未承诺记录，D3 拒绝 11 个目标，未承诺
+绑定违规为 0。首个计划后控制反馈改变后续平台状态和传感器流，因此该三臂是系统效果对照，
+不是完全冻结输入的上游因果证明。
+
 ### 模块判定
 
 两项 main 复核语义已进入断言：
@@ -48,7 +160,7 @@ edge 和 source key。成员令牌由显式 publisher node/epoch 与 D1 本地 t
 
 ### 全栈 A/B
 
-main 在固定提交 `9cd2a79` 上使用 `nominal_200v200`、seed 1100、2.2 s、
+main 在固定提交 `ff88131` 上使用 `nominal_200v200`、seed 1100、2.2 s、
 `recon_count=2` 运行 baseline 和
 `--d1-d2-structural-ambiguity-hold` 候选。候选开关之外的实验条件保持一致。
 
@@ -56,28 +168,58 @@ main 在固定提交 `9cd2a79` 上使用 `nominal_200v200`、seed 1100、2.2 s�
 | --- | ---: | ---: |
 | D1 航迹数 | 202 | 202 |
 | D1 evidence received / consumed | 0 / 0 | 46 / 46 |
-| D2 accepted component events | 0 | 33 |
 | D2 prevented hit / miss / birth | 0 / 0 / 0 | 69 / 69 / 4 |
 | D2 航迹数 | 203 | 201 |
 | D3 分配数 | 200 | 197 |
-| available mappings | 1,566 | 1,492 |
-| unavailable mappings | 230 | 294 |
-| 实时倍率 | 0.2245 | 0.2112 |
+| strict ID switch | 9 | 3 |
+| track continuity | 0.865000 | 0.826667 |
+| coverage continuity | 0.870000 | 0.828333 |
+| available mappings | 1,566 | 1,491 |
+| partial unavailable mappings | 234 | 296 |
+| identity commitment coverage | 1.000000 | 0.957471 |
+| 实时倍率 | 0.220352 | 0.207642 |
 
-baseline 可计算的 ID switch 为 9，track/identity continuity 为 0.865，coverage continuity
-为 0.870。候选身份指标因 `source_observation_outside_lineage_window` 被标记为不可用，
-不能将缺失值解释为 0，也不能比较身份改善。两组在线 truth use 均为 0。
+两组身份指标均可计算，在线 truth use 均为 0。候选减少了 6 次严格 ID switch，但航迹连续性
+下降 0.038333，覆盖连续性下降 0.041667，可评估映射减少 75，身份提交覆盖率下降约
+0.042529。
 
 46 个 evidence 均被一次消费，证明 D1 侧车在该 episode 中正常生成并越过 D1-D2 接口。D2
-接受 33 个分量事件后确实阻止了对应 hit、miss 和 birth。候选同时减少 D2 航迹和 D3 分配，
-available mappings 减少 74，unavailable mappings 增加 64，实时倍率下降。身份指标又不具备
-可评估性，因此没有达到预注册晋级条件。
+身份保持消费者阻止了对应 hit、miss 和 birth。候选同时减少 D2 航迹和 D3 分配，实时倍率也
+下降，因此没有达到预注册晋级条件。
+
+### 因果审计
+
+候选冻结在线输入共重放 89 个 D1 发布批次。逐批 observation、accepted、update、birth 和
+track count 与原候选制品一致，终态为 202 条 D1 航迹。重放结束后才连接独立离线真值。
+
+| 量测时刻（s） | 正确参考更新被阻断 | 错误参考更新被阻断 | D1 新生延迟 |
+| ---: | ---: | ---: | ---: |
+| 0.2 | 9 | 1 | 1 |
+| 0.4 | 8 | 2 | 0 |
+| 0.6 | 8 | 0 | 0 |
+| 0.8 | 9 | 0 | 0 |
+| 1.0 | 10 | 0 | 0 |
+| 1.2 | 5 | 2 | 0 |
+| 1.4 | 8 | 0 | 0 |
+| 1.6 | 6 | 1 | 0 |
+| 1.8 | 6 | 1 | 0 |
+| 合计 | 69 | 7 | 1 |
+
+唯一 D1 延迟新生 `radar-s000002-d0060` 对应 `TGT-0061`，不是假目标或重复航迹；它在
+0.4 s 由下一次雷达观测建立，覆盖延迟 0.2 s。D2 的四次 prevented birth 均涉及
+`global_track_164`、`global_track_201`，两者离线均对应 `TGT-0171`，属于同一目标的重复
+航迹尝试。
+
+对 13 条首次歧义前已存在的成员航迹，平均位置误差从 25.217 m 增至 34.184 m；位置协方差迹
+中位数从 156.217 增至 458.349。该子集用于解释整分量 prediction-only 的因果，不是正式系统
+均方根误差。
 
 ### 系统判定
 
 候选不晋级，保持默认关闭。预注册停止条件已触发，不运行 seeds 1101/1102。D1 结构证据合同
-和模块单测继续保留；本次结果不能支持“结构歧义侧车改善身份连续性”的结论。若提出后续候选，
-应先恢复身份 lineage 指标的可用性，再同时验收身份收益、下游可用性和运行开销。
+和模块单测继续保留。最可能的 D1 根因是整分量保持同时阻断 69 次正确状态修正和 7 次错误
+修正。后续只研究身份不提交、置换不变共同平移且协方差不收缩的新候选，并用未见 seed 同时
+验收身份、连续性、状态误差、下游可用性和运行开销。
 
 ## 匿名跨模态几何门控
 
