@@ -1,0 +1,14 @@
+{
+  "ack_source_integrity": true,
+  "audit_topic_excluded": "audit.d1.centroid_publication_overlay_shadow",
+  "control_business_record_count": 3294,
+  "control_plan_lineage_valid": true,
+  "mismatches": [],
+  "normalized_business_records_equal": true,
+  "normalized_topic_hashes_equal": true,
+  "schema_version": "scalable3d-centroid-overlay-business-equivalence-v1",
+  "sequence_normalization": "business_relative_sequence_v1",
+  "shadow_business_record_count": 3294,
+  "shadow_plan_lineage_valid": true,
+  "topic_counts_equal": true
+}

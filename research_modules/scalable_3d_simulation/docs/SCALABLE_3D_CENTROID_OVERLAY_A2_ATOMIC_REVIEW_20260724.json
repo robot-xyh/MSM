@@ -1,0 +1,145 @@
+{
+  "schema_version": "scalable3d-d1-centroid-overlay-a2-atomic-review-v1",
+  "evaluation_date": "2026-07-24",
+  "evidence_class": "clean_source_single_seed_rejected_only_pair",
+  "source": {
+    "git_commit": "7cc2d0cfd598a72d60c6ba8c7d4a283f4e5a897d",
+    "repository_dirty": false,
+    "scenario_name": "nominal_200v200_cli_200v200",
+    "scenario_version": "200v200-nominal-v1-cli-200v200",
+    "seed": 1100,
+    "target_count": 200,
+    "resource_count": 200,
+    "recon_count": 2,
+    "duration_s": 2.2,
+    "config_sha256": "20ef5248c8b45ff5aced9080c8d47e65a43aaba54f18ce824dc50fac7a52b840",
+    "control_episode_id": "nominal_200v200_cli_200v200-s1100-20ef5248c8b4-rdeabac3fbf2a",
+    "shadow_episode_id": "nominal_200v200_cli_200v200-s1100-20ef5248c8b4-ra37c501ec2cd",
+    "control_runtime_profile_sha256": "deabac3fbf2a788f68a0b807945e5f1bedacf8c5917c4d3b49c5cffb3c90da70",
+    "shadow_runtime_profile_sha256": "a37c501ec2cd8f17f93676e700f8bc69c73ec267bf96c9e3a3c5c9431167b59c"
+  },
+  "conclusion": {
+    "a2_admitted": false,
+    "atomic_contract_passed": true,
+    "business_nonintervention_passed": true,
+    "performance_gate_passed": false,
+    "accepted_treatment_available": false,
+    "outcome_effect_evidence_available": false,
+    "a3_a4_allowed": false,
+    "seeds_1101_1102_allowed": false,
+    "blockers": [
+      "d1_centroid_overlay_shadow_performance_gate_failed",
+      "no_accepted_treatment",
+      "outcome_effect_evidence_not_provided"
+    ]
+  },
+  "business_nonintervention": {
+    "control_business_record_count": 3294,
+    "shadow_business_record_count": 3294,
+    "normalized_business_records_equal": true,
+    "normalized_topic_hashes_equal": true,
+    "topic_counts_equal": true,
+    "control_plan_lineage_valid": true,
+    "shadow_plan_lineage_valid": true,
+    "ack_source_integrity": true,
+    "truth_state_equal": true,
+    "truth_labels_equal": true,
+    "proximity_events_equal": true,
+    "online_truth_use_count": 0,
+    "global_track_id_change_count": 0,
+    "forbidden_mutation_count": 0,
+    "d2_consumption_count": 0,
+    "d3_consumption_count": 0,
+    "final_counts": {
+      "d1_tracks": 202,
+      "d2_tracks": 201,
+      "d3_assignments": 186,
+      "d5_bindings": 0,
+      "d7_commands": 186
+    }
+  },
+  "atomic_shadow_audit": {
+    "publication_count": 9,
+    "decision_count": 46,
+    "accepted_count": 0,
+    "rejected_count": 46,
+    "rejection_reason_counts": {
+      "oosm_scan": 46
+    },
+    "error_count": 0,
+    "post_integrity_evaluable_count": 9,
+    "post_integrity_passed_count": 9,
+    "atomic_failure_count": 0,
+    "shadow_materialized_count": 0,
+    "canonical_full_description_pass_count": 9,
+    "canonical_description_track_digest_count": 1813,
+    "canonical_post_integrity_pass_count": 9,
+    "canonical_post_integrity_track_digest_count": 1813,
+    "shadow_track_copy_count": 0,
+    "shadow_full_track_digest_count": 0,
+    "shadow_publication_digest_count": 0,
+    "generation_watermark_current": 8,
+    "generation_watermark_peak": 8,
+    "generation_watermark_capacity": 1024,
+    "maximum_shadow_track_payload_bytes": 11275939
+  },
+  "performance": {
+    "maximum_wall_time_overhead_ratio": 0.05,
+    "control_core_wall_time_s": 10.735151270986535,
+    "shadow_core_wall_time_s": 19.449935468961485,
+    "core_wall_time_overhead_ratio": 0.8117989190825889,
+    "control_real_time_factor": 0.20493423375838704,
+    "shadow_real_time_factor": 0.1131109151241553,
+    "control_process_wall_time_s": 19.04,
+    "shadow_process_wall_time_s": 26.92,
+    "process_wall_time_overhead_ratio": 0.41386554621848753,
+    "control_peak_rss_kib": 1079336,
+    "shadow_peak_rss_kib": 1086544,
+    "shadow_stage": {
+      "call_count": 9,
+      "mean_ms": 996.1268674427023,
+      "p50_ms": 1024.8383930302225,
+      "p95_ms": 1536.4285601885058,
+      "max_ms": 1549.4359389995225
+    },
+    "shadow_phase_timing": {
+      "atomic_overlay_operation": {
+        "mean_ms": 544.9595701195196,
+        "p95_ms": 851.7081026220694
+      },
+      "forbidden_surface_before_digest": {
+        "mean_ms": 254.59875589391837,
+        "p95_ms": 407.26495963754127
+      },
+      "forbidden_surface_after_digest": {
+        "mean_ms": 196.41292456071824,
+        "p95_ms": 310.7888504280709
+      },
+      "audit_log_materialization": {
+        "mean_ms": 0.09868533945538932,
+        "p95_ms": 0.11621259618550538
+      },
+      "shadow_payload_digest": {
+        "mean_ms": 0.0002974476147856977,
+        "p95_ms": 0.0004583969712257385
+      }
+    }
+  },
+  "comparison_to_prepared_handle_development_pair": {
+    "previous_source_commit": "2b976a7213ccdaa35fe0e22dea88def2651e9467",
+    "previous_repository_dirty": true,
+    "previous_core_wall_time_overhead_ratio": 0.8088286768722774,
+    "previous_shadow_stage_mean_ms": 972.4500560033549,
+    "previous_shadow_stage_p95_ms": 1532.9988726065494,
+    "atomic_shadow_stage_mean_relative_change": 0.024347586072086865,
+    "atomic_shadow_stage_p95_relative_change": 0.0022372407724768305,
+    "interpretation": "single-seed timing remains effectively unchanged; the rejected-only legacy path already skipped shadow assembly"
+  },
+  "artifacts": {
+    "bundle_directory": "SCALABLE_3D_CENTROID_OVERLAY_A2_ATOMIC_REVIEW_20260724",
+    "bundle_sha256_file": "SCALABLE_3D_CENTROID_OVERLAY_A2_ATOMIC_REVIEW_20260724/SHA256SUMS",
+    "source_sha256_file": "SCALABLE_3D_CENTROID_OVERLAY_A2_ATOMIC_REVIEW_20260724/SOURCE_SHA256SUMS",
+    "d6_evaluation": "SCALABLE_3D_CENTROID_OVERLAY_A2_ATOMIC_REVIEW_20260724/d6_atomic_pair_evaluation.json",
+    "business_equivalence": "SCALABLE_3D_CENTROID_OVERLAY_A2_ATOMIC_REVIEW_20260724/business_equivalence.json"
+  }
+}

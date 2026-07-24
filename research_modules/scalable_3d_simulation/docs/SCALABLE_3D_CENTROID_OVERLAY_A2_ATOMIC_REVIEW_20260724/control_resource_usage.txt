@@ -1,0 +1,23 @@
+	Command being timed: "python3 research_modules/scalable_3d_simulation/run_episode.py --integrated-stack --drone-count 200 --target-count 200 --recon-count 2 --duration 2.2 --seed 1100 --d1-d2-structural-ambiguity-hold --output /tmp/msm_d1_overlay_atomic_seed1100_control_20260724_v2"
+	User time (seconds): 22.58
+	System time (seconds): 1.91
+	Percent of CPU this job got: 128%
+	Elapsed (wall clock) time (h:mm:ss or m:ss): 0:19.04
+	Average shared text size (kbytes): 0
+	Average unshared data size (kbytes): 0
+	Average stack size (kbytes): 0
+	Average total size (kbytes): 0
+	Maximum resident set size (kbytes): 1079336
+	Average resident set size (kbytes): 0
+	Major (requiring I/O) page faults: 0
+	Minor (reclaiming a frame) page faults: 249003
+	Voluntary context switches: 109
+	Involuntary context switches: 885
+	Swaps: 0
+	File system inputs: 0
+	File system outputs: 201048
+	Socket messages sent: 0
+	Socket messages received: 0
+	Signals delivered: 0
+	Page size (bytes): 4096
+	Exit status: 0

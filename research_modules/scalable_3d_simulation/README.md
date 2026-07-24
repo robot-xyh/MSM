@@ -30,6 +30,28 @@ main 现已把该确认链自动接入 D6 离线结果联接。存在运行时�
 每个窗口输出起始、结束、最小三维距离和五米事件；距离进展只记为诊断，不作为 D3 正式奖励。
 输入清单、联接结果、中文报告和 main provenance manifest 均随 episode 保存。
 
+## 2026-07-24 D1 共同质心原子影子
+
+D1 新增单次同步原子入口。main 的默认关闭审计旁路不再把 prepared handle 暴露在三个公共
+调用之间。一次调用完成规范准备、overlay 决策、可选 detached shadow、操作后完整性复核和
+工作量统计。原子失败时丢弃 provisional shadow，并撤销本次 generation 状态推进。旧公共
+接口保持可用，正式 D1 航迹、D2/D3 输入和 `global_track_id` 所有权没有变化。
+
+D6 在原 runtime v1 主题中按执行模式区分历史 prepared-handle 和
+`atomic_experimental_offline_v1`。atomic 记录必须完整携带准备摘要、后置完整性、canonical/
+shadow 摘要、物化状态、工作量和失败原因；字段半缺或交叉关系矛盾时失败关闭。
+
+clean `7cc2d0c` 的 seed 1100、200 对 200、2.2 秒 pair 产生 9 条 atomic 记录。9/9
+post-integrity 通过，原子失败和 shadow 物化均为 0；46 条决策全部因 `oosm_scan` 拒绝。
+去除审计主题并按业务相对序号规范化后，两臂各 3294 条业务记录、逐主题摘要、计划谱系、
+ACK 来源和离线真值制品一致。
+
+control/atomic-shadow 核心墙钟为 `10.735/19.450 s`，相对增加 `81.1799%`。完整影子阶段
+mean/P95 为 `996.127/1536.429 ms`，没有通过 `+5%` 性能门。全拒绝时旧路径本就不执行
+shadow assembly，原子入口没有消除规范准备、后置复核和禁止表面前后摘要。A2 保持默认
+关闭，A3/A4 和 seeds `1101/1102` 继续停止。完整复核见
+`docs/SCALABLE_3D_CENTROID_OVERLAY_A2_ATOMIC_REVIEW_CN.md`。
+
 ## 2026-07-23 D1 共同质心发布影子 A2
 
 main 已把 D1 的实验准备对象接入默认关闭的审计旁路。规范航迹先生成不可变 prepared

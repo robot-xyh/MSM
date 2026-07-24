@@ -9,6 +9,34 @@
 **当前状态修订（2026-07-20）**：上段“无开放 P0”只对应此前 AirSim 审计。900-episode
 正式生成在第 210 项发现 D5 同流多批次阻塞；以下专项记录为当前状态，优先级高于历史摘要。
 
+## 2026-07-24 D1 共同质心原子影子 A2
+
+当前无新增 P0。D1 已冻结单次原子入口，main 已切换默认关闭的审计旁路，D6 已实现
+legacy/atomic 双路径只读校验。原子结果在后置完整性失败或装配失败时丢弃 shadow 并恢复
+输入 generation 状态。D2/D3 不消费旁路，正式航迹和全局编号所有权不变。
+
+clean `7cc2d0cfd598a72d60c6ba8c7d4a283f4e5a897d` 的 seed 1100 pair 使用 200 对
+200、2 个侦察节点和 2.2 秒。9 条 atomic 记录全部通过 post-integrity，覆盖两次各
+1813 条航迹摘要；原子失败、shadow 物化、禁止表面修改和在线真值使用均为 0。过滤审计
+主题并规范业务相对序号后，两臂各 3294 条业务记录逐条一致，计划谱系和 ACK 来源有效，
+离线真值制品摘要一致。
+
+当前 P1 仍开放，A2 不准入：
+
+| P1 项 | clean atomic 证据 | 状态 |
+| --- | --- | --- |
+| 性能门 | control/shadow 核心墙钟 `10.735/19.450 s`，增量 `81.1799%`；P95 `1536.429 ms` | 未达到 `<=5%` |
+| 自然 treatment | 46 条决策，`0 accepted/46 oosm_scan rejected` | 无有效处理样本 |
+| 结果效果 | 业务非干预通过，accepted 为 0 | outcome effect unavailable |
+| accepted/failure 实际载荷 | rejected-only clean episode 已有；accepted 和 atomic failure 只有单元负例 | 实际 episode 待提供 |
+
+全拒绝场景下，旧 prepared-handle 路径本就跳过 assemble。原子入口的 `544.960 ms` 平均
+操作时间仍包含一次规范描述和一次后置完整性复核；main 的禁止表面前后摘要另占
+`254.599/196.413 ms`。该改动关闭调用边界安全缺口，没有形成性能收益。A3/A4 和 seeds
+`1101/1102` 继续停止。后续将完整 shadow 审计移出在线规则主循环，并优先处理 D1 批量融合、
+空间预筛选、固定滞后合并重放和延迟序列化。证据见
+`research_modules/scalable_3d_simulation/docs/SCALABLE_3D_CENTROID_OVERLAY_A2_ATOMIC_REVIEW_CN.md`。
+
 ## 2026-07-23 D1 共同质心发布影子 A2
 
 当前无新增 P0。D1 已完成不可变 prepared handle、完整载荷强摘要复核和 detached shadow
