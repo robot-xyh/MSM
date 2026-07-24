@@ -6,7 +6,7 @@
 
 **状态：`IMPLEMENTED_UNIT_TESTED_OFFLINE_OPTIMIZATION`**
 
-**范围：D1 单元测试；未运行 main、AirSim 或 seeds 1101/1102**
+**范围：D1 单元测试；A2 系统接线证据单独列于下一节**
 
 本轮保留 A1 数学、安全门、拒绝顺序、decision schema 和默认关闭状态。新增准备对象对一个
 完整规范发布只执行一次航迹描述，并在 evaluation 与 accepted shadow assembly 间复用。
@@ -27,15 +27,60 @@
 
 性能测试采用完整描述次数和摘要工作量计数，不采用机器相关的相对墙钟断言。完整性复核遍历
 全部 metadata，但不重复协方差特征值、身份扫描、状态/协方差独立摘要和发布级排序摘要。
-该结果证明 D1 原型接口、过期摘要阻断和复制路径，不证明 main A2 达到实时门。
+该结果证明 D1 原型接口、过期摘要阻断和复制路径，不单独证明 main A2 达到实时门。
 
-main 提供的开发复跑为 200v200、seed 1100、2.2 s、`recon_count=2`。46 条 evidence 在 9 次
-A2 评估中全部拒绝，当前拒绝口径为 `oosm_scan`；状态有限、在线 truth 使用为 0，
-D1/D2/D3 终态为 `202/201/186`，与 hold control 相同。shadow 阶段 mean/P50/P95/max 约为
-`1407/1401/2216/2275 ms`，最大规范 shadow DTO 约 `11,275,939 bytes`，总实时倍率约
-`0.205 -> 0.094`。该开发结果未通过 P95 `+5%` 门。全部决策均拒绝时，旧 assembly 已直接
-返回原序列，不会发生第二次完整描述。因此本轮准备对象优化对该批的系统收益必须由 main
-重新接线、拆分计时后实测，当前不得写成 A2 P95 已关闭。
+## A2 显式准备对象成对复跑
+
+**证据日期：2026-07-23**
+
+**main 接入提交：`2b976a7213ccdaa35fe0e22dea88def2651e9467`**
+
+**范围：三维质点 200v200 开发复跑；未运行 AirSim 或 seeds 1101/1102**
+
+control 和 shadow 使用相同 `scenario_config.json`，均为 seed 1100、200 个目标、200 个资源、
+2 个侦察节点、2.2 s。两份 manifest 记录同一提交，但 `repository_dirty=true`，因此本节是
+开发证据，不是 clean/formal 准入结果。
+
+| 审计项 | control | prepared shadow | 判定 |
+| --- | ---: | ---: | --- |
+| 结构歧义 evidence | 46 | 46 | 一致 |
+| A2 evaluation | 0 | 9 | shadow 专属 |
+| accepted/rejected | 0/0 | 0/46 | 全部 `oosm_scan` |
+| D1/D2/D3 终态 | 202/201/186 | 202/201/186 | 一致 |
+| 在线 truth 使用 | 0 | 0 | 通过 |
+| 墙钟 | 10.712171729 s | 19.376483415 s | `+80.8829%` |
+| 实时倍率 | 0.205374 | 0.113540 | 下降 |
+| shadow 总阶段 P95 | 不适用 | 1532.999 ms | 性能门失败 |
+
+9/9 条审计记录均为 `explicit_prepared_handle_used=true`，evaluation 内容完整性校验 9/9
+通过，完整描述总计 9 次。错误、禁止写入、D2 消费、D3 消费和在线 truth 使用均为 0；
+generation 水位当前/峰值为 `8/8`，容量 1024，最大审计载荷 `11,275,939 bytes`。
+
+| shadow 阶段 | mean ms |
+| --- | ---: |
+| 禁止写入表面 before digest | 224.461 |
+| prepare canonical publication | 345.095 |
+| evaluate overlays | 195.421 |
+| 禁止写入表面 after digest | 207.312 |
+| assemble shadow tracks | 0.00247 |
+| audit log materialization | 0.0973 |
+
+shadow 的 `online_observations.jsonl` 比 control 多 9 条
+`audit.d1.centroid_publication_overlay_shadow`。过滤这些专属审计记录，先验证两端计划谱系、
+ACK 来源哈希和 D4 内容地址，再按既有跨构建规则归一化不透明计划编号及由审计插入造成的总线
+序号偏移，3294/3294 条业务记录逐条一致。两端归一化 SHA-256 均为
+`bb7eabca7aaf3d0219a784e3bdb3e75ce31332ce1aa14817d683e56b3c3855a2`。
+
+`offline_truth_state.npz` 的六组数组所在归档逐字节一致，SHA-256 均为
+`50268d447e1d146656167c25ed5cea45065b0d253cdba8df7e8715622e1e9c0a`。
+`offline_truth_labels.jsonl` 均为
+`4fefeeb68ab9d6fbc1679d534c92cfbc55f74b1b1e288a6437e7e87e4abbe30d`；
+空的 `offline_proximity_intercepts.jsonl` 均为
+`e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855`。
+
+业务非干预、安全摘要和有界水位子门通过。总墙钟增加 80.8829%，远超 P95 增幅不超过 5%
+的设计门；46 条决策没有一条 accepted，无法评价有效 treatment。A2 不准入，A3/A4 和
+seeds 1101/1102 继续停止。
 
 ## A1 publication overlay 纯函数原型验证
 
@@ -78,10 +123,10 @@ PYTHONPATH=research_modules/d1_sensor_fusion/src pytest -q \
   research_modules/d1_sensor_fusion/tests
 ```
 
-该验证关闭的范围仅是 A1 纯函数和 DTO 装配合同。A1 没有修改 `fusion.py`，没有运行开关或默认
-路径，也不是在线 schema。main 已开始 A2 默认关闭审计 shadow 开发，但首轮 P95/RSS 验收
-未通过；A3 新匿名 treatment 发现以及 A4 预注册多 seed、RMSE/NEES/NIS 和 D2/D3 系统收益
-均未实现。seeds 1101/1102 继续停止。
+该验证关闭的范围仅是 A1 纯函数和 DTO 装配合同。A1 没有修改 `fusion.py`，没有 D1 默认运行
+开关，也不是在线 schema。main 已完成 A2 默认关闭审计 shadow 接线；业务非干预通过，但
+性能门和有效 treatment 门未通过。A3 新匿名 treatment 发现以及 A4 预注册多 seed、
+RMSE/NEES/NIS 和 D2/D3 系统收益均未实现。seeds 1101/1102 继续停止。
 
 ## 身份中性共同质心候选模块验证
 

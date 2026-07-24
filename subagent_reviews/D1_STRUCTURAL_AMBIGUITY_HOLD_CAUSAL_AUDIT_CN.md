@@ -6,8 +6,8 @@
 同输入复跑仍为零 treatment；受控冻结扫描已形成一次合法 treatment，仍未晋级
 **下一候选状态**：A1 publication overlay 为
 `IMPLEMENTED_UNIT_TESTED_OFFLINE_PROTOTYPE`，准备对象优化为
-`IMPLEMENTED_UNIT_TESTED_OFFLINE_OPTIMIZATION`；main A2 开发接线未通过性能门，
-A3/A4 未实现，B 暂缓，C 交 D2 后续规划
+`IMPLEMENTED_UNIT_TESTED_OFFLINE_OPTIMIZATION`；main A2 显式接线已完成，但性能门和
+有效 treatment 门失败，不准入；A3/A4 未实现，B 暂缓，C 交 D2 后续规划
 **结构歧义基础证据提交**：`ff881316243ff5a2991a4659ab78637ed625d123`
 **共同质心 clean 复核提交**：`7e15dac9cdaf6743999dfe045a70676fd31a17d6`
 **A1 纯函数原型提交**：`de73cb2`；2026-07-23 优化后聚焦 `21 passed`，D1 全量
@@ -499,9 +499,10 @@ replace，以清除旧临时修正。控制臂的分段预测与候选臂从观�
 受控冻结扫描现已证明同步平衡分量存在有效施加窗口，并确认 OOSM 与数量不平衡边界继续拒绝。
 下一步不直接恢复当前 replay/replace 语义下的系统 A/B。publication overlay A1 纯函数原型
 已完成：拒绝 overlays 为空且装配直接返回原规范业务序列，接受只复制 DTO；原型不调用
-replay/replace，也不接 `FusionAdapter`。main 已开始 A2 默认关闭审计 shadow 开发，但首轮
-P95/RSS 门未通过。只有 A2 通过后，才使用新的真实匿名冻结扫描检查自然 treatment 并考虑
-未见 seed 验收。不得通过忽略时序或放宽满基数门制造 treatment。
+replay/replace，也不接 `FusionAdapter`。main 已在提交 `2b976a7` 的独立默认关闭审计
+shadow 中显式接入准备对象。业务非干预和禁止写入审计通过，但墙钟开销 `+80.8829%`，
+46 条 evidence 没有 accepted treatment，A2 不准入。不再使用新的真实匿名冻结扫描或未见
+seed 扩大该候选；不得通过忽略时序或放宽满基数门制造 treatment。
 
 free-row、free-column、大分量、过期/OOSM 量测、重复/冲突来源、身份字段、质心门限失败和
 形状不一致分量继续 prediction-only。不得依据四次 D2 重复 birth 放宽 D1 自由列新生，也不得
@@ -517,7 +518,7 @@ free-row、free-column、大分量、过期/OOSM 量测、重复/冲突来源、
 1. A 使用 detached publication overlay。A1 已在提交 `de73cb2` 实现纯函数原型：接受时只改
    发布 DTO，拒绝时 overlay 为空并直接使用规范快照；state/covariance、history、checkpoint、
    cache、lineage/source support 和 `global_track_id` 均不修改。D1 准备对象优化已完成；
-   main A2 开发接线未通过性能门，A3/A4 未实现；
+   main A2 显式接线的业务非干预通过，但性能门和有效 treatment 门失败，A3/A4 未实现；
 2. B 把共同质心变成 fixed-lag measurement-time 事件。当前
    `Q(h)=G(h)qG(h)^T` 的单段与分段传播不等价，零更新事件也会改变协方差分段；事件总排序、
    过程噪声分段和一致性验收冻结前，B 不进入在线实现；
@@ -529,9 +530,9 @@ free-row、free-column、大分量、过期/OOSM 量测、重复/冲突来源、
 成员、拒绝透传、全排列、幂等/冲突/容量和输入不变，D1 全量 `294 passed`。A1 没有修改
 `fusion.py`、运行开关或默认路径，experimental decision 不是在线 schema。
 
-A2 仍须在冻结扫描上证明业务发布与 control 等价，同时记录滤波内部禁止写入摘要和
-P95/RSS。A3/A4 才允许使用预先哈希的新匿名扫描和至少 20 个未见 seed；零 treatment 立即
-停止，不放宽门限。seeds 1101/1102 继续停止。A1 完成不改变在线共同质心候选的
+A2 已在冻结扫描上证明归一化业务发布与 control 等价，并记录滤波内部禁止写入摘要、阶段
+计时和有界水位；性能门失败且零 treatment，按停止条件不进入 A3/A4。seeds 1101/1102
+继续停止。A1 完成和 A2 安全子门通过均不改变在线共同质心候选的
 `candidate_not_promoted` 状态。
 
 ## 14. 准备对象与只读 metadata 专项
@@ -554,9 +555,18 @@ source support、identity、全局编号、时间戳和分级的修改均阻断�
 SHA-256 与提交 `de73cb2` 基线逐字节一致。聚焦测试 `21 passed`，D1 全量
 `308 passed in 19.69s`。
 
-main 提供的 200v200、seed 1100、2.2 s、`recon_count=2` A2 开发复跑产生 46 条 evidence，
-共 9 次评估，当前 0 accepted/46 rejected。D1/D2/D3 终态与 hold control 相同，finite=true，
-online truth=0；shadow P95 约 `2216 ms`，最大规范 shadow DTO 约 `11,275,939 bytes`，
-RTF 约 `0.205 -> 0.094`。该批未通过 P95 `+5%` 门。由于全部决策拒绝，旧 assembly 已直接
-返回原序列，本次单元优化不能证明该批性能会改善。main 必须采用新接口重跑并单独计量
-规范化、前后禁止写入摘要、D1 prepare/evaluate/assemble 和日志物化后，才能更新 A2 状态。
+main 已在提交 `2b976a7` 显式接入准备对象，并对 200v200、seed 1100、2.2 s、
+`recon_count=2` 完成成对开发复跑。9/9 次评估均记录显式 prepared handle 和内容完整性
+匹配；46 条 evidence 为 0 accepted/46 rejected，拒绝原因均为 `oosm_scan`。过滤 9 条专属
+审计记录并按既有跨构建规则归一化计划编号和总线序号后，3294/3294 条业务记录逐条一致，
+归一化 SHA-256 同为 `bb7eabca...c3855a2`。truth NPZ、离线 truth labels 和 proximity
+文件分别一致。D1/D2/D3 终态均为 `202/201/186`，finite=true；错误、禁止写入、D2/D3
+消费和在线 truth 使用均为 0。
+
+control/shadow 墙钟 `10.712171729/19.376483415 s`，开销 `+80.8829%`；RTF
+`0.205374/0.113540`，shadow 总 P95 `1532.999 ms`。before digest、prepare、evaluate、
+after digest、assemble、log 均值分别为
+`224.461/345.095/195.421/207.312/0.00247/0.0973 ms`。最大载荷
+`11,275,939 bytes`，generation 水位 `8/1024`。两份 manifest 均记录
+`repository_dirty=true`，只作开发证据。安全接口和业务非干预子门通过；性能门和有效
+treatment 门失败。A2 不准入，A3/A4 与 seeds 1101/1102 继续停止。

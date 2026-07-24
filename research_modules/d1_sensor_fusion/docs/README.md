@@ -10,8 +10,12 @@ fixed-lag OOSM 共同质心事件和 D2 概率/多假设消费三条路线。A1 
 `IMPLEMENTED_UNIT_TESTED_OFFLINE_PROTOTYPE`：共同质心只作用于 detached 发布 DTO，拒绝
 装配直接返回规范业务序列，不修改 state/covariance、历史、checkpoint 或 replay cache。
 聚焦测试 `7 passed`，D1 全量 `294 passed`。A1 未接 `FusionAdapter`，没有修改 `fusion.py`
-或新增运行开关，其 experimental decision 不是在线 schema。A2 冻结扫描 shadow、A3 匿名
-treatment 发现和 A4 多 seed 确认均未实现。B 因当前 `Q(h)=G(h)qG(h)^T` 的单段/分段传播
+或新增 D1 默认运行开关，其 experimental decision 不是在线 schema。D1 后续完成准备对象
+优化，聚焦 `21 passed`、D1 全量 `308 passed in 19.69s`。main 提交 `2b976a7` 已在独立、
+默认关闭的 A2 审计 shadow 中显式接入该对象：3294/3294 条归一化业务记录与 control 一致，
+禁止写入、错误和 D2/D3 消费为 0；但总墙钟增加 `80.8829%`，shadow P95
+`1532.999 ms`，46 条 evidence 为 0 accepted/46 `oosm_scan` rejected。A2 因性能门和有效
+treatment 门失败而不准入；A3/A4 未实现。B 因当前 `Q(h)=G(h)qG(h)^T` 的单段/分段传播
 不等价而暂缓；C 保留为 D2 后续主要系统研究路线。seeds 1101/1102 继续停止。
 
 最新 D1 边界诊断复用 governed replay、扫描组织器和在线批融合入口，对同步平衡、乱序平衡和
@@ -123,7 +127,7 @@ D1 侧解释见本目录各算法/AirSim 文档和 `../reports/EXPERIMENT_REPORT
 
 ## 文档
 
-- `STRUCTURAL_AMBIGUITY_NEXT_CANDIDATE_DESIGN_CN.md`：结构歧义 A/B/C 下一候选比较、数学语义、数据结构、排序键、风险、阶段和预注册验收；A1 离线纯函数与准备对象优化已完成单元测试，main A2 开发接线未通过性能门，A3/A4 未实现。
+- `STRUCTURAL_AMBIGUITY_NEXT_CANDIDATE_DESIGN_CN.md`：结构歧义 A/B/C 下一候选比较、数学语义、数据结构、排序键、风险、阶段和预注册验收；A1 离线纯函数与准备对象优化已完成单元测试，main A2 已显式接线但性能门和有效 treatment 门失败，A3/A4 未实现。
 - `ALGORITHM_AND_IMPLEMENTATION.md`：算法原理、数学模型、接口、调参、仿真验证、主动降级不确定度信号和跨模块关系。
 - `AIRSIM_INTEGRATION_PLAN.md`：AirSim/离线回放集成计划，说明时间戳、坐标和传感器桥接策略。
 - `MODULE_PRINCIPLES_CN.md`：中文模块原理、已实现边界和当前证据解释。

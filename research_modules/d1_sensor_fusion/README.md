@@ -36,12 +36,21 @@ Offline research module for radar, acoustic, EO, and optional synthetic lidar he
 - 准备对象不可改写；数组和嵌套 metadata 原地变化，以及其余规范表面的修改均被强摘要发现；
   输入失配、OOSM、数量不平衡、重复代和倒退代继续 fail closed。
 
-main 提供的 200v200、seed 1100、2.2 s、`recon_count=2` 开发复跑包含 46 条 evidence 和 9 次
-A2 shadow 评估，当前为 0 accepted、46 rejected，D1/D2/D3 终态与 hold control 相同。
-shadow 阶段 P95 约 `2216 ms`，总实时倍率从约 `0.205` 降至 `0.094`，未通过设计中的
-P95 `+5%` 门。该批全部拒绝，旧装配函数本来就不会在拒绝路径再次描述航迹，因此本次 D1
-优化不能被写成该性能缺口已关闭。main 仍需采用新接口重跑并拆分其规范化、前后禁止写入摘要
-和 D1 准备成本；A2 尚未晋级，seeds 1101/1102 继续停止。
+main 已在提交 `2b976a7` 显式接入准备对象，并对 200v200、seed 1100、2.2 s、
+`recon_count=2` 完成 control/shadow 成对开发复跑。9/9 次评估都记录
+`explicit_prepared_handle_used=true` 且完整性校验通过；46 条 evidence 全部以
+`oosm_scan` 拒绝，0 accepted/46 rejected。过滤 9 条专属审计记录并按既有跨构建规则归一化
+不透明计划编号和总线序号后，3294/3294 条业务记录逐条一致，归一化 SHA-256 同为
+`bb7eabca...c3855a2`。真值 NPZ、离线真值标签和 proximity 文件也分别一致；D1/D2/D3
+终态均为 `202/201/186`，错误、禁止写入、D2/D3 消费和在线 truth 使用均为 0。
+
+control/shadow 墙钟为 `10.712171729/19.376483415 s`，开销 `+80.8829%`，RTF 为
+`0.205374/0.113540`。shadow 总阶段 P95 为 `1532.999 ms`；阶段均值中，禁止写入前摘要、
+prepare、evaluate、禁止写入后摘要分别为 `224.461/345.095/195.421/207.312 ms`，装配和
+日志仅为 `0.00247/0.0973 ms`。最大审计载荷 `11,275,939 bytes`，generation 水位
+`8/1024`。安全接口接入成立，但性能门明显失败，且没有 accepted treatment 可评估有效性。
+两份 manifest 均记录 `repository_dirty=true`，本批只作开发证据。A2 不准入，A3/A4 与
+seeds 1101/1102 继续停止。
 
 ### 第十八阶段：A1 publication overlay 纯函数原型
 
@@ -79,10 +88,11 @@ lineage/source support、identity、质量及其 metadata 不变。原型按动�
   同代幂等、倒退代、摘要冲突、组件冲突、容量拒绝、状态有界、输入数组与 metadata 不变以及
   `global_track_id` 原样保留。
 
-这些结果只证明 A1 纯函数和 DTO 装配合同的模块单元行为。main 已开始默认关闭、审计专用的
-A2 shadow 开发接线，但首轮真实 200v200 开发复跑未通过 P95 门；A3 新匿名冻结扫描
-treatment 发现和 A4 预注册多 seed 确认均未实现。当前没有 AirSim、D2/D3 业务消费、系统
-收益或候选晋级证据。seeds 1101/1102 继续停止。
+这些结果只证明 A1 纯函数和 DTO 装配合同的模块单元行为。main 已完成默认关闭、审计专用的
+A2 shadow 显式准备对象接线；seed 1100 开发复跑证明业务非干预和安全审计成立，但未通过
+性能门，且零 accepted treatment，A2 不准入。A3 新匿名冻结扫描 treatment 发现和 A4
+预注册多 seed 确认均未开始。当前没有 AirSim、D2/D3 业务消费、系统收益或候选晋级证据。
+seeds 1101/1102 继续停止。
 
 ### 第十六阶段：身份中性共同质心状态修正候选
 

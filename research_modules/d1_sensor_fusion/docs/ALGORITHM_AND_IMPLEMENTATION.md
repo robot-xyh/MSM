@@ -54,8 +54,20 @@ assemble 各进行一次完整载荷摘要复核；复核遍历 metadata，但�
 提交 `de73cb2` 基线一致。200 航迹嵌套只读 metadata 固定夹具在 prepare/evaluate/assemble
 全链路只触发一次 `_describe_tracks`，并实际形成 accepted shadow。数组、嵌套 metadata、
 covariance、source support、identity、全局编号、时间戳和分级修改均阻断复用。该工作量断言
-不依赖机器墙钟。main 首轮 A2 200v200 开发复跑的 P95 约 `2216 ms`，尚未通过 `+5%` 门；
-该接口需由 main 接入并重新拆分计时后才能判断系统收益。
+不依赖机器墙钟。
+
+main 提交 `2b976a7` 已把上述三步接口接入默认关闭审计 shadow。seed 1100、200v200、2.2 s、
+`recon_count=2` 共执行 9 次 evaluation，9/9 次记录显式准备对象和内容完整性匹配。46 条
+evidence 均因 `oosm_scan` 被拒绝，assembly 直接返回原序列，因此装配均值只有
+`0.00247 ms`。过滤专属审计记录并按既有跨构建规则归一化计划编号和总线序号后，
+3294/3294 条业务记录逐条一致；禁止写入审计、错误、D2/D3 消费和在线 truth 使用均为 0。
+
+当前开销主要来自完整安全审计和准备/复核：before digest、prepare、evaluate、after digest
+均值为 `224.461/345.095/195.421/207.312 ms`。shadow 总 P95 `1532.999 ms`，
+control/shadow 墙钟 `10.712171729/19.376483415 s`，增加 `80.8829%`；RTF
+`0.205374/0.113540`。最大载荷 `11,275,939 bytes`，水位 `8/1024`。安全接口接入成立，
+性能门失败；0 accepted 也使 treatment 有效性门失败。两组 manifest 均为 dirty 开发口径。
+A2 不准入，不进入 A3/A4，也不运行 seeds 1101/1102。
 
 ### 结构歧义 A1 publication overlay 原型
 
@@ -98,8 +110,9 @@ B 路线把共同质心放入 fixed-lag measurement-time 历史。当前
 byte-identical、generation 幂等/倒退/摘要冲突、冲突组件、容量和输入不变；D1 全量
 当时为 `294 passed`。该结果只证明 A1 离线纯函数原型，不代表 A2 shadow、在线/AirSim 接线、P95、
 系统效果或晋级。A1 没有接入 `FusionAdapter.process()`/`process_scan_batch()`，没有修改
-`fusion.py` 或新增运行开关；experimental decision schema 不是当前在线 schema。main 的 A2
-开发接线尚未通过性能门，A3/A4 未实现，seeds 1101/1102 继续停止。
+`fusion.py` 或新增 D1 默认运行开关；experimental decision schema 不是当前在线 schema。
+main 已用独立、默认关闭的审计 shadow 完成 A2 接线，但性能门和有效 treatment 门未通过。
+A3/A4 未实现，seeds 1101/1102 继续停止。
 
 ### 结构歧义证据侧车实验候选 v3
 

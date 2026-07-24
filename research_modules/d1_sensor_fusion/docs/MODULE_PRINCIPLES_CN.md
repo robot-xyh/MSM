@@ -23,9 +23,19 @@ NumPy 值，避免 `deepcopy(MappingProxyType)` 抛错后由 main 回退。复�
 
 聚焦测试为 `21 passed`，D1 全量为 `308 passed in 19.69s`。2/3/5 成员 decision 与 A1
 提交基线逐字节一致；200 航迹只读 metadata 固定夹具验证一次完整描述、两次完整载荷摘要
-复核、接受装配、ID/速度/相对位置保持、协方差不收缩和准备对象不可改写。main 提供的首轮
-200v200 A2 开发复跑仍因 P95 约 `2216 ms` 未通过 `+5%` 门；本次 D1 单测不构成 A2 性能
-通过证据。
+复核、接受装配、ID/速度/相对位置保持、协方差不收缩和准备对象不可改写。
+
+main 已在提交 `2b976a7` 的默认关闭审计 shadow 中显式使用准备对象。seed 1100、200v200、
+2.2 s、`recon_count=2` 的 9 次评估均通过 prepared handle 完整性校验；46 条 evidence 全部
+以 `oosm_scan` 拒绝。审计旁路过滤并归一化不透明计划编号和总线序号后，3294 条业务记录与
+control 逐条一致；真值 NPZ 和离线 truth/proximity 文件一致，禁止写入、错误、D2/D3 消费及
+在线 truth 使用均为 0。该结果证明安全接线和业务非干预。
+
+性能仍不合格。control/shadow 墙钟为 `10.712171729/19.376483415 s`，增加 `80.8829%`；
+RTF 为 `0.205374/0.113540`，shadow 总 P95 为 `1532.999 ms`。before digest、prepare、
+evaluate、after digest 均值分别为 `224.461/345.095/195.421/207.312 ms`。最大载荷
+`11,275,939 bytes`，水位 `8/1024`。全部决策拒绝也意味着没有有效 treatment 可评价。
+manifest 为 dirty 开发口径。A2 不准入，A3/A4 与 seeds 1101/1102 继续停止。
 
 ### A1 先以纯函数隔离发布副作用
 
@@ -48,8 +58,9 @@ generation 水位和候选审计保持有界幂等。
 
 2026-07-23 A1 基线聚焦测试 `7 passed`，当时 D1 全量 `294 passed`。A1 没有接
 `FusionAdapter.process()`/`process_scan_batch()`，没有修改 `fusion.py`、新增开关或改变默认
-路径；experimental decision 不是在线 schema。main 已开始 A2 默认关闭审计 shadow 开发，
-但首轮性能门未通过；A3 匿名 treatment 发现和 A4 多 seed 确认仍未实现。
+路径；experimental decision 不是在线 schema。main 已完成 A2 默认关闭审计 shadow 的显式
+准备对象接线，但性能门和有效 treatment 门未通过；A3 匿名 treatment 发现和 A4 多 seed
+确认仍未实现。
 
 固定滞后共同质心事件暂缓，直至事件总排序、过程噪声分段和一致性门槛冻结。系统长期路线保留
 D1 证据侧车、由 D2 在有界窗口内研究概率/多假设消费。三条路线均不改双时间戳、满基数门、
@@ -1222,7 +1233,7 @@ NumPy EKF/固定滞后路径；第三方后端不可执行时必须输出 `unava
 | 侦察粗指向摘要 | 已实现 | 辅助调用 | 不参与默认 EKF 更新 |
 | 多观察者方位 WLS | 已实现数值助手 | 否 | 需 D2 先确认规范身份 |
 | CI 航迹融合 | 已实现数值助手 | 否 | 未接真实多节点 runtime |
-| A1 publication overlay | `IMPLEMENTED_UNIT_TESTED_OFFLINE_PROTOTYPE`；准备对象优化 `IMPLEMENTED_UNIT_TESTED_OFFLINE_OPTIMIZATION` | 否 | 独立纯函数、一次性完整描述和 shadow DTO 装配 helper；未接 FusionAdapter，不是在线 schema；main A2 未通过性能门，A3/A4 未实现 |
+| A1 publication overlay | `IMPLEMENTED_UNIT_TESTED_OFFLINE_PROTOTYPE`；准备对象优化 `IMPLEMENTED_UNIT_TESTED_OFFLINE_OPTIMIZATION` | 否 | 独立纯函数、一次性完整描述和 shadow DTO 装配 helper；未接 FusionAdapter，不是在线 schema；main A2 显式接线的性能门和有效 treatment 门失败，A3/A4 未实现 |
 | 受治理 JSONL/CSV 回放 | 已实现 | main 已消费 | 旧日志兼容路径不等价于严格合同 |
 | 无迹卡尔曼滤波器（Unscented Kalman Filter，UKF） | 未实现 | 否 | 只有计划项 |
 | 交互多模型（Interacting Multiple Model，IMM） | 未实现 | 否 | 常加速度（Constant Acceleration，CA）和协调转弯（Coordinated Turn，CT）模型集也未接入 |

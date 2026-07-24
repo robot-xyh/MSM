@@ -24,13 +24,19 @@ evaluate 和 assemble 各执行一次完整载荷强摘要复核，合计 400 �
 次数，不使用机器相关墙钟阈值。数组原地变化、嵌套 metadata 原地变化及 covariance、
 source support、identity、全局编号、时间戳和分级变化均拒绝复用。
 
-main 的 A2 默认关闭审计 shadow 仍处开发验收阶段。main 提供的 200v200、seed 1100、
-2.2 s、`recon_count=2` 开发证据为 46 条 evidence、9 次评估、0 accepted/46 rejected；
-状态有限、在线 truth 使用为 0，D1/D2/D3 终态与 hold control 相同，但 shadow P95 约
-`2216 ms`，总实时倍率约 `0.205 -> 0.094`，未通过 P95 `+5%` 门。由于本批没有 accepted，
-旧 assembly 本来就不会重复 `_describe_tracks`，本次模块优化不能替代 main 复跑。下一步由
-main 接入准备对象，分别计量规范化、禁止写入前后摘要、D1 prepare/evaluate/assemble 和日志
-物化；A2 未通过前不进入 A3/A4，也不运行 seeds 1101/1102。
+main 已在提交 `2b976a7` 完成 A2 默认关闭审计 shadow 的显式准备对象接线和 seed 1100
+成对开发复跑。场景为 200v200、2.2 s、`recon_count=2`；9/9 次评估使用准备对象且完整性
+校验通过。46 条 evidence 全部以 `oosm_scan` 拒绝，0 accepted/46 rejected。过滤审计旁路并
+归一化不透明编号和总线序号后，3294/3294 条业务记录逐条一致；真值 NPZ 与两份离线 truth
+文件一致，D1/D2/D3 终态均为 `202/201/186`，错误、禁止写入、下游消费和在线 truth 使用为 0。
+
+性能门未通过：control/shadow 墙钟 `10.712171729/19.376483415 s`，增加 `80.8829%`；
+RTF `0.205374/0.113540`，shadow 总阶段 P95 `1532.999 ms`。禁止写入前摘要、prepare、
+evaluate、禁止写入后摘要的均值分别为 `224.461/345.095/195.421/207.312 ms`。最大载荷
+`11,275,939 bytes`，水位 `8/1024`；装配均值仅 `0.00247 ms`，反映本批全拒绝并直接返回原
+序列。两份 manifest 为 `repository_dirty=true`。A2 的安全和业务非干预子门通过，但性能门
+与有效 treatment 门均失败，因此 A2 不准入。下一步不是继续扩大 seed，而是保留停止结论；
+A3/A4 和 seeds 1101/1102 继续停止。
 
 ## 结构歧义 A1 原型完成状态（2026-07-23）
 
@@ -59,11 +65,10 @@ lineage/source support、质量和 identity 状态不变。overlay/event 不生�
 
 2026-07-23 的 A1 聚焦测试为 `7 passed`，覆盖 2/3/5 成员接受、拒绝透传、全排列确定性、
 generation 幂等/倒退/摘要冲突、冲突组件、硬容量、状态有界、truth/非有限输入隔离及输入不变；
-D1 全量为 `294 passed`。后续状态由上一节 2026-07-23 增量更新：A2 已有 main-owned
-开发接线，但性能门未通过；执行顺序仍为 A2 离线发布 shadow 验收 -> A3 新匿名冻结扫描
-treatment 发现 -> A4 预注册未见 seed 确认。A2 必须记录规范快照、shadow DTO 和全部禁止
-写入对象摘要，并证明业务输出不变及性能合格。seeds 1101/1102 继续停止，不得以放宽 OOSM、
-满基数、形状或身份门制造 treatment。
+D1 全量为 `294 passed`。后续状态由上一节 2026-07-23 增量更新：A2 main-owned 显式准备
+对象接线、规范快照和禁止写入摘要审计已经完成，业务输出等价，但性能与有效 treatment 门
+失败，A2 不准入。A3 新匿名冻结扫描 treatment 发现和 A4 预注册未见 seed 确认不启动。
+seeds 1101/1102 继续停止，不得以放宽 OOSM、满基数、形状或身份门制造 treatment。
 
 ## 共同质心冻结扫描边界诊断完成状态（2026-07-23）
 
@@ -94,10 +99,10 @@ replace 清除旧临时修正。该替换把控制臂的分段预测发布态换
 `candidate_not_promoted`。
 
 该诊断之后的执行顺序已由上节下一候选设计收紧：不直接恢复 hold+现有历史替换候选的系统
-A/B。A1 已在纯函数单元范围验证 publication overlay 的拒绝路径 bitwise 隔离；只有 A2
-冻结扫描 shadow 通过后，才使用新的匿名冻结扫描检查同步平衡分量是否自然出现。仍需覆盖未见 seed、多 seed、均方根误差、
-归一化估计误差平方、归一化创新平方、D2/D3 可用性、P95 和长时内存/吞吐。若真实输入继续
-只有 OOSM 或数量不平衡分量，应保留零 treatment 结论，不能放宽门限制造处理。
+A/B。A1 已在纯函数单元范围验证 publication overlay 的拒绝路径 bitwise 隔离；main 已执行
+A2 冻结扫描 shadow，但性能门和有效 treatment 门失败，因此停止新的匿名冻结扫描、未见
+seed 和多 seed 扩展。若未来提出新候选，均方根误差、归一化估计误差平方、归一化创新平方、
+D2/D3 可用性、P95 和长时内存/吞吐必须重新预注册。不得放宽 OOSM 或数量门制造处理。
 
 ## 结构歧义证据侧车候选验收结论（2026-07-23）
 

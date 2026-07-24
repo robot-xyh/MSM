@@ -20,10 +20,18 @@
   200 航迹只读 metadata 固定夹具完成一次描述、两次完整载荷复核和 accepted 装配。state、
   covariance、嵌套 metadata、source support、identity、全局编号、时间戳和分级修改均阻断
   复用。
-- main 提供的首轮 200v200 A2 开发复跑为 46 evidence、9 evaluations、0 accepted，
-  shadow P95 约 `2216 ms`，RTF 约 `0.205 -> 0.094`，未通过 `+5%` 门。该批拒绝路径本来
-  就不做第二次描述，因此 D1 单测优化不能写成 A2 性能关闭。main 需接新接口后重跑并拆分
-  规范化、禁止写入摘要、prepare/evaluate/assemble 和日志物化成本。
+- main 已在提交 `2b976a7` 显式接入准备对象，并完成 seed 1100、200v200、2.2 s、
+  `recon_count=2` 成对开发复跑。9/9 次评估均使用 prepared handle 且完整性校验通过；
+  46 evidence 全部以 `oosm_scan` 拒绝。过滤 9 条专属审计记录并归一化不透明计划编号和总线
+  序号后，3294/3294 条业务记录逐条一致，归一化 SHA-256 同为
+  `bb7eabca...c3855a2`；真值 NPZ、离线 truth labels 和 proximity 文件也一致。
+- control/shadow 墙钟 `10.712171729/19.376483415 s`，开销 `+80.8829%`，RTF
+  `0.205374/0.113540`，shadow 总 P95 `1532.999 ms`。阶段均值
+  before/prepare/evaluate/after/assemble/log 为
+  `224.461/345.095/195.421/207.312/0.00247/0.0973 ms`。最大载荷
+  `11,275,939 bytes`，水位 `8/1024`；错误、禁止写入、D2/D3 消费和在线 truth 均为 0。
+  业务非干预通过，但性能门和有效 treatment 门失败；manifest 为 dirty 开发口径。A2
+  不准入，A3/A4 与 seeds 1101/1102 继续停止。
 
 ## 0.1 结构歧义 A1 原型状态（2026-07-23）
 
@@ -37,9 +45,9 @@
 - 聚焦测试 `7 passed`，覆盖同步平衡 2/3/5 成员、拒绝透传、成员/观测/边/组件全排列、
   generation 幂等/倒退/摘要冲突、冲突组件、硬容量、非有限/身份输入和输入不变；D1 全量
   `294 passed`。
-- A1 未接 `FusionAdapter.process()`/`process_scan_batch()`，没有修改 `fusion.py` 或新增
-  运行开关；experimental decision 不是当前在线 schema。main 的 A2 开发接线尚未通过性能
-  门，A3/A4 未实现。
+- A1 未接 `FusionAdapter.process()`/`process_scan_batch()`，没有修改 `fusion.py`；其
+  experimental decision 不是当前在线 schema。main 已通过独立、默认关闭审计 shadow 接入
+  A2，但性能门和有效 treatment 门均未通过，A3/A4 未实现。
 - B 路线暂缓。当前 `Q(h)=G(h)qG(h)^T` 不满足单段/分段传播半群等价，插入零更新事件也会
   改变协方差分段。事件排序、过程噪声分段、NEES/NIS/RMSE oracle 未冻结前不得接在线路径。
 - C 路线保留为主要系统研究方向：D1 只发布既有结构 evidence，D2 后续在有界窗口中规划概率
@@ -113,10 +121,9 @@
   10 条未映射航迹。首个计划后控制反馈使传感器流分叉，因此该结果是单 seed 闭环系统效果
   对照，不是完全冻结输入的上游因果证明。
 - 下一步不直接恢复现有 replay/replace 候选的系统 A/B。A1 纯函数原型和 D1 准备对象优化已
-  完成；main 的 A2 默认关闭审计 shadow 需采用新接口重跑，并验证业务输出、P95/RSS。
-  通过后才进入 A3 新匿名 treatment 发现和 A4 预注册确认。不得通过忽略 OOSM 或放宽数量门
-  制造 treatment。晋级仍须满足 IDSW、连续性恢复、RMSE/NEES/NIS、D2/D3 可用性、P95 和
-  长时内存/吞吐门槛。
+  完成；main 的 A2 默认关闭审计 shadow 已使用新接口复跑，业务非干预通过，但性能门和有效
+  treatment 门失败。当前按停止条件不进入 A3 新匿名 treatment 发现和 A4 预注册确认。
+  不得通过忽略 OOSM 或放宽数量门制造 treatment；seeds 1101/1102 继续停止。
 
 ## 0.3 结构歧义侧车基础阶段状态（2026-07-23）
 
