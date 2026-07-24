@@ -21,8 +21,17 @@ accepted、rejected 和 atomic failure 使用不同规则。accepted 必须物�
 历史记录缺少 atomic 字段时，相关工作量、物化数和失败数为 unavailable。只有实际存在 atomic
 记录时，显式记录的零工作量才可作为数值零参与聚合。2026-07-24 的测试覆盖 legacy、atomic
 accepted/rejected/failure、字段缺失、结构混用和输入不变性。专项 `25 passed`，D6 全量
-`637 passed, 1 warning`。真实 seed 1100 的 9 条旧 prepared-handle 记录兼容读取；当前没有真实
-atomic episode，性能和效果结论保持不变。
+`637 passed, 1 warning`。真实 seed 1100 的 9 条旧 prepared-handle 记录兼容读取。
+
+clean commit `7cc2d0c` 的同 seed 原子 pair 提供了首个真实 rejected-only 正例。9 条记录均完成
+一次 canonical 描述和一次 post-integrity 复核，累计摘要航迹数均为 1813；完整性通过 9/9，
+atomic failure 和 shadow materialized 均为 0。由于 46 个 decision 全部被拒绝，shadow 三项
+工作量为显式零。这些零值来自 atomic 记录，不是缺失回填。正式输入编号、禁止表面、下游消费和
+在线真值均无违规，业务非干预通过。
+
+该 clean 证据只覆盖 rejected-only。墙钟相对开销为 `0.8117989190825889`，性能门失败；accepted
+treatment 和 outcome evidence 仍不可用。真实 accepted 路径和真实 atomic failure 路径仍需单独
+episode 验证，不能由确定性 fixture 或 rejected-only 记录代替。
 
 ## D1 质心发布影子旁路的评估边界（2026-07-23）
 

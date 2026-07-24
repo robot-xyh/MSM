@@ -56,8 +56,19 @@ failure 进入 D6 failure reasons，但不会触发任何在线状态变化。
 
 2026-07-24 的确定性专项为 `25 passed`，D6 全量为
 `637 passed, 1 warning in 21.89s`。另外只读解析 seed 1100 历史文件，9/9 记录识别为 legacy
-prepared handle，9/9 integrity passed。尚无真实 atomic episode，本算法段只说明 consumer
-合同和测试证据。
+prepared handle，9/9 integrity passed。
+
+main 在 clean commit `7cc2d0c` 生成的 atomic rejected-only pair 已由同一入口读取。解析结果为
+atomic publication 9、integrity evaluable/passed/failed=`9/9/0`、atomic failure 0、materialized
+0。canonical description 和 post-integrity 均执行 9 pass，各覆盖 1813 条航迹摘要；shadow
+copy/full digest/publication digest 均为 0。D6 复算的业务非干预为 true，failure reasons 为空。
+
+配对接口得到 control/shadow 墙钟
+`10.735151270986535/19.449935468961485 s` 和相对开销
+`0.8117989190825889`。记录分位 P50/P95/max 为
+`1024.8383930302225/1536.4285601885058/1549.4359389995225 ms`，并与阶段时序一致。性能门失败，
+accepted treatment 为 0，准入 blockers 为性能失败、无有效处理和无 outcome evidence。当前实际
+输入覆盖了正常 rejected 路径；accepted 与 atomic failure 仍只有接口测试。
 
 ## D1 质心发布影子旁路只读算法（2026-07-23）
 

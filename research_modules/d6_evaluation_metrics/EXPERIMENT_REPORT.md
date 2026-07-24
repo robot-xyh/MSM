@@ -18,18 +18,70 @@ D6 没有启动 main 或 AirSim，也没有修改 D1 控制状态。
 | 失败 | 0 |
 | warning | 1 条既有 Matplotlib `Axes3D` 环境提示 |
 | 历史 seed 1100 prepared 记录 | 9/9 可读，9/9 integrity passed |
-| 真实 atomic episode | 未提供 |
+| 真实 atomic episode | clean seed 1100 rejected-only pair |
 
 历史无 atomic 字段时，atomic failure 和工作量保持 unavailable。atomic rejected fixture 明确记录
 shadow 复制、完整摘要和发布摘要均为 0；该零值来自原子记录本身，不是缺失回填。完整性失败 fixture
 允许保留临时 shadow 工作计数，但最终 `accepted_count=0`、`shadow_materialized=false` 且 shadow
 摘要为空，D6 同时报告 integrity failure 和 atomic failure。
 
+### Clean 原子记录
+
+真实复核输入为：
+
+- control：`/tmp/msm_d1_overlay_atomic_seed1100_control_20260724_v2`
+- shadow：`/tmp/msm_d1_overlay_atomic_seed1100_shadow_20260724_v2`
+- commit：`7cc2d0cfd598a72d60c6ba8c7d4a283f4e5a897d`
+- repository dirty：false
+- 场景：200 个目标、200 个资源、2 个侦察节点、2.2 s、seed 1100
+- 两臂 config SHA-256：
+  `20ef5248c8b45ff5aced9080c8d47e65a43aaba54f18ce824dc50fac7a52b840`
+
+两臂的 `scenario_config.json`、离线真值状态、离线真值标签和离线接近事件逐字节一致。
+runtime profile 摘要不同，对应 control 与 atomic-shadow 的预期功能开关差异。
+
+| 原子审计指标 | 结果 |
+| --- | ---: |
+| atomic publication | 9 |
+| integrity evaluable / passed / failed | 9 / 9 / 0 |
+| canonical description pass / track digest | 9 / 1813 |
+| post-integrity pass / track digest | 9 / 1813 |
+| accepted / rejected / error | 0 / 46 / 0 |
+| rejection reason | `oosm_scan`: 46 |
+| atomic failure / shadow materialized | 0 / 0 |
+| shadow copy / full digest / publication digest | 0 / 0 / 0 |
+| `global_track_id` unchanged / changed | 9 / 0 |
+| forbidden mutation / surface violation | 0 / 0 |
+| D2 / D3 consumption | 0 / 0 |
+| online truth use | 0 |
+| watermark current / peak / capacity | 8 / 8 / 1024 |
+| payload peak | 11,275,939 B |
+| business nonintervention | true |
+| evidence failures | `[]` |
+
+普通 rejected 原子记录没有 materialized shadow，三项 shadow 工作量均为 0。该数值由 9 条真实
+atomic 记录明确给出，因此可作为可用零值。D6 没有从缺失字段回填。
+
+### Clean 配对性能
+
+| 指标 | 结果 |
+| --- | ---: |
+| control wall time | 10.735151270986535 s |
+| atomic-shadow wall time | 19.449935468961485 s |
+| relative overhead | 0.8117989190825889 |
+| evaluation P50 / P95 / max | 1024.8383930302225 / 1536.4285601885058 / 1549.4359389995225 ms |
+| stage timing cross-check | 一致 |
+| performance gate | false |
+| accepted treatment | 0 |
+| overall admitted | false |
+| admission blockers | performance failed / no treatment / no outcome evidence |
+
 ### 结论
 
-D6 consumer 已兼容 main 拟接入的原子摘要结构，并保留历史 prepared-handle v1。当前验证属于
-确定性接口和失败关闭测试。main 尚未生成真实 atomic episode，A2 的性能门、有效 treatment 和
-结果效果仍按 2026-07-23 结论保持开放。
+D6 consumer 已兼容原子摘要结构，并完成首个 clean rejected-only episode 复核。业务非干预通过，
+说明该旁路在本次输入中没有污染正式链。性能相对开销为 81.18%，未通过 `+5%` 门；46 个 decision
+全部被拒绝，没有 treatment 和结果效果证据。真实 accepted 与 atomic failure episode 尚未提供，
+`overall_admitted=false`。
 
 ## 2.25 D1 质心发布影子旁路复核
 

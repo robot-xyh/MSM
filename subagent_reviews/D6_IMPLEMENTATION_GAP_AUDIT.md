@@ -16,15 +16,22 @@
 5. 2026-07-24 专项 `25 passed`，D6 全量
    `637 passed, 1 warning in 21.89s`。seed 1100 的 9 条历史 prepared-handle 记录全部兼容读取，
    9/9 integrity passed。
+6. clean commit `7cc2d0c` 的 seed 1100、200 对 200、2.2 s atomic rejected-only pair 已由
+   D6 从原始制品复核。9/9 integrity passed，atomic failure/materialized 为 `0/0`，
+   accepted/rejected/error 为 `0/46/0`，业务非干预通过，evidence failures 为空。
 
 ### 仍开放 P1
 
-1. main 尚未提供真实 atomic mode episode。D6 当前只证明 consumer 合同，尚未验证真实 atomic
-   accepted、rejected 和 failure 分布。
-2. A2 的 clean/frozen 多 seed 性能门、有效 accepted treatment 和独立 outcome effect 仍未闭合。
-   本轮 D6 兼容改动不能关闭这些上游和系统级 P1。
+1. 真实 atomic rejected 路径已提供；accepted 和 atomic failure 仍只有确定性 fixture，没有
+   clean 实际 episode。
+2. clean 单 seed control/shadow 墙钟为
+   `10.735151270986535/19.449935468961485 s`，相对开销
+   `0.8117989190825889`，仍远高于 `+5%` 性能门。
+3. accepted treatment 为 0，独立 outcome effect 不可用，overall admission 保持 false。
+4. 当前只有一个 clean seed。多 seed 性能稳定性、有效处理和结果效果仍未闭合。
 
-当前无新增 P0。D6-owned 的原子载荷兼容缺口已关闭，真实生产端证据保持 P1。
+当前无新增 P0。D6-owned 原子载荷兼容和真实 rejected-only 消费缺口已关闭；accepted/failure
+实际路径、性能、处理效果和多 seed 证据保持 P1。
 
 ## 2026-07-23 D1 质心发布影子旁路 GAP 更新
 

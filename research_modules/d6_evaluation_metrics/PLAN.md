@@ -16,13 +16,21 @@
 - [x] 2026-07-24 专项 `25 passed`，D6 全量
   `637 passed, 1 warning in 21.89s`；seed 1100 的 9 条历史 prepared-handle 记录完成只读兼容
   复核，9/9 完整性检查通过。
+- [x] clean commit `7cc2d0c` 的 seed 1100、200 对 200、2.2 s control/atomic-shadow pair 已由
+  D6 从原始文件独立复核。9/9 atomic integrity 通过，atomic failure/materialized 为 `0/0`，
+  accepted/rejected/error 为 `0/46/0`，业务非干预通过且 evidence failures 为空。
+- [x] clean pair 的 control/shadow 墙钟为
+  `10.735151270986535/19.449935468961485 s`，相对开销
+  `0.8117989190825889`；P50/P95/max 为
+  `1024.8383930302225/1536.4285601885058/1549.4359389995225 ms`。性能门和 overall admission
+  均为 false。
 
 ### 后续验证
 
-- [ ] main 按显式 atomic mode 和精确 `canonical_preparation` 结构生成至少一个 rejected、一个
-  accepted、一个 fail-closed episode 后，D6 只读复核真实工作量和 failure 分布。
-- [ ] 原子入口仍需由 main 在 clean/frozen 同输入 pair 上重跑性能门。当前只完成 D6 consumer
-  单测，不能据此声称 A2 的 `+5%` 性能门、有效 treatment 或 overall admission 已通过。
+- [ ] rejected-only 真实输入已提供；main 仍需分别生成至少一个 accepted 和一个 atomic
+  fail-closed clean episode，供 D6 复核 shadow 物化、临时工作量和 failure 分布。
+- [ ] 在 clean/frozen 同输入多 seed pair 上继续优化和复测。当前单 seed 相对开销
+  `81.18%`，未通过 `+5%` 门，且没有有效 treatment 或 outcome evidence。
 - [ ] A3/A4 与后续 seed 仍服从 main/D1 的准入顺序；D6 不使用本次兼容接口改变实验调度。
 
 `AIRSIM_INTEGRATION_PLAN.md` 已检查。本轮只扩展可扩展三维离线日志的读取与审计，不改变 AirSim

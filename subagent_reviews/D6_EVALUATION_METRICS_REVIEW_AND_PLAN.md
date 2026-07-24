@@ -14,12 +14,20 @@ accepted 必须物化 detached shadow，普通 rejected 的 shadow 工作必须�
 
 2026-07-24 专项 `25 passed`，D6 全量
 `637 passed, 1 warning in 21.89s`。seed 1100 的 9 条既有 prepared-handle 记录均可读且完整性
-检查通过。尚无真实 atomic episode，因此本轮不改变 `performance_gate=false`、
-`overall_admitted=false` 和零 accepted treatment 的既有结论。D6 仍无控制权限。
+检查通过。
 
-后续由 main 按精确 atomic payload 产生 clean/frozen 输入，至少覆盖正常 rejected、accepted 和
-fail-closed 三类 episode。D6 再只读核对工作量、failure 分布、业务非干预与配对性能。当前无新增
-P0；consumer 兼容已关闭，真实原子运行证据和 A2 准入保持 P1。
+clean commit `7cc2d0c` 的 seed 1100 atomic pair 已提供正常 rejected 实际路径。9 条 atomic 记录
+全部通过 integrity，canonical description/post-integrity pass 为 `9/9`，两者均覆盖 1813 条航迹
+摘要；atomic failure/materialized 和三项 shadow 工作量均为 0。46 个 decision 全部为
+`oosm_scan` rejected。编号、禁止表面、D2/D3 消费和在线真值均无违规，业务非干预通过，evidence
+failures 为空。
+
+control/shadow 墙钟为 `10.735151270986535/19.449935468961485 s`，相对开销
+`0.8117989190825889`；P50/P95/max 为
+`1024.8383930302225/1536.4285601885058/1549.4359389995225 ms`。性能门失败，accepted treatment
+为 0，outcome evidence 不可用，overall admission 为 false。当前无新增 P0；真实 rejected-only
+消费已关闭。后续仍需 clean accepted、atomic fail-closed、多 seed 性能和结果效果证据。D6 保持
+只读且无控制权限。
 
 `AIRSIM_INTEGRATION_PLAN.md` 已检查。本轮未改变 AirSim 日志、检测、相机、reset、actor 或控制
 接口，因此不修改。`D6_M_TO_N_EVALUATION_FRAMEWORK_REVIEW.md` 也已检查；原子 D1 影子旁路不改变

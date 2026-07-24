@@ -17,9 +17,20 @@ accepted 为 0 且不暴露可用 shadow。缺字段、未知模式、摘要与�
 
 D6 只读取持久化日志，不向 D1、main、D2/D3 或控制链返回结果。2026-07-24 确定性专项
 `25 passed`，D6 全量 `637 passed, 1 warning in 21.89s`。既有 seed 1100 prepared-handle 文件的
-9 条记录均按 legacy 模式读取，9/9 完整性检查通过。当前尚无 main 生成的原子模式 episode，因此
-本轮只证明消费合同和失败关闭路径可运行，不证明 A2 性能门、有效 treatment 或准入通过。warning
-为既有 Matplotlib `Axes3D` 环境提示。
+9 条记录均按 legacy 模式读取，9/9 完整性检查通过。warning 为既有 Matplotlib `Axes3D` 环境提示。
+
+main 随后在 clean commit `7cc2d0cfd598a72d60c6ba8c7d4a283f4e5a897d` 完成 seed 1100、200 对
+200、2.2 s 的 control/atomic-shadow pair。D6 从原始总线、summary 和 v2 阶段时序独立复算：
+9 条 atomic 记录全部通过 post-integrity，累计覆盖 1813 条 canonical 航迹摘要；46 个 decision
+全部因 `oosm_scan` rejected，accepted/error/atomic failure/materialized 均为 0，shadow
+copy/full digest/publication digest 工作量均为 0。`global_track_id` 变化、禁止表面违规、D2/D3
+消费和在线真值使用均为 0，业务非干预通过，evidence failure 为空。
+
+control/shadow 墙钟为 `10.735151270986535/19.449935468961485 s`，相对开销
+`0.8117989190825889`。影子评估 P50/P95/max 为
+`1024.8383930302225/1536.4285601885058/1549.4359389995225 ms`。性能门失败；accepted treatment
+为 0，outcome evidence 不可用，`overall_admitted=false`。该 clean 单 seed 关闭了真实 atomic
+rejected-only 消费缺口；真实 accepted、真实 atomic failure、多 seed 性能和处理效果仍未提供。
 
 ## 2026-07-23 D1 质心发布影子旁路只读评估
 

@@ -4,7 +4,10 @@
 `MODULE_PRINCIPLES_CN.md`、`ALGORITHM_AND_IMPLEMENTATION.md`，确定性结果见根目录
 `../EXPERIMENT_REPORT.md` 2.26 节。D6 保留历史 uninstrumented/prepared-handle v1，同时仅在
 显式 atomic mode 下解释准备、操作后完整性、物化、工作量和失败摘要。专项 `25 passed`，D6 全量
-`637 passed, 1 warning`；当前没有真实 atomic episode，不能据此更新 A2 准入结论。
+`637 passed, 1 warning`。clean commit `7cc2d0c` 的 seed 1100 atomic rejected-only pair 已只读
+复核：9/9 integrity 通过、46/46 rejected、atomic failure/materialized 为 `0/0`，业务非干预
+通过；相对墙钟开销为 `0.8117989190825889`，性能门和 overall admission 仍为 false。真实
+accepted 和 atomic failure episode 尚未提供。
 
 2026-07-23 D1 质心发布影子旁路的评估原则和实现见
 `MODULE_PRINCIPLES_CN.md`、`ALGORITHM_AND_IMPLEMENTATION.md`，真实 seed 1100 开发期复核见根目录
