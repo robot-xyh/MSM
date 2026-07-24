@@ -59,6 +59,7 @@ main
 | D2 结构歧义保活策略 | `d2.ambiguity-hold-lease-policy.v1` | 租约时钟、年龄门限、软/硬截止、证据保留或失败关闭语义改变 |
 | D2 身份承诺 | `d2.identity-evidence-commitment.v2` | 承诺状态、恢复水位、阻断键、来源绑定或失败关闭语义改变 |
 | D3 身份承诺准入 | `d3_identity_commitment_admission_v1` | committed 集合、拒绝状态、旧绑定撤销、强制重规划或审计字段语义改变 |
+| main 身份承诺下游审计 | `scalable3d-identity-commitment-gate-audit-v1` | clean 配对条件、D3 强制升版、D5/D7 继续执行检查或算法晋级判定语义改变 |
 | D2 离线身份证据 | `d2.scalable3d_identity_evidence.v2` | 未承诺间隙、来源谱系、D1/D2 序号或承诺快照语义改变 |
 | D2 离线身份评估 | `d2.scalable3d_identity_evaluation.v2` | 承诺覆盖、ID Switch 锚点、未承诺状态或严格指标 availability 语义改变 |
 | D2 身份承诺审计 | `d2.scalable3d_identity_commitment_audit.v2` | 恢复原因、水位年龄、overflow 或绑定违规统计语义改变 |

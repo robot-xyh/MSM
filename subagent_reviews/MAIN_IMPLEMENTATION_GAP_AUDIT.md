@@ -25,12 +25,28 @@ main 专项与全量为 `34/157 passed`。
 AirSim 经典二维 D2 暂无 v2 承诺侧车。main-owned episode bus 只在该可信中心跟踪器边界生成
 逐航迹显式 committed 清单，并要求精确覆盖当前输入；普通适配器缺少清单时输出
 `identity_commitment_missing`，D3 仍拒绝。integrated point-mass 的旧中心 D2 适配器也显式
-声明来源。AirSim runtime、integrated point-mass 和跨模块合同分别为 `157/7/7 passed`。
+声明来源。AirSim runtime、integrated point-mass 和跨模块合同分别为 `158/7/7 passed`；
+新增一项 AirSim 部分承诺清单拒绝负例。
 
-该批关闭模块和总线合同安全门，不是 seed 1100 结构歧义算法晋级证据。本轮没有启动真实
-AirSim，也没有以新 D3 门重跑 clean seed 1100。P1 仍包括：同输入因果复验、真实 AirSim
-多 seed 承诺撤销时序、严格升版、stale plan 拒绝、D5/D7 零越权，以及经典 D2 后续改为消费
-真实承诺侧车。
+detached clean `7e15dac9cdaf6743999dfe045a70676fd31a17d6` 随后完成同输入
+seed 1100 复验。两臂均为 200 对 200、2.2 秒、2 个侦察节点；控制臂启用 source-key
+与结构歧义 hold，候选臂只增加身份中性质心。t=0.75 秒的 v1 计划包含 193 项分配；
+t=1.0 秒有 11 个原分配目标撤销承诺，D3 绕过迟滞强制发布 v2/186；t=2.0 秒发布
+v3/186。11 个目标在 v2 及后续 D3 计划、D5 主动视觉、D5 终端绑定和 D7 导引中的
+继续执行违规均为 0。main 运行时记录一次 binding hold 事件和 13 个 binding 撤回计数；
+该计数与 D3 的 11 个拒绝目标口径不同，未混写。
+
+两臂 D1/D2/D3 均为 `202/201/186`，严格 ID Switch 均为 `3`，track/coverage
+continuity 均为 `0.826667/0.828333`，可用/常规不可用/未承诺映射均为
+`1491/218/76`，身份承诺覆盖均为 `0.957471`。质心候选为 `46/0/46` 个
+候选/施加/拒绝，仍是零 treatment。该批关闭 clean seed 1100 的下游安全合同，
+不关闭 D1/D2 连续性和可用性 P1，也不晋级候选。episode 没有伪造 stale plan；
+旧版本拒绝由 AirSim 和模块回归覆盖。
+
+当前剩余 P1 是：真实 AirSim 多 seed 产生并消费真实 D2 承诺侧车，完成撤销、升版、
+stale plan 注入和 D5/D7 零越权复验；D1 先在冻结扫描重放中形成非零且可复现的安全
+treatment，再决定是否恢复 seeds 1101/1102。机器审计和中文结果位于
+`research_modules/scalable_3d_simulation/docs/SCALABLE_3D_IDENTITY_COMMITMENT_GATE_CLEAN_AB_20260723/`。
 
 ## 2026-07-23 当前优化 20-seed 全栈校准
 

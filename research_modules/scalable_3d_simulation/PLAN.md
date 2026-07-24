@@ -12,8 +12,12 @@
 - [x] AirSim 经典 D2 兼容桥改为调用方提供逐航迹显式承诺清单；适配器缺清单时不再
   隐式放行。
 - [x] D3、AirSim runtime、scalable 3D、integrated point-mass 和跨模块合同软件回归通过。
-- [ ] 在 clean 同输入 seed 1100 和真实 AirSim 多 seed 中验证撤销时序、严格升版、
-  stale plan 拒绝及 D5/D7 零越权。完成前不晋级结构歧义候选。
+- [x] detached clean `7e15dac` 的同输入 seed 1100 已验证 11 个旧绑定在同一周期退出
+  v2 计划，D3/D5/D7 后续越权均为 0；质心候选仍为 46/0/46 零 treatment。
+- [x] 新增可复用 clean A/B 审计器，固定提交、配置、真值哈希、计划升版和下游继续执行
+  检查；episode 未注入 stale plan，旧版本拒绝只引用实际软件回归。
+- [ ] 在真实 AirSim 多 seed 中接入真实 D2 承诺侧车，验证撤销时序、严格升版、stale
+  plan 注入拒绝及 D5/D7 零越权。完成前不晋级结构歧义候选。
 
 第四轮规则全栈性能收敛已完成三 seed 长时复测。D1 在保持逐扫描融合和逐扫描发布的前提下，
 把同一融合时刻的中间发布改为 state-only，并只为最后一个后验构造完整航迹数组；D3 已建立

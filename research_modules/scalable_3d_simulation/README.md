@@ -43,10 +43,24 @@ AirSim 经典二维 D2 尚不产生该 v2 侧车。AirSim main 因此在该可�
 状态为 `identity_commitment_missing`，D3 继续失败关闭。旧版 integrated point-mass 适配器也
 显式标记其中心 D2 航迹来源，不再依赖 D3 的隐式默认值。
 
-当前软件回归为 D3 `450 passed, 1 skipped`、AirSim runtime `157 passed`、
-scalable 3D `157 passed`、integrated point-mass `7 passed` 和跨模块合同 `7 passed`。
-本轮没有启动真实 AirSim，也没有重跑 seed 1100 因果对照。该变化关闭下游合同安全门，
-不晋级结构歧义候选；真实多 seed 的撤销、升版、旧计划拒绝和 D5/D7 零越权仍为 P1。
+当前软件回归为 D1 `282 passed`、D2 `291 passed`、D3 `450 passed, 1 skipped`、
+AirSim runtime `158 passed`、scalable 3D `157 passed`、integrated point-mass
+`7 passed` 和跨模块合同 `7 passed`。AirSim 新增部分承诺清单拒绝负例；过时计划主动
+注入继续由运行时回归覆盖。
+
+detached clean `7e15dac9cdaf6743999dfe045a70676fd31a17d6` 已按相同
+nominal 200 对 200、2.2 秒、2 个侦察节点和 seed 1100 重跑 hold 控制臂与
+hold + 身份中性质心候选。t=1.0 秒时，D3 将计划从 v1/193 项强制升为
+v2/186 项，11 个已分配但撤销承诺的目标全部退出新计划；该周期绕过迟滞。此后 D3、
+D5 主动视觉、D5 终端绑定和 D7 对这 11 个目标的继续执行违规均为 0。两臂在线真值使用、
+重复分配和未承诺绑定违规均为 0。
+
+该复跑关闭 seed 1100 的下游合同验证，不晋级结构歧义算法。两臂的 D1/D2/D3、
+严格 ID Switch、连续性和身份映射完全相同；质心候选 46 个组件中 0 个实际施加，
+30 个因乱序量测扫描关闭，16 个因组件不平衡关闭。真实 AirSim 多 seed 的承诺侧车和
+撤销时序仍为 P1。可复用审计入口为
+`scripts/audit_identity_commitment_gate.py`，结果位于
+`docs/SCALABLE_3D_IDENTITY_COMMITMENT_GATE_CLEAN_AB_20260723/`。
 
 ## 2026-07-23 当前优化 20-seed 校准
 
