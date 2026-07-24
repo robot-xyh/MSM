@@ -1,5 +1,19 @@
 # D1 AirSim 集成计划
 
+## 0. 协方差发布合同更新（2026-07-24）
+
+- D1 已在观测和航迹公共限制路径增加完整正半定治理。AirSim 上游 DTO、相机/雷达适配器、
+  双时间戳、NED 和来源谱系字段不变。
+- 在线观测 covariance 仍在入口执行有限、对称和正半定 fail-closed 校验；D1 不接收非法
+  AirSim producer covariance 后静默修复。
+- 滤波预测、更新和 fixed-lag 重放生成的航迹 covariance 在发布前执行对角范围、逐对相关和
+  完整正半定治理。projection reason 和操作数进入航迹 metadata，可由 main/D6 统计。
+- 当前证据来自 200v200 三维质点 seed 1103 的 10 s 运行，不是 AirSim。后续 AirSim 复跑需
+  显式统计 PSD projection/fallback 次数、D1 fusion P50/P95、总 tick 和 RSS；fallback 大于
+  0 时应保留对应输入作为传感器/数值故障 fixture。
+- 不得通过放宽 D2 PSD 门、增大容差、丢检测、缩短 6 s fixed-lag 或读取 actor/truth ID
+  消除异常。
+
 ## 0. 融合性能接口状态（2026-07-22）
 
 - D1 默认启用非雷达创新协方差矩阵栈。该变化位于

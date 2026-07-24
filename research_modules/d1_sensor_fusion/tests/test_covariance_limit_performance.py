@@ -325,6 +325,7 @@ def test_scalable_adapter_exposes_reference_and_optimized_switch() -> None:
 def test_reference_and_optimized_replays_preserve_every_scan_contract() -> None:
     reference = FusionAdapter(vectorized_covariance_limit=False)
     optimized = FusionAdapter(vectorized_covariance_limit=True)
+    assert reference.buffer_horizon == optimized.buffer_horizon == 6.0
     observations = (
         _radar_observation(
             index=1,
@@ -377,11 +378,21 @@ def test_reference_and_optimized_replays_preserve_every_scan_contract() -> None:
     assert [item.to_dict() for item in reference_tracks.tracks] == [
         item.to_dict() for item in optimized_tracks.tracks
     ]
-    assert [
-        item.to_dict() for item in reference.consistency_evidence_records()
-    ] == [
-        item.to_dict() for item in optimized.consistency_evidence_records()
+    reference_evidence = reference.consistency_evidence_records()
+    optimized_evidence = optimized.consistency_evidence_records()
+    assert [item.to_dict() for item in reference_evidence] == [
+        item.to_dict() for item in optimized_evidence
     ]
+    observations_by_id = {
+        item.observation_id: item for item in observations
+    }
+    for evidence in optimized_evidence:
+        source = observations_by_id[evidence.observation_id]
+        assert evidence.measurement_timestamp == source.measurement_timestamp
+        assert evidence.arrival_timestamp == source.arrival_timestamp
+        assert evidence.source_lineage[0] == "opaque_online_lineage"
+        assert evidence.source_lineage[1] == f"sensor:{source.sensor_id}"
+        assert len(evidence.source_lineage) == 3
     final_track = optimized_tracks.tracks[0]
     assert final_track.metadata["measurement_timestamp"] == pytest.approx(0.6)
     assert final_track.metadata["arrival_timestamp"] == pytest.approx(0.7)

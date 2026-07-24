@@ -99,8 +99,14 @@ OBSERVATION_METADATA_LINEAGE_KEYS = (
     "timestamp_drift_s",
     "timestamp_jitter_s",
     "observation_covariance_limit_reasons",
+    "observation_covariance_limit_operation_count",
+    "observation_covariance_limit_operation_counts",
     "track_covariance_limit_reasons",
+    "track_covariance_limit_operation_count",
+    "track_covariance_limit_operation_counts",
     "covariance_limit_reasons",
+    "covariance_limit_operation_count",
+    "covariance_limit_operation_counts",
     "covariance_limited",
     "covariance_limit_applied",
     "covariance_scale_reason",
@@ -155,6 +161,9 @@ _COVARIANCE_STRICT_UPPER_INDICES = tuple(
 for _upper_rows, _upper_columns in _COVARIANCE_STRICT_UPPER_INDICES:
     _upper_rows.setflags(write=False)
     _upper_columns.setflags(write=False)
+COVARIANCE_CORRELATION_LIMIT = 0.999
+COVARIANCE_PSD_NORMALIZED_EIGENVALUE_FLOOR = 1.0e-12
+COVARIANCE_PSD_MAX_PROJECTION_ITERATIONS = 3
 RADAR_ASSOCIATION_LOWER_BOUND_RELATIVE_MARGIN = 1.0e-12
 RADAR_ASSOCIATION_PINV_RCOND = 1.0e-15
 RADAR_ASSIGNMENT_AMBIGUITY_POLICY_VERSION = (
@@ -505,6 +514,7 @@ class TrackRecord:
     created_timestamp: float = 0.0
     hits: int = 0
     covariance_limit_reasons: Counter = field(default_factory=Counter)
+    covariance_limit_operation_counts: Counter = field(default_factory=Counter)
     association_diagnostics: Counter = field(default_factory=Counter)
     checkpoint_active: bool = False
     checkpoint_count: int = 0
@@ -1528,9 +1538,18 @@ class FusionAdapter:
             reasons = []
             if float(timestamp) - previous_timestamp > self.long_extrapolation_s:
                 reasons.append("long_extrapolation")
-            out.covariance, applied = self._limit_state_covariance(state.covariance, reasons)
+            operation_counts: Counter[str] = Counter()
+            out.covariance, applied = self._limit_state_covariance(
+                state.covariance,
+                reasons,
+                operation_counts=operation_counts,
+            )
             out.timestamp = state.timestamp
             self._update_metadata_covariance_reasons(out.metadata, applied)
+            _update_metadata_covariance_operation_counts(
+                out.metadata,
+                operation_counts,
+            )
             return out
 
         record = self.tracks[str(track)]
@@ -5047,6 +5066,13 @@ class FusionAdapter:
         record.metadata.update(_metadata_from_observation(observation))
         for reason in _metadata_reasons(observation.metadata.get("covariance_limit_reasons")):
             record.covariance_limit_reasons[reason] += 1
+        record.covariance_limit_operation_counts.update(
+            _metadata_operation_counts(
+                observation.metadata.get(
+                    "covariance_limit_operation_counts"
+                )
+            )
+        )
         if observation.metadata.get("truth_id") is not None:
             record.metadata.setdefault("truth_id", observation.metadata.get("truth_id"))
         source_node_id = observation.source_node_id or observation.metadata.get("source_node_id")
@@ -5143,6 +5169,27 @@ class FusionAdapter:
             metadata,
             tuple(sorted(record.covariance_limit_reasons)),
         )
+        serialized_operation_counts = dict(
+            sorted(record.covariance_limit_operation_counts.items())
+        )
+        if serialized_operation_counts:
+            operation_count = int(sum(serialized_operation_counts.values()))
+            metadata["covariance_limit_operation_counts"] = (
+                serialized_operation_counts
+            )
+            metadata["covariance_limit_operation_count"] = operation_count
+            track_operation_counts = {
+                name: count
+                for name, count in serialized_operation_counts.items()
+                if name.startswith("track_covariance_")
+            }
+            if track_operation_counts:
+                metadata["track_covariance_limit_operation_counts"] = (
+                    track_operation_counts
+                )
+                metadata["track_covariance_limit_operation_count"] = int(
+                    sum(track_operation_counts.values())
+                )
         return GlobalTrack(
             global_track_id=record.track_id,
             state=record.current_state.state.copy(),
@@ -5217,7 +5264,9 @@ class FusionAdapter:
         )
 
     def _prepare_observation(self, observation: SensorObservation) -> SensorObservation:
-        covariance, reasons, anomaly = self._limited_observation_covariance(observation)
+        covariance, reasons, anomaly, operation_counts = (
+            self._limited_observation_covariance(observation)
+        )
         metadata = dict(observation.metadata)
         innovation_gate = metadata.get("filter_innovation_gate_chi2")
         if innovation_gate is not None:
@@ -5238,6 +5287,22 @@ class FusionAdapter:
             metadata["covariance_limit_applied"] = True
         if anomaly:
             metadata["observation_covariance_anomaly"] = True
+        if operation_counts:
+            existing_counts = _metadata_operation_counts(
+                metadata.get("observation_covariance_limit_operation_counts")
+            )
+            existing_counts.update(operation_counts)
+            serialized_counts = dict(sorted(existing_counts.items()))
+            metadata["observation_covariance_limit_operation_counts"] = (
+                serialized_counts
+            )
+            metadata["observation_covariance_limit_operation_count"] = int(
+                sum(serialized_counts.values())
+            )
+            _update_metadata_covariance_operation_counts(
+                metadata,
+                operation_counts,
+            )
         scale_reason = self._covariance_scale_reason(observation)
         if scale_reason is not None:
             metadata["covariance_scale_reason"] = scale_reason
@@ -5246,8 +5311,9 @@ class FusionAdapter:
     def _limited_observation_covariance(
         self,
         observation: SensorObservation,
-    ) -> tuple[np.ndarray, tuple[str, ...], bool]:
+    ) -> tuple[np.ndarray, tuple[str, ...], bool, Counter[str]]:
         reasons: list[str] = []
+        operation_counts: Counter[str] = Counter()
         anomaly = False
         covariance = validate_online_sensor_observation(
             observation,
@@ -5273,6 +5339,8 @@ class FusionAdapter:
             floor_reason="observation_covariance_floor",
             ceiling_reason="observation_covariance_ceiling",
             vectorized_off_diagonal=self.vectorized_covariance_limit,
+            reason_prefix="observation_covariance",
+            operation_counts=operation_counts,
         )
         reasons.extend(bound_reasons)
         if any(
@@ -5280,11 +5348,19 @@ class FusionAdapter:
             in {
                 "observation_covariance_floor",
                 "observation_covariance_ceiling",
+                "observation_covariance_correlation_bound",
+                "observation_covariance_psd_projection",
+                "observation_covariance_psd_diagonal_fallback",
             }
             for reason in reasons
         ):
             anomaly = True
-        return covariance, tuple(dict.fromkeys(reasons)), anomaly
+        return (
+            covariance,
+            tuple(dict.fromkeys(reasons)),
+            anomaly,
+            operation_counts,
+        )
 
     def _observation_quality_covariance_scale(self, observation: SensorObservation) -> float:
         flags = {str(flag).lower() for flag in observation.quality_flags}
@@ -5313,7 +5389,12 @@ class FusionAdapter:
         record: TrackRecord,
         reasons: Iterable[str] = (),
     ) -> None:
-        covariance, applied = self._limit_state_covariance(record.current_state.covariance, reasons)
+        operation_counts: Counter[str] = Counter()
+        covariance, applied = self._limit_state_covariance(
+            record.current_state.covariance,
+            reasons,
+            operation_counts=operation_counts,
+        )
         record.current_state = EKFState(
             record.current_state.state,
             covariance,
@@ -5322,6 +5403,7 @@ class FusionAdapter:
         record.current_state_covariance_limited = True
         for reason in applied:
             record.covariance_limit_reasons[str(reason)] += 1
+        record.covariance_limit_operation_counts.update(operation_counts)
         if applied:
             self._update_metadata_covariance_reasons(record.metadata, tuple(applied))
 
@@ -5329,12 +5411,19 @@ class FusionAdapter:
         self,
         covariance: np.ndarray,
         reasons: Iterable[str] = (),
+        *,
+        operation_counts: Counter[str] | None = None,
     ) -> tuple[np.ndarray, tuple[str, ...]]:
         base_reasons = [str(reason) for reason in reasons]
         covariance = np.asarray(covariance, dtype=float)
         if covariance.shape != (6, 6) or not np.isfinite(covariance).all():
             covariance = np.diag(self.covariance_ceiling_diag)
             base_reasons.append("track_covariance_invalid_reset")
+            _increment_operation_count(
+                operation_counts,
+                "track_covariance_invalid_reset_count",
+                1,
+            )
         covariance = 0.5 * (covariance + covariance.T)
         covariance, bound_reasons = _limit_covariance_diagonal(
             covariance,
@@ -5343,6 +5432,8 @@ class FusionAdapter:
             floor_reason="track_covariance_floor",
             ceiling_reason="track_covariance_ceiling",
             vectorized_off_diagonal=self.vectorized_covariance_limit,
+            reason_prefix="track_covariance",
+            operation_counts=operation_counts,
         )
         base_reasons.extend(bound_reasons)
         return covariance, tuple(dict.fromkeys(base_reasons))
@@ -5639,44 +5730,90 @@ def _limit_covariance_diagonal(
     floor_reason: str,
     ceiling_reason: str,
     vectorized_off_diagonal: bool = False,
+    reason_prefix: str = "covariance",
+    operation_counts: Counter[str] | None = None,
 ) -> tuple[np.ndarray, tuple[str, ...]]:
     covariance = np.asarray(covariance, dtype=float)
     floor_diag = np.asarray(floor_diag, dtype=float).reshape(-1)
     ceiling_diag = np.asarray(ceiling_diag, dtype=float).reshape(-1)
     if covariance.shape != (floor_diag.size, floor_diag.size):
         raise ValueError("covariance shape does not match diagonal bounds")
+    if not np.isfinite(covariance).all():
+        raise ValueError("covariance must contain only finite values")
+    if (
+        not np.isfinite(floor_diag).all()
+        or not np.isfinite(ceiling_diag).all()
+        or np.any(floor_diag <= 0.0)
+        or np.any(ceiling_diag < floor_diag)
+    ):
+        raise ValueError("covariance diagonal bounds must be positive and ordered")
 
     reasons: list[str] = []
     bounded = 0.5 * (covariance + covariance.T)
     diag = np.diag(bounded).copy()
-    if np.any(diag < floor_diag):
+    floor_mask = diag < floor_diag
+    ceiling_mask = diag > ceiling_diag
+    if np.any(floor_mask):
         reasons.append(floor_reason)
-    if np.any(diag > ceiling_diag):
+        _increment_operation_count(
+            operation_counts,
+            f"{reason_prefix}_diagonal_floor_element_count",
+            int(np.count_nonzero(floor_mask)),
+        )
+    if np.any(ceiling_mask):
         reasons.append(ceiling_reason)
+        _increment_operation_count(
+            operation_counts,
+            f"{reason_prefix}_diagonal_ceiling_element_count",
+            int(np.count_nonzero(ceiling_mask)),
+        )
     clipped_diag = np.clip(diag, floor_diag, ceiling_diag)
     np.fill_diagonal(bounded, clipped_diag)
 
     if vectorized_off_diagonal:
-        _clip_covariance_off_diagonal_vectorized(bounded)
+        correlation_clip_count = _clip_covariance_off_diagonal_vectorized(
+            bounded
+        )
     else:
-        _clip_covariance_off_diagonal_reference(bounded)
+        correlation_clip_count = _clip_covariance_off_diagonal_reference(
+            bounded
+        )
+    if correlation_clip_count:
+        reasons.append(f"{reason_prefix}_correlation_bound")
+        _increment_operation_count(
+            operation_counts,
+            f"{reason_prefix}_correlation_clip_pair_count",
+            correlation_clip_count,
+        )
+
+    bounded, psd_reasons = _project_bounded_covariance_to_psd(
+        bounded,
+        clipped_diag,
+        reason_prefix=reason_prefix,
+        operation_counts=operation_counts,
+    )
+    reasons.extend(psd_reasons)
     return bounded, tuple(dict.fromkeys(reasons))
 
 
-def _clip_covariance_off_diagonal_reference(bounded: np.ndarray) -> None:
+def _clip_covariance_off_diagonal_reference(bounded: np.ndarray) -> int:
     """Apply the established scalar pairwise correlation bound in place."""
 
+    clip_count = 0
     for row in range(bounded.shape[0]):
         for col in range(row + 1, bounded.shape[1]):
-            limit = 0.999 * np.sqrt(
+            limit = COVARIANCE_CORRELATION_LIMIT * np.sqrt(
                 max(bounded[row, row], 0.0)
                 * max(bounded[col, col], 0.0)
             )
-            bounded[row, col] = float(np.clip(bounded[row, col], -limit, limit))
+            original = bounded[row, col]
+            bounded[row, col] = float(np.clip(original, -limit, limit))
+            clip_count += int(bounded[row, col] != original)
             bounded[col, row] = bounded[row, col]
+    return clip_count
 
 
-def _clip_covariance_off_diagonal_vectorized(bounded: np.ndarray) -> None:
+def _clip_covariance_off_diagonal_vectorized(bounded: np.ndarray) -> int:
     """Apply the same pairwise bound without per-element NumPy calls."""
 
     dimension = bounded.shape[0]
@@ -5685,12 +5822,186 @@ def _clip_covariance_off_diagonal_vectorized(bounded: np.ndarray) -> None:
     else:
         rows, columns = np.triu_indices(dimension, k=1)
     nonnegative_diagonal = np.maximum(np.diag(bounded), 0.0)
-    limits = 0.999 * np.sqrt(
+    limits = COVARIANCE_CORRELATION_LIMIT * np.sqrt(
         nonnegative_diagonal[rows] * nonnegative_diagonal[columns]
     )
-    clipped = np.clip(bounded[rows, columns], -limits, limits)
+    original = bounded[rows, columns]
+    clipped = np.clip(original, -limits, limits)
+    clip_count = int(np.count_nonzero(clipped != original))
     bounded[rows, columns] = clipped
     bounded[columns, rows] = clipped
+    return clip_count
+
+
+def _project_bounded_covariance_to_psd(
+    bounded: np.ndarray,
+    diagonal: np.ndarray,
+    *,
+    reason_prefix: str,
+    operation_counts: Counter[str] | None,
+) -> tuple[np.ndarray, tuple[str, ...]]:
+    """Repair a bounded covariance without changing its governed diagonal.
+
+    Pairwise correlation clipping constrains every two-dimensional principal
+    submatrix but can make the complete matrix indefinite. The repair projects
+    the normalized correlation matrix onto the positive-semidefinite cone,
+    restores unit diagonal by congruence scaling, and shrinks it toward the
+    identity only as far as required by the correlation bound. A diagonal
+    fallback closes the numerical edge case after a finite number of attempts.
+    """
+
+    result = 0.5 * (
+        np.asarray(bounded, dtype=float)
+        + np.asarray(bounded, dtype=float).T
+    )
+    diagonal = np.asarray(diagonal, dtype=float).reshape(-1)
+    eigenvalues = np.linalg.eigvalsh(result)
+    if float(eigenvalues[0]) >= 0.0:
+        return result, ()
+
+    projection_reason = f"{reason_prefix}_psd_projection"
+    reasons = [projection_reason]
+    dimension = result.shape[0]
+    identity = np.eye(dimension, dtype=float)
+    standard_deviation = np.sqrt(diagonal)
+    diagonal_scale = float(np.max(diagonal) / np.min(diagonal))
+    normalized_floor = min(
+        0.25,
+        max(
+            COVARIANCE_PSD_NORMALIZED_EIGENVALUE_FLOOR,
+            np.finfo(float).eps
+            * 64.0
+            * max(1, dimension)
+            * diagonal_scale,
+        ),
+    )
+    correlation_target = np.nextafter(
+        COVARIANCE_CORRELATION_LIMIT,
+        0.0,
+    )
+
+    for _ in range(COVARIANCE_PSD_MAX_PROJECTION_ITERATIONS):
+        _increment_operation_count(
+            operation_counts,
+            f"{reason_prefix}_psd_projection_iteration_count",
+            1,
+        )
+        correlation = result / np.outer(standard_deviation, standard_deviation)
+        correlation = 0.5 * (correlation + correlation.T)
+        np.fill_diagonal(correlation, 1.0)
+
+        correlation_eigenvalues, eigenvectors = np.linalg.eigh(correlation)
+        floor_mask = correlation_eigenvalues < normalized_floor
+        floor_count = int(np.count_nonzero(floor_mask))
+        _increment_operation_count(
+            operation_counts,
+            f"{reason_prefix}_psd_eigenvalue_floor_count",
+            floor_count,
+        )
+        projected = (
+            eigenvectors
+            @ np.diag(
+                np.maximum(correlation_eigenvalues, normalized_floor)
+            )
+            @ eigenvectors.T
+        )
+        projected = 0.5 * (projected + projected.T)
+        projected_diagonal = np.diag(projected).copy()
+        if (
+            not np.isfinite(projected).all()
+            or np.any(projected_diagonal <= 0.0)
+        ):
+            break
+
+        normalization = np.sqrt(projected_diagonal)
+        correlation = projected / np.outer(normalization, normalization)
+        correlation = 0.5 * (correlation + correlation.T)
+        np.fill_diagonal(correlation, 1.0)
+
+        rows, columns = _strict_upper_indices(dimension)
+        max_abs_correlation = (
+            0.0
+            if rows.size == 0
+            else float(np.max(np.abs(correlation[rows, columns])))
+        )
+        shrink = (
+            1.0
+            if max_abs_correlation <= correlation_target
+            else correlation_target / max_abs_correlation
+        )
+        normalized_min_eigenvalue = float(
+            np.linalg.eigvalsh(correlation)[0]
+        )
+        if normalized_min_eigenvalue < normalized_floor:
+            denominator = 1.0 - normalized_min_eigenvalue
+            positive_definite_shrink = (
+                0.0
+                if denominator <= 0.0
+                else (1.0 - normalized_floor) / denominator
+            )
+            shrink = min(shrink, positive_definite_shrink)
+        shrink = float(np.clip(shrink, 0.0, 1.0))
+        if shrink < 1.0:
+            correlation = shrink * correlation + (1.0 - shrink) * identity
+            _increment_operation_count(
+                operation_counts,
+                f"{reason_prefix}_psd_correlation_shrink_count",
+                1,
+            )
+
+        result = (
+            np.outer(standard_deviation, standard_deviation) * correlation
+        )
+        result = 0.5 * (result + result.T)
+        np.fill_diagonal(result, diagonal)
+        if _bounded_covariance_constraints_satisfied(result, diagonal):
+            return result, tuple(reasons)
+
+    result = np.diag(diagonal)
+    reasons.append(f"{reason_prefix}_psd_diagonal_fallback")
+    _increment_operation_count(
+        operation_counts,
+        f"{reason_prefix}_psd_diagonal_fallback_count",
+        1,
+    )
+    return result, tuple(reasons)
+
+
+def _bounded_covariance_constraints_satisfied(
+    covariance: np.ndarray,
+    diagonal: np.ndarray,
+) -> bool:
+    if (
+        not np.isfinite(covariance).all()
+        or not np.array_equal(covariance, covariance.T)
+        or not np.array_equal(np.diag(covariance), diagonal)
+        or float(np.linalg.eigvalsh(covariance)[0]) < 0.0
+    ):
+        return False
+    rows, columns = _strict_upper_indices(covariance.shape[0])
+    if rows.size == 0:
+        return True
+    limits = COVARIANCE_CORRELATION_LIMIT * np.sqrt(
+        diagonal[rows] * diagonal[columns]
+    )
+    return bool(
+        np.all(np.abs(covariance[rows, columns]) <= limits)
+    )
+
+
+def _strict_upper_indices(dimension: int) -> tuple[np.ndarray, np.ndarray]:
+    if dimension < len(_COVARIANCE_STRICT_UPPER_INDICES):
+        return _COVARIANCE_STRICT_UPPER_INDICES[dimension]
+    return np.triu_indices(dimension, k=1)
+
+
+def _increment_operation_count(
+    operation_counts: Counter[str] | None,
+    name: str,
+    count: int,
+) -> None:
+    if operation_counts is not None and count > 0:
+        operation_counts[str(name)] += int(count)
 
 
 def _metadata_reasons(value: Any) -> tuple[str, ...]:
@@ -5703,6 +6014,17 @@ def _metadata_reasons(value: Any) -> tuple[str, ...]:
     return tuple(str(item) for item in value)
 
 
+def _metadata_operation_counts(value: Any) -> Counter[str]:
+    counts: Counter[str] = Counter()
+    if not isinstance(value, Mapping):
+        return counts
+    for name, raw_count in value.items():
+        count = int(raw_count)
+        if count > 0:
+            counts[str(name)] += count
+    return counts
+
+
 def _update_metadata_covariance_reasons(metadata: dict, reasons: Iterable[str]) -> None:
     existing = set(_metadata_reasons(metadata.get("covariance_limit_reasons")))
     incoming = {str(reason) for reason in reasons if str(reason)}
@@ -5713,6 +6035,24 @@ def _update_metadata_covariance_reasons(metadata: dict, reasons: Iterable[str]) 
     metadata["track_covariance_limit_reasons"] = merged
     metadata["covariance_limited"] = True
     metadata["covariance_limit_applied"] = True
+
+
+def _update_metadata_covariance_operation_counts(
+    metadata: dict,
+    operation_counts: Mapping[str, int],
+) -> None:
+    incoming = _metadata_operation_counts(operation_counts)
+    if not incoming:
+        return
+    merged = _metadata_operation_counts(
+        metadata.get("covariance_limit_operation_counts")
+    )
+    merged.update(incoming)
+    serialized = dict(sorted(merged.items()))
+    metadata["covariance_limit_operation_counts"] = serialized
+    metadata["covariance_limit_operation_count"] = int(
+        sum(serialized.values())
+    )
 
 
 def _most_common_reason(counter: Counter) -> str | None:

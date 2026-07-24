@@ -1,5 +1,20 @@
 # D1 Sensor Fusion Offline Experiment Report
 
+## 2026-07-24 完整正半定治理
+
+seed 1103、200v200、10 s 长时候选在仿真时刻 `7.85180018473111 s` 暴露 D1
+pairwise covariance limiter 会把合法六维矩阵变为非正定矩阵。限制前/后最小特征值为
+`+7.506060086e-04/-9.247657800e-04`。故障前 58,776 次 scalar/vectorized 同输入双算
+完全一致，根因不是向量化。
+
+当前在对角和逐对限制后执行相关矩阵特征值投影、单位对角恢复和单位阵凸组合，有限复核失败时
+使用同一治理对角矩阵。失败回归、1 至 6 维随机/极端性质、两实现等价、双时间戳、谱系和
+6 s fixed-lag 测试通过；D1 全量 `352 passed in 20.52s`。
+
+修复后同配置 10 s episode 完成，处理 10,554 条匿名观测，状态有限、在线 truth 0，
+RTF `0.157583`。该运行只证明原 PSD 断点闭合，不是 clean 多 seed、AirSim、实时或
+RMSE/NEES/NIS 结论。
+
 ## 2026-07-23 扫描 claim JSON 单次物化
 
 clean `5263e2b343dc4b96d239f77ef09437eb132f9efb` 的

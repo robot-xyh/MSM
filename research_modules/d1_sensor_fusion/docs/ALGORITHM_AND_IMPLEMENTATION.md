@@ -8,6 +8,62 @@
 
 ## 当前权威增量（2026-07-24）
 
+### 完整正半定治理
+
+#### 故障机理
+
+旧限制器先裁剪对角，再独立限制每个交叉项：
+
+\[
+|P_{ij}|\leq 0.999\sqrt{P_{ii}P_{jj}}.
+\]
+
+该条件保证每个二阶主子式非负，不保证六阶行列式和其余高阶主子式非负。seed 1103 的固定
+失败中，输入 \(P\) 的最小特征值为 \(7.5061\times10^{-4}\)。只修改
+\(P_{01}=P_{10}\) 后，最小特征值变为 \(-9.2477\times10^{-4}\)。标量和向量路径在故障前
+58,776 次调用上逐元素相同，因此属于共同数学缺口。
+
+#### 当前投影
+
+设治理后的对角为 \(d\)，\(D=\operatorname{diag}(d)\)。pairwise 裁剪后的矩阵若已经
+正半定，则原样返回。存在负特征值时执行：
+
+\[
+R=D^{-1/2}PD^{-1/2},
+\]
+\[
+\widetilde R=Q\max(\Lambda,\tau I)Q^\mathsf{T},
+\]
+\[
+C=S^{-1/2}\widetilde R S^{-1/2},
+\qquad S=\operatorname{diag}(\widetilde R),
+\]
+\[
+C_\beta=\beta C+(1-\beta)I,
+\qquad
+P_{\mathrm{out}}=D^{1/2}C_\beta D^{1/2}.
+\]
+
+特征值 floor \(\tau\) 根据浮点精度、维数和治理对角条件数确定。系数 \(\beta\) 同时限制最大
+非对角相关系数并保留正半定；与单位阵的凸组合不会产生负特征值。恢复后的对角精确等于
+floor/ceiling 后的 \(d\)。每轮复核有限性、精确对称、对角范围、完整特征值和相关上界，
+最多执行 3 次。仍失败时输出 \(\operatorname{diag}(d)\)，避免向 D2 发布不可消费矩阵。
+
+治理 reason 区分 correlation bound、PSD projection 和 diagonal fallback。operation counts
+记录对角受限元素数、相关受限 pair 数、投影迭代数、特征值 floor 数和相关收缩数。
+`vectorized_covariance_limit` 只控制 pairwise 阶段；两种实现共用投影和审计。
+
+#### 验证
+
+固定 seed 1103 故障矩阵已回归。1 至 6 维每维 96 组随机/极端矩阵、逐对范围内仍非正定的
+矩阵和 detached `GlobalTrack` 审计均满足约束。标量/向量化输出、reason 和操作计数严格
+相同。双时间戳、opaque 来源谱系、OOSM 和默认 6 s fixed-lag 保持。专项合计
+`28 passed`，D1 全量 `352 passed in 20.52s`。
+
+修复后的 seed 1103、200v200、10 s 集成运行处理 10,554 条在线观测并完成，
+`finite_state=True`、online truth 0，原 PSD 异常消失。RTF `0.157583` 只说明运行完成；
+clean 多 seed、RMSE/NEES/NIS、AirSim 和系统实时仍待 main 验收。
+
 ### 协方差成对限制向量化
 
 #### 原始路径
