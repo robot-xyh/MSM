@@ -534,3 +534,28 @@ episode 内执行一致性校验。
 AirSim，也没有生成新的 AirSim replay。由于首个 gate seed 已出现 D2/D3 数量和
 continuity 退化，本候选不进入真实 AirSim 多 seed；固定 `0.9 s` 不扩大，seeds
 1101/1102、10 s 和 20-seed 矩阵停止。
+
+## 承诺准入复核后的 AirSim 边界
+
+固定提交 `7e15dac9cdaf6743999dfe045a70676fd31a17d6` 已在三维质点 200v200、seed 1100
+的同输入两臂中验证 D2 显式承诺状态可被 D3、D5 active vision 和 D7 guidance
+失败关闭消费。第 2 版计划从上一版撤出 11 条未承诺旧绑定，版本 `1 -> 2`，并把
+assignment 数调整为 186；第 3 版继续拒绝 11 条未承诺目标。被拒绝 ID 进入 D3
+assignment、D5 active-vision command 和 D7 guidance command 的计数均为 0。
+
+该复核没有启动 AirSim，也没有改变 D2 的 AirSim 输入、话题、时间戳、坐标系或
+`global_track_id` 合同，因此本文件不新增 adapter API。AirSim 后续只需保持以下验收：
+
+1. D2 每次发布完整、显式的 `identity_commitment_by_track`，不由下游从临时 hold 列表
+   推断；
+2. main/D3 对缺失、未知和未承诺状态全部失败关闭，并严格增加计划版本；
+3. D5/D7 只消费当前已接纳计划中的 committed 目标；
+4. D6 同时记录 D2 continuity/mapping 退化和下游 unauthorized continuation，不能用后者
+   为 0 代替前者通过；
+5. AirSim 证据必须重新记录实际时钟、漏检、遮挡、杂波、配置快照和制品哈希，不能沿用
+   本次质点运行的场景或运行时指纹。
+
+`hold_plus_centroid` 本轮 46 个候选全部被拒绝，实际处理为 0。该零 treatment 不构成
+AirSim 候选准入依据，也不改变 seeds 1101/1102 继续停止的决定。
+
+本轮只运行 D2 模块回归，结果为 `291 passed, 1 warning in 29.29s`；未启动 AirSim。

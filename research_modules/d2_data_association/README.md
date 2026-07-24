@@ -6,6 +6,39 @@ D2 是 C-UAS 多目标数据关联研究模块，目标是在离线仿真和日�
 
 规模边界：D2 消费每帧传入的 `tracks`、`detections` 和当前 `active_tracks` 集合，不从场景名推断目标数量，不写死 2v2 或 5v5。`crossing_dense_5v5` 等名称只是可重复 baseline fixture；main runtime 的 `--drone-count N` 只应体现为传入 D2 的输入集合长度。
 
+### 2026-07-23 clean seed 1100 承诺准入复核
+
+- D2 独立复核固定提交
+  `7e15dac9cdaf6743999dfe045a70676fd31a17d6` 的两臂同输入制品：
+  `/tmp/MSM-identity-gate-results-7e15dac/hold_only` 和
+  `/tmp/MSM-identity-gate-results-7e15dac/hold_plus_centroid`。两臂均为
+  `repository_dirty=false`、nominal 200v200、`recon_count=2`、`duration=2.2 s`、
+  seed 1100；场景配置 SHA-256 均为
+  `20ef5248c8b45ff5aced9080c8d47e65a43aaba54f18ce824dc50fac7a52b840`。
+  两臂运行时指纹只因 D1 质心候选开关不同而不同。
+- 两臂 `online_d2_records.jsonl` 的 SHA-256 均为
+  `da7089facfea118ea90e7c7f6464ff8745c079971656b58b954e9fcd0edf8d2f`。
+  D2 终态航迹均为 201；strict IDSW、track continuity、coverage continuity 均为
+  `3/0.8266666667/0.8283333333`。可用、不可用、未承诺映射为
+  `1491/218/76`；1787 条承诺记录中 1711 条 committed，承诺覆盖率为
+  `0.9574706212`。duplicate assignment、online truth use、未承诺 source/candidate
+  binding violation 均为 0。
+- `hold_plus_centroid` 产生 46 个 identity-neutral centroid 候选，30 个因
+  `oosm_scan`、16 个因 `unbalanced_component` 被拒绝；applied component/member
+  均为 0。因此本次 A/B 的 D2 在线记录、离线身份指标和 D3 承诺准入结果完全相同，
+  只能判定“零实际处理”，不能形成质心候选有效性证据。
+- D3 在线发布证明显式承诺准入已经闭合。`t=1.0 s` 的第 2 版计划将 11 条
+  `identity_uncommitted_ambiguity_hold` 航迹全部列入未分配集合，触发强制重规划并绕过
+  迟滞，计划版本由 1 严格增加到 2，分配数由 193 调整为 186；这 11 条旧绑定均未出现在
+  新计划中。`t=2.0 s` 的第 3 版计划继续拒绝 11 条未承诺航迹。两臂中被拒绝目标进入
+  D3 assignment、D5 active-vision command 或 D7 guidance command 的数量均为 0。
+- 该结果关闭的是“未承诺身份仍进入分配、视觉任务和导引”的安全合同断链。它没有改变
+  D2 的 prediction-only hold，也没有恢复相对早期 hold-disabled 基线已经下降的航迹
+  连续性和可用映射。结构歧义 hold 与 identity-neutral centroid 均不晋级；P1 算法准入
+  继续开放，seeds 1101/1102 继续停止。本批是三维质点全栈复核，不是 AirSim 或实飞。
+- 文档同步后运行完整 D2 回归，结果为 `291 passed, 1 warning in 29.29s`。唯一 warning
+  是本机 Matplotlib 多版本导致 `Axes3D` 不可用，不影响 D2 关联测试。
+
 ### 2026-07-23 身份证据承诺 v2
 
 - 新增 truth-free `d2.identity-evidence-commitment.v2` DTO 和
@@ -91,10 +124,11 @@ D2 是 C-UAS 多目标数据关联研究模块，目标是在离线仿真和日�
   替换默认参数。
 - 缩短租约会更早释放 tentative 航迹，但当前没有 identity-neutral 的保守运动学更新，
   这些航迹随后进入普通 miss/drop 路径。参数只能改变退化发生时刻，不能修复退化机制。
-- 冻结 seed-1100 制品的 D3 计划联接发现：第 2 版计划包含 11 条未提交航迹，第 3 版
-  包含 8 条。该历史制品尚未执行承诺状态准入，不能把 D3 分配 197 解释为 committed
-  可用性。当前工作区已有 D3-owned 准入修改，仍需 main 以同一冻结输入完成跨模块复验；
-  D2 下一候选不得通过未提交航迹维持旧计划。
+- 旧冻结 seed-1100 制品的 D3 计划联接发现：第 2 版计划包含 11 条未提交航迹，第 3 版
+  包含 8 条。该历史制品没有执行承诺状态准入，D3 分配 197 不能解释为 committed
+  可用性。固定提交 `7e15dac9` 的同输入 clean 复验已关闭该跨模块合同缺口：第 2/3 版
+  计划对未承诺目标的 assignment、D5 active-vision 和 D7 guidance 下发均为 0。该修复
+  不改变 D2 候选仍未通过连续性和可用映射准入的结论。
 - 完整逐轨迹证据、参数表和下一候选合同见
   `subagent_reviews/D2_STRUCTURAL_AMBIGUITY_HOLD_LEASE_CAUSAL_AUDIT_CN.md`。本轮
   未修改算法、默认 `(2,5)`、默认关闭状态或发布新鲜度预算。2026-07-23 本次复核运行

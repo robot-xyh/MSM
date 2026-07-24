@@ -1359,10 +1359,10 @@ clean seed 1100 的五组参数扫描结果为：
 
 ### 43.2 跨模块结论
 
-冻结 seed-1100 制品的 D3 第 2 版计划把 11 条未提交航迹投入分配，第 3 版仍包含
-8 条。该历史制品没有执行承诺状态准入。当前工作区已有 D3-owned 准入修改，但尚未用
-同一冻结输入完成 main 集成复验；验收仍要求未提交航迹不进入新计划，已有计划发生承诺
-撤回时发布版本化 hold/replan。
+旧冻结 seed-1100 制品的 D3 第 2 版计划把 11 条未提交航迹投入分配，第 3 版仍包含
+8 条。该历史制品没有执行承诺状态准入。固定提交 `7e15dac9` 已用同一 seed 和配置完成
+clean 集成复验，证明未提交航迹不会进入新计划，旧绑定撤回时会发布严格增版的重规划，
+且 D5 active vision 和 D7 guidance 不再收到被拒绝目标。
 
 下一 D2 候选可以研究身份未提交但运动学保守更新。它不能生成 identity binding、hit、
 建轨、改绑或 ID 变化；协方差不得在歧义子空间收缩；source binding、replay、
@@ -1372,3 +1372,56 @@ publisher epoch、水位线、0.9 秒发布新鲜度和 fail-closed 行为均不
 2026-07-23 本次文档复核运行完整 D2 回归，结果为
 `291 passed, 1 warning in 31.00s`。warning 为既有 Matplotlib `Axes3D` 环境提示；
 未发现需要修改 D2 代码的回归问题。
+
+## 44. clean seed 1100 承诺准入评审
+
+### 44.1 证据完整性
+
+评审输入为：
+
+- `/tmp/MSM-identity-gate-results-7e15dac/hold_only`；
+- `/tmp/MSM-identity-gate-results-7e15dac/hold_plus_centroid`；
+- 固定提交 `7e15dac9cdaf6743999dfe045a70676fd31a17d6`；
+- 两臂 `repository_dirty=false`；
+- nominal 200v200、`recon_count=2`、`duration=2.2 s`、seed 1100；
+- 场景配置 SHA-256
+  `20ef5248c8b45ff5aced9080c8d47e65a43aaba54f18ce824dc50fac7a52b840`。
+
+评审直接读取两臂 manifest、summary、`offline_identity/identity_evaluation.json`、
+`online_d2_records.jsonl` 和 `online_observations.jsonl` 中的 D2/D3/D5/D7 在线发布物。
+两臂 D2 JSONL SHA-256 均为
+`da7089facfea118ea90e7c7f6464ff8745c079971656b58b954e9fcd0edf8d2f`。
+
+### 44.2 D2 结论
+
+两臂 D2 终态均为 201。strict IDSW、track continuity、coverage continuity 为
+`3/0.8266666667/0.8283333333`；available/unavailable/uncommitted mapping 为
+`1491/218/76`；all-record commitment 为 `1711/1787=0.9574706212`。重复分配、
+online truth use、未承诺 source/candidate binding violation 均为 0。
+
+`hold_plus_centroid` 的 46 个候选中，30 个因 OOSM scan、16 个因 unbalanced
+component 拒绝，应用分量和成员均为 0。D2 输出相同因此是预期的零 treatment 结果，
+不能作为质心候选收益、等价性或鲁棒性证据。
+
+### 44.3 跨模块安全合同
+
+`t=0.75 s` 的第 1 版计划分配 193 条 committed 航迹。`t=1.0 s` 的 D2 发布包含
+186 条 committed 和 11 条未承诺航迹；D3 第 2 版计划拒绝全部 11 条，强制重规划并绕过
+迟滞，旧绑定不再出现，分配数为 186。`t=2.0 s` 的第 3 版计划继续拒绝当时 11 条
+未承诺航迹。两版拒绝集合与 assignment 的交集均为空。
+
+按计划版本联接，D5 active-vision 和 D7 guidance 对拒绝集合的命令数均为 0。评审接受
+“显式承诺准入安全合同已闭合”，并把原“同输入 main 集成复验待完成”从 P1 开放项转为
+强制回归项。
+
+### 44.4 不接受项
+
+本次不接受结构歧义 hold 或 identity-neutral centroid 算法晋级。安全准入只阻断未承诺
+身份继续执行，没有增加 D2 可用映射，也没有提高 track/coverage continuity。早期
+hold-disabled baseline 的 `0.865/0.870` 仍高于当前 `0.8266666667/0.8283333333`。
+下一候选需先在 seed 1100 形成非零、可归因的运动学处理，并满足航迹数、映射和连续性
+联合非退化；seeds 1101/1102 继续停止。
+
+本次未启动 AirSim，未修改 D2 算法、默认 `(2,5)`、`0.9 s` 发布新鲜度预算或启用状态。
+完整 D2 回归为 `291 passed, 1 warning in 29.29s`；warning 是本机 Matplotlib
+`Axes3D` 环境提示。

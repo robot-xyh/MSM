@@ -1316,11 +1316,101 @@ clean 提交 `3fcf5b0` 上运行，每个参数点 1 次；所有 manifest 的
 `0.9308153039 s`，拒绝保持。
 
 冻结制品的 D3 第 2 版计划包含 11 条未提交航迹，第 3 版包含 8 条。历史 D3 分配 197
-因而不是 committed 可分配航迹数。当前 D3-owned 准入修改需由 main 使用同一输入复验
-新计划过滤和旧计划 hold/replan。
+因而不是 committed 可分配航迹数。固定提交 `7e15dac9` 已使用同一 seed 和配置复验
+新计划过滤、旧绑定撤回和严格增版重规划，结果见第 35 节。
 
 ### 34.4 判定
 
 五组参数均不晋级，默认 `(2,5)` 和默认关闭状态不变，0.9 秒预算不变。本轮不再扩展
 seed 或长时重放。下一候选应研究身份未提交但协方差保守的运动学更新，并保持来源绑定、
 回放保护、publisher epoch 和 fail-closed 合同。
+
+## 35. 承诺准入同输入 A/B（2026-07-23）
+
+### 35.1 条件
+
+本次独立复核以下 clean 制品：
+
+- `hold_only`：
+  `/tmp/MSM-identity-gate-results-7e15dac/hold_only`；
+- `hold_plus_centroid`：
+  `/tmp/MSM-identity-gate-results-7e15dac/hold_plus_centroid`；
+- 固定提交：
+  `7e15dac9cdaf6743999dfe045a70676fd31a17d6`；
+- `repository_dirty=false`；
+- nominal 200v200，`recon_count=2`，`duration=2.2 s`，seed 1100；
+- 场景配置 SHA-256：
+  `20ef5248c8b45ff5aced9080c8d47e65a43aaba54f18ce824dc50fac7a52b840`。
+
+两臂的运行时 profile SHA-256 不同，原因是
+`d1_identity_neutral_centroid_correction_enabled=false/true`。其他本轮核对的场景、
+D2 承诺策略和 D3 准入配置相同。本次是三维质点全栈试验，不是 AirSim 或实飞。
+
+### 35.2 D2 结果
+
+| 指标 | hold only | hold + centroid | 差异 |
+|---|---:|---:|---:|
+| D2 终态航迹 | 201 | 201 | 0 |
+| strict IDSW | 3 | 3 | 0 |
+| track continuity | 0.8266666667 | 0.8266666667 | 0 |
+| coverage continuity | 0.8283333333 | 0.8283333333 | 0 |
+| available mapping | 1491 | 1491 | 0 |
+| unavailable mapping | 218 | 218 | 0 |
+| uncommitted mapping | 76 | 76 | 0 |
+| commitment records | 1787 | 1787 | 0 |
+| committed records | 1711 | 1711 | 0 |
+| commitment coverage | 0.9574706212 | 0.9574706212 | 0 |
+| duplicate assignment | 0 | 0 | 0 |
+| online truth use | 0 | 0 | 0 |
+| uncommitted source binding violation | 0 | 0 | 0 |
+| uncommitted candidate binding violation | 0 | 0 | 0 |
+
+两臂各有 69 条 `identity_uncommitted_ambiguity_hold` 和 7 条
+`identity_uncommitted_after_hold` 记录。9 条 D2 在线记录的文件 SHA-256 完全相同：
+`da7089facfea118ea90e7c7f6464ff8745c079971656b58b954e9fcd0edf8d2f`。
+
+质心臂检查 46 个候选分量，30 个因 `oosm_scan`、16 个因
+`unbalanced_component` 拒绝。`neutral_centroid_applied_component_count=0`，
+`neutral_centroid_applied_member_count=0`。因此两个 D2 结果完全相同是零实际处理的
+直接结果，不能写成质心算法性能等价。
+
+### 35.3 在线准入结果
+
+| 时刻/s | 计划版本 | D2 committed | D2 未承诺 | D3 分配 | D3 拒绝未承诺 | 关键动作 |
+|---:|---:|---:|---:|---:|---:|---|
+| 0.75 | 1 | 193 | 0 | 193 | 0 | 初始计划 |
+| 1.00 | 2 | 186 | 11 | 186 | 11 | 强制重规划，绕过迟滞，旧绑定撤出 |
+| 2.00 | 3 | 190 | 11 | 186 | 11 | 继续失败关闭，另有 4 条因其他原因未分配 |
+
+第 2 版计划的 11 条 `identity_commitment_previous_binding_target_ids` 与 11 条拒绝 ID
+一致。新计划 assignment 不含这些 ID，`identity_commitment_forced_replan=true`、
+`identity_commitment_hysteresis_bypassed=true`、
+`identity_commitment_all_primary_reserve_slots_blocked=true`。第 3 版保持严格版本递增，
+拒绝集合与 assignment 的交集仍为 0。
+
+按各命令携带的 `plan_version` 联接后，两臂结果相同：
+
+- 被 D3 拒绝的目标进入 D3 assignment：0；
+- 被拒绝目标进入 D5 active-vision command：0；
+- 被拒绝目标进入 D7 guidance command：0。
+
+这组在线发布物证明 D2 显式承诺状态已经被下游作为执行准入条件使用。未承诺航迹仍可
+保留运动状态和协方差供观察，但不会获得新的分配、视觉任务或导引命令。
+
+### 35.4 判定
+
+D2 到 D3/D5/D7 的身份承诺安全合同关闭。该结论不改变 D2 算法准入：
+
+- strict IDSW 仍为 3；
+- track continuity 和 coverage continuity 仍低于早期 hold-disabled baseline 的
+  `0.865/0.870`；
+- available mapping 仍为 1491，uncommitted mapping 仍为 76；
+- prediction-only hold 仍缺少身份中立、协方差保守的运动学支持；
+- 质心候选没有非零 treatment。
+
+结构歧义 hold 和质心候选均保持默认关闭。P1 算法准入继续开放，seeds 1101/1102、
+10 秒和 20-seed 扩展继续停止。下一轮应先在同一 seed 1100 形成可归因的非零候选，
+同时恢复航迹连续性和可用映射，再决定是否进入未见 seed。
+
+本次证据复核后执行 D2 全量测试，结果为
+`291 passed, 1 warning in 29.29s`。warning 是本机 Matplotlib `Axes3D` 环境提示。

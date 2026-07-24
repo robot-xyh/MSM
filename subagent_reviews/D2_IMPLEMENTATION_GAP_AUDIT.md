@@ -1310,9 +1310,9 @@ P50/P95/P99、多 seed 长短窗口、main-owned lineage/publication 分离，�
 
 - 当前 prediction-only hold 不保留歧义期间的运动学信息。下一候选需定义
   identity-uncommitted 的保守运动学更新，并保持协方差不虚假收缩。
-- 冻结 seed-1100 制品尚未以 `identity_commitment_state` 过滤新计划或撤回旧计划。
-  当前 D3-owned 准入修改已存在于工作区，但同一冻结输入的 main 集成复验尚未完成；
-  未提交航迹进入 D3 的计数仍必须降为 0。
+- 旧冻结 seed-1100 制品尚未以 `identity_commitment_state` 过滤新计划或撤回旧计划；
+  该历史缺口已由固定提交 `7e15dac9` 的同输入 clean 集成复验关闭。未提交航迹进入
+  D3 assignment、D5 active vision 和 D7 guidance 的计数均为 0。
 - D1 deferred birth 和结构歧义成员变化仍需 D1 独立判断真假重复；D2 不跨模块归因。
 - 候选继续默认关闭，不改 `(2,5)` 和 `0.9 s`，不启动新增 seed、长时或 AirSim 扩展。
 
@@ -1321,3 +1321,44 @@ P50/P95/P99、多 seed 长短窗口、main-owned lineage/publication 分离，�
 
 本次复核没有发现新的 D2 代码 P0。2026-07-23 完整 D2 回归为
 `291 passed, 1 warning in 31.00s`；warning 为既有 Matplotlib `Axes3D` 环境提示。
+
+## 2026-07-23 clean seed 1100 承诺准入 GAP 更新
+
+### 已关闭的 P1 合同缺口
+
+- 固定提交 `7e15dac9cdaf6743999dfe045a70676fd31a17d6` 在
+  `/tmp/MSM-identity-gate-results-7e15dac/{hold_only,hold_plus_centroid}` 完成同输入
+  clean A/B。两臂均为 nominal 200v200、`recon_count=2`、`2.2 s`、seed 1100，
+  `repository_dirty=false`，场景配置 SHA-256 相同。
+- D2 在 `t=1.0 s` 发布 11 条未承诺航迹后，D3 第 2 版计划将其全部拒绝，旧绑定不再
+  出现在 assignment，强制重规划绕过迟滞，计划版本严格由 1 增至 2。第 3 版继续按显式
+  承诺状态失败关闭。
+- D3 拒绝集合与 assignment 的交集为 0；按计划版本联接的 D5 active-vision 和 D7
+  guidance 对拒绝集合的命令数也为 0。原“未承诺航迹仍进入下游执行链”和“同输入 main
+  集成复验待完成”关闭，后续作为回归合同维护。
+- 两臂 online truth use、duplicate assignment、未承诺 source/candidate binding
+  violation 均为 0，中心 `global_track_id` 权威未变化。
+
+### 仍开放的 P1 算法缺口
+
+- D2 终态 201、available mapping 1491、uncommitted mapping 76、track continuity
+  `0.8266666667`、coverage continuity `0.8283333333`。显式准入没有修复相对早期
+  hold-disabled baseline 的航迹连续性和映射可用性退化。
+- prediction-only hold 仍会丢失歧义期间的运动学支持。下一候选必须保持身份未承诺，
+  不产生硬 observation binding、hit、birth、rebind 或虚假协方差收缩，同时提供可复核
+  的保守运动学更新。
+- `hold_plus_centroid` 的 46 个候选全部被拒绝，应用分量/成员为 0。该零 treatment
+  不能关闭质心候选的有效性、协方差一致性或退化风险 GAP。
+- strict IDSW 为 3 只能说明可评分身份切换次数，不能覆盖 track/coverage continuity、
+  可用映射和终态航迹退化。结构歧义 hold 与质心候选均不晋级。
+- seeds 1101/1102、10 s 和 20-seed 扩展继续停止。真实 AirSim 承诺准入、时钟、遮挡、
+  漏检、杂波和固定硬件时延标定仍未执行。
+
+### 优先级
+
+P0 无新增项。P1 下一步仍是 seed 1100 上的 D2 算法候选，而不是放宽 `0.9 s`、调整租约
+参数或直接扩展 seed。候选只有在形成非零 treatment 且航迹数、映射可用性、连续性和
+安全违规联合非退化后，才可进入 seeds 1101/1102。
+
+2026-07-23 本轮完整 D2 回归为 `291 passed, 1 warning in 29.29s`。warning 是本机
+Matplotlib `Axes3D` 环境提示。

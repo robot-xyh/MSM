@@ -2097,6 +2097,62 @@ D2/D3 `203/200` 和 continuity `0.865/0.870`。
 租约。
 
 恢复 committed 仍需新的原始证据越过水位线，并满足 source binding、publisher epoch、
-claim 首次接纳和固定 0.9 秒发布新鲜度。main/D3 还需把未提交航迹从新计划排除，并对
-旧计划发布版本化 hold/replan。冻结 seed-1100 制品尚未执行该准入；当前 D3-owned
-修改需由 main 另行集成复验。本节只定义研究合同，没有实现候选。
+claim 首次接纳和固定 0.9 秒发布新鲜度。旧冻结 seed-1100 制品尚未执行下游准入；
+固定提交 `7e15dac9` 已用同一输入完成 D3 过滤、旧绑定撤回、版本化重规划以及 D5/D7
+命令阻断。该实现关闭跨模块安全合同，没有实现本节提出的 D2 保守运动学候选。
+
+## 34. 显式身份承诺准入
+
+### 34.1 D2 发布集合
+
+在 D2 发布时刻 \(t\)，每条在线航迹携带独立的身份承诺状态。定义：
+
+\[
+\mathcal{C}_t =
+\{i \mid s_i(t)=\mathrm{committed}\},\qquad
+\mathcal{U}_t =
+\{i \mid s_i(t)\ne\mathrm{committed}\}.
+\]
+
+D2 仍发布 \(\mathcal{C}_t\cup\mathcal{U}_t\) 的运动状态、协方差、双时间戳和
+`global_track_id`，以便上游诊断和继续观察。未承诺航迹不会被删除或本地改绑；其来源
+观测、候选真值和 committed claim 继续为空。下游可执行目标域只取
+\(\mathcal{C}_t\)。
+
+### 34.2 计划撤回
+
+设上一版计划的目标集合为 \(\mathcal{A}_{k-1}\)。当
+\(\mathcal{A}_{k-1}\cap\mathcal{U}_t\ne\varnothing\) 时，D3 对这些目标执行失败关闭：
+
+1. 从本轮候选目标和全部 primary/reserve demand slot 中排除未承诺目标；
+2. 标记 `forced_replan=true`；
+3. 为安全撤回绕过普通迟滞和变更预算；
+4. 发布严格更大的 `plan_version`；
+5. D5 active-vision 与 D7 guidance 只消费新版本中仍在 \(\mathcal{C}_t\) 的目标。
+
+D2 只负责发布可审计的状态和原因，不生成 AssignmentPlan，也不决定 D5/D7 控制许可。
+该边界保持中心 `global_track_id` 权威不变。
+
+### 34.3 clean seed 1100 结果
+
+固定提交 `7e15dac9cdaf6743999dfe045a70676fd31a17d6` 的两臂同输入复核中，D2 在
+`t=1.0 s` 发布 186 条 committed 和 11 条
+`identity_uncommitted_ambiguity_hold` 航迹。D3 第 2 版计划只分配前 186 条，拒绝集合
+与 assignment 的交集为 0；11 条旧绑定全部从新计划消失，版本由 1 增至 2。第 3 版计划
+继续拒绝当时的 11 条未承诺航迹。与计划版本联接后，D5 active-vision 和 D7 guidance
+对拒绝集合的命令数均为 0。
+
+两臂 D2 在线 JSONL 的 SHA-256 相同。strict IDSW、track continuity 和 coverage
+continuity 均为 `3/0.8266666667/0.8283333333`；映射
+available/unavailable/uncommitted 为 `1491/218/76`。这组结果验证了准入算法的失败
+关闭，不证明 D2 关联算法改善。
+
+### 34.4 质心候选边界
+
+`hold_plus_centroid` 的 D1 质心候选共检查 46 个分量，30 个因 `oosm_scan`、16 个因
+`unbalanced_component` 拒绝，应用分量数和成员数均为 0。D2 因而接收到与
+`hold_only` 完全相同的在线发布。该结果没有非零 treatment，不能估计质心修正对 IDSW、
+连续性、协方差一致性或下游计划的因果影响。
+
+2026-07-23 文档同步后运行 D2 全量回归，结果为
+`291 passed, 1 warning in 29.29s`。warning 来自本机 Matplotlib `Axes3D` 环境。
