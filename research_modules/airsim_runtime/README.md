@@ -1,5 +1,17 @@
 # AirSim Blocks Runtime
 
+## 2026-07-23 D3 身份承诺兼容桥
+
+D3 现只接受显式 `committed` 航迹。当前 AirSim episode bus 使用经典二维 D2，该跟踪器尚无
+结构歧义保持和 `d2.identity-evidence-commitment.v2` 侧车。main 在经典 D2 输出边界为本帧
+全部中心航迹生成逐 ID 的显式 committed 清单，再交给 D3 适配器。清单必须与输入航迹集合
+完全一致，不能由 AirSim actor、检测真值或目标名称推导。
+
+直接调用 `target_tracks_from_online_d2()` 而不提供该清单时，目标状态为
+`identity_commitment_missing`，D3 不会分配。该行为避免把兼容桥重新变成隐式默认值。
+AirSim runtime 全量 `157 passed`，原 2v2、5v5、M5N2、二级接管和分布式故障注入软件
+fixture 均恢复。此次没有启动 Blocks；真实多 seed 的承诺撤销和计划升版仍待测试。
+
 ## 2026-07-15 M5N2 ClockSpeed 1.0/0.2/0.1 Comparison
 
 Main completed reset-separated SimpleFlight M5N2 campaigns for

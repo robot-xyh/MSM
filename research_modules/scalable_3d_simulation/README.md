@@ -30,6 +30,24 @@ main 现已把该确认链自动接入 D6 离线结果联接。存在运行时�
 每个窗口输出起始、结束、最小三维距离和五米事件；距离进展只记为诊断，不作为 D3 正式奖励。
 输入清单、联接结果、中文报告和 main provenance manifest 均随 episode 保存。
 
+## 2026-07-23 身份承诺下游准入
+
+main 已把 D2 的 `d2.identity-evidence-commitment.v2` 按 `global_track_id` 显式接入 D3。
+D3 只接受 `committed`；歧义保持、保持后未承诺、字段缺失和未知状态都不进入可执行计划。
+若现有计划中的目标被撤销承诺，main 在同一 D2 关联周期清除该目标的 D7 binding，设置强制
+重规划标志，并在下一 D3 周期要求新计划严格升版。D5 主动视觉和 D7 导引还各自按当前承诺
+集合再次过滤，旧计划不能在重规划间隙继续驱动相机或控制。
+
+AirSim 经典二维 D2 尚不产生该 v2 侧车。AirSim main 因此在该可信中心跟踪器边界逐航迹生成
+显式 `committed` 清单，并要求清单与适配航迹集合完全一致；直接调用适配器但不提供清单时，
+状态为 `identity_commitment_missing`，D3 继续失败关闭。旧版 integrated point-mass 适配器也
+显式标记其中心 D2 航迹来源，不再依赖 D3 的隐式默认值。
+
+当前软件回归为 D3 `450 passed, 1 skipped`、AirSim runtime `157 passed`、
+scalable 3D `157 passed`、integrated point-mass `7 passed` 和跨模块合同 `7 passed`。
+本轮没有启动真实 AirSim，也没有重跑 seed 1100 因果对照。该变化关闭下游合同安全门，
+不晋级结构歧义候选；真实多 seed 的撤销、升版、旧计划拒绝和 D5/D7 零越权仍为 P1。
+
 ## 2026-07-23 当前优化 20-seed 校准
 
 detached clean `5263e2b343dc4b96d239f77ef09437eb132f9efb` 已完成
@@ -175,6 +193,28 @@ detached clean `ff881316243ff5a2991a4659ab78637ed625d123` 使用相同 nominal 2
 完整评审见
 `docs/SCALABLE_3D_STRUCTURAL_AMBIGUITY_HOLD_CLEAN_AB_REVIEW_CN.md`，机器摘要见
 `docs/SCALABLE_3D_STRUCTURAL_AMBIGUITY_HOLD_CLEAN_AB_REVIEW_20260723.json`。
+
+## 2026-07-23 身份中性质心校正开发门槛
+
+main 已接入两个默认关闭的独立运行开关：
+`--d1-publish-opaque-source-key` 用于来源键控制臂，
+`--d1-identity-neutral-centroid-correction` 用于结构歧义 hold 下的质心状态校正。
+后者必须与 `--d1-d2-structural-ambiguity-hold` 同时启用。D1 对连续 generation
+采用帧替换语义：每帧从正式观测历史重放到发布时间，再施加一次身份中性的平移和
+协方差膨胀，不累计上一帧临时修正。
+
+当前未提交工作树完成了 seed 1100 开发门槛。两臂均为 nominal 200 对 200、
+2 个侦察节点和 2.2 秒；控制臂启用 source-key 与 hold，候选臂只增加质心校正。
+两臂的 D1/D2/D3 数量均为 `202/201/186`，严格 ID Switch 均为 `3`，
+track/coverage continuity 均为 `0.826667/0.828333`，最终有效映射均为 `191`，
+未承诺绑定违规均为 `0`。
+
+候选审计记录 46 个组件，实际施加为 `0`。其中 30 个因 `oosm_scan` 失败关闭，
+16 个因 `unbalanced_component` 失败关闭。该次运行没有形成有效 treatment，不能证明
+质心校正改善或恶化系统，也没有恢复结构歧义 hold 的航迹和分配可用性。按门槛停止
+seeds 1101/1102；候选保持默认关闭，P1 继续开放。该批
+`repository_dirty=true`，只作为开发诊断。详情见
+`docs/SCALABLE_3D_NEUTRAL_CENTROID_DEV_GATE_CN.md`。
 
 ## 2026-07-22 规则全栈性能校准
 

@@ -58,6 +58,7 @@ main
 | D2 观测声明账本 | `d2-observation-claim-ledger-v2` | 声明键、水位线、安全淘汰、容量或反重放语义改变 |
 | D2 结构歧义保活策略 | `d2.ambiguity-hold-lease-policy.v1` | 租约时钟、年龄门限、软/硬截止、证据保留或失败关闭语义改变 |
 | D2 身份承诺 | `d2.identity-evidence-commitment.v2` | 承诺状态、恢复水位、阻断键、来源绑定或失败关闭语义改变 |
+| D3 身份承诺准入 | `d3_identity_commitment_admission_v1` | committed 集合、拒绝状态、旧绑定撤销、强制重规划或审计字段语义改变 |
 | D2 离线身份证据 | `d2.scalable3d_identity_evidence.v2` | 未承诺间隙、来源谱系、D1/D2 序号或承诺快照语义改变 |
 | D2 离线身份评估 | `d2.scalable3d_identity_evaluation.v2` | 承诺覆盖、ID Switch 锚点、未承诺状态或严格指标 availability 语义改变 |
 | D2 身份承诺审计 | `d2.scalable3d_identity_commitment_audit.v2` | 恢复原因、水位年龄、overflow 或绑定违规统计语义改变 |
@@ -108,6 +109,23 @@ episode 混用 v1/v2 身份证据，D6 必须按证据 schema 选择相同版本
 固定来源路径。D6 对清单文件、在线 D2 JSONL 哈希和逐条快照独立复核，并在 episode、
 batch 和 runtime provenance 中暴露结果。历史 v1 清单可继续读取严格和部分身份指标，但
 恢复配置谱系必须标记为 unavailable，不能补算。
+
+D3 的身份承诺准入不允许兼容性缺省。scalable 3D main 必须从同一 D2 发布按
+`global_track_id` 提供完整承诺集合；集合缺失、键不一致、状态未知或非 committed 时，
+对应目标不得进入新计划、D5 主动视觉和 D7 导引。现有 binding 被撤销时必须先 hold，
+再发布严格更新的计划版本。AirSim 经典 D2 的兼容桥只能在 main-owned 可信跟踪器边界生成
+逐航迹显式 `committed` 清单，且清单必须精确覆盖本帧适配航迹；普通适配器调用没有清单时
+保持 `identity_commitment_missing`。后续经典 D2 一旦支持歧义承诺，必须改为消费实际侧车，
+不能继续无条件生成 committed。
+
+身份中性质心校正是默认关闭的 D1 实验行为，不改变
+`d1.structural-ambiguity-evidence.v1` 的外部字段。main 必须把
+`d1_publish_opaque_source_key`、`d1_d2_structural_ambiguity_hold_enabled` 和
+`d1_identity_neutral_centroid_correction_enabled` 全部写入 runtime profile；
+不同组合必须生成不同 profile SHA-256 和 episode ID。质心候选的帧替换语义、门限、
+代际水位或协方差膨胀规则发生改变时，即使外部侧车 schema 不变，也必须形成新的
+runtime profile，不得与既有实验结果合并。2026-07-23 的 dirty seed 1100 开发门槛中
+候选实际施加数为 0，因此不能作为 schema 或策略晋级证据。
 
 ## 实验清单
 

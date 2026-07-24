@@ -11,6 +11,9 @@ automatic disposition, or authorization bypasses.
   covariance-carrying tracks.
 - D2 converts D1 tracks into stable global IDs using GNN/Hungarian association.
 - D3 builds versioned rolling assignments with hysteresis.
+  The legacy point-mass adapter marks each center-owned D2 track as explicitly
+  identity-committed; D3 no longer treats a missing commitment field as
+  committed.
 - D4 evaluates passive failover and active degradation using center health,
   secondary-node availability, D1/D2/D3 uncertainty, and D5 terminal evidence.
 - D5 performs conservative terminal visual association without rewriting

@@ -9,6 +9,29 @@
 **当前状态修订（2026-07-20）**：上段“无开放 P0”只对应此前 AirSim 审计。900-episode
 正式生成在第 210 项发现 D5 同流多批次阻塞；以下专项记录为当前状态，优先级高于历史摘要。
 
+## 2026-07-23 D3 身份承诺下游准入
+
+当前无新增 P0。D3 已增加 `d3_identity_commitment_admission_v1`：仅显式
+`committed` 航迹可进入普通或 M 对 N 计划；歧义保持、保持后未承诺、字段缺失和未知状态
+全部失败关闭。已绑定目标被撤销时，迟滞和每窗口变更预算不能保留旧绑定，D3 发布严格更新的
+计划版本。专项覆盖两类未承诺、缺失、未知、旧绑定撤销、M 对 N 全角色阻断、过时前序版本和
+非等量规模。D3 全量为 `450 passed, 1 skipped`，跳过项是可选 OR-Tools。
+
+scalable 3D main 已从同一 D2 发布按 `global_track_id` 复载精确承诺集合。撤销发生后，同一
+D2 周期先清除旧 D7 binding 并设置强制重规划；D5 主动视觉和 D7 输入还独立复核 committed
+集合。承诺 map 缺失、键集合不等于当前 D2 航迹或 schema/policy 不支持时直接报错，不能回退。
+main 专项与全量为 `34/157 passed`。
+
+AirSim 经典二维 D2 暂无 v2 承诺侧车。main-owned episode bus 只在该可信中心跟踪器边界生成
+逐航迹显式 committed 清单，并要求精确覆盖当前输入；普通适配器缺少清单时输出
+`identity_commitment_missing`，D3 仍拒绝。integrated point-mass 的旧中心 D2 适配器也显式
+声明来源。AirSim runtime、integrated point-mass 和跨模块合同分别为 `157/7/7 passed`。
+
+该批关闭模块和总线合同安全门，不是 seed 1100 结构歧义算法晋级证据。本轮没有启动真实
+AirSim，也没有以新 D3 门重跑 clean seed 1100。P1 仍包括：同输入因果复验、真实 AirSim
+多 seed 承诺撤销时序、严格升版、stale plan 拒绝、D5/D7 零越权，以及经典 D2 后续改为消费
+真实承诺侧车。
+
 ## 2026-07-23 当前优化 20-seed 全栈校准
 
 当前没有新增 P0。detached clean `5263e2b343dc4b96d239f77ef09437eb132f9efb`
@@ -160,6 +183,38 @@ runtime provenance 均通过。
 仍是开放 P1。seed 1100 因 D2/D3 可用性和连续性退化未通过，seeds 1101/1102、10 秒和
 20-seed 不执行，默认开关保持关闭。下一候选不能扩大评分窗口，应优先校准 gap/hard lease、
 birth 抑制和恢复等待，再从 seed 1100 开始。
+
+### 2026-07-23 身份中性质心校正开发门槛
+
+D1 已实现默认关闭的身份中性质心校正，并修复连续 generation 对临时发布态重复叠加的
+问题。当前语义从正式观测历史重放到发布时间，每帧只施加一次平移和协方差膨胀；代际登记
+按组件保存最新水位，默认容量 1024，固定滞后窗口外才允许淘汰。D1 全量回归为
+`282 passed`。main 已增加显式开关、hold 依赖校验、运行审计和 profile 哈希绑定；
+scalable 3D 专项/全量回归为 `34/157 passed`。
+
+main 随后在当前未提交工作树运行 seed 1100 开发门槛。两臂使用相同 nominal 200 对 200、
+2 个侦察节点、2.2 秒和配置 SHA-256
+`20ef5248c8b45ff5aced9080c8d47e65a43aaba54f18ce824dc50fac7a52b840`。
+两端都显式启用 source-key 与结构歧义 hold；候选只增加质心校正。
+
+| 指标 | hold 控制臂 | hold + 质心校正 | 判定 |
+| --- | ---: | ---: | --- |
+| D1/D2/D3 数量 | 202/201/186 | 202/201/186 | 持平 |
+| strict ID Switch | 3 | 3 | 持平 |
+| track continuity | 0.826667 | 0.826667 | 持平 |
+| coverage continuity | 0.828333 | 0.828333 | 持平 |
+| 最终有效映射 | 191 | 191 | 持平 |
+| 全记录承诺覆盖 | 0.957471 | 0.957471 | 持平 |
+| 未承诺来源/候选绑定违规 | 0/0 | 0/0 | 安全门通过 |
+| 质心组件 applied/rejected | 不适用 | 0/46 | 无实际 treatment |
+| 质心拒绝原因 | 不适用 | OOSM 30；不平衡 16 | 线上资格门阻断 |
+
+该候选没有触发状态校正，因此没有恢复 hold 已知的 D2/D3 可用性和连续性退化。结果也不能
+用于判断质心公式本身的收益。当前无新增 P0；P1 仍开放，具体断点从“跨代累积和无界登记”
+收敛为“真实异步扫描下零 treatment”。seeds 1101/1102 按停止规则不执行，默认路径不变。
+后续只能先用冻结扫描重放定位 OOSM 与不平衡组件的可处理边界，再以 clean seed 1100
+重启门槛；不得放宽身份、时间、版本和绑定安全规则。完整记录见
+`research_modules/scalable_3d_simulation/docs/SCALABLE_3D_NEUTRAL_CENTROID_DEV_GATE_CN.md`。
 
 ## 2026-07-22 后验代次与 clean 长时基线
 
