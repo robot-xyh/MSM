@@ -1017,6 +1017,61 @@ def _rewrite_d2_truth_as_v2(
     return _refresh(inputs, "d2_identity_manifest")
 
 
+def _add_long_seed_1102_false_alarm_mapping_shape(
+    inputs: RuntimePlanOutcomeJoinInputs,
+    *,
+    reported_count: int,
+) -> RuntimePlanOutcomeJoinInputs:
+    identity_path = inputs.d2_identity_evaluation.path
+    identity = json.loads(identity_path.read_text(encoding="utf-8"))
+    mappings = identity["frames"][0]["mappings"]
+    for index in range(11):
+        mapping = _track_mapping(f"GT-FA-{index:02d}", "TGT-UNUSED")
+        mapping.update(
+            {
+                "status": "excluded",
+                "truth_target_id": None,
+                "reason": "known_false_alarm_only",
+                "unavailable_reasons": ["known_false_alarm_only"],
+                "candidate_truth_target_ids": [],
+                "source_observation_ids": ["OBS-FA"],
+            }
+        )
+        mappings.append(mapping)
+    for index in range(3):
+        mapping = _track_mapping(
+            f"GT-FA-UNAVAILABLE-{index:02d}",
+            "TGT-UNUSED",
+        )
+        mapping.update(
+            {
+                "status": "unavailable",
+                "truth_target_id": None,
+                "reason": "source_observation_outside_lineage_window",
+                "unavailable_reasons": [
+                    "source_observation_outside_lineage_window"
+                ],
+                "candidate_truth_target_ids": [],
+                "source_observation_ids": ["OBS-FA"],
+            }
+        )
+        mappings.append(mapping)
+    identity["audit"]["known_false_alarm_only_mapping_count"] = (
+        reported_count
+    )
+    identity["audit"]["excluded_mapping_count"] = 11
+    _write_json(identity_path, identity)
+
+    manifest_path = inputs.d2_identity_manifest.path
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["source_hashes"]["identity_evaluation"] = _file_hash(
+        identity_path
+    )
+    _write_json(manifest_path, manifest)
+    inputs = _refresh(inputs, "d2_identity_evaluation")
+    return _refresh(inputs, "d2_identity_manifest")
+
+
 def _episode_output_inputs(root: Path) -> RuntimePlanOutcomeJoinInputs:
     paths = {
         "online_observations": root / "online_observations.jsonl",
@@ -1249,6 +1304,42 @@ def test_v2_truth_dispositions_are_hash_bound_and_known_false_alarm_is_excluded(
     )
     assert audit["known_false_alarm_exclusion_verified"] is True
     assert audit["strict_id_switch_backfilled"] is False
+
+
+def test_runtime_join_accepts_fixed_11_of_11_false_alarm_audit(
+    tmp_path: Path,
+) -> None:
+    inputs, _ = _make_fixture(tmp_path / "sources")
+    inputs = _rewrite_d2_truth_as_v2(inputs)
+    inputs = _add_long_seed_1102_false_alarm_mapping_shape(
+        inputs,
+        reported_count=11,
+    )
+
+    result = evaluate_runtime_plan_outcomes(inputs)
+
+    audit = result["offline_observation_truth_disposition"]
+    assert audit["known_false_alarm_only_mapping_count"] == 11
+    assert audit["known_false_alarm_exclusion_verified"] is True
+
+
+def test_runtime_join_rejects_old_14_of_11_false_alarm_audit(
+    tmp_path: Path,
+) -> None:
+    inputs, _ = _make_fixture(tmp_path / "sources")
+    inputs = _rewrite_d2_truth_as_v2(inputs)
+    inputs = _add_long_seed_1102_false_alarm_mapping_shape(
+        inputs,
+        reported_count=14,
+    )
+
+    with pytest.raises(RuntimePlanOutcomeJoinError) as captured:
+        evaluate_runtime_plan_outcomes(inputs)
+
+    assert (
+        captured.value.code
+        == "d2_known_false_alarm_mapping_audit_mismatch"
+    )
 
 
 def test_v2_unknown_disposition_keeps_d2_strict_identity_fail_closed(

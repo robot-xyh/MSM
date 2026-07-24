@@ -4362,6 +4362,7 @@ def _d2_observation_truth_disposition_acceptance(
         )
 
     known_false_alarm_mapping_count = 0
+    frame_excluded_mapping_count = 0
     frames = payload.get("frames")
     if not isinstance(frames, Sequence) or isinstance(frames, (str, bytes)):
         raise TruthIsolatedEvaluationError("D2 identity frames must be a sequence")
@@ -4377,13 +4378,20 @@ def _d2_observation_truth_disposition_acceptance(
             )
         for raw_mapping in mappings:
             mapping = _mapping(raw_mapping, "D2 identity mapping")
+            status = mapping.get("status")
+            truth_target_id = mapping.get("truth_target_id")
+            candidate_truth_target_ids = mapping.get(
+                "candidate_truth_target_ids"
+            )
+            if status == "excluded":
+                frame_excluded_mapping_count += 1
             if mapping.get("reason") != "known_false_alarm_only":
                 continue
             known_false_alarm_mapping_count += 1
             if not (
-                mapping.get("status") == "excluded"
-                and mapping.get("truth_target_id") is None
-                and not mapping.get("candidate_truth_target_ids")
+                status == "excluded"
+                and truth_target_id is None
+                and not candidate_truth_target_ids
             ):
                 raise TruthIsolatedEvaluationError(
                     "D2 known false alarm was promoted to a target identity"
@@ -4395,6 +4403,13 @@ def _d2_observation_truth_disposition_acceptance(
     if reported_exclusion_count != known_false_alarm_mapping_count:
         raise TruthIsolatedEvaluationError(
             "D2 known-false-alarm exclusion count contradicts frame mappings"
+        )
+    if "excluded_mapping_count" in audit and _nonnegative_int(
+        audit.get("excluded_mapping_count"),
+        "D2 excluded mapping count",
+    ) != frame_excluded_mapping_count:
+        raise TruthIsolatedEvaluationError(
+            "D2 excluded mapping count contradicts frame mappings"
         )
 
     blockers = audit.get("identity_metrics_blocking_reasons")

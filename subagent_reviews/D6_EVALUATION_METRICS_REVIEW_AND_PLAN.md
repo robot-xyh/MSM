@@ -1,5 +1,47 @@
 # D6 系统评估指标综述及子方案
 
+## 2026-07-24 D1 多 seed 与长时评估评审
+
+D6 已建立新的显式矩阵入口，预注册 short seeds 1101-1110、2.2 秒和 long seeds 1101-1103、
+10 秒。13 个 pair 均须由 main 明确列出 reference/candidate episode、两份 GNU `time -v` 和
+cross-build JSON。目录文本不参与 arm、seed、duration 或规模判断。
+
+main 的正式入口是 completed `evidence_manifest.json`。D6 对内嵌矩阵的 experiment ID、固定提交、
+13 个 case 与 arm order、200/200/2 规模、运行参数、10000 次 bootstrap、准入门和固定 runtime
+profile 摘要执行精确核对。每个 arm 的标签、expected commit、`complete|reused` 状态、整数零
+返回码和证据路径必须完整，cross 状态必须为 passed。manifest 与兼容 `--pair` 输入互斥。
+
+consumer 只接受已登记的 v1 和 v2。v1 保留原提交且不能携带 v2 谱系字段。v2 精确绑定修复后的
+effective commits、原 v1 base commits、公共 D2 修复 `e4147b8` 及其主题，并要求
+`v1_outputs_reused=false`。选择由 experiment ID 完成，未知 experiment 和 CLI commit override
+均被拒绝。
+
+评审将证据分为 pair、矩阵和统计三层。pair 层复用现有 clean、提交、配置、runtime、规模、有限
+状态、truth、exit 和 cross-build 校验。矩阵层要求 key 集合与预注册完全一致，配置只允许顶层
+seed/duration 不同，runtime profile 全部相同，26 个 arm 的结构歧义保活均为 true。统计层分别
+报告 short/long 分布、paired relative change 的确定性 bootstrap，以及共同 seed 的长短单位时间
+成本增长。
+
+准入门已按预注册要求实现：short 8/10、均值 5%、bootstrap CI 上界小于 0、P95 改善；long 2/3、
+均值 5%；D1 单位成本增长恶化不超过 5%；core wall/RSS 组均值和每 RSS pair 门；全部语义、truth、
+finite、exit 门。核心 wall 与 external elapsed 分层，不相加。
+
+fixture 覆盖正分支、全部性能门和 manifest 字段篡改，CSV 为 14 LF、0 CR。多 seed 专项
+`48 passed`，原 clean-pair 专项 `9 passed`，D6 全量
+`698 passed, 1 warning in 24.40s`。warning 为既有 Matplotlib `Axes3D` 环境提示。
+
+main 矩阵运行在 long seed 1102 reference 暂停。旧 D2 producer 报告 14 个
+`known_false_alarm_only`，持久化明确排除只有 11 个，另 3 个为谱系时间窗导致的 unavailable。
+D6 在 truth-isolated 和 runtime join 两条路径都要求 audit 与最终持久化明确排除数精确相等，因此
+旧 `14/11` 失败关闭；D2 修复后的 `11/11` 才可消费。main 已冻结 v2，使两个实验臂使用同一公共
+D2 修复且不复用 v1 输出；当前只作功能烟测，正式无并发矩阵待运行。D6 不发布正式多 seed/长时
+性能数值，不把 fixture 的 admission true 写成项目算法结论。该项 P1 状态为“consumer 已完成，
+v2 正式矩阵与结果待提供”。三维质点矩阵不包含 AirSim 或目标硬件条件，系统实时性继续保持未关闭。
+
+`AIRSIM_INTEGRATION_PLAN.md` 已检查。本轮不改变 AirSim 日志、topic、检测、相机、reset、actor 或
+控制接口，因此无需修改。`D6_M_TO_N_EVALUATION_FRAMEWORK_REVIEW.md` 也已检查；本项不改变 M 对 N
+联盟、同步到达或五米物理指标，无需修改。
+
 ## 2026-07-24 D1 协方差成对限制向量化评审
 
 D6 以独立只读消费者复核三轮 clean reference/candidate。每轮输入显式绑定两个 episode、

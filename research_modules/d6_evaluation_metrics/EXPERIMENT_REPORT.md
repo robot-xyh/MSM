@@ -1,5 +1,86 @@
 # D6 系统级评估指标实验报告
 
+## 2.28 D1 多 seed 与长时 evaluator 验证
+
+### 结论
+
+多 seed 与长时评估入口、completed evidence manifest loader 和失败关闭测试已完成。main 的正式
+矩阵尚未完成，因此没有 D1 多 seed/长时准入结论，也没有在模块 outputs 下生成正式报告。以下结果
+只属于测试 fixture。
+
+### 预注册合同
+
+| 项 | 预注册值 |
+| --- | --- |
+| short | seeds 1101-1110，2.2 s |
+| long | seeds 1101-1103，10.0 s |
+| v1 reference / candidate | `7cc2d0cfd598a72d60c6ba8c7d4a283f4e5a897d` / `95bf46e34321127313757986bb28bfb14b7e3c59` |
+| v2 reference / candidate | `3c134c34655618b2e4d41302f9fbf3b6b4b78929` / `8c1188267c37c5e4a546abc8e7dd6c5a4bb48dba` |
+| v2 base commits | v1 两端提交 |
+| v2 公共 D2 修复 | `e4147b8`，`fix(d2): align false alarm exclusion audit` |
+| v2 输出复用 | `v1_outputs_reused=false` |
+| 目标 / 资源 / 侦察节点 | 200 / 200 / 2 |
+| 结构歧义保活 | 必须启用 |
+| runtime profile SHA-256 | `deabac3fbf2a788f68a0b807945e5f1bedacf8c5917c4d3b49c5cffb3c90da70` |
+| bootstrap | 10000 次，RNG seed 20260724 |
+| 每项输入 | 两个 episode、两份 GNU time -v、一个 cross-build JSON |
+| arm/seed/duration 来源 | 显式注册，不从目录名推断 |
+
+### 测试范围
+
+正例构造完整 13-pair fixture，验证 short/long 均值、中位数、P95、配对变化、确定性 bootstrap、
+同 seed 单位成本增长、JSON/CSV/中文报告和 CSV 纯 LF。相同 fixture 生成 main 合同形态的
+`evidence_manifest.json`，验证 manifest CLI 与 `--pair` 互斥。失败关闭覆盖：
+
+1. 预注册 pair 缺失；
+2. 除 seed/duration 外的配置漂移；
+3. runtime profile 和结构歧义保活开关漂移；
+4. cross-build false；
+5. 在线真值非零或进程非零退出；
+6. short 更快数、均值、bootstrap CI 和 P95 门；
+7. long 更快数和均值门；
+8. candidate 长短单位成本增长恶化超过 5%；
+9. core wall 组均值、RSS 组均值和任一 RSS pair 超过 5%；
+10. manifest schema、experiment、case、提交、规模、运行参数、bootstrap、准入门、runtime
+    摘要、arm 标签/状态/返回码、cross 状态和证据路径篡改；
+11. v2 effective/base commits、公共 D2 修复来源和主题、v1 输出复用标志篡改，以及 v1 混入 v2
+    谱系字段。
+
+### 暂停矩阵分析
+
+main 在 long seed 1102 reference 完成仿真和主要写盘后，旧 D2 producer 报告
+`known_false_alarm_only_mapping_count=14`。持久化
+`frames[].mappings[]` 中只有 11 条同时满足 `status=excluded` 和
+`reason=known_false_alarm_only`；另 3 条状态为 unavailable，原因为
+`source_observation_outside_lineage_window`。D6 consumer 继续要求 audit 与持久化明确排除数精确
+相等，因此旧 `14/11` 输出被拒绝，进程退出为 1。
+
+D2 owner 已把 producer 计数改为遍历最终 `all_mappings` 后只统计明确排除记录。D6 回归验证修复后
+`11/11` 通过，旧 `14/11` 在 truth-isolated 和 runtime join 两条入口均失败关闭。main 随后冻结
+v2 矩阵，使 reference 和 candidate 同时包含该修复，并保留 v1 两端作为 base commits。
+`v1_outputs_reused=false` 禁止把旧失败输出带入 v2。当前 v2 只作功能烟测，正式无并发矩阵尚未
+完成；D6 未读取未完成 evidence manifest，也未形成正式性能结论。
+
+### 测试结果
+
+| 检查 | 结果 |
+| --- | ---: |
+| 多 seed/长时专项 | 48 passed |
+| 原 clean-pair 专项 | 9 passed |
+| D6 全量 | 698 passed |
+| 失败 | 0 |
+| warning | 1 条既有 Matplotlib `Axes3D` 环境提示 |
+| 正例 CSV | 13 行数据，14 LF，0 CR |
+
+fixture 正例中的 `d1_optimization_admitted=true` 只证明门控代码可达到正分支，不是项目算法正式
+结果。fixture 的 `system_realtime_gap_closed=false` 验证了三维质点证据不能关闭系统实时缺口。
+
+### 后续输入
+
+main 需要按冻结 v2 配置完成 13 个显式 pair，并发布状态为 `complete` 的 evidence manifest。D6
+收到完整输入后再生成正式 JSON、CSV 和中文报告。任何缺项、dirty manifest、提交/配置/runtime
+不一致、truth/exit/cross 失败或性能门失败都保持 `d1_optimization_admitted=false`。
+
 ## 2.27 D1 协方差成对限制向量化准入
 
 ### 结论

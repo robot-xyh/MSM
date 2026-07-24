@@ -1,5 +1,95 @@
 # D6 系统级离线评估：算法原理与实施说明
 
+## D1 多 seed 与长时矩阵评估（2026-07-24）
+
+### 可复用 pair 层
+
+现有 `d1_covariance_limit_clean_pair.py` 将单个显式 pair 校验公开为
+`evaluate_d1_covariance_limit_explicit_pair()`。旧三轮入口仍调用同一函数，默认要求 2035 条
+观测；新矩阵入口将观测期望设为 `None`，此时仍要求 reference/candidate 观测计数可用且相同，但
+允许 2.2 秒和 10 秒、不同 seed 的自然记录数变化。
+
+pair 层新增两个只读 provenance：
+
+- 场景配置删除顶层 `seed` 和 `duration_s` 后的规范 SHA-256；
+- runtime profile 中 `d1_d2_structural_ambiguity_hold_enabled` 的原始值。
+
+这两个字段不改变旧入口的准入门，只供新矩阵做跨 pair 一致性检查。
+
+### 预注册矩阵
+
+`D1CovarianceLimitMatrixRegistration` 固定 short seeds 1101-1110、short duration 2.2 秒、long
+seeds 1101-1103、long duration 10 秒，以及 200/200/2 规模。每个
+`D1CovarianceLimitMatrixPairInput` 明确列出 group、seed、duration 和五个证据路径。CLI 的
+`--pair` 一次接收八个值，必须重复提供全部 13 项。
+
+生产矩阵优先使用 `--evidence-manifest`。loader 只接受
+`scalable3d-d1-covariance-limit-multiseed-evidence-v1`，并要求顶层状态为 `complete`。内嵌
+`scalable3d-d1-covariance-limit-multiseed-matrix-v1` 先按 experiment ID 选择不可变的已知注册，
+再逐项匹配提交和谱系字段、
+13 个 case 及 arm order、200/200/2 规模、运行参数、bootstrap、准入门和 runtime profile 摘要。
+manifest 的每个 arm 需明确给出 arm 标签、expected commit、episode/resource 路径、
+`complete|reused` 状态和整数零返回码；cross-build 状态及 JSON 都必须可用。相对路径只相对于
+manifest 位置解析，不读取目录名称确定 group、seed、duration 或 arm。两个 CLI 输入入口互斥。
+
+已知注册包括 v1 和 v2。v1 绑定原 D1 reference/candidate commits，且不允许出现 base/common-fix
+谱系字段。v2 绑定修复后的 effective commits
+`3c134c34655618b2e4d41302f9fbf3b6b4b78929` 与
+`8c1188267c37c5e4a546abc8e7dd6c5a4bb48dba`，同时精确要求两端 v1 base commits、公共 D2 修复
+`e4147b8` 及其主题，并要求 `v1_outputs_reused=false`。未知 experiment 不会退回默认提交；
+manifest 模式也禁止用 CLI 参数覆盖提交。
+
+矩阵校验依次执行：
+
+1. group/seed key 唯一，实际 key 集合与 13 项预注册集合完全一致；
+2. 显式 seed/duration 与 reference/candidate episode 一致；
+3. 每个 pair 的 clean、提交、配置、runtime、规模、finite、truth、exit 和 cross-build 门通过；
+4. 删除 seed/duration 后的配置摘要全矩阵唯一；
+5. runtime profile 摘要全矩阵唯一且等于
+   `deabac3fbf2a788f68a0b807945e5f1bedacf8c5917c4d3b49c5cffb3c90da70`，结构歧义保活开关在
+   26 个 arm 上均为 true。
+
+任何缺项、额外项、重复项、字段不可用或矛盾都使矩阵失败关闭。
+
+### 分组统计
+
+`_summarize_group_metric()` 从显式 pair 的 performance 记录读取 reference、candidate 和
+paired relative change。每组输出均值、中位数、线性插值 P95、最小值、最大值和候选更快 seed 数。
+bootstrap 使用标准库独立随机数生成器，主 seed 为 `20260724`，再由
+`SHA-256(main_seed:group:metric)` 派生每个统计流的 seed。固定执行 10000 次有放回重采样，输出配对
+相对变化均值的 95% 百分位区间。输入排序和随机数均固定，因此相同证据可逐次复算。
+
+### 长短增长
+
+`_summarize_long_short_growth()` 只接受 short/long 同时存在且唯一的 seed。D1 fusion、core wall、
+external elapsed 分别计算 short/long 的每仿真秒成本、各 arm 增长比以及 candidate 相对 reference
+的增长恶化。任一计时缺失、非有限或非正时，该指标保持 unavailable。算法没有构造
+`core + external` 总量。
+
+### 门控与输出
+
+`_admission_gates()` 实现预注册的 short、long、bootstrap、P95、增长、core wall、RSS 和
+语义/truth/exit 门。`d1_optimization_admitted` 只有在全部门通过时为 true。三维质点输入的
+`target_runtime_evidence=false`，因此 `system_realtime_gap_closed=false`；另行保留候选最小实时
+因子用于描述点质量仿真实时条件。
+
+报告 writer 输出：
+
+- `d1_covariance_limit_multiseed_long_evaluation.json`；
+- `d1_covariance_limit_multiseed_long_pairs.csv`；
+- `D1_COVARIANCE_LIMIT_MULTISEED_LONG_EVALUATION_CN.md`。
+
+CSV 每个预注册 pair 一行，并固定 `lineterminator="\n"`。测试检查 13 行数据、14 个 LF 和 0 个
+CR。当前没有在模块 outputs 下生成正式文件；fixture 仅写 pytest 临时目录。
+
+专项测试覆盖完整正例、确定性 bootstrap、LF 输出、矩阵缺项、配置/runtime/hold 漂移、cross
+失败、truth/exit 失败，以及 short faster/mean/CI/P95、long faster/mean、长短增长、core mean、
+RSS mean 和 RSS 单 pair 门。manifest 测试另覆盖 schema、experiment、case、提交、规模、运行参数、
+bootstrap、门限、runtime 摘要、arm 标签/状态/返回码、cross 状态、缺失资源和 CLI 互斥。v2
+另覆盖 experiment、effective/base commits、公共修复来源/主题及输出复用标志篡改；v1 注入 v2
+谱系字段同样失败关闭。专项 `48 passed`，原 clean-pair 专项 `9 passed`，D6 全量
+`698 passed, 1 warning in 24.40s`。正式 v2 无并发矩阵尚未完成，以上只有合同 fixture 结果。
+
 ## D1 协方差成对限制 clean pair 评估（2026-07-24）
 
 ### 输入绑定
@@ -250,6 +340,12 @@ manifest 中的来源摘要交叉核对。D2 v2 audit 的三态计数必须与 s
 `source_hashes.observation_truth_labels` 接受 provenance。旧 D2 audit 未声明 schema 时，三态计数
 保持 unavailable。三条路径均固定输出 `strict_id_switch_backfilled=false`；known false alarm、
 partial lower bound 和距离证据均不用于补算严格 IDSW。
+
+`known_false_alarm_only_mapping_count` 的 producer 口径是最终持久化映射中
+`status=excluded && reason=known_false_alarm_only` 的数量。D6 在 truth-isolated 与 runtime join
+中都重新遍历 `frames[].mappings[]` 并要求 audit 数量精确相等。由
+`source_observation_outside_lineage_window` 等其他原因变为 unavailable 的 mapping 不进入该计数。
+旧 producer 的 `14/11` 差异保持失败关闭；修复后的 `11/11` 才能继续进入评估。
 
 2026-07-23 回归结果为新增处置及相关专项 `130 passed`、D6 全量
 `586 passed, 1 warning in 21.99s`、scalable learning export

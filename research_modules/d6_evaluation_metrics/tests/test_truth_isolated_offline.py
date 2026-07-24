@@ -269,6 +269,55 @@ def _d2_payload(
     }
 
 
+def _d2_long_seed_1102_disposition_payload(
+    *,
+    reported_known_false_alarm_only_count: int,
+) -> dict[str, object]:
+    payload = _d2_payload()
+    audit = payload["audit"]
+    assert isinstance(audit, dict)
+    audit.update(
+        {
+            "observation_truth_schema_version": (
+                "d2.scalable3d_observation_truth.v2"
+            ),
+            "truth_label_count": 14,
+            "observation_truth_disposition_counts": {
+                "known_false_alarm": 14,
+            },
+            "known_false_alarm_only_mapping_count": (
+                reported_known_false_alarm_only_count
+            ),
+            "excluded_mapping_count": 11,
+            "identity_metrics_blocking_reasons": [
+                "source_observation_outside_lineage_window"
+            ],
+        }
+    )
+    mappings = [
+        {
+            "global_track_id": f"GT-FA-{index:02d}",
+            "status": "excluded",
+            "reason": "known_false_alarm_only",
+            "truth_target_id": None,
+            "candidate_truth_target_ids": [],
+        }
+        for index in range(11)
+    ]
+    mappings.extend(
+        {
+            "global_track_id": f"GT-FA-UNAVAILABLE-{index:02d}",
+            "status": "unavailable",
+            "reason": "source_observation_outside_lineage_window",
+            "truth_target_id": None,
+            "candidate_truth_target_ids": [],
+        }
+        for index in range(3)
+    )
+    payload["frames"] = [{"mappings": mappings}]
+    return payload
+
+
 def _v2_commitment(
     *,
     track_id: str,
@@ -1425,6 +1474,32 @@ def test_d2_v2_disposition_audit_is_provenance_bound_and_reported() -> None:
     assert disposition["missing_disposition"]["count"] == 0
     assert disposition["known_false_alarm_treated_as_target"] is False
     assert disposition["strict_id_switch_backfilled"] is False
+
+
+def test_d2_v2_fixed_11_of_11_false_alarm_exclusions_are_accepted() -> None:
+    payload = _d2_long_seed_1102_disposition_payload(
+        reported_known_false_alarm_only_count=11,
+    )
+
+    record = adapt_d2_scalable_3d_identity(payload)
+    disposition = record.audit[
+        "d6_observation_truth_disposition_acceptance"
+    ]
+
+    assert disposition["known_false_alarm_only_mapping_count"] == 11
+    assert disposition["known_false_alarm_treated_as_target"] is False
+
+
+def test_d2_v2_old_14_of_11_false_alarm_audit_fails_closed() -> None:
+    payload = _d2_long_seed_1102_disposition_payload(
+        reported_known_false_alarm_only_count=14,
+    )
+
+    with pytest.raises(
+        TruthIsolatedEvaluationError,
+        match="exclusion count contradicts frame mappings",
+    ):
+        adapt_d2_scalable_3d_identity(payload)
 
 
 def test_d2_v2_unknown_disposition_keeps_strict_id_switch_unavailable() -> None:

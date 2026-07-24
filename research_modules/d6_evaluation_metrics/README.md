@@ -1,5 +1,80 @@
 # D6 Evaluation Metrics
 
+## 2026-07-24 D1 协方差优化多 seed 与长时评估入口
+
+D6 新增 `d1_covariance_limit_multiseed_long.py`。该入口复用现有显式 pair 读取与失败关闭逻辑，
+用于 main 后续提供的 13 个 clean A/B 单元：
+
+- short：seed `1101-1110`，每个 episode 世界时间 `2.2 s`；
+- long：seed `1101-1103`，每个 episode 世界时间 `10.0 s`；
+- v1 reference/candidate commit：
+  `7cc2d0cfd598a72d60c6ba8c7d4a283f4e5a897d` /
+  `95bf46e34321127313757986bb28bfb14b7e3c59`；
+- v2 reference/candidate commit：
+  `3c134c34655618b2e4d41302f9fbf3b6b4b78929` /
+  `8c1188267c37c5e4a546abc8e7dd6c5a4bb48dba`；
+- 规模：200 个目标、200 个资源、2 个侦察节点；
+- 运行配置要求 `d1_d2_structural_ambiguity_hold_enabled=true`。
+
+loader 只接受两个已登记实验。v1 保留原提交绑定；v2 还必须精确绑定
+reference/candidate base commit、公共 D2 修复来源 `e4147b8`、修复主题
+`fix(d2): align false alarm exclusion audit` 和 `v1_outputs_reused=false`。不能用 manifest
+中的任意提交创建新实验，也不能在 v1 中混入 v2 谱系字段。
+
+每个 `D1CovarianceLimitMatrixPairInput` 显式携带 group、seed、duration、reference/candidate episode、
+两份 GNU `time -v` 资源记录和 cross-build JSON。评估器不读取目录名称推断 arm、seed、duration
+或规模。每个 arm 必须为 clean manifest，提交、配置和运行配置哈希有效，规模正确，summary 有限，
+在线真值使用为 0，进程退出为 0；cross-build 必须整体通过且规范化在线载荷一致。全矩阵进一步要求
+场景配置删除顶层 `seed` 和 `duration_s` 后逐字节规范化摘要一致，runtime profile 全部相同。
+
+main 可通过 `--evidence-manifest` 提供
+`scalable3d-d1-covariance-limit-multiseed-evidence-v1`。D6 只接受状态为 `complete` 的 manifest，
+先按 experiment ID 选择完整的已知 v1 或 v2 注册，再核对内嵌矩阵的有效提交、可选谱系字段、
+13 个 case 的顺序和元数据、200/200/2 规模、
+运行参数、准入门、bootstrap 设置，以及固定 runtime profile 摘要
+`deabac3fbf2a788f68a0b807945e5f1bedacf8c5917c4d3b49c5cffb3c90da70`。每个 arm 必须显式声明
+`reference` 或 `candidate`、正确的 `expected_commit`、`complete|reused` 状态和零返回码；
+cross-build 状态必须为 `passed`。episode、资源记录和 cross-build JSON 从字段直接读取并要求存在，
+不根据路径名称推断实验语义。`--evidence-manifest` 与兼容的重复 `--pair` 入口互斥。
+
+short 和 long 分别输出每 seed 配对值，以及 reference/candidate 的均值、中位数、P95、配对相对
+变化分布。配对相对变化定义为 `(candidate-reference)/reference`。确定性 bootstrap 固定使用
+10000 次重采样和 RNG seed `20260724`，重采样单位为完整 seed pair，输出配对相对变化均值的 95%
+百分位置信区间。P95 使用 `(n-1)` 位置的线性插值。
+
+seed `1101-1103` 同时存在 short 和 long。对 D1 fusion、核心 episode wall 和外部 elapsed 分别
+计算：
+
+```text
+unit_cost_growth =
+    (long_cost / long_duration) / (short_cost / short_duration)
+candidate_relative_degradation =
+    candidate_growth / reference_growth - 1
+```
+
+核心 wall 与外部 elapsed 始终分层，不能相加。正式准入门固定为 short D1 fusion 至少 8/10 更快、
+均值改善至少 5%、bootstrap 95% CI 上界小于 0、P95 聚合改善；long 至少 2/3 更快且均值改善至少
+5%；candidate 的 D1 长短单位成本增长相对 reference 任一同 seed 恶化不超过 5%；short/long 的
+core wall 和 RSS 均值恶化不超过 5%，任一 RSS pair 恶化不超过 5%；矩阵、语义、有限状态、真值和
+退出门全部通过。
+
+输出接口生成机器 JSON、13 行逐 pair CSV 和中文 Markdown。CSV 固定使用 LF。系统实时性单独输出：
+该预注册矩阵是三维质点证据，不包含 AirSim 或目标硬件运行条件，因此
+`system_realtime_gap_closed` 不由该矩阵关闭。
+
+当前只完成 evaluator、v1/v2 manifest loader 和测试 fixture。旧 v1 矩阵曾运行到 long seed 1102
+reference；旧 D2 producer 将 14 个“纯已知虚警处置组”写入
+`known_false_alarm_only_mapping_count`，但持久化帧中只有 11 条
+`status=excluded && reason=known_false_alarm_only`，另 3 条为
+`source_observation_outside_lineage_window` 的 unavailable mapping。D6 按持久化最终映射执行
+精确计数，旧 `14/11` 证据失败关闭；D2 修复后的 producer 写出 `11/11` 才能通过。
+
+main 已冻结 v2 矩阵，两个实验臂在相同 D2 修复上比较原 v1 的 D1 两端，且明确不复用 v1 输出。
+当前 v2 仅作功能烟测，正式无并发 13-pair 矩阵尚未运行完成。D6 没有读取未完成 manifest，也没有
+生成或伪造正式结果。fixture 只验证合同、统计和门控。多 seed 专项为
+`48 passed, 1 warning`，原 clean-pair 专项为 `9 passed, 1 warning`，D6 全量为
+`698 passed, 1 warning in 24.40s`。warning 为既有 Matplotlib `Axes3D` 环境提示。
+
 ## 2026-07-24 D1 协方差成对限制向量化准入
 
 D6 新增 `d1_covariance_limit_clean_pair.py`，对 main 显式列出的三轮 reference/candidate
@@ -157,6 +232,11 @@ D2 已归一化结果时，计数来源明确记录为
 `identity_evaluation.audit.observation_truth_disposition_counts`，来源摘要为
 `source_hashes.observation_truth_labels`；旧 D2 audit 未声明 schema 时，三态计数保持 unavailable，
 既有 strict 指标仍按原合同读取。
+
+D2 audit 的 `known_false_alarm_only_mapping_count` 只统计持久化最终映射中同时满足
+`status=excluded` 和 `reason=known_false_alarm_only` 的记录。D6 在 truth-isolated 和 runtime join
+两条路径都从 `frames[].mappings[]` 独立计数并要求精确相等；由谱系窗口等其他原因形成的
+unavailable mapping 不进入该计数。audit 与帧映射出现 `14/11` 一类差异时保持失败关闭。
 
 本轮没有重跑历史 20-seed episode，也没有将旧 v1 证据宣称为 v2 结果。确定性专项覆盖 v1、v2 三态、
 缺 disposition、非法状态、身份冲突、重复冲突、schema 篡改、D2 audit 计数篡改和 unknown

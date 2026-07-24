@@ -1,5 +1,56 @@
 # D6 Evaluation Metrics Plan
 
+## 2026-07-24 D1 多 seed 与长时 clean A/B 评估状态
+
+### 已完成
+
+- [x] 新增固定 short `1101-1110 @ 2.2 s`、long `1101-1103 @ 10.0 s` 的预注册矩阵对象。每个
+  单元显式绑定 group、seed、duration、两个 episode、两份 GNU `time -v` 和 cross-build JSON。
+- [x] 将现有单 pair 校验提升为可复用公开函数，原三轮入口行为保持兼容，原专项 `9 passed`。
+- [x] 逐 arm 校验 clean manifest、固定提交、配置/运行配置哈希、200/200/2 规模、有限 summary、
+  online truth 为 0、退出为 0和 cross-build 全通过；结构歧义保活开关必须为 true。
+- [x] 跨矩阵校验配置只允许顶层 seed/duration 变化，runtime profile 必须一致；缺 pair、重复 pair、
+  group/seed/duration 与 episode 不符均失败关闭。
+- [x] 新增 `--evidence-manifest` 只读入口，严格接受
+  `scalable3d-d1-covariance-limit-multiseed-evidence-v1` 的 completed manifest。内嵌矩阵、
+  experiment ID、13 个 case、arm 标签/提交/状态/返回码、证据路径、cross 状态、固定 runtime
+  profile、运行参数、bootstrap 和准入门均执行精确校验；该入口与 `--pair` 互斥。
+- [x] 按 experiment ID 登记两套不可变矩阵。v1 精确绑定原 reference/candidate commits；v2 精确
+  绑定有效 commits、两端 base commits、公共 D2 修复来源和主题，并要求
+  `v1_outputs_reused=false`。未知 experiment、任意提交、字段缺失、字段篡改及 v1 混入 v2 谱系
+  均失败关闭。
+- [x] short/long 均输出每 seed 配对值、均值、中位数、P95、配对相对变化及固定 RNG 的 10000 次
+  bootstrap 95% CI。
+- [x] 对共同 seed 的 D1 fusion、core wall、external elapsed 分别计算长短单位仿真时间成本增长；
+  core wall 与 external elapsed 不相加。
+- [x] 实现 short、long、增长率、core wall、RSS、语义、truth 和 exit 的全部预注册准入门。
+- [x] 输出 JSON、逐 pair CSV、中文 Markdown；CSV 明确使用 LF。
+- [x] fixture 正例和矩阵缺项、配置漂移、runtime/hold 漂移、cross false、truth/exit、short
+  faster/mean/CI/P95、long faster/mean、增长率、core mean、RSS mean/单 pair 等失败关闭路径
+  已覆盖；manifest 另覆盖 schema、experiment、矩阵元数据、规模、运行参数、bootstrap、准入门、
+  runtime 摘要、arm 状态/提交/返回码、cross 状态及缺失资源篡改。
+- [x] D2 观测处置 consumer 保持 exact-match：旧 producer 的 `14/11`
+  `known_false_alarm_only_mapping_count` 与持久化明确排除数矛盾时失败关闭；修复后的 `11/11`
+  通过，3 个 unavailable mapping 不计入。
+- [x] 2026-07-24 验收：多 seed 专项 `48 passed`，原 clean-pair 专项 `9 passed`，D6 全量
+  `698 passed, 1 warning in 24.40s`。warning 为既有 Matplotlib `Axes3D` 环境提示。
+
+### 待 main 提供
+
+- [ ] D2 修复后的 producer 已由 D2 owner 提供；main 已冻结
+  `d1-covariance-limit-multiseed-20260724-v2`。当前只作功能烟测，仍需顺序运行正式无并发矩阵，
+  最终生成状态为 `complete` 的显式 evidence manifest。旧 `14/11` episode 和 v1 输出均不得复用
+  为 v2 合格输入。
+- [ ] 完整矩阵必须包含 13 个真实 clean reference/candidate pair、26 份资源记录和 13 份
+  cross-build JSON。不得用目录发现替代显式 manifest 或 `--pair` 输入。
+- [ ] D6 收到完整输入后才生成正式 JSON、CSV 和中文报告。当前 fixture 数值不进入正式结论。
+- [ ] 正式结果需要分别报告 short、long、同 seed 增长率和全部失败原因。缺一项时
+  `d1_optimization_admitted=false`。
+- [ ] 该矩阵仅能评价三维质点计算性能。系统实时缺口仍需 AirSim 或目标硬件条件下的独立证据。
+
+`AIRSIM_INTEGRATION_PLAN.md` 已检查。本轮没有修改 AirSim 日志 schema、相机、检测、reset、actor、
+控制或 episode 调度，故无需修改。
+
 ## 2026-07-24 D1 协方差成对限制向量化准入状态
 
 ### 已完成

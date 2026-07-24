@@ -1,5 +1,16 @@
 # D6 文档索引
 
+2026-07-24 D1 协方差优化多 seed 与长时入口见 `MODULE_PRINCIPLES_CN.md` 和
+`ALGORITHM_AND_IMPLEMENTATION.md`，fixture 验证见根目录 `../EXPERIMENT_REPORT.md` 2.28 节。
+入口预注册 short `1101-1110 @ 2.2 s` 和 long `1101-1103 @ 10.0 s`，显式绑定 13 个 A/B pair，
+输出分组统计、10000 次确定性 paired bootstrap 和同 seed 单位时间增长率。completed
+`evidence_manifest.json` loader 会精确核对内嵌矩阵、13 个 case、arm 状态/提交/返回码、固定
+runtime profile 和证据路径，并与 `--pair` 输入互斥。loader 按 experiment ID 严格支持已登记的
+v1/v2：v2 还精确绑定 effective/base commits、公共 D2 修复来源和主题，并要求
+`v1_outputs_reused=false`。旧 `14/11` 已知虚警映射计数被 D6 失败关闭；main 已冻结修复后的 v2，
+当前只作功能烟测，正式无并发矩阵尚未完成，故无正式准入结果。专项 `48 passed`，原 clean-pair
+专项 `9 passed`，D6 全量 `698 passed, 1 warning`。
+
 2026-07-24 D1 协方差成对限制向量化准入原则和门控公式见
 `MODULE_PRINCIPLES_CN.md`、`ALGORITHM_AND_IMPLEMENTATION.md`，三轮 clean 结果见根目录
 `../EXPERIMENT_REPORT.md` 2.27 节。显式 pair 入口复用 scalable 3D reader，并独立读取 GNU

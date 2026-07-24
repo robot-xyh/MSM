@@ -1,5 +1,40 @@
 # D6 实现差距审计
 
+## 2026-07-24 D1 多 seed 与长时评估 GAP 更新
+
+### 已关闭
+
+1. D6 已实现固定 short 10 seed、long 3 seed 的显式矩阵 consumer，不根据目录名推断实验语义。
+2. 现有单 pair clean、commit、config、runtime、scale、finite、truth、exit 和 cross-build 检查
+   已复用；跨矩阵增加配置除 seed/duration 外一致、runtime profile 一致和结构歧义保活检查。
+3. short/long 的均值、中位数、P95、paired relative change 和确定性 bootstrap 95% CI 已实现。
+4. 共同 seed 的 D1 fusion、core wall、external elapsed 单位时间增长已实现，核心 wall 与 external
+   elapsed 没有相加。
+5. 全部预注册性能门和失败关闭门已形成机器结论；JSON、LF CSV 和中文 Markdown writer 已完成。
+6. completed evidence manifest loader 已实现。内嵌矩阵的 experiment、提交、13 个 case、规模、
+   运行参数、10000 次 bootstrap、准入门和固定 runtime profile 均精确校验；arm 标签、提交、状态、
+   零返回码、路径和 cross 状态均失败关闭。manifest 与 `--pair` CLI 互斥。
+7. loader 已登记 v1/v2 两套完整矩阵。v2 的 effective/base commits、公共 D2 修复来源和主题、
+   `v1_outputs_reused=false` 均精确匹配；未知实验、任意提交、谱系篡改或 v1 注入 v2 字段失败关闭。
+8. D2 处置 consumer 继续要求 `known_false_alarm_only_mapping_count` 与持久化
+   `status=excluded && reason=known_false_alarm_only` 数量精确相等。旧 `14/11` 被拒绝，修复后
+   `11/11` 通过；3 个 unavailable mapping 不进入计数。
+9. 2026-07-24 验收为多 seed 专项 `48 passed`、原 clean-pair 专项 `9 passed`、D6 全量
+   `698 passed, 1 warning in 24.40s`。
+
+### 仍开放 P1
+
+1. **正式 producer 矩阵未完成。** D2 owner 已修复 producer，main 已冻结 v2 矩阵并仅作功能烟测。
+   正式无并发 13-pair 矩阵仍需顺序运行；旧 `14/11` episode 和 v1 输出不得作为 v2 合格输入。
+2. **正式统计未生成。** 没有真实输入时，均值、P95、bootstrap CI、长短增长和失败原因分布保持
+   待评估，不预写数值。
+3. **系统实时性未关闭。** 该矩阵属于三维质点。AirSim 或目标硬件的处理、调度和资源证据仍缺失。
+4. **精度指标不在本门内。** 均方根误差、归一化估计误差平方、归一化创新平方和严格身份指标仍需
+   独立 truth-isolated 评估。
+
+当前无 D6-owned P0。evaluator、manifest consumer、统计、门控和报告接口已关闭；main producer
+修复后形成完整 13-pair completed manifest 及其性能结论保持 P1。
+
 ## 2026-07-24 D1 协方差成对限制向量化 GAP 更新
 
 ### 已关闭

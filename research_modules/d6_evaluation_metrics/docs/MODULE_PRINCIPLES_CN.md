@@ -1,5 +1,69 @@
 # D6 系统级离线评估模块原理
 
+## 多 seed 与长时证据的统计边界（2026-07-24）
+
+单 seed 重复可以发现实现层性能差异，不能估计跨 seed 稳定性。新的预注册矩阵把实验分成 short 和
+long 两组。short 使用 seed 1101 至 1110、世界时间 2.2 秒，用于估计十个独立 seed 下的配对性能
+分布。long 使用 seed 1101 至 1103、世界时间 10 秒，用于检查优化在更长窗口内是否仍有收益，并与
+相同 seed 的 short 运行比较单位时间成本增长。
+
+输入语义由显式注册决定。每项都携带 group、seed、duration、reference/candidate episode、两份
+进程资源记录和 cross-build JSON。目录名只作为文件位置，不具有实验语义。评估器分别核对输入注册
+值与 episode manifest/summary，不允许路径文本覆盖或修正不一致的 seed、duration、arm 或规模。
+
+正式输入可由 main 的 completed evidence manifest 一次绑定。D6 同时核对顶层 manifest 与内嵌矩阵，
+先用 experiment ID 选择完整的已知注册，再核对固定提交、可选谱系字段、13 个 case、arm 顺序、
+规模、运行参数、bootstrap、准入门和 runtime profile 摘要。v1 只允许原两端提交且不带修复谱系。
+v2 必须使用共同包含 D2 修复的有效提交，同时声明原 v1 base commits、公共修复来源和主题，并明确
+`v1_outputs_reused=false`。每个 arm 的标签、提交、状态、返回码和证据路径均来自字段；未知
+experiment、缺项、额外 case、状态未完成、路径不可用或 cross 未通过时失败关闭。显式 `--pair`
+仍用于兼容和独立复核，但不能与 manifest 模式同时使用。
+
+场景配置比较分两层。reference/candidate 同一 pair 的完整配置必须一致。跨 seed 和长短组比较时，
+只删除顶层 `seed` 与 `duration_s`，其余配置按规范 JSON 重算 SHA-256，全部 arm 必须相同。runtime
+profile 不删除字段，要求全矩阵完全一致；其中
+`d1_d2_structural_ambiguity_hold_enabled` 必须为 true。该规则允许预注册的随机种子和世界时间变化，
+阻止传感器、阈值、模型或运行开关漂移混入性能差异。
+
+对指标 \(x_i\)，第 \(i\) 个 seed 的配对相对变化为：
+
+```text
+r_i = 100% * (candidate_i - reference_i) / reference_i
+```
+
+组内分别计算 reference 和 candidate 的均值、中位数及 P95，也计算 \(r_i\) 的均值、中位数和 P95。
+P95 使用排序后 `(n-1)*0.95` 位置的线性插值。确定性 bootstrap 每次以完整 seed pair 为单位有放回
+抽样，不拆开 reference/candidate。每个指标使用由固定主随机种子、group 和指标名派生的独立随机
+种子，执行 10000 次抽样，取配对相对变化均值分布的 2.5% 和 97.5% 分位。
+
+长短单位时间增长只比较共同 seed 1101 至 1103。对 reference 和 candidate 分别计算：
+
+```text
+short_unit_cost = short_cost / 2.2
+long_unit_cost = long_cost / 10.0
+growth_ratio = long_unit_cost / short_unit_cost
+relative_degradation = 100% * (candidate_growth / reference_growth - 1)
+```
+
+D1 fusion、核心 episode wall 和外部进程 elapsed 分别计算，不能相加。准入只使用 D1 fusion 的
+增长恶化门；另外两项用于定位全栈和进程层差异。RSS 不是累计计算成本，不做每仿真秒换算，而是按
+组均值和每 pair 峰值增幅门控。
+
+正式准入要求矩阵完整且全部业务语义、有限状态、truth 和 exit 检查通过。short 要求至少 8/10
+更快、均值改善不少于 5%、配对 bootstrap 95% CI 上界小于 0、D1 episode P95 的跨 seed P95
+改善。long 要求至少 2/3 更快且均值改善不少于 5%。candidate 的 D1 单位成本增长相对 reference
+任一共同 seed 恶化不超过 5%。short/long 的 core wall 与 RSS 均值恶化不超过 5%，任何 RSS pair
+也不得超过 5%。
+
+系统实时性与优化准入分离。该矩阵属于三维质点性能证据，即使 D1 优化准入通过，也没有 AirSim 或
+目标处理器运行条件，不能关闭系统实时缺口。当前只完成 evaluator、manifest loader 和 fixture
+测试；旧 v1 矩阵在旧 D2 producer 的 long seed 1102 reference 处暂停。旧输出存在
+`known_false_alarm_only_mapping_count=14` 与持久化明确排除 11 条的矛盾，D6 拒绝该证据。完整
+13-pair manifest 尚未形成。main 已冻结 v2 矩阵，使两臂带同一 D2 修复且不复用 v1 输出；当前只
+作功能烟测，正式无并发矩阵待运行。因此没有正式多 seed 或长时结果。2026-07-24 确定性验收为
+多 seed 专项 `48 passed`、原 clean-pair 专项 `9 passed`、D6 全量
+`698 passed, 1 warning`。
+
 ## D1 协方差成对限制优化的准入边界（2026-07-24）
 
 本项评估回答一个窄问题：在冻结的 200 对 200 三维质点输入上，D1 协方差成对限制向量化是否在业务
@@ -148,6 +212,11 @@ D6 有两种 provenance 路径。直接读取 main sidecar 时，逐行校验 `s
 出现在 D2 identity evaluation 和 identity manifest。D6 只拿到 evaluation DTO 时，三态计数来源
 固定为 D2 audit，来源摘要固定为 `source_hashes.observation_truth_labels`；未声明 schema 的旧 audit
 保持计数 unavailable。
+
+已知虚警标签数和已知虚警明确排除映射数不是同一指标。后者只统计持久化最终映射中同时满足
+`status=excluded` 与 `reason=known_false_alarm_only` 的记录。D6 独立遍历帧映射，并要求该数量与
+D2 audit 的 `known_false_alarm_only_mapping_count` 精确相等。被谱系窗口或其他完整性原因标记为
+unavailable 的映射不进入该计数；audit 与帧映射不一致时失败关闭。
 
 2026-07-23 的确定性验证结果为处置及相关专项 `130 passed`、D6 全量 `586 passed`、scalable
 learning export `5 passed`。这些结果证明消费合同和失败关闭路径可运行，不代表真实传感器虚警率或

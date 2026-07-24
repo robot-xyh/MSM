@@ -100,7 +100,7 @@ def evaluate_d1_covariance_limit_clean_pairs(
     expected_reference_commit: str,
     expected_candidate_commit: str,
     expected_pair_count: int = 3,
-    expected_observation_count: int = 2035,
+    expected_observation_count: int | None = 2035,
     expected_target_count: int = 200,
     expected_resource_count: int = 200,
     expected_recon_count: int = 2,
@@ -123,13 +123,20 @@ def evaluate_d1_covariance_limit_clean_pairs(
     if expected_pair_count <= 0:
         raise ValueError("expected_pair_count must be positive")
     for name, value in (
-        ("expected_observation_count", expected_observation_count),
         ("expected_target_count", expected_target_count),
         ("expected_resource_count", expected_resource_count),
         ("expected_recon_count", expected_recon_count),
     ):
         if not isinstance(value, int) or isinstance(value, bool) or value < 0:
             raise ValueError(f"{name} must be a nonnegative integer")
+    if expected_observation_count is not None and (
+        not isinstance(expected_observation_count, int)
+        or isinstance(expected_observation_count, bool)
+        or expected_observation_count < 0
+    ):
+        raise ValueError(
+            "expected_observation_count must be a nonnegative integer or None"
+        )
     if not math.isfinite(expected_duration_s) or expected_duration_s <= 0.0:
         raise ValueError("expected_duration_s must be finite and positive")
     if (
@@ -148,7 +155,7 @@ def evaluate_d1_covariance_limit_clean_pairs(
         )
 
     evaluated_pairs = [
-        _evaluate_pair(
+        evaluate_d1_covariance_limit_explicit_pair(
             pair,
             expected_reference_commit=reference_commit,
             expected_candidate_commit=candidate_commit,
@@ -511,12 +518,12 @@ def render_d1_covariance_limit_clean_pair_markdown(
     return "\n".join(lines)
 
 
-def _evaluate_pair(
+def evaluate_d1_covariance_limit_explicit_pair(
     pair: D1CovarianceLimitCleanPairInput,
     *,
     expected_reference_commit: str,
     expected_candidate_commit: str,
-    expected_observation_count: int,
+    expected_observation_count: int | None,
     expected_target_count: int,
     expected_resource_count: int,
     expected_recon_count: int,
@@ -574,6 +581,9 @@ def _evaluate_pair(
         "same_duration": _same_provenance_check(
             reference, candidate, "simulated_duration_s"
         ),
+        "same_online_observation_count": _same_metric_check(
+            reference, candidate, "online_observation_count"
+        ),
     }
     business_semantics_passed = (
         bool(reference["arm_evidence_valid"])
@@ -608,7 +618,7 @@ def _evaluate_arm(
     resource_path: Path,
     *,
     expected_commit: str,
-    expected_observation_count: int,
+    expected_observation_count: int | None,
     expected_target_count: int,
     expected_resource_count: int,
     expected_recon_count: int,
@@ -671,6 +681,15 @@ def _evaluate_arm(
         "config_sha256": _mapping_value(manifest, "config_sha256"),
         "runtime_profile_sha256": _mapping_value(
             manifest, "runtime_profile_sha256"
+        ),
+        "normalized_config_excluding_seed_duration_sha256": (
+            _normalized_config_sha256(config)
+        ),
+        "d1_d2_structural_ambiguity_hold_enabled": (
+            _runtime_profile_flag(
+                manifest,
+                "d1_d2_structural_ambiguity_hold_enabled",
+            )
         ),
         "scenario_name": _mapping_value(manifest, "scenario_name"),
         "scenario_version": _mapping_value(
@@ -745,15 +764,23 @@ def _evaluate_arm(
             _metric_equals(metrics["online_truth_use_count"], 0),
             "online_truth_use_count_not_zero_or_unavailable",
         ),
-        "observation_count_matches_expected": _gate(
-            _metric_equals(
-                metrics["online_observation_count"],
-                expected_observation_count,
-            ),
-            (
-                "online_observation_count_not_"
-                f"{expected_observation_count}_or_unavailable"
-            ),
+        "observation_count_matches_expected": (
+            _gate(
+                metrics["online_observation_count"]["availability"]
+                == "available",
+                "online_observation_count_unavailable",
+            )
+            if expected_observation_count is None
+            else _gate(
+                _metric_equals(
+                    metrics["online_observation_count"],
+                    expected_observation_count,
+                ),
+                (
+                    "online_observation_count_not_"
+                    f"{expected_observation_count}_or_unavailable"
+                ),
+            )
         ),
         "scale_matches_expected": _gate(
             provenance["target_count"] == expected_target_count
@@ -1159,6 +1186,21 @@ def _same_provenance_check(
     )
 
 
+def _same_metric_check(
+    reference: Mapping[str, Any],
+    candidate: Mapping[str, Any],
+    field: str,
+) -> dict[str, Any]:
+    reference_metric = reference["metrics"].get(field, {})
+    candidate_metric = candidate["metrics"].get(field, {})
+    return _gate(
+        reference_metric.get("availability") == "available"
+        and candidate_metric.get("availability") == "available"
+        and reference_metric.get("value") == candidate_metric.get("value"),
+        f"reference_candidate_{field}_mismatch_or_unavailable",
+    )
+
+
 def _write_pair_csv(
     result: Mapping[str, Any],
     path: Path,
@@ -1252,6 +1294,34 @@ def _canonical_sha256(value: Mapping[str, Any]) -> str:
         separators=(",", ":"),
     ).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
+
+
+def _normalized_config_sha256(
+    config: Mapping[str, Any] | None,
+) -> str | None:
+    if config is None:
+        return None
+    normalized = {
+        key: value
+        for key, value in config.items()
+        if key not in {"seed", "duration_s"}
+    }
+    return _canonical_sha256(normalized)
+
+
+def _runtime_profile_flag(
+    manifest: Mapping[str, Any] | None,
+    field: str,
+) -> Any:
+    if manifest is None:
+        return None
+    runtime_profile = manifest.get("runtime_profile")
+    if not isinstance(runtime_profile, Mapping):
+        return None
+    configuration = runtime_profile.get("configuration")
+    if not isinstance(configuration, Mapping):
+        return None
+    return configuration.get(field)
 
 
 def _all_numeric_values_finite(value: Any) -> bool:
@@ -1460,6 +1530,7 @@ __all__ = [
     "D1_COVARIANCE_LIMIT_SCAN_INPUT_STAGE",
     "D1CovarianceLimitCleanPairInput",
     "evaluate_d1_covariance_limit_clean_pairs",
+    "evaluate_d1_covariance_limit_explicit_pair",
     "render_d1_covariance_limit_clean_pair_markdown",
     "write_d1_covariance_limit_clean_pair_report",
 ]
