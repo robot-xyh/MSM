@@ -4,8 +4,20 @@
 
 ## 当前证据索引（2026-07-23）
 
+最新 D1 边界诊断复用 governed replay、扫描组织器和在线批融合入口，对同步平衡、乱序平衡和
+数量不平衡三类结构歧义冻结扫描进行控制臂/共同质心候选臂比较。同步 `2x2` 纯交替环形成一次
+`15.000000 m` 共同平移；乱序场景以 `oosm_scan` 拒绝；成员/观测 `2/1` 的场景以
+`unbalanced_component` 拒绝。两个拒绝场景共同质心 correction 均未施加，但拒绝后的
+publication-base replay + replace 造成候选减控制协方差差最小特征值
+`-0.0071928353214153066`、`-0.004617076466238031`；这是有限的重放替换诊断差异，不是
+严格无副作用路径，也不构成晋级，边界为 `candidate_not_promoted`。专项 `5 passed`，
+当前 D1 全量
+`287 passed in 18.03s`。报告和 JSON 位于
+`../reports/structural_ambiguity_centroid_replay_20260723/`。该证据只确认受控边界，不是
+AirSim、多 seed 或候选晋级证据。
+
 当前 D1 尾延时工作区验证已完成完整帧复用、冻结 replay 严格等价审计和全量回归；main 实测
-当前 D1 全量为 `185 passed`。这是当前权威测试计数，详细证据见
+该阶段 D1 全量为 `185 passed`。这是历史阶段计数，详细证据见
 `../reports/D1_TAIL_LATENCY_PERFORMANCE_20260723_CN.md` 和对应 JSON。
 
 最新 main 全栈校准来自 detached clean
@@ -132,5 +144,7 @@ D1 侧解释见本目录各算法/AirSim 文档和 `../reports/EXPERIMENT_REPORT
 - `../reports/d1_consistency_counter_refresh_performance_benchmark_20260722.json`
 - `../reports/D1_CONSISTENCY_COUNTER_REFRESH_PROFILE_10S_CN.md`
 - `../reports/d1_consistency_counter_refresh_profile_10s_20260722.json`
+- `../reports/structural_ambiguity_centroid_replay_20260723/STRUCTURAL_AMBIGUITY_CENTROID_REPLAY_DIAGNOSTIC_CN.md`
+- `../reports/structural_ambiguity_centroid_replay_20260723/structural_ambiguity_centroid_replay_diagnostic.json`
 
 更新文档时不要移动或重命名上述图表，避免破坏报告中的相对链接。

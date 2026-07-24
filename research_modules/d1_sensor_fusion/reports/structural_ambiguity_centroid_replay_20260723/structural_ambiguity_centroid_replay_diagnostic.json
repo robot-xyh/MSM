@@ -1,0 +1,1066 @@
+{
+  "schema_version": "d1.structural_ambiguity_replay_diagnostic.v2",
+  "scenario_version": "d1.structural_ambiguity_replay_scenarios.v1",
+  "evidence_date": "2026-07-23",
+  "scope": "d1_frozen_scan_boundary_diagnostic",
+  "candidate_default": false,
+  "candidate_status": "experimental_default_off_not_promoted",
+  "promotion_boundary": "candidate_not_promoted",
+  "promotion_evidence_eligible": false,
+  "promotion_ineligibility_reason": "controlled_boundary_diagnostic_only",
+  "online_truth_used": false,
+  "acceptance": {
+    "synchronous_nonzero_bounded_translation": true,
+    "oosm_fail_closed": true,
+    "unbalanced_fail_closed": true,
+    "rejected_targets_have_no_centroid_formula_output": true,
+    "rejected_target_covariance_delta_root_cause_resolved": true,
+    "control_and_candidate_used_same_frozen_frames": true,
+    "online_default_changed": false,
+    "online_safety_gate_relaxed": false,
+    "candidate_promoted": false,
+    "candidate_not_promoted": true,
+    "passed": true
+  },
+  "rejected_scenario_diagnostics": {
+    "reordered_balanced_cycle": {
+      "rejection_reason": "oosm_scan",
+      "applied_component_count": 0,
+      "centroid_correction_applied": false,
+      "publication_base_replay_replacement_count": 1,
+      "candidate_minus_control_covariance_delta_min_eigenvalue": -0.0071928353214153066,
+      "candidate_minus_control_covariance_delta_max_abs": 0.6000000000000014,
+      "root_cause": "candidate_rejection_publication_base_replacement_with_non_semigroup_discrete_process_noise_segmentation",
+      "interpretation": "centroid_correction_not_applied_but_publication_base_replay_replacement_produces_finite_diagnostic_only_difference",
+      "diagnostic_only": true,
+      "promotion_boundary": "candidate_not_promoted"
+    },
+    "unbalanced_component": {
+      "rejection_reason": "unbalanced_component",
+      "applied_component_count": 0,
+      "centroid_correction_applied": false,
+      "publication_base_replay_replacement_count": 1,
+      "candidate_minus_control_covariance_delta_min_eigenvalue": -0.004617076466238031,
+      "candidate_minus_control_covariance_delta_max_abs": 0.480000000000004,
+      "root_cause": "candidate_rejection_publication_base_replacement_with_non_semigroup_discrete_process_noise_segmentation",
+      "interpretation": "centroid_correction_not_applied_but_publication_base_replay_replacement_produces_finite_diagnostic_only_difference",
+      "diagnostic_only": true,
+      "promotion_boundary": "candidate_not_promoted"
+    }
+  },
+  "scenarios": [
+    {
+      "scenario_id": "d1-centroid-sync-balanced-cycle",
+      "scenario_kind": "synchronous_balanced_cycle",
+      "scenario_name_cn": "同步平衡交替环",
+      "target_scan_id": "sync-target-002",
+      "expected_rejection_reason": null,
+      "input_order": [
+        {
+          "scan_id": "sync-seed-000",
+          "measurement_timestamp": 0.0,
+          "arrival_timestamp": 0.2,
+          "observation_count": 2
+        },
+        {
+          "scan_id": "sync-seed-001",
+          "measurement_timestamp": 0.2,
+          "arrival_timestamp": 0.4,
+          "observation_count": 2
+        },
+        {
+          "scan_id": "sync-target-002",
+          "measurement_timestamp": 0.4,
+          "arrival_timestamp": 0.6,
+          "observation_count": 2
+        }
+      ],
+      "fusion_processing_order": [
+        {
+          "scan_id": "sync-seed-000",
+          "measurement_timestamp": 0.0,
+          "arrival_timestamp": 0.2,
+          "observation_count": 2,
+          "processing_index": 0,
+          "fusion_time_before": 0.0,
+          "fusion_time_after": 0.2,
+          "measurement_precedes_fusion_time": false,
+          "pre_scan_materialization_state_covariance_unchanged_bitwise": true,
+          "candidate_component_count": 0,
+          "applied_component_count": 0,
+          "rejected_component_count": 0,
+          "rejection_reason": null
+        },
+        {
+          "scan_id": "sync-seed-001",
+          "measurement_timestamp": 0.2,
+          "arrival_timestamp": 0.4,
+          "observation_count": 2,
+          "processing_index": 1,
+          "fusion_time_before": 0.2,
+          "fusion_time_after": 0.4,
+          "measurement_precedes_fusion_time": false,
+          "pre_scan_materialization_state_covariance_unchanged_bitwise": true,
+          "candidate_component_count": 0,
+          "applied_component_count": 0,
+          "rejected_component_count": 0,
+          "rejection_reason": null
+        },
+        {
+          "scan_id": "sync-target-002",
+          "measurement_timestamp": 0.4,
+          "arrival_timestamp": 0.6,
+          "observation_count": 2,
+          "processing_index": 2,
+          "fusion_time_before": 0.4,
+          "fusion_time_after": 0.6,
+          "measurement_precedes_fusion_time": false,
+          "pre_scan_materialization_state_covariance_unchanged_bitwise": true,
+          "candidate_component_count": 1,
+          "applied_component_count": 1,
+          "rejected_component_count": 0,
+          "rejection_reason": null
+        }
+      ],
+      "frozen_replay": {
+        "bundle_schema_version": "d1.governed_replay_manifest.v1",
+        "bundle_sha256": "sha256:be20a2481d72c57019505049444c92611cf9158b50a9a782836450e2638170df",
+        "observation_count": 6,
+        "frame_count": 3,
+        "measurement_timestamp_range": {
+          "minimum": 0.0,
+          "maximum": 0.4
+        },
+        "arrival_timestamp_range": {
+          "minimum": 0.2,
+          "maximum": 0.6
+        },
+        "working_frame": "ned",
+        "truth_policy": {
+          "online": "stripped",
+          "offline": "explicit_offline_only_export"
+        },
+        "roundtrip_complete": true,
+        "dual_timestamps_preserved": true,
+        "observation_timestamp_signature_sha256": "sha256:2770f4e2fa7fd163ca7f43310b2a4c58c89c97875eb572f8ca94a31e3c0cf932"
+      },
+      "scan_organizer": {
+        "config": {
+          "schema_version": "d1.scan_input.config.v1",
+          "max_lateness_s": 0.15,
+          "max_buffer_residence_s": 5.0,
+          "max_buffered_scans": 1024,
+          "max_buffered_observations": 200000,
+          "max_claimed_scans": 100000,
+          "max_claimed_observation_lineages": 2000000
+        },
+        "audit": {
+          "received_scan_count": 3,
+          "received_observation_count": 6,
+          "buffered_event_count": 3,
+          "reordered_scan_count": 0,
+          "released_scan_count": 3,
+          "released_observation_count": 6,
+          "rejected_scan_count": 0,
+          "rejected_observation_count": 0,
+          "duplicate_scan_count": 0,
+          "replay_scan_count": 0,
+          "timestamp_conflict_scan_count": 0,
+          "too_late_scan_count": 0,
+          "buffer_overflow_scan_count": 0,
+          "buffer_expired_scan_count": 0,
+          "capacity_overflow_scan_count": 0,
+          "invalid_frame_scan_count": 0,
+          "current_buffered_scan_count": 0,
+          "current_buffered_observation_count": 0,
+          "maximum_buffered_scan_count": 1,
+          "maximum_buffered_observation_count": 2,
+          "claimed_scan_count": 3,
+          "claimed_observation_lineage_count": 6,
+          "latest_arrival_timestamp": 0.6,
+          "maximum_seen_measurement_timestamp": 0.4,
+          "measurement_watermark": 0.25,
+          "closed": true,
+          "schema_version": "d1.scan_input.audit_summary.v1"
+        },
+        "events": [
+          {
+            "event_sequence": 1,
+            "received_sequence": 1,
+            "scan_id": "sync-seed-000",
+            "measurement_timestamp": 0.0,
+            "arrival_timestamp": 0.2,
+            "outcome": "buffered",
+            "reason": "within_lateness_window",
+            "buffered": true,
+            "reordered": false,
+            "released": false,
+            "too_late": false
+          },
+          {
+            "event_sequence": 2,
+            "received_sequence": 1,
+            "scan_id": "sync-seed-000",
+            "measurement_timestamp": 0.0,
+            "arrival_timestamp": 0.2,
+            "outcome": "released",
+            "reason": "watermark_released",
+            "buffered": false,
+            "reordered": false,
+            "released": true,
+            "too_late": false
+          },
+          {
+            "event_sequence": 3,
+            "received_sequence": 2,
+            "scan_id": "sync-seed-001",
+            "measurement_timestamp": 0.2,
+            "arrival_timestamp": 0.4,
+            "outcome": "buffered",
+            "reason": "within_lateness_window",
+            "buffered": true,
+            "reordered": false,
+            "released": false,
+            "too_late": false
+          },
+          {
+            "event_sequence": 4,
+            "received_sequence": 2,
+            "scan_id": "sync-seed-001",
+            "measurement_timestamp": 0.2,
+            "arrival_timestamp": 0.4,
+            "outcome": "released",
+            "reason": "watermark_released",
+            "buffered": false,
+            "reordered": false,
+            "released": true,
+            "too_late": false
+          },
+          {
+            "event_sequence": 5,
+            "received_sequence": 3,
+            "scan_id": "sync-target-002",
+            "measurement_timestamp": 0.4,
+            "arrival_timestamp": 0.6,
+            "outcome": "buffered",
+            "reason": "within_lateness_window",
+            "buffered": true,
+            "reordered": false,
+            "released": false,
+            "too_late": false
+          },
+          {
+            "event_sequence": 6,
+            "received_sequence": 3,
+            "scan_id": "sync-target-002",
+            "measurement_timestamp": 0.4,
+            "arrival_timestamp": 0.6,
+            "outcome": "released",
+            "reason": "end_of_stream",
+            "buffered": false,
+            "reordered": false,
+            "released": true,
+            "too_late": false
+          }
+        ],
+        "released_scan_ids": [
+          "sync-seed-000",
+          "sync-seed-001",
+          "sync-target-002"
+        ]
+      },
+      "target_outcome": {
+        "scan_id": "sync-target-002",
+        "measurement_timestamp": 0.4,
+        "arrival_timestamp": 0.6,
+        "observation_count": 2,
+        "processing_index": 2,
+        "fusion_time_before": 0.4,
+        "fusion_time_after": 0.6,
+        "measurement_precedes_fusion_time": false,
+        "pre_scan_materialization_state_covariance_unchanged_bitwise": true,
+        "candidate_component_count": 1,
+        "applied_component_count": 1,
+        "rejected_component_count": 0,
+        "rejection_reason": null,
+        "components": [
+          {
+            "evidence_id": "d1-evidence-sha256:91032d101eda0be28da372e760e30e7e3a2e950eac0e106df7548f86fce6505e",
+            "measurement_timestamp": 0.4,
+            "arrival_timestamp": 0.6,
+            "member_count": 2,
+            "observation_count": 2,
+            "candidate_edge_count": 4,
+            "maximum_matching_cardinality": 2,
+            "free_row_count": 0,
+            "free_column_count": 0,
+            "component_kinds": [
+              "alternating_cycle"
+            ],
+            "posterior_update_applied": false,
+            "update_mode": "prediction_only",
+            "cross_covariance_available": false
+          }
+        ]
+      },
+      "invariant_checks": {
+        "component_global_track_ids": [
+          "global_track_001",
+          "global_track_002"
+        ],
+        "global_track_id_unchanged": true,
+        "velocity_unchanged": true,
+        "relative_position_unchanged": true,
+        "hits_unchanged": true,
+        "lineage_unchanged": true,
+        "lineage_equal_to_control": true,
+        "identity_unchanged": true,
+        "identity_equal_to_control": true,
+        "hits_equal_to_control": true,
+        "common_translation": true,
+        "translation_ned_m": [
+          14.999999641896238,
+          1.4210854715202004e-14,
+          0.0032776691114264622
+        ],
+        "translation_norm_m": 15.00000000000007,
+        "translation_nonzero": true,
+        "translation_bounded": true,
+        "covariance_not_contracted": true,
+        "minimum_covariance_delta_eigenvalue": 0.47976779991751417,
+        "target_candidate_build_event_count": 1,
+        "target_publication_base_replacement_count": 0,
+        "target_pre_scan_materialization_state_covariance_unchanged_bitwise": true,
+        "target_centroid_formula_correction_produced": true,
+        "target_centroid_formula_rejection_reason": null,
+        "target_centroid_formula_translation_ned_m": [
+          14.999999641896169,
+          0.0,
+          0.0032776691114209584
+        ],
+        "target_centroid_formula_position_covariance_inflation": [
+          [
+            40.88274255953583,
+            0.0,
+            7.5116355469034595
+          ],
+          [
+            0.0,
+            70.92707502528116,
+            0.0
+          ],
+          [
+            7.5116355469034595,
+            0.0,
+            117.71854261331744
+          ]
+        ],
+        "target_centroid_state_or_covariance_correction_applied": true,
+        "rejected_target_no_centroid_formula_output": false,
+        "rejected_target_pre_replacement_matches_control_bitwise": false,
+        "rejected_target_post_replacement_matches_publication_base_bitwise": false,
+        "rejected_target_published_matches_post_replacement_bitwise": false,
+        "rejected_target_control_candidate_delta_explained_by_replacement_bitwise": false,
+        "rejected_target_prediction_segmentation_residual_max_abs": null,
+        "rejected_target_state_delta_norm_m": null,
+        "rejected_target_covariance_delta_min_eigenvalue": null,
+        "rejected_target_covariance_delta_max_eigenvalue": null,
+        "rejected_target_covariance_delta_max_abs": null,
+        "rejected_target_publication_base_replacement_side_effect_present": false,
+        "rejected_target_path_strictly_attributed": false,
+        "rejected_target_delta_root_cause": null,
+        "rejected_target_finite_difference_interpretation": null,
+        "rejected_target_promotion_boundary": "candidate_not_promoted",
+        "covariance_non_contraction_required": true,
+        "covariance_non_contraction_acceptance": true,
+        "rejected_scenario_covariance_delta_diagnostic_only": false,
+        "applied_scenario_covariance_gate_passed": true,
+        "candidate_promotion_evidence_eligible": false,
+        "candidate_promotion_ineligibility_reason": "controlled_boundary_diagnostic_only"
+      },
+      "control_and_candidate_consumed_same_frozen_frames": true,
+      "candidate_default_changed": false,
+      "online_safety_gate_relaxed": false,
+      "candidate_promoted": false,
+      "promotion_boundary": "candidate_not_promoted"
+    },
+    {
+      "scenario_id": "d1-centroid-reordered-balanced-cycle",
+      "scenario_kind": "reordered_balanced_cycle",
+      "scenario_name_cn": "乱序平衡交替环",
+      "target_scan_id": "oosm-target-003",
+      "expected_rejection_reason": "oosm_scan",
+      "input_order": [
+        {
+          "scan_id": "oosm-seed-000",
+          "measurement_timestamp": 0.0,
+          "arrival_timestamp": 0.2,
+          "observation_count": 2
+        },
+        {
+          "scan_id": "oosm-seed-001",
+          "measurement_timestamp": 0.2,
+          "arrival_timestamp": 0.4,
+          "observation_count": 2
+        },
+        {
+          "scan_id": "oosm-watermark-002",
+          "measurement_timestamp": 0.4,
+          "arrival_timestamp": 0.6,
+          "observation_count": 2
+        },
+        {
+          "scan_id": "oosm-target-003",
+          "measurement_timestamp": 0.3,
+          "arrival_timestamp": 0.65,
+          "observation_count": 2
+        }
+      ],
+      "fusion_processing_order": [
+        {
+          "scan_id": "oosm-seed-000",
+          "measurement_timestamp": 0.0,
+          "arrival_timestamp": 0.2,
+          "observation_count": 2,
+          "processing_index": 0,
+          "fusion_time_before": 0.0,
+          "fusion_time_after": 0.2,
+          "measurement_precedes_fusion_time": false,
+          "pre_scan_materialization_state_covariance_unchanged_bitwise": true,
+          "candidate_component_count": 0,
+          "applied_component_count": 0,
+          "rejected_component_count": 0,
+          "rejection_reason": null
+        },
+        {
+          "scan_id": "oosm-seed-001",
+          "measurement_timestamp": 0.2,
+          "arrival_timestamp": 0.4,
+          "observation_count": 2,
+          "processing_index": 1,
+          "fusion_time_before": 0.2,
+          "fusion_time_after": 0.4,
+          "measurement_precedes_fusion_time": false,
+          "pre_scan_materialization_state_covariance_unchanged_bitwise": true,
+          "candidate_component_count": 0,
+          "applied_component_count": 0,
+          "rejected_component_count": 0,
+          "rejection_reason": null
+        },
+        {
+          "scan_id": "oosm-target-003",
+          "measurement_timestamp": 0.3,
+          "arrival_timestamp": 0.65,
+          "observation_count": 2,
+          "processing_index": 2,
+          "fusion_time_before": 0.4,
+          "fusion_time_after": 0.65,
+          "measurement_precedes_fusion_time": true,
+          "pre_scan_materialization_state_covariance_unchanged_bitwise": true,
+          "candidate_component_count": 1,
+          "applied_component_count": 0,
+          "rejected_component_count": 1,
+          "rejection_reason": "oosm_scan"
+        },
+        {
+          "scan_id": "oosm-watermark-002",
+          "measurement_timestamp": 0.4,
+          "arrival_timestamp": 0.6,
+          "observation_count": 2,
+          "processing_index": 3,
+          "fusion_time_before": 0.65,
+          "fusion_time_after": 0.65,
+          "measurement_precedes_fusion_time": true,
+          "pre_scan_materialization_state_covariance_unchanged_bitwise": true,
+          "candidate_component_count": 0,
+          "applied_component_count": 0,
+          "rejected_component_count": 0,
+          "rejection_reason": null
+        }
+      ],
+      "frozen_replay": {
+        "bundle_schema_version": "d1.governed_replay_manifest.v1",
+        "bundle_sha256": "sha256:c3a4b302a8e9e4348a02f677831a3c32a2274697135ff875279eb0c546d41dc7",
+        "observation_count": 8,
+        "frame_count": 4,
+        "measurement_timestamp_range": {
+          "minimum": 0.0,
+          "maximum": 0.4
+        },
+        "arrival_timestamp_range": {
+          "minimum": 0.2,
+          "maximum": 0.65
+        },
+        "working_frame": "ned",
+        "truth_policy": {
+          "online": "stripped",
+          "offline": "explicit_offline_only_export"
+        },
+        "roundtrip_complete": true,
+        "dual_timestamps_preserved": true,
+        "observation_timestamp_signature_sha256": "sha256:4bc1cb82b723054ad3d0bd4c00f722342e26829d4b194d70524adb1181ea6e37"
+      },
+      "scan_organizer": {
+        "config": {
+          "schema_version": "d1.scan_input.config.v1",
+          "max_lateness_s": 0.15,
+          "max_buffer_residence_s": 5.0,
+          "max_buffered_scans": 1024,
+          "max_buffered_observations": 200000,
+          "max_claimed_scans": 100000,
+          "max_claimed_observation_lineages": 2000000
+        },
+        "audit": {
+          "received_scan_count": 4,
+          "received_observation_count": 8,
+          "buffered_event_count": 4,
+          "reordered_scan_count": 1,
+          "released_scan_count": 4,
+          "released_observation_count": 8,
+          "rejected_scan_count": 0,
+          "rejected_observation_count": 0,
+          "duplicate_scan_count": 0,
+          "replay_scan_count": 0,
+          "timestamp_conflict_scan_count": 0,
+          "too_late_scan_count": 0,
+          "buffer_overflow_scan_count": 0,
+          "buffer_expired_scan_count": 0,
+          "capacity_overflow_scan_count": 0,
+          "invalid_frame_scan_count": 0,
+          "current_buffered_scan_count": 0,
+          "current_buffered_observation_count": 0,
+          "maximum_buffered_scan_count": 2,
+          "maximum_buffered_observation_count": 4,
+          "claimed_scan_count": 4,
+          "claimed_observation_lineage_count": 8,
+          "latest_arrival_timestamp": 0.65,
+          "maximum_seen_measurement_timestamp": 0.4,
+          "measurement_watermark": 0.25,
+          "closed": true,
+          "schema_version": "d1.scan_input.audit_summary.v1"
+        },
+        "events": [
+          {
+            "event_sequence": 1,
+            "received_sequence": 1,
+            "scan_id": "oosm-seed-000",
+            "measurement_timestamp": 0.0,
+            "arrival_timestamp": 0.2,
+            "outcome": "buffered",
+            "reason": "within_lateness_window",
+            "buffered": true,
+            "reordered": false,
+            "released": false,
+            "too_late": false
+          },
+          {
+            "event_sequence": 2,
+            "received_sequence": 1,
+            "scan_id": "oosm-seed-000",
+            "measurement_timestamp": 0.0,
+            "arrival_timestamp": 0.2,
+            "outcome": "released",
+            "reason": "watermark_released",
+            "buffered": false,
+            "reordered": false,
+            "released": true,
+            "too_late": false
+          },
+          {
+            "event_sequence": 3,
+            "received_sequence": 2,
+            "scan_id": "oosm-seed-001",
+            "measurement_timestamp": 0.2,
+            "arrival_timestamp": 0.4,
+            "outcome": "buffered",
+            "reason": "within_lateness_window",
+            "buffered": true,
+            "reordered": false,
+            "released": false,
+            "too_late": false
+          },
+          {
+            "event_sequence": 4,
+            "received_sequence": 2,
+            "scan_id": "oosm-seed-001",
+            "measurement_timestamp": 0.2,
+            "arrival_timestamp": 0.4,
+            "outcome": "released",
+            "reason": "watermark_released",
+            "buffered": false,
+            "reordered": false,
+            "released": true,
+            "too_late": false
+          },
+          {
+            "event_sequence": 5,
+            "received_sequence": 3,
+            "scan_id": "oosm-watermark-002",
+            "measurement_timestamp": 0.4,
+            "arrival_timestamp": 0.6,
+            "outcome": "buffered",
+            "reason": "within_lateness_window",
+            "buffered": true,
+            "reordered": false,
+            "released": false,
+            "too_late": false
+          },
+          {
+            "event_sequence": 6,
+            "received_sequence": 4,
+            "scan_id": "oosm-target-003",
+            "measurement_timestamp": 0.3,
+            "arrival_timestamp": 0.65,
+            "outcome": "buffered",
+            "reason": "within_lateness_window_reordered",
+            "buffered": true,
+            "reordered": true,
+            "released": false,
+            "too_late": false
+          },
+          {
+            "event_sequence": 7,
+            "received_sequence": 4,
+            "scan_id": "oosm-target-003",
+            "measurement_timestamp": 0.3,
+            "arrival_timestamp": 0.65,
+            "outcome": "released",
+            "reason": "end_of_stream",
+            "buffered": false,
+            "reordered": false,
+            "released": true,
+            "too_late": false
+          },
+          {
+            "event_sequence": 8,
+            "received_sequence": 3,
+            "scan_id": "oosm-watermark-002",
+            "measurement_timestamp": 0.4,
+            "arrival_timestamp": 0.6,
+            "outcome": "released",
+            "reason": "end_of_stream",
+            "buffered": false,
+            "reordered": false,
+            "released": true,
+            "too_late": false
+          }
+        ],
+        "released_scan_ids": [
+          "oosm-seed-000",
+          "oosm-seed-001",
+          "oosm-target-003",
+          "oosm-watermark-002"
+        ]
+      },
+      "target_outcome": {
+        "scan_id": "oosm-target-003",
+        "measurement_timestamp": 0.3,
+        "arrival_timestamp": 0.65,
+        "observation_count": 2,
+        "processing_index": 2,
+        "fusion_time_before": 0.4,
+        "fusion_time_after": 0.65,
+        "measurement_precedes_fusion_time": true,
+        "pre_scan_materialization_state_covariance_unchanged_bitwise": true,
+        "candidate_component_count": 1,
+        "applied_component_count": 0,
+        "rejected_component_count": 1,
+        "rejection_reason": "oosm_scan",
+        "components": [
+          {
+            "evidence_id": "d1-evidence-sha256:8bb8d35ae7b09629ccf42dc082564ccdab3c3aa9c4ae67f8d2ad0a0e2d2c0083",
+            "measurement_timestamp": 0.3,
+            "arrival_timestamp": 0.65,
+            "member_count": 2,
+            "observation_count": 2,
+            "candidate_edge_count": 4,
+            "maximum_matching_cardinality": 2,
+            "free_row_count": 0,
+            "free_column_count": 0,
+            "component_kinds": [
+              "alternating_cycle"
+            ],
+            "posterior_update_applied": false,
+            "update_mode": "prediction_only",
+            "cross_covariance_available": false
+          }
+        ]
+      },
+      "invariant_checks": {
+        "component_global_track_ids": [
+          "global_track_001",
+          "global_track_002"
+        ],
+        "global_track_id_unchanged": true,
+        "velocity_unchanged": true,
+        "relative_position_unchanged": true,
+        "hits_unchanged": true,
+        "lineage_unchanged": true,
+        "lineage_equal_to_control": true,
+        "identity_unchanged": true,
+        "identity_equal_to_control": true,
+        "hits_equal_to_control": true,
+        "common_translation": true,
+        "translation_ned_m": [
+          1.1368683772161603e-13,
+          1.4210854715202004e-14,
+          0.0
+        ],
+        "translation_norm_m": 1.1457157353758233e-13,
+        "translation_nonzero": false,
+        "translation_bounded": true,
+        "covariance_not_contracted": false,
+        "minimum_covariance_delta_eigenvalue": -0.0071928353214153066,
+        "target_candidate_build_event_count": 1,
+        "target_publication_base_replacement_count": 1,
+        "target_pre_scan_materialization_state_covariance_unchanged_bitwise": true,
+        "target_centroid_formula_correction_produced": false,
+        "target_centroid_formula_rejection_reason": "oosm_scan",
+        "target_centroid_formula_translation_ned_m": null,
+        "target_centroid_formula_position_covariance_inflation": null,
+        "target_centroid_state_or_covariance_correction_applied": false,
+        "rejected_target_no_centroid_formula_output": true,
+        "rejected_target_pre_replacement_matches_control_bitwise": true,
+        "rejected_target_post_replacement_matches_publication_base_bitwise": true,
+        "rejected_target_published_matches_post_replacement_bitwise": true,
+        "rejected_target_control_candidate_delta_explained_by_replacement_bitwise": true,
+        "rejected_target_prediction_segmentation_residual_max_abs": 4.551914400963142e-15,
+        "rejected_target_state_delta_norm_m": 1.1457157353758233e-13,
+        "rejected_target_covariance_delta_min_eigenvalue": -0.0071928353214153066,
+        "rejected_target_covariance_delta_max_eigenvalue": 0.6334428353214212,
+        "rejected_target_covariance_delta_max_abs": 0.6000000000000014,
+        "rejected_target_publication_base_replacement_side_effect_present": true,
+        "rejected_target_path_strictly_attributed": true,
+        "rejected_target_delta_root_cause": "candidate_rejection_publication_base_replacement_with_non_semigroup_discrete_process_noise_segmentation",
+        "rejected_target_finite_difference_interpretation": "centroid_correction_not_applied_but_publication_base_replay_replacement_produces_finite_diagnostic_only_difference",
+        "rejected_target_promotion_boundary": "candidate_not_promoted",
+        "covariance_non_contraction_required": false,
+        "covariance_non_contraction_acceptance": null,
+        "rejected_scenario_covariance_delta_diagnostic_only": true,
+        "applied_scenario_covariance_gate_passed": false,
+        "candidate_promotion_evidence_eligible": false,
+        "candidate_promotion_ineligibility_reason": "controlled_boundary_diagnostic_only"
+      },
+      "control_and_candidate_consumed_same_frozen_frames": true,
+      "candidate_default_changed": false,
+      "online_safety_gate_relaxed": false,
+      "candidate_promoted": false,
+      "promotion_boundary": "candidate_not_promoted"
+    },
+    {
+      "scenario_id": "d1-centroid-unbalanced-component",
+      "scenario_kind": "unbalanced_component",
+      "scenario_name_cn": "数量不平衡分量",
+      "target_scan_id": "unbalanced-target-002",
+      "expected_rejection_reason": "unbalanced_component",
+      "input_order": [
+        {
+          "scan_id": "unbalanced-seed-000",
+          "measurement_timestamp": 0.0,
+          "arrival_timestamp": 0.2,
+          "observation_count": 3
+        },
+        {
+          "scan_id": "unbalanced-seed-001",
+          "measurement_timestamp": 0.2,
+          "arrival_timestamp": 0.4,
+          "observation_count": 3
+        },
+        {
+          "scan_id": "unbalanced-target-002",
+          "measurement_timestamp": 0.4,
+          "arrival_timestamp": 0.6,
+          "observation_count": 2
+        }
+      ],
+      "fusion_processing_order": [
+        {
+          "scan_id": "unbalanced-seed-000",
+          "measurement_timestamp": 0.0,
+          "arrival_timestamp": 0.2,
+          "observation_count": 3,
+          "processing_index": 0,
+          "fusion_time_before": 0.0,
+          "fusion_time_after": 0.2,
+          "measurement_precedes_fusion_time": false,
+          "pre_scan_materialization_state_covariance_unchanged_bitwise": true,
+          "candidate_component_count": 0,
+          "applied_component_count": 0,
+          "rejected_component_count": 0,
+          "rejection_reason": null
+        },
+        {
+          "scan_id": "unbalanced-seed-001",
+          "measurement_timestamp": 0.2,
+          "arrival_timestamp": 0.4,
+          "observation_count": 3,
+          "processing_index": 1,
+          "fusion_time_before": 0.2,
+          "fusion_time_after": 0.4,
+          "measurement_precedes_fusion_time": false,
+          "pre_scan_materialization_state_covariance_unchanged_bitwise": true,
+          "candidate_component_count": 0,
+          "applied_component_count": 0,
+          "rejected_component_count": 0,
+          "rejection_reason": null
+        },
+        {
+          "scan_id": "unbalanced-target-002",
+          "measurement_timestamp": 0.4,
+          "arrival_timestamp": 0.6,
+          "observation_count": 2,
+          "processing_index": 2,
+          "fusion_time_before": 0.4,
+          "fusion_time_after": 0.6,
+          "measurement_precedes_fusion_time": false,
+          "pre_scan_materialization_state_covariance_unchanged_bitwise": true,
+          "candidate_component_count": 1,
+          "applied_component_count": 0,
+          "rejected_component_count": 1,
+          "rejection_reason": "unbalanced_component"
+        }
+      ],
+      "frozen_replay": {
+        "bundle_schema_version": "d1.governed_replay_manifest.v1",
+        "bundle_sha256": "sha256:ba0ca09df234f943d7abc05ee4825bcbebd27d8e2bcb61ff661f1185f4f8bc01",
+        "observation_count": 8,
+        "frame_count": 3,
+        "measurement_timestamp_range": {
+          "minimum": 0.0,
+          "maximum": 0.4
+        },
+        "arrival_timestamp_range": {
+          "minimum": 0.2,
+          "maximum": 0.6
+        },
+        "working_frame": "ned",
+        "truth_policy": {
+          "online": "stripped",
+          "offline": "explicit_offline_only_export"
+        },
+        "roundtrip_complete": true,
+        "dual_timestamps_preserved": true,
+        "observation_timestamp_signature_sha256": "sha256:48950f4b42b5ab514bcab369abcf4bdc74239b6b3233e5606f7816f6ffe4c721"
+      },
+      "scan_organizer": {
+        "config": {
+          "schema_version": "d1.scan_input.config.v1",
+          "max_lateness_s": 0.15,
+          "max_buffer_residence_s": 5.0,
+          "max_buffered_scans": 1024,
+          "max_buffered_observations": 200000,
+          "max_claimed_scans": 100000,
+          "max_claimed_observation_lineages": 2000000
+        },
+        "audit": {
+          "received_scan_count": 3,
+          "received_observation_count": 8,
+          "buffered_event_count": 3,
+          "reordered_scan_count": 0,
+          "released_scan_count": 3,
+          "released_observation_count": 8,
+          "rejected_scan_count": 0,
+          "rejected_observation_count": 0,
+          "duplicate_scan_count": 0,
+          "replay_scan_count": 0,
+          "timestamp_conflict_scan_count": 0,
+          "too_late_scan_count": 0,
+          "buffer_overflow_scan_count": 0,
+          "buffer_expired_scan_count": 0,
+          "capacity_overflow_scan_count": 0,
+          "invalid_frame_scan_count": 0,
+          "current_buffered_scan_count": 0,
+          "current_buffered_observation_count": 0,
+          "maximum_buffered_scan_count": 1,
+          "maximum_buffered_observation_count": 3,
+          "claimed_scan_count": 3,
+          "claimed_observation_lineage_count": 8,
+          "latest_arrival_timestamp": 0.6,
+          "maximum_seen_measurement_timestamp": 0.4,
+          "measurement_watermark": 0.25,
+          "closed": true,
+          "schema_version": "d1.scan_input.audit_summary.v1"
+        },
+        "events": [
+          {
+            "event_sequence": 1,
+            "received_sequence": 1,
+            "scan_id": "unbalanced-seed-000",
+            "measurement_timestamp": 0.0,
+            "arrival_timestamp": 0.2,
+            "outcome": "buffered",
+            "reason": "within_lateness_window",
+            "buffered": true,
+            "reordered": false,
+            "released": false,
+            "too_late": false
+          },
+          {
+            "event_sequence": 2,
+            "received_sequence": 1,
+            "scan_id": "unbalanced-seed-000",
+            "measurement_timestamp": 0.0,
+            "arrival_timestamp": 0.2,
+            "outcome": "released",
+            "reason": "watermark_released",
+            "buffered": false,
+            "reordered": false,
+            "released": true,
+            "too_late": false
+          },
+          {
+            "event_sequence": 3,
+            "received_sequence": 2,
+            "scan_id": "unbalanced-seed-001",
+            "measurement_timestamp": 0.2,
+            "arrival_timestamp": 0.4,
+            "outcome": "buffered",
+            "reason": "within_lateness_window",
+            "buffered": true,
+            "reordered": false,
+            "released": false,
+            "too_late": false
+          },
+          {
+            "event_sequence": 4,
+            "received_sequence": 2,
+            "scan_id": "unbalanced-seed-001",
+            "measurement_timestamp": 0.2,
+            "arrival_timestamp": 0.4,
+            "outcome": "released",
+            "reason": "watermark_released",
+            "buffered": false,
+            "reordered": false,
+            "released": true,
+            "too_late": false
+          },
+          {
+            "event_sequence": 5,
+            "received_sequence": 3,
+            "scan_id": "unbalanced-target-002",
+            "measurement_timestamp": 0.4,
+            "arrival_timestamp": 0.6,
+            "outcome": "buffered",
+            "reason": "within_lateness_window",
+            "buffered": true,
+            "reordered": false,
+            "released": false,
+            "too_late": false
+          },
+          {
+            "event_sequence": 6,
+            "received_sequence": 3,
+            "scan_id": "unbalanced-target-002",
+            "measurement_timestamp": 0.4,
+            "arrival_timestamp": 0.6,
+            "outcome": "released",
+            "reason": "end_of_stream",
+            "buffered": false,
+            "reordered": false,
+            "released": true,
+            "too_late": false
+          }
+        ],
+        "released_scan_ids": [
+          "unbalanced-seed-000",
+          "unbalanced-seed-001",
+          "unbalanced-target-002"
+        ]
+      },
+      "target_outcome": {
+        "scan_id": "unbalanced-target-002",
+        "measurement_timestamp": 0.4,
+        "arrival_timestamp": 0.6,
+        "observation_count": 2,
+        "processing_index": 2,
+        "fusion_time_before": 0.4,
+        "fusion_time_after": 0.6,
+        "measurement_precedes_fusion_time": false,
+        "pre_scan_materialization_state_covariance_unchanged_bitwise": true,
+        "candidate_component_count": 1,
+        "applied_component_count": 0,
+        "rejected_component_count": 1,
+        "rejection_reason": "unbalanced_component",
+        "components": [
+          {
+            "evidence_id": "d1-evidence-sha256:5bc7375a8335949f2f9cf634c4e197e997356fad89371c284dccc2b62b231d02",
+            "measurement_timestamp": 0.4,
+            "arrival_timestamp": 0.6,
+            "member_count": 2,
+            "observation_count": 1,
+            "candidate_edge_count": 2,
+            "maximum_matching_cardinality": 1,
+            "free_row_count": 1,
+            "free_column_count": 0,
+            "component_kinds": [
+              "free_row_alternating_path"
+            ],
+            "posterior_update_applied": false,
+            "update_mode": "prediction_only",
+            "cross_covariance_available": false
+          }
+        ]
+      },
+      "invariant_checks": {
+        "component_global_track_ids": [
+          "global_track_001",
+          "global_track_002"
+        ],
+        "global_track_id_unchanged": true,
+        "velocity_unchanged": true,
+        "relative_position_unchanged": true,
+        "hits_unchanged": true,
+        "lineage_unchanged": true,
+        "lineage_equal_to_control": true,
+        "identity_unchanged": true,
+        "identity_equal_to_control": true,
+        "hits_equal_to_control": true,
+        "common_translation": true,
+        "translation_ned_m": [
+          1.1368683772161603e-13,
+          -2.842170943040401e-14,
+          -1.4210854715202004e-14
+        ],
+        "translation_norm_m": 1.180442248897588e-13,
+        "translation_nonzero": false,
+        "translation_bounded": true,
+        "covariance_not_contracted": false,
+        "minimum_covariance_delta_eigenvalue": -0.004617076466238031,
+        "target_candidate_build_event_count": 1,
+        "target_publication_base_replacement_count": 1,
+        "target_pre_scan_materialization_state_covariance_unchanged_bitwise": true,
+        "target_centroid_formula_correction_produced": false,
+        "target_centroid_formula_rejection_reason": "unbalanced_component",
+        "target_centroid_formula_translation_ned_m": null,
+        "target_centroid_formula_position_covariance_inflation": null,
+        "target_centroid_state_or_covariance_correction_applied": false,
+        "rejected_target_no_centroid_formula_output": true,
+        "rejected_target_pre_replacement_matches_control_bitwise": true,
+        "rejected_target_post_replacement_matches_publication_base_bitwise": true,
+        "rejected_target_published_matches_post_replacement_bitwise": true,
+        "rejected_target_control_candidate_delta_explained_by_replacement_bitwise": true,
+        "rejected_target_prediction_segmentation_residual_max_abs": 2.328692794151266e-14,
+        "rejected_target_state_delta_norm_m": 1.180442248897588e-13,
+        "rejected_target_covariance_delta_min_eigenvalue": -0.004617076466238031,
+        "rejected_target_covariance_delta_max_eigenvalue": 0.4990170764662371,
+        "rejected_target_covariance_delta_max_abs": 0.480000000000004,
+        "rejected_target_publication_base_replacement_side_effect_present": true,
+        "rejected_target_path_strictly_attributed": true,
+        "rejected_target_delta_root_cause": "candidate_rejection_publication_base_replacement_with_non_semigroup_discrete_process_noise_segmentation",
+        "rejected_target_finite_difference_interpretation": "centroid_correction_not_applied_but_publication_base_replay_replacement_produces_finite_diagnostic_only_difference",
+        "rejected_target_promotion_boundary": "candidate_not_promoted",
+        "covariance_non_contraction_required": false,
+        "covariance_non_contraction_acceptance": null,
+        "rejected_scenario_covariance_delta_diagnostic_only": true,
+        "applied_scenario_covariance_gate_passed": false,
+        "candidate_promotion_evidence_eligible": false,
+        "candidate_promotion_ineligibility_reason": "controlled_boundary_diagnostic_only"
+      },
+      "control_and_candidate_consumed_same_frozen_frames": true,
+      "candidate_default_changed": false,
+      "online_safety_gate_relaxed": false,
+      "candidate_promoted": false,
+      "promotion_boundary": "candidate_not_promoted"
+    }
+  ]
+}

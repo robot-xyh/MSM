@@ -47,6 +47,22 @@
   `/tmp/MSM-identity-gate-results-7e15dac/{hold_only,hold_plus_centroid}`。
 - clean 复跑确认 D3 未承诺执行路径已 fail closed，但候选仍为零 treatment。该证据不能证明
   共同质心有效，也没有恢复 hold 的可用性退化。seeds 1101/1102 停止，默认关闭，P1 开放。
+- D1 随后复用 governed replay、`SensorScanFrame`、`ScanInputOrganizer` 和在线批融合入口，
+  完成三类冻结扫描边界诊断。控制臂和候选臂按扫描编号、双时间戳和观测数确认消费同一输入。
+  同步平衡纯交替环 `2x2` 分量形成一次模长 `15.000000 m` 的共同平移，速度、相对位置、
+  hit、lineage、identity、`global_track_id` 不变，协方差差最小特征值为 `0.4797678`；
+  乱序平衡分量以 `oosm_scan` 拒绝；成员/观测 `2/1`、free row/column `1/0` 的分量以
+  `unbalanced_component` 拒绝。
+- 两个拒绝场景均为 `applied_component_count=0`，共同质心 correction 未施加；候选臂仍在
+  拒绝后各执行一次 publication-base replay + replace 清除旧临时修正。当前离散 CV 过程
+  噪声在控制臂分段预测与候选臂单段历史重放间不满足半群等价，候选减控制协方差差最小特征值
+  分别为 `-0.0071928353214153066`、`-0.004617076466238031`。差值已 bitwise 归因到
+  replacement，只作诊断，不能声称拒绝路径对状态和协方差严格无副作用；两项均为
+  `candidate_not_promoted`。
+- 冻结诊断专项 `5 passed`，D1 全量 `287 passed in 18.03s`，结果位于
+  `research_modules/d1_sensor_fusion/reports/structural_ambiguity_centroid_replay_20260723/`。
+  该证据关闭受控输入的“有效施加窗口是否存在”子项，不证明真实匿名输入收益，不改变默认关闭
+  和停止 seeds 1101/1102 的决定。
 - main 已完成 seed 1100 baseline/source-only/hold 闭环三臂。D1/D2/D3 分别为
   `202/203/200`、`202/201/198`、`202/201/186`；IDSW `9/7/3`；track continuity
   `.865/.865/.826667`；coverage `.870/.868889/.828333`。hold 有 76 条未承诺记录，D3
@@ -54,10 +70,9 @@
 - source-only 终态映射 200 个真实目标并有 1 条未映射航迹；hold 映射 191 个真实目标并有
   10 条未映射航迹。首个计划后控制反馈使传感器流分叉，因此该结果是单 seed 闭环系统效果
   对照，不是完全冻结输入的上游因果证明。
-- 下一步先解释 OOSM 和非平衡分量为何覆盖全部 46 个候选，并证明在不放宽双时间戳、满基数
-  和 fail-closed 合同的条件下存在有效施加窗口。满足后才能恢复 clean 冻结输入和未见 seed
-  多 seed。晋级仍须同时满足 IDSW、连续性恢复、RMSE/NEES/NIS、D2/D3 可用性、P95 和长时
-  内存/吞吐门槛。
+- 下一步使用新的真实匿名冻结扫描检查同步平衡分量是否自然出现，再恢复 hold-only 与
+  hold+共同质心的未见 seed A/B。不得通过忽略 OOSM 或放宽数量门制造 treatment。晋级仍须
+  同时满足 IDSW、连续性恢复、RMSE/NEES/NIS、D2/D3 可用性、P95 和长时内存/吞吐门槛。
 
 ## 0.1 结构歧义侧车基础阶段状态（2026-07-23）
 

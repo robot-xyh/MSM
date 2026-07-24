@@ -1,5 +1,39 @@
 # D1 多传感器融合与目标配准实施计划
 
+## 共同质心冻结扫描边界诊断完成状态（2026-07-23）
+
+D1 已完成共同质心候选的受控冻结扫描边界诊断。诊断复用 governed replay、
+`SensorScanFrame`、`ScanInputOrganizer`、固定滞后重放和在线
+`FusionAdapter.process_scan_batch()`，没有增加平行融合框架。控制臂和候选臂消费相同的扫描
+编号、双时间戳和观测数量；候选只在诊断实例中显式开启，生产默认仍为 `False`。
+
+已完成的三类确定性输入如下：
+
+1. 同步、平衡、纯交替环 `2x2` 分量实际施加一次共同平移，模长
+   `15.000000 m <= 30 m`；速度、成员相对位置、hit、lineage、identity 和
+   `global_track_id` 不变，协方差差最小特征值 `0.4797678`，满足不收缩；
+2. 乱序但平衡的 `2x2` 分量保留量测/到达时刻 `0.300/0.650 s`，进入融合前时刻为
+   `0.400 s`。扫描组织器记录重排，候选以 `oosm_scan` 拒绝，`applied_component_count=0`；
+3. 数量不平衡分量记录成员/观测 `2/1`、最大匹配基数 1、free row/column `1/0`，以
+   `unbalanced_component` 拒绝，`applied_component_count=0`。
+
+两个拒绝场景的共同质心 correction 均未施加，但拒绝后各有一次 publication-base replay +
+replace 清除旧临时修正。该替换把控制臂的分段预测发布态换成候选臂从观测历史单段重放得到的
+发布基准；当前离散 CV 过程噪声不满足分段半群等价，因此候选减控制协方差差最小特征值分别为
+`-0.0071928353214153066` 和 `-0.004617076466238031`。差值已 bitwise 归因到 replacement，
+只作诊断，不能声称拒绝路径对状态和协方差严格无副作用，也不能作为晋级证据。
+
+专项 `5 passed`，D1 全量 `287 passed in 18.03s`。JSON 与中文 Markdown 位于
+`reports/structural_ambiguity_centroid_replay_20260723/`。该阶段关闭“受控冻结输入中是否
+存在合法非零施加窗口”的 D1 边界诊断子项，不关闭现实匿名输入的算法收益 P1；晋级边界为
+`candidate_not_promoted`。
+
+下一步不再调整在线核心或重跑 seeds 1101/1102。后续输入应来自新的匿名冻结扫描，并预先冻结
+扫描流和验收门槛；先验证是否自然出现同步平衡分量，再比较 hold-only 与
+hold+共同质心。仍需覆盖未见 seed、多 seed、均方根误差、归一化估计误差平方、归一化创新
+平方、D2/D3 可用性、P95 和长时内存/吞吐。若真实输入继续只有 OOSM 或数量不平衡分量，应
+保留零 treatment 结论，不能放宽门限制造处理。
+
 ## 结构歧义证据侧车候选验收结论（2026-07-23）
 
 D1 已完成默认关闭的
@@ -101,9 +135,9 @@ candidate 的 46 个组件全部拒绝，原因是 `oosm_scan=30` 和
 零 treatment 和 D3 fail-closed 合同，没有证明共同质心修正收益，也没有恢复 hold 可用性。
 停止 seeds 1101/1102，候选保持默认关闭，P1 开放。
 
-后续计划改为先解释 OOSM 和非平衡分量覆盖全部 46 个候选的原因，并在不放宽双时间戳、满基数
-和 fail-closed 合同的前提下证明存在有效施加窗口。满足该前提后，再在 clean 冻结扫描流和
-未见 seed 上恢复 A/B。strict IDSW 不得劣于 hold-only，连续性至少恢复当前损失的 75%，
+受控冻结扫描诊断现已解释两类拒绝边界，并在同步平衡纯交替环中证明非零施加窗口。下一阶段
+转为新的真实匿名冻结扫描 A/B，不再以构造输入替代系统收益。strict IDSW 不得劣于
+hold-only，连续性至少恢复当前损失的 75%，
 多 seed 相对基线差值置信区间下界不得低于 -0.005，D2 航迹和 D3 分配不得低于 hold-only，
 D1 P95 增幅不得超过 5%。详见
 `../../subagent_reviews/D1_STRUCTURAL_AMBIGUITY_HOLD_CAUSAL_AUDIT_CN.md`。

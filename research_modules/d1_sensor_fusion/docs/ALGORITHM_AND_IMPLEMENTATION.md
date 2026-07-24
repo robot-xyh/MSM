@@ -312,14 +312,58 @@ main 先在未提交工作树接入共同质心开关并取得 dirty 诊断，�
 `/tmp/MSM-identity-gate-results-7e15dac/{hold_only,hold_plus_centroid}`。按开发停止条件
 不再运行 seeds 1101/1102。
 
+#### 冻结扫描边界诊断
+
+边界诊断由
+`structural_ambiguity_replay_diagnostic.py` 提供可复用 API，由
+`scripts/run_structural_ambiguity_replay_diagnostic.py` 生成 JSON 和中文 Markdown。它没有
+复制滤波器或扫描组织逻辑，数据路径为：
+
+```text
+确定性 SensorObservation
+  -> serialize_governed_replay
+  -> governed replay 回读
+  -> SensorScanFrame
+  -> ScanInputOrganizer
+  -> FusionAdapter.process_scan_batch
+  -> 控制臂/共同质心候选臂比较
+```
+
+两臂的冻结帧签名只由 `scan_id`、`measurement_timestamp`、`arrival_timestamp` 和观测数
+组成，避免把候选臂专属审计计数误判为输入差异。三类输入结果如下：
+
+| 输入 | 结构记录 | 处理结果 |
+| --- | --- | --- |
+| 同步平衡纯交替环 | 成员/观测 `2/2`，free row/column `0/0` | 施加 1 次共同平移，模长 `15.000000 m` |
+| 乱序平衡纯交替环 | 量测/到达 `0.300/0.650 s`，融合前时刻 `0.400 s` | `oosm_scan`，施加 0 |
+| 数量不平衡分量 | 成员/观测 `2/1`，最大匹配基数 1，free row/column `1/0` | `unbalanced_component`，施加 0 |
+
+同步场景的共同平移约为 `[15.000000, 0.000000, 0.003278] m`。速度、成员相对位置、hit、
+lineage、source support、identity likelihood、质量分级和 `global_track_id` 均保持不变；
+候选相对控制臂的协方差差最小特征值为 `0.4797678`。乱序场景由扫描组织器记录 1 次重排，
+但不会删除双时间戳或绕过 OOSM 资格门。
+
+乱序和数量不平衡场景分别以 `oosm_scan`、`unbalanced_component` 拒绝，均为
+`applied_component_count=0`，且共同质心公式没有生成平移或协方差膨胀，因此共同质心
+correction 未施加。候选臂仍在拒绝后各执行一次 publication-base replay + replace，以清除
+旧临时修正。控制臂的分段预测与候选臂的单段历史重放使用当前非半群等价的离散 CV 过程噪声，
+使候选减控制协方差差最小特征值分别为 `-0.0071928353214153066` 和
+`-0.004617076466238031`。逐元素审计确认差值与 replacement 前后差值 bitwise 一致；这只是
+拒绝路径的发布态重放替换诊断，不能声称对状态和协方差严格无副作用。协方差不收缩只验收实际
+施加的同步场景，两个拒绝场景均为 `candidate_not_promoted`。
+
+专项 `5 passed`，D1 全量 `287 passed in 18.03s`。输出位于
+`../reports/structural_ambiguity_centroid_replay_20260723/`。该诊断只证明受控边界存在非零
+处理窗口，不能替代现实匿名冻结输入或算法晋级证据。
+
 #### 身份中性状态修正晋级规则
 
-共同质心候选已完成 D1 模块实现和 main 接线，clean seed 1100 的 46 个候选仍全部被 OOSM
-或非平衡分量门控拒绝。候选继续默认关闭，系统效果 P1 开放。停止 1101/1102，下一次系统
-试验前先解释当前零 treatment，证明在不放宽双时间戳、满基数、OOSM 和 fail-closed 合同的
-条件下存在有效施加窗口。之后才固定同一上游扫描流比较 hold-only 与 hold+共同质心，再运行
-新的未见 seed 闭环。free-row、free-column、OOSM、过期、重复、形状不一致或超规模分量
-继续 prediction-only。完整数学规则、测试和 A/B 门槛见
+共同质心候选已完成 D1 模块实现、main 接线和受控冻结扫描边界诊断，clean seed 1100 的
+46 个候选仍全部被 OOSM 或非平衡分量门控拒绝。候选继续默认关闭，系统效果 P1 开放。停止
+1101/1102；下一次系统试验使用新的真实匿名冻结扫描，固定同一上游扫描流比较 hold-only 与
+hold+共同质心，再运行未见 seed 闭环。不得通过删除双时间戳或放宽满基数、OOSM 和
+fail-closed 合同制造处理。free-row、free-column、OOSM、过期、重复、形状不一致或超规模
+分量继续 prediction-only。完整数学规则、测试和 A/B 门槛见
 `../../../subagent_reviews/D1_STRUCTURAL_AMBIGUITY_HOLD_CAUSAL_AUDIT_CN.md`。
 
 ### Radar assignment ambiguity 实验候选 v2
