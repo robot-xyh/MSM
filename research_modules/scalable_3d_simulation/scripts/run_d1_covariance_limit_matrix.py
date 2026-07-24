@@ -282,8 +282,20 @@ def run_matrix(
             if dry_run:
                 arm_record["status"] = "planned"
                 continue
+            arm_record["status"] = "running"
+            arm_record["started_at_utc"] = _utc_now()
+            _write_json_atomic(manifest_path, manifest)
             try:
                 _run_arm(arm_record, worktrees[arm])
+            except Exception as exc:
+                manifest["status"] = "failed"
+                manifest["failure"] = {
+                    "case_id": case["case_id"],
+                    "arm": arm,
+                    "error_type": type(exc).__name__,
+                    "error": str(exc),
+                }
+                raise
             finally:
                 _write_json_atomic(manifest_path, manifest)
             if float(matrix["cooldown_s"]) > 0.0:
@@ -333,8 +345,6 @@ def _run_arm(record: dict[str, Any], worktree: Path) -> None:
         str(resource_path),
         *command,
     ]
-    record["status"] = "running"
-    record["started_at_utc"] = _utc_now()
     environment = dict(os.environ)
     environment["PYTHONUNBUFFERED"] = "1"
     with stdout_path.open("w", encoding="utf-8") as stdout, stderr_path.open(

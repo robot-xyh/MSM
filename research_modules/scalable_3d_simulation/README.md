@@ -49,6 +49,17 @@ reference/candidate 先后次序。运行器拒绝提交不匹配或脏 worktree
 至少 2/3 更快且均值改善至少 5%；长短单位时间成本增长、核心墙钟和内存均有独立上界。
 实时因子未达到 1 时，系统实时 P1 继续开放。
 
+首次执行完成了 10/10 short pair 和 long seed 1101，11/11 跨构建审计通过。long seed
+1102 的 reference 在主仿真和基础制品完成后，被 D6 严格 consumer 以
+`D2 known-false-alarm exclusion count contradicts frame mappings` 阻断。D2 producer
+报告 14 个仅虚警排除映射，持久化 frame 中实际只有 11 个；进程按合同以 1 退出，矩阵立即
+停止。该批只作故障定位，不进入正式性能评估。
+
+运行器现会在进程启动前持久化 running 状态，并在异常时写入 case、arm、异常类型和消息；
+专项回归增至 5 项。待 D2 owner 修复计数口径并由 D6 保持严格复核后，main 将同一修复叠加到
+reference/candidate 两端，以新的 clean 提交和新矩阵版本完整重跑，不能混用已完成的旧提交
+episode。
+
 ## 2026-07-24 D1 协方差成对限制 clean 准入
 
 D1 已把六维协方差 15 个非对角元素的逐项标量裁剪改为只读上三角索引上的批量裁剪。旧路径

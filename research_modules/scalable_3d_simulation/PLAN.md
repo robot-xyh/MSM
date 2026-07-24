@@ -11,14 +11,19 @@
 - [x] 交替 arm 先后顺序，避免把主机热状态固定偏向同一实验臂；
 - [x] 运行器显式记录命令、提交、episode、资源记录和 cross-build 路径；
 - [x] `--resume` 只接受 clean、有限、真值隔离且配置匹配的既有 episode；
-- [x] main 专项 `4 passed`；
-- [ ] 完成 10 组 short 与 3 组 long clean pair；
-- [ ] 完成 13/13 跨构建业务语义审计；
+- [x] main 专项 `5 passed`，异常状态会持久化到 evidence manifest；
+- [x] 首次诊断完成 10 组 short 和 long seed 1101，11/11 跨构建审计通过；
+- [x] long seed 1102 reference 以 D2 仅虚警排除计数 `14` 与 frame mapping `11` 矛盾
+  失败关闭，矩阵未继续；
+- [ ] D2 修复 producer 计数口径，D6 保持 exact-match 严格 consumer；
+- [ ] 在 reference/candidate 两端叠加相同修复，冻结新的提交和 v2 矩阵；
+- [ ] 从头完成 10 组 short 与 3 组 long clean pair；
+- [ ] 完成新矩阵 13/13 跨构建业务语义审计；
 - [ ] 由 D6 计算 paired bootstrap 95% 区间和长短单位时间增长；
 - [ ] 根据预注册门更新 D1 多 seed 准入和系统实时 P1。
 
-正式运行前不得改变 seed、时长、arm 顺序或准入门。运行失败可使用同一
-`evidence_manifest.json` 断点续跑；无效或部分 episode 不得作为正式输入。
+首次 v1 运行只作失败定位，不能与修复后的提交混合。v2 仍保持相同 seed、时长、arm 顺序和
+准入门，只更新两端共同 D2 修复后的提交号及证据版本。无效或部分 episode 不得作为正式输入。
 
 ### D1 协方差成对限制 clean 准入
 

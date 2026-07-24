@@ -1,10 +1,14 @@
 from __future__ import annotations
 
 import copy
+import json
 from pathlib import Path
 
 import pytest
 
+from research_modules.scalable_3d_simulation.scripts import (
+    run_d1_covariance_limit_matrix as matrix_runner,
+)
 from research_modules.scalable_3d_simulation.scripts.run_d1_covariance_limit_matrix import (
     build_episode_command,
     load_matrix,
@@ -93,7 +97,6 @@ def test_matrix_rejects_long_seed_without_matching_short(
     invalid = copy.deepcopy(matrix)
     invalid["cases"][-1]["seed"] = 1200
     path = tmp_path / "invalid.json"
-    import json
 
     path.write_text(json.dumps(invalid), encoding="utf-8")
 
@@ -101,3 +104,61 @@ def test_matrix_rejects_long_seed_without_matching_short(
         ValueError, match="long seed must have a matching short"
     ):
         load_matrix(path)
+
+
+def test_run_failure_is_persisted_with_case_and_arm(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    matrix = load_matrix(MATRIX_PATH)
+    matrix["cases"] = [matrix["cases"][0]]
+    matrix["cases"][0]["arm_order"] = ["reference", "candidate"]
+    matrix_path = tmp_path / "matrix.json"
+    matrix_path.write_text(json.dumps(matrix), encoding="utf-8")
+    reference = tmp_path / "reference"
+    candidate = tmp_path / "candidate"
+    for root in (reference, candidate):
+        entrypoint = (
+            root
+            / "research_modules"
+            / "scalable_3d_simulation"
+            / "run_episode.py"
+        )
+        entrypoint.parent.mkdir(parents=True)
+        entrypoint.write_text("", encoding="utf-8")
+
+    monkeypatch.setattr(
+        matrix_runner,
+        "_validate_worktrees",
+        lambda matrix, worktrees: None,
+    )
+
+    def fail_arm(record: dict[str, object], worktree: Path) -> None:
+        record["status"] = "failed"
+        record["return_code"] = 7
+        raise RuntimeError("fixture failure")
+
+    monkeypatch.setattr(matrix_runner, "_run_arm", fail_arm)
+    output_root = tmp_path / "output"
+
+    with pytest.raises(RuntimeError, match="fixture failure"):
+        matrix_runner.run_matrix(
+            matrix_path,
+            reference,
+            candidate,
+            output_root,
+            resume=False,
+            dry_run=False,
+        )
+
+    evidence = json.loads(
+        (output_root / "evidence_manifest.json").read_text(encoding="utf-8")
+    )
+    assert evidence["status"] == "failed"
+    assert evidence["failure"] == {
+        "case_id": "short_seed_1101",
+        "arm": "reference",
+        "error_type": "RuntimeError",
+        "error": "fixture failure",
+    }
+    assert evidence["cases"][0]["arms"]["reference"]["status"] == "failed"
