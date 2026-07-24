@@ -21,20 +21,22 @@
    证据分层输出。任何一层通过都不会自动把 `overall_admitted` 改为 true。
 7. seed 1100 开发期 shadow 已由 D6 实际消费：9 条 sidecar、46 个 decision、0 accepted、46 个
    `oosm_scan` rejected、0 error；禁止修改、D2/D3 消费、在线真值使用和编号变化均为 0，业务
-   非干预通过。
+   非干预通过。当前权威输入为 control/shadow prepared pair，来源提交 `2b976a7...`，两臂配置
+   SHA-256 相同。
 8. 2026-07-23 适配器专项 `11 passed`，scalable 与后验治理联合回归 `77 passed`，D6 全量
    `623 passed, 1 warning in 21.67s`。warning 为既有 Matplotlib 环境提示。
 
 ### 仍开放 P1
 
-1. **性能准入失败。** control/shadow 总墙钟为 `10.732310/17.866450 s`，相对开销 `66.47%`，
-   高于 `+5%` 门限。影子评估 P95 为 `1167.178 ms`，payload 峰值为 `11,275,939 B`。需要生产端
-   优化和 clean 同输入复测。
+1. **性能准入失败。** control/shadow 总墙钟为 `10.712171729/19.376483415 s`，相对开销比
+   `0.808828677`，高于 `+5%` 门限。影子评估 P95 为 `1532.999 ms`，payload 峰值为
+   `11,275,939 B`。需要生产端优化和 clean 同输入复测。
 2. **没有有效处理。** 当前 46 个 decision 全部因 `oosm_scan` 被拒绝，accepted treatment 为 0。
    现有输入只能验证拒绝路径和非干预，不能评价候选修正质量。
 3. **没有效果证据。** D6 尚未收到独立 outcome effect 合同。shadow/canonical SHA 差异不能作为
    结果提升代理。
-4. **证据等级不足。** seed 1100 来自 dirty/development 工作树且只有一个 seed。仍需
+4. **证据等级不足。** prepared seed 1100 来自 dirty/development 工作树且只有一个 seed，当前
+   只构成描述性开发证据。仍需
    clean/frozen、同输入、多个自然结构歧义 seed，并持久化完整阶段时序和硬件环境。
 
 当前无新增 P0。A2 的 D6 consumer 和失败关闭合同已完成；性能、有效 treatment、结果效果和正式

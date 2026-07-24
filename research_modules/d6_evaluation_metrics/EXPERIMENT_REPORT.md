@@ -11,13 +11,15 @@ watermark、payload、D2/D3 消费和在线真值使用。负例缺字段时保�
 
 真实复核使用 seed 1100、200 对 200、2.2 s 的 control/shadow pair：
 
-- control：`/tmp/msm_d1_overlay_a2_seed1100_control_20260723`
-- shadow：`/tmp/msm_d1_overlay_a2_seed1100_shadow_v3_20260723`
-- 来源提交：`671398997480dad442fcdb4ea894c9af0497dcb2`
-- 两臂配置 SHA-256 相同
+- control：`/tmp/msm_d1_overlay_a2_seed1100_control_prepared_20260723`
+- shadow：`/tmp/msm_d1_overlay_a2_seed1100_shadow_prepared_20260723`
+- 来源提交：`2b976a7213ccdaa35fe0e22dea88def2651e9467`
+- 两臂配置 SHA-256 均为
+  `20ef5248c8b45ff5aced9080c8d47e65a43aaba54f18ce824dc50fac7a52b840`
 - 两臂均为 dirty/development
 
-该输入只用于开发期诊断。单 seed、dirty 工作树和零 accepted treatment 均不满足正式准入证据要求。
+该输入只形成单 seed 描述性开发证据。dirty 工作树和零 accepted treatment 均不满足正式准入
+证据要求。
 
 ### 代码验证
 
@@ -44,7 +46,7 @@ watermark、payload、D2/D3 消费和在线真值使用。负例缺字段时保�
 | measurement/arrival 双时间戳 | 可用 |
 | watermark current / peak / capacity | 8 / 8 / 1024 |
 | shadow payload peak | 11,275,939 B |
-| shadow evaluation P50 / P95 / max | 840.900 / 1167.178 / 1201.477 ms |
+| shadow evaluation P50 / P95 / max | 1009.256 / 1532.999 / 1619.053 ms |
 | stage timing 交叉核对 | 一致 |
 
 canonical/shadow SHA 差异只描述影子副本，不进入业务输出变化判据。canonical tracks 与结构歧义
@@ -55,18 +57,20 @@ evidence 的前后摘要、摘要 manifest、全局航迹编号、正式航迹�
 
 | 指标 | 结果 |
 | --- | ---: |
-| control 总墙钟 | 10.732310 s |
-| shadow 总墙钟 | 17.866450 s |
-| 相对开销 | 66.47% |
+| control 总墙钟 | 10.712171729 s |
+| shadow 总墙钟 | 19.376483415 s |
+| 相对开销比 | 0.808828677（80.88%） |
 | 性能门限 | 不高于 +5% |
 | 性能门 | 失败 |
 | accepted treatment | 0 |
 | treatment outcome | unavailable |
 | overall admitted | false |
 
-业务非干预通过只证明旁路没有污染正式链。当前性能开销超过门限约 13 倍，且 46 个 decision 全部因
+业务非干预通过只证明旁路没有污染正式链。当前性能开销超过门限约 16 倍，且 46 个 decision 全部因
 OOSM 扫描被拒绝，没有候选进入有效处理，无法评价算法收益。D6 因此分别输出
 `business_nonintervention=true`、`performance_gate=false` 和 `overall_admitted=false`。
+准入 blockers 为 `d1_centroid_overlay_shadow_performance_gate_failed`、`no_accepted_treatment`
+和 `outcome_effect_evidence_not_provided`。
 
 ### 验证结论
 

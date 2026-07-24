@@ -28,9 +28,10 @@
 - [x] development/dirty seed 1100、200 对 200、2.2 s pair 已只读复核。shadow 为
   9 sidecar/46 decisions，accepted/rejected/error=`0/46/0`，D2/D3/truth/forbidden mutation
   均为 0；业务非干预通过。
-- [x] 该 pair 的 sidecar P50/P95/max 为 `840.900/1167.178/1201.477 ms`，payload 峰值
-  `11,275,939 B`；control/shadow 总墙钟 `10.732310/17.866450 s`，相对开销 `66.47%`，
-  performance gate 失败，overall admitted 为 false。
+- [x] prepared pair 的 sidecar P50/P95/max 为 `1009.256/1532.999/1619.053 ms`，payload
+  峰值 `11,275,939 B`；control/shadow 总墙钟
+  `10.712171729/19.376483415 s`，相对开销比 `0.808828677`，performance gate 失败，
+  overall admitted 为 false。
 
 ### 后续验证
 
@@ -38,7 +39,7 @@
   1100 的 46 个 decision 全部为 OOSM rejected，不能评价 treatment 效果。
 - [ ] main 在 clean 同输入 control/shadow episode 上持久化 v2 阶段分位；D6 报告真实 P50/P95/max、
   watermark 峰值和 payload 峰值，并要求总墙钟相对开销不高于 `+5%`。当前 dirty 单 seed
-  `+66.47%` 不能准入。
+  `+80.88%` 不能准入。
 - [ ] main 提供多 seed 自然结构歧义场景后，D6 再评估 rejection reason 分布、非干预通过率和开销
   稳定性。业务收益需要另行定义 control/treatment 结果，不能由 shadow SHA 差异推断。
 

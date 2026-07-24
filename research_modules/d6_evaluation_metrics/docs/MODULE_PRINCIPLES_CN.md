@@ -42,10 +42,11 @@ D6 同时统计 accepted/rejected/error 和拒绝原因、measurement/arrival �
 2026-07-23 的 seed 1100 开发期 pair 为 200 对 200、2.2 s。shadow 共 9 条 sidecar、46 个
 decision，全部因 `oosm_scan` 被拒绝；禁止修改、D2/D3 消费、在线真值使用和全局航迹编号变化均为
 0，业务非干预通过。影子评估 P50/P95/max 为
-`840.900/1167.178/1201.477 ms`，payload 峰值为 `11,275,939 B`。control/shadow 总墙钟为
-`10.732310/17.866450 s`，相对开销 `66.47%`，未通过 `+5%` 性能门。该 pair 来自 dirty 工作树，
-只有一个 seed，且 accepted treatment 为 0，因此 `overall_admitted=false`。2026-07-23 D6 全量
-回归为 `623 passed, 1 warning in 21.67s`；warning 为既有 Matplotlib 环境提示。
+`1009.256/1532.999/1619.053 ms`，payload 峰值为 `11,275,939 B`。control/shadow 总墙钟为
+`10.712171729/19.376483415 s`，相对开销比 `0.808828677`，未通过 `+5%` 性能门。该 prepared
+pair 来自 dirty 工作树，只有一个 seed，且 accepted treatment 为 0，因此
+`overall_admitted=false`。它只构成描述性开发证据。2026-07-23 D6 全量回归为
+`623 passed, 1 warning in 21.67s`；warning 为既有 Matplotlib 环境提示。
 
 ## 观测处置与身份指标边界（2026-07-23）
 

@@ -37,18 +37,20 @@ accepted、1 个 rejected，`global_track_id` 不变 2/2，D2/D3/在线真值使
 `623 passed, 1 warning in 21.67s`。warning 是既有 Matplotlib `Axes3D` 环境提示。
 
 同日 D6 只读消费 development/dirty 的 seed 1100、200 对 200、2.2 s control/shadow pair。两臂
-config SHA-256 相同，来源提交均为 `671398997480dad442fcdb4ea894c9af0497dcb2`。shadow 有 9 条
+config SHA-256 均为 `20ef5248c8b45ff5aced9080c8d47e65a43aaba54f18ce824dc50fac7a52b840`，
+来源提交均为 `2b976a7213ccdaa35fe0e22dea88def2651e9467`。shadow 有 9 条
 sidecar、46 个 decision，accepted/rejected/error=`0/46/0`，拒绝原因全部为 `oosm_scan`；
 `global_track_id` 变化、forbidden mutation、D2/D3 consumption 和 online truth use 均为 0，因此
 业务非干预通过。每条日志重算的开销 P50/P95/max 为
-`840.900/1167.178/1201.477 ms`，与 stage timing 一致；watermark 当前/峰值/容量为
+`1009.256/1532.999/1619.053 ms`，与 stage timing 一致；watermark 当前/峰值/容量为
 `8/8/1024`，shadow DTO 峰值为 `11,275,939 B`。
 
-control/shadow episode 墙钟为 `10.732310/17.866450 s`，相对开销为 `66.47%`，未通过不高于
-`+5%` 的配对性能门。accepted 为 0，当前也没有 treatment outcome。D6 输出保持
+control/shadow episode 墙钟为 `10.712171729/19.376483415 s`，相对开销比为
+`0.808828677`（`80.88%`），未通过不高于 `+5%` 的配对性能门。accepted 为 0，当前也没有
+treatment outcome。D6 输出保持
 `business_nonintervention=true`、`performance_gate=false`、`overall_admitted=false`。该 pair
-来自 dirty 工作树且只有一个 seed，只能作为开发期诊断，不形成正式性能或算法收益结论。main 的 A2
-生产端仍处于未提交集成状态；AirSim、多 seed、clean/frozen 性能和有效 treatment 证据尚未提供。
+来自 dirty 工作树且只有一个 seed，只能作为描述性开发诊断，不形成正式性能或算法收益结论。
+AirSim、多 seed、clean/frozen 性能和有效 treatment 证据尚未提供。
 
 ## 2026-07-23 离线观测三态处置
 

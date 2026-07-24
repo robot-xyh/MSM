@@ -73,8 +73,9 @@ pair 输出分别保留业务非干预、性能门、accepted treatment 数和�
 
 确定性 fixture 覆盖正常 accepted/rejected、缺字段、非法 schema、摘要篡改、编号变化、下游消费、
 阶段时序不一致和配对性能门。真实 seed 1100 shadow 的 9 条 sidecar/46 个 decision 已由同一适配器
-消费。业务非干预通过；总墙钟相对开销为 `66.47%`，性能门失败；accepted treatment 为 0，效果证据
-不可用。该结论是 dirty 单 seed 开发诊断，不是算法准入。2026-07-23 D6 全量回归为
+消费。prepared pair 的影子 P50/P95/max 为 `1009.256/1532.999/1619.053 ms`，总墙钟相对开销比为
+`0.808828677`。业务非干预通过，性能门失败；accepted treatment 为 0，效果证据不可用。该结论是
+dirty 单 seed 描述性开发诊断，不是算法准入。2026-07-23 D6 全量回归为
 `623 passed, 1 warning in 21.67s`。
 
 ## 离线观测三态消费（2026-07-23）

@@ -3,8 +3,9 @@
 2026-07-23 D1 质心发布影子旁路的评估原则和实现见
 `MODULE_PRINCIPLES_CN.md`、`ALGORITHM_AND_IMPLEMENTATION.md`，真实 seed 1100 开发期复核见根目录
 `../EXPERIMENT_REPORT.md` 2.25 节。D6 只读消费 A2 sidecar、最终诊断和阶段时序，分别报告业务
-非干预、`+5%` 性能门和处理效果。seed 1100 的业务非干预通过，性能相对开销为 `66.47%`，accepted
-treatment 为 0，`overall_admitted=false`。本轮 D6 全量为
+非干预、`+5%` 性能门和处理效果。prepared seed 1100 的业务非干预通过，性能相对开销比为
+`0.808828677`，accepted treatment 为 0，`overall_admitted=false`。该证据为 dirty 单 seed
+描述性结果。本轮 D6 全量为
 `623 passed, 1 warning in 21.67s`。
 
 2026-07-23 observation truth v2 消费见 `MODULE_PRINCIPLES_CN.md` 和

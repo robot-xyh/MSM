@@ -11,16 +11,17 @@ episode 指标。
 相对开销不高于 `+5%`。处理和效果判据要求存在 accepted treatment，并由独立 outcome effect 证明
 收益。shadow/canonical SHA 不同仅表示影子副本不同，不属于正式业务输出变化。
 
-seed 1100、200 对 200、2.2 s 的 dirty development pair 已完成只读复核。shadow 有 9 条 sidecar、
-46 个 decision，accepted/rejected/error 为 `0/46/0`，拒绝原因均为 `oosm_scan`。禁止修改、
+seed 1100、200 对 200、2.2 s 的 dirty development prepared pair 已完成只读复核。shadow 有
+9 条 sidecar、46 个 decision，accepted/rejected/error 为 `0/46/0`，拒绝原因均为 `oosm_scan`。
+禁止修改、
 全局航迹编号变化、D2/D3 消费和在线真值使用均为 0，业务非干预通过。P50/P95/max 为
-`840.900/1167.178/1201.477 ms`，watermark 为 `8/8/1024`，payload 峰值为
+`1009.256/1532.999/1619.053 ms`，watermark 为 `8/8/1024`，payload 峰值为
 `11,275,939 B`。
 
-control/shadow 总墙钟为 `10.732310/17.866450 s`，相对开销 `66.47%`，性能门失败。accepted
-treatment 为 0，outcome effect 不可用。评审结论固定为
+control/shadow 总墙钟为 `10.712171729/19.376483415 s`，相对开销比 `0.808828677`，性能门失败。
+accepted treatment 为 0，outcome effect 不可用。评审结论固定为
 `business_nonintervention=true`、`performance_gate=false`、`overall_admitted=false`。当前没有
-新增 P0；A2 仍是 P1 开放项。
+新增 P0；A2 仍是 P1 开放项。该输入来自 dirty 工作树且只有一个 seed，只形成描述性开发证据。
 
 2026-07-23 的适配器专项为 `11 passed`，scalable 与后验治理联合回归为 `77 passed`，D6 全量
 为 `623 passed, 1 warning in 21.67s`。warning 是既有 Matplotlib `Axes3D` 环境提示。
