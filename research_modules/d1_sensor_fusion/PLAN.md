@@ -1,5 +1,31 @@
 # D1 多传感器融合与目标配准实施计划
 
+## 结构歧义下一候选设计状态（2026-07-23）
+
+D1 已完成下一候选的文档设计，详见
+`docs/STRUCTURAL_AMBIGUITY_NEXT_CANDIDATE_DESIGN_CN.md`。**该设计未实现**：本轮没有修改
+Python、在线开关、公开 schema 或测试，也没有产生新的系统效果证据。
+
+设计比较三条路线：
+
+1. A 将共同质心处理改为一次性 publication overlay。规范滤波 state/covariance、观测历史、
+   fixed-lag checkpoint 和 replay cache 均不修改；候选拒绝时直接发布规范快照，不执行
+   publication-base replay + replace。推荐先做纯函数最小原型和离线 shadow；
+2. B 把共同质心作为 measurement-time OOSM 历史事件。当前
+   `Q(h)=G(h)qG(h)^T` 不满足单段/分段传播半群等价，插入零更新事件也会因增加传播分段而
+   改变协方差；在事件排序、过程噪声分段和 RMSE/NEES/NIS 一致性门槛冻结前，不进入在线实现；
+3. C 保持 D1 只发布结构证据，由 D2 在有界窗口内研究概率关联或多假设消费。该路线是主要
+   系统研究方向，后续由 D2 owner 单独规划，本轮不修改 D2。
+
+三条路线均保持双时间戳、NED/covariance、平衡满基数 treatment 门、generation 有界幂等、
+lineage/source support、质量和 identity 状态不变。overlay/event 不生成、改写或局部重绑
+`global_track_id`；无成员交叉协方差的事实继续显式发布。
+
+下一执行顺序为 D0 设计冻结（本轮）-> A1 纯函数最小原型 -> A2 离线发布 shadow -> A3 新匿名
+冻结扫描 treatment 发现 -> A4 预注册未见 seed 确认。A1/A2 必须先证明所有拒绝原因下业务
+发布与 control bitwise 相同，且滤波历史摘要不变。seeds 1101/1102 继续停止；不得以放宽
+OOSM、满基数、形状或身份门制造 treatment。
+
 ## 共同质心冻结扫描边界诊断完成状态（2026-07-23）
 
 D1 已完成共同质心候选的受控冻结扫描边界诊断。诊断复用 governed replay、
@@ -28,11 +54,11 @@ replace 清除旧临时修正。该替换把控制臂的分段预测发布态换
 存在合法非零施加窗口”的 D1 边界诊断子项，不关闭现实匿名输入的算法收益 P1；晋级边界为
 `candidate_not_promoted`。
 
-下一步不再调整在线核心或重跑 seeds 1101/1102。后续输入应来自新的匿名冻结扫描，并预先冻结
-扫描流和验收门槛；先验证是否自然出现同步平衡分量，再比较 hold-only 与
-hold+共同质心。仍需覆盖未见 seed、多 seed、均方根误差、归一化估计误差平方、归一化创新
-平方、D2/D3 可用性、P95 和长时内存/吞吐。若真实输入继续只有 OOSM 或数量不平衡分量，应
-保留零 treatment 结论，不能放宽门限制造处理。
+该诊断之后的执行顺序已由上节下一候选设计收紧：不直接恢复 hold+现有历史替换候选的系统
+A/B，而是先验证 publication overlay 的拒绝路径 bitwise 隔离。只有 A1/A2 通过后，才使用
+新的匿名冻结扫描检查同步平衡分量是否自然出现。仍需覆盖未见 seed、多 seed、均方根误差、
+归一化估计误差平方、归一化创新平方、D2/D3 可用性、P95 和长时内存/吞吐。若真实输入继续
+只有 OOSM 或数量不平衡分量，应保留零 treatment 结论，不能放宽门限制造处理。
 
 ## 结构歧义证据侧车候选验收结论（2026-07-23）
 

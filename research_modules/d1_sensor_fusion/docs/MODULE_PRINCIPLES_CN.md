@@ -6,6 +6,24 @@
 
 ## 当前权威增量（2026-07-23）
 
+### 下一候选先隔离发布副作用（设计未实现）
+
+受控冻结扫描已证明，拒绝共同质心 correction 后执行 publication-base replay + replace 会
+改变发布协方差。根因是当前 `Q(h)=G(h)qG(h)^T` 不满足单段与分段传播的半群等价；即使插入
+零更新事件，也会因传播分段变化而改变协方差。
+
+下一候选因此优先采用 publication overlay：规范滤波 state/covariance、观测历史、fixed-lag
+checkpoint 和 replay cache 不动；接受时只在 detached 发布 DTO 上增加共同平移和边缘协方差，
+拒绝时直接发布规范快照并要求业务字段 bitwise 等同 control。overlay 不进入下一帧先验，
+generation 水位和候选审计保持有界幂等。该方案当前只有设计，没有 Python 实现、开关、DTO
+或测试。
+
+固定滞后共同质心事件暂缓，直至事件总排序、过程噪声分段和一致性门槛冻结。系统长期路线保留
+D1 证据侧车、由 D2 在有界窗口内研究概率/多假设消费。三条路线均不改双时间戳、满基数门、
+lineage/source support、质量、identity 或 `global_track_id`，并继续声明
+`cross_covariance_available=false`。完整设计见
+`STRUCTURAL_AMBIGUITY_NEXT_CANDIDATE_DESIGN_CN.md`；seeds 1101/1102 继续停止。
+
 ### 结构歧义可以发布为证据，不能强行变成单航迹后验
 
 v1/v2 已证明两个边界。门内最大匹配可能不是唯一身份解释；把整个允许边分量全部丢弃又会减少

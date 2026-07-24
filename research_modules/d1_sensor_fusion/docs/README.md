@@ -4,6 +4,14 @@
 
 ## 当前证据索引（2026-07-23）
 
+最新设计决策见
+`STRUCTURAL_AMBIGUITY_NEXT_CANDIDATE_DESIGN_CN.md`。该文件比较 publication overlay、
+fixed-lag OOSM 共同质心事件和 D2 概率/多假设消费三条路线，状态明确为
+`DESIGN_ONLY_NOT_IMPLEMENTED`。当前推荐先做 A 的最小原型：共同质心只作用于 detached 发布
+DTO，拒绝时直接发布规范滤波快照，不修改 state/covariance、历史、checkpoint 或 replay
+cache。B 因当前 `Q(h)=G(h)qG(h)^T` 的单段/分段传播不等价而暂缓；C 保留为 D2 后续主要系统
+研究路线。seeds 1101/1102 继续停止。
+
 最新 D1 边界诊断复用 governed replay、扫描组织器和在线批融合入口，对同步平衡、乱序平衡和
 数量不平衡三类结构歧义冻结扫描进行控制臂/共同质心候选臂比较。同步 `2x2` 纯交替环形成一次
 `15.000000 m` 共同平移；乱序场景以 `oosm_scan` 拒绝；成员/观测 `2/1` 的场景以
@@ -114,6 +122,7 @@ D1 侧解释见本目录各算法/AirSim 文档和 `../reports/EXPERIMENT_REPORT
 
 ## 文档
 
+- `STRUCTURAL_AMBIGUITY_NEXT_CANDIDATE_DESIGN_CN.md`：结构歧义 A/B/C 下一候选比较、数学语义、数据结构、排序键、风险、阶段和预注册验收；设计未实现。
 - `ALGORITHM_AND_IMPLEMENTATION.md`：算法原理、数学模型、接口、调参、仿真验证、主动降级不确定度信号和跨模块关系。
 - `AIRSIM_INTEGRATION_PLAN.md`：AirSim/离线回放集成计划，说明时间戳、坐标和传感器桥接策略。
 - `MODULE_PRINCIPLES_CN.md`：中文模块原理、已实现边界和当前证据解释。

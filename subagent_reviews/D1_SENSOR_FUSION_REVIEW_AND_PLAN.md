@@ -5,7 +5,22 @@
 
 ---
 
-## 0. 身份中性共同质心候选状态（2026-07-23）
+## 0. 结构歧义下一候选设计状态（2026-07-23）
+
+- 新设计文档为
+  `research_modules/d1_sensor_fusion/docs/STRUCTURAL_AMBIGUITY_NEXT_CANDIDATE_DESIGN_CN.md`；
+  状态是 `DESIGN_ONLY_NOT_IMPLEMENTED`。本轮没有 Python、开关、schema、测试或系统运行。
+- A 路线推荐先做最小原型：规范滤波 state/covariance、历史、checkpoint 和 replay cache
+  不动；共同质心只在 detached 发布 DTO 上形成一次性 overlay；拒绝时直接发布规范快照，
+  要求业务字段与 control bitwise 相同。
+- B 路线暂缓。当前 `Q(h)=G(h)qG(h)^T` 不满足单段/分段传播半群等价，插入零更新事件也会
+  改变协方差分段。事件排序、过程噪声分段、NEES/NIS/RMSE oracle 未冻结前不得接在线路径。
+- C 路线保留为主要系统研究方向：D1 只发布既有结构 evidence，D2 后续在有界窗口中规划概率
+  或多假设消费。D1 不越界修改 D2，source key 不升级为 `global_track_id`。
+- 双时间戳、平衡满基数 treatment 门、generation 有界幂等、lineage/source support、质量、
+  identity 和无交叉协方差声明均不改变。seeds 1101/1102 继续停止。
+
+## 0.1 身份中性共同质心候选状态（2026-07-23）
 
 - D1 已实现默认关闭的
   `radar_assignment_ambiguity_neutral_centroid_correction=False`，要求结构歧义 hold 已启用，
@@ -70,11 +85,13 @@
 - source-only 终态映射 200 个真实目标并有 1 条未映射航迹；hold 映射 191 个真实目标并有
   10 条未映射航迹。首个计划后控制反馈使传感器流分叉，因此该结果是单 seed 闭环系统效果
   对照，不是完全冻结输入的上游因果证明。
-- 下一步使用新的真实匿名冻结扫描检查同步平衡分量是否自然出现，再恢复 hold-only 与
-  hold+共同质心的未见 seed A/B。不得通过忽略 OOSM 或放宽数量门制造 treatment。晋级仍须
-  同时满足 IDSW、连续性恢复、RMSE/NEES/NIS、D2/D3 可用性、P95 和长时内存/吞吐门槛。
+- 下一步不直接恢复现有 replay/replace 候选的系统 A/B。先完成 publication overlay 的 A1
+  纯函数原型和 A2 离线 shadow，逐拒绝原因证明业务发布与 control bitwise 相同且滤波历史
+  摘要不变；通过后再用新的真实匿名冻结扫描检查同步平衡分量是否自然出现。不得通过忽略
+  OOSM 或放宽数量门制造 treatment。晋级仍须同时满足 IDSW、连续性恢复、RMSE/NEES/NIS、
+  D2/D3 可用性、P95 和长时内存/吞吐门槛。
 
-## 0.1 结构歧义侧车基础阶段状态（2026-07-23）
+## 0.2 结构歧义侧车基础阶段状态（2026-07-23）
 
 - D1 已实现默认关闭的第三条候选
   `prediction_only_maximum_matching_component_evidence_v3`。新开关
@@ -385,7 +402,7 @@
   D1 当前无新增 P0 blocker；clean 治理、D1-owned 冻结输入热点和三 seed 质点接线已关闭，
   更多长时 seed、固定硬件配置和预注册周期预算仍开放。
 
-## 0.1 历史 D1-owned 状态（2026-07-16）
+## 0.3 历史 D1-owned 状态（2026-07-16）
 
 - D1 已实现 `sensor_observation_from_local_image_track()`：只把 `measured` 本地图像航迹转换为
   EO/pixel `SensorObservation`；`lost` 返回 `None`，不复用旧 center/bbox/covariance。

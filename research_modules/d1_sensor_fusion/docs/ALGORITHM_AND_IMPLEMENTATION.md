@@ -8,6 +8,31 @@
 
 ## 当前权威增量（2026-07-23）
 
+### 结构歧义下一候选设计边界（未实现）
+
+`STRUCTURAL_AMBIGUITY_NEXT_CANDIDATE_DESIGN_CN.md` 已比较三个后续方向，但本节不声明任何
+方向已实现。推荐的 A 路线把共同质心修正限制为 detached publication overlay：
+
+\[
+x_i^{pub}=x_i^c+[\delta p,0]^\mathsf{T},
+\qquad
+P_i^{pub}=P_i^c+\operatorname{diag}(\Delta P_{pos},0),
+\]
+
+其中 \((x_i^c,P_i^c)\) 是只读规范滤波快照。拒绝时 overlay 为空，发布器直接使用规范快照，
+不调用 replay/replace，并以业务发布 bitwise 等同 control 为首要验收。A 不写 state、
+history、checkpoint、cache、lineage、source support 或 `global_track_id`。
+
+B 路线把共同质心放入 fixed-lag measurement-time 历史。当前
+\(Q(h)=G(h)qG(h)^\mathsf{T}\) 一般不满足
+\(Q(h_1+h_2)=F(h_2)Q(h_1)F(h_2)^\mathsf{T}+Q(h_2)\)，所以插入零更新事件也会改变协方差
+分段。事件排序、过程噪声分段和一致性 oracle 未冻结前，B 不进入在线实现。C 路线保持 D1
+只发布 evidence，由 D2 后续规划概率或多假设消费；无交叉协方差时不得把成员边缘量当作独立
+状态量测。
+
+三条路线继续保持双时间戳、平衡满基数门、generation 有界幂等和 lineage/source support
+不变。seeds 1101/1102 继续停止。当前状态是设计未实现，不能作为实现或晋级证据。
+
 ### 结构歧义证据侧车实验候选 v3
 
 #### 配置与作用域
