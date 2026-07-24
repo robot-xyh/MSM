@@ -5,6 +5,31 @@
 
 ---
 
+## 最新增量：协方差成对限制热点（2026-07-24）
+
+- 最新 seed 1100 冻结输入含 89 个扫描、2,035 条匿名观测和 202 条终态航迹，输入
+  SHA-256 为 `54bed9d7f03497967c3f8478a9e0cf1385e85bcc512bf769df849b7b1ab3e0ec`，
+  在线 truth 使用为 0。
+- 调用审计没有发现可删除的同一后验重复治理。10,832 次 `_predict_all_to()` 限制都发生在
+  状态协方差已由时间推进改变之后；另有 1,789 次更新后重放和 202 次新生限制。现有
+  `current_state_covariance_limited` 已阻止同一当前状态在物化时重复处理。
+- 单一优化保留旧上三角标量循环作为
+  `vectorized_covariance_limit=False` reference，并默认使用批量上三角裁剪。1 至 6 维
+  只复用不可写的索引拓扑，不缓存状态或协方差。每一对
+  \(P_{ij}\) 仍按 \(0.999\sqrt{\max(P_{ii},0)\max(P_{jj},0)}\) 限幅；对角上下界、
+  对称化、reason、非法状态重置和在线观测 covariance fail-closed 不变。
+- 同一 release-group 和物化调度先预热，再交错运行 5 轮。reference/optimized 纯融合
+  均值为 `3.001196/2.610975 s`，P50 为 `3.011440/2.614061 s`，P95 为
+  `3.023308/2.660813 s`；P50/P95 加速 `1.152x/1.136x`，5/5 轮优化更快。
+  cProfile 中 limiter 累计为 `1.047145/0.426826 s`。
+- 预热、5 轮和 profile 均保持逐扫描状态、协方差、双时间戳、来源谱系、分级、操作计数、
+  累计诊断、延迟审计、终态 `GlobalTrack` 和 consistency evidence 严格等价。6 s
+  fixed-lag、观测数、门限、NED 和 `global_track_id` 未改变。
+- 10 s 长夹具另只执行一对语义对照。771 扫描、11,889 观测、4,009 次 fixed-lag rebase
+  和 11,888 条 OOSM 在两臂一致。专项 `18 passed`，D1 全量
+  `342 passed in 19.73s`。结果属于当前 D1 工作树上的冻结质点证据；clean full-stack、
+  多 seed、AirSim、实时和精度验收仍由 main 后续执行。
+
 ## 最新增量：A2 原子 shadow clean 成对复核（2026-07-24）
 
 - main clean commit `7cc2d0cfd598a72d60c6ba8c7d4a283f4e5a897d` 已用原子入口完成

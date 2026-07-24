@@ -4,6 +4,18 @@
 
 ## 当前证据索引（2026-07-24）
 
+最新 D1 性能增量关闭协方差成对限制中的标量裁剪热点。seed 1100 的 200v200、2.2 s
+冻结输入含 89 个扫描和 2,035 条匿名观测。旧标量循环通过
+`vectorized_covariance_limit=False` 保留为 reference，默认路径用同一 pairwise bound
+执行批量上三角裁剪。预热后交错 5 轮，纯融合 P50/P95
+`3.011440/3.023308 -> 2.614061/2.660813 s`，5/5 轮更快；limiter cProfile 累计
+`1.047145 -> 0.426826 s`。10 s 长夹具另只执行一对语义对照，4,009 次 fixed-lag rebase
+和 11,888 条 OOSM 在两臂一致。逐扫描后验、物化航迹、双时间戳、谱系、分级、操作计数、
+累计诊断、终态航迹和一致性证据严格一致，在线 truth 为 0。专项 `18 passed`，D1 全量
+`342 passed in 19.73s`。这是当前 D1 工作树的冻结质点证据，不是 clean full-stack、多 seed、
+AirSim、实时或精度验收。详细算法和结果分别见
+`ALGORITHM_AND_IMPLEMENTATION.md` 与 `EXPERIMENT_REPORT.md`。
+
 最新设计决策见
 `STRUCTURAL_AMBIGUITY_NEXT_CANDIDATE_DESIGN_CN.md`。该文件比较 publication overlay、
 fixed-lag OOSM 共同质心事件和 D2 概率/多假设消费三条路线。A1 已在提交 `de73cb2` 达到

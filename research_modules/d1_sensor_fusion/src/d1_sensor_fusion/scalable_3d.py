@@ -68,6 +68,7 @@ class Scalable3DFusionAdapter(FusionAdapter):
         neutral_centroid_shape_inflation_scale: float = 0.05,
         neutral_centroid_min_position_variance_m2: float = 0.25,
         neutral_centroid_generation_registry_max_entries: int = 1_024,
+        vectorized_covariance_limit: bool = True,
         **kwargs: Any,
     ) -> None:
         if bool(kwargs.pop("use_truth_hints_for_association", False)):
@@ -115,6 +116,7 @@ class Scalable3DFusionAdapter(FusionAdapter):
             neutral_centroid_generation_registry_max_entries=(
                 neutral_centroid_generation_registry_max_entries
             ),
+            vectorized_covariance_limit=vectorized_covariance_limit,
             **kwargs,
         )
 

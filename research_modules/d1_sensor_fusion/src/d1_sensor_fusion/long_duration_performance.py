@@ -29,6 +29,13 @@ COALESCED_RELEASE_PERFORMANCE_SCHEMA_VERSION = (
 CONSISTENCY_COUNTER_REFRESH_PERFORMANCE_SCHEMA_VERSION = (
     "d1.consistency_counter_refresh_performance.v1"
 )
+COVARIANCE_LIMIT_PERFORMANCE_SCHEMA_VERSION = (
+    "d1.covariance_limit_performance.v1"
+)
+COVARIANCE_LIMIT_SEMANTIC_ONCE_SCHEMA_VERSION = (
+    "d1.covariance_limit_semantic_once.v1"
+)
+COVARIANCE_LIMIT_INTERLEAVED_MAX_SPAN_S = 6.0
 FUSED_TRACK_PUBLICATION_AUDIT_SCHEMA_VERSION = (
     "d1.fused_track_publication_audit.v2"
 )
@@ -265,6 +272,7 @@ def run_coalesced_release_schedule_variant(
         "semantic_hash_wall_time_s": semantic_hash_wall_time_s,
         "operation_totals": operation_totals,
         "cumulative_diagnostics": adapter.fusion_performance_diagnostics().to_dict(),
+        "latency_audit": adapter.latency_audit_summary().to_dict(),
         "per_second": per_second,
         "per_scan_semantic_digests": per_scan_semantic_digests,
         "per_scan_semantic_digests_sha256": _json_sha256(
@@ -689,6 +697,285 @@ def compare_consistency_counter_refresh_sources(
     }
 
 
+def compare_covariance_limit_variants(
+    source: str | Path,
+    *,
+    repeat_count: int = 5,
+    profile_directory: str | Path | None = None,
+) -> dict[str, Any]:
+    """Interleave scalar-reference and vectorized covariance-limit replays."""
+
+    if isinstance(repeat_count, bool) or not isinstance(repeat_count, int):
+        raise TypeError("repeat_count must be an integer")
+    if repeat_count < 5:
+        raise ValueError("repeat_count must be at least 5")
+
+    release_groups, loaded_input_summary = (
+        load_frozen_sensor_scan_release_groups(source)
+    )
+    input_summary = _frozen_release_span_summary(
+        release_groups,
+        loaded_input_summary,
+    )
+    if (
+        float(input_summary["measurement_span_s"])
+        > COVARIANCE_LIMIT_INTERLEAVED_MAX_SPAN_S + 1.0e-9
+        or float(input_summary["arrival_span_s"])
+        > COVARIANCE_LIMIT_INTERLEAVED_MAX_SPAN_S + 1.0e-9
+    ):
+        raise ValueError(
+            "interleaved covariance-limit performance evidence is limited "
+            "to frozen inputs no longer than 6 seconds; use "
+            "compare_covariance_limit_semantics_once for longer fixtures"
+        )
+    options = {
+        "reference": {"vectorized_covariance_limit": False},
+        "optimized": {"vectorized_covariance_limit": True},
+    }
+
+    warmup = {
+        name: run_coalesced_release_schedule_variant(
+            release_groups,
+            variant=f"{name}_covariance_limit_warmup",
+            adapter_options=adapter_options,
+        )
+        for name, adapter_options in options.items()
+    }
+    warmup_acceptance = _covariance_limit_semantic_acceptance(
+        warmup["reference"],
+        warmup["optimized"],
+        input_summary=input_summary,
+    )
+
+    runs: dict[str, list[dict[str, Any]]] = {
+        "reference": [],
+        "optimized": [],
+    }
+    timing_order: list[dict[str, Any]] = []
+    per_round_acceptance: list[dict[str, bool]] = []
+    for round_index in range(repeat_count):
+        execution_order = (
+            ("reference", "optimized")
+            if round_index % 2 == 0
+            else ("optimized", "reference")
+        )
+        round_results: dict[str, dict[str, Any]] = {}
+        for execution_position, name in enumerate(execution_order):
+            result = run_coalesced_release_schedule_variant(
+                release_groups,
+                variant=f"{name}_covariance_limit_round_{round_index + 1}",
+                adapter_options=options[name],
+            )
+            runs[name].append(result)
+            round_results[name] = result
+            timing_order.append(
+                {
+                    "round_index": round_index + 1,
+                    "execution_position": execution_position + 1,
+                    "variant": name,
+                    "process_wall_time_s": float(result["process_wall_time_s"]),
+                }
+            )
+        per_round_acceptance.append(
+            _covariance_limit_semantic_acceptance(
+                round_results["reference"],
+                round_results["optimized"],
+                input_summary=input_summary,
+            )
+        )
+
+    profile_root = None if profile_directory is None else Path(profile_directory)
+    if profile_root is None:
+        profile_reference = runs["reference"][0]
+        profile_optimized = runs["optimized"][0]
+    else:
+        profile_reference = run_coalesced_release_schedule_variant(
+            release_groups,
+            variant="scalar_covariance_limit_profile",
+            adapter_options=options["reference"],
+            profile_path=profile_root / "reference.prof",
+        )
+        profile_optimized = run_coalesced_release_schedule_variant(
+            release_groups,
+            variant="vectorized_covariance_limit_profile",
+            adapter_options=options["optimized"],
+            profile_path=profile_root / "optimized.prof",
+        )
+    profile_acceptance = _covariance_limit_semantic_acceptance(
+        profile_reference,
+        profile_optimized,
+        input_summary=input_summary,
+    )
+
+    reference_times = [
+        float(item["process_wall_time_s"]) for item in runs["reference"]
+    ]
+    optimized_times = [
+        float(item["process_wall_time_s"]) for item in runs["optimized"]
+    ]
+    reference_distribution = _timing_distribution(reference_times)
+    optimized_distribution = _timing_distribution(optimized_times)
+    faster_count = sum(
+        optimized < reference
+        for reference, optimized in zip(reference_times, optimized_times)
+    )
+    required_faster_count = int(np.ceil(0.8 * repeat_count))
+    p50_speedup = (
+        reference_distribution["p50_s"] / optimized_distribution["p50_s"]
+        if optimized_distribution["p50_s"] > 0.0
+        else None
+    )
+    p95_speedup = (
+        reference_distribution["p95_s"] / optimized_distribution["p95_s"]
+        if optimized_distribution["p95_s"] > 0.0
+        else None
+    )
+    deterministic_within_variant = all(
+        _covariance_limit_semantic_signature(item)
+        == _covariance_limit_semantic_signature(items[0])
+        for items in runs.values()
+        for item in items[1:]
+    )
+    semantic_acceptance = {
+        "warmup_semantics_preserved": all(warmup_acceptance.values()),
+        "every_interleaved_round_semantics_preserved": all(
+            all(item.values()) for item in per_round_acceptance
+        ),
+        "profile_run_semantics_preserved": all(profile_acceptance.values()),
+        "deterministic_within_each_variant": deterministic_within_variant,
+        "online_truth_use_count_zero": (
+            int(input_summary["online_truth_use_count"]) == 0
+        ),
+    }
+    timing_acceptance = {
+        "optimized_faster_in_at_least_80_percent_of_rounds": (
+            faster_count >= required_faster_count
+        ),
+        "p50_speedup_at_least_1_02": (
+            p50_speedup is not None and p50_speedup >= 1.02
+        ),
+        "optimized_p95_lower_than_reference": (
+            optimized_distribution["p95_s"]
+            < reference_distribution["p95_s"]
+        ),
+    }
+    return {
+        "schema_version": COVARIANCE_LIMIT_PERFORMANCE_SCHEMA_VERSION,
+        "input": input_summary,
+        "benchmark": {
+            "warmup_pair_count": 1,
+            "repeat_count": repeat_count,
+            "execution_order": timing_order,
+            "reference": reference_distribution,
+            "optimized": optimized_distribution,
+            "per_round_speedups": [
+                reference / optimized if optimized > 0.0 else None
+                for reference, optimized in zip(
+                    reference_times,
+                    optimized_times,
+                )
+            ],
+            "p50_speedup": p50_speedup,
+            "p95_speedup": p95_speedup,
+            "optimized_faster_count": faster_count,
+            "required_faster_count": required_faster_count,
+        },
+        "reference": profile_reference,
+        "optimized": profile_optimized,
+        "comparison": {
+            "warmup_acceptance": warmup_acceptance,
+            "per_round_acceptance": per_round_acceptance,
+            "profile_acceptance": profile_acceptance,
+            "semantic_acceptance": semantic_acceptance,
+            "timing_acceptance": timing_acceptance,
+            "semantic_passed": all(semantic_acceptance.values()),
+            "timing_passed": all(timing_acceptance.values()),
+            "passed": (
+                all(semantic_acceptance.values())
+                and all(timing_acceptance.values())
+            ),
+        },
+    }
+
+
+def compare_covariance_limit_semantics_once(
+    source: str | Path,
+) -> dict[str, Any]:
+    """Run one scalar/vectorized pair on a long frozen fixture.
+
+    This helper intentionally performs no warmup, repetition, profiling, or
+    timing acceptance.  It exists to exercise fixed-lag rebase and OOSM while
+    limiting a long fixture to one reference and one optimized replay.
+    """
+
+    release_groups, loaded_input_summary = (
+        load_frozen_sensor_scan_release_groups(source)
+    )
+    input_summary = _frozen_release_span_summary(
+        release_groups,
+        loaded_input_summary,
+    )
+    reference = run_coalesced_release_schedule_variant(
+        release_groups,
+        variant="scalar_covariance_limit_long_semantic_once",
+        adapter_options={"vectorized_covariance_limit": False},
+    )
+    optimized = run_coalesced_release_schedule_variant(
+        release_groups,
+        variant="vectorized_covariance_limit_long_semantic_once",
+        adapter_options={"vectorized_covariance_limit": True},
+    )
+    semantic_acceptance = _covariance_limit_semantic_acceptance(
+        reference,
+        optimized,
+        input_summary=input_summary,
+    )
+    reference_diagnostics = reference["cumulative_diagnostics"]
+    optimized_diagnostics = optimized["cumulative_diagnostics"]
+    reference_latency = reference["latency_audit"]
+    optimized_latency = optimized["latency_audit"]
+    scenario_acceptance = {
+        "measurement_or_arrival_span_exceeds_6_seconds": (
+            max(
+                float(input_summary["measurement_span_s"]),
+                float(input_summary["arrival_span_s"]),
+            )
+            > COVARIANCE_LIMIT_INTERLEAVED_MAX_SPAN_S
+        ),
+        "fixed_lag_rebase_exercised_in_both_variants": (
+            int(reference_diagnostics["fixed_lag_rebase_count"]) > 0
+            and int(optimized_diagnostics["fixed_lag_rebase_count"]) > 0
+        ),
+        "oosm_exercised_in_both_variants": (
+            int(reference_latency["oosm_observation_count"]) > 0
+            and int(optimized_latency["oosm_observation_count"]) > 0
+        ),
+        "online_truth_use_count_zero": (
+            int(input_summary["online_truth_use_count"]) == 0
+        ),
+    }
+    return {
+        "schema_version": COVARIANCE_LIMIT_SEMANTIC_ONCE_SCHEMA_VERSION,
+        "input": input_summary,
+        "execution_policy": {
+            "warmup_count": 0,
+            "repeat_count": 1,
+            "profiled": False,
+            "timing_acceptance": False,
+        },
+        "reference": reference,
+        "optimized": optimized,
+        "comparison": {
+            "semantic_acceptance": semantic_acceptance,
+            "scenario_acceptance": scenario_acceptance,
+            "passed": (
+                all(semantic_acceptance.values())
+                and all(scenario_acceptance.values())
+            ),
+        },
+    }
+
+
 def audit_fused_track_publications(source: str | Path) -> dict[str, Any]:
     """Audit legacy full snapshots and explicit state-only D1 publications."""
 
@@ -1000,6 +1287,12 @@ def _profile_summary(path: Path) -> dict[str, Any]:
     stats = pstats.Stats(str(path)).strip_dirs()
     selected_names = {
         "process_scan_batch",
+        "_predict_all_to",
+        "_limit_record_covariance",
+        "_limit_state_covariance",
+        "_limit_covariance_diagonal",
+        "_clip_covariance_off_diagonal_reference",
+        "_clip_covariance_off_diagonal_vectorized",
         "_state_at",
         "_state_from_complete_replay_checkpoints",
         "_replay_record",
@@ -1042,7 +1335,110 @@ def _profile_summary(path: Path) -> dict[str, Any]:
         )
     return {
         "profile_path": str(path),
+        "profile_total_time_s": float(stats.total_tt),
         "selected_functions": selected,
+    }
+
+
+def _covariance_limit_semantic_acceptance(
+    reference: Mapping[str, Any],
+    optimized: Mapping[str, Any],
+    *,
+    input_summary: Mapping[str, Any],
+) -> dict[str, bool]:
+    return {
+        "per_scan_state_covariance_timestamp_lineage_level_equivalence": (
+            optimized["per_scan_semantic_digests"]
+            == reference["per_scan_semantic_digests"]
+        ),
+        "final_global_track_equivalence": (
+            optimized["final_tracks_sha256"]
+            == reference["final_tracks_sha256"]
+        ),
+        "consistency_evidence_equivalence": (
+            optimized["consistency_evidence_sha256"]
+            == reference["consistency_evidence_sha256"]
+        ),
+        "operation_counts_equivalence": (
+            optimized["operation_totals"] == reference["operation_totals"]
+        ),
+        "cumulative_diagnostics_equivalence": (
+            optimized["cumulative_diagnostics"]
+            == reference["cumulative_diagnostics"]
+        ),
+        "latency_audit_equivalence": (
+            optimized["latency_audit"] == reference["latency_audit"]
+        ),
+        "materialization_schedule_equivalence": (
+            optimized["materialized_snapshot_count"]
+            == reference["materialized_snapshot_count"]
+            and optimized["state_only_scan_count"]
+            == reference["state_only_scan_count"]
+        ),
+        "scan_observation_and_track_counts_equivalence": (
+            optimized["scan_count"] == reference["scan_count"]
+            and optimized["observation_count"] == reference["observation_count"]
+            and optimized["track_count"] == reference["track_count"]
+        ),
+        "online_truth_use_count_zero": (
+            int(input_summary["online_truth_use_count"]) == 0
+        ),
+    }
+
+
+def _covariance_limit_semantic_signature(
+    result: Mapping[str, Any],
+) -> tuple[Any, ...]:
+    return (
+        result["per_scan_semantic_digests_sha256"],
+        result["final_tracks_sha256"],
+        result["consistency_evidence_sha256"],
+        _json_sha256(result["operation_totals"]),
+        _json_sha256(result["cumulative_diagnostics"]),
+        _json_sha256(result["latency_audit"]),
+        int(result["materialized_snapshot_count"]),
+        int(result["state_only_scan_count"]),
+    )
+
+
+def _frozen_release_span_summary(
+    release_groups: Sequence[Sequence[SensorScanFrame]],
+    input_summary: Mapping[str, Any],
+) -> dict[str, Any]:
+    scans = tuple(scan for group in release_groups for scan in group)
+    if not scans:
+        raise ValueError("covariance-limit replay requires at least one scan")
+    measurement_timestamps = np.asarray(
+        [float(scan.measurement_timestamp) for scan in scans],
+        dtype=float,
+    )
+    arrival_timestamps = np.asarray(
+        [float(scan.arrival_timestamp) for scan in scans],
+        dtype=float,
+    )
+    return {
+        **dict(input_summary),
+        "measurement_span_s": float(
+            np.max(measurement_timestamps) - np.min(measurement_timestamps)
+        ),
+        "arrival_span_s": float(
+            np.max(arrival_timestamps) - np.min(arrival_timestamps)
+        ),
+        "interleaved_max_span_s": COVARIANCE_LIMIT_INTERLEAVED_MAX_SPAN_S,
+    }
+
+
+def _timing_distribution(samples: Sequence[float]) -> dict[str, float | int]:
+    values = np.asarray(tuple(float(item) for item in samples), dtype=float)
+    if values.size == 0 or not np.isfinite(values).all():
+        raise ValueError("timing samples must be a non-empty finite sequence")
+    return {
+        "sample_count": int(values.size),
+        "mean_s": float(np.mean(values)),
+        "p50_s": float(np.percentile(values, 50)),
+        "p95_s": float(np.percentile(values, 95)),
+        "min_s": float(np.min(values)),
+        "max_s": float(np.max(values)),
     }
 
 

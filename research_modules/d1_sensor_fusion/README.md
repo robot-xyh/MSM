@@ -4,6 +4,47 @@ Offline research module for radar, acoustic, EO, and optional synthetic lidar he
 
 ## 当前性能与治理证据（2026-07-24）
 
+### 第二十二阶段：协方差成对限制向量化
+
+最新 seed 1100 冻结输入剖析包含 89 个扫描、2,035 条匿名观测和 202 条终态航迹。输入
+SHA-256 为
+`54bed9d7f03497967c3f8478a9e0cf1385e85bcc512bf769df849b7b1ab3e0ec`，在线 truth
+使用为 0。原路径共调用 `_limit_covariance_diagonal()` 14,868 次，其中状态协方差
+12,833 次；10,832 次来自状态推进后的预测协方差，1,789 次来自更新后重放，202 次来自
+航迹新生。预测和重放都改变了协方差，不能跳过上下界、安全对称化或原因审计。
+
+实际局部热点是每个 `6x6` 状态协方差对 15 个上三角元素逐一调用 `np.clip`。当前实现保留
+原标量循环作为 `vectorized_covariance_limit=False` 的 reference，并默认通过
+`Scalable3DFusionAdapter(vectorized_covariance_limit=True)` 使用批量上三角裁剪。静态
+三角索引可复用，状态和协方差本身不缓存。两条路径使用同一公式：
+
+```text
+limit(i,j) = 0.999 * sqrt(max(Pii, 0) * max(Pjj, 0))
+Pij = clip(Pij, -limit(i,j), limit(i,j))
+Pji = Pij
+```
+
+对角 floor/ceiling、reason 顺序、对称化、非法状态协方差重置和观测入口有限/对称/半正定
+fail-closed 均未改变。开关只用于冻结输入 A/B 和回归，不改变 NED、双时间戳、6 s
+fixed-lag、观测数量、关联门限、来源谱系、质量分级或 `global_track_id`。
+
+同一输入先预热，再交错运行 5 轮。reference/optimized 的纯融合 P50 为
+`3.011440/2.614061 s`，P95 为 `3.023308/2.660813 s`，对应加速
+`1.152x/1.136x`；5/5 轮优化路径更快，均值由 `3.001196 s` 降至
+`2.610975 s`，下降 `13.00%`。cProfile 中 `_limit_covariance_diagonal` 累计耗时由
+`1.047145 s` 降至 `0.426826 s`，下降 `59.24%`；`_predict_all_to` 由
+`1.098530 s` 降至 `0.584526 s`。
+
+预热、5 轮交错和两条剖析运行均保持逐扫描状态、协方差、双时间戳、来源谱系、航迹分级、
+操作计数和累计诊断严格一致；终态 `GlobalTrack` 与 consistency evidence SHA-256 也一致。
+另以 seed 1000 的 10 s、771 扫描、11,889 观测夹具只运行一对长语义对照。两臂均触发
+4,009 次 fixed-lag rebase 和 11,888 条 OOSM；逐扫描、延迟审计、操作计数、终态航迹和证据
+严格一致。长夹具不用于性能统计。专项 `18 passed`，D1 全量 `342 passed in 19.73s`。
+
+本项关闭 D1 内部标量裁剪热点，不关闭系统实时预算。结果来自当前未提交 D1 工作树上的
+单 seed 三维质点冻结回放，不是 clean full-stack、多 seed、AirSim、传感器精度或
+RMSE/NEES/NIS 证据。main 仍需在固定提交上执行 clean 全栈同输入复核。
+
 ### 第二十一阶段：A2 原子 shadow clean 成对复核
 
 main 已在 clean commit

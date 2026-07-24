@@ -1,5 +1,69 @@
 # D1 多传感器融合与目标配准实施计划
 
+## P1 协方差成对限制热点治理（2026-07-24）
+
+### 根因与选择
+
+main 提供的最新 cProfile 来自 seed 1100、200v200、2.2 s 冻结输入。输入含 89 个扫描、
+2,035 条匿名观测，在线 truth 使用为 0。`_limit_covariance_diagonal()` 共调用
+14,868 次、累计 `1.076 s`；其中 `_limit_state_covariance()` 调用 12,833 次，
+`_predict_all_to()` 调用 178 次、累计 `1.130 s`。
+
+调用方复核没有发现可安全删除的“同一已限制后验重复完整治理”：
+
+1. `_predict_all_to()` 中 10,832 次限制都发生在 `predict_to()` 改变状态协方差之后；
+2. 1,789 次更新后重放和 202 次航迹新生也都生成新的当前协方差；
+3. `current_state_covariance_limited` 已阻止同一当前状态在 `GlobalTrack` 物化时重复治理；
+4. profile 中的 `eigvalsh` 主要来自观测 covariance 在线合同校验和 A95 计算，不能与状态
+   成对限制合并或缓存。
+
+因此不跳过预测、重放、观测验证或上下界治理。本轮只把既有上三角双循环的 15 次标量
+`np.clip` 改为一次 NumPy 上三角裁剪并镜像下三角。1 至 6 维只缓存不可写的三角索引拓扑，
+不缓存状态、协方差或校验结果。原标量循环通过
+`vectorized_covariance_limit=False` 保留为 reference，默认优化路径为 `True`。对角
+floor/ceiling、reason、对称化、非法状态重置和在线观测有限/对称/半正定 fail-closed 行为
+保持不变。
+
+### 冻结输入验收
+
+冻结源 SHA-256 为
+`54bed9d7f03497967c3f8478a9e0cf1385e85bcc512bf769df849b7b1ab3e0ec`。使用相同
+release-group 和同一物化调度先预热一对，再交错运行 5 轮，并对两臂各做一次 cProfile。
+
+| 指标 | 标量 reference | 向量化 optimized | 变化 |
+| --- | ---: | ---: | ---: |
+| 纯融合均值 | 3.001196 s | 2.610975 s | -13.00% |
+| 纯融合 P50 | 3.011440 s | 2.614061 s | 1.152x |
+| 纯融合 P95 | 3.023308 s | 2.660813 s | 1.136x |
+| `_limit_covariance_diagonal` 累计 | 1.047145 s | 0.426826 s | -59.24% |
+| `_limit_state_covariance` 累计 | 1.021350 s | 0.427235 s | -58.17% |
+| `_predict_all_to` 累计 | 1.098530 s | 0.584526 s | -46.79% |
+
+优化路径 5/5 轮更快。预热、全部交错轮次和 profile 运行均满足：
+
+- 每一扫描的内部后验、物化航迹、状态、协方差、双时间戳、来源谱系和分级等价；
+- 最终 `GlobalTrack` 和 consistency evidence 哈希等价；
+- 全部批操作计数、累计性能诊断、扫描/观测/航迹数和物化调度等价；
+- 观测丢弃、扫描降频、6 s fixed-lag、门限、NED 和 `global_track_id` 均未改变；
+- 在线 truth 使用为 0。
+
+长夹具只执行一次 reference/optimized，不预热、不重复、不剖析，也不设置计时准入。seed
+1000 的 10 s 冻结输入含 771 扫描、11,889 匿名观测，量测/到达跨度为
+`9.8/9.827020 s`。两臂均触发 4,009 次 fixed-lag rebase 和 11,888 条 OOSM，逐扫描语义、
+操作计数、累计诊断、延迟审计、463 次完整物化、308 次 state-only、202 条终态航迹及
+consistency evidence 严格一致，在线 truth 为 0。
+
+专项测试 `18 passed`，D1 全量 `342 passed in 19.73s`。边界测试覆盖正常、floor/ceiling、
+负/零对角、极大相关项、非有限上层重置、非对称、有限非正定及在线非法观测 covariance，
+并验证 reference/optimized 的逐扫描结果和审计合同。
+
+### 当前状态
+
+D1-owned 标量裁剪热点已关闭并保留显式 A/B。当前证据是未提交 D1 工作树上的单 seed
+三维质点冻结回放，不是 clean full-stack、多 seed、AirSim、实时发布或融合精度验收。
+main 下一步应在固定提交上复跑 clean 同输入全栈，核对 D1 分项、总核心墙钟、P50/P95、
+内存和跨模块业务语义。正式 RMSE/NEES/NIS、更多未见 seed 和长时增长仍按既有 P1 保持开放。
+
 ## A2 原子 shadow clean 成对复核（2026-07-24）
 
 main 已在 clean commit

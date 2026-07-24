@@ -149,6 +149,12 @@ MEASUREMENT_COVARIANCE_FLOORS = {
     "eo": np.array([0.25, 0.25], dtype=float),
     "lidar": np.array([1.0e-2, 1.0e-2, 1.0e-2], dtype=float),
 }
+_COVARIANCE_STRICT_UPPER_INDICES = tuple(
+    np.triu_indices(dimension, k=1) for dimension in range(7)
+)
+for _upper_rows, _upper_columns in _COVARIANCE_STRICT_UPPER_INDICES:
+    _upper_rows.setflags(write=False)
+    _upper_columns.setflags(write=False)
 RADAR_ASSOCIATION_LOWER_BOUND_RELATIVE_MARGIN = 1.0e-12
 RADAR_ASSOCIATION_PINV_RCOND = 1.0e-15
 RADAR_ASSIGNMENT_AMBIGUITY_POLICY_VERSION = (
@@ -693,6 +699,7 @@ class FusionAdapter:
         neutral_centroid_generation_registry_max_entries: int = 1_024,
         publisher_node_id: str = DEFAULT_STRUCTURAL_AMBIGUITY_PUBLISHER_NODE_ID,
         publisher_epoch: str = DEFAULT_STRUCTURAL_AMBIGUITY_PUBLISHER_EPOCH,
+        vectorized_covariance_limit: bool = True,
     ) -> None:
         self.process_noise = float(process_noise)
         self.bucket_size = float(bucket_size)
@@ -945,6 +952,9 @@ class FusionAdapter:
         self.trusted_consistency_counter_refresh = bool(
             trusted_consistency_counter_refresh
         )
+        if not isinstance(vectorized_covariance_limit, bool):
+            raise TypeError("vectorized_covariance_limit must be a bool")
+        self.vectorized_covariance_limit = vectorized_covariance_limit
         self.tracks: dict[str, TrackRecord] = {}
         self.sensor_health: dict[str, SensorHealthState] = {}
         self.current_time = 0.0
@@ -5262,6 +5272,7 @@ class FusionAdapter:
             ceiling,
             floor_reason="observation_covariance_floor",
             ceiling_reason="observation_covariance_ceiling",
+            vectorized_off_diagonal=self.vectorized_covariance_limit,
         )
         reasons.extend(bound_reasons)
         if any(
@@ -5331,6 +5342,7 @@ class FusionAdapter:
             self.covariance_ceiling_diag,
             floor_reason="track_covariance_floor",
             ceiling_reason="track_covariance_ceiling",
+            vectorized_off_diagonal=self.vectorized_covariance_limit,
         )
         base_reasons.extend(bound_reasons)
         return covariance, tuple(dict.fromkeys(base_reasons))
@@ -5626,6 +5638,7 @@ def _limit_covariance_diagonal(
     *,
     floor_reason: str,
     ceiling_reason: str,
+    vectorized_off_diagonal: bool = False,
 ) -> tuple[np.ndarray, tuple[str, ...]]:
     covariance = np.asarray(covariance, dtype=float)
     floor_diag = np.asarray(floor_diag, dtype=float).reshape(-1)
@@ -5643,12 +5656,41 @@ def _limit_covariance_diagonal(
     clipped_diag = np.clip(diag, floor_diag, ceiling_diag)
     np.fill_diagonal(bounded, clipped_diag)
 
+    if vectorized_off_diagonal:
+        _clip_covariance_off_diagonal_vectorized(bounded)
+    else:
+        _clip_covariance_off_diagonal_reference(bounded)
+    return bounded, tuple(dict.fromkeys(reasons))
+
+
+def _clip_covariance_off_diagonal_reference(bounded: np.ndarray) -> None:
+    """Apply the established scalar pairwise correlation bound in place."""
+
     for row in range(bounded.shape[0]):
         for col in range(row + 1, bounded.shape[1]):
-            limit = 0.999 * np.sqrt(max(bounded[row, row], 0.0) * max(bounded[col, col], 0.0))
+            limit = 0.999 * np.sqrt(
+                max(bounded[row, row], 0.0)
+                * max(bounded[col, col], 0.0)
+            )
             bounded[row, col] = float(np.clip(bounded[row, col], -limit, limit))
             bounded[col, row] = bounded[row, col]
-    return bounded, tuple(dict.fromkeys(reasons))
+
+
+def _clip_covariance_off_diagonal_vectorized(bounded: np.ndarray) -> None:
+    """Apply the same pairwise bound without per-element NumPy calls."""
+
+    dimension = bounded.shape[0]
+    if dimension < len(_COVARIANCE_STRICT_UPPER_INDICES):
+        rows, columns = _COVARIANCE_STRICT_UPPER_INDICES[dimension]
+    else:
+        rows, columns = np.triu_indices(dimension, k=1)
+    nonnegative_diagonal = np.maximum(np.diag(bounded), 0.0)
+    limits = 0.999 * np.sqrt(
+        nonnegative_diagonal[rows] * nonnegative_diagonal[columns]
+    )
+    clipped = np.clip(bounded[rows, columns], -limits, limits)
+    bounded[rows, columns] = clipped
+    bounded[columns, rows] = clipped
 
 
 def _metadata_reasons(value: Any) -> tuple[str, ...]:

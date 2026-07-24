@@ -1,12 +1,79 @@
 # 第一研究模块：多传感器融合与目标配准算法与实施说明
 
-> 文档日期：2026-07-23
+> 文档日期：2026-07-24
 >
 > 适用范围：离线科研仿真、受治理回放和系统接口验证
 >
 > 实现依据：当前第一研究模块代码、`README.md`、`PLAN.md`、模块原理文档和系统总汇总
 
 ## 当前权威增量（2026-07-24）
+
+### 协方差成对限制向量化
+
+#### 原始路径
+
+状态协方差经过预测、更新或固定滞后重放后，D1 先检查形状和有限性，再执行对称化、对角
+floor/ceiling 和非对角相关界限。原实现对 \(n\times n\) 矩阵逐一遍历
+\(n(n-1)/2\) 个上三角元素：
+
+\[
+\ell_{ij}=0.999\sqrt{\max(P_{ii},0)\max(P_{jj},0)},
+\]
+\[
+P_{ij}\leftarrow\operatorname{clip}(P_{ij},-\ell_{ij},\ell_{ij}),
+\qquad P_{ji}\leftarrow P_{ij}.
+\]
+
+六维状态每次需要 15 次 Python 循环和 15 次标量 `np.clip`。最新冻结输入中该 helper 共调用
+14,868 次，形成约 22.1 万次标量裁剪。调用图同时证明，这些外层限制不能直接删除：
+10,832 次发生在预测改变协方差之后，1,789 次发生在更新后重放，202 次发生在航迹新生。
+
+#### 当前实现
+
+新路径只提取严格上三角索引，并从已裁剪对角线构造对应的限幅向量：
+
+\[
+L_{ij}=0.999\sqrt{d_i d_j},\quad i<j,\qquad
+d_i=\max(P_{ii},0),
+\]
+
+再对上三角向量执行一次 `clip`，把结果镜像到下三角。1 至 6 维严格上三角索引在模块加载
+时构造并设为不可写；缓存内容只描述矩阵拓扑，不包含状态、协方差或校验结果。输入仍先执行
+与旧路径相同的对称化。
+
+`Scalable3DFusionAdapter(vectorized_covariance_limit=False)` 保留旧标量 reference；
+`True` 是验证后的默认优化路径。A/B 开关同时用于状态和正式观测 covariance 限制，但不改变
+观测入口的有限、维度、对称和半正定校验。非法状态 covariance 仍重置到既有 ceiling
+diagonal 并记录 `track_covariance_invalid_reset`；floor/ceiling reason 的判断和顺序不变。
+
+#### 语义与性能验收
+
+seed 1100 冻结输入含 89 个扫描、2,035 条匿名观测，SHA-256 为
+`54bed9d7f03497967c3f8478a9e0cf1385e85bcc512bf769df849b7b1ab3e0ec`。基准复用同一
+扫描释放分组和同一 state-only/full materialization 调度，先预热一对，再按
+reference/optimized、optimized/reference 交替运行 5 轮。
+
+| 指标 | 标量路径 | 向量路径 |
+| --- | ---: | ---: |
+| 纯融合均值 | 3.001196 s | 2.610975 s |
+| P50 | 3.011440 s | 2.614061 s |
+| P95 | 3.023308 s | 2.660813 s |
+| limiter cProfile 累计 | 1.047145 s | 0.426826 s |
+| `_predict_all_to` cProfile 累计 | 1.098530 s | 0.584526 s |
+
+每轮逐扫描后验和物化结果均严格一致。比较范围包括六维状态、`6x6` covariance、
+`measurement_timestamp`、`arrival_timestamp`、来源谱系、质量分级、终态
+`GlobalTrack`、一致性证据、批操作计数、累计诊断和物化调度。在线 truth 使用为 0。
+
+长夹具通过 `compare_covariance_limit_semantics_once()` 只执行一对，不预热、不重复、不做
+cProfile，也不设置性能门。seed 1000 的 771 扫描、11,889 观测输入覆盖 4,009 次
+fixed-lag rebase 和 11,888 条 OOSM。两臂的逐扫描摘要、延迟审计、操作计数、终态
+`GlobalTrack` 和一致性证据严格一致。
+
+边界测试覆盖正常矩阵、对角上下界、负/零对角、极大相关项、非有限状态上层重置、非对称
+状态、有限非正定状态及在线非法观测 covariance。专项 `18 passed`，D1 全量
+`342 passed in 19.73s`。该证据只证明当前冻结三维质点输入上的数学等价和本机性能收益；
+clean full-stack、多 seed、AirSim、实时预算和 RMSE/NEES/NIS 仍未由本项关闭。
 
 ### A2 原子 shadow 系统复核
 
