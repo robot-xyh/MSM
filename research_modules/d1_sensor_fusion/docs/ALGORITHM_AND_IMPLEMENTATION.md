@@ -8,6 +8,29 @@
 
 ## 当前权威增量（2026-07-24）
 
+### 正式准入方法与结果
+
+正式 v3 使用同一预注册运行配置对标量和向量化路径做配对试验。reference 提交
+`a5a472cf81496d94a98db3deb88a3d5c6951f0ce` 将
+`vectorized_covariance_limit` 设为 `False`；candidate 提交
+`064cbb979d3bab68fee995e476df25709eb666db` 使用向量化路径。两臂共同包含 candidate
+基线中的完整正半定修复和 D2 `e4147b8` 误警审计修复，避免把正确性修复计入向量化收益。
+
+short 组使用 seeds 1101-1110、每组 2.2 s，long 组使用 seeds 1101-1103、每组 10 s。
+13 组配对形成 26 个三维质点集成 episode；全部正常退出，13/13 跨构建检查证明规范在线
+载荷和业务语义一致。正式 manifest SHA-256 为
+`40669d10fff8367aa31e24624bab802d8bc3de6b01aaa1e5c92d054753ed93ec`。
+
+| 组别 | reference 融合累计墙钟 | candidate 融合累计墙钟 | 改善 | 更快 seed | 配对原始变化 95% CI | 单次融合 P95 改善 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| short | `4.029165 s` | `3.652252 s` | `9.35462%` | `10/10` | `[-10.914359,-8.113134]%` | `6.652902%` |
+| long | `32.954357 s` | `30.768826 s` | `6.631993%` | `3/3` | `[-7.279095,-5.406805]%` | `6.655511%` |
+
+D6 的全部预注册准入门通过，`d1_optimization_admitted=true`。P0 完整正半定输出和 P1
+向量化准入均关闭。candidate 最低实时因子只有 `0.143397`，
+`system_realtime_gap_closed=false`。该矩阵没有 RMSE、NEES、NIS、AirSim 或目标硬件
+证据；它证明 treatment 的语义一致性和本机三维质点性能收益，不证明系统实时性或融合精度。
+
 ### 完整正半定治理
 
 #### 故障机理
@@ -62,7 +85,7 @@ floor/ceiling 后的 \(d\)。每轮复核有限性、精确对称、对角范围
 
 修复后的 seed 1103、200v200、10 s 集成运行处理 10,554 条在线观测并完成，
 `finite_state=True`、online truth 0，原 PSD 异常消失。RTF `0.157583` 只说明运行完成；
-clean 多 seed、RMSE/NEES/NIS、AirSim 和系统实时仍待 main 验收。
+上节已完成 clean 多 seed 准入；RMSE/NEES/NIS、AirSim、目标硬件和系统实时仍待验收。
 
 ### 协方差成对限制向量化
 
@@ -128,8 +151,8 @@ fixed-lag rebase 和 11,888 条 OOSM。两臂的逐扫描摘要、延迟审计�
 
 边界测试覆盖正常矩阵、对角上下界、负/零对角、极大相关项、非有限状态上层重置、非对称
 状态、有限非正定状态及在线非法观测 covariance。专项 `18 passed`，D1 全量
-`342 passed in 19.73s`。该证据只证明当前冻结三维质点输入上的数学等价和本机性能收益；
-clean full-stack、多 seed、AirSim、实时预算和 RMSE/NEES/NIS 仍未由本项关闭。
+`342 passed in 19.73s`。该证据是正式 v3 之前的冻结三维质点基线；上节已关闭 clean
+full-stack 多 seed 准入。AirSim、目标硬件、实时预算和 RMSE/NEES/NIS 仍未关闭。
 
 ### A2 原子 shadow 系统复核
 

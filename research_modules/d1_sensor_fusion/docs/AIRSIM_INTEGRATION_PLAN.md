@@ -8,9 +8,15 @@
   AirSim producer covariance 后静默修复。
 - 滤波预测、更新和 fixed-lag 重放生成的航迹 covariance 在发布前执行对角范围、逐对相关和
   完整正半定治理。projection reason 和操作数进入航迹 metadata，可由 main/D6 统计。
-- 当前证据来自 200v200 三维质点 seed 1103 的 10 s 运行，不是 AirSim。后续 AirSim 复跑需
-  显式统计 PSD projection/fallback 次数、D1 fusion P50/P95、总 tick 和 RSS；fallback 大于
-  0 时应保留对应输入作为传感器/数值故障 fixture。
+- 当前正式证据已扩展为 short seeds 1101-1110（2.2 s）和 long seeds 1101-1103
+  （10 s）的 13 组配对、26 个三维质点 episode；26/26 正常退出且 13/13 跨构建检查通过。
+  该矩阵仍不是 AirSim。正式 manifest SHA-256 为
+  `40669d10fff8367aa31e24624bab802d8bc3de6b01aaa1e5c92d054753ed93ec`。
+- D6 已准入向量化优化，但 `system_realtime_gap_closed=false`，三维质点 candidate 最低
+  实时因子为 `0.143397`。该状态不能外推为 AirSim 或目标硬件实时性。
+- 后续 AirSim 复跑需显式统计 PSD projection/fallback 次数、D1 fusion P50/P95、总 tick 和
+  RSS；fallback 大于 0 时应保留对应输入作为传感器/数值故障 fixture。三维质点准入不能
+  替代 AirSim 或目标硬件周期证据。
 - 不得通过放宽 D2 PSD 门、增大容差、丢检测、缩短 6 s fixed-lag 或读取 actor/truth ID
   消除异常。
 

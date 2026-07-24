@@ -5,6 +5,25 @@
 
 ---
 
+## 最新增量：正式多 seed/长时准入（2026-07-24）
+
+- v3 矩阵包含 short seeds 1101-1110、2.2 s 和 long seeds 1101-1103、10 s，共
+  13 组配对、26 个三维质点集成 episode。26/26 正常退出，13/13 跨构建语义检查通过。
+- 标量 reference 为 `a5a472cf81496d94a98db3deb88a3d5c6951f0ce`，向量化 candidate
+  为 `064cbb979d3bab68fee995e476df25709eb666db`。两臂共同带有该 candidate 提交中的
+  D1 PSD 修复和 `e4147b8` 的 D2 误警审计修复，性能差异只对应协方差成对限制实现。
+- short 的 D1 融合累计墙钟由 `4.029165 s` 降至 `3.652252 s`，改善 `9.35462%`，
+  10/10 更快，配对原始变化 95% CI 为 `[-10.914359,-8.113134]%`；单次融合 P95 改善
+  `6.652902%`。
+- long 的 D1 融合累计墙钟由 `32.954357 s` 降至 `30.768826 s`，改善 `6.631993%`，
+  3/3 更快，配对原始变化 95% CI 为 `[-7.279095,-5.406805]%`；单次融合 P95 改善
+  `6.655511%`。
+- D6 判定 `d1_optimization_admitted=true`。P0 PSD 输出和 P1 向量化准入关闭。
+  `system_realtime_gap_closed=false`，candidate 最低实时因子为 `0.143397`。
+- 正式 manifest SHA-256 为
+  `40669d10fff8367aa31e24624bab802d8bc3de6b01aaa1e5c92d054753ed93ec`。矩阵不含
+  RMSE、NEES、NIS、AirSim 或目标硬件证据；融合质量和系统实时性仍开放。
+
 ## 最新增量：全维协方差正半定治理（2026-07-24）
 
 - seed 1103、200v200、10 s 候选在发布时刻 `7.85180018473111 s` 暴露
@@ -21,7 +40,7 @@
   `352 passed in 20.52s`。
 - 修复后同配置 seed 1103、10 s 集成运行处理 10,554 条匿名在线观测并完成，
   `finite_state=True`、online truth 0，原 D2 拒绝消失。RTF `0.157583` 仅作断点闭合证据。
-  main 仍需重启固定提交的 13-pair clean 矩阵；AirSim、系统实时和 RMSE/NEES/NIS 保持开放。
+  上节正式矩阵已完成；AirSim、目标硬件、系统实时和 RMSE/NEES/NIS 保持开放。
 
 ## 最新增量：协方差成对限制热点（2026-07-24）
 
@@ -45,8 +64,8 @@
   fixed-lag、观测数、门限、NED 和 `global_track_id` 未改变。
 - 10 s 长夹具另只执行一对语义对照。771 扫描、11,889 观测、4,009 次 fixed-lag rebase
   和 11,888 条 OOSM 在两臂一致。专项 `18 passed`，D1 全量
-  `342 passed in 19.73s`。结果属于当前 D1 工作树上的冻结质点证据；clean full-stack、
-  多 seed、AirSim、实时和精度验收仍由 main 后续执行。
+  `342 passed in 19.73s`。该结果是正式矩阵前的冻结质点基线；上节已关闭 clean
+  full-stack 多 seed 准入。AirSim、目标硬件、实时和精度验收仍由后续任务执行。
 
 ## 最新增量：A2 原子 shadow clean 成对复核（2026-07-24）
 

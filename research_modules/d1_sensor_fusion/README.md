@@ -4,6 +4,29 @@ Offline research module for radar, acoustic, EO, and optional synthetic lidar he
 
 ## 当前性能与治理证据（2026-07-24）
 
+### 第二十四阶段：协方差向量化正式准入
+
+正式 v3 矩阵使用 200 个目标、200 个资源和 2 个侦察节点的三维质点集成栈。short 组为
+seeds 1101-1110、每组 2.2 s；long 组为 seeds 1101-1103、每组 10 s。标量 reference
+提交为 `a5a472cf81496d94a98db3deb88a3d5c6951f0ce`，向量化 candidate 提交为
+`064cbb979d3bab68fee995e476df25709eb666db`。两臂共同包含 D1 完整正半定修复
+`064cbb979d3bab68fee995e476df25709eb666db` 和 D2 误警审计修复 `e4147b8`，唯一
+treatment 是 `vectorized_covariance_limit=False/True`。
+
+13 组配对形成 26 个 episode，全部完整退出；13/13 跨构建语义检查通过。正式 manifest
+SHA-256 为
+`40669d10fff8367aa31e24624bab802d8bc3de6b01aaa1e5c92d054753ed93ec`。
+
+| 组别 | D1 融合累计墙钟 reference -> candidate | 均值改善 | candidate 更快 | 配对原始变化 95% CI | 单次融合 P95 改善 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| short | `4.029165 -> 3.652252 s` | `9.35462%` | `10/10` | `[-10.914359, -8.113134]%` | `6.652902%` |
+| long | `32.954357 -> 30.768826 s` | `6.631993%` | `3/3` | `[-7.279095, -5.406805]%` | `6.655511%` |
+
+D6 只读评估给出 `d1_optimization_admitted=true`，因此 D1 发布协方差正半定 P0 和协方差
+向量化优化准入 P1 均关闭。`system_realtime_gap_closed=false`；candidate 最低实时因子为
+`0.143397`，尚未达到 1。本矩阵不包含均方根误差、归一化估计误差平方、归一化创新平方、
+AirSim 或目标硬件证据，不能据此关闭融合质量、AirSim 或系统实时性缺口。
+
 ### 第二十三阶段：全维协方差正半定治理
 
 200v200 多 seed 长时矩阵在 seed 1103、10 s 候选运行中暴露 D1 输出合同缺口。失败发布时刻为
@@ -30,9 +53,9 @@ mismatch 均为 0，最大绝对差为 0。单独标量复跑也在相同航迹�
 失败回归、1 至 6 维随机/极端性质、隐蔽在逐对上界内的非正定矩阵、审计字段和两实现等价
 专项与既有性能专项合计 `28 passed`。D1 全量为 `352 passed in 20.52s`。修复后的同配置
 200v200、seed 1103、10 s 集成复跑处理 10,554 条在线观测，`finite_state=True`、在线 truth
-使用 0，原 D2 异常不再出现；实时倍率为 `0.157583`，只作为断点闭合证据。main 仍需基于
-固定提交重新完成 13-pair clean 矩阵、RMSE/NEES/NIS 和正式性能验收，本节不是 AirSim 或
-系统实时结论。
+使用 0，原 D2 异常不再出现；实时倍率为 `0.157583`，只作为断点闭合证据。第二十四阶段已
+在固定提交上完成 13-pair clean 矩阵并关闭向量化准入；RMSE/NEES/NIS、AirSim、目标硬件和
+系统实时性仍未验收。
 
 ### 第二十二阶段：协方差成对限制向量化
 
@@ -73,9 +96,8 @@ fixed-lag、观测数量、关联门限、来源谱系、质量分级或 `global
 4,009 次 fixed-lag rebase 和 11,888 条 OOSM；逐扫描、延迟审计、操作计数、终态航迹和证据
 严格一致。长夹具不用于性能统计。专项 `18 passed`，D1 全量 `342 passed in 19.73s`。
 
-本项关闭 D1 内部标量裁剪热点，不关闭系统实时预算。结果来自当前未提交 D1 工作树上的
-单 seed 三维质点冻结回放，不是 clean full-stack、多 seed、AirSim、传感器精度或
-RMSE/NEES/NIS 证据。main 仍需在固定提交上执行 clean 全栈同输入复核。
+本项是正式矩阵之前的单 seed 冻结回放基线。第二十四阶段已完成 clean 多 seed 全栈复核并
+准入该优化，但仍未关闭系统实时预算、AirSim、传感器精度或 RMSE/NEES/NIS 证据缺口。
 
 ### 第二十一阶段：A2 原子 shadow clean 成对复核
 

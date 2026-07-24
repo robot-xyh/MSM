@@ -1,5 +1,27 @@
 # D1 Sensor Fusion Offline Experiment Report
 
+## 2026-07-24 协方差向量化正式准入
+
+正式 v3 试验使用三维质点集成栈。short 组为 seeds 1101-1110、2.2 s；long 组为
+seeds 1101-1103、10 s。13 组配对形成 26 个 episode，26/26 正常退出，13/13 跨构建语义
+检查通过。标量 reference 提交为
+`a5a472cf81496d94a98db3deb88a3d5c6951f0ce`，向量化 candidate 提交为
+`064cbb979d3bab68fee995e476df25709eb666db`。两臂共同包含该 candidate 提交中的 D1
+完整正半定修复和 `e4147b8` 的 D2 误警审计修复。
+
+| 组别 | D1 融合累计墙钟 reference -> candidate | 改善 | 更快 seed | 配对原始变化 95% CI | P95 改善 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| short | `4.029165 -> 3.652252 s` | `9.35462%` | `10/10` | `[-10.914359,-8.113134]%` | `6.652902%` |
+| long | `32.954357 -> 30.768826 s` | `6.631993%` | `3/3` | `[-7.279095,-5.406805]%` | `6.655511%` |
+
+D6 判定 `d1_optimization_admitted=true`。P0 PSD 输出缺口和 P1 向量化准入缺口关闭。
+`system_realtime_gap_closed=false`；candidate 最低实时因子为 `0.143397`。正式 manifest
+SHA-256 为
+`40669d10fff8367aa31e24624bab802d8bc3de6b01aaa1e5c92d054753ed93ec`。
+
+本批没有 RMSE、NEES、NIS、AirSim 或目标硬件证据。系统实时性、融合质量和目标平台容量
+继续保持开放。
+
 ## 2026-07-24 完整正半定治理
 
 seed 1103、200v200、10 s 长时候选在仿真时刻 `7.85180018473111 s` 暴露 D1
@@ -12,8 +34,8 @@ pairwise covariance limiter 会把合法六维矩阵变为非正定矩阵。限�
 6 s fixed-lag 测试通过；D1 全量 `352 passed in 20.52s`。
 
 修复后同配置 10 s episode 完成，处理 10,554 条匿名观测，状态有限、在线 truth 0，
-RTF `0.157583`。该运行只证明原 PSD 断点闭合，不是 clean 多 seed、AirSim、实时或
-RMSE/NEES/NIS 结论。
+RTF `0.157583`。该运行只证明原 PSD 断点闭合；上节补充了后续 clean 多 seed 准入。两批
+均不是 AirSim、目标硬件、实时或 RMSE/NEES/NIS 结论。
 
 ## 2026-07-23 扫描 claim JSON 单次物化
 

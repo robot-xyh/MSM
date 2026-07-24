@@ -4,6 +4,26 @@
 
 ## 当前证据索引（2026-07-24）
 
+正式 v3 多 seed/长时矩阵已完成。short 组为 seeds 1101-1110、2.2 s，long 组为
+seeds 1101-1103、10 s，共 13 组配对和 26 个三维质点集成 episode；26/26 正常退出，
+13/13 跨构建语义检查通过。标量 reference 为
+`a5a472cf81496d94a98db3deb88a3d5c6951f0ce`，向量化 candidate 为
+`064cbb979d3bab68fee995e476df25709eb666db`，两臂共同包含 D1 PSD 修复和 D2
+`e4147b8` 误警审计修复。
+
+short 的 D1 融合累计墙钟 `4.029165 -> 3.652252 s`，改善 `9.35462%`，10/10 更快，
+配对原始变化 95% CI `[-10.914359,-8.113134]%`；long 为
+`32.954357 -> 30.768826 s`，改善 `6.631993%`，3/3 更快，CI
+`[-7.279095,-5.406805]%`。单次融合 P95 的 short/long 改善为
+`6.652902/6.655511%`。D6 判定 `d1_optimization_admitted=true`，关闭 P0 PSD 输出和
+P1 向量化准入。`system_realtime_gap_closed=false`，candidate 最低实时因子为
+`0.143397`。正式 manifest SHA-256 为
+`40669d10fff8367aa31e24624bab802d8bc3de6b01aaa1e5c92d054753ed93ec`。
+
+该正式矩阵仍是三维质点证据，不包含 RMSE、NEES、NIS、AirSim 或目标硬件。系统实时性和
+融合质量证据继续开放。详细算法与结果分别见 `ALGORITHM_AND_IMPLEMENTATION.md` 和
+`EXPERIMENT_REPORT.md`。
+
 最新正确性增量关闭 D1 发布协方差的完整正半定 P0。seed 1103、200v200、10 s 在
 `7.85180018473111 s` 暴露旧 pairwise limiter 把合法六维 covariance 变为非正定矩阵；
 限制前/后最小特征值为 `+7.506060086e-04/-9.247657800e-04`。故障前 58,776 次
@@ -13,7 +33,8 @@ scalar/vectorized 同输入双算完全一致，根因是逐对相关上界不�
 再恢复治理对角并复核全部约束。原因和操作数进入航迹 metadata。固定失败、1-6 维随机/极端、
 路径等价、双时间戳、谱系和 6 s fixed-lag 测试通过；D1 全量为
 `352 passed in 20.52s`。修复后原 seed 1103、10 s 集成复跑完成，10,554 条在线观测、
-有限状态、online truth 0。该结果不是 AirSim、系统实时或正式精度证据。
+有限状态、online truth 0。随后完成的正式 v3 矩阵见上；两批结果均不是 AirSim、系统实时
+或正式精度证据。
 
 最新 D1 性能增量关闭协方差成对限制中的标量裁剪热点。seed 1100 的 200v200、2.2 s
 冻结输入含 89 个扫描和 2,035 条匿名观测。旧标量循环通过
@@ -23,9 +44,8 @@ scalar/vectorized 同输入双算完全一致，根因是逐对相关上界不�
 `1.047145 -> 0.426826 s`。10 s 长夹具另只执行一对语义对照，4,009 次 fixed-lag rebase
 和 11,888 条 OOSM 在两臂一致。逐扫描后验、物化航迹、双时间戳、谱系、分级、操作计数、
 累计诊断、终态航迹和一致性证据严格一致，在线 truth 为 0。专项 `18 passed`，D1 全量
-`342 passed in 19.73s`。这是当前 D1 工作树的冻结质点证据，不是 clean full-stack、多 seed、
-AirSim、实时或精度验收。详细算法和结果分别见
-`ALGORITHM_AND_IMPLEMENTATION.md` 与 `EXPERIMENT_REPORT.md`。
+`342 passed in 19.73s`。这是正式 v3 前的冻结质点基线；上文已补充 clean full-stack
+多 seed 准入。AirSim、目标硬件、实时或精度验收仍未完成。
 
 最新设计决策见
 `STRUCTURAL_AMBIGUITY_NEXT_CANDIDATE_DESIGN_CN.md`。该文件比较 publication overlay、

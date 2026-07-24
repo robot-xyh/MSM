@@ -1,5 +1,33 @@
 # D1 多传感器融合与目标配准实施计划
 
+## P0/P1 正式多 seed 准入结果（2026-07-24）
+
+main 已完成预注册 v3 矩阵，D6 已完成只读评估。矩阵包含 short seeds 1101-1110
+（2.2 s）和 long seeds 1101-1103（10 s），共 13 组配对、26 个三维质点集成 episode；
+26/26 正常退出，13/13 跨构建语义检查通过。正式 manifest SHA-256 为
+`40669d10fff8367aa31e24624bab802d8bc3de6b01aaa1e5c92d054753ed93ec`。
+
+reference 为标量路径提交 `a5a472cf81496d94a98db3deb88a3d5c6951f0ce`，candidate 为
+向量化路径提交 `064cbb979d3bab68fee995e476df25709eb666db`。两者共同包含
+`064cbb979d3bab68fee995e476df25709eb666db` 的 D1 完整正半定修复和 `e4147b8` 的
+D2 误警审计修复，避免把 P0/D2 修复混入性能 treatment。
+
+| 组别 | reference 融合墙钟 | candidate 融合墙钟 | 改善 | 更快 seed | 配对原始变化 95% CI | P95 改善 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| short | `4.029165 s` | `3.652252 s` | `9.35462%` | `10/10` | `[-10.914359, -8.113134]%` | `6.652902%` |
+| long | `32.954357 s` | `30.768826 s` | `6.631993%` | `3/3` | `[-7.279095, -5.406805]%` | `6.655511%` |
+
+D6 判定 `d1_optimization_admitted=true`。P0 发布协方差正半定输出缺口关闭，P1
+`vectorized_covariance_limit` 正式准入缺口关闭。系统实时性仍开放：
+`system_realtime_gap_closed=false`，candidate 最低实时因子为 `0.143397`。下一阶段只继续：
+
+1. 在目标运行环境和 AirSim 上形成可追溯周期、尾延时与资源证据；
+2. 使用独立离线真值侧车形成 RMSE、NEES、NIS 及置信区间；
+3. 保持 D2 PSD 门、全部观测、6 s fixed-lag、双时间戳、谱系和在线 truth 隔离不变。
+
+本矩阵不包含 AirSim、实机或目标硬件，也没有计算 RMSE、NEES、NIS。不得把优化准入解释为
+系统实时或融合精度验收。
+
 ## P0 输出协方差正半定修复（2026-07-24）
 
 ### 根因
@@ -40,8 +68,8 @@ truth 边界不变。
 - 修复后 200v200、seed 1103、10 s 集成运行完成，10,554 条在线观测、有限状态、在线 truth
   使用 0，实时倍率 `0.157583`。
 
-本 P0 的 D1 输出断点已关闭。main 尚需在固定提交上重启 13-pair clean 多 seed/长时矩阵；
-系统实时、AirSim 和正式 RMSE/NEES/NIS 仍是 P1。
+本 P0 的 D1 输出断点已关闭。其后的 13-pair clean 多 seed/长时矩阵已按上节完成并通过；
+系统实时、AirSim、目标硬件和正式 RMSE/NEES/NIS 仍是开放 P1。
 
 ## P1 协方差成对限制热点治理（2026-07-24）
 
@@ -102,10 +130,9 @@ consistency evidence 严格一致，在线 truth 为 0。
 
 ### 当前状态
 
-D1-owned 标量裁剪热点已关闭并保留显式 A/B。当前证据是未提交 D1 工作树上的单 seed
-三维质点冻结回放，不是 clean full-stack、多 seed、AirSim、实时发布或融合精度验收。
-main 下一步应在固定提交上复跑 clean 同输入全栈，核对 D1 分项、总核心墙钟、P50/P95、
-内存和跨模块业务语义。正式 RMSE/NEES/NIS、更多未见 seed 和长时增长仍按既有 P1 保持开放。
+D1-owned 标量裁剪热点已关闭并保留显式 A/B。本节记录的是正式矩阵之前的单 seed
+冻结回放；上节已在固定提交上完成 clean 多 seed 全栈复核并准入向量化路径。AirSim、目标
+硬件、系统实时性和正式 RMSE/NEES/NIS 仍按既有 P1 保持开放。
 
 ## A2 原子 shadow clean 成对复核（2026-07-24）
 
