@@ -27,6 +27,9 @@ MATRIX_PATH = (
 MATRIX_V2_PATH = MATRIX_PATH.with_name(
     "d1_covariance_limit_multiseed_v2.json"
 )
+MATRIX_V3_PATH = MATRIX_PATH.with_name(
+    "d1_covariance_limit_multiseed_v3.json"
+)
 
 
 def test_pre_registered_matrix_has_expected_independent_and_long_cases() -> None:
@@ -54,6 +57,35 @@ def test_v2_preserves_matrix_and_applies_common_d2_fix() -> None:
     assert v2["admission_gates"] == v1["admission_gates"]
     assert v2["bootstrap_resamples"] == 10000
     assert v2["evidence_boundary"]["v1_outputs_reused"] is False
+
+
+def test_v3_uses_common_psd_fix_and_commit_scoped_scalar_reference() -> None:
+    v2 = load_matrix(MATRIX_V2_PATH)
+    v3 = load_matrix(MATRIX_V3_PATH)
+
+    assert v3["experiment_id"].endswith("-v3")
+    assert v3["reference_base_commit"] == v3["candidate_commit"]
+    assert v3["candidate_base_commit"] == v3["candidate_commit"]
+    assert v3["common_d2_fix_source_commit"] == (
+        v2["common_d2_fix_source_commit"]
+    )
+    assert v3["common_d1_psd_fix_source_commit"] == (
+        v3["candidate_commit"]
+    )
+    assert v3["reference_treatment_commit"] == v3["reference_commit"]
+    assert v3["cases"] == v2["cases"]
+    assert v3["admission_gates"] == v2["admission_gates"]
+    assert v3["bootstrap_resamples"] == 10000
+    assert v3["evidence_boundary"]["v1_outputs_reused"] is False
+    assert v3["evidence_boundary"]["v2_outputs_reused"] is False
+    assert (
+        v3["evidence_boundary"]["reference_vectorized_covariance_limit"]
+        is False
+    )
+    assert (
+        v3["evidence_boundary"]["candidate_vectorized_covariance_limit"]
+        is True
+    )
 
 
 def test_command_carries_scale_seed_duration_flags_and_explicit_output(
