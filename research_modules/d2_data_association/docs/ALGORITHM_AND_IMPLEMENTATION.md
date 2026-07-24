@@ -416,12 +416,21 @@ coverage、各状态计数、未提交 mapping 数和未提交候选绑定违规
 由 `source_measurement_timestamp` 单独携带。状态时刻滞后的 Detection 直接进入 OOSM
 合同拒绝，不能利用较早时钟绕过发布新鲜度判定。
 
-main 与 D6 随后在 clean 提交
-`65568579c99e4ef9939f0519f66c46d3076ef035` 复跑相同 nominal 200v200、2.2 s、
+main 与 D6 随后在配置谱系绑定后的 clean 提交
+`ff881316243ff5a2991a4659ab78637ed625d123` 复跑相同 nominal 200v200、2.2 s、
 `recon_count=2`、seed 1100。baseline 的 D2/D3 数量为 `203/200`，strict IDSW、track
 continuity、coverage continuity 为 `9/0.865/0.870`，承诺覆盖率为 `1.0`。candidate
 的 D2/D3 数量为 `201/197`，strict IDSW、track continuity、coverage continuity 为
 `3/0.8266667/0.8283333`；三项严格指标均可用。
+
+每条 D2 发布携带 `d2.identity-evidence-commitment.v2` 和
+`d2-structural-ambiguity-commitment-v2`。本次集成运行的恢复配置版本为
+`main-scalable3d-identity-recovery-publication-freshness-v1`，schema 为
+`d2.identity-commitment-recovery-config.v2`，规范化 SHA-256 为
+`sha256:bd8e362ec4ca128ed902826750b26d862286770d3c0c4d0b75960a50911a201a`。
+baseline/candidate 的离线 manifest 均对 9 条 D2 发布完成配置一致性检查，并将配置快照、
+manifest 和原始 D2 JSONL 哈希绑定。该谱系证明试验实际使用固定 `0.9 s` 门控，不能用
+运行后推断的默认值替代。
 
 candidate 的 1787 条记录中 committed 1711、active hold 69、after hold 7，承诺覆盖率
 `0.9574706212`。三条 after-hold 恢复被
@@ -2057,3 +2066,37 @@ binding，均形成 violation；任一 violation 大于 0 时 evaluation 构造�
 按 legacy unavailable/`None` 处理。严格 IDSW 的锚点仍采用
 `compare_consecutive_committed_truth_anchors_across_uncommitted_gaps`，因此本改动不
 改变既有身份指标公式。
+
+## 33. 结构歧义租约因果审计
+
+### 33.1 当前执行关系
+
+租约 soft/hard 时长分别为 `gap_scan_periods * radar_period_s` 和
+`hard_scan_periods * radar_period_s`。新原始证据只能延长 soft deadline，且不能超过
+首次 hard deadline。实际释放发生在 D2 下一次消费 tracker frame 时。
+
+活动分量当前执行 prediction-only。成员航迹不 update、不增 hit、不增 miss；未绑定
+观测不 birth。该处理保持身份失败关闭，但没有利用歧义分量的集合几何约束修正运动状态。
+
+### 33.2 clean 参数结果
+
+同一 nominal 200v200、2.2 秒、seed 1100 下，`(1,2)`、`(1,3)`、`(1,4)`、
+`(2,3)`、`(2,4)` 的 D2 终态均为 197。对应 D3 分配为
+`195/195/197/195/197`，strict IDSW 为 `7/5/3/5/3`。没有组合达到 baseline 的
+D2/D3 `203/200` 和 continuity `0.865/0.870`。
+
+`(1,4)` 清除了本 seed 的三条超龄恢复并保持 IDSW 3，但终态少 6 条航迹，不能替换
+默认 `(2,5)`。本轮不改参数。
+
+### 33.3 下一候选接口约束
+
+下一候选应把 `identity_commitment` 与 `kinematic_support` 分开发布。运动学支持只能
+作用于已有歧义成员，使用整个候选集合形成有界均值修正和协方差膨胀。它不得输出
+`detection_to_track`、不得消费 committed claim、不得增加身份 hit、不得建轨或改写
+`global_track_id`。同一 evidence generation 只能影响一次状态，replay 不更新或延长
+租约。
+
+恢复 committed 仍需新的原始证据越过水位线，并满足 source binding、publisher epoch、
+claim 首次接纳和固定 0.9 秒发布新鲜度。main/D3 还需把未提交航迹从新计划排除，并对
+旧计划发布版本化 hold/replan。冻结 seed-1100 制品尚未执行该准入；当前 D3-owned
+修改需由 main 另行集成复验。本节只定义研究合同，没有实现候选。

@@ -107,11 +107,19 @@ reservation 释放后重入、同水位线新 key、更晚新 key、容量溢出
 frame 不一致拒绝、兼容关闭、无 hold 正常路径、37 目标、v1/v2 评分和 audit 独立重算。
 该证据关闭 D2-owned 合同缺口。
 
-main 和 D6 已在 clean 提交
-`65568579c99e4ef9939f0519f66c46d3076ef035` 复跑发布新鲜度修复后的 seed 1100 A/B。
+main 和 D6 已在配置谱系绑定后的 clean 提交
+`ff881316243ff5a2991a4659ab78637ed625d123` 复跑发布新鲜度修复后的 seed 1100 A/B。
 baseline 的 D2 航迹/D3 分配为 `203/200`，strict IDSW、track continuity、coverage
 continuity 为 `9/0.865/0.870`，承诺覆盖率为 `1.0`。candidate 为 `201/197`，
 strict 三项为 `3/0.8266667/0.8283333`；全部指标均可用。
+
+baseline/candidate 的 9 条 D2 发布均使用承诺 schema/policy
+`d2.identity-evidence-commitment.v2` /
+`d2-structural-ambiguity-commitment-v2`。实际恢复配置版本为
+`main-scalable3d-identity-recovery-publication-freshness-v1`，schema 为
+`d2.identity-commitment-recovery-config.v2`，规范化 SHA-256 为
+`sha256:bd8e362ec4ca128ed902826750b26d862286770d3c0c4d0b75960a50911a201a`。
+offline identity manifest 已验证 9 条记录配置一致，并与原始 D2 JSONL 哈希绑定。
 
 candidate 的 1787 条记录中 committed 1711、active hold 69、after hold 7，
 all-record commitment coverage 为 `0.9574706212`。三条恢复航迹
@@ -1319,7 +1327,8 @@ D3 分配为 `201/197`；1787 条记录中 committed/uncommitted 为 `1714/73`�
 source/candidate binding violation 均为 0，online truth use 为 0。
 
 该轮评审接受身份承诺 v2 的系统接线和 fail-closed 合同，不接受结构歧义算法候选晋级。
-其后 D2 增加发布新鲜度门控，main 在 clean 提交 `6556857` 复跑同 seed。三条超龄恢复
+其后 D2 增加发布新鲜度门控，main 在配置谱系绑定后的 clean 提交 `ff88131` 复跑同
+seed。三条超龄恢复
 保持未提交，strict 指标恢复可用；candidate IDSW/track continuity/coverage continuity
 为 `3/0.8266667/0.8283333`，baseline 为 `9/0.865/0.870`。未提交
 source/candidate binding violation 为 `0/0`，online truth use 为 0。
@@ -1327,3 +1336,39 @@ source/candidate binding violation 为 `0/0`，online truth use 为 0。
 最新评审仍不接受算法晋级。candidate 的 D2/D3 数量为 `201/197`，baseline 为
 `203/200`，两项 continuity 同时下降。固定 `0.9 s` 不扩大，候选保持默认关闭，seeds
 1101/1102、10 s 和 20-seed 矩阵停止。
+
+## 43. 结构歧义租约因果评审
+
+### 43.1 评审结果
+
+逐轨迹审计确认，默认候选的 201 条终态航迹来自 203 条累计建轨减去
+`GT3D-000133/000164` 两条退出航迹。终态 9 条未提交航迹分为 4 条释放后无新证据、
+3 条发布超龄和 2 条活动租约。三条超龄证据的发布年龄为 `0.9308153039 s`，超过固定
+`0.9 s`，不得放行。
+
+clean seed 1100 的五组参数扫描结果为：
+
+- `(1,2)`：D2/D3 `197/195`，IDSW 7；
+- `(1,3)`：D2/D3 `197/195`，IDSW 5；
+- `(1,4)`：D2/D3 `197/197`，IDSW 3；
+- `(2,3)`：D2/D3 `197/195`，IDSW 5；
+- `(2,4)`：D2/D3 `197/197`，IDSW 3。
+
+没有参数点同时恢复 baseline 的 `203/200` 航迹与分配和
+`0.865/0.870` 两项连续性。评审不接受参数替换，默认 `(2,5)` 和默认关闭状态保持。
+
+### 43.2 跨模块结论
+
+冻结 seed-1100 制品的 D3 第 2 版计划把 11 条未提交航迹投入分配，第 3 版仍包含
+8 条。该历史制品没有执行承诺状态准入。当前工作区已有 D3-owned 准入修改，但尚未用
+同一冻结输入完成 main 集成复验；验收仍要求未提交航迹不进入新计划，已有计划发生承诺
+撤回时发布版本化 hold/replan。
+
+下一 D2 候选可以研究身份未提交但运动学保守更新。它不能生成 identity binding、hit、
+建轨、改绑或 ID 变化；协方差不得在歧义子空间收缩；source binding、replay、
+publisher epoch、水位线、0.9 秒发布新鲜度和 fail-closed 行为均不得放松。本轮不实现
+该候选。
+
+2026-07-23 本次文档复核运行完整 D2 回归，结果为
+`291 passed, 1 warning in 31.00s`。warning 为既有 Matplotlib `Axes3D` 环境提示；
+未发现需要修改 D2 代码的回归问题。

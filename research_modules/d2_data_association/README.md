@@ -48,11 +48,18 @@ D2 是 C-UAS 多目标数据关联研究模块，目标是在离线仿真和日�
   v1 round-trip 和跨未提交空窗 IDSW/coverage。warning 是本机 Matplotlib `Axes3D`
   环境问题。
 - 旧提交 `909669b` 的 clean A/B 暴露了恢复证据在发布帧超出固定 `0.9 s` 谱系窗口的
-  问题。D2 随后增加发布新鲜度门控，main 在 clean 提交
-  `65568579c99e4ef9939f0519f66c46d3076ef035` 复跑相同
+  问题。D2 随后增加发布新鲜度门控，main 在绑定配置谱系后的 clean 提交
+  `ff881316243ff5a2991a4659ab78637ed625d123` 复跑相同
   nominal 200v200、2.2 s、`recon_count=2`、seed 1100。baseline 输出 D2 航迹 203、
   D3 分配 200、strict IDSW 9、track continuity `0.865`、coverage continuity
   `0.870`，承诺覆盖率 `1.0`。
+- baseline/candidate 的 9 条 D2 发布均携带
+  `d2.identity-evidence-commitment.v2` 和 policy
+  `d2-structural-ambiguity-commitment-v2`。集成运行注入的恢复配置版本为
+  `main-scalable3d-identity-recovery-publication-freshness-v1`，配置 schema 为
+  `d2.identity-commitment-recovery-config.v2`，规范化 SHA-256 均为
+  `sha256:bd8e362ec4ca128ed902826750b26d862286770d3c0c4d0b75960a50911a201a`。
+  离线 manifest 已验证同一 episode 内配置逐条一致，并与原始 D2 JSONL 哈希绑定。
 - 新 candidate 输出 D2 航迹 201、D3 分配 197；1787 条记录中 1711 条 committed、
   69 条 `identity_uncommitted_ambiguity_hold`、7 条
   `identity_uncommitted_after_hold`，承诺覆盖率 `0.9574706212`。其中
@@ -67,6 +74,32 @@ D2 是 C-UAS 多目标数据关联研究模块，目标是在离线仿真和日�
 - 本轮只接受恢复发布新鲜度合同修复，不接受结构歧义算法候选准入。固定 `0.9 s` 不
   放宽，seeds 1101/1102、10 s 和 20-seed 矩阵停止。三维质点 A/B 不是 AirSim 或实飞
   结果；后续算法候选必须先解决连续性、覆盖和下游分配退化，再从 seed 1100 重新评审。
+
+### 2026-07-23 结构歧义租约因果审计
+
+- D2 对 clean A/B 的 9 条在线发布和 1787 条身份承诺记录进行了逐轨迹复核。候选累计
+  初始化 203 条航迹，`GT3D-000133` 和 `GT3D-000164` 在初始两帧后退出，终态为
+  201 条；两条真值链后续分别转为 `GT3D-000200/000203` 和
+  `GT3D-000202`，形成候选全部 3 次 strict IDSW。
+- 默认 `(gap, hard)=(2,5)` 的终态有 4 条“租约已释放但无合格新证据”、3 条“恢复
+  证据发布超龄”和 2 条“租约仍活动”的未提交航迹。三条超龄证据的 source
+  measurement timestamp 为 `1.2 s`，tracker frame 为 `2.1308153038551993 s`，
+  年龄 `0.9308153038551993 s`，拒绝正确，固定 `0.9 s` 不放宽。
+- detached clean seed 1100 扫描 `(1,2)`、`(1,3)`、`(1,4)`、`(2,3)`、`(2,4)`。
+  五组 D2 终态均为 197；D3 分配为 `195/195/197/195/197`；strict IDSW 为
+  `7/5/3/5/3`。`(1,4)` 是最佳诊断点，但仍比 baseline 少 6 条 D2 航迹，不能晋级或
+  替换默认参数。
+- 缩短租约会更早释放 tentative 航迹，但当前没有 identity-neutral 的保守运动学更新，
+  这些航迹随后进入普通 miss/drop 路径。参数只能改变退化发生时刻，不能修复退化机制。
+- 冻结 seed-1100 制品的 D3 计划联接发现：第 2 版计划包含 11 条未提交航迹，第 3 版
+  包含 8 条。该历史制品尚未执行承诺状态准入，不能把 D3 分配 197 解释为 committed
+  可用性。当前工作区已有 D3-owned 准入修改，仍需 main 以同一冻结输入完成跨模块复验；
+  D2 下一候选不得通过未提交航迹维持旧计划。
+- 完整逐轨迹证据、参数表和下一候选合同见
+  `subagent_reviews/D2_STRUCTURAL_AMBIGUITY_HOLD_LEASE_CAUSAL_AUDIT_CN.md`。本轮
+  未修改算法、默认 `(2,5)`、默认关闭状态或发布新鲜度预算。2026-07-23 本次复核运行
+  完整 D2 回归，结果为 `291 passed, 1 warning in 31.00s`；warning 为既有
+  Matplotlib `Axes3D` 环境提示。
 
 ### 2026-07-23 D1 结构歧义保持租约候选
 
@@ -1026,6 +1059,7 @@ loader 会从 `IdentityEvidenceCommitment` 和逐帧 mapping 重算上述字段�
 v1 不嵌入 v2 evidence，新增审计项保持 unavailable/`None`。该阶段 2026-07-23 D2 全量
 测试为 `286 passed, 1 warning in 29.22s`；随后 main/D6 已完成接线和旧候选 clean
 seed 1100 A/B。发布新鲜度门控加入后的模块回归为
-`291 passed, 1 warning in 29.05s`。main 已在 clean 提交 `6556857` 完成相同 seed 的
-新 A/B；strict 指标恢复可用，但候选因 D2/D3 数量和 continuity/coverage 退化被拒绝，
-结果见本文件开头。
+`291 passed, 1 warning in 29.05s`。main 已在配置谱系绑定后的 clean 提交 `ff88131`
+完成相同 seed 的权威 A/B；strict 指标恢复可用，但候选因 D2/D3 数量和
+continuity/coverage 退化被拒绝，结果见本文件开头。本次文档复核再次运行完整回归，
+结果为 `291 passed, 1 warning in 31.00s`。

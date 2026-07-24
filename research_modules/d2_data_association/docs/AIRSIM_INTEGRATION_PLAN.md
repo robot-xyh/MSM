@@ -497,7 +497,8 @@ main 在持久化 `d2.scalable3d_identity_evidence.v2` 后，应使用同一 evi
 manifest。D6 只读取 evaluation 的 `audit` 和公开
 `identity_evidence_records`，不得读取 tracker 私有 blocked-key 集合。
 
-D6 已在 clean 提交 `65568579c99e4ef9939f0519f66c46d3076ef035` 汇总 all-record
+D6 已在配置谱系绑定后的 clean 提交
+`ff881316243ff5a2991a4659ab78637ed625d123` 汇总 all-record
 与 created/matched observed-record coverage、恢复拒绝原因、blocker count、水位线年龄、
 overflow 和两个未提交 binding violation 字段。seed 1100 candidate 的两个 violation
 均为 0，三条超龄恢复由发布新鲜度门控保持为未提交。strict IDSW、track continuity 和
@@ -520,6 +521,13 @@ AirSim adapter 若收到状态有效时刻早于当前 D2 frame 的输入，不�
 `Scalable3DTracker.step()`；应先由现有 OOSM/状态传播边界处理并保留原双时间戳。
 恢复门控计算 tracker frame 与原始 source measurement 的年龄。超龄时航迹保持
 uncommitted，D6 应从既有恢复原因计数中展示阻断，不把它写成 IDSW 0。
+
+AirSim episode 还必须逐条持久化实际恢复配置，并用规范化 SHA-256 绑定 offline identity
+manifest 与原始 D2 JSONL。当前三维质点权威证据使用
+`main-scalable3d-identity-recovery-publication-freshness-v1`，配置哈希为
+`sha256:bd8e362ec4ca128ed902826750b26d862286770d3c0c4d0b75960a50911a201a`。
+AirSim 不得默认沿用该哈希；若节点配置、预算或版本不同，应生成新的快照和哈希，并在同一
+episode 内执行一致性校验。
 
 2026-07-23 已完成 D2 确定性模块测试：专项 `32 passed`，完整模块
 `291 passed, 1 warning in 29.05s`；并完成上述三维质点 clean seed 1100 A/B。没有启动

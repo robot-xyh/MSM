@@ -9,9 +9,9 @@
 既有 AirSim/EVAL 审计结论；本次新增 clean 基线与候选的 200v200 五 seed 热路径对照，
 `8f86192` 对 `f80b5bd` 的 10.0 s 三 seed clean 集成逐条语义审计，以及 clean
 `4ac3bb2` nominal 200v200、seed 1000、10.0 s 冻结总线的 profiler 和旧/新等价比较；
-同时纳入 clean 提交 `909669b` 的身份承诺 v2 首轮 A/B，以及发布新鲜度修复后 clean
-提交 `65568579c99e4ef9939f0519f66c46d3076ef035`、nominal 200v200、2.2 s、
-`recon_count=2`、seed 1100 的复核 A/B。
+同时纳入 clean 提交 `909669b` 的身份承诺 v2 首轮 A/B，以及发布新鲜度修复并绑定配置
+谱系后的 clean 提交 `ff881316243ff5a2991a4659ab78637ed625d123`、nominal 200v200、
+2.2 s、`recon_count=2`、seed 1100 的复核 A/B。
 
 **结论摘要**：截至 2026-07-23，D2 无运行算法 P0 blocker。既有二维默认
 GNN/Hungarian 与历史 AirSim replay 证据保持不变；显式六维路径已闭合 D2-owned
@@ -120,8 +120,9 @@ IDSW `9 -> 3`，但 D2/D3 数量 `203/200 -> 201/197`、track/coverage continuit
   frame 不一致拒绝、兼容关闭和容量溢出。
 - **系统接线已关闭**：clean 提交 `909669b` 已原子持久化
   `identity_commitment_by_track`，D6 已聚合 commitment coverage、uncommitted
-  counts、恢复原因、水位线、overflow 和 binding violation。clean 提交 `6556857` 已
-  按发布新鲜度修复后的 v2 再次重测 seed 1100。
+  counts、恢复原因、水位线、overflow 和 binding violation。clean 提交 `ff88131` 已
+  按发布新鲜度修复后的 v2 再次重测 seed 1100，并将逐发布恢复配置快照、规范化哈希、
+  offline identity manifest 和原始 D2 JSONL 绑定。
 - **合同通过、算法准入仍开放**：baseline 的 D2 航迹/D3 分配为 `203/200`，strict
   IDSW、track continuity、coverage continuity 为 `9/0.865/0.870`，承诺覆盖率 `1.0`。
   candidate 为 `201/197`，strict 三项为 `3/0.8266667/0.8283333`，all-record
@@ -1257,9 +1258,15 @@ P50/P95/P99、多 seed 长短窗口、main-owned lineage/publication 分离，�
   evidence/evaluation；D6 已消费两类 denominator、恢复原因、水位线年龄、overflow 和
   violation 字段。发布新鲜度配置已升级为
   `d2.identity-commitment-recovery-config.v2`，默认使用固定 `0.9 s` 预算。
-- clean 提交 `65568579c99e4ef9939f0519f66c46d3076ef035` 已复跑 nominal 200v200、
+- clean 提交 `ff881316243ff5a2991a4659ab78637ed625d123` 已复跑 nominal 200v200、
   2.2 s、`recon_count=2`、seed 1100。D2 离线评估与 D6 episode record 均确认 strict
   指标 available，且没有回填 strict IDSW。
+- baseline/candidate 的 9 条 D2 发布均使用
+  `d2.identity-evidence-commitment.v2` /
+  `d2-structural-ambiguity-commitment-v2`。实际集成配置
+  `main-scalable3d-identity-recovery-publication-freshness-v1` 的规范化 SHA-256 为
+  `sha256:bd8e362ec4ca128ed902826750b26d862286770d3c0c4d0b75960a50911a201a`；
+  manifest v2 已确认逐发布一致性并绑定原始 D2 JSONL。配置谱系 P1 已关闭。
 - nominal 200v200、2.2 s、`recon_count=2`、seed 1100（首个预留的未见 gate seed）
   的 baseline 为 D2 航迹 203、D3 分配 200、strict IDSW 9、track continuity
   `0.865`、coverage continuity
@@ -1284,3 +1291,33 @@ P50/P95/P99、多 seed 长短窗口、main-owned lineage/publication 分离，�
 - 固定 `0.9 s` window 不扩大。候选保持默认关闭，seeds 1101/1102、10 s 和 20-seed
   矩阵停止。本候选真实 AirSim 尚未执行；当前不以更多 seed 掩盖首个 gate seed 的明确
   退化。
+
+## 2026-07-23 结构歧义租约因果审计
+
+### 已关闭的审计缺口
+
+- 已定位 `201` 条终态航迹：候选累计创建 203 条，
+  `GT3D-000133/000164` 在前两帧后退出；其后继碎片形成 candidate 全部 3 次 strict
+  IDSW。
+- 已定位 9 条终态未提交航迹：4 条释放后无新证据、3 条发布年龄
+  `0.9308153039 s > 0.9 s`、2 条活动租约。三条超龄恢复拒绝正确。
+- 五组 detached clean 参数扫描均完成。所有组合 D2 终态均为 197，没有一组关闭
+  baseline-relative 航迹、分配和连续性退化。
+- 已联接 D3 计划：第 2/3 版计划分别使用 11/8 条未提交航迹，证明 197 不能作为
+  committed 可分配数解释。
+
+### 仍开放的 P1
+
+- 当前 prediction-only hold 不保留歧义期间的运动学信息。下一候选需定义
+  identity-uncommitted 的保守运动学更新，并保持协方差不虚假收缩。
+- 冻结 seed-1100 制品尚未以 `identity_commitment_state` 过滤新计划或撤回旧计划。
+  当前 D3-owned 准入修改已存在于工作区，但同一冻结输入的 main 集成复验尚未完成；
+  未提交航迹进入 D3 的计数仍必须降为 0。
+- D1 deferred birth 和结构歧义成员变化仍需 D1 独立判断真假重复；D2 不跨模块归因。
+- 候选继续默认关闭，不改 `(2,5)` 和 `0.9 s`，不启动新增 seed、长时或 AirSim 扩展。
+
+完整审计见
+`D2_STRUCTURAL_AMBIGUITY_HOLD_LEASE_CAUSAL_AUDIT_CN.md`。
+
+本次复核没有发现新的 D2 代码 P0。2026-07-23 完整 D2 回归为
+`291 passed, 1 warning in 31.00s`；warning 为既有 Matplotlib `Axes3D` 环境提示。

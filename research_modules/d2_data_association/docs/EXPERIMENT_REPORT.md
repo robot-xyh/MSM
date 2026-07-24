@@ -1202,13 +1202,13 @@ coverage continuity 保持 unavailable。缺失值不能写成 0，也不能据�
 停止；后续先分析恢复量测到评分帧之间约 `0.030815 s` 的调度与发布边界，再在同 seed
 复核。
 
-## 33. 发布新鲜度修复后的 clean seed 1100 A/B（2026-07-23）
+## 33. 发布新鲜度与配置谱系 clean seed 1100 A/B（2026-07-23）
 
 ### 33.1 试验条件
 
-- clean 提交：`65568579c99e4ef9939f0519f66c46d3076ef035`；
-- baseline：`/tmp/MSM-identity-freshness-ab-6556857/baseline`；
-- candidate：`/tmp/MSM-identity-freshness-ab-6556857/candidate`；
+- clean 提交：`ff881316243ff5a2991a4659ab78637ed625d123`；
+- baseline：`/tmp/MSM-identity-freshness-final-ff88131/baseline`；
+- candidate：`/tmp/MSM-identity-freshness-final-ff88131/candidate`；
 - 场景：nominal 200v200；
 - 时长：`2.2 s`；
 - 侦察节点数：`recon_count=2`；
@@ -1219,6 +1219,23 @@ coverage continuity 保持 unavailable。缺失值不能写成 0，也不能据�
 `offline_identity/identity_evaluation.json` 和
 `d6_truth_isolated/episode_record.json`。三份制品登记同一 clean 提交，D6 的严格身份
 指标保持 `available=true`，且 `strict_id_switch_count_backfilled=false`。
+
+baseline/candidate 的 9 条 D2 在线记录均携带
+`d2.identity-evidence-commitment.v2` 和 policy
+`d2-structural-ambiguity-commitment-v2`。恢复配置快照为：
+
+- schema：`d2.identity-commitment-recovery-config.v2`；
+- config version：`main-scalable3d-identity-recovery-publication-freshness-v1`；
+- 规范化 SHA-256：
+  `sha256:bd8e362ec4ca128ed902826750b26d862286770d3c0c4d0b75960a50911a201a`；
+- `publication_freshness_gate_enabled=true`；
+- `max_recovery_evidence_age_seconds=0.9`；
+- 配置记录数 9，逐发布一致性校验通过。
+
+离线 identity manifest 为
+`scalable3d-offline-identity-evaluation-manifest-v2`。D6 复核了 manifest 哈希和原始
+D2 JSONL 哈希，配置谱系状态为 available。该证据只证明运行配置可追溯，不改变算法
+准入判定。
 
 ### 33.2 结果
 
@@ -1264,3 +1281,46 @@ after hold。D6 独立适配结果与 D2 离线评估一致：strict IDSW 为 3�
 候选继续默认关闭。固定 `0.9 s` 不放宽，seeds 1101/1102、10 s 和 20-seed 矩阵不运行。
 后续若提出新候选，应先解释并修复航迹数量、分配数量及连续性下降，再从 seed 1100
 重新进入准入评审。
+
+## 34. 结构歧义租约因果扫描（2026-07-23）
+
+### 34.1 条件
+
+本批固定 nominal 200v200、2.2 秒、`recon_count=2` 和 seed 1100。参数扫描在 detached
+clean 提交 `3fcf5b0` 上运行，每个参数点 1 次；所有 manifest 的
+`repository_dirty=false`。五组运行都保留相同恢复配置版本、`0.9 s` 预算和
+`sha256:bd8e362ec4ca128ed902826750b26d862286770d3c0c4d0b75960a50911a201a`，
+只改变结构歧义租约的 gap/hard 周期。该批是三维质点因果定位，不是 AirSim、实飞或
+多 seed 准入。
+
+### 34.2 结果
+
+| gap/hard | D2 航迹 | D3 分配 | 可用映射 | 未提交记录 | IDSW | track continuity | coverage continuity |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| 1/2 | 197 | 195 | 1499 | 48 | 7 | 0.8288889 | 0.8327778 |
+| 1/3 | 197 | 195 | 1499 | 56 | 5 | 0.8300000 | 0.8327778 |
+| 1/4 | 197 | 197 | 1498 | 62 | 3 | 0.8305556 | 0.8322222 |
+| 2/3 | 197 | 195 | 1494 | 62 | 5 | 0.8272222 | 0.8300000 |
+| 2/4 | 197 | 197 | 1493 | 68 | 3 | 0.8277778 | 0.8294444 |
+
+默认 2/5 候选为 D2/D3 `201/197`、可用映射 1491、未提交 76、IDSW 3、两项连续性
+`0.8266667/0.8283333`。baseline 为 `203/200/1566/0/9/0.865/0.870`。
+
+缩短租约减少了活动 hold 和发布超龄恢复，但释放后的 tentative 航迹缺少运动学更新，
+随后退出活动集合。五组终态均为 197，说明参数不足以关闭退化。
+
+### 34.3 逐轨迹和下游证据
+
+默认候选累计创建 203 条航迹，`GT3D-000133/000164` 退出后终态 201。终态 9 条未提交
+航迹由 4 条释放后无新证据、3 条发布超龄和 2 条活动租约构成。三条超龄证据年龄为
+`0.9308153039 s`，拒绝保持。
+
+冻结制品的 D3 第 2 版计划包含 11 条未提交航迹，第 3 版包含 8 条。历史 D3 分配 197
+因而不是 committed 可分配航迹数。当前 D3-owned 准入修改需由 main 使用同一输入复验
+新计划过滤和旧计划 hold/replan。
+
+### 34.4 判定
+
+五组参数均不晋级，默认 `(2,5)` 和默认关闭状态不变，0.9 秒预算不变。本轮不再扩展
+seed 或长时重放。下一候选应研究身份未提交但协方差保守的运动学更新，并保持来源绑定、
+回放保护、publisher epoch 和 fail-closed 合同。

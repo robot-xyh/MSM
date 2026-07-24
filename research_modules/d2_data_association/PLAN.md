@@ -139,12 +139,20 @@ D2 只负责离线科研仿真、日志回放和多目标数据关联评估。�
   与 created/matched observed-record 两套承诺分母、reason counts、恢复阻断器数量、
   水位线年龄和 overflow。loader 对聚合篡改、负水位线年龄和未提交候选/来源绑定失败
   关闭。v1 继续输出 legacy unavailable/`None`。
-- **发布新鲜度修复后的 clean seed 1100 已执行**：main 与 D6 在 clean 提交
-  `65568579c99e4ef9939f0519f66c46d3076ef035` 复跑 nominal 200v200、2.2 s、
+- **发布新鲜度修复后的 clean seed 1100 已执行**：main 与 D6 在配置谱系绑定后的
+  clean 提交 `ff881316243ff5a2991a4659ab78637ed625d123` 复跑 nominal 200v200、2.2 s、
   `recon_count=2`。baseline 为 D2 航迹 203、D3 分配 200、strict IDSW 9、track
   continuity `0.865`、coverage continuity `0.870`、承诺覆盖率 `1.0`。candidate 为
   D2 航迹 201、D3 分配 197、strict IDSW 3、track continuity `0.8266667`、coverage
   continuity `0.8283333`、all-record commitment coverage `0.9574706212`。
+- **配置谱系已闭合**：baseline/candidate 的 9 条 D2 发布均使用承诺 schema/policy
+  `d2.identity-evidence-commitment.v2` /
+  `d2-structural-ambiguity-commitment-v2`。集成配置
+  `main-scalable3d-identity-recovery-publication-freshness-v1` 的规范化 SHA-256 为
+  `sha256:bd8e362ec4ca128ed902826750b26d862286770d3c0c4d0b75960a50911a201a`；
+  manifest v2 已验证逐发布一致性并绑定原始 D2 JSONL。该集成版本与 D2 单模块默认
+  `d2-identity-recovery-publication-freshness-v2` 名称不同，但 schema、`0.9 s` 预算和
+  fail-closed 行为一致，文档不得混写两类配置来源。
 - **合同修复通过，算法候选仍拒绝**：candidate 1787 条记录中 committed 1711、
   active hold 69、after hold 7。三条恢复被发布新鲜度门控阻断，严格身份指标恢复可用；
   未提交 source/candidate binding violation 均为 0，online truth use 为 0，
@@ -1276,12 +1284,44 @@ strict IDSW、track/identity continuity 和 coverage continuity 因
 模块测试证明发布超龄恢复保持未提交、后续合格原始证据可恢复、same/older/replay 继续
 阻断、无 hold 路径不受恢复预算影响、配置版本和非法值校验有效。
 
-main 已在 clean 提交 `65568579c99e4ef9939f0519f66c46d3076ef035` 完成新的 seed
-1100 A/B，制品位于
-`/tmp/MSM-identity-freshness-ab-6556857/{baseline,candidate}`。发布新鲜度门控把三条
+main 已在配置谱系绑定后的 clean 提交
+`ff881316243ff5a2991a4659ab78637ed625d123` 完成权威 seed 1100 A/B，制品位于
+`/tmp/MSM-identity-freshness-final-ff88131/{baseline,candidate}`。发布新鲜度门控把三条
 超龄恢复保持为 `identity_uncommitted_after_hold`，strict 指标由旧候选的 unavailable
 恢复为可用；candidate IDSW 为 3，baseline 为 9。该候选仍未通过联合门槛：D2 航迹
 `203 -> 201`、D3 分配 `200 -> 197`、track continuity
 `0.865 -> 0.8266667`、coverage continuity `0.870 -> 0.8283333`。因此下一步不是扩展
 seed，而是形成新的结构歧义算法候选并先关闭数量、连续性和覆盖退化。当前继续停止
 seeds 1101/1102、10 s 和 20-seed 运行。
+
+## 34. 结构歧义租约因果审计
+
+### 34.1 已完成
+
+1. 使用既有 clean baseline/candidate 逐帧联接 D2 航迹、身份承诺和 D3 计划。候选
+   累计创建 203 条航迹，`GT3D-000133/000164` 退出后终态为 201；其后继碎片对应
+   candidate 的 3 次 strict IDSW。
+2. 确认终态 9 条未提交航迹由 4 条释放后无新证据、3 条发布超龄和 2 条活动租约组成。
+   三条超龄证据年龄为 `0.9308153039 s`，超过冻结 `0.9 s`，拒绝必须保留。
+3. detached clean seed 1100 已扫描 `(1,2)`、`(1,3)`、`(1,4)`、`(2,3)`、`(2,4)`。
+   五组终态 D2 航迹均为 197；D3 分配为 `195/195/197/195/197`。没有参数点满足
+   baseline-relative 联合非退化。
+4. 冻结 seed-1100 制品的 D3 第 2/3 版计划分别包含 11/8 条未提交航迹。该结果说明
+   历史 D3 分配数 197 不是 committed 可分配航迹数。当前 D3-owned 准入修改仍需由
+   main 使用同一冻结输入完成集成复验。
+
+### 34.2 后续边界
+
+1. 默认 `(2,5)`、默认关闭状态和 `0.9 s` 发布新鲜度预算保持不变。
+2. 不再扩展重放、seed 或长时矩阵。`(1,4)` 只作为下一候选的诊断对照，不进入默认。
+3. 下一算法候选需由新任务单独实施。方向是身份未提交但运动学保守更新：不产生身份
+   binding、hit、建轨、改绑或 ID 变化；协方差不得在歧义子空间收缩；replay、来源绑定、
+   publisher epoch、水位线和 0.9 秒门控保持不变。
+4. 跨模块复验必须证明 main/D3 拒绝未提交航迹进入新计划，并对已有计划产生版本化
+   hold/replan。
+5. 完整证据和合同见
+   `subagent_reviews/D2_STRUCTURAL_AMBIGUITY_HOLD_LEASE_CAUSAL_AUDIT_CN.md`。
+
+此前因果专项为 `42 passed in 0.61s`。2026-07-23 本次复核又运行完整 D2 回归，结果为
+`291 passed, 1 warning in 31.00s`；warning 为既有 Matplotlib `Axes3D` 环境提示。
+未启动额外 seed、长时重放或 AirSim。
