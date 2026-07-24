@@ -34,8 +34,24 @@ python3 research_modules/d6_evaluation_metrics/scripts/evaluate_d1_scan_input_mu
 ```
 
 2026-07-24 专项正反例和只读检查为 `15 passed`。其中真实 summary 结构验证上述三类允许差异，
-并确认非白名单业务字段变化仍会使评估失败。正式 13-pair 证据尚未由本任务执行，
-因此当前没有新的优化准入或系统实时性结论。
+并确认非白名单业务字段变化仍会使评估失败。
+
+正式证据来自 clean commit
+`d14285e4fdeb2f2e2cd32fad2f6d42e30f9e73a7`。manifest SHA256 为
+`760cd0e522b27b99de8c30c366ad7e65f16f783d71cf28e3492be299e24b2402`，
+13 个 pair、26 个 arm 全部完成且退出码为 0。short 扫描输入累计墙钟平均改善
+`5.360121886647966%`，候选 `9/10` 更快，配对原始变化 bootstrap 95% 区间为
+`[-8.208165356448217%, -3.0841406102053194%]`；long 平均改善
+`5.142481684491682%`，候选 `3/3` 更快，区间为
+`[-8.837128529506151%, -1.6693612946922343%]`。short/long 核心墙钟分别改善约
+`0.7187%/0.5792%`，RSS 组均值和逐 pair 门全部通过。
+
+全部业务语义、有限状态、在线真值隔离和实现身份门通过，
+`d1_optimization_admitted=true`。候选最小实时因子只有
+`0.14342687633969603`，因此 `system_realtime_gap_closed=false`。D6 正式评估消费缺口已关闭；
+系统实时、AirSim 和目标硬件证据继续开放。归档 bundle 位于
+`outputs/d1_scan_input_multiseed_20260724_formal_d14285e/`，只保存独立 D6 报告及校验和，
+没有复制 4.2GB episode evidence。该结论仅适用于冻结的三维质点场景。
 
 ## 2026-07-24 D1 协方差优化多 seed 与长时评估入口
 

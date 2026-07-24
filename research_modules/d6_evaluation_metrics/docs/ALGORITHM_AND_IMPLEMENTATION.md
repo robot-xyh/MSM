@@ -36,8 +36,23 @@ python3 research_modules/d6_evaluation_metrics/scripts/evaluate_d1_scan_input_mu
 ```
 
 2026-07-24 专项测试 `15 passed`。真实 summary 正例覆盖 episode ID、stage timings 和嵌套
-governance 三类允许差异；`d2_track_count` 非白名单变化仍导致语义与准入失败。当前尚未消费
-正式 13-pair 矩阵，因此没有登记性能结论。
+governance 三类允许差异；`d2_track_count` 非白名单变化仍导致语义与准入失败。
+
+同日正式消费 clean commit
+`d14285e4fdeb2f2e2cd32fad2f6d42e30f9e73a7` 的 13-pair 矩阵。manifest SHA256 为
+`760cd0e522b27b99de8c30c366ad7e65f16f783d71cf28e3492be299e24b2402`，矩阵 SHA256 为
+`3e852e4036d17d4da7c80dbb4ddea75b6ed7e27ee9d0be3195c2d1b5e30a531d`。26 个 arm
+均为 complete、零退出。short/long 扫描输入平均改善分别为
+`5.360121886647966%/5.142481684491682%`，更快计数为 `9/10` 和 `3/3`；原始变化 bootstrap
+95% 区间分别为 `[-8.208165356448217%, -3.0841406102053194%]` 与
+`[-8.837128529506151%, -1.6693612946922343%]`。全部语义、有限状态、真值隔离、身份、
+核心墙钟和 RSS 门通过，`d1_optimization_admitted=true`。
+
+报告原样归档到
+`outputs/d1_scan_input_multiseed_20260724_formal_d14285e/`，归档文件另有
+`SHA256SUMS`。候选最小实时因子为 `0.14342687633969603`，
+`system_realtime_gap_closed=false`。本结论限定于三维质点输入；未评价 AirSim、目标处理器或
+实机实时能力。
 
 ## D1 多 seed 与长时矩阵评估（2026-07-24）
 

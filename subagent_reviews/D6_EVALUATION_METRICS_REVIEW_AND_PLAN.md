@@ -20,9 +20,24 @@ short/long 分别给出逐 pair 原始变化、正向改善、候选更优数、
 生成 evaluation/aggregate JSON、CSV、中文 Markdown 和 PNG，并记录输入文件 SHA256。
 
 专项正反例和只读检查为 `15 passed`。新增真实 summary 正例通过，非白名单 `d2_track_count`
-变化仍使语义和准入失败。正式 13-pair 证据尚未在本任务中运行，因此本次评审只确认
-评估器和合同可用，不给出新的性能准入结论。`AIRSIM_INTEGRATION_PLAN.md`、
-`EXPERIMENT_REPORT.md` 和 M 对 N 评审已检查；本项未改变对应接口或证据，未修改。
+变化仍使语义和准入失败。
+
+正式评审消费 clean commit
+`d14285e4fdeb2f2e2cd32fad2f6d42e30f9e73a7` 的 13 个 pair。manifest SHA256 为
+`760cd0e522b27b99de8c30c366ad7e65f16f783d71cf28e3492be299e24b2402`，26 个 arm
+全部完成且退出码为 0。short 扫描输入平均改善 `5.360121886647966%`、候选 `9/10` 更快，
+bootstrap 原始区间为 `[-8.208165356448217%, -3.0841406102053194%]`；long 平均改善
+`5.142481684491682%`、候选 `3/3` 更快，区间为
+`[-8.837128529506151%, -1.6693612946922343%]`。short/long 核心墙钟分别改善约
+`0.7187%/0.5792%`，RSS 门通过。全部业务语义、有限状态、在线真值隔离和实现身份门通过，
+`d1_optimization_admitted=true`。
+
+候选最小实时因子为 `0.14342687633969603`，所以
+`system_realtime_gap_closed=false`。正式 D6 评估缺口关闭，系统实时、AirSim 和目标硬件
+证据继续开放。报告 bundle 已归档到
+`research_modules/d6_evaluation_metrics/outputs/d1_scan_input_multiseed_20260724_formal_d14285e/`。
+`EXPERIMENT_REPORT.md` 已补充正式结果；`AIRSIM_INTEGRATION_PLAN.md` 已检查，本项未改变
+AirSim 接口或计划，因此不修改。M 对 N 评审不受影响。
 
 ## 2026-07-24 D1 多 seed 与长时评估评审
 

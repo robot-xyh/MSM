@@ -26,13 +26,28 @@
   阶段缺失、非有限数、running 状态、bootstrap/gate 篡改、目录只读、真实 summary
   允许差异和非白名单业务字段拒绝。
 
-### 后续验证
+### 正式验证
 
-- [ ] main 完成正式 13-pair 同提交矩阵后调用该入口，生成正式准入报告。
-- [ ] 正式结果出来前，不登记 `d1_optimization_admitted` 或系统实时性结论。
+- [x] main 在 clean commit
+  `d14285e4fdeb2f2e2cd32fad2f6d42e30f9e73a7` 完成同提交 13-pair 矩阵；26 个 arm
+  均为 complete、零退出，manifest SHA256 为
+  `760cd0e522b27b99de8c30c366ad7e65f16f783d71cf28e3492be299e24b2402`。
+- [x] D6 已独立消费正式 evidence。short 扫描输入平均改善
+  `5.360121886647966%`、`9/10` 更快、bootstrap 原始区间
+  `[-8.208165356448217%, -3.0841406102053194%]`；long 改善
+  `5.142481684491682%`、`3/3` 更快、区间
+  `[-8.837128529506151%, -1.6693612946922343%]`。
+- [x] 业务语义、有限状态、在线真值隔离、实现身份、核心墙钟和 RSS 门全部通过，
+  `d1_optimization_admitted=true`。正式 D6 评估消费缺口关闭。
+- [x] JSON、CSV、中文 Markdown 和 PNG 已连同 `SHA256SUMS` 归档到
+  `outputs/d1_scan_input_multiseed_20260724_formal_d14285e/`；4.2GB episode evidence
+  保持在外部只读目录，没有复制。
+- [ ] 系统实时性继续开放。候选最小实时因子为 `0.14342687633969603`，
+  `system_realtime_gap_closed=false`；后续仍需 AirSim 和目标硬件容量证据。
 
-`AIRSIM_INTEGRATION_PLAN.md` 和 `EXPERIMENT_REPORT.md` 已检查。本项只消费三维质点写盘证据，
-未改变 AirSim 接口，也尚未产生正式实验结果，因此无需修改。
+`AIRSIM_INTEGRATION_PLAN.md` 和 `EXPERIMENT_REPORT.md` 已检查。本项产生正式三维质点实验结果，
+因此已更新 `EXPERIMENT_REPORT.md`。本项没有改变 AirSim producer、日志合同、运行时接口或测试
+计划，`AIRSIM_INTEGRATION_PLAN.md` 无需修改。
 
 ## 2026-07-24 D1 多 seed 与长时 clean A/B 评估状态
 

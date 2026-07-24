@@ -18,15 +18,24 @@
 8. 已关闭真实 summary 误拒绝。白名单仅增加 treatment 派生 `episode_id`、final
    `stage_timings` 和 final 内重复 governance 的实现/性能字段；非白名单业务字段仍严格比较。
    更新后专项为 `15 passed`。
+9. 已消费 clean commit
+   `d14285e4fdeb2f2e2cd32fad2f6d42e30f9e73a7` 的正式 13-pair evidence。26 个 arm
+   全部完成且零退出；manifest SHA256 为
+   `760cd0e522b27b99de8c30c366ad7e65f16f783d71cf28e3492be299e24b2402`。
+10. short 扫描输入平均改善 `5.360121886647966%`、`9/10` 更快，bootstrap 原始区间
+    `[-8.208165356448217%, -3.0841406102053194%]`；long 改善
+    `5.142481684491682%`、`3/3` 更快，区间
+    `[-8.837128529506151%, -1.6693612946922343%]`。
+11. 全部业务语义、有限状态、在线真值隔离、实现身份、核心墙钟和 RSS 门通过，
+    `d1_optimization_admitted=true`。正式 bundle 已带 SHA256 归档；D6-owned 正式评估缺口关闭。
 
 ### 仍开放 P1
 
-1. **正式矩阵尚未评估。** main 需完成并提供 13-pair
-   `episodes_complete_pending_d6` evidence，D6 才能给出正式优化准入结论。
-2. **系统实时性保持独立开放。** 即使扫描输入优化通过，仍需候选实时因子全部达到 1；三维质点
-   结论不能替代 AirSim 或目标硬件容量证据。
+1. **系统实时性保持独立开放。** 候选最小实时因子为 `0.14342687633969603`，未达到 1；
+   `system_realtime_gap_closed=false`。三维质点结论不能替代 AirSim 或目标硬件容量证据。
 
-当前无新增 D6-owned P0。评估器实现缺口已关闭，正式证据消费和系统级实时容量保持 P1。
+当前无新增 D6-owned P0。评估器实现和正式证据消费缺口已关闭；系统级实时容量、AirSim 和
+目标硬件证据保持开放。
 
 ## 2026-07-24 D1 多 seed 与长时评估 GAP 更新
 
