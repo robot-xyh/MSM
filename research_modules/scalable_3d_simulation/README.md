@@ -253,6 +253,13 @@ publication-base replay + replace，以清除可能存在的旧临时修正。�
 seeds 1101/1102 继续停止。机器证据和中文报告位于
 `../d1_sensor_fusion/reports/structural_ambiguity_centroid_replay_20260723/`。
 
+下一候选的设计决策已经冻结，但尚未实现。D1 先做 detached publication overlay 最小原型：
+规范滤波状态、协方差、观测历史、检查点和重放缓存保持不动；候选接受时只改一次发布 DTO，
+拒绝时直接使用规范快照，并要求业务发布与 control byte-identical。固定滞后 OOSM 共同质心
+事件暂缓，直至事件排序、过程噪声分段和一致性 oracle 单独冻结。D1 结构证据由 D2 概率或
+多假设层消费的路线保留为主要系统研究方向，由 D2 owner 另行规划。完整设计见
+`../d1_sensor_fusion/docs/STRUCTURAL_AMBIGUITY_NEXT_CANDIDATE_DESIGN_CN.md`。
+
 ## 2026-07-22 规则全栈性能校准
 
 提交 `33101656b0cf1967a778cdb36a440611e02109b1` 已完成 20、50、100、200 四档 clean-source

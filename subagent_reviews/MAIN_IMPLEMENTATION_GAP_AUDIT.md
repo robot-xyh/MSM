@@ -247,10 +247,16 @@ D1 已完成三类受控冻结扫描诊断。同步平衡纯交替环 `2x2` 分�
 分别为 `-0.0071928353214153066` 和 `-0.004617076466238031`。诊断已逐位确认差值来自替换
 路径。它不是共同质心 correction，也不能被描述为拒绝路径严格无状态副作用。
 
-当前无新增 P0。受控有效窗口子项已关闭，算法准入 P1 仍开放。下一候选必须先明确拒绝后的
-发布态替换语义，或给出不削弱双时间戳、满基数和身份门的固定滞后 OOSM 方案；随后使用新的
-真实匿名冻结扫描验证自然 treatment、状态一致性、D2/D3 可用性和性能。候选状态保持
-`candidate_not_promoted`，seeds 1101/1102 继续停止。
+当前无新增 P0。受控有效窗口子项已关闭，算法准入 P1 仍开放。D1 已完成 A/B/C 设计比较：
+A 采用 detached publication overlay，是下一步最小原型；B 的固定滞后 OOSM 事件在事件排序、
+过程噪声分段和一致性 oracle 冻结前暂停；C 保持 D1 只发布证据，由 D2 概率或多假设层消费，
+需由 D2 owner 单独规划。该设计没有 Python、开关、DTO 或运行证据。
+
+下一验收先关闭 A1/A2：规范 state/covariance/history/checkpoint/cache 不变，所有拒绝原因下
+业务发布与 control byte-identical。通过后才使用新的真实匿名冻结扫描验证自然 treatment、
+状态一致性、D2/D3 可用性和性能。候选状态保持 `candidate_not_promoted`，seeds 1101/1102
+继续停止。设计文档位于
+`research_modules/d1_sensor_fusion/docs/STRUCTURAL_AMBIGUITY_NEXT_CANDIDATE_DESIGN_CN.md`。
 
 ## 2026-07-22 后验代次与 clean 长时基线
 
