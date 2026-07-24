@@ -559,3 +559,17 @@ assignment、D5 active-vision command 和 D7 guidance command 的计数均为 0�
 AirSim 候选准入依据，也不改变 seeds 1101/1102 继续停止的决定。
 
 本轮只运行 D2 模块回归，结果为 `291 passed, 1 warning in 29.29s`；未启动 AirSim。
+
+## 已知虚警排除计数接线
+
+AirSim 或质点 episode 写出 observation truth v2 后，D2 evaluation 的
+`known_false_alarm_only_mapping_count` 必须由最终 frame mappings 重算，只接受
+`status="excluded"` 且 `reason="known_false_alarm_only"`。仅虚警来源若同时发生
+未观测状态、谱系超窗、重复或其他完整性错误，mapping 保持 unavailable，不能报告为
+已排除。
+
+D6 的严格校验不放宽。消费者从 evaluation 的 frame mappings 独立重算排除数，并与
+audit 比较。2026-07-24 使用 nominal 200v200、10 秒、seed 1102 的质点制品完成只读
+验证：旧 disposition 组数为 14，最终排除映射为 11；新 producer 输出 11，其他身份
+载荷不变。该次没有启动 AirSim，没有改变 AirSim adapter、双时间戳、坐标系、观测
+schema 或在线身份路径。真实 AirSim 的 v2 虚警 producer 和多 seed 校准仍需后续运行。

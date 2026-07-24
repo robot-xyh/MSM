@@ -1414,3 +1414,46 @@ D2 到 D3/D5/D7 的身份承诺安全合同关闭。该结论不改变 D2 算法
 
 本次证据复核后执行 D2 全量测试，结果为
 `291 passed, 1 warning in 29.29s`。warning 是本机 Matplotlib `Axes3D` 环境提示。
+
+## 36. 已知虚警排除计数复核（2026-07-24）
+
+### 36.1 输入
+
+复核只读使用 nominal 200v200、10 秒、2 个侦察节点、seed 1102 的 reference episode。
+该制品来自 clean 提交
+`7cc2d0cfd598a72d60c6ba8c7d4a283f4e5a897d`，包含 48 个身份评估帧、9505 条
+identity evidence 和 11437 条 observation truth labels。原
+`identity_evaluation.json` SHA-256 为
+`67a5c142f51e3a67b145115849a62ca70c5ee2d5ec1ae5f1ed348ed00e799224`。
+
+验收条件为：audit 中的 `known_false_alarm_only_mapping_count` 与最终持久化
+`status="excluded"`、`reason="known_false_alarm_only"` mapping 数严格相等；除该
+字段外，新旧 evaluation payload 必须完全相同。
+
+### 36.2 结果
+
+旧 producer 按 disposition 组统计出 14。逐条检查 frame mappings 后，11 条为
+`excluded/known_false_alarm_only`；另 3 条只含已知虚警，但来源观测超出 lineage
+window，最终为 `unavailable/source_observation_outside_lineage_window`。旧聚合因此
+多计 3 条。
+
+修复后重放结果为：
+
+| 项目 | 修复前 | 修复后 | 判定 |
+|---|---:|---:|---|
+| known false alarm only mapping | 14 | 11 | 与 persisted exclusions 一致 |
+| excluded mapping | 11 | 11 | 不变 |
+| target with known false alarm mapping | 133 | 133 | 不变 |
+| unknown disposition mapping | 0 | 0 | 不变 |
+| 除目标字段外 evaluation payload | - | 完全相同 | 通过 |
+
+新增回归还覆盖 association state 非 observed、来源只含 known false alarm 的情况。
+该 mapping 保持 unavailable，不进入排除计数。专项测试 `12 passed`，完整 D2
+`292 passed, 1 warning in 28.81s`，零失败门通过。
+
+### 36.3 判定
+
+D2 producer 与 D6 strict consumer 的已知虚警排除计数合同恢复一致。没有放宽 truth
+隔离、unknown 阻断或消费者校验，也没有改写严格 IDSW、continuity、候选映射和
+`global_track_id`。该结果关闭单项离线审计合同缺口，不关闭真实 AirSim、多 seed
+身份效果或实时性 P1。

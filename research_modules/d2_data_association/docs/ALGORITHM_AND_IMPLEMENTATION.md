@@ -2191,3 +2191,38 @@ token 当作 canonical ID。D3 继续只消费 committed。
 
 本 C0 没有 Python、运行开关、配置类、公开 schema、测试、回放、AirSim 或 P95/RSS
 证据。默认 GNN/Hungarian、现有 hold 和 seeds 1101/1102 停止状态均未改变。
+
+## 36. 已知虚警排除映射审计
+
+离线 observation truth v2 将来源证据分为 target、known false alarm 和 unknown。
+来源处置组合用于解释一个 mapping group 包含什么证据，最终 mapping 状态还要经过
+association state、谱系时间窗、重复、冲突和承诺完整性门控。两者不能使用同一个聚合
+口径。
+
+已知虚警排除数定义为：
+
+\[
+N_{\mathrm{FA,excluded}}=
+\sum_{m\in\mathcal{M}}
+\mathbf{1}\left[
+s_m=\mathrm{excluded}
+\land r_m=\mathrm{known\_false\_alarm\_only}
+\right].
+\]
+
+\(\mathcal{M}\) 是 evaluation 中最终持久化的全部 frame mappings。即使一个证据组只含
+known false alarm，只要它还触发 `track_not_assigned_in_frame`、谱系超窗或其他失败
+关闭原因，它的最终状态就是 unavailable，不能计入
+`known_false_alarm_only_mapping_count`。
+
+`target_with_known_false_alarm_mapping_count` 继续统计来源处置中同时含 target 和
+known false alarm 的 persisted mapping groups；`unknown_disposition_mapping_count`
+继续统计含 unknown 的 persisted mapping groups。二者是证据组成审计，不是 excluded
+状态别名。unknown 仍阻断严格身份指标，target 与已知虚警混合仍保留唯一 target
+候选。
+
+2026-07-24 对 200v200、10 秒、seed 1102 的 48 帧真实质点制品重放后，排除数从旧
+disposition 组口径的 14 修正为最终 mapping 口径的 11。其余 evaluation payload
+逐项相同；`target_with_known_false_alarm_mapping_count=133`、
+`unknown_disposition_mapping_count=0` 未改变。该修复只影响离线审计聚合，不改变在线
+关联、身份绑定、严格 IDSW 或航迹状态机。

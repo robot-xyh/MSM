@@ -40,6 +40,7 @@ def _record(
     observation_ids: tuple[str, ...],
     *,
     timestamp: float = 0.0,
+    association_state: str = "created",
 ) -> GlobalTrackLineageEvidence:
     return GlobalTrackLineageEvidence(
         episode_id="truth-disposition-test",
@@ -47,7 +48,7 @@ def _record(
         frame_timestamp=timestamp,
         global_track_id=global_track_id,
         lifecycle_state="tentative",
-        association_state="created",
+        association_state=association_state,
         source_observations=tuple(
             _ref(observation_id, timestamp)
             for observation_id in observation_ids
@@ -244,6 +245,36 @@ def test_target_plus_false_alarm_keeps_target_and_pure_false_alarm_is_excluded(
     assert partial.total_mapping_count == 2
     assert partial.scored_mapping_count == 1
     assert partial.non_scored_mapping_count == 1
+
+
+def test_nonobserved_false_alarm_group_is_not_counted_as_persisted_exclusion(
+) -> None:
+    false_alarm = Scalable3DObservationTruthLabel.known_false_alarm(
+        observation_id="obs-fa-unmatched",
+        measurement_timestamp=0.0,
+    )
+
+    _, evaluation, _ = _evaluate(
+        (
+            _record(
+                "GT-false-alarm-unmatched",
+                ("obs-fa-unmatched",),
+                association_state="unmatched",
+            ),
+        ),
+        (false_alarm,),
+    )
+    mapping = _mapping(evaluation, "GT-false-alarm-unmatched")
+
+    assert mapping.status == "unavailable"
+    assert mapping.reason == "lineage_on_unassigned_track"
+    assert {
+        "lineage_on_unassigned_track",
+        "track_not_assigned_in_frame",
+    }.issubset(mapping.unavailable_reasons)
+    assert "known_false_alarm_only" not in mapping.unavailable_reasons
+    assert evaluation.audit["known_false_alarm_only_mapping_count"] == 0
+    assert evaluation.audit["excluded_mapping_count"] == 0
 
 
 def test_unknown_disposition_keeps_candidate_but_blocks_strict_metrics() -> None:

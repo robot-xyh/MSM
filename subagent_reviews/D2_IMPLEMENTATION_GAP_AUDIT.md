@@ -1392,3 +1392,35 @@ Matplotlib `Axes3D` 环境提示。
 
 本轮只关闭“缺少 D2-owned C0 正式计划”的文档 GAP，不关闭结构歧义算法 P1，也不新增
 P0 blocker。
+
+## 2026-07-24 已知虚警排除计数合同 GAP 收口
+
+### 已关闭的 P1 评估合同缺口
+
+- D6 严格消费 long seed 1102 reference 时发现
+  `known_false_alarm_only_mapping_count=14`，但最终 frame mappings 中只有 11 条
+  `excluded/known_false_alarm_only`。D2 producer 原实现按来源 disposition 组计数，
+  没有服从最终持久化 mapping 的 status/reason。
+- 独立根因复核确认，多出的 3 个组并非排除映射。它们处于 observed `created` 状态，
+  但来源超出 lineage window，最终为
+  `unavailable/source_observation_outside_lineage_window`。非 observed 且仍带仅虚警
+  谱系时也存在同类口径风险。
+- producer 已改为直接遍历最终 frame mappings，只统计
+  `status="excluded"` 且 `reason="known_false_alarm_only"`。D6 严格校验保持不变，
+  truth 隔离和 fail-closed 规则未放宽。
+- 真实 200v200、10 秒、seed 1102 制品只读重放得到 `14 -> 11`；除该字段外 evaluation
+  payload 完全相同。`target_with_known_false_alarm_mapping_count=133` 和
+  `unknown_disposition_mapping_count=0` 保持来源证据组成语义和数值不变。
+- 新增非 observed 仅虚警回归；处置专项 `12 passed`，完整 D2
+  `292 passed, 1 warning in 28.81s`。验收阈值为零失败和 audit/persisted mapping
+  严格相等。
+
+### 仍开放的 P1
+
+- 本修复只恢复 D2 producer 与 D6 consumer 的离线合同一致性，不证明 D2 关联性能、
+  strict IDSW、continuity 或系统实时性改善。
+- 结构歧义运动学支持、C1-C3 有界身份假设、真实 AirSim、困难场景多 seed 和固定硬件
+  延迟仍开放。
+
+P0 无新增项。该问题不要求修改在线 GNN/Hungarian、中心 `global_track_id` 或
+AssignmentPlan 合同。

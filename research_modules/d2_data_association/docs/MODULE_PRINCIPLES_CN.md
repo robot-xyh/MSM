@@ -1628,3 +1628,25 @@ clean source commit `0d2da25` 的 seed 1000 只读复算中，严格 IDSW 保持
 7. **回归结果独立记录**：2026-07-23 文档同步后的 D2 全量回归为
    `291 passed, 1 warning in 29.29s`。warning 是本机 Matplotlib `Axes3D` 环境提示，
    不属于关联算法失败。
+
+## 三十七、最终映射计数原则（2026-07-24）
+
+1. **来源处置与最终状态分开**：known false alarm、target 和 unknown 描述谱系证据；
+   excluded、available、unavailable 和 ambiguous 描述全部门控后的持久化 mapping。
+   来源组合不能替代最终状态计数。
+2. **纯虚警排除按输出重算**：
+   `known_false_alarm_only_mapping_count` 只统计最终
+   `excluded/known_false_alarm_only` 映射。仅虚警证据若同时违反谱系时间窗或处于非
+   observed association state，继续失败关闭为 unavailable，计数为 0。
+3. **相邻计数保持证据语义**：
+   `target_with_known_false_alarm_mapping_count` 和
+   `unknown_disposition_mapping_count` 统计 persisted mapping groups 的来源证据组成，
+   不表示这些映射已排除或可评分。unknown 的严格指标阻断规则不变。
+4. **消费者必须能由 frame mappings 独立验证**：D6 不需要重新打开 truth sidecar，
+   即可从持久化 status/reason 重算纯虚警排除数。producer 与 consumer 不一致时继续
+   拒绝，不允许放宽 D6 校验。
+5. **修复不得改写身份结果**：seed 1102 的 10 秒、200v200 只读重放中，计数
+   `14 -> 11`；除该字段外 evaluation payload 完全相同。该标准防止审计修复顺带改变
+   IDSW、continuity、candidate 或 `global_track_id`。
+6. **证据边界保持**：本次只有单个长时质点 fixture 和模块测试，不是 AirSim、多 seed
+   或算法性能结论。完整 D2 回归为 `292 passed, 1 warning in 28.81s`。

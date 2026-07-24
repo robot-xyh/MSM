@@ -1482,3 +1482,40 @@ delay、资源或绑定合同退化。
 
 seeds 1101/1102 在 C0-C2 均不恢复；C3 也必须重新登记 seed 清单并单独授权，本计划不
 自动把 1101/1102 作为下一批。
+
+## 37. 已知虚警排除计数口径收口
+
+### 37.1 已完成
+
+2026-07-24 将 `known_false_alarm_only_mapping_count` 的 producer 口径改为最终
+持久化映射口径：
+
+```text
+count(status == excluded and reason == known_false_alarm_only)
+```
+
+不再用来源 disposition 中“有 known false alarm、无 target、无 unknown”的组数替代
+最终排除数。来源处置仍用于 `target_with_known_false_alarm_mapping_count` 和
+`unknown_disposition_mapping_count`；这两个字段描述每个持久化 mapping group 的证据
+组成，不表示 mapping 的最终状态。
+
+新增非 observed 仅虚警回归。该组同时带有
+`lineage_on_unassigned_track` 和 `track_not_assigned_in_frame`，最终为 unavailable，
+不得进入排除计数。既有缺标签、unknown、处置冲突、时间错误和谱系超窗仍保持
+fail closed。
+
+### 37.2 真实制品复核
+
+只读重放 nominal 200v200、10 秒、seed 1102 reference 制品。48 帧、9505 条 identity
+evidence 和 11437 条 truth labels 中，旧审计报告 14，最终 persisted exclusions 为
+11；另 3 个仅虚警组因谱系超窗为 unavailable。新 producer 报告 11。除该字段外，新旧
+evaluation payload 严格相同；相邻计数 `133/0` 不变。
+
+验收门是审计值与最终 persisted `excluded/known_false_alarm_only` 映射逐条相等，且
+其余身份结果不变。专项 `12 passed`，完整 D2
+`292 passed, 1 warning in 28.81s`。该 D2-owned 评估合同缺口已关闭。
+
+### 37.3 不变的后续计划
+
+本修复不构成关联算法、AirSim 或实时性能晋级。结构歧义运动学支持、C1-C3 有界身份
+假设、真实 AirSim、多 seed 严格身份和固定硬件时延仍按前述 P1 计划执行。

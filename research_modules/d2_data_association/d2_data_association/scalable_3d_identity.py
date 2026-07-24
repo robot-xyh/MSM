@@ -2711,22 +2711,9 @@ def _evaluate_scalable_3d_identity(
                     hash_scalable_3d_observation_truth_labels(labels)
                 ),
                 "known_false_alarm_only_mapping_count": sum(
-                    counts.get(
-                        OBSERVATION_TRUTH_DISPOSITION_KNOWN_FALSE_ALARM,
-                        0,
-                    )
-                    > 0
-                    and counts.get(
-                        OBSERVATION_TRUTH_DISPOSITION_TARGET,
-                        0,
-                    )
-                    == 0
-                    and counts.get(
-                        OBSERVATION_TRUTH_DISPOSITION_UNKNOWN,
-                        0,
-                    )
-                    == 0
-                    for counts in mapping_disposition_audit.values()
+                    mapping.status == "excluded"
+                    and mapping.reason == "known_false_alarm_only"
+                    for mapping in all_mappings
                 ),
                 "excluded_mapping_count": sum(
                     mapping.status == "excluded"

@@ -1450,3 +1450,40 @@ hold-disabled baseline 的 `0.865/0.870` 仍高于当前 `0.8266666667/0.8283333
 评审只接受 C0 设计完整性，不接受算法晋级。没有代码、开关、schema、测试或运行证据；
 旧 hold 的运动学、航迹数和 continuity 退化仍是开放 P1。默认 GNN/Hungarian 和 hold
 不变，seeds 1101/1102 不恢复。
+
+## 46. 2026-07-24 已知虚警排除计数评审
+
+### 46.1 根因
+
+评审确认 producer 口径错误。旧
+`known_false_alarm_only_mapping_count` 统计来源 disposition 中“有 known false
+alarm、无 target、无 unknown”的证据组，却被 D6 按最终
+`excluded/known_false_alarm_only` mapping 解释。其他完整性门控可以把这种证据组保留
+为 unavailable，因此两个集合不等价。
+
+long seed 1102 的 14 个仅虚警组中，11 个最终排除；另 3 个因 lineage 超窗为
+unavailable。初步提出的非 observed 情形是同一类风险，但不是该真实 fixture 多出 3 条
+的直接原因。
+
+### 46.2 接受项
+
+接受 producer 改为从最终 frame mappings 直接计算排除数。接受新增非 observed 仅虚警
+回归：持久化 mapping 同时记录 `lineage_on_unassigned_track` 和
+`track_not_assigned_in_frame`，状态保持 unavailable，排除计数为 0。
+
+相邻字段不改：
+
+- `target_with_known_false_alarm_mapping_count` 描述 persisted mapping group 中同时
+  出现 target 与 known false alarm 的来源证据；
+- `unknown_disposition_mapping_count` 描述 persisted mapping group 含 unknown；
+- 二者不声明 mapping 最终为 excluded，也不替代 strict availability。
+
+### 46.3 证据和边界
+
+nominal 200v200、10 秒、seed 1102 的 48 帧、9505 条 evidence、11437 条 truth labels
+只读重放后，计数 `14 -> 11`，与 11 条持久化 exclusions 一致；除该字段外整个
+evaluation payload 完全相同，相邻计数保持 `133/0`。专项 `12 passed`，完整 D2
+`292 passed, 1 warning in 28.81s`。
+
+评审接受该 D2-owned 离线合同修复，D6 校验不得放宽。该结论不接受 D2 算法晋级，不
+关闭 AirSim、多 seed、结构歧义运动学或系统实时性 P1。

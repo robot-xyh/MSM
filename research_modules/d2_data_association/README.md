@@ -1125,3 +1125,28 @@ seed 1100 A/B。发布新鲜度门控加入后的模块回归为
 完成相同 seed 的权威 A/B；strict 指标恢复可用，但候选因 D2/D3 数量和
 continuity/coverage 退化被拒绝，结果见本文件开头。本次文档复核再次运行完整回归，
 结果为 `291 passed, 1 warning in 31.00s`。
+
+## 2026-07-24 已知虚警排除计数一致性
+
+`known_false_alarm_only_mapping_count` 现在严格按最终持久化的 frame mapping 计算：
+只统计 `status="excluded"` 且 `reason="known_false_alarm_only"` 的映射。旧实现按
+来源谱系中的 disposition 组合计数；若同一仅虚警证据组同时触发谱系超窗、未观测状态
+或其他完整性阻断，最终 mapping 为 `unavailable`，旧审计值仍会把它计作已排除映射，
+与 D6 对持久化 frame mapping 的独立校验矛盾。
+
+2026-07-24 只读重放 nominal 200v200、10 秒、2 个侦察节点、seed 1102 的 reference
+制品。输入包含 48 个评估帧、9505 条身份 evidence 和 11437 条观测真值标签，原
+evaluation SHA-256 为
+`67a5c142f51e3a67b145115849a62ca70c5ee2d5ec1ae5f1ed348ed00e799224`。14 个仅虚警
+disposition 组中，11 个最终为排除映射，另 3 个因
+`source_observation_outside_lineage_window` 为 unavailable。修复后审计计数由 14
+变为 11，与 `excluded_mapping_count=11` 和持久化映射逐条一致；移除该单一计数字段后，
+重放结果与原 evaluation 完全相同。`target_with_known_false_alarm_mapping_count=133`
+和 `unknown_disposition_mapping_count=0` 保持不变：这两个字段描述持久化映射组所含
+来源处置，不声称最终 mapping 已被排除。
+
+回归新增“仅虚警 disposition、association state 非 observed”用例，确认该映射保持
+unavailable 且排除计数为 0。处置专项为 `12 passed`，完整 D2 为
+`292 passed, 1 warning in 28.81s`，验收阈值为零失败。该修复只校正离线审计聚合，
+没有改变在线 GNN/Hungarian、门控、生命周期、中心 `global_track_id`、严格 IDSW
+公式或 AirSim 接口。
