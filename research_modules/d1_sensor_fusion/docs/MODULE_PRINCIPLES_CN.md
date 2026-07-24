@@ -1,10 +1,37 @@
 # 第一研究模块（D1）异构传感器融合原理与当前实现
 
-**状态日期：2026-07-23**
+**状态日期：2026-07-24**
 
 **适用范围：科研仿真、离线回放与接口验证**
 
-## 当前权威增量（2026-07-23）
+## 当前权威增量（2026-07-24）
+
+### 单次调用内原子复用，公共边界继续强校验
+
+D1 新增
+`run_experimental_centroid_publication_overlay_atomically()`。该接口只用于
+experimental/offline 审计，在一个同步调用中内部完成 prepare、evaluate、detached assemble
+和 post-integrity verify。调用方不能在准备和内部消费之间取得 prepared handle。返回值是
+冻结结果，公开安全准备摘要、decision、可选 detached shadow、规范与 shadow 摘要、后置
+完整性检查及工作量计数，不公开内部描述符或规范对象引用。公开字典只含标准 JSON 可表示值，
+并提供确定性字节编码。规范与 shadow 摘要采用同一完整发布清单语义。
+
+原子路径遵守“先完整描述、后完整复核”的边界。200 航迹正常路径只构造一次完整规范描述，
+操作后逐航迹重算一次完整规范载荷 SHA-256。完整载荷继续包括 state/covariance、metadata、
+lineage/source support、identity、`last_nis`、全局编号、时间戳和分级；NED、协方差、禁止
+身份字段和唯一编号校验仍在准备阶段执行。accepted 路径另对 detached shadow 形成发布摘要。
+rejected 路径不复制或序列化 shadow。
+
+操作内检测到数组、嵌套 metadata 或其他规范表面变化时，原子结果丢弃 provisional shadow，
+把 decision 改为 fail-closed 拒绝，并将 generation 状态恢复到输入状态。公共
+prepare/evaluate/assemble 接口的每次复用强校验未改变，原子优化不能作为跨调用边界信任
+prepared descriptor 的理由。
+
+2026-07-24 聚焦测试 `36 passed`，D1 全量
+`324 passed`。2/3/5 成员决策字节保持，200 航迹计数为 1 次完整描述和 1 次后置
+规范复核；accepted/rejected、只读嵌套 metadata、调用内篡改、引用隔离和协方差不收缩均已
+覆盖。main 尚未接入该入口，A2 现有性能失败和零 treatment 结论不变；A3/A4 与 seeds
+1101/1102 继续停止。
 
 ### 规范发布描述只构造一次
 

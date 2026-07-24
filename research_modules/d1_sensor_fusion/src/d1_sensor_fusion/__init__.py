@@ -175,6 +175,9 @@ from .structural_ambiguity_publication_overlay_prototype import (
     EXPERIMENTAL_CENTROID_PUBLICATION_DECISION_SCHEMA_VERSION,
     EXPERIMENTAL_CENTROID_PUBLICATION_PROTOTYPE_STATUS,
     EXPERIMENTAL_CENTROID_PUBLICATION_STATE_SEMANTICS,
+    ExperimentalCentroidAtomicOverlayResult,
+    ExperimentalCentroidAtomicOverlayWork,
+    ExperimentalCentroidAtomicPreparedPublication,
     ExperimentalCentroidCanonicalIntegrityCheck,
     ExperimentalCentroidCanonicalPreparationWork,
     ExperimentalCentroidEvidenceDisposition,
@@ -188,6 +191,7 @@ from .structural_ambiguity_publication_overlay_prototype import (
     assemble_experimental_centroid_shadow_tracks,
     evaluate_experimental_centroid_publication_overlays,
     prepare_experimental_centroid_canonical_publication,
+    run_experimental_centroid_publication_overlay_atomically,
 )
 from .tail_latency_performance import (
     TAIL_LATENCY_PERFORMANCE_SCHEMA_VERSION,

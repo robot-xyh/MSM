@@ -2,7 +2,7 @@
 
 本目录保存 D1 多传感器融合与目标配准模块的说明文档。
 
-## 当前证据索引（2026-07-23）
+## 当前证据索引（2026-07-24）
 
 最新设计决策见
 `STRUCTURAL_AMBIGUITY_NEXT_CANDIDATE_DESIGN_CN.md`。该文件比较 publication overlay、
@@ -11,12 +11,20 @@ fixed-lag OOSM 共同质心事件和 D2 概率/多假设消费三条路线。A1 
 装配直接返回规范业务序列，不修改 state/covariance、历史、checkpoint 或 replay cache。
 聚焦测试 `7 passed`，D1 全量 `294 passed`。A1 未接 `FusionAdapter`，没有修改 `fusion.py`
 或新增 D1 默认运行开关，其 experimental decision 不是在线 schema。D1 后续完成准备对象
-优化，聚焦 `21 passed`、D1 全量 `308 passed in 19.69s`。main 提交 `2b976a7` 已在独立、
-默认关闭的 A2 审计 shadow 中显式接入该对象：3294/3294 条归一化业务记录与 control 一致，
-禁止写入、错误和 D2/D3 消费为 0；但总墙钟增加 `80.8829%`，shadow P95
-`1532.999 ms`，46 条 evidence 为 0 accepted/46 `oosm_scan` rejected。A2 因性能门和有效
-treatment 门失败而不准入；A3/A4 未实现。B 因当前 `Q(h)=G(h)qG(h)^T` 的单段/分段传播
-不等价而暂缓；C 保留为 D2 后续主要系统研究路线。seeds 1101/1102 继续停止。
+优化，历史验证为聚焦 `21 passed`、D1 全量 `308 passed in 19.69s`。2026-07-24 又增加
+单次同步调用的原子 experimental/offline 入口：内部完成 prepare、evaluate、detached
+assemble 和 post-integrity verify，不把 prepared descriptor 暴露给调用方。最新聚焦测试
+`36 passed`，D1 全量 `324 passed`。200 航迹正常路径为 1 次完整描述和 1 次后置完整规范
+复核；rejected 路径不物化 shadow，调用内规范内容变化会丢弃 shadow 并撤销状态推进。公开
+结果可由标准 JSON 编码，canonical/shadow 发布摘要语义一致。公共 prepared handle 的逐边界
+强校验保持不变。
+
+main 提交 `2b976a7` 已在独立、默认关闭的 A2 审计 shadow 中显式接入旧三步准备对象：
+3294/3294 条归一化业务记录与 control 一致，禁止写入、错误和 D2/D3 消费为 0；但总墙钟
+增加 `80.8829%`，shadow P95 `1532.999 ms`，46 条 evidence 为 0 accepted/46
+`oosm_scan` rejected。main 尚未接入或复跑原子入口，A2 因性能门和有效 treatment 门失败而
+不准入；A3/A4 未实现。B 因当前 `Q(h)=G(h)qG(h)^T` 的单段/分段传播不等价而暂缓；C 保留为
+D2 后续主要系统研究路线。seeds 1101/1102 继续停止。
 
 最新 D1 边界诊断复用 governed replay、扫描组织器和在线批融合入口，对同步平衡、乱序平衡和
 数量不平衡三类结构歧义冻结扫描进行控制臂/共同质心候选臂比较。同步 `2x2` 纯交替环形成一次
@@ -127,7 +135,7 @@ D1 侧解释见本目录各算法/AirSim 文档和 `../reports/EXPERIMENT_REPORT
 
 ## 文档
 
-- `STRUCTURAL_AMBIGUITY_NEXT_CANDIDATE_DESIGN_CN.md`：结构歧义 A/B/C 下一候选比较、数学语义、数据结构、排序键、风险、阶段和预注册验收；A1 离线纯函数与准备对象优化已完成单元测试，main A2 已显式接线但性能门和有效 treatment 门失败，A3/A4 未实现。
+- `STRUCTURAL_AMBIGUITY_NEXT_CANDIDATE_DESIGN_CN.md`：结构歧义 A/B/C 下一候选比较、数学语义、数据结构、排序键、风险、阶段和预注册验收；A1 离线纯函数、准备对象和原子接口优化已完成单元测试，main 尚未接入原子入口，A2 现有性能门和有效 treatment 门失败，A3/A4 未实现。
 - `ALGORITHM_AND_IMPLEMENTATION.md`：算法原理、数学模型、接口、调参、仿真验证、主动降级不确定度信号和跨模块关系。
 - `AIRSIM_INTEGRATION_PLAN.md`：AirSim/离线回放集成计划，说明时间戳、坐标和传感器桥接策略。
 - `MODULE_PRINCIPLES_CN.md`：中文模块原理、已实现边界和当前证据解释。

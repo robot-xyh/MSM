@@ -5,6 +5,32 @@
 
 ---
 
+## 最新增量：A1 原子 publication overlay（2026-07-24）
+
+- D1 新增
+  `run_experimental_centroid_publication_overlay_atomically()`，状态为
+  `IMPLEMENTED_UNIT_TESTED_OFFLINE_ATOMIC_OPTIMIZATION`。它在一个同步调用内内部完成
+  prepare、evaluate、detached assemble 和 post-integrity verify，不向调用方公开 prepared
+  descriptor。
+- 公共 prepare/evaluate/assemble API 未改变。显式 prepared handle 每次跨公共调用边界仍
+  重算完整规范载荷摘要。原子入口只减少同一次内部流水线的重复复核，不裁剪 metadata、
+  lineage/source support、identity、`last_nis`、全局编号、时间戳、分级、state/covariance、
+  NED 或禁止身份字段检查。
+- 200 航迹正常 accepted 工作量为 1 次完整描述、200 条描述摘要、1 次后置完整性复核、200 条
+  规范复核摘要；另对 200 条 detached shadow 生成发布摘要。rejected 路径不物化 shadow。
+- 公开结果可由标准 JSON 编码并提供确定性字节形式。canonical/shadow 发布摘要使用相同的
+  完整航迹摘要清单语义；装配异常与后置完整性失败均恢复输入 generation 状态。
+- post-integrity 失败时不公开 provisional accepted shadow，decision 转为
+  `prepared_canonical_publication_mismatch`，generation 状态恢复到输入。数组、嵌套
+  metadata、source support、identity、`last_nis`、全局编号、时间戳和分级的调用内变化均有
+  fail-closed 测试。
+- 2026-07-24 聚焦 `36 passed`，D1 全量
+  `324 passed`。2/3/5 成员决策与 `de73cb2` 基线逐字节一致，只读嵌套 metadata、
+  ID/速度/相对位置保持、协方差不收缩和规范引用隔离均通过。
+- main 尚未采用或复跑原子入口。`2b976a7` 的 seed 1100 三步 prepared-handle 结果仍为
+  `+80.8829%` 墙钟开销、0 accepted/46 rejected；A2 性能门和有效 treatment 门未关闭。
+  A3/A4 与 seeds 1101/1102 继续停止。AirSim 接口不受影响。
+
 ## 0. A1 准备对象优化状态（2026-07-23）
 
 - D1 已实现 `prepare_experimental_centroid_canonical_publication()`。它对完整规范

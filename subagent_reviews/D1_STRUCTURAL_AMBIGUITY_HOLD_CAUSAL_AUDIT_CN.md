@@ -1,17 +1,18 @@
 # D1 结构歧义保持因果审计
 
-**审计日期**：2026-07-23
+**审计日期**：2026-07-24
 **审计范围**：200 对 200 三维质点场景中的 D1 结构歧义保持候选
 **候选状态**：身份中性共同质心修正已作为默认关闭的 D1 模块候选实现；clean seed 1100
 同输入复跑仍为零 treatment；受控冻结扫描已形成一次合法 treatment，仍未晋级
 **下一候选状态**：A1 publication overlay 为
 `IMPLEMENTED_UNIT_TESTED_OFFLINE_PROTOTYPE`，准备对象优化为
-`IMPLEMENTED_UNIT_TESTED_OFFLINE_OPTIMIZATION`；main A2 显式接线已完成，但性能门和
-有效 treatment 门失败，不准入；A3/A4 未实现，B 暂缓，C 交 D2 后续规划
+`IMPLEMENTED_UNIT_TESTED_OFFLINE_OPTIMIZATION`，原子接口优化为
+`IMPLEMENTED_UNIT_TESTED_OFFLINE_ATOMIC_OPTIMIZATION`；main 尚未接入原子入口，A2 现有
+性能门和有效 treatment 门失败，不准入；A3/A4 未实现，B 暂缓，C 交 D2 后续规划
 **结构歧义基础证据提交**：`ff881316243ff5a2991a4659ab78637ed625d123`
 **共同质心 clean 复核提交**：`7e15dac9cdaf6743999dfe045a70676fd31a17d6`
-**A1 纯函数原型提交**：`de73cb2`；2026-07-23 优化后聚焦 `21 passed`，D1 全量
-`308 passed in 19.69s`
+**A1 纯函数原型提交**：`de73cb2`；2026-07-24 原子接口优化后聚焦
+`36 passed`，D1 全量 `324 passed`
 
 ## 1. 结论
 
@@ -570,3 +571,30 @@ after digest、assemble、log 均值分别为
 `11,275,939 bytes`，generation 水位 `8/1024`。两份 manifest 均记录
 `repository_dirty=true`，只作开发证据。安全接口和业务非干预子门通过；性能门和有效
 treatment 门失败。A2 不准入，A3/A4 与 seeds 1101/1102 继续停止。
+
+## 15. 原子 publication overlay 接口
+
+2026-07-24，D1 在三步 prepared-handle API 之外增加单个 experimental/offline 原子入口。
+该入口在一次同步调用中内部持有描述符，完成 prepare、evaluate、detached shadow assemble
+和 post-integrity verify。公开结果不含内部描述符，只给出冻结准备摘要、decision、可选
+shadow、规范与 shadow 摘要、后置完整性结果和工作量计数。现有三步公共 API 及其每次复用
+完整内容强校验保持不变。
+
+200 航迹 accepted 固定夹具只执行 1 次完整 `_describe_tracks` 和 1 次操作后完整规范复核，
+后置复核摘要数为 200。accepted shadow 单独复制并摘要 200 条 detached 航迹；rejected 路径
+不进入装配，不构造或序列化 shadow。完整 metadata、lineage/source support、identity、
+`last_nis`、全局编号、时间戳、分级、state/covariance、NED 和禁止身份字段覆盖没有减少。
+
+调用内部发生 state/covariance 数组、嵌套 metadata、source support、identity、`last_nis`、
+全局编号、时间戳或分级变化时，post-integrity 检查阻断返回，丢弃 provisional shadow，
+decision 以 `prepared_canonical_publication_mismatch` fail closed，generation 状态恢复到
+调用输入。只读嵌套 Mapping、tuple、frozenset 和 NumPy 值可按值复制，规范对象与 shadow
+之间没有数组或 metadata 引用共享。
+
+公开结果可由标准 JSON 编码，并提供确定性字节形式。canonical/shadow 发布摘要使用相同的
+完整航迹摘要清单语义；装配异常也丢弃 shadow、恢复输入 generation 状态。
+
+聚焦测试为 `36 passed`，D1 全量为 `324 passed`。2/3/5 成员
+canonical decision bytes 与 `de73cb2` 基线一致。该结果只证明 D1 原子接口和工作量边界；
+main 尚未接入或复跑。`2b976a7` 的 A2 性能失败和零有效 treatment 结论继续有效，A2 不准入，
+A3/A4 与 seeds 1101/1102 继续停止。

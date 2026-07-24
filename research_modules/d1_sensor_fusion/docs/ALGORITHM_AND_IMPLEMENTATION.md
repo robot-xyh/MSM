@@ -6,7 +6,50 @@
 >
 > 实现依据：当前第一研究模块代码、`README.md`、`PLAN.md`、模块原理文档和系统总汇总
 
-## 当前权威增量（2026-07-23）
+## 当前权威增量（2026-07-24）
+
+### A1 原子 publication overlay
+
+新增入口
+`run_experimental_centroid_publication_overlay_atomically()`，只用于默认关闭的离线实验和
+审计 shadow。它把原来由调用方分三步完成的准备、判断和装配收进一次同步调用：
+
+```text
+完整规范航迹
+  -> prepare：校验并描述全部航迹
+  -> evaluate：使用内部描述符生成 decision
+  -> accepted 时装配 detached shadow；rejected 时跳过装配
+  -> 对原规范航迹执行一次完整 post-integrity verify
+  -> 通过后返回冻结结果；失败时丢弃 shadow 并撤销状态推进
+```
+
+内部 prepared handle 不返回给调用方。公开的准备信息是冻结摘要，只含规范发布摘要、验证状态、
+航迹数和准备工作量。evaluation 也不携带内部 prepared handle。结果同时给出规范发布摘要、
+shadow 发布摘要及是否物化、后置完整性检查和分阶段工作量，便于 main 不依赖墙钟推断实际
+遍历次数。结果 `to_dict()` 只包含标准 JSON 可表示值，`canonical_bytes()` 给出确定性编码。
+规范和 shadow 发布摘要均由按成员键排序的完整航迹摘要清单生成，比较结果具有相同语义。
+
+正常 200 航迹 accepted 路径执行 1 次 `_describe_tracks`。该次描述包含类型、唯一
+`global_track_id`、NED、有限性、协方差对称半正定、禁止身份字段，以及 state/covariance、
+metadata、lineage/source support、identity、`last_nis`、时间戳和分级的完整规范摘要。
+decision 和 detached 装配只读复用描述符。装配结束后，对同一规范对象执行 1 次完整内容复核，
+共 200 条后置摘要。shadow 发布摘要单独读取 detached 副本，不计为规范对象的第二次复核。
+rejected 路径不调用装配 helper，shadow 复制数、shadow 航迹摘要数和发布摘要数均为 0。
+
+后置复核发现对象重绑定或内容变化时，返回结果不含 shadow。provisional decision 被替换为
+`prepared_canonical_publication_mismatch` 拒绝，`next_state` 恢复为输入状态。该边界覆盖
+数组原地变化、嵌套 metadata 修改、source support、identity、`last_nis`、全局编号、时间戳
+和分级变化。接受装配仍使用递归值语义复制，保持 ID、速度、成员相对位置、完整 metadata 和
+协方差不收缩，并支持嵌套只读 Mapping、tuple、frozenset 与 NumPy 值。
+
+公共 prepare/evaluate/assemble API 没有放宽。显式 prepared handle 仍在每次公共复用边界
+执行完整内容强校验；原子入口只消除单次内部流水线中的重复复核。
+
+2026-07-24 聚焦测试 `36 passed`，D1 全量
+`324 passed`。2/3/5 成员 canonical decision bytes 与 `de73cb2` 基线一致。
+200 航迹夹具报告 1 次完整描述、200 条描述摘要、1 次后置完整性复核、200 条规范复核摘要、
+200 条 detached shadow 摘要。该结果仅证明 D1 模块实现。main 尚未接入和复跑原子入口，
+A2 性能门与有效 treatment 门仍失败，A3/A4 及 seeds 1101/1102 继续停止。
 
 ### A1 规范发布准备与安全复制
 

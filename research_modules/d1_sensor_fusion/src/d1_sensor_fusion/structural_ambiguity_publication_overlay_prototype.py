@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from copy import deepcopy
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from enum import Enum
 import hashlib
 import json
@@ -612,6 +612,100 @@ class ExperimentalPreparedCentroidCanonicalPublication:
         }
 
 
+@dataclass(frozen=True, slots=True)
+class ExperimentalCentroidAtomicPreparedPublication:
+    """Public summary of the preparation owned by one atomic invocation."""
+
+    base_publication_digest: str
+    validation_error: str | None
+    track_count: int
+    work: ExperimentalCentroidCanonicalPreparationWork
+
+    def __post_init__(self) -> None:
+        if not _is_digest(self.base_publication_digest):
+            raise ValueError("base_publication_digest must be a SHA-256 digest")
+        if self.validation_error is not None and not str(
+            self.validation_error
+        ).strip():
+            raise ValueError("validation_error must be non-empty when supplied")
+        if (
+            isinstance(self.track_count, bool)
+            or not isinstance(self.track_count, Integral)
+            or int(self.track_count) < 0
+        ):
+            raise ValueError("track_count must be a non-negative integer")
+        if int(self.track_count) != self.work.track_count:
+            raise ValueError("track_count must match preparation work")
+        object.__setattr__(self, "track_count", int(self.track_count))
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "prototype_status": EXPERIMENTAL_CENTROID_PUBLICATION_PROTOTYPE_STATUS,
+            "usage_scope": "experimental_offline_atomic_only",
+            "base_publication_digest": self.base_publication_digest,
+            "validation_error": self.validation_error,
+            "track_count": self.track_count,
+            "work": self.work.to_dict(),
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class ExperimentalCentroidAtomicOverlayWork:
+    """Deterministic work counters for one atomic overlay invocation."""
+
+    canonical_full_description_pass_count: int
+    canonical_description_track_digest_count: int
+    canonical_post_integrity_pass_count: int
+    canonical_post_integrity_track_digest_count: int
+    shadow_track_copy_count: int
+    shadow_full_track_digest_count: int
+    shadow_publication_digest_count: int
+
+    def __post_init__(self) -> None:
+        for name in (
+            "canonical_full_description_pass_count",
+            "canonical_description_track_digest_count",
+            "canonical_post_integrity_pass_count",
+            "canonical_post_integrity_track_digest_count",
+            "shadow_track_copy_count",
+            "shadow_full_track_digest_count",
+            "shadow_publication_digest_count",
+        ):
+            value = getattr(self, name)
+            if (
+                isinstance(value, bool)
+                or not isinstance(value, Integral)
+                or int(value) < 0
+            ):
+                raise ValueError(
+                    "atomic work counts must be non-negative integers"
+                )
+            object.__setattr__(self, name, int(value))
+
+    def to_dict(self) -> dict[str, int]:
+        return {
+            "canonical_full_description_pass_count": (
+                self.canonical_full_description_pass_count
+            ),
+            "canonical_description_track_digest_count": (
+                self.canonical_description_track_digest_count
+            ),
+            "canonical_post_integrity_pass_count": (
+                self.canonical_post_integrity_pass_count
+            ),
+            "canonical_post_integrity_track_digest_count": (
+                self.canonical_post_integrity_track_digest_count
+            ),
+            "shadow_track_copy_count": self.shadow_track_copy_count,
+            "shadow_full_track_digest_count": (
+                self.shadow_full_track_digest_count
+            ),
+            "shadow_publication_digest_count": (
+                self.shadow_publication_digest_count
+            ),
+        }
+
+
 @dataclass(frozen=True)
 class ExperimentalCentroidPublicationEvaluation:
     decisions: tuple[ExperimentalCentroidPublicationDecisionV1, ...]
@@ -637,6 +731,94 @@ class ExperimentalCentroidPublicationEvaluation:
         }
 
     def canonical_bytes(self) -> bytes:
+        return _canonical_json_bytes(self.to_dict())
+
+
+@dataclass(frozen=True, slots=True)
+class ExperimentalCentroidAtomicOverlayResult:
+    """Frozen result of one experimental/offline atomic overlay operation."""
+
+    evaluation: ExperimentalCentroidPublicationEvaluation = field(compare=False)
+    shadow_tracks: tuple[GlobalTrack, ...] | None = field(compare=False)
+    prepared_publication: ExperimentalCentroidAtomicPreparedPublication
+    post_integrity_check: ExperimentalCentroidCanonicalIntegrityCheck
+    canonical_publication_digest: str
+    shadow_publication_digest: str | None
+    shadow_materialized: bool
+    work: ExperimentalCentroidAtomicOverlayWork
+    atomic_failure_reason: str | None = None
+
+    def __post_init__(self) -> None:
+        if not _is_digest(self.canonical_publication_digest):
+            raise ValueError(
+                "canonical_publication_digest must be a SHA-256 digest"
+            )
+        if (
+            self.canonical_publication_digest
+            != self.prepared_publication.base_publication_digest
+        ):
+            raise ValueError(
+                "canonical publication digest must match preparation"
+            )
+        if self.shadow_materialized != (self.shadow_tracks is not None):
+            raise ValueError(
+                "shadow materialization flag and tracks must be consistent"
+            )
+        if self.shadow_materialized != (
+            self.shadow_publication_digest is not None
+        ):
+            raise ValueError(
+                "shadow materialization flag and digest must be consistent"
+            )
+        if (
+            self.shadow_publication_digest is not None
+            and not _is_digest(self.shadow_publication_digest)
+        ):
+            raise ValueError(
+                "shadow_publication_digest must be a SHA-256 digest"
+            )
+        if self.atomic_failure_reason is not None:
+            if not str(self.atomic_failure_reason).strip():
+                raise ValueError(
+                    "atomic_failure_reason must be non-empty when supplied"
+                )
+            if self.shadow_materialized:
+                raise ValueError("failed atomic operation cannot expose shadow")
+        accepted = any(
+            item.decision == "accepted" for item in self.evaluation.decisions
+        )
+        if accepted != self.shadow_materialized:
+            raise ValueError(
+                "accepted atomic evaluation must expose one detached shadow"
+            )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "prototype_status": EXPERIMENTAL_CENTROID_PUBLICATION_PROTOTYPE_STATUS,
+            "usage_scope": "experimental_offline_atomic_only",
+            "evaluation": self.evaluation.to_dict(),
+            "shadow_tracks": (
+                None
+                if self.shadow_tracks is None
+                else [
+                    _canonicalize(track.to_dict())
+                    for track in self.shadow_tracks
+                ]
+            ),
+            "prepared_publication": self.prepared_publication.to_dict(),
+            "post_integrity_check": self.post_integrity_check.to_dict(),
+            "canonical_publication_digest": (
+                self.canonical_publication_digest
+            ),
+            "shadow_publication_digest": self.shadow_publication_digest,
+            "shadow_materialized": self.shadow_materialized,
+            "work": self.work.to_dict(),
+            "atomic_failure_reason": self.atomic_failure_reason,
+        }
+
+    def canonical_bytes(self) -> bytes:
+        """Return deterministic JSON bytes for the public atomic result."""
+
         return _canonical_json_bytes(self.to_dict())
 
 
@@ -786,6 +968,41 @@ def evaluate_experimental_centroid_publication_overlays(
         if preparation_matches
         else "prepared_canonical_publication_mismatch"
     )
+    return _evaluate_experimental_centroid_publication_overlays_from_prepared(
+        envelopes=envelopes,
+        state=state,
+        config=config,
+        disposition=disposition,
+        descriptors=descriptors,
+        base_digest=base_digest,
+        base_error=base_error,
+        integrity_check=integrity_check,
+        prepared_publication=(
+            prepared_publication if preparation_matches else None
+        ),
+        base_publication_revision=base_publication_revision,
+        overlay_valid_for_publication_id=overlay_valid_for_publication_id,
+    )
+
+
+def _evaluate_experimental_centroid_publication_overlays_from_prepared(
+    *,
+    envelopes: tuple[_EvidenceEnvelope, ...],
+    state: ExperimentalCentroidPublicationState,
+    config: ExperimentalCentroidPublicationOverlayConfig,
+    disposition: ExperimentalCentroidEvidenceDisposition,
+    descriptors: tuple[_TrackDescriptor, ...],
+    base_digest: str,
+    base_error: str | None,
+    integrity_check: ExperimentalCentroidCanonicalIntegrityCheck,
+    prepared_publication: (
+        ExperimentalPreparedCentroidCanonicalPublication | None
+    ),
+    base_publication_revision: str | None,
+    overlay_valid_for_publication_id: str | None,
+) -> ExperimentalCentroidPublicationEvaluation:
+    """Evaluate from descriptors trusted only inside one validated boundary."""
+
     revision = (
         str(base_publication_revision).strip()
         if base_publication_revision is not None
@@ -965,11 +1182,19 @@ def evaluate_experimental_centroid_publication_overlays(
     return ExperimentalCentroidPublicationEvaluation(
         decisions=tuple(decisions),
         next_state=next_state,
-        _prepared_publication=(
-            prepared_publication if preparation_matches else None
-        ),
+        _prepared_publication=prepared_publication,
         _prepared_integrity_check=integrity_check,
     )
+
+
+@dataclass(frozen=True, slots=True)
+class _DetachedCentroidShadowAssembly:
+    tracks: tuple[GlobalTrack, ...] | None = field(compare=False)
+    publication_digest: str | None
+    copied_track_count: int
+    full_track_digest_count: int
+    publication_digest_count: int
+    failure_reason: str | None
 
 
 def assemble_experimental_centroid_shadow_tracks(
@@ -1030,10 +1255,32 @@ def assemble_experimental_centroid_shadow_tracks(
         descriptors, base_digest, error, _ = _describe_tracks(
             canonical_tracks
         )
-    if error is not None:
-        return canonical_tracks
+    assembly = _assemble_experimental_centroid_shadow_tracks_from_prepared(
+        canonical_tracks,
+        accepted,
+        descriptors=descriptors,
+        base_digest=base_digest,
+        base_error=error,
+        compute_publication_digest=False,
+    )
+    return canonical_tracks if assembly.tracks is None else assembly.tracks
+
+
+def _assemble_experimental_centroid_shadow_tracks_from_prepared(
+    canonical_tracks: Sequence[GlobalTrack],
+    accepted: tuple[ExperimentalCentroidPublicationDecisionV1, ...],
+    *,
+    descriptors: tuple[_TrackDescriptor, ...],
+    base_digest: str,
+    base_error: str | None,
+    compute_publication_digest: bool,
+) -> _DetachedCentroidShadowAssembly:
+    """Build detached shadow tracks from descriptors trusted by one caller."""
+
+    if base_error is not None:
+        return _failed_shadow_assembly(base_error)
     if any(item.base_publication_digest != base_digest for item in accepted):
-        return canonical_tracks
+        return _failed_shadow_assembly("base_publication_digest_mismatch")
     by_member: dict[tuple[str, str], list[_TrackDescriptor]] = {}
     for descriptor in descriptors:
         if descriptor.source_key is not None and descriptor.member_token is not None:
@@ -1047,10 +1294,12 @@ def assemble_experimental_centroid_shadow_tracks(
         for overlay in decision.member_overlays:
             key = (overlay.source_key, overlay.opaque_member_track_token)
             if key in overlays:
-                return canonical_tracks
+                return _failed_shadow_assembly("duplicate_member_overlay")
             candidates = by_member.get(key, ())
             if len(candidates) != 1:
-                return canonical_tracks
+                return _failed_shadow_assembly(
+                    "member_overlay_binding_mismatch"
+                )
             descriptor = candidates[0]
             if (
                 overlay.base_track_revision != descriptor.track_digest
@@ -1058,10 +1307,13 @@ def assemble_experimental_centroid_shadow_tracks(
                 or overlay.base_covariance_digest
                 != descriptor.covariance_digest
             ):
-                return canonical_tracks
+                return _failed_shadow_assembly(
+                    "member_overlay_revision_mismatch"
+                )
             overlays[key] = overlay
 
     shadow_tracks: list[GlobalTrack] = []
+    shadow_digest_members: list[dict[str, str | None]] = []
     for descriptor in descriptors:
         track = canonical_tracks[descriptor.track_index]
         copied = GlobalTrack(
@@ -1089,9 +1341,275 @@ def assemble_experimental_centroid_shadow_tracks(
                 or not np.isfinite(copied.covariance).all()
                 or float(np.linalg.eigvalsh(copied.covariance)[0]) < -1.0e-8
             ):
-                return canonical_tracks
+                return _failed_shadow_assembly(
+                    "shadow_track_state_or_covariance_invalid",
+                    copied_track_count=len(shadow_tracks) + 1,
+                )
         shadow_tracks.append(copied)
-    return tuple(shadow_tracks)
+        if compute_publication_digest:
+            shadow_digest_members.append(
+                {
+                    "track_digest": _shadow_track_digest(copied),
+                    "source_key": descriptor.source_key,
+                    "opaque_member_track_token": descriptor.member_token,
+                }
+            )
+    publication_digest = None
+    publication_digest_count = 0
+    full_track_digest_count = 0
+    if compute_publication_digest:
+        publication_digest = _digest(
+            sorted(
+                shadow_digest_members,
+                key=lambda item: (
+                    _text_key(item["source_key"] or ""),
+                    _text_key(item["opaque_member_track_token"] or ""),
+                    _text_key(item["track_digest"] or ""),
+                ),
+            )
+        )
+        publication_digest_count = 1
+        full_track_digest_count = len(shadow_digest_members)
+    return _DetachedCentroidShadowAssembly(
+        tracks=tuple(shadow_tracks),
+        publication_digest=publication_digest,
+        copied_track_count=len(shadow_tracks),
+        full_track_digest_count=full_track_digest_count,
+        publication_digest_count=publication_digest_count,
+        failure_reason=None,
+    )
+
+
+def _failed_shadow_assembly(
+    reason: str,
+    *,
+    copied_track_count: int = 0,
+) -> _DetachedCentroidShadowAssembly:
+    return _DetachedCentroidShadowAssembly(
+        tracks=None,
+        publication_digest=None,
+        copied_track_count=copied_track_count,
+        full_track_digest_count=0,
+        publication_digest_count=0,
+        failure_reason=reason,
+    )
+
+
+def _shadow_track_digest(track: GlobalTrack) -> str:
+    """Digest one detached shadow without counting as canonical verification."""
+
+    state = np.asarray(track.state, dtype=float)
+    covariance = np.asarray(track.covariance, dtype=float)
+    timestamp = float(track.timestamp)
+    last_nis = None if track.last_nis is None else float(track.last_nis)
+    return _digest(
+        _track_digest_payload(
+            track,
+            state=state,
+            covariance=covariance,
+            timestamp=timestamp,
+            last_nis=last_nis,
+        )
+    )
+
+
+def run_experimental_centroid_publication_overlay_atomically(
+    canonical_tracks: Sequence[GlobalTrack],
+    evidence_items: Sequence[StructuralAmbiguityEvidence],
+    *,
+    state: ExperimentalCentroidPublicationState | None = None,
+    config: ExperimentalCentroidPublicationOverlayConfig | None = None,
+    disposition: ExperimentalCentroidEvidenceDisposition | None = None,
+    base_publication_revision: str | None = None,
+    overlay_valid_for_publication_id: str | None = None,
+) -> ExperimentalCentroidAtomicOverlayResult:
+    """Evaluate and assemble one experimental/offline overlay atomically.
+
+    The internally prepared descriptors never cross a caller-controlled
+    boundary. One complete canonical description is followed by one strong
+    post-operation content check. Any detected mutation discards provisional
+    state advancement and detached shadow output.
+    """
+
+    initial_state = state or ExperimentalCentroidPublicationState()
+    overlay_config = config or ExperimentalCentroidPublicationOverlayConfig()
+    evidence_disposition = (
+        disposition or ExperimentalCentroidEvidenceDisposition()
+    )
+    prepared = prepare_experimental_centroid_canonical_publication(
+        canonical_tracks
+    )
+    prepared_summary = ExperimentalCentroidAtomicPreparedPublication(
+        base_publication_digest=prepared.base_publication_digest,
+        validation_error=prepared.validation_error,
+        track_count=prepared.track_count,
+        work=prepared.work,
+    )
+    envelopes = tuple(
+        sorted(
+            (_normalize_evidence(item) for item in evidence_items),
+            key=lambda item: item.component_key,
+        )
+    )
+    no_boundary_check = ExperimentalCentroidCanonicalIntegrityCheck(
+        matches=True,
+        mismatch_reason=None,
+        object_binding_pass_count=0,
+        full_content_digest_pass_count=0,
+        track_digest_count=0,
+    )
+    evaluation = _evaluate_experimental_centroid_publication_overlays_from_prepared(
+        envelopes=envelopes,
+        state=initial_state,
+        config=overlay_config,
+        disposition=evidence_disposition,
+        descriptors=prepared._descriptors,
+        base_digest=prepared.base_publication_digest,
+        base_error=prepared.validation_error,
+        integrity_check=no_boundary_check,
+        prepared_publication=None,
+        base_publication_revision=base_publication_revision,
+        overlay_valid_for_publication_id=overlay_valid_for_publication_id,
+    )
+    accepted = tuple(
+        item for item in evaluation.decisions if item.decision == "accepted"
+    )
+    assembly = _DetachedCentroidShadowAssembly(
+        tracks=None,
+        publication_digest=None,
+        copied_track_count=0,
+        full_track_digest_count=0,
+        publication_digest_count=0,
+        failure_reason=None,
+    )
+    if accepted:
+        try:
+            assembly = (
+                _assemble_experimental_centroid_shadow_tracks_from_prepared(
+                    canonical_tracks,
+                    accepted,
+                    descriptors=prepared._descriptors,
+                    base_digest=prepared.base_publication_digest,
+                    base_error=prepared.validation_error,
+                    compute_publication_digest=True,
+                )
+            )
+        except Exception as exc:
+            assembly = _failed_shadow_assembly(
+                f"shadow_assembly_exception:{type(exc).__name__}"
+            )
+
+    post_integrity = prepared.verify_exact_input(canonical_tracks)
+    atomic_failure_reason: str | None = None
+    if not post_integrity.matches:
+        atomic_failure_reason = (
+            "post_integrity_mismatch:"
+            f"{post_integrity.mismatch_reason or 'unspecified'}"
+        )
+    elif accepted and assembly.failure_reason is not None:
+        atomic_failure_reason = (
+            f"shadow_assembly_failed:{assembly.failure_reason}"
+        )
+
+    if atomic_failure_reason is not None:
+        evaluation = _fail_closed_atomic_evaluation(
+            evaluation,
+            initial_state=initial_state,
+            post_integrity_check=post_integrity,
+            reject_reason=(
+                "prepared_canonical_publication_mismatch"
+                if not post_integrity.matches
+                else "atomic_shadow_assembly_failed"
+            ),
+        )
+        shadow_tracks = None
+        shadow_digest = None
+        shadow_materialized = False
+    else:
+        evaluation = replace(
+            evaluation,
+            _prepared_publication=None,
+            _prepared_integrity_check=post_integrity,
+        )
+        shadow_tracks = assembly.tracks
+        shadow_digest = assembly.publication_digest
+        shadow_materialized = shadow_tracks is not None
+
+    work = ExperimentalCentroidAtomicOverlayWork(
+        canonical_full_description_pass_count=(
+            prepared.work.full_description_pass_count
+        ),
+        canonical_description_track_digest_count=(
+            prepared.work.full_track_digest_count
+        ),
+        canonical_post_integrity_pass_count=(
+            post_integrity.full_content_digest_pass_count
+        ),
+        canonical_post_integrity_track_digest_count=(
+            post_integrity.track_digest_count
+        ),
+        shadow_track_copy_count=assembly.copied_track_count,
+        shadow_full_track_digest_count=assembly.full_track_digest_count,
+        shadow_publication_digest_count=assembly.publication_digest_count,
+    )
+    return ExperimentalCentroidAtomicOverlayResult(
+        evaluation=evaluation,
+        shadow_tracks=shadow_tracks,
+        prepared_publication=prepared_summary,
+        post_integrity_check=post_integrity,
+        canonical_publication_digest=prepared.base_publication_digest,
+        shadow_publication_digest=shadow_digest,
+        shadow_materialized=shadow_materialized,
+        work=work,
+        atomic_failure_reason=atomic_failure_reason,
+    )
+
+
+def _fail_closed_atomic_evaluation(
+    provisional: ExperimentalCentroidPublicationEvaluation,
+    *,
+    initial_state: ExperimentalCentroidPublicationState,
+    post_integrity_check: ExperimentalCentroidCanonicalIntegrityCheck,
+    reject_reason: str,
+) -> ExperimentalCentroidPublicationEvaluation:
+    return ExperimentalCentroidPublicationEvaluation(
+        decisions=tuple(
+            _replace_decision_with_rejection(item, reject_reason)
+            for item in provisional.decisions
+        ),
+        next_state=initial_state,
+        _prepared_publication=None,
+        _prepared_integrity_check=post_integrity_check,
+    )
+
+
+def _replace_decision_with_rejection(
+    decision: ExperimentalCentroidPublicationDecisionV1,
+    reject_reason: str,
+) -> ExperimentalCentroidPublicationDecisionV1:
+    payload = decision.to_dict()
+    payload.pop("decision_id")
+    payload.update(
+        {
+            "decision": "rejected",
+            "reject_reason": reject_reason,
+            "member_overlays": [],
+            "centroid_nis": None,
+            "shape_mismatch_m2": None,
+        }
+    )
+    decision_id = _DECISION_ID_PREFIX + hashlib.sha256(
+        _canonical_json_bytes(payload)
+    ).hexdigest()
+    return replace(
+        decision,
+        decision_id=decision_id,
+        decision="rejected",
+        reject_reason=reject_reason,
+        member_overlays=(),
+        centroid_nis=None,
+        shape_mismatch_m2=None,
+    )
 
 
 def _build_component_overlays(

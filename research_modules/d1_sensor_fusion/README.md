@@ -2,7 +2,44 @@
 
 Offline research module for radar, acoustic, EO, and optional synthetic lidar heterogeneous observation fusion. The module estimates six-state NED `GlobalTrack` objects with covariance.
 
-## 当前性能与治理证据（2026-07-23）
+## 当前性能与治理证据（2026-07-24）
+
+### 第二十阶段：A1 原子 publication overlay 接口
+
+状态：`IMPLEMENTED_UNIT_TESTED_OFFLINE_ATOMIC_OPTIMIZATION`。D1 新增
+`run_experimental_centroid_publication_overlay_atomically()`，在一个同步、显式
+experimental/offline 调用中完成规范准备、决策、detached shadow 装配和操作后完整性复核。
+内部 prepared handle 不跨调用方可控边界。返回的冻结结果只公开准备摘要、决策、脱离副本、
+规范与 shadow 摘要、后置完整性结果和确定性工作量计数，不公开内部描述符或规范对象引用。
+
+现有 prepare/evaluate/assemble 公共 API 保持不变。显式 prepared handle 每次跨公共调用边界
+仍执行完整内容强校验。原子入口只省去同一次调用内部 evaluate/assemble 之间的重复规范载荷
+复核：正常 200 航迹路径为 1 次完整 `_describe_tracks`、1 次操作后完整性复核和 200 条规范
+航迹复核摘要。accepted 路径另对 200 条 detached shadow 计算发布摘要；rejected 路径不构造、
+复制或序列化 shadow 全航迹。
+
+操作后复核覆盖 state/covariance、嵌套 metadata、lineage/source support、identity、
+`last_nis`、`global_track_id`、时间戳、分级、NED 和禁止身份字段所形成的完整规范内容。
+调用内部发生数组或嵌套容器原地变化、字段重绑定时，原子结果丢弃 provisional shadow，撤销
+generation 状态推进，并返回 `prepared_canonical_publication_mismatch` 拒绝。接受输出仍保持
+ID、速度、成员相对位置、metadata 值语义和协方差不收缩；嵌套只读 `Mapping`、tuple、
+frozenset、NumPy 数组和标量均为脱离复制。
+
+公开结果的 `to_dict()` 已冻结为标准 JSON 可表示结构，`canonical_bytes()` 提供确定性编码。
+canonical 与 shadow 发布摘要采用同一份按成员键排序的完整航迹摘要清单，二者可以直接比较；
+装配异常与 post-integrity 失败均不公开 shadow，也不提交 generation 状态。
+
+2026-07-24 聚焦测试为 `36 passed`，D1 全量为
+`324 passed`。2/3/5 成员 canonical decision bytes 与提交 `de73cb2` 基线一致；
+200 航迹工作量计数为 1 次完整描述、200 条描述摘要、1 次后置完整性复核、200 条规范复核
+摘要、200 条 shadow 摘要。OOSM、数量不平衡、重复代和倒退代保持 fail closed。测试还覆盖
+state/covariance、嵌套 metadata、source support、identity、`last_nis`、全局编号、时间戳和
+分级的调用内篡改，以及结果冻结和规范引用隔离。
+
+main 尚未接入或复跑该原子入口。提交 `2b976a7` 的 prepared-handle A2 结果仍是当前系统证据：
+性能门和有效 treatment 门失败，A2 不准入。不得用模块工作量下降推断系统 P95 已通过。
+A3/A4 与 seeds 1101/1102 继续停止。本次不修改 `fusion.py`、默认开关、在线 schema、
+共同质心数学或 AirSim 适配接口。
 
 ### 第十九阶段：A1 规范发布准备对象与只读 metadata 装配
 

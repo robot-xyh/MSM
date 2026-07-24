@@ -1,12 +1,13 @@
 # D1 结构歧义下一候选设计
 
 - **状态**：A1 `IMPLEMENTED_UNIT_TESTED_OFFLINE_PROTOTYPE`；A1 准备对象优化
-  `IMPLEMENTED_UNIT_TESTED_OFFLINE_OPTIMIZATION`；main A2 显式接线已完成，但性能门和
-  有效 treatment 门失败，不准入；A3/A4 未实现
-- **日期**：2026-07-23
+  `IMPLEMENTED_UNIT_TESTED_OFFLINE_OPTIMIZATION`；A1 原子接口优化
+  `IMPLEMENTED_UNIT_TESTED_OFFLINE_ATOMIC_OPTIMIZATION`；main 尚未接入原子入口，A2
+  现有性能门和有效 treatment 门失败，不准入；A3/A4 未实现
+- **日期**：2026-07-24
 - **范围**：D1 结构歧义证据、共同质心发布语义及 D2 后续消费边界
-- **实现证据**：提交 `de73cb2` 为 A1 基线；优化后聚焦 `21 passed`，D1 全量
-  `308 passed in 19.69s`
+- **实现证据**：提交 `de73cb2` 为 A1 基线；原子接口优化后聚焦
+  `36 passed`，D1 全量 `324 passed`
 - **非目标**：A1 不是在线 schema 或运行开关；本文不声明 A2 性能通过、AirSim 或系统收益
 
 ## 1. 决策摘要
@@ -15,7 +16,7 @@
 
 | 路线 | 核心语义 | 当前决策 |
 | --- | --- | --- |
-| A. 拒绝路径发布态 overlay/副作用隔离 | 规范滤波状态和历史保持不动；共同质心只在发布 DTO 上形成一次性 overlay；拒绝时直接发布规范快照 | **A1 纯函数与准备对象优化已完成单测；main A2 业务非干预通过，但性能/有效 treatment 门失败；A3/A4 未实现** |
+| A. 拒绝路径发布态 overlay/副作用隔离 | 规范滤波状态和历史保持不动；共同质心只在发布 DTO 上形成一次性 overlay；拒绝时直接发布规范快照 | **A1 纯函数、准备对象和原子接口优化已完成单测；main 尚未接入原子入口，A2 现有性能/有效 treatment 门失败；A3/A4 未实现** |
 | B. 固定滞后 OOSM 共同质心事件 | 把共同质心作为 measurement-time 历史事件插入固定滞后窗口并重放 | **暂不进入在线实现** |
 | C. D1 只发布证据，D2 概率/多假设消费 | D1 保持 prediction-only 和证据侧车；D2 在有界窗口中维护关联概率或多个匹配假设 | **保留为主要系统研究路线，交由 D2 后续规划** |
 
@@ -588,10 +589,14 @@ A1 已在纯函数 fixture 范围验证第 1、3-7 项及输入对象不变；�
 
 - A1：`IMPLEMENTED_UNIT_TESTED_OFFLINE_PROTOTYPE`，提交 `de73cb2`；准备对象优化状态为
   `IMPLEMENTED_UNIT_TESTED_OFFLINE_OPTIMIZATION`，每个复用边界核对完整载荷 SHA-256，
-  聚焦 `21 passed`，D1 全量 `308 passed in 19.69s`；
+  原子接口优化状态为 `IMPLEMENTED_UNIT_TESTED_OFFLINE_ATOMIC_OPTIMIZATION`。原子入口
+  在单次调用中执行 1 次完整描述和 1 次操作后完整规范复核，聚焦
+  `36 passed`，D1 全量 `324 passed`；公开结果可由标准 JSON 编码，canonical/shadow
+  发布摘要使用同一完整航迹摘要清单语义；
 - A2：main 提交 `2b976a7` 已完成默认关闭审计 shadow 的显式准备对象接线。3294/3294 条
   业务记录等价，禁止写入、错误和 D2/D3 消费为 0；但墙钟增加 `80.8829%`，shadow P95
-  `1532.999 ms`，且 0 accepted/46 rejected。性能门和有效 treatment 门失败，不准入；
+  `1532.999 ms`，且 0 accepted/46 rejected。main 尚未改用原子入口；性能门和有效
+  treatment 门失败，不准入；
 - A3/A4：未实现；
 - B：设计比较完成，在线实现暂停；
 - C：研究方向保留，尚未形成 D2 实施计划；
@@ -600,5 +605,5 @@ A1 已在纯函数 fixture 范围验证第 1、3-7 项及输入对象不变；�
 - seeds 1101/1102 继续停止。
 
 当前共同质心候选仍保持默认关闭和 `candidate_not_promoted`。本文不能作为在线实现完成、
-算法收益、AirSim 验证或系统晋级证据；现有证据范围是 A1 离线纯函数及准备对象单测，以及
-A2 默认关闭审计 shadow 的开发级安全/性能拒绝结论。
+算法收益、AirSim 验证或系统晋级证据；现有证据范围是 A1 离线纯函数、准备对象和原子接口
+单测，以及 A2 默认关闭审计 shadow 的开发级安全/性能拒绝结论。

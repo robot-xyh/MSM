@@ -1,5 +1,41 @@
 # D1 多传感器融合与目标配准实施计划
 
+## A1 原子接口优化状态（2026-07-24）
+
+D1 已实现
+`run_experimental_centroid_publication_overlay_atomically()`，状态为
+`IMPLEMENTED_UNIT_TESTED_OFFLINE_ATOMIC_OPTIMIZATION`。该显式 experimental/offline
+入口在一次同步调用中内部持有 prepared handle，依次完成 prepare、evaluate、detached
+assemble 和 post-integrity verify。调用方不能在准备与内部消费之间取得描述符。返回冻结
+结果只包含安全准备摘要、evaluation、可选 detached shadow、规范与 shadow 摘要、后置
+完整性检查和工作量计数。
+
+公共 prepare/evaluate/assemble API 不变，显式 prepared handle 在每次公共复用边界继续重算
+完整规范载荷摘要。原子入口的正常 200 航迹路径只执行 1 次完整 `_describe_tracks` 和 1 次
+操作后完整规范复核，共 200 条后置摘要。accepted 路径另生成 200 条 detached shadow 摘要；
+rejected 路径不装配或序列化 shadow。完整 metadata、lineage/source support、identity、
+`last_nis`、全局编号、双时间戳、分级、state/covariance、NED 和禁止身份字段覆盖均未裁剪。
+
+后置复核失败时，原子入口不公开 provisional accepted shadow，并把 generation 状态恢复到
+调用输入。state/covariance 数组、嵌套 metadata、source support、identity、`last_nis`、
+全局编号、时间戳或分级在调用内发生修改都会 fail closed。接受输出继续保持 ID、速度、成员
+相对位置、metadata 值语义和协方差不收缩；只读嵌套 Mapping/tuple/frozenset/NumPy 值可安全
+脱离复制。
+
+公开结果的 `to_dict()` 使用标准 JSON 可表示值，`canonical_bytes()` 固定确定性编码。
+canonical 与 shadow 发布摘要使用相同的完整航迹摘要清单语义；装配异常和后置完整性失败
+均丢弃 shadow 并恢复输入 generation 状态。
+
+2026-07-24 聚焦测试 `36 passed`，D1 全量
+`324 passed`。2/3/5 成员决策与 `de73cb2` 基线逐字节一致；200 航迹工作量、正常
+接受、OOSM/数量不平衡/重复代/倒退代拒绝、调用内篡改和引用隔离均有固定测试。
+
+下一步仅允许 main 在默认关闭审计路径中显式改用原子入口，并先复跑 seed 1100 成对开发场景，
+重新测量 before/atomic/after/log 分项、墙钟、实时倍率、P95、载荷和有效 treatment。当前
+main 尚未采用该入口，提交 `2b976a7` 的 A2 性能失败结论仍有效；不得声明性能门已关闭。
+A3/A4 和 seeds 1101/1102 继续停止。该优化不影响 `fusion.py`、默认开关、在线 schema 或
+AirSim 集成方案。
+
 ## A1 准备对象优化状态（2026-07-23）
 
 D1 已完成 A1 原型的最小安全性能改进，状态为

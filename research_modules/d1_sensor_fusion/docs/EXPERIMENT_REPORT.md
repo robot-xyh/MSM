@@ -1,5 +1,44 @@
 # 第一研究模块实验结果
 
+## A1 原子接口模块验证
+
+**证据日期：2026-07-24**
+
+**状态：`IMPLEMENTED_UNIT_TESTED_OFFLINE_ATOMIC_OPTIMIZATION`**
+
+**范围：D1 单元测试；main 尚未接入或复跑该入口**
+
+本轮新增单个 experimental/offline 原子入口，在一次同步调用内完成完整规范准备、decision、
+detached shadow 装配和操作后完整性复核。现有公共 prepared handle 的逐边界强校验保持不变。
+测试使用确定性工作量计数，不设置机器墙钟阈值。
+
+| 验收项 | 结果 |
+| --- | --- |
+| 聚焦测试 | `36 passed` |
+| D1 全量 | `324 passed` |
+| 决策兼容 | 2/3/5 成员 canonical decision SHA-256 与提交 `de73cb2` 基线逐字节一致 |
+| 200 航迹规范工作量 | `_describe_tracks=1`；描述摘要 200；post-integrity pass 1；后置规范摘要 200 |
+| accepted shadow 工作量 | detached 复制 200；shadow 航迹摘要 200；shadow 发布摘要 1 |
+| rejected shadow 工作量 | 复制 0；shadow 航迹摘要 0；shadow 发布摘要 0 |
+| 发布摘要 | canonical/shadow 使用同一完整航迹摘要清单语义，可直接比较 |
+| 序列化 | `to_dict()` 可由标准 JSON 编码；`canonical_bytes()` 输出确定性字节 |
+| 只读 metadata | 嵌套 `MappingProxyType`、tuple、frozenset、NumPy 数组和标量可形成 accepted shadow |
+| 接受不变量 | `global_track_id`、速度、成员相对位置和 metadata 值语义保持；协方差不收缩 |
+| 调用内篡改 | state/covariance、嵌套 metadata、source support、identity、`last_nis`、全局编号、时间戳和分级变化均丢弃 shadow 并撤销状态推进 |
+| 拒绝边界 | OOSM、数量不平衡、重复代和倒退代继续 fail closed |
+| 引用隔离 | 结果与准备摘要冻结；不公开内部描述符；shadow 数组和嵌套 metadata 不引用规范对象 |
+
+原子入口在 accepted 和 rejected 两条路径上都执行 post-integrity verify。rejected 路径不进入
+shadow 装配函数。accepted 路径先形成 detached 副本和 shadow 摘要，再复核规范对象；复核
+失败时不公开 provisional shadow，decision 改为
+`prepared_canonical_publication_mismatch`，generation 状态恢复到调用输入。
+装配异常同样恢复输入状态，返回 `atomic_shadow_assembly_failed`，不公开部分结果。
+
+该结果只关闭 D1 模块接口和工作量断言。main 提交 `2b976a7` 的 seed 1100 A2 证据仍使用
+三步 prepared-handle 路径，其墙钟增加 `80.8829%`，且 0 accepted/46 rejected。原子入口尚未
+产生新的系统 P95、实时倍率或有效 treatment 数据，因此 A2 不准入，A3/A4 和 seeds
+1101/1102 继续停止。
+
 ## A1 准备对象与只读 metadata 验证
 
 **证据日期：2026-07-23**
