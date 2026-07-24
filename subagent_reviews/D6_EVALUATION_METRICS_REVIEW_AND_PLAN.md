@@ -1,5 +1,33 @@
 # D6 系统评估指标综述及子方案
 
+## 2026-07-24 D1 航迹发布元数据正式评审
+
+D6 已实现独立、失败关闭的
+`d6.d1_publication_metadata_multiseed_evaluation.v1` consumer。它只接受固定 clean commit
+`a36f519ed954a9ba8bdc3fe149ba2835da290c39` 的 13-pair 矩阵，规模为 200 个目标、200 个资源和
+2 个侦察节点。参考/候选 selector 固定为 `per_track_copy_v1/immutable_shared_v1`。
+
+评审先验证矩阵、arm、命令和 episode 完整性，再验证实际实现。参考臂必须有逐航迹共享审计映射
+复制；候选复制为 0、共享值复用为正；两臂完整航迹元数据物化数相等。实现 ID、不可变标志和
+操作数在 summary、module final 和 governance 三处一致。在线真值使用为 0。JSONL 全部流式读取，
+原 4.2 GB evidence 未复制。
+
+语义比较保留 D2 身份/ID switch、D3 计划版本谱系、D4 内容地址/ACK 来源、D5/D7 输出和离线
+truth/5 米事件。13/13 pair 的语义、有限状态、真值隔离和实现身份通过。D1 融合 short/long
+均值比改善约 `16.29%/31.05%`，候选 `10/10`、`3/3` 更快。
+
+候选没有通过系统级准入。D2 association short/long 增加约 `53.44%/169.89%`，使核心墙钟仅改善
+约 `1.65%/1.21%`，低于两组各 5% 的预注册门。源码核对确认，D2 批量真值隔离审计只对精确内建
+容器启用等值代表复用；候选只读容器导致共享诊断树逐航迹重扫。因此
+`d1_optimization_admitted=false`。
+
+候选最低实时因子为 `0.14695931849644195`，
+`system_realtime_gap_closed=false`。当前结论是三维质点评审，不代表 AirSim 或实机。
+正式 bundle 位于
+`research_modules/d6_evaluation_metrics/outputs/d1_publication_metadata_multiseed_20260724_formal_a36f519/`。
+专项正负测试为 `27 passed`，D6 全量为 `761 passed, 1 warning in 41.25s`。后续由 D1/D2
+联合修复容器互操作，main 重跑同一矩阵，D6 复用原门。
+
 ## 2026-07-24 D1 扫描输入同提交评估评审
 
 D6 已实现 `d6.d1_scan_input_multiseed_evaluation.v1` 只读评估器。它只接受 main 冻结的

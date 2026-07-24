@@ -1,5 +1,57 @@
 # D6 Evaluation Metrics
 
+## 2026-07-24 D1 航迹发布元数据正式评估
+
+D6 新增独立只读消费者 `d1_publication_metadata_multiseed.py` 和命令行
+`scripts/evaluate_d1_publication_metadata_multiseed.py`。输入固定为
+`scalable3d-d1-publication-metadata-multiseed-evidence-v1`：同一 clean commit
+`a36f519ed954a9ba8bdc3fe149ba2835da290c39`，short seeds `1101-1110 @ 2.2 s`，
+long seeds `1101-1103 @ 10 s`，200 个目标、200 个资源、2 个侦察节点。参考臂为
+`per_track_copy_v1`，候选臂为 `immutable_shared_v1`。
+
+loader 精确校验冻结矩阵 SHA256、13 个 case、arm 顺序、命令隔离、26 个 complete/零返回码
+episode、实际 selector、D1 `implementation_id`、不可变标志和操作计数。参考臂必须出现逐航迹
+共享审计映射复制；候选复制数必须为 0 且共享复用数大于 0；两臂完整 `GlobalTrack` 元数据物化数
+必须相等。所有 JSONL 采用逐行读取，D6 不把 4.2 GB 证据整体载入内存。
+
+业务等价审计保留 D2 身份与 ID switch、D3 计划版本谱系、D4 内容地址和确认来源、D5/D7 输出、
+在线非白名单字段及离线真值状态、标签和 5 米事件。允许差异只限预注册 selector、实现诊断和
+操作数、性能/资源、由 runtime profile 派生的 episode ID/哈希及已验证的不透明计划编号。
+在线真值使用必须为 0。26 个 stderr 仅含相同的已登记 Matplotlib `Axes3D` 环境警告；其他
+stderr 内容失败关闭。
+
+正式结果：
+
+- D1 融合累计墙钟均值比：short `3.688192 -> 3.087261 s`，改善 `16.2935%`，
+  `10/10` 更快；long `30.639399 -> 21.126366 s`，改善 `31.0485%`，`3/3` 更快。
+- D2 关联累计墙钟：short `0.644394 -> 0.988737 s`，增加约 `53.44%`；
+  long `5.713552 -> 15.420213 s`，增加约 `169.89%`。
+- 核心墙钟：short `10.272705 -> 10.103672 s`，改善约 `1.65%`；
+  long `66.643720 -> 65.840401 s`，改善约 `1.21%`。两组均未达到预注册 `5%`。
+- 13/13 业务语义、有限状态、在线真值隔离、实现身份和 RSS 门通过。短、长核心墙钟门失败，
+  所以 `d1_optimization_admitted=false`。
+- 候选最低实时因子为 `0.14695931849644195`，所以
+  `system_realtime_gap_closed=false`。
+
+D2 反向开销的只读源码归因已确认：批量真值隔离审计的等值代表复用只接受精确内建容器，
+候选只读映射/序列包装未通过该类型门，导致共享诊断树按每条航迹递归重扫。该结论要求 D1 与
+D2 联合修复后重跑同一正式矩阵，当前候选不得按默认性能准入。
+
+正式 bundle 位于
+`outputs/d1_publication_metadata_multiseed_20260724_formal_a36f519/`，含完整 evaluation JSON、
+aggregate JSON、逐 pair CSV、中文 Markdown、PNG 和 `SHA256SUMS`。原 4.2 GB episode 未复制。
+证据属于三维质点仿真，不是 AirSim 或实机。2026-07-24 专项为 `27 passed`，D6 全量为
+`761 passed, 1 warning in 41.25s`；warning 为既有 Matplotlib `Axes3D` 环境提示。
+
+调用方式：
+
+```bash
+PYTHONPATH=research_modules/d6_evaluation_metrics \
+python3 research_modules/d6_evaluation_metrics/scripts/evaluate_d1_publication_metadata_multiseed.py \
+  --evidence-manifest /path/to/evidence_manifest.json \
+  --output-dir /path/to/independent_d6_report
+```
+
 ## 2026-07-24 D1 扫描输入同提交评估入口
 
 D6 新增 `d1_scan_input_multiseed.py` 和

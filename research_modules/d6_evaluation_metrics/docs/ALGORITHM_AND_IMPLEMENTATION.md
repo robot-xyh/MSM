@@ -1,5 +1,71 @@
 # D6 系统级离线评估：算法原理与实施说明
 
+## D1 航迹发布元数据同提交矩阵评估（2026-07-24）
+
+入口 `d1_publication_metadata_multiseed.py` 消费一个
+`episodes_complete_pending_d6` manifest。loader 对 manifest schema、外部矩阵文件、内嵌矩阵、
+固定 SHA256 和固定 source commit 做一致性检查，再逐项核对 13 个 case 的 group、seed、duration、
+arm order、命令和绝对证据路径。两个 arm 除 selector 和输出路径外不得存在命令差异。
+
+每个 arm 读取 manifest、scenario config、summary、observation governance、stage timings、
+在线 JSONL、离线真值状态、真值标签、5 米事件和 GNU `time -v`。JSONL 逐行解析、有限值检查和
+规范哈希，不整体读入内存。stderr 仅接受空文件或本轮唯一登记的 Matplotlib `Axes3D` 环境警告。
+资源记录必须给出有效 elapsed、RSS 和零退出状态。
+
+实现身份从 runtime profile、runtime configuration、summary、module final 和 governance
+交叉确认。三个诊断副本必须完全一致：
+
+```text
+reference:
+  selector = per_track_copy_v1
+  implementation_id = d1.publication_metadata.per_track_audit_copy.v1
+  immutable = false
+  per_track_copy_count > 0
+
+candidate:
+  selector = immutable_shared_v1
+  implementation_id = d1.publication_metadata.immutable_shared_audit.v1
+  immutable = true
+  per_track_copy_count = 0
+  shared_reuse_count > 0
+```
+
+两臂 `global_track_metadata_materialization_count` 必须相等。该检查将“少物化或少发布”与真实的
+数据结构优化区分开。
+
+在线业务等价复用跨 episode 比较器。随机 D3 `plan_id` 只按出现顺序映射为稳定 token，计划版本、
+前序关系、owner、联盟及下游引用仍比较。D4 authority/advisory 内容地址和 ACK 来源先在原始消息
+中验证，再做规范化。D1-D7 其他消息逐条比较；离线 truth state 数组、truth labels 和 proximity
+events 另行比较。summary 和 governance 只清除预注册发布元数据诊断及性能字段，其他业务字段
+继续参与规范哈希。
+
+逐 arm 指标包括：
+
+```text
+module.d1_fusion: wall, P50, P95, max
+module.d1_scan_input
+module.d2_association
+module.d3_assignment
+module.d5_active_vision
+module.d7_guidance
+module_publication_bus
+core wall, external elapsed, maximum RSS, real-time factor
+```
+
+每个 pair 的原始相对变化为 `(candidate-reference)/reference`。成本指标的改善取其相反数，
+实时因子改善保持同号。分组同时输出“逐对相对变化均值”和“候选/参考组均值之比”，避免两种
+汇总口径混用。bootstrap 固定 10000 次、随机种子 20260724，重采样单位为完整 seed pair。
+
+正式评估中全部语义和安全门通过。D1 fusion 局部门通过，RSS 门通过；short/long 核心墙钟只改善
+约 `1.65%/1.21%`，未达到 `5%`。阶段归因显示 D2 association 增加约
+`53.44%/169.89%`。只读源码核对定位到 D2 批量真值隔离审计的精确内建容器类型门：候选自定义
+只读容器不能使用已审计等值代表，导致共享树重复递归扫描。评估器据此输出
+`d1_optimization_admitted=false`，但不修改 D1/D2。
+
+CLI 生成完整 evaluation JSON、aggregate JSON、逐 pair CSV、中文 Markdown 和 PNG。输出目录
+必须位于 evidence root 之外。正式归档另保存 `SHA256SUMS`，不复制 4.2 GB 原始 episode。
+2026-07-24 专项 `27 passed`，D6 全量 `761 passed, 1 warning in 41.25s`。
+
 ## D1 扫描输入同提交矩阵评估（2026-07-24）
 
 `d1_scan_input_multiseed.py` 接收一个 completed-pending-D6 evidence manifest。loader 对外部

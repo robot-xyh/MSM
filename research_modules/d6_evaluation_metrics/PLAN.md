@@ -1,5 +1,51 @@
 # D6 Evaluation Metrics Plan
 
+## 2026-07-24 D1 航迹发布元数据正式评估状态
+
+### 已完成
+
+- [x] 新增 `d6.d1_publication_metadata_multiseed_evaluation.v1` 独立只读消费者、CLI 和
+  合成 evidence fixture，不参与 D1-D7 控制。
+- [x] 精确冻结 manifest/matrix schema、矩阵 SHA256、source commit、13 对 short/long case、
+  200/200/2 规模、arm order、命令、selector、实现 ID、bootstrap 和准入门。
+- [x] 要求 26 个 arm 均为 complete、零返回码、episode 文件齐全；stderr 只接受空或唯一登记的
+  Matplotlib `Axes3D` 环境警告，其他内容失败关闭。
+- [x] 交叉核对 summary/module final/governance 的 selector、实现 ID、不可变标志和操作计数。
+  参考逐航迹复制必须大于 0；候选复制必须为 0、共享复用必须大于 0；两臂完整物化数必须相等。
+- [x] 逐对比较在线总线、D2 身份/ID switch、D3 计划谱系、D4 内容地址/确认来源、D5/D7 输出、
+  summary/governance 非白名单字段，以及离线真值状态、标签和 5 米事件。在线真值使用为 0。
+- [x] 输出 D1 fusion wall/P50/P95/max、scan input、D2/D3/D5/D7、publication bus、core wall、
+  external elapsed、RSS 和实时因子。阶段耗时与 core/elapsed 分层，不相加。
+- [x] 实现 short/long 配对变化、均值比变化、10000 次/seed 20260724 bootstrap、RSS 门、
+  D1 融合门、short/long 核心墙钟 5% 门和独立系统实时门。
+- [x] 专项正负测试 `27 passed`，覆盖错误实现 ID、假 selector、候选仍复制、参考不复制、
+  无共享复用、不可变标志错误、物化数不等、业务漂移、truth 泄漏、失败 manifest/return code、
+  非登记 stderr、RSS/性能/bootstrap 门和 evidence root 内输出拒绝。
+- [x] 2026-07-24 D6 全量回归 `761 passed, 1 warning in 41.25s`；warning 为既有
+  Matplotlib `Axes3D` 环境提示。
+- [x] 正式只读消费 clean commit
+  `a36f519ed954a9ba8bdc3fe149ba2835da290c39` 的 13 对、26 arm、约 4.2 GB evidence。
+  JSONL 采用逐行哈希和逐行成对比较。
+- [x] 正式 bundle 已归档到
+  `outputs/d1_publication_metadata_multiseed_20260724_formal_a36f519/`，含 JSON、CSV、
+  中文 Markdown、PNG 和 `SHA256SUMS`，未复制原 episode。
+
+### 正式结论
+
+- [x] D1 融合 short/long 均值比改善约 `16.29%/31.05%`，候选分别 `10/10`、`3/3` 更快；
+  全部语义、有限状态、真值隔离、实现身份和 RSS 门通过。
+- [x] D2 关联 short/long 增加约 `53.44%/169.89%`。源码核对确认候选只读容器未进入 D2
+  exact built-in 等值复用，导致共享诊断树逐航迹重扫。
+- [x] short/long 核心墙钟只改善约 `1.65%/1.21%`，未达到各 `5%` 的预注册门。
+  `d1_optimization_admitted=false`。
+- [ ] 候选最低实时因子为 `0.14695931849644195`，
+  `system_realtime_gap_closed=false`。系统实时性继续开放。
+- [ ] D1/D2 需联合消除容器类型互操作开销，并由 main 重跑同一 13-pair 矩阵。D6 再按原门复评；
+  未复评前候选不得写成默认性能准入。
+
+`EXPERIMENT_REPORT.md` 已同步正式结果。`AIRSIM_INTEGRATION_PLAN.md` 已检查；本项不改变 AirSim
+producer、日志合同、相机、检测、reset、actor、控制或 episode 调度，因此无需修改。
+
 ## 2026-07-24 D1 扫描输入同提交 A/B 评估状态
 
 ### 已完成

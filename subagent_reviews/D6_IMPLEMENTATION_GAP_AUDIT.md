@@ -1,5 +1,49 @@
 # D6 实现差距审计
 
+## 2026-07-24 D1 航迹发布元数据正式评估 GAP 更新
+
+### 已关闭
+
+1. D6 已实现独立 13-pair manifest consumer、CLI 和合成 fixture，不从目录名推断 arm、seed、
+   duration 或规模，不参与控制。
+2. evidence/matrix schema、固定 SHA256、source commit、case/arm 顺序、命令隔离、200/200/2、
+   bootstrap 和准入门均精确校验。
+3. 26 个 arm 必须 complete、返回码为 0、文件完整；stderr 只允许空或唯一登记的 Matplotlib
+   `Axes3D` 环境警告。
+4. selector、D1 实现 ID、不可变标志和操作数在三个持久化位置交叉确认。参考复制为正，候选复制
+   为 0、共享复用为正，两臂完整物化数相等。
+5. D2 身份/ID switch、D3 计划谱系、D4 内容地址和 ACK 来源、D5/D7 输出、非白名单业务字段、
+   离线真值状态/标签/5 米事件及在线 truth=0 已进入等价门。
+6. D1 fusion wall/P50/P95/max、scan input、D2/D3/D5/D7、publication bus、core wall、
+   external elapsed、RSS、实时因子、配对统计、均值比和固定 bootstrap 已实现。
+7. JSON/aggregate/CSV/中文 Markdown/PNG/SHA256 bundle 已归档，原 4.2 GB evidence 保持外部只读。
+8. 专项 `27 passed`，覆盖错误实现 ID、假 selector、候选仍复制、参考不复制、共享复用为零、
+   物化数不等、不可变标志、语义漂移、truth 泄漏、失败状态/返回码、非登记 stderr、RSS/性能/
+   bootstrap 门和路径边界。D6 全量为 `761 passed, 1 warning in 41.25s`。
+
+### 正式证据结论
+
+1. D1 fusion short/long 均值比改善约 `16.29%/31.05%`，候选 `10/10`、`3/3` 更快。
+2. 13/13 业务语义、有限状态、真值隔离、实现身份和 RSS 门通过。
+3. D2 association short/long 增加约 `53.44%/169.89%`。候选自定义只读容器未进入 D2 精确内建
+   容器等值复用，真值隔离审计重复扫描共享诊断树。
+4. short/long 核心墙钟仅改善约 `1.65%/1.21%`，两项 5% 门失败；
+   `d1_optimization_admitted=false`。
+5. 候选最低实时因子为 `0.14695931849644195`；
+   `system_realtime_gap_closed=false`。
+
+### 仍开放 P1
+
+1. **D1/D2 容器互操作性能。** D1 共享只读树和 D2 真值隔离批审计需形成不重复扫描且仍失败关闭的
+   合同。该修复不属于 D6 所有权。
+2. **正式重评。** D1/D2 修复后，main 需按相同 clean、13-pair、200/200/2 矩阵重跑；D6 使用原
+   预注册门复评。未通过前候选不得写成默认性能准入。
+3. **系统实时、AirSim 和目标硬件。** 当前最低实时因子远低于 1，三维质点证据不能关闭系统实时
+   或替代 AirSim/目标硬件容量验证。
+
+当前无新增 D6-owned P0。D6 consumer、门控、报告和正式 evidence 消费缺口已关闭；跨模块
+D1/D2 性能和系统实时保持 P1。
+
 ## 2026-07-24 D1 扫描输入同提交评估 GAP 更新
 
 ### 已关闭
