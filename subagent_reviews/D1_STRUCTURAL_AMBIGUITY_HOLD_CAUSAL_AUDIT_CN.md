@@ -4,10 +4,11 @@
 **审计范围**：200 对 200 三维质点场景中的 D1 结构歧义保持候选
 **候选状态**：身份中性共同质心修正已作为默认关闭的 D1 模块候选实现；clean seed 1100
 同输入复跑仍为零 treatment；受控冻结扫描已形成一次合法 treatment，仍未晋级
-**下一候选状态**：A/B/C 比较已成文但均未实现；先做 A publication overlay 最小原型，
-B 暂缓，C 交 D2 后续规划
+**下一候选状态**：A1 publication overlay 为
+`IMPLEMENTED_UNIT_TESTED_OFFLINE_PROTOTYPE`；A2/A3/A4 未实现，B 暂缓，C 交 D2 后续规划
 **结构歧义基础证据提交**：`ff881316243ff5a2991a4659ab78637ed625d123`
 **共同质心 clean 复核提交**：`7e15dac9cdaf6743999dfe045a70676fd31a17d6`
+**A1 纯函数原型提交**：`de73cb2`；聚焦 `7 passed`，D1 全量 `294 passed`
 
 ## 1. 结论
 
@@ -493,26 +494,26 @@ replace，以清除旧临时修正。控制臂的分段预测与候选臂从观�
 分叉，不能替代冻结输入因果重放。共同质心开发接线也已完成，但首个开发门槛为零 treatment。
 固定提交 `7e15dac` 的 clean 同输入复跑已经确认该零 treatment，不再重复 seeds 1101/1102。
 受控冻结扫描现已证明同步平衡分量存在有效施加窗口，并确认 OOSM 与数量不平衡边界继续拒绝。
-下一步不直接恢复当前 replay/replace 语义下的系统 A/B，而是先完成 publication overlay
-最小原型和离线 shadow。拒绝路径必须直接发布规范滤波快照，不调用 replay/replace，并逐项
-证明业务发布与 control bitwise 相同、滤波历史摘要不变。只有该门通过后，才使用新的真实
-匿名冻结扫描检查自然 treatment 并考虑未见 seed 验收。不得通过忽略时序或放宽满基数门制造
-treatment。
+下一步不直接恢复当前 replay/replace 语义下的系统 A/B。publication overlay A1 纯函数原型
+已完成：拒绝 overlays 为空且装配直接返回原规范业务序列，接受只复制 DTO；原型不调用
+replay/replace，也不接 `FusionAdapter`。A2 冻结扫描离线 shadow、禁止写入对象摘要和
+P95/RSS 尚未实现。只有 A2 通过后，才使用新的真实匿名冻结扫描检查自然 treatment 并考虑
+未见 seed 验收。不得通过忽略时序或放宽满基数门制造 treatment。
 
 free-row、free-column、大分量、过期/OOSM 量测、重复/冲突来源、身份字段、质心门限失败和
 形状不一致分量继续 prediction-only。不得依据四次 D2 重复 birth 放宽 D1 自由列新生，也不得
 用离线真值参与在线门控或状态更新。候选在完成多 seed 连续性恢复、身份不退化、状态一致性、
 下游可用性、P95 和长时水位表/RSS 验收前不得晋级。
 
-## 13. 下一候选设计决策（设计未实现）
+## 13. 下一候选设计与 A1 实现状态
 
 完整设计见
 `research_modules/d1_sensor_fusion/docs/STRUCTURAL_AMBIGUITY_NEXT_CANDIDATE_DESIGN_CN.md`。
 该设计比较三条路线：
 
-1. A 使用 detached publication overlay。接受时只改发布 DTO，拒绝时 overlay 为空并直接使用
-   规范快照；state/covariance、history、checkpoint、cache、lineage/source support 和
-   `global_track_id` 均不修改。A 是下一步最小原型；
+1. A 使用 detached publication overlay。A1 已在提交 `de73cb2` 实现纯函数原型：接受时只改
+   发布 DTO，拒绝时 overlay 为空并直接使用规范快照；state/covariance、history、checkpoint、
+   cache、lineage/source support 和 `global_track_id` 均不修改。A2-A4 未实现；
 2. B 把共同质心变成 fixed-lag measurement-time 事件。当前
    `Q(h)=G(h)qG(h)^T` 的单段与分段传播不等价，零更新事件也会改变协方差分段；事件总排序、
    过程噪声分段和一致性验收冻结前，B 不进入在线实现；
@@ -520,10 +521,11 @@ free-row、free-column、大分量、过期/OOSM 量测、重复/冲突来源、
    为 canonical `global_track_id`，无交叉协方差时不得做独立状态融合。
 
 设计规定组件、成员、观测、候选边和未来历史事件的确定性排序键，并保持双时间戳、平衡满基数
-门、generation 有界幂等及 lineage/source support 不变。A1/A2 的首要预注册门是所有拒绝
-原因下业务发布与 control bitwise 相同，同时滤波内部摘要完全不变。A3/A4 才允许使用预先
-哈希的新匿名扫描和至少 20 个未见 seed；零 treatment 立即停止，不放宽门限。seeds
-1101/1102 继续停止。
+门、generation 有界幂等及 lineage/source support 不变。A1 聚焦 `7 passed` 验证 2/3/5
+成员、拒绝透传、全排列、幂等/冲突/容量和输入不变，D1 全量 `294 passed`。A1 没有修改
+`fusion.py`、运行开关或默认路径，experimental decision 不是在线 schema。
 
-本节只同步设计决策。没有 Python 实现、候选开关、公开 schema、测试或新运行证据；当前状态
-继续为 `candidate_not_promoted`。
+A2 仍须在冻结扫描上证明业务发布与 control bitwise 相同，同时记录滤波内部禁止写入摘要和
+P95/RSS。A3/A4 才允许使用预先哈希的新匿名扫描和至少 20 个未见 seed；零 treatment 立即
+停止，不放宽门限。seeds 1101/1102 继续停止。A1 完成不改变在线共同质心候选的
+`candidate_not_promoted` 状态。

@@ -5,14 +5,20 @@
 
 ---
 
-## 0. 结构歧义下一候选设计状态（2026-07-23）
+## 0. 结构歧义 A1 原型状态（2026-07-23）
 
 - 新设计文档为
   `research_modules/d1_sensor_fusion/docs/STRUCTURAL_AMBIGUITY_NEXT_CANDIDATE_DESIGN_CN.md`；
-  状态是 `DESIGN_ONLY_NOT_IMPLEMENTED`。本轮没有 Python、开关、schema、测试或系统运行。
-- A 路线推荐先做最小原型：规范滤波 state/covariance、历史、checkpoint 和 replay cache
-  不动；共同质心只在 detached 发布 DTO 上形成一次性 overlay；拒绝时直接发布规范快照，
-  要求业务字段与 control bitwise 相同。
+  A1 状态是 `IMPLEMENTED_UNIT_TESTED_OFFLINE_PROTOTYPE`，实现提交为 `de73cb2`。
+- A1 是独立纯函数模块：规范滤波 state/covariance、历史、checkpoint 和 replay cache 不动；
+  共同质心只在 detached 发布 DTO 上形成一次性 overlay；拒绝决策 overlays 为空，装配直接
+  返回原规范业务序列。接受只复制 DTO，速度、相对位置、`global_track_id`、lineage/source
+  support、identity、质量和 metadata 不变。
+- 聚焦测试 `7 passed`，覆盖同步平衡 2/3/5 成员、拒绝透传、成员/观测/边/组件全排列、
+  generation 幂等/倒退/摘要冲突、冲突组件、硬容量、非有限/身份输入和输入不变；D1 全量
+  `294 passed`。
+- A1 未接 `FusionAdapter.process()`/`process_scan_batch()`，没有修改 `fusion.py` 或新增
+  运行开关；experimental decision 不是当前在线 schema。A2/A3/A4 未实现。
 - B 路线暂缓。当前 `Q(h)=G(h)qG(h)^T` 不满足单段/分段传播半群等价，插入零更新事件也会
   改变协方差分段。事件排序、过程噪声分段、NEES/NIS/RMSE oracle 未冻结前不得接在线路径。
 - C 路线保留为主要系统研究方向：D1 只发布既有结构 evidence，D2 后续在有界窗口中规划概率
@@ -85,11 +91,11 @@
 - source-only 终态映射 200 个真实目标并有 1 条未映射航迹；hold 映射 191 个真实目标并有
   10 条未映射航迹。首个计划后控制反馈使传感器流分叉，因此该结果是单 seed 闭环系统效果
   对照，不是完全冻结输入的上游因果证明。
-- 下一步不直接恢复现有 replay/replace 候选的系统 A/B。先完成 publication overlay 的 A1
-  纯函数原型和 A2 离线 shadow，逐拒绝原因证明业务发布与 control bitwise 相同且滤波历史
-  摘要不变；通过后再用新的真实匿名冻结扫描检查同步平衡分量是否自然出现。不得通过忽略
-  OOSM 或放宽数量门制造 treatment。晋级仍须同时满足 IDSW、连续性恢复、RMSE/NEES/NIS、
-  D2/D3 可用性、P95 和长时内存/吞吐门槛。
+- 下一步不直接恢复现有 replay/replace 候选的系统 A/B。A1 纯函数原型已完成；A2 仍需在冻结
+  扫描上默认不发布地接入 shadow，记录规范快照、shadow DTO 和全部禁止写入摘要，并验证业务
+  输出、P95/RSS。通过后才进入 A3 新匿名 treatment 发现和 A4 预注册确认。不得通过忽略 OOSM
+  或放宽数量门制造 treatment。晋级仍须满足 IDSW、连续性恢复、RMSE/NEES/NIS、D2/D3
+  可用性、P95 和长时内存/吞吐门槛。
 
 ## 0.2 结构歧义侧车基础阶段状态（2026-07-23）
 

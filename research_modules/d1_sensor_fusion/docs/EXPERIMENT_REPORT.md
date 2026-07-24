@@ -1,5 +1,51 @@
 # 第一研究模块实验结果
 
+## A1 publication overlay 纯函数原型验证
+
+**证据日期：2026-07-23**
+
+**状态：`IMPLEMENTED_UNIT_TESTED_OFFLINE_PROTOTYPE`**
+
+**实现提交：`de73cb2`**
+
+**范围：D1 纯函数单元测试；未接 FusionAdapter，未运行 main、AirSim 或系统多 seed**
+
+A1 读取只读规范 `GlobalTrack` 发布快照和 `StructuralAmbiguityEvidence`，输出 detached
+accepted/rejected decision、成员 overlays 和新的有界 generation 状态。拒绝时 overlays 为空，
+shadow 装配直接返回原业务序列；接受时只在 DTO 拷贝上增加统一 NED 位置平移和 PSD 位置
+协方差增量。实验 decision 明确为
+`experimental_design_prototype_not_online_schema`。
+
+| 验收项 | 2026-07-23 结果 |
+| --- | --- |
+| A1 聚焦文件 | `7 passed` |
+| D1 全量 | `294 passed` |
+| 接受规模 | 同步平衡纯交替环 2/3/5 成员均接受 |
+| 接受不变量 | 统一平移；速度、相对位置、`global_track_id`、metadata、lineage/source support、identity 和质量不变；协方差增量 PSD |
+| 拒绝范围 | OOSM、stale、数量/匹配结构非法、非纯交替环、身份字段、非有限输入均 fail closed，overlays 为空 |
+| 确定性 | 成员、业务航迹、观测、边和组件全排列得到 byte-identical decision/overlay |
+| generation/资源 | 同代不重复作用；倒退代、摘要冲突、重叠组件和容量满拒绝；状态条目不超过硬容量 |
+| 输入隔离 | 输入 `GlobalTrack` 数组和 metadata 未修改；拒绝装配返回原序列对象 |
+
+聚焦命令：
+
+```bash
+PYTHONPATH=research_modules/d1_sensor_fusion/src pytest -q \
+  research_modules/d1_sensor_fusion/tests/test_structural_ambiguity_publication_overlay_prototype.py
+```
+
+全量命令：
+
+```bash
+PYTHONPATH=research_modules/d1_sensor_fusion/src pytest -q \
+  research_modules/d1_sensor_fusion/tests
+```
+
+该验证关闭的范围仅是 A1 纯函数和 DTO 装配合同。A1 没有修改 `fusion.py`，没有运行开关或默认
+路径，也不是在线 schema。A2 冻结扫描 shadow 接线、在线禁止写入摘要、P95/RSS，A3 新匿名
+treatment 发现以及 A4 预注册多 seed、RMSE/NEES/NIS 和 D2/D3 系统收益均未实现。seeds
+1101/1102 继续停止。
+
 ## 身份中性共同质心候选模块验证
 
 **证据日期：2026-07-23**

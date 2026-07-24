@@ -4,6 +4,46 @@ Offline research module for radar, acoustic, EO, and optional synthetic lidar he
 
 ## 当前性能与治理证据（2026-07-23）
 
+### 第十八阶段：A1 publication overlay 纯函数原型
+
+状态：`IMPLEMENTED_UNIT_TESTED_OFFLINE_PROTOTYPE`。提交 `de73cb2` 已实现独立实验模块
+`structural_ambiguity_publication_overlay_prototype.py`，输入只读规范 `GlobalTrack` 发布快照
+和既有 `StructuralAmbiguityEvidence`，输出 detached accepted/rejected decision、成员
+overlay 和新的有界 generation 水位状态。该模块是纯函数原型，没有接入
+`FusionAdapter.process()`、`process_scan_batch()` 或默认发布路径，没有修改 `fusion.py`，
+没有新增运行开关；其
+`d1.experimental-centroid-publication-overlay-decision.v1` 明确是
+`experimental_design_prototype_not_online_schema`，不是当前在线 schema。
+
+拒绝决策的 overlays 恒为空，shadow 装配函数直接返回原规范业务 `GlobalTrack` 序列，不做
+replay、replace、状态重建或加零物化。接受决策只在脱离滤波器所有权的 DTO 拷贝上增加统一
+NED 位置平移和 PSD 位置协方差增量；速度、成员相对位置、`global_track_id`、双时间戳、
+lineage/source support、identity、质量及其 metadata 不变。原型按动态分量大小处理平衡、
+满基数、无 free row/column 的纯交替环，保持
+`cross_covariance_available=false` 和在线 truth 隔离。
+
+所有组件、成员、观测和边先规范排序，再计算摘要和 `decision_id`。重复/倒退 generation、
+同代摘要冲突、重叠组件、硬容量、OOSM、stale、非满匹配、非纯交替环、身份字段和非有限输入
+均 fail closed；generation 状态采用不可变返回值、固定滞后淘汰和硬容量，不随 episode
+无界增长。
+
+2026-07-23 验证口径为：
+
+- 聚焦命令
+  `PYTHONPATH=research_modules/d1_sensor_fusion/src pytest -q research_modules/d1_sensor_fusion/tests/test_structural_ambiguity_publication_overlay_prototype.py`
+  得到 `7 passed`；
+- D1 全量命令
+  `PYTHONPATH=research_modules/d1_sensor_fusion/src pytest -q research_modules/d1_sensor_fusion/tests`
+  得到 `294 passed`；
+- 聚焦场景覆盖同步平衡 2/3/5 成员接受、统一平移/速度与相对位置不变/PSD 增量，OOSM、
+  stale、数量或匹配结构非法、身份和非有限输入拒绝，成员/观测/边/组件排列 byte-identical，
+  同代幂等、倒退代、摘要冲突、组件冲突、容量拒绝、状态有界、输入数组与 metadata 不变以及
+  `global_track_id` 原样保留。
+
+这些结果只证明 A1 纯函数和 DTO 装配合同的模块单元行为。A2 冻结扫描离线 shadow 接线及禁止
+写入摘要记录、A3 新匿名冻结扫描 treatment 发现、A4 预注册多 seed 确认均未实现；没有
+AirSim、D2/D3 业务发布、P95、系统收益或候选晋级证据。seeds 1101/1102 继续停止。
+
 ### 第十六阶段：身份中性共同质心状态修正候选
 
 D1 已实现默认关闭的

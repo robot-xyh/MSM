@@ -6,11 +6,13 @@
 
 最新设计决策见
 `STRUCTURAL_AMBIGUITY_NEXT_CANDIDATE_DESIGN_CN.md`。该文件比较 publication overlay、
-fixed-lag OOSM 共同质心事件和 D2 概率/多假设消费三条路线，状态明确为
-`DESIGN_ONLY_NOT_IMPLEMENTED`。当前推荐先做 A 的最小原型：共同质心只作用于 detached 发布
-DTO，拒绝时直接发布规范滤波快照，不修改 state/covariance、历史、checkpoint 或 replay
-cache。B 因当前 `Q(h)=G(h)qG(h)^T` 的单段/分段传播不等价而暂缓；C 保留为 D2 后续主要系统
-研究路线。seeds 1101/1102 继续停止。
+fixed-lag OOSM 共同质心事件和 D2 概率/多假设消费三条路线。A1 已在提交 `de73cb2` 达到
+`IMPLEMENTED_UNIT_TESTED_OFFLINE_PROTOTYPE`：共同质心只作用于 detached 发布 DTO，拒绝
+装配直接返回规范业务序列，不修改 state/covariance、历史、checkpoint 或 replay cache。
+聚焦测试 `7 passed`，D1 全量 `294 passed`。A1 未接 `FusionAdapter`，没有修改 `fusion.py`
+或新增运行开关，其 experimental decision 不是在线 schema。A2 冻结扫描 shadow、A3 匿名
+treatment 发现和 A4 多 seed 确认均未实现。B 因当前 `Q(h)=G(h)qG(h)^T` 的单段/分段传播
+不等价而暂缓；C 保留为 D2 后续主要系统研究路线。seeds 1101/1102 继续停止。
 
 最新 D1 边界诊断复用 governed replay、扫描组织器和在线批融合入口，对同步平衡、乱序平衡和
 数量不平衡三类结构歧义冻结扫描进行控制臂/共同质心候选臂比较。同步 `2x2` 纯交替环形成一次
@@ -18,9 +20,8 @@ cache。B 因当前 `Q(h)=G(h)qG(h)^T` 的单段/分段传播不等价而暂缓�
 `unbalanced_component` 拒绝。两个拒绝场景共同质心 correction 均未施加，但拒绝后的
 publication-base replay + replace 造成候选减控制协方差差最小特征值
 `-0.0071928353214153066`、`-0.004617076466238031`；这是有限的重放替换诊断差异，不是
-严格无副作用路径，也不构成晋级，边界为 `candidate_not_promoted`。专项 `5 passed`，
-当前 D1 全量
-`287 passed in 18.03s`。报告和 JSON 位于
+严格无副作用路径，也不构成晋级，边界为 `candidate_not_promoted`。该历史诊断专项
+`5 passed`，当时 D1 全量 `287 passed in 18.03s`。报告和 JSON 位于
 `../reports/structural_ambiguity_centroid_replay_20260723/`。该证据只确认受控边界，不是
 AirSim、多 seed 或候选晋级证据。
 
@@ -122,11 +123,11 @@ D1 侧解释见本目录各算法/AirSim 文档和 `../reports/EXPERIMENT_REPORT
 
 ## 文档
 
-- `STRUCTURAL_AMBIGUITY_NEXT_CANDIDATE_DESIGN_CN.md`：结构歧义 A/B/C 下一候选比较、数学语义、数据结构、排序键、风险、阶段和预注册验收；设计未实现。
+- `STRUCTURAL_AMBIGUITY_NEXT_CANDIDATE_DESIGN_CN.md`：结构歧义 A/B/C 下一候选比较、数学语义、数据结构、排序键、风险、阶段和预注册验收；A1 离线纯函数原型已实现并完成单元测试，A2-A4 未实现。
 - `ALGORITHM_AND_IMPLEMENTATION.md`：算法原理、数学模型、接口、调参、仿真验证、主动降级不确定度信号和跨模块关系。
 - `AIRSIM_INTEGRATION_PLAN.md`：AirSim/离线回放集成计划，说明时间戳、坐标和传感器桥接策略。
 - `MODULE_PRINCIPLES_CN.md`：中文模块原理、已实现边界和当前证据解释。
-- `EXPERIMENT_REPORT.md`：2026-07-22 clean 200v200 全栈接线复跑摘要和证据边界。
+- `EXPERIMENT_REPORT.md`：A1 纯函数单元验证、历史 clean 200v200 全栈复跑摘要和证据边界。
 
 ## 实验报告与图表
 

@@ -1,16 +1,20 @@
 # D1 多传感器融合与目标配准实施计划
 
-## 结构歧义下一候选设计状态（2026-07-23）
+## 结构歧义 A1 原型完成状态（2026-07-23）
 
-D1 已完成下一候选的文档设计，详见
-`docs/STRUCTURAL_AMBIGUITY_NEXT_CANDIDATE_DESIGN_CN.md`。**该设计未实现**：本轮没有修改
-Python、在线开关、公开 schema 或测试，也没有产生新的系统效果证据。
+D1 已在提交 `de73cb2` 完成 A1，状态为
+`IMPLEMENTED_UNIT_TESTED_OFFLINE_PROTOTYPE`。实现位于独立实验模块
+`src/d1_sensor_fusion/structural_ambiguity_publication_overlay_prototype.py`：它以只读规范
+`GlobalTrack` 发布快照和 `StructuralAmbiguityEvidence` 为输入，纯函数返回 detached
+decision/member overlays 与新的有界 generation 状态，并可纯函数装配 shadow tracks。
+该原型未接 `FusionAdapter.process()`、`process_scan_batch()` 或默认发布路径，未修改
+`fusion.py`，没有运行开关；实验 decision 结构不是当前在线 schema。
 
 设计比较三条路线：
 
-1. A 将共同质心处理改为一次性 publication overlay。规范滤波 state/covariance、观测历史、
-   fixed-lag checkpoint 和 replay cache 均不修改；候选拒绝时直接发布规范快照，不执行
-   publication-base replay + replace。推荐先做纯函数最小原型和离线 shadow；
+1. A1 已把共同质心处理实现为一次性 publication overlay 纯函数原型。规范滤波
+   state/covariance、观测历史、fixed-lag checkpoint 和 replay cache 均不修改；候选拒绝时
+   overlays 为空，装配函数直接返回规范业务序列，不执行 publication-base replay + replace；
 2. B 把共同质心作为 measurement-time OOSM 历史事件。当前
    `Q(h)=G(h)qG(h)^T` 不满足单段/分段传播半群等价，插入零更新事件也会因增加传播分段而
    改变协方差；在事件排序、过程噪声分段和 RMSE/NEES/NIS 一致性门槛冻结前，不进入在线实现；
@@ -21,10 +25,12 @@ Python、在线开关、公开 schema 或测试，也没有产生新的系统效
 lineage/source support、质量和 identity 状态不变。overlay/event 不生成、改写或局部重绑
 `global_track_id`；无成员交叉协方差的事实继续显式发布。
 
-下一执行顺序为 D0 设计冻结（本轮）-> A1 纯函数最小原型 -> A2 离线发布 shadow -> A3 新匿名
-冻结扫描 treatment 发现 -> A4 预注册未见 seed 确认。A1/A2 必须先证明所有拒绝原因下业务
-发布与 control bitwise 相同，且滤波历史摘要不变。seeds 1101/1102 继续停止；不得以放宽
-OOSM、满基数、形状或身份门制造 treatment。
+2026-07-23 的 A1 聚焦测试为 `7 passed`，覆盖 2/3/5 成员接受、拒绝透传、全排列确定性、
+generation 幂等/倒退/摘要冲突、冲突组件、硬容量、状态有界、truth/非有限输入隔离及输入不变；
+D1 全量为 `294 passed`。下一执行顺序为 A2 离线发布 shadow -> A3 新匿名冻结扫描 treatment
+发现 -> A4 预注册未见 seed 确认。A2 必须在冻结扫描上记录规范快照、shadow DTO 和全部禁止
+写入对象摘要，并证明业务输出不变；A1 的纯装配 helper 不等于 A2 已接线。seeds 1101/1102
+继续停止，不得以放宽 OOSM、满基数、形状或身份门制造 treatment。
 
 ## 共同质心冻结扫描边界诊断完成状态（2026-07-23）
 
@@ -55,8 +61,8 @@ replace 清除旧临时修正。该替换把控制臂的分段预测发布态换
 `candidate_not_promoted`。
 
 该诊断之后的执行顺序已由上节下一候选设计收紧：不直接恢复 hold+现有历史替换候选的系统
-A/B，而是先验证 publication overlay 的拒绝路径 bitwise 隔离。只有 A1/A2 通过后，才使用
-新的匿名冻结扫描检查同步平衡分量是否自然出现。仍需覆盖未见 seed、多 seed、均方根误差、
+A/B。A1 已在纯函数单元范围验证 publication overlay 的拒绝路径 bitwise 隔离；只有 A2
+冻结扫描 shadow 通过后，才使用新的匿名冻结扫描检查同步平衡分量是否自然出现。仍需覆盖未见 seed、多 seed、均方根误差、
 归一化估计误差平方、归一化创新平方、D2/D3 可用性、P95 和长时内存/吞吐。若真实输入继续
 只有 OOSM 或数量不平衡分量，应保留零 treatment 结论，不能放宽门限制造处理。
 

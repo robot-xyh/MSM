@@ -8,10 +8,11 @@
 
 ## 当前权威增量（2026-07-23）
 
-### 结构歧义下一候选设计边界（未实现）
+### 结构歧义 A1 publication overlay 原型
 
-`STRUCTURAL_AMBIGUITY_NEXT_CANDIDATE_DESIGN_CN.md` 已比较三个后续方向，但本节不声明任何
-方向已实现。推荐的 A 路线把共同质心修正限制为 detached publication overlay：
+`STRUCTURAL_AMBIGUITY_NEXT_CANDIDATE_DESIGN_CN.md` 已比较三个后续方向。提交 `de73cb2`
+已实现 A1，状态为 `IMPLEMENTED_UNIT_TESTED_OFFLINE_PROTOTYPE`。A1 把共同质心修正限制为
+detached publication overlay：
 
 \[
 x_i^{pub}=x_i^c+[\delta p,0]^\mathsf{T},
@@ -23,6 +24,20 @@ P_i^{pub}=P_i^c+\operatorname{diag}(\Delta P_{pos},0),
 不调用 replay/replace，并以业务发布 bitwise 等同 control 为首要验收。A 不写 state、
 history、checkpoint、cache、lineage、source support 或 `global_track_id`。
 
+实现入口为
+`evaluate_experimental_centroid_publication_overlays()` 和
+`assemble_experimental_centroid_shadow_tracks()`。前者读取规范 `GlobalTrack` 快照与
+`StructuralAmbiguityEvidence`，返回不可变 decision/member overlays 和新的有界 generation
+状态；后者只在 accepted 且全部基准摘要复核通过后复制发布 DTO。拒绝、无 accepted decision
+或任一装配校验失败时，直接返回传入的规范业务序列对象，不重建状态。接受时只增加统一 NED
+位置平移和 PSD 位置协方差增量，速度、相对位置、双时间戳、`global_track_id`、
+lineage/source support、identity、质量和 metadata 不变。
+
+原型使用完整组件键、UTF-8 排序、canonical JSON 和 SHA-256 生成确定性摘要及 `decision_id`；
+重复/倒退 generation、同代摘要冲突、重叠组件、容量满、OOSM/stale、结构门失败、身份字段和
+非有限输入均 fail closed。成员数量来自输入，不写死 2x2；仅平衡满基数纯交替环可接受，并
+继续固定 `cross_covariance_available=false`。
+
 B 路线把共同质心放入 fixed-lag measurement-time 历史。当前
 \(Q(h)=G(h)qG(h)^\mathsf{T}\) 一般不满足
 \(Q(h_1+h_2)=F(h_2)Q(h_1)F(h_2)^\mathsf{T}+Q(h_2)\)，所以插入零更新事件也会改变协方差
@@ -30,8 +45,12 @@ B 路线把共同质心放入 fixed-lag measurement-time 历史。当前
 只发布 evidence，由 D2 后续规划概率或多假设消费；无交叉协方差时不得把成员边缘量当作独立
 状态量测。
 
-三条路线继续保持双时间戳、平衡满基数门、generation 有界幂等和 lineage/source support
-不变。seeds 1101/1102 继续停止。当前状态是设计未实现，不能作为实现或晋级证据。
+2026-07-23 聚焦测试 `7 passed`，覆盖 2/3/5 成员接受、拒绝透传、成员/观测/边/组件排列
+byte-identical、generation 幂等/倒退/摘要冲突、冲突组件、容量和输入不变；D1 全量
+`294 passed`。该结果只证明 A1 离线纯函数原型，不代表 A2 shadow、在线/AirSim 接线、P95、
+系统效果或晋级。A1 没有接入 `FusionAdapter.process()`/`process_scan_batch()`，没有修改
+`fusion.py` 或新增运行开关；experimental decision schema 不是当前在线 schema。A2/A3/A4
+未实现，seeds 1101/1102 继续停止。
 
 ### 结构歧义证据侧车实验候选 v3
 

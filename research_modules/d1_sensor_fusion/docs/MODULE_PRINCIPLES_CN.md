@@ -6,7 +6,7 @@
 
 ## 当前权威增量（2026-07-23）
 
-### 下一候选先隔离发布副作用（设计未实现）
+### A1 先以纯函数隔离发布副作用
 
 受控冻结扫描已证明，拒绝共同质心 correction 后执行 publication-base replay + replace 会
 改变发布协方差。根因是当前 `Q(h)=G(h)qG(h)^T` 不满足单段与分段传播的半群等价；即使插入
@@ -15,8 +15,20 @@
 下一候选因此优先采用 publication overlay：规范滤波 state/covariance、观测历史、fixed-lag
 checkpoint 和 replay cache 不动；接受时只在 detached 发布 DTO 上增加共同平移和边缘协方差，
 拒绝时直接发布规范快照并要求业务字段 bitwise 等同 control。overlay 不进入下一帧先验，
-generation 水位和候选审计保持有界幂等。该方案当前只有设计，没有 Python 实现、开关、DTO
-或测试。
+generation 水位和候选审计保持有界幂等。
+
+提交 `de73cb2` 已把该原则实现为
+`IMPLEMENTED_UNIT_TESTED_OFFLINE_PROTOTYPE`。A1 只读取规范 `GlobalTrack` 快照和既有
+`StructuralAmbiguityEvidence`，纯函数返回 experimental decision/member overlays 与新的
+有界 generation 状态。拒绝装配直接返回原业务序列；接受只复制 DTO，并保持速度、相对位置、
+双时间戳、`global_track_id`、lineage/source support、identity、质量和 metadata 不变。
+组件、成员、观测和边经规范排序，摘要与 decision ID 不依赖遍历顺序；重复/倒退代、摘要冲突、
+重叠组件、容量和非有限输入均 fail closed。
+
+2026-07-23 聚焦测试 `7 passed`，D1 全量 `294 passed`。A1 没有接
+`FusionAdapter.process()`/`process_scan_batch()`，没有修改 `fusion.py`、新增开关或改变默认
+路径；experimental decision 不是在线 schema。A2 冻结扫描 shadow、A3 匿名 treatment 发现和
+A4 多 seed 确认仍未实现。
 
 固定滞后共同质心事件暂缓，直至事件总排序、过程噪声分段和一致性门槛冻结。系统长期路线保留
 D1 证据侧车、由 D2 在有界窗口内研究概率/多假设消费。三条路线均不改双时间戳、满基数门、
@@ -1189,6 +1201,7 @@ NumPy EKF/固定滞后路径；第三方后端不可执行时必须输出 `unava
 | 侦察粗指向摘要 | 已实现 | 辅助调用 | 不参与默认 EKF 更新 |
 | 多观察者方位 WLS | 已实现数值助手 | 否 | 需 D2 先确认规范身份 |
 | CI 航迹融合 | 已实现数值助手 | 否 | 未接真实多节点 runtime |
+| A1 publication overlay | `IMPLEMENTED_UNIT_TESTED_OFFLINE_PROTOTYPE` | 否 | 独立纯函数和 shadow DTO 装配 helper；未接 FusionAdapter，不是在线 schema，A2-A4 未实现 |
 | 受治理 JSONL/CSV 回放 | 已实现 | main 已消费 | 旧日志兼容路径不等价于严格合同 |
 | 无迹卡尔曼滤波器（Unscented Kalman Filter，UKF） | 未实现 | 否 | 只有计划项 |
 | 交互多模型（Interacting Multiple Model，IMM） | 未实现 | 否 | 常加速度（Constant Acceleration，CA）和协调转弯（Coordinated Turn，CT）模型集也未接入 |

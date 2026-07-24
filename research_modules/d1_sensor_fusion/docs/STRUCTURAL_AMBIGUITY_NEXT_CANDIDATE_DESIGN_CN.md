@@ -1,9 +1,10 @@
 # D1 结构歧义下一候选设计
 
-- **状态**：`DESIGN_ONLY_NOT_IMPLEMENTED`，设计未实现
+- **状态**：A1 `IMPLEMENTED_UNIT_TESTED_OFFLINE_PROTOTYPE`；A2/A3/A4 未实现
 - **日期**：2026-07-23
 - **范围**：D1 结构歧义证据、共同质心发布语义及 D2 后续消费边界
-- **非目标**：本文件不是实现报告，不声明新开关、DTO、在线路径或系统收益已经存在
+- **实现证据**：提交 `de73cb2`，A1 聚焦 `7 passed`，D1 全量 `294 passed`
+- **非目标**：A1 不是在线 schema 或运行开关；本文不声明 A2 shadow 接线、AirSim 或系统收益
 
 ## 1. 决策摘要
 
@@ -11,11 +12,12 @@
 
 | 路线 | 核心语义 | 当前决策 |
 | --- | --- | --- |
-| A. 拒绝路径发布态 overlay/副作用隔离 | 规范滤波状态和历史保持不动；共同质心只在发布 DTO 上形成一次性 overlay；拒绝时直接发布规范快照 | **推荐先做设计验证和最小原型；尚未实现** |
+| A. 拒绝路径发布态 overlay/副作用隔离 | 规范滤波状态和历史保持不动；共同质心只在发布 DTO 上形成一次性 overlay；拒绝时直接发布规范快照 | **A1 纯函数原型已实现并完成单元测试；A2-A4 未实现** |
 | B. 固定滞后 OOSM 共同质心事件 | 把共同质心作为 measurement-time 历史事件插入固定滞后窗口并重放 | **暂不进入在线实现** |
 | C. D1 只发布证据，D2 概率/多假设消费 | D1 保持 prediction-only 和证据侧车；D2 在有界窗口中维护关联概率或多个匹配假设 | **保留为主要系统研究路线，交由 D2 后续规划** |
 
-保守顺序是：先验证 A 能否消除拒绝路径的发布态副作用，再决定是否开展匿名冻结输入试验。
+保守顺序是：A1 已先验证纯函数和 DTO 装配合同；下一步必须完成 A2 冻结扫描 shadow，才能
+决定是否开展匿名冻结输入试验。
 B 只有在事件排序、过程噪声分段语义和一致性验收全部冻结后才可重新评审。C 不在本轮修改
 D2，也不把 D1 source token 升级为规范身份。
 
@@ -195,7 +197,13 @@ overlay 原子验证通过或确定拒绝之后，不得借水位更新触发滤
 
 ### 5.3 建议的数据结构
 
-以下名称是设计占位，不表示代码或公开 schema 已存在：
+以下是不带实验前缀的概念字段表。提交 `de73cb2` 已用显式
+`ExperimentalCentroidPublicationDecisionV1`、
+`ExperimentalCentroidMemberOverlayV1`、`ExperimentalCentroidPublicationState` 和
+`ExperimentalCentroidPublicationEvaluation` 实现 A1；实际 schema 字符串为
+`d1.experimental-centroid-publication-overlay-decision.v1`，并固定声明
+`experimental_design_prototype_not_online_schema`。它不是当前在线 schema，概念字段表也
+不构成 A2 接线合同：
 
 ```text
 CentroidPublicationDecisionV1
@@ -450,36 +458,46 @@ D2 的规范 ID 仍由中心身份合同管理。假设只能引用已有 canoni
 | 是否解决身份歧义 | 否 | 否 | 目标是概率化保留身份假设 |
 | 交叉协方差缺失风险 | 有，但局限于发布边缘量 | 高，进入历史后更难解释 | 有，禁止独立状态融合 |
 | 实现与验证范围 | 最小、D1-local | 大、改 fixed-lag 核心语义 | 跨 D1/D2，主要由 D2 owning |
-| 当前推荐 | **先做最小原型** | 暂缓 | 主要系统研究路线 |
+| 当前推荐 | **A1 已完成；下一步 A2 冻结扫描 shadow** | 暂缓 | 主要系统研究路线 |
 
 ## 9. 阶段拆分
 
 ### 阶段 D0：设计冻结
 
-本文件及 PLAN/GAP/review 同步属于 D0。完成标志只是设计、风险和验收口径成文。
-**D0 不包含任何 Python 实现、开关、DTO 或运行证据。**
+本文件初版及当时的 PLAN/GAP/review 同步属于 D0。D0 的历史完成标志只是设计、风险和验收
+口径成文；后续 A1 实现不改变该历史定义。
 
 ### 阶段 A1：纯函数最小原型
 
+- **状态：`IMPLEMENTED_UNIT_TESTED_OFFLINE_PROTOTYPE`，提交 `de73cb2`。**
 - 输入为不可变规范发布快照和既有 `StructuralAmbiguityEvidence`；
 - 输出只包含 accepted/rejected decision 和 detached member overlays；
 - 不接在线发布，不调用 replay/replace，不修改滤波对象；
-- 用同步平衡、OOSM、数量不平衡、重复/倒退代和冲突组件 fixture 验证。
+- 用同步平衡 2/3/5 成员、OOSM、stale、数量/匹配结构非法、重复/倒退代、摘要冲突、冲突
+  组件、容量、非有限和身份字段 fixture 验证；
+- 组件、成员、观测、边和业务航迹输入排列产生 byte-identical decision/overlay；拒绝装配
+  直接返回原规范序列，接受只复制 DTO 并保持速度、相对位置、`global_track_id`、metadata、
+  lineage/source support、identity 和质量不变；
+- 2026-07-23 聚焦测试 `7 passed`，D1 全量 `294 passed`。这只关闭 A1 单元原型范围，不是
+  A2、在线发布、AirSim、P95 或系统效果证据。
 
 ### 阶段 A2：离线发布装配 shadow
 
+- **状态：未实现。A1 的纯装配 helper 不等于冻结扫描 shadow 已接线。**
 - 在默认关闭条件下对冻结扫描计算 overlay，但不向 D2/D3 发布；
 - 同批记录规范快照摘要、shadow DTO 摘要和全部禁止写入对象摘要；
 - 先关闭拒绝路径 bitwise 副作用，再评估接受路径。
 
 ### 阶段 A3：匿名冻结扫描 treatment 发现
 
+- **状态：未实现。**
 - 使用新匿名扫描，只判断合法平衡分量是否自然出现；
 - 不运行 seeds 1101/1102，不放宽 OOSM、满基数、形状或身份门；
 - 若仍为零 treatment，记录停止结论，不进入效果试验。
 
 ### 阶段 A4：预注册确认性试验
 
+- **状态：未实现。**
 - 独立冻结输入、提交、配置、seed 清单和指标实现；
 - 比较 hold-only 与 hold+publication-overlay；
 - 满足全部状态、身份、下游和资源门槛后，才讨论是否保留为默认关闭候选。
@@ -514,6 +532,10 @@ D1 提供本设计和既有 evidence schema；D2 单独制定假设窗口、概�
    暂存均不随 episode 时长无界增长。
 
 任一 bitwise 拒绝门、身份合同或有界存储门失败，A 停止，不进入 A3。
+
+A1 已在纯函数 fixture 范围验证第 1、3-7 项及输入对象不变；由于它从未接触滤波器，不能把
+单元测试外推为在线 filter/history/checkpoint/cache 审计。第 2 项的在线禁止写入摘要、第 8 项
+的业务输出/P95/RSS 和冻结扫描组合证据仍属于 A2，未关闭。
 
 ### 10.2 A3/A4 数据与效果门槛
 
@@ -556,11 +578,14 @@ D1 提供本设计和既有 evidence schema；D2 单独制定假设窗口、概�
 
 截至 2026-07-23：
 
-- A：设计完成，最小原型未实现；
+- A1：`IMPLEMENTED_UNIT_TESTED_OFFLINE_PROTOTYPE`，提交 `de73cb2`，聚焦 `7 passed`，
+  D1 全量 `294 passed`；
+- A2/A3/A4：未实现；
 - B：设计比较完成，在线实现暂停；
 - C：研究方向保留，尚未形成 D2 实施计划；
-- Python、在线开关、公开 schema、测试和系统运行均未因本文改变；
+- A1 新增独立实验 Python 模块和单元测试，但没有修改 `fusion.py`、在线开关、默认路径或当前
+  在线 schema，也没有系统运行；
 - seeds 1101/1102 继续停止。
 
-当前共同质心候选仍保持默认关闭和 `candidate_not_promoted`。本文不能作为实现完成、算法收益、
-AirSim 验证或系统晋级证据。
+当前共同质心候选仍保持默认关闭和 `candidate_not_promoted`。本文不能作为在线实现完成、
+算法收益、AirSim 验证或系统晋级证据；这里只能作为 A1 离线纯函数原型完成证据。
