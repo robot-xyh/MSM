@@ -15,7 +15,10 @@ long 两组。short 使用 seed 1101 至 1110、世界时间 2.2 秒，用于估
 先用 experiment ID 选择完整的已知注册，再核对固定提交、可选谱系字段、13 个 case、arm 顺序、
 规模、运行参数、bootstrap、准入门和 runtime profile 摘要。v1 只允许原两端提交且不带修复谱系。
 v2 必须使用共同包含 D2 修复的有效提交，同时声明原 v1 base commits、公共修复来源和主题，并明确
-`v1_outputs_reused=false`。每个 arm 的标签、提交、状态、返回码和证据路径均来自字段；未知
+`v1_outputs_reused=false`。v3 要求两臂共享 candidate base、D1 半正定修复和 D2 处置修复。
+reference 通过独立 treatment 选择标量协方差限制，candidate 保持向量化实现。证据边界同时禁止
+复用 v1/v2 输出，并明确 reference/candidate 的向量化标志为 false/true。每个 arm 的标签、提交、
+状态、返回码和证据路径均来自字段；未知
 experiment、缺项、额外 case、状态未完成、路径不可用或 cross 未通过时失败关闭。显式 `--pair`
 仍用于兼容和独立复核，但不能与 manifest 模式同时使用。
 
@@ -59,10 +62,10 @@ D1 fusion、核心 episode wall 和外部进程 elapsed 分别计算，不能相
 目标处理器运行条件，不能关闭系统实时缺口。当前只完成 evaluator、manifest loader 和 fixture
 测试；旧 v1 矩阵在旧 D2 producer 的 long seed 1102 reference 处暂停。旧输出存在
 `known_false_alarm_only_mapping_count=14` 与持久化明确排除 11 条的矛盾，D6 拒绝该证据。完整
-13-pair manifest 尚未形成。main 已冻结 v2 矩阵，使两臂带同一 D2 修复且不复用 v1 输出；当前只
-作功能烟测，正式无并发矩阵待运行。因此没有正式多 seed 或长时结果。2026-07-24 确定性验收为
-多 seed 专项 `48 passed`、原 clean-pair 专项 `9 passed`、D6 全量
-`698 passed, 1 warning`。
+13-pair manifest 尚未形成。main 已冻结 v3 配置，使两臂共享 D1/D2 修复且不复用 v1/v2 输出；
+正式 v3 evidence manifest 尚不存在。因此没有正式多 seed、长时或优化准入结果。2026-07-24
+确定性验收为多 seed 专项 `65 passed`、truth/runtime 相关专项 `87 passed`、原 clean-pair 专项
+`9 passed`、D6 全量 `715 passed, 1 warning`。
 
 ## D1 协方差成对限制优化的准入边界（2026-07-24）
 

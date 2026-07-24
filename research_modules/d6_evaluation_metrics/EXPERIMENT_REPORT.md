@@ -19,6 +19,11 @@
 | v2 base commits | v1 两端提交 |
 | v2 公共 D2 修复 | `e4147b8`，`fix(d2): align false alarm exclusion audit` |
 | v2 输出复用 | `v1_outputs_reused=false` |
+| v3 reference / candidate | `a5a472cf81496d94a98db3deb88a3d5c6951f0ce` / `064cbb979d3bab68fee995e476df25709eb666db` |
+| v3 两端 base | 均为 `064cbb979d3bab68fee995e476df25709eb666db` |
+| v3 公共 D1 修复 | `064cbb...`，`fix(d1): preserve covariance positive semidefiniteness` |
+| v3 reference treatment | `a5a472...`，`test(d1): select scalar covariance reference` |
+| v3 证据边界 | v1/v2 输出均不复用，reference/candidate vectorized=`false/true` |
 | 目标 / 资源 / 侦察节点 | 200 / 200 / 2 |
 | 结构歧义保活 | 必须启用 |
 | runtime profile SHA-256 | `deabac3fbf2a788f68a0b807945e5f1bedacf8c5917c4d3b49c5cffb3c90da70` |
@@ -44,7 +49,9 @@
 10. manifest schema、experiment、case、提交、规模、运行参数、bootstrap、准入门、runtime
     摘要、arm 标签/状态/返回码、cross 状态和证据路径篡改；
 11. v2 effective/base commits、公共 D2 修复来源和主题、v1 输出复用标志篡改，以及 v1 混入 v2
-    谱系字段。
+    谱系字段；
+12. v3 experiment、effective/base commits、公共 D2/D1 修复、reference treatment、两级输出复用
+    标志和两臂向量化标志逐项篡改，以及 v2 注入 v3 字段。
 
 ### 暂停矩阵分析
 
@@ -58,26 +65,29 @@ main 在 long seed 1102 reference 完成仿真和主要写盘后，旧 D2 produc
 D2 owner 已把 producer 计数改为遍历最终 `all_mappings` 后只统计明确排除记录。D6 回归验证修复后
 `11/11` 通过，旧 `14/11` 在 truth-isolated 和 runtime join 两条入口均失败关闭。main 随后冻结
 v2 矩阵，使 reference 和 candidate 同时包含该修复，并保留 v1 两端作为 base commits。
-`v1_outputs_reused=false` 禁止把旧失败输出带入 v2。当前 v2 只作功能烟测，正式无并发矩阵尚未
-完成；D6 未读取未完成 evidence manifest，也未形成正式性能结论。
+`v1_outputs_reused=false` 禁止把旧失败输出带入 v2。main 现已冻结 v3 配置，使两臂共享 D1
+半正定修复和 D2 处置修复，只通过 reference treatment 选择标量参考实现，并禁止复用 v1/v2 输出。
+正式 v3 evidence manifest 尚不存在；D6 未读取未完成 evidence，也未形成正式性能或优化准入结论。
 
 ### 测试结果
 
 | 检查 | 结果 |
 | --- | ---: |
-| 多 seed/长时专项 | 48 passed |
+| 多 seed/长时专项 | 65 passed |
+| truth/runtime 相关专项 | 87 passed |
 | 原 clean-pair 专项 | 9 passed |
-| D6 全量 | 698 passed |
+| D6 全量 | 715 passed |
 | 失败 | 0 |
 | warning | 1 条既有 Matplotlib `Axes3D` 环境提示 |
 | 正例 CSV | 13 行数据，14 LF，0 CR |
 
-fixture 正例中的 `d1_optimization_admitted=true` 只证明门控代码可达到正分支，不是项目算法正式
-结果。fixture 的 `system_realtime_gap_closed=false` 验证了三维质点证据不能关闭系统实时缺口。
+通用性能 fixture 中的 `d1_optimization_admitted=true` 只证明门控代码可达到正分支，不是项目
+算法正式结果。v3 fixture 只验证注册、提交谱系和证据边界，没有形成 v3 优化准入结论。fixture 的
+`system_realtime_gap_closed=false` 验证了三维质点证据不能关闭系统实时缺口。
 
 ### 后续输入
 
-main 需要按冻结 v2 配置完成 13 个显式 pair，并发布状态为 `complete` 的 evidence manifest。D6
+main 需要按冻结 v3 配置完成 13 个显式 pair，并发布状态为 `complete` 的 evidence manifest。D6
 收到完整输入后再生成正式 JSON、CSV 和中文报告。任何缺项、dirty manifest、提交/配置/runtime
 不一致、truth/exit/cross 失败或性能门失败都保持 `d1_optimization_admitted=false`。
 

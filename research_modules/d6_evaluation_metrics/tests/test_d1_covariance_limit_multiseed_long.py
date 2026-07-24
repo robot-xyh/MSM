@@ -31,6 +31,18 @@ from d6_evaluation_metrics import (
     D1_COVARIANCE_LIMIT_V2_EXPERIMENT_ID,
     D1_COVARIANCE_LIMIT_V2_KNOWN_MATRIX_REGISTRATION,
     D1_COVARIANCE_LIMIT_V2_REFERENCE_COMMIT,
+    D1_COVARIANCE_LIMIT_V3_CANDIDATE_BASE_COMMIT,
+    D1_COVARIANCE_LIMIT_V3_CANDIDATE_COMMIT,
+    D1_COVARIANCE_LIMIT_V3_COMMON_D1_PSD_FIX_SOURCE_COMMIT,
+    D1_COVARIANCE_LIMIT_V3_COMMON_D1_PSD_FIX_SUBJECT,
+    D1_COVARIANCE_LIMIT_V3_COMMON_D2_FIX_SOURCE_COMMIT,
+    D1_COVARIANCE_LIMIT_V3_COMMON_D2_FIX_SUBJECT,
+    D1_COVARIANCE_LIMIT_V3_EXPERIMENT_ID,
+    D1_COVARIANCE_LIMIT_V3_KNOWN_MATRIX_REGISTRATION,
+    D1_COVARIANCE_LIMIT_V3_REFERENCE_BASE_COMMIT,
+    D1_COVARIANCE_LIMIT_V3_REFERENCE_COMMIT,
+    D1_COVARIANCE_LIMIT_V3_REFERENCE_TREATMENT_COMMIT,
+    D1_COVARIANCE_LIMIT_V3_REFERENCE_TREATMENT_SUBJECT,
     D1CovarianceLimitEvidenceManifestError,
     D1CovarianceLimitMatrixPairInput,
     evaluate_d1_covariance_limit_evidence_manifest,
@@ -272,6 +284,7 @@ def test_v2_completed_evidence_manifest_uses_registered_fix_commits(
         "common_d2_fix_source_commit",
         "common_d2_fix_subject",
         "v1_outputs_reused",
+        "unexpected_v3_provenance",
     ],
 )
 def test_v2_registered_provenance_tampering_fails_closed(
@@ -301,6 +314,148 @@ def test_v2_registered_provenance_tampering_fails_closed(
         matrix[mutation] = "0000000"
     elif mutation == "common_d2_fix_subject":
         matrix[mutation] = "tampered"
+    elif mutation == "unexpected_v3_provenance":
+        matrix["common_d1_psd_fix_source_commit"] = (
+            D1_COVARIANCE_LIMIT_V3_COMMON_D1_PSD_FIX_SOURCE_COMMIT
+        )
+    else:
+        matrix[mutation] = "0" * 40
+    _write_json(manifest_path, payload)
+
+    with pytest.raises(D1CovarianceLimitEvidenceManifestError):
+        load_d1_covariance_limit_evidence_manifest(manifest_path)
+
+
+def test_v3_completed_evidence_manifest_uses_registered_treatment_provenance(
+    tmp_path: Path,
+) -> None:
+    pairs = _write_matrix(
+        tmp_path / "v3_evidence",
+        reference_commit=D1_COVARIANCE_LIMIT_V3_REFERENCE_COMMIT,
+        candidate_commit=D1_COVARIANCE_LIMIT_V3_CANDIDATE_COMMIT,
+    )
+    manifest_path = _write_evidence_manifest(
+        tmp_path / "v3_evidence_manifest.json",
+        pairs,
+        experiment_id=D1_COVARIANCE_LIMIT_V3_EXPERIMENT_ID,
+    )
+
+    evidence = load_d1_covariance_limit_evidence_manifest(manifest_path)
+
+    assert evidence.experiment_id == D1_COVARIANCE_LIMIT_V3_EXPERIMENT_ID
+    assert evidence.reference_commit == (
+        D1_COVARIANCE_LIMIT_V3_REFERENCE_COMMIT
+    )
+    assert evidence.candidate_commit == (
+        D1_COVARIANCE_LIMIT_V3_CANDIDATE_COMMIT
+    )
+    assert evidence.reference_base_commit == (
+        D1_COVARIANCE_LIMIT_V3_REFERENCE_BASE_COMMIT
+    )
+    assert evidence.candidate_base_commit == (
+        D1_COVARIANCE_LIMIT_V3_CANDIDATE_BASE_COMMIT
+    )
+    assert evidence.common_d2_fix_source_commit == (
+        D1_COVARIANCE_LIMIT_V3_COMMON_D2_FIX_SOURCE_COMMIT
+    )
+    assert evidence.common_d2_fix_subject == (
+        D1_COVARIANCE_LIMIT_V3_COMMON_D2_FIX_SUBJECT
+    )
+    assert evidence.common_d1_psd_fix_source_commit == (
+        D1_COVARIANCE_LIMIT_V3_COMMON_D1_PSD_FIX_SOURCE_COMMIT
+    )
+    assert evidence.common_d1_psd_fix_subject == (
+        D1_COVARIANCE_LIMIT_V3_COMMON_D1_PSD_FIX_SUBJECT
+    )
+    assert evidence.reference_treatment_commit == (
+        D1_COVARIANCE_LIMIT_V3_REFERENCE_TREATMENT_COMMIT
+    )
+    assert evidence.reference_treatment_subject == (
+        D1_COVARIANCE_LIMIT_V3_REFERENCE_TREATMENT_SUBJECT
+    )
+    assert evidence.v1_outputs_reused is False
+    assert evidence.v2_outputs_reused is False
+    assert evidence.reference_vectorized_covariance_limit is False
+    assert evidence.candidate_vectorized_covariance_limit is True
+
+    result = evaluate_d1_covariance_limit_evidence_manifest(manifest_path)
+
+    assert result["scope"]["reference_commit"] == (
+        D1_COVARIANCE_LIMIT_V3_REFERENCE_COMMIT
+    )
+    assert result["scope"]["candidate_commit"] == (
+        D1_COVARIANCE_LIMIT_V3_CANDIDATE_COMMIT
+    )
+    assert result["input_contract"]["experiment_id"] == (
+        D1_COVARIANCE_LIMIT_V3_EXPERIMENT_ID
+    )
+    assert result["input_contract"]["v2_outputs_reused"] is False
+    assert (
+        result["input_contract"]["reference_vectorized_covariance_limit"]
+        is False
+    )
+    assert (
+        result["input_contract"]["candidate_vectorized_covariance_limit"]
+        is True
+    )
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "matrix_experiment_id",
+        "reference_commit",
+        "candidate_commit",
+        "reference_base_commit",
+        "candidate_base_commit",
+        "common_d2_fix_source_commit",
+        "common_d2_fix_subject",
+        "v1_outputs_reused",
+        "common_d1_psd_fix_source_commit",
+        "common_d1_psd_fix_subject",
+        "reference_treatment_commit",
+        "reference_treatment_subject",
+        "v2_outputs_reused",
+        "reference_vectorized_covariance_limit",
+        "candidate_vectorized_covariance_limit",
+    ],
+)
+def test_v3_registered_provenance_tampering_fails_closed(
+    tmp_path: Path,
+    mutation: str,
+) -> None:
+    pairs = _write_matrix(
+        tmp_path / mutation / "v3_evidence",
+        reference_commit=D1_COVARIANCE_LIMIT_V3_REFERENCE_COMMIT,
+        candidate_commit=D1_COVARIANCE_LIMIT_V3_CANDIDATE_COMMIT,
+    )
+    manifest_path = _write_evidence_manifest(
+        tmp_path / mutation / "v3_evidence_manifest.json",
+        pairs,
+        experiment_id=D1_COVARIANCE_LIMIT_V3_EXPERIMENT_ID,
+    )
+    payload = _read_json(manifest_path)
+    matrix = payload["matrix"]
+    assert isinstance(matrix, dict)
+    if mutation == "matrix_experiment_id":
+        matrix["experiment_id"] = D1_COVARIANCE_LIMIT_V2_EXPERIMENT_ID
+    elif mutation in {
+        "v1_outputs_reused",
+        "v2_outputs_reused",
+        "reference_vectorized_covariance_limit",
+        "candidate_vectorized_covariance_limit",
+    }:
+        boundary = matrix["evidence_boundary"]
+        assert isinstance(boundary, dict)
+        boundary[mutation] = not bool(boundary[mutation])
+    elif mutation in {
+        "common_d2_fix_subject",
+        "common_d1_psd_fix_subject",
+        "reference_treatment_subject",
+    }:
+        matrix[mutation] = "tampered"
+    elif mutation == "common_d2_fix_source_commit":
+        matrix[mutation] = "0000000"
     else:
         matrix[mutation] = "0" * 40
     _write_json(manifest_path, payload)
@@ -820,6 +975,9 @@ def _write_evidence_manifest(
         D1_COVARIANCE_LIMIT_V2_EXPERIMENT_ID: (
             D1_COVARIANCE_LIMIT_V2_KNOWN_MATRIX_REGISTRATION
         ),
+        D1_COVARIANCE_LIMIT_V3_EXPERIMENT_ID: (
+            D1_COVARIANCE_LIMIT_V3_KNOWN_MATRIX_REGISTRATION
+        ),
     }[experiment_id]
     output_root = pairs[0].reference_episode_dir.parent.parent
     cases = []
@@ -936,6 +1094,36 @@ def _write_evidence_manifest(
         boundary = matrix["evidence_boundary"]
         assert isinstance(boundary, dict)
         boundary["v1_outputs_reused"] = registration.v1_outputs_reused
+    if registration.common_d1_psd_fix_source_commit is not None:
+        matrix.update(
+            {
+                "common_d1_psd_fix_source_commit": (
+                    registration.common_d1_psd_fix_source_commit
+                ),
+                "common_d1_psd_fix_subject": (
+                    registration.common_d1_psd_fix_subject
+                ),
+                "reference_treatment_commit": (
+                    registration.reference_treatment_commit
+                ),
+                "reference_treatment_subject": (
+                    registration.reference_treatment_subject
+                ),
+            }
+        )
+        boundary = matrix["evidence_boundary"]
+        assert isinstance(boundary, dict)
+        boundary.update(
+            {
+                "v2_outputs_reused": registration.v2_outputs_reused,
+                "reference_vectorized_covariance_limit": (
+                    registration.reference_vectorized_covariance_limit
+                ),
+                "candidate_vectorized_covariance_limit": (
+                    registration.candidate_vectorized_covariance_limit
+                ),
+            }
+        )
     matrix_path = path.parent / "matrix.json"
     _write_json(matrix_path, matrix)
     _write_json(

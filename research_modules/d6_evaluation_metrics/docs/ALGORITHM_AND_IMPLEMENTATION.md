@@ -32,12 +32,20 @@ manifest 的每个 arm 需明确给出 arm 标签、expected commit、episode/re
 `complete|reused` 状态和整数零返回码；cross-build 状态及 JSON 都必须可用。相对路径只相对于
 manifest 位置解析，不读取目录名称确定 group、seed、duration 或 arm。两个 CLI 输入入口互斥。
 
-已知注册包括 v1 和 v2。v1 绑定原 D1 reference/candidate commits，且不允许出现 base/common-fix
+已知注册包括 v1、v2 和 v3。v1 绑定原 D1 reference/candidate commits，且不允许出现 base/common-fix
 谱系字段。v2 绑定修复后的 effective commits
 `3c134c34655618b2e4d41302f9fbf3b6b4b78929` 与
 `8c1188267c37c5e4a546abc8e7dd6c5a4bb48dba`，同时精确要求两端 v1 base commits、公共 D2 修复
 `e4147b8` 及其主题，并要求 `v1_outputs_reused=false`。未知 experiment 不会退回默认提交；
 manifest 模式也禁止用 CLI 参数覆盖提交。
+
+v3 的 reference/candidate effective commits 分别为 `a5a472cf81496d94a98db3deb88a3d5c6951f0ce`
+和 `064cbb979d3bab68fee995e476df25709eb666db`，两个 base 均为 candidate。顶层矩阵还必须精确包含
+公共 D1 半正定修复提交和主题，以及 reference 标量 treatment 提交和主题。证据边界对象必须严格
+等于基础四字段加 `v1_outputs_reused=false`、`v2_outputs_reused=false`、
+`reference_vectorized_covariance_limit=false` 和
+`candidate_vectorized_covariance_limit=true`。校验使用字段全集相等，不接受额外键；因此 v1/v2
+不能携带 v3 字段，v3 也不能省略或改写其中任一项。
 
 矩阵校验依次执行：
 
@@ -86,9 +94,11 @@ CR。当前没有在模块 outputs 下生成正式文件；fixture 仅写 pytest
 失败、truth/exit 失败，以及 short faster/mean/CI/P95、long faster/mean、长短增长、core mean、
 RSS mean 和 RSS 单 pair 门。manifest 测试另覆盖 schema、experiment、case、提交、规模、运行参数、
 bootstrap、门限、runtime 摘要、arm 标签/状态/返回码、cross 状态、缺失资源和 CLI 互斥。v2
-另覆盖 experiment、effective/base commits、公共修复来源/主题及输出复用标志篡改；v1 注入 v2
-谱系字段同样失败关闭。专项 `48 passed`，原 clean-pair 专项 `9 passed`，D6 全量
-`698 passed, 1 warning in 24.40s`。正式 v2 无并发矩阵尚未完成，以上只有合同 fixture 结果。
+覆盖 experiment、effective/base commits、公共修复来源/主题及输出复用标志篡改；v3 再覆盖全部
+D1 修复、reference treatment、v2 复用和向量化标志逐项篡改。旧注册注入新版本字段同样失败关闭。
+专项 `65 passed`，truth/runtime 相关专项 `87 passed`，原 clean-pair 专项 `9 passed`，D6 全量
+`715 passed, 1 warning in 24.28s`。正式 v3 evidence manifest 尚不存在，以上只有合同 fixture
+结果，不构成优化准入结论。
 
 ## D1 协方差成对限制 clean pair 评估（2026-07-24）
 

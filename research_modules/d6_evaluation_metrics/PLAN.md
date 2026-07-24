@@ -15,10 +15,14 @@
   `scalable3d-d1-covariance-limit-multiseed-evidence-v1` 的 completed manifest。内嵌矩阵、
   experiment ID、13 个 case、arm 标签/提交/状态/返回码、证据路径、cross 状态、固定 runtime
   profile、运行参数、bootstrap 和准入门均执行精确校验；该入口与 `--pair` 互斥。
-- [x] 按 experiment ID 登记两套不可变矩阵。v1 精确绑定原 reference/candidate commits；v2 精确
+- [x] 按 experiment ID 登记三套不可变矩阵。v1 精确绑定原 reference/candidate commits；v2 精确
   绑定有效 commits、两端 base commits、公共 D2 修复来源和主题，并要求
   `v1_outputs_reused=false`。未知 experiment、任意提交、字段缺失、字段篡改及 v1 混入 v2 谱系
   均失败关闭。
+- [x] v3 精确绑定 reference/candidate effective commits、两个相同 candidate base commit、
+  公共 D2 修复、公共 D1 半正定修复、reference treatment 提交和主题；证据边界要求
+  `v1_outputs_reused=false`、`v2_outputs_reused=false` 及 reference/candidate
+  vectorized=`false/true`。v1/v2 注入 v3 字段时失败关闭。
 - [x] short/long 均输出每 seed 配对值、均值、中位数、P95、配对相对变化及固定 RNG 的 10000 次
   bootstrap 95% CI。
 - [x] 对共同 seed 的 D1 fusion、core wall、external elapsed 分别计算长短单位仿真时间成本增长；
@@ -32,15 +36,15 @@
 - [x] D2 观测处置 consumer 保持 exact-match：旧 producer 的 `14/11`
   `known_false_alarm_only_mapping_count` 与持久化明确排除数矛盾时失败关闭；修复后的 `11/11`
   通过，3 个 unavailable mapping 不计入。
-- [x] 2026-07-24 验收：多 seed 专项 `48 passed`，原 clean-pair 专项 `9 passed`，D6 全量
-  `698 passed, 1 warning in 24.40s`。warning 为既有 Matplotlib `Axes3D` 环境提示。
+- [x] 2026-07-24 验收：多 seed 专项 `65 passed`，truth/runtime 相关专项 `87 passed`，原
+  clean-pair 专项 `9 passed`，D6 全量 `715 passed, 1 warning in 24.28s`。warning 为既有
+  Matplotlib `Axes3D` 环境提示。
 
 ### 待 main 提供
 
-- [ ] D2 修复后的 producer 已由 D2 owner 提供；main 已冻结
-  `d1-covariance-limit-multiseed-20260724-v2`。当前只作功能烟测，仍需顺序运行正式无并发矩阵，
-  最终生成状态为 `complete` 的显式 evidence manifest。旧 `14/11` episode 和 v1 输出均不得复用
-  为 v2 合格输入。
+- [ ] main 已冻结 `d1-covariance-limit-multiseed-20260724-v3`，但尚未生成正式 v3
+  evidence manifest。仍需顺序运行正式无并发矩阵并发布状态为 `complete` 的显式 manifest。
+  旧 `14/11` episode、v1 输出和 v2 输出均不得复用为 v3 合格输入。
 - [ ] 完整矩阵必须包含 13 个真实 clean reference/candidate pair、26 份资源记录和 13 份
   cross-build JSON。不得用目录发现替代显式 manifest 或 `--pair` 输入。
 - [ ] D6 收到完整输入后才生成正式 JSON、CSV 和中文报告。当前 fixture 数值不进入正式结论。

@@ -11,10 +11,14 @@ main 的正式入口是 completed `evidence_manifest.json`。D6 对内嵌矩阵�
 profile 摘要执行精确核对。每个 arm 的标签、expected commit、`complete|reused` 状态、整数零
 返回码和证据路径必须完整，cross 状态必须为 passed。manifest 与兼容 `--pair` 输入互斥。
 
-consumer 只接受已登记的 v1 和 v2。v1 保留原提交且不能携带 v2 谱系字段。v2 精确绑定修复后的
+consumer 只接受已登记的 v1、v2 和 v3。v1 保留原提交且不能携带 v2 谱系字段。v2 精确绑定修复后的
 effective commits、原 v1 base commits、公共 D2 修复 `e4147b8` 及其主题，并要求
 `v1_outputs_reused=false`。选择由 experiment ID 完成，未知 experiment 和 CLI commit override
 均被拒绝。
+
+v3 的两个 base 都是 candidate commit。两臂共享 D1 半正定修复和 D2 处置修复；reference treatment
+只选择标量协方差限制。证据边界要求 v1/v2 输出均不复用，并固定 reference/candidate vectorized
+为 false/true。所有字段逐项精确匹配，v1/v2 也不能携带更高版本的谱系字段。
 
 评审将证据分为 pair、矩阵和统计三层。pair 层复用现有 clean、提交、配置、runtime、规模、有限
 状态、truth、exit 和 cross-build 校验。矩阵层要求 key 集合与预注册完全一致，配置只允许顶层
@@ -27,16 +31,16 @@ seed/duration 不同，runtime profile 全部相同，26 个 arm 的结构歧义
 finite、exit 门。核心 wall 与 external elapsed 分层，不相加。
 
 fixture 覆盖正分支、全部性能门和 manifest 字段篡改，CSV 为 14 LF、0 CR。多 seed 专项
-`48 passed`，原 clean-pair 专项 `9 passed`，D6 全量
-`698 passed, 1 warning in 24.40s`。warning 为既有 Matplotlib `Axes3D` 环境提示。
+`65 passed`，truth/runtime 相关专项 `87 passed`，原 clean-pair 专项 `9 passed`，D6 全量
+`715 passed, 1 warning in 24.28s`。warning 为既有 Matplotlib `Axes3D` 环境提示。
 
 main 矩阵运行在 long seed 1102 reference 暂停。旧 D2 producer 报告 14 个
 `known_false_alarm_only`，持久化明确排除只有 11 个，另 3 个为谱系时间窗导致的 unavailable。
 D6 在 truth-isolated 和 runtime join 两条路径都要求 audit 与最终持久化明确排除数精确相等，因此
-旧 `14/11` 失败关闭；D2 修复后的 `11/11` 才可消费。main 已冻结 v2，使两个实验臂使用同一公共
-D2 修复且不复用 v1 输出；当前只作功能烟测，正式无并发矩阵待运行。D6 不发布正式多 seed/长时
-性能数值，不把 fixture 的 admission true 写成项目算法结论。该项 P1 状态为“consumer 已完成，
-v2 正式矩阵与结果待提供”。三维质点矩阵不包含 AirSim 或目标硬件条件，系统实时性继续保持未关闭。
+旧 `14/11` 失败关闭；D2 修复后的 `11/11` 才可消费。main 已冻结 v3 配置，但尚不存在正式 v3
+evidence manifest。D6 不发布正式多 seed/长时性能数值，不把 fixture 结果写成项目算法准入结论。
+该项 P1 状态为“consumer 已完成，v3 正式矩阵与结果待提供”。三维质点矩阵不包含 AirSim 或目标
+硬件条件，系统实时性继续保持未关闭。
 
 `AIRSIM_INTEGRATION_PLAN.md` 已检查。本轮不改变 AirSim 日志、topic、检测、相机、reset、actor 或
 控制接口，因此无需修改。`D6_M_TO_N_EVALUATION_FRAMEWORK_REVIEW.md` 也已检查；本项不改变 M 对 N

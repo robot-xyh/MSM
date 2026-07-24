@@ -13,13 +13,21 @@ D6 新增 `d1_covariance_limit_multiseed_long.py`。该入口复用现有显式 
 - v2 reference/candidate commit：
   `3c134c34655618b2e4d41302f9fbf3b6b4b78929` /
   `8c1188267c37c5e4a546abc8e7dd6c5a4bb48dba`；
+- v3 reference/candidate commit：
+  `a5a472cf81496d94a98db3deb88a3d5c6951f0ce` /
+  `064cbb979d3bab68fee995e476df25709eb666db`；
 - 规模：200 个目标、200 个资源、2 个侦察节点；
 - 运行配置要求 `d1_d2_structural_ambiguity_hold_enabled=true`。
 
-loader 只接受两个已登记实验。v1 保留原提交绑定；v2 还必须精确绑定
+loader 只接受三个已登记实验。v1 保留原提交绑定；v2 还必须精确绑定
 reference/candidate base commit、公共 D2 修复来源 `e4147b8`、修复主题
 `fix(d2): align false alarm exclusion audit` 和 `v1_outputs_reused=false`。不能用 manifest
 中的任意提交创建新实验，也不能在 v1 中混入 v2 谱系字段。
+
+v3 的两个 base commit 均为 `064cbb979d3bab68fee995e476df25709eb666db`。公共 D1 修复固定为
+`fix(d1): preserve covariance positive semidefiniteness`，参考臂 treatment 固定为
+`test(d1): select scalar covariance reference`。证据边界必须同时声明 v1/v2 输出均未复用、
+参考臂未启用向量化协方差限制、候选臂已启用。v1/v2 中出现任一 v3 专属字段也会失败关闭。
 
 每个 `D1CovarianceLimitMatrixPairInput` 显式携带 group、seed、duration、reference/candidate episode、
 两份 GNU `time -v` 资源记录和 cross-build JSON。评估器不读取目录名称推断 arm、seed、duration
@@ -29,7 +37,7 @@ reference/candidate base commit、公共 D2 修复来源 `e4147b8`、修复主�
 
 main 可通过 `--evidence-manifest` 提供
 `scalable3d-d1-covariance-limit-multiseed-evidence-v1`。D6 只接受状态为 `complete` 的 manifest，
-先按 experiment ID 选择完整的已知 v1 或 v2 注册，再核对内嵌矩阵的有效提交、可选谱系字段、
+先按 experiment ID 选择完整的已知 v1、v2 或 v3 注册，再核对内嵌矩阵的有效提交、可选谱系字段、
 13 个 case 的顺序和元数据、200/200/2 规模、
 运行参数、准入门、bootstrap 设置，以及固定 runtime profile 摘要
 `deabac3fbf2a788f68a0b807945e5f1bedacf8c5917c4d3b49c5cffb3c90da70`。每个 arm 必须显式声明
@@ -62,18 +70,19 @@ core wall 和 RSS 均值恶化不超过 5%，任一 RSS pair 恶化不超过 5%�
 该预注册矩阵是三维质点证据，不包含 AirSim 或目标硬件运行条件，因此
 `system_realtime_gap_closed` 不由该矩阵关闭。
 
-当前只完成 evaluator、v1/v2 manifest loader 和测试 fixture。旧 v1 矩阵曾运行到 long seed 1102
+当前只完成 evaluator、v1/v2/v3 manifest loader 和测试 fixture。旧 v1 矩阵曾运行到 long seed 1102
 reference；旧 D2 producer 将 14 个“纯已知虚警处置组”写入
 `known_false_alarm_only_mapping_count`，但持久化帧中只有 11 条
 `status=excluded && reason=known_false_alarm_only`，另 3 条为
 `source_observation_outside_lineage_window` 的 unavailable mapping。D6 按持久化最终映射执行
 精确计数，旧 `14/11` 证据失败关闭；D2 修复后的 producer 写出 `11/11` 才能通过。
 
-main 已冻结 v2 矩阵，两个实验臂在相同 D2 修复上比较原 v1 的 D1 两端，且明确不复用 v1 输出。
-当前 v2 仅作功能烟测，正式无并发 13-pair 矩阵尚未运行完成。D6 没有读取未完成 manifest，也没有
-生成或伪造正式结果。fixture 只验证合同、统计和门控。多 seed 专项为
-`48 passed, 1 warning`，原 clean-pair 专项为 `9 passed, 1 warning`，D6 全量为
-`698 passed, 1 warning in 24.40s`。warning 为既有 Matplotlib `Axes3D` 环境提示。
+main 已冻结 v3 配置，用共同的 D1 半正定修复和 D2 处置修复比较标量 reference 与向量化
+candidate，并明确不复用 v1/v2 输出。当前尚不存在正式 v3 evidence manifest。D6 没有读取未完成
+manifest，也没有生成正式结果或优化准入结论。fixture 只验证合同、统计和门控。多 seed 专项为
+`65 passed, 1 warning`，truth/runtime 相关专项为 `87 passed, 1 warning`，原 clean-pair 专项为
+`9 passed, 1 warning`，D6 全量为 `715 passed, 1 warning in 24.28s`。warning 为既有
+Matplotlib `Axes3D` 环境提示。
 
 ## 2026-07-24 D1 协方差成对限制向量化准入
 

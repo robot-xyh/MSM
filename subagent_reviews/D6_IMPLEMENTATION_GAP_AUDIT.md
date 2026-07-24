@@ -14,18 +14,21 @@
 6. completed evidence manifest loader 已实现。内嵌矩阵的 experiment、提交、13 个 case、规模、
    运行参数、10000 次 bootstrap、准入门和固定 runtime profile 均精确校验；arm 标签、提交、状态、
    零返回码、路径和 cross 状态均失败关闭。manifest 与 `--pair` CLI 互斥。
-7. loader 已登记 v1/v2 两套完整矩阵。v2 的 effective/base commits、公共 D2 修复来源和主题、
+7. loader 已登记 v1/v2/v3 三套完整矩阵。v2 的 effective/base commits、公共 D2 修复来源和主题、
    `v1_outputs_reused=false` 均精确匹配；未知实验、任意提交、谱系篡改或 v1 注入 v2 字段失败关闭。
-8. D2 处置 consumer 继续要求 `known_false_alarm_only_mapping_count` 与持久化
+8. v3 的 effective/base commits、公共 D1/D2 修复、reference treatment、v1/v2 输出复用边界和
+   reference/candidate 向量化标志均精确匹配；v2 注入 v3 字段及 v3 任一字段篡改失败关闭。
+9. D2 处置 consumer 继续要求 `known_false_alarm_only_mapping_count` 与持久化
    `status=excluded && reason=known_false_alarm_only` 数量精确相等。旧 `14/11` 被拒绝，修复后
    `11/11` 通过；3 个 unavailable mapping 不进入计数。
-9. 2026-07-24 验收为多 seed 专项 `48 passed`、原 clean-pair 专项 `9 passed`、D6 全量
-   `698 passed, 1 warning in 24.40s`。
+10. 2026-07-24 验收为多 seed 专项 `65 passed`、truth/runtime 相关专项 `87 passed`、原
+    clean-pair 专项 `9 passed`、D6 全量 `715 passed, 1 warning in 24.28s`。
 
 ### 仍开放 P1
 
-1. **正式 producer 矩阵未完成。** D2 owner 已修复 producer，main 已冻结 v2 矩阵并仅作功能烟测。
-   正式无并发 13-pair 矩阵仍需顺序运行；旧 `14/11` episode 和 v1 输出不得作为 v2 合格输入。
+1. **正式 producer 矩阵未完成。** main 已冻结 v3 配置，但尚不存在正式 v3 evidence manifest。
+   正式无并发 13-pair 矩阵仍需顺序运行；旧 `14/11` episode、v1 输出和 v2 输出不得作为 v3
+   合格输入。
 2. **正式统计未生成。** 没有真实输入时，均值、P95、bootstrap CI、长短增长和失败原因分布保持
    待评估，不预写数值。
 3. **系统实时性未关闭。** 该矩阵属于三维质点。AirSim 或目标硬件的处理、调度和资源证据仍缺失。
@@ -33,7 +36,7 @@
    独立 truth-isolated 评估。
 
 当前无 D6-owned P0。evaluator、manifest consumer、统计、门控和报告接口已关闭；main producer
-修复后形成完整 13-pair completed manifest 及其性能结论保持 P1。
+形成完整 v3 13-pair completed manifest 及其性能结论保持 P1。
 
 ## 2026-07-24 D1 协方差成对限制向量化 GAP 更新
 

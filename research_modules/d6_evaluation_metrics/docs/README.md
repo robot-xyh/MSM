@@ -6,10 +6,11 @@
 输出分组统计、10000 次确定性 paired bootstrap 和同 seed 单位时间增长率。completed
 `evidence_manifest.json` loader 会精确核对内嵌矩阵、13 个 case、arm 状态/提交/返回码、固定
 runtime profile 和证据路径，并与 `--pair` 输入互斥。loader 按 experiment ID 严格支持已登记的
-v1/v2：v2 还精确绑定 effective/base commits、公共 D2 修复来源和主题，并要求
-`v1_outputs_reused=false`。旧 `14/11` 已知虚警映射计数被 D6 失败关闭；main 已冻结修复后的 v2，
-当前只作功能烟测，正式无并发矩阵尚未完成，故无正式准入结果。专项 `48 passed`，原 clean-pair
-专项 `9 passed`，D6 全量 `698 passed, 1 warning`。
+v1/v2/v3：v2 绑定 effective/base commits、公共 D2 修复和 v1 输出复用边界；v3 再绑定共同 D1
+半正定修复、reference 标量 treatment、v2 输出复用边界和两臂向量化标志。旧 `14/11` 已知虚警
+映射计数仍被 D6 失败关闭。main 已冻结 v3 配置，但正式 evidence manifest 尚不存在，故无正式
+准入结果。专项 `65 passed`，truth/runtime 相关专项 `87 passed`，原 clean-pair 专项 `9 passed`，
+D6 全量 `715 passed, 1 warning`。
 
 2026-07-24 D1 协方差成对限制向量化准入原则和门控公式见
 `MODULE_PRINCIPLES_CN.md`、`ALGORITHM_AND_IMPLEMENTATION.md`，三轮 clean 结果见根目录

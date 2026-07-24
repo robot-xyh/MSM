@@ -41,6 +41,9 @@ D1_COVARIANCE_LIMIT_V1_EXPERIMENT_ID = (
 D1_COVARIANCE_LIMIT_V2_EXPERIMENT_ID = (
     "d1-covariance-limit-multiseed-20260724-v2"
 )
+D1_COVARIANCE_LIMIT_V3_EXPERIMENT_ID = (
+    "d1-covariance-limit-multiseed-20260724-v3"
+)
 D1_COVARIANCE_LIMIT_EXPERIMENT_ID = (
     D1_COVARIANCE_LIMIT_V1_EXPERIMENT_ID
 )
@@ -60,6 +63,36 @@ D1_COVARIANCE_LIMIT_V2_CANDIDATE_COMMIT = (
 D1_COVARIANCE_LIMIT_V2_COMMON_D2_FIX_SOURCE_COMMIT = "e4147b8"
 D1_COVARIANCE_LIMIT_V2_COMMON_D2_FIX_SUBJECT = (
     "fix(d2): align false alarm exclusion audit"
+)
+D1_COVARIANCE_LIMIT_V3_REFERENCE_COMMIT = (
+    "a5a472cf81496d94a98db3deb88a3d5c6951f0ce"
+)
+D1_COVARIANCE_LIMIT_V3_CANDIDATE_COMMIT = (
+    "064cbb979d3bab68fee995e476df25709eb666db"
+)
+D1_COVARIANCE_LIMIT_V3_REFERENCE_BASE_COMMIT = (
+    D1_COVARIANCE_LIMIT_V3_CANDIDATE_COMMIT
+)
+D1_COVARIANCE_LIMIT_V3_CANDIDATE_BASE_COMMIT = (
+    D1_COVARIANCE_LIMIT_V3_CANDIDATE_COMMIT
+)
+D1_COVARIANCE_LIMIT_V3_COMMON_D2_FIX_SOURCE_COMMIT = (
+    D1_COVARIANCE_LIMIT_V2_COMMON_D2_FIX_SOURCE_COMMIT
+)
+D1_COVARIANCE_LIMIT_V3_COMMON_D2_FIX_SUBJECT = (
+    D1_COVARIANCE_LIMIT_V2_COMMON_D2_FIX_SUBJECT
+)
+D1_COVARIANCE_LIMIT_V3_COMMON_D1_PSD_FIX_SOURCE_COMMIT = (
+    D1_COVARIANCE_LIMIT_V3_CANDIDATE_COMMIT
+)
+D1_COVARIANCE_LIMIT_V3_COMMON_D1_PSD_FIX_SUBJECT = (
+    "fix(d1): preserve covariance positive semidefiniteness"
+)
+D1_COVARIANCE_LIMIT_V3_REFERENCE_TREATMENT_COMMIT = (
+    D1_COVARIANCE_LIMIT_V3_REFERENCE_COMMIT
+)
+D1_COVARIANCE_LIMIT_V3_REFERENCE_TREATMENT_SUBJECT = (
+    "test(d1): select scalar covariance reference"
 )
 D1_COVARIANCE_LIMIT_SHORT_SEEDS = tuple(range(1101, 1111))
 D1_COVARIANCE_LIMIT_LONG_SEEDS = tuple(range(1101, 1104))
@@ -147,6 +180,13 @@ class D1CovarianceLimitKnownMatrixRegistration:
     common_d2_fix_source_commit: str | None = None
     common_d2_fix_subject: str | None = None
     v1_outputs_reused: bool | None = None
+    common_d1_psd_fix_source_commit: str | None = None
+    common_d1_psd_fix_subject: str | None = None
+    reference_treatment_commit: str | None = None
+    reference_treatment_subject: str | None = None
+    v2_outputs_reused: bool | None = None
+    reference_vectorized_covariance_limit: bool | None = None
+    candidate_vectorized_covariance_limit: bool | None = None
 
     def __post_init__(self) -> None:
         experiment_id = str(self.experiment_id).strip()
@@ -158,6 +198,8 @@ class D1CovarianceLimitKnownMatrixRegistration:
             "candidate_commit",
             "reference_base_commit",
             "candidate_base_commit",
+            "common_d1_psd_fix_source_commit",
+            "reference_treatment_commit",
         ):
             value = getattr(self, field)
             if value is None:
@@ -185,34 +227,65 @@ class D1CovarianceLimitKnownMatrixRegistration:
                 "common_d2_fix_source_commit",
                 normalized,
             )
-        fix_subject = self.common_d2_fix_subject
-        if fix_subject is not None:
-            normalized_subject = str(fix_subject).strip()
+        for field in (
+            "common_d2_fix_subject",
+            "common_d1_psd_fix_subject",
+            "reference_treatment_subject",
+        ):
+            subject = getattr(self, field)
+            if subject is None:
+                continue
+            normalized_subject = str(subject).strip()
             if not normalized_subject:
-                raise ValueError("common_d2_fix_subject must not be empty")
+                raise ValueError(f"{field} must not be empty")
             object.__setattr__(
                 self,
-                "common_d2_fix_subject",
+                field,
                 normalized_subject,
             )
-        optional_values = (
-            self.reference_base_commit,
-            self.candidate_base_commit,
-            self.common_d2_fix_source_commit,
-            self.common_d2_fix_subject,
-            self.v1_outputs_reused,
-        )
-        if any(value is not None for value in optional_values) and any(
-            value is None for value in optional_values
+        provenance_groups = {
+            "base fix provenance": (
+                "reference_base_commit",
+                "candidate_base_commit",
+                "common_d2_fix_source_commit",
+                "common_d2_fix_subject",
+                "v1_outputs_reused",
+            ),
+            "v3 treatment provenance": (
+                "common_d1_psd_fix_source_commit",
+                "common_d1_psd_fix_subject",
+                "reference_treatment_commit",
+                "reference_treatment_subject",
+                "v2_outputs_reused",
+                "reference_vectorized_covariance_limit",
+                "candidate_vectorized_covariance_limit",
+            ),
+        }
+        group_presence: dict[str, bool] = {}
+        for group_name, fields in provenance_groups.items():
+            values = tuple(getattr(self, field) for field in fields)
+            any_present = any(value is not None for value in values)
+            if any_present and any(value is None for value in values):
+                raise ValueError(
+                    f"{group_name} fields must be all absent or all present"
+                )
+            group_presence[group_name] = any_present
+        if (
+            group_presence["v3 treatment provenance"]
+            and not group_presence["base fix provenance"]
         ):
             raise ValueError(
-                "matrix fix provenance fields must be all absent or all present"
+                "v3 treatment provenance requires base fix provenance"
             )
-        if self.v1_outputs_reused is not None and not isinstance(
-            self.v1_outputs_reused,
-            bool,
+        for field in (
+            "v1_outputs_reused",
+            "v2_outputs_reused",
+            "reference_vectorized_covariance_limit",
+            "candidate_vectorized_covariance_limit",
         ):
-            raise ValueError("v1_outputs_reused must be a bool when present")
+            value = getattr(self, field)
+            if value is not None and not isinstance(value, bool):
+                raise ValueError(f"{field} must be a bool when present")
 
 
 D1_COVARIANCE_LIMIT_V1_KNOWN_MATRIX_REGISTRATION = (
@@ -238,11 +311,47 @@ D1_COVARIANCE_LIMIT_V2_KNOWN_MATRIX_REGISTRATION = (
         v1_outputs_reused=False,
     )
 )
+D1_COVARIANCE_LIMIT_V3_KNOWN_MATRIX_REGISTRATION = (
+    D1CovarianceLimitKnownMatrixRegistration(
+        experiment_id=D1_COVARIANCE_LIMIT_V3_EXPERIMENT_ID,
+        reference_commit=D1_COVARIANCE_LIMIT_V3_REFERENCE_COMMIT,
+        candidate_commit=D1_COVARIANCE_LIMIT_V3_CANDIDATE_COMMIT,
+        reference_base_commit=(
+            D1_COVARIANCE_LIMIT_V3_REFERENCE_BASE_COMMIT
+        ),
+        candidate_base_commit=(
+            D1_COVARIANCE_LIMIT_V3_CANDIDATE_BASE_COMMIT
+        ),
+        common_d2_fix_source_commit=(
+            D1_COVARIANCE_LIMIT_V3_COMMON_D2_FIX_SOURCE_COMMIT
+        ),
+        common_d2_fix_subject=(
+            D1_COVARIANCE_LIMIT_V3_COMMON_D2_FIX_SUBJECT
+        ),
+        v1_outputs_reused=False,
+        common_d1_psd_fix_source_commit=(
+            D1_COVARIANCE_LIMIT_V3_COMMON_D1_PSD_FIX_SOURCE_COMMIT
+        ),
+        common_d1_psd_fix_subject=(
+            D1_COVARIANCE_LIMIT_V3_COMMON_D1_PSD_FIX_SUBJECT
+        ),
+        reference_treatment_commit=(
+            D1_COVARIANCE_LIMIT_V3_REFERENCE_TREATMENT_COMMIT
+        ),
+        reference_treatment_subject=(
+            D1_COVARIANCE_LIMIT_V3_REFERENCE_TREATMENT_SUBJECT
+        ),
+        v2_outputs_reused=False,
+        reference_vectorized_covariance_limit=False,
+        candidate_vectorized_covariance_limit=True,
+    )
+)
 _KNOWN_MATRIX_REGISTRATIONS = {
     registration.experiment_id: registration
     for registration in (
         D1_COVARIANCE_LIMIT_V1_KNOWN_MATRIX_REGISTRATION,
         D1_COVARIANCE_LIMIT_V2_KNOWN_MATRIX_REGISTRATION,
+        D1_COVARIANCE_LIMIT_V3_KNOWN_MATRIX_REGISTRATION,
     )
 }
 
@@ -316,6 +425,13 @@ class D1CovarianceLimitEvidenceManifest:
     common_d2_fix_source_commit: str | None
     common_d2_fix_subject: str | None
     v1_outputs_reused: bool | None
+    common_d1_psd_fix_source_commit: str | None
+    common_d1_psd_fix_subject: str | None
+    reference_treatment_commit: str | None
+    reference_treatment_subject: str | None
+    v2_outputs_reused: bool | None
+    reference_vectorized_covariance_limit: bool | None
+    candidate_vectorized_covariance_limit: bool | None
     runtime_profile_sha256: str
     bootstrap_resamples: int
     bootstrap_rng_seed: int
@@ -340,6 +456,25 @@ class D1CovarianceLimitEvidenceManifest:
             ),
             "common_d2_fix_subject": self.common_d2_fix_subject,
             "v1_outputs_reused": self.v1_outputs_reused,
+            "common_d1_psd_fix_source_commit": (
+                self.common_d1_psd_fix_source_commit
+            ),
+            "common_d1_psd_fix_subject": (
+                self.common_d1_psd_fix_subject
+            ),
+            "reference_treatment_commit": (
+                self.reference_treatment_commit
+            ),
+            "reference_treatment_subject": (
+                self.reference_treatment_subject
+            ),
+            "v2_outputs_reused": self.v2_outputs_reused,
+            "reference_vectorized_covariance_limit": (
+                self.reference_vectorized_covariance_limit
+            ),
+            "candidate_vectorized_covariance_limit": (
+                self.candidate_vectorized_covariance_limit
+            ),
             "runtime_profile_sha256": self.runtime_profile_sha256,
             "bootstrap_resamples": self.bootstrap_resamples,
             "bootstrap_rng_seed": self.bootstrap_rng_seed,
@@ -660,6 +795,25 @@ def load_d1_covariance_limit_evidence_manifest(
         ),
         common_d2_fix_subject=known_registration.common_d2_fix_subject,
         v1_outputs_reused=known_registration.v1_outputs_reused,
+        common_d1_psd_fix_source_commit=(
+            known_registration.common_d1_psd_fix_source_commit
+        ),
+        common_d1_psd_fix_subject=(
+            known_registration.common_d1_psd_fix_subject
+        ),
+        reference_treatment_commit=(
+            known_registration.reference_treatment_commit
+        ),
+        reference_treatment_subject=(
+            known_registration.reference_treatment_subject
+        ),
+        v2_outputs_reused=known_registration.v2_outputs_reused,
+        reference_vectorized_covariance_limit=(
+            known_registration.reference_vectorized_covariance_limit
+        ),
+        candidate_vectorized_covariance_limit=(
+            known_registration.candidate_vectorized_covariance_limit
+        ),
         runtime_profile_sha256=(
             D1_COVARIANCE_LIMIT_RUNTIME_PROFILE_SHA256
         ),
@@ -1781,6 +1935,10 @@ def _validate_embedded_matrix(
         "candidate_base_commit",
         "common_d2_fix_source_commit",
         "common_d2_fix_subject",
+        "common_d1_psd_fix_source_commit",
+        "common_d1_psd_fix_subject",
+        "reference_treatment_commit",
+        "reference_treatment_subject",
     ):
         expected = getattr(known_registration, field)
         if expected is None:
@@ -1860,6 +2018,20 @@ def _validate_embedded_matrix(
     if known_registration.v1_outputs_reused is not None:
         expected_evidence_boundary["v1_outputs_reused"] = (
             known_registration.v1_outputs_reused
+        )
+    if known_registration.v2_outputs_reused is not None:
+        expected_evidence_boundary.update(
+            {
+                "v2_outputs_reused": (
+                    known_registration.v2_outputs_reused
+                ),
+                "reference_vectorized_covariance_limit": (
+                    known_registration.reference_vectorized_covariance_limit
+                ),
+                "candidate_vectorized_covariance_limit": (
+                    known_registration.candidate_vectorized_covariance_limit
+                ),
+            }
         )
     _manifest_equal(
         dict(evidence_boundary),
@@ -2175,6 +2347,18 @@ __all__ = [
     "D1_COVARIANCE_LIMIT_V2_EXPERIMENT_ID",
     "D1_COVARIANCE_LIMIT_V2_KNOWN_MATRIX_REGISTRATION",
     "D1_COVARIANCE_LIMIT_V2_REFERENCE_COMMIT",
+    "D1_COVARIANCE_LIMIT_V3_CANDIDATE_BASE_COMMIT",
+    "D1_COVARIANCE_LIMIT_V3_CANDIDATE_COMMIT",
+    "D1_COVARIANCE_LIMIT_V3_COMMON_D1_PSD_FIX_SOURCE_COMMIT",
+    "D1_COVARIANCE_LIMIT_V3_COMMON_D1_PSD_FIX_SUBJECT",
+    "D1_COVARIANCE_LIMIT_V3_COMMON_D2_FIX_SOURCE_COMMIT",
+    "D1_COVARIANCE_LIMIT_V3_COMMON_D2_FIX_SUBJECT",
+    "D1_COVARIANCE_LIMIT_V3_EXPERIMENT_ID",
+    "D1_COVARIANCE_LIMIT_V3_KNOWN_MATRIX_REGISTRATION",
+    "D1_COVARIANCE_LIMIT_V3_REFERENCE_BASE_COMMIT",
+    "D1_COVARIANCE_LIMIT_V3_REFERENCE_COMMIT",
+    "D1_COVARIANCE_LIMIT_V3_REFERENCE_TREATMENT_COMMIT",
+    "D1_COVARIANCE_LIMIT_V3_REFERENCE_TREATMENT_SUBJECT",
     "D1CovarianceLimitEvidenceManifest",
     "D1CovarianceLimitEvidenceManifestError",
     "D1CovarianceLimitKnownMatrixRegistration",
