@@ -6,6 +6,24 @@
 
 ## 当前权威增量（2026-07-24）
 
+### 原子边界通过不等于性能准入
+
+main 已在 clean commit
+`7cc2d0cfd598a72d60c6ba8c7d4a283f4e5a897d` 用原子入口完成 seed 1100、200v200、
+2.2 s 成对复核。9 次 post-integrity 全部通过，没有 atomic failure、禁止写入、下游 shadow
+消费、在线 truth 或全局编号变化。D1/D2/D3 终态在 control/shadow 两臂均为
+`202/201/186`。这些证据关闭默认关闭审计旁路的安全隔离和业务非干预子门。
+
+性能没有通过。control/shadow 墙钟为
+`10.735151270986535/19.449935468961485 s`，增加 `81.1799%`；shadow 单次审计
+P50/P95/max 为 `1024.838/1536.429/1549.436 ms`。46 条决策全部因 `oosm_scan` 拒绝，
+没有 accepted treatment。A2 因而不准入。
+
+原子接口主要消除 accepted 路径中 evaluate 与 detached assemble 之间的额外公共边界。
+本轮旧 prepared-handle 路径在全拒绝条件下本来就不执行 assemble，因此没有这部分工作可省。
+前后禁止写入摘要仍遍历完整规范表面，原子调用内部仍需准备规范摘要并执行 post-integrity。
+安全结果不能替代性能和效果证据。
+
 ### 单次调用内原子复用，公共边界继续强校验
 
 D1 新增
@@ -30,8 +48,8 @@ prepared descriptor 的理由。
 2026-07-24 聚焦测试 `36 passed`，D1 全量
 `324 passed`。2/3/5 成员决策字节保持，200 航迹计数为 1 次完整描述和 1 次后置
 规范复核；accepted/rejected、只读嵌套 metadata、调用内篡改、引用隔离和协方差不收缩均已
-覆盖。main 尚未接入该入口，A2 现有性能失败和零 treatment 结论不变；A3/A4 与 seeds
-1101/1102 继续停止。
+覆盖。main 已完成上节 clean 原子成对复核；A2 性能失败和零 treatment 结论不变，A3/A4 与
+seeds 1101/1102 继续停止。
 
 ### 规范发布描述只构造一次
 

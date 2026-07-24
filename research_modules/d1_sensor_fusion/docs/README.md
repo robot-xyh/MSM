@@ -19,12 +19,14 @@ assemble 和 post-integrity verify，不把 prepared descriptor 暴露给调用�
 结果可由标准 JSON 编码，canonical/shadow 发布摘要语义一致。公共 prepared handle 的逐边界
 强校验保持不变。
 
-main 提交 `2b976a7` 已在独立、默认关闭的 A2 审计 shadow 中显式接入旧三步准备对象：
-3294/3294 条归一化业务记录与 control 一致，禁止写入、错误和 D2/D3 消费为 0；但总墙钟
-增加 `80.8829%`，shadow P95 `1532.999 ms`，46 条 evidence 为 0 accepted/46
-`oosm_scan` rejected。main 尚未接入或复跑原子入口，A2 因性能门和有效 treatment 门失败而
-不准入；A3/A4 未实现。B 因当前 `Q(h)=G(h)qG(h)^T` 的单段/分段传播不等价而暂缓；C 保留为
-D2 后续主要系统研究路线。seeds 1101/1102 继续停止。
+main 随后在 clean commit `7cc2d0cfd598a72d60c6ba8c7d4a283f4e5a897d` 完成默认关闭
+原子 shadow 的 seed 1100 成对复核。9/9 次 post-integrity 通过，禁止写入、错误、D2/D3
+消费、在线 truth 和全局编号变化均为 0，D1/D2/D3 两臂均为 `202/201/186`。control/shadow
+墙钟为 `10.735151270986535/19.449935468961485 s`，增加 `81.1799%`；shadow P95 为
+`1536.429 ms`。46 条 evidence 为 0 accepted/46 `oosm_scan` rejected。安全子门闭合，
+性能门和有效 treatment 门失败，A2 不准入；A3/A4 未实现。B 因当前
+`Q(h)=G(h)qG(h)^T` 的单段/分段传播不等价而暂缓；C 保留为 D2 后续主要系统研究路线。
+seeds 1101/1102 继续停止。
 
 最新 D1 边界诊断复用 governed replay、扫描组织器和在线批融合入口，对同步平衡、乱序平衡和
 数量不平衡三类结构歧义冻结扫描进行控制臂/共同质心候选臂比较。同步 `2x2` 纯交替环形成一次
@@ -135,7 +137,7 @@ D1 侧解释见本目录各算法/AirSim 文档和 `../reports/EXPERIMENT_REPORT
 
 ## 文档
 
-- `STRUCTURAL_AMBIGUITY_NEXT_CANDIDATE_DESIGN_CN.md`：结构歧义 A/B/C 下一候选比较、数学语义、数据结构、排序键、风险、阶段和预注册验收；A1 离线纯函数、准备对象和原子接口优化已完成单元测试，main 尚未接入原子入口，A2 现有性能门和有效 treatment 门失败，A3/A4 未实现。
+- `STRUCTURAL_AMBIGUITY_NEXT_CANDIDATE_DESIGN_CN.md`：结构歧义 A/B/C 下一候选比较、数学语义、数据结构、排序键、风险、阶段和预注册验收；A1 离线纯函数、准备对象和原子接口优化已完成单元测试，main 已完成 clean 原子成对复核，A2 性能门和有效 treatment 门失败，A3/A4 未实现。
 - `ALGORITHM_AND_IMPLEMENTATION.md`：算法原理、数学模型、接口、调参、仿真验证、主动降级不确定度信号和跨模块关系。
 - `AIRSIM_INTEGRATION_PLAN.md`：AirSim/离线回放集成计划，说明时间戳、坐标和传感器桥接策略。
 - `MODULE_PRINCIPLES_CN.md`：中文模块原理、已实现边界和当前证据解释。

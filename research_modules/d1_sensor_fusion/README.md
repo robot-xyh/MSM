@@ -4,6 +4,27 @@ Offline research module for radar, acoustic, EO, and optional synthetic lidar he
 
 ## 当前性能与治理证据（2026-07-24）
 
+### 第二十一阶段：A2 原子 shadow clean 成对复核
+
+main 已在 clean commit
+`7cc2d0cfd598a72d60c6ba8c7d4a283f4e5a897d` 将 A2 审计旁路改用原子入口，并完成
+seed 1100、200v200、2.2 s、`recon_count=2` 的 control/atomic-shadow 成对运行。两份
+manifest 均为 `repository_dirty=false`。control/shadow 墙钟为
+`10.735151270986535/19.449935468961485 s`，开销比为 `0.8117989190825889`
+（`+81.1799%`）；实时倍率为 `0.20493423375838704/0.1131109151241553`。
+
+shadow 产生 9 条审计发布和 46 条决策，结果为 0 accepted、46
+`oosm_scan` rejected、0 error。9/9 次 post-integrity 通过，atomic failure 和 materialized
+shadow 均为 0。单次审计总时延 P50/P95/max 为
+`1024.838/1536.429/1549.436 ms`。D1/D2/D3 终态均为 `202/201/186`；在线 truth 使用、
+禁止写入、shadow 被 D2/D3 消费和 `global_track_id` 序列变化均为 0。
+
+本轮关闭了默认关闭审计旁路的原子调用、安全隔离和业务非干预子门，没有关闭性能和有效性门。
+墙钟开销远高于 `+5%` 门限，且没有 accepted treatment，A2 继续不准入。全拒绝场景中，旧
+prepared-handle 路径本来就会在 `accepted_count=0` 时跳过 assemble；原子入口因而没有第二次
+装配边界复核可消除。当前主要开销仍来自禁止写入前/后完整摘要，以及原子调用内的规范准备和
+post-integrity。A3/A4 与 seeds 1101/1102 继续停止。
+
 ### 第二十阶段：A1 原子 publication overlay 接口
 
 状态：`IMPLEMENTED_UNIT_TESTED_OFFLINE_ATOMIC_OPTIMIZATION`。D1 新增
@@ -36,10 +57,9 @@ canonical 与 shadow 发布摘要采用同一份按成员键排序的完整航�
 state/covariance、嵌套 metadata、source support、identity、`last_nis`、全局编号、时间戳和
 分级的调用内篡改，以及结果冻结和规范引用隔离。
 
-main 尚未接入或复跑该原子入口。提交 `2b976a7` 的 prepared-handle A2 结果仍是当前系统证据：
-性能门和有效 treatment 门失败，A2 不准入。不得用模块工作量下降推断系统 P95 已通过。
-A3/A4 与 seeds 1101/1102 继续停止。本次不修改 `fusion.py`、默认开关、在线 schema、
-共同质心数学或 AirSim 适配接口。
+main 已按上节完成原子入口的 clean 成对复跑。安全边界闭合，但性能门和有效 treatment 门
+失败，A2 不准入。不得用模块工作量下降推断系统 P95 已通过。本次不修改 `fusion.py`、
+默认开关、在线 schema、共同质心数学或 AirSim 适配接口。
 
 ### 第十九阶段：A1 规范发布准备对象与只读 metadata 装配
 

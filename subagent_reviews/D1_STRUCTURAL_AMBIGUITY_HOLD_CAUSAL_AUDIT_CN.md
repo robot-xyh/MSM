@@ -7,8 +7,9 @@
 **下一候选状态**：A1 publication overlay 为
 `IMPLEMENTED_UNIT_TESTED_OFFLINE_PROTOTYPE`，准备对象优化为
 `IMPLEMENTED_UNIT_TESTED_OFFLINE_OPTIMIZATION`，原子接口优化为
-`IMPLEMENTED_UNIT_TESTED_OFFLINE_ATOMIC_OPTIMIZATION`；main 尚未接入原子入口，A2 现有
-性能门和有效 treatment 门失败，不准入；A3/A4 未实现，B 暂缓，C 交 D2 后续规划
+`IMPLEMENTED_UNIT_TESTED_OFFLINE_ATOMIC_OPTIMIZATION`；main 已完成 clean 原子成对复核，
+A2 安全子门闭合、性能门和有效 treatment 门失败，不准入；A3/A4 未实现，B 暂缓，C 交 D2
+后续规划
 **结构歧义基础证据提交**：`ff881316243ff5a2991a4659ab78637ed625d123`
 **共同质心 clean 复核提交**：`7e15dac9cdaf6743999dfe045a70676fd31a17d6`
 **A1 纯函数原型提交**：`de73cb2`；2026-07-24 原子接口优化后聚焦
@@ -596,5 +597,24 @@ decision 以 `prepared_canonical_publication_mismatch` fail closed，generation 
 
 聚焦测试为 `36 passed`，D1 全量为 `324 passed`。2/3/5 成员
 canonical decision bytes 与 `de73cb2` 基线一致。该结果只证明 D1 原子接口和工作量边界；
-main 尚未接入或复跑。`2b976a7` 的 A2 性能失败和零有效 treatment 结论继续有效，A2 不准入，
-A3/A4 与 seeds 1101/1102 继续停止。
+main 已完成下节 clean 原子成对复核。A2 性能失败和零有效 treatment 结论继续有效，A2
+不准入，A3/A4 与 seeds 1101/1102 继续停止。
+
+## 16. 原子 shadow clean 成对复核
+
+main 在 clean commit `7cc2d0cfd598a72d60c6ba8c7d4a283f4e5a897d` 上完成 seed 1100、
+200v200、2.2 s、`recon_count=2` 的 control/atomic-shadow 成对运行。两份 manifest 均为
+`repository_dirty=false`。D1/D2/D3 终态在两臂均为 `202/201/186`。
+
+shadow 共 9 条发布、46 条决策，0 accepted、46 `oosm_scan` rejected、0 error。9/9 次
+post-integrity 通过，没有 atomic failure 或 materialized shadow。禁止写入、D2/D3 shadow
+消费、在线 truth 和全局编号变化均为 0。安全隔离和业务非干预子门闭合。
+
+control/shadow 墙钟为 `10.735151270986535/19.449935468961485 s`，增加 `81.1799%`；
+实时倍率为 `0.204934/0.113111`。shadow 单次审计 P50/P95/max 为
+`1024.838/1536.429/1549.436 ms`。阶段均值中，禁止写入前摘要、原子调用、禁止写入后摘要
+分别为 `254.599/544.960/196.413 ms`。
+
+本场景全部拒绝。旧 prepared-handle 路径在没有 accepted decision 时本来就不调用 assemble，
+因此原子入口没有第二次装配边界复核可省。主要开销仍是前后完整摘要、规范准备和
+post-integrity。性能门失败且没有 treatment 可评价，A2 不准入。

@@ -1,12 +1,47 @@
 # 第一研究模块实验结果
 
+## A2 原子 shadow clean 成对复核
+
+**证据日期：2026-07-24**
+
+**代码状态：clean commit `7cc2d0cfd598a72d60c6ba8c7d4a283f4e5a897d`**
+
+**场景：seed 1100，200 个目标、200 个资源、2 个侦察节点，仿真 2.2 s**
+
+原始 control 与 atomic-shadow 产物均记录 `repository_dirty=false`。结果如下。
+
+| 指标 | control | atomic-shadow | 判断 |
+| --- | ---: | ---: | --- |
+| 墙钟 | 10.735151271 s | 19.449935469 s | 增加 `81.1799%`，未通过 `+5%` 门 |
+| 实时倍率 | 0.204934234 | 0.113110915 | shadow 更慢 |
+| D1/D2/D3 终态 | 202/201/186 | 202/201/186 | 一致 |
+| 审计发布 | 0 | 9 | 符合默认关闭对照设计 |
+| 决策 | 0 | 46 | 0 accepted，46 `oosm_scan` rejected |
+| post-integrity | 不适用 | 9/9 通过 | 原子后置检查通过 |
+| atomic failure | 不适用 | 0 | 通过 |
+| materialized shadow | 不适用 | 0 | 全拒绝路径未物化 |
+| 审计 P50/P95/max | 不适用 | 1024.838/1536.429/1549.436 ms | 性能门失败 |
+| 在线 truth 使用 | 0 | 0 | 通过 |
+| 禁止写入 | 0 | 0 | 通过 |
+| D2/D3 shadow 消费 | 0/0 | 0/0 | 通过 |
+| 全局编号变化 | 0 | 0 | 通过 |
+
+shadow 阶段均值为：禁止写入前摘要 `254.599 ms`、原子调用 `544.960 ms`、禁止写入后摘要
+`196.413 ms`、shadow payload 摘要约 `0.0003 ms`、日志物化约 `0.099 ms`。旧三步
+prepared-handle 路径在 0 accepted 时本来就跳过 detached assemble，其 prepare/evaluate
+均值合计约 `540.516 ms`。原子入口没有可消除的装配边界复核，主要前后摘要开销继续存在。
+
+安全隔离与业务非干预子门已闭合。性能门失败，且没有 accepted treatment，无法评价共同质心
+overlay 的效果。A2 不准入，A3/A4 与 seeds 1101/1102 继续停止。本结果属于科研仿真中的
+单 seed 描述性证据，不代表 AirSim 或实机性能。
+
 ## A1 原子接口模块验证
 
 **证据日期：2026-07-24**
 
 **状态：`IMPLEMENTED_UNIT_TESTED_OFFLINE_ATOMIC_OPTIMIZATION`**
 
-**范围：D1 单元测试；main 尚未接入或复跑该入口**
+**范围：D1 单元测试；main 系统接入结果见上一节**
 
 本轮新增单个 experimental/offline 原子入口，在一次同步调用内完成完整规范准备、decision、
 detached shadow 装配和操作后完整性复核。现有公共 prepared handle 的逐边界强校验保持不变。
@@ -34,10 +69,8 @@ shadow 装配函数。accepted 路径先形成 detached 副本和 shadow 摘要�
 `prepared_canonical_publication_mismatch`，generation 状态恢复到调用输入。
 装配异常同样恢复输入状态，返回 `atomic_shadow_assembly_failed`，不公开部分结果。
 
-该结果只关闭 D1 模块接口和工作量断言。main 提交 `2b976a7` 的 seed 1100 A2 证据仍使用
-三步 prepared-handle 路径，其墙钟增加 `80.8829%`，且 0 accepted/46 rejected。原子入口尚未
-产生新的系统 P95、实时倍率或有效 treatment 数据，因此 A2 不准入，A3/A4 和 seeds
-1101/1102 继续停止。
+该结果只关闭 D1 模块接口和工作量断言。main 后续 clean 原子成对复核仍显示性能门失败，且
+0 accepted/46 rejected。A2 不准入，A3/A4 和 seeds 1101/1102 继续停止。
 
 ## A1 准备对象与只读 metadata 验证
 

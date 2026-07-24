@@ -8,6 +8,33 @@
 
 ## 当前权威增量（2026-07-24）
 
+### A2 原子 shadow 系统复核
+
+main 在 clean commit
+`7cc2d0cfd598a72d60c6ba8c7d4a283f4e5a897d` 上完成 seed 1100、200v200、2.2 s、
+`recon_count=2` 的 control/atomic-shadow 成对运行。control/shadow 墙钟为
+`10.735151270986535/19.449935468961485 s`，开销比 `0.8117989190825889`；实时倍率为
+`0.20493423375838704/0.1131109151241553`。shadow 的 9 次发布包含 46 条决策，全部以
+`oosm_scan` 拒绝，没有 accepted treatment 或 evaluation error。
+
+9/9 次原子调用的 post-integrity 均通过，没有 atomic failure 或 materialized shadow。
+单次审计总时延 P50/P95/max 为 `1024.838/1536.429/1549.436 ms`。阶段均值为：
+
+- 禁止写入前完整摘要：`254.599 ms`；
+- 原子 overlay 调用：`544.960 ms`；
+- 禁止写入后完整摘要：`196.413 ms`；
+- shadow payload 摘要和日志物化：约 `0.0003/0.099 ms`。
+
+旧 prepared-handle 路径在没有 accepted decision 时直接返回规范输入，不进入 detached
+assemble。因此，本场景中原子入口没有消除第二次装配边界完整性检查；旧路径的
+prepare/evaluate 均值合计约 `540.516 ms`，与本轮 atomic operation 的 `544.960 ms` 接近。
+前后完整摘要仍需遍历完整规范航迹和证据表面。原子接口解决了调用边界和失败关闭问题，没有
+解决本轮主要性能开销。
+
+D1/D2/D3 终态在两臂均为 `202/201/186`，在线 truth、禁止写入、D2/D3 shadow 消费和
+`global_track_id` 变化均为 0。安全隔离与业务非干预子门闭合；`+5%` 性能门失败，且没有
+有效 treatment 可评价。A2 不准入，不启动 A3/A4 或 seeds 1101/1102。
+
 ### A1 原子 publication overlay
 
 新增入口
@@ -48,8 +75,9 @@ rejected 路径不调用装配 helper，shadow 复制数、shadow 航迹摘要�
 2026-07-24 聚焦测试 `36 passed`，D1 全量
 `324 passed`。2/3/5 成员 canonical decision bytes 与 `de73cb2` 基线一致。
 200 航迹夹具报告 1 次完整描述、200 条描述摘要、1 次后置完整性复核、200 条规范复核摘要、
-200 条 detached shadow 摘要。该结果仅证明 D1 模块实现。main 尚未接入和复跑原子入口，
-A2 性能门与有效 treatment 门仍失败，A3/A4 及 seeds 1101/1102 继续停止。
+200 条 detached shadow 摘要。该结果证明 D1 模块实现；main 已按上节完成 clean 原子
+shadow 成对复核。安全子门闭合，但 A2 性能门与有效 treatment 门仍失败，A3/A4 及 seeds
+1101/1102 继续停止。
 
 ### A1 规范发布准备与安全复制
 

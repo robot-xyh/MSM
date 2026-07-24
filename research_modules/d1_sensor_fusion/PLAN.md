@@ -1,5 +1,24 @@
 # D1 多传感器融合与目标配准实施计划
 
+## A2 原子 shadow clean 成对复核（2026-07-24）
+
+main 已在 clean commit
+`7cc2d0cfd598a72d60c6ba8c7d4a283f4e5a897d` 使用原子入口完成 seed 1100、200v200、
+2.2 s、`recon_count=2` 的 control/atomic-shadow 成对运行。两份 manifest 均为
+`repository_dirty=false`。control/shadow 墙钟为
+`10.735151270986535/19.449935468961485 s`，开销比 `0.8117989190825889`；实时倍率为
+`0.20493423375838704/0.1131109151241553`。
+
+shadow 共 9 条发布、46 条决策，0 accepted、46 `oosm_scan` rejected、0 error。9/9 次
+post-integrity 通过，atomic failure 和 materialized shadow 均为 0。单次审计总时延
+P50/P95/max 为 `1024.838/1536.429/1549.436 ms`。D1/D2/D3 终态在两臂均为
+`202/201/186`；在线 truth、禁止写入、D2/D3 shadow 消费和全局编号变化均为 0。
+
+结论保持停止：安全隔离和业务非干预子门闭合，性能门和有效 treatment 门失败，A2 不准入。
+全拒绝输入下，旧 prepared-handle 路径本来就跳过 assemble，原子入口没有装配边界复核可省。
+后续若继续研究 A2，应先获得不放宽 OOSM/结构门限的真实 accepted treatment，再单独处理
+前/后完整摘要和规范复核成本；在此之前不启动 A3/A4 或 seeds 1101/1102。
+
 ## A1 原子接口优化状态（2026-07-24）
 
 D1 已实现
@@ -30,11 +49,9 @@ canonical 与 shadow 发布摘要使用相同的完整航迹摘要清单语义�
 `324 passed`。2/3/5 成员决策与 `de73cb2` 基线逐字节一致；200 航迹工作量、正常
 接受、OOSM/数量不平衡/重复代/倒退代拒绝、调用内篡改和引用隔离均有固定测试。
 
-下一步仅允许 main 在默认关闭审计路径中显式改用原子入口，并先复跑 seed 1100 成对开发场景，
-重新测量 before/atomic/after/log 分项、墙钟、实时倍率、P95、载荷和有效 treatment。当前
-main 尚未采用该入口，提交 `2b976a7` 的 A2 性能失败结论仍有效；不得声明性能门已关闭。
-A3/A4 和 seeds 1101/1102 继续停止。该优化不影响 `fusion.py`、默认开关、在线 schema 或
-AirSim 集成方案。
+main 已在默认关闭审计路径采用原子入口并完成上节 clean 成对复核。性能门仍失败，且没有
+accepted treatment；不得声明 A2 已关闭。A3/A4 和 seeds 1101/1102 继续停止。该优化不影响
+`fusion.py`、默认开关、在线 schema 或 AirSim 集成方案。
 
 ## A1 准备对象优化状态（2026-07-23）
 

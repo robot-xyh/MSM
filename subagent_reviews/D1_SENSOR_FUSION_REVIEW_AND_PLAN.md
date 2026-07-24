@@ -5,7 +5,23 @@
 
 ---
 
-## 最新增量：A1 原子 publication overlay（2026-07-24）
+## 最新增量：A2 原子 shadow clean 成对复核（2026-07-24）
+
+- main clean commit `7cc2d0cfd598a72d60c6ba8c7d4a283f4e5a897d` 已用原子入口完成
+  seed 1100、200v200、2.2 s、`recon_count=2` 的 control/atomic-shadow 成对运行；两份
+  manifest 均为 `repository_dirty=false`。
+- control/shadow 墙钟为 `10.735151270986535/19.449935468961485 s`，开销
+  `+81.1799%`；实时倍率为 `0.204934/0.113111`。shadow P50/P95/max 为
+  `1024.838/1536.429/1549.436 ms`。
+- shadow 共 9 条发布、46 条决策，0 accepted、46 `oosm_scan` rejected、0 error。9/9 次
+  post-integrity 通过，atomic failure 和 materialized shadow 均为 0。
+- D1/D2/D3 终态在两臂均为 `202/201/186`；在线 truth、禁止写入、D2/D3 shadow 消费和
+  `global_track_id` 变化均为 0。安全隔离和业务非干预子门闭合。
+- 性能门和有效 treatment 门失败，A2 不准入。全拒绝场景中旧 prepared-handle 路径本来就
+  跳过 assemble，原子入口没有第二次装配复核可消除；主要成本仍是前后完整摘要、规范准备和
+  post-integrity。A3/A4 与 seeds 1101/1102 继续停止。
+
+## A1 原子 publication overlay（2026-07-24）
 
 - D1 新增
   `run_experimental_centroid_publication_overlay_atomically()`，状态为
@@ -27,8 +43,7 @@
 - 2026-07-24 聚焦 `36 passed`，D1 全量
   `324 passed`。2/3/5 成员决策与 `de73cb2` 基线逐字节一致，只读嵌套 metadata、
   ID/速度/相对位置保持、协方差不收缩和规范引用隔离均通过。
-- main 尚未采用或复跑原子入口。`2b976a7` 的 seed 1100 三步 prepared-handle 结果仍为
-  `+80.8829%` 墙钟开销、0 accepted/46 rejected；A2 性能门和有效 treatment 门未关闭。
+- main 已完成上节 clean 原子成对复核；安全子门闭合，A2 性能门和有效 treatment 门未关闭。
   A3/A4 与 seeds 1101/1102 继续停止。AirSim 接口不受影响。
 
 ## 0. A1 准备对象优化状态（2026-07-23）
