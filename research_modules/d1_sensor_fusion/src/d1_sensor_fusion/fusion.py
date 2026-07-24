@@ -215,6 +215,100 @@ _NEUTRAL_CENTROID_IDENTITY_METADATA_ALLOWED_KEYS = frozenset(
         "target_node_id",
     }
 )
+PUBLICATION_METADATA_REFERENCE_IMPLEMENTATION_ID = (
+    "d1.publication_metadata.per_track_audit_copy.v1"
+)
+PUBLICATION_METADATA_CANDIDATE_IMPLEMENTATION_ID = (
+    "d1.publication_metadata.immutable_shared_audit.v1"
+)
+
+
+class _ImmutableAuditDict(dict):
+    """JSON-compatible dictionary that rejects mutation after construction."""
+
+    def __copy__(self) -> "_ImmutableAuditDict":
+        return self
+
+    def __deepcopy__(self, memo: dict[int, Any]) -> "_ImmutableAuditDict":
+        memo[id(self)] = self
+        return self
+
+    @staticmethod
+    def _reject_mutation(*args: object, **kwargs: object) -> None:
+        del args, kwargs
+        raise TypeError("shared publication audit metadata is immutable")
+
+    __setitem__ = _reject_mutation
+    __delitem__ = _reject_mutation
+    clear = _reject_mutation
+    pop = _reject_mutation
+    popitem = _reject_mutation
+    setdefault = _reject_mutation
+    update = _reject_mutation
+    __ior__ = _reject_mutation
+
+
+class _ImmutableAuditList(list):
+    """JSON-compatible list that rejects mutation after construction."""
+
+    def __copy__(self) -> "_ImmutableAuditList":
+        return self
+
+    def __deepcopy__(self, memo: dict[int, Any]) -> "_ImmutableAuditList":
+        memo[id(self)] = self
+        return self
+
+    @staticmethod
+    def _reject_mutation(*args: object, **kwargs: object) -> None:
+        del args, kwargs
+        raise TypeError("shared publication audit metadata is immutable")
+
+    __setitem__ = _reject_mutation
+    __delitem__ = _reject_mutation
+    __iadd__ = _reject_mutation
+    __imul__ = _reject_mutation
+    append = _reject_mutation
+    clear = _reject_mutation
+    extend = _reject_mutation
+    insert = _reject_mutation
+    pop = _reject_mutation
+    remove = _reject_mutation
+    reverse = _reject_mutation
+    sort = _reject_mutation
+
+
+def _freeze_publication_audit_value(
+    value: Any,
+    operation_counts: Counter[str],
+) -> Any:
+    """Copy one audit tree into recursively immutable JSON containers."""
+
+    if isinstance(value, Mapping):
+        operation_counts["immutable_shared_mapping_build_count"] += 1
+        return _ImmutableAuditDict(
+            {
+                key: _freeze_publication_audit_value(nested, operation_counts)
+                for key, nested in value.items()
+            }
+        )
+    if isinstance(value, list):
+        operation_counts["immutable_shared_list_build_count"] += 1
+        return _ImmutableAuditList(
+            _freeze_publication_audit_value(item, operation_counts)
+            for item in value
+        )
+    if isinstance(value, tuple):
+        operation_counts["immutable_shared_tuple_build_count"] += 1
+        return tuple(
+            _freeze_publication_audit_value(item, operation_counts)
+            for item in value
+        )
+    if isinstance(value, np.ndarray):
+        operation_counts["immutable_shared_array_build_count"] += 1
+        frozen = np.asarray(value).copy()
+        frozen.setflags(write=False)
+        return frozen
+    return value
 
 
 def _strict_real_parameter(
@@ -685,6 +779,7 @@ class FusionAdapter:
         ] | None = None,
         incremental_replay_cache: bool = True,
         shared_publication_audit_snapshot: bool = True,
+        immutable_shared_publication_metadata: bool = False,
         scan_association_model_cache: bool = True,
         batched_non_radar_innovation_solve: bool = True,
         radar_association_lower_bound_gate: bool = True,
@@ -939,6 +1034,21 @@ class FusionAdapter:
         self.shared_publication_audit_snapshot = bool(
             shared_publication_audit_snapshot
         )
+        if not isinstance(immutable_shared_publication_metadata, bool):
+            raise TypeError(
+                "immutable_shared_publication_metadata must be a bool"
+            )
+        self.immutable_shared_publication_metadata = (
+            immutable_shared_publication_metadata
+        )
+        if (
+            self.immutable_shared_publication_metadata
+            and not self.shared_publication_audit_snapshot
+        ):
+            raise ValueError(
+                "immutable shared publication metadata requires "
+                "shared_publication_audit_snapshot=True"
+            )
         self.scan_association_model_cache = bool(scan_association_model_cache)
         self.batched_non_radar_innovation_solve = bool(
             batched_non_radar_innovation_solve
@@ -1031,6 +1141,7 @@ class FusionAdapter:
         self._consistency_replay_revision = 0
         self._consistency_capture_context: tuple[str, int] | None = None
         self._performance_totals: Counter[str] = Counter()
+        self._publication_materialization_operations: Counter[str] = Counter()
 
     def _bucket(self, timestamp: float) -> int:
         """Return the fixed-lag cache bucket for a timestamp."""
@@ -1789,6 +1900,9 @@ class FusionAdapter:
         return True
 
     def global_tracks(self) -> list[GlobalTrack]:
+        self._publication_materialization_operations[
+            "global_tracks_call_count"
+        ] += 1
         publication_context = (
             self._track_publication_context()
             if self.shared_publication_audit_snapshot
@@ -1798,6 +1912,24 @@ class FusionAdapter:
             self._to_global_track(record, publication_context)
             for record in self.tracks.values()
         ]
+
+    def publication_materialization_diagnostics(self) -> dict[str, Any]:
+        """Return implementation identity and materialization operation counts."""
+
+        implementation_id = (
+            PUBLICATION_METADATA_CANDIDATE_IMPLEMENTATION_ID
+            if self.immutable_shared_publication_metadata
+            else PUBLICATION_METADATA_REFERENCE_IMPLEMENTATION_ID
+        )
+        return {
+            "implementation_id": implementation_id,
+            "immutable_shared_publication_metadata": bool(
+                self.immutable_shared_publication_metadata
+            ),
+            "operation_counts": dict(
+                sorted(self._publication_materialization_operations.items())
+            ),
+        }
 
     def fusion_performance_diagnostics(self) -> FusionPerformanceDiagnostics:
         """Return fixed-size cumulative counters for episode-level profiling."""
@@ -1886,13 +2018,34 @@ class FusionAdapter:
         context = self._batch_context
         if context is not None:
             context.sensor_health_snapshot_build_count += 1
+        self._publication_materialization_operations[
+            "shared_publication_context_build_count"
+        ] += 1
+        association_audit = self.association_audit_summary()
+        latency_audit = self.latency_audit_summary().to_dict()
+        sensor_health = {
+            summary.sensor_id: summary.to_dict()
+            for summary in self.sensor_health_summaries()
+        }
+        if self.immutable_shared_publication_metadata:
+            freeze_counts: Counter[str] = Counter()
+            association_audit = _freeze_publication_audit_value(
+                association_audit,
+                freeze_counts,
+            )
+            latency_audit = _freeze_publication_audit_value(
+                latency_audit,
+                freeze_counts,
+            )
+            sensor_health = _freeze_publication_audit_value(
+                sensor_health,
+                freeze_counts,
+            )
+            self._publication_materialization_operations.update(freeze_counts)
         return _TrackPublicationContext(
-            association_audit=self.association_audit_summary(),
-            latency_audit=self.latency_audit_summary().to_dict(),
-            sensor_health={
-                summary.sensor_id: summary.to_dict()
-                for summary in self.sensor_health_summaries()
-            },
+            association_audit=association_audit,
+            latency_audit=latency_audit,
+            sensor_health=sensor_health,
         )
 
     def consistency_evidence_records(
@@ -5097,6 +5250,9 @@ class FusionAdapter:
         batch_context = self._batch_context
         if batch_context is not None:
             batch_context.global_track_materialization_count += 1
+        self._publication_materialization_operations[
+            "global_track_metadata_materialization_count"
+        ] += 1
         if not record.current_state_covariance_limited:
             self._limit_record_covariance(record)
         if self.reuse_track_classification_a95:
@@ -5114,16 +5270,36 @@ class FusionAdapter:
         last_nis = record.recent_nis[-1] if record.recent_nis else None
         metadata = dict(record.metadata)
         if publication_context is None:
-            publication_context = _TrackPublicationContext(
-                association_audit=self.association_audit_summary(),
-                latency_audit=self.latency_audit_summary().to_dict(),
-                sensor_health={
-                    summary.sensor_id: summary.to_dict()
-                    for summary in self.sensor_health_summaries()
-                },
-            )
-            if batch_context is not None:
-                batch_context.sensor_health_snapshot_build_count += 1
+            if self.immutable_shared_publication_metadata:
+                publication_context = self._track_publication_context()
+            else:
+                publication_context = _TrackPublicationContext(
+                    association_audit=self.association_audit_summary(),
+                    latency_audit=self.latency_audit_summary().to_dict(),
+                    sensor_health={
+                        summary.sensor_id: summary.to_dict()
+                        for summary in self.sensor_health_summaries()
+                    },
+                )
+                if batch_context is not None:
+                    batch_context.sensor_health_snapshot_build_count += 1
+        if self.immutable_shared_publication_metadata:
+            association_audit = publication_context.association_audit
+            latency_audit = publication_context.latency_audit
+            sensor_health = publication_context.sensor_health
+            self._publication_materialization_operations[
+                "shared_audit_value_reuse_count"
+            ] += 3
+        else:
+            association_audit = dict(publication_context.association_audit)
+            latency_audit = dict(publication_context.latency_audit)
+            sensor_health = {
+                sensor_id: dict(summary)
+                for sensor_id, summary in publication_context.sensor_health.items()
+            }
+            self._publication_materialization_operations[
+                "per_track_shared_audit_mapping_copy_count"
+            ] += 3 + len(publication_context.sensor_health)
         metadata.update(
             {
                 "a95_m": a95_m,
@@ -5134,13 +5310,10 @@ class FusionAdapter:
                 "latency_compensation": self.latency_compensation,
                 "source_support": dict(record.source_support),
                 "association_diagnostics": dict(record.association_diagnostics),
-                "association_audit": dict(publication_context.association_audit),
+                "association_audit": association_audit,
                 "duplicate_observation_count": self.duplicate_observation_count,
-                "latency_audit": dict(publication_context.latency_audit),
-                "sensor_health": {
-                    sensor_id: dict(summary)
-                    for sensor_id, summary in publication_context.sensor_health.items()
-                },
+                "latency_audit": latency_audit,
+                "sensor_health": sensor_health,
             }
         )
         if self.opaque_source_key_publication_enabled:

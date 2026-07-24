@@ -207,6 +207,12 @@ from .tail_latency_performance import (
     render_tail_latency_report_cn,
     write_tail_latency_report,
 )
+from .publication_metadata_performance import (
+    PUBLICATION_METADATA_PERFORMANCE_SCHEMA_VERSION,
+    analyze_frozen_publication_metadata,
+    render_publication_metadata_report_cn,
+    write_publication_metadata_report,
+)
 from .scan_fusion_performance import (
     SCAN_ASSOCIATION_PERFORMANCE_SCHEMA_VERSION,
     SCAN_FUSION_PERFORMANCE_SCHEMA_VERSION,
@@ -390,11 +396,13 @@ __all__ = [
     "STRUCTURAL_AMBIGUITY_SOURCE_KEY_RULE",
     "STRUCTURAL_AMBIGUITY_UPDATE_MODE",
     "TAIL_LATENCY_PERFORMANCE_SCHEMA_VERSION",
+    "PUBLICATION_METADATA_PERFORMANCE_SCHEMA_VERSION",
     "TrackLevel",
     "TracksNotMaterializedError",
     "TrackUncertaintySummary",
     "annotate_covariance_growth_rates",
     "analyze_frozen_tail_latency",
+    "analyze_frozen_publication_metadata",
     "audit_fused_track_publications",
     "anonymize_online_observations",
     "assemble_experimental_centroid_shadow_tracks",
@@ -442,6 +450,7 @@ __all__ = [
     "render_non_radar_innovation_benchmark_cn",
     "render_structural_ambiguity_replay_diagnostic_cn",
     "render_tail_latency_report_cn",
+    "render_publication_metadata_report_cn",
     "run_p2_isolated_benchmark",
     "run_scan_fusion_variant",
     "run_coalesced_release_schedule_variant",
@@ -473,6 +482,7 @@ __all__ = [
     "write_long_duration_performance_report",
     "write_structural_ambiguity_replay_diagnostic",
     "write_tail_latency_report",
+    "write_publication_metadata_report",
     "summarize_recon_cue_from_tracks",
     "DuplicateScanLineageError",
 ]

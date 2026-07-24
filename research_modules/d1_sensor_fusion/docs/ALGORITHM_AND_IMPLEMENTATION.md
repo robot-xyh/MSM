@@ -2690,3 +2690,47 @@ association audit、latency audit 和 sensor-health 都是扫描完成时的全�
 失效、检查点前 OOSM、evidence revision 和发布数组防别名均进入测试。性能专项 `6 passed`，
 main 复跑 D1 全量 `157 passed in 28.77s`。该基准不读取在线 truth，也不证明 AirSim、正式
 传感器精度或完整系统实时性。
+
+## 31. 不可变共享审计树（2026-07-24）
+
+### 31.1 重复工作
+
+对一个发布扫描记全局审计树为
+
+```text
+A_k = {association_audit, latency_audit, sensor_health}
+```
+
+reference 已在扫描级只计算一次 `A_k`，但对扫描内每条航迹 `i` 继续构造
+`copy(A_k.association)`、`copy(A_k.latency)` 和
+`{sensor: copy(summary)}`。复杂度中的复制项近似为
+`O(T_k * (|A_k| + S_k))`，其中 `T_k` 为航迹数，`S_k` 为传感器健康摘要数。
+
+### 31.2 候选
+
+候选先执行一次递归冻结：
+
+```text
+F_k = freeze(copy_recursive(A_k))
+metadata_i = copy(track_metadata_i)
+metadata_i["association_audit"] = F_k.association_audit
+metadata_i["latency_audit"] = F_k.latency_audit
+metadata_i["sensor_health"] = F_k.sensor_health
+```
+
+冻结映射和列表继承标准容器，保持比较和 JSON 序列化形式；所有变异方法抛出 `TypeError`。
+元组递归冻结，NumPy 数组建立独立只读副本。候选复制项变为 `O(|A_k| + S_k + T_k)`，不共享
+任何轨迹专属可变对象。
+
+### 31.3 A/B 保护
+
+`immutable_shared_publication_metadata` 显式选择 reference/candidate，默认 `False`。专用
+benchmark 在相同 `SensorScanFrame` 序列上交错运行两条路径，并逐发布计算完整
+`GlobalTrack.to_dict()` 摘要。验收还比较扫描输入、claim registry、发布顺序、逐扫描融合摘要、
+融合操作计数、累计诊断、终态和 consistency evidence。独立变异测试检查顶层 metadata 可各自
+修改，共享审计树不可修改。
+
+冻结 seed 1101 的完整物化数保持 71,515。reference 的共享审计映射复制计数为 8,832,271，
+candidate 为 0；candidate 记录 214,545 次共享值复用。该计数证明减少的是重复容器复制，不是
+航迹、扫描、观测或审计字段。单 seed profile 显示 `_to_global_track` 累计
+`10.700 -> 2.198 s`；正式多 seed 准入尚未执行。

@@ -962,3 +962,17 @@ covariance、在线 truth fail-closed、source lineage、6 s fixed-lag、量测�
 `global_track_id` 合同均未修改。正式 13-pair 矩阵已经完成并关闭扫描输入优化准入 P1，
 但系统实时 P1 不关闭。AirSim 集成计划已检查；本轮没有接口、settings 或 AirSim 运行证据
 变化，因此无需修改。
+
+## 32. 2026-07-24 GlobalTrack 物化热点候选 GAP 状态
+
+| GAP/合同 | 当前状态 | D1-owned 证据 | 剩余关闭条件 |
+| --- | --- | --- | --- |
+| 可执行 reference/candidate | **已关闭模块实现项** | `immutable_shared_publication_metadata` 显式开关；reference 默认；实现标识和操作计数写入 JSON | main 正式矩阵必须按实现标识验证，不得按提交号推断 |
+| 共享审计可变别名 | **已关闭模块安全项** | 候选递归冻结 association/latency/sensor-health；同扫描航迹只读共享；顶层 metadata 与轨迹专属诊断隔离；变异和深拷贝测试通过 | 下游若依赖修改嵌套审计树，需改为先复制再修改，不能放宽不可变门 |
+| 逐发布业务等价 | **单 seed 候选通过** | seed 1101、570 扫描、10,810 观测；逐发布完整 `GlobalTrack.to_dict()`、逐扫描摘要、操作数、累计诊断、终态和 evidence 全部一致；truth use 0 | clean short 10 seed、long 3 seed 交错 A/B 和 D2-D7 下游兼容 |
+| 重复物化成本 | **候选已消除，未正式准入** | 完整物化 71,515 保持；逐航迹共享审计映射复制 `8,832,271 -> 0`；`_to_global_track 10.700 -> 2.198 s`；fusion `42.282 -> 34.792 s` | 多 seed bootstrap 区间、RSS、异常/更多 sensor-health 数量和长时稳定性 |
+| 完整系统实时与效果 | **P1 仍开放，main-owned** | 候选只处理 D1 发布元数据；没有 AirSim、目标硬件、正式 RMSE/NEES/NIS 或物理拦截证据 | 达到预注册系统预算，并完成 AirSim、精度、容量和完整拦截独立验收 |
+
+候选保持默认关闭。D1 全量 `365 passed in 20.91s`。本轮没有新增 P0，也没有修改雷达数学、
+fixed-lag、扫描/发布频率、门限、观测内容、双时间戳、covariance、NED 或 `global_track_id`
+合同。

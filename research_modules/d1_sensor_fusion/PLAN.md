@@ -1982,3 +1982,36 @@ snapshot 从 16,653 降至 86。未缓存参考墙钟 34.701 s，优化路径 9.
    coverage。该性能优化不提供精度证据。
 3. AirSim producer、Blocks/CV/SimpleFlight、episode 编排和持久化 schema 均未改变。本轮已检查
    `docs/AIRSIM_INTEGRATION_PLAN.md`，无需修改。
+
+## 31. GlobalTrack 共享审计物化候选（2026-07-24）
+
+### 31.1 目标与边界
+
+冻结 profile 显示 570 扫描中 `global_tracks()` 调用 361 次、`_to_global_track()` 调用
+71,515 次，累计分别为 `11.530/10.977 s`。本候选只压缩完整发布扫描内重复复制的 association、
+latency 和 sensor-health 共享审计树。不修改雷达数学、fixed-lag/OOSM、扫描与发布频率、关联
+门限、输入观测、航迹数量或 `GlobalTrack` 字段。
+
+### 31.2 实施
+
+1. `immutable_shared_publication_metadata=False` 保留 reference；`True` 启用候选，且强制要求
+   `shared_publication_audit_snapshot=True`。
+2. 候选在 `_track_publication_context()` 中递归复制并冻结三棵共享审计树。冻结容器保持
+   `dict`/`list` 和 JSON 编码兼容，所有常规写入、删除、排序和扩展操作均 fail closed。
+3. `_to_global_track()` 仍为每条航迹建立独立顶层 metadata 和状态/协方差副本，只复用三个
+   不可变审计值。`publication_materialization_diagnostics()` 输出实际实现标识、逐航迹复制、
+   不可变容器构造、共享值复用和完整物化计数。
+4. 专用冻结回放 A/B 逐发布计算完整 `GlobalTrack.to_dict()` SHA-256，并比较逐扫描融合语义、
+   业务操作数、累计诊断、终态和 consistency evidence。墙钟和 profile 不参与通过判定。
+
+### 31.3 当前证据与后续验收
+
+2026-07-24 单 seed 1101、570 扫描、10,810 观测的 reference/candidate 全部门控通过。完整物化
+均为 71,515；reference 复制共享审计映射 8,832,271 次，candidate 为 0。profile 中
+`_to_global_track` 为 `10.700 -> 2.198 s`，fusion 总墙钟为 `42.282 -> 34.792 s`。专项
+4 项和 D1 全量 `365 passed in 20.91s`。
+
+候选保持默认关闭。main 后续在冻结 short 10 seed 和 long 3 seed 上交错运行，要求业务摘要、
+在线真值隔离、有限状态、操作数和实现身份全部通过，并报告 bootstrap 区间、RSS 与 D2-D7
+下游兼容性。正式准入后才更新默认值；完整系统实时、AirSim 和正式 RMSE/NEES/NIS 继续独立
+开放。

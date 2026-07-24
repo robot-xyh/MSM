@@ -1589,3 +1589,28 @@ module stack 列为超线性项。
 当前三 seed 的 D1 集成业务等价项关闭。系统实时、长时归一化超线性、真实异常 covariance
 认证/回退分布、AirSim 和正式 RMSE/NEES/NIS 保持 P1 开放。下一轮不得通过放宽预门控认证、
 缩短固定时滞、丢弃观测或改变双时间戳语义换取吞吐。
+
+## 33. GlobalTrack 共享审计元数据候选评审（2026-07-24）
+
+### 33.1 评审判断
+
+当前热点来自 `_to_global_track()` 对扫描级公共审计树的逐航迹复制。候选将 association、
+latency 和 sensor-health 递归冻结后按扫描共享。轨迹顶层 metadata、state、covariance、
+source support、association diagnostics 和 identity likelihood 仍独立。该边界没有进入雷达
+关联、固定滞后重放、航迹分级或观测处理。
+
+### 33.2 证据
+
+冻结 seed 1101 输入 SHA-256 为
+`8ece10afc86eb426ac1810f4fff9a22860cdceea1ae2a71d0b30413f20c09fed`。570 扫描、
+10,810 条匿名观测、361 次完整发布和 71,515 条航迹物化均保留。reference/candidate 的完整
+逐发布字典摘要、逐扫描融合语义、操作数、累计诊断、终态和 consistency evidence 全部一致。
+共享审计映射复制 `8,832,271 -> 0`；`_to_global_track` 累计
+`10.700 -> 2.198 s`，fusion 总墙钟 `42.282 -> 34.792 s`。
+
+### 33.3 决策与下一步
+
+模块级候选实现和安全隔离测试通过，默认值继续为 `False`。当前结果只有单 seed，且工作区不
+是新的 clean full-stack 准入提交。main 应在 frozen short 10 seed、long 3 seed 上交错运行，
+检查严格语义、实现身份、RSS、bootstrap 区间和 D2-D7 消费兼容性。通过前不得写成实时缺口
+已关闭，也不得把 1.215 倍单次墙钟收益外推到 AirSim 或目标平台。

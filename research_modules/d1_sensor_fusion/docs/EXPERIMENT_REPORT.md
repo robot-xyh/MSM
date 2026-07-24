@@ -1168,3 +1168,32 @@ AirSim、真实传感器精度、RMSE、归一化估计误差平方、归一化�
 `../../scalable_3d_simulation/outputs/scalable_3d_long_duration_candidate_20260722_clean_8f86192/`
 
 历史模块级性能、融合精度和时延消融实验见 `../reports/EXPERIMENT_REPORT.md`。
+
+## GlobalTrack 共享审计元数据冻结回放
+
+**证据日期：2026-07-24**
+
+**场景：200v200 nominal 冻结三维质点 replay，seed 1101，10 s**
+
+输入文件 SHA-256 为
+`8ece10afc86eb426ac1810f4fff9a22860cdceea1ae2a71d0b30413f20c09fed`，包含 570 个扫描、
+10,810 条匿名在线观测。对照路径为每条航迹复制扫描级 association/latency/sensor-health
+审计映射；候选路径把三棵审计树递归冻结一次并在同一扫描航迹间只读复用。两条路径都保持
+361 次完整发布、71,515 条 `GlobalTrack` 物化和 201 条终态航迹。
+
+| 指标 | Reference | Candidate |
+| --- | ---: | ---: |
+| 逐航迹共享审计映射复制 | 8,832,271 | 0 |
+| 不可变共享值复用 | 0 | 214,545 |
+| `_to_global_track` cProfile 累计 | 10.700 s | 2.198 s |
+| `global_tracks` cProfile 累计 | 11.136 s | 3.897 s |
+| Fusion 总墙钟 | 42.282 s | 34.792 s |
+
+逐输入扫描结果、claim registry、发布分组、逐扫描融合语义、逐发布完整
+`GlobalTrack.to_dict()`、融合业务操作数、累计诊断、终态和 consistency evidence 的摘要全部
+一致，在线 truth 使用为 0。变异测试确认顶层 metadata 与轨迹专属诊断相互隔离，共享审计树
+拒绝写入；JSON 和深拷贝读取兼容。D1 全量回归为 `365 passed in 20.91s`。
+
+该数据来自单 seed、当前工作树和本机单次运行。墙钟只作描述，不参与通过判定。候选默认关闭，
+尚未完成 clean 多 seed、RSS、D2-D7 下游、AirSim、目标硬件或正式精度验证，因此不关闭系统
+实时 P1。

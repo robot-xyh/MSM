@@ -1793,3 +1793,41 @@ D1 全量 `151 passed`。
 `FusionAdapter` 依据 measurement time 做 EKF 更新和 fixed-lag replay。D1-owned P1 输入合同
 已关闭；main 正式接线、20/50/100/200 长 episode 的 lateness/residence/capacity 标定、无扫描
 时钟推进策略、吞吐和误拒率仍是系统 P1。
+
+## GlobalTrack 共享审计元数据候选（2026-07-24）
+
+当前 200v200 冻结回放在 361 个完整发布扫描中物化 71,515 条 `GlobalTrack`。既有
+`shared_publication_audit_snapshot=True` 已把 association、latency 和 sensor-health 摘要降为
+每个发布扫描计算一次，但 `_to_global_track()` 仍为每条航迹复制三类共享审计映射及每个
+sensor-health 子映射。冻结 seed 1101 中该路径累计执行 8,832,271 次映射复制。
+
+新增 `immutable_shared_publication_metadata` 候选开关。默认值为 `False`，保留原逐航迹复制
+reference。候选为每个发布扫描递归复制并冻结三棵共享审计树一次，使用拒绝所有变异操作的
+`dict`/`list` 兼容容器；同一扫描的航迹只读复用这三个值。每条航迹的顶层 metadata、state、
+covariance、source support、association diagnostics、identity likelihood 和质量分级仍独立
+物化。对共享审计树的写入会抛出 `TypeError`，避免一个航迹污染同扫描其他航迹。
+
+专用入口为：
+
+```bash
+PYTHONPATH=research_modules/d1_sensor_fusion/src \
+python3 research_modules/d1_sensor_fusion/scripts/run_publication_metadata_performance.py \
+  --input <online_observations.jsonl> \
+  --json-output <report.json> \
+  --markdown-output <report.md> \
+  --profile-directory <profiles> \
+  --repeat-count 1
+```
+
+2026-07-24 单 seed 冻结输入 SHA-256 为
+`8ece10afc86eb426ac1810f4fff9a22860cdceea1ae2a71d0b30413f20c09fed`，含 570 个扫描、
+10,810 条匿名在线观测和 201 条终态航迹。reference/candidate 的逐输入结果、claim registry、
+发布分组、逐扫描融合摘要、逐发布完整 `GlobalTrack.to_dict()`、融合操作数、累计诊断、终态
+和 consistency evidence 全部一致，在线 truth 使用为 0。完整物化数均为 71,515；候选逐航迹
+共享审计映射复制为 0，只读复用为 214,545 次。
+
+同轮 cProfile 中 `_to_global_track` 累计由 `10.700 s` 降至 `2.198 s`，fusion 总墙钟由
+`42.282 s` 降至 `34.792 s`，单次加速 `1.215x`。墙钟不参与单元测试判定。该结果仍是当前
+工作树上的单 seed 候选证据，不是正式多 seed、AirSim、目标硬件或系统实时放行。
+候选保持默认关闭，待 main 交错多 seed 验证收益、内存和 D2-D7 下游兼容性。D1 全量回归为
+`365 passed in 20.91s`。
