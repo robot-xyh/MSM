@@ -4,17 +4,21 @@ from collections import Counter
 from dataclasses import replace
 import csv
 import json
-from types import SimpleNamespace
+from types import MappingProxyType, SimpleNamespace
 
 import numpy as np
 import pytest
 
 from research_modules.d1_sensor_fusion.src.d1_sensor_fusion import (
     DEFAULT_STRUCTURAL_AMBIGUITY_PUBLISHER_NODE_ID,
+    ExperimentalCentroidEvidenceDisposition,
+    GlobalTrack,
+    SensorObservation,
     StructuralAmbiguityCandidateEdge,
     StructuralAmbiguityEvidence,
     StructuralAmbiguityMemberState,
     StructuralAmbiguityObservationEvidence,
+    TrackLevel,
     structural_ambiguity_member_track_token,
     structural_ambiguity_source_key,
 )
@@ -184,6 +188,44 @@ def test_d1_identity_neutral_centroid_candidate_requires_hold() -> None:
     ):
         IntegratedStackConfig(
             d1_identity_neutral_centroid_correction_enabled=True
+        )
+
+
+def test_d1_centroid_overlay_shadow_is_explicit_hashed_and_fail_closed() -> None:
+    default = IntegratedStackConfig()
+    assert default.d1_centroid_publication_overlay_shadow_enabled is False
+    assert IntegratedScalableModuleStack(
+        default
+    ).runtime_manifest_profile()["configuration"][
+        "d1_centroid_publication_overlay_shadow_enabled"
+    ] is False
+
+    with pytest.raises(
+        ValueError,
+        match="overlay shadow requires",
+    ):
+        IntegratedStackConfig(
+            d1_centroid_publication_overlay_shadow_enabled=True
+        )
+    with pytest.raises(
+        ValueError,
+        match="cannot be combined",
+    ):
+        IntegratedStackConfig(
+            d1_d2_structural_ambiguity_hold_enabled=True,
+            d1_identity_neutral_centroid_correction_enabled=True,
+            d1_centroid_publication_overlay_shadow_enabled=True,
+        )
+
+
+@pytest.mark.parametrize("value", (None, 0, 1, "true"))
+def test_d1_centroid_overlay_shadow_requires_bool(value: object) -> None:
+    with pytest.raises(
+        TypeError,
+        match="d1_centroid_publication_overlay_shadow_enabled must be a bool",
+    ):
+        IntegratedStackConfig(
+            d1_centroid_publication_overlay_shadow_enabled=value,  # type: ignore[arg-type]
         )
 
 
@@ -407,6 +449,436 @@ def _structural_ambiguity_fixture(
         free_row_count=0,
         free_column_count=0,
         maximum_matching_cardinality=2,
+    )
+
+
+def _centroid_shadow_tracks(
+    evidence: StructuralAmbiguityEvidence,
+) -> tuple[GlobalTrack, ...]:
+    return tuple(
+        GlobalTrack(
+            global_track_id=f"CENTER-GT-{index:03d}",
+            state=member.state.copy(),
+            covariance=member.covariance.copy(),
+            timestamp=evidence.published_at,
+            track_level=TrackLevel.STABLE,
+            source_support={"radar": 2},
+            identity_likelihood={"unknown": 1.0},
+            metadata={
+                "frame_id": "ned",
+                "measurement_timestamp": evidence.measurement_timestamp,
+                "arrival_timestamp": evidence.arrival_timestamp,
+                "published_at": evidence.published_at,
+                "source_key": member.source_key,
+                "opaque_member_track_token": (
+                    member.opaque_member_track_token
+                ),
+            },
+        )
+        for index, member in enumerate(evidence.member_states)
+    )
+
+
+def test_d1_centroid_overlay_shadow_is_audit_only_and_bounded() -> None:
+    stack = IntegratedScalableModuleStack(
+        IntegratedStackConfig(
+            d1_d2_structural_ambiguity_hold_enabled=True,
+            d1_centroid_publication_overlay_shadow_enabled=True,
+        )
+    )
+    stack.reset(
+        ScenarioConfig(
+            scenario_name="main_d1_centroid_overlay_shadow_2v2",
+            scenario_version="main-d1-centroid-overlay-shadow-v1",
+            target_count=2,
+            resource_count=2,
+            recon_count=1,
+            region_count=1,
+            duration_s=0.2,
+            seed=41,
+        )
+    )
+    evidence = _structural_ambiguity_fixture(
+        publisher_epoch=stack._d1_publisher_epoch,
+        measurement_timestamp=0.4,
+        arrival_timestamp=0.65,
+    )
+    tracks = _centroid_shadow_tracks(evidence)
+    stack.latest_d1_tracks = tracks
+    before = json.dumps(
+        [track.to_dict() for track in tracks],
+        ensure_ascii=False,
+        allow_nan=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+
+    accepted = stack._d1_centroid_overlay_shadow_publication(
+        canonical_tracks=tracks,
+        evidence_items=(evidence,),
+        disposition=ExperimentalCentroidEvidenceDisposition(),
+        publication_timestamp=0.65,
+        posterior_generation=1,
+    )
+    payload = accepted.payload
+    assert accepted.topic == "audit.d1.centroid_publication_overlay_shadow"
+    assert accepted.source == "main"
+    assert payload["status"] == "offline_shadow_not_consumed"
+    assert payload["accepted_count"] == 1
+    assert payload["rejected_count"] == 0
+    assert payload["shadow_differs_from_canonical"] is True
+    assert payload["measurement_timestamps"] == [0.4]
+    assert payload["arrival_timestamps"] == [0.65]
+    assert payload["forbidden_mutation_audit"]["passed"] is True
+    assert payload["forbidden_mutation_audit"]["d2_consumption_count"] == 0
+    assert payload["forbidden_mutation_audit"]["d3_consumption_count"] == 0
+    assert payload["bounded_memory_audit"][
+        "generation_watermark_count"
+    ] == 1
+    assert payload["global_track_id_sequence_unchanged"] is True
+    assert payload["canonical_global_track_ids_sha256"] == (
+        payload["shadow_global_track_ids_sha256"]
+    )
+    assert "canonical_tracks" not in payload
+    assert "shadow_tracks" not in payload
+    assert json.dumps(
+        [track.to_dict() for track in tracks],
+        ensure_ascii=False,
+        allow_nan=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ) == before
+    assert stack.latest_d1_tracks is tracks
+    assert stack.latest_d2_tracks == ()
+    assert stack.latest_plan is None
+
+    duplicate = stack._d1_centroid_overlay_shadow_publication(
+        canonical_tracks=tracks,
+        evidence_items=(evidence,),
+        disposition=ExperimentalCentroidEvidenceDisposition(),
+        publication_timestamp=0.65,
+        posterior_generation=2,
+    )
+    duplicate_payload = duplicate.payload
+    assert duplicate_payload["accepted_count"] == 0
+    assert duplicate_payload["rejected_count"] == 1
+    assert duplicate_payload["rejection_reason_counts"] == {
+        "duplicate_evidence_generation": 1
+    }
+    assert duplicate_payload["shadow_tracks_sha256"] == (
+        duplicate_payload["canonical_tracks_sha256"]
+    )
+    audit = stack.observation_governance_audit()
+    assert audit["d1_centroid_overlay_shadow_evaluation_count"] == 2
+    assert audit["d1_centroid_overlay_shadow_accepted_count"] == 1
+    assert audit["d1_centroid_overlay_shadow_rejected_count"] == 1
+    assert audit["d1_centroid_overlay_shadow_forbidden_mutation_count"] == 0
+    assert audit["d1_centroid_overlay_shadow_d2_consumption_count"] == 0
+    assert audit["d1_centroid_overlay_shadow_d3_consumption_count"] == 0
+    assert audit["d1_centroid_overlay_shadow_max_watermark_count"] == 1
+    assert audit["d1_centroid_overlay_shadow_max_payload_bytes"] > 0
+
+
+def test_d1_centroid_overlay_shadow_hook_publishes_only_after_evidence(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    stack = IntegratedScalableModuleStack(
+        IntegratedStackConfig(
+            d1_d2_structural_ambiguity_hold_enabled=True,
+            d1_centroid_publication_overlay_shadow_enabled=True,
+        )
+    )
+    stack.reset(
+        ScenarioConfig(
+            scenario_name="main_d1_centroid_overlay_hook_2v2",
+            scenario_version="main-d1-centroid-overlay-hook-v1",
+            target_count=2,
+            resource_count=2,
+            recon_count=1,
+            region_count=1,
+            duration_s=0.2,
+            seed=43,
+        )
+    )
+    evidence = _structural_ambiguity_fixture(
+        publisher_epoch=stack._d1_publisher_epoch,
+        measurement_timestamp=0.4,
+        arrival_timestamp=0.65,
+    )
+    tracks = _centroid_shadow_tracks(evidence)
+    result = SimpleNamespace(
+        tracks=tracks,
+        tracks_materialized=True,
+        current_track_count=len(tracks),
+        structural_ambiguity_evidence=(evidence,),
+        summary=SimpleNamespace(
+            to_dict=lambda: {
+                "schema_version": "test-d1-summary-v1",
+                "published_at": 0.65,
+            }
+        ),
+    )
+    observation = SensorObservation(
+        observation_id="OBS-SHADOW-HOOK-001",
+        sensor_id="radar-main",
+        modality="radar",
+        measurement_timestamp=0.4,
+        arrival_timestamp=0.65,
+        frame_id="ned",
+        measurement=np.array([100.0, -20.0, -10.0]),
+        covariance=np.eye(3),
+    )
+    released_scan = SimpleNamespace(
+        observations=(observation,),
+        arrival_timestamp=0.65,
+        sensor_id="radar-main",
+        scan_id="SCAN-SHADOW-HOOK-001",
+    )
+    monkeypatch.setattr(
+        stack.d1,
+        "process_scan_batch",
+        lambda observations, *, materialize_tracks: result,
+    )
+    publications = []
+
+    assert stack._consume_d1_released_scans(
+        (released_scan,),
+        publications=publications,
+        publication_timestamp=0.65,
+    )
+
+    assert [item.topic for item in publications] == [
+        "modules.d1.fused_tracks",
+        "audit.d1.centroid_publication_overlay_shadow",
+    ]
+    shadow_payload = publications[-1].payload
+    assert shadow_payload["accepted_count"] == 1
+    assert shadow_payload["evidence_count"] == 1
+    assert stack.latest_d1_tracks is tracks
+    assert stack.latest_d2_tracks == ()
+    assert stack.latest_plan is None
+    assert stack._d1_centroid_overlay_shadow_evaluation_count == 1
+
+
+def test_d1_centroid_overlay_shadow_frozen_evidence_regression() -> None:
+    stack = IntegratedScalableModuleStack(
+        IntegratedStackConfig(
+            d1_d2_structural_ambiguity_hold_enabled=True,
+            d1_centroid_publication_overlay_shadow_enabled=True,
+        )
+    )
+    stack.reset(
+        ScenarioConfig(
+            scenario_name="main_d1_centroid_overlay_frozen_2v2",
+            scenario_version="main-d1-centroid-overlay-frozen-v1",
+            target_count=2,
+            resource_count=2,
+            recon_count=1,
+            region_count=1,
+            duration_s=0.2,
+            seed=47,
+        )
+    )
+    base_evidence = _structural_ambiguity_fixture(
+        publisher_epoch=stack._d1_publisher_epoch,
+        measurement_timestamp=0.4,
+        arrival_timestamp=0.65,
+    )
+    tracks = _centroid_shadow_tracks(base_evidence)
+    stack.latest_d1_tracks = tracks
+    canonical_bytes = json.dumps(
+        [track.to_dict() for track in tracks],
+        ensure_ascii=False,
+        allow_nan=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    d1_audit_before = json.dumps(
+        stack.d1.association_audit_summary(),
+        ensure_ascii=False,
+        allow_nan=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    d1_time_before = float(stack.d1.current_time)
+    d1_generation_before = int(stack._d1_posterior_generation)
+
+    def generation(
+        value: int,
+        *,
+        evidence: StructuralAmbiguityEvidence = base_evidence,
+    ) -> StructuralAmbiguityEvidence:
+        return replace(
+            evidence,
+            evidence_id=f"d1-evidence-sha256:{100 + value:064x}",
+            component_generation=value,
+        )
+
+    accepted = stack._d1_centroid_overlay_shadow_publication(
+        canonical_tracks=tracks,
+        evidence_items=(generation(1),),
+        disposition=ExperimentalCentroidEvidenceDisposition(),
+        publication_timestamp=0.65,
+        posterior_generation=1,
+    ).payload
+    assert accepted["accepted_count"] == 1
+    assert accepted["rejected_count"] == 0
+    assert accepted["shadow_differs_from_canonical"] is True
+
+    oosm_evidence = generation(2)
+    oosm = stack._d1_centroid_overlay_shadow_publication(
+        canonical_tracks=tracks,
+        evidence_items=(oosm_evidence,),
+        disposition=ExperimentalCentroidEvidenceDisposition(
+            oosm_evidence_ids=frozenset({oosm_evidence.evidence_id})
+        ),
+        publication_timestamp=0.65,
+        posterior_generation=2,
+    ).payload
+    assert oosm["accepted_count"] == 0
+    assert oosm["rejection_reason_counts"] == {"oosm_scan": 1}
+    assert oosm["shadow_tracks_sha256"] == oosm["canonical_tracks_sha256"]
+
+    retained_observation_keys = {
+        base_evidence.observations[0].observation_evidence_key
+    }
+    unbalanced_edges = tuple(
+        edge
+        for edge in base_evidence.candidate_edges
+        if edge.observation_evidence_key in retained_observation_keys
+    )
+    unbalanced_evidence = generation(
+        3,
+        evidence=replace(
+            base_evidence,
+            observations=base_evidence.observations[:1],
+            candidate_edges=unbalanced_edges,
+            observation_count=1,
+            candidate_edge_count=len(unbalanced_edges),
+            free_row_count=1,
+            free_column_count=0,
+            maximum_matching_cardinality=1,
+        ),
+    )
+    unbalanced = stack._d1_centroid_overlay_shadow_publication(
+        canonical_tracks=tracks,
+        evidence_items=(unbalanced_evidence,),
+        disposition=ExperimentalCentroidEvidenceDisposition(),
+        publication_timestamp=0.65,
+        posterior_generation=3,
+    ).payload
+    assert unbalanced["accepted_count"] == 0
+    assert unbalanced["rejection_reason_counts"] == {
+        "unbalanced_component": 1
+    }
+    assert unbalanced["shadow_tracks_sha256"] == (
+        unbalanced["canonical_tracks_sha256"]
+    )
+
+    timing_ms = []
+    for value in range(4, 36):
+        payload = stack._d1_centroid_overlay_shadow_publication(
+            canonical_tracks=tracks,
+            evidence_items=(generation(value),),
+            disposition=ExperimentalCentroidEvidenceDisposition(),
+            publication_timestamp=0.65,
+            posterior_generation=value,
+        ).payload
+        timing_ms.append(float(payload["evaluation_wall_time_ms"]))
+        assert payload["accepted_count"] == 1
+        assert payload["forbidden_mutation_audit"]["passed"] is True
+        assert payload["global_track_id_sequence_unchanged"] is True
+
+    audit = stack.observation_governance_audit()
+    assert audit["d1_centroid_overlay_shadow_evaluation_count"] == 35
+    assert audit["d1_centroid_overlay_shadow_accepted_count"] == 33
+    assert audit["d1_centroid_overlay_shadow_rejected_count"] == 2
+    assert audit["d1_centroid_overlay_shadow_rejection_reason_counts"] == {
+        "oosm_scan": 1,
+        "unbalanced_component": 1,
+    }
+    assert audit["d1_centroid_overlay_shadow_forbidden_mutation_count"] == 0
+    assert audit["d1_centroid_overlay_shadow_max_watermark_count"] == 1
+    assert audit["d1_centroid_overlay_shadow_watermark_count"] == 1
+    assert (
+        audit["d1_centroid_overlay_shadow_watermark_count"]
+        <= audit["d1_centroid_overlay_shadow_watermark_capacity"]
+    )
+    assert np.isfinite(timing_ms).all()
+    assert float(np.percentile(timing_ms, 95.0)) < 20.0
+
+    assert stack.latest_d1_tracks is tracks
+    assert stack.latest_d2_tracks == ()
+    assert stack.latest_plan is None
+    assert float(stack.d1.current_time) == d1_time_before
+    assert int(stack._d1_posterior_generation) == d1_generation_before
+    assert json.dumps(
+        stack.d1.association_audit_summary(),
+        ensure_ascii=False,
+        allow_nan=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ) == d1_audit_before
+    assert json.dumps(
+        [track.to_dict() for track in tracks],
+        ensure_ascii=False,
+        allow_nan=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ) == canonical_bytes
+
+
+def test_d1_centroid_overlay_shadow_hashes_nested_read_only_metadata() -> None:
+    stack = IntegratedScalableModuleStack(
+        IntegratedStackConfig(
+            d1_d2_structural_ambiguity_hold_enabled=True,
+            d1_centroid_publication_overlay_shadow_enabled=True,
+        )
+    )
+    stack.reset(
+        ScenarioConfig(
+            scenario_name="main_d1_centroid_overlay_mapping_proxy_2v2",
+            scenario_version="main-d1-centroid-overlay-mapping-proxy-v1",
+            target_count=2,
+            resource_count=2,
+            recon_count=1,
+            region_count=1,
+            duration_s=0.2,
+            seed=53,
+        )
+    )
+    evidence = _structural_ambiguity_fixture(
+        publisher_epoch=stack._d1_publisher_epoch,
+        measurement_timestamp=0.4,
+        arrival_timestamp=0.65,
+    )
+    tracks = list(_centroid_shadow_tracks(evidence))
+    tracks[0].metadata["runtime_read_only"] = MappingProxyType(
+        {
+            "nested": MappingProxyType({"value": np.float64(1.25)}),
+            "modes": frozenset({"hold", "shadow"}),
+        }
+    )
+    frozen_tracks = tuple(tracks)
+
+    publication = stack._d1_centroid_overlay_shadow_publication(
+        canonical_tracks=frozen_tracks,
+        evidence_items=(evidence,),
+        disposition=ExperimentalCentroidEvidenceDisposition(
+            oosm_evidence_ids=frozenset({evidence.evidence_id})
+        ),
+        publication_timestamp=0.65,
+        posterior_generation=1,
+    )
+
+    assert publication.payload["evaluation_error"] is None
+    assert publication.payload["accepted_count"] == 0
+    assert publication.payload["rejection_reason_counts"] == {
+        "oosm_scan": 1
+    }
+    assert publication.payload["forbidden_mutation_audit"]["passed"] is True
+    assert publication.payload["shadow_tracks_sha256"] == (
+        publication.payload["canonical_tracks_sha256"]
     )
 
 

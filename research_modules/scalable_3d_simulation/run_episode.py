@@ -98,6 +98,15 @@ def parse_args() -> argparse.Namespace:
             "correction; requires --d1-d2-structural-ambiguity-hold"
         ),
     )
+    parser.add_argument(
+        "--d1-centroid-publication-overlay-shadow",
+        action="store_true",
+        help=(
+            "evaluate the detached D1 centroid publication overlay as an "
+            "audit-only shadow; requires --d1-d2-structural-ambiguity-hold "
+            "and never feeds D2 or D3"
+        ),
+    )
     add_learning_runtime_arguments(parser)
     return parser.parse_args()
 
@@ -159,6 +168,9 @@ def main() -> int:
                 ),
                 d1_identity_neutral_centroid_correction_enabled=(
                     args.d1_identity_neutral_centroid_correction
+                ),
+                d1_centroid_publication_overlay_shadow_enabled=(
+                    args.d1_centroid_publication_overlay_shadow
                 ),
             ),
         )

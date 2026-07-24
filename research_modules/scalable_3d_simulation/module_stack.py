@@ -10,7 +10,11 @@ from __future__ import annotations
 
 from collections import Counter, deque
 from dataclasses import asdict, dataclass, replace
+from enum import Enum
+import hashlib
+import json
 import math
+from numbers import Integral, Real
 from time import perf_counter
 from typing import Any, Iterable, Mapping
 
@@ -18,10 +22,14 @@ import numpy as np
 
 from research_modules.d1_sensor_fusion.src.d1_sensor_fusion import (
     DEFAULT_STRUCTURAL_AMBIGUITY_PUBLISHER_NODE_ID,
+    ExperimentalCentroidEvidenceDisposition,
+    ExperimentalCentroidPublicationState,
     ScanInputConfig,
     ScanInputOrganizer,
     Scalable3DFusionAdapter,
     SensorScanFrame,
+    assemble_experimental_centroid_shadow_tracks,
+    evaluate_experimental_centroid_publication_overlays,
     sensor_observations_from_online_batch,
 )
 from research_modules.d2_data_association.d2_data_association import (
@@ -140,6 +148,7 @@ class IntegratedStackConfig:
     d1_d2_structural_ambiguity_hold_enabled: bool = False
     d1_publish_opaque_source_key: bool = False
     d1_identity_neutral_centroid_correction_enabled: bool = False
+    d1_centroid_publication_overlay_shadow_enabled: bool = False
     d2_ambiguity_hold_gap_scan_periods: int = 2
     d2_ambiguity_hold_hard_scan_periods: int = 5
     d1_ambiguity_pending_evidence_limit: int = 4_096
@@ -211,6 +220,13 @@ class IntegratedStackConfig:
             raise TypeError(
                 "d1_identity_neutral_centroid_correction_enabled must be a bool"
             )
+        if not isinstance(
+            self.d1_centroid_publication_overlay_shadow_enabled,
+            bool,
+        ):
+            raise TypeError(
+                "d1_centroid_publication_overlay_shadow_enabled must be a bool"
+            )
         if (
             self.d1_identity_neutral_centroid_correction_enabled
             and not self.d1_d2_structural_ambiguity_hold_enabled
@@ -218,6 +234,22 @@ class IntegratedStackConfig:
             raise ValueError(
                 "D1 identity-neutral centroid correction requires "
                 "D1-D2 structural ambiguity hold"
+            )
+        if (
+            self.d1_centroid_publication_overlay_shadow_enabled
+            and not self.d1_d2_structural_ambiguity_hold_enabled
+        ):
+            raise ValueError(
+                "D1 centroid publication overlay shadow requires "
+                "D1-D2 structural ambiguity hold"
+            )
+        if (
+            self.d1_centroid_publication_overlay_shadow_enabled
+            and self.d1_identity_neutral_centroid_correction_enabled
+        ):
+            raise ValueError(
+                "D1 centroid publication overlay shadow cannot be combined "
+                "with the rejected in-filter centroid correction"
             )
         if (
             self.d1_radar_assignment_ambiguity_governance_v2
@@ -387,6 +419,20 @@ class IntegratedScalableModuleStack:
         self._structural_ambiguity_evidence_received_count = 0
         self._structural_ambiguity_evidence_consumed_count = 0
         self._structural_ambiguity_d2_consumption_count = 0
+        self._d1_centroid_overlay_shadow_state = (
+            ExperimentalCentroidPublicationState()
+        )
+        self._d1_centroid_overlay_shadow_evaluation_count = 0
+        self._d1_centroid_overlay_shadow_decision_count = 0
+        self._d1_centroid_overlay_shadow_accepted_count = 0
+        self._d1_centroid_overlay_shadow_rejected_count = 0
+        self._d1_centroid_overlay_shadow_error_count = 0
+        self._d1_centroid_overlay_shadow_rejection_reasons: Counter[str] = (
+            Counter()
+        )
+        self._d1_centroid_overlay_shadow_forbidden_mutation_count = 0
+        self._d1_centroid_overlay_shadow_max_watermark_count = 0
+        self._d1_centroid_overlay_shadow_max_payload_bytes = 0
         self._d1_latest_lineage_by_observation: dict[str, dict[str, Any]] = {}
         self._d1_pending_lineage_by_track: dict[
             str, dict[str, dict[str, Any]]
@@ -573,6 +619,18 @@ class IntegratedScalableModuleStack:
         self._structural_ambiguity_evidence_received_count = 0
         self._structural_ambiguity_evidence_consumed_count = 0
         self._structural_ambiguity_d2_consumption_count = 0
+        self._d1_centroid_overlay_shadow_state = (
+            ExperimentalCentroidPublicationState()
+        )
+        self._d1_centroid_overlay_shadow_evaluation_count = 0
+        self._d1_centroid_overlay_shadow_decision_count = 0
+        self._d1_centroid_overlay_shadow_accepted_count = 0
+        self._d1_centroid_overlay_shadow_rejected_count = 0
+        self._d1_centroid_overlay_shadow_error_count = 0
+        self._d1_centroid_overlay_shadow_rejection_reasons.clear()
+        self._d1_centroid_overlay_shadow_forbidden_mutation_count = 0
+        self._d1_centroid_overlay_shadow_max_watermark_count = 0
+        self._d1_centroid_overlay_shadow_max_payload_bytes = 0
         self._d1_latest_lineage_by_observation.clear()
         self._d1_pending_lineage_by_track.clear()
         self._d1_scan_events.clear()
@@ -883,6 +941,55 @@ class IntegratedScalableModuleStack:
                 self.stack_config
                 .d1_identity_neutral_centroid_correction_enabled
             ),
+            "d1_centroid_publication_overlay_shadow_enabled": bool(
+                self.stack_config
+                .d1_centroid_publication_overlay_shadow_enabled
+            ),
+            "d1_centroid_publication_overlay_shadow_status": (
+                "offline_shadow_not_consumed"
+                if self.stack_config
+                .d1_centroid_publication_overlay_shadow_enabled
+                else "disabled"
+            ),
+            "d1_centroid_overlay_shadow_evaluation_count": int(
+                self._d1_centroid_overlay_shadow_evaluation_count
+            ),
+            "d1_centroid_overlay_shadow_decision_count": int(
+                self._d1_centroid_overlay_shadow_decision_count
+            ),
+            "d1_centroid_overlay_shadow_accepted_count": int(
+                self._d1_centroid_overlay_shadow_accepted_count
+            ),
+            "d1_centroid_overlay_shadow_rejected_count": int(
+                self._d1_centroid_overlay_shadow_rejected_count
+            ),
+            "d1_centroid_overlay_shadow_error_count": int(
+                self._d1_centroid_overlay_shadow_error_count
+            ),
+            "d1_centroid_overlay_shadow_rejection_reason_counts": dict(
+                sorted(
+                    self
+                    ._d1_centroid_overlay_shadow_rejection_reasons
+                    .items()
+                )
+            ),
+            "d1_centroid_overlay_shadow_forbidden_mutation_count": int(
+                self._d1_centroid_overlay_shadow_forbidden_mutation_count
+            ),
+            "d1_centroid_overlay_shadow_watermark_count": len(
+                self._d1_centroid_overlay_shadow_state.watermarks
+            ),
+            "d1_centroid_overlay_shadow_max_watermark_count": int(
+                self._d1_centroid_overlay_shadow_max_watermark_count
+            ),
+            "d1_centroid_overlay_shadow_watermark_capacity": int(
+                self._d1_centroid_overlay_shadow_state.max_entries
+            ),
+            "d1_centroid_overlay_shadow_max_payload_bytes": int(
+                self._d1_centroid_overlay_shadow_max_payload_bytes
+            ),
+            "d1_centroid_overlay_shadow_d2_consumption_count": 0,
+            "d1_centroid_overlay_shadow_d3_consumption_count": 0,
             "d1_structural_ambiguity_publisher_node_id": (
                 DEFAULT_STRUCTURAL_AMBIGUITY_PUBLISHER_NODE_ID
             ),
@@ -1004,10 +1111,22 @@ class IntegratedScalableModuleStack:
         if not scans:
             return False
 
-        processed: list[tuple[Any, Any, int | None]] = []
+        processed: list[
+            tuple[
+                Any,
+                Any,
+                int | None,
+                tuple[Any, ...] | None,
+                ExperimentalCentroidEvidenceDisposition | None,
+            ]
+        ] = []
+        shadow_evidence: list[Any] = []
+        shadow_oosm_evidence_ids: set[str] = set()
+        shadow_stale_evidence_ids: set[str] = set()
         for index, released_scan in enumerate(scans):
+            previous_fusion_time = float(self.d1.current_time)
             fusion_timestamp = max(
-                float(self.d1.current_time),
+                previous_fusion_time,
                 float(released_scan.arrival_timestamp),
             )
             next_fusion_timestamp = None
@@ -1028,6 +1147,36 @@ class IntegratedScalableModuleStack:
             )
             self._record_timing("d1_fusion", perf_counter() - started)
             self._latch_structural_ambiguity_evidence(result)
+            shadow_context: tuple[Any, ...] | None = None
+            shadow_disposition: (
+                ExperimentalCentroidEvidenceDisposition | None
+            ) = None
+            if (
+                self.stack_config
+                .d1_centroid_publication_overlay_shadow_enabled
+            ):
+                result_evidence = tuple(
+                    getattr(result, "structural_ambiguity_evidence", ())
+                )
+                shadow_evidence.extend(result_evidence)
+                observations = tuple(released_scan.observations)
+                scan_has_oosm = any(
+                    float(item.measurement_timestamp)
+                    < previous_fusion_time - _EPS
+                    for item in observations
+                )
+                scan_has_stale = any(
+                    bool(item.is_stale_at(fusion_timestamp))
+                    for item in observations
+                )
+                if scan_has_oosm:
+                    shadow_oosm_evidence_ids.update(
+                        str(item.evidence_id) for item in result_evidence
+                    )
+                if scan_has_stale:
+                    shadow_stale_evidence_ids.update(
+                        str(item.evidence_id) for item in result_evidence
+                    )
             if materialize_tracks:
                 self.latest_d1_tracks = tuple(result.tracks)
                 self._d1_materialized_snapshot_count += 1
@@ -1041,17 +1190,50 @@ class IntegratedScalableModuleStack:
                 posterior_generation: int | None = int(
                     self._d1_posterior_generation
                 )
+                if (
+                    self.stack_config
+                    .d1_centroid_publication_overlay_shadow_enabled
+                ):
+                    if shadow_evidence:
+                        shadow_context = tuple(shadow_evidence)
+                        shadow_disposition = (
+                            ExperimentalCentroidEvidenceDisposition(
+                                oosm_evidence_ids=frozenset(
+                                    shadow_oosm_evidence_ids
+                                ),
+                                stale_evidence_ids=frozenset(
+                                    shadow_stale_evidence_ids
+                                ),
+                            )
+                        )
+                    shadow_evidence.clear()
+                    shadow_oosm_evidence_ids.clear()
+                    shadow_stale_evidence_ids.clear()
             else:
                 self._d1_state_only_scan_count += 1
                 self._d1_same_fusion_time_coalesced_scan_count += 1
                 posterior_generation = None
-            processed.append((result, released_scan, posterior_generation))
+            processed.append(
+                (
+                    result,
+                    released_scan,
+                    posterior_generation,
+                    shadow_context,
+                    shadow_disposition,
+                )
+            )
 
         evidence_by_observation = {
             item.observation_id: item
             for item in self.d1.consistency_evidence_records()
         }
-        for result, released_scan, posterior_generation in processed:
+        for (
+            result,
+            released_scan,
+            posterior_generation,
+            shadow_context,
+            shadow_disposition,
+        ) in processed:
             publications.append(
                 self._d1_publication(
                     result,
@@ -1061,6 +1243,17 @@ class IntegratedScalableModuleStack:
                     posterior_generation=posterior_generation,
                 )
             )
+            if shadow_context is not None:
+                assert shadow_disposition is not None
+                publications.append(
+                    self._d1_centroid_overlay_shadow_publication(
+                        canonical_tracks=tuple(result.tracks),
+                        evidence_items=shadow_context,
+                        disposition=shadow_disposition,
+                        publication_timestamp=publication_timestamp,
+                        posterior_generation=posterior_generation,
+                    )
+                )
         return True
 
     def _latch_structural_ambiguity_evidence(self, result: Any) -> None:
@@ -3345,6 +3538,299 @@ class IntegratedScalableModuleStack:
                 secondary_failed = True
         return center, secondary_failed
 
+    def _d1_centroid_overlay_shadow_publication(
+        self,
+        *,
+        canonical_tracks: tuple[Any, ...],
+        evidence_items: tuple[Any, ...],
+        disposition: ExperimentalCentroidEvidenceDisposition,
+        publication_timestamp: float,
+        posterior_generation: int | None,
+    ) -> RuntimePublication:
+        """Evaluate a detached D1 publication overlay without feeding consumers."""
+
+        if (
+            not self.stack_config
+            .d1_centroid_publication_overlay_shadow_enabled
+        ):
+            raise RuntimeError("D1 centroid overlay shadow is disabled")
+        if posterior_generation is None:
+            raise ValueError(
+                "D1 centroid overlay shadow requires a materialized posterior"
+            )
+
+        started = perf_counter()
+        revision = (
+            f"{self._d1_publisher_epoch}:posterior:"
+            f"{int(posterior_generation):08d}"
+        )
+        publication_id = (
+            "main-d1-centroid-overlay-shadow:"
+            f"{self._d1_publisher_epoch}:"
+            f"{int(posterior_generation):08d}"
+        )
+        before_surface = self._d1_centroid_overlay_forbidden_surface(
+            canonical_tracks,
+            evidence_items,
+        )
+        canonical_before_bytes = _d1_shadow_canonical_json_bytes(
+            before_surface["canonical_tracks"]
+        )
+        evidence_before_bytes = _d1_shadow_canonical_json_bytes(
+            before_surface["structural_ambiguity_evidence"]
+        )
+        canonical_before_sha256 = _d1_shadow_sha256_bytes(
+            canonical_before_bytes
+        )
+        canonical_track_payload_bytes = len(canonical_before_bytes)
+        evidence_before_sha256 = _d1_shadow_sha256_bytes(
+            evidence_before_bytes
+        )
+        before_surface_sha256 = _d1_shadow_sha256(
+            {
+                "canonical_tracks_sha256": canonical_before_sha256,
+                "structural_ambiguity_evidence_sha256": (
+                    evidence_before_sha256
+                ),
+            }
+        )
+        del before_surface, canonical_before_bytes, evidence_before_bytes
+        evaluation_error: str | None = None
+        try:
+            evaluation = (
+                evaluate_experimental_centroid_publication_overlays(
+                    canonical_tracks,
+                    evidence_items,
+                    state=self._d1_centroid_overlay_shadow_state,
+                    disposition=disposition,
+                    base_publication_revision=revision,
+                    overlay_valid_for_publication_id=publication_id,
+                )
+            )
+            shadow_tracks = assemble_experimental_centroid_shadow_tracks(
+                canonical_tracks,
+                evaluation,
+            )
+        except (
+            FloatingPointError,
+            RuntimeError,
+            TypeError,
+            ValueError,
+            np.linalg.LinAlgError,
+        ) as exc:
+            evaluation = None
+            shadow_tracks = canonical_tracks
+            evaluation_error = (
+                f"{type(exc).__name__}:{str(exc)[:240]}"
+            )
+
+        after_surface = self._d1_centroid_overlay_forbidden_surface(
+            canonical_tracks,
+            evidence_items,
+        )
+        canonical_after_bytes = _d1_shadow_canonical_json_bytes(
+            after_surface["canonical_tracks"]
+        )
+        evidence_after_bytes = _d1_shadow_canonical_json_bytes(
+            after_surface["structural_ambiguity_evidence"]
+        )
+        canonical_after_sha256 = _d1_shadow_sha256_bytes(
+            canonical_after_bytes
+        )
+        evidence_after_sha256 = _d1_shadow_sha256_bytes(
+            evidence_after_bytes
+        )
+        after_surface_sha256 = _d1_shadow_sha256(
+            {
+                "canonical_tracks_sha256": canonical_after_sha256,
+                "structural_ambiguity_evidence_sha256": (
+                    evidence_after_sha256
+                ),
+            }
+        )
+        del after_surface, canonical_after_bytes, evidence_after_bytes
+        forbidden_mutation_detected = (
+            canonical_before_sha256 != canonical_after_sha256
+            or evidence_before_sha256 != evidence_after_sha256
+        )
+        if forbidden_mutation_detected:
+            self._d1_centroid_overlay_shadow_forbidden_mutation_count += 1
+            raise RuntimeError(
+                "D1 centroid overlay shadow mutated a forbidden canonical surface"
+            )
+
+        decisions = (
+            ()
+            if evaluation is None
+            else tuple(evaluation.decisions)
+        )
+        if (
+            evaluation_error is None
+            and any(item.decision == "accepted" for item in decisions)
+            and shadow_tracks is canonical_tracks
+        ):
+            evaluation_error = (
+                "RuntimeError:accepted_overlay_not_materialized"
+            )
+        if evaluation is not None:
+            self._d1_centroid_overlay_shadow_state = evaluation.next_state
+        if shadow_tracks is canonical_tracks:
+            shadow_sha256 = canonical_after_sha256
+            shadow_track_payload_bytes = canonical_track_payload_bytes
+        else:
+            shadow_payload = [track.to_dict() for track in shadow_tracks]
+            shadow_payload_bytes = _d1_shadow_canonical_json_bytes(
+                shadow_payload
+            )
+            shadow_sha256 = _d1_shadow_sha256_bytes(
+                shadow_payload_bytes
+            )
+            shadow_track_payload_bytes = len(shadow_payload_bytes)
+        canonical_global_track_ids = [
+            str(track.global_track_id) for track in canonical_tracks
+        ]
+        shadow_global_track_ids = [
+            str(track.global_track_id) for track in shadow_tracks
+        ]
+        accepted = sum(item.decision == "accepted" for item in decisions)
+        rejected = sum(item.decision == "rejected" for item in decisions)
+        rejection_reasons = Counter(
+            str(item.reject_reason)
+            for item in decisions
+            if item.reject_reason is not None
+        )
+        self._d1_centroid_overlay_shadow_evaluation_count += 1
+        self._d1_centroid_overlay_shadow_decision_count += len(decisions)
+        self._d1_centroid_overlay_shadow_accepted_count += accepted
+        self._d1_centroid_overlay_shadow_rejected_count += rejected
+        self._d1_centroid_overlay_shadow_rejection_reasons.update(
+            rejection_reasons
+        )
+        if evaluation_error is not None:
+            self._d1_centroid_overlay_shadow_error_count += 1
+        watermark_count = len(
+            self._d1_centroid_overlay_shadow_state.watermarks
+        )
+        self._d1_centroid_overlay_shadow_max_watermark_count = max(
+            self._d1_centroid_overlay_shadow_max_watermark_count,
+            watermark_count,
+        )
+        self._d1_centroid_overlay_shadow_max_payload_bytes = max(
+            self._d1_centroid_overlay_shadow_max_payload_bytes,
+            shadow_track_payload_bytes,
+        )
+        evaluation_wall_time_s = perf_counter() - started
+        self._record_timing(
+            "d1_centroid_publication_overlay_shadow",
+            evaluation_wall_time_s,
+        )
+
+        return RuntimePublication(
+            topic="audit.d1.centroid_publication_overlay_shadow",
+            source="main",
+            schema_version="scalable3d-d1-centroid-overlay-shadow-v1",
+            payload={
+                "timestamp": float(publication_timestamp),
+                "posterior_generation": int(posterior_generation),
+                "status": "offline_shadow_not_consumed",
+                "base_publication_revision": revision,
+                "overlay_valid_for_publication_id": publication_id,
+                "canonical_track_count": len(canonical_tracks),
+                "shadow_track_count": len(shadow_tracks),
+                "evidence_count": len(evidence_items),
+                "decision_count": len(decisions),
+                "accepted_count": accepted,
+                "rejected_count": rejected,
+                "rejection_reason_counts": dict(
+                    sorted(rejection_reasons.items())
+                ),
+                "evaluation_error": evaluation_error,
+                "canonical_tracks_sha256": canonical_before_sha256,
+                "shadow_tracks_sha256": shadow_sha256,
+                "shadow_differs_from_canonical": (
+                    shadow_sha256 != canonical_before_sha256
+                ),
+                "canonical_global_track_ids_sha256": _d1_shadow_sha256(
+                    canonical_global_track_ids
+                ),
+                "shadow_global_track_ids_sha256": _d1_shadow_sha256(
+                    shadow_global_track_ids
+                ),
+                "global_track_id_sequence_unchanged": (
+                    canonical_global_track_ids == shadow_global_track_ids
+                ),
+                "decisions": [item.to_dict() for item in decisions],
+                "forbidden_mutation_audit": {
+                    "digest_semantics": (
+                        "sha256_of_canonical_track_and_evidence_digest_manifest_v1"
+                    ),
+                    "before_sha256": before_surface_sha256,
+                    "after_sha256": after_surface_sha256,
+                    "canonical_tracks_before_sha256": (
+                        canonical_before_sha256
+                    ),
+                    "canonical_tracks_after_sha256": (
+                        canonical_after_sha256
+                    ),
+                    "structural_ambiguity_evidence_before_sha256": (
+                        evidence_before_sha256
+                    ),
+                    "structural_ambiguity_evidence_after_sha256": (
+                        evidence_after_sha256
+                    ),
+                    "passed": not forbidden_mutation_detected,
+                    "filter_adapter_reference_passed_to_prototype": False,
+                    "history_reference_passed_to_prototype": False,
+                    "checkpoint_reference_passed_to_prototype": False,
+                    "replay_cache_reference_passed_to_prototype": False,
+                    "scan_watermark_reference_passed_to_prototype": False,
+                    "canonical_business_tracks_replaced": False,
+                    "d2_consumption_count": 0,
+                    "d3_consumption_count": 0,
+                },
+                "bounded_memory_audit": {
+                    "generation_watermark_count": watermark_count,
+                    "generation_watermark_capacity": int(
+                        self._d1_centroid_overlay_shadow_state.max_entries
+                    ),
+                    "shadow_track_payload_bytes": shadow_track_payload_bytes,
+                },
+                "evaluation_wall_time_ms": (
+                    1_000.0 * evaluation_wall_time_s
+                ),
+                "measurement_timestamps": sorted(
+                    {
+                        float(item.measurement_timestamp)
+                        for item in evidence_items
+                    }
+                ),
+                "arrival_timestamps": sorted(
+                    {
+                        float(item.arrival_timestamp)
+                        for item in evidence_items
+                    }
+                ),
+                "online_truth_use_count": 0,
+            },
+            copy_payload=False,
+        )
+
+    def _d1_centroid_overlay_forbidden_surface(
+        self,
+        canonical_tracks: tuple[Any, ...],
+        evidence_items: tuple[Any, ...],
+    ) -> dict[str, Any]:
+        """Hash every canonical surface reachable by the shadow prototype."""
+
+        return {
+            "canonical_tracks": [
+                track.to_dict() for track in canonical_tracks
+            ],
+            "structural_ambiguity_evidence": [
+                item.to_dict() for item in evidence_items
+            ],
+        }
+
     def _d1_publication(
         self,
         result: Any,
@@ -4659,6 +5145,70 @@ def _track_summary(track: Any) -> dict[str, Any]:
         "covariance": np.asarray(track.covariance, dtype=float).tolist(),
         "track_state": _enum_value(lifecycle),
     }
+
+
+def _d1_shadow_sha256(value: Any) -> str:
+    encoded = _d1_shadow_canonical_json_bytes(value)
+    return _d1_shadow_sha256_bytes(encoded)
+
+
+def _d1_shadow_sha256_bytes(encoded: bytes) -> str:
+    return f"sha256:{hashlib.sha256(encoded).hexdigest()}"
+
+
+def _d1_shadow_canonical_json_bytes(value: Any) -> bytes:
+    return json.dumps(
+        _d1_shadow_canonicalize(value),
+        ensure_ascii=False,
+        allow_nan=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+
+
+def _d1_shadow_canonicalize(value: Any) -> Any:
+    if value is None or isinstance(value, (str, bool)):
+        return value
+    if isinstance(value, Enum):
+        return _d1_shadow_canonicalize(value.value)
+    if isinstance(value, np.ndarray):
+        return _d1_shadow_canonicalize(value.tolist())
+    if isinstance(value, np.generic):
+        return _d1_shadow_canonicalize(value.item())
+    if isinstance(value, Integral):
+        return int(value)
+    if isinstance(value, Real):
+        number = float(value)
+        if not np.isfinite(number):
+            raise ValueError("D1 shadow audit contains nonfinite input")
+        return number
+    if isinstance(value, Mapping):
+        normalized: dict[str, Any] = {}
+        for raw_key in sorted(
+            value,
+            key=lambda item: str(item).encode("utf-8"),
+        ):
+            key = str(raw_key)
+            if key in normalized:
+                raise ValueError(
+                    "D1 shadow audit mapping has duplicate string keys"
+                )
+            normalized[key] = _d1_shadow_canonicalize(value[raw_key])
+        return normalized
+    if isinstance(value, (list, tuple)):
+        return [_d1_shadow_canonicalize(item) for item in value]
+    if isinstance(value, (set, frozenset)):
+        normalized_items = [
+            _d1_shadow_canonicalize(item) for item in value
+        ]
+        return sorted(
+            normalized_items,
+            key=_d1_shadow_canonical_json_bytes,
+        )
+    raise TypeError(
+        "unsupported D1 shadow audit type: "
+        f"{type(value).__name__}"
+    )
 
 
 def _lineage_ending_in_observation(
