@@ -21,22 +21,23 @@
 9. D2 处置 consumer 继续要求 `known_false_alarm_only_mapping_count` 与持久化
    `status=excluded && reason=known_false_alarm_only` 数量精确相等。旧 `14/11` 被拒绝，修复后
    `11/11` 通过；3 个 unavailable mapping 不进入计数。
-10. 2026-07-24 验收为多 seed 专项 `65 passed`、truth/runtime 相关专项 `87 passed`、原
+10. v3 注册完成时的基线为多 seed 专项 `65 passed`、truth/runtime 相关专项 `87 passed`、原
     clean-pair 专项 `9 passed`、D6 全量 `715 passed, 1 warning in 24.28s`。
+11. 已关闭矩阵指标方向展示缺口。六项成本/资源指标按越低越好，实时因子按越高越好；兼容字段和
+    原始 bootstrap 不变，新增候选更优计数和方向化改善。正式 v3 的实时因子 short/long 应显示
+    `10/10`、`3/3`，本轮不改变 evidence、门控或准入结果。更新后专项 `67 passed`、D6 全量
+    `717 passed, 1 warning in 24.26s`。
 
 ### 仍开放 P1
 
-1. **正式 producer 矩阵未完成。** main 已冻结 v3 配置，但尚不存在正式 v3 evidence manifest。
-   正式无并发 13-pair 矩阵仍需顺序运行；旧 `14/11` episode、v1 输出和 v2 输出不得作为 v3
-   合格输入。
-2. **正式统计未生成。** 没有真实输入时，均值、P95、bootstrap CI、长短增长和失败原因分布保持
-   待评估，不预写数值。
-3. **系统实时性未关闭。** 该矩阵属于三维质点。AirSim 或目标硬件的处理、调度和资源证据仍缺失。
-4. **精度指标不在本门内。** 均方根误差、归一化估计误差平方、归一化创新平方和严格身份指标仍需
+1. **正式报告需要重生。** main 已完成正式 v3 manifest 和首次报告。当前代码已修复实时因子方向，
+   仍需使用同一 manifest 重生 JSON/Markdown；不需要重跑矩阵或改写 evidence。
+2. **系统实时性未关闭。** 该矩阵属于三维质点。AirSim 或目标硬件的处理、调度和资源证据仍缺失。
+3. **精度指标不在本门内。** 均方根误差、归一化估计误差平方、归一化创新平方和严格身份指标仍需
    独立 truth-isolated 评估。
 
-当前无 D6-owned P0。evaluator、manifest consumer、统计、门控和报告接口已关闭；main producer
-形成完整 v3 13-pair completed manifest 及其性能结论保持 P1。
+当前无 D6-owned P0。evaluator、manifest consumer、方向化统计、门控和报告接口已关闭；既有正式
+报告制品重生以及系统实时/精度证据保持 P1。
 
 ## 2026-07-24 D1 协方差成对限制向量化 GAP 更新
 

@@ -62,10 +62,25 @@ v3 的 reference/candidate effective commits 分别为 `a5a472cf81496d94a98db3de
 ### 分组统计
 
 `_summarize_group_metric()` 从显式 pair 的 performance 记录读取 reference、candidate 和
-paired relative change。每组输出均值、中位数、线性插值 P95、最小值、最大值和候选更快 seed 数。
+paired relative change。每组输出均值、中位数、线性插值 P95、最小值和最大值。指标方向由固定
+映射给出：D1 fusion wall、P95、scan input、core wall、external elapsed 和 RSS 为
+`lower_is_better`，实时因子为 `higher_is_better`。
+
+原始相对变化始终定义为：
+
+```text
+relative_change = 100% * (candidate - reference) / reference
+```
+
+`candidate_lower_count` 和原始相对变化继续保留。新增 `candidate_better_count`：
+lower-is-better 统计 candidate 小于 reference，higher-is-better 统计 candidate 大于 reference。
+`mean_improvement_pct` 对 lower-is-better 取原始变化的相反数，对 higher-is-better 保持原符号，
+所以正值统一表示候选更优。该派生转换不进入现有准入门；D1 fusion 门仍读取兼容字段并保持原判据。
+
 bootstrap 使用标准库独立随机数生成器，主 seed 为 `20260724`，再由
 `SHA-256(main_seed:group:metric)` 派生每个统计流的 seed。固定执行 10000 次有放回重采样，输出配对
-相对变化均值的 95% 百分位区间。输入排序和随机数均固定，因此相同证据可逐次复算。
+相对变化均值的 95% 百分位区间。bootstrap 仍使用原始 relative change，不按改善方向翻转符号。
+输入排序和随机数均固定，因此相同证据可逐次复算。
 
 ### 长短增长
 
@@ -96,9 +111,10 @@ RSS mean 和 RSS 单 pair 门。manifest 测试另覆盖 schema、experiment、c
 bootstrap、门限、runtime 摘要、arm 标签/状态/返回码、cross 状态、缺失资源和 CLI 互斥。v2
 覆盖 experiment、effective/base commits、公共修复来源/主题及输出复用标志篡改；v3 再覆盖全部
 D1 修复、reference treatment、v2 复用和向量化标志逐项篡改。旧注册注入新版本字段同样失败关闭。
-专项 `65 passed`，truth/runtime 相关专项 `87 passed`，原 clean-pair 专项 `9 passed`，D6 全量
-`715 passed, 1 warning in 24.28s`。正式 v3 evidence manifest 尚不存在，以上只有合同 fixture
-结果，不构成优化准入结论。
+方向测试覆盖 lower/higher 两类指标及 Markdown 行，固定实时因子 short/long 为
+`10/10`、`3/3` 候选更优。专项 `67 passed`，D6 全量
+`717 passed, 1 warning in 24.26s`。main 已完成正式 v3 manifest；本次只修正报告派生展示，不改变
+evidence 或准入判定。
 
 ## D1 协方差成对限制 clean pair 评估（2026-07-24）
 

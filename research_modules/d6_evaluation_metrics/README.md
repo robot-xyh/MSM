@@ -50,6 +50,12 @@ short 和 long 分别输出每 seed 配对值，以及 reference/candidate 的�
 10000 次重采样和 RNG seed `20260724`，重采样单位为完整 seed pair，输出配对相对变化均值的 95%
 百分位置信区间。P95 使用 `(n-1)` 位置的线性插值。
 
+分组指标显式携带 `improvement_direction`。wall、P95、scan、core、external elapsed 和 RSS 为
+`lower_is_better`，实时因子为 `higher_is_better`。原始 `mean_relative_change_pct`、
+`candidate_lower_count` 和 bootstrap 区间保持兼容；新增 `candidate_better_count`，并将
+`mean_improvement_pct` 统一解释为正值代表候选更优。bootstrap 仍报告原始相对变化方向，不翻转
+符号。
+
 seed `1101-1103` 同时存在 short 和 long。对 D1 fusion、核心 episode wall 和外部 elapsed 分别
 计算：
 
@@ -77,12 +83,14 @@ reference；旧 D2 producer 将 14 个“纯已知虚警处置组”写入
 `source_observation_outside_lineage_window` 的 unavailable mapping。D6 按持久化最终映射执行
 精确计数，旧 `14/11` 证据失败关闭；D2 修复后的 producer 写出 `11/11` 才能通过。
 
-main 已冻结 v3 配置，用共同的 D1 半正定修复和 D2 处置修复比较标量 reference 与向量化
-candidate，并明确不复用 v1/v2 输出。当前尚不存在正式 v3 evidence manifest。D6 没有读取未完成
-manifest，也没有生成正式结果或优化准入结论。fixture 只验证合同、统计和门控。多 seed 专项为
-`65 passed, 1 warning`，truth/runtime 相关专项为 `87 passed, 1 warning`，原 clean-pair 专项为
-`9 passed, 1 warning`，D6 全量为 `715 passed, 1 warning in 24.28s`。warning 为既有
-Matplotlib `Axes3D` 环境提示。
+main 已完成正式 v3 manifest 和首次报告。首次报告将越高越好的实时因子沿用了越低越好的展示
+口径，把 short/long 原始增长 `+3.222%/+3.601%` 写成负改善并显示 0/N 更优。当前 evaluator 已
+修正为 short `10/10`、long `3/3` 候选更优，改善值为正；原始相对变化和 bootstrap 区间保持正值。
+该修复不改变正式 evidence、提交绑定、准入门或 `d1_optimization_admitted`。正式报告需由 main
+使用同一 manifest 重生。
+
+多 seed 专项为 `67 passed, 1 warning`，D6 全量为
+`717 passed, 1 warning in 24.26s`。warning 为既有 Matplotlib `Axes3D` 环境提示。
 
 ## 2026-07-24 D1 协方差成对限制向量化准入
 

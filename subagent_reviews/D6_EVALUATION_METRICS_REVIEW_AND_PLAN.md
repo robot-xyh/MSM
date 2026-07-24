@@ -31,16 +31,17 @@ seed/duration 不同，runtime profile 全部相同，26 个 arm 的结构歧义
 finite、exit 门。核心 wall 与 external elapsed 分层，不相加。
 
 fixture 覆盖正分支、全部性能门和 manifest 字段篡改，CSV 为 14 LF、0 CR。多 seed 专项
-`65 passed`，truth/runtime 相关专项 `87 passed`，原 clean-pair 专项 `9 passed`，D6 全量
-`715 passed, 1 warning in 24.28s`。warning 为既有 Matplotlib `Axes3D` 环境提示。
+`67 passed`，D6 全量 `717 passed, 1 warning in 24.26s`。warning 为既有 Matplotlib `Axes3D`
+环境提示。
 
 main 矩阵运行在 long seed 1102 reference 暂停。旧 D2 producer 报告 14 个
 `known_false_alarm_only`，持久化明确排除只有 11 个，另 3 个为谱系时间窗导致的 unavailable。
 D6 在 truth-isolated 和 runtime join 两条路径都要求 audit 与最终持久化明确排除数精确相等，因此
-旧 `14/11` 失败关闭；D2 修复后的 `11/11` 才可消费。main 已冻结 v3 配置，但尚不存在正式 v3
-evidence manifest。D6 不发布正式多 seed/长时性能数值，不把 fixture 结果写成项目算法准入结论。
-该项 P1 状态为“consumer 已完成，v3 正式矩阵与结果待提供”。三维质点矩阵不包含 AirSim 或目标
-硬件条件，系统实时性继续保持未关闭。
+旧 `14/11` 失败关闭；D2 修复后的 `11/11` 才可消费。main 已完成正式 v3 manifest 和首次报告。
+评审发现实时因子方向展示错误：short/long 原始增长 `+3.222%/+3.601%` 被误写为负改善和 0/N
+更优。当前 consumer 明确输出 metric direction、候选更优数和正向改善，修正为 `10/10`、`3/3`；
+原始变化、bootstrap、兼容 lower count、evidence、门控和准入判定均保持不变。现有正式报告需用
+同一 manifest 重生。三维质点矩阵不包含 AirSim 或目标硬件条件，系统实时性继续保持未关闭。
 
 `AIRSIM_INTEGRATION_PLAN.md` 已检查。本轮不改变 AirSim 日志、topic、检测、相机、reset、actor 或
 控制接口，因此无需修改。`D6_M_TO_N_EVALUATION_FRAMEWORK_REVIEW.md` 也已检查；本项不改变 M 对 N

@@ -34,10 +34,15 @@ profile 不删除字段，要求全矩阵完全一致；其中
 r_i = 100% * (candidate_i - reference_i) / reference_i
 ```
 
-组内分别计算 reference 和 candidate 的均值、中位数及 P95，也计算 \(r_i\) 的均值、中位数和 P95。
+该原始变化定义不区分指标方向。wall、P95、scan、core、external elapsed 和 RSS 越低越好，
+实时因子越高越好。D6 另行输出方向化改善值：越低越好的指标使用 \(-r\)，越高越好的指标使用
+\(r\)，正值统一表示候选更优。`candidate_lower_count` 作为兼容字段保留；
+`candidate_better_count` 根据指标方向统计。组内分别计算 reference 和 candidate 的均值、中位数
+及 P95，也计算 \(r_i\) 的均值、中位数和 P95。
 P95 使用排序后 `(n-1)*0.95` 位置的线性插值。确定性 bootstrap 每次以完整 seed pair 为单位有放回
 抽样，不拆开 reference/candidate。每个指标使用由固定主随机种子、group 和指标名派生的独立随机
-种子，执行 10000 次抽样，取配对相对变化均值分布的 2.5% 和 97.5% 分位。
+种子，执行 10000 次抽样，取配对相对变化均值分布的 2.5% 和 97.5% 分位。bootstrap 保留原始
+\(r_i\) 的符号，不转换为方向化改善区间。
 
 长短单位时间增长只比较共同 seed 1101 至 1103。对 reference 和 candidate 分别计算：
 
@@ -62,10 +67,11 @@ D1 fusion、核心 episode wall 和外部进程 elapsed 分别计算，不能相
 目标处理器运行条件，不能关闭系统实时缺口。当前只完成 evaluator、manifest loader 和 fixture
 测试；旧 v1 矩阵在旧 D2 producer 的 long seed 1102 reference 处暂停。旧输出存在
 `known_false_alarm_only_mapping_count=14` 与持久化明确排除 11 条的矛盾，D6 拒绝该证据。完整
-13-pair manifest 尚未形成。main 已冻结 v3 配置，使两臂共享 D1/D2 修复且不复用 v1/v2 输出；
-正式 v3 evidence manifest 尚不存在。因此没有正式多 seed、长时或优化准入结果。2026-07-24
-确定性验收为多 seed 专项 `65 passed`、truth/runtime 相关专项 `87 passed`、原 clean-pair 专项
-`9 passed`、D6 全量 `715 passed, 1 warning`。
+main 已完成正式 v3 manifest 和首次报告。首次报告把实时因子按越低越好展示，导致 short/long
+原始 `+3.222%/+3.601%` 被写成负改善并显示 0/N 更优。当前 evaluator 已修正为正改善和
+`10/10`、`3/3` 候选更优，原始变化及 bootstrap 符号不变。该修复不改变 evidence、准入门或既有
+准入判定。2026-07-24 确定性验收为多 seed 专项 `67 passed`、D6 全量
+`717 passed, 1 warning`。
 
 ## D1 协方差成对限制优化的准入边界（2026-07-24）
 

@@ -8,9 +8,10 @@
 runtime profile 和证据路径，并与 `--pair` 输入互斥。loader 按 experiment ID 严格支持已登记的
 v1/v2/v3：v2 绑定 effective/base commits、公共 D2 修复和 v1 输出复用边界；v3 再绑定共同 D1
 半正定修复、reference 标量 treatment、v2 输出复用边界和两臂向量化标志。旧 `14/11` 已知虚警
-映射计数仍被 D6 失败关闭。main 已冻结 v3 配置，但正式 evidence manifest 尚不存在，故无正式
-准入结果。专项 `65 passed`，truth/runtime 相关专项 `87 passed`，原 clean-pair 专项 `9 passed`，
-D6 全量 `715 passed, 1 warning`。
+映射计数仍被 D6 失败关闭。main 已完成正式 v3 manifest。分组统计现显式区分越低越好和越高越好，
+保留原始相对变化、`candidate_lower_count` 和 bootstrap，新增方向、候选更优数及正向改善值。
+实时因子 short/long 修正为 `10/10`、`3/3` 候选更优；该展示修复不改变正式 evidence 或准入判定。
+专项 `67 passed`，D6 全量 `717 passed, 1 warning`。
 
 2026-07-24 D1 协方差成对限制向量化准入原则和门控公式见
 `MODULE_PRINCIPLES_CN.md`、`ALGORITHM_AND_IMPLEMENTATION.md`，三轮 clean 结果见根目录

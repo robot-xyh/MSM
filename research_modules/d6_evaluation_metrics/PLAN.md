@@ -25,6 +25,9 @@
   vectorized=`false/true`。v1/v2 注入 v3 字段时失败关闭。
 - [x] short/long 均输出每 seed 配对值、均值、中位数、P95、配对相对变化及固定 RNG 的 10000 次
   bootstrap 95% CI。
+- [x] 为全部矩阵指标显式定义改善方向。保留原始相对变化和 `candidate_lower_count`，新增
+  `candidate_better_count`；实时因子按越高越好统计，其余六项按越低越好统计。Markdown 使用
+  “候选更优 seed”，并说明 bootstrap 区间不翻转原始符号。
 - [x] 对共同 seed 的 D1 fusion、core wall、external elapsed 分别计算长短单位仿真时间成本增长；
   core wall 与 external elapsed 不相加。
 - [x] 实现 short、long、增长率、core wall、RSS、语义、truth 和 exit 的全部预注册准入门。
@@ -36,20 +39,16 @@
 - [x] D2 观测处置 consumer 保持 exact-match：旧 producer 的 `14/11`
   `known_false_alarm_only_mapping_count` 与持久化明确排除数矛盾时失败关闭；修复后的 `11/11`
   通过，3 个 unavailable mapping 不计入。
-- [x] 2026-07-24 验收：多 seed 专项 `65 passed`，truth/runtime 相关专项 `87 passed`，原
-  clean-pair 专项 `9 passed`，D6 全量 `715 passed, 1 warning in 24.28s`。warning 为既有
-  Matplotlib `Axes3D` 环境提示。
+- [x] 2026-07-24 验收：多 seed 专项 `67 passed`，D6 全量
+  `717 passed, 1 warning in 24.26s`。warning 为既有 Matplotlib `Axes3D` 环境提示。
 
-### 待 main 提供
+### 正式 v3 状态
 
-- [ ] main 已冻结 `d1-covariance-limit-multiseed-20260724-v3`，但尚未生成正式 v3
-  evidence manifest。仍需顺序运行正式无并发矩阵并发布状态为 `complete` 的显式 manifest。
-  旧 `14/11` episode、v1 输出和 v2 输出均不得复用为 v3 合格输入。
-- [ ] 完整矩阵必须包含 13 个真实 clean reference/candidate pair、26 份资源记录和 13 份
-  cross-build JSON。不得用目录发现替代显式 manifest 或 `--pair` 输入。
-- [ ] D6 收到完整输入后才生成正式 JSON、CSV 和中文报告。当前 fixture 数值不进入正式结论。
-- [ ] 正式结果需要分别报告 short、long、同 seed 增长率和全部失败原因。缺一项时
-  `d1_optimization_admitted=false`。
+- [x] main 已完成 v3 的 13 个正式 pair、completed evidence manifest 和首次 D6 报告。
+- [x] 修复首次报告的实时因子展示方向。short/long 的原始相对变化
+  `+3.222%/+3.601%` 保持不变，候选更优计数改为 `10/10`、`3/3`，改善值改为正数。
+- [x] 准入门、正式 evidence、提交绑定和 `d1_optimization_admitted` 不受展示修复影响。
+- [ ] main 使用同一 completed manifest 重生正式 JSON/Markdown；无需重跑矩阵或修改 evidence。
 - [ ] 该矩阵仅能评价三维质点计算性能。系统实时缺口仍需 AirSim 或目标硬件条件下的独立证据。
 
 `AIRSIM_INTEGRATION_PLAN.md` 已检查。本轮没有修改 AirSim 日志 schema、相机、检测、reset、actor、

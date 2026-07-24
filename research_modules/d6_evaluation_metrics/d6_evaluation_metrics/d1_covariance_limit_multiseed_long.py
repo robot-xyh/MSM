@@ -125,6 +125,17 @@ _METRICS = (
     "maximum_rss_kib",
     "real_time_factor",
 )
+_LOWER_IS_BETTER = "lower_is_better"
+_HIGHER_IS_BETTER = "higher_is_better"
+_METRIC_IMPROVEMENT_DIRECTIONS = {
+    "d1_fusion_wall_s": _LOWER_IS_BETTER,
+    "d1_fusion_p95_ms": _LOWER_IS_BETTER,
+    "d1_scan_input_wall_s": _LOWER_IS_BETTER,
+    "core_wall_s": _LOWER_IS_BETTER,
+    "external_elapsed_s": _LOWER_IS_BETTER,
+    "maximum_rss_kib": _LOWER_IS_BETTER,
+    "real_time_factor": _HIGHER_IS_BETTER,
+}
 _GROWTH_METRICS = (
     "d1_fusion_wall_s",
     "core_wall_s",
@@ -1077,17 +1088,22 @@ def render_d1_covariance_limit_multiseed_long_markdown(
             "",
             "## 分组性能",
             "",
-            "| 组别 | 指标 | 参考均值 | 候选均值 | 均值改善 | 更快 seed | 配对变化 bootstrap 95% CI |",
-            "| --- | --- | ---: | ---: | ---: | ---: | --- |",
+            "| 组别 | 指标 | 改善方向 | 参考均值 | 候选均值 | 均值改善 | 候选更优 seed | 原始配对变化 bootstrap 95% CI |",
+            "| --- | --- | --- | ---: | ---: | ---: | ---: | --- |",
         ]
     )
     labels = {
         "d1_fusion_wall_s": "D1 融合累计墙钟",
         "d1_fusion_p95_ms": "D1 融合单次 P95",
+        "d1_scan_input_wall_s": "D1 扫描输入累计墙钟",
         "core_wall_s": "核心 episode 墙钟",
         "external_elapsed_s": "外部进程 elapsed",
         "maximum_rss_kib": "最大常驻内存",
         "real_time_factor": "实时因子",
+    }
+    direction_labels = {
+        _LOWER_IS_BETTER: "越低越好",
+        _HIGHER_IS_BETTER: "越高越好",
     }
     for group in (_SHORT_GROUP, _LONG_GROUP):
         metrics = (
@@ -1097,10 +1113,18 @@ def render_d1_covariance_limit_multiseed_long_markdown(
         )
         for metric, label in labels.items():
             summary = metrics.get(metric, {})
+            direction_label = direction_labels.get(
+                summary.get(
+                    "improvement_direction",
+                    _METRIC_IMPROVEMENT_DIRECTIONS[metric],
+                ),
+                "unavailable",
+            )
             if summary.get("availability") != "available":
                 lines.append(
-                    f"| {group} | {label} | unavailable | unavailable | "
-                    f"unavailable | - | {summary.get('reason') or '-'} |"
+                    f"| {group} | {label} | {direction_label} | unavailable | "
+                    f"unavailable | unavailable | - | "
+                    f"{summary.get('reason') or '-'} |"
                 )
                 continue
             ci = summary["paired_relative_change_pct"][
@@ -1108,10 +1132,11 @@ def render_d1_covariance_limit_multiseed_long_markdown(
             ]
             lines.append(
                 f"| {group} | {label} | "
+                f"{direction_label} | "
                 f"{_fmt(summary['reference']['mean'])} | "
                 f"{_fmt(summary['candidate']['mean'])} | "
                 f"{_fmt(summary['mean_improvement_pct'])}% | "
-                f"{summary['candidate_lower_count']}/"
+                f"{summary['candidate_better_count']}/"
                 f"{summary['pair_count']} | "
                 f"[{_fmt(ci['lower'])}, {_fmt(ci['upper'])}]% |"
             )
@@ -1120,6 +1145,9 @@ def render_d1_covariance_limit_multiseed_long_markdown(
             "",
             "核心 episode 墙钟与外部进程 elapsed 分层报告，二者没有相加。"
             "组内 P95 使用线性插值；bootstrap 以显式 seed pair 为重采样单位，随机种子和重采样次数固定。",
+            "均值改善按指标方向转换为“正值表示候选更优”。bootstrap 区间仍报告原始 "
+            "`(candidate-reference)/reference` 相对变化，不随改善方向翻转；"
+            "因此越低越好的改善通常对应负区间，越高越好的改善通常对应正区间。",
             "",
             "## 长短单位时间增长",
             "",
@@ -1377,16 +1405,23 @@ def _summarize_group_metric(
     bootstrap_resamples: int,
     bootstrap_rng_seed: int,
 ) -> dict[str, Any]:
+    improvement_direction = _METRIC_IMPROVEMENT_DIRECTIONS[metric]
     comparisons = [pair["performance"][metric] for pair in pairs]
     if not comparisons:
-        return _unavailable_summary("group_has_no_pairs")
+        return _unavailable_summary(
+            "group_has_no_pairs",
+            improvement_direction=improvement_direction,
+        )
     unavailable = [
         str(item.get("reason") or "pair_metric_unavailable")
         for item in comparisons
         if item.get("availability") != "available"
     ]
     if unavailable:
-        return _unavailable_summary(";".join(unavailable))
+        return _unavailable_summary(
+            ";".join(unavailable),
+            improvement_direction=improvement_direction,
+        )
     reference = [float(item["reference"]) for item in comparisons]
     candidate = [float(item["candidate"]) for item in comparisons]
     paired_changes = [
@@ -1395,7 +1430,10 @@ def _summarize_group_metric(
         if item.get("relative_change_pct") is not None
     ]
     if len(paired_changes) != len(comparisons):
-        return _unavailable_summary("paired_relative_change_unavailable")
+        return _unavailable_summary(
+            "paired_relative_change_unavailable",
+            improvement_direction=improvement_direction,
+        )
     reference_mean = fmean(reference)
     candidate_mean = fmean(candidate)
     mean_relative_change = (
@@ -1404,26 +1442,43 @@ def _summarize_group_metric(
         else None
     )
     if mean_relative_change is None:
-        return _unavailable_summary("reference_mean_is_zero")
+        return _unavailable_summary(
+            "reference_mean_is_zero",
+            improvement_direction=improvement_direction,
+        )
     ci_lower, ci_upper = _bootstrap_mean_ci(
         paired_changes,
         resamples=bootstrap_resamples,
         rng_seed=bootstrap_rng_seed,
     )
+    candidate_lower_count = sum(
+        candidate_value < reference_value
+        for reference_value, candidate_value in zip(
+            reference, candidate, strict=True
+        )
+    )
+    if improvement_direction == _LOWER_IS_BETTER:
+        candidate_better_count = candidate_lower_count
+        mean_improvement_pct = -mean_relative_change
+    else:
+        candidate_better_count = sum(
+            candidate_value > reference_value
+            for reference_value, candidate_value in zip(
+                reference, candidate, strict=True
+            )
+        )
+        mean_improvement_pct = mean_relative_change
     return {
         "availability": "available",
         "reason": None,
         "pair_count": len(comparisons),
         "reference": _distribution(reference),
         "candidate": _distribution(candidate),
-        "candidate_lower_count": sum(
-            candidate_value < reference_value
-            for reference_value, candidate_value in zip(
-                reference, candidate, strict=True
-            )
-        ),
+        "improvement_direction": improvement_direction,
+        "candidate_lower_count": candidate_lower_count,
+        "candidate_better_count": candidate_better_count,
         "mean_relative_change_pct": mean_relative_change,
-        "mean_improvement_pct": -mean_relative_change,
+        "mean_improvement_pct": mean_improvement_pct,
         "paired_relative_change_pct": {
             **_distribution(paired_changes),
             "values": paired_changes,
@@ -1856,14 +1911,20 @@ def _derived_bootstrap_seed(base: int, group: str, metric: str) -> int:
     return int.from_bytes(digest[:8], "big", signed=False)
 
 
-def _unavailable_summary(reason: str) -> dict[str, Any]:
+def _unavailable_summary(
+    reason: str,
+    *,
+    improvement_direction: str,
+) -> dict[str, Any]:
     return {
         "availability": "unavailable",
         "reason": str(reason),
         "pair_count": 0,
         "reference": None,
         "candidate": None,
+        "improvement_direction": improvement_direction,
         "candidate_lower_count": None,
+        "candidate_better_count": None,
         "mean_relative_change_pct": None,
         "mean_improvement_pct": None,
         "paired_relative_change_pct": None,

@@ -48,6 +48,7 @@ from d6_evaluation_metrics import (
     evaluate_d1_covariance_limit_evidence_manifest,
     evaluate_d1_covariance_limit_multiseed_long,
     load_d1_covariance_limit_evidence_manifest,
+    render_d1_covariance_limit_multiseed_long_markdown,
     write_d1_covariance_limit_multiseed_long_report,
 )
 from d6_evaluation_metrics.d1_covariance_limit_multiseed_long import (
@@ -140,7 +141,24 @@ def test_preregistered_matrix_passes_and_outputs_are_deterministic_lf(
         "d1_fusion_wall_s"
     ]
     assert short_fusion["candidate_lower_count"] == 10
+    assert short_fusion["candidate_better_count"] == 10
+    assert short_fusion["improvement_direction"] == "lower_is_better"
+    assert short_fusion["mean_relative_change_pct"] == pytest.approx(-10.0)
     assert short_fusion["mean_improvement_pct"] == pytest.approx(10.0)
+    for metric in (
+        "d1_fusion_wall_s",
+        "d1_fusion_p95_ms",
+        "d1_scan_input_wall_s",
+        "core_wall_s",
+        "external_elapsed_s",
+        "maximum_rss_kib",
+    ):
+        assert (
+            first["groups"]["short"]["metrics"][metric][
+                "improvement_direction"
+            ]
+            == "lower_is_better"
+        )
     assert (
         short_fusion["paired_relative_change_pct"]["bootstrap_95_ci"]
         == second["groups"]["short"]["metrics"]["d1_fusion_wall_s"][
@@ -176,6 +194,54 @@ def test_preregistered_matrix_passes_and_outputs_are_deterministic_lf(
     report = paths["markdown"].read_text(encoding="utf-8")
     assert "D1 优化准入为 **通过**" in report
     assert "系统实时性缺口 **未关闭**" in report
+
+
+def test_realtime_factor_uses_higher_is_better_direction(
+    tmp_path: Path,
+) -> None:
+    result = _evaluate(_write_matrix(tmp_path))
+
+    for group, expected_better_count in (("short", 10), ("long", 3)):
+        summary = result["groups"][group]["metrics"]["real_time_factor"]
+        assert summary["improvement_direction"] == "higher_is_better"
+        assert summary["candidate_lower_count"] == 0
+        assert summary["candidate_better_count"] == expected_better_count
+        assert summary["mean_relative_change_pct"] > 0.0
+        assert summary["mean_improvement_pct"] > 0.0
+        assert (
+            summary["paired_relative_change_pct"]["bootstrap_95_ci"][
+                "lower"
+            ]
+            > 0.0
+        )
+
+
+def test_markdown_reports_directional_improvement_and_better_seed_count(
+    tmp_path: Path,
+) -> None:
+    result = _evaluate(_write_matrix(tmp_path))
+
+    report = render_d1_covariance_limit_multiseed_long_markdown(result)
+
+    assert "候选更优 seed" in report
+    assert "原始配对变化 bootstrap 95% CI" in report
+    assert "更快 seed" not in report
+    assert "不随改善方向翻转" in report
+    rows = {
+        cells[0]: cells
+        for line in report.splitlines()
+        if line.startswith("| short | 实时因子 |")
+        or line.startswith("| long | 实时因子 |")
+        for cells in (
+            [cell.strip() for cell in line.strip("|").split("|")],
+        )
+    }
+    assert rows["short"][2] == "越高越好"
+    assert float(rows["short"][5].removesuffix("%")) > 0.0
+    assert rows["short"][6] == "10/10"
+    assert rows["long"][2] == "越高越好"
+    assert float(rows["long"][5].removesuffix("%")) > 0.0
+    assert rows["long"][6] == "3/3"
 
 
 def test_completed_evidence_manifest_loader_and_cli(

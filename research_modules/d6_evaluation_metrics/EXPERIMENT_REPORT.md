@@ -4,9 +4,9 @@
 
 ### 结论
 
-多 seed 与长时评估入口、completed evidence manifest loader 和失败关闭测试已完成。main 的正式
-矩阵尚未完成，因此没有 D1 多 seed/长时准入结论，也没有在模块 outputs 下生成正式报告。以下结果
-只属于测试 fixture。
+多 seed 与长时评估入口、completed evidence manifest loader 和失败关闭测试已完成。main 已完成
+正式 v3 manifest 并生成首次报告。本节记录本轮指标方向展示修复；没有重新读取或修改正式 evidence，
+也没有改变既有优化准入判定。
 
 ### 预注册合同
 
@@ -51,7 +51,8 @@
 11. v2 effective/base commits、公共 D2 修复来源和主题、v1 输出复用标志篡改，以及 v1 混入 v2
     谱系字段；
 12. v3 experiment、effective/base commits、公共 D2/D1 修复、reference treatment、两级输出复用
-    标志和两臂向量化标志逐项篡改，以及 v2 注入 v3 字段。
+    标志和两臂向量化标志逐项篡改，以及 v2 注入 v3 字段；
+13. 越低越好和越高越好两类指标的更优计数、改善百分比、兼容字段和 Markdown 表头/行。
 
 ### 暂停矩阵分析
 
@@ -67,29 +68,36 @@ D2 owner 已把 producer 计数改为遍历最终 `all_mappings` 后只统计明
 v2 矩阵，使 reference 和 candidate 同时包含该修复，并保留 v1 两端作为 base commits。
 `v1_outputs_reused=false` 禁止把旧失败输出带入 v2。main 现已冻结 v3 配置，使两臂共享 D1
 半正定修复和 D2 处置修复，只通过 reference treatment 选择标量参考实现，并禁止复用 v1/v2 输出。
-正式 v3 evidence manifest 尚不存在；D6 未读取未完成 evidence，也未形成正式性能或优化准入结论。
+正式 v3 manifest 随后已由 main 完成。首次报告暴露的是展示方向错误，不是 evidence 或准入门错误。
+
+### 指标方向修复
+
+wall、P95、scan、core、external elapsed 和 RSS 均按越低越好解释。实时因子按越高越好解释。
+分组 JSON 保留原始 `(candidate-reference)/reference`、`candidate_lower_count` 和 bootstrap 区间，
+新增 `improvement_direction` 与 `candidate_better_count`。`mean_improvement_pct` 统一为正值表示
+候选更优。
+
+main 提供的正式 v3 首次报告中，实时因子 short/long 原始变化为 `+3.222%/+3.601%`。修正后的展示
+应为正改善，候选更优 seed 分别为 `10/10` 和 `3/3`。bootstrap 区间仍按原始相对变化报告，不做
+符号翻转。本轮没有改动准入门、正式 evidence、提交绑定或既有 `d1_optimization_admitted` 结果。
 
 ### 测试结果
 
 | 检查 | 结果 |
 | --- | ---: |
-| 多 seed/长时专项 | 65 passed |
-| truth/runtime 相关专项 | 87 passed |
-| 原 clean-pair 专项 | 9 passed |
-| D6 全量 | 715 passed |
+| 多 seed/长时专项 | 67 passed |
+| D6 全量 | 717 passed |
 | 失败 | 0 |
 | warning | 1 条既有 Matplotlib `Axes3D` 环境提示 |
 | 正例 CSV | 13 行数据，14 LF，0 CR |
 
-通用性能 fixture 中的 `d1_optimization_admitted=true` 只证明门控代码可达到正分支，不是项目
-算法正式结果。v3 fixture 只验证注册、提交谱系和证据边界，没有形成 v3 优化准入结论。fixture 的
-`system_realtime_gap_closed=false` 验证了三维质点证据不能关闭系统实时缺口。
+方向 fixture 同时验证 lower-is-better 和 higher-is-better，并用 Markdown 回归固定实时因子
+`10/10`、`3/3`。既有准入正反例继续通过，说明本次只改变派生展示字段。
 
-### 后续输入
+### 后续处理
 
-main 需要按冻结 v3 配置完成 13 个显式 pair，并发布状态为 `complete` 的 evidence manifest。D6
-收到完整输入后再生成正式 JSON、CSV 和中文报告。任何缺项、dirty manifest、提交/配置/runtime
-不一致、truth/exit/cross 失败或性能门失败都保持 `d1_optimization_admitted=false`。
+main 应使用同一 completed v3 manifest 重新运行当前 evaluator，重生正式 JSON 和中文 Markdown。
+该操作不需要重跑 13 个 pair，也不能修改正式 evidence 或准入结果。
 
 ## 2.27 D1 协方差成对限制向量化准入
 
