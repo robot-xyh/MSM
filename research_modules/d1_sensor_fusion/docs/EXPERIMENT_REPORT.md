@@ -47,29 +47,41 @@
 `_state_at()` 始终返回不含临时修正的正式重放基线。正常量测接受后，两条候选航迹与纯 hold
 对照的状态、协方差和质量重新一致，hit、观测谱系和 radar support 各只增加一次。
 
-候选当前不能晋级。缺少 hold-only 与 hold+共同质心的冻结输入 A/B、未见 seed 多 seed、
-正式均方根误差、归一化估计误差平方、归一化创新平方、D2/D3 下游可用性、D1 P95 和长时
-内存/吞吐证据。本轮证明 generation 注册表具有硬容量和固定滞后安全清理，不等于完成长时
-系统性能验收。
+候选当前不能晋级。clean 同输入 A/B 已完成，但没有一次共同质心修正，仍缺少有实际 treatment
+的冻结输入 A/B、未见 seed 多 seed、正式均方根误差、归一化估计误差平方、归一化创新平方、
+D2/D3 下游可用性、D1 P95 和长时内存/吞吐证据。本轮证明 generation 注册表具有硬容量和
+固定滞后安全清理，不等于完成长时系统性能验收。
 
-### main 开发门槛
+### main clean 同输入复核
 
 **证据日期：2026-07-23**
 
-**范围：当前未提交工作树上的三维质点单 seed 开发运行；不是 clean formal acceptance**
+**范围：固定提交 `7e15dac9cdaf6743999dfe045a70676fd31a17d6` 的三维质点单 seed
+同输入复跑；未运行 AirSim 或多 seed**
 
-main 已接入共同质心构造参数。hold-only 与 hold+共同质心两臂均为
-`nominal_200v200`、`recon_count=2`、2.2 s、seed 1100，并显式开启 source key 和 D1-D2
-hold；candidate 只增加共同质心修正。
+main 先在未提交工作树接入共同质心构造参数并完成 dirty 开发诊断。该历史运行首次确认
+46 个候选均未形成实际处理，但不能作为 clean acceptance。随后使用固定提交 `7e15dac` 重跑
+hold-only 与 hold+共同质心两臂。两臂均为 `repository_dirty=false`、
+`nominal_200v200`、`recon_count=2`、2.2 s、seed 1100，
+`config_sha256=20ef5248...b840`。控制臂为 source-key 加结构歧义 hold，候选臂只增加共同
+质心修正。
+
+两臂 `scenario_config.json`、离线真值状态和离线真值标签逐字节一致。89 批
+`sensor.observations` 的规范化 SHA-256 均为 `bc064834...51518`；D2 在线记录 SHA-256
+均为 `da7089fa...f8d2f`。完整总线文件包含不同的候选审计字段和 episode 标识，其文件哈希
+不同，不代表外部传感器输入不同。
 
 | 指标 | hold-only | hold+共同质心 |
 | --- | ---: | ---: |
 | D1/D2/D3 | 202/201/186 | 202/201/186 |
 | strict ID switch | 3 | 3 |
-| track continuity | 0.826667 | 0.826667 |
-| coverage continuity | 0.828333 | 0.828333 |
-| 终态可用映射 | 191 | 191 |
-| 未承诺绑定违规 | 0 | 0 |
+| track continuity | 0.8266666667 | 0.8266666667 |
+| coverage continuity | 0.8283333333 | 0.8283333333 |
+| available/unavailable/uncommitted mapping | 1491/218/76 | 1491/218/76 |
+| identity commitment coverage | 0.9574706212 | 0.9574706212 |
+| duplicate assignment | 0 | 0 |
+| 未承诺来源/候选绑定违规 | 0/0 | 0/0 |
+| D3 拒绝目标数/一次 hold 事件累计撤回或清除运行时绑定数 | 11/13 | 11/13 |
 | 共同质心候选/施加/拒绝 | 不适用 | 46/0/46 |
 | generation 水位当前/峰值 | 不适用 | 8/8 |
 | 水位淘汰/容量拒绝 | 不适用 | 0/0 |
@@ -79,10 +91,13 @@ hold；candidate 只增加共同质心修正。
 产生一次状态修正，因此两臂相同属于零 treatment 结果。它证明候选在该输入上安全拒绝，没有
 证明共同质心修正能够恢复 hold 的连续性或映射可用性。
 
-临时制品位于 `/tmp/MSM-neutral-centroid-gate-20260723/{hold_only,hold_plus_centroid}`。
-该目录只保留开发证据，不是版本化正式制品。按开发停止条件不运行 seeds 1101/1102。候选
-保持默认关闭，P1 继续开放。后续先解释 OOSM 和非平衡分量覆盖全部候选的原因；只有在不放宽
-安全合同且能够形成实际 treatment 后，才恢复 clean 冻结输入和未见 seed 验收。
+新的 D3 身份承诺门阻断了未承诺目标继续分配、视觉绑定和导引，解释了两臂下游绑定违规为 0；
+该安全结果不属于 D1 共同质心算法收益。早期 dirty 制品保留在
+`/tmp/MSM-neutral-centroid-gate-20260723`，当前 clean 制品位于
+`/tmp/MSM-identity-gate-results-7e15dac/{hold_only,hold_plus_centroid}`。
+按开发停止条件不运行 seeds 1101/1102。候选保持默认关闭，P1 继续开放。后续先解释 OOSM
+和非平衡分量覆盖全部候选的原因；只有在不放宽安全合同且能够形成实际 treatment 后，才恢复
+冻结输入和新的未见 seed 验收。
 
 ## 结构歧义证据侧车模块验证
 

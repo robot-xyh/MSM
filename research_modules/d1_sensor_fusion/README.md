@@ -50,18 +50,29 @@ prediction-only 基线；同代、倒退代和超出固定滞后窗口的重放�
 一个水位条目、窗口内容量 fail-closed、窗口外安全淘汰，以及连续 hold 后正常量测通过标准
 重放替代临时修正。上述结论属于 D1 模块实现和合同测试，不是系统效果结论。
 
-main 已在当前未提交工作树接入共同质心开关，并完成 seed 1100 开发门槛。hold-only 与
-hold+共同质心两臂均为 `nominal_200v200`、`recon_count=2`、2.2 s，显式开启 source key 和
-D1-D2 hold；candidate 只增加共同质心修正。两臂的 D1/D2/D3 均为 `202/201/186`，strict
-IDSW 均为 3，track/coverage continuity 均为 `.826667/.828333`，终态可用映射均为 191，
-未承诺绑定违规均为 0。candidate 检查 46 个组件，实际施加 0 个，拒绝 46 个，其中
-`oosm_scan=30`、`unbalanced_component=16`。generation 水位表当前/峰值条目为 `8/8`，
-淘汰和容量拒绝均为 0；finite 为真，在线 truth 使用为 0。
+main 先在未提交工作树完成 seed 1100 dirty 开发诊断，确认 46 个候选均未形成实际状态处理。
+随后已在固定提交 `7e15dac9cdaf6743999dfe045a70676fd31a17d6` 上完成 clean 同输入复跑。
+两臂均为 `repository_dirty=false`、200v200、`recon_count=2`、2.2 s、seed 1100，
+`config_sha256=20ef5248...b840`。控制臂为 source-key 加结构歧义 hold，候选臂只增加身份
+中性共同质心。两臂场景文件和离线真值逐字节一致；89 批 `sensor.observations` 的规范化
+SHA-256 均为 `bc064834...51518`，D2 在线记录 SHA-256 均为 `da7089fa...f8d2f`。
 
-该运行属于 `/tmp/MSM-neutral-centroid-gate-20260723` 下的 dirty development evidence，
-不是 clean formal acceptance。由于实际 treatment 为零，两臂结果相同只能证明线上门控
-fail closed，不能证明共同质心修正有效，也没有恢复 hold 的可用性退化。按开发停止条件不再
-运行 seeds 1101/1102；候选保持默认关闭，系统效果 P1 继续开放。
+clean 两臂的 D1/D2/D3 均为 `202/201/186`，strict IDSW 均为 3，track continuity 均为
+`0.8266666667`，coverage continuity 均为 `0.8283333333`。可用/不可用/未承诺映射均为
+`1491/218/76`，identity commitment coverage 均为 `0.9574706212`；重复分配、在线 truth
+使用、未承诺来源绑定违规和未承诺候选绑定违规均为 0。D3 身份承诺门在两臂均拒绝 11 个目标；
+main 在一次 hold 事件中累计撤回或清除 13 条运行时绑定。两者统计口径不同，共同关闭了未承诺
+目标继续进入下游的违规路径。
+
+候选臂检查 46 个组件，实际施加 0 个，全部拒绝：`oosm_scan=30`、
+`unbalanced_component=16`。generation 水位表当前/峰值条目为 `8/8`，淘汰和容量拒绝均为
+0；finite 为真。早期 `/tmp/MSM-neutral-centroid-gate-20260723` dirty 运行仍保留为开发诊断，
+当前权威复核制品位于
+`/tmp/MSM-identity-gate-results-7e15dac/{hold_only,hold_plus_centroid}`。
+
+新的 D3 安全门证明未承诺目标可被下游 fail closed，不证明 D1 共同质心修正有效。候选在
+clean 复跑中仍为零 treatment，也没有恢复 hold 的连续性或映射可用性。按停止条件不运行
+seeds 1101/1102；候选保持默认关闭，系统效果 P1 继续开放。
 
 main 已完成 seed 1100 的 baseline/source-only/hold 闭环三臂。D1/D2/D3 终态数量分别为
 `202/203/200`、`202/201/198`、`202/201/186`；strict IDSW 为 `9/7/3`；

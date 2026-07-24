@@ -2,9 +2,10 @@
 
 **审计日期**：2026-07-23
 **审计范围**：200 对 200 三维质点场景中的 D1 结构歧义保持候选
-**候选状态**：身份中性共同质心修正已作为默认关闭的 D1 模块候选实现；main 开发接线已完成，
-但 seed 1100 为零 treatment，未晋级
-**证据提交**：`ff881316243ff5a2991a4659ab78637ed625d123`
+**候选状态**：身份中性共同质心修正已作为默认关闭的 D1 模块候选实现；clean seed 1100
+同输入复跑仍为零 treatment，未晋级
+**结构歧义基础证据提交**：`ff881316243ff5a2991a4659ab78637ed625d123`
+**共同质心 clean 复核提交**：`7e15dac9cdaf6743999dfe045a70676fd31a17d6`
 
 ## 1. 结论
 
@@ -26,9 +27,10 @@ D1 已实现“身份不提交、状态中性修正”的默认关闭模块候�
 分量上使用置换不变的共同平移修正。成员相对几何、速度、命中数、来源谱系、质量分级和身份
 状态保持不变，协方差相对当前帧精确重放基线只能膨胀。连续 generation 现采用帧替换语义，
 每组件幂等记录改为固定滞后有界水位表。专项 `62 passed`、D1 全量
-`282 passed in 17.81s`。main 已在当前未提交工作树接入该构造参数，但 seed 1100 开发门槛
-中的 46 个候选全部被 OOSM 或非平衡分量门控拒绝，没有实际状态处理。该结果不是 clean
-acceptance，也没有运行多 seed，因此不能晋级。
+`282 passed in 17.81s`。main 先在未提交工作树完成 seed 1100 开发诊断，再于固定提交
+`7e15dac` 完成 `repository_dirty=false` 的同输入复跑。两次运行中的 46 个候选均被 OOSM
+或非平衡分量门控拒绝，没有实际状态处理。clean 复跑关闭了“证据仅来自 dirty 工作树”的
+复核缺口，但没有形成算法 treatment，也没有运行多 seed，因此不能晋级。
 
 ## 2. 证据与方法
 
@@ -403,14 +405,24 @@ D3 和 main 负责 D3 分配数、episode 调度和系统连续性汇总。D1 �
 后续闭环三臂表明 source-only 的 D2/D3 和 IDSW 会变化，但首个计划后传感器流随控制分叉。
 因此 D2 消费来源键的上游因果影响仍需固定同一扫描流重放，不能由该闭环三臂单独证明。
 
-## 11. 共同质心开发门槛
+## 11. 共同质心 clean 复核
 
-main 在当前未提交工作树完成共同质心开关接线，并使用 seed 1100 运行单次开发门槛。两臂均为
-`nominal_200v200`、2.2 s、`recon_count=2`，显式开启 source key 和 D1-D2 hold；
-candidate 只增加共同质心修正。临时制品位于：
+main 先在未提交工作树完成共同质心开关接线和 seed 1100 dirty 开发诊断，制品位于
+`/tmp/MSM-neutral-centroid-gate-20260723`。该历史诊断首次暴露了 46 个候选全部被拒的
+零 treatment 现象，不能作为 clean acceptance。
 
-- `/tmp/MSM-neutral-centroid-gate-20260723/hold_only`
-- `/tmp/MSM-neutral-centroid-gate-20260723/hold_plus_centroid`
+现已在固定提交 `7e15dac9cdaf6743999dfe045a70676fd31a17d6` 完成 clean 同输入复跑。
+两臂均为 `repository_dirty=false`、200v200、2.2 s、seed 1100、`recon_count=2`，
+`config_sha256=20ef5248...b840`。控制臂为 source-key 加结构歧义 hold，候选臂只增加
+identity-neutral centroid。clean 制品位于：
+
+- `/tmp/MSM-identity-gate-results-7e15dac/hold_only`
+- `/tmp/MSM-identity-gate-results-7e15dac/hold_plus_centroid`
+
+两臂 `scenario_config.json` 和离线真值逐字节一致。89 批 `sensor.observations` 规范化
+SHA-256 均为 `bc064834...51518`，D2 在线记录 SHA-256 均为
+`da7089fa...f8d2f`。完整总线文件包含候选审计字段和不同 episode 标识，因此其文件哈希
+不同；这不构成外部传感器输入差异。
 
 | 指标 | hold-only | hold+共同质心 |
 | --- | ---: | ---: |
@@ -418,8 +430,11 @@ candidate 只增加共同质心修正。临时制品位于：
 | strict IDSW | 3 | 3 |
 | track continuity | 0.8266666667 | 0.8266666667 |
 | coverage continuity | 0.8283333333 | 0.8283333333 |
-| 最终可用映射 | 191 | 191 |
-| 未承诺绑定违规 | 0 | 0 |
+| available/unavailable/uncommitted mapping | 1491/218/76 | 1491/218/76 |
+| identity commitment coverage | 0.9574706212 | 0.9574706212 |
+| duplicate assignment | 0 | 0 |
+| 未承诺来源/候选绑定违规 | 0/0 | 0/0 |
+| D3 拒绝目标数/一次 hold 事件累计撤回或清除运行时绑定数 | 11/13 | 11/13 |
 | candidate/applied/rejected | 不适用 | 46/0/46 |
 | generation 水位 current/peak | 不适用 | 8/8 |
 | eviction/capacity rejection | 不适用 | 0/0 |
@@ -429,17 +444,19 @@ candidate 只增加共同质心修正。临时制品位于：
 允许一次共同质心修正，候选臂相对 hold-only 没有 treatment。两臂结果相同只证明当前实现
 fail closed，不能证明共同质心修正恢复连续性、覆盖或映射可用性。
 
-该运行来自 dirty 工作树，是开发门槛，不是 clean formal acceptance。按停止条件不继续 seeds
-1101/1102。候选保持默认关闭，P1 继续开放。
+新的 D3 身份承诺安全门已阻断未承诺目标继续分配、视觉绑定或导引，因而两臂下游绑定违规为
+0。该安全结果属于身份承诺合同，不是 D1 共同质心收益。clean 复跑仍为零 treatment，按停止
+条件不继续 seeds 1101/1102。候选保持默认关闭，P1 继续开放。
 
 ## 12. 建议
 
 当前 v3 和身份中性共同质心修正均保持默认关闭。独立来源键控制臂、共同质心模块候选及单元
 测试已完成；main 的 seed 1100 闭环三臂已经给出系统效果对照，但上游传感器流在首个计划后
 分叉，不能替代冻结输入因果重放。共同质心开发接线也已完成，但首个开发门槛为零 treatment。
+固定提交 `7e15dac` 的 clean 同输入复跑已经确认该零 treatment，不再重复 seeds 1101/1102。
 下一步先解释 OOSM 与非平衡分量为何覆盖全部候选，并在不放宽现有安全合同的条件下证明存在
-有效施加窗口；满足该条件后，再在同一 clean 冻结扫描流上比较 hold-only 与
-hold+共同质心修正，并使用未见 seed 运行多 seed 闭环验收。
+有效施加窗口；满足该条件后，再在冻结扫描流上比较 hold-only 与 hold+共同质心修正，并使用
+未见 seed 运行多 seed 闭环验收。
 
 free-row、free-column、大分量、过期/OOSM 量测、重复/冲突来源、身份字段、质心门限失败和
 形状不一致分量继续 prediction-only。不得依据四次 D2 重复 birth 放宽 D1 自由列新生，也不得

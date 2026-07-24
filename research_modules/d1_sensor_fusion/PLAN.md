@@ -81,17 +81,25 @@ main 后续完成 seed 1100 baseline/source-only/hold 闭环三臂。D1/D2/D3 �
 同组件只占一个水位条目，窗口内条目不驱逐，窗口外旧证据仍拒绝。专项 `62 passed`，D1 全量
 `282 passed in 17.81s`。该结果只关闭 D1-owned 模块实现与合同测试，不关闭系统效果 P1。
 
-main 已在当前未提交工作树完成新开关接线和 seed 1100 开发门槛。hold-only 与
-hold+共同质心均为 `nominal_200v200`、`recon_count=2`、2.2 s，并显式开启 source key 和
-D1-D2 hold。两臂 D1/D2/D3 均为 `202/201/186`，strict IDSW、track continuity、coverage
-continuity、终态可用映射分别均为 `3/.826667/.828333/191`，未承诺绑定违规均为 0。
-candidate 的 46 个组件全部拒绝，原因是 `oosm_scan=30` 和
-`unbalanced_component=16`，实际施加数为 0。水位表当前/峰值为 `8/8`，无淘汰或容量拒绝；
-状态有限且在线 truth 使用为 0。
+main 先在未提交工作树完成 seed 1100 dirty 开发诊断，随后在固定提交
+`7e15dac9cdaf6743999dfe045a70676fd31a17d6` 完成 clean 同输入复跑。两臂均为
+`repository_dirty=false`、200v200、`recon_count=2`、2.2 s、seed 1100，
+`config_sha256=20ef5248...b840`；控制臂为 source-key 加结构歧义 hold，候选臂只增加身份
+中性共同质心。场景文件、离线真值和 89 批传感器输入一致，规范化传感器主题 SHA-256 均为
+`bc064834...51518`，D2 在线记录 SHA-256 均为 `da7089fa...f8d2f`。
 
-该结果来自 `/tmp/MSM-neutral-centroid-gate-20260723`，属于 dirty development gate，不是
-clean formal acceptance。零实际施加使两臂相同，说明当前在线门控没有形成 treatment，不能
-用于判断共同质心修正收益。停止 seeds 1101/1102，候选保持默认关闭，P1 开放。
+两臂 D1/D2/D3 均为 `202/201/186`，strict IDSW、track continuity、coverage continuity
+分别均为 `3/0.8266666667/0.8283333333`。可用/不可用/未承诺映射均为 `1491/218/76`，
+identity commitment coverage 均为 `0.9574706212`；重复分配、在线 truth 使用、未承诺来源
+绑定违规和未承诺候选绑定违规均为 0。D3 安全门拒绝 11 个目标；main 在一次 hold 事件中
+累计撤回或清除 13 条运行时绑定，两者统计口径不同。该处理关闭下游未承诺执行路径。
+candidate 的 46 个组件全部拒绝，原因是 `oosm_scan=30` 和
+`unbalanced_component=16`，实际施加数为 0。水位表当前/峰值为 `8/8`，无淘汰或容量拒绝。
+
+早期 `/tmp/MSM-neutral-centroid-gate-20260723` 结果继续作为 dirty 诊断保留；clean 制品位于
+`/tmp/MSM-identity-gate-results-7e15dac/{hold_only,hold_plus_centroid}`。clean 复跑确认了
+零 treatment 和 D3 fail-closed 合同，没有证明共同质心修正收益，也没有恢复 hold 可用性。
+停止 seeds 1101/1102，候选保持默认关闭，P1 开放。
 
 后续计划改为先解释 OOSM 和非平衡分量覆盖全部 46 个候选的原因，并在不放宽双时间戳、满基数
 和 fail-closed 合同的前提下证明存在有效施加窗口。满足该前提后，再在 clean 冻结扫描流和

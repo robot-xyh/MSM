@@ -292,27 +292,34 @@ main 后续 seed 1100 三臂结果为：baseline/source-only/hold 的 D1/D2/D3 �
 1 条未映射航迹，hold 为 191 个和 10 条。该闭环在首个计划后传感器流随控制分叉，只能解释
 系统效果，不能替代完全冻结输入的上游因果比较。
 
-main 随后在当前未提交工作树接入共同质心开关，运行 seed 1100 开发门槛。hold-only 与
-hold+共同质心使用相同 200v200、2.2 s、`recon_count=2` 配置，显式开启 source key 和
-D1-D2 hold。两臂 D1/D2/D3 都是 `202/201/186`，IDSW 都是 3，track/coverage continuity
-都是 `.826667/.828333`，终态可用映射都是 191，未承诺绑定违规都是 0。candidate 共检查
-46 个组件，实际施加 0 个，拒绝原因为 `oosm_scan=30`、
-`unbalanced_component=16`。generation 水位表当前/峰值为 `8/8`，淘汰和容量拒绝为 0；
-状态有限，在线 truth 使用为 0。
+main 先在未提交工作树接入共同质心开关并取得 dirty 诊断，随后在固定提交
+`7e15dac9cdaf6743999dfe045a70676fd31a17d6` 运行 seed 1100 clean 同输入复跑。hold-only
+与 hold+共同质心均为 `repository_dirty=false`、200v200、2.2 s、`recon_count=2`，
+配置哈希 `20ef5248...b840`。两臂场景和离线真值相同，89 批传感器主题规范化 SHA-256
+均为 `bc064834...51518`，D2 在线记录 SHA-256 均为 `da7089fa...f8d2f`。
 
-该结果只表明当前线上门控对本场景全部 fail closed。没有实际施加，就没有可归因的状态处理
-差异，也不能据两臂相同推断算法有效。制品位于
-`/tmp/MSM-neutral-centroid-gate-20260723`，属于 dirty development evidence，不是 clean
-formal acceptance。按开发停止条件不再运行 seeds 1101/1102。
+两臂 D1/D2/D3 都是 `202/201/186`，strict IDSW 都是 3，track/coverage continuity 都是
+`0.8266666667/0.8283333333`。可用/不可用/未承诺映射均为 `1491/218/76`，身份承诺覆盖率
+均为 `0.9574706212`；重复分配、在线 truth 使用、未承诺来源绑定违规和未承诺候选绑定违规
+均为 0。D3 门拒绝 11 个目标；main 在一次 hold 事件中累计撤回或清除 13 条运行时绑定，
+两者统计口径不同。candidate 共检查 46 个组件，实际施加 0 个，拒绝原因为
+`oosm_scan=30`、`unbalanced_component=16`。generation 水位表当前/峰值为
+`8/8`，淘汰和容量拒绝为 0。
+
+该结果只表明当前线上门控对本场景全部 fail closed。新的 D3 安全门关闭了未承诺目标下游
+执行违规，但没有实际质心状态处理，不能据两臂相同推断算法有效。早期
+`/tmp/MSM-neutral-centroid-gate-20260723` dirty 结果保留为开发诊断；当前 clean 制品位于
+`/tmp/MSM-identity-gate-results-7e15dac/{hold_only,hold_plus_centroid}`。按开发停止条件
+不再运行 seeds 1101/1102。
 
 #### 身份中性状态修正晋级规则
 
-共同质心候选已完成 D1 模块实现，main 也已完成开发接线，但 seed 1100 的 46 个候选全部被
-OOSM 或非平衡分量门控拒绝。候选继续默认关闭，系统效果 P1 开放。下一次系统试验前先解释
-当前零 treatment，证明在不放宽双时间戳、满基数、OOSM 和 fail-closed 合同的条件下存在
-有效施加窗口。之后才固定同一上游扫描流比较 hold-only 与 hold+共同质心，再运行未见 seed
-闭环。free-row、free-column、OOSM、过期、重复、形状不一致或超规模分量继续
-prediction-only。完整数学规则、测试和 A/B 门槛见
+共同质心候选已完成 D1 模块实现和 main 接线，clean seed 1100 的 46 个候选仍全部被 OOSM
+或非平衡分量门控拒绝。候选继续默认关闭，系统效果 P1 开放。停止 1101/1102，下一次系统
+试验前先解释当前零 treatment，证明在不放宽双时间戳、满基数、OOSM 和 fail-closed 合同的
+条件下存在有效施加窗口。之后才固定同一上游扫描流比较 hold-only 与 hold+共同质心，再运行
+新的未见 seed 闭环。free-row、free-column、OOSM、过期、重复、形状不一致或超规模分量
+继续 prediction-only。完整数学规则、测试和 A/B 门槛见
 `../../../subagent_reviews/D1_STRUCTURAL_AMBIGUITY_HOLD_CAUSAL_AUDIT_CN.md`。
 
 ### Radar assignment ambiguity 实验候选 v2

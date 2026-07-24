@@ -30,16 +30,23 @@
 - 结构歧义专项 `62 passed`，D1 全量 `282 passed in 17.81s`。修复前已用三帧测试复现固定
   创新下 `15 m -> 30 m` 的跨代累加，修复后三帧保持单帧修正；24 代同组件仅占一个水位条目。
   这是已实现模块候选和合同证据，不是系统效果结论。
-- main 已在当前未提交工作树接入候选，并完成 seed 1100 开发门槛。hold-only 与
-  hold+共同质心两臂均为 200v200、2.2 s、`recon_count=2`，D1/D2/D3 都是
-  `202/201/186`，IDSW 都是 3，track/coverage continuity 都是
-  `.826667/.828333`，终态可用映射都是 191，未承诺绑定违规都是 0。
-- candidate 检查 46 个组件，施加 0 个、拒绝 46 个；拒绝原因为 `oosm_scan=30` 和
-  `unbalanced_component=16`。水位表当前/峰值为 `8/8`，无淘汰或容量拒绝；finite=true，
-  online truth use=0。
-- 该证据来自 `/tmp/MSM-neutral-centroid-gate-20260723`，属于 dirty development gate，
-  不是 clean formal acceptance。两臂相同源于零 treatment，不能证明候选有效，也没有恢复
-  hold 的可用性退化。seeds 1101/1102 停止，默认关闭，P1 开放。
+- main 先在未提交工作树完成 seed 1100 dirty 诊断，随后在固定提交
+  `7e15dac9cdaf6743999dfe045a70676fd31a17d6` 完成 clean 同输入复跑。两臂均为
+  `repository_dirty=false`、200v200、2.2 s、`recon_count=2`、配置哈希
+  `20ef5248...b840`。场景文件、离线真值及 89 批传感器主题一致，传感器主题 SHA-256 均为
+  `bc064834...51518`，D2 在线记录 SHA-256 均为 `da7089fa...f8d2f`。
+- 两臂 D1/D2/D3 都是 `202/201/186`，strict IDSW 都是 3，track/coverage continuity
+  都是 `0.8266666667/0.8283333333`。可用/不可用/未承诺映射均为 `1491/218/76`，
+  commitment coverage 均为 `0.9574706212`；重复分配、在线 truth 使用和未承诺来源/候选
+  绑定违规均为 0。D3 安全门拒绝 11 个目标；main 在一次 hold 事件中累计撤回或清除
+  13 条运行时绑定，两者统计口径不同。
+- candidate 检查 46 个组件，实际施加 0 个，拒绝
+  `oosm_scan=30`、`unbalanced_component=16`；generation 水位当前/峰值为 `8/8`，
+  淘汰/容量拒绝为 0，finite=true。早期 `/tmp/MSM-neutral-centroid-gate-20260723` 保留为
+  dirty 开发诊断；clean 制品为
+  `/tmp/MSM-identity-gate-results-7e15dac/{hold_only,hold_plus_centroid}`。
+- clean 复跑确认 D3 未承诺执行路径已 fail closed，但候选仍为零 treatment。该证据不能证明
+  共同质心有效，也没有恢复 hold 的可用性退化。seeds 1101/1102 停止，默认关闭，P1 开放。
 - main 已完成 seed 1100 baseline/source-only/hold 闭环三臂。D1/D2/D3 分别为
   `202/203/200`、`202/201/198`、`202/201/186`；IDSW `9/7/3`；track continuity
   `.865/.865/.826667`；coverage `.870/.868889/.828333`。hold 有 76 条未承诺记录，D3
