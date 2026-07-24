@@ -1,0 +1,60 @@
+{
+  "schema_version": "scalable3d-d1-covariance-limit-multiseed-v1-blocker-v1",
+  "record_date": "2026-07-24",
+  "formal_performance_evidence": false,
+  "matrix_status": "stopped_fail_closed",
+  "matrix": {
+    "reference_commit": "7cc2d0cfd598a72d60c6ba8c7d4a283f4e5a897d",
+    "candidate_commit": "95bf46e34321127313757986bb28bfb14b7e3c59",
+    "short_pair_count": 10,
+    "long_pair_count": 3,
+    "total_expected_process_count": 26,
+    "completed_zero_exit_process_count": 22,
+    "failed_process_count": 1,
+    "cross_build_pairs_passed": 11,
+    "cross_build_pairs_expected": 13
+  },
+  "failure": {
+    "case_id": "long_seed_1102",
+    "arm": "reference",
+    "seed": 1102,
+    "duration_s": 10.0,
+    "return_code": 1,
+    "stage": "d6_truth_isolated_post_run_reporting",
+    "exception_type": "TruthIsolatedEvaluationError",
+    "exception_message": "D2 known-false-alarm exclusion count contradicts frame mappings",
+    "producer_reported_known_false_alarm_only_mapping_count": 14,
+    "persisted_frame_known_false_alarm_only_mapping_count": 11,
+    "summary": {
+      "finite_state": true,
+      "online_truth_use_count": 0,
+      "online_observation_count": 10994,
+      "simulated_duration_s": 10.0
+    },
+    "resource": {
+      "external_elapsed_s": 93.0,
+      "maximum_rss_kib": 2323972,
+      "process_exit_status": 1
+    }
+  },
+  "runner_observation": {
+    "v1_manifest_top_level_status": "running",
+    "failed_arm_status": "failed",
+    "failed_arm_return_code": 1,
+    "status_persistence_fixed_in_commit": "48de55a"
+  },
+  "sha256": {
+    "evidence_manifest": "25f0d7839f8f3b14ed359d20d09a91dd1a6bddbef1d2d59db971024894e7850c",
+    "failure_stderr": "6831ac0ec238e42e053f642a5009e3679c7647097402f5d9eb8a3ec9edb8934c",
+    "episode_manifest": "83996d68e9bdc43db5e78d1de949b5228ee4bc6cfda0d98baea13dc6c523c4ff",
+    "episode_summary": "f606154e939103acb34e130894e0d98cd594a2f56c0222ef00099d0d0f50c02a",
+    "identity_evaluation": "67a5c142f51e3a67b145115849a62ca70c5ee2d5ec1ae5f1ed348ed00e799224"
+  },
+  "required_resolution": [
+    "D2 producer count must equal final persisted excluded frame mappings",
+    "D6 exact-match consumer must remain fail-closed",
+    "the same D2 fix must be applied to both clean experiment arms",
+    "all 13 pairs must be rerun under a new matrix version",
+    "v1 results must not be mixed into v2 performance statistics"
+  ]
+}
