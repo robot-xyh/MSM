@@ -1,5 +1,55 @@
 # D6 Evaluation Metrics
 
+## 2026-07-23 D1 质心发布影子旁路只读评估
+
+D6 新增 `d1_centroid_overlay_shadow.py`，只读取 main episode 总线中的
+`audit.d1.centroid_publication_overlay_shadow`、最终模块诊断和阶段时序。输入 schema 固定为
+`scalable3d-d1-centroid-overlay-shadow-v1`，D6 输出口径为
+`d6.d1-centroid-overlay-shadow-readonly.v1`。实现不导入 main、D1 或可扩展三维运行代码，不写控制
+状态，也不把指标放入通用 `EpisodeMetrics`。可扩展三维离线输出升级为
+`d6-scalable3d-offline-evaluation-v9`。
+
+评估逐域输出 `value/availability/unavailable_reason`，覆盖：
+
+- canonical/shadow 航迹摘要可评估数、相等数和不同数；
+- `global_track_id` 序列不变/变化计数；
+- 禁止表面修改、正式航迹替换、D2/D3 消费和在线真值使用；
+- accepted、rejected、error 及拒绝原因分布；
+- `measurement_timestamp`、`arrival_timestamp` 和双时间戳完整发布数；
+- 每条 `evaluation_wall_time_ms` 重算的 P50/P95/max，并与阶段时序交叉核对；
+- generation watermark 当前值、峰值、容量和 shadow payload 峰值字节数。
+
+`forbidden_mutation_audit` 必须声明
+`sha256_of_canonical_track_and_evidence_digest_manifest_v1`，并分别携带 canonical tracks 与结构
+歧义 evidence 的前后 SHA-256。D6 重算两层摘要，任一对象前后变化、摘要语义未知或 manifest 摘要
+不一致均失败关闭。
+
+`shadow SHA != canonical SHA` 只表示脱离正式链路的实验副本发生变化。业务非干预使用独立字段
+`d1_centroid_overlay_shadow_business_nonintervention_passed`，要求逐条日志与最终摘要一致、全局航迹
+编号序列不变、禁止表面无违规、正式航迹未替换、D2/D3 消费为 0、在线真值使用为 0。该判据不要求
+shadow SHA 与 canonical SHA 相等。缺字段、未知 schema、阶段分布缺失、摘要不一致或消费非零均
+失败关闭；历史 episode 未声明 A2 能力时保持 `null/unavailable`，不补零，也不影响原有正式证据。
+
+2026-07-23 的确定性验证包含 11 个适配器测试和 1 个 episode 接入正例。两条日志正例包含 1 个
+accepted、1 个 rejected，`global_track_id` 不变 2/2，D2/D3/在线真值使用均为 0，业务非干预通过。
+测试时序仅为夹具值，用于验证 P50/P95/max 接线，不是运行性能。专项 `11 passed`，scalable 与后验
+治理联合回归 `77 passed`；D6 全量回归为
+`623 passed, 1 warning in 21.67s`。warning 是既有 Matplotlib `Axes3D` 环境提示。
+
+同日 D6 只读消费 development/dirty 的 seed 1100、200 对 200、2.2 s control/shadow pair。两臂
+config SHA-256 相同，来源提交均为 `671398997480dad442fcdb4ea894c9af0497dcb2`。shadow 有 9 条
+sidecar、46 个 decision，accepted/rejected/error=`0/46/0`，拒绝原因全部为 `oosm_scan`；
+`global_track_id` 变化、forbidden mutation、D2/D3 consumption 和 online truth use 均为 0，因此
+业务非干预通过。每条日志重算的开销 P50/P95/max 为
+`840.900/1167.178/1201.477 ms`，与 stage timing 一致；watermark 当前/峰值/容量为
+`8/8/1024`，shadow DTO 峰值为 `11,275,939 B`。
+
+control/shadow episode 墙钟为 `10.732310/17.866450 s`，相对开销为 `66.47%`，未通过不高于
+`+5%` 的配对性能门。accepted 为 0，当前也没有 treatment outcome。D6 输出保持
+`business_nonintervention=true`、`performance_gate=false`、`overall_admitted=false`。该 pair
+来自 dirty 工作树且只有一个 seed，只能作为开发期诊断，不形成正式性能或算法收益结论。main 的 A2
+生产端仍处于未提交集成状态；AirSim、多 seed、clean/frozen 性能和有效 treatment 证据尚未提供。
+
 ## 2026-07-23 离线观测三态处置
 
 D6 已将可扩展三维离线观测真值从 target-only v1 扩展为 disposition-aware v2 消费合同。

@@ -26,6 +26,11 @@ from d6_evaluation_metrics.scalable_3d_offline import (
     discover_scalable_3d_episode_dirs,
     evaluate_scalable_3d_episode,
 )
+from d6_evaluation_metrics.d1_centroid_overlay_shadow import (
+    D1_CENTROID_OVERLAY_SHADOW_RUNTIME_SCHEMA,
+    D1_CENTROID_OVERLAY_SHADOW_TIMING_STAGE,
+    D1_CENTROID_OVERLAY_SHADOW_TOPIC,
+)
 
 _STAGE_TIMING_V2_FIELDS = [
     "schema_version",
@@ -1186,7 +1191,7 @@ def test_current_schema_registry_matches_real_producer_contract(tmp_path: Path) 
 
     assert SCALABLE_3D_SCHEMA_REGISTRY_VERSION == "d6-scalable3d-schema-registry-v2"
     assert SCALABLE_3D_OFFLINE_EVALUATION_SCHEMA_VERSION == (
-        "d6-scalable3d-offline-evaluation-v8"
+        "d6-scalable3d-offline-evaluation-v9"
     )
     assert (
         SCALABLE_3D_STAGE_TIMING_SCHEMA_VERSION
@@ -1224,6 +1229,158 @@ def test_current_schema_registry_matches_real_producer_contract(tmp_path: Path) 
             "reason": None,
         }
     assert row["formal_acceptance_eligible"] is True
+
+
+def test_centroid_overlay_shadow_is_consumed_as_read_only_audit(
+    tmp_path: Path,
+) -> None:
+    episode = _write_episode(tmp_path / "centroid_overlay_shadow")
+    online_path = episode / "online_observations.jsonl"
+    records = [
+        json.loads(line)
+        for line in online_path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    timestamp = 0.7
+    identity_hash = "c" * 64
+    canonical_hash = "a" * 64
+    evidence_hash = "d" * 64
+    forbidden_hash = hashlib.sha256(
+        json.dumps(
+            {
+                "canonical_tracks_sha256": canonical_hash,
+                "structural_ambiguity_evidence_sha256": evidence_hash,
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    ).hexdigest()
+    shadow_record = _envelope(
+        max(int(record["sequence"]) for record in records) + 1,
+        D1_CENTROID_OVERLAY_SHADOW_TOPIC,
+        timestamp,
+        {
+            "timestamp": timestamp,
+            "posterior_generation": 1,
+            "status": "offline_shadow_not_consumed",
+            "base_publication_revision": "epoch:posterior:00000001",
+            "overlay_valid_for_publication_id": "shadow:00000001",
+            "canonical_track_count": 2,
+            "shadow_track_count": 2,
+            "evidence_count": 1,
+            "decision_count": 1,
+            "accepted_count": 1,
+            "rejected_count": 0,
+            "rejection_reason_counts": {},
+            "evaluation_error": None,
+            "canonical_tracks_sha256": canonical_hash,
+            "shadow_tracks_sha256": "b" * 64,
+            "shadow_differs_from_canonical": True,
+            "canonical_global_track_ids_sha256": identity_hash,
+            "shadow_global_track_ids_sha256": identity_hash,
+            "global_track_id_sequence_unchanged": True,
+            "decisions": [
+                {
+                    "decision": "accepted",
+                    "reject_reason": None,
+                    "measurement_timestamp": 0.5,
+                    "arrival_timestamp": timestamp,
+                }
+            ],
+            "forbidden_mutation_audit": {
+                "digest_semantics": (
+                    "sha256_of_canonical_track_and_evidence_digest_manifest_v1"
+                ),
+                "before_sha256": forbidden_hash,
+                "after_sha256": forbidden_hash,
+                "canonical_tracks_before_sha256": canonical_hash,
+                "canonical_tracks_after_sha256": canonical_hash,
+                "structural_ambiguity_evidence_before_sha256": evidence_hash,
+                "structural_ambiguity_evidence_after_sha256": evidence_hash,
+                "passed": True,
+                "filter_adapter_reference_passed_to_prototype": False,
+                "history_reference_passed_to_prototype": False,
+                "checkpoint_reference_passed_to_prototype": False,
+                "replay_cache_reference_passed_to_prototype": False,
+                "scan_watermark_reference_passed_to_prototype": False,
+                "canonical_business_tracks_replaced": False,
+                "d2_consumption_count": 0,
+                "d3_consumption_count": 0,
+            },
+            "bounded_memory_audit": {
+                "generation_watermark_count": 1,
+                "generation_watermark_capacity": 8,
+                "shadow_track_payload_bytes": 420,
+            },
+            "measurement_timestamps": [0.5],
+            "arrival_timestamps": [timestamp],
+            "evaluation_wall_time_ms": 2.0,
+            "online_truth_use_count": 0,
+        },
+        schema_version=D1_CENTROID_OVERLAY_SHADOW_RUNTIME_SCHEMA,
+    )
+    shadow_record["source"] = "main"
+    records.append(shadow_record)
+    _write_jsonl(online_path, records)
+
+    summary_path = episode / "summary.json"
+    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    diagnostics = summary["module_final_diagnostics"]
+    diagnostics.update(
+        {
+            "d1_centroid_publication_overlay_shadow_enabled": True,
+            "d1_centroid_publication_overlay_shadow_status": (
+                "offline_shadow_not_consumed"
+            ),
+            "d1_centroid_overlay_shadow_evaluation_count": 1,
+            "d1_centroid_overlay_shadow_decision_count": 1,
+            "d1_centroid_overlay_shadow_accepted_count": 1,
+            "d1_centroid_overlay_shadow_rejected_count": 0,
+            "d1_centroid_overlay_shadow_error_count": 0,
+            "d1_centroid_overlay_shadow_rejection_reason_counts": {},
+            "d1_centroid_overlay_shadow_forbidden_mutation_count": 0,
+            "d1_centroid_overlay_shadow_watermark_count": 1,
+            "d1_centroid_overlay_shadow_max_watermark_count": 1,
+            "d1_centroid_overlay_shadow_watermark_capacity": 8,
+            "d1_centroid_overlay_shadow_max_payload_bytes": 420,
+            "d1_centroid_overlay_shadow_d2_consumption_count": 0,
+            "d1_centroid_overlay_shadow_d3_consumption_count": 0,
+        }
+    )
+    _write_json(summary_path, summary)
+    _replace_stage_timings(
+        episode,
+        [
+            _v2_stage_timing_row(),
+            _v2_stage_timing_row(
+                stage=D1_CENTROID_OVERLAY_SHADOW_TIMING_STAGE,
+                call_count=1,
+                wall_time_s=0.002,
+                mean_wall_time_ms=2.0,
+                p50_wall_time_ms=2.0,
+                p95_wall_time_ms=2.0,
+                max_wall_time_ms=2.0,
+            ),
+        ],
+    )
+
+    row = evaluate_scalable_3d_episode(episode)
+
+    assert row["d1_centroid_overlay_shadow_sha_different_count"] == 1
+    assert row[
+        "d1_centroid_overlay_shadow_business_nonintervention_passed"
+    ] is True
+    assert row["d1_centroid_overlay_shadow_d2_consumption_count"] == 0
+    assert row["d1_centroid_overlay_shadow_d3_consumption_count"] == 0
+    assert row["d1_centroid_overlay_shadow_online_truth_use_count"] == 0
+    assert row["d1_centroid_overlay_shadow_overhead_p95_ms"] == 2.0
+    assert row[
+        "d1_centroid_overlay_shadow_overhead_stage_consistent"
+    ] is True
+    assert not any(
+        reason.startswith("d1_centroid_overlay_shadow_")
+        for reason in row["episode_failure_reasons_json"]
+    )
 
 
 def test_offline_truth_v1_is_readable_but_non_target_counts_are_unavailable(

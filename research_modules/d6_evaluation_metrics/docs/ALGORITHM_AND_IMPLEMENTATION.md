@@ -1,5 +1,82 @@
 # D6 系统级离线评估：算法原理与实施说明
 
+## D1 质心发布影子旁路只读算法（2026-07-23）
+
+### 输入与隔离
+
+`d1_centroid_overlay_shadow.py` 接收三类持久化输入：
+
+1. main 总线中 topic 为 `audit.d1.centroid_publication_overlay_shadow` 的 envelope；
+2. `summary.module_final_diagnostics.observation_governance` 中的最终累计诊断；
+3. `stage_timings.csv` 中 `module.d1_centroid_publication_overlay_shadow` 阶段分位。
+
+适配器不导入 main、D1 或可扩展三维运行代码，不修改在线 DTO，也不进入通用
+`EpisodeMetrics`。结果通过 scalable 三维离线记录、聚合和中文报告输出。离线评估 schema 升级为
+`d6-scalable3d-offline-evaluation-v9`，旁路评估 schema 固定为
+`d6.d1-centroid-overlay-shadow-readonly.v1`。
+
+### 逐条校验
+
+每条记录必须满足 topic、source、schema 和 `offline_shadow_not_consumed` 状态合同。解析器随后执行
+以下检查：
+
+1. 统计 candidate decisions，按 `accepted/rejected/error` 分类，并保留 rejected reason；
+2. 检查 canonical/shadow 航迹 SHA-256 是否可比较，分别计相等和不同；
+3. 对 canonical/shadow 的 `global_track_id` 序列作精确比较，不允许本地改写；
+4. 检查 measurement/arrival 时间戳字段和时间戳值数量；
+5. 读取 evaluation wall time、generation watermark、payload bytes、D2/D3 consumption 和在线
+   truth use；
+6. 校验禁止修改审计中的 digest semantics、canonical tracks 前后摘要、结构歧义 evidence 前后
+   摘要和两层 manifest 摘要。
+
+摘要支持规范 `sha256:<64hex>` 和历史裸 `<64hex>` 表示。摘要不存在、格式非法、前后对象变化、
+manifest 重算不一致或字段类型错误时，相关指标转为 unavailable，并写出失败原因。解析器不从记录
+内容猜测缺失计数。
+
+### 聚合与交叉核对
+
+逐条记录完成后，D6 汇总 publication、evaluation、decision、状态分布、摘要比较、编号比较和资源
+指标。最终 summary 的 evaluation/decision/accepted/rejected/error、拒绝原因、禁止修改计数、
+watermark、payload 和消费计数必须与日志集合一致。summary 缺失时，逐条可计算指标仍可保留，但
+业务非干预判据不可用。
+
+开销分位从每条 `evaluation_wall_time_ms` 独立计算：
+
+```text
+P50 = percentile(wall_time_samples, 50)
+P95 = percentile(wall_time_samples, 95)
+max = max(wall_time_samples)
+```
+
+若 stage timing v2 提供同一阶段的 P50/P95/max，D6 交叉核对两组值。阶段记录缺失、状态不可用或
+数值不一致时，开销证据失败关闭。payload 取逐条和 summary 的一致峰值；watermark 同时保留最终值、
+历史峰值和容量，不能只看 episode 结束时的当前值。
+
+### 准入分层
+
+业务非干预只使用正式链路相关证据，不使用 shadow/canonical SHA 相等性。shadow 副本发生变化，
+但 canonical 对象、evidence、全局航迹编号和下游消费保持不变时，仍可判定业务非干预通过。
+
+`evaluate_d1_centroid_overlay_shadow_pair_performance()` 另行核对 control/shadow 的场景、版本、
+seed 和实际资源规模，再计算：
+
+```text
+relative overhead = (shadow wall time - control wall time) / control wall time
+performance gate = relative overhead <= 0.05
+```
+
+pair 输出分别保留业务非干预、性能门、accepted treatment 数和效果证据状态。
+`overall_admitted` 当前固定为 false，因为本适配器不定义任务结果效应。后续只有在同输入 pair 同时
+通过非干预和性能门、存在 accepted treatment，并由独立效果评估提供结果后，main 才能另行评审准入。
+
+### 当前证据
+
+确定性 fixture 覆盖正常 accepted/rejected、缺字段、非法 schema、摘要篡改、编号变化、下游消费、
+阶段时序不一致和配对性能门。真实 seed 1100 shadow 的 9 条 sidecar/46 个 decision 已由同一适配器
+消费。业务非干预通过；总墙钟相对开销为 `66.47%`，性能门失败；accepted treatment 为 0，效果证据
+不可用。该结论是 dirty 单 seed 开发诊断，不是算法准入。2026-07-23 D6 全量回归为
+`623 passed, 1 warning in 21.67s`。
+
 ## 离线观测三态消费（2026-07-23）
 
 `observation_truth_sidecar.py` 独立接受 main

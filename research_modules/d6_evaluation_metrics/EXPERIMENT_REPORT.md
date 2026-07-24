@@ -1,5 +1,79 @@
 # D6 系统级评估指标实验报告
 
+## 2.25 D1 质心发布影子旁路复核
+
+### 验证范围
+
+本轮验证 D6 对 A2 影子 sidecar、最终累计诊断和阶段时序的只读消费。确定性测试覆盖 schema、
+摘要语义、canonical/shadow 摘要、全局航迹编号、禁止修改、双时间戳、状态分布、开销分位、
+watermark、payload、D2/D3 消费和在线真值使用。负例缺字段时保持 unavailable，摘要篡改和业务
+表面变化失败关闭。
+
+真实复核使用 seed 1100、200 对 200、2.2 s 的 control/shadow pair：
+
+- control：`/tmp/msm_d1_overlay_a2_seed1100_control_20260723`
+- shadow：`/tmp/msm_d1_overlay_a2_seed1100_shadow_v3_20260723`
+- 来源提交：`671398997480dad442fcdb4ea894c9af0497dcb2`
+- 两臂配置 SHA-256 相同
+- 两臂均为 dirty/development
+
+该输入只用于开发期诊断。单 seed、dirty 工作树和零 accepted treatment 均不满足正式准入证据要求。
+
+### 代码验证
+
+| 检查 | 结果 |
+| --- | ---: |
+| A2 只读适配器专项 | 11 passed |
+| scalable 与后验治理联合回归 | 77 passed |
+| D6 全量回归 | 623 passed |
+| warning | 1 条既有 Matplotlib `Axes3D` 环境提示 |
+| AirSim | 未运行 |
+
+### 影子日志结果
+
+| 指标 | 结果 |
+| --- | ---: |
+| sidecar publication | 9 |
+| decisions | 46 |
+| accepted / rejected / error | 0 / 46 / 0 |
+| rejection reason | `oosm_scan`: 46 |
+| `global_track_id` 变化 | 0 |
+| forbidden mutation | 0 |
+| D2 / D3 consumption | 0 / 0 |
+| online truth use | 0 |
+| measurement/arrival 双时间戳 | 可用 |
+| watermark current / peak / capacity | 8 / 8 / 1024 |
+| shadow payload peak | 11,275,939 B |
+| shadow evaluation P50 / P95 / max | 840.900 / 1167.178 / 1201.477 ms |
+| stage timing 交叉核对 | 一致 |
+
+canonical/shadow SHA 差异只描述影子副本，不进入业务输出变化判据。canonical tracks 与结构歧义
+evidence 的前后摘要、摘要 manifest、全局航迹编号、正式航迹替换、禁止表面、下游消费和在线真值
+使用共同构成业务非干预证据。本批该判据通过。
+
+### 配对性能
+
+| 指标 | 结果 |
+| --- | ---: |
+| control 总墙钟 | 10.732310 s |
+| shadow 总墙钟 | 17.866450 s |
+| 相对开销 | 66.47% |
+| 性能门限 | 不高于 +5% |
+| 性能门 | 失败 |
+| accepted treatment | 0 |
+| treatment outcome | unavailable |
+| overall admitted | false |
+
+业务非干预通过只证明旁路没有污染正式链。当前性能开销超过门限约 13 倍，且 46 个 decision 全部因
+OOSM 扫描被拒绝，没有候选进入有效处理，无法评价算法收益。D6 因此分别输出
+`business_nonintervention=true`、`performance_gate=false` 和 `overall_admitted=false`。
+
+### 验证结论
+
+只读 schema、摘要复算、失败关闭和三层准入口径已实现。当前没有新增 D6 P0。A2 仍有三项 P1：
+在 clean/frozen 条件下完成同输入多 seed 配对；把相对墙钟开销降至 `+5%` 以内；生成含 accepted
+treatment 和独立 outcome effect 的有效场景。未完成这三项前，业务非干预通过不能解释为 A2 准入。
+
 ## 2.24 离线观测三态合同验证
 
 ### 范围

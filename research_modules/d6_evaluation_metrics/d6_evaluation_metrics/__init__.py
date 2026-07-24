@@ -117,6 +117,19 @@ from .active_vision_offline import (
     ActiveVisionOfflineEvidence,
     evaluate_active_vision_runtime_evidence,
 )
+from .d1_centroid_overlay_shadow import (
+    D1_CENTROID_OVERLAY_SHADOW_DIGEST_SEMANTICS,
+    D1_CENTROID_OVERLAY_SHADOW_EVALUATION_SCHEMA,
+    D1_CENTROID_OVERLAY_SHADOW_MAX_WALL_TIME_OVERHEAD_RATIO,
+    D1_CENTROID_OVERLAY_SHADOW_NUMERIC_METRIC_FIELDS,
+    D1_CENTROID_OVERLAY_SHADOW_RUNTIME_SCHEMA,
+    D1_CENTROID_OVERLAY_SHADOW_TIMING_STAGE,
+    D1_CENTROID_OVERLAY_SHADOW_TOPIC,
+    D1CentroidOverlayShadowEvidence,
+    D1CentroidOverlayShadowPairPerformanceEvidence,
+    evaluate_d1_centroid_overlay_shadow_evidence,
+    evaluate_d1_centroid_overlay_shadow_pair_performance,
+)
 from .reporting import ReportGenerator
 from .scenario_library import (
     ScenarioDefinition,
@@ -497,6 +510,17 @@ __all__ = [
     "CAMERA_COMMAND_ACK_TOPIC",
     "ActiveVisionOfflineEvidence",
     "evaluate_active_vision_runtime_evidence",
+    "D1_CENTROID_OVERLAY_SHADOW_DIGEST_SEMANTICS",
+    "D1_CENTROID_OVERLAY_SHADOW_EVALUATION_SCHEMA",
+    "D1_CENTROID_OVERLAY_SHADOW_MAX_WALL_TIME_OVERHEAD_RATIO",
+    "D1_CENTROID_OVERLAY_SHADOW_NUMERIC_METRIC_FIELDS",
+    "D1_CENTROID_OVERLAY_SHADOW_RUNTIME_SCHEMA",
+    "D1_CENTROID_OVERLAY_SHADOW_TIMING_STAGE",
+    "D1_CENTROID_OVERLAY_SHADOW_TOPIC",
+    "D1CentroidOverlayShadowEvidence",
+    "D1CentroidOverlayShadowPairPerformanceEvidence",
+    "evaluate_d1_centroid_overlay_shadow_evidence",
+    "evaluate_d1_centroid_overlay_shadow_pair_performance",
     "stage_timing_csv_rows",
     "summarize_d3_canonical_history",
     "summarize_terminal_closure_case_evidence",

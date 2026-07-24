@@ -1,5 +1,38 @@
 # D6 系统评估指标综述及子方案
 
+## 2026-07-23 D1 质心发布影子旁路评审
+
+D6 已建立 A2 旁路的只读评估边界。输入仅来自持久化 main 总线、最终模块诊断和阶段时序，输出为
+availability-aware 离线指标。D6 不导入生产者，不向 D1-D3 返回结果，也不把该旁路纳入通用控制
+episode 指标。
+
+评审采用三层判据。业务非干预核对 canonical/evidence 前后摘要、摘要语义、全局航迹编号、正式航迹
+替换、禁止表面、D2/D3 消费和在线真值使用。性能判据比较同场景 control/shadow 总墙钟，门限为
+相对开销不高于 `+5%`。处理和效果判据要求存在 accepted treatment，并由独立 outcome effect 证明
+收益。shadow/canonical SHA 不同仅表示影子副本不同，不属于正式业务输出变化。
+
+seed 1100、200 对 200、2.2 s 的 dirty development pair 已完成只读复核。shadow 有 9 条 sidecar、
+46 个 decision，accepted/rejected/error 为 `0/46/0`，拒绝原因均为 `oosm_scan`。禁止修改、
+全局航迹编号变化、D2/D3 消费和在线真值使用均为 0，业务非干预通过。P50/P95/max 为
+`840.900/1167.178/1201.477 ms`，watermark 为 `8/8/1024`，payload 峰值为
+`11,275,939 B`。
+
+control/shadow 总墙钟为 `10.732310/17.866450 s`，相对开销 `66.47%`，性能门失败。accepted
+treatment 为 0，outcome effect 不可用。评审结论固定为
+`business_nonintervention=true`、`performance_gate=false`、`overall_admitted=false`。当前没有
+新增 P0；A2 仍是 P1 开放项。
+
+2026-07-23 的适配器专项为 `11 passed`，scalable 与后验治理联合回归为 `77 passed`，D6 全量
+为 `623 passed, 1 warning in 21.67s`。warning 是既有 Matplotlib `Axes3D` 环境提示。
+
+后续由 main/D1 在提交生产端后提供 clean/frozen 同输入多 seed pair，并至少包含一组有效 accepted
+treatment。D6 继续只读复核非干预、性能和效果三层，不用 shadow SHA 差异代替业务收益。性能超过
+`+5%`、没有 accepted treatment 或缺效果证据时，准入继续失败关闭。
+
+`AIRSIM_INTEGRATION_PLAN.md` 已检查。本轮不改变 AirSim 日志 producer、相机、检测、reset 或控制
+接口，因此无需修改。`D6_M_TO_N_EVALUATION_FRAMEWORK_REVIEW.md` 也已检查；A2 旁路不改变 M 对 N
+联盟分母和物理结果口径，无需修改。
+
 ## 2026-07-23 离线观测处置评审
 
 D6 当前以 schema 为唯一处置语义来源。v2 将观测分为 target、known false alarm 和 unknown。

@@ -28,6 +28,10 @@ from .active_vision_offline import (
     ACTIVE_VISION_NUMERIC_METRIC_FIELDS,
     evaluate_active_vision_runtime_evidence,
 )
+from .d1_centroid_overlay_shadow import (
+    D1_CENTROID_OVERLAY_SHADOW_NUMERIC_METRIC_FIELDS,
+    evaluate_d1_centroid_overlay_shadow_evidence,
+)
 from .experiment_matrix_offline import (
     EXPERIMENT_MATRIX_SCHEMA_VERSION,
     EXPERIMENT_MATRIX_VARIANTS,
@@ -49,7 +53,7 @@ from .observation_truth_sidecar import (
 
 
 SCALABLE_3D_OFFLINE_EVALUATION_SCHEMA_VERSION = (
-    "d6-scalable3d-offline-evaluation-v8"
+    "d6-scalable3d-offline-evaluation-v9"
 )
 SCALABLE_3D_OFFLINE_EVALUATION_DATE = "2026-07-23"
 SCALABLE_3D_SCHEMA_REGISTRY_VERSION = "d6-scalable3d-schema-registry-v2"
@@ -231,6 +235,7 @@ _METRIC_FIELDS = (
     "offline_proximity_identity_evaluable_count",
     "offline_proximity_identity_correct_count",
     "offline_proximity_identity_correct_rate",
+    *D1_CENTROID_OVERLAY_SHADOW_NUMERIC_METRIC_FIELDS,
     *ACTIVE_VISION_NUMERIC_METRIC_FIELDS,
 )
 
@@ -444,6 +449,19 @@ def evaluate_scalable_3d_episode(episode_dir: str | Path) -> dict[str, Any]:
     )
     row.update(posterior_governance.metrics)
     row["_failure_reasons"].extend(posterior_governance.failure_reasons)
+    centroid_shadow_evidence = (
+        evaluate_d1_centroid_overlay_shadow_evidence(
+            ordered_online,
+            summary,
+            stages,
+            online_unavailable_reason=online_reason,
+            stage_unavailable_reason=stages_reason,
+        )
+    )
+    row.update(centroid_shadow_evidence.metrics)
+    row["_failure_reasons"].extend(
+        centroid_shadow_evidence.failure_reasons
+    )
     _extract_track_metrics(row, ordered_online, module="d1")
     _extract_track_metrics(row, ordered_online, module="d2")
     _extract_d2_id_switch(row, ordered_online)
@@ -635,6 +653,12 @@ def aggregate_scalable_3d_episodes(
                     "d5_active_vision_rejection_reason_distribution_json",
                 )
             ),
+            "d1_centroid_overlay_shadow_rejection_reason_distribution": (
+                _counter_from_mapping_field(
+                    group_rows,
+                    "d1_centroid_overlay_shadow_rejection_reason_distribution_json",
+                )
+            ),
             "d7_reject_reason_distribution": _counter_from_mapping_field(
                 group_rows, "d7_reject_reason_distribution_json"
             ),
@@ -755,6 +779,18 @@ def aggregate_scalable_3d_episodes(
                 "physical_attribution": (
                     "null unless paired episodes and applied assist evidence exist"
                 ),
+            },
+            "d1_centroid_overlay_shadow": {
+                "shadow_difference": (
+                    "canonical/shadow SHA inequality describes a detached "
+                    "experimental DTO difference only"
+                ),
+                "business_nonintervention": (
+                    "separate gate over canonical-surface integrity, global "
+                    "track identity, zero D2/D3 consumption, summary agreement, "
+                    "and zero online truth use"
+                ),
+                "control_authority": "none; persisted logs are read only",
             },
         },
     }
@@ -1027,6 +1063,119 @@ def render_scalable_3d_offline_markdown(
                     row, "d4_advice_missing_version_evidence_count"
                 ),
                 invalid=_fmt_available(row, "d4_advice_invalid_publication_count"),
+            )
+        )
+
+    lines.extend(
+        [
+            "",
+            "## D1 质心发布影子旁路",
+            "",
+            "该表只审计 `audit.d1.centroid_publication_overlay_shadow` 的持久化日志。canonical 与 shadow 摘要不同仅说明脱离正式链路的实验副本发生变化，不表示 D1 正式航迹、D2 关联输入或 D3 分配输入发生变化。",
+            "业务非干预使用独立判据：全局航迹编号序列不变、禁止表面未修改、正式航迹未替换、D2/D3 消费均为 0、在线真值使用为 0，并且逐条日志与最终摘要一致。缺任一字段时保持 unavailable。",
+            "",
+            "| seed | enabled/pub | SHA equal/different | ID unchanged/changed | accepted/rejected/error | timestamps M/A/both | forbidden | D2/D3/truth use | overhead P50/P95/max ms | watermark current/peak/cap | payload peak B | summary/timing/nonintervention |",
+            "| ---: | --- | --- | --- | --- | --- | ---: | --- | --- | --- | ---: | --- |",
+        ]
+    )
+    for row in rows:
+        lines.append(
+            "| {seed} | {enabled}/{published} | {equal}/{different} | "
+            "{unchanged}/{changed} | {accepted}/{rejected}/{errors} | "
+            "{measurement}/{arrival}/{dual} | {forbidden} | {d2}/{d3}/{truth} | "
+            "{p50}/{p95}/{maximum} | {current}/{peak}/{capacity} | {payload} | "
+            "{summary}/{timing}/{nonintervention} |".format(
+                seed=_fmt(row.get("seed")),
+                enabled=_fmt_available(
+                    row, "d1_centroid_overlay_shadow_enabled"
+                ),
+                published=_fmt_available(
+                    row, "d1_centroid_overlay_shadow_publication_count"
+                ),
+                equal=_fmt_available(
+                    row, "d1_centroid_overlay_shadow_sha_equal_count"
+                ),
+                different=_fmt_available(
+                    row, "d1_centroid_overlay_shadow_sha_different_count"
+                ),
+                unchanged=_fmt_available(
+                    row,
+                    "d1_centroid_overlay_shadow_global_track_id_unchanged_count",
+                ),
+                changed=_fmt_available(
+                    row,
+                    "d1_centroid_overlay_shadow_global_track_id_changed_count",
+                ),
+                accepted=_fmt_available(
+                    row, "d1_centroid_overlay_shadow_accepted_count"
+                ),
+                rejected=_fmt_available(
+                    row, "d1_centroid_overlay_shadow_rejected_count"
+                ),
+                errors=_fmt_available(
+                    row, "d1_centroid_overlay_shadow_error_count"
+                ),
+                measurement=_fmt_available(
+                    row,
+                    "d1_centroid_overlay_shadow_measurement_timestamp_publication_count",
+                ),
+                arrival=_fmt_available(
+                    row,
+                    "d1_centroid_overlay_shadow_arrival_timestamp_publication_count",
+                ),
+                dual=_fmt_available(
+                    row,
+                    "d1_centroid_overlay_shadow_dual_timestamp_publication_count",
+                ),
+                forbidden=_fmt_available(
+                    row,
+                    "d1_centroid_overlay_shadow_forbidden_surface_violation_count",
+                ),
+                d2=_fmt_available(
+                    row, "d1_centroid_overlay_shadow_d2_consumption_count"
+                ),
+                d3=_fmt_available(
+                    row, "d1_centroid_overlay_shadow_d3_consumption_count"
+                ),
+                truth=_fmt_available(
+                    row, "d1_centroid_overlay_shadow_online_truth_use_count"
+                ),
+                p50=_fmt_available(
+                    row, "d1_centroid_overlay_shadow_overhead_p50_ms"
+                ),
+                p95=_fmt_available(
+                    row, "d1_centroid_overlay_shadow_overhead_p95_ms"
+                ),
+                maximum=_fmt_available(
+                    row, "d1_centroid_overlay_shadow_overhead_max_ms"
+                ),
+                current=_fmt_available(
+                    row,
+                    "d1_centroid_overlay_shadow_generation_watermark_current",
+                ),
+                peak=_fmt_available(
+                    row,
+                    "d1_centroid_overlay_shadow_generation_watermark_peak",
+                ),
+                capacity=_fmt_available(
+                    row,
+                    "d1_centroid_overlay_shadow_generation_watermark_capacity",
+                ),
+                payload=_fmt_available(
+                    row, "d1_centroid_overlay_shadow_payload_bytes_peak"
+                ),
+                summary=_fmt_available(
+                    row,
+                    "d1_centroid_overlay_shadow_summary_counter_consistent",
+                ),
+                timing=_fmt_available(
+                    row,
+                    "d1_centroid_overlay_shadow_overhead_stage_consistent",
+                ),
+                nonintervention=_fmt_available(
+                    row,
+                    "d1_centroid_overlay_shadow_business_nonintervention_passed",
+                ),
             )
         )
 
@@ -4206,6 +4355,7 @@ def _finalize_episode_status(row: dict[str, Any]) -> None:
                     "d4_advice_resource_quota_conservation_violation",
                     "d4_advice_formal_decision_mutation",
                     "d4_region_consumption_",
+                    "d1_centroid_overlay_shadow_",
                     "d5_active_vision_",
                     "observation_governance_generation_integrity:",
                     "offline_truth_disposition_contract:",

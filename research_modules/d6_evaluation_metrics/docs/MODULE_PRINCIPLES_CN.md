@@ -1,5 +1,52 @@
 # D6 系统级离线评估模块原理
 
+## D1 质心发布影子旁路的评估边界（2026-07-23）
+
+D1 质心发布影子旁路用于观察候选质心修正，不属于正式航迹发布链。D6 只读取
+`audit.d1.centroid_publication_overlay_shadow` 日志、episode 最终诊断和阶段时序，不向 D1、D2、
+D3 或控制链返回任何结果。输入 schema 固定为
+`scalable3d-d1-centroid-overlay-shadow-v1`。历史 episode 未声明该能力、字段缺失或证据相互矛盾时，
+相关指标保持 `unavailable`，不能补成 0。
+
+canonical 航迹摘要和 shadow 航迹摘要回答“影子副本是否与正式输入相同”。两者不同只表示影子计算
+产生了不同副本，不能据此判断正式业务输出发生变化。业务非干预采用独立判据：
+
+```text
+summary counters consistent
+and status == offline_shadow_not_consumed
+and canonical business tracks not replaced
+and global_track_id sequence unchanged
+and forbidden surface violation count == 0
+and D2 consumption count == 0
+and D3 consumption count == 0
+and online truth use count == 0
+```
+
+禁止修改审计还要求 `digest_semantics` 明确为
+`sha256_of_canonical_track_and_evidence_digest_manifest_v1`。D6 分别核对 canonical tracks 和结构
+歧义 evidence 的前后 SHA-256，再重算两者组成的 manifest SHA-256。对象前后变化、摘要格式非法、
+摘要语义未知或 manifest 不一致均失败关闭。该判据与 shadow/canonical 是否相等无关，避免把影子
+候选变化误写为正式航迹变化。
+
+评估结论分为三层。第一层是业务非干预，只判断旁路有没有污染正式链路。第二层是性能准入，显式比较
+同场景 control/shadow 的总墙钟，当前门限为相对开销不高于 `+5%`。第三层是处理和效果证据，要求
+存在被接受的候选，并用独立结果指标判断收益。三层不能相互替代。业务非干预通过时，性能仍可失败；
+性能通过时，没有有效处理或结果效果仍不能判定算法准入。
+
+D6 同时统计 accepted/rejected/error 和拒绝原因、measurement/arrival 双时间戳可用性、
+`evaluation_wall_time_ms` 的 P50/P95/max、generation watermark 当前值/峰值/容量、shadow payload
+峰值以及 D2/D3 消费和在线真值使用。每条日志的开销分位由 D6 重算，并与
+`module.d1_centroid_publication_overlay_shadow` 阶段时序交叉核对。阶段分位缺失时，开销指标保持
+不可用，不从总墙钟或均值反推。
+
+2026-07-23 的 seed 1100 开发期 pair 为 200 对 200、2.2 s。shadow 共 9 条 sidecar、46 个
+decision，全部因 `oosm_scan` 被拒绝；禁止修改、D2/D3 消费、在线真值使用和全局航迹编号变化均为
+0，业务非干预通过。影子评估 P50/P95/max 为
+`840.900/1167.178/1201.477 ms`，payload 峰值为 `11,275,939 B`。control/shadow 总墙钟为
+`10.732310/17.866450 s`，相对开销 `66.47%`，未通过 `+5%` 性能门。该 pair 来自 dirty 工作树，
+只有一个 seed，且 accepted treatment 为 0，因此 `overall_admitted=false`。2026-07-23 D6 全量
+回归为 `623 passed, 1 warning in 21.67s`；warning 为既有 Matplotlib 环境提示。
+
 ## 观测处置与身份指标边界（2026-07-23）
 
 离线观测 sidecar 描述“这条观测在评估侧属于什么”，不属于在线感知状态。v2 使用三个互斥状态：

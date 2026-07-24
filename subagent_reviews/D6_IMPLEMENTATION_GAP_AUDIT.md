@@ -1,5 +1,45 @@
 # D6 实现差距审计
 
+## 2026-07-23 D1 质心发布影子旁路 GAP 更新
+
+### 已关闭
+
+1. D6 已实现独立只读适配器，固定消费
+   `audit.d1.centroid_publication_overlay_shadow` 和
+   `scalable3d-d1-centroid-overlay-shadow-v1`。该适配器不导入 main/D1 runtime，不参与控制，
+   不进入通用 `EpisodeMetrics`。
+2. canonical/shadow SHA 可用性、相等/不同计数、`global_track_id` 序列、禁止修改、正式航迹替换、
+   accepted/rejected/error、拒绝原因、双时间戳、watermark、payload、D2/D3 消费和在线真值使用
+   已形成 availability-aware 指标。缺字段不补零。
+3. `digest_semantics`、canonical tracks 前后 SHA、结构歧义 evidence 前后 SHA 和两层 manifest
+   SHA 已进入重算校验。任一摘要变化、语义未知或重算不一致均失败关闭。
+4. 每条 `evaluation_wall_time_ms` 的 P50/P95/max 已由 D6 重算，并与 v2 stage timing 交叉核对。
+5. 业务非干预判据与 shadow SHA 差异分离。shadow 与 canonical 不同不能解释为正式业务输出变化；
+   非干预要求 canonical/evidence 未变、编号未变、正式链未替换、禁止表面为 0、D2/D3 消费为 0、
+   在线真值使用为 0。
+6. 显式 control/shadow pair 接口已将业务非干预、`+5%` 总墙钟性能门、accepted treatment 和效果
+   证据分层输出。任何一层通过都不会自动把 `overall_admitted` 改为 true。
+7. seed 1100 开发期 shadow 已由 D6 实际消费：9 条 sidecar、46 个 decision、0 accepted、46 个
+   `oosm_scan` rejected、0 error；禁止修改、D2/D3 消费、在线真值使用和编号变化均为 0，业务
+   非干预通过。
+8. 2026-07-23 适配器专项 `11 passed`，scalable 与后验治理联合回归 `77 passed`，D6 全量
+   `623 passed, 1 warning in 21.67s`。warning 为既有 Matplotlib 环境提示。
+
+### 仍开放 P1
+
+1. **性能准入失败。** control/shadow 总墙钟为 `10.732310/17.866450 s`，相对开销 `66.47%`，
+   高于 `+5%` 门限。影子评估 P95 为 `1167.178 ms`，payload 峰值为 `11,275,939 B`。需要生产端
+   优化和 clean 同输入复测。
+2. **没有有效处理。** 当前 46 个 decision 全部因 `oosm_scan` 被拒绝，accepted treatment 为 0。
+   现有输入只能验证拒绝路径和非干预，不能评价候选修正质量。
+3. **没有效果证据。** D6 尚未收到独立 outcome effect 合同。shadow/canonical SHA 差异不能作为
+   结果提升代理。
+4. **证据等级不足。** seed 1100 来自 dirty/development 工作树且只有一个 seed。仍需
+   clean/frozen、同输入、多个自然结构歧义 seed，并持久化完整阶段时序和硬件环境。
+
+当前无新增 P0。A2 的 D6 consumer 和失败关闭合同已完成；性能、有效 treatment、结果效果和正式
+多 seed 证据继续保持 P1。业务非干预通过不能关闭这些 P1，也不能判定 A2 admitted。
+
 ## 2026-07-23 observation truth v2 GAP 更新
 
 ### 已关闭

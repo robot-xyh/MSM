@@ -1,5 +1,50 @@
 # D6 Evaluation Metrics Plan
 
+## 2026-07-23 D1 质心发布影子旁路状态
+
+### 已完成
+
+- [x] 新增独立只读适配器，固定消费 topic
+  `audit.d1.centroid_publication_overlay_shadow` 和 schema
+  `scalable3d-d1-centroid-overlay-shadow-v1`，不导入 main/D1 runtime。
+- [x] canonical/shadow SHA 相等/不同、全局航迹编号序列、accepted/rejected/error、拒绝原因和双
+  时间戳按字段域输出 availability；缺字段不补零。
+- [x] 校验 `digest_semantics`，重算 canonical tracks 与结构歧义 evidence 的前后对象摘要和摘要
+  manifest；任一前后变化或摘要语义不一致失败关闭。
+- [x] 阶段 `module.d1_centroid_publication_overlay_shadow` 的 P50/P95/max 只从持久化 v2 stage
+  timing 交叉核对；P50/P95/max 由 sidecar 的 `evaluation_wall_time_ms` 独立重算。
+- [x] generation watermark 当前/峰值/容量、payload 峰值、禁止表面、D2/D3 消费和在线真值使用
+  已接入逐 episode 指标。
+- [x] 新增独立业务非干预判据。shadow SHA 不同不作为业务变化；判据要求摘要一致、编号不变、
+  禁止表面无违规、正式航迹未替换且 D2/D3/truth 消费为 0。
+- [x] 接入 scalable episode CSV、聚合统计和中文 Markdown；离线评估 schema 升级为
+  `d6-scalable3d-offline-evaluation-v9`。
+- [x] 历史未声明 A2 能力的 episode 保持 unavailable，不影响既有正式证据。
+- [x] 显式 control/shadow 墙钟配对接口使用 `+5%` 上限输出独立 performance gate；即使业务
+  非干预通过，也不自动形成 overall admission。
+- [x] 2026-07-23 确定性适配器专项 `11 passed`，scalable 与后验治理联合回归
+  `77 passed`，D6 全量回归 `623 passed, 1 warning in 21.67s`。未运行 AirSim 或真实多 seed；
+  warning 为既有 Matplotlib `Axes3D` 环境提示。
+- [x] development/dirty seed 1100、200 对 200、2.2 s pair 已只读复核。shadow 为
+  9 sidecar/46 decisions，accepted/rejected/error=`0/46/0`，D2/D3/truth/forbidden mutation
+  均为 0；业务非干预通过。
+- [x] 该 pair 的 sidecar P50/P95/max 为 `840.900/1167.178/1201.477 ms`，payload 峰值
+  `11,275,939 B`；control/shadow 总墙钟 `10.732310/17.866450 s`，相对开销 `66.47%`，
+  performance gate 失败，overall admitted 为 false。
+
+### 后续验证
+
+- [ ] main 提交 A2 生产端后，冻结至少一组包含有效 accepted treatment 的同输入 pair。当前 seed
+  1100 的 46 个 decision 全部为 OOSM rejected，不能评价 treatment 效果。
+- [ ] main 在 clean 同输入 control/shadow episode 上持久化 v2 阶段分位；D6 报告真实 P50/P95/max、
+  watermark 峰值和 payload 峰值，并要求总墙钟相对开销不高于 `+5%`。当前 dirty 单 seed
+  `+66.47%` 不能准入。
+- [ ] main 提供多 seed 自然结构歧义场景后，D6 再评估 rejection reason 分布、非干预通过率和开销
+  稳定性。业务收益需要另行定义 control/treatment 结果，不能由 shadow SHA 差异推断。
+
+`AIRSIM_INTEGRATION_PLAN.md` 已检查。本轮接口仅消费可扩展三维离线总线、summary 和阶段时序，不改变
+AirSim 话题、相机、检测、reset 或控制链，因此该文档无需修改。
+
 ## 2026-07-23 observation truth v2 状态
 
 ### 已完成
