@@ -8,9 +8,16 @@ primary/reserve 槽位。两类 uncommitted、缺失和未知状态对该目标�
 
 main 触发 hold/replan 后，若目标已在上一联盟中而当前为非 committed，D3 撤销整个目标的
 成员绑定并严格升版。不能只撤销一个 primary，也不能让 reserve 继续执行。该合同已有
-集中测试；它未改变
-2 primary + 1 reserve 研究模板，也未加入同时到达要求。AirSim 多 seed 联盟性能仍需单独
-验证。
+集中测试；它未改变 2 primary + 1 reserve 研究模板，也未加入同时到达要求。
+
+2026-07-23 的 clean seed 1100、200v200、2.2 秒运行进一步验证了普通已绑定目标的系统级
+撤回链路。两臂均在 `t=1.0` 将同一组 11 个原 v1 目标从 v2 完全删除，计划由 v1/193
+严格升为 v2/186，且 D5/D7 对这些目标的后续执行为 0。本场景没有为这 11 个目标设置
+M-to-N 联盟需求，因此它证明普通绑定和下游链路的运行时安全门已经接通，不能替代
+2 primary + 1 reserve 的多 seed 联盟撤回专项。
+
+本 episode 也没有主动注入 stale plan。旧版本拒绝仍由模块与 AirSim regression 覆盖。
+两臂一致不代表 D1/D2 算法性能改善。AirSim 多 seed 联盟性能仍需单独验证。
 
 **模块**: D3 集中式资源-目标分配
 

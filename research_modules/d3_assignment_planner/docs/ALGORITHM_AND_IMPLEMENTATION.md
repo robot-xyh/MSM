@@ -40,6 +40,35 @@ main 负责根据 D2 承诺状态触发 hold/replan。D3 在新规划调用内�
 lease、人工授权或联盟提交检查。D3 只引用原 `global_track_id`，不创建替代标识。D2 的
 0.9 秒恢复新鲜度门和 D7 的 PN/PNG 控制不属于 D3。
 
+### clean seed 1100 运行结果
+
+固定提交 `7e15dac9cdaf6743999dfe045a70676fd31a17d6` 的两组 clean 运行采用相同的
+200v200、2.2 秒、seed 1100 输入。两臂均先在 `t=0.75` 发布 v1/193。`t=1.0` 的 D2
+发布中有 11 个原 v1 目标进入 `identity_uncommitted_ambiguity_hold`，D3 随即形成
+v2/186：
+
+```text
+previous plan: v1, 193 assignments
+rejected previous targets: 11
+replan reason: previous_target_identity_uncommitted
+hysteresis bypassed: true
+new plan: v2, 186 assignments
+```
+
+11 个目标全部进入 v2 的 `unassigned_global_track_ids`，且不再出现在 v2 assignment 中。
+`t=2.0` 的 v3 仍有 186 项分配，这组 11 个目标继续保持零分配。从 `t>=1.0` 起，D5
+主动视觉、D5 终端绑定和 D7 导引也没有继续消费这 11 个目标。该结果同时验证了求解前硬
+拒绝、身份撤销强制重规划、迟滞绕过和下游停用链路。
+
+main 终态记录 `d3_identity_commitment_binding_hold_count=13` 和
+`d3_identity_commitment_binding_hold_event_count=1`。13 统计同一事件中受影响的运行时
+绑定处置，不能替代计划 metadata 中的 D3 拒绝目标数 11。
+
+本 episode 没有构造 stale plan 输入，不能作为主动过时计划拒绝证据。该能力由
+`StalePlanError` 单元测试和 AirSim/module regression 保持。两臂结果一致也不能证明 D1
+质心候选或 D2 关联算法有收益；`hold_plus_centroid` 的 46 个候选实际应用数为 0，D2
+在线 `id_switch_count` 在该 episode 中不可用。
+
 ## 1. 模块定位
 
 D3 是反无人机系统（Counter-Unmanned Aircraft System，C-UAS）科研仿真流程中的

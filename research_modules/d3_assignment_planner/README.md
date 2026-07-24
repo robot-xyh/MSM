@@ -22,10 +22,25 @@ previous plan or rewriting `global_track_id`.
 The AirSim dry-run adapter reads a direct field, an `identity_commitment`
 mapping, or metadata. It does not use actor identity or offline labels. On
 2026-07-23 the focused file passed 12 tests; the full D3 suite passed
-450 tests with one existing optional OR-Tools skip. No AirSim episode was run.
-Main still needs to join D2's commitment map to D3 inputs and validate the
-hold/replan path in a real episode. This is a contract safety gate, not an
-algorithm promotion based on seed 1100.
+450 tests with one existing optional OR-Tools skip.
+
+Clean scalable-runtime evidence is now available for commit
+`7e15dac9cdaf6743999dfe045a70676fd31a17d6`
+(`repository_dirty=false`), nominal 200-resource/200-target, 2.2 s, seed 1100.
+Both `hold_only` and `hold_plus_centroid` arms published plan v1 with 193
+assignments at `t=0.75`. At `t=1.0`, 11 targets previously assigned by v1
+became `identity_uncommitted_ambiguity_hold`; D3 bypassed hysteresis for the
+safety withdrawal and published v2 with 186 assignments. All 11 targets were
+absent from v2. Plan v3 retained 186 assignments at `t=2.0`. From `t>=1.0`,
+those targets had zero D3 assignments, D5 active-vision commands, D5 terminal
+bindings, and D7 guidance commands.
+
+The runtime diagnostic `d3_identity_commitment_binding_hold_count=13` is a
+main binding-hold count across the event; it is not the D3 rejected-target
+count, which is 11. This episode did not inject a stale plan. Active stale-plan
+injection remains covered by module and AirSim regression tests. The identical
+two-arm result validates the runtime safety withdrawal only; it does not prove
+an algorithmic benefit from D1 centroid correction or D2 association.
 
 ## Layout
 

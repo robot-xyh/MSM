@@ -16,16 +16,26 @@
 - **D3 P1 已关闭**：D3 不改写 `global_track_id`。main 是已有绑定 hold/replan 的触发与
   采用方；D3 只在被调用后生成去绑定的新版本候选。
 - **验证**：2026-07-23 专项 `12 passed`，D3 全量 `450 passed, 1 skipped`；唯一跳过为
-  可选 OR-Tools。本轮未运行 AirSim，不是 seed 1100 算法晋级证据。
-- **P1 跨模块待办**：main 仍需按 `global_track_id` 接入 D2 commitment map，记录
-  hold/replan/plan adoption 时序，并在 AirSim 多 seed 中验证非 committed assignment 为 0、
-  撤销计划严格升版和旧计划拒绝。该项不要求修改 D3 准入算法。
+  可选 OR-Tools。
+- **P1 跨模块接线已验证**：固定 clean 提交
+  `7e15dac9cdaf6743999dfe045a70676fd31a17d6`、200v200、2.2 秒、seed 1100 的
+  `hold_only` 与 `hold_plus_centroid` 两臂都在 `t=0.75` 发布 v1/193；`t=1.0` 对
+  11 个原 v1 已分配目标执行身份撤回，绕过迟滞并严格发布 v2/186；`t=2.0` 发布
+  v3/186。
+- **下游零违规已验证**：11 个拒绝目标全部从 v2 删除，`t>=1.0` 的 D3 后续分配、D5
+  主动视觉、D5 终端绑定和 D7 导引违规继续执行均为 0。两臂结果一致。
+- **计数口径**：main 终态 binding hold count 为 13、event count 为 1；13 是运行时绑定
+  保持计数，不是 D3 rejected target 数。D3 在 v2 的拒绝目标数是 11。
+- **证据限制**：该 episode 没有主动注入 stale plan。stale rejection 仍由 AirSim/module
+  unit regression 验证。本结果关闭运行时安全撤回接线，不证明 D1 质心修正或 D2 关联算法
+  收益，也不是物理拦截证据。
 - **无新增 P0**：版本、stale predecessor、授权、owner/epoch/lease 和全局航迹 ID 规则未
   放宽。
 
-2026-07-23 集中测试 12 项通过，D3 全量通过并保留 1 个既有可选依赖 skip。本轮未运行
-AirSim。main 尚未把 D2 commitment map 接到真实 scalable episode 的 D3 输入，该项仍是
-跨模块 P1 接线，不需要继续扩展 D3 架构。
+2026-07-23 集中测试 12 项通过，D3 全量通过并保留 1 个既有可选依赖 skip。main 已把
+D2 commitment map 接到真实 scalable episode 的 D3 输入，D3 身份撤回、严格升版和下游
+停止链路已形成 clean 单 seed 证据。开放项转为多 seed/动态非等量重复性、独立 stale
+主动注入回归和 D1/D2 算法效果评估，不需要继续扩展 D3 准入架构。
 
 ## 1. 总体结论
 
@@ -37,7 +47,7 @@ D3 当前已经完成中心化一对一与显式 M-to-N demand-slot 主线：Sci
 
 2026-07-13 已完成 M5N2 hybrid `2 primary + 1 standby reserve` 的真实 SimpleFlight paired 验收：baseline 与三个候选各 10 seeds，共 40 个 episode；本阶段不要求 primary 同时到达。coalition completion 为 baseline `0/10`、最佳 `20 m / 3 s / 40 deg` `5/10`、其余候选 `2/10` 和 `1/10`，未达到 `8/10` 门限。版本/stale/role 合同保持，reserve 未授权执行、旧版本执行和 `global_track_id` 本地改写均未成为该轮安全问题。
 
-当前 D3 没有未关闭的 P0 或 P1 **合同层**缺口。`previous_plan` 连续性、solve 前 switch penalty、D5/D7 禁止本地改绑、secondary activation/current-binding、增量接口、transient feedback dwell、role-aware primary 保持、plan/evidence schema 和 canonical planning-tick history schema/export 均作为回归合同保留。最新 M5N2 20-case 已由 main 写盘 `3725/3725` 条 canonical records，D3 对计划版本、owner、成员 roster 和迟滞审计的可用性不再是 `unavailable`；20 个 case 的实际 version/member/owner transition 均为 0。**P1 证据与参数标定仍开放**：第二 primary `0/20`、coalition `0/20`，并且还需完成真实 3v5、5v3 和动态事件标定。
+当前 D3 没有未关闭的 P0 或 P1 **合同层**缺口。`previous_plan` 连续性、solve 前 switch penalty、D5/D7 禁止本地改绑、secondary activation/current-binding、身份承诺运行时撤回、增量接口、transient feedback dwell、role-aware primary 保持、plan/evidence schema 和 canonical planning-tick history schema/export 均作为回归合同保留。最新 M5N2 20-case 已由 main 写盘 `3725/3725` 条 canonical records，D3 对计划版本、owner、成员 roster 和迟滞审计的可用性不再是 `unavailable`；20 个 case 的实际 version/member/owner transition 均为 0。**P1 证据与参数标定仍开放**：身份撤回目前只有 clean seed 1100 单种子证据，第二 primary `0/20`、coalition `0/20`，并且还需完成真实 3v5、5v3 和动态事件标定。
 
 2026-07-14 已关闭 P1 计划抖动的一个合同根因：普通 D5 `ambiguous/hold/reacquire` 以及几何、FOV、检测不稳定现在只形成当前 resource-target 边的 soft cost 和 D7 hold，不再把资源升级为 `operator_hold=True`。`friend_overlap_hold` 保持 resource-hard，verified friend 保持 target-hard；安全身份冲突、duplicate assignment/lock 和显式 feasibility reject 保持 hard reject，真实 unavailable 资源仍由成本模型整资源拒绝。分类 class/scope/reason/hard flag 写入审计 metadata，旧 `operator_hold_suggested/resource_update` pair metadata 继续可读并被审计降级。transient 帧窗口完成后仍进入 coalition/global `min_dwell` 迟滞，不再直接发布改配。
 

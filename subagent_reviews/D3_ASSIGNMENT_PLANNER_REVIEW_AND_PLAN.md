@@ -12,8 +12,21 @@ main 负责触发已有绑定的 hold/replan。D3 收到当前非 committed 状�
 `global_track_id`。M-to-N 中 primary 与 reserve 整体阻断。
 
 集中测试文件 `12 passed`；D3 全量 `450 passed, 1 skipped`，唯一跳过为可选 OR-Tools。
-本轮未改 main 或其他模块，未运行 AirSim。下一步由 main 按 `global_track_id` 接入 D2
-commitment map，并验证 hold 到新计划采用的时序。本结果不构成 seed 1100 算法晋级。
+固定 clean 提交 `7e15dac9cdaf6743999dfe045a70676fd31a17d6` 的 200v200、2.2 秒、
+seed 1100 运行已完成 D2 commitment map 到 D3 的接线验证。`hold_only` 与
+`hold_plus_centroid` 两臂结果一致：`t=0.75` 发布 v1/193；`t=1.0` 有 11 个原 v1
+目标进入 `identity_uncommitted_ambiguity_hold`，D3 强制重规划、绕过迟滞并严格发布
+v2/186；`t=2.0` 发布 v3/186。
+
+v2 明确记录 `identity_commitment_forced_replan=true`、
+`identity_commitment_replan_reason=previous_target_identity_uncommitted` 和
+`identity_commitment_hysteresis_bypassed=true`。11 个目标全部从 v2 assignment 删除。
+从 `t>=1.0` 起，D3、D5 主动视觉、D5 终端绑定和 D7 导引的违规继续执行均为 0。
+
+main 终态 binding hold count 为 13、event count 为 1；13 是运行时绑定处置计数，D3
+rejected target 数为 11。本 episode 未主动注入 stale plan，过时计划拒绝继续由
+AirSim/module unit regression 证明。该结果验证运行时安全撤回，不构成 D1 质心修正、D2
+关联算法或 seed 1100 物理性能晋级证据。
 
 **定位**: 在由 main runtime `--drone-count` 决定的 N 对 N 或非等量资源/目标场景中，由中心节点生成滚动 `AssignmentPlan`，并通过迟滞逻辑避免频繁重分配；5v5 只作为示例和基准场景。
 **边界**: 本文只讨论抽象资源-目标匹配、离线评估和人工授权前的候选计划，不包含真实火控参数、毁伤模型或自动处置流程。
@@ -44,8 +57,9 @@ commitment map，并验证 hold 到新计划采用的时序。本结果不构成
 - P1 isolated plan consumption contract done：D3 构造/校验 API 和 replay/stale ledger 已
   通过 8 项专项；main 克隆世界推进、D7 command lineage 和 D6 物理窗口仍开放。
 - P1：D5 feedback 权重与 dwell/迟滞阈值仍需用逐时刻 D6 records 配对标定。
-- P1 跨模块：main 需将 D2 commitment map 接入 D3 输入，并把身份撤销后的 hold、重规划、
-  新计划采用和旧计划拒绝写入 AirSim/D6 记录。
+- P1 跨模块运行时撤回 done：main 已将 D2 commitment map 接入 D3 输入；clean seed
+  1100 两臂均对 11 个已分配目标完成 v1 到 v2 的严格撤回，D3/D5/D7 后续违规执行为 0。
+  多 seed、动态非等量和主动 stale 注入仍作为证据校准项保留。
 - P1 增量接口 done：输入快照、changed-set 完整性、独立连通分量局部求解、全量 fallback reason、全局迟滞、M-to-N all-or-none 和增量/全量 comparison summary 已测试；仍缺真实非等量 3v5/5v3、目标新增、资源失效和 crossing/dense 动态 N/M 多 seed 校准。
 - P1 deterministic calibration support done：versioned 8-scenario matrix 新增高威胁需求变化、D5 reserve feedback 和 hard-window；paired runner 统一比较 full/incremental latency、churn、unassigned high-threat、coalition shortfall 和 fallback/reject，8/8 转换 assignment/cost 等价。
 - P1：D3 secondary activation/current-binding 合同已闭合，并已由二级/分布式 commit 正例与缺 ACK fail-closed 覆盖下游消费；D4 协商与恢复策略仍属 D4/main 边界。

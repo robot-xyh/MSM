@@ -13,11 +13,24 @@
 4. AirSim dry-run 适配器读取顶层、嵌套或 metadata 字段。字段缺失和未知值均拒绝，不使用
    真值 ID、actor ID 或目标数量推断承诺。
 5. 专项测试 12 项通过；D3 全量 `450 passed, 1 skipped`，跳过项为既有可选 OR-Tools。
-   本轮未运行 AirSim，也不构成 seed 1100 算法晋级证据。
+6. clean seed 1100 已完成运行时接线复核。固定提交
+   `7e15dac9cdaf6743999dfe045a70676fd31a17d6`、`repository_dirty=false`、
+   200 资源/200 目标、2.2 秒条件下，`hold_only` 与 `hold_plus_centroid` 两臂结果一致：
+   `t=0.75` 发布 v1/193，`t=1.0` 对 11 个原 v1 目标执行身份未提交撤回，绕过迟滞并发布
+   v2/186，`t=2.0` 发布 v3/186。
+7. v2 明确记录 `identity_commitment_forced_replan=true`、
+   `identity_commitment_replan_reason=previous_target_identity_uncommitted` 和
+   `identity_commitment_hysteresis_bypassed=true`。11 个拒绝目标在 v2 中全部不存在；
+   从 `t>=1.0` 起，D3、D5 主动视觉、D5 终端绑定和 D7 导引的违规继续执行均为 0。
 
-下一步由 main 按 `global_track_id` 将 D2 commitment map 显式写入 D3 `TargetTrack`，在
-hold 状态下保持旧控制链停止，再采用新版本计划。AirSim 需复核非 committed assignment
-为 0、旧绑定严格升版撤销和 stale plan 拒绝。本次不修改 main。
+main 按 `global_track_id` 接入 D2 commitment map、撤销旧绑定和采用严格新版本计划的
+运行时链路已由上述 episode 验证。main 终态诊断中的 binding hold count 为 13、event count
+为 1；13 是跨运行时绑定保持计数，不能写成 D3 拒绝目标数，D3 本次拒绝目标数是 11。
+
+下一步保留三项工作：在多 seed 和动态非等量场景复核相同安全不变量；用独立的
+AirSim/module regression 持续验证 stale plan 主动注入；评估 D1/D2 算法本身是否改善身份
+连续性。本 episode 没有伪造 stale 输入，且两臂一致只证明 D3 安全撤回，不证明 D1
+质心修正或 D2 关联收益。
 
 ## 1. 模块边界
 

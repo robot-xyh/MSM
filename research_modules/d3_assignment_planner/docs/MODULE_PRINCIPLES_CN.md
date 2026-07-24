@@ -12,6 +12,33 @@ D3 只对身份已提交的全局航迹分配资源。`committed` 表示 D2 当�
 规划调用中去除已撤销目标的普通及联盟绑定并发布新版本。M-to-N 的 primary 和 reserve
 共用同一目标身份，必须整体阻断。该过程不修改 `global_track_id`。
 
+### 运行时撤回证据
+
+2026-07-23 对固定提交 `7e15dac9cdaf6743999dfe045a70676fd31a17d6` 完成 clean seed
+1100 复核。运行条件为 200 资源/200 目标、2.2 秒，仓库状态
+`repository_dirty=false`。`hold_only` 和 `hold_plus_centroid` 两臂均在 `t=0.75`
+发布 v1/193；`t=1.0` 时，11 个已由 v1 分配的目标转为
+`identity_uncommitted_ambiguity_hold`。D3 将这 11 个目标全部排除，绕过迟滞发布
+v2/186；`t=2.0` 发布 v3/186。
+
+v2 的审计字段为：
+
+```text
+identity_commitment_forced_replan = true
+identity_commitment_replan_reason = previous_target_identity_uncommitted
+identity_commitment_hysteresis_bypassed = true
+identity_commitment_noncommitted_rejected_count = 11
+```
+
+从 `t>=1.0` 起，这 11 个目标在 D3 后续分配、D5 主动视觉命令、D5 终端绑定和 D7 导引
+命令中的违规延续数均为 0。main 终态中的 binding hold count 为 13、event count 为 1；
+前者统计运行时绑定保持，不是 D3 拒绝目标数。
+
+该结果验证了“身份撤销后立即停止执行并严格升版”的系统安全行为。episode 未主动注入
+stale plan；过时计划拒绝仍由 D3 单元测试和 AirSim/module regression 单独验证。
+`hold_plus_centroid` 虽启用 D1 实验质心候选，但 46 个候选均未应用，两臂 D3 结果相同；
+因此不能据此宣称 D1 质心修正或 D2 关联质量得到提升。
+
 ## 1. 文档范围与术语约定
 
 MSM 是项目既定代号，不是本文自行展开的英文缩写。D3 是反无人机系统（Counter-Unmanned Aircraft System，C-UAS）科研仿真流程中的集中式资源-目标分配模块。D1-D7 是项目模块编号，不是算法缩写。

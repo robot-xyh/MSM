@@ -2,18 +2,53 @@
 
 ## 身份承诺准入专项（2026-07-23）
 
-本轮使用确定性单元输入，没有启动 AirSim。集中测试覆盖 committed/uncommitted 首次规划、
-上一计划去绑定、两类 uncommitted 状态、2 primary + 1 reserve 的 M-to-N、stale
-predecessor、AirSim dry-run 缺失/未知字段拒绝，以及 1x4、7x3、9x12 非等量规模。
+本专项包含单元合同和 clean 可扩展三维运行两类证据。单元输入覆盖
+committed/uncommitted 首次规划、上一计划去绑定、两类 uncommitted 状态、
+2 primary + 1 reserve 的 M-to-N、stale predecessor、AirSim dry-run 缺失/未知字段
+拒绝，以及 1x4、7x3、9x12 非等量规模。
 
 专项结果为 `12 passed`。D3 全量结果为 `450 passed, 1 skipped`，跳过项是可选
 OR-Tools。验收结果为：所有非 committed assignment 为 0；上一绑定撤销后计划严格升一版；
 M-to-N 全部成员角色阻断；缺失和未知状态均失败关闭。
 
+### clean 运行条件
+
+| 项目 | `hold_only` | `hold_plus_centroid` |
+|---|---:|---:|
+| 固定提交 | `7e15dac9cdaf6743999dfe045a70676fd31a17d6` | 同左 |
+| 仓库状态 | `repository_dirty=false` | 同左 |
+| 资源/目标 | 200/200 | 200/200 |
+| 时长/种子 | 2.2 秒 / 1100 | 同左 |
+| 在线真值使用 | 0 | 0 |
+| D1 质心候选 | 关闭 | 开启，46 个候选、0 个应用 |
+
+### 计划时序
+
+| 时刻 | 计划 | 分配数 | 身份承诺处置 |
+|---:|---:|---:|---|
+| 0.75 秒 | v1 | 193 | 初始已提交目标进入计划 |
+| 1.00 秒 | v2 | 186 | 11 个原 v1 目标进入歧义保持，全部撤回 |
+| 2.00 秒 | v3 | 186 | 11 个目标继续保持零分配 |
+
+v2 记录 `identity_commitment_forced_replan=true`、
+`identity_commitment_replan_reason=previous_target_identity_uncommitted` 和
+`identity_commitment_hysteresis_bypassed=true`。11 个拒绝目标全部列入 v2 未分配集合，
+没有任何一个留在 v2 assignment。`t>=1.0` 后，D3 分配、D5 主动视觉、D5 终端绑定和 D7
+导引对这 11 个目标的违规继续执行均为 0。两臂结果一致。
+
+main 终态诊断的 binding hold count 为 13、event count 为 1。13 是同一撤回事件中的运行时
+绑定保持统计，不是 D3 拒绝目标数；D3 拒绝数为 11。
+
+### 证据边界
+
+该结果证明 D2 commitment map 已进入 D3 运行输入，目标身份撤销可触发严格升版、迟滞绕过
+和下游停用。它不是 AirSim 物理拦截结果。本 episode 没有主动伪造 stale plan；stale
+拒绝由 AirSim/module unit regression 独立覆盖。两臂一致只证明安全门行为一致。D1 质心
+候选没有实际应用，D2 在线 ID switch 指标不可用，因此不能从本次试验推断 D1/D2 算法
+收益。
+
 全量回归还发现 D6 只读结果已升级为 v2 并增加身份恢复配置来源字段。D3 证据适配器补充
-v1/v2 兼容，并继续要求来源验证通过。该兼容修复不改变分配算法。main 的 D2 commitment
-map 接线和 AirSim 多 seed 结果仍待验证。本次结果是合同安全门验证，不是 seed 1100
-算法晋级或物理拦截证据。
+v1/v2 兼容，并继续要求来源验证通过。该兼容修复不改变分配算法。
 
 ## 1. 实验边界
 

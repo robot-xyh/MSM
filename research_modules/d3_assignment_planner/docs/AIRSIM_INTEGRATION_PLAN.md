@@ -23,7 +23,23 @@ reasons, and previous/new plan identity. Main owns the hold/replan decision and
 must keep control held until it adopts the newer plan. If a bound target becomes
 non-committed, all ordinary and coalition bindings for that target must be zero.
 This contract passed 12 focused tests and the full `450 passed, 1 skipped`
-suite on 2026-07-23; AirSim was not started.
+suite on 2026-07-23.
+
+The main scalable 3D runtime join has also been exercised on clean commit
+`7e15dac9cdaf6743999dfe045a70676fd31a17d6`, with 200 resources, 200 targets,
+2.2 s, and seed 1100. In both `hold_only` and `hold_plus_centroid`, plan v1
+contained 193 assignments at `t=0.75`. Eleven previously assigned targets
+entered ambiguity hold at `t=1.0`; D3 forced a hysteresis-bypassed replan to
+v2/186, and none of those targets appeared in D3, D5 active vision, D5 terminal
+binding, or D7 guidance after that time. Plan v3 retained 186 assignments at
+`t=2.0`.
+
+This was a point-mass scalable-runtime episode, not an AirSim Blocks episode.
+It did not inject a stale plan. AirSim/module regression remains responsible
+for active stale-input rejection. The main diagnostic binding-hold count of 13
+must not be reported as the D3 rejected-target count; D3 rejected 11 targets in
+the v2 decision. The equal two-arm result validates the safety gate and does
+not establish D1/D2 algorithm improvement.
 
 ## Boundary
 
