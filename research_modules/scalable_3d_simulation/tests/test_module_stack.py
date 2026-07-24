@@ -529,6 +529,37 @@ def test_d1_centroid_overlay_shadow_is_audit_only_and_bounded() -> None:
     assert payload["shadow_differs_from_canonical"] is True
     assert payload["measurement_timestamps"] == [0.4]
     assert payload["arrival_timestamps"] == [0.65]
+    preparation = payload["canonical_preparation"]
+    assert preparation["explicit_prepared_handle_used"] is True
+    assert preparation["validation_error"] is None
+    assert preparation["work"] == {
+        "full_description_pass_count": 1,
+        "track_count": 2,
+        "validated_track_count": 2,
+        "full_track_digest_count": 2,
+        "state_digest_count": 2,
+        "covariance_digest_count": 2,
+        "publication_digest_count": 1,
+    }
+    assert preparation["evaluation_integrity_check"] == {
+        "matches": True,
+        "mismatch_reason": None,
+        "object_binding_pass_count": 1,
+        "full_content_digest_pass_count": 1,
+        "track_digest_count": 2,
+    }
+    assert set(payload["phase_wall_time_ms"]) == {
+        "assemble_shadow_tracks",
+        "audit_log_materialization",
+        "evaluate_overlays",
+        "forbidden_surface_after_digest",
+        "forbidden_surface_before_digest",
+        "prepare_canonical_publication",
+        "shadow_payload_digest",
+    }
+    assert all(
+        value >= 0.0 for value in payload["phase_wall_time_ms"].values()
+    )
     assert payload["forbidden_mutation_audit"]["passed"] is True
     assert payload["forbidden_mutation_audit"]["d2_consumption_count"] == 0
     assert payload["forbidden_mutation_audit"]["d3_consumption_count"] == 0
@@ -577,6 +608,16 @@ def test_d1_centroid_overlay_shadow_is_audit_only_and_bounded() -> None:
     assert audit["d1_centroid_overlay_shadow_d3_consumption_count"] == 0
     assert audit["d1_centroid_overlay_shadow_max_watermark_count"] == 1
     assert audit["d1_centroid_overlay_shadow_max_payload_bytes"] > 0
+    diagnostics = stack._diagnostics(
+        0.65,
+        include_timing_distribution=True,
+    )
+    stage_timings = diagnostics["stage_timings"]
+    for phase_name in payload["phase_wall_time_ms"]:
+        assert (
+            "d1_centroid_publication_overlay_shadow."
+            f"{phase_name}"
+        ) in stage_timings
 
 
 def test_d1_centroid_overlay_shadow_hook_publishes_only_after_evidence(

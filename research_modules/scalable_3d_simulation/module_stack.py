@@ -30,6 +30,7 @@ from research_modules.d1_sensor_fusion.src.d1_sensor_fusion import (
     SensorScanFrame,
     assemble_experimental_centroid_shadow_tracks,
     evaluate_experimental_centroid_publication_overlays,
+    prepare_experimental_centroid_canonical_publication,
     sensor_observations_from_online_batch,
 )
 from research_modules.d2_data_association.d2_data_association import (
@@ -3560,6 +3561,7 @@ class IntegratedScalableModuleStack:
             )
 
         started = perf_counter()
+        phase_wall_time_s: dict[str, float] = {}
         revision = (
             f"{self._d1_publisher_epoch}:posterior:"
             f"{int(posterior_generation):08d}"
@@ -3569,6 +3571,7 @@ class IntegratedScalableModuleStack:
             f"{self._d1_publisher_epoch}:"
             f"{int(posterior_generation):08d}"
         )
+        phase_started = perf_counter()
         before_surface = self._d1_centroid_overlay_forbidden_surface(
             canonical_tracks,
             evidence_items,
@@ -3595,22 +3598,54 @@ class IntegratedScalableModuleStack:
             }
         )
         del before_surface, canonical_before_bytes, evidence_before_bytes
+        phase_wall_time_s["forbidden_surface_before_digest"] = (
+            perf_counter() - phase_started
+        )
+
         evaluation_error: str | None = None
+        prepared_publication = None
         try:
-            evaluation = (
-                evaluate_experimental_centroid_publication_overlays(
-                    canonical_tracks,
-                    evidence_items,
-                    state=self._d1_centroid_overlay_shadow_state,
-                    disposition=disposition,
-                    base_publication_revision=revision,
-                    overlay_valid_for_publication_id=publication_id,
+            phase_started = perf_counter()
+            try:
+                prepared_publication = (
+                    prepare_experimental_centroid_canonical_publication(
+                        canonical_tracks
+                    )
                 )
-            )
-            shadow_tracks = assemble_experimental_centroid_shadow_tracks(
-                canonical_tracks,
-                evaluation,
-            )
+            finally:
+                phase_wall_time_s["prepare_canonical_publication"] = (
+                    perf_counter() - phase_started
+                )
+
+            phase_started = perf_counter()
+            try:
+                evaluation = (
+                    evaluate_experimental_centroid_publication_overlays(
+                        canonical_tracks,
+                        evidence_items,
+                        state=self._d1_centroid_overlay_shadow_state,
+                        disposition=disposition,
+                        base_publication_revision=revision,
+                        overlay_valid_for_publication_id=publication_id,
+                        prepared_publication=prepared_publication,
+                    )
+                )
+            finally:
+                phase_wall_time_s["evaluate_overlays"] = (
+                    perf_counter() - phase_started
+                )
+
+            phase_started = perf_counter()
+            try:
+                shadow_tracks = assemble_experimental_centroid_shadow_tracks(
+                    canonical_tracks,
+                    evaluation,
+                    prepared_publication=prepared_publication,
+                )
+            finally:
+                phase_wall_time_s["assemble_shadow_tracks"] = (
+                    perf_counter() - phase_started
+                )
         except (
             FloatingPointError,
             RuntimeError,
@@ -3624,6 +3659,7 @@ class IntegratedScalableModuleStack:
                 f"{type(exc).__name__}:{str(exc)[:240]}"
             )
 
+        phase_started = perf_counter()
         after_surface = self._d1_centroid_overlay_forbidden_surface(
             canonical_tracks,
             evidence_items,
@@ -3649,6 +3685,9 @@ class IntegratedScalableModuleStack:
             }
         )
         del after_surface, canonical_after_bytes, evidence_after_bytes
+        phase_wall_time_s["forbidden_surface_after_digest"] = (
+            perf_counter() - phase_started
+        )
         forbidden_mutation_detected = (
             canonical_before_sha256 != canonical_after_sha256
             or evidence_before_sha256 != evidence_after_sha256
@@ -3674,6 +3713,7 @@ class IntegratedScalableModuleStack:
             )
         if evaluation is not None:
             self._d1_centroid_overlay_shadow_state = evaluation.next_state
+        phase_started = perf_counter()
         if shadow_tracks is canonical_tracks:
             shadow_sha256 = canonical_after_sha256
             shadow_track_payload_bytes = canonical_track_payload_bytes
@@ -3686,6 +3726,9 @@ class IntegratedScalableModuleStack:
                 shadow_payload_bytes
             )
             shadow_track_payload_bytes = len(shadow_payload_bytes)
+        phase_wall_time_s["shadow_payload_digest"] = (
+            perf_counter() - phase_started
+        )
         canonical_global_track_ids = [
             str(track.global_track_id) for track in canonical_tracks
         ]
@@ -3719,17 +3762,14 @@ class IntegratedScalableModuleStack:
             self._d1_centroid_overlay_shadow_max_payload_bytes,
             shadow_track_payload_bytes,
         )
-        evaluation_wall_time_s = perf_counter() - started
-        self._record_timing(
-            "d1_centroid_publication_overlay_shadow",
-            evaluation_wall_time_s,
+        prepared_integrity_check = (
+            None
+            if evaluation is None
+            or evaluation.prepared_integrity_check is None
+            else evaluation.prepared_integrity_check.to_dict()
         )
-
-        return RuntimePublication(
-            topic="audit.d1.centroid_publication_overlay_shadow",
-            source="main",
-            schema_version="scalable3d-d1-centroid-overlay-shadow-v1",
-            payload={
+        phase_started = perf_counter()
+        payload = {
                 "timestamp": float(publication_timestamp),
                 "posterior_generation": int(posterior_generation),
                 "status": "offline_shadow_not_consumed",
@@ -3745,6 +3785,29 @@ class IntegratedScalableModuleStack:
                     sorted(rejection_reasons.items())
                 ),
                 "evaluation_error": evaluation_error,
+                "canonical_preparation": {
+                    "explicit_prepared_handle_used": (
+                        prepared_publication is not None
+                    ),
+                    "base_publication_digest": (
+                        None
+                        if prepared_publication is None
+                        else prepared_publication.base_publication_digest
+                    ),
+                    "validation_error": (
+                        None
+                        if prepared_publication is None
+                        else prepared_publication.validation_error
+                    ),
+                    "work": (
+                        None
+                        if prepared_publication is None
+                        else prepared_publication.work.to_dict()
+                    ),
+                    "evaluation_integrity_check": (
+                        prepared_integrity_check
+                    ),
+                },
                 "canonical_tracks_sha256": canonical_before_sha256,
                 "shadow_tracks_sha256": shadow_sha256,
                 "shadow_differs_from_canonical": (
@@ -3795,9 +3858,6 @@ class IntegratedScalableModuleStack:
                     ),
                     "shadow_track_payload_bytes": shadow_track_payload_bytes,
                 },
-                "evaluation_wall_time_ms": (
-                    1_000.0 * evaluation_wall_time_s
-                ),
                 "measurement_timestamps": sorted(
                     {
                         float(item.measurement_timestamp)
@@ -3811,7 +3871,36 @@ class IntegratedScalableModuleStack:
                     }
                 ),
                 "online_truth_use_count": 0,
-            },
+            }
+        phase_wall_time_s["audit_log_materialization"] = (
+            perf_counter() - phase_started
+        )
+        evaluation_wall_time_s = perf_counter() - started
+        payload["phase_wall_time_ms"] = {
+            name: 1_000.0 * seconds
+            for name, seconds in sorted(phase_wall_time_s.items())
+        }
+        payload["evaluation_wall_time_ms"] = (
+            1_000.0 * evaluation_wall_time_s
+        )
+        for phase_name, elapsed_s in phase_wall_time_s.items():
+            self._record_timing(
+                (
+                    "d1_centroid_publication_overlay_shadow."
+                    f"{phase_name}"
+                ),
+                elapsed_s,
+            )
+        self._record_timing(
+            "d1_centroid_publication_overlay_shadow",
+            evaluation_wall_time_s,
+        )
+
+        return RuntimePublication(
+            topic="audit.d1.centroid_publication_overlay_shadow",
+            source="main",
+            schema_version="scalable3d-d1-centroid-overlay-shadow-v1",
+            payload=payload,
             copy_payload=False,
         )
 
