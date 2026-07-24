@@ -43,6 +43,13 @@ D6 在 truth-isolated 和 runtime join 两条路径都要求 audit 与最终持�
 原始变化、bootstrap、兼容 lower count、evidence、门控和准入判定均保持不变。现有正式报告需用
 同一 manifest 重生。三维质点矩阵不包含 AirSim 或目标硬件条件，系统实时性继续保持未关闭。
 
+固定报告 bundle 已增加二维 PNG。上半图按显式 short 10 seed、long 3 seed 绘制 D1 融合配对改善；
+下半图比较两组 D1 融合、融合 P95、核心墙钟、外部 elapsed 和实时因子方向化均值改善。实时因子
+越高越好，其余绘制指标越低越好，图中正值统一代表候选更优。RSS 继续在图外的机器统计、Markdown
+和准入门中报告。writer 对 pair 集合、指标 availability、有限值和方向执行失败关闭校验，CLI
+返回固定 `outputs.png`。专项为 `69 passed`，D6 全量为
+`719 passed, 1 warning in 24.65s`。
+
 `AIRSIM_INTEGRATION_PLAN.md` 已检查。本轮不改变 AirSim 日志、topic、检测、相机、reset、actor 或
 控制接口，因此无需修改。`D6_M_TO_N_EVALUATION_FRAMEWORK_REVIEW.md` 也已检查；本项不改变 M 对 N
 联盟、同步到达或五米物理指标，无需修改。

@@ -27,16 +27,21 @@
     原始 bootstrap 不变，新增候选更优计数和方向化改善。正式 v3 的实时因子 short/long 应显示
     `10/10`、`3/3`，本轮不改变 evidence、门控或准入结果。更新后专项 `67 passed`、D6 全量
     `717 passed, 1 warning in 24.26s`。
+12. 已关闭固定图表 bundle 缺口。writer 新增确定文件名的二维 PNG，覆盖 13 个 D1 融合配对改善
+    和 short/long 五项方向化均值改善；RSS 不进入主图。缺 pair、指标 unavailable、方向错误或
+    非有限值时删除旧图并失败关闭，CLI 返回 `outputs.png`。更新后专项 `69 passed`、D6 全量
+    `719 passed, 1 warning in 24.65s`。
 
 ### 仍开放 P1
 
 1. **正式报告需要重生。** main 已完成正式 v3 manifest 和首次报告。当前代码已修复实时因子方向，
-   仍需使用同一 manifest 重生 JSON/Markdown；不需要重跑矩阵或改写 evidence。
+   并增加固定 PNG；仍需使用同一 manifest 重生 JSON/CSV/Markdown/PNG bundle，不需要重跑矩阵
+   或改写 evidence。
 2. **系统实时性未关闭。** 该矩阵属于三维质点。AirSim 或目标硬件的处理、调度和资源证据仍缺失。
 3. **精度指标不在本门内。** 均方根误差、归一化估计误差平方、归一化创新平方和严格身份指标仍需
    独立 truth-isolated 评估。
 
-当前无 D6-owned P0。evaluator、manifest consumer、方向化统计、门控和报告接口已关闭；既有正式
+当前无 D6-owned P0。evaluator、manifest consumer、方向化统计、门控和含 PNG 的报告接口已关闭；既有正式
 报告制品重生以及系统实时/精度证据保持 P1。
 
 ## 2026-07-24 D1 协方差成对限制向量化 GAP 更新

@@ -31,7 +31,10 @@
 - [x] 对共同 seed 的 D1 fusion、core wall、external elapsed 分别计算长短单位仿真时间成本增长；
   core wall 与 external elapsed 不相加。
 - [x] 实现 short、long、增长率、core wall、RSS、语义、truth 和 exit 的全部预注册准入门。
-- [x] 输出 JSON、逐 pair CSV、中文 Markdown；CSV 明确使用 LF。
+- [x] 输出 JSON、逐 pair CSV、中文 Markdown 和固定二维 PNG；CSV 明确使用 LF。PNG 上半图展示
+  short/long 的逐 seed D1 融合配对改善，下半图展示五项方向化分组均值改善；RSS 不进入主图。
+- [x] PNG writer 在 13 个 pair、五项分组指标、有限值和改善方向完整时才写图；缺 pair 或指标
+  unavailable 时删除旧图并失败关闭。CLI `outputs` 返回固定 `png` 路径。
 - [x] fixture 正例和矩阵缺项、配置漂移、runtime/hold 漂移、cross false、truth/exit、short
   faster/mean/CI/P95、long faster/mean、增长率、core mean、RSS mean/单 pair 等失败关闭路径
   已覆盖；manifest 另覆盖 schema、experiment、矩阵元数据、规模、运行参数、bootstrap、准入门、
@@ -39,8 +42,9 @@
 - [x] D2 观测处置 consumer 保持 exact-match：旧 producer 的 `14/11`
   `known_false_alarm_only_mapping_count` 与持久化明确排除数矛盾时失败关闭；修复后的 `11/11`
   通过，3 个 unavailable mapping 不计入。
-- [x] 2026-07-24 验收：多 seed 专项 `67 passed`，D6 全量
-  `717 passed, 1 warning in 24.26s`。warning 为既有 Matplotlib `Axes3D` 环境提示。
+- [x] 2026-07-24 验收：多 seed 专项 `69 passed`，D6 全量
+  `719 passed, 1 warning in 24.65s`。新增测试固定 PNG 文件名、签名、非空内容、CLI 路径和
+  缺 pair/缺指标失败关闭；warning 为既有 Matplotlib `Axes3D` 环境提示。
 
 ### 正式 v3 状态
 
@@ -48,7 +52,8 @@
 - [x] 修复首次报告的实时因子展示方向。short/long 的原始相对变化
   `+3.222%/+3.601%` 保持不变，候选更优计数改为 `10/10`、`3/3`，改善值改为正数。
 - [x] 准入门、正式 evidence、提交绑定和 `d1_optimization_admitted` 不受展示修复影响。
-- [ ] main 使用同一 completed manifest 重生正式 JSON/Markdown；无需重跑矩阵或修改 evidence。
+- [ ] main 使用同一 completed manifest 重生正式 JSON/CSV/Markdown/PNG bundle；无需重跑矩阵或
+  修改 evidence。
 - [ ] 该矩阵仅能评价三维质点计算性能。系统实时缺口仍需 AirSim 或目标硬件条件下的独立证据。
 
 `AIRSIM_INTEGRATION_PLAN.md` 已检查。本轮没有修改 AirSim 日志 schema、相机、检测、reset、actor、

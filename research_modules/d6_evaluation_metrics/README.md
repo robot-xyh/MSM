@@ -56,6 +56,14 @@ short 和 long 分别输出每 seed 配对值，以及 reference/candidate 的�
 `mean_improvement_pct` 统一解释为正值代表候选更优。bootstrap 仍报告原始相对变化方向，不翻转
 符号。
 
+固定报告 bundle 新增
+`d1_covariance_limit_multiseed_long_improvements.png`。上半图绘制 short 10 个 seed 与 long
+3 个 seed 的 D1 融合配对改善；下半图比较两组的 D1 融合、融合 P95、核心墙钟、外部 elapsed 和
+实时因子方向化均值改善。正值统一表示候选更优，实时因子按越高越好，其余绘制指标按越低越好。
+RSS 继续保留在 JSON、CSV 和 Markdown 的资源审计与准入门中，不进入主图。writer 只有在 13 个
+配对和五项分组指标完整、方向一致且数值有限时才生成 PNG；缺 pair 或指标不可用时删除旧图并失败
+关闭。CLI 的 `outputs` 同步返回固定 `png` 路径。
+
 seed `1101-1103` 同时存在 short 和 long。对 D1 fusion、核心 episode wall 和外部 elapsed 分别
 计算：
 
@@ -72,8 +80,8 @@ candidate_relative_degradation =
 core wall 和 RSS 均值恶化不超过 5%，任一 RSS pair 恶化不超过 5%；矩阵、语义、有限状态、真值和
 退出门全部通过。
 
-输出接口生成机器 JSON、13 行逐 pair CSV 和中文 Markdown。CSV 固定使用 LF。系统实时性单独输出：
-该预注册矩阵是三维质点证据，不包含 AirSim 或目标硬件运行条件，因此
+输出接口生成机器 JSON、13 行逐 pair CSV、中文 Markdown 和固定二维 PNG。CSV 固定使用 LF。
+系统实时性单独输出：该预注册矩阵是三维质点证据，不包含 AirSim 或目标硬件运行条件，因此
 `system_realtime_gap_closed` 不由该矩阵关闭。
 
 当前只完成 evaluator、v1/v2/v3 manifest loader 和测试 fixture。旧 v1 矩阵曾运行到 long seed 1102
@@ -89,8 +97,9 @@ main 已完成正式 v3 manifest 和首次报告。首次报告将越高越好�
 该修复不改变正式 evidence、提交绑定、准入门或 `d1_optimization_admitted`。正式报告需由 main
 使用同一 manifest 重生。
 
-多 seed 专项为 `67 passed, 1 warning`，D6 全量为
-`717 passed, 1 warning in 24.26s`。warning 为既有 Matplotlib `Axes3D` 环境提示。
+多 seed 专项为 `69 passed, 1 warning`，D6 全量为
+`719 passed, 1 warning in 24.65s`。新增回归检查 PNG 固定文件名、签名、非空内容、CLI 输出以及
+缺 pair/缺指标失败关闭。warning 为既有 Matplotlib `Axes3D` 环境提示。
 
 ## 2026-07-24 D1 协方差成对限制向量化准入
 

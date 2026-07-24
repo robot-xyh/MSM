@@ -136,6 +136,23 @@ _METRIC_IMPROVEMENT_DIRECTIONS = {
     "maximum_rss_kib": _LOWER_IS_BETTER,
     "real_time_factor": _HIGHER_IS_BETTER,
 }
+_IMPROVEMENT_PLOT_FILENAME = (
+    "d1_covariance_limit_multiseed_long_improvements.png"
+)
+_IMPROVEMENT_PLOT_METRICS = (
+    "d1_fusion_wall_s",
+    "d1_fusion_p95_ms",
+    "core_wall_s",
+    "external_elapsed_s",
+    "real_time_factor",
+)
+_IMPROVEMENT_PLOT_LABELS = {
+    "d1_fusion_wall_s": "D1 融合\n（越低越好）",
+    "d1_fusion_p95_ms": "融合 P95\n（越低越好）",
+    "core_wall_s": "核心墙钟\n（越低越好）",
+    "external_elapsed_s": "外部耗时\n（越低越好）",
+    "real_time_factor": "实时因子\n（越高越好）",
+}
 _GROWTH_METRICS = (
     "d1_fusion_wall_s",
     "core_wall_s",
@@ -1018,7 +1035,7 @@ def write_d1_covariance_limit_multiseed_long_report(
     result: Mapping[str, Any],
     output_dir: str | Path,
 ) -> dict[str, Path]:
-    """Write JSON, LF-only per-pair CSV, and Chinese Markdown."""
+    """Write JSON, LF-only CSV, Chinese Markdown, and a fixed PNG."""
 
     directory = Path(output_dir).expanduser().resolve()
     directory.mkdir(parents=True, exist_ok=True)
@@ -1029,6 +1046,9 @@ def write_d1_covariance_limit_multiseed_long_report(
     markdown_path = (
         directory / "D1_COVARIANCE_LIMIT_MULTISEED_LONG_EVALUATION_CN.md"
     )
+    png_path = directory / _IMPROVEMENT_PLOT_FILENAME
+    png_path.unlink(missing_ok=True)
+    plot_data = _validated_improvement_plot_data(result)
     json_path.write_text(
         json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True)
         + "\n",
@@ -1039,11 +1059,256 @@ def write_d1_covariance_limit_multiseed_long_report(
         render_d1_covariance_limit_multiseed_long_markdown(result),
         encoding="utf-8",
     )
+    _write_improvement_plot(plot_data, png_path)
     return {
         "json": json_path,
         "csv": csv_path,
         "markdown": markdown_path,
+        "png": png_path,
     }
+
+
+def _validated_improvement_plot_data(
+    result: Mapping[str, Any],
+) -> dict[str, Any]:
+    raw_pairs = result.get("pairs")
+    if not isinstance(raw_pairs, (list, tuple)) or not raw_pairs:
+        raise ValueError("plot requires non-empty explicit pair evidence")
+
+    expected_seeds = {
+        _SHORT_GROUP: D1_COVARIANCE_LIMIT_SHORT_SEEDS,
+        _LONG_GROUP: D1_COVARIANCE_LIMIT_LONG_SEEDS,
+    }
+    pair_series: dict[str, dict[int, float]] = {
+        group: {} for group in expected_seeds
+    }
+    for index, pair in enumerate(raw_pairs):
+        if not isinstance(pair, Mapping):
+            raise ValueError(f"plot pair {index} must be an object")
+        group = pair.get("group")
+        seed = pair.get("seed")
+        if group not in expected_seeds:
+            raise ValueError(f"plot pair {index} has unknown group")
+        if not isinstance(seed, int) or isinstance(seed, bool):
+            raise ValueError(f"plot pair {index} seed must be an integer")
+        if seed in pair_series[group]:
+            raise ValueError(f"plot pair {group}:{seed} is duplicated")
+        performance = pair.get("performance")
+        if not isinstance(performance, Mapping):
+            raise ValueError(
+                f"plot pair {group}:{seed} performance is unavailable"
+            )
+        fusion = performance.get("d1_fusion_wall_s")
+        if (
+            not isinstance(fusion, Mapping)
+            or fusion.get("availability") != "available"
+        ):
+            raise ValueError(
+                f"plot pair {group}:{seed} D1 fusion is unavailable"
+            )
+        relative_change = fusion.get("relative_change_pct")
+        if not _is_finite_number(relative_change):
+            raise ValueError(
+                f"plot pair {group}:{seed} D1 fusion change is unavailable"
+            )
+        pair_series[group][seed] = -float(relative_change)
+
+    ordered_pair_series: dict[str, list[dict[str, Any]]] = {}
+    for group, seeds in expected_seeds.items():
+        if set(pair_series[group]) != set(seeds):
+            raise ValueError(
+                f"plot {group} pairs do not match preregistered seeds"
+            )
+        ordered_pair_series[group] = [
+            {
+                "seed": seed,
+                "improvement_pct": pair_series[group][seed],
+            }
+            for seed in seeds
+        ]
+
+    raw_groups = result.get("groups")
+    if not isinstance(raw_groups, Mapping):
+        raise ValueError("plot group summaries are unavailable")
+    group_improvements: dict[str, dict[str, float]] = {}
+    for group, seeds in expected_seeds.items():
+        group_summary = raw_groups.get(group)
+        if not isinstance(group_summary, Mapping):
+            raise ValueError(f"plot {group} summary is unavailable")
+        if group_summary.get("pair_count") != len(seeds):
+            raise ValueError(
+                f"plot {group} summary pair count is inconsistent"
+            )
+        if group_summary.get("seeds") != list(seeds):
+            raise ValueError(f"plot {group} summary seeds are inconsistent")
+        metrics = group_summary.get("metrics")
+        if not isinstance(metrics, Mapping):
+            raise ValueError(f"plot {group} metrics are unavailable")
+        group_improvements[group] = {}
+        for metric in _IMPROVEMENT_PLOT_METRICS:
+            summary = metrics.get(metric)
+            if (
+                not isinstance(summary, Mapping)
+                or summary.get("availability") != "available"
+            ):
+                raise ValueError(
+                    f"plot {group} {metric} summary is unavailable"
+                )
+            expected_direction = _METRIC_IMPROVEMENT_DIRECTIONS[metric]
+            if summary.get("improvement_direction") != expected_direction:
+                raise ValueError(
+                    f"plot {group} {metric} direction is inconsistent"
+                )
+            improvement = summary.get("mean_improvement_pct")
+            if not _is_finite_number(improvement):
+                raise ValueError(
+                    f"plot {group} {metric} improvement is unavailable"
+                )
+            group_improvements[group][metric] = float(improvement)
+
+    return {
+        "pair_series": ordered_pair_series,
+        "group_improvements": group_improvements,
+    }
+
+
+def _write_improvement_plot(
+    plot_data: Mapping[str, Any],
+    path: Path,
+) -> None:
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    from matplotlib import font_manager
+
+    cjk_font_path = Path(
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"
+    )
+    if cjk_font_path.exists():
+        font_manager.fontManager.addfont(str(cjk_font_path))
+        cjk_family = font_manager.FontProperties(
+            fname=str(cjk_font_path)
+        ).get_name()
+    else:
+        cjk_family = "DejaVu Sans"
+    plt.rcParams["font.sans-serif"] = [cjk_family, "DejaVu Sans"]
+    plt.rcParams["axes.unicode_minus"] = False
+
+    short_pairs = plot_data["pair_series"][_SHORT_GROUP]
+    long_pairs = plot_data["pair_series"][_LONG_GROUP]
+    short_x = list(range(len(short_pairs)))
+    long_x = list(
+        range(len(short_pairs) + 1, len(short_pairs) + 1 + len(long_pairs))
+    )
+    group_improvements = plot_data["group_improvements"]
+    colors = {
+        _SHORT_GROUP: "#2563eb",
+        _LONG_GROUP: "#d97706",
+    }
+    temporary_path = path.with_name(f".{path.stem}.tmp{path.suffix}")
+    temporary_path.unlink(missing_ok=True)
+    fig = None
+    try:
+        fig, axes = plt.subplots(2, 1, figsize=(12.0, 8.0))
+        pair_axis, group_axis = axes
+        pair_axis.plot(
+            short_x,
+            [item["improvement_pct"] for item in short_pairs],
+            color=colors[_SHORT_GROUP],
+            marker="o",
+            linewidth=1.8,
+            label="短时组（10 个随机种子）",
+        )
+        pair_axis.plot(
+            long_x,
+            [item["improvement_pct"] for item in long_pairs],
+            color=colors[_LONG_GROUP],
+            marker="s",
+            linewidth=1.8,
+            label="长时组（3 个随机种子）",
+        )
+        pair_axis.axhline(0.0, color="#334155", linewidth=0.9)
+        pair_axis.axvline(
+            len(short_pairs),
+            color="#94a3b8",
+            linewidth=0.8,
+            linestyle="--",
+        )
+        pair_axis.set_xticks(
+            short_x + long_x,
+            [
+                *(f"短\n{item['seed']}" for item in short_pairs),
+                *(f"长\n{item['seed']}" for item in long_pairs),
+            ],
+        )
+        pair_axis.set(
+            title="D1 融合耗时逐随机种子配对改善",
+            ylabel="配对改善（%）",
+        )
+        pair_axis.legend(loc="best")
+
+        metric_x = list(range(len(_IMPROVEMENT_PLOT_METRICS)))
+        bar_width = 0.36
+        for offset, group in ((-0.5, _SHORT_GROUP), (0.5, _LONG_GROUP)):
+            group_bars = group_axis.bar(
+                [value + offset * bar_width for value in metric_x],
+                [
+                    group_improvements[group][metric]
+                    for metric in _IMPROVEMENT_PLOT_METRICS
+                ],
+                width=bar_width,
+                color=colors[group],
+                label=(
+                    "短时组（10 个随机种子）"
+                    if group == _SHORT_GROUP
+                    else "长时组（3 个随机种子）"
+                ),
+            )
+            group_axis.bar_label(
+                group_bars,
+                labels=[
+                    f"{bar.get_height():+.2f}%" for bar in group_bars
+                ],
+                padding=3,
+                fontsize=8,
+            )
+        group_axis.axhline(0.0, color="#334155", linewidth=0.9)
+        group_axis.set_xticks(
+            metric_x,
+            [
+                _IMPROVEMENT_PLOT_LABELS[metric]
+                for metric in _IMPROVEMENT_PLOT_METRICS
+            ],
+        )
+        group_axis.set(
+            title="短时组与长时组方向化均值改善",
+            ylabel="均值改善（%）",
+        )
+        group_axis.legend(loc="best")
+
+        for axis in axes:
+            axis.grid(axis="y", alpha=0.25)
+            axis.set_axisbelow(True)
+        fig.suptitle(
+            "D1 协方差优化配对性能",
+            fontsize=15,
+        )
+        fig.text(
+            0.5,
+            0.012,
+            "正值表示候选更优；实时因子越高越好，其余绘制指标越低越好。",
+            ha="center",
+            fontsize=9,
+            color="#334155",
+        )
+        fig.tight_layout(rect=(0.0, 0.035, 1.0, 0.96))
+        fig.savefig(temporary_path, dpi=160)
+        temporary_path.replace(path)
+    finally:
+        if fig is not None:
+            plt.close(fig)
+        temporary_path.unlink(missing_ok=True)
 
 
 def render_d1_covariance_limit_multiseed_long_markdown(

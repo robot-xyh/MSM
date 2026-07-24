@@ -11,7 +11,10 @@ v1/v2/v3：v2 绑定 effective/base commits、公共 D2 修复和 v1 输出复�
 映射计数仍被 D6 失败关闭。main 已完成正式 v3 manifest。分组统计现显式区分越低越好和越高越好，
 保留原始相对变化、`candidate_lower_count` 和 bootstrap，新增方向、候选更优数及正向改善值。
 实时因子 short/long 修正为 `10/10`、`3/3` 候选更优；该展示修复不改变正式 evidence 或准入判定。
-专项 `67 passed`，D6 全量 `717 passed, 1 warning`。
+固定 bundle 现新增 `d1_covariance_limit_multiseed_long_improvements.png`：上半图为 13 个显式
+seed 的 D1 融合配对改善，下半图为 short/long 五项方向化均值改善。实时因子按越高越好，其余
+绘制指标按越低越好；RSS 只保留在图外审计。缺 pair、缺指标、方向不一致或非有限值时不生成图，
+CLI `outputs` 返回 `png` 路径。专项 `69 passed`，D6 全量 `719 passed, 1 warning`。
 
 2026-07-24 D1 协方差成对限制向量化准入原则和门控公式见
 `MODULE_PRINCIPLES_CN.md`、`ALGORITHM_AND_IMPLEMENTATION.md`，三轮 clean 结果见根目录

@@ -5,8 +5,8 @@
 ### 结论
 
 多 seed 与长时评估入口、completed evidence manifest loader 和失败关闭测试已完成。main 已完成
-正式 v3 manifest 并生成首次报告。本节记录本轮指标方向展示修复；没有重新读取或修改正式 evidence，
-也没有改变既有优化准入判定。
+正式 v3 manifest 并生成首次报告。本节记录指标方向展示修复和固定二维 PNG writer 验证；本轮没有
+读取或修改正式 evidence，也没有改变既有优化准入判定。
 
 ### 预注册合同
 
@@ -34,7 +34,7 @@
 ### 测试范围
 
 正例构造完整 13-pair fixture，验证 short/long 均值、中位数、P95、配对变化、确定性 bootstrap、
-同 seed 单位成本增长、JSON/CSV/中文报告和 CSV 纯 LF。相同 fixture 生成 main 合同形态的
+同 seed 单位成本增长、JSON/CSV/中文报告、固定 PNG 和 CSV 纯 LF。相同 fixture 生成 main 合同形态的
 `evidence_manifest.json`，验证 manifest CLI 与 `--pair` 互斥。失败关闭覆盖：
 
 1. 预注册 pair 缺失；
@@ -53,6 +53,8 @@
 12. v3 experiment、effective/base commits、公共 D2/D1 修复、reference treatment、两级输出复用
     标志和两臂向量化标志逐项篡改，以及 v2 注入 v3 字段；
 13. 越低越好和越高越好两类指标的更优计数、改善百分比、兼容字段和 Markdown 表头/行。
+14. PNG 固定文件名、PNG 签名、非空内容、CLI `outputs.png`，以及缺 pair/缺指标时删除旧图并
+    失败关闭。
 
 ### 暂停矩阵分析
 
@@ -81,23 +83,36 @@ main 提供的正式 v3 首次报告中，实时因子 short/long 原始变化�
 应为正改善，候选更优 seed 分别为 `10/10` 和 `3/3`。bootstrap 区间仍按原始相对变化报告，不做
 符号翻转。本轮没有改动准入门、正式 evidence、提交绑定或既有 `d1_optimization_admitted` 结果。
 
+### 固定图表
+
+writer 新增 `d1_covariance_limit_multiseed_long_improvements.png`，尺寸固定为 12×8 英寸、
+160 DPI。上半图按显式 seed 绘制 short 10 项和 long 3 项 D1 融合配对改善。下半图绘制两组的
+D1 融合、融合 P95、核心墙钟、外部 elapsed 和实时因子方向化均值改善。实时因子越高越好，其他
+四项越低越好，图中正值均表示候选更优。
+
+RSS 仍在机器统计、Markdown 表格和准入门中保留，不作为主图性能收益。图表生成前要求 13 个 pair
+集合精确、融合配对变化有限、五项分组 summary available 且方向与固定映射一致。任一条件不满足，
+writer 删除同名旧图并抛出错误，不留下可被误读的 PNG。CLI 返回的 `outputs` 增加 `png` 路径；
+JSON、CSV、Markdown 的统计内容和 evidence schema 未改变。
+
 ### 测试结果
 
 | 检查 | 结果 |
 | --- | ---: |
-| 多 seed/长时专项 | 67 passed |
-| D6 全量 | 717 passed |
+| 多 seed/长时专项 | 69 passed |
+| D6 全量 | 719 passed |
 | 失败 | 0 |
 | warning | 1 条既有 Matplotlib `Axes3D` 环境提示 |
 | 正例 CSV | 13 行数据，14 LF，0 CR |
+| 正例 PNG | 固定文件名、PNG 签名、非空 |
 
 方向 fixture 同时验证 lower-is-better 和 higher-is-better，并用 Markdown 回归固定实时因子
 `10/10`、`3/3`。既有准入正反例继续通过，说明本次只改变派生展示字段。
 
 ### 后续处理
 
-main 应使用同一 completed v3 manifest 重新运行当前 evaluator，重生正式 JSON 和中文 Markdown。
-该操作不需要重跑 13 个 pair，也不能修改正式 evidence 或准入结果。
+main 应使用同一 completed v3 manifest 重新运行当前 evaluator，重生正式
+JSON/CSV/Markdown/PNG bundle。该操作不需要重跑 13 个 pair，也不能修改正式 evidence 或准入结果。
 
 ## 2.27 D1 协方差成对限制向量化准入
 

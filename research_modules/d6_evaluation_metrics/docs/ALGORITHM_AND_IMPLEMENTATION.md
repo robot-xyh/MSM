@@ -100,10 +100,21 @@ external elapsed 分别计算 short/long 的每仿真秒成本、各 arm 增长�
 
 - `d1_covariance_limit_multiseed_long_evaluation.json`；
 - `d1_covariance_limit_multiseed_long_pairs.csv`；
-- `D1_COVARIANCE_LIMIT_MULTISEED_LONG_EVALUATION_CN.md`。
+- `D1_COVARIANCE_LIMIT_MULTISEED_LONG_EVALUATION_CN.md`；
+- `d1_covariance_limit_multiseed_long_improvements.png`。
 
 CSV 每个预注册 pair 一行，并固定 `lineterminator="\n"`。测试检查 13 行数据、14 个 LF 和 0 个
-CR。当前没有在模块 outputs 下生成正式文件；fixture 仅写 pytest 临时目录。
+CR。PNG 使用固定 12×8 英寸、160 DPI 和无界面 Matplotlib 后端，保存后关闭 figure。上半图读取
+13 个 pair 的 D1 fusion 原始相对变化，并对越低越好的方向取反，使正值表示 candidate 更优。
+下半图直接读取 short/long summary 的 `mean_improvement_pct`，绘制 D1 fusion、融合 P95、core
+wall、external elapsed 和 real-time factor。实时因子必须声明 `higher_is_better`，其余四项必须
+声明 `lower_is_better`。RSS 继续进入机器报告和门控，不进入主图。
+
+图表数据准备阶段精确核对 short seeds 1101-1110、long seeds 1101-1103、pair 唯一性、分组
+`pair_count/seeds`、指标 availability、有限值和固定方向。验证通过后先写临时 PNG，再替换固定
+文件。验证失败会删除旧 PNG 并抛出 `ValueError`，防止过期图被当作当前结果。writer 返回
+`png` 路径后，CLI 现有动态 `outputs` 序列化会自动包含该路径。JSON、CSV、Markdown 统计和
+evidence schema 没有变化。当前没有在模块 outputs 下生成正式文件；fixture 仅写 pytest 临时目录。
 
 专项测试覆盖完整正例、确定性 bootstrap、LF 输出、矩阵缺项、配置/runtime/hold 漂移、cross
 失败、truth/exit 失败，以及 short faster/mean/CI/P95、long faster/mean、长短增长、core mean、
@@ -112,8 +123,9 @@ bootstrap、门限、runtime 摘要、arm 标签/状态/返回码、cross 状态
 覆盖 experiment、effective/base commits、公共修复来源/主题及输出复用标志篡改；v3 再覆盖全部
 D1 修复、reference treatment、v2 复用和向量化标志逐项篡改。旧注册注入新版本字段同样失败关闭。
 方向测试覆盖 lower/higher 两类指标及 Markdown 行，固定实时因子 short/long 为
-`10/10`、`3/3` 候选更优。专项 `67 passed`，D6 全量
-`717 passed, 1 warning in 24.26s`。main 已完成正式 v3 manifest；本次只修正报告派生展示，不改变
+`10/10`、`3/3` 候选更优。PNG 回归覆盖固定名称、文件签名、非空内容、CLI 输出和缺 pair/缺指标
+失败关闭。专项 `69 passed`，D6 全量
+`719 passed, 1 warning in 24.65s`。main 已完成正式 v3 manifest；本次只扩展报告派生展示，不改变
 evidence 或准入判定。
 
 ## D1 协方差成对限制 clean pair 评估（2026-07-24）

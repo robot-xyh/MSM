@@ -6,6 +6,7 @@ import hashlib
 import json
 from pathlib import Path
 import re
+import struct
 
 import pytest
 
@@ -194,6 +195,14 @@ def test_preregistered_matrix_passes_and_outputs_are_deterministic_lf(
     report = paths["markdown"].read_text(encoding="utf-8")
     assert "D1 优化准入为 **通过**" in report
     assert "系统实时性缺口 **未关闭**" in report
+    assert paths["png"].name == (
+        "d1_covariance_limit_multiseed_long_improvements.png"
+    )
+    assert paths["png"].exists()
+    assert paths["png"].stat().st_size > 1000
+    png_bytes = paths["png"].read_bytes()
+    assert png_bytes.startswith(b"\x89PNG\r\n\x1a\n")
+    assert struct.unpack(">II", png_bytes[16:24]) == (1920, 1280)
 
 
 def test_realtime_factor_uses_higher_is_better_direction(
@@ -244,8 +253,48 @@ def test_markdown_reports_directional_improvement_and_better_seed_count(
     assert rows["long"][6] == "3/3"
 
 
+@pytest.mark.parametrize(
+    ("mutation", "error_match"),
+    (
+        ("missing_pair", "short pairs do not match preregistered seeds"),
+        (
+            "unavailable_metric",
+            "short core_wall_s summary is unavailable",
+        ),
+    ),
+)
+def test_report_plot_fails_closed_for_incomplete_required_data(
+    tmp_path: Path,
+    mutation: str,
+    error_match: str,
+) -> None:
+    result = _evaluate(_write_matrix(tmp_path / "matrix"))
+    if mutation == "missing_pair":
+        result["pairs"] = result["pairs"][1:]
+    else:
+        summary = result["groups"]["short"]["metrics"]["core_wall_s"]
+        summary["availability"] = "unavailable"
+        summary["reason"] = "fixture_missing_metric"
+    output_dir = tmp_path / "report"
+    output_dir.mkdir()
+    png_path = (
+        output_dir
+        / "d1_covariance_limit_multiseed_long_improvements.png"
+    )
+    png_path.write_bytes(b"stale")
+
+    with pytest.raises(ValueError, match=error_match):
+        write_d1_covariance_limit_multiseed_long_report(
+            result,
+            output_dir,
+        )
+
+    assert not png_path.exists()
+
+
 def test_completed_evidence_manifest_loader_and_cli(
     tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     pairs = _write_matrix(tmp_path / "evidence")
     manifest_path = _write_evidence_manifest(
@@ -275,6 +324,14 @@ def test_completed_evidence_manifest_loader_and_cli(
         )
         == 0
     )
+    cli_result = json.loads(capsys.readouterr().out.strip())
+    expected_png = (
+        output_dir
+        / "d1_covariance_limit_multiseed_long_improvements.png"
+    ).resolve()
+    assert cli_result["outputs"]["png"] == str(expected_png)
+    assert expected_png.exists()
+    assert expected_png.stat().st_size > 1000
     result = _read_json(
         output_dir
         / "d1_covariance_limit_multiseed_long_evaluation.json"
