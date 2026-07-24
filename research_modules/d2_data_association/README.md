@@ -6,6 +6,34 @@ D2 是 C-UAS 多目标数据关联研究模块，目标是在离线仿真和日�
 
 规模边界：D2 消费每帧传入的 `tracks`、`detections` 和当前 `active_tracks` 集合，不从场景名推断目标数量，不写死 2v2 或 5v5。`crossing_dense_5v5` 等名称只是可重复 baseline fixture；main runtime 的 `--drone-count N` 只应体现为传入 D2 的输入集合长度。
 
+### 2026-07-23 结构歧义有界身份假设 C0 设计
+
+- D2 已完成 C0 文档规划，推荐首版采用 component-local、identity-only bounded MHT，
+  并从同一保留联合假设池导出 JPDA 风格边缘概率、熵和第一/第二路径似然比。JPDA 单独
+  适合单代边不确定性，但不能直接保留跨代联合排他关系；bounded MHT 更适合连续代身份
+  延迟承诺。
+- 输入只接受 D1 `d1.structural-ambiguity-evidence.v1` 的双时间戳、allowed edge、
+  opaque member/source lineage、NIS、generation 和显式
+  `cross_covariance_available=false`。在线路径不得读取 truth；source token 和
+  observation key 都不能成为 `global_track_id`。
+- 首阶段只管理关联/身份假设。未收敛时继续现有 prediction-only hold；不做 JPDA 状态
+  混合、MHT 分支状态更新、相关 covariance 融合或历史回填，也不创建、改写、交换或
+  局部重绑 canonical ID。
+- 200 规模按 allowed-edge 稀疏连通分量运行，不建立 200x200 全局假设树。C0 为未来
+  C1 预注册 5-generation/1.0 s 窗口、单窗 64 假设、全局 4096 假设、完整枚举 256
+  匹配和每代 k-best 32 等硬上限；超限回退 hold 并保持 uncommitted。
+- identity commitment 只有在新鲜度、`>=20` 的第一/第二路径似然比、归一化熵
+  `<=0.20`、每条边缘概率 `>=0.95`、连续 3 个 generation 和不可重复来源证据门同时
+  通过时才允许形成。k-best 遗漏质量无可审计上界时禁止 commit。D3 继续只消费
+  committed 航迹。
+- 溢出、非有限权重、缺证据/跳代、同代异内容、跨窗冲突和网络超窗均 fail closed；
+  窗内 OOSM 只重放身份权重，不重放物理状态。
+- 详细设计见
+  `docs/STRUCTURAL_AMBIGUITY_BOUNDED_HYPOTHESIS_PLAN_CN.md`。当前只有 C0 文档：
+  没有 Python、开关、配置类、公开 schema、测试、回放、AirSim、P95/RSS 或算法收益
+  证据。默认 GNN/Hungarian、现有 hold 和 D3 committed-only 准入不变；seeds
+  1101/1102 继续停止。
+
 ### 2026-07-23 clean seed 1100 承诺准入复核
 
 - D2 独立复核固定提交

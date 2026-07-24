@@ -1369,3 +1369,116 @@ nominal 200v200、`recon_count=2`、时长 `2.2 s`、seed 1100。场景配置 SH
 
 本轮完整 D2 回归为 `291 passed, 1 warning in 29.29s`。warning 是本机 Matplotlib
 `Axes3D` 环境提示，不改变验收判定。
+
+## 36. 结构歧义有界概率/多假设 C0 计划
+
+### 36.1 当前状态
+
+2026-07-23 完成 C0 文档规划，详细设计见
+`docs/STRUCTURAL_AMBIGUITY_BOUNDED_HYPOTHESIS_PLAN_CN.md`。本节只登记未来实施顺序，
+不改变第 35 节的运行结论：
+
+- 当前没有新增 Python、开关、配置类、公开 schema、测试或运行证据；
+- 默认 GNN/Hungarian、现有 prediction-only hold、默认关闭状态和固定
+  `0.9 s` 发布新鲜度预算不变；
+- `global_track_id` 仍为中心 D2 权威，D3 继续只消费 committed；
+- seeds 1101/1102、10 s 和 20-seed 扩展继续停止。
+
+### 36.2 输入与首阶段边界
+
+C1 计划只消费严格的 D1 `d1.structural-ambiguity-evidence.v1`：
+
+1. 保留 `measurement_timestamp` 和 `arrival_timestamp`，measurement time 作为固定
+   窗口重放主序，arrival/published time 用于延迟和 tie-break 审计。
+2. 只使用 D1 `candidate_edges` 中含 `maximum_matching_allowed` 的 allowed edge；
+   D2 不补边。
+3. opaque member token、三段式 `source_key` 和 observation evidence key 只承担来源
+   lineage/幂等；不能成为 canonical ID。
+4. NIS 只形成版本化相对身份权重；generation、evidence/component digest 和 publisher
+   epoch 承担回放幂等。
+5. `cross_covariance_available=false` 是强制门。C1 只管理关联/身份假设，不做概率
+   状态混合、分支状态更新、历史回填或相关 covariance 融合。
+6. 在线 truth/actor/target/D6 mapping 使用必须为 0。
+
+若 member 没有既有 canonical binding，保持 `uncommitted + deferred_birth`；hypothesis
+manager 不建轨。任何获胜路径若要求创建、改写、交换或局部重绑 `global_track_id`，
+均失败关闭。
+
+### 36.3 算法选择
+
+首版推荐 component-local identity-only bounded MHT：
+
+- bounded MHT 保存最多五代的少量联合匹配路径，适合连续 generation 延迟承诺；
+- 从同一联合假设池导出 JPDA 风格 `beta_ij`、归一化熵和第一/第二路径似然比；
+- JPDA 边缘概率作为诊断和承诺门，不执行 JPDA state/covariance mixing；
+- 当前 `JPDAAssociator`/`MHTAssociator` 不能直接视为该能力，仍是二维轻量研究对照。
+
+200 规模按 allowed-edge 稀疏连通分量运行，不建立全局 200x200 假设树，不跨分量相乘
+权重。确定 1x1 分量留在既有路径。未来 C1 预注册预算为：
+
+- 单窗 member/observation/edge `8/8/64`；
+- 完整枚举最多 256 个最大基数匹配，否则每代 k-best 32；
+- 剪枝前 child 总数 2048，每窗口保留 64 个假设；
+- 窗口最多 5 generation 且 measurement-time 跨度最多 `1.0 s`；
+- active window 最多 256，全局保留假设最多 4096。
+
+超限不得靠静默截断后形成高置信度；回退 hold 并保持 uncommitted。k-best 没有遗漏
+质量上界时只能 shadow，禁止 commit。
+
+### 36.4 权重、排序与幂等
+
+每条 allowed edge 的首版计划分数为
+\(-\operatorname{NIS}/(2T_{\mathrm{NIS}})\)，与显式 coast/deferred-birth prior 和
+parent path 权重在 log domain 累加。使用 logsumexp 归一化；任一输入、部分和、归一化、
+熵或似然比出现 NaN/Inf，整窗 fail closed。
+
+窗口按 measurement/arrival/published time、publisher node/epoch、sensor/scan、
+component/generation/evidence ID 的完整键重放。成员、观测、边和假设分别使用规范排序；
+剪枝键固定为 `(-log_weight, hypothesis_id)`，并列由内容摘要决胜。
+
+幂等键为
+`(publisher_node_id,publisher_epoch,component_id,component_generation)`：
+
+- 同 key/同 digest 是无副作用 no-op；
+- 同 key/异 digest、generation 回退或跳号均不能承诺；
+- 窗内 OOSM 只从身份 checkpoint 重算权重，不重放物理状态；
+- 超过 5 代或 `1.0 s` 的 OOSM/网络迟到不重开窗口；
+- 同一 member/canonical track/observation 出现在冲突窗口时，涉及窗口全部失败关闭。
+
+### 36.5 commitment 与 D3
+
+未收敛窗口继续输出现有 uncommitted 语义。未来承诺必须同时满足：
+
+1. 最新支持 evidence 的 measurement age 不超过 `0.9 s`；
+2. 第一/第二路径 likelihood ratio 至少 20；
+3. 含 omitted-mass `other` 桶的归一化熵不超过 `0.20`；
+4. 拟承诺匹配每条边缘概率至少 `0.95`；
+5. 同一 canonical assignment 连续至少 3 个严格递增 generation 获胜；
+6. 至少 3 个不同 evidence/scan 和 observation key，measurement time 严格推进，
+   publisher epoch 和既有 canonical reference 一致；
+7. 没有溢出、缺代、同代冲突、跨窗冲突、非有限权重或无界截断质量。
+
+commitment 只结束未来身份 hold，不回填歧义帧状态。D3 继续只消费 committed；overflow、
+missing evidence、网络超窗和 fail-closed 航迹均不得进入新计划。已有计划撤回、严格
+增版和 D5/D7 阻断沿第 35 节已闭合合同维护。
+
+### 36.6 C0-C3 与预注册验收
+
+- **C0，当前完成**：只冻结设计、预算、停止条件和文档；无代码/测试/运行。
+- **C1**：内部默认关闭的纯身份假设原型；只跑手算/确定性 fixture，验证 full/k-best、
+  log-domain、排序、剪枝、OOSM、generation、容量、truth 隔离和 ID 不变式。
+- **C2**：冻结输入 offline shadow；业务输出仍由 GNN+hold 产生。先验证 200 规模
+  P95/RSS 和长时有界性，再由独立任务决定是否复核 seed 1100。
+- **C3**：只允许已通过联合门的 commitment 结束后续 hold；仍不做相关状态融合。
+  同输入全部非退化后，才能另行预注册全新未见 seed。
+
+候选指标必须同时包含 strict IDSW availability、strict IDSW、track/coverage
+continuity、D2 committed/available mapping、D3 committed target/assignment、
+birth delay、generated/retained hypothesis 数、P95、峰值 RSS、online truth use 和
+ID create/rewrite/rebind/token-as-ID/uncommitted binding violation。预注册性能门为
+hypothesis stage P95 `<=20 ms`、D2 core P95 `<=1.25x` baseline、RSS 增量
+`<=128 MiB` 且 `<=1.20x` baseline。IDSW 改善不能抵消 continuity、可用性、birth
+delay、资源或绑定合同退化。
+
+seeds 1101/1102 在 C0-C2 均不恢复；C3 也必须重新登记 seed 清单并单独授权，本计划不
+自动把 1101/1102 作为下一批。

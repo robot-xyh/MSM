@@ -2156,3 +2156,38 @@ available/unavailable/uncommitted 为 `1491/218/76`。这组结果验证了准�
 
 2026-07-23 文档同步后运行 D2 全量回归，结果为
 `291 passed, 1 warning in 29.29s`。warning 来自本机 Matplotlib `Axes3D` 环境。
+
+## 35. 结构歧义有界身份假设 C0 算法设计
+
+详细设计见
+`STRUCTURAL_AMBIGUITY_BOUNDED_HYPOTHESIS_PLAN_CN.md`。截至 2026-07-23，本节只描述
+未来算法，不表示代码或 schema 已存在。
+
+首版推荐分量局部、身份专用的 bounded MHT。对 D1 allowed-edge 图的每个小型歧义
+连通分量，维护最多五代、最多 64 条联合匹配路径；从这些路径的 log-domain 归一化权重
+计算 JPDA 风格边缘概率：
+
+\[
+\beta_{ij}=\sum_{h:(i,j)\in h}w_h.
+\]
+
+bounded MHT 保留跨代一对一排他关系，用于连续代承诺；JPDA 边缘量只用于边置信、熵和
+likelihood ratio。由于 D1 明确
+`cross_covariance_available=false`，首阶段不执行概率状态混合、分支状态更新、物理状态
+回放或 covariance 收缩。未收敛窗口继续现有 prediction-only hold。
+
+未来生成器先完整枚举至 256 个最大基数匹配，超过后使用每代最多 32 个 k-best；没有
+可审计 omitted-mass upper bound 的截断结果不能 commit。假设按
+`(-log_weight,hypothesis_id)` 确定性剪枝。相同 generation/相同摘要为幂等 no-op；
+同代异内容、回退/跳代、跨窗冲突、非有限权重、容量或网络超窗均 fail closed。窗内
+OOSM 只重算身份权重，不重放物理状态。
+
+identity commitment 预注册门为：最新 measurement age 不超过 `0.9 s`、top-2
+likelihood ratio 至少 20、含截断 `other` 桶的归一化熵不超过 `0.20`、每条获胜边缘
+概率至少 `0.95`、同一 canonical assignment 连续三代获胜，并有三个不同
+evidence/scan/observation key 的严格递增来源支持。任何结果都只能引用已有 canonical
+track；不得创建、改写、交换或局部重绑 `global_track_id`，也不得把 opaque source
+token 当作 canonical ID。D3 继续只消费 committed。
+
+本 C0 没有 Python、运行开关、配置类、公开 schema、测试、回放、AirSim 或 P95/RSS
+证据。默认 GNN/Hungarian、现有 hold 和 seeds 1101/1102 停止状态均未改变。

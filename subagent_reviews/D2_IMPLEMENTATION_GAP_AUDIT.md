@@ -1362,3 +1362,33 @@ P0 无新增项。P1 下一步仍是 seed 1100 上的 D2 算法候选，而不�
 
 2026-07-23 本轮完整 D2 回归为 `291 passed, 1 warning in 29.29s`。warning 是本机
 Matplotlib `Axes3D` 环境提示。
+
+## 2026-07-23 结构歧义有界身份假设 C0 GAP 重分类
+
+### 已关闭的规划缺口
+
+- D2 已形成正式 C0 设计
+  `research_modules/d2_data_association/docs/STRUCTURAL_AMBIGUITY_BOUNDED_HYPOTHESIS_PLAN_CN.md`。
+  文档冻结 D1 双时间戳、allowed-edge、opaque member/source lineage、NIS、
+  generation 和 `cross_covariance_available=false` 输入边界，在线 truth 继续禁止。
+- 首版推荐 component-local identity-only bounded MHT，并从保留的联合假设导出 JPDA
+  风格边缘概率、熵和似然比。原因是 bounded MHT 能保留跨代排他路径，JPDA 边缘概率
+  更适合作为承诺门和诊断；该结论不代表现有轻量 `MHTAssociator` 已满足新设计。
+- C0 已预注册 200 规模稀疏分量、5-generation/1.0 s 窗口、full/k-best 生成、
+  log-domain 归一化、确定性剪枝、birth/death/coast 占位语义、OOSM/generation 幂等、
+  commitment 门、fail-closed 矩阵及 IDSW/continuity/可用性/P95/RSS/绑定验收。
+
+### 仍开放的 P1 实现与效果缺口
+
+- 本轮只有 C0 文档，没有 Python、开关、配置类、公开 schema、测试、回放、AirSim、
+  P95/RSS 或算法收益证据。C1-C3 全部未开始。
+- 首阶段只管理关联/身份假设，不做相关状态融合；因此既有 prediction-only hold 的
+  运动学支持、航迹数和 continuity 退化没有被本设计关闭。相关状态处理需在有交叉相关
+  模型和独立验收后另行评审。
+- 未收敛、溢出、非有限权重、缺代、跨窗冲突和网络超窗均继续
+  `uncommitted + hold`；不得创建、改写或局部重绑 `global_track_id`，source token
+  不能冒充 canonical ID。D3 继续只消费 committed。
+- 默认 GNN/Hungarian、现有 hold 和默认关闭状态均不变。seeds 1101/1102 不恢复。
+
+本轮只关闭“缺少 D2-owned C0 正式计划”的文档 GAP，不关闭结构歧义算法 P1，也不新增
+P0 blocker。

@@ -1425,3 +1425,28 @@ hold-disabled baseline 的 `0.865/0.870` 仍高于当前 `0.8266666667/0.8283333
 本次未启动 AirSim，未修改 D2 算法、默认 `(2,5)`、`0.9 s` 发布新鲜度预算或启用状态。
 完整 D2 回归为 `291 passed, 1 warning in 29.29s`；warning 是本机 Matplotlib
 `Axes3D` 环境提示。
+
+## 45. 2026-07-23 结构歧义有界身份假设 C0 评审
+
+评审接受
+`research_modules/d2_data_association/docs/STRUCTURAL_AMBIGUITY_BOUNDED_HYPOTHESIS_PLAN_CN.md`
+作为 D2 后续 C1-C3 的设计基线。首版选 component-local identity-only bounded MHT，
+保留少量跨 generation 联合匹配路径；JPDA 风格边缘概率从同一假设池导出，只用于
+边置信、熵和第一/第二路径似然比，不做状态/covariance mixing。
+
+该选型必须遵守以下边界：
+
+- D1 双时间戳、allowed edge、opaque token/source lineage、NIS、generation 和
+  `cross_covariance_available=false` 原样消费，在线 truth 使用为 0；
+- 200 规模只对小型稀疏分量建窗，不建立全局 200x200 假设树；
+- full enumeration 优先，k-best 无 omitted-mass 上界时不得 commit；
+- 未收敛继续 uncommitted 和现有 prediction-only hold；
+- commitment 同时经过 `0.9 s` 新鲜度、likelihood ratio 20、归一化熵 0.20、
+  edge marginal 0.95、连续三代和不可重复来源证据门；
+- overflow、非有限、缺代、跨窗冲突和网络超窗全部 fail closed；
+- 不创建、改写、交换或局部重绑 `global_track_id`，source token 不能成为规范 ID；
+- D3 继续只消费 committed。
+
+评审只接受 C0 设计完整性，不接受算法晋级。没有代码、开关、schema、测试或运行证据；
+旧 hold 的运动学、航迹数和 continuity 退化仍是开放 P1。默认 GNN/Hungarian 和 hold
+不变，seeds 1101/1102 不恢复。
