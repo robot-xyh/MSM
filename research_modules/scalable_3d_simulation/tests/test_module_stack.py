@@ -529,10 +529,21 @@ def test_d1_centroid_overlay_shadow_is_audit_only_and_bounded() -> None:
     assert payload["shadow_differs_from_canonical"] is True
     assert payload["measurement_timestamps"] == [0.4]
     assert payload["arrival_timestamps"] == [0.65]
+    assert (
+        payload["overlay_execution_mode"]
+        == "atomic_experimental_offline_v1"
+    )
     preparation = payload["canonical_preparation"]
-    assert preparation["explicit_prepared_handle_used"] is True
-    assert preparation["validation_error"] is None
-    assert preparation["work"] == {
+    prepared_publication = preparation["prepared_publication"]
+    assert prepared_publication["prototype_status"] == (
+        "experimental_design_prototype_not_online_schema"
+    )
+    assert prepared_publication["usage_scope"] == (
+        "experimental_offline_atomic_only"
+    )
+    assert prepared_publication["validation_error"] is None
+    assert prepared_publication["track_count"] == 2
+    assert prepared_publication["work"] == {
         "full_description_pass_count": 1,
         "track_count": 2,
         "validated_track_count": 2,
@@ -541,20 +552,35 @@ def test_d1_centroid_overlay_shadow_is_audit_only_and_bounded() -> None:
         "covariance_digest_count": 2,
         "publication_digest_count": 1,
     }
-    assert preparation["evaluation_integrity_check"] == {
+    assert preparation["canonical_publication_digest"] == (
+        prepared_publication["base_publication_digest"]
+    )
+    assert preparation["post_integrity_check"] == {
         "matches": True,
         "mismatch_reason": None,
         "object_binding_pass_count": 1,
         "full_content_digest_pass_count": 1,
         "track_digest_count": 2,
     }
+    assert preparation["work"] == {
+        "canonical_full_description_pass_count": 1,
+        "canonical_description_track_digest_count": 2,
+        "canonical_post_integrity_pass_count": 1,
+        "canonical_post_integrity_track_digest_count": 2,
+        "shadow_track_copy_count": 2,
+        "shadow_full_track_digest_count": 2,
+        "shadow_publication_digest_count": 1,
+    }
+    assert preparation["atomic_failure_reason"] is None
+    assert preparation["shadow_materialized"] is True
+    assert isinstance(preparation["shadow_publication_digest"], str)
+    assert preparation["shadow_publication_digest"].startswith("sha256:")
+    assert len(preparation["shadow_publication_digest"]) == 71
     assert set(payload["phase_wall_time_ms"]) == {
-        "assemble_shadow_tracks",
+        "atomic_overlay_operation",
         "audit_log_materialization",
-        "evaluate_overlays",
         "forbidden_surface_after_digest",
         "forbidden_surface_before_digest",
-        "prepare_canonical_publication",
         "shadow_payload_digest",
     }
     assert all(
@@ -596,6 +622,11 @@ def test_d1_centroid_overlay_shadow_is_audit_only_and_bounded() -> None:
     assert duplicate_payload["rejection_reason_counts"] == {
         "duplicate_evidence_generation": 1
     }
+    duplicate_preparation = duplicate_payload["canonical_preparation"]
+    assert duplicate_preparation["shadow_materialized"] is False
+    assert duplicate_preparation["shadow_publication_digest"] is None
+    assert duplicate_preparation["atomic_failure_reason"] is None
+    assert duplicate_preparation["work"]["shadow_track_copy_count"] == 0
     assert duplicate_payload["shadow_tracks_sha256"] == (
         duplicate_payload["canonical_tracks_sha256"]
     )

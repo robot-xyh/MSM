@@ -28,9 +28,7 @@ from research_modules.d1_sensor_fusion.src.d1_sensor_fusion import (
     ScanInputOrganizer,
     Scalable3DFusionAdapter,
     SensorScanFrame,
-    assemble_experimental_centroid_shadow_tracks,
-    evaluate_experimental_centroid_publication_overlays,
-    prepare_experimental_centroid_canonical_publication,
+    run_experimental_centroid_publication_overlay_atomically,
     sensor_observations_from_online_batch,
 )
 from research_modules.d2_data_association.d2_data_association import (
@@ -3603,48 +3601,34 @@ class IntegratedScalableModuleStack:
         )
 
         evaluation_error: str | None = None
-        prepared_publication = None
+        atomic_result = None
         try:
             phase_started = perf_counter()
             try:
-                prepared_publication = (
-                    prepare_experimental_centroid_canonical_publication(
-                        canonical_tracks
-                    )
-                )
-            finally:
-                phase_wall_time_s["prepare_canonical_publication"] = (
-                    perf_counter() - phase_started
-                )
-
-            phase_started = perf_counter()
-            try:
-                evaluation = (
-                    evaluate_experimental_centroid_publication_overlays(
+                atomic_result = (
+                    run_experimental_centroid_publication_overlay_atomically(
                         canonical_tracks,
                         evidence_items,
                         state=self._d1_centroid_overlay_shadow_state,
                         disposition=disposition,
                         base_publication_revision=revision,
                         overlay_valid_for_publication_id=publication_id,
-                        prepared_publication=prepared_publication,
                     )
                 )
             finally:
-                phase_wall_time_s["evaluate_overlays"] = (
+                phase_wall_time_s["atomic_overlay_operation"] = (
                     perf_counter() - phase_started
                 )
-
-            phase_started = perf_counter()
-            try:
-                shadow_tracks = assemble_experimental_centroid_shadow_tracks(
-                    canonical_tracks,
-                    evaluation,
-                    prepared_publication=prepared_publication,
-                )
-            finally:
-                phase_wall_time_s["assemble_shadow_tracks"] = (
-                    perf_counter() - phase_started
+            evaluation = atomic_result.evaluation
+            shadow_tracks = (
+                canonical_tracks
+                if atomic_result.shadow_tracks is None
+                else atomic_result.shadow_tracks
+            )
+            if atomic_result.atomic_failure_reason is not None:
+                evaluation_error = (
+                    "RuntimeError:"
+                    f"{atomic_result.atomic_failure_reason[:240]}"
                 )
         except (
             FloatingPointError,
@@ -3764,15 +3748,17 @@ class IntegratedScalableModuleStack:
         )
         prepared_integrity_check = (
             None
-            if evaluation is None
-            or evaluation.prepared_integrity_check is None
-            else evaluation.prepared_integrity_check.to_dict()
+            if atomic_result is None
+            else atomic_result.post_integrity_check.to_dict()
         )
         phase_started = perf_counter()
         payload = {
                 "timestamp": float(publication_timestamp),
                 "posterior_generation": int(posterior_generation),
                 "status": "offline_shadow_not_consumed",
+                "overlay_execution_mode": (
+                    "atomic_experimental_offline_v1"
+                ),
                 "base_publication_revision": revision,
                 "overlay_valid_for_publication_id": publication_id,
                 "canonical_track_count": len(canonical_tracks),
@@ -3786,26 +3772,36 @@ class IntegratedScalableModuleStack:
                 ),
                 "evaluation_error": evaluation_error,
                 "canonical_preparation": {
-                    "explicit_prepared_handle_used": (
-                        prepared_publication is not None
-                    ),
-                    "base_publication_digest": (
+                    "prepared_publication": (
                         None
-                        if prepared_publication is None
-                        else prepared_publication.base_publication_digest
+                        if atomic_result is None
+                        else atomic_result.prepared_publication.to_dict()
                     ),
-                    "validation_error": (
+                    "post_integrity_check": prepared_integrity_check,
+                    "canonical_publication_digest": (
                         None
-                        if prepared_publication is None
-                        else prepared_publication.validation_error
+                        if atomic_result is None
+                        else atomic_result.canonical_publication_digest
+                    ),
+                    "shadow_publication_digest": (
+                        None
+                        if atomic_result is None
+                        else atomic_result.shadow_publication_digest
+                    ),
+                    "shadow_materialized": (
+                        False
+                        if atomic_result is None
+                        else atomic_result.shadow_materialized
                     ),
                     "work": (
                         None
-                        if prepared_publication is None
-                        else prepared_publication.work.to_dict()
+                        if atomic_result is None
+                        else atomic_result.work.to_dict()
                     ),
-                    "evaluation_integrity_check": (
-                        prepared_integrity_check
+                    "atomic_failure_reason": (
+                        None
+                        if atomic_result is None
+                        else atomic_result.atomic_failure_reason
                     ),
                 },
                 "canonical_tracks_sha256": canonical_before_sha256,
