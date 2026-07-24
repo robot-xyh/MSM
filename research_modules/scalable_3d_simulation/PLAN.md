@@ -15,8 +15,10 @@
 - [x] 首次诊断完成 10 组 short 和 long seed 1101，11/11 跨构建审计通过；
 - [x] long seed 1102 reference 以 D2 仅虚警排除计数 `14` 与 frame mapping `11` 矛盾
   失败关闭，矩阵未继续；
-- [ ] D2 修复 producer 计数口径，D6 保持 exact-match 严格 consumer；
-- [ ] 在 reference/candidate 两端叠加相同修复，冻结新的提交和 v2 矩阵；
+- [x] D2 修复 producer 计数口径，真实重放由 `14 -> 11`，其余身份评估载荷不变；
+- [x] D2 修复提交 `e4147b8` 已分别叠加到 reference/candidate；
+- [x] 冻结 v2 clean 提交 `3c134c3` / `8c11882` 和 v2 矩阵，case、顺序、门限不变；
+- [ ] D6 保持 exact-match 严格 consumer，并完成 10,000 次 bootstrap 与 manifest 入口；
 - [ ] 从头完成 10 组 short 与 3 组 long clean pair；
 - [ ] 完成新矩阵 13/13 跨构建业务语义审计；
 - [ ] 由 D6 计算 paired bootstrap 95% 区间和长短单位时间增长；

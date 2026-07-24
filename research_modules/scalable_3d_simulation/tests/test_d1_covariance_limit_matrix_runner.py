@@ -24,6 +24,9 @@ MATRIX_PATH = (
     / "configs"
     / "d1_covariance_limit_multiseed_v1.json"
 )
+MATRIX_V2_PATH = MATRIX_PATH.with_name(
+    "d1_covariance_limit_multiseed_v2.json"
+)
 
 
 def test_pre_registered_matrix_has_expected_independent_and_long_cases() -> None:
@@ -37,6 +40,20 @@ def test_pre_registered_matrix_has_expected_independent_and_long_cases() -> None
     assert {case["duration_s"] for case in short} == {2.2}
     assert {case["duration_s"] for case in long} == {10.0}
     assert all(set(case["arm_order"]) == {"reference", "candidate"} for case in matrix["cases"])
+
+
+def test_v2_preserves_matrix_and_applies_common_d2_fix() -> None:
+    v1 = load_matrix(MATRIX_PATH)
+    v2 = load_matrix(MATRIX_V2_PATH)
+
+    assert v2["experiment_id"].endswith("-v2")
+    assert v2["reference_base_commit"] == v1["reference_commit"]
+    assert v2["candidate_base_commit"] == v1["candidate_commit"]
+    assert v2["common_d2_fix_source_commit"] == "e4147b8"
+    assert v2["cases"] == v1["cases"]
+    assert v2["admission_gates"] == v1["admission_gates"]
+    assert v2["bootstrap_resamples"] == 10000
+    assert v2["evidence_boundary"]["v1_outputs_reused"] is False
 
 
 def test_command_carries_scale_seed_duration_flags_and_explicit_output(

@@ -60,6 +60,14 @@ reference/candidate 先后次序。运行器拒绝提交不匹配或脏 worktree
 reference/candidate 两端，以新的 clean 提交和新矩阵版本完整重跑，不能混用已完成的旧提交
 episode。
 
+D2 修复现已提交为 `e4147b8`。真实 seed 1102 离线重放把
+`known_false_alarm_only_mapping_count` 从 14 修正为 11，等于最终持久化排除映射数；其余
+身份评估载荷不变。main 将同一提交分别叠加到原 reference/candidate，形成
+`3c134c34655618b2e4d41302f9fbf3b6b4b78929` 和
+`8c1188267c37c5e4a546abc8e7dd6c5a4bb48dba`。v2 矩阵位于
+`configs/d1_covariance_limit_multiseed_v2.json`，保持全部 case、顺序和门限不变，
+明确禁止复用 v1 episode。
+
 ## 2026-07-24 D1 协方差成对限制 clean 准入
 
 D1 已把六维协方差 15 个非对角元素的逐项标量裁剪改为只读上三角索引上的批量裁剪。旧路径
