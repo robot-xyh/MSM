@@ -6,6 +6,35 @@
 
 ## 当前权威增量（2026-07-24）
 
+### 扫描输入优化只消除重复规范化与缓冲遍历
+
+扫描输入必须先证明热点来源，再决定是否优化。正式 v3 candidate 的 short/long
+`module.d1_scan_input` 累计墙钟均值为 `1.220624/6.572076 s`。long seed 1101 的
+570 帧、10,810 条匿名观测在 D1-only cProfile 中耗时 `2.195 s`；
+`_claim_for_frame` 占 `2.085 s`，其中 `_json_safe` 占 `1.136 s`，谱系键再次派生占
+`0.379 s`。水位线和固定滞后不是这组局部 profile 的主要成本，不能靠缩短窗口解决。
+
+每个 `SensorScanFrame` 在建立只读快照时已经逐条生成并检查 source lineage。candidate 将该
+有序谱系一起冻结，并将缓存对象身份与不可变内容纳入帧完整性封印；缓存被替换时从
+observations 重建。claim 不再调用 observation 的谱系派生逻辑。数值 NumPy 数组仍必须
+fail closed：先用批量有限性检查覆盖完整数组，通过后一次转成 Python 列表。每条安全谱系只
+生成一份规范 JSON 文本；同一文本同时作为排序键，并按原字节生成 SHA-256。内容和帧摘要的
+键排序、分隔符和 `allow_nan=False` 没有变化。
+
+水位线更新前，candidate 一次遍历现有缓冲，把帧稳定分成 ready 和 remaining，并同步计算
+remaining observation 数。接受后直接采用该分区，发布仍按量测时刻和接收序号排序。当前
+缓冲观测总数作为同步整数维护，事件和 audit 不再重复求和。过期路径没有改为整体替换：
+现有多个 expiry 事件中的缓冲计数按逐项删除变化，改变该顺序会改变审计字节。
+
+`reference_v1` 保留本任务前的完整路径，`candidate_v2` 为默认路径。570 帧交错 7 轮的
+P50/P95 为 `1.078281/1.084012 s -> 0.756634/0.766820 s`。claim/content/frame digest、
+事件字段、发布顺序和 audit 严格一致；正常、乱序、重复、replay、冲突、迟到、容量、过期和
+非有限数组均有测试。新增谱系缓存篡改回归后，专项 `26 passed in 0.29s`，D1 全量
+`361 passed in 20.67s`。普通 Python 序列的额外快路因 profile 退化被删除。
+
+这些数字只衡量已经预构造的帧进入 organizer 后的成本。payload 转换、融合、D2、AirSim 和
+目标硬件不在计时内。main 正式 13-pair 矩阵待运行，系统实时 P1 不因该专项关闭。
+
 ### 性能优化必须通过同输入、多 seed 和长时准入
 
 正式 v3 试验把标量 reference
@@ -522,9 +551,10 @@ metadata，并执行 truth、协方差、量测/到达时间戳、frame、scan i
 校验。organizer 再构造同一完整帧不会增加合同强度，只会重复快照与校验。
 
 当前实现为构造完成的帧保存轻量完整性封印，记录帧和 observation 对象、关键标量、数组
-shape/stride/dtype/只读状态以及冻结 mapping 身份。organizer 仅在封印仍完整时复用；对象或
-标量被替换、数组恢复可写时，必须回退原完整构造与 fail-closed 校验。该优化不允许绕过首次
-边界校验，也不允许把可变外部 observation 当成已验证帧。
+shape/stride/dtype/只读状态、冻结 mapping 身份，以及已缓存来源谱系 tuple 的对象身份和
+不可变内容。organizer 仅在封印仍完整时复用；对象、标量或谱系缓存被替换、数组恢复可写时，
+必须回退原完整构造与 fail-closed 校验。该优化不允许绕过首次边界校验，也不允许把可变外部
+observation 当成已验证帧。
 
 clean `4ac3bb2` nominal 200v200、10 s、seed 1000 的 771 scans/11,889 observations 冻结复放
 中，organizer 内帧重建 `771 -> 0`，observation 再快照 `11,889 -> 0`。旧/新路径逐输入

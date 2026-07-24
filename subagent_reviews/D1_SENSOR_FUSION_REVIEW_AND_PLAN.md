@@ -5,6 +5,30 @@
 
 ---
 
+## 最新增量：扫描输入剩余热点（2026-07-24）
+
+- 正式 v3 candidate 的 short/long scan-input 累计均值为 `1.220624/6.572076 s`；
+  long D2 association 为 `5.815163 s`。570 帧、10,810 条匿名观测的 D1-only cProfile
+  总计 `2.195 s`，`_claim_for_frame/_json_safe/lineage` 分别为
+  `2.085/1.136/0.379 s`。
+- 当前保留 `reference_v1`，默认使用 `candidate_v2`。candidate 复用已验证谱系，数值
+  ndarray 批量 finite 检查后一次 `tolist()`，每条谱系的 canonical JSON 同时用于摘要和
+  排序，缓冲只做一次 ready/remaining 分区，并缓存 observation 数。谱系缓存身份和不可变
+  内容已进入帧完整性封印；异常替换时从 observations 重建。
+- `execution_config()` 和 `d1.scan_input.performance_diagnostics.v2` 明确记录实际路径。
+  event-time config、业务事件/audit schema、双时间戳、NED、covariance、truth fail-closed、
+  来源谱系、6 s fixed-lag、量测频率、门限和 `global_track_id` 不变。
+- 冻结输入 SHA-256 为
+  `5b47f3cf43a9bf78bfca0db249bbefeb709a10c1a7aa6bb4277226fc2144e2d6`。7 轮交错
+  P50/P95 为 `1.078281/1.084012 -> 0.756634/0.766820 s`，P50 下降
+  `29.830%`。claim/content/frame digest、事件字段、发布顺序和 audit 严格一致。
+- 谱系重建 `10,810 -> 0`、排序键规范化 `21,620 -> 10,810`、缓冲分区 item 访问
+  `35,406 -> 17,703`、缓冲观测数重扫 item `67,876 -> 0`。新增谱系缓存篡改严格 A/B
+  回归后，专项 `26 passed in 0.29s`，D1 全量 `361 passed in 20.67s`。
+- Python 普通数值序列快路因 profile 退化已撤销；expiry 保持逐项删除，避免改变事件中间
+  计数。本证据不含融合、D2、AirSim 或目标硬件。main 正式 13-pair scan-input 矩阵待运行，
+  系统实时 P1 仍开放。
+
 ## 最新增量：正式多 seed/长时准入（2026-07-24）
 
 - v3 矩阵包含 short seeds 1101-1110、2.2 s 和 long seeds 1101-1103、10 s，共

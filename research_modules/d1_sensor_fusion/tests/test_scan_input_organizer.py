@@ -463,6 +463,7 @@ def test_intact_frame_reuses_validated_snapshot_without_second_copy() -> None:
         0.1,
         observation_count=3,
     )
+    source_lineage_cache = frame.source_lineage_keys
     organizer = ScanInputOrganizer()
 
     organizer.ingest(frame)
@@ -470,13 +471,18 @@ def test_intact_frame_reuses_validated_snapshot_without_second_copy() -> None:
 
     assert released.released_scans == (frame,)
     assert released.released_scans[0] is frame
-    assert organizer.performance_diagnostics() == {
-        "schema_version": "d1.scan_input.performance_diagnostics.v1",
-        "validated_frame_reuse_count": 1,
-        "mutated_frame_rebuild_count": 0,
-        "iterable_frame_build_count": 0,
-        "organizer_observation_snapshot_count": 0,
-    }
+    assert released.released_scans[0].source_lineage_keys is source_lineage_cache
+    diagnostics = organizer.performance_diagnostics()
+    assert diagnostics["schema_version"] == "d1.scan_input.performance_diagnostics.v2"
+    assert diagnostics["implementation"] == "candidate_v2"
+    assert diagnostics["validated_frame_reuse_count"] == 1
+    assert diagnostics["mutated_frame_rebuild_count"] == 0
+    assert diagnostics["iterable_frame_build_count"] == 0
+    assert diagnostics["organizer_observation_snapshot_count"] == 0
+    assert diagnostics["claim_build_count"] == 1
+    assert diagnostics["claim_observation_count"] == 3
+    assert diagnostics["cached_source_lineage_reuse_count"] == 3
+    assert diagnostics["source_lineage_reconstruction_count"] == 0
 
 
 def test_writable_array_frame_falls_back_to_alias_free_resnapshot() -> None:

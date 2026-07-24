@@ -1,5 +1,44 @@
 # D1 多传感器融合与目标配准实施计划
 
+## P1 扫描输入剩余热点候选（2026-07-24）
+
+### 已实施
+
+1. 以正式 v3 阶段计时确认热点：candidate 的 short/long scan-input 均值为
+   `1.220624/6.572076 s`，long D2 association 为 `5.815163 s`。long seed 1101 冻结输入
+   cProfile 进一步把 organizer 成本定位到 claim、JSON 规范化、谱系派生和缓冲重复扫描。
+2. 保留 `reference_v1` 为本任务开始前的完整可执行参考；`candidate_v2` 为默认路径。
+   constructor 参数、`execution_config()` 和 performance diagnostics 都能标明实际路径。
+3. candidate 复用帧构造阶段已经验证的谱系键；对数值数组批量执行有限性检查并一次
+   `tolist()`；每条谱系只构造一次规范 JSON，同时用于摘要和排序。谱系缓存的对象身份和
+   不可变内容已纳入帧完整性封印；缓存被非常规替换时，从 observations 重建帧。
+4. candidate 对 ready/remaining 做一次稳定分区，并缓存当前缓冲观测数。reference 继续执行
+   原两次扫描和逐次求和，便于同进程 A/B。
+5. 业务配置和事件合同不变。双时间戳、NED、covariance、在线 truth fail-closed、来源谱系、
+   6 s fixed-lag、量测频率、缓冲门限和 `global_track_id` 均未修改。
+
+### D1-owned 验收
+
+输入为 570 帧、10,810 条匿名观测，SHA-256
+`5b47f3cf43a9bf78bfca0db249bbefeb709a10c1a7aa6bb4277226fc2144e2d6`。7 轮交错
+P50/P95 为 `1.078281/1.084012 s -> 0.756634/0.766820 s`，P50 下降
+`29.830%`。claim/content/frame digest、结果事件、发布顺序和最终 audit 全部严格一致；
+墙钟不参与语义通过判定。新增缓存篡改回归后，专项 `26 passed in 0.29s`，D1 全量
+`361 passed in 20.67s`。
+
+普通 Python 数值序列快路因 cProfile 退化被撤销。expiry 单次整体分区没有实施，因为现有
+逐项过期事件要求保留每一步的缓冲计数。两项均不留在默认路径。
+
+### 下一验收
+
+1. main 在固定 candidate 提交上复用正式 v3 的 short seeds 1101-1110 和 long seeds
+   1101-1103，运行 reference/candidate 13-pair clean 全栈矩阵。
+2. manifest 同时记录 `execution_config()` 和
+   `d1.scan_input.performance_diagnostics.v2`，D6 验证两臂实际路径，不能只比较提交号。
+3. 对比 scan-input 累计/P50/P95/max、核心墙钟、实时因子和 RSS，并继续执行跨构建业务语义、
+   PSD、D2 audit、在线 truth 和 finite-state 门。
+4. 本 D1 专项不能关闭系统实时 P1。AirSim、RMSE/NEES/NIS 和目标硬件仍按独立计划验收。
+
 ## P0/P1 正式多 seed 准入结果（2026-07-24）
 
 main 已完成预注册 v3 矩阵，D6 已完成只读评估。矩阵包含 short seeds 1101-1110

@@ -19,8 +19,17 @@ SCAN_INPUT_FRAME_SCHEMA_VERSION = "d1.scan_input.frame.v1"
 SCAN_INPUT_AUDIT_EVENT_SCHEMA_VERSION = "d1.scan_input.audit_event.v1"
 SCAN_INPUT_AUDIT_SUMMARY_SCHEMA_VERSION = "d1.scan_input.audit_summary.v1"
 SCAN_INPUT_RESULT_SCHEMA_VERSION = "d1.scan_input.result.v1"
+SCAN_INPUT_EXECUTION_CONFIG_SCHEMA_VERSION = "d1.scan_input.execution_config.v1"
 SCAN_INPUT_PERFORMANCE_DIAGNOSTICS_SCHEMA_VERSION = (
-    "d1.scan_input.performance_diagnostics.v1"
+    "d1.scan_input.performance_diagnostics.v2"
+)
+SCAN_INPUT_REFERENCE_IMPLEMENTATION = "reference_v1"
+SCAN_INPUT_CANDIDATE_IMPLEMENTATION = "candidate_v2"
+_SCAN_INPUT_IMPLEMENTATIONS = frozenset(
+    {
+        SCAN_INPUT_REFERENCE_IMPLEMENTATION,
+        SCAN_INPUT_CANDIDATE_IMPLEMENTATION,
+    }
 )
 
 _TIME_EPSILON_S = 1.0e-9
@@ -103,6 +112,11 @@ class SensorScanFrame:
         repr=False,
         compare=False,
     )
+    _source_lineage_keys: tuple[tuple[Any, ...], ...] = field(
+        init=False,
+        repr=False,
+        compare=False,
+    )
 
     def __post_init__(self) -> None:
         if self.schema_version != SCAN_INPUT_FRAME_SCHEMA_VERSION:
@@ -127,6 +141,7 @@ class SensorScanFrame:
 
         observation_ids: set[str] = set()
         lineage_keys: set[tuple[Any, ...]] = set()
+        ordered_lineage_keys: list[tuple[Any, ...]] = []
         for observation in observations:
             if not _timestamps_are_valid(observation):
                 raise ScanTimestampConflictError(
@@ -170,10 +185,12 @@ class SensorScanFrame:
                     "scan contains a repeated source lineage"
                 )
             lineage_keys.add(lineage_key)
+            ordered_lineage_keys.append(lineage_key)
 
         source_namespaces = {_source_namespace(item) for item in observations}
         if len(source_namespaces) != 1:
             raise ValueError("scan observations must share source namespace")
+        object.__setattr__(self, "_source_lineage_keys", tuple(ordered_lineage_keys))
         object.__setattr__(
             self,
             "_snapshot_integrity",
@@ -230,7 +247,7 @@ class SensorScanFrame:
 
     @property
     def source_lineage_keys(self) -> tuple[tuple[Any, ...], ...]:
-        return tuple(tuple(item.source_lineage_key) for item in self.observations)
+        return self._source_lineage_keys
 
     @property
     def scan_key(self) -> tuple[str, str, str, str, str]:
@@ -423,9 +440,22 @@ class ScanInputOrganizer:
     Kalman smoothing, state rollback, or measurement-history propagation.
     """
 
-    def __init__(self, config: ScanInputConfig | None = None) -> None:
+    def __init__(
+        self,
+        config: ScanInputConfig | None = None,
+        *,
+        implementation: str = SCAN_INPUT_CANDIDATE_IMPLEMENTATION,
+    ) -> None:
         self.config = config or ScanInputConfig()
+        selected_implementation = str(implementation).strip()
+        if selected_implementation not in _SCAN_INPUT_IMPLEMENTATIONS:
+            raise ValueError(
+                "implementation must be one of "
+                f"{sorted(_SCAN_INPUT_IMPLEMENTATIONS)!r}"
+            )
+        self.implementation = selected_implementation
         self._buffer: list[_BufferedScan] = []
+        self._current_buffered_observation_count = 0
         self._scan_claims: dict[tuple[str, str, str, str, str], _ScanClaim] = {}
         self._lineage_claims: dict[str, _ScanClaim] = {}
         self._latest_arrival_timestamp: float | None = None
@@ -457,6 +487,16 @@ class ScanInputOrganizer:
         self._mutated_frame_rebuild_count = 0
         self._iterable_frame_build_count = 0
         self._organizer_observation_snapshot_count = 0
+        self._claim_build_count = 0
+        self._claim_observation_count = 0
+        self._cached_source_lineage_reuse_count = 0
+        self._source_lineage_reconstruction_count = 0
+        self._lineage_sort_key_construction_count = 0
+        self._buffer_partition_pass_count = 0
+        self._buffer_partition_item_visit_count = 0
+        self._buffered_observation_count_cache_read_count = 0
+        self._buffered_observation_count_rescan_count = 0
+        self._buffered_observation_count_rescan_item_visit_count = 0
 
     def ingest(
         self,
@@ -518,12 +558,23 @@ class ScanInputOrganizer:
 
         if self._closed:
             return self._result((), ())
-        released, events = self._release_scans(tuple(self._buffer), "end_of_stream")
+        if self.implementation == SCAN_INPUT_CANDIDATE_IMPLEMENTATION:
+            released, events = self._release_partitioned_scans(
+                tuple(self._buffer),
+                (),
+                remaining_observation_count=0,
+                reason="end_of_stream",
+            )
+        else:
+            released, events = self._release_scans(
+                tuple(self._buffer),
+                "end_of_stream",
+            )
         self._closed = True
         return self._result(released, events)
 
     def audit_summary(self) -> ScanInputAuditSummary:
-        current_observations = sum(len(item.frame.observations) for item in self._buffer)
+        current_observations = self._buffered_observation_count()
         return ScanInputAuditSummary(
             received_scan_count=self._received_scan_count,
             received_observation_count=self._received_observation_count,
@@ -558,16 +609,53 @@ class ScanInputOrganizer:
         )
 
     def performance_diagnostics(self) -> dict[str, int | str]:
-        """Return bounded operation counts for frame validation reuse."""
+        """Return bounded operation counts and the selected A/B implementation."""
 
         return {
             "schema_version": SCAN_INPUT_PERFORMANCE_DIAGNOSTICS_SCHEMA_VERSION,
+            "implementation": self.implementation,
             "validated_frame_reuse_count": self._validated_frame_reuse_count,
             "mutated_frame_rebuild_count": self._mutated_frame_rebuild_count,
             "iterable_frame_build_count": self._iterable_frame_build_count,
             "organizer_observation_snapshot_count": (
                 self._organizer_observation_snapshot_count
             ),
+            "claim_build_count": self._claim_build_count,
+            "claim_observation_count": self._claim_observation_count,
+            "cached_source_lineage_reuse_count": (
+                self._cached_source_lineage_reuse_count
+            ),
+            "source_lineage_reconstruction_count": (
+                self._source_lineage_reconstruction_count
+            ),
+            "lineage_sort_key_construction_count": (
+                self._lineage_sort_key_construction_count
+            ),
+            "buffer_partition_pass_count": self._buffer_partition_pass_count,
+            "buffer_partition_item_visit_count": (
+                self._buffer_partition_item_visit_count
+            ),
+            "buffered_observation_count_cache_read_count": (
+                self._buffered_observation_count_cache_read_count
+            ),
+            "buffered_observation_count_rescan_count": (
+                self._buffered_observation_count_rescan_count
+            ),
+            "buffered_observation_count_rescan_item_visit_count": (
+                self._buffered_observation_count_rescan_item_visit_count
+            ),
+        }
+
+    def execution_config(self) -> dict[str, Any]:
+        """Return the non-semantic execution selection for main/D6 manifests."""
+
+        return {
+            "schema_version": SCAN_INPUT_EXECUTION_CONFIG_SCHEMA_VERSION,
+            "implementation": self.implementation,
+            "candidate_is_default": True,
+            "reference_implementation": SCAN_INPUT_REFERENCE_IMPLEMENTATION,
+            "candidate_implementation": SCAN_INPUT_CANDIDATE_IMPLEMENTATION,
+            "event_time_config": self.config.to_dict(),
         }
 
     def _ingest_frame(self, frame: SensorScanFrame) -> ScanInputResult:
@@ -683,18 +771,29 @@ class ScanInputOrganizer:
                 self._maximum_seen_measurement_timestamp,
             )
         candidate_watermark = candidate_maximum - self.config.max_lateness_s
-        remaining = [
-            item
-            for item in self._buffer
-            if not _strictly_before(
-                item.frame.measurement_timestamp,
-                candidate_watermark,
+        if self.implementation == SCAN_INPUT_CANDIDATE_IMPLEMENTATION:
+            ready, remaining, remaining_observation_count = self._partition_buffer(
+                candidate_watermark
             )
-        ]
+        else:
+            self._buffer_partition_pass_count += 1
+            self._buffer_partition_item_visit_count += len(self._buffer)
+            ready = ()
+            remaining = tuple(
+                item
+                for item in self._buffer
+                if not _strictly_before(
+                    item.frame.measurement_timestamp,
+                    candidate_watermark,
+                )
+            )
+            remaining_observation_count = sum(
+                len(item.frame.observations) for item in remaining
+            )
         prospective_scan_count = len(remaining) + 1
-        prospective_observation_count = sum(
-            len(item.frame.observations) for item in remaining
-        ) + len(frame.observations)
+        prospective_observation_count = (
+            remaining_observation_count + len(frame.observations)
+        )
         buffer_overflow = (
             prospective_scan_count > self.config.max_buffered_scans
             or prospective_observation_count > self.config.max_buffered_observations
@@ -734,18 +833,32 @@ class ScanInputOrganizer:
         # Release scans closed by the candidate watermark before admitting the
         # boundary frame. This keeps the physical buffer within the configured
         # count limits throughout the operation, not only after it returns.
-        ready = tuple(
-            item
-            for item in self._buffer
-            if _strictly_before(
-                item.frame.measurement_timestamp,
-                self._measurement_watermark,
+        if self.implementation == SCAN_INPUT_CANDIDATE_IMPLEMENTATION:
+            released, release_events = self._release_partitioned_scans(
+                ready,
+                remaining,
+                remaining_observation_count=remaining_observation_count,
+                reason="watermark_released",
             )
-        )
-        released, release_events = self._release_scans(ready, "watermark_released")
+        else:
+            self._buffer_partition_pass_count += 1
+            self._buffer_partition_item_visit_count += len(self._buffer)
+            ready = tuple(
+                item
+                for item in self._buffer
+                if _strictly_before(
+                    item.frame.measurement_timestamp,
+                    self._measurement_watermark,
+                )
+            )
+            released, release_events = self._release_scans(
+                ready,
+                "watermark_released",
+            )
         events.extend(release_events)
 
         self._buffer.append(buffered)
+        self._current_buffered_observation_count += len(frame.observations)
         self._buffered_event_count += 1
         if reordered:
             self._reordered_scan_count += 1
@@ -810,6 +923,9 @@ class ScanInputOrganizer:
         events: list[ScanInputAuditEvent] = []
         for item in expired:
             self._buffer.remove(item)
+            self._current_buffered_observation_count -= len(
+                item.frame.observations
+            )
             events.append(
                 self._terminal_rejection_event(
                     item.frame,
@@ -839,6 +955,39 @@ class ScanInputOrganizer:
         )
         for item in ordered:
             self._buffer.remove(item)
+        self._current_buffered_observation_count -= sum(
+            len(item.frame.observations) for item in ordered
+        )
+        return self._emit_released_scans(ordered, reason)
+
+    def _release_partitioned_scans(
+        self,
+        ready: tuple[_BufferedScan, ...],
+        remaining: tuple[_BufferedScan, ...],
+        *,
+        remaining_observation_count: int,
+        reason: str,
+    ) -> tuple[tuple[SensorScanFrame, ...], tuple[ScanInputAuditEvent, ...]]:
+        ordered = tuple(
+            sorted(
+                ready,
+                key=lambda item: (
+                    item.frame.measurement_timestamp,
+                    item.received_sequence,
+                ),
+            )
+        )
+        self._buffer = list(remaining)
+        self._current_buffered_observation_count = int(
+            remaining_observation_count
+        )
+        return self._emit_released_scans(ordered, reason)
+
+    def _emit_released_scans(
+        self,
+        ordered: tuple[_BufferedScan, ...],
+        reason: str,
+    ) -> tuple[tuple[SensorScanFrame, ...], tuple[ScanInputAuditEvent, ...]]:
         released: list[SensorScanFrame] = []
         events: list[ScanInputAuditEvent] = []
         for item in ordered:
@@ -964,7 +1113,41 @@ class ScanInputOrganizer:
     def _build_claim(self, frame: SensorScanFrame) -> _ScanClaim:
         """Build the immutable claim used by duplicate and replay governance."""
 
+        observation_count = len(frame.observations)
+        self._claim_build_count += 1
+        self._claim_observation_count += observation_count
+        if self.implementation == SCAN_INPUT_REFERENCE_IMPLEMENTATION:
+            self._source_lineage_reconstruction_count += observation_count
+            self._lineage_sort_key_construction_count += 2 * observation_count
+            return _reference_claim_for_frame(frame)
+        self._cached_source_lineage_reuse_count += observation_count
+        self._lineage_sort_key_construction_count += observation_count
         return _claim_for_frame(frame)
+
+    def _partition_buffer(
+        self,
+        watermark: float,
+    ) -> tuple[
+        tuple[_BufferedScan, ...],
+        tuple[_BufferedScan, ...],
+        int,
+    ]:
+        ready: list[_BufferedScan] = []
+        remaining: list[_BufferedScan] = []
+        remaining_observation_count = 0
+        self._buffer_partition_pass_count += 1
+        self._buffer_partition_item_visit_count += len(self._buffer)
+        for item in self._buffer:
+            if _strictly_before(item.frame.measurement_timestamp, watermark):
+                ready.append(item)
+            else:
+                remaining.append(item)
+                remaining_observation_count += len(item.frame.observations)
+        return (
+            tuple(ready),
+            tuple(remaining),
+            remaining_observation_count,
+        )
 
     def _update_maximum_buffer_counts(self) -> None:
         self._maximum_buffered_scan_count = max(
@@ -977,6 +1160,13 @@ class ScanInputOrganizer:
         )
 
     def _buffered_observation_count(self) -> int:
+        if self.implementation == SCAN_INPUT_CANDIDATE_IMPLEMENTATION:
+            self._buffered_observation_count_cache_read_count += 1
+            return self._current_buffered_observation_count
+        self._buffered_observation_count_rescan_count += 1
+        self._buffered_observation_count_rescan_item_visit_count += len(
+            self._buffer
+        )
         return sum(len(item.frame.observations) for item in self._buffer)
 
     def _result(
@@ -993,15 +1183,20 @@ class ScanInputOrganizer:
 
 def _claim_for_frame(frame: SensorScanFrame) -> _ScanClaim:
     safe_lineages = tuple(_json_safe(item) for item in frame.source_lineage_keys)
+    lineage_sort_keys = tuple(
+        _canonical_json_safe(item) for item in safe_lineages
+    )
     lineage_digests = tuple(
-        _digest_json_safe(item) for item in safe_lineages
+        _digest_canonical_json(item) for item in lineage_sort_keys
     )
     source_lineage_digest = _digest_json_safe(sorted(lineage_digests))
-    content_records: list[dict[str, Any]] = []
-    frame_records: list[dict[str, Any]] = []
-    for observation, safe_lineage in zip(
+    decorated_records: list[
+        tuple[str, dict[str, Any], dict[str, Any]]
+    ] = []
+    for observation, safe_lineage, lineage_sort_key in zip(
         frame.observations,
         safe_lineages,
+        lineage_sort_keys,
     ):
         content_metadata = {
             str(key): value
@@ -1025,8 +1220,85 @@ def _claim_for_frame(frame: SensorScanFrame) -> _ScanClaim:
             }
         )
         content_record["source_lineage"] = safe_lineage
-        content_records.append(content_record)
         frame_only_record = _json_safe(
+            {
+                "observation_id": observation.observation_id,
+                "arrival_timestamp": observation.arrival_timestamp,
+                "target_node_id": observation.target_node_id,
+                "relay_node_id": observation.relay_node_id,
+                "sent_timestamp": observation.sent_timestamp,
+                "received_timestamp": observation.received_timestamp,
+                "scan_id": frame.scan_id,
+            }
+        )
+        decorated_records.append(
+            (
+                lineage_sort_key,
+                content_record,
+                {
+                    **content_record,
+                    **frame_only_record,
+                },
+            )
+        )
+    decorated_records.sort(key=lambda item: item[0])
+    content_records = [item[1] for item in decorated_records]
+    frame_records = [item[2] for item in decorated_records]
+    content_digest = _digest_json_safe(content_records)
+    return _ScanClaim(
+        scan_key=frame.scan_key,
+        lineage_digests=lineage_digests,
+        source_lineage_digest=source_lineage_digest,
+        content_digest=content_digest,
+        frame_digest=_digest_json_safe(frame_records),
+        measurement_timestamp=frame.measurement_timestamp,
+        arrival_timestamp=frame.arrival_timestamp,
+    )
+
+
+def _reference_claim_for_frame(frame: SensorScanFrame) -> _ScanClaim:
+    """Frozen pre-task implementation for explicit semantic and timing A/B."""
+
+    source_lineage_keys = tuple(
+        tuple(item.source_lineage_key) for item in frame.observations
+    )
+    safe_lineages = tuple(
+        _json_safe_reference(item) for item in source_lineage_keys
+    )
+    lineage_digests = tuple(
+        _digest_json_safe(item) for item in safe_lineages
+    )
+    source_lineage_digest = _digest_json_safe(sorted(lineage_digests))
+    content_records: list[dict[str, Any]] = []
+    frame_records: list[dict[str, Any]] = []
+    for observation, safe_lineage in zip(
+        frame.observations,
+        safe_lineages,
+    ):
+        content_metadata = {
+            str(key): value
+            for key, value in observation.metadata.items()
+            if str(key) not in _CONTENT_EXCLUDED_METADATA_KEYS
+        }
+        content_record = _json_safe_reference(
+            {
+                "sensor_id": observation.sensor_id,
+                "modality": observation.modality,
+                "measurement_timestamp": observation.measurement_timestamp,
+                "frame_id": observation.frame_id,
+                "measurement": observation.measurement,
+                "covariance": observation.covariance,
+                "classification_hint": observation.classification_hint,
+                "confidence": observation.confidence,
+                "quality_flags": observation.quality_flags,
+                "source_node_id": observation.source_node_id,
+                "payload_kind": observation.payload_kind,
+                "metadata": content_metadata,
+            }
+        )
+        content_record["source_lineage"] = safe_lineage
+        content_records.append(content_record)
+        frame_only_record = _json_safe_reference(
             {
                 "observation_id": observation.observation_id,
                 "arrival_timestamp": observation.arrival_timestamp,
@@ -1058,10 +1330,13 @@ def _claim_for_frame(frame: SensorScanFrame) -> _ScanClaim:
 
 
 def _frame_snapshot_integrity(frame: SensorScanFrame) -> tuple[Any, ...]:
+    source_lineage_keys = frame.source_lineage_keys
     return (
         frame.scan_id,
         frame.schema_version,
         id(frame.observations),
+        id(source_lineage_keys),
+        source_lineage_keys,
         tuple(_observation_snapshot_integrity(item) for item in frame.observations),
     )
 
@@ -1264,13 +1539,20 @@ def _digest(payload: Any) -> str:
 
 
 def _digest_json_safe(payload: Any) -> str:
-    encoded = json.dumps(
+    return _digest_canonical_json(_canonical_json_safe(payload))
+
+
+def _canonical_json_safe(payload: Any) -> str:
+    return json.dumps(
         payload,
         sort_keys=True,
         separators=(",", ":"),
         allow_nan=False,
-    ).encode("utf-8")
-    return "sha256:" + hashlib.sha256(encoded).hexdigest()
+    )
+
+
+def _digest_canonical_json(payload: str) -> str:
+    return "sha256:" + hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
 def _observation_to_dict(observation: SensorObservation) -> dict[str, Any]:
@@ -1313,6 +1595,10 @@ def _json_safe(value: Any) -> Any:
     if isinstance(value, Enum):
         return _json_safe(value.value)
     if isinstance(value, np.ndarray):
+        if value.ndim > 0 and value.dtype.kind in {"b", "i", "u", "f"}:
+            if value.dtype.kind == "f" and not bool(np.isfinite(value).all()):
+                raise ValueError("scan digest input contains non-finite float")
+            return value.tolist()
         return [_json_safe(item) for item in value.tolist()]
     if is_dataclass(value) and not isinstance(value, type):
         return {
@@ -1328,4 +1614,39 @@ def _json_safe(value: Any) -> Any:
         return [_json_safe(item) for item in value]
     if isinstance(value, (set, frozenset)):
         return sorted((_json_safe(item) for item in value), key=repr)
+    raise TypeError(f"scan digest input has unsupported type: {type(value).__name__}")
+
+
+def _json_safe_reference(value: Any) -> Any:
+    """Frozen recursive ndarray conversion used only by the A/B reference."""
+
+    if value is None or isinstance(value, (str, int, bool)):
+        return value
+    if isinstance(value, float):
+        if not np.isfinite(value):
+            raise ValueError("scan digest input contains non-finite float")
+        return value
+    if isinstance(value, np.generic):
+        return _json_safe_reference(value.item())
+    if isinstance(value, Enum):
+        return _json_safe_reference(value.value)
+    if isinstance(value, np.ndarray):
+        return [_json_safe_reference(item) for item in value.tolist()]
+    if is_dataclass(value) and not isinstance(value, type):
+        return {
+            item.name: _json_safe_reference(getattr(value, item.name))
+            for item in fields(value)
+        }
+    if isinstance(value, Mapping):
+        return {
+            str(key): _json_safe_reference(item)
+            for key, item in sorted(value.items(), key=lambda pair: str(pair[0]))
+        }
+    if isinstance(value, (list, tuple)):
+        return [_json_safe_reference(item) for item in value]
+    if isinstance(value, (set, frozenset)):
+        return sorted(
+            (_json_safe_reference(item) for item in value),
+            key=repr,
+        )
     raise TypeError(f"scan digest input has unsupported type: {type(value).__name__}")

@@ -917,3 +917,28 @@ AirSim 和完整 200v200 实时性保持开放。性能专项 `6 passed`，main 
 证据位于
 `research_modules/scalable_3d_simulation/outputs/scalable_3d_long_duration_candidate_20260722_clean_f80b5bd/`。
 本轮没有新增 D1 P0 blocker，也没有新增 AirSim 或正式 RMSE/NEES/NIS 证据。
+
+## 31. 2026-07-24 Scan-input 剩余热点治理 GAP 状态
+
+正式 v3 candidate 的阶段累计墙钟显示，short/long `module.d1_scan_input` 均值为
+`1.220624/6.572076 s`，long D2 association 为 `5.815163 s`。D1 对 long seed 1101
+的冻结匿名输入进行专项剖析。输入包含 570 帧、10,810 条观测，SHA-256 为
+`5b47f3cf43a9bf78bfca0db249bbefeb709a10c1a7aa6bb4277226fc2144e2d6`。任务开始前路径
+cProfile 总计 `2.195 s`，其中 `_claim_for_frame` 为 `2.085 s`、`_json_safe` 为
+`1.136 s`，谱系再次派生为 `0.379 s`。
+
+| GAP/合同 | 当前状态 | 2026-07-24 D1-owned 证据 | 剩余关闭条件 |
+| --- | --- | --- | --- |
+| 可执行 A/B reference | **已关闭** | `reference_v1` 保留任务开始前的 claim、递归 JSON-safe、缓冲双扫描和计数重扫；`candidate_v2` 为默认。constructor、`execution_config.v1` 和 `performance_diagnostics.v2` 均显式记录实际路径 | main/D6 必须在正式 manifest 中持久化执行配置和诊断，不能按提交号推断路径 |
+| Claim 重复工作 | **D1-owned 热点已关闭** | candidate 复用帧构造时已验证的有序谱系；缓存身份与不可变内容进入帧完整性封印，异常替换时从 observations 重建；数值 ndarray 批量 finite 检查后一次 `tolist()`；每条谱系只构造一次 canonical JSON。谱系重建 `10,810 -> 0`，排序键构造 `21,620 -> 10,810` | 后续 schema 或谱系字段变化继续执行 digest 字节等价回归 |
+| 缓冲重复扫描 | **D1-owned 热点已关闭** | ready/remaining 单次稳定分区，item 访问 `35,406 -> 17,703`；缓冲观测计数重扫 item `67,876 -> 0`。expiry 保持逐项删除，未改变多过期事件的中间计数 | main 长时矩阵继续检查缓冲峰值、RSS、expiry 和容量边界 |
+| Reference/candidate 业务等价 | **D1 专项已关闭** | claim/content/frame digest、每次 ingest/close 的全部事件字段、发布顺序、逐步与终态 audit 严格一致；覆盖正常、乱序、duplicate、replay、冲突、too-late、缓冲/claim 溢出、expiry、NaN/正负无穷 fail-closed 和谱系缓存篡改重建。当前专项 `26 passed`、D1 全量 `361 passed` | main 仍需执行正式 short 10 seed + long 3 seed 的 13-pair clean 全栈语义门 |
+| D1-only 专项性能 | **已形成描述性证据** | 7 轮交错 P50/P95 `1.078281/1.084012 -> 0.756634/0.766820 s`；P50 下降 `29.830%`、加速 `1.425x`。计时前已构造帧，墙钟不参与语义放行 | 固定 candidate 提交运行正式 13-pair scan-input 矩阵，统计累计/P50/P95/max、核心墙钟、实时因子和 RSS |
+| 完整系统实时与正式效果 | **P1 仍开放，main-owned** | 本轮不含 payload 转换、融合、D2、AirSim、目标硬件或正式 RMSE/NEES/NIS | 通过 main 预注册系统预算、完整多 seed、正式精度和独立 AirSim 验收；不得用本专项关闭系统 P1 |
+
+普通 Python 数值序列快路在同条件 profile 中由约 `1.525 s` 退化到 `1.610 s`，已撤销。
+expiry 整体分区会改变同批多个过期事件中的中间缓冲计数，因此未采用。双时间戳、NED、
+covariance、在线 truth fail-closed、source lineage、6 s fixed-lag、量测频率、缓冲门限和
+`global_track_id` 合同均未修改。本项是 D1 实现与冻结回放专项证据；main 正式 13-pair
+矩阵尚未运行，系统实时 P1 不关闭。AirSim 集成计划已检查，本轮没有接口、settings 或运行
+证据变化，无需修改。

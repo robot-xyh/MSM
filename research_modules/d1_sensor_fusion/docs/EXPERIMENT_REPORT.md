@@ -1,5 +1,84 @@
 # 第一研究模块实验结果
 
+## 扫描输入剩余热点专项
+
+**证据日期：2026-07-24**
+
+**范围：预构造 `SensorScanFrame` 后的 `ScanInputOrganizer`，不含融合和 D2**
+
+### 背景
+
+正式 v3 candidate 的阶段计时给出 short/long scan-input 累计均值
+`1.220624/6.572076 s`；long D2 association 为 `5.815163 s`。long seed 1101 的持久化输入
+包含 570 帧、10,810 条匿名观测，SHA-256 为
+`5b47f3cf43a9bf78bfca0db249bbefeb709a10c1a7aa6bb4277226fc2144e2d6`。
+
+任务开始前路径的 cProfile 总计 `2.195 s`，`_claim_for_frame` 为 `2.085 s`，
+`_json_safe` 为 `1.136 s`，谱系键派生为 `0.379 s`。profile 支持治理 claim 和重复遍历，
+不支持缩短 6 s fixed-lag、改水位线或丢弃观测。
+
+### 方案
+
+`reference_v1` 完整保留旧实现。默认 `candidate_v2` 采用：
+
+1. 复用帧构造时已经验证的有序谱系，并将谱系缓存身份与不可变内容纳入帧完整性封印；
+2. 数值数组批量有限性检查后一次 `tolist()`；
+3. 每条谱系规范 JSON 同时用于 lineage SHA-256 和稳定排序；
+4. ready/remaining 一次分区；
+5. 当前缓冲 observation 数同步缓存。
+
+事件时间配置、双时间戳、NED、covariance、在线 truth 隔离、来源谱系、6 s fixed-lag、量测
+频率、缓冲门限和 `global_track_id` 合同没有变化。
+
+### 等价验收
+
+| 验收项 | 结果 |
+| --- | --- |
+| claim lineage/content/frame digest | 严格一致 |
+| 每次 ingest/close 的全部事件字段 | 严格一致 |
+| release 顺序 | 严格一致 |
+| 每一步和终态 audit summary | 严格一致 |
+| 默认路径诊断 | `candidate_v2` |
+| 在线 truth 使用 | 0 |
+
+自动化测试另覆盖正常、窗口内乱序、duplicate、replay、payload conflict、too-late、缓冲
+容量、claim 容量、多个过期事件、NaN/正负无穷数组和谱系缓存篡改重建。篡改用例中
+reference/candidate 的 claim、结果和 audit 摘要严格一致。当前专项 `26 passed in 0.29s`，
+D1 全量 `361 passed in 20.67s`。
+
+### 操作数与墙钟
+
+| 指标 | reference | candidate |
+| --- | ---: | ---: |
+| 谱系重新派生 | 10,810 | 0 |
+| 已验证谱系复用 | 0 | 10,810 |
+| 谱系排序键构造 | 21,620 | 10,810 |
+| 缓冲分区次数 | 1,140 | 570 |
+| 缓冲分区 item 访问 | 35,406 | 17,703 |
+| 缓冲观测计数重扫次数 | 2,281 | 0 |
+| 缓冲观测计数重扫 item | 67,876 | 0 |
+
+交错运行 7 轮：
+
+| 墙钟 | reference | candidate |
+| --- | ---: | ---: |
+| P50 | 1.078281 s | 0.756634 s |
+| P95 | 1.084012 s | 0.766820 s |
+| min/max | 1.074699/1.085083 s | 0.752240/0.770461 s |
+
+P50 下降 `29.830%`、加速 `1.425x`。墙钟没有进入等价通过判定。机器可读结果和中文摘要为
+`../reports/d1_scan_input_candidate_performance_benchmark_20260724.json` 与
+`../reports/D1_SCAN_INPUT_CANDIDATE_PERFORMANCE_BENCHMARK_20260724_CN.md`。
+
+### 放弃项与边界
+
+普通 Python 数值序列的 `all/any` 快路在同一 profile 条件下使总时间从约 `1.525 s` 上升到
+`1.610 s`，已删除。expiry 整体分区会改变一批多个过期事件的中间缓冲计数，未实施。
+
+本报告属于 D1 实现和冻结回放专项。计时前已完成 payload 转换和帧构造，不含 D1 融合、
+D2、AirSim、目标硬件或完整系统。main 正式 13-pair scan-input 矩阵待运行，不能据此关闭
+系统实时 P1。
+
 ## 协方差向量化正式多 seed 与长时准入
 
 **证据日期：2026-07-24**

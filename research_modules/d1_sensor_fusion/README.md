@@ -4,6 +4,45 @@ Offline research module for radar, acoustic, EO, and optional synthetic lidar he
 
 ## 当前性能与治理证据（2026-07-24）
 
+### 第二十五阶段：扫描输入剩余热点治理
+
+正式 v3 candidate 的 `module.d1_scan_input` 累计墙钟均值为 short
+`1.220624 s`、long `6.572076 s`；long 的 D2 association 为 `5.815163 s`。对 long
+seed 1101 持久化匿名输入做 D1-only 剖析，570 帧、10,810 条观测的 organizer
+cProfile 为 `2.195 s`，其中 `_claim_for_frame` 为 `2.085 s`、`_json_safe` 为
+`1.136 s`，谱系键再次派生为 `0.379 s`。该结果确认扫描输入已成为独立 P1 热点。
+
+`ScanInputOrganizer` 现在保留两个显式路径：
+
+- `reference_v1` 冻结本任务开始前的 claim 构造、两次缓冲扫描和逐次缓冲观测计数；
+- `candidate_v2` 为默认路径，复用 `SensorScanFrame` 构造时已经校验的谱系键；数值
+  `ndarray` 先批量检查有限性，再执行一次 `tolist()`；每条谱系的规范 JSON 同时用于
+  lineage digest 和排序；ready/remaining 一次分区；缓冲观测数使用同步缓存。已验证谱系
+  缓存的对象身份和不可变内容同时进入帧完整性封印；缓存被非常规替换时，从 observations
+  重建帧，不复用被污染内容。
+
+选择通过 `ScanInputOrganizer(implementation=...)` 完成。
+`execution_config()` 使用 `d1.scan_input.execution_config.v1`，
+`performance_diagnostics()` 升级为 `d1.scan_input.performance_diagnostics.v2`，均明确记录
+实际路径。event-time `ScanInputConfig` 和五个业务 DTO schema 不变。main/D6 后续必须把
+execution config 与 diagnostics 写入正式矩阵 manifest/评估输入，不能根据提交号猜测路径。
+
+冻结回放 SHA-256 为
+`5b47f3cf43a9bf78bfca0db249bbefeb709a10c1a7aa6bb4277226fc2144e2d6`。570 帧、
+10,810 条匿名观测交错运行 7 轮，reference/candidate P50/P95 为
+`1.078281/1.084012 s -> 0.756634/0.766820 s`，P50 下降 `29.830%`、加速
+`1.425x`。谱系重复派生 `10,810 -> 0`，排序键规范化 `21,620 -> 10,810`，缓冲分区
+访问 `35,406 -> 17,703`，缓冲观测数重复遍历 67,876 个 item 降为 0。claim/content/frame
+digest、逐输入事件字段、发布顺序和累计 audit 严格一致。正常、乱序、duplicate、replay、
+冲突、too-late、缓冲/claim 容量、过期、非有限数组和谱系缓存篡改均有 A/B 回归。当前专项
+`26 passed in 0.29s`，D1 全量 `361 passed in 20.67s`。
+
+普通 Python 数值序列的额外 `all/any` 快路实测使 cProfile 由约 `1.525 s` 回升到
+`1.610 s`，已删除。过期缓冲仍保留逐项移除，因为现有 expiry 事件携带逐次变化的中间缓冲
+计数，整体替换会改变事件字节。上述结果只属于 D1 实现和预构造帧专项；不含 payload
+转换、融合、D2、AirSim 或目标硬件。main 正式 13-pair scan-input 矩阵尚未运行，系统实时
+P1 保持开放。
+
 ### 第二十四阶段：协方差向量化正式准入
 
 正式 v3 矩阵使用 200 个目标、200 个资源和 2 个侦察节点的三维质点集成栈。short 组为
@@ -660,8 +699,8 @@ clean episode 原始 D1 fusion P50/P95/max 为
 `1.747/177.084/361.536 ms`。
 
 profiler 确认 scan-input 重复成本来自已完成深快照和合同校验的 `SensorScanFrame` 被 organizer
-再次构造。当前实现对完整帧核对轻量完整性封印后直接复用；对象或标量被替换、数组恢复可写时
-回退原完整重建和 fail-closed 校验。完整复放操作数如下：
+再次构造。当前实现对完整帧核对轻量完整性封印后直接复用；对象、标量或已验证谱系缓存被替换，
+或数组恢复可写时，回退原完整重建和 fail-closed 校验。完整复放操作数如下：
 
 | Scan-input 操作数 | 旧路径 | 新路径 |
 | --- | ---: | ---: |

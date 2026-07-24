@@ -8,6 +8,105 @@
 
 ## 当前权威增量（2026-07-24）
 
+### 扫描输入 A/B 实现
+
+#### 参考边界
+
+`reference_v1` 冻结本任务开始前的算法。对每个帧，它重新派生逐 observation
+`source_lineage_key`，递归把每个 NumPy 标量转成 JSON 安全值，分别为 lineage digest 和
+lineage 排序生成规范 JSON。计算候选水位线后，它先扫描缓冲得到 remaining 并求观测总数；
+通过容量检查后再次扫描得到 ready。事件或 audit 每次需要缓冲观测数时重新遍历当前缓冲。
+
+该路径没有删除，调用方式为：
+
+```python
+reference = ScanInputOrganizer(implementation="reference_v1")
+```
+
+默认 `candidate_v2` 使用相同 `ScanInputConfig` 和业务 schema：
+
+```python
+candidate = ScanInputOrganizer()
+assert candidate.execution_config()["implementation"] == "candidate_v2"
+```
+
+`execution_config()` 采用 `d1.scan_input.execution_config.v1`；
+`performance_diagnostics()` 采用 `d1.scan_input.performance_diagnostics.v2`。后者记录
+claim 数、观测数、谱系复用/重建、排序键构造、缓冲分区访问和缓冲观测计数缓存/重扫次数。
+
+#### Claim 单次规范化
+
+帧构造阶段已经按原顺序得到并验证
+\(L=(\ell_1,\ldots,\ell_m)\)。candidate 把 \(L\) 存为只读帧字段，并把缓存对象身份和不可变
+内容纳入帧完整性封印。缓存被替换时，organizer 从 observations 重建帧。对每个谱系只执行一次：
+
+\[
+s_i=\operatorname{JSON}_{canonical}(\ell_i),\qquad
+d_i=\operatorname{SHA256}(s_i).
+\]
+
+\(s_i\) 既是内容记录与帧记录共同的稳定排序键，也是 \(d_i\) 的原始输入。旧实现为 digest
+和排序各生成一次规范 JSON。candidate 没有以 digest 代替排序键，因此保留原 JSON 字典序；
+`sort_keys=True`、紧凑分隔符、UTF-8 和 `allow_nan=False` 均不变。
+
+数值 `ndarray` 的 JSON 安全转换满足：
+
+1. 仅对维数大于零且类型为布尔、整数、无符号整数或浮点的数组进入批量路径；
+2. 浮点数组先执行完整 `isfinite(...).all()`；
+3. 通过后只调用一次 `tolist()`；
+4. 对象数组、复数数组和零维数组保留旧递归或失败行为。
+
+因此 NaN 和正负无穷仍抛出同一 `ValueError`，不会产生 claim、发布或缓冲项。
+
+#### 单次缓冲分区
+
+候选水位线仍为：
+
+\[
+W=\max(t_m^{new},t_m^{seen})-\Delta t_{late}.
+\]
+
+candidate 一次遍历当前缓冲 \(B\)：
+
+\[
+B_{ready}=\{b\in B:t_m(b)<W-\epsilon\},\qquad
+B_{remain}=B\setminus B_{ready}.
+\]
+
+遍历时同步累计 \(B_{remain}\) 的 observation 数。容量检查失败时不修改原缓冲；通过后将
+`B_remain` 按原顺序保留，将 `B_ready` 按 `(measurement_timestamp,
+received_sequence)` 排序并生成原事件。当前缓冲观测数由 append/release/expiry 同步加减，
+事件字段与 audit 读取该缓存。
+
+expiry 没有使用整体分区替换。旧实现逐项移除过期帧后立即生成事件，同一批多个过期事件中的
+`current_buffered_*` 逐步下降；一次替换会改变这些字段。普通 Python 数值序列快路也未保留：
+相同代码下 cProfile 由约 `1.525 s` 退化到 `1.610 s`。
+
+#### 等价与专项性能
+
+冻结输入文件 SHA-256 为
+`5b47f3cf43a9bf78bfca0db249bbefeb709a10c1a7aa6bb4277226fc2144e2d6`，含 570 帧和
+10,810 条匿名观测。严格比较范围包括每个 registered claim 的 lineage/content/frame
+digest、逐输入全部事件字段、发布顺序和每一步/终态 audit。结果全部相同。
+
+7 轮交错 organizer-only 墙钟如下：
+
+| 指标 | reference | candidate |
+| --- | ---: | ---: |
+| P50 | 1.078281 s | 0.756634 s |
+| P95 | 1.084012 s | 0.766820 s |
+| 谱系重建 | 10,810 | 0 |
+| 排序键规范化 | 21,620 | 10,810 |
+| 缓冲分区 item 访问 | 35,406 | 17,703 |
+| 缓冲观测计数重扫 item | 67,876 | 0 |
+
+P50 下降 `29.830%`，加速 `1.425x`。墙钟不参与语义放行。专项覆盖正常、乱序、duplicate、
+replay、payload conflict、too-late、缓冲/claim 容量、expiry、非有限数组和谱系缓存篡改；
+当前专项 `26 passed in 0.29s`，D1 全量 `361 passed in 20.67s`。
+
+这是 D1 实现与冻结回放专项。main 正式 13-pair scan-input 全栈矩阵待运行；系统实时、
+AirSim、RMSE/NEES/NIS 和目标硬件状态不变。
+
 ### 正式准入方法与结果
 
 正式 v3 使用同一预注册运行配置对标量和向量化路径做配对试验。reference 提交
@@ -1035,8 +1134,8 @@ observations。claim registry、逐输入结果、release schedule、逐 fusion 
 
 `SensorScanFrame.__post_init__` 继续执行原有完整流程：逐 observation alias-free 快照、只读
 数组和递归冻结 metadata、在线 truth 隔离、协方差合同、双时间戳、统一 frame/scan identity
-及 source lineage 校验。新增 `_snapshot_integrity` 只描述该已验证快照的对象和不可变结构，
-不替代上述校验。
+及 source lineage 校验。新增 `_snapshot_integrity` 描述该已验证快照的对象和不可变结构，
+包括已缓存 source-lineage tuple 的对象身份与内容，不替代上述校验。
 
 `ScanInputOrganizer.ingest()` 收到 `SensorScanFrame` 时先调用
 `_frame_snapshot_is_intact()`。封印完整则直接进入原 `_ingest_frame()`，继续生成相同
@@ -1044,8 +1143,9 @@ claim、content/frame digest、audit event、watermark 和 release schedule；�
 原路径重新构造 `SensorScanFrame`。`performance_diagnostics()` 记录完整帧复用、变异帧重建、
 iterable 帧构造和 organizer 内 observation 快照数，供冻结 benchmark 使用。
 
-测试覆盖完整帧对象直接复用、数组恢复可写后的 alias-free 回退，以及 metadata 注入 truth 后
-的 fail-closed 拒绝。完整 `4ac3bb2` seed 1000 冻结复放进一步比较：
+测试覆盖完整帧对象直接复用、谱系缓存被替换后的 observations 重建、数组恢复可写后的
+alias-free 回退，以及 metadata 注入 truth 后的 fail-closed 拒绝。缓存篡改回归同时比较
+reference/candidate 的 claim、结果和 audit 摘要。完整 `4ac3bb2` seed 1000 冻结复放进一步比较：
 
 - 771 个逐输入 organizer 结果、close 结果、audit 和 94 个 release groups；
 - 771 个逐 fusion posterior，包括状态、协方差、时间戳、source lineage 和 track level；
