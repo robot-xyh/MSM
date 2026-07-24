@@ -1,5 +1,36 @@
 # D6 实现差距审计
 
+## 2026-07-24 D1 协方差成对限制向量化 GAP 更新
+
+### 已关闭
+
+1. D6 已新增显式三轮 clean pair 入口，不从目录名推断 reference/candidate、规模或 seed。
+2. manifest clean、提交绑定、配置/运行配置 SHA-256、场景版本、seed、规模、世界时间、summary
+   有限值、2035 条观测、在线真值零使用、cross-build 载荷等价和进程零退出均已进入失败关闭检查。
+3. D1 fusion wall、episode P95、核心 wall、外部 elapsed、RSS、实时因子和独立 scan input 已按
+   每轮及聚合输出 availability/reason。核心 wall 与外部 elapsed 没有相加。
+4. 准入门已形成机器判据：fusion 3/3 更快且聚合下降至少 5%，P95 均值下降，核心 wall 不恶化且
+   至少 2/3 更快，RSS 聚合及任一轮增幅不超过 5%，业务/有限值/truth/exit 全通过。
+5. 三轮 clean seed 1100 结果为 fusion wall 下降 `10.4411%`、P95 下降 `5.9154%`、核心 wall
+   下降 `3.1417%`、外部 elapsed 下降 `3.6310%`、RSS 下降 `0.1429%`，全部门控通过，
+   `d1_optimization_admitted=true`。
+6. 正例、CSV 纯 LF 写入及 cross false、配置/seed 不一致、truth 非零、阶段缺失、非零退出、
+   RSS 越门共 `9 passed`；D6 全量 `646 passed, 1 warning in 21.65s`。
+
+### 仍开放 P1
+
+1. **系统实时容量。** 候选实时因子均值只有 `0.215065`。当前不能关闭实时 P1，也不能把 D1
+   单阶段加速解释为完整 D1-D7 栈实时。
+2. **独立 seed 与长时稳定性。** 现有三轮都是 seed 1100 的 2.2 秒重复。多个独立 seed、长稳定
+   窗口、增长率和置信区间仍未提供。
+3. **精度与一致性。** 本批没有均方根误差、归一化估计误差平方、归一化创新平方、严格
+   ID Switch 或航迹连续性证据。cross-build 业务载荷等价不能替代精度验收。
+4. **AirSim 和目标硬件。** 本批是三维质点，不包含 AirSim、真实相机/雷达负载或目标处理器资源
+   预算。
+
+当前无新增 P0。D6-owned 显式 pair consumer、失败关闭门和报告缺口已关闭；系统实时、独立
+multi-seed、精度和 AirSim/硬件容量保持 P1。
+
 ## 2026-07-24 D1 原子影子旁路兼容 GAP 更新
 
 ### 已关闭

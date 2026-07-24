@@ -135,6 +135,18 @@ from .d1_centroid_overlay_shadow import (
     evaluate_d1_centroid_overlay_shadow_evidence,
     evaluate_d1_centroid_overlay_shadow_pair_performance,
 )
+from .d1_covariance_limit_clean_pair import (
+    D1_COVARIANCE_LIMIT_CLEAN_PAIR_EVALUATION_DATE,
+    D1_COVARIANCE_LIMIT_CLEAN_PAIR_SCHEMA_VERSION,
+    D1_COVARIANCE_LIMIT_FUSION_STAGE,
+    D1_COVARIANCE_LIMIT_MAXIMUM_RSS_INCREASE_PCT,
+    D1_COVARIANCE_LIMIT_MINIMUM_FUSION_IMPROVEMENT_PCT,
+    D1_COVARIANCE_LIMIT_SCAN_INPUT_STAGE,
+    D1CovarianceLimitCleanPairInput,
+    evaluate_d1_covariance_limit_clean_pairs,
+    render_d1_covariance_limit_clean_pair_markdown,
+    write_d1_covariance_limit_clean_pair_report,
+)
 from .reporting import ReportGenerator
 from .scenario_library import (
     ScenarioDefinition,
@@ -531,6 +543,16 @@ __all__ = [
     "D1CentroidOverlayShadowPairPerformanceEvidence",
     "evaluate_d1_centroid_overlay_shadow_evidence",
     "evaluate_d1_centroid_overlay_shadow_pair_performance",
+    "D1_COVARIANCE_LIMIT_CLEAN_PAIR_EVALUATION_DATE",
+    "D1_COVARIANCE_LIMIT_CLEAN_PAIR_SCHEMA_VERSION",
+    "D1_COVARIANCE_LIMIT_FUSION_STAGE",
+    "D1_COVARIANCE_LIMIT_MAXIMUM_RSS_INCREASE_PCT",
+    "D1_COVARIANCE_LIMIT_MINIMUM_FUSION_IMPROVEMENT_PCT",
+    "D1_COVARIANCE_LIMIT_SCAN_INPUT_STAGE",
+    "D1CovarianceLimitCleanPairInput",
+    "evaluate_d1_covariance_limit_clean_pairs",
+    "render_d1_covariance_limit_clean_pair_markdown",
+    "write_d1_covariance_limit_clean_pair_report",
     "stage_timing_csv_rows",
     "summarize_d3_canonical_history",
     "summarize_terminal_closure_case_evidence",

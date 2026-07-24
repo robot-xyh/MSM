@@ -1,5 +1,70 @@
 # D6 系统级离线评估：算法原理与实施说明
 
+## D1 协方差成对限制 clean pair 评估（2026-07-24）
+
+### 输入绑定
+
+`D1CovarianceLimitCleanPairInput` 为一轮比较显式保存六项输入：轮次编号、参考 episode、候选
+episode、cross-build JSON、参考资源记录和候选资源记录。正式命令重复三次 `--pair`，并单独给出
+参考提交和候选提交。解析器不遍历父目录，也不从 `ref`、`cand`、`200v200` 等路径文本推断实验
+语义。
+
+每个 episode 先交给现有 `evaluate_scalable_3d_episode()`。该入口负责 schema/provenance、
+配置哈希、在线真值审计和 `scalable3d-stage-timings-v2` 分位读取。新评估器同时直接读取 manifest、
+scenario config 和 summary，对运行配置对象和场景配置对象重新计算规范 JSON SHA-256。资源文件
+按 GNU `time -v` 固定字段读取 external elapsed、maximum RSS 和 exit status。每个数值都携带
+`availability/value/reason`；缺文件、缺阶段、非有限值或格式错误不补零。
+
+### 语义校验
+
+每轮按以下顺序校验：
+
+1. reference/candidate manifest 均为 clean，提交分别匹配冻结的 40 位提交号；
+2. 场景配置和运行配置自身哈希有效，两臂的配置、seed、场景版本、规模和世界时间一致；
+3. summary 数值有限，`finite_state=true`、在线真值使用为 0、在线观测数为 2035；
+4. cross-build schema 正确、`passed=true`、全部已声明检查为真、规范化在线载荷一致，且其中的
+   episode 路径、提交、seed、场景版本和运行配置摘要与显式输入一致；
+5. D1 fusion wall/P95、核心墙钟、外部 elapsed、RSS、实时因子和退出状态可用，退出状态为 0。
+
+三轮还要共享同一个 seed、配置摘要、运行配置摘要、场景版本和规模。该跨轮检查防止把不同输入的
+自然波动当成优化收益。
+
+### 性能聚合
+
+对 D1 fusion wall、episode 内 P95、scan input wall、核心墙钟、外部 elapsed、RSS 和实时因子，
+先生成逐轮 reference/candidate、差值和相对变化，再计算三个 reference 与三个 candidate 的算术
+均值。准入判据为：
+
+```text
+semantic_pass_count == 3
+and d1_fusion_candidate_lower_count == 3
+and d1_fusion_mean_improvement_pct >= 5
+and mean(candidate_episode_p95) < mean(reference_episode_p95)
+and mean(candidate_core_wall) <= mean(reference_core_wall)
+and core_wall_candidate_lower_count >= 2
+and aggregate_rss_increase_pct <= 5
+and maximum_pair_rss_increase_pct <= 5
+and all_finite_truth_exit_checks_pass
+```
+
+外部 elapsed 与核心墙钟分别保留，不生成二者之和。D1 scan input 不参与门控。D2、D3、D7 阶段
+不进入本项聚合，避免无因果隔离的调度波动污染 D1 结论。
+
+### 输出
+
+`write_d1_covariance_limit_clean_pair_report()` 原子职责仅是生成三类离线文件：
+
+- JSON 保存所有输入绑定、逐 arm availability、每轮检查、聚合指标和准入门；
+- CSV 保存三轮六个 arm 的主要数值与来源提交；
+- 中文 Markdown 先给准入结论，再列聚合值、逐轮值、全部门控和证据限制。
+
+正式输出位于 `outputs/d1_covariance_limit_clean_pair_20260724/`。实际三轮得到
+`d1_optimization_admitted=true`，但因为候选实时因子均值为 `0.215065`、只有单 seed 的 2.2 秒
+重复且无 AirSim/精度证据，`system_realtime_gap_closed=false`。测试覆盖一个三轮正例和 cross
+false、配置/seed 不一致、在线真值非零、D1 阶段缺失、进程非零退出、RSS 超过 5% 七类失败关闭
+路径和 CSV 纯 LF 写入，共 `9 passed`；D6 全量
+`646 passed, 1 warning in 21.65s`。
+
 ## D1 原子影子载荷分派与校验（2026-07-24）
 
 解析器先读取 payload 顶层执行模式。没有模式标记且没有 `canonical_preparation` 时，记录归入

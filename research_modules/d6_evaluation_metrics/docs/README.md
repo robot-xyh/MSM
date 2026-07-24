@@ -1,5 +1,14 @@
 # D6 文档索引
 
+2026-07-24 D1 协方差成对限制向量化准入原则和门控公式见
+`MODULE_PRINCIPLES_CN.md`、`ALGORITHM_AND_IMPLEMENTATION.md`，三轮 clean 结果见根目录
+`../EXPERIMENT_REPORT.md` 2.27 节。显式 pair 入口复用 scalable 3D reader，并独立读取 GNU
+`time -v` 资源层；机器 JSON、逐轮 CSV 和中文报告位于
+`../outputs/d1_covariance_limit_clean_pair_20260724/`。D1 fusion wall 均值下降 `10.4411%`，
+P95 均值下降 `5.9154%`，优化准入通过；候选实时因子均值 `0.215065`，系统实时、多 seed、
+AirSim 和精度 P1 保持开放。CSV 固定使用 LF 且无 CR；专项 `9 passed`，D6 全量为
+`646 passed, 1 warning`。
+
 2026-07-24 D1 原子影子旁路兼容原理与字段约束见
 `MODULE_PRINCIPLES_CN.md`、`ALGORITHM_AND_IMPLEMENTATION.md`，确定性结果见根目录
 `../EXPERIMENT_REPORT.md` 2.26 节。D6 保留历史 uninstrumented/prepared-handle v1，同时仅在

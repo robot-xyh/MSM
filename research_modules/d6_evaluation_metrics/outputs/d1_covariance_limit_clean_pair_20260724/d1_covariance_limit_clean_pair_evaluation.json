@@ -1,0 +1,1461 @@
+{
+  "admission_gates": {
+    "business_semantics_all_pairs": {
+      "passed": true,
+      "reason": null
+    },
+    "common_frozen_input": {
+      "passed": true,
+      "reason": null
+    },
+    "core_wall_at_least_two_pairs_faster": {
+      "passed": true,
+      "reason": null
+    },
+    "core_wall_non_degraded": {
+      "passed": true,
+      "reason": null
+    },
+    "d1_fusion_aggregate_improvement_at_least_threshold": {
+      "passed": true,
+      "reason": null
+    },
+    "d1_fusion_p95_aggregate_improved": {
+      "passed": true,
+      "reason": null
+    },
+    "d1_fusion_three_of_three_faster": {
+      "passed": true,
+      "reason": null
+    },
+    "explicit_pair_count": {
+      "passed": true,
+      "reason": null
+    },
+    "finite_summary_all_arms": {
+      "passed": true,
+      "reason": null
+    },
+    "online_truth_zero_all_arms": {
+      "passed": true,
+      "reason": null
+    },
+    "process_exit_zero_all_arms": {
+      "passed": true,
+      "reason": null
+    },
+    "required_metrics_available": {
+      "passed": true,
+      "reason": null
+    },
+    "rss_increase_within_limit": {
+      "passed": true,
+      "reason": null
+    },
+    "unique_round_ids": {
+      "passed": true,
+      "reason": null
+    }
+  },
+  "aggregate_metrics": {
+    "core_wall_s": {
+      "availability": "available",
+      "candidate_lower_count": 3,
+      "candidate_mean": 10.229605523655968,
+      "delta_candidate_minus_reference": -0.33181094869117445,
+      "improvement_pct": 3.1417277176783243,
+      "maximum_pair_relative_increase_pct": -2.8268499927955175,
+      "pair_count": 3,
+      "reason": null,
+      "reference_mean": 10.561416472347142,
+      "relative_change_pct": -3.1417277176783243
+    },
+    "d1_fusion_p95_ms": {
+      "availability": "available",
+      "candidate_lower_count": 3,
+      "candidate_mean": 173.33086845076954,
+      "delta_candidate_minus_reference": -10.897789883892983,
+      "improvement_pct": 5.915360825185236,
+      "maximum_pair_relative_increase_pct": -5.195053317100344,
+      "pair_count": 3,
+      "reason": null,
+      "reference_mean": 184.22865833466253,
+      "relative_change_pct": -5.915360825185236
+    },
+    "d1_fusion_wall_s": {
+      "availability": "available",
+      "candidate_lower_count": 3,
+      "candidate_mean": 3.5955331056223563,
+      "delta_candidate_minus_reference": -0.4191804136692858,
+      "improvement_pct": 10.441103995466312,
+      "maximum_pair_relative_increase_pct": -8.795165188546887,
+      "pair_count": 3,
+      "reason": null,
+      "reference_mean": 4.014713519291642,
+      "relative_change_pct": -10.441103995466312
+    },
+    "d1_scan_input_wall_s": {
+      "availability": "available",
+      "candidate_lower_count": 0,
+      "candidate_mean": 1.1833246352422673,
+      "delta_candidate_minus_reference": 0.00425236749773239,
+      "improvement_pct": -0.3606536778162723,
+      "maximum_pair_relative_increase_pct": 0.5506287463912052,
+      "pair_count": 3,
+      "reason": null,
+      "reference_mean": 1.1790722677445349,
+      "relative_change_pct": 0.3606536778162723
+    },
+    "external_elapsed_s": {
+      "availability": "available",
+      "candidate_lower_count": 3,
+      "candidate_mean": 17.516666666666666,
+      "delta_candidate_minus_reference": -0.6600000000000001,
+      "improvement_pct": 3.6310287914909236,
+      "maximum_pair_relative_increase_pct": -1.457399103139022,
+      "pair_count": 3,
+      "reason": null,
+      "reference_mean": 18.176666666666666,
+      "relative_change_pct": -3.6310287914909236
+    },
+    "maximum_rss_kib": {
+      "availability": "available",
+      "candidate_lower_count": 3,
+      "candidate_mean": 1075045.3333333333,
+      "delta_candidate_minus_reference": -1538.6666666667443,
+      "improvement_pct": 0.14292119023380845,
+      "maximum_pair_relative_increase_pct": -0.03720238095238095,
+      "pair_count": 3,
+      "reason": null,
+      "reference_mean": 1076584.0,
+      "relative_change_pct": -0.14292119023380845
+    },
+    "real_time_factor": {
+      "availability": "available",
+      "candidate_lower_count": 0,
+      "candidate_mean": 0.21506512070941916,
+      "delta_candidate_minus_reference": 0.006757775798768656,
+      "improvement_pct": -3.244137071435132,
+      "maximum_pair_relative_increase_pct": 3.7237623528161032,
+      "pair_count": 3,
+      "reason": null,
+      "reference_mean": 0.2083073449106505,
+      "relative_change_pct": 3.244137071435132
+    }
+  },
+  "common_evidence_checks": {
+    "common_config_sha256": {
+      "passed": true,
+      "reason": null
+    },
+    "common_runtime_profile_sha256": {
+      "passed": true,
+      "reason": null
+    },
+    "common_scale": {
+      "passed": true,
+      "reason": null
+    },
+    "common_scenario_version": {
+      "passed": true,
+      "reason": null
+    },
+    "common_seed": {
+      "passed": true,
+      "reason": null
+    },
+    "unique_round_ids": {
+      "passed": true,
+      "reason": null
+    }
+  },
+  "control_path_participation": false,
+  "d1_optimization_admitted": true,
+  "evaluation_date": "2026-07-24",
+  "evaluation_role": "d6_independent_read_only_consumer",
+  "not_evaluated": {
+    "airsim_runtime": "not_applicable_point_mass_input",
+    "multi_seed_generalization": "unavailable_single_seed",
+    "nees": "unavailable_not_in_admission_input",
+    "nis": "unavailable_not_in_admission_input",
+    "rmse": "unavailable_not_in_admission_input"
+  },
+  "online_truth_used_for_business": false,
+  "pairs": [
+    {
+      "business_semantics_passed": true,
+      "candidate": {
+        "arm_evidence_valid": true,
+        "checks": {
+          "commit_matches_expected": {
+            "passed": true,
+            "reason": null
+          },
+          "config_hash_valid": {
+            "passed": true,
+            "reason": null
+          },
+          "duration_matches_expected": {
+            "passed": true,
+            "reason": null
+          },
+          "finite_state_true": {
+            "passed": true,
+            "reason": null
+          },
+          "manifest_available": {
+            "passed": true,
+            "reason": null
+          },
+          "manifest_clean": {
+            "passed": true,
+            "reason": null
+          },
+          "observation_count_matches_expected": {
+            "passed": true,
+            "reason": null
+          },
+          "online_truth_use_zero": {
+            "passed": true,
+            "reason": null
+          },
+          "process_exit_zero": {
+            "passed": true,
+            "reason": null
+          },
+          "required_metrics_available": {
+            "passed": true,
+            "reason": null
+          },
+          "runtime_profile_hash_valid": {
+            "passed": true,
+            "reason": null
+          },
+          "scale_matches_expected": {
+            "passed": true,
+            "reason": null
+          },
+          "scenario_config_available": {
+            "passed": true,
+            "reason": null
+          },
+          "summary_available": {
+            "passed": true,
+            "reason": null
+          },
+          "summary_numeric_values_finite": {
+            "passed": true,
+            "reason": null
+          }
+        },
+        "episode_dir": "/tmp/msm_d1_cov_clean_r1_cand",
+        "metrics": {
+          "core_wall_s": {
+            "availability": "available",
+            "reason": null,
+            "value": 10.199504078016616
+          },
+          "d1_fusion_call_count": {
+            "availability": "available",
+            "reason": null,
+            "value": 89
+          },
+          "d1_fusion_p95_ms": {
+            "availability": "available",
+            "reason": null,
+            "value": 172.69264557398856
+          },
+          "d1_fusion_wall_s": {
+            "availability": "available",
+            "reason": null,
+            "value": 3.578768121311441
+          },
+          "d1_scan_input_wall_s": {
+            "availability": "available",
+            "reason": null,
+            "value": 1.1823843188467436
+          },
+          "external_elapsed_s": {
+            "availability": "available",
+            "reason": null,
+            "value": 17.54
+          },
+          "maximum_rss_kib": {
+            "availability": "available",
+            "reason": null,
+            "value": 1075280
+          },
+          "online_observation_count": {
+            "availability": "available",
+            "reason": null,
+            "value": 2035
+          },
+          "online_truth_use_count": {
+            "availability": "available",
+            "reason": null,
+            "value": 0
+          },
+          "process_exit_status": {
+            "availability": "available",
+            "reason": null,
+            "value": 0
+          },
+          "real_time_factor": {
+            "availability": "available",
+            "reason": null,
+            "value": 0.21569676164371018
+          }
+        },
+        "provenance": {
+          "config_sha256": "20ef5248c8b45ff5aced9080c8d47e65a43aaba54f18ce824dc50fac7a52b840",
+          "git_commit": "95bf46e34321127313757986bb28bfb14b7e3c59",
+          "recon_count": 2,
+          "repository_dirty": false,
+          "resource_count": 200,
+          "runtime_profile_sha256": "deabac3fbf2a788f68a0b807945e5f1bedacf8c5917c4d3b49c5cffb3c90da70",
+          "scenario_name": "nominal_200v200_cli_200v200",
+          "scenario_version": "200v200-nominal-v1-cli-200v200",
+          "seed": 1100,
+          "simulated_duration_s": 2.2,
+          "target_count": 200
+        },
+        "resource_path": "/tmp/msm_d1_cov_clean_r1_cand_resource.txt"
+      },
+      "cross_build_checks": {
+        "all_declared_cross_checks_true": {
+          "passed": true,
+          "reason": null
+        },
+        "commit_binding": {
+          "passed": true,
+          "reason": null
+        },
+        "cross_build_available": {
+          "passed": true,
+          "reason": null
+        },
+        "cross_build_passed": {
+          "passed": true,
+          "reason": null
+        },
+        "episode_path_binding": {
+          "passed": true,
+          "reason": null
+        },
+        "normalized_online_payloads_equal": {
+          "passed": true,
+          "reason": null
+        },
+        "provenance_binding": {
+          "passed": true,
+          "reason": null
+        },
+        "schema_supported": {
+          "passed": true,
+          "reason": null
+        },
+        "source_clean": {
+          "passed": true,
+          "reason": null
+        }
+      },
+      "input_binding": {
+        "candidate_episode_dir": "/tmp/msm_d1_cov_clean_r1_cand",
+        "candidate_resource_path": "/tmp/msm_d1_cov_clean_r1_cand_resource.txt",
+        "cross_build_path": "/tmp/msm_d1_cov_cross_r1/cross_build_semantic_equivalence.json",
+        "reference_episode_dir": "/tmp/msm_d1_cov_clean_r1_ref",
+        "reference_resource_path": "/tmp/msm_d1_cov_clean_r1_ref_resource.txt"
+      },
+      "pair_checks": {
+        "same_config_sha256": {
+          "passed": true,
+          "reason": null
+        },
+        "same_duration": {
+          "passed": true,
+          "reason": null
+        },
+        "same_runtime_profile_sha256": {
+          "passed": true,
+          "reason": null
+        },
+        "same_scale": {
+          "passed": true,
+          "reason": null
+        },
+        "same_scenario_version": {
+          "passed": true,
+          "reason": null
+        },
+        "same_seed": {
+          "passed": true,
+          "reason": null
+        }
+      },
+      "performance": {
+        "core_wall_s": {
+          "availability": "available",
+          "candidate": 10.199504078016616,
+          "candidate_lower": true,
+          "delta_candidate_minus_reference": -0.31624244997510687,
+          "reason": null,
+          "reference": 10.515746527991723,
+          "relative_change_pct": -3.0073228670290346
+        },
+        "d1_fusion_p95_ms": {
+          "availability": "available",
+          "candidate": 172.69264557398856,
+          "candidate_lower": true,
+          "delta_candidate_minus_reference": -10.096546215936542,
+          "reason": null,
+          "reference": 182.7891917899251,
+          "relative_change_pct": -5.52360132296019
+        },
+        "d1_fusion_wall_s": {
+          "availability": "available",
+          "candidate": 3.578768121311441,
+          "candidate_lower": true,
+          "delta_candidate_minus_reference": -0.5327791134477593,
+          "reason": null,
+          "reference": 4.1115472347592,
+          "relative_change_pct": -12.958117298121286
+        },
+        "d1_scan_input_wall_s": {
+          "availability": "available",
+          "candidate": 1.1823843188467436,
+          "candidate_lower": false,
+          "delta_candidate_minus_reference": 0.0029734261333942413,
+          "reason": null,
+          "reference": 1.1794108927133493,
+          "relative_change_pct": 0.25211113037574084
+        },
+        "external_elapsed_s": {
+          "availability": "available",
+          "candidate": 17.54,
+          "candidate_lower": true,
+          "delta_candidate_minus_reference": -1.2600000000000016,
+          "reason": null,
+          "reference": 18.8,
+          "relative_change_pct": -6.702127659574477
+        },
+        "maximum_rss_kib": {
+          "availability": "available",
+          "candidate": 1075280,
+          "candidate_lower": true,
+          "delta_candidate_minus_reference": -3748.0,
+          "reason": null,
+          "reference": 1079028,
+          "relative_change_pct": -0.3473496517235883
+        },
+        "real_time_factor": {
+          "availability": "available",
+          "candidate": 0.21569676164371018,
+          "candidate_lower": false,
+          "delta_candidate_minus_reference": 0.006486698036352406,
+          "reason": null,
+          "reference": 0.20921006360735778,
+          "relative_change_pct": 3.100566925177434
+        }
+      },
+      "reference": {
+        "arm_evidence_valid": true,
+        "checks": {
+          "commit_matches_expected": {
+            "passed": true,
+            "reason": null
+          },
+          "config_hash_valid": {
+            "passed": true,
+            "reason": null
+          },
+          "duration_matches_expected": {
+            "passed": true,
+            "reason": null
+          },
+          "finite_state_true": {
+            "passed": true,
+            "reason": null
+          },
+          "manifest_available": {
+            "passed": true,
+            "reason": null
+          },
+          "manifest_clean": {
+            "passed": true,
+            "reason": null
+          },
+          "observation_count_matches_expected": {
+            "passed": true,
+            "reason": null
+          },
+          "online_truth_use_zero": {
+            "passed": true,
+            "reason": null
+          },
+          "process_exit_zero": {
+            "passed": true,
+            "reason": null
+          },
+          "required_metrics_available": {
+            "passed": true,
+            "reason": null
+          },
+          "runtime_profile_hash_valid": {
+            "passed": true,
+            "reason": null
+          },
+          "scale_matches_expected": {
+            "passed": true,
+            "reason": null
+          },
+          "scenario_config_available": {
+            "passed": true,
+            "reason": null
+          },
+          "summary_available": {
+            "passed": true,
+            "reason": null
+          },
+          "summary_numeric_values_finite": {
+            "passed": true,
+            "reason": null
+          }
+        },
+        "episode_dir": "/tmp/msm_d1_cov_clean_r1_ref",
+        "metrics": {
+          "core_wall_s": {
+            "availability": "available",
+            "reason": null,
+            "value": 10.515746527991723
+          },
+          "d1_fusion_call_count": {
+            "availability": "available",
+            "reason": null,
+            "value": 89
+          },
+          "d1_fusion_p95_ms": {
+            "availability": "available",
+            "reason": null,
+            "value": 182.7891917899251
+          },
+          "d1_fusion_wall_s": {
+            "availability": "available",
+            "reason": null,
+            "value": 4.1115472347592
+          },
+          "d1_scan_input_wall_s": {
+            "availability": "available",
+            "reason": null,
+            "value": 1.1794108927133493
+          },
+          "external_elapsed_s": {
+            "availability": "available",
+            "reason": null,
+            "value": 18.8
+          },
+          "maximum_rss_kib": {
+            "availability": "available",
+            "reason": null,
+            "value": 1079028
+          },
+          "online_observation_count": {
+            "availability": "available",
+            "reason": null,
+            "value": 2035
+          },
+          "online_truth_use_count": {
+            "availability": "available",
+            "reason": null,
+            "value": 0
+          },
+          "process_exit_status": {
+            "availability": "available",
+            "reason": null,
+            "value": 0
+          },
+          "real_time_factor": {
+            "availability": "available",
+            "reason": null,
+            "value": 0.20921006360735778
+          }
+        },
+        "provenance": {
+          "config_sha256": "20ef5248c8b45ff5aced9080c8d47e65a43aaba54f18ce824dc50fac7a52b840",
+          "git_commit": "7cc2d0cfd598a72d60c6ba8c7d4a283f4e5a897d",
+          "recon_count": 2,
+          "repository_dirty": false,
+          "resource_count": 200,
+          "runtime_profile_sha256": "deabac3fbf2a788f68a0b807945e5f1bedacf8c5917c4d3b49c5cffb3c90da70",
+          "scenario_name": "nominal_200v200_cli_200v200",
+          "scenario_version": "200v200-nominal-v1-cli-200v200",
+          "seed": 1100,
+          "simulated_duration_s": 2.2,
+          "target_count": 200
+        },
+        "resource_path": "/tmp/msm_d1_cov_clean_r1_ref_resource.txt"
+      },
+      "round_id": "r1"
+    },
+    {
+      "business_semantics_passed": true,
+      "candidate": {
+        "arm_evidence_valid": true,
+        "checks": {
+          "commit_matches_expected": {
+            "passed": true,
+            "reason": null
+          },
+          "config_hash_valid": {
+            "passed": true,
+            "reason": null
+          },
+          "duration_matches_expected": {
+            "passed": true,
+            "reason": null
+          },
+          "finite_state_true": {
+            "passed": true,
+            "reason": null
+          },
+          "manifest_available": {
+            "passed": true,
+            "reason": null
+          },
+          "manifest_clean": {
+            "passed": true,
+            "reason": null
+          },
+          "observation_count_matches_expected": {
+            "passed": true,
+            "reason": null
+          },
+          "online_truth_use_zero": {
+            "passed": true,
+            "reason": null
+          },
+          "process_exit_zero": {
+            "passed": true,
+            "reason": null
+          },
+          "required_metrics_available": {
+            "passed": true,
+            "reason": null
+          },
+          "runtime_profile_hash_valid": {
+            "passed": true,
+            "reason": null
+          },
+          "scale_matches_expected": {
+            "passed": true,
+            "reason": null
+          },
+          "scenario_config_available": {
+            "passed": true,
+            "reason": null
+          },
+          "summary_available": {
+            "passed": true,
+            "reason": null
+          },
+          "summary_numeric_values_finite": {
+            "passed": true,
+            "reason": null
+          }
+        },
+        "episode_dir": "/tmp/msm_d1_cov_clean_r2_cand",
+        "metrics": {
+          "core_wall_s": {
+            "availability": "available",
+            "reason": null,
+            "value": 10.284188882971648
+          },
+          "d1_fusion_call_count": {
+            "availability": "available",
+            "reason": null,
+            "value": 89
+          },
+          "d1_fusion_p95_ms": {
+            "availability": "available",
+            "reason": null,
+            "value": 175.21300738444552
+          },
+          "d1_fusion_wall_s": {
+            "availability": "available",
+            "reason": null,
+            "value": 3.61345131683629
+          },
+          "d1_scan_input_wall_s": {
+            "availability": "available",
+            "reason": null,
+            "value": 1.1871516970568337
+          },
+          "external_elapsed_s": {
+            "availability": "available",
+            "reason": null,
+            "value": 17.58
+          },
+          "maximum_rss_kib": {
+            "availability": "available",
+            "reason": null,
+            "value": 1075056
+          },
+          "online_observation_count": {
+            "availability": "available",
+            "reason": null,
+            "value": 2035
+          },
+          "online_truth_use_count": {
+            "availability": "available",
+            "reason": null,
+            "value": 0
+          },
+          "process_exit_status": {
+            "availability": "available",
+            "reason": null,
+            "value": 0
+          },
+          "real_time_factor": {
+            "availability": "available",
+            "reason": null,
+            "value": 0.2139206139672051
+          }
+        },
+        "provenance": {
+          "config_sha256": "20ef5248c8b45ff5aced9080c8d47e65a43aaba54f18ce824dc50fac7a52b840",
+          "git_commit": "95bf46e34321127313757986bb28bfb14b7e3c59",
+          "recon_count": 2,
+          "repository_dirty": false,
+          "resource_count": 200,
+          "runtime_profile_sha256": "deabac3fbf2a788f68a0b807945e5f1bedacf8c5917c4d3b49c5cffb3c90da70",
+          "scenario_name": "nominal_200v200_cli_200v200",
+          "scenario_version": "200v200-nominal-v1-cli-200v200",
+          "seed": 1100,
+          "simulated_duration_s": 2.2,
+          "target_count": 200
+        },
+        "resource_path": "/tmp/msm_d1_cov_clean_r2_cand_resource.txt"
+      },
+      "cross_build_checks": {
+        "all_declared_cross_checks_true": {
+          "passed": true,
+          "reason": null
+        },
+        "commit_binding": {
+          "passed": true,
+          "reason": null
+        },
+        "cross_build_available": {
+          "passed": true,
+          "reason": null
+        },
+        "cross_build_passed": {
+          "passed": true,
+          "reason": null
+        },
+        "episode_path_binding": {
+          "passed": true,
+          "reason": null
+        },
+        "normalized_online_payloads_equal": {
+          "passed": true,
+          "reason": null
+        },
+        "provenance_binding": {
+          "passed": true,
+          "reason": null
+        },
+        "schema_supported": {
+          "passed": true,
+          "reason": null
+        },
+        "source_clean": {
+          "passed": true,
+          "reason": null
+        }
+      },
+      "input_binding": {
+        "candidate_episode_dir": "/tmp/msm_d1_cov_clean_r2_cand",
+        "candidate_resource_path": "/tmp/msm_d1_cov_clean_r2_cand_resource.txt",
+        "cross_build_path": "/tmp/msm_d1_cov_cross_r2/cross_build_semantic_equivalence.json",
+        "reference_episode_dir": "/tmp/msm_d1_cov_clean_r2_ref",
+        "reference_resource_path": "/tmp/msm_d1_cov_clean_r2_ref_resource.txt"
+      },
+      "pair_checks": {
+        "same_config_sha256": {
+          "passed": true,
+          "reason": null
+        },
+        "same_duration": {
+          "passed": true,
+          "reason": null
+        },
+        "same_runtime_profile_sha256": {
+          "passed": true,
+          "reason": null
+        },
+        "same_scale": {
+          "passed": true,
+          "reason": null
+        },
+        "same_scenario_version": {
+          "passed": true,
+          "reason": null
+        },
+        "same_seed": {
+          "passed": true,
+          "reason": null
+        }
+      },
+      "performance": {
+        "core_wall_s": {
+          "availability": "available",
+          "candidate": 10.284188882971648,
+          "candidate_lower": true,
+          "delta_candidate_minus_reference": -0.29917584505164996,
+          "reason": null,
+          "reference": 10.583364728023298,
+          "relative_change_pct": -2.8268499927955175
+        },
+        "d1_fusion_p95_ms": {
+          "availability": "available",
+          "candidate": 175.21300738444552,
+          "candidate_lower": true,
+          "delta_candidate_minus_reference": -9.601196425501229,
+          "reason": null,
+          "reference": 184.81420380994675,
+          "relative_change_pct": -5.195053317100344
+        },
+        "d1_fusion_wall_s": {
+          "availability": "available",
+          "candidate": 3.61345131683629,
+          "candidate_lower": true,
+          "delta_candidate_minus_reference": -0.34845632140059024,
+          "reason": null,
+          "reference": 3.9619076382368803,
+          "relative_change_pct": -8.795165188546887
+        },
+        "d1_scan_input_wall_s": {
+          "availability": "available",
+          "candidate": 1.1871516970568337,
+          "candidate_lower": false,
+          "delta_candidate_minus_reference": 0.006501002120785415,
+          "reason": null,
+          "reference": 1.1806506949360482,
+          "relative_change_pct": 0.5506287463912052
+        },
+        "external_elapsed_s": {
+          "availability": "available",
+          "candidate": 17.58,
+          "candidate_lower": true,
+          "delta_candidate_minus_reference": -0.26000000000000156,
+          "reason": null,
+          "reference": 17.84,
+          "relative_change_pct": -1.457399103139022
+        },
+        "maximum_rss_kib": {
+          "availability": "available",
+          "candidate": 1075056,
+          "candidate_lower": true,
+          "delta_candidate_minus_reference": -468.0,
+          "reason": null,
+          "reference": 1075524,
+          "relative_change_pct": -0.04351367333504413
+        },
+        "real_time_factor": {
+          "availability": "available",
+          "candidate": 0.2139206139672051,
+          "candidate_lower": false,
+          "delta_candidate_minus_reference": 0.006047214860520067,
+          "reason": null,
+          "reference": 0.20787339910668504,
+          "relative_change_pct": 2.9090854753457456
+        }
+      },
+      "reference": {
+        "arm_evidence_valid": true,
+        "checks": {
+          "commit_matches_expected": {
+            "passed": true,
+            "reason": null
+          },
+          "config_hash_valid": {
+            "passed": true,
+            "reason": null
+          },
+          "duration_matches_expected": {
+            "passed": true,
+            "reason": null
+          },
+          "finite_state_true": {
+            "passed": true,
+            "reason": null
+          },
+          "manifest_available": {
+            "passed": true,
+            "reason": null
+          },
+          "manifest_clean": {
+            "passed": true,
+            "reason": null
+          },
+          "observation_count_matches_expected": {
+            "passed": true,
+            "reason": null
+          },
+          "online_truth_use_zero": {
+            "passed": true,
+            "reason": null
+          },
+          "process_exit_zero": {
+            "passed": true,
+            "reason": null
+          },
+          "required_metrics_available": {
+            "passed": true,
+            "reason": null
+          },
+          "runtime_profile_hash_valid": {
+            "passed": true,
+            "reason": null
+          },
+          "scale_matches_expected": {
+            "passed": true,
+            "reason": null
+          },
+          "scenario_config_available": {
+            "passed": true,
+            "reason": null
+          },
+          "summary_available": {
+            "passed": true,
+            "reason": null
+          },
+          "summary_numeric_values_finite": {
+            "passed": true,
+            "reason": null
+          }
+        },
+        "episode_dir": "/tmp/msm_d1_cov_clean_r2_ref",
+        "metrics": {
+          "core_wall_s": {
+            "availability": "available",
+            "reason": null,
+            "value": 10.583364728023298
+          },
+          "d1_fusion_call_count": {
+            "availability": "available",
+            "reason": null,
+            "value": 89
+          },
+          "d1_fusion_p95_ms": {
+            "availability": "available",
+            "reason": null,
+            "value": 184.81420380994675
+          },
+          "d1_fusion_wall_s": {
+            "availability": "available",
+            "reason": null,
+            "value": 3.9619076382368803
+          },
+          "d1_scan_input_wall_s": {
+            "availability": "available",
+            "reason": null,
+            "value": 1.1806506949360482
+          },
+          "external_elapsed_s": {
+            "availability": "available",
+            "reason": null,
+            "value": 17.84
+          },
+          "maximum_rss_kib": {
+            "availability": "available",
+            "reason": null,
+            "value": 1075524
+          },
+          "online_observation_count": {
+            "availability": "available",
+            "reason": null,
+            "value": 2035
+          },
+          "online_truth_use_count": {
+            "availability": "available",
+            "reason": null,
+            "value": 0
+          },
+          "process_exit_status": {
+            "availability": "available",
+            "reason": null,
+            "value": 0
+          },
+          "real_time_factor": {
+            "availability": "available",
+            "reason": null,
+            "value": 0.20787339910668504
+          }
+        },
+        "provenance": {
+          "config_sha256": "20ef5248c8b45ff5aced9080c8d47e65a43aaba54f18ce824dc50fac7a52b840",
+          "git_commit": "7cc2d0cfd598a72d60c6ba8c7d4a283f4e5a897d",
+          "recon_count": 2,
+          "repository_dirty": false,
+          "resource_count": 200,
+          "runtime_profile_sha256": "deabac3fbf2a788f68a0b807945e5f1bedacf8c5917c4d3b49c5cffb3c90da70",
+          "scenario_name": "nominal_200v200_cli_200v200",
+          "scenario_version": "200v200-nominal-v1-cli-200v200",
+          "seed": 1100,
+          "simulated_duration_s": 2.2,
+          "target_count": 200
+        },
+        "resource_path": "/tmp/msm_d1_cov_clean_r2_ref_resource.txt"
+      },
+      "round_id": "r2"
+    },
+    {
+      "business_semantics_passed": true,
+      "candidate": {
+        "arm_evidence_valid": true,
+        "checks": {
+          "commit_matches_expected": {
+            "passed": true,
+            "reason": null
+          },
+          "config_hash_valid": {
+            "passed": true,
+            "reason": null
+          },
+          "duration_matches_expected": {
+            "passed": true,
+            "reason": null
+          },
+          "finite_state_true": {
+            "passed": true,
+            "reason": null
+          },
+          "manifest_available": {
+            "passed": true,
+            "reason": null
+          },
+          "manifest_clean": {
+            "passed": true,
+            "reason": null
+          },
+          "observation_count_matches_expected": {
+            "passed": true,
+            "reason": null
+          },
+          "online_truth_use_zero": {
+            "passed": true,
+            "reason": null
+          },
+          "process_exit_zero": {
+            "passed": true,
+            "reason": null
+          },
+          "required_metrics_available": {
+            "passed": true,
+            "reason": null
+          },
+          "runtime_profile_hash_valid": {
+            "passed": true,
+            "reason": null
+          },
+          "scale_matches_expected": {
+            "passed": true,
+            "reason": null
+          },
+          "scenario_config_available": {
+            "passed": true,
+            "reason": null
+          },
+          "summary_available": {
+            "passed": true,
+            "reason": null
+          },
+          "summary_numeric_values_finite": {
+            "passed": true,
+            "reason": null
+          }
+        },
+        "episode_dir": "/tmp/msm_d1_cov_clean_r3_cand",
+        "metrics": {
+          "core_wall_s": {
+            "availability": "available",
+            "reason": null,
+            "value": 10.205123609979637
+          },
+          "d1_fusion_call_count": {
+            "availability": "available",
+            "reason": null,
+            "value": 89
+          },
+          "d1_fusion_p95_ms": {
+            "availability": "available",
+            "reason": null,
+            "value": 172.08695239387453
+          },
+          "d1_fusion_wall_s": {
+            "availability": "available",
+            "reason": null,
+            "value": 3.5943798787193373
+          },
+          "d1_scan_input_wall_s": {
+            "availability": "available",
+            "reason": null,
+            "value": 1.1804378898232244
+          },
+          "external_elapsed_s": {
+            "availability": "available",
+            "reason": null,
+            "value": 17.43
+          },
+          "maximum_rss_kib": {
+            "availability": "available",
+            "reason": null,
+            "value": 1074800
+          },
+          "online_observation_count": {
+            "availability": "available",
+            "reason": null,
+            "value": 2035
+          },
+          "online_truth_use_count": {
+            "availability": "available",
+            "reason": null,
+            "value": 0
+          },
+          "process_exit_status": {
+            "availability": "available",
+            "reason": null,
+            "value": 0
+          },
+          "real_time_factor": {
+            "availability": "available",
+            "reason": null,
+            "value": 0.21557798651734214
+          }
+        },
+        "provenance": {
+          "config_sha256": "20ef5248c8b45ff5aced9080c8d47e65a43aaba54f18ce824dc50fac7a52b840",
+          "git_commit": "95bf46e34321127313757986bb28bfb14b7e3c59",
+          "recon_count": 2,
+          "repository_dirty": false,
+          "resource_count": 200,
+          "runtime_profile_sha256": "deabac3fbf2a788f68a0b807945e5f1bedacf8c5917c4d3b49c5cffb3c90da70",
+          "scenario_name": "nominal_200v200_cli_200v200",
+          "scenario_version": "200v200-nominal-v1-cli-200v200",
+          "seed": 1100,
+          "simulated_duration_s": 2.2,
+          "target_count": 200
+        },
+        "resource_path": "/tmp/msm_d1_cov_clean_r3_cand_resource.txt"
+      },
+      "cross_build_checks": {
+        "all_declared_cross_checks_true": {
+          "passed": true,
+          "reason": null
+        },
+        "commit_binding": {
+          "passed": true,
+          "reason": null
+        },
+        "cross_build_available": {
+          "passed": true,
+          "reason": null
+        },
+        "cross_build_passed": {
+          "passed": true,
+          "reason": null
+        },
+        "episode_path_binding": {
+          "passed": true,
+          "reason": null
+        },
+        "normalized_online_payloads_equal": {
+          "passed": true,
+          "reason": null
+        },
+        "provenance_binding": {
+          "passed": true,
+          "reason": null
+        },
+        "schema_supported": {
+          "passed": true,
+          "reason": null
+        },
+        "source_clean": {
+          "passed": true,
+          "reason": null
+        }
+      },
+      "input_binding": {
+        "candidate_episode_dir": "/tmp/msm_d1_cov_clean_r3_cand",
+        "candidate_resource_path": "/tmp/msm_d1_cov_clean_r3_cand_resource.txt",
+        "cross_build_path": "/tmp/msm_d1_cov_cross_r3/cross_build_semantic_equivalence.json",
+        "reference_episode_dir": "/tmp/msm_d1_cov_clean_r3_ref",
+        "reference_resource_path": "/tmp/msm_d1_cov_clean_r3_ref_resource.txt"
+      },
+      "pair_checks": {
+        "same_config_sha256": {
+          "passed": true,
+          "reason": null
+        },
+        "same_duration": {
+          "passed": true,
+          "reason": null
+        },
+        "same_runtime_profile_sha256": {
+          "passed": true,
+          "reason": null
+        },
+        "same_scale": {
+          "passed": true,
+          "reason": null
+        },
+        "same_scenario_version": {
+          "passed": true,
+          "reason": null
+        },
+        "same_seed": {
+          "passed": true,
+          "reason": null
+        }
+      },
+      "performance": {
+        "core_wall_s": {
+          "availability": "available",
+          "candidate": 10.205123609979637,
+          "candidate_lower": true,
+          "delta_candidate_minus_reference": -0.38001455104677007,
+          "reason": null,
+          "reference": 10.585138161026407,
+          "relative_change_pct": -3.5900764379812427
+        },
+        "d1_fusion_p95_ms": {
+          "availability": "available",
+          "candidate": 172.08695239387453,
+          "candidate_lower": true,
+          "delta_candidate_minus_reference": -12.99562701024115,
+          "reason": null,
+          "reference": 185.08257940411568,
+          "relative_change_pct": -7.021529012660912
+        },
+        "d1_fusion_wall_s": {
+          "availability": "available",
+          "candidate": 3.5943798787193373,
+          "candidate_lower": true,
+          "delta_candidate_minus_reference": -0.3763058061595075,
+          "reason": null,
+          "reference": 3.9706856848788448,
+          "relative_change_pct": -9.477098819293461
+        },
+        "d1_scan_input_wall_s": {
+          "availability": "available",
+          "candidate": 1.1804378898232244,
+          "candidate_lower": false,
+          "delta_candidate_minus_reference": 0.0032826742390170693,
+          "reason": null,
+          "reference": 1.1771552155842073,
+          "relative_change_pct": 0.2788650294844864
+        },
+        "external_elapsed_s": {
+          "availability": "available",
+          "candidate": 17.43,
+          "candidate_lower": true,
+          "delta_candidate_minus_reference": -0.46000000000000085,
+          "reason": null,
+          "reference": 17.89,
+          "relative_change_pct": -2.571268865287875
+        },
+        "maximum_rss_kib": {
+          "availability": "available",
+          "candidate": 1074800,
+          "candidate_lower": true,
+          "delta_candidate_minus_reference": -400.0,
+          "reason": null,
+          "reference": 1075200,
+          "relative_change_pct": -0.03720238095238095
+        },
+        "real_time_factor": {
+          "availability": "available",
+          "candidate": 0.21557798651734214,
+          "candidate_lower": false,
+          "delta_candidate_minus_reference": 0.007739414499433467,
+          "reason": null,
+          "reference": 0.20783857201790867,
+          "relative_change_pct": 3.7237623528161032
+        }
+      },
+      "reference": {
+        "arm_evidence_valid": true,
+        "checks": {
+          "commit_matches_expected": {
+            "passed": true,
+            "reason": null
+          },
+          "config_hash_valid": {
+            "passed": true,
+            "reason": null
+          },
+          "duration_matches_expected": {
+            "passed": true,
+            "reason": null
+          },
+          "finite_state_true": {
+            "passed": true,
+            "reason": null
+          },
+          "manifest_available": {
+            "passed": true,
+            "reason": null
+          },
+          "manifest_clean": {
+            "passed": true,
+            "reason": null
+          },
+          "observation_count_matches_expected": {
+            "passed": true,
+            "reason": null
+          },
+          "online_truth_use_zero": {
+            "passed": true,
+            "reason": null
+          },
+          "process_exit_zero": {
+            "passed": true,
+            "reason": null
+          },
+          "required_metrics_available": {
+            "passed": true,
+            "reason": null
+          },
+          "runtime_profile_hash_valid": {
+            "passed": true,
+            "reason": null
+          },
+          "scale_matches_expected": {
+            "passed": true,
+            "reason": null
+          },
+          "scenario_config_available": {
+            "passed": true,
+            "reason": null
+          },
+          "summary_available": {
+            "passed": true,
+            "reason": null
+          },
+          "summary_numeric_values_finite": {
+            "passed": true,
+            "reason": null
+          }
+        },
+        "episode_dir": "/tmp/msm_d1_cov_clean_r3_ref",
+        "metrics": {
+          "core_wall_s": {
+            "availability": "available",
+            "reason": null,
+            "value": 10.585138161026407
+          },
+          "d1_fusion_call_count": {
+            "availability": "available",
+            "reason": null,
+            "value": 89
+          },
+          "d1_fusion_p95_ms": {
+            "availability": "available",
+            "reason": null,
+            "value": 185.08257940411568
+          },
+          "d1_fusion_wall_s": {
+            "availability": "available",
+            "reason": null,
+            "value": 3.9706856848788448
+          },
+          "d1_scan_input_wall_s": {
+            "availability": "available",
+            "reason": null,
+            "value": 1.1771552155842073
+          },
+          "external_elapsed_s": {
+            "availability": "available",
+            "reason": null,
+            "value": 17.89
+          },
+          "maximum_rss_kib": {
+            "availability": "available",
+            "reason": null,
+            "value": 1075200
+          },
+          "online_observation_count": {
+            "availability": "available",
+            "reason": null,
+            "value": 2035
+          },
+          "online_truth_use_count": {
+            "availability": "available",
+            "reason": null,
+            "value": 0
+          },
+          "process_exit_status": {
+            "availability": "available",
+            "reason": null,
+            "value": 0
+          },
+          "real_time_factor": {
+            "availability": "available",
+            "reason": null,
+            "value": 0.20783857201790867
+          }
+        },
+        "provenance": {
+          "config_sha256": "20ef5248c8b45ff5aced9080c8d47e65a43aaba54f18ce824dc50fac7a52b840",
+          "git_commit": "7cc2d0cfd598a72d60c6ba8c7d4a283f4e5a897d",
+          "recon_count": 2,
+          "repository_dirty": false,
+          "resource_count": 200,
+          "runtime_profile_sha256": "deabac3fbf2a788f68a0b807945e5f1bedacf8c5917c4d3b49c5cffb3c90da70",
+          "scenario_name": "nominal_200v200_cli_200v200",
+          "scenario_version": "200v200-nominal-v1-cli-200v200",
+          "seed": 1100,
+          "simulated_duration_s": 2.2,
+          "target_count": 200
+        },
+        "resource_path": "/tmp/msm_d1_cov_clean_r3_ref_resource.txt"
+      },
+      "round_id": "r3"
+    }
+  ],
+  "schema_version": "d6.d1-covariance-limit-clean-pair.v1",
+  "scope": {
+    "airsim_evidence": false,
+    "candidate_commit": "95bf46e34321127313757986bb28bfb14b7e3c59",
+    "d2_d3_d7_stage_fluctuation_attributed_to_d1": false,
+    "distinct_seed_count": 1,
+    "expected_observation_count": 2035,
+    "expected_pair_count": 3,
+    "external_elapsed_and_core_wall_are_not_summed": true,
+    "observed_pair_count": 3,
+    "recon_count": 2,
+    "reference_commit": "7cc2d0cfd598a72d60c6ba8c7d4a283f4e5a897d",
+    "repeat_semantics": "same_seed_three_clean_interleaved_replays",
+    "resource_count": 200,
+    "seeds": [
+      1100
+    ],
+    "simulated_duration_s": 2.2,
+    "simulation_mode": "three_dimensional_point_mass",
+    "target_count": 200
+  },
+  "system_realtime_gap_closed": false,
+  "system_realtime_gap_reasons": [
+    "three_dimensional_point_mass_not_airsim",
+    "single_seed_repeated_three_times_not_multi_seed",
+    "short_2_2_second_replay",
+    "rmse_nees_nis_not_evaluated",
+    "candidate_real_time_factor_below_one"
+  ],
+  "thresholds": {
+    "maximum_rss_increase_pct": 5.0,
+    "minimum_d1_fusion_improvement_pct": 5.0
+  }
+}

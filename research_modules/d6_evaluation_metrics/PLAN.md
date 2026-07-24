@@ -1,5 +1,40 @@
 # D6 Evaluation Metrics Plan
 
+## 2026-07-24 D1 协方差成对限制向量化准入状态
+
+### 已完成
+
+- [x] 新增显式三轮 pair 输入合同。每轮绑定 reference/candidate episode、cross-build JSON 和两份
+  资源记录，不根据路径名称推断实验臂、规模或 seed。
+- [x] 复用 scalable 3D 离线读取器核对 clean manifest、配置 SHA-256、场景版本、运行配置、seed、
+  规模、summary 有限值、2035 条观测、在线真值零使用和 v2 阶段计时。
+- [x] 独立解析 GNU `time -v` 的外部 elapsed、最大常驻内存和退出状态；核心墙钟与外部 elapsed
+  分层输出，禁止相加。
+- [x] 每轮和聚合均输出 D1 fusion wall、episode 内 P95、D1 scan input、核心墙钟、外部 elapsed、
+  RSS 和实时因子，并保留 availability/reason。
+- [x] 准入门固定为：业务语义 3/3；D1 融合 3/3 更快且均值至少下降 5%；P95 均值下降；核心墙钟
+  不恶化且至少 2/3 更快；RSS 均值和任一轮增幅不超过 5%；有限值、真值隔离和退出状态全通过。
+- [x] 正例、CSV 纯 LF 写入和 cross false、配置/seed 不一致、真值非零、阶段缺失、退出非零、
+  RSS 越门负例 `9 passed`；D6 全量 `646 passed, 1 warning in 21.65s`。
+- [x] 2026-07-24 clean seed 1100 三轮结果通过全部准入门。D1 fusion wall
+  `4.014713519 -> 3.595533106 s`，下降 `10.4411%`；P95
+  `184.228658 -> 173.330868 ms`，下降 `5.9154%`；核心墙钟下降 `3.1417%`，外部 elapsed
+  下降 `3.6310%`，RSS 下降 `0.1429%`。`d1_optimization_admitted=true`。
+- [x] 结果固定区分 D1 优化准入与系统实时结论。候选实时因子均值为 `0.215065`，本批仅单 seed、
+  2.2 秒、三维质点重复，故 `system_realtime_gap_closed=false`。
+
+### 后续验证
+
+- [ ] main/D1 在多个独立 seed 和更长稳定窗口上复测同一优化，D6 再报告跨 seed 分布、置信区间和
+  长时增长率；本批三次重复不能代替独立 seed。
+- [ ] D1/D2 提供冻结 truth sidecar 后，另行计算均方根误差、归一化估计误差平方、归一化创新平方、
+  身份连续性和严格 ID Switch。性能准入不能替代精度验收。
+- [ ] main 运行 AirSim 或明确的目标硬件容量实验后，再评价实时因子、调度抖动和资源上限；当前
+  `0.215065` 不能关闭实时 P1。
+
+`AIRSIM_INTEGRATION_PLAN.md` 已检查。本项只消费三维质点写盘 episode、cross-build 和资源记录，
+没有改变 AirSim topic、相机、检测、reset、actor 或控制接口，因此无需修改。
+
 ## 2026-07-24 D1 原子影子旁路兼容状态
 
 ### 已完成

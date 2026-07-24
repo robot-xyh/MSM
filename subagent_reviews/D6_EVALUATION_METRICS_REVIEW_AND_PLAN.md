@@ -1,5 +1,36 @@
 # D6 系统评估指标综述及子方案
 
+## 2026-07-24 D1 协方差成对限制向量化评审
+
+D6 以独立只读消费者复核三轮 clean reference/candidate。每轮输入显式绑定两个 episode、
+cross-build JSON 和两份资源记录；评估器不扫描目录推断实验臂或规模，也不导入 D1 生产代码。
+现有 scalable 3D reader 负责 manifest、配置、真值隔离和阶段时序，新入口补充外部 elapsed、RSS
+和退出状态校验。
+
+评审先要求三轮业务语义通过，再评价性能。每 arm 必须 clean、提交正确、配置和运行配置哈希有效，
+两臂及三轮共享 seed 1100、场景版本、200 个目标、200 个资源、2 个侦察节点和 2.2 秒世界时间。
+summary 必须为有限状态，2035 条观测、在线真值使用 0；cross-build 必须 `passed=true` 且规范化
+在线载荷一致；进程退出状态均为 0。
+
+三轮 D1 fusion wall 均值为 `4.014713519 -> 3.595533106 s`，下降 `10.4411%`，3/3 更快。episode
+内调用 P95 的三轮均值为 `184.228658 -> 173.330868 ms`，下降 `5.9154%`。核心 wall 下降
+`3.1417%`，外部 elapsed 下降 `3.6310%`，RSS 下降 `0.1429%`。D1 scan input 增加 `0.3607%`，
+属于独立阶段，不进入本项门控。D2、D3、D7 单 seed 调度波动没有归因到 D1。
+
+评审结论为 `d1_optimization_admitted=true`。该结论只说明冻结三维质点输入下的性能优化满足门限。
+候选实时因子均值为 `0.215065`，且只有单 seed 的三次 2.2 秒重复，因此
+`system_realtime_gap_closed=false`。AirSim、多 seed、长时增长率、均方根误差、归一化估计误差
+平方、归一化创新平方和严格身份指标保持 P1。
+
+专项正反例和 CSV 纯 LF 检查 `9 passed`，D6 全量
+`646 passed, 1 warning in 21.65s`。机器 JSON、逐轮 CSV 和中文报告位于
+`research_modules/d6_evaluation_metrics/outputs/d1_covariance_limit_clean_pair_20260724/`。
+重生 CSV 为 7 个 LF、0 个 CR；warning 为既有 Matplotlib `Axes3D` 环境提示。
+
+`AIRSIM_INTEGRATION_PLAN.md` 已检查。本项不改变 AirSim producer、topic、相机、检测、reset、actor
+或控制链，因此无需修改。`D6_M_TO_N_EVALUATION_FRAMEWORK_REVIEW.md` 也已检查；本项不改变 M 对 N
+需求、联盟、同步到达或五米物理分母，因此无需修改。
+
 ## 2026-07-24 D1 原子影子旁路兼容评审
 
 D6 继续使用 `scalable3d-d1-centroid-overlay-shadow-v1`，并在 payload 内按显式执行模式分派。

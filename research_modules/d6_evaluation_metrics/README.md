@@ -1,5 +1,42 @@
 # D6 Evaluation Metrics
 
+## 2026-07-24 D1 协方差成对限制向量化准入
+
+D6 新增 `d1_covariance_limit_clean_pair.py`，对 main 显式列出的三轮 reference/candidate
+证据做独立只读复核。输入必须逐轮提供两个 episode 目录、cross-build 语义等价 JSON 和两份 GNU
+`time -v` 资源记录；评估器不扫描目录名推断实验臂或规模。现有
+`evaluate_scalable_3d_episode()` 继续负责 manifest、场景配置、在线真值和 v2 阶段时序读取，
+新增入口独立核对资源文件中的外部 elapsed、最大常驻内存和退出状态。
+
+每轮要求 manifest 为 clean、参考/候选提交分别等于
+`7cc2d0cfd598a72d60c6ba8c7d4a283f4e5a897d` 和
+`95bf46e34321127313757986bb28bfb14b7e3c59`，并要求配置摘要、seed、运行配置摘要、场景版本、
+200 个目标、200 个资源、2 个侦察节点和 2.2 秒世界时间一致。summary 必须全部为有限数，
+`finite_state=true`、`online_truth_use_count=0`、观测数为 2035；cross-build 必须整体通过且
+规范化在线载荷一致；六个进程退出状态均须为 0。
+
+准入门要求 D1 融合累计墙钟 3/3 更快、三轮均值至少下降 5%，episode 内调用 P95 的三轮均值下降，
+核心墙钟均值不恶化且至少 2/3 更快，最大常驻内存的均值和任一轮增幅均不超过 5%。核心 episode
+墙钟与外部进程 elapsed 分层报告，不相加。D1 scan input 是独立阶段，只作描述性核对；D2、D3、
+D7 的单 seed 调度波动不归因于本项 D1 优化。
+
+2026-07-24 三轮 clean 结果为：
+
+- D1 融合累计墙钟均值 `4.014713519 -> 3.595533106 s`，下降 `10.4411%`，3/3 更快；
+- D1 融合单次 P95 的逐 episode 均值 `184.228658 -> 173.330868 ms`，下降 `5.9154%`；
+- 核心墙钟均值 `10.561416472 -> 10.229605524 s`，下降 `3.1417%`，3/3 更快；
+- 外部 elapsed 均值 `18.176667 -> 17.516667 s`，下降 `3.6310%`；
+- 最大常驻内存均值 `1,076,584 -> 1,075,045.333 KiB`，下降 `0.1429%`；
+- D1 scan input 均值增加 `0.3607%`，不进入准入门。
+
+三轮业务语义、有限值、真值隔离和退出状态全部通过，`d1_optimization_admitted=true`。候选实时因子
+均值只有 `0.215065`，且本批只有 seed 1100 的三次 2.2 秒三维质点重复，不是多 seed、AirSim、
+均方根误差、归一化估计误差平方或归一化创新平方证据，因此
+`system_realtime_gap_closed=false`。机器 JSON、逐轮 CSV 和中文报告位于
+`outputs/d1_covariance_limit_clean_pair_20260724/`。新增正例、CSV 纯 LF 写入及 cross false、
+配置/seed 不一致、真值非零、阶段缺失、退出非零和内存越门负例共 `9 passed`；D6 全量为
+`646 passed, 1 warning in 21.65s`，warning 是既有 Matplotlib `Axes3D` 环境提示。
+
 ## 2026-07-24 D1 原子影子旁路只读兼容
 
 D6 在既有 `scalable3d-d1-centroid-overlay-shadow-v1` 消费器内增加执行模式分派。历史无准备
