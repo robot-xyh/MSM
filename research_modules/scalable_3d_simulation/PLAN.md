@@ -1,5 +1,17 @@
 # 200 对 200 三维质点仿真实施计划
 
+## D1 发布元数据多 seed 准入（2026-07-24）
+
+1. 以 `per_track_copy_v1` 为 reference，以 `immutable_shared_v1` 为 candidate。
+2. main 在 manifest、governance 和 summary 中同时记录选择器、D1 实现 ID、不可变共享
+   布尔值和实际物化操作计数。
+3. 矩阵固定 10 个 short seed 和 3 个 long seed；同一 pair 只允许发布元数据实现选择器
+   不同，扫描输入继续使用已准入的 `candidate_v2`。
+4. 业务语义、有限状态、在线真值隔离和实现身份是前置门。性能门要求 short/long D1
+   fusion 平均至少改善 10%，核心墙钟至少改善 5%，且内存增幅不超过 5%。
+5. D6 独立读取写盘 episode、GNU time 资源记录和预注册矩阵，输出逐 pair、bootstrap
+   区间及中文报告。通过后再修改默认值并复跑全栈回归。
+
 ## 当前执行状态（2026-07-24）
 
 ### D1 扫描输入同提交矩阵

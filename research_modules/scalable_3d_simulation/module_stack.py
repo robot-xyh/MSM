@@ -117,6 +117,8 @@ from .runtime_ports import (
 
 
 INTEGRATED_STACK_SCHEMA_VERSION = "scalable3d-module-stack-v1"
+D1_PUBLICATION_METADATA_REFERENCE_IMPLEMENTATION = "per_track_copy_v1"
+D1_PUBLICATION_METADATA_CANDIDATE_IMPLEMENTATION = "immutable_shared_v1"
 _EPS = 1.0e-9
 
 
@@ -140,6 +142,9 @@ class IntegratedStackConfig:
     d1_scan_max_lateness_s: float = 0.5
     d1_scan_max_buffer_residence_s: float = 5.0
     d1_scan_input_implementation: str = SCAN_INPUT_CANDIDATE_IMPLEMENTATION
+    d1_publication_metadata_implementation: str = (
+        D1_PUBLICATION_METADATA_REFERENCE_IMPLEMENTATION
+    )
     d2_claim_retention_s: float = 30.0
     d2_claim_max_lateness_s: float = 5.0
     d2_claim_capacity_safety_factor: float = 2.0
@@ -202,6 +207,22 @@ class IntegratedStackConfig:
             self,
             "d1_scan_input_implementation",
             scan_input_implementation,
+        )
+        publication_metadata_implementation = str(
+            self.d1_publication_metadata_implementation
+        ).strip()
+        if publication_metadata_implementation not in {
+            D1_PUBLICATION_METADATA_REFERENCE_IMPLEMENTATION,
+            D1_PUBLICATION_METADATA_CANDIDATE_IMPLEMENTATION,
+        }:
+            raise ValueError(
+                "d1_publication_metadata_implementation must be "
+                "per_track_copy_v1 or immutable_shared_v1"
+            )
+        object.__setattr__(
+            self,
+            "d1_publication_metadata_implementation",
+            publication_metadata_implementation,
         )
         if (
             not np.isfinite(self.d2_claim_capacity_safety_factor)
@@ -476,6 +497,9 @@ class IntegratedScalableModuleStack:
             "d1_scan_input_implementation": (
                 self.stack_config.d1_scan_input_implementation
             ),
+            "d1_publication_metadata_implementation": (
+                self.stack_config.d1_publication_metadata_implementation
+            ),
         }
 
     def runtime_manifest_profile_for_scenario(
@@ -517,6 +541,10 @@ class IntegratedScalableModuleStack:
                 DEFAULT_STRUCTURAL_AMBIGUITY_PUBLISHER_NODE_ID
             ),
             publisher_epoch=self._d1_publisher_epoch,
+            immutable_shared_publication_metadata=(
+                self.stack_config.d1_publication_metadata_implementation
+                == D1_PUBLICATION_METADATA_CANDIDATE_IMPLEMENTATION
+            ),
         )
         self.d1_scan_input = ScanInputOrganizer(
             _scan_input_config(config, self.stack_config),
@@ -938,6 +966,12 @@ class IntegratedScalableModuleStack:
             "d1_scan_input_execution_config": d1_execution_config,
             "d1_scan_input_performance_diagnostics": (
                 d1_performance_diagnostics
+            ),
+            "d1_publication_metadata_implementation": (
+                self.stack_config.d1_publication_metadata_implementation
+            ),
+            "d1_publication_metadata_diagnostics": (
+                self.d1.publication_materialization_diagnostics()
             ),
             "d1_scan_event_total_count": self._d1_scan_event_total_count,
             "d1_scan_event_retained_count": len(self._d1_scan_events),
@@ -4905,6 +4939,12 @@ class IntegratedScalableModuleStack:
             ),
             "d1_scan_input_performance_diagnostics": dict(
                 governance["d1_scan_input_performance_diagnostics"]
+            ),
+            "d1_publication_metadata_implementation": governance[
+                "d1_publication_metadata_implementation"
+            ],
+            "d1_publication_metadata_diagnostics": dict(
+                governance["d1_publication_metadata_diagnostics"]
             ),
             "d1_fusion_association": dict(
                 governance["d1_fusion_association"]

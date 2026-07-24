@@ -23,6 +23,8 @@ from research_modules.scalable_3d_simulation.learning_runtime import (
 )
 from research_modules.scalable_3d_simulation.orchestrator import run_episode
 from research_modules.scalable_3d_simulation.module_stack import (
+    D1_PUBLICATION_METADATA_CANDIDATE_IMPLEMENTATION,
+    D1_PUBLICATION_METADATA_REFERENCE_IMPLEMENTATION,
     IntegratedStackConfig,
     SCAN_INPUT_CANDIDATE_IMPLEMENTATION,
     SCAN_INPUT_REFERENCE_IMPLEMENTATION,
@@ -124,6 +126,19 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
             "the default and both arms preserve the same business semantics"
         ),
     )
+    parser.add_argument(
+        "--d1-publication-metadata-implementation",
+        choices=(
+            D1_PUBLICATION_METADATA_REFERENCE_IMPLEMENTATION,
+            D1_PUBLICATION_METADATA_CANDIDATE_IMPLEMENTATION,
+        ),
+        default=D1_PUBLICATION_METADATA_REFERENCE_IMPLEMENTATION,
+        help=(
+            "select the D1 GlobalTrack publication metadata A/B "
+            "implementation; the immutable shared candidate remains opt-in "
+            "until formal multi-seed admission"
+        ),
+    )
     add_learning_runtime_arguments(parser)
     return parser.parse_args(argv)
 
@@ -191,6 +206,9 @@ def main() -> int:
                 ),
                 d1_scan_input_implementation=(
                     args.d1_scan_input_implementation
+                ),
+                d1_publication_metadata_implementation=(
+                    args.d1_publication_metadata_implementation
                 ),
             ),
         )

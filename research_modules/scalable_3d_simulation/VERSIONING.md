@@ -52,6 +52,7 @@ main
 | 实验矩阵 | `scalable3d-experiment-matrix-v1` | 变体语义、配对键或正式准入条件改变 |
 | D1 一致性评估清单 | `scalable3d-offline-consistency-evaluation-manifest-v1` | 在线证据、真值状态、D2 映射或哈希绑定改变 |
 | D1 扫描输入审计 | `d1.scan_input.audit_summary.v1` | 水位线、扫描拒绝、缓冲容量或结束排空语义改变 |
+| D1 发布元数据实现 | `per_track_copy_v1` / `immutable_shared_v1` | 共享审计树的复制、不可变共享或实现身份语义改变 |
 | D1 结构歧义证据 | `d1.structural-ambiguity-evidence.v1` | 允许边分量、成员不透明令牌、双时间戳、状态/协方差或候选边语义改变 |
 | D2 身份评估清单 | `scalable3d-offline-identity-evaluation-manifest-v2` | v2 在原来源哈希外绑定逐发布一致的身份恢复配置快照、配置 SHA-256、记录数和来源路径；谱系映射、身份指标、恢复配置或来源校验改变时升级 |
 | D2 观测证据治理 | `d2-observation-evidence-governance-v1` | D1 观测新鲜度、重放隔离、时间冲突、暂定航迹删除或重复合并审计语义改变 |

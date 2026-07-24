@@ -1,5 +1,20 @@
 # Scalable 3D Simulation
 
+## D1 GlobalTrack 发布元数据 A/B（2026-07-24）
+
+main 已接入 `--d1-publication-metadata-implementation`，可显式选择
+`per_track_copy_v1` 或 `immutable_shared_v1`。前者保持逐航迹复制扫描级审计树，
+后者启用 D1 的递归不可变共享候选。selector 同时写入 episode runtime profile、
+observation governance 和 summary；summary 还记录 D1 实际实现标识与操作计数，
+用于阻止只改标签而未切换实现的无效对照。
+
+`configs/d1_publication_metadata_multiseed_v1.json` 预注册 short seeds
+`1101-1110`、long seeds `1101-1103`，每个 case 都在同一 clean commit 上交错执行
+reference/candidate。运行器为
+`scripts/run_d1_publication_metadata_matrix.py`。当前默认仍为
+`per_track_copy_v1`；正式多 seed 与 D6 独立准入完成前，不把候选写成系统默认或实时缺口
+已关闭。
+
 该 main-owned 模块提供可复现、真值隔离的三维质点环境，用于逐步建设 200 架拦截无人机
 对 200 个来袭目标的 D1-D7 完整闭环。现有 `integrated_simulation` 保留为小规模回归基线。
 
