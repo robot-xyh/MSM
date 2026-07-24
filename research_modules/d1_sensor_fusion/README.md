@@ -4,6 +4,45 @@ Offline research module for radar, acoustic, EO, and optional synthetic lidar he
 
 ## 当前性能与治理证据（2026-07-23）
 
+### 第十九阶段：A1 规范发布准备对象与只读 metadata 装配
+
+状态：`IMPLEMENTED_UNIT_TESTED_OFFLINE_OPTIMIZATION`。D1 增加
+`prepare_experimental_centroid_canonical_publication()`，对同一规范发布快照只执行一次完整
+航迹校验和摘要计算。准备对象显式标记为 experimental/offline，采用冻结字段和不可变工作量
+计数，不保存可由外部改写的 `GlobalTrack`、metadata 或 NumPy 引用。调用方可把该对象同时传给
+`evaluate_experimental_centroid_publication_overlays(..., prepared_publication=...)` 和
+`assemble_experimental_centroid_shadow_tracks(..., prepared_publication=...)`。对象与输入序列
+或成员对象不匹配时 fail closed。每个复用边界还会重新计算每条航迹完整规范载荷的 SHA-256，
+因此 state/covariance、metadata、source support、identity、全局编号、时间戳或分级的原地及
+重绑定变化也会 fail closed。旧入口继续兼容；同一输入的 evaluation 会携带内部准备对象，使
+随后装配不再重复完整 `_describe_tracks`。
+
+准备过程仍覆盖完整 state/covariance、metadata、lineage、source support、identity、
+`global_track_id` 和双时间戳，不省略成员、弱化摘要或使用 truth。工作量对象显式记录完整描述
+轮次、航迹校验数及各类摘要数。接受路径改用递归值语义复制，支持嵌套只读 `Mapping`、
+`tuple`、`frozenset`、NumPy 数组和 NumPy 标量；metadata 不丢弃，也不转成字符串。拒绝路径
+仍返回原输入序列对象。
+
+完整性复核会遍历全部 metadata，但不重复协方差特征值检查、身份扫描、状态/协方差独立摘要和
+发布级排序摘要。正常显式 prepare -> evaluate -> assemble 的工作量为 1 次完整
+`_describe_tracks`、2 次完整载荷摘要复核，共 400 条复核航迹摘要。该成本必须由 main 单独
+计时，不能隐去。
+
+2026-07-23 聚焦测试为 `21 passed`，D1 全量为 `308 passed in 19.69s`。新增固定测试证明：
+
+- 2/3/5 成员的旧入口、准备对象入口和提交 `de73cb2` 的决策 SHA-256 逐字节一致；
+- 200 航迹且每条含嵌套只读 metadata 的接受场景只执行一次完整描述，shadow 可正常装配；
+- 接受后 `global_track_id`、速度、分量成员相对位置和 metadata 值语义保持，协方差不收缩；
+- 准备对象不可改写；数组和嵌套 metadata 原地变化，以及其余规范表面的修改均被强摘要发现；
+  输入失配、OOSM、数量不平衡、重复代和倒退代继续 fail closed。
+
+main 提供的 200v200、seed 1100、2.2 s、`recon_count=2` 开发复跑包含 46 条 evidence 和 9 次
+A2 shadow 评估，当前为 0 accepted、46 rejected，D1/D2/D3 终态与 hold control 相同。
+shadow 阶段 P95 约 `2216 ms`，总实时倍率从约 `0.205` 降至 `0.094`，未通过设计中的
+P95 `+5%` 门。该批全部拒绝，旧装配函数本来就不会在拒绝路径再次描述航迹，因此本次 D1
+优化不能被写成该性能缺口已关闭。main 仍需采用新接口重跑并拆分其规范化、前后禁止写入摘要
+和 D1 准备成本；A2 尚未晋级，seeds 1101/1102 继续停止。
+
 ### 第十八阶段：A1 publication overlay 纯函数原型
 
 状态：`IMPLEMENTED_UNIT_TESTED_OFFLINE_PROTOTYPE`。提交 `de73cb2` 已实现独立实验模块
@@ -40,9 +79,10 @@ lineage/source support、identity、质量及其 metadata 不变。原型按动�
   同代幂等、倒退代、摘要冲突、组件冲突、容量拒绝、状态有界、输入数组与 metadata 不变以及
   `global_track_id` 原样保留。
 
-这些结果只证明 A1 纯函数和 DTO 装配合同的模块单元行为。A2 冻结扫描离线 shadow 接线及禁止
-写入摘要记录、A3 新匿名冻结扫描 treatment 发现、A4 预注册多 seed 确认均未实现；没有
-AirSim、D2/D3 业务发布、P95、系统收益或候选晋级证据。seeds 1101/1102 继续停止。
+这些结果只证明 A1 纯函数和 DTO 装配合同的模块单元行为。main 已开始默认关闭、审计专用的
+A2 shadow 开发接线，但首轮真实 200v200 开发复跑未通过 P95 门；A3 新匿名冻结扫描
+treatment 发现和 A4 预注册多 seed 确认均未实现。当前没有 AirSim、D2/D3 业务消费、系统
+收益或候选晋级证据。seeds 1101/1102 继续停止。
 
 ### 第十六阶段：身份中性共同质心状态修正候选
 

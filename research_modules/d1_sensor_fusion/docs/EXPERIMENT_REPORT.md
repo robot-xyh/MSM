@@ -1,5 +1,42 @@
 # 第一研究模块实验结果
 
+## A1 准备对象与只读 metadata 验证
+
+**证据日期：2026-07-23**
+
+**状态：`IMPLEMENTED_UNIT_TESTED_OFFLINE_OPTIMIZATION`**
+
+**范围：D1 单元测试；未运行 main、AirSim 或 seeds 1101/1102**
+
+本轮保留 A1 数学、安全门、拒绝顺序、decision schema 和默认关闭状态。新增准备对象对一个
+完整规范发布只执行一次航迹描述，并在 evaluation 与 accepted shadow assembly 间复用。
+准备过程仍校验并摘要全部 200 条航迹，而非只处理歧义分量成员。
+
+| 验收项 | 结果 |
+| --- | --- |
+| 聚焦测试 | `21 passed` |
+| D1 全量 | `308 passed in 19.69s` |
+| 旧决策兼容 | 2/3/5 成员 decision SHA-256 与提交 `de73cb2` 基线逐字节一致 |
+| 200 航迹工作量 | `_describe_tracks=1`；完整性复核 2 次、共 400 条航迹强摘要 |
+| 只读 metadata | 嵌套 `MappingProxyType`、tuple、frozenset、NumPy 数组和标量可完成 accepted shadow 装配 |
+| 值语义 | metadata、lineage/source support、identity 内容保持；NumPy 数组脱离复制 |
+| 状态不变量 | `global_track_id`、速度和分量成员相对位置保持；协方差增量不收缩 |
+| 内容完整性 | state/covariance、嵌套 metadata、source support、identity、全局编号、时间戳和分级修改均拒绝复用 |
+| fail closed | 内容或对象失配、OOSM、数量不平衡、重复代和倒退代均拒绝；拒绝返回原序列 |
+| 可变性 | 准备对象及工作量字段不可由调用方改写，描述符不持有可变航迹或数组 |
+
+性能测试采用完整描述次数和摘要工作量计数，不采用机器相关的相对墙钟断言。完整性复核遍历
+全部 metadata，但不重复协方差特征值、身份扫描、状态/协方差独立摘要和发布级排序摘要。
+该结果证明 D1 原型接口、过期摘要阻断和复制路径，不证明 main A2 达到实时门。
+
+main 提供的开发复跑为 200v200、seed 1100、2.2 s、`recon_count=2`。46 条 evidence 在 9 次
+A2 评估中全部拒绝，当前拒绝口径为 `oosm_scan`；状态有限、在线 truth 使用为 0，
+D1/D2/D3 终态为 `202/201/186`，与 hold control 相同。shadow 阶段 mean/P50/P95/max 约为
+`1407/1401/2216/2275 ms`，最大规范 shadow DTO 约 `11,275,939 bytes`，总实时倍率约
+`0.205 -> 0.094`。该开发结果未通过 P95 `+5%` 门。全部决策均拒绝时，旧 assembly 已直接
+返回原序列，不会发生第二次完整描述。因此本轮准备对象优化对该批的系统收益必须由 main
+重新接线、拆分计时后实测，当前不得写成 A2 P95 已关闭。
+
 ## A1 publication overlay 纯函数原型验证
 
 **证据日期：2026-07-23**
@@ -42,9 +79,9 @@ PYTHONPATH=research_modules/d1_sensor_fusion/src pytest -q \
 ```
 
 该验证关闭的范围仅是 A1 纯函数和 DTO 装配合同。A1 没有修改 `fusion.py`，没有运行开关或默认
-路径，也不是在线 schema。A2 冻结扫描 shadow 接线、在线禁止写入摘要、P95/RSS，A3 新匿名
-treatment 发现以及 A4 预注册多 seed、RMSE/NEES/NIS 和 D2/D3 系统收益均未实现。seeds
-1101/1102 继续停止。
+路径，也不是在线 schema。main 已开始 A2 默认关闭审计 shadow 开发，但首轮 P95/RSS 验收
+未通过；A3 新匿名 treatment 发现以及 A4 预注册多 seed、RMSE/NEES/NIS 和 D2/D3 系统收益
+均未实现。seeds 1101/1102 继续停止。
 
 ## 身份中性共同质心候选模块验证
 

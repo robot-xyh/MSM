@@ -1,13 +1,16 @@
 from __future__ import annotations
 
+from dataclasses import FrozenInstanceError
 from dataclasses import replace
 import hashlib
 from itertools import permutations
 import json
+from types import MappingProxyType
 
 import numpy as np
 import pytest
 
+import d1_sensor_fusion.structural_ambiguity_publication_overlay_prototype as prototype
 from d1_sensor_fusion import (
     ExperimentalCentroidEvidenceDisposition,
     ExperimentalCentroidPublicationOverlayConfig,
@@ -20,6 +23,7 @@ from d1_sensor_fusion import (
     TrackLevel,
     assemble_experimental_centroid_shadow_tracks,
     evaluate_experimental_centroid_publication_overlays,
+    prepare_experimental_centroid_canonical_publication,
     structural_ambiguity_member_track_token,
     structural_ambiguity_source_key,
 )
@@ -32,6 +36,11 @@ CONFIG = ExperimentalCentroidPublicationOverlayConfig(
     shape_gate_m2=1.0e9,
     max_translation_m=100.0,
 )
+BASELINE_DECISION_SHA256_BY_MEMBER_COUNT = {
+    2: "e71a934f75cce47511d08542f79e471ed1bb80acab36c9403cd9501e2104fc11",
+    3: "d8b05fb722f2e42ba88c04abbd5544273d70d58e3d4c3b66478c16b0c819718c",
+    5: "9f5d6e9a0a3f02c16a91e00cdda73b87ad0fe331130c943af73f900e325c7609",
+}
 
 
 def _token(prefix: str, value: str) -> str:
@@ -503,3 +512,442 @@ def test_conflicting_components_reject_independent_of_component_order() -> None:
             is tracks
         )
     assert outputs[0] == outputs[1]
+
+
+@pytest.mark.parametrize("count", (2, 3, 5))
+def test_prepared_and_legacy_entries_have_identical_decision_bytes(
+    count: int,
+) -> None:
+    tracks, evidence = _case(count)
+    legacy = evaluate_experimental_centroid_publication_overlays(
+        tracks,
+        (evidence,),
+        config=CONFIG,
+    )
+    prepared = prepare_experimental_centroid_canonical_publication(tracks)
+    optimized = evaluate_experimental_centroid_publication_overlays(
+        tracks,
+        (evidence,),
+        config=CONFIG,
+        prepared_publication=prepared,
+    )
+
+    assert optimized.canonical_bytes() == legacy.canonical_bytes()
+    assert tuple(
+        item.canonical_bytes() for item in optimized.decisions
+    ) == tuple(item.canonical_bytes() for item in legacy.decisions)
+    assert hashlib.sha256(
+        optimized.decisions[0].canonical_bytes()
+    ).hexdigest() == BASELINE_DECISION_SHA256_BY_MEMBER_COUNT[count]
+    assert prepared.work.full_description_pass_count == 1
+    assert prepared.work.track_count == count
+    assert prepared.work.validated_track_count == count
+    assert prepared.work.full_track_digest_count == count
+
+
+def test_prepared_200_track_readonly_metadata_uses_one_description_pass(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    member_tracks, evidence = _case(2)
+    filler_tracks, _ = _case(
+        198,
+        offset=2,
+        component_tag="large-fixture",
+    )
+    tracks = member_tracks + filler_tracks
+    for index, track in enumerate(tracks):
+        track.metadata["readonly_payload"] = MappingProxyType(
+            {
+                "calibration": MappingProxyType(
+                    {
+                        "coefficients": (
+                            np.float32(1.25),
+                            np.float64(index + 0.5),
+                        ),
+                        "enabled": True,
+                    }
+                ),
+                "lineage_tuple": ("sensor", index),
+                "quality_set": frozenset({"fused", "validated"}),
+                "residual_vector": np.array(
+                    [index, index + 1, index + 2],
+                    dtype=np.float64,
+                ),
+            }
+        )
+
+    legacy = evaluate_experimental_centroid_publication_overlays(
+        tracks,
+        (evidence,),
+        config=CONFIG,
+    )
+    original_describe = prototype._describe_tracks
+    original_integrity_digest = prototype._integrity_track_digest
+    describe_call_count = 0
+    integrity_digest_count = 0
+
+    def counted_describe(
+        values: tuple[GlobalTrack, ...],
+    ) -> tuple[object, ...]:
+        nonlocal describe_call_count
+        describe_call_count += 1
+        return original_describe(values)
+
+    def counted_integrity_digest(track: GlobalTrack) -> str:
+        nonlocal integrity_digest_count
+        integrity_digest_count += 1
+        return original_integrity_digest(track)
+
+    monkeypatch.setattr(prototype, "_describe_tracks", counted_describe)
+    monkeypatch.setattr(
+        prototype,
+        "_integrity_track_digest",
+        counted_integrity_digest,
+    )
+    prepared = prepare_experimental_centroid_canonical_publication(tracks)
+    optimized = evaluate_experimental_centroid_publication_overlays(
+        tracks,
+        (evidence,),
+        config=CONFIG,
+        prepared_publication=prepared,
+    )
+    shadow = assemble_experimental_centroid_shadow_tracks(
+        tracks,
+        optimized,
+        prepared_publication=prepared,
+    )
+
+    assert describe_call_count == 1
+    assert integrity_digest_count == 400
+    assert prepared.work.to_dict() == {
+        "full_description_pass_count": 1,
+        "track_count": 200,
+        "validated_track_count": 200,
+        "full_track_digest_count": 200,
+        "state_digest_count": 200,
+        "covariance_digest_count": 200,
+        "publication_digest_count": 1,
+    }
+    assert optimized.prepared_integrity_check is not None
+    assert optimized.prepared_integrity_check.to_dict() == {
+        "matches": True,
+        "mismatch_reason": None,
+        "object_binding_pass_count": 1,
+        "full_content_digest_pass_count": 1,
+        "track_digest_count": 200,
+    }
+    assert optimized.canonical_bytes() == legacy.canonical_bytes()
+    assert shadow is not tracks
+    assert len(shadow) == 200
+    assert tuple(item.global_track_id for item in shadow) == tuple(
+        item.global_track_id for item in tracks
+    )
+    for original, copied in zip(tracks, shadow, strict=True):
+        np.testing.assert_array_equal(copied.velocity, original.velocity)
+        assert prototype._canonical_json_bytes(
+            copied.source_support
+        ) == prototype._canonical_json_bytes(original.source_support)
+        assert prototype._canonical_json_bytes(
+            copied.identity_likelihood
+        ) == prototype._canonical_json_bytes(original.identity_likelihood)
+        assert prototype._canonical_json_bytes(
+            copied.metadata
+        ) == prototype._canonical_json_bytes(original.metadata)
+        assert (
+            copied.metadata["readonly_payload"]["residual_vector"]
+            is not original.metadata["readonly_payload"]["residual_vector"]
+        )
+        covariance_delta = copied.covariance - original.covariance
+        assert float(np.linalg.eigvalsh(covariance_delta)[0]) >= -1.0e-12
+    np.testing.assert_allclose(
+        shadow[1].position - shadow[0].position,
+        tracks[1].position - tracks[0].position,
+    )
+    shadow[0].metadata["readonly_payload"]["residual_vector"][0] = -999.0
+    assert (
+        tracks[0].metadata["readonly_payload"]["residual_vector"][0]
+        == 0.0
+    )
+
+
+def test_prepared_handle_is_immutable_and_mismatch_fails_closed() -> None:
+    tracks, evidence = _case(2)
+    prepared = prepare_experimental_centroid_canonical_publication(tracks)
+    accepted = evaluate_experimental_centroid_publication_overlays(
+        tracks,
+        (evidence,),
+        config=CONFIG,
+        prepared_publication=prepared,
+    )
+
+    with pytest.raises(FrozenInstanceError):
+        prepared.base_publication_digest = "sha256:" + "0" * 64  # type: ignore[misc]
+    with pytest.raises(FrozenInstanceError):
+        prepared.work.track_count = 0  # type: ignore[misc]
+    external = prepared.to_dict()
+    external["work"]["track_count"] = 0
+    assert prepared.track_count == 2
+
+    equivalent_but_unbound = tuple(track.copy() for track in tracks)
+    mismatch = evaluate_experimental_centroid_publication_overlays(
+        equivalent_but_unbound,
+        (evidence,),
+        config=CONFIG,
+        prepared_publication=prepared,
+    )
+    assert mismatch.decisions[0].decision == "rejected"
+    assert mismatch.decisions[0].reject_reason == (
+        "prepared_canonical_publication_mismatch"
+    )
+    assert (
+        assemble_experimental_centroid_shadow_tracks(
+            equivalent_but_unbound,
+            accepted,
+            prepared_publication=prepared,
+        )
+        is equivalent_but_unbound
+    )
+    assert (
+        assemble_experimental_centroid_shadow_tracks(
+            equivalent_but_unbound,
+            mismatch,
+            prepared_publication=prepared,
+        )
+        is equivalent_but_unbound
+    )
+
+
+def test_prepared_state_in_place_mutation_fails_closed() -> None:
+    tracks, evidence = _case(2)
+    prepared = prepare_experimental_centroid_canonical_publication(tracks)
+    accepted = evaluate_experimental_centroid_publication_overlays(
+        tracks,
+        (evidence,),
+        config=CONFIG,
+        prepared_publication=prepared,
+    )
+    assert accepted.decisions[0].decision == "accepted"
+
+    tracks[0].state[0] += 0.25
+    rejected = evaluate_experimental_centroid_publication_overlays(
+        tracks,
+        (evidence,),
+        config=CONFIG,
+        prepared_publication=prepared,
+    )
+
+    assert rejected.decisions[0].decision == "rejected"
+    assert rejected.decisions[0].reject_reason == (
+        "prepared_canonical_publication_mismatch"
+    )
+    assert rejected.prepared_integrity_check is not None
+    assert rejected.prepared_integrity_check.mismatch_reason == (
+        "track_content_digest_mismatch"
+    )
+    assert (
+        assemble_experimental_centroid_shadow_tracks(
+            tracks,
+            accepted,
+            prepared_publication=prepared,
+        )
+        is tracks
+    )
+
+
+def test_prepared_nested_metadata_in_place_mutation_fails_closed() -> None:
+    tracks, evidence = _case(2)
+    tracks[0].metadata["calibration"] = {
+        "camera": {
+            "bias": [0.1, 0.2],
+            "axes": np.array([1.0, 0.0, 0.0]),
+        }
+    }
+    prepared = prepare_experimental_centroid_canonical_publication(tracks)
+    accepted = evaluate_experimental_centroid_publication_overlays(
+        tracks,
+        (evidence,),
+        config=CONFIG,
+        prepared_publication=prepared,
+    )
+    assert accepted.decisions[0].decision == "accepted"
+
+    tracks[0].metadata["calibration"]["camera"]["bias"][0] = 9.5
+    rejected = evaluate_experimental_centroid_publication_overlays(
+        tracks,
+        (evidence,),
+        config=CONFIG,
+        prepared_publication=prepared,
+    )
+
+    assert rejected.decisions[0].reject_reason == (
+        "prepared_canonical_publication_mismatch"
+    )
+    assert rejected.prepared_integrity_check is not None
+    assert rejected.prepared_integrity_check.mismatch_reason == (
+        "track_content_digest_mismatch"
+    )
+    assert (
+        assemble_experimental_centroid_shadow_tracks(
+            tracks,
+            accepted,
+            prepared_publication=prepared,
+        )
+        is tracks
+    )
+
+
+@pytest.mark.parametrize(
+    "surface",
+    (
+        "covariance",
+        "source_support",
+        "identity_likelihood",
+        "global_track_id",
+        "timestamp",
+        "track_level",
+    ),
+)
+def test_prepared_other_canonical_surface_mutations_fail_closed(
+    surface: str,
+) -> None:
+    tracks, evidence = _case(2)
+    prepared = prepare_experimental_centroid_canonical_publication(tracks)
+    accepted = evaluate_experimental_centroid_publication_overlays(
+        tracks,
+        (evidence,),
+        config=CONFIG,
+        prepared_publication=prepared,
+    )
+    assert accepted.decisions[0].decision == "accepted"
+
+    if surface == "covariance":
+        tracks[0].covariance[0, 0] += 0.5
+    elif surface == "source_support":
+        tracks[0].source_support["radar"] += 1
+    elif surface == "identity_likelihood":
+        tracks[0].identity_likelihood["unknown"] = 0.7
+    elif surface == "global_track_id":
+        tracks[0].global_track_id = "CENTER-GT-CHANGED"
+    elif surface == "timestamp":
+        tracks[0].timestamp += 0.01
+    else:
+        tracks[0].track_level = TrackLevel.COARSE
+
+    rejected = evaluate_experimental_centroid_publication_overlays(
+        tracks,
+        (evidence,),
+        config=CONFIG,
+        prepared_publication=prepared,
+    )
+    assert rejected.decisions[0].reject_reason == (
+        "prepared_canonical_publication_mismatch"
+    )
+    assert rejected.prepared_integrity_check is not None
+    assert rejected.prepared_integrity_check.matches is False
+    assert (
+        assemble_experimental_centroid_shadow_tracks(
+            tracks,
+            accepted,
+            prepared_publication=prepared,
+        )
+        is tracks
+    )
+
+
+def test_prepared_path_keeps_temporal_and_balance_rejections_fail_closed() -> None:
+    tracks, generation_one = _case(2)
+    prepared = prepare_experimental_centroid_canonical_publication(tracks)
+    oosm = evaluate_experimental_centroid_publication_overlays(
+        tracks,
+        (generation_one,),
+        config=CONFIG,
+        disposition=ExperimentalCentroidEvidenceDisposition(
+            oosm_evidence_ids=frozenset({generation_one.evidence_id})
+        ),
+        prepared_publication=prepared,
+    )
+    assert oosm.decisions[0].reject_reason == "oosm_scan"
+    assert (
+        assemble_experimental_centroid_shadow_tracks(
+            tracks,
+            oosm,
+            prepared_publication=prepared,
+        )
+        is tracks
+    )
+
+    allowed_observations = generation_one.observations[:1]
+    allowed_keys = {
+        item.observation_evidence_key for item in allowed_observations
+    }
+    unbalanced_edges = tuple(
+        edge
+        for edge in generation_one.candidate_edges
+        if edge.observation_evidence_key in allowed_keys
+    )
+    unbalanced = replace(
+        generation_one,
+        observations=allowed_observations,
+        candidate_edges=unbalanced_edges,
+        observation_count=1,
+        candidate_edge_count=len(unbalanced_edges),
+        free_row_count=1,
+        maximum_matching_cardinality=1,
+    )
+    rejected = evaluate_experimental_centroid_publication_overlays(
+        tracks,
+        (unbalanced,),
+        config=CONFIG,
+        prepared_publication=prepared,
+    )
+    assert rejected.decisions[0].reject_reason == "unbalanced_component"
+    assert (
+        assemble_experimental_centroid_shadow_tracks(
+            tracks,
+            rejected,
+            prepared_publication=prepared,
+        )
+        is tracks
+    )
+
+    first = evaluate_experimental_centroid_publication_overlays(
+        tracks,
+        (generation_one,),
+        config=CONFIG,
+        prepared_publication=prepared,
+    )
+    duplicate = evaluate_experimental_centroid_publication_overlays(
+        tracks,
+        (generation_one,),
+        config=CONFIG,
+        state=first.next_state,
+        prepared_publication=prepared,
+    )
+    assert duplicate.decisions[0].reject_reason == (
+        "duplicate_evidence_generation"
+    )
+    _, generation_two = _case(2, generation=2)
+    newer = evaluate_experimental_centroid_publication_overlays(
+        tracks,
+        (generation_two,),
+        config=CONFIG,
+        prepared_publication=prepared,
+    )
+    regressed = evaluate_experimental_centroid_publication_overlays(
+        tracks,
+        (generation_one,),
+        config=CONFIG,
+        state=newer.next_state,
+        prepared_publication=prepared,
+    )
+    assert regressed.decisions[0].reject_reason == (
+        "regressed_evidence_generation"
+    )
+    assert (
+        assemble_experimental_centroid_shadow_tracks(
+            tracks,
+            regressed,
+            prepared_publication=prepared,
+        )
+        is tracks
+    )

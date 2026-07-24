@@ -5,7 +5,27 @@
 
 ---
 
-## 0. 结构歧义 A1 原型状态（2026-07-23）
+## 0. A1 准备对象优化状态（2026-07-23）
+
+- D1 已实现 `prepare_experimental_centroid_canonical_publication()`。它对完整规范
+  `GlobalTrack` 序列执行一次校验和摘要，供 evaluation 与 shadow assembly 只读复用。
+- 准备对象不持有可变航迹、metadata 或 NumPy 引用。每个复用边界核对对象绑定并重算每条
+  航迹完整规范载荷 SHA-256；显式对象与输入序列、成员对象或内容不一致时 fail closed。
+  工作量计数报告完整描述轮次、完整性复核轮次和摘要数。
+- 完整 metadata、lineage、source support、identity、双时间戳、state/covariance 和
+  `global_track_id` 仍进入强摘要。优化没有裁剪成员、弱化哈希或使用 truth。
+- accepted shadow 可按值复制嵌套只读 `Mapping`、tuple、frozenset 和 NumPy 值，避免
+  `deepcopy(MappingProxyType)` 失败。拒绝仍返回原序列对象。
+- 聚焦 `21 passed`，D1 全量 `308 passed in 19.69s`。2/3/5 成员决策与 A1 基线逐字节一致；
+  200 航迹只读 metadata 固定夹具完成一次描述、两次完整载荷复核和 accepted 装配。state、
+  covariance、嵌套 metadata、source support、identity、全局编号、时间戳和分级修改均阻断
+  复用。
+- main 提供的首轮 200v200 A2 开发复跑为 46 evidence、9 evaluations、0 accepted，
+  shadow P95 约 `2216 ms`，RTF 约 `0.205 -> 0.094`，未通过 `+5%` 门。该批拒绝路径本来
+  就不做第二次描述，因此 D1 单测优化不能写成 A2 性能关闭。main 需接新接口后重跑并拆分
+  规范化、禁止写入摘要、prepare/evaluate/assemble 和日志物化成本。
+
+## 0.1 结构歧义 A1 原型状态（2026-07-23）
 
 - 新设计文档为
   `research_modules/d1_sensor_fusion/docs/STRUCTURAL_AMBIGUITY_NEXT_CANDIDATE_DESIGN_CN.md`；
@@ -18,7 +38,8 @@
   generation 幂等/倒退/摘要冲突、冲突组件、硬容量、非有限/身份输入和输入不变；D1 全量
   `294 passed`。
 - A1 未接 `FusionAdapter.process()`/`process_scan_batch()`，没有修改 `fusion.py` 或新增
-  运行开关；experimental decision 不是当前在线 schema。A2/A3/A4 未实现。
+  运行开关；experimental decision 不是当前在线 schema。main 的 A2 开发接线尚未通过性能
+  门，A3/A4 未实现。
 - B 路线暂缓。当前 `Q(h)=G(h)qG(h)^T` 不满足单段/分段传播半群等价，插入零更新事件也会
   改变协方差分段。事件排序、过程噪声分段、NEES/NIS/RMSE oracle 未冻结前不得接在线路径。
 - C 路线保留为主要系统研究方向：D1 只发布既有结构 evidence，D2 后续在有界窗口中规划概率
@@ -26,7 +47,7 @@
 - 双时间戳、平衡满基数 treatment 门、generation 有界幂等、lineage/source support、质量、
   identity 和无交叉协方差声明均不改变。seeds 1101/1102 继续停止。
 
-## 0.1 身份中性共同质心候选状态（2026-07-23）
+## 0.2 身份中性共同质心候选状态（2026-07-23）
 
 - D1 已实现默认关闭的
   `radar_assignment_ambiguity_neutral_centroid_correction=False`，要求结构歧义 hold 已启用，
@@ -91,13 +112,13 @@
 - source-only 终态映射 200 个真实目标并有 1 条未映射航迹；hold 映射 191 个真实目标并有
   10 条未映射航迹。首个计划后控制反馈使传感器流分叉，因此该结果是单 seed 闭环系统效果
   对照，不是完全冻结输入的上游因果证明。
-- 下一步不直接恢复现有 replay/replace 候选的系统 A/B。A1 纯函数原型已完成；A2 仍需在冻结
-  扫描上默认不发布地接入 shadow，记录规范快照、shadow DTO 和全部禁止写入摘要，并验证业务
-  输出、P95/RSS。通过后才进入 A3 新匿名 treatment 发现和 A4 预注册确认。不得通过忽略 OOSM
-  或放宽数量门制造 treatment。晋级仍须满足 IDSW、连续性恢复、RMSE/NEES/NIS、D2/D3
-  可用性、P95 和长时内存/吞吐门槛。
+- 下一步不直接恢复现有 replay/replace 候选的系统 A/B。A1 纯函数原型和 D1 准备对象优化已
+  完成；main 的 A2 默认关闭审计 shadow 需采用新接口重跑，并验证业务输出、P95/RSS。
+  通过后才进入 A3 新匿名 treatment 发现和 A4 预注册确认。不得通过忽略 OOSM 或放宽数量门
+  制造 treatment。晋级仍须满足 IDSW、连续性恢复、RMSE/NEES/NIS、D2/D3 可用性、P95 和
+  长时内存/吞吐门槛。
 
-## 0.2 结构歧义侧车基础阶段状态（2026-07-23）
+## 0.3 结构歧义侧车基础阶段状态（2026-07-23）
 
 - D1 已实现默认关闭的第三条候选
   `prediction_only_maximum_matching_component_evidence_v3`。新开关

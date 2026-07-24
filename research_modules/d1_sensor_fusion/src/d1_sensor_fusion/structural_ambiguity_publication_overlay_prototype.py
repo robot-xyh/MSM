@@ -352,9 +352,282 @@ class ExperimentalCentroidPublicationDecisionV1:
 
 
 @dataclass(frozen=True)
+class _TrackDescriptor:
+    track_index: int
+    global_track_id: str
+    timestamp: float
+    source_key: str | None
+    member_token: str | None
+    track_digest: str
+    state_digest: str
+    covariance_digest: str
+
+
+@dataclass(frozen=True, slots=True)
+class ExperimentalCentroidCanonicalPreparationWork:
+    """Explicit work accounting for one full canonical publication pass."""
+
+    full_description_pass_count: int
+    track_count: int
+    validated_track_count: int
+    full_track_digest_count: int
+    state_digest_count: int
+    covariance_digest_count: int
+    publication_digest_count: int
+
+    def __post_init__(self) -> None:
+        values = (
+            self.full_description_pass_count,
+            self.track_count,
+            self.validated_track_count,
+            self.full_track_digest_count,
+            self.state_digest_count,
+            self.covariance_digest_count,
+            self.publication_digest_count,
+        )
+        if any(
+            isinstance(value, bool)
+            or not isinstance(value, Integral)
+            or int(value) < 0
+            for value in values
+        ):
+            raise ValueError("preparation work counts must be non-negative integers")
+        for name in (
+            "full_description_pass_count",
+            "track_count",
+            "validated_track_count",
+            "full_track_digest_count",
+            "state_digest_count",
+            "covariance_digest_count",
+            "publication_digest_count",
+        ):
+            object.__setattr__(self, name, int(getattr(self, name)))
+
+    def to_dict(self) -> dict[str, int]:
+        return {
+            "full_description_pass_count": self.full_description_pass_count,
+            "track_count": self.track_count,
+            "validated_track_count": self.validated_track_count,
+            "full_track_digest_count": self.full_track_digest_count,
+            "state_digest_count": self.state_digest_count,
+            "covariance_digest_count": self.covariance_digest_count,
+            "publication_digest_count": self.publication_digest_count,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class ExperimentalCentroidCanonicalIntegrityCheck:
+    """Strong content check for reuse of one prepared publication."""
+
+    matches: bool
+    mismatch_reason: str | None
+    object_binding_pass_count: int
+    full_content_digest_pass_count: int
+    track_digest_count: int
+
+    def __post_init__(self) -> None:
+        if self.matches == (self.mismatch_reason is not None):
+            raise ValueError(
+                "integrity match and mismatch_reason must be consistent"
+            )
+        for name in (
+            "object_binding_pass_count",
+            "full_content_digest_pass_count",
+            "track_digest_count",
+        ):
+            value = getattr(self, name)
+            if (
+                isinstance(value, bool)
+                or not isinstance(value, Integral)
+                or int(value) < 0
+            ):
+                raise ValueError(
+                    "integrity work counts must be non-negative integers"
+                )
+            object.__setattr__(self, name, int(value))
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "matches": self.matches,
+            "mismatch_reason": self.mismatch_reason,
+            "object_binding_pass_count": self.object_binding_pass_count,
+            "full_content_digest_pass_count": (
+                self.full_content_digest_pass_count
+            ),
+            "track_digest_count": self.track_digest_count,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class _CanonicalTrackObjectBinding:
+    track_object_id: int
+    global_track_id_object_id: int
+    state_object_id: int
+    covariance_object_id: int
+    source_support_object_id: int
+    identity_likelihood_object_id: int
+    metadata_object_id: int
+    timestamp_object_id: int
+    track_level_object_id: int
+
+
+@dataclass(frozen=True, slots=True)
+class ExperimentalPreparedCentroidCanonicalPublication:
+    """Immutable handle for one experimental/offline canonical publication.
+
+    The handle is valid only for the exact sequence and track objects supplied
+    to ``prepare_experimental_centroid_canonical_publication``. The full
+    metadata, lineage, source-support, identity and state surfaces are still
+    validated and hashed during that single preparation pass.
+    """
+
+    base_publication_digest: str
+    validation_error: str | None
+    work: ExperimentalCentroidCanonicalPreparationWork
+    _canonical_sequence_object_id: int = field(repr=False, compare=False)
+    _track_bindings: tuple[_CanonicalTrackObjectBinding, ...] = field(
+        repr=False,
+        compare=False,
+    )
+    _descriptors: tuple[_TrackDescriptor, ...] = field(
+        repr=False,
+        compare=False,
+    )
+
+    def __post_init__(self) -> None:
+        if not _is_digest(self.base_publication_digest):
+            raise ValueError("base_publication_digest must be a SHA-256 digest")
+        if self.validation_error is not None and not str(
+            self.validation_error
+        ).strip():
+            raise ValueError("validation_error must be non-empty when supplied")
+        if len(self._track_bindings) != self.work.track_count:
+            raise ValueError("track bindings must cover the prepared sequence")
+        if (
+            self.validation_error is None
+            and len(self._descriptors) != self.work.track_count
+        ):
+            raise ValueError("valid preparation must describe every track")
+
+    @property
+    def track_count(self) -> int:
+        return self.work.track_count
+
+    def matches_exact_input(
+        self,
+        canonical_tracks: Sequence[GlobalTrack],
+    ) -> bool:
+        """Return whether object bindings and complete contents still match."""
+
+        return self.verify_exact_input(canonical_tracks).matches
+
+    def verify_exact_input(
+        self,
+        canonical_tracks: Sequence[GlobalTrack],
+    ) -> ExperimentalCentroidCanonicalIntegrityCheck:
+        """Verify exact bindings and strong payload digests without describing."""
+
+        if id(canonical_tracks) != self._canonical_sequence_object_id:
+            return _integrity_mismatch("sequence_object_mismatch")
+        try:
+            if len(canonical_tracks) != len(self._track_bindings):
+                return _integrity_mismatch("sequence_length_mismatch")
+        except TypeError:
+            return _integrity_mismatch("sequence_length_invalid")
+        for track, binding in zip(
+            canonical_tracks,
+            self._track_bindings,
+            strict=True,
+        ):
+            if not isinstance(track, GlobalTrack):
+                return _integrity_mismatch("track_type_mismatch")
+            if (
+                id(track) != binding.track_object_id
+                or id(track.global_track_id)
+                != binding.global_track_id_object_id
+                or id(track.state) != binding.state_object_id
+                or id(track.covariance) != binding.covariance_object_id
+                or id(track.source_support)
+                != binding.source_support_object_id
+                or id(track.identity_likelihood)
+                != binding.identity_likelihood_object_id
+                or id(track.metadata) != binding.metadata_object_id
+                or id(track.timestamp) != binding.timestamp_object_id
+                or id(track.track_level) != binding.track_level_object_id
+            ):
+                return _integrity_mismatch("track_object_binding_mismatch")
+
+        if self.validation_error is not None:
+            return ExperimentalCentroidCanonicalIntegrityCheck(
+                matches=True,
+                mismatch_reason=None,
+                object_binding_pass_count=1,
+                full_content_digest_pass_count=0,
+                track_digest_count=0,
+            )
+
+        digest_count = 0
+        for track, descriptor in zip(
+            canonical_tracks,
+            self._descriptors,
+            strict=True,
+        ):
+            try:
+                current_digest = _integrity_track_digest(track)
+            except (
+                FloatingPointError,
+                OverflowError,
+                TypeError,
+                ValueError,
+                np.linalg.LinAlgError,
+            ):
+                return _integrity_mismatch(
+                    "track_content_invalid",
+                    full_content_digest_pass_count=1,
+                    track_digest_count=digest_count,
+                )
+            digest_count += 1
+            if current_digest != descriptor.track_digest:
+                return _integrity_mismatch(
+                    "track_content_digest_mismatch",
+                    full_content_digest_pass_count=1,
+                    track_digest_count=digest_count,
+                )
+        return ExperimentalCentroidCanonicalIntegrityCheck(
+            matches=True,
+            mismatch_reason=None,
+            object_binding_pass_count=1,
+            full_content_digest_pass_count=1,
+            track_digest_count=digest_count,
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "prototype_status": EXPERIMENTAL_CENTROID_PUBLICATION_PROTOTYPE_STATUS,
+            "usage_scope": "experimental_offline_only",
+            "base_publication_digest": self.base_publication_digest,
+            "validation_error": self.validation_error,
+            "track_count": self.track_count,
+            "work": self.work.to_dict(),
+        }
+
+
+@dataclass(frozen=True)
 class ExperimentalCentroidPublicationEvaluation:
     decisions: tuple[ExperimentalCentroidPublicationDecisionV1, ...]
     next_state: ExperimentalCentroidPublicationState
+    _prepared_publication: (
+        ExperimentalPreparedCentroidCanonicalPublication | None
+    ) = field(default=None, repr=False, compare=False)
+    _prepared_integrity_check: (
+        ExperimentalCentroidCanonicalIntegrityCheck | None
+    ) = field(default=None, repr=False, compare=False)
+
+    @property
+    def prepared_integrity_check(
+        self,
+    ) -> ExperimentalCentroidCanonicalIntegrityCheck | None:
+        return self._prepared_integrity_check
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -365,16 +638,6 @@ class ExperimentalCentroidPublicationEvaluation:
 
     def canonical_bytes(self) -> bytes:
         return _canonical_json_bytes(self.to_dict())
-
-
-@dataclass(frozen=True)
-class _TrackDescriptor:
-    track: GlobalTrack
-    source_key: str | None
-    member_token: str | None
-    track_digest: str
-    state_digest: str
-    covariance_digest: str
 
 
 @dataclass(frozen=True)
@@ -412,6 +675,53 @@ class _EvidenceEnvelope:
         )
 
 
+def prepare_experimental_centroid_canonical_publication(
+    canonical_tracks: Sequence[GlobalTrack],
+) -> ExperimentalPreparedCentroidCanonicalPublication:
+    """Prepare one immutable experimental/offline canonical publication.
+
+    The returned handle may be reused by evaluation and shadow assembly for
+    the exact input sequence. It does not alter the canonical tracks and is
+    not an online publication schema.
+    """
+
+    if not isinstance(canonical_tracks, Sequence) or isinstance(
+        canonical_tracks,
+        (str, bytes, bytearray),
+    ):
+        raise TypeError("canonical_tracks must be a sequence of GlobalTrack")
+    descriptors, base_digest, base_error, work = _describe_tracks(
+        canonical_tracks
+    )
+    bindings: list[_CanonicalTrackObjectBinding] = []
+    for track in canonical_tracks:
+        if not isinstance(track, GlobalTrack):
+            raise TypeError("canonical_tracks must contain GlobalTrack")
+        bindings.append(
+            _CanonicalTrackObjectBinding(
+                track_object_id=id(track),
+                global_track_id_object_id=id(track.global_track_id),
+                state_object_id=id(track.state),
+                covariance_object_id=id(track.covariance),
+                source_support_object_id=id(track.source_support),
+                identity_likelihood_object_id=id(
+                    track.identity_likelihood
+                ),
+                metadata_object_id=id(track.metadata),
+                timestamp_object_id=id(track.timestamp),
+                track_level_object_id=id(track.track_level),
+            )
+        )
+    return ExperimentalPreparedCentroidCanonicalPublication(
+        base_publication_digest=base_digest,
+        validation_error=base_error,
+        work=work,
+        _canonical_sequence_object_id=id(canonical_tracks),
+        _track_bindings=tuple(bindings),
+        _descriptors=descriptors,
+    )
+
+
 def evaluate_experimental_centroid_publication_overlays(
     canonical_tracks: Sequence[GlobalTrack],
     evidence_items: Sequence[StructuralAmbiguityEvidence],
@@ -421,8 +731,16 @@ def evaluate_experimental_centroid_publication_overlays(
     disposition: ExperimentalCentroidEvidenceDisposition | None = None,
     base_publication_revision: str | None = None,
     overlay_valid_for_publication_id: str | None = None,
+    prepared_publication: (
+        ExperimentalPreparedCentroidCanonicalPublication | None
+    ) = None,
 ) -> ExperimentalCentroidPublicationEvaluation:
-    """Evaluate A1 overlays without touching tracks, filters, or history."""
+    """Evaluate A1 overlays without touching tracks, filters, or history.
+
+    ``prepared_publication`` is an experimental/offline optimization. A
+    handle/input mismatch rejects the overlay path and never falls back to
+    trusting descriptors prepared for another publication.
+    """
 
     state = state or ExperimentalCentroidPublicationState()
     config = config or ExperimentalCentroidPublicationOverlayConfig()
@@ -431,7 +749,43 @@ def evaluate_experimental_centroid_publication_overlays(
         (_normalize_evidence(item) for item in evidence_items),
         key=lambda item: item.component_key,
     ))
-    descriptors, base_digest, base_error = _describe_tracks(canonical_tracks)
+    if prepared_publication is None:
+        prepared_publication = (
+            prepare_experimental_centroid_canonical_publication(
+                canonical_tracks
+            )
+        )
+        integrity_check = ExperimentalCentroidCanonicalIntegrityCheck(
+            matches=True,
+            mismatch_reason=None,
+            object_binding_pass_count=0,
+            full_content_digest_pass_count=0,
+            track_digest_count=0,
+        )
+    else:
+        if not isinstance(
+            prepared_publication,
+            ExperimentalPreparedCentroidCanonicalPublication,
+        ):
+            raise TypeError(
+                "prepared_publication must be an "
+                "ExperimentalPreparedCentroidCanonicalPublication"
+            )
+        integrity_check = prepared_publication.verify_exact_input(
+            canonical_tracks
+        )
+    preparation_matches = integrity_check.matches
+    descriptors = (
+        prepared_publication._descriptors
+        if preparation_matches
+        else ()
+    )
+    base_digest = prepared_publication.base_publication_digest
+    base_error = (
+        prepared_publication.validation_error
+        if preparation_matches
+        else "prepared_canonical_publication_mismatch"
+    )
     revision = (
         str(base_publication_revision).strip()
         if base_publication_revision is not None
@@ -611,6 +965,10 @@ def evaluate_experimental_centroid_publication_overlays(
     return ExperimentalCentroidPublicationEvaluation(
         decisions=tuple(decisions),
         next_state=next_state,
+        _prepared_publication=(
+            prepared_publication if preparation_matches else None
+        ),
+        _prepared_integrity_check=integrity_check,
     )
 
 
@@ -621,24 +979,57 @@ def assemble_experimental_centroid_shadow_tracks(
         | Sequence[ExperimentalCentroidPublicationDecisionV1]
         | ExperimentalCentroidPublicationEvaluation
     ),
+    *,
+    prepared_publication: (
+        ExperimentalPreparedCentroidCanonicalPublication | None
+    ) = None,
 ) -> Sequence[GlobalTrack]:
     """Apply accepted overlays to detached DTO copies.
 
     With no accepted decision, or on any validation mismatch, the exact input
     sequence object is returned. The function never rebuilds a rejected path.
+    An explicitly supplied prepared handle must match the exact input.
     """
 
     if isinstance(decisions, ExperimentalCentroidPublicationEvaluation):
         decision_items = decisions.decisions
+        evaluation_preparation = decisions._prepared_publication
     elif isinstance(decisions, ExperimentalCentroidPublicationDecisionV1):
         decision_items = (decisions,)
+        evaluation_preparation = None
     else:
         decision_items = tuple(decisions)
+        evaluation_preparation = None
     accepted = tuple(item for item in decision_items if item.decision == "accepted")
     if not accepted:
         return canonical_tracks
 
-    descriptors, base_digest, error = _describe_tracks(canonical_tracks)
+    if prepared_publication is not None and not isinstance(
+        prepared_publication,
+        ExperimentalPreparedCentroidCanonicalPublication,
+    ):
+        raise TypeError(
+            "prepared_publication must be an "
+            "ExperimentalPreparedCentroidCanonicalPublication"
+        )
+    candidate_preparation = (
+        prepared_publication
+        if prepared_publication is not None
+        else evaluation_preparation
+    )
+    if (
+        candidate_preparation is not None
+        and candidate_preparation.matches_exact_input(canonical_tracks)
+    ):
+        descriptors = candidate_preparation._descriptors
+        base_digest = candidate_preparation.base_publication_digest
+        error = candidate_preparation.validation_error
+    elif prepared_publication is not None:
+        return canonical_tracks
+    else:
+        descriptors, base_digest, error, _ = _describe_tracks(
+            canonical_tracks
+        )
     if error is not None:
         return canonical_tracks
     if any(item.base_publication_digest != base_digest for item in accepted):
@@ -672,17 +1063,19 @@ def assemble_experimental_centroid_shadow_tracks(
 
     shadow_tracks: list[GlobalTrack] = []
     for descriptor in descriptors:
-        track = descriptor.track
+        track = canonical_tracks[descriptor.track_index]
         copied = GlobalTrack(
             global_track_id=track.global_track_id,
             state=track.state.copy(),
             covariance=track.covariance.copy(),
             timestamp=track.timestamp,
             track_level=track.track_level,
-            source_support=deepcopy(track.source_support),
-            identity_likelihood=deepcopy(track.identity_likelihood),
+            source_support=_detached_value_copy(track.source_support),
+            identity_likelihood=_detached_value_copy(
+                track.identity_likelihood
+            ),
             last_nis=track.last_nis,
-            metadata=deepcopy(track.metadata),
+            metadata=_detached_value_copy(track.metadata),
         )
         key = (descriptor.source_key, descriptor.member_token)
         overlay = overlays.get(key)
@@ -747,7 +1140,7 @@ def _build_component_overlays(
         if len(candidates) != 1:
             return (), None, None, "member_track_duplicate"
         descriptor = candidates[0]
-        if abs(descriptor.track.timestamp - evidence.published_at) > 1.0e-9:
+        if abs(descriptor.timestamp - evidence.published_at) > 1.0e-9:
             return (), None, None, "base_publication_timestamp_mismatch"
         matched_descriptors.append(descriptor)
 
@@ -979,14 +1372,79 @@ def _normalize_evidence(
     )
 
 
+def _integrity_mismatch(
+    reason: str,
+    *,
+    full_content_digest_pass_count: int = 0,
+    track_digest_count: int = 0,
+) -> ExperimentalCentroidCanonicalIntegrityCheck:
+    return ExperimentalCentroidCanonicalIntegrityCheck(
+        matches=False,
+        mismatch_reason=reason,
+        object_binding_pass_count=1,
+        full_content_digest_pass_count=full_content_digest_pass_count,
+        track_digest_count=track_digest_count,
+    )
+
+
+def _track_digest_payload(
+    track: GlobalTrack,
+    *,
+    state: np.ndarray,
+    covariance: np.ndarray,
+    timestamp: float,
+    last_nis: float | None,
+) -> dict[str, Any]:
+    return {
+        "global_track_id": str(track.global_track_id),
+        "state": state.tolist(),
+        "covariance": covariance.tolist(),
+        "timestamp": timestamp,
+        "track_level": (
+            track.track_level.value
+            if isinstance(track.track_level, Enum)
+            else str(track.track_level)
+        ),
+        "source_support": track.source_support,
+        "identity_likelihood": track.identity_likelihood,
+        "last_nis": last_nis,
+        "metadata": track.metadata,
+    }
+
+
+def _integrity_track_digest(track: GlobalTrack) -> str:
+    """Recompute only the strong canonical payload digest for reuse checks."""
+
+    if not isinstance(track, GlobalTrack):
+        raise TypeError("canonical_tracks must contain GlobalTrack")
+    state = np.asarray(track.state, dtype=float)
+    covariance = np.asarray(track.covariance, dtype=float)
+    timestamp = float(track.timestamp)
+    last_nis = None if track.last_nis is None else float(track.last_nis)
+    return _digest(
+        _track_digest_payload(
+            track,
+            state=state,
+            covariance=covariance,
+            timestamp=timestamp,
+            last_nis=last_nis,
+        )
+    )
+
+
 def _describe_tracks(
     tracks: Sequence[GlobalTrack],
-) -> tuple[tuple[_TrackDescriptor, ...], str, str | None]:
+) -> tuple[
+    tuple[_TrackDescriptor, ...],
+    str,
+    str | None,
+    ExperimentalCentroidCanonicalPreparationWork,
+]:
     descriptors: list[_TrackDescriptor] = []
     fallback: list[dict[str, str]] = []
     error: str | None = None
     seen_global_ids: set[str] = set()
-    for track in tracks:
+    for track_index, track in enumerate(tracks):
         if not isinstance(track, GlobalTrack):
             raise TypeError("canonical_tracks must contain GlobalTrack")
         source_key = (
@@ -1040,25 +1498,19 @@ def _describe_tracks(
             last_nis = None if track.last_nis is None else float(track.last_nis)
             if last_nis is not None and not np.isfinite(last_nis):
                 raise FloatingPointError("GlobalTrack last_nis is nonfinite")
-            payload = {
-                "global_track_id": global_track_id,
-                "state": state.tolist(),
-                "covariance": covariance.tolist(),
-                "timestamp": timestamp,
-                "track_level": (
-                    track.track_level.value
-                    if isinstance(track.track_level, Enum)
-                    else str(track.track_level)
-                ),
-                "source_support": track.source_support,
-                "identity_likelihood": track.identity_likelihood,
-                "last_nis": last_nis,
-                "metadata": track.metadata,
-            }
+            payload = _track_digest_payload(
+                track,
+                state=state,
+                covariance=covariance,
+                timestamp=timestamp,
+                last_nis=last_nis,
+            )
             track_digest = _digest(payload)
             descriptors.append(
                 _TrackDescriptor(
-                    track=track,
+                    track_index=track_index,
+                    global_track_id=global_track_id,
+                    timestamp=timestamp,
                     source_key=source_key,
                     member_token=member_token,
                     track_digest=track_digest,
@@ -1072,21 +1524,41 @@ def _describe_tracks(
             error = error or "nonfinite_input"
         except (TypeError, ValueError, np.linalg.LinAlgError):
             error = error or "canonical_publication_invalid"
+    work = ExperimentalCentroidCanonicalPreparationWork(
+        full_description_pass_count=1,
+        track_count=len(fallback),
+        validated_track_count=len(descriptors),
+        full_track_digest_count=len(descriptors),
+        state_digest_count=len(descriptors),
+        covariance_digest_count=len(descriptors),
+        publication_digest_count=1,
+    )
     if error is not None:
-        return (), _digest({"invalid_publication_members": sorted(
-            fallback,
-            key=lambda item: (
-                _text_key(item["global_track_id"]),
-                _text_key(item["source_key"]),
-                _text_key(item["opaque_member_track_token"]),
+        return (
+            (),
+            _digest(
+                {
+                    "invalid_publication_members": sorted(
+                        fallback,
+                        key=lambda item: (
+                            _text_key(item["global_track_id"]),
+                            _text_key(item["source_key"]),
+                            _text_key(
+                                item["opaque_member_track_token"]
+                            ),
+                        ),
+                    )
+                }
             ),
-        )}), error
+            error,
+            work,
+        )
     digest_descriptors = sorted(
         descriptors,
         key=lambda item: (
             _text_key(item.source_key or ""),
             _text_key(item.member_token or ""),
-            _text_key(item.track.global_track_id),
+            _text_key(item.global_track_id),
             _text_key(item.track_digest),
         )
     )
@@ -1100,7 +1572,7 @@ def _describe_tracks(
             for item in digest_descriptors
         ]
     )
-    return tuple(descriptors), base_digest, None
+    return tuple(descriptors), base_digest, None, work
 
 
 def _make_decision(
@@ -1211,6 +1683,29 @@ def _contains_forbidden_identity_metadata(value: object) -> bool:
     elif isinstance(value, (list, tuple)):
         return any(_contains_forbidden_identity_metadata(item) for item in value)
     return False
+
+
+def _detached_value_copy(value: Any) -> Any:
+    """Copy supported DTO values without pickling read-only mapping wrappers."""
+
+    if isinstance(value, Mapping):
+        return {
+            _detached_value_copy(key): _detached_value_copy(nested)
+            for key, nested in value.items()
+        }
+    if isinstance(value, np.ndarray):
+        return value.copy()
+    if isinstance(value, np.generic):
+        return value.copy()
+    if isinstance(value, list):
+        return [_detached_value_copy(item) for item in value]
+    if isinstance(value, tuple):
+        return tuple(_detached_value_copy(item) for item in value)
+    if isinstance(value, frozenset):
+        return frozenset(_detached_value_copy(item) for item in value)
+    if isinstance(value, set):
+        return {_detached_value_copy(item) for item in value}
+    return deepcopy(value)
 
 
 def _canonical_json_bytes(value: Any) -> bytes:

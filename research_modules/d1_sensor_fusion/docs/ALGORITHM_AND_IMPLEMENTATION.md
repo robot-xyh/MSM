@@ -8,6 +8,55 @@
 
 ## 当前权威增量（2026-07-23）
 
+### A1 规范发布准备与安全复制
+
+原型新增三步实验调用方式：
+
+```python
+prepared = prepare_experimental_centroid_canonical_publication(canonical_tracks)
+evaluation = evaluate_experimental_centroid_publication_overlays(
+    canonical_tracks,
+    evidence_items,
+    prepared_publication=prepared,
+)
+shadow_tracks = assemble_experimental_centroid_shadow_tracks(
+    canonical_tracks,
+    evaluation,
+    prepared_publication=prepared,
+)
+```
+
+第一步遍历完整规范航迹，校验 NED、有限性、协方差对称半正定、禁止身份字段和唯一
+`global_track_id`，并计算每条航迹完整载荷摘要、状态摘要、协方差摘要及发布摘要。完整载荷
+包括 metadata、lineage、source support、identity、时间戳和质量字段。准备对象以
+`ExperimentalCentroidCanonicalPreparationWork` 记录完整描述轮次和各类摘要工作量。后两步
+只读复用描述符。每个复用边界使用 `ExperimentalCentroidCanonicalIntegrityCheck` 核对对象
+绑定，并对每条航迹的同一完整规范载荷重算 SHA-256。显式对象与输入序列、成员对象或载荷
+内容不一致时，evaluation 生成 `prepared_canonical_publication_mismatch` 拒绝；assembly
+返回原规范序列。
+
+准备对象采用冻结、带 slots 的数据结构。其私有描述符只包含索引、标识、时间和摘要，不持有
+可变 `GlobalTrack`、metadata 或 NumPy 数组。旧 API 保持兼容；未显式传入准备对象时，
+evaluation 内部准备一次并供同一输入的后续 assembly 复用。不同但值相同的序列仍走旧 API
+的完整重验路径，避免把对象绑定优化变成跨快照信任。
+
+正常显式 prepare -> evaluate -> assemble 只调用一次 `_describe_tracks`。evaluate 和
+assemble 各进行一次完整载荷摘要复核；复核遍历 metadata，但不重复 NED/协方差特征值/
+身份字段校验、状态和协方差独立摘要及发布级排序摘要。200 航迹的确定性工作量为 1 次完整
+描述、2 次内容摘要复核和 400 条复核航迹摘要。
+
+接受路径不再调用会拒绝 `MappingProxyType` 的通用 `deepcopy`。递归复制按值处理任意
+`Mapping`、列表、元组、集合、不可变集合、NumPy 数组和 NumPy 标量，其他受支持标量再使用
+常规深拷贝。只读映射在 shadow DTO 中脱离为普通字典，嵌套 tuple/frozenset 和 NumPy 类型
+保持值语义；完整 metadata 不丢失、不降级为字符串。
+
+2026-07-23 聚焦测试 `21 passed`，D1 全量 `308 passed in 19.69s`。2/3/5 成员决策哈希与
+提交 `de73cb2` 基线一致。200 航迹嵌套只读 metadata 固定夹具在 prepare/evaluate/assemble
+全链路只触发一次 `_describe_tracks`，并实际形成 accepted shadow。数组、嵌套 metadata、
+covariance、source support、identity、全局编号、时间戳和分级修改均阻断复用。该工作量断言
+不依赖机器墙钟。main 首轮 A2 200v200 开发复跑的 P95 约 `2216 ms`，尚未通过 `+5%` 门；
+该接口需由 main 接入并重新拆分计时后才能判断系统收益。
+
 ### 结构歧义 A1 publication overlay 原型
 
 `STRUCTURAL_AMBIGUITY_NEXT_CANDIDATE_DESIGN_CN.md` 已比较三个后续方向。提交 `de73cb2`
@@ -45,12 +94,12 @@ B 路线把共同质心放入 fixed-lag measurement-time 历史。当前
 只发布 evidence，由 D2 后续规划概率或多假设消费；无交叉协方差时不得把成员边缘量当作独立
 状态量测。
 
-2026-07-23 聚焦测试 `7 passed`，覆盖 2/3/5 成员接受、拒绝透传、成员/观测/边/组件排列
+2026-07-23 A1 基线聚焦测试 `7 passed`，覆盖 2/3/5 成员接受、拒绝透传、成员/观测/边/组件排列
 byte-identical、generation 幂等/倒退/摘要冲突、冲突组件、容量和输入不变；D1 全量
-`294 passed`。该结果只证明 A1 离线纯函数原型，不代表 A2 shadow、在线/AirSim 接线、P95、
+当时为 `294 passed`。该结果只证明 A1 离线纯函数原型，不代表 A2 shadow、在线/AirSim 接线、P95、
 系统效果或晋级。A1 没有接入 `FusionAdapter.process()`/`process_scan_batch()`，没有修改
-`fusion.py` 或新增运行开关；experimental decision schema 不是当前在线 schema。A2/A3/A4
-未实现，seeds 1101/1102 继续停止。
+`fusion.py` 或新增运行开关；experimental decision schema 不是当前在线 schema。main 的 A2
+开发接线尚未通过性能门，A3/A4 未实现，seeds 1101/1102 继续停止。
 
 ### 结构歧义证据侧车实验候选 v3
 

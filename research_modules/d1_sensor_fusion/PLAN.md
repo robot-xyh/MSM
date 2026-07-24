@@ -1,5 +1,37 @@
 # D1 多传感器融合与目标配准实施计划
 
+## A1 准备对象优化状态（2026-07-23）
+
+D1 已完成 A1 原型的最小安全性能改进，状态为
+`IMPLEMENTED_UNIT_TESTED_OFFLINE_OPTIMIZATION`。新增实验接口
+`prepare_experimental_centroid_canonical_publication()` 对一个规范发布快照执行一次完整
+校验、身份字段审计和 SHA-256 描述，并返回不可变准备对象。evaluation 和 shadow assembly
+可只读复用该对象。每次复用先核对序列及成员对象绑定，再对每条航迹的完整规范载荷重算
+SHA-256；显式准备对象与输入序列、成员对象或任何载荷内容不匹配时 fail closed。旧 API 保持
+可用，提交 `de73cb2` 的 2/3/5 成员 canonical decision bytes 保持不变。
+
+本次没有修改共同质心数学、拒绝优先级、generation 水位、安全门、decision schema、
+`fusion.py` 或默认开关。完整 metadata、lineage、source support、identity、
+`global_track_id`、双时间戳和 state/covariance 仍进入校验与强摘要。准备对象的工作量计数明确
+报告完整描述轮次、轨迹校验和摘要数量，不能通过跳过 metadata、仅描述分量成员或弱哈希减少
+成本。
+
+接受路径已用递归值语义复制替代通用 `deepcopy`，可处理真实发布中嵌套只读 `Mapping`、
+`tuple`、`frozenset` 和 NumPy 值。拒绝仍返回原序列对象；接受仍保持 ID、速度、成员相对
+位置和协方差不收缩。2026-07-23 聚焦测试 `21 passed`，D1 全量
+`308 passed in 19.69s`。200 航迹固定夹具验证 evaluate/assemble 合计只发生一次完整描述；
+evaluate 和 assemble 各执行一次完整载荷强摘要复核，合计 400 条航迹摘要。性能断言使用工作
+次数，不使用机器相关墙钟阈值。数组原地变化、嵌套 metadata 原地变化及 covariance、
+source support、identity、全局编号、时间戳和分级变化均拒绝复用。
+
+main 的 A2 默认关闭审计 shadow 仍处开发验收阶段。main 提供的 200v200、seed 1100、
+2.2 s、`recon_count=2` 开发证据为 46 条 evidence、9 次评估、0 accepted/46 rejected；
+状态有限、在线 truth 使用为 0，D1/D2/D3 终态与 hold control 相同，但 shadow P95 约
+`2216 ms`，总实时倍率约 `0.205 -> 0.094`，未通过 P95 `+5%` 门。由于本批没有 accepted，
+旧 assembly 本来就不会重复 `_describe_tracks`，本次模块优化不能替代 main 复跑。下一步由
+main 接入准备对象，分别计量规范化、禁止写入前后摘要、D1 prepare/evaluate/assemble 和日志
+物化；A2 未通过前不进入 A3/A4，也不运行 seeds 1101/1102。
+
 ## 结构歧义 A1 原型完成状态（2026-07-23）
 
 D1 已在提交 `de73cb2` 完成 A1，状态为
@@ -27,10 +59,11 @@ lineage/source support、质量和 identity 状态不变。overlay/event 不生�
 
 2026-07-23 的 A1 聚焦测试为 `7 passed`，覆盖 2/3/5 成员接受、拒绝透传、全排列确定性、
 generation 幂等/倒退/摘要冲突、冲突组件、硬容量、状态有界、truth/非有限输入隔离及输入不变；
-D1 全量为 `294 passed`。下一执行顺序为 A2 离线发布 shadow -> A3 新匿名冻结扫描 treatment
-发现 -> A4 预注册未见 seed 确认。A2 必须在冻结扫描上记录规范快照、shadow DTO 和全部禁止
-写入对象摘要，并证明业务输出不变；A1 的纯装配 helper 不等于 A2 已接线。seeds 1101/1102
-继续停止，不得以放宽 OOSM、满基数、形状或身份门制造 treatment。
+D1 全量为 `294 passed`。后续状态由上一节 2026-07-23 增量更新：A2 已有 main-owned
+开发接线，但性能门未通过；执行顺序仍为 A2 离线发布 shadow 验收 -> A3 新匿名冻结扫描
+treatment 发现 -> A4 预注册未见 seed 确认。A2 必须记录规范快照、shadow DTO 和全部禁止
+写入对象摘要，并证明业务输出不变及性能合格。seeds 1101/1102 继续停止，不得以放宽 OOSM、
+满基数、形状或身份门制造 treatment。
 
 ## 共同质心冻结扫描边界诊断完成状态（2026-07-23）
 

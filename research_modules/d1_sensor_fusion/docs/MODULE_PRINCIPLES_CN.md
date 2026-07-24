@@ -6,6 +6,27 @@
 
 ## 当前权威增量（2026-07-23）
 
+### 规范发布描述只构造一次
+
+A1 的数学和发布副作用边界不变。2026-07-23 增加的准备对象只优化完整规范快照的描述复用：
+调用方先对全部 `GlobalTrack` 做一次类型、NED、有限性、协方差、身份字段和完整载荷摘要检查，
+再把同一不可变描述用于 decision 计算和 shadow 装配。准备对象只保存摘要、对象绑定标识、
+不可变描述符和工作量计数，不保存可由外部修改的航迹、metadata 或 NumPy 引用。输入对象不
+匹配时不信任旧描述，overlay fail closed。
+
+该优化没有通过裁剪 metadata 或只描述歧义成员降低成本。metadata、lineage、source support、
+identity、双时间戳、`global_track_id`、state 和 covariance 继续进入完整强摘要。每个复用
+边界重新计算全部航迹完整载荷 SHA-256，检测数组、嵌套映射和其余规范表面的原地或重绑定变化。
+接受路径使用递归值语义复制，能够脱离复制嵌套只读 `Mapping`、`tuple`、`frozenset` 和
+NumPy 值，避免 `deepcopy(MappingProxyType)` 抛错后由 main 回退。复制结果保持内容和容器
+值语义，不把 metadata 丢弃或字符串化。
+
+聚焦测试为 `21 passed`，D1 全量为 `308 passed in 19.69s`。2/3/5 成员 decision 与 A1
+提交基线逐字节一致；200 航迹只读 metadata 固定夹具验证一次完整描述、两次完整载荷摘要
+复核、接受装配、ID/速度/相对位置保持、协方差不收缩和准备对象不可改写。main 提供的首轮
+200v200 A2 开发复跑仍因 P95 约 `2216 ms` 未通过 `+5%` 门；本次 D1 单测不构成 A2 性能
+通过证据。
+
 ### A1 先以纯函数隔离发布副作用
 
 受控冻结扫描已证明，拒绝共同质心 correction 后执行 publication-base replay + replace 会
@@ -25,10 +46,10 @@ generation 水位和候选审计保持有界幂等。
 组件、成员、观测和边经规范排序，摘要与 decision ID 不依赖遍历顺序；重复/倒退代、摘要冲突、
 重叠组件、容量和非有限输入均 fail closed。
 
-2026-07-23 聚焦测试 `7 passed`，D1 全量 `294 passed`。A1 没有接
+2026-07-23 A1 基线聚焦测试 `7 passed`，当时 D1 全量 `294 passed`。A1 没有接
 `FusionAdapter.process()`/`process_scan_batch()`，没有修改 `fusion.py`、新增开关或改变默认
-路径；experimental decision 不是在线 schema。A2 冻结扫描 shadow、A3 匿名 treatment 发现和
-A4 多 seed 确认仍未实现。
+路径；experimental decision 不是在线 schema。main 已开始 A2 默认关闭审计 shadow 开发，
+但首轮性能门未通过；A3 匿名 treatment 发现和 A4 多 seed 确认仍未实现。
 
 固定滞后共同质心事件暂缓，直至事件总排序、过程噪声分段和一致性门槛冻结。系统长期路线保留
 D1 证据侧车、由 D2 在有界窗口内研究概率/多假设消费。三条路线均不改双时间戳、满基数门、
@@ -1201,7 +1222,7 @@ NumPy EKF/固定滞后路径；第三方后端不可执行时必须输出 `unava
 | 侦察粗指向摘要 | 已实现 | 辅助调用 | 不参与默认 EKF 更新 |
 | 多观察者方位 WLS | 已实现数值助手 | 否 | 需 D2 先确认规范身份 |
 | CI 航迹融合 | 已实现数值助手 | 否 | 未接真实多节点 runtime |
-| A1 publication overlay | `IMPLEMENTED_UNIT_TESTED_OFFLINE_PROTOTYPE` | 否 | 独立纯函数和 shadow DTO 装配 helper；未接 FusionAdapter，不是在线 schema，A2-A4 未实现 |
+| A1 publication overlay | `IMPLEMENTED_UNIT_TESTED_OFFLINE_PROTOTYPE`；准备对象优化 `IMPLEMENTED_UNIT_TESTED_OFFLINE_OPTIMIZATION` | 否 | 独立纯函数、一次性完整描述和 shadow DTO 装配 helper；未接 FusionAdapter，不是在线 schema；main A2 未通过性能门，A3/A4 未实现 |
 | 受治理 JSONL/CSV 回放 | 已实现 | main 已消费 | 旧日志兼容路径不等价于严格合同 |
 | 无迹卡尔曼滤波器（Unscented Kalman Filter，UKF） | 未实现 | 否 | 只有计划项 |
 | 交互多模型（Interacting Multiple Model，IMM） | 未实现 | 否 | 常加速度（Constant Acceleration，CA）和协调转弯（Coordinated Turn，CT）模型集也未接入 |
