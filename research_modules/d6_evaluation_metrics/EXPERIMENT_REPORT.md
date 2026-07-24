@@ -1998,3 +1998,50 @@ provenance 形成完整来源链。
 D3 分配、runtime bindings、available mappings 和两类 continuity 同时下降，未通过冻结的
 可用性与连续性非退化门。候选保持默认关闭。按停止规则不运行 seeds 1101/1102、10 秒或
 20-seed 矩阵。本结果不构成 AirSim 或工程物理性能结论。
+
+## 16. 身份承诺执行门 clean 单种子复核（2026-07-23）
+
+### 条件
+
+事实来源为 clean commit `7e15dac9cdaf6743999dfe045a70676fd31a17d6`：
+
+```text
+/tmp/MSM-identity-gate-results-7e15dac/hold_only
+/tmp/MSM-identity-gate-results-7e15dac/hold_plus_centroid
+```
+
+两组均为 nominal 200 对 200、2 个侦察节点、2.2 秒、seed 1100。场景配置、离线真值状态
+和离线观测真值标签相同，运行配置只差质心修正开关。两组 manifest 均声明
+`repository_dirty=false`。
+
+### 结果
+
+| 指标 | hold_only | hold_plus_centroid |
+| --- | ---: | ---: |
+| strict IDSW | 3 | 3 |
+| track continuity | 0.8266666667 | 0.8266666667 |
+| coverage continuity | 0.8283333333 | 0.8283333333 |
+| available/unavailable/uncommitted mapping | 1491/218/76 | 1491/218/76 |
+| commitment coverage | 0.9574706212 | 0.9574706212 |
+| duplicate assignment | 0 | 0 |
+| online truth use | 0 | 0 |
+| source/candidate binding violation | 0/0 | 0/0 |
+| 质心候选/应用/拒绝 | disabled/unavailable | 46/0/46 |
+
+候选的 46 个分量中，30 个因 `oosm_scan` 被拒绝，16 个因
+`unbalanced_component` 被拒绝。实际处理量为 0。
+
+`t=1.0 s` 时 D3 计划从版本 1 强制升为版本 2，拒绝 11 个处于
+`identity_uncommitted_ambiguity_hold` 的既有绑定，并绕过迟滞。版本 2、版本 3 中这些目标
+的分配为 0。D5 主动视觉命令、D5 终端绑定、D7 导引命令和 runtime control 对这 11 个目标
+的后续继续执行数均为 0。
+
+D6 从原 producer 制品重建 truth-isolated episode 后，episode record 和 4 个派生文件与原
+制品完全一致。runtime outcome 从哈希输入清单重建后也逐字节一致，审计
+`passed=true`、`violation_count=0`。
+
+### 判定
+
+身份承诺执行门的 clean 单 seed 安全合同通过。候选臂没有产生被接受的质心修正，两臂不能
+估计质心算法效应，也不支持多 seed、AirSim 或正式晋级结论。详细来源、11 个目标清单和文件
+摘要见 `docs/IDENTITY_GATE_CLEAN_SEED_1100_AUDIT_CN.md`。

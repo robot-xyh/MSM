@@ -349,3 +349,10 @@ baseline/candidate 已完成最终三维质点 A/B。两组 manifest v2 均绑�
 在线 D2 发布逐条一致；D6 episode/runtime provenance 均验证通过。配置谱系 P1 已关闭。
 旧制品缺配置快照的记录不改写，AirSim 尚未执行。候选因 D2/D3 数量与 continuity 退化保持
 默认关闭，结构歧义保活算法准入 P1 仍开放。
+
+2026-07-23 新增
+[`IDENTITY_GATE_CLEAN_SEED_1100_AUDIT_CN.md`](IDENTITY_GATE_CLEAN_SEED_1100_AUDIT_CN.md)。
+该报告审计 clean `7e15dac9...` 的 hold-only/hold-plus-centroid 同输入单 seed 制品，记录
+truth-isolated 与 runtime-plan-outcome 确定性重建、D3 计划强制升版、11 个未承诺目标的
+D3/D5/D7 零继续执行，以及质心候选 `46/0/46` 的零 treatment 边界。本轮不是 AirSim、
+多 seed 或算法晋级证据。

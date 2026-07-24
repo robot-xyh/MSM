@@ -1978,3 +1978,24 @@ D6 episode 和 runtime provenance 均验证通过。旧 `65568579...` 制品缺�
 continuity 与 coverage continuity 分别从 `0.865/0.870` 降至
 `0.8266667/0.8283333`，D2/D3 数量从 `203/200` 降至 `201/197`。配置谱系 P1 关闭，
 结构歧义保活算法准入 P1 仍开放。该证据不是 AirSim。
+
+## 16. 零处理量不能证明算法效应（2026-07-23）
+
+同输入 A/B 只有在候选分支实际应用了干预时，才存在可估计的 treatment。候选开关开启、
+候选分量被发现或两臂结果相同，都不能代替实际应用计数。D6 至少需要同时记录：
+
+```text
+candidate count
+applied count
+rejected count and reasons
+downstream contract outcomes
+```
+
+clean commit `7e15dac9...` 的 seed 1100 候选组发现 46 个质心候选，30 个因乱序扫描被拒绝，
+16 个因分量不平衡被拒绝，实际应用为 0。因此两臂相同的 strict IDSW 3、track continuity
+0.8266666667 和 coverage continuity 0.8283333333 只能说明安全失败关闭没有改变现有结果。
+它们不是零效应估计，也不能进入晋级统计。
+
+安全合同可以在零 treatment 下独立成立。本轮 D3 对 11 个未承诺旧绑定强制升版并撤销；
+后续 D3、D5、D7 和 runtime control 的违规继续执行为 0。D6 将“安全门通过”和“算法收益
+不可用”分栏报告，避免用安全证据替代性能证据。

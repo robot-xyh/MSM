@@ -1664,3 +1664,33 @@ GAP 分类更新：
   性能证据。
 
 按冻结停止规则未运行 seeds 1101/1102、10 秒或 20-seed 矩阵。当前无新增 D6-owned P0。
+
+## 2026-07-23 身份承诺执行门 clean 单种子 GAP 更新
+
+### 已关闭
+
+1. D6 已独立消费 clean commit `7e15dac9cdaf6743999dfe045a70676fd31a17d6` 的
+   `hold_only` 与 `hold_plus_centroid`。manifest、summary、identity evaluation、
+   truth-isolated、runtime outcome 和 online observations 的 episode 与来源摘要一致。
+2. 当前 D6 API 从原 producer 制品重建的 truth-isolated episode record 完全一致，4 个派生
+   文件逐字节相同；runtime outcome JSON 也逐字节相同。
+3. 两臂 strict IDSW/track continuity/coverage continuity 为
+   `3/0.8266666667/0.8283333333`，mapping 为 `1491/218/76`，commitment coverage
+   `0.9574706212`。duplicate assignment、online truth use 和两类未承诺绑定违规均为 0。
+4. `t=1.0 s` 的 11 个未承诺目标触发 D3 `v1 -> v2` 强制升版和迟滞绕过。版本 2、版本 3、
+   D5 主动视觉/终端绑定、D7 导引和 runtime control 对该集合的继续执行均为 0。
+5. 候选组 46 个质心候选全部拒绝，原因 `oosm_scan=30`、`unbalanced_component=16`。
+   该结果证明零 treatment 下的失败关闭和安全门，不证明算法收益。
+
+### 仍开放 P1
+
+1. 需要 `applied component count > 0` 的同输入 A/B，才能评估质心修正的 IDSW、连续率、
+   D2/D3 可用性和非退化门。
+2. treatment 门通过后仍需多 seed、长时、困难谱系和 AirSim 证据。
+3. 本次 D3/D5/D7 未承诺继续执行计数由 D6 专项只读审计得到，尚未成为标准派生 JSON/CSV
+   字段。
+4. 通用 scalable 3D 汇总与 truth-isolated strict identity 仍为两条输出。后续统一报告需
+   显式联接并保留来源 availability，不能覆盖在线 summary。
+
+GAP 状态：当前无 D6-owned P0。clean 单 seed 安全合同证据已闭合；有效 treatment、自动化
+门控统计和正式多 seed/AirSim 性能证据保持 P1。P2/P3 外部 evaluator 状态不变。

@@ -1997,3 +1997,25 @@ violation 仍为 `0/0`。两组在线真值使用均为 0。
 配置谱系 P1 至此完成生产端到 D6 episode/runtime 两条链的端到端闭合。结构歧义保活候选仍因
 D2/D3 可用性和两类 continuity 退化而拒绝，保持默认关闭。按冻结门限不运行 seeds
 1101/1102、10 秒或 20-seed 矩阵。本次证据不是 AirSim。
+
+## 身份承诺执行门 clean 单种子审计（2026-07-23）
+
+D6 已只读审计 clean commit `7e15dac9cdaf6743999dfe045a70676fd31a17d6` 的
+`hold_only` 与 `hold_plus_centroid` 制品。两组均为 nominal 200 对 200、2 个侦察节点、
+2.2 秒、seed 1100，场景配置和离线真值相同，runtime profile 只差
+`d1_identity_neutral_centroid_correction_enabled`。
+
+两臂 strict IDSW、track continuity、coverage continuity 均为
+`3/0.8266666667/0.8283333333`。available/unavailable/uncommitted mapping 为
+`1491/218/76`，另有 2 条 excluded；commitment coverage 为 `0.9574706212`。重复分配、
+在线真值使用、未承诺来源/候选绑定违规均为 0。
+
+`t=1.0 s` 时 D3 从计划版本 1 强制升为版本 2，绕过迟滞并拒绝 11 个未承诺旧绑定。版本 2
+和版本 3 中这些目标的分配为 0；D5 主动视觉/终端绑定、D7 导引和 runtime control 的后续
+继续执行也均为 0。D6 使用当前代码重新构造 truth-isolated episode 和 runtime outcome，
+派生 JSON、CSV 与 Markdown 均与原制品逐字节一致。
+
+候选组产生 46 个质心候选，30 个因 `oosm_scan`、16 个因 `unbalanced_component` 被拒绝，
+实际应用数为 0。该结果是 clean 单 seed 安全合同证据，不是有效 treatment、算法收益、
+多 seed 或正式晋级证据。完整审计见
+[`docs/IDENTITY_GATE_CLEAN_SEED_1100_AUDIT_CN.md`](docs/IDENTITY_GATE_CLEAN_SEED_1100_AUDIT_CN.md)。

@@ -1959,3 +1959,37 @@ manifest 形成独立证据。
    仍退化，候选保持默认关闭。
 5. 按冻结停止规则不运行 seeds 1101/1102、10 秒或 20-seed 矩阵。AirSim、多规模、困难谱系
    和长时性能证据继续由 main 后续调度。
+
+## 19. 身份承诺执行门 clean A/B 审计（2026-07-23）
+
+### 已完成
+
+1. 只读消费提交 `7e15dac9cdaf6743999dfe045a70676fd31a17d6` 的
+   `hold_only` 与 `hold_plus_centroid`。两组 root manifest 均为 clean，场景、seed、时长、
+   规模和离线真值一致，运行配置只差质心候选开关。
+2. 独立复算 strict IDSW `3/3`、track continuity
+   `0.8266666667/0.8266666667`、coverage continuity
+   `0.8283333333/0.8283333333`、duplicate assignment `0/0`、commitment coverage
+   `0.9574706212/0.9574706212` 和 mapping 分类 `1491/218/76`。两类未承诺绑定违规和
+   online truth use 均为 0。
+3. 从 `online_observations.jsonl` 冻结 `t=1.0 s` 的 11 个未承诺目标，确认 D3 计划
+   `v1 -> v2` 强制升版、迟滞绕过和旧绑定撤销。版本 2、版本 3、D5 主动视觉/终端绑定、
+   D7 导引和 runtime control 对该集合的继续执行数均为 0。
+4. 使用当前 D6 API 从原 producer 制品重新构造 truth-isolated episode，episode record
+   完全一致；4 个派生文件逐字节相同。runtime input specification 的哈希验证通过，重建
+   JSON 也逐字节相同。
+5. 候选组 46 个质心候选全部被拒绝，`oosm_scan=30`、
+   `unbalanced_component=16`，实际应用为 0。两臂不构成有效 treatment，不计算效应或
+   非劣结论。
+
+### 后续计划
+
+1. 上游先生成 `applied component count > 0` 的冻结同输入 A/B。D6 保持 strict IDSW、
+   continuity、D2/D3 可用性和安全门联合准入，不接受只看 IDSW 的晋级。
+2. treatment 门通过后再执行多 seed、长时、困难谱系和 AirSim 证据矩阵。
+3. 新增 D6 标准离线派生项，自动输出 D3/D5/D7 对未承诺冻结集合的后续继续执行计数。
+4. 在统一 scalable 3D 报告中显式联接 truth-isolated strict identity 结果，同时保留在线
+   summary availability，不做跨证据层覆盖。
+
+本节不改变 D6 算法、控制路径或 AirSim 接口。完整结果见
+`docs/IDENTITY_GATE_CLEAN_SEED_1100_AUDIT_CN.md`。

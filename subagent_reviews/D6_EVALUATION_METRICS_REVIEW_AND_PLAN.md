@@ -1740,3 +1740,34 @@ Matplotlib 环境提示。真实 main 三维质点 3 对 3、seed 70、1.2 秒�
 `200 -> 197`、track continuity `0.865 -> 0.8266667`、coverage continuity
 `0.870 -> 0.8283333`。候选保持默认关闭，不运行 seeds 1101/1102、10 秒或 20-seed
 矩阵。该证据不是 AirSim；AirSim、多规模、困难谱系和长时性能项继续开放。
+
+## 2026-07-23 identity commitment execution gate 独立评审
+
+D6 复核提交 `7e15dac9cdaf6743999dfe045a70676fd31a17d6` 的 hold-only 与
+hold-plus-centroid。两组均为 clean nominal 200 对 200、2 个侦察节点、2.2 秒、seed
+1100。场景配置、离线真值状态和离线观测真值标签逐字节相同，runtime profile 只差质心候选
+开关。
+
+评审接受：
+
+1. 两臂 strict IDSW、track continuity、coverage continuity 均为
+   `3/0.8266666667/0.8283333333`。mapping `1491 available + 218 unavailable +
+   76 uncommitted + 2 excluded` 与 1787 条承诺记录守恒；coverage
+   `1711/1787=0.9574706212`。
+2. duplicate assignment、online truth use、uncommitted source/candidate binding
+   violation 均为 0。identity manifest v2 的配置、9 条 D2 发布和来源 SHA 均验证通过。
+3. `t=1.0 s` 时 D3 对 11 个未承诺旧绑定执行 `v1 -> v2` 强制升版并绕过迟滞。版本 2、
+   版本 3、D5 主动视觉/终端绑定、D7 导引和 runtime control 对该集合的继续执行为 0。
+4. 当前 D6 代码重建 truth-isolated episode 后与原 record 完全一致，4 个派生文件逐字节
+   相同。runtime outcome 重建 JSON 同样逐字节一致，audit violation 为 0。
+5. 候选组 46 个质心候选全部失败关闭，`oosm_scan=30`、
+   `unbalanced_component=16`，实际应用为 0。
+
+评审不接受算法收益或晋级结论。两臂没有有效 treatment，指标相同不能解释为质心修正
+“无影响”或“非劣”。本轮只关闭 clean 单 seed 安全合同证据。需要先形成至少一个合法应用，
+再进入多 seed、长时、困难谱系和 AirSim 评估。
+
+D6 后续补充两项自动化：把 D3/D5/D7 未承诺继续执行计数写入标准派生制品；在统一 scalable
+3D 报告中显式联接 truth-isolated strict identity，同时保留在线 summary availability。
+完整专项报告见
+`research_modules/d6_evaluation_metrics/docs/IDENTITY_GATE_CLEAN_SEED_1100_AUDIT_CN.md`。
