@@ -9,6 +9,38 @@
 **当前状态修订（2026-07-20）**：上段“无开放 P0”只对应此前 AirSim 审计。900-episode
 正式生成在第 210 项发现 D5 同流多批次阻塞；以下专项记录为当前状态，优先级高于历史摘要。
 
+## 2026-07-23 D1 共同质心发布影子 A2
+
+当前无新增 P0。D1 已完成不可变 prepared handle、完整载荷强摘要复核和 detached shadow
+装配；main 已通过默认关闭开关接入审计旁路，并把禁止表面前后摘要、prepare、evaluate、
+assemble、影子摘要和日志物化分别计时。D6 已完成只读 consumer 和同 seed 性能门。代码合同、
+失败关闭和业务隔离已实现。
+
+提交 `2b976a7213ccdaa35fe0e22dea88def2651e9467` 的 seed 1100 开发 pair 使用
+200 对 200、2 个侦察节点和 2.2 秒。影子臂只多 9 条审计记录。去除该 topic 后，两端
+3294/3294 条业务记录经计划编号、总线序号、确认来源和 D4 内容地址规范化后逐条一致；
+真值 NPZ、离线真值标签和五米接近事件一致。D1/D2/D3/D7 最终数量均为
+`202/201/186/186`。禁止表面修改、全局编号变化、D2/D3 消费和在线真值使用均为 0，
+业务非干预门通过。
+
+当前 P1 仍开放，且 A2 不准入：
+
+| P1 项 | 当前证据 | 阻断状态 |
+| --- | --- | --- |
+| 性能门 | control/shadow 墙钟 `10.7122/19.3765 s`，增量 `80.88%`；影子 P95 `1533.00 ms` | 未达到 `<=5%` |
+| 自然 treatment | 46 条 evidence、9 次评估，`0 accepted/46 oosm_scan rejected` | 没有有效处理样本 |
+| 结果效果 | 业务等价已证实，但无 accepted treatment | outcome effect unavailable |
+| 正式来源 | 两端 manifest 均为 `repository_dirty=true` | 仅开发证据 |
+
+平均耗时中 prepared 构造、前摘要、后摘要和 overlay 评估分别为
+`345.10/224.46/207.31/195.42 ms`，合计占影子阶段约 99.99%；装配和日志不是瓶颈。下一步
+由 main 与 D1 研究减少完整规范载荷的重复处理，同时保持 metadata、状态、协方差、来源、
+身份、双时间戳和全局编号的原地修改检测。不得放宽 OOSM 或结构门制造 accepted。性能门
+通过后才运行新的匿名冻结扫描 treatment 发现；A3/A4 和 seeds `1101/1102` 继续停止。
+证据见
+`research_modules/scalable_3d_simulation/docs/SCALABLE_3D_CENTROID_OVERLAY_A2_PREPARED_REVIEW_CN.md`
+及同名 JSON。
+
 ## 2026-07-23 D3 身份承诺下游准入
 
 当前无新增 P0。D3 已增加 `d3_identity_commitment_admission_v1`：仅显式

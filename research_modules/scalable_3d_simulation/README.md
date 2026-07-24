@@ -30,6 +30,31 @@ main 现已把该确认链自动接入 D6 离线结果联接。存在运行时�
 每个窗口输出起始、结束、最小三维距离和五米事件；距离进展只记为诊断，不作为 D3 正式奖励。
 输入清单、联接结果、中文报告和 main provenance manifest 均随 episode 保存。
 
+## 2026-07-23 D1 共同质心发布影子 A2
+
+main 已把 D1 的实验准备对象接入默认关闭的审计旁路。规范航迹先生成不可变 prepared
+handle，再由同一对象完成 overlay 评估和 detached shadow 装配；每次复用仍对完整规范载荷
+执行强摘要复核。旁路只发布 `audit.d1.centroid_publication_overlay_shadow`，不替换
+`latest_d1_tracks`，不进入 D2 或 D3。运行时分别记录禁止表面前摘要、准备、评估、装配、
+禁止表面后摘要、影子摘要和日志物化耗时。模块栈与 scalable 3D 全量回归分别为
+`43/168 passed`。
+
+提交 `2b976a7213ccdaa35fe0e22dea88def2651e9467` 的 seed 1100 开发 pair 使用
+200 对 200、2 个侦察节点和 2.2 秒。控制臂与影子臂最终 D1/D2/D3/D7 数量均为
+`202/201/186/186`。过滤 9 条影子审计记录后，两端各 3294 条在线业务记录经计划谱系、
+确认来源和序号偏移规范化后逐条一致；真值状态、离线标签和五米事件也一致。禁止表面修改、
+全局编号变化、D2/D3 消费和在线真值使用均为 0。
+
+旁路共评估 46 条证据，全部因 `oosm_scan` 拒绝，接受数为 0。控制/影子墙钟为
+`10.7122/19.3765 s`，增量 `80.88%`；影子阶段 P95 为 `1533.00 ms`，未通过
+`+5%` 门。主要平均成本来自 prepared 构造 `345.10 ms`、前摘要 `224.46 ms`、
+后摘要 `207.31 ms` 和评估 `195.42 ms`。装配与日志物化不是瓶颈。
+
+两个 manifest 均记录 `repository_dirty=true`，本轮只属于单 seed 开发复核。D6 判定
+`overall_admitted=false`，阻断项为性能门失败、无接受样本和无结果效果证据。D1 共同质心
+发布 A2 保持默认关闭；A3、A4 和 seeds `1101/1102` 不启动。完整结果见
+`docs/SCALABLE_3D_CENTROID_OVERLAY_A2_PREPARED_REVIEW_CN.md` 和同名 JSON。
+
 ## 2026-07-23 身份承诺下游准入
 
 main 已把 D2 的 `d2.identity-evidence-commitment.v2` 按 `global_track_id` 显式接入 D3。

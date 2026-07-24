@@ -2,6 +2,27 @@
 
 ## 当前执行状态（2026-07-23）
 
+### D1 共同质心发布影子 A2
+
+- [x] main 以默认关闭开关接入 detached 审计旁路，显式复用 D1 prepared handle；
+- [x] 旁路不替换规范 D1 航迹，不被 D2/D3 消费，不使用在线真值；
+- [x] 记录规范表面前后摘要、prepare、evaluate、assemble、影子摘要和日志物化分段耗时；
+- [x] seed 1100、200 对 200、2.2 秒、2 个侦察节点完成 control/shadow pair；
+- [x] 过滤 9 条审计记录后，3294/3294 条业务总线记录经谱系和序号规范化逐条一致，真值
+  状态与离线标签一致；
+- [x] D6 独立确认业务非干预通过；
+- [ ] 性能门：墙钟增量为 `80.88%`，未达到 `<=5%`；
+- [ ] 有效处理门：46 条证据全部以 `oosm_scan` 拒绝，accepted 为 0；
+- [ ] 结果效果门：没有 accepted treatment，结果效果不可评估；
+- [ ] clean 来源门：本轮 manifest 为 `repository_dirty=true`，只作开发证据。
+
+当前状态为 `A2_NOT_ADMITTED`。下一轮只能减少完整规范载荷的重复处理，不得省略 metadata、
+状态、协方差、来源、身份、双时间戳或全局编号，也不得放宽 OOSM 和结构门制造 treatment。
+先从 seed 1100 重跑 `<=5%` 性能门；性能通过后，再用新的匿名冻结扫描寻找自然的同步平衡
+窗口。A2 通过前不启动 A3/A4，不运行 seeds `1101/1102`。机器证据和中文复核位于
+`docs/SCALABLE_3D_CENTROID_OVERLAY_A2_PREPARED_REVIEW_20260723.json` 和
+`docs/SCALABLE_3D_CENTROID_OVERLAY_A2_PREPARED_REVIEW_CN.md`。
+
 ### 身份承诺下游准入
 
 - [x] D2 身份承诺 v2 按 `global_track_id` 显式进入 D3；缺失、未知和两类未承诺状态均
