@@ -88,6 +88,62 @@ def test_recon_track_cues_are_fail_closed_by_default() -> None:
     assert IntegratedStackConfig().d5_recon_track_cues_enabled is False
 
 
+def test_d1_scan_input_selection_is_explicit_hashed_and_audited() -> None:
+    config = ScenarioConfig(
+        scenario_name="d1_scan_input_selection",
+        scenario_version="d1-scan-input-selection-v1",
+        target_count=2,
+        resource_count=2,
+        recon_count=1,
+        region_count=1,
+        duration_s=0.2,
+        seed=17,
+    )
+    default = IntegratedStackConfig()
+    assert default.d1_scan_input_implementation == "candidate_v2"
+
+    stack = IntegratedScalableModuleStack(
+        IntegratedStackConfig(
+            d1_scan_input_implementation="reference_v1",
+        )
+    )
+    manifest_profile = stack.runtime_manifest_profile_for_scenario(config)
+    assert manifest_profile["configuration"][
+        "d1_scan_input_implementation"
+    ] == "reference_v1"
+    assert manifest_profile["d1_scan_input_implementation"] == "reference_v1"
+    assert manifest_profile["d1_scan_input_execution_config"][
+        "implementation"
+    ] == "reference_v1"
+
+    result = run_episode(config, module_stack=stack)
+    governance = result.observation_governance_audit
+    assert governance is not None
+    assert governance["d1_scan_input_implementation"] == "reference_v1"
+    assert governance["d1_scan_input_execution_config"][
+        "implementation"
+    ] == "reference_v1"
+    assert governance["d1_scan_input_performance_diagnostics"][
+        "implementation"
+    ] == "reference_v1"
+    assert result.summary["d1_scan_input_implementation"] == "reference_v1"
+    assert result.summary["d1_scan_input_execution_config"] == governance[
+        "d1_scan_input_execution_config"
+    ]
+    assert result.summary["d1_scan_input_performance_diagnostics"] == governance[
+        "d1_scan_input_performance_diagnostics"
+    ]
+    assert result.manifest.runtime_profile[
+        "d1_scan_input_execution_config"
+    ]["implementation"] == "reference_v1"
+
+    with pytest.raises(
+        ValueError,
+        match="d1_scan_input_implementation must be",
+    ):
+        IntegratedStackConfig(d1_scan_input_implementation="unknown")
+
+
 def test_d1_opaque_source_key_control_arm_is_explicit_and_hashed() -> None:
     stack = IntegratedScalableModuleStack(
         IntegratedStackConfig(d1_publish_opaque_source_key=True)

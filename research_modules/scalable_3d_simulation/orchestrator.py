@@ -192,7 +192,7 @@ class Scalable3DEpisodeRunner:
         self.module_stack = module_stack
         self.manifest = build_episode_manifest(
             config,
-            runtime_profile=_runtime_manifest_profile(module_stack),
+            runtime_profile=_runtime_manifest_profile(module_stack, config),
         )
 
     def run(self) -> EpisodeResult:
@@ -519,6 +519,7 @@ class Scalable3DEpisodeRunner:
         observation_governance_audit = _observation_governance_audit(
             self.module_stack
         )
+        observation_governance = observation_governance_audit or {}
         learning_artifact_counts = _learning_artifact_counts(self.module_stack)
         radar_count = sum(
             len(message.payload.measurements)
@@ -594,6 +595,15 @@ class Scalable3DEpisodeRunner:
                 sorted(module_publication_topic_counts.items())
             ),
             "module_final_diagnostics": last_module_diagnostics,
+            "d1_scan_input_implementation": observation_governance.get(
+                "d1_scan_input_implementation"
+            ),
+            "d1_scan_input_execution_config": observation_governance.get(
+                "d1_scan_input_execution_config"
+            ),
+            "d1_scan_input_performance_diagnostics": observation_governance.get(
+                "d1_scan_input_performance_diagnostics"
+            ),
             "control_command_tick_count": control_command_tick_count,
             "camera_command_issued_count": camera_command_issued_count,
             "camera_command_applied_count": camera_command_applied_count,
@@ -816,9 +826,20 @@ def _d1_consistency_evidence_records(
 
 def _runtime_manifest_profile(
     module_stack: ScalableModuleStack | None,
+    config: ScenarioConfig,
 ) -> dict[str, Any] | None:
     if module_stack is None:
         return None
+    scenario_provider = getattr(
+        module_stack,
+        "runtime_manifest_profile_for_scenario",
+        None,
+    )
+    if callable(scenario_provider):
+        profile = scenario_provider(config)
+        if not isinstance(profile, Mapping):
+            raise TypeError("runtime manifest profile must be a mapping")
+        return dict(profile)
     provider = getattr(module_stack, "runtime_manifest_profile", None)
     if not callable(provider):
         return None

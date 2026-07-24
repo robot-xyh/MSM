@@ -8,6 +8,7 @@ from dataclasses import replace
 import json
 from pathlib import Path
 import sys
+from typing import Sequence
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -21,13 +22,17 @@ from research_modules.scalable_3d_simulation.learning_runtime import (
     resolve_learning_runtime,
 )
 from research_modules.scalable_3d_simulation.orchestrator import run_episode
-from research_modules.scalable_3d_simulation.module_stack import IntegratedStackConfig
+from research_modules.scalable_3d_simulation.module_stack import (
+    IntegratedStackConfig,
+    SCAN_INPUT_CANDIDATE_IMPLEMENTATION,
+    SCAN_INPUT_REFERENCE_IMPLEMENTATION,
+)
 
 
 DEFAULT_CONFIG = Path(__file__).with_name("configs") / "nominal_200v200.json"
 
 
-def parse_args() -> argparse.Namespace:
+def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
     parser.add_argument(
@@ -107,8 +112,20 @@ def parse_args() -> argparse.Namespace:
             "and never feeds D2 or D3"
         ),
     )
+    parser.add_argument(
+        "--d1-scan-input-implementation",
+        choices=(
+            SCAN_INPUT_REFERENCE_IMPLEMENTATION,
+            SCAN_INPUT_CANDIDATE_IMPLEMENTATION,
+        ),
+        default=SCAN_INPUT_CANDIDATE_IMPLEMENTATION,
+        help=(
+            "select the D1 scan-input A/B implementation; candidate_v2 is "
+            "the default and both arms preserve the same business semantics"
+        ),
+    )
     add_learning_runtime_arguments(parser)
-    return parser.parse_args()
+    return parser.parse_args(argv)
 
 
 def load_config(path: Path) -> ScenarioConfig:
@@ -171,6 +188,9 @@ def main() -> int:
                 ),
                 d1_centroid_publication_overlay_shadow_enabled=(
                     args.d1_centroid_publication_overlay_shadow
+                ),
+                d1_scan_input_implementation=(
+                    args.d1_scan_input_implementation
                 ),
             ),
         )

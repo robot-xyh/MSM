@@ -24,6 +24,8 @@ from research_modules.d1_sensor_fusion.src.d1_sensor_fusion import (
     DEFAULT_STRUCTURAL_AMBIGUITY_PUBLISHER_NODE_ID,
     ExperimentalCentroidEvidenceDisposition,
     ExperimentalCentroidPublicationState,
+    SCAN_INPUT_CANDIDATE_IMPLEMENTATION,
+    SCAN_INPUT_REFERENCE_IMPLEMENTATION,
     ScanInputConfig,
     ScanInputOrganizer,
     Scalable3DFusionAdapter,
@@ -137,6 +139,7 @@ class IntegratedStackConfig:
     d5_recon_track_cues_enabled: bool = False
     d1_scan_max_lateness_s: float = 0.5
     d1_scan_max_buffer_residence_s: float = 5.0
+    d1_scan_input_implementation: str = SCAN_INPUT_CANDIDATE_IMPLEMENTATION
     d2_claim_retention_s: float = 30.0
     d2_claim_max_lateness_s: float = 5.0
     d2_claim_capacity_safety_factor: float = 2.0
@@ -185,6 +188,21 @@ class IntegratedStackConfig:
             raise ValueError(
                 "d1_scan_max_buffer_residence_s must cover d1_scan_max_lateness_s"
             )
+        scan_input_implementation = str(
+            self.d1_scan_input_implementation
+        ).strip()
+        if scan_input_implementation not in {
+            SCAN_INPUT_REFERENCE_IMPLEMENTATION,
+            SCAN_INPUT_CANDIDATE_IMPLEMENTATION,
+        }:
+            raise ValueError(
+                "d1_scan_input_implementation must be reference_v1 or candidate_v2"
+            )
+        object.__setattr__(
+            self,
+            "d1_scan_input_implementation",
+            scan_input_implementation,
+        )
         if (
             not np.isfinite(self.d2_claim_capacity_safety_factor)
             or self.d2_claim_capacity_safety_factor < 1.0
@@ -455,7 +473,24 @@ class IntegratedScalableModuleStack:
             "schema_version": "scalable3d-integrated-stack-runtime-profile-v1",
             "module_stack_schema_version": INTEGRATED_STACK_SCHEMA_VERSION,
             "configuration": asdict(self.stack_config),
+            "d1_scan_input_implementation": (
+                self.stack_config.d1_scan_input_implementation
+            ),
         }
+
+    def runtime_manifest_profile_for_scenario(
+        self,
+        config: ScenarioConfig,
+    ) -> dict[str, Any]:
+        """Resolve scenario-dependent D1 execution settings before manifest hashing."""
+
+        profile = self.runtime_manifest_profile()
+        organizer = ScanInputOrganizer(
+            _scan_input_config(config, self.stack_config),
+            implementation=self.stack_config.d1_scan_input_implementation,
+        )
+        profile["d1_scan_input_execution_config"] = organizer.execution_config()
+        return profile
 
     def reset(self, config: ScenarioConfig) -> None:
         self.config = config
@@ -484,7 +519,8 @@ class IntegratedScalableModuleStack:
             publisher_epoch=self._d1_publisher_epoch,
         )
         self.d1_scan_input = ScanInputOrganizer(
-            _scan_input_config(config, self.stack_config)
+            _scan_input_config(config, self.stack_config),
+            implementation=self.stack_config.d1_scan_input_implementation,
         )
         self.d2 = Scalable3DTracker(
             observation_claim_config=_observation_claim_config(
@@ -890,10 +926,19 @@ class IntegratedScalableModuleStack:
 
         self._require_ready()
         d1_audit = self.d1_scan_input.audit_summary().to_dict()
+        d1_execution_config = self.d1_scan_input.execution_config()
+        d1_performance_diagnostics = (
+            self.d1_scan_input.performance_diagnostics()
+        )
         d2_summary = self.d2.summary()
         return {
             "schema_version": "scalable3d-observation-governance-runtime-v2",
             "d1_scan_input": d1_audit,
+            "d1_scan_input_implementation": self.d1_scan_input.implementation,
+            "d1_scan_input_execution_config": d1_execution_config,
+            "d1_scan_input_performance_diagnostics": (
+                d1_performance_diagnostics
+            ),
             "d1_scan_event_total_count": self._d1_scan_event_total_count,
             "d1_scan_event_retained_count": len(self._d1_scan_events),
             "d1_scan_event_log_limit": self._d1_scan_events.maxlen,
@@ -4851,6 +4896,15 @@ class IntegratedScalableModuleStack:
             ),
             "d1_fusion_performance": (
                 self.d1.fusion_performance_diagnostics().to_dict()
+            ),
+            "d1_scan_input_implementation": governance[
+                "d1_scan_input_implementation"
+            ],
+            "d1_scan_input_execution_config": dict(
+                governance["d1_scan_input_execution_config"]
+            ),
+            "d1_scan_input_performance_diagnostics": dict(
+                governance["d1_scan_input_performance_diagnostics"]
             ),
             "d1_fusion_association": dict(
                 governance["d1_fusion_association"]
