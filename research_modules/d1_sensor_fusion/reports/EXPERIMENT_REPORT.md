@@ -1,5 +1,26 @@
 # D1 Sensor Fusion Offline Experiment Report
 
+## 2026-07-24 扫描输入正式同提交准入
+
+正式证据来自 clean commit
+`d14285e4fdeb2f2e2cd32fad2f6d42e30f9e73a7`。short 使用 seeds 1101-1110、
+2.2 s，long 使用 seeds 1101-1103、10 s；reference 与 candidate 的唯一运行差异是
+`d1_scan_input_implementation=reference_v1/candidate_v2`。
+
+| 组别 | scan-input reference -> candidate | 逐 pair 平均改善 | 更快 pair | 原始相对变化 bootstrap 95% CI |
+| --- | ---: | ---: | ---: | ---: |
+| short | `1.2124522798461839 -> 1.145650333847152 s` | `5.360121886647966%` | `9/10` | `[-8.208165356448217%, -3.0841406102053194%]` |
+| long | `6.687633245543111 -> 6.3406803108907 s` | `5.142481684491682%` | `3/3` | `[-8.837128529506151%, -1.6693612946922343%]` |
+
+13/13 pair 的业务语义、有限状态、在线真值隔离和实现身份检查通过，RSS 门通过。核心墙钟
+short/long 仅改善约 `0.7187%/0.5792%`。D6 判定
+`d1_optimization_admitted=true`，扫描输入优化正式矩阵 P1 关闭，`candidate_v2` 正式
+准入。
+
+系统实时缺口仍开放。`system_realtime_gap_closed=false`，候选最低实时因子为
+`0.14342687633969603`。本批是三维质点结果，不是 AirSim 或实机证据，也没有目标硬件、
+RMSE、NEES、NIS 和长于 10 s 的容量结论。
+
 ## 2026-07-24 协方差向量化正式准入
 
 正式 v3 试验使用三维质点集成栈。short 组为 seeds 1101-1110、2.2 s；long 组为

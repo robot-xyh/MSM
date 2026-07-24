@@ -1,5 +1,26 @@
 # D1 多传感器融合与目标配准实施计划
 
+## P1 扫描输入正式同提交准入结果（2026-07-24）
+
+main 已从 clean commit
+`d14285e4fdeb2f2e2cd32fad2f6d42e30f9e73a7` 完成 13-pair 三维质点 A/B 矩阵，D6
+独立读取证据并给出 `d1_optimization_admitted=true`。short 为 seeds 1101-1110、
+2.2 s；long 为 seeds 1101-1103、10 s。两臂来自同一提交，唯一 treatment 是
+`reference_v1/candidate_v2` 扫描输入实现。
+
+| 组别 | reference -> candidate | 逐 pair 平均改善 | 更快 pair | 原始相对变化 bootstrap 95% CI |
+| --- | ---: | ---: | ---: | ---: |
+| short | `1.2124522798461839 -> 1.145650333847152 s` | `5.360121886647966%` | `9/10` | `[-8.208165356448217%, -3.0841406102053194%]` |
+| long | `6.687633245543111 -> 6.3406803108907 s` | `5.142481684491682%` | `3/3` | `[-8.837128529506151%, -1.6693612946922343%]` |
+
+13/13 pair 的业务语义、有限状态、在线真值隔离和显式实现身份全部通过。核心墙钟改善仅约
+short `0.7187%`、long `0.5792%`，RSS 准入门通过。扫描输入优化正式矩阵 P1 据此关闭，
+`candidate_v2` 保持默认，`reference_v1` 只保留为回归路径。
+
+开放项不变：`system_realtime_gap_closed=false`，候选最低实时因子
+`0.14342687633969603`；继续由后续任务验收系统实时、AirSim、目标硬件、RMSE/NEES/NIS
+和长于 10 s 的容量及增长率。本次三维质点矩阵不得写成 AirSim、实机或目标硬件结论。
+
 ## P1 扫描输入剩余热点候选（2026-07-24）
 
 ### 已实施
@@ -29,15 +50,14 @@ P50/P95 为 `1.078281/1.084012 s -> 0.756634/0.766820 s`，P50 下降
 普通 Python 数值序列快路因 cProfile 退化被撤销。expiry 单次整体分区没有实施，因为现有
 逐项过期事件要求保留每一步的缓冲计数。两项均不留在默认路径。
 
-### 下一验收
+### 已完成的正式验收
 
-1. main 在固定 candidate 提交上复用正式 v3 的 short seeds 1101-1110 和 long seeds
-   1101-1103，运行 reference/candidate 13-pair clean 全栈矩阵。
-2. manifest 同时记录 `execution_config()` 和
-   `d1.scan_input.performance_diagnostics.v2`，D6 验证两臂实际路径，不能只比较提交号。
-3. 对比 scan-input 累计/P50/P95/max、核心墙钟、实时因子和 RSS，并继续执行跨构建业务语义、
-   PSD、D2 audit、在线 truth 和 finite-state 门。
-4. 本 D1 专项不能关闭系统实时 P1。AirSim、RMSE/NEES/NIS 和目标硬件仍按独立计划验收。
+1. main 已在固定 clean commit 上完成 short 10 pair 与 long 3 pair 的同提交矩阵。
+2. manifest、summary 和最终 diagnostics 均记录实际实现身份，D6 未按提交号推断路径。
+3. scan-input、核心墙钟、实时因子和 RSS 已分层评估，业务语义、有限状态、在线真值隔离与
+   实现身份 13/13 通过。
+4. `candidate_v2` 已正式准入。系统实时、AirSim、RMSE/NEES/NIS、目标硬件和更长时容量
+   仍按独立计划验收。
 
 ## P0/P1 正式多 seed 准入结果（2026-07-24）
 

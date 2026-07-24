@@ -8,6 +8,26 @@
 
 ## 0. 当前正式治理 GAP 增量（2026-07-24）
 
+### 扫描输入正式同提交准入
+
+clean commit `d14285e4fdeb2f2e2cd32fad2f6d42e30f9e73a7` 的
+`reference_v1/candidate_v2` 13-pair 三维质点矩阵已经完成，D6 独立只读评估判定
+`d1_optimization_admitted=true`。short scan-input 墙钟
+`1.2124522798461839 -> 1.145650333847152 s`，逐 pair 平均改善
+`5.360121886647966%`、`9/10` 更快，bootstrap 95% CI
+`[-8.208165356448217%, -3.0841406102053194%]`；long 为
+`6.687633245543111 -> 6.3406803108907 s`，改善 `5.142481684491682%`、
+`3/3` 更快，CI `[-8.837128529506151%, -1.6693612946922343%]`。
+
+13/13 pair 的业务语义、有限状态、在线真值隔离和实现身份全部通过。核心墙钟的
+short/long 改善仅约 `0.7187%/0.5792%`，RSS 门通过。因此“扫描输入优化正式矩阵”P1
+关闭，`candidate_v2` 正式准入。系统实时 P1 不关闭：
+`system_realtime_gap_closed=false`，候选最低实时因子为
+`0.14342687633969603`。该证据不是 AirSim 或实机结论，目标硬件、RMSE/NEES/NIS 和更长时
+容量仍开放。
+
+### 协方差治理正式准入
+
 正式 v3 证据矩阵已完成。short 组为 seeds 1101-1110、2.2 s，long 组为 seeds
 1101-1103、10 s，共 13 组配对、26 个三维质点集成 episode；26/26 正常退出，13/13
 跨构建语义检查通过。标量 reference 为
@@ -911,7 +931,7 @@ AirSim 和完整 200v200 实时性保持开放。性能专项 `6 passed`，main 
 | certified radar pre-gating 集成等价 | **当前三 seed 已关闭** | clean `8f86192 -> f80b5bd`；三个 seed 的 D1 fused-track 规范哈希一致，终态航迹 `202/207/203` 一致；未认证矩阵保留精确 `pinv` fallback | 对更多未见 seed、异常 covariance 和更长历史保持同一审计 |
 | 跨提交业务语义 | **当前三 seed 已关闭** | 逐条总线语义 3/3 通过；仅归一化 opaque `plan_id`，且 ACK 原始载荷 SHA 先验证；owner/version/coalition/`global_track_id`/command 未忽略 | 后续任何算法变更继续执行逐条语义审计，不能只比较最终数量 |
 | D1 fusion 性能 | 已形成描述性改善 | 三 seed 累计耗时均值 `92.991088 -> 88.330438 s`，约 -5.01%；精确求解总数约 -77.86% | 固定硬件预算、P50/P95/max、更多 seed 和长时增长 |
-| D1 scan input 性能 | **P1 开放** | 三 seed 累计耗时均值 `16.902643 -> 17.524242 s`，约 +3.68% | 剖析增长来源并在不改变双时间戳、水位线、拒绝/释放语义的条件下治理 |
+| D1 scan input 性能 | **历史基线；正式 P1 已由第 31 节关闭** | 该阶段三 seed 累计耗时均值 `16.902643 -> 17.524242 s`，约 +3.68%；后续已定位重复规范化和缓冲遍历并完成同提交 13-pair 准入 | 保持正式等价与性能门回归；系统实时另行验收 |
 | 系统实时与长时超线性 | **P1 开放** | 候选仍未达到实时，当前长时归一化检查继续标记 D1 scan input、D1 fusion 和 module stack | 达到预注册固定硬件预算，并通过更长时、多 seed 归一化增长验收 |
 
 证据位于
@@ -929,16 +949,16 @@ cProfile 总计 `2.195 s`，其中 `_claim_for_frame` 为 `2.085 s`、`_json_saf
 
 | GAP/合同 | 当前状态 | 2026-07-24 D1-owned 证据 | 剩余关闭条件 |
 | --- | --- | --- | --- |
-| 可执行 A/B reference | **已关闭** | `reference_v1` 保留任务开始前的 claim、递归 JSON-safe、缓冲双扫描和计数重扫；`candidate_v2` 为默认。constructor、`execution_config.v1` 和 `performance_diagnostics.v2` 均显式记录实际路径 | main/D6 必须在正式 manifest 中持久化执行配置和诊断，不能按提交号推断路径 |
+| 可执行 A/B reference | **已关闭并正式验收** | `reference_v1` 保留任务开始前的 claim、递归 JSON-safe、缓冲双扫描和计数重扫；`candidate_v2` 为默认。constructor、`execution_config.v1` 和 `performance_diagnostics.v2` 均显式记录实际路径；正式 13-pair 的 manifest、summary、final diagnostics 和 governance 实现身份一致 | 保持实现身份回归，不能按提交号推断路径 |
 | Claim 重复工作 | **D1-owned 热点已关闭** | candidate 复用帧构造时已验证的有序谱系；缓存身份与不可变内容进入帧完整性封印，异常替换时从 observations 重建；数值 ndarray 批量 finite 检查后一次 `tolist()`；每条谱系只构造一次 canonical JSON。谱系重建 `10,810 -> 0`，排序键构造 `21,620 -> 10,810` | 后续 schema 或谱系字段变化继续执行 digest 字节等价回归 |
-| 缓冲重复扫描 | **D1-owned 热点已关闭** | ready/remaining 单次稳定分区，item 访问 `35,406 -> 17,703`；缓冲观测计数重扫 item `67,876 -> 0`。expiry 保持逐项删除，未改变多过期事件的中间计数 | main 长时矩阵继续检查缓冲峰值、RSS、expiry 和容量边界 |
-| Reference/candidate 业务等价 | **D1 专项已关闭** | claim/content/frame digest、每次 ingest/close 的全部事件字段、发布顺序、逐步与终态 audit 严格一致；覆盖正常、乱序、duplicate、replay、冲突、too-late、缓冲/claim 溢出、expiry、NaN/正负无穷 fail-closed 和谱系缓存篡改重建。当前专项 `26 passed`、D1 全量 `361 passed` | main 仍需执行正式 short 10 seed + long 3 seed 的 13-pair clean 全栈语义门 |
-| D1-only 专项性能 | **已形成描述性证据** | 7 轮交错 P50/P95 `1.078281/1.084012 -> 0.756634/0.766820 s`；P50 下降 `29.830%`、加速 `1.425x`。计时前已构造帧，墙钟不参与语义放行 | 固定 candidate 提交运行正式 13-pair scan-input 矩阵，统计累计/P50/P95/max、核心墙钟、实时因子和 RSS |
-| 完整系统实时与正式效果 | **P1 仍开放，main-owned** | 本轮不含 payload 转换、融合、D2、AirSim、目标硬件或正式 RMSE/NEES/NIS | 通过 main 预注册系统预算、完整多 seed、正式精度和独立 AirSim 验收；不得用本专项关闭系统 P1 |
+| 缓冲重复扫描 | **D1-owned 热点与正式准入已关闭** | ready/remaining 单次稳定分区，item 访问 `35,406 -> 17,703`；缓冲观测计数重扫 item `67,876 -> 0`。expiry 保持逐项删除，未改变多过期事件的中间计数；正式矩阵 RSS 门通过 | 保持缓冲峰值、RSS、expiry 和容量边界回归；更长时容量仍开放 |
+| Reference/candidate 业务等价 | **正式矩阵已关闭** | D1 专项的 claim/content/frame digest、事件、发布顺序和 audit 严格一致；正式 short 10 pair 与 long 3 pair 的业务语义、有限状态、在线真值隔离和实现身份 13/13 通过 | 后续实现变更继续执行同级语义、真值隔离和身份检查 |
+| D1-only 与正式矩阵性能 | **扫描输入正式 P1 已关闭** | D1-only 7 轮 P50 `1.078281 -> 0.756634 s`；正式 short 墙钟 `1.2124522798461839 -> 1.145650333847152 s`、改善 `5.360121886647966%`、9/10 更快；long `6.687633245543111 -> 6.3406803108907 s`、改善 `5.142481684491682%`、3/3 更快；两个 bootstrap 区间上界均小于 0 | 保持准入回归；不得把阶段收益外推为系统实时或目标平台容量 |
+| 完整系统实时与正式效果 | **P1 仍开放，main-owned** | 核心墙钟 short/long 仅改善约 `0.7187%/0.5792%`；候选最低实时因子 `0.14342687633969603`，`system_realtime_gap_closed=false`。本矩阵不含 AirSim、目标硬件或正式 RMSE/NEES/NIS | 通过目标运行环境系统预算、独立 AirSim、正式精度和长于 10 s 的容量验收 |
 
 普通 Python 数值序列快路在同条件 profile 中由约 `1.525 s` 退化到 `1.610 s`，已撤销。
 expiry 整体分区会改变同批多个过期事件中的中间缓冲计数，因此未采用。双时间戳、NED、
 covariance、在线 truth fail-closed、source lineage、6 s fixed-lag、量测频率、缓冲门限和
-`global_track_id` 合同均未修改。本项是 D1 实现与冻结回放专项证据；main 正式 13-pair
-矩阵尚未运行，系统实时 P1 不关闭。AirSim 集成计划已检查，本轮没有接口、settings 或运行
-证据变化，无需修改。
+`global_track_id` 合同均未修改。正式 13-pair 矩阵已经完成并关闭扫描输入优化准入 P1，
+但系统实时 P1 不关闭。AirSim 集成计划已检查；本轮没有接口、settings 或 AirSim 运行证据
+变化，因此无需修改。

@@ -4,6 +4,29 @@ Offline research module for radar, acoustic, EO, and optional synthetic lidar he
 
 ## 当前性能与治理证据（2026-07-24）
 
+### 第二十六阶段：扫描输入正式同提交准入
+
+main 在 clean commit
+`d14285e4fdeb2f2e2cd32fad2f6d42e30f9e73a7` 上完成 `reference_v1` 与
+`candidate_v2` 的同提交 13-pair 三维质点矩阵，D6 随后独立只读评估。short 组使用
+seeds 1101-1110、每组 2.2 s；long 组使用 seeds 1101-1103、每组 10 s。两臂唯一允许的
+运行差异是 `d1_scan_input_implementation`。
+
+| 组别 | scan-input reference -> candidate | 逐 pair 平均改善 | candidate 更快 | 原始相对变化 bootstrap 95% CI |
+| --- | ---: | ---: | ---: | ---: |
+| short | `1.2124522798461839 -> 1.145650333847152 s` | `5.360121886647966%` | `9/10` | `[-8.208165356448217%, -3.0841406102053194%]` |
+| long | `6.687633245543111 -> 6.3406803108907 s` | `5.142481684491682%` | `3/3` | `[-8.837128529506151%, -1.6693612946922343%]` |
+
+13/13 pair 的业务语义、有限状态、在线真值隔离和实现身份检查全部通过。核心墙钟的
+short/long 逐 pair 平均改善仅约 `0.7187%/0.5792%`，常驻内存三个准入门通过。D6 判定
+`d1_optimization_admitted=true`，因此扫描输入优化正式矩阵 P1 关闭，`candidate_v2`
+正式准入并保持默认，`reference_v1` 留作回归参考。
+
+该结论不关闭系统实时缺口。`system_realtime_gap_closed=false`，候选最低实时因子为
+`0.14342687633969603`。证据来自三维质点环境，不是 AirSim 或实机结果，也未提供目标硬件、
+均方根误差（RMSE）、归一化估计误差平方（NEES）、归一化创新平方（NIS）或更长时容量
+结论；这些项目继续开放。
+
 ### 第二十五阶段：扫描输入剩余热点治理
 
 正式 v3 candidate 的 `module.d1_scan_input` 累计墙钟均值为 short
@@ -40,8 +63,8 @@ digest、逐输入事件字段、发布顺序和累计 audit 严格一致。正�
 普通 Python 数值序列的额外 `all/any` 快路实测使 cProfile 由约 `1.525 s` 回升到
 `1.610 s`，已删除。过期缓冲仍保留逐项移除，因为现有 expiry 事件携带逐次变化的中间缓冲
 计数，整体替换会改变事件字节。上述结果只属于 D1 实现和预构造帧专项；不含 payload
-转换、融合、D2、AirSim 或目标硬件。main 正式 13-pair scan-input 矩阵尚未运行，系统实时
-P1 保持开放。
+转换、融合、D2、AirSim 或目标硬件。其后的正式 13-pair scan-input 矩阵已按上节完成并
+通过，系统实时 P1 仍保持开放。
 
 ### 第二十四阶段：协方差向量化正式准入
 

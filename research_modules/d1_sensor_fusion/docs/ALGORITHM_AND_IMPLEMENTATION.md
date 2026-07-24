@@ -8,6 +8,28 @@
 
 ## 当前权威增量（2026-07-24）
 
+### 扫描输入正式准入
+
+正式 A/B 使用 clean commit
+`d14285e4fdeb2f2e2cd32fad2f6d42e30f9e73a7`。reference 和 candidate 来自同一提交，
+唯一 treatment 是 `d1_scan_input_implementation`；manifest、summary、最终 diagnostics
+和 governance 都必须显式报告实际实现。short 为 seeds 1101-1110、2.2 s，long 为
+seeds 1101-1103、10 s。
+
+| 组别 | reference -> candidate | 逐 pair 平均改善 | candidate 更快 | 原始相对变化 bootstrap 95% CI |
+| --- | ---: | ---: | ---: | ---: |
+| short | `1.2124522798461839 -> 1.145650333847152 s` | `5.360121886647966%` | `9/10` | `[-8.208165356448217%, -3.0841406102053194%]` |
+| long | `6.687633245543111 -> 6.3406803108907 s` | `5.142481684491682%` | `3/3` | `[-8.837128529506151%, -1.6693612946922343%]` |
+
+13/13 pair 的业务语义、有限状态、在线真值隔离和实现身份全部通过。核心墙钟的 short/long
+改善约为 `0.7187%/0.5792%`，RSS 门通过。独立 D6 评估给出
+`d1_optimization_admitted=true`，因此 `candidate_v2` 正式准入，扫描输入正式矩阵 P1
+关闭。
+
+`system_realtime_gap_closed=false`，候选最低实时因子为
+`0.14342687633969603`。该矩阵只覆盖三维质点集成栈，不构成 AirSim、实机、目标硬件、
+RMSE/NEES/NIS 或更长时容量结论。
+
 ### 扫描输入 A/B 实现
 
 #### 参考边界
@@ -104,8 +126,8 @@ P50 下降 `29.830%`，加速 `1.425x`。墙钟不参与语义放行。专项覆
 replay、payload conflict、too-late、缓冲/claim 容量、expiry、非有限数组和谱系缓存篡改；
 当前专项 `26 passed in 0.29s`，D1 全量 `361 passed in 20.67s`。
 
-这是 D1 实现与冻结回放专项。main 正式 13-pair scan-input 全栈矩阵待运行；系统实时、
-AirSim、RMSE/NEES/NIS 和目标硬件状态不变。
+这是 D1 实现与冻结回放专项。后续正式 13-pair scan-input 全栈矩阵已按上节完成；
+系统实时、AirSim、RMSE/NEES/NIS、目标硬件和更长时容量状态不变。
 
 ### 正式准入方法与结果
 
