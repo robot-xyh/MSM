@@ -198,3 +198,48 @@ def test_episode_cli_exposes_scan_input_selector() -> None:
         ]
     )
     assert args.d1_scan_input_implementation == "reference_v1"
+
+
+def test_operator_interrupt_is_persisted_as_interrupted(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    matrix = matrix_runner.load_matrix(MATRIX_PATH)
+    matrix["cases"] = [matrix["cases"][0]]
+    matrix_path = tmp_path / "matrix.json"
+    matrix_path.write_text(json.dumps(matrix), encoding="utf-8")
+    monkeypatch.setattr(
+        matrix_runner,
+        "_validate_source_worktree",
+        lambda worktree: "c" * 40,
+    )
+
+    def interrupt_arm(record: dict[str, object], worktree: Path) -> None:
+        del record, worktree
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(matrix_runner, "_run_arm", interrupt_arm)
+    output_root = tmp_path / "output"
+
+    with pytest.raises(KeyboardInterrupt):
+        matrix_runner.run_matrix(
+            matrix_path,
+            ROOT,
+            output_root,
+            resume=False,
+            dry_run=False,
+        )
+
+    evidence = json.loads(
+        (output_root / "evidence_manifest.json").read_text(encoding="utf-8")
+    )
+    assert evidence["status"] == "interrupted"
+    assert evidence["failure"] == {
+        "case_id": "short_seed_1101",
+        "arm": "reference",
+        "error_type": "KeyboardInterrupt",
+        "error": "matrix execution interrupted by operator",
+    }
+    assert evidence["cases"][0]["arms"]["reference"][
+        "status"
+    ] == "interrupted"

@@ -320,6 +320,16 @@ def run_matrix(
                         "completed episode failed implementation or provenance "
                         "validation"
                     )
+            except KeyboardInterrupt:
+                record["status"] = "interrupted"
+                manifest["status"] = "interrupted"
+                manifest["failure"] = {
+                    "case_id": case["case_id"],
+                    "arm": arm,
+                    "error_type": "KeyboardInterrupt",
+                    "error": "matrix execution interrupted by operator",
+                }
+                raise
             except Exception as exc:
                 manifest["status"] = "failed"
                 manifest["failure"] = {
