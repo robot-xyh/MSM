@@ -1,5 +1,42 @@
 # D6 Evaluation Metrics
 
+## 2026-07-24 D1 扫描输入同提交评估入口
+
+D6 新增 `d1_scan_input_multiseed.py` 和
+`scripts/evaluate_d1_scan_input_multiseed.py`，只读消费 main 生成的
+`scalable3d-d1-scan-input-multiseed-evidence-v1`。输入固定为 short seeds
+`1101-1110 @ 2.2 s`、long seeds `1101-1103 @ 10 s`、200 个目标、200 个资源和
+2 个侦察节点。两臂必须来自同一 40 位 clean commit，参考实现为 `reference_v1`，
+候选实现为 `candidate_v2`。
+
+评估器精确核对冻结矩阵 SHA、13 个 case 及执行顺序、bootstrap `10000/20260724`、
+全部准入门和 evidence boundary。每个 episode 从 manifest runtime profile、summary
+顶层、execution config、performance diagnostics、module final diagnostics 和治理审计
+交叉确认实现身份。运行配置、治理审计和 summary 只对明确登记的实现身份、性能计数、
+墙钟、实时因子、treatment 派生 episode ID 和 final stage timings 做归一化；
+final 中重复的 observation governance 使用顶层同一严格规则递归处理，其余字段保持严格等价。
+在线总线继续核对 D3 不透明计划谱系、
+D4 内容地址和确认引用，离线真值状态、标签和距离事件只参与等价审计。
+
+逐 pair 提取扫描输入累计墙钟、P50、P95、最大值、核心墙钟、GNU time elapsed、RSS
+和实时因子。short/long 分别输出配对相对变化、正向改善、候选更优计数、均值、中位数、
+P95 和固定随机数的百分位 bootstrap 区间。报告 bundle 包含完整 evaluation JSON、
+aggregate JSON、逐 pair CSV、中文 Markdown 和改善曲线 PNG。输出目录必须位于 evidence
+root 之外，完整 JSON 保留所有消费文件 SHA256。
+
+调用方式：
+
+```bash
+PYTHONPATH=research_modules/d6_evaluation_metrics \
+python3 research_modules/d6_evaluation_metrics/scripts/evaluate_d1_scan_input_multiseed.py \
+  --evidence-manifest /path/to/evidence_manifest.json \
+  --output-dir /path/to/independent_d6_report
+```
+
+2026-07-24 专项正反例和只读检查为 `15 passed`。其中真实 summary 结构验证上述三类允许差异，
+并确认非白名单业务字段变化仍会使评估失败。正式 13-pair 证据尚未由本任务执行，
+因此当前没有新的优化准入或系统实时性结论。
+
 ## 2026-07-24 D1 协方差优化多 seed 与长时评估入口
 
 D6 新增 `d1_covariance_limit_multiseed_long.py`。该入口复用现有显式 pair 读取与失败关闭逻辑，

@@ -1,5 +1,44 @@
 # D6 系统级离线评估：算法原理与实施说明
 
+## D1 扫描输入同提交矩阵评估（2026-07-24）
+
+`d1_scan_input_multiseed.py` 接收一个 completed-pending-D6 evidence manifest。loader 对外部
+矩阵文件、manifest 内嵌矩阵和固定 SHA256 做三方一致校验，并逐项核对 13 个 case、arm 顺序、
+命令、路径、同一 clean commit 和 `reference_v1/candidate_v2` 绑定。路径必须为绝对路径，
+episode 和 GNU time 记录必须位于 evidence root 内；报告目录必须位于该 root 外。
+
+逐 arm 读取 manifest、scenario config、summary、observation governance、stage timing、在线
+总线、离线真值状态、真值标签、距离事件和 GNU time。JSON 和 JSONL 禁止 NaN/Inf，数值真值数组
+也必须有限。扫描输入 timing 行必须唯一，wall、P50、P95、max、call count 和 mean 的关系须一致。
+实现身份从 runtime profile、summary、execution config、performance diagnostics、module final
+和 governance 多处交叉核对。
+
+语义比较对 runtime profile、summary 和 governance 使用显式白名单归一化。实现身份和扫描输入
+性能计数替换为固定标记，wall、实时因子、treatment 派生 episode ID 和 final stage timings
+作为性能或处理派生值单独报告。final 内嵌 observation governance 递归调用同一治理归一化，
+其余 final 字段不删除。在线业务记录通过
+只读跨 episode 审计比较，保留 D3 计划谱系，验证 D4 内容地址及 ACK 引用；离线真值状态、标签和
+距离事件要求等价。
+
+分组统计直接使用逐 pair
+`(candidate-reference)/reference`。short 要求至少 8/10 更快、平均改善至少 5%、bootstrap
+原始变化区间上界小于 0；long 要求至少 2/3 更快且平均改善至少 5%。short/long 的 core wall
+和 RSS 平均退化不超过 5%，任何 RSS pair 退化不超过 5%。全部门通过才输出
+`d1_optimization_admitted=true`。实时性由候选 pair 的实时因子独立判定。
+
+CLI 为：
+
+```bash
+PYTHONPATH=research_modules/d6_evaluation_metrics \
+python3 research_modules/d6_evaluation_metrics/scripts/evaluate_d1_scan_input_multiseed.py \
+  --evidence-manifest /path/to/evidence_manifest.json \
+  --output-dir /path/to/independent_d6_report
+```
+
+2026-07-24 专项测试 `15 passed`。真实 summary 正例覆盖 episode ID、stage timings 和嵌套
+governance 三类允许差异；`d2_track_count` 非白名单变化仍导致语义与准入失败。当前尚未消费
+正式 13-pair 矩阵，因此没有登记性能结论。
+
 ## D1 多 seed 与长时矩阵评估（2026-07-24）
 
 ### 可复用 pair 层

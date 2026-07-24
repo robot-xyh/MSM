@@ -1,5 +1,29 @@
 # D6 系统评估指标综述及子方案
 
+## 2026-07-24 D1 扫描输入同提交评估评审
+
+D6 已实现 `d6.d1_scan_input_multiseed_evaluation.v1` 只读评估器。它只接受 main 冻结的
+short 10 seed、long 3 seed、200/200/2 证据矩阵，并要求参考和候选来自同一 clean commit。
+实现处理差异固定为 `reference_v1` 与 `candidate_v2`；矩阵 SHA、case 顺序、命令、bootstrap、
+准入门和 evidence boundary 任一变化都会失败关闭。真实 smoke 暴露的 summary 误拒绝已修复：
+treatment 派生 episode ID、final stage timings 和 final 内嵌 governance 的实现/性能字段属于
+明确白名单；其余 final diagnostics 继续严格比较。
+
+评审顺序为来源、实现身份、业务语义和性能。实现身份从 runtime profile、summary、execution
+config、performance diagnostics、module final 和 governance 多处确认。业务比较只放宽明确的
+实现身份、性能计数、墙钟、资源和实时因子；D3 计划谱系、D4 内容地址与确认引用、在线载荷、
+离线真值状态、标签、距离事件和其余 summary/governance 字段保持严格检查。
+
+统计输出包括扫描输入 wall/P50/P95/max、core wall、GNU time elapsed、RSS 和实时因子。
+short/long 分别给出逐 pair 原始变化、正向改善、候选更优数、均值、中位数、P95 和固定
+10000 次 bootstrap 区间。优化准入和系统实时性分别判定。报告 writer 只写独立输出目录，
+生成 evaluation/aggregate JSON、CSV、中文 Markdown 和 PNG，并记录输入文件 SHA256。
+
+专项正反例和只读检查为 `15 passed`。新增真实 summary 正例通过，非白名单 `d2_track_count`
+变化仍使语义和准入失败。正式 13-pair 证据尚未在本任务中运行，因此本次评审只确认
+评估器和合同可用，不给出新的性能准入结论。`AIRSIM_INTEGRATION_PLAN.md`、
+`EXPERIMENT_REPORT.md` 和 M 对 N 评审已检查；本项未改变对应接口或证据，未修改。
+
 ## 2026-07-24 D1 多 seed 与长时评估评审
 
 D6 已建立新的显式矩阵入口，预注册 short seeds 1101-1110、2.2 秒和 long seeds 1101-1103、

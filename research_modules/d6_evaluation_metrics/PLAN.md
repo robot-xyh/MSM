@@ -1,5 +1,39 @@
 # D6 Evaluation Metrics Plan
 
+## 2026-07-24 D1 扫描输入同提交 A/B 评估状态
+
+### 已完成
+
+- [x] 固定 `d6.d1_scan_input_multiseed_evaluation.v1` 只读合同，精确校验矩阵 SHA、
+  experiment、short 10 seed、long 3 seed、200/200/2、arm order、bootstrap、准入门和
+  evidence boundary。
+- [x] 只接受 `episodes_complete_pending_d6`，要求两臂同一 clean 40 位提交，arm 状态为
+  `complete|reused`，命令除实现选择和输出目录外完全一致。
+- [x] 从 runtime profile、summary、execution config、performance diagnostics、module final
+  和治理审计确认 `reference_v1/candidate_v2`；缺失、错绑和交叉污染失败关闭。
+- [x] 复核规范化在线业务输出、D3 计划谱系、D4 内容地址与确认引用，以及离线真值状态、
+  标签、距离事件、summary 和治理审计等价。
+- [x] 修复真实 summary 误拒绝：仅放宽 treatment 派生 `episode_id`、final `stage_timings`
+  和 final 内重复 observation governance 的 implementation/performance 字段；其余 final
+  diagnostics 保持严格比较。
+- [x] 输出扫描输入 wall/P50/P95/max、core wall、GNU time elapsed、RSS、实时因子和完整
+  execution/performance diagnostics；实现配对变化、正向改善、分布统计和固定 bootstrap。
+- [x] 实现 short/long 性能门、core/RSS 非退化门、语义、有限状态、真值隔离和实现身份门。
+  `system_realtime_gap_closed` 由候选实时因子独立判断。
+- [x] 输出 evaluation/aggregate JSON、逐 pair CSV、中文 Markdown 和一张改善曲线 PNG；
+  writer 拒绝 evidence root 内输出并保留消费文件 SHA256。
+- [x] 2026-07-24 专项 `15 passed`，覆盖错误实现、dirty/commit、矩阵 SHA、语义差异、
+  阶段缺失、非有限数、running 状态、bootstrap/gate 篡改、目录只读、真实 summary
+  允许差异和非白名单业务字段拒绝。
+
+### 后续验证
+
+- [ ] main 完成正式 13-pair 同提交矩阵后调用该入口，生成正式准入报告。
+- [ ] 正式结果出来前，不登记 `d1_optimization_admitted` 或系统实时性结论。
+
+`AIRSIM_INTEGRATION_PLAN.md` 和 `EXPERIMENT_REPORT.md` 已检查。本项只消费三维质点写盘证据，
+未改变 AirSim 接口，也尚未产生正式实验结果，因此无需修改。
+
 ## 2026-07-24 D1 多 seed 与长时 clean A/B 评估状态
 
 ### 已完成

@@ -1,5 +1,33 @@
 # D6 实现差距审计
 
+## 2026-07-24 D1 扫描输入同提交评估 GAP 更新
+
+### 已关闭
+
+1. D6 已实现严格只读的 13-pair manifest consumer，不从路径名推断 arm、seed、duration 或规模。
+2. 冻结矩阵 SHA、schema、experiment、case 顺序、200/200/2、bootstrap、准入门和 evidence
+   boundary 均精确校验。
+3. 同一 clean commit、arm 状态、命令隔离和多处实现身份检查已进入失败关闭合同。
+4. 在线业务输出、D3 计划谱系、D4 内容地址/确认引用、离线真值和 summary/governance 等价检查
+   已接入；允许差异使用显式白名单。
+5. 扫描输入分位、core wall、external elapsed、RSS、实时因子、配对统计、bootstrap、准入门和
+   独立实时门已实现。
+6. evaluation/aggregate JSON、逐 pair CSV、中文 Markdown、PNG 和输入文件 SHA256 已实现；
+   evidence root 只读约束已有回归。
+7. 2026-07-24 初始专项 `13 passed`，覆盖规定的合同和篡改负例。
+8. 已关闭真实 summary 误拒绝。白名单仅增加 treatment 派生 `episode_id`、final
+   `stage_timings` 和 final 内重复 governance 的实现/性能字段；非白名单业务字段仍严格比较。
+   更新后专项为 `15 passed`。
+
+### 仍开放 P1
+
+1. **正式矩阵尚未评估。** main 需完成并提供 13-pair
+   `episodes_complete_pending_d6` evidence，D6 才能给出正式优化准入结论。
+2. **系统实时性保持独立开放。** 即使扫描输入优化通过，仍需候选实时因子全部达到 1；三维质点
+   结论不能替代 AirSim 或目标硬件容量证据。
+
+当前无新增 D6-owned P0。评估器实现缺口已关闭，正式证据消费和系统级实时容量保持 P1。
+
 ## 2026-07-24 D1 多 seed 与长时评估 GAP 更新
 
 ### 已关闭
