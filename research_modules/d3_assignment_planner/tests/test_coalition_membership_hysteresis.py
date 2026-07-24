@@ -1,3 +1,5 @@
+from commitment_test_support import committed_target_track
+
 from d3_assignment_planner import (
     AssignmentPlanner,
     PlannerConfig,
@@ -22,7 +24,7 @@ def _planner() -> AssignmentPlanner:
 
 
 def _track(costs: dict[str, float]) -> TargetTrack:
-    return TargetTrack(
+    return committed_target_track(
         "HIGH",
         threat_score=0.95,
         covariance=0.0,
@@ -145,7 +147,7 @@ def test_membership_hold_versions_new_target_without_executable_binding() -> Non
         resources,
         timestamp=0.0,
     )
-    new_target = TargetTrack(
+    new_target = committed_target_track(
         "NEW",
         threat_score=0.5,
         covariance=0.0,

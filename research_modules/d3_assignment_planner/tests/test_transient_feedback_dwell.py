@@ -1,3 +1,5 @@
+from commitment_test_support import committed_target_track
+
 from d3_assignment_planner import (
     AssignmentPlan,
     AssignmentPlanner,
@@ -33,7 +35,7 @@ def _tracks(*, switch_primary: bool) -> tuple[TargetTrack, ...]:
     )
     resource_ids = tuple(f"INT-0{index}" for index in range(1, 6))
     return (
-        TargetTrack(
+        committed_target_track(
             "T001",
             threat_score=0.95,
             covariance=0.1,
@@ -50,7 +52,7 @@ def _tracks(*, switch_primary: bool) -> tuple[TargetTrack, ...]:
             },
             fov_difficulty_by_resource=dict(zip(resource_ids, t001_fov)),
         ),
-        TargetTrack(
+        committed_target_track(
             "T002",
             threat_score=0.5,
             covariance=0.1,
@@ -113,7 +115,7 @@ def _runtime_feedback_tracks(*, reserve_replan: bool) -> tuple[TargetTrack, ...]
         else (0.0, 0.1, 0.2, 0.8, 1.0)
     )
     return (
-        TargetTrack(
+        committed_target_track(
             "T001",
             threat_score=0.95,
             covariance=0.1,
@@ -130,7 +132,7 @@ def _runtime_feedback_tracks(*, reserve_replan: bool) -> tuple[TargetTrack, ...]
             },
             fov_difficulty_by_resource=dict(zip(resource_ids, t001_fov)),
         ),
-        TargetTrack(
+        committed_target_track(
             "T002",
             threat_score=0.5,
             covariance=0.1,

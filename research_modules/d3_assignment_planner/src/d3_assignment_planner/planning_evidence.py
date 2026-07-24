@@ -595,6 +595,7 @@ def _anonymous_track(track: TargetTrack, token: str) -> TargetTrack:
         time_window_by_resource=_EMPTY_MAPPING,
         demand=anonymous_demand,
         friendly_conflict_by_resource=_EMPTY_MAPPING,
+        identity_commitment_state=track.identity_commitment_state,
     )
 
 

@@ -1,4 +1,5 @@
 from __future__ import annotations
+from commitment_test_support import committed_target_track
 
 from dataclasses import replace
 
@@ -30,7 +31,7 @@ def _planner() -> AssignmentPlanner:
 
 
 def _track(target_id: str, region_id: str, x: float, demand: TargetDemand | None = None) -> TargetTrack:
-    return TargetTrack(
+    return committed_target_track(
         target_id,
         threat_score=0.95 if demand is not None else 0.7,
         covariance=0.1,

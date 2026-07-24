@@ -1,5 +1,30 @@
 # AirSim Integration Plan For D3 Assignment Planner
 
+## Identity Commitment Field
+
+Main should join D2's current commitment publication by `global_track_id` and
+set `TargetTrack.identity_commitment_state` before calling D3. The dry-run
+adapter accepts:
+
+```text
+record.identity_commitment_state
+record.identity_commitment.identity_commitment_state
+record.metadata.identity_commitment_state
+```
+
+When all three are missing, the adapter emits
+`identity_commitment_missing`; unsupported values become
+`identity_commitment_unknown`. Both states reject every assignment edge. An
+AirSim/scalable episode must not infer commitment from `simGetDetections`
+actor identity, offline labels, or a known target count.
+
+Logs should retain the D2 source publication, D3 admitted/rejected counts and
+reasons, and previous/new plan identity. Main owns the hold/replan decision and
+must keep control held until it adopts the newer plan. If a bound target becomes
+non-committed, all ordinary and coalition bindings for that target must be zero.
+This contract passed 12 focused tests and the full `450 passed, 1 skipped`
+suite on 2026-07-23; AirSim was not started.
+
 ## Boundary
 
 This plan is limited to offline AirSim playback or software-in-the-loop evaluation that produces human-review candidate assignment plans. It does not include real flight control, hardware drivers, real fire-control parameters, damage logic, autonomous disposition, or authorization bypasses.

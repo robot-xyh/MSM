@@ -1226,6 +1226,7 @@ def generate_synthetic_learning_dataset(
                         ),
                         velocity_ned=(-12.0, 0.0, 0.0),
                         region_id="synthetic",
+                        identity_commitment_state="committed",
                     )
                     for index in range(target_count)
                 ]

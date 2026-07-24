@@ -1,9 +1,31 @@
 # D3 实现差距审计
 
 **模块**: D3 集中式资源-目标分配
-**审计日期**: 2026-07-22
+**审计日期**: 2026-07-23
 **审计依据**: 当前 `research_modules/d3_assignment_planner/` 代码、README、PLAN、docs 和 tests，既有 2026-07-13 M5N2 40-case 报告，以及 `research_modules/airsim_runtime/outputs/p1_terminal_timing_funnel_10seed_20260715_m5n2_*/episode_006_full_flow/main_episode_bus/d3_plan_history.json` 的最新 20-case/3725-record 只读复核、main/D6/D7 物理结果汇总、`subagent_reviews/MAIN_IMPLEMENTATION_GAP_AUDIT.md` 和 `EVAL/FRAMEWORK_EVAL_P0_P1_P2_GAP_CONFIRMATION.md`。
 **边界**: 本审计只覆盖离线科研仿真中的抽象资源-目标分配、版本化计划、终端反馈合同、D7 guidance binding、D6 记录导出和 AirSim dry-run 适配；不涉及真实飞控、硬件、火控、毁伤逻辑或绕过人工授权的自动处置。
+
+## 身份承诺准入更新
+
+- **D3 P1 已关闭**：两类 identity uncommitted、缺失和未知状态不能进入首次或滚动分配。
+- **D3 P1 已关闭**：上一计划绑定目标转为 uncommitted 时，迟滞不能保留绑定；新计划严格
+  升版并保留拒绝审计，旧计划不被改写。
+- **D3 P1 已关闭**：M-to-N 目标未提交时，全部 primary/reserve 槽位不可执行。
+- **D3 P1 已关闭**：dry-run adapter 支持顶层、嵌套和 metadata commitment；缺失及未知
+  状态均失败关闭。
+- **D3 P1 已关闭**：D3 不改写 `global_track_id`。main 是已有绑定 hold/replan 的触发与
+  采用方；D3 只在被调用后生成去绑定的新版本候选。
+- **验证**：2026-07-23 专项 `12 passed`，D3 全量 `450 passed, 1 skipped`；唯一跳过为
+  可选 OR-Tools。本轮未运行 AirSim，不是 seed 1100 算法晋级证据。
+- **P1 跨模块待办**：main 仍需按 `global_track_id` 接入 D2 commitment map，记录
+  hold/replan/plan adoption 时序，并在 AirSim 多 seed 中验证非 committed assignment 为 0、
+  撤销计划严格升版和旧计划拒绝。该项不要求修改 D3 准入算法。
+- **无新增 P0**：版本、stale predecessor、授权、owner/epoch/lease 和全局航迹 ID 规则未
+  放宽。
+
+2026-07-23 集中测试 12 项通过，D3 全量通过并保留 1 个既有可选依赖 skip。本轮未运行
+AirSim。main 尚未把 D2 commitment map 接到真实 scalable episode 的 D3 输入，该项仍是
+跨模块 P1 接线，不需要继续扩展 D3 架构。
 
 ## 1. 总体结论
 

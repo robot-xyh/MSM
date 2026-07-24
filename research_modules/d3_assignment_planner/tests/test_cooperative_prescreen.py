@@ -1,3 +1,5 @@
+from commitment_test_support import committed_target_track
+
 from dataclasses import replace
 from random import Random
 
@@ -19,7 +21,7 @@ from d3_assignment_planner import (
 
 
 def _track(target_id: str, demand: TargetDemand) -> TargetTrack:
-    return TargetTrack(
+    return committed_target_track(
         track_id=target_id,
         threat_score=0.9,
         covariance=0.1,

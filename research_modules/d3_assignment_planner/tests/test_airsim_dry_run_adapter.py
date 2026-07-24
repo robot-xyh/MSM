@@ -42,6 +42,7 @@ def _initial_tracks() -> list[dict[str, object]]:
         {
             "global_track_id": "T1",
             "track_state": "engageable",
+            "identity_commitment_state": "committed",
             "threat_score": 0.9,
             "covariance": 0.1,
             "window_cost": 0.1,
@@ -53,6 +54,7 @@ def _initial_tracks() -> list[dict[str, object]]:
         {
             "global_track_id": "T2",
             "track_state": "confirmed",
+            "identity_commitment_state": "committed",
             "threat_score": 0.8,
             "covariance": [[0.05, 0.0], [0.0, 0.05]],
             "window_cost": 0.1,
@@ -69,6 +71,7 @@ def _shifted_tracks() -> list[dict[str, object]]:
         {
             "global_track_id": "T1",
             "track_state": "engageable",
+            "identity_commitment_state": "committed",
             "threat_score": 0.9,
             "covariance": 0.1,
             "window_cost": 0.1,
@@ -80,6 +83,7 @@ def _shifted_tracks() -> list[dict[str, object]]:
         {
             "global_track_id": "T2",
             "track_state": "confirmed",
+            "identity_commitment_state": "committed",
             "threat_score": 0.8,
             "covariance": 0.1,
             "window_cost": 0.1,

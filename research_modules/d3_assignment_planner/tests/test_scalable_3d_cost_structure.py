@@ -1,4 +1,5 @@
 from __future__ import annotations
+from commitment_test_support import committed_target_track
 
 import numpy as np
 import pytest
@@ -13,7 +14,7 @@ from d3_assignment_planner import (
 
 
 def _track(index: int, *, candidate_regions: tuple[str, ...] = ("ALL",)) -> TargetTrack:
-    return TargetTrack(
+    return committed_target_track(
         track_id=f"T-{index:03d}",
         threat_score=0.2 + 0.7 * ((index % 11) / 10.0),
         covariance=0.05,
@@ -99,7 +100,7 @@ def test_200v200_structure_materializes_only_sparse_candidate_breakdowns() -> No
 
 
 def test_pair_specific_rules_use_reference_fallback_without_semantic_loss() -> None:
-    track = TargetTrack(
+    track = committed_target_track(
         "T",
         threat_score=0.9,
         covariance=0.1,

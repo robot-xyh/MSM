@@ -1,3 +1,5 @@
+from commitment_test_support import committed_target_track
+
 from d3_assignment_planner import (
     CostModel,
     CostWeights,
@@ -19,7 +21,7 @@ def test_cost_model_builds_weighted_breakdown() -> None:
         ),
         config=PlannerConfig(),
     )
-    track = TargetTrack(
+    track = committed_target_track(
         track_id="T1",
         threat_score=0.8,
         covariance=0.25,
@@ -50,7 +52,7 @@ def test_cost_model_builds_weighted_breakdown() -> None:
 def test_cost_model_marks_unavailable_resource_infeasible() -> None:
     config = PlannerConfig(infeasible_penalty=12345.0)
     model = CostModel(config=config)
-    track = TargetTrack("T1", threat_score=0.9, covariance=0.1, window_cost=0.1)
+    track = committed_target_track("T1", threat_score=0.9, covariance=0.1, window_cost=0.1)
     resource = ResourceState("R1", status="unavailable")
 
     result = model.build_matrix([track], [resource], timestamp=0.0)
@@ -71,7 +73,7 @@ def test_cost_model_consumes_detailed_resource_state_fields() -> None:
         ),
         config=PlannerConfig(),
     )
-    track = TargetTrack("T1", threat_score=0.9, covariance=0.1, window_cost=0.1)
+    track = committed_target_track("T1", threat_score=0.9, covariance=0.1, window_cost=0.1)
     resource = ResourceState(
         "R1",
         health_score=0.95,
@@ -98,7 +100,7 @@ def test_cost_model_consumes_detailed_resource_state_fields() -> None:
 def test_cost_model_marks_resource_intercept_infeasible_by_target() -> None:
     config = PlannerConfig(infeasible_penalty=12345.0)
     model = CostModel(config=config)
-    track = TargetTrack("T1", threat_score=0.9, covariance=0.1, window_cost=0.1)
+    track = committed_target_track("T1", threat_score=0.9, covariance=0.1, window_cost=0.1)
     resource = ResourceState(
         "R1",
         intercept_feasibility_by_target={"T1": False},
@@ -115,7 +117,7 @@ def test_cost_model_marks_resource_intercept_infeasible_by_target() -> None:
 def test_cost_model_hard_rejects_closed_time_window_edge() -> None:
     config = PlannerConfig(infeasible_penalty=12345.0)
     model = CostModel(config=config)
-    track = TargetTrack(
+    track = committed_target_track(
         "T1",
         threat_score=0.9,
         covariance=0.1,

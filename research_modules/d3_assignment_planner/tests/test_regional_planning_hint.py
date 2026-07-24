@@ -1,4 +1,5 @@
 from __future__ import annotations
+from commitment_test_support import committed_target_track
 
 from copy import deepcopy
 from dataclasses import FrozenInstanceError
@@ -60,7 +61,7 @@ def _track(
     demand: TargetDemand | None = None,
     blocked_resource_ids: tuple[str, ...] = (),
 ) -> TargetTrack:
-    return TargetTrack(
+    return committed_target_track(
         target_id,
         threat_score=0.9,
         covariance=0.1,

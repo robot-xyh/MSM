@@ -85,6 +85,9 @@ ASSIGNMENT_EVIDENCE_SCHEMA_V1 = "d3_assignment_evidence_v1"
 ASSIGNMENT_EVIDENCE_SCHEMA_V2 = "d3_assignment_evidence_v2"
 ASSIGNMENT_COST_BREAKDOWNS_SCHEMA_V1 = "d3_cost_breakdowns_by_edge_v1"
 TERMINAL_FEEDBACK_PROFILE_SCHEMA_V1 = "d3_terminal_feedback_profile_v1"
+D3_IDENTITY_COMMITMENT_ADMISSION_SCHEMA_V1 = (
+    "d3_identity_commitment_admission_v1"
+)
 DEFAULT_COST_PROFILE_ID = "d3_hungarian_baseline"
 DEFAULT_COST_PROFILE_VERSION = "1.0.0"
 DEFAULT_FEEDBACK_PROFILE_ID = "d3_terminal_feedback_baseline"
@@ -131,6 +134,21 @@ class CoordinationMode(str, Enum):
     SIMULTANEOUS = "simultaneous"
     SEQUENTIAL = "sequential"
     HYBRID = "hybrid"
+
+
+class IdentityCommitmentState(str, Enum):
+    """D2 commitment states plus D3 fail-closed admission sentinels."""
+
+    COMMITTED = "committed"
+    UNCOMMITTED_AMBIGUITY_HOLD = "identity_uncommitted_ambiguity_hold"
+    UNCOMMITTED_AFTER_HOLD = "identity_uncommitted_after_hold"
+    MISSING = "identity_commitment_missing"
+    UNKNOWN = "identity_commitment_unknown"
+
+
+IDENTITY_COMMITMENT_STATES = frozenset(
+    state.value for state in IdentityCommitmentState
+)
 
 
 class CoalitionState(str, Enum):
@@ -257,12 +275,42 @@ class TargetTrack:
     region_id: str | None = None
     candidate_resource_region_ids: tuple[str, ...] = ()
     friendly_conflict_by_resource: Mapping[str, bool] = field(default_factory=dict)
+    identity_commitment_state: str | IdentityCommitmentState | None = None
+
+    def __post_init__(self) -> None:
+        if self.identity_commitment_state is None:
+            state = IdentityCommitmentState.MISSING.value
+        else:
+            state = _enum_value(self.identity_commitment_state)
+        if state not in IDENTITY_COMMITMENT_STATES:
+            metadata = dict(self.metadata)
+            metadata.setdefault("identity_commitment_unknown_input", state)
+            object.__setattr__(self, "metadata", metadata)
+            state = IdentityCommitmentState.UNKNOWN.value
+        object.__setattr__(self, "identity_commitment_state", state)
 
     @property
     def effective_demand(self) -> TargetDemand:
         """Return the explicit demand or the backward-compatible k=1 default."""
 
         return self.demand if self.demand is not None else TargetDemand.independent()
+
+    @property
+    def effective_identity_commitment_state(self) -> str:
+        """Return the normalized admission state without implicit commitment."""
+
+        if self.identity_commitment_state is None:
+            return IdentityCommitmentState.MISSING.value
+        return _enum_value(self.identity_commitment_state)
+
+    @property
+    def identity_committed(self) -> bool:
+        """Whether this target may enter an executable assignment."""
+
+        return (
+            self.effective_identity_commitment_state
+            == IdentityCommitmentState.COMMITTED.value
+        )
 
 
 @dataclass(frozen=True)

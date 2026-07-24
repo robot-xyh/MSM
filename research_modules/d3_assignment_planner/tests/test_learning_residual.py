@@ -1,4 +1,5 @@
 from __future__ import annotations
+from commitment_test_support import committed_target_track
 
 from dataclasses import replace
 from time import sleep
@@ -49,7 +50,7 @@ class _FixedPredictor:
 
 def _inputs() -> tuple[list[TargetTrack], list[ResourceState]]:
     tracks = [
-        TargetTrack(
+        committed_target_track(
             "T",
             threat_score=0.9,
             covariance=0.1,
@@ -123,7 +124,7 @@ def test_action_mask_covers_reachability_capacity_friend_conflict_and_version() 
         max_candidate_edges_per_target=4,
         max_intercept_time_s=10.0,
     )
-    track = TargetTrack(
+    track = committed_target_track(
         "T",
         threat_score=0.9,
         covariance=0.1,

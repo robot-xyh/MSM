@@ -31,6 +31,7 @@ D3_RUNTIME_REWARD_COMPONENT_POLICY_V1 = (
     "d3_runtime_reward_component_availability_policy_v1"
 )
 D6_RUNTIME_PLAN_OUTCOME_JOIN_SCHEMA_V1 = "d6.runtime-plan-outcome-join.v1"
+D6_RUNTIME_PLAN_OUTCOME_JOIN_SCHEMA_V2 = "d6.runtime-plan-outcome-join.v2"
 D6_RUNTIME_PLAN_OUTCOME_DIAGNOSTIC_V1 = (
     "bounded_assigned_pair_best_distance_progress_v1"
 )
@@ -68,6 +69,12 @@ _D6_TOP_LEVEL_FIELDS = frozenset(
         "observed_diagnostics",
         "admission",
         "audit",
+    }
+)
+_D6_OPTIONAL_TOP_LEVEL_FIELDS = frozenset(
+    {
+        "d2_identity_recovery_config_provenance",
+        "offline_observation_truth_disposition",
     }
 )
 _D6_EPISODE_FIELDS = frozenset(
@@ -132,6 +139,13 @@ _D6_ADMISSION_FIELDS = frozenset(
         "rule_fallback_required",
         "status",
         "promotion_blockers",
+    }
+)
+_D6_OPTIONAL_ADMISSION_FIELDS = frozenset(
+    {
+        "identity_recovery_config_provenance_reason",
+        "identity_recovery_config_provenance_required",
+        "identity_recovery_config_provenance_verified",
     }
 )
 _D6_AUDIT_FIELDS = frozenset(
@@ -663,7 +677,9 @@ def build_runtime_plan_window_reward_evidence(
     outcome = _strict_mapping(
         d6_outcome_join,
         required_fields=_D6_TOP_LEVEL_FIELDS,
-        allowed_fields=_D6_TOP_LEVEL_FIELDS,
+        allowed_fields=(
+            _D6_TOP_LEVEL_FIELDS | _D6_OPTIONAL_TOP_LEVEL_FIELDS
+        ),
         code="d6_outcome_join_fields_mismatch",
         context="D6 outcome join",
     )
@@ -853,8 +869,16 @@ def _select_ack_binding(
 def _validate_d6_report(
     report: Mapping[str, Any],
 ) -> tuple[Mapping[str, Any], dict[str, str]]:
-    if report["schema_version"] != D6_RUNTIME_PLAN_OUTCOME_JOIN_SCHEMA_V1:
+    report_schema = report["schema_version"]
+    if report_schema not in {
+        D6_RUNTIME_PLAN_OUTCOME_JOIN_SCHEMA_V1,
+        D6_RUNTIME_PLAN_OUTCOME_JOIN_SCHEMA_V2,
+    }:
         _fail("d6_outcome_join_schema_mismatch")
+    if report_schema == D6_RUNTIME_PLAN_OUTCOME_JOIN_SCHEMA_V2 and not (
+        _D6_OPTIONAL_TOP_LEVEL_FIELDS <= set(report)
+    ):
+        _fail("d6_outcome_join_v2_provenance_fields_missing")
     _required_text(report["evaluation_date"], "D6 evaluation date")
     if report["evaluation_mode"] != "offline_read_only_fail_closed":
         _fail("d6_evaluation_mode_mismatch")
@@ -976,7 +1000,9 @@ def _validate_d6_report(
     admission = _strict_mapping(
         report["admission"],
         required_fields=_D6_ADMISSION_FIELDS,
-        allowed_fields=_D6_ADMISSION_FIELDS,
+        allowed_fields=(
+            _D6_ADMISSION_FIELDS | _D6_OPTIONAL_ADMISSION_FIELDS
+        ),
         code="d6_admission_fields_mismatch",
         context="D6 admission",
     )
@@ -1013,6 +1039,29 @@ def _validate_d6_report(
         _fail("d6_promotion_blockers_invalid")
     if not blockers or any(not isinstance(item, str) or not item for item in blockers):
         _fail("d6_promotion_blockers_invalid")
+    provenance_fields_present = (
+        _D6_OPTIONAL_ADMISSION_FIELDS & set(admission)
+    )
+    if (
+        report_schema == D6_RUNTIME_PLAN_OUTCOME_JOIN_SCHEMA_V2
+        and provenance_fields_present != _D6_OPTIONAL_ADMISSION_FIELDS
+    ):
+        _fail("d6_identity_recovery_config_provenance_incomplete")
+    if provenance_fields_present:
+        if provenance_fields_present != _D6_OPTIONAL_ADMISSION_FIELDS:
+            _fail("d6_identity_recovery_config_provenance_incomplete")
+        if _strict_bool(
+            admission["identity_recovery_config_provenance_required"],
+            "D6 identity recovery config provenance required",
+        ) is not True:
+            _fail("d6_identity_recovery_config_provenance_not_required")
+        if _strict_bool(
+            admission["identity_recovery_config_provenance_verified"],
+            "D6 identity recovery config provenance verified",
+        ) is not True:
+            _fail("d6_identity_recovery_config_provenance_not_verified")
+        if admission["identity_recovery_config_provenance_reason"] is not None:
+            _fail("d6_identity_recovery_config_provenance_reason_present")
 
     audit = _strict_mapping(
         report["audit"],
@@ -1677,6 +1726,7 @@ __all__ = [
     "D3_RUNTIME_REWARD_COMPONENT_POLICY_V1",
     "D6_RUNTIME_PLAN_OUTCOME_DIAGNOSTIC_V1",
     "D6_RUNTIME_PLAN_OUTCOME_JOIN_SCHEMA_V1",
+    "D6_RUNTIME_PLAN_OUTCOME_JOIN_SCHEMA_V2",
     "FORMAL_REWARD_COMPONENT_NAMES",
     "EvidenceAvailability",
     "RuntimePlanRewardEvidenceError",

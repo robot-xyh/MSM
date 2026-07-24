@@ -1,10 +1,44 @@
 # D3 集中式资源-目标分配算法与实施方案
 
-> 状态基线：2026-07-13。
+> 状态基线：2026-07-23。
 >
 > 本文依据本模块当前源码、测试、`README.md`、`PLAN.md`、
 > `docs/MODULE_PRINCIPLES_CN.md` 和根目录系统汇总同步编写。本文区分默认主线、
 > 已实现辅助能力、可选离线对照和未实现能力，不把计划项写成已完成能力。
+
+## 身份承诺准入
+
+`TargetTrack.identity_commitment_state` 支持 `committed`、
+`identity_uncommitted_ambiguity_hold` 和
+`identity_uncommitted_after_hold`。字段缺失归一化为 `identity_commitment_missing`，
+不支持的值归一化为 `identity_commitment_unknown`。只有 `committed` 可以进入候选边。
+
+```text
+D2 commitment state
+        |
+        v
+validate -> hard-safe edge mask
+        | committed          | uncommitted/missing/unknown
+        v                    v
+Hungarian/M-to-N        reject every edge
+        \                    /
+         v                  v
+       compare previous bindings
+                 |
+       bound target became non-committed
+                 v
+ remove all target assignments/coalition
+ publish version + 1 with replan audit
+```
+
+硬拒绝在求解前完成，未分配代价对该目标置零。规划后还执行一次计划级净化，覆盖普通、增量、
+区域和 M-to-N 路径。上一计划是冻结对象，不在原对象上删除绑定。计划 metadata 记录
+admitted/rejected 数、目标 ID、状态、原因、missing/unknown 数、移除项和重规划依据。
+
+main 负责根据 D2 承诺状态触发 hold/replan。D3 在新规划调用内执行安全撤销，可以越过保留
+旧绑定的迟滞与变更预算，但不会放宽 stale predecessor、expected version、owner、epoch、
+lease、人工授权或联盟提交检查。D3 只引用原 `global_track_id`，不创建替代标识。D2 的
+0.9 秒恢复新鲜度门和 D7 的 PN/PNG 控制不属于 D3。
 
 ## 1. 模块定位
 

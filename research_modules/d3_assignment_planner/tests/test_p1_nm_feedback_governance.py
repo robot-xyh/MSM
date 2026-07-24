@@ -1,3 +1,5 @@
+from commitment_test_support import committed_target_track
+
 import pytest
 
 from d3_assignment_planner import (
@@ -128,7 +130,7 @@ def test_p1_resource_failure_fixture_rejects_failed_resource_edges() -> None:
 def test_duplicate_feedback_changes_matrix_and_bypasses_hysteresis() -> None:
     planner = _fov_planner()
     tracks = (
-        TargetTrack(
+        committed_target_track(
             "T01",
             0.9,
             0.1,
@@ -176,7 +178,7 @@ def test_duplicate_feedback_changes_matrix_and_bypasses_hysteresis() -> None:
 def test_friend_feedback_holds_resource_and_forces_safe_replan() -> None:
     planner = _fov_planner()
     tracks = (
-        TargetTrack(
+        committed_target_track(
             "T02",
             0.9,
             0.1,
@@ -215,7 +217,7 @@ def test_friend_feedback_holds_resource_and_forces_safe_replan() -> None:
 def test_fov_feedback_changes_cost_but_hysteresis_holds_short_dwell() -> None:
     planner = _fov_planner()
     tracks = (
-        TargetTrack(
+        committed_target_track(
             "T03",
             0.9,
             0.1,
@@ -266,7 +268,7 @@ def test_fov_feedback_changes_cost_but_hysteresis_holds_short_dwell() -> None:
 def test_ambiguous_soft_hold_uses_cost_and_does_not_bypass_min_dwell() -> None:
     planner = _fov_planner()
     tracks = (
-        TargetTrack(
+        committed_target_track(
             "T03",
             0.9,
             0.1,
@@ -304,7 +306,7 @@ def test_ambiguous_soft_hold_uses_cost_and_does_not_bypass_min_dwell() -> None:
 def test_explicit_feasibility_feedback_creates_hard_reject() -> None:
     planner = _fov_planner(enable_hysteresis=False)
     tracks = (
-        TargetTrack(
+        committed_target_track(
             "T04",
             0.9,
             0.1,
@@ -363,7 +365,7 @@ def test_profile_and_weight_metadata_exports_to_main_and_d6() -> None:
         config=config,
     )
     plan = planner.plan(
-        (TargetTrack("T01", 0.9, 0.1, 0.1),),
+        (committed_target_track("T01", 0.9, 0.1, 0.1),),
         (ResourceState("R01"),),
         timestamp=0.0,
     )

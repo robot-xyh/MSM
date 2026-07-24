@@ -1,4 +1,5 @@
 from __future__ import annotations
+from commitment_test_support import committed_target_track
 
 from dataclasses import replace
 from hashlib import sha256
@@ -278,8 +279,8 @@ def _planning_frame(
         learning_state="rule_only",
         solver_name=authority.solver_name,
         tracks=(
-            TargetTrack("target-0", 0.8, 0.1, 0.0),
-            TargetTrack("target-1", 0.7, 0.1, 0.0),
+            committed_target_track("target-0", 0.8, 0.1, 0.0),
+            committed_target_track("target-1", 0.7, 0.1, 0.0),
         ),
         resources=(ResourceState("resource-0"), ResourceState("resource-1")),
         plan=authority,

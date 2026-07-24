@@ -1,3 +1,5 @@
+from commitment_test_support import committed_target_track
+
 import pytest
 
 from d3_assignment_planner import (
@@ -42,8 +44,8 @@ def test_planner_assigns_lowest_cost_pairs() -> None:
     config = PlannerConfig(enable_hysteresis=False)
     planner = _planner(config)
     tracks = [
-        TargetTrack("T1", 0.9, 0.1, 0.1, fov_difficulty_by_resource={"R1": 0.0, "R2": 1.0}),
-        TargetTrack("T2", 0.2, 0.1, 0.1, fov_difficulty_by_resource={"R1": 1.0, "R2": 0.0}),
+        committed_target_track("T1", 0.9, 0.1, 0.1, fov_difficulty_by_resource={"R1": 0.0, "R2": 1.0}),
+        committed_target_track("T2", 0.2, 0.1, 0.1, fov_difficulty_by_resource={"R1": 1.0, "R2": 0.0}),
     ]
 
     plan = planner.plan(tracks, _resources(), timestamp=0.0)
@@ -57,7 +59,7 @@ def test_planner_allows_missing_previous_plan_on_first_call() -> None:
     planner = _planner(PlannerConfig(enable_hysteresis=False))
 
     plan = planner.plan(
-        [TargetTrack("T1", 0.9, 0.1, 0.1)],
+        [committed_target_track("T1", 0.9, 0.1, 0.1)],
         [ResourceState("R1")],
         timestamp=0.0,
         previous_plan=None,
@@ -69,7 +71,7 @@ def test_planner_allows_missing_previous_plan_on_first_call() -> None:
 
 def test_planner_requires_previous_plan_after_active_plan() -> None:
     planner = _planner(PlannerConfig(enable_hysteresis=False))
-    tracks = [TargetTrack("T1", 0.9, 0.1, 0.1)]
+    tracks = [committed_target_track("T1", 0.9, 0.1, 0.1)]
     resources = [ResourceState("R1")]
     first = planner.plan(tracks, resources, timestamp=0.0)
 
@@ -87,7 +89,7 @@ def test_planner_requires_previous_plan_after_active_plan() -> None:
 
 def test_missing_previous_plan_rejection_does_not_reset_version() -> None:
     planner = _planner(PlannerConfig(enable_hysteresis=False))
-    tracks = [TargetTrack("T1", 0.9, 0.1, 0.1)]
+    tracks = [committed_target_track("T1", 0.9, 0.1, 0.1)]
     resources = [ResourceState("R1")]
     first = planner.plan(tracks, resources, timestamp=0.0)
 
@@ -105,7 +107,7 @@ def test_missing_previous_plan_rejection_does_not_reset_version() -> None:
 
 def test_planner_preserves_expected_and_stale_version_rejections() -> None:
     planner = _planner(PlannerConfig(enable_hysteresis=False))
-    tracks = [TargetTrack("T1", 0.9, 0.1, 0.1)]
+    tracks = [committed_target_track("T1", 0.9, 0.1, 0.1)]
     resources = [ResourceState("R1")]
     first = planner.plan(tracks, resources, timestamp=0.0)
 
@@ -122,7 +124,7 @@ def test_planner_preserves_expected_and_stale_version_rejections() -> None:
     assert expected_exc_info.value.latest_version == first.version
 
     shifted_tracks = [
-        TargetTrack(
+        committed_target_track(
             "T1",
             0.9,
             0.1,
@@ -154,9 +156,9 @@ def test_planner_records_dynamic_non_5v5_problem_size() -> None:
     config = PlannerConfig(enable_hysteresis=False)
     planner = _planner(config)
     tracks = [
-        TargetTrack("T1", 0.9, 0.1, 0.1, fov_difficulty_by_resource={"R1": 0.0, "R2": 1.0}),
-        TargetTrack("T2", 0.8, 0.1, 0.1, fov_difficulty_by_resource={"R1": 1.0, "R2": 0.0}),
-        TargetTrack("T3", 0.6, 0.1, 0.1, fov_difficulty_by_resource={"R1": 0.2, "R2": 0.2}),
+        committed_target_track("T1", 0.9, 0.1, 0.1, fov_difficulty_by_resource={"R1": 0.0, "R2": 1.0}),
+        committed_target_track("T2", 0.8, 0.1, 0.1, fov_difficulty_by_resource={"R1": 1.0, "R2": 0.0}),
+        committed_target_track("T3", 0.6, 0.1, 0.1, fov_difficulty_by_resource={"R1": 0.2, "R2": 0.2}),
     ]
     resources = [ResourceState("R1"), ResourceState("R2")]
 
@@ -175,12 +177,12 @@ def test_hysteresis_holds_when_dwell_time_is_too_short() -> None:
     config = PlannerConfig(delta=0.2, min_dwell=2.0)
     planner = _planner(config)
     initial_tracks = [
-        TargetTrack("T1", 0.9, 0.1, 0.1, fov_difficulty_by_resource={"R1": 0.0, "R2": 1.0}),
-        TargetTrack("T2", 0.8, 0.1, 0.1, fov_difficulty_by_resource={"R1": 1.0, "R2": 0.0}),
+        committed_target_track("T1", 0.9, 0.1, 0.1, fov_difficulty_by_resource={"R1": 0.0, "R2": 1.0}),
+        committed_target_track("T2", 0.8, 0.1, 0.1, fov_difficulty_by_resource={"R1": 1.0, "R2": 0.0}),
     ]
     shifted_tracks = [
-        TargetTrack("T1", 0.9, 0.1, 0.1, fov_difficulty_by_resource={"R1": 0.8, "R2": 0.0}),
-        TargetTrack("T2", 0.8, 0.1, 0.1, fov_difficulty_by_resource={"R1": 0.0, "R2": 0.8}),
+        committed_target_track("T1", 0.9, 0.1, 0.1, fov_difficulty_by_resource={"R1": 0.8, "R2": 0.0}),
+        committed_target_track("T2", 0.8, 0.1, 0.1, fov_difficulty_by_resource={"R1": 0.0, "R2": 0.8}),
     ]
 
     first = planner.plan(initial_tracks, _resources(), timestamp=0.0)
@@ -216,14 +218,14 @@ def test_hysteresis_hold_versions_new_target_as_unassigned_inventory() -> None:
     resources = _resources()
     first = planner.plan(
         [
-            TargetTrack(
+            committed_target_track(
                 "T1",
                 0.9,
                 0.1,
                 0.1,
                 fov_difficulty_by_resource={"R1": 0.0, "R2": 1.0},
             ),
-            TargetTrack(
+            committed_target_track(
                 "T2",
                 0.8,
                 0.1,
@@ -235,21 +237,21 @@ def test_hysteresis_hold_versions_new_target_as_unassigned_inventory() -> None:
         timestamp=0.0,
     )
     candidate_tracks = [
-        TargetTrack(
+        committed_target_track(
             "T1",
             0.9,
             0.1,
             0.1,
             fov_difficulty_by_resource={"R1": 0.8, "R2": 0.0},
         ),
-        TargetTrack(
+        committed_target_track(
             "T2",
             0.8,
             0.1,
             0.1,
             fov_difficulty_by_resource={"R1": 0.0, "R2": 0.8},
         ),
-        TargetTrack(
+        committed_target_track(
             "T3",
             0.4,
             0.1,
@@ -284,12 +286,12 @@ def test_hysteresis_accepts_when_gain_and_dwell_pass() -> None:
     config = PlannerConfig(delta=0.2, min_dwell=2.0)
     planner = _planner(config)
     initial_tracks = [
-        TargetTrack("T1", 0.9, 0.1, 0.1, fov_difficulty_by_resource={"R1": 0.0, "R2": 1.0}),
-        TargetTrack("T2", 0.8, 0.1, 0.1, fov_difficulty_by_resource={"R1": 1.0, "R2": 0.0}),
+        committed_target_track("T1", 0.9, 0.1, 0.1, fov_difficulty_by_resource={"R1": 0.0, "R2": 1.0}),
+        committed_target_track("T2", 0.8, 0.1, 0.1, fov_difficulty_by_resource={"R1": 1.0, "R2": 0.0}),
     ]
     shifted_tracks = [
-        TargetTrack("T1", 0.9, 0.1, 0.1, fov_difficulty_by_resource={"R1": 0.8, "R2": 0.0}),
-        TargetTrack("T2", 0.8, 0.1, 0.1, fov_difficulty_by_resource={"R1": 0.0, "R2": 0.8}),
+        committed_target_track("T1", 0.9, 0.1, 0.1, fov_difficulty_by_resource={"R1": 0.8, "R2": 0.0}),
+        committed_target_track("T2", 0.8, 0.1, 0.1, fov_difficulty_by_resource={"R1": 0.0, "R2": 0.8}),
     ]
 
     first = planner.plan(initial_tracks, _resources(), timestamp=0.0)
@@ -312,8 +314,8 @@ def test_hysteresis_releases_when_high_threat_unassigned_target_improves() -> No
     config = PlannerConfig(delta=0.9, min_dwell=10.0, high_threat_threshold=0.7)
     planner = _planner(config)
     initial_tracks = [
-        TargetTrack("T1", 0.1, 0.1, 0.1, fov_difficulty_by_resource={"R1": 0.0}),
-        TargetTrack(
+        committed_target_track("T1", 0.1, 0.1, 0.1, fov_difficulty_by_resource={"R1": 0.0}),
+        committed_target_track(
             "T2",
             0.95,
             0.1,
@@ -323,8 +325,8 @@ def test_hysteresis_releases_when_high_threat_unassigned_target_improves() -> No
         ),
     ]
     shifted_tracks = [
-        TargetTrack("T1", 0.1, 0.1, 0.1, fov_difficulty_by_resource={"R1": 1.0}),
-        TargetTrack("T2", 0.95, 0.1, 0.1, fov_difficulty_by_resource={"R1": 0.0}),
+        committed_target_track("T1", 0.1, 0.1, 0.1, fov_difficulty_by_resource={"R1": 1.0}),
+        committed_target_track("T2", 0.95, 0.1, 0.1, fov_difficulty_by_resource={"R1": 0.0}),
     ]
     resources = [ResourceState("R1")]
 
@@ -351,8 +353,8 @@ def test_previous_infeasible_plan_is_replaced_even_inside_dwell() -> None:
     config = PlannerConfig(delta=0.2, min_dwell=5.0)
     planner = _planner(config)
     tracks = [
-        TargetTrack("T1", 0.9, 0.1, 0.1, fov_difficulty_by_resource={"R1": 0.0, "R2": 1.0}),
-        TargetTrack("T2", 0.8, 0.1, 0.1, fov_difficulty_by_resource={"R1": 1.0, "R2": 0.0}),
+        committed_target_track("T1", 0.9, 0.1, 0.1, fov_difficulty_by_resource={"R1": 0.0, "R2": 1.0}),
+        committed_target_track("T2", 0.8, 0.1, 0.1, fov_difficulty_by_resource={"R1": 1.0, "R2": 0.0}),
     ]
     first = planner.plan(tracks, _resources(), timestamp=0.0)
     resources = [ResourceState("R1", status="unavailable"), ResourceState("R2")]
@@ -368,14 +370,14 @@ def test_missing_previous_execution_target_releases_hold_fail_closed() -> None:
     resources = _resources()
     first = planner.plan(
         [
-            TargetTrack(
+            committed_target_track(
                 "T1",
                 0.9,
                 0.1,
                 0.1,
                 fov_difficulty_by_resource={"R1": 0.0, "R2": 1.0},
             ),
-            TargetTrack(
+            committed_target_track(
                 "T2",
                 0.8,
                 0.1,
@@ -389,7 +391,7 @@ def test_missing_previous_execution_target_releases_hold_fail_closed() -> None:
 
     replanned = planner.plan(
         [
-            TargetTrack(
+            committed_target_track(
                 "T1",
                 0.9,
                 0.1,
@@ -414,7 +416,7 @@ def test_planner_hard_rejects_closed_time_window_edge() -> None:
     config = PlannerConfig(enable_hysteresis=False)
     planner = _planner(config)
     tracks = [
-        TargetTrack(
+        committed_target_track(
             "T1",
             0.9,
             0.1,
@@ -445,7 +447,7 @@ def test_d5_duplicate_feedback_writeback_forces_next_round_replan() -> None:
     config = PlannerConfig(delta=0.2, min_dwell=5.0)
     planner = _planner(config)
     tracks = [
-        TargetTrack("T1", 0.9, 0.1, 0.1, fov_difficulty_by_resource={"R1": 0.0, "R2": 0.4}),
+        committed_target_track("T1", 0.9, 0.1, 0.1, fov_difficulty_by_resource={"R1": 0.0, "R2": 0.4}),
     ]
     resources = _resources()
     first = planner.plan(tracks, resources, timestamp=0.0)
@@ -479,13 +481,13 @@ def test_planner_rejects_stale_previous_plan() -> None:
     config = PlannerConfig(enable_hysteresis=False)
     planner = _planner(config)
     tracks = [
-        TargetTrack("T1", 0.9, 0.1, 0.1, fov_difficulty_by_resource={"R1": 0.0, "R2": 1.0}),
-        TargetTrack("T2", 0.8, 0.1, 0.1, fov_difficulty_by_resource={"R1": 1.0, "R2": 0.0}),
+        committed_target_track("T1", 0.9, 0.1, 0.1, fov_difficulty_by_resource={"R1": 0.0, "R2": 1.0}),
+        committed_target_track("T2", 0.8, 0.1, 0.1, fov_difficulty_by_resource={"R1": 1.0, "R2": 0.0}),
     ]
 
     first = planner.plan(tracks, _resources(), timestamp=0.0)
     shifted_tracks = [
-        TargetTrack("T1", 0.9, 0.1, 0.1, feasibility_by_resource={"R1": False}),
+        committed_target_track("T1", 0.9, 0.1, 0.1, feasibility_by_resource={"R1": False}),
         tracks[1],
     ]
     second = planner.plan(
@@ -512,7 +514,7 @@ def test_planner_respects_configured_human_authorization_state() -> None:
     planner = _planner(config)
 
     plan = planner.plan(
-        [TargetTrack("T1", 0.9, 0.1, 0.1)],
+        [committed_target_track("T1", 0.9, 0.1, 0.1)],
         [ResourceState("R1")],
         timestamp=0.0,
     )
@@ -526,10 +528,10 @@ def test_center_replan_produces_new_version_and_current_d7_binding() -> None:
     config = PlannerConfig(enable_hysteresis=False, human_authorization_state="approved")
     planner = _planner(config)
     first_tracks = [
-        TargetTrack("T1", 0.9, 0.1, 0.1, fov_difficulty_by_resource={"R1": 0.0, "R2": 0.8}),
+        committed_target_track("T1", 0.9, 0.1, 0.1, fov_difficulty_by_resource={"R1": 0.0, "R2": 0.8}),
     ]
     second_tracks = [
-        TargetTrack("T1", 0.9, 0.1, 0.1, fov_difficulty_by_resource={"R1": 0.8, "R2": 0.0}),
+        committed_target_track("T1", 0.9, 0.1, 0.1, fov_difficulty_by_resource={"R1": 0.8, "R2": 0.0}),
     ]
 
     first = planner.plan(first_tracks, _resources(), timestamp=0.0)
@@ -558,12 +560,12 @@ def test_hysteresis_holds_when_change_limit_exceeded() -> None:
     config = PlannerConfig(delta=0.0, min_dwell=0.0, max_changes_per_window=1)
     planner = _planner(config)
     initial_tracks = [
-        TargetTrack("T1", 0.9, 0.1, 0.1, fov_difficulty_by_resource={"R1": 0.0, "R2": 1.0}),
-        TargetTrack("T2", 0.8, 0.1, 0.1, fov_difficulty_by_resource={"R1": 1.0, "R2": 0.0}),
+        committed_target_track("T1", 0.9, 0.1, 0.1, fov_difficulty_by_resource={"R1": 0.0, "R2": 1.0}),
+        committed_target_track("T2", 0.8, 0.1, 0.1, fov_difficulty_by_resource={"R1": 1.0, "R2": 0.0}),
     ]
     shifted_tracks = [
-        TargetTrack("T1", 0.9, 0.1, 0.1, fov_difficulty_by_resource={"R1": 0.8, "R2": 0.0}),
-        TargetTrack("T2", 0.8, 0.1, 0.1, fov_difficulty_by_resource={"R1": 0.0, "R2": 0.8}),
+        committed_target_track("T1", 0.9, 0.1, 0.1, fov_difficulty_by_resource={"R1": 0.8, "R2": 0.0}),
+        committed_target_track("T2", 0.8, 0.1, 0.1, fov_difficulty_by_resource={"R1": 0.0, "R2": 0.8}),
     ]
 
     first = planner.plan(initial_tracks, _resources(), timestamp=0.0)
@@ -581,10 +583,10 @@ def test_zero_switch_penalty_allows_lower_cost_reassignment() -> None:
     )
     planner = _planner(config)
     initial_tracks = [
-        TargetTrack("T1", 0.9, 0.1, 0.1, fov_difficulty_by_resource={"R1": 0.0, "R2": 1.0}),
+        committed_target_track("T1", 0.9, 0.1, 0.1, fov_difficulty_by_resource={"R1": 0.0, "R2": 1.0}),
     ]
     shifted_tracks = [
-        TargetTrack("T1", 0.9, 0.1, 0.1, fov_difficulty_by_resource={"R1": 1.0, "R2": 0.0}),
+        committed_target_track("T1", 0.9, 0.1, 0.1, fov_difficulty_by_resource={"R1": 1.0, "R2": 0.0}),
     ]
 
     first = planner.plan(initial_tracks, _resources(), timestamp=0.0)
@@ -602,10 +604,10 @@ def test_switch_penalty_is_applied_before_solve_without_double_charging() -> Non
     )
     planner = _planner(config)
     initial_tracks = [
-        TargetTrack("T1", 0.9, 0.1, 0.1, fov_difficulty_by_resource={"R1": 0.0, "R2": 1.0}),
+        committed_target_track("T1", 0.9, 0.1, 0.1, fov_difficulty_by_resource={"R1": 0.0, "R2": 1.0}),
     ]
     shifted_tracks = [
-        TargetTrack("T1", 0.9, 0.1, 0.1, fov_difficulty_by_resource={"R1": 1.0, "R2": 0.0}),
+        committed_target_track("T1", 0.9, 0.1, 0.1, fov_difficulty_by_resource={"R1": 1.0, "R2": 0.0}),
     ]
 
     first = planner.plan(initial_tracks, _resources(), timestamp=0.0)
@@ -636,10 +638,10 @@ def test_large_switch_penalty_preserves_previous_resource_in_hungarian_solve() -
     )
     planner = _planner(config)
     initial_tracks = [
-        TargetTrack("T1", 0.9, 0.1, 0.1, fov_difficulty_by_resource={"R1": 0.0, "R2": 1.0}),
+        committed_target_track("T1", 0.9, 0.1, 0.1, fov_difficulty_by_resource={"R1": 0.0, "R2": 1.0}),
     ]
     shifted_tracks = [
-        TargetTrack("T1", 0.9, 0.1, 0.1, fov_difficulty_by_resource={"R1": 1.0, "R2": 0.0}),
+        committed_target_track("T1", 0.9, 0.1, 0.1, fov_difficulty_by_resource={"R1": 1.0, "R2": 0.0}),
     ]
 
     first = planner.plan(initial_tracks, _resources(), timestamp=0.0)
@@ -662,19 +664,19 @@ def test_switch_penalty_skips_infeasible_new_target_and_unassigned_costs() -> No
     )
     planner = _planner(config)
     first = planner.plan(
-        [TargetTrack("T1", 0.9, 0.1, 0.1, fov_difficulty_by_resource={"R1": 0.0})],
+        [committed_target_track("T1", 0.9, 0.1, 0.1, fov_difficulty_by_resource={"R1": 0.0})],
         [ResourceState("R1")],
         timestamp=0.0,
     )
     tracks = [
-        TargetTrack(
+        committed_target_track(
             "T1",
             0.9,
             0.1,
             0.1,
             feasibility_by_resource={"R1": False, "R2": False},
         ),
-        TargetTrack(
+        committed_target_track(
             "T2",
             0.2,
             0.1,
@@ -721,7 +723,7 @@ def test_plan_and_assignments_expose_cross_node_contract_fields() -> None:
     planner = _planner(config)
 
     plan = planner.plan(
-        [TargetTrack("T1", 0.9, 0.1, 0.1)],
+        [committed_target_track("T1", 0.9, 0.1, 0.1)],
         [ResourceState("R1")],
         timestamp=4.0,
     )

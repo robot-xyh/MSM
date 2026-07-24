@@ -25,7 +25,9 @@ from .models import (
     CoalitionPlan,
     CoalitionState,
     CoordinationMode,
+    D3_IDENTITY_COMMITMENT_ADMISSION_SCHEMA_V1,
     DemandSatisfactionSummary,
+    IdentityCommitmentState,
     PlannerConfig,
     ResourceState,
     SolverResult,
@@ -794,6 +796,12 @@ class AssignmentPlanner:
             window_id=window_id,
             tracks=track_items,
         )
+        candidate = self._apply_identity_commitment_admission(
+            candidate,
+            tracks=track_items,
+            previous_plan=previous_plan,
+            timestamp=timestamp,
+        )
         if candidate.metadata.get("regional_plan_schema") != (
             REGIONAL_ASSIGNMENT_PLAN_SCHEMA_V1
         ):
@@ -1552,6 +1560,12 @@ class AssignmentPlanner:
             window_id=window_id,
             tracks=track_items,
         )
+        result = self._apply_identity_commitment_admission(
+            result,
+            tracks=track_items,
+            previous_plan=previous_plan,
+            timestamp=timestamp,
+        )
         result = replace(
             result,
             metadata={
@@ -1613,6 +1627,12 @@ class AssignmentPlanner:
             timestamp=timestamp,
             window_id=window_id,
             tracks=tracks,
+        )
+        result = self._apply_identity_commitment_admission(
+            result,
+            tracks=tuple(tracks),
+            previous_plan=previous_plan,
+            timestamp=timestamp,
         )
         result = self._normalize_versioned_target_inventory(
             result,
@@ -2621,6 +2641,54 @@ class AssignmentPlanner:
     ) -> AssignmentPlan:
         """Apply the standard hysteresis contract to a solved candidate."""
 
+        forced_identity_replan_target_ids = (
+            self._identity_commitment_forced_replan_target_ids(
+                previous_plan,
+                tracks,
+            )
+        )
+        if previous_plan is not None and forced_identity_replan_target_ids:
+            candidate = self._apply_identity_commitment_admission(
+                candidate,
+                tracks=tuple(tracks),
+                previous_plan=previous_plan,
+                timestamp=timestamp,
+            )
+            change_count = self._change_count(
+                previous_plan.assignments,
+                candidate.assignments,
+            )
+            candidate = replace(
+                candidate,
+                changed=True,
+                decision_state="accepted_identity_commitment_replan",
+                last_changed_at=timestamp,
+                metadata={
+                    **dict(candidate.metadata),
+                    "hysteresis_state": "released",
+                    "hysteresis_reason": (
+                        "identity_commitment_fail_closed_replan"
+                    ),
+                    "hysteresis_reasons": (
+                        "identity_commitment_fail_closed_replan",
+                    ),
+                    "hysteresis_release_reason": (
+                        "previous_target_identity_uncommitted"
+                    ),
+                    "hysteresis_release_condition": (
+                        "accepted_identity_commitment_replan"
+                    ),
+                    "identity_commitment_hysteresis_bypassed": True,
+                },
+            )
+            return self._annotate_window_change_budget(
+                candidate,
+                previous_plan=previous_plan,
+                change_count=change_count,
+                accepted=True,
+                bypass_reason="accepted_identity_commitment_replan",
+            )
+
         if previous_plan is None:
             result = candidate
         else:
@@ -2678,6 +2746,199 @@ class AssignmentPlanner:
             )
             result = self._carry_candidate_feedback_audit(result, candidate)
         return result
+
+    @staticmethod
+    def _identity_commitment_forced_replan_target_ids(
+        previous_plan: AssignmentPlan | None,
+        tracks: list[TargetTrack] | tuple[TargetTrack, ...],
+    ) -> tuple[str, ...]:
+        if previous_plan is None:
+            return ()
+        rejected_target_ids = {
+            track.track_id for track in tracks if not track.identity_committed
+        }
+        previous_assigned_target_ids = {
+            assignment.target_id for assignment in previous_plan.assignments
+        }
+        return tuple(sorted(rejected_target_ids & previous_assigned_target_ids))
+
+    def _apply_identity_commitment_admission(
+        self,
+        plan: AssignmentPlan,
+        *,
+        tracks: tuple[TargetTrack, ...],
+        previous_plan: AssignmentPlan | None,
+        timestamp: float,
+    ) -> AssignmentPlan:
+        """Remove every uncommitted target before executable plan publication."""
+
+        state_by_target = {
+            track.track_id: track.effective_identity_commitment_state
+            for track in tracks
+        }
+        rejected_target_ids = tuple(
+            sorted(
+                track.track_id for track in tracks if not track.identity_committed
+            )
+        )
+        rejected_target_set = set(rejected_target_ids)
+        committed_target_ids = tuple(
+            sorted(track.track_id for track in tracks if track.identity_committed)
+        )
+        missing_target_ids = tuple(
+            sorted(
+                track.track_id
+                for track in tracks
+                if track.effective_identity_commitment_state
+                == IdentityCommitmentState.MISSING.value
+            )
+        )
+        unknown_target_ids = tuple(
+            sorted(
+                track.track_id
+                for track in tracks
+                if track.effective_identity_commitment_state
+                == IdentityCommitmentState.UNKNOWN.value
+            )
+        )
+        previous_binding_target_ids = (
+            ()
+            if previous_plan is None
+            else tuple(
+                sorted(
+                    rejected_target_set
+                    & {
+                        assignment.target_id
+                        for assignment in previous_plan.assignments
+                    }
+                )
+            )
+        )
+
+        assignments = tuple(
+            replace(
+                assignment,
+                metadata={
+                    **dict(assignment.metadata),
+                    "identity_commitment_state": state_by_target.get(
+                        assignment.target_id,
+                        IdentityCommitmentState.MISSING.value,
+                    ),
+                    "identity_commitment_admitted": True,
+                },
+            )
+            for assignment in plan.assignments
+            if assignment.target_id not in rejected_target_set
+        )
+        coalitions = tuple(
+            coalition
+            for coalition in plan.coalitions
+            if coalition.target_id not in rejected_target_set
+        )
+        demand_summaries = tuple(
+            summary
+            for summary in plan.demand_summaries
+            if summary.target_id not in rejected_target_set
+        )
+        removed_assignment_count = len(plan.assignments) - len(assignments)
+        removed_coalition_count = len(plan.coalitions) - len(coalitions)
+        forced_replan = bool(previous_binding_target_ids)
+        rejection_records = tuple(
+            {
+                "target_id": target_id,
+                "identity_commitment_state": state_by_target[target_id],
+                "reject_reason": state_by_target[target_id],
+            }
+            for target_id in rejected_target_ids
+        )
+        state_counts = {
+            state.value: sum(
+                track.effective_identity_commitment_state == state.value
+                for track in tracks
+            )
+            for state in IdentityCommitmentState
+        }
+        metadata = {
+            **dict(plan.metadata),
+            "identity_commitment_admission_schema": (
+                D3_IDENTITY_COMMITMENT_ADMISSION_SCHEMA_V1
+            ),
+            "identity_commitment_fail_closed": True,
+            "identity_commitment_offline_label_independent": True,
+            "identity_commitment_committed_admitted_count": len(
+                committed_target_ids
+            ),
+            "identity_commitment_uncommitted_rejected_count": len(
+                rejected_target_ids
+            ),
+            "identity_commitment_noncommitted_rejected_count": len(
+                rejected_target_ids
+            ),
+            "identity_commitment_committed_target_ids": committed_target_ids,
+            "identity_commitment_rejected_target_ids": rejected_target_ids,
+            "identity_commitment_rejection_records": rejection_records,
+            "identity_commitment_state_counts": state_counts,
+            "identity_commitment_missing_rejected_count": len(
+                missing_target_ids
+            ),
+            "identity_commitment_missing_rejected_target_ids": (
+                missing_target_ids
+            ),
+            "identity_commitment_unknown_rejected_count": len(
+                unknown_target_ids
+            ),
+            "identity_commitment_unknown_rejected_target_ids": (
+                unknown_target_ids
+            ),
+            "identity_commitment_legacy_assumed_committed_count": 0,
+            "identity_commitment_legacy_assumed_committed_target_ids": (),
+            "identity_commitment_previous_binding_target_ids": (
+                previous_binding_target_ids
+            ),
+            "identity_commitment_forced_replan": forced_replan,
+            "identity_commitment_replan_reason": (
+                "previous_target_identity_uncommitted"
+                if forced_replan
+                else None
+            ),
+            "identity_commitment_removed_assignment_count": (
+                removed_assignment_count
+            ),
+            "identity_commitment_removed_coalition_count": (
+                removed_coalition_count
+            ),
+            "identity_commitment_all_primary_reserve_slots_blocked": bool(
+                rejected_target_ids
+            ),
+        }
+        if forced_replan:
+            metadata.setdefault(
+                "identity_commitment_underlying_decision_state",
+                plan.decision_state,
+            )
+
+        unassigned_target_ids = tuple(
+            dict.fromkeys((*plan.unassigned_target_ids, *rejected_target_ids))
+        )
+        incomplete_target_ids = tuple(
+            dict.fromkeys((*plan.incomplete_target_ids, *rejected_target_ids))
+        )
+        return replace(
+            plan,
+            assignments=assignments,
+            coalitions=coalitions,
+            demand_summaries=demand_summaries,
+            unassigned_target_ids=unassigned_target_ids,
+            incomplete_target_ids=incomplete_target_ids,
+            decision_state=(
+                "accepted_identity_commitment_replan"
+                if forced_replan
+                else plan.decision_state
+            ),
+            changed=plan.changed or forced_replan,
+            last_changed_at=timestamp if forced_replan else plan.last_changed_at,
+            metadata=metadata,
+        )
 
     @staticmethod
     def _carry_candidate_feedback_audit(
@@ -3237,6 +3498,7 @@ class AssignmentPlanner:
             track.region_id,
             cls._stable_input_value(track.candidate_resource_region_ids),
             cls._stable_input_value(track.friendly_conflict_by_resource),
+            track.identity_commitment_state,
         )
 
     @classmethod
@@ -4534,7 +4796,13 @@ class AssignmentPlanner:
                     ),
                 )
             )
-            track = TargetTrack(target_id, 0.0, 0.0, 0.0)
+            track = TargetTrack(
+                target_id,
+                0.0,
+                0.0,
+                0.0,
+                identity_commitment_state=IdentityCommitmentState.COMMITTED,
+            )
             coalition = self._coalition_plan(
                 track=track,
                 members=members,

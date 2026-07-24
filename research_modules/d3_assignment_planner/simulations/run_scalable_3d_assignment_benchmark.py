@@ -30,6 +30,7 @@ def _tracks(count: int) -> tuple[TargetTrack, ...]:
             velocity_ned=(-2.0, 0.0, 0.0),
             position_covariance_ned=np.eye(3) * (1.0 + index * 0.01),
             region_id="ALL",
+            identity_commitment_state="committed",
         )
         for index in range(count)
     )

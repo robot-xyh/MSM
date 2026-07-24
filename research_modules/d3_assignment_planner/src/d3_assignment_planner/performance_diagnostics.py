@@ -285,6 +285,7 @@ def build_reproducible_assignment_fixture(
                 region_id="ALL",
                 candidate_resource_region_ids=("ALL",),
                 metadata={"fixture_source": "d3_performance", "seed": int(seed)},
+                identity_commitment_state="committed",
             )
         )
         resources.append(

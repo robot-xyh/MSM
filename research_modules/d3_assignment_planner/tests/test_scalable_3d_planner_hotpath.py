@@ -1,4 +1,5 @@
 from __future__ import annotations
+from commitment_test_support import committed_target_track
 
 import numpy as np
 import pytest
@@ -20,7 +21,7 @@ def _tracks(
 ) -> tuple[TargetTrack, ...]:
     demands = demand_by_index or {}
     return tuple(
-        TargetTrack(
+        committed_target_track(
             track_id=f"T-{index:03d}",
             threat_score=0.95 if index in demands else 0.7,
             covariance=0.05,

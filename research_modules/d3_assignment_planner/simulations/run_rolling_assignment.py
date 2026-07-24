@@ -205,6 +205,7 @@ class RollingScenario:
                     conflict_risk_by_resource=conflict,
                     feasibility_by_resource=feasible,
                     metadata={"synthetic": True},
+                    identity_commitment_state="committed",
                 )
             )
         return ScenarioSnapshot(

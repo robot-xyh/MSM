@@ -1,4 +1,5 @@
 from __future__ import annotations
+from commitment_test_support import committed_target_track
 
 from dataclasses import replace
 
@@ -31,7 +32,7 @@ def _fixture():
         coordination_mode="hybrid",
     )
     tracks = (
-        TargetTrack(
+        committed_target_track(
             "T-HIGH",
             threat_score=0.95,
             covariance=0.1,
@@ -94,7 +95,7 @@ def test_authority_generation_fence_normalizes_four_to_five_target_roster() -> N
     )
     resources = tuple(ResourceState(f"R-{index}") for index in range(5))
     initial_tracks = tuple(
-        TargetTrack(
+        committed_target_track(
             f"T-{index}",
             threat_score=0.2,
             covariance=0.1,
@@ -112,7 +113,7 @@ def test_authority_generation_fence_normalizes_four_to_five_target_roster() -> N
     held = planner.plan(
         (
             *initial_tracks,
-            TargetTrack(
+            committed_target_track(
                 "T-4",
                 threat_score=0.2,
                 covariance=0.1,
@@ -164,7 +165,7 @@ def test_secondary_owner_publish_rebases_matching_planning_evidence() -> None:
             human_authorization_state="approved",
         )
     )
-    tracks = (TargetTrack("T", 0.5, 0.1, 0.0),)
+    tracks = (committed_target_track("T", 0.5, 0.1, 0.0),)
     resources = (ResourceState("R"),)
     previous = planner.plan(tracks, resources, timestamp=0.0)
     candidate = planner.plan(

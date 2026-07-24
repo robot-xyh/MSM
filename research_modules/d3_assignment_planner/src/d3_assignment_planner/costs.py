@@ -8,7 +8,14 @@ from typing import Any, Mapping
 
 import numpy as np
 
-from .models import CostBreakdown, CostWeights, PlannerConfig, ResourceState, TargetTrack
+from .models import (
+    CostBreakdown,
+    CostWeights,
+    IdentityCommitmentState,
+    PlannerConfig,
+    ResourceState,
+    TargetTrack,
+)
 
 
 @dataclass(frozen=True)
@@ -443,6 +450,21 @@ class CostModel:
                 reject_reasons[selected] = reason
                 available[selected] = False
 
+        for commitment_state in (
+            state.value
+            for state in IdentityCommitmentState
+            if state is not IdentityCommitmentState.COMMITTED
+        ):
+            reject(
+                np.asarray(
+                    [
+                        track.effective_identity_commitment_state
+                        == commitment_state
+                        for track in tracks
+                    ]
+                )[:, None],
+                commitment_state,
+            )
         reject(
             ~np.asarray([bool(track.assignable) for track in tracks])[:, None],
             "target_not_assignable",
@@ -942,6 +964,8 @@ class CostModel:
         resource: ResourceState,
         timestamp: float,
     ) -> tuple[bool, str]:
+        if not track.identity_committed:
+            return False, track.effective_identity_commitment_state
         if not track.assignable:
             return False, "target_not_assignable"
         window_reject_reason = self.time_window_reject_reason(
@@ -1200,13 +1224,17 @@ class CostModel:
         return None
 
     def unassigned_cost(self, track: TargetTrack) -> float:
-        if not track.assignable:
+        if not track.identity_committed or not track.assignable:
             return 0.0
         threat = _clamp01(track.threat_score)
         return self.config.unassigned_base_cost * (0.5 + threat)
 
     def _infeasible_breakdown(self, reason: str) -> CostBreakdown:
         flags = {
+            "reason_identity_uncommitted_ambiguity_hold": 0.0,
+            "reason_identity_uncommitted_after_hold": 0.0,
+            "reason_identity_commitment_missing": 0.0,
+            "reason_identity_commitment_unknown": 0.0,
             "reason_target_not_assignable": 0.0,
             "reason_resource_operator_hold": 0.0,
             "reason_resource_unavailable": 0.0,
@@ -1226,6 +1254,14 @@ class CostModel:
             "reason_time_window_not_yet_open": 0.0,
         }
         reason_key = {
+            "identity_uncommitted_ambiguity_hold": (
+                "reason_identity_uncommitted_ambiguity_hold"
+            ),
+            "identity_uncommitted_after_hold": (
+                "reason_identity_uncommitted_after_hold"
+            ),
+            "identity_commitment_missing": "reason_identity_commitment_missing",
+            "identity_commitment_unknown": "reason_identity_commitment_unknown",
             "target_not_assignable": "reason_target_not_assignable",
             "resource_operator_hold": "reason_resource_operator_hold",
             "resource_unavailable": "reason_resource_unavailable",

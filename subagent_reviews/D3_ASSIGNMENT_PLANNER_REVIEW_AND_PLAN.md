@@ -1,5 +1,20 @@
 # D3 中心化资源-目标分配综述及子方案
 
+## 2026-07-23 身份承诺准入评审
+
+D2 已能发布每轨 `identity_commitment_state`。D3 当前把该状态作为求解前硬准入条件：
+`committed` 可进入候选矩阵，两类 uncommitted、缺失和未知状态对全部资源边直接拒绝。
+学习残差、Hungarian、需求槽和迟滞都不能恢复被拒绝边。
+
+main 负责触发已有绑定的 hold/replan。D3 收到当前非 committed 状态后采用无该目标绑定的
+候选并严格升版，审计状态为 `accepted_identity_commitment_replan`。该安全撤销只绕过保留
+旧绑定的迟滞，不绕过 stale、授权、owner、epoch、lease 或版本检查，也不修改
+`global_track_id`。M-to-N 中 primary 与 reserve 整体阻断。
+
+集中测试文件 `12 passed`；D3 全量 `450 passed, 1 skipped`，唯一跳过为可选 OR-Tools。
+本轮未改 main 或其他模块，未运行 AirSim。下一步由 main 按 `global_track_id` 接入 D2
+commitment map，并验证 hold 到新计划采用的时序。本结果不构成 seed 1100 算法晋级。
+
 **定位**: 在由 main runtime `--drone-count` 决定的 N 对 N 或非等量资源/目标场景中，由中心节点生成滚动 `AssignmentPlan`，并通过迟滞逻辑避免频繁重分配；5v5 只作为示例和基准场景。
 **边界**: 本文只讨论抽象资源-目标匹配、离线评估和人工授权前的候选计划，不包含真实火控参数、毁伤模型或自动处置流程。
 **D3 复核状态 2026-07-14**: active-plan 连续性、execution-signature identity、candidate/published 分离、forced replan ack/applied、solve 前 switch penalty、secondary activation/current-binding、same-owner continuation、M-to-N demand-slot、保守增量规划、feedback soft/hard 分级、transient feedback dwell、role-aware primary 保持和 canonical planning-tick history schema/export 均已关闭。普通 ambiguous/hold/reacquire 不再升级为资源 `operator_hold`，且 transient 窗口不能绕过 `min_dwell`。M5N2 采用 `2 primary + 1 standby reserve`，不要求两个 primary 同时到达。真实 SimpleFlight 已完成 baseline 与三个候选各 10 seeds、共 40 个 episode；coalition completion 依次为 `0/10`、`5/10`、`2/10`、`1/10`，最佳 `20 m / 3 s / 40 deg` profile 未达到 `8/10`。版本/stale/role 合同及 reserve 安全保持；P1 开放项转为 main history 写盘与 D6 churn 消费、D5 feedback 权重/迟滞和动态 N/M 标定。P2 仅为隔离 optional benchmark。
@@ -29,6 +44,8 @@
 - P1 isolated plan consumption contract done：D3 构造/校验 API 和 replay/stale ledger 已
   通过 8 项专项；main 克隆世界推进、D7 command lineage 和 D6 物理窗口仍开放。
 - P1：D5 feedback 权重与 dwell/迟滞阈值仍需用逐时刻 D6 records 配对标定。
+- P1 跨模块：main 需将 D2 commitment map 接入 D3 输入，并把身份撤销后的 hold、重规划、
+  新计划采用和旧计划拒绝写入 AirSim/D6 记录。
 - P1 增量接口 done：输入快照、changed-set 完整性、独立连通分量局部求解、全量 fallback reason、全局迟滞、M-to-N all-or-none 和增量/全量 comparison summary 已测试；仍缺真实非等量 3v5/5v3、目标新增、资源失效和 crossing/dense 动态 N/M 多 seed 校准。
 - P1 deterministic calibration support done：versioned 8-scenario matrix 新增高威胁需求变化、D5 reserve feedback 和 hard-window；paired runner 统一比较 full/incremental latency、churn、unassigned high-threat、coalition shortfall 和 fallback/reject，8/8 转换 assignment/cost 等价。
 - P1：D3 secondary activation/current-binding 合同已闭合，并已由二级/分布式 commit 正例与缺 ACK fail-closed 覆盖下游消费；D4 协商与恢复策略仍属 D4/main 边界。

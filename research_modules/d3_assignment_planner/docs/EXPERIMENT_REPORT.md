@@ -1,5 +1,20 @@
 # D3 集中式资源-目标分配实验报告
 
+## 身份承诺准入专项（2026-07-23）
+
+本轮使用确定性单元输入，没有启动 AirSim。集中测试覆盖 committed/uncommitted 首次规划、
+上一计划去绑定、两类 uncommitted 状态、2 primary + 1 reserve 的 M-to-N、stale
+predecessor、AirSim dry-run 缺失/未知字段拒绝，以及 1x4、7x3、9x12 非等量规模。
+
+专项结果为 `12 passed`。D3 全量结果为 `450 passed, 1 skipped`，跳过项是可选
+OR-Tools。验收结果为：所有非 committed assignment 为 0；上一绑定撤销后计划严格升一版；
+M-to-N 全部成员角色阻断；缺失和未知状态均失败关闭。
+
+全量回归还发现 D6 只读结果已升级为 v2 并增加身份恢复配置来源字段。D3 证据适配器补充
+v1/v2 兼容，并继续要求来源验证通过。该兼容修复不改变分配算法。main 的 D2 commitment
+map 接线和 AirSim 多 seed 结果仍待验证。本次结果是合同安全门验证，不是 seed 1100
+算法晋级或物理拦截证据。
+
 ## 1. 实验边界
 
 本报告仅覆盖离线抽象资源-目标候选分配。规划器输出是候选 `AssignmentPlan`，必须经过人工或外部授权层确认。模块不包含真实火控参数、毁伤逻辑、飞控接口、硬件驱动、自动处置或绕过人工授权的流程。

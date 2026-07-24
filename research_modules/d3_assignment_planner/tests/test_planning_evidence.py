@@ -1,4 +1,5 @@
 from __future__ import annotations
+from commitment_test_support import committed_target_track
 
 from dataclasses import replace
 
@@ -38,7 +39,7 @@ class _FixedPredictor:
 
 def _tracks(count: int) -> tuple[TargetTrack, ...]:
     return tuple(
-        TargetTrack(
+        committed_target_track(
             f"internal-target-{index}",
             threat_score=0.9 - 0.02 * index,
             covariance=0.1,
@@ -148,8 +149,8 @@ def test_held_unchanged_and_forced_replan_frames_replace_previous_evidence() -> 
     planner = _fov_planner(config)
     resources = (ResourceState("R1"), ResourceState("R2"))
     initial = (
-        TargetTrack("T1", 0.9, 0.1, 0.0, fov_difficulty_by_resource={"R1": 0.0, "R2": 1.0}),
-        TargetTrack("T2", 0.8, 0.1, 0.0, fov_difficulty_by_resource={"R1": 1.0, "R2": 0.0}),
+        committed_target_track("T1", 0.9, 0.1, 0.0, fov_difficulty_by_resource={"R1": 0.0, "R2": 1.0}),
+        committed_target_track("T2", 0.8, 0.1, 0.0, fov_difficulty_by_resource={"R1": 1.0, "R2": 0.0}),
     )
     shifted = (
         replace(initial[0], fov_difficulty_by_resource={"R1": 0.8, "R2": 0.0}),
@@ -228,7 +229,7 @@ def test_learning_evidence_distinguishes_shadow_assist_and_fallback(
         ),
     )
     tracks = (
-        TargetTrack(
+        committed_target_track(
             "T",
             0.9,
             0.1,
@@ -289,7 +290,7 @@ def test_failed_plan_clears_prior_evidence_and_helper_refuses_stale_frame() -> N
 
 def test_regional_frame_is_recordable_and_rejected_authority_clears_it() -> None:
     planner = AssignmentPlanner(config=PlannerConfig(enable_hysteresis=False))
-    tracks = (TargetTrack("T", 0.9, 0.1, 0.0),)
+    tracks = (committed_target_track("T", 0.9, 0.1, 0.0),)
     resources = (ResourceState("R"),)
     previous = planner.plan(tracks, resources, timestamp=0.0)
     grant = RegionalAuthorityGrant(

@@ -47,6 +47,7 @@ def _tracks(count: int) -> tuple[TargetTrack, ...]:
             position_covariance_ned=np.eye(3) * (1.0 + index * 0.01),
             region_id="ALL",
             candidate_resource_region_ids=("ALL",),
+            identity_commitment_state="committed",
         )
         for index in range(count)
     )

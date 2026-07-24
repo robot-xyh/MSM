@@ -1,3 +1,5 @@
+from commitment_test_support import committed_target_track
+
 from d3_assignment_planner import (
     ResourceState,
     TargetTrack,
@@ -91,7 +93,7 @@ def test_ambiguous_feedback_is_edge_soft_and_never_sets_resource_hold() -> None:
         target_id="T2",
     )
     writeback = apply_terminal_feedback_to_planner_inputs(
-        [TargetTrack("T2", 0.8, 0.1, 0.1)],
+        [committed_target_track("T2", 0.8, 0.1, 0.1)],
         [ResourceState("R1"), ResourceState("R2")],
         decision,
     )
@@ -120,7 +122,7 @@ def test_ambiguous_feedback_is_edge_soft_and_never_sets_resource_hold() -> None:
 
 def test_legacy_nested_pair_hold_is_accepted_as_soft_feedback() -> None:
     writeback = apply_terminal_feedback_to_planner_inputs(
-        [TargetTrack("T2", 0.8, 0.1, 0.1)],
+        [committed_target_track("T2", 0.8, 0.1, 0.1)],
         [ResourceState("R1"), ResourceState("R2")],
         {
             "target_id": "T2",
@@ -163,7 +165,7 @@ def test_feedback_writeback_maps_duplicate_to_next_round_prohibited_edge() -> No
     )
 
     writeback = apply_terminal_feedback_to_planner_inputs(
-        [TargetTrack("T1", 0.8, 0.1, 0.1)],
+        [committed_target_track("T1", 0.8, 0.1, 0.1)],
         [ResourceState("R1"), ResourceState("R2")],
         decision,
     )
@@ -185,7 +187,7 @@ def test_feedback_writeback_maps_friend_hold_to_resource_hold_and_fov_cost() -> 
     )
 
     writeback = apply_terminal_feedback_to_planner_inputs(
-        [TargetTrack("T2", 0.8, 0.1, 0.1)],
+        [committed_target_track("T2", 0.8, 0.1, 0.1)],
         [ResourceState("R1"), ResourceState("R2")],
         decision.planner_metadata,
     )
@@ -199,7 +201,7 @@ def test_feedback_writeback_maps_friend_hold_to_resource_hold_and_fov_cost() -> 
 
 def test_verified_friend_feedback_is_target_hard_fail_closed() -> None:
     writeback = apply_terminal_feedback_to_planner_inputs(
-        [TargetTrack("T2", 0.8, 0.1, 0.1)],
+        [committed_target_track("T2", 0.8, 0.1, 0.1)],
         [ResourceState("R1"), ResourceState("R2")],
         {
             "target_id": "T2",
@@ -221,7 +223,7 @@ def test_verified_friend_feedback_is_target_hard_fail_closed() -> None:
 
 def test_duplicate_assignment_metadata_is_edge_hard_fail_closed() -> None:
     writeback = apply_terminal_feedback_to_planner_inputs(
-        [TargetTrack("T2", 0.8, 0.1, 0.1)],
+        [committed_target_track("T2", 0.8, 0.1, 0.1)],
         [ResourceState("R1"), ResourceState("R2")],
         {
             "target_id": "T2",
@@ -243,7 +245,7 @@ def test_duplicate_assignment_metadata_is_edge_hard_fail_closed() -> None:
 
 def test_feedback_writeback_applies_explicit_fov_and_feasibility_metadata() -> None:
     writeback = apply_terminal_feedback_to_planner_inputs(
-        [TargetTrack("T3", 0.8, 0.1, 0.1, fov_difficulty_by_resource={"R3": 0.2})],
+        [committed_target_track("T3", 0.8, 0.1, 0.1, fov_difficulty_by_resource={"R3": 0.2})],
         [ResourceState("R3")],
         {
             "target_id": "T3",

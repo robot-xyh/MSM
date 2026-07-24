@@ -1,3 +1,5 @@
+from commitment_test_support import committed_target_track
+
 from dataclasses import replace
 from time import perf_counter
 
@@ -29,7 +31,7 @@ def _track(
     demand: TargetDemand | None = None,
 ) -> TargetTrack:
     resource_ids = tuple(f"R{index}" for index in range(1, resource_count + 1))
-    return TargetTrack(
+    return committed_target_track(
         target_id,
         threat_score=threat,
         covariance=0.1,

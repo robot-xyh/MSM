@@ -4,6 +4,29 @@ Centralized rolling `M` target / `N` resource assignment research module.
 
 Boundary: this module only supports offline simulation, evaluation, and human-review candidate planning. It excludes real fire-control parameters, damage logic, flight or hardware drivers, autonomous disposition, and authorization bypasses.
 
+## Identity Commitment Admission
+
+`TargetTrack.identity_commitment_state` supports `committed`,
+`identity_uncommitted_ambiguity_hold`, and
+`identity_uncommitted_after_hold`. Missing values normalize to
+`identity_commitment_missing`; unsupported values normalize to
+`identity_commitment_unknown`. Both fail closed.
+
+Only committed targets enter the hard-safe candidate mask. An uncommitted
+target cannot produce a one-to-one assignment or any M-to-N primary/reserve
+slot. Main owns the hold/replan trigger. Once main supplies a revoked state and
+requests a new planning tick, D3 removes the target bindings, publishes a
+strictly newer candidate plan, and records the reason without mutating the
+previous plan or rewriting `global_track_id`.
+
+The AirSim dry-run adapter reads a direct field, an `identity_commitment`
+mapping, or metadata. It does not use actor identity or offline labels. On
+2026-07-23 the focused file passed 12 tests; the full D3 suite passed
+450 tests with one existing optional OR-Tools skip. No AirSim episode was run.
+Main still needs to join D2's commitment map to D3 inputs and validate the
+hold/replan path in a real episode. This is a contract safety gate, not an
+algorithm promotion based on seed 1100.
+
 ## Layout
 
 - `PLAN.md`: engineering/scientific plan and mathematical formulation.

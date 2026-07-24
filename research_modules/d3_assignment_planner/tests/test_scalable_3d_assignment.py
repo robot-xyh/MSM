@@ -1,4 +1,5 @@
 from __future__ import annotations
+from commitment_test_support import committed_target_track
 
 import numpy as np
 
@@ -14,7 +15,7 @@ from d3_assignment_planner import (
 
 def _track(index: int, *, region_count: int = 2, demand: TargetDemand | None = None) -> TargetTrack:
     region = f"REGION-{index % region_count}"
-    return TargetTrack(
+    return committed_target_track(
         track_id=f"T-{index:03d}",
         threat_score=0.95 if demand is not None else 0.7,
         covariance=0.05,
@@ -130,7 +131,7 @@ def test_three_dimensional_reachability_covariance_and_region_are_explainable() 
         covariance_trace_scale=30.0,
     )
     model = CostModel(config=config)
-    track = TargetTrack(
+    track = committed_target_track(
         "T",
         threat_score=0.9,
         covariance=0.1,

@@ -1,3 +1,5 @@
+from commitment_test_support import committed_target_track
+
 from dataclasses import replace
 
 import pytest
@@ -25,7 +27,7 @@ def _active_secondary_and_next_candidate(
             human_authorization_state="approved",
         )
     )
-    tracks = (TargetTrack("T01", 0.9, 0.1, 0.1),)
+    tracks = (committed_target_track("T01", 0.9, 0.1, 0.1),)
     resources = (ResourceState("R01"),)
     center = planner.plan(tracks, resources, timestamp=0.0)
     takeover_candidate = planner.plan(

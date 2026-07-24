@@ -1,3 +1,5 @@
+from commitment_test_support import committed_target_track
+
 from dataclasses import replace
 
 from d3_assignment_planner import (
@@ -21,8 +23,8 @@ from d3_assignment_planner import (
 def test_assignment_validity_summary_exports_required_fields() -> None:
     planner = AssignmentPlanner(config=PlannerConfig(enable_hysteresis=False))
     tracks = [
-        TargetTrack("T1", threat_score=0.9, covariance=0.1, window_cost=0.1),
-        TargetTrack("T2", threat_score=0.8, covariance=0.1, window_cost=0.1),
+        committed_target_track("T1", threat_score=0.9, covariance=0.1, window_cost=0.1),
+        committed_target_track("T2", threat_score=0.8, covariance=0.1, window_cost=0.1),
     ]
 
     plan = planner.plan(tracks, [ResourceState("R1")], timestamp=10.0)
@@ -84,7 +86,7 @@ def test_assignment_validity_summary_counts_duplicate_targets_and_resources() ->
 def test_assignment_records_from_plan_match_d6_assignment_record_shape() -> None:
     planner = AssignmentPlanner(config=PlannerConfig(enable_hysteresis=False))
     plan = planner.plan(
-        [TargetTrack("T1", threat_score=0.9, covariance=0.1, window_cost=0.1)],
+        [committed_target_track("T1", threat_score=0.9, covariance=0.1, window_cost=0.1)],
         [ResourceState("R1")],
         timestamp=4.0,
     )
@@ -141,13 +143,13 @@ def test_assignment_evidence_exports_current_plan_cost_matrix_and_breakdowns() -
     planner = AssignmentPlanner(config=PlannerConfig(enable_hysteresis=False))
     plan = planner.plan(
         [
-            TargetTrack(
+            committed_target_track(
                 "T1",
                 threat_score=0.9,
                 covariance=0.1,
                 window_cost=0.1,
             ),
-            TargetTrack(
+            committed_target_track(
                 "T2",
                 threat_score=0.8,
                 covariance=0.1,
@@ -178,12 +180,12 @@ def test_assignment_evidence_exports_current_plan_cost_matrix_and_breakdowns() -
 def test_assignment_records_export_stale_rejection_reason_metadata() -> None:
     planner = AssignmentPlanner(config=PlannerConfig(enable_hysteresis=False))
     first = planner.plan(
-        [TargetTrack("T1", threat_score=0.9, covariance=0.1, window_cost=0.1)],
+        [committed_target_track("T1", threat_score=0.9, covariance=0.1, window_cost=0.1)],
         [ResourceState("R1")],
         timestamp=4.0,
     )
     second = planner.plan(
-        [TargetTrack("T1", threat_score=0.9, covariance=0.1, window_cost=0.1)],
+        [committed_target_track("T1", threat_score=0.9, covariance=0.1, window_cost=0.1)],
         [ResourceState("R1")],
         timestamp=5.0,
         previous_plan=first,
@@ -219,7 +221,7 @@ def test_assignment_records_export_stale_rejection_reason_metadata() -> None:
 def test_assignment_records_flag_explicit_plan_identity_rollback() -> None:
     planner = AssignmentPlanner(config=PlannerConfig(enable_hysteresis=False))
     plan = planner.plan(
-        [TargetTrack("T1", threat_score=0.9, covariance=0.1, window_cost=0.1)],
+        [committed_target_track("T1", threat_score=0.9, covariance=0.1, window_cost=0.1)],
         [ResourceState("R1")],
         timestamp=4.0,
     )
@@ -241,7 +243,7 @@ def test_assignment_records_flag_explicit_plan_identity_rollback() -> None:
 def test_assignment_records_can_preserve_plan_authorization_state() -> None:
     planner = AssignmentPlanner(config=PlannerConfig(enable_hysteresis=False))
     plan = planner.plan(
-        [TargetTrack("T1", threat_score=0.9, covariance=0.1, window_cost=0.1)],
+        [committed_target_track("T1", threat_score=0.9, covariance=0.1, window_cost=0.1)],
         [ResourceState("R1")],
         timestamp=4.0,
     )
@@ -255,14 +257,14 @@ def test_assignment_records_can_preserve_plan_authorization_state() -> None:
 def test_center_replan_assignment_records_export_current_plan_fields() -> None:
     planner = AssignmentPlanner(config=PlannerConfig(enable_hysteresis=False))
     first = planner.plan(
-        [TargetTrack("T1", threat_score=0.9, covariance=0.1, window_cost=0.1)],
+        [committed_target_track("T1", threat_score=0.9, covariance=0.1, window_cost=0.1)],
         [ResourceState("R1")],
         timestamp=4.0,
         window_id=10,
     )
     second = planner.plan(
         [
-            TargetTrack(
+            committed_target_track(
                 "T1",
                 threat_score=0.9,
                 covariance=0.1,
@@ -398,9 +400,9 @@ def test_secondary_takeover_assignment_records_export_owner_fields() -> None:
 def test_assignment_records_export_nm_mismatch_replay_fields() -> None:
     planner = AssignmentPlanner(config=PlannerConfig(enable_hysteresis=False))
     tracks = [
-        TargetTrack("T1", threat_score=0.9, covariance=0.1, window_cost=0.1),
-        TargetTrack("T2", threat_score=0.8, covariance=0.1, window_cost=0.1),
-        TargetTrack("T3", threat_score=0.95, covariance=0.1, window_cost=0.1),
+        committed_target_track("T1", threat_score=0.9, covariance=0.1, window_cost=0.1),
+        committed_target_track("T2", threat_score=0.8, covariance=0.1, window_cost=0.1),
+        committed_target_track("T3", threat_score=0.95, covariance=0.1, window_cost=0.1),
     ]
     plan = planner.plan(
         tracks,

@@ -1,3 +1,5 @@
+from commitment_test_support import committed_target_track
+
 from d3_assignment_planner import (
     AssignmentPlanner,
     CostModel,
@@ -36,7 +38,7 @@ def _planner(**config_overrides: object) -> AssignmentPlanner:
 
 
 def _track(target_id: str, costs: dict[str, float]) -> TargetTrack:
-    return TargetTrack(
+    return committed_target_track(
         target_id,
         threat_score=0.8,
         covariance=0.0,
@@ -198,7 +200,7 @@ def test_missing_target_wins_over_other_coalition_membership_hold() -> None:
     )
 
     def coalition_track(target_id: str, costs: dict[str, float]) -> TargetTrack:
-        return TargetTrack(
+        return committed_target_track(
             target_id,
             threat_score=0.8,
             covariance=0.0,

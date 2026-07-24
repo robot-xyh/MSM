@@ -1,3 +1,5 @@
+from commitment_test_support import committed_target_track
+
 import json
 from dataclasses import replace
 
@@ -37,7 +39,7 @@ def _hybrid_plan():
     )
     return planner.plan(
         [
-            TargetTrack(
+            committed_target_track(
                 "T-HIGH",
                 threat_score=0.95,
                 covariance=0.1,

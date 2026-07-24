@@ -1,4 +1,5 @@
 from __future__ import annotations
+from commitment_test_support import committed_target_track
 
 from dataclasses import replace
 from hashlib import sha256
@@ -115,7 +116,7 @@ def _planning_frames(
     for offset, seed in enumerate(PAIRED_INTERVENTION_RESERVED_SEEDS_V1):
         planner = AssignmentPlanner(config=config)
         tracks = (
-            TargetTrack(
+            committed_target_track(
                 f"global-track-{seed}-a",
                 threat_score=0.9,
                 covariance=0.1 + offset * 0.001,
@@ -125,7 +126,7 @@ def _planning_frames(
                     f"resource-{seed}-b": 0.8,
                 },
             ),
-            TargetTrack(
+            committed_target_track(
                 f"global-track-{seed}-b",
                 threat_score=0.6,
                 covariance=0.2,
@@ -165,7 +166,7 @@ def _realistic_tracks(
 ) -> tuple[TargetTrack, ...]:
     resource_ids = tuple(f"interceptor-{seed}-{index}" for index in range(5))
     return tuple(
-        TargetTrack(
+        committed_target_track(
             f"global-track-{seed}-{index}",
             threat_score=0.20 + 0.01 * index,
             covariance=0.1 + 0.01 * index,
@@ -483,8 +484,8 @@ def test_isolated_inventory_keeps_unassignable_and_drops_old_diagnostics() -> No
     normalized = _normalize_isolated_plan_target_inventory(
         plan,
         current_tracks=(
-            TargetTrack("target-current-assigned", 0.4, 0.1, 0.0),
-            TargetTrack(
+            committed_target_track("target-current-assigned", 0.4, 0.1, 0.0),
+            committed_target_track(
                 "target-current-unassignable",
                 0.9,
                 0.2,
@@ -547,7 +548,7 @@ def test_isolated_inventory_marks_partial_coalition_once_as_incomplete() -> None
     normalized = _normalize_isolated_plan_target_inventory(
         plan,
         current_tracks=(
-            TargetTrack(
+            committed_target_track(
                 target_id,
                 0.95,
                 0.1,

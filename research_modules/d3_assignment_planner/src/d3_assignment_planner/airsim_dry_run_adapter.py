@@ -89,6 +89,10 @@ def _target_from_record(record: Record) -> TargetTrack:
     metadata = _metadata(record)
     metadata.setdefault("source_adapter", "airsim_dry_run")
     metadata.setdefault("track_state", track_state)
+    identity_commitment_state, commitment_source = (
+        _identity_commitment_state_from_record(record, metadata)
+    )
+    metadata.setdefault("identity_commitment_input_source", commitment_source)
     covariance = _covariance_quality(record)
     explicit_threat = _read(record, "threat_score", "threat", default=None)
     if explicit_threat is None:
@@ -145,6 +149,7 @@ def _target_from_record(record: Record) -> TargetTrack:
         ),
         feasibility_by_resource=_pair_bool_map(record),
         metadata=metadata,
+        identity_commitment_state=identity_commitment_state,
     )
 
 
@@ -236,6 +241,22 @@ def _require(record: Record, *keys: str) -> Any:
 def _metadata(record: Record) -> dict[str, Any]:
     value = _read(record, "metadata", default={})
     return dict(value) if isinstance(value, Mapping) else {}
+
+
+def _identity_commitment_state_from_record(
+    record: Record,
+    metadata: Mapping[str, Any],
+) -> tuple[Any, str]:
+    direct = _read(record, "identity_commitment_state", default=None)
+    if direct is not None:
+        return direct, "explicit_record_field"
+    nested = _read(record, "identity_commitment", default=None)
+    if isinstance(nested, Mapping) and nested.get("identity_commitment_state") is not None:
+        return nested["identity_commitment_state"], "identity_commitment_mapping"
+    metadata_state = metadata.get("identity_commitment_state")
+    if metadata_state is not None:
+        return metadata_state, "metadata_field"
+    return None, "missing_record_field"
 
 
 def _float(value: Any, default: float) -> float:

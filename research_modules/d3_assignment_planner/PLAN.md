@@ -1,5 +1,24 @@
 # D3 集中式 Assignment Planner 计划
 
+## 2026-07-23 身份承诺准入
+
+已完成最小实现：
+
+1. `TargetTrack.identity_commitment_state` 支持 committed、两类 uncommitted，以及 D3
+   内部的 missing/unknown 失败关闭状态。只有 committed 可以进入新计划。
+2. 所有非 committed 状态在代价矩阵中形成硬拒绝。普通分配、M-to-N、增量规划和区域规划
+   不能通过权重、学习残差或迟滞恢复该边。
+3. main 负责根据 D2 状态触发 hold/replan。上一计划已绑定目标转为非 committed 后，D3 在
+   被调用时去除全部普通及联盟绑定，严格升版并记录原因；不修改 `global_track_id`。
+4. AirSim dry-run 适配器读取顶层、嵌套或 metadata 字段。字段缺失和未知值均拒绝，不使用
+   真值 ID、actor ID 或目标数量推断承诺。
+5. 专项测试 12 项通过；D3 全量 `450 passed, 1 skipped`，跳过项为既有可选 OR-Tools。
+   本轮未运行 AirSim，也不构成 seed 1100 算法晋级证据。
+
+下一步由 main 按 `global_track_id` 将 D2 commitment map 显式写入 D3 `TargetTrack`，在
+hold 状态下保持旧控制链停止，再采用新版本计划。AirSim 需复核非 committed assignment
+为 0、旧绑定严格升版撤销和 stale plan 拒绝。本次不修改 main。
+
 ## 1. 模块边界
 
 D3 负责中心节点可用时的抽象资源-目标分配。输入是 D2/main 提供的 `TargetTrack[]`、`ResourceState[]` 和滚动时间戳；输出是版本化 `AssignmentPlan`、D7 可消费的 `AssignmentGuidanceBinding`、D4/D6 可消费的计划有效性摘要和 D6 assignment record。

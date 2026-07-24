@@ -361,6 +361,7 @@ def _feedback_tracks(*, reserve_replan: bool) -> tuple[TargetTrack, ...]:
                 resource_id: resource_id != "R05" for resource_id in resource_ids
             },
             fov_difficulty_by_resource=dict(zip(resource_ids, fov_values)),
+            identity_commitment_state="committed",
         ),
         TargetTrack(
             "T002",
@@ -370,6 +371,7 @@ def _feedback_tracks(*, reserve_replan: bool) -> tuple[TargetTrack, ...]:
             feasibility_by_resource={
                 resource_id: resource_id == "R05" for resource_id in resource_ids
             },
+            identity_commitment_state="committed",
         ),
     )
 
@@ -410,6 +412,7 @@ def _track(
             for resource_index in range(1, resource_count + 1)
         },
         metadata=dict(metadata or {}),
+        identity_commitment_state="committed",
     )
 
 

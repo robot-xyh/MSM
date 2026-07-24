@@ -1,4 +1,5 @@
 from __future__ import annotations
+from commitment_test_support import committed_target_track
 
 from dataclasses import asdict, replace
 import json
@@ -23,7 +24,7 @@ from d3_assignment_planner import (
 
 def _tracks(count: int) -> tuple[TargetTrack, ...]:
     return tuple(
-        TargetTrack(
+        committed_target_track(
             track_id=f"T-{index:03d}",
             threat_score=0.7,
             covariance=0.05,

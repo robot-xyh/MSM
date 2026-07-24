@@ -1,3 +1,5 @@
+from commitment_test_support import committed_target_track
+
 from dataclasses import replace
 
 import pytest
@@ -26,7 +28,7 @@ def _track(
     demand: TargetDemand | None = None,
     preferred: str = "R1",
 ) -> TargetTrack:
-    return TargetTrack(
+    return committed_target_track(
         target_id,
         threat_score=0.9,
         covariance=0.1,
