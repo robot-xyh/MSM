@@ -46,6 +46,22 @@ _FORBIDDEN_ONLINE_KEYS = frozenset(
     }
 )
 _FORBIDDEN_ONLINE_TYPES = frozenset({"OfflineTruthLabel", "WorldSnapshot", "EntitySnapshot"})
+ONLINE_TRUTH_GUARD_REFERENCE_IMPLEMENTATION = "generic_recursive_v1"
+ONLINE_TRUTH_GUARD_CANDIDATE_IMPLEMENTATION = (
+    "builtin_specialized_recursive_v2"
+)
+ONLINE_TRUTH_GUARD_IMPLEMENTATIONS = frozenset(
+    {
+        ONLINE_TRUTH_GUARD_REFERENCE_IMPLEMENTATION,
+        ONLINE_TRUTH_GUARD_CANDIDATE_IMPLEMENTATION,
+    }
+)
+ONLINE_TRUTH_GUARD_DIAGNOSTICS_SCHEMA_VERSION = (
+    "scalable3d-online-truth-guard-diagnostics-v1"
+)
+_EXACT_ONLINE_ATOMIC_TYPES = frozenset(
+    {str, bytes, int, float, complex}
+)
 
 
 @dataclass(frozen=True)
@@ -105,8 +121,29 @@ class EpisodeManifest:
 class InMemoryEpisodeBus:
     """Small deterministic bus used to connect versioned module adapters."""
 
-    def __init__(self, *, schema_version: str = BUS_SCHEMA_VERSION) -> None:
+    def __init__(
+        self,
+        *,
+        schema_version: str = BUS_SCHEMA_VERSION,
+        truth_guard_implementation: str = (
+            ONLINE_TRUTH_GUARD_REFERENCE_IMPLEMENTATION
+        ),
+    ) -> None:
         self.schema_version = str(schema_version)
+        implementation = str(truth_guard_implementation)
+        if implementation not in ONLINE_TRUTH_GUARD_IMPLEMENTATIONS:
+            raise ValueError(
+                "truth_guard_implementation must be one of "
+                f"{sorted(ONLINE_TRUTH_GUARD_IMPLEMENTATIONS)}"
+            )
+        self.truth_guard_implementation = implementation
+        self._truth_guard = (
+            _assert_online_payload_truth_free_builtin_specialized
+            if implementation
+            == ONLINE_TRUTH_GUARD_CANDIDATE_IMPLEMENTATION
+            else _assert_online_payload_truth_free_generic
+        )
+        self._truth_guard_validation_count = 0
         self._next_sequence = 1
         self._messages: list[VersionedEnvelope] = []
         self._subscribers: dict[str, list[Callable[[VersionedEnvelope], None]]] = {}
@@ -125,7 +162,8 @@ class InMemoryEpisodeBus:
             raise ValueError("topic and source must be non-empty")
         if not np.isfinite(timestamp) or timestamp < 0.0:
             raise ValueError("timestamp must be finite and non-negative")
-        assert_online_payload_truth_free(payload)
+        self._truth_guard(payload)
+        self._truth_guard_validation_count += 1
         envelope = VersionedEnvelope(
             sequence=self._next_sequence,
             topic=str(topic),
@@ -152,10 +190,46 @@ class InMemoryEpisodeBus:
 
     def clear(self) -> None:
         self._messages.clear()
+        self._truth_guard_validation_count = 0
+
+    def truth_guard_diagnostics(self) -> dict[str, Any]:
+        """Return versioned diagnostics without exposing online payload data."""
+
+        return {
+            "schema_version": (
+                ONLINE_TRUTH_GUARD_DIAGNOSTICS_SCHEMA_VERSION
+            ),
+            "implementation": self.truth_guard_implementation,
+            "candidate_enabled": (
+                self.truth_guard_implementation
+                == ONLINE_TRUTH_GUARD_CANDIDATE_IMPLEMENTATION
+            ),
+            "validation_count": self._truth_guard_validation_count,
+        }
 
 
-def assert_online_payload_truth_free(payload: Any) -> None:
-    """Reject truth-bearing fields anywhere in an online payload tree."""
+def assert_online_payload_truth_free(
+    payload: Any,
+    *,
+    implementation: str = ONLINE_TRUTH_GUARD_REFERENCE_IMPLEMENTATION,
+) -> None:
+    """Reject truth-bearing fields using an explicit recursive implementation."""
+
+    selected = str(implementation)
+    if selected == ONLINE_TRUTH_GUARD_REFERENCE_IMPLEMENTATION:
+        _assert_online_payload_truth_free_generic(payload)
+        return
+    if selected == ONLINE_TRUTH_GUARD_CANDIDATE_IMPLEMENTATION:
+        _assert_online_payload_truth_free_builtin_specialized(payload)
+        return
+    raise ValueError(
+        "implementation must be one of "
+        f"{sorted(ONLINE_TRUTH_GUARD_IMPLEMENTATIONS)}"
+    )
+
+
+def _assert_online_payload_truth_free_generic(payload: Any) -> None:
+    """Reference guard retained for paired evaluation."""
 
     pending = [payload]
     visited: set[int] = set()
@@ -199,6 +273,82 @@ def assert_online_payload_truth_free(payload: Any) -> None:
         if isinstance(value, (list, tuple, set, frozenset)):
             visited.add(value_id)
             pending.extend(value)
+
+
+def _assert_online_payload_truth_free_builtin_specialized(
+    payload: Any,
+) -> None:
+    """Equivalent guard with exact built-in container fast paths."""
+
+    pending = [payload]
+    visited: set[int] = set()
+    pop = pending.pop
+    extend = pending.extend
+    append = pending.append
+    while pending:
+        value = pop()
+        value_type = type(value)
+        type_name = value_type.__name__
+        if type_name in _FORBIDDEN_ONLINE_TYPES:
+            raise ValueError(
+                "online payload contains evaluator-only truth fields: "
+                f"<{type_name}>"
+            )
+        if value is None or value_type in _EXACT_ONLINE_ATOMIC_TYPES:
+            continue
+        if value_type is dict:
+            value_id = id(value)
+            if value_id in visited:
+                continue
+            visited.add(value_id)
+            raw_keys = tuple(str(raw_key) for raw_key in value.keys())
+            forbidden_key = _first_forbidden_mapping_key(raw_keys)
+            if forbidden_key is not None:
+                raise ValueError(
+                    "online payload contains evaluator-only truth fields: "
+                    f"{forbidden_key}"
+                )
+            extend(value.values())
+            continue
+        if value_type is list or value_type is tuple:
+            value_id = id(value)
+            if value_id in visited:
+                continue
+            visited.add(value_id)
+            extend(value)
+            continue
+        if isinstance(
+            value,
+            (str, bytes, int, float, complex, np.generic, np.ndarray),
+        ):
+            continue
+        value_id = id(value)
+        if value_id in visited:
+            continue
+        if is_dataclass(value) and not isinstance(value, type):
+            visited.add(value_id)
+            for name, key in _dataclass_field_keys(value_type):
+                if _is_forbidden_key(key):
+                    raise ValueError(
+                        "online payload contains evaluator-only truth fields: "
+                        f"{name}"
+                    )
+                append(getattr(value, name))
+            continue
+        if isinstance(value, Mapping):
+            visited.add(value_id)
+            raw_keys = tuple(str(raw_key) for raw_key in value.keys())
+            forbidden_key = _first_forbidden_mapping_key(raw_keys)
+            if forbidden_key is not None:
+                raise ValueError(
+                    "online payload contains evaluator-only truth fields: "
+                    f"{forbidden_key}"
+                )
+            extend(value.values())
+            continue
+        if isinstance(value, (list, tuple, set, frozenset)):
+            visited.add(value_id)
+            extend(value)
 
 
 def build_episode_manifest(

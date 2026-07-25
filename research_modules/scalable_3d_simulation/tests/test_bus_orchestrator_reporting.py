@@ -15,6 +15,8 @@ from research_modules.scalable_3d_simulation.communication import (
 from research_modules.scalable_3d_simulation.animation import write_trajectory_animation
 from research_modules.scalable_3d_simulation.episode_bus import (
     InMemoryEpisodeBus,
+    ONLINE_TRUTH_GUARD_CANDIDATE_IMPLEMENTATION,
+    ONLINE_TRUTH_GUARD_REFERENCE_IMPLEMENTATION,
     VersionedEnvelope,
     assert_online_payload_truth_free,
     build_episode_manifest,
@@ -53,12 +55,30 @@ _TEST_IDENTITY_RECOVERY_CONFIG = {
 }
 
 
-def test_recursive_truth_guard_rejects_nested_fields_and_truth_dataclasses() -> None:
-    assert_online_payload_truth_free({"track": {"global_track_id": "GT-0001"}})
+@pytest.mark.parametrize(
+    "implementation",
+    (
+        ONLINE_TRUTH_GUARD_REFERENCE_IMPLEMENTATION,
+        ONLINE_TRUTH_GUARD_CANDIDATE_IMPLEMENTATION,
+    ),
+)
+def test_recursive_truth_guard_rejects_nested_fields_and_truth_dataclasses(
+    implementation: str,
+) -> None:
+    assert_online_payload_truth_free(
+        {"track": {"global_track_id": "GT-0001"}},
+        implementation=implementation,
+    )
     with pytest.raises(ValueError, match="truth fields"):
-        assert_online_payload_truth_free({"nested": [{"actor_id": "TargetActor_1"}]})
+        assert_online_payload_truth_free(
+            {"nested": [{"actor_id": "TargetActor_1"}]},
+            implementation=implementation,
+        )
     with pytest.raises(ValueError, match="truth fields"):
-        assert_online_payload_truth_free(OfflineTruthLabel("obs", "TGT-0001", 0.0))
+        assert_online_payload_truth_free(
+            OfflineTruthLabel("obs", "TGT-0001", 0.0),
+            implementation=implementation,
+        )
 
 
 def test_timing_accumulator_does_not_backfill_missing_child_distribution() -> None:
@@ -95,13 +115,25 @@ def test_timing_accumulator_rejects_partial_child_distribution() -> None:
         )
 
 
-def test_recursive_truth_guard_handles_cycles_without_weakening_nested_checks() -> None:
+@pytest.mark.parametrize(
+    "implementation",
+    (
+        ONLINE_TRUTH_GUARD_REFERENCE_IMPLEMENTATION,
+        ONLINE_TRUTH_GUARD_CANDIDATE_IMPLEMENTATION,
+    ),
+)
+def test_recursive_truth_guard_handles_cycles_without_weakening_nested_checks(
+    implementation: str,
+) -> None:
     cyclic: dict[str, object] = {}
     cyclic["self"] = cyclic
-    assert_online_payload_truth_free(cyclic)
+    assert_online_payload_truth_free(cyclic, implementation=implementation)
     cyclic["nested"] = [{"object-id": "TargetActor_1"}]
     with pytest.raises(ValueError, match="truth fields"):
-        assert_online_payload_truth_free(cyclic)
+        assert_online_payload_truth_free(
+            cyclic,
+            implementation=implementation,
+        )
 
 
 def test_truth_guard_layout_cache_still_checks_new_nested_values_and_keys() -> None:
@@ -189,6 +221,57 @@ def test_bus_sequences_messages_and_network_applies_transport_delay() -> None:
     delivered = network.deliver(1.2)
     assert len(delivered) == 1
     assert delivered[0].arrival_timestamp > 1.1
+
+
+def test_bus_truth_guard_candidate_is_explicit_auditable_and_default_off() -> None:
+    reference = InMemoryEpisodeBus()
+    candidate = InMemoryEpisodeBus(
+        truth_guard_implementation=(
+            ONLINE_TRUTH_GUARD_CANDIDATE_IMPLEMENTATION
+        )
+    )
+
+    reference.publish(
+        topic="tracks",
+        source="D2",
+        timestamp=0.1,
+        payload={"global_track_id": "GT-0001"},
+        copy_payload=False,
+    )
+    candidate.publish(
+        topic="tracks",
+        source="D2",
+        timestamp=0.1,
+        payload={"global_track_id": "GT-0001"},
+        copy_payload=False,
+    )
+
+    assert reference.truth_guard_diagnostics() == {
+        "schema_version": (
+            "scalable3d-online-truth-guard-diagnostics-v1"
+        ),
+        "implementation": ONLINE_TRUTH_GUARD_REFERENCE_IMPLEMENTATION,
+        "candidate_enabled": False,
+        "validation_count": 1,
+    }
+    assert candidate.truth_guard_diagnostics() == {
+        "schema_version": (
+            "scalable3d-online-truth-guard-diagnostics-v1"
+        ),
+        "implementation": ONLINE_TRUTH_GUARD_CANDIDATE_IMPLEMENTATION,
+        "candidate_enabled": True,
+        "validation_count": 1,
+    }
+    with pytest.raises(ValueError, match="truth fields"):
+        candidate.publish(
+            topic="tracks",
+            source="D2",
+            timestamp=0.2,
+            payload={"nested": {"truth_entity_id": "TGT-0001"}},
+        )
+    assert candidate.truth_guard_diagnostics()["validation_count"] == 1
+    with pytest.raises(ValueError, match="truth_guard_implementation"):
+        InMemoryEpisodeBus(truth_guard_implementation="unknown")
 
 
 def test_small_episode_writes_separate_online_and_truth_artifacts(tmp_path: Path) -> None:
@@ -523,6 +606,40 @@ def test_episode_network_drop_removes_batch_from_online_consumer() -> None:
     assert result.summary["communication_sent_count"] == 1
     assert result.summary["communication_delivered_count"] == 0
     assert result.summary["communication_dropped_count"] == 1
+
+
+def test_episode_records_explicit_truth_guard_treatment() -> None:
+    config = ScenarioConfig(
+        scenario_name="truth_guard_treatment",
+        scenario_version="truth-guard-treatment-v1",
+        target_count=1,
+        resource_count=1,
+        recon_count=0,
+        duration_s=0.1,
+        radar_detection_probability=1.0,
+        acoustic_enabled=False,
+        visual_enabled=False,
+        communication_enabled=False,
+    )
+
+    result = run_episode(
+        config,
+        online_truth_guard_implementation=(
+            ONLINE_TRUTH_GUARD_CANDIDATE_IMPLEMENTATION
+        ),
+    )
+
+    assert result.manifest.runtime_profile is not None
+    assert result.manifest.runtime_profile[
+        "online_truth_guard_implementation"
+    ] == ONLINE_TRUTH_GUARD_CANDIDATE_IMPLEMENTATION
+    assert result.summary["online_truth_guard_implementation"] == (
+        ONLINE_TRUTH_GUARD_CANDIDATE_IMPLEMENTATION
+    )
+    diagnostics = result.summary["online_truth_guard_diagnostics"]
+    assert diagnostics["candidate_enabled"] is True
+    assert diagnostics["validation_count"] == len(result.online_messages)
+    assert result.summary["online_truth_use_count"] == 0
 
 
 def test_200v200_episode_has_finite_states_without_array_limits() -> None:

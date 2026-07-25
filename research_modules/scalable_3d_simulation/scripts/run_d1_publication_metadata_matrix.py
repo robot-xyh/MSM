@@ -47,6 +47,15 @@ CV_MOTION_MODEL_EVIDENCE_MANIFEST_SCHEMA_VERSION = (
 CV_MOTION_MODEL_REQUIRED_D6_EVALUATOR_SCHEMA_VERSION = (
     "d6.d1_cv_motion_model_cache_multiseed_evaluation.v1"
 )
+ONLINE_TRUTH_GUARD_MATRIX_SCHEMA_VERSION = (
+    "scalable3d-online-truth-guard-multiseed-matrix-v1"
+)
+ONLINE_TRUTH_GUARD_EVIDENCE_MANIFEST_SCHEMA_VERSION = (
+    "scalable3d-online-truth-guard-multiseed-evidence-v1"
+)
+ONLINE_TRUTH_GUARD_REQUIRED_D6_EVALUATOR_SCHEMA_VERSION = (
+    "d6.online_truth_guard_multiseed_evaluation.v1"
+)
 _ARMS = ("reference", "candidate")
 _V1_EXPECTED_IMPLEMENTATIONS = {
     "reference": "per_track_copy_v1",
@@ -59,6 +68,10 @@ _V2_EXPECTED_IMPLEMENTATIONS = {
 _CV_MOTION_MODEL_EXPECTED_IMPLEMENTATIONS = {
     "reference": "per_prediction_build_v1",
     "candidate": "bounded_exact_lru_v1",
+}
+_ONLINE_TRUTH_GUARD_EXPECTED_IMPLEMENTATIONS = {
+    "reference": "generic_recursive_v1",
+    "candidate": "builtin_specialized_recursive_v2",
 }
 _D1_IMPLEMENTATION_IDS = {
     "per_track_copy_v1": (
@@ -121,6 +134,21 @@ _MATRIX_SPECS = {
         "validation_kind": "cv_motion_model_cache",
         "treatment_field": "d1_cv_motion_model_implementation",
     },
+    ONLINE_TRUTH_GUARD_MATRIX_SCHEMA_VERSION: {
+        "expected_implementations": (
+            _ONLINE_TRUTH_GUARD_EXPECTED_IMPLEMENTATIONS
+        ),
+        "evidence_manifest_schema_version": (
+            ONLINE_TRUTH_GUARD_EVIDENCE_MANIFEST_SCHEMA_VERSION
+        ),
+        "required_d6_evaluator_schema_version": (
+            ONLINE_TRUTH_GUARD_REQUIRED_D6_EVALUATOR_SCHEMA_VERSION
+        ),
+        "publication_audit_contract_version": None,
+        "selector_flag": "--online-truth-guard-implementation",
+        "validation_kind": "online_truth_guard",
+        "treatment_field": "online_truth_guard_implementation",
+    },
 }
 _COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
 _FORBIDDEN_RUN_FLAGS = {
@@ -134,6 +162,7 @@ _FORBIDDEN_RUN_FLAGS = {
     "--d1-publication-metadata-implementation",
     "--d1-cv-motion-model-implementation",
     "--d1-cv-motion-model-cache-capacity",
+    "--online-truth-guard-implementation",
 }
 
 
@@ -297,6 +326,26 @@ def load_matrix(path: str | Path) -> dict[str, Any]:
                     f"CV motion-model admission gate {field} must be "
                     f"{expected}"
                 )
+    if spec["validation_kind"] == "online_truth_guard":
+        if (
+            boundary.get("truth_guard_diagnostics_schema_version")
+            != "scalable3d-online-truth-guard-diagnostics-v1"
+        ):
+            raise ValueError(
+                "truth-guard evidence must bind diagnostics schema v1"
+            )
+        required_gates = {
+            "all_pairs_truth_guard_audit_valid": True,
+            "short_minimum_publication_bus_improvement_pct": 10.0,
+            "long_minimum_publication_bus_improvement_pct": 10.0,
+            "short_minimum_core_wall_improvement_pct": 0.5,
+            "long_minimum_core_wall_improvement_pct": 0.5,
+        }
+        for field, expected in required_gates.items():
+            if gates.get(field) != expected:
+                raise ValueError(
+                    f"truth-guard admission gate {field} must be {expected}"
+                )
     return value
 
 
@@ -361,14 +410,9 @@ def planned_evidence_manifest(
         arms: dict[str, Any] = {}
         for arm in _ARMS:
             episode_dir = case_root / f"{arm}_episode"
-            arms[arm] = {
+            arm_record = {
                 "arm": arm,
                 "expected_implementation": matrix["arm_implementations"][arm],
-                "expected_d1_implementation_id": (
-                    _D1_IMPLEMENTATION_IDS[
-                        matrix["arm_implementations"][arm]
-                    ]
-                ),
                 "validation_kind": spec["validation_kind"],
                 "expected_commit": source_commit,
                 "episode_dir": str(episode_dir),
@@ -385,6 +429,17 @@ def planned_evidence_manifest(
                 "status": "pending",
                 "return_code": None,
             }
+            if spec["validation_kind"] == "online_truth_guard":
+                arm_record["expected_truth_guard_implementation"] = (
+                    matrix["arm_implementations"][arm]
+                )
+            else:
+                arm_record["expected_d1_implementation_id"] = (
+                    _D1_IMPLEMENTATION_IDS[
+                        matrix["arm_implementations"][arm]
+                    ]
+                )
+            arms[arm] = arm_record
         cases.append(
             {
                 "case_id": case["case_id"],
@@ -425,6 +480,10 @@ def planned_evidence_manifest(
         )
         manifest["cv_motion_model_cache_diagnostics_schema_version"] = (
             "d1.cv_motion_model_cache_diagnostics.v1"
+        )
+    if spec["validation_kind"] == "online_truth_guard":
+        manifest["truth_guard_diagnostics_schema_version"] = (
+            "scalable3d-online-truth-guard-diagnostics-v1"
         )
     return manifest
 
@@ -687,6 +746,20 @@ def _episode_matches(
             expected_commit=expected_commit,
             expected_implementation=expected_implementation,
             expected_cache_capacity=expected_cache_capacity,
+            seed=seed,
+            duration_s=duration_s,
+            target_count=target_count,
+            resource_count=resource_count,
+            recon_count=recon_count,
+        )
+    if validation_kind == "online_truth_guard":
+        return _online_truth_guard_episode_matches(
+            episode_dir,
+            manifest=manifest,
+            config=config,
+            summary=summary,
+            expected_commit=expected_commit,
+            expected_implementation=expected_implementation,
             seed=seed,
             duration_s=duration_s,
             target_count=target_count,
@@ -983,6 +1056,67 @@ def _cv_motion_model_operation_counts_match(
     )
 
 
+def _online_truth_guard_episode_matches(
+    episode_dir: Path,
+    *,
+    manifest: Mapping[str, Any],
+    config: Mapping[str, Any],
+    summary: Mapping[str, Any],
+    expected_commit: str,
+    expected_implementation: str,
+    seed: int,
+    duration_s: float,
+    target_count: int,
+    resource_count: int,
+    recon_count: int,
+) -> bool:
+    if expected_implementation not in {
+        "generic_recursive_v1",
+        "builtin_specialized_recursive_v2",
+    }:
+        return False
+    runtime_profile = manifest.get("runtime_profile")
+    diagnostics = summary.get("online_truth_guard_diagnostics")
+    online_path = episode_dir / "online_observations.jsonl"
+    if (
+        not isinstance(runtime_profile, Mapping)
+        or not isinstance(diagnostics, Mapping)
+        or not online_path.is_file()
+    ):
+        return False
+    candidate = (
+        expected_implementation == "builtin_specialized_recursive_v2"
+    )
+    try:
+        online_message_count = _nonempty_line_count(online_path)
+        validation_count = int(diagnostics.get("validation_count"))
+    except (OSError, TypeError, ValueError):
+        return False
+    return (
+        manifest.get("git_commit") == expected_commit
+        and manifest.get("repository_dirty") is False
+        and manifest.get("seed") == seed
+        and runtime_profile.get("online_truth_guard_implementation")
+        == expected_implementation
+        and summary.get("online_truth_guard_implementation")
+        == expected_implementation
+        and diagnostics.get("schema_version")
+        == "scalable3d-online-truth-guard-diagnostics-v1"
+        and diagnostics.get("implementation") == expected_implementation
+        and diagnostics.get("candidate_enabled") is candidate
+        and validation_count == online_message_count
+        and validation_count > 0
+        and config.get("seed") == seed
+        and _float_equal(config.get("duration_s"), duration_s)
+        and config.get("target_count") == target_count
+        and config.get("resource_count") == resource_count
+        and config.get("recon_count") == recon_count
+        and summary.get("finite_state") is True
+        and summary.get("online_truth_use_count") == 0
+        and _float_equal(summary.get("simulated_duration_s"), duration_s)
+    )
+
+
 def _v2_d2_audit_matches(
     summary: Mapping[str, Any],
     *,
@@ -1085,6 +1219,11 @@ def _read_mapping(path: Path) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise ValueError(f"expected JSON object: {path}")
     return value
+
+
+def _nonempty_line_count(path: Path) -> int:
+    with path.open("r", encoding="utf-8") as stream:
+        return sum(1 for line in stream if line.strip())
 
 
 def _write_json_atomic(path: Path, value: Mapping[str, Any]) -> None:

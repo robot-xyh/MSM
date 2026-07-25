@@ -1,0 +1,147 @@
+{
+  "schema_version": "scalable3d-online-truth-guard-multiseed-matrix-v1",
+  "experiment_id": "online-truth-guard-multiseed-20260724-v1",
+  "same_clean_commit_required": true,
+  "target_count": 200,
+  "resource_count": 200,
+  "recon_count": 2,
+  "arm_implementations": {
+    "reference": "generic_recursive_v1",
+    "candidate": "builtin_specialized_recursive_v2"
+  },
+  "run_flags": [
+    "--integrated-stack"
+  ],
+  "cooldown_s": 2.0,
+  "bootstrap_seed": 20260724,
+  "bootstrap_resamples": 10000,
+  "cases": [
+    {
+      "case_id": "short_seed_1101",
+      "group": "short",
+      "seed": 1101,
+      "duration_s": 2.2,
+      "arm_order": ["reference", "candidate"]
+    },
+    {
+      "case_id": "short_seed_1102",
+      "group": "short",
+      "seed": 1102,
+      "duration_s": 2.2,
+      "arm_order": ["candidate", "reference"]
+    },
+    {
+      "case_id": "short_seed_1103",
+      "group": "short",
+      "seed": 1103,
+      "duration_s": 2.2,
+      "arm_order": ["reference", "candidate"]
+    },
+    {
+      "case_id": "short_seed_1104",
+      "group": "short",
+      "seed": 1104,
+      "duration_s": 2.2,
+      "arm_order": ["candidate", "reference"]
+    },
+    {
+      "case_id": "short_seed_1105",
+      "group": "short",
+      "seed": 1105,
+      "duration_s": 2.2,
+      "arm_order": ["reference", "candidate"]
+    },
+    {
+      "case_id": "short_seed_1106",
+      "group": "short",
+      "seed": 1106,
+      "duration_s": 2.2,
+      "arm_order": ["candidate", "reference"]
+    },
+    {
+      "case_id": "short_seed_1107",
+      "group": "short",
+      "seed": 1107,
+      "duration_s": 2.2,
+      "arm_order": ["reference", "candidate"]
+    },
+    {
+      "case_id": "short_seed_1108",
+      "group": "short",
+      "seed": 1108,
+      "duration_s": 2.2,
+      "arm_order": ["candidate", "reference"]
+    },
+    {
+      "case_id": "short_seed_1109",
+      "group": "short",
+      "seed": 1109,
+      "duration_s": 2.2,
+      "arm_order": ["reference", "candidate"]
+    },
+    {
+      "case_id": "short_seed_1110",
+      "group": "short",
+      "seed": 1110,
+      "duration_s": 2.2,
+      "arm_order": ["candidate", "reference"]
+    },
+    {
+      "case_id": "long_seed_1101",
+      "group": "long",
+      "seed": 1101,
+      "duration_s": 10.0,
+      "arm_order": ["candidate", "reference"]
+    },
+    {
+      "case_id": "long_seed_1102",
+      "group": "long",
+      "seed": 1102,
+      "duration_s": 10.0,
+      "arm_order": ["reference", "candidate"]
+    },
+    {
+      "case_id": "long_seed_1103",
+      "group": "long",
+      "seed": 1103,
+      "duration_s": 10.0,
+      "arm_order": ["candidate", "reference"]
+    }
+  ],
+  "admission_gates": {
+    "all_pairs_business_semantics_equal": true,
+    "all_pairs_finite_state": true,
+    "all_pairs_online_truth_use_count": 0,
+    "all_pairs_explicit_implementation_identity": true,
+    "all_pairs_truth_guard_audit_valid": true,
+    "short_minimum_candidate_faster_count": 8,
+    "short_minimum_publication_bus_improvement_pct": 10.0,
+    "short_bootstrap_relative_change_upper_bound_pct": 0.0,
+    "long_minimum_candidate_faster_count": 2,
+    "long_minimum_publication_bus_improvement_pct": 10.0,
+    "long_bootstrap_relative_change_upper_bound_pct": 0.0,
+    "short_minimum_core_wall_improvement_pct": 0.5,
+    "long_minimum_core_wall_improvement_pct": 0.5,
+    "maximum_short_d1_fusion_mean_increase_pct": 5.0,
+    "maximum_long_d1_fusion_mean_increase_pct": 5.0,
+    "maximum_short_d2_association_mean_increase_pct": 5.0,
+    "maximum_long_d2_association_mean_increase_pct": 5.0,
+    "maximum_rss_mean_increase_pct": 5.0,
+    "maximum_any_pair_rss_increase_pct": 5.0
+  },
+  "evidence_boundary": {
+    "simulation_mode": "three_dimensional_point_mass",
+    "airsim_evidence": false,
+    "truth_is_online_control_input": false,
+    "system_realtime_requires_real_time_factor_at_least_one": true,
+    "same_source_commit_for_both_arms": true,
+    "only_allowed_runtime_treatment_difference": "online_truth_guard_implementation",
+    "reference_implementation": "generic_recursive_v1",
+    "candidate_implementation": "builtin_specialized_recursive_v2",
+    "default_implementation": "generic_recursive_v1",
+    "candidate_is_default": false,
+    "truth_guard_diagnostics_schema_version": "scalable3d-online-truth-guard-diagnostics-v1",
+    "online_message_payloads_must_match": true,
+    "prior_episode_outputs_reused": false
+  }
+}

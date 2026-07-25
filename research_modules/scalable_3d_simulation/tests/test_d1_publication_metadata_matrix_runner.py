@@ -34,6 +34,13 @@ CV_MOTION_MODEL_MATRIX_PATH = (
     / "configs"
     / "d1_cv_motion_model_cache_multiseed_v1.json"
 )
+ONLINE_TRUTH_GUARD_MATRIX_PATH = (
+    ROOT
+    / "research_modules"
+    / "scalable_3d_simulation"
+    / "configs"
+    / "online_truth_guard_multiseed_v1.json"
+)
 
 
 def test_publication_metadata_matrix_freezes_same_commit_13_pair_contract() -> None:
@@ -110,6 +117,29 @@ def test_cv_motion_model_matrix_freezes_exact_cache_and_admission_gates() -> Non
     )
     assert matrix["evidence_boundary"]["cache_capacity"] == 128
     assert matrix["evidence_boundary"]["matrix_values_are_read_only"] is True
+
+
+def test_truth_guard_matrix_freezes_same_commit_performance_contract() -> None:
+    matrix = matrix_runner.load_matrix(ONLINE_TRUTH_GUARD_MATRIX_PATH)
+    short = [case for case in matrix["cases"] if case["group"] == "short"]
+    long = [case for case in matrix["cases"] if case["group"] == "long"]
+
+    assert matrix["arm_implementations"] == {
+        "reference": "generic_recursive_v1",
+        "candidate": "builtin_specialized_recursive_v2",
+    }
+    assert [case["seed"] for case in short] == list(range(1101, 1111))
+    assert [case["seed"] for case in long] == [1101, 1102, 1103]
+    assert matrix["admission_gates"][
+        "short_minimum_publication_bus_improvement_pct"
+    ] == 10.0
+    assert matrix["admission_gates"][
+        "long_minimum_publication_bus_improvement_pct"
+    ] == 10.0
+    assert matrix["admission_gates"][
+        "short_minimum_core_wall_improvement_pct"
+    ] == 0.5
+    assert matrix["evidence_boundary"]["candidate_is_default"] is False
 
 
 def test_arm_commands_differ_only_by_explicit_implementation_and_output(
@@ -206,6 +236,42 @@ def test_cv_motion_model_commands_bind_only_the_cache_treatment(
     assert reference[implementation_index + 1] == "per_prediction_build_v1"
     assert candidate[implementation_index + 1] == "bounded_exact_lru_v1"
     assert "--d1-cv-motion-model-cache-capacity" not in reference
+    for index, (left, right) in enumerate(
+        zip(reference, candidate, strict=True)
+    ):
+        if index not in {implementation_index + 1, output_index + 1}:
+            assert left == right
+
+
+def test_truth_guard_commands_bind_only_registered_treatment(
+    tmp_path: Path,
+) -> None:
+    matrix = matrix_runner.load_matrix(ONLINE_TRUTH_GUARD_MATRIX_PATH)
+    case = matrix["cases"][0]
+    reference = matrix_runner.build_episode_command(
+        ROOT,
+        matrix,
+        case,
+        "reference",
+        tmp_path / "reference",
+    )
+    candidate = matrix_runner.build_episode_command(
+        ROOT,
+        matrix,
+        case,
+        "candidate",
+        tmp_path / "candidate",
+    )
+
+    implementation_index = reference.index(
+        "--online-truth-guard-implementation"
+    )
+    output_index = reference.index("--output")
+    assert reference[implementation_index + 1] == "generic_recursive_v1"
+    assert (
+        candidate[implementation_index + 1]
+        == "builtin_specialized_recursive_v2"
+    )
     for index, (left, right) in enumerate(
         zip(reference, candidate, strict=True)
     ):
@@ -314,6 +380,41 @@ def test_cv_motion_model_manifest_binds_cache_contract_and_d6_evaluator(
         assert case["arms"]["candidate"][
             "expected_d1_implementation_id"
         ].endswith("bounded_exact_lru.v1")
+
+
+def test_truth_guard_manifest_binds_diagnostics_and_d6_evaluator(
+    tmp_path: Path,
+) -> None:
+    matrix = matrix_runner.load_matrix(ONLINE_TRUTH_GUARD_MATRIX_PATH)
+    commit = "2" * 40
+    manifest = matrix_runner.planned_evidence_manifest(
+        ONLINE_TRUTH_GUARD_MATRIX_PATH,
+        matrix,
+        ROOT,
+        commit,
+        tmp_path / "evidence",
+    )
+
+    assert manifest["schema_version"] == (
+        "scalable3d-online-truth-guard-multiseed-evidence-v1"
+    )
+    assert manifest["required_d6_evaluator_schema_version"] == (
+        "d6.online_truth_guard_multiseed_evaluation.v1"
+    )
+    assert manifest["truth_guard_diagnostics_schema_version"] == (
+        "scalable3d-online-truth-guard-diagnostics-v1"
+    )
+    for case in manifest["cases"]:
+        reference = case["arms"]["reference"]
+        candidate = case["arms"]["candidate"]
+        assert reference["validation_kind"] == "online_truth_guard"
+        assert reference["expected_truth_guard_implementation"] == (
+            "generic_recursive_v1"
+        )
+        assert candidate["expected_truth_guard_implementation"] == (
+            "builtin_specialized_recursive_v2"
+        )
+        assert "expected_d1_implementation_id" not in reference
 
 
 def test_matrix_rejects_arm_override_in_common_flags(tmp_path: Path) -> None:
@@ -676,6 +777,72 @@ def test_cv_motion_model_episode_resume_requires_four_surface_audit(
     assert not matrix_runner._episode_matches(episode, **match_args)
 
 
+def test_truth_guard_episode_resume_requires_exact_message_audit(
+    tmp_path: Path,
+) -> None:
+    episode = tmp_path / "episode_truth_guard"
+    episode.mkdir()
+    commit = "3" * 40
+    implementation = "builtin_specialized_recursive_v2"
+    manifest = {
+        "git_commit": commit,
+        "repository_dirty": False,
+        "seed": 1101,
+        "runtime_profile": {
+            "online_truth_guard_implementation": implementation,
+        },
+    }
+    config = {
+        "seed": 1101,
+        "duration_s": 2.2,
+        "target_count": 200,
+        "resource_count": 200,
+        "recon_count": 2,
+    }
+    summary = {
+        "online_truth_guard_implementation": implementation,
+        "online_truth_guard_diagnostics": {
+            "schema_version": (
+                "scalable3d-online-truth-guard-diagnostics-v1"
+            ),
+            "implementation": implementation,
+            "candidate_enabled": True,
+            "validation_count": 2,
+        },
+        "finite_state": True,
+        "online_truth_use_count": 0,
+        "simulated_duration_s": 2.2,
+    }
+    for name, payload in (
+        ("manifest.json", manifest),
+        ("scenario_config.json", config),
+        ("summary.json", summary),
+    ):
+        (episode / name).write_text(json.dumps(payload), encoding="utf-8")
+    (episode / "online_observations.jsonl").write_text(
+        '{"sequence":1}\n{"sequence":2}\n',
+        encoding="utf-8",
+    )
+    match_args = {
+        "expected_commit": commit,
+        "expected_implementation": implementation,
+        "seed": 1101,
+        "duration_s": 2.2,
+        "target_count": 200,
+        "resource_count": 200,
+        "recon_count": 2,
+        "validation_kind": "online_truth_guard",
+    }
+
+    assert matrix_runner._episode_matches(episode, **match_args)
+    summary["online_truth_guard_diagnostics"]["validation_count"] = 1
+    (episode / "summary.json").write_text(
+        json.dumps(summary),
+        encoding="utf-8",
+    )
+    assert not matrix_runner._episode_matches(episode, **match_args)
+
+
 def test_episode_cli_exposes_publication_metadata_selector() -> None:
     episode_cli = importlib.import_module(
         "research_modules.scalable_3d_simulation.run_episode"
@@ -693,6 +860,27 @@ def test_episode_cli_exposes_publication_metadata_selector() -> None:
         ]
     )
     assert args.d1_publication_metadata_implementation == "per_track_copy_v1"
+
+
+def test_episode_cli_exposes_default_off_truth_guard_candidate() -> None:
+    episode_cli = importlib.import_module(
+        "research_modules.scalable_3d_simulation.run_episode"
+    )
+    default_args = episode_cli.parse_args(["--integrated-stack"])
+    assert (
+        default_args.online_truth_guard_implementation
+        == "generic_recursive_v1"
+    )
+    candidate = episode_cli.parse_args(
+        [
+            "--integrated-stack",
+            "--online-truth-guard-implementation",
+            "builtin_specialized_recursive_v2",
+        ]
+    )
+    assert candidate.online_truth_guard_implementation == (
+        "builtin_specialized_recursive_v2"
+    )
 
 
 def test_operator_interrupt_is_persisted_as_interrupted(

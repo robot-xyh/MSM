@@ -17,6 +17,7 @@ from .communication import DeterministicCommunicationNetwork, LinkProfile
 from .episode_bus import (
     EpisodeManifest,
     InMemoryEpisodeBus,
+    ONLINE_TRUTH_GUARD_REFERENCE_IMPLEMENTATION,
     VersionedEnvelope,
     build_episode_manifest,
     jsonable,
@@ -175,11 +176,16 @@ class Scalable3DEpisodeRunner:
         config: ScenarioConfig,
         *,
         module_stack: ScalableModuleStack | None = None,
+        online_truth_guard_implementation: str = (
+            ONLINE_TRUTH_GUARD_REFERENCE_IMPLEMENTATION
+        ),
     ) -> None:
         self.config = config
         self.world = VectorizedPointMassWorld(config)
         self.sensor_scene = SensorScene(config)
-        self.bus = InMemoryEpisodeBus()
+        self.bus = InMemoryEpisodeBus(
+            truth_guard_implementation=online_truth_guard_implementation
+        )
         self.communication = DeterministicCommunicationNetwork(
             seed=config.seed + 20_000,
             default_profile=LinkProfile(
@@ -192,7 +198,13 @@ class Scalable3DEpisodeRunner:
         self.module_stack = module_stack
         self.manifest = build_episode_manifest(
             config,
-            runtime_profile=_runtime_manifest_profile(module_stack, config),
+            runtime_profile=_runtime_manifest_profile(
+                module_stack,
+                config,
+                online_truth_guard_implementation=(
+                    self.bus.truth_guard_implementation
+                ),
+            ),
         )
 
     def run(self) -> EpisodeResult:
@@ -594,6 +606,12 @@ class Scalable3DEpisodeRunner:
             "module_publication_topic_counts": dict(
                 sorted(module_publication_topic_counts.items())
             ),
+            "online_truth_guard_implementation": (
+                self.bus.truth_guard_implementation
+            ),
+            "online_truth_guard_diagnostics": (
+                self.bus.truth_guard_diagnostics()
+            ),
             "module_final_diagnostics": last_module_diagnostics,
             "d1_scan_input_implementation": observation_governance.get(
                 "d1_scan_input_implementation"
@@ -672,10 +690,19 @@ def run_episode(
     animation_formats: tuple[str, ...] = (),
     module_stack: ScalableModuleStack | None = None,
     write_learning_data: bool = False,
+    online_truth_guard_implementation: str = (
+        ONLINE_TRUTH_GUARD_REFERENCE_IMPLEMENTATION
+    ),
 ) -> EpisodeResult:
     """Run one baseline episode and optionally persist its reproducibility bundle."""
 
-    result = Scalable3DEpisodeRunner(config, module_stack=module_stack).run()
+    result = Scalable3DEpisodeRunner(
+        config,
+        module_stack=module_stack,
+        online_truth_guard_implementation=(
+            online_truth_guard_implementation
+        ),
+    ).run()
     if output_dir is None:
         if write_learning_data:
             raise ValueError("write_learning_data requires output_dir")
@@ -846,9 +873,19 @@ def _d1_consistency_evidence_records(
 def _runtime_manifest_profile(
     module_stack: ScalableModuleStack | None,
     config: ScenarioConfig,
-) -> dict[str, Any] | None:
+    *,
+    online_truth_guard_implementation: str,
+) -> dict[str, Any]:
+    base = {
+        "online_truth_guard_implementation": str(
+            online_truth_guard_implementation
+        )
+    }
     if module_stack is None:
-        return None
+        return {
+            "schema_version": "scalable3d-episode-runtime-profile-v1",
+            **base,
+        }
     scenario_provider = getattr(
         module_stack,
         "runtime_manifest_profile_for_scenario",
@@ -858,14 +895,17 @@ def _runtime_manifest_profile(
         profile = scenario_provider(config)
         if not isinstance(profile, Mapping):
             raise TypeError("runtime manifest profile must be a mapping")
-        return dict(profile)
+        return {**dict(profile), **base}
     provider = getattr(module_stack, "runtime_manifest_profile", None)
     if not callable(provider):
-        return None
+        return {
+            "schema_version": "scalable3d-episode-runtime-profile-v1",
+            **base,
+        }
     profile = provider()
     if not isinstance(profile, Mapping):
         raise TypeError("runtime manifest profile must be a mapping")
-    return dict(profile)
+    return {**dict(profile), **base}
 
 
 def _observation_governance_audit(

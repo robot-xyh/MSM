@@ -16,6 +16,10 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from research_modules.scalable_3d_simulation.models import ScenarioConfig
+from research_modules.scalable_3d_simulation.episode_bus import (
+    ONLINE_TRUTH_GUARD_CANDIDATE_IMPLEMENTATION,
+    ONLINE_TRUTH_GUARD_REFERENCE_IMPLEMENTATION,
+)
 from research_modules.scalable_3d_simulation.learning_runtime import (
     add_learning_runtime_arguments,
     learning_runtime_options_from_args,
@@ -164,6 +168,18 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
             "selected"
         ),
     )
+    parser.add_argument(
+        "--online-truth-guard-implementation",
+        choices=(
+            ONLINE_TRUTH_GUARD_REFERENCE_IMPLEMENTATION,
+            ONLINE_TRUTH_GUARD_CANDIDATE_IMPLEMENTATION,
+        ),
+        default=ONLINE_TRUTH_GUARD_REFERENCE_IMPLEMENTATION,
+        help=(
+            "select the main episode-bus recursive truth-isolation guard; "
+            "the built-in-specialized candidate is explicit and default-off"
+        ),
+    )
     add_learning_runtime_arguments(parser)
     return parser.parse_args(argv)
 
@@ -259,6 +275,9 @@ def main() -> int:
         animation_formats=animation_formats,
         module_stack=module_stack,
         write_learning_data=args.export_learning_data,
+        online_truth_guard_implementation=(
+            args.online_truth_guard_implementation
+        ),
     )
     print(f"episode_id={result.manifest.episode_id}")
     print(f"scale={config.resource_count}v{config.target_count}")
