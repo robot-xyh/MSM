@@ -194,6 +194,7 @@ from .scalable_3d_models import (
     POSITION_H_3D,
     POSITION_ORDER_3D,
     STATE_ORDER_3D,
+    D1GlobalTrackDetectionBatch,
     Detection3D,
     GlobalTrack3D,
     OnlineMetadataBatchAuditSummary,
@@ -201,6 +202,7 @@ from .scalable_3d_models import (
     assert_online_metadata_truth_free,
     detection3d_from_position_measurement,
     detections3d_from_d1_global_tracks,
+    detections3d_from_d1_global_tracks_with_audit,
 )
 from .scalable_3d_long_duration import (
     SCALABLE_3D_D2_LONG_DURATION_BENCHMARK_SCHEMA_VERSION,
@@ -317,6 +319,7 @@ __all__ = [
     "D1_OPAQUE_SOURCE_TOKEN_POLICY_VERSION",
     "D1_OBSERVATION_SCHEMA",
     "D1_AIRSIM_OFFLINE_TRUTH_SCHEMA_VERSION",
+    "D1GlobalTrackDetectionBatch",
     "D1_STRUCTURAL_AMBIGUITY_BIRTH_DISPOSITION",
     "D1_STRUCTURAL_AMBIGUITY_EVIDENCE_SCHEMA_VERSION",
     "D1_STRUCTURAL_AMBIGUITY_HOLD_POLICY_VERSION",
@@ -450,6 +453,7 @@ __all__ = [
     "detections_from_d1_global_tracks",
     "detection3d_from_position_measurement",
     "detections3d_from_d1_global_tracks",
+    "detections3d_from_d1_global_tracks_with_audit",
     "d2_frames_from_d1_governed_replay",
     "create_scalable_3d_identity_evidence_bundle",
     "build_scalable_3d_identity_blocker_diagnostics",

@@ -6,6 +6,30 @@ D2 是 C-UAS 多目标数据关联研究模块，目标是在离线仿真和日�
 
 规模边界：D2 消费每帧传入的 `tracks`、`detections` 和当前 `active_tracks` 集合，不从场景名推断目标数量，不写死 2v2 或 5v5。`crossing_dense_5v5` 等名称只是可重复 baseline fixture；main runtime 的 `--drone-count N` 只应体现为传入 D2 的输入集合长度。
 
+### 2026-07-24 D1 发布审计 v2 消费合同
+
+- D6 对 D1 v1 发布元数据候选的 13 对正式评估表明，D1 fusion wall 在 short/long
+  分别改善 `16.29%/31.05%`，但 D2 对共享只读诊断树逐航迹重复扫描，使 D2 association
+  增加 `53.44%/169.89%`；核心墙钟仅改善 `1.65%/1.21%`，未达到预注册的 `5%`
+  准入门。
+- D2 现只认可 D1 公开的 `d1.publication_audit_tree.v2` 精确容器类型和精确递归验证
+  函数。每个新对象先完成合同验证，再完成禁用真值/仿真实体/规范身份键的内容审计。
+  两步均通过后，才按同一对象身份复用审计结果；缓存保留强引用并用 `is` 复核。
+- 等值但不同身份的 v2 根分别验证和审计。畸形精确构造和 v2 子类失败关闭；marker、
+  自定义相等映射和可变后端不能获得 v2 信任。原有精确内建
+  `dict/list/tuple/set/frozenset` 等值代表复用保持。
+- 新入口 `detections3d_from_d1_global_tracks_with_audit()` 返回 Detection 批次和
+  `OnlineMetadataBatchAuditSummary`；该入口及结果类型
+  `D1GlobalTrackDetectionBatch` 均由 `d2_data_association` 包 API 和 `__all__`
+  导出。旧
+  `detections3d_from_d1_global_tracks()` 的二元返回不变。审计摘要区分完整内容审计、
+  内建等值复用、v2 合同验证、v2 内容审计和 v2 同身份复用；上游
+  `global_track_id` 仍不进入 D2 Detection。
+- 2026-07-24 确定性 200 航迹夹具中，三个共享 v2 根的合同验证和完整内容审计均为
+  3 次，同身份复用为 `3*(200-1)=597` 次。完整 D2 回归为
+  `305 passed, 1 warning in 29.17s`。该结果只关闭 D2-owned 消费合同；main 尚需把
+  审计字段持久化并在同一 clean commit 上重跑 13 对正式矩阵，系统候选当前不得准入。
+
 ### 2026-07-23 结构歧义有界身份假设 C0 设计
 
 - D2 已完成 C0 文档规划，推荐首版采用 component-local、identity-only bounded MHT，

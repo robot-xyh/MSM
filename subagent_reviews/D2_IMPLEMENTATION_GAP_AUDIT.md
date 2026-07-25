@@ -1424,3 +1424,38 @@ P0 blocker。
 
 P0 无新增项。该问题不要求修改在线 GNN/Hungarian、中心 `global_track_id` 或
 AssignmentPlan 合同。
+
+## 2026-07-24 D1 发布审计 v2 消费 GAP 更新
+
+### 已关闭的 D2-owned P1
+
+- D6 的 v1 13 对正式矩阵确认：D1 fusion wall 改善
+  `16.29%/31.05%`，但 D2 association 增加 `53.44%/169.89%`，核心墙钟只改善
+  `1.65%/1.21%`，未达到 `5%` 门。D2 重复递归扫描共享只读诊断树是明确根因。
+- D2 现只信任 D1 公开的精确 v2 根类型、精确递归验证函数和固定
+  `d1.publication_audit_tree.v2`。结构验证不能替代 forbidden-key 内容审计；两步均
+  通过后才缓存。
+- 缓存保存对象强引用，先按 `id` 定位再用 `is` 确认。等值不同身份对象分别验证和审计，
+  不调用任意 `Mapping.__eq__` 作为 v2 信任依据。
+- 畸形精确构造、v2 子类、truth/actor/object/target/global-track 禁止键失败关闭。
+  marker、自定义恒等映射和可变后端只走非 v2 完整审计，不能获得同身份复用。原精确
+  内建容器等值代表复用保持。
+- 新 typed adapter 返回 `OnlineMetadataBatchAuditSummary`；函数与
+  `D1GlobalTrackDetectionBatch` 均通过包 API 和 `__all__` 导出，旧二元入口保持兼容。
+  200 航迹三共享根得到 3 次合同验证、3 次内容审计、597 次同身份复用，上游
+  `global_track_id` 复制数为 0。
+- 2026-07-24 完整 D2 回归为 `305 passed, 1 warning in 29.17s`。warning 是既有
+  Matplotlib `Axes3D` 环境提示，不影响合同测试。
+
+### 仍开放的跨模块 P1
+
+- main 尚未调用 `detections3d_from_d1_global_tracks_with_audit()`，也未把审计摘要写入
+  manifest、governance 或 episode summary。
+- v2 尚未在同一 clean commit 上执行预注册 short 10 seeds/long 3 seeds 的 13 对矩阵；
+  D6 尚未复核 D2 association、核心墙钟、RSS、语义、真值隔离和身份门。
+- v1 的 `d1_optimization_admitted=false` 和
+  `system_realtime_gap_closed=false` 继续有效。只有新矩阵达到核心墙钟
+  `>=5%` 且全部安全/语义门通过后，系统候选才可重新评审。
+
+本轮无新增 P0。D2 本地合同缺口关闭，不代表 D1 发布优化已经系统准入，也不改变结构
+歧义运动学、真实 AirSim、多 seed 身份标定和固定硬件时延等既有 P1。

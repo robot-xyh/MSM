@@ -1519,3 +1519,38 @@ evaluation payload 严格相同；相邻计数 `133/0` 不变。
 
 本修复不构成关联算法、AirSim 或实时性能晋级。结构歧义运动学支持、C1-C3 有界身份
 假设、真实 AirSim、多 seed 严格身份和固定硬件时延仍按前述 P1 计划执行。
+
+## 38. D1 发布审计 v2 消费合同
+
+### 38.1 已完成
+
+2026-07-24 完成 D2-owned v2 消费逻辑：
+
+- 只接受 D1 公开的精确 `ImmutablePublicationAuditMap` 根、精确递归 validator 和固定
+  `d1.publication_audit_tree.v2`；
+- 每个新对象先验证不可变结构，再执行 D2 forbidden-key 内容审计；
+- 成功后在当前批内保留强引用，以 `id` 定位并用 `is` 确认同一对象后复用；
+- 等值但不同身份的 v2 根分别处理；畸形精确构造和 v2 子类失败关闭；
+- marker、自定义 equality 和可变 backing 不进入 v2 路径；
+- 精确内建容器的既有等值代表复用不变；
+- 新增 `detections3d_from_d1_global_tracks_with_audit()` typed API，并与
+  `D1GlobalTrackDetectionBatch` 一同通过包 API 和 `__all__` 导出；旧入口返回兼容。
+
+200 航迹、三个共享 v2 根的确定性测试中，合同验证和完整内容审计各 3 次，同身份复用
+597 次。完整 D2 回归为 `305 passed, 1 warning in 29.17s`。该阶段没有启动 AirSim，
+没有改 GNN/Hungarian、状态机、身份承诺或 `global_track_id` 规则。
+
+### 38.2 main/D6 后续验收
+
+main 需要改用带审计入口，并逐批持久化
+`metadata_audit.to_dict()` 的完整计数。失败批次应按异常记录，不能生成部分 Detection
+继续运行。随后在同一 clean commit、同一输入和预注册 short 10 seeds/long 3 seeds
+上复跑 reference/v2 candidate：
+
+1. 三个共享根的 v2 合同验证和内容审计应各为每批 3 次；
+2. v2 同身份复用应与实际共享对象数和航迹数一致；
+3. 在线 truth、身份改写、有限值、业务语义和 RSS 门继续通过；
+4. D2 association 不得重现 v1 的 `53.44%/169.89%` 回退；
+5. 核心墙钟改善仍须达到预注册的 `>=5%`，否则候选继续拒绝。
+
+D2 模块合同已经闭合，系统性能 P1 仍开放。正式矩阵完成前不得把 v2 写成默认准入能力。

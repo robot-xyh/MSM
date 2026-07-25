@@ -9,6 +9,13 @@ from typing import Any, Iterable
 
 import numpy as np
 
+from research_modules.d1_sensor_fusion.src.d1_sensor_fusion.publication_audit import (
+    PUBLICATION_AUDIT_TREE_CONTRACT_VERSION,
+    ImmutablePublicationAuditMap,
+    PublicationAuditContractError,
+    validate_immutable_publication_audit_tree,
+)
+
 from .ambiguity_hold import (
     D1_DEFAULT_PUBLISHER_EPOCH,
     D1_DEFAULT_PUBLISHER_NODE_ID,
@@ -21,6 +28,7 @@ from .models import TrackLifecycleState, govern_covariance
 STATE_ORDER_3D = ("pN", "pE", "pD", "vN", "vE", "vD")
 POSITION_ORDER_3D = STATE_ORDER_3D[:3]
 POSITION_H_3D = np.hstack((np.eye(3, dtype=float), np.zeros((3, 3), dtype=float)))
+_D1_PUBLICATION_AUDIT_TREE_CONTRACT_V2 = "d1.publication_audit_tree.v2"
 
 # D1 materializes these publication-context diagnostics into every GlobalTrack
 # in one batch.  Their values are equal within that batch but their nested size
@@ -75,6 +83,10 @@ class OnlineMetadataBatchAuditSummary:
     metadata_count: int
     shared_subtree_full_audit_count: int
     shared_subtree_equivalent_reuse_count: int
+    immutable_v2_contract_validation_count: int = 0
+    immutable_v2_full_content_audit_count: int = 0
+    immutable_v2_identity_reuse_count: int = 0
+    immutable_v2_contract_rejection_count: int = 0
 
     def to_dict(self) -> dict[str, int]:
         return {
@@ -84,6 +96,21 @@ class OnlineMetadataBatchAuditSummary:
             ),
             "shared_subtree_equivalent_reuse_count": (
                 self.shared_subtree_equivalent_reuse_count
+            ),
+            "shared_subtree_builtin_equivalent_reuse_count": (
+                self.shared_subtree_equivalent_reuse_count
+            ),
+            "immutable_v2_contract_validation_count": (
+                self.immutable_v2_contract_validation_count
+            ),
+            "immutable_v2_full_content_audit_count": (
+                self.immutable_v2_full_content_audit_count
+            ),
+            "immutable_v2_identity_reuse_count": (
+                self.immutable_v2_identity_reuse_count
+            ),
+            "immutable_v2_contract_rejection_count": (
+                self.immutable_v2_contract_rejection_count
             ),
         }
 
@@ -302,6 +329,15 @@ class Detection3D:
         }
 
 
+@dataclass(frozen=True, slots=True)
+class D1GlobalTrackDetectionBatch:
+    """D1 adapter output with batch-local metadata-audit diagnostics."""
+
+    frame_timestamp: float
+    detections: list[Detection3D]
+    metadata_audit: OnlineMetadataBatchAuditSummary
+
+
 @dataclass(slots=True)
 class GlobalTrack3D:
     """Center-owned CV track with state ``[pN,pE,pD,vN,vE,vD]``."""
@@ -485,7 +521,27 @@ def detections3d_from_d1_global_tracks(
     publisher_node_id: str = D1_DEFAULT_PUBLISHER_NODE_ID,
     publisher_epoch: str | None = None,
 ) -> tuple[float, list[Detection3D]]:
-    """Adapt D1 six-state tracks while ignoring any upstream global ID value.
+    """Compatibility adapter that preserves the original two-item return."""
+
+    result = detections3d_from_d1_global_tracks_with_audit(
+        tracks,
+        detection_id_prefix=detection_id_prefix,
+        use_opaque_d1_source_tokens=use_opaque_d1_source_tokens,
+        publisher_node_id=publisher_node_id,
+        publisher_epoch=publisher_epoch,
+    )
+    return result.frame_timestamp, result.detections
+
+
+def detections3d_from_d1_global_tracks_with_audit(
+    tracks: Iterable[Any],
+    *,
+    detection_id_prefix: str = "d1-3d",
+    use_opaque_d1_source_tokens: bool = False,
+    publisher_node_id: str = D1_DEFAULT_PUBLISHER_NODE_ID,
+    publisher_epoch: str | None = None,
+) -> D1GlobalTrackDetectionBatch:
+    """Adapt D1 six-state tracks and return the metadata audit summary.
 
     The adapter deliberately allocates anonymous observation IDs by scan order.
     An upstream object's ``global_track_id`` is neither copied nor used as D2's
@@ -506,7 +562,7 @@ def detections3d_from_d1_global_tracks(
     metadata_list = [
         _mapping_or_empty(_read(item, "metadata", {})) for item in track_list
     ]
-    assert_online_metadata_batch_truth_free(metadata_list)
+    metadata_audit = assert_online_metadata_batch_truth_free(metadata_list)
 
     detections: list[Detection3D] = []
     frame_timestamp = 0.0
@@ -636,7 +692,11 @@ def detections3d_from_d1_global_tracks(
         for item in detections
     ):
         raise ValueError("D1 track batch must share one state-valid timestamp")
-    return frame_timestamp, detections
+    return D1GlobalTrackDetectionBatch(
+        frame_timestamp=frame_timestamp,
+        detections=detections,
+        metadata_audit=metadata_audit,
+    )
 
 
 def _d1_local_track_id(item: Any, metadata: Mapping[str, Any]) -> str:
@@ -717,9 +777,14 @@ def assert_online_metadata_batch_truth_free(
     """
 
     representatives: dict[str, list[Any]] = {}
+    immutable_v2_roots_by_id: dict[int, ImmutablePublicationAuditMap] = {}
     metadata_count = 0
     full_audit_count = 0
     equivalent_reuse_count = 0
+    immutable_v2_contract_validation_count = 0
+    immutable_v2_full_content_audit_count = 0
+    immutable_v2_identity_reuse_count = 0
+    immutable_v2_contract_rejection_count = 0
 
     for metadata in metadata_items:
         if not isinstance(metadata, Mapping):
@@ -741,6 +806,52 @@ def assert_online_metadata_batch_truth_free(
                     violations,
                 )
                 continue
+
+            if type(item) is ImmutablePublicationAuditMap:
+                cached_root = immutable_v2_roots_by_id.get(id(item))
+                if cached_root is item:
+                    immutable_v2_identity_reuse_count += 1
+                    continue
+                immutable_v2_contract_validation_count += 1
+                try:
+                    verification = validate_immutable_publication_audit_tree(
+                        item
+                    )
+                except PublicationAuditContractError:
+                    immutable_v2_contract_rejection_count += 1
+                    raise
+                if (
+                    verification.contract_version
+                    != _D1_PUBLICATION_AUDIT_TREE_CONTRACT_V2
+                    or PUBLICATION_AUDIT_TREE_CONTRACT_VERSION
+                    != _D1_PUBLICATION_AUDIT_TREE_CONTRACT_V2
+                ):
+                    immutable_v2_contract_rejection_count += 1
+                    raise PublicationAuditContractError(
+                        "D1 publication audit contract version mismatch"
+                    )
+                _collect_online_metadata_violations(
+                    item,
+                    child_path,
+                    violations,
+                )
+                full_audit_count += 1
+                immutable_v2_full_content_audit_count += 1
+                if violations:
+                    raise ValueError(
+                        "online Detection3D metadata contains evaluator or "
+                        "external identity: "
+                        + ", ".join(sorted(set(violations)))
+                    )
+                # Retain the object itself and confirm ``is`` on lookup. This
+                # prevents stale bare-id reuse after object collection.
+                immutable_v2_roots_by_id[id(item)] = item
+                continue
+            if isinstance(item, ImmutablePublicationAuditMap):
+                immutable_v2_contract_rejection_count += 1
+                raise PublicationAuditContractError(
+                    "D1 publication audit map subclasses are not trusted"
+                )
 
             variants = representatives.setdefault(key, [])
             item_is_trusted = _is_trusted_builtin_metadata_tree(item)
@@ -766,6 +877,18 @@ def assert_online_metadata_batch_truth_free(
         metadata_count=metadata_count,
         shared_subtree_full_audit_count=full_audit_count,
         shared_subtree_equivalent_reuse_count=equivalent_reuse_count,
+        immutable_v2_contract_validation_count=(
+            immutable_v2_contract_validation_count
+        ),
+        immutable_v2_full_content_audit_count=(
+            immutable_v2_full_content_audit_count
+        ),
+        immutable_v2_identity_reuse_count=(
+            immutable_v2_identity_reuse_count
+        ),
+        immutable_v2_contract_rejection_count=(
+            immutable_v2_contract_rejection_count
+        ),
     )
 
 

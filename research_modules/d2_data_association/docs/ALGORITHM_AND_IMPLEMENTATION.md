@@ -1,11 +1,53 @@
 # D2 多目标数据关联算法与实施方案
 
-**状态日期**：2026-07-23
+**状态日期**：2026-07-24
 **适用范围**：科研仿真、受治理日志回放、六维稀疏规则关联、离线评估和跨节点航迹注册基础
 **默认主线**：全局最近邻（Global Nearest Neighbor，GNN）与匈牙利算法的一对一硬关联
 **安全边界**：本文不包含真实飞控、自动处置、毁伤评估或绕过人工授权的能力
 
 本文依据 D2 当前代码、`README.md`、`PLAN.md`、`MODULE_PRINCIPLES_CN.md` 和系统总汇总同步编写。文中“已实现”必须有仓库代码或回放证据支撑；“可选”“部分实现”和“未实现”不得解释为默认工程能力。
+
+## 最新实现 D1 发布审计 v2
+
+D2 在 D1 六维航迹适配前先对整批 metadata 做在线真值隔离审计。v2 路径的处理顺序
+固定如下：
+
+```text
+读取共享诊断根
+  -> 精确类型判定
+  -> D1 v2 递归不可变合同验证
+  -> D2 forbidden-key 内容审计
+  -> 保存强引用
+  -> 后续按 id 定位并以 is 确认同一对象
+  -> 生成仅含 D2 所需字段的 Detection metadata
+```
+
+类型判定只接受 D1 公布的 `ImmutablePublicationAuditMap` 精确类型，合同版本必须是
+`d1.publication_audit_tree.v2`。代码不读取 marker，不按类名或模块字符串建立信任，
+不接受调用方提供 validator，也不以任意 `Mapping.__eq__` 的结果作为 v2 复用依据。
+精确类型的畸形底层构造由 D1 validator 拒绝；该类型的子类直接失败关闭。
+
+通过合同验证后仍必须执行 `_collect_online_metadata_violations()`。因此，只读树中包含
+`truth`、`actor_id`、`object_id`、`target_id` 或 `global_track_id` 时，首次内容审计
+立即拒绝。成功结果才写入批内缓存。缓存值是对象强引用，不是裸 `id`；查询后再执行
+`cached_root is item`，避免对象回收后的标识重用。
+
+`OnlineMetadataBatchAuditSummary.to_dict()` 输出：
+
+- `metadata_count`；
+- `shared_subtree_full_audit_count`；
+- `shared_subtree_equivalent_reuse_count`，以及语义更明确的同值字段
+  `shared_subtree_builtin_equivalent_reuse_count`；
+- `immutable_v2_contract_validation_count`；
+- `immutable_v2_full_content_audit_count`；
+- `immutable_v2_identity_reuse_count`；
+- `immutable_v2_contract_rejection_count`。
+
+合同拒绝会失败关闭，因而失败批次不会生成可继续消费的适配结果。main 应持久化成功批次
+的完整 `metadata_audit.to_dict()`，失败批次另按异常类型记录。新公开入口
+`detections3d_from_d1_global_tracks_with_audit()` 返回带审计摘要的 typed result；
+该函数和 `D1GlobalTrackDetectionBatch` 均列入包级 `__all__`。旧入口委托新入口后
+仍返回 `(frame_timestamp, detections)`。
 
 ## 0. 最新 AirSim 运行证据对算法选型的影响
 
