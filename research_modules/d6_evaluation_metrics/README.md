@@ -1,5 +1,41 @@
 # D6 Evaluation Metrics
 
+## 2026-07-25 D1 在线批帧交接多种子正式评估入口
+
+D6 已实现独立只读、失败关闭 evaluator
+`d1_online_batch_frame_multiseed.py` 及 CLI
+`scripts/evaluate_d1_online_batch_frame_multiseed.py`，schema 为
+`d6.d1_online_batch_frame_multiseed_evaluation.v1`。入口固定绑定 matrix SHA-256
+`4afbf9ac273763a16aa01cc744fd67b52e437099460b33377a128f986ac5719b`、clean source commit
+`43feaf600f288a85ce76a76862334256f0d0d352`、short seeds 1121-1130、long seeds
+1121-1123、200 个目标、200 个资源和 2 个侦察节点。13 对/26 episode 必须全部 fresh
+complete，producer 状态只能是 `episodes_complete_pending_d6`。
+
+selector、完整 implementation ID、execution config 和
+`d1.online_batch_frame_handoff_diagnostics.v1` 在 runtime profile、summary、module final、
+嵌套治理和治理 audit 表面交叉绑定。D6 从原始 episode 重算有限状态、online truth use、
+批帧 request/path/result/snapshot/final-frame 守恒、scan/core/D2/RSS/实时因子、重复检查减少、
+closed handoff ratio 和 fallback count，不读取 producer admission 判定。
+
+业务等价只归一化预注册 treatment、批帧诊断及派生字段、处理派生 episode ID 和性能字段。
+跨运行 opaque plan ID 按已验证的首次出现谱系映射；源 payload SHA、ACK 和 D4 内容地址先校验，
+分配关系、授权状态、目标/资源绑定、状态机结果、计数和安全结果仍逐条比较。
+
+正式结果为 `admit`：13/13 业务等价、有限状态、实现身份和批帧审计通过，online truth use 为 0；
+short/long scan input 改善 `38.289241%/36.275282%`，core wall 改善
+`4.252745%/4.916501%`，D2 组均值增幅 `2.113047%/2.830616%`，RSS 最大组均值增幅
+`0.281879%`、任一 pair 最大增幅 `0.856727%`。重复检查减少率和 closed handoff ratio 均为
+`100%`，fallback 为 0。候选最低实时因子 `0.204490 < 1`，所以 200v200 系统实时仍不足。
+证据仅为三维质点，不是 AirSim、实机或实飞证据。正式 bundle 位于
+`outputs/d1_online_batch_frame_multiseed_20260725_formal_43feaf6_d6/`。定向测试
+`12 passed, 1 warning`，D6 全量 `846 passed, 1 warning in 59.24s`。
+
+```bash
+python3 research_modules/d6_evaluation_metrics/scripts/evaluate_d1_online_batch_frame_multiseed.py \
+  --evidence-manifest /tmp/msm_d1_online_batch_frame_multiseed_43feaf6/evidence_manifest.json \
+  --output-dir research_modules/d6_evaluation_metrics/outputs/d1_online_batch_frame_multiseed_20260725_formal_43feaf6_d6
+```
+
 ## 2026-07-25 D1 不透明来源标识缓存评估入口
 
 D6 新增独立、只读、失败关闭的离线消费者

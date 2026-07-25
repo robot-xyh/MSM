@@ -1,5 +1,17 @@
 # D6 文档索引
 
+2026-07-25 D1 在线批帧交接同提交多 seed 正式评估原理见
+`MODULE_PRINCIPLES_CN.md`，严格 manifest/matrix/provenance 绑定、四层 selector/诊断谱系、
+批帧守恒、计划语义归一化和冻结门实现见 `ALGORITHM_AND_IMPLEMENTATION.md`。入口 schema 为
+`d6.d1_online_batch_frame_multiseed_evaluation.v1`，固定 matrix SHA
+`4afbf9ac273763a16aa01cc744fd67b52e437099460b33377a128f986ac5719b` 与 clean commit
+`43feaf600f288a85ce76a76862334256f0d0d352`。正式 13 对/26 episode 全部可用；
+scan input short/long 改善 `38.289241%/36.275282%`，core wall 改善
+`4.252745%/4.916501%`，D2 增幅 `2.113047%/2.830616%`，重复检查减少率和 closed ratio
+均为 `100%`，fallback 为 0，结论 `admit`。候选最低实时因子 `0.204490`，系统实时仍不足。
+结果仅为三维质点，不是 AirSim、实机或实飞证据。正式结果见 `../EXPERIMENT_REPORT.md`
+2.36 节和 `../outputs/d1_online_batch_frame_multiseed_20260725_formal_43feaf6_d6/`。
+
 2026-07-25 D1 不透明来源标识缓存多 seed 评估原理见
 `MODULE_PRINCIPLES_CN.md`，严格证据绑定、诊断守恒、语义比较和冻结门实现见
 `ALGORITHM_AND_IMPLEMENTATION.md`。入口绑定 matrix SHA

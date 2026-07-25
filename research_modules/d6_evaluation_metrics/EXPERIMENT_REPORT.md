@@ -1,5 +1,42 @@
 # D6 系统级评估指标实验报告
 
+## 2.36 D1 在线批帧交接正式多种子评估
+
+### 结论
+
+2026-07-25，D6 对 source commit
+`43feaf600f288a85ce76a76862334256f0d0d352` 的 short 10 对、long 3 对，共 13 对/26 episode
+三维质点证据完成独立只读评估。evaluator schema 为
+`d6.d1_online_batch_frame_multiseed_evaluation.v1`，matrix SHA-256 为
+`4afbf9ac273763a16aa01cc744fd67b52e437099460b33377a128f986ac5719b`。
+
+全部预注册 gate 通过，候选优化结论为 `admit`。该结论与系统实时门分开：候选最低实时因子
+`0.2044899434`，仍低于 `1.0`，因此 200v200 系统实时结论为“仍不足”。
+
+### 正式实测
+
+| 指标 | short | long | 门限 |
+| --- | ---: | ---: | ---: |
+| candidate faster | 10/10 | 3/3 | >=8 / >=2 |
+| scan input 配对改善均值 | 38.289241% | 36.275282% | >=20% |
+| core wall 配对改善均值 | 4.252745% | 4.916501% | >=2% |
+| D2 组均值增幅 | 2.113047% | 2.830616% | <=5% |
+| RSS 组均值增幅 | -0.061496% | 0.281879% | 最大 <=5% |
+
+short scan input 配对相对变化 95% bootstrap 区间为
+`[-40.065664%, -36.838329%]`，其上界通过 `<=0%` 门。任一 pair 最大 RSS 增幅为
+`0.856727%`。全矩阵 reference/candidate request 均为 2665；reference 重复检查 55316 次，
+candidate 为 0，减少率 `100%`；2665/2665 candidate request 使用 closed handoff，
+closed ratio `100%`，fallback count 为 0。13/13 pair 业务语义、有限状态、显式实现身份和
+批帧审计通过，26 arm 的 online truth use 总数为 0。
+
+业务语义比较只归一化预注册批帧 treatment、诊断计数及派生字段、处理派生 episode 标识和性能。
+跨运行 plan ID 先验证源 payload SHA、ACK、D4 authority 内容地址和连续版本，再映射为谱系 token；
+assignment、授权、目标/资源绑定、owner/coalition 业务字段、状态机、计数、安全和下游引用继续
+比较。正式 bundle 位于
+`outputs/d1_online_batch_frame_multiseed_20260725_formal_43feaf6_d6/`，同目录复跑后全部制品
+SHA-256 一致。本证据不是 AirSim、实机或实飞证据。
+
 ## 2.35 D1 不透明来源标识缓存正式评估
 
 ### 结论

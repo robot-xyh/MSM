@@ -1,5 +1,41 @@
 # D6 系统级离线评估模块原理
 
+## 在线批帧交接评估边界（2026-07-25）
+
+参考实现 `convert_then_frame_v1` 对每个在线 batch 执行 raw measurement identity 检查、量测转换、
+converted collection 检查和最终只读 frame 检查。候选
+`closed_immutable_batch_to_frame_v1` 保留 full raw batch identity 检查和最终只读 frame 检查，
+在结构合格后先形成 closed snapshot，再交接给 frame，从而移除重复的逐 measurement 和 converted
+collection 检查；候选仍不宣称 raw source 绝对不可变，也不提供 public validation bypass。
+
+D6 不信任 arm 标签或 producer admission。selector、完整实现 ID、execution config 和
+`d1.online_batch_frame_handoff_diagnostics.v1` 必须在 runtime profile、summary、module final、
+nested governance 与 governance audit 一致。每个 arm 都要满足：
+
+```text
+N_request = N_reference_request + N_candidate_request
+N_request = N_successful_build + N_rejected_build
+N_raw_batch_check = N_request
+N_final_frame_check = N_successful_build
+N_measurement_conversion = N_output_observation
+```
+
+候选还要满足 candidate path、snapshot structure 与 snapshot success/failure 分区守恒；
+reference 必须无 candidate-only 活动，且逐 measurement identity check 数等于 conversion 数。
+两臂 request 工作量必须相同。重复检查减少率以
+`raw_measurement_identity_check + converted_collection_check` 为分母，closed handoff ratio 以
+candidate request 为分母，fallback 直接计数，不以缺字段补零绕过 schema。
+
+业务等价只归一化预注册 treatment、execution config、批帧诊断计数及派生字段、treatment 派生
+episode ID 和性能字段。独立运行的 opaque plan ID 可不同：D6 复用严格跨 episode 审计，先验证
+原始 plan/guidance payload SHA、ACK、D4 authority 内容地址和连续版本，再按首次出现顺序映射
+谱系 token。由 plan ID 派生的运行实例标识随该映射处理；owner layer/active、授权状态、lease
+有效性关系、assignment、target/resource binding、coalition、状态机结果、计数、安全和下游引用
+仍比较。真实业务差异不得归一化。
+
+正式 13 对/26 episode 三维质点结果全部 gate 通过，候选优化 `admit`；候选最低实时因子
+`0.204490 < 1`，所以 200v200 系统实时仍不足。该结果不外推到 AirSim、目标处理器或实飞。
+
 ## 不透明来源标识缓存评估边界（2026-07-25）
 
 D1 发布带来源键的全局航迹时，需要携带发布节点、发布 epoch 和航迹标识。参考实现每次发布重新

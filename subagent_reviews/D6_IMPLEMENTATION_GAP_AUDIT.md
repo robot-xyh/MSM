@@ -1,5 +1,39 @@
 # D6 实现差距审计
 
+## 2026-07-25 D1 在线批帧交接正式评估 GAP 更新
+
+### 已关闭
+
+1. D6 已实现 schema `d6.d1_online_batch_frame_multiseed_evaluation.v1` 的独立只读 evaluator、
+   CLI、失败关闭结果和确定性六制品 writer。
+2. matrix SHA
+   `4afbf9ac273763a16aa01cc744fd67b52e437099460b33377a128f986ac5719b`、clean commit
+   `43feaf600f288a85ce76a76862334256f0d0d352`、13 对/26 fresh episode、200/200/2、
+   seed、时长、arm 顺序、命令与路径边界已冻结。
+3. runtime profile/summary/module final/nested governance/governance audit 的 selector、完整
+   implementation ID、execution config 和四份最终诊断谱系已进入 fail-closed 校验。
+4. request/path/result、raw batch、snapshot structure/success、final frame 和 measurement/output
+   守恒均从原始诊断重算；重复检查、closed ratio 与 fallback 不采信 producer admission。
+5. 业务语义只归一化预注册 treatment、诊断派生字段、episode identity 和性能。opaque plan ID
+   及其内容地址先验证再按谱系映射；assignment、授权、target/resource、owner/coalition 业务字段、
+   lease 状态关系、状态机、计数、安全和下游引用不豁免。
+6. 正式 13/13 pair 的业务语义、有限状态、实现身份和批帧审计通过；online truth use 总数为 0。
+   short/long scan 改善 `38.289241%/36.275282%`，core 改善
+   `4.252745%/4.916501%`，D2 增幅 `2.113047%/2.830616%`，RSS 最大组均值/任一 pair 增幅
+   `0.281879%/0.856727%`，重复检查减少和 closed ratio 均为 `100%`，fallback=0。
+7. 全部冻结 gate 通过，候选优化结论 `admit`。正式目录为
+   `research_modules/d6_evaluation_metrics/outputs/d1_online_batch_frame_multiseed_20260725_formal_43feaf6_d6/`；
+   同目录复跑全部制品 SHA-256 一致，原始 producer evidence 未写入。
+8. 新增定向测试 `12 passed, 1 warning`，覆盖矩阵/阈值篡改、身份、守恒、窄归一化和 assignment
+   差异不可隐藏；D6 全量 `846 passed, 1 warning in 59.24s`。
+
+### 仍开放
+
+1. 候选最低实时因子 `0.204490 < 1`，200v200 系统实时 P1 未关闭。局部 `admit` 不得写作系统
+   实时达标。
+2. 本轮仅为三维质点证据，不是 AirSim、目标处理器、实机或实飞证据。
+3. 当前无新增 D6-owned P0；已关闭的是正式只读评估和报告 GAP，不是系统实时容量 GAP。
+
 ## 2026-07-25 D1 不透明来源标识缓存评估 GAP 更新
 
 ### 已关闭

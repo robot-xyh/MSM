@@ -1,5 +1,34 @@
 # D6 系统评估指标综述及子方案
 
+## 2026-07-25 D1 在线批帧交接正式评审
+
+D6 已完成 `d6.d1_online_batch_frame_multiseed_evaluation.v1` 独立 evaluator、CLI 和确定性
+报告，固定绑定 matrix SHA
+`4afbf9ac273763a16aa01cc744fd67b52e437099460b33377a128f986ac5719b`、clean commit
+`43feaf600f288a85ce76a76862334256f0d0d352`、short 10 对、long 3 对和 200/200/2。
+
+评审确认 evaluator 不接受 producer admission。它逐层绑定 runtime profile、summary、module
+final、nested governance 与 governance audit 的 selector、implementation ID、execution config
+和 `d1.online_batch_frame_handoff_diagnostics.v1`，从原始 episode 重算有限状态、online truth、
+业务语义、批帧守恒、scan/core/D2/RSS/实时因子和资源回归。
+
+计划语义采用窄范围归一化：独立运行的 opaque plan ID 和由其派生的内容地址可不同，但必须先验证
+原始 source plan/guidance SHA、ACK、D4 authority 内容地址和连续版本，再按首次出现谱系映射。
+assignment、授权、target/resource binding、owner/coalition 业务字段、lease 有效性关系、状态机、
+计数、安全结果与下游引用继续比较。不得为通过 gate 忽略真实计划差异。
+
+正式实测为：13/13 业务语义、有限状态、实现身份、批帧审计通过，online truth use=0；
+short/long candidate faster 为 `10/10`、`3/3`，scan input 改善
+`38.289241%/36.275282%`，core wall 改善 `4.252745%/4.916501%`，D2 组均值增幅
+`2.113047%/2.830616%`，RSS 最大组均值/任一 pair 增幅 `0.281879%/0.856727%`。重复检查
+减少率、closed handoff ratio 均 `100%`，fallback=0；全部冻结 gate 通过，结论 `admit`。
+
+候选最低实时因子为 `0.204490`，所以 `system_realtime_gap_closed=false`。该结论只适用于
+2026-07-25 三维质点矩阵，不代表 AirSim、目标处理器、实机或实飞。正式 bundle 位于
+`research_modules/d6_evaluation_metrics/outputs/d1_online_batch_frame_multiseed_20260725_formal_43feaf6_d6/`，
+重复运行哈希一致。后续只保留系统实时容量和外部运行面证据，不重解释本次局部准入。
+定向测试 `12 passed, 1 warning`，D6 全量 `846 passed, 1 warning in 59.24s`。
+
 ## 2026-07-25 D1 不透明来源标识缓存正式评审
 
 D6 已完成独立 evaluator、CLI、失败关闭入口和确定性报告。评估 schema 为

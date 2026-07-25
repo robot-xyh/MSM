@@ -1,5 +1,34 @@
 # D6 Evaluation Metrics Plan
 
+## 2026-07-25 D1 在线批帧交接多种子评估状态
+
+### 已完成
+
+- [x] 新增 schema `d6.d1_online_batch_frame_multiseed_evaluation.v1`、独立只读 evaluator、
+  CLI、完整/紧凑 JSON、逐 pair CSV、中文 Markdown、PNG 和 `SHA256SUMS`。
+- [x] 固定 matrix SHA
+  `4afbf9ac273763a16aa01cc744fd67b52e437099460b33377a128f986ac5719b`、clean commit
+  `43feaf600f288a85ce76a76862334256f0d0d352`、13 对/26 fresh episode、200/200/2、
+  seed、时长、arm 顺序、命令和证据路径。
+- [x] 在 runtime profile、summary、module final、nested governance 和 governance audit
+  核对 selector、implementation ID、execution config、诊断 schema 与四份最终诊断谱系。
+- [x] 从原始 episode 重算有限状态、online truth use=0、业务语义、批帧守恒、short/long
+  faster count、scan/core 改善、D2 回归、RSS 回归、重复检查减少、closed ratio 和 fallback。
+- [x] 对 plan ID 和其内容地址采用先验证后映射的语义谱系；不忽略 assignment、授权、
+  target/resource binding、状态机、计数或安全差异。
+- [x] 正式结果 `admit`：scan input short/long 改善
+  `38.289241%/36.275282%`，core wall 改善 `4.252745%/4.916501%`，D2 增幅
+  `2.113047%/2.830616%`；重复检查减少和 closed ratio 均为 `100%`，fallback 为 0。
+- [x] 正式 bundle 在
+  `outputs/d1_online_batch_frame_multiseed_20260725_formal_43feaf6_d6/`；同目录复跑后全部
+  制品 SHA-256 一致，producer evidence 未改写。定向测试 `12 passed, 1 warning`，D6 全量
+  `846 passed, 1 warning in 59.24s`。
+
+### 仍开放
+
+- [ ] 候选最低实时因子 `0.204490`，低于 1；200v200 系统实时 P1 未关闭。
+- [ ] AirSim、目标处理器和实飞证据未形成，不能由本三维质点准入继承。
+
 ## 2026-07-25 D1 不透明来源标识缓存多种子评估状态
 
 ### 已完成

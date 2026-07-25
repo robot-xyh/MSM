@@ -1,5 +1,45 @@
 # D6 系统级离线评估：算法原理与实施说明
 
+## D1 在线批帧交接同提交评估（2026-07-25）
+
+入口 `d1_online_batch_frame_multiseed.py` 与
+`scripts/evaluate_d1_online_batch_frame_multiseed.py` 按以下顺序执行：
+
+```text
+evidence schema / status / matrix SHA / source commit / clean flag
+  -> 13 case / 26 fresh arm / seed / duration / arm order / command / path boundary
+  -> runtime profile / summary / module final / nested governance / governance audit
+  -> selector / implementation ID / execution config / four final diagnostics
+  -> request / path / result / raw-batch / snapshot / final-frame / output conservation
+  -> strict JSONL / finite NPZ / stderr / resource usage
+  -> plan lineage, source hash, ACK, D4 content-address and online payload semantics
+  -> scan input / core / D2 / RSS / real-time paired differences
+  -> 10000-resample paired bootstrap and frozen gates
+  -> full JSON / compact JSON / pair CSV / Chinese Markdown / PNG / SHA256SUMS
+```
+
+matrix SHA 固定为
+`4afbf9ac273763a16aa01cc744fd67b52e437099460b33377a128f986ac5719b`，source commit 固定为
+`43feaf600f288a85ce76a76862334256f0d0d352`。两臂命令除
+`--d1-online-batch-frame-implementation` 值和输出目录外必须相同。manifest 中 producer
+状态必须为 `episodes_complete_pending_d6`；evaluator 不读取或接受 producer admission 字段。
+
+参考实现 ID 为 `d1.online_batch_frame.convert_then_frame.v1`，候选 ID 为
+`d1.online_batch_frame.closed_immutable_batch_final_frame_validation.v1`。未知诊断字段、
+负数/非整数计数、四表面不一致、execution config 漂移、守恒失败、online truth use 非零、
+dirty/reused/failed arm、矩阵或提交漂移均使证据 `unavailable`。
+
+语义比较只排除预注册的 `same_runtime_profile` 哈希相等要求，并独立比较窄范围归一化后的
+runtime profile、summary 与 governance。在线流中 opaque plan ID 按首次出现顺序映射，
+但映射前必须验证连续 plan version、source plan/guidance SHA、ACK 与 D4 authority 内容地址；
+映射后 assignment 关系、授权、target/resource、owner/coalition、lease 状态关系、状态机、
+计数、安全和下游引用仍参与哈希比较。
+
+正式结果：short/long scan input 改善 `38.289241%/36.275282%`，core wall 改善
+`4.252745%/4.916501%`，D2 组均值增幅 `2.113047%/2.830616%`；short bootstrap 相对变化
+95% CI 为 `[-40.065664%, -36.838329%]`。重复检查减少和 closed ratio 均为 `100%`，
+fallback=0，全部 gate 通过，结论 `admit`。最低实时因子 `0.204490`，系统实时门失败。
+
 ## D1 不透明来源标识缓存同提交评估（2026-07-25）
 
 ### 处理流程
