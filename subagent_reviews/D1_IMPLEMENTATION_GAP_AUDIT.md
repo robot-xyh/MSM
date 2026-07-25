@@ -25,12 +25,14 @@ publisher node、publisher epoch 和 track ID；值为三个不可变字符串�
 
 | GAP | 当前状态 | D1-owned 证据 | 剩余关闭条件 |
 | --- | --- | --- | --- |
-| source-only/hold 每次发布重复构造不透明来源三元组 | **P1 模块门槛已通过；main 集成准入开放** | 2026-07-25；200 航迹、56 发布/样本、11,200 物化/轮、预热后 7 次交错；中位 `0.348622 -> 0.127734 s`，改善 `63.360%`，`7/7` 更快；构造 `78,800 -> 200`；逐发布完整载荷等价、在线 truth 0、计数守恒；D1 `424 passed in 21.81s` | main 在 clean source-only 同提交矩阵接入默认关闭 selector 和诊断，由 D6 独立判定。不得用该数据替代无 source-key 默认画像 |
+| source-only/hold 每次发布重复构造不透明来源三元组 | **P1 集成准入已审结：拒绝** | 模块微基准改善 `63.360%`；正式 clean `d8fc76c066f21b077154f7be33c0b43558d237e5` source-only、hold=false 矩阵含 short 10 pair、long 3 pair、26 fresh arm，`0 reused/0 failed`。D1 融合改善 `9.465972%/6.437432%`，核心墙钟改善 `2.845610%/2.728043%`；构造减少率和命中率均为 `99.163670%` | long D2 关联耗时增幅 `5.605213% > 5%`，其中 `long_seed_1101=19.069868%`。D6 判定 `optimization_admitted=false`；候选不晋级，默认继续 reference。若复核必须另建预注册矩阵，不改本轮门限或样本 |
 | 代际、reset、容量和别名安全 | **D1-owned 已关闭** | key 含 node/epoch/track ID；node/epoch 自动失效；显式 reset 清空；容量驱逐；值只含不可变字符串；动态 record 字段保持新鲜；OOSM/重放/新生/移除回归通过 | main 若跨 episode 复用 adapter，必须调用 reset 接口或创建新实例，并在 manifest 记录实现 ID |
-| 系统实时、AirSim 和融合质量 | **P1 开放** | 模块基准只测 source-only 发布热点；main profile 仅用于选题 | 仍需多 seed 全栈、AirSim、目标硬件、RMSE、NEES、NIS 和实时因子 `>=1.0`，不得从 `63.360%` 推导系统收益 |
+| 系统实时、AirSim 和融合质量 | **P1 开放** | 正式矩阵最低候选实时因子 `0.193887`，`system_realtime_gap_closed=false`；证据为显式 source-only、hold=false 的三维质点运行面 | 仍需默认无 source-key R0、AirSim、目标硬件、实飞、RMSE、NEES、NIS 和实时因子 `>=1.0` 的独立证据，不得从模块或局部全栈收益推导 |
 
 `cached_opaque_source_identity=False` 保持 D1 独立构造默认。无 source-key/hold 时该缓存
-`request_count=0`。模块达到门槛后只建议 main 开展 source-only A/B，不建议默认晋级。
+`request_count=0`。main 默认继续使用 `per_publication_build_v1`，候选
+`bounded_generation_lru_v1` 只保留为显式、默认关闭的研究对照。19 个冻结门中 18 个
+通过，但准入要求全部通过；不得删除异常 seed、改变冻结门或弱化拒绝结论。
 `docs/AIRSIM_INTEGRATION_PLAN.md` 已检查；观测、GlobalTrack、runtime bus、settings 和
 AirSim 调度接口均未变化，因此无需修改。
 

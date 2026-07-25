@@ -29,9 +29,21 @@
   0，固定大小计数守恒。
 - 测试覆盖默认关闭、无 source-key 惰性、别名隔离、动态字段新鲜性、代际/reset、容量、
   OOSM、重放、新生和航迹移除。D1 全量为 `424 passed in 21.81s`。
-- 模块预注册门槛为中位改善至少 `2%`、candidate 更快比例至少 `70%`，当前通过。建议 main
-  继续 clean source-only 同提交 A/B，候选仍默认关闭。该结论不是默认 R0、AirSim、硬件、
-  RMSE/NEES/NIS 或系统实时证据。
+- 模块预注册门槛为中位改善至少 `2%`、candidate 更快比例至少 `70%`，当前通过。随后
+  main 在 clean source commit `d8fc76c066f21b077154f7be33c0b43558d237e5` 上完成
+  source-only、hold=false 的同提交正式矩阵。short 10 pair、long 3 pair 共 26 个 fresh
+  arm，`0 reused/0 failed`。
+- short/long D1 融合改善为 `9.465972%/6.437432%`，核心墙钟改善为
+  `2.845610%/2.728043%`，candidate 分别 `10/10`、`3/3` 更快。标识构造由
+  `312,317 -> 2,612`，构造减少率与缓存命中率均为 `99.163670%`。
+- 19 个冻结准入门中 18 个通过。short D2 关联耗时增幅为 `4.677567%`，long 为
+  `5.605213%`，后者超过 `5%` 上限；`long_seed_1101` 增幅 `19.069868%`，完整保留。
+- D6 正式判定 `optimization_admitted=false`、`system_realtime_gap_closed=false`；
+  最低实时因子为 `0.193887`。候选不晋级，D1 默认继续
+  `cached_opaque_source_identity=False`，main 默认继续 `per_publication_build_v1`。
+- 本轮准入已经审结，不能删除 seed、调整门限或用语义等价豁免性能门。结果只覆盖显式
+  source-only、hold=false 的三维质点运行面，不外推到默认无 source-key R0、AirSim、
+  目标硬件、实飞、RMSE、NEES 或 NIS。
 
 ## 最新增量：结构稀疏数值雅可比正式准入（2026-07-25）
 

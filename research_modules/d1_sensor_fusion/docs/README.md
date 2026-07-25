@@ -4,6 +4,25 @@
 
 ## 当前证据索引（2026-07-25）
 
+### 不透明来源标识缓存正式拒绝
+
+D1 已实现默认关闭的有界代际缓存候选。候选只复用由 publisher node、publisher epoch 和
+D1 track ID 确定的三个不透明来源字符串；状态、协方差、双时间戳和动态发布字段仍逐次
+生成。模块微基准改善 `63.360%`，随后完成 clean source commit
+`d8fc76c066f21b077154f7be33c0b43558d237e5` 的正式同提交矩阵。
+
+正式矩阵显式启用 source-only、关闭 hold，包含 short 10 pair、long 3 pair 和 26 个
+fresh arm。short/long D1 融合改善 `9.465972%/6.437432%`，核心墙钟改善
+`2.845610%/2.728043%`；构造减少率和缓存命中率均为 `99.163670%`。long D2 关联耗时
+增加 `5.605213%`，超过冻结上限 `5%`；`long_seed_1101` 增幅为 `19.069868%`。
+
+D6 判定 `optimization_admitted=false`、`system_realtime_gap_closed=false`，最低实时
+因子为 `0.193887`。候选不晋级；D1 和 main 默认继续 reference/per-publication 路径。
+详细试验见 `EXPERIMENT_REPORT.md`，正式 D6 评估位于
+`../../d6_evaluation_metrics/outputs/`
+`d1_opaque_source_identity_cache_multiseed_20260725_formal_d8fc76c_d6/`。
+该证据不覆盖默认无 source-key R0、AirSim、目标硬件、实飞或正式融合精度。
+
 ### 结构稀疏数值雅可比正式准入
 
 D1 独立 `FusionAdapter` 增加构造默认关闭的结构稀疏数值雅可比候选。声学、光电、激光

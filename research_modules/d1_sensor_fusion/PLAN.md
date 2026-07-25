@@ -1,6 +1,6 @@
 # D1 多传感器融合与目标配准实施计划
 
-## P1 不透明来源标识缓存模块结果与后续计划（2026-07-25）
+## P1 不透明来源标识缓存正式拒绝与后续治理（2026-07-25）
 
 ### 候选范围
 
@@ -30,17 +30,37 @@ track ID；容量默认 1,024、最大 4,096。节点/epoch 变化自动清空�
 节点/epoch/reset 失效、容量驱逐、OOSM/重放/新生/移除和固定大小计数守恒已覆盖。D1 全量
 回归为 `424 passed in 21.81s`。
 
-### main 后续关闭条件
+### 正式矩阵与拒绝结论
 
-1. main 只在显式 source-only reference/candidate 同提交矩阵中接入 selector、实现 ID 和
-   固定大小诊断；不把候选加入无 source-key 默认画像。
-2. 使用 200v200 short 多 seed，必要时补 long 样本；要求完整业务语义、在线 truth 隔离、
-   计数守恒、RSS 和下游 D2 审计通过。
-3. D6 独立冻结和判定后，才能决定 source-only 配置是否晋级。D1 构造默认继续为 `False`。
-4. 当前系统实时 P1、AirSim、目标硬件、RMSE、NEES、NIS 均保持开放。模块 `63.360%`
-   热点改善不得外推为默认 R0 或系统收益。
-5. 若 main 矩阵未达到其预注册门槛，候选保留默认关闭并记为集成性能准入否决；本轮不启动
-   第二个 D1 候选。
+main 已在 clean source commit
+`d8fc76c066f21b077154f7be33c0b43558d237e5` 上接入 reference/candidate selector、实现
+ID 和固定大小诊断。正式矩阵只启用 source-only 发布并保持 structural ambiguity
+hold=false。short 10 pair 和 long 3 pair 共形成 26 个 fresh arm，`0 reused/0 failed`。
+D6 已完成独立失败关闭评估。
+
+| 组别 | D1 融合改善 | 核心墙钟改善 | Candidate 更快 | D2 关联耗时增幅 |
+| --- | ---: | ---: | ---: | ---: |
+| short | `9.465972%` | `2.845610%` | `10/10` | `4.677567%` |
+| long | `6.437432%` | `2.728043%` | `3/3` | `5.605213%` |
+
+全矩阵标识构造由 `312,317` 次降至 `2,612` 次，构造减少率和缓存命中率均为
+`99.163670%`。19 个准入门通过 18 个。long D2 关联耗时增幅要求 `<=5%`，实际为
+`5.605213%`；`long_seed_1101` 增幅为 `19.069868%`。该 seed 保留在正式统计中，冻结门限
+不调整。
+
+D6 判定 `optimization_admitted=false`。本候选的集成准入已经审结，不再处于等待状态。
+`bounded_generation_lru_v1` 不晋级；D1 独立构造默认继续为
+`cached_opaque_source_identity=False`，main 默认继续选择 `per_publication_build_v1`。
+
+### 后续治理
+
+1. 保留 candidate 作为显式、默认关闭的研究对照，保持 reference、selector、实现身份、
+   缓存守恒、业务语义和在线真值隔离回归。
+2. 不删除 `long_seed_1101`，不放宽 `5%` D2 门，不以局部 D1 收益覆盖下游回归。
+3. 若后续复核 D2 长时波动，必须建立新的预注册确认矩阵；本轮拒绝结论保持不变。
+4. 系统实时 P1 继续开放。候选最低实时因子为 `0.193887`，未达到 `>=1.0`。
+5. 正式证据只覆盖显式 source-only、hold=false 的三维质点运行面，不能外推到默认无
+   source-key R0、AirSim、目标硬件、实飞、RMSE、NEES 或 NIS。
 
 ## P1 结构稀疏数值雅可比正式准入结果（2026-07-25）
 

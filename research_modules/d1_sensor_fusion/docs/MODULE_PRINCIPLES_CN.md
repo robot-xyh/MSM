@@ -50,8 +50,25 @@ N_{\mathrm{build}}=N_{\mathrm{miss}}+N_{\mathrm{bypass}}.
 完整航迹载荷与 reference 相同，D1 全量 `424 passed in 21.81s`。
 
 main 提供的候选来源 profile 还说明该成本只存在于不透明来源发布路径。无 source-key/hold
-时 `global_tracks=0.633 s`，source-only 时为 `1.501 s`。因此模块结果只支持后续
-source-only A/B，不能外推为默认无 source-key R0 或系统实时收益。
+时 `global_tracks=0.633 s`，source-only 时为 `1.501 s`。因此模块微基准本身只足以支持
+进入 source-only A/B，不能外推为默认无 source-key R0 或系统实时收益。
+
+正式准入必须同时约束 D1 局部收益和下游处理成本。main 在 clean source commit
+`d8fc76c066f21b077154f7be33c0b43558d237e5` 上运行 source-only、hold=false 的
+short 10 pair 与 long 3 pair，共 26 个 fresh arm。short/long D1 融合改善
+`9.465972%/6.437432%`，核心墙钟改善 `2.845610%/2.728043%`；标识构造减少率和缓存
+命中率均为 `99.163670%`。
+
+缓存不改变业务载荷仍不足以单独支持晋级。long 组 D2 关联耗时增幅为 `5.605213%`，
+超过冻结上限 `5%`，其中 `long_seed_1101` 增幅 `19.069868%`。D6 因此判定
+`optimization_admitted=false`。这体现本项目的准入原则：候选即使降低所属模块开销，只要
+下游冻结门失败，就保持默认关闭。异常 seed 不删除，冻结阈值不事后修改。
+
+候选 `bounded_generation_lru_v1` 不晋级。D1 独立构造继续默认
+`cached_opaque_source_identity=False`，main 继续默认 `per_publication_build_v1`。
+最低实时因子为 `0.193887`，所以 `system_realtime_gap_closed=false`。正式证据仍只属于
+显式 source-only、hold=false 的三维质点运行面，不覆盖默认无 source-key R0、AirSim、
+目标硬件、实飞或 RMSE/NEES/NIS。
 
 ### 结构先验数值雅可比的系统准入边界
 

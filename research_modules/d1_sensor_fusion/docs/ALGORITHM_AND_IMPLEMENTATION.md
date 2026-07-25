@@ -70,8 +70,27 @@ source support、identity likelihood、association diagnostics 和协方差操�
 标识构造 `78,800 -> 200`，候选命中/未命中 `78,600/200`。模块预注册门槛
 `>=2%` 和 `>=70%` 均通过，D1 全量 `424 passed in 21.81s`。
 
-该结果只建议 main 继续 clean source-only 同提交 A/B。候选仍默认关闭，未接 scalable 3D
-main 默认配置，也没有 D6 多 seed、AirSim、目标硬件或系统实时准入。
+模块微基准通过后，main 在 clean source commit
+`d8fc76c066f21b077154f7be33c0b43558d237e5` 上接入
+`per_publication_build_v1/bounded_generation_lru_v1` 选择器。正式运行显式开启
+source-only、关闭 structural ambiguity hold，short 10 pair 和 long 3 pair 共生成
+26 个 fresh arm，`0 reused/0 failed`。
+
+| 组别 | D1 融合改善 | 核心墙钟改善 | D2 关联耗时增幅 |
+| --- | ---: | ---: | ---: |
+| short | `9.465972%` | `2.845610%` | `4.677567%` |
+| long | `6.437432%` | `2.728043%` | `5.605213%` |
+
+全矩阵标识构造由 `312,317` 次降至 `2,612` 次，构造减少率和缓存命中率均为
+`99.163670%`。long D2 关联耗时增幅超过冻结 `5%` 上限，`long_seed_1101` 的增幅为
+`19.069868%`。19 个准入门中因此只有 18 个通过。D6 判定
+`optimization_admitted=false`，该候选不晋级。
+
+D1 独立构造继续默认 `cached_opaque_source_identity=False`，main 默认继续
+`per_publication_build_v1`。`long_seed_1101` 和冻结门限均保留；后续若确认波动，需建立
+新的预注册矩阵，不能改写本轮拒绝结论。最低实时因子为 `0.193887`，
+`system_realtime_gap_closed=false`。这些结果不外推到默认无 source-key R0、AirSim、
+目标硬件、实飞、RMSE、NEES 或 NIS。
 
 ### 结构稀疏数值雅可比正式准入
 

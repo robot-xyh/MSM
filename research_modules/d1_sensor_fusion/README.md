@@ -4,7 +4,7 @@ Offline research module for radar, acoustic, EO, and optional synthetic lidar he
 
 ## 当前性能与治理证据（2026-07-25）
 
-### 第三十二阶段：不透明来源标识有界代际缓存模块准入
+### 第三十二阶段：不透明来源标识有界代际缓存正式拒绝
 
 main 在 clean `cd9c60c` 上补充了 200v200、2.2 s、seed 1111 的 callee 证据。关闭
 source-key/hold 时，`process_scan_batch/global_tracks` 累计为 `4.852/0.633 s`；显式使用
@@ -46,11 +46,31 @@ request/hit/miss/build/eviction/bypass/peak 计数及容量守恒均通过。测
 source-key 惰性、已发布对象别名隔离、动态 record 字段新鲜性、节点/epoch/reset 失效、
 容量驱逐、OOSM、重放、新生和航迹移除边界。D1 全量为 `424 passed in 21.81s`。
 
-候选达到 D1 模块门槛，建议 main 只在 clean source-only 矩阵中接入默认关闭 selector 继续
-验收。当前没有 main 集成、多 seed、D6 独立评估、AirSim、目标硬件或系统实时证据，不能
-写成默认 R0 主线收益。模块报告位于
-`outputs/opaque_source_identity_cache_20260725/`；该目录是本地生成证据，不替代后续
-main 冻结矩阵。
+模块微基准通过后，main 在 clean source commit
+`d8fc76c066f21b077154f7be33c0b43558d237e5` 上完成 source-only、hold=false 的正式
+同提交矩阵。short 10 pair 和 long 3 pair 共形成 26 个 fresh arm，`0 reused/0 failed`。
+
+| 组别 | D1 融合改善 | 核心墙钟改善 | D2 关联耗时增幅 |
+| --- | ---: | ---: | ---: |
+| short | `9.465972%` | `2.845610%` | `4.677567%` |
+| long | `6.437432%` | `2.728043%` | `5.605213%` |
+
+标识构造由 `312,317` 次降至 `2,612` 次，构造减少率和缓存命中率均为
+`99.163670%`。19 个冻结准入门中 18 个通过；唯一失败项是 long D2 关联耗时增幅
+`5.605213%` 超过预注册上限 `5%`。其中 `long_seed_1101` 增幅为 `19.069868%`，该
+样本完整保留，不删除、不改门，也不作语义等价豁免。
+
+D6 正式判定 `optimization_admitted=false`、`system_realtime_gap_closed=false`。
+候选最低实时因子为 `0.193887`，未达到 `>=1.0`。因此
+`bounded_generation_lru_v1` 不晋级，D1 独立构造继续默认
+`cached_opaque_source_identity=False`，scalable 3D main 继续默认
+`per_publication_build_v1`。模块微基准位于
+`outputs/opaque_source_identity_cache_20260725/`；正式 D6 报告位于
+`research_modules/d6_evaluation_metrics/outputs/`
+`d1_opaque_source_identity_cache_multiseed_20260725_formal_d8fc76c_d6/`。
+
+正式结论只覆盖显式 source-only、hold=false 的三维质点运行面。它既不能外推到默认无
+source-key R0，也不构成 AirSim、目标硬件、实飞、RMSE、NEES 或 NIS 证据。
 
 ### 第三十一阶段：结构稀疏数值雅可比正式准入
 

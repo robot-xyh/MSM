@@ -1,6 +1,6 @@
 # 第一研究模块实验结果
 
-## 不透明来源标识缓存微基准
+## 不透明来源标识缓存正式评估
 
 **证据日期：2026-07-25**
 
@@ -54,14 +54,41 @@ timestamp、A95、航迹等级和 last NIS 仍逐次生成。
 `10 passed`；D1 全量 `424 passed in 21.81s`。本地生成报告位于
 `outputs/opaque_source_identity_cache_20260725/`。
 
-### 判定
+### 正式矩阵
 
-候选达到 D1 模块门槛。建议 main 在 source-only 同提交 clean 矩阵中接入 selector、实现 ID
-和诊断，再由 D6 独立判断集成准入。`cached_opaque_source_identity` 继续默认关闭。
+模块微基准通过后，main 使用 clean source commit
+`d8fc76c066f21b077154f7be33c0b43558d237e5` 运行同提交 reference/candidate 矩阵。
+场景为 200 个目标、200 个资源和 2 个侦察节点。short 使用 seeds 1101-1110、每臂
+2.2 s；long 使用 seeds 1101-1103、每臂 10 s。两臂均显式启用 source-only 发布并关闭
+structural ambiguity hold，唯一运行处理差异是不透明来源标识实现。13 pair 共形成
+26 个 fresh arm，`26 complete`、`0 reused`、`0 failed`。
 
-本试验没有运行 source-only 多 seed 全栈矩阵，也不包含 AirSim、目标硬件、RMSE、NEES、
-NIS 或物理拦截。无 source-key 的默认配置不调用缓存，因此 `63.360%` 不能写成默认 R0 或
-系统实时收益。
+| 组别 | D1 融合改善 | 核心墙钟改善 | Candidate 更快 | D2 关联耗时增幅 |
+| --- | ---: | ---: | ---: | ---: |
+| short | `9.465972%` | `2.845610%` | `10/10` | `4.677567%` |
+| long | `6.437432%` | `2.728043%` | `3/3` | `5.605213%` |
+
+全矩阵 reference/candidate 的标识构造为 `312,317/2,612` 次，减少
+`99.163670%`；候选缓存命中率同为 `99.163670%`，最大条目数为 `202/1,024`。业务语义、
+有限状态、在线真值隔离、实现身份、缓存守恒和内存门均通过。
+
+### 正式判定
+
+冻结准入规则包含 19 个门，要求全部通过。long D2 关联耗时增幅上限为 `5%`，实际为
+`5.605213%`；这是唯一失败门。`long_seed_1101` 的 D2 关联耗时增幅为
+`19.069868%`，样本完整保留。D6 输出
+`optimization_admitted=false`，因此 `bounded_generation_lru_v1` 不晋级。D1 独立构造
+继续默认 `cached_opaque_source_identity=False`，main 默认继续
+`per_publication_build_v1`。不得删除该 seed、放宽门限或以业务语义等价豁免性能门。
+
+候选最低实时因子为 `0.193887`，D6 同时输出
+`system_realtime_gap_closed=false`。正式报告和曲线位于
+`research_modules/d6_evaluation_metrics/outputs/`
+`d1_opaque_source_identity_cache_multiseed_20260725_formal_d8fc76c_d6/`。
+
+本结论只适用于显式 source-only、hold=false 的三维质点运行面。默认无 source-key R0
+不会请求该缓存；本矩阵也不包含 AirSim、目标硬件、实飞、RMSE、NEES、NIS 或物理拦截
+证据。
 
 ## 结构稀疏数值雅可比正式准入
 
