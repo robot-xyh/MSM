@@ -1,5 +1,47 @@
 # D6 系统评估指标综述及子方案
 
+## 2026-07-25 D1 结构化数值雅可比评估评审
+
+D6 已完成独立 evaluator、CLI 和确定性 writer。评估 schema 为
+`d6.d1_structured_jacobian_multiseed_evaluation.v1`，固定绑定 matrix SHA
+`c6c3cf53c89dfb3155a29ba49bb77a12c8bdf1a5d433c4f645de0d00c506d478` 与 clean producer
+commit `9d1f54f8540fdc4a7a1011121aafac5718290122`。参考实现为
+`dense_output_probe_v1`，候选为 `known_dimension_structural_columns_v1`。
+
+评估器不参与控制。它只接受 13 pair、26 个 fresh complete arm，并核对 source clean 状态、返回
+码、命令隔离、路径边界和输入哈希。selector、完整实现 ID、schema、candidate flag 和操作数在
+runtime profile、summary、module final、嵌套 governance 与独立 governance 中交叉确认，四份
+最终诊断必须相同。
+
+操作数审计要求两臂 Jacobian attempt 工作量相同。参考臂每次 attempt 使用 13 次量测函数求值；
+候选臂的量测求值数与非活动列省略数必须覆盖六维状态的十二次中心差分。未知字段、负数、失败调用、
+实现混用或守恒破坏均使 evidence unavailable。
+
+性能门固定为 short/long D1 fusion 改善至少 2%、core wall 改善至少 0.5%、候选更快数至少
+`8/10` 和 `2/3`，short 配对 bootstrap 上界小于 0。D1 scan input、D2 association 和 RSS
+增幅不得超过 5%，量测函数求值减少率不得低于 35%。局部准入和系统实时门分别计算。
+
+合成合同测试已覆盖通过、拒绝、缺字段、版本错配、来源、诊断、守恒、业务语义、性能、dirty、
+reused、命令和路径边界。输入无效时输出 `availability=false` 和 reason，不触发准入或默认晋级。
+
+main 已完成正式 D6 评估。26/26 arm 均为 fresh complete，0 reused、0 failed；
+`availability=true`。短时 D1 融合/核心墙钟改善 `6.084778%/1.897370%`，`10/10` 更快；
+长时改善 `4.676061%/1.786530%`，`3/3` 更快。量测函数求值减少
+`53.846154%`，全部冻结准入门通过，评审结论为 `optimization_admitted=true`。
+
+候选最低实时因子为 `0.180726`，低于门限 1，所以
+`system_realtime_gap_closed=false`。正式结论只覆盖 200/200/2 三维质点冻结矩阵，不自动关闭
+AirSim、目标硬件或实飞实时缺口。main 已在 D6 评估之外完成 scalable 3D 默认晋级：
+`IntegratedStackConfig` 与 `run_episode` CLI 默认使用
+`known_dimension_structural_columns_v1`，并保留 `dense_output_probe_v1` 显式回退。D1 独立
+`FusionAdapter` 默认实现不变。scalable 测试通过；2v2 默认 smoke 的三处配置/摘要/治理表面均
+记录候选实现，有限状态为 true，在线真值使用为 0。该 smoke 不替代系统实时证据。正式报告位于
+`research_modules/d6_evaluation_metrics/outputs/d1_structured_jacobian_multiseed_20260725_formal_9d1f54f_d6/`。
+专项为 `20 passed, 1 warning in 6.05s`，D6 全量为
+`818 passed, 1 warning in 55.42s`；warning 为既有 Matplotlib `Axes3D` 环境提示。
+`EXPERIMENT_REPORT.md` 已同步正式结果。`AIRSIM_INTEGRATION_PLAN.md` 与
+`D6_M_TO_N_EVALUATION_FRAMEWORK_REVIEW.md` 已检查，本项不改变其接口或指标合同，无需修改。
+
 ## 2026-07-24 在线真值检查正式评估评审
 
 D6 已完成 `d6.online_truth_guard_multiseed_evaluation.v1` 只读 evaluator。它严格绑定

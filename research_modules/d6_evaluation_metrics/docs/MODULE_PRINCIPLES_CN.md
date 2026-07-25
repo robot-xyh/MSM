@@ -1,5 +1,55 @@
 # D6 系统级离线评估模块原理
 
+## 结构化数值雅可比评估边界（2026-07-25）
+
+D1 参考实现先调用一次量测函数确定输出维数，再对六维状态的每一列做中心差分。候选实现利用当前
+量测模型已知的输出维数和活动状态列，省去输出探测，并对不影响量测的速度列不做差分。两种实现
+保留相同的中心差分公式、步长、角度残差处理和滤波门限。
+
+D6 不依据 arm 名称推断实际路径。selector、完整实现 ID、候选标志和
+`d1.structured_numerical_jacobian_diagnostics.v1` 必须在运行配置、episode summary、module
+final 和 governance 表面一致。最终诊断满足：
+
+```text
+N_attempt = N_success + N_failure
+N_attempt = N_reference_call + N_candidate_call
+reference: N_eval = 13 * N_attempt
+candidate: N_eval + 2 * N_inactive_column_elision = 12 * N_attempt
+```
+
+两臂的 `N_attempt` 必须相同。该条件阻止候选通过少执行雅可比更新取得虚假加速。候选量测函数求值
+减少率按全矩阵累计值计算：
+
+```text
+reduction = (N_eval,reference - N_eval,candidate) / N_eval,reference
+```
+
+来源门先于性能门。评估器固定绑定 matrix SHA
+`c6c3cf53c89dfb3155a29ba49bb77a12c8bdf1a5d433c4f645de0d00c506d478` 和 clean producer
+commit `9d1f54f8540fdc4a7a1011121aafac5718290122`。13 pair、26 个 arm 必须全部 fresh complete；
+dirty、reused、失败返回、旧 schema、命令漂移和路径越界均令 evidence unavailable。
+
+业务等价比较只归一化登记的 selector、诊断、性能字段和派生 episode ID。在线消息、D1/D2
+结果、计划谱系、控制输出和离线真值继续逐对比较。有限状态必须为 true，在线真值使用必须为 0。
+
+冻结门要求 short/long D1 fusion 改善均不低于 2%，core wall 改善均不低于 0.5%，候选更快数
+分别至少为 `8/10` 和 `2/3`，short 配对 bootstrap 上界小于 0。D1 scan input、D2 association
+和 RSS 增幅不得超过矩阵中的 5% 上限，量测函数求值减少率不得低于 35%。
+`optimization_admitted` 与 `system_realtime_gap_closed` 独立计算。
+
+main 已完成正式评估。输入为 13 pair、26 个 fresh complete arm，0 reused、0 failed；
+`availability=true`。短时 D1 融合和核心墙钟改善 `6.084778%/1.897370%`，`10/10` 更快；
+长时改善 `4.676061%/1.786530%`，`3/3` 更快。量测函数求值减少
+`53.846154%`，全部冻结准入门通过，`optimization_admitted=true`。
+
+候选最低实时因子为 `0.180726`，所以 `system_realtime_gap_closed=false`。该结论只覆盖冻结的
+三维质点矩阵。main 已在 D6 评估之外完成 scalable 3D 默认晋级：
+`IntegratedStackConfig` 与 `run_episode` CLI 默认使用
+`known_dimension_structural_columns_v1`，`dense_output_probe_v1` 保留为显式回退。该变更不
+影响 D1 独立 `FusionAdapter` 默认实现。scalable 测试通过；2v2 默认 smoke 的三处表面均记录
+候选实现，有限状态为 true，在线真值使用为 0。该 smoke 不关闭系统实时门，AirSim、目标硬件和
+实飞实时证据继续作为 P1。
+
 ## 在线真值检查评估边界（2026-07-24）
 
 在线真值检查负责拒绝进入 episode 总线的真值字段。候选优化只改变递归遍历的实现方式，不改变

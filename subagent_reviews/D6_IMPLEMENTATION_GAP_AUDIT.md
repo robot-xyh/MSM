@@ -1,5 +1,52 @@
 # D6 实现差距审计
 
+## 2026-07-25 D1 结构化数值雅可比评估 GAP 更新
+
+### 已关闭
+
+1. D6 已实现 schema `d6.d1_structured_jacobian_multiseed_evaluation.v1` 的独立只读 evaluator、
+   CLI 和确定性报告 writer。
+2. matrix SHA
+   `c6c3cf53c89dfb3155a29ba49bb77a12c8bdf1a5d433c4f645de0d00c506d478`、clean producer
+   commit `9d1f54f8540fdc4a7a1011121aafac5718290122`、13 case、26 个 fresh arm、200/200/2、
+   seed、时长、命令和证据边界已固定。
+3. selector、完整实现 ID、diagnostics schema、候选标志和四份最终诊断一致性已进入失败关闭
+   校验。雅可比 attempt、success/failure、reference/candidate call、probe 和 measurement
+   evaluation 的操作数守恒已实现。
+4. 两臂 Jacobian attempt 工作量相同、13/13 业务语义等价、有限状态和在线真值零使用已进入
+   准入合同。
+5. D1 fusion、core wall、D1 scan input、D2 association、RSS、逐 pair 更快数、10000 次配对
+   bootstrap 和量测函数求值减少率已按冻结门实现。
+6. 缺失输入、缺字段、版本错配、provenance、diagnostics、conservation、business、performance、
+   dirty、reused、command 和路径篡改均有合成正负测试。证据无效时保留
+   `availability=false + reason`，候选不会误准入。
+7. 完整 JSON、compact JSON、逐 pair CSV、中文 Markdown 和 `SHA256SUMS` 已实现；原始 evidence
+   保持只读。
+8. 2026-07-25 专项 `20 passed, 1 warning in 6.05s`，D6 全量
+   `818 passed, 1 warning in 55.42s`；warning 为既有 Matplotlib `Axes3D` 环境提示。
+9. main 已使用 D6 CLI 完成正式评估。输入为 13 pair、26 个 fresh complete arm，0 reused、
+   0 failed，`availability=true`。
+10. 13/13 业务语义、有限状态、在线真值零使用、实现身份、诊断与操作数守恒通过；全部冻结准入
+    门通过，`optimization_admitted=true`。
+11. 短时 D1 融合/核心墙钟改善 `6.084778%/1.897370%`，`10/10` 更快；长时改善
+    `4.676061%/1.786530%`，`3/3` 更快；量测函数求值减少 `53.846154%`。
+12. 正式报告与校验和已由 main 生成并保持原样。D6 正式 evidence 消费和局部准入缺口关闭。
+13. main 已完成 scalable 3D 默认晋级。`IntegratedStackConfig` 与 `run_episode` CLI 默认使用
+    `known_dimension_structural_columns_v1`，`dense_output_probe_v1` 保留显式回退。该变更不
+    影响 D6 evaluator 独立性或 D1 独立 `FusionAdapter` 默认实现。
+14. scalable 测试通过；2v2 默认 smoke 的三处配置/摘要/治理表面均记录候选实现，有限状态为
+    true，在线真值使用为 0。该 smoke 不用于关闭系统实时门。
+
+### 仍开放 P1
+
+1. **系统实时容量。** 候选最低实时因子为 `0.180726`，低于门限 1，
+   `system_realtime_gap_closed=false`。需要 AirSim 和目标处理器端到端证据关闭该项。
+2. **外部适用性。** 冻结矩阵属于 200/200/2 三维质点离线证据，不关闭 AirSim、目标硬件或实飞
+   容量缺口。
+
+当前无新增 D6-owned P0。D6 工具实现、正式 evidence 消费和局部准入缺口已关闭；系统实时容量和
+外部验证仍为 P1。
+
 ## 2026-07-24 在线真值检查评估 GAP 更新
 
 ### 已关闭

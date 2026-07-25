@@ -1,5 +1,70 @@
 # D6 Evaluation Metrics
 
+## 2026-07-25 D1 结构化数值雅可比评估入口
+
+D6 新增可选离线消费者
+`d1_structured_numerical_jacobian_multiseed.py` 和命令行
+`scripts/evaluate_d1_structured_numerical_jacobian_multiseed.py`。该入口不进入在线控制，也不改变
+D1 默认实现。它固定绑定：
+
+- evaluator schema `d6.d1_structured_jacobian_multiseed_evaluation.v1`；
+- matrix schema `scalable3d-d1-structured-jacobian-multiseed-matrix-v1`；
+- matrix SHA-256
+  `c6c3cf53c89dfb3155a29ba49bb77a12c8bdf1a5d433c4f645de0d00c506d478`；
+- clean producer commit
+  `9d1f54f8540fdc4a7a1011121aafac5718290122`；
+- 参考/候选实现
+  `dense_output_probe_v1/known_dimension_structural_columns_v1`；
+- short seeds `1101-1110 @ 2.2 s`、long seeds `1101-1103 @ 10 s`，规模为
+  200 个目标、200 个资源和 2 个侦察节点。
+
+loader 只接受 13 pair、26 个 fresh complete arm，不接受 reused、failed、dirty source、错误提交、
+旧 schema、命令漂移或 evidence root 外路径。selector、完整实现 ID 和
+`d1.structured_numerical_jacobian_diagnostics.v1` 在 runtime profile、summary、module final、
+嵌套 governance 和独立 governance 中交叉校验。四份最终诊断必须相同，并满足雅可比尝试、成功/
+失败、参考/候选调用、输出探测和量测函数求值的操作数守恒。
+
+业务语义比较只归一化预注册 selector、诊断、性能字段和处理派生 episode ID。在线载荷、航迹、
+关联、分配、控制、计划谱系和离线真值继续逐对比较，在线真值使用必须为 0。输入缺失或合同无效时，
+正式入口返回 `availability.available=false` 和 `reason`，同时固定
+`optimization_admitted=false`、`system_realtime_gap_closed=false`；严格加载入口仍可抛出异常用于
+定位篡改。
+
+冻结门要求 short/long D1 融合改善均不低于 2%，核心墙钟改善均不低于 0.5%，D1 更快 pair 数
+分别至少为 `8/10` 和 `2/3`，short 的 10000 次配对 bootstrap 上界小于 0。D1 scan input、D2
+association 和 RSS 增幅分别受 5% 上限约束，候选量测函数求值减少率不得低于 35%。局部准入与
+系统实时门分别计算。
+
+截至 2026-07-25，evaluator、CLI、确定性 writer 和合成正负合同测试已实现。main 已使用 D6 CLI
+完成正式评估：`availability=true`、`optimization_admitted=true`、
+`system_realtime_gap_closed=false`。输入包含 13 pair、26 个 fresh complete arm，0 reused、
+0 failed，全部冻结准入门通过。
+
+短时 D1 融合与核心墙钟分别改善 `6.084778%/1.897370%`，候选 `10/10` 更快；长时分别改善
+`4.676061%/1.786530%`，候选 `3/3` 更快。量测函数求值减少 `53.846154%`。候选最低实时因子为
+`0.180726`，未达到系统实时门限 1。
+
+局部准入只覆盖 200 个目标、200 个资源、2 个侦察节点的冻结三维质点矩阵。它不代表 AirSim、
+目标硬件或实飞实时能力。main 已依据独立 D6 准入结果，将 scalable 3D
+`IntegratedStackConfig` 和 `run_episode` CLI 的默认实现晋级为
+`known_dimension_structural_columns_v1`，并保留 `dense_output_probe_v1` 显式回退。该集成决策
+不改变 D6 评估独立性，也不改变 D1 独立 `FusionAdapter` 的默认实现。scalable 测试已通过；
+2v2 默认 smoke 的三处配置/摘要/治理表面均记录候选实现，有限状态为 true，在线真值使用为 0。
+正式报告位于
+`outputs/d1_structured_jacobian_multiseed_20260725_formal_9d1f54f_d6/`。
+专项回归为 `20 passed, 1 warning in 6.05s`，D6 全量为
+`818 passed, 1 warning in 55.42s`；warning 为既有 Matplotlib `Axes3D` 环境提示。
+
+```bash
+PYTHONPATH=research_modules/d6_evaluation_metrics \
+python3 research_modules/d6_evaluation_metrics/scripts/evaluate_d1_structured_numerical_jacobian_multiseed.py \
+  --evidence-manifest /path/to/evidence_manifest.json \
+  --output-dir /path/to/independent_d6_report
+```
+
+`AIRSIM_INTEGRATION_PLAN.md` 已检查。本入口只消费三维质点离线证据，不改变 AirSim topic、相机、
+actor、reset、检测或控制接口，因此无需修改。
+
 ## 2026-07-24 在线真值检查正式评估入口
 
 D6 新增独立只读消费者 `online_truth_guard_multiseed.py` 和命令行

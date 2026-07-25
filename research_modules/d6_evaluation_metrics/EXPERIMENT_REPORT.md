@@ -1,5 +1,57 @@
 # D6 系统级评估指标实验报告
 
+## 2.34 D1 结构化数值雅可比正式评估
+
+### 当前结论
+
+main 已使用 D6 独立离线评估器完成冻结矩阵的正式评估。结果为 `availability=true`、
+`optimization_admitted=true`、`system_realtime_gap_closed=false`。13 pair 的来源、业务语义、
+有限状态、在线真值隔离、实现身份、诊断和操作数守恒均通过，全部冻结准入门通过。
+
+局部优化准入只适用于本次三维质点矩阵。它不代表 AirSim、目标硬件或实飞实时能力。main 已依据
+D6 独立准入结果，将 scalable 3D `IntegratedStackConfig` 和 `run_episode` CLI 默认实现晋级为
+`known_dimension_structural_columns_v1`，并保留 `dense_output_probe_v1` 显式回退。D1 独立
+`FusionAdapter` 默认实现不变。
+
+### 工具范围
+
+| 项目 | 当前状态 |
+| --- | --- |
+| evaluator schema | `d6.d1_structured_jacobian_multiseed_evaluation.v1` |
+| producer commit | `9d1f54f8540fdc4a7a1011121aafac5718290122` |
+| matrix SHA-256 | `c6c3cf53c89dfb3155a29ba49bb77a12c8bdf1a5d433c4f645de0d00c506d478` |
+| 评估规模 | 200 个目标、200 个资源、2 个侦察节点 |
+| 正式矩阵 | short 10 pair、long 3 pair，共 26 个 fresh arm |
+| 正式 producer evidence | main 已生成，26/26 fresh complete，0 reused、0 failed |
+| D6 正式评估 | `availability=true` |
+| 局部优化准入 | `optimization_admitted=true` |
+| 系统实时缺口 | `system_realtime_gap_closed=false` |
+| scalable 3D 默认实现 | `known_dimension_structural_columns_v1` |
+| scalable 3D 显式回退 | `dense_output_probe_v1` |
+| D1 独立 FusionAdapter | 默认实现不变 |
+| 晋级后回归 | scalable 测试通过；2v2 smoke 三处表面记录候选，finite=true，online truth=0 |
+
+评估器校验 source clean 状态、schema、命令、路径、selector、完整实现 ID、四份最终诊断、操作数
+守恒、业务语义、有限状态和在线真值零使用。性能统计覆盖 D1 fusion、core wall、D1 scan input、
+D2 association、RSS、逐 pair 更快数、10000 次配对 bootstrap 和量测函数求值减少率。
+
+### 性能结果
+
+| 组别 | D1 融合改善 | 核心墙钟改善 | 候选更快 |
+| --- | ---: | ---: | ---: |
+| short 10 pair | 6.084778% | 1.897370% | 10/10 |
+| long 3 pair | 4.676061% | 1.786530% | 3/3 |
+
+全矩阵量测函数求值减少 `53.846154%`。候选最低实时因子为 `0.180726`，低于系统实时门限 1，
+所以局部优化准入通过而系统实时缺口保持开放。
+
+正式报告位于
+`outputs/d1_structured_jacobian_multiseed_20260725_formal_9d1f54f_d6/D1_STRUCTURED_NUMERICAL_JACOBIAN_MULTISEED_REPORT_CN.md`。
+生成报告及其 `SHA256SUMS` 保持原样。
+
+2026-07-25 专项回归为 `20 passed, 1 warning in 6.05s`，D6 全量为
+`818 passed, 1 warning in 55.42s`。warning 为既有 Matplotlib `Axes3D` 环境提示。
+
 ## 2.33 在线真值递归检查正式评估
 
 ### 结论

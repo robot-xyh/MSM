@@ -1,5 +1,52 @@
 # D6 Evaluation Metrics Plan
 
+## 2026-07-25 D1 结构化数值雅可比多种子评估状态
+
+### 已完成
+
+- [x] 实现独立、只读、失败关闭的 evaluator、CLI 和确定性 writer，输出完整 JSON、compact
+  JSON、逐 pair CSV、中文 Markdown 和 `SHA256SUMS`。
+- [x] 固定 evaluator schema
+  `d6.d1_structured_jacobian_multiseed_evaluation.v1`、matrix SHA
+  `c6c3cf53c89dfb3155a29ba49bb77a12c8bdf1a5d433c4f645de0d00c506d478` 和 clean producer
+  commit `9d1f54f8540fdc4a7a1011121aafac5718290122`。
+- [x] 精确校验 13 case、26 个 fresh complete arm、200/200/2、seed、时长、arm 顺序、命令隔离、
+  返回码、source clean 状态、证据路径和输入 SHA-256。
+- [x] 在 runtime profile/configuration、summary、module final、嵌套 governance 和独立
+  governance 中核对 selector；在四份最终诊断中核对完整实现 ID、schema、candidate flag 和操作数。
+- [x] 校验雅可比尝试、成功/失败、参考/候选调用、输出探测、非活动列和量测函数求值守恒；两臂
+  Jacobian attempt 工作量必须相同。
+- [x] 逐对比较业务语义、有限状态和在线真值零使用；处理归一化只覆盖预注册 selector、诊断、
+  性能字段和处理派生 episode ID。
+- [x] 计算 short/long D1 fusion、core wall、D1 scan input、D2 association、RSS、逐 pair
+  更快数和固定 10000 次配对 bootstrap；量测函数求值减少率单独聚合。
+- [x] 输入缺失、schema/version 错配或证据无效时输出
+  `availability=false + reason`，并保持局部准入和系统实时门为 false。
+- [x] 合成测试覆盖通过、性能拒绝、求值减少拒绝、5% RSS 边界、缺失输入/字段、版本错配、
+  provenance、diagnostics、conservation、business、dirty、reused、command 和路径篡改。
+- [x] 2026-07-25 专项 `20 passed, 1 warning in 6.05s`，D6 全量
+  `818 passed, 1 warning in 55.42s`；warning 为既有 Matplotlib `Axes3D` 环境提示。
+- [x] main 已在 clean producer commit 上完成冻结 short 10 pair、long 3 pair，共 26 个 fresh
+  complete arm；0 reused、0 failed。
+- [x] main 已使用 D6 CLI 只读消费正式 evidence。评估结果为 `availability=true`；
+  13/13 业务语义、有限状态、在线真值零使用、实现身份、操作数守恒和全部冻结准入门通过。
+- [x] 正式结果为 `optimization_admitted=true`。短时 D1 融合/核心墙钟改善
+  `6.084778%/1.897370%`，`10/10` 更快；长时改善 `4.676061%/1.786530%`，`3/3`
+  更快；量测函数求值减少 `53.846154%`。
+- [x] 候选最低实时因子为 `0.180726`，因此独立系统实时门为
+  `system_realtime_gap_closed=false`。
+- [x] main 已将 scalable 3D `IntegratedStackConfig` 和 `run_episode` CLI 默认实现晋级为
+  `known_dimension_structural_columns_v1`，并保留 `dense_output_probe_v1` 显式回退。D6
+  evaluator 保持独立，D1 独立 `FusionAdapter` 默认不变。scalable 测试通过；2v2 默认 smoke
+  的三处表面均记录候选实现，有限状态为 true，在线真值使用为 0。
+
+### 后续 P1
+
+- [ ] 在 AirSim、目标处理器和目标负载条件下补充端到端实时证据，关闭系统实时 P1。
+
+`EXPERIMENT_REPORT.md` 已记录正式结果及适用边界。
+`AIRSIM_INTEGRATION_PLAN.md` 已检查，本项不改变 AirSim 接口或 episode 调度，因此无需修改。
+
 ## 2026-07-24 在线真值检查多种子评估状态
 
 ### 已完成

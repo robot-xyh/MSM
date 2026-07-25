@@ -1,5 +1,97 @@
 # D6 系统级离线评估：算法原理与实施说明
 
+## D1 结构化数值雅可比同提交评估（2026-07-25）
+
+### 处理流程
+
+入口 `d1_structured_numerical_jacobian_multiseed.py` 按以下顺序处理证据：
+
+```text
+matrix SHA / producer commit / evidence schema
+  -> 13 case / 26 fresh arm / 命令与路径边界
+  -> config / runtime profile / summary / governance
+  -> selector / implementation ID / 四表面 diagnostics
+  -> 操作数守恒 / finite state / online truth use
+  -> 跨 episode 业务语义
+  -> D1、core、scan input、D2、RSS 配对统计
+  -> 10000 次 paired bootstrap / 冻结 gate
+  -> JSON / compact JSON / CSV / 中文 Markdown / SHA256SUMS
+```
+
+矩阵 SHA 固定为
+`c6c3cf53c89dfb3155a29ba49bb77a12c8bdf1a5d433c4f645de0d00c506d478`，producer commit
+固定为 `9d1f54f8540fdc4a7a1011121aafac5718290122`。每个命令由矩阵中的规模、seed、时长和
+selector 重建。参考与候选命令只允许 selector 值和输出目录不同。
+
+### 诊断校验
+
+参考实现 ID 为 `d1.ekf.numerical_jacobian.dense_output_probe.v1`，候选实现 ID 为
+`d1.ekf.numerical_jacobian.known_dimension_structural_columns.v1`。D6 校验 runtime profile
+初始诊断为空计数，随后要求 summary、module final、嵌套 governance 和独立 governance 的最终
+诊断逐值相等。
+
+参考臂每次雅可比调用包含一次输出探测和十二次中心差分量测求值，因此：
+
+```text
+N_probe = N_attempt
+N_eval = 13 * N_attempt
+```
+
+候选臂省去输出探测。当前六维状态下，每个活动列使用两次量测求值，非活动列计入 elision：
+
+```text
+N_probe_elision = N_attempt
+N_eval + 2 * N_inactive_elision = 12 * N_attempt
+```
+
+两臂 attempt 数必须相同。未知计数字段、负数、非整数、失败调用、实现混用和守恒破坏均使整个
+evidence unavailable，不进入性能统计。
+
+### 统计与准入
+
+每个越低越好的耗时采用：
+
+```text
+r_i = (candidate_i - reference_i) / reference_i
+improvement_i = -r_i
+```
+
+short 和 long 分开计算分布、逐 pair 更快数和配对百分位 bootstrap 95% 区间，重采样次数固定为
+10000，随机种子固定为 20260724。D1 fusion 是主性能指标；core wall 检查全栈外溢，D1 scan
+input、D2 association 和 RSS 检查旁路回归。量测函数求值减少率由 13 pair 累计操作数计算。
+
+全部门限从冻结 matrix 读取并逐值核对。D6 不接受调用方覆盖门限。安全、来源、语义、诊断和性能门
+全部通过后，`optimization_admitted` 才能为 true。`system_realtime_gap_closed` 另行要求候选所有
+pair 的实时因子不低于 1。
+
+### 不可用处理
+
+正式评估入口捕获证据合同错误，输出：
+
+```text
+availability.available = false
+availability.reason = 具体错误
+optimization_admitted = false
+system_realtime_gap_closed = false
+```
+
+该结果仍可由确定性 writer 形成完整 JSON、compact JSON、空 pair CSV、中文 Markdown 和
+`SHA256SUMS`。`raise_on_invalid=true` 保留严格异常入口，供测试和证据定位使用。
+
+截至 2026-07-25，main 已完成正式评估。13 pair、26 个 fresh complete arm 均通过来源和合同
+校验，0 reused、0 failed，`availability=true`。短时 D1 融合/核心墙钟改善
+`6.084778%/1.897370%`，`10/10` 更快；长时改善 `4.676061%/1.786530%`，`3/3`
+更快。量测函数求值减少 `53.846154%`，全部冻结准入门通过，
+`optimization_admitted=true`。
+
+候选最低实时因子为 `0.180726`，因此 `system_realtime_gap_closed=false`。正式报告只覆盖
+200/200/2 三维质点矩阵，不形成 AirSim、目标硬件或实飞实时结论。D6 evaluator 不修改运行配置；
+main 已独立完成 scalable 3D 默认晋级，使 `IntegratedStackConfig` 和 `run_episode` CLI 默认使用
+`known_dimension_structural_columns_v1`，并保留 `dense_output_probe_v1` 显式回退。D1 独立
+`FusionAdapter` 默认实现不变。scalable 测试通过；2v2 默认 smoke 在三处配置/摘要/治理表面均
+记录候选实现，有限状态为 true，在线真值使用为 0。该回归不改变
+`system_realtime_gap_closed=false`。
+
 ## 在线真值递归检查同提交评估（2026-07-24）
 
 ### 证据绑定

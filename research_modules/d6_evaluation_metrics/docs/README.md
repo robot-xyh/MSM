@@ -1,5 +1,21 @@
 # D6 文档索引
 
+2026-07-25 D1 结构化数值雅可比多 seed 评估原理见
+`MODULE_PRINCIPLES_CN.md`，证据绑定、四表面诊断、操作数守恒、统计门和不可用处理见
+`ALGORITHM_AND_IMPLEMENTATION.md`。入口绑定 matrix SHA
+`c6c3cf53c89dfb3155a29ba49bb77a12c8bdf1a5d433c4f645de0d00c506d478` 与 clean producer
+commit `9d1f54f8540fdc4a7a1011121aafac5718290122`，固定 13 pair、26 fresh arm 和
+200/200/2。evaluator、CLI、完整 JSON、compact JSON、逐 pair CSV、中文 Markdown 和
+`SHA256SUMS` 已实现。main 已完成正式评估：26/26 fresh complete、0 reused、0 failed，
+`availability=true`、`optimization_admitted=true`、`system_realtime_gap_closed=false`。
+短时 D1 融合/核心改善 `6.084778%/1.897370%`，长时改善
+`4.676061%/1.786530%`，量测函数求值减少 `53.846154%`。main 已将 scalable 3D 默认晋级为
+`known_dimension_structural_columns_v1`，并保留 `dense_output_probe_v1` 显式回退；D6 评估
+保持独立，D1 独立 `FusionAdapter` 默认不变。scalable 测试及 2v2 默认 smoke 已通过，三处表面
+记录候选、有限状态为 true、在线真值使用为 0。结果只覆盖三维质点冻结矩阵，系统实时 P1 继续开放。
+专项为 `20 passed, 1 warning in 6.05s`，D6 全量为
+`818 passed, 1 warning in 55.42s`。工具状态见 `../EXPERIMENT_REPORT.md` 2.34 节。
+
 2026-07-24 在线真值递归检查多 seed 评估原理见 `MODULE_PRINCIPLES_CN.md`，严格 evidence
 绑定、消息检查数守恒、语义比较、统计和准入实现见 `ALGORITHM_AND_IMPLEMENTATION.md`。入口
 绑定 matrix SHA
