@@ -461,6 +461,11 @@ def test_episode_cli_exposes_publication_metadata_selector() -> None:
     episode_cli = importlib.import_module(
         "research_modules.scalable_3d_simulation.run_episode"
     )
+    default_args = episode_cli.parse_args(["--integrated-stack"])
+    assert (
+        default_args.d1_publication_metadata_implementation
+        == "immutable_shared_v2"
+    )
     args = episode_cli.parse_args(
         [
             "--integrated-stack",

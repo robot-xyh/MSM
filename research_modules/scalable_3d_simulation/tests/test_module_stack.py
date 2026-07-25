@@ -158,6 +158,13 @@ def test_d1_publication_metadata_selection_is_explicit_hashed_and_audited() -> N
     default = IntegratedStackConfig()
     assert (
         default.d1_publication_metadata_implementation
+        == "immutable_shared_v2"
+    )
+    reference = IntegratedStackConfig(
+        d1_publication_metadata_implementation="per_track_copy_v1"
+    )
+    assert (
+        reference.d1_publication_metadata_implementation
         == "per_track_copy_v1"
     )
 

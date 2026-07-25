@@ -132,11 +132,11 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
             D1_PUBLICATION_METADATA_REFERENCE_IMPLEMENTATION,
             D1_PUBLICATION_METADATA_CANDIDATE_IMPLEMENTATION,
         ),
-        default=D1_PUBLICATION_METADATA_REFERENCE_IMPLEMENTATION,
+        default=D1_PUBLICATION_METADATA_CANDIDATE_IMPLEMENTATION,
         help=(
             "select the D1 GlobalTrack publication metadata A/B "
-            "implementation; the immutable shared candidate remains opt-in "
-            "until formal multi-seed admission"
+            "implementation; the formally admitted immutable shared v2 path "
+            "is the default and per_track_copy_v1 remains the reference"
         ),
     )
     add_learning_runtime_arguments(parser)

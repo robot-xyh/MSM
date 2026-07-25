@@ -28,13 +28,18 @@ v1 的自定义 `dict/list` 子类使 D2 无法使用可信快速路径，必须
    不同，扫描输入继续使用已准入的 `candidate_v2`。
 5. [x] 续跑校验要求 D1 合同版本正确，D2 合同验证数等于内容审计数，候选存在身份复用且
    拒绝数为 0；参考臂不得出现 v2 复用计数。
-6. [ ] 从 main 集成提交创建 clean detached worktree，完成一个 short pair smoke。
-7. [ ] 完成 13 组正式 pair。除 v1 门外，short/long D2 association 均值增幅必须不超过
-   `5%`。
-8. [ ] D6 独立读取 episode、GNU time 和预注册矩阵，归一化两臂预期不同的 D2 审计诊断，
-   输出逐 pair、bootstrap 区间和中文报告。
-9. [ ] 只有 D1 fusion、D2 association、核心墙钟、内存、业务语义和审计合同全部通过后，
-   才评审是否修改默认值。无论候选是否准入，实时因子未达到 `1.0` 时系统实时 P1 保持开放。
+6. [x] 从 main 集成提交 `be399e1` 创建 clean detached worktree，完成 short pair smoke；
+   参考臂走内置等价复用，候选走首次内容审计后的身份复用。
+7. [x] 完成 13 组正式 pair、26 个全新 arm。short/long D2 association 分别下降
+   `16.19%/35.62%`，满足增幅不超过 `5%` 的门。
+8. [x] D6 独立读取 episode、GNU time 和预注册矩阵，归一化两臂预期不同的 D2 审计诊断，
+   输出逐 pair CSV、完整与紧凑 JSON、中文报告和曲线。
+9. [x] D1 fusion short/long 改善 `13.54%/26.83%`，核心墙钟改善
+   `6.57%/18.24%`，业务语义、审计合同和内存门全部通过。
+10. [x] D6 判定 `d1_optimization_admitted=true`；main 默认晋级为
+    `immutable_shared_v2`，参考实现继续可显式选择。
+11. [ ] 系统实时 P1：候选最低实时因子 `0.1730801`，尚未达到 `1.0`。
+12. [ ] 逐批审计明细、严格精度、AirSim 和冻结目标处理器证据仍待补充。
 
 ## 当前执行状态（2026-07-24）
 

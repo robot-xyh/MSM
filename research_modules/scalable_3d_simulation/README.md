@@ -17,14 +17,22 @@ D1 fusion 的 short/long 改善为 `16.29%/31.05%`，但 D2 association 分别�
 `d1_optimization_admitted=false`。v1 配置、运行器兼容入口和报告只用于复核历史结果，
 不再作为当前候选。
 
-当前 v2 预注册矩阵为
+v2 预注册矩阵为
 `configs/d1_publication_metadata_v2_multiseed_v1.json`，保持相同的 short/long seed、
 规模、arm 交错顺序和同一 clean commit 约束，新增 D2 association 增幅不超过 `5%`、
 D2 v2 合同验证、内容审计、身份复用和零拒绝门。运行器仍为
 `scripts/run_d1_publication_metadata_matrix.py`，但 v1/v2 使用独立 evidence schema 和
-D6 evaluator schema。main 接线与专项测试已完成；正式 13 组 pair 和 D6 v2 独立准入尚未
-执行。系统默认继续使用 `per_track_copy_v1`，不得把 v2 单元测试解释为候选准入或系统实时
-缺口关闭。
+D6 evaluator schema。main 在 clean 提交
+`be399e138762f5e660f553c8caa812d52ab38c61` 上完成全部 13 组 pair、26 个 arm，
+未复用旧 episode。13/13 业务语义、有限状态、在线真值隔离、实现身份和 D2 审计通过。
+
+short/long 的 D1 fusion 分别改善 `13.54%/26.83%`，核心墙钟改善
+`6.57%/18.24%`，D2 association 分别下降 `16.19%/35.62%`。候选累计执行
+`702` 次合同验证、`702` 次内容审计、`139,920` 次身份复用和 `0` 次合同拒绝。D6 判定
+`d1_optimization_admitted=true`，main 默认已晋级为 `immutable_shared_v2`；
+`per_track_copy_v1` 继续作为显式参考路径。候选最低实时因子为 `0.1730801`，未达到
+`1.0`，因此 `system_realtime_gap_closed=false`。正式报告位于
+`research_modules/d6_evaluation_metrics/outputs/d1_publication_metadata_v2_multiseed_20260724_formal_be399e1/`。
 
 该 main-owned 模块提供可复现、真值隔离的三维质点环境，用于逐步建设 200 架拦截无人机
 对 200 个来袭目标的 D1-D7 完整闭环。现有 `integrated_simulation` 保留为小规模回归基线。

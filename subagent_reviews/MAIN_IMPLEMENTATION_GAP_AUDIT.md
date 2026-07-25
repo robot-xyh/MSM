@@ -12,11 +12,11 @@
 **最新 D1 状态（2026-07-24）**：PSD-safe V3 和后续扫描输入同提交矩阵均完成 13 组 pair、
 26 个 episode。向量化协方差限制与 `candidate_v2` 扫描输入数据组织均通过 D6 预注册准入；
 两项独立 seed 和长时增长子缺口关闭。发布元数据 v1 同提交矩阵已完成但未准入；D1/D2 v2
-合同和 main 运行时接线已通过单元测试，正式 v2 多 seed 尚未运行。系统实时、严格精度、
-AirSim 和目标硬件证据仍为 P1。以下最新专项记录优先于“扫描输入或发布元数据仍待治理”的
-历史表述。
+合同随后在 clean `be399e1` 完成 13 组 pair，并通过 D6 全部预注册门。main 默认已晋级为
+`immutable_shared_v2`。系统实时、逐批审计明细、严格精度、AirSim 和目标硬件证据仍为
+P1。以下最新专项记录优先于“扫描输入或发布元数据仍待治理”的历史表述。
 
-## 2026-07-24 D1 发布元数据 v1 结论与 v2 待验
+## 2026-07-24 D1 发布元数据 v1 结论与 v2 准入
 
 当前无新增 P0。历史 v1 矩阵在同一 clean 提交完成 10 组 2.2 秒 short pair 和 3 组
 10 秒 long pair，共 26 个 200 对 200 episode。13/13 pair 的业务语义、有限状态、在线
@@ -31,27 +31,36 @@ GlobalTrack 的共享子树重新递归审计。D1 已提供 `d1.publication_aud
 身份缓存；200 条航迹、3 个共享根的模块测试得到 3 次合同验证、3 次完整内容审计和
 597 次身份复用。
 
-main 当前完成以下 P1 实现子项：
+main 在 clean 提交 `be399e138762f5e660f553c8caa812d52ab38c61` 上从头运行 v2
+矩阵。10 组 short 和 3 组 long pair 共 26 个 arm 全部完成，旧 episode 复用数为 0。
+13/13 pair 的业务语义、有限状态、在线真值隔离、实现身份和 D2 审计通过。D6 只在业务
+比较中归一化预注册的 `d2_publication_metadata_audit` treatment 字段，随后在 summary、
+final diagnostics、嵌套 governance 和独立 governance 四处单独校验计数。
 
-- selector 只允许 `per_track_copy_v1/immutable_shared_v2`，默认仍为参考实现；
-- D2 batch/latest/totals 审计计数写入 governance、final diagnostics 和 summary；
-- v1/v2 矩阵使用独立证据 schema 和 D6 evaluator schema；
-- v2 续跑拒绝合同缺失、计数篡改、内容审计与合同验证不一致、身份复用缺失或非零拒绝；
-- v2 预注册保持原 13 组 pair，并新增 short/long D2 association 增幅 `<=5%` 门。
+| 指标 | short reference/candidate | short 变化 | long reference/candidate | long 变化 |
+| --- | ---: | ---: | ---: | ---: |
+| D1 fusion wall | 3.740630/3.234146 s | 改善 13.5447% | 31.798717/23.264824 s | 改善 26.8298% |
+| D2 association wall | 0.657417/0.548699 s | 下降 16.1939% | 5.869413/3.774282 s | 下降 35.6213% |
+| 核心墙钟 | 10.451244/9.764102 s | 改善 6.5677% | 68.901075/56.318948 s | 改善 18.2438% |
+| 最大常驻内存 | 1,008,978/868,146 KiB | 下降 13.8390% | 2,200,844/1,606,185 KiB | 下降 26.7678% |
+
+候选 13 个 episode 合计完成 `702` 次合同验证、`702` 次内容审计、`139,920` 次身份复用，
+合同拒绝为 0；参考臂对应执行 `139,920` 次内置等价复用。17 项准入门全部通过，
+`d1_optimization_admitted=true`。main 默认晋级为 `immutable_shared_v2`，
+`per_track_copy_v1` 保留为显式参考路径。
 
 仍开放 P1：
 
-1. **正式性能证据。** v2 尚未在 clean detached worktree 完成 13 组 pair，不能依据模块
-   计数推断全栈核心墙钟或 D2 association 结果。
-2. **D6 独立准入。** v2 evaluator 尚未生成。两臂预期不同的 D2 审计计数必须作为 treatment
-   诊断归一化，不能误报为业务语义差异。
-3. **系统实时容量。** 即使 v2 通过局部 `5%` 核心墙钟门，200 对 200 实时因子仍需单独达到
-   `1.0`；本专项不能提前关闭系统实时缺口。
-4. **环境和精度。** 本矩阵仍不包含 AirSim、目标硬件、RMSE、NEES、NIS 和严格身份精度。
+1. **系统实时容量。** 候选最低实时因子为 `0.1730801`，未达到 `1.0`，
+   `system_realtime_gap_closed=false`。
+2. **逐批审计。** 当前持久化合同只有 latest 和 totals。评估器能校验批次数与固定审计
+   工作量，但不能回放每个 batch 的独立明细。
+3. **环境和精度。** 本矩阵不包含 AirSim、目标硬件、RMSE、NEES、NIS 和严格身份精度。
 
 历史 v1 紧凑报告位于
 `research_modules/d6_evaluation_metrics/outputs/d1_publication_metadata_multiseed_20260724_formal_a36f519/`。
-v2 正式证据完成前，默认路径和 P1 状态均不改变。
+v2 正式报告位于
+`research_modules/d6_evaluation_metrics/outputs/d1_publication_metadata_v2_multiseed_20260724_formal_be399e1/`。
 
 ## 2026-07-24 D1 扫描输入正式多 seed 准入
 

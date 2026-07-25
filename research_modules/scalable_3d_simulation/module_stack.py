@@ -143,7 +143,7 @@ class IntegratedStackConfig:
     d1_scan_max_buffer_residence_s: float = 5.0
     d1_scan_input_implementation: str = SCAN_INPUT_CANDIDATE_IMPLEMENTATION
     d1_publication_metadata_implementation: str = (
-        D1_PUBLICATION_METADATA_REFERENCE_IMPLEMENTATION
+        D1_PUBLICATION_METADATA_CANDIDATE_IMPLEMENTATION
     )
     d2_claim_retention_s: float = 30.0
     d2_claim_max_lateness_s: float = 5.0
