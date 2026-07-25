@@ -260,6 +260,31 @@ _ASSOCIATION_MODALITY_COUNTER_FIELDS = (
     "exact_gate_pass_count",
     "fallback_count",
 )
+REPLAY_PREFIX_SUMMARY_REFERENCE_SELECTOR = (
+    "per_checkpoint_prefix_rebuild_v1"
+)
+REPLAY_PREFIX_SUMMARY_CANDIDATE_SELECTOR = (
+    "fixed_lag_checkpoint_prefix_cumulative_summary_v1"
+)
+REPLAY_PREFIX_SUMMARY_DEFAULT_SELECTOR = (
+    REPLAY_PREFIX_SUMMARY_REFERENCE_SELECTOR
+)
+REPLAY_PREFIX_SUMMARY_REFERENCE_IMPLEMENTATION_ID = (
+    "d1.fusion.replay_prefix.per_checkpoint_rebuild.v1"
+)
+REPLAY_PREFIX_SUMMARY_CANDIDATE_IMPLEMENTATION_ID = (
+    "d1.fusion.replay_prefix."
+    "frozen_cumulative_summary_lazy_evidence_ranges.v1"
+)
+REPLAY_PREFIX_SUMMARY_SCHEMA_VERSION = (
+    "d1.fixed_lag_replay_prefix_summary.v1"
+)
+REPLAY_PREFIX_SUMMARY_EXECUTION_CONFIG_SCHEMA_VERSION = (
+    "d1.fixed_lag_replay_prefix_summary_execution_config.v1"
+)
+REPLAY_PREFIX_SUMMARY_DIAGNOSTICS_SCHEMA_VERSION = (
+    "d1.fixed_lag_replay_prefix_summary_diagnostics.v1"
+)
 RADAR_ASSIGNMENT_AMBIGUITY_POLICY_VERSION = (
     "fail_closed_gate_feasible_alternating_cycle_v1"
 )
@@ -681,6 +706,8 @@ class TrackRecord:
     accepted_observer_scan_keys: set[tuple[str, str, str]] = field(default_factory=set)
     replay_checkpoints: list["_ReplayCheckpoint"] = field(default_factory=list)
     replay_checkpoints_complete: bool = False
+    replay_checkpoint_revision: int = 0
+    replay_prefix_summary: "_ReplayPrefixSummary | None" = None
     current_state_covariance_limited: bool = False
     metadata: dict = field(default_factory=dict)
 
@@ -716,6 +743,31 @@ class _ReplayCheckpoint:
     posterior: EKFState
     nis: float
     gated: bool
+
+
+@dataclass(frozen=True, slots=True)
+class _ReplayPrefixSummary:
+    schema_version: str
+    checkpoint_revision: int
+    checkpoint_observation_ids: tuple[str, ...]
+    checkpoint_sort_keys: tuple[tuple[float, float, str], ...]
+    nises: tuple[float, ...]
+    gated_observation_ids: tuple[str, ...]
+    consistency_observation_ids: tuple[str, ...]
+    consistency_structure_revision: int
+
+
+@dataclass(slots=True)
+class _PendingConsistencyPrefixRefresh:
+    """Range-add ledger kept separate from immutable checkpoint summaries."""
+
+    track_id: str
+    observation_ids: tuple[str, ...]
+    observation_id_set: frozenset[str]
+    event_counts_by_prefix_length: dict[int, int] = field(default_factory=dict)
+    latest_revision_by_prefix_length: dict[int, int] = field(
+        default_factory=dict
+    )
 
 
 @dataclass(frozen=True)
@@ -866,6 +918,7 @@ class FusionAdapter:
         trusted_replay_checkpoint_prefix: bool = True,
         cached_consistency_prefix_refresh: bool = True,
         trusted_consistency_counter_refresh: bool = True,
+        replay_prefix_summary: str = REPLAY_PREFIX_SUMMARY_DEFAULT_SELECTOR,
         radar_assignment_ambiguity_governance: bool = False,
         radar_assignment_ambiguity_governance_v2: bool = False,
         radar_assignment_ambiguity_hold_evidence: bool = False,
@@ -1202,6 +1255,17 @@ class FusionAdapter:
         self.trusted_consistency_counter_refresh = bool(
             trusted_consistency_counter_refresh
         )
+        if not isinstance(replay_prefix_summary, str):
+            raise TypeError("replay_prefix_summary must be a string selector")
+        if replay_prefix_summary not in {
+            REPLAY_PREFIX_SUMMARY_REFERENCE_SELECTOR,
+            REPLAY_PREFIX_SUMMARY_CANDIDATE_SELECTOR,
+        }:
+            raise ValueError(
+                "unsupported replay_prefix_summary selector: "
+                f"{replay_prefix_summary!r}"
+            )
+        self.replay_prefix_summary = replay_prefix_summary
         if not isinstance(vectorized_covariance_limit, bool):
             raise TypeError("vectorized_covariance_limit must be a bool")
         self.vectorized_covariance_limit = vectorized_covariance_limit
@@ -1300,6 +1364,16 @@ class FusionAdapter:
         self._last_association_rejection_track_ids: tuple[str, ...] = ()
         self._batch_context: _BatchProcessingContext | None = None
         self._consistency_evidence: dict[str, OnlineConsistencyEvidenceRecord] = {}
+        self._consistency_structure_revisions: Counter[str] = Counter()
+        self._pending_consistency_prefix_refreshes: dict[
+            str,
+            _PendingConsistencyPrefixRefresh,
+        ] = {}
+        self._replay_prefix_summary_operations: Counter[str] = Counter()
+        self._replay_prefix_summary_fallback_reasons: Counter[str] = Counter()
+        self._replay_prefix_summary_materialization_reasons: Counter[str] = (
+            Counter()
+        )
         self._consistency_replay_revision = 0
         self._consistency_capture_context: tuple[str, int] | None = None
         self._performance_totals: Counter[str] = Counter()
@@ -2414,6 +2488,96 @@ class FusionAdapter:
             current_time=float(self.current_time),
         )
 
+    def replay_prefix_summary_execution_config(self) -> dict[str, Any]:
+        """Return the explicit default-off fixed-lag replay candidate config."""
+
+        candidate_enabled = (
+            self.replay_prefix_summary
+            == REPLAY_PREFIX_SUMMARY_CANDIDATE_SELECTOR
+        )
+        return {
+            "schema_version": (
+                REPLAY_PREFIX_SUMMARY_EXECUTION_CONFIG_SCHEMA_VERSION
+            ),
+            "selector": self.replay_prefix_summary,
+            "selected_implementation_id": (
+                REPLAY_PREFIX_SUMMARY_CANDIDATE_IMPLEMENTATION_ID
+                if candidate_enabled
+                else REPLAY_PREFIX_SUMMARY_REFERENCE_IMPLEMENTATION_ID
+            ),
+            "default_selector": REPLAY_PREFIX_SUMMARY_DEFAULT_SELECTOR,
+            "reference_selector": REPLAY_PREFIX_SUMMARY_REFERENCE_SELECTOR,
+            "reference_implementation_id": (
+                REPLAY_PREFIX_SUMMARY_REFERENCE_IMPLEMENTATION_ID
+            ),
+            "candidate_selector": REPLAY_PREFIX_SUMMARY_CANDIDATE_SELECTOR,
+            "candidate_implementation_id": (
+                REPLAY_PREFIX_SUMMARY_CANDIDATE_IMPLEMENTATION_ID
+            ),
+            "candidate_enabled": candidate_enabled,
+            "candidate_default_enabled": (
+                REPLAY_PREFIX_SUMMARY_DEFAULT_SELECTOR
+                == REPLAY_PREFIX_SUMMARY_CANDIDATE_SELECTOR
+            ),
+            "rollback_selector": REPLAY_PREFIX_SUMMARY_REFERENCE_SELECTOR,
+            "summary_schema_version": REPLAY_PREFIX_SUMMARY_SCHEMA_VERSION,
+            "buffer_horizon_s": float(self.buffer_horizon),
+            "truth_dependent_inputs": False,
+            "fixed_lag_window_changed": False,
+            "checkpoint_audit_semantics_changed": False,
+            "consistency_evidence_semantics_changed": False,
+        }
+
+    def replay_prefix_summary_diagnostics(self) -> dict[str, Any]:
+        """Return fixed-schema hit/fallback and lazy-materialization counters."""
+
+        config = self.replay_prefix_summary_execution_config()
+        operations = dict(sorted(self._replay_prefix_summary_operations.items()))
+        fallback_reasons = dict(
+            sorted(self._replay_prefix_summary_fallback_reasons.items())
+        )
+        materialization_reasons = dict(
+            sorted(self._replay_prefix_summary_materialization_reasons.items())
+        )
+        hit_count = int(operations.get("summary_hit_count", 0))
+        fallback_count = int(operations.get("summary_fallback_count", 0))
+        return {
+            "schema_version": REPLAY_PREFIX_SUMMARY_DIAGNOSTICS_SCHEMA_VERSION,
+            "execution_config": config,
+            "selector": config["selector"],
+            "selected_implementation_id": config[
+                "selected_implementation_id"
+            ],
+            "operation_counts": operations,
+            "fallback_reasons": fallback_reasons,
+            "materialization_reasons": materialization_reasons,
+            "pending_consistency_ledger_count": len(
+                self._pending_consistency_prefix_refreshes
+            ),
+            "conservation": {
+                "attempt_partition": (
+                    int(operations.get("summary_attempt_count", 0))
+                    == hit_count + fallback_count
+                ),
+                "fallback_reason_partition": (
+                    fallback_count == sum(fallback_reasons.values())
+                ),
+                "hits_not_above_attempts": (
+                    hit_count
+                    <= int(operations.get("summary_attempt_count", 0))
+                ),
+                "reused_checkpoints_not_below_hits": (
+                    int(
+                        operations.get(
+                            "summary_reused_checkpoint_count",
+                            0,
+                        )
+                    )
+                    >= hit_count
+                ),
+            },
+        }
+
     def association_sparse_prefilter_execution_config(self) -> dict[str, Any]:
         """Return the selected, explicitly rollback-capable prefilter config."""
 
@@ -2704,6 +2868,9 @@ class FusionAdapter:
     ) -> tuple[OnlineConsistencyEvidenceRecord, ...]:
         """Return the current truth-free per-observation evidence snapshot."""
 
+        self._materialize_all_pending_consistency_prefix_refreshes(
+            reason="public_evidence_snapshot",
+        )
         return tuple(
             sorted(
                 self._consistency_evidence.values(),
@@ -5709,6 +5876,64 @@ class FusionAdapter:
         finally:
             self._consistency_capture_context = previous
 
+    def _materialized_consistency_evidence(
+        self,
+        observation_id: str,
+    ) -> OnlineConsistencyEvidenceRecord | None:
+        previous = self._consistency_evidence.get(observation_id)
+        if (
+            not self._replay_prefix_summary_candidate_enabled()
+            or previous is None
+            or previous.source_global_track_id is None
+        ):
+            return previous
+        pending = self._pending_consistency_prefix_refreshes.get(
+            previous.source_global_track_id
+        )
+        if pending is not None and observation_id in pending.observation_id_set:
+            self._materialize_pending_consistency_prefix_refresh(
+                previous.source_global_track_id,
+                reason="evidence_record_read_before_write",
+            )
+            return self._consistency_evidence.get(observation_id)
+        return previous
+
+    def _replace_consistency_evidence(
+        self,
+        observation_id: str,
+        value: OnlineConsistencyEvidenceRecord,
+        previous: OnlineConsistencyEvidenceRecord | None,
+    ) -> None:
+        if not self._replay_prefix_summary_candidate_enabled():
+            self._consistency_evidence[observation_id] = value
+            return
+        previous_track_id = (
+            None if previous is None else previous.source_global_track_id
+        )
+        next_track_id = value.source_global_track_id
+        for track_id in {
+            item
+            for item in (previous_track_id, next_track_id)
+            if item is not None
+        }:
+            pending = self._pending_consistency_prefix_refreshes.get(track_id)
+            if (
+                pending is not None
+                and observation_id in pending.observation_id_set
+            ):
+                self._materialize_pending_consistency_prefix_refresh(
+                    track_id,
+                    reason="evidence_record_write",
+                )
+                previous = self._consistency_evidence.get(observation_id)
+        self._consistency_evidence[observation_id] = value
+        for track_id in {
+            item
+            for item in (previous_track_id, next_track_id)
+            if item is not None
+        }:
+            self._consistency_structure_revisions[track_id] += 1
+
     def _capture_consistency_initialization(
         self,
         record: TrackRecord,
@@ -5716,15 +5941,21 @@ class FusionAdapter:
         state: EKFState,
     ) -> None:
         self._consistency_replay_revision += 1
-        self._consistency_evidence[observation.observation_id] = (
-            initialization_consistency_evidence(
-                observation,
-                source_global_track_id=record.track_id,
-                state=state.state,
-                covariance=state.covariance,
-                replay_revision=self._consistency_replay_revision,
-                previous=self._consistency_evidence.get(observation.observation_id),
-            )
+        previous = self._materialized_consistency_evidence(
+            observation.observation_id
+        )
+        refreshed = initialization_consistency_evidence(
+            observation,
+            source_global_track_id=record.track_id,
+            state=state.state,
+            covariance=state.covariance,
+            replay_revision=self._consistency_replay_revision,
+            previous=previous,
+        )
+        self._replace_consistency_evidence(
+            observation.observation_id,
+            refreshed,
+            previous,
         )
 
     def _capture_consistency_initialization_if_enabled(
@@ -5736,15 +5967,21 @@ class FusionAdapter:
         context = self._consistency_capture_context
         if observation is None or context is None or context[0] != record.track_id:
             return
-        self._consistency_evidence[observation.observation_id] = (
-            initialization_consistency_evidence(
-                observation,
-                source_global_track_id=record.track_id,
-                state=state.state,
-                covariance=state.covariance,
-                replay_revision=context[1],
-                previous=self._consistency_evidence.get(observation.observation_id),
-            )
+        previous = self._materialized_consistency_evidence(
+            observation.observation_id
+        )
+        refreshed = initialization_consistency_evidence(
+            observation,
+            source_global_track_id=record.track_id,
+            state=state.state,
+            covariance=state.covariance,
+            replay_revision=context[1],
+            previous=previous,
+        )
+        self._replace_consistency_evidence(
+            observation.observation_id,
+            refreshed,
+            previous,
         )
 
     def _refresh_cached_consistency_evidence_if_enabled(
@@ -5762,7 +5999,9 @@ class FusionAdapter:
             or context[0] != record.track_id
         ):
             return False
-        previous = self._consistency_evidence.get(observation.observation_id)
+        previous = self._materialized_consistency_evidence(
+            observation.observation_id
+        )
         if previous is None or previous.source_global_track_id != record.track_id:
             return False
         if self.trusted_consistency_counter_refresh:
@@ -5776,7 +6015,11 @@ class FusionAdapter:
                 replay_revision=context[1],
                 replay_count=previous.replay_count + 1,
             )
-        self._consistency_evidence[observation.observation_id] = refreshed
+        self._replace_consistency_evidence(
+            observation.observation_id,
+            refreshed,
+            previous,
+        )
         if self._batch_context is not None:
             self._batch_context.cached_consistency_refresh_count += 1
         return True
@@ -5798,18 +6041,24 @@ class FusionAdapter:
             structured_jacobian=self.structured_numerical_jacobian,
             jacobian_operation_counts=self._numerical_jacobian_operations,
         )
-        self._consistency_evidence[observation.observation_id] = (
-            update_consistency_evidence(
-                observation,
-                source_global_track_id=record.track_id,
-                state=state.state,
-                covariance=state.covariance,
-                innovation_dimension=int(model.z.size),
-                nis=nis,
-                gated=gated,
-                replay_revision=context[1],
-                previous=self._consistency_evidence.get(observation.observation_id),
-            )
+        previous = self._materialized_consistency_evidence(
+            observation.observation_id
+        )
+        refreshed = update_consistency_evidence(
+            observation,
+            source_global_track_id=record.track_id,
+            state=state.state,
+            covariance=state.covariance,
+            innovation_dimension=int(model.z.size),
+            nis=nis,
+            gated=gated,
+            replay_revision=context[1],
+            previous=previous,
+        )
+        self._replace_consistency_evidence(
+            observation.observation_id,
+            refreshed,
+            previous,
         )
 
     def _mark_consistency_unavailable(
@@ -5817,15 +6066,366 @@ class FusionAdapter:
         observation: SensorObservation,
         reason: str,
     ) -> None:
-        previous = self._consistency_evidence.get(observation.observation_id)
-        self._consistency_evidence[observation.observation_id] = (
-            unavailable_consistency_evidence(
-                observation,
-                reason,
-                oosm_replayed=False if previous is None else previous.oosm_replayed,
-                previous=previous,
-            )
+        previous = self._materialized_consistency_evidence(
+            observation.observation_id
         )
+        unavailable = unavailable_consistency_evidence(
+            observation,
+            reason,
+            oosm_replayed=False if previous is None else previous.oosm_replayed,
+            previous=previous,
+        )
+        self._replace_consistency_evidence(
+            observation.observation_id,
+            unavailable,
+            previous,
+        )
+
+    def _replay_prefix_summary_candidate_enabled(self) -> bool:
+        return (
+            self.replay_prefix_summary
+            == REPLAY_PREFIX_SUMMARY_CANDIDATE_SELECTOR
+        )
+
+    def _record_replay_prefix_summary_fallback(self, reason: str) -> None:
+        normalized = str(reason)
+        self._replay_prefix_summary_operations["summary_fallback_count"] += 1
+        self._replay_prefix_summary_fallback_reasons[normalized] += 1
+
+    def _try_reuse_replay_prefix_summary(
+        self,
+        record: TrackRecord,
+        *,
+        initial_observation: SensorObservation | None,
+        eligible: list[SensorObservation],
+        matching_prefix: int,
+    ) -> tuple[EKFState, list[float], tuple[str, ...]] | None:
+        if not self._replay_prefix_summary_candidate_enabled():
+            return None
+        operations = self._replay_prefix_summary_operations
+        operations["summary_attempt_count"] += 1
+        if not self.incremental_replay_cache:
+            self._record_replay_prefix_summary_fallback(
+                "incremental_replay_cache_disabled"
+            )
+            return None
+        if matching_prefix <= 0:
+            self._record_replay_prefix_summary_fallback(
+                "no_checkpoint_prefix"
+            )
+            return None
+        if matching_prefix != len(record.replay_checkpoints):
+            self._record_replay_prefix_summary_fallback(
+                "incomplete_checkpoint_prefix"
+            )
+            return None
+        summary = record.replay_prefix_summary
+        if summary is None:
+            self._record_replay_prefix_summary_fallback(
+                "summary_unavailable"
+            )
+            return None
+        if summary.schema_version != REPLAY_PREFIX_SUMMARY_SCHEMA_VERSION:
+            self._record_replay_prefix_summary_fallback(
+                "summary_schema_version_mismatch"
+            )
+            return None
+        if summary.checkpoint_revision != record.replay_checkpoint_revision:
+            self._record_replay_prefix_summary_fallback(
+                "checkpoint_revision_mismatch"
+            )
+            return None
+        if len(summary.checkpoint_observation_ids) != matching_prefix:
+            self._record_replay_prefix_summary_fallback(
+                "checkpoint_count_mismatch"
+            )
+            return None
+        if (
+            len(summary.checkpoint_sort_keys) != matching_prefix
+            or len(summary.nises) != matching_prefix
+        ):
+            self._record_replay_prefix_summary_fallback(
+                "summary_length_mismatch"
+            )
+            return None
+        if len(summary.consistency_observation_ids) not in {
+            matching_prefix,
+            matching_prefix + 1,
+        }:
+            self._record_replay_prefix_summary_fallback(
+                "consistency_summary_length_mismatch"
+            )
+            return None
+        first_observation = eligible[0]
+        last_observation = eligible[matching_prefix - 1]
+        if (
+            summary.checkpoint_observation_ids[0]
+            != first_observation.observation_id
+            or summary.checkpoint_sort_keys[0]
+            != _observation_sort_key(first_observation)
+            or summary.checkpoint_observation_ids[-1]
+            != last_observation.observation_id
+            or summary.checkpoint_sort_keys[-1]
+            != _observation_sort_key(last_observation)
+        ):
+            self._record_replay_prefix_summary_fallback(
+                "checkpoint_identity_or_order_mismatch"
+            )
+            return None
+        context = self._consistency_capture_context
+        if context is None or context[0] != record.track_id:
+            self._record_replay_prefix_summary_fallback(
+                "consistency_capture_context_unavailable"
+            )
+            return None
+        if not self.cached_consistency_prefix_refresh:
+            self._record_replay_prefix_summary_fallback(
+                "cached_consistency_refresh_disabled"
+            )
+            return None
+        if not self.trusted_consistency_counter_refresh:
+            self._record_replay_prefix_summary_fallback(
+                "trusted_consistency_counter_refresh_disabled"
+            )
+            return None
+        if (
+            summary.consistency_structure_revision
+            != int(self._consistency_structure_revisions[record.track_id])
+        ):
+            self._record_replay_prefix_summary_fallback(
+                "consistency_structure_revision_mismatch"
+            )
+            return None
+        expected_initial_id = (
+            None
+            if initial_observation is None
+            else initial_observation.observation_id
+        )
+        summary_initial_id = (
+            None
+            if len(summary.consistency_observation_ids) == matching_prefix
+            else summary.consistency_observation_ids[0]
+        )
+        if summary_initial_id != expected_initial_id:
+            self._record_replay_prefix_summary_fallback(
+                "initial_observation_identity_mismatch"
+            )
+            return None
+        consistency_checkpoint_ids = (
+            summary.consistency_observation_ids
+            if expected_initial_id is None
+            else summary.consistency_observation_ids[1:]
+        )
+        if consistency_checkpoint_ids != summary.checkpoint_observation_ids:
+            self._record_replay_prefix_summary_fallback(
+                "consistency_checkpoint_identity_mismatch"
+            )
+            return None
+        self._schedule_pending_consistency_prefix_refresh(
+            record,
+            summary.consistency_observation_ids,
+            replay_revision=context[1],
+        )
+        if self._batch_context is not None:
+            self._batch_context.cached_consistency_refresh_count += len(
+                summary.consistency_observation_ids
+            )
+        operations["summary_hit_count"] += 1
+        operations["summary_reused_checkpoint_count"] += matching_prefix
+        operations["summary_reused_nis_count"] += len(summary.nises)
+        operations["summary_reused_gated_id_count"] += len(
+            summary.gated_observation_ids
+        )
+        return (
+            record.replay_checkpoints[-1].posterior.copy(),
+            list(summary.nises),
+            summary.gated_observation_ids,
+        )
+
+    def _schedule_pending_consistency_prefix_refresh(
+        self,
+        record: TrackRecord,
+        observation_ids: tuple[str, ...],
+        *,
+        replay_revision: int,
+    ) -> None:
+        if not observation_ids:
+            return
+        track_id = record.track_id
+        pending = self._pending_consistency_prefix_refreshes.get(track_id)
+        if pending is not None and pending.observation_ids != observation_ids:
+            if (
+                len(pending.observation_ids) <= len(observation_ids)
+                and observation_ids[: len(pending.observation_ids)]
+                == pending.observation_ids
+            ):
+                copied_ids = tuple(observation_ids)
+                pending.observation_ids = copied_ids
+                pending.observation_id_set = frozenset(copied_ids)
+            else:
+                self._materialize_pending_consistency_prefix_refresh(
+                    track_id,
+                    reason="incompatible_summary_prefix",
+                )
+                pending = None
+        if pending is None:
+            copied_ids = tuple(observation_ids)
+            pending = _PendingConsistencyPrefixRefresh(
+                track_id=track_id,
+                observation_ids=copied_ids,
+                observation_id_set=frozenset(copied_ids),
+            )
+            self._pending_consistency_prefix_refreshes[track_id] = pending
+        prefix_length = len(observation_ids)
+        pending.event_counts_by_prefix_length[prefix_length] = (
+            pending.event_counts_by_prefix_length.get(prefix_length, 0) + 1
+        )
+        pending.latest_revision_by_prefix_length[prefix_length] = max(
+            int(replay_revision),
+            pending.latest_revision_by_prefix_length.get(prefix_length, -1),
+        )
+        operations = self._replay_prefix_summary_operations
+        operations["lazy_consistency_refresh_event_count"] += 1
+        operations["lazy_consistency_refresh_logical_record_count"] += (
+            prefix_length
+        )
+
+    def _materialize_pending_consistency_prefix_refresh(
+        self,
+        track_id: str,
+        *,
+        reason: str,
+    ) -> None:
+        pending = self._pending_consistency_prefix_refreshes.get(track_id)
+        if pending is None:
+            return
+        observation_ids = pending.observation_ids
+        records: list[OnlineConsistencyEvidenceRecord] = []
+        for observation_id in observation_ids:
+            record = self._consistency_evidence.get(observation_id)
+            if record is None or record.source_global_track_id != track_id:
+                raise RuntimeError(
+                    "pending consistency prefix refresh lost its validated "
+                    f"evidence record: {observation_id!r}"
+                )
+            records.append(record)
+
+        running_count = 0
+        running_revision = -1
+        materialized_count = 0
+        event_count = sum(pending.event_counts_by_prefix_length.values())
+        for prefix_length in range(len(observation_ids), 0, -1):
+            running_count += pending.event_counts_by_prefix_length.get(
+                prefix_length,
+                0,
+            )
+            running_revision = max(
+                running_revision,
+                pending.latest_revision_by_prefix_length.get(
+                    prefix_length,
+                    -1,
+                ),
+            )
+            if running_count <= 0:
+                continue
+            index = prefix_length - 1
+            previous = records[index]
+            self._consistency_evidence[observation_ids[index]] = (
+                previous.with_replay_counters(
+                    replay_revision=running_revision,
+                    replay_count=previous.replay_count + running_count,
+                )
+            )
+            materialized_count += 1
+
+        del self._pending_consistency_prefix_refreshes[track_id]
+        operations = self._replay_prefix_summary_operations
+        operations["lazy_consistency_materialization_count"] += 1
+        operations["lazy_consistency_materialized_event_count"] += event_count
+        operations["lazy_consistency_materialized_record_count"] += (
+            materialized_count
+        )
+        self._replay_prefix_summary_materialization_reasons[str(reason)] += 1
+
+    def _materialize_all_pending_consistency_prefix_refreshes(
+        self,
+        *,
+        reason: str,
+    ) -> None:
+        for track_id in tuple(self._pending_consistency_prefix_refreshes):
+            self._materialize_pending_consistency_prefix_refresh(
+                track_id,
+                reason=reason,
+            )
+
+    def _rebuild_replay_prefix_summary(
+        self,
+        record: TrackRecord,
+        *,
+        initial_observation: SensorObservation | None,
+        eligible: list[SensorObservation],
+    ) -> None:
+        if not self._replay_prefix_summary_candidate_enabled():
+            return
+        checkpoints = record.replay_checkpoints
+        if not checkpoints or len(checkpoints) != len(eligible):
+            record.replay_prefix_summary = None
+            self._replay_prefix_summary_operations[
+                "summary_build_rejection_count"
+            ] += 1
+            return
+        checkpoint_ids = tuple(
+            checkpoint.observation_id for checkpoint in checkpoints
+        )
+        eligible_ids = tuple(
+            observation.observation_id for observation in eligible
+        )
+        checkpoint_sort_keys = tuple(
+            checkpoint.sort_key for checkpoint in checkpoints
+        )
+        if (
+            checkpoint_ids != eligible_ids
+            or checkpoint_sort_keys
+            != tuple(_observation_sort_key(item) for item in eligible)
+        ):
+            record.replay_prefix_summary = None
+            self._replay_prefix_summary_operations[
+                "summary_build_rejection_count"
+            ] += 1
+            return
+        consistency_ids = (
+            ()
+            if initial_observation is None
+            else (initial_observation.observation_id,)
+        ) + checkpoint_ids
+        for observation_id in consistency_ids:
+            evidence = self._consistency_evidence.get(observation_id)
+            if (
+                evidence is None
+                or evidence.source_global_track_id != record.track_id
+            ):
+                record.replay_prefix_summary = None
+                self._replay_prefix_summary_operations[
+                    "summary_build_rejection_count"
+                ] += 1
+                return
+        record.replay_prefix_summary = _ReplayPrefixSummary(
+            schema_version=REPLAY_PREFIX_SUMMARY_SCHEMA_VERSION,
+            checkpoint_revision=int(record.replay_checkpoint_revision),
+            checkpoint_observation_ids=checkpoint_ids,
+            checkpoint_sort_keys=checkpoint_sort_keys,
+            nises=tuple(float(checkpoint.nis) for checkpoint in checkpoints),
+            gated_observation_ids=tuple(
+                checkpoint.observation_id
+                for checkpoint in checkpoints
+                if checkpoint.gated
+            ),
+            consistency_observation_ids=consistency_ids,
+            consistency_structure_revision=int(
+                self._consistency_structure_revisions[record.track_id]
+            ),
+        )
+        self._replay_prefix_summary_operations["summary_build_count"] += 1
 
     def _replay_from_origin(
         self,
@@ -5900,15 +6500,6 @@ class FusionAdapter:
             ),
             None,
         )
-        if not self._refresh_cached_consistency_evidence_if_enabled(
-            record,
-            initial_observation,
-        ):
-            self._capture_consistency_initialization_if_enabled(
-                record,
-                initial_observation,
-                state,
-            )
         eligible = [
             observation
             for observation in sorted_observations
@@ -5918,7 +6509,27 @@ class FusionAdapter:
         ]
 
         if not self.incremental_replay_cache:
-            record.replay_checkpoints.clear()
+            if self._replay_prefix_summary_candidate_enabled():
+                self._replay_prefix_summary_operations[
+                    "summary_attempt_count"
+                ] += 1
+                self._record_replay_prefix_summary_fallback(
+                    "incremental_replay_cache_disabled"
+                )
+                self._materialize_pending_consistency_prefix_refresh(
+                    record.track_id,
+                    reason="incremental_cache_disabled",
+                )
+            if not self._refresh_cached_consistency_evidence_if_enabled(
+                record,
+                initial_observation,
+            ):
+                self._capture_consistency_initialization_if_enabled(
+                    record,
+                    initial_observation,
+                    state,
+                )
+            self._invalidate_replay_checkpoints(record)
             for observation in eligible:
                 state = self._predict_to(
                     state,
@@ -5960,32 +6571,70 @@ class FusionAdapter:
                 matching_prefix += 1
 
         if matching_prefix < prefix_limit:
+            self._mark_replay_checkpoint_list_changed(
+                record,
+                reason="checkpoint_prefix_mismatch",
+            )
             del record.replay_checkpoints[matching_prefix:]
 
-        for observation, checkpoint in zip(
-            eligible[:matching_prefix],
-            record.replay_checkpoints[:matching_prefix],
-        ):
-            nises.append(checkpoint.nis)
-            if checkpoint.gated:
-                gated_observation_ids.append(observation.observation_id)
+        summary_result = self._try_reuse_replay_prefix_summary(
+            record,
+            initial_observation=initial_observation,
+            eligible=eligible,
+            matching_prefix=matching_prefix,
+        )
+        summary_hit = summary_result is not None
+        if summary_result is not None:
+            state, nises, summary_gated_ids = summary_result
+            gated_observation_ids.extend(summary_gated_ids)
+        else:
+            if self._replay_prefix_summary_candidate_enabled():
+                self._materialize_pending_consistency_prefix_refresh(
+                    record.track_id,
+                    reason="summary_fallback",
+                )
             if not self._refresh_cached_consistency_evidence_if_enabled(
                 record,
-                observation,
+                initial_observation,
             ):
-                self._capture_consistency_update_if_enabled(
+                self._capture_consistency_initialization_if_enabled(
+                    record,
+                    initial_observation,
+                    state,
+                )
+            for observation, checkpoint in zip(
+                eligible[:matching_prefix],
+                record.replay_checkpoints[:matching_prefix],
+            ):
+                nises.append(checkpoint.nis)
+                if checkpoint.gated:
+                    gated_observation_ids.append(observation.observation_id)
+                if not self._refresh_cached_consistency_evidence_if_enabled(
                     record,
                     observation,
-                    checkpoint.posterior,
-                    checkpoint.nis,
-                    checkpoint.gated,
-                )
-        if matching_prefix:
-            state = record.replay_checkpoints[matching_prefix - 1].posterior.copy()
+                ):
+                    self._capture_consistency_update_if_enabled(
+                        record,
+                        observation,
+                        checkpoint.posterior,
+                        checkpoint.nis,
+                        checkpoint.gated,
+                    )
+            if matching_prefix:
+                state = record.replay_checkpoints[
+                    matching_prefix - 1
+                ].posterior.copy()
         if self._batch_context is not None:
             self._batch_context.replay_checkpoint_reuse_count += matching_prefix
 
+        checkpoint_list_changed = False
         for observation in eligible[matching_prefix:]:
+            if not checkpoint_list_changed:
+                self._mark_replay_checkpoint_list_changed(
+                    record,
+                    reason="checkpoint_suffix_appended",
+                )
+                checkpoint_list_changed = True
             state = self._predict_to(
                 state,
                 observation.measurement_timestamp,
@@ -6012,8 +6661,33 @@ class FusionAdapter:
             nises.append(nis)
             if gated:
                 gated_observation_ids.append(observation.observation_id)
+        if (
+            self._replay_prefix_summary_candidate_enabled()
+            and len(record.replay_checkpoints) == len(eligible)
+            and (checkpoint_list_changed or not summary_hit)
+        ):
+            self._rebuild_replay_prefix_summary(
+                record,
+                initial_observation=initial_observation,
+                eligible=eligible,
+            )
         state = self._predict_to(state, until_time)
         return state, nises, tuple(gated_observation_ids)
+
+    def _mark_replay_checkpoint_list_changed(
+        self,
+        record: TrackRecord,
+        *,
+        reason: str,
+    ) -> None:
+        """Advance the O(1) integrity revision before an internal list change."""
+
+        self._materialize_pending_consistency_prefix_refresh(
+            record.track_id,
+            reason=reason,
+        )
+        record.replay_checkpoint_revision += 1
+        record.replay_prefix_summary = None
 
     def _invalidate_replay_checkpoints(
         self,
@@ -6023,7 +6697,16 @@ class FusionAdapter:
     ) -> None:
         record.replay_checkpoints_complete = False
         if from_sort_key is None:
+            if (
+                record.replay_checkpoints
+                or record.replay_prefix_summary is not None
+            ):
+                self._mark_replay_checkpoint_list_changed(
+                    record,
+                    reason="all_checkpoints_invalidated",
+                )
             record.replay_checkpoints.clear()
+            record.replay_prefix_summary = None
             return
         first_affected = next(
             (
@@ -6033,6 +6716,11 @@ class FusionAdapter:
             ),
             len(record.replay_checkpoints),
         )
+        if first_affected < len(record.replay_checkpoints):
+            self._mark_replay_checkpoint_list_changed(
+                record,
+                reason="checkpoint_suffix_invalidated",
+            )
         del record.replay_checkpoints[first_affected:]
 
     def _refresh_initial(self, record: TrackRecord) -> None:
@@ -6056,12 +6744,11 @@ class FusionAdapter:
     def _prune_record(self, record: TrackRecord, current_time: float) -> None:
         """Rebase at the latest observation not newer than the lag boundary.
 
-        The CV process-noise model represents one random acceleration sample per
-        prediction interval.  Splitting an existing interval at an arbitrary
-        wall-clock boundary changes its covariance and therefore the gain of a
-        later nonlinear update.  Anchoring the checkpoint immediately after an
-        accepted observation preserves the original prediction intervals while
-        still bounding the live observation window.
+        CV process noise represents one random acceleration sample per prediction
+        interval. Splitting an interval at an arbitrary wall-clock boundary
+        changes its covariance and the gain of a later nonlinear update. The
+        accepted-observation anchor preserves the original prediction intervals
+        while bounding the live observation window.
         """
 
         if self.buffer_horizon <= 0:
@@ -6122,11 +6809,17 @@ class FusionAdapter:
         )
         record.observations = retained
         if can_reuse_suffix:
-            record.replay_checkpoints = [
+            retained_checkpoints = [
                 checkpoint_item
                 for checkpoint_item in record.replay_checkpoints
                 if checkpoint_item.sort_key[0] > checkpoint_timestamp + 1.0e-9
             ]
+            if len(retained_checkpoints) != len(record.replay_checkpoints):
+                self._mark_replay_checkpoint_list_changed(
+                    record,
+                    reason="fixed_lag_rebase",
+                )
+            record.replay_checkpoints = retained_checkpoints
             context = self._batch_context
             if context is not None:
                 context.fixed_lag_checkpoint_suffix_reuse_count += len(
@@ -6678,18 +7371,26 @@ class FusionAdapter:
         is_oosm: bool,
         is_stale: bool,
     ) -> None:
-        previous_evidence = self._consistency_evidence.get(observation.observation_id)
+        previous_evidence = self._materialized_consistency_evidence(
+            observation.observation_id
+        )
         if previous_evidence is None:
-            self._consistency_evidence[observation.observation_id] = (
-                unavailable_consistency_evidence(
-                    observation,
-                    "observation_not_yet_processed",
-                    oosm_replayed=is_oosm,
-                )
+            unavailable = unavailable_consistency_evidence(
+                observation,
+                "observation_not_yet_processed",
+                oosm_replayed=is_oosm,
+            )
+            self._replace_consistency_evidence(
+                observation.observation_id,
+                unavailable,
+                previous_evidence,
             )
         elif is_oosm and not previous_evidence.oosm_replayed:
-            self._consistency_evidence[observation.observation_id] = (
-                mark_consistency_evidence_oosm(previous_evidence)
+            marked = mark_consistency_evidence_oosm(previous_evidence)
+            self._replace_consistency_evidence(
+                observation.observation_id,
+                marked,
+                previous_evidence,
             )
         state = self._sensor_health_state_for(observation)
         state.observation_count += 1
@@ -6743,22 +7444,32 @@ class FusionAdapter:
         rejected: bool,
     ) -> None:
         if rejected:
-            previous = self._consistency_evidence.get(observation.observation_id)
+            previous = self._materialized_consistency_evidence(
+                observation.observation_id
+            )
             if (
                 reason == "duplicate_observation"
                 and previous is not None
                 and previous.disposition != "observation_not_yet_processed"
             ):
-                self._consistency_evidence[observation.observation_id] = (
-                    mark_consistency_evidence_duplicate(previous)
+                duplicated = mark_consistency_evidence_duplicate(previous)
+                self._replace_consistency_evidence(
+                    observation.observation_id,
+                    duplicated,
+                    previous,
                 )
             else:
                 self._mark_consistency_unavailable(observation, str(reason))
                 if reason == "duplicate_observation":
-                    self._consistency_evidence[observation.observation_id] = (
-                        mark_consistency_evidence_duplicate(
-                            self._consistency_evidence[observation.observation_id]
-                        )
+                    current = self._materialized_consistency_evidence(
+                        observation.observation_id
+                    )
+                    assert current is not None
+                    duplicated = mark_consistency_evidence_duplicate(current)
+                    self._replace_consistency_evidence(
+                        observation.observation_id,
+                        duplicated,
+                        current,
                     )
         state = self.sensor_health.setdefault(
             observation.sensor_id,

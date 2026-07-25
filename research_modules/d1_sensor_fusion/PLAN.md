@@ -1,5 +1,76 @@
 # D1 多传感器融合与目标配准实施计划
 
+## P1 固定滞后回放前缀累计摘要候选（2026-07-25）
+
+### 目标与边界
+
+当前 `_replay_record()` 已复用 checkpoint 后验，但会对可信前缀逐条重建 NIS、门控
+observation ID，并逐条刷新 consistency evidence 的回放计数。本阶段只减少该重复工作，
+不改变 6 秒固定滞后窗口、观测集合、预测/更新公式、协方差、双时间戳、门控、NED、
+`global_track_id`、传感器频率或任何 PN/PNG 控制。
+
+声明默认保持 `per_checkpoint_prefix_rebuild_v1`。研究候选为
+`fixed_lag_checkpoint_prefix_cumulative_summary_v1`，必须显式选择。候选 schema、
+实现 ID、诊断和报告均独立于已否决的关联稀疏预筛候选。
+
+### 已完成实现
+
+1. 每条航迹维护冻结 `_ReplayPrefixSummary`。摘要包含 checkpoint 修订、顺序身份、
+   累计 NIS、门控 ID、一致性 observation 顺序和证据结构修订；字段均为标量或 tuple。
+2. 只有完整 checkpoint 前缀、首尾身份/顺序、checkpoint 修订、summary schema、
+   consistency 结构修订和当前 replay context 全部一致时才命中。
+3. `replay_checkpoint_revision` 作为完整中间 checkpoint 前缀的 O(1) 确定性完整性边界。
+   内部清空、截断、追加或 fixed-lag 后缀替换均通过同一变更门，先物化未决 evidence，
+   再递增 revision 并清除旧 summary。中间插入观测先按排序键失效受影响后缀，不在命中时
+   增加 O(n) 全量扫描。
+4. 一致性回放计数采用独立的前缀长度区间账本。每次命中记录覆盖长度和 replay revision，
+   evidence 写入、前缀失配、失效、fixed-lag 重基准或公开导出前精确物化。该账本不与冻结
+   summary 共享可变对象。
+5. 部分前缀、无 checkpoint、schema/version 失配、修订或身份变化、禁用 consistency
+   cache 等条件均回退原逐条路径。回退前先物化未决 evidence 计数。
+6. 新 diagnostics v1 记录 attempt/hit/fallback、fallback 原因、摘要构建、复用
+   checkpoint/NIS、逻辑 consistency 刷新和物化原因。既有 operation counts 保持原数值。
+
+### 冻结模块微基准
+
+fixture 为 `d1-replay-prefix-summary-200v200-20260725`，SHA-256
+`sha256:4e7fcb00432fc4c6736b5ba301d06363e73357fc91689618b6ddab0b1307490e`；
+派生的 1,600 条观测 SHA-256 为
+`sha256:b44f971c2c6ac9b519cb7aba3f8df455727382132b2c5ec127280c97806dbae9`。
+规模为 200 目标、200 资源、2 侦察节点、8 个扫描。每个新鲜 arm 在建轨后执行 5 轮完整
+回放和一次 evidence 公开物化，online truth use=0。reference/candidate 同输入、同导入
+源码状态，7 对交替运行。
+
+| 模块门 | 结果 | 阈值 | 判定 |
+| --- | ---: | ---: | --- |
+| Candidate 更快 | `7/7` | `>=80%`，且至少 5 对 | 通过 |
+| 中位墙钟 | `0.037882166 -> 0.024329944 s` | 改善 `>=5%` | `35.775%`，通过 |
+| 配对均值差 bootstrap 95% 上界 | `-0.012638062 s` | `<0 s` | 通过 |
+| 精确语义门 | `7/7` | `7/7` | 通过 |
+
+精确语义门覆盖后验、协方差、NIS、门控 ID、consistency evidence、既有操作计数、
+双时间戳与 gate metadata、checkpoint 和公开 `GlobalTrack`。candidate 每个 arm 有
+1,000 次 summary hit、6,000 个 checkpoint/NIS 复用、6,000 条逻辑 evidence 刷新；
+最终物化 1,200 条 evidence，计时段 fallback 为 0。D1 全量回归
+`484 passed in 25.10s`。
+
+专项新增中间顺序破坏回归：在四个 checkpoint 的中间插入迟到观测，验证失效路径先截断
+受影响后缀并推进 revision，随后按新顺序重建 summary；reference/candidate 的内部状态、
+公开输出和既有操作计数保持一致。
+
+### 当前判定与下一步
+
+模块微基准通过，只形成 `eligible_for_main_formal_matrix_review`。候选仍默认关闭，
+`main_default_promotion_claimed=false`。后续由 main 决定是否：
+
+1. 在提交后的 clean source 上冻结新 matrix 和 source digest；
+2. 使用新的 short/long seeds 和全新 episode，比对 D1 fusion、core wall、RTF、RSS、
+   业务语义、在线真值隔离和 D2 回归；
+3. 由 D6 独立给出 admit/reject；任何失败均保持 reference 默认，不调整本轮模块门。
+
+AirSim、目标硬件、实机、实飞、RMSE、NEES、NIS 和系统实时因子仍开放。本轮没有修改
+AirSim producer、DTO、runtime bus 或 episode 接口。
+
 ## P1 模态感知保守稀疏预筛正式拒绝与研究入口治理（2026-07-25）
 
 ### 正式判定（已完成）

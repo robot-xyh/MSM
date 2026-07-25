@@ -5,6 +5,58 @@
 
 ---
 
+## 最新增量：固定滞后回放前缀累计摘要研究候选（2026-07-25）
+
+- D1 已实现默认关闭的 `fixed_lag_checkpoint_prefix_cumulative_summary_v1`。reference
+  `per_checkpoint_prefix_rebuild_v1` 仍是 `FusionAdapter` 和
+  `Scalable3DFusionAdapter` 的声明默认，`main_default_promotion_claimed=false`。
+- 候选只复用现有 checkpoint 已经证明过的完整前缀结果。命中前检查前缀完整性、首尾
+  observation 身份与排序、checkpoint 修订、summary schema、consistency evidence 结构修订
+  和当前回放上下文。任何条件不满足都回到原逐条路径。
+- summary schema 为 `d1.fixed_lag_replay_prefix_summary.v1`，execution config 和
+  diagnostics 分别为 `d1.fixed_lag_replay_prefix_summary_execution_config.v1` 和
+  `d1.fixed_lag_replay_prefix_summary_diagnostics.v1`。selector、实现 ID、schema、
+  诊断和实验制品均与已正式否决的
+  `modality_conservative_quadratic_bound_v1` 分离。
+- summary 只保存不可变 tuple 和标量，不引用可变 checkpoint 列表。一致性证据的逻辑刷新
+  写入独立的前缀长度区间账本；证据读取、写入、失效、前缀变化、fixed-lag 重基准、回退和
+  公开导出前按后缀累计精确物化。因此候选没有跳过 `replay_revision/replay_count` 刷新。
+- `replay_checkpoint_revision` 是完整中间 checkpoint 前缀的 O(1) 确定性完整性边界。
+  D1 内部清空、后缀截断、追加和 fixed-lag 后缀替换统一先物化未决 evidence，再推进
+  revision 并清除旧 summary。中间迟到观测先失效受影响后缀；命中路径不执行 O(n) 中间
+  checkpoint 全量核对。
+- diagnostics 可区分 attempt、hit、fallback、fallback 原因、summary 构建、
+  checkpoint/NIS/门控 ID 复用、逻辑 evidence 刷新和物化原因。既有
+  `history_replay_count`、`replay_checkpoint_reuse_count` 和
+  `cached_consistency_refresh_count` 等 operation counts 保持原语义。
+- 冻结 fixture `d1-replay-prefix-summary-200v200-20260725` 含 200 个目标、200 个资源、
+  2 个侦察节点、8 个扫描和 1,600 条匿名在线观测。fixture SHA-256 为
+  `sha256:4e7fcb00432fc4c6736b5ba301d06363e73357fc91689618b6ddab0b1307490e`，
+  生成观测 SHA-256 为
+  `sha256:b44f971c2c6ac9b519cb7aba3f8df455727382132b2c5ec127280c97806dbae9`，
+  online truth use 为 0。
+- 每个 arm 建立独立新鲜 adapter，执行 5 轮完整固定滞后回放和一次公开 evidence 物化；
+  预热 1 对后交替执行 7 对。reference/candidate 中位墙钟为
+  `0.037882166/0.024329944 s`，改善 `35.775%`，candidate `7/7` 更快。配对均值差
+  bootstrap 95% 区间为 `[-0.014455845, -0.012638062] s`。
+- 7/7 对的后验、协方差、NIS、门控 ID、consistency evidence、既有 operation counts、
+  双时间戳、gate metadata、checkpoint 语义和公开 `GlobalTrack` 精确一致。candidate
+  每个计时 arm 有 1,000 次 summary hit、6,000 个 checkpoint/NIS 复用、6,000 条逻辑
+  evidence 刷新、1,200 条物化记录和 0 次 timed fallback。
+- 专项回归覆盖迟到量测、门控拒绝、部分前缀、前缀变化、无 checkpoint、
+  summary schema/version 失配和 consistency 配置不兼容。失败条件均有可审计 fallback，
+  不通过减少观测、缩短 6 秒窗口、放宽门控或跳过 evidence 刷新获得性能收益。
+- 中间顺序专项在四个 checkpoint 之间插入迟到观测，确认旧后缀先失效、revision 至少随
+  截断和重建推进、摘要按新顺序建立，并与 reference 的内部状态和公开输出一致。
+- 最后源码状态的 D1 全量回归为 `484 passed in 25.10s`；新增和修改的 Python 入口均通过
+  `py_compile`。
+- 当前状态是 **P1 模块候选通过，main clean 同提交 short/long 正式矩阵开放**。模块报告
+  记录 Git HEAD、关键源码 SHA-256 和 `working_tree_commit_claimed=false`，不冒充正式
+  clean 证据。是否启动正式矩阵及最终 admit/reject 由 main 和 D6 决定。
+- 本轮没有改变 AirSim producer、DTO、runtime bus、episode、坐标或双时间戳接口。
+  `docs/AIRSIM_INTEGRATION_PLAN.md` 已检查，无需修改。当前结果也不是 AirSim、目标硬件、
+  实机、实飞、系统实时、RMSE、NEES 或 NIS 证据。
+
 ## 最新增量：模态感知保守稀疏预筛正式拒绝（2026-07-25）
 
 - D1 已实现默认关闭的 `modality_conservative_quadratic_bound_v1`；reference

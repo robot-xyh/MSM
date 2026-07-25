@@ -4,6 +4,60 @@ Offline research module for radar, acoustic, EO, and optional synthetic lidar he
 
 ## 当前性能与治理证据（2026-07-25）
 
+### 第三十六阶段：固定滞后回放前缀累计摘要研究候选
+
+D1 新增默认关闭的固定滞后回放 selector
+`fixed_lag_checkpoint_prefix_cumulative_summary_v1`。reference 为
+`per_checkpoint_prefix_rebuild_v1`，也是 `FusionAdapter` 和
+`Scalable3DFusionAdapter` 的声明默认。该候选与已正式否决的
+`modality_conservative_quadratic_bound_v1` 没有 selector、实现 ID、schema、诊断或
+实验制品复用关系。
+
+现有增量回放已经能直接复用 checkpoint 后验，但每次仍逐条重建 NIS 序列、门控观测 ID，
+并逐条刷新一致性证据的 `replay_revision/replay_count`。候选只在 checkpoint 前缀完整、
+顺序与身份受既有修订号约束、摘要 schema 为
+`d1.fixed_lag_replay_prefix_summary.v1`、一致性证据结构修订未变化且当前回放上下文有效时
+使用冻结累计摘要。摘要只保存不可变 tuple 和标量，不引用可变 checkpoint 列表。
+
+`replay_checkpoint_revision` 是完整中间 checkpoint 前缀的 O(1) 确定性完整性边界。D1
+内部对列表执行清空、后缀截断、追加或 fixed-lag 后缀替换前，统一物化未决 evidence、递增
+revision 并清除旧 summary；中间插入观测也必须先从受影响排序键失效后缀。候选命中不再
+逐项扫描中间 checkpoint。专项回归在四个 checkpoint 的中间插入迟到观测，确认旧后缀
+失败关闭、revision 推进、摘要按新顺序重建，且 reference/candidate 结果一致。
+
+一致性证据计数没有被跳过。候选把“某次回放覆盖前 N 条证据”的事件记入按前缀长度聚合的
+账本；证据写入、前缀失配、fixed-lag 重基准、显式失效或公开 evidence 导出前，按后缀累计
+精确物化每条记录的回放次数和最新修订号。任何部分前缀、无 checkpoint、schema/修订失配、
+证据结构变化或一致性缓存配置不满足都会先物化未决计数，再回到原逐条路径。
+`replay_prefix_summary_diagnostics()` 分开记录摘要命中、fallback 原因、复用 checkpoint/NIS、
+逻辑 evidence 刷新和物化原因。既有 `history_replay_count`、
+`replay_checkpoint_reuse_count`、`cached_consistency_refresh_count` 等计数语义不变。
+
+2026-07-25 的冻结模块微基准使用
+`d1-replay-prefix-summary-200v200-20260725`，fixture SHA-256 为
+`sha256:4e7fcb00432fc4c6736b5ba301d06363e73357fc91689618b6ddab0b1307490e`，
+生成观测 SHA-256 为
+`sha256:b44f971c2c6ac9b519cb7aba3f8df455727382132b2c5ec127280c97806dbae9`。
+场景元数据为 200 个目标、200 个资源和 2 个侦察节点；8 个雷达扫描、1,600 条匿名在线
+观测，每个 arm 执行 5 轮完整固定滞后回放及一次公开 evidence 物化。online truth use 为 0。
+
+reference/candidate 使用同一导入源码状态和同一输入，建立 7 对全新 adapter 并交替运行。
+reference/candidate 中位墙钟为 `0.037882166/0.024329944 s`，改善 `35.775%`，
+candidate `7/7` 更快。candidate 每个 arm 命中 1,000 次摘要、复用 6,000 个
+checkpoint/NIS，逻辑刷新 6,000 条 evidence，最终物化 1,200 条记录；计时段 fallback 为 0。
+配对均值差 bootstrap 95% 区间为
+`[-0.014455845, -0.012638062] s`，上界小于 0。
+
+7/7 对均逐项通过后验状态、协方差、NIS、门控观测 ID、一致性 evidence、既有操作计数、
+双时间戳与 gate metadata、checkpoint 语义和公开 `GlobalTrack` 精确等价。模块门限为至少
+5 对、candidate 更快比例至少 80%、中位改善至少 5%、bootstrap 95% 上界小于 0，并要求
+全部语义门通过；本轮模块微基准通过。D1 全量回归为 `484 passed in 25.10s`。
+
+该结论只允许 main 评审是否预注册新的同提交 short/long 正式矩阵。当前
+`main_default_promotion_claimed=false`，reference 继续作为默认；尚无 main 正式矩阵、
+AirSim、系统实时倍率、目标硬件、实机或实飞证据。报告位于
+`reports/D1_REPLAY_PREFIX_SUMMARY_PERFORMANCE_20260725_CN.md` 和同名 JSON。
+
 ### 第三十五阶段：模态感知保守稀疏预筛正式拒绝
 
 D1 新增默认关闭的关联预筛 selector

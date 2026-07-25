@@ -8,6 +8,113 @@
 
 ## 当前权威增量（2026-07-25）
 
+### 固定滞后回放前缀累计摘要候选
+
+构造参数 `replay_prefix_summary` 提供显式 A/B：
+
+```python
+reference = FusionAdapter(
+    replay_prefix_summary="per_checkpoint_prefix_rebuild_v1",
+)
+candidate = FusionAdapter(
+    replay_prefix_summary="fixed_lag_checkpoint_prefix_cumulative_summary_v1",
+)
+```
+
+reference 是声明默认。candidate 默认关闭，实现 ID 为
+`d1.fusion.replay_prefix.frozen_cumulative_summary_lazy_evidence_ranges.v1`。
+execution config schema 为
+`d1.fixed_lag_replay_prefix_summary_execution_config.v1`，diagnostics schema 为
+`d1.fixed_lag_replay_prefix_summary_diagnostics.v1`。这些名称与关联稀疏预筛完全独立。
+
+#### 摘要结构
+
+每条航迹的 `_ReplayPrefixSummary` 是 frozen/slots 数据类，保存：
+
+1. `schema_version` 和 `checkpoint_revision`；
+2. checkpoint observation ID 与排序键 tuple；
+3. 从初始状态到完整 checkpoint 前缀的 NIS tuple；
+4. innovation gate 拒绝 observation ID tuple；
+5. 需要刷新 consistency evidence 的 observation ID tuple；
+6. evidence 结构修订号。
+
+摘要不保存可变 list、dict 或 ndarray，也不与后续 checkpoint 追加共享可变别名。状态和
+协方差仍从最后一个既有 checkpoint 的独立 `EKFState.copy()` 取得。
+
+#### 命中条件
+
+`_try_reuse_replay_prefix_summary()` 只在下列条件同时成立时返回摘要：
+
+1. selector 显式选择 candidate，incremental replay cache 已启用；
+2. matching prefix 大于 0，并等于当前 checkpoint 列表长度；
+3. summary schema、checkpoint 修订、数量、首尾身份和排序键匹配；
+4. NIS、排序键和 consistency 序列长度守恒；
+5. 当前 consistency capture context 属于同一 `global_track_id`；
+6. cached/trusted consistency counter refresh 已启用；
+7. evidence 结构修订与摘要一致，initial/checkpoint evidence 身份关系一致。
+
+任何条件失败都会写入固定 fallback reason。候选随后精确物化未决 evidence 计数并执行
+reference 的初始证据刷新、逐 checkpoint NIS/gate 重建和 evidence 更新。
+
+#### 中间前缀完整性
+
+命中路径保持 O(1) 完整性检查，不逐项扫描中间 checkpoint。
+`replay_checkpoint_revision` 是完整中间前缀的确定性完整性边界。模块内部只有以下逻辑
+可以改变 checkpoint 列表：
+
+1. 全量清空；
+2. 从受影响排序键截断后缀；
+3. 在完整前缀后追加新 checkpoint；
+4. fixed-lag 重基准后替换保留后缀。
+
+四类变更都经过 `_mark_replay_checkpoint_list_changed()`：先物化该航迹未决的
+consistency evidence 刷新，再递增 revision 并清除旧 summary。中间迟到观测由
+`_invalidate_replay_checkpoints(from_sort_key=...)` 先截断旧后缀，随后按新顺序重新滤波。
+因此旧摘要不可能跨内部列表变更命中。直接从模块外修改 `TrackRecord.replay_checkpoints`
+属于私有状态破坏，不是公共 API 合同。
+
+#### 一致性计数账本
+
+一次摘要命中等价于对 consistency observation 前缀执行：
+
+\[
+\text{replay\_count}_i \leftarrow \text{replay\_count}_i + 1,\qquad
+\text{replay\_revision}_i \leftarrow r,
+\quad i < L.
+\]
+
+候选把该操作记录为 `(prefix_length=L, replay_revision=r)`。相同长度只累计事件数并保留
+最新 revision。物化时从最长前缀向最短前缀做后缀累计：
+
+\[
+\Delta c_i=\sum_{L>i} n_L,\qquad
+r_i=\max_{L>i} r_L.
+\]
+
+每条 evidence 最终调用 `with_replay_counters()` 一次，得到与逐回放刷新相同的
+`replay_count/replay_revision`。账本在公开 evidence snapshot、记录读写、checkpoint
+失配/失效和 fixed-lag 重基准前物化。它不改变 `cached_consistency_refresh_count`：
+候选在命中时按逻辑覆盖条数一次性增加该既有计数。
+
+#### 测试与微基准
+
+专项测试覆盖正常前缀、迟到量测、门控拒绝、6 秒 fixed-lag、pre-checkpoint OOSM、
+部分前缀、前缀变化、无 checkpoint、summary schema/version 失配、禁用 consistency
+refresh、冻结摘要别名隔离，以及四 checkpoint 中间插入导致的 revision 推进、旧后缀
+失效和新顺序重建。D1 全量回归为 `484 passed in 25.10s`。
+
+冻结 200v200 fixture 包含 8 个扫描和 1,600 条匿名观测。7 对新鲜 A/B 每个 arm 执行
+5 轮完整回放和一次公开 evidence 物化。reference/candidate 中位墙钟为
+`0.037882166/0.024329944 s`，改善 `35.775%`；candidate `7/7` 更快，配对均值差
+bootstrap 95% 区间为 `[-0.014455845, -0.012638062] s`。
+
+每对的后验、协方差、NIS、门控 ID、consistency evidence、既有 operation counts、
+双时间戳/gate metadata、checkpoint 和公开 `GlobalTrack` 哈希均相同。candidate 的新增
+diagnostics 单独比较，不混入既有 operation-count 等价门。
+
+当前结论仅为模块微基准通过。selector 仍默认 reference，尚未执行 main 同提交正式矩阵，
+不得写成默认准入、系统实时或 AirSim/硬件证据。
+
 ### 正式拒绝后保持默认关闭的模态感知保守预筛
 
 构造参数 `association_sparse_prefilter` 接受两个稳定 selector：

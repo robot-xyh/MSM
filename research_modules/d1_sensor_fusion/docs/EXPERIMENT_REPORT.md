@@ -1,5 +1,94 @@
 # 第一研究模块实验结果
 
+## 固定滞后回放前缀累计摘要模块微基准
+
+**证据日期：2026-07-25**
+
+**状态：研究候选默认关闭；D1 模块微基准通过；尚未进入 main 正式矩阵**
+
+### 候选与边界
+
+reference 为 `per_checkpoint_prefix_rebuild_v1`，也是 `FusionAdapter` 和
+`Scalable3DFusionAdapter` 的声明默认。candidate 为
+`fixed_lag_checkpoint_prefix_cumulative_summary_v1`，只能显式启用。该候选复用经过
+身份、顺序、修订和完整性验证的 checkpoint 前缀累计摘要，减少 `_replay_record()` 对
+NIS、门控观测 ID 和一致性证据计数的逐条重建。
+
+一致性证据计数仍按原语义刷新。候选把完整前缀上的逻辑刷新暂存为按前缀长度聚合的区间
+账本，并在证据读取、写入、失效、前缀变化、固定滞后重基准、回退或公开导出前精确物化。
+部分前缀、无 checkpoint、summary schema/version 不匹配、checkpoint/证据结构修订变化
+以及不支持的 consistency 配置均回退原逐条路径。摘要只保存 tuple 和标量，未持有可变
+checkpoint 或 evidence 别名。
+
+`replay_checkpoint_revision` 是完整中间 checkpoint 前缀的 O(1) 确定性完整性边界。
+内部清空、后缀截断、追加和 fixed-lag 后缀替换均先物化未决 evidence、递增 revision 并
+清除旧摘要。中间迟到观测改变顺序时，从受影响排序键失效旧后缀并重新滤波；命中路径不增加
+O(n) 中间项扫描。
+
+候选没有改变 6 秒固定滞后窗口、观测集合、后验状态、协方差、双时间戳、NED、门控、
+`global_track_id`、传感器频率或控制接口。selector、实现 ID、schema、诊断和实验制品均与
+已正式否决的 `modality_conservative_quadratic_bound_v1` 分离。
+
+### 冻结输入与方法
+
+- fixture：`d1-replay-prefix-summary-200v200-20260725`；
+- fixture schema：`d1.replay_prefix_summary_200v200_fixture.v1`；
+- fixture SHA-256：
+  `sha256:4e7fcb00432fc4c6736b5ba301d06363e73357fc91689618b6ddab0b1307490e`；
+- 生成观测 SHA-256：
+  `sha256:b44f971c2c6ac9b519cb7aba3f8df455727382132b2c5ec127280c97806dbae9`；
+- 场景规模：200 个目标、200 个资源、2 个侦察节点；
+- 输入规模：8 个雷达扫描、1,600 条匿名在线观测，online truth use 为 0；
+- 每个 arm：新建独立 adapter，执行 5 轮完整固定滞后回放和一次公开 evidence 物化；
+- 运行方法：预热 1 对，随后 reference/candidate 交替执行 7 对新鲜配对运行；
+- 计时范围：不包含初始关联建轨，只包含 5 轮完整回放和最终 evidence 物化。
+
+两臂由同一 Python 导入源码状态和同一冻结输入构造。报告记录 Git HEAD、关键源码 SHA-256
+和 `working_tree_commit_claimed=false`，因此该模块微基准不冒充 clean 同提交 main 正式
+矩阵。
+
+### 模块结果
+
+| 模块门 | 结果 | 阈值 | 判定 |
+| --- | ---: | ---: | --- |
+| Candidate 更快 | `7/7` | 至少 5 对且比例 `>=80%` | 通过 |
+| Reference 中位墙钟 | `0.037882166 s` | - | - |
+| Candidate 中位墙钟 | `0.024329944 s` | 改善 `>=5%` | 改善 `35.775%`，通过 |
+| 配对均值差 bootstrap 95% 区间 | `[-0.014455845, -0.012638062] s` | 上界 `<0 s` | 通过 |
+| 精确语义门 | `7/7` | 全部配对通过 | 通过 |
+
+7/7 对均逐项通过后验状态、协方差、后验时间戳、NIS 序列、门控观测 ID、一致性 evidence、
+既有 operation counts、双时间戳和 gate metadata、checkpoint 语义以及公开
+`GlobalTrack` 的精确等价检查。candidate 每个计时 arm 记录：
+
+- `summary_hit_count=1000`；
+- `summary_reused_checkpoint_count=6000`；
+- `summary_reused_nis_count=6000`；
+- `lazy_consistency_refresh_logical_record_count=6000`；
+- `lazy_consistency_materialized_record_count=1200`；
+- `summary_fallback_count=0`；
+- 公开导出后未决 consistency ledger 数量为 0。
+
+专项测试还覆盖迟到量测、门控拒绝、部分前缀、前缀变化、无 checkpoint、summary
+schema/version 失配和 consistency 配置不兼容。新增的中间顺序测试在四个 checkpoint
+之间插入迟到观测，确认 revision 推进、旧后缀失败关闭并按新顺序重建。所有失败条件均进入
+可审计回退，不通过删除 evidence 刷新获得性能收益。
+
+最后源码状态的 D1 全量回归为 `484 passed in 25.10s`；新增和修改的 Python 源码、脚本及
+专项测试入口均通过 `py_compile`。
+
+### 判定与限制
+
+`module_microbenchmark_passed=true`，当前建议仅为
+`eligible_for_main_formal_matrix_review`。`main_default_promotion_claimed=false`；
+reference 继续作为默认。main 是否建立 clean、同提交 short/long 正式矩阵，由 main 和 D6
+另行决定。
+
+本试验不是完整三维质点 episode、AirSim、目标处理器、硬件、实机、实飞或系统实时证据，
+也不产生新的 RMSE、NEES 或 NIS 统计结论。机器可读结果和中文报告分别位于
+`../reports/d1_replay_prefix_summary_performance_20260725.json` 和
+`../reports/D1_REPLAY_PREFIX_SUMMARY_PERFORMANCE_20260725_CN.md`。
+
 ## 关联稀疏预筛正式多种子评估
 
 **证据日期：2026-07-25**

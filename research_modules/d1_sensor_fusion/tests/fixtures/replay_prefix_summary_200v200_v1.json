@@ -1,0 +1,23 @@
+{
+  "schema_version": "d1.replay_prefix_summary_200v200_fixture.v1",
+  "fixture_id": "d1-replay-prefix-summary-200v200-20260725",
+  "derivation": "d1.association_sparse_prefilter.synthetic_radar_scan.v1",
+  "target_count": 200,
+  "resource_count": 200,
+  "recon_node_count": 2,
+  "buffer_horizon_s": 6.0,
+  "measurement_timestamps_s": [
+    0.0,
+    1.0,
+    2.0,
+    3.0,
+    4.0,
+    5.0,
+    6.0,
+    7.0
+  ],
+  "arrival_delay_s": 0.1,
+  "timed_replay_sweep_count": 5,
+  "online_truth_use_count": 0,
+  "notes": "Deterministic 200-track radar observation workload derived from the existing D1 synthetic scan fixture. Resource and reconnaissance counts are scenario metadata only and never enter online association."
+}

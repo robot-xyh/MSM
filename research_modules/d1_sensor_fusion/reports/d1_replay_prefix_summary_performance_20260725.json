@@ -1,0 +1,1661 @@
+{
+  "acceptance": {
+    "all_semantic_checks_passed": true,
+    "candidate_faster_fraction_at_least_80_percent": true,
+    "candidate_summary_hits_exercised": true,
+    "frozen_200v200_fixture_used": true,
+    "median_improvement_at_least_5_percent": true,
+    "paired_bootstrap_upper_bound_below_zero": true,
+    "paired_run_count_at_least_five": true
+  },
+  "acceptance_thresholds": {
+    "all_semantic_checks_required": true,
+    "maximum_bootstrap_ci95_upper_s": 0.0,
+    "minimum_candidate_faster_fraction": 0.8,
+    "minimum_median_improvement_fraction": 0.05,
+    "minimum_paired_run_count": 5
+  },
+  "airsim_or_full_stack_evidence_claimed": false,
+  "comparison": {
+    "candidate_faster_count": 7,
+    "candidate_faster_fraction": 1.0,
+    "candidate_median_s": 0.024329943989869207,
+    "candidate_times_s": [
+      0.02489015698665753,
+      0.02363640198018402,
+      0.023885375005193055,
+      0.023526020988356322,
+      0.026096360001247376,
+      0.024329943989869207,
+      0.025162203004583716
+    ],
+    "median_improvement_fraction": 0.3577467560703247,
+    "paired_differences_s": [
+      -0.013596752018202096,
+      -0.014245764003135264,
+      -0.013490860001184046,
+      -0.01533992204349488,
+      -0.011557463963981718,
+      -0.014588846999686211,
+      -0.01220741803990677
+    ],
+    "paired_mean_difference_bootstrap": {
+      "ci95_lower_s": -0.014455844872697656,
+      "ci95_upper_s": -0.012638061638530682,
+      "observed_mean_s": -0.01357528958137014,
+      "resample_count": 20000,
+      "seed": 20260725,
+      "statistic": "paired_mean_candidate_minus_reference_s"
+    },
+    "reference_median_s": 0.03788216598331928,
+    "reference_times_s": [
+      0.038486909004859626,
+      0.03788216598331928,
+      0.0373762350063771,
+      0.0388659430318512,
+      0.037653823965229094,
+      0.03891879098955542,
+      0.037369621044490486
+    ]
+  },
+  "date": "2026-07-25",
+  "fixture": {
+    "arrival_delay_s": 0.1,
+    "buffer_horizon_s": 6.0,
+    "derivation": "d1.association_sparse_prefilter.synthetic_radar_scan.v1",
+    "fixture_id": "d1-replay-prefix-summary-200v200-20260725",
+    "measurement_timestamps_s": [
+      0.0,
+      1.0,
+      2.0,
+      3.0,
+      4.0,
+      5.0,
+      6.0,
+      7.0
+    ],
+    "online_truth_use_count": 0,
+    "recon_node_count": 2,
+    "resource_count": 200,
+    "schema_version": "d1.replay_prefix_summary_200v200_fixture.v1",
+    "source_path": "/home/linux/Documents/MSM/research_modules/d1_sensor_fusion/tests/fixtures/replay_prefix_summary_200v200_v1.json",
+    "source_sha256": "sha256:4e7fcb00432fc4c6736b5ba301d06363e73357fc91689618b6ddab0b1307490e",
+    "target_count": 200,
+    "timed_replay_sweep_count": 5
+  },
+  "machine": {
+    "cpu_count": 22,
+    "numpy": "2.5.0",
+    "platform": "Linux-6.17.0-40-generic-x86_64-with-glibc2.39",
+    "processor": "x86_64",
+    "python": "3.12.3"
+  },
+  "main_default_promotion_claimed": false,
+  "module_microbenchmark_passed": true,
+  "pairs": [
+    {
+      "all_semantic_checks_passed": true,
+      "candidate": {
+        "candidate_diagnostics_delta": {
+          "fallback_reasons": {},
+          "operation_counts": {
+            "lazy_consistency_materialization_count": 200,
+            "lazy_consistency_materialized_event_count": 1000,
+            "lazy_consistency_materialized_record_count": 1200,
+            "lazy_consistency_refresh_event_count": 1000,
+            "lazy_consistency_refresh_logical_record_count": 6000,
+            "summary_attempt_count": 1000,
+            "summary_build_count": 0,
+            "summary_fallback_count": 0,
+            "summary_hit_count": 1000,
+            "summary_reused_checkpoint_count": 6000,
+            "summary_reused_gated_id_count": 0,
+            "summary_reused_nis_count": 6000
+          },
+          "pending_consistency_ledger_count": 0
+        },
+        "checkpoint_semantics_sha256": "sha256:83e9a166bf3e91eb4effb533d3f62ca871202bed80c9bf4626721dd9b6dd352a",
+        "consistency_evidence_sha256": "sha256:66cf2e654a30d47c51c84d15e5d84eb988275186084471a889af0a28dcaf981e",
+        "gated_observation_ids_sha256": "sha256:46813d774ad4ebb981d6cafbf25474703bfe02799a0bf9166442a7a348c1c6de",
+        "global_tracks_sha256": "sha256:2c1044ce0752b7d46323e5c96dc036caf7c18864e15b01ba592c9f2218dbcd9a",
+        "nis_sha256": "sha256:29605caebd8c3960b4b4287c270d8b0fed082572e734994212ea6420cc0cde5e",
+        "operation_counts": {
+          "accepted_observation_count": 0,
+          "accepted_update_count": 0,
+          "association_candidate_pair_count": 0,
+          "association_innovation_solve_count": 0,
+          "association_measurement_model_build_count": 0,
+          "association_modality_counts": {
+            "acoustic": {
+              "candidate_pair_count": 0,
+              "conservative_prefilter_rejection_count": 0,
+              "exact_gate_pass_count": 0,
+              "exact_innovation_solve_count": 0,
+              "fallback_count": 0
+            },
+            "acoustic_3d": {
+              "candidate_pair_count": 0,
+              "conservative_prefilter_rejection_count": 0,
+              "exact_gate_pass_count": 0,
+              "exact_innovation_solve_count": 0,
+              "fallback_count": 0
+            },
+            "eo": {
+              "candidate_pair_count": 0,
+              "conservative_prefilter_rejection_count": 0,
+              "exact_gate_pass_count": 0,
+              "exact_innovation_solve_count": 0,
+              "fallback_count": 0
+            },
+            "lidar": {
+              "candidate_pair_count": 0,
+              "conservative_prefilter_rejection_count": 0,
+              "exact_gate_pass_count": 0,
+              "exact_innovation_solve_count": 0,
+              "fallback_count": 0
+            },
+            "other": {
+              "candidate_pair_count": 0,
+              "conservative_prefilter_rejection_count": 0,
+              "exact_gate_pass_count": 0,
+              "exact_innovation_solve_count": 0,
+              "fallback_count": 0
+            },
+            "radar": {
+              "candidate_pair_count": 0,
+              "conservative_prefilter_rejection_count": 0,
+              "exact_gate_pass_count": 0,
+              "exact_innovation_solve_count": 0,
+              "fallback_count": 0
+            }
+          },
+          "association_projection_build_count": 0,
+          "association_radar_observation_state_build_count": 0,
+          "association_radar_track_state_build_count": 0,
+          "cached_consistency_refresh_count": 6000,
+          "checkpoint_state_query_count": 0,
+          "created_track_count": 0,
+          "finalization_replay_count": 0,
+          "fixed_lag_checkpoint_suffix_reuse_count": 0,
+          "fixed_lag_rebase_count": 0,
+          "global_track_materialization_count": 0,
+          "history_replay_count": 1000,
+          "origin_replay_count": 0,
+          "replay_checkpoint_prefix_fast_path_count": 6000,
+          "replay_checkpoint_reuse_count": 6000,
+          "replay_filter_update_count": 0,
+          "sensor_health_snapshot_build_count": 0,
+          "state_cache_hit_count": 0,
+          "state_cache_miss_count": 0
+        },
+        "operation_counts_sha256": "sha256:5b06146bac5069dec8768f32c06797252e56d00c520813ea6dbb968ea07b7d9e",
+        "posterior_covariance_sha256": "sha256:28df08afbc140f652c59fa637fef07c6d349b87bae64af10fd0a95f9ff8ff44b",
+        "posterior_state_sha256": "sha256:42a318617240fe89da3bd35a9a0ea203cf520379ae71ea6de0f6d96cae89709d",
+        "posterior_timestamp_sha256": "sha256:75244004c529af99017f216493e7fe3ab1f1244a459c2ac22d88acf375261730",
+        "record_gate_and_timestamp_metadata_sha256": "sha256:f73a0cdf3ba81f1d3a20faa20712a8047798b978142f674303e910483d85a1ec",
+        "replay_output_count": 200,
+        "selector": "fixed_lag_checkpoint_prefix_cumulative_summary_v1",
+        "setup_wall_time_s": 1.2820952099864371,
+        "timed_replay_wall_time_s": 0.02489015698665753,
+        "track_count": 200
+      },
+      "candidate_faster": true,
+      "candidate_minus_reference_s": -0.013596752018202096,
+      "execution_order": [
+        "per_checkpoint_prefix_rebuild_v1",
+        "fixed_lag_checkpoint_prefix_cumulative_summary_v1"
+      ],
+      "improvement_fraction": 0.3532825152699396,
+      "pair_index": 0,
+      "reference": {
+        "candidate_diagnostics_delta": {
+          "fallback_reasons": {},
+          "operation_counts": {},
+          "pending_consistency_ledger_count": 0
+        },
+        "checkpoint_semantics_sha256": "sha256:83e9a166bf3e91eb4effb533d3f62ca871202bed80c9bf4626721dd9b6dd352a",
+        "consistency_evidence_sha256": "sha256:66cf2e654a30d47c51c84d15e5d84eb988275186084471a889af0a28dcaf981e",
+        "gated_observation_ids_sha256": "sha256:46813d774ad4ebb981d6cafbf25474703bfe02799a0bf9166442a7a348c1c6de",
+        "global_tracks_sha256": "sha256:2c1044ce0752b7d46323e5c96dc036caf7c18864e15b01ba592c9f2218dbcd9a",
+        "nis_sha256": "sha256:29605caebd8c3960b4b4287c270d8b0fed082572e734994212ea6420cc0cde5e",
+        "operation_counts": {
+          "accepted_observation_count": 0,
+          "accepted_update_count": 0,
+          "association_candidate_pair_count": 0,
+          "association_innovation_solve_count": 0,
+          "association_measurement_model_build_count": 0,
+          "association_modality_counts": {
+            "acoustic": {
+              "candidate_pair_count": 0,
+              "conservative_prefilter_rejection_count": 0,
+              "exact_gate_pass_count": 0,
+              "exact_innovation_solve_count": 0,
+              "fallback_count": 0
+            },
+            "acoustic_3d": {
+              "candidate_pair_count": 0,
+              "conservative_prefilter_rejection_count": 0,
+              "exact_gate_pass_count": 0,
+              "exact_innovation_solve_count": 0,
+              "fallback_count": 0
+            },
+            "eo": {
+              "candidate_pair_count": 0,
+              "conservative_prefilter_rejection_count": 0,
+              "exact_gate_pass_count": 0,
+              "exact_innovation_solve_count": 0,
+              "fallback_count": 0
+            },
+            "lidar": {
+              "candidate_pair_count": 0,
+              "conservative_prefilter_rejection_count": 0,
+              "exact_gate_pass_count": 0,
+              "exact_innovation_solve_count": 0,
+              "fallback_count": 0
+            },
+            "other": {
+              "candidate_pair_count": 0,
+              "conservative_prefilter_rejection_count": 0,
+              "exact_gate_pass_count": 0,
+              "exact_innovation_solve_count": 0,
+              "fallback_count": 0
+            },
+            "radar": {
+              "candidate_pair_count": 0,
+              "conservative_prefilter_rejection_count": 0,
+              "exact_gate_pass_count": 0,
+              "exact_innovation_solve_count": 0,
+              "fallback_count": 0
+            }
+          },
+          "association_projection_build_count": 0,
+          "association_radar_observation_state_build_count": 0,
+          "association_radar_track_state_build_count": 0,
+          "cached_consistency_refresh_count": 6000,
+          "checkpoint_state_query_count": 0,
+          "created_track_count": 0,
+          "finalization_replay_count": 0,
+          "fixed_lag_checkpoint_suffix_reuse_count": 0,
+          "fixed_lag_rebase_count": 0,
+          "global_track_materialization_count": 0,
+          "history_replay_count": 1000,
+          "origin_replay_count": 0,
+          "replay_checkpoint_prefix_fast_path_count": 6000,
+          "replay_checkpoint_reuse_count": 6000,
+          "replay_filter_update_count": 0,
+          "sensor_health_snapshot_build_count": 0,
+          "state_cache_hit_count": 0,
+          "state_cache_miss_count": 0
+        },
+        "operation_counts_sha256": "sha256:5b06146bac5069dec8768f32c06797252e56d00c520813ea6dbb968ea07b7d9e",
+        "posterior_covariance_sha256": "sha256:28df08afbc140f652c59fa637fef07c6d349b87bae64af10fd0a95f9ff8ff44b",
+        "posterior_state_sha256": "sha256:42a318617240fe89da3bd35a9a0ea203cf520379ae71ea6de0f6d96cae89709d",
+        "posterior_timestamp_sha256": "sha256:75244004c529af99017f216493e7fe3ab1f1244a459c2ac22d88acf375261730",
+        "record_gate_and_timestamp_metadata_sha256": "sha256:f73a0cdf3ba81f1d3a20faa20712a8047798b978142f674303e910483d85a1ec",
+        "replay_output_count": 200,
+        "selector": "per_checkpoint_prefix_rebuild_v1",
+        "setup_wall_time_s": 1.2624456830089912,
+        "timed_replay_wall_time_s": 0.038486909004859626,
+        "track_count": 200
+      },
+      "semantic_checks": {
+        "checkpoint_semantics_exact": true,
+        "consistency_evidence_exact": true,
+        "dual_timestamps_and_gate_metadata_exact": true,
+        "existing_operation_counts_exact": true,
+        "gated_observation_ids_exact": true,
+        "nis_sequence_exact": true,
+        "posterior_covariance_exact": true,
+        "posterior_state_exact": true,
+        "posterior_timestamp_exact": true,
+        "public_global_tracks_exact": true
+      }
+    },
+    {
+      "all_semantic_checks_passed": true,
+      "candidate": {
+        "candidate_diagnostics_delta": {
+          "fallback_reasons": {},
+          "operation_counts": {
+            "lazy_consistency_materialization_count": 200,
+            "lazy_consistency_materialized_event_count": 1000,
+            "lazy_consistency_materialized_record_count": 1200,
+            "lazy_consistency_refresh_event_count": 1000,
+            "lazy_consistency_refresh_logical_record_count": 6000,
+            "summary_attempt_count": 1000,
+            "summary_build_count": 0,
+            "summary_fallback_count": 0,
+            "summary_hit_count": 1000,
+            "summary_reused_checkpoint_count": 6000,
+            "summary_reused_gated_id_count": 0,
+            "summary_reused_nis_count": 6000
+          },
+          "pending_consistency_ledger_count": 0
+        },
+        "checkpoint_semantics_sha256": "sha256:83e9a166bf3e91eb4effb533d3f62ca871202bed80c9bf4626721dd9b6dd352a",
+        "consistency_evidence_sha256": "sha256:66cf2e654a30d47c51c84d15e5d84eb988275186084471a889af0a28dcaf981e",
+        "gated_observation_ids_sha256": "sha256:46813d774ad4ebb981d6cafbf25474703bfe02799a0bf9166442a7a348c1c6de",
+        "global_tracks_sha256": "sha256:2c1044ce0752b7d46323e5c96dc036caf7c18864e15b01ba592c9f2218dbcd9a",
+        "nis_sha256": "sha256:29605caebd8c3960b4b4287c270d8b0fed082572e734994212ea6420cc0cde5e",
+        "operation_counts": {
+          "accepted_observation_count": 0,
+          "accepted_update_count": 0,
+          "association_candidate_pair_count": 0,
+          "association_innovation_solve_count": 0,
+          "association_measurement_model_build_count": 0,
+          "association_modality_counts": {
+            "acoustic": {
+              "candidate_pair_count": 0,
+              "conservative_prefilter_rejection_count": 0,
+              "exact_gate_pass_count": 0,
+              "exact_innovation_solve_count": 0,
+              "fallback_count": 0
+            },
+            "acoustic_3d": {
+              "candidate_pair_count": 0,
+              "conservative_prefilter_rejection_count": 0,
+              "exact_gate_pass_count": 0,
+              "exact_innovation_solve_count": 0,
+              "fallback_count": 0
+            },
+            "eo": {
+              "candidate_pair_count": 0,
+              "conservative_prefilter_rejection_count": 0,
+              "exact_gate_pass_count": 0,
+              "exact_innovation_solve_count": 0,
+              "fallback_count": 0
+            },
+            "lidar": {
+              "candidate_pair_count": 0,
+              "conservative_prefilter_rejection_count": 0,
+              "exact_gate_pass_count": 0,
+              "exact_innovation_solve_count": 0,
+              "fallback_count": 0
+            },
+            "other": {
+              "candidate_pair_count": 0,
+              "conservative_prefilter_rejection_count": 0,
+              "exact_gate_pass_count": 0,
+              "exact_innovation_solve_count": 0,
+              "fallback_count": 0
+            },
+            "radar": {
+              "candidate_pair_count": 0,
+              "conservative_prefilter_rejection_count": 0,
+              "exact_gate_pass_count": 0,
+              "exact_innovation_solve_count": 0,
+              "fallback_count": 0
+            }
+          },
+          "association_projection_build_count": 0,
+          "association_radar_observation_state_build_count": 0,
+          "association_radar_track_state_build_count": 0,
+          "cached_consistency_refresh_count": 6000,
+          "checkpoint_state_query_count": 0,
+          "created_track_count": 0,
+          "finalization_replay_count": 0,
+          "fixed_lag_checkpoint_suffix_reuse_count": 0,
+          "fixed_lag_rebase_count": 0,
+          "global_track_materialization_count": 0,
+          "history_replay_count": 1000,
+          "origin_replay_count": 0,
+          "replay_checkpoint_prefix_fast_path_count": 6000,
+          "replay_checkpoint_reuse_count": 6000,
+          "replay_filter_update_count": 0,
+          "sensor_health_snapshot_build_count": 0,
+          "state_cache_hit_count": 0,
+          "state_cache_miss_count": 0
+        },
+        "operation_counts_sha256": "sha256:5b06146bac5069dec8768f32c06797252e56d00c520813ea6dbb968ea07b7d9e",
+        "posterior_covariance_sha256": "sha256:28df08afbc140f652c59fa637fef07c6d349b87bae64af10fd0a95f9ff8ff44b",
+        "posterior_state_sha256": "sha256:42a318617240fe89da3bd35a9a0ea203cf520379ae71ea6de0f6d96cae89709d",
+        "posterior_timestamp_sha256": "sha256:75244004c529af99017f216493e7fe3ab1f1244a459c2ac22d88acf375261730",
+        "record_gate_and_timestamp_metadata_sha256": "sha256:f73a0cdf3ba81f1d3a20faa20712a8047798b978142f674303e910483d85a1ec",
+        "replay_output_count": 200,
+        "selector": "fixed_lag_checkpoint_prefix_cumulative_summary_v1",
+        "setup_wall_time_s": 1.3073910109815188,
+        "timed_replay_wall_time_s": 0.02363640198018402,
+        "track_count": 200
+      },
+      "candidate_faster": true,
+      "candidate_minus_reference_s": -0.014245764003135264,
+      "execution_order": [
+        "fixed_lag_checkpoint_prefix_cumulative_summary_v1",
+        "per_checkpoint_prefix_rebuild_v1"
+      ],
+      "improvement_fraction": 0.3760546323937265,
+      "pair_index": 1,
+      "reference": {
+        "candidate_diagnostics_delta": {
+          "fallback_reasons": {},
+          "operation_counts": {},
+          "pending_consistency_ledger_count": 0
+        },
+        "checkpoint_semantics_sha256": "sha256:83e9a166bf3e91eb4effb533d3f62ca871202bed80c9bf4626721dd9b6dd352a",
+        "consistency_evidence_sha256": "sha256:66cf2e654a30d47c51c84d15e5d84eb988275186084471a889af0a28dcaf981e",
+        "gated_observation_ids_sha256": "sha256:46813d774ad4ebb981d6cafbf25474703bfe02799a0bf9166442a7a348c1c6de",
+        "global_tracks_sha256": "sha256:2c1044ce0752b7d46323e5c96dc036caf7c18864e15b01ba592c9f2218dbcd9a",
+        "nis_sha256": "sha256:29605caebd8c3960b4b4287c270d8b0fed082572e734994212ea6420cc0cde5e",
+        "operation_counts": {
+          "accepted_observation_count": 0,
+          "accepted_update_count": 0,
+          "association_candidate_pair_count": 0,
+          "association_innovation_solve_count": 0,
+          "association_measurement_model_build_count": 0,
+          "association_modality_counts": {
+            "acoustic": {
+              "candidate_pair_count": 0,
+              "conservative_prefilter_rejection_count": 0,
+              "exact_gate_pass_count": 0,
+              "exact_innovation_solve_count": 0,
+              "fallback_count": 0
+            },
+            "acoustic_3d": {
+              "candidate_pair_count": 0,
+              "conservative_prefilter_rejection_count": 0,
+              "exact_gate_pass_count": 0,
+              "exact_innovation_solve_count": 0,
+              "fallback_count": 0
+            },
+            "eo": {
+              "candidate_pair_count": 0,
+              "conservative_prefilter_rejection_count": 0,
+              "exact_gate_pass_count": 0,
+              "exact_innovation_solve_count": 0,
+              "fallback_count": 0
+            },
+            "lidar": {
+              "candidate_pair_count": 0,
+              "conservative_prefilter_rejection_count": 0,
+              "exact_gate_pass_count": 0,
+              "exact_innovation_solve_count": 0,
+              "fallback_count": 0
+            },
+            "other": {
+              "candidate_pair_count": 0,
+              "conservative_prefilter_rejection_count": 0,
+              "exact_gate_pass_count": 0,
+              "exact_innovation_solve_count": 0,
+              "fallback_count": 0
+            },
+            "radar": {
+              "candidate_pair_count": 0,
+              "conservative_prefilter_rejection_count": 0,
+              "exact_gate_pass_count": 0,
+              "exact_innovation_solve_count": 0,
+              "fallback_count": 0
+            }
+          },
+          "association_projection_build_count": 0,
+          "association_radar_observation_state_build_count": 0,
+          "association_radar_track_state_build_count": 0,
+          "cached_consistency_refresh_count": 6000,
+          "checkpoint_state_query_count": 0,
+          "created_track_count": 0,
+          "finalization_replay_count": 0,
+          "fixed_lag_checkpoint_suffix_reuse_count": 0,
+          "fixed_lag_rebase_count": 0,
+          "global_track_materialization_count": 0,
+          "history_replay_count": 1000,
+          "origin_replay_count": 0,
+          "replay_checkpoint_prefix_fast_path_count": 6000,
+          "replay_checkpoint_reuse_count": 6000,
+          "replay_filter_update_count": 0,
+          "sensor_health_snapshot_build_count": 0,
+          "state_cache_hit_count": 0,
+          "state_cache_miss_count": 0
+        },
+        "operation_counts_sha256": "sha256:5b06146bac5069dec8768f32c06797252e56d00c520813ea6dbb968ea07b7d9e",
+        "posterior_covariance_sha256": "sha256:28df08afbc140f652c59fa637fef07c6d349b87bae64af10fd0a95f9ff8ff44b",
+        "posterior_state_sha256": "sha256:42a318617240fe89da3bd35a9a0ea203cf520379ae71ea6de0f6d96cae89709d",
+        "posterior_timestamp_sha256": "sha256:75244004c529af99017f216493e7fe3ab1f1244a459c2ac22d88acf375261730",
+        "record_gate_and_timestamp_metadata_sha256": "sha256:f73a0cdf3ba81f1d3a20faa20712a8047798b978142f674303e910483d85a1ec",
+        "replay_output_count": 200,
+        "selector": "per_checkpoint_prefix_rebuild_v1",
+        "setup_wall_time_s": 1.2548633600235917,
+        "timed_replay_wall_time_s": 0.03788216598331928,
+        "track_count": 200
+      },
+      "semantic_checks": {
+        "checkpoint_semantics_exact": true,
+        "consistency_evidence_exact": true,
+        "dual_timestamps_and_gate_metadata_exact": true,
+        "existing_operation_counts_exact": true,
+        "gated_observation_ids_exact": true,
+        "nis_sequence_exact": true,
+        "posterior_covariance_exact": true,
+        "posterior_state_exact": true,
+        "posterior_timestamp_exact": true,
+        "public_global_tracks_exact": true
+      }
+    },
+    {
+      "all_semantic_checks_passed": true,
+      "candidate": {
+        "candidate_diagnostics_delta": {
+          "fallback_reasons": {},
+          "operation_counts": {
+            "lazy_consistency_materialization_count": 200,
+            "lazy_consistency_materialized_event_count": 1000,
+            "lazy_consistency_materialized_record_count": 1200,
+            "lazy_consistency_refresh_event_count": 1000,
+            "lazy_consistency_refresh_logical_record_count": 6000,
+            "summary_attempt_count": 1000,
+            "summary_build_count": 0,
+            "summary_fallback_count": 0,
+            "summary_hit_count": 1000,
+            "summary_reused_checkpoint_count": 6000,
+            "summary_reused_gated_id_count": 0,
+            "summary_reused_nis_count": 6000
+          },
+          "pending_consistency_ledger_count": 0
+        },
+        "checkpoint_semantics_sha256": "sha256:83e9a166bf3e91eb4effb533d3f62ca871202bed80c9bf4626721dd9b6dd352a",
+        "consistency_evidence_sha256": "sha256:66cf2e654a30d47c51c84d15e5d84eb988275186084471a889af0a28dcaf981e",
+        "gated_observation_ids_sha256": "sha256:46813d774ad4ebb981d6cafbf25474703bfe02799a0bf9166442a7a348c1c6de",
+        "global_tracks_sha256": "sha256:2c1044ce0752b7d46323e5c96dc036caf7c18864e15b01ba592c9f2218dbcd9a",
+        "nis_sha256": "sha256:29605caebd8c3960b4b4287c270d8b0fed082572e734994212ea6420cc0cde5e",
+        "operation_counts": {
+          "accepted_observation_count": 0,
+          "accepted_update_count": 0,
+          "association_candidate_pair_count": 0,
+          "association_innovation_solve_count": 0,
+          "association_measurement_model_build_count": 0,
+          "association_modality_counts": {
+            "acoustic": {
+              "candidate_pair_count": 0,
+              "conservative_prefilter_rejection_count": 0,
+              "exact_gate_pass_count": 0,
+              "exact_innovation_solve_count": 0,
+              "fallback_count": 0
+            },
+            "acoustic_3d": {
+              "candidate_pair_count": 0,
+              "conservative_prefilter_rejection_count": 0,
+              "exact_gate_pass_count": 0,
+              "exact_innovation_solve_count": 0,
+              "fallback_count": 0
+            },
+            "eo": {
+              "candidate_pair_count": 0,
+              "conservative_prefilter_rejection_count": 0,
+              "exact_gate_pass_count": 0,
+              "exact_innovation_solve_count": 0,
+              "fallback_count": 0
+            },
+            "lidar": {
+              "candidate_pair_count": 0,
+              "conservative_prefilter_rejection_count": 0,
+              "exact_gate_pass_count": 0,
+              "exact_innovation_solve_count": 0,
+              "fallback_count": 0
+            },
+            "other": {
+              "candidate_pair_count": 0,
+              "conservative_prefilter_rejection_count": 0,
+              "exact_gate_pass_count": 0,
+              "exact_innovation_solve_count": 0,
+              "fallback_count": 0
+            },
+            "radar": {
+              "candidate_pair_count": 0,
+              "conservative_prefilter_rejection_count": 0,
+              "exact_gate_pass_count": 0,
+              "exact_innovation_solve_count": 0,
+              "fallback_count": 0
+            }
+          },
+          "association_projection_build_count": 0,
+          "association_radar_observation_state_build_count": 0,
+          "association_radar_track_state_build_count": 0,
+          "cached_consistency_refresh_count": 6000,
+          "checkpoint_state_query_count": 0,
+          "created_track_count": 0,
+          "finalization_replay_count": 0,
+          "fixed_lag_checkpoint_suffix_reuse_count": 0,
+          "fixed_lag_rebase_count": 0,
+          "global_track_materialization_count": 0,
+          "history_replay_count": 1000,
+          "origin_replay_count": 0,
+          "replay_checkpoint_prefix_fast_path_count": 6000,
+          "replay_checkpoint_reuse_count": 6000,
+          "replay_filter_update_count": 0,
+          "sensor_health_snapshot_build_count": 0,
+          "state_cache_hit_count": 0,
+          "state_cache_miss_count": 0
+        },
+        "operation_counts_sha256": "sha256:5b06146bac5069dec8768f32c06797252e56d00c520813ea6dbb968ea07b7d9e",
+        "posterior_covariance_sha256": "sha256:28df08afbc140f652c59fa637fef07c6d349b87bae64af10fd0a95f9ff8ff44b",
+        "posterior_state_sha256": "sha256:42a318617240fe89da3bd35a9a0ea203cf520379ae71ea6de0f6d96cae89709d",
+        "posterior_timestamp_sha256": "sha256:75244004c529af99017f216493e7fe3ab1f1244a459c2ac22d88acf375261730",
+        "record_gate_and_timestamp_metadata_sha256": "sha256:f73a0cdf3ba81f1d3a20faa20712a8047798b978142f674303e910483d85a1ec",
+        "replay_output_count": 200,
+        "selector": "fixed_lag_checkpoint_prefix_cumulative_summary_v1",
+        "setup_wall_time_s": 1.3096337930182926,
+        "timed_replay_wall_time_s": 0.023885375005193055,
+        "track_count": 200
+      },
+      "candidate_faster": true,
+      "candidate_minus_reference_s": -0.013490860001184046,
+      "execution_order": [
+        "per_checkpoint_prefix_rebuild_v1",
+        "fixed_lag_checkpoint_prefix_cumulative_summary_v1"
+      ],
+      "improvement_fraction": 0.36094753789091516,
+      "pair_index": 2,
+      "reference": {
+        "candidate_diagnostics_delta": {
+          "fallback_reasons": {},
+          "operation_counts": {},
+          "pending_consistency_ledger_count": 0
+        },
+        "checkpoint_semantics_sha256": "sha256:83e9a166bf3e91eb4effb533d3f62ca871202bed80c9bf4626721dd9b6dd352a",
+        "consistency_evidence_sha256": "sha256:66cf2e654a30d47c51c84d15e5d84eb988275186084471a889af0a28dcaf981e",
+        "gated_observation_ids_sha256": "sha256:46813d774ad4ebb981d6cafbf25474703bfe02799a0bf9166442a7a348c1c6de",
+        "global_tracks_sha256": "sha256:2c1044ce0752b7d46323e5c96dc036caf7c18864e15b01ba592c9f2218dbcd9a",
+        "nis_sha256": "sha256:29605caebd8c3960b4b4287c270d8b0fed082572e734994212ea6420cc0cde5e",
+        "operation_counts": {
+          "accepted_observation_count": 0,
+          "accepted_update_count": 0,
+          "association_candidate_pair_count": 0,
+          "association_innovation_solve_count": 0,
+          "association_measurement_model_build_count": 0,
+          "association_modality_counts": {
+            "acoustic": {
+              "candidate_pair_count": 0,
+              "conservative_prefilter_rejection_count": 0,
+              "exact_gate_pass_count": 0,
+              "exact_innovation_solve_count": 0,
+              "fallback_count": 0
+            },
+            "acoustic_3d": {
+              "candidate_pair_count": 0,
+              "conservative_prefilter_rejection_count": 0,
+              "exact_gate_pass_count": 0,
+              "exact_innovation_solve_count": 0,
+              "fallback_count": 0
+            },
+            "eo": {
+              "candidate_pair_count": 0,
+              "conservative_prefilter_rejection_count": 0,
+              "exact_gate_pass_count": 0,
+              "exact_innovation_solve_count": 0,
+              "fallback_count": 0
+            },
+            "lidar": {
+              "candidate_pair_count": 0,
+              "conservative_prefilter_rejection_count": 0,
+              "exact_gate_pass_count": 0,
+              "exact_innovation_solve_count": 0,
+              "fallback_count": 0
+            },
+            "other": {
+              "candidate_pair_count": 0,
+              "conservative_prefilter_rejection_count": 0,
+              "exact_gate_pass_count": 0,
+              "exact_innovation_solve_count": 0,
+              "fallback_count": 0
+            },
+            "radar": {
+              "candidate_pair_count": 0,
+              "conservative_prefilter_rejection_count": 0,
+              "exact_gate_pass_count": 0,
+              "exact_innovation_solve_count": 0,
+              "fallback_count": 0
+            }
+          },
+          "association_projection_build_count": 0,
+          "association_radar_observation_state_build_count": 0,
+          "association_radar_track_state_build_count": 0,
+          "cached_consistency_refresh_count": 6000,
+          "checkpoint_state_query_count": 0,
+          "created_track_count": 0,
+          "finalization_replay_count": 0,
+          "fixed_lag_checkpoint_suffix_reuse_count": 0,
+          "fixed_lag_rebase_count": 0,
+          "global_track_materialization_count": 0,
+          "history_replay_count": 1000,
+          "origin_replay_count": 0,
+          "replay_checkpoint_prefix_fast_path_count": 6000,
+          "replay_checkpoint_reuse_count": 6000,
+          "replay_filter_update_count": 0,
+          "sensor_health_snapshot_build_count": 0,
+          "state_cache_hit_count": 0,
+          "state_cache_miss_count": 0
+        },
+        "operation_counts_sha256": "sha256:5b06146bac5069dec8768f32c06797252e56d00c520813ea6dbb968ea07b7d9e",
+        "posterior_covariance_sha256": "sha256:28df08afbc140f652c59fa637fef07c6d349b87bae64af10fd0a95f9ff8ff44b",
+        "posterior_state_sha256": "sha256:42a318617240fe89da3bd35a9a0ea203cf520379ae71ea6de0f6d96cae89709d",
+        "posterior_timestamp_sha256": "sha256:75244004c529af99017f216493e7fe3ab1f1244a459c2ac22d88acf375261730",
+        "record_gate_and_timestamp_metadata_sha256": "sha256:f73a0cdf3ba81f1d3a20faa20712a8047798b978142f674303e910483d85a1ec",
+        "replay_output_count": 200,
+        "selector": "per_checkpoint_prefix_rebuild_v1",
+        "setup_wall_time_s": 1.2641005279729143,
+        "timed_replay_wall_time_s": 0.0373762350063771,
+        "track_count": 200
+      },
+      "semantic_checks": {
+        "checkpoint_semantics_exact": true,
+        "consistency_evidence_exact": true,
+        "dual_timestamps_and_gate_metadata_exact": true,
+        "existing_operation_counts_exact": true,
+        "gated_observation_ids_exact": true,
+        "nis_sequence_exact": true,
+        "posterior_covariance_exact": true,
+        "posterior_state_exact": true,
+        "posterior_timestamp_exact": true,
+        "public_global_tracks_exact": true
+      }
+    },
+    {
+      "all_semantic_checks_passed": true,
+      "candidate": {
+        "candidate_diagnostics_delta": {
+          "fallback_reasons": {},
+          "operation_counts": {
+            "lazy_consistency_materialization_count": 200,
+            "lazy_consistency_materialized_event_count": 1000,
+            "lazy_consistency_materialized_record_count": 1200,
+            "lazy_consistency_refresh_event_count": 1000,
+            "lazy_consistency_refresh_logical_record_count": 6000,
+            "summary_attempt_count": 1000,
+            "summary_build_count": 0,
+            "summary_fallback_count": 0,
+            "summary_hit_count": 1000,
+            "summary_reused_checkpoint_count": 6000,
+            "summary_reused_gated_id_count": 0,
+            "summary_reused_nis_count": 6000
+          },
+          "pending_consistency_ledger_count": 0
+        },
+        "checkpoint_semantics_sha256": "sha256:83e9a166bf3e91eb4effb533d3f62ca871202bed80c9bf4626721dd9b6dd352a",
+        "consistency_evidence_sha256": "sha256:66cf2e654a30d47c51c84d15e5d84eb988275186084471a889af0a28dcaf981e",
+        "gated_observation_ids_sha256": "sha256:46813d774ad4ebb981d6cafbf25474703bfe02799a0bf9166442a7a348c1c6de",
+        "global_tracks_sha256": "sha256:2c1044ce0752b7d46323e5c96dc036caf7c18864e15b01ba592c9f2218dbcd9a",
+        "nis_sha256": "sha256:29605caebd8c3960b4b4287c270d8b0fed082572e734994212ea6420cc0cde5e",
+        "operation_counts": {
+          "accepted_observation_count": 0,
+          "accepted_update_count": 0,
+          "association_candidate_pair_count": 0,
+          "association_innovation_solve_count": 0,
+          "association_measurement_model_build_count": 0,
+          "association_modality_counts": {
+            "acoustic": {
+              "candidate_pair_count": 0,
+              "conservative_prefilter_rejection_count": 0,
+              "exact_gate_pass_count": 0,
+              "exact_innovation_solve_count": 0,
+              "fallback_count": 0
+            },
+            "acoustic_3d": {
+              "candidate_pair_count": 0,
+              "conservative_prefilter_rejection_count": 0,
+              "exact_gate_pass_count": 0,
+              "exact_innovation_solve_count": 0,
+              "fallback_count": 0
+            },
+            "eo": {
+              "candidate_pair_count": 0,
+              "conservative_prefilter_rejection_count": 0,
+              "exact_gate_pass_count": 0,
+              "exact_innovation_solve_count": 0,
+              "fallback_count": 0
+            },
+            "lidar": {
+              "candidate_pair_count": 0,
+              "conservative_prefilter_rejection_count": 0,
+              "exact_gate_pass_count": 0,
+              "exact_innovation_solve_count": 0,
+              "fallback_count": 0
+            },
+            "other": {
+              "candidate_pair_count": 0,
+              "conservative_prefilter_rejection_count": 0,
+              "exact_gate_pass_count": 0,
+              "exact_innovation_solve_count": 0,
+              "fallback_count": 0
+            },
+            "radar": {
+              "candidate_pair_count": 0,
+              "conservative_prefilter_rejection_count": 0,
+              "exact_gate_pass_count": 0,
+              "exact_innovation_solve_count": 0,
+              "fallback_count": 0
+            }
+          },
+          "association_projection_build_count": 0,
+          "association_radar_observation_state_build_count": 0,
+          "association_radar_track_state_build_count": 0,
+          "cached_consistency_refresh_count": 6000,
+          "checkpoint_state_query_count": 0,
+          "created_track_count": 0,
+          "finalization_replay_count": 0,
+          "fixed_lag_checkpoint_suffix_reuse_count": 0,
+          "fixed_lag_rebase_count": 0,
+          "global_track_materialization_count": 0,
+          "history_replay_count": 1000,
+          "origin_replay_count": 0,
+          "replay_checkpoint_prefix_fast_path_count": 6000,
+          "replay_checkpoint_reuse_count": 6000,
+          "replay_filter_update_count": 0,
+          "sensor_health_snapshot_build_count": 0,
+          "state_cache_hit_count": 0,
+          "state_cache_miss_count": 0
+        },
+        "operation_counts_sha256": "sha256:5b06146bac5069dec8768f32c06797252e56d00c520813ea6dbb968ea07b7d9e",
+        "posterior_covariance_sha256": "sha256:28df08afbc140f652c59fa637fef07c6d349b87bae64af10fd0a95f9ff8ff44b",
+        "posterior_state_sha256": "sha256:42a318617240fe89da3bd35a9a0ea203cf520379ae71ea6de0f6d96cae89709d",
+        "posterior_timestamp_sha256": "sha256:75244004c529af99017f216493e7fe3ab1f1244a459c2ac22d88acf375261730",
+        "record_gate_and_timestamp_metadata_sha256": "sha256:f73a0cdf3ba81f1d3a20faa20712a8047798b978142f674303e910483d85a1ec",
+        "replay_output_count": 200,
+        "selector": "fixed_lag_checkpoint_prefix_cumulative_summary_v1",
+        "setup_wall_time_s": 1.3019490159931593,
+        "timed_replay_wall_time_s": 0.023526020988356322,
+        "track_count": 200
+      },
+      "candidate_faster": true,
+      "candidate_minus_reference_s": -0.01533992204349488,
+      "execution_order": [
+        "fixed_lag_checkpoint_prefix_cumulative_summary_v1",
+        "per_checkpoint_prefix_rebuild_v1"
+      ],
+      "improvement_fraction": 0.39468801852880786,
+      "pair_index": 3,
+      "reference": {
+        "candidate_diagnostics_delta": {
+          "fallback_reasons": {},
+          "operation_counts": {},
+          "pending_consistency_ledger_count": 0
+        },
+        "checkpoint_semantics_sha256": "sha256:83e9a166bf3e91eb4effb533d3f62ca871202bed80c9bf4626721dd9b6dd352a",
+        "consistency_evidence_sha256": "sha256:66cf2e654a30d47c51c84d15e5d84eb988275186084471a889af0a28dcaf981e",
+        "gated_observation_ids_sha256": "sha256:46813d774ad4ebb981d6cafbf25474703bfe02799a0bf9166442a7a348c1c6de",
+        "global_tracks_sha256": "sha256:2c1044ce0752b7d46323e5c96dc036caf7c18864e15b01ba592c9f2218dbcd9a",
+        "nis_sha256": "sha256:29605caebd8c3960b4b4287c270d8b0fed082572e734994212ea6420cc0cde5e",
+        "operation_counts": {
+          "accepted_observation_count": 0,
+          "accepted_update_count": 0,
+          "association_candidate_pair_count": 0,
+          "association_innovation_solve_count": 0,
+          "association_measurement_model_build_count": 0,
+          "association_modality_counts": {
+            "acoustic": {
+              "candidate_pair_count": 0,
+              "conservative_prefilter_rejection_count": 0,
+              "exact_gate_pass_count": 0,
+              "exact_innovation_solve_count": 0,
+              "fallback_count": 0
+            },
+            "acoustic_3d": {
+              "candidate_pair_count": 0,
+              "conservative_prefilter_rejection_count": 0,
+              "exact_gate_pass_count": 0,
+              "exact_innovation_solve_count": 0,
+              "fallback_count": 0
+            },
+            "eo": {
+              "candidate_pair_count": 0,
+              "conservative_prefilter_rejection_count": 0,
+              "exact_gate_pass_count": 0,
+              "exact_innovation_solve_count": 0,
+              "fallback_count": 0
+            },
+            "lidar": {
+              "candidate_pair_count": 0,
+              "conservative_prefilter_rejection_count": 0,
+              "exact_gate_pass_count": 0,
+              "exact_innovation_solve_count": 0,
+              "fallback_count": 0
+            },
+            "other": {
+              "candidate_pair_count": 0,
+              "conservative_prefilter_rejection_count": 0,
+              "exact_gate_pass_count": 0,
+              "exact_innovation_solve_count": 0,
+              "fallback_count": 0
+            },
+            "radar": {
+              "candidate_pair_count": 0,
+              "conservative_prefilter_rejection_count": 0,
+              "exact_gate_pass_count": 0,
+              "exact_innovation_solve_count": 0,
+              "fallback_count": 0
+            }
+          },
+          "association_projection_build_count": 0,
+          "association_radar_observation_state_build_count": 0,
+          "association_radar_track_state_build_count": 0,
+          "cached_consistency_refresh_count": 6000,
+          "checkpoint_state_query_count": 0,
+          "created_track_count": 0,
+          "finalization_replay_count": 0,
+          "fixed_lag_checkpoint_suffix_reuse_count": 0,
+          "fixed_lag_rebase_count": 0,
+          "global_track_materialization_count": 0,
+          "history_replay_count": 1000,
+          "origin_replay_count": 0,
+          "replay_checkpoint_prefix_fast_path_count": 6000,
+          "replay_checkpoint_reuse_count": 6000,
+          "replay_filter_update_count": 0,
+          "sensor_health_snapshot_build_count": 0,
+          "state_cache_hit_count": 0,
+          "state_cache_miss_count": 0
+        },
+        "operation_counts_sha256": "sha256:5b06146bac5069dec8768f32c06797252e56d00c520813ea6dbb968ea07b7d9e",
+        "posterior_covariance_sha256": "sha256:28df08afbc140f652c59fa637fef07c6d349b87bae64af10fd0a95f9ff8ff44b",
+        "posterior_state_sha256": "sha256:42a318617240fe89da3bd35a9a0ea203cf520379ae71ea6de0f6d96cae89709d",
+        "posterior_timestamp_sha256": "sha256:75244004c529af99017f216493e7fe3ab1f1244a459c2ac22d88acf375261730",
+        "record_gate_and_timestamp_metadata_sha256": "sha256:f73a0cdf3ba81f1d3a20faa20712a8047798b978142f674303e910483d85a1ec",
+        "replay_output_count": 200,
+        "selector": "per_checkpoint_prefix_rebuild_v1",
+        "setup_wall_time_s": 1.255369968013838,
+        "timed_replay_wall_time_s": 0.0388659430318512,
+        "track_count": 200
+      },
+      "semantic_checks": {
+        "checkpoint_semantics_exact": true,
+        "consistency_evidence_exact": true,
+        "dual_timestamps_and_gate_metadata_exact": true,
+        "existing_operation_counts_exact": true,
+        "gated_observation_ids_exact": true,
+        "nis_sequence_exact": true,
+        "posterior_covariance_exact": true,
+        "posterior_state_exact": true,
+        "posterior_timestamp_exact": true,
+        "public_global_tracks_exact": true
+      }
+    },
+    {
+      "all_semantic_checks_passed": true,
+      "candidate": {
+        "candidate_diagnostics_delta": {
+          "fallback_reasons": {},
+          "operation_counts": {
+            "lazy_consistency_materialization_count": 200,
+            "lazy_consistency_materialized_event_count": 1000,
+            "lazy_consistency_materialized_record_count": 1200,
+            "lazy_consistency_refresh_event_count": 1000,
+            "lazy_consistency_refresh_logical_record_count": 6000,
+            "summary_attempt_count": 1000,
+            "summary_build_count": 0,
+            "summary_fallback_count": 0,
+            "summary_hit_count": 1000,
+            "summary_reused_checkpoint_count": 6000,
+            "summary_reused_gated_id_count": 0,
+            "summary_reused_nis_count": 6000
+          },
+          "pending_consistency_ledger_count": 0
+        },
+        "checkpoint_semantics_sha256": "sha256:83e9a166bf3e91eb4effb533d3f62ca871202bed80c9bf4626721dd9b6dd352a",
+        "consistency_evidence_sha256": "sha256:66cf2e654a30d47c51c84d15e5d84eb988275186084471a889af0a28dcaf981e",
+        "gated_observation_ids_sha256": "sha256:46813d774ad4ebb981d6cafbf25474703bfe02799a0bf9166442a7a348c1c6de",
+        "global_tracks_sha256": "sha256:2c1044ce0752b7d46323e5c96dc036caf7c18864e15b01ba592c9f2218dbcd9a",
+        "nis_sha256": "sha256:29605caebd8c3960b4b4287c270d8b0fed082572e734994212ea6420cc0cde5e",
+        "operation_counts": {
+          "accepted_observation_count": 0,
+          "accepted_update_count": 0,
+          "association_candidate_pair_count": 0,
+          "association_innovation_solve_count": 0,
+          "association_measurement_model_build_count": 0,
+          "association_modality_counts": {
+            "acoustic": {
+              "candidate_pair_count": 0,
+              "conservative_prefilter_rejection_count": 0,
+              "exact_gate_pass_count": 0,
+              "exact_innovation_solve_count": 0,
+              "fallback_count": 0
+            },
+            "acoustic_3d": {
+              "candidate_pair_count": 0,
+              "conservative_prefilter_rejection_count": 0,
+              "exact_gate_pass_count": 0,
+              "exact_innovation_solve_count": 0,
+              "fallback_count": 0
+            },
+            "eo": {
+              "candidate_pair_count": 0,
+              "conservative_prefilter_rejection_count": 0,
+              "exact_gate_pass_count": 0,
+              "exact_innovation_solve_count": 0,
+              "fallback_count": 0
+            },
+            "lidar": {
+              "candidate_pair_count": 0,
+              "conservative_prefilter_rejection_count": 0,
+              "exact_gate_pass_count": 0,
+              "exact_innovation_solve_count": 0,
+              "fallback_count": 0
+            },
+            "other": {
+              "candidate_pair_count": 0,
+              "conservative_prefilter_rejection_count": 0,
+              "exact_gate_pass_count": 0,
+              "exact_innovation_solve_count": 0,
+              "fallback_count": 0
+            },
+            "radar": {
+              "candidate_pair_count": 0,
+              "conservative_prefilter_rejection_count": 0,
+              "exact_gate_pass_count": 0,
+              "exact_innovation_solve_count": 0,
+              "fallback_count": 0
+            }
+          },
+          "association_projection_build_count": 0,
+          "association_radar_observation_state_build_count": 0,
+          "association_radar_track_state_build_count": 0,
+          "cached_consistency_refresh_count": 6000,
+          "checkpoint_state_query_count": 0,
+          "created_track_count": 0,
+          "finalization_replay_count": 0,
+          "fixed_lag_checkpoint_suffix_reuse_count": 0,
+          "fixed_lag_rebase_count": 0,
+          "global_track_materialization_count": 0,
+          "history_replay_count": 1000,
+          "origin_replay_count": 0,
+          "replay_checkpoint_prefix_fast_path_count": 6000,
+          "replay_checkpoint_reuse_count": 6000,
+          "replay_filter_update_count": 0,
+          "sensor_health_snapshot_build_count": 0,
+          "state_cache_hit_count": 0,
+          "state_cache_miss_count": 0
+        },
+        "operation_counts_sha256": "sha256:5b06146bac5069dec8768f32c06797252e56d00c520813ea6dbb968ea07b7d9e",
+        "posterior_covariance_sha256": "sha256:28df08afbc140f652c59fa637fef07c6d349b87bae64af10fd0a95f9ff8ff44b",
+        "posterior_state_sha256": "sha256:42a318617240fe89da3bd35a9a0ea203cf520379ae71ea6de0f6d96cae89709d",
+        "posterior_timestamp_sha256": "sha256:75244004c529af99017f216493e7fe3ab1f1244a459c2ac22d88acf375261730",
+        "record_gate_and_timestamp_metadata_sha256": "sha256:f73a0cdf3ba81f1d3a20faa20712a8047798b978142f674303e910483d85a1ec",
+        "replay_output_count": 200,
+        "selector": "fixed_lag_checkpoint_prefix_cumulative_summary_v1",
+        "setup_wall_time_s": 1.3057509260252118,
+        "timed_replay_wall_time_s": 0.026096360001247376,
+        "track_count": 200
+      },
+      "candidate_faster": true,
+      "candidate_minus_reference_s": -0.011557463963981718,
+      "execution_order": [
+        "per_checkpoint_prefix_rebuild_v1",
+        "fixed_lag_checkpoint_prefix_cumulative_summary_v1"
+      ],
+      "improvement_fraction": 0.3069399797124005,
+      "pair_index": 4,
+      "reference": {
+        "candidate_diagnostics_delta": {
+          "fallback_reasons": {},
+          "operation_counts": {},
+          "pending_consistency_ledger_count": 0
+        },
+        "checkpoint_semantics_sha256": "sha256:83e9a166bf3e91eb4effb533d3f62ca871202bed80c9bf4626721dd9b6dd352a",
+        "consistency_evidence_sha256": "sha256:66cf2e654a30d47c51c84d15e5d84eb988275186084471a889af0a28dcaf981e",
+        "gated_observation_ids_sha256": "sha256:46813d774ad4ebb981d6cafbf25474703bfe02799a0bf9166442a7a348c1c6de",
+        "global_tracks_sha256": "sha256:2c1044ce0752b7d46323e5c96dc036caf7c18864e15b01ba592c9f2218dbcd9a",
+        "nis_sha256": "sha256:29605caebd8c3960b4b4287c270d8b0fed082572e734994212ea6420cc0cde5e",
+        "operation_counts": {
+          "accepted_observation_count": 0,
+          "accepted_update_count": 0,
+          "association_candidate_pair_count": 0,
+          "association_innovation_solve_count": 0,
+          "association_measurement_model_build_count": 0,
+          "association_modality_counts": {
+            "acoustic": {
+              "candidate_pair_count": 0,
+              "conservative_prefilter_rejection_count": 0,
+              "exact_gate_pass_count": 0,
+              "exact_innovation_solve_count": 0,
+              "fallback_count": 0
+            },
+            "acoustic_3d": {
+              "candidate_pair_count": 0,
+              "conservative_prefilter_rejection_count": 0,
+              "exact_gate_pass_count": 0,
+              "exact_innovation_solve_count": 0,
+              "fallback_count": 0
+            },
+            "eo": {
+              "candidate_pair_count": 0,
+              "conservative_prefilter_rejection_count": 0,
+              "exact_gate_pass_count": 0,
+              "exact_innovation_solve_count": 0,
+              "fallback_count": 0
+            },
+            "lidar": {
+              "candidate_pair_count": 0,
+              "conservative_prefilter_rejection_count": 0,
+              "exact_gate_pass_count": 0,
+              "exact_innovation_solve_count": 0,
+              "fallback_count": 0
+            },
+            "other": {
+              "candidate_pair_count": 0,
+              "conservative_prefilter_rejection_count": 0,
+              "exact_gate_pass_count": 0,
+              "exact_innovation_solve_count": 0,
+              "fallback_count": 0
+            },
+            "radar": {
+              "candidate_pair_count": 0,
+              "conservative_prefilter_rejection_count": 0,
+              "exact_gate_pass_count": 0,
+              "exact_innovation_solve_count": 0,
+              "fallback_count": 0
+            }
+          },
+          "association_projection_build_count": 0,
+          "association_radar_observation_state_build_count": 0,
+          "association_radar_track_state_build_count": 0,
+          "cached_consistency_refresh_count": 6000,
+          "checkpoint_state_query_count": 0,
+          "created_track_count": 0,
+          "finalization_replay_count": 0,
+          "fixed_lag_checkpoint_suffix_reuse_count": 0,
+          "fixed_lag_rebase_count": 0,
+          "global_track_materialization_count": 0,
+          "history_replay_count": 1000,
+          "origin_replay_count": 0,
+          "replay_checkpoint_prefix_fast_path_count": 6000,
+          "replay_checkpoint_reuse_count": 6000,
+          "replay_filter_update_count": 0,
+          "sensor_health_snapshot_build_count": 0,
+          "state_cache_hit_count": 0,
+          "state_cache_miss_count": 0
+        },
+        "operation_counts_sha256": "sha256:5b06146bac5069dec8768f32c06797252e56d00c520813ea6dbb968ea07b7d9e",
+        "posterior_covariance_sha256": "sha256:28df08afbc140f652c59fa637fef07c6d349b87bae64af10fd0a95f9ff8ff44b",
+        "posterior_state_sha256": "sha256:42a318617240fe89da3bd35a9a0ea203cf520379ae71ea6de0f6d96cae89709d",
+        "posterior_timestamp_sha256": "sha256:75244004c529af99017f216493e7fe3ab1f1244a459c2ac22d88acf375261730",
+        "record_gate_and_timestamp_metadata_sha256": "sha256:f73a0cdf3ba81f1d3a20faa20712a8047798b978142f674303e910483d85a1ec",
+        "replay_output_count": 200,
+        "selector": "per_checkpoint_prefix_rebuild_v1",
+        "setup_wall_time_s": 1.2934966099564917,
+        "timed_replay_wall_time_s": 0.037653823965229094,
+        "track_count": 200
+      },
+      "semantic_checks": {
+        "checkpoint_semantics_exact": true,
+        "consistency_evidence_exact": true,
+        "dual_timestamps_and_gate_metadata_exact": true,
+        "existing_operation_counts_exact": true,
+        "gated_observation_ids_exact": true,
+        "nis_sequence_exact": true,
+        "posterior_covariance_exact": true,
+        "posterior_state_exact": true,
+        "posterior_timestamp_exact": true,
+        "public_global_tracks_exact": true
+      }
+    },
+    {
+      "all_semantic_checks_passed": true,
+      "candidate": {
+        "candidate_diagnostics_delta": {
+          "fallback_reasons": {},
+          "operation_counts": {
+            "lazy_consistency_materialization_count": 200,
+            "lazy_consistency_materialized_event_count": 1000,
+            "lazy_consistency_materialized_record_count": 1200,
+            "lazy_consistency_refresh_event_count": 1000,
+            "lazy_consistency_refresh_logical_record_count": 6000,
+            "summary_attempt_count": 1000,
+            "summary_build_count": 0,
+            "summary_fallback_count": 0,
+            "summary_hit_count": 1000,
+            "summary_reused_checkpoint_count": 6000,
+            "summary_reused_gated_id_count": 0,
+            "summary_reused_nis_count": 6000
+          },
+          "pending_consistency_ledger_count": 0
+        },
+        "checkpoint_semantics_sha256": "sha256:83e9a166bf3e91eb4effb533d3f62ca871202bed80c9bf4626721dd9b6dd352a",
+        "consistency_evidence_sha256": "sha256:66cf2e654a30d47c51c84d15e5d84eb988275186084471a889af0a28dcaf981e",
+        "gated_observation_ids_sha256": "sha256:46813d774ad4ebb981d6cafbf25474703bfe02799a0bf9166442a7a348c1c6de",
+        "global_tracks_sha256": "sha256:2c1044ce0752b7d46323e5c96dc036caf7c18864e15b01ba592c9f2218dbcd9a",
+        "nis_sha256": "sha256:29605caebd8c3960b4b4287c270d8b0fed082572e734994212ea6420cc0cde5e",
+        "operation_counts": {
+          "accepted_observation_count": 0,
+          "accepted_update_count": 0,
+          "association_candidate_pair_count": 0,
+          "association_innovation_solve_count": 0,
+          "association_measurement_model_build_count": 0,
+          "association_modality_counts": {
+            "acoustic": {
+              "candidate_pair_count": 0,
+              "conservative_prefilter_rejection_count": 0,
+              "exact_gate_pass_count": 0,
+              "exact_innovation_solve_count": 0,
+              "fallback_count": 0
+            },
+            "acoustic_3d": {
+              "candidate_pair_count": 0,
+              "conservative_prefilter_rejection_count": 0,
+              "exact_gate_pass_count": 0,
+              "exact_innovation_solve_count": 0,
+              "fallback_count": 0
+            },
+            "eo": {
+              "candidate_pair_count": 0,
+              "conservative_prefilter_rejection_count": 0,
+              "exact_gate_pass_count": 0,
+              "exact_innovation_solve_count": 0,
+              "fallback_count": 0
+            },
+            "lidar": {
+              "candidate_pair_count": 0,
+              "conservative_prefilter_rejection_count": 0,
+              "exact_gate_pass_count": 0,
+              "exact_innovation_solve_count": 0,
+              "fallback_count": 0
+            },
+            "other": {
+              "candidate_pair_count": 0,
+              "conservative_prefilter_rejection_count": 0,
+              "exact_gate_pass_count": 0,
+              "exact_innovation_solve_count": 0,
+              "fallback_count": 0
+            },
+            "radar": {
+              "candidate_pair_count": 0,
+              "conservative_prefilter_rejection_count": 0,
+              "exact_gate_pass_count": 0,
+              "exact_innovation_solve_count": 0,
+              "fallback_count": 0
+            }
+          },
+          "association_projection_build_count": 0,
+          "association_radar_observation_state_build_count": 0,
+          "association_radar_track_state_build_count": 0,
+          "cached_consistency_refresh_count": 6000,
+          "checkpoint_state_query_count": 0,
+          "created_track_count": 0,
+          "finalization_replay_count": 0,
+          "fixed_lag_checkpoint_suffix_reuse_count": 0,
+          "fixed_lag_rebase_count": 0,
+          "global_track_materialization_count": 0,
+          "history_replay_count": 1000,
+          "origin_replay_count": 0,
+          "replay_checkpoint_prefix_fast_path_count": 6000,
+          "replay_checkpoint_reuse_count": 6000,
+          "replay_filter_update_count": 0,
+          "sensor_health_snapshot_build_count": 0,
+          "state_cache_hit_count": 0,
+          "state_cache_miss_count": 0
+        },
+        "operation_counts_sha256": "sha256:5b06146bac5069dec8768f32c06797252e56d00c520813ea6dbb968ea07b7d9e",
+        "posterior_covariance_sha256": "sha256:28df08afbc140f652c59fa637fef07c6d349b87bae64af10fd0a95f9ff8ff44b",
+        "posterior_state_sha256": "sha256:42a318617240fe89da3bd35a9a0ea203cf520379ae71ea6de0f6d96cae89709d",
+        "posterior_timestamp_sha256": "sha256:75244004c529af99017f216493e7fe3ab1f1244a459c2ac22d88acf375261730",
+        "record_gate_and_timestamp_metadata_sha256": "sha256:f73a0cdf3ba81f1d3a20faa20712a8047798b978142f674303e910483d85a1ec",
+        "replay_output_count": 200,
+        "selector": "fixed_lag_checkpoint_prefix_cumulative_summary_v1",
+        "setup_wall_time_s": 1.2871948209940456,
+        "timed_replay_wall_time_s": 0.024329943989869207,
+        "track_count": 200
+      },
+      "candidate_faster": true,
+      "candidate_minus_reference_s": -0.014588846999686211,
+      "execution_order": [
+        "fixed_lag_checkpoint_prefix_cumulative_summary_v1",
+        "per_checkpoint_prefix_rebuild_v1"
+      ],
+      "improvement_fraction": 0.37485355091326966,
+      "pair_index": 5,
+      "reference": {
+        "candidate_diagnostics_delta": {
+          "fallback_reasons": {},
+          "operation_counts": {},
+          "pending_consistency_ledger_count": 0
+        },
+        "checkpoint_semantics_sha256": "sha256:83e9a166bf3e91eb4effb533d3f62ca871202bed80c9bf4626721dd9b6dd352a",
+        "consistency_evidence_sha256": "sha256:66cf2e654a30d47c51c84d15e5d84eb988275186084471a889af0a28dcaf981e",
+        "gated_observation_ids_sha256": "sha256:46813d774ad4ebb981d6cafbf25474703bfe02799a0bf9166442a7a348c1c6de",
+        "global_tracks_sha256": "sha256:2c1044ce0752b7d46323e5c96dc036caf7c18864e15b01ba592c9f2218dbcd9a",
+        "nis_sha256": "sha256:29605caebd8c3960b4b4287c270d8b0fed082572e734994212ea6420cc0cde5e",
+        "operation_counts": {
+          "accepted_observation_count": 0,
+          "accepted_update_count": 0,
+          "association_candidate_pair_count": 0,
+          "association_innovation_solve_count": 0,
+          "association_measurement_model_build_count": 0,
+          "association_modality_counts": {
+            "acoustic": {
+              "candidate_pair_count": 0,
+              "conservative_prefilter_rejection_count": 0,
+              "exact_gate_pass_count": 0,
+              "exact_innovation_solve_count": 0,
+              "fallback_count": 0
+            },
+            "acoustic_3d": {
+              "candidate_pair_count": 0,
+              "conservative_prefilter_rejection_count": 0,
+              "exact_gate_pass_count": 0,
+              "exact_innovation_solve_count": 0,
+              "fallback_count": 0
+            },
+            "eo": {
+              "candidate_pair_count": 0,
+              "conservative_prefilter_rejection_count": 0,
+              "exact_gate_pass_count": 0,
+              "exact_innovation_solve_count": 0,
+              "fallback_count": 0
+            },
+            "lidar": {
+              "candidate_pair_count": 0,
+              "conservative_prefilter_rejection_count": 0,
+              "exact_gate_pass_count": 0,
+              "exact_innovation_solve_count": 0,
+              "fallback_count": 0
+            },
+            "other": {
+              "candidate_pair_count": 0,
+              "conservative_prefilter_rejection_count": 0,
+              "exact_gate_pass_count": 0,
+              "exact_innovation_solve_count": 0,
+              "fallback_count": 0
+            },
+            "radar": {
+              "candidate_pair_count": 0,
+              "conservative_prefilter_rejection_count": 0,
+              "exact_gate_pass_count": 0,
+              "exact_innovation_solve_count": 0,
+              "fallback_count": 0
+            }
+          },
+          "association_projection_build_count": 0,
+          "association_radar_observation_state_build_count": 0,
+          "association_radar_track_state_build_count": 0,
+          "cached_consistency_refresh_count": 6000,
+          "checkpoint_state_query_count": 0,
+          "created_track_count": 0,
+          "finalization_replay_count": 0,
+          "fixed_lag_checkpoint_suffix_reuse_count": 0,
+          "fixed_lag_rebase_count": 0,
+          "global_track_materialization_count": 0,
+          "history_replay_count": 1000,
+          "origin_replay_count": 0,
+          "replay_checkpoint_prefix_fast_path_count": 6000,
+          "replay_checkpoint_reuse_count": 6000,
+          "replay_filter_update_count": 0,
+          "sensor_health_snapshot_build_count": 0,
+          "state_cache_hit_count": 0,
+          "state_cache_miss_count": 0
+        },
+        "operation_counts_sha256": "sha256:5b06146bac5069dec8768f32c06797252e56d00c520813ea6dbb968ea07b7d9e",
+        "posterior_covariance_sha256": "sha256:28df08afbc140f652c59fa637fef07c6d349b87bae64af10fd0a95f9ff8ff44b",
+        "posterior_state_sha256": "sha256:42a318617240fe89da3bd35a9a0ea203cf520379ae71ea6de0f6d96cae89709d",
+        "posterior_timestamp_sha256": "sha256:75244004c529af99017f216493e7fe3ab1f1244a459c2ac22d88acf375261730",
+        "record_gate_and_timestamp_metadata_sha256": "sha256:f73a0cdf3ba81f1d3a20faa20712a8047798b978142f674303e910483d85a1ec",
+        "replay_output_count": 200,
+        "selector": "per_checkpoint_prefix_rebuild_v1",
+        "setup_wall_time_s": 1.277756089984905,
+        "timed_replay_wall_time_s": 0.03891879098955542,
+        "track_count": 200
+      },
+      "semantic_checks": {
+        "checkpoint_semantics_exact": true,
+        "consistency_evidence_exact": true,
+        "dual_timestamps_and_gate_metadata_exact": true,
+        "existing_operation_counts_exact": true,
+        "gated_observation_ids_exact": true,
+        "nis_sequence_exact": true,
+        "posterior_covariance_exact": true,
+        "posterior_state_exact": true,
+        "posterior_timestamp_exact": true,
+        "public_global_tracks_exact": true
+      }
+    },
+    {
+      "all_semantic_checks_passed": true,
+      "candidate": {
+        "candidate_diagnostics_delta": {
+          "fallback_reasons": {},
+          "operation_counts": {
+            "lazy_consistency_materialization_count": 200,
+            "lazy_consistency_materialized_event_count": 1000,
+            "lazy_consistency_materialized_record_count": 1200,
+            "lazy_consistency_refresh_event_count": 1000,
+            "lazy_consistency_refresh_logical_record_count": 6000,
+            "summary_attempt_count": 1000,
+            "summary_build_count": 0,
+            "summary_fallback_count": 0,
+            "summary_hit_count": 1000,
+            "summary_reused_checkpoint_count": 6000,
+            "summary_reused_gated_id_count": 0,
+            "summary_reused_nis_count": 6000
+          },
+          "pending_consistency_ledger_count": 0
+        },
+        "checkpoint_semantics_sha256": "sha256:83e9a166bf3e91eb4effb533d3f62ca871202bed80c9bf4626721dd9b6dd352a",
+        "consistency_evidence_sha256": "sha256:66cf2e654a30d47c51c84d15e5d84eb988275186084471a889af0a28dcaf981e",
+        "gated_observation_ids_sha256": "sha256:46813d774ad4ebb981d6cafbf25474703bfe02799a0bf9166442a7a348c1c6de",
+        "global_tracks_sha256": "sha256:2c1044ce0752b7d46323e5c96dc036caf7c18864e15b01ba592c9f2218dbcd9a",
+        "nis_sha256": "sha256:29605caebd8c3960b4b4287c270d8b0fed082572e734994212ea6420cc0cde5e",
+        "operation_counts": {
+          "accepted_observation_count": 0,
+          "accepted_update_count": 0,
+          "association_candidate_pair_count": 0,
+          "association_innovation_solve_count": 0,
+          "association_measurement_model_build_count": 0,
+          "association_modality_counts": {
+            "acoustic": {
+              "candidate_pair_count": 0,
+              "conservative_prefilter_rejection_count": 0,
+              "exact_gate_pass_count": 0,
+              "exact_innovation_solve_count": 0,
+              "fallback_count": 0
+            },
+            "acoustic_3d": {
+              "candidate_pair_count": 0,
+              "conservative_prefilter_rejection_count": 0,
+              "exact_gate_pass_count": 0,
+              "exact_innovation_solve_count": 0,
+              "fallback_count": 0
+            },
+            "eo": {
+              "candidate_pair_count": 0,
+              "conservative_prefilter_rejection_count": 0,
+              "exact_gate_pass_count": 0,
+              "exact_innovation_solve_count": 0,
+              "fallback_count": 0
+            },
+            "lidar": {
+              "candidate_pair_count": 0,
+              "conservative_prefilter_rejection_count": 0,
+              "exact_gate_pass_count": 0,
+              "exact_innovation_solve_count": 0,
+              "fallback_count": 0
+            },
+            "other": {
+              "candidate_pair_count": 0,
+              "conservative_prefilter_rejection_count": 0,
+              "exact_gate_pass_count": 0,
+              "exact_innovation_solve_count": 0,
+              "fallback_count": 0
+            },
+            "radar": {
+              "candidate_pair_count": 0,
+              "conservative_prefilter_rejection_count": 0,
+              "exact_gate_pass_count": 0,
+              "exact_innovation_solve_count": 0,
+              "fallback_count": 0
+            }
+          },
+          "association_projection_build_count": 0,
+          "association_radar_observation_state_build_count": 0,
+          "association_radar_track_state_build_count": 0,
+          "cached_consistency_refresh_count": 6000,
+          "checkpoint_state_query_count": 0,
+          "created_track_count": 0,
+          "finalization_replay_count": 0,
+          "fixed_lag_checkpoint_suffix_reuse_count": 0,
+          "fixed_lag_rebase_count": 0,
+          "global_track_materialization_count": 0,
+          "history_replay_count": 1000,
+          "origin_replay_count": 0,
+          "replay_checkpoint_prefix_fast_path_count": 6000,
+          "replay_checkpoint_reuse_count": 6000,
+          "replay_filter_update_count": 0,
+          "sensor_health_snapshot_build_count": 0,
+          "state_cache_hit_count": 0,
+          "state_cache_miss_count": 0
+        },
+        "operation_counts_sha256": "sha256:5b06146bac5069dec8768f32c06797252e56d00c520813ea6dbb968ea07b7d9e",
+        "posterior_covariance_sha256": "sha256:28df08afbc140f652c59fa637fef07c6d349b87bae64af10fd0a95f9ff8ff44b",
+        "posterior_state_sha256": "sha256:42a318617240fe89da3bd35a9a0ea203cf520379ae71ea6de0f6d96cae89709d",
+        "posterior_timestamp_sha256": "sha256:75244004c529af99017f216493e7fe3ab1f1244a459c2ac22d88acf375261730",
+        "record_gate_and_timestamp_metadata_sha256": "sha256:f73a0cdf3ba81f1d3a20faa20712a8047798b978142f674303e910483d85a1ec",
+        "replay_output_count": 200,
+        "selector": "fixed_lag_checkpoint_prefix_cumulative_summary_v1",
+        "setup_wall_time_s": 1.3175497699994594,
+        "timed_replay_wall_time_s": 0.025162203004583716,
+        "track_count": 200
+      },
+      "candidate_faster": true,
+      "candidate_minus_reference_s": -0.01220741803990677,
+      "execution_order": [
+        "per_checkpoint_prefix_rebuild_v1",
+        "fixed_lag_checkpoint_prefix_cumulative_summary_v1"
+      ],
+      "improvement_fraction": 0.32666689408953864,
+      "pair_index": 6,
+      "reference": {
+        "candidate_diagnostics_delta": {
+          "fallback_reasons": {},
+          "operation_counts": {},
+          "pending_consistency_ledger_count": 0
+        },
+        "checkpoint_semantics_sha256": "sha256:83e9a166bf3e91eb4effb533d3f62ca871202bed80c9bf4626721dd9b6dd352a",
+        "consistency_evidence_sha256": "sha256:66cf2e654a30d47c51c84d15e5d84eb988275186084471a889af0a28dcaf981e",
+        "gated_observation_ids_sha256": "sha256:46813d774ad4ebb981d6cafbf25474703bfe02799a0bf9166442a7a348c1c6de",
+        "global_tracks_sha256": "sha256:2c1044ce0752b7d46323e5c96dc036caf7c18864e15b01ba592c9f2218dbcd9a",
+        "nis_sha256": "sha256:29605caebd8c3960b4b4287c270d8b0fed082572e734994212ea6420cc0cde5e",
+        "operation_counts": {
+          "accepted_observation_count": 0,
+          "accepted_update_count": 0,
+          "association_candidate_pair_count": 0,
+          "association_innovation_solve_count": 0,
+          "association_measurement_model_build_count": 0,
+          "association_modality_counts": {
+            "acoustic": {
+              "candidate_pair_count": 0,
+              "conservative_prefilter_rejection_count": 0,
+              "exact_gate_pass_count": 0,
+              "exact_innovation_solve_count": 0,
+              "fallback_count": 0
+            },
+            "acoustic_3d": {
+              "candidate_pair_count": 0,
+              "conservative_prefilter_rejection_count": 0,
+              "exact_gate_pass_count": 0,
+              "exact_innovation_solve_count": 0,
+              "fallback_count": 0
+            },
+            "eo": {
+              "candidate_pair_count": 0,
+              "conservative_prefilter_rejection_count": 0,
+              "exact_gate_pass_count": 0,
+              "exact_innovation_solve_count": 0,
+              "fallback_count": 0
+            },
+            "lidar": {
+              "candidate_pair_count": 0,
+              "conservative_prefilter_rejection_count": 0,
+              "exact_gate_pass_count": 0,
+              "exact_innovation_solve_count": 0,
+              "fallback_count": 0
+            },
+            "other": {
+              "candidate_pair_count": 0,
+              "conservative_prefilter_rejection_count": 0,
+              "exact_gate_pass_count": 0,
+              "exact_innovation_solve_count": 0,
+              "fallback_count": 0
+            },
+            "radar": {
+              "candidate_pair_count": 0,
+              "conservative_prefilter_rejection_count": 0,
+              "exact_gate_pass_count": 0,
+              "exact_innovation_solve_count": 0,
+              "fallback_count": 0
+            }
+          },
+          "association_projection_build_count": 0,
+          "association_radar_observation_state_build_count": 0,
+          "association_radar_track_state_build_count": 0,
+          "cached_consistency_refresh_count": 6000,
+          "checkpoint_state_query_count": 0,
+          "created_track_count": 0,
+          "finalization_replay_count": 0,
+          "fixed_lag_checkpoint_suffix_reuse_count": 0,
+          "fixed_lag_rebase_count": 0,
+          "global_track_materialization_count": 0,
+          "history_replay_count": 1000,
+          "origin_replay_count": 0,
+          "replay_checkpoint_prefix_fast_path_count": 6000,
+          "replay_checkpoint_reuse_count": 6000,
+          "replay_filter_update_count": 0,
+          "sensor_health_snapshot_build_count": 0,
+          "state_cache_hit_count": 0,
+          "state_cache_miss_count": 0
+        },
+        "operation_counts_sha256": "sha256:5b06146bac5069dec8768f32c06797252e56d00c520813ea6dbb968ea07b7d9e",
+        "posterior_covariance_sha256": "sha256:28df08afbc140f652c59fa637fef07c6d349b87bae64af10fd0a95f9ff8ff44b",
+        "posterior_state_sha256": "sha256:42a318617240fe89da3bd35a9a0ea203cf520379ae71ea6de0f6d96cae89709d",
+        "posterior_timestamp_sha256": "sha256:75244004c529af99017f216493e7fe3ab1f1244a459c2ac22d88acf375261730",
+        "record_gate_and_timestamp_metadata_sha256": "sha256:f73a0cdf3ba81f1d3a20faa20712a8047798b978142f674303e910483d85a1ec",
+        "replay_output_count": 200,
+        "selector": "per_checkpoint_prefix_rebuild_v1",
+        "setup_wall_time_s": 1.2668753669713624,
+        "timed_replay_wall_time_s": 0.037369621044490486,
+        "track_count": 200
+      },
+      "semantic_checks": {
+        "checkpoint_semantics_exact": true,
+        "consistency_evidence_exact": true,
+        "dual_timestamps_and_gate_metadata_exact": true,
+        "existing_operation_counts_exact": true,
+        "gated_observation_ids_exact": true,
+        "nis_sequence_exact": true,
+        "posterior_covariance_exact": true,
+        "posterior_state_exact": true,
+        "posterior_timestamp_exact": true,
+        "public_global_tracks_exact": true
+      }
+    }
+  ],
+  "protocol": {
+    "alternating_execution_order": true,
+    "bootstrap_resample_count": 20000,
+    "bootstrap_seed": 20260725,
+    "candidate_selector": "fixed_lag_checkpoint_prefix_cumulative_summary_v1",
+    "fresh_adapter_per_arm": true,
+    "paired_run_count": 7,
+    "reference_selector": "per_checkpoint_prefix_rebuild_v1",
+    "same_imported_source_state_per_arm": true,
+    "same_input_per_pair": true,
+    "setup_association_excluded_from_timed_scope": true,
+    "timed_scope": "five_complete_fixed_lag_replay_sweeps_plus_one_public_consistency_evidence_materialization",
+    "warmup_pair_count": 1
+  },
+  "recommendation": "eligible_for_main_formal_matrix_review",
+  "schema_version": "d1.replay_prefix_summary_performance.v1",
+  "source_identity": {
+    "combined_source_sha256": "sha256:9cbca6104aaaae268a43281538d072374ae0ec46d2e06e18c8f2d84a15a3f609",
+    "git_head": "1b03608b0d490859b80ae219135dad539a0a26ae",
+    "reference_and_candidate_share_imported_source": true,
+    "source_file_sha256": {
+      "research_modules/d1_sensor_fusion/src/d1_sensor_fusion/fusion.py": "sha256:94a70978e685f2757123e0b4ab15a430fbe72df88ead4dccfc96efda27512444",
+      "research_modules/d1_sensor_fusion/src/d1_sensor_fusion/replay_prefix_summary_performance.py": "sha256:c3d696105b8f62a3e5c55a3e49306b4c07b98b58804bd4950c991c9eced3a513",
+      "research_modules/d1_sensor_fusion/tests/fixtures/replay_prefix_summary_200v200_v1.json": "sha256:4e7fcb00432fc4c6736b5ba301d06363e73357fc91689618b6ddab0b1307490e"
+    },
+    "working_tree_commit_claimed": false
+  },
+  "workload": {
+    "frozen_fixture_compliant": true,
+    "generated_observation_sha256": "sha256:b44f971c2c6ac9b519cb7aba3f8df455727382132b2c5ec127280c97806dbae9",
+    "observation_count": 1600,
+    "online_truth_use_count": 0,
+    "recon_node_count": 2,
+    "replay_sweep_count": 5,
+    "resource_count": 200,
+    "scan_count": 8,
+    "target_count": 200
+  }
+}
