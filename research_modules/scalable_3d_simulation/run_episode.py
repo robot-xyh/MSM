@@ -27,6 +27,9 @@ from research_modules.scalable_3d_simulation.learning_runtime import (
 )
 from research_modules.scalable_3d_simulation.orchestrator import run_episode
 from research_modules.scalable_3d_simulation.module_stack import (
+    ASSOCIATION_SPARSE_PREFILTER_CANDIDATE_SELECTOR,
+    ASSOCIATION_SPARSE_PREFILTER_DEFAULT_SELECTOR,
+    ASSOCIATION_SPARSE_PREFILTER_REFERENCE_SELECTOR,
     D1_CV_MOTION_MODEL_CANDIDATE_IMPLEMENTATION,
     D1_CV_MOTION_MODEL_REFERENCE_IMPLEMENTATION,
     D1_OPAQUE_SOURCE_IDENTITY_CANDIDATE_IMPLEMENTATION,
@@ -227,6 +230,19 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--d1-association-sparse-prefilter-implementation",
+        choices=(
+            ASSOCIATION_SPARSE_PREFILTER_REFERENCE_SELECTOR,
+            ASSOCIATION_SPARSE_PREFILTER_CANDIDATE_SELECTOR,
+        ),
+        default=ASSOCIATION_SPARSE_PREFILTER_DEFAULT_SELECTOR,
+        help=(
+            "select the D1 modality-aware conservative association "
+            "prefilter; the candidate is default-off pending a formal "
+            "same-commit multiseed admission"
+        ),
+    )
+    parser.add_argument(
         "--online-truth-guard-implementation",
         choices=(
             ONLINE_TRUTH_GUARD_REFERENCE_IMPLEMENTATION,
@@ -326,6 +342,9 @@ def main() -> int:
                 ),
                 d1_structured_numerical_jacobian_implementation=(
                     args.d1_structured_numerical_jacobian_implementation
+                ),
+                d1_association_sparse_prefilter_implementation=(
+                    args.d1_association_sparse_prefilter_implementation
                 ),
             ),
         )

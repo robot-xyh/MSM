@@ -21,6 +21,9 @@ from typing import Any, Iterable, Mapping
 import numpy as np
 
 from research_modules.d1_sensor_fusion.src.d1_sensor_fusion import (
+    ASSOCIATION_SPARSE_PREFILTER_CANDIDATE_SELECTOR,
+    ASSOCIATION_SPARSE_PREFILTER_DEFAULT_SELECTOR,
+    ASSOCIATION_SPARSE_PREFILTER_REFERENCE_SELECTOR,
     CV_MOTION_MODEL_CACHE_DIAGNOSTICS_SCHEMA_VERSION,
     CV_MOTION_MODEL_CANDIDATE_IMPLEMENTATION_ID,
     CV_MOTION_MODEL_REFERENCE_IMPLEMENTATION_ID,
@@ -193,6 +196,9 @@ class IntegratedStackConfig:
     )
     d1_structured_numerical_jacobian_implementation: str = (
         D1_STRUCTURED_NUMERICAL_JACOBIAN_CANDIDATE_IMPLEMENTATION
+    )
+    d1_association_sparse_prefilter_implementation: str = (
+        ASSOCIATION_SPARSE_PREFILTER_DEFAULT_SELECTOR
     )
     d2_claim_retention_s: float = 30.0
     d2_claim_max_lateness_s: float = 5.0
@@ -392,6 +398,22 @@ class IntegratedStackConfig:
             "d1_structured_numerical_jacobian_implementation",
             structured_jacobian_implementation,
         )
+        association_sparse_prefilter_implementation = str(
+            self.d1_association_sparse_prefilter_implementation
+        ).strip()
+        if association_sparse_prefilter_implementation not in {
+            ASSOCIATION_SPARSE_PREFILTER_REFERENCE_SELECTOR,
+            ASSOCIATION_SPARSE_PREFILTER_CANDIDATE_SELECTOR,
+        }:
+            raise ValueError(
+                "d1_association_sparse_prefilter_implementation must be "
+                "disabled_v1 or modality_conservative_quadratic_bound_v1"
+            )
+        object.__setattr__(
+            self,
+            "d1_association_sparse_prefilter_implementation",
+            association_sparse_prefilter_implementation,
+        )
         if (
             not np.isfinite(self.d2_claim_capacity_safety_factor)
             or self.d2_claim_capacity_safety_factor < 1.0
@@ -563,6 +585,16 @@ def _initial_structured_numerical_jacobian_diagnostics(
             "attempt_equals_reference_plus_candidate": True,
         },
     }
+
+
+def _initial_association_sparse_prefilter_diagnostics(
+    config: IntegratedStackConfig,
+) -> dict[str, Any]:
+    return Scalable3DFusionAdapter(
+        association_sparse_prefilter=(
+            config.d1_association_sparse_prefilter_implementation
+        )
+    ).association_sparse_prefilter_diagnostics()
 
 
 @dataclass(frozen=True)
@@ -740,6 +772,11 @@ class IntegratedScalableModuleStack:
     def runtime_manifest_profile(self) -> dict[str, Any]:
         """Return the main-owned runtime treatment profile for episode hashing."""
 
+        sparse_prefilter_diagnostics = (
+            _initial_association_sparse_prefilter_diagnostics(
+                self.stack_config
+            )
+        )
         return {
             "schema_version": "scalable3d-integrated-stack-runtime-profile-v1",
             "module_stack_schema_version": INTEGRATED_STACK_SCHEMA_VERSION,
@@ -784,6 +821,16 @@ class IntegratedScalableModuleStack:
                 _initial_structured_numerical_jacobian_diagnostics(
                     self.stack_config
                 )
+            ),
+            "d1_association_sparse_prefilter_implementation": (
+                self.stack_config
+                .d1_association_sparse_prefilter_implementation
+            ),
+            "d1_association_sparse_prefilter_execution_config": dict(
+                sparse_prefilter_diagnostics["execution_config"]
+            ),
+            "d1_association_sparse_prefilter_diagnostics": (
+                sparse_prefilter_diagnostics
             ),
         }
 
@@ -849,6 +896,10 @@ class IntegratedScalableModuleStack:
                 self.stack_config
                 .d1_structured_numerical_jacobian_implementation
                 == D1_STRUCTURED_NUMERICAL_JACOBIAN_CANDIDATE_IMPLEMENTATION
+            ),
+            association_sparse_prefilter=(
+                self.stack_config
+                .d1_association_sparse_prefilter_implementation
             ),
         )
         self.d1_scan_input = ScanInputOrganizer(
@@ -1319,6 +1370,16 @@ class IntegratedScalableModuleStack:
             ),
             "d1_structured_numerical_jacobian_diagnostics": (
                 self.d1.structured_numerical_jacobian_diagnostics()
+            ),
+            "d1_association_sparse_prefilter_implementation": (
+                self.stack_config
+                .d1_association_sparse_prefilter_implementation
+            ),
+            "d1_association_sparse_prefilter_execution_config": (
+                self.d1.association_sparse_prefilter_execution_config()
+            ),
+            "d1_association_sparse_prefilter_diagnostics": (
+                self.d1.association_sparse_prefilter_diagnostics()
             ),
             "d1_scan_event_total_count": self._d1_scan_event_total_count,
             "d1_scan_event_retained_count": len(self._d1_scan_events),
@@ -5349,6 +5410,19 @@ class IntegratedScalableModuleStack:
             "d1_structured_numerical_jacobian_diagnostics": dict(
                 governance[
                     "d1_structured_numerical_jacobian_diagnostics"
+                ]
+            ),
+            "d1_association_sparse_prefilter_implementation": governance[
+                "d1_association_sparse_prefilter_implementation"
+            ],
+            "d1_association_sparse_prefilter_execution_config": dict(
+                governance[
+                    "d1_association_sparse_prefilter_execution_config"
+                ]
+            ),
+            "d1_association_sparse_prefilter_diagnostics": dict(
+                governance[
+                    "d1_association_sparse_prefilter_diagnostics"
                 ]
             ),
             "d2_publication_metadata_audit": dict(

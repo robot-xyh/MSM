@@ -673,6 +673,21 @@ class Scalable3DEpisodeRunner:
                     "d1_structured_numerical_jacobian_diagnostics"
                 )
             ),
+            "d1_association_sparse_prefilter_implementation": (
+                observation_governance.get(
+                    "d1_association_sparse_prefilter_implementation"
+                )
+            ),
+            "d1_association_sparse_prefilter_execution_config": (
+                observation_governance.get(
+                    "d1_association_sparse_prefilter_execution_config"
+                )
+            ),
+            "d1_association_sparse_prefilter_diagnostics": (
+                observation_governance.get(
+                    "d1_association_sparse_prefilter_diagnostics"
+                )
+            ),
             "d2_publication_metadata_audit": observation_governance.get(
                 "d2_publication_metadata_audit"
             ),
