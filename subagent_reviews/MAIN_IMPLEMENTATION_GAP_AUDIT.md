@@ -16,6 +16,45 @@
 `immutable_shared_v2`。系统实时、逐批审计明细、严格精度、AirSim 和目标硬件证据仍为
 P1。以下最新专项记录优先于“扫描输入或发布元数据仍待治理”的历史表述。
 
+## 2026-07-24 main 在线真值守卫候选正式拒绝
+
+当前无新增 P0。main 在 episode 总线中保留参考实现 `generic_recursive_v1`，并增加默认
+关闭的候选 `builtin_specialized_recursive_v2`。候选只为精确内置容器使用专门遍历，
+不改变禁止字段、键值递归、循环保护、非有限状态和在线真值隔离规则。实现选择器、身份和
+诊断进入 manifest 与 summary。
+
+冻结矩阵 `configs/online_truth_guard_multiseed_v1.json` 的 SHA-256 为
+`764574b9897d00101c26c555de2f407e1736c7e6ff50420eebf131e154618dc8`，producer commit
+为 `8d8bb6ed7a417705236835f235361f45a021bb2b`。正式运行包含 10 组 2.2 秒 short pair
+和 3 组 10 秒 long pair，共 26 个全新 200 对 200 arm；0 reused、0 failed。13/13 pair
+业务语义相等，在线真值使用为 0，有限状态、实现身份和消息检查数守恒均通过。
+
+| 指标 | short reference/candidate | short 变化 | long reference/candidate | long 变化 |
+| --- | ---: | ---: | ---: | ---: |
+| 发布总线及收尾墙钟 | 0.900293/0.696858 s | 改善 22.58% | 3.810588/2.834910 s | 改善 25.63% |
+| 核心墙钟 | 9.163492/8.933562 s | 改善 2.50% | 52.362864/54.235533 s | 回退 3.47% |
+| D1 fusion | 2.582814/2.580385 s | 下降 0.00% | 18.495864/19.511515 s | 增加 5.29% |
+| D2 association | 0.506169/0.497850 s | 下降 1.43% | 3.750915/4.039187 s | 增加 7.34% |
+
+long 核心墙钟未达到至少改善 `0.5%` 的门限，long D1/D2 增幅超过 `5%` 上限。D6 判定
+`optimization_admitted=false`、`system_realtime_gap_closed=false`；候选最低实时因子为
+`0.165369`。因此默认继续使用 `generic_recursive_v1`，不能通过降低真值审计强度或忽略
+下游阶段回退晋级候选。
+
+仍开放 P1：
+
+1. **系统实时容量。** 候选和参考均未达到实时，发布总线局部下降没有关闭全栈实时缺口。
+2. **长时稳定性。** long seed 1102 出现核心墙钟、D1 和 D2 同向回退。可用交错顺序更平衡的
+   v2 诊断复核热状态或顺序效应，但不得覆盖 v1 正式结论。
+3. **下一热点选择。** main 已在同一 clean runtime commit 上对未改动默认路径完成一次
+   非准入画像。未插桩 long reference 三 seed 仍以 D1 fusion `18.495864 s` 和 D1 scan
+   input `6.612982 s` 为首要核心热点；D1 owner 正在模块内选择一个默认关闭、可分离的
+   低风险候选。该候选仍需模块微基准和新的全栈预注册矩阵。
+4. **目标环境。** 当前仍是三维质点证据，不包含 AirSim、冻结目标处理器或实飞容量。
+
+正式报告位于
+`research_modules/d6_evaluation_metrics/outputs/online_truth_guard_multiseed_20260724_formal_8d8bb6e/`。
+
 ## 2026-07-24 D1 常速度模型缓存正式准入
 
 当前无新增 P0。D1 owner 已提供精确 `(dt, process_noise)` 键的有界最近最少使用缓存，

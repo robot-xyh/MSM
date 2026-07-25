@@ -1,5 +1,31 @@
 # Scalable 3D Simulation
 
+## 在线真值守卫实现 A/B（2026-07-24）
+
+main 已为 episode 总线的递归在线真值字段检查增加显式实现选择器。参考实现为
+`generic_recursive_v1`，候选为 `builtin_specialized_recursive_v2`，命令行参数为
+`--online-truth-guard-implementation`。候选只针对精确内置 `dict/list/tuple/set/frozenset`
+使用专门遍历，仍对键和值递归检查，并保留循环保护、非有限状态检查和禁止字段拒绝语义。
+选择器与诊断进入 episode manifest 和 summary。候选保持默认关闭，默认路径仍为
+`generic_recursive_v1`。
+
+正式矩阵冻结在 `configs/online_truth_guard_multiseed_v1.json`，SHA-256 为
+`764574b9897d00101c26c555de2f407e1736c7e6ff50420eebf131e154618dc8`，producer commit
+为 `8d8bb6ed7a417705236835f235361f45a021bb2b`。矩阵完成 10 组 2.2 秒 short pair 和
+3 组 10 秒 long pair，共 26 个全新 200 对 200 arm；0 个复用，0 个失败。13/13 pair 的
+业务语义、有限状态、在线真值隔离、实现身份和检查数守恒全部通过。
+
+候选将 short/long 发布总线及收尾墙钟分别由 `0.900293/3.810588 s` 降至
+`0.696858/2.834910 s`，改善 `22.58%/25.63%`，对应 `10/10` 和 `3/3` 更快。short 核心
+墙钟改善 `2.50%`，但 long 核心墙钟回退 `3.47%`；long D1 fusion 和 D2 association
+分别增加 `5.29%` 和 `7.34%`，超过预注册 `5%` 上限。D6 正式判定
+`optimization_admitted=false`、`system_realtime_gap_closed=false`，候选最低实时因子为
+`0.165369`。
+
+long seed 1102 的反向变化可在后续 balanced-order v2 诊断中复核主机热状态和运行顺序，
+但诊断不得覆盖本次 v1 正式拒绝结论。正式报告位于
+`research_modules/d6_evaluation_metrics/outputs/online_truth_guard_multiseed_20260724_formal_8d8bb6e/`。
+
 ## D1 常速度模型构造 A/B（2026-07-24）
 
 main 已接入 D1 常速度状态传播模型的显式 A/B 选择器：

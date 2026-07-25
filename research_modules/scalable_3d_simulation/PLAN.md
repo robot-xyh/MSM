@@ -1,5 +1,41 @@
 # 200 对 200 三维质点仿真实施计划
 
+## 在线真值守卫候选准入（2026-07-24）
+
+1. [x] main 保留 `generic_recursive_v1` 参考实现，并增加默认关闭的
+   `builtin_specialized_recursive_v2` 候选和 `--online-truth-guard-implementation`
+   选择器。
+2. [x] 两条路径保持相同的禁止字段、键值递归、循环保护、非有限状态和在线真值隔离语义；
+   选择器、实现 ID 和检查计数进入 manifest 与 summary。
+3. [x] 冻结 10 组 short pair 和 3 组 long pair；每组为 200 个目标、200 个资源和
+   2 个侦察节点，共运行 26 个全新 arm。
+4. [x] 13/13 pair 的业务语义、有限状态、在线真值隔离、实现身份和检查数守恒通过；
+   0 reused、0 failed。
+5. [x] short/long 发布总线及收尾墙钟改善 `22.58%/25.63%`，候选分别
+   `10/10`、`3/3` 更快。
+6. [ ] long 核心墙钟非退化：实际回退 `3.47%`，未达到至少改善 `0.5%` 的门限。
+7. [ ] long D1/D2 阶段非退化：分别增加 `5.29%/7.34%`，超过 `5%` 上限。
+8. [x] D6 独立判定 `optimization_admitted=false`；
+   `system_realtime_gap_closed=false`，候选最低实时因子为 `0.165369`。
+9. [x] 默认保持 `generic_recursive_v1`，候选只保留作复核和后续诊断，不进入默认在线路径。
+10. [ ] 在不改写 v1 正式结论的前提下，可用 balanced-order v2 复核 long seed 1102 的
+    主机热状态和顺序效应。
+11. [x] 对未改动默认路径重新采集阶段画像，再选择可分离热点；不得降低真值审计强度、
+    删除业务消息、改变传感器频率或放宽安全门控。
+12. [ ] D1 owner 根据画像选择一个未重复、默认关闭的模块内候选，先完成冻结微基准和
+    语义等价回归，再由 main 决定是否接入新的全栈 A/B。
+
+冻结矩阵为 `configs/online_truth_guard_multiseed_v1.json`，SHA-256 为
+`764574b9897d00101c26c555de2f407e1736c7e6ff50420eebf131e154618dc8`，producer commit
+为 `8d8bb6ed7a417705236835f235361f45a021bb2b`。正式 D6 报告位于
+`../d6_evaluation_metrics/outputs/online_truth_guard_multiseed_20260724_formal_8d8bb6e/`。
+
+main 随后在同一 clean runtime commit、默认 `generic_recursive_v1`、200 对 200、
+2.2 秒、seed 1111 上完成一次非准入 cProfile。未插桩正式 reference 的 long 三 seed阶段均值
+仍以 D1 fusion `18.495864 s`、D1 scan input `6.612982 s` 为首要核心热点；诊断运行进一步
+把 D1 累计时间定位到扫描批处理、记录重放收尾、扫描一对一匹配和协方差治理。报告写盘和
+离线评分不纳入在线候选选择。该画像只用于选题，不替代冻结矩阵或性能准入。
+
 ## D1 常速度模型缓存准入（2026-07-24）
 
 1. [x] D1 owner 提供 `per_prediction_build_v1` 参考实现和
