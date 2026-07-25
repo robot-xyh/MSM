@@ -2349,7 +2349,7 @@ def _association_sparse_prefilter_diagnostics_match(
     conservation = diagnostics.get("conservation")
     if (
         not isinstance(modality_counts, Mapping)
-        or tuple(modality_counts) != modality_order
+        or set(modality_counts) != set(modality_order)
         or not isinstance(total_counts, Mapping)
         or not isinstance(conservation, Mapping)
         or conservation.get("all_counter_bounds_hold") is not True

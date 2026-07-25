@@ -7,6 +7,9 @@ from pathlib import Path
 
 import pytest
 
+from research_modules.d1_sensor_fusion.src.d1_sensor_fusion import (
+    Scalable3DFusionAdapter,
+)
 from research_modules.scalable_3d_simulation.scripts import (
     run_d1_publication_metadata_matrix as matrix_runner,
 )
@@ -325,6 +328,41 @@ def test_association_sparse_prefilter_commands_isolate_only_the_selector(
     ):
         if index not in {selector_index + 1, output_index + 1}:
             assert left == right
+
+
+@pytest.mark.parametrize(
+    ("selector", "implementation_id", "candidate"),
+    [
+        (
+            "disabled_v1",
+            "d1.fusion.association_sparse_prefilter.disabled.v1",
+            False,
+        ),
+        (
+            "modality_conservative_quadratic_bound_v1",
+            "d1.fusion.association_sparse_prefilter."
+            "modality_conservative_quadratic_bound.v1",
+            True,
+        ),
+    ],
+)
+def test_association_sparse_prefilter_resume_audit_accepts_sorted_json(
+    selector: str,
+    implementation_id: str,
+    candidate: bool,
+) -> None:
+    diagnostics = Scalable3DFusionAdapter(
+        association_sparse_prefilter=selector
+    ).association_sparse_prefilter_diagnostics()
+    persisted = json.loads(json.dumps(diagnostics, sort_keys=True))
+
+    assert matrix_runner._association_sparse_prefilter_diagnostics_match(
+        persisted,
+        expected_implementation=selector,
+        expected_implementation_id=implementation_id,
+        candidate=candidate,
+        require_workload=False,
+    )
 
 
 def test_arm_commands_differ_only_by_explicit_implementation_and_output(
