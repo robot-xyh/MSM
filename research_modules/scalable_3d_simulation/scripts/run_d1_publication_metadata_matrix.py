@@ -38,6 +38,15 @@ V2_EVIDENCE_MANIFEST_SCHEMA_VERSION = (
 V2_REQUIRED_D6_EVALUATOR_SCHEMA_VERSION = (
     "d6.d1_publication_metadata_v2_multiseed_evaluation.v1"
 )
+CV_MOTION_MODEL_MATRIX_SCHEMA_VERSION = (
+    "scalable3d-d1-cv-motion-model-cache-multiseed-matrix-v1"
+)
+CV_MOTION_MODEL_EVIDENCE_MANIFEST_SCHEMA_VERSION = (
+    "scalable3d-d1-cv-motion-model-cache-multiseed-evidence-v1"
+)
+CV_MOTION_MODEL_REQUIRED_D6_EVALUATOR_SCHEMA_VERSION = (
+    "d6.d1_cv_motion_model_cache_multiseed_evaluation.v1"
+)
 _ARMS = ("reference", "candidate")
 _V1_EXPECTED_IMPLEMENTATIONS = {
     "reference": "per_track_copy_v1",
@@ -46,6 +55,10 @@ _V1_EXPECTED_IMPLEMENTATIONS = {
 _V2_EXPECTED_IMPLEMENTATIONS = {
     "reference": "per_track_copy_v1",
     "candidate": "immutable_shared_v2",
+}
+_CV_MOTION_MODEL_EXPECTED_IMPLEMENTATIONS = {
+    "reference": "per_prediction_build_v1",
+    "candidate": "bounded_exact_lru_v1",
 }
 _D1_IMPLEMENTATION_IDS = {
     "per_track_copy_v1": (
@@ -56,6 +69,12 @@ _D1_IMPLEMENTATION_IDS = {
     ),
     "immutable_shared_v2": (
         "d1.publication_metadata.immutable_shared_audit.v2"
+    ),
+    "per_prediction_build_v1": (
+        "d1.fusion.cv_motion_model.per_prediction_build.v1"
+    ),
+    "bounded_exact_lru_v1": (
+        "d1.fusion.cv_motion_model.bounded_exact_lru.v1"
     ),
 }
 _MATRIX_SPECS = {
@@ -68,6 +87,9 @@ _MATRIX_SPECS = {
             REQUIRED_D6_EVALUATOR_SCHEMA_VERSION
         ),
         "publication_audit_contract_version": None,
+        "selector_flag": "--d1-publication-metadata-implementation",
+        "validation_kind": "publication_metadata_v1",
+        "treatment_field": "d1_publication_metadata_implementation",
     },
     V2_MATRIX_SCHEMA_VERSION: {
         "expected_implementations": _V2_EXPECTED_IMPLEMENTATIONS,
@@ -80,6 +102,24 @@ _MATRIX_SPECS = {
         "publication_audit_contract_version": (
             "d1.publication_audit_tree.v2"
         ),
+        "selector_flag": "--d1-publication-metadata-implementation",
+        "validation_kind": "publication_metadata_v2",
+        "treatment_field": "d1_publication_metadata_implementation",
+    },
+    CV_MOTION_MODEL_MATRIX_SCHEMA_VERSION: {
+        "expected_implementations": (
+            _CV_MOTION_MODEL_EXPECTED_IMPLEMENTATIONS
+        ),
+        "evidence_manifest_schema_version": (
+            CV_MOTION_MODEL_EVIDENCE_MANIFEST_SCHEMA_VERSION
+        ),
+        "required_d6_evaluator_schema_version": (
+            CV_MOTION_MODEL_REQUIRED_D6_EVALUATOR_SCHEMA_VERSION
+        ),
+        "publication_audit_contract_version": None,
+        "selector_flag": "--d1-cv-motion-model-implementation",
+        "validation_kind": "cv_motion_model_cache",
+        "treatment_field": "d1_cv_motion_model_implementation",
     },
 }
 _COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
@@ -92,6 +132,8 @@ _FORBIDDEN_RUN_FLAGS = {
     "--seed",
     "--output",
     "--d1-publication-metadata-implementation",
+    "--d1-cv-motion-model-implementation",
+    "--d1-cv-motion-model-cache-capacity",
 }
 
 
@@ -185,10 +227,10 @@ def load_matrix(path: str | Path) -> dict[str, Any]:
         raise ValueError("evidence boundary must require the same source commit")
     if (
         boundary.get("only_allowed_runtime_treatment_difference")
-        != "d1_publication_metadata_implementation"
+        != spec["treatment_field"]
     ):
         raise ValueError(
-            "evidence boundary must isolate the publication-metadata treatment"
+            "evidence boundary must isolate the registered runtime treatment"
         )
     if (
         boundary.get("reference_implementation")
@@ -231,6 +273,30 @@ def load_matrix(path: str | Path) -> dict[str, Any]:
         ):
             if _finite_float(gates.get(field), field) < 0.0:
                 raise ValueError(f"{field} must be nonnegative")
+    if spec["validation_kind"] == "cv_motion_model_cache":
+        if boundary.get("cache_key_policy") != "exact_dt_process_noise":
+            raise ValueError(
+                "CV motion-model evidence must freeze the exact cache key"
+            )
+        if boundary.get("cache_capacity") != 128:
+            raise ValueError(
+                "CV motion-model evidence must freeze cache_capacity=128"
+            )
+        if boundary.get("matrix_values_are_read_only") is not True:
+            raise ValueError(
+                "CV motion-model evidence must require read-only matrices"
+            )
+        required_gates = {
+            "all_pairs_cv_motion_model_cache_audit_valid": True,
+            "minimum_candidate_model_build_reduction_pct": 95.0,
+            "minimum_candidate_cache_hit_ratio_pct": 95.0,
+        }
+        for field, expected in required_gates.items():
+            if gates.get(field) != expected:
+                raise ValueError(
+                    f"CV motion-model admission gate {field} must be "
+                    f"{expected}"
+                )
     return value
 
 
@@ -241,7 +307,7 @@ def build_episode_command(
     arm: str,
     output_dir: str | Path,
 ) -> list[str]:
-    """Build one arm command with an explicit publication-metadata implementation."""
+    """Build one arm command with an explicit registered implementation."""
 
     if arm not in _ARMS:
         raise ValueError(f"unsupported arm: {arm}")
@@ -258,7 +324,7 @@ def build_episode_command(
         "python3",
         str(entrypoint),
         *[str(flag) for flag in matrix["run_flags"]],
-        "--d1-publication-metadata-implementation",
+        str(_matrix_spec(matrix)["selector_flag"]),
         str(matrix["arm_implementations"][arm]),
         "--duration",
         _format_float(float(case["duration_s"])),
@@ -303,6 +369,7 @@ def planned_evidence_manifest(
                         matrix["arm_implementations"][arm]
                     ]
                 ),
+                "validation_kind": spec["validation_kind"],
                 "expected_commit": source_commit,
                 "episode_dir": str(episode_dir),
                 "resource_path": str(case_root / f"{arm}_resource_usage.txt"),
@@ -352,6 +419,13 @@ def planned_evidence_manifest(
     contract_version = spec["publication_audit_contract_version"]
     if contract_version is not None:
         manifest["publication_audit_contract_version"] = contract_version
+    if spec["validation_kind"] == "cv_motion_model_cache":
+        manifest["cv_motion_model_cache_capacity"] = int(
+            matrix["evidence_boundary"]["cache_capacity"]
+        )
+        manifest["cv_motion_model_cache_diagnostics_schema_version"] = (
+            "d1.cv_motion_model_cache_diagnostics.v1"
+        )
     return manifest
 
 
@@ -366,6 +440,12 @@ def run_matrix(
     """Run all episode arms; semantic and admission decisions remain D6-owned."""
 
     matrix = load_matrix(matrix_path)
+    spec = _matrix_spec(matrix)
+    expected_cache_capacity = (
+        int(matrix["evidence_boundary"]["cache_capacity"])
+        if spec["validation_kind"] == "cv_motion_model_cache"
+        else None
+    )
     worktree = Path(source_worktree).expanduser().resolve()
     source_commit = _validate_source_worktree(worktree)
     root = Path(output_root).expanduser().resolve()
@@ -404,6 +484,8 @@ def run_matrix(
                 require_v2_audit=(
                     matrix.get("schema_version") == V2_MATRIX_SCHEMA_VERSION
                 ),
+                validation_kind=str(spec["validation_kind"]),
+                expected_cache_capacity=expected_cache_capacity,
             ):
                 record["status"] = "reused"
                 record["return_code"] = 0
@@ -432,6 +514,8 @@ def run_matrix(
                         matrix.get("schema_version")
                         == V2_MATRIX_SCHEMA_VERSION
                     ),
+                    validation_kind=str(spec["validation_kind"]),
+                    expected_cache_capacity=expected_cache_capacity,
                 ):
                     raise RuntimeError(
                         "completed episode failed implementation or provenance "
@@ -585,12 +669,34 @@ def _episode_matches(
     resource_count: int,
     recon_count: int,
     require_v2_audit: bool = False,
+    validation_kind: str = "publication_metadata_v1",
+    expected_cache_capacity: int | None = None,
 ) -> bool:
     try:
         manifest = _read_mapping(episode_dir / "manifest.json")
         config = _read_mapping(episode_dir / "scenario_config.json")
         summary = _read_mapping(episode_dir / "summary.json")
     except (OSError, ValueError, json.JSONDecodeError):
+        return False
+    if validation_kind == "cv_motion_model_cache":
+        return _cv_motion_model_episode_matches(
+            episode_dir,
+            manifest=manifest,
+            config=config,
+            summary=summary,
+            expected_commit=expected_commit,
+            expected_implementation=expected_implementation,
+            expected_cache_capacity=expected_cache_capacity,
+            seed=seed,
+            duration_s=duration_s,
+            target_count=target_count,
+            resource_count=resource_count,
+            recon_count=recon_count,
+        )
+    if validation_kind not in {
+        "publication_metadata_v1",
+        "publication_metadata_v2",
+    }:
         return False
     runtime_profile = manifest.get("runtime_profile")
     diagnostics = summary.get("d1_publication_metadata_diagnostics")
@@ -687,6 +793,193 @@ def _episode_matches(
         and summary.get("finite_state") is True
         and summary.get("online_truth_use_count") == 0
         and _float_equal(summary.get("simulated_duration_s"), duration_s)
+    )
+
+
+def _cv_motion_model_episode_matches(
+    episode_dir: Path,
+    *,
+    manifest: Mapping[str, Any],
+    config: Mapping[str, Any],
+    summary: Mapping[str, Any],
+    expected_commit: str,
+    expected_implementation: str,
+    expected_cache_capacity: int | None,
+    seed: int,
+    duration_s: float,
+    target_count: int,
+    resource_count: int,
+    recon_count: int,
+) -> bool:
+    if expected_cache_capacity is None:
+        return False
+    expected_id = _D1_IMPLEMENTATION_IDS.get(expected_implementation)
+    if expected_id is None:
+        return False
+    candidate = expected_implementation == "bounded_exact_lru_v1"
+    if expected_implementation not in {
+        "per_prediction_build_v1",
+        "bounded_exact_lru_v1",
+    }:
+        return False
+    runtime_profile = manifest.get("runtime_profile")
+    runtime_configuration = (
+        runtime_profile.get("configuration")
+        if isinstance(runtime_profile, Mapping)
+        else None
+    )
+    initial_diagnostics = (
+        runtime_profile.get("d1_cv_motion_model_cache_diagnostics")
+        if isinstance(runtime_profile, Mapping)
+        else None
+    )
+    diagnostics = summary.get("d1_cv_motion_model_cache_diagnostics")
+    final = summary.get("module_final_diagnostics")
+    final_diagnostics = (
+        final.get("d1_cv_motion_model_cache_diagnostics")
+        if isinstance(final, Mapping)
+        else None
+    )
+    try:
+        governance = _read_mapping(
+            episode_dir / "observation_governance_audit.json"
+        )
+    except (OSError, ValueError, json.JSONDecodeError):
+        return False
+    governance_diagnostics = governance.get(
+        "d1_cv_motion_model_cache_diagnostics"
+    )
+    if not all(
+        isinstance(value, Mapping)
+        for value in (
+            runtime_profile,
+            runtime_configuration,
+            initial_diagnostics,
+            diagnostics,
+            final,
+            final_diagnostics,
+            governance_diagnostics,
+        )
+    ):
+        return False
+    if (
+        initial_diagnostics.get("schema_version")
+        != "d1.cv_motion_model_cache_diagnostics.v1"
+        or initial_diagnostics.get("implementation_id") != expected_id
+        or initial_diagnostics.get("candidate_enabled") is not candidate
+        or initial_diagnostics.get("cache_capacity")
+        != expected_cache_capacity
+        or initial_diagnostics.get("cache_entry_count") != 0
+        or initial_diagnostics.get("operation_counts") != {}
+    ):
+        return False
+    if (
+        diagnostics != final_diagnostics
+        or diagnostics != governance_diagnostics
+        or diagnostics.get("schema_version")
+        != "d1.cv_motion_model_cache_diagnostics.v1"
+        or diagnostics.get("implementation_id") != expected_id
+        or diagnostics.get("candidate_enabled") is not candidate
+        or diagnostics.get("cache_capacity") != expected_cache_capacity
+    ):
+        return False
+    if not _cv_motion_model_operation_counts_match(
+        diagnostics,
+        candidate=candidate,
+        expected_cache_capacity=expected_cache_capacity,
+    ):
+        return False
+    return (
+        manifest.get("git_commit") == expected_commit
+        and manifest.get("repository_dirty") is False
+        and manifest.get("seed") == seed
+        and runtime_profile.get("d1_cv_motion_model_implementation")
+        == expected_implementation
+        and runtime_configuration.get(
+            "d1_cv_motion_model_implementation"
+        )
+        == expected_implementation
+        and runtime_configuration.get(
+            "d1_cv_motion_model_cache_capacity"
+        )
+        == expected_cache_capacity
+        and summary.get("d1_cv_motion_model_implementation")
+        == expected_implementation
+        and final.get("d1_cv_motion_model_implementation")
+        == expected_implementation
+        and governance.get("d1_cv_motion_model_implementation")
+        == expected_implementation
+        and config.get("seed") == seed
+        and _float_equal(config.get("duration_s"), duration_s)
+        and config.get("target_count") == target_count
+        and config.get("resource_count") == resource_count
+        and config.get("recon_count") == recon_count
+        and summary.get("finite_state") is True
+        and summary.get("online_truth_use_count") == 0
+        and _float_equal(summary.get("simulated_duration_s"), duration_s)
+    )
+
+
+def _cv_motion_model_operation_counts_match(
+    diagnostics: Mapping[str, Any],
+    *,
+    candidate: bool,
+    expected_cache_capacity: int,
+) -> bool:
+    operations = diagnostics.get("operation_counts")
+    if not isinstance(operations, Mapping):
+        return False
+    names = (
+        "prediction_request_count",
+        "model_build_count",
+        "nonpositive_dt_reference_bypass_count",
+        "nonfinite_reference_bypass_count",
+        "cache_hit_count",
+        "cache_miss_count",
+        "cache_eviction_count",
+        "peak_entry_count",
+    )
+    counts: dict[str, int] = {}
+    for name in names:
+        value = operations.get(name, 0)
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+            return False
+        counts[name] = int(value)
+    entry_count = diagnostics.get("cache_entry_count")
+    if (
+        isinstance(entry_count, bool)
+        or not isinstance(entry_count, int)
+        or entry_count < 0
+        or entry_count > expected_cache_capacity
+        or counts["peak_entry_count"] > expected_cache_capacity
+    ):
+        return False
+    requests = counts["prediction_request_count"]
+    nonpositive = counts["nonpositive_dt_reference_bypass_count"]
+    nonfinite = counts["nonfinite_reference_bypass_count"]
+    if requests <= 0:
+        return False
+    if candidate:
+        return (
+            counts["cache_hit_count"] > 0
+            and counts["cache_miss_count"] > 0
+            and counts["model_build_count"]
+            == counts["cache_miss_count"] + nonfinite
+            and requests
+            == (
+                nonpositive
+                + nonfinite
+                + counts["cache_hit_count"]
+                + counts["cache_miss_count"]
+            )
+        )
+    return (
+        entry_count == 0
+        and counts["cache_hit_count"] == 0
+        and counts["cache_miss_count"] == 0
+        and counts["cache_eviction_count"] == 0
+        and counts["peak_entry_count"] == 0
+        and requests == nonpositive + counts["model_build_count"]
     )
 
 

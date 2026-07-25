@@ -33,10 +33,19 @@ main 已接入显式 selector、容量校验和 CLI。默认仍为 `per_predicti
 module final diagnostics 和 episode summary。专项回归已覆盖默认、显式选择、清单哈希、
 诊断持久化和非法容量；D1、scalable 3D、D6 全量回归分别为 `395/205/771 passed`。
 
+clean `44223566439a446fc49f2a3fd861d1d51bd676b9` 的 seed 1101、2.2 秒 smoke
+两臂均为有限状态且在线真值使用为 0。排除预注册 runtime profile treatment 后，规范在线
+载荷、计划谱系、真值状态、离线标签和接近事件一致。参考/候选 D1 fusion 为
+`3.278821/3.031855 s`，模型构造为 `32,217/132`。该结果只确认接线和自然工作量。
+
+正式矩阵已冻结 10 组 short 与 3 组 long pair，SHA-256 为
+`9898656598f0fa282620afe2384a3d656b7496f8957109c413bcb62069fd2e9a`。运行器通过
+26 项专项测试与 dry-run。正式 26 个 arm 尚未运行，D6 准入结论仍 unavailable。
+
 仍开放 P1：
 
-1. **同提交多 seed 准入。** 需要从 main 集成的 clean commit 运行 10 组 short 和 3 组
-   long pair，禁止复用旧 episode。
+1. **同提交多 seed 准入。** 需要从已冻结 clean commit 运行 10 组 short 和 3 组 long
+   pair，禁止复用 smoke 或旧 episode。
 2. **全栈非退化。** 需要 D6 校验业务等价、D1 fusion、D2 association、核心墙钟、RSS、
    实时因子和实现身份。局部 benchmark 不能替代该门。
 3. **环境和精度。** 当前无 AirSim、冻结目标处理器、RMSE、NEES、NIS 或严格身份结果。

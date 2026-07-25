@@ -13,19 +13,24 @@
    observation governance、final diagnostics 和 episode summary。
 5. [x] main 增加默认值、显式选择、运行清单哈希、诊断持久化和非法配置回归；D1、
    scalable 3D、D6 全量回归分别为 `395/205/771 passed`。
-6. [ ] 从 main 集成的 clean commit 完成 reference/candidate smoke，确认业务载荷、
-   有限状态、在线真值隔离和实现身份。
-7. [ ] 预注册 10 组 2.2 秒 short pair 与 3 组 10 秒 long pair；每组固定 200 个目标、
+6. [x] 从 clean `4422356` 完成 seed 1101 reference/candidate smoke；除预注册运行配置
+   差异外，业务载荷、真值制品和计划谱系一致，有限状态与在线真值隔离通过。
+7. [x] 预注册 10 组 2.2 秒 short pair 与 3 组 10 秒 long pair；每组固定 200 个目标、
    200 个资源、2 个侦察节点，并交替实验臂先后顺序。
-8. [ ] 每个 pair 只允许常速度模型构造实现不同；扫描输入继续使用已准入
+8. [x] 每个 pair 只允许常速度模型构造实现不同；扫描输入继续使用已准入
    `candidate_v2`，发布元数据继续使用已准入 `immutable_shared_v2`。
 9. [ ] D6 独立校验业务等价、D1 缓存诊断、D1 fusion、D2 association、核心墙钟、
    最大常驻内存、实时因子及逐 pair 稳定性。
-10. [ ] 只有正式准入门全部通过后，main 才把候选设为默认；否则保留为可选 benchmark。
+10. [ ] 运行 13 组正式 pair、26 个全新 arm，不复用 smoke 或历史 episode。
+11. [ ] 只有正式准入门全部通过后，main 才把候选设为默认；否则保留为可选 benchmark。
 
 该专项不改变量测频率、状态模型公式、固定滞后窗口、协方差合同、关联门限或身份所有权。
 局部 `2.12x` 结果不关闭系统实时 P1。正式多 seed 结果、AirSim 和冻结目标处理器证据仍待
 补充。
+
+预注册矩阵为 `configs/d1_cv_motion_model_cache_multiseed_v1.json`，SHA-256 为
+`9898656598f0fa282620afe2384a3d656b7496f8957109c413bcb62069fd2e9a`。运行器复用现有
+clean-source、GNU time、断点状态和实现身份校验框架，已完成 26 项专项测试与 dry-run。
 
 ## D1 发布元数据多 seed 准入（2026-07-24）
 

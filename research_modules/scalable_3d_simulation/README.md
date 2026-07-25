@@ -19,6 +19,14 @@ SHA-256 一致。该结果只证明局部热点可优化，尚不证明 200 对 
 clean main 提交运行 10 组 short 和 3 组 long pair，由 D6 独立检查业务等价、实现身份、
 核心墙钟、D1 融合、D2 非退化、内存和实时因子后再决定是否晋级。
 
+clean 提交 `44223566439a446fc49f2a3fd861d1d51bd676b9` 的 seed 1101、2.2 秒 smoke
+已完成。两臂均为有限状态、在线真值使用为 0；除预注册运行配置差异外，规范在线载荷、
+计划谱系、真值制品和接近事件一致。参考/候选的 D1 fusion 为
+`3.278821/3.031855 s`，模型构造为 `32,217/132`。单次 smoke 只用于验证接线。
+正式矩阵已冻结为 `configs/d1_cv_motion_model_cache_multiseed_v1.json`，SHA-256 为
+`9898656598f0fa282620afe2384a3d656b7496f8957109c413bcb62069fd2e9a`；26 个正式 arm
+尚未运行。
+
 ## D1 GlobalTrack 发布元数据 A/B（2026-07-24）
 
 main 通过 `--d1-publication-metadata-implementation` 显式选择参考实现

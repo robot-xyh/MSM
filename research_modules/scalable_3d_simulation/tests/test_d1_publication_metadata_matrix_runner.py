@@ -27,6 +27,13 @@ V2_MATRIX_PATH = (
     / "configs"
     / "d1_publication_metadata_v2_multiseed_v1.json"
 )
+CV_MOTION_MODEL_MATRIX_PATH = (
+    ROOT
+    / "research_modules"
+    / "scalable_3d_simulation"
+    / "configs"
+    / "d1_cv_motion_model_cache_multiseed_v1.json"
+)
 
 
 def test_publication_metadata_matrix_freezes_same_commit_13_pair_contract() -> None:
@@ -76,6 +83,33 @@ def test_publication_metadata_v2_matrix_freezes_audit_and_regression_gates() -> 
         "d1.publication_audit_tree.v2"
     )
     assert boundary["d2_content_audit_required_before_identity_reuse"] is True
+
+
+def test_cv_motion_model_matrix_freezes_exact_cache_and_admission_gates() -> None:
+    matrix = matrix_runner.load_matrix(CV_MOTION_MODEL_MATRIX_PATH)
+    short = [case for case in matrix["cases"] if case["group"] == "short"]
+    long = [case for case in matrix["cases"] if case["group"] == "long"]
+
+    assert matrix["arm_implementations"] == {
+        "reference": "per_prediction_build_v1",
+        "candidate": "bounded_exact_lru_v1",
+    }
+    assert len(short) == 10
+    assert len(long) == 3
+    assert matrix["admission_gates"][
+        "minimum_candidate_model_build_reduction_pct"
+    ] == 95.0
+    assert matrix["admission_gates"][
+        "minimum_candidate_cache_hit_ratio_pct"
+    ] == 95.0
+    assert matrix["admission_gates"][
+        "short_minimum_core_wall_improvement_pct"
+    ] == 2.0
+    assert matrix["evidence_boundary"]["cache_key_policy"] == (
+        "exact_dt_process_noise"
+    )
+    assert matrix["evidence_boundary"]["cache_capacity"] == 128
+    assert matrix["evidence_boundary"]["matrix_values_are_read_only"] is True
 
 
 def test_arm_commands_differ_only_by_explicit_implementation_and_output(
@@ -138,6 +172,40 @@ def test_v2_arm_commands_bind_only_the_v2_candidate_treatment(
     output_index = reference.index("--output")
     assert reference[implementation_index + 1] == "per_track_copy_v1"
     assert candidate[implementation_index + 1] == "immutable_shared_v2"
+    for index, (left, right) in enumerate(
+        zip(reference, candidate, strict=True)
+    ):
+        if index not in {implementation_index + 1, output_index + 1}:
+            assert left == right
+
+
+def test_cv_motion_model_commands_bind_only_the_cache_treatment(
+    tmp_path: Path,
+) -> None:
+    matrix = matrix_runner.load_matrix(CV_MOTION_MODEL_MATRIX_PATH)
+    case = matrix["cases"][0]
+    reference = matrix_runner.build_episode_command(
+        ROOT,
+        matrix,
+        case,
+        "reference",
+        tmp_path / "reference",
+    )
+    candidate = matrix_runner.build_episode_command(
+        ROOT,
+        matrix,
+        case,
+        "candidate",
+        tmp_path / "candidate",
+    )
+
+    implementation_index = reference.index(
+        "--d1-cv-motion-model-implementation"
+    )
+    output_index = reference.index("--output")
+    assert reference[implementation_index + 1] == "per_prediction_build_v1"
+    assert candidate[implementation_index + 1] == "bounded_exact_lru_v1"
+    assert "--d1-cv-motion-model-cache-capacity" not in reference
     for index, (left, right) in enumerate(
         zip(reference, candidate, strict=True)
     ):
@@ -213,6 +281,41 @@ def test_v2_manifest_binds_audit_contract_and_v2_d6_evaluator(
         ].endswith("immutable_shared_audit.v2")
 
 
+def test_cv_motion_model_manifest_binds_cache_contract_and_d6_evaluator(
+    tmp_path: Path,
+) -> None:
+    matrix = matrix_runner.load_matrix(CV_MOTION_MODEL_MATRIX_PATH)
+    commit = "f" * 40
+    manifest = matrix_runner.planned_evidence_manifest(
+        CV_MOTION_MODEL_MATRIX_PATH,
+        matrix,
+        ROOT,
+        commit,
+        tmp_path / "evidence",
+    )
+
+    assert manifest["schema_version"] == (
+        "scalable3d-d1-cv-motion-model-cache-multiseed-evidence-v1"
+    )
+    assert manifest["required_d6_evaluator_schema_version"] == (
+        "d6.d1_cv_motion_model_cache_multiseed_evaluation.v1"
+    )
+    assert manifest["cv_motion_model_cache_capacity"] == 128
+    assert manifest[
+        "cv_motion_model_cache_diagnostics_schema_version"
+    ] == "d1.cv_motion_model_cache_diagnostics.v1"
+    for case in manifest["cases"]:
+        assert case["arms"]["reference"]["validation_kind"] == (
+            "cv_motion_model_cache"
+        )
+        assert case["arms"]["reference"][
+            "expected_d1_implementation_id"
+        ].endswith("per_prediction_build.v1")
+        assert case["arms"]["candidate"][
+            "expected_d1_implementation_id"
+        ].endswith("bounded_exact_lru.v1")
+
+
 def test_matrix_rejects_arm_override_in_common_flags(tmp_path: Path) -> None:
     matrix = matrix_runner.load_matrix(MATRIX_PATH)
     invalid = copy.deepcopy(matrix)
@@ -221,6 +324,29 @@ def test_matrix_rejects_arm_override_in_common_flags(tmp_path: Path) -> None:
     path.write_text(json.dumps(invalid), encoding="utf-8")
 
     with pytest.raises(ValueError, match="must not override"):
+        matrix_runner.load_matrix(path)
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "match"),
+    [
+        ("cache_key_policy", "rounded_dt", "exact cache key"),
+        ("cache_capacity", 256, "cache_capacity=128"),
+        ("matrix_values_are_read_only", False, "read-only matrices"),
+    ],
+)
+def test_cv_motion_model_matrix_rejects_weakened_cache_boundary(
+    tmp_path: Path,
+    field: str,
+    value: object,
+    match: str,
+) -> None:
+    matrix = matrix_runner.load_matrix(CV_MOTION_MODEL_MATRIX_PATH)
+    matrix["evidence_boundary"][field] = value
+    path = tmp_path / "invalid_cv_cache.json"
+    path.write_text(json.dumps(matrix), encoding="utf-8")
+
+    with pytest.raises(ValueError, match=match):
         matrix_runner.load_matrix(path)
 
 
@@ -451,6 +577,99 @@ def test_v2_episode_resume_requires_contract_and_d2_audit(
     summary["d2_publication_metadata_audit"]["totals"][
         "immutable_v2_contract_rejection_count"
     ] = 1
+    (episode / "summary.json").write_text(
+        json.dumps(summary), encoding="utf-8"
+    )
+    assert not matrix_runner._episode_matches(episode, **match_args)
+
+
+def test_cv_motion_model_episode_resume_requires_four_surface_audit(
+    tmp_path: Path,
+) -> None:
+    episode = tmp_path / "episode_cv_cache"
+    episode.mkdir()
+    commit = "1" * 40
+    implementation = "bounded_exact_lru_v1"
+    implementation_id = "d1.fusion.cv_motion_model.bounded_exact_lru.v1"
+    diagnostics = {
+        "schema_version": "d1.cv_motion_model_cache_diagnostics.v1",
+        "implementation_id": implementation_id,
+        "candidate_enabled": True,
+        "cache_capacity": 128,
+        "cache_entry_count": 8,
+        "operation_counts": {
+            "prediction_request_count": 110,
+            "nonpositive_dt_reference_bypass_count": 10,
+            "cache_hit_count": 92,
+            "cache_miss_count": 8,
+            "model_build_count": 8,
+            "peak_entry_count": 8,
+        },
+    }
+    initial_diagnostics = {
+        **diagnostics,
+        "cache_entry_count": 0,
+        "operation_counts": {},
+    }
+    manifest = {
+        "git_commit": commit,
+        "repository_dirty": False,
+        "seed": 1101,
+        "runtime_profile": {
+            "d1_cv_motion_model_implementation": implementation,
+            "d1_cv_motion_model_cache_diagnostics": initial_diagnostics,
+            "configuration": {
+                "d1_cv_motion_model_implementation": implementation,
+                "d1_cv_motion_model_cache_capacity": 128,
+            },
+        },
+    }
+    config = {
+        "seed": 1101,
+        "duration_s": 2.2,
+        "target_count": 200,
+        "resource_count": 200,
+        "recon_count": 2,
+    }
+    summary = {
+        "d1_cv_motion_model_implementation": implementation,
+        "d1_cv_motion_model_cache_diagnostics": diagnostics,
+        "module_final_diagnostics": {
+            "d1_cv_motion_model_implementation": implementation,
+            "d1_cv_motion_model_cache_diagnostics": diagnostics,
+        },
+        "finite_state": True,
+        "online_truth_use_count": 0,
+        "simulated_duration_s": 2.2,
+    }
+    governance = {
+        "d1_cv_motion_model_implementation": implementation,
+        "d1_cv_motion_model_cache_diagnostics": diagnostics,
+    }
+    for name, payload in (
+        ("manifest.json", manifest),
+        ("scenario_config.json", config),
+        ("summary.json", summary),
+        ("observation_governance_audit.json", governance),
+    ):
+        (episode / name).write_text(json.dumps(payload), encoding="utf-8")
+
+    match_args = {
+        "expected_commit": commit,
+        "expected_implementation": implementation,
+        "seed": 1101,
+        "duration_s": 2.2,
+        "target_count": 200,
+        "resource_count": 200,
+        "recon_count": 2,
+        "validation_kind": "cv_motion_model_cache",
+        "expected_cache_capacity": 128,
+    }
+    assert matrix_runner._episode_matches(episode, **match_args)
+
+    summary["d1_cv_motion_model_cache_diagnostics"]["operation_counts"][
+        "cache_hit_count"
+    ] = 91
     (episode / "summary.json").write_text(
         json.dumps(summary), encoding="utf-8"
     )
