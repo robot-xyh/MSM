@@ -1,8 +1,8 @@
 # Scalable 3D Simulation
 
-## D1 结构稀疏数值雅可比 A/B（2026-07-24）
+## D1 结构稀疏数值雅可比 A/B（2026-07-25）
 
-D1 已提供默认关闭的结构稀疏数值雅可比候选。参考实现
+D1 已提供结构稀疏数值雅可比实现。参考实现
 `dense_output_probe_v1` 对六维状态逐列执行中心差分；候选
 `known_dimension_structural_columns_v1` 使用量测模型已知输出维数，只计算观测方程实际
 依赖的状态列。声学、光电、激光雷达和无径向速度雷达只计算三个位置列；含径向速度雷达仍
@@ -14,11 +14,25 @@ D1 冻结微基准包含 480 个混合量测模型、每样本 20 轮和 9 次�
 `124,800` 降至 `72,000`。雅可比、归一化创新平方和门控决策 SHA-256 一致。该结果只支持
 进入 main 全栈准入，不构成 200 对 200、AirSim 或系统实时证据。
 
-main 通过 `--d1-structured-numerical-jacobian-implementation` 显式选择两臂，默认仍为
-`dense_output_probe_v1`。选择器、D1 完整实现 ID、操作数和守恒检查进入 runtime profile、
-observation governance、module final diagnostics 和 episode summary。预注册矩阵为
+main 通过 `--d1-structured-numerical-jacobian-implementation` 显式选择两臂。选择器、
+D1 完整实现 ID、操作数和守恒检查进入 runtime profile、observation governance、
+module final diagnostics 和 episode summary。预注册矩阵为
 `configs/d1_structured_numerical_jacobian_multiseed_v1.json`，包含 10 组 2.2 秒 short
-pair 和 3 组 10 秒 long pair。正式矩阵和 D6 独立准入尚未完成，候选不得据此设为默认。
+pair 和 3 组 10 秒 long pair。
+
+main 在 clean `9d1f54f8540fdc4a7a1011121aafac5718290122` 上完成 13 组 pair、
+26 个 fresh arm，0 reused、0 failed。D6 独立校验 13/13 pair 的业务语义、有限状态、
+在线真值隔离、实现身份、操作数守恒、性能和内存证据。short/long 的 D1 fusion 改善
+`6.084778%/4.676061%`，核心墙钟改善 `1.897370%/1.786530%`，候选分别
+`10/10`、`3/3` 更快；量测函数求值减少 `53.846154%`。全部冻结准入门通过，
+`optimization_admitted=true`。
+
+scalable 3D 集成默认已晋级为 `known_dimension_structural_columns_v1`，
+`dense_output_probe_v1` 继续作为显式回退和 A/B 参考。D1 独立 `FusionAdapter` 的默认值
+仍由 D1 模块维护，本次集成准入不改写该边界。候选最低实时因子为 `0.180726`，
+`system_realtime_gap_closed=false`；本结论不包含 AirSim、目标处理器或实飞证据。正式
+报告位于
+`../d6_evaluation_metrics/outputs/d1_structured_jacobian_multiseed_20260725_formal_9d1f54f_d6/`。
 
 ## 在线真值守卫实现 A/B（2026-07-24）
 

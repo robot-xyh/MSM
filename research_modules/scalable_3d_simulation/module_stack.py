@@ -170,7 +170,7 @@ class IntegratedStackConfig:
         DEFAULT_CV_MOTION_MODEL_CACHE_CAPACITY
     )
     d1_structured_numerical_jacobian_implementation: str = (
-        D1_STRUCTURED_NUMERICAL_JACOBIAN_REFERENCE_IMPLEMENTATION
+        D1_STRUCTURED_NUMERICAL_JACOBIAN_CANDIDATE_IMPLEMENTATION
     )
     d2_claim_retention_s: float = 30.0
     d2_claim_max_lateness_s: float = 5.0

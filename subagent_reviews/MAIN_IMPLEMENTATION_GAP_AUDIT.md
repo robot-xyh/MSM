@@ -16,10 +16,10 @@
 `immutable_shared_v2`。系统实时、逐批审计明细、严格精度、AirSim 和目标硬件证据仍为
 P1。以下最新专项记录优先于“扫描输入或发布元数据仍待治理”的历史表述。
 
-## 2026-07-24 D1 结构稀疏数值雅可比候选
+## 2026-07-25 D1 结构稀疏数值雅可比正式准入
 
 当前无新增 P0。默认路径画像把 D1 `numerical_jacobian` 定位为可分离热点。D1 owner 已增加
-默认关闭的结构稀疏候选：声学、光电、激光雷达和无径向速度雷达只对三个位置列执行原中心
+结构稀疏候选：声学、光电、激光雷达和无径向速度雷达只对三个位置列执行原中心
 差分；含径向速度雷达仍使用六列。活动列步长和运算顺序、双时间戳、NED、协方差、
 fixed-lag/OOSM、门限、量测频率和 `global_track_id` 均未改变。
 
@@ -28,20 +28,31 @@ D1 冻结 480 个混合量测模型、每样本 20 轮并交错运行 9 次。�
 `124,800 -> 72,000`，减少 `42.31%`。雅可比、归一化创新平方和门控决策摘要完全一致，
 D1 全量 `414 passed`。
 
-main 已接入 `dense_output_probe_v1/known_dimension_structural_columns_v1` 选择器，默认保持
-reference。实现身份和操作数进入 runtime profile、observation governance、module final
-diagnostics 和 summary。正式矩阵冻结在
-`configs/d1_structured_numerical_jacobian_multiseed_v1.json`。
+main 已接入 `dense_output_probe_v1/known_dimension_structural_columns_v1` 选择器。
+实现身份和操作数进入 runtime profile、observation governance、module final diagnostics
+和 summary。正式矩阵冻结在
+`configs/d1_structured_numerical_jacobian_multiseed_v1.json`，并在 clean
+`9d1f54f8540fdc4a7a1011121aafac5718290122` 完成 10 组 short 与 3 组 long pair，
+共 26 个 fresh arm，0 reused、0 failed。
+
+D6 失败关闭评估确认 13/13 pair 的业务语义、有限状态、在线真值隔离、实现身份、操作数
+守恒、性能和内存门全部通过。short/long 的 D1 fusion 改善
+`6.084778%/4.676061%`，核心墙钟改善 `1.897370%/1.786530%`，候选分别
+`10/10`、`3/3` 更快；量测函数求值减少 `53.846154%`，最大任一 pair RSS 增幅
+`0.063858%`。D6 判定 `optimization_admitted=true`，main 默认已晋级为
+`known_dimension_structural_columns_v1`；`dense_output_probe_v1` 继续作为显式回退。
+D1 独立 `FusionAdapter` 默认不在本次 main 集成准入中改写。
 
 仍开放 P1：
 
-1. **全栈准入。** D1 模块微基准不是完整融合证据。需完成 clean 单 seed smoke、10 组 short
-   和 3 组 long pair，并由 D6 独立判断。
-2. **系统实时容量。** 预注册门要求 short/long D1 fusion 至少改善 `2%`、核心墙钟至少改善
-   `0.5%`，并限制 D1 scan input、D2 association 和 RSS 回退。实时因子仍须独立达到 1。
+1. **系统实时容量。** 候选最低实时因子为 `0.180726`，未达到 1；局部准入没有关闭
+   200 对 200 实时 P1。
+2. **尾延迟。** long 的 D1 fusion 最大单次耗时均值未稳定改善，继续保留阶段 P95/max
+   治理，不用均值提升覆盖尖峰。
 3. **精度与环境。** 当前没有正式 RMSE、NEES、NIS、AirSim、冻结目标处理器或实飞证据。
 
-在正式准入前，候选保持默认关闭。
+正式报告位于
+`research_modules/d6_evaluation_metrics/outputs/d1_structured_jacobian_multiseed_20260725_formal_9d1f54f_d6/`。
 
 ## 2026-07-24 main 在线真值守卫候选正式拒绝
 

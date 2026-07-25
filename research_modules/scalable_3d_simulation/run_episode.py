@@ -177,12 +177,13 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
             D1_STRUCTURED_NUMERICAL_JACOBIAN_CANDIDATE_IMPLEMENTATION,
         ),
         default=(
-            D1_STRUCTURED_NUMERICAL_JACOBIAN_REFERENCE_IMPLEMENTATION
+            D1_STRUCTURED_NUMERICAL_JACOBIAN_CANDIDATE_IMPLEMENTATION
         ),
         help=(
             "select the D1 numerical-Jacobian A/B implementation; the "
-            "known-dimension structural-column candidate remains explicit "
-            "and default-off pending full-stack admission"
+            "formally admitted known-dimension structural-column path is "
+            "the default and the dense-output probe remains an explicit "
+            "reference"
         ),
     )
     parser.add_argument(

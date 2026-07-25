@@ -390,7 +390,7 @@ def test_d1_structured_jacobian_selection_is_explicit_hashed_and_audited() -> No
     default = IntegratedStackConfig()
     assert (
         default.d1_structured_numerical_jacobian_implementation
-        == "dense_output_probe_v1"
+        == "known_dimension_structural_columns_v1"
     )
 
     reference_stack = IntegratedScalableModuleStack(
@@ -495,18 +495,18 @@ def test_episode_cli_exposes_d1_structured_jacobian_selector() -> None:
     default_args = episode_cli.parse_args(["--integrated-stack"])
     assert (
         default_args.d1_structured_numerical_jacobian_implementation
-        == "dense_output_probe_v1"
+        == "known_dimension_structural_columns_v1"
     )
     args = episode_cli.parse_args(
         [
             "--integrated-stack",
             "--d1-structured-numerical-jacobian-implementation",
-            "known_dimension_structural_columns_v1",
+            "dense_output_probe_v1",
         ]
     )
     assert (
         args.d1_structured_numerical_jacobian_implementation
-        == "known_dimension_structural_columns_v1"
+        == "dense_output_probe_v1"
     )
 
 
