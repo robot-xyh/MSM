@@ -65,6 +65,8 @@ from .runtime_ports import (
     ScalableModuleStack,
 )
 from .module_stack import (
+    D1_CV_MOTION_MODEL_CANDIDATE_IMPLEMENTATION,
+    D1_CV_MOTION_MODEL_REFERENCE_IMPLEMENTATION,
     D4RegionLearningFrame,
     D5GraphLearningFrame,
     D5ActiveVisionLearningFrame,
@@ -138,6 +140,8 @@ __all__ = [
     "DeliveredMessage",
     "DeterministicCommunicationNetwork",
     "D4RegionLearningFrame",
+    "D1_CV_MOTION_MODEL_CANDIDATE_IMPLEMENTATION",
+    "D1_CV_MOTION_MODEL_REFERENCE_IMPLEMENTATION",
     "D4_ISOLATED_PHYSICAL_ADOPTION_SCHEMA",
     "D4IsolatedPhysicalAdoptionRecord",
     "D5GraphLearningFrame",

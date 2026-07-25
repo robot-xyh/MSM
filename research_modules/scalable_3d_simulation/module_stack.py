@@ -21,9 +21,14 @@ from typing import Any, Iterable, Mapping
 import numpy as np
 
 from research_modules.d1_sensor_fusion.src.d1_sensor_fusion import (
+    CV_MOTION_MODEL_CACHE_DIAGNOSTICS_SCHEMA_VERSION,
+    CV_MOTION_MODEL_CANDIDATE_IMPLEMENTATION_ID,
+    CV_MOTION_MODEL_REFERENCE_IMPLEMENTATION_ID,
     DEFAULT_STRUCTURAL_AMBIGUITY_PUBLISHER_NODE_ID,
+    DEFAULT_CV_MOTION_MODEL_CACHE_CAPACITY,
     ExperimentalCentroidEvidenceDisposition,
     ExperimentalCentroidPublicationState,
+    MAX_CV_MOTION_MODEL_CACHE_CAPACITY,
     SCAN_INPUT_CANDIDATE_IMPLEMENTATION,
     SCAN_INPUT_REFERENCE_IMPLEMENTATION,
     ScanInputConfig,
@@ -119,6 +124,8 @@ from .runtime_ports import (
 INTEGRATED_STACK_SCHEMA_VERSION = "scalable3d-module-stack-v1"
 D1_PUBLICATION_METADATA_REFERENCE_IMPLEMENTATION = "per_track_copy_v1"
 D1_PUBLICATION_METADATA_CANDIDATE_IMPLEMENTATION = "immutable_shared_v2"
+D1_CV_MOTION_MODEL_REFERENCE_IMPLEMENTATION = "per_prediction_build_v1"
+D1_CV_MOTION_MODEL_CANDIDATE_IMPLEMENTATION = "bounded_exact_lru_v1"
 _EPS = 1.0e-9
 
 
@@ -144,6 +151,12 @@ class IntegratedStackConfig:
     d1_scan_input_implementation: str = SCAN_INPUT_CANDIDATE_IMPLEMENTATION
     d1_publication_metadata_implementation: str = (
         D1_PUBLICATION_METADATA_CANDIDATE_IMPLEMENTATION
+    )
+    d1_cv_motion_model_implementation: str = (
+        D1_CV_MOTION_MODEL_REFERENCE_IMPLEMENTATION
+    )
+    d1_cv_motion_model_cache_capacity: int = (
+        DEFAULT_CV_MOTION_MODEL_CACHE_CAPACITY
     )
     d2_claim_retention_s: float = 30.0
     d2_claim_max_lateness_s: float = 5.0
@@ -223,6 +236,49 @@ class IntegratedStackConfig:
             self,
             "d1_publication_metadata_implementation",
             publication_metadata_implementation,
+        )
+        cv_motion_model_implementation = str(
+            self.d1_cv_motion_model_implementation
+        ).strip()
+        if cv_motion_model_implementation not in {
+            D1_CV_MOTION_MODEL_REFERENCE_IMPLEMENTATION,
+            D1_CV_MOTION_MODEL_CANDIDATE_IMPLEMENTATION,
+        }:
+            raise ValueError(
+                "d1_cv_motion_model_implementation must be "
+                "per_prediction_build_v1 or bounded_exact_lru_v1"
+            )
+        object.__setattr__(
+            self,
+            "d1_cv_motion_model_implementation",
+            cv_motion_model_implementation,
+        )
+        if (
+            isinstance(self.d1_cv_motion_model_cache_capacity, bool)
+            or not isinstance(
+                self.d1_cv_motion_model_cache_capacity,
+                Integral,
+            )
+        ):
+            raise TypeError(
+                "d1_cv_motion_model_cache_capacity must be an integer"
+            )
+        cv_motion_model_cache_capacity = int(
+            self.d1_cv_motion_model_cache_capacity
+        )
+        if not (
+            1
+            <= cv_motion_model_cache_capacity
+            <= MAX_CV_MOTION_MODEL_CACHE_CAPACITY
+        ):
+            raise ValueError(
+                "d1_cv_motion_model_cache_capacity must be between 1 and "
+                f"{MAX_CV_MOTION_MODEL_CACHE_CAPACITY}"
+            )
+        object.__setattr__(
+            self,
+            "d1_cv_motion_model_cache_capacity",
+            cv_motion_model_cache_capacity,
         )
         if (
             not np.isfinite(self.d2_claim_capacity_safety_factor)
@@ -316,6 +372,27 @@ class IntegratedStackConfig:
             value = float(getattr(self, name))
             if not 0.0 <= value <= 1.0:
                 raise ValueError(f"{name} must be in [0, 1]")
+
+
+def _initial_cv_motion_model_cache_diagnostics(
+    config: IntegratedStackConfig,
+) -> dict[str, Any]:
+    candidate_enabled = (
+        config.d1_cv_motion_model_implementation
+        == D1_CV_MOTION_MODEL_CANDIDATE_IMPLEMENTATION
+    )
+    return {
+        "schema_version": CV_MOTION_MODEL_CACHE_DIAGNOSTICS_SCHEMA_VERSION,
+        "implementation_id": (
+            CV_MOTION_MODEL_CANDIDATE_IMPLEMENTATION_ID
+            if candidate_enabled
+            else CV_MOTION_MODEL_REFERENCE_IMPLEMENTATION_ID
+        ),
+        "candidate_enabled": candidate_enabled,
+        "cache_capacity": int(config.d1_cv_motion_model_cache_capacity),
+        "cache_entry_count": 0,
+        "operation_counts": {},
+    }
 
 
 @dataclass(frozen=True)
@@ -503,6 +580,14 @@ class IntegratedScalableModuleStack:
             "d1_publication_metadata_implementation": (
                 self.stack_config.d1_publication_metadata_implementation
             ),
+            "d1_cv_motion_model_implementation": (
+                self.stack_config.d1_cv_motion_model_implementation
+            ),
+            "d1_cv_motion_model_cache_diagnostics": (
+                _initial_cv_motion_model_cache_diagnostics(
+                    self.stack_config
+                )
+            ),
         }
 
     def runtime_manifest_profile_for_scenario(
@@ -547,6 +632,13 @@ class IntegratedScalableModuleStack:
             immutable_shared_publication_metadata=(
                 self.stack_config.d1_publication_metadata_implementation
                 == D1_PUBLICATION_METADATA_CANDIDATE_IMPLEMENTATION
+            ),
+            cached_cv_motion_model=(
+                self.stack_config.d1_cv_motion_model_implementation
+                == D1_CV_MOTION_MODEL_CANDIDATE_IMPLEMENTATION
+            ),
+            cv_motion_model_cache_capacity=(
+                self.stack_config.d1_cv_motion_model_cache_capacity
             ),
         )
         self.d1_scan_input = ScanInputOrganizer(
@@ -978,6 +1070,12 @@ class IntegratedScalableModuleStack:
             ),
             "d1_publication_metadata_diagnostics": (
                 self.d1.publication_materialization_diagnostics()
+            ),
+            "d1_cv_motion_model_implementation": (
+                self.stack_config.d1_cv_motion_model_implementation
+            ),
+            "d1_cv_motion_model_cache_diagnostics": (
+                self.d1.cv_motion_model_cache_diagnostics()
             ),
             "d1_scan_event_total_count": self._d1_scan_event_total_count,
             "d1_scan_event_retained_count": len(self._d1_scan_events),
@@ -4978,6 +5076,12 @@ class IntegratedScalableModuleStack:
             ],
             "d1_publication_metadata_diagnostics": dict(
                 governance["d1_publication_metadata_diagnostics"]
+            ),
+            "d1_cv_motion_model_implementation": governance[
+                "d1_cv_motion_model_implementation"
+            ],
+            "d1_cv_motion_model_cache_diagnostics": dict(
+                governance["d1_cv_motion_model_cache_diagnostics"]
             ),
             "d2_publication_metadata_audit": dict(
                 governance["d2_publication_metadata_audit"]

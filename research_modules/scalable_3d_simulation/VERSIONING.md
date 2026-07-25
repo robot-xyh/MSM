@@ -56,6 +56,8 @@ main
 | D1 发布审计树合同 | `d1.publication_audit_tree.v2` | 精确容器类型、叶节点集合、冻结方式、循环/重复键/非有限值拒绝或序列化边界改变 |
 | main/D2 发布元数据审计 | `scalable3d-d2-publication-metadata-audit-v1` | batch/latest/totals、D2 内容审计、内置等价复用、v2 合同验证或身份复用计数语义改变 |
 | D6 发布元数据 v2 准入 | `d6.d1_publication_metadata_v2_multiseed_evaluation.v1` | v2 evidence 绑定、D2 审计归一化边界、D1/D2/核心墙钟/RSS 门或准入结论语义改变 |
+| D1 常速度模型构造实现 | `per_prediction_build_v1` / `bounded_exact_lru_v1` | 状态转移和过程噪声矩阵的逐次构造或精确有界缓存语义改变 |
+| D1 常速度模型缓存诊断 | `d1.cv_motion_model_cache_diagnostics.v1` | 实现 ID、容量、条目数、预测请求、构造、命中、未命中或淘汰计数语义改变 |
 | D1 结构歧义证据 | `d1.structural-ambiguity-evidence.v1` | 允许边分量、成员不透明令牌、双时间戳、状态/协方差或候选边语义改变 |
 | D2 身份评估清单 | `scalable3d-offline-identity-evaluation-manifest-v2` | v2 在原来源哈希外绑定逐发布一致的身份恢复配置快照、配置 SHA-256、记录数和来源路径；谱系映射、身份指标、恢复配置或来源校验改变时升级 |
 | D2 观测证据治理 | `d2-observation-evidence-governance-v1` | D1 观测新鲜度、重放隔离、时间冲突、暂定航迹删除或重复合并审计语义改变 |

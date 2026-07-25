@@ -16,6 +16,34 @@
 `immutable_shared_v2`。系统实时、逐批审计明细、严格精度、AirSim 和目标硬件证据仍为
 P1。以下最新专项记录优先于“扫描输入或发布元数据仍待治理”的历史表述。
 
+## 2026-07-24 D1 常速度模型缓存候选
+
+当前无新增 P0。D1 owner 已提供精确 `(dt, process_noise)` 键的有界最近最少使用缓存，
+参考实现 ID 为 `d1.fusion.cv_motion_model.per_prediction_build.v1`，候选实现 ID 为
+`d1.fusion.cv_motion_model.bounded_exact_lru.v1`。候选容量默认 128、上限 4,096，缓存
+矩阵只读；非正或非有限输入回到参考计算。时间戳、NED、协方差、固定滞后重放、门限和
+`global_track_id` 均未改变。
+
+D1 模块冻结 benchmark 使用 200 个状态、100 步传播和 7 次交替采样。参考/候选中位耗时
+为 `0.220679/0.103950 s`，局部加速约 `2.12x`；模型构造数由 `20,000` 降至 `8`，最终
+状态 SHA-256 相同。该结果不构成全栈准入证据。
+
+main 已接入显式 selector、容量校验和 CLI。默认仍为 `per_prediction_build_v1`。selector、
+容量、实现 ID 和缓存操作计数写入 runtime profile 哈希、observation governance、
+module final diagnostics 和 episode summary。专项回归已覆盖默认、显式选择、清单哈希、
+诊断持久化和非法容量；D1、scalable 3D、D6 全量回归分别为 `395/205/771 passed`。
+
+仍开放 P1：
+
+1. **同提交多 seed 准入。** 需要从 main 集成的 clean commit 运行 10 组 short 和 3 组
+   long pair，禁止复用旧 episode。
+2. **全栈非退化。** 需要 D6 校验业务等价、D1 fusion、D2 association、核心墙钟、RSS、
+   实时因子和实现身份。局部 benchmark 不能替代该门。
+3. **环境和精度。** 当前无 AirSim、冻结目标处理器、RMSE、NEES、NIS 或严格身份结果。
+
+正式矩阵通过前，候选只作为可选 benchmark，不改变 main 默认路径，也不关闭 200 对 200
+系统实时 P1。
+
 ## 2026-07-24 D1 发布元数据 v1 结论与 v2 准入
 
 当前无新增 P0。历史 v1 矩阵在同一 clean 提交完成 10 组 2.2 秒 short pair 和 3 组

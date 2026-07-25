@@ -1,5 +1,24 @@
 # Scalable 3D Simulation
 
+## D1 常速度模型构造 A/B（2026-07-24）
+
+main 已接入 D1 常速度状态传播模型的显式 A/B 选择器：
+`per_prediction_build_v1` 为逐次构造参考实现，`bounded_exact_lru_v1` 为精确键、有界
+最近最少使用缓存候选。命令行使用 `--d1-cv-motion-model-implementation` 选择实验臂，
+使用 `--d1-cv-motion-model-cache-capacity` 设置 1 至 4,096 的容量。默认仍为参考实现，
+容量默认 128；正式多 seed 准入前不自动启用候选。
+
+两条路径执行同一常速度状态转移和过程噪声计算，不量化时间差，不改变双时间戳、NED
+坐标、协方差、固定滞后回放、量测门控或全局航迹编号。选择器、容量、D1 实现标识以及
+预测请求、模型构造、缓存命中、未命中和淘汰计数进入 runtime profile、observation
+governance、module final diagnostics 和 episode summary。运行清单哈希可区分两个实验臂。
+
+D1 模块内冻结 benchmark 使用 200 个状态、100 步传播和 7 次交替采样，参考/候选中位耗时
+为 `0.220679/0.103950 s`，候选约为 `2.12x`，模型构造数由 `20,000` 降至 `8`，最终状态
+SHA-256 一致。该结果只证明局部热点可优化，尚不证明 200 对 200 全栈收益。下一步从同一
+clean main 提交运行 10 组 short 和 3 组 long pair，由 D6 独立检查业务等价、实现身份、
+核心墙钟、D1 融合、D2 非退化、内存和实时因子后再决定是否晋级。
+
 ## D1 GlobalTrack 发布元数据 A/B（2026-07-24）
 
 main 通过 `--d1-publication-metadata-implementation` 显式选择参考实现

@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections import Counter
 from dataclasses import replace
 import csv
+import importlib
 import json
 from types import MappingProxyType, SimpleNamespace
 
@@ -242,6 +243,133 @@ def test_d1_publication_metadata_selection_is_explicit_hashed_and_audited() -> N
         IntegratedStackConfig(
             d1_publication_metadata_implementation="unknown"
         )
+
+
+def test_d1_cv_motion_model_cache_selection_is_explicit_hashed_and_audited() -> None:
+    config = ScenarioConfig(
+        scenario_name="d1_cv_motion_model_cache_selection",
+        scenario_version="d1-cv-motion-model-cache-selection-v1",
+        target_count=2,
+        resource_count=2,
+        recon_count=1,
+        region_count=1,
+        duration_s=0.6,
+        seed=29,
+    )
+    default = IntegratedStackConfig()
+    assert (
+        default.d1_cv_motion_model_implementation
+        == "per_prediction_build_v1"
+    )
+    assert default.d1_cv_motion_model_cache_capacity == 128
+
+    reference_stack = IntegratedScalableModuleStack(default)
+    candidate_stack = IntegratedScalableModuleStack(
+        IntegratedStackConfig(
+            d1_cv_motion_model_implementation="bounded_exact_lru_v1",
+            d1_cv_motion_model_cache_capacity=7,
+        )
+    )
+    reference_profile = reference_stack.runtime_manifest_profile_for_scenario(
+        config
+    )
+    candidate_profile = candidate_stack.runtime_manifest_profile_for_scenario(
+        config
+    )
+    assert reference_profile["d1_cv_motion_model_implementation"] == (
+        "per_prediction_build_v1"
+    )
+    assert candidate_profile["d1_cv_motion_model_implementation"] == (
+        "bounded_exact_lru_v1"
+    )
+    assert candidate_profile["configuration"][
+        "d1_cv_motion_model_cache_capacity"
+    ] == 7
+    initial_diagnostics = candidate_profile[
+        "d1_cv_motion_model_cache_diagnostics"
+    ]
+    assert initial_diagnostics["candidate_enabled"] is True
+    assert initial_diagnostics["cache_capacity"] == 7
+    assert initial_diagnostics["cache_entry_count"] == 0
+    assert initial_diagnostics["operation_counts"] == {}
+    assert initial_diagnostics["implementation_id"].endswith(
+        "bounded_exact_lru.v1"
+    )
+
+    reference_result = run_episode(config, module_stack=reference_stack)
+    candidate_result = run_episode(config, module_stack=candidate_stack)
+    assert (
+        reference_result.manifest.runtime_profile_sha256
+        != candidate_result.manifest.runtime_profile_sha256
+    )
+    governance = candidate_result.observation_governance_audit
+    assert governance is not None
+    assert governance["d1_cv_motion_model_implementation"] == (
+        "bounded_exact_lru_v1"
+    )
+    diagnostics = governance["d1_cv_motion_model_cache_diagnostics"]
+    assert diagnostics["candidate_enabled"] is True
+    assert diagnostics["cache_capacity"] == 7
+    assert diagnostics["implementation_id"].endswith(
+        "bounded_exact_lru.v1"
+    )
+    assert diagnostics["operation_counts"]["prediction_request_count"] > 0
+    assert candidate_result.summary[
+        "d1_cv_motion_model_implementation"
+    ] == "bounded_exact_lru_v1"
+    assert candidate_result.summary[
+        "d1_cv_motion_model_cache_diagnostics"
+    ] == diagnostics
+    assert candidate_result.summary["module_final_diagnostics"][
+        "d1_cv_motion_model_cache_diagnostics"
+    ] == diagnostics
+
+    with pytest.raises(
+        ValueError,
+        match="d1_cv_motion_model_implementation must be",
+    ):
+        IntegratedStackConfig(d1_cv_motion_model_implementation="unknown")
+    with pytest.raises(
+        TypeError,
+        match="d1_cv_motion_model_cache_capacity must be an integer",
+    ):
+        IntegratedStackConfig(d1_cv_motion_model_cache_capacity=True)
+    with pytest.raises(
+        ValueError,
+        match="d1_cv_motion_model_cache_capacity must be between",
+    ):
+        IntegratedStackConfig(d1_cv_motion_model_cache_capacity=0)
+    with pytest.raises(
+        ValueError,
+        match="d1_cv_motion_model_cache_capacity must be between",
+    ):
+        IntegratedStackConfig(d1_cv_motion_model_cache_capacity=4_097)
+
+
+def test_episode_cli_exposes_d1_cv_motion_model_cache_selector() -> None:
+    episode_cli = importlib.import_module(
+        "research_modules.scalable_3d_simulation.run_episode"
+    )
+    default_args = episode_cli.parse_args(["--integrated-stack"])
+    assert (
+        default_args.d1_cv_motion_model_implementation
+        == "per_prediction_build_v1"
+    )
+    assert default_args.d1_cv_motion_model_cache_capacity == 128
+    args = episode_cli.parse_args(
+        [
+            "--integrated-stack",
+            "--d1-cv-motion-model-implementation",
+            "bounded_exact_lru_v1",
+            "--d1-cv-motion-model-cache-capacity",
+            "17",
+        ]
+    )
+    assert (
+        args.d1_cv_motion_model_implementation
+        == "bounded_exact_lru_v1"
+    )
+    assert args.d1_cv_motion_model_cache_capacity == 17
 
 
 def test_d1_opaque_source_key_control_arm_is_explicit_and_hashed() -> None:

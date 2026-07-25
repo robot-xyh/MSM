@@ -1,5 +1,32 @@
 # 200 对 200 三维质点仿真实施计划
 
+## D1 常速度模型缓存准入（2026-07-24）
+
+1. [x] D1 owner 提供 `per_prediction_build_v1` 参考实现和
+   `bounded_exact_lru_v1` 候选；候选只缓存精确 `(dt, process_noise)` 对应的只读状态
+   转移矩阵与过程噪声矩阵。
+2. [x] D1 模块 benchmark 得到约 `2.12x` 局部加速、`20,000 -> 8` 次模型构造和相同终态
+   SHA-256；D1 全量模块测试通过。
+3. [x] main 增加显式实现选择器和 1 至 4,096 的容量校验；默认保持
+   `per_prediction_build_v1`，候选不因局部 benchmark 自动晋级。
+4. [x] selector、capacity、实现 ID 和缓存操作计数进入 runtime profile 哈希、
+   observation governance、final diagnostics 和 episode summary。
+5. [x] main 增加默认值、显式选择、运行清单哈希、诊断持久化和非法配置回归；D1、
+   scalable 3D、D6 全量回归分别为 `395/205/771 passed`。
+6. [ ] 从 main 集成的 clean commit 完成 reference/candidate smoke，确认业务载荷、
+   有限状态、在线真值隔离和实现身份。
+7. [ ] 预注册 10 组 2.2 秒 short pair 与 3 组 10 秒 long pair；每组固定 200 个目标、
+   200 个资源、2 个侦察节点，并交替实验臂先后顺序。
+8. [ ] 每个 pair 只允许常速度模型构造实现不同；扫描输入继续使用已准入
+   `candidate_v2`，发布元数据继续使用已准入 `immutable_shared_v2`。
+9. [ ] D6 独立校验业务等价、D1 缓存诊断、D1 fusion、D2 association、核心墙钟、
+   最大常驻内存、实时因子及逐 pair 稳定性。
+10. [ ] 只有正式准入门全部通过后，main 才把候选设为默认；否则保留为可选 benchmark。
+
+该专项不改变量测频率、状态模型公式、固定滞后窗口、协方差合同、关联门限或身份所有权。
+局部 `2.12x` 结果不关闭系统实时 P1。正式多 seed 结果、AirSim 和冻结目标处理器证据仍待
+补充。
+
 ## D1 发布元数据多 seed 准入（2026-07-24）
 
 ### v1 正式结论

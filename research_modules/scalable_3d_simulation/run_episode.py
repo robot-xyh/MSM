@@ -23,6 +23,8 @@ from research_modules.scalable_3d_simulation.learning_runtime import (
 )
 from research_modules.scalable_3d_simulation.orchestrator import run_episode
 from research_modules.scalable_3d_simulation.module_stack import (
+    D1_CV_MOTION_MODEL_CANDIDATE_IMPLEMENTATION,
+    D1_CV_MOTION_MODEL_REFERENCE_IMPLEMENTATION,
     D1_PUBLICATION_METADATA_CANDIDATE_IMPLEMENTATION,
     D1_PUBLICATION_METADATA_REFERENCE_IMPLEMENTATION,
     IntegratedStackConfig,
@@ -139,6 +141,29 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
             "is the default and per_track_copy_v1 remains the reference"
         ),
     )
+    parser.add_argument(
+        "--d1-cv-motion-model-implementation",
+        choices=(
+            D1_CV_MOTION_MODEL_REFERENCE_IMPLEMENTATION,
+            D1_CV_MOTION_MODEL_CANDIDATE_IMPLEMENTATION,
+        ),
+        default=D1_CV_MOTION_MODEL_REFERENCE_IMPLEMENTATION,
+        help=(
+            "select D1 constant-velocity model construction; the "
+            "per-prediction reference remains the default until the bounded "
+            "exact LRU candidate passes formal multiseed admission"
+        ),
+    )
+    parser.add_argument(
+        "--d1-cv-motion-model-cache-capacity",
+        type=int,
+        default=128,
+        help=(
+            "set the bounded exact LRU capacity in [1, 4096]; the value is "
+            "hashed and audited even when the reference implementation is "
+            "selected"
+        ),
+    )
     add_learning_runtime_arguments(parser)
     return parser.parse_args(argv)
 
@@ -209,6 +234,12 @@ def main() -> int:
                 ),
                 d1_publication_metadata_implementation=(
                     args.d1_publication_metadata_implementation
+                ),
+                d1_cv_motion_model_implementation=(
+                    args.d1_cv_motion_model_implementation
+                ),
+                d1_cv_motion_model_cache_capacity=(
+                    args.d1_cv_motion_model_cache_capacity
                 ),
             ),
         )
