@@ -1,5 +1,63 @@
 # D6 Evaluation Metrics
 
+## 2026-07-24 D1 常速度模型缓存正式评估入口
+
+D6 新增独立只读消费者 `d1_cv_motion_model_cache_multiseed.py` 和命令行
+`scripts/evaluate_d1_cv_motion_model_cache_multiseed.py`。入口固定绑定：
+
+- matrix schema
+  `scalable3d-d1-cv-motion-model-cache-multiseed-matrix-v1`；
+- matrix SHA-256
+  `9898656598f0fa282620afe2384a3d656b7496f8957109c413bcb62069fd2e9a`；
+- clean source commit
+  `44223566439a446fc49f2a3fd861d1d51bd676b9`；
+- short seeds `1101-1110 @ 2.2 s`、long seeds `1101-1103 @ 10 s`；
+- 200 个目标、200 个资源、2 个侦察节点、缓存容量 128；
+- 参考/候选实现
+  `per_prediction_build_v1/bounded_exact_lru_v1`。
+
+loader 要求 13 pair、26 个 arm 全部为 `complete` 且返回码为 0，不接受 reused arm。它从
+manifest runtime profile、runtime configuration、summary、module final、嵌套治理和独立治理
+文件交叉确认 selector、实现 ID、诊断 schema、候选标志和容量。候选逐 arm 检查：
+
+```text
+prediction requests
+  = nonpositive bypass + cache hit + cache miss + nonfinite bypass
+model builds = cache miss + nonfinite bypass
+entry count <= 128
+peak entry count <= 128
+```
+
+参考臂不得出现 hit、miss、eviction、entry、peak 或 candidate nonfinite bypass，且
+`prediction requests = nonpositive bypass + model builds`。缺失操作计数字段按 0 解释；未知字段、
+负值、非整数、候选 hit/miss/build 为 0、两臂请求工作量不同均失败关闭。
+
+D6 在每个 pair 内部调用 `compare_cross_build_episodes()`。只把
+`same_runtime_profile` 作为预注册处理差异排除，并对常速度缓存 selector、诊断、处理派生 episode
+标识和性能字段做窄范围归一化；在线消息、D3 计划谱系、D4 内容地址、其余 summary/governance 和
+离线真值仍比较。在线真值使用必须为 0，状态和真值数组必须有限。
+
+输出包含 D1 融合、D2 关联、核心墙钟、RSS、实时因子、模型构造减少率和缓存命中率。short/long
+分别做逐 pair 相对变化和 10000 次配对 bootstrap。准入门直接消费并严格核对冻结矩阵：D1 融合
+改善至少 5%，核心墙钟改善至少 2%，D2 关联增幅不超过 5%，RSS 均值和任一 pair 增幅不超过 5%，
+模型构造减少率和命中率均至少 95%。局部准入和系统实时门分别输出
+`d1_optimization_admitted`、`system_realtime_gap_closed`。
+
+报告 bundle 含完整 JSON、compact JSON、逐 pair CSV、中文 Markdown、PNG 曲线和
+`SHA256SUMS`，输出目录必须位于原始 evidence root 外。专项为
+`13 passed, 1 warning in 5.03s`；D6 全量为
+`784 passed, 1 warning in 48.64s`。warning 是既有 Matplotlib `Axes3D` 环境提示。
+
+当前状态是评估器已实现并测试，正式 13-pair/26-arm evidence 尚未运行，因此还没有缓存候选的
+正式准入结论，也没有新的系统实时结论。
+
+```bash
+PYTHONPATH=research_modules/d6_evaluation_metrics \
+python3 research_modules/d6_evaluation_metrics/scripts/evaluate_d1_cv_motion_model_cache_multiseed.py \
+  --evidence-manifest /path/to/evidence_manifest.json \
+  --output-dir /path/to/independent_d6_report
+```
+
 ## 2026-07-24 D1 发布元数据 v2 正式评估
 
 D6 新增独立 v2 消费者 `d1_publication_metadata_v2_multiseed.py` 和命令行

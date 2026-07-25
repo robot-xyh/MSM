@@ -1,5 +1,45 @@
 # D6 Evaluation Metrics Plan
 
+## 2026-07-24 D1 常速度模型缓存评估状态
+
+### 已完成
+
+- [x] 新增独立 schema
+  `d6.d1_cv_motion_model_cache_multiseed_evaluation.v1`、只读 evaluator、CLI 和确定性报告
+  bundle，不参与在线控制。
+- [x] 固定 matrix SHA
+  `9898656598f0fa282620afe2384a3d656b7496f8957109c413bcb62069fd2e9a` 与 clean source
+  commit `44223566439a446fc49f2a3fd861d1d51bd676b9`。
+- [x] 精确校验 10 short + 3 long case、26 个 fresh complete arm、200/200/2 规模、执行顺序、
+  命令隔离、零返回码、资源记录、有限状态和在线真值零使用。
+- [x] 在 runtime profile/configuration、summary、module final、嵌套治理和独立治理位置交叉确认
+  `per_prediction_build_v1/bounded_exact_lru_v1`、实现 ID、诊断 schema 和容量 128。
+- [x] 对 candidate 检查请求守恒、构造守恒、hit/miss/build 非零和 entry/peak 容量；对 reference
+  拒绝 hit/miss/eviction/entry/peak，并核对请求与构造数。
+- [x] 由 D6 内部调用 `compare_cross_build_episodes()`；只排除
+  `same_runtime_profile`，缓存处理字段窄归一化，其他业务、谱系和离线真值继续比较。
+- [x] 实现 D1 fusion、D2 association、core wall、RSS、实时因子、构造减少率、命中率、逐 pair
+  变化和 10000 次配对 bootstrap。
+- [x] 全部门限从冻结矩阵读取并严格核对，不允许运行时降低。局部优化准入和系统实时缺口独立输出。
+- [x] 输出完整 JSON、compact JSON、逐 pair CSV、中文 Markdown、PNG 和校验和；原始 evidence
+  保持只读。
+- [x] 专项 `13 passed, 1 warning in 5.03s`；D6 全量
+  `784 passed, 1 warning in 48.64s`。warning 为既有 Matplotlib 环境提示。
+
+### 待执行
+
+- [ ] main 在冻结 clean source 上运行 13 pair、26 个 fresh arm，提供 completed evidence
+  manifest、episode、GNU time、stdout 和 stderr。dry-run 和 runner 单元测试不属于正式证据。
+- [ ] D6 只读运行本 evaluator，生成正式中文报告和曲线后，才能写出
+  `d1_optimization_admitted=true/false`。
+- [ ] `system_realtime_gap_closed` 仅在全部候选 arm 的实时因子均不低于 1 时关闭。三维质点准入
+  不能替代 AirSim 或目标处理器容量验证。
+
+`EXPERIMENT_REPORT.md` 已检查。正式 evidence 尚未运行，本轮不新增实验结果章节。
+`AIRSIM_INTEGRATION_PLAN.md` 已检查；本项不改变 AirSim producer、相机、检测、reset、actor 或
+控制接口，因此无需修改。`docs/README.md`、`docs/MODULE_PRINCIPLES_CN.md` 和
+`docs/ALGORITHM_AND_IMPLEMENTATION.md` 已同步评估入口、原理与状态。
+
 ## 2026-07-24 D1 发布元数据 v2 正式评估状态
 
 ### 已完成

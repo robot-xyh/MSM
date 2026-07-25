@@ -1,5 +1,53 @@
 # D6 系统级离线评估模块原理
 
+## 常速度模型缓存评估边界（2026-07-24）
+
+本项评估 D1 是否可以复用完全相同的常速度状态转移矩阵和过程噪声矩阵。参考实现为每次预测重新
+构造，候选实现以 `(dt, process_noise)` 的精确浮点值作为键，使用容量 128 的有界最近最少使用
+缓存。D6 不读取 D1 内存对象，只消费 main 落盘的 episode、资源记录和 manifest。
+
+证据来源先于性能判定。矩阵 SHA-256 固定为
+`9898656598f0fa282620afe2384a3d656b7496f8957109c413bcb62069fd2e9a`，source commit 固定为
+`44223566439a446fc49f2a3fd861d1d51bd676b9`。13 pair 的 seed、时长、执行顺序、200/200/2
+规模和处理实现不可更改。26 个 arm 必须来自该 clean commit、实际完成且返回码为 0；resume
+得到的 reused arm 不进入本轮正式证据。
+
+诊断计数用于证明候选实际执行了缓存路径。候选必须满足：
+
+```text
+N_request = N_nonpositive + N_hit + N_miss + N_nonfinite
+N_build = N_miss + N_nonfinite
+0 <= current entries <= 128
+0 <= peak entries <= 128
+N_hit > 0, N_miss > 0, N_build > 0
+```
+
+参考实现不产生 hit、miss、eviction 或缓存条目。其关系为：
+
+```text
+N_request = N_nonpositive + N_build
+```
+
+这等价于模型构造数覆盖所有正时间步长和非有限输入请求。D1 当前参考路径没有单独累计 nonfinite
+bypass，因此该字段必须为 0。缺失计数字段按 0 处理，以兼容稀疏 Counter 输出；未知字段或不守恒
+仍失败关闭。两臂的请求数和 nonpositive 工作量还必须相等，防止通过少执行预测取得虚假减少率。
+
+业务等价和处理审计分开。D6 每 pair 调用跨 episode 比较器，只排除预注册的
+`same_runtime_profile`。缓存 selector、诊断、处理派生 episode 标识和性能字段可归一化；缓存诊断
+同时在 runtime profile、summary、module final、嵌套治理和独立治理中逐项验证。D3 计划谱系、
+D4 内容地址、其他在线载荷、summary/governance 业务字段和离线真值保持比较。在线真值使用必须为
+0，有限状态和离线数值数组必须通过检查。
+
+局部准入由全部安全、语义和性能门的合取给出。short/long D1 融合平均改善均不得低于 5%，short
+至少 8/10、long 至少 2/3 更快，short 配对原始变化 bootstrap 95% 上界必须小于 0。short/long
+核心墙钟改善均不得低于 2%，D2 关联平均增幅不得超过 5%，RSS 组均值和任一 pair 增幅不得超过
+5%，候选模型构造减少率和缓存命中率均不得低于 95%。门限来自冻结矩阵，D6 不在运行时调整。
+
+`d1_optimization_admitted` 只回答局部候选是否达到冻结门。
+`system_realtime_gap_closed` 独立要求所有候选实时因子不低于 1。当前评估器和 13 个专项测试已
+完成，D6 全量为 `784 passed, 1 warning`；正式 26-arm evidence 尚未运行，因此没有准入或系统
+实时新结论。
+
 ## 发布元数据 v2 评估边界（2026-07-24）
 
 v2 评估与历史 v1 评估分开注册。输入必须来自同一 clean commit 的参考和候选臂，冻结矩阵固定

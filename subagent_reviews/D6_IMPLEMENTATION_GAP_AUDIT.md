@@ -1,5 +1,38 @@
 # D6 实现差距审计
 
+## 2026-07-24 D1 常速度模型缓存评估 GAP 更新
+
+### 已关闭
+
+1. D6 已实现独立、只读、失败关闭的 13-pair 缓存 evaluator、CLI、完整 JSON、compact JSON、
+   CSV、中文 Markdown、PNG 和校验和输出。
+2. matrix SHA
+   `9898656598f0fa282620afe2384a3d656b7496f8957109c413bcb62069fd2e9a`、clean source
+   `44223566439a446fc49f2a3fd861d1d51bd676b9`、200/200/2、容量 128、seed、时长、arm 顺序、
+   命令和准入门均已固定。
+3. selector、实现 ID、candidate flag、诊断 schema、容量和诊断副本的一致性已覆盖 runtime
+   profile/configuration、summary、module final、嵌套治理和独立治理。
+4. candidate 请求/构造守恒、hit/miss/build 非零、entry/peak 容量，以及 reference 零缓存活动
+   和构造请求关系已有失败关闭测试。两臂请求工作量必须相等。
+5. D6 内部执行跨 episode 语义比较，只排除 `same_runtime_profile`；非白名单业务变化会关闭
+   semantic gate。
+6. D1、D2、core、RSS、实时因子、模型构造减少率、缓存命中率、逐 pair 变化和 10000 次配对
+   bootstrap 已实现，门限从冻结矩阵读取。
+7. 专项 `13 passed, 1 warning in 5.03s`；D6 全量
+   `784 passed, 1 warning in 48.64s`，零失败。
+
+### 仍开放 P1
+
+1. **正式 26-arm evidence。** main 的矩阵、运行器测试和 dry-run 已完成，但正式 10 short +
+   3 long 成对 episode 尚未运行。没有 completed manifest 时，D6 不给出缓存候选准入结论。
+2. **系统实时容量。** 正式三维质点评估即使通过局部缓存门，也只有候选最低实时因子不低于 1
+   才能关闭 `system_realtime_gap_closed`。AirSim 和目标硬件容量仍需独立证据。
+3. **外部适用性。** 冻结矩阵只覆盖 200/200/2 三维质点场景。它不替代不同规模、AirSim、
+   目标处理器或实飞验证。
+
+当前无新增 D6-owned P0。D6 评估器、统计、报告和失败关闭测试缺口已关闭；正式 producer 运行及
+系统级实时证据保持 P1。
+
 ## 2026-07-24 D1 发布元数据 v2 正式评估 GAP 更新
 
 ### 已关闭

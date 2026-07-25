@@ -1,5 +1,37 @@
 # D6 系统评估指标综述及子方案
 
+## 2026-07-24 D1 常速度模型缓存评审
+
+D6 已接受缓存评估接口实现。独立 evaluator 固定绑定 matrix SHA
+`9898656598f0fa282620afe2384a3d656b7496f8957109c413bcb62069fd2e9a` 与 clean source
+`44223566439a446fc49f2a3fd861d1d51bd676b9`，不允许调用方替换矩阵、提交、容量或准入门。
+参考/候选身份为 `per_prediction_build_v1/bounded_exact_lru_v1`，容量固定为 128。
+
+评审确认以下边界已实现：
+
+1. 26 个 arm 必须 fresh complete、零返回码、同一 clean commit；证据路径、命令和 13 个 case
+   顺序全部显式绑定。
+2. 初始与最终缓存诊断分开验证。最终诊断在 summary、module final、嵌套治理和独立治理中必须
+   完全一致。
+3. candidate 的请求和模型构造守恒、reference 的零缓存活动、两臂相同预测工作量、容量边界、
+   构造减少率和命中率均有正反测试。
+4. D6 自行生成跨 episode 语义比较，只排除预注册的 runtime profile hash 差异。缓存字段被归一化
+   后仍单独严格审计，其他业务字段不被整体忽略。
+5. short/long D1、D2、核心墙钟、RSS、实时因子和缓存效率门全部来自冻结矩阵。局部准入与系统
+   实时缺口分开输出。
+
+专项为 `13 passed, 1 warning in 5.03s`，D6 全量为
+`784 passed, 1 warning in 48.64s`。warning 是既有 Matplotlib `Axes3D` 环境提示。
+
+评审尚不接受缓存候选的性能或准入结论。main 当前只完成矩阵冻结、26 项运行器测试和 dry-run；
+正式 13 pair、26 arm evidence 尚未运行。下一步由 main 生成 completed manifest，D6 使用本入口
+只读评估并输出正式中文报告。该结果仍属于三维质点证据，不自动关闭 AirSim、目标硬件或实飞
+缺口。
+
+`EXPERIMENT_REPORT.md`、`AIRSIM_INTEGRATION_PLAN.md` 和
+`D6_M_TO_N_EVALUATION_FRAMEWORK_REVIEW.md` 已检查。本轮没有正式实验结果、AirSim 接口变化或
+M-to-N 指标合同变化，因此不修改这些文件。
+
 ## 2026-07-24 D1 发布元数据 v2 正式评审
 
 D6 已按独立 schema 消费 clean commit `be399e138762f5e660f553c8caa812d52ab38c61`

@@ -1,5 +1,84 @@
 # D6 系统级离线评估：算法原理与实施说明
 
+## D1 常速度模型缓存同提交矩阵评估（2026-07-24）
+
+入口 `d1_cv_motion_model_cache_multiseed.py` 读取
+`scalable3d-d1-cv-motion-model-cache-multiseed-evidence-v1`。读取顺序固定为：
+
+```text
+evidence schema / experiment / matrix SHA / clean commit
+  -> 13 case 与 26 arm 完整性
+  -> episode manifest、config、summary、governance
+  -> selector、实现 ID、容量和诊断副本
+  -> 请求、构造、命中、未命中和容量守恒
+  -> D6 内部跨 episode 语义比较
+  -> 逐 pair 性能与缓存效率
+  -> short/long 配对统计和准入门
+  -> JSON、CSV、中文 Markdown、PNG
+```
+
+manifest 中每个 arm 显式给出 implementation、implementation ID、validation kind、commit、
+episode/resource/stdout/stderr 路径和完整命令。两个命令除
+`--d1-cv-motion-model-implementation` 的值和输出路径外必须相同。报告目录必须位于 evidence
+root 外，避免评估输出改写原始输入。
+
+实现身份检查覆盖以下位置：
+
+```text
+manifest.runtime_profile
+manifest.runtime_profile.configuration
+summary
+summary.module_final_diagnostics
+summary.module_final_diagnostics.observation_governance
+observation_governance_audit.json
+```
+
+runtime profile 中的初始诊断必须为零条目、空操作计数。summary、module final、嵌套治理和独立
+治理中的最终诊断必须完全相同。两类诊断都要求 schema
+`d1.cv_motion_model_cache_diagnostics.v1`、正确 implementation ID、candidate flag 和容量 128。
+
+操作计数先补齐已登记字段的零值，再检查整数、非负、未知字段和守恒。每 pair 还要求两臂
+`prediction_request_count` 和 `nonpositive_dt_reference_bypass_count` 相等。缓存效率定义为：
+
+```text
+model_build_reduction_pct
+  = (reference_builds - candidate_builds) / reference_builds * 100
+
+cache_hit_ratio_pct
+  = candidate_hits / (candidate_hits + candidate_misses) * 100
+```
+
+分母为 0 时证据直接拒绝，不输出 0 或 unavailable 冒充有效结果。
+
+业务等价由 D6 调用 `compare_cross_build_episodes()` 生成。跨 episode 返回的 checks 中只移除
+`same_runtime_profile`，其余检查必须全部为 true。D6 另外计算三类规范哈希：
+
+1. runtime profile 只替换缓存 selector 和初始缓存诊断；
+2. summary 替换缓存 selector/诊断、处理派生 episode ID、wall time、real-time factor 和 final
+   stage timings；
+3. governance 只替换缓存 selector 和缓存诊断。
+
+非白名单字段仍参与哈希。测试将 candidate 的 `d2_track_count` 改动后，业务语义门会失败。
+
+每个成本指标的原始相对变化为：
+
+```text
+r_i = (candidate_i - reference_i) / reference_i
+```
+
+D1 融合和核心墙钟的正向改善为 `-r_i`，实时因子正向改善为 `r_i`。short 和 long 分组分别报告
+参考/候选分布、逐 pair 变化、候选更优数和组均值比。bootstrap 以完整 seed pair 为重采样单位，
+固定 10000 次和随机种子 20260724，不拆散同 seed 两臂。
+
+准入函数直接使用矩阵的 `admission_gates`，同时在 loader 中要求该对象与冻结值完全相同。最终
+`d1_optimization_admitted` 是全部语义、有限状态、真值隔离、身份、缓存审计、性能、D2、RSS、
+构造减少率和命中率门的合取。系统实时门单独取所有候选 arm 实时因子的最小值并与 1 比较。
+
+writer 生成完整 evaluation JSON、compact JSON、逐 pair CSV、中文 Markdown、三层曲线 PNG 和
+`SHA256SUMS`。PNG 分别显示 D1/D2/核心变化、构造减少率/命中率和候选实时因子。专项
+`13 passed`，D6 全量 `784 passed, 1 warning in 48.64s`。正式 evidence 未运行，当前文档不写
+性能数值或准入结果。
+
 ## D1 发布元数据 v2 同提交矩阵评估（2026-07-24）
 
 `d1_publication_metadata_v2_multiseed.py` 是独立 v2 入口，不改变 v1 evaluator。loader 逐项核对

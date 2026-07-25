@@ -1,5 +1,14 @@
 # D6 文档索引
 
+2026-07-24 D1 常速度模型缓存多 seed 评估原理和边界见
+`MODULE_PRINCIPLES_CN.md`，严格消费、守恒公式、统计和报告实现见
+`ALGORITHM_AND_IMPLEMENTATION.md`。入口绑定 matrix SHA
+`9898656598f0fa282620afe2384a3d656b7496f8957109c413bcb62069fd2e9a` 与 clean source
+`44223566439a446fc49f2a3fd861d1d51bd676b9`，固定 short 10 pair、long 3 pair、
+200/200/2 和容量 128。D6 内部生成跨 episode 语义比较，不依赖 producer 预写 pair report。
+专项 `13 passed`、D6 全量 `784 passed, 1 warning`。当前仅完成评估器和合同验证，正式
+26-arm evidence 尚未运行，所以 `../EXPERIMENT_REPORT.md` 不新增缓存准入结果。
+
 2026-07-24 D1 协方差优化多 seed 与长时入口见 `MODULE_PRINCIPLES_CN.md` 和
 `ALGORITHM_AND_IMPLEMENTATION.md`，fixture 验证见根目录 `../EXPERIMENT_REPORT.md` 2.28 节。
 入口预注册 short `1101-1110 @ 2.2 s` 和 long `1101-1103 @ 10.0 s`，显式绑定 13 个 A/B pair，
