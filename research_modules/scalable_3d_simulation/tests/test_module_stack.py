@@ -14,6 +14,8 @@ from research_modules.d1_sensor_fusion.src.d1_sensor_fusion import (
     DEFAULT_STRUCTURAL_AMBIGUITY_PUBLISHER_NODE_ID,
     ExperimentalCentroidEvidenceDisposition,
     GlobalTrack,
+    ONLINE_BATCH_FRAME_CANDIDATE_IMPLEMENTATION,
+    ONLINE_BATCH_FRAME_REFERENCE_IMPLEMENTATION,
     SensorObservation,
     StructuralAmbiguityCandidateEdge,
     StructuralAmbiguityEvidence,
@@ -143,6 +145,96 @@ def test_d1_scan_input_selection_is_explicit_hashed_and_audited() -> None:
         match="d1_scan_input_implementation must be",
     ):
         IntegratedStackConfig(d1_scan_input_implementation="unknown")
+
+
+def test_d1_online_batch_frame_selection_is_explicit_hashed_and_audited() -> None:
+    config = ScenarioConfig(
+        scenario_name="d1_online_batch_frame_selection",
+        scenario_version="d1-online-batch-frame-selection-v1",
+        target_count=2,
+        resource_count=2,
+        recon_count=1,
+        region_count=1,
+        duration_s=1.0,
+        seed=19,
+    )
+    default = IntegratedStackConfig()
+    assert default.d1_online_batch_frame_implementation == (
+        ONLINE_BATCH_FRAME_REFERENCE_IMPLEMENTATION
+    )
+
+    stack = IntegratedScalableModuleStack(
+        IntegratedStackConfig(
+            d1_online_batch_frame_implementation=(
+                ONLINE_BATCH_FRAME_CANDIDATE_IMPLEMENTATION
+            ),
+        )
+    )
+    manifest_profile = stack.runtime_manifest_profile_for_scenario(config)
+    assert manifest_profile["configuration"][
+        "d1_online_batch_frame_implementation"
+    ] == ONLINE_BATCH_FRAME_CANDIDATE_IMPLEMENTATION
+    assert manifest_profile["d1_online_batch_frame_implementation"] == (
+        ONLINE_BATCH_FRAME_CANDIDATE_IMPLEMENTATION
+    )
+    assert manifest_profile["d1_online_batch_frame_execution_config"][
+        "implementation"
+    ] == ONLINE_BATCH_FRAME_CANDIDATE_IMPLEMENTATION
+
+    result = run_episode(config, module_stack=stack)
+    governance = result.observation_governance_audit
+    assert governance is not None
+    assert governance["d1_online_batch_frame_implementation"] == (
+        ONLINE_BATCH_FRAME_CANDIDATE_IMPLEMENTATION
+    )
+    assert governance["d1_online_batch_frame_execution_config"][
+        "implementation"
+    ] == ONLINE_BATCH_FRAME_CANDIDATE_IMPLEMENTATION
+    diagnostics = governance["d1_online_batch_frame_diagnostics"]
+    counts = diagnostics["operation_counts"]
+    assert counts["request_count"] > 0
+    assert counts["request_count"] == counts["successful_build_count"]
+    assert counts["candidate_closed_handoff_count"] == counts["request_count"]
+    assert counts["candidate_reference_fallback_count"] == 0
+    assert all(diagnostics["conservation"].values())
+    assert result.summary["d1_online_batch_frame_implementation"] == (
+        ONLINE_BATCH_FRAME_CANDIDATE_IMPLEMENTATION
+    )
+    assert result.summary["d1_online_batch_frame_execution_config"] == (
+        governance["d1_online_batch_frame_execution_config"]
+    )
+    assert result.summary["d1_online_batch_frame_diagnostics"] == diagnostics
+    assert result.manifest.runtime_profile[
+        "d1_online_batch_frame_execution_config"
+    ]["implementation"] == ONLINE_BATCH_FRAME_CANDIDATE_IMPLEMENTATION
+
+    with pytest.raises(
+        ValueError,
+        match="d1_online_batch_frame_implementation must be",
+    ):
+        IntegratedStackConfig(
+            d1_online_batch_frame_implementation="unknown"
+        )
+
+
+def test_episode_cli_exposes_d1_online_batch_frame_selector() -> None:
+    episode_cli = importlib.import_module(
+        "research_modules.scalable_3d_simulation.run_episode"
+    )
+    default_args = episode_cli.parse_args(["--integrated-stack"])
+    assert default_args.d1_online_batch_frame_implementation == (
+        ONLINE_BATCH_FRAME_REFERENCE_IMPLEMENTATION
+    )
+    args = episode_cli.parse_args(
+        [
+            "--integrated-stack",
+            "--d1-online-batch-frame-implementation",
+            ONLINE_BATCH_FRAME_CANDIDATE_IMPLEMENTATION,
+        ]
+    )
+    assert args.d1_online_batch_frame_implementation == (
+        ONLINE_BATCH_FRAME_CANDIDATE_IMPLEMENTATION
+    )
 
 
 def test_d1_publication_metadata_selection_is_explicit_hashed_and_audited() -> None:

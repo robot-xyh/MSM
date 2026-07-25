@@ -36,6 +36,8 @@ from research_modules.scalable_3d_simulation.module_stack import (
     D1_STRUCTURED_NUMERICAL_JACOBIAN_CANDIDATE_IMPLEMENTATION,
     D1_STRUCTURED_NUMERICAL_JACOBIAN_REFERENCE_IMPLEMENTATION,
     IntegratedStackConfig,
+    ONLINE_BATCH_FRAME_CANDIDATE_IMPLEMENTATION,
+    ONLINE_BATCH_FRAME_REFERENCE_IMPLEMENTATION,
     SCAN_INPUT_CANDIDATE_IMPLEMENTATION,
     SCAN_INPUT_REFERENCE_IMPLEMENTATION,
 )
@@ -134,6 +136,19 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help=(
             "select the D1 scan-input A/B implementation; candidate_v2 is "
             "the default and both arms preserve the same business semantics"
+        ),
+    )
+    parser.add_argument(
+        "--d1-online-batch-frame-implementation",
+        choices=(
+            ONLINE_BATCH_FRAME_REFERENCE_IMPLEMENTATION,
+            ONLINE_BATCH_FRAME_CANDIDATE_IMPLEMENTATION,
+        ),
+        default=ONLINE_BATCH_FRAME_REFERENCE_IMPLEMENTATION,
+        help=(
+            "select the D1 raw-online-batch to SensorScanFrame handoff; "
+            "the closed immutable candidate is explicit and default-off "
+            "pending full-stack multiseed admission"
         ),
     )
     parser.add_argument(
@@ -289,6 +304,9 @@ def main() -> int:
                 ),
                 d1_scan_input_implementation=(
                     args.d1_scan_input_implementation
+                ),
+                d1_online_batch_frame_implementation=(
+                    args.d1_online_batch_frame_implementation
                 ),
                 d1_publication_metadata_implementation=(
                     args.d1_publication_metadata_implementation

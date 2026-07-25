@@ -29,14 +29,15 @@ from research_modules.d1_sensor_fusion.src.d1_sensor_fusion import (
     ExperimentalCentroidEvidenceDisposition,
     ExperimentalCentroidPublicationState,
     MAX_CV_MOTION_MODEL_CACHE_CAPACITY,
+    ONLINE_BATCH_FRAME_CANDIDATE_IMPLEMENTATION,
+    ONLINE_BATCH_FRAME_REFERENCE_IMPLEMENTATION,
+    OnlineBatchFrameBuilder,
     SCAN_INPUT_CANDIDATE_IMPLEMENTATION,
     SCAN_INPUT_REFERENCE_IMPLEMENTATION,
     ScanInputConfig,
     ScanInputOrganizer,
     Scalable3DFusionAdapter,
-    SensorScanFrame,
     run_experimental_centroid_publication_overlay_atomically,
-    sensor_observations_from_online_batch,
 )
 from research_modules.d1_sensor_fusion.src.d1_sensor_fusion.fusion import (
     DEFAULT_OPAQUE_SOURCE_IDENTITY_CACHE_CAPACITY,
@@ -171,6 +172,9 @@ class IntegratedStackConfig:
     d1_scan_max_lateness_s: float = 0.5
     d1_scan_max_buffer_residence_s: float = 5.0
     d1_scan_input_implementation: str = SCAN_INPUT_CANDIDATE_IMPLEMENTATION
+    d1_online_batch_frame_implementation: str = (
+        ONLINE_BATCH_FRAME_REFERENCE_IMPLEMENTATION
+    )
     d1_publication_metadata_implementation: str = (
         D1_PUBLICATION_METADATA_CANDIDATE_IMPLEMENTATION
     )
@@ -251,6 +255,22 @@ class IntegratedStackConfig:
             self,
             "d1_scan_input_implementation",
             scan_input_implementation,
+        )
+        online_batch_frame_implementation = str(
+            self.d1_online_batch_frame_implementation
+        ).strip()
+        if online_batch_frame_implementation not in {
+            ONLINE_BATCH_FRAME_REFERENCE_IMPLEMENTATION,
+            ONLINE_BATCH_FRAME_CANDIDATE_IMPLEMENTATION,
+        }:
+            raise ValueError(
+                "d1_online_batch_frame_implementation must be "
+                "convert_then_frame_v1 or closed_immutable_batch_to_frame_v1"
+            )
+        object.__setattr__(
+            self,
+            "d1_online_batch_frame_implementation",
+            online_batch_frame_implementation,
         )
         publication_metadata_implementation = str(
             self.d1_publication_metadata_implementation
@@ -726,6 +746,16 @@ class IntegratedScalableModuleStack:
             "d1_scan_input_implementation": (
                 self.stack_config.d1_scan_input_implementation
             ),
+            "d1_online_batch_frame_implementation": (
+                self.stack_config.d1_online_batch_frame_implementation
+            ),
+            "d1_online_batch_frame_execution_config": (
+                OnlineBatchFrameBuilder(
+                    implementation=(
+                        self.stack_config.d1_online_batch_frame_implementation
+                    )
+                ).execution_config()
+            ),
             "d1_publication_metadata_implementation": (
                 self.stack_config.d1_publication_metadata_implementation
             ),
@@ -823,6 +853,18 @@ class IntegratedScalableModuleStack:
         self.d1_scan_input = ScanInputOrganizer(
             _scan_input_config(config, self.stack_config),
             implementation=self.stack_config.d1_scan_input_implementation,
+        )
+        self.d1_online_batch_frame_builder = OnlineBatchFrameBuilder(
+            implementation=(
+                self.stack_config.d1_online_batch_frame_implementation
+            ),
+            radar_covariance_config=self.d1.radar_covariance_config,
+            unobserved_velocity_variance_m2ps2=(
+                self.d1.unobserved_velocity_variance_m2ps2
+            ),
+            position_only_radar_nis_gate=(
+                self.d1.position_only_radar_nis_gate
+            ),
         )
         self.d2 = Scalable3DTracker(
             observation_claim_config=_observation_claim_config(
@@ -1013,12 +1055,8 @@ class IntegratedScalableModuleStack:
         released_scans: list[Any] = []
         for batch in arrived:
             started = perf_counter()
-            observations = sensor_observations_from_online_batch(batch)
             scan_result = self.d1_scan_input.ingest(
-                SensorScanFrame.from_observations(
-                    observations,
-                    scan_id=batch.batch_id,
-                )
+                self.d1_online_batch_frame_builder.build(batch)
             )
             self._record_timing("d1_scan_input", perf_counter() - started)
             self._record_d1_scan_events(scan_result.events)
@@ -1235,6 +1273,9 @@ class IntegratedScalableModuleStack:
         d1_performance_diagnostics = (
             self.d1_scan_input.performance_diagnostics()
         )
+        d1_online_batch_frame_diagnostics = (
+            self.d1_online_batch_frame_builder.diagnostics()
+        )
         d2_summary = self.d2.summary()
         return {
             "schema_version": "scalable3d-observation-governance-runtime-v2",
@@ -1243,6 +1284,15 @@ class IntegratedScalableModuleStack:
             "d1_scan_input_execution_config": d1_execution_config,
             "d1_scan_input_performance_diagnostics": (
                 d1_performance_diagnostics
+            ),
+            "d1_online_batch_frame_implementation": (
+                self.d1_online_batch_frame_builder.implementation
+            ),
+            "d1_online_batch_frame_execution_config": (
+                self.d1_online_batch_frame_builder.execution_config()
+            ),
+            "d1_online_batch_frame_diagnostics": (
+                d1_online_batch_frame_diagnostics
             ),
             "d1_publication_metadata_implementation": (
                 self.stack_config.d1_publication_metadata_implementation
@@ -5262,6 +5312,15 @@ class IntegratedScalableModuleStack:
             ),
             "d1_scan_input_performance_diagnostics": dict(
                 governance["d1_scan_input_performance_diagnostics"]
+            ),
+            "d1_online_batch_frame_implementation": governance[
+                "d1_online_batch_frame_implementation"
+            ],
+            "d1_online_batch_frame_execution_config": dict(
+                governance["d1_online_batch_frame_execution_config"]
+            ),
+            "d1_online_batch_frame_diagnostics": dict(
+                governance["d1_online_batch_frame_diagnostics"]
             ),
             "d1_publication_metadata_implementation": governance[
                 "d1_publication_metadata_implementation"

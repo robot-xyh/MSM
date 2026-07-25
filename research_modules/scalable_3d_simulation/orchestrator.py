@@ -622,6 +622,21 @@ class Scalable3DEpisodeRunner:
             "d1_scan_input_performance_diagnostics": observation_governance.get(
                 "d1_scan_input_performance_diagnostics"
             ),
+            "d1_online_batch_frame_implementation": (
+                observation_governance.get(
+                    "d1_online_batch_frame_implementation"
+                )
+            ),
+            "d1_online_batch_frame_execution_config": (
+                observation_governance.get(
+                    "d1_online_batch_frame_execution_config"
+                )
+            ),
+            "d1_online_batch_frame_diagnostics": (
+                observation_governance.get(
+                    "d1_online_batch_frame_diagnostics"
+                )
+            ),
             "d1_publication_metadata_implementation": (
                 observation_governance.get(
                     "d1_publication_metadata_implementation"
