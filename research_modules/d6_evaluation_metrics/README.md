@@ -1,5 +1,37 @@
 # D6 Evaluation Metrics
 
+## 2026-07-24 D1 发布元数据 v2 正式评估
+
+D6 新增独立 v2 消费者 `d1_publication_metadata_v2_multiseed.py` 和命令行
+`scripts/evaluate_d1_publication_metadata_v2_multiseed.py`。原 v1 evaluator、schema、测试和
+历史报告保持不变。v2 入口只接受冻结矩阵
+`51429554d58b82e94f922f7e0042144fd3440044f5188b51d77c578424d96927`，绑定 clean commit
+`be399e138762f5e660f553c8caa812d52ab38c61`、13 pair/26 arm、200 个目标、200 个资源和
+2 个侦察节点。
+
+业务比较只对 D1 实现诊断、性能字段和 `d2_publication_metadata_audit` 处理差异做窄范围归一化。
+D2 审计随后在 summary、module final、嵌套治理和独立治理文件四处严格校验。候选要求合同校验、
+完整内容审计和共享子树完整审计计数一致且为正，身份复用为正，内建等价复用和拒绝为零；参考要求
+完整审计和内建等价复用为正，全部 v2 计数为零。非白名单业务字段仍参与规范摘要和在线总线比较。
+
+正式结果中，13/13 业务语义、有限状态、在线真值隔离、实现身份和 D2 审计通过。short/long 的
+D1 融合平均改善为 `13.5447%/26.8298%`，核心墙钟改善为 `6.5677%/18.2438%`，D2 关联增幅为
+`-16.1939%/-35.6213%`，全部预注册门通过，`d1_optimization_admitted=true`。候选最低实时因子
+为 `0.17308010045846806`，所以 `system_realtime_gap_closed=false`。证据属于三维质点仿真，
+不是 AirSim、目标硬件或实飞证据。
+
+正式制品位于
+`outputs/d1_publication_metadata_v2_multiseed_20260724_formal_be399e1/`。v1/v2 专项为
+`37 passed, 1 warning`，D6 全量为 `771 passed, 1 warning in 47.61s`；warning 为既有
+Matplotlib `Axes3D` 环境提示。
+
+```bash
+PYTHONPATH=research_modules/d6_evaluation_metrics \
+python3 research_modules/d6_evaluation_metrics/scripts/evaluate_d1_publication_metadata_v2_multiseed.py \
+  --evidence-manifest /path/to/evidence_manifest.json \
+  --output-dir /path/to/independent_d6_report
+```
+
 ## 2026-07-24 D1 航迹发布元数据正式评估
 
 D6 新增独立只读消费者 `d1_publication_metadata_multiseed.py` 和命令行

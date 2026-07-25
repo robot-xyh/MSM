@@ -1,5 +1,59 @@
 # D6 系统级评估指标实验报告
 
+## 2.31 D1 发布元数据 v2 正式评估
+
+### 结论
+
+`immutable_shared_v2` 通过本次 D1 局部优化准入，
+`d1_optimization_admitted=true`。系统实时缺口保持开放，
+`system_realtime_gap_closed=false`。候选最低实时因子为
+`0.17308010045846806`，低于系统门限 1。
+
+本节证据来自 200 个目标、200 个资源、2 个侦察节点的三维质点仿真。它不代表 AirSim、目标硬件
+或实飞性能。
+
+### 证据
+
+| 项目 | 正式值 |
+| --- | --- |
+| 验证日期 | 2026-07-24 |
+| source clean commit | `be399e138762f5e660f553c8caa812d52ab38c61` |
+| evidence schema | `scalable3d-d1-publication-metadata-v2-multiseed-evidence-v1` |
+| evidence manifest SHA256 | `59fb70e37662cd1288ca56aaf6c5f68914137cc47fe6de2d8aff5a06dc2909b9` |
+| matrix SHA256 | `51429554d58b82e94f922f7e0042144fd3440044f5188b51d77c578424d96927` |
+| short / long | 10 pair × 2.2 秒 / 3 pair × 10 秒 |
+| arms | `per_track_copy_v1` / `immutable_shared_v2` |
+| D1 v2 合同 | `d1.publication_audit_tree.v2` |
+| 执行状态 | 13 pair、26 arm complete，返回码全部为 0 |
+
+### 性能
+
+| 指标 | short 参考 | short 候选 | short 配对改善 | long 参考 | long 候选 | long 配对改善 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| D1 融合墙钟/s | 3.740630 | 3.234146 | 13.5447% | 31.798717 | 23.264824 | 26.8298% |
+| D2 关联墙钟/s | 0.657417 | 0.548699 | 16.1939% | 5.869413 | 3.774282 | 35.6213% |
+| 核心墙钟/s | 10.451244 | 9.764102 | 6.5677% | 68.901075 | 56.318948 | 18.2438% |
+| 最大常驻内存/KiB | 1008978.4 | 868146.0 | 13.8390% | 2200844.0 | 1606185.3 | 26.7678% |
+
+short D1 原始相对变化 bootstrap 95% 区间为
+`[-14.8233%, -12.1357%]`。候选在 short `10/10`、long `3/3` 中更快。D2 关联准入使用原始增幅，
+short/long 分别为 `-16.1939%/-35.6213%`，均满足 `<=5%`。
+
+### 审计与门控
+
+13/13 pair 的业务语义、有限状态、在线真值隔离、实现身份和 D2 发布元数据审计全部通过。候选共
+执行 702 次 v2 合同校验和 702 次完整内容审计，随后完成 139920 次身份复用，内建等价复用和
+合同拒绝均为 0。参考共执行 702 次完整审计和 139920 次内建等价复用，全部 v2 计数为 0。
+
+D2 审计字段仅作为预注册处理差异做窄范围归一化，其他 summary 和治理字段没有被整体忽略。
+非白名单业务字段篡改测试会使语义门失败。全部局部准入门通过。
+
+正式 bundle 位于
+`outputs/d1_publication_metadata_v2_multiseed_20260724_formal_be399e1/`，包含完整 JSON、
+紧凑 JSON、逐 pair CSV、中文 Markdown、曲线 PNG 和 `SHA256SUMS`，未复制原始 episode。
+v1/v2 专项为 `37 passed, 1 warning`，D6 全量为
+`771 passed, 1 warning in 47.61s`；warning 为既有 Matplotlib `Axes3D` 环境提示。
+
 ## 2.30 D1 航迹发布元数据正式评估
 
 ### 结论

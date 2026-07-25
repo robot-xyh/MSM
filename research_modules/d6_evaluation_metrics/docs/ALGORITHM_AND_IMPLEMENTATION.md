@@ -1,5 +1,29 @@
 # D6 系统级离线评估：算法原理与实施说明
 
+## D1 发布元数据 v2 同提交矩阵评估（2026-07-24）
+
+`d1_publication_metadata_v2_multiseed.py` 是独立 v2 入口，不改变 v1 evaluator。loader 逐项核对
+evidence schema、冻结矩阵 SHA、clean commit、13 个 case、26 个完成臂、命令隔离、配置摘要、
+实现 ID、D1 v2 合同、资源记录和返回状态。episode 内的 JSON、JSONL、真值数组和阶段时序继续
+使用现有严格读取器。
+
+D2 审计 payload 固定包含 `batch_count`、`latest` 和 `totals`。候选要求合同校验数、完整内容
+审计数和共享子树完整审计数相等且为正，累计数与批次数一致，身份复用为正，内建复用和拒绝为零。
+参考要求完整审计和内建等价复用为正，v2 校验、内容审计、身份复用和拒绝均为零。两臂还要保持
+批次数、元数据数、完整审计工作量和复用工作量一致。
+
+业务等价比较采用字段级归一化。D1 selector/诊断、D2 审计、性能字段和处理派生 episode ID
+替换为登记标记；其他 summary、module final、governance、在线总线和离线真值仍比较。负例测试
+确认 `d2_track_count` 等非白名单字段变化会关闭业务门。
+
+每个准入门输出实际值、门限、比较符和布尔结论。D1 优化准入是所有业务、安全、审计、D1 性能、
+D2 回归、核心墙钟和 RSS 门的合取。系统实时门独立要求全部候选实时因子不低于 1。正式结果为
+`d1_optimization_admitted=true`、`system_realtime_gap_closed=false`。
+
+CLI 生成完整 evaluation JSON、紧凑 aggregate JSON、逐 pair CSV、中文 Markdown、二维曲线 PNG
+和校验和。输出目录必须位于 evidence root 之外，不复制原始 episode。v1/v2 专项为
+`37 passed, 1 warning`，D6 全量为 `771 passed, 1 warning in 47.61s`。
+
 ## D1 航迹发布元数据同提交矩阵评估（2026-07-24）
 
 入口 `d1_publication_metadata_multiseed.py` 消费一个

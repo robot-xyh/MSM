@@ -1,5 +1,38 @@
 # D6 Evaluation Metrics Plan
 
+## 2026-07-24 D1 发布元数据 v2 正式评估状态
+
+### 已完成
+
+- [x] 新增独立 schema `d6.d1_publication_metadata_v2_multiseed_evaluation.v1`，保留 v1 evaluator
+  及历史报告语义不变。
+- [x] 精确校验 v2 evidence/matrix schema、矩阵 SHA、clean commit `be399e1`、13 pair/26 arm、
+  命令隔离、规模、seed、时长、返回状态、资源记录、有限状态和在线真值零使用。
+- [x] 从四个持久化位置核对 D1 `publication_audit_tree.v2` 合同和 D2 审计。候选的合同校验、
+  内容审计、完整审计和身份复用关系，以及参考的内建等价复用均已失败关闭。
+- [x] D2 审计只作为处理差异诊断归一化；其余 summary、governance、在线总线、计划谱系和离线
+  真值继续执行业务等价比较。
+- [x] 实现 short/long D1、核心墙钟、D2 关联、RSS、候选更快数和 bootstrap 完整准入门；
+  每个 gate 输出实际值、门限、比较符和结论。
+- [x] 正例及审计篡改、非白名单业务变化、D2 回归、核心墙钟、source commit 和 dirty provenance
+  负例通过。v1/v2 专项为 `37 passed, 1 warning`，D6 全量为
+  `771 passed, 1 warning in 47.61s`。
+- [x] 正式报告已写入
+  `outputs/d1_publication_metadata_v2_multiseed_20260724_formal_be399e1/`，仅保存紧凑制品。
+
+### 正式结论
+
+- [x] 13/13 业务语义、有限状态、真值隔离、实现身份和 D2 审计通过。
+- [x] short/long D1 融合改善 `13.5447%/26.8298%`；核心墙钟改善
+  `6.5677%/18.2438%`；D2 关联增幅 `-16.1939%/-35.6213%`。全部预注册门通过，
+  `d1_optimization_admitted=true`。
+- [ ] 候选最低实时因子 `0.17308010045846806`，低于 1；
+  `system_realtime_gap_closed=false`。系统实时 P1、AirSim 和目标硬件容量证据继续开放。
+- [ ] producer 当前只持久化最近批次和累计 D2 审计；如需定位单批异常，后续增加逐批审计日志。
+
+`AIRSIM_INTEGRATION_PLAN.md` 已检查。本项只消费三维质点写盘证据，不改变 AirSim producer、
+相机、检测、reset、actor、控制或 episode 调度，因此无需修改。
+
 ## 2026-07-24 D1 航迹发布元数据正式评估状态
 
 ### 已完成

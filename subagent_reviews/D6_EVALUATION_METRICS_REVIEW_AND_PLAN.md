@@ -1,5 +1,26 @@
 # D6 系统评估指标综述及子方案
 
+## 2026-07-24 D1 发布元数据 v2 正式评审
+
+D6 已按独立 schema 消费 clean commit `be399e138762f5e660f553c8caa812d52ab38c61`
+生成的 13 pair、26 arm 证据。评估器精确绑定冻结矩阵、规模、seed、时长、命令、实现 ID、
+`d1.publication_audit_tree.v2` 合同、返回状态和资源记录，v1 评估路径保持兼容。
+
+D2 审计被登记为处理差异诊断。候选的合同校验、完整内容审计和身份复用，以及参考的内建等价复用
+分别严格验证。业务比较只归一化该审计字段，不忽略整段 summary。13/13 业务语义、有限状态、
+在线真值隔离、实现身份和审计通过。
+
+short/long D1 融合改善为 `13.5447%/26.8298%`，核心墙钟改善为
+`6.5677%/18.2438%`，D2 关联增幅为 `-16.1939%/-35.6213%`。所有预注册局部门通过，
+`d1_optimization_admitted=true`。候选最低实时因子 `0.17308010045846806`，所以
+`system_realtime_gap_closed=false`。正式 bundle 位于
+`research_modules/d6_evaluation_metrics/outputs/d1_publication_metadata_v2_multiseed_20260724_formal_be399e1/`。
+
+当前后续项只保留系统实时容量和逐批审计可定位性。该结果属于三维质点，不写作 AirSim 或实机证据。
+`AIRSIM_INTEGRATION_PLAN.md` 已检查，本项未改变 AirSim 接口，无需修改。
+v1/v2 专项为 `37 passed, 1 warning`，D6 全量为
+`771 passed, 1 warning in 47.61s`。
+
 ## 2026-07-24 D1 航迹发布元数据正式评审
 
 D6 已实现独立、失败关闭的

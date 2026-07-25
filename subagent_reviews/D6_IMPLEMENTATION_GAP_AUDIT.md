@@ -1,5 +1,26 @@
 # D6 实现差距审计
 
+## 2026-07-24 D1 发布元数据 v2 正式评估 GAP 更新
+
+### 已关闭
+
+1. v2 独立 evaluator、schema、CLI、正式报告和失败关闭测试已完成；v1 行为和历史结论未改写。
+2. 13 pair/26 arm 的矩阵 SHA、clean commit、规模、seed、时长、命令、资源和返回状态已严格绑定。
+3. D1 v2 合同和 D2 审计已在四个位置交叉校验。审计只作处理诊断归一化，非白名单业务字段仍比较。
+4. short/long D1、核心墙钟、D2 增幅、RSS、候选更快数和 bootstrap 门均输出实际值和阈值。
+5. 正式结果全部局部准入门通过，`d1_optimization_admitted=true`。制品已归档，未复制原始 episode。
+6. v1/v2 专项 `37 passed, 1 warning`，覆盖审计篡改、业务漂移、D2 回归、核心墙钟和 provenance；
+   D6 全量为 `771 passed, 1 warning in 47.61s`。
+
+### 仍开放 P1
+
+1. **系统实时容量。** 候选最低实时因子为 `0.17308010045846806`，低于 1；
+   `system_realtime_gap_closed=false`。三维质点证据不能关闭 AirSim 或目标硬件实时缺口。
+2. **逐批审计可定位性。** 当前 producer 只保留 latest 和 totals。D6 能验证累计合同，不能重放
+   每一批的明细。逐批异常定位需 producer 增加日志，不影响本次准入结论。
+
+当前无新增 D6-owned P0。v2 正式评估消费缺口已关闭。
+
 ## 2026-07-24 D1 航迹发布元数据正式评估 GAP 更新
 
 ### 已关闭
