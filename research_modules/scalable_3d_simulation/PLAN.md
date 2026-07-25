@@ -1,5 +1,52 @@
 # 200 对 200 三维质点仿真实施计划
 
+## D1 在线发布证据子集快照候选（2026-07-25）
+
+### 问题与隔离边界
+
+1. [x] 前一候选
+   `fixed_lag_checkpoint_prefix_cumulative_summary_v1` 已由 D6 正式判定
+   `reject`，本候选不得修改其 clean commit、matrix SHA、门限或正式制品。
+2. [x] 新 treatment 独立命名为
+   `d1_publication_evidence_snapshot_implementation`。参考路径为
+   `full_consistency_snapshot_v1`，候选为
+   `required_observation_subset_v1`；第一轮 A/B 的两臂均保持 D1 回放
+   `per_checkpoint_prefix_rebuild_v1` 默认，禁止一次改变两个 selector。
+3. [x] publication 所需 observation ID 仅来自同一 release cycle 内：
+   当前源扫描的全部观测 ID，以及每个已物化公开航迹的
+   `latest_observation_id`。集合去重后按字符串排序，不读取真值、目标真实编号或
+   D6 标签。
+4. [x] 候选只把上述 ID 集合传给 D1 已有的精确非破坏性
+   `consistency_evidence_snapshot(observation_ids)`；最终离线导出继续使用全量
+   `consistency_evidence_records()`/`export_consistency_evidence()`。
+5. [x] 未知、空、跨所有权或不完整 ID 不得静默丢弃。集成路径回退
+   `full_consistency_snapshot_v1` 并记录 fallback 原因；正式准入要求 fallback 为 0。
+
+### 实现与诊断
+
+6. [ ] main 增加显式 selector、实现 ID、执行配置和诊断 schema，并贯通 runtime
+   profile、observation governance、module final 和 episode summary。
+7. [ ] 诊断至少记录 snapshot 调用数、release/publication 数、源观测引用数、航迹最新
+   观测引用数、去重后的 required ID 数、返回记录数、lookup miss、fallback 及原因。
+8. [ ] `_d1_publication()` 的 fused track、summary、lineage、双时间戳、协方差、
+   `global_track_id` 和 payload hash 必须与参考路径一致；新诊断不得进入业务 payload。
+9. [ ] `run_episode.py` 提供显式 CLI；默认保持
+   `full_consistency_snapshot_v1`，不能在正式准入前静默启用候选。
+10. [ ] 单元测试覆盖默认值、非法 selector、CLI、空集合、重复 ID、未知 ID 回退、
+    多 scan 合并、state-only publication、业务语义一致和四表面诊断一致。
+
+### 预注册准入
+
+11. [ ] clean 单 pair smoke 先确认业务 payload digest 一致、0 fallback、0 lookup
+    miss、最终 pending ledger 为 0，并披露 reference/candidate 返回记录数。
+12. [ ] smoke 通过后冻结新的 matrix/evidence/evaluator schema、实现 ID、命令、
+    short/long seeds、时长、200/200/2 规模和唯一 treatment；不得复用前一候选矩阵。
+13. [ ] 正式门预注册为：13/13 业务语义及原 D1 操作计数一致；候选 fallback 和 lookup
+    miss 均为 0；返回记录数减少至少 50%；short/long 候选更快数至少 8/10 和 2/3；
+    D1 fusion 改善至少 1%；core wall 改善至少 0.25%；D2 和 RSS 均值增幅不超过 5%。
+14. [ ] D6 独立读取 fresh episode 并给出 admit/reject。系统实时继续单独要求每个候选
+    episode 的实时因子不低于 1；局部候选准入不能替代 AirSim、目标硬件或实飞证据。
+
 ## D1 固定滞后回放前缀摘要准入（2026-07-25）
 
 1. [x] D1 owner 提供 `per_checkpoint_prefix_rebuild_v1` 参考实现和默认关闭的
