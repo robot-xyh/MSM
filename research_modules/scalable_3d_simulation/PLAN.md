@@ -7,8 +7,8 @@
    转移矩阵与过程噪声矩阵。
 2. [x] D1 模块 benchmark 得到约 `2.12x` 局部加速、`20,000 -> 8` 次模型构造和相同终态
    SHA-256；D1 全量模块测试通过。
-3. [x] main 增加显式实现选择器和 1 至 4,096 的容量校验；默认保持
-   `per_prediction_build_v1`，候选不因局部 benchmark 自动晋级。
+3. [x] main 增加显式实现选择器和 1 至 4,096 的容量校验；正式矩阵前保持参考默认，
+   正式准入后晋级为 `bounded_exact_lru_v1`。
 4. [x] selector、capacity、实现 ID 和缓存操作计数进入 runtime profile 哈希、
    observation governance、final diagnostics 和 episode summary。
 5. [x] main 增加默认值、显式选择、运行清单哈希、诊断持久化和非法配置回归；D1、
@@ -19,18 +19,22 @@
    200 个资源、2 个侦察节点，并交替实验臂先后顺序。
 8. [x] 每个 pair 只允许常速度模型构造实现不同；扫描输入继续使用已准入
    `candidate_v2`，发布元数据继续使用已准入 `immutable_shared_v2`。
-9. [ ] D6 独立校验业务等价、D1 缓存诊断、D1 fusion、D2 association、核心墙钟、
+9. [x] D6 独立校验业务等价、D1 缓存诊断、D1 fusion、D2 association、核心墙钟、
    最大常驻内存、实时因子及逐 pair 稳定性。
-10. [ ] 运行 13 组正式 pair、26 个全新 arm，不复用 smoke 或历史 episode。
-11. [ ] 只有正式准入门全部通过后，main 才把候选设为默认；否则保留为可选 benchmark。
+10. [x] 运行 13 组正式 pair、26 个全新 arm，0 reused、0 failed。
+11. [x] 全部预注册门通过，main 默认晋级为 `bounded_exact_lru_v1`；参考实现继续可选。
 
 该专项不改变量测频率、状态模型公式、固定滞后窗口、协方差合同、关联门限或身份所有权。
-局部 `2.12x` 结果不关闭系统实时 P1。正式多 seed 结果、AirSim 和冻结目标处理器证据仍待
-补充。
+局部 `2.12x` 结果不单独作为准入依据。正式 short/long D1 fusion 改善
+`6.9271%/6.6103%`，核心墙钟改善 `2.4060%/2.4537%`，构造减少率和命中率均为
+`99.5960%`，D6 判定局部优化准入。候选最低实时因子 `0.1739499`，系统实时、AirSim、
+冻结目标处理器和精度证据仍待补充。
 
 预注册矩阵为 `configs/d1_cv_motion_model_cache_multiseed_v1.json`，SHA-256 为
 `9898656598f0fa282620afe2384a3d656b7496f8957109c413bcb62069fd2e9a`。运行器复用现有
 clean-source、GNU time、断点状态和实现身份校验框架，已完成 26 项专项测试与 dry-run。
+正式 D6 报告位于
+`../d6_evaluation_metrics/outputs/d1_cv_motion_model_cache_multiseed_20260724_formal_4422356/`。
 
 ## D1 发布元数据多 seed 准入（2026-07-24）
 

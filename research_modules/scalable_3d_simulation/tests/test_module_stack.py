@@ -259,11 +259,15 @@ def test_d1_cv_motion_model_cache_selection_is_explicit_hashed_and_audited() -> 
     default = IntegratedStackConfig()
     assert (
         default.d1_cv_motion_model_implementation
-        == "per_prediction_build_v1"
+        == "bounded_exact_lru_v1"
     )
     assert default.d1_cv_motion_model_cache_capacity == 128
 
-    reference_stack = IntegratedScalableModuleStack(default)
+    reference_stack = IntegratedScalableModuleStack(
+        IntegratedStackConfig(
+            d1_cv_motion_model_implementation="per_prediction_build_v1",
+        )
+    )
     candidate_stack = IntegratedScalableModuleStack(
         IntegratedStackConfig(
             d1_cv_motion_model_implementation="bounded_exact_lru_v1",
@@ -353,7 +357,7 @@ def test_episode_cli_exposes_d1_cv_motion_model_cache_selector() -> None:
     default_args = episode_cli.parse_args(["--integrated-stack"])
     assert (
         default_args.d1_cv_motion_model_implementation
-        == "per_prediction_build_v1"
+        == "bounded_exact_lru_v1"
     )
     assert default_args.d1_cv_motion_model_cache_capacity == 128
     args = episode_cli.parse_args(

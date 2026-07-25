@@ -153,7 +153,7 @@ class IntegratedStackConfig:
         D1_PUBLICATION_METADATA_CANDIDATE_IMPLEMENTATION
     )
     d1_cv_motion_model_implementation: str = (
-        D1_CV_MOTION_MODEL_REFERENCE_IMPLEMENTATION
+        D1_CV_MOTION_MODEL_CANDIDATE_IMPLEMENTATION
     )
     d1_cv_motion_model_cache_capacity: int = (
         DEFAULT_CV_MOTION_MODEL_CACHE_CAPACITY

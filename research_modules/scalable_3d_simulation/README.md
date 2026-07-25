@@ -5,8 +5,9 @@
 main 已接入 D1 常速度状态传播模型的显式 A/B 选择器：
 `per_prediction_build_v1` 为逐次构造参考实现，`bounded_exact_lru_v1` 为精确键、有界
 最近最少使用缓存候选。命令行使用 `--d1-cv-motion-model-implementation` 选择实验臂，
-使用 `--d1-cv-motion-model-cache-capacity` 设置 1 至 4,096 的容量。默认仍为参考实现，
-容量默认 128；正式多 seed 准入前不自动启用候选。
+使用 `--d1-cv-motion-model-cache-capacity` 设置 1 至 4,096 的容量。正式多 seed 准入
+通过后，main 默认已晋级为 `bounded_exact_lru_v1`，容量默认 128；
+`per_prediction_build_v1` 继续作为显式参考路径。
 
 两条路径执行同一常速度状态转移和过程噪声计算，不量化时间差，不改变双时间戳、NED
 坐标、协方差、固定滞后回放、量测门控或全局航迹编号。选择器、容量、D1 实现标识以及
@@ -15,17 +16,21 @@ governance、module final diagnostics 和 episode summary。运行清单哈希�
 
 D1 模块内冻结 benchmark 使用 200 个状态、100 步传播和 7 次交替采样，参考/候选中位耗时
 为 `0.220679/0.103950 s`，候选约为 `2.12x`，模型构造数由 `20,000` 降至 `8`，最终状态
-SHA-256 一致。该结果只证明局部热点可优化，尚不证明 200 对 200 全栈收益。下一步从同一
-clean main 提交运行 10 组 short 和 3 组 long pair，由 D6 独立检查业务等价、实现身份、
-核心墙钟、D1 融合、D2 非退化、内存和实时因子后再决定是否晋级。
+SHA-256 一致。main 随后在 clean
+`44223566439a446fc49f2a3fd861d1d51bd676b9` 上运行 10 组 2.2 秒 short pair 和 3 组
+10 秒 long pair，共 26 个全新 200 对 200 arm。13/13 业务语义、有限状态、在线真值
+隔离、实现身份和缓存审计通过。
 
-clean 提交 `44223566439a446fc49f2a3fd861d1d51bd676b9` 的 seed 1101、2.2 秒 smoke
-已完成。两臂均为有限状态、在线真值使用为 0；除预注册运行配置差异外，规范在线载荷、
-计划谱系、真值制品和接近事件一致。参考/候选的 D1 fusion 为
-`3.278821/3.031855 s`，模型构造为 `32,217/132`。单次 smoke 只用于验证接线。
-正式矩阵已冻结为 `configs/d1_cv_motion_model_cache_multiseed_v1.json`，SHA-256 为
-`9898656598f0fa282620afe2384a3d656b7496f8957109c413bcb62069fd2e9a`；26 个正式 arm
-尚未运行。
+short/long 的 D1 fusion 分别由 `3.289739/23.304548 s` 降至
+`3.061518/21.776847 s`，改善 `6.9271%/6.6103%`；核心墙钟改善
+`2.4060%/2.4537%`。D2 association 变化为 `-0.1082%/-2.6729%`，RSS 均值增幅为
+`0.0145%/0.2959%`。候选 13 个 episode 的缓存命中率和模型构造减少率均为
+`99.5960%`。所有预注册门通过，D6 判定 `d1_optimization_admitted=true`。
+
+候选最低实时因子为 `0.1739499`，未达到 `1.0`，因此
+`system_realtime_gap_closed=false`。该矩阵不包含 AirSim、目标处理器、RMSE、NEES、NIS
+或严格身份精度。正式报告位于
+`research_modules/d6_evaluation_metrics/outputs/d1_cv_motion_model_cache_multiseed_20260724_formal_4422356/`。
 
 ## D1 GlobalTrack 发布元数据 A/B（2026-07-24）
 

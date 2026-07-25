@@ -147,11 +147,11 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
             D1_CV_MOTION_MODEL_REFERENCE_IMPLEMENTATION,
             D1_CV_MOTION_MODEL_CANDIDATE_IMPLEMENTATION,
         ),
-        default=D1_CV_MOTION_MODEL_REFERENCE_IMPLEMENTATION,
+        default=D1_CV_MOTION_MODEL_CANDIDATE_IMPLEMENTATION,
         help=(
             "select D1 constant-velocity model construction; the "
-            "per-prediction reference remains the default until the bounded "
-            "exact LRU candidate passes formal multiseed admission"
+            "formally admitted bounded exact LRU path is the default and the "
+            "per-prediction implementation remains an explicit reference"
         ),
     )
     parser.add_argument(

@@ -16,7 +16,7 @@
 `immutable_shared_v2`。系统实时、逐批审计明细、严格精度、AirSim 和目标硬件证据仍为
 P1。以下最新专项记录优先于“扫描输入或发布元数据仍待治理”的历史表述。
 
-## 2026-07-24 D1 常速度模型缓存候选
+## 2026-07-24 D1 常速度模型缓存正式准入
 
 当前无新增 P0。D1 owner 已提供精确 `(dt, process_noise)` 键的有界最近最少使用缓存，
 参考实现 ID 为 `d1.fusion.cv_motion_model.per_prediction_build.v1`，候选实现 ID 为
@@ -28,30 +28,43 @@ D1 模块冻结 benchmark 使用 200 个状态、100 步传播和 7 次交替采
 为 `0.220679/0.103950 s`，局部加速约 `2.12x`；模型构造数由 `20,000` 降至 `8`，最终
 状态 SHA-256 相同。该结果不构成全栈准入证据。
 
-main 已接入显式 selector、容量校验和 CLI。默认仍为 `per_prediction_build_v1`。selector、
+main 已接入显式 selector、容量校验和 CLI。正式准入后默认已晋级为
+`bounded_exact_lru_v1`，参考路径继续可选。selector、
 容量、实现 ID 和缓存操作计数写入 runtime profile 哈希、observation governance、
 module final diagnostics 和 episode summary。专项回归已覆盖默认、显式选择、清单哈希、
-诊断持久化和非法容量；D1、scalable 3D、D6 全量回归分别为 `395/205/771 passed`。
+诊断持久化和非法容量；本轮 D1、scalable 3D、D6 全量回归分别为
+`395/212/784 passed`。
 
 clean `44223566439a446fc49f2a3fd861d1d51bd676b9` 的 seed 1101、2.2 秒 smoke
 两臂均为有限状态且在线真值使用为 0。排除预注册 runtime profile treatment 后，规范在线
 载荷、计划谱系、真值状态、离线标签和接近事件一致。参考/候选 D1 fusion 为
 `3.278821/3.031855 s`，模型构造为 `32,217/132`。该结果只确认接线和自然工作量。
 
-正式矩阵已冻结 10 组 short 与 3 组 long pair，SHA-256 为
-`9898656598f0fa282620afe2384a3d656b7496f8957109c413bcb62069fd2e9a`。运行器通过
-26 项专项测试与 dry-run。正式 26 个 arm 尚未运行，D6 准入结论仍 unavailable。
+正式矩阵在冻结 source 上完成 10 组 short 与 3 组 long pair，共 26 个全新 arm，
+0 reused、0 failed。13/13 业务语义、有限状态、在线真值隔离、实现身份和缓存审计通过。
+
+| 指标 | short reference/candidate | short 变化 | long reference/candidate | long 变化 |
+| --- | ---: | ---: | ---: | ---: |
+| D1 fusion wall | 3.289739/3.061518 s | 改善 6.9271% | 23.304548/21.776847 s | 改善 6.6103% |
+| 核心墙钟 | 9.900121/9.661069 s | 改善 2.4060% | 57.230178/55.826568 s | 改善 2.4537% |
+| D2 association | 0.555747/0.555140 s | 下降 0.1082% | 3.879187/3.772992 s | 下降 2.6729% |
+| 最大常驻内存 | 868,449/868,575 KiB | 增加 0.0145% | 1,603,473/1,608,273 KiB | 增加 0.2959% |
+
+候选累计完成 `896,820` 次预测请求、`871,496` 次缓存命中、`3,535` 次未命中和
+`3,535` 次模型构造；参考构造 `875,031` 次。构造减少率和命中率均为 `99.5960%`。
+所有预注册门通过，D6 判定 `d1_optimization_admitted=true`。
 
 仍开放 P1：
 
-1. **同提交多 seed 准入。** 需要从已冻结 clean commit 运行 10 组 short 和 3 组 long
-   pair，禁止复用 smoke 或旧 episode。
-2. **全栈非退化。** 需要 D6 校验业务等价、D1 fusion、D2 association、核心墙钟、RSS、
-   实时因子和实现身份。局部 benchmark 不能替代该门。
-3. **环境和精度。** 当前无 AirSim、冻结目标处理器、RMSE、NEES、NIS 或严格身份结果。
+1. **系统实时容量。** 候选最低实时因子 `0.1739499`，未达到 `1.0`，
+   `system_realtime_gap_closed=false`。
+2. **环境和精度。** 当前无 AirSim、冻结目标处理器、RMSE、NEES、NIS 或严格身份结果。
+3. **尾延时。** 累计 D1 与核心墙钟准入通过，但单次 max 仍有噪声和反向变化，不能据此
+   宣称最坏周期延时收敛。
 
-正式矩阵通过前，候选只作为可选 benchmark，不改变 main 默认路径，也不关闭 200 对 200
-系统实时 P1。
+正式报告位于
+`research_modules/d6_evaluation_metrics/outputs/d1_cv_motion_model_cache_multiseed_20260724_formal_4422356/`。
+该准入关闭常速度模型构造热点，不关闭 200 对 200 系统实时 P1。
 
 ## 2026-07-24 D1 发布元数据 v1 结论与 v2 准入
 
