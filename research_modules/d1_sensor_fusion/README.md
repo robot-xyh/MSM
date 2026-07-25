@@ -4,6 +4,54 @@ Offline research module for radar, acoustic, EO, and optional synthetic lidar he
 
 ## 当前性能与治理证据（2026-07-25）
 
+### 第三十二阶段：不透明来源标识有界代际缓存模块准入
+
+main 在 clean `cd9c60c` 上补充了 200v200、2.2 s、seed 1111 的 callee 证据。关闭
+source-key/hold 时，`process_scan_batch/global_tracks` 累计为 `4.852/0.633 s`；显式使用
+`--d1-publish-opaque-source-key` 且不启用 hold 时为 `5.796/1.501 s`，
+`_to_global_track` 为 `1.314 s`。11,236 次物化中，成员 token、source track ID 和 source
+key 分别累计 `0.245/0.294/0.337 s`。该差异只用于确定候选方向，不属于本模块准入数据。
+
+D1 新增默认关闭候选
+`d1.publication.opaque_source_identity.bounded_generation_lru.v1`。缓存键严格为
+`(publisher_node_id, publisher_epoch, track_id)`，值是冻结对象中的三个不可变字符串。
+容量默认 1,024、上限 4,096，采用有界最近最少使用淘汰。节点或 epoch 变化会清空旧代际；
+episode 复用同一 adapter 时可调用 `reset_opaque_source_identity_cache()` 显式清空。
+reference ID 为
+`d1.publication.opaque_source_identity.per_publication_build.v1`。独立构造器的
+`cached_opaque_source_identity` 默认保持 `False`。
+
+缓存只在 source-only 或 structural ambiguity hold 已经要求发布不透明来源字段时被调用。
+无 source-key 的默认路径请求数为 0。状态、协方差、timestamp、A95、航迹分级、最近 NIS、
+hits、record metadata、source support、identity likelihood、association diagnostics 和
+协方差操作摘要仍逐发布生成。每个 `GlobalTrack` 继续取得独立 state/covariance 和顶层
+metadata；缓存不保存可变字典或数组，也不改变 `global_track_id`。
+
+2026-07-25 正式模块微基准显式开启 source-only、关闭 hold。负载为 200 条航迹，每个样本
+发布 56 次，即每臂每轮物化 11,200 条航迹；每臂预热 1 次后交错 7 轮。预注册门槛为中位
+墙钟改善至少 `2%`，且 candidate 更快比例至少 `70%`。
+
+| 指标 | Reference | Candidate |
+| --- | ---: | ---: |
+| 中位墙钟 | `0.348622 s` | `0.127734 s` |
+| 中位改善 | - | `63.360%` |
+| 中位加速比 | - | `2.729x` |
+| 配对更快 | - | `7/7` |
+| 标识请求 | `78,800` | `78,800` |
+| 标识构造 | `78,800` | `200` |
+| 缓存命中/未命中 | `0/0` | `78,600/200` |
+
+逐发布 `GlobalTrack.to_dict()` 摘要、航迹数量和全部业务字段严格一致；在线 truth 使用为 0。
+request/hit/miss/build/eviction/bypass/peak 计数及容量守恒均通过。测试覆盖默认关闭、无
+source-key 惰性、已发布对象别名隔离、动态 record 字段新鲜性、节点/epoch/reset 失效、
+容量驱逐、OOSM、重放、新生和航迹移除边界。D1 全量为 `424 passed in 21.81s`。
+
+候选达到 D1 模块门槛，建议 main 只在 clean source-only 矩阵中接入默认关闭 selector 继续
+验收。当前没有 main 集成、多 seed、D6 独立评估、AirSim、目标硬件或系统实时证据，不能
+写成默认 R0 主线收益。模块报告位于
+`outputs/opaque_source_identity_cache_20260725/`；该目录是本地生成证据，不替代后续
+main 冻结矩阵。
+
 ### 第三十一阶段：结构稀疏数值雅可比正式准入
 
 D6 已对 clean commit

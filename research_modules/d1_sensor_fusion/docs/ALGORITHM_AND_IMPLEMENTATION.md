@@ -8,6 +8,71 @@
 
 ## 当前权威增量（2026-07-25）
 
+### 不透明来源标识缓存
+
+main 在 clean `cd9c60c` 的 source-only profile 中记录
+`process_scan_batch/global_tracks/_to_global_track=5.796/1.501/1.314 s`。11,236 次
+`_to_global_track` 调用内，成员 token、source track ID 和 source key 分别为
+`0.245/0.294/0.337 s`。关闭 source-key/hold 后，
+`process_scan_batch/global_tracks=4.852/0.633 s`。该对比说明优化对象是显式来源证据，
+不是默认融合主线。
+
+独立构造方式为：
+
+```python
+reference = FusionAdapter(
+    publish_opaque_source_key=True,
+    cached_opaque_source_identity=False,
+)
+candidate = FusionAdapter(
+    publish_opaque_source_key=True,
+    cached_opaque_source_identity=True,
+    opaque_source_identity_cache_capacity=1024,
+)
+```
+
+reference ID 为
+`d1.publication.opaque_source_identity.per_publication_build.v1`，candidate ID 为
+`d1.publication.opaque_source_identity.bounded_generation_lru.v1`。selector 默认
+`False`。未开启 source-only 或 hold 时 `_to_global_track()` 不请求缓存，诊断
+`request_count=0`。
+
+每次请求先读取当前 publisher node、publisher epoch 和 record track ID。候选仅在三者都是
+精确字符串时使用缓存，键保存完整三元组。未命中时调用原有三个规范函数构造全部字符串，
+然后把冻结 `_OpaqueSourceIdentity` 写入最近最少使用缓存；命中时只返回该冻结对象。达到
+容量时驱逐最早未使用项。节点或 epoch 与当前缓存代际不同会先清空全部旧项。显式 reset
+接口用于 main 在复用同一 adapter 的 episode 边界清空缓存。
+
+`_to_global_track()` 的其余步骤不读取缓存。它仍完成：
+
+1. 航迹协方差治理和 A95 计算；
+2. 航迹分级与最近 NIS 读取；
+3. identity likelihood 归一化；
+4. record metadata、source support、association diagnostics 和 covariance operation
+   summary 的本轮物化；
+5. state 与 covariance 独立复制；
+6. 双时间戳、NED、共享审计树和 `global_track_id` 原合同发布。
+
+诊断 schema 为 `d1.opaque_source_identity_cache_diagnostics.v1`。operation counts 始终
+返回固定键集合：request、hit、miss、build、eviction、bypass、peak、代际失效和显式 reset。
+守恒项验证 request 分解、build 分解、驱逐上界和容量上界。构造函数在执行规范校验前计为
+build attempt，因此失败关闭异常也不会破坏计数分解。
+
+聚焦回归逐发布比较完整 JSON 规范载荷，并分别修改已发布 state、covariance、metadata、
+source support 和 identity likelihood，确认后续发布不受影响。内部 record metadata、
+source support、identity likelihood、association diagnostics 和协方差操作摘要更新后，
+候选仍发布新值；只有三字符串保持缓存命中。测试还覆盖 node/epoch 切换、显式 reset、容量
+驱逐、OOSM、固定滞后重放、新生航迹和航迹移除。
+
+2026-07-25 微基准显式开启 source-only、关闭 hold。200 条航迹每样本发布 56 次，每轮
+11,200 次物化；每臂预热 1 次后交错 7 轮。reference/candidate 中位墙钟为
+`0.348622/0.127734 s`，改善 `63.360%`，加速 `2.729x`，candidate `7/7` 更快。
+标识构造 `78,800 -> 200`，候选命中/未命中 `78,600/200`。模块预注册门槛
+`>=2%` 和 `>=70%` 均通过，D1 全量 `424 passed in 21.81s`。
+
+该结果只建议 main 继续 clean source-only 同提交 A/B。候选仍默认关闭，未接 scalable 3D
+main 默认配置，也没有 D6 多 seed、AirSim、目标硬件或系统实时准入。
+
 ### 结构稀疏数值雅可比正式准入
 
 正式 reference/candidate 矩阵绑定 clean commit

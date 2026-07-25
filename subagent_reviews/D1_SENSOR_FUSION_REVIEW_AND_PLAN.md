@@ -5,6 +5,34 @@
 
 ---
 
+## 最新增量：不透明来源标识有界代际缓存（2026-07-25）
+
+- main 的 clean `cd9c60c` profile 显示，无 source-key/hold 时
+  `process_scan_batch/global_tracks=4.852/0.633 s`；显式 source-only 时为
+  `5.796/1.501 s`，`_to_global_track=1.314 s`。成员 token、source track ID 和 source
+  key 为 `0.245/0.294/0.337 s`。这些数据用于选题，不参与模块准入。
+- 本轮只缓存由 `(publisher_node_id, publisher_epoch, track_id)` 唯一决定的三个不透明
+  来源字符串。candidate/reference ID 分别为
+  `d1.publication.opaque_source_identity.bounded_generation_lru.v1` 和
+  `d1.publication.opaque_source_identity.per_publication_build.v1`。
+- `cached_opaque_source_identity` 默认 `False`。缓存默认容量 1,024、上限 4,096，按最近
+  最少使用淘汰。node 或 epoch 变化自动失效，episode reset 可显式清空；不能证明键合同的
+  路径执行 reference。
+- 缓存项是冻结对象中的字符串，不包含 dict 或 ndarray。state、covariance、timestamp、
+  A95、track level、last NIS、record metadata、source support、identity likelihood、
+  association diagnostics 和 operation summary 每次重新生成。
+- 2026-07-25 模块微基准显式开启 source-only、关闭 hold。200 航迹每个样本发布 56 次，
+  即 11,200 次物化；每臂预热后交错 7 轮。中位墙钟
+  `0.348622 -> 0.127734 s`，改善 `63.360%`，加速 `2.729x`，candidate `7/7` 更快。
+- reference/candidate 请求均为 78,800 次。构造由 `78,800 -> 200`；candidate 命中/未命中
+  为 `78,600/200`。完整 `GlobalTrack.to_dict()`、数量和业务字段相同，在线 truth 使用为
+  0，固定大小计数守恒。
+- 测试覆盖默认关闭、无 source-key 惰性、别名隔离、动态字段新鲜性、代际/reset、容量、
+  OOSM、重放、新生和航迹移除。D1 全量为 `424 passed in 21.81s`。
+- 模块预注册门槛为中位改善至少 `2%`、candidate 更快比例至少 `70%`，当前通过。建议 main
+  继续 clean source-only 同提交 A/B，候选仍默认关闭。该结论不是默认 R0、AirSim、硬件、
+  RMSE/NEES/NIS 或系统实时证据。
+
 ## 最新增量：结构稀疏数值雅可比正式准入（2026-07-25）
 
 - 正式矩阵绑定 clean commit

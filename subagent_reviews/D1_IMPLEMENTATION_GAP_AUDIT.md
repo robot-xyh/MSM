@@ -8,6 +8,32 @@
 
 ## 0. 当前正式治理 GAP 增量（2026-07-25）
 
+### 不透明来源标识有界代际缓存
+
+main 在 clean `cd9c60c` 上给出的候选来源 profile 分为两个配置。无 source-key/hold 的
+默认配置中，`process_scan_batch/global_tracks` 为 `4.852/0.633 s`；显式 source-only
+配置中为 `5.796/1.501 s`，`_to_global_track` 为 `1.314 s`。11,236 次物化内的成员
+token、source track ID 和 source key 分别累计 `0.245/0.294/0.337 s`。因此该候选只治理
+显式不透明来源证据路径，不能记入无 source-key 默认 R0 性能。
+
+D1 已实现默认关闭的
+`d1.publication.opaque_source_identity.bounded_generation_lru.v1`。键严格包含
+publisher node、publisher epoch 和 track ID；值为三个不可变字符串。缓存默认容量
+1,024、最大 4,096，节点/epoch 变化和显式 episode reset 均清空旧代际。状态、协方差、
+双时间戳、A95、分级、last NIS、动态 record metadata、来源、身份、关联诊断和协方差操作
+摘要不进入缓存。
+
+| GAP | 当前状态 | D1-owned 证据 | 剩余关闭条件 |
+| --- | --- | --- | --- |
+| source-only/hold 每次发布重复构造不透明来源三元组 | **P1 模块门槛已通过；main 集成准入开放** | 2026-07-25；200 航迹、56 发布/样本、11,200 物化/轮、预热后 7 次交错；中位 `0.348622 -> 0.127734 s`，改善 `63.360%`，`7/7` 更快；构造 `78,800 -> 200`；逐发布完整载荷等价、在线 truth 0、计数守恒；D1 `424 passed in 21.81s` | main 在 clean source-only 同提交矩阵接入默认关闭 selector 和诊断，由 D6 独立判定。不得用该数据替代无 source-key 默认画像 |
+| 代际、reset、容量和别名安全 | **D1-owned 已关闭** | key 含 node/epoch/track ID；node/epoch 自动失效；显式 reset 清空；容量驱逐；值只含不可变字符串；动态 record 字段保持新鲜；OOSM/重放/新生/移除回归通过 | main 若跨 episode 复用 adapter，必须调用 reset 接口或创建新实例，并在 manifest 记录实现 ID |
+| 系统实时、AirSim 和融合质量 | **P1 开放** | 模块基准只测 source-only 发布热点；main profile 仅用于选题 | 仍需多 seed 全栈、AirSim、目标硬件、RMSE、NEES、NIS 和实时因子 `>=1.0`，不得从 `63.360%` 推导系统收益 |
+
+`cached_opaque_source_identity=False` 保持 D1 独立构造默认。无 source-key/hold 时该缓存
+`request_count=0`。模块达到门槛后只建议 main 开展 source-only A/B，不建议默认晋级。
+`docs/AIRSIM_INTEGRATION_PLAN.md` 已检查；观测、GlobalTrack、runtime bus、settings 和
+AirSim 调度接口均未变化，因此无需修改。
+
 ### 结构稀疏数值雅可比正式准入
 
 clean commit `9d1f54f8540fdc4a7a1011121aafac5718290122` 的冻结同提交矩阵已完成 D6 独立

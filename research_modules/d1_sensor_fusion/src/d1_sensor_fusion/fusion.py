@@ -95,11 +95,22 @@ STRUCTURED_NUMERICAL_JACOBIAN_CANDIDATE_IMPLEMENTATION_ID = (
 STRUCTURED_NUMERICAL_JACOBIAN_DIAGNOSTICS_SCHEMA_VERSION = (
     "d1.structured_numerical_jacobian_diagnostics.v1"
 )
+OPAQUE_SOURCE_IDENTITY_REFERENCE_IMPLEMENTATION_ID = (
+    "d1.publication.opaque_source_identity.per_publication_build.v1"
+)
+OPAQUE_SOURCE_IDENTITY_CANDIDATE_IMPLEMENTATION_ID = (
+    "d1.publication.opaque_source_identity.bounded_generation_lru.v1"
+)
+OPAQUE_SOURCE_IDENTITY_CACHE_DIAGNOSTICS_SCHEMA_VERSION = (
+    "d1.opaque_source_identity_cache_diagnostics.v1"
+)
 COVARIANCE_CHOLESKY_RELATIVE_DETERMINANT_FLOOR = (
     4_096.0 * np.finfo(float).eps
 )
 DEFAULT_CV_MOTION_MODEL_CACHE_CAPACITY = 128
 MAX_CV_MOTION_MODEL_CACHE_CAPACITY = 4_096
+DEFAULT_OPAQUE_SOURCE_IDENTITY_CACHE_CAPACITY = 1_024
+MAX_OPAQUE_SOURCE_IDENTITY_CACHE_CAPACITY = 4_096
 OBSERVATION_METADATA_LINEAGE_KEYS = (
     "coverage_cell",
     "quality_flags",
@@ -606,6 +617,13 @@ class _TrackPublicationContext:
     sensor_health: Mapping[str, Mapping[str, Any]]
 
 
+@dataclass(frozen=True)
+class _OpaqueSourceIdentity:
+    member_token: str
+    source_track_id: str
+    source_key: str
+
+
 @dataclass
 class _BatchProcessingContext:
     state_cache: dict[tuple[str, int, float], EKFState] = field(default_factory=dict)
@@ -754,6 +772,10 @@ class FusionAdapter:
         cached_cv_motion_model: bool = False,
         cv_motion_model_cache_capacity: int = (
             DEFAULT_CV_MOTION_MODEL_CACHE_CAPACITY
+        ),
+        cached_opaque_source_identity: bool = False,
+        opaque_source_identity_cache_capacity: int = (
+            DEFAULT_OPAQUE_SOURCE_IDENTITY_CACHE_CAPACITY
         ),
     ) -> None:
         self.process_noise = float(process_noise)
@@ -930,6 +952,34 @@ class FusionAdapter:
         )
         self.publisher_node_id = str(publisher_node_id).strip()
         self.publisher_epoch = str(publisher_epoch).strip()
+        if not isinstance(cached_opaque_source_identity, bool):
+            raise TypeError("cached_opaque_source_identity must be a bool")
+        self.cached_opaque_source_identity = cached_opaque_source_identity
+        if (
+            isinstance(opaque_source_identity_cache_capacity, bool)
+            or not isinstance(
+                opaque_source_identity_cache_capacity,
+                Integral,
+            )
+        ):
+            raise TypeError(
+                "opaque_source_identity_cache_capacity must be an integer"
+            )
+        self.opaque_source_identity_cache_capacity = int(
+            opaque_source_identity_cache_capacity
+        )
+        if self.opaque_source_identity_cache_capacity < 1:
+            raise ValueError(
+                "opaque_source_identity_cache_capacity must be at least 1"
+            )
+        if (
+            self.opaque_source_identity_cache_capacity
+            > MAX_OPAQUE_SOURCE_IDENTITY_CACHE_CAPACITY
+        ):
+            raise ValueError(
+                "opaque_source_identity_cache_capacity must be at most "
+                f"{MAX_OPAQUE_SOURCE_IDENTITY_CACHE_CAPACITY}"
+            )
         self.radar_covariance_config = (
             radar_covariance_config
             if isinstance(radar_covariance_config, RadarCovarianceConfig)
@@ -1136,6 +1186,16 @@ class FusionAdapter:
             tuple[np.ndarray, np.ndarray],
         ] = OrderedDict()
         self._cv_motion_model_cache_operations: Counter[str] = Counter()
+        self._opaque_source_identity_cache: OrderedDict[
+            tuple[str, str, str],
+            _OpaqueSourceIdentity,
+        ] = OrderedDict()
+        self._opaque_source_identity_cache_generation: (
+            tuple[str, str] | None
+        ) = (self.publisher_node_id, self.publisher_epoch)
+        self._opaque_source_identity_cache_operations: Counter[str] = (
+            Counter()
+        )
 
     def _bucket(self, timestamp: float) -> int:
         """Return the fixed-lag cache bucket for a timestamp."""
@@ -1262,6 +1322,101 @@ class FusionAdapter:
                 )
             },
         }
+
+    def opaque_source_identity_cache_diagnostics(self) -> dict[str, Any]:
+        """Return fixed-size counters for the explicit publication cache."""
+
+        counts = self._opaque_source_identity_cache_operations
+        request_count = int(counts["request_count"])
+        hit_count = int(counts["cache_hit_count"])
+        miss_count = int(counts["cache_miss_count"])
+        build_count = int(counts["identity_build_count"])
+        eviction_count = int(counts["cache_eviction_count"])
+        bypass_count = int(counts["reference_bypass_count"])
+        peak_entry_count = int(counts["peak_entry_count"])
+        return {
+            "schema_version": (
+                OPAQUE_SOURCE_IDENTITY_CACHE_DIAGNOSTICS_SCHEMA_VERSION
+            ),
+            "implementation_id": (
+                OPAQUE_SOURCE_IDENTITY_CANDIDATE_IMPLEMENTATION_ID
+                if self.cached_opaque_source_identity
+                else OPAQUE_SOURCE_IDENTITY_REFERENCE_IMPLEMENTATION_ID
+            ),
+            "candidate_enabled": bool(
+                self.cached_opaque_source_identity
+            ),
+            "cache_capacity": int(
+                self.opaque_source_identity_cache_capacity
+            ),
+            "cache_entry_count": len(self._opaque_source_identity_cache),
+            "cache_generation": (
+                list(self._opaque_source_identity_cache_generation)
+                if self._opaque_source_identity_cache_generation is not None
+                else None
+            ),
+            "operation_counts": {
+                "request_count": request_count,
+                "cache_hit_count": hit_count,
+                "cache_miss_count": miss_count,
+                "identity_build_count": build_count,
+                "cache_eviction_count": eviction_count,
+                "reference_bypass_count": bypass_count,
+                "peak_entry_count": peak_entry_count,
+                "generation_invalidation_count": int(
+                    counts["generation_invalidation_count"]
+                ),
+                "generation_invalidated_entry_count": int(
+                    counts["generation_invalidated_entry_count"]
+                ),
+                "explicit_reset_count": int(
+                    counts["explicit_reset_count"]
+                ),
+                "explicit_reset_entry_count": int(
+                    counts["explicit_reset_entry_count"]
+                ),
+            },
+            "conservation": {
+                "request_equals_hit_plus_miss_plus_bypass": (
+                    request_count
+                    == hit_count + miss_count + bypass_count
+                ),
+                "build_equals_miss_plus_bypass": (
+                    build_count == miss_count + bypass_count
+                ),
+                "eviction_not_above_miss": (
+                    eviction_count <= miss_count
+                ),
+                "entry_count_within_capacity": (
+                    len(self._opaque_source_identity_cache)
+                    <= self.opaque_source_identity_cache_capacity
+                ),
+                "peak_entry_count_within_capacity": (
+                    peak_entry_count
+                    <= self.opaque_source_identity_cache_capacity
+                ),
+            },
+        }
+
+    def reset_opaque_source_identity_cache(self) -> None:
+        """Invalidate cached source identities at an episode reset boundary."""
+
+        operations = self._opaque_source_identity_cache_operations
+        operations["explicit_reset_count"] += 1
+        operations["explicit_reset_entry_count"] += len(
+            self._opaque_source_identity_cache
+        )
+        self._opaque_source_identity_cache.clear()
+        if (
+            type(self.publisher_node_id) is str
+            and type(self.publisher_epoch) is str
+        ):
+            self._opaque_source_identity_cache_generation = (
+                self.publisher_node_id,
+                self.publisher_epoch,
+            )
+        else:
+            self._opaque_source_identity_cache_generation = None
 
     def structured_numerical_jacobian_diagnostics(self) -> dict[str, Any]:
         """Return implementation identity and structural Jacobian operations."""
@@ -5445,6 +5600,92 @@ class FusionAdapter:
                     existing.add(source_track_key)
                     record.metadata["source_track_ids"] = tuple(sorted(existing))
 
+    def _build_opaque_source_identity(
+        self,
+        track_id: str,
+    ) -> _OpaqueSourceIdentity:
+        operations = self._opaque_source_identity_cache_operations
+        operations["identity_build_count"] += 1
+        member_token = structural_ambiguity_member_track_token(
+            self.publisher_node_id,
+            self.publisher_epoch,
+            track_id,
+        )
+        source_track_id = structural_ambiguity_source_track_id(
+            self.publisher_epoch,
+            member_token,
+        )
+        source_key = structural_ambiguity_source_key(
+            self.publisher_node_id,
+            self.publisher_epoch,
+            member_token,
+        )
+        return _OpaqueSourceIdentity(
+            member_token=member_token,
+            source_track_id=source_track_id,
+            source_key=source_key,
+        )
+
+    def _opaque_source_identity(
+        self,
+        track_id: str,
+    ) -> _OpaqueSourceIdentity:
+        operations = self._opaque_source_identity_cache_operations
+        operations["request_count"] += 1
+        if not self.cached_opaque_source_identity:
+            operations["reference_bypass_count"] += 1
+            return self._build_opaque_source_identity(track_id)
+
+        generation: tuple[str, str] | None
+        if (
+            type(self.publisher_node_id) is str
+            and type(self.publisher_epoch) is str
+            and type(track_id) is str
+        ):
+            generation = (
+                self.publisher_node_id,
+                self.publisher_epoch,
+            )
+        else:
+            generation = None
+
+        if generation != self._opaque_source_identity_cache_generation:
+            invalidated_entry_count = len(
+                self._opaque_source_identity_cache
+            )
+            self._opaque_source_identity_cache.clear()
+            self._opaque_source_identity_cache_generation = generation
+            operations["generation_invalidation_count"] += 1
+            operations["generation_invalidated_entry_count"] += (
+                invalidated_entry_count
+            )
+
+        if generation is None:
+            operations["reference_bypass_count"] += 1
+            return self._build_opaque_source_identity(track_id)
+
+        key = (generation[0], generation[1], track_id)
+        cached = self._opaque_source_identity_cache.get(key)
+        if cached is not None:
+            operations["cache_hit_count"] += 1
+            self._opaque_source_identity_cache.move_to_end(key)
+            return cached
+
+        operations["cache_miss_count"] += 1
+        identity = self._build_opaque_source_identity(track_id)
+        if (
+            len(self._opaque_source_identity_cache)
+            >= self.opaque_source_identity_cache_capacity
+        ):
+            self._opaque_source_identity_cache.popitem(last=False)
+            operations["cache_eviction_count"] += 1
+        self._opaque_source_identity_cache[key] = identity
+        operations["peak_entry_count"] = max(
+            int(operations["peak_entry_count"]),
+            len(self._opaque_source_identity_cache),
+        )
+        return identity
+
     def _to_global_track(
         self,
         record: TrackRecord,
@@ -5520,25 +5761,16 @@ class FusionAdapter:
             }
         )
         if self.opaque_source_key_publication_enabled:
-            member_token = structural_ambiguity_member_track_token(
-                self.publisher_node_id,
-                self.publisher_epoch,
-                record.track_id,
-            )
+            source_identity = self._opaque_source_identity(record.track_id)
             metadata.update(
                 {
                     "source_node_id": self.publisher_node_id,
-                    "source_track_id": structural_ambiguity_source_track_id(
-                        self.publisher_epoch,
-                        member_token,
-                    ),
+                    "source_track_id": source_identity.source_track_id,
                     "publisher_epoch": self.publisher_epoch,
-                    "opaque_member_track_token": member_token,
-                    "source_key": structural_ambiguity_source_key(
-                        self.publisher_node_id,
-                        self.publisher_epoch,
-                        member_token,
+                    "opaque_member_track_token": (
+                        source_identity.member_token
                     ),
+                    "source_key": source_identity.source_key,
                 }
             )
         self._update_metadata_covariance_reasons(

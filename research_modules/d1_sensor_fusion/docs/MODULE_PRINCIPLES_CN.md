@@ -6,6 +6,53 @@
 
 ## 当前权威增量（2026-07-25）
 
+### 不透明来源标识是航迹代际不变量
+
+source-only 和结构歧义 hold 发布需要为每条 D1 航迹生成成员 token、source track ID 和
+source key。三者可写成确定函数
+
+\[
+I_t=f(n,e,g),
+\]
+
+其中 \(n\) 是 publisher node，\(e\) 是 publisher epoch，\(g\) 是 D1 本地 track ID。
+同一三元组在航迹状态预测、量测更新、固定滞后重放和协方差变化后仍得到相同结果。该不变量
+允许复用字符串结果。状态 \(x\)、协方差 \(P\)、有效时刻、A95、航迹等级和最近创新统计都
+不满足这个条件，必须逐发布计算。
+
+reference 每次发布依次执行三套规范构造函数，其中 source key 内部还验证 source track ID。
+candidate 使用键
+`(publisher_node_id, publisher_epoch, track_id)` 查询有界最近最少使用缓存。缓存值是
+冻结对象中的三个 Python 字符串。字符串不可变，已发布 `GlobalTrack.metadata` 取得字符串
+值后不能反向污染缓存。每条航迹的顶层 metadata、state 和 covariance 仍独立构造。
+
+代际新鲜性由两个机制保证。当前 node/epoch 与缓存代际不同时，全部旧项先清空再执行
+reference 构造；同一 adapter 跨 episode 复用时，调用
+`reset_opaque_source_identity_cache()` 清空本代际已有项。缓存容量默认 1,024、最大
+4,096，超限按最近最少使用淘汰。键类型无法证明时直接执行 reference，不写入缓存。该设计
+不扫描或哈希完整 record metadata，因此不会用新校验抵消原热点。
+
+实现 ID 为
+`d1.publication.opaque_source_identity.bounded_generation_lru.v1`，由
+`cached_opaque_source_identity=True` 显式启用，默认关闭。诊断固定记录 request、hit、
+miss、build、eviction、bypass 和 peak，并验证
+
+\[
+N_{\mathrm{request}}
+=N_{\mathrm{hit}}+N_{\mathrm{miss}}+N_{\mathrm{bypass}},
+\qquad
+N_{\mathrm{build}}=N_{\mathrm{miss}}+N_{\mathrm{bypass}}.
+\]
+
+2026-07-25 的 source-only 模块基准含 200 条航迹、每样本 56 次发布、每轮 11,200 次
+物化；每臂预热后交错 7 轮。中位墙钟由 `0.348622 s` 降至 `0.127734 s`，改善
+`63.360%`，7/7 更快。请求均为 78,800 次，candidate 只构造 200 次并命中 78,600 次。
+完整航迹载荷与 reference 相同，D1 全量 `424 passed in 21.81s`。
+
+main 提供的候选来源 profile 还说明该成本只存在于不透明来源发布路径。无 source-key/hold
+时 `global_tracks=0.633 s`，source-only 时为 `1.501 s`。因此模块结果只支持后续
+source-only A/B，不能外推为默认无 source-key R0 或系统实时收益。
+
 ### 结构先验数值雅可比的系统准入边界
 
 结构稀疏数值雅可比只消除观测模型已知为零的差分列和输出维数探测。它不近似活动列，不改变

@@ -1,5 +1,68 @@
 # 第一研究模块实验结果
 
+## 不透明来源标识缓存微基准
+
+**证据日期：2026-07-25**
+
+**范围：D1 source-only `GlobalTrack` 发布热点**
+
+### 候选来源
+
+main 在 clean `cd9c60c` 上完成 200v200、2.2 s、seed 1111 的 cProfile。无
+source-key/hold 配置中，`process_scan_batch/global_tracks=4.852/0.633 s`。显式
+source-only、关闭 hold 时为 `5.796/1.501 s`，`_to_global_track=1.314 s`。11,236 次
+物化中的成员 token、source track ID 和 source key 为 `0.245/0.294/0.337 s`。本试验据此
+选择三字符串缓存，不处理整个 metadata，也不把 source-only 增量解释为默认主线成本。
+
+### 试验设计
+
+reference 每次发布执行规范字符串构造。candidate 按 publisher node、publisher epoch 和
+D1 track ID 查询容量为 1,024 的有界缓存。两臂均显式
+`publish_opaque_source_key=True`，均关闭 structural ambiguity hold，其他配置相同。
+
+负载含 200 条航迹。每个计时样本执行 56 次完整 `global_tracks()`，即每臂每轮物化
+11,200 条航迹。每个变体先预热 1 次，再按交替次序执行 7 轮。预注册性能门为：
+
+1. candidate 中位墙钟改善不低于 `2%`；
+2. candidate 配对更快比例不低于 `70%`；
+3. 逐发布完整航迹载荷、数量和 operation conservation 全部通过。
+
+### 结果
+
+| 指标 | Reference | Candidate |
+| --- | ---: | ---: |
+| 墙钟样本数 | 7 | 7 |
+| 中位墙钟 | `0.348622 s` | `0.127734 s` |
+| 最小墙钟 | `0.342049 s` | `0.126119 s` |
+| 最大墙钟 | `0.352834 s` | `0.128216 s` |
+| 中位改善 | - | `63.360%` |
+| 中位加速比 | - | `2.729x` |
+| 配对更快 | - | `7/7` |
+| 标识请求 | `78,800` | `78,800` |
+| 标识构造 | `78,800` | `200` |
+| 缓存命中 | 0 | `78,600` |
+| 缓存未命中 | 0 | `200` |
+| 缓存峰值 | 0 | `200/1,024` |
+| 驱逐 | 0 | 0 |
+
+两臂逐发布 `GlobalTrack.to_dict()` SHA-256 一致，航迹数均为 200。reference 和 candidate
+的 request 分解、build 分解、驱逐及容量守恒全部通过，在线 truth 使用为 0。状态、协方差、
+timestamp、A95、航迹等级和 last NIS 仍逐次生成。
+
+专项测试覆盖默认关闭、无 source-key 惰性、完整载荷等价、已发布对象别名隔离、动态 record
+字段新鲜性、node/epoch/reset 失效、容量驱逐、OOSM、重放、新生和航迹移除。专项
+`10 passed`；D1 全量 `424 passed in 21.81s`。本地生成报告位于
+`outputs/opaque_source_identity_cache_20260725/`。
+
+### 判定
+
+候选达到 D1 模块门槛。建议 main 在 source-only 同提交 clean 矩阵中接入 selector、实现 ID
+和诊断，再由 D6 独立判断集成准入。`cached_opaque_source_identity` 继续默认关闭。
+
+本试验没有运行 source-only 多 seed 全栈矩阵，也不包含 AirSim、目标硬件、RMSE、NEES、
+NIS 或物理拦截。无 source-key 的默认配置不调用缓存，因此 `63.360%` 不能写成默认 R0 或
+系统实时收益。
+
 ## 结构稀疏数值雅可比正式准入
 
 **证据日期：2026-07-25**

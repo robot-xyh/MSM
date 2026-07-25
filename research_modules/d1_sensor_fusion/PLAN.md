@@ -1,5 +1,47 @@
 # D1 多传感器融合与目标配准实施计划
 
+## P1 不透明来源标识缓存模块结果与后续计划（2026-07-25）
+
+### 候选范围
+
+main 的 clean `cd9c60c` profile 表明，关闭 source-key/hold 时
+`process_scan_batch/global_tracks` 为 `4.852/0.633 s`；显式 source-only 时为
+`5.796/1.501 s`，`_to_global_track` 为 `1.314 s`。成员 token、source track ID 和 source
+key 的累计耗时为 `0.245/0.294/0.337 s`。本轮只处理这组三字符串，不扩展为整棵 metadata
+缓存，也不改 A95、状态、协方差、重放或共享审计树。
+
+候选实现 ID 为
+`d1.publication.opaque_source_identity.bounded_generation_lru.v1`，reference 为
+`d1.publication.opaque_source_identity.per_publication_build.v1`。显式选择器
+`cached_opaque_source_identity` 默认关闭。键包含 publisher node、publisher epoch 和 D1
+track ID；容量默认 1,024、最大 4,096。节点/epoch 变化自动清空旧代际，episode reset 可
+显式清空。未满足精确字符串键合同的调用回到 reference。缓存项只含不可变字符串。
+
+### 已完成验收
+
+2026-07-25 模块基准显式开启 source-only、关闭 hold，采用 200 条航迹、每样本 56 次发布、
+每轮 11,200 次物化，预热后交错 7 轮。reference/candidate 中位墙钟为
+`0.348622/0.127734 s`，改善 `63.360%`、加速 `2.729x`，candidate `7/7` 更快。
+标识构造由 `78,800` 降至 `200`，候选命中/未命中为 `78,600/200`。预注册的中位改善
+`>=2%` 和更快比例 `>=70%` 均通过。
+
+逐发布 `GlobalTrack.to_dict()`、state、covariance、metadata、来源、身份和诊断语义相同。
+状态、协方差、timestamp、A95、分级、last NIS 和全部本轮变化字段仍重新生成。别名隔离、
+节点/epoch/reset 失效、容量驱逐、OOSM/重放/新生/移除和固定大小计数守恒已覆盖。D1 全量
+回归为 `424 passed in 21.81s`。
+
+### main 后续关闭条件
+
+1. main 只在显式 source-only reference/candidate 同提交矩阵中接入 selector、实现 ID 和
+   固定大小诊断；不把候选加入无 source-key 默认画像。
+2. 使用 200v200 short 多 seed，必要时补 long 样本；要求完整业务语义、在线 truth 隔离、
+   计数守恒、RSS 和下游 D2 审计通过。
+3. D6 独立冻结和判定后，才能决定 source-only 配置是否晋级。D1 构造默认继续为 `False`。
+4. 当前系统实时 P1、AirSim、目标硬件、RMSE、NEES、NIS 均保持开放。模块 `63.360%`
+   热点改善不得外推为默认 R0 或系统收益。
+5. 若 main 矩阵未达到其预注册门槛，候选保留默认关闭并记为集成性能准入否决；本轮不启动
+   第二个 D1 候选。
+
 ## P1 结构稀疏数值雅可比正式准入结果（2026-07-25）
 
 ### 正式矩阵
