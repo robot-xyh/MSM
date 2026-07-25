@@ -8,7 +8,7 @@ D2 是 C-UAS 多目标数据关联研究模块，目标是在离线仿真和日�
 
 ### 2026-07-24 D1 发布审计 v2 消费合同
 
-- D6 对 D1 v1 发布元数据候选的 13 对正式评估表明，D1 fusion wall 在 short/long
+- D6 对 D1 v1 发布元数据候选的 13 对正式评估构成修复前基线。D1 fusion wall 在 short/long
   分别改善 `16.29%/31.05%`，但 D2 对共享只读诊断树逐航迹重复扫描，使 D2 association
   增加 `53.44%/169.89%`；核心墙钟仅改善 `1.65%/1.21%`，未达到预注册的 `5%`
   准入门。
@@ -27,8 +27,24 @@ D2 是 C-UAS 多目标数据关联研究模块，目标是在离线仿真和日�
   `global_track_id` 仍不进入 D2 Detection。
 - 2026-07-24 确定性 200 航迹夹具中，三个共享 v2 根的合同验证和完整内容审计均为
   3 次，同身份复用为 `3*(200-1)=597` 次。完整 D2 回归为
-  `305 passed, 1 warning in 29.17s`。该结果只关闭 D2-owned 消费合同；main 尚需把
-  审计字段持久化并在同一 clean commit 上重跑 13 对正式矩阵，系统候选当前不得准入。
+  `305 passed, 1 warning in 29.40s`。
+- 同日，main 和 D6 在 clean source commit
+  `be399e138762f5e660f553c8caa812d52ab38c61` 上完成 short 10 对、long 3 对，
+  共 13 pair/26 arm 的 200 目标、200 资源、2 侦察节点三维质点正式矩阵。26 个 arm
+  均重新运行，`reused=0`、`failed=0`。13/13 pair 的业务语义、有限状态、在线真值
+  隔离、实现身份和 D2 发布元数据审计全部通过。
+- 候选臂累计完成 702 次精确 v2 合同验证、702 次完整内容审计和 139920 次同对象身份
+  复用，合同拒绝和内建等价复用均为 0。参考臂累计 139920 次内建等价复用，所有 v2
+  计数为 0。D2 association 墙钟 short 从 `0.657417 s` 降至 `0.548699 s`
+  （下降 `16.1939%`），long 从 `5.869413 s` 降至 `3.774282 s`
+  （下降 `35.6213%`），均满足“相对参考均值增幅不超过 `5%`”的准入门。
+- D1 fusion 和核心墙钟门同时通过，D6 判定
+  `d1_optimization_admitted=true`。main promotion commit `f5b350b` 已将
+  `immutable_shared_v2` 设为默认发布路径，`per_track_copy_v1` 保留为显式 reference。
+- 该结论只准入发布元数据审计路径的墙钟和业务语义，不构成 IDSW、continuity、
+  RMSE、NEES、NIS、AirSim 或硬件精度验收。最低实时因子仍为 `0.1730801`，
+  `system_realtime_gap_closed=false`。当前 `latest/totals` 只能证明固定批次计数关系，
+  逐批审计明细仍是 P1。
 
 ### 2026-07-23 结构歧义有界身份假设 C0 设计
 

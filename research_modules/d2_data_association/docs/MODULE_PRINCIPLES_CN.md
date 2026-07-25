@@ -29,8 +29,22 @@ v2 子类失败关闭。旧内建容器仍沿用“首个等值代表完整审�
 `detections3d_from_d1_global_tracks_with_audit()` 同时返回三维 Detection 和批审计摘要。
 该入口和 `D1GlobalTrackDetectionBatch` 结果类型均由包 API 与 `__all__` 导出，旧入口
 保持原二元返回。2026-07-24 的 200 航迹确定性夹具中，三个共享根各验证和内容审计
-一次，同身份复用 597 次；完整模块测试为 `305 passed`。该结果不是系统性能准入，
-还需 main 在 clean 同提交矩阵中持久化摘要并由 D6 复核核心墙钟。
+一次，同身份复用 597 次；完整模块测试为 `305 passed`。
+
+同日，main 和 D6 在 clean source commit
+`be399e138762f5e660f553c8caa812d52ab38c61` 上完成 short 10 对、long 3 对，
+共 13 pair/26 arm 的 200 目标、200 资源、2 侦察节点三维质点正式矩阵。26 个 arm
+均重新运行，13/13 pair 的业务语义、有限状态、在线真值隔离、实现身份和 D2 审计通过。
+候选累计 702 次精确 v2 合同验证、702 次完整内容审计和 139920 次同对象身份复用，
+合同拒绝为 0。D2 association 墙钟 short/long 分别下降 `16.1939%/35.6213%`，
+通过相对参考均值增幅 `<=5%` 的门限。D6 据此给出
+`d1_optimization_admitted=true`，main promotion commit `f5b350b` 已默认采用
+`immutable_shared_v2`。
+
+该准入只覆盖发布元数据审计路径的墙钟与业务语义。它没有使用本矩阵验收 IDSW、
+continuity、RMSE、NEES、NIS、AirSim 或硬件精度。最低实时因子为 `0.1730801`，
+系统实时 P1 仍开放。固定矩阵中的 `latest/totals` 只证明累计计数关系，逐批审计日志
+仍需补齐。
 
 ## 0. 2026-07-15 M5N2 真实运行证据边界
 

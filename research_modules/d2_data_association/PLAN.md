@@ -1537,20 +1537,37 @@ evaluation payload 严格相同；相邻计数 `133/0` 不变。
   `D1GlobalTrackDetectionBatch` 一同通过包 API 和 `__all__` 导出；旧入口返回兼容。
 
 200 航迹、三个共享 v2 根的确定性测试中，合同验证和完整内容审计各 3 次，同身份复用
-597 次。完整 D2 回归为 `305 passed, 1 warning in 29.17s`。该阶段没有启动 AirSim，
+597 次。完整 D2 回归为 `305 passed, 1 warning in 29.40s`。该阶段没有启动 AirSim，
 没有改 GNN/Hungarian、状态机、身份承诺或 `global_track_id` 规则。
 
-### 38.2 main/D6 后续验收
+### 38.2 main/D6 正式验收结果
 
-main 需要改用带审计入口，并逐批持久化
-`metadata_audit.to_dict()` 的完整计数。失败批次应按异常记录，不能生成部分 Detection
-继续运行。随后在同一 clean commit、同一输入和预注册 short 10 seeds/long 3 seeds
-上复跑 reference/v2 candidate：
+2026-07-24 已在 clean source commit
+`be399e138762f5e660f553c8caa812d52ab38c61` 上完成预注册矩阵。场景为 200 目标、
+200 资源和 2 侦察节点；short 10 pair、long 3 pair，共 13 pair/26 arm。所有 arm
+均重新运行，`reused=0`、`failed=0`。13/13 pair 的业务语义、有限状态、在线真值
+隔离、实现身份和 D2 发布元数据审计通过。
 
-1. 三个共享根的 v2 合同验证和内容审计应各为每批 3 次；
-2. v2 同身份复用应与实际共享对象数和航迹数一致；
-3. 在线 truth、身份改写、有限值、业务语义和 RSS 门继续通过；
-4. D2 association 不得重现 v1 的 `53.44%/169.89%` 回退；
-5. 核心墙钟改善仍须达到预注册的 `>=5%`，否则候选继续拒绝。
+候选臂累计得到：
 
-D2 模块合同已经闭合，系统性能 P1 仍开放。正式矩阵完成前不得把 v2 写成默认准入能力。
+1. 精确 v2 合同验证 702 次；
+2. v2 完整内容审计 702 次；
+3. 同对象身份复用 139920 次；
+4. 合同拒绝 0 次、内建等价复用 0 次。
+
+参考臂累计 139920 次内建等价复用，所有 v2 计数为 0。D2 association 墙钟 short
+由 `0.657417 s` 降至 `0.548699 s`，下降 `16.1939%`；long 由 `5.869413 s`
+降至 `3.774282 s`，下降 `35.6213%`。两档结果均满足候选相对参考均值增幅
+`<=5%` 的门限。D1 fusion 和核心墙钟改善也通过各自门限，D6 最终输出
+`d1_optimization_admitted=true`。main promotion commit `f5b350b` 已默认选择
+`immutable_shared_v2`，并保留 `per_track_copy_v1` 作为显式 reference。
+
+### 38.3 保留的 P1
+
+本次只完成发布元数据审计路径的墙钟和业务语义准入。以下工作不因候选晋级而关闭：
+
+1. 最低实时因子仅 `0.1730801`，系统实时 P1 继续开放；
+2. 当前 `latest/totals` 只能证明固定批次累计关系，尚缺逐批审计日志；
+3. 本矩阵不验收 IDSW、track/identity/coverage continuity、RMSE、NEES 或 NIS；
+4. 本矩阵是三维质点正式证据，不是 AirSim、固定硬件或实飞精度验收；
+5. `global_track_id` 仍由中心 D2 所有，发布元数据优化不得改变身份合同。

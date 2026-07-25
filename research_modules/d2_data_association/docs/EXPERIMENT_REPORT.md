@@ -1,14 +1,14 @@
 # D2 多目标跟踪与数据关联实验报告
 
-## 2026-07-24 D1 发布审计 v2 模块验证
+## 2026-07-24 D1 发布审计 v2 正式验证
 
 D6 对 v1 候选的 13 对正式评估给出了修复前基线。short 10 seeds 和 long 3 seeds
 中，D1 fusion wall 分别改善 `16.29%` 和 `31.05%`；D2 association 分别增加
 `53.44%` 和 `169.89%`。核心墙钟只改善 `1.65%` 和 `1.21%`，低于预注册的 `5%`
 门，因此 v1 系统候选不准入。
 
-本轮只验证 D2 对 D1 v2 不可变合同的消费逻辑，未启动 AirSim，也未重跑上述 13 对
-系统矩阵。确定性夹具构造 200 条 D1 六维航迹，每条共享同三个 v2 根。验收结果如下：
+D2 随后完成 v2 不可变合同消费者。确定性夹具构造 200 条 D1 六维航迹，每条共享同
+三个 v2 根。模块验收结果如下：
 
 | 项目 | 结果 | 门槛 |
 |---|---:|---:|
@@ -26,12 +26,39 @@ D6 对 v1 候选的 13 对正式评估给出了修复前基线。short 10 seeds 
 
 v2 专项与既有性能测试共 `37 passed`；新增包 API、`__all__` 和星号导出专项后，
 公开导出测试文件为 `13 passed`。完整 D2 测试为
-`305 passed, 1 warning in 29.17s`，验收阈值为零失败。warning 来自本机 Matplotlib
+`305 passed, 1 warning in 29.40s`，验收阈值为零失败。warning 来自本机 Matplotlib
 `Axes3D` 多版本环境，与本合同无关。
 
-本批结论限于 D2-owned 代码和不变式。main 尚未改用带审计入口，也未持久化新计数；
-D6 尚未对 v2 完成同一 clean commit 的 13 对正式复评。系统实时差距和候选准入继续
-开放。
+main 和 D6 随后在 clean source commit
+`be399e138762f5e660f553c8caa812d52ab38c61` 上完成同一输入、同一提交的 v2 正式矩阵。
+场景含 200 目标、200 资源和 2 侦察节点；short 10 pair、long 3 pair，共
+13 pair/26 arm。26 个 arm 均重新运行，`reused=0`、`failed=0`。
+
+| 正式验收项 | 结果 | 门限或判定 |
+|---|---:|---:|
+| 完成 pair/arm | 13/26 | 13/26 |
+| 业务语义、有限状态、在线真值隔离、实现身份 | 13/13 通过 | 全部通过 |
+| D2 发布元数据审计 | 13/13 通过 | 全部通过 |
+| 候选 v2 合同验证/内容审计 | 702/702 | 与固定批次关系一致 |
+| 候选 v2 同身份复用 | 139920 | 与固定批次关系一致 |
+| 候选合同拒绝/内建等价复用 | 0/0 | 0/0 |
+| 参考内建等价复用 | 139920 | 与固定批次关系一致 |
+| short D2 association | `0.657417 -> 0.548699 s` | 均值增幅 `<=5%` |
+| long D2 association | `5.869413 -> 3.774282 s` | 均值增幅 `<=5%` |
+| D1 优化准入 | `true` | 全部门通过 |
+| 最低实时因子 | `0.1730801` | 系统实时缺口未关闭 |
+
+short/long D2 association 分别下降 `16.1939%` 和 `35.6213%`，未再出现 v1 的关联
+回退。D1 fusion 和核心墙钟门也通过，D6 最终输出
+`d1_optimization_admitted=true`。正式报告位于
+`research_modules/d6_evaluation_metrics/outputs/d1_publication_metadata_v2_multiseed_20260724_formal_be399e1/`。
+main promotion commit `f5b350b` 已将 `immutable_shared_v2` 设为默认发布路径，
+`per_track_copy_v1` 保留为显式 reference。
+
+本次证据只证明发布元数据审计路径的墙钟和业务语义准入。它不证明 IDSW、track/
+identity/coverage continuity、RMSE、NEES、NIS、AirSim 或硬件精度达到要求。当前
+`latest/totals` 只能证明这组固定批次的累计关系，逐批审计日志仍为 P1。最低实时因子
+低于 1，`system_realtime_gap_closed=false`。
 
 ## 2026-07-23 身份证据承诺 v2 模块验证
 

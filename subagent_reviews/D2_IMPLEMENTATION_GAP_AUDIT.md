@@ -1444,18 +1444,36 @@ AssignmentPlan 合同。
   `D1GlobalTrackDetectionBatch` 均通过包 API 和 `__all__` 导出，旧二元入口保持兼容。
   200 航迹三共享根得到 3 次合同验证、3 次内容审计、597 次同身份复用，上游
   `global_track_id` 复制数为 0。
-- 2026-07-24 完整 D2 回归为 `305 passed, 1 warning in 29.17s`。warning 是既有
+- 2026-07-24 完整 D2 回归为 `305 passed, 1 warning in 29.40s`。warning 是既有
   Matplotlib `Axes3D` 环境提示，不影响合同测试。
 
-### 仍开放的跨模块 P1
+### 已关闭的跨模块 P1
 
-- main 尚未调用 `detections3d_from_d1_global_tracks_with_audit()`，也未把审计摘要写入
-  manifest、governance 或 episode summary。
-- v2 尚未在同一 clean commit 上执行预注册 short 10 seeds/long 3 seeds 的 13 对矩阵；
-  D6 尚未复核 D2 association、核心墙钟、RSS、语义、真值隔离和身份门。
-- v1 的 `d1_optimization_admitted=false` 和
-  `system_realtime_gap_closed=false` 继续有效。只有新矩阵达到核心墙钟
-  `>=5%` 且全部安全/语义门通过后，系统候选才可重新评审。
+- main 已调用带审计入口，并把 `d2_publication_metadata_audit` 持久化到 governance、
+  final diagnostics 和 summary。promotion commit `f5b350b` 已默认使用
+  `immutable_shared_v2`，`per_track_copy_v1` 保留为显式 reference。
+- 2026-07-24 在 clean source commit
+  `be399e138762f5e660f553c8caa812d52ab38c61` 上完成 short 10 pair、long 3 pair，
+  共 13 pair/26 arm。场景固定为 200 目标、200 资源和 2 侦察节点；26 个 arm 均重新
+  运行，`reused=0`、`failed=0`。
+- 13/13 pair 的业务语义、有限状态、在线真值隔离、实现身份和 D2 发布元数据审计通过。
+  候选累计 702 次精确 v2 合同验证、702 次完整内容审计、139920 次同对象身份复用，
+  合同拒绝和内建等价复用均为 0。参考累计 139920 次内建等价复用，所有 v2 计数为 0。
+- D2 association short 从 `0.657417 s` 降至 `0.548699 s`，下降 `16.1939%`；
+  long 从 `5.869413 s` 降至 `3.774282 s`，下降 `35.6213%`。两档均满足相对参考
+  均值增幅 `<=5%` 的门。D1 fusion 和核心墙钟门也通过，D6 判定
+  `d1_optimization_admitted=true`。
 
-本轮无新增 P0。D2 本地合同缺口关闭，不代表 D1 发布优化已经系统准入，也不改变结构
-歧义运动学、真实 AirSim、多 seed 身份标定和固定硬件时延等既有 P1。
+### 仍开放的 P1
+
+- 最低实时因子为 `0.1730801`，`system_realtime_gap_closed=false`。该结果关闭的是
+  发布元数据审计路径回退，不是 200v200 系统实时容量。
+- 当前 `latest/totals` 只能证明固定矩阵的累计计数关系；逐批合同验证、内容审计、身份
+  复用和拒绝原因明细尚未持久化。
+- 本矩阵没有验收 IDSW、track/identity/coverage continuity、RMSE、NEES 或 NIS，
+  也不是 AirSim、固定硬件或实飞精度证据。
+- 结构歧义运动学支持、C1-C3 有界身份假设、真实 AirSim 困难场景多 seed 和固定硬件
+  延迟仍按既有 P1 管理。
+
+本轮无新增 P0。`global_track_id` 继续由中心 D2 所有，发布元数据优化不改变身份、
+状态机或下游分配合同。

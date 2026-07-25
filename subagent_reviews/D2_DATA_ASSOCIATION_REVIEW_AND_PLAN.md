@@ -11,7 +11,7 @@
 D6 的 v1 正式矩阵确认根因位于跨模块消费语义。D1 把三个批级诊断改为共享只读对象，
 但 D2 只允许精确内建容器走等值代表复用，导致候选对象在每条航迹上重新递归扫描。
 short/long 的 D2 association 增幅达到 `53.44%/169.89%`，抵消了 D1 fusion wall
-的 `16.29%/31.05%` 收益。v1 不满足核心墙钟 `>=5%` 门，拒绝结论保持。
+的 `16.29%/31.05%` 收益。v1 不满足核心墙钟 `>=5%` 门，作为修复前拒绝基线保留。
 
 本轮接受 D2 的 v2 消费方案。受信路径仅包含 D1 公布的精确不可变根类型、固定
 `d1.publication_audit_tree.v2` 和精确 validator。首次对象必须依次通过结构验证和
@@ -22,8 +22,24 @@ short/long 的 D2 association 增幅达到 `53.44%/169.89%`，抵消了 D1 fusio
 新 typed adapter 返回批审计摘要，函数和结果类型均已进入包 API 与 `__all__`，旧调用
 签名保持。200 航迹三共享根夹具得到
 `3` 次合同验证、`3` 次内容审计和 `597` 次同身份复用；完整 D2 回归为
-`305 passed, 1 warning`。评审只接受 D2-owned 合同闭合。main 持久化、同一 clean
-commit 13 对复跑、D6 系统门和实际核心墙钟收益均未完成，候选不得据此晋级。
+`305 passed, 1 warning`。该结果先关闭了 D2-owned 合同。
+
+main 和 D6 已在 clean source commit
+`be399e138762f5e660f553c8caa812d52ab38c61` 上完成 short 10 pair、long 3 pair，
+共 13 pair/26 arm 的 200 目标、200 资源、2 侦察节点正式矩阵。所有 arm 重新运行，
+`reused=0`、`failed=0`。13/13 pair 的业务语义、有限状态、在线真值隔离、实现身份和
+D2 审计通过。候选累计 702 次精确合同验证、702 次完整内容审计、139920 次同对象身份
+复用，合同拒绝为 0；参考累计 139920 次内建等价复用。
+
+D2 association short 从 `0.657417 s` 降至 `0.548699 s`，下降 `16.1939%`；
+long 从 `5.869413 s` 降至 `3.774282 s`，下降 `35.6213%`。两档均通过相对参考
+均值增幅 `<=5%` 的门限。D1 fusion 和核心墙钟门同时通过，D6 判定
+`d1_optimization_admitted=true`。main promotion commit `f5b350b` 已默认采用
+`immutable_shared_v2`，显式 reference 仍为 `per_track_copy_v1`。
+
+评审结论限于发布元数据审计路径的墙钟和业务语义。最低实时因子为 `0.1730801`，
+系统实时 P1 未关闭。本矩阵不构成 IDSW、continuity、RMSE、NEES、NIS、AirSim 或硬件
+精度验收；`latest/totals` 只证明固定批次累计关系，逐批审计日志仍需补齐。
 
 ## 2026-07-23 歧义保持租约评审
 

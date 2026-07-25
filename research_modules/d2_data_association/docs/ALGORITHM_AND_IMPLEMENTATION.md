@@ -49,6 +49,22 @@ D2 在 D1 六维航迹适配前先对整批 metadata 做在线真值隔离审计
 该函数和 `D1GlobalTrackDetectionBatch` 均列入包级 `__all__`。旧入口委托新入口后
 仍返回 `(frame_timestamp, detections)`。
 
+2026-07-24 的正式验收在 clean source commit
+`be399e138762f5e660f553c8caa812d52ab38c61` 上执行。矩阵包含 short 10 pair 和
+long 3 pair，共 26 个独立 arm；每个场景含 200 目标、200 资源和 2 侦察节点。
+候选累计执行 702 次精确合同验证、702 次完整内容审计和 139920 次同对象身份复用，
+合同拒绝为 0。D2 association 墙钟由 short `0.657417 s` 降至 `0.548699 s`，
+long `5.869413 s` 降至 `3.774282 s`，分别下降 `16.1939%` 和 `35.6213%`，
+通过相对参考均值增幅 `<=5%` 的门限。业务语义、有限状态、在线真值隔离和实现身份
+同时通过，D6 判定 `d1_optimization_admitted=true`。main promotion commit
+`f5b350b` 已默认选择 `immutable_shared_v2`，显式 reference 仍为
+`per_track_copy_v1`。
+
+这些审计计数属于实现诊断，不能替代关联质量指标。当前累计值只能核对固定矩阵中共享
+对象与消费次数的关系，逐批明细仍待持久化。该矩阵也没有对 IDSW、continuity、RMSE、
+NEES、NIS 或 AirSim/硬件精度作准入判断。最低实时因子为 `0.1730801`，系统实时能力
+仍未闭合。
+
 ## 0. 最新 AirSim 运行证据对算法选型的影响
 
 2026-07-15 的 M5N2 SimpleFlight 批次完成 baseline/candidate 各 10 seed。D2 association
