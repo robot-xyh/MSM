@@ -1,5 +1,39 @@
 # D6 实现差距审计
 
+## 2026-07-24 在线真值检查评估 GAP 更新
+
+### 已关闭
+
+1. D6 已实现独立、只读、失败关闭的 13-pair evaluator、CLI、完整 JSON、compact JSON、逐
+   pair CSV、中文 Markdown 和校验和输出。
+2. matrix schema/SHA、evidence/evaluator/diagnostics schema、clean source commit
+   `8d8bb6ed7a417705236835f235361f45a021bb2b`、200/200/2、seed、时长、arm 顺序和命令已
+   固定。
+3. 26 个 arm 只接受 fresh complete 和零返回码；dirty、reused、错误 commit、旧 schema、路径
+   越界、非登记 stderr 和命令漂移均失败关闭。
+4. 每个 arm 要求 `validation_count = online_message_count > 0`，有限状态和在线真值使用为零。
+5. 九类 episode 文件和 resource/stdout/stderr 均重新计算 SHA-256；config、runtime profile、
+   governance、stage timing 和 truth-guard diagnostics schema 已固定。
+6. 在线消息、D1/D2 航迹与关联、D3 分配、D4 内容地址、D5/D7 输出、计划谱系、治理和离线真值
+   进入业务等价门。处理归一化只覆盖 selector、对应诊断、性能字段和派生 episode ID。
+7. 发布总线及 finalize、核心墙钟、外层耗时、实时因子、D1、D2、RSS、short/long 配对统计和
+   10000 次 bootstrap 已实现。全部数值门从冻结 matrix 读取。
+8. 合成专项覆盖正常矩阵、只读报告、CLI、检查数不守恒、实现身份、业务漂移、性能门和来源/
+   schema/matrix/command 篡改。
+9. 2026-07-24 专项 `14 passed, 1 warning in 5.18s`，D6 全量
+   `798 passed, 1 warning in 60.13s`；warning 为既有 Matplotlib `Axes3D` 环境提示。
+
+### 仍开放 P1
+
+1. **正式多种子证据。** main 尚未运行冻结的 short 10 pair 与 long 3 pair。当前不能发布
+   `optimization_admitted`，开发期三配对短测不能替代正式输入。
+2. **系统实时容量。** 正式结果生成后仍需单独检查候选最小实时因子。只有所有候选 pair 均不低于
+   1，`system_realtime_gap_closed` 才能为 true。
+3. **外部适用性。** 本 evaluator 只覆盖三维质点 episode。AirSim、目标处理器和实飞容量继续
+   需要独立证据。
+
+当前无新增 D6-owned P0。评估工具缺口已关闭，正式 evidence 消费和系统实时判定保持 P1。
+
 ## 2026-07-24 D1 常速度模型缓存评估 GAP 更新
 
 ### 已关闭

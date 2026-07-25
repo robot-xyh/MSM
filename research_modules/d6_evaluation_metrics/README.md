@@ -1,5 +1,55 @@
 # D6 Evaluation Metrics
 
+## 2026-07-24 在线真值检查正式评估入口
+
+D6 新增独立只读消费者 `online_truth_guard_multiseed.py` 和命令行
+`scripts/evaluate_online_truth_guard_multiseed.py`。入口严格绑定：
+
+- producer matrix schema
+  `scalable3d-online-truth-guard-multiseed-matrix-v1`；
+- matrix SHA-256
+  `764574b9897d00101c26c555de2f407e1736c7e6ff50420eebf131e154618dc8`；
+- clean source commit
+  `8d8bb6ed7a417705236835f235361f45a021bb2b`；
+- evidence/evaluator schema
+  `scalable3d-online-truth-guard-multiseed-evidence-v1` /
+  `d6.online_truth_guard_multiseed_evaluation.v1`；
+- short seeds `1101-1110 @ 2.2 s`、long seeds `1101-1103 @ 10 s`；
+- 200 个目标、200 个资源、2 个侦察节点；
+- 参考/候选实现
+  `generic_recursive_v1/builtin_specialized_recursive_v2`。
+
+loader 只接受 13 pair、26 个 fresh complete arm。reused、失败返回、脏来源、错误 commit、旧
+schema、命令漂移、路径越界和非登记 stderr 均直接拒绝。每个 arm 从 runtime profile、summary
+和诊断交叉确认实际实现，并要求：
+
+```text
+truth_guard_validation_count = online_message_count > 0
+online_truth_use_count = 0
+```
+
+D6 对每个输入路径计算 SHA-256，固定核对场景、运行配置、治理、阶段时序和诊断 schema。业务比较
+只归一化预注册 selector、诊断、性能字段和处理派生 episode ID；在线消息、D1/D2 航迹与关联、
+分配、控制计数、计划谱系、治理和离线真值继续严格比较。
+
+性能主指标为 `module_publication_bus + module_publication_bus_finalize`。报告同时包含核心墙钟、
+外层耗时、实时因子、D1 融合、D2 关联和最大常驻内存。short/long 分别使用 10000 次固定配对
+bootstrap。准入门从冻结 matrix 读取：发布总线改善至少 10%，核心墙钟改善至少 0.5%，D1/D2
+均值增幅和 RSS 增幅不超过 5%。输出为完整 JSON、compact JSON、逐 pair CSV、中文 Markdown
+和 `SHA256SUMS`。
+
+当前只完成工具、CLI、合成合同夹具和专项测试。main 尚未运行正式 13-pair/26-arm matrix，因此
+没有 `optimization_admitted` 结论，也不能更新 `system_realtime_gap_closed`。开发期三配对短测
+不进入正式证据。2026-07-24 新增专项为 `14 passed, 1 warning in 5.18s`，D6 全量为
+`798 passed, 1 warning in 60.13s`；warning 是既有 Matplotlib `Axes3D` 环境提示。
+
+```bash
+PYTHONPATH=research_modules/d6_evaluation_metrics \
+python3 research_modules/d6_evaluation_metrics/scripts/evaluate_online_truth_guard_multiseed.py \
+  --evidence-manifest /path/to/evidence_manifest.json \
+  --output-dir /path/to/independent_d6_report
+```
+
 ## 2026-07-24 D1 常速度模型缓存正式评估入口
 
 D6 新增独立只读消费者 `d1_cv_motion_model_cache_multiseed.py` 和命令行

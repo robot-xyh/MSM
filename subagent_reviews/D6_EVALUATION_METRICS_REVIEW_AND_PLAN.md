@@ -1,5 +1,34 @@
 # D6 系统评估指标综述及子方案
 
+## 2026-07-24 在线真值检查正式评估评审
+
+D6 已完成 `d6.online_truth_guard_multiseed_evaluation.v1` 只读 evaluator。它严格绑定
+producer matrix SHA
+`764574b9897d00101c26c555de2f407e1736c7e6ff50420eebf131e154618dc8` 与 clean source
+`8d8bb6ed7a417705236835f235361f45a021bb2b`。参考/候选实现固定为
+`generic_recursive_v1/builtin_specialized_recursive_v2`，候选保持默认关闭。
+
+评审确认以下合同已经实现：
+
+1. 13 个 pair、26 个 arm 的规模、seed、时长、执行顺序、命令、路径、状态和来源均显式绑定；
+   reused、dirty 和失败 arm 不进入结果。
+2. 每个 arm 从 runtime profile、summary 和 diagnostics 交叉确认实际 selector，并独立复算
+   在线消息数。`validation_count` 必须与消息数相等且大于 0。
+3. D6 重新计算所有输入文件 SHA-256，固定 config、runtime profile、governance、stage timing
+   和 diagnostics schema。
+4. 业务比较只归一化预注册处理字段。在线消息、D1-D7 业务计数、计划谱系、治理和离线真值继续
+   逐对检查。
+5. 发布总线主阶段和 finalize 相加后进入 10% 改善门；核心墙钟使用 0.5% 门，D1/D2 和 RSS
+   使用 5% 非退化门。short/long 分组和 bootstrap 规则均已冻结。
+6. 报告分别输出 `optimization_admitted` 和 `system_realtime_gap_closed`，不以局部加速替代
+   系统实时结论。
+
+当前仅完成工具和合成合同验证。main 尚未运行正式 13-pair/26-arm matrix，评审不接受开发期
+三配对短测作为准入。`EXPERIMENT_REPORT.md` 保持不变，待正式 evidence 后追加结果。
+`AIRSIM_INTEGRATION_PLAN.md` 和 `D6_M_TO_N_EVALUATION_FRAMEWORK_REVIEW.md` 已检查；本项不改变
+AirSim 或 M-to-N 指标合同，无需修改。专项 `14 passed, 1 warning in 5.18s`，D6 全量
+`798 passed, 1 warning in 60.13s`。
+
 ## 2026-07-24 D1 常速度模型缓存评审
 
 D6 已接受缓存评估接口实现。独立 evaluator 固定绑定 matrix SHA

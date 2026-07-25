@@ -1,5 +1,14 @@
 # D6 文档索引
 
+2026-07-24 在线真值递归检查多 seed 评估原理见 `MODULE_PRINCIPLES_CN.md`，严格 evidence
+绑定、消息检查数守恒、语义比较、统计和准入实现见 `ALGORITHM_AND_IMPLEMENTATION.md`。入口
+绑定 matrix SHA
+`764574b9897d00101c26c555de2f407e1736c7e6ff50420eebf131e154618dc8` 与 clean source
+`8d8bb6ed7a417705236835f235361f45a021bb2b`，固定 13 pair、26 fresh arm 和
+200/200/2。当前 evaluator、CLI 和合成合同测试已实现，正式 producer matrix 尚未运行，因此
+没有优化准入或系统实时结论。专项 `14 passed`，D6 全量 `798 passed, 1 warning in 60.13s`。
+正式证据完成后再写入 `../EXPERIMENT_REPORT.md`。
+
 2026-07-24 D1 常速度模型缓存多 seed 评估原理和边界见
 `MODULE_PRINCIPLES_CN.md`，严格消费、守恒公式、统计和报告实现见
 `ALGORITHM_AND_IMPLEMENTATION.md`。入口绑定 matrix SHA

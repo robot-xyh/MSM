@@ -1,5 +1,100 @@
 # D6 系统级离线评估：算法原理与实施说明
 
+## 在线真值递归检查同提交评估（2026-07-24）
+
+### 证据绑定
+
+入口 `online_truth_guard_multiseed.py` 只读取 main producer 生成的 completed manifest。处理
+顺序固定为：
+
+```text
+matrix SHA + source commit + evidence schema
+  -> 13 case / 26 fresh arm / 命令隔离
+  -> episode config / runtime profile / summary / governance
+  -> selector / diagnostics / validation count
+  -> 路径与 SHA-256 / stage timing / GNU time
+  -> 在线消息与业务摘要等价
+  -> 配对性能 / bootstrap / admission
+  -> JSON / CSV / 中文 Markdown
+```
+
+matrix SHA 固定为
+`764574b9897d00101c26c555de2f407e1736c7e6ff50420eebf131e154618dc8`，source commit
+固定为 `8d8bb6ed7a417705236835f235361f45a021bb2b`。manifest 中的 source、每个 arm 的
+expected commit 和 episode manifest 的 Git commit 必须一致，三个 dirty 标志均不得出现
+true。arm 状态只接受 `complete`，不接受 `reused`。
+
+每个 arm 的 command 必须由冻结规模、seed、时长和 selector 重建。两臂除
+`--online-truth-guard-implementation` 的值与输出目录外逐项相同。episode、resource、stdout
+和 stderr 路径必须位于 evidence root 内；D6 对九类 episode 文件和三类运行文件重新计算
+SHA-256。
+
+### 检查数守恒
+
+参考实现为通用递归遍历，候选实现为内建容器专用递归遍历。D6 不依据 arm 标签推断实际执行路径，
+而是在 manifest runtime profile、summary selector 和 summary diagnostics 三处交叉确认。
+诊断必须精确包含 schema、implementation、candidate flag 和 validation count。
+
+在线消息文件先逐行做严格 JSON 与有限数检查，再统计非空记录。有效证据满足：
+
+```text
+N_validation = N_online_message > 0
+N_online_truth_use = 0
+```
+
+该关系证明每条成功发布的在线消息都经过所声明的递归检查。计数缺失、非整数、为零或与文件记录数
+不同均拒绝整个 evidence，而不是把该 pair 标为性能失败后继续使用。
+
+### 语义等价
+
+D6 调用 `compare_cross_build_episodes()` 比较在线消息、计划谱系、确认来源、D4 内容地址和离线
+真值制品。跨 episode 的 `same_runtime_profile` 允许为 false，因为 selector 是唯一处理差异。
+D6 另外计算三类规范摘要：
+
+1. runtime profile 只替换 `online_truth_guard_implementation`；
+2. summary 只替换 selector、对应诊断、wall time、real-time factor、final stage timings 和
+   处理派生 episode ID；
+3. governance 不做处理归一化，必须完全相同。
+
+D1/D2 航迹数、D3 分配数、D5 绑定数、D7 命令数，以及 assignment/control/camera 等顶层计数
+单独形成业务快照。规范 summary 哈希和业务快照都必须相等。任何非白名单变化只关闭准入，不由
+D6 修正 producer 数据。
+
+### 性能统计
+
+发布总线准入成本定义为：
+
+```text
+T_bus_total = T_module_publication_bus
+            + T_module_publication_bus_finalize
+```
+
+每个越低越好的指标使用：
+
+```text
+r_i = (T_candidate,i - T_reference,i) / T_reference,i
+improvement_i = -r_i
+```
+
+实时因子越高越好，其改善方向与原始相对变化相同。short 和 long 分开统计均值、中位数、P95、
+候选更优 pair 数和配对 bootstrap 95% 区间。重采样单位是完整 seed pair，固定 10000 次和
+随机种子 20260724。
+
+冻结门要求 short `8/10`、long `2/3` 的发布总线总成本更低，两组平均改善均至少 10%，两组
+bootstrap 原始相对变化上界均小于 0。核心墙钟两组平均改善至少 0.5%。D1、D2 两组平均增幅
+分别不超过 5%；RSS 的组均值和任一 pair 增幅不超过 5%。
+
+`optimization_admitted` 是证据、语义、真值、实现、诊断、路径和性能门的合取。
+`system_realtime_gap_closed` 独立读取所有候选 pair 的最小实时因子，只有每个值均不低于 1
+才为 true。
+
+### 当前状态
+
+评估器、CLI、确定性 writer 和合成合同测试已实现。正式 13-pair/26-arm producer evidence
+尚未运行，因此当前不发布优化准入或系统实时结论。开发期三配对数据只用于筛选候选，不进入本
+评估器的输入。2026-07-24 专项为 `14 passed, 1 warning in 5.18s`，D6 全量为
+`798 passed, 1 warning in 60.13s`；warning 是既有 Matplotlib 三维投影环境提示。
+
 ## D1 常速度模型缓存同提交矩阵评估（2026-07-24）
 
 入口 `d1_cv_motion_model_cache_multiseed.py` 读取

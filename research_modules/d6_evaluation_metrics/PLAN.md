@@ -1,5 +1,43 @@
 # D6 Evaluation Metrics Plan
 
+## 2026-07-24 在线真值检查多种子评估状态
+
+### 已完成
+
+- [x] 实现独立只读 evaluator、CLI、完整 JSON、compact JSON、逐 pair CSV、中文 Markdown 和
+  `SHA256SUMS`；D6 不参与在线控制，也不修改 producer evidence。
+- [x] 固定 matrix SHA
+  `764574b9897d00101c26c555de2f407e1736c7e6ff50420eebf131e154618dc8` 与 clean source
+  commit `8d8bb6ed7a417705236835f235361f45a021bb2b`。
+- [x] 严格绑定 evidence/evaluator/diagnostics schema、13 个 case、arm 顺序、200/200/2、
+  short/long seed 与时长、命令隔离、fresh complete 状态、返回码和证据路径。
+- [x] 每个 arm 核对 selector、candidate flag、诊断 schema，并要求
+  `validation_count = online_message_count > 0`、有限状态和在线真值零使用。
+- [x] 对 12 类输入路径计算 SHA-256，固定核对场景、runtime profile、governance 和 stage
+  timing schema；来源、配置、路径、摘要和资源层均进入失败关闭检查。
+- [x] D6 内部调用跨 episode 比较器。只排除预注册 runtime profile hash 差异，并窄归一化
+  selector、诊断、性能和处理派生 episode ID；在线载荷、业务计数、计划谱系和离线真值继续比较。
+- [x] 发布总线主阶段与 finalize 相加作为准入主指标；同时报告核心墙钟、外层耗时、实时因子、
+  D1、D2 和 RSS。
+- [x] short/long 使用固定 10000 次配对 bootstrap；全部数值门从冻结 matrix 读取，不允许运行
+  后调整。
+- [x] 合成合同专项覆盖正常 13 pair、只读报告、CLI、检查数不守恒、实现身份、业务漂移、性能门、
+  dirty/reused/source commit/schema/matrix/command 篡改。
+- [x] 2026-07-24 专项 `14 passed, 1 warning in 5.18s`，D6 全量
+  `798 passed, 1 warning in 60.13s`；warning 为既有 Matplotlib `Axes3D` 环境提示。
+
+### 待 main 正式运行
+
+- [ ] 在 frozen clean commit 上运行 short 10 pair 和 long 3 pair，共 26 个 fresh arm。
+- [ ] D6 只读消费完成后的 `evidence_manifest.json`，生成正式报告并记录全部 gate 的实际值。
+- [ ] 仅当全部语义、真值、身份、诊断、路径、性能和资源门通过时，才允许
+  `optimization_admitted=true`。
+- [ ] `system_realtime_gap_closed` 独立判定；候选任一 pair 实时因子低于 1 时保持 false。
+- [ ] 正式证据完成后再更新 `EXPERIMENT_REPORT.md`。当前开发短测和合成 fixture 不构成准入。
+
+`AIRSIM_INTEGRATION_PLAN.md` 已检查。本项消费三维质点 episode，不改变 AirSim topic、相机、
+actor、reset 或控制接口，因此无需修改。
+
 ## 2026-07-24 D1 常速度模型缓存评估状态
 
 ### 已完成
