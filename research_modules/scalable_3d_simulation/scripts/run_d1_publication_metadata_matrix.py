@@ -56,6 +56,15 @@ OPAQUE_SOURCE_IDENTITY_EVIDENCE_MANIFEST_SCHEMA_VERSION = (
 OPAQUE_SOURCE_IDENTITY_REQUIRED_D6_EVALUATOR_SCHEMA_VERSION = (
     "d6.d1_opaque_source_identity_cache_multiseed_evaluation.v1"
 )
+ONLINE_BATCH_FRAME_MATRIX_SCHEMA_VERSION = (
+    "scalable3d-d1-online-batch-frame-multiseed-matrix-v1"
+)
+ONLINE_BATCH_FRAME_EVIDENCE_MANIFEST_SCHEMA_VERSION = (
+    "scalable3d-d1-online-batch-frame-multiseed-evidence-v1"
+)
+ONLINE_BATCH_FRAME_REQUIRED_D6_EVALUATOR_SCHEMA_VERSION = (
+    "d6.d1_online_batch_frame_multiseed_evaluation.v1"
+)
 ONLINE_TRUTH_GUARD_MATRIX_SCHEMA_VERSION = (
     "scalable3d-online-truth-guard-multiseed-matrix-v1"
 )
@@ -91,6 +100,10 @@ _OPAQUE_SOURCE_IDENTITY_EXPECTED_IMPLEMENTATIONS = {
     "reference": "per_publication_build_v1",
     "candidate": "bounded_generation_lru_v1",
 }
+_ONLINE_BATCH_FRAME_EXPECTED_IMPLEMENTATIONS = {
+    "reference": "convert_then_frame_v1",
+    "candidate": "closed_immutable_batch_to_frame_v1",
+}
 _ONLINE_TRUTH_GUARD_EXPECTED_IMPLEMENTATIONS = {
     "reference": "generic_recursive_v1",
     "candidate": "builtin_specialized_recursive_v2",
@@ -120,6 +133,13 @@ _D1_IMPLEMENTATION_IDS = {
     ),
     "bounded_generation_lru_v1": (
         "d1.publication.opaque_source_identity.bounded_generation_lru.v1"
+    ),
+    "convert_then_frame_v1": (
+        "d1.online_batch_frame.convert_then_frame.v1"
+    ),
+    "closed_immutable_batch_to_frame_v1": (
+        "d1.online_batch_frame."
+        "closed_immutable_batch_final_frame_validation.v1"
     ),
     "dense_output_probe_v1": (
         "d1.ekf.numerical_jacobian.dense_output_probe.v1"
@@ -192,6 +212,21 @@ _MATRIX_SPECS = {
             "d1_opaque_source_identity_implementation"
         ),
     },
+    ONLINE_BATCH_FRAME_MATRIX_SCHEMA_VERSION: {
+        "expected_implementations": (
+            _ONLINE_BATCH_FRAME_EXPECTED_IMPLEMENTATIONS
+        ),
+        "evidence_manifest_schema_version": (
+            ONLINE_BATCH_FRAME_EVIDENCE_MANIFEST_SCHEMA_VERSION
+        ),
+        "required_d6_evaluator_schema_version": (
+            ONLINE_BATCH_FRAME_REQUIRED_D6_EVALUATOR_SCHEMA_VERSION
+        ),
+        "publication_audit_contract_version": None,
+        "selector_flag": "--d1-online-batch-frame-implementation",
+        "validation_kind": "online_batch_frame_handoff",
+        "treatment_field": "d1_online_batch_frame_implementation",
+    },
     ONLINE_TRUTH_GUARD_MATRIX_SCHEMA_VERSION: {
         "expected_implementations": (
             _ONLINE_TRUTH_GUARD_EXPECTED_IMPLEMENTATIONS
@@ -241,6 +276,7 @@ _FORBIDDEN_RUN_FLAGS = {
     "--d1-cv-motion-model-cache-capacity",
     "--d1-opaque-source-identity-implementation",
     "--d1-opaque-source-identity-cache-capacity",
+    "--d1-online-batch-frame-implementation",
     "--d1-structured-numerical-jacobian-implementation",
     "--online-truth-guard-implementation",
 }
@@ -440,6 +476,44 @@ def load_matrix(path: str | Path) -> dict[str, Any]:
             if gates.get(field) != expected:
                 raise ValueError(
                     f"opaque source-identity admission gate {field} must be "
+                    f"{expected}"
+                )
+    if spec["validation_kind"] == "online_batch_frame_handoff":
+        if boundary.get("diagnostics_schema_version") != (
+            "d1.online_batch_frame_handoff_diagnostics.v1"
+        ):
+            raise ValueError(
+                "online batch-frame evidence must bind diagnostics schema v1"
+            )
+        for field in (
+            "full_raw_batch_identity_check_preserved",
+            "final_readonly_frame_check_preserved",
+            "candidate_default_off",
+            "candidate_all_runtime_batches_must_use_closed_handoff",
+        ):
+            if boundary.get(field) is not True:
+                raise ValueError(
+                    f"online batch-frame evidence must require {field}"
+                )
+        if boundary.get("raw_source_absolute_immutability_claimed") is not False:
+            raise ValueError(
+                "online batch-frame evidence must not claim absolute raw "
+                "source immutability"
+            )
+        required_gates = {
+            "all_pairs_online_batch_frame_audit_valid": True,
+            "short_minimum_scan_input_improvement_pct": 20.0,
+            "long_minimum_scan_input_improvement_pct": 20.0,
+            "short_minimum_core_wall_improvement_pct": 2.0,
+            "long_minimum_core_wall_improvement_pct": 2.0,
+            "minimum_candidate_duplicate_check_reduction_pct": 95.0,
+            "minimum_candidate_closed_handoff_ratio_pct": 99.0,
+            "maximum_candidate_reference_fallback_count": 0,
+        }
+        for field, expected in required_gates.items():
+            if gates.get(field) != expected:
+                raise ValueError(
+                    f"online batch-frame admission gate {field} must be "
                     f"{expected}"
                 )
     if spec["validation_kind"] == "online_truth_guard":
@@ -646,6 +720,10 @@ def planned_evidence_manifest(
         manifest[
             "opaque_source_identity_cache_diagnostics_schema_version"
         ] = "d1.opaque_source_identity_cache_diagnostics.v1"
+    if spec["validation_kind"] == "online_batch_frame_handoff":
+        manifest["online_batch_frame_diagnostics_schema_version"] = (
+            "d1.online_batch_frame_handoff_diagnostics.v1"
+        )
     if spec["validation_kind"] == "online_truth_guard":
         manifest["truth_guard_diagnostics_schema_version"] = (
             "scalable3d-online-truth-guard-diagnostics-v1"
@@ -933,6 +1011,20 @@ def _episode_matches(
             expected_commit=expected_commit,
             expected_implementation=expected_implementation,
             expected_cache_capacity=expected_cache_capacity,
+            seed=seed,
+            duration_s=duration_s,
+            target_count=target_count,
+            resource_count=resource_count,
+            recon_count=recon_count,
+        )
+    if validation_kind == "online_batch_frame_handoff":
+        return _online_batch_frame_episode_matches(
+            episode_dir,
+            manifest=manifest,
+            config=config,
+            summary=summary,
+            expected_commit=expected_commit,
+            expected_implementation=expected_implementation,
             seed=seed,
             duration_s=duration_s,
             target_count=target_count,
@@ -1458,6 +1550,298 @@ def _opaque_source_identity_operation_counts_match(
         and counts["cache_eviction_count"] == 0
         and counts["peak_entry_count"] == 0
         and counts["reference_bypass_count"] == counts["request_count"]
+    )
+
+
+def _online_batch_frame_episode_matches(
+    episode_dir: Path,
+    *,
+    manifest: Mapping[str, Any],
+    config: Mapping[str, Any],
+    summary: Mapping[str, Any],
+    expected_commit: str,
+    expected_implementation: str,
+    seed: int,
+    duration_s: float,
+    target_count: int,
+    resource_count: int,
+    recon_count: int,
+) -> bool:
+    expected_id = _D1_IMPLEMENTATION_IDS.get(expected_implementation)
+    if expected_id is None:
+        return False
+    candidate = (
+        expected_implementation
+        == "closed_immutable_batch_to_frame_v1"
+    )
+    if expected_implementation not in {
+        "convert_then_frame_v1",
+        "closed_immutable_batch_to_frame_v1",
+    }:
+        return False
+    try:
+        governance = _read_mapping(
+            episode_dir / "observation_governance_audit.json"
+        )
+    except (OSError, ValueError, json.JSONDecodeError):
+        return False
+    runtime_profile = manifest.get("runtime_profile")
+    runtime_configuration = (
+        runtime_profile.get("configuration")
+        if isinstance(runtime_profile, Mapping)
+        else None
+    )
+    initial_execution_config = (
+        runtime_profile.get("d1_online_batch_frame_execution_config")
+        if isinstance(runtime_profile, Mapping)
+        else None
+    )
+    final = summary.get("module_final_diagnostics")
+    if not all(
+        isinstance(item, Mapping)
+        for item in (
+            runtime_profile,
+            runtime_configuration,
+            initial_execution_config,
+            final,
+        )
+    ):
+        return False
+    summary_execution_config = summary.get(
+        "d1_online_batch_frame_execution_config"
+    )
+    final_execution_config = final.get(
+        "d1_online_batch_frame_execution_config"
+    )
+    governance_execution_config = governance.get(
+        "d1_online_batch_frame_execution_config"
+    )
+    diagnostics = summary.get("d1_online_batch_frame_diagnostics")
+    final_diagnostics = final.get("d1_online_batch_frame_diagnostics")
+    governance_diagnostics = governance.get(
+        "d1_online_batch_frame_diagnostics"
+    )
+    if not all(
+        isinstance(item, Mapping)
+        for item in (
+            summary_execution_config,
+            final_execution_config,
+            governance_execution_config,
+            diagnostics,
+            final_diagnostics,
+            governance_diagnostics,
+        )
+    ):
+        return False
+    if not all(
+        _online_batch_frame_execution_config_matches(
+            item,
+            expected_implementation=expected_implementation,
+            expected_implementation_id=expected_id,
+        )
+        for item in (
+            initial_execution_config,
+            summary_execution_config,
+            final_execution_config,
+            governance_execution_config,
+        )
+    ):
+        return False
+    if not all(
+        _online_batch_frame_diagnostics_match(
+            item,
+            expected_implementation=expected_implementation,
+            expected_implementation_id=expected_id,
+            candidate=candidate,
+        )
+        for item in (
+            diagnostics,
+            final_diagnostics,
+            governance_diagnostics,
+        )
+    ):
+        return False
+    if not (
+        dict(diagnostics) == dict(final_diagnostics)
+        == dict(governance_diagnostics)
+        and dict(summary_execution_config)
+        == dict(final_execution_config)
+        == dict(governance_execution_config)
+    ):
+        return False
+    return bool(
+        manifest.get("git_commit") == expected_commit
+        and manifest.get("repository_dirty") is False
+        and manifest.get("seed") == seed
+        and runtime_profile.get(
+            "d1_online_batch_frame_implementation"
+        )
+        == expected_implementation
+        and runtime_configuration.get(
+            "d1_online_batch_frame_implementation"
+        )
+        == expected_implementation
+        and summary.get("d1_online_batch_frame_implementation")
+        == expected_implementation
+        and final.get("d1_online_batch_frame_implementation")
+        == expected_implementation
+        and governance.get("d1_online_batch_frame_implementation")
+        == expected_implementation
+        and config.get("seed") == seed
+        and _float_equal(config.get("duration_s"), duration_s)
+        and config.get("target_count") == target_count
+        and config.get("resource_count") == resource_count
+        and config.get("recon_count") == recon_count
+        and summary.get("finite_state") is True
+        and summary.get("online_truth_use_count") == 0
+        and _float_equal(summary.get("simulated_duration_s"), duration_s)
+    )
+
+
+def _online_batch_frame_execution_config_matches(
+    execution_config: Mapping[str, Any],
+    *,
+    expected_implementation: str,
+    expected_implementation_id: str,
+) -> bool:
+    return bool(
+        execution_config.get("schema_version")
+        == "d1.online_batch_frame_handoff_diagnostics.v1"
+        and execution_config.get("implementation")
+        == expected_implementation
+        and execution_config.get("implementation_id")
+        == expected_implementation_id
+        and execution_config.get("candidate_default_enabled") is False
+        and execution_config.get("public_validation_bypass_available") is False
+        and execution_config.get(
+            "raw_source_absolute_immutability_claimed"
+        )
+        is False
+        and execution_config.get("candidate_contract")
+        == (
+            "full_raw_batch_identity_check_then_structural_eligibility_"
+            "check_then_deep_snapshot_then_full_readonly_frame_check"
+        )
+    )
+
+
+def _online_batch_frame_diagnostics_match(
+    diagnostics: Mapping[str, Any],
+    *,
+    expected_implementation: str,
+    expected_implementation_id: str,
+    candidate: bool,
+) -> bool:
+    if not _online_batch_frame_execution_config_matches(
+        diagnostics,
+        expected_implementation=expected_implementation,
+        expected_implementation_id=expected_implementation_id,
+    ):
+        return False
+    operations = diagnostics.get("operation_counts")
+    conservation = diagnostics.get("conservation")
+    if not isinstance(operations, Mapping) or not isinstance(
+        conservation,
+        Mapping,
+    ):
+        return False
+    operation_names = (
+        "request_count",
+        "successful_build_count",
+        "rejected_build_count",
+        "reference_request_count",
+        "candidate_request_count",
+        "reference_path_execution_count",
+        "candidate_closed_handoff_count",
+        "candidate_reference_fallback_count",
+        "candidate_raw_rejection_count",
+        "candidate_resource_rejection_count",
+        "snapshot_structure_check_count",
+        "snapshot_structure_eligible_count",
+        "snapshot_structure_ineligible_count",
+        "snapshot_structure_error_count",
+        "closed_payload_snapshot_attempt_count",
+        "closed_payload_snapshot_success_count",
+        "closed_payload_snapshot_failure_count",
+        "raw_batch_identity_check_count",
+        "raw_measurement_identity_check_count",
+        "converted_observation_collection_check_count",
+        "frame_final_identity_check_count",
+        "measurement_conversion_count",
+        "output_observation_count",
+    )
+    counts: dict[str, int] = {}
+    for name in operation_names:
+        value = operations.get(name)
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+            return False
+        counts[name] = int(value)
+    conservation_names = (
+        "request_partition",
+        "result_partition",
+        "reference_path_partition",
+        "candidate_path_partition",
+        "snapshot_structure_check_partition",
+        "closed_payload_snapshot_partition",
+        "closed_handoff_uses_successful_snapshot",
+        "raw_batch_check_accounting",
+        "candidate_never_skips_final_frame_check",
+    )
+    if any(conservation.get(name) is not True for name in conservation_names):
+        return False
+    request_count = counts["request_count"]
+    common_match = bool(
+        request_count > 0
+        and counts["successful_build_count"] == request_count
+        and counts["rejected_build_count"] == 0
+        and counts["raw_batch_identity_check_count"] == request_count
+        and counts["frame_final_identity_check_count"] == request_count
+        and counts["measurement_conversion_count"]
+        == counts["output_observation_count"]
+        and counts["output_observation_count"] > 0
+    )
+    if not common_match:
+        return False
+    if candidate:
+        return bool(
+            counts["candidate_request_count"] == request_count
+            and counts["reference_request_count"] == 0
+            and counts["reference_path_execution_count"] == 0
+            and counts["candidate_closed_handoff_count"] == request_count
+            and counts["candidate_reference_fallback_count"] == 0
+            and counts["candidate_raw_rejection_count"] == 0
+            and counts["candidate_resource_rejection_count"] == 0
+            and counts["snapshot_structure_check_count"] == request_count
+            and counts["snapshot_structure_eligible_count"] == request_count
+            and counts["snapshot_structure_ineligible_count"] == 0
+            and counts["snapshot_structure_error_count"] == 0
+            and counts["closed_payload_snapshot_attempt_count"]
+            == request_count
+            and counts["closed_payload_snapshot_success_count"]
+            == request_count
+            and counts["closed_payload_snapshot_failure_count"] == 0
+            and counts["raw_measurement_identity_check_count"] == 0
+            and counts["converted_observation_collection_check_count"] == 0
+        )
+    return bool(
+        counts["reference_request_count"] == request_count
+        and counts["candidate_request_count"] == 0
+        and counts["reference_path_execution_count"] == request_count
+        and counts["candidate_closed_handoff_count"] == 0
+        and counts["candidate_reference_fallback_count"] == 0
+        and counts["candidate_raw_rejection_count"] == 0
+        and counts["candidate_resource_rejection_count"] == 0
+        and counts["snapshot_structure_check_count"] == 0
+        and counts["snapshot_structure_eligible_count"] == 0
+        and counts["snapshot_structure_ineligible_count"] == 0
+        and counts["snapshot_structure_error_count"] == 0
+        and counts["closed_payload_snapshot_attempt_count"] == 0
+        and counts["closed_payload_snapshot_success_count"] == 0
+        and counts["closed_payload_snapshot_failure_count"] == 0
+        and counts["raw_measurement_identity_check_count"]
+        == counts["output_observation_count"]
+        and counts["converted_observation_collection_check_count"]
+        == request_count
     )
 
 

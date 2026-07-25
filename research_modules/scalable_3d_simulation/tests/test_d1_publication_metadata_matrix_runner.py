@@ -41,6 +41,13 @@ OPAQUE_SOURCE_IDENTITY_MATRIX_PATH = (
     / "configs"
     / "d1_opaque_source_identity_cache_multiseed_v1.json"
 )
+ONLINE_BATCH_FRAME_MATRIX_PATH = (
+    ROOT
+    / "research_modules"
+    / "scalable_3d_simulation"
+    / "configs"
+    / "d1_online_batch_frame_multiseed_v1.json"
+)
 ONLINE_TRUTH_GUARD_MATRIX_PATH = (
     ROOT
     / "research_modules"
@@ -161,6 +168,35 @@ def test_opaque_source_identity_matrix_freezes_source_only_cache_contract() -> N
     assert boundary["cache_capacity"] == 1_024
     assert boundary["source_only_publication"] is True
     assert boundary["structural_ambiguity_hold_enabled"] is False
+
+
+def test_online_batch_frame_matrix_freezes_default_r0_handoff_contract() -> None:
+    matrix = matrix_runner.load_matrix(ONLINE_BATCH_FRAME_MATRIX_PATH)
+    short = [case for case in matrix["cases"] if case["group"] == "short"]
+    long = [case for case in matrix["cases"] if case["group"] == "long"]
+
+    assert matrix["arm_implementations"] == {
+        "reference": "convert_then_frame_v1",
+        "candidate": "closed_immutable_batch_to_frame_v1",
+    }
+    assert matrix["run_flags"] == ["--integrated-stack"]
+    assert [case["seed"] for case in short] == list(range(1121, 1131))
+    assert [case["seed"] for case in long] == [1121, 1122, 1123]
+    assert matrix["admission_gates"][
+        "short_minimum_scan_input_improvement_pct"
+    ] == 20.0
+    assert matrix["admission_gates"][
+        "long_minimum_scan_input_improvement_pct"
+    ] == 20.0
+    assert matrix["admission_gates"][
+        "minimum_candidate_closed_handoff_ratio_pct"
+    ] == 99.0
+    boundary = matrix["evidence_boundary"]
+    assert boundary["candidate_default_off"] is True
+    assert boundary["full_raw_batch_identity_check_preserved"] is True
+    assert boundary["final_readonly_frame_check_preserved"] is True
+    assert boundary["raw_source_absolute_immutability_claimed"] is False
+    assert boundary["development_profile_seed_excluded"] == 1112
 
 
 def test_truth_guard_matrix_freezes_same_commit_performance_contract() -> None:
@@ -359,6 +395,43 @@ def test_opaque_source_identity_commands_bind_only_cache_treatment(
     assert candidate[capacity_index + 1] == "1024"
     assert "--d1-publish-opaque-source-key" in reference
     assert "--d1-d2-structural-ambiguity-hold" not in reference
+    for index, (left, right) in enumerate(
+        zip(reference, candidate, strict=True)
+    ):
+        if index not in {implementation_index + 1, output_index + 1}:
+            assert left == right
+
+
+def test_online_batch_frame_commands_bind_only_registered_treatment(
+    tmp_path: Path,
+) -> None:
+    matrix = matrix_runner.load_matrix(ONLINE_BATCH_FRAME_MATRIX_PATH)
+    case = matrix["cases"][0]
+    reference = matrix_runner.build_episode_command(
+        ROOT,
+        matrix,
+        case,
+        "reference",
+        tmp_path / "reference",
+    )
+    candidate = matrix_runner.build_episode_command(
+        ROOT,
+        matrix,
+        case,
+        "candidate",
+        tmp_path / "candidate",
+    )
+
+    implementation_index = reference.index(
+        "--d1-online-batch-frame-implementation"
+    )
+    output_index = reference.index("--output")
+    assert reference[implementation_index + 1] == "convert_then_frame_v1"
+    assert candidate[implementation_index + 1] == (
+        "closed_immutable_batch_to_frame_v1"
+    )
+    assert "--d1-d2-structural-ambiguity-hold" not in reference
+    assert "--d1-publish-opaque-source-key" not in reference
     for index, (left, right) in enumerate(
         zip(reference, candidate, strict=True)
     ):
@@ -1159,6 +1232,155 @@ def test_opaque_source_identity_episode_resume_requires_four_surface_audit(
     ]["operation_counts"]["cache_hit_count"] = 10_999
     (episode / "summary.json").write_text(
         json.dumps(summary), encoding="utf-8"
+    )
+    assert not matrix_runner._episode_matches(episode, **match_args)
+
+
+@pytest.mark.parametrize(
+    ("implementation", "implementation_id", "candidate"),
+    (
+        (
+            "convert_then_frame_v1",
+            "d1.online_batch_frame.convert_then_frame.v1",
+            False,
+        ),
+        (
+            "closed_immutable_batch_to_frame_v1",
+            "d1.online_batch_frame."
+            "closed_immutable_batch_final_frame_validation.v1",
+            True,
+        ),
+    ),
+)
+def test_online_batch_frame_episode_resume_requires_four_surface_audit(
+    tmp_path: Path,
+    implementation: str,
+    implementation_id: str,
+    candidate: bool,
+) -> None:
+    episode = tmp_path / f"episode_online_batch_frame_{candidate}"
+    episode.mkdir()
+    commit = "7" * 40
+    request_count = 10
+    output_count = 20
+    execution_config = {
+        "schema_version": "d1.online_batch_frame_handoff_diagnostics.v1",
+        "implementation": implementation,
+        "implementation_id": implementation_id,
+        "candidate_default_enabled": False,
+        "public_validation_bypass_available": False,
+        "raw_source_absolute_immutability_claimed": False,
+        "candidate_contract": (
+            "full_raw_batch_identity_check_then_structural_eligibility_"
+            "check_then_deep_snapshot_then_full_readonly_frame_check"
+        ),
+    }
+    counts = {
+        "request_count": request_count,
+        "successful_build_count": request_count,
+        "rejected_build_count": 0,
+        "reference_request_count": 0 if candidate else request_count,
+        "candidate_request_count": request_count if candidate else 0,
+        "reference_path_execution_count": 0 if candidate else request_count,
+        "candidate_closed_handoff_count": request_count if candidate else 0,
+        "candidate_reference_fallback_count": 0,
+        "candidate_raw_rejection_count": 0,
+        "candidate_resource_rejection_count": 0,
+        "snapshot_structure_check_count": request_count if candidate else 0,
+        "snapshot_structure_eligible_count": request_count if candidate else 0,
+        "snapshot_structure_ineligible_count": 0,
+        "snapshot_structure_error_count": 0,
+        "closed_payload_snapshot_attempt_count": (
+            request_count if candidate else 0
+        ),
+        "closed_payload_snapshot_success_count": (
+            request_count if candidate else 0
+        ),
+        "closed_payload_snapshot_failure_count": 0,
+        "raw_batch_identity_check_count": request_count,
+        "raw_measurement_identity_check_count": (
+            0 if candidate else output_count
+        ),
+        "converted_observation_collection_check_count": (
+            0 if candidate else request_count
+        ),
+        "frame_final_identity_check_count": request_count,
+        "measurement_conversion_count": output_count,
+        "output_observation_count": output_count,
+    }
+    diagnostics = {
+        **execution_config,
+        "operation_counts": counts,
+        "conservation": {
+            "request_partition": True,
+            "result_partition": True,
+            "reference_path_partition": True,
+            "candidate_path_partition": True,
+            "snapshot_structure_check_partition": True,
+            "closed_payload_snapshot_partition": True,
+            "closed_handoff_uses_successful_snapshot": True,
+            "raw_batch_check_accounting": True,
+            "candidate_never_skips_final_frame_check": True,
+        },
+    }
+    manifest = {
+        "git_commit": commit,
+        "repository_dirty": False,
+        "seed": 1121,
+        "runtime_profile": {
+            "d1_online_batch_frame_implementation": implementation,
+            "d1_online_batch_frame_execution_config": execution_config,
+            "configuration": {
+                "d1_online_batch_frame_implementation": implementation,
+            },
+        },
+    }
+    config = {
+        "seed": 1121,
+        "duration_s": 2.2,
+        "target_count": 200,
+        "resource_count": 200,
+        "recon_count": 2,
+    }
+    final = {
+        "d1_online_batch_frame_implementation": implementation,
+        "d1_online_batch_frame_execution_config": execution_config,
+        "d1_online_batch_frame_diagnostics": diagnostics,
+    }
+    summary = {
+        **final,
+        "module_final_diagnostics": final,
+        "finite_state": True,
+        "online_truth_use_count": 0,
+        "simulated_duration_s": 2.2,
+    }
+    governance = dict(final)
+    for name, payload in (
+        ("manifest.json", manifest),
+        ("scenario_config.json", config),
+        ("summary.json", summary),
+        ("observation_governance_audit.json", governance),
+    ):
+        (episode / name).write_text(json.dumps(payload), encoding="utf-8")
+
+    match_args = {
+        "expected_commit": commit,
+        "expected_implementation": implementation,
+        "seed": 1121,
+        "duration_s": 2.2,
+        "target_count": 200,
+        "resource_count": 200,
+        "recon_count": 2,
+        "validation_kind": "online_batch_frame_handoff",
+    }
+    assert matrix_runner._episode_matches(episode, **match_args)
+
+    summary["d1_online_batch_frame_diagnostics"]["operation_counts"][
+        "candidate_reference_fallback_count"
+    ] = 1
+    (episode / "summary.json").write_text(
+        json.dumps(summary),
+        encoding="utf-8",
     )
     assert not matrix_runner._episode_matches(episode, **match_args)
 

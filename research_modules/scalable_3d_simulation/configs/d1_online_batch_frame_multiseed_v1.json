@@ -1,0 +1,150 @@
+{
+  "schema_version": "scalable3d-d1-online-batch-frame-multiseed-matrix-v1",
+  "experiment_id": "d1-online-batch-frame-multiseed-20260725-v1",
+  "same_clean_commit_required": true,
+  "target_count": 200,
+  "resource_count": 200,
+  "recon_count": 2,
+  "arm_implementations": {
+    "reference": "convert_then_frame_v1",
+    "candidate": "closed_immutable_batch_to_frame_v1"
+  },
+  "run_flags": [
+    "--integrated-stack"
+  ],
+  "cooldown_s": 2.0,
+  "bootstrap_seed": 20260725,
+  "bootstrap_resamples": 10000,
+  "cases": [
+    {
+      "case_id": "short_seed_1121",
+      "group": "short",
+      "seed": 1121,
+      "duration_s": 2.2,
+      "arm_order": ["reference", "candidate"]
+    },
+    {
+      "case_id": "short_seed_1122",
+      "group": "short",
+      "seed": 1122,
+      "duration_s": 2.2,
+      "arm_order": ["candidate", "reference"]
+    },
+    {
+      "case_id": "short_seed_1123",
+      "group": "short",
+      "seed": 1123,
+      "duration_s": 2.2,
+      "arm_order": ["reference", "candidate"]
+    },
+    {
+      "case_id": "short_seed_1124",
+      "group": "short",
+      "seed": 1124,
+      "duration_s": 2.2,
+      "arm_order": ["candidate", "reference"]
+    },
+    {
+      "case_id": "short_seed_1125",
+      "group": "short",
+      "seed": 1125,
+      "duration_s": 2.2,
+      "arm_order": ["reference", "candidate"]
+    },
+    {
+      "case_id": "short_seed_1126",
+      "group": "short",
+      "seed": 1126,
+      "duration_s": 2.2,
+      "arm_order": ["candidate", "reference"]
+    },
+    {
+      "case_id": "short_seed_1127",
+      "group": "short",
+      "seed": 1127,
+      "duration_s": 2.2,
+      "arm_order": ["reference", "candidate"]
+    },
+    {
+      "case_id": "short_seed_1128",
+      "group": "short",
+      "seed": 1128,
+      "duration_s": 2.2,
+      "arm_order": ["candidate", "reference"]
+    },
+    {
+      "case_id": "short_seed_1129",
+      "group": "short",
+      "seed": 1129,
+      "duration_s": 2.2,
+      "arm_order": ["reference", "candidate"]
+    },
+    {
+      "case_id": "short_seed_1130",
+      "group": "short",
+      "seed": 1130,
+      "duration_s": 2.2,
+      "arm_order": ["candidate", "reference"]
+    },
+    {
+      "case_id": "long_seed_1121",
+      "group": "long",
+      "seed": 1121,
+      "duration_s": 10.0,
+      "arm_order": ["candidate", "reference"]
+    },
+    {
+      "case_id": "long_seed_1122",
+      "group": "long",
+      "seed": 1122,
+      "duration_s": 10.0,
+      "arm_order": ["reference", "candidate"]
+    },
+    {
+      "case_id": "long_seed_1123",
+      "group": "long",
+      "seed": 1123,
+      "duration_s": 10.0,
+      "arm_order": ["candidate", "reference"]
+    }
+  ],
+  "admission_gates": {
+    "all_pairs_business_semantics_equal": true,
+    "all_pairs_finite_state": true,
+    "all_pairs_online_truth_use_count": 0,
+    "all_pairs_explicit_implementation_identity": true,
+    "all_pairs_online_batch_frame_audit_valid": true,
+    "short_minimum_candidate_faster_count": 8,
+    "short_minimum_scan_input_improvement_pct": 20.0,
+    "short_bootstrap_relative_change_upper_bound_pct": 0.0,
+    "long_minimum_candidate_faster_count": 2,
+    "long_minimum_scan_input_improvement_pct": 20.0,
+    "short_minimum_core_wall_improvement_pct": 2.0,
+    "long_minimum_core_wall_improvement_pct": 2.0,
+    "maximum_short_d2_association_mean_increase_pct": 5.0,
+    "maximum_long_d2_association_mean_increase_pct": 5.0,
+    "maximum_rss_mean_increase_pct": 5.0,
+    "maximum_any_pair_rss_increase_pct": 5.0,
+    "minimum_candidate_duplicate_check_reduction_pct": 95.0,
+    "minimum_candidate_closed_handoff_ratio_pct": 99.0,
+    "maximum_candidate_reference_fallback_count": 0
+  },
+  "evidence_boundary": {
+    "simulation_mode": "three_dimensional_point_mass",
+    "airsim_evidence": false,
+    "truth_is_online_control_input": false,
+    "system_realtime_requires_real_time_factor_at_least_one": true,
+    "same_source_commit_for_both_arms": true,
+    "only_allowed_runtime_treatment_difference": "d1_online_batch_frame_implementation",
+    "reference_implementation": "convert_then_frame_v1",
+    "candidate_implementation": "closed_immutable_batch_to_frame_v1",
+    "diagnostics_schema_version": "d1.online_batch_frame_handoff_diagnostics.v1",
+    "full_raw_batch_identity_check_preserved": true,
+    "final_readonly_frame_check_preserved": true,
+    "candidate_default_off": true,
+    "candidate_all_runtime_batches_must_use_closed_handoff": true,
+    "raw_source_absolute_immutability_claimed": false,
+    "development_profile_seed_excluded": 1112,
+    "prior_episode_outputs_reused": false
+  }
+}
