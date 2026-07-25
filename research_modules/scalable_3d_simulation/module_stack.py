@@ -30,6 +30,7 @@ from research_modules.d1_sensor_fusion.src.d1_sensor_fusion import (
     ExperimentalCentroidPublicationState,
     MAX_CV_MOTION_MODEL_CACHE_CAPACITY,
     ONLINE_BATCH_FRAME_CANDIDATE_IMPLEMENTATION,
+    ONLINE_BATCH_FRAME_DEFAULT_IMPLEMENTATION,
     ONLINE_BATCH_FRAME_REFERENCE_IMPLEMENTATION,
     OnlineBatchFrameBuilder,
     SCAN_INPUT_CANDIDATE_IMPLEMENTATION,
@@ -173,7 +174,7 @@ class IntegratedStackConfig:
     d1_scan_max_buffer_residence_s: float = 5.0
     d1_scan_input_implementation: str = SCAN_INPUT_CANDIDATE_IMPLEMENTATION
     d1_online_batch_frame_implementation: str = (
-        ONLINE_BATCH_FRAME_REFERENCE_IMPLEMENTATION
+        ONLINE_BATCH_FRAME_DEFAULT_IMPLEMENTATION
     )
     d1_publication_metadata_implementation: str = (
         D1_PUBLICATION_METADATA_CANDIDATE_IMPLEMENTATION

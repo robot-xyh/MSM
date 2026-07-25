@@ -1,5 +1,26 @@
 # Scalable 3D Simulation
 
+## D1 在线批帧交接默认晋级（2026-07-25）
+
+main 已将 D1 原始在线批次到 `SensorScanFrame` 的默认交接实现晋级为
+`closed_immutable_batch_to_frame_v1`。该路径先完成整批在线身份检查，再生成封闭的不可变
+快照，最后对只读帧执行完整身份检查；`convert_then_frame_v1` 继续保留为命令行显式回退。
+选择器、完整实现标识、执行配置和
+`d1.online_batch_frame_handoff_diagnostics.v1` 均进入 runtime profile、episode summary、
+module final 和 observation governance。
+
+晋级依据是 clean commit `43feaf600f288a85ce76a76862334256f0d0d352` 上的
+13 对/26 episode 三维质点正式矩阵。D6 独立评估确认 13/13 对业务语义、有限状态、
+在线真值隔离、实现身份和批帧守恒通过。short/long 的 scan input 墙钟分别改善
+`38.289241%/36.275282%`，核心墙钟改善 `4.252745%/4.916501%`；候选
+2665/2665 次请求均走 closed handoff，重复量测身份检查减少 `100%`，fallback 为 0。
+
+该准入只支持默认选择器晋级。候选最低实时因子为 `0.204490`，200 对 200 系统实时缺口
+仍未关闭；`long_seed_1121` 的 D2 association 单对增幅为 `14.408510%`，后续容量试验继续
+观察尾部波动。正式报告位于
+`../d6_evaluation_metrics/outputs/d1_online_batch_frame_multiseed_20260725_formal_43feaf6_d6/`。
+冻结矩阵和历史证据仍保留 reference/candidate 原始语义，不随默认值修改。
+
 ## D1 不透明来源标识缓存 A/B（2026-07-25）
 
 main 已接入 D1 来源节点、发布 epoch 和航迹标识三段字符串的显式构造实现选择器。

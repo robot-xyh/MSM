@@ -61,6 +61,11 @@ main
 | D1 不透明来源标识缓存矩阵 | `scalable3d-d1-opaque-source-identity-cache-multiseed-matrix-v1` | source-only 实验臂、seed、时长、容量、准入门或证据边界改变 |
 | D1 不透明来源标识缓存证据 | `scalable3d-d1-opaque-source-identity-cache-multiseed-evidence-v1` | clean source、episode/resource 路径、arm 状态、缓存诊断或 D6 evaluator 绑定改变 |
 | D6 不透明来源标识缓存准入 | `d6.d1_opaque_source_identity_cache_multiseed_evaluation.v1` | 业务归一化边界、缓存守恒、D1/D2/核心墙钟/RSS 门或准入结论语义改变 |
+| D1 在线批帧交接实现 | `convert_then_frame_v1` / `closed_immutable_batch_to_frame_v1` | 原始在线批次检查、封闭快照、量测转换或最终只读帧检查语义改变；当前默认后者 |
+| D1 在线批帧交接诊断 | `d1.online_batch_frame_handoff_diagnostics.v1` | 实现 ID、请求、路径、快照、回退、拒绝、最终帧或量测输出守恒语义改变 |
+| D1 在线批帧交接矩阵 | `scalable3d-d1-online-batch-frame-multiseed-matrix-v1` | 实验臂、seed、时长、准入门、计划谱系归一化边界或证据范围改变 |
+| D1 在线批帧交接证据 | `scalable3d-d1-online-batch-frame-multiseed-evidence-v1` | clean source、episode/resource 路径、arm 状态、批帧诊断或 D6 evaluator 绑定改变 |
+| D6 在线批帧交接准入 | `d6.d1_online_batch_frame_multiseed_evaluation.v1` | 业务归一化边界、批帧守恒、scan/core/D2/RSS 门或准入结论语义改变 |
 | D1 常速度模型构造实现 | `per_prediction_build_v1` / `bounded_exact_lru_v1` | 状态转移和过程噪声矩阵的逐次构造或精确有界缓存语义改变 |
 | D1 常速度模型缓存诊断 | `d1.cv_motion_model_cache_diagnostics.v1` | 实现 ID、容量、条目数、预测请求、构造、命中、未命中或淘汰计数语义改变 |
 | D1 常速度模型缓存矩阵 | `scalable3d-d1-cv-motion-model-cache-multiseed-matrix-v1` | 实验臂、seed、时长、容量、准入门或证据边界改变 |

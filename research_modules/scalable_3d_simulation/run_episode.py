@@ -37,6 +37,7 @@ from research_modules.scalable_3d_simulation.module_stack import (
     D1_STRUCTURED_NUMERICAL_JACOBIAN_REFERENCE_IMPLEMENTATION,
     IntegratedStackConfig,
     ONLINE_BATCH_FRAME_CANDIDATE_IMPLEMENTATION,
+    ONLINE_BATCH_FRAME_DEFAULT_IMPLEMENTATION,
     ONLINE_BATCH_FRAME_REFERENCE_IMPLEMENTATION,
     SCAN_INPUT_CANDIDATE_IMPLEMENTATION,
     SCAN_INPUT_REFERENCE_IMPLEMENTATION,
@@ -144,11 +145,11 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
             ONLINE_BATCH_FRAME_REFERENCE_IMPLEMENTATION,
             ONLINE_BATCH_FRAME_CANDIDATE_IMPLEMENTATION,
         ),
-        default=ONLINE_BATCH_FRAME_REFERENCE_IMPLEMENTATION,
+        default=ONLINE_BATCH_FRAME_DEFAULT_IMPLEMENTATION,
         help=(
             "select the D1 raw-online-batch to SensorScanFrame handoff; "
-            "the closed immutable candidate is explicit and default-off "
-            "pending full-stack multiseed admission"
+            "the admitted closed immutable implementation is the default; "
+            "convert_then_frame_v1 remains available as an explicit rollback"
         ),
     )
     parser.add_argument(

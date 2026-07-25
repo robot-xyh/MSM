@@ -15,6 +15,7 @@ from research_modules.d1_sensor_fusion.src.d1_sensor_fusion import (
     ExperimentalCentroidEvidenceDisposition,
     GlobalTrack,
     ONLINE_BATCH_FRAME_CANDIDATE_IMPLEMENTATION,
+    ONLINE_BATCH_FRAME_DEFAULT_IMPLEMENTATION,
     ONLINE_BATCH_FRAME_REFERENCE_IMPLEMENTATION,
     SensorObservation,
     StructuralAmbiguityCandidateEdge,
@@ -160,16 +161,13 @@ def test_d1_online_batch_frame_selection_is_explicit_hashed_and_audited() -> Non
     )
     default = IntegratedStackConfig()
     assert default.d1_online_batch_frame_implementation == (
-        ONLINE_BATCH_FRAME_REFERENCE_IMPLEMENTATION
+        ONLINE_BATCH_FRAME_DEFAULT_IMPLEMENTATION
+    )
+    assert ONLINE_BATCH_FRAME_DEFAULT_IMPLEMENTATION == (
+        ONLINE_BATCH_FRAME_CANDIDATE_IMPLEMENTATION
     )
 
-    stack = IntegratedScalableModuleStack(
-        IntegratedStackConfig(
-            d1_online_batch_frame_implementation=(
-                ONLINE_BATCH_FRAME_CANDIDATE_IMPLEMENTATION
-            ),
-        )
-    )
+    stack = IntegratedScalableModuleStack(default)
     manifest_profile = stack.runtime_manifest_profile_for_scenario(config)
     assert manifest_profile["configuration"][
         "d1_online_batch_frame_implementation"
@@ -180,6 +178,9 @@ def test_d1_online_batch_frame_selection_is_explicit_hashed_and_audited() -> Non
     assert manifest_profile["d1_online_batch_frame_execution_config"][
         "implementation"
     ] == ONLINE_BATCH_FRAME_CANDIDATE_IMPLEMENTATION
+    assert manifest_profile["d1_online_batch_frame_execution_config"][
+        "candidate_default_enabled"
+    ] is True
 
     result = run_episode(config, module_stack=stack)
     governance = result.observation_governance_audit
@@ -223,17 +224,17 @@ def test_episode_cli_exposes_d1_online_batch_frame_selector() -> None:
     )
     default_args = episode_cli.parse_args(["--integrated-stack"])
     assert default_args.d1_online_batch_frame_implementation == (
-        ONLINE_BATCH_FRAME_REFERENCE_IMPLEMENTATION
+        ONLINE_BATCH_FRAME_DEFAULT_IMPLEMENTATION
     )
     args = episode_cli.parse_args(
         [
             "--integrated-stack",
             "--d1-online-batch-frame-implementation",
-            ONLINE_BATCH_FRAME_CANDIDATE_IMPLEMENTATION,
+            ONLINE_BATCH_FRAME_REFERENCE_IMPLEMENTATION,
         ]
     )
     assert args.d1_online_batch_frame_implementation == (
-        ONLINE_BATCH_FRAME_CANDIDATE_IMPLEMENTATION
+        ONLINE_BATCH_FRAME_REFERENCE_IMPLEMENTATION
     )
 
 

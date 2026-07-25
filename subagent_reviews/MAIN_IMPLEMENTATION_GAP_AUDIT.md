@@ -16,6 +16,50 @@
 `immutable_shared_v2`。系统实时、逐批审计明细、严格精度、AirSim 和目标硬件证据仍为
 P1。以下最新专项记录优先于“扫描输入或发布元数据仍待治理”的历史表述。
 
+## 2026-07-25 D1 在线批帧交接正式准入
+
+当前无新增 P0。D1 owner 已将原始在线批次到 `SensorScanFrame` 的两条路径固化为
+`convert_then_frame_v1` reference 和 `closed_immutable_batch_to_frame_v1` candidate。
+候选先完成整批在线身份检查，再构造封闭不可变快照，最后执行完整只读帧检查；它不删除
+真值字段拒绝、时间戳、协方差、重复观测、sensor/batch/模态一致性或最终帧校验。
+
+main 在 clean commit `43feaf600f288a85ce76a76862334256f0d0d352` 上完成 10 对 short、
+3 对 long，共 13 对/26 个 fresh 200/200/2 三维质点 episode。冻结 matrix SHA-256 为
+`4afbf9ac273763a16aa01cc744fd67b52e437099460b33377a128f986ac5719b`。两臂只改变批帧
+实现 selector；独立运行产生的计划编号先验证来源载荷、ACK、D4 内容地址和版本连续性，再按
+谱系归一化，分配关系、授权、目标/资源绑定、状态机、计数和安全结果仍严格比较。
+
+D6 独立只读评估确认 13/13 对业务语义、有限状态、在线真值隔离、实现身份和批帧审计通过。
+候选 2665/2665 次请求全部使用 closed handoff，reference fallback 为 0，重复量测身份检查
+减少率为 `100%`。
+
+| 指标 | short | long | 预注册门限 |
+| --- | ---: | ---: | ---: |
+| candidate faster | 10/10 | 3/3 | >=8 / >=2 |
+| scan input 改善 | 38.289241% | 36.275282% | >=20% |
+| core wall 改善 | 4.252745% | 4.916501% | >=2% |
+| D2 association 组均值增幅 | 2.113047% | 2.830616% | <=5% |
+| RSS 组均值增幅 | -0.061496% | 0.281879% | <=5% |
+
+全部冻结 gate 通过，结论为 `admit`。D1 公共 helper、main 集成配置和 episode CLI 默认均已
+晋级为 `closed_immutable_batch_to_frame_v1`；`convert_then_frame_v1` 保留显式回退。
+默认状态和完整实现 ID 继续写入 runtime profile、summary、module final 与 observation
+governance。D1 全量回归 `443 passed`，scalable 3D 全量回归 `244 passed`，D6 全量回归
+`846 passed`。
+
+仍开放 P1：
+
+1. **系统实时容量。** 候选最低实时因子 `0.204490 < 1`。本次只关闭批帧重复检查与默认
+   准入缺口，没有关闭 200 对 200 实时 P1。
+2. **D2 尾部波动。** `short_seed_1125` 和 `long_seed_1121` 单对 D2 association 增幅分别
+   为 `15.778858%/14.408510%`。组均值门通过，但后续长时容量矩阵继续观察尾部。
+3. **外部证据。** 本轮不是 AirSim、冻结目标处理器、实机、实飞或正式 RMSE/NEES/NIS
+   证据，不能由三维质点准入继承。
+
+正式报告位于
+`research_modules/d6_evaluation_metrics/outputs/d1_online_batch_frame_multiseed_20260725_formal_43feaf6_d6/`。
+冻结 matrix 和 source episode 不因默认值提升而改写。
+
 ## 2026-07-25 D1 不透明来源标识缓存正式拒绝
 
 当前无新增 P0。D1 owner 已增加来源节点、发布 epoch 和航迹标识三段不可变字符串的有界
