@@ -4,6 +4,35 @@
 
 ## 当前证据索引（2026-07-25）
 
+### 固定滞后回放前缀累计摘要正式拒绝
+
+D6 已对 producer clean commit
+`7d2e987471b521a1e531bf03a5c99af5096f676a` 和 matrix SHA-256
+`85432d729877eff97e6f3dd517d4baa7a47f44a4fa42e6bfdc7ce85b8d9ec74b`
+完成独立评估。冻结场景为 200 个目标、200 个资源和 2 个侦察节点；short seeds
+1151-1160 各 2.2 秒，long seeds 1151-1153 各 10 秒，共 13 pair/26 个 fresh
+episode，0 reused、0 failed。
+
+正式 verdict 为 `reject`，`main_default_promotion_allowed=false`，
+`system_realtime_gap_closed=false`。失败门为 short candidate 更快 `5/10 < 8/10`、
+short D1 fusion 改善 `0.959611% < 1%`、short bootstrap 上界
+`0.619827% > 0%`、short core 改善 `-0.256641% < 0.25%` 和 long core 改善
+`-1.930083% < 0.25%`。
+
+13/13 pair 的业务语义、consistency evidence digest/count、原 D1 operation counts、
+实现身份、诊断守恒和在线真值隔离通过。long D1 fusion 改善 `2.361778%`，内部物化记录
+减少 `52.150746%`，RSS 与 D2 均值门通过。候选最低 RTF 为 `0.197441`；在线 snapshot
+投影构造 `656481` 条记录。
+
+reference `per_checkpoint_prefix_rebuild_v1` 继续作为默认。candidate
+`fixed_lag_checkpoint_prefix_cumulative_summary_v1` 保留为默认关闭研究入口，不得声称
+已晋升。下一候选仅计划按 publication 所需 observation ID 投影 snapshot，必须使用新的
+implementation ID、独立预注册矩阵和 D6 独立判定。本证据只覆盖三维质点仿真。详细结果见
+`ALGORITHM_AND_IMPLEMENTATION.md`、`MODULE_PRINCIPLES_CN.md`、
+`EXPERIMENT_REPORT.md` 和正式 D6 bundle
+`../../d6_evaluation_metrics/outputs/`
+`d1_replay_prefix_summary_multiseed_20260725_formal_7d2e987_d6/`。
+
 ### 模态感知保守稀疏预筛正式拒绝
 
 D1 已实现默认关闭、可单参数回滚的

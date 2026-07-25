@@ -1,10 +1,60 @@
 # 第一研究模块实验结果
 
-## 固定滞后回放前缀累计摘要模块微基准
+## 固定滞后回放前缀累计摘要正式多种子评估
 
 **证据日期：2026-07-25**
 
-**状态：研究候选默认关闭；D1 模块微基准通过；尚未进入 main 正式矩阵**
+**范围：200 个目标、200 个资源、2 个侦察节点的三维质点 short/long 同提交冻结矩阵**
+
+### 来源与规模
+
+- producer clean commit：
+  `7d2e987471b521a1e531bf03a5c99af5096f676a`；
+- matrix SHA-256：
+  `85432d729877eff97e6f3dd517d4baa7a47f44a4fa42e6bfdc7ce85b8d9ec74b`；
+- reference：`per_checkpoint_prefix_rebuild_v1`；
+- candidate：`fixed_lag_checkpoint_prefix_cumulative_summary_v1`；
+- short seeds 1151-1160，每臂 2.2 秒，共 10 pair；
+- long seeds 1151-1153，每臂 10 秒，共 3 pair；
+- 合计 13 pair/26 个 fresh episode，0 reused、0 failed。
+
+### 正式结果
+
+D6 verdict 为 `reject`，`main_default_promotion_allowed=false`，
+`system_realtime_gap_closed=false`。
+
+| 冻结门 | 正式结果 | 阈值 | 判定 |
+| --- | ---: | ---: | --- |
+| Short candidate 更快数 | `5/10` | `>=8/10` | 失败 |
+| Short D1 fusion 改善 | `0.959611%` | `>=1%` | 失败 |
+| Short paired bootstrap 相对变化 95% 上界 | `0.619827%` | `<=0%` | 失败 |
+| Short core 改善 | `-0.256641%` | `>=0.25%` | 失败 |
+| Long core 改善 | `-1.930083%` | `>=0.25%` | 失败 |
+
+13/13 pair 的业务语义、consistency evidence digest/count、原 D1 operation counts、
+实现身份、诊断守恒和在线真值隔离通过。long candidate 更快数 `2/3`，D1 fusion 改善
+`2.361778%`；内部物化记录减少 `52.150746%`，RSS 和 D2 均值门通过。正式准入要求全部
+冻结门通过，这些通过项不能抵消五个失败门。
+
+候选最低 RTF 为 `0.197441`，系统实时缺口未关闭。候选累计逻辑刷新 `811858` 条记录，
+实际内部物化 `388468` 条，内部物化减少 `52.150746%`；在线 snapshot 仍投影构造
+`656481` 条记录，已披露记录构造总量为 `1044949`。该数据表明候选减少了内部写回，
+没有消除全量 snapshot 的对象构造成本。
+
+reference 继续作为 D1 和 main 默认。candidate 保留为默认关闭的显式研究入口，不删除、
+不晋升，也不修改本次冻结结论。下一候选只计划按 publication 所需 observation ID 集合
+投影 snapshot；它必须使用新的 implementation ID、独立预注册矩阵和 D6 独立判定。
+
+正式 bundle 位于 `research_modules/d6_evaluation_metrics/outputs/`
+`d1_replay_prefix_summary_multiseed_20260725_formal_7d2e987_d6/`。本结果只覆盖三维质点
+仿真，不包含 AirSim、目标硬件、实机、实飞或正式 RMSE/NEES/NIS 证据。2026-07-25
+按 bundle 内 `SHA256SUMS` 复核，完整 JSON、紧凑 JSON、逐对 CSV、曲线和中文报告均通过。
+
+## 固定滞后回放前缀累计摘要模块微基准（历史）
+
+**证据日期：2026-07-25**
+
+**状态：研究候选默认关闭；D1 模块微基准通过；后续正式矩阵已 reject**
 
 ### 候选与边界
 
@@ -68,9 +118,9 @@ append-only 修复后，main 独立复跑得到：
 
 reference D1 fusion 为 `2.40147 s`。两臂 consistency digest 均为
 `sha256:b579e62b65169791a1c9526eb5310ba7016149ddd501efe34e82a732c8bbda3a`。
-append 特例已经消除正常追加物化。压缩略低于预注册 20%，原因是 main 在线 publication
-仍调用兼容全量 records 接口。D1 本轮提供 snapshot API 和模块证据，不修改 scalable/main。
-main 改接后必须按相同配置复跑，不能用模块数据替代集成结果。
+append 特例已经消除正常追加物化。压缩略低于预注册 20%，原因是当时 main 在线
+publication 仍调用兼容全量 records 接口。D1 随后提供 snapshot API，正式矩阵已完成
+main 接线和独立判定。本段只保留历史过程，不能替代上节正式结果。
 
 ### 冻结输入与方法
 
@@ -151,21 +201,19 @@ export 均清空 pending。
 
 ### 判定与限制
 
-`module_microbenchmark_passed=true`，当前建议仅为
-`eligible_for_main_formal_matrix_review`。`main_default_promotion_claimed=false`；
-reference 继续作为默认。main 是否建立 clean、同提交 short/long 正式矩阵，由 main 和 D6
-另行决定。
+`module_microbenchmark_passed=true` 只描述该历史微基准。clean、同提交 short/long
+正式矩阵已经完成，D6 verdict 为 `reject`，`main_default_promotion_allowed=false`；
+reference 继续作为默认。
 
 本试验不是完整三维质点 episode、AirSim、目标处理器、硬件、实机、实飞或系统实时证据，
 也不产生新的 RMSE、NEES 或 NIS 统计结论。机器可读结果和中文报告分别位于
 `../reports/d1_replay_prefix_summary_performance_20260725.json` 和
 `../reports/D1_REPLAY_PREFIX_SUMMARY_PERFORMANCE_20260725_CN.md`。
 
-main 下一步接线位置是在线 publication 当前调用 `consistency_evidence_records()` 的位置。
-该调用改为 `consistency_evidence_snapshot()`；episode 最终 offline evidence 导出继续使用
-`consistency_evidence_records()` 或 `export_consistency_evidence()`。改接后需确认两臂
-digest 不变、最终 pending 为 0、snapshot/append 物化为 0，且同场景内部压缩稳定
-`>=20%`。
+正式矩阵中的在线 publication 已调用 `consistency_evidence_snapshot()`；episode 最终
+offline evidence 导出继续使用 `consistency_evidence_records()` 或
+`export_consistency_evidence()`。下一步只计划建立新的 observation-ID 子集投影候选，
+不能追溯修改本节历史微基准或上节正式拒绝。
 
 ## 关联稀疏预筛正式多种子评估
 

@@ -1,6 +1,36 @@
 # D1 多传感器融合与目标配准实施计划
 
-## P1 固定滞后回放前缀累计摘要候选（2026-07-25）
+## P1 固定滞后回放前缀累计摘要正式拒绝与后续计划（2026-07-25）
+
+### 正式判定
+
+D6 已对 producer clean commit
+`7d2e987471b521a1e531bf03a5c99af5096f676a` 和 matrix SHA-256
+`85432d729877eff97e6f3dd517d4baa7a47f44a4fa42e6bfdc7ce85b8d9ec74b`
+完成独立评估。冻结场景为 200 个目标、200 个资源和 2 个侦察节点；short seeds
+1151-1160 各 2.2 秒，long seeds 1151-1153 各 10 秒，共 13 pair/26 个 fresh
+episode，0 reused、0 failed。
+
+正式 verdict 为 `reject`，`main_default_promotion_allowed=false`，
+`system_realtime_gap_closed=false`。失败门如下。
+
+| 冻结性能门 | 正式结果 | 阈值 | 判定 |
+| --- | ---: | ---: | --- |
+| Short candidate 更快数 | `5/10` | `>=8/10` | 失败 |
+| Short D1 fusion 改善 | `0.959611%` | `>=1%` | 失败 |
+| Short paired bootstrap 相对变化 95% 上界 | `0.619827%` | `<=0%` | 失败 |
+| Short core 改善 | `-0.256641%` | `>=0.25%` | 失败 |
+| Long core 改善 | `-1.930083%` | `>=0.25%` | 失败 |
+
+13/13 业务语义、consistency evidence digest/count、原 D1 operation counts、实现身份、
+诊断守恒和在线真值隔离通过。long D1 fusion 改善 `2.361778%`，内部物化记录减少
+`52.150746%`，RSS 与 D2 均值门通过。候选最低 RTF 为 `0.197441`；在线 snapshot
+投影构造 `656481` 条记录。局部语义和工作量门通过不能覆盖端到端性能门失败。
+
+reference `per_checkpoint_prefix_rebuild_v1` 继续作为 D1 和 main 默认。
+candidate `fixed_lag_checkpoint_prefix_cumulative_summary_v1` 保留为默认关闭的研究入口，
+不得删除，也不得声称已晋升。本正式结论只覆盖三维质点仿真，不覆盖 AirSim、目标硬件、
+实机、实飞或正式 RMSE/NEES/NIS。
 
 ### 目标与边界
 
@@ -53,9 +83,9 @@ main 独立复跑得到 `summary_hit=1584`、`reused=7103`、`logical=8687`、
 `materialized=7013`，append 物化为 0，压缩率 `19.27017%`。剩余物化原因全为
 `public_evidence_snapshot`，共 1,372 个 ledger。两臂 consistency digest 均为
 `sha256:b579e62b65169791a1c9526eb5310ba7016149ddd501efe34e82a732c8bbda3a`，
-reference/candidate D1 fusion 为 `2.40147/2.30535 s`。这证明 append 修复有效，但 main
-在线 publication 仍调用兼容全量 records 接口。D1 本轮提供 snapshot 合同和模块证据；
-跨模块改接由 main 完成。
+reference/candidate D1 fusion 为 `2.40147/2.30535 s`。该历史 smoke 证明 append 修复
+有效，也记录了当时 main 在线 publication 仍调用兼容全量 records 接口。后续正式矩阵
+已经改用非破坏性 snapshot，但仍请求全量 evidence。
 
 ### 冻结模块微基准
 
@@ -97,24 +127,29 @@ pending 为 0。该短时模块结果通过 `>=20%` 门，但不能替代 main �
 受影响后缀并推进 revision，随后按新顺序重建 summary；reference/candidate 的内部状态、
 公开输出和既有操作计数保持一致。
 
-### 当前判定与下一步
+### 当前判定与下一候选
 
-模块微基准通过，只形成 `eligible_for_main_formal_matrix_review`。候选仍默认关闭，
-`main_default_promotion_claimed=false`。后续由 main 决定是否：
+模块微基准通过是历史候选形成证据，正式准入已经以 `reject` 审结。正式矩阵中的 main
+在线 publication 已调用非破坏性 snapshot，最终 offline export 继续使用
+`consistency_evidence_records()` 或 `export_consistency_evidence()`；最终 pending
+ledger 为 0。当前在线 snapshot 仍请求全量 evidence，累计投影构造 `656481` 条记录，
+是后续性能工作的直接线索。
 
-1. 将在线 publication 的全量 records 调用改接为
-   `consistency_evidence_snapshot()`；episode 最终 offline export 继续使用
-   `consistency_evidence_records()` 或 `export_consistency_evidence()`；
-2. 先按 200v200、2 recon、seed 1151、2.2 s 复跑，确认 digest 相同、append 和在线
-   snapshot 物化均为 0、最终 ledger 为 0、内部物化压缩稳定 `>=20%`；
-3. 在提交后的 clean source 上冻结新 matrix 和 source digest；
-4. 使用新的 short/long seeds 和全新 episode，比对 D1 fusion、core wall、RTF、RSS、
-   业务语义、在线真值隔离和 D2 回归；
-5. 由 D6 独立给出 admit/reject；任何失败均保持 reference 默认，不调整本轮模块门。
+下一候选计划只研究按 publication 所需 observation ID 集合投影 snapshot：
 
-AirSim、目标硬件、实机、实飞、RMSE、NEES、NIS 和系统实时因子仍开放。本轮没有修改
-AirSim producer、DTO 或 episode 数据合同；仅新增由 main 选择接线的 D1 只读 snapshot
-接口。
+1. 冻结 publication 到 observation ID 集合的来源和所有权合同，未知 ID、空 ID、
+   跨航迹 ID 或证据所有权不一致继续失败关闭；
+2. 只构造本次 publication 消费的不可变 evidence 记录，最终 offline export 仍保持
+   全量 records/export 和 pending ledger 清零语义；
+3. 不改变 fixed-lag 窗口、观测顺序、NIS、门控、协方差、双时间戳、NED、
+   `global_track_id`、既有 operation counts 或在线真值隔离；
+4. 使用新的 selector、implementation ID、execution config、diagnostics 和报告 schema，
+   与本次被拒候选完全分离；
+5. 重新预注册独立 short/long 矩阵，由 D6 独立给出 admit/reject。不得复用本次 matrix
+   SHA、调低门限、删除失败 pair 或覆盖本次冻结结论。
+
+该后续候选尚未实现。系统实时因子、AirSim、目标硬件、实机、实飞、RMSE、NEES 和 NIS
+继续作为开放 P1；候选最低 RTF `0.197441` 不能写成实时闭合。
 
 ## P1 模态感知保守稀疏预筛正式拒绝与研究入口治理（2026-07-25）
 

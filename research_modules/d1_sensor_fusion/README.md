@@ -4,7 +4,40 @@ Offline research module for radar, acoustic, EO, and optional synthetic lidar he
 
 ## 当前性能与治理证据（2026-07-25）
 
-### 第三十六阶段：固定滞后回放前缀累计摘要研究候选
+### 第三十六阶段：固定滞后回放前缀累计摘要正式拒绝
+
+2026-07-25，D6 对 producer clean commit
+`7d2e987471b521a1e531bf03a5c99af5096f676a` 的同提交冻结矩阵完成独立评估。matrix
+SHA-256 为
+`85432d729877eff97e6f3dd517d4baa7a47f44a4fa42e6bfdc7ce85b8d9ec74b`。场景包含
+200 个目标、200 个资源和 2 个侦察节点；short seeds 1151-1160 各运行 2.2 秒，
+long seeds 1151-1153 各运行 10 秒，共 13 pair/26 个 fresh episode，0 reused、
+0 failed。
+
+D6 verdict 为 `reject`，`main_default_promotion_allowed=false`，
+`system_realtime_gap_closed=false`。五个失败门为：short candidate 更快数
+`5/10 < 8/10`，short D1 fusion 改善 `0.959611% < 1%`，short paired bootstrap
+相对变化 95% 上界 `0.619827% > 0%`，short core 改善
+`-0.256641% < 0.25%`，long core 改善 `-1.930083% < 0.25%`。
+
+13/13 pair 的业务语义、consistency evidence digest/count、原 D1 operation counts、
+实现身份、诊断守恒和在线真值隔离通过。long D1 fusion 改善 `2.361778%`，内部物化
+记录减少 `52.150746%`，RSS 与 D2 均值门通过；这些通过项不能覆盖五个正式失败门。
+候选最低 RTF 为 `0.197441`。在线 snapshot 共投影构造 `656481` 条记录，说明内部
+物化减少后仍保留明显的返回对象构造成本。
+
+reference `per_checkpoint_prefix_rebuild_v1` 继续作为 `FusionAdapter`、
+`Scalable3DFusionAdapter` 和 main 的默认路径。candidate
+`fixed_lag_checkpoint_prefix_cumulative_summary_v1` 保留为默认关闭的显式研究入口，
+不得声称已经晋升，也不得删除候选或改写本次冻结结论。正式 bundle 位于
+`research_modules/d6_evaluation_metrics/outputs/`
+`d1_replay_prefix_summary_multiseed_20260725_formal_7d2e987_d6/`。
+本证据只覆盖三维质点仿真，不包含 AirSim、目标硬件、实机、实飞或正式
+RMSE/NEES/NIS 证据。
+
+下一项研究只作为新候选计划：按照一次 publication 实际需要的 observation ID 集合投影
+snapshot，避免在线路径构造无关 evidence 记录。该方案必须使用新的 implementation ID、
+独立预注册矩阵和 D6 独立判定；不能复用本候选身份，也不能覆盖本次 `reject`。
 
 D1 新增默认关闭的固定滞后回放 selector
 `fixed_lag_checkpoint_prefix_cumulative_summary_v1`。reference 为
@@ -40,7 +73,8 @@ ledger。新增 observation ID 不得与旧 ledger 重叠，首个新排序键�
   `export_consistency_evidence()` 继续通过该接口生成 episode 最终离线证据。
 - `consistency_evidence_snapshot(observation_ids=None)` 返回当下精确的不可变记录，但不消费
   pending ledger。传入 ID 集合时只为请求记录构造 counter overlay；未知或非法 ID 失败关闭。
-- main 在线 publication 尚需改接 snapshot；episode 最终导出仍使用 records/export。
+- 正式三维质点矩阵的 main 在线 publication 已调用 snapshot；episode 最终导出仍使用
+  records/export。当前调用请求全量记录，尚未按 publication 所需 observation ID 做子集投影。
 
 main 第一次 dirty smoke（200v200、2 个侦察节点、seed 1151、2.2 s）暴露 append 处理缺口：
 1,584 次正常 append 触发 1,584 次 `checkpoint_suffix_appended` 物化，逻辑刷新和物化记录
@@ -49,8 +83,9 @@ main 第一次 dirty smoke（200v200、2 个侦察节点、seed 1151、2.2 s）�
 append 物化为 0，压缩率 `19.27017%`。剩余物化原因全部来自 1,372 个
 `public_evidence_snapshot` ledger；两臂 consistency digest 均为
 `sha256:b579e62b65169791a1c9526eb5310ba7016149ddd501efe34e82a732c8bbda3a`。
-reference/candidate D1 fusion 为 `2.40147/2.30535 s`。该结果确认 append 修复有效，也表明
-main 在线 publication 仍调用兼容全量接口；D1 本轮不修改 main。
+reference/candidate D1 fusion 为 `2.40147/2.30535 s`。该历史 dirty smoke 确认 append
+修复有效，也暴露了当时在线 publication 调用兼容全量接口的问题；后续正式矩阵已经改用
+非破坏性 snapshot，但仍请求全量 evidence。
 
 2026-07-25 的冻结模块微基准使用
 `d1-replay-prefix-summary-200v200-20260725`，fixture SHA-256 为
@@ -88,10 +123,8 @@ D1 模块测试，不替代 main 改接后的同场景复跑。
 append 压缩至少 20%、在线 snapshot 不物化及全部语义门通过；本轮模块微基准通过。D1
 全量回归为 `488 passed in 30.96s`。
 
-该结论只允许 main 评审是否预注册新的同提交 short/long 正式矩阵。当前
-`main_default_promotion_claimed=false`，reference 继续作为默认；尚无 main 正式矩阵、
-改接 snapshot 后的 dirty/clean 集成复跑、AirSim、系统实时倍率、目标硬件、实机或实飞
-证据。报告位于
+上述模块微基准只记录候选形成过程，不能覆盖 D6 的正式 `reject`。
+`main_default_promotion_allowed=false`，reference 继续作为默认。D1 模块报告位于
 `reports/D1_REPLAY_PREFIX_SUMMARY_PERFORMANCE_20260725_CN.md` 和同名 JSON。
 
 ### 第三十五阶段：模态感知保守稀疏预筛正式拒绝

@@ -10,6 +10,33 @@
 
 ### 固定滞后回放前缀累计摘要候选
 
+#### 正式状态
+
+2026-07-25，D6 对 producer clean commit
+`7d2e987471b521a1e531bf03a5c99af5096f676a` 和 matrix SHA-256
+`85432d729877eff97e6f3dd517d4baa7a47f44a4fa42e6bfdc7ce85b8d9ec74b`
+完成同提交独立评估。冻结输入为 200 个目标、200 个资源、2 个侦察节点；short seeds
+1151-1160 各 2.2 秒，long seeds 1151-1153 各 10 秒，共 13 pair/26 个 fresh
+episode，0 reused、0 failed。
+
+正式 verdict 为 `reject`。`main_default_promotion_allowed=false`，
+`system_realtime_gap_closed=false`。失败门为：
+
+1. short candidate 更快 `5/10 < 8/10`；
+2. short D1 fusion 改善 `0.959611% < 1%`；
+3. short paired bootstrap 相对变化 95% 上界 `0.619827% > 0%`；
+4. short core 改善 `-0.256641% < 0.25%`；
+5. long core 改善 `-1.930083% < 0.25%`。
+
+13/13 pair 的业务语义、consistency evidence digest/count、原 D1 operation counts、
+实现身份、诊断守恒和在线真值隔离通过。long D1 fusion 改善 `2.361778%`，内部物化记录
+减少 `52.150746%`，RSS 和 D2 均值门通过。候选最低 RTF 为 `0.197441`。在线 snapshot
+投影构造 `656481` 条记录，说明当前主要剩余成本已从内部物化转向全量返回记录构造。
+
+reference `per_checkpoint_prefix_rebuild_v1` 保持 D1 和 main 默认。candidate
+`fixed_lag_checkpoint_prefix_cumulative_summary_v1` 保留为默认关闭的显式研究入口。
+不得删除候选、声称晋升或修改冻结矩阵解释。本结果只覆盖三维质点仿真。
+
 构造参数 `replay_prefix_summary` 提供显式 A/B：
 
 ```python
@@ -154,21 +181,22 @@ fixed-lag rebase 和后续 summary fallback 各物化 200 次。全部 summary �
 压缩率 100%；一次有效 snapshot 投影 200 个 ledger 和 400 条返回记录，最终 records 后
 pending 为 0。该派生测试锁定 `>=20%` 门，不降低阈值。
 
-main append 修复后的 dirty smoke 仍使用全量 records 做在线 publication：
+main append 修复后的历史 dirty smoke 仍使用全量 records 做在线 publication：
 `summary_hit/reused/logical/materialized=1584/7103/8687/7013`，压缩
 `19.27017%`，1,372 个 materialization reason 全为 `public_evidence_snapshot`。两臂
 consistency digest 均为
 `sha256:b579e62b65169791a1c9526eb5310ba7016149ddd501efe34e82a732c8bbda3a`，
-D1 fusion 为 `2.40147/2.30535 s`。因此 D1 模块接口与测试已经完成，main 仍需把在线
-publication 改接 snapshot；最终 offline export 保持 records/export。
+D1 fusion 为 `2.40147/2.30535 s`。正式三维质点矩阵已经把在线 publication 改接
+snapshot；最终 offline export 保持 records/export。当前在线调用仍请求全量 evidence。
 
 每对的后验、协方差、NIS、门控 ID、consistency evidence、既有 operation counts、
 双时间戳/gate metadata、checkpoint 和公开 `GlobalTrack` 哈希均相同。candidate 的新增
 diagnostics 单独比较，不混入既有 operation-count 等价门。
 
-当前结论仅为模块微基准通过。selector 仍默认 reference，尚未执行 main 同提交正式矩阵，
-也未执行 main 改接 snapshot 后的 dirty smoke。不得写成默认准入、系统实时或 AirSim/
-硬件证据。
+模块微基准通过仅记录候选形成过程。main 同提交正式矩阵已经完成并给出 `reject`，selector
+继续默认 reference。下一候选只计划按 publication 所需 observation ID 投影 snapshot，
+必须使用新的 implementation ID、独立预注册矩阵和 D6 独立判定；不得复用本候选身份或
+覆盖冻结结论。该下一候选尚未实现。不得把本节写成默认准入、系统实时、AirSim 或硬件证据。
 
 ### 正式拒绝后保持默认关闭的模态感知保守预筛
 

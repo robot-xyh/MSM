@@ -8,6 +8,27 @@
 
 ### 固定滞后回放前缀累计摘要
 
+该候选已经完成正式多种子判定，结论为拒绝。D6 评估绑定 producer clean commit
+`7d2e987471b521a1e531bf03a5c99af5096f676a` 和 matrix SHA-256
+`85432d729877eff97e6f3dd517d4baa7a47f44a4fa42e6bfdc7ce85b8d9ec74b`。
+冻结场景包含 200 个目标、200 个资源和 2 个侦察节点；short seeds 1151-1160 各
+2.2 秒，long seeds 1151-1153 各 10 秒，共 13 pair/26 个 fresh episode，0 reused、
+0 failed。
+
+五个正式失败门分别是：short candidate 更快 `5/10 < 8/10`，short D1 fusion 改善
+`0.959611% < 1%`，short paired bootstrap 相对变化 95% 上界
+`0.619827% > 0%`，short core 改善 `-0.256641% < 0.25%`，long core 改善
+`-1.930083% < 0.25%`。因此
+`main_default_promotion_allowed=false`、`system_realtime_gap_closed=false`。
+reference `per_checkpoint_prefix_rebuild_v1` 保持默认，candidate
+`fixed_lag_checkpoint_prefix_cumulative_summary_v1` 仅保留为默认关闭的研究入口。
+
+13/13 pair 的业务语义、consistency evidence digest/count、原 D1 operation counts、
+实现身份、诊断守恒和在线真值隔离通过。long D1 fusion 改善 `2.361778%`，内部物化记录
+减少 `52.150746%`，RSS 与 D2 均值门通过。候选最低 RTF 为 `0.197441`；在线 snapshot
+仍投影构造 `656481` 条记录。正式准入要求所有冻结门通过，因此这些局部通过项不能改变
+`reject`。
+
 固定滞后回放把迟到量测插回量测时间，并从较早状态重新预测和更新。现有 checkpoint 已保存
 每次更新后的状态、协方差、归一化创新平方（NIS）和门控结果。当同一完整前缀没有变化时，
 重新计算滤波更新已经被消除，但代码仍逐条读取 checkpoint，以重建 NIS 序列、门控观测 ID
@@ -54,8 +75,9 @@ main 第一轮 dirty smoke（200v200、2 个侦察节点、seed 1151、2.2 s）�
 消除压缩收益：1,584 次 append 形成 1,584 次物化，逻辑刷新和物化记录均为 8,687，压缩率
 0。append 修复后，main 再次得到 `summary_hit=1584`、`reused=7103`、
 `logical=8687`、`materialized=7013`，append 物化为 0，压缩率 `19.27017%`。1,372 个
-剩余物化原因全部是 `public_evidence_snapshot`，因为在线 publication 仍调用兼容全量
-records。两臂 consistency digest 相同。该现象是接口接线和执行成本缺口，不是语义差异。
+剩余物化原因全部是 `public_evidence_snapshot`，因为当时在线 publication 仍调用兼容全量
+records。两臂 consistency digest 相同。该历史现象是接口接线和执行成本缺口，不是语义
+差异；正式矩阵已使用非破坏性 snapshot，但仍请求全量 evidence。
 
 2026-07-25 冻结微基准使用 200 个目标、200 个资源和 2 个侦察节点的场景元数据。8 个扫描
 生成 1,600 条匿名雷达观测，固定滞后窗口仍为 6 秒；建轨阶段每个扫描后读取一次精确
@@ -76,11 +98,17 @@ snapshot 内部物化为 0。投影仍有校验和对象构造成本，不能把
 pending 为 0。该测试锁定既有 `>=20%` 门。
 
 7/7 对的后验、协方差、NIS、门控 ID、一致性证据、既有操作计数、双时间戳与门控元数据、
-逐扫描 snapshot 序列、checkpoint 和公开 `GlobalTrack` 精确相同。模块微基准门通过，
-但 main 在线 publication 尚未改接 snapshot，也尚未进入 clean short/long 正式矩阵。候选
-保持默认关闭，不代表系统实时、AirSim、硬件或实飞能力。
+逐扫描 snapshot 序列、checkpoint 和公开 `GlobalTrack` 精确相同。该模块微基准是候选
+形成历史，不能覆盖上述正式拒绝。候选保持默认关闭，不代表系统实时、AirSim、硬件或
+实飞能力。
 专项回归还在四个 checkpoint 的中间插入迟到观测，确认 revision 推进、旧后缀失败关闭并
 按新顺序重建。D1 全量回归为 `488 passed in 30.96s`。
+
+下一候选只计划按 publication 实际消费的 observation ID 集合投影 snapshot，减少无关
+返回记录构造。它必须使用新的 implementation ID、独立预注册矩阵和 D6 独立判定，保持
+未知 ID、跨航迹 ID 和证据所有权异常失败关闭，并保留最终全量 evidence 导出。本计划
+尚未实现，也不能改写本次冻结 `reject`。本节正式证据只来自三维质点仿真，不覆盖 AirSim、
+目标硬件、实机、实飞或正式 RMSE/NEES/NIS。
 
 ### 模态感知保守稀疏预筛正式拒绝后的治理
 

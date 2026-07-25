@@ -5,11 +5,27 @@
 
 ---
 
-## 最新增量：固定滞后回放前缀累计摘要研究候选（2026-07-25）
+## 最新增量：固定滞后回放前缀累计摘要正式拒绝（2026-07-25）
+
+- D6 已对 producer clean commit
+  `7d2e987471b521a1e531bf03a5c99af5096f676a`、matrix SHA-256
+  `85432d729877eff97e6f3dd517d4baa7a47f44a4fa42e6bfdc7ce85b8d9ec74b`
+  完成独立评估。场景为 200 个目标、200 个资源和 2 个侦察节点；short seeds
+  1151-1160 各 2.2 秒，long seeds 1151-1153 各 10 秒，共 13 pair/26 个 fresh
+  episode，0 reused、0 failed。
+- 正式 verdict 为 `reject`，`main_default_promotion_allowed=false`，
+  `system_realtime_gap_closed=false`。失败门为 short 更快 `5/10 < 8/10`、short D1
+  改善 `0.959611% < 1%`、short bootstrap 95% 上界 `0.619827% > 0%`、short core
+  改善 `-0.256641% < 0.25%`、long core 改善 `-1.930083% < 0.25%`。
+- 13/13 pair 的业务语义、consistency evidence digest/count、原 D1 operation counts、
+  实现身份、诊断守恒和在线真值隔离通过。long D1 改善 `2.361778%`，内部物化记录减少
+  `52.150746%`，RSS 和 D2 均值门通过。候选最低 RTF 为 `0.197441`，系统实时未闭合。
+- 在线 snapshot 投影构造 `656481` 条记录。该计数说明内部物化削减没有消除全量快照
+  返回对象的构造成本，是下一研究候选的直接依据。
 
 - D1 已实现默认关闭的 `fixed_lag_checkpoint_prefix_cumulative_summary_v1`。reference
   `per_checkpoint_prefix_rebuild_v1` 仍是 `FusionAdapter` 和
-  `Scalable3DFusionAdapter` 的声明默认，`main_default_promotion_claimed=false`。
+  `Scalable3DFusionAdapter` 及 main 的默认。candidate 仅作显式研究入口，不得声称晋升。
 - 候选只复用现有 checkpoint 已经证明过的完整前缀结果。命中前检查前缀完整性、首尾
   observation 身份与排序、checkpoint 修订、summary schema、consistency evidence 结构修订
   和当前回放上下文。任何条件不满足都回到原逐条路径。
@@ -37,8 +53,8 @@
   `public_evidence_snapshot`。两臂 consistency digest 均为
   `sha256:b579e62b65169791a1c9526eb5310ba7016149ddd501efe34e82a732c8bbda3a`，
   D1 fusion 为 `2.40147/2.30535 s`。
-- 上述 19.27% 不是语义 blocker。main 在线 publication 仍调用兼容全量 records。D1 已提供
-  snapshot 合同和模块证据，main 需在 D1 完成后跨模块改接；D1 不修改 scalable/main。
+- 上述 19.27% 是正式矩阵前的历史 dirty smoke。正式三维质点矩阵已使用非破坏性
+  snapshot，但调用仍请求全量 evidence；最终 offline export 保持 records/export。
 - diagnostics 可区分 attempt、hit、fallback、fallback 原因、summary 构建、
   checkpoint/NIS/门控 ID 复用、逻辑 evidence 刷新、snapshot 投影和物化原因。既有
   `history_replay_count`、`replay_checkpoint_reuse_count` 和
@@ -76,12 +92,14 @@
   清空 pending。
 - 最后源码状态的 D1 全量回归为 `488 passed in 30.96s`；新增和修改的 Python 入口均通过
   `py_compile`。
-- 当前状态是 **P1 模块候选通过，main clean 同提交 short/long 正式矩阵开放**。模块报告
-  记录 Git HEAD、关键源码 SHA-256 和 `working_tree_commit_claimed=false`，不冒充正式
-  clean 证据。main 需先改接在线 snapshot 并复跑同配置，再决定是否启动正式矩阵；最终
-  admit/reject 由 main 和 D6 决定。
+- 模块微基准通过只作为候选形成历史。正式准入已经以 `reject` 审结，reference 保持默认，
+  candidate 保持默认关闭。本次 source commit、matrix SHA、门限、失败 pair 和 D6 verdict
+  不得调整或覆盖。
+- 下一候选只计划按 publication 所需 observation ID 集合投影 snapshot。它必须使用新的
+  selector、implementation ID、schema、独立预注册矩阵和 D6 独立判定；不得复用本候选身份
+  或改写本次拒绝结论。该下一候选尚未实现。
 - 本轮没有改变 AirSim producer、DTO、episode、坐标或双时间戳合同；新增了 D1 runtime
-  publication 只读接口。`docs/AIRSIM_INTEGRATION_PLAN.md` 已同步 main 接线边界。当前结果
+  publication 只读接口。`docs/AIRSIM_INTEGRATION_PLAN.md` 已同步正式默认状态和接线边界。当前结果
   不是 AirSim、目标硬件、实机、实飞、系统实时、RMSE、NEES 或 NIS 证据。
 
 ## 最新增量：模态感知保守稀疏预筛正式拒绝（2026-07-25）

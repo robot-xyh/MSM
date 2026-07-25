@@ -2,8 +2,23 @@
 
 ## 0. 在线证据发布边界（2026-07-25）
 
-- D1 固定滞后回放前缀累计摘要候选仍默认关闭。AirSim producer、观测 DTO、双时间戳、
-  covariance、NED、`GlobalTrack` 和 episode 数据合同没有改变。
+- D1 固定滞后回放前缀累计摘要候选已经完成三维质点正式评估。producer clean commit 为
+  `7d2e987471b521a1e531bf03a5c99af5096f676a`，matrix SHA-256 为
+  `85432d729877eff97e6f3dd517d4baa7a47f44a4fa42e6bfdc7ce85b8d9ec74b`。
+  short seeds 1151-1160、long seeds 1151-1153 共形成 13 pair/26 个 fresh episode；
+  场景为 200 个目标、200 个资源和 2 个侦察节点。
+- D6 verdict 为 `reject`，`main_default_promotion_allowed=false`，
+  `system_realtime_gap_closed=false`。reference `per_checkpoint_prefix_rebuild_v1`
+  继续作为默认，candidate `fixed_lag_checkpoint_prefix_cumulative_summary_v1` 保持
+  默认关闭。候选最低 RTF 为 `0.197441`。
+- 正式失败门为 short 更快 `5/10 < 8/10`、short D1 改善
+  `0.959611% < 1%`、short bootstrap 上界 `0.619827% > 0%`、short core 改善
+  `-0.256641% < 0.25%` 和 long core 改善 `-1.930083% < 0.25%`。13/13 语义、
+  consistency、原 operation counts、实现身份、诊断守恒和真值隔离通过，不能覆盖性能门
+  失败。
+- 该正式矩阵只覆盖三维质点仿真，不是 AirSim 证据。AirSim producer、观测 DTO、双时间戳、
+  covariance、NED、`GlobalTrack` 和 episode 数据合同没有改变，也没有因该候选获得实时
+  准入。
 - main/runtime bus 的在线 publication 若只需要当下证据视图，应调用
   `consistency_evidence_snapshot(observation_ids=None)`。该接口返回精确不可变记录，并在
   candidate 启用时非破坏性叠加 pending replay counter；不得返回陈旧
@@ -12,8 +27,12 @@
   `export_consistency_evidence()`。两者保留全量精确物化语义，完成后 pending ledger
   必须为 0。
 - 当前 D1-owned 模块测试已覆盖重复 snapshot、append 后 snapshot、snapshot 后中间迟到
-  量测、子集 ID 和最终导出。main 尚未修改跨模块调用点；AirSim 或 scalable runtime
-  改接后需复核最终 evidence digest、snapshot/append 物化原因和 ledger 守恒。
+  量测、子集 ID 和最终导出。scalable 三维质点正式矩阵已经使用 snapshot，并保持最终
+  evidence digest、operation counts 和 ledger 守恒；在线路径仍全量投影构造 `656481`
+  条记录。AirSim runtime 尚无同配置 A/B 证据。
+- 下一候选只计划按 publication 所需 observation ID 集合投影 snapshot。它必须使用新的
+  implementation ID、独立预注册矩阵和 D6 判定，不得改写本次三维质点 `reject`。在
+  AirSim 接线前仍需验证 ID 所有权、未知 ID 失败关闭和最终全量导出。
 - 该 API 区分只改变证据读取成本，不改变 6 秒 fixed-lag、量测更新、NIS、门控、后验或
   AirSim sensor adapter。模块微基准不能替代 AirSim episode 性能证据。
 
