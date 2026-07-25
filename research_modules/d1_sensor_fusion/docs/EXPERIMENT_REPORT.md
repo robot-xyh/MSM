@@ -1,10 +1,12 @@
 # 第一研究模块实验结果
 
-## 匀速模型矩阵复用专项
+## 匀速模型矩阵复用正式准入
 
 **证据日期：2026-07-24**
 
-**范围：D1 匀速状态传播热点，不含扫描输入、关联、量测更新、D2 或 AirSim**
+**范围：D1 模块热点基准和 200 个目标、200 个资源、2 个侦察节点的三维质点集成矩阵**
+
+### 模块热点基准
 
 剖析输入为 200v200、seed 1101、2.2 s 三维质点运行。`predict_to()` 共执行 32,345 次，
 `cv_transition()` 和 `cv_process_noise()` 各执行 32,217 次。候选只缓存精确
@@ -29,9 +31,59 @@
 
 机器可读结果和中文摘要位于
 `../reports/d1_cv_motion_model_cache_performance_20260724.json` 与
-`../reports/D1_CV_MOTION_MODEL_CACHE_PERFORMANCE_20260724_CN.md`。本试验没有运行
-200v200 clean 多 seed 集成矩阵，不能将 `2.123x` 写成 D1 全融合或系统实时改善。候选默认
-关闭，待 main 接入实现身份、诊断和正式 A/B。
+`../reports/D1_CV_MOTION_MODEL_CACHE_PERFORMANCE_20260724_CN.md`。该局部试验不单独用于
+全栈准入。
+
+### 正式矩阵
+
+正式证据绑定 clean source commit
+`44223566439a446fc49f2a3fd861d1d51bd676b9` 和冻结矩阵 SHA-256
+`9898656598f0fa282620afe2384a3d656b7496f8957109c413bcb62069fd2e9a`。short 使用
+seeds 1101-1110，每组 2.2 s；long 使用 seeds 1101-1103，每组 10 s。13 pair 对应
+26 个全新 arm，reference/candidate 均来自同一提交。两臂实现分别为
+`per_prediction_build_v1` 和 `bounded_exact_lru_v1`，缓存容量固定为 128。
+
+| 组别 | D1 fusion reference | candidate | 逐 pair 改善 | candidate 更快 | 核心墙钟改善 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| short | `3.289739 s` | `3.061518 s` | `6.9271%` | `10/10` | `2.4060%` |
+| long | `23.304548 s` | `21.776847 s` | `6.6103%` | `3/3` | `2.4537%` |
+
+short 的配对原始相对变化 bootstrap 95% 区间为
+`[-7.7968%, -6.0841%]`。long 三个 pair 均更快。下游和资源指标如下：
+
+| 指标 | Short | Long |
+| --- | ---: | ---: |
+| D2 association 变化 | `-0.1082%` | `-2.6729%` |
+| RSS 均值增幅 | `0.0145%` | `0.2959%` |
+| 组内单 pair RSS 最大增幅 | `0.0553%` | `0.8629%` |
+
+负的 D2 变化表示耗时下降。全部 13 pair 中的 RSS 最大增幅为 `0.8629%`。
+
+### 缓存审计
+
+| 指标 | Reference | Candidate |
+| --- | ---: | ---: |
+| 预测请求 | 896,820 | 896,820 |
+| 正时间传播模型构造 | 875,031 | 3,535 |
+| 缓存命中 | 0 | 871,496 |
+| 缓存未命中 | 0 | 3,535 |
+| 构造减少率/命中率 | 不适用 | `99.5960%/99.5960%` |
+| 单 arm 最大当前/峰值条目 | 0 | `128/128` |
+
+预测请求与模型构造守恒在每个 arm 独立检查。13/13 业务语义、有限状态、在线真值隔离、显式
+实现身份和缓存审计全部通过。D6 判定 `d1_optimization_admitted=true`。
+
+### 结论与边界
+
+D1 `FusionAdapter` 默认仍为 `cached_cv_motion_model=False`，用于独立调用兼容和参考回归。
+main 集成默认已晋级为 `bounded_exact_lru_v1`，并通过 scalable 3D 全量 `212 tests`。
+正式 D6 报告位于
+`research_modules/d6_evaluation_metrics/outputs/`
+`d1_cv_motion_model_cache_multiseed_20260724_formal_4422356/`。
+
+候选最低实时因子为 `0.1739499`，`system_realtime_gap_closed=false`。本试验没有运行
+AirSim，也没有目标硬件、RMSE、NEES 或 NIS 证据。它关闭匀速模型缓存候选的正式准入 P1，
+不关闭平台、融合精度、统计一致性或系统实时 P1。
 
 ## GlobalTrack 发布元数据 v2 正式准入
 

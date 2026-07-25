@@ -8,7 +8,7 @@
 
 ## 0. 当前正式治理 GAP 增量（2026-07-24）
 
-### 匀速模型矩阵复用候选
+### 匀速模型矩阵复用正式准入
 
 `process_scan_batch` 的函数级剖析显示，32,217 次匀速预测重复构造相同形式的状态转移和过程
 噪声矩阵。D1 已实现默认关闭的
@@ -18,9 +18,30 @@
 
 200 状态、100 步、7 次交替专项中，中位墙钟
 `0.220679 -> 0.103950 s`，矩阵构造 `20,000 -> 8`，最终状态 SHA-256 一致；专项
-`6 passed`，D1 全量 `395 passed in 21.41s`。D1-owned 实现、缓存边界和模块等价子项已关闭。
-main 尚未把 selector/诊断接入同提交 13-pair 正式矩阵，因此“候选全栈准入”和“系统实时容量”
-仍为 P1。正式准入前默认保持 reference。
+`6 passed`，当次 D1 全量 `395 passed in 21.41s`。D1-owned 实现、缓存边界和模块等价子项
+已关闭。
+
+main 随后把 selector 和缓存诊断接入运行配置、manifest、governance 与 episode summary。
+正式证据绑定 source commit
+`44223566439a446fc49f2a3fd861d1d51bd676b9` 和矩阵 SHA-256
+`9898656598f0fa282620afe2384a3d656b7496f8957109c413bcb62069fd2e9a`。200 目标、
+200 资源、2 侦察节点的 short 10 pair 和 long 3 pair 共形成 26 个全新 arm；13/13
+业务语义、有限状态、在线真值隔离、实现身份和缓存审计通过。
+
+short D1 fusion `3.289739 -> 3.061518 s`，改善 `6.9271%`、10/10 更快，配对原始变化
+bootstrap 95% 区间 `[-7.7968%, -6.0841%]`；long 为
+`23.304548 -> 21.776847 s`，改善 `6.6103%`、3/3 更快。核心墙钟 short/long 改善
+`2.4060%/2.4537%`，D2 association 变化 `-0.1082%/-2.6729%`。RSS 均值增幅
+`0.0145%/0.2959%`，任一 pair 最大 `0.8629%`。
+
+预测请求共 896,820 次。reference 构造 875,031 次模型；candidate 构造 3,535 次、命中
+871,496 次，构造减少率和命中率均为 `99.5960%`。D6 判定
+`d1_optimization_admitted=true`，所以“候选正式全栈准入”P1 已关闭。
+
+D1 `FusionAdapter` 默认 `cached_cv_motion_model=False` 保持兼容；main 集成默认已晋级为
+`bounded_exact_lru_v1`，reference 保留，scalable 3D 全量 `212 tests` 已通过。候选最低
+实时因子只有 `0.1739499`，`system_realtime_gap_closed=false`。系统实时、AirSim、目标
+硬件、RMSE、NEES 和 NIS 继续作为独立 P1，不因本项准入关闭。
 
 ### GlobalTrack 发布元数据 v2 正式准入
 

@@ -5,7 +5,7 @@
 
 ---
 
-## 最新增量：匀速模型矩阵复用候选（2026-07-24）
+## 最新增量：匀速模型矩阵复用正式准入（2026-07-24）
 
 - 剖析调用链为 `process_scan_batch -> _predict_all_to/
   _state_from_complete_replay_checkpoints/_replay_record -> predict_to`。代表 profile 中
@@ -21,8 +21,24 @@
   `0.220679 -> 0.103950 s`，热点内 `2.123x`；模型构造 `20,000 -> 8`，最终状态摘要严格
   一致。专项 `6 passed`，D1 全量 `395 passed in 21.41s`。
 - 本项没有删减发布、降频、缩短 fixed-lag、放宽门控、跳过协方差治理或使用在线真值。
-  D1-owned 候选和模块证据完成；main selector/manifest/正式 13-pair 多 seed 准入仍为 P1。
-  默认保持 reference，专项收益不得外推为系统实时结论。
+  D1-owned 候选和模块证据完成。
+- 正式证据绑定 source commit
+  `44223566439a446fc49f2a3fd861d1d51bd676b9` 和矩阵 SHA-256
+  `9898656598f0fa282620afe2384a3d656b7496f8957109c413bcb62069fd2e9a`。场景为
+  200 目标、200 资源和 2 个侦察节点；short 10 pair、long 3 pair，共 26 个全新 arm。
+- 13/13 业务语义、有限状态、在线真值隔离、实现身份和缓存审计通过。short D1 fusion
+  `3.289739 -> 3.061518 s`，改善 `6.9271%`、10/10 更快，bootstrap 95% 区间
+  `[-7.7968%, -6.0841%]`；long 为 `23.304548 -> 21.776847 s`，改善 `6.6103%`、
+  3/3 更快。
+- 核心墙钟 short/long 改善 `2.4060%/2.4537%`；D2 association 变化
+  `-0.1082%/-2.6729%`；RSS 均值增幅 `0.0145%/0.2959%`，任一 pair 最大
+  `0.8629%`。
+- 896,820 次预测请求中，reference 构造 875,031 次；candidate 构造 3,535 次、命中
+  871,496 次，构造减少率和命中率均为 `99.5960%`。D6 判定
+  `d1_optimization_admitted=true`。
+- D1 `FusionAdapter` 默认 `cached_cv_motion_model=False` 保持兼容；main 集成默认已晋级为
+  `bounded_exact_lru_v1`，scalable 3D 全量 `212 tests` 已通过。最低实时因子
+  `0.1739499`，系统实时、AirSim、目标硬件、RMSE、NEES 和 NIS P1 继续开放。
 
 ## 最新增量：GlobalTrack 发布元数据 v2 正式准入（2026-07-24）
 
@@ -1688,3 +1704,63 @@ D1 模块自身布尔构造默认仍为 `False`，供独立调用方保持 refer
 候选最低实时因子为 `0.1730801`，`system_realtime_gap_closed=false`。后续 P1 包括系统实时
 容量和逐批 D2 审计明细。本次正式证据不含 AirSim、目标硬件、RMSE、NEES、NIS 或物理拦截，
 不得外推为相应验收结论。
+
+## 34. 匀速模型精确有界缓存准入评审（2026-07-24）
+
+### 34.1 评审边界
+
+候选只复用由精确 `(dt, process_noise)` 决定的状态转移矩阵与过程噪声矩阵。缓存采用有界
+最近最少使用淘汰，容量固定为 128；矩阵只读。每条航迹的状态和协方差传播、固定滞后重放、
+量测更新、关联、发布、正半定治理、双时间戳、NED 和来源谱系继续逐次执行。
+
+正式 reference/candidate 为 `per_prediction_build_v1/bounded_exact_lru_v1`，实现 ID 分别为
+`d1.fusion.cv_motion_model.per_prediction_build.v1` 和
+`d1.fusion.cv_motion_model.bounded_exact_lru.v1`。D1 `FusionAdapter` 的布尔默认保持
+`cached_cv_motion_model=False`。该默认服务独立调用兼容；main 集成默认已晋级为
+`bounded_exact_lru_v1`，并通过 scalable 3D 全量 `212 tests`。
+
+### 34.2 正式证据
+
+正式矩阵绑定 clean source commit
+`44223566439a446fc49f2a3fd861d1d51bd676b9`，矩阵 SHA-256 为
+`9898656598f0fa282620afe2384a3d656b7496f8957109c413bcb62069fd2e9a`。场景为 200 个目标、
+200 个资源和 2 个侦察节点。short 使用 seeds 1101-1110、每组 2.2 s；long 使用 seeds
+1101-1103、每组 10 s。13 pair 对应 26 个全新 arm。
+
+13/13 pair 的业务语义、有限状态、在线真值隔离、显式实现身份和缓存审计全部通过。正式
+D6 报告目录为
+`research_modules/d6_evaluation_metrics/outputs/`
+`d1_cv_motion_model_cache_multiseed_20260724_formal_4422356/`。
+
+| 指标 | Short | Long |
+| --- | ---: | ---: |
+| D1 fusion reference | `3.289739 s` | `23.304548 s` |
+| D1 fusion candidate | `3.061518 s` | `21.776847 s` |
+| 逐 pair 改善 | `6.9271%` | `6.6103%` |
+| candidate 更快 | `10/10` | `3/3` |
+| 核心墙钟改善 | `2.4060%` | `2.4537%` |
+| D2 association 变化 | `-0.1082%` | `-2.6729%` |
+| RSS 均值增幅 | `0.0145%` | `0.2959%` |
+
+short D1 fusion 配对原始相对变化的 bootstrap 95% 区间为
+`[-7.7968%, -6.0841%]`。全部 pair 的 RSS 最大增幅为 `0.8629%`。
+
+### 34.3 缓存守恒
+
+两臂均记录 896,820 次预测请求和 21,789 次非正时间差 reference bypass。reference 在
+875,031 次正时间传播中构造模型。candidate 构造 3,535 次、命中 871,496 次；miss 与构造
+均为 3,535，模型构造减少率和命中率均为 `99.5960%`。每个 arm 的当前条目和峰值条目均不
+超过 128。
+
+这些计数证明候选只消除了相同精确键的重复矩阵构造。它没有减少预测请求，没有把非正时间差
+改成传播，也没有通过量化时间差提高命中率。
+
+### 34.4 结论与开放项
+
+D6 判定 `d1_optimization_admitted=true`。D1 匀速模型缓存的模块实现与正式全栈准入 P1
+关闭。候选最低实时因子为 `0.1739499`，未达到系统实时门限 1.0，因此
+`system_realtime_gap_closed=false`。
+
+继续开放的 P1 为 AirSim 运行证据、目标硬件周期与内存、长时容量、融合均方根误差
+（RMSE）、归一化估计误差平方（NEES）、归一化创新平方（NIS）和系统实时性。本次正式准入
+不得被表述为这些项目已经验收。

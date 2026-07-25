@@ -1,8 +1,8 @@
 # D1 多传感器融合与目标配准实施计划
 
-## P1 匀速模型矩阵复用候选（2026-07-24）
+## P1 匀速模型矩阵复用正式准入结果（2026-07-24）
 
-### 已完成
+### D1-owned 实施
 
 1. 依据 `process_scan_batch -> _predict_all_to/_state_from_complete_replay_checkpoints/
    _replay_record -> predict_to` 调用链，选择匀速模型矩阵重复构造作为单一候选。未同时修改
@@ -24,13 +24,44 @@
 `reports/D1_CV_MOTION_MODEL_CACHE_PERFORMANCE_20260724_CN.md` 和对应 JSON。该基准只覆盖
 匀速传播热点，不是 200v200 全栈准入。
 
-### 下一步
+### 正式系统准入
 
-main 需要在运行配置中增加 reference/candidate selector，将
-`cv_motion_model_cache_diagnostics()` 绑定到 manifest、governance 和 summary，然后从同一
-clean commit 运行 short 10 seed 与 long 3 seed。准入继续要求业务语义、有限状态、在线真值
-隔离、RSS、D2 回归和核心墙钟门全部通过。正式结论前 D1 默认保持 reference，不以专项
-`2.123x` 外推系统实时收益。
+main 已将 reference/candidate selector 和
+`cv_motion_model_cache_diagnostics()` 接入 manifest、governance、运行摘要和最终诊断。
+正式矩阵绑定 clean source commit
+`44223566439a446fc49f2a3fd861d1d51bd676b9`，矩阵 SHA-256 为
+`9898656598f0fa282620afe2384a3d656b7496f8957109c413bcb62069fd2e9a`。short 使用
+seeds 1101-1110、每组 2.2 s；long 使用 seeds 1101-1103、每组 10 s。场景为 200 个目标、
+200 个资源和 2 个侦察节点，共 13 pair、26 个全新 arm。
+
+| 组别 | D1 fusion reference -> candidate | 逐 pair 改善 | 更快 pair | 核心墙钟改善 |
+| --- | ---: | ---: | ---: | ---: |
+| short | `3.289739 -> 3.061518 s` | `6.9271%` | `10/10` | `2.4060%` |
+| long | `23.304548 -> 21.776847 s` | `6.6103%` | `3/3` | `2.4537%` |
+
+short 的配对原始相对变化 bootstrap 95% 区间为
+`[-7.7968%, -6.0841%]`。D2 association 的 short/long 变化为
+`-0.1082%/-2.6729%`；RSS 均值增幅为 `0.0145%/0.2959%`，任一 pair 最大
+`0.8629%`。全部 13 pair 的业务语义、有限状态、在线真值隔离、显式实现身份和缓存审计
+通过。
+
+896,820 次预测请求中，reference 模型构造 875,031 次；candidate 构造 3,535 次、命中
+871,496 次，模型构造减少率和命中率均为 `99.5960%`。D6 判定
+`d1_optimization_admitted=true`，因此匀速模型缓存正式准入 P1 关闭。
+
+### 默认边界与后续计划
+
+1. D1 `FusionAdapter` 的 `cached_cv_motion_model=False` 默认保持不变，兼容直接调用和
+   reference 回归。main 集成默认已晋级为 `bounded_exact_lru_v1`，并保留
+   `per_prediction_build_v1` 对照；scalable 3D 全量 `212 tests` 已通过。
+2. 候选最低实时因子为 `0.1739499`，`system_realtime_gap_closed=false`。继续在目标处理器、
+   AirSim 和更长时场景验证周期、尾延时、资源占用及容量。
+3. 本矩阵没有提供 RMSE、NEES、NIS、AirSim 或目标硬件证据。融合精度、统计一致性、平台
+   集成和系统实时 P1 均保持开放。
+4. 正式 D6 报告只读引用
+   `research_modules/d6_evaluation_metrics/outputs/`
+   `d1_cv_motion_model_cache_multiseed_20260724_formal_4422356/`；后续回归必须继续绑定
+   source commit、冻结矩阵哈希、实现身份和缓存诊断。
 
 ## P1 GlobalTrack 发布元数据 v2 正式准入结果（2026-07-24）
 

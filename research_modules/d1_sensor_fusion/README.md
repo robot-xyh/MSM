@@ -4,11 +4,11 @@ Offline research module for radar, acoustic, EO, and optional synthetic lidar he
 
 ## 当前性能与治理证据（2026-07-24）
 
-### 第二十八阶段：匀速模型矩阵复用候选
+### 第二十八阶段：匀速模型矩阵复用正式准入
 
 函数级剖析显示，200v200、seed 1101、2.2 s 的 D1 路径执行
 `predict_to()` 32,345 次，其中匀速状态转移矩阵和过程噪声矩阵重复构造 32,217 次。
-本阶段只实现一项候选：
+本阶段实现并正式评估一项候选：
 `d1.fusion.cv_motion_model.bounded_exact_lru.v1`。调用方通过
 `cached_cv_motion_model=True` 显式启用；D1 默认仍使用
 `d1.fusion.cv_motion_model.per_prediction_build.v1`。
@@ -22,9 +22,35 @@ Offline research module for radar, acoustic, EO, and optional synthetic lidar he
 D1 专项基准使用 200 个状态、100 个 0.05 s 传播步和 7 次交替采样。reference/candidate
 中位耗时为 `0.220679/0.103950 s`，热点内加速 `2.123x`；矩阵构造
 `20,000 -> 8`，最终状态 SHA-256 严格一致。缓存等价、延迟乱序量测、变异隔离、容量淘汰和
-确定性计数专项 `6 passed`，D1 全量 `395 passed in 21.41s`。这是模块热点证据，尚未完成
-同一 clean commit 的 13-pair 三维质点准入，不能写成全栈实时改善；main 接入前默认保持
-reference。
+确定性计数专项 `6 passed`，当次 D1 全量 `395 passed in 21.41s`。该组数字只说明热点内
+重复矩阵构造可以消除。
+
+正式系统证据来自 clean source commit
+`44223566439a446fc49f2a3fd861d1d51bd676b9`，冻结矩阵 SHA-256 为
+`9898656598f0fa282620afe2384a3d656b7496f8957109c413bcb62069fd2e9a`。场景包含
+200 个目标、200 个资源和 2 个侦察节点；short 10 pair 各运行 2.2 s，long 3 pair 各运行
+10 s，共 26 个全新 arm。13/13 的业务语义、有限状态、在线真值隔离、实现身份和缓存审计
+全部通过。
+
+| 组别 | D1 fusion reference -> candidate | 逐 pair 改善 | candidate 更快 | 核心墙钟改善 |
+| --- | ---: | ---: | ---: | ---: |
+| short | `3.289739 -> 3.061518 s` | `6.9271%` | `10/10` | `2.4060%` |
+| long | `23.304548 -> 21.776847 s` | `6.6103%` | `3/3` | `2.4537%` |
+
+short 的配对原始相对变化 bootstrap 95% 区间为
+`[-7.7968%, -6.0841%]`。D2 association 的 short/long 变化为
+`-0.1082%/-2.6729%`，RSS 均值增幅为 `0.0145%/0.2959%`，任一 pair 最大增幅
+`0.8629%`。896,820 次预测请求中，reference 构造 875,031 次模型；candidate 构造
+3,535 次，命中 871,496 次，构造减少率和命中率均为 `99.5960%`。
+
+D6 判定 `d1_optimization_admitted=true`。D1 模块的 `FusionAdapter` 构造默认仍保持
+`cached_cv_motion_model=False`，以兼容独立调用方；main 集成默认已晋级为
+`bounded_exact_lru_v1`，并保留 `per_prediction_build_v1` 对照。该默认提升已通过
+scalable 3D 全量 `212 tests`。候选最低实时因子仅为 `0.1739499`，所以
+`system_realtime_gap_closed=false`。本次准入不关闭 AirSim、目标硬件、RMSE、NEES、NIS
+或系统实时 P1。正式 D6 报告位于
+`research_modules/d6_evaluation_metrics/outputs/`
+`d1_cv_motion_model_cache_multiseed_20260724_formal_4422356/`。
 
 ### 第二十七阶段：GlobalTrack 发布元数据 v2 正式准入
 
