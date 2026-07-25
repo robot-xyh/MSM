@@ -4,6 +4,28 @@ Offline research module for radar, acoustic, EO, and optional synthetic lidar he
 
 ## 当前性能与治理证据（2026-07-24）
 
+### 第二十八阶段：匀速模型矩阵复用候选
+
+函数级剖析显示，200v200、seed 1101、2.2 s 的 D1 路径执行
+`predict_to()` 32,345 次，其中匀速状态转移矩阵和过程噪声矩阵重复构造 32,217 次。
+本阶段只实现一项候选：
+`d1.fusion.cv_motion_model.bounded_exact_lru.v1`。调用方通过
+`cached_cv_motion_model=True` 显式启用；D1 默认仍使用
+`d1.fusion.cv_motion_model.per_prediction_build.v1`。
+
+候选仅以精确 `(dt, process_noise)` 为键复用只读矩阵。默认容量 128，最大 4,096，采用
+确定性最近最少使用淘汰；非有限键和非正时间差回到 reference。每条航迹的状态与协方差传播、
+固定滞后重放、门控、正半定治理、双时间戳、NED、来源谱系和发布均保持逐次执行。
+`cv_motion_model_cache_diagnostics()` 输出实现 ID、容量、当前/峰值条目及构造、命中、未命中、
+淘汰和绕过计数。
+
+D1 专项基准使用 200 个状态、100 个 0.05 s 传播步和 7 次交替采样。reference/candidate
+中位耗时为 `0.220679/0.103950 s`，热点内加速 `2.123x`；矩阵构造
+`20,000 -> 8`，最终状态 SHA-256 严格一致。缓存等价、延迟乱序量测、变异隔离、容量淘汰和
+确定性计数专项 `6 passed`，D1 全量 `395 passed in 21.41s`。这是模块热点证据，尚未完成
+同一 clean commit 的 13-pair 三维质点准入，不能写成全栈实时改善；main 接入前默认保持
+reference。
+
 ### 第二十七阶段：GlobalTrack 发布元数据 v2 正式准入
 
 正式系统矩阵从 clean source commit

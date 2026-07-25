@@ -8,6 +8,36 @@
 
 ## 当前权威增量（2026-07-24）
 
+### 匀速模型矩阵复用
+
+候选保持原匀速预测方程和浮点运算顺序，只把矩阵构造从每次预测移到有界缓存。缓存键为精确
+二元组 `(dt, process_noise)`，不做时间量化或容差合并。这样不会把相近但不同的时间差误当成
+同一模型。缓存值为写保护的 \(6\times6\) 状态转移矩阵和过程噪声矩阵；预测结果新建状态和
+协方差数组，不持有缓存数组别名。
+
+```python
+reference = FusionAdapter()
+candidate = FusionAdapter(
+    cached_cv_motion_model=True,
+    cv_motion_model_cache_capacity=128,
+)
+```
+
+reference ID 为 `d1.fusion.cv_motion_model.per_prediction_build.v1`，candidate ID 为
+`d1.fusion.cv_motion_model.bounded_exact_lru.v1`。容量必须在 1 至 4,096 之间。满容量时
+淘汰最久未使用的精确键；非有限时间差、非有限过程噪声和非正传播间隔回到原
+`predict_to()`。诊断接口 `cv_motion_model_cache_diagnostics()` 返回实现 ID、容量、当前
+条目和固定大小操作计数，供 main 绑定正式矩阵。
+
+该候选覆盖 `_predict_all_to()`、检查点状态查询和固定滞后重放中的同一预测入口。它不缓存
+航迹状态，不跳过滤波更新，不改变量测时间与到达时间，不减少扫描或发布，也不绕过协方差
+正半定治理。过程噪声属性变化后，键中的新值阻止旧矩阵复用。
+
+模块基准执行 20,000 次 200 航迹重复传播。7 次交替采样的中位墙钟由
+`0.220679 s` 降为 `0.103950 s`，构造次数由 20,000 次降为 8 次，最终状态摘要完全一致。
+延迟乱序量测、结构歧义证据、缓存变异、容量淘汰、非有限绕过和确定性操作数均有测试。
+D1 全量为 `395 passed in 21.41s`。该候选未完成 clean 多 seed 全栈准入，默认保持关闭。
+
 ### GlobalTrack 发布元数据 v2 准入
 
 正式候选 `d1.publication_metadata.immutable_shared_audit.v2` 使用

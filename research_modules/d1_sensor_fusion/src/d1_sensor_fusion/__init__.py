@@ -67,7 +67,20 @@ from .covariance_contract import (
     validate_online_sensor_observation,
     validate_sensor_observation_covariance,
 )
-from .fusion import FusionAdapter
+from .cv_motion_model_cache_performance import (
+    CV_MOTION_MODEL_CACHE_PERFORMANCE_SCHEMA_VERSION,
+    compare_cv_motion_model_cache_variants,
+    run_cv_motion_model_cache_variant,
+    write_cv_motion_model_cache_performance_report,
+)
+from .fusion import (
+    CV_MOTION_MODEL_CACHE_DIAGNOSTICS_SCHEMA_VERSION,
+    CV_MOTION_MODEL_CANDIDATE_IMPLEMENTATION_ID,
+    CV_MOTION_MODEL_REFERENCE_IMPLEMENTATION_ID,
+    DEFAULT_CV_MOTION_MODEL_CACHE_CAPACITY,
+    MAX_CV_MOTION_MODEL_CACHE_CAPACITY,
+    FusionAdapter,
+)
 from .long_replay import (
     LONG_REPLAY_CONFIG_VERSION,
     LONG_REPLAY_OFFLINE_TRUTH_SCHEMA_VERSION,

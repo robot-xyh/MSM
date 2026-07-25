@@ -8,6 +8,20 @@
 
 ## 0. 当前正式治理 GAP 增量（2026-07-24）
 
+### 匀速模型矩阵复用候选
+
+`process_scan_batch` 的函数级剖析显示，32,217 次匀速预测重复构造相同形式的状态转移和过程
+噪声矩阵。D1 已实现默认关闭的
+`d1.fusion.cv_motion_model.bounded_exact_lru.v1`，reference 为
+`d1.fusion.cv_motion_model.per_prediction_build.v1`。候选仅按精确时间差和过程噪声复用
+只读矩阵，采用有界最近最少使用淘汰；状态、协方差、OOSM 重放、门控、发布和正半定治理不变。
+
+200 状态、100 步、7 次交替专项中，中位墙钟
+`0.220679 -> 0.103950 s`，矩阵构造 `20,000 -> 8`，最终状态 SHA-256 一致；专项
+`6 passed`，D1 全量 `395 passed in 21.41s`。D1-owned 实现、缓存边界和模块等价子项已关闭。
+main 尚未把 selector/诊断接入同提交 13-pair 正式矩阵，因此“候选全栈准入”和“系统实时容量”
+仍为 P1。正式准入前默认保持 reference。
+
 ### GlobalTrack 发布元数据 v2 正式准入
 
 clean source commit `be399e138762f5e660f553c8caa812d52ab38c61` 的 13 对、26 臂正式

@@ -1,0 +1,82 @@
+{
+  "schema_version": "d1.cv_motion_model_cache_performance.v1",
+  "benchmark_scope": "D1 CV state propagation hotspot only; not a full-stack gate",
+  "configuration": {
+    "repetitions": 7,
+    "state_count": 200,
+    "step_count": 100,
+    "dt_s": 0.05,
+    "cache_capacity": 128
+  },
+  "reference": {
+    "sample_count": 7,
+    "wall_time_samples_s": [
+      0.22067919000983238,
+      0.2210524490219541,
+      0.21885832399129868,
+      0.22179828397929668,
+      0.2180363480001688,
+      0.2208560740109533,
+      0.21877450798638165
+    ],
+    "median_wall_time_s": 0.22067919000983238,
+    "minimum_wall_time_s": 0.2180363480001688,
+    "maximum_wall_time_s": 0.22179828397929668,
+    "final_state_sha256": "a1d5f65ab0b6ba2804ec11cb4bf1dd9f712f6c5c3b33df6cc86f07797c867dbd",
+    "diagnostics": {
+      "schema_version": "d1.cv_motion_model_cache_diagnostics.v1",
+      "implementation_id": "d1.fusion.cv_motion_model.per_prediction_build.v1",
+      "candidate_enabled": false,
+      "cache_capacity": 128,
+      "cache_entry_count": 0,
+      "operation_counts": {
+        "model_build_count": 20000,
+        "prediction_request_count": 20000
+      }
+    }
+  },
+  "candidate": {
+    "sample_count": 7,
+    "wall_time_samples_s": [
+      0.10395014303503558,
+      0.10407078801654279,
+      0.10359070700360462,
+      0.10299974697409198,
+      0.10343339398968965,
+      0.10470890998840332,
+      0.10452944197459146
+    ],
+    "median_wall_time_s": 0.10395014303503558,
+    "minimum_wall_time_s": 0.10299974697409198,
+    "maximum_wall_time_s": 0.10470890998840332,
+    "final_state_sha256": "a1d5f65ab0b6ba2804ec11cb4bf1dd9f712f6c5c3b33df6cc86f07797c867dbd",
+    "diagnostics": {
+      "schema_version": "d1.cv_motion_model_cache_diagnostics.v1",
+      "implementation_id": "d1.fusion.cv_motion_model.bounded_exact_lru.v1",
+      "candidate_enabled": true,
+      "cache_capacity": 128,
+      "cache_entry_count": 8,
+      "operation_counts": {
+        "cache_hit_count": 19992,
+        "cache_miss_count": 8,
+        "model_build_count": 8,
+        "peak_entry_count": 8,
+        "prediction_request_count": 20000
+      }
+    }
+  },
+  "comparison": {
+    "median_speedup": 2.122933009678055,
+    "reference_model_build_count": 20000,
+    "candidate_model_build_count": 8,
+    "model_build_reduction_fraction": 0.9996,
+    "acceptance": {
+      "exact_final_state_equivalence": true,
+      "reference_operation_counts_deterministic": true,
+      "candidate_operation_counts_deterministic": true,
+      "candidate_cache_is_bounded": true,
+      "model_build_reduction_at_least_90_percent": true
+    },
+    "passed": true
+  }
+}

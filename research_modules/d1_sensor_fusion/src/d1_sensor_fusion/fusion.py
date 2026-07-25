@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from bisect import bisect_right
 from collections.abc import Mapping
-from collections import Counter, defaultdict, deque
+from collections import Counter, OrderedDict, defaultdict, deque
 from dataclasses import asdict, dataclass, field, is_dataclass, replace
 import hashlib
 import json
@@ -23,8 +23,8 @@ from .consistency_evidence import (
     update_consistency_evidence,
 )
 from .covariance_contract import validate_online_sensor_observation
-from .ekf import EKFState, ekf_update, predict_to
-from .motion import wrap_residual
+from .ekf import EKFState, ekf_update, predict_to, predict_to_with_cv_model
+from .motion import cv_process_noise, cv_transition, wrap_residual
 from .observations import (
     MeasurementModel,
     RadarCovarianceConfig,
@@ -67,6 +67,17 @@ from .types import (
 
 CHI2_2_95 = 5.991464547107979
 CHI2_3_999 = 16.26623619623813
+CV_MOTION_MODEL_REFERENCE_IMPLEMENTATION_ID = (
+    "d1.fusion.cv_motion_model.per_prediction_build.v1"
+)
+CV_MOTION_MODEL_CANDIDATE_IMPLEMENTATION_ID = (
+    "d1.fusion.cv_motion_model.bounded_exact_lru.v1"
+)
+CV_MOTION_MODEL_CACHE_DIAGNOSTICS_SCHEMA_VERSION = (
+    "d1.cv_motion_model_cache_diagnostics.v1"
+)
+DEFAULT_CV_MOTION_MODEL_CACHE_CAPACITY = 128
+MAX_CV_MOTION_MODEL_CACHE_CAPACITY = 4_096
 OBSERVATION_METADATA_LINEAGE_KEYS = (
     "coverage_cell",
     "quality_flags",
@@ -716,6 +727,10 @@ class FusionAdapter:
         publisher_node_id: str = DEFAULT_STRUCTURAL_AMBIGUITY_PUBLISHER_NODE_ID,
         publisher_epoch: str = DEFAULT_STRUCTURAL_AMBIGUITY_PUBLISHER_EPOCH,
         vectorized_covariance_limit: bool = True,
+        cached_cv_motion_model: bool = False,
+        cv_motion_model_cache_capacity: int = (
+            DEFAULT_CV_MOTION_MODEL_CACHE_CAPACITY
+        ),
     ) -> None:
         self.process_noise = float(process_noise)
         self.bucket_size = float(bucket_size)
@@ -986,6 +1001,31 @@ class FusionAdapter:
         if not isinstance(vectorized_covariance_limit, bool):
             raise TypeError("vectorized_covariance_limit must be a bool")
         self.vectorized_covariance_limit = vectorized_covariance_limit
+        if not isinstance(cached_cv_motion_model, bool):
+            raise TypeError("cached_cv_motion_model must be a bool")
+        self.cached_cv_motion_model = cached_cv_motion_model
+        if (
+            isinstance(cv_motion_model_cache_capacity, bool)
+            or not isinstance(cv_motion_model_cache_capacity, Integral)
+        ):
+            raise TypeError(
+                "cv_motion_model_cache_capacity must be an integer"
+            )
+        self.cv_motion_model_cache_capacity = int(
+            cv_motion_model_cache_capacity
+        )
+        if self.cv_motion_model_cache_capacity < 1:
+            raise ValueError(
+                "cv_motion_model_cache_capacity must be at least 1"
+            )
+        if (
+            self.cv_motion_model_cache_capacity
+            > MAX_CV_MOTION_MODEL_CACHE_CAPACITY
+        ):
+            raise ValueError(
+                "cv_motion_model_cache_capacity must be at most "
+                f"{MAX_CV_MOTION_MODEL_CACHE_CAPACITY}"
+            )
         self.tracks: dict[str, TrackRecord] = {}
         self.sensor_health: dict[str, SensorHealthState] = {}
         self.current_time = 0.0
@@ -1053,11 +1093,90 @@ class FusionAdapter:
         self._consistency_capture_context: tuple[str, int] | None = None
         self._performance_totals: Counter[str] = Counter()
         self._publication_materialization_operations: Counter[str] = Counter()
+        self._cv_motion_model_cache: OrderedDict[
+            tuple[float, float],
+            tuple[np.ndarray, np.ndarray],
+        ] = OrderedDict()
+        self._cv_motion_model_cache_operations: Counter[str] = Counter()
 
     def _bucket(self, timestamp: float) -> int:
         """Return the fixed-lag cache bucket for a timestamp."""
 
         return int(np.floor((float(timestamp) + 1e-9) / self.bucket_size))
+
+    def _predict_to(self, state: EKFState, timestamp: float) -> EKFState:
+        """Predict through the selected CV model-construction implementation."""
+
+        timestamp = float(timestamp)
+        dt = timestamp - state.timestamp
+        operations = self._cv_motion_model_cache_operations
+        operations["prediction_request_count"] += 1
+        if dt <= 1.0e-12:
+            operations["nonpositive_dt_reference_bypass_count"] += 1
+            return predict_to(state, timestamp, self.process_noise)
+
+        if not self.cached_cv_motion_model:
+            operations["model_build_count"] += 1
+            return predict_to(state, timestamp, self.process_noise)
+
+        process_noise = float(self.process_noise)
+        if not np.isfinite(dt) or not np.isfinite(process_noise):
+            operations["nonfinite_reference_bypass_count"] += 1
+            operations["model_build_count"] += 1
+            return predict_to(state, timestamp, process_noise)
+
+        key = (float(dt), process_noise)
+        model = self._cv_motion_model_cache.get(key)
+        if model is None:
+            operations["cache_miss_count"] += 1
+            operations["model_build_count"] += 1
+            transition = cv_transition(dt)
+            process_covariance = cv_process_noise(dt, process_noise)
+            transition.setflags(write=False)
+            process_covariance.setflags(write=False)
+            if (
+                len(self._cv_motion_model_cache)
+                >= self.cv_motion_model_cache_capacity
+            ):
+                self._cv_motion_model_cache.popitem(last=False)
+                operations["cache_eviction_count"] += 1
+            model = (transition, process_covariance)
+            self._cv_motion_model_cache[key] = model
+            operations["peak_entry_count"] = max(
+                int(operations["peak_entry_count"]),
+                len(self._cv_motion_model_cache),
+            )
+        else:
+            operations["cache_hit_count"] += 1
+            self._cv_motion_model_cache.move_to_end(key)
+
+        return predict_to_with_cv_model(
+            state,
+            timestamp,
+            model[0],
+            model[1],
+        )
+
+    def cv_motion_model_cache_diagnostics(self) -> dict[str, Any]:
+        """Return bounded scalar diagnostics for the explicit A/B candidate."""
+
+        implementation_id = (
+            CV_MOTION_MODEL_CANDIDATE_IMPLEMENTATION_ID
+            if self.cached_cv_motion_model
+            else CV_MOTION_MODEL_REFERENCE_IMPLEMENTATION_ID
+        )
+        return {
+            "schema_version": (
+                CV_MOTION_MODEL_CACHE_DIAGNOSTICS_SCHEMA_VERSION
+            ),
+            "implementation_id": implementation_id,
+            "candidate_enabled": bool(self.cached_cv_motion_model),
+            "cache_capacity": int(self.cv_motion_model_cache_capacity),
+            "cache_entry_count": len(self._cv_motion_model_cache),
+            "operation_counts": dict(
+                sorted(self._cv_motion_model_cache_operations.items())
+            ),
+        }
 
     def process(self, observation: SensorObservation) -> list[GlobalTrack]:
         """Process one arrived observation and return current global tracks."""
@@ -1550,10 +1669,9 @@ class FusionAdapter:
 
         if isinstance(track, GlobalTrack):
             previous_timestamp = float(track.timestamp)
-            state = predict_to(
+            state = self._predict_to(
                 EKFState(track.state, track.covariance, track.timestamp),
                 timestamp,
-                self.process_noise,
             )
             out = track.copy()
             out.state = state.state
@@ -1576,7 +1694,10 @@ class FusionAdapter:
 
         record = self.tracks[str(track)]
         previous_timestamp = float(record.current_state.timestamp)
-        record.current_state = predict_to(record.current_state, timestamp, self.process_noise)
+        record.current_state = self._predict_to(
+            record.current_state,
+            timestamp,
+        )
         record.current_state_covariance_limited = False
         reasons = []
         if float(timestamp) - previous_timestamp > self.long_extrapolation_s:
@@ -1651,7 +1772,10 @@ class FusionAdapter:
         if self._is_duplicate_observation(observation):
             self.duplicate_observation_count += 1
             self._record_sensor_fault(observation, "duplicate_observation", rejected=True)
-            record.current_state = predict_to(record.current_state, current_time, self.process_noise)
+            record.current_state = self._predict_to(
+                record.current_state,
+                current_time,
+            )
             record.current_state_covariance_limited = False
             self._limit_record_covariance(record)
             return False
@@ -1663,7 +1787,10 @@ class FusionAdapter:
                 (record.track_id,),
             )
             record.association_diagnostics["observer_scan_conflict"] += 1
-            record.current_state = predict_to(record.current_state, current_time, self.process_noise)
+            record.current_state = self._predict_to(
+                record.current_state,
+                current_time,
+            )
             record.current_state_covariance_limited = False
             self._limit_record_covariance(record)
             self._mark_observation_processed(observation)
@@ -1689,10 +1816,9 @@ class FusionAdapter:
                     "non_range_state_correction_rejected",
                     rejected=True,
                 )
-                record.current_state = predict_to(
+                record.current_state = self._predict_to(
                     record.current_state,
                     current_time,
-                    self.process_noise,
                 )
                 record.current_state_covariance_limited = False
                 self._limit_record_covariance(record)
@@ -2411,7 +2537,7 @@ class FusionAdapter:
             return None
         state, covariance = radar_state_from_observation(observation, self.radar_covariance_config)
         initial = EKFState(state, covariance, observation.measurement_timestamp)
-        current = predict_to(initial, current_time, self.process_noise)
+        current = self._predict_to(initial, current_time)
         track_id = f"global_track_{self._next_track_id:03d}"
         self._next_track_id += 1
         source_support = Counter({observation.modality: 1})
@@ -2451,7 +2577,10 @@ class FusionAdapter:
         for record in self.tracks.values():
             if record.current_state.timestamp < timestamp - 1e-12:
                 previous_timestamp = float(record.current_state.timestamp)
-                record.current_state = predict_to(record.current_state, timestamp, self.process_noise)
+                record.current_state = self._predict_to(
+                    record.current_state,
+                    timestamp,
+                )
                 record.current_state_covariance_limited = False
                 reasons = []
                 if float(timestamp) - previous_timestamp > self.long_extrapolation_s:
@@ -4613,7 +4742,7 @@ class FusionAdapter:
             if checkpoint_count == 0
             else record.replay_checkpoints[checkpoint_count - 1].posterior.copy()
         )
-        return predict_to(state, timestamp, self.process_noise)
+        return self._predict_to(state, timestamp)
 
     def _mark_batch_history_changed(
         self,
@@ -4823,7 +4952,10 @@ class FusionAdapter:
                 continue
             if observation.measurement_timestamp > until_time + 1e-9:
                 continue
-            state = predict_to(state, observation.measurement_timestamp, self.process_noise)
+            state = self._predict_to(
+                state,
+                observation.measurement_timestamp,
+            )
             state, nis, gated = self._filter_update(state, observation)
             self._capture_consistency_update_if_enabled(
                 record,
@@ -4835,7 +4967,7 @@ class FusionAdapter:
             nises.append(nis)
             if gated:
                 gated_observation_ids.append(observation.observation_id)
-        state = predict_to(state, until_time, self.process_noise)
+        state = self._predict_to(state, until_time)
         return state, nises, tuple(gated_observation_ids)
 
     def _replay_record(
@@ -4881,10 +5013,9 @@ class FusionAdapter:
         if not self.incremental_replay_cache:
             record.replay_checkpoints.clear()
             for observation in eligible:
-                state = predict_to(
+                state = self._predict_to(
                     state,
                     observation.measurement_timestamp,
-                    self.process_noise,
                 )
                 state, nis, gated = self._filter_update(state, observation)
                 if self._batch_context is not None:
@@ -4899,7 +5030,7 @@ class FusionAdapter:
                 nises.append(nis)
                 if gated:
                     gated_observation_ids.append(observation.observation_id)
-            state = predict_to(state, until_time, self.process_noise)
+            state = self._predict_to(state, until_time)
             return state, nises, tuple(gated_observation_ids)
 
         prefix_limit = min(len(eligible), len(record.replay_checkpoints))
@@ -4948,10 +5079,9 @@ class FusionAdapter:
             self._batch_context.replay_checkpoint_reuse_count += matching_prefix
 
         for observation in eligible[matching_prefix:]:
-            state = predict_to(
+            state = self._predict_to(
                 state,
                 observation.measurement_timestamp,
-                self.process_noise,
             )
             state, nis, gated = self._filter_update(state, observation)
             if self._batch_context is not None:
@@ -4975,7 +5105,7 @@ class FusionAdapter:
             nises.append(nis)
             if gated:
                 gated_observation_ids.append(observation.observation_id)
-        state = predict_to(state, until_time, self.process_noise)
+        state = self._predict_to(state, until_time)
         return state, nises, tuple(gated_observation_ids)
 
     def _invalidate_replay_checkpoints(

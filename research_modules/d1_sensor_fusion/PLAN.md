@@ -1,5 +1,37 @@
 # D1 多传感器融合与目标配准实施计划
 
+## P1 匀速模型矩阵复用候选（2026-07-24）
+
+### 已完成
+
+1. 依据 `process_scan_batch -> _predict_all_to/_state_from_complete_replay_checkpoints/
+   _replay_record -> predict_to` 调用链，选择匀速模型矩阵重复构造作为单一候选。未同时修改
+   GlobalTrack 物化、关联代价、重放或协方差治理。
+2. 增加显式开关 `cached_cv_motion_model`，默认 `False`。reference 实现 ID 为
+   `d1.fusion.cv_motion_model.per_prediction_build.v1`，candidate 为
+   `d1.fusion.cv_motion_model.bounded_exact_lru.v1`。
+3. candidate 使用精确 `(dt, process_noise)` 键和有界最近最少使用缓存；默认容量 128，
+   最大 4,096。缓存矩阵只读，输出状态/协方差不与缓存别名。非有限键和非正时间差走原路径。
+4. 新增固定大小诊断，记录请求、构造、命中、未命中、淘汰、峰值条目和绕过次数。过程噪声
+   运行时变化会形成新键，不会复用旧配置。
+5. 延迟乱序量测、结构歧义证据、发布载荷、协方差、双时间戳、NED、来源谱系和一致性证据
+   已通过精确 A/B；专项 `6 passed`，D1 全量 `395 passed in 21.41s`。
+
+### 模块基准
+
+200 个状态、100 个传播步、`dt=0.05 s`、7 次交替运行的中位墙钟为
+`0.220679 -> 0.103950 s`，模型构造为 `20,000 -> 8`，最终状态 SHA-256 一致。报告位于
+`reports/D1_CV_MOTION_MODEL_CACHE_PERFORMANCE_20260724_CN.md` 和对应 JSON。该基准只覆盖
+匀速传播热点，不是 200v200 全栈准入。
+
+### 下一步
+
+main 需要在运行配置中增加 reference/candidate selector，将
+`cv_motion_model_cache_diagnostics()` 绑定到 manifest、governance 和 summary，然后从同一
+clean commit 运行 short 10 seed 与 long 3 seed。准入继续要求业务语义、有限状态、在线真值
+隔离、RSS、D2 回归和核心墙钟门全部通过。正式结论前 D1 默认保持 reference，不以专项
+`2.123x` 外推系统实时收益。
+
 ## P1 GlobalTrack 发布元数据 v2 正式准入结果（2026-07-24）
 
 clean source commit `be399e138762f5e660f553c8caa812d52ab38c61` 已完成

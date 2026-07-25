@@ -47,6 +47,19 @@ def predict_cv_state(
 ) -> tuple[np.ndarray, np.ndarray]:
     f = cv_transition(dt)
     q = cv_process_noise(dt, spectral_density)
+    return predict_cv_state_with_model(state, covariance, f, q)
+
+
+def predict_cv_state_with_model(
+    state: np.ndarray,
+    covariance: np.ndarray,
+    transition: np.ndarray,
+    process_covariance: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Propagate one CV state with an already constructed motion model."""
+
+    f = transition
+    q = process_covariance
     x = f @ state
     p = f @ covariance @ f.T + q
     return x, 0.5 * (p + p.T)

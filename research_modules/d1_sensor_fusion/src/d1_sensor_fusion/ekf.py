@@ -5,7 +5,7 @@ from typing import Callable
 
 import numpy as np
 
-from .motion import predict_cv_state, wrap_residual
+from .motion import predict_cv_state, predict_cv_state_with_model, wrap_residual
 
 
 @dataclass
@@ -57,6 +57,29 @@ def predict_to(
         ekf_state.covariance,
         dt,
         spectral_density=process_noise,
+    )
+    return EKFState(state, covariance, timestamp)
+
+
+def predict_to_with_cv_model(
+    ekf_state: EKFState,
+    timestamp: float,
+    transition: np.ndarray,
+    process_covariance: np.ndarray,
+) -> EKFState:
+    """Predict with an immutable CV model supplied by the owning adapter."""
+
+    timestamp = float(timestamp)
+    dt = timestamp - ekf_state.timestamp
+    if dt <= 1e-12:
+        out = ekf_state.copy()
+        out.timestamp = timestamp
+        return out
+    state, covariance = predict_cv_state_with_model(
+        ekf_state.state,
+        ekf_state.covariance,
+        transition,
+        process_covariance,
     )
     return EKFState(state, covariance, timestamp)
 

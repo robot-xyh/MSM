@@ -5,6 +5,25 @@
 
 ---
 
+## 最新增量：匀速模型矩阵复用候选（2026-07-24）
+
+- 剖析调用链为 `process_scan_batch -> _predict_all_to/
+  _state_from_complete_replay_checkpoints/_replay_record -> predict_to`。代表 profile 中
+  `predict_to` 32,345 次，匀速矩阵构造 32,217 次。
+- D1 只实现一个显式候选
+  `d1.fusion.cv_motion_model.bounded_exact_lru.v1`。开关
+  `cached_cv_motion_model` 默认 `False`，reference ID 为
+  `d1.fusion.cv_motion_model.per_prediction_build.v1`。
+- 候选按精确 `(dt, process_noise)` 缓存写保护矩阵，默认容量 128、最大 4,096，并记录构造、
+  命中、未命中、淘汰、峰值和绕过。非有限值和非正时间差回到 reference，过程噪声变化不会
+  复用旧配置。
+- 200 状态、100 步、7 次交替专项中，中位墙钟
+  `0.220679 -> 0.103950 s`，热点内 `2.123x`；模型构造 `20,000 -> 8`，最终状态摘要严格
+  一致。专项 `6 passed`，D1 全量 `395 passed in 21.41s`。
+- 本项没有删减发布、降频、缩短 fixed-lag、放宽门控、跳过协方差治理或使用在线真值。
+  D1-owned 候选和模块证据完成；main selector/manifest/正式 13-pair 多 seed 准入仍为 P1。
+  默认保持 reference，专项收益不得外推为系统实时结论。
+
 ## 最新增量：GlobalTrack 发布元数据 v2 正式准入（2026-07-24）
 
 - clean source commit `be399e138762f5e660f553c8caa812d52ab38c61` 已完成 200 目标、
