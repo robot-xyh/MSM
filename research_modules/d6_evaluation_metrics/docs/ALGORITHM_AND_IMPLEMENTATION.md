@@ -40,6 +40,45 @@ reduction = (logical_refresh_records - actual_materialized_records)
 `actual_materialized + projected`，不把投影成本隐去。正式准入只依据冻结 13 对矩阵；模块
 微基准和 clean 单 seed 预检均不进入结果。
 
+正式输入固定为 producer clean commit
+`7d2e987471b521a1e531bf03a5c99af5096f676a` 和 matrix SHA
+`85432d729877eff97e6f3dd517d4baa7a47f44a4fa42e6bfdc7ce85b8d9ec74b`。short 组为
+seeds 1151-1160、2.2 秒，long 组为 seeds 1151-1153、10 秒；每个 episode 包含 200 个目标、
+200 个资源和 2 个侦察节点。13 pair/26 episode 全部 fresh complete，0 reused、0 failed。
+
+配对性能计算对越低越好的指标使用：
+
+```text
+r_i = (candidate_i - reference_i) / reference_i
+improvement_i = -r_i
+```
+
+short D1 原始变化使用固定随机种子 20260725 的 10000 次 paired percentile bootstrap。
+正式结果中：
+
+```text
+short candidate faster                     = 5/10      (< 8/10)
+short D1 fusion improvement                 = 0.959611% (< 1%)
+short D1 raw-change bootstrap upper bound   = 0.619827% (> 0%)
+short core wall improvement                 = -0.256641% (< 0.25%)
+long core wall improvement                  = -1.930083% (< 0.25%)
+```
+
+这五项失败使 `verdict=reject` 和
+`main_default_promotion_allowed=false`。通过项包括 13/13 业务语义、consistency
+digest/count、D1 原有操作计数、实现身份、诊断守恒、有限状态和在线真值隔离，以及 long D1
+改善 `2.361778%`、内部物化减少 `52.150746%`、short/long RSS 与 D2 组均值门。
+
+候选诊断累计逻辑刷新 `811858` 条、实际内部物化 `388468` 条、在线快照投影
+`656481` 条，已披露记录构造总量为 `1044949`。在线投影工作解释了局部内部压缩没有稳定转化为
+core wall 收益的部分原因，但本轮评估不据此改门或重解释结果。
+
+正式 bundle 位于
+`outputs/d1_replay_prefix_summary_multiseed_20260725_formal_7d2e987_d6/`。
+`SHA256SUMS` 已通过；main 从同一 manifest 重跑后全部输出 SHA-256 一致。候选最低实时因子
+`0.197441 < 1`，系统实时缺口未关闭。候选保持默认关闭。后续若按 publication 所需观测 ID
+缩小快照投影，应登记为新候选并使用新预注册矩阵。
+
 ## D1 关联稀疏预筛同提交评估（2026-07-25）
 
 入口 `d1_association_sparse_prefilter_multiseed.py` 与

@@ -1,33 +1,85 @@
 # D6 系统级评估指标实验报告
 
-## 2.38 D1 回放前缀摘要评估器实现验证
+## 2.38 D1 回放前缀摘要正式多种子评估
 
 ### 结论
 
-2026-07-25，D6 完成回放前缀摘要多种子独立 evaluator、CLI 和失败关闭测试。输出 schema 为
-`d6.d1_replay_prefix_summary_multiseed_evaluation.v1`，冻结 producer commit 为
+2026-07-25，D6 对回放前缀摘要候选完成正式独立只读评估。输出 schema 为
+`d6.d1_replay_prefix_summary_multiseed_evaluation.v1`，producer clean commit 为
 `7d2e987471b521a1e531bf03a5c99af5096f676a`，matrix SHA-256 为
 `85432d729877eff97e6f3dd517d4baa7a47f44a4fa42e6bfdc7ce85b8d9ec74b`。
 
-本节是 evaluator 实现验证，不是正式算法实验。main 尚未运行冻结的 short 10 对和 long 3 对
-producer matrix，因此没有正式性能均值、置信区间或 admit/reject 结论。D1 模块 7 对微基准和
-clean seed-1151 预检只用于开发排错，没有写入 D6 正式结果。
+正式 verdict 为 `reject`，`main_default_promotion_allowed=false`。候选
+`fixed_lag_checkpoint_prefix_cumulative_summary_v1` 保持默认关闭，参考
+`per_checkpoint_prefix_rebuild_v1` 保持默认。候选最低实时因子为
+`0.1974407644 < 1`，所以 `system_realtime_gap_closed=false`。
 
-### 验证范围
+### 场景与来源
 
-合成 13 对夹具覆盖 manifest/matrix/commit、26 个 fresh arm、唯一 treatment、时间和规模、
-业务语义、在线一致性记录摘要、D1 原操作计数、导出前后 pending ledger、append 物化、
-snapshot projection 和全部冻结性能门。专项结果为 `7 passed`。
+正式矩阵包含 200 个目标、200 个资源和 2 个侦察节点。short 组为 seeds 1151-1160、每个
+episode 2.2 秒；long 组为 seeds 1151-1153、每个 episode 10 秒。共 13 pair、26 个 fresh
+complete episode，0 reused、0 failed。两臂使用相同 clean commit，唯一允许的处理差异是回放
+前缀摘要实现。D1 模块微基准和 clean seed-1151 预检没有计入正式样本。
 
-评估器输出内部物化减少率，同时单独输出在线快照投影构造记录和两者之和。该口径避免把
-snapshot 返回对象的构造成本写成已经消失。缺文件、dirty、schema、matrix SHA、pending 非零和
-append 物化会使证据 unavailable；合法的 digest 不等、操作计数不等、压缩不足或性能不足会保留
-可评估状态并给出 `reject` 及失败门。
+### 语义与诊断
 
-### 后续
+13/13 pair 的业务语义、在线 consistency records digest/count、D1 原有融合操作计数、实现身份、
+有限状态、诊断守恒和在线真值隔离均通过。候选实际产生摘要命中、checkpoint 复用、append
+revision、pending preservation 和在线 snapshot projection。正常追加与不兼容追加物化为 0，
+导出后 pending ledger 为 0。
 
-main 完成正式 13 对 producer evidence 后，D6 才生成完整 JSON、紧凑 JSON、逐 pair CSV、PNG、
-中文 Markdown 和 `SHA256SUMS`。只有正式矩阵全部门通过，才允许进入默认路径评审。
+| 工作量 | 正式值 |
+| --- | ---: |
+| 逻辑刷新记录 | 811858 |
+| 实际内部物化记录 | 388468 |
+| 内部物化减少率 | 52.150746% |
+| 在线快照投影构造记录 | 656481 |
+| 已披露记录构造总量 | 1044949 |
+
+在线快照投影仍构造不可变记录。该数量单独披露，没有计入内部物化减少量。
+
+### 性能
+
+| 分组 | 指标 | 参考均值 | 候选均值 | 配对改善 |
+| --- | --- | ---: | ---: | ---: |
+| short | D1 融合耗时（秒） | 2.485541 | 2.460735 | 0.959611% |
+| short | 核心流程耗时（秒） | 8.562172 | 8.583612 | -0.256641% |
+| short | D1 扫描输入耗时（秒） | 0.744953 | 0.724599 | 2.569539% |
+| short | D2 关联耗时（秒） | 0.501726 | 0.484404 | 3.192488% |
+| short | 最大驻留内存（KiB） | 876111.2 | 876233.2 | -0.013714% |
+| long | D1 融合耗时（秒） | 17.699231 | 17.277130 | 2.361778% |
+| long | 核心流程耗时（秒） | 48.703409 | 49.645931 | -1.930083% |
+| long | D1 扫描输入耗时（秒） | 4.277187 | 4.059489 | 4.884376% |
+| long | D2 关联耗时（秒） | 3.376049 | 3.500212 | -3.610722% |
+| long | 最大驻留内存（KiB） | 1630584 | 1624572 | 0.365212% |
+
+short D1 候选更快 `5/10`，long 候选更快 `2/3`。short D1 原始相对变化的 10000 次配对
+bootstrap 95% 区间上界为 `0.619827%`。
+
+### 冻结门
+
+五个失败门为：
+
+| 门限 | 实测 | 冻结判据 |
+| --- | ---: | ---: |
+| short candidate faster | 5/10 | >= 8/10 |
+| short D1 融合改善 | 0.959611% | >= 1% |
+| short bootstrap 原始变化上界 | 0.619827% | <= 0% |
+| short core wall 改善 | -0.256641% | >= 0.25% |
+| long core wall 改善 | -1.930083% | >= 0.25% |
+
+long D1 融合改善、内部物化减少、short/long RSS 和 D2 组均值门通过。局部通过项不能覆盖五个
+失败门，评估没有调低门限或删除 pair。
+
+![D1 回放前缀摘要配对评估](outputs/d1_replay_prefix_summary_multiseed_20260725_formal_7d2e987_d6/d1_replay_prefix_summary_multiseed_curves.png)
+
+正式 bundle 位于
+`outputs/d1_replay_prefix_summary_multiseed_20260725_formal_7d2e987_d6/`。完整 JSON、紧凑
+JSON、13 条 pair CSV、中文 Markdown、PNG 和 `SHA256SUMS` 已生成，目录内校验和全部通过。
+main 从同一 manifest 重跑后，全部输出 SHA-256 与正式 bundle 一致。
+
+本节只覆盖三维质点仿真，不代表 AirSim、目标处理器、硬件、实机或实飞结果。若继续优化在线
+快照投影，应建立新候选和新预注册矩阵，不得覆盖本次 `reject`。
 
 ## 2.37 D1 关联稀疏预筛正式多种子评估
 

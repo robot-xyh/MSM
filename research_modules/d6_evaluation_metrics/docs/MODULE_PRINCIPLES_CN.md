@@ -13,8 +13,30 @@ hit、checkpoint reuse、append revision、pending preservation 和 snapshot pro
 路径确实被执行；append 物化或导出后 pending 非零直接失败关闭。
 
 正式判断使用 200 个目标、200 个资源、2 个侦察节点的 10 个短时 seed 和 3 个长时 seed。
-短时至少 8/10 更快，长时至少 2/3 更快；D1 和 core、scan-input、D2、RSS、bootstrap 及内部
-物化减少率均需通过冻结门。任何单次 smoke 或模块微基准只能用于定位问题，不能替代正式准入。
+short seeds 为 1151-1160、时长 2.2 秒；long seeds 为 1151-1153、时长 10 秒。两臂均由
+producer clean commit `7d2e987471b521a1e531bf03a5c99af5096f676a` 生成，matrix SHA 为
+`85432d729877eff97e6f3dd517d4baa7a47f44a4fa42e6bfdc7ce85b8d9ec74b`。13 pair、
+26 个 episode 全部 fresh complete，0 reused、0 failed。任何单次 smoke 或模块微基准只能用于
+定位问题，不能替代正式准入。
+
+性能门采用合取关系。short 候选更快数至少为 `8/10`，long 至少为 `2/3`；short/long D1 融合
+改善至少为 1%，short/long core wall 改善至少为 0.25%。short D1 原始相对变化的配对
+bootstrap 95% 上界不得大于 0。D1 scan input、D2 association 和驻留内存增幅不得超过冻结
+上限，内部物化减少率不得低于 20%。任一来源、语义、守恒或性能门失败，候选均不能晋升默认。
+
+正式结果中，13/13 pair 的业务语义、consistency digest/count、D1 原有操作计数、实现身份、
+诊断守恒、有限状态和在线真值隔离通过。内部逻辑刷新 `811858` 条记录，实际物化 `388468` 条，
+减少 `52.150746%`。在线快照另投影构造 `656481` 条记录，这部分仍是实际工作量。
+
+候选未通过五个冻结性能门：short 更快数 `5/10`、short D1 改善 `0.959611%`、short
+bootstrap 上界 `0.619827%`、short core 改善 `-0.256641%`、long core 改善
+`-1.930083%`。long D1 改善 `2.361778%`，short/long RSS 和 D2 组均值门通过，但不能覆盖
+失败门。正式 verdict 为 `reject`，候选保持默认关闭，参考
+`per_checkpoint_prefix_rebuild_v1` 保持默认。
+
+候选最低实时因子为 `0.197441`，低于系统门限 1，因此
+`system_realtime_gap_closed=false`。结论只覆盖 2026-07-25 的三维质点仿真，不外推到 AirSim、
+目标处理器、硬件、实机或实飞。后续候选必须使用新名称和新预注册矩阵。
 
 ## 关联稀疏预筛评估边界（2026-07-25）
 

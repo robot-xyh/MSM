@@ -1,20 +1,48 @@
 # D6 系统评估指标综述及子方案
 
-## 2026-07-25 D1 回放前缀摘要独立评审
+## 2026-07-25 D1 回放前缀摘要正式独立评审
 
-D6 已完成 `d6.d1_replay_prefix_summary_multiseed_evaluation.v1` evaluator、CLI 和确定性报告
-接口。评估器固定读取 producer commit `7d2e987471b521a1e531bf03a5c99af5096f676a` 和 matrix
-SHA `85432d729877eff97e6f3dd517d4baa7a47f44a4fa42e6bfdc7ce85b8d9ec74b`，不接收模块
-微基准或 clean seed-1151 预检作为正式样本。
+D6 已完成 `d6.d1_replay_prefix_summary_multiseed_evaluation.v1` 的正式独立评估。评估器固定读取
+producer clean commit `7d2e987471b521a1e531bf03a5c99af5096f676a` 和 matrix SHA
+`85432d729877eff97e6f3dd517d4baa7a47f44a4fa42e6bfdc7ce85b8d9ec74b`。参考实现为
+`per_checkpoint_prefix_rebuild_v1`，候选实现为
+`fixed_lag_checkpoint_prefix_cumulative_summary_v1`。D1 模块微基准和 clean seed-1151 预检
+没有进入正式样本。
+
+正式矩阵包含 short seeds 1151-1160、long seeds 1151-1153，共 13 pair 和 26 个 fresh
+complete episode。每个 episode 使用 200 个目标、200 个资源和 2 个侦察节点；0 reused、
+0 failed。两臂来自同一 clean commit，只允许回放前缀摘要 selector 不同。
 
 评审口径包含业务语义、在线 consistency records digest/count、D1 原有操作计数、导出前后
-pending ledger、summary hit/reuse、append revision/preservation 和 snapshot projection。内部
-物化减少率与在线投影构造工作分别报告。合法但性能、压缩或语义门失败时输出可审计 `reject`；
-证据 schema、commit、路径、状态或守恒损坏时输出 `unavailable/reject`。
+pending ledger、summary hit/reuse、append revision/preservation 和 snapshot projection。
+13/13 pair 的业务语义、digest/count、原操作计数、实现身份、诊断守恒、有限状态和在线真值隔离
+通过。内部逻辑刷新 `811858` 条记录，实际物化 `388468` 条，减少 `52.150746%`；在线快照仍
+投影构造 `656481` 条记录。
 
-专项合成回归为 `7 passed`。正式 13 对 producer evidence 未运行，因此当前只关闭 D6 evaluator
-实现缺口，不关闭候选算法准入或系统实时 P1。下一步由 main 运行冻结矩阵，D6 再独立生成正式
-admit/reject 和中文报告。
+冻结性能门实测如下：
+
+| 门限 | 实测 | 判据 | 结果 |
+| --- | ---: | ---: | --- |
+| short candidate faster | 5/10 | >= 8/10 | 失败 |
+| short D1 融合改善 | 0.959611% | >= 1% | 失败 |
+| short bootstrap 原始变化 95% 上界 | 0.619827% | <= 0% | 失败 |
+| short core wall 改善 | -0.256641% | >= 0.25% | 失败 |
+| long core wall 改善 | -1.930083% | >= 0.25% | 失败 |
+| long D1 融合改善 | 2.361778% | >= 1% | 通过 |
+| 内部物化减少 | 52.150746% | >= 20% | 通过 |
+
+short/long RSS 和 D2 组均值门通过。五个失败门使正式 verdict 为 `reject`，
+`main_default_promotion_allowed=false`。候选最低实时因子为 `0.197441 < 1`，
+`system_realtime_gap_closed=false`。候选保持默认关闭，参考实现保持默认。
+
+正式 bundle 位于
+`research_modules/d6_evaluation_metrics/outputs/d1_replay_prefix_summary_multiseed_20260725_formal_7d2e987_d6/`。
+目录内 `SHA256SUMS` 已通过。main 使用同一 manifest 重跑，全部输出 SHA-256 与正式 bundle
+一致。该结果仅适用于 2026-07-25 的三维质点仿真，不代表 AirSim、目标处理器、硬件、实机或
+实飞性能。
+
+后续若继续处理在线快照投影成本，应定义新候选名，并在新预注册矩阵上重新评估。不得调低本轮
+门限、删除 pair 或覆盖本次 `reject`。
 
 ## 2026-07-25 D1 关联稀疏预筛正式评审
 

@@ -1,26 +1,47 @@
 # D6 实现差距审计
 
-## 2026-07-25 D1 回放前缀摘要评估 GAP 更新
+## 2026-07-25 D1 回放前缀摘要正式评估 GAP 更新
 
 ### 已关闭
 
-1. 独立只读 evaluator、CLI、固定 schema 和六类报告制品已经实现；不调用 producer 的私有
-   `_episode_matches` 或采用 producer admission 结论。
+1. 独立只读 evaluator、CLI、固定 schema 和六类报告制品已经实现；不调用 producer 私有
+   `_episode_matches`，也不采信 producer admission 结论。
 2. producer commit `7d2e987471b521a1e531bf03a5c99af5096f676a`、matrix SHA
    `85432d729877eff97e6f3dd517d4baa7a47f44a4fa42e6bfdc7ce85b8d9ec74b`、13 pair、
-   26 fresh arm、200/200/2、seed、时长、命令、路径和唯一 treatment 已冻结。
-3. 业务语义、在线 consistency digest/count、D1 原操作计数、实现身份、导出前后诊断守恒、
-   append/pending/snapshot 工作量和全部性能门已经进入失败关闭校验。
-4. snapshot projected record count 单独披露；内部物化减少率不会被解释为全部记录构造消失。
-5. 通过与九类失败路径、重复运行确定性和只读报告已覆盖，专项 `7 passed`。
+   26 fresh episode、200/200/2、seed、时长、命令、路径和唯一 treatment 均已冻结并从正式
+   manifest 核对。正式输入 0 reused、0 failed。
+3. 13/13 pair 的业务语义、在线 consistency digest/count、D1 原操作计数、实现身份、有限状态、
+   在线真值隔离及导出前后诊断守恒通过。
+4. 候选摘要命中、checkpoint 复用、append revision、pending preservation 和在线 snapshot
+   projection 均实际发生；append 物化为 0，导出后 pending ledger 为 0。
+5. 内部实际物化由逻辑刷新 `811858` 条降至 `388468` 条，减少 `52.150746%`。在线快照投影
+   构造 `656481` 条记录单独披露，没有作为已消失工作量。
+6. D6 已对正式 evidence 给出 `reject`，且
+   `main_default_promotion_allowed=false`。失败门为 short 更快
+   `5/10 < 8/10`、short D1 改善 `0.959611% < 1%`、short bootstrap 上界
+   `0.619827% > 0%`、short core 改善 `-0.256641% < 0.25%` 和 long core 改善
+   `-1.930083% < 0.25%`。没有调门或删除 pair。
+7. long D1 改善 `2.361778%`，内部物化压缩、short/long RSS 和 D2 组均值门通过。局部通过项
+   没有覆盖五个失败门。
+8. 正式 bundle 位于
+   `research_modules/d6_evaluation_metrics/outputs/d1_replay_prefix_summary_multiseed_20260725_formal_7d2e987_d6/`；
+   `SHA256SUMS` 已通过。main 从同一 manifest 重跑后全部制品 SHA-256 与正式 bundle 一致。
 
-### 仍开放
+### 仍开放 P1
 
-1. 正式 producer 13 对 evidence 尚未运行。该项属于 main 运行与 D6 正式消费的跨模块 P1，
-   当前不能给出候选 admit/reject。
-2. 正式 evidence 到达后必须原样评估，不得依据 D1 微基准调低门限、删除 pair 或把 seed-1151
-   预检写入正式样本。
-3. AirSim、硬件、实机和实飞实时性不在本矩阵证据边界内，保持既有 P1 状态。
+1. **候选准入。** 候选
+   `fixed_lag_checkpoint_prefix_cumulative_summary_v1` 保持默认关闭，参考
+   `per_checkpoint_prefix_rebuild_v1` 保持默认。任何重新准入必须使用新候选名和新预注册
+   矩阵，不得覆盖本轮 `reject`。
+2. **端到端工作量。** 在线快照仍投影构造 `656481` 条记录，是内部压缩未形成 core wall
+   收益的主要线索。该问题属于后续新候选，不得回写本轮证据。
+3. **系统实时容量。** 候选最低实时因子 `0.197441 < 1`，
+   `system_realtime_gap_closed=false`。
+4. **外部适用性。** 本轮仅覆盖 2026-07-25 的 200/200/2 三维质点矩阵，不关闭 AirSim、
+   目标处理器、硬件、实机或实飞 GAP。
+
+当前无新增 D6-owned P0。D6 正式消费、独立判定、统计、报告和确定性复跑缺口已关闭；候选准入、
+系统实时、端到端快照成本和外部适用性保持开放。
 
 ## 2026-07-25 D1 关联稀疏预筛正式评估 GAP 更新
 

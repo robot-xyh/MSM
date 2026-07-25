@@ -5,8 +5,14 @@ manifest/matrix/commit 绑定、导出前后 ledger 守恒、在线 consistency 
 性能门和投影工作量披露见 `ALGORITHM_AND_IMPLEMENTATION.md`。入口 schema 为
 `d6.d1_replay_prefix_summary_multiseed_evaluation.v1`，冻结 matrix SHA
 `85432d729877eff97e6f3dd517d4baa7a47f44a4fa42e6bfdc7ce85b8d9ec74b` 与 producer commit
-`7d2e987471b521a1e531bf03a5c99af5096f676a`。代码和合成失败关闭专项已完成，结果
-`7 passed`；正式 13 对 evidence 尚未运行，当前无正式 admit/reject。
+`7d2e987471b521a1e531bf03a5c99af5096f676a`。正式 13 pair/26 fresh episode 已完成，
+0 reused、0 failed；规模为 200 个目标、200 个资源和 2 个侦察节点。13/13 业务语义、
+consistency digest/count、D1 原操作计数、实现身份、诊断守恒和真值隔离通过。内部物化减少
+`52.150746%`，但 short 更快数、short D1、short bootstrap、short core 和 long core 五个门
+失败，正式 verdict 为 `reject`。候选保持默认关闭；最低实时因子 `0.197441`，系统实时缺口
+未关闭。正式结果见 `../EXPERIMENT_REPORT.md` 2.38 节和
+`../outputs/d1_replay_prefix_summary_multiseed_20260725_formal_7d2e987_d6/`。校验和通过，
+同 manifest 重跑输出 SHA-256 一致。结果仅为三维质点证据。
 
 2026-07-25 D1 在线批帧交接同提交多 seed 正式评估原理见
 `MODULE_PRINCIPLES_CN.md`，严格 manifest/matrix/provenance 绑定、四层 selector/诊断谱系、

@@ -1,31 +1,47 @@
 # D6 Evaluation Metrics
 
-## 2026-07-25 D1 回放前缀摘要独立评估入口
+## 2026-07-25 D1 回放前缀摘要正式独立评估
 
-D6 已实现只读 evaluator `d1_replay_prefix_summary_multiseed.py` 和 CLI
-`scripts/evaluate_d1_replay_prefix_summary_multiseed.py`，输出 schema 固定为
-`d6.d1_replay_prefix_summary_multiseed_evaluation.v1`。入口冻结 producer clean commit
-`7d2e987471b521a1e531bf03a5c99af5096f676a`、matrix SHA-256
-`85432d729877eff97e6f3dd517d4baa7a47f44a4fa42e6bfdc7ce85b8d9ec74b`、
-experiment `d1-replay-prefix-summary-multiseed-20260725-v1` 和 13 对 200/200/2
-三维质点矩阵。clean seed-1151 预检和 D1 模块微基准均不属于正式准入证据。
+D6 已使用只读 evaluator `d1_replay_prefix_summary_multiseed.py` 和 CLI
+`scripts/evaluate_d1_replay_prefix_summary_multiseed.py` 完成正式评估。输出 schema 为
+`d6.d1_replay_prefix_summary_multiseed_evaluation.v1`，producer clean commit 为
+`7d2e987471b521a1e531bf03a5c99af5096f676a`，matrix SHA-256 为
+`85432d729877eff97e6f3dd517d4baa7a47f44a4fa42e6bfdc7ce85b8d9ec74b`。参考实现为
+`per_checkpoint_prefix_rebuild_v1`，候选实现为
+`fixed_lag_checkpoint_prefix_cumulative_summary_v1`。
 
-评估器失败关闭检查 manifest/matrix schema 与摘要、同一 clean commit、26 个 fresh complete
-arm、0 reused、0 failed、seed/时长/规模、命令和路径边界。两臂只允许
-`d1_replay_prefix_summary_implementation` 不同。selector、完整实现标识、6 秒固定滞后执行配置
-和诊断分别在 runtime profile、summary、module final、nested governance 和 governance audit
-核对。
+正式矩阵包含 200 个目标、200 个资源和 2 个侦察节点。short 组使用 seeds 1151-1160、
+每个 episode 2.2 秒；long 组使用 seeds 1151-1153、每个 episode 10 秒。共 13 pair、
+26 个 fresh complete episode，0 reused、0 failed。clean seed-1151 预检和 D1 模块微基准未
+计入正式样本。
 
-逐对审计包括业务语义、`offline_consistency/online_evidence.json` 的 `record_count` 与
-`records_digest`、以及 `module_final_diagnostics.d1_fusion_performance` 原有操作计数。
-候选必须实际产生摘要命中、checkpoint 复用、append revision、pending 保留和在线快照投影；
-正常追加与不兼容追加物化为 0，导出后 pending ledger 为 0。压缩率按逻辑刷新记录与实际内部
-物化记录计算，在线 snapshot projected record count 另行披露，不计作已经消失的工作。
+评估器失败关闭检查 manifest/matrix schema 与摘要、同一 clean commit、seed/时长/规模、命令和
+路径边界。两臂只允许 `d1_replay_prefix_summary_implementation` 不同。selector、完整实现标识、
+6 秒固定滞后执行配置和诊断分别在 runtime profile、summary、module final、nested governance
+和 governance audit 核对。逐对审计覆盖业务语义、在线 consistency `record_count` 与
+`records_digest`、D1 原有操作计数、导出前后 ledger 守恒及在线真值隔离。
 
-全部性能门直接读取冻结 matrix：short/long D1 融合、core wall、D1 scan input、D2 association、
-RSS、paired bootstrap 和至少 20% 内部物化减少率。产物包括完整 JSON、紧凑 JSON、逐 pair CSV、
-PNG、中文 Markdown 和 `SHA256SUMS`。当前专项合成回归为 `7 passed`；正式 13 对 producer
-evidence 尚未运行，当前不形成 admit/reject 结论，也不允许仅凭模块微基准晋升默认路径。
+正式 verdict 为 `reject`，`main_default_promotion_allowed=false`。五个失败门为：
+
+- short 候选更快数 `5/10 < 8/10`；
+- short D1 融合改善 `0.959611% < 1%`；
+- short 配对 bootstrap 原始变化 95% 上界 `0.619827% > 0%`；
+- short 核心墙钟改善 `-0.256641% < 0.25%`；
+- long 核心墙钟改善 `-1.930083% < 0.25%`。
+
+13/13 pair 的业务语义、consistency digest/count、D1 原有操作计数、实现身份、诊断守恒和
+真值隔离均通过。long D1 融合改善 `2.361778%`；全矩阵内部物化减少
+`52.150746%`；short/long RSS 与 D2 组均值门通过。候选仍在线投影构造 `656481` 条记录，
+因此内部物化压缩不能解释为端到端工作量按同等比例下降。
+
+候选最低实时因子为 `0.197441 < 1`，
+`system_realtime_gap_closed=false`。候选保持默认关闭，参考实现保持默认。正式 bundle 位于
+`outputs/d1_replay_prefix_summary_multiseed_20260725_formal_7d2e987_d6/`；目录内
+`SHA256SUMS` 已校验通过。main 从同一 manifest 重跑后，完整 JSON、紧凑 JSON、逐 pair CSV、
+PNG、中文 Markdown 和校验文件的 SHA-256 均与正式 bundle 一致。
+
+该证据只覆盖 2026-07-25 的三维质点仿真矩阵，不代表 AirSim、目标处理器、硬件、实机或实飞
+性能。后续若评估改进候选，必须使用新候选名和新预注册矩阵，不得覆盖本次 `reject`。
 
 ## 2026-07-25 D1 关联稀疏预筛多种子正式评估入口
 
