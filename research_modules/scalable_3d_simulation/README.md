@@ -1,6 +1,6 @@
 # Scalable 3D Simulation
 
-## D1 固定滞后回放前缀摘要候选（2026-07-25）
+## D1 固定滞后回放前缀摘要正式拒绝（2026-07-25）
 
 main 已接入 D1 回放前缀实现选择器。默认
 `per_checkpoint_prefix_rebuild_v1` 继续逐 checkpoint 重建归一化创新平方、门控标识和
@@ -10,17 +10,25 @@ main 已接入 D1 回放前缀实现选择器。默认
 和 episode 最终离线证据导出前精确物化。6 秒固定滞后窗口、后验状态、协方差、双时间戳、
 门控元数据和原有操作计数均不变。
 
-D1 冻结 200 航迹最新微基准为 7/7 配对更快，中位改善 `35.494%`；后验、协方差、
-创新序列、门控标识、一致性证据、checkpoint 和公开 GlobalTrack 摘要一致。D1 全量
-`488 passed`。main 的 dirty seed 1151、2.2 s 集成预检中，两臂 consistency digest
-相同，候选物化记录由逻辑 `8687` 条压缩为 `1785` 条，压缩率 `79.452%`，最终 pending
-为 0。该预检只用于接线排错，不构成 clean 正式证据或默认晋级。
+正式矩阵绑定 clean commit `7d2e987471b521a1e531bf03a5c99af5096f676a` 和 matrix
+SHA-256 `85432d729877eff97e6f3dd517d4baa7a47f44a4fa42e6bfdc7ce85b8d9ec74b`。
+short seeds 1151-1160、long seeds 1151-1153 共形成 13 对/26 个 fresh 200/200/2
+三维质点 episode，0 reused、0 failed。D6 独立确认 13/13 对业务语义、consistency
+records digest/count、原 D1 操作计数、实现身份、诊断守恒和在线真值隔离通过。
 
-预注册矩阵为 `configs/d1_replay_prefix_summary_multiseed_v1.json`，使用 short seeds
-1151-1160 和 long seeds 1151-1153，共 13 对/26 个 200/200/2 fresh episode。两臂只允许
-回放前缀 selector 不同；D6 还必须逐对核对离线 consistency evidence records digest、
-原有操作计数、业务语义、D1/core/D2/RSS 和延迟物化压缩率。正式矩阵与 D6 判定完成前，
-候选保持默认关闭。
+局部压缩没有形成稳定的全栈收益。候选总内部物化记录减少 `52.150746%`，long D1
+fusion 改善 `2.361778%`；但 short 更快仅 `5/10 < 8/10`，short D1 fusion 改善
+`0.959611% < 1%`，short bootstrap 原始变化 95% 上界
+`0.619827% > 0%`，short core 改善 `-0.256641% < 0.25%`，long core 改善
+`-1.930083% < 0.25%`。在线精确快照仍投影构造 `656481` 条记录，解释了压缩内部物化后
+核心墙钟未改善的主要开销。
+
+D6 verdict 为 `reject`，main 默认继续使用 `per_checkpoint_prefix_rebuild_v1`；候选只保留
+为显式研究路径。候选最低实时因子为 `0.197441 < 1`，系统实时缺口未关闭。正式报告位于
+`../d6_evaluation_metrics/outputs/d1_replay_prefix_summary_multiseed_20260725_formal_7d2e987_d6/`；
+同一冻结 manifest 的重复评估与正式 bundle 全部输出 SHA-256 一致。本结论只覆盖三维质点
+仿真，不代表 AirSim、目标处理器、硬件、实机或实飞能力。后续若研究按 publication 所需
+观测标识投影快照，必须使用新的实现标识和预注册矩阵，不修改本次冻结证据。
 
 ## D1 关联稀疏预筛正式 A/B（2026-07-25）
 

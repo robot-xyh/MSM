@@ -20,11 +20,20 @@
 8. [x] dirty seed 1151、2.2 s 集成预检确认 consistency digest 与原有操作计数相同，
    最终 pending 为 0，append 物化为 0，内部记录物化压缩率 `79.452%`；该结果只用于
    提交前排错。
-9. [ ] 在 clean 同提交上完成单 pair smoke 和 13 对/26 episode 正式矩阵，禁止复用或
-   覆盖已否决的关联稀疏预筛矩阵。
-10. [ ] D6 owner 独立读取原始 episode，执行失败关闭评估并生成中文报告。
-11. [ ] 只有全部冻结门通过才评审 main 默认晋级；否则保留显式研究路径。
-12. [ ] 系统实时、AirSim、冻结目标处理器、硬件和实飞证据继续单独验收。
+9. [x] 在 clean `7d2e987` 上完成单 pair smoke 和 13 对/26 episode 正式矩阵；
+   200/200/2 两臂均为 fresh，0 reused、0 failed，matrix SHA-256 为
+   `85432d729877eff97e6f3dd517d4baa7a47f44a4fa42e6bfdc7ce85b8d9ec74b`。
+10. [x] D6 owner 独立读取原始 episode 并完成失败关闭评估；13/13 业务语义、
+    consistency digest/count、原 D1 操作计数、实现身份、诊断守恒和真值隔离通过。
+11. [x] D6 正式判定 `reject`：short 更快 `5/10 < 8/10`、D1 fusion 改善
+    `0.959611% < 1%`、bootstrap 上界 `0.619827% > 0%`、core 改善
+    `-0.256641% < 0.25%`，long core 改善 `-1.930083% < 0.25%`。
+12. [x] main 保持 `per_checkpoint_prefix_rebuild_v1` 为默认；候选只保留为显式研究
+    路径，不修改冻结矩阵、门限或正式制品。重复 D6 评估与正式 bundle 全文件摘要一致。
+13. [ ] 系统实时 P1 保持开放：候选最低实时因子 `0.197441 < 1`，在线 snapshot 仍投影
+    构造 `656481` 条记录；本证据不覆盖 AirSim、冻结目标处理器、硬件、实机或实飞。
+14. [ ] 如继续优化，只评估按 publication 所需观测标识投影 snapshot 的新候选；必须使用
+    新 implementation ID 和新预注册矩阵，不能改写本次 `reject` 证据。
 
 ## D1 关联稀疏预筛正式拒绝（2026-07-25）
 

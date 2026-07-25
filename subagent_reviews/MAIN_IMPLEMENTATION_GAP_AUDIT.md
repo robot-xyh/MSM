@@ -13,10 +13,12 @@
 26 个 episode。向量化协方差限制与 `candidate_v2` 扫描输入数据组织均通过 D6 预注册准入；
 两项独立 seed 和长时增长子缺口关闭。发布元数据 v1 同提交矩阵已完成但未准入；D1/D2 v2
 合同随后在 clean `be399e1` 完成 13 组 pair，并通过 D6 全部预注册门。main 默认已晋级为
-`immutable_shared_v2`。系统实时、逐批审计明细、严格精度、AirSim 和目标硬件证据仍为
-P1。以下最新专项记录优先于“扫描输入或发布元数据仍待治理”的历史表述。
+`immutable_shared_v2`。固定滞后回放前缀摘要候选随后在 clean `7d2e987` 完成 13 对正式
+矩阵，但因短时收益不稳定和核心墙钟退化被 D6 正式拒绝，reference 默认保持不变。系统
+实时、逐批审计明细、严格精度、AirSim 和目标硬件证据仍为 P1。以下最新专项记录优先于
+“扫描输入或发布元数据仍待治理”的历史表述。
 
-## 2026-07-25 D1 固定滞后回放前缀摘要待准入
+## 2026-07-25 D1 固定滞后回放前缀摘要正式拒绝
 
 当前无新增 P0。D1 owner 已实现默认关闭的
 `fixed_lag_checkpoint_prefix_cumulative_summary_v1`。候选通过不可变累计摘要和延迟区间
@@ -24,17 +26,30 @@ P1。以下最新专项记录优先于“扫描输入或发布元数据仍待治
 consistency evidence、双时间戳和原有操作计数不变。中间迟到量测、schema 失配、部分
 前缀、无 checkpoint 和禁用一致性刷新均有失败关闭测试。
 
-D1 全量 `488 passed`。D1 owner 冻结 7-pair 微基准中位改善 `35.494%`，7/7 更快，
-bootstrap 上界低于 0，全部语义摘要一致。main 的 dirty seed 1151、2.2 s 集成预检确认
-两臂 consistency digest 和原有操作计数相同；候选逻辑刷新 `8687` 条、实际物化 `1785`
-条，压缩率 `79.452%`，在线 snapshot 和正常 append 均未触发内部物化，最终 pending
-为 0。这只关闭模块实现、在线接线和提交前预检缺口。
+正式 producer clean commit 为 `7d2e987471b521a1e531bf03a5c99af5096f676a`，matrix
+SHA-256 为 `85432d729877eff97e6f3dd517d4baa7a47f44a4fa42e6bfdc7ce85b8d9ec74b`。
+short seeds 1151-1160、long seeds 1151-1153 共形成 13 对/26 个 fresh 200/200/2
+三维质点 episode，0 reused、0 failed。D6 独立确认 13/13 对业务语义、consistency
+records digest/count、原 D1 操作计数、实现身份、诊断守恒和在线真值隔离通过。
 
-main 已接入显式 selector 和四表面诊断，并预注册
-`configs/d1_replay_prefix_summary_multiseed_v1.json`。正式矩阵使用未参与开发 profile 的
-short seeds 1151-1160 和 long seeds 1151-1153。D6 必须核对 consistency evidence
-records digest、原有操作计数、业务语义、D1/core/D2/RSS 和延迟物化压缩率。clean
-同提交矩阵和 D6 判定完成前，本项仍为 P1，候选不得默认晋级。
+| 指标 | short | long | 预注册门限 |
+| --- | ---: | ---: | ---: |
+| candidate faster | 5/10 | 2/3 | >=8 / >=2 |
+| D1 fusion 改善 | 0.959611% | 2.361778% | >=1% / >=1% |
+| core wall 改善 | -0.256641% | -1.930083% | >=0.25% / >=0.25% |
+| D1 bootstrap 原始变化 95% 上界 | 0.619827% | 不作为失败门 | <=0%（short） |
+| 内部物化削减 | 79.497291% | 48.847968% | >=20% |
+
+D6 verdict 为 `reject`，`main_default_promotion_allowed=false`。候选虽然将全矩阵内部物化
+减少 `52.150746%`，在线精确 snapshot 仍投影构造 `656481` 条记录，short 和 long 核心
+墙钟均未达到冻结门。main 默认继续使用 `per_checkpoint_prefix_rebuild_v1`，候选只保留为
+显式研究路径。候选最低实时因子为 `0.197441 < 1`，系统实时 P1 未关闭。正式报告位于
+`research_modules/d6_evaluation_metrics/outputs/d1_replay_prefix_summary_multiseed_20260725_formal_7d2e987_d6/`；
+main 使用同一 manifest 重复评估后，六个输出的 SHA-256 与正式 bundle 完全一致。
+
+后续若研究按 publication 所需观测标识投影 snapshot，应使用新的实现标识和独立预注册矩阵。
+本次冻结矩阵、门限和 `reject` 结论不得改写。本证据仅覆盖三维质点仿真，不覆盖 AirSim、
+冻结目标处理器、硬件、实机或实飞。
 
 ## 2026-07-25 D1 关联稀疏预筛正式拒绝
 
