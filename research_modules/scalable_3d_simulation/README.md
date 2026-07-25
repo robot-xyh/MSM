@@ -1,5 +1,27 @@
 # Scalable 3D Simulation
 
+## D1 固定滞后回放前缀摘要候选（2026-07-25）
+
+main 已接入 D1 回放前缀实现选择器。默认
+`per_checkpoint_prefix_rebuild_v1` 继续逐 checkpoint 重建归一化创新平方、门控标识和
+一致性证据计数；候选 `fixed_lag_checkpoint_prefix_cumulative_summary_v1` 只对版本、
+身份、顺序和完整性均可信的 checkpoint 前缀复用不可变累计摘要。候选把一致性证据刷新
+记录为有界区间账本。在线 publication 使用精确非破坏性快照，写入、失效、固定滞后重基准
+和 episode 最终离线证据导出前精确物化。6 秒固定滞后窗口、后验状态、协方差、双时间戳、
+门控元数据和原有操作计数均不变。
+
+D1 冻结 200 航迹最新微基准为 7/7 配对更快，中位改善 `35.494%`；后验、协方差、
+创新序列、门控标识、一致性证据、checkpoint 和公开 GlobalTrack 摘要一致。D1 全量
+`488 passed`。main 的 dirty seed 1151、2.2 s 集成预检中，两臂 consistency digest
+相同，候选物化记录由逻辑 `8687` 条压缩为 `1785` 条，压缩率 `79.452%`，最终 pending
+为 0。该预检只用于接线排错，不构成 clean 正式证据或默认晋级。
+
+预注册矩阵为 `configs/d1_replay_prefix_summary_multiseed_v1.json`，使用 short seeds
+1151-1160 和 long seeds 1151-1153，共 13 对/26 个 200/200/2 fresh episode。两臂只允许
+回放前缀 selector 不同；D6 还必须逐对核对离线 consistency evidence records digest、
+原有操作计数、业务语义、D1/core/D2/RSS 和延迟物化压缩率。正式矩阵与 D6 判定完成前，
+候选保持默认关闭。
+
 ## D1 关联稀疏预筛正式 A/B（2026-07-25）
 
 main 已接入 D1 关联稀疏预筛实现选择器。参考路径 `disabled_v1` 保持原精确关联；

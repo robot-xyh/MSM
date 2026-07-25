@@ -92,6 +92,15 @@ ASSOCIATION_SPARSE_PREFILTER_EVIDENCE_MANIFEST_SCHEMA_VERSION = (
 ASSOCIATION_SPARSE_PREFILTER_REQUIRED_D6_EVALUATOR_SCHEMA_VERSION = (
     "d6.d1_association_sparse_prefilter_multiseed_evaluation.v1"
 )
+REPLAY_PREFIX_SUMMARY_MATRIX_SCHEMA_VERSION = (
+    "scalable3d-d1-replay-prefix-summary-multiseed-matrix-v1"
+)
+REPLAY_PREFIX_SUMMARY_EVIDENCE_MANIFEST_SCHEMA_VERSION = (
+    "scalable3d-d1-replay-prefix-summary-multiseed-evidence-v1"
+)
+REPLAY_PREFIX_SUMMARY_REQUIRED_D6_EVALUATOR_SCHEMA_VERSION = (
+    "d6.d1_replay_prefix_summary_multiseed_evaluation.v1"
+)
 _ARMS = ("reference", "candidate")
 _V1_EXPECTED_IMPLEMENTATIONS = {
     "reference": "per_track_copy_v1",
@@ -124,6 +133,10 @@ _STRUCTURED_JACOBIAN_EXPECTED_IMPLEMENTATIONS = {
 _ASSOCIATION_SPARSE_PREFILTER_EXPECTED_IMPLEMENTATIONS = {
     "reference": "disabled_v1",
     "candidate": "modality_conservative_quadratic_bound_v1",
+}
+_REPLAY_PREFIX_SUMMARY_EXPECTED_IMPLEMENTATIONS = {
+    "reference": "per_checkpoint_prefix_rebuild_v1",
+    "candidate": "fixed_lag_checkpoint_prefix_cumulative_summary_v1",
 }
 _D1_IMPLEMENTATION_IDS = {
     "per_track_copy_v1": (
@@ -167,6 +180,13 @@ _D1_IMPLEMENTATION_IDS = {
     "modality_conservative_quadratic_bound_v1": (
         "d1.fusion.association_sparse_prefilter."
         "modality_conservative_quadratic_bound.v1"
+    ),
+    "per_checkpoint_prefix_rebuild_v1": (
+        "d1.fusion.replay_prefix.per_checkpoint_rebuild.v1"
+    ),
+    "fixed_lag_checkpoint_prefix_cumulative_summary_v1": (
+        "d1.fusion.replay_prefix."
+        "frozen_cumulative_summary_lazy_evidence_ranges.v1"
     ),
 }
 _MATRIX_SPECS = {
@@ -300,8 +320,24 @@ _MATRIX_SPECS = {
             "d1_association_sparse_prefilter_implementation"
         ),
     },
+    REPLAY_PREFIX_SUMMARY_MATRIX_SCHEMA_VERSION: {
+        "expected_implementations": (
+            _REPLAY_PREFIX_SUMMARY_EXPECTED_IMPLEMENTATIONS
+        ),
+        "evidence_manifest_schema_version": (
+            REPLAY_PREFIX_SUMMARY_EVIDENCE_MANIFEST_SCHEMA_VERSION
+        ),
+        "required_d6_evaluator_schema_version": (
+            REPLAY_PREFIX_SUMMARY_REQUIRED_D6_EVALUATOR_SCHEMA_VERSION
+        ),
+        "publication_audit_contract_version": None,
+        "selector_flag": "--d1-replay-prefix-summary-implementation",
+        "validation_kind": "replay_prefix_summary",
+        "treatment_field": "d1_replay_prefix_summary_implementation",
+    },
 }
 _COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
+_SHA256_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 _FORBIDDEN_RUN_FLAGS = {
     "--config",
     "--drone-count",
@@ -318,6 +354,7 @@ _FORBIDDEN_RUN_FLAGS = {
     "--d1-online-batch-frame-implementation",
     "--d1-structured-numerical-jacobian-implementation",
     "--d1-association-sparse-prefilter-implementation",
+    "--d1-replay-prefix-summary-implementation",
     "--online-truth-guard-implementation",
 }
 
@@ -642,6 +679,63 @@ def load_matrix(path: str | Path) -> dict[str, Any]:
                     "association sparse-prefilter admission gate "
                     f"{field} must be {expected}"
                 )
+    if spec["validation_kind"] == "replay_prefix_summary":
+        if (
+            boundary.get("execution_config_schema_version")
+            != "d1.fixed_lag_replay_prefix_summary_execution_config.v1"
+        ):
+            raise ValueError(
+                "replay-prefix evidence must bind execution config schema v1"
+            )
+        if (
+            boundary.get("diagnostics_schema_version")
+            != "d1.fixed_lag_replay_prefix_summary_diagnostics.v1"
+        ):
+            raise ValueError(
+                "replay-prefix evidence must bind diagnostics schema v1"
+            )
+        if (
+            boundary.get("summary_schema_version")
+            != "d1.fixed_lag_replay_prefix_summary.v1"
+        ):
+            raise ValueError(
+                "replay-prefix evidence must bind summary schema v1"
+            )
+        for field in (
+            "candidate_default_off",
+            "truth_dependent_inputs_forbidden",
+            "complete_trusted_checkpoint_prefix_required",
+            "checkpoint_mutations_advance_revision",
+            "offline_evidence_materializes_pending_ledger",
+        ):
+            if boundary.get(field) is not True:
+                raise ValueError(
+                    f"replay-prefix evidence must require {field}"
+                )
+        for field in (
+            "fixed_lag_window_changed",
+            "checkpoint_audit_semantics_changed",
+            "consistency_evidence_semantics_changed",
+        ):
+            if boundary.get(field) is not False:
+                raise ValueError(
+                    f"replay-prefix evidence must freeze {field}=false"
+                )
+        required_gates = {
+            "all_pairs_replay_prefix_summary_audit_valid": True,
+            "all_pairs_consistency_evidence_records_digest_equal": True,
+            "all_pairs_existing_operation_counts_equal": True,
+            "short_minimum_d1_fusion_improvement_pct": 1.0,
+            "long_minimum_d1_fusion_improvement_pct": 1.0,
+            "short_minimum_core_wall_improvement_pct": 0.25,
+            "long_minimum_core_wall_improvement_pct": 0.25,
+            "minimum_candidate_lazy_materialization_reduction_pct": 20.0,
+        }
+        for field, expected in required_gates.items():
+            if gates.get(field) != expected:
+                raise ValueError(
+                    f"replay-prefix admission gate {field} must be {expected}"
+                )
     return value
 
 
@@ -823,6 +917,16 @@ def planned_evidence_manifest(
         manifest[
             "association_sparse_prefilter_diagnostics_schema_version"
         ] = "d1.association_sparse_prefilter_diagnostics.v2"
+    if spec["validation_kind"] == "replay_prefix_summary":
+        manifest[
+            "replay_prefix_summary_execution_config_schema_version"
+        ] = "d1.fixed_lag_replay_prefix_summary_execution_config.v1"
+        manifest[
+            "replay_prefix_summary_diagnostics_schema_version"
+        ] = "d1.fixed_lag_replay_prefix_summary_diagnostics.v1"
+        manifest[
+            "replay_prefix_summary_schema_version"
+        ] = "d1.fixed_lag_replay_prefix_summary.v1"
     return manifest
 
 
@@ -1152,6 +1256,20 @@ def _episode_matches(
         )
     if validation_kind == "association_sparse_prefilter":
         return _association_sparse_prefilter_episode_matches(
+            episode_dir,
+            manifest=manifest,
+            config=config,
+            summary=summary,
+            expected_commit=expected_commit,
+            expected_implementation=expected_implementation,
+            seed=seed,
+            duration_s=duration_s,
+            target_count=target_count,
+            resource_count=resource_count,
+            recon_count=recon_count,
+        )
+    if validation_kind == "replay_prefix_summary":
+        return _replay_prefix_summary_episode_matches(
             episode_dir,
             manifest=manifest,
             config=config,
@@ -2411,6 +2529,346 @@ def _association_sparse_prefilter_diagnostics_match(
             not require_workload
             or int(total_counts["candidate_pair_count"]) > 0
         )
+    )
+
+
+def _replay_prefix_summary_episode_matches(
+    episode_dir: Path,
+    *,
+    manifest: Mapping[str, Any],
+    config: Mapping[str, Any],
+    summary: Mapping[str, Any],
+    expected_commit: str,
+    expected_implementation: str,
+    seed: int,
+    duration_s: float,
+    target_count: int,
+    resource_count: int,
+    recon_count: int,
+) -> bool:
+    expected_id = _D1_IMPLEMENTATION_IDS.get(expected_implementation)
+    if expected_id is None:
+        return False
+    candidate = (
+        expected_implementation
+        == "fixed_lag_checkpoint_prefix_cumulative_summary_v1"
+    )
+    if expected_implementation not in {
+        "per_checkpoint_prefix_rebuild_v1",
+        "fixed_lag_checkpoint_prefix_cumulative_summary_v1",
+    }:
+        return False
+
+    runtime_profile = manifest.get("runtime_profile")
+    runtime_configuration = (
+        runtime_profile.get("configuration")
+        if isinstance(runtime_profile, Mapping)
+        else None
+    )
+    initial_execution_config = (
+        runtime_profile.get("d1_replay_prefix_summary_execution_config")
+        if isinstance(runtime_profile, Mapping)
+        else None
+    )
+    initial_diagnostics = (
+        runtime_profile.get("d1_replay_prefix_summary_diagnostics")
+        if isinstance(runtime_profile, Mapping)
+        else None
+    )
+    summary_execution_config = summary.get(
+        "d1_replay_prefix_summary_execution_config"
+    )
+    diagnostics = summary.get("d1_replay_prefix_summary_diagnostics")
+    final = summary.get("module_final_diagnostics")
+    final_execution_config = (
+        final.get("d1_replay_prefix_summary_execution_config")
+        if isinstance(final, Mapping)
+        else None
+    )
+    final_diagnostics = (
+        final.get("d1_replay_prefix_summary_diagnostics")
+        if isinstance(final, Mapping)
+        else None
+    )
+    try:
+        governance = _read_mapping(
+            episode_dir / "observation_governance_audit.json"
+        )
+        online_evidence = _read_mapping(
+            episode_dir
+            / "offline_consistency"
+            / "online_evidence.json"
+        )
+    except (OSError, ValueError, json.JSONDecodeError):
+        return False
+    governance_execution_config = governance.get(
+        "d1_replay_prefix_summary_execution_config"
+    )
+    governance_diagnostics = governance.get(
+        "d1_replay_prefix_summary_diagnostics"
+    )
+    if not all(
+        isinstance(value, Mapping)
+        for value in (
+            runtime_profile,
+            runtime_configuration,
+            initial_execution_config,
+            initial_diagnostics,
+            summary_execution_config,
+            diagnostics,
+            final,
+            final_execution_config,
+            final_diagnostics,
+            governance_execution_config,
+            governance_diagnostics,
+            online_evidence,
+        )
+    ):
+        return False
+
+    execution_configs = (
+        initial_execution_config,
+        summary_execution_config,
+        final_execution_config,
+        governance_execution_config,
+    )
+    if not all(
+        _replay_prefix_summary_execution_config_matches(
+            item,
+            expected_implementation=expected_implementation,
+            expected_implementation_id=expected_id,
+            candidate=candidate,
+        )
+        for item in execution_configs
+    ):
+        return False
+    if not _replay_prefix_summary_diagnostics_match(
+        initial_diagnostics,
+        expected_implementation=expected_implementation,
+        expected_implementation_id=expected_id,
+        candidate=candidate,
+        require_workload=False,
+        require_materialized=True,
+    ):
+        return False
+    if (
+        diagnostics != governance_diagnostics
+        or not _replay_prefix_summary_diagnostics_match(
+            diagnostics,
+            expected_implementation=expected_implementation,
+            expected_implementation_id=expected_id,
+            candidate=candidate,
+            require_workload=True,
+            require_materialized=True,
+        )
+        or not _replay_prefix_summary_diagnostics_match(
+            final_diagnostics,
+            expected_implementation=expected_implementation,
+            expected_implementation_id=expected_id,
+            candidate=candidate,
+            require_workload=True,
+            require_materialized=False,
+        )
+    ):
+        return False
+
+    record_count = online_evidence.get("record_count")
+    records_digest = online_evidence.get("records_digest")
+    if (
+        online_evidence.get("schema_version")
+        != "d1.consistency.online_evidence_bundle.v1"
+        or isinstance(record_count, bool)
+        or not isinstance(record_count, int)
+        or record_count <= 0
+        or not isinstance(records_digest, str)
+        or _SHA256_RE.fullmatch(records_digest) is None
+    ):
+        return False
+
+    selector_field = "d1_replay_prefix_summary_implementation"
+    return (
+        manifest.get("git_commit") == expected_commit
+        and manifest.get("repository_dirty") is False
+        and manifest.get("seed") == seed
+        and runtime_profile.get(selector_field) == expected_implementation
+        and runtime_configuration.get(selector_field)
+        == expected_implementation
+        and summary.get(selector_field) == expected_implementation
+        and final.get(selector_field) == expected_implementation
+        and governance.get(selector_field) == expected_implementation
+        and config.get("seed") == seed
+        and _float_equal(config.get("duration_s"), duration_s)
+        and config.get("target_count") == target_count
+        and config.get("resource_count") == resource_count
+        and config.get("recon_count") == recon_count
+        and summary.get("finite_state") is True
+        and summary.get("online_truth_use_count") == 0
+        and _float_equal(summary.get("simulated_duration_s"), duration_s)
+    )
+
+
+def _replay_prefix_summary_execution_config_matches(
+    execution_config: Mapping[str, Any],
+    *,
+    expected_implementation: str,
+    expected_implementation_id: str,
+    candidate: bool,
+) -> bool:
+    return (
+        execution_config.get("schema_version")
+        == "d1.fixed_lag_replay_prefix_summary_execution_config.v1"
+        and execution_config.get("selector") == expected_implementation
+        and execution_config.get("selected_implementation_id")
+        == expected_implementation_id
+        and execution_config.get("candidate_enabled") is candidate
+        and execution_config.get("candidate_default_enabled") is False
+        and execution_config.get("default_selector")
+        == "per_checkpoint_prefix_rebuild_v1"
+        and execution_config.get("rollback_selector")
+        == "per_checkpoint_prefix_rebuild_v1"
+        and execution_config.get("summary_schema_version")
+        == "d1.fixed_lag_replay_prefix_summary.v1"
+        and _float_equal(execution_config.get("buffer_horizon_s"), 6.0)
+        and execution_config.get("truth_dependent_inputs") is False
+        and execution_config.get("fixed_lag_window_changed") is False
+        and execution_config.get("checkpoint_audit_semantics_changed")
+        is False
+        and execution_config.get("consistency_evidence_semantics_changed")
+        is False
+    )
+
+
+def _replay_prefix_summary_diagnostics_match(
+    diagnostics: Mapping[str, Any],
+    *,
+    expected_implementation: str,
+    expected_implementation_id: str,
+    candidate: bool,
+    require_workload: bool,
+    require_materialized: bool,
+) -> bool:
+    if (
+        diagnostics.get("schema_version")
+        != "d1.fixed_lag_replay_prefix_summary_diagnostics.v1"
+        or diagnostics.get("selector") != expected_implementation
+        or diagnostics.get("selected_implementation_id")
+        != expected_implementation_id
+    ):
+        return False
+    execution_config = diagnostics.get("execution_config")
+    operation_counts = diagnostics.get("operation_counts")
+    fallback_reasons = diagnostics.get("fallback_reasons")
+    materialization_reasons = diagnostics.get("materialization_reasons")
+    conservation = diagnostics.get("conservation")
+    pending_count = diagnostics.get("pending_consistency_ledger_count")
+    if (
+        not isinstance(execution_config, Mapping)
+        or not _replay_prefix_summary_execution_config_matches(
+            execution_config,
+            expected_implementation=expected_implementation,
+            expected_implementation_id=expected_implementation_id,
+            candidate=candidate,
+        )
+        or not isinstance(operation_counts, Mapping)
+        or not isinstance(fallback_reasons, Mapping)
+        or not isinstance(materialization_reasons, Mapping)
+        or not isinstance(conservation, Mapping)
+        or isinstance(pending_count, bool)
+        or not isinstance(pending_count, int)
+        or pending_count < 0
+        or any(value is not True for value in conservation.values())
+    ):
+        return False
+    for counts in (
+        operation_counts,
+        fallback_reasons,
+        materialization_reasons,
+    ):
+        if any(
+            isinstance(value, bool)
+            or not isinstance(value, int)
+            or value < 0
+            for value in counts.values()
+        ):
+            return False
+    if require_materialized and pending_count != 0:
+        return False
+
+    attempts = int(operation_counts.get("summary_attempt_count", 0))
+    hits = int(operation_counts.get("summary_hit_count", 0))
+    fallbacks = int(operation_counts.get("summary_fallback_count", 0))
+    reused = int(
+        operation_counts.get("summary_reused_checkpoint_count", 0)
+    )
+    logical_refreshes = int(
+        operation_counts.get(
+            "lazy_consistency_refresh_logical_record_count",
+            0,
+        )
+    )
+    materialized_records = int(
+        operation_counts.get(
+            "lazy_consistency_materialized_record_count",
+            0,
+        )
+    )
+    if (
+        attempts != hits + fallbacks
+        or fallbacks != sum(int(value) for value in fallback_reasons.values())
+        or hits > attempts
+        or reused < hits
+        or materialized_records > logical_refreshes
+    ):
+        return False
+    if candidate:
+        if not require_workload:
+            return True
+        append_revision_advances = int(
+            operation_counts.get("append_only_revision_advance_count", 0)
+        )
+        append_pending_preservations = int(
+            operation_counts.get(
+                "append_only_pending_preservation_count",
+                0,
+            )
+        )
+        snapshot_projections = int(
+            operation_counts.get("public_snapshot_projection_count", 0)
+        )
+        snapshot_projected_records = int(
+            operation_counts.get(
+                "public_snapshot_projected_record_count",
+                0,
+            )
+        )
+        append_materializations = int(
+            materialization_reasons.get("checkpoint_suffix_appended", 0)
+        ) + int(
+            materialization_reasons.get(
+                "checkpoint_suffix_append_incompatible",
+                0,
+            )
+        )
+        workload_valid = (
+            attempts > 0
+            and hits > 0
+            and reused > 0
+            and logical_refreshes > 0
+            and append_revision_advances > 0
+            and append_pending_preservations > 0
+            and snapshot_projections > 0
+            and snapshot_projected_records > 0
+            and append_materializations == 0
+        )
+        if require_materialized:
+            return workload_valid and materialized_records > 0
+        return workload_valid
+    return (
+        pending_count == 0
+        and hits == 0
+        and reused == 0
+        and logical_refreshes == 0
+        and materialized_records == 0
     )
 
 

@@ -72,6 +72,13 @@ ASSOCIATION_SPARSE_PREFILTER_MATRIX_PATH = (
     / "configs"
     / "d1_association_sparse_prefilter_multiseed_v1.json"
 )
+REPLAY_PREFIX_SUMMARY_MATRIX_PATH = (
+    ROOT
+    / "research_modules"
+    / "scalable_3d_simulation"
+    / "configs"
+    / "d1_replay_prefix_summary_multiseed_v1.json"
+)
 
 
 def test_publication_metadata_matrix_freezes_same_commit_13_pair_contract() -> None:
@@ -363,6 +370,216 @@ def test_association_sparse_prefilter_resume_audit_accepts_sorted_json(
         candidate=candidate,
         require_workload=False,
     )
+
+
+def test_replay_prefix_summary_matrix_freezes_safe_admission_contract() -> None:
+    matrix = matrix_runner.load_matrix(REPLAY_PREFIX_SUMMARY_MATRIX_PATH)
+    short = [case for case in matrix["cases"] if case["group"] == "short"]
+    long = [case for case in matrix["cases"] if case["group"] == "long"]
+
+    assert matrix["arm_implementations"] == {
+        "reference": "per_checkpoint_prefix_rebuild_v1",
+        "candidate": "fixed_lag_checkpoint_prefix_cumulative_summary_v1",
+    }
+    assert matrix["run_flags"] == ["--integrated-stack"]
+    assert [case["seed"] for case in short] == list(range(1151, 1161))
+    assert [case["seed"] for case in long] == [1151, 1152, 1153]
+    gates = matrix["admission_gates"]
+    assert gates["all_pairs_replay_prefix_summary_audit_valid"] is True
+    assert gates[
+        "all_pairs_consistency_evidence_records_digest_equal"
+    ] is True
+    assert gates["all_pairs_existing_operation_counts_equal"] is True
+    assert gates[
+        "minimum_candidate_lazy_materialization_reduction_pct"
+    ] == 20.0
+    boundary = matrix["evidence_boundary"]
+    assert boundary["candidate_default_off"] is True
+    assert boundary["fixed_lag_window_changed"] is False
+    assert boundary["checkpoint_audit_semantics_changed"] is False
+    assert boundary["consistency_evidence_semantics_changed"] is False
+    assert boundary["checkpoint_mutations_advance_revision"] is True
+    assert boundary["development_profile_seed_excluded"] == 1141
+
+
+def test_replay_prefix_summary_commands_isolate_only_the_selector(
+    tmp_path: Path,
+) -> None:
+    matrix = matrix_runner.load_matrix(REPLAY_PREFIX_SUMMARY_MATRIX_PATH)
+    case = matrix["cases"][0]
+    reference = matrix_runner.build_episode_command(
+        ROOT,
+        matrix,
+        case,
+        "reference",
+        tmp_path / "reference",
+    )
+    candidate = matrix_runner.build_episode_command(
+        ROOT,
+        matrix,
+        case,
+        "candidate",
+        tmp_path / "candidate",
+    )
+
+    selector_index = reference.index(
+        "--d1-replay-prefix-summary-implementation"
+    )
+    output_index = reference.index("--output")
+    assert (
+        reference[selector_index + 1]
+        == "per_checkpoint_prefix_rebuild_v1"
+    )
+    assert candidate[selector_index + 1] == (
+        "fixed_lag_checkpoint_prefix_cumulative_summary_v1"
+    )
+    for index, (left, right) in enumerate(
+        zip(reference, candidate, strict=True)
+    ):
+        if index not in {selector_index + 1, output_index + 1}:
+            assert left == right
+
+
+@pytest.mark.parametrize(
+    ("selector", "implementation_id", "candidate"),
+    [
+        (
+            "per_checkpoint_prefix_rebuild_v1",
+            "d1.fusion.replay_prefix.per_checkpoint_rebuild.v1",
+            False,
+        ),
+        (
+            "fixed_lag_checkpoint_prefix_cumulative_summary_v1",
+            "d1.fusion.replay_prefix."
+            "frozen_cumulative_summary_lazy_evidence_ranges.v1",
+            True,
+        ),
+    ],
+)
+def test_replay_prefix_summary_resume_audit_accepts_sorted_json(
+    selector: str,
+    implementation_id: str,
+    candidate: bool,
+) -> None:
+    diagnostics = Scalable3DFusionAdapter(
+        replay_prefix_summary=selector
+    ).replay_prefix_summary_diagnostics()
+    persisted = json.loads(json.dumps(diagnostics, sort_keys=True))
+
+    assert matrix_runner._replay_prefix_summary_diagnostics_match(
+        persisted,
+        expected_implementation=selector,
+        expected_implementation_id=implementation_id,
+        candidate=candidate,
+        require_workload=False,
+        require_materialized=True,
+    )
+
+
+def test_replay_prefix_summary_audit_distinguishes_pre_export_and_exported_state(
+) -> None:
+    selector = "fixed_lag_checkpoint_prefix_cumulative_summary_v1"
+    implementation_id = (
+        "d1.fusion.replay_prefix."
+        "frozen_cumulative_summary_lazy_evidence_ranges.v1"
+    )
+    adapter = Scalable3DFusionAdapter(replay_prefix_summary=selector)
+    pre_export = adapter.replay_prefix_summary_diagnostics()
+    pre_export["operation_counts"] = {
+        "summary_attempt_count": 3,
+        "summary_hit_count": 2,
+        "summary_fallback_count": 1,
+        "summary_reused_checkpoint_count": 4,
+        "lazy_consistency_refresh_logical_record_count": 5,
+        "append_only_revision_advance_count": 3,
+        "append_only_pending_preservation_count": 2,
+        "public_snapshot_projection_count": 1,
+        "public_snapshot_projected_record_count": 4,
+    }
+    pre_export["fallback_reasons"] = {"no_checkpoint_prefix": 1}
+    pre_export["materialization_reasons"] = {}
+    pre_export["pending_consistency_ledger_count"] = 2
+
+    assert matrix_runner._replay_prefix_summary_diagnostics_match(
+        pre_export,
+        expected_implementation=selector,
+        expected_implementation_id=implementation_id,
+        candidate=True,
+        require_workload=True,
+        require_materialized=False,
+    )
+    assert not matrix_runner._replay_prefix_summary_diagnostics_match(
+        pre_export,
+        expected_implementation=selector,
+        expected_implementation_id=implementation_id,
+        candidate=True,
+        require_workload=True,
+        require_materialized=True,
+    )
+
+    exported = copy.deepcopy(pre_export)
+    exported["operation_counts"][
+        "lazy_consistency_materialized_record_count"
+    ] = 2
+    exported["pending_consistency_ledger_count"] = 0
+    exported["materialization_reasons"] = {
+        "public_evidence_snapshot": 2,
+    }
+    assert matrix_runner._replay_prefix_summary_diagnostics_match(
+        exported,
+        expected_implementation=selector,
+        expected_implementation_id=implementation_id,
+        candidate=True,
+        require_workload=True,
+        require_materialized=True,
+    )
+
+    invalid_append = copy.deepcopy(exported)
+    invalid_append["materialization_reasons"][
+        "checkpoint_suffix_appended"
+    ] = 1
+    assert not matrix_runner._replay_prefix_summary_diagnostics_match(
+        invalid_append,
+        expected_implementation=selector,
+        expected_implementation_id=implementation_id,
+        candidate=True,
+        require_workload=True,
+        require_materialized=True,
+    )
+
+
+def test_replay_prefix_summary_manifest_binds_contract_and_d6_evaluator(
+    tmp_path: Path,
+) -> None:
+    matrix = matrix_runner.load_matrix(REPLAY_PREFIX_SUMMARY_MATRIX_PATH)
+    commit = "b" * 40
+    manifest = matrix_runner.planned_evidence_manifest(
+        REPLAY_PREFIX_SUMMARY_MATRIX_PATH,
+        matrix,
+        ROOT,
+        commit,
+        tmp_path / "evidence",
+    )
+
+    assert manifest["schema_version"] == (
+        "scalable3d-d1-replay-prefix-summary-multiseed-evidence-v1"
+    )
+    assert manifest["required_d6_evaluator_schema_version"] == (
+        "d6.d1_replay_prefix_summary_multiseed_evaluation.v1"
+    )
+    assert manifest[
+        "replay_prefix_summary_execution_config_schema_version"
+    ] == "d1.fixed_lag_replay_prefix_summary_execution_config.v1"
+    assert manifest[
+        "replay_prefix_summary_diagnostics_schema_version"
+    ] == "d1.fixed_lag_replay_prefix_summary_diagnostics.v1"
+    for case in manifest["cases"]:
+        assert case["arms"]["reference"]["validation_kind"] == (
+            "replay_prefix_summary"
+        )
+        assert case["arms"]["candidate"][
+            "expected_d1_implementation_id"
+        ].endswith("frozen_cumulative_summary_lazy_evidence_ranges.v1")
 
 
 def test_arm_commands_differ_only_by_explicit_implementation_and_output(

@@ -16,6 +16,26 @@
 `immutable_shared_v2`。系统实时、逐批审计明细、严格精度、AirSim 和目标硬件证据仍为
 P1。以下最新专项记录优先于“扫描输入或发布元数据仍待治理”的历史表述。
 
+## 2026-07-25 D1 固定滞后回放前缀摘要待准入
+
+当前无新增 P0。D1 owner 已实现默认关闭的
+`fixed_lag_checkpoint_prefix_cumulative_summary_v1`。候选通过不可变累计摘要和延迟区间
+账本减少完整 checkpoint 前缀的重复扫描；6 秒窗口、状态、协方差、创新、门控、
+consistency evidence、双时间戳和原有操作计数不变。中间迟到量测、schema 失配、部分
+前缀、无 checkpoint 和禁用一致性刷新均有失败关闭测试。
+
+D1 全量 `488 passed`。D1 owner 冻结 7-pair 微基准中位改善 `35.494%`，7/7 更快，
+bootstrap 上界低于 0，全部语义摘要一致。main 的 dirty seed 1151、2.2 s 集成预检确认
+两臂 consistency digest 和原有操作计数相同；候选逻辑刷新 `8687` 条、实际物化 `1785`
+条，压缩率 `79.452%`，在线 snapshot 和正常 append 均未触发内部物化，最终 pending
+为 0。这只关闭模块实现、在线接线和提交前预检缺口。
+
+main 已接入显式 selector 和四表面诊断，并预注册
+`configs/d1_replay_prefix_summary_multiseed_v1.json`。正式矩阵使用未参与开发 profile 的
+short seeds 1151-1160 和 long seeds 1151-1153。D6 必须核对 consistency evidence
+records digest、原有操作计数、业务语义、D1/core/D2/RSS 和延迟物化压缩率。clean
+同提交矩阵和 D6 判定完成前，本项仍为 P1，候选不得默认晋级。
+
 ## 2026-07-25 D1 关联稀疏预筛正式拒绝
 
 当前无新增 P0。D1 owner 已提供默认关闭的

@@ -36,6 +36,9 @@ from research_modules.d1_sensor_fusion.src.d1_sensor_fusion import (
     ONLINE_BATCH_FRAME_DEFAULT_IMPLEMENTATION,
     ONLINE_BATCH_FRAME_REFERENCE_IMPLEMENTATION,
     OnlineBatchFrameBuilder,
+    REPLAY_PREFIX_SUMMARY_CANDIDATE_SELECTOR,
+    REPLAY_PREFIX_SUMMARY_DEFAULT_SELECTOR,
+    REPLAY_PREFIX_SUMMARY_REFERENCE_SELECTOR,
     SCAN_INPUT_CANDIDATE_IMPLEMENTATION,
     SCAN_INPUT_REFERENCE_IMPLEMENTATION,
     ScanInputConfig,
@@ -199,6 +202,9 @@ class IntegratedStackConfig:
     )
     d1_association_sparse_prefilter_implementation: str = (
         ASSOCIATION_SPARSE_PREFILTER_DEFAULT_SELECTOR
+    )
+    d1_replay_prefix_summary_implementation: str = (
+        REPLAY_PREFIX_SUMMARY_DEFAULT_SELECTOR
     )
     d2_claim_retention_s: float = 30.0
     d2_claim_max_lateness_s: float = 5.0
@@ -414,6 +420,23 @@ class IntegratedStackConfig:
             "d1_association_sparse_prefilter_implementation",
             association_sparse_prefilter_implementation,
         )
+        replay_prefix_summary_implementation = str(
+            self.d1_replay_prefix_summary_implementation
+        ).strip()
+        if replay_prefix_summary_implementation not in {
+            REPLAY_PREFIX_SUMMARY_REFERENCE_SELECTOR,
+            REPLAY_PREFIX_SUMMARY_CANDIDATE_SELECTOR,
+        }:
+            raise ValueError(
+                "d1_replay_prefix_summary_implementation must be "
+                "per_checkpoint_prefix_rebuild_v1 or "
+                "fixed_lag_checkpoint_prefix_cumulative_summary_v1"
+            )
+        object.__setattr__(
+            self,
+            "d1_replay_prefix_summary_implementation",
+            replay_prefix_summary_implementation,
+        )
         if (
             not np.isfinite(self.d2_claim_capacity_safety_factor)
             or self.d2_claim_capacity_safety_factor < 1.0
@@ -597,6 +620,16 @@ def _initial_association_sparse_prefilter_diagnostics(
     ).association_sparse_prefilter_diagnostics()
 
 
+def _initial_replay_prefix_summary_diagnostics(
+    config: IntegratedStackConfig,
+) -> dict[str, Any]:
+    return Scalable3DFusionAdapter(
+        replay_prefix_summary=(
+            config.d1_replay_prefix_summary_implementation
+        )
+    ).replay_prefix_summary_diagnostics()
+
+
 @dataclass(frozen=True)
 class D4RegionLearningFrame:
     """One truth-free regional snapshot and its formal D4 source evidence."""
@@ -777,6 +810,9 @@ class IntegratedScalableModuleStack:
                 self.stack_config
             )
         )
+        replay_prefix_summary_diagnostics = (
+            _initial_replay_prefix_summary_diagnostics(self.stack_config)
+        )
         return {
             "schema_version": "scalable3d-integrated-stack-runtime-profile-v1",
             "module_stack_schema_version": INTEGRATED_STACK_SCHEMA_VERSION,
@@ -831,6 +867,15 @@ class IntegratedScalableModuleStack:
             ),
             "d1_association_sparse_prefilter_diagnostics": (
                 sparse_prefilter_diagnostics
+            ),
+            "d1_replay_prefix_summary_implementation": (
+                self.stack_config.d1_replay_prefix_summary_implementation
+            ),
+            "d1_replay_prefix_summary_execution_config": dict(
+                replay_prefix_summary_diagnostics["execution_config"]
+            ),
+            "d1_replay_prefix_summary_diagnostics": (
+                replay_prefix_summary_diagnostics
             ),
         }
 
@@ -900,6 +945,9 @@ class IntegratedScalableModuleStack:
             association_sparse_prefilter=(
                 self.stack_config
                 .d1_association_sparse_prefilter_implementation
+            ),
+            replay_prefix_summary=(
+                self.stack_config.d1_replay_prefix_summary_implementation
             ),
         )
         self.d1_scan_input = ScanInputOrganizer(
@@ -1381,6 +1429,15 @@ class IntegratedScalableModuleStack:
             "d1_association_sparse_prefilter_diagnostics": (
                 self.d1.association_sparse_prefilter_diagnostics()
             ),
+            "d1_replay_prefix_summary_implementation": (
+                self.stack_config.d1_replay_prefix_summary_implementation
+            ),
+            "d1_replay_prefix_summary_execution_config": (
+                self.d1.replay_prefix_summary_execution_config()
+            ),
+            "d1_replay_prefix_summary_diagnostics": (
+                self.d1.replay_prefix_summary_diagnostics()
+            ),
             "d1_scan_event_total_count": self._d1_scan_event_total_count,
             "d1_scan_event_retained_count": len(self._d1_scan_events),
             "d1_scan_event_log_limit": self._d1_scan_events.maxlen,
@@ -1729,7 +1786,7 @@ class IntegratedScalableModuleStack:
 
         evidence_by_observation = {
             item.observation_id: item
-            for item in self.d1.consistency_evidence_records()
+            for item in self.d1.consistency_evidence_snapshot()
         }
         for (
             result,
@@ -4442,7 +4499,7 @@ class IntegratedScalableModuleStack:
         if evidence_by_observation is None:
             evidence_by_observation = {
                 item.observation_id: item
-                for item in self.d1.consistency_evidence_records()
+                for item in self.d1.consistency_evidence_snapshot()
             }
         tracks_materialized = bool(
             getattr(result, "tracks_materialized", True)
@@ -5424,6 +5481,17 @@ class IntegratedScalableModuleStack:
                 governance[
                     "d1_association_sparse_prefilter_diagnostics"
                 ]
+            ),
+            "d1_replay_prefix_summary_implementation": governance[
+                "d1_replay_prefix_summary_implementation"
+            ],
+            "d1_replay_prefix_summary_execution_config": dict(
+                governance[
+                    "d1_replay_prefix_summary_execution_config"
+                ]
+            ),
+            "d1_replay_prefix_summary_diagnostics": dict(
+                governance["d1_replay_prefix_summary_diagnostics"]
             ),
             "d2_publication_metadata_audit": dict(
                 governance["d2_publication_metadata_audit"]

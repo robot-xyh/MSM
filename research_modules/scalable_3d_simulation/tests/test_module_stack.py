@@ -890,6 +890,153 @@ def test_episode_cli_exposes_d1_association_sparse_prefilter_selector() -> None:
     )
 
 
+def test_d1_replay_prefix_summary_is_explicit_hashed_and_audited() -> None:
+    config = ScenarioConfig(
+        scenario_name="d1_replay_prefix_summary_selection",
+        scenario_version="d1-replay-prefix-summary-selection-v1",
+        target_count=3,
+        resource_count=3,
+        recon_count=1,
+        region_count=1,
+        duration_s=1.4,
+        seed=33,
+    )
+    default = IntegratedStackConfig()
+    assert (
+        default.d1_replay_prefix_summary_implementation
+        == "per_checkpoint_prefix_rebuild_v1"
+    )
+
+    reference_stack = IntegratedScalableModuleStack(
+        IntegratedStackConfig(
+            d1_replay_prefix_summary_implementation=(
+                "per_checkpoint_prefix_rebuild_v1"
+            )
+        )
+    )
+    candidate_stack = IntegratedScalableModuleStack(
+        IntegratedStackConfig(
+            d1_replay_prefix_summary_implementation=(
+                "fixed_lag_checkpoint_prefix_cumulative_summary_v1"
+            )
+        )
+    )
+    reference_profile = reference_stack.runtime_manifest_profile_for_scenario(
+        config
+    )
+    candidate_profile = candidate_stack.runtime_manifest_profile_for_scenario(
+        config
+    )
+    assert reference_profile[
+        "d1_replay_prefix_summary_implementation"
+    ] == "per_checkpoint_prefix_rebuild_v1"
+    assert candidate_profile[
+        "d1_replay_prefix_summary_implementation"
+    ] == "fixed_lag_checkpoint_prefix_cumulative_summary_v1"
+    assert reference_profile != candidate_profile
+    initial = candidate_profile["d1_replay_prefix_summary_diagnostics"]
+    assert initial["execution_config"] == candidate_profile[
+        "d1_replay_prefix_summary_execution_config"
+    ]
+    assert initial["execution_config"]["candidate_enabled"] is True
+    assert initial["pending_consistency_ledger_count"] == 0
+    assert initial["conservation"]["attempt_partition"] is True
+
+    reference_result = run_episode(config, module_stack=reference_stack)
+    candidate_result = run_episode(config, module_stack=candidate_stack)
+    assert (
+        reference_result.manifest.runtime_profile_sha256
+        != candidate_result.manifest.runtime_profile_sha256
+    )
+    for result, expected_selector, expected_candidate in (
+        (
+            reference_result,
+            "per_checkpoint_prefix_rebuild_v1",
+            False,
+        ),
+        (
+            candidate_result,
+            "fixed_lag_checkpoint_prefix_cumulative_summary_v1",
+            True,
+        ),
+    ):
+        governance = result.observation_governance_audit
+        assert governance is not None
+        assert governance[
+            "d1_replay_prefix_summary_implementation"
+        ] == expected_selector
+        diagnostics = governance["d1_replay_prefix_summary_diagnostics"]
+        assert diagnostics["execution_config"][
+            "candidate_enabled"
+        ] is expected_candidate
+        assert diagnostics["pending_consistency_ledger_count"] == 0
+        assert diagnostics["conservation"]["attempt_partition"] is True
+        assert result.summary[
+            "d1_replay_prefix_summary_implementation"
+        ] == expected_selector
+        assert result.summary[
+            "d1_replay_prefix_summary_diagnostics"
+        ] == diagnostics
+        final_diagnostics = result.summary["module_final_diagnostics"][
+            "d1_replay_prefix_summary_diagnostics"
+        ]
+        assert final_diagnostics["selector"] == expected_selector
+        assert final_diagnostics["execution_config"][
+            "candidate_enabled"
+        ] is expected_candidate
+        assert final_diagnostics["conservation"]["attempt_partition"] is True
+
+    candidate_counts = candidate_result.summary[
+        "d1_replay_prefix_summary_diagnostics"
+    ]["operation_counts"]
+    assert candidate_counts["summary_hit_count"] > 0
+    assert candidate_counts["summary_reused_checkpoint_count"] > 0
+    assert candidate_counts["public_snapshot_projection_count"] > 0
+    assert (
+        candidate_counts["lazy_consistency_refresh_logical_record_count"]
+        >= candidate_counts["lazy_consistency_materialized_record_count"]
+    )
+    candidate_materialization_reasons = candidate_result.summary[
+        "d1_replay_prefix_summary_diagnostics"
+    ]["materialization_reasons"]
+    assert (
+        candidate_materialization_reasons.get(
+            "checkpoint_suffix_appended",
+            0,
+        )
+        == 0
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="d1_replay_prefix_summary_implementation must be",
+    ):
+        IntegratedStackConfig(
+            d1_replay_prefix_summary_implementation="unsafe"
+        )
+
+
+def test_episode_cli_exposes_d1_replay_prefix_summary_selector() -> None:
+    episode_cli = importlib.import_module(
+        "research_modules.scalable_3d_simulation.run_episode"
+    )
+    default_args = episode_cli.parse_args(["--integrated-stack"])
+    assert (
+        default_args.d1_replay_prefix_summary_implementation
+        == "per_checkpoint_prefix_rebuild_v1"
+    )
+    args = episode_cli.parse_args(
+        [
+            "--integrated-stack",
+            "--d1-replay-prefix-summary-implementation",
+            "fixed_lag_checkpoint_prefix_cumulative_summary_v1",
+        ]
+    )
+    assert args.d1_replay_prefix_summary_implementation == (
+        "fixed_lag_checkpoint_prefix_cumulative_summary_v1"
+    )
+
+
 def test_d1_opaque_source_key_control_arm_is_explicit_and_hashed() -> None:
     stack = IntegratedScalableModuleStack(
         IntegratedStackConfig(d1_publish_opaque_source_key=True)

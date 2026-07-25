@@ -72,6 +72,12 @@ main
 | D1 关联稀疏预筛矩阵 | `scalable3d-d1-association-sparse-prefilter-multiseed-matrix-v1` | 实验臂、seed、时长、准入门、精确门内等价或证据边界改变 |
 | D1 关联稀疏预筛证据 | `scalable3d-d1-association-sparse-prefilter-multiseed-evidence-v1` | clean source、episode/resource 路径、arm 状态、预筛诊断或 D6 evaluator 绑定改变 |
 | D6 关联稀疏预筛准入 | `d6.d1_association_sparse_prefilter_multiseed_evaluation.v1` | 业务归一化边界、逐模态门内等价、D1/core/D2/RSS 门、精确求解削减或准入结论语义改变 |
+| D1 回放前缀摘要实现 | `per_checkpoint_prefix_rebuild_v1` / `fixed_lag_checkpoint_prefix_cumulative_summary_v1` | checkpoint 前缀重建、累计摘要、revision 完整性边界或延迟一致性证据账本语义改变；候选当前默认关闭 |
+| D1 回放前缀摘要执行配置 | `d1.fixed_lag_replay_prefix_summary_execution_config.v1` | selector、完整实现标识、回退路径、6 秒窗口或语义不变声明改变 |
+| D1 回放前缀摘要诊断 | `d1.fixed_lag_replay_prefix_summary_diagnostics.v1` | 摘要尝试、命中、回退、复用、延迟刷新、物化或守恒语义改变 |
+| D1 回放前缀摘要矩阵 | `scalable3d-d1-replay-prefix-summary-multiseed-matrix-v1` | 实验臂、seed、时长、consistency evidence digest、准入门或证据边界改变 |
+| D1 回放前缀摘要证据 | `scalable3d-d1-replay-prefix-summary-multiseed-evidence-v1` | clean source、episode/resource 路径、arm 状态、回放摘要诊断或 D6 evaluator 绑定改变 |
+| D6 回放前缀摘要准入 | `d6.d1_replay_prefix_summary_multiseed_evaluation.v1` | 业务归一化、evidence digest、操作计数、D1/core/D2/RSS 门、物化压缩率或准入结论语义改变 |
 | D1 常速度模型构造实现 | `per_prediction_build_v1` / `bounded_exact_lru_v1` | 状态转移和过程噪声矩阵的逐次构造或精确有界缓存语义改变 |
 | D1 常速度模型缓存诊断 | `d1.cv_motion_model_cache_diagnostics.v1` | 实现 ID、容量、条目数、预测请求、构造、命中、未命中或淘汰计数语义改变 |
 | D1 常速度模型缓存矩阵 | `scalable3d-d1-cv-motion-model-cache-multiseed-matrix-v1` | 实验臂、seed、时长、容量、准入门或证据边界改变 |

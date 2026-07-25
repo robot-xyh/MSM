@@ -42,6 +42,9 @@ from research_modules.scalable_3d_simulation.module_stack import (
     ONLINE_BATCH_FRAME_CANDIDATE_IMPLEMENTATION,
     ONLINE_BATCH_FRAME_DEFAULT_IMPLEMENTATION,
     ONLINE_BATCH_FRAME_REFERENCE_IMPLEMENTATION,
+    REPLAY_PREFIX_SUMMARY_CANDIDATE_SELECTOR,
+    REPLAY_PREFIX_SUMMARY_DEFAULT_SELECTOR,
+    REPLAY_PREFIX_SUMMARY_REFERENCE_SELECTOR,
     SCAN_INPUT_CANDIDATE_IMPLEMENTATION,
     SCAN_INPUT_REFERENCE_IMPLEMENTATION,
 )
@@ -243,6 +246,19 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--d1-replay-prefix-summary-implementation",
+        choices=(
+            REPLAY_PREFIX_SUMMARY_REFERENCE_SELECTOR,
+            REPLAY_PREFIX_SUMMARY_CANDIDATE_SELECTOR,
+        ),
+        default=REPLAY_PREFIX_SUMMARY_DEFAULT_SELECTOR,
+        help=(
+            "select the D1 fixed-lag replay-prefix implementation; the "
+            "cumulative-summary candidate remains default-off pending a "
+            "formal same-commit multiseed admission"
+        ),
+    )
+    parser.add_argument(
         "--online-truth-guard-implementation",
         choices=(
             ONLINE_TRUTH_GUARD_REFERENCE_IMPLEMENTATION,
@@ -345,6 +361,9 @@ def main() -> int:
                 ),
                 d1_association_sparse_prefilter_implementation=(
                     args.d1_association_sparse_prefilter_implementation
+                ),
+                d1_replay_prefix_summary_implementation=(
+                    args.d1_replay_prefix_summary_implementation
                 ),
             ),
         )

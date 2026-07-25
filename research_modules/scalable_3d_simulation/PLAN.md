@@ -1,5 +1,31 @@
 # 200 对 200 三维质点仿真实施计划
 
+## D1 固定滞后回放前缀摘要准入（2026-07-25）
+
+1. [x] D1 owner 提供 `per_checkpoint_prefix_rebuild_v1` 参考实现和默认关闭的
+   `fixed_lag_checkpoint_prefix_cumulative_summary_v1` 候选。
+2. [x] 候选仅对完整、可信且 revision 一致的 checkpoint 前缀复用不可变摘要；任何
+   schema、身份、顺序、配置或前缀不一致均回退参考路径。
+3. [x] consistency evidence 使用延迟区间账本；在线 publication 通过精确非破坏性
+   snapshot 读取，写前、失效、fixed-lag 重基准和 episode 最终导出前精确物化，不省略
+   replay count 或 revision。
+4. [x] D1 全量 `488 passed`；D1 owner 的冻结 7-pair 微基准为 7/7 更快，中位改善
+   `35.494%`，全部语义等价门通过。
+5. [x] main 接入 selector、完整实现 ID、执行配置和诊断，并贯通 runtime profile、
+   observation governance、module final 和 episode summary。
+6. [x] 冻结 `configs/d1_replay_prefix_summary_multiseed_v1.json`：short seeds
+   1151-1160、long seeds 1151-1153、200 个目标、200 个资源、2 个侦察节点。
+7. [x] 预注册 consistency evidence records digest、原有操作计数、D1/core/D2/RSS、
+   bootstrap、实现身份和延迟物化压缩率门。
+8. [x] dirty seed 1151、2.2 s 集成预检确认 consistency digest 与原有操作计数相同，
+   最终 pending 为 0，append 物化为 0，内部记录物化压缩率 `79.452%`；该结果只用于
+   提交前排错。
+9. [ ] 在 clean 同提交上完成单 pair smoke 和 13 对/26 episode 正式矩阵，禁止复用或
+   覆盖已否决的关联稀疏预筛矩阵。
+10. [ ] D6 owner 独立读取原始 episode，执行失败关闭评估并生成中文报告。
+11. [ ] 只有全部冻结门通过才评审 main 默认晋级；否则保留显式研究路径。
+12. [ ] 系统实时、AirSim、冻结目标处理器、硬件和实飞证据继续单独验收。
+
 ## D1 关联稀疏预筛正式拒绝（2026-07-25）
 
 1. [x] D1 owner 提供 `disabled_v1` 参考路径和默认关闭的
