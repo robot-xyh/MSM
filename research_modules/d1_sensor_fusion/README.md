@@ -4,6 +4,42 @@ Offline research module for radar, acoustic, EO, and optional synthetic lidar he
 
 ## 当前性能与治理证据（2026-07-24）
 
+### 第二十九阶段：六维协方差 PSD 检查快路径候选
+
+200v200、2.2 s 函数剖析把协方差正半定检查列为 D1 剩余热点：
+`process_scan_batch` 累计 `5.029 s`，`_limit_covariance_diagonal()` 累计
+`0.822 s`，`np.linalg.eigvalsh()` 调用 70,183 次、累计 `0.847 s`。本阶段增加
+默认关闭的 `cholesky_covariance_psd_fast_path`，reference 实现 ID 为
+`d1.fusion.covariance_psd_check.eigvalsh.v1`，candidate 为
+`d1.fusion.covariance_psd_check.cholesky_6x6_relative_determinant_guard_then_eigvalsh.v2`。
+
+候选只对有限 `6x6` 对称化协方差先执行 Cholesky 分解。分解成功后还需通过
+`9.094947017729282e-13` 的归一化行列式安全门，才返回已经构造的非别名结果。分解失败或
+安全门拒绝后完整执行原有 `eigvalsh`、相关矩阵特征值投影、相关收缩和对角回退。半正定、
+机器精度附近的不定矩阵、近奇异矩阵、非有限输入、对角门限和投影语义均未放宽。其他维度
+继续使用 reference。
+
+`covariance_psd_check_diagnostics()` 返回实现 ID、开关、适用维度和
+安全门限，以及 `attempt/success/fallback`。守恒式
+`attempt = success + fallback` 独立报告，计数不写入既有业务 metadata，避免改变发布摘要。
+随机严格正定矩阵、近奇异严格正定矩阵、半正定/不定回退、非有限拒绝、默认边界、非别名和
+操作数均有专项测试。
+
+确定种子 `20260724` 的合成模块基准使用 2,000 个六维矩阵、每样本 10 轮、9 次交替采样；
+输入 SHA-256 为
+`f26445ee25cd87ec52a993672d9900baba3b41f7999155de35b0c7bd3424a525`。reference/candidate
+中位墙钟为 `0.558490/0.588263 s`，candidate 慢 `5.33%`，且没有配对样本更快（`0/9`）。
+20,000 次候选检查中，Cholesky `attempt/success/fallback` 为
+`20,000/19,800/200`；cProfile 中 `eigvalsh` 调用由 `20,400` 降为 `600`，同时新增
+20,000 次 Cholesky。
+
+数学输出、原因摘要、有限性和对称性严格一致，D1 全量为
+`404 passed in 21.39s`。预设建议门槛要求中位改善至少 `2%` 且至少 `70%` 配对更快；
+当前 v2 两项均未达到。因此候选只保留为显式研究对照，D1 默认保持 `False`，明确不建议
+main 接入默认路径。安全门前的旧计时已被本次 v2 正式重跑替代，不再作为当前实现性能证据。
+该结果也不构成完整融合、200v200、AirSim、硬件或系统实时准入。专项报告见
+`reports/D1_COVARIANCE_PSD_FAST_PATH_PERFORMANCE_20260724_CN.md`。
+
 ### 第二十八阶段：匀速模型矩阵复用正式准入
 
 函数级剖析显示，200v200、seed 1101、2.2 s 的 D1 路径执行

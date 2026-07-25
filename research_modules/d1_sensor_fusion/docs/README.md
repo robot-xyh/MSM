@@ -4,6 +4,20 @@
 
 ## 当前证据索引（2026-07-24）
 
+### 六维协方差 PSD 检查候选
+
+D1 新增默认关闭的 `6x6` Cholesky 快检候选。Cholesky 成功且归一化行列式通过
+`9.094947017729282e-13` 安全门的矩阵可直接返回；半正定、近奇异、不定、Cholesky 失败
+或安全门拒绝矩阵完整回到既有 `eigvalsh + 投影` 路径。独立诊断记录实现 ID、安全门限、
+`attempt/success/fallback` 及守恒关系，不改变业务 metadata。
+
+确定种子合成模块基准中，reference/candidate 中位墙钟为
+`0.558490/0.588263 s`，candidate 慢 `5.33%`，`0/9` 配对更快；20,000 次尝试中
+19,800 次成功、200 次回退。输出和原因严格一致，D1 全量 `404 passed in 21.39s`。
+当前 v2 没有性能收益，安全门前旧计时已失效，因此候选只保留为对照，不建议 main 接入。
+详细结果见 `EXPERIMENT_REPORT.md` 和
+`../reports/D1_COVARIANCE_PSD_FAST_PATH_PERFORMANCE_20260724_CN.md`。
+
 ### 扫描输入正式同提交准入
 
 clean commit `d14285e4fdeb2f2e2cd32fad2f6d42e30f9e73a7` 的

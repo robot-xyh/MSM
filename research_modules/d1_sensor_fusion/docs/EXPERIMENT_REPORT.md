@@ -1,5 +1,54 @@
 # 第一研究模块实验结果
 
+## 六维协方差 PSD 检查快路径
+
+**证据日期：2026-07-24**
+
+**范围：D1 六维状态协方差限幅合成模块基准**
+
+### 试验设计
+
+剖析输入显示 D1 在 200v200、2.2 s 场景中调用 `eigvalsh` 70,183 次。候选只改变严格正定
+矩阵的判定顺序：先尝试 Cholesky，再检查归一化行列式安全门；任一步失败后完整回到
+reference 特征值检查和投影。D1 默认开关保持关闭。当前候选实现 ID 为
+`d1.fusion.covariance_psd_check.cholesky_6x6_relative_determinant_guard_then_eigvalsh.v2`，
+安全门限为 `9.094947017729282e-13`。
+
+合成输入由确定种子 `20260724` 生成，包含 2,000 个 `6x6` 矩阵，其中 1,980 个严格正定、
+20 个不定。每个计时样本执行 10 轮，共 20,000 次限幅；预热 2 轮后，reference/candidate
+按相反顺序交替运行 9 次。输入 SHA-256 为
+`f26445ee25cd87ec52a993672d9900baba3b41f7999155de35b0c7bd3424a525`。
+
+### 结果
+
+| 指标 | Reference | Candidate |
+| --- | ---: | ---: |
+| 中位墙钟 | `0.558490 s` | `0.588263 s` |
+| 最小/最大墙钟 | `0.550532/0.577325 s` | `0.584939/0.590289 s` |
+| 配对更快 | - | `0/9` |
+| Cholesky attempt/success/fallback | `0/0/0` | `20,000/19,800/200` |
+| `eigvalsh` cProfile 调用 | `20,400` | `600` |
+| 数学输出与原因摘要 | 基准 | 严格一致 |
+
+候选中位墙钟比 reference 高 `5.33%`。全部输出有限、对称，covariance SHA-256 与 reason
+SHA-256 在两臂一致。Cholesky 尝试数等于成功数与回退数之和。不定矩阵均执行 reference
+投影；单元测试另覆盖半正定、近奇异和机器精度附近不定边界。D1 全量为
+`404 passed in 21.39s`。
+
+cProfile 中 `_project_bounded_covariance_to_psd` 累计时间为
+`0.292913/0.352932 s`，`eigvalsh` 为 `0.203014/0.006331 s`，candidate 的 Cholesky 为
+`0.163990 s`。特征值调用下降没有抵消 Cholesky 和安全门检查开销，未剖析的 9 次交替墙钟
+也全部较慢。
+
+### 结论
+
+预设模块建议门槛为中位改善至少 `2%`，且 candidate 更快配对比例至少 `70%`。当前 v2
+两项均未达到。候选仅保留为默认关闭的研究对照，明确不建议 main 接入。安全门前旧计时
+已被本次同版本正式结果替代。报告和机器可读结果位于
+`../reports/D1_COVARIANCE_PSD_FAST_PATH_PERFORMANCE_20260724_CN.md` 与
+`../reports/d1_covariance_psd_fast_path_performance_20260724.json`。本试验不包含完整融合、
+200v200 多 seed、AirSim、目标硬件、RMSE、NEES、NIS 或系统实时准入。
+
 ## 匀速模型矩阵复用正式准入
 
 **证据日期：2026-07-24**

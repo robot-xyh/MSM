@@ -8,6 +8,49 @@
 
 ## 当前权威增量（2026-07-24）
 
+### 六维协方差 PSD 检查候选
+
+候选构造方式如下：
+
+```python
+reference = FusionAdapter()
+candidate = FusionAdapter(
+    cholesky_covariance_psd_fast_path=True,
+)
+```
+
+默认值为 `False`。reference 实现 ID 是
+`d1.fusion.covariance_psd_check.eigvalsh.v1`，candidate 实现 ID 是
+`d1.fusion.covariance_psd_check.cholesky_6x6_relative_determinant_guard_then_eigvalsh.v2`。
+
+`_project_bounded_covariance_to_psd()` 仍先生成独立的对称结果。候选只在矩阵形状为
+`(6, 6)` 且全部有限时调用 `np.linalg.cholesky()`。分解成功后计算 Cholesky 对角平方与
+原矩阵对角线的归一化行列式比；只有该比值大于 `9.094947017729282e-13` 时才返回结果。
+分解失败或安全门拒绝后不修改矩阵，随后进入原 `np.linalg.eigvalsh()` 和完整投影。该门
+用于阻止线性代数库在机器精度附近接受实际带极小负特征值的矩阵。非有限输入仍由
+`_limit_covariance_diagonal()` 在候选尝试前拒绝。其他维度不执行候选。
+
+`covariance_psd_check_diagnostics()` 使用
+`d1.covariance_psd_check_diagnostics.v2`，输出：
+
+- `implementation_id` 和 `candidate_enabled`；
+- 固定适用形状 `[6, 6]`；
+- `relative_determinant_floor`；
+- `cholesky_attempt_count`、`cholesky_success_count`、
+  `cholesky_fallback_count`；
+- `attempt_equals_success_plus_fallback` 守恒检查。
+
+这些计数使用独立累计器，不进入既有 covariance limit reason 或业务操作数。候选因此不会
+仅因实现审计而改变 `GlobalTrack` metadata。测试覆盖随机严格正定、近奇异严格正定、
+半正定、不定、非有限、四维旁路、默认值、类型检查和输入非别名。
+
+专项基准脚本为 `scripts/run_covariance_psd_fast_path_performance.py`。固定输入 SHA-256 为
+`f26445ee25cd87ec52a993672d9900baba3b41f7999155de35b0c7bd3424a525`；9 次交替采样的
+中位墙钟为 `0.558490/0.588263 s`，candidate 慢 `5.33%`，`0/9` 配对更快。cProfile
+显示 `eigvalsh` 调用 `20,400 -> 600`，但新增 20,000 次 Cholesky 和安全门判断后，
+当前实现没有性能收益。安全门前旧计时已失效。当前处置是保留显式研究对照，不建议 main
+接线或默认启用。
+
 ### 匀速模型矩阵复用与正式准入
 
 候选保持原匀速预测方程和浮点运算顺序，只把矩阵构造从每次预测移到有界缓存。缓存键为精确

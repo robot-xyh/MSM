@@ -1,0 +1,209 @@
+{
+  "schema_version": "d1.covariance_psd_fast_path_performance.v2",
+  "benchmark_scope": "D1 synthetic 6x6 covariance limiter only; not full fusion, AirSim, hardware, or full-stack admission evidence",
+  "configuration": {
+    "repetitions": 9,
+    "warmup_count": 2,
+    "matrix_count": 2000,
+    "round_count": 10,
+    "fallback_every": 100,
+    "seed": 20260724
+  },
+  "recommendation_policy": {
+    "minimum_median_improvement_fraction": 0.02,
+    "minimum_paired_faster_fraction": 0.7,
+    "minimum_paired_faster_count": 7,
+    "scope": "D1 module candidate recommendation only; main admission requires an independent clean multiseed evaluation"
+  },
+  "input": {
+    "kind": "deterministic_synthetic_6x6_covariance_workload",
+    "sha256": "f26445ee25cd87ec52a993672d9900baba3b41f7999155de35b0c7bd3424a525",
+    "indefinite_matrix_count": 20,
+    "positive_definite_matrix_count": 1980,
+    "online_truth_use_count": 0
+  },
+  "reference": {
+    "sample_count": 9,
+    "wall_time_samples_s": [
+      0.5773245049640536,
+      0.5552938260370865,
+      0.5505321660311893,
+      0.5590380379580893,
+      0.5584899780224077,
+      0.5565344850183465,
+      0.5647082270006649,
+      0.5579760450054891,
+      0.560863547027111
+    ],
+    "median_wall_time_s": 0.5584899780224077,
+    "minimum_wall_time_s": 0.5505321660311893,
+    "maximum_wall_time_s": 0.5773245049640536,
+    "output_sha256": "c9e4885eff32ef5c293f75f31d4e3cc6b3bbcbe903b7f98b4a0a771601e093e0",
+    "reason_sha256": "b056635f70b8e49befcf26797fb340245cdfa5259e6dc0eb43f50f749a53dca1",
+    "finite_symmetric_output": true,
+    "diagnostics": {
+      "schema_version": "d1.covariance_psd_check_diagnostics.v2",
+      "implementation_id": "d1.fusion.covariance_psd_check.eigvalsh.v1",
+      "candidate_enabled": false,
+      "eligible_matrix_shape": [
+        6,
+        6
+      ],
+      "relative_determinant_floor": 9.094947017729282e-13,
+      "operation_counts": {
+        "cholesky_attempt_count": 0,
+        "cholesky_success_count": 0,
+        "cholesky_fallback_count": 0
+      },
+      "conservation": {
+        "attempt_equals_success_plus_fallback": true
+      }
+    },
+    "profile": {
+      "profiled_operation_count": 20000,
+      "profiled_wall_time_s": 1.1138635780080222,
+      "selected_functions": {
+        "eigvalsh": {
+          "primitive_call_count": 20400,
+          "total_call_count": 20400,
+          "total_time_s": 0.11064990200000001,
+          "cumulative_time_s": 0.20301395900000002
+        },
+        "eigh": {
+          "primitive_call_count": 200,
+          "total_call_count": 200,
+          "total_time_s": 0.0020234190000000003,
+          "cumulative_time_s": 0.003187833
+        },
+        "_limit_state_covariance": {
+          "primitive_call_count": 20000,
+          "total_call_count": 20000,
+          "total_time_s": 0.06747304600000001,
+          "cumulative_time_s": 1.095394132
+        },
+        "_bounded_covariance_constraints_satisfied": {
+          "primitive_call_count": 200,
+          "total_call_count": 200,
+          "total_time_s": 0.001689535,
+          "cumulative_time_s": 0.005780704
+        },
+        "_limit_covariance_diagonal": {
+          "primitive_call_count": 20000,
+          "total_call_count": 20000,
+          "total_time_s": 0.19245278600000001,
+          "cumulative_time_s": 1.002446073
+        },
+        "_project_bounded_covariance_to_psd": {
+          "primitive_call_count": 20000,
+          "total_call_count": 20000,
+          "total_time_s": 0.060651906000000005,
+          "cumulative_time_s": 0.292913472
+        }
+      }
+    }
+  },
+  "candidate": {
+    "sample_count": 9,
+    "wall_time_samples_s": [
+      0.5849394599790685,
+      0.5865781780448742,
+      0.588263287965674,
+      0.5890053819748573,
+      0.5902888459968381,
+      0.5858540369663388,
+      0.5886658640229143,
+      0.5862320069572888,
+      0.5902386440429837
+    ],
+    "median_wall_time_s": 0.588263287965674,
+    "minimum_wall_time_s": 0.5849394599790685,
+    "maximum_wall_time_s": 0.5902888459968381,
+    "output_sha256": "c9e4885eff32ef5c293f75f31d4e3cc6b3bbcbe903b7f98b4a0a771601e093e0",
+    "reason_sha256": "b056635f70b8e49befcf26797fb340245cdfa5259e6dc0eb43f50f749a53dca1",
+    "finite_symmetric_output": true,
+    "diagnostics": {
+      "schema_version": "d1.covariance_psd_check_diagnostics.v2",
+      "implementation_id": "d1.fusion.covariance_psd_check.cholesky_6x6_relative_determinant_guard_then_eigvalsh.v2",
+      "candidate_enabled": true,
+      "eligible_matrix_shape": [
+        6,
+        6
+      ],
+      "relative_determinant_floor": 9.094947017729282e-13,
+      "operation_counts": {
+        "cholesky_attempt_count": 20000,
+        "cholesky_success_count": 19800,
+        "cholesky_fallback_count": 200
+      },
+      "conservation": {
+        "attempt_equals_success_plus_fallback": true
+      }
+    },
+    "profile": {
+      "profiled_operation_count": 20000,
+      "profiled_wall_time_s": 1.189041501027532,
+      "selected_functions": {
+        "cholesky": {
+          "primitive_call_count": 20000,
+          "total_call_count": 20000,
+          "total_time_s": 0.075176851,
+          "cumulative_time_s": 0.163989865
+        },
+        "eigvalsh": {
+          "primitive_call_count": 600,
+          "total_call_count": 600,
+          "total_time_s": 0.003654341,
+          "cumulative_time_s": 0.0063314600000000006
+        },
+        "eigh": {
+          "primitive_call_count": 200,
+          "total_call_count": 200,
+          "total_time_s": 0.0021059620000000003,
+          "cumulative_time_s": 0.003240282
+        },
+        "_limit_state_covariance": {
+          "primitive_call_count": 20000,
+          "total_call_count": 20000,
+          "total_time_s": 0.06795332500000001,
+          "cumulative_time_s": 1.170374175
+        },
+        "_bounded_covariance_constraints_satisfied": {
+          "primitive_call_count": 200,
+          "total_call_count": 200,
+          "total_time_s": 0.001741183,
+          "cumulative_time_s": 0.00599156
+        },
+        "_limit_covariance_diagonal": {
+          "primitive_call_count": 20000,
+          "total_call_count": 20000,
+          "total_time_s": 0.199349351,
+          "cumulative_time_s": 1.078538464
+        },
+        "_project_bounded_covariance_to_psd": {
+          "primitive_call_count": 20000,
+          "total_call_count": 20000,
+          "total_time_s": 0.11728038800000001,
+          "cumulative_time_s": 0.352932055
+        }
+      }
+    }
+  },
+  "comparison": {
+    "median_speedup": 0.9493877817087176,
+    "median_improvement_fraction": -0.05331037460813959,
+    "paired_candidate_faster_count": 0,
+    "paired_sample_count": 9,
+    "semantic_acceptance": {
+      "exact_covariance_output": true,
+      "exact_reason_output": true,
+      "finite_symmetric_output": true,
+      "candidate_diagnostics_deterministic": true,
+      "candidate_attempt_conservation": true,
+      "candidate_exercises_success_and_fallback": true,
+      "reference_candidate_disabled": true
+    },
+    "semantic_passed": true,
+    "stable_wall_clock_gain": false,
+    "integration_recommendation": "retain_candidate_not_recommended_for_main"
+  }
+}

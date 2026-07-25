@@ -1,5 +1,46 @@
 # D1 多传感器融合与目标配准实施计划
 
+## P1 六维协方差 PSD 检查快路径候选结论（2026-07-24）
+
+### 实施范围
+
+1. 保留现有 `eigvalsh + 正半定投影 + 对角回退` 为 reference，不修改门限、投影公式、
+   对角边界或业务原因。
+2. 增加显式开关 `cholesky_covariance_psd_fast_path`，D1 独立构造默认 `False`。候选仅对
+   有限 `6x6` 矩阵先尝试 Cholesky；分解成功且归一化行列式通过机器精度安全门后才直接
+   返回，其余情况完整回到 reference。其他维度始终使用 reference。
+3. reference/candidate 实现 ID 分别为
+   `d1.fusion.covariance_psd_check.eigvalsh.v1` 和
+   `d1.fusion.covariance_psd_check.cholesky_6x6_relative_determinant_guard_then_eigvalsh.v2`。
+4. 新增固定大小诊断，记录 `attempt/success/fallback` 并检查
+   `attempt = success + fallback`，同时发布安全门限 `9.094947017729282e-13`。诊断与
+   已有 covariance 业务操作数分离。
+
+### 验证结果
+
+确定种子合成输入含 2,000 个六维协方差，其中 20 个为不定矩阵；每个样本执行 10 轮，共
+20,000 次检查，reference/candidate 交替采样 9 次。输入 SHA-256 为
+`f26445ee25cd87ec52a993672d9900baba3b41f7999155de35b0c7bd3424a525`。
+
+| 指标 | Reference | Candidate |
+| --- | ---: | ---: |
+| 中位墙钟 | `0.558490 s` | `0.588263 s` |
+| 配对更快 | - | `0/9` |
+| `eigvalsh` cProfile 调用 | `20,400` | `600` |
+| Cholesky attempt/success/fallback | `0/0/0` | `20,000/19,800/200` |
+
+candidate 中位墙钟比 reference 高 `5.33%`。逐字节 covariance、reason 摘要、有限性和
+对称性检查全部通过；严格正定、近奇异、半正定、机器精度附近不定、一般不定、非有限、
+默认关闭、非别名和操作数守恒均有回归。D1 全量为 `404 passed in 21.39s`。
+
+### 处置与后续
+
+模块建议门槛预设为中位改善至少 `2%` 且候选更快配对不少于 `70%`。当前 v2 两项均未达到，
+因此仅保留默认关闭的研究对照，明确不建议 main 接入或开展完整多 seed 准入。安全门前旧
+计时已由当前代码的正式重跑替代，不再作为性能证据。只有 NumPy/BLAS、目标处理器或真实
+冻结融合输入改变成本关系时，才重新运行同一 A/B 工具。本项不关闭系统实时、AirSim、
+目标硬件、RMSE、NEES 或 NIS 缺口。
+
 ## P1 匀速模型矩阵复用正式准入结果（2026-07-24）
 
 ### D1-owned 实施

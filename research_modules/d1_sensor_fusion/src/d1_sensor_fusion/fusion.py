@@ -76,6 +76,19 @@ CV_MOTION_MODEL_CANDIDATE_IMPLEMENTATION_ID = (
 CV_MOTION_MODEL_CACHE_DIAGNOSTICS_SCHEMA_VERSION = (
     "d1.cv_motion_model_cache_diagnostics.v1"
 )
+COVARIANCE_PSD_CHECK_REFERENCE_IMPLEMENTATION_ID = (
+    "d1.fusion.covariance_psd_check.eigvalsh.v1"
+)
+COVARIANCE_PSD_CHECK_CANDIDATE_IMPLEMENTATION_ID = (
+    "d1.fusion.covariance_psd_check."
+    "cholesky_6x6_relative_determinant_guard_then_eigvalsh.v2"
+)
+COVARIANCE_PSD_CHECK_DIAGNOSTICS_SCHEMA_VERSION = (
+    "d1.covariance_psd_check_diagnostics.v2"
+)
+COVARIANCE_CHOLESKY_RELATIVE_DETERMINANT_FLOOR = (
+    4_096.0 * np.finfo(float).eps
+)
 DEFAULT_CV_MOTION_MODEL_CACHE_CAPACITY = 128
 MAX_CV_MOTION_MODEL_CACHE_CAPACITY = 4_096
 OBSERVATION_METADATA_LINEAGE_KEYS = (
@@ -727,6 +740,7 @@ class FusionAdapter:
         publisher_node_id: str = DEFAULT_STRUCTURAL_AMBIGUITY_PUBLISHER_NODE_ID,
         publisher_epoch: str = DEFAULT_STRUCTURAL_AMBIGUITY_PUBLISHER_EPOCH,
         vectorized_covariance_limit: bool = True,
+        cholesky_covariance_psd_fast_path: bool = False,
         cached_cv_motion_model: bool = False,
         cv_motion_model_cache_capacity: int = (
             DEFAULT_CV_MOTION_MODEL_CACHE_CAPACITY
@@ -1001,6 +1015,13 @@ class FusionAdapter:
         if not isinstance(vectorized_covariance_limit, bool):
             raise TypeError("vectorized_covariance_limit must be a bool")
         self.vectorized_covariance_limit = vectorized_covariance_limit
+        if not isinstance(cholesky_covariance_psd_fast_path, bool):
+            raise TypeError(
+                "cholesky_covariance_psd_fast_path must be a bool"
+            )
+        self.cholesky_covariance_psd_fast_path = (
+            cholesky_covariance_psd_fast_path
+        )
         if not isinstance(cached_cv_motion_model, bool):
             raise TypeError("cached_cv_motion_model must be a bool")
         self.cached_cv_motion_model = cached_cv_motion_model
@@ -1093,6 +1114,7 @@ class FusionAdapter:
         self._consistency_capture_context: tuple[str, int] | None = None
         self._performance_totals: Counter[str] = Counter()
         self._publication_materialization_operations: Counter[str] = Counter()
+        self._covariance_psd_check_operations: Counter[str] = Counter()
         self._cv_motion_model_cache: OrderedDict[
             tuple[float, float],
             tuple[np.ndarray, np.ndarray],
@@ -1176,6 +1198,53 @@ class FusionAdapter:
             "operation_counts": dict(
                 sorted(self._cv_motion_model_cache_operations.items())
             ),
+        }
+
+    def covariance_psd_check_diagnostics(self) -> dict[str, Any]:
+        """Return bounded diagnostics for the explicit 6x6 PSD-check candidate."""
+
+        implementation_id = (
+            COVARIANCE_PSD_CHECK_CANDIDATE_IMPLEMENTATION_ID
+            if self.cholesky_covariance_psd_fast_path
+            else COVARIANCE_PSD_CHECK_REFERENCE_IMPLEMENTATION_ID
+        )
+        attempt_count = int(
+            self._covariance_psd_check_operations[
+                "cholesky_attempt_count"
+            ]
+        )
+        success_count = int(
+            self._covariance_psd_check_operations[
+                "cholesky_success_count"
+            ]
+        )
+        fallback_count = int(
+            self._covariance_psd_check_operations[
+                "cholesky_fallback_count"
+            ]
+        )
+        return {
+            "schema_version": (
+                COVARIANCE_PSD_CHECK_DIAGNOSTICS_SCHEMA_VERSION
+            ),
+            "implementation_id": implementation_id,
+            "candidate_enabled": bool(
+                self.cholesky_covariance_psd_fast_path
+            ),
+            "eligible_matrix_shape": [6, 6],
+            "relative_determinant_floor": float(
+                COVARIANCE_CHOLESKY_RELATIVE_DETERMINANT_FLOOR
+            ),
+            "operation_counts": {
+                "cholesky_attempt_count": attempt_count,
+                "cholesky_success_count": success_count,
+                "cholesky_fallback_count": fallback_count,
+            },
+            "conservation": {
+                "attempt_equals_success_plus_fallback": (
+                    attempt_count == success_count + fallback_count
+                )
+            },
         }
 
     def process(self, observation: SensorObservation) -> list[GlobalTrack]:
@@ -5571,6 +5640,12 @@ class FusionAdapter:
             vectorized_off_diagonal=self.vectorized_covariance_limit,
             reason_prefix="observation_covariance",
             operation_counts=operation_counts,
+            cholesky_psd_fast_path=(
+                self.cholesky_covariance_psd_fast_path
+            ),
+            psd_check_operation_counts=(
+                self._covariance_psd_check_operations
+            ),
         )
         reasons.extend(bound_reasons)
         if any(
@@ -5664,6 +5739,12 @@ class FusionAdapter:
             vectorized_off_diagonal=self.vectorized_covariance_limit,
             reason_prefix="track_covariance",
             operation_counts=operation_counts,
+            cholesky_psd_fast_path=(
+                self.cholesky_covariance_psd_fast_path
+            ),
+            psd_check_operation_counts=(
+                self._covariance_psd_check_operations
+            ),
         )
         base_reasons.extend(bound_reasons)
         return covariance, tuple(dict.fromkeys(base_reasons))
@@ -5962,6 +6043,8 @@ def _limit_covariance_diagonal(
     vectorized_off_diagonal: bool = False,
     reason_prefix: str = "covariance",
     operation_counts: Counter[str] | None = None,
+    cholesky_psd_fast_path: bool = False,
+    psd_check_operation_counts: Counter[str] | None = None,
 ) -> tuple[np.ndarray, tuple[str, ...]]:
     covariance = np.asarray(covariance, dtype=float)
     floor_diag = np.asarray(floor_diag, dtype=float).reshape(-1)
@@ -6021,6 +6104,8 @@ def _limit_covariance_diagonal(
         clipped_diag,
         reason_prefix=reason_prefix,
         operation_counts=operation_counts,
+        cholesky_psd_fast_path=cholesky_psd_fast_path,
+        psd_check_operation_counts=psd_check_operation_counts,
     )
     reasons.extend(psd_reasons)
     return bounded, tuple(dict.fromkeys(reasons))
@@ -6069,6 +6154,8 @@ def _project_bounded_covariance_to_psd(
     *,
     reason_prefix: str,
     operation_counts: Counter[str] | None,
+    cholesky_psd_fast_path: bool = False,
+    psd_check_operation_counts: Counter[str] | None = None,
 ) -> tuple[np.ndarray, tuple[str, ...]]:
     """Repair a bounded covariance without changing its governed diagonal.
 
@@ -6085,6 +6172,53 @@ def _project_bounded_covariance_to_psd(
         + np.asarray(bounded, dtype=float).T
     )
     diagonal = np.asarray(diagonal, dtype=float).reshape(-1)
+    if (
+        cholesky_psd_fast_path
+        and result.shape == (6, 6)
+        and np.isfinite(result).all()
+    ):
+        _increment_operation_count(
+            psd_check_operation_counts,
+            "cholesky_attempt_count",
+            1,
+        )
+        try:
+            cholesky_factor = np.linalg.cholesky(result)
+        except np.linalg.LinAlgError:
+            _increment_operation_count(
+                psd_check_operation_counts,
+                "cholesky_fallback_count",
+                1,
+            )
+        else:
+            # LAPACK can accept an indefinite matrix whose negative eigenvalue
+            # is at roundoff scale. The normalized determinant keeps such
+            # ill-conditioned cases on the exact reference path while
+            # retaining scale-invariant acceptance for diagonal covariances.
+            relative_determinant = (
+                (cholesky_factor[0, 0] ** 2 / result[0, 0])
+                * (cholesky_factor[1, 1] ** 2 / result[1, 1])
+                * (cholesky_factor[2, 2] ** 2 / result[2, 2])
+                * (cholesky_factor[3, 3] ** 2 / result[3, 3])
+                * (cholesky_factor[4, 4] ** 2 / result[4, 4])
+                * (cholesky_factor[5, 5] ** 2 / result[5, 5])
+            )
+            if (
+                np.isfinite(relative_determinant)
+                and relative_determinant
+                > COVARIANCE_CHOLESKY_RELATIVE_DETERMINANT_FLOOR
+            ):
+                _increment_operation_count(
+                    psd_check_operation_counts,
+                    "cholesky_success_count",
+                    1,
+                )
+                return result, ()
+            _increment_operation_count(
+                psd_check_operation_counts,
+                "cholesky_fallback_count",
+                1,
+            )
     eigenvalues = np.linalg.eigvalsh(result)
     if float(eigenvalues[0]) >= 0.0:
         return result, ()

@@ -5,6 +5,28 @@
 
 ---
 
+## 最新增量：六维协方差 PSD 检查候选（2026-07-24）
+
+- profile 显示 200v200、2.2 s 的 D1 `process_scan_batch` 累计 `5.029 s`，
+  `_limit_covariance_diagonal` 累计 `0.822 s`，`eigvalsh` 调用 70,183 次。
+- 新候选只对有限 `6x6` 矩阵先做 Cholesky。成功后还需通过
+  `9.094947017729282e-13` 的归一化行列式安全门；失败或安全门拒绝时完整回到现有
+  `eigvalsh`、相关矩阵投影、相关收缩和对角回退。半正定、近奇异、机器精度附近不定、
+  一般不定和非有限边界未放宽。
+- 开关 `cholesky_covariance_psd_fast_path` 默认 `False`。实现 ID 和独立诊断明确区分
+  reference/candidate；当前 candidate 为
+  `d1.fusion.covariance_psd_check.cholesky_6x6_relative_determinant_guard_then_eigvalsh.v2`。
+  `attempt = success + fallback` 可审计，计数不改变业务 metadata。
+- 合成输入 SHA-256 为
+  `f26445ee25cd87ec52a993672d9900baba3b41f7999155de35b0c7bd3424a525`。2,000 个矩阵、
+  每样本 10 轮、9 次交替的中位墙钟为 `0.558490 -> 0.588263 s`，candidate 慢
+  `5.33%`，`0/9` 更快。
+- 20,000 次候选检查为 19,800 次成功和 200 次回退。cProfile 中 `eigvalsh` 调用
+  `20,400 -> 600`，同时新增 20,000 次 Cholesky。covariance 和 reason 摘要严格一致。
+- D1 全量 `404 passed in 21.39s`。当前 v2 没有性能收益，安全门前旧计时已被正式重跑
+  替代；候选只保留为默认关闭的研究对照，不建议 main 接入。系统实时、AirSim、目标硬件、
+  RMSE、NEES 和 NIS 继续开放。
+
 ## 最新增量：匀速模型矩阵复用正式准入（2026-07-24）
 
 - 剖析调用链为 `process_scan_batch -> _predict_all_to/
