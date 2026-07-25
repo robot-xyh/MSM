@@ -23,11 +23,25 @@ producer matrix SHA
 6. 报告分别输出 `optimization_admitted` 和 `system_realtime_gap_closed`，不以局部加速替代
    系统实时结论。
 
-当前仅完成工具和合成合同验证。main 尚未运行正式 13-pair/26-arm matrix，评审不接受开发期
-三配对短测作为准入。`EXPERIMENT_REPORT.md` 保持不变，待正式 evidence 后追加结果。
-`AIRSIM_INTEGRATION_PLAN.md` 和 `D6_M_TO_N_EVALUATION_FRAMEWORK_REVIEW.md` 已检查；本项不改变
-AirSim 或 M-to-N 指标合同，无需修改。专项 `14 passed, 1 warning in 5.18s`，D6 全量
-`798 passed, 1 warning in 60.13s`。
+main 已完成正式 13-pair/26-arm matrix。26 个 arm 全部 fresh complete，0 reused、0 failed；
+13/13 pair 的业务语义、有限状态、在线真值隔离、实现身份、来源和检查数守恒通过。参考与候选各
+94074 条消息完成递归检查，在线真值使用为 0。
+
+short 发布总线及收尾由 `0.900293 s` 降至 `0.696858 s`，改善 `22.58%`，10/10 更快；long
+由 `3.810588 s` 降至 `2.834910 s`，改善 `25.63%`，3/3 更快。short 核心墙钟改善
+`2.50%`。long 核心墙钟回退 `3.47%`，long D1 融合与 D2 关联分别增加 `5.29%`、
+`7.34%`，超过预注册门限。
+
+评审结论为 `optimization_admitted=false`，候选 `builtin_specialized_recursive_v2` 不替代默认
+`generic_recursive_v1`。候选最低实时因子为 `0.165369`，
+`system_realtime_gap_closed=false`。正式结果已写入 `EXPERIMENT_REPORT.md` 和
+`outputs/online_truth_guard_multiseed_20260724_formal_8d8bb6e/`。后续 balanced-order v2
+只作独立诊断，不覆盖 v1 正式结果。正式结果同步后专项
+`14 passed, 1 warning in 4.46s`，D6 全量
+`798 passed, 1 warning in 52.01s`。
+
+`AIRSIM_INTEGRATION_PLAN.md` 和 `D6_M_TO_N_EVALUATION_FRAMEWORK_REVIEW.md` 已检查；本项只消费
+三维质点证据，不改变 AirSim 或 M-to-N 指标合同，因此无需修改。
 
 ## 2026-07-24 D1 常速度模型缓存评审
 

@@ -20,19 +20,28 @@
    10000 次 bootstrap 已实现。全部数值门从冻结 matrix 读取。
 8. 合成专项覆盖正常矩阵、只读报告、CLI、检查数不守恒、实现身份、业务漂移、性能门和来源/
    schema/matrix/command 篡改。
-9. 2026-07-24 专项 `14 passed, 1 warning in 5.18s`，D6 全量
-   `798 passed, 1 warning in 60.13s`；warning 为既有 Matplotlib `Axes3D` 环境提示。
+9. main 已完成正式矩阵。26 个 arm 全部 fresh complete，0 reused、0 failed；D6 已复核完整
+   JSON、compact JSON、13 条 pair CSV、中文 Markdown 和 `SHA256SUMS`。
+10. 13/13 pair 的业务语义、有限状态、在线真值隔离、实现身份、来源和检查数守恒通过。参考与
+    候选各 94074 条在线消息均完成检查，在线真值使用为 0。
+11. short/long 发布总线及收尾改善 `22.58%/25.63%`，候选分别 `10/10`、`3/3` 更快；
+    short 核心墙钟改善 `2.50%`。
+12. long 核心墙钟回退 `3.47%`，long D1/D2 分别增加 `5.29%/7.34%`，三项预注册门失败。
+    `optimization_admitted=false`，候选保持默认关闭，默认仍为 `generic_recursive_v1`。
+13. 正式结果同步后专项 `14 passed, 1 warning in 4.46s`，D6 全量
+    `798 passed, 1 warning in 52.01s`。
 
 ### 仍开放 P1
 
-1. **正式多种子证据。** main 尚未运行冻结的 short 10 pair 与 long 3 pair。当前不能发布
-   `optimization_admitted`，开发期三配对短测不能替代正式输入。
-2. **系统实时容量。** 正式结果生成后仍需单独检查候选最小实时因子。只有所有候选 pair 均不低于
-   1，`system_realtime_gap_closed` 才能为 true。
+1. **系统实时容量。** 候选最低实时因子为 `0.165369`，低于 1，
+   `system_realtime_gap_closed=false`。
+2. **候选性能稳定性。** long seed 1102 出现核心、D1 和 D2 同向回退。可选 balanced-order v2
+   可以诊断运行顺序与主机热状态，但不得覆盖 v1 正式结论。重新准入必须使用预先冻结的新矩阵。
 3. **外部适用性。** 本 evaluator 只覆盖三维质点 episode。AirSim、目标处理器和实飞容量继续
    需要独立证据。
 
-当前无新增 D6-owned P0。评估工具缺口已关闭，正式 evidence 消费和系统实时判定保持 P1。
+当前无新增 D6-owned P0。评估工具和正式 evidence 消费缺口已关闭；候选不准入、系统实时与外部
+验证保持开放。
 
 ## 2026-07-24 D1 常速度模型缓存评估 GAP 更新
 

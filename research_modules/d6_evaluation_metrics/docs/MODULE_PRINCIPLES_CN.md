@@ -28,9 +28,18 @@ commit `8d8bb6ed7a417705236835f235361f45a021bb2b`。13 个 pair 的规模、seed
 实现适合进入当前三维质点默认路径。系统实时缺口还要求所有候选 pair 的实时因子不低于 1。
 AirSim、目标处理器和实飞容量需使用独立证据。
 
-当前状态为“评估工具已实现，正式证据待 main 运行”。合成 fixture 只验证合同和报告行为，不是
-200 对 200 性能数据。2026-07-24 D6 全量回归为
-`798 passed, 1 warning in 60.13s`。
+正式矩阵已完成 13 pair、26 个 fresh arm，0 reused、0 failed。13/13 pair 的业务语义、有限状态、
+在线真值隔离、实现身份和检查数守恒通过；参考与候选各 94074 条消息均完成递归检查，在线真值
+使用为 0。short/long 发布总线及收尾平均改善 `22.58%/25.63%`，候选分别在 `10/10` 和
+`3/3` pair 中更快。
+
+局部加速没有转化为稳定的全栈收益。short 核心墙钟改善 `2.50%`，long 核心墙钟回退
+`3.47%`；long D1 融合与 D2 关联分别增加 `5.29%`、`7.34%`，超过 5% 非退化门。
+`optimization_admitted=false`，默认继续使用 `generic_recursive_v1`，候选
+`builtin_specialized_recursive_v2` 保持关闭。候选最低实时因子为 `0.165369`，
+`system_realtime_gap_closed=false`。后续 balanced-order v2 只能检查顺序效应和主机热状态，
+不能覆盖本次 v1 正式结论；重新准入需要独立冻结矩阵。本次同步后 D6 全量为
+`798 passed, 1 warning in 52.01s`。
 
 ## 常速度模型缓存评估边界（2026-07-24）
 

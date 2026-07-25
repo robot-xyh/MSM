@@ -23,17 +23,26 @@
   后调整。
 - [x] 合成合同专项覆盖正常 13 pair、只读报告、CLI、检查数不守恒、实现身份、业务漂移、性能门、
   dirty/reused/source commit/schema/matrix/command 篡改。
-- [x] 2026-07-24 专项 `14 passed, 1 warning in 5.18s`，D6 全量
-  `798 passed, 1 warning in 60.13s`；warning 为既有 Matplotlib `Axes3D` 环境提示。
+- [x] 2026-07-24 正式结果同步后专项 `14 passed, 1 warning in 4.46s`，D6 全量
+  `798 passed, 1 warning in 52.01s`；warning 为既有 Matplotlib `Axes3D` 环境提示。
 
-### 待 main 正式运行
+### 正式结论
 
-- [ ] 在 frozen clean commit 上运行 short 10 pair 和 long 3 pair，共 26 个 fresh arm。
-- [ ] D6 只读消费完成后的 `evidence_manifest.json`，生成正式报告并记录全部 gate 的实际值。
-- [ ] 仅当全部语义、真值、身份、诊断、路径、性能和资源门通过时，才允许
-  `optimization_admitted=true`。
-- [ ] `system_realtime_gap_closed` 独立判定；候选任一 pair 实时因子低于 1 时保持 false。
-- [ ] 正式证据完成后再更新 `EXPERIMENT_REPORT.md`。当前开发短测和合成 fixture 不构成准入。
+- [x] main 已在冻结 clean commit 上完成 short 10 pair 和 long 3 pair，共 26 个 fresh complete
+  arm；0 reused、0 failed。D6 已只读消费证据并生成正式 bundle。
+- [x] 13/13 pair 的业务语义、有限状态、在线真值隔离、实现身份、诊断守恒和来源门通过；
+  参考与候选各 94074 条在线消息均完成递归检查，在线真值使用为 0。
+- [x] short/long 发布总线及收尾改善 `22.58%/25.63%`，候选分别 `10/10`、`3/3` 更快；
+  short 核心墙钟改善 `2.50%`。
+- [x] 正式准入结论为 `optimization_admitted=false`。long 核心墙钟回退 `3.47%`，long D1
+  融合增加 `5.29%`，long D2 关联增加 `7.34%`，三项预注册门失败。默认继续使用
+  `generic_recursive_v1`，候选 `builtin_specialized_recursive_v2` 保持关闭。
+- [x] 候选最低实时因子为 `0.165369`，因此
+  `system_realtime_gap_closed=false`。正式结果已同步到 `EXPERIMENT_REPORT.md` 和
+  `outputs/online_truth_guard_multiseed_20260724_formal_8d8bb6e/`。
+- [ ] 可选 balanced-order v2 只用于诊断 long seed 1102 的顺序和主机热状态影响。它不得覆盖
+  v1 正式结果；如需重新准入，必须预先冻结新矩阵并生成独立证据。
+- [ ] 系统实时容量、AirSim、目标硬件和实飞证据继续开放。
 
 `AIRSIM_INTEGRATION_PLAN.md` 已检查。本项消费三维质点 episode，不改变 AirSim topic、相机、
 actor、reset 或控制接口，因此无需修改。

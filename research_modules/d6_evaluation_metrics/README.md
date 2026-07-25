@@ -38,10 +38,21 @@ bootstrap。准入门从冻结 matrix 读取：发布总线改善至少 10%，�
 均值增幅和 RSS 增幅不超过 5%。输出为完整 JSON、compact JSON、逐 pair CSV、中文 Markdown
 和 `SHA256SUMS`。
 
-当前只完成工具、CLI、合成合同夹具和专项测试。main 尚未运行正式 13-pair/26-arm matrix，因此
-没有 `optimization_admitted` 结论，也不能更新 `system_realtime_gap_closed`。开发期三配对短测
-不进入正式证据。2026-07-24 新增专项为 `14 passed, 1 warning in 5.18s`，D6 全量为
-`798 passed, 1 warning in 60.13s`；warning 是既有 Matplotlib `Axes3D` 环境提示。
+2026-07-24 已完成正式 13-pair/26-arm matrix 的独立只读消费。short 10 pair、long 3 pair 均为
+fresh complete，0 reused、0 failed；13/13 pair 业务语义相等，在线真值使用为 0，参考与候选各
+94074 条在线消息均满足检查数守恒。short 发布总线及收尾由 `0.900293 s` 降至
+`0.696858 s`，改善 `22.58%`，10/10 更快；long 由 `3.810588 s` 降至 `2.834910 s`，
+改善 `25.63%`，3/3 更快。
+
+候选没有通过全部预注册门。short 核心墙钟改善 `2.50%`，但 long 核心墙钟回退 `3.47%`；
+long D1 融合和 D2 关联分别增加 `5.29%`、`7.34%`，均超过 `5%` 上限。因此
+`optimization_admitted=false`，候选 `builtin_specialized_recursive_v2` 保持默认关闭，默认仍为
+`generic_recursive_v1`。候选最低实时因子为 `0.165369`，
+`system_realtime_gap_closed=false`。正式 bundle 位于
+`outputs/online_truth_guard_multiseed_20260724_formal_8d8bb6e/`。后续 balanced-order v2
+只能作为独立诊断，不能覆盖本次 v1 正式结论；开发期三配对短测仍不进入正式证据。
+本次同步专项为 `14 passed, 1 warning in 4.46s`，D6 全量为
+`798 passed, 1 warning in 52.01s`；warning 是既有 Matplotlib `Axes3D` 环境提示。
 
 ```bash
 PYTHONPATH=research_modules/d6_evaluation_metrics \

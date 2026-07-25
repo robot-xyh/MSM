@@ -88,12 +88,25 @@ bootstrap 原始相对变化上界均小于 0。核心墙钟两组平均改善�
 `system_realtime_gap_closed` 独立读取所有候选 pair 的最小实时因子，只有每个值均不低于 1
 才为 true。
 
-### 当前状态
+### 正式结果
 
-评估器、CLI、确定性 writer 和合成合同测试已实现。正式 13-pair/26-arm producer evidence
-尚未运行，因此当前不发布优化准入或系统实时结论。开发期三配对数据只用于筛选候选，不进入本
-评估器的输入。2026-07-24 专项为 `14 passed, 1 warning in 5.18s`，D6 全量为
-`798 passed, 1 warning in 60.13s`；warning 是既有 Matplotlib 三维投影环境提示。
+D6 已只读消费正式 13-pair/26-arm evidence。26 个 arm 均为 fresh complete，0 reused、
+0 failed；13/13 pair 的业务语义、有限状态、在线真值隔离、实现身份、来源和诊断门通过。参考与
+候选各 94074 条在线消息均满足 `N_validation = N_online_message`，在线真值使用为 0。
+
+short 发布总线及收尾均值由 `0.900293 s` 降至 `0.696858 s`，改善 `22.58%`，10/10 更快；
+long 由 `3.810588 s` 降至 `2.834910 s`，改善 `25.63%`，3/3 更快。short 核心墙钟改善
+`2.50%`。long 核心墙钟回退 `3.47%`，long D1 融合与 D2 关联分别增加
+`5.29%`、`7.34%`。后三项中的每一项都触发预注册失败门。
+
+最终 `optimization_admitted=false`，候选 `builtin_specialized_recursive_v2` 未替代默认
+`generic_recursive_v1`。候选最低实时因子为 `0.165369`，
+`system_realtime_gap_closed=false`。正式 bundle 位于
+`outputs/online_truth_guard_multiseed_20260724_formal_8d8bb6e/`。开发期三配对数据不进入
+正式结论。可选 balanced-order v2 诊断只用于解释运行顺序和主机热状态，不得修改 v1 结果；
+任何新准入结论都需要预先冻结的新矩阵和独立报告。本次同步专项为
+`14 passed, 1 warning in 4.46s`，D6 全量为
+`798 passed, 1 warning in 52.01s`。
 
 ## D1 常速度模型缓存同提交矩阵评估（2026-07-24）
 

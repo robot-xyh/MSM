@@ -5,9 +5,14 @@
 绑定 matrix SHA
 `764574b9897d00101c26c555de2f407e1736c7e6ff50420eebf131e154618dc8` 与 clean source
 `8d8bb6ed7a417705236835f235361f45a021bb2b`，固定 13 pair、26 fresh arm 和
-200/200/2。当前 evaluator、CLI 和合成合同测试已实现，正式 producer matrix 尚未运行，因此
-没有优化准入或系统实时结论。专项 `14 passed`，D6 全量 `798 passed, 1 warning in 60.13s`。
-正式证据完成后再写入 `../EXPERIMENT_REPORT.md`。
+200/200/2。正式 26 arm 已全部完成，0 reused、0 failed；13/13 pair 业务语义、真值隔离、
+实现身份和检查数守恒通过。short/long 发布总线及收尾改善 `22.58%/25.63%`，但 long 核心墙钟
+回退 `3.47%`，long D1/D2 分别增加 `5.29%/7.34%`。因此
+`optimization_admitted=false`，默认仍为 `generic_recursive_v1`；最低实时因子
+`0.165369`，`system_realtime_gap_closed=false`。结果见 `../EXPERIMENT_REPORT.md` 2.33 节和
+`../outputs/online_truth_guard_multiseed_20260724_formal_8d8bb6e/`。balanced-order v2
+仅保留为可选诊断，不覆盖正式 v1 结论。本次同步后 D6 全量为
+`798 passed, 1 warning in 52.01s`。
 
 2026-07-24 D1 常速度模型缓存多 seed 评估原理和边界见
 `MODULE_PRINCIPLES_CN.md`，严格消费、守恒公式、统计和报告实现见

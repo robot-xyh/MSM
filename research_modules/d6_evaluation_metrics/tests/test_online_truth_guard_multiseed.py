@@ -107,6 +107,9 @@ def test_report_bundle_is_complete_deterministic_and_read_only(
     assert "局部优化准入通过" in markdown
     assert "系统实时缺口未关闭" in markdown
     assert "三维质点仿真" in markdown
+    assert "默认实现切换须由 main 另行实施" in markdown
+    assert "balanced-order v2 仅可作为独立诊断" in markdown
+    assert "26/26 complete、0 reused、0 failed" in markdown
     compact = json.loads(paths["compact_json"].read_text(encoding="utf-8"))
     assert "pairs" not in compact
     assert compact["optimization_admitted"] is True

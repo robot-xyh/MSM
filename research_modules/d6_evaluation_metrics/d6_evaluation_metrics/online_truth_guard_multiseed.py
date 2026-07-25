@@ -1769,6 +1769,16 @@ def render_online_truth_guard_multiseed_markdown(
     realtime = _required_mapping(
         result["system_realtime_gate"], "report realtime gate"
     )
+    if result["optimization_admitted"]:
+        default_status = (
+            "本报告只给出冻结矩阵内的准入判断；默认实现切换须由 main "
+            "另行实施并保留回退路径。"
+        )
+    else:
+        default_status = (
+            f"候选 `{CANDIDATE_IMPLEMENTATION}` 未获准替代参考实现，"
+            f"默认仍为 `{REFERENCE_IMPLEMENTATION}`。"
+        )
     lines = [
         "# 在线真值递归检查同提交多种子评估",
         "",
@@ -1787,6 +1797,11 @@ def render_online_truth_guard_multiseed_markdown(
             "系统实时门限为 `>=1.0`。本报告只适用于三维质点仿真，"
             "不代表 AirSim、目标硬件或实飞结果。"
         ),
+        default_status,
+        (
+            "后续 balanced-order v2 仅可作为独立诊断，不覆盖本次 v1 "
+            "正式结论；重新准入必须预先冻结新矩阵并形成独立证据。"
+        ),
         "",
         "## 证据范围",
         "",
@@ -1799,7 +1814,8 @@ def render_online_truth_guard_multiseed_markdown(
         ),
         (
             "- short 组 10 pair，每臂 2.2 秒；long 组 3 pair，"
-            "每臂 10 秒；共 13 pair、26 个 fresh arm。"
+            "每臂 10 秒；共 13 pair、26 个 fresh arm，"
+            "26/26 complete、0 reused、0 failed。"
         ),
         (
             f"- 参考实现 `{REFERENCE_IMPLEMENTATION}`；候选实现 "
