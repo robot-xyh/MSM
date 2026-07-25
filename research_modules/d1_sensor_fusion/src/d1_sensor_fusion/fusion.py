@@ -86,6 +86,15 @@ COVARIANCE_PSD_CHECK_CANDIDATE_IMPLEMENTATION_ID = (
 COVARIANCE_PSD_CHECK_DIAGNOSTICS_SCHEMA_VERSION = (
     "d1.covariance_psd_check_diagnostics.v2"
 )
+STRUCTURED_NUMERICAL_JACOBIAN_REFERENCE_IMPLEMENTATION_ID = (
+    "d1.ekf.numerical_jacobian.dense_output_probe.v1"
+)
+STRUCTURED_NUMERICAL_JACOBIAN_CANDIDATE_IMPLEMENTATION_ID = (
+    "d1.ekf.numerical_jacobian.known_dimension_structural_columns.v1"
+)
+STRUCTURED_NUMERICAL_JACOBIAN_DIAGNOSTICS_SCHEMA_VERSION = (
+    "d1.structured_numerical_jacobian_diagnostics.v1"
+)
 COVARIANCE_CHOLESKY_RELATIVE_DETERMINANT_FLOOR = (
     4_096.0 * np.finfo(float).eps
 )
@@ -717,6 +726,7 @@ class FusionAdapter:
         immutable_shared_publication_metadata: bool = False,
         scan_association_model_cache: bool = True,
         batched_non_radar_innovation_solve: bool = True,
+        structured_numerical_jacobian: bool = False,
         radar_association_lower_bound_gate: bool = True,
         reuse_track_classification_a95: bool = True,
         direct_checkpoint_state_queries: bool = True,
@@ -993,6 +1003,11 @@ class FusionAdapter:
         self.batched_non_radar_innovation_solve = bool(
             batched_non_radar_innovation_solve
         )
+        if not isinstance(structured_numerical_jacobian, bool):
+            raise TypeError("structured_numerical_jacobian must be a bool")
+        self.structured_numerical_jacobian = (
+            structured_numerical_jacobian
+        )
         self.radar_association_lower_bound_gate = bool(
             radar_association_lower_bound_gate
         )
@@ -1115,6 +1130,7 @@ class FusionAdapter:
         self._performance_totals: Counter[str] = Counter()
         self._publication_materialization_operations: Counter[str] = Counter()
         self._covariance_psd_check_operations: Counter[str] = Counter()
+        self._numerical_jacobian_operations: Counter[str] = Counter()
         self._cv_motion_model_cache: OrderedDict[
             tuple[float, float],
             tuple[np.ndarray, np.ndarray],
@@ -1244,6 +1260,39 @@ class FusionAdapter:
                 "attempt_equals_success_plus_fallback": (
                     attempt_count == success_count + fallback_count
                 )
+            },
+        }
+
+    def structured_numerical_jacobian_diagnostics(self) -> dict[str, Any]:
+        """Return implementation identity and structural Jacobian operations."""
+
+        implementation_id = (
+            STRUCTURED_NUMERICAL_JACOBIAN_CANDIDATE_IMPLEMENTATION_ID
+            if self.structured_numerical_jacobian
+            else STRUCTURED_NUMERICAL_JACOBIAN_REFERENCE_IMPLEMENTATION_ID
+        )
+        counts = self._numerical_jacobian_operations
+        attempt_count = int(counts["jacobian_attempt_count"])
+        success_count = int(counts["jacobian_success_count"])
+        failure_count = int(counts["jacobian_failure_count"])
+        reference_count = int(counts["reference_call_count"])
+        candidate_count = int(counts["structured_candidate_call_count"])
+        return {
+            "schema_version": (
+                STRUCTURED_NUMERICAL_JACOBIAN_DIAGNOSTICS_SCHEMA_VERSION
+            ),
+            "implementation_id": implementation_id,
+            "candidate_enabled": bool(
+                self.structured_numerical_jacobian
+            ),
+            "operation_counts": dict(sorted(counts.items())),
+            "conservation": {
+                "attempt_equals_success_plus_failure": (
+                    attempt_count == success_count + failure_count
+                ),
+                "attempt_equals_reference_plus_candidate": (
+                    attempt_count == reference_count + candidate_count
+                ),
             },
         }
 
@@ -4334,6 +4383,12 @@ class FusionAdapter:
                     measurement_model_for(
                         observation,
                         self.radar_covariance_config,
+                        structured_jacobian=(
+                            self.structured_numerical_jacobian
+                        ),
+                        jacobian_operation_counts=(
+                            self._numerical_jacobian_operations
+                        ),
                     )
                 )
             except (ValueError, FloatingPointError, np.linalg.LinAlgError):
@@ -4653,7 +4708,14 @@ class FusionAdapter:
             return None
         try:
             prior = self._state_at(record, observation.measurement_timestamp)
-            model = measurement_model_for(observation, self.radar_covariance_config)
+            model = measurement_model_for(
+                observation,
+                self.radar_covariance_config,
+                structured_jacobian=self.structured_numerical_jacobian,
+                jacobian_operation_counts=(
+                    self._numerical_jacobian_operations
+                ),
+            )
             updated, _ = ekf_update(
                 prior,
                 model.z,
@@ -4688,7 +4750,12 @@ class FusionAdapter:
         context = self._batch_context
         if context is not None:
             context.association_measurement_model_build_count += 1
-        model = measurement_model_for(observation, self.radar_covariance_config)
+        model = measurement_model_for(
+            observation,
+            self.radar_covariance_config,
+            structured_jacobian=self.structured_numerical_jacobian,
+            jacobian_operation_counts=self._numerical_jacobian_operations,
+        )
         if context is not None:
             context.association_projection_build_count += 1
         h = model.h_fn(state.state)
@@ -4718,7 +4785,12 @@ class FusionAdapter:
         state: EKFState,
         observation: SensorObservation,
     ) -> tuple[EKFState, float, bool]:
-        model = measurement_model_for(observation, self.radar_covariance_config)
+        model = measurement_model_for(
+            observation,
+            self.radar_covariance_config,
+            structured_jacobian=self.structured_numerical_jacobian,
+            jacobian_operation_counts=self._numerical_jacobian_operations,
+        )
         updated, nis = ekf_update(
             state,
             model.z,
@@ -4959,7 +5031,12 @@ class FusionAdapter:
         context = self._consistency_capture_context
         if context is None or context[0] != record.track_id:
             return
-        model = measurement_model_for(observation, self.radar_covariance_config)
+        model = measurement_model_for(
+            observation,
+            self.radar_covariance_config,
+            structured_jacobian=self.structured_numerical_jacobian,
+            jacobian_operation_counts=self._numerical_jacobian_operations,
+        )
         self._consistency_evidence[observation.observation_id] = (
             update_consistency_evidence(
                 observation,

@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, MutableMapping
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
 import numpy as np
 
 from .covariance_contract import validate_sensor_observation_covariance
-from .ekf import numerical_jacobian
+from .ekf import numerical_jacobian, structured_numerical_jacobian
 from .motion import wrap_angle
 from .types import SensorObservation
 
@@ -450,7 +450,12 @@ def lidar_covariance(distance: float, confidence: float = 0.9) -> np.ndarray:
 def measurement_model_for(
     observation: SensorObservation,
     radar_covariance_config: RadarCovarianceConfig | dict | None = None,
+    *,
+    structured_jacobian: bool = False,
+    jacobian_operation_counts: MutableMapping[str, int] | None = None,
 ) -> MeasurementModel:
+    if not isinstance(structured_jacobian, bool):
+        raise TypeError("structured_jacobian must be a bool")
     modality = observation.modality.lower()
     covariance = validate_sensor_observation_covariance(
         observation,
@@ -469,11 +474,22 @@ def measurement_model_for(
         def h_fn(x: np.ndarray) -> np.ndarray:
             return radar_h(x, sensor_position)[:measurement_dimension]
 
+        active_state_indices = (
+            tuple(range(6))
+            if radial_velocity_observed
+            else (0, 1, 2)
+        )
         return MeasurementModel(
             z=observation.measurement.reshape(-1)[:measurement_dimension],
             r=covariance[:measurement_dimension, :measurement_dimension],
             h_fn=h_fn,
-            h_jacobian_fn=lambda x: numerical_jacobian(h_fn, x),
+            h_jacobian_fn=_measurement_jacobian_callable(
+                h_fn,
+                output_size=measurement_dimension,
+                active_state_indices=active_state_indices,
+                structured_jacobian=structured_jacobian,
+                operation_counts=jacobian_operation_counts,
+            ),
             angle_indices=(1, 2),
             geometry_key=(
                 "radar",
@@ -493,7 +509,13 @@ def measurement_model_for(
             z=z,
             r=covariance,
             h_fn=h_fn,
-            h_jacobian_fn=lambda x: numerical_jacobian(h_fn, x),
+            h_jacobian_fn=_measurement_jacobian_callable(
+                h_fn,
+                output_size=1,
+                active_state_indices=(0, 1, 2),
+                structured_jacobian=structured_jacobian,
+                operation_counts=jacobian_operation_counts,
+            ),
             angle_indices=(0,),
             geometry_key=("acoustic", _geometry_array_key(sensor_position)),
         )
@@ -511,7 +533,13 @@ def measurement_model_for(
             z=z,
             r=covariance,
             h_fn=h_fn,
-            h_jacobian_fn=lambda x: numerical_jacobian(h_fn, x),
+            h_jacobian_fn=_measurement_jacobian_callable(
+                h_fn,
+                output_size=2,
+                active_state_indices=(0, 1, 2),
+                structured_jacobian=structured_jacobian,
+                operation_counts=jacobian_operation_counts,
+            ),
             angle_indices=(0, 1),
             geometry_key=("acoustic_3d", _geometry_array_key(sensor_position)),
         )
@@ -526,7 +554,13 @@ def measurement_model_for(
             z=observation.measurement.reshape(-1)[:2],
             r=covariance,
             h_fn=h_fn,
-            h_jacobian_fn=lambda x: numerical_jacobian(h_fn, x),
+            h_jacobian_fn=_measurement_jacobian_callable(
+                h_fn,
+                output_size=2,
+                active_state_indices=(0, 1, 2),
+                structured_jacobian=structured_jacobian,
+                operation_counts=jacobian_operation_counts,
+            ),
             angle_indices=(),
             geometry_key=(
                 "eo",
@@ -549,12 +583,94 @@ def measurement_model_for(
             z=z,
             r=covariance,
             h_fn=h_fn,
-            h_jacobian_fn=lambda x: numerical_jacobian(h_fn, x),
+            h_jacobian_fn=_measurement_jacobian_callable(
+                h_fn,
+                output_size=3,
+                active_state_indices=(0, 1, 2),
+                structured_jacobian=structured_jacobian,
+                operation_counts=jacobian_operation_counts,
+            ),
             angle_indices=(),
             geometry_key=("lidar",),
         )
 
     raise ValueError(f"Unsupported modality: {observation.modality}")
+
+
+def _measurement_jacobian_callable(
+    h_fn: Callable[[np.ndarray], np.ndarray],
+    *,
+    output_size: int,
+    active_state_indices: tuple[int, ...],
+    structured_jacobian: bool,
+    operation_counts: MutableMapping[str, int] | None,
+) -> Callable[[np.ndarray], np.ndarray]:
+    def jacobian(x: np.ndarray) -> np.ndarray:
+        _increment_jacobian_operation(
+            operation_counts,
+            "jacobian_attempt_count",
+        )
+        path_key = (
+            "structured_candidate_call_count"
+            if structured_jacobian
+            else "reference_call_count"
+        )
+        _increment_jacobian_operation(operation_counts, path_key)
+        try:
+            if structured_jacobian:
+                result = structured_numerical_jacobian(
+                    h_fn,
+                    x,
+                    output_size=output_size,
+                    active_state_indices=active_state_indices,
+                )
+                _increment_jacobian_operation(
+                    operation_counts,
+                    "output_probe_elision_count",
+                )
+                _increment_jacobian_operation(
+                    operation_counts,
+                    "inactive_state_column_elision_count",
+                    max(0, np.asarray(x).size - len(active_state_indices)),
+                )
+                _increment_jacobian_operation(
+                    operation_counts,
+                    "measurement_function_evaluation_count",
+                    2 * len(active_state_indices),
+                )
+            else:
+                result = numerical_jacobian(h_fn, x)
+                _increment_jacobian_operation(
+                    operation_counts,
+                    "output_probe_evaluation_count",
+                )
+                _increment_jacobian_operation(
+                    operation_counts,
+                    "measurement_function_evaluation_count",
+                    1 + 2 * np.asarray(x).size,
+                )
+        except (ValueError, FloatingPointError, np.linalg.LinAlgError):
+            _increment_jacobian_operation(
+                operation_counts,
+                "jacobian_failure_count",
+            )
+            raise
+        _increment_jacobian_operation(
+            operation_counts,
+            "jacobian_success_count",
+        )
+        return result
+
+    return jacobian
+
+
+def _increment_jacobian_operation(
+    operation_counts: MutableMapping[str, int] | None,
+    name: str,
+    count: int = 1,
+) -> None:
+    if operation_counts is not None and count > 0:
+        operation_counts[name] = int(operation_counts.get(name, 0)) + int(count)
 
 
 def _radar_covariance_config(config: RadarCovarianceConfig | dict | None) -> RadarCovarianceConfig:

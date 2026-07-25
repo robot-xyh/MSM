@@ -1,0 +1,211 @@
+{
+  "schema_version": "d1.structured_numerical_jacobian_performance.v1",
+  "benchmark_scope": "D1 measurement-model numerical Jacobian only; not full fusion, AirSim, hardware, or full-stack admission evidence",
+  "configuration": {
+    "config_path": "/home/linux/Documents/MSM/research_modules/d1_sensor_fusion/tests/fixtures/structured_numerical_jacobian_benchmark_v1.json",
+    "config_sha256": "711b799b9a36e0d9518574f027f666cb583c355f699202408d45eb083a87166e",
+    "repetitions": 9,
+    "warmup_count": 2,
+    "sample_count": 480,
+    "round_count": 20,
+    "seed": 20260724,
+    "association_gate": 40.0,
+    "modality_cycle": [
+      "radar_full",
+      "radar_full",
+      "radar_position_only",
+      "acoustic",
+      "acoustic_3d",
+      "eo",
+      "eo",
+      "lidar"
+    ]
+  },
+  "recommendation_policy": {
+    "minimum_median_improvement_fraction": 0.1,
+    "minimum_paired_faster_fraction": 0.8,
+    "minimum_paired_faster_count": 8,
+    "scope": "D1 module recommendation only; main admission requires a clean full-stack paired multiseed evaluation"
+  },
+  "input": {
+    "kind": "deterministic_mixed_measurement_model_workload",
+    "sha256": "98629f103d3e208bc36cf2b706573197b64c9922e35c74377ef2a3baab7fc470",
+    "modality_counts": {
+      "acoustic": 60,
+      "acoustic_3d": 60,
+      "eo": 120,
+      "lidar": 60,
+      "radar_full": 120,
+      "radar_position_only": 60
+    },
+    "online_truth_use_count": 0
+  },
+  "reference": {
+    "sample_count": 9,
+    "wall_time_samples_s": [
+      0.443513285019435,
+      0.44416207901667804,
+      0.443708112987224,
+      0.4446451140101999,
+      0.4435108850011602,
+      0.44731403299374506,
+      0.4451367480214685,
+      0.444977444014512,
+      0.4458997279871255
+    ],
+    "median_wall_time_s": 0.4446451140101999,
+    "minimum_wall_time_s": 0.4435108850011602,
+    "maximum_wall_time_s": 0.44731403299374506,
+    "jacobian_sha256": "98f528f3280b5caa7da82a525f34a6f0948bb00fcaae393f9c09cf9a13f8c798",
+    "nis_sha256": "a8eac8b0d3b1fde368813438dd5ba415a796fd6dd0a2a42fb6a5a2dfb2429576",
+    "gate_decision_sha256": "e87ebab060beb7c66837da91b9d2295d637d1fca348b1864ac0281ed0fe77274",
+    "finite_output": true,
+    "diagnostics": {
+      "schema_version": "d1.structured_numerical_jacobian_diagnostics.v1",
+      "implementation_id": "d1.ekf.numerical_jacobian.dense_output_probe.v1",
+      "candidate_enabled": false,
+      "operation_counts": {
+        "jacobian_attempt_count": 9600,
+        "jacobian_success_count": 9600,
+        "measurement_function_evaluation_count": 124800,
+        "output_probe_evaluation_count": 9600,
+        "reference_call_count": 9600
+      },
+      "conservation": {
+        "attempt_equals_success_plus_failure": true,
+        "attempt_equals_reference_plus_candidate": true
+      }
+    },
+    "profile": {
+      "profiled_jacobian_call_count": 9600,
+      "profiled_wall_time_s": 0.870212570996955,
+      "selected_functions": {
+        "acoustic_3d_h": {
+          "primitive_call_count": 16440,
+          "total_call_count": 16440,
+          "total_time_s": 0.042197587,
+          "cumulative_time_s": 0.081166402
+        },
+        "eo_project": {
+          "primitive_call_count": 32880,
+          "total_call_count": 32880,
+          "total_time_s": 0.070501302,
+          "cumulative_time_s": 0.10694410500000001
+        },
+        "radar_h": {
+          "primitive_call_count": 49320,
+          "total_call_count": 49320,
+          "total_time_s": 0.21042453500000002,
+          "cumulative_time_s": 0.42661505000000005
+        },
+        "numerical_jacobian": {
+          "primitive_call_count": 10080,
+          "total_call_count": 10080,
+          "total_time_s": 0.150694883,
+          "cumulative_time_s": 0.874111211
+        },
+        "acoustic_h": {
+          "primitive_call_count": 16440,
+          "total_call_count": 16440,
+          "total_time_s": 0.020280434,
+          "cumulative_time_s": 0.025459445
+        }
+      }
+    }
+  },
+  "candidate": {
+    "sample_count": 9,
+    "wall_time_samples_s": [
+      0.3193536780308932,
+      0.3174010849907063,
+      0.3221710579819046,
+      0.31766709400108084,
+      0.3180899639846757,
+      0.319690011034254,
+      0.3198918809648603,
+      0.3195524129550904,
+      0.3230885750381276
+    ],
+    "median_wall_time_s": 0.3195524129550904,
+    "minimum_wall_time_s": 0.3174010849907063,
+    "maximum_wall_time_s": 0.3230885750381276,
+    "jacobian_sha256": "98f528f3280b5caa7da82a525f34a6f0948bb00fcaae393f9c09cf9a13f8c798",
+    "nis_sha256": "a8eac8b0d3b1fde368813438dd5ba415a796fd6dd0a2a42fb6a5a2dfb2429576",
+    "gate_decision_sha256": "e87ebab060beb7c66837da91b9d2295d637d1fca348b1864ac0281ed0fe77274",
+    "finite_output": true,
+    "diagnostics": {
+      "schema_version": "d1.structured_numerical_jacobian_diagnostics.v1",
+      "implementation_id": "d1.ekf.numerical_jacobian.known_dimension_structural_columns.v1",
+      "candidate_enabled": true,
+      "operation_counts": {
+        "inactive_state_column_elision_count": 21600,
+        "jacobian_attempt_count": 9600,
+        "jacobian_success_count": 9600,
+        "measurement_function_evaluation_count": 72000,
+        "output_probe_elision_count": 9600,
+        "structured_candidate_call_count": 9600
+      },
+      "conservation": {
+        "attempt_equals_success_plus_failure": true,
+        "attempt_equals_reference_plus_candidate": true
+      }
+    },
+    "profile": {
+      "profiled_jacobian_call_count": 9600,
+      "profiled_wall_time_s": 0.6996103689889424,
+      "selected_functions": {
+        "acoustic_3d_h": {
+          "primitive_call_count": 7620,
+          "total_call_count": 7620,
+          "total_time_s": 0.020637446,
+          "cumulative_time_s": 0.039618408
+        },
+        "eo_project": {
+          "primitive_call_count": 15240,
+          "total_call_count": 15240,
+          "total_time_s": 0.035063303000000004,
+          "cumulative_time_s": 0.053378264
+        },
+        "radar_h": {
+          "primitive_call_count": 37980,
+          "total_call_count": 37980,
+          "total_time_s": 0.165126607,
+          "cumulative_time_s": 0.336615598
+        },
+        "structured_numerical_jacobian": {
+          "primitive_call_count": 10080,
+          "total_call_count": 10080,
+          "total_time_s": 0.131285338,
+          "cumulative_time_s": 0.6827653880000001
+        },
+        "acoustic_h": {
+          "primitive_call_count": 7620,
+          "total_call_count": 7620,
+          "total_time_s": 0.010154561000000001,
+          "cumulative_time_s": 0.012789378
+        }
+      }
+    }
+  },
+  "comparison": {
+    "median_speedup": 1.3914622327470578,
+    "median_improvement_fraction": 0.28133155434209933,
+    "paired_candidate_faster_count": 9,
+    "paired_sample_count": 9,
+    "measurement_function_evaluation_reduction_fraction": 0.42307692307692313,
+    "semantic_acceptance": {
+      "exact_jacobian_output": true,
+      "exact_nis_output": true,
+      "exact_gate_decisions": true,
+      "finite_output": true,
+      "reference_uses_output_probe": true,
+      "candidate_elides_output_probe": true,
+      "candidate_elides_inactive_columns": true,
+      "operation_conservation": true,
+      "online_truth_use_count_zero": true
+    },
+    "semantic_passed": true,
+    "stable_wall_clock_gain": true,
+    "integration_recommendation": "candidate_pending_main_full_stack_admission"
+  }
+}

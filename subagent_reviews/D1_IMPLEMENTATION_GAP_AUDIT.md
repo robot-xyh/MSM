@@ -8,6 +8,24 @@
 
 ## 0. 当前正式治理 GAP 增量（2026-07-24）
 
+### 结构稀疏数值雅可比候选
+
+main 提供的 clean runtime commit `8d8bb6e`、200v200、2.2 s、seed 1111 profile 中，
+`numerical_jacobian` 累计 `0.712 s`。D1 现有非雷达模型都通过数值雅可比工作，但声学、
+光电、激光雷达和无径向速度雷达只依赖位置三维。新候选使用量测模型已知输出维数并跳过
+结构零速度列，活动列保持原中心差分；含径向速度雷达仍计算全部六列。
+
+| GAP | 当前状态 | D1-owned 证据 | 剩余关闭条件 |
+| --- | --- | --- | --- |
+| 数值雅可比重复观测求值 | **P1 模块候选已通过；main 全栈准入开放** | 显式 reference/candidate ID、默认关闭、固定大小操作数、六类模型和完整扫描等价；冻结 480 模型、20 轮、9 次交错，中位 `0.444645 -> 0.319552 s`，改善 `28.13%`，`9/9` 更快；量测求值减少 `42.31%`；雅可比/NIS/门控摘要相同；D1 `414 passed` | main 在 clean 同提交接入 selector/diagnostics，运行 200v200 short 10 seed、long 3 seed配对矩阵，由 D6 核验 D1、核心墙钟、D2、RSS、语义和实现身份；通过前保持默认关闭 |
+| 系统实时与精度 | **P1 开放** | 本轮只有 D1 数值雅可比冻结微基准，没有完整 episode、AirSim、目标硬件或 RMSE/NEES/NIS | 与系统实时、AirSim、目标硬件和统计一致性验收分别闭合，不得用热点收益代替 |
+
+候选实现 ID 为
+`d1.ekf.numerical_jacobian.known_dimension_structural_columns.v1`，reference 为
+`d1.ekf.numerical_jacobian.dense_output_probe.v1`。本轮没有修改 PSD/协方差安全门、
+双时间戳、NED、fixed-lag/OOSM、门限、量测频率或 `global_track_id`。AirSim 集成计划已检查；
+接口和运行证据未变化，因此不修改。
+
 ### 六维协方差 PSD 检查热点候选
 
 main 提供的 200v200、2.2 s profile 中，D1 `process_scan_batch` 累计 `5.029 s`，

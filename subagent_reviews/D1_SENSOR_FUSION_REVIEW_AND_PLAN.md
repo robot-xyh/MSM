@@ -5,6 +5,27 @@
 
 ---
 
+## 最新增量：结构稀疏数值雅可比候选（2026-07-24）
+
+- main 的 200v200、2.2 s、seed 1111 默认路径 cProfile 中，`numerical_jacobian` 累计
+  `0.712 s`。扫描模型缓存和非雷达创新批处理已经关闭对应重复工作，本轮没有重复这些候选。
+- 声学、光电、激光雷达和无径向速度雷达观测方程只依赖位置三维。候选直接使用已知输出维数，
+  只对结构活动列执行原中心差分；含径向速度雷达保留全部六列。
+- reference/candidate 实现 ID 分别为
+  `d1.ekf.numerical_jacobian.dense_output_probe.v1` 和
+  `d1.ekf.numerical_jacobian.known_dimension_structural_columns.v1`。
+  `structured_numerical_jacobian` 默认 `False`。
+- 冻结 480 个混合量测模型、每样本 20 轮、9 次交错采样。中位墙钟
+  `0.444645 -> 0.319552 s`，改善 `28.13%`，candidate `9/9` 更快；量测函数求值
+  `124,800 -> 72,000`，减少 `42.31%`。
+- 雅可比、归一化创新平方和门控决策摘要严格一致。扫描级回归覆盖关联结果、航迹 ID、状态、
+  协方差、双时间戳和乱序重放。D1 全量 `414 passed in 21.31s`。
+- 候选达到模块门槛，保留为待 main 全栈准入。main 需要在同一 clean 提交接入 selector 和
+  diagnostics，并完成 short 10 seed、long 3 seed 的 200v200 配对矩阵；D6 独立判定前
+  不切换系统默认。
+- 本轮没有 AirSim、目标硬件、RMSE、NEES、NIS 或系统实时证据。PSD/协方差安全门、
+  fixed-lag、门限和量测频率未改。
+
 ## 最新增量：六维协方差 PSD 检查候选（2026-07-24）
 
 - profile 显示 200v200、2.2 s 的 D1 `process_scan_batch` 累计 `5.029 s`，

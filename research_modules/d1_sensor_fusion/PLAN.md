@@ -1,5 +1,60 @@
 # D1 多传感器融合与目标配准实施计划
 
+## P1 结构稀疏数值雅可比候选（2026-07-24）
+
+### 问题与选型
+
+main 的 200v200、2.2 s、seed 1111 默认路径 cProfile 显示
+`numerical_jacobian` 累计 `0.712 s`。同轮 `_scan_one_to_one_assignments` 和
+`_cached_non_radar_scan_cost_matrix` 为 `1.194/0.918 s`。现有扫描模型缓存已将同一扫描
+几何的投影和雅可比压到每航迹一次，非雷达创新伪逆也已批处理，继续做相同缓存会重复既有
+工作。观测模型定义进一步表明，声学、光电、激光雷达和无径向速度雷达的雅可比后三列恒为
+零，通用六列中心差分仍在重复调用观测方程。
+
+本轮只实现一个候选：
+
+1. reference 保留现有输出探测和六列中心差分，ID 为
+   `d1.ekf.numerical_jacobian.dense_output_probe.v1`；
+2. candidate 使用已知输出维数和模型声明的活动列，ID 为
+   `d1.ekf.numerical_jacobian.known_dimension_structural_columns.v1`；
+3. 活动列继续使用原 `eps=1e-5`、相对步长、正负扰动和除法顺序；非活动列为精确零；
+4. 四维含径向速度雷达保留全部六列，其他当前模型使用位置三列；
+5. `structured_numerical_jacobian=False` 保持 D1 独立默认，不改变双时间戳、NED、
+   covariance、fixed-lag/OOSM、门限、量测频率或 `global_track_id`。
+
+### 模块验证
+
+冻结输入 SHA-256 为
+`98629f103d3e208bc36cf2b706573197b64c9922e35c74377ef2a3baab7fc470`，配置 SHA-256 为
+`711b799b9a36e0d9518574f027f666cb583c355f699202408d45eb083a87166e`。480 个混合量测模型、
+每样本 20 轮、9 次交错采样得到：
+
+| 指标 | Reference | Candidate |
+| --- | ---: | ---: |
+| 中位墙钟 | `0.444645 s` | `0.319552 s` |
+| 配对更快 | - | `9/9` |
+| 量测函数求值 | `124,800` | `72,000` |
+| 输出维数探测/省略 | `9,600/0` | `0/9,600` |
+| 结构零列省略 | `0` | `21,600` |
+
+中位改善为 `28.13%`，量测函数求值减少 `42.31%`。雅可比、归一化创新平方、门控决策摘要
+一致。端到端扫描测试还验证了关联结果、航迹 ID、状态、协方差、量测时刻、到达时刻和乱序
+重放逐项一致。D1 全量 `414 passed in 21.31s`。
+
+### 下一步 main 准入
+
+候选达到模块门槛，状态为“待 main 全栈准入”，不是默认晋级。main 后续需：
+
+1. 在同一 clean commit 为 scalable 3D 增加 reference/candidate selector，并在 manifest、
+   summary 和 final diagnostics 记录实际实现 ID 与 D1 操作数；
+2. 固定 200v200 short 10 seed 和 long 3 seed 的配对顺序、配置哈希与输入摘要，不复用旧 arm；
+3. 由 D6 独立核验业务语义、有限状态、在线真值隔离、D1/D2 时延、RSS 和实现身份；
+4. 只有预注册的 D1、核心墙钟、D2 回归和内存门全部通过，才讨论 main 默认切换。
+
+AirSim 集成计划已检查。候选不改变 observation schema、相机/雷达适配器、topic、settings、
+时间戳或 episode 编排，因此当前无需修改该文档。系统实时、AirSim、目标硬件、RMSE、NEES、
+NIS 和长时容量缺口保持开放。
+
 ## P1 六维协方差 PSD 检查快路径候选结论（2026-07-24）
 
 ### 实施范围

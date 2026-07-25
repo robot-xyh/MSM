@@ -8,6 +8,54 @@
 
 ## 当前权威增量（2026-07-24）
 
+### 结构稀疏数值雅可比候选
+
+候选入口为：
+
+```python
+reference = FusionAdapter(
+    structured_numerical_jacobian=False,
+)
+candidate = FusionAdapter(
+    structured_numerical_jacobian=True,
+)
+```
+
+reference 实现 ID 为
+`d1.ekf.numerical_jacobian.dense_output_probe.v1`，candidate 为
+`d1.ekf.numerical_jacobian.known_dimension_structural_columns.v1`。默认值是 `False`。
+`measurement_model_for()` 在构造量测模型时同时确定输出维数和结构活动列：
+
+- 四维雷达使用六个状态列；
+- 无径向速度雷达使用三个位置列；
+- 声学、三维声学、光电和激光雷达使用三个位置列。
+
+候选分配与 reference 同形状的零矩阵，只对活动列执行原中心差分。每个活动列仍创建独立的
+正负状态副本，使用相同的相对步长，并按原顺序计算 `(h(xp) - h(xm)) / (2*step)`。输出
+维数不再通过一次额外的 `h(x)` 调用探测。若量测函数返回维数与模型声明不一致，候选抛出
+异常并由既有扫描关联隔离逻辑处理，不生成伪造代价。
+
+所有 D1 内部量测模型构造点均使用同一 adapter 选择器，包括扫描代价、单观测关联、非量距
+修正检查、滤波更新和一致性证据维数读取。`structured_numerical_jacobian_diagnostics()`
+记录：
+
+- `jacobian_attempt_count`、`jacobian_success_count`、`jacobian_failure_count`；
+- reference/candidate 调用数；
+- 输出探测执行或省略数；
+- 结构零列省略数；
+- 量测函数求值数。
+
+两条守恒式检查 attempt 与 success/failure、reference/candidate 分支数。计数器固定大小，
+不进入 `GlobalTrack` metadata，不改变发布摘要。
+
+严格测试使用六类量测模型，并通过扫描级雷达起始、光电/声学/激光雷达更新和乱序量测重放。
+reference/candidate 的 `FusionBatchResult.to_dict()`、航迹 ID、状态、协方差、最新量测时刻和
+最新到达时刻完全一致。冻结微基准的配置和工作负载 SHA-256 分别为
+`711b799b9a36e0d9518574f027f666cb583c355f699202408d45eb083a87166e` 和
+`98629f103d3e208bc36cf2b706573197b64c9922e35c74377ef2a3baab7fc470`。中位墙钟
+`0.444645 -> 0.319552 s`，改善 `28.13%`，`9/9` 配对更快。候选保留为待 main 全栈准入，
+没有改变现有默认路径。
+
 ### 六维协方差 PSD 检查候选
 
 候选构造方式如下：

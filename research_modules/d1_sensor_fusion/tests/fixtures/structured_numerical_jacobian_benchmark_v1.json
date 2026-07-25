@@ -1,0 +1,19 @@
+{
+  "schema_version": "d1.structured_numerical_jacobian_benchmark_config.v1",
+  "seed": 20260724,
+  "sample_count": 480,
+  "round_count": 20,
+  "repetitions": 9,
+  "warmup_count": 2,
+  "association_gate": 40.0,
+  "modality_cycle": [
+    "radar_full",
+    "radar_full",
+    "radar_position_only",
+    "acoustic",
+    "acoustic_3d",
+    "eo",
+    "eo",
+    "lidar"
+  ]
+}

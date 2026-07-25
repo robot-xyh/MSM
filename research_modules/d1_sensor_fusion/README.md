@@ -4,6 +4,44 @@ Offline research module for radar, acoustic, EO, and optional synthetic lidar he
 
 ## 当前性能与治理证据（2026-07-24）
 
+### 第三十阶段：结构稀疏数值雅可比候选
+
+main 在 clean runtime commit `8d8bb6e` 上对 200v200、2.2 s、seed 1111、
+`generic_recursive_v1` 默认路径执行 cProfile。D1 `process_scan_batch` 累计
+`5.079 s`，其中 `_finalize_record_replay`、`_scan_one_to_one_assignments`、
+`_cached_non_radar_scan_cost_matrix`、`_limit_record_covariance` 和
+`numerical_jacobian` 分别累计 `1.397/1.194/0.918/0.785/0.712 s`。正式 long
+reference 三 seed的 D1 fusion 和 scan input 均值分别为 `18.495864/6.612982 s`。
+扫描模型缓存、非雷达伪逆批处理、协方差向量化、匀速模型缓存和 PSD 快检已经有独立结论，
+本轮因此只处理数值雅可比中的结构重复计算。
+
+默认 reference
+`d1.ekf.numerical_jacobian.dense_output_probe.v1` 先调用一次观测方程确定输出维数，再对
+六维状态的每一列执行中心差分。D1 当前的声学、光电、激光雷达以及无径向速度雷达观测方程
+只依赖位置三维，后三个速度列的差分恒为零。候选
+`d1.ekf.numerical_jacobian.known_dimension_structural_columns.v1` 使用量测模型已经确定的
+输出维数，并只对观测方程实际依赖的状态列执行原中心差分。含径向速度的四维雷达仍计算全部
+六列。活动列的步长、求值顺序和数组运算不变；非活动列写入精确零。
+
+`FusionAdapter(structured_numerical_jacobian=True)` 显式启用候选，独立构造默认保持
+`False`。`structured_numerical_jacobian_diagnostics()` 发布实现 ID、调用、成功、失败、
+输出探测、结构零列省略和量测函数求值计数，并校验调用守恒。该诊断不进入航迹业务字段。
+
+冻结配置
+`tests/fixtures/structured_numerical_jacobian_benchmark_v1.json` 的 SHA-256 为
+`711b799b9a36e0d9518574f027f666cb583c355f699202408d45eb083a87166e`。负载含 480 个混合
+量测模型，每个样本执行 20 轮，预热 2 轮后交错采样 9 次。reference/candidate 中位墙钟为
+`0.444645/0.319552 s`，改善 `28.13%`，candidate `9/9` 配对更快。量测函数求值
+`124,800 -> 72,000`，减少 `42.31%`；候选省略 9,600 次输出探测和 21,600 个结构零列。
+雅可比、归一化创新平方和门控决策 SHA-256 严格一致。
+
+专项测试覆盖六类量测表达、默认值、非法选择器、操作数、乱序量测、扫描一对一匹配和完整
+`GlobalTrack`；D1 全量为 `414 passed in 21.31s`。候选达到模块预设的中位改善至少
+`10%`、至少 `80%` 配对更快门槛，因此保留为待 main 全栈准入候选。当前没有 200v200
+reference/candidate 多 seed、AirSim、目标硬件、RMSE、NEES 或 NIS 证据，main 默认路径
+不得据此切换。专项报告见
+`reports/D1_STRUCTURED_NUMERICAL_JACOBIAN_PERFORMANCE_20260724_CN.md`。
+
 ### 第二十九阶段：六维协方差 PSD 检查快路径候选
 
 200v200、2.2 s 函数剖析把协方差正半定检查列为 D1 剩余热点：

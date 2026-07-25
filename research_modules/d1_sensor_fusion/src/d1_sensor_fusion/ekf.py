@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from numbers import Integral
 from typing import Callable
 
 import numpy as np
@@ -38,6 +39,57 @@ def numerical_jacobian(
         xp[idx] += step
         xm[idx] -= step
         jac[:, idx] = (np.asarray(fn(xp)) - np.asarray(fn(xm))) / (2.0 * step)
+    return jac
+
+
+def structured_numerical_jacobian(
+    fn: Callable[[np.ndarray], np.ndarray],
+    x: np.ndarray,
+    *,
+    output_size: int,
+    active_state_indices: tuple[int, ...],
+    eps: float = 1e-5,
+) -> np.ndarray:
+    """Evaluate the reference finite differences only on structural columns.
+
+    D1 measurement models declare output size and the state columns on which
+    their observation equation depends. Active columns retain the exact
+    reference arithmetic. Inactive columns are mathematical zeros and are
+    materialized as such without evaluating the observation function.
+    """
+
+    if isinstance(output_size, bool) or not isinstance(output_size, Integral):
+        raise TypeError("output_size must be an integer")
+    output_size = int(output_size)
+    if output_size < 1:
+        raise ValueError("output_size must be positive")
+
+    x = np.asarray(x, dtype=float)
+    normalized_indices: list[int] = []
+    seen: set[int] = set()
+    for raw_index in active_state_indices:
+        if isinstance(raw_index, bool) or not isinstance(raw_index, Integral):
+            raise TypeError("active_state_indices must contain integers")
+        index = int(raw_index)
+        if index < 0 or index >= x.size:
+            raise ValueError("active_state_indices contains an out-of-range index")
+        if index in seen:
+            raise ValueError("active_state_indices must not contain duplicates")
+        seen.add(index)
+        normalized_indices.append(index)
+
+    jac = np.zeros((output_size, x.size), dtype=float)
+    for idx in normalized_indices:
+        step = eps * max(1.0, abs(x[idx]))
+        xp = x.copy()
+        xm = x.copy()
+        xp[idx] += step
+        xm[idx] -= step
+        positive = np.asarray(fn(xp))
+        negative = np.asarray(fn(xm))
+        if positive.size != output_size or negative.size != output_size:
+            raise ValueError("measurement function output size changed")
+        jac[:, idx] = (positive - negative) / (2.0 * step)
     return jac
 
 
