@@ -56,6 +56,11 @@ main
 | D1 发布审计树合同 | `d1.publication_audit_tree.v2` | 精确容器类型、叶节点集合、冻结方式、循环/重复键/非有限值拒绝或序列化边界改变 |
 | main/D2 发布元数据审计 | `scalable3d-d2-publication-metadata-audit-v1` | batch/latest/totals、D2 内容审计、内置等价复用、v2 合同验证或身份复用计数语义改变 |
 | D6 发布元数据 v2 准入 | `d6.d1_publication_metadata_v2_multiseed_evaluation.v1` | v2 evidence 绑定、D2 审计归一化边界、D1/D2/核心墙钟/RSS 门或准入结论语义改变 |
+| D1 不透明来源标识构造实现 | `per_publication_build_v1` / `bounded_generation_lru_v1` | 来源节点、发布 epoch 与航迹标识字符串的逐发布构造或精确有界代际缓存语义改变；候选当前未准入 |
+| D1 不透明来源标识缓存诊断 | `d1.opaque_source_identity_cache_diagnostics.v1` | 实现 ID、容量、代际、请求、构造、旁路、命中、未命中、淘汰或失效计数语义改变 |
+| D1 不透明来源标识缓存矩阵 | `scalable3d-d1-opaque-source-identity-cache-multiseed-matrix-v1` | source-only 实验臂、seed、时长、容量、准入门或证据边界改变 |
+| D1 不透明来源标识缓存证据 | `scalable3d-d1-opaque-source-identity-cache-multiseed-evidence-v1` | clean source、episode/resource 路径、arm 状态、缓存诊断或 D6 evaluator 绑定改变 |
+| D6 不透明来源标识缓存准入 | `d6.d1_opaque_source_identity_cache_multiseed_evaluation.v1` | 业务归一化边界、缓存守恒、D1/D2/核心墙钟/RSS 门或准入结论语义改变 |
 | D1 常速度模型构造实现 | `per_prediction_build_v1` / `bounded_exact_lru_v1` | 状态转移和过程噪声矩阵的逐次构造或精确有界缓存语义改变 |
 | D1 常速度模型缓存诊断 | `d1.cv_motion_model_cache_diagnostics.v1` | 实现 ID、容量、条目数、预测请求、构造、命中、未命中或淘汰计数语义改变 |
 | D1 常速度模型缓存矩阵 | `scalable3d-d1-cv-motion-model-cache-multiseed-matrix-v1` | 实验臂、seed、时长、容量、准入门或证据边界改变 |

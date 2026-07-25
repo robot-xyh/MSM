@@ -16,6 +16,57 @@
 `immutable_shared_v2`。系统实时、逐批审计明细、严格精度、AirSim 和目标硬件证据仍为
 P1。以下最新专项记录优先于“扫描输入或发布元数据仍待治理”的历史表述。
 
+## 2026-07-25 D1 不透明来源标识缓存正式拒绝
+
+当前无新增 P0。D1 owner 已增加来源节点、发布 epoch 和航迹标识三段不可变字符串的有界
+代际缓存。参考实现 ID 为
+`d1.publication.opaque_source_identity.per_publication_build.v1`，候选为
+`d1.publication.opaque_source_identity.bounded_generation_lru.v1`。键严格使用
+`publisher_node_id + publisher_epoch + track_id`，容量默认 1024、上限 4096；节点或
+epoch 改变时失效。候选默认关闭。
+
+D1 冻结微基准使用 200 条航迹、每样本 56 次发布和 7 次交错采样。参考/候选中位耗时为
+`0.348622/0.127734 s`，改善 `63.360%`，候选 `7/7` 更快；标识构造
+`78,800 -> 200`。main 已接入 selector、容量和 CLI，并将实现身份与缓存诊断写入
+runtime profile、summary、module final 和 observation governance。无 source-key 的默认
+路径请求数为 0，本次候选只对显式来源键发布面生效。
+
+正式矩阵冻结在
+`configs/d1_opaque_source_identity_cache_multiseed_v1.json`，source commit 为
+`d8fc76c066f21b077154f7be33c0b43558d237e5`。short seeds `1101-1110`、long
+seeds `1101-1103` 均使用 200 个目标、200 个资源和 2 个侦察节点；共完成 13 组 pair、
+26 个 fresh arm，0 reused、0 failed。结构歧义 hold 保持关闭，两臂唯一运行时 treatment
+为缓存 selector。
+
+D6 独立评估确认 13/13 pair 的业务语义、有限状态、在线真值隔离、实现身份和缓存守恒
+通过。候选 13 个 episode 合计将标识构造由 `312,317` 次降至 `2,612` 次，减少率和缓存
+命中率均为 `99.163670%`，最大条目数 `202/1024`。
+
+| 指标 | short reference/candidate | short 变化 | long reference/candidate | long 变化 |
+| --- | ---: | ---: | ---: | ---: |
+| D1 fusion wall | 2.605867/2.359398 s | 改善 9.465972% | 18.573127/17.379809 s | 改善 6.437432% |
+| D2 association wall | 0.489031/0.511906 s | 增加 4.677567% | 3.332553/3.519349 s | 增加 5.605213% |
+| 核心墙钟 | 9.126686/8.866012 s | 改善 2.845610% | 52.015549/50.597894 s | 改善 2.728043% |
+| 实时因子 | 0.241218/0.248269 | 改善 2.934277% | 0.192308/0.197707 | 改善 2.804822% |
+
+long D2 association 增幅超过冻结上限 `5%`，是 19 项门中的唯一失败项。
+`long_seed_1101` 单 pair 增加 `19.069868%`，未剔除，门限未调整。D6 判定
+`optimization_admitted=false`。main 默认继续使用 `per_publication_build_v1`，候选只保留
+为显式实验路径。
+
+仍开放 P1：
+
+1. **系统实时容量。** 候选最低实时因子 `0.193887`，未达到 1；局部缓存收益没有关闭
+   200 对 200 实时缺口。
+2. **D2 长时稳定性。** 可用新的预注册确认矩阵增加长时 seed 或重复轮次，判断
+   `long_seed_1101` 是否属于稳定回归；不得覆盖本次正式拒绝。
+3. **默认主线热点。** 默认无来源键 R0 不使用该缓存。下一项应治理上游转换与
+   `SensorScanFrame` 构造间重复的在线身份检查，先冻结检查次数和业务语义。
+4. **外部环境。** 当前没有 AirSim、冻结目标处理器、RMSE、NEES、NIS 或实飞证据。
+
+正式报告位于
+`research_modules/d6_evaluation_metrics/outputs/d1_opaque_source_identity_cache_multiseed_20260725_formal_d8fc76c_d6/`。
+
 ## 2026-07-25 D1 结构稀疏数值雅可比正式准入
 
 当前无新增 P0。默认路径画像把 D1 `numerical_jacobian` 定位为可分离热点。D1 owner 已增加

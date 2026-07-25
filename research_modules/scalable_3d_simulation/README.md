@@ -1,5 +1,38 @@
 # Scalable 3D Simulation
 
+## D1 不透明来源标识缓存 A/B（2026-07-25）
+
+main 已接入 D1 来源节点、发布 epoch 和航迹标识三段字符串的显式构造实现选择器。
+参考实现 `per_publication_build_v1` 在每次 GlobalTrack 发布时重新构造；候选
+`bounded_generation_lru_v1` 以
+`publisher_node_id + publisher_epoch + track_id` 为精确键，在同一发布代际内复用不可变
+字符串。缓存容量默认 1024、上限 4096，节点或 epoch 改变时失效。候选默认关闭，命令行
+参数为 `--d1-opaque-source-identity-implementation` 和
+`--d1-opaque-source-identity-cache-capacity`。
+
+该候选只在显式启用 `--d1-publish-opaque-source-key` 时有工作量。默认无来源键 R0
+不会发起缓存请求，因此本次 A/B 不能外推为默认主线收益。selector、容量、实现 ID 和请求、
+构造、命中、未命中、淘汰及失效诊断已进入 runtime profile、summary、module final 和
+observation governance。两条路径不改变来源键业务值、双时间戳、NED 状态、协方差、
+fixed-lag/OOSM、D2-D7 消费结果或全局航迹编号。
+
+D1 模块微基准使用 200 条航迹、每样本 56 次发布和 7 次交错采样。参考/候选中位耗时为
+`0.348622/0.127734 s`，候选 `7/7` 更快，标识构造由 `78,800` 次降至 `200` 次。main
+随后在 clean `d8fc76c066f21b077154f7be33c0b43558d237e5` 上完成 10 组 2.2 秒 short
+pair 和 3 组 10 秒 long pair，共 26 个 fresh arm，0 reused、0 failed。
+
+D6 确认 13/13 pair 的业务语义、有限状态、在线真值隔离、实现身份和缓存守恒通过。
+short/long 的 D1 fusion 改善 `9.465972%/6.437432%`，核心墙钟改善
+`2.845610%/2.728043%`；候选标识构造减少率和缓存命中率均为 `99.163670%`。
+long D2 association 组均值增加 `5.605213%`，超过冻结上限 `5%`，其中
+`long_seed_1101` 增加 `19.069868%`。该 pair 按预注册矩阵保留，门限未调整。
+
+D6 判定 `optimization_admitted=false`。main 默认继续使用
+`per_publication_build_v1`，候选只保留为显式实验路径。候选最低实时因子为
+`0.193887`，`system_realtime_gap_closed=false`。正式报告位于
+`../d6_evaluation_metrics/outputs/d1_opaque_source_identity_cache_multiseed_20260725_formal_d8fc76c_d6/`。
+后续若复核 D2 波动，必须使用新的预注册确认矩阵，不能覆盖本次拒绝结论。
+
 ## D1 结构稀疏数值雅可比 A/B（2026-07-25）
 
 D1 已提供结构稀疏数值雅可比实现。参考实现

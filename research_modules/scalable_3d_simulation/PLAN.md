@@ -1,5 +1,40 @@
 # 200 对 200 三维质点仿真实施计划
 
+## D1 不透明来源标识缓存准入（2026-07-25）
+
+1. [x] D1 owner 提供 `per_publication_build_v1` 参考实现和默认关闭的
+   `bounded_generation_lru_v1` 候选。
+2. [x] 候选仅按 `publisher_node_id + publisher_epoch + track_id` 复用不可变字符串；
+   容量有界，节点或 epoch 变化时失效，不改变来源键业务值和 GlobalTrack。
+3. [x] D1 冻结微基准得到 `0.348622 -> 0.127734 s`、改善 `63.360%`、`7/7`
+   配对更快和标识构造 `78,800 -> 200`。
+4. [x] main 增加 selector、容量和 CLI，默认保持 `per_publication_build_v1`；selector、
+   实现 ID 和缓存诊断进入 runtime profile、summary、module final 与治理审计。
+5. [x] 冻结
+   `configs/d1_opaque_source_identity_cache_multiseed_v1.json`：short seeds
+   1101-1110、long seeds 1101-1103、200 个目标、200 个资源、2 个侦察节点。
+6. [x] 两臂显式启用 `--d1-publish-opaque-source-key`，结构歧义 hold 保持关闭；同一
+   pair 只允许缓存实现不同。
+7. [x] 在 clean `d8fc76c` 上完成 13 组 pair、26 个 fresh arm，0 reused、0 failed；
+   13/13 业务语义、有限状态、在线真值隔离、实现身份和缓存守恒通过。
+8. [x] D6 owner 完成独立、只读、失败关闭 evaluator、CLI、16 项聚焦测试、中文报告和
+   曲线；D6 全量 `834 passed`。
+9. [x] short/long D1 fusion 改善 `9.465972%/6.437432%`，核心墙钟改善
+   `2.845610%/2.728043%`；构造减少率和命中率均为 `99.163670%`。
+10. [ ] long D2 association 非退化：实际组均值增加 `5.605213%`，超过冻结上限
+    `5%`；`long_seed_1101` 增加 `19.069868%`，按原矩阵保留。
+11. [x] D6 判定 `optimization_admitted=false`；main 默认保持
+    `per_publication_build_v1`，候选不得晋级。
+12. [ ] 系统实时 P1：候选最低实时因子 `0.193887`，尚未达到 1。
+13. [ ] 若继续复核，先冻结新的确认矩阵并增加长时重复或 seed；不得修改本次门限、删除
+    pair 或覆盖正式拒绝结论。
+14. [ ] 默认无来源键 R0 的后续优化转向重复在线身份检查等实际热点；AirSim、冻结目标
+    处理器和实飞容量另行验收。
+
+该专项不改变量测频率、双时间戳、协方差、固定滞后窗口、关联门限或身份所有权。结果只覆盖
+source-only、hold=false 的三维质点运行面。正式 D6 报告位于
+`../d6_evaluation_metrics/outputs/d1_opaque_source_identity_cache_multiseed_20260725_formal_d8fc76c_d6/`。
+
 ## D1 结构稀疏数值雅可比准入（2026-07-25）
 
 1. [x] D1 owner 提供参考
