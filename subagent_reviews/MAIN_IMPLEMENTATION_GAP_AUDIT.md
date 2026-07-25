@@ -16,6 +16,33 @@
 `immutable_shared_v2`。系统实时、逐批审计明细、严格精度、AirSim 和目标硬件证据仍为
 P1。以下最新专项记录优先于“扫描输入或发布元数据仍待治理”的历史表述。
 
+## 2026-07-24 D1 结构稀疏数值雅可比候选
+
+当前无新增 P0。默认路径画像把 D1 `numerical_jacobian` 定位为可分离热点。D1 owner 已增加
+默认关闭的结构稀疏候选：声学、光电、激光雷达和无径向速度雷达只对三个位置列执行原中心
+差分；含径向速度雷达仍使用六列。活动列步长和运算顺序、双时间戳、NED、协方差、
+fixed-lag/OOSM、门限、量测频率和 `global_track_id` 均未改变。
+
+D1 冻结 480 个混合量测模型、每样本 20 轮并交错运行 9 次。参考/候选中位耗时为
+`0.444645/0.319552 s`，改善 `28.13%`，候选 `9/9` 更快；量测函数求值
+`124,800 -> 72,000`，减少 `42.31%`。雅可比、归一化创新平方和门控决策摘要完全一致，
+D1 全量 `414 passed`。
+
+main 已接入 `dense_output_probe_v1/known_dimension_structural_columns_v1` 选择器，默认保持
+reference。实现身份和操作数进入 runtime profile、observation governance、module final
+diagnostics 和 summary。正式矩阵冻结在
+`configs/d1_structured_numerical_jacobian_multiseed_v1.json`。
+
+仍开放 P1：
+
+1. **全栈准入。** D1 模块微基准不是完整融合证据。需完成 clean 单 seed smoke、10 组 short
+   和 3 组 long pair，并由 D6 独立判断。
+2. **系统实时容量。** 预注册门要求 short/long D1 fusion 至少改善 `2%`、核心墙钟至少改善
+   `0.5%`，并限制 D1 scan input、D2 association 和 RSS 回退。实时因子仍须独立达到 1。
+3. **精度与环境。** 当前没有正式 RMSE、NEES、NIS、AirSim、冻结目标处理器或实飞证据。
+
+在正式准入前，候选保持默认关闭。
+
 ## 2026-07-24 main 在线真值守卫候选正式拒绝
 
 当前无新增 P0。main 在 episode 总线中保留参考实现 `generic_recursive_v1`，并增加默认

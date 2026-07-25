@@ -56,6 +56,15 @@ ONLINE_TRUTH_GUARD_EVIDENCE_MANIFEST_SCHEMA_VERSION = (
 ONLINE_TRUTH_GUARD_REQUIRED_D6_EVALUATOR_SCHEMA_VERSION = (
     "d6.online_truth_guard_multiseed_evaluation.v1"
 )
+STRUCTURED_JACOBIAN_MATRIX_SCHEMA_VERSION = (
+    "scalable3d-d1-structured-jacobian-multiseed-matrix-v1"
+)
+STRUCTURED_JACOBIAN_EVIDENCE_MANIFEST_SCHEMA_VERSION = (
+    "scalable3d-d1-structured-jacobian-multiseed-evidence-v1"
+)
+STRUCTURED_JACOBIAN_REQUIRED_D6_EVALUATOR_SCHEMA_VERSION = (
+    "d6.d1_structured_jacobian_multiseed_evaluation.v1"
+)
 _ARMS = ("reference", "candidate")
 _V1_EXPECTED_IMPLEMENTATIONS = {
     "reference": "per_track_copy_v1",
@@ -73,6 +82,10 @@ _ONLINE_TRUTH_GUARD_EXPECTED_IMPLEMENTATIONS = {
     "reference": "generic_recursive_v1",
     "candidate": "builtin_specialized_recursive_v2",
 }
+_STRUCTURED_JACOBIAN_EXPECTED_IMPLEMENTATIONS = {
+    "reference": "dense_output_probe_v1",
+    "candidate": "known_dimension_structural_columns_v1",
+}
 _D1_IMPLEMENTATION_IDS = {
     "per_track_copy_v1": (
         "d1.publication_metadata.per_track_audit_copy.v1"
@@ -88,6 +101,13 @@ _D1_IMPLEMENTATION_IDS = {
     ),
     "bounded_exact_lru_v1": (
         "d1.fusion.cv_motion_model.bounded_exact_lru.v1"
+    ),
+    "dense_output_probe_v1": (
+        "d1.ekf.numerical_jacobian.dense_output_probe.v1"
+    ),
+    "known_dimension_structural_columns_v1": (
+        "d1.ekf.numerical_jacobian."
+        "known_dimension_structural_columns.v1"
     ),
 }
 _MATRIX_SPECS = {
@@ -149,6 +169,25 @@ _MATRIX_SPECS = {
         "validation_kind": "online_truth_guard",
         "treatment_field": "online_truth_guard_implementation",
     },
+    STRUCTURED_JACOBIAN_MATRIX_SCHEMA_VERSION: {
+        "expected_implementations": (
+            _STRUCTURED_JACOBIAN_EXPECTED_IMPLEMENTATIONS
+        ),
+        "evidence_manifest_schema_version": (
+            STRUCTURED_JACOBIAN_EVIDENCE_MANIFEST_SCHEMA_VERSION
+        ),
+        "required_d6_evaluator_schema_version": (
+            STRUCTURED_JACOBIAN_REQUIRED_D6_EVALUATOR_SCHEMA_VERSION
+        ),
+        "publication_audit_contract_version": None,
+        "selector_flag": (
+            "--d1-structured-numerical-jacobian-implementation"
+        ),
+        "validation_kind": "structured_numerical_jacobian",
+        "treatment_field": (
+            "d1_structured_numerical_jacobian_implementation"
+        ),
+    },
 }
 _COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
 _FORBIDDEN_RUN_FLAGS = {
@@ -162,6 +201,7 @@ _FORBIDDEN_RUN_FLAGS = {
     "--d1-publication-metadata-implementation",
     "--d1-cv-motion-model-implementation",
     "--d1-cv-motion-model-cache-capacity",
+    "--d1-structured-numerical-jacobian-implementation",
     "--online-truth-guard-implementation",
 }
 
@@ -346,6 +386,28 @@ def load_matrix(path: str | Path) -> dict[str, Any]:
                 raise ValueError(
                     f"truth-guard admission gate {field} must be {expected}"
                 )
+    if spec["validation_kind"] == "structured_numerical_jacobian":
+        if (
+            boundary.get("structured_jacobian_diagnostics_schema_version")
+            != "d1.structured_numerical_jacobian_diagnostics.v1"
+        ):
+            raise ValueError(
+                "structured-Jacobian evidence must bind diagnostics schema v1"
+            )
+        required_gates = {
+            "all_pairs_structured_jacobian_audit_valid": True,
+            "short_minimum_d1_fusion_improvement_pct": 2.0,
+            "long_minimum_d1_fusion_improvement_pct": 2.0,
+            "short_minimum_core_wall_improvement_pct": 0.5,
+            "long_minimum_core_wall_improvement_pct": 0.5,
+            "minimum_candidate_measurement_evaluation_reduction_pct": 35.0,
+        }
+        for field, expected in required_gates.items():
+            if gates.get(field) != expected:
+                raise ValueError(
+                    f"structured-Jacobian admission gate {field} must be "
+                    f"{expected}"
+                )
     return value
 
 
@@ -484,6 +546,10 @@ def planned_evidence_manifest(
     if spec["validation_kind"] == "online_truth_guard":
         manifest["truth_guard_diagnostics_schema_version"] = (
             "scalable3d-online-truth-guard-diagnostics-v1"
+        )
+    if spec["validation_kind"] == "structured_numerical_jacobian":
+        manifest["structured_jacobian_diagnostics_schema_version"] = (
+            "d1.structured_numerical_jacobian_diagnostics.v1"
         )
     return manifest
 
@@ -754,6 +820,20 @@ def _episode_matches(
         )
     if validation_kind == "online_truth_guard":
         return _online_truth_guard_episode_matches(
+            episode_dir,
+            manifest=manifest,
+            config=config,
+            summary=summary,
+            expected_commit=expected_commit,
+            expected_implementation=expected_implementation,
+            seed=seed,
+            duration_s=duration_s,
+            target_count=target_count,
+            resource_count=resource_count,
+            recon_count=recon_count,
+        )
+    if validation_kind == "structured_numerical_jacobian":
+        return _structured_numerical_jacobian_episode_matches(
             episode_dir,
             manifest=manifest,
             config=config,
@@ -1053,6 +1133,184 @@ def _cv_motion_model_operation_counts_match(
         and counts["cache_eviction_count"] == 0
         and counts["peak_entry_count"] == 0
         and requests == nonpositive + counts["model_build_count"]
+    )
+
+
+def _structured_numerical_jacobian_episode_matches(
+    episode_dir: Path,
+    *,
+    manifest: Mapping[str, Any],
+    config: Mapping[str, Any],
+    summary: Mapping[str, Any],
+    expected_commit: str,
+    expected_implementation: str,
+    seed: int,
+    duration_s: float,
+    target_count: int,
+    resource_count: int,
+    recon_count: int,
+) -> bool:
+    expected_id = _D1_IMPLEMENTATION_IDS.get(expected_implementation)
+    if expected_id is None:
+        return False
+    candidate = (
+        expected_implementation
+        == "known_dimension_structural_columns_v1"
+    )
+    if expected_implementation not in {
+        "dense_output_probe_v1",
+        "known_dimension_structural_columns_v1",
+    }:
+        return False
+    runtime_profile = manifest.get("runtime_profile")
+    runtime_configuration = (
+        runtime_profile.get("configuration")
+        if isinstance(runtime_profile, Mapping)
+        else None
+    )
+    initial_diagnostics = (
+        runtime_profile.get(
+            "d1_structured_numerical_jacobian_diagnostics"
+        )
+        if isinstance(runtime_profile, Mapping)
+        else None
+    )
+    diagnostics = summary.get(
+        "d1_structured_numerical_jacobian_diagnostics"
+    )
+    final = summary.get("module_final_diagnostics")
+    final_diagnostics = (
+        final.get("d1_structured_numerical_jacobian_diagnostics")
+        if isinstance(final, Mapping)
+        else None
+    )
+    try:
+        governance = _read_mapping(
+            episode_dir / "observation_governance_audit.json"
+        )
+    except (OSError, ValueError, json.JSONDecodeError):
+        return False
+    governance_diagnostics = governance.get(
+        "d1_structured_numerical_jacobian_diagnostics"
+    )
+    if not all(
+        isinstance(value, Mapping)
+        for value in (
+            runtime_profile,
+            runtime_configuration,
+            initial_diagnostics,
+            diagnostics,
+            final,
+            final_diagnostics,
+            governance_diagnostics,
+        )
+    ):
+        return False
+    expected_schema = "d1.structured_numerical_jacobian_diagnostics.v1"
+    if (
+        initial_diagnostics.get("schema_version") != expected_schema
+        or initial_diagnostics.get("implementation_id") != expected_id
+        or initial_diagnostics.get("candidate_enabled") is not candidate
+        or initial_diagnostics.get("operation_counts") != {}
+        or initial_diagnostics.get("conservation")
+        != {
+            "attempt_equals_success_plus_failure": True,
+            "attempt_equals_reference_plus_candidate": True,
+        }
+    ):
+        return False
+    if (
+        diagnostics != final_diagnostics
+        or diagnostics != governance_diagnostics
+        or diagnostics.get("schema_version") != expected_schema
+        or diagnostics.get("implementation_id") != expected_id
+        or diagnostics.get("candidate_enabled") is not candidate
+        or diagnostics.get("conservation")
+        != {
+            "attempt_equals_success_plus_failure": True,
+            "attempt_equals_reference_plus_candidate": True,
+        }
+        or not _structured_jacobian_operation_counts_match(
+            diagnostics,
+            candidate=candidate,
+        )
+    ):
+        return False
+    selector_field = (
+        "d1_structured_numerical_jacobian_implementation"
+    )
+    return (
+        manifest.get("git_commit") == expected_commit
+        and manifest.get("repository_dirty") is False
+        and manifest.get("seed") == seed
+        and runtime_profile.get(selector_field) == expected_implementation
+        and runtime_configuration.get(selector_field)
+        == expected_implementation
+        and summary.get(selector_field) == expected_implementation
+        and final.get(selector_field) == expected_implementation
+        and governance.get(selector_field) == expected_implementation
+        and config.get("seed") == seed
+        and _float_equal(config.get("duration_s"), duration_s)
+        and config.get("target_count") == target_count
+        and config.get("resource_count") == resource_count
+        and config.get("recon_count") == recon_count
+        and summary.get("finite_state") is True
+        and summary.get("online_truth_use_count") == 0
+        and _float_equal(summary.get("simulated_duration_s"), duration_s)
+    )
+
+
+def _structured_jacobian_operation_counts_match(
+    diagnostics: Mapping[str, Any],
+    *,
+    candidate: bool,
+) -> bool:
+    operations = diagnostics.get("operation_counts")
+    if not isinstance(operations, Mapping):
+        return False
+    names = (
+        "jacobian_attempt_count",
+        "jacobian_success_count",
+        "jacobian_failure_count",
+        "reference_call_count",
+        "structured_candidate_call_count",
+        "output_probe_evaluation_count",
+        "output_probe_elision_count",
+        "inactive_state_column_elision_count",
+        "measurement_function_evaluation_count",
+    )
+    counts: dict[str, int] = {}
+    for name in names:
+        value = operations.get(name, 0)
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+            return False
+        counts[name] = int(value)
+    attempts = counts["jacobian_attempt_count"]
+    if (
+        attempts <= 0
+        or counts["jacobian_success_count"] != attempts
+        or counts["jacobian_failure_count"] != 0
+        or counts["measurement_function_evaluation_count"] <= 0
+    ):
+        return False
+    if candidate:
+        return (
+            counts["reference_call_count"] == 0
+            and counts["structured_candidate_call_count"] == attempts
+            and counts["output_probe_evaluation_count"] == 0
+            and counts["output_probe_elision_count"] == attempts
+            and counts["inactive_state_column_elision_count"] > 0
+            and counts["measurement_function_evaluation_count"]
+            < 13 * attempts
+        )
+    return (
+        counts["reference_call_count"] == attempts
+        and counts["structured_candidate_call_count"] == 0
+        and counts["output_probe_evaluation_count"] == attempts
+        and counts["output_probe_elision_count"] == 0
+        and counts["inactive_state_column_elision_count"] == 0
+        and counts["measurement_function_evaluation_count"]
+        == 13 * attempts
     )
 
 

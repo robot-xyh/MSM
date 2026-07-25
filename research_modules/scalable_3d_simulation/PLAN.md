@@ -1,5 +1,34 @@
 # 200 对 200 三维质点仿真实施计划
 
+## D1 结构稀疏数值雅可比准入（2026-07-24）
+
+1. [x] D1 owner 提供参考
+   `d1.ekf.numerical_jacobian.dense_output_probe.v1` 和默认关闭的候选
+   `d1.ekf.numerical_jacobian.known_dimension_structural_columns.v1`。
+2. [x] 候选只省略已知输出维数探测和观测方程不依赖的状态列；含径向速度雷达保留六列
+   中心差分，其他当前量测模型使用三个位置列。
+3. [x] D1 冻结微基准得到 `0.444645 -> 0.319552 s`、改善 `28.13%`、`9/9`
+   配对更快和量测函数求值减少 `42.31%`；雅可比、归一化创新平方和门控摘要一致。
+4. [x] main 增加
+   `--d1-structured-numerical-jacobian-implementation`，默认保持
+   `dense_output_probe_v1`。
+5. [x] selector、完整实现 ID、操作数和守恒检查进入 runtime profile、observation
+   governance、module final diagnostics 和 episode summary。
+6. [x] main 增加默认值、非法选择、CLI、manifest 哈希、四表面诊断和操作数回归。
+7. [x] 冻结 `configs/d1_structured_numerical_jacobian_multiseed_v1.json`：short
+   seeds 1101-1110、long seeds 1101-1103、200 个目标、200 个资源和 2 个侦察节点。
+8. [x] 预注册 D1 fusion、核心墙钟、D1 scan input、D2 association、RSS、逐 pair、
+   bootstrap、实现身份和量测求值减少门。
+9. [ ] 在 clean main 集成提交上完成 reference/candidate 单 seed smoke，确认规范业务载荷、
+   真值制品、计划谱系和四处诊断除预注册 treatment 外一致。
+10. [ ] D6 owner 实现只读、失败关闭的独立 evaluator 和合成合同负例。
+11. [ ] 运行 13 组 pair、26 个 fresh arm；禁止复用本轮以前的 episode。
+12. [ ] 只有 D6 全部预注册门通过后才讨论默认晋级；最低实时因子低于 1 时系统实时 P1
+    保持开放。
+
+候选不修改量测频率、双时间戳、协方差、fixed-lag/OOSM、关联门限或身份所有权。局部
+`28.13%` 不作为默认切换依据。AirSim、目标硬件、RMSE、NEES、NIS 和实飞容量分别验收。
+
 ## 在线真值守卫候选准入（2026-07-24）
 
 1. [x] main 保留 `generic_recursive_v1` 参考实现，并增加默认关闭的

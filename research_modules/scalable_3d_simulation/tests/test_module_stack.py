@@ -376,6 +376,140 @@ def test_episode_cli_exposes_d1_cv_motion_model_cache_selector() -> None:
     assert args.d1_cv_motion_model_cache_capacity == 17
 
 
+def test_d1_structured_jacobian_selection_is_explicit_hashed_and_audited() -> None:
+    config = ScenarioConfig(
+        scenario_name="d1_structured_jacobian_selection",
+        scenario_version="d1-structured-jacobian-selection-v1",
+        target_count=2,
+        resource_count=2,
+        recon_count=1,
+        region_count=1,
+        duration_s=0.6,
+        seed=31,
+    )
+    default = IntegratedStackConfig()
+    assert (
+        default.d1_structured_numerical_jacobian_implementation
+        == "dense_output_probe_v1"
+    )
+
+    reference_stack = IntegratedScalableModuleStack(
+        IntegratedStackConfig(
+            d1_structured_numerical_jacobian_implementation=(
+                "dense_output_probe_v1"
+            )
+        )
+    )
+    candidate_stack = IntegratedScalableModuleStack(
+        IntegratedStackConfig(
+            d1_structured_numerical_jacobian_implementation=(
+                "known_dimension_structural_columns_v1"
+            )
+        )
+    )
+    reference_profile = reference_stack.runtime_manifest_profile_for_scenario(
+        config
+    )
+    candidate_profile = candidate_stack.runtime_manifest_profile_for_scenario(
+        config
+    )
+    assert reference_profile[
+        "d1_structured_numerical_jacobian_implementation"
+    ] == "dense_output_probe_v1"
+    assert candidate_profile[
+        "d1_structured_numerical_jacobian_implementation"
+    ] == "known_dimension_structural_columns_v1"
+    initial = candidate_profile[
+        "d1_structured_numerical_jacobian_diagnostics"
+    ]
+    assert initial["candidate_enabled"] is True
+    assert initial["operation_counts"] == {}
+    assert all(initial["conservation"].values())
+    assert initial["implementation_id"].endswith(
+        "known_dimension_structural_columns.v1"
+    )
+
+    reference_result = run_episode(config, module_stack=reference_stack)
+    candidate_result = run_episode(config, module_stack=candidate_stack)
+    assert (
+        reference_result.manifest.runtime_profile_sha256
+        != candidate_result.manifest.runtime_profile_sha256
+    )
+    for result, expected_selector, expected_candidate in (
+        (reference_result, "dense_output_probe_v1", False),
+        (
+            candidate_result,
+            "known_dimension_structural_columns_v1",
+            True,
+        ),
+    ):
+        governance = result.observation_governance_audit
+        assert governance is not None
+        assert governance[
+            "d1_structured_numerical_jacobian_implementation"
+        ] == expected_selector
+        diagnostics = governance[
+            "d1_structured_numerical_jacobian_diagnostics"
+        ]
+        assert diagnostics["candidate_enabled"] is expected_candidate
+        assert diagnostics["operation_counts"]["jacobian_attempt_count"] > 0
+        assert all(diagnostics["conservation"].values())
+        assert result.summary[
+            "d1_structured_numerical_jacobian_implementation"
+        ] == expected_selector
+        assert result.summary[
+            "d1_structured_numerical_jacobian_diagnostics"
+        ] == diagnostics
+        assert result.summary["module_final_diagnostics"][
+            "d1_structured_numerical_jacobian_diagnostics"
+        ] == diagnostics
+
+    reference_counts = reference_result.summary[
+        "d1_structured_numerical_jacobian_diagnostics"
+    ]["operation_counts"]
+    candidate_counts = candidate_result.summary[
+        "d1_structured_numerical_jacobian_diagnostics"
+    ]["operation_counts"]
+    assert reference_counts["reference_call_count"] > 0
+    assert reference_counts.get("structured_candidate_call_count", 0) == 0
+    assert candidate_counts["structured_candidate_call_count"] > 0
+    assert candidate_counts.get("reference_call_count", 0) == 0
+    assert (
+        candidate_counts["measurement_function_evaluation_count"]
+        < reference_counts["measurement_function_evaluation_count"]
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="d1_structured_numerical_jacobian_implementation must be",
+    ):
+        IntegratedStackConfig(
+            d1_structured_numerical_jacobian_implementation="unknown"
+        )
+
+
+def test_episode_cli_exposes_d1_structured_jacobian_selector() -> None:
+    episode_cli = importlib.import_module(
+        "research_modules.scalable_3d_simulation.run_episode"
+    )
+    default_args = episode_cli.parse_args(["--integrated-stack"])
+    assert (
+        default_args.d1_structured_numerical_jacobian_implementation
+        == "dense_output_probe_v1"
+    )
+    args = episode_cli.parse_args(
+        [
+            "--integrated-stack",
+            "--d1-structured-numerical-jacobian-implementation",
+            "known_dimension_structural_columns_v1",
+        ]
+    )
+    assert (
+        args.d1_structured_numerical_jacobian_implementation
+        == "known_dimension_structural_columns_v1"
+    )
+
+
 def test_d1_opaque_source_key_control_arm_is_explicit_and_hashed() -> None:
     stack = IntegratedScalableModuleStack(
         IntegratedStackConfig(d1_publish_opaque_source_key=True)

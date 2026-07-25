@@ -1,5 +1,25 @@
 # Scalable 3D Simulation
 
+## D1 结构稀疏数值雅可比 A/B（2026-07-24）
+
+D1 已提供默认关闭的结构稀疏数值雅可比候选。参考实现
+`dense_output_probe_v1` 对六维状态逐列执行中心差分；候选
+`known_dimension_structural_columns_v1` 使用量测模型已知输出维数，只计算观测方程实际
+依赖的状态列。声学、光电、激光雷达和无径向速度雷达只计算三个位置列；含径向速度雷达仍
+计算全部六列。活动列保留相同步长和浮点运算顺序，不改变双时间戳、NED、协方差、
+fixed-lag/OOSM、门限、量测频率或全局航迹编号。
+
+D1 冻结微基准包含 480 个混合量测模型、每样本 20 轮和 9 次交错采样。参考/候选中位耗时为
+`0.444645/0.319552 s`，改善 `28.13%`，候选 `9/9` 更快；量测函数求值由
+`124,800` 降至 `72,000`。雅可比、归一化创新平方和门控决策 SHA-256 一致。该结果只支持
+进入 main 全栈准入，不构成 200 对 200、AirSim 或系统实时证据。
+
+main 通过 `--d1-structured-numerical-jacobian-implementation` 显式选择两臂，默认仍为
+`dense_output_probe_v1`。选择器、D1 完整实现 ID、操作数和守恒检查进入 runtime profile、
+observation governance、module final diagnostics 和 episode summary。预注册矩阵为
+`configs/d1_structured_numerical_jacobian_multiseed_v1.json`，包含 10 组 2.2 秒 short
+pair 和 3 组 10 秒 long pair。正式矩阵和 D6 独立准入尚未完成，候选不得据此设为默认。
+
 ## 在线真值守卫实现 A/B（2026-07-24）
 
 main 已为 episode 总线的递归在线真值字段检查增加显式实现选择器。参考实现为

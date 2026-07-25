@@ -41,6 +41,13 @@ ONLINE_TRUTH_GUARD_MATRIX_PATH = (
     / "configs"
     / "online_truth_guard_multiseed_v1.json"
 )
+STRUCTURED_JACOBIAN_MATRIX_PATH = (
+    ROOT
+    / "research_modules"
+    / "scalable_3d_simulation"
+    / "configs"
+    / "d1_structured_numerical_jacobian_multiseed_v1.json"
+)
 
 
 def test_publication_metadata_matrix_freezes_same_commit_13_pair_contract() -> None:
@@ -140,6 +147,37 @@ def test_truth_guard_matrix_freezes_same_commit_performance_contract() -> None:
         "short_minimum_core_wall_improvement_pct"
     ] == 0.5
     assert matrix["evidence_boundary"]["candidate_is_default"] is False
+
+
+def test_structured_jacobian_matrix_freezes_same_commit_contract() -> None:
+    matrix = matrix_runner.load_matrix(STRUCTURED_JACOBIAN_MATRIX_PATH)
+    short = [case for case in matrix["cases"] if case["group"] == "short"]
+    long = [case for case in matrix["cases"] if case["group"] == "long"]
+
+    assert matrix["arm_implementations"] == {
+        "reference": "dense_output_probe_v1",
+        "candidate": "known_dimension_structural_columns_v1",
+    }
+    assert [case["seed"] for case in short] == list(range(1101, 1111))
+    assert [case["seed"] for case in long] == [1101, 1102, 1103]
+    assert matrix["admission_gates"][
+        "short_minimum_d1_fusion_improvement_pct"
+    ] == 2.0
+    assert matrix["admission_gates"][
+        "long_minimum_d1_fusion_improvement_pct"
+    ] == 2.0
+    assert matrix["admission_gates"][
+        "minimum_candidate_measurement_evaluation_reduction_pct"
+    ] == 35.0
+    boundary = matrix["evidence_boundary"]
+    assert boundary["structured_jacobian_diagnostics_schema_version"] == (
+        "d1.structured_numerical_jacobian_diagnostics.v1"
+    )
+    assert boundary["known_active_columns_by_modality"] is True
+    assert (
+        boundary["active_columns_preserve_reference_centered_difference"]
+        is True
+    )
 
 
 def test_arm_commands_differ_only_by_explicit_implementation_and_output(
@@ -271,6 +309,42 @@ def test_truth_guard_commands_bind_only_registered_treatment(
     assert (
         candidate[implementation_index + 1]
         == "builtin_specialized_recursive_v2"
+    )
+    for index, (left, right) in enumerate(
+        zip(reference, candidate, strict=True)
+    ):
+        if index not in {implementation_index + 1, output_index + 1}:
+            assert left == right
+
+
+def test_structured_jacobian_commands_bind_only_registered_treatment(
+    tmp_path: Path,
+) -> None:
+    matrix = matrix_runner.load_matrix(STRUCTURED_JACOBIAN_MATRIX_PATH)
+    case = matrix["cases"][0]
+    reference = matrix_runner.build_episode_command(
+        ROOT,
+        matrix,
+        case,
+        "reference",
+        tmp_path / "reference",
+    )
+    candidate = matrix_runner.build_episode_command(
+        ROOT,
+        matrix,
+        case,
+        "candidate",
+        tmp_path / "candidate",
+    )
+
+    implementation_index = reference.index(
+        "--d1-structured-numerical-jacobian-implementation"
+    )
+    output_index = reference.index("--output")
+    assert reference[implementation_index + 1] == "dense_output_probe_v1"
+    assert (
+        candidate[implementation_index + 1]
+        == "known_dimension_structural_columns_v1"
     )
     for index, (left, right) in enumerate(
         zip(reference, candidate, strict=True)
@@ -417,6 +491,42 @@ def test_truth_guard_manifest_binds_diagnostics_and_d6_evaluator(
         assert "expected_d1_implementation_id" not in reference
 
 
+def test_structured_jacobian_manifest_binds_diagnostics_and_d6_evaluator(
+    tmp_path: Path,
+) -> None:
+    matrix = matrix_runner.load_matrix(STRUCTURED_JACOBIAN_MATRIX_PATH)
+    commit = "4" * 40
+    manifest = matrix_runner.planned_evidence_manifest(
+        STRUCTURED_JACOBIAN_MATRIX_PATH,
+        matrix,
+        ROOT,
+        commit,
+        tmp_path / "evidence",
+    )
+
+    assert manifest["schema_version"] == (
+        "scalable3d-d1-structured-jacobian-multiseed-evidence-v1"
+    )
+    assert manifest["required_d6_evaluator_schema_version"] == (
+        "d6.d1_structured_jacobian_multiseed_evaluation.v1"
+    )
+    assert manifest["structured_jacobian_diagnostics_schema_version"] == (
+        "d1.structured_numerical_jacobian_diagnostics.v1"
+    )
+    for case in manifest["cases"]:
+        reference = case["arms"]["reference"]
+        candidate = case["arms"]["candidate"]
+        assert reference["validation_kind"] == (
+            "structured_numerical_jacobian"
+        )
+        assert reference["expected_d1_implementation_id"].endswith(
+            "dense_output_probe.v1"
+        )
+        assert candidate["expected_d1_implementation_id"].endswith(
+            "known_dimension_structural_columns.v1"
+        )
+
+
 def test_matrix_rejects_arm_override_in_common_flags(tmp_path: Path) -> None:
     matrix = matrix_runner.load_matrix(MATRIX_PATH)
     invalid = copy.deepcopy(matrix)
@@ -448,6 +558,20 @@ def test_cv_motion_model_matrix_rejects_weakened_cache_boundary(
     path.write_text(json.dumps(matrix), encoding="utf-8")
 
     with pytest.raises(ValueError, match=match):
+        matrix_runner.load_matrix(path)
+
+
+def test_structured_jacobian_matrix_rejects_weakened_diagnostics_boundary(
+    tmp_path: Path,
+) -> None:
+    matrix = matrix_runner.load_matrix(STRUCTURED_JACOBIAN_MATRIX_PATH)
+    matrix["evidence_boundary"][
+        "structured_jacobian_diagnostics_schema_version"
+    ] = "d1.structured_numerical_jacobian_diagnostics.v0"
+    path = tmp_path / "invalid_structured_jacobian.json"
+    path.write_text(json.dumps(matrix), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="bind diagnostics schema v1"):
         matrix_runner.load_matrix(path)
 
 
@@ -771,6 +895,105 @@ def test_cv_motion_model_episode_resume_requires_four_surface_audit(
     summary["d1_cv_motion_model_cache_diagnostics"]["operation_counts"][
         "cache_hit_count"
     ] = 91
+    (episode / "summary.json").write_text(
+        json.dumps(summary), encoding="utf-8"
+    )
+    assert not matrix_runner._episode_matches(episode, **match_args)
+
+
+def test_structured_jacobian_episode_resume_requires_four_surface_audit(
+    tmp_path: Path,
+) -> None:
+    episode = tmp_path / "episode_structured_jacobian"
+    episode.mkdir()
+    commit = "5" * 40
+    selector = "known_dimension_structural_columns_v1"
+    implementation_id = (
+        "d1.ekf.numerical_jacobian."
+        "known_dimension_structural_columns.v1"
+    )
+    diagnostics = {
+        "schema_version": (
+            "d1.structured_numerical_jacobian_diagnostics.v1"
+        ),
+        "implementation_id": implementation_id,
+        "candidate_enabled": True,
+        "operation_counts": {
+            "jacobian_attempt_count": 100,
+            "jacobian_success_count": 100,
+            "structured_candidate_call_count": 100,
+            "output_probe_elision_count": 100,
+            "inactive_state_column_elision_count": 240,
+            "measurement_function_evaluation_count": 720,
+        },
+        "conservation": {
+            "attempt_equals_success_plus_failure": True,
+            "attempt_equals_reference_plus_candidate": True,
+        },
+    }
+    initial_diagnostics = {
+        **diagnostics,
+        "operation_counts": {},
+    }
+    manifest = {
+        "git_commit": commit,
+        "repository_dirty": False,
+        "seed": 1101,
+        "runtime_profile": {
+            "d1_structured_numerical_jacobian_implementation": selector,
+            "d1_structured_numerical_jacobian_diagnostics": (
+                initial_diagnostics
+            ),
+            "configuration": {
+                "d1_structured_numerical_jacobian_implementation": selector,
+            },
+        },
+    }
+    config = {
+        "seed": 1101,
+        "duration_s": 2.2,
+        "target_count": 200,
+        "resource_count": 200,
+        "recon_count": 2,
+    }
+    summary = {
+        "d1_structured_numerical_jacobian_implementation": selector,
+        "d1_structured_numerical_jacobian_diagnostics": diagnostics,
+        "module_final_diagnostics": {
+            "d1_structured_numerical_jacobian_implementation": selector,
+            "d1_structured_numerical_jacobian_diagnostics": diagnostics,
+        },
+        "finite_state": True,
+        "online_truth_use_count": 0,
+        "simulated_duration_s": 2.2,
+    }
+    governance = {
+        "d1_structured_numerical_jacobian_implementation": selector,
+        "d1_structured_numerical_jacobian_diagnostics": diagnostics,
+    }
+    for name, payload in (
+        ("manifest.json", manifest),
+        ("scenario_config.json", config),
+        ("summary.json", summary),
+        ("observation_governance_audit.json", governance),
+    ):
+        (episode / name).write_text(json.dumps(payload), encoding="utf-8")
+
+    match_args = {
+        "expected_commit": commit,
+        "expected_implementation": selector,
+        "seed": 1101,
+        "duration_s": 2.2,
+        "target_count": 200,
+        "resource_count": 200,
+        "recon_count": 2,
+        "validation_kind": "structured_numerical_jacobian",
+    }
+    assert matrix_runner._episode_matches(episode, **match_args)
+
+    summary[
+        "d1_structured_numerical_jacobian_diagnostics"
+    ]["operation_counts"]["measurement_function_evaluation_count"] = 1300
     (episode / "summary.json").write_text(
         json.dumps(summary), encoding="utf-8"
     )

@@ -31,6 +31,8 @@ from research_modules.scalable_3d_simulation.module_stack import (
     D1_CV_MOTION_MODEL_REFERENCE_IMPLEMENTATION,
     D1_PUBLICATION_METADATA_CANDIDATE_IMPLEMENTATION,
     D1_PUBLICATION_METADATA_REFERENCE_IMPLEMENTATION,
+    D1_STRUCTURED_NUMERICAL_JACOBIAN_CANDIDATE_IMPLEMENTATION,
+    D1_STRUCTURED_NUMERICAL_JACOBIAN_REFERENCE_IMPLEMENTATION,
     IntegratedStackConfig,
     SCAN_INPUT_CANDIDATE_IMPLEMENTATION,
     SCAN_INPUT_REFERENCE_IMPLEMENTATION,
@@ -169,6 +171,21 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--d1-structured-numerical-jacobian-implementation",
+        choices=(
+            D1_STRUCTURED_NUMERICAL_JACOBIAN_REFERENCE_IMPLEMENTATION,
+            D1_STRUCTURED_NUMERICAL_JACOBIAN_CANDIDATE_IMPLEMENTATION,
+        ),
+        default=(
+            D1_STRUCTURED_NUMERICAL_JACOBIAN_REFERENCE_IMPLEMENTATION
+        ),
+        help=(
+            "select the D1 numerical-Jacobian A/B implementation; the "
+            "known-dimension structural-column candidate remains explicit "
+            "and default-off pending full-stack admission"
+        ),
+    )
+    parser.add_argument(
         "--online-truth-guard-implementation",
         choices=(
             ONLINE_TRUTH_GUARD_REFERENCE_IMPLEMENTATION,
@@ -256,6 +273,9 @@ def main() -> int:
                 ),
                 d1_cv_motion_model_cache_capacity=(
                     args.d1_cv_motion_model_cache_capacity
+                ),
+                d1_structured_numerical_jacobian_implementation=(
+                    args.d1_structured_numerical_jacobian_implementation
                 ),
             ),
         )

@@ -638,6 +638,16 @@ class Scalable3DEpisodeRunner:
                     "d1_cv_motion_model_cache_diagnostics"
                 )
             ),
+            "d1_structured_numerical_jacobian_implementation": (
+                observation_governance.get(
+                    "d1_structured_numerical_jacobian_implementation"
+                )
+            ),
+            "d1_structured_numerical_jacobian_diagnostics": (
+                observation_governance.get(
+                    "d1_structured_numerical_jacobian_diagnostics"
+                )
+            ),
             "d2_publication_metadata_audit": observation_governance.get(
                 "d2_publication_metadata_audit"
             ),

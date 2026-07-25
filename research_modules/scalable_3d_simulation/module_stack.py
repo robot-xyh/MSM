@@ -38,6 +38,11 @@ from research_modules.d1_sensor_fusion.src.d1_sensor_fusion import (
     run_experimental_centroid_publication_overlay_atomically,
     sensor_observations_from_online_batch,
 )
+from research_modules.d1_sensor_fusion.src.d1_sensor_fusion.fusion import (
+    STRUCTURED_NUMERICAL_JACOBIAN_CANDIDATE_IMPLEMENTATION_ID,
+    STRUCTURED_NUMERICAL_JACOBIAN_DIAGNOSTICS_SCHEMA_VERSION,
+    STRUCTURED_NUMERICAL_JACOBIAN_REFERENCE_IMPLEMENTATION_ID,
+)
 from research_modules.d2_data_association.d2_data_association import (
     AmbiguityComponent3D,
     AmbiguityHoldLeaseConfig,
@@ -126,6 +131,12 @@ D1_PUBLICATION_METADATA_REFERENCE_IMPLEMENTATION = "per_track_copy_v1"
 D1_PUBLICATION_METADATA_CANDIDATE_IMPLEMENTATION = "immutable_shared_v2"
 D1_CV_MOTION_MODEL_REFERENCE_IMPLEMENTATION = "per_prediction_build_v1"
 D1_CV_MOTION_MODEL_CANDIDATE_IMPLEMENTATION = "bounded_exact_lru_v1"
+D1_STRUCTURED_NUMERICAL_JACOBIAN_REFERENCE_IMPLEMENTATION = (
+    "dense_output_probe_v1"
+)
+D1_STRUCTURED_NUMERICAL_JACOBIAN_CANDIDATE_IMPLEMENTATION = (
+    "known_dimension_structural_columns_v1"
+)
 _EPS = 1.0e-9
 
 
@@ -157,6 +168,9 @@ class IntegratedStackConfig:
     )
     d1_cv_motion_model_cache_capacity: int = (
         DEFAULT_CV_MOTION_MODEL_CACHE_CAPACITY
+    )
+    d1_structured_numerical_jacobian_implementation: str = (
+        D1_STRUCTURED_NUMERICAL_JACOBIAN_REFERENCE_IMPLEMENTATION
     )
     d2_claim_retention_s: float = 30.0
     d2_claim_max_lateness_s: float = 5.0
@@ -280,6 +294,23 @@ class IntegratedStackConfig:
             "d1_cv_motion_model_cache_capacity",
             cv_motion_model_cache_capacity,
         )
+        structured_jacobian_implementation = str(
+            self.d1_structured_numerical_jacobian_implementation
+        ).strip()
+        if structured_jacobian_implementation not in {
+            D1_STRUCTURED_NUMERICAL_JACOBIAN_REFERENCE_IMPLEMENTATION,
+            D1_STRUCTURED_NUMERICAL_JACOBIAN_CANDIDATE_IMPLEMENTATION,
+        }:
+            raise ValueError(
+                "d1_structured_numerical_jacobian_implementation must be "
+                "dense_output_probe_v1 or "
+                "known_dimension_structural_columns_v1"
+            )
+        object.__setattr__(
+            self,
+            "d1_structured_numerical_jacobian_implementation",
+            structured_jacobian_implementation,
+        )
         if (
             not np.isfinite(self.d2_claim_capacity_safety_factor)
             or self.d2_claim_capacity_safety_factor < 1.0
@@ -392,6 +423,31 @@ def _initial_cv_motion_model_cache_diagnostics(
         "cache_capacity": int(config.d1_cv_motion_model_cache_capacity),
         "cache_entry_count": 0,
         "operation_counts": {},
+    }
+
+
+def _initial_structured_numerical_jacobian_diagnostics(
+    config: IntegratedStackConfig,
+) -> dict[str, Any]:
+    candidate_enabled = (
+        config.d1_structured_numerical_jacobian_implementation
+        == D1_STRUCTURED_NUMERICAL_JACOBIAN_CANDIDATE_IMPLEMENTATION
+    )
+    return {
+        "schema_version": (
+            STRUCTURED_NUMERICAL_JACOBIAN_DIAGNOSTICS_SCHEMA_VERSION
+        ),
+        "implementation_id": (
+            STRUCTURED_NUMERICAL_JACOBIAN_CANDIDATE_IMPLEMENTATION_ID
+            if candidate_enabled
+            else STRUCTURED_NUMERICAL_JACOBIAN_REFERENCE_IMPLEMENTATION_ID
+        ),
+        "candidate_enabled": candidate_enabled,
+        "operation_counts": {},
+        "conservation": {
+            "attempt_equals_success_plus_failure": True,
+            "attempt_equals_reference_plus_candidate": True,
+        },
     }
 
 
@@ -588,6 +644,15 @@ class IntegratedScalableModuleStack:
                     self.stack_config
                 )
             ),
+            "d1_structured_numerical_jacobian_implementation": (
+                self.stack_config
+                .d1_structured_numerical_jacobian_implementation
+            ),
+            "d1_structured_numerical_jacobian_diagnostics": (
+                _initial_structured_numerical_jacobian_diagnostics(
+                    self.stack_config
+                )
+            ),
         }
 
     def runtime_manifest_profile_for_scenario(
@@ -639,6 +704,11 @@ class IntegratedScalableModuleStack:
             ),
             cv_motion_model_cache_capacity=(
                 self.stack_config.d1_cv_motion_model_cache_capacity
+            ),
+            structured_numerical_jacobian=(
+                self.stack_config
+                .d1_structured_numerical_jacobian_implementation
+                == D1_STRUCTURED_NUMERICAL_JACOBIAN_CANDIDATE_IMPLEMENTATION
             ),
         )
         self.d1_scan_input = ScanInputOrganizer(
@@ -1076,6 +1146,13 @@ class IntegratedScalableModuleStack:
             ),
             "d1_cv_motion_model_cache_diagnostics": (
                 self.d1.cv_motion_model_cache_diagnostics()
+            ),
+            "d1_structured_numerical_jacobian_implementation": (
+                self.stack_config
+                .d1_structured_numerical_jacobian_implementation
+            ),
+            "d1_structured_numerical_jacobian_diagnostics": (
+                self.d1.structured_numerical_jacobian_diagnostics()
             ),
             "d1_scan_event_total_count": self._d1_scan_event_total_count,
             "d1_scan_event_retained_count": len(self._d1_scan_events),
@@ -5082,6 +5159,14 @@ class IntegratedScalableModuleStack:
             ],
             "d1_cv_motion_model_cache_diagnostics": dict(
                 governance["d1_cv_motion_model_cache_diagnostics"]
+            ),
+            "d1_structured_numerical_jacobian_implementation": governance[
+                "d1_structured_numerical_jacobian_implementation"
+            ],
+            "d1_structured_numerical_jacobian_diagnostics": dict(
+                governance[
+                    "d1_structured_numerical_jacobian_diagnostics"
+                ]
             ),
             "d2_publication_metadata_audit": dict(
                 governance["d2_publication_metadata_audit"]
