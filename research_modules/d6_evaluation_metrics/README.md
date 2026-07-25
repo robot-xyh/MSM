@@ -1,5 +1,57 @@
 # D6 Evaluation Metrics
 
+## 2026-07-25 D1 关联稀疏预筛多种子正式评估入口
+
+D6 已实现独立、只读、失败关闭 evaluator
+`d1_association_sparse_prefilter_multiseed.py` 和 CLI
+`scripts/evaluate_d1_association_sparse_prefilter_multiseed.py`，schema 为
+`d6.d1_association_sparse_prefilter_multiseed_evaluation.v1`。入口固定绑定 matrix SHA-256
+`a7162d014d1c3c0f207355b24a5d7159bf3486d134ca21876f7469d1e915b71d`、clean source
+commit `9302ccede2ca513c2235370e1a464fc88bc41150`、200 个目标、200 个资源、2 个侦察节点，
+以及 short seeds 1131-1140、long seeds 1131-1133。13 pair/26 arm 必须全部 fresh
+complete，producer 状态必须为 `episodes_complete_pending_d6`。
+
+评估器重新计算 manifest/matrix SHA、提交、命令和路径边界，并在 runtime profile、summary、
+module final 与 governance 四个主表面核对 selector、完整 implementation ID、execution config
+和 `d1.association_sparse_prefilter_diagnostics.v2`；runtime configuration 与 nested
+governance 另作冗余检查。六个固定模态桶、逐桶计数上界、总计守恒、有限状态和 online truth
+use=0 均失败关闭。
+
+业务语义逐 pair 调用规范跨 episode 比较器重算。归一化只覆盖预注册 treatment、对应
+execution config/diagnostics、关联精确求解诊断、运行时哈希派生 episode ID 和性能字段。
+在线消息、D1-D7 业务结果、D3 计划谱系、D4 内容地址与 ACK 及离线 truth 制品继续比较。
+reference/candidate 的 exact gate-pass 计数必须逐 pair、逐模态相等。
+
+正式输入为 13 pair/26 fresh episode，0 reused、0 failed；13/13 业务语义、实现身份、有限状态、
+真值隔离、逐模态 gate-pass 和稀疏预筛审计通过。候选全矩阵诊断中，radar 的
+candidate/rejection/solve/gate-pass/fallback 为
+`9199071/9145313/53758/48321/3773`，eo 为
+`801650/258272/39837/3979/37571`，其余四个模态桶均为 0。非雷达精确求解由
+`298109` 降至 `39837`，减少 `86.636767%`。
+
+正式 verdict 为 `reject`。short D1 fusion 改善仅 `0.228437%`、候选更快 `7/10`，short
+bootstrap 原始变化 95% 上界为 `0.443531%`，short core 改善 `0.091096%`；long D1 fusion
+改善 `0.713776%`。这五项分别未达到冻结的 `1%`、`8/10`、`<=0%`、`0.25%` 和 `1%` 门。
+其余来源、语义、诊断、非雷达精确求解削减、scan input、D2 和 RSS 门均通过。main 默认晋升
+不允许，reference `disabled_v1` 保持默认。候选最低实时因子为 `0.206273 < 1`，系统实时缺口
+仍开放；任一 pair 最大 RSS 增幅仅 `0.077909%`，通过 5% 上限。
+
+正式 bundle 位于
+`outputs/d1_association_sparse_prefilter_multiseed_20260725_formal_9302cce_d6/`，包含完整/紧凑
+JSON、13 条 pair CSV、中文 Markdown、PNG 曲线和 `SHA256SUMS`。定向测试
+`13 passed, 1 warning in 7.22s`，D6 全量 `859 passed, 1 warning in 64.83s`。本证据只覆盖
+三维质点仿真，不代表 AirSim、目标硬件、实机或实飞结论。
+
+```bash
+PYTHONPATH=research_modules/d6_evaluation_metrics \
+python3 research_modules/d6_evaluation_metrics/scripts/evaluate_d1_association_sparse_prefilter_multiseed.py \
+  --evidence-manifest /tmp/msm_d1_association_sparse_prefilter_multiseed_9302cce/evidence_manifest.json \
+  --output-dir research_modules/d6_evaluation_metrics/outputs/d1_association_sparse_prefilter_multiseed_20260725_formal_9302cce_d6
+```
+
+`AIRSIM_INTEGRATION_PLAN.md` 已检查。本入口不改变 AirSim topic、相机、actor、reset、检测、控制或
+episode 调度，因此无需修改。
+
 ## 2026-07-25 D1 在线批帧交接多种子正式评估入口
 
 D6 已实现独立只读、失败关闭 evaluator

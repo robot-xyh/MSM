@@ -1,5 +1,48 @@
 # D6 系统评估指标综述及子方案
 
+## 2026-07-25 D1 关联稀疏预筛正式评审
+
+D6 已完成 `d6.d1_association_sparse_prefilter_multiseed_evaluation.v1` 独立 evaluator、CLI 和
+确定性报告，固定绑定 matrix SHA
+`a7162d014d1c3c0f207355b24a5d7159bf3486d134ca21876f7469d1e915b71d`、clean source commit
+`9302ccede2ca513c2235370e1a464fc88bc41150`、short 10 pair、long 3 pair 和 200/200/2。
+reference 为 `disabled_v1`，candidate 为
+`modality_conservative_quadratic_bound_v1`。
+
+评审确认 evaluator 不接受 producer admission，也不依赖 runner 私有验收函数。它严格校验
+manifest/matrix SHA、fresh episode、双臂唯一 treatment、命令和路径，并在 runtime profile、
+summary、module final、governance 及两个冗余表面交叉确认 selector、完整 implementation ID、
+execution config 和 diagnostics。六个模态桶、逐桶计数上界、总计守恒、finite state 和 online
+truth use=0 均由 D6 复核。
+
+业务语义逐 pair 调用规范跨 episode 比较器重算。只归一化预注册 treatment、对应
+execution config/diagnostics、关联精确求解诊断、运行时哈希派生 episode ID 和性能字段；
+在线消息、D1-D7 业务结果、D3 计划谱系、D4 内容地址与 ACK 和离线 truth 制品不豁免。
+13/13 pair 业务等价，reference/candidate 的 exact gate-pass 计数逐 pair、逐模态完全相等。
+
+候选全矩阵 radar 的 candidate/rejection/solve/gate-pass/fallback 为
+`9199071/9145313/53758/48321/3773`，eo 为
+`801650/258272/39837/3979/37571`，lidar/acoustic/acoustic_3d/other 均为 0。非雷达精确求解
+由 `298109` 降至 `39837`，减少 `86.636767%`，通过 20% 门。
+
+性能实测如下：short D1 fusion/core 改善 `0.228437%/0.091096%`，候选更快 `7/10`，
+bootstrap 原始变化 95% CI 为 `[-0.946192%, 0.443531%]`；long D1 fusion/core 改善
+`0.713776%/0.490650%`，候选更快 `3/3`。short/long scan input 变化
+`-0.452226%/-0.470110%`，D2 变化 `+0.559480%/-0.453717%`，RSS 组均值最大增幅
+`0.026850%`、任一 pair 最大增幅 `0.077909%`，这些非退化门均通过。
+
+五个冻结门失败：short 更快数、short D1 fusion 改善、short bootstrap 上界、short core 改善和
+long D1 fusion 改善。正式 verdict 为 `reject`，
+`main_default_promotion_allowed=false`；不得通过调门、删 pair 或语义豁免晋级。候选最低实时
+因子为 `0.206273`，所以 `system_realtime_gap_closed=false`。
+
+正式 bundle 位于
+`research_modules/d6_evaluation_metrics/outputs/d1_association_sparse_prefilter_multiseed_20260725_formal_9302cce_d6/`；
+`SHA256SUMS` 全部通过。定向测试 `13 passed, 1 warning in 7.22s`，D6 全量
+`859 passed, 1 warning in 64.83s`。结论只适用于三维质点矩阵，不代表 AirSim、目标硬件、
+实机或实飞。`AIRSIM_INTEGRATION_PLAN.md` 与
+`D6_M_TO_N_EVALUATION_FRAMEWORK_REVIEW.md` 已检查，本项不改变其接口或指标合同，无需修改。
+
 ## 2026-07-25 D1 在线批帧交接正式评审
 
 D6 已完成 `d6.d1_online_batch_frame_multiseed_evaluation.v1` 独立 evaluator、CLI 和确定性

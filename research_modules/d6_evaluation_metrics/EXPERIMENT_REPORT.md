@@ -1,5 +1,99 @@
 # D6 系统级评估指标实验报告
 
+## 2.37 D1 关联稀疏预筛正式多种子评估
+
+### 结论
+
+2026-07-25，D6 对 clean source commit
+`9302ccede2ca513c2235370e1a464fc88bc41150` 的 13 pair/26 fresh episode 三维质点证据完成
+独立只读评估。evaluator schema 为
+`d6.d1_association_sparse_prefilter_multiseed_evaluation.v1`，matrix SHA-256 为
+`a7162d014d1c3c0f207355b24a5d7159bf3486d134ca21876f7469d1e915b71d`，evidence manifest
+SHA-256 为 `43b0aeb41ff9abb243e86b559a6ec2d2e2e2cf94f50c4e45ff5c95d915268eb2`。
+
+正式 verdict 为 `reject`，`optimization_admitted=false`、
+`main_default_promotion_allowed=false`。失败门为 short D1 更快数、short D1 fusion 改善、
+short bootstrap 上界、short core 改善和 long D1 fusion 改善；本轮没有调门或删除 pair。
+reference `disabled_v1` 保持默认。
+
+系统实时门独立失败：候选最低实时因子为 `0.2062730911 < 1`，
+`system_realtime_gap_closed=false`。本节只评价 200 个目标、200 个资源、2 个侦察节点的三维
+质点运行，不代表 AirSim、目标硬件、实机或实飞结论。
+
+### 来源与业务等价
+
+26 个 arm 全部 fresh complete，0 reused、0 failed；producer 状态为
+`episodes_complete_pending_d6`。13/13 pair 的 source/路径/命令、实现身份、六模态诊断守恒、
+有限状态、online truth use=0、业务语义和逐 pair/逐模态 exact gate-pass 相等均通过。
+
+业务语义只归一化预注册 selector、对应 execution config/diagnostics、关联求解诊断、运行时哈希
+派生 episode ID 和性能字段。在线消息、D1-D7 业务输出、D3 计划谱系、D4 内容地址与 ACK、离线
+truth state/labels/proximity 均继续比较。
+
+### 稀疏预筛诊断
+
+| 模态 | Candidate pair | Rejection | Exact solve | Gate pass | Fallback |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| radar | 9199071 | 9145313 | 53758 | 48321 | 3773 |
+| lidar | 0 | 0 | 0 | 0 | 0 |
+| acoustic | 0 | 0 | 0 | 0 | 0 |
+| acoustic_3d | 0 | 0 | 0 | 0 | 0 |
+| eo | 801650 | 258272 | 39837 | 3979 | 37571 |
+| other | 0 | 0 | 0 | 0 | 0 |
+
+非雷达精确求解由 reference 的 `298109` 降至 candidate 的 `39837`，减少
+`86.636767%`，通过冻结的 `>=20%` 门。该局部计算削减没有自动转化为稳定的 D1 或核心墙钟收益。
+
+### short/long 性能
+
+| 组别 | 指标 | Reference 均值 | Candidate 均值 | 配对变化 |
+| --- | --- | ---: | ---: | ---: |
+| short | D1 fusion (s) | 2.473915 | 2.467389 | 改善 0.228437% |
+| short | 核心墙钟 (s) | 8.599170 | 8.590696 | 改善 0.091096% |
+| short | scan input (s) | 0.756319 | 0.752791 | -0.452226% |
+| short | D2 association (s) | 0.502191 | 0.504759 | +0.559480% |
+| short | RSS (KiB) | 877912.4 | 877882.0 | -0.003738% |
+| short | RTF | 0.255962 | 0.256189 | 改善 0.096142% |
+| long | D1 fusion (s) | 16.961857 | 16.840919 | 改善 0.713776% |
+| long | 核心墙钟 (s) | 47.965475 | 47.729461 | 改善 0.490650% |
+| long | scan input (s) | 3.989834 | 3.971143 | -0.470110% |
+| long | D2 association (s) | 3.344833 | 3.328621 | -0.453717% |
+| long | RSS (KiB) | 1610262.7 | 1610693.3 | +0.026850% |
+| long | RTF | 0.208520 | 0.209550 | 改善 0.495628% |
+
+D1 fusion 候选更快数为 short `7/10`、long `3/3`。10000 次 paired bootstrap 的 D1 原始变化
+95% CI 为 short `[-0.946192%, 0.443531%]`、long
+`[-1.286611%, -0.357903%]`。任一 pair 最大 RSS 增幅为
+`0.077909%`，发生在 `short_seed_1131`；RSS 风险门通过。最低候选 RTF 为
+`long_seed_1131` 的 `0.2062730911`，说明系统实时风险仍明确开放。
+
+### 冻结门结果
+
+通过的来源/安全门为 13/13 预筛审计、13/13 业务等价、13/13 exact gate-pass 相等、13/13
+显式实现身份、13/13 有限状态和 0 online truth use。通过的性能/资源门包括 long 更快
+`3 >= 2`、long core `0.490650% >= 0.25%`、short/long scan 增幅
+`-0.452226%/-0.470110% <= 5%`、short/long D2 增幅
+`0.559480%/-0.453717% <= 5%`、RSS 最大组均值/任一 pair 增幅
+`0.026850%/0.077909% <= 5%`，以及非雷达精确求解削减
+`86.636767% >= 20%`。
+
+失败门如下：
+
+| Gate | 实际值 | 冻结门 |
+| --- | ---: | ---: |
+| short candidate faster | 7 | >=8 |
+| short D1 fusion 改善 | 0.228437% | >=1% |
+| short bootstrap 原始变化上界 | 0.443531% | <=0% |
+| short core 改善 | 0.091096% | >=0.25% |
+| long D1 fusion 改善 | 0.713776% | >=1% |
+
+![D1 关联稀疏预筛配对评估](outputs/d1_association_sparse_prefilter_multiseed_20260725_formal_9302cce_d6/d1_association_sparse_prefilter_multiseed_curves.png)
+
+正式 bundle 位于
+`outputs/d1_association_sparse_prefilter_multiseed_20260725_formal_9302cce_d6/`。完整/紧凑 JSON、
+13 条 pair CSV、中文 Markdown、PNG 和 `SHA256SUMS` 均已生成，校验和全部通过。定向测试
+`13 passed, 1 warning in 7.22s`，D6 全量 `859 passed, 1 warning in 64.83s`。
+
 ## 2.36 D1 在线批帧交接正式多种子评估
 
 ### 结论

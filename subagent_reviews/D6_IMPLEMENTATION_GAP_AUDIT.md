@@ -1,5 +1,52 @@
 # D6 实现差距审计
 
+## 2026-07-25 D1 关联稀疏预筛正式评估 GAP 更新
+
+### 已关闭
+
+1. D6 已实现 schema
+   `d6.d1_association_sparse_prefilter_multiseed_evaluation.v1` 的独立只读 evaluator、CLI、
+   失败关闭结果和确定性六制品 writer；不调用 producer runner 私有验收函数。
+2. matrix SHA
+   `a7162d014d1c3c0f207355b24a5d7159bf3486d134ca21876f7469d1e915b71d`、clean source
+   commit `9302ccede2ca513c2235370e1a464fc88bc41150`、13 pair/26 fresh arm、200/200/2、
+   seed、时长、arm 顺序、命令、路径和 producer pending-D6 状态已冻结。
+3. runtime profile、summary、module final、governance 及冗余 configuration/nested governance
+   的 selector、完整 implementation ID、execution config v1 和 diagnostics v2 已进入
+   fail-closed 校验。
+4. 六个固定模态桶、逐桶计数上界、总计守恒、reference 非雷达零 rejection、candidate treatment
+   实际执行、逐 pair 工作量相同和逐 pair/逐模态 exact gate-pass 相等均已实现。
+5. 业务语义仅归一化登记 treatment、对应诊断/运行时哈希差异和性能字段；在线消息、D1-D7
+   业务输出、计划谱系、D4 内容地址与 ACK 和三个离线 truth 制品继续比较。
+6. short/long D1 fusion、core wall、scan input、D2 association、RSS、RTF、候选更快数和
+   10000 次 paired bootstrap 均按冻结矩阵重算；局部准入和系统实时门分离。
+7. 正式 13/13 pair 的来源、业务语义、实现身份、有限状态、真值隔离、预筛审计和逐模态
+   gate-pass 相等通过。非雷达精确求解由 `298109` 降至 `39837`，减少
+   `86.636767%`。
+8. 正式结果严格保留五个失败门：short 更快 `7/10 < 8/10`、D1 fusion 改善
+   `0.228437% < 1%`、bootstrap 上界 `0.443531% > 0%`、core 改善
+   `0.091096% < 0.25%`，long D1 fusion 改善 `0.713776% < 1%`。verdict 为
+   `reject`，main 默认晋升不允许。
+9. 正式 bundle 位于
+   `research_modules/d6_evaluation_metrics/outputs/d1_association_sparse_prefilter_multiseed_20260725_formal_9302cce_d6/`；
+   完整/紧凑 JSON、13 条 pair CSV、中文 Markdown、PNG 和 `SHA256SUMS` 已生成并通过校验，
+   原始 evidence 未写入。
+10. 正负测试覆盖 SHA、commit、selector、execution config、diagnostics schema、计数守恒、
+    gate-pass mismatch、业务语义、性能、RSS、D2、online truth 和缺文件。定向
+    `13 passed, 1 warning in 7.22s`，D6 全量 `859 passed, 1 warning in 64.83s`。
+
+### 仍开放 P1
+
+1. **候选准入。** 五个冻结性能门失败，reference `disabled_v1` 保持默认。任何重新准入需使用
+   新的预注册矩阵，不得调门、删 pair 或覆盖本轮 `reject`。
+2. **系统实时容量。** 候选最低实时因子 `0.206273 < 1`，
+   `system_realtime_gap_closed=false`。
+3. **外部适用性。** 本轮仅为 200/200/2 三维质点证据，不关闭 AirSim、目标处理器、硬件、
+   实机或实飞 GAP。
+
+当前无新增 D6-owned P0。D6 evaluator、正式 evidence 消费、统计、报告和失败关闭测试缺口已
+关闭；候选准入、系统实时和外部适用性保持开放。
+
 ## 2026-07-25 D1 在线批帧交接正式评估 GAP 更新
 
 ### 已关闭

@@ -1,5 +1,70 @@
 # D6 系统级离线评估：算法原理与实施说明
 
+## D1 关联稀疏预筛同提交评估（2026-07-25）
+
+入口 `d1_association_sparse_prefilter_multiseed.py` 与
+`scripts/evaluate_d1_association_sparse_prefilter_multiseed.py` 按以下顺序执行：
+
+```text
+manifest schema / status / manifest SHA / matrix SHA / clean source commit
+  -> 13 case / 26 fresh arm / seed / duration / arm order / command / path boundary
+  -> runtime profile / summary / module final / nested governance / governance audit
+  -> selector / implementation ID / execution config v1 / diagnostics v2
+  -> six modality buckets / counter bounds / totals / workload equality
+  -> exact gate-pass equality per pair and modality
+  -> strict JSONL / finite NPZ / stderr / resource usage / online truth use
+  -> canonical cross-episode business equivalence with narrow treatment normalization
+  -> D1 fusion / core / scan input / D2 / RSS / RTF paired statistics
+  -> 10000-resample paired bootstrap and frozen gates
+  -> full JSON / compact JSON / pair CSV / Chinese Markdown / PNG / SHA256SUMS
+```
+
+来源合同固定绑定 evaluator schema
+`d6.d1_association_sparse_prefilter_multiseed_evaluation.v1`、matrix schema
+`scalable3d-d1-association-sparse-prefilter-multiseed-matrix-v1`、matrix SHA
+`a7162d014d1c3c0f207355b24a5d7159bf3486d134ca21876f7469d1e915b71d` 和 source commit
+`9302ccede2ca513c2235370e1a464fc88bc41150`。manifest 必须直接位于登记 output root，状态必须为
+`episodes_complete_pending_d6`；dirty、reused、failed、错误提交、矩阵字节变化、命令漂移、
+重复路径或 evidence root 外路径均使结果 unavailable。
+
+两臂命令除 `--d1-association-sparse-prefilter-implementation` 的值和输出目录外必须相同。
+参考/候选完整 ID 分别为
+`d1.fusion.association_sparse_prefilter.disabled.v1` 和
+`d1.fusion.association_sparse_prefilter.modality_conservative_quadratic_bound.v1`。
+execution config 精确校验默认关闭、rollback、radar legacy gate、六模态策略、无真值输入和
+精确关联门不变。diagnostics 未知字段、错误 schema、负数/非整数、四份最终表面不一致或计数
+守恒破坏均失败关闭。
+
+业务等价先对 runtime profile、summary 和 governance 做窄归一化，再调用公共规范
+`compare_cross_build_episodes` 比较在线总线、计划谱系、D4 内容地址与 ACK 和三个离线 truth
+制品。只排除预注册的 `same_runtime_profile` 哈希差异；其他跨 episode 检查必须全部为 true。
+评估器不调用 producer runner 的私有验收函数，也不写入原始 evidence。
+
+每个越低越好的性能指标使用配对相对变化：
+
+```text
+r_i = (candidate_i - reference_i) / reference_i
+improvement_i = -r_i
+```
+
+RTF 使用越高越好的正向变化。D1 fusion 的 short/long、core wall、scan input、D2 association、
+RSS 和 RTF 均按组重算分布与 10000 次固定随机种子的 paired bootstrap。所有 gate 名称和值必须
+与冻结 matrix 完全相同，调用方不能覆盖。
+
+正式评估得到 13/13 业务等价、有限状态、真值隔离、实现身份、预筛审计和逐模态 gate-pass
+相等。候选全矩阵 radar 诊断为
+`9199071/9145313/53758/48321/3773`，eo 为
+`801650/258272/39837/3979/37571`，顺序均为
+candidate/rejection/solve/gate-pass/fallback；其余四桶均为 0。非雷达精确求解减少
+`86.636767%`。
+
+性能上，short D1 fusion/core 改善 `0.228437%/0.091096%`，D1 更快 `7/10`，D1 原始变化
+bootstrap 95% CI 为 `[-0.946192%, 0.443531%]`；long D1 fusion/core 改善
+`0.713776%/0.490650%`，D1 更快 `3/3`。五个冻结门失败，正式 verdict 为 `reject`，
+`main_default_promotion_allowed=false`。最低候选 RTF 为 `0.206273`，系统实时门失败。
+正式制品位于
+`outputs/d1_association_sparse_prefilter_multiseed_20260725_formal_9302cce_d6/`。
+
 ## D1 在线批帧交接同提交评估（2026-07-25）
 
 入口 `d1_online_batch_frame_multiseed.py` 与

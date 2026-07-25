@@ -1,5 +1,59 @@
 # D6 系统级离线评估模块原理
 
+## 关联稀疏预筛评估边界（2026-07-25）
+
+D1 关联参考实现 `disabled_v1` 对非雷达模态直接执行精确创新求解；候选
+`modality_conservative_quadratic_bound_v1` 对已认证的 lidar、acoustic、acoustic_3d 和 eo
+残差使用模态保守二次型上界，只有能够证明在精确门外时才预筛拒绝。无法认证的 pair 失败开放到
+精确求解，既有 radar 保守下界门保持不变，最终精确关联门和残差语义不变。
+
+D6 不依据 arm 标签或 producer admission 推断实际执行路径。selector、完整 implementation ID、
+`d1.association_sparse_prefilter_execution_config.v1` 和
+`d1.association_sparse_prefilter_diagnostics.v2` 必须在 runtime profile、summary、module final
+和 governance 四个主表面一致；runtime configuration 和 nested governance 另作冗余核对。
+诊断模态顺序固定为：
+
+```text
+radar, lidar, acoustic, acoustic_3d, eo, other
+```
+
+每个模态桶和全局总计均由 D6 重算以下上界，不能以 producer 的 conservation 布尔值替代：
+
+```text
+0 <= rejection <= candidate_pair
+0 <= exact_solve <= candidate_pair
+0 <= exact_gate_pass <= exact_solve
+0 <= fallback <= exact_solve <= candidate_pair
+sum(modality counters) = total counters
+```
+
+reference 的非雷达 rejection 必须为 0；candidate 的非雷达 treatment 必须实际发生。同一 pair
+两臂的 candidate-pair 工作量和 exact gate-pass 计数必须在六个模态桶内分别相等，防止通过减少
+工作量或改变最终关联门获得虚假收益。非雷达精确求解削减按全矩阵累计计数计算：
+
+```text
+reduction =
+  (reference_non_radar_exact_solve - candidate_non_radar_exact_solve)
+  / reference_non_radar_exact_solve
+```
+
+业务语义逐 pair 重新执行规范跨 episode 比较。只允许归一化预注册 selector、对应 execution
+config/diagnostics、关联精确求解诊断、运行时哈希派生 episode ID 和阶段/episode 性能字段。
+在线消息、航迹和关联、D3 计划谱系、D4 内容地址与 ACK、D5/D7 结果、业务计数和离线 truth
+state/labels/proximity 继续比较；有限状态必须为 true，在线真值使用必须为 0。
+
+正式证据固定为 clean commit `9302ccede2ca513c2235370e1a464fc88bc41150`、matrix SHA
+`a7162d014d1c3c0f207355b24a5d7159bf3486d134ca21876f7469d1e915b71d`、short 10 pair 和
+long 3 pair，共 26 个 fresh complete arm。13/13 pair 的来源、业务语义、实现身份、诊断守恒、
+有限状态、真值隔离和逐模态 gate-pass 相等均通过。
+
+全矩阵非雷达精确求解由 `298109` 降至 `39837`，减少 `86.636767%`。但 short D1 fusion
+改善 `0.228437%`、更快数 `7/10`、bootstrap 原始变化上界 `0.443531%`、short core 改善
+`0.091096%`，以及 long D1 fusion 改善 `0.713776%` 均未达到冻结门。因此
+`optimization_admitted=false`，reference `disabled_v1` 保持默认。候选最低实时因子
+`0.206273 < 1`，系统实时缺口独立保持开放。本证据只属于三维质点仿真，不外推到 AirSim、
+目标硬件、实机或实飞。
+
 ## 在线批帧交接评估边界（2026-07-25）
 
 参考实现 `convert_then_frame_v1` 对每个在线 batch 执行 raw measurement identity 检查、量测转换、

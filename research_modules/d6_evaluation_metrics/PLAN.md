@@ -1,5 +1,46 @@
 # D6 Evaluation Metrics Plan
 
+## 2026-07-25 D1 关联稀疏预筛多种子评估状态
+
+### 已完成
+
+- [x] 新增 schema `d6.d1_association_sparse_prefilter_multiseed_evaluation.v1`、独立只读
+  evaluator、CLI、完整/紧凑 JSON、逐 pair CSV、中文 Markdown、PNG 和 `SHA256SUMS`。
+- [x] 固定 matrix SHA
+  `a7162d014d1c3c0f207355b24a5d7159bf3486d134ca21876f7469d1e915b71d`、clean source
+  commit `9302ccede2ca513c2235370e1a464fc88bc41150`、13 pair/26 fresh arm、200/200/2、
+  seed、时长、arm 顺序、命令、路径和 `episodes_complete_pending_d6` 状态。
+- [x] 在 runtime profile、summary、module final、governance 及冗余 configuration/nested
+  governance 表面核对 selector、完整 implementation ID、execution config 和 diagnostics v2。
+- [x] 重算六个固定模态桶、计数上界和总计守恒、逐 pair/逐模态 exact gate-pass 相等、有限状态
+  和 online truth use=0；不读取 producer 私有验收函数或 admission 结论。
+- [x] 业务语义仅归一化预注册 treatment、对应诊断/运行时哈希差异和性能字段，其他在线消息、
+  D1-D7 结果、计划谱系、ACK、内容地址及离线 truth 制品继续比较。
+- [x] 重算 short/long D1 fusion、core wall、scan input、D2 association、RSS、RTF 和固定
+  10000 次 paired bootstrap；全部门限严格取自冻结矩阵。
+- [x] 正式 13/13 pair 的业务语义、实现身份、有限状态、真值隔离、逐模态 gate-pass 和预筛审计
+  通过。非雷达精确求解由 `298109` 降至 `39837`，减少 `86.636767%`。
+- [x] 正式 verdict 为 `reject`：short 更快数 `7/10 < 8/10`、D1 fusion 改善
+  `0.228437% < 1%`、bootstrap 上界 `0.443531% > 0%`、core 改善
+  `0.091096% < 0.25%`，long D1 fusion 改善 `0.713776% < 1%`。不调门、不删 pair，
+  main 默认晋升不允许。
+- [x] 正式 bundle 位于
+  `outputs/d1_association_sparse_prefilter_multiseed_20260725_formal_9302cce_d6/`；
+  `SHA256SUMS` 全部通过，原始 evidence 保持只读。
+- [x] 正负测试覆盖 SHA、commit、selector、execution config、diagnostics schema、计数守恒、
+  gate-pass mismatch、业务语义、性能门、RSS、D2、online truth 和缺文件。定向
+  `13 passed, 1 warning in 7.22s`，D6 全量 `859 passed, 1 warning in 64.83s`。
+
+### 仍开放
+
+- [ ] 候选未通过冻结性能门，reference `disabled_v1` 保持默认。任何重新准入必须使用新的
+  预注册矩阵，不得覆盖本轮 `reject`。
+- [ ] 候选最低实时因子 `0.206273 < 1`，200v200 系统实时 P1 未关闭。
+- [ ] AirSim、目标处理器、硬件和实飞证据未形成，不能从三维质点局部结果继承。
+
+`AIRSIM_INTEGRATION_PLAN.md` 与 `D6_M_TO_N_EVALUATION_FRAMEWORK_REVIEW.md` 已检查。本项不改变
+AirSim 接口、episode 调度或通用 M-to-N 指标合同，无需修改。
+
 ## 2026-07-25 D1 在线批帧交接多种子评估状态
 
 ### 已完成
