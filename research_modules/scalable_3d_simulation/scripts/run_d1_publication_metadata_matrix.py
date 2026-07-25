@@ -83,6 +83,15 @@ STRUCTURED_JACOBIAN_EVIDENCE_MANIFEST_SCHEMA_VERSION = (
 STRUCTURED_JACOBIAN_REQUIRED_D6_EVALUATOR_SCHEMA_VERSION = (
     "d6.d1_structured_jacobian_multiseed_evaluation.v1"
 )
+ASSOCIATION_SPARSE_PREFILTER_MATRIX_SCHEMA_VERSION = (
+    "scalable3d-d1-association-sparse-prefilter-multiseed-matrix-v1"
+)
+ASSOCIATION_SPARSE_PREFILTER_EVIDENCE_MANIFEST_SCHEMA_VERSION = (
+    "scalable3d-d1-association-sparse-prefilter-multiseed-evidence-v1"
+)
+ASSOCIATION_SPARSE_PREFILTER_REQUIRED_D6_EVALUATOR_SCHEMA_VERSION = (
+    "d6.d1_association_sparse_prefilter_multiseed_evaluation.v1"
+)
 _ARMS = ("reference", "candidate")
 _V1_EXPECTED_IMPLEMENTATIONS = {
     "reference": "per_track_copy_v1",
@@ -111,6 +120,10 @@ _ONLINE_TRUTH_GUARD_EXPECTED_IMPLEMENTATIONS = {
 _STRUCTURED_JACOBIAN_EXPECTED_IMPLEMENTATIONS = {
     "reference": "dense_output_probe_v1",
     "candidate": "known_dimension_structural_columns_v1",
+}
+_ASSOCIATION_SPARSE_PREFILTER_EXPECTED_IMPLEMENTATIONS = {
+    "reference": "disabled_v1",
+    "candidate": "modality_conservative_quadratic_bound_v1",
 }
 _D1_IMPLEMENTATION_IDS = {
     "per_track_copy_v1": (
@@ -147,6 +160,13 @@ _D1_IMPLEMENTATION_IDS = {
     "known_dimension_structural_columns_v1": (
         "d1.ekf.numerical_jacobian."
         "known_dimension_structural_columns.v1"
+    ),
+    "disabled_v1": (
+        "d1.fusion.association_sparse_prefilter.disabled.v1"
+    ),
+    "modality_conservative_quadratic_bound_v1": (
+        "d1.fusion.association_sparse_prefilter."
+        "modality_conservative_quadratic_bound.v1"
     ),
 }
 _MATRIX_SPECS = {
@@ -261,6 +281,25 @@ _MATRIX_SPECS = {
             "d1_structured_numerical_jacobian_implementation"
         ),
     },
+    ASSOCIATION_SPARSE_PREFILTER_MATRIX_SCHEMA_VERSION: {
+        "expected_implementations": (
+            _ASSOCIATION_SPARSE_PREFILTER_EXPECTED_IMPLEMENTATIONS
+        ),
+        "evidence_manifest_schema_version": (
+            ASSOCIATION_SPARSE_PREFILTER_EVIDENCE_MANIFEST_SCHEMA_VERSION
+        ),
+        "required_d6_evaluator_schema_version": (
+            ASSOCIATION_SPARSE_PREFILTER_REQUIRED_D6_EVALUATOR_SCHEMA_VERSION
+        ),
+        "publication_audit_contract_version": None,
+        "selector_flag": (
+            "--d1-association-sparse-prefilter-implementation"
+        ),
+        "validation_kind": "association_sparse_prefilter",
+        "treatment_field": (
+            "d1_association_sparse_prefilter_implementation"
+        ),
+    },
 }
 _COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
 _FORBIDDEN_RUN_FLAGS = {
@@ -278,6 +317,7 @@ _FORBIDDEN_RUN_FLAGS = {
     "--d1-opaque-source-identity-cache-capacity",
     "--d1-online-batch-frame-implementation",
     "--d1-structured-numerical-jacobian-implementation",
+    "--d1-association-sparse-prefilter-implementation",
     "--online-truth-guard-implementation",
 }
 
@@ -558,6 +598,50 @@ def load_matrix(path: str | Path) -> dict[str, Any]:
                     f"structured-Jacobian admission gate {field} must be "
                     f"{expected}"
                 )
+    if spec["validation_kind"] == "association_sparse_prefilter":
+        if (
+            boundary.get("execution_config_schema_version")
+            != "d1.association_sparse_prefilter_execution_config.v1"
+        ):
+            raise ValueError(
+                "association sparse-prefilter evidence must bind execution "
+                "config schema v1"
+            )
+        if (
+            boundary.get("diagnostics_schema_version")
+            != "d1.association_sparse_prefilter_diagnostics.v2"
+        ):
+            raise ValueError(
+                "association sparse-prefilter evidence must bind diagnostics "
+                "schema v2"
+            )
+        for field in (
+            "candidate_default_off",
+            "uncertified_pairs_fail_open",
+            "exact_residual_semantics_preserved",
+            "exact_association_gate_unchanged",
+            "truth_dependent_inputs_forbidden",
+        ):
+            if boundary.get(field) is not True:
+                raise ValueError(
+                    "association sparse-prefilter evidence must require "
+                    f"{field}"
+                )
+        required_gates = {
+            "all_pairs_association_sparse_prefilter_audit_valid": True,
+            "all_pairs_exact_gate_pass_counts_equal": True,
+            "short_minimum_d1_fusion_improvement_pct": 1.0,
+            "long_minimum_d1_fusion_improvement_pct": 1.0,
+            "short_minimum_core_wall_improvement_pct": 0.25,
+            "long_minimum_core_wall_improvement_pct": 0.25,
+            "minimum_candidate_non_radar_exact_solve_reduction_pct": 20.0,
+        }
+        for field, expected in required_gates.items():
+            if gates.get(field) != expected:
+                raise ValueError(
+                    "association sparse-prefilter admission gate "
+                    f"{field} must be {expected}"
+                )
     return value
 
 
@@ -732,6 +816,13 @@ def planned_evidence_manifest(
         manifest["structured_jacobian_diagnostics_schema_version"] = (
             "d1.structured_numerical_jacobian_diagnostics.v1"
         )
+    if spec["validation_kind"] == "association_sparse_prefilter":
+        manifest[
+            "association_sparse_prefilter_execution_config_schema_version"
+        ] = "d1.association_sparse_prefilter_execution_config.v1"
+        manifest[
+            "association_sparse_prefilter_diagnostics_schema_version"
+        ] = "d1.association_sparse_prefilter_diagnostics.v2"
     return manifest
 
 
@@ -1047,6 +1138,20 @@ def _episode_matches(
         )
     if validation_kind == "structured_numerical_jacobian":
         return _structured_numerical_jacobian_episode_matches(
+            episode_dir,
+            manifest=manifest,
+            config=config,
+            summary=summary,
+            expected_commit=expected_commit,
+            expected_implementation=expected_implementation,
+            seed=seed,
+            duration_s=duration_s,
+            target_count=target_count,
+            resource_count=resource_count,
+            recon_count=recon_count,
+        )
+    if validation_kind == "association_sparse_prefilter":
+        return _association_sparse_prefilter_episode_matches(
             episode_dir,
             manifest=manifest,
             config=config,
@@ -2020,6 +2125,292 @@ def _structured_jacobian_operation_counts_match(
         and counts["inactive_state_column_elision_count"] == 0
         and counts["measurement_function_evaluation_count"]
         == 13 * attempts
+    )
+
+
+def _association_sparse_prefilter_episode_matches(
+    episode_dir: Path,
+    *,
+    manifest: Mapping[str, Any],
+    config: Mapping[str, Any],
+    summary: Mapping[str, Any],
+    expected_commit: str,
+    expected_implementation: str,
+    seed: int,
+    duration_s: float,
+    target_count: int,
+    resource_count: int,
+    recon_count: int,
+) -> bool:
+    expected_id = _D1_IMPLEMENTATION_IDS.get(expected_implementation)
+    if expected_id is None:
+        return False
+    candidate = (
+        expected_implementation
+        == "modality_conservative_quadratic_bound_v1"
+    )
+    if expected_implementation not in {
+        "disabled_v1",
+        "modality_conservative_quadratic_bound_v1",
+    }:
+        return False
+    runtime_profile = manifest.get("runtime_profile")
+    runtime_configuration = (
+        runtime_profile.get("configuration")
+        if isinstance(runtime_profile, Mapping)
+        else None
+    )
+    initial_execution_config = (
+        runtime_profile.get(
+            "d1_association_sparse_prefilter_execution_config"
+        )
+        if isinstance(runtime_profile, Mapping)
+        else None
+    )
+    initial_diagnostics = (
+        runtime_profile.get("d1_association_sparse_prefilter_diagnostics")
+        if isinstance(runtime_profile, Mapping)
+        else None
+    )
+    diagnostics = summary.get(
+        "d1_association_sparse_prefilter_diagnostics"
+    )
+    summary_execution_config = summary.get(
+        "d1_association_sparse_prefilter_execution_config"
+    )
+    final = summary.get("module_final_diagnostics")
+    final_diagnostics = (
+        final.get("d1_association_sparse_prefilter_diagnostics")
+        if isinstance(final, Mapping)
+        else None
+    )
+    final_execution_config = (
+        final.get("d1_association_sparse_prefilter_execution_config")
+        if isinstance(final, Mapping)
+        else None
+    )
+    try:
+        governance = _read_mapping(
+            episode_dir / "observation_governance_audit.json"
+        )
+    except (OSError, ValueError, json.JSONDecodeError):
+        return False
+    governance_diagnostics = governance.get(
+        "d1_association_sparse_prefilter_diagnostics"
+    )
+    governance_execution_config = governance.get(
+        "d1_association_sparse_prefilter_execution_config"
+    )
+    if not all(
+        isinstance(value, Mapping)
+        for value in (
+            runtime_profile,
+            runtime_configuration,
+            initial_execution_config,
+            initial_diagnostics,
+            summary_execution_config,
+            diagnostics,
+            final,
+            final_execution_config,
+            final_diagnostics,
+            governance_execution_config,
+            governance_diagnostics,
+        )
+    ):
+        return False
+    execution_configs = (
+        initial_execution_config,
+        summary_execution_config,
+        final_execution_config,
+        governance_execution_config,
+    )
+    if not all(
+        _association_sparse_prefilter_execution_config_matches(
+            item,
+            expected_implementation=expected_implementation,
+            expected_implementation_id=expected_id,
+            candidate=candidate,
+        )
+        for item in execution_configs
+    ):
+        return False
+    if initial_diagnostics.get("total_counts") != {
+        "candidate_pair_count": 0,
+        "conservative_prefilter_rejection_count": 0,
+        "exact_gate_pass_count": 0,
+        "exact_innovation_solve_count": 0,
+        "fallback_count": 0,
+    }:
+        return False
+    if not _association_sparse_prefilter_diagnostics_match(
+        initial_diagnostics,
+        expected_implementation=expected_implementation,
+        expected_implementation_id=expected_id,
+        candidate=candidate,
+        require_workload=False,
+    ):
+        return False
+    if (
+        diagnostics != final_diagnostics
+        or diagnostics != governance_diagnostics
+        or not _association_sparse_prefilter_diagnostics_match(
+            diagnostics,
+            expected_implementation=expected_implementation,
+            expected_implementation_id=expected_id,
+            candidate=candidate,
+            require_workload=True,
+        )
+    ):
+        return False
+    selector_field = "d1_association_sparse_prefilter_implementation"
+    return (
+        manifest.get("git_commit") == expected_commit
+        and manifest.get("repository_dirty") is False
+        and manifest.get("seed") == seed
+        and runtime_profile.get(selector_field) == expected_implementation
+        and runtime_configuration.get(selector_field)
+        == expected_implementation
+        and summary.get(selector_field) == expected_implementation
+        and final.get(selector_field) == expected_implementation
+        and governance.get(selector_field) == expected_implementation
+        and config.get("seed") == seed
+        and _float_equal(config.get("duration_s"), duration_s)
+        and config.get("target_count") == target_count
+        and config.get("resource_count") == resource_count
+        and config.get("recon_count") == recon_count
+        and summary.get("finite_state") is True
+        and summary.get("online_truth_use_count") == 0
+        and _float_equal(summary.get("simulated_duration_s"), duration_s)
+    )
+
+
+def _association_sparse_prefilter_execution_config_matches(
+    execution_config: Mapping[str, Any],
+    *,
+    expected_implementation: str,
+    expected_implementation_id: str,
+    candidate: bool,
+) -> bool:
+    return (
+        execution_config.get("schema_version")
+        == "d1.association_sparse_prefilter_execution_config.v1"
+        and execution_config.get("selector") == expected_implementation
+        and execution_config.get("selected_implementation_id")
+        == expected_implementation_id
+        and execution_config.get("candidate_enabled") is candidate
+        and execution_config.get("candidate_default_enabled") is False
+        and execution_config.get("default_selector") == "disabled_v1"
+        and execution_config.get("rollback_selector") == "disabled_v1"
+        and execution_config.get("truth_dependent_inputs") is False
+        and execution_config.get("exact_association_gate_changed") is False
+    )
+
+
+def _association_sparse_prefilter_diagnostics_match(
+    diagnostics: Mapping[str, Any],
+    *,
+    expected_implementation: str,
+    expected_implementation_id: str,
+    candidate: bool,
+    require_workload: bool,
+) -> bool:
+    if (
+        diagnostics.get("schema_version")
+        != "d1.association_sparse_prefilter_diagnostics.v2"
+        or diagnostics.get("selector") != expected_implementation
+        or diagnostics.get("selected_implementation_id")
+        != expected_implementation_id
+        or diagnostics.get("candidate_enabled") is not candidate
+    ):
+        return False
+    execution_config = diagnostics.get("execution_config")
+    if (
+        not isinstance(execution_config, Mapping)
+        or not _association_sparse_prefilter_execution_config_matches(
+            execution_config,
+            expected_implementation=expected_implementation,
+            expected_implementation_id=expected_implementation_id,
+            candidate=candidate,
+        )
+    ):
+        return False
+    modality_order = (
+        "radar",
+        "lidar",
+        "acoustic",
+        "acoustic_3d",
+        "eo",
+        "other",
+    )
+    if tuple(diagnostics.get("modality_order", ())) != modality_order:
+        return False
+    modality_counts = diagnostics.get("modality_counts")
+    total_counts = diagnostics.get("total_counts")
+    conservation = diagnostics.get("conservation")
+    if (
+        not isinstance(modality_counts, Mapping)
+        or tuple(modality_counts) != modality_order
+        or not isinstance(total_counts, Mapping)
+        or not isinstance(conservation, Mapping)
+        or conservation.get("all_counter_bounds_hold") is not True
+        or conservation.get("fixed_modality_bucket_count") is not True
+    ):
+        return False
+    fields = (
+        "candidate_pair_count",
+        "conservative_prefilter_rejection_count",
+        "exact_innovation_solve_count",
+        "exact_gate_pass_count",
+        "fallback_count",
+    )
+    sums = {field: 0 for field in fields}
+    for modality in modality_order:
+        counts = modality_counts.get(modality)
+        if not isinstance(counts, Mapping):
+            return False
+        values: dict[str, int] = {}
+        for field in fields:
+            value = counts.get(field)
+            if (
+                isinstance(value, bool)
+                or not isinstance(value, int)
+                or value < 0
+            ):
+                return False
+            values[field] = int(value)
+            sums[field] += int(value)
+        if (
+            values["conservative_prefilter_rejection_count"]
+            > values["candidate_pair_count"]
+            or values["exact_innovation_solve_count"]
+            > values["candidate_pair_count"]
+            or values["exact_gate_pass_count"]
+            > values["exact_innovation_solve_count"]
+            or values["fallback_count"] > values["candidate_pair_count"]
+        ):
+            return False
+    if any(total_counts.get(field) != sums[field] for field in fields):
+        return False
+    non_radar_rejections = sum(
+        int(
+            modality_counts[modality][
+                "conservative_prefilter_rejection_count"
+            ]
+        )
+        for modality in ("lidar", "acoustic", "acoustic_3d", "eo")
+    )
+    if candidate:
+        treatment_match = (
+            not require_workload or non_radar_rejections > 0
+        )
+    else:
+        treatment_match = non_radar_rejections == 0
+    return (
+        treatment_match
+        and (
+            not require_workload
+            or int(total_counts["candidate_pair_count"]) > 0
+        )
     )
 
 

@@ -62,6 +62,13 @@ STRUCTURED_JACOBIAN_MATRIX_PATH = (
     / "configs"
     / "d1_structured_numerical_jacobian_multiseed_v1.json"
 )
+ASSOCIATION_SPARSE_PREFILTER_MATRIX_PATH = (
+    ROOT
+    / "research_modules"
+    / "scalable_3d_simulation"
+    / "configs"
+    / "d1_association_sparse_prefilter_multiseed_v1.json"
+)
 
 
 def test_publication_metadata_matrix_freezes_same_commit_13_pair_contract() -> None:
@@ -251,6 +258,73 @@ def test_structured_jacobian_matrix_freezes_same_commit_contract() -> None:
         boundary["active_columns_preserve_reference_centered_difference"]
         is True
     )
+
+
+def test_association_sparse_prefilter_matrix_freezes_safe_admission_contract() -> None:
+    matrix = matrix_runner.load_matrix(
+        ASSOCIATION_SPARSE_PREFILTER_MATRIX_PATH
+    )
+    short = [case for case in matrix["cases"] if case["group"] == "short"]
+    long = [case for case in matrix["cases"] if case["group"] == "long"]
+
+    assert matrix["arm_implementations"] == {
+        "reference": "disabled_v1",
+        "candidate": "modality_conservative_quadratic_bound_v1",
+    }
+    assert matrix["run_flags"] == ["--integrated-stack"]
+    assert [case["seed"] for case in short] == list(range(1131, 1141))
+    assert [case["seed"] for case in long] == [1131, 1132, 1133]
+    gates = matrix["admission_gates"]
+    assert gates[
+        "all_pairs_association_sparse_prefilter_audit_valid"
+    ] is True
+    assert gates["all_pairs_exact_gate_pass_counts_equal"] is True
+    assert gates[
+        "minimum_candidate_non_radar_exact_solve_reduction_pct"
+    ] == 20.0
+    boundary = matrix["evidence_boundary"]
+    assert boundary["candidate_default_off"] is True
+    assert boundary["uncertified_pairs_fail_open"] is True
+    assert boundary["exact_residual_semantics_preserved"] is True
+    assert boundary["exact_association_gate_unchanged"] is True
+    assert boundary["truth_dependent_inputs_forbidden"] is True
+
+
+def test_association_sparse_prefilter_commands_isolate_only_the_selector(
+    tmp_path: Path,
+) -> None:
+    matrix = matrix_runner.load_matrix(
+        ASSOCIATION_SPARSE_PREFILTER_MATRIX_PATH
+    )
+    case = matrix["cases"][0]
+    reference = matrix_runner.build_episode_command(
+        ROOT,
+        matrix,
+        case,
+        "reference",
+        tmp_path / "reference",
+    )
+    candidate = matrix_runner.build_episode_command(
+        ROOT,
+        matrix,
+        case,
+        "candidate",
+        tmp_path / "candidate",
+    )
+
+    selector_index = reference.index(
+        "--d1-association-sparse-prefilter-implementation"
+    )
+    output_index = reference.index("--output")
+    assert reference[selector_index + 1] == "disabled_v1"
+    assert candidate[selector_index + 1] == (
+        "modality_conservative_quadratic_bound_v1"
+    )
+    for index, (left, right) in enumerate(
+        zip(reference, candidate, strict=True)
+    ):
+        if index not in {selector_index + 1, output_index + 1}:
+            assert left == right
 
 
 def test_arm_commands_differ_only_by_explicit_implementation_and_output(
