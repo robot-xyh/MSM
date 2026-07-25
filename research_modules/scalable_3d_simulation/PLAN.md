@@ -1,5 +1,32 @@
 # 200 对 200 三维质点仿真实施计划
 
+## D1 关联稀疏预筛正式拒绝（2026-07-25）
+
+1. [x] D1 owner 提供 `disabled_v1` 参考路径和默认关闭的
+   `modality_conservative_quadratic_bound_v1` 候选；无法认证、奇异或非有限输入继续
+   fail-open 到原精确求解。
+2. [x] main 将 selector、完整实现标识、执行配置和
+   `d1.association_sparse_prefilter_diagnostics.v2` 接入 runtime profile、summary、
+   module final 和 observation governance。
+3. [x] 冻结 10 对 short、3 对 long 的同提交 200/200/2 矩阵；两臂只改变预筛
+   selector，matrix SHA-256 为
+   `a7162d014d1c3c0f207355b24a5d7159bf3486d134ca21876f7469d1e915b71d`。
+4. [x] clean `9302cce` 上完成 13 对/26 个 fresh episode，0 reused、0 failed；
+   D6 独立重算业务语义、逐模态精确门内计数、性能、D2、RSS 和真值隔离。
+5. [x] 13/13 对业务语义、有限状态、实现身份、预筛审计、在线真值使用为 0，以及逐
+   pair/逐模态 exact gate-pass 相等全部通过。
+6. [x] 候选将非雷达精确求解由 `298109` 降至 `39837`，削减
+   `86.636767%`；该结果只证明局部计算被消除，不等同于全栈收益。
+7. [x] D6 正式判定 `reject`：short 更快 `7/10 < 8/10`、D1 fusion 改善
+   `0.228437% < 1%`、bootstrap 上界 `0.443531% > 0%`、core 改善
+   `0.091096% < 0.25%`，long D1 fusion 改善 `0.713776% < 1%`。
+8. [x] main 默认保持 `disabled_v1`；候选只保留为显式研究和诊断路径，不修改冻结
+   矩阵、门限或历史正式制品。
+9. [ ] 系统实时 P1 保持开放：候选最低实时因子 `0.206273 < 1`；本证据不覆盖
+   AirSim、冻结目标处理器、硬件、实机或实飞。
+10. [ ] 如继续优化，应先画像逐 pair 下界计算、EO fail-open 和 D1 其余阶段的实际占比，
+    再判断是否把保守下界前移到更粗粒度候选生成；任何重新准入必须使用新预注册矩阵。
+
 ## D1 在线批帧交接准入（2026-07-25）
 
 1. [x] D1 owner 提供 `convert_then_frame_v1` 参考实现和

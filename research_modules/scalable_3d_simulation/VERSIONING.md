@@ -66,6 +66,12 @@ main
 | D1 在线批帧交接矩阵 | `scalable3d-d1-online-batch-frame-multiseed-matrix-v1` | 实验臂、seed、时长、准入门、计划谱系归一化边界或证据范围改变 |
 | D1 在线批帧交接证据 | `scalable3d-d1-online-batch-frame-multiseed-evidence-v1` | clean source、episode/resource 路径、arm 状态、批帧诊断或 D6 evaluator 绑定改变 |
 | D6 在线批帧交接准入 | `d6.d1_online_batch_frame_multiseed_evaluation.v1` | 业务归一化边界、批帧守恒、scan/core/D2/RSS 门或准入结论语义改变 |
+| D1 关联稀疏预筛实现 | `disabled_v1` / `modality_conservative_quadratic_bound_v1` | 保守下界、模态桶、fail-open 条件、精确求解或门限语义改变；当前默认前者 |
+| D1 关联稀疏预筛执行配置 | `d1.association_sparse_prefilter_execution_config.v1` | 默认 selector、活动实现、完整实现标识或 fail-open 声明改变 |
+| D1 关联稀疏预筛诊断 | `d1.association_sparse_prefilter_diagnostics.v2` | 固定模态桶、候选、提前剔除、精确求解、门内通过、fallback 或守恒语义改变 |
+| D1 关联稀疏预筛矩阵 | `scalable3d-d1-association-sparse-prefilter-multiseed-matrix-v1` | 实验臂、seed、时长、准入门、精确门内等价或证据边界改变 |
+| D1 关联稀疏预筛证据 | `scalable3d-d1-association-sparse-prefilter-multiseed-evidence-v1` | clean source、episode/resource 路径、arm 状态、预筛诊断或 D6 evaluator 绑定改变 |
+| D6 关联稀疏预筛准入 | `d6.d1_association_sparse_prefilter_multiseed_evaluation.v1` | 业务归一化边界、逐模态门内等价、D1/core/D2/RSS 门、精确求解削减或准入结论语义改变 |
 | D1 常速度模型构造实现 | `per_prediction_build_v1` / `bounded_exact_lru_v1` | 状态转移和过程噪声矩阵的逐次构造或精确有界缓存语义改变 |
 | D1 常速度模型缓存诊断 | `d1.cv_motion_model_cache_diagnostics.v1` | 实现 ID、容量、条目数、预测请求、构造、命中、未命中或淘汰计数语义改变 |
 | D1 常速度模型缓存矩阵 | `scalable3d-d1-cv-motion-model-cache-multiseed-matrix-v1` | 实验臂、seed、时长、容量、准入门或证据边界改变 |

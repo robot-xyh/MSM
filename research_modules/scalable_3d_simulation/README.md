@@ -1,5 +1,30 @@
 # Scalable 3D Simulation
 
+## D1 关联稀疏预筛正式 A/B（2026-07-25）
+
+main 已接入 D1 关联稀疏预筛实现选择器。参考路径 `disabled_v1` 保持原精确关联；
+候选 `modality_conservative_quadratic_bound_v1` 使用
+`r^T S^-1 r >= ||r||^2 / ||S||_inf` 的保守下界，仅在下界已经超过原门限时提前剔除。
+无法认证、奇异或非有限输入继续 fail-open 到精确求解。候选不改变精确门限、创新残差、
+双时间戳、协方差、状态机、在线真值隔离或 `global_track_id`。
+
+正式矩阵绑定 clean commit `9302ccede2ca513c2235370e1a464fc88bc41150` 和 matrix
+SHA-256 `a7162d014d1c3c0f207355b24a5d7159bf3486d134ca21876f7469d1e915b71d`，
+包含 10 对 short、3 对 long，共 13 对/26 个 fresh 200/200/2 三维质点 episode。
+D6 独立确认 13/13 对业务语义、有限状态、实现身份、预筛审计、在线真值使用为 0，
+并且逐 pair、逐模态 exact gate-pass 完全相等。候选将非雷达精确求解从 `298109`
+降至 `39837`，削减 `86.636767%`。
+
+局部求解削减没有形成稳定的全栈收益。short D1 fusion 改善 `0.228437%`、候选更快
+`7/10`，short bootstrap 原始变化 95% 上界为 `0.443531%`，short core 改善
+`0.091096%`；long D1 fusion 改善 `0.713776%`。这五项均未达到冻结门，D6 verdict
+为 `reject`。main 默认继续使用 `disabled_v1`，候选只保留为显式研究路径。候选最低
+实时因子为 `0.206273 < 1`，系统实时缺口未关闭。
+
+正式报告位于
+`../d6_evaluation_metrics/outputs/d1_association_sparse_prefilter_multiseed_20260725_formal_9302cce_d6/`。
+本结论仅覆盖三维质点仿真，不代表 AirSim、目标处理器、硬件、实机或实飞能力。
+
 ## D1 在线批帧交接默认晋级（2026-07-25）
 
 main 已将 D1 原始在线批次到 `SensorScanFrame` 的默认交接实现晋级为

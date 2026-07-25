@@ -16,6 +16,48 @@
 `immutable_shared_v2`。系统实时、逐批审计明细、严格精度、AirSim 和目标硬件证据仍为
 P1。以下最新专项记录优先于“扫描输入或发布元数据仍待治理”的历史表述。
 
+## 2026-07-25 D1 关联稀疏预筛正式拒绝
+
+当前无新增 P0。D1 owner 已提供默认关闭的
+`modality_conservative_quadratic_bound_v1`。候选以保守二次型下界提前排除不可能通过
+原马氏门限的关联对；无法认证、奇异或非有限输入继续 fail-open 到精确求解。原门限、
+创新残差、双时间戳、协方差、状态机、真值隔离和全局航迹编号均未改变。
+
+main 在 clean commit `9302ccede2ca513c2235370e1a464fc88bc41150` 上完成 10 对 short、
+3 对 long，共 13 对/26 个 fresh 200/200/2 三维质点 episode。冻结 matrix SHA-256 为
+`a7162d014d1c3c0f207355b24a5d7159bf3486d134ca21876f7469d1e915b71d`。两臂唯一
+运行时 treatment 为预筛 selector；0 reused、0 failed。
+
+D6 独立只读评估确认 13/13 对业务语义、有限状态、实现身份、预筛审计、在线真值使用为
+0，逐 pair、逐模态 exact gate-pass 完全相等。候选将非雷达精确求解由 `298109` 降至
+`39837`，削减 `86.636767%`。资源和下游均值门未出现实质退化。
+
+| 指标 | short | long | 预注册门限 |
+| --- | ---: | ---: | ---: |
+| candidate faster | 7/10 | 3/3 | >=8 / >=2 |
+| D1 fusion 改善 | 0.228437% | 0.713776% | >=1% / >=1% |
+| core wall 改善 | 0.091096% | 0.490650% | >=0.25% / >=0.25% |
+| D1 bootstrap 原始变化 95% 上界 | 0.443531% | -0.357903% | <=0%（short） |
+| 非雷达精确求解削减 | 86.636767% | 合并统计 | >=20% |
+
+五个冻结性能门失败：short 更快数、short/long D1 fusion、short bootstrap 上界和 short
+core。D6 verdict 为 `reject`，`main_default_promotion_allowed=false`。main 默认保持
+`disabled_v1`；候选仅保留为显式研究和诊断路径，不调整门限、不删除 pair、不覆盖正式
+拒绝结论。
+
+仍开放 P1：
+
+1. **系统实时容量。** 候选最低实时因子 `0.206273 < 1`，局部精确求解削减没有关闭
+   200 对 200 实时缺口。
+2. **候选粒度和耗时归因。** EO 累计 `37571` 次 fail-open，候选还需对每个输入对计算
+   保守下界，但现有正式矩阵没有把二者与 D1 其余阶段分别计时，尚不能断定单一瓶颈。
+   后续先增加分项画像，再决定采用更粗粒度候选生成还是更低成本的认证边界。
+3. **外部证据。** 当前没有 AirSim、冻结目标处理器、硬件、实机、实飞或正式
+   RMSE/NEES/NIS 证据。
+
+正式报告位于
+`research_modules/d6_evaluation_metrics/outputs/d1_association_sparse_prefilter_multiseed_20260725_formal_9302cce_d6/`。
+
 ## 2026-07-25 D1 在线批帧交接正式准入
 
 当前无新增 P0。D1 owner 已将原始在线批次到 `SensorScanFrame` 的两条路径固化为
