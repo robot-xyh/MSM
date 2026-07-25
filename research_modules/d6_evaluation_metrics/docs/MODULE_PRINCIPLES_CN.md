@@ -44,9 +44,16 @@ D4 内容地址、其他在线载荷、summary/governance 业务字段和离线�
 5%，候选模型构造减少率和缓存命中率均不得低于 95%。门限来自冻结矩阵，D6 不在运行时调整。
 
 `d1_optimization_admitted` 只回答局部候选是否达到冻结门。
-`system_realtime_gap_closed` 独立要求所有候选实时因子不低于 1。当前评估器和 13 个专项测试已
-完成，D6 全量为 `784 passed, 1 warning`；正式 26-arm evidence 尚未运行，因此没有准入或系统
-实时新结论。
+`system_realtime_gap_closed` 独立要求所有候选实时因子不低于 1。正式 13-pair/26-arm evidence
+全部 fresh complete，13/13 pair 的业务语义、有限状态、在线真值隔离、实现身份和缓存审计通过。
+short/long D1 融合改善 `6.9271%/6.6103%`，核心墙钟改善 `2.4060%/2.4537%`，
+D2 关联增幅 `-0.1082%/-2.6729%`，RSS 均值增幅 `0.0145%/0.2959%`。模型构造减少率和缓存
+命中率均为 `99.5960%`，19/19 准入门通过，`d1_optimization_admitted=true`。
+
+候选最低实时因子为 `0.17394990897894075`，因此
+`system_realtime_gap_closed=false`。局部准入只覆盖冻结的 200/200/2 三维质点矩阵，不构成
+AirSim、目标硬件、传感器精度或实飞证据。本次同步后 D6 全量回归为
+`784 passed, 1 warning in 55.02s`。
 
 ## 发布元数据 v2 评估边界（2026-07-24）
 

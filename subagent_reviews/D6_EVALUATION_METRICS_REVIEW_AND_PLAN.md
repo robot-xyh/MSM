@@ -20,17 +20,29 @@ D6 已接受缓存评估接口实现。独立 evaluator 固定绑定 matrix SHA
 5. short/long D1、D2、核心墙钟、RSS、实时因子和缓存效率门全部来自冻结矩阵。局部准入与系统
    实时缺口分开输出。
 
-专项为 `13 passed, 1 warning in 5.03s`，D6 全量为
+评估器实现阶段专项为 `13 passed, 1 warning in 5.03s`，D6 全量为
 `784 passed, 1 warning in 48.64s`。warning 是既有 Matplotlib `Axes3D` 环境提示。
 
-评审尚不接受缓存候选的性能或准入结论。main 当前只完成矩阵冻结、26 项运行器测试和 dry-run；
-正式 13 pair、26 arm evidence 尚未运行。下一步由 main 生成 completed manifest，D6 使用本入口
-只读评估并输出正式中文报告。该结果仍属于三维质点证据，不自动关闭 AirSim、目标硬件或实飞
-缺口。
+main 已在冻结 clean source 上完成正式矩阵。26 个 arm 全部 fresh complete，0 reused、0 failed。
+D6 对完整 JSON、compact JSON、含 13 条 pair 记录的 CSV、中文 Markdown、PNG 和
+`SHA256SUMS` 完成只读复核。13/13 pair 的业务语义、有限状态、在线真值隔离、实现身份和缓存
+审计通过；19/19 准入门通过。
 
-`EXPERIMENT_REPORT.md`、`AIRSIM_INTEGRATION_PLAN.md` 和
-`D6_M_TO_N_EVALUATION_FRAMEWORK_REVIEW.md` 已检查。本轮没有正式实验结果、AirSim 接口变化或
-M-to-N 指标合同变化，因此不修改这些文件。
+short/long D1 融合改善为 `6.9271%/6.6103%`，核心墙钟改善为
+`2.4060%/2.4537%`，D2 关联增幅为 `-0.1082%/-2.6729%`，RSS 均值增幅为
+`0.0145%/0.2959%`。模型构造减少率和缓存命中率均为 `99.5960%`，short `10/10`、long
+`3/3` 更快，short bootstrap 上界为 `-6.0841%`。评审接受冻结三维质点矩阵内的局部准入，
+`d1_optimization_admitted=true`。
+
+候选最低实时因子为 `0.17394990897894075`，低于 1，
+`system_realtime_gap_closed=false`。该结果不自动关闭 AirSim、目标硬件、传感器精度、实飞或
+物理拦截缺口。正式 bundle 位于
+`research_modules/d6_evaluation_metrics/outputs/d1_cv_motion_model_cache_multiseed_20260724_formal_4422356/`。
+
+`EXPERIMENT_REPORT.md` 已新增正式结果。`AIRSIM_INTEGRATION_PLAN.md` 和
+`D6_M_TO_N_EVALUATION_FRAMEWORK_REVIEW.md` 已检查；本项不改变 AirSim 接口或 M-to-N 指标合同，
+因此无需修改。本次文档同步后 D6 全量回归为
+`784 passed, 1 warning in 55.02s`。
 
 ## 2026-07-24 D1 发布元数据 v2 正式评审
 

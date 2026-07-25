@@ -26,19 +26,29 @@
 - [x] 专项 `13 passed, 1 warning in 5.03s`；D6 全量
   `784 passed, 1 warning in 48.64s`。warning 为既有 Matplotlib 环境提示。
 
-### 待执行
+### 正式结论
 
-- [ ] main 在冻结 clean source 上运行 13 pair、26 个 fresh arm，提供 completed evidence
-  manifest、episode、GNU time、stdout 和 stderr。dry-run 和 runner 单元测试不属于正式证据。
-- [ ] D6 只读运行本 evaluator，生成正式中文报告和曲线后，才能写出
-  `d1_optimization_admitted=true/false`。
-- [ ] `system_realtime_gap_closed` 仅在全部候选 arm 的实时因子均不低于 1 时关闭。三维质点准入
-  不能替代 AirSim 或目标处理器容量验证。
+- [x] main 已在 clean source
+  `44223566439a446fc49f2a3fd861d1d51bd676b9` 上完成 13 pair、26 个 fresh arm；0 reused、
+  0 failed。D6 已只读消费 completed evidence，正式 bundle 位于
+  `outputs/d1_cv_motion_model_cache_multiseed_20260724_formal_4422356/`。
+- [x] 13/13 pair 的业务语义、有限状态、在线真值隔离、实现身份和缓存审计通过；19/19 准入门
+  通过。
+- [x] short/long D1 融合改善 `6.9271%/6.6103%`，核心墙钟改善
+  `2.4060%/2.4537%`，D2 关联增幅 `-0.1082%/-2.6729%`，RSS 均值增幅
+  `0.0145%/0.2959%`。
+- [x] 模型构造减少率和缓存命中率均为 `99.5960%`，short `10/10`、long `3/3` 更快，
+  short bootstrap 上界为 `-6.0841%`；`d1_optimization_admitted=true`。
+- [x] 正式结论文档同步后 D6 全量回归为 `784 passed, 1 warning in 55.02s`；warning 为既有
+  Matplotlib `Axes3D` 环境提示。
+- [ ] 候选最低实时因子为 `0.17394990897894075`，低于 1；
+  `system_realtime_gap_closed=false`。系统实时 P1、AirSim、目标硬件、传感器精度和实飞证据
+  继续开放。
 
-`EXPERIMENT_REPORT.md` 已检查。正式 evidence 尚未运行，本轮不新增实验结果章节。
+`EXPERIMENT_REPORT.md` 已新增正式结果章节。
 `AIRSIM_INTEGRATION_PLAN.md` 已检查；本项不改变 AirSim producer、相机、检测、reset、actor 或
 控制接口，因此无需修改。`docs/README.md`、`docs/MODULE_PRINCIPLES_CN.md` 和
-`docs/ALGORITHM_AND_IMPLEMENTATION.md` 已同步评估入口、原理与状态。
+`docs/ALGORITHM_AND_IMPLEMENTATION.md` 已同步正式结果和适用边界。
 
 ## 2026-07-24 D1 发布元数据 v2 正式评估状态
 

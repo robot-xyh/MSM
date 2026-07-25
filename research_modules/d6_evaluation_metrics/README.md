@@ -44,12 +44,28 @@ D6 在每个 pair 内部调用 `compare_cross_build_episodes()`。只把
 `d1_optimization_admitted`、`system_realtime_gap_closed`。
 
 报告 bundle 含完整 JSON、compact JSON、逐 pair CSV、中文 Markdown、PNG 曲线和
-`SHA256SUMS`，输出目录必须位于原始 evidence root 外。专项为
-`13 passed, 1 warning in 5.03s`；D6 全量为
-`784 passed, 1 warning in 48.64s`。warning 是既有 Matplotlib `Axes3D` 环境提示。
+`SHA256SUMS`，输出目录必须位于原始 evidence root 外。评估器实现时专项为
+`13 passed, 1 warning in 5.03s`，D6 全量为
+`784 passed, 1 warning in 48.64s`；warning 是既有 Matplotlib `Axes3D` 环境提示。
 
-当前状态是评估器已实现并测试，正式 13-pair/26-arm evidence 尚未运行，因此还没有缓存候选的
-正式准入结论，也没有新的系统实时结论。
+2026-07-24 已只读消费正式 13-pair/26-arm evidence。26 个 arm 全部为 fresh complete，
+0 reused、0 failed；13/13 pair 的业务语义、有限状态、在线真值隔离、实现身份和缓存审计通过，
+19/19 准入门通过。正式结果如下：
+
+- short/long D1 融合改善 `6.9271%/6.6103%`，核心墙钟改善
+  `2.4060%/2.4537%`；
+- short/long D2 关联增幅 `-0.1082%/-2.6729%`，RSS 均值增幅
+  `0.0145%/0.2959%`，任一 pair 最大 RSS 增幅 `0.8629%`；
+- 模型构造减少率和缓存命中率均为 `99.5960%`，候选最大当前/峰值条目均为 `128/128`；
+- short `10/10`、long `3/3` 的 D1 融合更快，short bootstrap 上界为 `-6.0841%`；
+- `d1_optimization_admitted=true`。
+
+候选最低实时因子为 `0.17394990897894075`，未达到 1，
+`system_realtime_gap_closed=false`。正式 bundle 位于
+`outputs/d1_cv_motion_model_cache_multiseed_20260724_formal_4422356/`。该准入只适用于冻结的
+200/200/2 三维质点矩阵，不是 AirSim、目标硬件、传感器精度或实飞证据。
+本次正式结论文档同步后，D6 全量回归为 `784 passed, 1 warning in 55.02s`；warning 仍是既有
+Matplotlib `Axes3D` 环境提示。
 
 ```bash
 PYTHONPATH=research_modules/d6_evaluation_metrics \

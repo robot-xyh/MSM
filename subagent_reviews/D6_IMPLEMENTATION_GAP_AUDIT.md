@@ -18,20 +18,28 @@
    semantic gate。
 6. D1、D2、core、RSS、实时因子、模型构造减少率、缓存命中率、逐 pair 变化和 10000 次配对
    bootstrap 已实现，门限从冻结矩阵读取。
-7. 专项 `13 passed, 1 warning in 5.03s`；D6 全量
+7. 评估器实现阶段专项 `13 passed, 1 warning in 5.03s`；D6 全量
    `784 passed, 1 warning in 48.64s`，零失败。
+8. main 已完成正式矩阵。26 个 arm 全部 fresh complete，0 reused、0 failed；D6 对完整 JSON、
+   compact JSON、含 13 条 pair 记录的 CSV、中文 Markdown、PNG 和 `SHA256SUMS` 进行只读复核。
+9. 13/13 pair 的业务语义、有限状态、在线真值隔离、实现身份和缓存审计通过，19/19 准入门通过。
+10. short/long D1 融合改善 `6.9271%/6.6103%`，核心墙钟改善
+    `2.4060%/2.4537%`，D2 增幅 `-0.1082%/-2.6729%`，RSS 均值增幅
+    `0.0145%/0.2959%`。
+11. 构造减少率和命中率均为 `99.5960%`，short `10/10`、long `3/3` 更快，short bootstrap
+    上界为 `-6.0841%`；`d1_optimization_admitted=true`。D6-owned 正式证据消费缺口关闭。
+12. 本次正式结论文档同步后 D6 全量回归为 `784 passed, 1 warning in 55.02s`；warning 为既有
+    Matplotlib `Axes3D` 环境提示。
 
 ### 仍开放 P1
 
-1. **正式 26-arm evidence。** main 的矩阵、运行器测试和 dry-run 已完成，但正式 10 short +
-   3 long 成对 episode 尚未运行。没有 completed manifest 时，D6 不给出缓存候选准入结论。
-2. **系统实时容量。** 正式三维质点评估即使通过局部缓存门，也只有候选最低实时因子不低于 1
-   才能关闭 `system_realtime_gap_closed`。AirSim 和目标硬件容量仍需独立证据。
-3. **外部适用性。** 冻结矩阵只覆盖 200/200/2 三维质点场景。它不替代不同规模、AirSim、
-   目标处理器或实飞验证。
+1. **系统实时容量。** 候选最低实时因子为 `0.17394990897894075`，低于 1，
+   `system_realtime_gap_closed=false`。AirSim 和目标硬件容量仍需独立证据。
+2. **外部适用性。** 冻结矩阵只覆盖 200/200/2 三维质点场景。它不替代不同规模、AirSim、
+   目标处理器、传感器精度或实飞验证，也不能推导物理拦截效果。
 
-当前无新增 D6-owned P0。D6 评估器、统计、报告和失败关闭测试缺口已关闭；正式 producer 运行及
-系统级实时证据保持 P1。
+当前无新增 D6-owned P0。D6 评估器、正式证据消费、统计、报告和失败关闭测试缺口已关闭；
+系统级实时与外部验证证据保持 P1。
 
 ## 2026-07-24 D1 发布元数据 v2 正式评估 GAP 更新
 

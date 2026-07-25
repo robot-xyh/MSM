@@ -6,8 +6,14 @@
 `9898656598f0fa282620afe2384a3d656b7496f8957109c413bcb62069fd2e9a` 与 clean source
 `44223566439a446fc49f2a3fd861d1d51bd676b9`，固定 short 10 pair、long 3 pair、
 200/200/2 和容量 128。D6 内部生成跨 episode 语义比较，不依赖 producer 预写 pair report。
-专项 `13 passed`、D6 全量 `784 passed, 1 warning`。当前仅完成评估器和合同验证，正式
-26-arm evidence 尚未运行，所以 `../EXPERIMENT_REPORT.md` 不新增缓存准入结果。
+正式 26-arm evidence 已全部 fresh complete，0 reused、0 failed；13/13 pair 合同与 19/19
+准入门通过。short/long D1 融合改善 `6.9271%/6.6103%`，核心墙钟改善
+`2.4060%/2.4537%`，构造减少率和命中率均为 `99.5960%`，
+`d1_optimization_admitted=true`。最低实时因子为 `0.17394990897894075`，
+`system_realtime_gap_closed=false`。正式结果见 `../EXPERIMENT_REPORT.md` 2.32 节和
+`../outputs/d1_cv_motion_model_cache_multiseed_20260724_formal_4422356/`。结论只覆盖三维质点
+矩阵，不覆盖 AirSim、目标硬件、传感器精度或实飞。本次同步后 D6 全量回归为
+`784 passed, 1 warning in 55.02s`。
 
 2026-07-24 D1 协方差优化多 seed 与长时入口见 `MODULE_PRINCIPLES_CN.md` 和
 `ALGORITHM_AND_IMPLEMENTATION.md`，fixture 验证见根目录 `../EXPERIMENT_REPORT.md` 2.28 节。

@@ -75,9 +75,19 @@ D1 融合和核心墙钟的正向改善为 `-r_i`，实时因子正向改善为 
 构造减少率和命中率门的合取。系统实时门单独取所有候选 arm 实时因子的最小值并与 1 比较。
 
 writer 生成完整 evaluation JSON、compact JSON、逐 pair CSV、中文 Markdown、三层曲线 PNG 和
-`SHA256SUMS`。PNG 分别显示 D1/D2/核心变化、构造减少率/命中率和候选实时因子。专项
-`13 passed`，D6 全量 `784 passed, 1 warning in 48.64s`。正式 evidence 未运行，当前文档不写
-性能数值或准入结果。
+`SHA256SUMS`。PNG 分别显示 D1/D2/核心变化、构造减少率/命中率和候选实时因子。
+
+正式运行的 26 个 arm 全部 fresh complete，0 reused、0 failed。13/13 pair 的语义、有限状态、
+在线真值隔离、实现身份和缓存审计通过，19/19 准入门通过。short/long 的 D1 融合改善为
+`6.9271%/6.6103%`，核心墙钟改善为 `2.4060%/2.4537%`，D2 增幅为
+`-0.1082%/-2.6729%`，RSS 均值增幅为 `0.0145%/0.2959%`。候选模型构造减少率与缓存命中率
+均为 `99.5960%`，`d1_optimization_admitted=true`。
+
+候选最低实时因子为 `0.17394990897894075`，所以
+`system_realtime_gap_closed=false`。输出位于
+`outputs/d1_cv_motion_model_cache_multiseed_20260724_formal_4422356/`；该结果仅用于
+三维质点局部优化准入。本次同步后 D6 全量回归为
+`784 passed, 1 warning in 55.02s`。
 
 ## D1 发布元数据 v2 同提交矩阵评估（2026-07-24）
 
