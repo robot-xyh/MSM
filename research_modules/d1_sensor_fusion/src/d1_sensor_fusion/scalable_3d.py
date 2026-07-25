@@ -24,6 +24,9 @@ ONLINE_BATCH_FRAME_REFERENCE_IMPLEMENTATION = "convert_then_frame_v1"
 ONLINE_BATCH_FRAME_CANDIDATE_IMPLEMENTATION = (
     "closed_immutable_batch_to_frame_v1"
 )
+ONLINE_BATCH_FRAME_DEFAULT_IMPLEMENTATION = (
+    ONLINE_BATCH_FRAME_CANDIDATE_IMPLEMENTATION
+)
 ONLINE_BATCH_FRAME_REFERENCE_IMPLEMENTATION_ID = (
     "d1.online_batch_frame.convert_then_frame.v1"
 )
@@ -116,7 +119,7 @@ class OnlineBatchFrameBuilder:
     def __init__(
         self,
         *,
-        implementation: str = ONLINE_BATCH_FRAME_REFERENCE_IMPLEMENTATION,
+        implementation: str = ONLINE_BATCH_FRAME_DEFAULT_IMPLEMENTATION,
         radar_covariance_config: RadarCovarianceConfig | Mapping[str, Any] | None = None,
         unobserved_velocity_variance_m2ps2: float = (
             SCALABLE_3D_UNOBSERVED_VELOCITY_VARIANCE_M2PS2
@@ -197,7 +200,10 @@ class OnlineBatchFrameBuilder:
             ),
             "implementation": self.implementation,
             "implementation_id": self.implementation_id,
-            "candidate_default_enabled": False,
+            "candidate_default_enabled": (
+                ONLINE_BATCH_FRAME_DEFAULT_IMPLEMENTATION
+                == ONLINE_BATCH_FRAME_CANDIDATE_IMPLEMENTATION
+            ),
             "public_validation_bypass_available": False,
             "raw_source_absolute_immutability_claimed": False,
             "candidate_contract": (
@@ -498,14 +504,14 @@ def sensor_observations_from_online_batch(
 def sensor_scan_frame_from_online_batch(
     batch: Any,
     *,
-    implementation: str = ONLINE_BATCH_FRAME_REFERENCE_IMPLEMENTATION,
+    implementation: str = ONLINE_BATCH_FRAME_DEFAULT_IMPLEMENTATION,
     radar_covariance_config: RadarCovarianceConfig | Mapping[str, Any] | None = None,
     unobserved_velocity_variance_m2ps2: float = (
         SCALABLE_3D_UNOBSERVED_VELOCITY_VARIANCE_M2PS2
     ),
     position_only_radar_nis_gate: float = SCALABLE_3D_POSITION_ONLY_RADAR_NIS_GATE,
 ) -> SensorScanFrame:
-    """Build one governed frame; the default preserves the reference chain."""
+    """Build one governed frame with the admitted default implementation."""
 
     return OnlineBatchFrameBuilder(
         implementation=implementation,

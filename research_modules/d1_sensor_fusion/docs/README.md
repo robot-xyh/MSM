@@ -4,7 +4,27 @@
 
 ## 当前证据索引（2026-07-25）
 
-### 在线批次到扫描帧封闭交接候选
+### 在线批次到扫描帧正式准入与默认提升
+
+D6 正式评估 schema 为 `d6.d1_online_batch_frame_multiseed_evaluation.v1`，绑定 source
+commit `43feaf600f288a85ce76a76862334256f0d0d352` 和 matrix SHA-256
+`4afbf9ac273763a16aa01cc744fd67b52e437099460b33377a128f986ac5719b`。short 10 pair、
+long 3 pair 共 13 pair/26 episode，全部 gate 通过。short/long scan-input 改善
+`38.289241%/36.275282%`，core wall 改善 `4.252745%/4.916501%`；candidate
+closed `2665/2665`、fallback 0、online truth use 0。
+
+D1 公共默认常量现选择 `closed_immutable_batch_to_frame_v1`；builder 和 helper 的未显式
+selector 路径统一使用 candidate。显式
+`implementation=ONLINE_BATCH_FRAME_REFERENCE_IMPLEMENTATION` 可单参数回退
+`convert_then_frame_v1`，诊断保留当前默认状态、实际 selector、实现 ID、路径计数和守恒。
+
+D2 均值门通过，但单 pair 尾部仍需容量观察：short/long 最大增幅分别为
+`15.778858%/14.408510%`。最低 RTF 为 `0.204490`，系统实时未闭合。该证据来自三维质点
+仿真，不是 AirSim、目标硬件、实机或实飞结论。详细算法、安全边界和正式数据分别见
+`ALGORITHM_AND_IMPLEMENTATION.md`、`MODULE_PRINCIPLES_CN.md` 和
+`EXPERIMENT_REPORT.md`。
+
+### 在线批次到扫描帧封闭交接候选基线（准入前历史）
 
 默认 R0 开发画像显示，raw online batch 转换为 `SensorScanFrame` 时存在逐量测和转换后集合
 重复检查。D1 已增加默认关闭的封闭交接候选：先完整检查 raw batch，再做结构合格检查和
@@ -18,9 +38,8 @@
 SHA-256 和异常摘要一致。字段传播和异常注入专项为 `19 passed`，main 复跑 D1 全量为
 `443 passed in 24.02s`。
 
-当前只通过 D1 模块门槛，默认仍为 reference。main 全栈、AirSim、目标硬件、系统实时和
-融合精度尚未准入。算法、安全边界和试验数据分别见 `ALGORITHM_AND_IMPLEMENTATION.md`、
-`MODULE_PRINCIPLES_CN.md` 和 `EXPERIMENT_REPORT.md`。
+该段记录准入前“只通过 D1 模块门槛、默认仍为 reference”的历史状态。当前正式准入和默认
+提升以上一节为准；AirSim、目标硬件、系统实时和融合精度仍未由该历史微基准覆盖。
 
 ### 不透明来源标识缓存正式拒绝
 

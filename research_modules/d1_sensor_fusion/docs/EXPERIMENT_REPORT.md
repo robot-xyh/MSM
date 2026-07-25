@@ -1,6 +1,54 @@
 # 第一研究模块实验结果
 
-## 在线批次到扫描帧封闭交接微基准
+## 在线批次到扫描帧正式准入评估
+
+**证据日期：2026-07-25**
+
+**范围：三维质点默认无 source-key R0，D6 同提交 short/long 多 seed 正式评估**
+
+### 来源与规模
+
+- schema：`d6.d1_online_batch_frame_multiseed_evaluation.v1`；
+- source commit：`43feaf600f288a85ce76a76862334256f0d0d352`；
+- matrix SHA-256：`4afbf9ac273763a16aa01cc744fd67b52e437099460b33377a128f986ac5719b`；
+- short 10 pair、long 3 pair，共 13 pair/26 episode；
+- reference：`convert_then_frame_v1`；
+- candidate：`closed_immutable_batch_to_frame_v1`。
+
+### 正式结果
+
+| 指标 | Short | Long |
+| --- | ---: | ---: |
+| scan-input 改善 | `38.289241%` | `36.275282%` |
+| core wall 改善 | `4.252745%` | `4.916501%` |
+| candidate 更快 | `10/10` | `3/3` |
+| D2 association 均值增幅 | `2.113047%` | `2.830616%` |
+| RTF 均值改善 | `4.450125%` | `5.173918%` |
+
+全部预注册 gate 通过。candidate request/closed 为 `2665/2665`，fallback 为 0，online
+truth use 为 0；业务语义、实现身份、有限状态、批帧守恒、RSS 和 D2 均值门均通过。D6
+结论为 `admit`，因此 D1 默认 selector 提升为 candidate，reference 保留显式回退。
+
+### 边界与剩余风险
+
+D2 均值门通过不等于没有尾部风险。`short_seed_1125` 的 D2 association 增幅为
+`15.778858%`，`long_seed_1121` 为 `14.408510%`，仍需长时容量观察。candidate 最低
+RTF 为 `0.204490 < 1.0`，所以 200v200 系统实时未闭合。本结果只来自三维质点仿真，不是
+AirSim、目标硬件、实机、实飞或正式 RMSE/NEES/NIS 证据。
+
+正式报告位于
+`research_modules/d6_evaluation_metrics/outputs/`
+`d1_online_batch_frame_multiseed_20260725_formal_43feaf6_d6/`
+`D1_ONLINE_BATCH_FRAME_MULTISEED_REPORT_CN.md`。冻结 matrix/config 和正式制品不因本次
+默认提升而修改。
+
+当前代码重跑模块微基准时，历史字段
+`default_implementation_remains_reference=false` 继续如实记录默认已变化，但不参与算法
+语义/守恒与性能门聚合。因此 `module_threshold_met=true`；
+`recommend_main_explicit_ab=false`，因为 reference 已不再是默认；
+`recommend_default_promotion=false`，因为默认晋级已由上述 D6 正式流程完成。
+
+## 在线批次到扫描帧封闭交接微基准（准入前历史）
 
 **证据日期：2026-07-25**
 
@@ -28,7 +76,7 @@ reference 保持完整 convert-then-frame 链。candidate 先完整检查 raw ba
 2. candidate 配对更快比例不低于 `70%`；
 3. 规范帧 SHA-256、正负异常摘要和全部操作计数守恒一致；
 4. candidate 保留整批 raw 和最终 frame 完整检查；
-5. 默认实现保持 reference。
+5. 该准入前阶段默认实现保持 reference。
 
 ### 结果
 
@@ -54,10 +102,10 @@ reference 保持完整 convert-then-frame 链。candidate 先完整检查 raw ba
 
 ### 判定
 
-预注册语义门和性能门全部通过，标记为“D1 模块门槛通过”。candidate 继续默认关闭。
-该判定不代表 main 全栈准入，不覆盖完整默认 R0、AirSim、目标硬件、实飞、系统实时、
-RMSE、NEES 或 NIS。main 后续必须显式接入 selector 和持久化诊断，运行 clean 同提交
-short/long 多 seed 全栈矩阵，再交由 D6 独立判定。
+预注册语义门和性能门全部通过，当时标记为“D1 模块门槛通过”，candidate 继续默认关闭。
+该段保留准入前历史解释：微基准本身不代表 main 全栈准入。后续 short/long 多 seed D6
+正式判定和当前默认状态见上一节；AirSim、目标硬件、实飞、系统实时、RMSE、NEES 和 NIS
+仍不能由该微基准外推。
 
 本地制品位于
 `outputs/online_batch_frame_handoff_20260725/`。

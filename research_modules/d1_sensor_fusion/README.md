@@ -4,7 +4,36 @@ Offline research module for radar, acoustic, EO, and optional synthetic lidar he
 
 ## 当前性能与治理证据（2026-07-25）
 
-### 第三十三阶段：默认 R0 在线批次到扫描帧封闭交接候选
+### 第三十四阶段：在线批次到扫描帧封闭交接正式准入与默认提升
+
+D6 已按 schema `d6.d1_online_batch_frame_multiseed_evaluation.v1` 对 source commit
+`43feaf600f288a85ce76a76862334256f0d0d352` 的同提交冻结矩阵完成正式评估；matrix
+SHA-256 为 `4afbf9ac273763a16aa01cc744fd67b52e437099460b33377a128f986ac5719b`。
+short 10 pair、long 3 pair 共 13 pair/26 episode，全部预注册 gate 通过。
+
+short/long 的 scan-input 改善分别为 `38.289241%/36.275282%`，core wall 改善为
+`4.252745%/4.916501%`。candidate 完成 `2665/2665` 次 closed handoff，fallback 为 0，
+online truth use 为 0；业务语义、实现身份、有限状态、RSS 和 D2 均值门均通过。D6 正式
+判定为 `admit`。
+
+`ONLINE_BATCH_FRAME_DEFAULT_IMPLEMENTATION` 现指向
+`closed_immutable_batch_to_frame_v1`。未显式传 selector 的 `OnlineBatchFrameBuilder()`
+和 `sensor_scan_frame_from_online_batch()` 统一使用该 candidate；一个
+`implementation=ONLINE_BATCH_FRAME_REFERENCE_IMPLEMENTATION` 参数即可回退
+`convert_then_frame_v1`。execution config/diagnostics 中
+`candidate_default_enabled=true`，显式 reference 仍通过 implementation ID、路径计数和
+守恒诊断审计。核心候选算法、完整 raw batch 检查、最终只读帧检查、失败关闭和普通异常
+reference fallback 均未改变。
+
+D2 均值准入门通过，但单 pair 尾部仍需容量观察：`short_seed_1125` 的 D2 association
+增幅为 `15.778858%`，`long_seed_1121` 为 `14.408510%`。系统实时仍未闭合，candidate
+最低 RTF 为 `0.204490 < 1.0`。本证据只覆盖 2026-07-25 三维质点仿真，不是 AirSim、
+目标硬件、实机或实飞实时证据。正式报告位于
+`research_modules/d6_evaluation_metrics/outputs/`
+`d1_online_batch_frame_multiseed_20260725_formal_43feaf6_d6/`
+`D1_ONLINE_BATCH_FRAME_MULTISEED_REPORT_CN.md`。
+
+### 第三十三阶段：准入前在线批次到扫描帧候选基线（历史）
 
 main 提供的默认无 source-key R0、200v200、2.2 s、seed 1112 开发 cProfile 含
 95 个在线批次和 2,044 条观测。`assert_online_observations_identity_free()` 在转换器和
@@ -40,10 +69,10 @@ raw batch、逐量测、转换后集合和最终帧检查。默认关闭的 cand
 正负测试覆盖全部 5 个 batch 字段和 11 个 measurement 字段的快照传播、身份泄漏、坏
 协方差、双时间戳冲突、批内和模态一致性、重复 observation/lineage、普通映射回退、变异
 自定义载荷拒绝、快照 `RuntimeError` 回退、`MemoryError` 拒绝和源对象后续突变隔离。
-专项 `19 passed`，main 复跑 D1 全量为 `443 passed in 24.02s`。候选只达到 D1 模块
-微基准门槛，默认仍为 reference；main 后续
-必须显式接入 selector、持久化 builder 诊断，并运行 clean 同提交全栈矩阵后才能决定准入。
-本结果不外推到完整默认 R0、AirSim、目标硬件、实飞、系统实时或融合精度。
+专项 `19 passed`，main 当时复跑 D1 全量为 `443 passed in 24.02s`。该段冻结的是准入前
+模块判断：当时候选只达到 D1 微基准门槛，默认仍为 reference，必须等待 clean 同提交全栈
+矩阵。后续正式准入和当前默认状态以上一节为准；该历史微基准本身仍不外推到 AirSim、目标
+硬件、实飞、系统实时或融合精度。
 
 ### 第三十二阶段：不透明来源标识有界代际缓存正式拒绝
 

@@ -13,7 +13,10 @@ import pytest
 import d1_sensor_fusion.scalable_3d as scalable_3d_module
 from d1_sensor_fusion import (
     ONLINE_BATCH_FRAME_CANDIDATE_IMPLEMENTATION,
+    ONLINE_BATCH_FRAME_CANDIDATE_IMPLEMENTATION_ID,
+    ONLINE_BATCH_FRAME_DEFAULT_IMPLEMENTATION,
     ONLINE_BATCH_FRAME_REFERENCE_IMPLEMENTATION,
+    ONLINE_BATCH_FRAME_REFERENCE_IMPLEMENTATION_ID,
     OnlineBatchFrameBuilder,
     SensorObservation,
     SensorScanFrame,
@@ -140,18 +143,33 @@ def _corrupt_batch(case: str) -> OnlineSensorBatch:
     return batch
 
 
-def test_default_reference_and_closed_candidate_are_canonically_equal() -> None:
+def test_default_candidate_and_explicit_reference_are_canonically_equal() -> None:
     batch = _batch()
     default_builder = OnlineBatchFrameBuilder()
-    reference = default_builder.build(batch)
-    candidate_builder = OnlineBatchFrameBuilder(
-        implementation=ONLINE_BATCH_FRAME_CANDIDATE_IMPLEMENTATION
+    candidate = default_builder.build(batch)
+    reference_builder = OnlineBatchFrameBuilder(
+        implementation=ONLINE_BATCH_FRAME_REFERENCE_IMPLEMENTATION
     )
-    candidate = candidate_builder.build(batch)
+    reference = reference_builder.build(batch)
 
     assert default_builder.implementation == (
-        ONLINE_BATCH_FRAME_REFERENCE_IMPLEMENTATION
+        ONLINE_BATCH_FRAME_DEFAULT_IMPLEMENTATION
     )
+    assert default_builder.implementation == (
+        ONLINE_BATCH_FRAME_CANDIDATE_IMPLEMENTATION
+    )
+    assert default_builder.implementation_id == (
+        ONLINE_BATCH_FRAME_CANDIDATE_IMPLEMENTATION_ID
+    )
+    assert reference_builder.implementation_id == (
+        ONLINE_BATCH_FRAME_REFERENCE_IMPLEMENTATION_ID
+    )
+    assert inspect.signature(OnlineBatchFrameBuilder).parameters[
+        "implementation"
+    ].default == ONLINE_BATCH_FRAME_DEFAULT_IMPLEMENTATION
+    assert inspect.signature(sensor_scan_frame_from_online_batch).parameters[
+        "implementation"
+    ].default == ONLINE_BATCH_FRAME_DEFAULT_IMPLEMENTATION
     assert canonical_sensor_scan_frame_sha256(reference) == (
         canonical_sensor_scan_frame_sha256(candidate)
     )
@@ -161,9 +179,10 @@ def test_default_reference_and_closed_candidate_are_canonically_equal() -> None:
         canonical_sensor_scan_frame_sha256(reference)
     )
 
-    reference_counts = default_builder.diagnostics()["operation_counts"]
-    candidate_diagnostics = candidate_builder.diagnostics()
+    candidate_diagnostics = default_builder.diagnostics()
     candidate_counts = candidate_diagnostics["operation_counts"]
+    reference_diagnostics = reference_builder.diagnostics()
+    reference_counts = reference_diagnostics["operation_counts"]
     assert reference_counts["raw_batch_identity_check_count"] == 1
     assert reference_counts["raw_measurement_identity_check_count"] == 4
     assert reference_counts["converted_observation_collection_check_count"] == 1
@@ -182,6 +201,14 @@ def test_default_reference_and_closed_candidate_are_canonically_equal() -> None:
         candidate_diagnostics["raw_source_absolute_immutability_claimed"]
         is False
     )
+    assert candidate_diagnostics["candidate_default_enabled"] is True
+    assert reference_diagnostics["candidate_default_enabled"] is True
+    assert reference_diagnostics["implementation"] == (
+        ONLINE_BATCH_FRAME_REFERENCE_IMPLEMENTATION
+    )
+    assert reference_counts["reference_request_count"] == 1
+    assert reference_counts["candidate_request_count"] == 0
+    assert all(reference_diagnostics["conservation"].values())
     assert all(candidate_diagnostics["conservation"].values())
 
 
@@ -269,7 +296,10 @@ def test_mapping_payload_falls_back_to_complete_reference_chain() -> None:
         implementation=ONLINE_BATCH_FRAME_CANDIDATE_IMPLEMENTATION
     )
     candidate = candidate_builder.build(mapping_batch)
-    reference = sensor_scan_frame_from_online_batch(mapping_batch)
+    reference = sensor_scan_frame_from_online_batch(
+        mapping_batch,
+        implementation=ONLINE_BATCH_FRAME_REFERENCE_IMPLEMENTATION,
+    )
     assert canonical_sensor_scan_frame_sha256(candidate) == (
         canonical_sensor_scan_frame_sha256(reference)
     )
@@ -462,10 +492,10 @@ def test_snapshot_propagates_every_online_contract_field() -> None:
         else:
             assert copied_value == source_value
 
-    reference = sensor_scan_frame_from_online_batch(batch)
-    candidate = sensor_scan_frame_from_online_batch(
+    candidate = sensor_scan_frame_from_online_batch(batch)
+    reference = sensor_scan_frame_from_online_batch(
         batch,
-        implementation=ONLINE_BATCH_FRAME_CANDIDATE_IMPLEMENTATION,
+        implementation=ONLINE_BATCH_FRAME_REFERENCE_IMPLEMENTATION,
     )
     assert canonical_sensor_scan_frame_sha256(candidate) == (
         canonical_sensor_scan_frame_sha256(reference)
@@ -520,7 +550,7 @@ def test_frame_snapshot_is_not_changed_by_source_object_mutation() -> None:
     assert frame.observations[0].covariance.flags.writeable is False
 
 
-def test_frozen_microbenchmark_meets_preregistered_module_gate(
+def test_frozen_microbenchmark_preserves_prepromotion_gate_semantics(
     tmp_path,
 ) -> None:
     report = compare_online_batch_frame_handoff_variants()
@@ -540,9 +570,19 @@ def test_frozen_microbenchmark_meets_preregistered_module_gate(
         ]
         == MINIMUM_CANDIDATE_FASTER_FRACTION
     )
-    assert all(report["comparison"]["semantic_acceptance"].values())
+    semantic_acceptance = report["comparison"]["semantic_acceptance"]
+    assert (
+        semantic_acceptance["default_implementation_remains_reference"]
+        is False
+    )
+    assert all(
+        value
+        for name, value in semantic_acceptance.items()
+        if name != "default_implementation_remains_reference"
+    )
     assert all(report["comparison"]["performance_acceptance"].values())
     assert report["comparison"]["module_threshold_met"] is True
+    assert report["comparison"]["recommend_main_explicit_ab"] is False
     assert report["comparison"]["recommend_default_promotion"] is False
     assert len(report["comparison"]["canonical_frame_sha256"]) == 64
 

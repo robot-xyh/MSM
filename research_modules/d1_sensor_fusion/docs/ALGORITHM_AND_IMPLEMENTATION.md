@@ -8,7 +8,40 @@
 
 ## 当前权威增量（2026-07-25）
 
-### 在线批次到扫描帧封闭交接
+### 在线批次到扫描帧正式默认
+
+D6 正式 schema `d6.d1_online_batch_frame_multiseed_evaluation.v1` 绑定 source commit
+`43feaf600f288a85ce76a76862334256f0d0d352` 与 matrix SHA-256
+`4afbf9ac273763a16aa01cc744fd67b52e437099460b33377a128f986ac5719b`。13 pair/26
+episode 的全部 gate 通过；short/long scan-input 改善
+`38.289241%/36.275282%`，core wall 改善 `4.252745%/4.916501%`，candidate closed
+`2665/2665`、fallback 0、online truth use 0。
+
+当前调用方式为：
+
+```python
+default_builder = OnlineBatchFrameBuilder()
+default_frame = sensor_scan_frame_from_online_batch(batch)
+
+reference_builder = OnlineBatchFrameBuilder(
+    implementation=ONLINE_BATCH_FRAME_REFERENCE_IMPLEMENTATION,
+)
+reference_frame = sensor_scan_frame_from_online_batch(
+    batch,
+    implementation=ONLINE_BATCH_FRAME_REFERENCE_IMPLEMENTATION,
+)
+```
+
+前两条使用 `ONLINE_BATCH_FRAME_DEFAULT_IMPLEMENTATION` 指向的
+`closed_immutable_batch_to_frame_v1`；后两条以单个 selector 参数回退
+`convert_then_frame_v1`。execution config 中 `candidate_default_enabled=true`，显式
+reference 的实际 implementation、implementation ID、请求计数和守恒仍完整可审计。
+
+本次只提升默认 selector，没有改候选核心算法或安全合同。D2 单 pair 尾部关联开销仍需容量
+观察；最低 RTF 为 `0.204490`，系统实时未闭合。正式证据为三维质点仿真，不是 AirSim、
+目标硬件、实机、实飞或 RMSE/NEES/NIS 准入。
+
+### 在线批次到扫描帧封闭交接（准入前实现基线）
 
 原参考实现可以写成：
 
@@ -32,8 +65,8 @@ main 的默认无 source-key R0 开发 cProfile 说明，中间两组检查与�
 
 `sensor_scan_frame_from_online_batch()` 适合一次性调用。
 `OnlineBatchFrameBuilder` 适合 main 在一个 episode 内复用，以便累计 implementation ID、
-操作计数和守恒诊断。两者默认选择 `convert_then_frame_v1`。显式
-`closed_immutable_batch_to_frame_v1` 才进入候选。
+操作计数和守恒诊断。在该准入前阶段，两者默认选择 `convert_then_frame_v1`，显式
+`closed_immutable_batch_to_frame_v1` 才进入候选；当前默认状态见上一节。
 
 结构合格检查要求 batch 和 measurement 是冻结数据类，字段集合与在线合同完全一致；量测和
 协方差必须是拥有自身存储的只读数值数组；metadata 必须由受支持的只读映射、元组、冻结
@@ -51,8 +84,8 @@ main 的默认无 source-key R0 开发 cProfile 说明，中间两组检查与�
 冻结微基准脚本为 `scripts/run_online_batch_frame_performance.py`。默认负载 200 条量测、
 7 次交错采样，预注册门为中位改善至少 `20%`、candidate 更快比例至少 `70%`，且规范帧、
 异常摘要和计数守恒全部一致。2026-07-25 结果为
-`0.089842 -> 0.050648 s`，改善 `43.625675%`，`7/7` 更快。当前只建议 main 进行显式
-同提交 A/B，不建议改变默认实现。
+`0.089842 -> 0.050648 s`，改善 `43.625675%`，`7/7` 更快。该历史微基准当时只建议
+main 进行显式同提交 A/B，不独立建议改变默认实现；后续默认提升依据上一节 D6 正式证据。
 
 专项字段锁定以 `dataclasses.fields()` 对照 OnlineSensorBatch 的 5 个字段和
 SensorMeasurement 的 11 个字段，再逐字段比较深快照。最终帧负例覆盖身份、协方差、双

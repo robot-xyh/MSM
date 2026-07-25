@@ -1,6 +1,47 @@
 # D1 多传感器融合与目标配准实施计划
 
-## P1 默认 R0 在线批次到扫描帧封闭交接候选（2026-07-25）
+## P1 默认 R0 在线批次到扫描帧正式准入与默认提升（2026-07-25）
+
+### 正式证据与决策
+
+D6 schema `d6.d1_online_batch_frame_multiseed_evaluation.v1` 绑定 source commit
+`43feaf600f288a85ce76a76862334256f0d0d352` 和 matrix SHA-256
+`4afbf9ac273763a16aa01cc744fd67b52e437099460b33377a128f986ac5719b`。冻结矩阵包含
+short 10 pair、long 3 pair，共 13 pair/26 episode；全部预注册 gate 通过。
+
+| 指标 | Short | Long |
+| --- | ---: | ---: |
+| scan-input 改善 | `38.289241%` | `36.275282%` |
+| core wall 改善 | `4.252745%` | `4.916501%` |
+| candidate 更快 | `10/10` | `3/3` |
+
+candidate closed handoff 为 `2665/2665`，fallback 为 0，online truth use 为 0。业务
+语义、实现身份、有限状态、审计守恒、RSS 和 D2 均值门全部通过，D6 结论为 `admit`。
+
+### 默认与回退治理
+
+1. `ONLINE_BATCH_FRAME_DEFAULT_IMPLEMENTATION` 设为
+   `closed_immutable_batch_to_frame_v1`。
+2. `OnlineBatchFrameBuilder()` 和 `sensor_scan_frame_from_online_batch()` 的未显式
+   selector 路径统一使用 candidate。
+3. `implementation=ONLINE_BATCH_FRAME_REFERENCE_IMPLEMENTATION` 是单参数 reference
+   回退，稳定实现 ID 仍为 `d1.online_batch_frame.convert_then_frame.v1`。
+4. `candidate_default_enabled` 按当前声明默认值记录为 true；显式 reference 仍记录其
+   selector、实现 ID、reference 路径计数和守恒。
+5. 不改变候选核心算法、raw batch 与最终帧完整检查、普通异常 fallback、`MemoryError`
+   失败关闭、协方差、双时间戳、NED、谱系或融合门控。
+
+### 剩余工作
+
+1. 系统实时 P1 保持开放：candidate 最低 RTF 为 `0.204490 < 1.0`，不能写成 200v200
+   实时已闭合。
+2. D2 均值门通过，但单 pair 尾部需要长时容量观察：`short_seed_1125` 增幅
+   `15.778858%`，`long_seed_1121` 增幅 `14.408510%`。
+3. AirSim、目标硬件、实机、实飞、RMSE、NEES 和 NIS 继续独立验收。本轮没有改变 AirSim
+   producer、DTO、runtime bus、坐标、时间或 episode 接口。
+4. 冻结 matrix/config、正式 D6 制品和下述准入前微基准历史解释保持不变。
+
+## 历史：默认 R0 在线批次到扫描帧封闭交接候选（2026-07-25）
 
 ### 选题与范围
 
@@ -17,9 +58,10 @@ NED、谱系、扫描一致性、门控或融合器。公开转换 API 保持原
 ### 已实现候选
 
 1. reference 选择器为 `convert_then_frame_v1`，实现 ID
-   `d1.online_batch_frame.convert_then_frame.v1`，保持默认。
+   `d1.online_batch_frame.convert_then_frame.v1`，在该准入前阶段保持默认。
 2. candidate 选择器为 `closed_immutable_batch_to_frame_v1`，实现 ID
-   `d1.online_batch_frame.closed_immutable_batch_final_frame_validation.v1`，默认关闭。
+   `d1.online_batch_frame.closed_immutable_batch_final_frame_validation.v1`，在该
+   准入前阶段默认关闭。
 3. 候选入口先完整检查 raw batch；冻结数据类、独立只读数组和受支持元数据通过结构合格
    检查后，才进入模块内部深快照和私有转换链。该检查不声明 raw 来源绝对不可变。
 4. `SensorScanFrame` 对最终只读快照执行完整检查。普通映射和结构不合格载荷回退 reference；
@@ -49,13 +91,13 @@ NED、谱系、扫描一致性、门控或融合器。公开转换 API 保持原
 合法输出、5 个 batch 字段和 11 个 measurement 字段传播、身份泄漏、坏协方差、双时间戳
 冲突、sensor/batch/模态不一致、重复 observation ID、重复 lineage、普通映射回退、变异
 自定义载荷拒绝、快照 `RuntimeError` 回退、`MemoryError` 拒绝和快照突变隔离均已回归。
-专项 `19 passed`，main 复跑 D1 全量为 `443 passed in 24.02s`。当前可标记“D1 模块门槛通过”，
-不能标记 main 全栈准入。
+专项 `19 passed`，main 当时复跑 D1 全量为 `443 passed in 24.02s`。该历史阶段只能标记
+“D1 模块门槛通过”，不能标记 main 全栈准入；当前正式结论以上一节为准。
 
 ### 后续边界
 
-1. main 只能显式选择 candidate，并持久化同一 builder 的实现配置、操作计数和守恒诊断；
-   当前不得改变默认 reference。
+1. 该准入前阶段要求 main 只能显式选择 candidate，并持久化同一 builder 的实现配置、
+   操作计数和守恒诊断；它不描述当前默认值。
 2. main 应在 clean 同提交的默认无 source-key R0 short/long 多 seed 矩阵中比较 D1、
    scan-input、D2、核心墙钟、内存和业务语义，再由 D6 独立判定。
 3. malformed/custom/mutating 输入若不能通过当前结构检查和完整校验，继续回退或拒绝，

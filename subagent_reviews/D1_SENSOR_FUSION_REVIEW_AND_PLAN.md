@@ -5,7 +5,31 @@
 
 ---
 
-## 最新增量：默认 R0 在线批次到扫描帧封闭交接（2026-07-25）
+## 最新增量：在线批次到扫描帧正式准入与默认提升（2026-07-25）
+
+- D6 schema `d6.d1_online_batch_frame_multiseed_evaluation.v1` 绑定 source commit
+  `43feaf600f288a85ce76a76862334256f0d0d352` 和 matrix SHA-256
+  `4afbf9ac273763a16aa01cc744fd67b52e437099460b33377a128f986ac5719b`。
+- short 10 pair、long 3 pair 共 13 pair/26 episode，全部 gate 通过。short/long
+  scan-input 改善 `38.289241%/36.275282%`，core wall 改善
+  `4.252745%/4.916501%`。
+- candidate request/closed 为 `2665/2665`，fallback 0，online truth use 0；业务语义、
+  实现身份、有限状态、守恒、RSS 和 D2 均值门通过，D6 结论为 `admit`。
+- `ONLINE_BATCH_FRAME_DEFAULT_IMPLEMENTATION` 现选择
+  `closed_immutable_batch_to_frame_v1`。builder/helper 的未显式 selector 路径使用
+  candidate；单个 `implementation=ONLINE_BATCH_FRAME_REFERENCE_IMPLEMENTATION` 参数可
+  回退 `convert_then_frame_v1`。
+- diagnostics 的 `candidate_default_enabled=true` 反映当前声明默认值。显式 reference
+  仍记录 selector、实现 ID、reference request/path 和守恒，不影响回退审计。
+- 默认提升不改变候选核心算法、完整 raw batch 检查、最终只读帧检查、普通异常 fallback、
+  `MemoryError` 失败关闭、协方差、双时间戳、NED、谱系或融合门控。
+- D2 均值门通过，但 short/long 单 pair 最大增幅为
+  `15.778858%/14.408510%`，仍需长时容量观察。candidate 最低 RTF 为
+  `0.204490 < 1.0`，系统实时未闭合。
+- 证据只覆盖 2026-07-25 三维质点仿真，不是 AirSim、目标硬件、实机、实飞或正式融合
+  精度结论。冻结 matrix/config 和正式 D6 制品保持不变。
+
+## 历史增量：默认 R0 在线批次到扫描帧封闭交接候选（2026-07-25）
 
 - main 的默认无 source-key R0、200v200、2.2 s、seed 1112 开发 cProfile 含 95 个 batch
   和 2,044 条观测。converter/frame 集合检查各 95 次，累计
@@ -28,9 +52,8 @@
   `7/1400/7/7`；candidate 为 `7/0/0/7`。全部异常摘要、实现身份和计数守恒通过。
 - 新增字段传播锁定确认 5 个 batch 字段和 11 个 measurement 字段全部进入快照；异常注入
   确认快照 `RuntimeError` 回退 reference、`MemoryError` 不回退，所有 diagnostics 守恒。
-  专项 `19 passed`，main 复跑 D1 全量 `443 passed in 24.02s`。当前只达到 D1 模块门槛。
-  main 必须显式接入 selector、持久化 builder diagnostics，并完成 clean 同提交默认 R0
-  多 seed 全栈矩阵；D6 判定前不得晋级默认。
+  专项 `19 passed`，main 当时复跑 D1 全量 `443 passed in 24.02s`。该历史阶段只达到 D1
+  模块门槛，必须显式接入 selector 并等待 D6 判定；当前正式准入和默认值以上一节为准。
 - 本结果不覆盖完整默认 R0、AirSim、目标硬件、实飞、系统实时、RMSE、NEES 或 NIS，也不
   改变不透明来源缓存的正式拒绝结论。
 

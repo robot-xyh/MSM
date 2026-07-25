@@ -236,9 +236,20 @@ def compare_online_batch_frame_handoff_variants(
             >= MINIMUM_CANDIDATE_FASTER_FRACTION
         ),
     }
+    default_implementation_remains_reference = semantic_acceptance[
+        "default_implementation_remains_reference"
+    ]
     module_threshold_met = bool(
-        all(semantic_acceptance.values())
+        all(
+            accepted
+            for name, accepted in semantic_acceptance.items()
+            if name != "default_implementation_remains_reference"
+        )
         and all(performance_acceptance.values())
+    )
+    recommend_main_explicit_ab = bool(
+        module_threshold_met
+        and default_implementation_remains_reference
     )
 
     return {
@@ -314,7 +325,7 @@ def compare_online_batch_frame_handoff_variants(
             "semantic_acceptance": semantic_acceptance,
             "performance_acceptance": performance_acceptance,
             "module_threshold_met": module_threshold_met,
-            "recommend_main_explicit_ab": module_threshold_met,
+            "recommend_main_explicit_ab": recommend_main_explicit_ab,
             "recommend_default_promotion": False,
         },
         "constraints": {

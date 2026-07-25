@@ -6,7 +6,27 @@
 
 ## 当前权威增量（2026-07-25）
 
-### 封闭批次交接只合并重复校验
+### 封闭批次交接正式准入后默认启用
+
+D6 以 `d6.d1_online_batch_frame_multiseed_evaluation.v1` 对 source commit
+`43feaf600f288a85ce76a76862334256f0d0d352`、matrix SHA-256
+`4afbf9ac273763a16aa01cc744fd67b52e437099460b33377a128f986ac5719b` 完成正式
+失败关闭评估。short 10 pair、long 3 pair 共 13 pair/26 episode，全部 gate 通过。
+short/long scan-input 改善 `38.289241%/36.275282%`，core wall 改善
+`4.252745%/4.916501%`；closed handoff `2665/2665`，fallback 和 online truth use
+均为 0。
+
+因此声明默认值提升为 `closed_immutable_batch_to_frame_v1`。未显式 selector 的 builder
+和 helper 使用 candidate；显式 `convert_then_frame_v1` 仍是一参数 reference 回退。
+`candidate_default_enabled` 描述声明默认状态，实际执行路径继续由 selector、实现 ID 和路径
+计数审计。准入只改变默认选择，不改变两端完整校验、中间私有深快照、普通异常回退和资源
+失败关闭原则。
+
+D2 均值门通过，但 short/long 单 pair 最大关联耗时增幅为
+`15.778858%/14.408510%`，仍需容量观察。最低 RTF `0.204490 < 1.0`，系统实时没有闭合。
+正式证据仅来自三维质点仿真，不外推到 AirSim、目标硬件、实机、实飞或正式融合精度。
+
+### 封闭批次交接只合并重复校验（准入前原理基线）
 
 默认 R0 的原参考链先递归检查整个在线批次，再由公开单量测转换入口逐条重复检查 raw
 measurement；转换完成后检查 `SensorObservation` 集合，随后 `SensorScanFrame` 建立只读
@@ -30,16 +50,16 @@ reference；`MemoryError` 记为资源拒绝并原样抛出，避免内存不足
 `SensorScanFrame` 构造继续执行完整失败关闭校验。
 
 reference ID 为 `d1.online_batch_frame.convert_then_frame.v1`，candidate ID 为
-`d1.online_batch_frame.closed_immutable_batch_final_frame_validation.v1`。默认选择
-reference。`OnlineBatchFrameBuilder` 记录请求、成功、拒绝、reference/candidate/fallback、
+`d1.online_batch_frame.closed_immutable_batch_final_frame_validation.v1`。该准入前阶段
+默认选择 reference。`OnlineBatchFrameBuilder` 记录请求、成功、拒绝、reference/candidate/fallback、
 结构检查、快照 attempt/success/failure、resource rejection、raw batch、逐 measurement、
 转换后集合、最终帧和转换数量，并验证请求、结果、路径、结构检查和快照分解守恒。
 
 冻结 200 条量测、7 次交错微基准中，reference/candidate 中位墙钟为
 `0.089842/0.050648 s`，改善 `43.625675%`，candidate `7/7` 更快。reference 检查计数为
 `7/1400/7/7`，candidate 为 `7/0/0/7`；四项依次表示整批 raw、逐量测 raw、转换后集合和
-最终 frame。规范帧 SHA-256 与异常摘要一致。该结果只通过 D1 模块门槛，main 全栈、AirSim、
-目标硬件、系统实时和融合精度仍需独立验收。
+最终 frame。规范帧 SHA-256 与异常摘要一致。该段只记录当时通过 D1 模块门槛的历史结论；
+当前全栈准入和默认选择以上一节为准。AirSim、目标硬件、系统实时和融合精度仍需独立验收。
 
 ### 不透明来源标识是航迹代际不变量
 
