@@ -1,5 +1,56 @@
 # D6 系统级离线评估模块原理
 
+## 不透明来源标识缓存评估边界（2026-07-25）
+
+D1 发布带来源键的全局航迹时，需要携带发布节点、发布 epoch 和航迹标识。参考实现每次发布重新
+构造三个字符串。候选以
+`(publisher_node_id, publisher_epoch, global_track_id)` 为键，在容量 1024 的有界最近最少使用
+缓存中复用不可变字符串。状态、协方差、时间戳、航迹质量、最近归一化创新平方和动态 metadata
+仍逐次生成。
+
+D6 不依据 arm 标签推断实际执行路径。selector、实现 ID、候选标志、容量和
+`d1.opaque_source_identity_cache_diagnostics.v1` 必须在 runtime profile、summary、module
+final、嵌套治理和独立治理中一致。候选必须满足：
+
+```text
+N_request = N_hit + N_miss + N_bypass
+N_build = N_miss + N_bypass
+N_hit > 0, N_miss > 0, N_bypass = 0
+0 <= N_entry <= N_peak <= 1024
+```
+
+参考实现满足：
+
+```text
+N_request = N_bypass = N_build
+N_hit = N_miss = N_entry = N_peak = N_eviction = 0
+```
+
+同一 pair 的两臂还必须具有相同请求数和相同 publisher node/epoch generation。该条件防止候选
+通过少发布航迹或改变来源代次获得虚假构造减少率。
+
+本矩阵显式启用来源键发布，结构歧义 hold 关闭。D6 从命令、runtime configuration 和治理审计
+同时确认这两个条件。评估结果只说明 source-only 运行面，不能外推为默认无来源键 R0 收益。
+
+业务语义和处理诊断分开。D6 只归一化 selector、对应缓存诊断、runtime profile SHA、派生
+episode 标识和性能字段。在线 `GlobalTrack`、来源键业务值、状态与协方差、在线观测、D2-D7
+消费结果、计划和控制语义继续逐条比较。有限状态必须为 true，在线真值使用必须为 0。
+
+局部准入由全部冻结门的合取决定。short/long D1 融合改善均不低于 5%，核心墙钟改善均不低于
+2%，候选更快数至少为 `8/10` 和 `2/3`，short 配对 bootstrap 上界不高于 0。D2 关联组均值
+增幅、RSS 组均值和任一 pair 增幅均不得超过 5%，标识构造减少率和缓存命中率均不得低于 95%。
+系统实时门单独要求所有候选实时因子不低于 1。
+
+正式 13 pair、26 fresh arm 已完成，0 reused、0 failed。13/13 业务语义、真值隔离、实现身份和
+缓存审计通过。short/long D1 融合改善 `9.465972%/6.437432%`，核心墙钟改善
+`2.845610%/2.728043%`，标识构造减少率和命中率均为 `99.163670%`。
+
+唯一失败门是 long D2 关联组均值增幅 `5.605213% > 5%`。
+`long_seed_1101` 的 `19.069868%` 增幅保留在统计中。因此
+`optimization_admitted=false`。候选最低实时因子 `0.193887`，
+`system_realtime_gap_closed=false`。重新评估需要新的预注册确认矩阵；当前结果不构成 AirSim、
+目标硬件或实飞证据。
+
 ## 结构化数值雅可比评估边界（2026-07-25）
 
 D1 参考实现先调用一次量测函数确定输出维数，再对六维状态的每一列做中心差分。候选实现利用当前

@@ -1,5 +1,102 @@
 # D6 系统级离线评估：算法原理与实施说明
 
+## D1 不透明来源标识缓存同提交评估（2026-07-25）
+
+### 处理流程
+
+入口 `d1_opaque_source_identity_cache_multiseed.py` 按以下顺序消费证据：
+
+```text
+manifest schema / matrix SHA / source commit / clean flag
+  -> 13 case / 26 fresh arm / 命令和路径边界
+  -> source-only=true / structural hold=false
+  -> runtime profile / summary / module final / governance
+  -> selector / implementation ID / cache diagnostics
+  -> request-hit-miss-bypass-build 守恒和容量审计
+  -> 同 pair 请求工作量与 publisher generation
+  -> 在线总线、业务摘要和离线真值语义比较
+  -> D1、core、D2、RSS、实时因子配对统计
+  -> 10000 次 bootstrap / 冻结 gate
+  -> JSON / compact JSON / CSV / 中文 Markdown / PNG / SHA256SUMS
+```
+
+matrix SHA 固定为
+`218d04f3fc4a764fef82de612c78c8fbb5490380ae5d20aff6b9089635f2060d`，source commit
+固定为 `d8fc76c066f21b077154f7be33c0b43558d237e5`。评估器重建每个 arm 的命令，要求两臂只在
+`--d1-opaque-source-identity-implementation` 的值和输出目录上不同。命令必须包含
+`--d1-publish-opaque-source-key` 和容量 1024，且不得启用结构歧义 hold。
+
+### 诊断校验
+
+参考 ID 为 `d1.publication.opaque_source_identity.per_publication_build.v1`，候选 ID 为
+`d1.publication.opaque_source_identity.bounded_generation_lru.v1`。runtime profile 的初始
+诊断必须为空计数；summary、module final、嵌套治理和独立治理的最终诊断必须逐值相等。
+
+每个最终诊断必须包含请求、构造、旁路、命中、缺失、淘汰、峰值、代次失效和显式 reset 计数。
+未知字段、负数、非整数、容量越界和守恒标志错误均使证据 unavailable。D6 重新计算：
+
+```text
+request = hit + miss + bypass
+build = miss + bypass
+entry <= peak <= capacity
+eviction <= miss
+```
+
+候选要求 hit、miss、build 均大于 0 且 bypass 为 0。参考要求
+`request=bypass=build`，hit、miss、eviction、entry 和 peak 为 0。两臂 request 和
+`[publisher_node_id, publisher_epoch]` 必须相同。
+
+### 语义比较
+
+D6 调用跨 episode 比较器逐条核对在线总线、计划谱系、确认来源、D4 内容地址和离线真值。仅允许
+以下差异进入窄归一化：
+
+1. `d1_opaque_source_identity_implementation`；
+2. 对应 cache diagnostics；
+3. runtime profile SHA 和处理派生 episode 标识；
+4. 阶段墙钟、核心墙钟、外层资源记录和实时因子。
+
+`GlobalTrack` 内容、来源键值、状态、协方差、时间戳、D2 关联、D3 分配、D4 降级、D5 配准、
+D7 控制和在线观测不得变化。非登记差异关闭业务语义门。
+
+### 统计与准入
+
+对越低越好的指标，单 pair 原始变化和改善定义为：
+
+```text
+r_i = (candidate_i - reference_i) / reference_i
+improvement_i = -r_i
+```
+
+D1 融合、核心墙钟和候选更快数使用配对统计。short D1 原始变化执行 10000 次固定随机种子的配对
+bootstrap。D2 关联和 RSS 的组均值增幅使用：
+
+```text
+group_change = (mean(candidate) - mean(reference)) / mean(reference)
+```
+
+标识构造减少率按全矩阵累计构造数计算；命中率按候选累计 hit 和 miss 计算。全部门限从冻结
+matrix 读取并逐值核对，调用方不能覆盖。所有来源、安全、语义、诊断和性能门都通过时，
+`optimization_admitted` 才为 true。`system_realtime_gap_closed` 独立要求 13 个候选实时因子
+全部不低于 1。
+
+### 正式结果
+
+正式输入为 short 10 pair、long 3 pair，共 26 个 fresh complete arm。13/13 pair 的业务语义、
+有限状态、在线真值隔离、实现身份和缓存审计通过。short/long D1 融合改善
+`9.465972%/6.437432%`，核心墙钟改善 `2.845610%/2.728043%`，标识构造减少率和命中率均为
+`99.163670%`。
+
+long D2 组均值增幅 `5.605213%`，冻结上限为 `5%`。`long_seed_1101` 单 pair 增幅
+`19.069868%`，没有从矩阵中删除。该门是唯一 blocker，
+`optimization_admitted=false`。候选最低实时因子为 `0.193887`，
+`system_realtime_gap_closed=false`。
+
+输入无效时 evaluator 返回 `availability=false + reason`，writer 仍输出完整 JSON、compact
+JSON、空 pair CSV、中文失败关闭报告和校验和。严格测试入口可设置 `raise_on_invalid=true`。
+聚焦测试为 `16 passed, 1 warning in 5.85s`，D6 全量为
+`834 passed, 1 warning in 59.24s`。
+
 ## D1 结构化数值雅可比同提交评估（2026-07-25）
 
 ### 处理流程

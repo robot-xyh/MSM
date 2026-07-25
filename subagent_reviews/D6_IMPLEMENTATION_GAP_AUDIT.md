@@ -1,5 +1,48 @@
 # D6 实现差距审计
 
+## 2026-07-25 D1 不透明来源标识缓存评估 GAP 更新
+
+### 已关闭
+
+1. D6 已实现 schema
+   `d6.d1_opaque_source_identity_cache_multiseed_evaluation.v1` 的独立只读 evaluator、CLI、
+   失败关闭报告和确定性制品 writer。
+2. matrix SHA
+   `218d04f3fc4a764fef82de612c78c8fbb5490380ae5d20aff6b9089635f2060d`、clean producer
+   commit `d8fc76c066f21b077154f7be33c0b43558d237e5`、13 pair、26 fresh complete arm、
+   200/200/2、seed、时长、arm 顺序、命令和路径边界已固定。
+3. source-only 发布键、hold=false、selector、实现 ID、诊断 schema、容量和 publisher
+   generation 已进入失败关闭校验。结果明确不外推到默认无来源键 R0。
+4. 候选的 `request=hit+miss+bypass`、`build=miss+bypass`、hit/miss 正值、bypass=0 和容量边界，
+   以及参考的 `request=bypass=build`、零缓存活动均已实现并有负例测试。
+5. D6 逐对核对在线消息、`GlobalTrack`、来源键业务值、状态/协方差、D2-D7 消费结果、计划、
+   控制和离线真值。只归一化预注册处理字段与性能字段，在线真值使用要求为 0。
+6. short/long D1、core、D2、RSS、候选更快数、10000 次 bootstrap、标识构造减少率和命中率
+   已按冻结门实现。D2 采用候选组均值相对参考组均值的增幅。
+7. 正式 bundle 已生成，包含完整 JSON、compact JSON、13 条 pair CSV、中文 Markdown、PNG 和
+   `SHA256SUMS`。输入 manifest 保持只读。
+8. 聚焦测试 `16 passed, 1 warning in 5.85s`，D6 全量
+   `834 passed, 1 warning in 59.24s`。
+9. 正式矩阵 26/26 arm 全部 fresh complete，0 reused、0 failed；13/13 业务语义、有限状态、
+   真值隔离、实现身份和缓存审计通过。
+10. short/long D1 融合改善 `9.465972%/6.437432%`，核心墙钟改善
+    `2.845610%/2.728043%`，标识构造减少率和命中率均为 `99.163670%`。
+11. long D2 关联组均值增幅 `5.605213%` 超过冻结上限 `5%`，是唯一失败门。
+    `long_seed_1101` 的 `19.069868%` 单 pair 增幅未剔除。因此
+    `optimization_admitted=false`，失败关闭行为符合预注册合同。
+
+### 仍开放 P1
+
+1. **候选性能稳定性。** 需要新的预注册确认矩阵复核 long D2 回归。不得修改本轮门限、删除
+   `long_seed_1101` 或覆盖本轮不准入结论。
+2. **系统实时容量。** 候选最低实时因子 `0.193887`，低于 1，
+   `system_realtime_gap_closed=false`。
+3. **外部适用性。** 当前证据仅覆盖 source-only、hold=false 的 200/200/2 三维质点矩阵。
+   默认无来源键 R0、AirSim、目标处理器和实飞仍需独立证据。
+
+当前无新增 D6-owned P0。D6 evaluator、正式消费、统计、报告和失败关闭测试缺口已关闭；候选准入、
+系统实时和外部适用性保持开放。
+
 ## 2026-07-25 D1 结构化数值雅可比评估 GAP 更新
 
 ### 已关闭

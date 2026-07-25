@@ -1,5 +1,61 @@
 # D6 系统级评估指标实验报告
 
+## 2.35 D1 不透明来源标识缓存正式评估
+
+### 结论
+
+D6 已完成冻结矩阵的独立只读评估。输入可用，13 pair 的来源、业务语义、有限状态、在线真值隔离、
+实现身份和缓存审计均通过。局部优化未准入，`optimization_admitted=false`。系统实时缺口未关闭，
+`system_realtime_gap_closed=false`。
+
+唯一失败门是 long D2 关联墙钟组均值增幅 `5.605213%`，超过冻结上限 `5%`。
+`long_seed_1101` 单 pair 增幅 `19.069868%`，按原矩阵保留。评估没有调门、删除样本或将该回归
+归入业务语义豁免。
+
+### 证据
+
+| 项目 | 正式值 |
+| --- | --- |
+| evaluator schema | `d6.d1_opaque_source_identity_cache_multiseed_evaluation.v1` |
+| producer commit | `d8fc76c066f21b077154f7be33c0b43558d237e5` |
+| matrix SHA-256 | `218d04f3fc4a764fef82de612c78c8fbb5490380ae5d20aff6b9089635f2060d` |
+| evidence manifest SHA-256 | `6c13176c2deb0b8065438bc835bddd87bc6a0ec507b3a48c7298b4141d2c501d` |
+| 场景规模 | 200 个目标、200 个资源、2 个侦察节点 |
+| short / long | 10 pair × 2.2 秒 / 3 pair × 10 秒 |
+| arm 状态 | 26 fresh complete，0 reused，0 failed |
+| 运行面 | 显式来源键，结构歧义 hold 关闭 |
+| 参考实现 | `per_publication_build_v1` |
+| 候选实现 | `bounded_generation_lru_v1`，容量 1024 |
+
+本证据属于 source-only 三维质点运行面。它不说明默认无来源键 R0 路径有相同收益，也不代表
+AirSim、目标处理器或实飞性能。
+
+### 结果
+
+| 指标 | short | long | 冻结门 |
+| --- | ---: | ---: | ---: |
+| D1 融合改善 | 9.465972% | 6.437432% | 各 >= 5% |
+| 候选更快数 | 10/10 | 3/3 | >= 8/10，>= 2/3 |
+| 核心墙钟改善 | 2.845610% | 2.728043% | 各 >= 2% |
+| D2 关联组均值增幅 | 4.677567% | 5.605213% | 各 <= 5% |
+| RSS 组均值增幅 | -0.011981% | -0.031573% | <= 5% |
+
+全矩阵参考臂执行 312317 次来源标识构造。候选执行 2612 次构造并命中 309705 次。标识构造减少率
+和缓存命中率均为 `99.163670%`，高于 `95%` 门限。候选最大当前和峰值条目数均为
+`202/1024`。short D1 配对 bootstrap 原始变化 95% 上界为 `-8.213147%`。
+
+![D1 不透明来源标识缓存配对评估](outputs/d1_opaque_source_identity_cache_multiseed_20260725_formal_d8fc76c_d6/d1_opaque_source_identity_cache_multiseed_curves.png)
+
+上图第一部分显示逐 pair D1、核心墙钟和 D2 变化。`long_seed_1101` 的 D2 增幅形成长时组唯一
+冻结门失败。第二部分显示构造减少率和命中率均高于 95%。第三部分显示候选实时因子全部低于 1。
+候选最低实时因子为 `0.193887`。
+
+正式 bundle 位于
+`outputs/d1_opaque_source_identity_cache_multiseed_20260725_formal_d8fc76c_d6/`。聚焦测试
+`16 passed, 1 warning in 5.85s`，D6 全量
+`834 passed, 1 warning in 59.24s`；warning 为既有 Matplotlib `Axes3D` 环境提示。新的确认
+实验必须预先冻结矩阵，并保留当前门限和本轮不准入结论。
+
 ## 2.34 D1 结构化数值雅可比正式评估
 
 ### 当前结论

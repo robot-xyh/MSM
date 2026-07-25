@@ -1,5 +1,43 @@
 # D6 系统评估指标综述及子方案
 
+## 2026-07-25 D1 不透明来源标识缓存正式评审
+
+D6 已完成独立 evaluator、CLI、失败关闭入口和确定性报告。评估 schema 为
+`d6.d1_opaque_source_identity_cache_multiseed_evaluation.v1`，固定绑定 matrix SHA
+`218d04f3fc4a764fef82de612c78c8fbb5490380ae5d20aff6b9089635f2060d` 与 clean producer
+commit `d8fc76c066f21b077154f7be33c0b43558d237e5`。参考实现为
+`per_publication_build_v1`，候选为 `bounded_generation_lru_v1`，缓存容量 1024。
+
+评审确认本次 evidence 仅来自显式来源键发布面，结构歧义 hold 关闭。D6 在 runtime profile、
+summary、module final、嵌套治理和独立治理中交叉确认 selector、实现 ID 和诊断。候选要求请求、
+命中、缺失、旁路和构造守恒，旁路为 0；参考要求全部请求均旁路并构造，且无缓存活动。两臂请求
+工作量和 publisher node/epoch generation 相同。
+
+业务比较只处理预注册 selector、缓存诊断、runtime profile SHA、派生 episode 标识和性能字段。
+在线 `GlobalTrack`、来源键值、状态与协方差、D2/D3/D4/D5/D7 输出、计划版本、控制语义和离线
+真值继续逐条比较。任一非登记差异使语义门失败。
+
+正式矩阵包含 short 10 pair、long 3 pair，共 26 个 fresh complete arm；0 reused、0 failed。
+13/13 pair 的业务语义、有限状态、在线真值隔离、实现身份和缓存审计通过。short/long D1 融合
+改善 `9.465972%/6.437432%`，核心墙钟改善 `2.845610%/2.728043%`，候选分别
+`10/10`、`3/3` 更快。标识构造减少率和命中率均为 `99.163670%`，容量峰值
+`202/1024`。
+
+long D2 关联组均值增幅为 `5.605213%`，超过冻结上限 `5%`。这是唯一失败门。
+`long_seed_1101` 单 pair 增幅 `19.069868%`，按预注册矩阵保留。评审结论为
+`optimization_admitted=false`，不得通过删样本、调门或业务语义豁免晋级。后续只能以新的
+预注册确认矩阵复核该回归。
+
+候选最低实时因子为 `0.193887`，低于门限 1，
+`system_realtime_gap_closed=false`。结果只覆盖 source-only、hold=false 的 200/200/2 三维质点
+矩阵，不代表默认无来源键 R0、AirSim、目标处理器或实飞。
+
+正式 bundle 位于
+`research_modules/d6_evaluation_metrics/outputs/d1_opaque_source_identity_cache_multiseed_20260725_formal_d8fc76c_d6/`。
+聚焦测试 `16 passed, 1 warning in 5.85s`，D6 全量
+`834 passed, 1 warning in 59.24s`。`AIRSIM_INTEGRATION_PLAN.md` 与
+`D6_M_TO_N_EVALUATION_FRAMEWORK_REVIEW.md` 已检查，本项不改变对应接口或指标合同，无需修改。
+
 ## 2026-07-25 D1 结构化数值雅可比评估评审
 
 D6 已完成独立 evaluator、CLI 和确定性 writer。评估 schema 为

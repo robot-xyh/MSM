@@ -1,5 +1,48 @@
 # D6 Evaluation Metrics Plan
 
+## 2026-07-25 D1 不透明来源标识缓存多种子评估状态
+
+### 已完成
+
+- [x] 新增独立 evaluator、CLI 和确定性 writer，schema 为
+  `d6.d1_opaque_source_identity_cache_multiseed_evaluation.v1`。
+- [x] 固定 matrix SHA
+  `218d04f3fc4a764fef82de612c78c8fbb5490380ae5d20aff6b9089635f2060d`、clean source
+  commit `d8fc76c066f21b077154f7be33c0b43558d237e5`、13 pair、26 fresh complete arm、
+  200/200/2、seed、时长、顺序、命令和证据路径。
+- [x] 要求 source-only 发布键启用、结构歧义 hold 关闭；本矩阵不代表默认无来源键 R0 收益。
+- [x] 在 runtime profile、summary、module final、嵌套治理和独立治理中核对 selector、实现 ID、
+  diagnostics schema、候选标志、容量和最终诊断一致性。
+- [x] 实现 request/hit/miss/bypass/build 守恒、容量/峰值、publisher generation 和两臂相同请求
+  工作量校验。候选旁路必须为 0；参考必须全部旁路且无缓存活动。
+- [x] 业务语义比较只归一化处理字段和性能字段；`GlobalTrack`、来源键业务值、状态/协方差、
+  在线观测、D2-D7 结果、计划和控制语义继续比较。
+- [x] 严格执行冻结门：short/long D1 fusion、core wall、D2 association、RSS、候选更快数、
+  10000 次配对 bootstrap、标识构造减少率和缓存命中率。
+- [x] 输入无效时返回 `availability=false`，并固定
+  `optimization_admitted=false`、`system_realtime_gap_closed=false`。
+- [x] 输出完整 JSON、compact JSON、逐 pair CSV、中文 Markdown、PNG 和校验和，正式目录为
+  `outputs/d1_opaque_source_identity_cache_multiseed_20260725_formal_d8fc76c_d6/`。
+- [x] 聚焦测试 `16 passed, 1 warning in 5.85s`；D6 全量
+  `834 passed, 1 warning in 59.24s`。
+- [x] 正式 26/26 arm 全部 fresh complete，0 reused、0 failed；13/13 业务语义、有限状态、
+  在线真值零使用、实现身份和缓存审计通过。
+- [x] short/long D1 融合改善 `9.465972%/6.437432%`，核心墙钟改善
+  `2.845610%/2.728043%`，候选更快数为 `10/10`、`3/3`。标识构造减少率和缓存命中率均为
+  `99.163670%`。
+- [x] long D2 关联组均值增幅 `5.605213%` 超过冻结上限 `5%`，是唯一失败门。
+  `long_seed_1101` 单 pair 增幅 `19.069868%` 已保留。因此
+  `optimization_admitted=false`，不得晋级为默认实现。
+- [x] 候选最低实时因子 `0.193887`，`system_realtime_gap_closed=false`。
+
+### 后续 P1
+
+- [ ] 预先冻结新的确认矩阵，采用相同 source-only 条件和 D2 上限，增加长时 seed 或重复轮次，
+  判断 D2 回归是否稳定；不得覆盖本次正式结论。
+- [ ] 在 AirSim 和目标处理器上补充端到端实时证据。当前三维质点结果不能关闭系统实时缺口。
+
+`AIRSIM_INTEGRATION_PLAN.md` 已检查。本项不改变 AirSim 接口或 episode 调度，无需修改。
+
 ## 2026-07-25 D1 结构化数值雅可比多种子评估状态
 
 ### 已完成

@@ -1,5 +1,19 @@
 # D6 文档索引
 
+2026-07-25 D1 不透明来源标识缓存多 seed 评估原理见
+`MODULE_PRINCIPLES_CN.md`，严格证据绑定、诊断守恒、语义比较和冻结门实现见
+`ALGORITHM_AND_IMPLEMENTATION.md`。入口绑定 matrix SHA
+`218d04f3fc4a764fef82de612c78c8fbb5490380ae5d20aff6b9089635f2060d` 与 clean producer
+commit `d8fc76c066f21b077154f7be33c0b43558d237e5`，固定 13 pair、26 fresh arm 和
+200/200/2。正式 26 arm 全部 fresh complete，0 reused、0 failed；13/13 业务语义、真值隔离、
+实现身份和缓存审计通过。short/long D1 融合改善 `9.465972%/6.437432%`，标识构造减少率和
+命中率均为 `99.163670%`。long D2 组均值增幅 `5.605213%` 超过 5% 门，
+`optimization_admitted=false`；最低实时因子 `0.193887`，
+`system_realtime_gap_closed=false`。结果仅适用于显式来源键、hold=false 的三维质点矩阵。
+正式结果见 `../EXPERIMENT_REPORT.md` 2.35 节和
+`../outputs/d1_opaque_source_identity_cache_multiseed_20260725_formal_d8fc76c_d6/`。聚焦测试
+`16 passed, 1 warning`，D6 全量 `834 passed, 1 warning`。
+
 2026-07-25 D1 结构化数值雅可比多 seed 评估原理见
 `MODULE_PRINCIPLES_CN.md`，证据绑定、四表面诊断、操作数守恒、统计门和不可用处理见
 `ALGORITHM_AND_IMPLEMENTATION.md`。入口绑定 matrix SHA

@@ -1,5 +1,58 @@
 # D6 Evaluation Metrics
 
+## 2026-07-25 D1 不透明来源标识缓存评估入口
+
+D6 新增独立、只读、失败关闭的离线消费者
+`d1_opaque_source_identity_cache_multiseed.py` 和命令行
+`scripts/evaluate_d1_opaque_source_identity_cache_multiseed.py`。入口固定绑定 evaluator schema
+`d6.d1_opaque_source_identity_cache_multiseed_evaluation.v1`、matrix SHA-256
+`218d04f3fc4a764fef82de612c78c8fbb5490380ae5d20aff6b9089635f2060d`、clean producer
+commit `d8fc76c066f21b077154f7be33c0b43558d237e5`、200 个目标、200 个资源、2 个侦察节点，
+以及 short `1101-1110 @ 2.2 s`、long `1101-1103 @ 10 s` 的 13 个 pair。26 个 arm 必须
+全部 fresh complete；dirty、reused、failed、提交漂移、矩阵字节变化、命令漂移和路径越界均
+失败关闭。
+
+本矩阵显式启用 `--d1-publish-opaque-source-key`，结构歧义 hold 为 false。结果只适用于
+source-only 发布面，不能写成默认无来源键 R0 路径的收益。参考实现
+`per_publication_build_v1` 每次发布构造来源节点、发布 epoch 和航迹键；候选
+`bounded_generation_lru_v1` 以三者为键复用三个不可变字符串，容量固定为 1024。
+
+selector 与 `d1.opaque_source_identity_cache_diagnostics.v1` 在 runtime profile、summary、
+module final、嵌套治理和独立治理中交叉校验。候选必须满足
+`request=hit+miss+bypass`、`build=miss+bypass`、hit/miss 均大于 0、bypass 为 0，并满足容量和
+峰值边界；参考必须满足 `bypass=request=build`，且 hit、miss、entry、peak 和 eviction 均为 0。
+两臂发布请求数和 publisher node/epoch generation 必须相同。
+
+业务语义只归一化预注册 selector、对应缓存诊断、runtime profile SHA、处理派生 episode 标识和
+性能字段。`GlobalTrack`、来源键业务值、在线观测、状态与协方差、D2-D7 消费结果、计划和控制
+语义继续逐条比较，在线真值使用必须为 0。D6 分别输出局部
+`optimization_admitted` 和系统 `system_realtime_gap_closed`。
+
+正式 13-pair/26-arm 评估已完成，0 reused、0 failed，13/13 业务语义、有限状态、真值隔离、
+实现身份和缓存审计通过。short/long D1 融合改善 `9.465972%/6.437432%`，候选分别
+`10/10`、`3/3` 更快；核心墙钟改善 `2.845610%/2.728043%`。候选标识构造减少率和缓存命中率
+均为 `99.163670%`。
+
+唯一失败门是 long D2 关联墙钟组均值增幅 `5.605213%`，高于冻结上限 `5%`。
+`long_seed_1101` 的单 pair 增幅 `19.069868%` 已保留，没有剔除或改门。因此
+`optimization_admitted=false`。候选最低实时因子为 `0.193887`，
+`system_realtime_gap_closed=false`。后续只能通过新的预注册确认矩阵复核 D2 长时回归。
+
+正式 bundle 位于
+`outputs/d1_opaque_source_identity_cache_multiseed_20260725_formal_d8fc76c_d6/`，包含完整
+JSON、compact JSON、逐 pair CSV、中文 Markdown、PNG 曲线和 `SHA256SUMS`。聚焦测试为
+`16 passed, 1 warning in 5.85s`，D6 全量为
+`834 passed, 1 warning in 59.24s`；warning 为既有 Matplotlib `Axes3D` 环境提示。
+
+```bash
+python3 research_modules/d6_evaluation_metrics/scripts/evaluate_d1_opaque_source_identity_cache_multiseed.py \
+  --evidence-manifest /path/to/evidence_manifest.json \
+  --output-dir /path/to/independent_d6_report
+```
+
+`AIRSIM_INTEGRATION_PLAN.md` 已检查。本入口只读消费三维质点 episode，不改变 AirSim topic、
+相机、actor、reset、检测、控制或调度接口，因此无需修改。
+
 ## 2026-07-25 D1 结构化数值雅可比评估入口
 
 D6 新增可选离线消费者
