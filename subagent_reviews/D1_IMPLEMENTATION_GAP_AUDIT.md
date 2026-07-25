@@ -8,6 +8,19 @@
 
 ## 0. 当前正式治理 GAP 增量（2026-07-24）
 
+### GlobalTrack 发布元数据 v2 正式准入
+
+clean source commit `be399e138762f5e660f553c8caa812d52ab38c61` 的 13 对、26 臂正式
+矩阵已经完成，覆盖 200 目标、200 资源、2 个侦察节点、short 10 seed 和 long 3 seed。
+0 reused、0 failed，13/13 业务语义、有限状态、在线真值隔离、实现身份、D2 审计和 RSS 门
+通过。D1 fusion 改善 13.5447%/26.8298%，核心墙钟改善 6.5677%/18.2438%，D2
+association 耗时降低 16.1939%/35.6213%，全部预注册门通过。
+
+`d1.publication_metadata.immutable_shared_audit.v2` 系统准入 P1 已关闭。D1 构造器默认仍为
+reference，main promotion `f5b350b` 默认选择 `immutable_shared_v2`。逐批 D2 审计明细和
+系统实时容量仍为 P1；最低实时因子 `0.1730801`。本证据不关闭 AirSim、硬件或正式
+RMSE/NEES/NIS。
+
 ### 扫描输入正式同提交准入
 
 clean commit `d14285e4fdeb2f2e2cd32fad2f6d42e30f9e73a7` 的
@@ -967,19 +980,21 @@ covariance、在线 truth fail-closed、source lineage、6 s fixed-lag、量测�
 
 | GAP/合同 | 当前状态 | D1-owned 证据 | 剩余关闭条件 |
 | --- | --- | --- | --- |
-| 可执行 reference/candidate | **v2 D1-owned 实现已关闭，系统准入开放** | reference 默认不变；布尔候选实际 ID 升级为 `immutable_shared_audit.v2`；diagnostics 显式输出 `d1.publication_audit_tree.v2` 和节点/复用/复制计数 | main 新增 `immutable_shared_v2` selector 和 matrix 版本；旧 v1 selector 必须因 actual ID 不符 fail closed |
+| 可执行 reference/candidate | **v2 系统准入已关闭** | D1 布尔构造默认仍为 `False`；候选实际 ID 为 `d1.publication_metadata.immutable_shared_audit.v2`，合同为 `d1.publication_audit_tree.v2`。main promotion `f5b350b` 默认选择 `immutable_shared_v2`，`per_track_copy_v1` 可显式对照 | 保持实际实现身份、合同版本和旧 v1 fail-closed 回归 |
 | v1 容器基类绕过 | **已关闭** | v2 不继承 `dict/list`，底层只有 `frozenset` 键值对和 tuple 序列；全部公开 mutator 和 `dict.__setitem__`/`list.append` 基类调用回归通过 | 保持精确类型和 base-class 负测，不得退回可变基类子类 |
-| 下游精确合同验证 | **D1 API 已关闭，D2 接线 P1 开放** | 公开递归验证只认证精确 v2 map/sequence 和有限 JSON 叶值；拒绝自定义 Mapping、marker、mappingproxy backing、子类、循环、重复键和非法叶值 | D2 对每个新对象先验证合同、再做一次 truth-free 内容审计，并用强引用身份复用；不得只按 marker/`__eq__`/裸 `id()` 信任 |
-| 逐发布业务等价 | **v1 正式通过；v2 模块回归通过** | v1 正式 13/13 语义门通过；v2 `GlobalTrack.to_dict()` 保持内建 JSON payload，顶层 metadata/state/covariance 独立，同批三个审计根共享；D1 全量 389 passed | v2 clean short 10 seed、long 3 seed 交错 A/B 和 D2-D7 下游兼容 |
-| 重复物化成本 | **v1 消除复制但正式拒绝；v2 待复测** | v1 完整物化不变、复制降为 0；D1 fusion 改善 short 16.29%/long 31.05% | v2+D2 一次审计接线后重跑全新矩阵；要求核心墙钟达到 5% 门并保持 RSS/语义/真值隔离 |
+| 下游精确合同验证 | **正式接线与总量审计已关闭；逐批明细 P1 开放** | 公开验证器保持 fail-closed；正式候选累计 702 次合同验证、702 次内容审计、139,920 次强引用身份复用、0 次合同拒绝 | 持久化并验收每个发布批次的验证、内容审计、身份复用和拒绝原因明细 |
+| 逐发布业务等价 | **v2 正式矩阵已关闭** | clean `be399e138762f5e660f553c8caa812d52ab38c61`；short 10 seed、long 3 seed，13 对/26 臂，0 reused/0 failed；13/13 业务语义、有限状态、在线真值隔离、实现身份、D2 审计和 RSS 门通过 | 后续实现变化保持同一 clean-source、同输入和语义门回归 |
+| 重复物化成本 | **v2 正式准入已关闭** | D1 fusion short/long 改善 13.5447%/26.8298%（门限 >=10%）；核心墙钟改善 6.5677%/18.2438%（门限 >=5%）；D2 association 耗时变化 -16.1939%/-35.6213%（回归门 <=5%）；`d1_optimization_admitted=true` | 保持性能门、bootstrap、RSS 和下游审计回归；不得把局部收益外推为实时容量 |
 | 完整系统实时与效果 | **P1 仍开放，main-owned** | 候选只处理 D1 发布元数据；没有 AirSim、目标硬件、正式 RMSE/NEES/NIS 或物理拦截证据 | 达到预注册系统预算，并完成 AirSim、精度、容量和完整拦截独立验收 |
 
 v1 正式矩阵中 D2 association 增加 short 53.44%、long 169.89%，核心墙钟只改善
 1.65%/1.21%，低于 5% 门，`d1_optimization_admitted=false`。该结论保持为 v1 历史证据。
-v2 只完成 D1 合同和单元验证，尚未获得新的正式准入结果。
+v2 正式报告目录为
+`research_modules/d6_evaluation_metrics/outputs/d1_publication_metadata_v2_multiseed_20260724_formal_be399e1/`。
+D6 已判定 `d1_optimization_admitted=true`。候选最低实时因子为 `0.1730801`，
+`system_realtime_gap_closed=false`。
 
-候选保持默认关闭。2026-07-24 D1 全量 `389 passed in 20.84s`。本轮没有新增 P0，也没有修改
-雷达数学、fixed-lag、扫描/发布频率、门限、观测内容、双时间戳、covariance、NED 或
-`global_track_id` 合同。AirSim 集成计划已检查；本次只改变 Python 内存中的发布审计表示和
-`GlobalTrack.to_dict()` 持久化转换，不改变 AirSim topic、settings、时间戳或 episode 流程，
-无需更新。
+2026-07-24 D1 全量 `389 passed in 20.84s`。本轮没有新增 P0，也没有修改雷达数学、
+fixed-lag、扫描/发布频率、门限、观测内容、双时间戳、covariance、NED 或
+`global_track_id` 合同。AirSim 集成计划已检查；本次准入只改变三维质点 main 默认 selector
+和发布审计内存表示，不改变 AirSim topic、settings、时间戳或 episode 流程，因此无需更新。

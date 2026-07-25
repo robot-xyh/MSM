@@ -4,6 +4,22 @@ Offline research module for radar, acoustic, EO, and optional synthetic lidar he
 
 ## 当前性能与治理证据（2026-07-24）
 
+### 第二十七阶段：GlobalTrack 发布元数据 v2 正式准入
+
+正式系统矩阵从 clean source commit
+`be399e138762f5e660f553c8caa812d52ab38c61` 运行，覆盖 200 目标、200 资源、2 个侦察节点，
+short 10 seed 和 long 3 seed，共 13 对、26 个 arm，`0 reused/0 failed`。D1 fusion
+short/long 改善 13.5447%/26.8298%，核心墙钟改善 6.5677%/18.2438%，D2 association
+耗时降低 16.1939%/35.6213%。全部预注册性能门和 13/13 语义、安全、身份、D2 审计及 RSS
+检查通过，D6 判定 `d1_optimization_admitted=true`。
+
+正式候选为 `d1.publication_metadata.immutable_shared_audit.v2`，合同为
+`d1.publication_audit_tree.v2`。候选臂累计完成 702 次合同验证、702 次内容审计和
+139,920 次强引用身份复用，拒绝为 0。main promotion `f5b350b` 已默认选择
+`immutable_shared_v2`；D1 构造器布尔默认仍为 `False`，`per_track_copy_v1` 仍可显式对照。
+最低实时因子为 `0.1730801`，系统实时、逐批 D2 审计明细、AirSim、硬件和正式
+RMSE/NEES/NIS 仍开放。
+
 ### 第二十六阶段：扫描输入正式同提交准入
 
 main 在 clean commit
@@ -1794,14 +1810,17 @@ D1 全量 `151 passed`。
 已关闭；main 正式接线、20/50/100/200 长 episode 的 lateness/residence/capacity 标定、无扫描
 时钟推进策略、吞吐和误拒率仍是系统 P1。
 
-## GlobalTrack 共享审计元数据候选（2026-07-24）
+## GlobalTrack 共享审计元数据准入（2026-07-24）
 
 当前 200v200 冻结回放在 361 个完整发布扫描中物化 71,515 条 `GlobalTrack`。既有
 `shared_publication_audit_snapshot=True` 已把 association、latency 和 sensor-health 摘要降为
 每个发布扫描计算一次，但 `_to_global_track()` 仍为每条航迹复制三类共享审计映射及每个
 sensor-health 子映射。冻结 seed 1101 中该路径累计执行 8,832,271 次映射复制。
 
-`immutable_shared_publication_metadata` 默认值仍为 `False`，reference 仍执行逐航迹复制。
+`FusionConfig.immutable_shared_publication_metadata` 默认值仍为 `False`，因此直接构造 D1
+融合器时仍使用逐航迹复制 reference。该模块级布尔默认用于兼容独立调用方，不等同于 main
+集成路径的 selector 默认值；main 已在准入后把可扩展三维仿真的默认 selector 晋级为
+`immutable_shared_v2`，并保留 `per_track_copy_v1` 供显式对照。
 2026-07-24 首个候选
 `d1.publication_metadata.immutable_shared_audit.v1` 使用 `dict/list` 只读子类。D6 在同一
 clean 提交上的 short 10 seed、long 3 seed 正式矩阵中确认 D1 fusion wall 分别改善
@@ -1850,7 +1869,25 @@ python3 research_modules/d1_sensor_fusion/scripts/run_publication_metadata_perfo
 工作树上的单 seed v1 证据，不是 AirSim、目标硬件或系统实时放行。
 
 v2 已完成冻结、验证、base-class 绕过、公开变异方法、伪造合同、循环输入、序列化、pickle、
-深拷贝和同批共享身份测试。2026-07-24 D1 全量回归为 `389 passed in 20.84s`。v2 尚未运行
-新的 clean 13-pair 矩阵，继续默认关闭。main 必须新增 `immutable_shared_v2` selector 和新
-matrix 版本，并校验实际 implementation ID 与 contract version；原
-`immutable_shared_v1` selector/证据不得指向 v2。
+深拷贝和同批共享身份测试。2026-07-24 D1 全量回归为 `389 passed in 20.84s`。
+
+正式系统准入使用 clean source commit
+`be399e138762f5e660f553c8caa812d52ab38c61`，场景为 200 目标、200 资源和 2 个侦察节点。
+short 使用 seeds 1101-1110、每臂 2.2 s；long 使用 seeds 1101-1103、每臂 10 s。13 对
+reference/candidate 共 26 个 arm 均重新执行，`0 reused/0 failed`。13/13 业务语义、有限状态、
+在线真值隔离、实现身份、D2 审计和 RSS 门均通过。
+
+| 正式准入指标 | Short | Long | 预注册门限 | 结论 |
+| --- | ---: | ---: | ---: | --- |
+| D1 fusion 墙钟改善 | 13.5447% | 26.8298% | >=10% | 通过 |
+| 核心墙钟改善 | 6.5677% | 18.2438% | >=5% | 通过 |
+| D2 association 耗时变化 | -16.1939% | -35.6213% | 回归 <=5% | 通过 |
+
+候选臂累计执行 702 次 v2 合同验证、702 次 truth-free 内容审计和 139,920 次同一强引用对象
+身份复用，合同拒绝为 0。D6 判定 `d1_optimization_admitted=true`。main promotion commit
+`f5b350b` 已将默认 selector 晋级为 `immutable_shared_v2`；D1 模块自身布尔构造默认仍保持
+`False`，两者口径不冲突。
+
+该矩阵是三维质点系统性能和合同证据，不含 AirSim、目标硬件、RMSE、NEES、NIS 或物理拦截
+验收。候选最低实时因子为 `0.1730801`，因此
+`system_realtime_gap_closed=false`。系统实时容量和逐批 D2 审计明细仍为 P1。

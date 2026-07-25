@@ -1,5 +1,21 @@
 # D1 多传感器融合与目标配准实施计划
 
+## P1 GlobalTrack 发布元数据 v2 正式准入结果（2026-07-24）
+
+clean source commit `be399e138762f5e660f553c8caa812d52ab38c61` 已完成
+200 目标、200 资源、2 个侦察节点的 short 10 seed 和 long 3 seed 正式矩阵，共 13 对、
+26 个 arm，0 reused、0 failed。D1 fusion 改善 13.5447%/26.8298%，核心墙钟改善
+6.5677%/18.2438%，D2 association 耗时降低 16.1939%/35.6213%。D1 >=10%、核心墙钟
+>=5%、D2 回归 <=5% 及 13/13 业务语义、有限状态、在线真值隔离、身份、D2 审计和 RSS 门
+均通过。
+
+`d1.publication_metadata.immutable_shared_audit.v2` 与
+`d1.publication_audit_tree.v2` 已正式准入，D6 判定
+`d1_optimization_admitted=true`。main promotion `f5b350b` 默认选择
+`immutable_shared_v2`；D1 构造器仍以 `False` 保留 reference。下一步只保持合同回归，
+补逐批 D2 审计明细，并继续关闭最低实时因子 `0.1730801` 对应的系统容量 P1。AirSim、
+目标硬件和正式 RMSE/NEES/NIS 继续独立验收。
+
 ## P1 扫描输入正式同提交准入结果（2026-07-24）
 
 main 已从 clean commit
@@ -2009,7 +2025,7 @@ latency 和 sensor-health 共享审计树。不修改雷达数学、fixed-lag/OO
    `validate_immutable_publication_audit_tree()`。认证后仍需执行一次内容级 truth-free 审计，
    只对同一强引用对象身份复用结果；任意 marker、`Mapping` 或可变代理不得进入快路。
 
-### 31.3 当前证据与后续验收
+### 31.3 当前证据与正式验收
 
 2026-07-24 单 seed 1101、570 扫描、10,810 观测的 v1 reference/candidate 全部门控通过。完整物化
 均为 71,515；reference 复制共享审计映射 8,832,271 次，candidate 为 0。profile 中
@@ -2021,9 +2037,33 @@ latency 和 sensor-health 共享审计树。不修改雷达数学、fixed-lag/OO
 达到 5% 门，因此 v1 未准入。根因是 D2 只复用精确内建容器审计，无法验证 v1 自定义
 `dict/list` 子类。
 
-当前代码候选已升级为 `immutable_shared_audit.v2`，合同为
+当前代码候选已升级为 `d1.publication_metadata.immutable_shared_audit.v2`，合同为
 `d1.publication_audit_tree.v2`。D1 已完成 389 项全量单元回归，包括 base-class 绕过、可变
-backing store、循环树、不支持叶值、序列化和共享身份。下一步由 main 新增
-`immutable_shared_v2` selector，D2 接入精确合同验证与同对象一次内容审计，再从同一 clean
-提交重跑全新 13-pair 矩阵。不得复用 v1 的 selector、输出目录或准入结论。正式准入后才考虑
-默认值；完整系统实时、AirSim 和正式 RMSE/NEES/NIS 继续独立开放。
+backing store、循环树、不支持叶值、序列化和共享身份。
+
+正式 v2 矩阵已于 2026-07-24 从 clean source commit
+`be399e138762f5e660f553c8caa812d52ab38c61` 完成。场景包含 200 目标、200 资源和 2 个侦察
+节点；short 为 seeds 1101-1110、2.2 s，long 为 seeds 1101-1103、10 s。13 对、26 个 arm
+全部重新执行，`0 reused/0 failed`。13/13 业务语义、有限状态、在线真值隔离、实现身份、
+D2 审计和 RSS 门通过。
+
+| 指标 | Short | Long | 门限 |
+| --- | ---: | ---: | ---: |
+| D1 fusion 改善 | 13.5447% | 26.8298% | >=10% |
+| 核心墙钟改善 | 6.5677% | 18.2438% | >=5% |
+| D2 association 耗时变化 | -16.1939% | -35.6213% | 回归 <=5% |
+
+候选累计 702 次 v2 合同验证、702 次内容审计、139,920 次身份复用和 0 次合同拒绝。D6 判定
+`d1_optimization_admitted=true`。main promotion commit `f5b350b` 已将可扩展三维仿真的默认
+selector 晋级为 `immutable_shared_v2`，同时保留 `per_track_copy_v1` 显式对照。D1 模块自身
+`immutable_shared_publication_metadata=False` 的构造默认保持不变，这是独立调用兼容策略，
+不表示 main 仍使用 reference。
+
+### 31.4 剩余计划
+
+1. 保持 v2 精确类型、truth-free 内容审计、强引用身份复用和 v1 fail-closed 的合同回归。
+2. 补充逐批 D2 审计明细，使每个发布批次的合同验证、内容审计、身份复用和拒绝原因可独立追溯。
+3. 在固定目标运行环境继续关闭系统实时容量。当前最低实时因子为 `0.1730801`，
+   `system_realtime_gap_closed=false`。
+4. AirSim、目标硬件、正式 RMSE/NEES/NIS 和物理拦截继续按独立证据验收，不能由本次质点性能
+   矩阵外推。

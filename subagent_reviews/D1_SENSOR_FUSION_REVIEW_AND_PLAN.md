@@ -5,6 +5,21 @@
 
 ---
 
+## 最新增量：GlobalTrack 发布元数据 v2 正式准入（2026-07-24）
+
+- clean source commit `be399e138762f5e660f553c8caa812d52ab38c61` 已完成 200 目标、
+  200 资源、2 个侦察节点的 short 10 seed 和 long 3 seed 正式矩阵，共 13 对、26 个 arm，
+  0 reused、0 failed。
+- D1 fusion short/long 改善 13.5447%/26.8298%，核心墙钟改善
+  6.5677%/18.2438%，D2 association 耗时降低 16.1939%/35.6213%；13/13 业务语义、
+  有限状态、在线真值隔离、实现身份、D2 审计和 RSS 门通过。
+- 候选 `d1.publication_metadata.immutable_shared_audit.v2`、合同
+  `d1.publication_audit_tree.v2` 已准入。累计 702 次合同验证、702 次内容审计、
+  139,920 次身份复用，合同拒绝为 0。D6 判定 `d1_optimization_admitted=true`。
+- main promotion `f5b350b` 默认选择 `immutable_shared_v2`；D1 构造器默认仍为 `False`，
+  reference 可显式对照。系统最低实时因子 `0.1730801`，逐批 D2 审计明细、AirSim、硬件和
+  正式 RMSE/NEES/NIS 仍开放。
+
 ## 最新增量：扫描输入正式同提交准入（2026-07-24）
 
 - 正式证据来自 clean commit
@@ -1590,7 +1605,7 @@ module stack 列为超线性项。
 认证/回退分布、AirSim 和正式 RMSE/NEES/NIS 保持 P1 开放。下一轮不得通过放宽预门控认证、
 缩短固定时滞、丢弃观测或改变双时间戳语义换取吞吐。
 
-## 33. GlobalTrack 共享审计元数据候选评审（2026-07-24）
+## 33. GlobalTrack 共享审计元数据准入评审（2026-07-24）
 
 ### 33.1 评审判断
 
@@ -1614,17 +1629,43 @@ Mapping、可变代理、容器子类、循环树和
 共享审计映射复制 `8,832,271 -> 0`；`_to_global_track` 累计
 `10.700 -> 2.198 s`，fusion 总墙钟 `42.282 -> 34.792 s`。
 
-### 33.3 决策与下一步
+### 33.3 v1 决策
 
 v1 后续已完成同一 clean 提交的 frozen short 10 seed、long 3 seed 正式矩阵。D1 fusion wall
 改善 16.29%/31.05%，D2 association 增加 53.44%/169.89%，核心墙钟只改善
 1.65%/1.21%，低于预注册 5% 门。v1 判定不准入。回退来自 D2 对 v1 自定义容器逐航迹重复
 递归审计，不是 D1 数值或业务语义变化。
 
-当前模块候选 ID 已升级为 `immutable_shared_audit.v2`，默认值继续为 `False`。D1 新增合同
+当前模块候选 ID 已升级为 `d1.publication_metadata.immutable_shared_audit.v2`，默认值继续为
+`False`。D1 新增合同
 专项覆盖公开变异方法、基类绕过、伪造/非法树、共享身份、JSON、pickle 和深拷贝；全量
-`389 passed in 20.84s`。main 下一步必须新增 `immutable_shared_v2` selector；D2 只对精确
-v2 合同执行一次内容审计，并按同一强引用对象复用。随后从同一 clean 提交重跑全新 13-pair
-矩阵，检查严格语义、实际实现身份、合同版本、RSS、bootstrap 区间和 D2-D7 兼容性。旧 v1
-证据和输出目录不能复用为 v2 准入。通过前不得写成实时缺口已关闭，也不得外推到 AirSim 或
-目标平台。
+`389 passed in 20.84s`。旧 v1 证据和输出目录未复用为 v2 准入。
+
+### 33.4 v2 正式准入
+
+正式矩阵从 clean source commit
+`be399e138762f5e660f553c8caa812d52ab38c61` 运行。场景为 200 目标、200 资源和 2 个侦察
+节点；short 使用 seeds 1101-1110、2.2 s，long 使用 seeds 1101-1103、10 s。13 对
+reference/candidate 共 26 个 arm 全部重新执行，`0 reused/0 failed`。13/13 业务语义、有限
+状态、在线真值隔离、实际实现身份、D2 审计和 RSS 门通过。
+
+| 指标 | Short | Long | 预注册门限 | 评审 |
+| --- | ---: | ---: | ---: | --- |
+| D1 fusion 改善 | 13.5447% | 26.8298% | >=10% | 通过 |
+| 核心墙钟改善 | 6.5677% | 18.2438% | >=5% | 通过 |
+| D2 association 耗时变化 | -16.1939% | -35.6213% | 回归 <=5% | 通过 |
+
+D2 对候选累计执行 702 次 v2 合同验证、702 次 truth-free 内容审计和 139,920 次同一强引用
+对象身份复用，合同拒绝为 0。D6 结论为 `d1_optimization_admitted=true`。正式报告目录为
+`research_modules/d6_evaluation_metrics/outputs/`
+`d1_publication_metadata_v2_multiseed_20260724_formal_be399e1/`。
+
+### 33.5 当前默认与剩余项
+
+D1 模块自身布尔构造默认仍为 `False`，供独立调用方保持 reference。main promotion commit
+`f5b350b` 已把可扩展三维仿真的默认 selector 晋级为 `immutable_shared_v2`，并保留
+`per_track_copy_v1` 显式对照。因此“模块构造默认 reference”和“系统集成默认 v2”同时成立。
+
+候选最低实时因子为 `0.1730801`，`system_realtime_gap_closed=false`。后续 P1 包括系统实时
+容量和逐批 D2 审计明细。本次正式证据不含 AirSim、目标硬件、RMSE、NEES、NIS 或物理拦截，
+不得外推为相应验收结论。

@@ -1,5 +1,26 @@
 # 第一研究模块实验结果
 
+## GlobalTrack 发布元数据 v2 正式准入
+
+**证据日期：2026-07-24**
+
+**范围：200 个目标、200 个资源、2 个侦察节点，short 10 seed、long 3 seed**
+
+正式矩阵从 clean source commit
+`be399e138762f5e660f553c8caa812d52ab38c61` 运行，共 13 对、26 个 arm，全部重新执行且无
+失败。13/13 业务语义、有限状态、在线真值隔离、实现身份、D2 审计和 RSS 门通过。
+
+| 指标 | Short | Long | 门限 |
+| --- | ---: | ---: | ---: |
+| D1 fusion 改善 | 13.5447% | 26.8298% | >=10% |
+| 核心墙钟改善 | 6.5677% | 18.2438% | >=5% |
+| D2 association 耗时降低 | 16.1939% | 35.6213% | 回归 <=5% |
+
+D6 判定 `d1_optimization_admitted=true`。main 已默认选择
+`immutable_shared_v2`，D1 构造器默认仍保留 reference。最低实时因子为 `0.1730801`，
+`system_realtime_gap_closed=false`。详细合同、审计计数、默认区分和证据目录见本文末尾同名
+专项。本组不含 AirSim、目标硬件或正式 RMSE/NEES/NIS。
+
 ## 扫描输入正式同提交准入
 
 **证据日期：2026-07-24**
@@ -1209,12 +1230,34 @@ AirSim、真实传感器精度、RMSE、归一化估计误差平方、归一化�
 v1 未准入。D2 只对精确内建容器复用 truth-free 审计；v1 自定义 `dict/list` 子类触发每条航迹
 重复递归扫描共享 sensor-health 树，抵消了 D1 的收益。
 
-2026-07-24 D1 已实现 `immutable_shared_audit.v2`。v2 使用 `frozenset` 键值对和 tuple 序列
+2026-07-24 D1 已实现 `d1.publication_metadata.immutable_shared_audit.v2`。v2 使用
+`frozenset` 键值对和 tuple 序列
 承载精确不可变合同，并提供公开递归验证 API。专项覆盖全部公开变异方法、
-`dict.__setitem__`/`list.append` 绕过、伪造
-marker、自定义 Mapping、可变 backing store、循环输入、不支持叶值、共享身份、JSON、pickle
-和深拷贝。D1 全量为 `389 passed in 20.84s`。本报告没有 v2 的多 seed 性能结果；main/D2
-完成新 selector 和一次内容审计复用接线后，需从同一 clean 提交生成新的 13 对矩阵。
+`dict.__setitem__`/`list.append` 绕过、伪造 marker、自定义 Mapping、可变 backing store、
+循环输入、不支持叶值、共享身份、JSON、pickle 和深拷贝。D1 全量为
+`389 passed in 20.84s`。
 
-两代候选均保持默认关闭。本组不含 AirSim、目标硬件或正式 RMSE/NEES/NIS 证据，因此不关闭
-系统实时 P1。
+### v2 正式准入
+
+正式矩阵使用 clean source commit
+`be399e138762f5e660f553c8caa812d52ab38c61`。场景包含 200 个目标、200 个资源和 2 个侦察
+节点。short 采用 seeds 1101-1110、每臂 2.2 s；long 采用 seeds 1101-1103、每臂 10 s。
+13 对 reference/candidate 共 26 个 arm 均由本轮重新执行，`0 reused/0 failed`。13/13
+业务语义、有限状态、在线真值隔离、实现身份、D2 审计和 RSS 门通过。
+
+| 正式矩阵指标 | Short | Long | 预注册门限 | 结果 |
+| --- | ---: | ---: | ---: | --- |
+| D1 fusion wall 改善 | 13.5447% | 26.8298% | >=10% | 通过 |
+| 核心墙钟改善 | 6.5677% | 18.2438% | >=5% | 通过 |
+| D2 association 耗时变化 | -16.1939% | -35.6213% | 回归 <=5% | 通过 |
+
+候选臂累计完成 702 次 v2 合同验证、702 次 truth-free 内容审计、139,920 次强引用身份复用，
+合同拒绝为 0。D6 结论为 `d1_optimization_admitted=true`。正式报告位于
+`research_modules/d6_evaluation_metrics/outputs/`
+`d1_publication_metadata_v2_multiseed_20260724_formal_be399e1/`。
+
+D1 模块自身 `immutable_shared_publication_metadata=False` 的构造默认保持不变。main
+promotion commit `f5b350b` 已把可扩展三维仿真的默认 selector 晋级为
+`immutable_shared_v2`，`per_track_copy_v1` 仍可显式选择。最低实时因子为 `0.1730801`，
+`system_realtime_gap_closed=false`。本组不含 AirSim、目标硬件、正式 RMSE/NEES/NIS 或物理
+拦截证据；逐批 D2 审计明细和系统实时容量仍为 P1。

@@ -8,6 +8,19 @@
 
 ## 当前权威增量（2026-07-24）
 
+### GlobalTrack 发布元数据 v2 准入
+
+正式候选 `d1.publication_metadata.immutable_shared_audit.v2` 使用
+`d1.publication_audit_tree.v2` 精确不可变合同共享扫描级审计树。D2 先验证合同并执行一次
+truth-free 内容审计，再按同一强引用对象身份复用。本轮候选累计 702 次合同验证、702 次内容
+审计、139,920 次身份复用和 0 次合同拒绝。
+
+clean source commit `be399e138762f5e660f553c8caa812d52ab38c61` 的 13 对、26 臂矩阵覆盖
+short 10 seed 和 long 3 seed。D1 fusion 改善 13.5447%/26.8298%，核心墙钟改善
+6.5677%/18.2438%，D2 association 耗时降低 16.1939%/35.6213%，全部准入门通过。main
+promotion `f5b350b` 已默认选择 v2；D1 构造器默认仍为 reference。最低实时因子
+`0.1730801` 不满足系统实时条件，AirSim、硬件和正式 RMSE/NEES/NIS 也未由本组验证。
+
 ### 扫描输入正式准入
 
 正式 A/B 使用 clean commit
@@ -2762,5 +2775,19 @@ candidate 为 0；candidate 记录 214,545 次共享值复用。该计数证明�
 
 v1 正式 short 10 seed、long 3 seed 中 D1 fusion wall 改善 16.29%/31.05%，但 D2 因逐航迹
 重审自定义容器而增加 53.44%/169.89%，核心墙钟改善 1.65%/1.21%，未达到 5% 准入门。
-v2 当前只完成 D1 合同和 389 项全量回归，尚未产生新的多 seed 性能证据。main 与 D2 接线后
-必须用新的 selector、matrix 版本和 clean 提交重跑，不能把上述 v1 数值归到 v2。
+v2 在 D1 合同和 389 项全量回归后，已由 main 与 D2 按精确合同完成系统接线。正式矩阵使用
+clean source commit `be399e138762f5e660f553c8caa812d52ab38c61`，包含 short seeds
+1101-1110、long seeds 1101-1103，共 13 对、26 个 arm，场景规模为 200 目标、200 资源和
+2 个侦察节点。全部 arm 为本轮新执行，0 reused、0 failed。
+
+v2 候选的 D1 fusion short/long 改善为 13.5447%/26.8298%，超过 10% 门；核心墙钟改善为
+6.5677%/18.2438%，超过 5% 门；D2 association 耗时变化为
+-16.1939%/-35.6213%，满足回归不高于 5% 的门限。13/13 业务语义、有限状态、在线真值隔离、
+实现身份、D2 审计和 RSS 检查通过。候选累计 702 次精确合同验证、702 次内容审计、
+139,920 次强引用身份复用，合同拒绝为 0。D6 判定
+`d1_optimization_admitted=true`。
+
+D1 的布尔配置默认仍为 `False`，直接构造时保留 reference。main promotion commit `f5b350b`
+已将系统默认 selector 晋级为 `immutable_shared_v2`，并保留 `per_track_copy_v1` 显式对照。
+最低实时因子为 `0.1730801`，所以该实现只完成发布元数据候选准入，没有关闭系统实时、
+AirSim、硬件、RMSE/NEES/NIS 或物理拦截验收。逐批 D2 审计明细仍为 P1。
