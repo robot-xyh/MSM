@@ -8,7 +8,7 @@
 
 ## 当前权威增量（2026-07-25）
 
-### 默认关闭的模态感知保守预筛
+### 正式拒绝后保持默认关闭的模态感知保守预筛
 
 构造参数 `association_sparse_prefilter` 接受两个稳定 selector：
 
@@ -53,12 +53,28 @@ candidate = FusionAdapter(
 协方差、雷达/LiDAR/二维声学/三维声学/光电扫描、64×64 密集输入、门限等号边界和
 candidate-on/off 规范输出等价。D1 全量为 `473 passed in 24.45s`。
 
-120 航迹、14,400 pair/模态、7 次交错微基准的非雷达合计 P50 为
+正式集成状态不由上述模块测试决定。2026-07-25，D6 使用
+`d6.d1_association_sparse_prefilter_multiseed_evaluation.v1` 评估 clean source commit
+`9302ccede2ca513c2235370e1a464fc88bc41150`；冻结 matrix SHA-256 为
+`a7162d014d1c3c0f207355b24a5d7159bf3486d134ca21876f7469d1e915b71d`。200 个目标、
+200 个资源、2 个侦察节点的 short seeds 1131-1140 和 long seeds 1131-1133 形成
+13 pair/26 个 fresh episode。13/13 pair 的业务语义、有限状态、online truth use=0 和
+逐模态 exact gate-pass 相等通过；非雷达精确求解削减 `86.636767%`。
+
+正式失败门为 short 更快 `7/10 < 8/10`、short D1 fusion 改善
+`0.228437% < 1%`、short paired bootstrap 原始变化 95% 上界
+`0.443531% > 0%`、short core 改善 `0.091096% < 0.25%`、long D1 fusion 改善
+`0.713776% < 1%`。D6 verdict 为 `reject`。`disabled_v1` 继续作为默认，
+`modality_conservative_quadratic_bound_v1` 只允许显式研究启用；不得以局部求解削减改写
+默认选择或冻结矩阵。
+
+历史上，120 航迹、14,400 pair/模态、7 次交错微基准的非雷达合计 P50 为
 `0.538083 -> 0.487310 s`。LiDAR、二维声学、三维声学和光电精确求解分别为
 `14,400 -> 3,126/6,306/6,306/3,295`，更快次数分别为
 `7/7、6/7、7/7、7/7`。雷达两臂走同一旧下界，本轮 candidate P50 慢 `0.221%`。报告位于
-`../reports/D1_ASSOCIATION_SPARSE_PREFILTER_PERFORMANCE_20260725_CN.md`。候选只达到
-模块建议 main A/B 的条件，尚未经过同提交 short/long 多 seed 和 D6 准入。
+`../reports/D1_ASSOCIATION_SPARSE_PREFILTER_PERFORMANCE_20260725_CN.md`。该微基准只用于
+追溯候选形成过程，不是主线准入依据。正式候选最低 RTF 为 `0.206273 < 1`，系统实时、
+AirSim、目标硬件、实机、实飞和正式融合精度仍未闭合。
 
 ### 在线批次到扫描帧正式默认
 

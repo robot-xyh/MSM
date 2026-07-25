@@ -8,13 +8,19 @@
 
 ## 0. 当前正式治理 GAP 增量（2026-07-25）
 
-### 模态感知保守稀疏预筛
+### 模态感知保守稀疏预筛正式拒绝
 
 | GAP | 当前状态 | D1-owned 证据 | 剩余关闭条件 |
 | --- | --- | --- | --- |
-| 密集非雷达扫描仍对大量明显门外 pair 执行精确创新伪逆 | **P1 D1 模块候选已完成；正式集成准入开放** | 默认关闭 selector、固定实现 ID、execution config v1 和六桶 diagnostics v2 已实现。120 航迹微基准中 LiDAR/二维声学/三维声学/光电精确求解减少 `78.292%/56.208%/56.208%/77.118%`，四类合计 P50 改善 `9.436%`，规范输出和精确门内 pair 一致；D1 全量 `473 passed in 24.45s` | main 在 clean 同提交冻结 short 10 pair、long 3 pair 上显式 A/B；D6 核验业务语义、逐模态守恒、在线真值 0、D2、RSS 和核心墙钟后决定 admit/reject。正式判定前默认关闭 |
+| 密集非雷达扫描仍对大量明显门外 pair 执行精确创新伪逆 | **P1 主线 GAP 未关闭；本候选正式 reject** | D6 对 clean `9302ccede2ca513c2235370e1a464fc88bc41150`、matrix SHA `a7162d014d1c3c0f207355b24a5d7159bf3486d134ca21876f7469d1e915b71d` 的 13 pair/26 fresh episode 完成正式评估。13/13 业务语义、有限状态、online truth use=0 和逐模态 exact gate-pass 相等通过；非雷达精确求解削减 `86.636767%`。但五个冻结性能门失败，verdict=`reject` | `disabled_v1` 保持默认，candidate 仅作显式研究入口。本候选不再作为待准入项；未来不同提案必须新建预注册矩阵并保留本轮拒绝，不得调门、删 pair 或覆盖 verdict |
 | 角度/投影模态预筛可能漏删门内 pair | **D1-owned 安全边界已关闭并持续回归** | 声学使用原环绕残差，光电使用原投影像素残差；只有有限、严格对称、严格正定且不触发旧 `pinv` 截断时才认证。等门限、奇异、近奇异、非有限、非法投影和未知模态全部 fail-open | 保持随机正定矩阵 oracle、角度环绕、异常协方差和 candidate-on/off dense 等价回归；不得换成启发式空间半径、近似角门或 truth ID |
-| 系统实时与正式精度 | **P1 开放** | 模块微基准不包含完整 200v200 episode；最近已准入栈最低 RTF 仍为 `0.204490 < 1.0` | 完成正式多 seed 和 D6 判定；AirSim、目标硬件、RMSE、NEES、NIS 继续独立验收 |
+| 系统实时与正式精度 | **P1 开放** | 正式候选最低 RTF `0.206273 < 1`，`system_realtime_gap_closed=false`；本矩阵是 200/200/2 三维质点证据 | 在目标环境满足系统预算；AirSim、目标处理器、硬件、实机、实飞、RMSE、NEES、NIS 继续独立验收 |
+
+冻结场景为 short seeds 1131-1140、long seeds 1131-1133。五个失败门是：short 更快
+`7/10 < 8/10`、short D1 fusion 改善 `0.228437% < 1%`、short paired bootstrap 原始
+变化 95% 上界 `0.443531% > 0%`、short core 改善 `0.091096% < 0.25%`、long D1
+fusion 改善 `0.713776% < 1%`。局部求解削减不能写成主线准入。此前 120 航迹微基准及
+`9.436%` 非雷达合计 P50 改善保留为历史候选形成证据。
 
 reference selector 为 `disabled_v1`，candidate 为
 `modality_conservative_quadratic_bound_v1`。`association_sparse_prefilter_diagnostics()`

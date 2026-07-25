@@ -4,7 +4,7 @@ Offline research module for radar, acoustic, EO, and optional synthetic lidar he
 
 ## 当前性能与治理证据（2026-07-25）
 
-### 第三十五阶段：模态感知保守稀疏预筛候选
+### 第三十五阶段：模态感知保守稀疏预筛正式拒绝
 
 D1 新增默认关闭的关联预筛 selector
 `modality_conservative_quadratic_bound_v1`，reference 为 `disabled_v1`。独立
@@ -34,17 +34,37 @@ r^\mathsf{T}S^{-1}r \geq \frac{\lVert r\rVert_2^2}{\lVert S\rVert_\infty}.
 至多计一次；它可与 `exact_innovation_solve_count` 重叠，因为 fail-open 的含义正是保留
 精确路径。
 
-2026-07-25 合成微基准使用 120 条航迹、每模态 14,400 个候选对、每变体预热 1 次并交错
-运行 7 次。LiDAR、二维声学、三维声学和光电合计 P50 为
+2026-07-25，D6 使用 schema
+`d6.d1_association_sparse_prefilter_multiseed_evaluation.v1` 对 clean source commit
+`9302ccede2ca513c2235370e1a464fc88bc41150` 完成正式评估。冻结 matrix SHA-256 为
+`a7162d014d1c3c0f207355b24a5d7159bf3486d134ca21876f7469d1e915b71d`；场景为
+200 个目标、200 个资源和 2 个侦察节点，short seeds 1131-1140（10 pair）、long seeds
+1131-1133（3 pair），共 13 pair/26 个 fresh episode。13/13 pair 的业务语义、有限状态、
+online truth use=0 和逐模态 exact gate-pass 相等均通过。
+
+候选将非雷达精确求解由 `298109` 降至 `39837`，削减 `86.636767%`，但该局部操作数收益
+不能替代完整路径性能门。正式失败门为：short 候选更快 `7/10 < 8/10`；short D1 fusion
+改善 `0.228437% < 1%`；short paired bootstrap 原始变化 95% 上界
+`0.443531% > 0%`；short core 改善 `0.091096% < 0.25%`；long D1 fusion 改善
+`0.713776% < 1%`。D6 verdict 为 `reject`，`main_default_promotion_allowed=false`。
+因此默认继续使用 `disabled_v1`，候选只保留为显式研究入口；不得调门、删 pair 或改写
+冻结矩阵来覆盖本轮结论。候选最低 RTF 为 `0.206273 < 1`，
+`system_realtime_gap_closed=false`。
+
+作为历史模块证据，2026-07-25 合成微基准使用 120 条航迹、每模态 14,400 个候选对、
+每变体预热 1 次并交错运行 7 次。LiDAR、二维声学、三维声学和光电合计 P50 为
 `0.538083 -> 0.487310 s`，改善 `9.436%`；四类精确求解分别由 14,400 降至
 `3,126/6,306/6,306/3,295`，减少 `78.292%/56.208%/56.208%/77.118%`；
 LiDAR/二维声学/三维声学/光电分别 `7/7、6/7、7/7、7/7` 更快。雷达两臂走同一旧下界，
 本轮 candidate P50 慢 `0.221%`，不记为新增收益。五类规范输出、精确门内 pair 和操作
 计数稳定性通过，正常输入 fallback 为 0；当前 D1 全量为 `473 passed in 24.45s`。
 
-因此 D1 只建议 main 在冻结 short/long 多 seed 上显式 A/B，不建议直接改默认。模块报告为
-`reports/D1_ASSOCIATION_SPARSE_PREFILTER_PERFORMANCE_20260725_CN.md`。本结果不是完整
-200v200 实时、AirSim、目标硬件、RMSE、NEES 或 NIS 准入证据。
+该微基准报告保留在
+`reports/D1_ASSOCIATION_SPARSE_PREFILTER_PERFORMANCE_20260725_CN.md`，仅用于追溯候选
+形成过程，不是主线准入依据。正式 bundle 位于
+`research_modules/d6_evaluation_metrics/outputs/`
+`d1_association_sparse_prefilter_multiseed_20260725_formal_9302cce_d6/`。本轮正式矩阵仍
+不是 AirSim、目标硬件、实机、实飞、RMSE、NEES 或 NIS 证据。
 
 ### 第三十四阶段：在线批次到扫描帧封闭交接正式准入与默认提升
 

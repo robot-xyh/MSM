@@ -1,19 +1,38 @@
 # D1 多传感器融合与目标配准实施计划
 
-## P1 模态感知保守稀疏预筛候选（2026-07-25）
+## P1 模态感知保守稀疏预筛正式拒绝与研究入口治理（2026-07-25）
 
-### 本轮修订短计划（已完成）
+### 正式判定（已完成）
 
-1. 将固定诊断拆为 `radar/lidar/acoustic/acoustic_3d/eo/other` 六个独立桶，补充
-   selector execution config、实现身份和逐桶计数守恒。
-2. 保留 reference 原精确路径与已准入雷达下界；candidate 只在严格可认证的原残差和原
-   创新协方差上预筛，所有奇异、非有限、模型/投影不可用或无法认证情形 fail-open。
-3. 固定输入比较 selector on/off 的航迹、协方差、双时间戳、关联决定和精确门内 pair；
-   覆盖门限边界、奇异协方差、六个模态桶和 dense 小规模输入。
-4. 运行模块微基准，按模态报告候选 pair、剔除、精确求解、精确通过、fallback 和墙钟；
-   再同步 D1 README、原理/算法/实验文档及 D1 review/GAP，候选保持默认关闭。
+D6 schema `d6.d1_association_sparse_prefilter_multiseed_evaluation.v1` 绑定 clean source
+commit `9302ccede2ca513c2235370e1a464fc88bc41150` 和 matrix SHA-256
+`a7162d014d1c3c0f207355b24a5d7159bf3486d134ca21876f7469d1e915b71d`。冻结矩阵为
+200 个目标、200 个资源、2 个侦察节点，short seeds 1131-1140、long seeds 1131-1133，
+共 13 pair/26 个 fresh episode。13/13 业务语义、有限状态、online truth use=0、实现身份
+和逐模态 exact gate-pass 相等均通过。
 
-### 已完成模块工作
+| 冻结性能门 | 正式结果 | 阈值 | 判定 |
+| --- | ---: | ---: | --- |
+| Short candidate 更快数 | `7/10` | `>=8/10` | 失败 |
+| Short D1 fusion 改善 | `0.228437%` | `>=1%` | 失败 |
+| Short paired bootstrap 原始变化 95% 上界 | `0.443531%` | `<=0%` | 失败 |
+| Short core 改善 | `0.091096%` | `>=0.25%` | 失败 |
+| Long D1 fusion 改善 | `0.713776%` | `>=1%` | 失败 |
+
+非雷达精确求解由 `298109` 降至 `39837`，削减 `86.636767%`；这只证明候选减少局部精确
+求解，不能覆盖五个端到端性能门失败。正式 verdict 为 `reject`，
+`optimization_admitted=false`、`main_default_promotion_allowed=false`。
+
+### 默认与冻结治理
+
+1. `disabled_v1` 继续作为声明默认和 main 默认；不修改 selector 默认值。
+2. `modality_conservative_quadratic_bound_v1` 只保留为显式研究入口，不进入默认生产路径。
+3. source commit、matrix SHA、13 pair/26 episode、门限和正式制品保持冻结，不删除失败
+   pair、不重解释 bootstrap，也不以局部精确求解削减替代准入。
+4. 本候选的正式准入流程已以 `reject` 审结。未来若提出不同候选或重新准入，必须建立新的
+   预注册矩阵并保留本轮拒绝记录，不能覆盖或追溯修改本轮 verdict。
+
+### 已完成模块工作（历史）
 
 1. 新增 reference `disabled_v1` 和默认关闭 candidate
    `modality_conservative_quadratic_bound_v1`；未显式选择时保持 reference。
@@ -30,7 +49,7 @@
    `radar/lidar/acoustic/acoustic_3d/eo/other` 输出候选对、预筛剔除、精确求解、
    精确门内通过和 fallback，不含真值。
 
-### 模块验收
+### 历史模块微基准
 
 120 航迹微基准每模态含 14,400 个 pair，每变体预热 1 次并交错 7 次。LiDAR、二维声学、
 三维声学和光电合计 P50 `0.538083 -> 0.487310 s`，改善 `9.436%`。精确求解减少率分别为
@@ -39,15 +58,17 @@
 P50 慢 `0.221%`。五类规范输出和精确门内 pair 完全一致，正常输入 fallback 为 0；
 D1 全量 `473 passed in 24.45s`。
 
-### 后续准入计划
+该微基准只记录候选形成时的模块级结果，不是主线准入证据；正式状态以上述 D6
+`reject` 为准。
 
-1. main 只能显式接入 candidate，冻结 selector、实现 ID、诊断 schema、场景配置和输入
-   哈希。
-2. 运行默认无 source-key R0 的 short 10 pair、long 3 pair 同提交 A/B，比较 D1 fusion、
-   scan-input、D2、核心墙钟、RSS、业务语义和逐模态计数。
-3. D6 独立验证没有 exact-gate-pass 丢失、fallback 守恒、在线真值使用为 0，并按预注册门
-   决定 admit/reject。
-4. 正式判定前保持默认关闭。系统 RTF、AirSim、硬件、RMSE、NEES 和 NIS 继续独立开放。
+### 剩余开放项
+
+1. 候选最低 RTF 为 `0.206273 < 1`，`system_realtime_gap_closed=false`；完整 200v200
+   系统实时 P1 未关闭。
+2. 当前证据仅覆盖三维质点仿真。AirSim、目标处理器、硬件、实机、实飞、RMSE、NEES 和
+   NIS 继续独立开放。
+3. 保持 candidate-on/off 安全等价、诊断守恒和 explicit-only 入口回归，但不安排本候选的
+   默认提升。
 
 ## P1 默认 R0 在线批次到扫描帧正式准入与默认提升（2026-07-25）
 

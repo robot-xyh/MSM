@@ -5,7 +5,7 @@
 
 ---
 
-## 最新增量：模态感知保守稀疏预筛候选（2026-07-25）
+## 最新增量：模态感知保守稀疏预筛正式拒绝（2026-07-25）
 
 - D1 已实现默认关闭的 `modality_conservative_quadratic_bound_v1`；reference
   `disabled_v1` 保留原四维非雷达批量伪逆和原操作顺序。
@@ -14,16 +14,26 @@
 - execution config v1 记录默认、实现 ID、rollback 和逐模态策略；diagnostics v2 按
   `radar/lidar/acoustic/acoustic_3d/eo/other` 六个固定桶记录候选 pair、剔除、精确
   求解、精确门内通过和 fallback，不读取真值。
-- 120 航迹、14,400 pair/模态、7 次交错微基准中，四类非雷达合计 P50 改善 `9.436%`；
-  LiDAR/二维声学/三维声学/光电精确求解减少
-  `78.292%/56.208%/56.208%/77.118%`，更快次数分别为
-  `7/7、6/7、7/7、7/7`；雷达本轮 P50 慢 `0.221%`，不记为新增收益。
-- candidate-on/off 规范输出、精确门内 pair、双时间戳、协方差、谱系和航迹身份一致；
-  D1 全量 `473 passed in 24.45s`。
-- 当前结论是“建议 main 显式正式 A/B”，不是准入或默认提升。后续需冻结同提交 short
-  10 pair、long 3 pair，比较 D1/D2/核心墙钟/RSS/业务语义并由 D6 判定。
+- D6 schema `d6.d1_association_sparse_prefilter_multiseed_evaluation.v1` 绑定 clean source
+  commit `9302ccede2ca513c2235370e1a464fc88bc41150` 和 matrix SHA-256
+  `a7162d014d1c3c0f207355b24a5d7159bf3486d134ca21876f7469d1e915b71d`。
+- 冻结场景为 200 个目标、200 个资源、2 个侦察节点，short seeds 1131-1140、long seeds
+  1131-1133，共 13 pair/26 个 fresh episode。13/13 业务语义、有限状态、online truth
+  use=0、实现身份和逐模态 exact gate-pass 相等均通过。
+- 非雷达精确求解由 `298109` 降至 `39837`，削减 `86.636767%`；该结果只说明局部操作数
+  下降，不构成主线准入。
+- 五个冻结性能门失败：short 更快 `7/10 < 8/10`；short D1 fusion 改善
+  `0.228437% < 1%`；short paired bootstrap 原始变化 95% 上界
+  `0.443531% > 0%`；short core 改善 `0.091096% < 0.25%`；long D1 fusion 改善
+  `0.713776% < 1%`。
+- D6 verdict 为 `reject`，`main_default_promotion_allowed=false`。`disabled_v1` 继续作为
+  默认；candidate 只保留为显式研究入口。冻结矩阵、门限和失败 pair 不得修改或重解释。
+- 120 航迹、14,400 pair/模态、7 次交错微基准及其四类非雷达合计 P50 改善 `9.436%`
+  作为历史候选形成证据保留，不覆盖正式拒绝结论。
+- 候选最低 RTF 为 `0.206273 < 1`，系统实时未闭合。AirSim、目标硬件、实机、实飞和正式
+  融合精度均未由本三维质点矩阵覆盖。
 - AirSim producer、DTO、runtime bus 和坐标时间接口未改变；AirSim 集成文档已检查，无需
-  更新。本轮实验文档已同步模块微基准。
+  更新。本轮实验文档已同步正式 reject，并保留历史微基准。
 
 ## 最新增量：在线批次到扫描帧正式准入与默认提升（2026-07-25）
 

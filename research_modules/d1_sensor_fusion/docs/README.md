@@ -4,16 +4,26 @@
 
 ## 当前证据索引（2026-07-25）
 
-### 模态感知保守稀疏预筛候选
+### 模态感知保守稀疏预筛正式拒绝
 
 D1 已实现默认关闭、可单参数回滚的
 `modality_conservative_quadratic_bound_v1`。execution config v1 和 diagnostics v2
 固定记录 `radar/lidar/acoustic/acoustic_3d/eo/other` 六桶策略与计数；无法认证、
-奇异、非有限和未知模态均 fail-open。120 航迹、14,400 pair/模态、7 次交错微基准中，
-四类非雷达合计 P50 改善 `9.436%`，精确求解分别减少
-`78.292%/56.208%/56.208%/77.118%`，规范输出和 exact-gate-pass 计数一致。
+奇异、非有限和未知模态均 fail-open。
 
-当前只建议 main 在冻结 short/long 多 seed 上显式 A/B，候选不改默认。详细边界与数据见
+D6 schema `d6.d1_association_sparse_prefilter_multiseed_evaluation.v1` 已对 source
+commit `9302ccede2ca513c2235370e1a464fc88bc41150`、matrix SHA-256
+`a7162d014d1c3c0f207355b24a5d7159bf3486d134ca21876f7469d1e915b71d` 完成
+200/200/2 三维质点正式评估。short 10 pair、long 3 pair 共 13 pair/26 个 fresh
+episode；13/13 业务语义、有限状态、online truth use=0 和逐模态 exact gate-pass 相等
+通过。非雷达精确求解削减 `86.636767%`，但 short 更快数 `7/10 < 8/10`、short D1
+fusion 改善 `0.228437% < 1%`、short bootstrap 上界 `0.443531% > 0%`、short core
+改善 `0.091096% < 0.25%` 和 long D1 fusion 改善 `0.713776% < 1%` 五个冻结性能门
+失败，正式 verdict 为 `reject`。
+
+reference `disabled_v1` 继续作为默认；candidate 只保留为显式研究入口。最低 RTF 为
+`0.206273 < 1`，系统实时未闭合。此前 120 航迹、14,400 pair/模态、7 次交错微基准及其
+`9.436%` 非雷达合计 P50 改善作为历史保留，不构成主线准入。详细边界与数据见
 `ALGORITHM_AND_IMPLEMENTATION.md`、`MODULE_PRINCIPLES_CN.md`、
 `EXPERIMENT_REPORT.md` 和
 `../reports/D1_ASSOCIATION_SPARSE_PREFILTER_PERFORMANCE_20260725_CN.md`。

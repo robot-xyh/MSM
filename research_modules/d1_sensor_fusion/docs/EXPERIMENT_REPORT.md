@@ -1,6 +1,54 @@
 # 第一研究模块实验结果
 
-## 模态感知保守稀疏预筛微基准
+## 关联稀疏预筛正式多种子评估
+
+**证据日期：2026-07-25**
+
+**范围：200 个目标、200 个资源、2 个侦察节点的三维质点 short/long 同提交冻结矩阵**
+
+### 来源与规模
+
+- evaluator schema：`d6.d1_association_sparse_prefilter_multiseed_evaluation.v1`；
+- clean source commit：`9302ccede2ca513c2235370e1a464fc88bc41150`；
+- matrix SHA-256：
+  `a7162d014d1c3c0f207355b24a5d7159bf3486d134ca21876f7469d1e915b71d`；
+- short seeds 1131-1140（10 pair）、long seeds 1131-1133（3 pair）；
+- 合计 13 pair/26 个 fresh episode；
+- reference：`disabled_v1`；
+- candidate：`modality_conservative_quadratic_bound_v1`。
+
+13/13 pair 的来源、业务语义、实现身份、有限状态、online truth use=0、预筛审计和逐模态
+exact gate-pass 相等均通过。非雷达精确求解由 `298109` 降至 `39837`，削减
+`86.636767%`。该结果证明局部精确求解工作量下降，不单独构成主线准入。
+
+### 正式性能门
+
+| 冻结性能门 | 正式结果 | 阈值 | 判定 |
+| --- | ---: | ---: | --- |
+| Short candidate 更快数 | `7/10` | `>=8/10` | 失败 |
+| Short D1 fusion 改善 | `0.228437%` | `>=1%` | 失败 |
+| Short paired bootstrap 原始变化 95% 上界 | `0.443531%` | `<=0%` | 失败 |
+| Short core 改善 | `0.091096%` | `>=0.25%` | 失败 |
+| Long D1 fusion 改善 | `0.713776%` | `>=1%` | 失败 |
+
+short paired bootstrap 原始变化 95% CI 为
+`[-0.946192%, 0.443531%]`。其余来源、语义、诊断、精确求解削减、scan input、D2 和
+RSS 非退化门通过，但准入要求所有冻结门通过。
+
+### 正式判定与边界
+
+D6 verdict 为 `reject`，`optimization_admitted=false`、
+`main_default_promotion_allowed=false`。reference `disabled_v1` 继续作为默认；
+candidate 只保留为显式研究入口。不得调门、删除失败 pair、修改冻结矩阵或把局部精确求解
+削减写成主线准入。任何未来提案必须使用新的预注册矩阵，并保留本轮拒绝记录。
+
+候选最低 RTF 为 `0.206273 < 1`，`system_realtime_gap_closed=false`。本证据只覆盖三维
+质点仿真，不是 AirSim、目标处理器、硬件、实机、实飞、RMSE、NEES 或 NIS 证据。正式
+bundle 位于
+`research_modules/d6_evaluation_metrics/outputs/`
+`d1_association_sparse_prefilter_multiseed_20260725_formal_9302cce_d6/`。
+
+## 历史：模态感知保守稀疏预筛微基准
 
 **证据日期：2026-07-25**
 
@@ -37,9 +85,10 @@ LiDAR、二维声学、三维声学和光电合计 P50 为 `0.538083 -> 0.487310
 
 ### 判定
 
-D1 模块门通过，建议 main 在固定提交和冻结输入上运行 short/long 多 seed 正式 A/B。
-candidate 继续默认关闭，不能由本微基准直接提升。该结果不是完整 200v200 实时、AirSim、
-目标处理器、实机、RMSE、NEES 或 NIS 证据。机器可读结果和中文报告为
+该微基准在候选形成阶段通过 D1 模块门，并触发了后续固定提交和冻结输入的正式 A/B；其
+历史职责到此结束。正式评估现已 `reject`，因此不能再用本微基准支持默认提升。该结果不是
+完整 200v200 实时、AirSim、目标处理器、实机、RMSE、NEES 或 NIS 证据。机器可读结果和
+中文报告继续保留为历史制品：
 `../reports/d1_association_sparse_prefilter_performance_20260725.json` 与
 `../reports/D1_ASSOCIATION_SPARSE_PREFILTER_PERFORMANCE_20260725_CN.md`。
 
