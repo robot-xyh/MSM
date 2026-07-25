@@ -1175,7 +1175,7 @@ AirSim、真实传感器精度、RMSE、归一化估计误差平方、归一化�
 
 **场景：200v200 nominal 冻结三维质点 replay，seed 1101，10 s**
 
-输入文件 SHA-256 为
+以下表格记录首个 `immutable_shared_audit.v1` 候选。输入文件 SHA-256 为
 `8ece10afc86eb426ac1810f4fff9a22860cdceea1ae2a71d0b30413f20c09fed`，包含 570 个扫描、
 10,810 条匿名在线观测。对照路径为每条航迹复制扫描级 association/latency/sensor-health
 审计映射；候选路径把三棵审计树递归冻结一次并在同一扫描航迹间只读复用。两条路径都保持
@@ -1194,6 +1194,27 @@ AirSim、真实传感器精度、RMSE、归一化估计误差平方、归一化�
 一致，在线 truth 使用为 0。变异测试确认顶层 metadata 与轨迹专属诊断相互隔离，共享审计树
 拒绝写入；JSON 和深拷贝读取兼容。D1 全量回归为 `365 passed in 20.91s`。
 
-该数据来自单 seed、当前工作树和本机单次运行。墙钟只作描述，不参与通过判定。候选默认关闭，
-尚未完成 clean 多 seed、RSS、D2-D7 下游、AirSim、目标硬件或正式精度验证，因此不关闭系统
-实时 P1。
+该单 seed 数据只解释 v1 的 D1 局部热点。随后在 clean
+`a36f519ed954a9ba8bdc3fe149ba2835da290c39` 上完成 13 对正式评估：short seeds
+1101-1110、2.2 s；long seeds 1101-1103、10 s。全部 26 个 arm 返回 0，13/13 业务语义、
+有限状态、真值隔离、身份和 RSS 门通过。
+
+| 正式矩阵指标 | Short | Long |
+| --- | ---: | ---: |
+| D1 fusion wall 改善 | 16.29% | 31.05% |
+| D2 association 变化 | +53.44% | +169.89% |
+| 核心墙钟改善 | 1.65% | 1.21% |
+| 预注册准入门 | >=5% | >=5% |
+
+v1 未准入。D2 只对精确内建容器复用 truth-free 审计；v1 自定义 `dict/list` 子类触发每条航迹
+重复递归扫描共享 sensor-health 树，抵消了 D1 的收益。
+
+2026-07-24 D1 已实现 `immutable_shared_audit.v2`。v2 使用 `frozenset` 键值对和 tuple 序列
+承载精确不可变合同，并提供公开递归验证 API。专项覆盖全部公开变异方法、
+`dict.__setitem__`/`list.append` 绕过、伪造
+marker、自定义 Mapping、可变 backing store、循环输入、不支持叶值、共享身份、JSON、pickle
+和深拷贝。D1 全量为 `389 passed in 20.84s`。本报告没有 v2 的多 seed 性能结果；main/D2
+完成新 selector 和一次内容审计复用接线后，需从同一 clean 提交生成新的 13 对矩阵。
+
+两代候选均保持默认关闭。本组不含 AirSim、目标硬件或正式 RMSE/NEES/NIS 证据，因此不关闭
+系统实时 P1。

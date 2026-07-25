@@ -1997,21 +1997,33 @@ latency 和 sensor-health 共享审计树。不修改雷达数学、fixed-lag/OO
 1. `immutable_shared_publication_metadata=False` 保留 reference；`True` 启用候选，且强制要求
    `shared_publication_audit_snapshot=True`。
 2. 候选在 `_track_publication_context()` 中递归复制并冻结三棵共享审计树。冻结容器保持
-   `dict`/`list` 和 JSON 编码兼容，所有常规写入、删除、排序和扩展操作均 fail closed。
+   映射/序列读取语义；当前 v2 使用 `frozenset` 键值对和 tuple 序列承载精确类型，不继承可
+   由基类方法绕过的 `dict/list`。所有常规写入、删除、排序和扩展操作均 fail closed，
+   `GlobalTrack.to_dict()` 在持久化边界转回内建 JSON 容器。
 3. `_to_global_track()` 仍为每条航迹建立独立顶层 metadata 和状态/协方差副本，只复用三个
    不可变审计值。`publication_materialization_diagnostics()` 输出实际实现标识、逐航迹复制、
-   不可变容器构造、共享值复用和完整物化计数。
+   合同版本、不可变容器构造、合同验证节点、共享值复用和完整物化计数。
 4. 专用冻结回放 A/B 逐发布计算完整 `GlobalTrack.to_dict()` SHA-256，并比较逐扫描融合语义、
    业务操作数、累计诊断、终态和 consistency evidence。墙钟和 profile 不参与通过判定。
+5. 下游只可对精确 `d1.publication_audit_tree.v2` 调用
+   `validate_immutable_publication_audit_tree()`。认证后仍需执行一次内容级 truth-free 审计，
+   只对同一强引用对象身份复用结果；任意 marker、`Mapping` 或可变代理不得进入快路。
 
 ### 31.3 当前证据与后续验收
 
-2026-07-24 单 seed 1101、570 扫描、10,810 观测的 reference/candidate 全部门控通过。完整物化
+2026-07-24 单 seed 1101、570 扫描、10,810 观测的 v1 reference/candidate 全部门控通过。完整物化
 均为 71,515；reference 复制共享审计映射 8,832,271 次，candidate 为 0。profile 中
 `_to_global_track` 为 `10.700 -> 2.198 s`，fusion 总墙钟为 `42.282 -> 34.792 s`。专项
-4 项和 D1 全量 `365 passed in 20.91s`。
+4 项和当时 D1 全量 `365 passed in 20.91s`。
 
-候选保持默认关闭。main 后续在冻结 short 10 seed 和 long 3 seed 上交错运行，要求业务摘要、
-在线真值隔离、有限状态、操作数和实现身份全部通过，并报告 bootstrap 区间、RSS 与 D2-D7
-下游兼容性。正式准入后才更新默认值；完整系统实时、AirSim 和正式 RMSE/NEES/NIS 继续独立
-开放。
+同提交 v1 正式矩阵随后完成 short 10 seed 和 long 3 seed。D1 fusion wall 改善
+16.29%/31.05%，但 D2 association 增加 53.44%/169.89%；核心墙钟只改善 1.65%/1.21%，未
+达到 5% 门，因此 v1 未准入。根因是 D2 只复用精确内建容器审计，无法验证 v1 自定义
+`dict/list` 子类。
+
+当前代码候选已升级为 `immutable_shared_audit.v2`，合同为
+`d1.publication_audit_tree.v2`。D1 已完成 389 项全量单元回归，包括 base-class 绕过、可变
+backing store、循环树、不支持叶值、序列化和共享身份。下一步由 main 新增
+`immutable_shared_v2` selector，D2 接入精确合同验证与同对象一次内容审计，再从同一 clean
+提交重跑全新 13-pair 矩阵。不得复用 v1 的 selector、输出目录或准入结论。正式准入后才考虑
+默认值；完整系统实时、AirSim 和正式 RMSE/NEES/NIS 继续独立开放。

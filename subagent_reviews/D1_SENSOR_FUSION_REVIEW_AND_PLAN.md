@@ -1599,6 +1599,12 @@ latency 和 sensor-health 递归冻结后按扫描共享。轨迹顶层 metadata
 source support、association diagnostics 和 identity likelihood 仍独立。该边界没有进入雷达
 关联、固定滞后重放、航迹分级或观测处理。
 
+首个 v1 使用 `dict/list` 只读子类。常规写入虽然失败，调用者仍可用基类方法直接修改底层
+容器；D2 也无法把该表示与任意自定义 Mapping 严格区分。v2 改用无实例存储的
+`frozenset` 键值对和 tuple 序列精确类型，并提供递归验证 API。验证器不接受 marker、自定义
+Mapping、可变代理、容器子类、循环树和
+不支持叶值。下游仍需对每个新对象执行一次内容级 truth-free 审计，合同本身不声明内容可信。
+
 ### 33.2 证据
 
 冻结 seed 1101 输入 SHA-256 为
@@ -1610,7 +1616,15 @@ source support、association diagnostics 和 identity likelihood 仍独立。该
 
 ### 33.3 决策与下一步
 
-模块级候选实现和安全隔离测试通过，默认值继续为 `False`。当前结果只有单 seed，且工作区不
-是新的 clean full-stack 准入提交。main 应在 frozen short 10 seed、long 3 seed 上交错运行，
-检查严格语义、实现身份、RSS、bootstrap 区间和 D2-D7 消费兼容性。通过前不得写成实时缺口
-已关闭，也不得把 1.215 倍单次墙钟收益外推到 AirSim 或目标平台。
+v1 后续已完成同一 clean 提交的 frozen short 10 seed、long 3 seed 正式矩阵。D1 fusion wall
+改善 16.29%/31.05%，D2 association 增加 53.44%/169.89%，核心墙钟只改善
+1.65%/1.21%，低于预注册 5% 门。v1 判定不准入。回退来自 D2 对 v1 自定义容器逐航迹重复
+递归审计，不是 D1 数值或业务语义变化。
+
+当前模块候选 ID 已升级为 `immutable_shared_audit.v2`，默认值继续为 `False`。D1 新增合同
+专项覆盖公开变异方法、基类绕过、伪造/非法树、共享身份、JSON、pickle 和深拷贝；全量
+`389 passed in 20.84s`。main 下一步必须新增 `immutable_shared_v2` selector；D2 只对精确
+v2 合同执行一次内容审计，并按同一强引用对象复用。随后从同一 clean 提交重跑全新 13-pair
+矩阵，检查严格语义、实际实现身份、合同版本、RSS、bootstrap 区间和 D2-D7 兼容性。旧 v1
+证据和输出目录不能复用为 v2 准入。通过前不得写成实时缺口已关闭，也不得外推到 AirSim 或
+目标平台。

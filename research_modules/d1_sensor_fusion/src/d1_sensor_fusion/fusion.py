@@ -31,6 +31,13 @@ from .observations import (
     measurement_model_for,
     radar_state_from_observation,
 )
+from .publication_audit import (
+    PUBLICATION_AUDIT_TREE_CONTRACT_VERSION,
+    PUBLICATION_METADATA_CANDIDATE_IMPLEMENTATION_ID,
+    PUBLICATION_METADATA_REFERENCE_IMPLEMENTATION_ID,
+    ImmutablePublicationAuditMap,
+    freeze_publication_audit_tree,
+)
 from .types import (
     COMMUNICATION_METADATA_KEYS,
     DEFAULT_STRUCTURAL_AMBIGUITY_PUBLISHER_EPOCH,
@@ -215,102 +222,6 @@ _NEUTRAL_CENTROID_IDENTITY_METADATA_ALLOWED_KEYS = frozenset(
         "target_node_id",
     }
 )
-PUBLICATION_METADATA_REFERENCE_IMPLEMENTATION_ID = (
-    "d1.publication_metadata.per_track_audit_copy.v1"
-)
-PUBLICATION_METADATA_CANDIDATE_IMPLEMENTATION_ID = (
-    "d1.publication_metadata.immutable_shared_audit.v1"
-)
-
-
-class _ImmutableAuditDict(dict):
-    """JSON-compatible dictionary that rejects mutation after construction."""
-
-    def __copy__(self) -> "_ImmutableAuditDict":
-        return self
-
-    def __deepcopy__(self, memo: dict[int, Any]) -> "_ImmutableAuditDict":
-        memo[id(self)] = self
-        return self
-
-    @staticmethod
-    def _reject_mutation(*args: object, **kwargs: object) -> None:
-        del args, kwargs
-        raise TypeError("shared publication audit metadata is immutable")
-
-    __setitem__ = _reject_mutation
-    __delitem__ = _reject_mutation
-    clear = _reject_mutation
-    pop = _reject_mutation
-    popitem = _reject_mutation
-    setdefault = _reject_mutation
-    update = _reject_mutation
-    __ior__ = _reject_mutation
-
-
-class _ImmutableAuditList(list):
-    """JSON-compatible list that rejects mutation after construction."""
-
-    def __copy__(self) -> "_ImmutableAuditList":
-        return self
-
-    def __deepcopy__(self, memo: dict[int, Any]) -> "_ImmutableAuditList":
-        memo[id(self)] = self
-        return self
-
-    @staticmethod
-    def _reject_mutation(*args: object, **kwargs: object) -> None:
-        del args, kwargs
-        raise TypeError("shared publication audit metadata is immutable")
-
-    __setitem__ = _reject_mutation
-    __delitem__ = _reject_mutation
-    __iadd__ = _reject_mutation
-    __imul__ = _reject_mutation
-    append = _reject_mutation
-    clear = _reject_mutation
-    extend = _reject_mutation
-    insert = _reject_mutation
-    pop = _reject_mutation
-    remove = _reject_mutation
-    reverse = _reject_mutation
-    sort = _reject_mutation
-
-
-def _freeze_publication_audit_value(
-    value: Any,
-    operation_counts: Counter[str],
-) -> Any:
-    """Copy one audit tree into recursively immutable JSON containers."""
-
-    if isinstance(value, Mapping):
-        operation_counts["immutable_shared_mapping_build_count"] += 1
-        return _ImmutableAuditDict(
-            {
-                key: _freeze_publication_audit_value(nested, operation_counts)
-                for key, nested in value.items()
-            }
-        )
-    if isinstance(value, list):
-        operation_counts["immutable_shared_list_build_count"] += 1
-        return _ImmutableAuditList(
-            _freeze_publication_audit_value(item, operation_counts)
-            for item in value
-        )
-    if isinstance(value, tuple):
-        operation_counts["immutable_shared_tuple_build_count"] += 1
-        return tuple(
-            _freeze_publication_audit_value(item, operation_counts)
-            for item in value
-        )
-    if isinstance(value, np.ndarray):
-        operation_counts["immutable_shared_array_build_count"] += 1
-        frozen = np.asarray(value).copy()
-        frozen.setflags(write=False)
-        return frozen
-    return value
-
-
 def _strict_real_parameter(
     value: object,
     name: str,
@@ -657,9 +568,9 @@ class _ReplayCheckpoint:
 
 @dataclass(frozen=True)
 class _TrackPublicationContext:
-    association_audit: dict[str, Any]
-    latency_audit: dict[str, Any]
-    sensor_health: dict[str, dict[str, Any]]
+    association_audit: Mapping[str, Any]
+    latency_audit: Mapping[str, Any]
+    sensor_health: Mapping[str, Mapping[str, Any]]
 
 
 @dataclass
@@ -1923,6 +1834,11 @@ class FusionAdapter:
         )
         return {
             "implementation_id": implementation_id,
+            "publication_audit_contract_version": (
+                PUBLICATION_AUDIT_TREE_CONTRACT_VERSION
+                if self.immutable_shared_publication_metadata
+                else None
+            ),
             "immutable_shared_publication_metadata": bool(
                 self.immutable_shared_publication_metadata
             ),
@@ -2029,18 +1945,29 @@ class FusionAdapter:
         }
         if self.immutable_shared_publication_metadata:
             freeze_counts: Counter[str] = Counter()
-            association_audit = _freeze_publication_audit_value(
+            association_audit = freeze_publication_audit_tree(
                 association_audit,
                 freeze_counts,
             )
-            latency_audit = _freeze_publication_audit_value(
+            latency_audit = freeze_publication_audit_tree(
                 latency_audit,
                 freeze_counts,
             )
-            sensor_health = _freeze_publication_audit_value(
+            sensor_health = freeze_publication_audit_tree(
                 sensor_health,
                 freeze_counts,
             )
+            if not all(
+                type(value) is ImmutablePublicationAuditMap
+                for value in (
+                    association_audit,
+                    latency_audit,
+                    sensor_health,
+                )
+            ):
+                raise RuntimeError(
+                    "publication audit freeze returned a non-v2 contract root"
+                )
             self._publication_materialization_operations.update(freeze_counts)
         return _TrackPublicationContext(
             association_audit=association_audit,

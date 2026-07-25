@@ -7,7 +7,12 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from d1_sensor_fusion import FusionAdapter, SensorObservation
+from d1_sensor_fusion import (
+    PUBLICATION_AUDIT_TREE_CONTRACT_VERSION,
+    FusionAdapter,
+    SensorObservation,
+    validate_immutable_publication_audit_tree,
+)
 from d1_sensor_fusion.observations import (
     radar_covariance_from_range,
     radar_h,
@@ -106,8 +111,18 @@ def test_candidate_shares_only_recursively_immutable_publication_audits() -> Non
     diagnostics = adapter.publication_materialization_diagnostics()
     counts = diagnostics["operation_counts"]
     assert diagnostics["implementation_id"].endswith(
-        "immutable_shared_audit.v1"
+        "immutable_shared_audit.v2"
     )
+    assert (
+        diagnostics["publication_audit_contract_version"]
+        == PUBLICATION_AUDIT_TREE_CONTRACT_VERSION
+    )
+    for key in ("association_audit", "latency_audit", "sensor_health"):
+        assert (
+            validate_immutable_publication_audit_tree(first.metadata[key])
+            .contract_version
+            == PUBLICATION_AUDIT_TREE_CONTRACT_VERSION
+        )
     assert counts["global_track_metadata_materialization_count"] == 2
     assert counts["shared_audit_value_reuse_count"] == 6
     assert counts["immutable_shared_mapping_build_count"] > 0
@@ -139,6 +154,12 @@ def test_reference_and_candidate_publish_identical_complete_track_payloads() -> 
     reference_counts = reference.publication_materialization_diagnostics()[
         "operation_counts"
     ]
+    assert (
+        reference.publication_materialization_diagnostics()[
+            "publication_audit_contract_version"
+        ]
+        is None
+    )
     candidate_counts = candidate.publication_materialization_diagnostics()[
         "operation_counts"
     ]

@@ -967,12 +967,19 @@ covariance、在线 truth fail-closed、source lineage、6 s fixed-lag、量测�
 
 | GAP/合同 | 当前状态 | D1-owned 证据 | 剩余关闭条件 |
 | --- | --- | --- | --- |
-| 可执行 reference/candidate | **已关闭模块实现项** | `immutable_shared_publication_metadata` 显式开关；reference 默认；实现标识和操作计数写入 JSON | main 正式矩阵必须按实现标识验证，不得按提交号推断 |
-| 共享审计可变别名 | **已关闭模块安全项** | 候选递归冻结 association/latency/sensor-health；同扫描航迹只读共享；顶层 metadata 与轨迹专属诊断隔离；变异和深拷贝测试通过 | 下游若依赖修改嵌套审计树，需改为先复制再修改，不能放宽不可变门 |
-| 逐发布业务等价 | **单 seed 候选通过** | seed 1101、570 扫描、10,810 观测；逐发布完整 `GlobalTrack.to_dict()`、逐扫描摘要、操作数、累计诊断、终态和 evidence 全部一致；truth use 0 | clean short 10 seed、long 3 seed 交错 A/B 和 D2-D7 下游兼容 |
-| 重复物化成本 | **候选已消除，未正式准入** | 完整物化 71,515 保持；逐航迹共享审计映射复制 `8,832,271 -> 0`；`_to_global_track 10.700 -> 2.198 s`；fusion `42.282 -> 34.792 s` | 多 seed bootstrap 区间、RSS、异常/更多 sensor-health 数量和长时稳定性 |
+| 可执行 reference/candidate | **v2 D1-owned 实现已关闭，系统准入开放** | reference 默认不变；布尔候选实际 ID 升级为 `immutable_shared_audit.v2`；diagnostics 显式输出 `d1.publication_audit_tree.v2` 和节点/复用/复制计数 | main 新增 `immutable_shared_v2` selector 和 matrix 版本；旧 v1 selector 必须因 actual ID 不符 fail closed |
+| v1 容器基类绕过 | **已关闭** | v2 不继承 `dict/list`，底层只有 `frozenset` 键值对和 tuple 序列；全部公开 mutator 和 `dict.__setitem__`/`list.append` 基类调用回归通过 | 保持精确类型和 base-class 负测，不得退回可变基类子类 |
+| 下游精确合同验证 | **D1 API 已关闭，D2 接线 P1 开放** | 公开递归验证只认证精确 v2 map/sequence 和有限 JSON 叶值；拒绝自定义 Mapping、marker、mappingproxy backing、子类、循环、重复键和非法叶值 | D2 对每个新对象先验证合同、再做一次 truth-free 内容审计，并用强引用身份复用；不得只按 marker/`__eq__`/裸 `id()` 信任 |
+| 逐发布业务等价 | **v1 正式通过；v2 模块回归通过** | v1 正式 13/13 语义门通过；v2 `GlobalTrack.to_dict()` 保持内建 JSON payload，顶层 metadata/state/covariance 独立，同批三个审计根共享；D1 全量 389 passed | v2 clean short 10 seed、long 3 seed 交错 A/B 和 D2-D7 下游兼容 |
+| 重复物化成本 | **v1 消除复制但正式拒绝；v2 待复测** | v1 完整物化不变、复制降为 0；D1 fusion 改善 short 16.29%/long 31.05% | v2+D2 一次审计接线后重跑全新矩阵；要求核心墙钟达到 5% 门并保持 RSS/语义/真值隔离 |
 | 完整系统实时与效果 | **P1 仍开放，main-owned** | 候选只处理 D1 发布元数据；没有 AirSim、目标硬件、正式 RMSE/NEES/NIS 或物理拦截证据 | 达到预注册系统预算，并完成 AirSim、精度、容量和完整拦截独立验收 |
 
-候选保持默认关闭。D1 全量 `365 passed in 20.91s`。本轮没有新增 P0，也没有修改雷达数学、
-fixed-lag、扫描/发布频率、门限、观测内容、双时间戳、covariance、NED 或 `global_track_id`
-合同。
+v1 正式矩阵中 D2 association 增加 short 53.44%、long 169.89%，核心墙钟只改善
+1.65%/1.21%，低于 5% 门，`d1_optimization_admitted=false`。该结论保持为 v1 历史证据。
+v2 只完成 D1 合同和单元验证，尚未获得新的正式准入结果。
+
+候选保持默认关闭。2026-07-24 D1 全量 `389 passed in 20.84s`。本轮没有新增 P0，也没有修改
+雷达数学、fixed-lag、扫描/发布频率、门限、观测内容、双时间戳、covariance、NED 或
+`global_track_id` 合同。AirSim 集成计划已检查；本次只改变 Python 内存中的发布审计表示和
+`GlobalTrack.to_dict()` 持久化转换，不改变 AirSim topic、settings、时间戳或 episode 流程，
+无需更新。

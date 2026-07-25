@@ -1801,11 +1801,30 @@ D1 全量 `151 passed`。
 每个发布扫描计算一次，但 `_to_global_track()` 仍为每条航迹复制三类共享审计映射及每个
 sensor-health 子映射。冻结 seed 1101 中该路径累计执行 8,832,271 次映射复制。
 
-新增 `immutable_shared_publication_metadata` 候选开关。默认值为 `False`，保留原逐航迹复制
-reference。候选为每个发布扫描递归复制并冻结三棵共享审计树一次，使用拒绝所有变异操作的
-`dict`/`list` 兼容容器；同一扫描的航迹只读复用这三个值。每条航迹的顶层 metadata、state、
-covariance、source support、association diagnostics、identity likelihood 和质量分级仍独立
-物化。对共享审计树的写入会抛出 `TypeError`，避免一个航迹污染同扫描其他航迹。
+`immutable_shared_publication_metadata` 默认值仍为 `False`，reference 仍执行逐航迹复制。
+2026-07-24 首个候选
+`d1.publication_metadata.immutable_shared_audit.v1` 使用 `dict/list` 只读子类。D6 在同一
+clean 提交上的 short 10 seed、long 3 seed 正式矩阵中确认 D1 fusion wall 分别改善
+16.29% 和 31.05%，但 D2 无法把这些自定义容器识别为可安全复用的精确合同，因而逐航迹重新
+扫描 sensor-health 树。D2 association 分别增加 53.44% 和 169.89%，核心墙钟只改善
+1.65% 和 1.21%，未达到预注册 5% 门。v1 未准入。
+
+当前布尔候选已升级为
+`d1.publication_metadata.immutable_shared_audit.v2`，合同版本为
+`d1.publication_audit_tree.v2`。v2 不继承 `dict` 或 `list`；映射由 `frozenset` 键值对承载，
+序列由 tuple 承载，两者都没有实例属性。`dict.__setitem__`、`list.append` 等基类调用没有可
+修改的底层存储。
+公开的 `validate_immutable_publication_audit_tree()` 只认证精确 v2 类型及其递归内容，拒绝
+任意自定义 `Mapping`、marker 字典、`mappingproxy` 可变 backing store、容器子类、循环树、
+重复键、非字符串键、非有限浮点数和不支持的叶值。该认证只证明结构不可变；下游仍须对一个
+经认证对象执行一次 truth-free 内容审计，然后仅按同一对象身份复用结果。
+
+同一扫描内的 `association_audit`、`latency_audit` 和 `sensor_health` 根对象可安全共享。
+每条航迹的顶层 metadata、state、covariance、source support、association diagnostics、
+identity likelihood 和质量分级仍独立物化。`GlobalTrack.to_dict()` 在 JSON/持久化边界将
+v2 容器显式还原为内建 `dict/list`；浅拷贝和深拷贝可安全复用不可变子树。实现身份、合同版本、
+冻结节点数、共享次数和逐航迹复制次数继续由
+`publication_materialization_diagnostics()` 输出。
 
 专用入口为：
 
@@ -1819,15 +1838,19 @@ python3 research_modules/d1_sensor_fusion/scripts/run_publication_metadata_perfo
   --repeat-count 1
 ```
 
-2026-07-24 单 seed 冻结输入 SHA-256 为
+下列结果属于已拒绝的 v1，不属于 v2 性能证据。2026-07-24 单 seed 冻结输入 SHA-256 为
 `8ece10afc86eb426ac1810f4fff9a22860cdceea1ae2a71d0b30413f20c09fed`，含 570 个扫描、
 10,810 条匿名在线观测和 201 条终态航迹。reference/candidate 的逐输入结果、claim registry、
 发布分组、逐扫描融合摘要、逐发布完整 `GlobalTrack.to_dict()`、融合操作数、累计诊断、终态
 和 consistency evidence 全部一致，在线 truth 使用为 0。完整物化数均为 71,515；候选逐航迹
 共享审计映射复制为 0，只读复用为 214,545 次。
 
-同轮 cProfile 中 `_to_global_track` 累计由 `10.700 s` 降至 `2.198 s`，fusion 总墙钟由
+同轮 v1 cProfile 中 `_to_global_track` 累计由 `10.700 s` 降至 `2.198 s`，fusion 总墙钟由
 `42.282 s` 降至 `34.792 s`，单次加速 `1.215x`。墙钟不参与单元测试判定。该结果仍是当前
-工作树上的单 seed 候选证据，不是正式多 seed、AirSim、目标硬件或系统实时放行。
-候选保持默认关闭，待 main 交错多 seed 验证收益、内存和 D2-D7 下游兼容性。D1 全量回归为
-`365 passed in 20.91s`。
+工作树上的单 seed v1 证据，不是 AirSim、目标硬件或系统实时放行。
+
+v2 已完成冻结、验证、base-class 绕过、公开变异方法、伪造合同、循环输入、序列化、pickle、
+深拷贝和同批共享身份测试。2026-07-24 D1 全量回归为 `389 passed in 20.84s`。v2 尚未运行
+新的 clean 13-pair 矩阵，继续默认关闭。main 必须新增 `immutable_shared_v2` selector 和新
+matrix 版本，并校验实际 implementation ID 与 contract version；原
+`immutable_shared_v1` selector/证据不得指向 v2。

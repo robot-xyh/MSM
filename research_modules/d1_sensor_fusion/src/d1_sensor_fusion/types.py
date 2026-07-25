@@ -9,6 +9,8 @@ from typing import Any
 
 import numpy as np
 
+from .publication_audit import publication_audit_to_builtin
+
 
 STRUCTURAL_AMBIGUITY_EVIDENCE_SCHEMA_VERSION = (
     "d1.structural-ambiguity-evidence.v1"
@@ -374,7 +376,7 @@ class GlobalTrack:
             "source_support": dict(self.source_support),
             "identity_likelihood": dict(self.identity_likelihood),
             "last_nis": self.last_nis,
-            "metadata": dict(self.metadata),
+            "metadata": publication_audit_to_builtin(self.metadata),
         }
 
 

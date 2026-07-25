@@ -2718,9 +2718,34 @@ metadata_i["latency_audit"] = F_k.latency_audit
 metadata_i["sensor_health"] = F_k.sensor_health
 ```
 
-冻结映射和列表继承标准容器，保持比较和 JSON 序列化形式；所有变异方法抛出 `TypeError`。
-元组递归冻结，NumPy 数组建立独立只读副本。候选复制项变为 `O(|A_k| + S_k + T_k)`，不共享
-任何轨迹专属可变对象。
+v1 冻结映射和列表继承标准容器，常规变异方法抛出 `TypeError`。该方式不能阻止
+`dict.__setitem__(instance, ...)` 或 `list.append(instance, ...)` 直接操作基类存储，也不能让
+下游仅凭精确类型证明递归不可变。v1 已经由正式多 seed 矩阵拒绝。
+
+v2 把映射的 `(str, value)` 对保存到 `frozenset`，把 JSON 数组保存为不可变元组。两个公开
+类型都没有实例字典或可写槽位，也没有 `dict/list` 基类存储。精确递归验证规则为：
+
+```text
+root type == ImmutablePublicationAuditMap
+map value  := exact ImmutablePublicationAuditMap
+            | exact ImmutablePublicationAuditSequence
+            | None | bool | int | finite float | str
+map key    := exact str, unique within one map
+```
+
+`validate_immutable_publication_audit_tree()` 逐节点检查精确类型、键和叶值。任意自定义
+`Mapping`、`mappingproxy`、marker、容器子类、循环输入、重复键、可变叶值和非有限浮点数均
+失败。即使调用者用 `tuple.__new__` 绕过类型构造器，验证器也会检查底层每个键值对和叶值。
+`freeze_publication_audit_tree()` 只接受精确内建 `dict/list/tuple` 及可转为受支持叶值的
+NumPy 数组，先复制再生成 v2 合同。
+
+合同认证只证明树在当前 Python 对象模型中递归不可变，不证明内容已经通过在线 truth 隔离。
+D2 应先认证对象，再对该对象执行一次原有内容审计，并以强引用对象身份缓存通过结果。后续只
+在遇到同一对象时复用；不能按 `__eq__`、marker、摘要值或裸 `id()` 复用。
+
+`GlobalTrack.to_dict()` 调用 `publication_audit_to_builtin()`，在 JSON 和持久化边界还原普通
+`dict/list`。深拷贝可复用原不可变对象；pickle 往返后仍须重新执行精确合同验证。候选复制项
+保持 `O(|A_k| + S_k + T_k)`，不共享任何轨迹专属可变对象。
 
 ### 31.3 A/B 保护
 
@@ -2730,7 +2755,12 @@ benchmark 在相同 `SensorScanFrame` 序列上交错运行两条路径，并逐
 融合操作计数、累计诊断、终态和 consistency evidence。独立变异测试检查顶层 metadata 可各自
 修改，共享审计树不可修改。
 
-冻结 seed 1101 的完整物化数保持 71,515。reference 的共享审计映射复制计数为 8,832,271，
+冻结 seed 1101 的 v1 完整物化数保持 71,515。reference 的共享审计映射复制计数为 8,832,271，
 candidate 为 0；candidate 记录 214,545 次共享值复用。该计数证明减少的是重复容器复制，不是
 航迹、扫描、观测或审计字段。单 seed profile 显示 `_to_global_track` 累计
-`10.700 -> 2.198 s`；正式多 seed 准入尚未执行。
+`10.700 -> 2.198 s`。
+
+v1 正式 short 10 seed、long 3 seed 中 D1 fusion wall 改善 16.29%/31.05%，但 D2 因逐航迹
+重审自定义容器而增加 53.44%/169.89%，核心墙钟改善 1.65%/1.21%，未达到 5% 准入门。
+v2 当前只完成 D1 合同和 389 项全量回归，尚未产生新的多 seed 性能证据。main 与 D2 接线后
+必须用新的 selector、matrix 版本和 clean 提交重跑，不能把上述 v1 数值归到 v2。
