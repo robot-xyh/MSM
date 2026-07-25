@@ -376,6 +376,172 @@ def test_episode_cli_exposes_d1_cv_motion_model_cache_selector() -> None:
     assert args.d1_cv_motion_model_cache_capacity == 17
 
 
+def test_d1_opaque_source_identity_cache_is_explicit_hashed_and_audited() -> None:
+    config = ScenarioConfig(
+        scenario_name="d1_opaque_source_identity_cache_selection",
+        scenario_version="d1-opaque-source-identity-cache-selection-v1",
+        target_count=2,
+        resource_count=2,
+        recon_count=1,
+        region_count=1,
+        duration_s=0.6,
+        seed=30,
+    )
+    default = IntegratedStackConfig()
+    assert (
+        default.d1_opaque_source_identity_implementation
+        == "per_publication_build_v1"
+    )
+    assert default.d1_opaque_source_identity_cache_capacity == 1_024
+
+    reference_stack = IntegratedScalableModuleStack(
+        IntegratedStackConfig(
+            d1_publish_opaque_source_key=True,
+            d1_opaque_source_identity_implementation=(
+                "per_publication_build_v1"
+            ),
+        )
+    )
+    candidate_stack = IntegratedScalableModuleStack(
+        IntegratedStackConfig(
+            d1_publish_opaque_source_key=True,
+            d1_opaque_source_identity_implementation=(
+                "bounded_generation_lru_v1"
+            ),
+            d1_opaque_source_identity_cache_capacity=7,
+        )
+    )
+    reference_profile = reference_stack.runtime_manifest_profile_for_scenario(
+        config
+    )
+    candidate_profile = candidate_stack.runtime_manifest_profile_for_scenario(
+        config
+    )
+    assert reference_profile[
+        "d1_opaque_source_identity_implementation"
+    ] == "per_publication_build_v1"
+    assert candidate_profile[
+        "d1_opaque_source_identity_implementation"
+    ] == "bounded_generation_lru_v1"
+    assert candidate_profile["configuration"][
+        "d1_opaque_source_identity_cache_capacity"
+    ] == 7
+    initial = candidate_profile[
+        "d1_opaque_source_identity_cache_diagnostics"
+    ]
+    assert initial["candidate_enabled"] is True
+    assert initial["cache_capacity"] == 7
+    assert initial["cache_entry_count"] == 0
+    assert initial["operation_counts"] == {}
+    assert all(initial["conservation"].values())
+    assert initial["implementation_id"].endswith(
+        "bounded_generation_lru.v1"
+    )
+
+    reference_result = run_episode(config, module_stack=reference_stack)
+    candidate_result = run_episode(config, module_stack=candidate_stack)
+    assert (
+        reference_result.manifest.runtime_profile_sha256
+        != candidate_result.manifest.runtime_profile_sha256
+    )
+    for result, expected_selector, expected_candidate in (
+        (reference_result, "per_publication_build_v1", False),
+        (candidate_result, "bounded_generation_lru_v1", True),
+    ):
+        governance = result.observation_governance_audit
+        assert governance is not None
+        assert governance[
+            "d1_opaque_source_identity_implementation"
+        ] == expected_selector
+        diagnostics = governance[
+            "d1_opaque_source_identity_cache_diagnostics"
+        ]
+        assert diagnostics["candidate_enabled"] is expected_candidate
+        assert diagnostics["cache_capacity"] == (
+            7 if expected_candidate else 1_024
+        )
+        assert diagnostics["operation_counts"]["request_count"] > 0
+        assert all(diagnostics["conservation"].values())
+        assert result.summary[
+            "d1_opaque_source_identity_implementation"
+        ] == expected_selector
+        assert result.summary[
+            "d1_opaque_source_identity_cache_diagnostics"
+        ] == diagnostics
+        assert result.summary["module_final_diagnostics"][
+            "d1_opaque_source_identity_cache_diagnostics"
+        ] == diagnostics
+
+    reference_counts = reference_result.summary[
+        "d1_opaque_source_identity_cache_diagnostics"
+    ]["operation_counts"]
+    candidate_counts = candidate_result.summary[
+        "d1_opaque_source_identity_cache_diagnostics"
+    ]["operation_counts"]
+    assert reference_counts["reference_bypass_count"] > 0
+    assert reference_counts.get("cache_hit_count", 0) == 0
+    assert candidate_counts["cache_hit_count"] > 0
+    assert candidate_counts.get("reference_bypass_count", 0) == 0
+    assert candidate_counts["identity_build_count"] < (
+        reference_counts["identity_build_count"]
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="d1_opaque_source_identity_implementation must be",
+    ):
+        IntegratedStackConfig(
+            d1_opaque_source_identity_implementation="unknown"
+        )
+    with pytest.raises(
+        TypeError,
+        match="d1_opaque_source_identity_cache_capacity must be an integer",
+    ):
+        IntegratedStackConfig(
+            d1_opaque_source_identity_cache_capacity=True
+        )
+    with pytest.raises(
+        ValueError,
+        match="d1_opaque_source_identity_cache_capacity must be between",
+    ):
+        IntegratedStackConfig(
+            d1_opaque_source_identity_cache_capacity=0
+        )
+    with pytest.raises(
+        ValueError,
+        match="d1_opaque_source_identity_cache_capacity must be between",
+    ):
+        IntegratedStackConfig(
+            d1_opaque_source_identity_cache_capacity=4_097
+        )
+
+
+def test_episode_cli_exposes_d1_opaque_source_identity_cache_selector() -> None:
+    episode_cli = importlib.import_module(
+        "research_modules.scalable_3d_simulation.run_episode"
+    )
+    default_args = episode_cli.parse_args(["--integrated-stack"])
+    assert (
+        default_args.d1_opaque_source_identity_implementation
+        == "per_publication_build_v1"
+    )
+    assert default_args.d1_opaque_source_identity_cache_capacity == 1_024
+    args = episode_cli.parse_args(
+        [
+            "--integrated-stack",
+            "--d1-opaque-source-identity-implementation",
+            "bounded_generation_lru_v1",
+            "--d1-opaque-source-identity-cache-capacity",
+            "17",
+        ]
+    )
+    assert (
+        args.d1_opaque_source_identity_implementation
+        == "bounded_generation_lru_v1"
+    )
+    assert args.d1_opaque_source_identity_cache_capacity == 17
+
+
 def test_d1_structured_jacobian_selection_is_explicit_hashed_and_audited() -> None:
     config = ScenarioConfig(
         scenario_name="d1_structured_jacobian_selection",

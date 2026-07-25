@@ -638,6 +638,16 @@ class Scalable3DEpisodeRunner:
                     "d1_cv_motion_model_cache_diagnostics"
                 )
             ),
+            "d1_opaque_source_identity_implementation": (
+                observation_governance.get(
+                    "d1_opaque_source_identity_implementation"
+                )
+            ),
+            "d1_opaque_source_identity_cache_diagnostics": (
+                observation_governance.get(
+                    "d1_opaque_source_identity_cache_diagnostics"
+                )
+            ),
             "d1_structured_numerical_jacobian_implementation": (
                 observation_governance.get(
                     "d1_structured_numerical_jacobian_implementation"

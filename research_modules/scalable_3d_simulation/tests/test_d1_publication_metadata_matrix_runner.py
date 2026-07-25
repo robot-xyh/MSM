@@ -34,6 +34,13 @@ CV_MOTION_MODEL_MATRIX_PATH = (
     / "configs"
     / "d1_cv_motion_model_cache_multiseed_v1.json"
 )
+OPAQUE_SOURCE_IDENTITY_MATRIX_PATH = (
+    ROOT
+    / "research_modules"
+    / "scalable_3d_simulation"
+    / "configs"
+    / "d1_opaque_source_identity_cache_multiseed_v1.json"
+)
 ONLINE_TRUTH_GUARD_MATRIX_PATH = (
     ROOT
     / "research_modules"
@@ -124,6 +131,36 @@ def test_cv_motion_model_matrix_freezes_exact_cache_and_admission_gates() -> Non
     )
     assert matrix["evidence_boundary"]["cache_capacity"] == 128
     assert matrix["evidence_boundary"]["matrix_values_are_read_only"] is True
+
+
+def test_opaque_source_identity_matrix_freezes_source_only_cache_contract() -> None:
+    matrix = matrix_runner.load_matrix(OPAQUE_SOURCE_IDENTITY_MATRIX_PATH)
+    short = [case for case in matrix["cases"] if case["group"] == "short"]
+    long = [case for case in matrix["cases"] if case["group"] == "long"]
+
+    assert matrix["arm_implementations"] == {
+        "reference": "per_publication_build_v1",
+        "candidate": "bounded_generation_lru_v1",
+    }
+    assert len(short) == 10
+    assert len(long) == 3
+    assert matrix["run_flags"] == [
+        "--integrated-stack",
+        "--d1-publish-opaque-source-key",
+    ]
+    assert matrix["admission_gates"][
+        "minimum_candidate_identity_build_reduction_pct"
+    ] == 95.0
+    assert matrix["admission_gates"][
+        "minimum_candidate_cache_hit_ratio_pct"
+    ] == 95.0
+    boundary = matrix["evidence_boundary"]
+    assert boundary["cache_key_policy"] == (
+        "publisher_node_id_publisher_epoch_track_id"
+    )
+    assert boundary["cache_capacity"] == 1_024
+    assert boundary["source_only_publication"] is True
+    assert boundary["structural_ambiguity_hold_enabled"] is False
 
 
 def test_truth_guard_matrix_freezes_same_commit_performance_contract() -> None:
@@ -273,7 +310,55 @@ def test_cv_motion_model_commands_bind_only_the_cache_treatment(
     output_index = reference.index("--output")
     assert reference[implementation_index + 1] == "per_prediction_build_v1"
     assert candidate[implementation_index + 1] == "bounded_exact_lru_v1"
-    assert "--d1-cv-motion-model-cache-capacity" not in reference
+    capacity_index = reference.index(
+        "--d1-cv-motion-model-cache-capacity"
+    )
+    assert reference[capacity_index + 1] == "128"
+    assert candidate[capacity_index + 1] == "128"
+    for index, (left, right) in enumerate(
+        zip(reference, candidate, strict=True)
+    ):
+        if index not in {implementation_index + 1, output_index + 1}:
+            assert left == right
+
+
+def test_opaque_source_identity_commands_bind_only_cache_treatment(
+    tmp_path: Path,
+) -> None:
+    matrix = matrix_runner.load_matrix(OPAQUE_SOURCE_IDENTITY_MATRIX_PATH)
+    case = matrix["cases"][0]
+    reference = matrix_runner.build_episode_command(
+        ROOT,
+        matrix,
+        case,
+        "reference",
+        tmp_path / "reference",
+    )
+    candidate = matrix_runner.build_episode_command(
+        ROOT,
+        matrix,
+        case,
+        "candidate",
+        tmp_path / "candidate",
+    )
+
+    implementation_index = reference.index(
+        "--d1-opaque-source-identity-implementation"
+    )
+    capacity_index = reference.index(
+        "--d1-opaque-source-identity-cache-capacity"
+    )
+    output_index = reference.index("--output")
+    assert reference[implementation_index + 1] == (
+        "per_publication_build_v1"
+    )
+    assert candidate[implementation_index + 1] == (
+        "bounded_generation_lru_v1"
+    )
+    assert reference[capacity_index + 1] == "1024"
+    assert candidate[capacity_index + 1] == "1024"
+    assert "--d1-publish-opaque-source-key" in reference
+    assert "--d1-d2-structural-ambiguity-hold" not in reference
     for index, (left, right) in enumerate(
         zip(reference, candidate, strict=True)
     ):
@@ -456,6 +541,43 @@ def test_cv_motion_model_manifest_binds_cache_contract_and_d6_evaluator(
         ].endswith("bounded_exact_lru.v1")
 
 
+def test_opaque_source_identity_manifest_binds_cache_and_d6_contract(
+    tmp_path: Path,
+) -> None:
+    matrix = matrix_runner.load_matrix(OPAQUE_SOURCE_IDENTITY_MATRIX_PATH)
+    commit = "1" * 40
+    manifest = matrix_runner.planned_evidence_manifest(
+        OPAQUE_SOURCE_IDENTITY_MATRIX_PATH,
+        matrix,
+        ROOT,
+        commit,
+        tmp_path / "evidence",
+    )
+
+    assert manifest["schema_version"] == (
+        "scalable3d-d1-opaque-source-identity-cache-multiseed-evidence-v1"
+    )
+    assert manifest["required_d6_evaluator_schema_version"] == (
+        "d6.d1_opaque_source_identity_cache_multiseed_evaluation.v1"
+    )
+    assert manifest["opaque_source_identity_cache_capacity"] == 1_024
+    assert manifest[
+        "opaque_source_identity_cache_diagnostics_schema_version"
+    ] == "d1.opaque_source_identity_cache_diagnostics.v1"
+    for case in manifest["cases"]:
+        reference = case["arms"]["reference"]
+        candidate = case["arms"]["candidate"]
+        assert reference["validation_kind"] == (
+            "opaque_source_identity_cache"
+        )
+        assert reference["expected_d1_implementation_id"].endswith(
+            "per_publication_build.v1"
+        )
+        assert candidate["expected_d1_implementation_id"].endswith(
+            "bounded_generation_lru.v1"
+        )
+
+
 def test_truth_guard_manifest_binds_diagnostics_and_d6_evaluator(
     tmp_path: Path,
 ) -> None:
@@ -555,6 +677,30 @@ def test_cv_motion_model_matrix_rejects_weakened_cache_boundary(
     matrix = matrix_runner.load_matrix(CV_MOTION_MODEL_MATRIX_PATH)
     matrix["evidence_boundary"][field] = value
     path = tmp_path / "invalid_cv_cache.json"
+    path.write_text(json.dumps(matrix), encoding="utf-8")
+
+    with pytest.raises(ValueError, match=match):
+        matrix_runner.load_matrix(path)
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "match"),
+    [
+        ("cache_key_policy", "track_id", "freeze the cache key"),
+        ("cache_capacity", 128, "cache_capacity=1024"),
+        ("source_only_publication", False, "source-only publication"),
+        ("structural_ambiguity_hold_enabled", True, "hold disabled"),
+    ],
+)
+def test_opaque_source_identity_matrix_rejects_weakened_boundary(
+    tmp_path: Path,
+    field: str,
+    value: object,
+    match: str,
+) -> None:
+    matrix = matrix_runner.load_matrix(OPAQUE_SOURCE_IDENTITY_MATRIX_PATH)
+    matrix["evidence_boundary"][field] = value
+    path = tmp_path / "invalid_opaque_source_cache.json"
     path.write_text(json.dumps(matrix), encoding="utf-8")
 
     with pytest.raises(ValueError, match=match):
@@ -895,6 +1041,122 @@ def test_cv_motion_model_episode_resume_requires_four_surface_audit(
     summary["d1_cv_motion_model_cache_diagnostics"]["operation_counts"][
         "cache_hit_count"
     ] = 91
+    (episode / "summary.json").write_text(
+        json.dumps(summary), encoding="utf-8"
+    )
+    assert not matrix_runner._episode_matches(episode, **match_args)
+
+
+def test_opaque_source_identity_episode_resume_requires_four_surface_audit(
+    tmp_path: Path,
+) -> None:
+    episode = tmp_path / "episode_opaque_source_identity_cache"
+    episode.mkdir()
+    commit = "6" * 40
+    implementation = "bounded_generation_lru_v1"
+    implementation_id = (
+        "d1.publication.opaque_source_identity.bounded_generation_lru.v1"
+    )
+    conservation = {
+        "request_equals_hit_plus_miss_plus_bypass": True,
+        "build_equals_miss_plus_bypass": True,
+        "eviction_not_above_miss": True,
+        "entry_count_within_capacity": True,
+        "peak_entry_count_within_capacity": True,
+    }
+    diagnostics = {
+        "schema_version": (
+            "d1.opaque_source_identity_cache_diagnostics.v1"
+        ),
+        "implementation_id": implementation_id,
+        "candidate_enabled": True,
+        "cache_capacity": 1_024,
+        "cache_entry_count": 200,
+        "cache_generation": ["D1_FUSION", "main-stack-reset-00000001-v1"],
+        "operation_counts": {
+            "request_count": 11_200,
+            "cache_hit_count": 11_000,
+            "cache_miss_count": 200,
+            "identity_build_count": 200,
+            "cache_eviction_count": 0,
+            "reference_bypass_count": 0,
+            "peak_entry_count": 200,
+            "generation_invalidation_count": 0,
+            "generation_invalidated_entry_count": 0,
+            "explicit_reset_count": 0,
+            "explicit_reset_entry_count": 0,
+        },
+        "conservation": conservation,
+    }
+    initial_diagnostics = {
+        **diagnostics,
+        "cache_entry_count": 0,
+        "cache_generation": None,
+        "operation_counts": {},
+    }
+    manifest = {
+        "git_commit": commit,
+        "repository_dirty": False,
+        "seed": 1101,
+        "runtime_profile": {
+            "d1_opaque_source_identity_implementation": implementation,
+            "d1_opaque_source_identity_cache_diagnostics": (
+                initial_diagnostics
+            ),
+            "configuration": {
+                "d1_opaque_source_identity_implementation": implementation,
+                "d1_opaque_source_identity_cache_capacity": 1_024,
+                "d1_publish_opaque_source_key": True,
+                "d1_d2_structural_ambiguity_hold_enabled": False,
+            },
+        },
+    }
+    config = {
+        "seed": 1101,
+        "duration_s": 2.2,
+        "target_count": 200,
+        "resource_count": 200,
+        "recon_count": 2,
+    }
+    summary = {
+        "d1_opaque_source_identity_implementation": implementation,
+        "d1_opaque_source_identity_cache_diagnostics": diagnostics,
+        "module_final_diagnostics": {
+            "d1_opaque_source_identity_implementation": implementation,
+            "d1_opaque_source_identity_cache_diagnostics": diagnostics,
+        },
+        "finite_state": True,
+        "online_truth_use_count": 0,
+        "simulated_duration_s": 2.2,
+    }
+    governance = {
+        "d1_opaque_source_identity_implementation": implementation,
+        "d1_opaque_source_identity_cache_diagnostics": diagnostics,
+    }
+    for name, payload in (
+        ("manifest.json", manifest),
+        ("scenario_config.json", config),
+        ("summary.json", summary),
+        ("observation_governance_audit.json", governance),
+    ):
+        (episode / name).write_text(json.dumps(payload), encoding="utf-8")
+
+    match_args = {
+        "expected_commit": commit,
+        "expected_implementation": implementation,
+        "seed": 1101,
+        "duration_s": 2.2,
+        "target_count": 200,
+        "resource_count": 200,
+        "recon_count": 2,
+        "validation_kind": "opaque_source_identity_cache",
+        "expected_cache_capacity": 1_024,
+    }
+    assert matrix_runner._episode_matches(episode, **match_args)
+
+    summary[
+        "d1_opaque_source_identity_cache_diagnostics"
+    ]["operation_counts"]["cache_hit_count"] = 10_999
     (episode / "summary.json").write_text(
         json.dumps(summary), encoding="utf-8"
     )

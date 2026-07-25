@@ -29,6 +29,8 @@ from research_modules.scalable_3d_simulation.orchestrator import run_episode
 from research_modules.scalable_3d_simulation.module_stack import (
     D1_CV_MOTION_MODEL_CANDIDATE_IMPLEMENTATION,
     D1_CV_MOTION_MODEL_REFERENCE_IMPLEMENTATION,
+    D1_OPAQUE_SOURCE_IDENTITY_CANDIDATE_IMPLEMENTATION,
+    D1_OPAQUE_SOURCE_IDENTITY_REFERENCE_IMPLEMENTATION,
     D1_PUBLICATION_METADATA_CANDIDATE_IMPLEMENTATION,
     D1_PUBLICATION_METADATA_REFERENCE_IMPLEMENTATION,
     D1_STRUCTURED_NUMERICAL_JACOBIAN_CANDIDATE_IMPLEMENTATION,
@@ -171,6 +173,28 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--d1-opaque-source-identity-implementation",
+        choices=(
+            D1_OPAQUE_SOURCE_IDENTITY_REFERENCE_IMPLEMENTATION,
+            D1_OPAQUE_SOURCE_IDENTITY_CANDIDATE_IMPLEMENTATION,
+        ),
+        default=D1_OPAQUE_SOURCE_IDENTITY_REFERENCE_IMPLEMENTATION,
+        help=(
+            "select D1 opaque source-identity publication construction; "
+            "the bounded generation LRU candidate is explicit and "
+            "default-off pending source-only multiseed admission"
+        ),
+    )
+    parser.add_argument(
+        "--d1-opaque-source-identity-cache-capacity",
+        type=int,
+        default=1_024,
+        help=(
+            "set the bounded opaque source-identity cache capacity in "
+            "[1, 4096]; the value is hashed and audited for both arms"
+        ),
+    )
+    parser.add_argument(
         "--d1-structured-numerical-jacobian-implementation",
         choices=(
             D1_STRUCTURED_NUMERICAL_JACOBIAN_REFERENCE_IMPLEMENTATION,
@@ -274,6 +298,12 @@ def main() -> int:
                 ),
                 d1_cv_motion_model_cache_capacity=(
                     args.d1_cv_motion_model_cache_capacity
+                ),
+                d1_opaque_source_identity_implementation=(
+                    args.d1_opaque_source_identity_implementation
+                ),
+                d1_opaque_source_identity_cache_capacity=(
+                    args.d1_opaque_source_identity_cache_capacity
                 ),
                 d1_structured_numerical_jacobian_implementation=(
                     args.d1_structured_numerical_jacobian_implementation

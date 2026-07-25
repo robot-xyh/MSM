@@ -39,6 +39,11 @@ from research_modules.d1_sensor_fusion.src.d1_sensor_fusion import (
     sensor_observations_from_online_batch,
 )
 from research_modules.d1_sensor_fusion.src.d1_sensor_fusion.fusion import (
+    DEFAULT_OPAQUE_SOURCE_IDENTITY_CACHE_CAPACITY,
+    MAX_OPAQUE_SOURCE_IDENTITY_CACHE_CAPACITY,
+    OPAQUE_SOURCE_IDENTITY_CACHE_DIAGNOSTICS_SCHEMA_VERSION,
+    OPAQUE_SOURCE_IDENTITY_CANDIDATE_IMPLEMENTATION_ID,
+    OPAQUE_SOURCE_IDENTITY_REFERENCE_IMPLEMENTATION_ID,
     STRUCTURED_NUMERICAL_JACOBIAN_CANDIDATE_IMPLEMENTATION_ID,
     STRUCTURED_NUMERICAL_JACOBIAN_DIAGNOSTICS_SCHEMA_VERSION,
     STRUCTURED_NUMERICAL_JACOBIAN_REFERENCE_IMPLEMENTATION_ID,
@@ -131,6 +136,12 @@ D1_PUBLICATION_METADATA_REFERENCE_IMPLEMENTATION = "per_track_copy_v1"
 D1_PUBLICATION_METADATA_CANDIDATE_IMPLEMENTATION = "immutable_shared_v2"
 D1_CV_MOTION_MODEL_REFERENCE_IMPLEMENTATION = "per_prediction_build_v1"
 D1_CV_MOTION_MODEL_CANDIDATE_IMPLEMENTATION = "bounded_exact_lru_v1"
+D1_OPAQUE_SOURCE_IDENTITY_REFERENCE_IMPLEMENTATION = (
+    "per_publication_build_v1"
+)
+D1_OPAQUE_SOURCE_IDENTITY_CANDIDATE_IMPLEMENTATION = (
+    "bounded_generation_lru_v1"
+)
 D1_STRUCTURED_NUMERICAL_JACOBIAN_REFERENCE_IMPLEMENTATION = (
     "dense_output_probe_v1"
 )
@@ -168,6 +179,12 @@ class IntegratedStackConfig:
     )
     d1_cv_motion_model_cache_capacity: int = (
         DEFAULT_CV_MOTION_MODEL_CACHE_CAPACITY
+    )
+    d1_opaque_source_identity_implementation: str = (
+        D1_OPAQUE_SOURCE_IDENTITY_REFERENCE_IMPLEMENTATION
+    )
+    d1_opaque_source_identity_cache_capacity: int = (
+        DEFAULT_OPAQUE_SOURCE_IDENTITY_CACHE_CAPACITY
     )
     d1_structured_numerical_jacobian_implementation: str = (
         D1_STRUCTURED_NUMERICAL_JACOBIAN_CANDIDATE_IMPLEMENTATION
@@ -293,6 +310,49 @@ class IntegratedStackConfig:
             self,
             "d1_cv_motion_model_cache_capacity",
             cv_motion_model_cache_capacity,
+        )
+        opaque_source_identity_implementation = str(
+            self.d1_opaque_source_identity_implementation
+        ).strip()
+        if opaque_source_identity_implementation not in {
+            D1_OPAQUE_SOURCE_IDENTITY_REFERENCE_IMPLEMENTATION,
+            D1_OPAQUE_SOURCE_IDENTITY_CANDIDATE_IMPLEMENTATION,
+        }:
+            raise ValueError(
+                "d1_opaque_source_identity_implementation must be "
+                "per_publication_build_v1 or bounded_generation_lru_v1"
+            )
+        object.__setattr__(
+            self,
+            "d1_opaque_source_identity_implementation",
+            opaque_source_identity_implementation,
+        )
+        if (
+            isinstance(self.d1_opaque_source_identity_cache_capacity, bool)
+            or not isinstance(
+                self.d1_opaque_source_identity_cache_capacity,
+                Integral,
+            )
+        ):
+            raise TypeError(
+                "d1_opaque_source_identity_cache_capacity must be an integer"
+            )
+        opaque_source_identity_cache_capacity = int(
+            self.d1_opaque_source_identity_cache_capacity
+        )
+        if not (
+            1
+            <= opaque_source_identity_cache_capacity
+            <= MAX_OPAQUE_SOURCE_IDENTITY_CACHE_CAPACITY
+        ):
+            raise ValueError(
+                "d1_opaque_source_identity_cache_capacity must be between 1 "
+                f"and {MAX_OPAQUE_SOURCE_IDENTITY_CACHE_CAPACITY}"
+            )
+        object.__setattr__(
+            self,
+            "d1_opaque_source_identity_cache_capacity",
+            opaque_source_identity_cache_capacity,
         )
         structured_jacobian_implementation = str(
             self.d1_structured_numerical_jacobian_implementation
@@ -423,6 +483,39 @@ def _initial_cv_motion_model_cache_diagnostics(
         "cache_capacity": int(config.d1_cv_motion_model_cache_capacity),
         "cache_entry_count": 0,
         "operation_counts": {},
+    }
+
+
+def _initial_opaque_source_identity_cache_diagnostics(
+    config: IntegratedStackConfig,
+) -> dict[str, Any]:
+    candidate_enabled = (
+        config.d1_opaque_source_identity_implementation
+        == D1_OPAQUE_SOURCE_IDENTITY_CANDIDATE_IMPLEMENTATION
+    )
+    return {
+        "schema_version": (
+            OPAQUE_SOURCE_IDENTITY_CACHE_DIAGNOSTICS_SCHEMA_VERSION
+        ),
+        "implementation_id": (
+            OPAQUE_SOURCE_IDENTITY_CANDIDATE_IMPLEMENTATION_ID
+            if candidate_enabled
+            else OPAQUE_SOURCE_IDENTITY_REFERENCE_IMPLEMENTATION_ID
+        ),
+        "candidate_enabled": candidate_enabled,
+        "cache_capacity": int(
+            config.d1_opaque_source_identity_cache_capacity
+        ),
+        "cache_entry_count": 0,
+        "cache_generation": None,
+        "operation_counts": {},
+        "conservation": {
+            "request_equals_hit_plus_miss_plus_bypass": True,
+            "build_equals_miss_plus_bypass": True,
+            "eviction_not_above_miss": True,
+            "entry_count_within_capacity": True,
+            "peak_entry_count_within_capacity": True,
+        },
     }
 
 
@@ -644,6 +737,14 @@ class IntegratedScalableModuleStack:
                     self.stack_config
                 )
             ),
+            "d1_opaque_source_identity_implementation": (
+                self.stack_config.d1_opaque_source_identity_implementation
+            ),
+            "d1_opaque_source_identity_cache_diagnostics": (
+                _initial_opaque_source_identity_cache_diagnostics(
+                    self.stack_config
+                )
+            ),
             "d1_structured_numerical_jacobian_implementation": (
                 self.stack_config
                 .d1_structured_numerical_jacobian_implementation
@@ -704,6 +805,14 @@ class IntegratedScalableModuleStack:
             ),
             cv_motion_model_cache_capacity=(
                 self.stack_config.d1_cv_motion_model_cache_capacity
+            ),
+            cached_opaque_source_identity=(
+                self.stack_config.d1_opaque_source_identity_implementation
+                == D1_OPAQUE_SOURCE_IDENTITY_CANDIDATE_IMPLEMENTATION
+            ),
+            opaque_source_identity_cache_capacity=(
+                self.stack_config
+                .d1_opaque_source_identity_cache_capacity
             ),
             structured_numerical_jacobian=(
                 self.stack_config
@@ -1146,6 +1255,12 @@ class IntegratedScalableModuleStack:
             ),
             "d1_cv_motion_model_cache_diagnostics": (
                 self.d1.cv_motion_model_cache_diagnostics()
+            ),
+            "d1_opaque_source_identity_implementation": (
+                self.stack_config.d1_opaque_source_identity_implementation
+            ),
+            "d1_opaque_source_identity_cache_diagnostics": (
+                self.d1.opaque_source_identity_cache_diagnostics()
             ),
             "d1_structured_numerical_jacobian_implementation": (
                 self.stack_config
@@ -5159,6 +5274,14 @@ class IntegratedScalableModuleStack:
             ],
             "d1_cv_motion_model_cache_diagnostics": dict(
                 governance["d1_cv_motion_model_cache_diagnostics"]
+            ),
+            "d1_opaque_source_identity_implementation": governance[
+                "d1_opaque_source_identity_implementation"
+            ],
+            "d1_opaque_source_identity_cache_diagnostics": dict(
+                governance[
+                    "d1_opaque_source_identity_cache_diagnostics"
+                ]
             ),
             "d1_structured_numerical_jacobian_implementation": governance[
                 "d1_structured_numerical_jacobian_implementation"

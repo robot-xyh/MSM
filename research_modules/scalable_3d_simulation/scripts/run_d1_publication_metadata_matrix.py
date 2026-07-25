@@ -47,6 +47,15 @@ CV_MOTION_MODEL_EVIDENCE_MANIFEST_SCHEMA_VERSION = (
 CV_MOTION_MODEL_REQUIRED_D6_EVALUATOR_SCHEMA_VERSION = (
     "d6.d1_cv_motion_model_cache_multiseed_evaluation.v1"
 )
+OPAQUE_SOURCE_IDENTITY_MATRIX_SCHEMA_VERSION = (
+    "scalable3d-d1-opaque-source-identity-cache-multiseed-matrix-v1"
+)
+OPAQUE_SOURCE_IDENTITY_EVIDENCE_MANIFEST_SCHEMA_VERSION = (
+    "scalable3d-d1-opaque-source-identity-cache-multiseed-evidence-v1"
+)
+OPAQUE_SOURCE_IDENTITY_REQUIRED_D6_EVALUATOR_SCHEMA_VERSION = (
+    "d6.d1_opaque_source_identity_cache_multiseed_evaluation.v1"
+)
 ONLINE_TRUTH_GUARD_MATRIX_SCHEMA_VERSION = (
     "scalable3d-online-truth-guard-multiseed-matrix-v1"
 )
@@ -78,6 +87,10 @@ _CV_MOTION_MODEL_EXPECTED_IMPLEMENTATIONS = {
     "reference": "per_prediction_build_v1",
     "candidate": "bounded_exact_lru_v1",
 }
+_OPAQUE_SOURCE_IDENTITY_EXPECTED_IMPLEMENTATIONS = {
+    "reference": "per_publication_build_v1",
+    "candidate": "bounded_generation_lru_v1",
+}
 _ONLINE_TRUTH_GUARD_EXPECTED_IMPLEMENTATIONS = {
     "reference": "generic_recursive_v1",
     "candidate": "builtin_specialized_recursive_v2",
@@ -101,6 +114,12 @@ _D1_IMPLEMENTATION_IDS = {
     ),
     "bounded_exact_lru_v1": (
         "d1.fusion.cv_motion_model.bounded_exact_lru.v1"
+    ),
+    "per_publication_build_v1": (
+        "d1.publication.opaque_source_identity.per_publication_build.v1"
+    ),
+    "bounded_generation_lru_v1": (
+        "d1.publication.opaque_source_identity.bounded_generation_lru.v1"
     ),
     "dense_output_probe_v1": (
         "d1.ekf.numerical_jacobian.dense_output_probe.v1"
@@ -154,6 +173,25 @@ _MATRIX_SPECS = {
         "validation_kind": "cv_motion_model_cache",
         "treatment_field": "d1_cv_motion_model_implementation",
     },
+    OPAQUE_SOURCE_IDENTITY_MATRIX_SCHEMA_VERSION: {
+        "expected_implementations": (
+            _OPAQUE_SOURCE_IDENTITY_EXPECTED_IMPLEMENTATIONS
+        ),
+        "evidence_manifest_schema_version": (
+            OPAQUE_SOURCE_IDENTITY_EVIDENCE_MANIFEST_SCHEMA_VERSION
+        ),
+        "required_d6_evaluator_schema_version": (
+            OPAQUE_SOURCE_IDENTITY_REQUIRED_D6_EVALUATOR_SCHEMA_VERSION
+        ),
+        "publication_audit_contract_version": None,
+        "selector_flag": (
+            "--d1-opaque-source-identity-implementation"
+        ),
+        "validation_kind": "opaque_source_identity_cache",
+        "treatment_field": (
+            "d1_opaque_source_identity_implementation"
+        ),
+    },
     ONLINE_TRUTH_GUARD_MATRIX_SCHEMA_VERSION: {
         "expected_implementations": (
             _ONLINE_TRUTH_GUARD_EXPECTED_IMPLEMENTATIONS
@@ -201,6 +239,8 @@ _FORBIDDEN_RUN_FLAGS = {
     "--d1-publication-metadata-implementation",
     "--d1-cv-motion-model-implementation",
     "--d1-cv-motion-model-cache-capacity",
+    "--d1-opaque-source-identity-implementation",
+    "--d1-opaque-source-identity-cache-capacity",
     "--d1-structured-numerical-jacobian-implementation",
     "--online-truth-guard-implementation",
 }
@@ -366,6 +406,42 @@ def load_matrix(path: str | Path) -> dict[str, Any]:
                     f"CV motion-model admission gate {field} must be "
                     f"{expected}"
                 )
+    if spec["validation_kind"] == "opaque_source_identity_cache":
+        if boundary.get("cache_key_policy") != (
+            "publisher_node_id_publisher_epoch_track_id"
+        ):
+            raise ValueError(
+                "opaque source-identity evidence must freeze the cache key"
+            )
+        if boundary.get("cache_capacity") != 1_024:
+            raise ValueError(
+                "opaque source-identity evidence must freeze "
+                "cache_capacity=1024"
+            )
+        if boundary.get("source_only_publication") is not True:
+            raise ValueError(
+                "opaque source-identity evidence must use source-only "
+                "publication"
+            )
+        if boundary.get("structural_ambiguity_hold_enabled") is not False:
+            raise ValueError(
+                "opaque source-identity evidence must keep hold disabled"
+            )
+        required_gates = {
+            "all_pairs_opaque_source_identity_cache_audit_valid": True,
+            "short_minimum_d1_fusion_improvement_pct": 5.0,
+            "long_minimum_d1_fusion_improvement_pct": 5.0,
+            "short_minimum_core_wall_improvement_pct": 2.0,
+            "long_minimum_core_wall_improvement_pct": 2.0,
+            "minimum_candidate_identity_build_reduction_pct": 95.0,
+            "minimum_candidate_cache_hit_ratio_pct": 95.0,
+        }
+        for field, expected in required_gates.items():
+            if gates.get(field) != expected:
+                raise ValueError(
+                    f"opaque source-identity admission gate {field} must be "
+                    f"{expected}"
+                )
     if spec["validation_kind"] == "online_truth_guard":
         if (
             boundary.get("truth_guard_diagnostics_schema_version")
@@ -431,12 +507,30 @@ def build_episode_command(
     )
     if not entrypoint.is_file():
         raise ValueError(f"run_episode.py unavailable: {entrypoint}")
-    return [
+    command = [
         "python3",
         str(entrypoint),
         *[str(flag) for flag in matrix["run_flags"]],
         str(_matrix_spec(matrix)["selector_flag"]),
         str(matrix["arm_implementations"][arm]),
+    ]
+    validation_kind = str(_matrix_spec(matrix)["validation_kind"])
+    if validation_kind == "cv_motion_model_cache":
+        command.extend(
+            (
+                "--d1-cv-motion-model-cache-capacity",
+                str(int(matrix["evidence_boundary"]["cache_capacity"])),
+            )
+        )
+    elif validation_kind == "opaque_source_identity_cache":
+        command.extend(
+            (
+                "--d1-opaque-source-identity-cache-capacity",
+                str(int(matrix["evidence_boundary"]["cache_capacity"])),
+            )
+        )
+    command.extend(
+        (
         "--duration",
         _format_float(float(case["duration_s"])),
         "--seed",
@@ -449,7 +543,9 @@ def build_episode_command(
         str(int(matrix["recon_count"])),
         "--output",
         str(Path(output_dir).expanduser().resolve()),
-    ]
+        )
+    )
+    return command
 
 
 def planned_evidence_manifest(
@@ -543,6 +639,13 @@ def planned_evidence_manifest(
         manifest["cv_motion_model_cache_diagnostics_schema_version"] = (
             "d1.cv_motion_model_cache_diagnostics.v1"
         )
+    if spec["validation_kind"] == "opaque_source_identity_cache":
+        manifest["opaque_source_identity_cache_capacity"] = int(
+            matrix["evidence_boundary"]["cache_capacity"]
+        )
+        manifest[
+            "opaque_source_identity_cache_diagnostics_schema_version"
+        ] = "d1.opaque_source_identity_cache_diagnostics.v1"
     if spec["validation_kind"] == "online_truth_guard":
         manifest["truth_guard_diagnostics_schema_version"] = (
             "scalable3d-online-truth-guard-diagnostics-v1"
@@ -568,7 +671,10 @@ def run_matrix(
     spec = _matrix_spec(matrix)
     expected_cache_capacity = (
         int(matrix["evidence_boundary"]["cache_capacity"])
-        if spec["validation_kind"] == "cv_motion_model_cache"
+        if spec["validation_kind"] in {
+            "cv_motion_model_cache",
+            "opaque_source_identity_cache",
+        }
         else None
     )
     worktree = Path(source_worktree).expanduser().resolve()
@@ -805,6 +911,21 @@ def _episode_matches(
         return False
     if validation_kind == "cv_motion_model_cache":
         return _cv_motion_model_episode_matches(
+            episode_dir,
+            manifest=manifest,
+            config=config,
+            summary=summary,
+            expected_commit=expected_commit,
+            expected_implementation=expected_implementation,
+            expected_cache_capacity=expected_cache_capacity,
+            seed=seed,
+            duration_s=duration_s,
+            target_count=target_count,
+            resource_count=resource_count,
+            recon_count=recon_count,
+        )
+    if validation_kind == "opaque_source_identity_cache":
+        return _opaque_source_identity_episode_matches(
             episode_dir,
             manifest=manifest,
             config=config,
@@ -1133,6 +1254,210 @@ def _cv_motion_model_operation_counts_match(
         and counts["cache_eviction_count"] == 0
         and counts["peak_entry_count"] == 0
         and requests == nonpositive + counts["model_build_count"]
+    )
+
+
+def _opaque_source_identity_episode_matches(
+    episode_dir: Path,
+    *,
+    manifest: Mapping[str, Any],
+    config: Mapping[str, Any],
+    summary: Mapping[str, Any],
+    expected_commit: str,
+    expected_implementation: str,
+    expected_cache_capacity: int | None,
+    seed: int,
+    duration_s: float,
+    target_count: int,
+    resource_count: int,
+    recon_count: int,
+) -> bool:
+    if expected_cache_capacity is None:
+        return False
+    expected_id = _D1_IMPLEMENTATION_IDS.get(expected_implementation)
+    if expected_id is None:
+        return False
+    candidate = expected_implementation == "bounded_generation_lru_v1"
+    if expected_implementation not in {
+        "per_publication_build_v1",
+        "bounded_generation_lru_v1",
+    }:
+        return False
+    runtime_profile = manifest.get("runtime_profile")
+    runtime_configuration = (
+        runtime_profile.get("configuration")
+        if isinstance(runtime_profile, Mapping)
+        else None
+    )
+    initial_diagnostics = (
+        runtime_profile.get(
+            "d1_opaque_source_identity_cache_diagnostics"
+        )
+        if isinstance(runtime_profile, Mapping)
+        else None
+    )
+    diagnostics = summary.get(
+        "d1_opaque_source_identity_cache_diagnostics"
+    )
+    final = summary.get("module_final_diagnostics")
+    final_diagnostics = (
+        final.get("d1_opaque_source_identity_cache_diagnostics")
+        if isinstance(final, Mapping)
+        else None
+    )
+    try:
+        governance = _read_mapping(
+            episode_dir / "observation_governance_audit.json"
+        )
+    except (OSError, ValueError, json.JSONDecodeError):
+        return False
+    governance_diagnostics = governance.get(
+        "d1_opaque_source_identity_cache_diagnostics"
+    )
+    if not all(
+        isinstance(value, Mapping)
+        for value in (
+            runtime_profile,
+            runtime_configuration,
+            initial_diagnostics,
+            diagnostics,
+            final,
+            final_diagnostics,
+            governance_diagnostics,
+        )
+    ):
+        return False
+    expected_schema = "d1.opaque_source_identity_cache_diagnostics.v1"
+    if (
+        initial_diagnostics.get("schema_version") != expected_schema
+        or initial_diagnostics.get("implementation_id") != expected_id
+        or initial_diagnostics.get("candidate_enabled") is not candidate
+        or initial_diagnostics.get("cache_capacity")
+        != expected_cache_capacity
+        or initial_diagnostics.get("cache_entry_count") != 0
+        or initial_diagnostics.get("operation_counts") != {}
+        or not _all_true(initial_diagnostics.get("conservation"))
+    ):
+        return False
+    if (
+        diagnostics != final_diagnostics
+        or diagnostics != governance_diagnostics
+        or diagnostics.get("schema_version") != expected_schema
+        or diagnostics.get("implementation_id") != expected_id
+        or diagnostics.get("candidate_enabled") is not candidate
+        or diagnostics.get("cache_capacity") != expected_cache_capacity
+        or not _all_true(diagnostics.get("conservation"))
+    ):
+        return False
+    if not _opaque_source_identity_operation_counts_match(
+        diagnostics,
+        candidate=candidate,
+        expected_cache_capacity=expected_cache_capacity,
+    ):
+        return False
+    return (
+        manifest.get("git_commit") == expected_commit
+        and manifest.get("repository_dirty") is False
+        and manifest.get("seed") == seed
+        and runtime_profile.get(
+            "d1_opaque_source_identity_implementation"
+        )
+        == expected_implementation
+        and runtime_configuration.get(
+            "d1_opaque_source_identity_implementation"
+        )
+        == expected_implementation
+        and runtime_configuration.get(
+            "d1_opaque_source_identity_cache_capacity"
+        )
+        == expected_cache_capacity
+        and runtime_configuration.get("d1_publish_opaque_source_key") is True
+        and runtime_configuration.get(
+            "d1_d2_structural_ambiguity_hold_enabled"
+        )
+        is False
+        and summary.get(
+            "d1_opaque_source_identity_implementation"
+        )
+        == expected_implementation
+        and final.get("d1_opaque_source_identity_implementation")
+        == expected_implementation
+        and governance.get(
+            "d1_opaque_source_identity_implementation"
+        )
+        == expected_implementation
+        and config.get("seed") == seed
+        and _float_equal(config.get("duration_s"), duration_s)
+        and config.get("target_count") == target_count
+        and config.get("resource_count") == resource_count
+        and config.get("recon_count") == recon_count
+        and summary.get("finite_state") is True
+        and summary.get("online_truth_use_count") == 0
+        and _float_equal(summary.get("simulated_duration_s"), duration_s)
+    )
+
+
+def _opaque_source_identity_operation_counts_match(
+    diagnostics: Mapping[str, Any],
+    *,
+    candidate: bool,
+    expected_cache_capacity: int,
+) -> bool:
+    operations = diagnostics.get("operation_counts")
+    if not isinstance(operations, Mapping):
+        return False
+    names = (
+        "request_count",
+        "cache_hit_count",
+        "cache_miss_count",
+        "identity_build_count",
+        "cache_eviction_count",
+        "reference_bypass_count",
+        "peak_entry_count",
+        "generation_invalidation_count",
+        "generation_invalidated_entry_count",
+        "explicit_reset_count",
+        "explicit_reset_entry_count",
+    )
+    counts: dict[str, int] = {}
+    for name in names:
+        value = operations.get(name, 0)
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+            return False
+        counts[name] = int(value)
+    entry_count = diagnostics.get("cache_entry_count")
+    if (
+        isinstance(entry_count, bool)
+        or not isinstance(entry_count, int)
+        or entry_count < 0
+        or entry_count > expected_cache_capacity
+        or counts["peak_entry_count"] > expected_cache_capacity
+        or counts["request_count"] <= 0
+        or counts["request_count"]
+        != (
+            counts["cache_hit_count"]
+            + counts["cache_miss_count"]
+            + counts["reference_bypass_count"]
+        )
+        or counts["identity_build_count"]
+        != counts["cache_miss_count"] + counts["reference_bypass_count"]
+        or counts["cache_eviction_count"] > counts["cache_miss_count"]
+    ):
+        return False
+    if candidate:
+        return (
+            counts["cache_hit_count"] > 0
+            and counts["cache_miss_count"] > 0
+            and counts["reference_bypass_count"] == 0
+            and entry_count > 0
+        )
+    return (
+        entry_count == 0
+        and counts["cache_hit_count"] == 0
+        and counts["cache_miss_count"] == 0
+        and counts["cache_eviction_count"] == 0
+        and counts["peak_entry_count"] == 0
+        and counts["reference_bypass_count"] == counts["request_count"]
     )
 
 
@@ -1558,6 +1883,14 @@ def _float_equal(value: Any, expected: float) -> bool:
             rel_tol=1.0e-12,
             abs_tol=1.0e-12,
         )
+    )
+
+
+def _all_true(value: Any) -> bool:
+    return (
+        isinstance(value, Mapping)
+        and bool(value)
+        and all(item is True for item in value.values())
     )
 
 
