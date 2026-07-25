@@ -8,6 +8,22 @@
 
 ## 0. 当前正式治理 GAP 增量（2026-07-25）
 
+### 模态感知保守稀疏预筛
+
+| GAP | 当前状态 | D1-owned 证据 | 剩余关闭条件 |
+| --- | --- | --- | --- |
+| 密集非雷达扫描仍对大量明显门外 pair 执行精确创新伪逆 | **P1 D1 模块候选已完成；正式集成准入开放** | 默认关闭 selector、固定实现 ID、execution config v1 和六桶 diagnostics v2 已实现。120 航迹微基准中 LiDAR/二维声学/三维声学/光电精确求解减少 `78.292%/56.208%/56.208%/77.118%`，四类合计 P50 改善 `9.436%`，规范输出和精确门内 pair 一致；D1 全量 `473 passed in 24.45s` | main 在 clean 同提交冻结 short 10 pair、long 3 pair 上显式 A/B；D6 核验业务语义、逐模态守恒、在线真值 0、D2、RSS 和核心墙钟后决定 admit/reject。正式判定前默认关闭 |
+| 角度/投影模态预筛可能漏删门内 pair | **D1-owned 安全边界已关闭并持续回归** | 声学使用原环绕残差，光电使用原投影像素残差；只有有限、严格对称、严格正定且不触发旧 `pinv` 截断时才认证。等门限、奇异、近奇异、非有限、非法投影和未知模态全部 fail-open | 保持随机正定矩阵 oracle、角度环绕、异常协方差和 candidate-on/off dense 等价回归；不得换成启发式空间半径、近似角门或 truth ID |
+| 系统实时与正式精度 | **P1 开放** | 模块微基准不包含完整 200v200 episode；最近已准入栈最低 RTF 仍为 `0.204490 < 1.0` | 完成正式多 seed 和 D6 判定；AirSim、目标硬件、RMSE、NEES、NIS 继续独立验收 |
+
+reference selector 为 `disabled_v1`，candidate 为
+`modality_conservative_quadratic_bound_v1`。`association_sparse_prefilter_diagnostics()`
+schema 为 `d1.association_sparse_prefilter_diagnostics.v2`，固定桶为
+`radar/lidar/acoustic/acoustic_3d/eo/other`；execution config schema 为
+`d1.association_sparse_prefilter_execution_config.v1`。本轮没有改变 AirSim producer、
+DTO、runtime bus、时间戳、坐标或 episode 接口；
+`docs/AIRSIM_INTEGRATION_PLAN.md` 已检查且无需修改。
+
 ### 默认 R0 在线批次到扫描帧正式准入
 
 D6 schema `d6.d1_online_batch_frame_multiseed_evaluation.v1` 绑定 source commit

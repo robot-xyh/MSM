@@ -4,6 +4,20 @@
 
 ## 当前证据索引（2026-07-25）
 
+### 模态感知保守稀疏预筛候选
+
+D1 已实现默认关闭、可单参数回滚的
+`modality_conservative_quadratic_bound_v1`。execution config v1 和 diagnostics v2
+固定记录 `radar/lidar/acoustic/acoustic_3d/eo/other` 六桶策略与计数；无法认证、
+奇异、非有限和未知模态均 fail-open。120 航迹、14,400 pair/模态、7 次交错微基准中，
+四类非雷达合计 P50 改善 `9.436%`，精确求解分别减少
+`78.292%/56.208%/56.208%/77.118%`，规范输出和 exact-gate-pass 计数一致。
+
+当前只建议 main 在冻结 short/long 多 seed 上显式 A/B，候选不改默认。详细边界与数据见
+`ALGORITHM_AND_IMPLEMENTATION.md`、`MODULE_PRINCIPLES_CN.md`、
+`EXPERIMENT_REPORT.md` 和
+`../reports/D1_ASSOCIATION_SPARSE_PREFILTER_PERFORMANCE_20260725_CN.md`。
+
 ### 在线批次到扫描帧正式准入与默认提升
 
 D6 正式评估 schema 为 `d6.d1_online_batch_frame_multiseed_evaluation.v1`，绑定 source

@@ -217,6 +217,49 @@ COVARIANCE_PSD_NORMALIZED_EIGENVALUE_FLOOR = 1.0e-12
 COVARIANCE_PSD_MAX_PROJECTION_ITERATIONS = 3
 RADAR_ASSOCIATION_LOWER_BOUND_RELATIVE_MARGIN = 1.0e-12
 RADAR_ASSOCIATION_PINV_RCOND = 1.0e-15
+ASSOCIATION_SPARSE_PREFILTER_REFERENCE_SELECTOR = "disabled_v1"
+ASSOCIATION_SPARSE_PREFILTER_CANDIDATE_SELECTOR = (
+    "modality_conservative_quadratic_bound_v1"
+)
+ASSOCIATION_SPARSE_PREFILTER_DEFAULT_SELECTOR = (
+    ASSOCIATION_SPARSE_PREFILTER_REFERENCE_SELECTOR
+)
+ASSOCIATION_SPARSE_PREFILTER_REFERENCE_IMPLEMENTATION_ID = (
+    "d1.fusion.association_sparse_prefilter.disabled.v1"
+)
+ASSOCIATION_SPARSE_PREFILTER_CANDIDATE_IMPLEMENTATION_ID = (
+    "d1.fusion.association_sparse_prefilter."
+    "modality_conservative_quadratic_bound.v1"
+)
+ASSOCIATION_SPARSE_PREFILTER_EXECUTION_CONFIG_SCHEMA_VERSION = (
+    "d1.association_sparse_prefilter_execution_config.v1"
+)
+ASSOCIATION_SPARSE_PREFILTER_DIAGNOSTICS_SCHEMA_VERSION = (
+    "d1.association_sparse_prefilter_diagnostics.v2"
+)
+ASSOCIATION_SPARSE_PREFILTER_MODALITY_BUCKETS = (
+    "radar",
+    "lidar",
+    "acoustic",
+    "acoustic_3d",
+    "eo",
+    "other",
+)
+_ASSOCIATION_SPARSE_PREFILTER_BOUND_MODALITY_BUCKETS = frozenset(
+    {
+        "lidar",
+        "acoustic",
+        "acoustic_3d",
+        "eo",
+    }
+)
+_ASSOCIATION_MODALITY_COUNTER_FIELDS = (
+    "candidate_pair_count",
+    "conservative_prefilter_rejection_count",
+    "exact_innovation_solve_count",
+    "exact_gate_pass_count",
+    "fallback_count",
+)
 RADAR_ASSIGNMENT_AMBIGUITY_POLICY_VERSION = (
     "fail_closed_gate_feasible_alternating_cycle_v1"
 )
@@ -331,19 +374,20 @@ def _radar_lower_bound_applicability(
         innovation_covariances == transposed,
         axis=(-2, -1),
     )
-    diagonal = np.diagonal(innovation_covariances, axis1=-2, axis2=-1)
-    absolute_row_sums = np.sum(np.abs(innovation_covariances), axis=-1)
-    off_diagonal_radii = absolute_row_sums - np.abs(diagonal)
-    gershgorin_lower = np.min(diagonal - off_diagonal_radii, axis=-1)
-    spectral_upper = np.max(absolute_row_sums, axis=-1)
-    safe_spectral_upper = spectral_upper * (
-        1.0 + RADAR_ASSOCIATION_LOWER_BOUND_RELATIVE_MARGIN
-    )
-    safe_gershgorin_lower = (
-        gershgorin_lower
-        - RADAR_ASSOCIATION_LOWER_BOUND_RELATIVE_MARGIN * spectral_upper
-    )
-    cutoff_upper = RADAR_ASSOCIATION_PINV_RCOND * safe_spectral_upper
+    with np.errstate(invalid="ignore", over="ignore"):
+        diagonal = np.diagonal(innovation_covariances, axis1=-2, axis2=-1)
+        absolute_row_sums = np.sum(np.abs(innovation_covariances), axis=-1)
+        off_diagonal_radii = absolute_row_sums - np.abs(diagonal)
+        gershgorin_lower = np.min(diagonal - off_diagonal_radii, axis=-1)
+        spectral_upper = np.max(absolute_row_sums, axis=-1)
+        safe_spectral_upper = spectral_upper * (
+            1.0 + RADAR_ASSOCIATION_LOWER_BOUND_RELATIVE_MARGIN
+        )
+        safe_gershgorin_lower = (
+            gershgorin_lower
+            - RADAR_ASSOCIATION_LOWER_BOUND_RELATIVE_MARGIN * spectral_upper
+        )
+        cutoff_upper = RADAR_ASSOCIATION_PINV_RCOND * safe_spectral_upper
     certified = (
         finite
         & exactly_symmetric
@@ -352,6 +396,54 @@ def _radar_lower_bound_applicability(
         & (safe_gershgorin_lower > cutoff_upper)
     )
     return certified, safe_spectral_upper
+
+
+def _conservative_quadratic_gate_masks(
+    residuals: np.ndarray,
+    innovation_covariances: np.ndarray,
+    association_gate: float,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Certify and reject pairs using a lower bound on the exact quadratic form.
+
+    For every certified positive-definite ``S``, NumPy's legacy pseudoinverse
+    retains every eigenmode and equals ``S^-1``.  With
+    ``lambda_max(S) <= ||S||_inf``,
+
+    ``r.T @ S^-1 @ r >= ||r||_2^2 / ||S||_inf``.
+
+    The residual supplied here is the exact residual used by the legacy gate:
+    wrapped radians for acoustic bearings, projected pixel error for EO, and
+    Cartesian position error for radar/lidar.  Uncertified pairs are never
+    rejected by this helper.
+    """
+
+    residuals = np.asarray(residuals, dtype=float)
+    innovation_covariances = np.asarray(innovation_covariances, dtype=float)
+    if residuals.shape[:-1] != innovation_covariances.shape[:-2]:
+        raise ValueError("residual and innovation covariance batch shapes differ")
+    if residuals.shape[-1] != innovation_covariances.shape[-1]:
+        raise ValueError("residual and innovation covariance dimensions differ")
+    if innovation_covariances.shape[-2] != innovation_covariances.shape[-1]:
+        raise ValueError("innovation covariance matrices must be square")
+
+    covariance_certified, spectral_upper = _radar_lower_bound_applicability(
+        innovation_covariances
+    )
+    with np.errstate(invalid="ignore", over="ignore"):
+        squared_norms = np.einsum("...i,...i->...", residuals, residuals)
+        threshold = (
+            float(association_gate)
+            * spectral_upper
+            * (1.0 + RADAR_ASSOCIATION_LOWER_BOUND_RELATIVE_MARGIN)
+        )
+    certified = (
+        covariance_certified
+        & np.all(np.isfinite(residuals), axis=-1)
+        & np.isfinite(squared_norms)
+        & np.isfinite(threshold)
+    )
+    rejected = certified & (squared_norms > threshold)
+    return certified, rejected
 
 
 def _radar_lower_bound_rejection_mask(
@@ -367,20 +459,36 @@ def _radar_lower_bound_rejection_mask(
     upper bound for ``||S||_2``.  Uncertified pairs are never pre-rejected.
     """
 
-    squared_distances = np.einsum("toi,toi->to", differences, differences)
-    certified, spectral_upper = _radar_lower_bound_applicability(
-        innovation_covariances
+    _, rejected = _conservative_quadratic_gate_masks(
+        differences,
+        innovation_covariances,
+        association_gate,
     )
-    threshold = (
-        float(association_gate)
-        * spectral_upper
-        * (1.0 + RADAR_ASSOCIATION_LOWER_BOUND_RELATIVE_MARGIN)
-    )
-    return (
-        certified
-        & np.isfinite(squared_distances)
-        & (squared_distances > threshold)
-    )
+    return rejected
+
+
+def _association_modality_bucket(modality: object) -> str:
+    normalized = str(modality).strip().lower()
+    if normalized == "radar":
+        return "radar"
+    if normalized == "lidar":
+        return "lidar"
+    if normalized == "acoustic":
+        return "acoustic"
+    if normalized == "acoustic_3d":
+        return "acoustic_3d"
+    if normalized in {"eo", "vision", "camera", "optical"}:
+        return "eo"
+    return "other"
+
+
+def _new_association_modality_counters() -> dict[str, Counter[str]]:
+    return {
+        modality: Counter(
+            {field_name: 0 for field_name in _ASSOCIATION_MODALITY_COUNTER_FIELDS}
+        )
+        for modality in ASSOCIATION_SPARSE_PREFILTER_MODALITY_BUCKETS
+    }
 
 
 def _state_bound_diag(
@@ -655,6 +763,9 @@ class _BatchProcessingContext:
     fixed_lag_checkpoint_suffix_reuse_count: int = 0
     replay_checkpoint_prefix_fast_path_count: int = 0
     cached_consistency_refresh_count: int = 0
+    association_modality_counts: dict[str, Counter[str]] = field(
+        default_factory=_new_association_modality_counters
+    )
 
 
 @dataclass(frozen=True)
@@ -746,6 +857,9 @@ class FusionAdapter:
         batched_non_radar_innovation_solve: bool = True,
         structured_numerical_jacobian: bool = False,
         radar_association_lower_bound_gate: bool = True,
+        association_sparse_prefilter: str = (
+            ASSOCIATION_SPARSE_PREFILTER_DEFAULT_SELECTOR
+        ),
         reuse_track_classification_a95: bool = True,
         direct_checkpoint_state_queries: bool = True,
         fixed_lag_checkpoint_suffix_reuse: bool = True,
@@ -1061,6 +1175,17 @@ class FusionAdapter:
         self.radar_association_lower_bound_gate = bool(
             radar_association_lower_bound_gate
         )
+        if not isinstance(association_sparse_prefilter, str):
+            raise TypeError("association_sparse_prefilter must be a string selector")
+        if association_sparse_prefilter not in {
+            ASSOCIATION_SPARSE_PREFILTER_REFERENCE_SELECTOR,
+            ASSOCIATION_SPARSE_PREFILTER_CANDIDATE_SELECTOR,
+        }:
+            raise ValueError(
+                "unsupported association_sparse_prefilter selector: "
+                f"{association_sparse_prefilter!r}"
+            )
+        self.association_sparse_prefilter = association_sparse_prefilter
         self.reuse_track_classification_a95 = bool(
             reuse_track_classification_a95
         )
@@ -1178,6 +1303,7 @@ class FusionAdapter:
         self._consistency_replay_revision = 0
         self._consistency_capture_context: tuple[str, int] | None = None
         self._performance_totals: Counter[str] = Counter()
+        self._association_modality_totals = _new_association_modality_counters()
         self._publication_materialization_operations: Counter[str] = Counter()
         self._covariance_psd_check_operations: Counter[str] = Counter()
         self._numerical_jacobian_operations: Counter[str] = Counter()
@@ -2288,6 +2414,200 @@ class FusionAdapter:
             current_time=float(self.current_time),
         )
 
+    def association_sparse_prefilter_execution_config(self) -> dict[str, Any]:
+        """Return the selected, explicitly rollback-capable prefilter config."""
+
+        candidate_enabled = (
+            self.association_sparse_prefilter
+            == ASSOCIATION_SPARSE_PREFILTER_CANDIDATE_SELECTOR
+        )
+        selected_implementation_id = (
+            ASSOCIATION_SPARSE_PREFILTER_CANDIDATE_IMPLEMENTATION_ID
+            if candidate_enabled
+            else ASSOCIATION_SPARSE_PREFILTER_REFERENCE_IMPLEMENTATION_ID
+        )
+        exact_reference_policy = "exact_reference_innovation_solve_v1"
+        modality_policies = {
+            "radar": (
+                "legacy_certified_quadratic_bound_v1"
+                if self.radar_association_lower_bound_gate
+                else exact_reference_policy
+            ),
+            "lidar": (
+                "certified_exact_residual_quadratic_bound_v1"
+                if candidate_enabled
+                else exact_reference_policy
+            ),
+            "acoustic": (
+                "certified_exact_wrapped_residual_quadratic_bound_v1"
+                if candidate_enabled
+                else exact_reference_policy
+            ),
+            "acoustic_3d": (
+                "certified_exact_wrapped_residual_quadratic_bound_v1"
+                if candidate_enabled
+                else exact_reference_policy
+            ),
+            "eo": (
+                "certified_exact_projection_residual_quadratic_bound_v1"
+                if candidate_enabled
+                else exact_reference_policy
+            ),
+            "other": "fail_open_exact_reference_v1",
+        }
+        return {
+            "schema_version": (
+                ASSOCIATION_SPARSE_PREFILTER_EXECUTION_CONFIG_SCHEMA_VERSION
+            ),
+            "selector": self.association_sparse_prefilter,
+            "selected_implementation_id": selected_implementation_id,
+            "default_selector": ASSOCIATION_SPARSE_PREFILTER_DEFAULT_SELECTOR,
+            "candidate_default_enabled": (
+                ASSOCIATION_SPARSE_PREFILTER_DEFAULT_SELECTOR
+                == ASSOCIATION_SPARSE_PREFILTER_CANDIDATE_SELECTOR
+            ),
+            "reference_selector": (
+                ASSOCIATION_SPARSE_PREFILTER_REFERENCE_SELECTOR
+            ),
+            "reference_implementation_id": (
+                ASSOCIATION_SPARSE_PREFILTER_REFERENCE_IMPLEMENTATION_ID
+            ),
+            "candidate_selector": (
+                ASSOCIATION_SPARSE_PREFILTER_CANDIDATE_SELECTOR
+            ),
+            "candidate_implementation_id": (
+                ASSOCIATION_SPARSE_PREFILTER_CANDIDATE_IMPLEMENTATION_ID
+            ),
+            "candidate_enabled": candidate_enabled,
+            "rollback_selector": (
+                ASSOCIATION_SPARSE_PREFILTER_REFERENCE_SELECTOR
+            ),
+            "legacy_radar_lower_bound_gate_enabled": bool(
+                self.radar_association_lower_bound_gate
+            ),
+            "modality_order": ASSOCIATION_SPARSE_PREFILTER_MODALITY_BUCKETS,
+            "modality_policies": modality_policies,
+            "truth_dependent_inputs": False,
+            "exact_association_gate_changed": False,
+        }
+
+    def association_sparse_prefilter_diagnostics(self) -> dict[str, Any]:
+        """Return fixed-schema, truth-free counters for association prefiltering."""
+
+        execution_config = self.association_sparse_prefilter_execution_config()
+        modality_counts = {
+            modality: {
+                field_name: int(
+                    self._association_modality_totals[modality][field_name]
+                )
+                for field_name in _ASSOCIATION_MODALITY_COUNTER_FIELDS
+            }
+            for modality in ASSOCIATION_SPARSE_PREFILTER_MODALITY_BUCKETS
+        }
+        modality_conservation = {
+            modality: {
+                "prefilter_rejections_not_above_candidates": (
+                    counts["conservative_prefilter_rejection_count"]
+                    <= counts["candidate_pair_count"]
+                ),
+                "exact_solves_not_above_candidates": (
+                    counts["exact_innovation_solve_count"]
+                    <= counts["candidate_pair_count"]
+                ),
+                "exact_gate_passes_not_above_exact_solves": (
+                    counts["exact_gate_pass_count"]
+                    <= counts["exact_innovation_solve_count"]
+                ),
+                "fallbacks_not_above_candidates": (
+                    counts["fallback_count"]
+                    <= counts["candidate_pair_count"]
+                ),
+            }
+            for modality, counts in modality_counts.items()
+        }
+        total_counts = {
+            field_name: sum(
+                counts[field_name] for counts in modality_counts.values()
+            )
+            for field_name in _ASSOCIATION_MODALITY_COUNTER_FIELDS
+        }
+        return {
+            "schema_version": (
+                ASSOCIATION_SPARSE_PREFILTER_DIAGNOSTICS_SCHEMA_VERSION
+            ),
+            "execution_config": execution_config,
+            "selector": execution_config["selector"],
+            "selected_implementation_id": execution_config[
+                "selected_implementation_id"
+            ],
+            "reference_implementation_id": execution_config[
+                "reference_implementation_id"
+            ],
+            "candidate_implementation_id": execution_config[
+                "candidate_implementation_id"
+            ],
+            "candidate_enabled": execution_config["candidate_enabled"],
+            "legacy_radar_lower_bound_gate_enabled": execution_config[
+                "legacy_radar_lower_bound_gate_enabled"
+            ],
+            "modality_order": ASSOCIATION_SPARSE_PREFILTER_MODALITY_BUCKETS,
+            "modality_counts": modality_counts,
+            "total_counts": total_counts,
+            "conservation": {
+                "modalities": modality_conservation,
+                "all_counter_bounds_hold": all(
+                    all(checks.values())
+                    for checks in modality_conservation.values()
+                ),
+                "fixed_modality_bucket_count": (
+                    len(modality_counts)
+                    == len(ASSOCIATION_SPARSE_PREFILTER_MODALITY_BUCKETS)
+                ),
+            },
+        }
+
+    def _association_sparse_prefilter_enabled_for_modality(
+        self,
+        modality: object,
+    ) -> bool:
+        return (
+            self.association_sparse_prefilter
+            == ASSOCIATION_SPARSE_PREFILTER_CANDIDATE_SELECTOR
+            and _association_modality_bucket(modality)
+            in _ASSOCIATION_SPARSE_PREFILTER_BOUND_MODALITY_BUCKETS
+        )
+
+    def _association_sparse_prefilter_forces_fail_open(
+        self,
+        modality: object,
+    ) -> bool:
+        return (
+            self.association_sparse_prefilter
+            == ASSOCIATION_SPARSE_PREFILTER_CANDIDATE_SELECTOR
+            and _association_modality_bucket(modality) == "other"
+        )
+
+    def _increment_association_modality_count(
+        self,
+        modality: object,
+        field_name: str,
+        count: int = 1,
+    ) -> None:
+        context = self._batch_context
+        if context is None:
+            return
+        if field_name not in _ASSOCIATION_MODALITY_COUNTER_FIELDS:
+            raise ValueError(
+                f"unsupported association modality counter: {field_name!r}"
+            )
+        count = int(count)
+        if count < 0:
+            raise ValueError("association modality counter increment must be non-negative")
+        if count == 0:
+            return
+        bucket = _association_modality_bucket(modality)
+        context.association_modality_counts[bucket][field_name] += count
+
     def _accumulate_batch_performance(
         self,
         context: _BatchProcessingContext,
@@ -2316,6 +2636,11 @@ class FusionAdapter:
             "association_innovation_solve_count",
         ):
             totals[name] += int(getattr(context, name))
+        for modality in ASSOCIATION_SPARSE_PREFILTER_MODALITY_BUCKETS:
+            for field_name in _ASSOCIATION_MODALITY_COUNTER_FIELDS:
+                self._association_modality_totals[modality][field_name] += int(
+                    context.association_modality_counts[modality][field_name]
+                )
 
     def _accumulate_materialization_performance(
         self,
@@ -2874,6 +3199,19 @@ class FusionAdapter:
                 ):
                     return track_id
 
+        self._increment_association_modality_count(
+            observation.modality,
+            "candidate_pair_count",
+            len(self.tracks),
+        )
+        if self._association_sparse_prefilter_forces_fail_open(
+            observation.modality
+        ):
+            self._increment_association_modality_count(
+                observation.modality,
+                "fallback_count",
+                len(self.tracks),
+            )
         candidates: list[tuple[float, str, TrackRecord]] = []
         blocked: list[tuple[float, str, TrackRecord]] = []
         for track_id, record in self.tracks.items():
@@ -2883,6 +3221,11 @@ class FusionAdapter:
                 blocked.append(item)
             else:
                 candidates.append(item)
+            if np.isfinite(score) and score <= self.association_gate:
+                self._increment_association_modality_count(
+                    observation.modality,
+                    "exact_gate_pass_count",
+                )
 
         candidates.sort(key=lambda item: (item[0], item[1]))
         blocked.sort(key=lambda item: (item[0], item[1]))
@@ -2959,6 +3302,20 @@ class FusionAdapter:
             context.association_candidate_pair_count += (
                 len(track_items) * len(observations)
             )
+        for observation in observations:
+            self._increment_association_modality_count(
+                observation.modality,
+                "candidate_pair_count",
+                len(track_items),
+            )
+            if self._association_sparse_prefilter_forces_fail_open(
+                observation.modality
+            ):
+                self._increment_association_modality_count(
+                    observation.modality,
+                    "fallback_count",
+                    len(track_items),
+                )
 
         if all(observation.modality == "radar" for observation in observations):
             cost_matrix = self._radar_scan_cost_matrix(
@@ -2980,6 +3337,12 @@ class FusionAdapter:
                     )
 
         valid = np.isfinite(cost_matrix) & (cost_matrix <= self.association_gate)
+        for column, observation in enumerate(observations):
+            self._increment_association_modality_count(
+                observation.modality,
+                "exact_gate_pass_count",
+                int(np.count_nonzero(valid[:, column])),
+            )
         if not np.any(valid):
             self._record_eo_projection_scan_diagnostics(
                 observations,
@@ -4476,6 +4839,11 @@ class FusionAdapter:
         if not self.radar_association_lower_bound_gate:
             if context is not None:
                 context.association_innovation_solve_count += pair_count
+            self._increment_association_modality_count(
+                "radar",
+                "exact_innovation_solve_count",
+                pair_count,
+            )
             inverses = np.linalg.pinv(
                 innovation_covariances,
                 rcond=RADAR_ASSOCIATION_PINV_RCOND,
@@ -4487,15 +4855,30 @@ class FusionAdapter:
                 differences,
             )
 
-        rejected = _radar_lower_bound_rejection_mask(
+        certified, rejected = _conservative_quadratic_gate_masks(
             differences,
             innovation_covariances,
             self.association_gate,
+        )
+        self._increment_association_modality_count(
+            "radar",
+            "conservative_prefilter_rejection_count",
+            int(np.count_nonzero(rejected)),
+        )
+        self._increment_association_modality_count(
+            "radar",
+            "fallback_count",
+            int(np.count_nonzero(~certified)),
         )
         exact = ~rejected
         exact_solve_count = int(np.count_nonzero(exact))
         if context is not None:
             context.association_innovation_solve_count += exact_solve_count
+        self._increment_association_modality_count(
+            "radar",
+            "exact_innovation_solve_count",
+            exact_solve_count,
+        )
         cost_matrix = np.full(rejected.shape, np.inf, dtype=float)
         if exact_solve_count == 0:
             return cost_matrix
@@ -4597,6 +4980,7 @@ class FusionAdapter:
                         model,
                         projection[0],
                         projection[1],
+                        modality=observations[column].modality,
                     )
                 except (ValueError, FloatingPointError, np.linalg.LinAlgError):
                     cost_matrix[row, column] = np.inf
@@ -4686,6 +5070,12 @@ class FusionAdapter:
             if not valid_rows:
                 continue
 
+            pair_count = len(valid_rows) * len(columns)
+            candidate_enabled = (
+                self._association_sparse_prefilter_enabled_for_modality(
+                    observations[columns[0]].modality
+                )
+            )
             try:
                 innovation_covariances = np.empty(
                     (
@@ -4712,59 +5102,230 @@ class FusionAdapter:
                             )
                             + 1.0e-9 * identity
                         )
-                inverses = np.linalg.pinv(innovation_covariances)
             except (
                 ValueError,
                 FloatingPointError,
                 np.linalg.LinAlgError,
                 RuntimeError,
             ):
+                for column in columns:
+                    modality = observations[column].modality
+                    if not self._association_sparse_prefilter_forces_fail_open(
+                        modality
+                    ):
+                        self._increment_association_modality_count(
+                            modality,
+                            "fallback_count",
+                            len(valid_rows),
+                        )
                 self._fill_non_radar_group_scalar(
+                    observations,
                     models,
                     valid_rows,
                     columns,
                     predicted_measurements,
                     base_innovation_covariances,
                     cost_matrix,
+                    eligible_mask=np.ones(
+                        (len(valid_rows), len(columns)),
+                        dtype=bool,
+                    ),
+                )
+                continue
+
+            if not candidate_enabled:
+                try:
+                    inverses = np.linalg.pinv(innovation_covariances)
+                except (ValueError, FloatingPointError, np.linalg.LinAlgError):
+                    for column in columns:
+                        modality = observations[column].modality
+                        if not self._association_sparse_prefilter_forces_fail_open(
+                            modality
+                        ):
+                            self._increment_association_modality_count(
+                                modality,
+                                "fallback_count",
+                                len(valid_rows),
+                            )
+                    self._fill_non_radar_group_scalar(
+                        observations,
+                        models,
+                        valid_rows,
+                        columns,
+                        predicted_measurements,
+                        base_innovation_covariances,
+                        cost_matrix,
+                        eligible_mask=np.ones(
+                            (len(valid_rows), len(columns)),
+                            dtype=bool,
+                        ),
+                    )
+                    continue
+                if context is not None:
+                    context.association_innovation_solve_count += pair_count
+                for column in columns:
+                    self._increment_association_modality_count(
+                        observations[column].modality,
+                        "exact_innovation_solve_count",
+                        len(valid_rows),
+                    )
+                for local_row, row in enumerate(valid_rows):
+                    predicted_measurement = predicted_measurements[local_row]
+                    for local_column, column in enumerate(columns):
+                        model = models[column]
+                        if model is None:
+                            continue
+                        residual = wrap_residual(
+                            model.z - predicted_measurement,
+                            model.angle_indices,
+                        )
+                        cost_matrix[row, column] = float(
+                            residual.T
+                            @ inverses[local_row, local_column]
+                            @ residual
+                        )
+                continue
+
+            residuals = np.empty(
+                (len(valid_rows), len(columns), measurement_dimension),
+                dtype=float,
+            )
+            try:
+                for local_row, predicted_measurement in enumerate(
+                    predicted_measurements
+                ):
+                    for local_column, column in enumerate(columns):
+                        model = models[column]
+                        if model is None:
+                            raise RuntimeError("grouped measurement model disappeared")
+                        residuals[local_row, local_column] = wrap_residual(
+                            model.z - predicted_measurement,
+                            model.angle_indices,
+                        )
+            except (
+                ValueError,
+                FloatingPointError,
+                np.linalg.LinAlgError,
+                RuntimeError,
+            ):
+                self._increment_association_modality_count(
+                    observations[columns[0]].modality,
+                    "fallback_count",
+                    pair_count,
+                )
+                self._fill_non_radar_group_scalar(
+                    observations,
+                    models,
+                    valid_rows,
+                    columns,
+                    predicted_measurements,
+                    base_innovation_covariances,
+                    cost_matrix,
+                    eligible_mask=np.ones(
+                        (len(valid_rows), len(columns)),
+                        dtype=bool,
+                    ),
+                )
+                continue
+
+            eligible_mask = np.ones(
+                (len(valid_rows), len(columns)),
+                dtype=bool,
+            )
+            try:
+                certified, rejected = _conservative_quadratic_gate_masks(
+                    residuals,
+                    innovation_covariances,
+                    self.association_gate,
+                )
+            except (ValueError, FloatingPointError, np.linalg.LinAlgError):
+                certified = np.zeros(eligible_mask.shape, dtype=bool)
+                rejected = np.zeros(eligible_mask.shape, dtype=bool)
+            eligible_mask &= ~rejected
+            modality = observations[columns[0]].modality
+            self._increment_association_modality_count(
+                modality,
+                "conservative_prefilter_rejection_count",
+                int(np.count_nonzero(rejected)),
+            )
+            self._increment_association_modality_count(
+                modality,
+                "fallback_count",
+                int(np.count_nonzero(~certified)),
+            )
+
+            exact_solve_count = int(np.count_nonzero(eligible_mask))
+            if exact_solve_count == 0:
+                continue
+            try:
+                inverses = np.linalg.pinv(
+                    innovation_covariances[eligible_mask]
+                )
+            except (ValueError, FloatingPointError, np.linalg.LinAlgError):
+                newly_fallback = eligible_mask & certified
+                for local_column, column in enumerate(columns):
+                    self._increment_association_modality_count(
+                        observations[column].modality,
+                        "fallback_count",
+                        int(np.count_nonzero(newly_fallback[:, local_column])),
+                    )
+                self._fill_non_radar_group_scalar(
+                    observations,
+                    models,
+                    valid_rows,
+                    columns,
+                    predicted_measurements,
+                    base_innovation_covariances,
+                    cost_matrix,
+                    eligible_mask=eligible_mask,
                 )
                 continue
 
             if context is not None:
-                context.association_innovation_solve_count += (
-                    len(valid_rows) * len(columns)
+                context.association_innovation_solve_count += exact_solve_count
+            for local_column, column in enumerate(columns):
+                self._increment_association_modality_count(
+                    observations[column].modality,
+                    "exact_innovation_solve_count",
+                    int(np.count_nonzero(eligible_mask[:, local_column])),
                 )
+            inverse_index = 0
             for local_row, row in enumerate(valid_rows):
-                predicted_measurement = predicted_measurements[local_row]
                 for local_column, column in enumerate(columns):
+                    if not eligible_mask[local_row, local_column]:
+                        continue
                     model = models[column]
                     if model is None:
                         continue
-                    residual = wrap_residual(
-                        model.z - predicted_measurement,
-                        model.angle_indices,
-                    )
+                    residual = residuals[local_row, local_column]
                     cost_matrix[row, column] = float(
                         residual.T
-                        @ inverses[local_row, local_column]
+                        @ inverses[inverse_index]
                         @ residual
                     )
+                    inverse_index += 1
         return cost_matrix
 
     def _fill_non_radar_group_scalar(
         self,
+        observations: list[SensorObservation],
         models: list[MeasurementModel | None],
         valid_rows: list[int],
         columns: list[int],
         predicted_measurements: list[np.ndarray],
         base_innovation_covariances: list[np.ndarray],
         cost_matrix: np.ndarray,
+        *,
+        eligible_mask: np.ndarray,
     ) -> None:
         """Preserve per-pair failure isolation if a batched solve is rejected."""
 
         context = self._batch_context
         for local_row, row in enumerate(valid_rows):
             predicted_measurement = predicted_measurements[local_row]
-            for column in columns:
+            for local_column, column in enumerate(columns):
+                if not eligible_mask[local_row, local_column]:
+                    continue
                 model = models[column]
                 if model is None:
                     continue
@@ -4786,6 +5347,10 @@ class FusionAdapter:
                     )
                     if context is not None:
                         context.association_innovation_solve_count += 1
+                    self._increment_association_modality_count(
+                        observations[column].modality,
+                        "exact_innovation_solve_count",
+                    )
                     inverse = np.linalg.pinv(innovation_covariance)
                     cost_matrix[row, column] = float(
                         residual.T @ inverse @ residual
@@ -4896,6 +5461,13 @@ class FusionAdapter:
                 diff = obs_state[:3] - state_at_measurement.state[:3]
                 s = obs_cov[:3, :3] + state_at_measurement.covariance[:3, :3]
                 s = s + 1e-6 * np.eye(3)
+                context = self._batch_context
+                if context is not None:
+                    context.association_innovation_solve_count += 1
+                self._increment_association_modality_count(
+                    observation.modality,
+                    "exact_innovation_solve_count",
+                )
                 return float(diff.T @ np.linalg.pinv(s) @ diff)
             return self._innovation_nis(state_at_measurement, observation)
         except (ValueError, FloatingPointError, np.linalg.LinAlgError):
@@ -4915,7 +5487,13 @@ class FusionAdapter:
             context.association_projection_build_count += 1
         h = model.h_fn(state.state)
         h_j = model.h_jacobian_fn(state.state)
-        return self._innovation_nis_from_model(state, model, h, h_j)
+        return self._innovation_nis_from_model(
+            state,
+            model,
+            h,
+            h_j,
+            modality=observation.modality,
+        )
 
     def _innovation_nis_from_model(
         self,
@@ -4923,6 +5501,8 @@ class FusionAdapter:
         model: MeasurementModel,
         predicted_measurement: np.ndarray,
         measurement_jacobian: np.ndarray,
+        *,
+        modality: str,
     ) -> float:
         residual = wrap_residual(
             model.z - predicted_measurement,
@@ -4930,9 +5510,35 @@ class FusionAdapter:
         )
         s = measurement_jacobian @ state.covariance @ measurement_jacobian.T + model.r
         s = 0.5 * (s + s.T) + 1e-9 * np.eye(s.shape[0])
+        if self._association_sparse_prefilter_enabled_for_modality(modality):
+            try:
+                certified, rejected = _conservative_quadratic_gate_masks(
+                    residual.reshape(1, -1),
+                    s.reshape(1, s.shape[0], s.shape[1]),
+                    self.association_gate,
+                )
+            except (ValueError, FloatingPointError, np.linalg.LinAlgError):
+                certified = np.array([False], dtype=bool)
+                rejected = np.array([False], dtype=bool)
+            self._increment_association_modality_count(
+                modality,
+                "conservative_prefilter_rejection_count",
+                int(rejected[0]),
+            )
+            self._increment_association_modality_count(
+                modality,
+                "fallback_count",
+                int(not bool(certified[0])),
+            )
+            if bool(rejected[0]):
+                return np.inf
         context = self._batch_context
         if context is not None:
             context.association_innovation_solve_count += 1
+        self._increment_association_modality_count(
+            modality,
+            "exact_innovation_solve_count",
+        )
         return float(residual.T @ np.linalg.pinv(s) @ residual)
 
     def _filter_update(

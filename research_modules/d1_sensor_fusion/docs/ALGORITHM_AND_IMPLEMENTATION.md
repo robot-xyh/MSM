@@ -8,6 +8,58 @@
 
 ## 当前权威增量（2026-07-25）
 
+### 默认关闭的模态感知保守预筛
+
+构造参数 `association_sparse_prefilter` 接受两个稳定 selector：
+
+```python
+reference = FusionAdapter(
+    association_sparse_prefilter="disabled_v1",
+)
+candidate = FusionAdapter(
+    association_sparse_prefilter="modality_conservative_quadratic_bound_v1",
+)
+```
+
+默认值是 `disabled_v1`。reference 继续对非雷达创新协方差执行原四维矩阵栈
+`np.linalg.pinv()`，没有经过候选掩码。candidate 先计算原量测模型、原投影、原雅可比、
+原协方差和原残差，再认证下界。认证失败的 pair 仍进入同一精确求解；认证成功且下界严格
+超过 `association_gate` 的 pair 才写为无穷代价。
+
+认证同时要求：
+
+1. 创新协方差全部有限并逐元素严格对称；
+2. Gershgorin 最小下界在数值裕量后严格大于 0；
+3. 该下界严格高于 `1e-15` 伪逆截断阈值的保守上界；
+4. 残差平方范数有限；
+5. 下界严格大于原门限，等于门限不删。
+
+声学残差先调用原 `wrap_residual()`，光电残差来自原 `eo_project()`。无法为未知模态建立
+上述证明时，诊断记入 `other/fallback` 并保留原行为。该路径不读取 truth ID、actor 名称或
+离线标签。
+
+`association_sparse_prefilter_execution_config()` 返回
+`d1.association_sparse_prefilter_execution_config.v1`，记录声明默认、当前 selector、
+实现 ID、rollback selector、旧雷达下界状态和固定逐模态策略。
+`association_sparse_prefilter_diagnostics()` 返回 schema
+`d1.association_sparse_prefilter_diagnostics.v2`。固定模态桶为
+`radar/lidar/acoustic/acoustic_3d/eo/other`；每桶固定字段为
+`candidate_pair_count`、`conservative_prefilter_rejection_count`、
+`exact_innovation_solve_count`、`exact_gate_pass_count` 和 `fallback_count`，并发布
+逐桶计数边界及固定桶数守恒。fallback 是无法认证 pair 与批量精确求解回退逐 pair 的
+并集计数；它与 exact solve 可重叠，但同一 pair 至多记一次。
+
+专项测试包含 selector、固定字段、1/2/3 维随机正定矩阵、角度环绕、奇异/近奇异/非有限
+协方差、雷达/LiDAR/二维声学/三维声学/光电扫描、64×64 密集输入、门限等号边界和
+candidate-on/off 规范输出等价。D1 全量为 `473 passed in 24.45s`。
+
+120 航迹、14,400 pair/模态、7 次交错微基准的非雷达合计 P50 为
+`0.538083 -> 0.487310 s`。LiDAR、二维声学、三维声学和光电精确求解分别为
+`14,400 -> 3,126/6,306/6,306/3,295`，更快次数分别为
+`7/7、6/7、7/7、7/7`。雷达两臂走同一旧下界，本轮 candidate P50 慢 `0.221%`。报告位于
+`../reports/D1_ASSOCIATION_SPARSE_PREFILTER_PERFORMANCE_20260725_CN.md`。候选只达到
+模块建议 main A/B 的条件，尚未经过同提交 short/long 多 seed 和 D6 准入。
+
 ### 在线批次到扫描帧正式默认
 
 D6 正式 schema `d6.d1_online_batch_frame_multiseed_evaluation.v1` 绑定 source commit

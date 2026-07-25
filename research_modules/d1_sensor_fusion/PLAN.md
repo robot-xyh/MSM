@@ -1,5 +1,54 @@
 # D1 多传感器融合与目标配准实施计划
 
+## P1 模态感知保守稀疏预筛候选（2026-07-25）
+
+### 本轮修订短计划（已完成）
+
+1. 将固定诊断拆为 `radar/lidar/acoustic/acoustic_3d/eo/other` 六个独立桶，补充
+   selector execution config、实现身份和逐桶计数守恒。
+2. 保留 reference 原精确路径与已准入雷达下界；candidate 只在严格可认证的原残差和原
+   创新协方差上预筛，所有奇异、非有限、模型/投影不可用或无法认证情形 fail-open。
+3. 固定输入比较 selector on/off 的航迹、协方差、双时间戳、关联决定和精确门内 pair；
+   覆盖门限边界、奇异协方差、六个模态桶和 dense 小规模输入。
+4. 运行模块微基准，按模态报告候选 pair、剔除、精确求解、精确通过、fallback 和墙钟；
+   再同步 D1 README、原理/算法/实验文档及 D1 review/GAP，候选保持默认关闭。
+
+### 已完成模块工作
+
+1. 新增 reference `disabled_v1` 和默认关闭 candidate
+   `modality_conservative_quadratic_bound_v1`；未显式选择时保持 reference。
+2. reference 恢复并锁定原四维非雷达批量伪逆和操作顺序。候选路径可单参数启用和回滚，
+   不改精确门限、匈牙利分配、航迹状态、协方差、双时间戳、NED、谱系或
+   `global_track_id`。
+3. 雷达/LiDAR 使用笛卡尔残差，声学使用精确角度环绕残差，光电使用精确投影像素残差。
+   只在创新协方差有限、严格对称、严格正定且不会触发旧 `pinv` 截断时使用谱上界下界。
+4. 无法证明的 pair fail-open 到原精确求解。奇异、近奇异、非有限和未知模态不作启发式
+   删除。
+5. execution config schema 为
+   `d1.association_sparse_prefilter_execution_config.v1`；固定诊断 schema
+   `d1.association_sparse_prefilter_diagnostics.v2` 按
+   `radar/lidar/acoustic/acoustic_3d/eo/other` 输出候选对、预筛剔除、精确求解、
+   精确门内通过和 fallback，不含真值。
+
+### 模块验收
+
+120 航迹微基准每模态含 14,400 个 pair，每变体预热 1 次并交错 7 次。LiDAR、二维声学、
+三维声学和光电合计 P50 `0.538083 -> 0.487310 s`，改善 `9.436%`。精确求解减少率分别为
+`78.292%/56.208%/56.208%/77.118%`；LiDAR/二维声学/三维声学/光电分别
+`7/7、6/7、7/7、7/7` 更快。雷达保留已准入旧下界，selector 不增加雷达求解削减且本轮
+P50 慢 `0.221%`。五类规范输出和精确门内 pair 完全一致，正常输入 fallback 为 0；
+D1 全量 `473 passed in 24.45s`。
+
+### 后续准入计划
+
+1. main 只能显式接入 candidate，冻结 selector、实现 ID、诊断 schema、场景配置和输入
+   哈希。
+2. 运行默认无 source-key R0 的 short 10 pair、long 3 pair 同提交 A/B，比较 D1 fusion、
+   scan-input、D2、核心墙钟、RSS、业务语义和逐模态计数。
+3. D6 独立验证没有 exact-gate-pass 丢失、fallback 守恒、在线真值使用为 0，并按预注册门
+   决定 admit/reject。
+4. 正式判定前保持默认关闭。系统 RTF、AirSim、硬件、RMSE、NEES 和 NIS 继续独立开放。
+
 ## P1 默认 R0 在线批次到扫描帧正式准入与默认提升（2026-07-25）
 
 ### 正式证据与决策

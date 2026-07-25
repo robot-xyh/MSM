@@ -4,6 +4,48 @@ Offline research module for radar, acoustic, EO, and optional synthetic lidar he
 
 ## 当前性能与治理证据（2026-07-25）
 
+### 第三十五阶段：模态感知保守稀疏预筛候选
+
+D1 新增默认关闭的关联预筛 selector
+`modality_conservative_quadratic_bound_v1`，reference 为 `disabled_v1`。独立
+`FusionAdapter` 未显式配置时仍走 reference；candidate 只能显式启用，当前未进入 main
+默认路径。reference 保留原四维非雷达批量伪逆和原操作顺序，可单参数完整回滚。
+
+候选在现有精确 Mahalanobis/NIS 门前使用严格二次型下界。对创新协方差 \(S\)，只有同时
+证明有限、严格对称、Gershgorin 下界严格为正，且该下界高于 NumPy `pinv` 的奇异值截断
+上界时，才使用
+
+\[
+r^\mathsf{T}S^{-1}r \geq \frac{\lVert r\rVert_2^2}{\lVert S\rVert_\infty}.
+\]
+
+右侧在数值裕量后严格大于原门限才预筛。雷达和 LiDAR 使用笛卡尔位置残差；声学使用现有
+角度环绕后的弧度残差；光电使用现有相机投影后的像素残差。奇异、非有限、非对称、近截断、
+投影不可用和未知模态均保守保留或走原失败路径，不做启发式删除。
+
+`association_sparse_prefilter_execution_config()` 使用
+`d1.association_sparse_prefilter_execution_config.v1`，显式记录默认 selector、当前
+实现 ID、单参数 rollback selector、旧雷达下界状态和逐模态策略。
+`association_sparse_prefilter_diagnostics()` 使用固定 schema
+`d1.association_sparse_prefilter_diagnostics.v2`，按
+`radar/lidar/acoustic/acoustic_3d/eo/other` 记录候选对、保守预筛剔除、精确创新求解、
+精确门控通过、fallback 和固定计数边界。诊断不读取真值、对象名称或 `global_track_id`。
+`fallback_count` 对无法认证或批量精确求解回退逐 pair 的 pair 做并集计数，同一 pair
+至多计一次；它可与 `exact_innovation_solve_count` 重叠，因为 fail-open 的含义正是保留
+精确路径。
+
+2026-07-25 合成微基准使用 120 条航迹、每模态 14,400 个候选对、每变体预热 1 次并交错
+运行 7 次。LiDAR、二维声学、三维声学和光电合计 P50 为
+`0.538083 -> 0.487310 s`，改善 `9.436%`；四类精确求解分别由 14,400 降至
+`3,126/6,306/6,306/3,295`，减少 `78.292%/56.208%/56.208%/77.118%`；
+LiDAR/二维声学/三维声学/光电分别 `7/7、6/7、7/7、7/7` 更快。雷达两臂走同一旧下界，
+本轮 candidate P50 慢 `0.221%`，不记为新增收益。五类规范输出、精确门内 pair 和操作
+计数稳定性通过，正常输入 fallback 为 0；当前 D1 全量为 `473 passed in 24.45s`。
+
+因此 D1 只建议 main 在冻结 short/long 多 seed 上显式 A/B，不建议直接改默认。模块报告为
+`reports/D1_ASSOCIATION_SPARSE_PREFILTER_PERFORMANCE_20260725_CN.md`。本结果不是完整
+200v200 实时、AirSim、目标硬件、RMSE、NEES 或 NIS 准入证据。
+
 ### 第三十四阶段：在线批次到扫描帧封闭交接正式准入与默认提升
 
 D6 已按 schema `d6.d1_online_batch_frame_multiseed_evaluation.v1` 对 source commit

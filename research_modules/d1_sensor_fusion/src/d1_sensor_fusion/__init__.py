@@ -21,6 +21,12 @@ from .airsim_replay_freeze import (
     load_airsim_replay_payloads,
     write_frozen_airsim_replay,
 )
+from .association_sparse_prefilter_performance import (
+    ASSOCIATION_SPARSE_PREFILTER_PERFORMANCE_SCHEMA_VERSION,
+    benchmark_association_sparse_prefilter,
+    render_association_sparse_prefilter_report_cn,
+    write_association_sparse_prefilter_report,
+)
 from .cooperative import (
     BearingLocalizationConfig,
     covariance_intersection,
@@ -74,6 +80,14 @@ from .cv_motion_model_cache_performance import (
     write_cv_motion_model_cache_performance_report,
 )
 from .fusion import (
+    ASSOCIATION_SPARSE_PREFILTER_CANDIDATE_IMPLEMENTATION_ID,
+    ASSOCIATION_SPARSE_PREFILTER_CANDIDATE_SELECTOR,
+    ASSOCIATION_SPARSE_PREFILTER_DEFAULT_SELECTOR,
+    ASSOCIATION_SPARSE_PREFILTER_DIAGNOSTICS_SCHEMA_VERSION,
+    ASSOCIATION_SPARSE_PREFILTER_EXECUTION_CONFIG_SCHEMA_VERSION,
+    ASSOCIATION_SPARSE_PREFILTER_MODALITY_BUCKETS,
+    ASSOCIATION_SPARSE_PREFILTER_REFERENCE_IMPLEMENTATION_ID,
+    ASSOCIATION_SPARSE_PREFILTER_REFERENCE_SELECTOR,
     CV_MOTION_MODEL_CACHE_DIAGNOSTICS_SCHEMA_VERSION,
     CV_MOTION_MODEL_CANDIDATE_IMPLEMENTATION_ID,
     CV_MOTION_MODEL_REFERENCE_IMPLEMENTATION_ID,

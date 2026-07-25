@@ -6,6 +6,34 @@
 
 ## 当前权威增量（2026-07-25）
 
+### 模态感知保守稀疏预筛
+
+密集扫描的关联成本来自航迹与观测的笛卡尔积。候选先保留全部 pair，再尝试证明某些 pair
+一定不可能通过原精确门。设原创新协方差为 \(S\)，原残差为 \(r\)。当 \(S\) 有限、严格
+对称和严格正定，且旧伪逆不会截断任何特征方向时，
+
+\[
+r^\mathsf{T}S^{-1}r
+\geq \frac{\lVert r\rVert_2^2}{\lambda_{\max}(S)}
+\geq \frac{\lVert r\rVert_2^2}{\lVert S\rVert_\infty}.
+\]
+
+D1 用最大绝对行和给出 \(\lambda_{\max}\) 的保守上界，用 Gershgorin 下界证明严格正定并
+覆盖 `pinv` 截断边界。只有下界在数值裕量后严格大于现有门限时才删除 pair。等于门限时
+保留，证明失败时也保留。
+
+各模态使用原门控已经采用的残差。雷达与 LiDAR 是 NED 位置误差；声学是一维或二维环绕
+角差；光电是由现有内外参和针孔模型得到的像素误差。因此候选没有把角度或像素误差近似成
+空间距离。相机后方投影、非法外参、奇异或非有限协方差以及未知模态均不进入预筛。
+
+candidate `modality_conservative_quadratic_bound_v1` 默认关闭，reference `disabled_v1`
+保持原批量伪逆。execution config 固定记录 selector、实现 ID、rollback 和逐模态策略；
+诊断按 `radar/lidar/acoustic/acoustic_3d/eo/other` 六个固定桶记录候选 pair、预筛
+剔除、精确求解、精确门内通过和 fallback。2026-07-25 的 120 航迹模块微基准显示，
+LiDAR、二维声学、三维声学和光电合计 P50 改善 `9.436%`，四类精确求解分别减少
+`78.292%/56.208%/56.208%/77.118%`；但该结果只足以建议 main 正式 A/B，不能直接
+提升默认。
+
 ### 封闭批次交接正式准入后默认启用
 
 D6 以 `d6.d1_online_batch_frame_multiseed_evaluation.v1` 对 source commit

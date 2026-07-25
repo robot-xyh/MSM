@@ -5,6 +5,26 @@
 
 ---
 
+## 最新增量：模态感知保守稀疏预筛候选（2026-07-25）
+
+- D1 已实现默认关闭的 `modality_conservative_quadratic_bound_v1`；reference
+  `disabled_v1` 保留原四维非雷达批量伪逆和原操作顺序。
+- 预筛只使用现有量测空间的严格下界。雷达/LiDAR 使用位置残差，声学使用环绕角残差，
+  光电使用投影像素残差；未认证、奇异、非有限和未知模态全部 fail-open。
+- execution config v1 记录默认、实现 ID、rollback 和逐模态策略；diagnostics v2 按
+  `radar/lidar/acoustic/acoustic_3d/eo/other` 六个固定桶记录候选 pair、剔除、精确
+  求解、精确门内通过和 fallback，不读取真值。
+- 120 航迹、14,400 pair/模态、7 次交错微基准中，四类非雷达合计 P50 改善 `9.436%`；
+  LiDAR/二维声学/三维声学/光电精确求解减少
+  `78.292%/56.208%/56.208%/77.118%`，更快次数分别为
+  `7/7、6/7、7/7、7/7`；雷达本轮 P50 慢 `0.221%`，不记为新增收益。
+- candidate-on/off 规范输出、精确门内 pair、双时间戳、协方差、谱系和航迹身份一致；
+  D1 全量 `473 passed in 24.45s`。
+- 当前结论是“建议 main 显式正式 A/B”，不是准入或默认提升。后续需冻结同提交 short
+  10 pair、long 3 pair，比较 D1/D2/核心墙钟/RSS/业务语义并由 D6 判定。
+- AirSim producer、DTO、runtime bus 和坐标时间接口未改变；AirSim 集成文档已检查，无需
+  更新。本轮实验文档已同步模块微基准。
+
 ## 最新增量：在线批次到扫描帧正式准入与默认提升（2026-07-25）
 
 - D6 schema `d6.d1_online_batch_frame_multiseed_evaluation.v1` 绑定 source commit
