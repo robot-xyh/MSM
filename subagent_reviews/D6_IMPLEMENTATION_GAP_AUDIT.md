@@ -1,5 +1,27 @@
 # D6 实现差距审计
 
+## 2026-07-25 D1 回放前缀摘要评估 GAP 更新
+
+### 已关闭
+
+1. 独立只读 evaluator、CLI、固定 schema 和六类报告制品已经实现；不调用 producer 的私有
+   `_episode_matches` 或采用 producer admission 结论。
+2. producer commit `7d2e987471b521a1e531bf03a5c99af5096f676a`、matrix SHA
+   `85432d729877eff97e6f3dd517d4baa7a47f44a4fa42e6bfdc7ce85b8d9ec74b`、13 pair、
+   26 fresh arm、200/200/2、seed、时长、命令、路径和唯一 treatment 已冻结。
+3. 业务语义、在线 consistency digest/count、D1 原操作计数、实现身份、导出前后诊断守恒、
+   append/pending/snapshot 工作量和全部性能门已经进入失败关闭校验。
+4. snapshot projected record count 单独披露；内部物化减少率不会被解释为全部记录构造消失。
+5. 通过与九类失败路径、重复运行确定性和只读报告已覆盖，专项 `7 passed`。
+
+### 仍开放
+
+1. 正式 producer 13 对 evidence 尚未运行。该项属于 main 运行与 D6 正式消费的跨模块 P1，
+   当前不能给出候选 admit/reject。
+2. 正式 evidence 到达后必须原样评估，不得依据 D1 微基准调低门限、删除 pair 或把 seed-1151
+   预检写入正式样本。
+3. AirSim、硬件、实机和实飞实时性不在本矩阵证据边界内，保持既有 P1 状态。
+
 ## 2026-07-25 D1 关联稀疏预筛正式评估 GAP 更新
 
 ### 已关闭

@@ -1,5 +1,21 @@
 # D6 系统评估指标综述及子方案
 
+## 2026-07-25 D1 回放前缀摘要独立评审
+
+D6 已完成 `d6.d1_replay_prefix_summary_multiseed_evaluation.v1` evaluator、CLI 和确定性报告
+接口。评估器固定读取 producer commit `7d2e987471b521a1e531bf03a5c99af5096f676a` 和 matrix
+SHA `85432d729877eff97e6f3dd517d4baa7a47f44a4fa42e6bfdc7ce85b8d9ec74b`，不接收模块
+微基准或 clean seed-1151 预检作为正式样本。
+
+评审口径包含业务语义、在线 consistency records digest/count、D1 原有操作计数、导出前后
+pending ledger、summary hit/reuse、append revision/preservation 和 snapshot projection。内部
+物化减少率与在线投影构造工作分别报告。合法但性能、压缩或语义门失败时输出可审计 `reject`；
+证据 schema、commit、路径、状态或守恒损坏时输出 `unavailable/reject`。
+
+专项合成回归为 `7 passed`。正式 13 对 producer evidence 未运行，因此当前只关闭 D6 evaluator
+实现缺口，不关闭候选算法准入或系统实时 P1。下一步由 main 运行冻结矩阵，D6 再独立生成正式
+admit/reject 和中文报告。
+
 ## 2026-07-25 D1 关联稀疏预筛正式评审
 
 D6 已完成 `d6.d1_association_sparse_prefilter_multiseed_evaluation.v1` 独立 evaluator、CLI 和

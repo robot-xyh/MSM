@@ -1,5 +1,45 @@
 # D6 系统级离线评估：算法原理与实施说明
 
+## D1 回放前缀摘要同提交评估（2026-07-25）
+
+入口 `d1_replay_prefix_summary_multiseed.py` 和
+`scripts/evaluate_d1_replay_prefix_summary_multiseed.py` 按以下顺序执行：
+
+```text
+evidence schema/status + matrix bytes/SHA + frozen clean commit
+  -> 13 case / 26 fresh arm / 0 reused / 0 failed / command / path
+  -> only replay-prefix selector differs between paired arms
+  -> selector + implementation ID + six-second execution config
+  -> initial / module-final / exported replay diagnostics
+  -> online consistency record_count + records_digest
+  -> exact existing d1_fusion_performance operation counts
+  -> canonical business semantics with narrow treatment normalization
+  -> paired D1/core/scan-input/D2/RSS/RTF statistics and bootstrap
+  -> lazy materialization reduction plus explicit snapshot projection work
+  -> frozen gates and read-only report bundle
+```
+
+module-final 保存 episode 结束、离线导出前的 ledger 状态；summary 和 governance 保存导出后的
+状态。D6 要求非导出计数保持不变，导出阶段只允许三个 lazy materialization 计数单调增加，
+`public_evidence_snapshot` 增量必须等于导出前 pending ledger 数，导出后 pending 必须为 0。
+reference 的全部候选计数必须为 0。
+
+候选审计要求 `summary_attempt=hit+fallback`、fallback reason 分区、checkpoint reuse 不少于 hit、
+逻辑刷新记录不少于实际物化记录。摘要命中、checkpoint 复用、append revision、pending
+preservation 和在线 snapshot projection 必须为正。`checkpoint_suffix_appended`、
+`checkpoint_suffix_append_incompatible` 和 `append_only_pending_incompatible_count` 必须为 0。
+
+压缩门使用：
+
+```text
+reduction = (logical_refresh_records - actual_materialized_records)
+            / logical_refresh_records
+```
+
+在线 snapshot 投影仍构造不可变记录。报告另列 `public_snapshot_projected_record_count` 和
+`actual_materialized + projected`，不把投影成本隐去。正式准入只依据冻结 13 对矩阵；模块
+微基准和 clean 单 seed 预检均不进入结果。
+
 ## D1 关联稀疏预筛同提交评估（2026-07-25）
 
 入口 `d1_association_sparse_prefilter_multiseed.py` 与

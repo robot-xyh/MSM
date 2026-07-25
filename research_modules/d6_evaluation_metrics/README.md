@@ -1,5 +1,32 @@
 # D6 Evaluation Metrics
 
+## 2026-07-25 D1 回放前缀摘要独立评估入口
+
+D6 已实现只读 evaluator `d1_replay_prefix_summary_multiseed.py` 和 CLI
+`scripts/evaluate_d1_replay_prefix_summary_multiseed.py`，输出 schema 固定为
+`d6.d1_replay_prefix_summary_multiseed_evaluation.v1`。入口冻结 producer clean commit
+`7d2e987471b521a1e531bf03a5c99af5096f676a`、matrix SHA-256
+`85432d729877eff97e6f3dd517d4baa7a47f44a4fa42e6bfdc7ce85b8d9ec74b`、
+experiment `d1-replay-prefix-summary-multiseed-20260725-v1` 和 13 对 200/200/2
+三维质点矩阵。clean seed-1151 预检和 D1 模块微基准均不属于正式准入证据。
+
+评估器失败关闭检查 manifest/matrix schema 与摘要、同一 clean commit、26 个 fresh complete
+arm、0 reused、0 failed、seed/时长/规模、命令和路径边界。两臂只允许
+`d1_replay_prefix_summary_implementation` 不同。selector、完整实现标识、6 秒固定滞后执行配置
+和诊断分别在 runtime profile、summary、module final、nested governance 和 governance audit
+核对。
+
+逐对审计包括业务语义、`offline_consistency/online_evidence.json` 的 `record_count` 与
+`records_digest`、以及 `module_final_diagnostics.d1_fusion_performance` 原有操作计数。
+候选必须实际产生摘要命中、checkpoint 复用、append revision、pending 保留和在线快照投影；
+正常追加与不兼容追加物化为 0，导出后 pending ledger 为 0。压缩率按逻辑刷新记录与实际内部
+物化记录计算，在线 snapshot projected record count 另行披露，不计作已经消失的工作。
+
+全部性能门直接读取冻结 matrix：short/long D1 融合、core wall、D1 scan input、D2 association、
+RSS、paired bootstrap 和至少 20% 内部物化减少率。产物包括完整 JSON、紧凑 JSON、逐 pair CSV、
+PNG、中文 Markdown 和 `SHA256SUMS`。当前专项合成回归为 `7 passed`；正式 13 对 producer
+evidence 尚未运行，当前不形成 admit/reject 结论，也不允许仅凭模块微基准晋升默认路径。
+
 ## 2026-07-25 D1 关联稀疏预筛多种子正式评估入口
 
 D6 已实现独立、只读、失败关闭 evaluator

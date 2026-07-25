@@ -1,5 +1,13 @@
 # D6 文档索引
 
+2026-07-25 D1 固定滞后回放前缀摘要独立评估原理见 `MODULE_PRINCIPLES_CN.md`，严格
+manifest/matrix/commit 绑定、导出前后 ledger 守恒、在线 consistency digest、原操作计数、
+性能门和投影工作量披露见 `ALGORITHM_AND_IMPLEMENTATION.md`。入口 schema 为
+`d6.d1_replay_prefix_summary_multiseed_evaluation.v1`，冻结 matrix SHA
+`85432d729877eff97e6f3dd517d4baa7a47f44a4fa42e6bfdc7ce85b8d9ec74b` 与 producer commit
+`7d2e987471b521a1e531bf03a5c99af5096f676a`。代码和合成失败关闭专项已完成，结果
+`7 passed`；正式 13 对 evidence 尚未运行，当前无正式 admit/reject。
+
 2026-07-25 D1 在线批帧交接同提交多 seed 正式评估原理见
 `MODULE_PRINCIPLES_CN.md`，严格 manifest/matrix/provenance 绑定、四层 selector/诊断谱系、
 批帧守恒、计划语义归一化和冻结门实现见 `ALGORITHM_AND_IMPLEMENTATION.md`。入口 schema 为

@@ -1,5 +1,34 @@
 # D6 系统级评估指标实验报告
 
+## 2.38 D1 回放前缀摘要评估器实现验证
+
+### 结论
+
+2026-07-25，D6 完成回放前缀摘要多种子独立 evaluator、CLI 和失败关闭测试。输出 schema 为
+`d6.d1_replay_prefix_summary_multiseed_evaluation.v1`，冻结 producer commit 为
+`7d2e987471b521a1e531bf03a5c99af5096f676a`，matrix SHA-256 为
+`85432d729877eff97e6f3dd517d4baa7a47f44a4fa42e6bfdc7ce85b8d9ec74b`。
+
+本节是 evaluator 实现验证，不是正式算法实验。main 尚未运行冻结的 short 10 对和 long 3 对
+producer matrix，因此没有正式性能均值、置信区间或 admit/reject 结论。D1 模块 7 对微基准和
+clean seed-1151 预检只用于开发排错，没有写入 D6 正式结果。
+
+### 验证范围
+
+合成 13 对夹具覆盖 manifest/matrix/commit、26 个 fresh arm、唯一 treatment、时间和规模、
+业务语义、在线一致性记录摘要、D1 原操作计数、导出前后 pending ledger、append 物化、
+snapshot projection 和全部冻结性能门。专项结果为 `7 passed`。
+
+评估器输出内部物化减少率，同时单独输出在线快照投影构造记录和两者之和。该口径避免把
+snapshot 返回对象的构造成本写成已经消失。缺文件、dirty、schema、matrix SHA、pending 非零和
+append 物化会使证据 unavailable；合法的 digest 不等、操作计数不等、压缩不足或性能不足会保留
+可评估状态并给出 `reject` 及失败门。
+
+### 后续
+
+main 完成正式 13 对 producer evidence 后，D6 才生成完整 JSON、紧凑 JSON、逐 pair CSV、PNG、
+中文 Markdown 和 `SHA256SUMS`。只有正式矩阵全部门通过，才允许进入默认路径评审。
+
 ## 2.37 D1 关联稀疏预筛正式多种子评估
 
 ### 结论

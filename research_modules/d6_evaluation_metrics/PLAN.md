@@ -1,5 +1,31 @@
 # D6 Evaluation Metrics Plan
 
+## 2026-07-25 D1 回放前缀摘要评估状态
+
+### 已完成
+
+- [x] 新增独立只读 evaluator、CLI、完整/紧凑 JSON、逐 pair CSV、PNG、中文 Markdown 和
+  `SHA256SUMS`，schema 为 `d6.d1_replay_prefix_summary_multiseed_evaluation.v1`。
+- [x] 冻结 producer commit `7d2e987471b521a1e531bf03a5c99af5096f676a`、matrix SHA
+  `85432d729877eff97e6f3dd517d4baa7a47f44a4fa42e6bfdc7ce85b8d9ec74b`、13 pair、
+  26 fresh arm、200/200/2、seed、时长、命令、路径和唯一 selector treatment。
+- [x] 实现业务语义、在线一致性 records digest/count、D1 原有融合操作计数、实现身份和
+  导出前/后回放前缀诊断的独立核验。
+- [x] 实现 summary hit/reuse、append revision、pending preservation、snapshot projection、
+  append materialization=0、最终 pending=0 和诊断守恒检查。
+- [x] 实现冻结 short/long D1、core、scan-input、D2、RSS、bootstrap 和 20% 压缩门；
+  snapshot projected record count 与内部物化分开披露。
+- [x] 覆盖通过、digest 不等、原操作计数不等、pending 非零、append 物化、压缩不足、
+  性能门失败、缺文件、dirty、schema/matrix SHA 错误及重复运行确定性；专项 `7 passed`。
+
+### 待 main 提供证据
+
+- [ ] main 在 clean producer commit 上运行冻结 13 对矩阵并交付
+  `scalable3d-d1-replay-prefix-summary-multiseed-evidence-v1` manifest。
+- [ ] D6 对正式原始 episode 运行 evaluator，生成正式 bundle 和独立 admit/reject 决策。
+- [ ] 只有全部冻结门通过时才允许 main 评审默认晋升；D1 微基准和 seed-1151 预检不能替代
+  多种子结论。
+
 ## 2026-07-25 D1 关联稀疏预筛多种子评估状态
 
 ### 已完成

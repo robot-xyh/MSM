@@ -1,5 +1,21 @@
 # D6 系统级离线评估模块原理
 
+## 回放前缀摘要评估边界（2026-07-25）
+
+D1 候选把固定滞后回放中重复扫描的 checkpoint 前缀压缩为不可变累计摘要，并用 pending
+range ledger 延后 consistency evidence 回放计数的内部物化。在线消费者仍需取得精确快照，
+episode 结束时仍需得到完整、可导出的证据记录。因此 D6 同时检查“内部少物化”和“对外语义
+不变”，不能只看模块计时。
+
+两臂业务输出、在线消息、离线 truth、在线 consistency records digest/count 和 D1 原有融合操作
+计数必须一致。候选 selector、完整实现标识、执行配置和诊断必须在所有写盘表面一致。summary
+hit、checkpoint reuse、append revision、pending preservation 和 snapshot projection 证明候选
+路径确实被执行；append 物化或导出后 pending 非零直接失败关闭。
+
+正式判断使用 200 个目标、200 个资源、2 个侦察节点的 10 个短时 seed 和 3 个长时 seed。
+短时至少 8/10 更快，长时至少 2/3 更快；D1 和 core、scan-input、D2、RSS、bootstrap 及内部
+物化减少率均需通过冻结门。任何单次 smoke 或模块微基准只能用于定位问题，不能替代正式准入。
+
 ## 关联稀疏预筛评估边界（2026-07-25）
 
 D1 关联参考实现 `disabled_v1` 对非雷达模态直接执行精确创新求解；候选
