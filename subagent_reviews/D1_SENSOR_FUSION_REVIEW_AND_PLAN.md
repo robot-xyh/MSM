@@ -5,6 +5,35 @@
 
 ---
 
+## 最新增量：默认 R0 在线批次到扫描帧封闭交接（2026-07-25）
+
+- main 的默认无 source-key R0、200v200、2.2 s、seed 1112 开发 cProfile 含 95 个 batch
+  和 2,044 条观测。converter/frame 集合检查各 95 次，累计
+  `1.120932/1.115831 s`；逐 measurement raw 检查 2,044 次、`0.206688 s`。
+- D1 新增 `OnlineBatchFrameBuilder` 和 `sensor_scan_frame_from_online_batch()`。
+  reference ID 为 `d1.online_batch_frame.convert_then_frame.v1`，保持默认；candidate ID
+  为 `d1.online_batch_frame.closed_immutable_batch_final_frame_validation.v1`，默认关闭。
+- candidate 先完整检查 raw batch，再对冻结数据类、独立只读数组和受支持元数据执行结构
+  合格检查并建立内部深快照。该检查不声称 frozen dataclass 或 `MappingProxyType` 绝对
+  不可变。私有转换完成后，`SensorScanFrame` 对最终只读快照执行完整身份、协方差、双
+  时间戳、NED、扫描一致性、重复 observation ID 和重复 lineage 检查。
+- 普通映射和结构不合格载荷执行完整 reference 回退；结构检查或快照普通异常有明确计数并
+  回退 reference。`MemoryError` 计为 resource rejection 后原样抛出。变异载荷拒绝；公开
+  裸 measurement、裸 observation 和 frame 路径没有验证绕过参数。
+- 冻结 200-measurement 微基准预热后交错 7 次。reference/candidate 中位墙钟为
+  `0.089842/0.050648 s`，改善 `43.625675%`、加速 `1.773857x`，candidate `7/7`
+  更快。两臂规范帧 SHA-256 均为
+  `7b46fdc8beecb130914c1026fdc3d476ab6f94b53a33e76db3edcc188fdff83b`。
+- reference 的整批 raw、逐 measurement raw、转换后集合和最终 frame 检查为
+  `7/1400/7/7`；candidate 为 `7/0/0/7`。全部异常摘要、实现身份和计数守恒通过。
+- 新增字段传播锁定确认 5 个 batch 字段和 11 个 measurement 字段全部进入快照；异常注入
+  确认快照 `RuntimeError` 回退 reference、`MemoryError` 不回退，所有 diagnostics 守恒。
+  专项 `19 passed`，main 复跑 D1 全量 `443 passed in 24.02s`。当前只达到 D1 模块门槛。
+  main 必须显式接入 selector、持久化 builder diagnostics，并完成 clean 同提交默认 R0
+  多 seed 全栈矩阵；D6 判定前不得晋级默认。
+- 本结果不覆盖完整默认 R0、AirSim、目标硬件、实飞、系统实时、RMSE、NEES 或 NIS，也不
+  改变不透明来源缓存的正式拒绝结论。
+
 ## 最新增量：不透明来源标识有界代际缓存（2026-07-25）
 
 - main 的 clean `cd9c60c` profile 显示，无 source-key/hold 时

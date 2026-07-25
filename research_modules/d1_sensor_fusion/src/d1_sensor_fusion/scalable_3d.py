@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
-from dataclasses import fields, is_dataclass
+from dataclasses import dataclass, fields, is_dataclass
+from types import MappingProxyType
 from typing import Any
 
 import numpy as np
@@ -9,12 +10,54 @@ import numpy as np
 from .fusion import FusionAdapter
 from .observations import RadarCovarianceConfig, radar_covariance_from_range
 from .online_anonymization import assert_online_observations_identity_free
+from .scan_input import SensorScanFrame
 from .types import FusionBatchResult, FusionStateUpdateResult, SensorObservation
 
 
 SCALABLE_3D_FUSION_SCHEMA_VERSION = "d1-scalable3d-fusion-v1"
 SCALABLE_3D_POSITION_ONLY_RADAR_NIS_GATE = 16.26623619623813
 SCALABLE_3D_UNOBSERVED_VELOCITY_VARIANCE_M2PS2 = 25.0
+ONLINE_BATCH_FRAME_HANDOFF_DIAGNOSTICS_SCHEMA_VERSION = (
+    "d1.online_batch_frame_handoff_diagnostics.v1"
+)
+ONLINE_BATCH_FRAME_REFERENCE_IMPLEMENTATION = "convert_then_frame_v1"
+ONLINE_BATCH_FRAME_CANDIDATE_IMPLEMENTATION = (
+    "closed_immutable_batch_to_frame_v1"
+)
+ONLINE_BATCH_FRAME_REFERENCE_IMPLEMENTATION_ID = (
+    "d1.online_batch_frame.convert_then_frame.v1"
+)
+ONLINE_BATCH_FRAME_CANDIDATE_IMPLEMENTATION_ID = (
+    "d1.online_batch_frame.closed_immutable_batch_final_frame_validation.v1"
+)
+_ONLINE_BATCH_FRAME_IMPLEMENTATION_IDS = {
+    ONLINE_BATCH_FRAME_REFERENCE_IMPLEMENTATION: (
+        ONLINE_BATCH_FRAME_REFERENCE_IMPLEMENTATION_ID
+    ),
+    ONLINE_BATCH_FRAME_CANDIDATE_IMPLEMENTATION: (
+        ONLINE_BATCH_FRAME_CANDIDATE_IMPLEMENTATION_ID
+    ),
+}
+_ONLINE_BATCH_FIELDS = (
+    "batch_id",
+    "sensor_id",
+    "measurement_timestamp",
+    "arrival_timestamp",
+    "measurements",
+)
+_ONLINE_MEASUREMENT_FIELDS = (
+    "observation_id",
+    "sensor_id",
+    "modality",
+    "measurement_timestamp",
+    "arrival_timestamp",
+    "frame_id",
+    "measurement",
+    "covariance",
+    "confidence",
+    "classification_hint",
+    "metadata",
+)
 
 _FORBIDDEN_IDENTITY_KEYS = frozenset(
     {
@@ -41,6 +84,273 @@ _FORBIDDEN_IDENTITY_TYPES = frozenset(
     {"OfflineTruthLabel", "WorldSnapshot", "EntitySnapshot"}
 )
 _MISSING = object()
+
+
+@dataclass(frozen=True, slots=True)
+class _ClosedOnlineMeasurementSnapshot:
+    observation_id: str
+    sensor_id: str
+    modality: str
+    measurement_timestamp: float
+    arrival_timestamp: float
+    frame_id: str
+    measurement: np.ndarray
+    covariance: np.ndarray
+    confidence: float
+    classification_hint: str | None
+    metadata: Mapping[str, Any]
+
+
+@dataclass(frozen=True, slots=True)
+class _ClosedOnlineBatchSnapshot:
+    batch_id: str
+    sensor_id: str
+    measurement_timestamp: float
+    arrival_timestamp: float
+    measurements: tuple[_ClosedOnlineMeasurementSnapshot, ...]
+
+
+class OnlineBatchFrameBuilder:
+    """Build governed scan frames without exposing a validation bypass."""
+
+    def __init__(
+        self,
+        *,
+        implementation: str = ONLINE_BATCH_FRAME_REFERENCE_IMPLEMENTATION,
+        radar_covariance_config: RadarCovarianceConfig | Mapping[str, Any] | None = None,
+        unobserved_velocity_variance_m2ps2: float = (
+            SCALABLE_3D_UNOBSERVED_VELOCITY_VARIANCE_M2PS2
+        ),
+        position_only_radar_nis_gate: float = (
+            SCALABLE_3D_POSITION_ONLY_RADAR_NIS_GATE
+        ),
+    ) -> None:
+        selected = str(implementation).strip()
+        if selected not in _ONLINE_BATCH_FRAME_IMPLEMENTATION_IDS:
+            supported = ", ".join(sorted(_ONLINE_BATCH_FRAME_IMPLEMENTATION_IDS))
+            raise ValueError(
+                f"online batch frame implementation must be one of: {supported}"
+            )
+        self.implementation = selected
+        self.radar_covariance_config = radar_covariance_config
+        self.unobserved_velocity_variance_m2ps2 = _positive_finite(
+            unobserved_velocity_variance_m2ps2,
+            "unobserved_velocity_variance_m2ps2",
+        )
+        self.position_only_radar_nis_gate = _positive_finite(
+            position_only_radar_nis_gate,
+            "position_only_radar_nis_gate",
+        )
+        self._operation_counts = {
+            "request_count": 0,
+            "successful_build_count": 0,
+            "rejected_build_count": 0,
+            "reference_request_count": 0,
+            "candidate_request_count": 0,
+            "reference_path_execution_count": 0,
+            "candidate_closed_handoff_count": 0,
+            "candidate_reference_fallback_count": 0,
+            "candidate_raw_rejection_count": 0,
+            "candidate_resource_rejection_count": 0,
+            "snapshot_structure_check_count": 0,
+            "snapshot_structure_eligible_count": 0,
+            "snapshot_structure_ineligible_count": 0,
+            "snapshot_structure_error_count": 0,
+            "closed_payload_snapshot_attempt_count": 0,
+            "closed_payload_snapshot_success_count": 0,
+            "closed_payload_snapshot_failure_count": 0,
+            "raw_batch_identity_check_count": 0,
+            "raw_measurement_identity_check_count": 0,
+            "converted_observation_collection_check_count": 0,
+            "frame_final_identity_check_count": 0,
+            "measurement_conversion_count": 0,
+            "output_observation_count": 0,
+        }
+
+    @property
+    def implementation_id(self) -> str:
+        return _ONLINE_BATCH_FRAME_IMPLEMENTATION_IDS[self.implementation]
+
+    def build(self, batch: Any) -> SensorScanFrame:
+        self._increment("request_count")
+        self._increment(
+            "reference_request_count"
+            if self.implementation == ONLINE_BATCH_FRAME_REFERENCE_IMPLEMENTATION
+            else "candidate_request_count"
+        )
+        try:
+            if self.implementation == ONLINE_BATCH_FRAME_REFERENCE_IMPLEMENTATION:
+                frame = self._build_reference(batch)
+            else:
+                frame = self._build_candidate(batch)
+        except Exception:
+            self._increment("rejected_build_count")
+            raise
+        self._increment("successful_build_count")
+        self._increment("output_observation_count", len(frame.observations))
+        return frame
+
+    def execution_config(self) -> dict[str, Any]:
+        return {
+            "schema_version": (
+                ONLINE_BATCH_FRAME_HANDOFF_DIAGNOSTICS_SCHEMA_VERSION
+            ),
+            "implementation": self.implementation,
+            "implementation_id": self.implementation_id,
+            "candidate_default_enabled": False,
+            "public_validation_bypass_available": False,
+            "raw_source_absolute_immutability_claimed": False,
+            "candidate_contract": (
+                "full_raw_batch_identity_check_then_structural_eligibility_"
+                "check_then_deep_snapshot_then_full_readonly_frame_check"
+            ),
+        }
+
+    def diagnostics(self) -> dict[str, Any]:
+        counts = dict(self._operation_counts)
+        conservation = {
+            "request_partition": (
+                counts["request_count"]
+                == counts["reference_request_count"]
+                + counts["candidate_request_count"]
+            ),
+            "result_partition": (
+                counts["request_count"]
+                == counts["successful_build_count"]
+                + counts["rejected_build_count"]
+            ),
+            "reference_path_partition": (
+                counts["reference_path_execution_count"]
+                == counts["reference_request_count"]
+                + counts["candidate_reference_fallback_count"]
+            ),
+            "candidate_path_partition": (
+                counts["candidate_request_count"]
+                == counts["candidate_closed_handoff_count"]
+                + counts["candidate_reference_fallback_count"]
+                + counts["candidate_raw_rejection_count"]
+                + counts["candidate_resource_rejection_count"]
+            ),
+            "snapshot_structure_check_partition": (
+                counts["snapshot_structure_check_count"]
+                == counts["snapshot_structure_eligible_count"]
+                + counts["snapshot_structure_ineligible_count"]
+                + counts["snapshot_structure_error_count"]
+            ),
+            "closed_payload_snapshot_partition": (
+                counts["closed_payload_snapshot_attempt_count"]
+                == counts["closed_payload_snapshot_success_count"]
+                + counts["closed_payload_snapshot_failure_count"]
+            ),
+            "closed_handoff_uses_successful_snapshot": (
+                counts["candidate_closed_handoff_count"]
+                == counts["closed_payload_snapshot_success_count"]
+            ),
+            "raw_batch_check_accounting": (
+                counts["raw_batch_identity_check_count"]
+                == counts["candidate_request_count"]
+                + counts["reference_path_execution_count"]
+            ),
+            "candidate_never_skips_final_frame_check": (
+                counts["frame_final_identity_check_count"]
+                >= counts["successful_build_count"]
+            ),
+        }
+        return {
+            **self.execution_config(),
+            "operation_counts": counts,
+            "conservation": conservation,
+        }
+
+    def _build_reference(self, batch: Any) -> SensorScanFrame:
+        self._increment("reference_path_execution_count")
+        observations = _sensor_observations_from_online_batch_reference(
+            batch,
+            radar_covariance_config=self.radar_covariance_config,
+            unobserved_velocity_variance_m2ps2=(
+                self.unobserved_velocity_variance_m2ps2
+            ),
+            position_only_radar_nis_gate=self.position_only_radar_nis_gate,
+            operation_counts=self._operation_counts,
+        )
+        return self._frame_from_observations(
+            observations,
+            scan_id=str(_field(batch, "batch_id")),
+        )
+
+    def _build_candidate(self, batch: Any) -> SensorScanFrame:
+        self._increment("raw_batch_identity_check_count")
+        try:
+            assert_scalable_online_payload_identity_free(batch)
+        except MemoryError:
+            self._increment("candidate_resource_rejection_count")
+            raise
+        except Exception:
+            self._increment("candidate_raw_rejection_count")
+            raise
+
+        self._increment("snapshot_structure_check_count")
+        try:
+            snapshot_structure_eligible = (
+                _is_online_batch_snapshot_structure_eligible(batch)
+            )
+        except MemoryError:
+            self._increment("snapshot_structure_error_count")
+            self._increment("candidate_resource_rejection_count")
+            raise
+        except Exception:
+            self._increment("snapshot_structure_error_count")
+            self._increment("candidate_reference_fallback_count")
+            return self._build_reference(batch)
+
+        if not snapshot_structure_eligible:
+            self._increment("snapshot_structure_ineligible_count")
+            self._increment("candidate_reference_fallback_count")
+            return self._build_reference(batch)
+
+        self._increment("snapshot_structure_eligible_count")
+        self._increment("closed_payload_snapshot_attempt_count")
+        try:
+            snapshot = _snapshot_closed_online_batch(batch)
+        except MemoryError:
+            self._increment("closed_payload_snapshot_failure_count")
+            self._increment("candidate_resource_rejection_count")
+            raise
+        except Exception:
+            self._increment("closed_payload_snapshot_failure_count")
+            self._increment("candidate_reference_fallback_count")
+            return self._build_reference(batch)
+
+        self._increment("closed_payload_snapshot_success_count")
+        self._increment("candidate_closed_handoff_count")
+        observations = _sensor_observations_from_closed_online_batch(
+            snapshot,
+            radar_covariance_config=self.radar_covariance_config,
+            unobserved_velocity_variance_m2ps2=(
+                self.unobserved_velocity_variance_m2ps2
+            ),
+            position_only_radar_nis_gate=self.position_only_radar_nis_gate,
+            operation_counts=self._operation_counts,
+        )
+        return self._frame_from_observations(
+            observations,
+            scan_id=snapshot.batch_id,
+        )
+
+    def _frame_from_observations(
+        self,
+        observations: tuple[SensorObservation, ...],
+        *,
+        scan_id: str,
+    ) -> SensorScanFrame:
+        self._increment("frame_final_identity_check_count")
+        return SensorScanFrame.from_observations(
+            observations,
+            scan_id=scan_id,
+        )
+
+    def _increment(self, name: str, amount: int = 1) -> None:
+        self._operation_counts[name] += int(amount)
 
 
 class Scalable3DFusionAdapter(FusionAdapter):
@@ -174,34 +484,72 @@ def sensor_observations_from_online_batch(
 ) -> tuple[SensorObservation, ...]:
     """Convert an OnlineSensorBatch-compatible payload without importing main."""
 
+    return _sensor_observations_from_online_batch_reference(
+        batch,
+        radar_covariance_config=radar_covariance_config,
+        unobserved_velocity_variance_m2ps2=(
+            unobserved_velocity_variance_m2ps2
+        ),
+        position_only_radar_nis_gate=position_only_radar_nis_gate,
+        operation_counts=None,
+    )
+
+
+def sensor_scan_frame_from_online_batch(
+    batch: Any,
+    *,
+    implementation: str = ONLINE_BATCH_FRAME_REFERENCE_IMPLEMENTATION,
+    radar_covariance_config: RadarCovarianceConfig | Mapping[str, Any] | None = None,
+    unobserved_velocity_variance_m2ps2: float = (
+        SCALABLE_3D_UNOBSERVED_VELOCITY_VARIANCE_M2PS2
+    ),
+    position_only_radar_nis_gate: float = SCALABLE_3D_POSITION_ONLY_RADAR_NIS_GATE,
+) -> SensorScanFrame:
+    """Build one governed frame; the default preserves the reference chain."""
+
+    return OnlineBatchFrameBuilder(
+        implementation=implementation,
+        radar_covariance_config=radar_covariance_config,
+        unobserved_velocity_variance_m2ps2=(
+            unobserved_velocity_variance_m2ps2
+        ),
+        position_only_radar_nis_gate=position_only_radar_nis_gate,
+    ).build(batch)
+
+
+def _sensor_observations_from_online_batch_reference(
+    batch: Any,
+    *,
+    radar_covariance_config: RadarCovarianceConfig | Mapping[str, Any] | None,
+    unobserved_velocity_variance_m2ps2: float,
+    position_only_radar_nis_gate: float,
+    operation_counts: dict[str, int] | None,
+) -> tuple[SensorObservation, ...]:
+    _increment_operation(
+        operation_counts,
+        "raw_batch_identity_check_count",
+    )
     assert_scalable_online_payload_identity_free(batch)
-    batch_id = str(_field(batch, "batch_id")).strip()
-    sensor_id = str(_field(batch, "sensor_id")).strip()
-    measurement_timestamp = float(_field(batch, "measurement_timestamp"))
-    arrival_timestamp = float(_field(batch, "arrival_timestamp"))
-    measurements = tuple(_field(batch, "measurements"))
-    if not batch_id or not sensor_id:
-        raise ValueError("online batch_id and sensor_id must be non-empty")
-    if not measurements:
-        raise ValueError("online sensor batch must contain at least one measurement")
-    if not np.isfinite(measurement_timestamp) or not np.isfinite(arrival_timestamp):
-        raise ValueError("online batch timestamps must be finite")
-    if arrival_timestamp + 1.0e-12 < measurement_timestamp:
-        raise ValueError("online batch arrival_timestamp must not precede sensing time")
+    (
+        batch_id,
+        sensor_id,
+        measurement_timestamp,
+        arrival_timestamp,
+        measurements,
+    ) = _online_batch_fields(batch)
 
     observations: list[SensorObservation] = []
     for measurement in measurements:
-        measurement_sensor_id = str(_field(measurement, "sensor_id")).strip()
-        measurement_time = float(_field(measurement, "measurement_timestamp"))
-        arrival_time = float(_field(measurement, "arrival_timestamp"))
-        if measurement_sensor_id != sensor_id:
-            raise ValueError("all online batch measurements must share sensor_id")
-        if abs(measurement_time - measurement_timestamp) > 1.0e-9:
-            raise ValueError(
-                "all online batch measurements must share measurement_timestamp"
-            )
-        if abs(arrival_time - arrival_timestamp) > 1.0e-9:
-            raise ValueError("all online batch measurements must share arrival_timestamp")
+        _validate_measurement_batch_consistency(
+            measurement,
+            sensor_id=sensor_id,
+            measurement_timestamp=measurement_timestamp,
+            arrival_timestamp=arrival_timestamp,
+        )
+        _increment_operation(
+            operation_counts,
+            "raw_measurement_identity_check_count",
+        )
         observations.append(
             sensor_observation_from_online_measurement(
                 measurement,
@@ -213,7 +561,12 @@ def sensor_observations_from_online_batch(
                 position_only_radar_nis_gate=position_only_radar_nis_gate,
             )
         )
+        _increment_operation(operation_counts, "measurement_conversion_count")
 
+    _increment_operation(
+        operation_counts,
+        "converted_observation_collection_check_count",
+    )
     assert_online_observations_identity_free(observations)
     return tuple(observations)
 
@@ -231,6 +584,25 @@ def sensor_observation_from_online_measurement(
     """Convert one identity-free bus measurement to D1's canonical contract."""
 
     assert_scalable_online_payload_identity_free(measurement)
+    return _sensor_observation_from_online_measurement(
+        measurement,
+        batch_id=batch_id,
+        radar_covariance_config=radar_covariance_config,
+        unobserved_velocity_variance_m2ps2=(
+            unobserved_velocity_variance_m2ps2
+        ),
+        position_only_radar_nis_gate=position_only_radar_nis_gate,
+    )
+
+
+def _sensor_observation_from_online_measurement(
+    measurement: Any,
+    *,
+    batch_id: str,
+    radar_covariance_config: RadarCovarianceConfig | Mapping[str, Any] | None,
+    unobserved_velocity_variance_m2ps2: float,
+    position_only_radar_nis_gate: float,
+) -> SensorObservation:
     modality = str(_field(measurement, "modality")).strip().lower()
     raw_value = np.asarray(_field(measurement, "measurement"), dtype=float).reshape(-1)
     raw_covariance = np.asarray(_field(measurement, "covariance"), dtype=float)
@@ -313,6 +685,257 @@ def assert_scalable_online_payload_identity_free(payload: Any) -> None:
     if violations:
         details = ", ".join(sorted(set(violations)))
         raise ValueError(f"online scalable 3D payload contains identity truth: {details}")
+
+
+def _sensor_observations_from_closed_online_batch(
+    batch: _ClosedOnlineBatchSnapshot,
+    *,
+    radar_covariance_config: RadarCovarianceConfig | Mapping[str, Any] | None,
+    unobserved_velocity_variance_m2ps2: float,
+    position_only_radar_nis_gate: float,
+    operation_counts: dict[str, int] | None,
+) -> tuple[SensorObservation, ...]:
+    (
+        batch_id,
+        sensor_id,
+        measurement_timestamp,
+        arrival_timestamp,
+        measurements,
+    ) = _online_batch_fields(batch)
+    observations: list[SensorObservation] = []
+    for measurement in measurements:
+        _validate_measurement_batch_consistency(
+            measurement,
+            sensor_id=sensor_id,
+            measurement_timestamp=measurement_timestamp,
+            arrival_timestamp=arrival_timestamp,
+        )
+        observations.append(
+            _sensor_observation_from_online_measurement(
+                measurement,
+                batch_id=batch_id,
+                radar_covariance_config=radar_covariance_config,
+                unobserved_velocity_variance_m2ps2=(
+                    unobserved_velocity_variance_m2ps2
+                ),
+                position_only_radar_nis_gate=position_only_radar_nis_gate,
+            )
+        )
+        _increment_operation(operation_counts, "measurement_conversion_count")
+    return tuple(observations)
+
+
+def _online_batch_fields(
+    batch: Any,
+) -> tuple[str, str, float, float, tuple[Any, ...]]:
+    batch_id = str(_field(batch, "batch_id")).strip()
+    sensor_id = str(_field(batch, "sensor_id")).strip()
+    measurement_timestamp = float(_field(batch, "measurement_timestamp"))
+    arrival_timestamp = float(_field(batch, "arrival_timestamp"))
+    measurements = tuple(_field(batch, "measurements"))
+    if not batch_id or not sensor_id:
+        raise ValueError("online batch_id and sensor_id must be non-empty")
+    if not measurements:
+        raise ValueError("online sensor batch must contain at least one measurement")
+    if not np.isfinite(measurement_timestamp) or not np.isfinite(arrival_timestamp):
+        raise ValueError("online batch timestamps must be finite")
+    if arrival_timestamp + 1.0e-12 < measurement_timestamp:
+        raise ValueError("online batch arrival_timestamp must not precede sensing time")
+    return (
+        batch_id,
+        sensor_id,
+        measurement_timestamp,
+        arrival_timestamp,
+        measurements,
+    )
+
+
+def _validate_measurement_batch_consistency(
+    measurement: Any,
+    *,
+    sensor_id: str,
+    measurement_timestamp: float,
+    arrival_timestamp: float,
+) -> None:
+    measurement_sensor_id = str(_field(measurement, "sensor_id")).strip()
+    measurement_time = float(_field(measurement, "measurement_timestamp"))
+    arrival_time = float(_field(measurement, "arrival_timestamp"))
+    if measurement_sensor_id != sensor_id:
+        raise ValueError("all online batch measurements must share sensor_id")
+    if abs(measurement_time - measurement_timestamp) > 1.0e-9:
+        raise ValueError(
+            "all online batch measurements must share measurement_timestamp"
+        )
+    if abs(arrival_time - arrival_timestamp) > 1.0e-9:
+        raise ValueError("all online batch measurements must share arrival_timestamp")
+
+
+def _is_online_batch_snapshot_structure_eligible(batch: Any) -> bool:
+    """Check whether strict snapshotters support the current raw structure."""
+
+    if not _is_plain_frozen_dataclass(batch, _ONLINE_BATCH_FIELDS):
+        return False
+    if type(batch.batch_id) is not str or type(batch.sensor_id) is not str:
+        return False
+    if not _is_immutable_number(batch.measurement_timestamp):
+        return False
+    if not _is_immutable_number(batch.arrival_timestamp):
+        return False
+    if type(batch.measurements) is not tuple or not batch.measurements:
+        return False
+    return all(
+        _is_online_measurement_snapshot_structure_eligible(item)
+        for item in batch.measurements
+    )
+
+
+def _is_online_measurement_snapshot_structure_eligible(
+    measurement: Any,
+) -> bool:
+    if not _is_plain_frozen_dataclass(measurement, _ONLINE_MEASUREMENT_FIELDS):
+        return False
+    for name in ("observation_id", "sensor_id", "modality", "frame_id"):
+        if type(getattr(measurement, name)) is not str:
+            return False
+    if not _is_immutable_number(measurement.measurement_timestamp):
+        return False
+    if not _is_immutable_number(measurement.arrival_timestamp):
+        return False
+    if not _is_immutable_number(measurement.confidence):
+        return False
+    if (
+        measurement.classification_hint is not None
+        and type(measurement.classification_hint) is not str
+    ):
+        return False
+    if not _is_owned_readonly_numeric_array(measurement.measurement):
+        return False
+    if not _is_owned_readonly_numeric_array(measurement.covariance):
+        return False
+    return _is_supported_snapshot_metadata_value(measurement.metadata)
+
+
+def _is_plain_frozen_dataclass(
+    value: Any,
+    expected_fields: tuple[str, ...],
+) -> bool:
+    if not is_dataclass(value) or isinstance(value, type):
+        return False
+    params = getattr(type(value), "__dataclass_params__", None)
+    if params is None or not bool(params.frozen):
+        return False
+    if type(value).__getattribute__ is not object.__getattribute__:
+        return False
+    return tuple(item.name for item in fields(value)) == expected_fields
+
+
+def _is_immutable_number(value: Any) -> bool:
+    return (
+        type(value) in {int, float}
+        or isinstance(value, np.integer)
+        or isinstance(value, np.floating)
+    )
+
+
+def _is_owned_readonly_numeric_array(value: Any) -> bool:
+    return (
+        type(value) is np.ndarray
+        and value.dtype.kind in {"b", "i", "u", "f", "c"}
+        and bool(value.flags.owndata)
+        and not bool(value.flags.writeable)
+        and value.base is None
+    )
+
+
+def _is_supported_snapshot_metadata_value(value: Any) -> bool:
+    if type(value) is MappingProxyType:
+        return all(
+            type(key) is str and _is_supported_snapshot_metadata_value(item)
+            for key, item in value.items()
+        )
+    if type(value) is tuple:
+        return all(_is_supported_snapshot_metadata_value(item) for item in value)
+    if type(value) is frozenset:
+        return all(_is_supported_snapshot_metadata_value(item) for item in value)
+    if type(value) is np.ndarray:
+        return _is_owned_readonly_numeric_array(value)
+    if isinstance(value, np.generic):
+        return value.dtype.kind in {"b", "i", "u", "f", "c"}
+    return value is None or type(value) in {str, bytes, int, float, bool}
+
+
+def _snapshot_closed_online_batch(batch: Any) -> _ClosedOnlineBatchSnapshot:
+    return _ClosedOnlineBatchSnapshot(
+        batch_id=str(batch.batch_id),
+        sensor_id=str(batch.sensor_id),
+        measurement_timestamp=float(batch.measurement_timestamp),
+        arrival_timestamp=float(batch.arrival_timestamp),
+        measurements=tuple(
+            _snapshot_closed_online_measurement(item)
+            for item in batch.measurements
+        ),
+    )
+
+
+def _snapshot_closed_online_measurement(
+    measurement: Any,
+) -> _ClosedOnlineMeasurementSnapshot:
+    return _ClosedOnlineMeasurementSnapshot(
+        observation_id=str(measurement.observation_id),
+        sensor_id=str(measurement.sensor_id),
+        modality=str(measurement.modality),
+        measurement_timestamp=float(measurement.measurement_timestamp),
+        arrival_timestamp=float(measurement.arrival_timestamp),
+        frame_id=str(measurement.frame_id),
+        measurement=_readonly_numeric_copy(measurement.measurement),
+        covariance=_readonly_numeric_copy(measurement.covariance),
+        confidence=float(measurement.confidence),
+        classification_hint=measurement.classification_hint,
+        metadata=_snapshot_closed_metadata_value(measurement.metadata),
+    )
+
+
+def _snapshot_closed_metadata_value(value: Any) -> Any:
+    if type(value) is MappingProxyType:
+        return MappingProxyType(
+            {
+                key: _snapshot_closed_metadata_value(item)
+                for key, item in value.items()
+            }
+        )
+    if type(value) is tuple:
+        return tuple(_snapshot_closed_metadata_value(item) for item in value)
+    if type(value) is frozenset:
+        return frozenset(
+            _snapshot_closed_metadata_value(item) for item in value
+        )
+    if type(value) is np.ndarray:
+        return _readonly_numeric_copy(value)
+    if isinstance(value, np.generic):
+        return value.item()
+    if value is None or type(value) in {str, bytes, int, float, bool}:
+        return value
+    raise TypeError(
+        "closed online batch metadata contains unsupported mutable type: "
+        f"{type(value).__name__}"
+    )
+
+
+def _readonly_numeric_copy(value: Any) -> np.ndarray:
+    result = np.array(value, copy=True)
+    if result.dtype.kind not in {"b", "i", "u", "f", "c"}:
+        raise TypeError("closed online batch arrays must be numeric")
+    result.setflags(write=False)
+    return result
+
+
+def _increment_operation(
+    operation_counts: dict[str, int] | None,
+    name: str,
+    amount: int = 1,
+) -> None:
+    if operation_counts is not None:
+        operation_counts[name] += int(amount)
 
 
 def _radar_observation(

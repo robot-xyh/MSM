@@ -8,6 +8,60 @@
 
 ## 当前权威增量（2026-07-25）
 
+### 在线批次到扫描帧封闭交接
+
+原参考实现可以写成：
+
+```text
+完整 raw batch 身份检查
+  -> 每条 raw measurement 再检查并转换
+  -> 转换后 SensorObservation 集合检查
+  -> SensorScanFrame 深快照和最终完整检查
+```
+
+main 的默认无 source-key R0 开发 cProfile 说明，中间两组检查与两端检查覆盖了相同对象层级。
+候选不改公开转换器，而是新增专用批次到帧入口：
+
+```text
+完整 raw batch 身份检查
+  -> 结构合格检查
+  -> 私有深快照
+  -> 私有 measurement 转换
+  -> SensorScanFrame 深快照和最终完整检查
+```
+
+`sensor_scan_frame_from_online_batch()` 适合一次性调用。
+`OnlineBatchFrameBuilder` 适合 main 在一个 episode 内复用，以便累计 implementation ID、
+操作计数和守恒诊断。两者默认选择 `convert_then_frame_v1`。显式
+`closed_immutable_batch_to_frame_v1` 才进入候选。
+
+结构合格检查要求 batch 和 measurement 是冻结数据类，字段集合与在线合同完全一致；量测和
+协方差必须是拥有自身存储的只读数值数组；metadata 必须由受支持的只读映射、元组、冻结
+集合、只读数组或标量组成。该检查只决定严格快照函数能否处理当前结构，不声明 raw 对象绝对
+不可变。候选随后复制全部字段，不向 `SensorScanFrame` 传递原对象别名。结构不合格时执行
+完整 reference。结构检查或快照抛出普通 `Exception` 时记录失败并回退 reference；
+`MemoryError` 单独记录为资源拒绝后原样抛出。`KeyboardInterrupt` 和 `SystemExit` 不被
+捕获。候选不接受 `trusted`、`validated` 或 `skip_validation`，也不暴露私有快照类型。
+
+私有转换仍执行批次非空、有限时间、arrival 不早于 measurement、sensor 与双时间戳一致、
+模态维数、协方差和 NED/像平面合同。最终 `SensorScanFrame` 继续执行递归身份检查、只读
+快照、扫描 ID、sensor/modality/frame、双时间戳、source namespace、重复 observation ID
+和重复 lineage 检查。因此候选只合并两端完整检查已经覆盖的重复遍历，不删除边界约束。
+
+冻结微基准脚本为 `scripts/run_online_batch_frame_performance.py`。默认负载 200 条量测、
+7 次交错采样，预注册门为中位改善至少 `20%`、candidate 更快比例至少 `70%`，且规范帧、
+异常摘要和计数守恒全部一致。2026-07-25 结果为
+`0.089842 -> 0.050648 s`，改善 `43.625675%`，`7/7` 更快。当前只建议 main 进行显式
+同提交 A/B，不建议改变默认实现。
+
+专项字段锁定以 `dataclasses.fields()` 对照 OnlineSensorBatch 的 5 个字段和
+SensorMeasurement 的 11 个字段，再逐字段比较深快照。最终帧负例覆盖身份、协方差、双
+时间戳、sensor/batch、模态一致性、重复 observation ID 和重复 lineage。异常注入确认
+结构检查和快照 `RuntimeError` 均回退完整 reference，`MemoryError` 不回退；专项
+`19 passed`，main 复跑 D1 全量 `443 passed in 24.02s`。实现 ID 中的 `closed_immutable` 保留为
+稳定追踪标签，不作
+raw 来源绝对不可变声明。
+
 ### 不透明来源标识缓存
 
 main 在 clean `cd9c60c` 的 source-only profile 中记录

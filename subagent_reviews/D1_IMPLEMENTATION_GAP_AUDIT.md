@@ -8,6 +8,27 @@
 
 ## 0. 当前正式治理 GAP 增量（2026-07-25）
 
+### 默认 R0 在线批次到扫描帧重复检查
+
+main 的默认无 source-key R0、200v200、2.2 s、seed 1112 开发 cProfile 显示，95 个 batch、
+2,044 条观测在 converter 和 `SensorScanFrame` 间形成两次集合身份检查；逐 measurement
+raw 检查另执行 2,044 次。该证据只用于选择 D1-owned 候选。
+
+| GAP | 当前状态 | D1-owned 证据 | 剩余关闭条件 |
+| --- | --- | --- | --- |
+| raw batch 到 `SensorScanFrame` 的逐量测和转换后集合重复检查 | **P1 模块候选门槛通过，main 全栈准入开放** | 新增默认关闭的封闭交接候选。200 条量测、7 次交错微基准中位墙钟 `0.089842 -> 0.050648 s`，改善 `43.625675%`，`7/7` 更快；逐量测重复检查 `1400 -> 0`，转换后集合检查 `7 -> 0`，整批 raw 和最终 frame 检查均保持 7 次；规范帧和异常摘要一致 | main 显式接入 selector 和持久化诊断，在 clean 同提交默认 R0 short/long 多 seed 全栈矩阵中验证 D1、scan-input、D2、核心墙钟、RSS、业务语义和在线真值隔离；D6 独立判定前不得晋级默认 |
+| 候选交接的校验绕过和对象突变风险 | **D1-owned 已关闭并持续回归** | 候选无公开验证状态；先完整 raw batch 检查，再做结构合格检查和私有深快照，最终由只读 `SensorScanFrame` 完整检查。结构检查不声称 frozen dataclass 或 mapping proxy 绝对不可变；普通映射及普通结构/快照异常回退 reference，变异载荷拒绝，`MemoryError` 原样拒绝，源对象后续突变不影响已建帧 | 保持 truth/actor/object/target、协方差、双时间戳、NED、lineage、重复 ID、扫描一致性和别名隔离回归；不能增加 `trusted`、`validated` 或 `skip_validation` 参数 |
+| 完整默认 R0、系统实时、AirSim 和融合精度 | **P1 开放** | 当前只有 D1 冻结微基准；专项 `19 passed`，main 复跑 D1 全量 `443 passed in 24.02s` | 需要默认 R0 全栈、AirSim、目标硬件、实飞、实时因子 `>=1.0`、RMSE、NEES 和 NIS 独立证据 |
+
+reference 实现 ID 为 `d1.online_batch_frame.convert_then_frame.v1`，candidate 为
+`d1.online_batch_frame.closed_immutable_batch_final_frame_validation.v1`。默认继续
+reference。当前结论不改变下述不透明来源缓存正式拒绝，也不构成 main 接线或系统准入。
+候选实现 ID 保持稳定；其中 `closed_immutable` 是既有可追踪标签，不表示 raw Python 对象
+具备无法绕过的绝对不可变性。诊断已改为 structure check、snapshot attempt/success/failure
+和 resource rejection，并新增路径、结构检查和快照计数守恒。
+`docs/AIRSIM_INTEGRATION_PLAN.md` 已检查；上游 DTO、AirSim producer、runtime bus、坐标和
+时间接口均未改变，因此无需修改。
+
 ### 不透明来源标识有界代际缓存
 
 main 在 clean `cd9c60c` 上给出的候选来源 profile 分为两个配置。无 source-key/hold 的

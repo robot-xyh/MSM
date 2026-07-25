@@ -1,5 +1,67 @@
 # D1 多传感器融合与目标配准实施计划
 
+## P1 默认 R0 在线批次到扫描帧封闭交接候选（2026-07-25）
+
+### 选题与范围
+
+main 的默认无 source-key R0、200v200、2.2 s、seed 1112 开发 cProfile 含 95 个 batch
+和 2,044 条 observation。在线观测集合检查共 190 次、累计 `2.236763 s`，其中 converter
+和 `SensorScanFrame` 各 95 次、分别累计 `1.120932/1.115831 s`。
+`SensorScanFrame.__post_init__` 累计 `1.397623 s`。raw payload 检查共 2,139 次、
+`0.403673 s`，其中逐 measurement 2,044 次、`0.206688 s`，整 batch 95 次、
+`0.196985 s`。
+
+本轮只合并已经由整批递归检查和最终帧检查覆盖的重复遍历，不改观测数学、协方差、双时间戳、
+NED、谱系、扫描一致性、门控或融合器。公开转换 API 保持原行为。
+
+### 已实现候选
+
+1. reference 选择器为 `convert_then_frame_v1`，实现 ID
+   `d1.online_batch_frame.convert_then_frame.v1`，保持默认。
+2. candidate 选择器为 `closed_immutable_batch_to_frame_v1`，实现 ID
+   `d1.online_batch_frame.closed_immutable_batch_final_frame_validation.v1`，默认关闭。
+3. 候选入口先完整检查 raw batch；冻结数据类、独立只读数组和受支持元数据通过结构合格
+   检查后，才进入模块内部深快照和私有转换链。该检查不声明 raw 来源绝对不可变。
+4. `SensorScanFrame` 对最终只读快照执行完整检查。普通映射和结构不合格载荷回退 reference；
+   结构检查或快照中的普通异常明确记账并回退 reference，`MemoryError` 记账后原样拒绝。
+5. `OnlineBatchFrameBuilder` 发布稳定实现 ID、固定操作计数和守恒诊断。调用者不能传入
+   已验证状态，也没有公开跳过检查参数。
+
+### 模块验收
+
+冻结微基准使用 200 条 measurement、7 次交错采样。预注册门槛为中位墙钟改善
+`>=20%`、candidate 更快比例 `>=70%`，并要求规范帧 SHA-256、正负异常摘要和操作计数
+守恒全部一致。
+
+| 指标 | Reference | Candidate |
+| --- | ---: | ---: |
+| 中位墙钟 | `0.089842 s` | `0.050648 s` |
+| 中位改善 | - | `43.625675%` |
+| 中位加速比 | - | `1.773857x` |
+| 配对更快 | - | `7/7` |
+| 整批 raw 检查 | 7 | 7 |
+| 逐 measurement 重复 raw 检查 | 1,400 | 0 |
+| 转换后集合重复检查 | 7 | 0 |
+| 最终 frame 检查 | 7 | 7 |
+
+规范帧 SHA-256 为
+`7b46fdc8beecb130914c1026fdc3d476ab6f94b53a33e76db3edcc188fdff83b`。
+合法输出、5 个 batch 字段和 11 个 measurement 字段传播、身份泄漏、坏协方差、双时间戳
+冲突、sensor/batch/模态不一致、重复 observation ID、重复 lineage、普通映射回退、变异
+自定义载荷拒绝、快照 `RuntimeError` 回退、`MemoryError` 拒绝和快照突变隔离均已回归。
+专项 `19 passed`，main 复跑 D1 全量为 `443 passed in 24.02s`。当前可标记“D1 模块门槛通过”，
+不能标记 main 全栈准入。
+
+### 后续边界
+
+1. main 只能显式选择 candidate，并持久化同一 builder 的实现配置、操作计数和守恒诊断；
+   当前不得改变默认 reference。
+2. main 应在 clean 同提交的默认无 source-key R0 short/long 多 seed 矩阵中比较 D1、
+   scan-input、D2、核心墙钟、内存和业务语义，再由 D6 独立判定。
+3. malformed/custom/mutating 输入若不能通过当前结构检查和完整校验，继续回退或拒绝，
+   不扩大候选载荷范围；不把 frozen 或 mapping proxy 解释为绝对不可变。
+4. 系统实时、AirSim、目标硬件、实飞、RMSE、NEES 和 NIS 保持开放，模块微基准不能替代。
+
 ## P1 不透明来源标识缓存正式拒绝与后续治理（2026-07-25）
 
 ### 候选范围

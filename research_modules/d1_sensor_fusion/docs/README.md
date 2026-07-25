@@ -4,6 +4,24 @@
 
 ## 当前证据索引（2026-07-25）
 
+### 在线批次到扫描帧封闭交接候选
+
+默认 R0 开发画像显示，raw online batch 转换为 `SensorScanFrame` 时存在逐量测和转换后集合
+重复检查。D1 已增加默认关闭的封闭交接候选：先完整检查 raw batch，再做结构合格检查和
+模块内部深快照，最后由 `SensorScanFrame` 完整检查。结构检查不声称 raw Python 对象绝对
+不可变。普通映射、结构不合格载荷和普通结构/快照异常回退 reference；`MemoryError` 原样
+拒绝。公开裸量测、裸观测和帧入口的失败关闭校验不变。
+
+200 条量测、7 次交错微基准中，reference/candidate 中位墙钟为
+`0.089842/0.050648 s`，改善 `43.625675%`，candidate `7/7` 更快。整批 raw 和最终帧
+检查均保留，逐量测重复检查由 1,400 次降为 0，转换后集合重复检查由 7 次降为 0；规范帧
+SHA-256 和异常摘要一致。字段传播和异常注入专项为 `19 passed`，main 复跑 D1 全量为
+`443 passed in 24.02s`。
+
+当前只通过 D1 模块门槛，默认仍为 reference。main 全栈、AirSim、目标硬件、系统实时和
+融合精度尚未准入。算法、安全边界和试验数据分别见 `ALGORITHM_AND_IMPLEMENTATION.md`、
+`MODULE_PRINCIPLES_CN.md` 和 `EXPERIMENT_REPORT.md`。
+
 ### 不透明来源标识缓存正式拒绝
 
 D1 已实现默认关闭的有界代际缓存候选。候选只复用由 publisher node、publisher epoch 和

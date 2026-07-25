@@ -6,6 +6,41 @@
 
 ## 当前权威增量（2026-07-25）
 
+### 封闭批次交接只合并重复校验
+
+默认 R0 的原参考链先递归检查整个在线批次，再由公开单量测转换入口逐条重复检查 raw
+measurement；转换完成后检查 `SensorObservation` 集合，随后 `SensorScanFrame` 建立只读
+快照并再次完整检查。main 在 200v200、2.2 s、seed 1112 的开发 cProfile 中记录 95 个
+batch 和 2,044 条观测。converter/frame 集合检查各 95 次、累计
+`1.120932/1.115831 s`，逐量测 raw 重复检查为 2,044 次、`0.206688 s`。该结果说明重复
+遍历值得隔离验证，不证明可以删除边界校验。
+
+候选采用两端校验、中间深快照。入口仍对整个 raw batch 做完整递归身份检查。字段集合固定的
+冻结数据类、独立只读数值数组以及由只读映射、元组、冻结集合和标量组成的元数据通过结构
+合格检查后，候选复制出模块私有快照，私有转换函数只读取这份快照。该检查不证明 raw Python
+对象绝对不可变；`object.__setattr__` 和 `MappingProxyType` 背后的映射持有者仍可能改变
+来源。安全边界是入口检查、深快照和最终帧检查的组合。最终
+`SensorScanFrame` 再次深快照，并完整检查身份、协方差、双时间戳、NED、source lineage、
+扫描一致性和重复标识。
+
+封闭交接没有“已验证”令牌。调用者只能选择实现，不能提交或伪造验证状态。普通字典、自定义
+对象或结构不合格载荷回退原参考链。结构检查和快照中的普通异常也明确记账并回退完整
+reference；`MemoryError` 记为资源拒绝并原样抛出，避免内存不足时进入更昂贵路径。变异载荷
+在回退检查中拒绝。公开裸 measurement、裸 `SensorObservation` 和直接
+`SensorScanFrame` 构造继续执行完整失败关闭校验。
+
+reference ID 为 `d1.online_batch_frame.convert_then_frame.v1`，candidate ID 为
+`d1.online_batch_frame.closed_immutable_batch_final_frame_validation.v1`。默认选择
+reference。`OnlineBatchFrameBuilder` 记录请求、成功、拒绝、reference/candidate/fallback、
+结构检查、快照 attempt/success/failure、resource rejection、raw batch、逐 measurement、
+转换后集合、最终帧和转换数量，并验证请求、结果、路径、结构检查和快照分解守恒。
+
+冻结 200 条量测、7 次交错微基准中，reference/candidate 中位墙钟为
+`0.089842/0.050648 s`，改善 `43.625675%`，candidate `7/7` 更快。reference 检查计数为
+`7/1400/7/7`，candidate 为 `7/0/0/7`；四项依次表示整批 raw、逐量测 raw、转换后集合和
+最终 frame。规范帧 SHA-256 与异常摘要一致。该结果只通过 D1 模块门槛，main 全栈、AirSim、
+目标硬件、系统实时和融合精度仍需独立验收。
+
 ### 不透明来源标识是航迹代际不变量
 
 source-only 和结构歧义 hold 发布需要为每条 D1 航迹生成成员 token、source track ID 和

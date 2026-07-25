@@ -1,5 +1,67 @@
 # 第一研究模块实验结果
 
+## 在线批次到扫描帧封闭交接微基准
+
+**证据日期：2026-07-25**
+
+**范围：默认无 source-key R0 的 D1 批次交接模块微基准**
+
+### 选题证据
+
+main 的 200v200、2.2 s、seed 1112 开发 cProfile 记录 95 个 batch 和 2,044 条观测。
+在线观测集合身份检查共 190 次、累计 `2.236763 s`；converter 和最终 frame 各 95 次、
+分别为 `1.120932/1.115831 s`。raw payload 检查共 2,139 次、`0.403673 s`，其中逐
+measurement 2,044 次、`0.206688 s`，整 batch 95 次、`0.196985 s`。该画像只用于选择
+候选，不进入性能准入统计。
+
+### 试验设计
+
+reference 保持完整 convert-then-frame 链。candidate 先完整检查 raw batch，再做结构合格
+检查和内部深快照，最后由 `SensorScanFrame` 完整检查。结构检查不声称 raw 对象绝对
+不可变。普通映射、结构不合格载荷和普通结构/快照异常回退 reference；`MemoryError` 原样
+拒绝。
+
+冻结负载含 200 条 radar measurement。每个变体预热 1 次，之后按 reference/candidate
+交错顺序运行 7 次。预注册门为：
+
+1. candidate 中位墙钟改善不低于 `20%`；
+2. candidate 配对更快比例不低于 `70%`；
+3. 规范帧 SHA-256、正负异常摘要和全部操作计数守恒一致；
+4. candidate 保留整批 raw 和最终 frame 完整检查；
+5. 默认实现保持 reference。
+
+### 结果
+
+| 指标 | Reference | Candidate |
+| --- | ---: | ---: |
+| 中位墙钟 | `0.089842 s` | `0.050648 s` |
+| 中位改善 | - | `43.625675%` |
+| 中位加速比 | - | `1.773857x` |
+| 配对更快 | - | `7/7` |
+| 整批 raw 检查 | 7 | 7 |
+| 逐 measurement raw 检查 | 1,400 | 0 |
+| 转换后集合检查 | 7 | 0 |
+| 最终 frame 检查 | 7 | 7 |
+| 转换 measurement | 1,400 | 1,400 |
+
+两臂规范帧 SHA-256 均为
+`7b46fdc8beecb130914c1026fdc3d476ab6f94b53a33e76db3edcc188fdff83b`。
+合法输出和八类冻结异常摘要一致。专项测试另覆盖 5 个 batch 字段和 11 个 measurement
+字段传播、arrival 时间冲突、普通映射回退、变异自定义载荷拒绝、公开 API 无绕过参数及
+源对象后续突变隔离。快照 `RuntimeError` 注入回退 reference 并保持结果相同；
+`MemoryError` 注入原样拒绝且 reference fallback 为 0。两条路径的 diagnostics 守恒。
+专项 `19 passed`，main 复跑 D1 全量 `443 passed in 24.02s`。
+
+### 判定
+
+预注册语义门和性能门全部通过，标记为“D1 模块门槛通过”。candidate 继续默认关闭。
+该判定不代表 main 全栈准入，不覆盖完整默认 R0、AirSim、目标硬件、实飞、系统实时、
+RMSE、NEES 或 NIS。main 后续必须显式接入 selector 和持久化诊断，运行 clean 同提交
+short/long 多 seed 全栈矩阵，再交由 D6 独立判定。
+
+本地制品位于
+`outputs/online_batch_frame_handoff_20260725/`。
+
 ## 不透明来源标识缓存正式评估
 
 **证据日期：2026-07-25**

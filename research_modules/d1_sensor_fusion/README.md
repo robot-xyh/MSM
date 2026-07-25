@@ -4,6 +4,47 @@ Offline research module for radar, acoustic, EO, and optional synthetic lidar he
 
 ## 当前性能与治理证据（2026-07-25）
 
+### 第三十三阶段：默认 R0 在线批次到扫描帧封闭交接候选
+
+main 提供的默认无 source-key R0、200v200、2.2 s、seed 1112 开发 cProfile 含
+95 个在线批次和 2,044 条观测。`assert_online_observations_identity_free()` 在转换器和
+`SensorScanFrame` 中各执行 95 次，累计 `2.236763 s`；完整 raw payload 检查执行
+2,139 次，其中逐量测重复检查 2,044 次。该数据只用于确定重复遍历候选，不构成准入证据。
+
+D1 新增专用 `sensor_scan_frame_from_online_batch()` 和可持久化诊断的
+`OnlineBatchFrameBuilder`。默认 reference 为
+`d1.online_batch_frame.convert_then_frame.v1`，继续执行现有
+raw batch、逐量测、转换后集合和最终帧检查。默认关闭的 candidate 为
+`d1.online_batch_frame.closed_immutable_batch_final_frame_validation.v1`：
+
+1. 先对整个 raw batch 做完整身份检查；
+2. 对冻结数据类、独立只读数值数组和受支持元数据执行结构合格检查，再建立模块内部深快照；
+3. 使用私有转换链生成观测；
+4. 由 `SensorScanFrame` 对最终只读快照完成完整身份、协方差、双时间戳、NED、扫描一致性、
+   重复 observation ID 和重复 lineage 检查。
+
+结构合格检查不声称 raw 来源绝对不可变；Python frozen dataclass 和
+`MappingProxyType` 仍可能被持有者绕过或间接修改。安全边界由入口完整检查、私有深快照和
+最终帧完整检查共同形成。普通映射和结构不合格载荷回退完整 reference；结构检查或快照中的
+普通异常也按原因记账后回退 reference。`MemoryError` 记为资源拒绝并原样抛出，不转入更昂贵
+路径。公开裸 measurement、裸 `SensorObservation` 和 `SensorScanFrame` API 保持原失败
+关闭校验，接口中没有 `trusted`、`validated` 或 `skip_validation` 参数。
+
+冻结微基准预注册 200 条量测、7 次交错采样、中位改善至少 `20%`、candidate 更快比例至少
+`70%`，并要求规范帧和全部异常摘要一致。reference/candidate 中位墙钟为
+`0.089842/0.050648 s`，改善 `43.625675%`、加速 `1.773857x`，candidate `7/7`
+更快。reference 的整批 raw、逐量测 raw、转换后集合和最终帧检查计数为
+`7/1400/7/7`；candidate 为 `7/0/0/7`。规范帧 SHA-256 为
+`7b46fdc8beecb130914c1026fdc3d476ab6f94b53a33e76db3edcc188fdff83b`。
+
+正负测试覆盖全部 5 个 batch 字段和 11 个 measurement 字段的快照传播、身份泄漏、坏
+协方差、双时间戳冲突、批内和模态一致性、重复 observation/lineage、普通映射回退、变异
+自定义载荷拒绝、快照 `RuntimeError` 回退、`MemoryError` 拒绝和源对象后续突变隔离。
+专项 `19 passed`，main 复跑 D1 全量为 `443 passed in 24.02s`。候选只达到 D1 模块
+微基准门槛，默认仍为 reference；main 后续
+必须显式接入 selector、持久化 builder 诊断，并运行 clean 同提交全栈矩阵后才能决定准入。
+本结果不外推到完整默认 R0、AirSim、目标硬件、实飞、系统实时或融合精度。
+
 ### 第三十二阶段：不透明来源标识有界代际缓存正式拒绝
 
 main 在 clean `cd9c60c` 上补充了 200v200、2.2 s、seed 1111 的 callee 证据。关闭
