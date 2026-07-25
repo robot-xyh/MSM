@@ -2,15 +2,39 @@
 
 ## D1 发布元数据多 seed 准入（2026-07-24）
 
-1. 以 `per_track_copy_v1` 为 reference，以 `immutable_shared_v1` 为 candidate。
-2. main 在 manifest、governance 和 summary 中同时记录选择器、D1 实现 ID、不可变共享
-   布尔值和实际物化操作计数。
-3. 矩阵固定 10 个 short seed 和 3 个 long seed；同一 pair 只允许发布元数据实现选择器
+### v1 正式结论
+
+- [x] `per_track_copy_v1/immutable_shared_v1` 在同一 clean 提交完成 10 组 short 和
+  3 组 long pair，共 26 个 200 对 200 episode；
+- [x] 业务语义、有限状态、在线真值隔离、实现身份和内存门通过；
+- [x] D1 fusion short/long 分别改善 `16.29%/31.05%`；
+- [ ] D2 association 非退化：short/long 分别增加 `53.44%/169.89%`；
+- [ ] 核心墙钟至少改善 `5%`：实际只改善 `1.65%/1.21%`；
+- [x] D6 判定 `d1_optimization_admitted=false`，默认保持
+  `per_track_copy_v1`。
+
+v1 的自定义 `dict/list` 子类使 D2 无法使用可信快速路径，必须对每条航迹递归审计。该结果
+只保留为失败定位和历史对照，不通过降低真值审计强度补性能。
+
+### v2 执行计划
+
+1. 以 `per_track_copy_v1` 为 reference，以 `immutable_shared_v2` 为 candidate。v2 使用
+   D1 冻结的 `d1.publication_audit_tree.v2` 合同，不保留可变容器底层存储。
+2. D2 对每个新审计根执行一次精确类型验证和一次真值内容审计；只有同一对象的后续引用允许
+   身份复用。main 汇总 batch、latest 和 totals 计数并写入 governance 与 summary。
+3. [x] main selector、runtime profile、D2 审计汇总、v2 evidence schema、预注册矩阵和
+   v1 兼容运行器完成接线；历史 `immutable_shared_v1` 在当前运行时失败关闭。
+4. [x] v2 配置固定 10 个 short seed 和 3 个 long seed；同一 pair 只允许发布元数据实现
    不同，扫描输入继续使用已准入的 `candidate_v2`。
-4. 业务语义、有限状态、在线真值隔离和实现身份是前置门。性能门要求 short/long D1
-   fusion 平均至少改善 10%，核心墙钟至少改善 5%，且内存增幅不超过 5%。
-5. D6 独立读取写盘 episode、GNU time 资源记录和预注册矩阵，输出逐 pair、bootstrap
-   区间及中文报告。通过后再修改默认值并复跑全栈回归。
+5. [x] 续跑校验要求 D1 合同版本正确，D2 合同验证数等于内容审计数，候选存在身份复用且
+   拒绝数为 0；参考臂不得出现 v2 复用计数。
+6. [ ] 从 main 集成提交创建 clean detached worktree，完成一个 short pair smoke。
+7. [ ] 完成 13 组正式 pair。除 v1 门外，short/long D2 association 均值增幅必须不超过
+   `5%`。
+8. [ ] D6 独立读取 episode、GNU time 和预注册矩阵，归一化两臂预期不同的 D2 审计诊断，
+   输出逐 pair、bootstrap 区间和中文报告。
+9. [ ] 只有 D1 fusion、D2 association、核心墙钟、内存、业务语义和审计合同全部通过后，
+   才评审是否修改默认值。无论候选是否准入，实时因子未达到 `1.0` 时系统实时 P1 保持开放。
 
 ## 当前执行状态（2026-07-24）
 

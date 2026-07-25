@@ -44,7 +44,7 @@ from research_modules.d2_data_association.d2_data_association import (
     ObservationClaimLedgerConfig,
     ReplayCoastConfig,
     Scalable3DTracker,
-    detections3d_from_d1_global_tracks,
+    detections3d_from_d1_global_tracks_with_audit,
 )
 from research_modules.d3_assignment_planner.src.d3_assignment_planner import (
     AssignmentPlanner,
@@ -118,7 +118,7 @@ from .runtime_ports import (
 
 INTEGRATED_STACK_SCHEMA_VERSION = "scalable3d-module-stack-v1"
 D1_PUBLICATION_METADATA_REFERENCE_IMPLEMENTATION = "per_track_copy_v1"
-D1_PUBLICATION_METADATA_CANDIDATE_IMPLEMENTATION = "immutable_shared_v1"
+D1_PUBLICATION_METADATA_CANDIDATE_IMPLEMENTATION = "immutable_shared_v2"
 _EPS = 1.0e-9
 
 
@@ -217,7 +217,7 @@ class IntegratedStackConfig:
         }:
             raise ValueError(
                 "d1_publication_metadata_implementation must be "
-                "per_track_copy_v1 or immutable_shared_v1"
+                "per_track_copy_v1 or immutable_shared_v2"
             )
         object.__setattr__(
             self,
@@ -447,6 +447,9 @@ class IntegratedScalableModuleStack:
         self._d2_pre_tick_posterior_merge_count = 0
         self._d2_finalize_unchanged_posterior_skip_count = 0
         self._d2_finalize_coalesced_release_count = 0
+        self._d2_publication_metadata_audit_batch_count = 0
+        self._d2_publication_metadata_audit_totals: Counter[str] = Counter()
+        self._d2_latest_publication_metadata_audit: dict[str, int] = {}
         self._identity_commitment_binding_hold_count = 0
         self._identity_commitment_binding_hold_event_count = 0
         self._identity_commitment_binding_hold_target_ids: tuple[str, ...] = ()
@@ -674,6 +677,9 @@ class IntegratedScalableModuleStack:
         self._d2_pre_tick_posterior_merge_count = 0
         self._d2_finalize_unchanged_posterior_skip_count = 0
         self._d2_finalize_coalesced_release_count = 0
+        self._d2_publication_metadata_audit_batch_count = 0
+        self._d2_publication_metadata_audit_totals.clear()
+        self._d2_latest_publication_metadata_audit.clear()
         self._identity_commitment_binding_hold_count = 0
         self._identity_commitment_binding_hold_event_count = 0
         self._identity_commitment_binding_hold_target_ids = ()
@@ -994,6 +1000,24 @@ class IntegratedScalableModuleStack:
             "d2_observation_rejection_reason_counts": dict(
                 d2_summary.get("observation_rejection_reason_counts", {})
             ),
+            "d2_publication_metadata_audit": {
+                "schema_version": (
+                    "scalable3d-d2-publication-metadata-audit-v1"
+                ),
+                "batch_count": int(
+                    self._d2_publication_metadata_audit_batch_count
+                ),
+                "latest": dict(
+                    sorted(
+                        self._d2_latest_publication_metadata_audit.items()
+                    )
+                ),
+                "totals": dict(
+                    sorted(
+                        self._d2_publication_metadata_audit_totals.items()
+                    )
+                ),
+            },
             "d2_duplicate_coalescence_count": int(
                 d2_summary.get("duplicate_coalescence_count", 0)
             ),
@@ -1392,7 +1416,7 @@ class IntegratedScalableModuleStack:
                 self._pending_structural_ambiguity_evidence.items()
             )
         )
-        _, detections = detections3d_from_d1_global_tracks(
+        detection_batch = detections3d_from_d1_global_tracks_with_audit(
             self.latest_d1_tracks,
             use_opaque_d1_source_tokens=hold_enabled,
             publisher_node_id=(
@@ -1401,6 +1425,15 @@ class IntegratedScalableModuleStack:
             publisher_epoch=(
                 self._d1_publisher_epoch if hold_enabled else None
             ),
+        )
+        detections = detection_batch.detections
+        audit = detection_batch.metadata_audit.to_dict()
+        self._d2_publication_metadata_audit_batch_count += 1
+        self._d2_latest_publication_metadata_audit = {
+            str(key): int(value) for key, value in audit.items()
+        }
+        self._d2_publication_metadata_audit_totals.update(
+            self._d2_latest_publication_metadata_audit
         )
         if not detections:
             self._record_timing(timing_stage, perf_counter() - started)
@@ -4945,6 +4978,9 @@ class IntegratedScalableModuleStack:
             ],
             "d1_publication_metadata_diagnostics": dict(
                 governance["d1_publication_metadata_diagnostics"]
+            ),
+            "d2_publication_metadata_audit": dict(
+                governance["d2_publication_metadata_audit"]
             ),
             "d1_fusion_association": dict(
                 governance["d1_fusion_association"]

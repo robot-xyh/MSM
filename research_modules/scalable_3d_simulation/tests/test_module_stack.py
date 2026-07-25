@@ -152,7 +152,7 @@ def test_d1_publication_metadata_selection_is_explicit_hashed_and_audited() -> N
         resource_count=2,
         recon_count=1,
         region_count=1,
-        duration_s=0.2,
+        duration_s=0.6,
         seed=23,
     )
     default = IntegratedStackConfig()
@@ -163,37 +163,70 @@ def test_d1_publication_metadata_selection_is_explicit_hashed_and_audited() -> N
 
     stack = IntegratedScalableModuleStack(
         IntegratedStackConfig(
-            d1_publication_metadata_implementation="immutable_shared_v1",
+            d1_publication_metadata_implementation="immutable_shared_v2",
         )
     )
     manifest_profile = stack.runtime_manifest_profile_for_scenario(config)
     assert manifest_profile["configuration"][
         "d1_publication_metadata_implementation"
-    ] == "immutable_shared_v1"
+    ] == "immutable_shared_v2"
     assert manifest_profile[
         "d1_publication_metadata_implementation"
-    ] == "immutable_shared_v1"
+    ] == "immutable_shared_v2"
 
     result = run_episode(config, module_stack=stack)
     governance = result.observation_governance_audit
     assert governance is not None
     assert governance[
         "d1_publication_metadata_implementation"
-    ] == "immutable_shared_v1"
+    ] == "immutable_shared_v2"
     diagnostics = governance["d1_publication_metadata_diagnostics"]
     assert diagnostics["immutable_shared_publication_metadata"] is True
     assert diagnostics["implementation_id"].endswith(
-        "immutable_shared_audit.v1"
+        "immutable_shared_audit.v2"
+    )
+    assert (
+        diagnostics["publication_audit_contract_version"]
+        == "d1.publication_audit_tree.v2"
     )
     assert result.summary[
         "d1_publication_metadata_implementation"
-    ] == "immutable_shared_v1"
+    ] == "immutable_shared_v2"
     assert result.summary[
         "d1_publication_metadata_diagnostics"
     ] == diagnostics
+    d2_audit = result.summary["d2_publication_metadata_audit"]
+    assert (
+        d2_audit["schema_version"]
+        == "scalable3d-d2-publication-metadata-audit-v1"
+    )
+    assert d2_audit["batch_count"] > 0
+    totals = d2_audit["totals"]
+    assert totals["immutable_v2_contract_validation_count"] > 0
+    assert (
+        totals["immutable_v2_contract_validation_count"]
+        == totals["immutable_v2_full_content_audit_count"]
+    )
+    assert totals["immutable_v2_identity_reuse_count"] > 0
+    assert totals["immutable_v2_contract_rejection_count"] == 0
+    assert totals["shared_subtree_builtin_equivalent_reuse_count"] == 0
+    assert (
+        result.observation_governance_audit[
+            "d2_publication_metadata_audit"
+        ]
+        == d2_audit
+    )
     assert result.manifest.runtime_profile[
         "d1_publication_metadata_implementation"
-    ] == "immutable_shared_v1"
+    ] == "immutable_shared_v2"
+
+    with pytest.raises(
+        ValueError,
+        match="d1_publication_metadata_implementation must be",
+    ):
+        IntegratedStackConfig(
+            d1_publication_metadata_implementation="immutable_shared_v1"
+        )
 
     with pytest.raises(
         ValueError,

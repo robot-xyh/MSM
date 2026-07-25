@@ -29,18 +29,58 @@ EVIDENCE_MANIFEST_SCHEMA_VERSION = (
 REQUIRED_D6_EVALUATOR_SCHEMA_VERSION = (
     "d6.d1_publication_metadata_multiseed_evaluation.v1"
 )
+V2_MATRIX_SCHEMA_VERSION = (
+    "scalable3d-d1-publication-metadata-v2-multiseed-matrix-v1"
+)
+V2_EVIDENCE_MANIFEST_SCHEMA_VERSION = (
+    "scalable3d-d1-publication-metadata-v2-multiseed-evidence-v1"
+)
+V2_REQUIRED_D6_EVALUATOR_SCHEMA_VERSION = (
+    "d6.d1_publication_metadata_v2_multiseed_evaluation.v1"
+)
 _ARMS = ("reference", "candidate")
-_EXPECTED_IMPLEMENTATIONS = {
+_V1_EXPECTED_IMPLEMENTATIONS = {
     "reference": "per_track_copy_v1",
     "candidate": "immutable_shared_v1",
 }
-_EXPECTED_D1_IMPLEMENTATION_IDS = {
+_V2_EXPECTED_IMPLEMENTATIONS = {
+    "reference": "per_track_copy_v1",
+    "candidate": "immutable_shared_v2",
+}
+_D1_IMPLEMENTATION_IDS = {
     "per_track_copy_v1": (
         "d1.publication_metadata.per_track_audit_copy.v1"
     ),
     "immutable_shared_v1": (
         "d1.publication_metadata.immutable_shared_audit.v1"
     ),
+    "immutable_shared_v2": (
+        "d1.publication_metadata.immutable_shared_audit.v2"
+    ),
+}
+_MATRIX_SPECS = {
+    MATRIX_SCHEMA_VERSION: {
+        "expected_implementations": _V1_EXPECTED_IMPLEMENTATIONS,
+        "evidence_manifest_schema_version": (
+            EVIDENCE_MANIFEST_SCHEMA_VERSION
+        ),
+        "required_d6_evaluator_schema_version": (
+            REQUIRED_D6_EVALUATOR_SCHEMA_VERSION
+        ),
+        "publication_audit_contract_version": None,
+    },
+    V2_MATRIX_SCHEMA_VERSION: {
+        "expected_implementations": _V2_EXPECTED_IMPLEMENTATIONS,
+        "evidence_manifest_schema_version": (
+            V2_EVIDENCE_MANIFEST_SCHEMA_VERSION
+        ),
+        "required_d6_evaluator_schema_version": (
+            V2_REQUIRED_D6_EVALUATOR_SCHEMA_VERSION
+        ),
+        "publication_audit_contract_version": (
+            "d1.publication_audit_tree.v2"
+        ),
+    },
 }
 _COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
 _FORBIDDEN_RUN_FLAGS = {
@@ -55,6 +95,14 @@ _FORBIDDEN_RUN_FLAGS = {
 }
 
 
+def _matrix_spec(matrix: Mapping[str, Any]) -> Mapping[str, Any]:
+    schema_version = matrix.get("schema_version")
+    spec = _MATRIX_SPECS.get(schema_version)
+    if spec is None:
+        raise ValueError("unsupported matrix schema_version")
+    return spec
+
+
 def load_matrix(path: str | Path) -> dict[str, Any]:
     """Load and fail-closed validate the pre-registered evidence matrix."""
 
@@ -62,8 +110,7 @@ def load_matrix(path: str | Path) -> dict[str, Any]:
     value = json.loads(matrix_path.read_text(encoding="utf-8"))
     if not isinstance(value, dict):
         raise ValueError("matrix must be a JSON object")
-    if value.get("schema_version") != MATRIX_SCHEMA_VERSION:
-        raise ValueError("unsupported matrix schema_version")
+    spec = _matrix_spec(value)
     _required_text(value.get("experiment_id"), "experiment_id")
     if value.get("same_clean_commit_required") is not True:
         raise ValueError("matrix must require one clean commit for both arms")
@@ -76,9 +123,11 @@ def load_matrix(path: str | Path) -> dict[str, Any]:
     _nonnegative_int(value.get("bootstrap_seed"), "bootstrap_seed")
 
     implementations = value.get("arm_implementations")
-    if implementations != _EXPECTED_IMPLEMENTATIONS:
+    if implementations != spec["expected_implementations"]:
+        expected = spec["expected_implementations"]
         raise ValueError(
-            "arm_implementations must bind per_track_copy_v1 and immutable_shared_v1"
+            "arm_implementations must bind "
+            f"{expected['reference']} and {expected['candidate']}"
         )
 
     flags = value.get("run_flags")
@@ -141,6 +190,47 @@ def load_matrix(path: str | Path) -> dict[str, Any]:
         raise ValueError(
             "evidence boundary must isolate the publication-metadata treatment"
         )
+    if (
+        boundary.get("reference_implementation")
+        != implementations["reference"]
+        or boundary.get("candidate_implementation")
+        != implementations["candidate"]
+    ):
+        raise ValueError(
+            "evidence boundary implementations must match arm_implementations"
+        )
+    contract_version = spec["publication_audit_contract_version"]
+    if contract_version is not None:
+        if (
+            boundary.get("candidate_publication_audit_contract_version")
+            != contract_version
+        ):
+            raise ValueError(
+                "v2 evidence boundary must bind the publication audit contract"
+            )
+        if (
+            boundary.get(
+                "d2_content_audit_required_before_identity_reuse"
+            )
+            is not True
+        ):
+            raise ValueError(
+                "v2 evidence boundary must require D2 content audit before "
+                "identity reuse"
+            )
+        if (
+            gates.get("all_pairs_d2_publication_metadata_audit_valid")
+            is not True
+        ):
+            raise ValueError(
+                "v2 admission gates must require valid D2 publication audit"
+            )
+        for field in (
+            "maximum_short_d2_association_mean_increase_pct",
+            "maximum_long_d2_association_mean_increase_pct",
+        ):
+            if _finite_float(gates.get(field), field) < 0.0:
+                raise ValueError(f"{field} must be nonnegative")
     return value
 
 
@@ -198,6 +288,7 @@ def planned_evidence_manifest(
         raise ValueError("source_commit must be a full lowercase Git commit")
     root = Path(output_root).expanduser().resolve()
     worktree = Path(source_worktree).expanduser().resolve()
+    spec = _matrix_spec(matrix)
     cases: list[dict[str, Any]] = []
     for case in matrix["cases"]:
         case_root = root / str(case["case_id"])
@@ -208,7 +299,7 @@ def planned_evidence_manifest(
                 "arm": arm,
                 "expected_implementation": matrix["arm_implementations"][arm],
                 "expected_d1_implementation_id": (
-                    _EXPECTED_D1_IMPLEMENTATION_IDS[
+                    _D1_IMPLEMENTATION_IDS[
                         matrix["arm_implementations"][arm]
                     ]
                 ),
@@ -238,8 +329,8 @@ def planned_evidence_manifest(
                 "d6_evaluation_status": "pending",
             }
         )
-    return {
-        "schema_version": EVIDENCE_MANIFEST_SCHEMA_VERSION,
+    manifest = {
+        "schema_version": spec["evidence_manifest_schema_version"],
         "experiment_id": matrix["experiment_id"],
         "matrix_path": str(Path(matrix_path).expanduser().resolve()),
         "matrix_sha256": _file_sha256(
@@ -251,13 +342,17 @@ def planned_evidence_manifest(
         "source_repository_dirty": False,
         "output_root": str(root),
         "required_d6_evaluator_schema_version": (
-            REQUIRED_D6_EVALUATOR_SCHEMA_VERSION
+            spec["required_d6_evaluator_schema_version"]
         ),
         "status": "planned",
         "started_at_utc": None,
         "completed_at_utc": None,
         "cases": cases,
     }
+    contract_version = spec["publication_audit_contract_version"]
+    if contract_version is not None:
+        manifest["publication_audit_contract_version"] = contract_version
+    return manifest
 
 
 def run_matrix(
@@ -306,6 +401,9 @@ def run_matrix(
                 target_count=int(matrix["target_count"]),
                 resource_count=int(matrix["resource_count"]),
                 recon_count=int(matrix["recon_count"]),
+                require_v2_audit=(
+                    matrix.get("schema_version") == V2_MATRIX_SCHEMA_VERSION
+                ),
             ):
                 record["status"] = "reused"
                 record["return_code"] = 0
@@ -330,6 +428,10 @@ def run_matrix(
                     target_count=int(matrix["target_count"]),
                     resource_count=int(matrix["resource_count"]),
                     recon_count=int(matrix["recon_count"]),
+                    require_v2_audit=(
+                        matrix.get("schema_version")
+                        == V2_MATRIX_SCHEMA_VERSION
+                    ),
                 ):
                     raise RuntimeError(
                         "completed episode failed implementation or provenance "
@@ -482,6 +584,7 @@ def _episode_matches(
     target_count: int,
     resource_count: int,
     recon_count: int,
+    require_v2_audit: bool = False,
 ) -> bool:
     try:
         manifest = _read_mapping(episode_dir / "manifest.json")
@@ -491,12 +594,15 @@ def _episode_matches(
         return False
     runtime_profile = manifest.get("runtime_profile")
     diagnostics = summary.get("d1_publication_metadata_diagnostics")
-    expected_d1_implementation_id = _EXPECTED_D1_IMPLEMENTATION_IDS.get(
+    expected_d1_implementation_id = _D1_IMPLEMENTATION_IDS.get(
         expected_implementation
     )
     if expected_d1_implementation_id is None:
         return False
-    expected_candidate = expected_implementation == "immutable_shared_v1"
+    expected_candidate = expected_implementation in {
+        "immutable_shared_v1",
+        "immutable_shared_v2",
+    }
     operation_counts = (
         diagnostics.get("operation_counts")
         if isinstance(diagnostics, Mapping)
@@ -542,6 +648,21 @@ def _episode_matches(
             )
             == 0
         )
+    contract_match = True
+    if expected_implementation == "immutable_shared_v2":
+        contract_match = (
+            diagnostics.get("publication_audit_contract_version")
+            == "d1.publication_audit_tree.v2"
+            and _v2_d2_audit_matches(summary, candidate=True)
+        )
+    elif (
+        expected_implementation == "per_track_copy_v1"
+        and require_v2_audit
+    ):
+        contract_match = (
+            diagnostics.get("publication_audit_contract_version") is None
+            and _v2_d2_audit_matches(summary, candidate=False)
+        )
     return (
         manifest.get("git_commit") == expected_commit
         and manifest.get("repository_dirty") is False
@@ -555,6 +676,7 @@ def _episode_matches(
         and diagnostics.get("immutable_shared_publication_metadata")
         is expected_candidate
         and implementation_operations_match
+        and contract_match
         and summary.get("d1_publication_metadata_implementation")
         == expected_implementation
         and config.get("seed") == seed
@@ -565,6 +687,86 @@ def _episode_matches(
         and summary.get("finite_state") is True
         and summary.get("online_truth_use_count") == 0
         and _float_equal(summary.get("simulated_duration_s"), duration_s)
+    )
+
+
+def _v2_d2_audit_matches(
+    summary: Mapping[str, Any],
+    *,
+    candidate: bool,
+) -> bool:
+    audit = summary.get("d2_publication_metadata_audit")
+    if not isinstance(audit, Mapping):
+        return False
+    if (
+        audit.get("schema_version")
+        != "scalable3d-d2-publication-metadata-audit-v1"
+    ):
+        return False
+    batch_count = audit.get("batch_count")
+    latest = audit.get("latest")
+    totals = audit.get("totals")
+    if (
+        isinstance(batch_count, bool)
+        or not isinstance(batch_count, int)
+        or batch_count <= 0
+        or not isinstance(latest, Mapping)
+        or not isinstance(totals, Mapping)
+    ):
+        return False
+    required = (
+        "metadata_count",
+        "shared_subtree_full_audit_count",
+        "shared_subtree_builtin_equivalent_reuse_count",
+        "immutable_v2_contract_validation_count",
+        "immutable_v2_full_content_audit_count",
+        "immutable_v2_identity_reuse_count",
+        "immutable_v2_contract_rejection_count",
+    )
+    for counts in (latest, totals):
+        if any(
+            isinstance(counts.get(key), bool)
+            or not isinstance(counts.get(key), int)
+            or int(counts[key]) < 0
+            for key in required
+        ):
+            return False
+    if any(int(totals[key]) < int(latest[key]) for key in required):
+        return False
+    if int(totals["metadata_count"]) <= 0:
+        return False
+    full_audit_count = int(totals["shared_subtree_full_audit_count"])
+    builtin_reuse_count = int(
+        totals["shared_subtree_builtin_equivalent_reuse_count"]
+    )
+    validation_count = int(
+        totals["immutable_v2_contract_validation_count"]
+    )
+    v2_content_audit_count = int(
+        totals["immutable_v2_full_content_audit_count"]
+    )
+    identity_reuse_count = int(
+        totals["immutable_v2_identity_reuse_count"]
+    )
+    rejection_count = int(
+        totals["immutable_v2_contract_rejection_count"]
+    )
+    if candidate:
+        return (
+            validation_count > 0
+            and validation_count == v2_content_audit_count
+            and full_audit_count == v2_content_audit_count
+            and identity_reuse_count > 0
+            and builtin_reuse_count == 0
+            and rejection_count == 0
+        )
+    return (
+        full_audit_count > 0
+        and builtin_reuse_count > 0
+        and validation_count == 0
+        and v2_content_audit_count == 0
+        and identity_reuse_count == 0
+        and rejection_count == 0
     )
 
 

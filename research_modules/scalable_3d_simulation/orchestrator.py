@@ -612,6 +612,9 @@ class Scalable3DEpisodeRunner:
             "d1_publication_metadata_diagnostics": observation_governance.get(
                 "d1_publication_metadata_diagnostics"
             ),
+            "d2_publication_metadata_audit": observation_governance.get(
+                "d2_publication_metadata_audit"
+            ),
             "control_command_tick_count": control_command_tick_count,
             "camera_command_issued_count": camera_command_issued_count,
             "camera_command_applied_count": camera_command_applied_count,

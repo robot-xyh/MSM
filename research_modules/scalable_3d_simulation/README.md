@@ -2,18 +2,29 @@
 
 ## D1 GlobalTrack 发布元数据 A/B（2026-07-24）
 
-main 已接入 `--d1-publication-metadata-implementation`，可显式选择
-`per_track_copy_v1` 或 `immutable_shared_v1`。前者保持逐航迹复制扫描级审计树，
-后者启用 D1 的递归不可变共享候选。selector 同时写入 episode runtime profile、
-observation governance 和 summary；summary 还记录 D1 实际实现标识与操作计数，
-用于阻止只改标签而未切换实现的无效对照。
+main 通过 `--d1-publication-metadata-implementation` 显式选择参考实现
+`per_track_copy_v1` 或当前候选 `immutable_shared_v2`。参考实现为每条航迹复制扫描级
+审计树。v2 候选使用 D1 定义的 `d1.publication_audit_tree.v2` 不可变合同共享审计子树，
+D2 对每个新对象先完成一次结构验证和内容审计，随后才允许按对象身份复用结果。选择器、
+D1 实现标识、合同版本、D1 操作计数和 D2 审计计数同时写入 runtime profile、
+observation governance 和 summary。当前运行时明确拒绝历史候选
+`immutable_shared_v1`。
 
-`configs/d1_publication_metadata_multiseed_v1.json` 预注册 short seeds
-`1101-1110`、long seeds `1101-1103`，每个 case 都在同一 clean commit 上交错执行
-reference/candidate。运行器为
-`scripts/run_d1_publication_metadata_matrix.py`。当前默认仍为
-`per_track_copy_v1`；正式多 seed 与 D6 独立准入完成前，不把候选写成系统默认或实时缺口
-已关闭。
+历史 v1 正式矩阵位于 `configs/d1_publication_metadata_multiseed_v1.json`。该矩阵完成
+10 组 2.2 秒 short pair 和 3 组 10 秒 long pair，共 26 个同提交 200 对 200 episode。
+D1 fusion 的 short/long 改善为 `16.29%/31.05%`，但 D2 association 分别增加
+`53.44%/169.89%`，核心墙钟只改善 `1.65%/1.21%`，未达到预注册 `5%` 门限。D6 判定
+`d1_optimization_admitted=false`。v1 配置、运行器兼容入口和报告只用于复核历史结果，
+不再作为当前候选。
+
+当前 v2 预注册矩阵为
+`configs/d1_publication_metadata_v2_multiseed_v1.json`，保持相同的 short/long seed、
+规模、arm 交错顺序和同一 clean commit 约束，新增 D2 association 增幅不超过 `5%`、
+D2 v2 合同验证、内容审计、身份复用和零拒绝门。运行器仍为
+`scripts/run_d1_publication_metadata_matrix.py`，但 v1/v2 使用独立 evidence schema 和
+D6 evaluator schema。main 接线与专项测试已完成；正式 13 组 pair 和 D6 v2 独立准入尚未
+执行。系统默认继续使用 `per_track_copy_v1`，不得把 v2 单元测试解释为候选准入或系统实时
+缺口关闭。
 
 该 main-owned 模块提供可复现、真值隔离的三维质点环境，用于逐步建设 200 架拦截无人机
 对 200 个来袭目标的 D1-D7 完整闭环。现有 `integrated_simulation` 保留为小规模回归基线。
