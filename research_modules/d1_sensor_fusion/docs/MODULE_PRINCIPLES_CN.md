@@ -20,9 +20,10 @@
 
 一致性证据的 `replay_count` 和 `replay_revision` 是外部审计字段，不能因优化而少记。候选为
 每次摘要命中记录一个“前 N 条证据增加一次回放”的区间事件。多个事件按前缀长度聚合。
-公开 evidence 导出或证据被修改前，从最长前缀向前做一次后缀累计，为每条证据恢复精确的
-增加次数和最新修订号。这样减少了重复回放中的 Python 逐条更新，同时没有删除 evidence
-刷新。
+最终 evidence 导出或证据被修改前，从最长前缀向前做一次后缀累计，为每条证据恢复精确的
+增加次数和最新修订号。在线 publication 可调用非破坏性 snapshot：它使用同一后缀累计
+规则把 replay counter 叠加到新建不可变记录，不修改内部 evidence，也不消费 ledger。
+这样减少了重复回放中的 Python 字典写入，同时没有删除 evidence 刷新。
 
 安全门由三类条件组成。第一类是 checkpoint 完整性：修订号、数量、首尾身份和排序必须
 匹配。第二类是 summary 完整性：schema 必须为
@@ -32,23 +33,54 @@
 fixed-lag 重基准和 schema/version 失配均按此规则处理。
 
 中间 checkpoint 的完整性由 `replay_checkpoint_revision` 作为 O(1) 确定性边界维护。
-D1 内部清空列表、截断后缀、追加新 checkpoint 或替换 fixed-lag 后缀时，统一先物化未决
-evidence，再递增 revision 并清除旧摘要。迟到观测改变中间顺序时，失效逻辑从其排序键
-开始删除旧后缀，再重新滤波和建立摘要。命中路径因此只检查 revision、数量和首尾身份，
-不对中间项执行 O(n) 扫描。直接绕过内部失效协议修改 checkpoint 列表不属于受支持接口。
+D1 内部清空列表、截断/重排后缀或替换 fixed-lag 后缀时，先物化未决 evidence，再递增
+revision 并清除旧摘要。迟到观测改变中间顺序时，失效逻辑从其排序键开始删除旧后缀，再
+重新滤波和建立摘要。
+
+正常 append-only 后缀追加不改变旧 checkpoint，也不修改旧 pending IDs 对应的 evidence。
+当旧摘要刚通过完整命中、pending tuple 与摘要对象绑定一致、新 ID 不重叠且排序严格后移时，
+系统保留旧 ledger，只推进 revision 并清除摘要。新 checkpoint 和 evidence 建立后重建摘要；
+下一次命中通过兼容前缀扩展把 ledger 扩展到新 ID。任何绑定、身份或顺序异常仍先物化。
+命中路径只检查 revision、数量和首尾身份，不对中间项执行 O(n) 扫描。直接绕过内部失效
+协议修改 checkpoint 列表不属于受支持接口。
+
+接口边界保持明确。`consistency_evidence_records()` 沿用全量精确物化语义，最终
+`export_consistency_evidence()` 继续通过它生成离线 bundle。
+`consistency_evidence_snapshot(observation_ids=None)` 返回当下精确记录，但保留 pending
+ledger；可选 ID 只限制返回对象构造。未知 ID 或 evidence 所有权不一致时失败关闭。普通
+snapshot 不得返回陈旧 replay counter，最终 records/export 不得保留 pending ledger。
+
+main 第一轮 dirty smoke（200v200、2 个侦察节点、seed 1151、2.2 s）证明原 append 处理会
+消除压缩收益：1,584 次 append 形成 1,584 次物化，逻辑刷新和物化记录均为 8,687，压缩率
+0。append 修复后，main 再次得到 `summary_hit=1584`、`reused=7103`、
+`logical=8687`、`materialized=7013`，append 物化为 0，压缩率 `19.27017%`。1,372 个
+剩余物化原因全部是 `public_evidence_snapshot`，因为在线 publication 仍调用兼容全量
+records。两臂 consistency digest 相同。该现象是接口接线和执行成本缺口，不是语义差异。
 
 2026-07-25 冻结微基准使用 200 个目标、200 个资源和 2 个侦察节点的场景元数据。8 个扫描
-生成 1,600 条匿名雷达观测，固定滞后窗口仍为 6 秒；每个 arm 执行 5 轮完整回放。
+生成 1,600 条匿名雷达观测，固定滞后窗口仍为 6 秒；建轨阶段每个扫描后读取一次精确
+非破坏性 snapshot，每个 arm 执行 5 轮完整回放并在末尾全量物化。
 7 对新鲜 reference/candidate 交替运行。中位墙钟由
-`0.037882166 s` 降至 `0.024329944 s`，改善 `35.775%`，candidate `7/7` 更快。
+`0.039559965 s` 降至 `0.025518551 s`，改善 `35.494%`，candidate `7/7` 更快。
 配对均值差 bootstrap 95% 区间为
-`[-0.014455845, -0.012638062] s`。
+`[-0.014732573, -0.013135232] s`。
+
+冻结 append 建轨阶段每个 arm 有 1,400 次 revision 推进和 1,200 次 pending 保留。逻辑
+刷新 5,200 条、物化 2,400 条，物化记录压缩率 `53.846%`；正常 append 物化为 0。余下
+物化来自 fixed-lag rebase 和后续 summary fallback，各 200 次。8 次在线 snapshot 中
+4 次投影 pending，累计涉及 800 个 ledger、2,000 个事件和 2,800 条不可变返回记录，
+snapshot 内部物化为 0。投影仍有校验和对象构造成本，不能把内部压缩率解释为总工作消失。
+
+冻结 fixture 前 3 个扫描派生的 0-2 秒 200v200 负载得到逻辑刷新 400、内部物化 0 和
+100% 压缩；一次有效 snapshot 投影 200 个 ledger、400 条返回记录，最终 records 后
+pending 为 0。该测试锁定既有 `>=20%` 门。
 
 7/7 对的后验、协方差、NIS、门控 ID、一致性证据、既有操作计数、双时间戳与门控元数据、
-checkpoint 和公开 `GlobalTrack` 精确相同。模块微基准门通过，但该证据尚未进入 main
-short/long 正式矩阵。候选保持默认关闭，不代表系统实时、AirSim、硬件或实飞能力。
+逐扫描 snapshot 序列、checkpoint 和公开 `GlobalTrack` 精确相同。模块微基准门通过，
+但 main 在线 publication 尚未改接 snapshot，也尚未进入 clean short/long 正式矩阵。候选
+保持默认关闭，不代表系统实时、AirSim、硬件或实飞能力。
 专项回归还在四个 checkpoint 的中间插入迟到观测，确认 revision 推进、旧后缀失败关闭并
-按新顺序重建。
+按新顺序重建。D1 全量回归为 `488 passed in 30.96s`。
 
 ### 模态感知保守稀疏预筛正式拒绝后的治理
 

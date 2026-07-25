@@ -67,11 +67,25 @@ reference 的初始证据刷新、逐 checkpoint NIS/gate 重建和 evidence 更
 3. 在完整前缀后追加新 checkpoint；
 4. fixed-lag 重基准后替换保留后缀。
 
-四类变更都经过 `_mark_replay_checkpoint_list_changed()`：先物化该航迹未决的
-consistency evidence 刷新，再递增 revision 并清除旧 summary。中间迟到观测由
+清空、截断、重排和 fixed-lag 后缀替换经过
+`_mark_replay_checkpoint_list_changed()`：先物化该航迹未决的 consistency evidence
+刷新，再递增 revision 并清除旧 summary。中间迟到观测由
 `_invalidate_replay_checkpoints(from_sort_key=...)` 先截断旧后缀，随后按新顺序重新滤波。
-因此旧摘要不可能跨内部列表变更命中。直接从模块外修改 `TrackRecord.replay_checkpoints`
-属于私有状态破坏，不是公共 API 合同。
+
+正常后缀追加经过 `_mark_replay_checkpoint_suffix_append()`。只有以下条件全部成立时才保留
+pending ledger：
+
+1. 旧 summary 在本次回放中已经通过全部命中门；
+2. pending observation tuple 与该 summary 的 consistency tuple 是同一不可变对象；
+3. summary revision 与当前 checkpoint revision 一致；
+4. 新 observation ID 不在旧 pending 集合内；
+5. 新后缀内部严格有序，且首项排序键严格晚于旧末项。
+
+安全 append 仍递增 revision 并清除旧 summary，但不物化旧 ledger。新 observation 的
+evidence 写入不会命中旧 pending ID 集合。重建摘要后，下一次
+`_schedule_pending_consistency_prefix_refresh()` 使用既有兼容前缀扩展规则扩展 ledger。
+任何条件失败都以 `checkpoint_suffix_append_incompatible` 原因先物化。直接从模块外修改
+`TrackRecord.replay_checkpoints` 属于私有状态破坏，不是公共 API 合同。
 
 #### 一致性计数账本
 
@@ -92,28 +106,69 @@ r_i=\max_{L>i} r_L.
 \]
 
 每条 evidence 最终调用 `with_replay_counters()` 一次，得到与逐回放刷新相同的
-`replay_count/replay_revision`。账本在公开 evidence snapshot、记录读写、checkpoint
-失配/失效和 fixed-lag 重基准前物化。它不改变 `cached_consistency_refresh_count`：
+`replay_count/replay_revision`。账本在 evidence 记录读写、checkpoint 失配/失效、
+fixed-lag 重基准和最终离线导出前物化。它不改变 `cached_consistency_refresh_count`：
 候选在命中时按逻辑覆盖条数一次性增加该既有计数。
+
+#### 在线快照与最终导出
+
+`consistency_evidence_records()` 保留已有兼容行为：先精确物化全部 pending ledger，再
+返回按到达时间、量测时间和 observation ID 排序的全量记录。调用完成后，内部 pending
+ledger 为 0。`export_consistency_evidence()` 继续调用该接口，因此 episode 最终离线
+bundle 不携带未物化状态。
+
+`consistency_evidence_snapshot(observation_ids=None)` 用于在线 publication。它调用与真实
+物化完全相同的后缀累计函数，但只把 counter overlay 写入新建的 frozen evidence record，
+不修改内部 evidence 字典，也不删除 pending ledger。重复 snapshot 在内部状态没有变化时
+返回相同内容。传入 observation ID 集合时，算法仍验证关联 ledger 的证据所有权，只为请求
+ID 构造返回记录。未知 ID、空字符串或 ledger 证据所有权异常均失败关闭。
+
+在线投影单独记录 snapshot 次数、涉及的 ledger、累计事件和构造记录数。这些计数不进入既有
+融合 operation-count 等价门。内部物化压缩只表示减少了 evidence 字典写入和 ledger 消费，
+不表示快照校验、后缀累计和返回对象构造没有成本。
 
 #### 测试与微基准
 
 专项测试覆盖正常前缀、迟到量测、门控拒绝、6 秒 fixed-lag、pre-checkpoint OOSM、
 部分前缀、前缀变化、无 checkpoint、summary schema/version 失配、禁用 consistency
 refresh、冻结摘要别名隔离，以及四 checkpoint 中间插入导致的 revision 推进、旧后缀
-失效和新顺序重建。D1 全量回归为 `484 passed in 25.10s`。
+失效和新顺序重建。连续 append 测试确认 ledger 跨多次追加保留。频繁 snapshot 测试在
+每次 append 后读取两次全量快照，再读取 ID 子集；返回内容始终与 reference 一致，内部
+replay counter 和 pending ledger 不变。随后插入中间迟到量测会先物化再截断，最终
+records/export 与 reference 精确一致。D1 全量回归为 `488 passed in 30.96s`。
 
 冻结 200v200 fixture 包含 8 个扫描和 1,600 条匿名观测。7 对新鲜 A/B 每个 arm 执行
-5 轮完整回放和一次公开 evidence 物化。reference/candidate 中位墙钟为
-`0.037882166/0.024329944 s`，改善 `35.775%`；candidate `7/7` 更快，配对均值差
-bootstrap 95% 区间为 `[-0.014455845, -0.012638062] s`。
+5 轮完整回放和一次公开 evidence 物化；建轨阶段每个扫描后读取一次非破坏性 snapshot。
+reference/candidate 中位墙钟为 `0.039559965/0.025518551 s`，改善 `35.494%`；
+candidate `7/7` 更快，配对均值差 bootstrap 95% 区间为
+`[-0.014732573, -0.013135232] s`。性能 schema 为
+`d1.replay_prefix_summary_performance.v3`。
+
+冻结 append 建轨阶段每个 arm 的 revision 推进、pending 保留、逻辑刷新和物化记录为
+`1400/1200/5200/2400`，物化记录压缩率 `53.846%`。正常 append 物化为 0；
+fixed-lag rebase 和后续 summary fallback 各物化 200 次。全部 summary 绑定最新 revision。
+8 次在线 snapshot 中 4 次存在 pending，累计投影 800 个 ledger、2,000 个 replay 事件并
+构造 2,800 条不可变记录；snapshot 内部物化为 0。
+
+冻结 fixture 前 3 个扫描构成 0-2 秒 200v200 派生负载。其逻辑刷新 400 条、内部物化 0，
+压缩率 100%；一次有效 snapshot 投影 200 个 ledger 和 400 条返回记录，最终 records 后
+pending 为 0。该派生测试锁定 `>=20%` 门，不降低阈值。
+
+main append 修复后的 dirty smoke 仍使用全量 records 做在线 publication：
+`summary_hit/reused/logical/materialized=1584/7103/8687/7013`，压缩
+`19.27017%`，1,372 个 materialization reason 全为 `public_evidence_snapshot`。两臂
+consistency digest 均为
+`sha256:b579e62b65169791a1c9526eb5310ba7016149ddd501efe34e82a732c8bbda3a`，
+D1 fusion 为 `2.40147/2.30535 s`。因此 D1 模块接口与测试已经完成，main 仍需把在线
+publication 改接 snapshot；最终 offline export 保持 records/export。
 
 每对的后验、协方差、NIS、门控 ID、consistency evidence、既有 operation counts、
 双时间戳/gate metadata、checkpoint 和公开 `GlobalTrack` 哈希均相同。candidate 的新增
 diagnostics 单独比较，不混入既有 operation-count 等价门。
 
 当前结论仅为模块微基准通过。selector 仍默认 reference，尚未执行 main 同提交正式矩阵，
-不得写成默认准入、系统实时或 AirSim/硬件证据。
+也未执行 main 改接 snapshot 后的 dirty smoke。不得写成默认准入、系统实时或 AirSim/
+硬件证据。
 
 ### 正式拒绝后保持默认关闭的模态感知保守预筛
 

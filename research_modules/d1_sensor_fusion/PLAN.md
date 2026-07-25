@@ -20,16 +20,42 @@ observation ID，并逐条刷新 consistency evidence 的回放计数。本阶�
 2. 只有完整 checkpoint 前缀、首尾身份/顺序、checkpoint 修订、summary schema、
    consistency 结构修订和当前 replay context 全部一致时才命中。
 3. `replay_checkpoint_revision` 作为完整中间 checkpoint 前缀的 O(1) 确定性完整性边界。
-   内部清空、截断、追加或 fixed-lag 后缀替换均通过同一变更门，先物化未决 evidence，
-   再递增 revision 并清除旧 summary。中间插入观测先按排序键失效受影响后缀，不在命中时
-   增加 O(n) 全量扫描。
+   内部清空、截断、重排或 fixed-lag 后缀替换通过破坏性变更门，先物化未决 evidence，
+   再递增 revision 并清除旧 summary。正常 append-only 后缀追加走安全特例：revision 仍
+   推进、summary 仍失效，但只覆盖旧前缀且对象绑定一致的 ledger 保留。新 ID 重叠、排序
+   非严格后移或绑定不一致均立即物化。中间插入观测先按排序键失效受影响后缀。
 4. 一致性回放计数采用独立的前缀长度区间账本。每次命中记录覆盖长度和 replay revision，
-   evidence 写入、前缀失配、失效、fixed-lag 重基准或公开导出前精确物化。该账本不与冻结
-   summary 共享可变对象。
+   evidence 写入、前缀失配、失效、fixed-lag 重基准或最终导出前精确物化。该账本不与
+   冻结 summary 共享可变对象。
 5. 部分前缀、无 checkpoint、schema/version 失配、修订或身份变化、禁用 consistency
    cache 等条件均回退原逐条路径。回退前先物化未决 evidence 计数。
 6. 新 diagnostics v1 记录 attempt/hit/fallback、fallback 原因、摘要构建、复用
-   checkpoint/NIS、逻辑 consistency 刷新和物化原因。既有 operation counts 保持原数值。
+   checkpoint/NIS、逻辑 consistency 刷新、append-only 保留、在线投影和物化原因。既有
+   operation counts 保持原数值。
+7. `consistency_evidence_records()` 保留全量精确物化兼容语义；
+   `export_consistency_evidence()` 继续用它完成最终离线导出。新增
+   `consistency_evidence_snapshot(observation_ids=None)`，对 pending ledger 做非破坏性
+   counter overlay，每次返回精确不可变记录。可选 ID 只限制返回记录构造；未知 ID
+   失败关闭。
+
+### Integrated smoke 暴露问题与修复
+
+main 第一次 dirty smoke（200v200、2 个侦察节点、seed 1151、2.2 s）中，candidate 有
+1,584 次 summary hit 和 7,103 次 checkpoint 复用，但 1,584 次正常 append 全部触发
+pending ledger 物化。逻辑刷新与物化记录均为 8,687，压缩率为 0；两臂 consistency
+digest 相同。根因是 append 与截断共用破坏性变更门。
+
+修复后，append-only 只在旧 summary 已命中、pending IDs 与 summary tuple 对象绑定一致、
+新 ID 不重叠且排序严格后移时保留 ledger。下一次 summary 命中通过既有兼容前缀扩展规则
+扩展 ledger。
+
+main 独立复跑得到 `summary_hit=1584`、`reused=7103`、`logical=8687`、
+`materialized=7013`，append 物化为 0，压缩率 `19.27017%`。剩余物化原因全为
+`public_evidence_snapshot`，共 1,372 个 ledger。两臂 consistency digest 均为
+`sha256:b579e62b65169791a1c9526eb5310ba7016149ddd501efe34e82a732c8bbda3a`，
+reference/candidate D1 fusion 为 `2.40147/2.30535 s`。这证明 append 修复有效，但 main
+在线 publication 仍调用兼容全量 records 接口。D1 本轮提供 snapshot 合同和模块证据；
+跨模块改接由 main 完成。
 
 ### 冻结模块微基准
 
@@ -38,21 +64,34 @@ fixture 为 `d1-replay-prefix-summary-200v200-20260725`，SHA-256
 派生的 1,600 条观测 SHA-256 为
 `sha256:b44f971c2c6ac9b519cb7aba3f8df455727382132b2c5ec127280c97806dbae9`。
 规模为 200 目标、200 资源、2 侦察节点、8 个扫描。每个新鲜 arm 在建轨后执行 5 轮完整
-回放和一次 evidence 公开物化，online truth use=0。reference/candidate 同输入、同导入
-源码状态，7 对交替运行。
+回放和一次 evidence 公开物化；建轨阶段每个扫描后读取一次精确非破坏性 snapshot。
+online truth use=0。reference/candidate 同输入、同导入源码状态，7 对交替运行。
 
 | 模块门 | 结果 | 阈值 | 判定 |
 | --- | ---: | ---: | --- |
 | Candidate 更快 | `7/7` | `>=80%`，且至少 5 对 | 通过 |
-| 中位墙钟 | `0.037882166 -> 0.024329944 s` | 改善 `>=5%` | `35.775%`，通过 |
-| 配对均值差 bootstrap 95% 上界 | `-0.012638062 s` | `<0 s` | 通过 |
+| 中位墙钟 | `0.039559965 -> 0.025518551 s` | 改善 `>=5%` | `35.494%`，通过 |
+| 配对均值差 bootstrap 95% 上界 | `-0.013135232 s` | `<0 s` | 通过 |
+| Append 物化记录压缩率 | `53.846%` | `>=20%` | 通过 |
+| 在线 snapshot 内部物化 | `0` | `0` | 通过 |
 | 精确语义门 | `7/7` | `7/7` | 通过 |
 
 精确语义门覆盖后验、协方差、NIS、门控 ID、consistency evidence、既有操作计数、
-双时间戳与 gate metadata、checkpoint 和公开 `GlobalTrack`。candidate 每个 arm 有
+逐扫描 snapshot 序列、双时间戳与 gate metadata、checkpoint 和公开 `GlobalTrack`。
+candidate 每个 arm 有
 1,000 次 summary hit、6,000 个 checkpoint/NIS 复用、6,000 条逻辑 evidence 刷新；
 最终物化 1,200 条 evidence，计时段 fallback 为 0。D1 全量回归
-`484 passed in 25.10s`。
+`488 passed in 30.96s`。
+
+冻结 append 建轨阶段每个 arm 的 revision 推进、pending 保留、逻辑刷新和物化记录分别为
+`1400/1200/5200/2400`。正常 append 物化为 0，fixed-lag rebase 与 summary fallback
+各 200 次；全部 summary 绑定最新 revision。8 次在线 snapshot 中 4 次投影 pending，
+累计涉及 800 个 ledger、2,000 个事件和 2,800 条返回记录，内部物化为 0。投影记录数作为
+实际工作量单列，不计入内部物化压缩。
+
+冻结 fixture 前 3 个扫描派生的 0-2 秒 200v200 负载中，逻辑刷新 400 条、内部物化 0，
+压缩率 100%；一次有效 snapshot 投影 200 个 ledger、400 条返回记录。最终 records 调用后
+pending 为 0。该短时模块结果通过 `>=20%` 门，但不能替代 main 改接后的同配置复跑。
 
 专项新增中间顺序破坏回归：在四个 checkpoint 的中间插入迟到观测，验证失效路径先截断
 受影响后缀并推进 revision，随后按新顺序重建 summary；reference/candidate 的内部状态、
@@ -63,13 +102,19 @@ fixture 为 `d1-replay-prefix-summary-200v200-20260725`，SHA-256
 模块微基准通过，只形成 `eligible_for_main_formal_matrix_review`。候选仍默认关闭，
 `main_default_promotion_claimed=false`。后续由 main 决定是否：
 
-1. 在提交后的 clean source 上冻结新 matrix 和 source digest；
-2. 使用新的 short/long seeds 和全新 episode，比对 D1 fusion、core wall、RTF、RSS、
+1. 将在线 publication 的全量 records 调用改接为
+   `consistency_evidence_snapshot()`；episode 最终 offline export 继续使用
+   `consistency_evidence_records()` 或 `export_consistency_evidence()`；
+2. 先按 200v200、2 recon、seed 1151、2.2 s 复跑，确认 digest 相同、append 和在线
+   snapshot 物化均为 0、最终 ledger 为 0、内部物化压缩稳定 `>=20%`；
+3. 在提交后的 clean source 上冻结新 matrix 和 source digest；
+4. 使用新的 short/long seeds 和全新 episode，比对 D1 fusion、core wall、RTF、RSS、
    业务语义、在线真值隔离和 D2 回归；
-3. 由 D6 独立给出 admit/reject；任何失败均保持 reference 默认，不调整本轮模块门。
+5. 由 D6 独立给出 admit/reject；任何失败均保持 reference 默认，不调整本轮模块门。
 
 AirSim、目标硬件、实机、实飞、RMSE、NEES、NIS 和系统实时因子仍开放。本轮没有修改
-AirSim producer、DTO、runtime bus 或 episode 接口。
+AirSim producer、DTO 或 episode 数据合同；仅新增由 main 选择接线的 D1 只读 snapshot
+接口。
 
 ## P1 模态感知保守稀疏预筛正式拒绝与研究入口治理（2026-07-25）
 

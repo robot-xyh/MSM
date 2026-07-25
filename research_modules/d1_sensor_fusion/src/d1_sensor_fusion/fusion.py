@@ -2866,7 +2866,7 @@ class FusionAdapter:
     def consistency_evidence_records(
         self,
     ) -> tuple[OnlineConsistencyEvidenceRecord, ...]:
-        """Return the current truth-free per-observation evidence snapshot."""
+        """Return exact records after materializing every pending replay counter."""
 
         self._materialize_all_pending_consistency_prefix_refreshes(
             reason="public_evidence_snapshot",
@@ -2882,11 +2882,52 @@ class FusionAdapter:
             )
         )
 
+    def consistency_evidence_snapshot(
+        self,
+        observation_ids: Iterable[str] | None = None,
+    ) -> tuple[OnlineConsistencyEvidenceRecord, ...]:
+        """Return an exact immutable online snapshot without consuming ledgers.
+
+        ``observation_ids=None`` returns all current evidence. A supplied ID
+        iterable limits detached replay-counter record construction to that
+        exact subset. Unknown or invalid IDs fail closed. Episode-final export
+        must continue to use :meth:`consistency_evidence_records` or
+        :meth:`export_consistency_evidence`.
+        """
+
+        requested_ids = self._validated_consistency_snapshot_ids(
+            observation_ids
+        )
+        projected = self._project_all_pending_consistency_prefix_refreshes(
+            requested_ids=requested_ids,
+        )
+        source_items = (
+            self._consistency_evidence.items()
+            if requested_ids is None
+            else (
+                (observation_id, self._consistency_evidence[observation_id])
+                for observation_id in requested_ids
+            )
+        )
+        return tuple(
+            sorted(
+                (
+                    projected.get(observation_id, record)
+                    for observation_id, record in source_items
+                ),
+                key=lambda item: (
+                    item.arrival_timestamp,
+                    item.measurement_timestamp,
+                    item.observation_id,
+                ),
+            )
+        )
+
     def export_consistency_evidence(
         self,
         provenance: ConsistencySourceProvenance,
     ) -> OnlineConsistencyEvidenceBundle:
-        """Freeze current online evidence with episode/source hashes."""
+        """Materialize and freeze online evidence with episode/source hashes."""
 
         return export_online_consistency_evidence(
             self.consistency_evidence_records(),
@@ -6253,15 +6294,16 @@ class FusionAdapter:
             return
         track_id = record.track_id
         pending = self._pending_consistency_prefix_refreshes.get(track_id)
-        if pending is not None and pending.observation_ids != observation_ids:
-            if (
+        if pending is not None and pending.observation_ids is not observation_ids:
+            if pending.observation_ids == observation_ids:
+                pending.observation_ids = observation_ids
+            elif (
                 len(pending.observation_ids) <= len(observation_ids)
                 and observation_ids[: len(pending.observation_ids)]
                 == pending.observation_ids
             ):
-                copied_ids = tuple(observation_ids)
-                pending.observation_ids = copied_ids
-                pending.observation_id_set = frozenset(copied_ids)
+                pending.observation_ids = observation_ids
+                pending.observation_id_set = frozenset(observation_ids)
             else:
                 self._materialize_pending_consistency_prefix_refresh(
                     track_id,
@@ -6269,11 +6311,10 @@ class FusionAdapter:
                 )
                 pending = None
         if pending is None:
-            copied_ids = tuple(observation_ids)
             pending = _PendingConsistencyPrefixRefresh(
                 track_id=track_id,
-                observation_ids=copied_ids,
-                observation_id_set=frozenset(copied_ids),
+                observation_ids=observation_ids,
+                observation_id_set=frozenset(observation_ids),
             )
             self._pending_consistency_prefix_refreshes[track_id] = pending
         prefix_length = len(observation_ids)
@@ -6299,6 +6340,33 @@ class FusionAdapter:
         pending = self._pending_consistency_prefix_refreshes.get(track_id)
         if pending is None:
             return
+        projected, event_count = (
+            self._project_pending_consistency_prefix_refresh(pending)
+        )
+        for observation_id, record in projected:
+            self._consistency_evidence[observation_id] = record
+
+        del self._pending_consistency_prefix_refreshes[track_id]
+        operations = self._replay_prefix_summary_operations
+        operations["lazy_consistency_materialization_count"] += 1
+        operations["lazy_consistency_materialized_event_count"] += event_count
+        operations["lazy_consistency_materialized_record_count"] += (
+            len(projected)
+        )
+        self._replay_prefix_summary_materialization_reasons[str(reason)] += 1
+
+    def _project_pending_consistency_prefix_refresh(
+        self,
+        pending: _PendingConsistencyPrefixRefresh,
+        *,
+        requested_ids: frozenset[str] | None = None,
+    ) -> tuple[
+        tuple[tuple[str, OnlineConsistencyEvidenceRecord], ...],
+        int,
+    ]:
+        """Build an exact detached counter overlay without mutating the ledger."""
+
+        track_id = pending.track_id
         observation_ids = pending.observation_ids
         records: list[OnlineConsistencyEvidenceRecord] = []
         for observation_id in observation_ids:
@@ -6312,7 +6380,7 @@ class FusionAdapter:
 
         running_count = 0
         running_revision = -1
-        materialized_count = 0
+        projected: list[tuple[str, OnlineConsistencyEvidenceRecord]] = []
         event_count = sum(pending.event_counts_by_prefix_length.values())
         for prefix_length in range(len(observation_ids), 0, -1):
             running_count += pending.event_counts_by_prefix_length.get(
@@ -6329,23 +6397,96 @@ class FusionAdapter:
             if running_count <= 0:
                 continue
             index = prefix_length - 1
+            observation_id = observation_ids[index]
+            if (
+                requested_ids is not None
+                and observation_id not in requested_ids
+            ):
+                continue
             previous = records[index]
-            self._consistency_evidence[observation_ids[index]] = (
-                previous.with_replay_counters(
-                    replay_revision=running_revision,
-                    replay_count=previous.replay_count + running_count,
+            projected.append(
+                (
+                    observation_id,
+                    previous.with_replay_counters(
+                        replay_revision=running_revision,
+                        replay_count=previous.replay_count + running_count,
+                    ),
                 )
             )
-            materialized_count += 1
+        return tuple(projected), event_count
 
-        del self._pending_consistency_prefix_refreshes[track_id]
+    def _project_all_pending_consistency_prefix_refreshes(
+        self,
+        *,
+        requested_ids: frozenset[str] | None,
+    ) -> dict[str, OnlineConsistencyEvidenceRecord]:
+        """Project all pending ledgers for one exact non-destructive snapshot."""
+
+        if (
+            not self._replay_prefix_summary_candidate_enabled()
+            or not self._pending_consistency_prefix_refreshes
+        ):
+            return {}
+        projected: dict[str, OnlineConsistencyEvidenceRecord] = {}
+        projected_event_count = 0
+        projected_ledger_count = 0
+        for track_id in sorted(self._pending_consistency_prefix_refreshes):
+            pending = self._pending_consistency_prefix_refreshes[track_id]
+            if (
+                requested_ids is not None
+                and not pending.observation_id_set.intersection(requested_ids)
+            ):
+                continue
+            track_projection, event_count = (
+                self._project_pending_consistency_prefix_refresh(
+                    pending,
+                    requested_ids=requested_ids,
+                )
+            )
+            for observation_id, record in track_projection:
+                if observation_id in projected:
+                    raise RuntimeError(
+                        "pending consistency snapshot projection contains "
+                        f"duplicate evidence ownership: {observation_id!r}"
+                    )
+                projected[observation_id] = record
+            projected_event_count += event_count
+            projected_ledger_count += 1
+
         operations = self._replay_prefix_summary_operations
-        operations["lazy_consistency_materialization_count"] += 1
-        operations["lazy_consistency_materialized_event_count"] += event_count
-        operations["lazy_consistency_materialized_record_count"] += (
-            materialized_count
+        operations["public_snapshot_projection_count"] += 1
+        operations["public_snapshot_projected_ledger_count"] += (
+            projected_ledger_count
         )
-        self._replay_prefix_summary_materialization_reasons[str(reason)] += 1
+        operations["public_snapshot_projected_event_count"] += (
+            projected_event_count
+        )
+        operations["public_snapshot_projected_record_count"] += len(projected)
+        return projected
+
+    def _validated_consistency_snapshot_ids(
+        self,
+        observation_ids: Iterable[str] | None,
+    ) -> frozenset[str] | None:
+        """Validate an optional exact snapshot subset without mutating state."""
+
+        if observation_ids is None:
+            return None
+        requested: set[str] = set()
+        for observation_id in observation_ids:
+            if not isinstance(observation_id, str) or not observation_id:
+                raise ValueError(
+                    "consistency snapshot observation IDs must be "
+                    "non-empty strings"
+                )
+            requested.add(observation_id)
+        missing = sorted(requested.difference(self._consistency_evidence))
+        if missing:
+            raise KeyError(
+                "consistency snapshot requested unknown observation IDs: "
+                + ", ".join(repr(item) for item in missing)
+            )
+        return frozenset(requested)
 
     def _materialize_all_pending_consistency_prefix_refreshes(
         self,
@@ -6627,14 +6768,15 @@ class FusionAdapter:
         if self._batch_context is not None:
             self._batch_context.replay_checkpoint_reuse_count += matching_prefix
 
-        checkpoint_list_changed = False
-        for observation in eligible[matching_prefix:]:
-            if not checkpoint_list_changed:
-                self._mark_replay_checkpoint_list_changed(
-                    record,
-                    reason="checkpoint_suffix_appended",
-                )
-                checkpoint_list_changed = True
+        appended_observations = eligible[matching_prefix:]
+        checkpoint_list_changed = bool(appended_observations)
+        if checkpoint_list_changed:
+            self._mark_replay_checkpoint_suffix_append(
+                record,
+                appended_observations=appended_observations,
+                validated_summary_hit=summary_hit,
+            )
+        for observation in appended_observations:
             state = self._predict_to(
                 state,
                 observation.measurement_timestamp,
@@ -6680,12 +6822,73 @@ class FusionAdapter:
         *,
         reason: str,
     ) -> None:
-        """Advance the O(1) integrity revision before an internal list change."""
+        """Materialize evidence before a destructive checkpoint-list change."""
 
         self._materialize_pending_consistency_prefix_refresh(
             record.track_id,
             reason=reason,
         )
+        record.replay_checkpoint_revision += 1
+        record.replay_prefix_summary = None
+
+    def _mark_replay_checkpoint_suffix_append(
+        self,
+        record: TrackRecord,
+        *,
+        appended_observations: list[SensorObservation],
+        validated_summary_hit: bool,
+    ) -> None:
+        """Advance revision while preserving a validated old-prefix ledger."""
+
+        pending = self._pending_consistency_prefix_refreshes.get(
+            record.track_id
+        )
+        summary = record.replay_prefix_summary
+        append_sort_keys = tuple(
+            _observation_sort_key(observation)
+            for observation in appended_observations
+        )
+        append_ids = tuple(
+            observation.observation_id
+            for observation in appended_observations
+        )
+        strictly_ordered_suffix = bool(append_sort_keys) and all(
+            append_sort_keys[index - 1] < append_sort_keys[index]
+            for index in range(1, len(append_sort_keys))
+        )
+        pending_prefix_is_safe = (
+            pending is not None
+            and validated_summary_hit
+            and summary is not None
+            and summary.checkpoint_revision
+            == record.replay_checkpoint_revision
+            and len(summary.checkpoint_observation_ids)
+            == len(record.replay_checkpoints)
+            and bool(summary.checkpoint_sort_keys)
+            and pending.observation_ids
+            is summary.consistency_observation_ids
+            and summary.checkpoint_sort_keys[-1] < append_sort_keys[0]
+            and strictly_ordered_suffix
+            and all(
+                observation_id not in pending.observation_id_set
+                for observation_id in append_ids
+            )
+        )
+        if pending is not None and not pending_prefix_is_safe:
+            self._materialize_pending_consistency_prefix_refresh(
+                record.track_id,
+                reason="checkpoint_suffix_append_incompatible",
+            )
+        if self._replay_prefix_summary_candidate_enabled():
+            operations = self._replay_prefix_summary_operations
+            operations["append_only_revision_advance_count"] += 1
+            if pending_prefix_is_safe:
+                operations["append_only_pending_preservation_count"] += 1
+                operations[
+                    "append_only_pending_preserved_record_count"
+                ] += len(pending.observation_ids)
+            elif pending is not None:
+                operations["append_only_pending_incompatible_count"] += 1
         record.replay_checkpoint_revision += 1
         record.replay_prefix_summary = None
 

@@ -19,14 +19,28 @@
   诊断和实验制品均与已正式否决的
   `modality_conservative_quadratic_bound_v1` 分离。
 - summary 只保存不可变 tuple 和标量，不引用可变 checkpoint 列表。一致性证据的逻辑刷新
-  写入独立的前缀长度区间账本；证据读取、写入、失效、前缀变化、fixed-lag 重基准、回退和
-  公开导出前按后缀累计精确物化。因此候选没有跳过 `replay_revision/replay_count` 刷新。
+  写入独立的前缀长度区间账本；证据写入、失效、前缀变化、fixed-lag 重基准、回退和最终
+  导出前按后缀累计精确物化。因此候选没有跳过 `replay_revision/replay_count` 刷新。
 - `replay_checkpoint_revision` 是完整中间 checkpoint 前缀的 O(1) 确定性完整性边界。
-  D1 内部清空、后缀截断、追加和 fixed-lag 后缀替换统一先物化未决 evidence，再推进
-  revision 并清除旧 summary。中间迟到观测先失效受影响后缀；命中路径不执行 O(n) 中间
-  checkpoint 全量核对。
+  D1 内部清空、后缀截断、重排和 fixed-lag 后缀替换统一先物化未决 evidence，再推进
+  revision 并清除旧 summary。正常 append-only 在旧 summary 已验证、pending tuple
+  对象绑定一致、新 ID 不重叠且排序严格后移时保留旧 ledger；revision 仍推进，summary
+  仍失效。中间迟到观测先失效受影响后缀；命中路径不执行 O(n) 中间 checkpoint 全量核对。
+- D1 保留 `consistency_evidence_records()` 的全量精确物化兼容语义，最终
+  `export_consistency_evidence()` 继续通过该接口清空 pending。新增
+  `consistency_evidence_snapshot(observation_ids=None)` 供在线 publication 使用；它对
+  replay counter 做非破坏性精确 overlay，可按请求 ID 构造不可变记录，未知 ID 失败关闭。
+- main 第一轮 dirty smoke（200v200、2 recon、seed 1151、2.2 s）暴露旧 append 路径：
+  1,584 次 append 触发 1,584 次物化，逻辑和物化记录均为 8,687，压缩率 0。append 修复后
+  main 独立复跑得到 `summary_hit/reused/logical/materialized=1584/7103/8687/7013`，
+  append 物化为 0，压缩 `19.27017%`；1,372 个剩余物化原因全部是
+  `public_evidence_snapshot`。两臂 consistency digest 均为
+  `sha256:b579e62b65169791a1c9526eb5310ba7016149ddd501efe34e82a732c8bbda3a`，
+  D1 fusion 为 `2.40147/2.30535 s`。
+- 上述 19.27% 不是语义 blocker。main 在线 publication 仍调用兼容全量 records。D1 已提供
+  snapshot 合同和模块证据，main 需在 D1 完成后跨模块改接；D1 不修改 scalable/main。
 - diagnostics 可区分 attempt、hit、fallback、fallback 原因、summary 构建、
-  checkpoint/NIS/门控 ID 复用、逻辑 evidence 刷新和物化原因。既有
+  checkpoint/NIS/门控 ID 复用、逻辑 evidence 刷新、snapshot 投影和物化原因。既有
   `history_replay_count`、`replay_checkpoint_reuse_count` 和
   `cached_consistency_refresh_count` 等 operation counts 保持原语义。
 - 冻结 fixture `d1-replay-prefix-summary-200v200-20260725` 含 200 个目标、200 个资源、
@@ -35,27 +49,40 @@
   生成观测 SHA-256 为
   `sha256:b44f971c2c6ac9b519cb7aba3f8df455727382132b2c5ec127280c97806dbae9`，
   online truth use 为 0。
-- 每个 arm 建立独立新鲜 adapter，执行 5 轮完整固定滞后回放和一次公开 evidence 物化；
-  预热 1 对后交替执行 7 对。reference/candidate 中位墙钟为
-  `0.037882166/0.024329944 s`，改善 `35.775%`，candidate `7/7` 更快。配对均值差
-  bootstrap 95% 区间为 `[-0.014455845, -0.012638062] s`。
+- 每个 arm 建立独立新鲜 adapter，建轨阶段每扫描读取一次非破坏性 snapshot，执行 5 轮
+  完整固定滞后回放并在末尾全量物化；预热 1 对后交替执行 7 对。
+  reference/candidate 中位墙钟为 `0.039559965/0.025518551 s`，改善 `35.494%`，
+  candidate `7/7` 更快。配对均值差 bootstrap 95% 区间为
+  `[-0.014732573, -0.013135232] s`。性能 schema 为
+  `d1.replay_prefix_summary_performance.v3`。
+- 冻结 append 建轨阶段每 arm 的 revision/preserve/logical/materialized 为
+  `1400/1200/5200/2400`，物化记录压缩 `53.846%`；正常 append 物化为 0，
+  fixed-lag rebase 和后续 summary fallback 各 200 次。8 次 snapshot 中 4 次投影 pending，
+  累计 800 个 ledger、2,000 个事件和 2,800 条返回记录，在线内部物化为 0。
+- 冻结 fixture 前 3 个扫描派生的 0-2 秒 200v200 workload 得到 logical/materialized
+  `400/0`、内部压缩 100%；一次有效 snapshot 投影 200 个 ledger 和 400 条记录，最终
+  records 后 pending 为 0。该模块测试保持原 `>=20%` 门。
 - 7/7 对的后验、协方差、NIS、门控 ID、consistency evidence、既有 operation counts、
-  双时间戳、gate metadata、checkpoint 语义和公开 `GlobalTrack` 精确一致。candidate
-  每个计时 arm 有 1,000 次 summary hit、6,000 个 checkpoint/NIS 复用、6,000 条逻辑
-  evidence 刷新、1,200 条物化记录和 0 次 timed fallback。
+  逐扫描 snapshot 序列、双时间戳、gate metadata、checkpoint 语义和公开 `GlobalTrack`
+  精确一致。candidate 每个计时 arm 有 1,000 次 summary hit、6,000 个 checkpoint/NIS
+  复用、6,000 条逻辑 evidence 刷新、1,200 条最终物化记录和 0 次 timed fallback。
 - 专项回归覆盖迟到量测、门控拒绝、部分前缀、前缀变化、无 checkpoint、
   summary schema/version 失配和 consistency 配置不兼容。失败条件均有可审计 fallback，
   不通过减少观测、缩短 6 秒窗口、放宽门控或跳过 evidence 刷新获得性能收益。
 - 中间顺序专项在四个 checkpoint 之间插入迟到观测，确认旧后缀先失效、revision 至少随
   截断和重建推进、摘要按新顺序建立，并与 reference 的内部状态和公开输出一致。
-- 最后源码状态的 D1 全量回归为 `484 passed in 25.10s`；新增和修改的 Python 入口均通过
+- 连续 append 和频繁 snapshot 专项确认 pending ledger 跨多次读取与追加保留，每次返回
+  精确 replay counter；append 后再插入中间迟到量测会先物化再截断，最终 records/export
+  清空 pending。
+- 最后源码状态的 D1 全量回归为 `488 passed in 30.96s`；新增和修改的 Python 入口均通过
   `py_compile`。
 - 当前状态是 **P1 模块候选通过，main clean 同提交 short/long 正式矩阵开放**。模块报告
   记录 Git HEAD、关键源码 SHA-256 和 `working_tree_commit_claimed=false`，不冒充正式
-  clean 证据。是否启动正式矩阵及最终 admit/reject 由 main 和 D6 决定。
-- 本轮没有改变 AirSim producer、DTO、runtime bus、episode、坐标或双时间戳接口。
-  `docs/AIRSIM_INTEGRATION_PLAN.md` 已检查，无需修改。当前结果也不是 AirSim、目标硬件、
-  实机、实飞、系统实时、RMSE、NEES 或 NIS 证据。
+  clean 证据。main 需先改接在线 snapshot 并复跑同配置，再决定是否启动正式矩阵；最终
+  admit/reject 由 main 和 D6 决定。
+- 本轮没有改变 AirSim producer、DTO、episode、坐标或双时间戳合同；新增了 D1 runtime
+  publication 只读接口。`docs/AIRSIM_INTEGRATION_PLAN.md` 已同步 main 接线边界。当前结果
+  不是 AirSim、目标硬件、实机、实飞、系统实时、RMSE、NEES 或 NIS 证据。
 
 ## 最新增量：模态感知保守稀疏预筛正式拒绝（2026-07-25）
 

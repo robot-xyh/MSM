@@ -20,18 +20,37 @@ D1 新增默认关闭的固定滞后回放 selector
 使用冻结累计摘要。摘要只保存不可变 tuple 和标量，不引用可变 checkpoint 列表。
 
 `replay_checkpoint_revision` 是完整中间 checkpoint 前缀的 O(1) 确定性完整性边界。D1
-内部对列表执行清空、后缀截断、追加或 fixed-lag 后缀替换前，统一物化未决 evidence、递增
-revision 并清除旧 summary；中间插入观测也必须先从受影响排序键失效后缀。候选命中不再
-逐项扫描中间 checkpoint。专项回归在四个 checkpoint 的中间插入迟到观测，确认旧后缀
-失败关闭、revision 推进、摘要按新顺序重建，且 reference/candidate 结果一致。
+内部清空、后缀截断、重排和 fixed-lag 后缀替换前，统一物化未决 evidence、递增 revision
+并清除旧 summary；中间插入观测必须先从受影响排序键失效后缀。正常 append-only 后缀追加
+仍递增 revision 并失效旧 summary，但保留只覆盖旧前缀且身份对象绑定一致的 pending
+ledger。新增 observation ID 不得与旧 ledger 重叠，首个新排序键必须严格晚于旧末项；
+否则立即物化并按破坏性变更处理。命中路径不逐项扫描中间 checkpoint。
 
 一致性证据计数没有被跳过。候选把“某次回放覆盖前 N 条证据”的事件记入按前缀长度聚合的
-账本；证据写入、前缀失配、fixed-lag 重基准、显式失效或公开 evidence 导出前，按后缀累计
-精确物化每条记录的回放次数和最新修订号。任何部分前缀、无 checkpoint、schema/修订失配、
-证据结构变化或一致性缓存配置不满足都会先物化未决计数，再回到原逐条路径。
+账本。证据写入、前缀失配、fixed-lag 重基准、显式失效或最终导出前，按后缀累计精确物化
+每条记录的回放次数和最新修订号。任何部分前缀、无 checkpoint、schema/修订失配、证据
+结构变化或一致性缓存配置不满足都会先物化未决计数，再回到原逐条路径。
 `replay_prefix_summary_diagnostics()` 分开记录摘要命中、fallback 原因、复用 checkpoint/NIS、
-逻辑 evidence 刷新和物化原因。既有 `history_replay_count`、
+逻辑 evidence 刷新、在线投影和物化原因。既有 `history_replay_count`、
 `replay_checkpoint_reuse_count`、`cached_consistency_refresh_count` 等计数语义不变。
+
+公开接口保持兼容并区分用途：
+
+- `consistency_evidence_records()` 保留原有全量精确物化语义，调用后 pending ledger 为 0；
+  `export_consistency_evidence()` 继续通过该接口生成 episode 最终离线证据。
+- `consistency_evidence_snapshot(observation_ids=None)` 返回当下精确的不可变记录，但不消费
+  pending ledger。传入 ID 集合时只为请求记录构造 counter overlay；未知或非法 ID 失败关闭。
+- main 在线 publication 尚需改接 snapshot；episode 最终导出仍使用 records/export。
+
+main 第一次 dirty smoke（200v200、2 个侦察节点、seed 1151、2.2 s）暴露 append 处理缺口：
+1,584 次正常 append 触发 1,584 次 `checkpoint_suffix_appended` 物化，逻辑刷新和物化记录
+均为 8,687，压缩率为 0。append-only 特例修复后，main 独立复跑得到
+`summary_hit=1584`、`reused=7103`、`logical=8687`、`materialized=7013`，
+append 物化为 0，压缩率 `19.27017%`。剩余物化原因全部来自 1,372 个
+`public_evidence_snapshot` ledger；两臂 consistency digest 均为
+`sha256:b579e62b65169791a1c9526eb5310ba7016149ddd501efe34e82a732c8bbda3a`。
+reference/candidate D1 fusion 为 `2.40147/2.30535 s`。该结果确认 append 修复有效，也表明
+main 在线 publication 仍调用兼容全量接口；D1 本轮不修改 main。
 
 2026-07-25 的冻结模块微基准使用
 `d1-replay-prefix-summary-200v200-20260725`，fixture SHA-256 为
@@ -39,23 +58,40 @@ revision 并清除旧 summary；中间插入观测也必须先从受影响排序
 生成观测 SHA-256 为
 `sha256:b44f971c2c6ac9b519cb7aba3f8df455727382132b2c5ec127280c97806dbae9`。
 场景元数据为 200 个目标、200 个资源和 2 个侦察节点；8 个雷达扫描、1,600 条匿名在线
-观测，每个 arm 执行 5 轮完整固定滞后回放及一次公开 evidence 物化。online truth use 为 0。
+观测。建轨阶段每个扫描后读取一次精确非破坏性 snapshot；每个 arm 随后执行 5 轮完整固定
+滞后回放及一次兼容全量 evidence 物化。online truth use 为 0。
 
 reference/candidate 使用同一导入源码状态和同一输入，建立 7 对全新 adapter 并交替运行。
-reference/candidate 中位墙钟为 `0.037882166/0.024329944 s`，改善 `35.775%`，
+性能报告 schema 为 `d1.replay_prefix_summary_performance.v3`。reference/candidate 中位
+墙钟为 `0.039559965/0.025518551 s`，改善 `35.494%`，
 candidate `7/7` 更快。candidate 每个 arm 命中 1,000 次摘要、复用 6,000 个
 checkpoint/NIS，逻辑刷新 6,000 条 evidence，最终物化 1,200 条记录；计时段 fallback 为 0。
 配对均值差 bootstrap 95% 区间为
-`[-0.014455845, -0.012638062] s`，上界小于 0。
+`[-0.014732573, -0.013135232] s`，上界小于 0。
+
+同一冻结输入的 append 建轨阶段每个 arm 推进 revision 1,400 次，安全保留 pending ledger
+1,200 次；逻辑刷新 5,200 条、最终物化 2,400 条，物化记录压缩率 `53.846%`。正常 append
+物化次数为 0；仅 fixed-lag rebase 和后续 summary fallback 各物化 200 次。所有 summary
+均绑定最新 revision。8 次在线 snapshot 中 4 次存在 pending，共投影 800 个 ledger、
+2,000 个累计事件并构造 2,800 条不可变返回记录；在线 snapshot 内部物化为 0。该投影工作量
+单独计数，不能解释为计算消失。
+
+由冻结 fixture 前 3 个扫描派生的 0-2 秒 200v200 短时负载还原了 main 短 episode 形态：
+逻辑刷新 400 条、内部物化 0 条、压缩率 100%，一次有效 snapshot 投影 200 个 ledger 和
+400 条返回记录；最终兼容 records 调用后 pending 为 0。该结果通过既定 `>=20%` 门，但仍是
+D1 模块测试，不替代 main 改接后的同场景复跑。
 
 7/7 对均逐项通过后验状态、协方差、NIS、门控观测 ID、一致性 evidence、既有操作计数、
-双时间戳与 gate metadata、checkpoint 语义和公开 `GlobalTrack` 精确等价。模块门限为至少
+逐扫描 snapshot 序列、双时间戳与 gate metadata、checkpoint 语义和公开 `GlobalTrack`
+精确等价。模块门限为至少
 5 对、candidate 更快比例至少 80%、中位改善至少 5%、bootstrap 95% 上界小于 0，并要求
-全部语义门通过；本轮模块微基准通过。D1 全量回归为 `484 passed in 25.10s`。
+append 压缩至少 20%、在线 snapshot 不物化及全部语义门通过；本轮模块微基准通过。D1
+全量回归为 `488 passed in 30.96s`。
 
 该结论只允许 main 评审是否预注册新的同提交 short/long 正式矩阵。当前
 `main_default_promotion_claimed=false`，reference 继续作为默认；尚无 main 正式矩阵、
-AirSim、系统实时倍率、目标硬件、实机或实飞证据。报告位于
+改接 snapshot 后的 dirty/clean 集成复跑、AirSim、系统实时倍率、目标硬件、实机或实飞
+证据。报告位于
 `reports/D1_REPLAY_PREFIX_SUMMARY_PERFORMANCE_20260725_CN.md` 和同名 JSON。
 
 ### 第三十五阶段：模态感知保守稀疏预筛正式拒绝

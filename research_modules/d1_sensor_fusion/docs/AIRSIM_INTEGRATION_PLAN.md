@@ -1,5 +1,22 @@
 # D1 AirSim 集成计划
 
+## 0. 在线证据发布边界（2026-07-25）
+
+- D1 固定滞后回放前缀累计摘要候选仍默认关闭。AirSim producer、观测 DTO、双时间戳、
+  covariance、NED、`GlobalTrack` 和 episode 数据合同没有改变。
+- main/runtime bus 的在线 publication 若只需要当下证据视图，应调用
+  `consistency_evidence_snapshot(observation_ids=None)`。该接口返回精确不可变记录，并在
+  candidate 启用时非破坏性叠加 pending replay counter；不得返回陈旧
+  `replay_count/replay_revision`。
+- episode 最终离线证据导出继续调用 `consistency_evidence_records()` 或
+  `export_consistency_evidence()`。两者保留全量精确物化语义，完成后 pending ledger
+  必须为 0。
+- 当前 D1-owned 模块测试已覆盖重复 snapshot、append 后 snapshot、snapshot 后中间迟到
+  量测、子集 ID 和最终导出。main 尚未修改跨模块调用点；AirSim 或 scalable runtime
+  改接后需复核最终 evidence digest、snapshot/append 物化原因和 ledger 守恒。
+- 该 API 区分只改变证据读取成本，不改变 6 秒 fixed-lag、量测更新、NIS、门控、后验或
+  AirSim sensor adapter。模块微基准不能替代 AirSim episode 性能证据。
+
 ## 0. 协方差发布合同更新（2026-07-24）
 
 - D1 已在观测和航迹公共限制路径增加完整正半定治理。AirSim 上游 DTO、相机/雷达适配器、

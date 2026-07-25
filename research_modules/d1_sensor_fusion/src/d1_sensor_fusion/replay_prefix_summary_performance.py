@@ -27,7 +27,7 @@ REPLAY_PREFIX_SUMMARY_FIXTURE_SCHEMA_VERSION = (
     "d1.replay_prefix_summary_200v200_fixture.v1"
 )
 REPLAY_PREFIX_SUMMARY_PERFORMANCE_SCHEMA_VERSION = (
-    "d1.replay_prefix_summary_performance.v1"
+    "d1.replay_prefix_summary_performance.v3"
 )
 DEFAULT_REPLAY_PREFIX_SUMMARY_FIXTURE = (
     Path(__file__).resolve().parents[2]
@@ -268,6 +268,80 @@ def benchmark_replay_prefix_summary(
         > 0
         for item in pairs
     )
+    append_compression_fractions = [
+        float(
+            item["candidate"]["setup_append_only_diagnostics"][
+                "materialized_record_compression_fraction"
+            ]
+        )
+        for item in pairs
+    ]
+    append_only_validation_passed = all(
+        int(
+            item["candidate"]["setup_append_only_diagnostics"][
+                "pending_preservation_count"
+            ]
+        )
+        > 0
+        and int(
+            item["candidate"]["setup_append_only_diagnostics"][
+                "logical_refresh_record_count"
+            ]
+        )
+        > int(
+            item["candidate"]["setup_append_only_diagnostics"][
+                "materialized_record_count"
+            ]
+        )
+        and float(
+            item["candidate"]["setup_append_only_diagnostics"][
+                "materialized_record_compression_fraction"
+            ]
+        )
+        >= 0.2
+        and int(
+            item["candidate"]["setup_append_only_diagnostics"][
+                "append_materialization_count"
+            ]
+        )
+        == 0
+        and bool(
+            item["candidate"]["setup_append_only_diagnostics"][
+                "all_summaries_bind_latest_revision"
+            ]
+        )
+        and int(
+            item["candidate"]["setup_append_only_diagnostics"][
+                "online_snapshot_count"
+            ]
+        )
+        == int(item["candidate"]["setup_append_only_diagnostics"]["scan_count"])
+        and int(
+            item["candidate"]["setup_append_only_diagnostics"][
+                "online_snapshot_pending_violation_count"
+            ]
+        )
+        == 0
+        and int(
+            item["candidate"]["setup_append_only_diagnostics"][
+                "public_snapshot_projection_count"
+            ]
+        )
+        > 0
+        and int(
+            item["candidate"]["setup_append_only_diagnostics"][
+                "public_snapshot_projected_record_count"
+            ]
+        )
+        > 0
+        and int(
+            item["candidate"]["setup_append_only_diagnostics"][
+                "public_snapshot_materialization_count"
+            ]
+        )
+        == 0
+        for item in pairs
+    )
     acceptance = {
         "frozen_200v200_fixture_used": frozen_fixture_compliant,
         "paired_run_count_at_least_five": (
@@ -276,6 +350,9 @@ def benchmark_replay_prefix_summary(
         ),
         "all_semantic_checks_passed": all_semantically_equal,
         "candidate_summary_hits_exercised": diagnostics_exercised,
+        "append_only_compression_at_least_20_percent": (
+            append_only_validation_passed
+        ),
         "candidate_faster_fraction_at_least_80_percent": (
             candidate_faster_fraction
             >= REPLAY_PREFIX_SUMMARY_MINIMUM_CANDIDATE_FASTER_FRACTION
@@ -326,6 +403,10 @@ def benchmark_replay_prefix_summary(
                     "plus_one_public_consistency_evidence_materialization"
                 )
             ),
+            "online_snapshot_scope": (
+                "one_exact_non_destructive_consistency_evidence_snapshot_"
+                "after_each_setup_scan"
+            ),
             "setup_association_excluded_from_timed_scope": True,
             "bootstrap_seed": REPLAY_PREFIX_SUMMARY_BOOTSTRAP_SEED,
             "bootstrap_resample_count": (
@@ -345,6 +426,12 @@ def benchmark_replay_prefix_summary(
             "candidate_faster_count": candidate_faster_count,
             "candidate_faster_fraction": candidate_faster_fraction,
             "paired_mean_difference_bootstrap": bootstrap,
+            "append_only_materialized_record_compression_fractions": (
+                append_compression_fractions
+            ),
+            "minimum_append_only_materialized_record_compression_fraction": (
+                min(append_compression_fractions)
+            ),
         },
         "acceptance_thresholds": {
             "minimum_paired_run_count": (
@@ -358,6 +445,12 @@ def benchmark_replay_prefix_summary(
             ),
             "maximum_bootstrap_ci95_upper_s": 0.0,
             "all_semantic_checks_required": True,
+            "minimum_append_only_materialized_record_compression_fraction": (
+                0.2
+            ),
+            "online_snapshot_after_every_setup_scan": True,
+            "maximum_online_snapshot_pending_violation_count": 0,
+            "maximum_online_snapshot_materialization_count": 0,
         },
         "acceptance": acceptance,
         "module_microbenchmark_passed": module_microbenchmark_passed,
@@ -374,7 +467,13 @@ def benchmark_replay_prefix_summary(
 def render_replay_prefix_summary_report_cn(report: Mapping[str, Any]) -> str:
     comparison = report["comparison"]
     bootstrap = comparison["paired_mean_difference_bootstrap"]
+    append_compression = comparison[
+        "minimum_append_only_materialized_record_compression_fraction"
+    ]
     workload = report["workload"]
+    snapshot_diagnostics = report["pairs"][0]["candidate"][
+        "setup_append_only_diagnostics"
+    ]
     lines = [
         "# D1 固定滞后回放前缀累计摘要微基准",
         "",
@@ -406,6 +505,10 @@ def render_replay_prefix_summary_report_cn(report: Mapping[str, Any]) -> str:
             f"- 扫描 `{workload['scan_count']}`，观测 "
             f"`{workload['observation_count']}`，每个 arm 重复完整回放 "
             f"`{workload['replay_sweep_count']}` 轮。"
+        ),
+        (
+            "- 建轨阶段每个扫描后读取一次精确非破坏性一致性证据快照；"
+            "计时末尾调用兼容全量接口完成一次精确物化。"
         ),
         (
             f"- 生成观测摘要：`{workload['generated_observation_sha256']}`；"
@@ -445,6 +548,20 @@ def render_replay_prefix_summary_report_cn(report: Mapping[str, Any]) -> str:
                 f"95% 区间为 `[{bootstrap['ci95_lower_s']:.9f}, "
                 f"{bootstrap['ci95_upper_s']:.9f}] s`。"
             ),
+            (
+                "冻结 append-only 建轨阶段的最小物化记录压缩率为 "
+                f"`{100.0 * append_compression:.3f}%`；"
+                "正常后缀追加物化次数为 `0`。"
+            ),
+            (
+                "每个 candidate arm 的在线快照投影为 "
+                f"`{snapshot_diagnostics['public_snapshot_projection_count']}` "
+                "次，涉及 "
+                f"`{snapshot_diagnostics['public_snapshot_projected_ledger_count']}` "
+                "个 ledger、构造 "
+                f"`{snapshot_diagnostics['public_snapshot_projected_record_count']}` "
+                "条不可变返回记录；在线快照导致的内部物化次数为 `0`。"
+            ),
             "",
             "## 等价性",
             "",
@@ -459,6 +576,12 @@ def render_replay_prefix_summary_report_cn(report: Mapping[str, Any]) -> str:
             (
                 "本结果是 D1 冻结合成观测微基准。尚未执行 main 同提交的短时/长时"
                 "正式矩阵，也不包含 AirSim、系统实时倍率、目标硬件或实飞证据。"
+            ),
+            (
+                "物化压缩率只描述内部 ledger 落盘记录数。公开快照仍需校验 pending "
+                "前缀并构造所请求的不可变记录；该工作量由投影诊断单独披露。main "
+                "在线 publication 需显式改接 consistency_evidence_snapshot，episode "
+                "最终离线导出继续使用 consistency_evidence_records。"
             ),
         ]
     )
@@ -531,11 +654,60 @@ def _run_fresh_variant(
         replay_prefix_summary=selector,
     )
     setup_started = perf_counter()
+    online_snapshot_sha256: list[str] = []
+    online_snapshot_pending_preservation_count = 0
+    online_snapshot_pending_violation_count = 0
     for scan in fresh_workload:
         adapter.process_scan_batch(scan, materialize_tracks=False)
+        pending_before_snapshot = int(
+            adapter.replay_prefix_summary_diagnostics()[
+                "pending_consistency_ledger_count"
+            ]
+        )
+        snapshot = adapter.consistency_evidence_snapshot()
+        pending_after_snapshot = int(
+            adapter.replay_prefix_summary_diagnostics()[
+                "pending_consistency_ledger_count"
+            ]
+        )
+        online_snapshot_sha256.append(
+            _json_sha256([item.to_dict() for item in snapshot])
+        )
+        if pending_before_snapshot == pending_after_snapshot:
+            if pending_before_snapshot > 0:
+                online_snapshot_pending_preservation_count += 1
+        else:
+            online_snapshot_pending_violation_count += 1
     setup_wall_time_s = perf_counter() - setup_started
-    adapter.consistency_evidence_records()
     diagnostics_before = adapter.replay_prefix_summary_diagnostics()
+    setup_operations = diagnostics_before["operation_counts"]
+    setup_logical_refresh_count = int(
+        setup_operations.get(
+            "lazy_consistency_refresh_logical_record_count",
+            0,
+        )
+    )
+    setup_materialized_record_count = int(
+        setup_operations.get(
+            "lazy_consistency_materialized_record_count",
+            0,
+        )
+    )
+    setup_compression_fraction = (
+        0.0
+        if setup_logical_refresh_count <= 0
+        else 1.0
+        - setup_materialized_record_count / setup_logical_refresh_count
+    )
+    setup_materialization_reasons = diagnostics_before[
+        "materialization_reasons"
+    ]
+    all_summaries_bind_latest_revision = all(
+        record.replay_prefix_summary is None
+        or record.replay_prefix_summary.checkpoint_revision
+        == record.replay_checkpoint_revision
+        for record in adapter.tracks.values()
+    )
     context = _BatchProcessingContext()
     replay_outputs: dict[str, tuple[Any, ...]] = {}
     timed_started = perf_counter()
@@ -566,6 +738,89 @@ def _run_fresh_variant(
     return {
         "selector": selector,
         "setup_wall_time_s": setup_wall_time_s,
+        "online_snapshot_sequence_sha256": _json_sha256(
+            online_snapshot_sha256
+        ),
+        "setup_append_only_diagnostics": {
+            "scan_count": len(fresh_workload),
+            "online_snapshot_count": len(online_snapshot_sha256),
+            "online_snapshot_pending_preservation_count": (
+                online_snapshot_pending_preservation_count
+            ),
+            "online_snapshot_pending_violation_count": (
+                online_snapshot_pending_violation_count
+            ),
+            "pending_ledger_count_after_online_snapshots": int(
+                diagnostics_before["pending_consistency_ledger_count"]
+            ),
+            "revision_advance_count": int(
+                setup_operations.get(
+                    "append_only_revision_advance_count",
+                    0,
+                )
+            ),
+            "pending_preservation_count": int(
+                setup_operations.get(
+                    "append_only_pending_preservation_count",
+                    0,
+                )
+            ),
+            "pending_preserved_record_count": int(
+                setup_operations.get(
+                    "append_only_pending_preserved_record_count",
+                    0,
+                )
+            ),
+            "logical_refresh_record_count": setup_logical_refresh_count,
+            "materialized_record_count": setup_materialized_record_count,
+            "materialized_record_compression_fraction": (
+                setup_compression_fraction
+            ),
+            "append_materialization_count": int(
+                setup_materialization_reasons.get(
+                    "checkpoint_suffix_appended",
+                    0,
+                )
+                + setup_materialization_reasons.get(
+                    "checkpoint_suffix_append_incompatible",
+                    0,
+                )
+            ),
+            "public_snapshot_projection_count": int(
+                setup_operations.get(
+                    "public_snapshot_projection_count",
+                    0,
+                )
+            ),
+            "public_snapshot_projected_ledger_count": int(
+                setup_operations.get(
+                    "public_snapshot_projected_ledger_count",
+                    0,
+                )
+            ),
+            "public_snapshot_projected_event_count": int(
+                setup_operations.get(
+                    "public_snapshot_projected_event_count",
+                    0,
+                )
+            ),
+            "public_snapshot_projected_record_count": int(
+                setup_operations.get(
+                    "public_snapshot_projected_record_count",
+                    0,
+                )
+            ),
+            "public_snapshot_materialization_count": int(
+                setup_materialization_reasons.get(
+                    "public_evidence_snapshot",
+                    0,
+                )
+            ),
+            "materialization_reasons": setup_materialization_reasons,
+            "all_summaries_bind_latest_revision": (
+                all_summaries_bind_latest_revision
+            ),
+        },
         "timed_replay_wall_time_s": timed_replay_wall_time_s,
         "track_count": len(adapter.tracks),
         "replay_output_count": len(replay_outputs),
@@ -693,6 +948,10 @@ def _semantic_equivalence_checks(
     candidate: Mapping[str, Any],
 ) -> dict[str, bool]:
     return {
+        "online_snapshot_sequence_exact": (
+            candidate["online_snapshot_sequence_sha256"]
+            == reference["online_snapshot_sequence_sha256"]
+        ),
         "posterior_state_exact": (
             candidate["posterior_state_sha256"]
             == reference["posterior_state_sha256"]
