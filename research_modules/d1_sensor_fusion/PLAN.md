@@ -1,6 +1,43 @@
 # D1 多传感器融合与目标配准实施计划
 
-## P1 结构稀疏数值雅可比候选（2026-07-24）
+## P1 结构稀疏数值雅可比正式准入结果（2026-07-25）
+
+### 正式矩阵
+
+main 已在 clean commit
+`9d1f54f8540fdc4a7a1011121aafac5718290122` 完成 reference/candidate 同提交接线。
+D6 对冻结矩阵执行独立失败关闭评估。矩阵含 200 个目标、200 个资源和 2 个侦察节点；
+short 10 pair 每臂 2.2 s，long 3 pair 每臂 10 s，共 26 个 fresh arm。
+`26/26 complete`、`0 reused`、`0 failed`，全部来源、业务语义、有限状态、在线真值隔离、
+实现身份和结构操作数准入门通过。
+
+short 的 D1 融合与核心墙钟改善为 `6.084778%/1.897370%`，candidate `10/10` 更快；
+long 为 `4.676061%/1.786530%`，candidate `3/3` 更快。量测函数求值减少
+`53.846154%`。D6 输出 `availability=true`、`optimization_admitted=true`。
+2026-07-25 D1 全量回归为 `414 passed in 21.52s`。
+
+### 准入与默认边界
+
+结构稀疏数值雅可比在 scalable 3D main 集成中的候选准入 P1 已关闭。reference 必须继续
+保留为显式回退和同输入对照。D1 独立
+`FusionAdapter(structured_numerical_jacobian=False)` 默认不变，显式 `True` 可用。
+main 已完成后续版本治理：scalable 3D 的 `IntegratedStackConfig` 与 `run_episode` 命令行
+默认均晋级为 `known_dimension_structural_columns_v1`，`dense_output_probe_v1` 可显式
+回退。2v2 默认 smoke 的 observation governance、episode summary 和 module final
+diagnostics 三个表面均记录候选，状态有限且在线真值使用为 0。
+
+上述默认晋级只属于 scalable 3D main 集成。D1 独立 `FusionAdapter` 的构造默认仍为
+`structured_numerical_jacobian=False`，没有随 main 默认一起改变。2v2 smoke 只关闭默认
+接线回归，不形成 AirSim、目标硬件或实飞证据。
+
+### 后续 P1
+
+1. 系统实时 P1 保持开放。当前最低实时因子为 `0.180726`，未达到 `>=1.0`。
+2. 使用冻结 AirSim 输入执行同实现 A/B，并在目标处理器上测量周期、尾延时和内存。
+3. 补充 RMSE、NEES、NIS 和长时容量证据；质点性能不得替代融合质量验收。
+4. 保持双时间戳、NED、协方差、fixed-lag/OOSM、在线真值隔离和实现身份回归。
+
+## P1 结构稀疏数值雅可比模块候选基线（2026-07-24）
 
 ### 问题与选型
 
@@ -41,19 +78,19 @@ main 的 200v200、2.2 s、seed 1111 默认路径 cProfile 显示
 一致。端到端扫描测试还验证了关联结果、航迹 ID、状态、协方差、量测时刻、到达时刻和乱序
 重放逐项一致。D1 全量 `414 passed in 21.31s`。
 
-### 下一步 main 准入
+### 已完成的 main 准入步骤
 
-候选达到模块门槛，状态为“待 main 全栈准入”，不是默认晋级。main 后续需：
+候选达到模块门槛后按以下步骤进入正式矩阵；这些步骤已于 2026-07-25 完成：
 
 1. 在同一 clean commit 为 scalable 3D 增加 reference/candidate selector，并在 manifest、
    summary 和 final diagnostics 记录实际实现 ID 与 D1 操作数；
 2. 固定 200v200 short 10 seed 和 long 3 seed 的配对顺序、配置哈希与输入摘要，不复用旧 arm；
 3. 由 D6 独立核验业务语义、有限状态、在线真值隔离、D1/D2 时延、RSS 和实现身份；
-4. 只有预注册的 D1、核心墙钟、D2 回归和内存门全部通过，才讨论 main 默认切换。
+4. 只有预注册的 D1、核心墙钟、D2 回归和内存门全部通过，才允许形成集成候选准入结论。
 
-AirSim 集成计划已检查。候选不改变 observation schema、相机/雷达适配器、topic、settings、
-时间戳或 episode 编排，因此当前无需修改该文档。系统实时、AirSim、目标硬件、RMSE、NEES、
-NIS 和长时容量缺口保持开放。
+正式矩阵满足上述准入门，结果见本文件首节。AirSim 集成计划已再次检查。候选不改变
+observation schema、相机/雷达适配器、topic、settings、时间戳或 episode 编排，因此当前
+无需修改该文档。系统实时、AirSim、目标硬件、RMSE、NEES、NIS 和长时容量缺口保持开放。
 
 ## P1 六维协方差 PSD 检查快路径候选结论（2026-07-24）
 

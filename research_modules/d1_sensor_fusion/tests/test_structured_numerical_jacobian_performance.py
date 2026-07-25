@@ -63,3 +63,15 @@ def test_frozen_benchmark_is_exact_and_auditable(tmp_path) -> None:
     markdown = markdown_path.read_text(encoding="utf-8")
     assert "不是完整融合" in markdown
     assert "结构稀疏数值雅可比" in markdown
+    stale_disposition = "保留为待 " + "main 全栈准入"
+    assert stale_disposition not in markdown
+    assert "scalable 3D 正式矩阵已准入" in markdown
+    assert (
+        "main 默认已晋级为 `known_dimension_structural_columns_v1`"
+        in markdown
+    )
+    assert (
+        "D1 独立 `FusionAdapter` 构造默认仍为 "
+        "`structured_numerical_jacobian=False`"
+        in markdown
+    )

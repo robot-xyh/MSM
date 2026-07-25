@@ -5,7 +5,29 @@
 
 ---
 
-## 最新增量：结构稀疏数值雅可比候选（2026-07-24）
+## 最新增量：结构稀疏数值雅可比正式准入（2026-07-25）
+
+- 正式矩阵绑定 clean commit
+  `9d1f54f8540fdc4a7a1011121aafac5718290122`。场景为 200 目标、200 资源和 2 个侦察
+  节点；short 10 pair 每臂 2.2 s，long 3 pair 每臂 10 s，共 26 个 fresh arm。
+- `26/26 complete`、`0 reused`、`0 failed`。13/13 pair 的制品来源、业务语义、有限状态、
+  在线真值隔离、显式实现身份和结构雅可比操作数全部通过。
+- short 的 D1 融合与核心墙钟改善为 `6.084778%/1.897370%`，candidate `10/10` 更快；
+  long 为 `4.676061%/1.786530%`，candidate `3/3` 更快。量测函数求值减少
+  `53.846154%`。
+- D6 判定 `availability=true`、`optimization_admitted=true`。结构稀疏数值雅可比在
+  scalable 3D main 集成中的候选准入 P1 关闭，reference 保留为回退。
+- 2026-07-25 D1 全量回归为 `414 passed in 21.52s`。
+- main 已把 scalable 3D 的 `IntegratedStackConfig` 和 `run_episode` 命令行默认晋级为
+  `known_dimension_structural_columns_v1`，`dense_output_probe_v1` 保留显式回退。
+- 2v2 默认 smoke 的 observation governance、episode summary 和 module final diagnostics
+  三个表面均记录候选，状态有限且在线真值使用为 0。该 smoke 只验证默认接线和安全边界。
+- D1 独立 `FusionAdapter(structured_numerical_jacobian=False)` 构造默认仍然不变，显式
+  `True` 可用。scalable 3D main 默认晋级不等于 D1 独立 API 默认切换。
+- 候选最低实时因子为 `0.180726`，`system_realtime_gap_closed=false`。本轮不包含
+  AirSim、目标硬件、实飞、RMSE、NEES 或 NIS 证据。
+
+## 结构稀疏数值雅可比模块候选基线（2026-07-24）
 
 - main 的 200v200、2.2 s、seed 1111 默认路径 cProfile 中，`numerical_jacobian` 累计
   `0.712 s`。扫描模型缓存和非雷达创新批处理已经关闭对应重复工作，本轮没有重复这些候选。
@@ -14,15 +36,14 @@
 - reference/candidate 实现 ID 分别为
   `d1.ekf.numerical_jacobian.dense_output_probe.v1` 和
   `d1.ekf.numerical_jacobian.known_dimension_structural_columns.v1`。
-  `structured_numerical_jacobian` 默认 `False`。
+  D1 独立 `FusionAdapter` 的 `structured_numerical_jacobian` 构造默认为 `False`。
 - 冻结 480 个混合量测模型、每样本 20 轮、9 次交错采样。中位墙钟
   `0.444645 -> 0.319552 s`，改善 `28.13%`，candidate `9/9` 更快；量测函数求值
   `124,800 -> 72,000`，减少 `42.31%`。
 - 雅可比、归一化创新平方和门控决策摘要严格一致。扫描级回归覆盖关联结果、航迹 ID、状态、
   协方差、双时间戳和乱序重放。D1 全量 `414 passed in 21.31s`。
-- 候选达到模块门槛，保留为待 main 全栈准入。main 需要在同一 clean 提交接入 selector 和
-  diagnostics，并完成 short 10 seed、long 3 seed 的 200v200 配对矩阵；D6 独立判定前
-  不切换系统默认。
+- 候选达到模块门槛后进入 main 同提交准入流程。short 10 seed、long 3 seed 的 200v200
+  配对矩阵及 D6 独立判定已经完成，当前结论见上一节。
 - 本轮没有 AirSim、目标硬件、RMSE、NEES、NIS 或系统实时证据。PSD/协方差安全门、
   fixed-lag、门限和量测频率未改。
 

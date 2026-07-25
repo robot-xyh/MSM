@@ -2,9 +2,43 @@
 
 Offline research module for radar, acoustic, EO, and optional synthetic lidar heterogeneous observation fusion. The module estimates six-state NED `GlobalTrack` objects with covariance.
 
-## 当前性能与治理证据（2026-07-24）
+## 当前性能与治理证据（2026-07-25）
 
-### 第三十阶段：结构稀疏数值雅可比候选
+### 第三十一阶段：结构稀疏数值雅可比正式准入
+
+D6 已对 clean commit
+`9d1f54f8540fdc4a7a1011121aafac5718290122` 的冻结同提交矩阵完成独立失败关闭评估。
+场景为 200 个目标、200 个资源和 2 个侦察节点；short 组含 10 pair、每臂 2.2 s，
+long 组含 3 pair、每臂 10 s。13 pair 对应 26 个 fresh arm，结果为
+`26/26 complete`、`0 reused`、`0 failed`。13/13 pair 的业务语义、有限状态、在线真值
+隔离、实现身份、结构雅可比操作数和制品来源均通过。
+
+| 组别 | D1 融合改善 | 核心墙钟改善 | Candidate 更快 |
+| --- | ---: | ---: | ---: |
+| short | `6.084778%` | `1.897370%` | `10/10` |
+| long | `4.676061%` | `1.786530%` | `3/3` |
+
+全矩阵量测函数求值减少 `53.846154%`，全部冻结准入门通过。D6 判定
+`availability=true`、`optimization_admitted=true`。这关闭了结构稀疏数值雅可比在
+scalable 3D main 集成中的候选准入 P1；reference 仍作为回退和对照保留。
+2026-07-25 文档同步后的 D1 全量回归为 `414 passed in 21.52s`。
+
+main 随后完成 scalable 3D 默认晋级：`IntegratedStackConfig` 与 `run_episode` 命令行默认
+均为 `known_dimension_structural_columns_v1`，`dense_output_probe_v1` 保留为显式回退。
+2v2 默认 smoke 在 observation governance、episode summary 和 module final diagnostics
+三个运行表面均记录候选实现，`finite_state=true`、在线真值使用为 0。该 smoke 只验证默认
+接线、实现身份和安全边界。
+
+D1 独立 `FusionAdapter(structured_numerical_jacobian=False)` 的构造默认值仍然不变，
+调用方可显式设置 `True`。scalable 3D main 默认晋级与 D1 独立 API 默认关闭是两个不同
+配置边界。本次准入也不代表系统实时闭合。候选最低实时因子为 `0.180726`，所以
+`system_realtime_gap_closed=false`。证据只来自三维质点仿真，不构成 AirSim、目标硬件、
+实飞、均方根误差（RMSE）、归一化估计误差平方（NEES）或归一化创新平方（NIS）准入。
+正式 D6 报告位于
+`research_modules/d6_evaluation_metrics/outputs/`
+`d1_structured_jacobian_multiseed_20260725_formal_9d1f54f_d6/`。
+
+### 第三十阶段：结构稀疏数值雅可比模块候选基线
 
 main 在 clean runtime commit `8d8bb6e` 上对 200v200、2.2 s、seed 1111、
 `generic_recursive_v1` 默认路径执行 cProfile。D1 `process_scan_batch` 累计
@@ -37,9 +71,9 @@ reference 三 seed的 D1 fusion 和 scan input 均值分别为 `18.495864/6.6129
 
 专项测试覆盖六类量测表达、默认值、非法选择器、操作数、乱序量测、扫描一对一匹配和完整
 `GlobalTrack`；D1 全量为 `414 passed in 21.31s`。候选达到模块预设的中位改善至少
-`10%`、至少 `80%` 配对更快门槛，因此保留为待 main 全栈准入候选。当前没有 200v200
-reference/candidate 多 seed、AirSim、目标硬件、RMSE、NEES 或 NIS 证据，main 默认路径
-不得据此切换。专项报告见
+`10%`、至少 `80%` 配对更快门槛。该段保留 2026-07-24 准入前模块证据；其后的正式
+200v200 同提交多 seed 结论见第三十一阶段。模块微基准本身仍不构成 AirSim、目标硬件、
+RMSE、NEES 或 NIS 证据。专项报告见
 `reports/D1_STRUCTURED_NUMERICAL_JACOBIAN_PERFORMANCE_20260724_CN.md`。
 
 ### 第二十九阶段：六维协方差 PSD 检查快路径候选

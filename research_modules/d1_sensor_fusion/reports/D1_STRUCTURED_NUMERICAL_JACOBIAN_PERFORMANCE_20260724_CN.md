@@ -11,7 +11,7 @@
 - 雅可比、归一化创新平方和门控决策逐字节一致：`True`
 - 候选操作数：output probe elision=`9600`，inactive column elision=`21600`
 - 候选实现 ID：`d1.ekf.numerical_jacobian.known_dimension_structural_columns.v1`
-- 处置：模块内候选保留为待 main 全栈准入，D1 独立默认值保持关闭。
+- 处置：2026-07-24 模块微基准只支持进入全栈评估，不单独构成准入。截至 2026-07-25，scalable 3D 正式矩阵已准入，main 默认已晋级为 `known_dimension_structural_columns_v1`，`dense_output_probe_v1` 保留显式回退；D1 独立 `FusionAdapter` 构造默认仍为 `structured_numerical_jacobian=False`。
 
 ## 冻结输入
 

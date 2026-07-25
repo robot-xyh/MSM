@@ -2,16 +2,35 @@
 
 本目录保存 D1 多传感器融合与目标配准模块的说明文档。
 
-## 当前证据索引（2026-07-24）
+## 当前证据索引（2026-07-25）
 
-### 结构稀疏数值雅可比候选
+### 结构稀疏数值雅可比正式准入
 
-D1 增加默认关闭的结构稀疏数值雅可比候选。声学、光电、激光雷达和无径向速度雷达只计算
-位置三列，含径向速度雷达仍计算全部六列；活动列继续使用原中心差分。冻结微基准中位墙钟
-`0.444645 -> 0.319552 s`，改善 `28.13%`，`9/9` 配对更快，雅可比、归一化创新平方和
-门控决策摘要一致。候选状态为待 main 全栈准入，D1 默认未切换。详细结果见
+D1 独立 `FusionAdapter` 增加构造默认关闭的结构稀疏数值雅可比候选。声学、光电、激光
+雷达和无径向速度雷达只计算位置三列，含径向速度雷达仍计算全部六列；活动列继续使用原
+中心差分。冻结微基准中位墙钟 `0.444645 -> 0.319552 s`，改善 `28.13%`，
+`9/9` 配对更快，雅可比、归一化创新平方和门控决策摘要一致。
+
+clean commit `9d1f54f8540fdc4a7a1011121aafac5718290122` 的 200v200 正式矩阵含 short
+10 pair 和 long 3 pair，共 26 个 fresh arm，0 reused、0 failed。short D1 融合/核心墙钟
+改善 `6.084778%/1.897370%`，10/10 更快；long 改善
+`4.676061%/1.786530%`，3/3 更快；量测函数求值减少 `53.846154%`。D6 判定
+`availability=true`、`optimization_admitted=true`，关闭 scalable 3D main 集成候选准入
+P1。
+
+main 已把 scalable 3D 的 `IntegratedStackConfig` 和 `run_episode` 命令行默认晋级为
+`known_dimension_structural_columns_v1`，并保留 `dense_output_probe_v1` 显式回退。
+2v2 默认 smoke 在 observation governance、episode summary 和 module final diagnostics
+三个表面记录候选，状态有限且在线真值使用为 0。
+
+D1 独立 `FusionAdapter` 构造默认仍为 `structured_numerical_jacobian=False`，显式
+`True` 可用。main 集成默认与 D1 独立构造默认相互独立。最低实时因子 `0.180726`，
+系统实时、AirSim、目标硬件、实飞和 RMSE/NEES/NIS 保持开放。详细结果见
 `EXPERIMENT_REPORT.md` 和
-`../reports/D1_STRUCTURED_NUMERICAL_JACOBIAN_PERFORMANCE_20260724_CN.md`。
+`../reports/D1_STRUCTURED_NUMERICAL_JACOBIAN_PERFORMANCE_20260724_CN.md`；正式 D6
+评估位于
+`../../d6_evaluation_metrics/outputs/`
+`d1_structured_jacobian_multiseed_20260725_formal_9d1f54f_d6/`。
 
 ### 六维协方差 PSD 检查候选
 

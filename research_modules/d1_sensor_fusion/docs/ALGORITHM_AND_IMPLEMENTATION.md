@@ -1,14 +1,43 @@
 # 第一研究模块：多传感器融合与目标配准算法与实施说明
 
-> 文档日期：2026-07-24
+> 文档日期：2026-07-25
 >
 > 适用范围：离线科研仿真、受治理回放和系统接口验证
 >
 > 实现依据：当前第一研究模块代码、`README.md`、`PLAN.md`、模块原理文档和系统总汇总
 
-## 当前权威增量（2026-07-24）
+## 当前权威增量（2026-07-25）
 
-### 结构稀疏数值雅可比候选
+### 结构稀疏数值雅可比正式准入
+
+正式 reference/candidate 矩阵绑定 clean commit
+`9d1f54f8540fdc4a7a1011121aafac5718290122`。main 在同一实现提交中接入 selector、
+运行配置、摘要和最终诊断，D6 使用冻结 manifest 独立评估。矩阵配置如下：
+
+- 200 个目标、200 个资源、2 个侦察节点；
+- short 10 pair，每臂 2.2 s；
+- long 3 pair，每臂 10 s；
+- 共 26 个 fresh arm，`26/26 complete`、`0 reused`、`0 failed`。
+
+13/13 pair 的制品来源、业务语义、有限状态、在线真值隔离、显式实现身份和结构操作数均
+通过。short D1 融合改善 `6.084778%`、核心墙钟改善 `1.897370%`，10/10 candidate
+更快；long 分别改善 `4.676061%/1.786530%`，3/3 更快。全矩阵量测函数求值减少
+`53.846154%`。D6 判定 `availability=true`、`optimization_admitted=true`。
+2026-07-25 D1 全量回归为 `414 passed in 21.52s`。
+
+该结果关闭 scalable 3D main 集成候选的准入 P1。D1 独立构造默认仍是
+`structured_numerical_jacobian=False`，显式 `True` 可用。main 已把 scalable 3D 的
+`IntegratedStackConfig` 与 `run_episode` 命令行默认晋级为
+`known_dimension_structural_columns_v1`，`dense_output_probe_v1` 继续作为显式回退。
+2v2 默认 smoke 在 observation governance、episode summary 和 module final diagnostics
+三个表面均记录候选，状态有限且在线真值使用为 0。
+
+scalable 3D main 默认晋级不改变 D1 独立 `FusionAdapter` 的
+`structured_numerical_jacobian=False` 构造默认。最低实时因子为 `0.180726`，因此
+`system_realtime_gap_closed=false`。本次评估和 smoke 不含 AirSim、目标硬件、实飞、
+RMSE、NEES 或 NIS，不能扩展为相应准入结论。
+
+### 结构稀疏数值雅可比实现
 
 候选入口为：
 
@@ -23,7 +52,9 @@ candidate = FusionAdapter(
 
 reference 实现 ID 为
 `d1.ekf.numerical_jacobian.dense_output_probe.v1`，candidate 为
-`d1.ekf.numerical_jacobian.known_dimension_structural_columns.v1`。默认值是 `False`。
+`d1.ekf.numerical_jacobian.known_dimension_structural_columns.v1`。这里的默认值
+`False` 专指 D1 独立 `FusionAdapter` 构造器；scalable 3D main 集成默认已经选择
+candidate。
 `measurement_model_for()` 在构造量测模型时同时确定输出维数和结构活动列：
 
 - 四维雷达使用六个状态列；
@@ -53,8 +84,8 @@ reference/candidate 的 `FusionBatchResult.to_dict()`、航迹 ID、状态、协
 最新到达时刻完全一致。冻结微基准的配置和工作负载 SHA-256 分别为
 `711b799b9a36e0d9518574f027f666cb583c355f699202408d45eb083a87166e` 和
 `98629f103d3e208bc36cf2b706573197b64c9922e35c74377ef2a3baab7fc470`。中位墙钟
-`0.444645 -> 0.319552 s`，改善 `28.13%`，`9/9` 配对更快。候选保留为待 main 全栈准入，
-没有改变现有默认路径。
+`0.444645 -> 0.319552 s`，改善 `28.13%`，`9/9` 配对更快。该段记录准入前模块微基准；
+正式同提交多 seed 结果见上一节。D1 独立默认路径始终未改变。
 
 ### 六维协方差 PSD 检查候选
 

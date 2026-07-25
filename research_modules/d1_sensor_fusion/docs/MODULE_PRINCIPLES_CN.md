@@ -1,10 +1,34 @@
 # 第一研究模块（D1）异构传感器融合原理与当前实现
 
-**状态日期：2026-07-24**
+**状态日期：2026-07-25**
 
 **适用范围：科研仿真、离线回放与接口验证**
 
-## 当前权威增量（2026-07-24）
+## 当前权威增量（2026-07-25）
+
+### 结构先验数值雅可比的系统准入边界
+
+结构稀疏数值雅可比只消除观测模型已知为零的差分列和输出维数探测。它不近似活动列，不改变
+扩展卡尔曼滤波更新、量测门控、固定滞后重放、协方差治理或航迹发布。因此系统准入必须同时
+验证数学语义、处理操作数和下游业务语义，不能只依据函数微基准。
+
+clean commit `9d1f54f8540fdc4a7a1011121aafac5718290122` 的冻结矩阵覆盖 200 个目标、
+200 个资源、2 个侦察节点，含 short 10 pair 和 long 3 pair，共 26 个 fresh arm。
+26/26 完成，0 reused、0 failed；全部冻结准入门通过。short 的 D1 融合与核心墙钟改善
+`6.084778%/1.897370%`，10/10 更快；long 改善 `4.676061%/1.786530%`，
+3/3 更快。量测函数求值减少 `53.846154%`。D6 独立判定
+`availability=true`、`optimization_admitted=true`。
+
+该结论只准入 scalable 3D main 集成中的候选。main 已在准入后把
+`IntegratedStackConfig` 和 `run_episode` 命令行默认晋级为
+`known_dimension_structural_columns_v1`，并保留 `dense_output_probe_v1` 显式回退。
+2v2 默认 smoke 的 observation governance、episode summary 和 module final diagnostics
+均记录候选，状态有限且在线真值使用为 0。
+
+D1 独立 `FusionAdapter` 仍以 `structured_numerical_jacobian=False` 为构造默认值，
+显式 `True` 可用。main 集成默认与 D1 独立构造默认不能混用。最低实时因子
+`0.180726`，系统实时门限 `>=1.0` 未达到。2v2 smoke 和正式矩阵均为质点证据，没有形成
+AirSim、目标硬件、实飞或 RMSE/NEES/NIS 证据。
 
 ### 观测方程结构约束数值雅可比
 
@@ -33,10 +57,12 @@ J_{:,i}=\frac{h(x+\delta_i e_i)-h(x-\delta_i e_i)}{2\delta_i},
 跨时刻缓存状态。活动列的浮点运算与 reference 相同，结构零列与 reference 的相等函数差
 结果逐字节一致。
 
-该候选由 `structured_numerical_jacobian=True` 显式启用，默认关闭。创新残差、创新协方差、
-伪逆、门限和匈牙利一对一分配继续使用原路径。冻结模块基准中量测函数求值减少 `42.31%`，
-中位墙钟改善 `28.13%`，`9/9` 配对更快；雅可比、归一化创新平方和门控摘要相同。该结果只
-支持 main 开展全栈准入，不代表系统实时性已经闭合。
+在 D1 独立 `FusionAdapter` 中，该候选由 `structured_numerical_jacobian=True` 显式启用，
+构造默认保持 `False`。scalable 3D main 的运行默认已经晋级，不能据此改写 D1 独立构造
+默认。创新残差、创新协方差、伪逆、门限和匈牙利一对一分配继续使用原路径。2026-07-24
+冻结模块基准中量测函数求值减少 `42.31%`，中位墙钟改善 `28.13%`，`9/9` 配对更快；
+雅可比、归一化创新平方和门控摘要相同。该模块证据用于构造正式矩阵，最终准入和系统实时
+边界以上一节为准。
 
 ### 正定快检只能替代无投影分支
 

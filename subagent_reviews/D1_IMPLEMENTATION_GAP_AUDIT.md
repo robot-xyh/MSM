@@ -4,11 +4,36 @@
 **范围**: 对照 `subagent_reviews/D1_SENSOR_FUSION_REVIEW_AND_PLAN.md`、`C_UAS_MAINSTREAM_SOLUTIONS_AND_DIFFICULTIES.md`、`research_modules/d1_sensor_fusion` 源码和测试，审计共识算法、开源方案和当前实现差距。  
 **边界**: 本审计只覆盖离线科研仿真、数据合同、传感器观测、航迹融合和评估接口；不涉及真实飞控、硬件驱动、火控、毁伤或自动处置。
 
-**更新时间**: 2026-07-24。
+**更新时间**: 2026-07-25。
 
-## 0. 当前正式治理 GAP 增量（2026-07-24）
+## 0. 当前正式治理 GAP 增量（2026-07-25）
 
-### 结构稀疏数值雅可比候选
+### 结构稀疏数值雅可比正式准入
+
+clean commit `9d1f54f8540fdc4a7a1011121aafac5718290122` 的冻结同提交矩阵已完成 D6 独立
+失败关闭评估。200 目标、200 资源、2 侦察节点的 short 10 pair 和 long 3 pair 共形成
+26 个 fresh arm；`26/26 complete`、`0 reused`、`0 failed`。全部业务语义、有限状态、
+在线真值隔离、实现身份、结构操作数和制品来源门通过。
+
+| GAP | 当前状态 | 正式证据 | 剩余关闭条件 |
+| --- | --- | --- | --- |
+| 结构稀疏数值雅可比集成候选准入 | **P1 已关闭；scalable 3D main 默认已晋级** | short D1 融合/核心墙钟改善 `6.084778%/1.897370%`，10/10 更快；long 改善 `4.676061%/1.786530%`，3/3 更快；函数求值减少 `53.846154%`；`availability=true`、`optimization_admitted=true` | 保持 reference、selector、实现身份、操作数、业务等价和在线真值隔离回归。D1 独立 `FusionAdapter` 构造默认仍为 `False` |
+| 系统实时 | **P1 开放** | `system_realtime_gap_closed=false`，最低实时因子 `0.180726` | 在冻结目标运行环境达到实时因子 `>=1.0`，并补周期、P95/max、内存和长时容量 |
+| 平台与融合质量 | **P1 开放** | 本轮只有三维质点性能和语义证据 | 分别完成 AirSim 同输入 A/B、目标硬件、RMSE、NEES、NIS 验收；不得用热点收益替代 |
+
+main 已将 scalable 3D 的 `IntegratedStackConfig` 与 `run_episode` 命令行默认晋级为
+`known_dimension_structural_columns_v1`，`dense_output_probe_v1` 保留显式回退。2v2 默认
+smoke 的 observation governance、episode summary 和 module final diagnostics 均记录
+候选，`finite_state=true`、在线真值使用为 0。该结果只关闭默认接线和安全回归。
+
+本轮默认晋级只适用于 scalable 3D main 集成。D1 独立
+`FusionAdapter(structured_numerical_jacobian=False)` 构造默认没有切换。正式 D6 报告为
+`research_modules/d6_evaluation_metrics/outputs/`
+`d1_structured_jacobian_multiseed_20260725_formal_9d1f54f_d6/`
+`D1_STRUCTURED_NUMERICAL_JACOBIAN_MULTISEED_REPORT_CN.md`。
+2026-07-25 D1 全量回归为 `414 passed in 21.52s`。
+
+### 结构稀疏数值雅可比模块候选基线（2026-07-24）
 
 main 提供的 clean runtime commit `8d8bb6e`、200v200、2.2 s、seed 1111 profile 中，
 `numerical_jacobian` 累计 `0.712 s`。D1 现有非雷达模型都通过数值雅可比工作，但声学、
@@ -17,14 +42,14 @@ main 提供的 clean runtime commit `8d8bb6e`、200v200、2.2 s、seed 1111 prof
 
 | GAP | 当前状态 | D1-owned 证据 | 剩余关闭条件 |
 | --- | --- | --- | --- |
-| 数值雅可比重复观测求值 | **P1 模块候选已通过；main 全栈准入开放** | 显式 reference/candidate ID、默认关闭、固定大小操作数、六类模型和完整扫描等价；冻结 480 模型、20 轮、9 次交错，中位 `0.444645 -> 0.319552 s`，改善 `28.13%`，`9/9` 更快；量测求值减少 `42.31%`；雅可比/NIS/门控摘要相同；D1 `414 passed` | main 在 clean 同提交接入 selector/diagnostics，运行 200v200 short 10 seed、long 3 seed配对矩阵，由 D6 核验 D1、核心墙钟、D2、RSS、语义和实现身份；通过前保持默认关闭 |
-| 系统实时与精度 | **P1 开放** | 本轮只有 D1 数值雅可比冻结微基准，没有完整 episode、AirSim、目标硬件或 RMSE/NEES/NIS | 与系统实时、AirSim、目标硬件和统计一致性验收分别闭合，不得用热点收益代替 |
+| 数值雅可比重复观测求值 | **P1 模块候选已通过；正式集成准入见上一节** | 显式 reference/candidate ID、默认关闭、固定大小操作数、六类模型和完整扫描等价；冻结 480 模型、20 轮、9 次交错，中位 `0.444645 -> 0.319552 s`，改善 `28.13%`，`9/9` 更快；量测求值减少 `42.31%`；雅可比/NIS/门控摘要相同；D1 `414 passed` | 模块关闭条件已完成；保持微基准和正式矩阵回归 |
+| 系统实时与精度 | **P1 开放** | 模块微基准本身没有完整 episode、AirSim、目标硬件或 RMSE/NEES/NIS；正式质点矩阵最低实时因子仍为 `0.180726` | 与系统实时、AirSim、目标硬件和统计一致性验收分别闭合，不得用热点收益代替 |
 
 候选实现 ID 为
 `d1.ekf.numerical_jacobian.known_dimension_structural_columns.v1`，reference 为
 `d1.ekf.numerical_jacobian.dense_output_probe.v1`。本轮没有修改 PSD/协方差安全门、
 双时间戳、NED、fixed-lag/OOSM、门限、量测频率或 `global_track_id`。AirSim 集成计划已检查；
-接口和运行证据未变化，因此不修改。
+候选不改变 AirSim 接口，正式质点准入也没有新增 AirSim 运行证据，因此该计划无需修改。
 
 ### 六维协方差 PSD 检查热点候选
 

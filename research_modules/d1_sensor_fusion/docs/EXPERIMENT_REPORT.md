@@ -1,6 +1,56 @@
 # 第一研究模块实验结果
 
-## 结构稀疏数值雅可比
+## 结构稀疏数值雅可比正式准入
+
+**证据日期：2026-07-25**
+
+**范围：200v200 三维质点 main 集成 reference/candidate 同提交冻结矩阵**
+
+### 试验设计
+
+正式证据来自 clean commit
+`9d1f54f8540fdc4a7a1011121aafac5718290122`。场景含 200 个目标、200 个资源和 2 个侦察
+节点。short 组运行 10 pair、每臂 2.2 s；long 组运行 3 pair、每臂 10 s。两臂只改变
+数值雅可比实现选择。共生成 26 个 fresh arm，`26/26 complete`、`0 reused`、`0 failed`。
+
+D6 失败关闭评估要求 13/13 pair 同时满足制品来源完整、业务语义相同、状态有限、在线真值
+使用为零、实现身份显式且一致，以及结构雅可比操作数有效。缺少字段、旧 schema、脏提交、
+复用 arm、路径越界或业务语义不一致均不能形成准入。
+
+### 结果
+
+| 组别 | D1 融合改善 | 核心墙钟改善 | Candidate 更快 |
+| --- | ---: | ---: | ---: |
+| short | `6.084778%` | `1.897370%` | `10/10` |
+| long | `4.676061%` | `1.786530%` | `3/3` |
+
+主要性能门要求 short/long D1 融合改善均不低于 `2%`，核心墙钟改善均不低于 `0.5%`，
+short 至少 `8/10`、long 至少 `2/3` 个 candidate 更快，量测函数求值减少不低于
+`35%`。内存、D1 扫描输入和 D2 关联回归上限均为 `5%`；实际值全部通过。
+
+全矩阵量测函数求值减少 `53.846154%`。所有冻结准入门通过，D6 输出
+`availability=true`、`optimization_admitted=true`。正式制品目录为
+`research_modules/d6_evaluation_metrics/outputs/`
+`d1_structured_jacobian_multiseed_20260725_formal_9d1f54f_d6/`。
+2026-07-25 D1 全量回归为 `414 passed in 21.52s`。
+
+### 结论与边界
+
+结构稀疏数值雅可比在 scalable 3D main 集成中的候选准入通过。main 随后把
+`IntegratedStackConfig` 和 `run_episode` 命令行默认晋级为
+`known_dimension_structural_columns_v1`，`dense_output_probe_v1` 继续用于显式回退和
+对照。2v2 默认 smoke 的 observation governance、episode summary 和 module final
+diagnostics 三个表面均记录候选，状态有限且在线真值使用为 0。
+
+D1 独立 `FusionAdapter(structured_numerical_jacobian=False)` 构造默认保持不变，显式
+`True` 可用。scalable 3D main 默认晋级没有改变这个模块 API 默认。候选最低实时因子为
+`0.180726`，未达到系统实时门限 `>=1.0`，所以
+`system_realtime_gap_closed=false`。
+
+本试验和默认 smoke 是三维质点仿真证据。它们不构成 AirSim、目标硬件、实飞、RMSE、
+NEES、NIS 或物理拦截准入。
+
+## 结构稀疏数值雅可比模块微基准
 
 **证据日期：2026-07-24**
 
@@ -42,11 +92,12 @@ candidate 的雅可比 SHA-256 同为
 
 专项测试验证默认关闭、非法选择器、输出维数和活动列边界、六类量测模型逐字节等价、操作数
 守恒、扫描一对一分配、完整航迹、双时间戳和乱序重放。D1 全量为
-`414 passed in 21.31s`。候选达到模块门槛，因此保留为待 main 全栈准入。D1 默认仍为
+`414 passed in 21.31s`。候选达到模块门槛。该段保留准入前模块证据，正式同提交多 seed
+结果见上一节。D1 独立 `FusionAdapter` 构造默认仍为
 `structured_numerical_jacobian=False`。
 
-本试验没有运行完整 200v200 reference/candidate episode，没有 AirSim、目标硬件、RMSE、
-NEES、NIS、D2 时延或系统实时证据。正式数据见
+该模块微基准没有运行完整 200v200 reference/candidate episode，没有 AirSim、目标硬件、
+RMSE、NEES、NIS、D2 时延或系统实时证据。正式微基准数据见
 `../reports/d1_structured_numerical_jacobian_performance_20260724.json` 和中文专项报告。
 
 ## 六维协方差 PSD 检查快路径

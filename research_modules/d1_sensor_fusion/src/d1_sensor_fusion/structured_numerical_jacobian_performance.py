@@ -304,12 +304,20 @@ def write_structured_numerical_jacobian_performance_report(
                 float(candidate_item.get("cumulative_time_s", 0.0)),
             )
         )
-    recommendation_cn = (
-        "模块内候选保留为待 main 全栈准入，D1 独立默认值保持关闭。"
+    benchmark_disposition_cn = (
+        "2026-07-24 模块微基准只支持进入全栈评估，不单独构成准入。"
         if comparison["integration_recommendation"]
         == "candidate_pending_main_full_stack_admission"
-        else "候选保留为研究对照，不建议 main 接线。"
+        else "本次模块微基准未达到模块门槛，候选仅保留为研究对照。"
     )
+    current_status_cn = (
+        "截至 2026-07-25，scalable 3D 正式矩阵已准入，"
+        "main 默认已晋级为 `known_dimension_structural_columns_v1`，"
+        "`dense_output_probe_v1` 保留显式回退；"
+        "D1 独立 `FusionAdapter` 构造默认仍为 "
+        "`structured_numerical_jacobian=False`。"
+    )
+    recommendation_cn = benchmark_disposition_cn + current_status_cn
     markdown_destination.write_text(
         "\n".join(
             (
