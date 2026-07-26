@@ -61,11 +61,20 @@ main 集成实现与回归已经完成：
 5. D1 owner 复跑 `test_module_stack.py` 得到 `62 passed, 1 warning`，复跑 scalable
    全量得到 `263 passed, 1 warning`；警告是既有 Matplotlib `Axes3D` 环境提示。此前 D1
    snapshot/replay-prefix 定向测试仍为 `22 passed in 0.49s`。
+6. 2026-07-25 在 detached clean commit
+   `028ac34debcfc5ca6ed2f6f88a5868d7b5f0f67b` 上完成一对 200/200/2、seed 1151、
+   2.2 秒、2028 条在线观测的 smoke。两臂均为有限状态，在线真值使用为 0；D1/D2 在线
+   记录 SHA-256、consistency count/digest 和原 D1 operation counts 严格一致。
+7. candidate 14/14 次选择命中子集快照，fallback、lookup miss、非法 ID 和空 required
+   集合均为 0。累计返回记录由 `13679` 降为 `4429`，削减 `67.621902%`；最终离线
+   consistency 仍全量导出 2028 条。
+8. 单 pair 的 D1、module stack、episode 和外部命令计时方向混合，实时因子约
+   `0.265 < 1`。该数据只证明 clean smoke 语义与工作量边界，不用于性能晋升。
 
-当前尚未运行 clean 200/200/2 smoke，未冻结正式矩阵、evaluator schema 或 D6 判定，也没有
-候选性能数字。默认继续使用 reference。clean smoke 应先验证业务 payload digest、原 D1
-operation counts、fallback/lookup miss 为 0、最终 pending ledger 为 0，并披露
-reference/candidate 返回记录数；通过后才可冻结正式矩阵。
+下一步由 main 冻结独立的 13-pair balanced matrix、evidence schema 和 evaluator schema，
+再由 D6 独立给出 `admit/reject`。正式判定前默认继续使用
+`full_consistency_snapshot_v1`，不得把返回记录削减解释为实时闭合、AirSim、硬件、实机或
+实飞能力。
 
 ## P1 固定滞后回放前缀累计摘要正式拒绝与后续计划（2026-07-25）
 

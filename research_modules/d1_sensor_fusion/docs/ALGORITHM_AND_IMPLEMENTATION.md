@@ -70,8 +70,24 @@ NED、门控或 payload hash。最终 offline export 始终全量。main 已完�
 3/3/1、1.4 秒、seed 34 的确定性 episode 中，candidate fallback/lookup miss 为 0，
 fused-tracks payload 与 reference 完全一致；unknown-ID 与空 required 集合专项均确认回退
 full 并记录 reason。D1 owner 复跑 module-stack 为 `62 passed, 1 warning`，scalable 全量为
-`263 passed, 1 warning`。当前没有 clean 200/200/2 smoke、性能计时、冻结矩阵或 D6 判定，
-默认仍为 `full_consistency_snapshot_v1`。
+`263 passed, 1 warning`。
+
+2026-07-25 在 detached clean commit
+`028ac34debcfc5ca6ed2f6f88a5868d7b5f0f67b` 上运行一对 200/200/2、seed 1151、
+2.2 秒 smoke，共 2028 条在线观测。两臂均为有限状态且在线真值使用为 0；D1 在线记录
+SHA-256 均为
+`d89c17baa598f9fd58f95013a3e5bdb077f7e82f66cfbcdde6920669ade56bbc`，D2 在线记录
+SHA-256 均为
+`0e75586d2b195db1fa3b6a3591a3b06d761e55e9b34892cbda5f87a57dbb4f43`。最终
+consistency count 均为 2028，digest 均为
+`sha256:b579e62b65169791a1c9526eb5310ba7016149ddd501efe34e82a732c8bbda3a`；
+原 D1 operation counts 一致。
+
+candidate 14/14 次选择使用子集，fallback、lookup miss、非法 ID 和空 required 集合均为
+0。14 次在线选择累计返回记录由 `13679` 降为 `4429`，削减 `67.621902%`。最终离线
+consistency 仍执行全量导出。单 pair 的 D1、module stack、episode 与外部命令计时方向
+混合，实时因子约 `0.265 < 1`；该 smoke 不构成性能准入。冻结 13-pair matrix 与 D6 判定
+仍待完成，默认仍为 `full_consistency_snapshot_v1`。
 
 ### 固定滞后回放前缀累计摘要候选
 
@@ -259,9 +275,9 @@ snapshot；最终 offline export 保持 records/export。当前在线调用仍�
 diagnostics 单独比较，不混入既有 operation-count 等价门。
 
 模块微基准通过仅记录候选形成过程。main 同提交正式矩阵已经完成并给出 `reject`，selector
-继续默认 reference。独立的 publication observation-ID 子集候选已完成 main 实现和模块栈
-回归，使用新的 implementation ID；clean smoke、独立预注册矩阵和 D6 判定仍未完成。它
-不得复用本候选身份或覆盖冻结结论，也不得写成默认准入、系统实时、AirSim 或硬件证据。
+继续默认 reference。独立的 publication observation-ID 子集候选已完成 main 实现、模块栈
+回归和一对 clean smoke，使用新的 implementation ID；独立预注册矩阵和 D6 判定仍未完成。
+它不得复用本候选身份或覆盖冻结结论，也不得写成默认准入、系统实时、AirSim 或硬件证据。
 
 ### 正式拒绝后保持默认关闭的模态感知保守预筛
 

@@ -34,8 +34,17 @@ final、episode summary 和 CLI。候选不改 `global_track_id`、双时间戳�
 3/3/1、1.4 秒、seed 34 的模块栈回归中，candidate fallback 与 lookup miss 均为 0，
 fused-tracks payload 与 reference 完全一致；unknown-ID 与空 required 集合专项均按预期
 回退 full。D1 owner 复跑 module-stack 为 `62 passed, 1 warning`，scalable 全量为
-`263 passed, 1 warning`，D1 定向测试仍为 `22 passed in 0.49s`。clean 200/200/2 smoke、
-正式矩阵、性能数字和 D6 准入尚未形成，默认继续使用全量 snapshot。
+`263 passed, 1 warning`，D1 定向测试仍为 `22 passed in 0.49s`。
+
+detached clean commit `028ac34debcfc5ca6ed2f6f88a5868d7b5f0f67b` 的单 pair
+200/200/2、seed 1151、2.2 秒 smoke 含 2028 条在线观测。两臂的 D1/D2 在线记录、
+consistency count/digest 和原 D1 operation counts 一致。candidate 14/14 次子集成功，
+fallback、lookup miss、非法 ID 和空 required 集合均为 0；累计返回记录由 `13679` 降为
+`4429`，削减 `67.621902%`。最终离线 consistency 仍全量导出 2028 条。
+
+单 pair 的 D1、module stack、episode 和外部命令计时方向混合，实时因子约
+`0.265 < 1`。该 smoke 只证明业务语义和工作量边界，正式矩阵、性能门与 D6 准入尚未形成，
+默认继续使用全量 snapshot。
 
 ### 固定滞后回放前缀累计摘要
 
@@ -135,11 +144,12 @@ pending 为 0。该测试锁定既有 `>=20%` 门。
 专项回归还在四个 checkpoint 的中间插入迟到观测，确认 revision 推进、旧后缀失败关闭并
 按新顺序重建。D1 全量回归为 `488 passed in 30.96s`。
 
-独立的 publication observation-ID 子集候选已完成 main 实现和模块栈回归，减少无关返回
-记录构造的性能效果尚未验证。它使用新的 implementation ID，保持未知/非法 ID 回退、
-内部证据所有权失败关闭和最终全量 evidence 导出。clean 200/200/2 smoke、独立预注册矩阵
-和 D6 判定仍未完成，也不能改写本次冻结 `reject`。本节正式证据只来自三维质点仿真，
-不覆盖 AirSim、目标硬件、实机、实飞或正式 RMSE/NEES/NIS。
+独立的 publication observation-ID 子集候选已完成 main 实现、模块栈回归和一对 clean
+200/200/2 smoke。单次 smoke 的累计返回记录削减已观察到，但计时方向混合，不能据此形成
+性能结论。它使用新的 implementation ID，保持未知/非法 ID 回退、内部证据所有权失败关闭
+和最终全量 evidence 导出。独立预注册矩阵和 D6 判定仍未完成，也不能改写本次冻结
+`reject`。本节证据只来自三维质点仿真，不覆盖 AirSim、目标硬件、实机、实飞或正式
+RMSE/NEES/NIS。
 
 ### 模态感知保守稀疏预筛正式拒绝后的治理
 

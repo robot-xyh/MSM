@@ -4,7 +4,7 @@ Offline research module for radar, acoustic, EO, and optional synthetic lidar he
 
 ## 当前性能与治理证据（2026-07-25）
 
-### 第三十七阶段：在线证据子集快照 main 集成回归
+### 第三十七阶段：在线证据子集快照 clean smoke
 
 main 已增加 `d1_publication_evidence_snapshot_implementation`。reference 为
 `full_consistency_snapshot_v1`，candidate 为 `required_observation_subset_v1`，默认保持
@@ -16,16 +16,22 @@ candidate 从同一 release cycle 的 source observations 和 materialized track
 缺项回退 full snapshot，并记录固定原因。selector、execution config 和 diagnostics 已进入
 runtime profile、observation governance、module final、episode summary 和 CLI。
 
-3 个目标、3 个资源、1 个侦察节点、1.4 秒、seed 34 的确定性模块栈 episode 中，candidate
-fallback 与 lookup miss 均为 0，`modules.d1.fused_tracks` payload 与 reference 完全一致；
-unknown-ID 与空 required 集合专项均按预期回退 full。D1 owner 复跑
-`test_module_stack.py` 得到 `62 passed, 1 warning`，scalable 全量得到
-`263 passed, 1 warning`。警告为既有
-Matplotlib `Axes3D` 环境提示。
+2026-07-25 在 detached clean commit
+`028ac34debcfc5ca6ed2f6f88a5868d7b5f0f67b` 上完成一对 200 个目标、200 个资源、
+2 个侦察节点、seed 1151、2.2 秒的三维质点 smoke，共 2028 条在线观测。两臂均为
+有限状态且在线真值使用为 0；D1/D2 在线记录 SHA-256、最终 consistency count/digest 和
+原 D1 fusion operation counts 分别严格一致。
 
-该结果只证明 main 接线、失败关闭和业务语义回归。clean 200/200/2 smoke、性能计时、正式
-矩阵和 D6 evaluator 尚未完成，没有候选性能数字或准入结论。默认继续使用
-`full_consistency_snapshot_v1`；最终 offline evidence export 继续全量物化。
+candidate 的 14 次选择全部命中子集快照，fallback、lookup miss、非法 required ID 和空
+required 集合均为 0。14 次在线选择累计返回记录由 `13679` 降至 `4429`，减少
+`67.621902%`；最终离线 consistency 仍全量导出 2028 条记录。此前 3/3/1、1.4 秒、
+seed 34 的模块栈回归、unknown-ID/空集合失败关闭专项，以及 module-stack
+`62 passed, 1 warning`、scalable 全量 `263 passed, 1 warning` 结果继续有效。
+
+单 pair 的 episode、外部命令、D1 fusion 与 module stack 计时方向混合，实时因子约
+`0.265 < 1`。该 clean smoke 只允许候选进入正式矩阵预注册，不构成性能准入、实时、
+AirSim、硬件、实机或实飞证据。正式 13-pair matrix 和 D6 独立判定仍待完成；默认继续
+使用 `full_consistency_snapshot_v1`，最终 offline evidence export 继续全量物化。
 
 ### 第三十六阶段：固定滞后回放前缀累计摘要正式拒绝
 
@@ -58,9 +64,10 @@ reference `per_checkpoint_prefix_rebuild_v1` 继续作为 `FusionAdapter`、
 本证据只覆盖三维质点仿真，不包含 AirSim、目标硬件、实机、实飞或正式
 RMSE/NEES/NIS 证据。
 
-独立的 publication observation-ID 子集候选已经完成 main 实现和模块栈回归，用于避免在线
-路径构造无关 evidence 记录。该方案使用新的 implementation ID，clean smoke、独立预注册
-矩阵和 D6 判定尚未完成；不能复用本候选身份，也不能覆盖本次 `reject`。
+独立的 publication observation-ID 子集候选已经完成 main 实现、模块栈回归和一对 clean
+200/200/2 smoke，用于避免在线路径构造无关 evidence 记录。该方案使用新的 implementation
+ID；正式独立预注册矩阵和 D6 判定尚未完成，不能复用本候选身份，也不能覆盖本次
+`reject`。
 
 D1 新增默认关闭的固定滞后回放 selector
 `fixed_lag_checkpoint_prefix_cumulative_summary_v1`。reference 为

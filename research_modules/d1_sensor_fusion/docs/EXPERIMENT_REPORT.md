@@ -1,32 +1,66 @@
 # 第一研究模块实验结果
 
-## 在线证据子集快照集成回归
+## 在线证据子集快照 Clean Smoke
 
 **证据日期：2026-07-25**
 
-**范围：main 模块栈接口与确定性小场景回归，不含性能准入**
+**范围：单 pair clean 三维质点 smoke，不含性能准入**
 
 reference 为 `full_consistency_snapshot_v1`，candidate 为
 `required_observation_subset_v1`，默认保持 reference。main 已从同一 release cycle 的
 source observations 和 materialized tracks `latest_observation_id` 构造 required ID，
 执行去重与字符串排序。空集合、未知/非法 ID 或返回子集缺项回退 full snapshot。
 
-3 个目标、3 个资源、1 个侦察节点、1.4 秒、seed 34 的确定性 episode 中，两臂
-`modules.d1.fused_tracks` payload 完全一致。candidate 的 fallback、lookup miss 和 invalid
-required ID 均为 0，返回记录数等于 required ID 数且小于 reference 返回记录数。
-unknown-ID 注入用例确认 candidate 先尝试子集，再回退 full snapshot，并记录
-`unknown_required_observation_id`。空 required 集合专项确认直接回退 full snapshot，并
-记录 `empty_required_observation_id_set`。
+实现提交为 `028ac34debcfc5ca6ed2f6f88a5868d7b5f0f67b`。reference 和 candidate
+从 detached clean worktree 生成 fresh 输出，唯一运行时差异是
+`d1_publication_evidence_snapshot_implementation`：
 
-selector、execution config 和 diagnostics 已进入 runtime profile、observation governance、
-module final 与 episode summary，CLI 默认值和显式 candidate 选择均有回归。D1 owner 复跑
-`test_module_stack.py` 得到 `62 passed, 1 warning`，复跑 scalable 全量得到
-`263 passed, 1 warning`。警告是既有 Matplotlib `Axes3D` 环境提示。D1 源码未变化，先前
-snapshot/replay-prefix 定向测试 `22 passed in 0.49s` 继续有效。
+```text
+reference: full_consistency_snapshot_v1
+candidate: required_observation_subset_v1
+```
 
-本节没有 clean 200/200/2 smoke、墙钟、实时因子、内存、正式矩阵或 D6 evaluator 数据，
-不能给出性能改善或准入结论。默认仍为 full snapshot，最终 offline export 仍使用全量
-records/export。
+两臂均固定 replay-prefix reference `per_checkpoint_prefix_rebuild_v1`。场景包含 200 个
+目标、200 个资源、2 个侦察节点，seed 为 1151，仿真时长为 2.2 秒，共产生 2028 条在线
+观测。
+
+### 语义结果
+
+| 核验项 | 结果 |
+| --- | --- |
+| 有限状态 | 两臂均为 `true` |
+| 在线真值使用 | 两臂均为 0 |
+| D1 在线记录 SHA-256 | 两臂均为 `d89c17baa598f9fd58f95013a3e5bdb077f7e82f66cfbcdde6920669ade56bbc` |
+| D2 在线记录 SHA-256 | 两臂均为 `0e75586d2b195db1fa3b6a3591a3b06d761e55e9b34892cbda5f87a57dbb4f43` |
+| consistency 记录数 | 两臂均为 2028 |
+| consistency digest | 两臂均为 `sha256:b579e62b65169791a1c9526eb5310ba7016149ddd501efe34e82a732c8bbda3a` |
+| 原 D1 fusion operation counts | 严格一致 |
+
+candidate 14/14 次选择走子集快照，fallback、lookup miss、非法 required ID 和空 required
+集合均为 0。14 次在线选择的累计返回记录由 reference 的 `13679` 条降为 candidate 的
+`4429` 条，减少 `67.621902%`。该数字描述在线返回对象工作量；最终离线 consistency
+仍全量导出 2028 条记录。
+
+### 性能观察
+
+| 指标 | Reference | Candidate | Candidate 变化 |
+| --- | ---: | ---: | ---: |
+| episode 墙钟 | `8.309393 s` | `8.313443 s` | `-0.048740%` |
+| 外部命令耗时 | `16.11 s` | `15.31 s` | `+4.965860%` |
+| D1 fusion 累计墙钟 | `2.299589 s` | `2.373660 s` | `-3.221037%` |
+| module stack 累计墙钟 | `6.156322 s` | `6.064366 s` | `+1.493688%` |
+| 最大驻留内存 | `872736 KiB` | `867296 KiB` | `+0.623322%` |
+| 实时因子 | `0.264761` | `0.264632` | 均未达到 1 |
+
+episode、外部命令、D1 fusion 和 module stack 的计时方向不一致，单 pair 不能排除缓存、
+调度和后处理波动。本次结果只允许候选进入正式矩阵预注册。正式 13-pair balanced matrix、
+性能门和 D6 evaluator 尚未完成，默认仍为 full snapshot。本结果不覆盖 AirSim、冻结目标
+处理器、硬件、实机、实飞或正式 RMSE/NEES/NIS。
+
+此前 3/3/1、1.4 秒、seed 34 的小场景集成回归、unknown-ID/空集合失败关闭专项、
+module-stack `62 passed, 1 warning`、scalable 全量 `263 passed, 1 warning` 和 D1 定向
+`22 passed in 0.49s` 继续作为实现回归证据；它们不替代本次 clean smoke，也不构成正式
+性能准入。
 
 ## 固定滞后回放前缀累计摘要正式多种子评估
 
@@ -71,8 +105,8 @@ D6 verdict 为 `reject`，`main_default_promotion_allowed=false`，
 
 reference 继续作为 D1 和 main 默认。candidate 保留为默认关闭的显式研究入口，不删除、
 不晋升，也不修改本次冻结结论。独立的 publication observation-ID 子集候选已完成 main
-实现和模块栈回归；它使用新的 implementation ID，clean smoke、独立预注册矩阵和 D6 判定
-仍未完成。
+实现、模块栈回归和一对 clean smoke；它使用新的 implementation ID，独立预注册矩阵和 D6
+判定仍未完成。
 
 正式 bundle 位于 `research_modules/d6_evaluation_metrics/outputs/`
 `d1_replay_prefix_summary_multiseed_20260725_formal_7d2e987_d6/`。本结果只覆盖三维质点
@@ -242,7 +276,8 @@ reference 继续作为默认。
 正式矩阵中的在线 publication 已调用 `consistency_evidence_snapshot()`；episode 最终
 offline evidence 导出继续使用 `consistency_evidence_records()` 或
 `export_consistency_evidence()`。新的 observation-ID 子集投影候选已完成 main 实现和
-模块栈回归，但尚无 clean smoke 或正式准入；它不能追溯修改本节历史微基准或上节正式拒绝。
+模块栈回归，并通过一对 clean smoke，但尚无正式多 seed 准入；它不能追溯修改本节历史
+微基准或上节正式拒绝。
 
 ## 关联稀疏预筛正式多种子评估
 
