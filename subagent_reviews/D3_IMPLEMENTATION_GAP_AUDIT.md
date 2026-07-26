@@ -5,39 +5,61 @@
 **审计依据**: 当前 `research_modules/d3_assignment_planner/` 代码、README、PLAN、docs 和 tests，2026-07-25 的 20-seed 多周期行为克隆影子评估，既有 2026-07-13 M5N2 40-case 报告，以及 `research_modules/airsim_runtime/outputs/p1_terminal_timing_funnel_10seed_20260715_m5n2_*/episode_006_full_flow/main_episode_bus/d3_plan_history.json` 的最新 20-case/3725-record 只读复核、main/D6/D7 物理结果汇总、`subagent_reviews/MAIN_IMPLEMENTATION_GAP_AUDIT.md` 和 `EVAL/FRAMEWORK_EVAL_P0_P1_P2_GAP_CONFIRMATION.md`。
 **边界**: 本审计只覆盖离线科研仿真中的抽象资源-目标分配、版本化计划、终端反馈合同、D7 guidance binding、D6 记录导出和 AirSim dry-run 适配；不涉及真实飞控、硬件、火控、毁伤逻辑或绕过人工授权的自动处置。
 
-## A1/C1/F1 学习准入 GAP
+## A1/C1/F1 学习证据装配 GAP
 
-**代码 GAP 已关闭**：legacy v2 bundle 没有显式 admission。原 loader 在旧 promotion
-满足时可能允许 assist，与 main `d59352b` 的“所声明模型必须有正向准入”不一致。当前
-v2 shadow 保持兼容，v2 assist 固定失败关闭并返回
-`bundle_assist_admission_missing`。v3 assist 继续要求 qualified admission 和哈希绑定
-promotion；规则回退、硬禁边、Hungarian、版本和 stale 合同未改。
+### P0 软件缺口
 
-**实际 bundle 状态**：路径为
-`research_modules/d3_assignment_planner/outputs/formal_bc_development_20260720/bundle/`。
-manifest/state SHA-256 为
-`a9213d65606a9e2f921040e153488c0f4cdebb10882fa16013fce5b59f9314c0` /
-`e3da9fd5b54451da83358405b6051991e0c78bcf9f538b350d459b05faf8e0b2`；
-main 文件树/绑定 SHA-256 为
-`3c08e58171c0474de9596fd3285d17bb50614a88cd7bbf3bf9af5345c7fee085` /
-`70aa1b0f0f2869cdae0f9ba32b18499b003c88ebfcdb9e9dce0bc950b13542a8`。
-旧文件未修改。
+首次复核只关闭了 legacy v2 assist。进一步检查确认 v3 仍可被调用方自我晋级：
+`save_model_bundle()` 接受调用方直接传入 `stage=qualified`、正向权限布尔和任意格式正确
+的 64 位哈希；测试还可手工改写 manifest 后让 production loader 返回 loaded。字段内部
+一致并不证明 held-out、运行采用、物理结果或 D6 外部审计真实存在。
 
-**预检结果**：当前 manifest 是 development/shadow-only，assist 未授权，外部 holdout
-状态未评估，promotion unavailable。模块 assist 返回 `bundle_shadow_only`，main 解析为
-`effective_mode=rule_fallback`、`bundle_loaded=false`。禁止规则回退时，A1 在写 episode
-前拒绝；C1/F1 在 D3 条件上同样拒绝，并还依赖其他模块准入。
+该 P0 已关闭：
 
-**开放 P1 证据 GAP**：多周期 shadow summary 文件 SHA-256 为
-`5093e5d0b0a3df63ad23f49c543030a52412d71b25fe8a300a446e74825c135c`，仍是开发影子
-证据。D6 sidecar 文件 SHA-256 为
-`f3852251daf02ec87fe878e7fb80aad6f381d8c0756a5c956a32e737a3871c3b`，状态为
-`pass_offline_assignment_comparison_only`。runtime ACK、干预后物理结果和 paired
-non-degradation 均为 unavailable。当前不具备生成新 admitted bundle 的证据条件。
+1. production writer 只生成 development/research bundle。caller-qualified admission 在
+   创建目录和权重文件前拒绝，不留下半成品。
+2. v2 和 development v3 继续支持 shadow。现有 bundle 的行为和文件摘要不变。
+3. 手工 v3 清单即使通过 admission 和 promotion 字段校验，assist 仍返回
+   `bundle_assist_evidence_assembler_unavailable`，不能进入模型加载或代价修正路径。
+4. promotion 仍可保存影子比较结论，但不再是权限来源。规则回退、硬禁边、Hungarian、
+   版本、stale 和 M-to-N all-or-none 合同均未改。
 
-**下一验收**：main/D7 生成版本化模型采用 ACK 和同 seed 成对物理状态窗口；D6 对至少
-20 个未见 seed 给出可用的模型采用及规则基线非退化结论；D3 生成一个新的 v3 qualified
-bundle。随后由 main 执行：
+2026-07-26 定向 bundle 测试为 `21 passed`；D3 全量为
+`465 passed, 1 skipped`。唯一跳过为可选 OR-Tools；既有 Matplotlib `Axes3D` 告警不影响
+本结论。
+
+### 四层状态
+
+| 层次 | 当前状态 |
+| --- | --- |
+| loader/writer 软件能力 | development shadow 可用；caller-qualified writer 和手工正向 loader 已失败关闭；production 正向 assembler 尚未实现 |
+| development bundle | manifest/state/tree/binding SHA 分别为 `a9213d65...9314c0`、`e3da9fd5...f8e0b2`、`3c08e581...fee085`、`70aa1b0...542a8`；文件未修改 |
+| 实际外部证据 | D6 旧 sidecar 只通过同帧离线分配比较；runtime ACK、物理结果和 paired non-degradation 不可用；新 formal-scope auditor 尚无实际 A1 输出 |
+| 正式 assist 权限 | `false`；现有 bundle assist 返回 `bundle_shadow_only`，A1/C1/F1 在 D3 条件上失败关闭 |
+
+### D6 字段复用与缺失
+
+| D3 需求 | 已有 D6 字段 | 缺失字段或实际条件 | owner |
+| --- | --- | --- | --- |
+| 数据、切分、零泄漏 | 跨模块数据审计含 D3 manifest/frames SHA、60/20/20 seed、保留 seed 泄漏 0、全样本审计 SHA | 精确 `split_hash`、训练源码摘要与目标 bundle 的联合绑定 | D3 assembler；D6 复核输入实物 |
+| 模型/文件树 | 旧 sidecar 含 manifest/state SHA；formal-scope auditor 可重算 manifest/tree/file count/size | 旧 sidecar 标明 `bundle_files_rehashed=false`；实际 A1 tree 复核不存在 | main 提供 bundle；D6 审计 |
+| 运行采用 | formal-scope auditor 可验证 assist 诊断和正的 `d3_learning_applied_count` | 旧 sidecar runtime ACK unavailable；缺版本化采用记录及其制品树绑定 | main/D7 生产；D6 审计 |
+| 物理结果 | formal-scope auditor 可检查物理指标 availability | 当前无干预后物理状态窗口 | main/D7 生产；D6 审计 |
+| paired non-degradation | formal-scope auditor 可唯一配对同键 R0 并逐指标判断 | 当前实际值 unavailable；新结果必须覆盖 1000-1019 全部 20 个未见 seed | main 运行；D6 判定 |
+| 晋级结论 | formal-scope audit 有 `verdict` 和 `evidence_admission_allowed` | D6 明确 `model_promotion.allowed=false`，也不强制 20-seed D3 门限 | D3 assembler/owner |
+
+D6 新审计器可直接复用，不需要 D3 再造通用审计 schema。它目前只提供软件能力。正式 A1
+execution plan/merge、同键 R0、实际 bundle 根目录和审计结果均未提供。
+
+### 开放 P1
+
+1. main/D7 需为 1000-1019 生成版本化模型采用 ACK、后续状态和成对物理窗口。
+2. D6 需输出实际 A1 审计 JSON、CSV、中文报告和 `SHA256SUMS`，结果必须覆盖 20 个未见
+   seed、实际采用、物理可用和规则基线非退化，不能用单 cell 或 unavailable 补零。
+3. D3 需在实物到位后实现模块专用 evidence assembler，绑定 dataset manifest、split、
+   frames、training source、state dict、bundle tree 和 D6 报告双哈希。装配器生成新
+   immutable bundle/schema，不改写 v3 development bundle。
+4. 新 bundle 形成后由 main 执行：
 
 ```bash
 python3 -m research_modules.scalable_3d_simulation.run_experiment_matrix_shard \
@@ -46,12 +68,12 @@ python3 -m research_modules.scalable_3d_simulation.run_experiment_matrix_shard \
   --output "$A1_EXECUTION_ROOT"
 ```
 
-不得修改现有 bundle/manifest 自我晋级，不得把 unavailable 指标补零。A1 独立通过前不
-评审 C1/F1。
-
-**验证**：2026-07-26 定向 bundle 测试 `20 passed`；D3 全量收集 465 项，结果为
-`464 passed, 1 skipped`。唯一跳过是可选 OR-Tools，另有一条既有 Matplotlib
-`Axes3D` 导入告警。
+现有实际 bundle 路径为
+`research_modules/d3_assignment_planner/outputs/formal_bc_development_20260720/bundle/`。
+其 admission 仍是 development/shadow-only，promotion unavailable。多周期 shadow
+summary SHA 为 `5093e5d0...c135c`；D6 旧 sidecar 文件 SHA 为
+`f3852251...1c3b`，状态为 `pass_offline_assignment_comparison_only`。这些事实不能提前
+关闭上述 P1。A1 独立通过前不评审 C1/F1。
 
 ## 正式 R0 滚动需求 P0
 

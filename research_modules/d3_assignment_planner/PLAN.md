@@ -1,8 +1,8 @@
 # D3 集中式 Assignment Planner 计划
 
-## 2026-07-26 A1/C1/F1 学习准入复核
+## 2026-07-26 A1/C1/F1 学习证据装配复核
 
-状态为“legacy assist 绕过已关闭，实际模型仍未准入”。
+状态为“production 自我晋级入口已关闭，外部证据和装配器仍未具备”。
 
 1. [x] 对照 main `d59352b` 检查 A1、C1、F1 的 bundle 需求、文件树哈希绑定、
    运行前预检和禁止规则回退合同。
@@ -10,9 +10,11 @@
    缺口。v2 继续可用于 development shadow；assist 固定返回
    `bundle_assist_admission_missing`。`require_promotion_for_assist=False` 仍返回
    `promotion_bypass_forbidden`。
-3. [x] 保持 v3 正向准入：只有 `stage=qualified`、允许 assist、外部保留评估通过且
-   promotion 的数据、切分和权重 SHA-256 一致时，loader 才可能返回 assist。硬禁边、
-   Hungarian/需求槽 Hungarian、计划版本和规则回退均未放宽。
+3. [x] 复核 v3 正向准入，确认原 production writer 可接收调用方构造的 qualified
+   admission，手工清单也可用正向布尔和格式正确的占位 SHA 通过 loader。该 P0 已关闭：
+   writer 在写文件前拒绝 caller-qualified admission；loader 对完整手工正向清单返回
+   `bundle_assist_evidence_assembler_unavailable`。硬禁边、Hungarian/需求槽
+   Hungarian、计划版本和规则回退均未放宽。
 4. [x] 只读复核实际 bundle，未修改旧 manifest 或权重。路径为
    `outputs/formal_bc_development_20260720/bundle/`；manifest/state SHA-256 分别为
    `a9213d65606a9e2f921040e153488c0f4cdebb10882fa16013fce5b59f9314c0` 和
@@ -28,12 +30,22 @@
    `f3852251daf02ec87fe878e7fb80aad6f381d8c0756a5c956a32e737a3871c3b`，状态仅为
    `pass_offline_assignment_comparison_only`。runtime ACK、干预后物理结果和 paired
    non-degradation 均为 unavailable，不能生成新 admitted bundle。
-7. [ ] main/D7 先生成模型实际采用的版本化 runtime ACK 和成对物理状态窗口；D6 再对
-   至少 20 个未见 seed 输出可用的模型采用、物理结果和规则基线非退化结论。不可用指标
-   不补零。
-8. [ ] D3 只在上述外部证据可验证后生成一个新的 v3 qualified bundle，并绑定当前源码、
-   数据、切分、权重和 D6 证据。不得修改现有 development bundle 自我晋级。
-9. [ ] 新 bundle 首先由 main 执行：
+7. [x] 盘点 D6 可复用输出。跨模块数据审计已有 D3 数据清单/帧 SHA、60/20/20
+   canonical seed、保留 seed 零泄漏和全样本审计；旧 reserved-seed sidecar 已绑定
+   manifest/state SHA 并记录 20 个处理臂实际应用，但 runtime ACK、物理结果和 paired
+   non-degradation 均不可用。
+8. [x] 盘点 D6 新 formal-scope auditor。它能校验 execution plan、bundle tree、实际
+   assist 采用、物理结果和同键 R0 非退化，但当前没有实际 A1 输出；其
+   `model_promotion.allowed=false`，且单次通过不等于 D3 的 20 个未见 seed 门限。
+9. [ ] main/D7 生成 1000-1019 全部保留 seed 的版本化模型采用 ACK 和成对物理状态窗口；
+   D6 输出实际 A1 审计 JSON、CSV、中文报告和校验和。缺失指标不补零。
+10. [ ] D3 在上述实物存在后设计模块专用 evidence assembler。装配器复用 D6 schema，
+    同时绑定 D3 dataset manifest、split、frames、training source、model state、
+    bundle tree、runtime adoption 和 paired non-degradation 摘要；不新建第二套通用
+    D6 审计 schema。
+11. [ ] 装配器只能生成新 immutable bundle/schema。不得修改现有 v3 development
+    bundle，也不得让调用方直接传入权限布尔或占位哈希。
+12. [ ] 新 bundle 首先由 main 执行：
 
    ```bash
    python3 -m research_modules.scalable_3d_simulation.run_experiment_matrix_shard \
@@ -43,8 +55,8 @@
    ```
 
    只有 A1 预检和正式成对验收通过后，才评审 C1/F1；后两者还要求其他模块独立准入。
-10. [x] 2026-07-26 定向 bundle 测试 `20 passed`；D3 全量收集 465 项，结果为
-    `464 passed, 1 skipped`。唯一跳过是可选 OR-Tools，另有一条既有 Matplotlib
+13. [x] 2026-07-26 定向 bundle 测试 `21 passed`；D3 全量结果为
+    `465 passed, 1 skipped`。唯一跳过是可选 OR-Tools，另有一条既有 Matplotlib
     `Axes3D` 导入告警。
 
 ## 2026-07-25 正式 R0 滚动需求 P0
@@ -852,8 +864,9 @@ main 后续在 50v50、`recon_count=2`、中心故障路径中调用接口，并
    scenario 聚合，报告同 seed 的 rule/proposal 成本、高威胁
    unmet、churn、duplicate/hard violation、P50/P95 与 fallback。promotion 必须使用
    test split、至少 20 个未见 seed、零 fallback，并同时满足安全和成本非退化。
-6. 默认 planner 不变。`learning_assistant=None` 仍是构造默认；shadow/assist 都需显式
-   注入。bundle assist loader 只有通过完整 promotion manifest 才返回可用 assistant。
+6. 默认 planner 不变。`learning_assistant=None` 仍是构造默认；shadow 需显式注入。
+   promotion manifest 只完成模型比较门，production assist 还要求模块专用 evidence
+   assembler。该装配器未实现前，loader 不返回可用 assist assistant。
 7. writer 流式边界已下沉到 D3 API：`iter_learning_frame_records()` 逐行解析 staging，
    `write_learning_dataset()` 通过临时 SQLite 和可配置批次完成确定性排序、split finalize、
    split hash 与完整 frame SHA，不再把全量 record 保存在 D3 进程内存。
@@ -882,8 +895,9 @@ shadow `0.006 s`。这些是单机 smoke，不是吞吐、实时、收益或系�
    必须为 0，高威胁 unmet 与 assignment cost 不退化。
 4. 标定 CPU/GPU inference P50/P95/P99、confidence、OOD 和 deadline，并实现或证明
    可抢占 timeout；当前仍是同步返回后的 deadline 拒绝。
-5. 只有上述证据写入 promotion manifest 后才允许 assist。任何正式权重、长期训练、
-   AirSim runtime 接线和 D6 系统报告均不属于本次 synthetic smoke。
+5. 上述证据先进入 promotion 比较，再由 D6 外部审计和 D3 模块专用 assembler 形成新
+   immutable bundle 后才可能允许 assist。任何正式权重、长期训练、AirSim runtime 接线
+   和 D6 系统报告均不属于本次 synthetic smoke。
 
 当前 v2 验证门限为 D3 全量零失败、逆序输入同 hash/同文件、三 split 数值 seed 零交集、
 少于 3 个唯一 seed 或声明 unseen 不足失败、dataset/bundle v1 和篡改稳定拒绝。全量共
@@ -1088,8 +1102,9 @@ OR-Tools，零失败满足门限。
 2. D6 对每个保留 seed 汇总共同规则成本、需求满足、high-threat unmet、duplicate、hard
    violation、churn、fallback 和分档 P50/P95/P99。当前 internal-test 有 163/322 OOD
    回退，必须先定位“任一边超阈值”的帧级 OOD 规则是否过于保守。
-3. 只有外部保留集达到零安全退化、成本非退化、时延预算和已批准 fallback 门限，才允许
-   生成 qualified admission。当前轻微成本退化已使 assist 保持关闭。
+3. 只有外部保留集达到零安全退化、成本非退化、时延预算和已批准 fallback 门限，并由
+   D6 输出可验证审计实物后，D3 evidence assembler 才能生成新 bundle 的 qualified
+   admission。当前轻微成本退化和装配器缺失共同使 assist 保持关闭。
 4. PPO 不在本阶段启动。现有 rule demonstration/reward components 尚不能替代可验证的
    在线或反事实回报，后续需由 D6 明确 reward availability 与因果口径后另行评审。
 5. 长期保留权重使用 Git LFS 或独立制品存储。main 需在全局 `VERSIONING.md` 中记录本机

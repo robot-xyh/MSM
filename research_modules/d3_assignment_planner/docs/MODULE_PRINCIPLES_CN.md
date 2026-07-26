@@ -8,9 +8,17 @@ D3 将模型读取权限与在线辅助权限分开。合法的旧版模型仍�
 但旧版没有正向 admission 字段，不能进入 assist。加载器对这类请求返回
 `bundle_assist_admission_missing`。这一规则防止旧 promotion 字段被当成正式运行许可。
 
-新版 assist 必须同时满足 v3 qualified admission 和哈希绑定的 promotion。主程序还会检查
-实际解析模式；若 D3 返回规则回退，A1、C1 和 F1 均不能写出正式 episode。规则代价、
-匈牙利求解、需求槽完整性、硬禁边和版本门不因学习模型可读而变化。
+复核进一步发现，v3 的字段验证只能确认布尔和 SHA-256 字符串格式，不能证明这些值来自
+D6 外部审计。调用方原先可以向 writer 传入 qualified admission，也可以手工修改
+manifest，使 production loader 接受占位哈希和自报通过状态。该入口现已失败关闭。
+`save_model_bundle()` 只写 development/research bundle；调用方提供 qualified admission
+时在创建目录前拒绝。手工清单即使通过现有 v3 和 promotion 字段校验，assist 仍返回
+`bundle_assist_evidence_assembler_unavailable`。
+
+promotion 清单继续保存同输入影子比较结论，但不再构成权限来源。D3 当前没有 production
+正向 assist 路径。后续装配器必须读取 D6 的实际审计文件和校验和，核对数据清单、切分、
+完整帧、训练源码、模型状态、bundle 文件树、运行采用、物理结果和同规则基线非退化，再
+生成新的不可变 bundle。装配器复用 D6 审计 schema，不重复定义通用外部审计合同。
 
 当前实际模型仍是 development/shadow-only。其权重 SHA-256 为
 `e3da9fd5b54451da83358405b6051991e0c78bcf9f538b350d459b05faf8e0b2`，assist 返回
@@ -18,7 +26,7 @@ D3 将模型读取权限与在线辅助权限分开。合法的旧版模型仍�
 非退化仍不可用。因此当前不能生成新的 admitted bundle，也不能运行 A1/C1/F1 正式学习
 scope。
 
-2026-07-26 的 bundle 专项 `20 passed`；D3 全量为 `464 passed, 1 skipped`。现有模型文件
+2026-07-26 的 bundle 专项 `21 passed`；D3 全量为 `465 passed, 1 skipped`。现有模型文件
 和 manifest 均未修改。
 
 ## 滚动需求库存
@@ -1145,7 +1153,8 @@ hash 对照，不能直接替换默认持久化合同。本批全量结果为 `2
    与规则相同；边排序 0.8031、计划一致 0.6770，且 163/322 帧 OOD 回退。安全门控有效，
    模型质量和门限仍未达到 assist 证据要求。
 6. **开发 bundle 必须先于 promotion 失败关闭**：v3 admission 的 stage 为 development
-   时，只允许 shadow。即使 promotion 字段被改写为 recommended，loader 仍返回规则路径。
+   时只允许 shadow。即使手工同时改写 admission、promotion 和占位 SHA，production
+   loader 也因 evidence assembler 不可用而返回规则路径。
 7. **模型文件和代码版本分开管理**：普通 Git 保存训练配置、数据摘要、指标、定位说明和
    权重 SHA256；`.pt` 保存在 ignored output。长期权重使用 Git LFS 或独立制品存储。本机
    Git LFS 不可用时，不得把二进制权重临时提交到 results。

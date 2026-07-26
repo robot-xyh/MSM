@@ -17,6 +17,12 @@
 | A1 正式预检 | 写 episode 前拒绝 |
 | C1/F1 正式预检 | D3 条件拒绝，且仍需其他模型独立准入 |
 
+软件负例复核发现，原测试可通过手工把 v3 admission 改为 qualified，并填入正向布尔和
+格式正确的占位 SHA，使 loader 返回 loaded。当前 writer 已在写文件前拒绝这种调用；
+手工清单即使通过字段和 promotion 校验，也返回
+`bundle_assist_evidence_assembler_unavailable`。该结果关闭自我晋级 P0，不产生模型
+效果数据。
+
 现有多周期 shadow 汇总文件 SHA-256 为
 `5093e5d0b0a3df63ad23f49c543030a52412d71b25fe8a300a446e74825c135c`。该开发结果有
 20 个保留 seed 和 120 个绑定差异周期，但没有生产 runtime ACK 或物理结果。D6
@@ -24,10 +30,11 @@ profile-bound sidecar 的文件 SHA-256 为
 `f3852251daf02ec87fe878e7fb80aad6f381d8c0756a5c956a32e737a3871c3b`，状态为
 `pass_offline_assignment_comparison_only`；paired non-degradation 明确不可用。
 
-代码复核关闭了 legacy v2 仅凭旧 promotion 进入 assist 的入口。v2 shadow 保持兼容，
-v2 assist 返回 `bundle_assist_admission_missing`。定向测试 `20 passed`；全量收集
-465 项，结果为 `464 passed, 1 skipped`。本轮结果只证明准入失败关闭，不构成模型效果
-证据。
+代码复核保留 v2 shadow 兼容，v2 assist 返回
+`bundle_assist_admission_missing`。D6 formal-scope auditor 已具备文件树、实际采用、
+物理结果和同键 R0 非退化审计能力，但当前没有实际 A1 审计输出，且该审计器明确不授予
+模型晋级。定向测试 `21 passed`；全量结果为 `465 passed, 1 skipped`。本轮结果只证明
+准入失败关闭，不构成模型效果证据。
 
 ## 正式 R0 滚动需求复验（2026-07-25）
 

@@ -9,6 +9,7 @@ import numpy as np
 import pytest
 
 from d3_assignment_planner import (
+    ASSIST_EVIDENCE_ASSEMBLER_UNAVAILABLE_REASON,
     EDGE_FEATURE_NAMES,
     LEARNING_DATASET_SCHEMA_V2,
     LEARNING_DATASET_SPLIT_POLICY_V2,
@@ -526,7 +527,12 @@ def test_bundle_is_weights_only_checksum_verified_and_assist_requires_promotion(
     (tmp_path / "manifest.json").write_text(
         json.dumps(raw, sort_keys=True), encoding="utf-8"
     )
-    assert load_model_bundle(tmp_path, mode="assist").loaded is True
+    assembled = load_model_bundle(tmp_path, mode="assist")
+    assert assembled.loaded is False
+    assert (
+        assembled.fallback_reason
+        == ASSIST_EVIDENCE_ASSEMBLER_UNAVAILABLE_REASON
+    )
 
     for field in (
         "promotion_recommended",
@@ -590,6 +596,42 @@ def test_bundle_is_weights_only_checksum_verified_and_assist_requires_promotion(
     )
     assert mismatch.loaded is False
     assert mismatch.fallback_reason == "dataset_frames_sha256_mismatch"
+
+
+def test_production_writer_rejects_caller_qualified_admission(
+    tmp_path: Path,
+) -> None:
+    pytest.importorskip("torch")
+
+    with pytest.raises(ValueError, match="evidence assembler is unavailable"):
+        save_model_bundle(
+            tmp_path / "qualified",
+            SharedEdgeActorCriticPolicy(hidden_size=8),
+            split_hash="1" * 64,
+            dataset_frames_sha256="2" * 64,
+            normalization_mean=np.zeros(len(EDGE_FEATURE_NAMES)),
+            normalization_scale=np.ones(len(EDGE_FEATURE_NAMES)),
+            training_results={"validation_loss": 0.25},
+            provenance={
+                "repository_git_commit": "3" * 40,
+                "repository_git_commit_role": "exact_training_source_commit",
+                "training_worktree_state": "clean",
+                "training_date": "2026-07-26",
+                "dataset_manifest_sha256": "4" * 64,
+                "training_source_sha256": "5" * 64,
+                "training_entrypoint": "unit_test",
+            },
+            admission={
+                "stage": "qualified",
+                "allowed_modes": ["shadow", "assist"],
+                "assist_authorized": True,
+                "external_holdout_status": "passed",
+                "external_holdout_seed_values": list(range(1000, 1020)),
+                "rule_fallback_required": True,
+            },
+        )
+
+    assert not (tmp_path / "qualified").exists()
 
 
 def test_shadow_loader_binds_binary_feature_semantics_without_rewriting_stats(

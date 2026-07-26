@@ -39,6 +39,9 @@ MODEL_BUNDLE_STATE_DICT_FILENAME = "state_dict.pt"
 PROMOTION_EVIDENCE_SCHEMA_V1 = "d3_shadow_promotion_evidence_v1"
 PROMOTION_EVIDENCE_KIND = "paired_rule_residual_shadow"
 PROMOTION_COST_BASIS = "rule_cost_matrix_v1"
+ASSIST_EVIDENCE_ASSEMBLER_UNAVAILABLE_REASON = (
+    "bundle_assist_evidence_assembler_unavailable"
+)
 
 
 @dataclass(frozen=True)
@@ -311,10 +314,32 @@ def save_model_bundle(
     admission: Mapping[str, Any] | None = None,
     promotion_unavailable_reason: str = "insufficient_unseen_seed_evidence",
 ) -> ModelBundleManifest:
-    """Save weights and a complete research/promotion manifest."""
+    """Save an unqualified research bundle and its promotion manifest.
+
+    A qualified assist bundle must eventually be created by a separate
+    evidence assembler that validates D6-owned source artifacts. Until that
+    assembler exists, caller-provided positive admission fields are rejected.
+    """
 
     if torch is None:  # pragma: no cover
         raise ImportError("PyTorch is required to save a D3 model bundle")
+    if (provenance is None) != (admission is None):
+        raise ValueError("bundle provenance and admission must be provided together")
+    bundle_schema = (
+        MODEL_BUNDLE_SCHEMA_V3
+        if provenance is not None
+        else MODEL_BUNDLE_SCHEMA_V2
+    )
+    if bundle_schema == MODEL_BUNDLE_SCHEMA_V3:
+        assert provenance is not None
+        assert admission is not None
+        _validate_v3_provenance(provenance)
+        _validate_v3_admission(admission)
+        if _admission_allows_assist(admission):
+            raise ValueError(
+                "D3 assist admission evidence assembler is unavailable; "
+                "the production writer rejects caller-provided qualified admission"
+            )
     output = Path(output_dir)
     output.mkdir(parents=True, exist_ok=True)
     state_path = output / MODEL_BUNDLE_STATE_DICT_FILENAME
@@ -324,13 +349,6 @@ def save_model_bundle(
     }
     torch.save(state_dict, state_path)
     state_sha = _file_sha256(state_path)
-    if (provenance is None) != (admission is None):
-        raise ValueError("bundle provenance and admission must be provided together")
-    bundle_schema = (
-        MODEL_BUNDLE_SCHEMA_V3
-        if provenance is not None
-        else MODEL_BUNDLE_SCHEMA_V2
-    )
     manifest = ModelBundleManifest(
         bundle_schema_version=bundle_schema,
         dataset_schema_version=str(dataset_schema_version),
@@ -451,6 +469,8 @@ def load_model_bundle(
         and not _promotion_is_authorized(manifest.promotion_manifest, manifest)
     ):
         return fallback("promotion_not_recommended", manifest)
+    if normalized_mode == "assist":
+        return fallback(ASSIST_EVIDENCE_ASSEMBLER_UNAVAILABLE_REASON, manifest)
     state_path = path / manifest.state_dict_file
     if not state_path.is_file():
         return fallback("model_state_missing", manifest)

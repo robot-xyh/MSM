@@ -4,17 +4,29 @@ Centralized rolling `M` target / `N` resource assignment research module.
 
 Boundary: this module only supports offline simulation, evaluation, and human-review candidate planning. It excludes real fire-control parameters, damage logic, flight or hardware drivers, autonomous disposition, and authorization bypasses.
 
-## A1/C1/F1 Assist Admission Audit
+## A1/C1/F1 Assist Evidence Assembly Audit
 
-The 2026-07-26 audit against main commit `d59352b` found one narrow loader
-gap and closed it. Legacy `d3_learning_model_bundle_v2` bundles do not carry an
-explicit admission object. They may still be loaded for development shadow,
-but they can no longer enter `assist` on the strength of a legacy promotion
-manifest alone. The stable fallback reason is
-`bundle_assist_admission_missing`. An assist request now requires a v3 bundle
-with qualified admission and an authorized, hash-bound promotion manifest.
-The existing `promotion_bypass_forbidden`, hard candidate mask, deterministic
-rule fallback, version checks, and solver path are unchanged.
+The 2026-07-26 follow-up found that D3 did not yet have a strict
+`D6 audit -> D3 evidence assembler -> new bundle` chain. Legacy v2 bundles
+were already blocked from assist, but a caller could still write or hand-edit
+a v3 manifest with positive booleans and syntactically valid placeholder
+hashes. The loader treated those declarations as qualified evidence.
+
+The production boundary now fails closed:
+
+- `save_model_bundle()` writes development/research bundles only and rejects
+  caller-provided qualified admission before creating bundle files;
+- v2 and development v3 bundles remain available for shadow;
+- a hand-edited v3 manifest that passes the existing field and promotion
+  checks still cannot enter assist, and returns
+  `bundle_assist_evidence_assembler_unavailable`;
+- the promotion manifest remains a model-comparison record, not an authority
+  source.
+
+No second D6 audit schema was added. A future D3-specific assembler must consume
+the existing D6 formal-scope audit and checksum artifacts, bind them to the
+exact dataset, source, model state, and bundle tree, and emit a new immutable
+bundle. Until that assembler exists, production D3 has no positive assist path.
 
 The actual bundle at
 `outputs/formal_bc_development_20260720/bundle/` remains unmodified. Its
@@ -40,13 +52,16 @@ The strongest existing independent result remains the D6 sidecar
 (file SHA-256
 `f3852251daf02ec87fe878e7fb80aad6f381d8c0756a5c956a32e737a3871c3b`).
 Its status is `pass_offline_assignment_comparison_only`; runtime ACK, physical
-outcome, and paired non-degradation are explicitly unavailable. A new admitted
-bundle therefore requires new main/D7 runtime-adoption evidence, paired
-post-intervention outcomes, and a D6 non-degradation decision. Existing files
-must not be edited to claim that state.
+outcome, and paired non-degradation are explicitly unavailable. D6 now also
+has a formal-scope auditor that can validate bundle-tree binding, actual assist
+adoption, physical results, and same-key R0 non-degradation. No actual A1 audit
+output was supplied, the auditor does not itself grant promotion, and it does
+not enforce D3's minimum 20 unseen seeds. These are reusable software
+capabilities, not current admission evidence.
 
-After those external artifacts exist and a new qualified bundle is generated,
-main's first admission check is:
+After main/D7 produce hash-bound adoption and physical evidence for all 20
+reserved seeds, D6 emits a passing checked report, and D3 implements the
+module-specific assembler, main's first admission check will be:
 
 ```bash
 python3 -m research_modules.scalable_3d_simulation.run_experiment_matrix_shard \
@@ -55,10 +70,10 @@ python3 -m research_modules.scalable_3d_simulation.run_experiment_matrix_shard \
   --output "$A1_EXECUTION_ROOT"
 ```
 
-On 2026-07-26 the focused bundle tests passed `20/20`; the complete D3 suite
-collected 465 tests and completed with `464 passed, 1 skipped`. The skip is the
-optional installed-only OR-Tools case. One existing Matplotlib `Axes3D` import
-warning does not affect D3 admission.
+On 2026-07-26 the focused bundle tests passed `21/21`; the complete D3 suite
+completed with `465 passed, 1 skipped`. The skip is the optional installed-only
+OR-Tools case. One existing Matplotlib `Axes3D` import warning does not affect
+D3 admission.
 
 ## R0 Rolling-Demand Inventory Guard
 
@@ -755,9 +770,10 @@ target/resource index、联盟成员、owner、plan version 或 D7 控制量。
   dataset/split schema 之外增加 provenance 与 admission。v1 bundle 稳定回退为
   `model_bundle_schema_unsupported`；缺失、损坏、SHA、特征或合同不匹配均返回逐元素相同
   的 `C_rule`，权重只用 `torch.load(..., weights_only=True)`。
-- shadow 可加载未晋级 bundle。assist 必须显式调用 `load_model_bundle(...,
-  mode="assist")`，且 promotion manifest 同时满足 recommended、至少 20 个未见 test
-  seed、安全/成本非退化和零 fallback；仅写一个 true 布尔值不能绕过门控。
+- shadow 可加载未晋级 bundle。promotion parser 仍校验 recommended、至少 20 个未见
+  test seed、安全/成本非退化和零 fallback，但该清单只用于比较诊断。production assist
+  还要求尚未实现的 D3 evidence assembler；手工填写完整正向布尔和占位 SHA 仍返回
+  `bundle_assist_evidence_assembler_unavailable`。
 
 ### BC、PPO 与 paired shadow
 

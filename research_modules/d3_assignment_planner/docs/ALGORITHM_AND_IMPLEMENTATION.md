@@ -17,9 +17,12 @@ loader 因此需要同时区分“模型可读”“离线 promotion 满足”�
 2. shadow 允许读取 v2/v3 合法 bundle，用于离线复现，不改变在线代价矩阵。
 3. assist 拒绝没有显式 admission 的 legacy v2，原因码为
    `bundle_assist_admission_missing`。
-4. v3 assist 要求 qualified admission，再检查 promotion 的 test seed 数量、证据摘要、
-   零回退、安全非退化和共同规则成本非退化。
-5. 任一条件失败均返回 `RuleFallbackLearningAssistant`。main 的正式 scope 禁止把该规则
+4. v3 parser 继续检查 qualified admission，以及 promotion 的 test seed 数量、证据摘要、
+   零回退、安全非退化和共同规则成本非退化。这些检查只验证清单内部一致性。
+5. production writer 不接受调用方提供的 qualified admission。production loader 即使
+   收到内部一致的手工正向清单，也返回
+   `bundle_assist_evidence_assembler_unavailable`。
+6. 任一条件失败均返回 `RuleFallbackLearningAssistant`。main 的正式 scope 禁止把该规则
    回退解释为 A1/C1/F1 已执行。
 
 实际 development bundle 未修改。其 manifest/state/tree SHA-256 为
@@ -27,13 +30,23 @@ loader 因此需要同时区分“模型可读”“离线 promotion 满足”�
 admission 为 shadow-only，模块 assist 返回 `bundle_shadow_only`，main A1/C1/F1 预检均
 在 D3 条件上失败关闭。
 
-现有 D6 sidecar 只证明同帧离线分配比较可用。runtime ACK、干预后物理状态和 paired
-non-degradation 为 unavailable。它不能产生 qualified admission。后续必须由 main/D7
-生成模型实际采用和物理窗口，再由 D6 独立判定；D3 只能据新证据生成新 bundle，不能修改
-现有 manifest。
+### D6 字段映射
 
-2026-07-26 定向测试为 `20 passed`；全量收集 465 项，结果为
-`464 passed, 1 skipped`。跳过项仍是可选 OR-Tools。
+| D3 所需证据 | D6 当前可复用字段 | 当前缺失与责任 |
+| --- | --- | --- |
+| 数据和切分 | 跨模块数据审计提供 D3 manifest/frames SHA、60/20/20 seed、保留 seed 零泄漏和全样本审计 | D3 装配器还需核对 bundle 内 `split_hash`、完整帧摘要及训练源码摘要 |
+| 模型绑定 | reserved-seed sidecar 提供 manifest/state SHA；formal-scope auditor 可重算 manifest/tree/file count/size | 旧 sidecar 明确 `bundle_files_rehashed=false`；实际 A1 formal-scope 报告尚不存在 |
+| 运行采用 | formal-scope auditor 能验证 assist mode、正的 `d3_learning_applied_count`、execution plan 和 episode tree | 旧 sidecar 的 runtime ACK 为 unavailable；main/D7 需生成版本化采用证据 |
+| 物理结果 | formal-scope auditor能验证五米物理结果可用性 | 当前 D3 reserved-seed 产物无干预后物理窗口 |
+| 成对非退化 | formal-scope auditor 能按同 `comparison_key` 唯一配对 R0 并逐指标判断 | 当前实际 paired non-degradation 为 unavailable；新报告还必须覆盖全部 20 个未见 seed |
+| 晋级权限 | D6 报告可输出 `evidence_admission_allowed` | D6 明确 `model_promotion.allowed=false`；最终权限只能由 D3 证据装配策略产生，main 不得补布尔值 |
+
+D6 新审计器是可复用软件能力，不是已完成证据。当前没有实际 A1 execution plan/merge 与
+同键 R0 审计输出。即使未来单个 cell 通过，D3 仍要验证外部保留 seed 正好覆盖
+1000-1019、与训练集无交集，并把 D6 JSON/校验和绑定到新 bundle。
+
+2026-07-26 定向测试为 `21 passed`；全量结果为
+`465 passed, 1 skipped`。跳过项仍是可选 OR-Tools。
 
 ## 需求变化释放
 
@@ -1327,9 +1340,11 @@ bundle schema `d3_learning_model_bundle_v2` 固定 `manifest.json` 和 `state_di
 显式绑定 `d3_learning_dataset_v2` 与 `d3_numeric_seed_atomic_split_v2`。manifest 含
 feature/schema/policy version、split hash、normalization mean/scale、模型
 结构、alpha、confidence、OOD z threshold、deadline、训练结果、promotion manifest 和
-state SHA256。loader 顺序为：解析纯 JSON、校验合同、检查 assist promotion、检查文件
-与 SHA、`torch.load(weights_only=True)`、严格 `load_state_dict(strict=True)`。任何失败
-都返回 `RuleFallbackLearningAssistant`，保留规则矩阵；旧 bundle v1 的稳定原因是
+state SHA256。loader 顺序为：解析纯 JSON、校验合同、检查 admission/promotion、执行
+production evidence-assembler 门、检查文件与 SHA、`torch.load(weights_only=True)`、
+严格 `load_state_dict(strict=True)`。装配器未实现时，正向清单在权重加载前返回
+`bundle_assist_evidence_assembler_unavailable`。其他失败返回
+`RuleFallbackLearningAssistant`，保留规则矩阵；旧 bundle v1 的稳定原因是
 `model_bundle_schema_unsupported`，dataset/split 合同错误为
 `model_dataset_contract_unsupported`，version mismatch 的优先原因仍是
 `version_constraint`。
@@ -1499,7 +1514,9 @@ hard reject。
 摘要。`update_bundle_promotion_manifest()` 拒绝摘要或合同错配；assist loader 还要求
 `evaluated_split=test`、`evidence_eligible is True`、严格布尔/整型字段、至少 20 个未见
 数值 seed、零 fallback、安全和成本非退化。`require_promotion_for_assist=False` 明确返回
-`promotion_bypass_forbidden`，不能绕过。
+`promotion_bypass_forbidden`，不能绕过。2026-07-26 补充的 production 门进一步规定：
+promotion 通过只表示内部比较条件满足。没有 D6 实物和 D3 evidence assembler 时，
+writer 不能生成 qualified bundle，loader 也不能进入 assist。
 
 ### 32.4 共同最终代价重评分
 

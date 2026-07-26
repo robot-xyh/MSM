@@ -1,5 +1,18 @@
 # D3 M 对 N 多资源联盟分配与时序调度调研
 
+## 学习残差权限边界（2026-07-26）
+
+M-to-N 需求槽可以在 shadow 中使用冻结学习残差做离线比较，但当前 production D3 不允许
+学习残差进入 assist。复核证明原 v3 清单可由调用方填写正向布尔和占位 SHA 自我晋级；
+writer 与 loader 现已同时失败关闭，完整手工清单返回
+`bundle_assist_evidence_assembler_unavailable`。该修改不改变需求槽 Hungarian、
+联盟 all-or-none、主备角色、迟滞和版本逻辑。
+
+D6 已有跨模块数据审计和同帧 reserved-seed 审计，新 formal-scope auditor 也具备实际采用、
+物理结果和同键 R0 非退化检查能力。当前没有实际 A1 审计输出，旧 sidecar 的 runtime ACK、
+物理结果和 paired non-degradation 均不可用。D3 不另造通用审计 schema；后续只在 D6
+实物覆盖 20 个未见 seed 后实现模块专用装配器并生成新 bundle。
+
 ## 滚动需求变化（2026-07-25）
 
 正式 R0 证明 M-to-N 需求变化还必须治理旧联盟库存。clean commit `32b3b40` 的

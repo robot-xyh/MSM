@@ -1,13 +1,16 @@
 # D3 中心化资源-目标分配综述及子方案
 
-## 2026-07-26 A1/C1/F1 准入复核
+## 2026-07-26 A1/C1/F1 证据装配复核
 
-main `d59352b` 要求学习 scope 在创建执行计划时绑定完整 bundle 文件树，并在 episode
-写盘前确认所声明组件实际进入 assist。D3 复核发现 legacy v2 bundle 没有 admission，
-原实现仍可能在旧 promotion 满足时加载 assist。该模块合同缺口已关闭：v2 继续允许
-development shadow，assist 固定返回 `bundle_assist_admission_missing`；跳过 promotion
-检查仍以 `promotion_bypass_forbidden` 拒绝。v3 qualified admission 和 promotion 双门
-保持不变。
+main `d59352b` 要求学习 scope 在 episode 写盘前证明模型实际进入 assist。D3 此前关闭了
+legacy v2 绕过，但 v3 仍只有清单内部校验。调用方可以直接向 production writer 传入
+qualified admission，也可以手工填写正向布尔和格式正确的占位 SHA，让 loader 接受。
+这条链不等价于“D6 外部审计 -> D3 evidence assembler -> 新 bundle”。
+
+本轮关闭该 P0。`save_model_bundle()` 只生成 development/research bundle，调用方提供
+qualified admission 时在创建文件前拒绝。手工 v3 清单即使通过字段和 promotion 校验，
+production assist 也返回 `bundle_assist_evidence_assembler_unavailable`。v2/v3 shadow、
+`promotion_bypass_forbidden`、规则回退、硬禁边、Hungarian、版本和 stale 逻辑保持不变。
 
 实际 bundle 未修改，路径为
 `research_modules/d3_assignment_planner/outputs/formal_bc_development_20260720/bundle/`。
@@ -27,12 +30,23 @@ D6 sidecar 文件 SHA-256 为
 `pass_offline_assignment_comparison_only`。runtime ACK、post-intervention physical
 outcome 和 paired non-degradation 均不可用。当前不能合法生成新 admitted bundle。
 
-下一验收顺序为：main/D7 生成模型实际采用 ACK 和成对物理窗口，D6 对至少 20 个未见 seed
-给出可用的规则基线非退化结论，D3 据此生成全新 v3 qualified bundle，main 再执行
-`init-scope --scope-variants A1 --formal`。不得修改旧 bundle 或把 unavailable 补零。
+D6 当前有三类可复用能力：
 
-2026-07-26 定向 `20 passed`；D3 全量收集 465 项，结果为
-`464 passed, 1 skipped`。唯一跳过为可选 OR-Tools。
+1. 跨模块数据审计已提供 D3 数据 manifest/frames SHA、60/20/20 seed、保留 seed 零泄漏
+   和全样本审计。
+2. 旧 reserved-seed sidecar 已绑定 D3 manifest/state SHA，并验证 20 个处理臂同帧应用；
+   它明确没有 runtime ACK、物理结果和 paired non-degradation。
+3. 新 formal-scope auditor 能复核 bundle 文件树、实际 assist 采用、物理结果和同键 R0
+   非退化，但当前没有实际 A1 输出。该 auditor 明确
+   `model_promotion.allowed=false`，也不替 D3 强制至少 20 个未见 seed。
+
+因此 D3 不新建第二套通用审计 schema。下一验收顺序为：main/D7 生成 1000-1019 的模型
+采用 ACK 和成对物理窗口；D6 输出实际 A1 审计及校验和；D3 再实现模块专用装配器，绑定
+数据、切分、源码、模型、bundle tree 和 D6 报告并生成新 immutable bundle。不得修改旧
+bundle，也不得把 unavailable 补零。
+
+2026-07-26 定向 `21 passed`；D3 全量为
+`465 passed, 1 skipped`。唯一跳过为可选 OR-Tools。
 
 ## 2026-07-25 正式 R0 滚动需求复核
 

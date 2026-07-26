@@ -11,6 +11,12 @@ D3 文档遵循 `research_modules/DOCUMENTATION_STANDARD.md`。推荐阅读顺�
 
 本模块只生成候选分配计划和审计数据，不包含真实飞控、硬件、火控、毁伤或自动处置逻辑。
 
+2026-07-26，D3 完成 A1 学习证据装配复核。production writer 不再接受调用方提供的
+qualified admission，production loader 也不接受手工正向布尔和占位 SHA 自我晋级。
+现有 development bundle 的 shadow 行为不变；正式 assist 等待 D6 实物审计和 D3
+模块专用 evidence assembler。定向测试 `21 passed`，全量为
+`465 passed, 1 skipped`。
+
 2026-07-25，clean commit `32b3b40` 的正式 R0
 `high_threat_m_to_n` 200v200、seed 1000、2.0 秒单元暴露滚动需求库存 P0。
 当前 D3 已在旧计划可行性评分中加入需求合同前置检查，并完成同配置开发复验。
