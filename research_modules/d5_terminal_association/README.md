@@ -2,6 +2,71 @@
 
 科研模块，用于把末端相机视场中的本地视觉轨迹保守关联到中心分配的 `global_track_id`。模块可在统一三维 episode 中在线运行；训练标签和真值评分仍保持离线。D5 只输出视觉关联与相机观察意图，不修改、重写或重新分配任何全局轨迹 ID。
 
+## 2026-07-26 异步跨调用活跃相机快照
+
+`Scalable3DTerminalAdapter.process()` 原先只把本次调用中完成状态更新的相机批次送入关联图。统一
+三维在线冒烟中，相机常按不同调用到达，因此每次图只有一个相机批次；即使多个相机先后看到目标，
+也没有跨视角候选边。该问题不是图评分器漏判，而是评分前没有把仍有效的异步相机状态放进同一张图。
+
+当前实现为每个 `(resource_id, camera_id)` 保存最近一份匿名实测局部航迹及对应外参。新相机批次
+到达时，本次顺序实测批次作为图锚点；其他相机只有同时满足量测时间差、到达时间差、外参年龄、
+missed-frame 和快照有效期约束，才以原始状态进入同一关联图。复用状态不预测、不改标签，继续携带
+原始 `measurement_timestamp`、`arrival_timestamp`、像素协方差、相机位置协方差和姿态协方差。
+没有本次实测锚点时不单独用缓存发布关联结果。
+
+默认快照有效期取图配置中量测时间窗、到达时间窗和外参年龄上限的最大值，当前为 `1.0 s`；缓存
+最多保留 `256` 个相机流。跨视角配对仍使用既有 `0.35 s` 量测时间差和 `1.0 s` 到达时间差，
+几何门限没有调整。OOSM 批次不覆盖快照，重复量测继续拒绝；缺外参、过期、超时间窗、超过
+missed-frame 上限、容量淘汰和重复节点均失败关闭或剔除。`reset_stream()` 清除指定相机的跟踪器
+和快照，`reset_episode()` 清除全部状态。
+
+关联诊断新增固定标量，分别记录本次更新批次、本次实测相机、跨调用活跃相机、复用局部航迹、
+量测/到达时间排除、外参排除、过期、OOSM、重复节点、容量淘汰、入图相机和缓存相机数量。诊断
+不携带业务 ID。`Scalable3DStepResult.camera_geometries` 返回实际覆盖关联图节点的当前及缓存外参。
+
+验证结果如下：
+
+- 异步两相机同目标的确定性 fixture 在第二次调用形成 `2` 个节点和 `1` 条边；不同目标形成
+  `2` 个节点和 `0` 条边。规则回退和模型评分接口均通过。
+- 过期、量测时间超窗、到达时间超窗、OOSM、缺外参、容量约束、同相机更新、stream reset 和
+  episode reset 均有失败关闭回归。
+- 2026-07-26 D5 全量测试为 `598 passed, 1 warning in 97.36s`；warning 是既有 PyTorch
+  NVML 初始化提示。
+- 等价 5v5 seed `1000`、`2.2 s` 规则短冒烟输出
+  `/tmp/MSM-d5-active-snapshot-rule-seed1000`。在线共 6 条 `vision_bbox` 观测：量测时刻
+  `0.7/0.8 s` 来自 `CAM-INT-0002`，`1.1 s` 来自 `CAM-INT-0001`，`1.6 s` 来自两相机，
+  `1.8 s` 来自 `CAM-INT-0002`。离线 truth sidecar 将 6 条全部标为
+  `disposition=known_false_alarm`、`truth_entity_id=null`；这些标签没有进入在线路径。
+- 规则复跑在发布时刻 `1.25/1.75/1.95 s` 形成 2 个跨相机节点，累计图节点由旧运行的 `6`
+  增至 `8`，其中两次发布各复用 1 个跨调用匿名航迹。`support_by_node` 没有共同中心
+  `GlobalTrack`，稀疏预筛选正确保留 `0` 条边，在线真值使用为 `0`。该短复测只证明异步节点
+  同图路径生效和虚警失败关闭，不能评价真实目标跨视角候选边、几何门或 G1 收益。
+- 使用实际 `7fb5db8b...ca71` 权重的接口兼容探针在异步同目标 fixture 上得到 `2` 节点、
+  `1` 边、`scoring_status=model_scored` 和概率 `0.9999935627`。该探针绕开正式 bundle
+  准入，只证明评分接口兼容，不授予在线模型权限。
+
+D6 已在 clean evaluator commit
+`107cf0756d7b75cd6bf1456d1f1aa940fec6a63c` 对既有 G1 v4 完成正式 post-assembly audit，输出为
+`research_modules/d6_evaluation_metrics/outputs/d5_g1_post_assembly_audit_7fb5db8b_a5a53de7_formal_107cf07_20260726/`。
+结果 `status=pass`、`blocker=[]`，内容 SHA-256 为
+`3738444168138584c7ec3eb895d123178092176ec751a5b455e575b177a2d852`，覆盖
+20 个未见 seed、900 个 episode 和 45 个场景规模单元；在线真值、同相机互斥违规和
+`global_track_id` 改写三项安全计数均为 `0`。该审计只证明当时 v4 的装配完整性，不授予模型
+晋级、默认路径、G1 在线辅助、全局身份、分配或控制权限。
+
+本次修改改变了 `scalable_3d_adapter.py`，当前运行时实现摘要为
+`d1a1d1c3212f84ab668d2ca32686532cb93b0da4f3c617ffec57c36187f461ef`，不再等于 v4 审计绑定的
+`408e71fe...f4fe`。公开严格加载器因此返回
+`available=false/failure_reason=bundle_implementation_runtime_mismatch`。这项失败关闭保持
+证据边界正确；新运行时若要使用 G1，必须重新装配并由 D6 独立复审。确定性几何规则仍为默认路径。
+
+后续由 main 先构造能产生真实目标共同可见观测的 truth-isolated 场景，可使用既有 recon cue
+或延长 episode。truth 只用于离线评分。验收顺序为先运行规则边并确认非零真实候选，再按当前源码
+重新装配 G1 并交 D6 复审；不调整现有门限。
+
+本次没有改变 AirSim 输入消息、相机 settings、检测器、episode reset 接口或中心 ID 所有权。
+`docs/AIRSIM_INTEGRATION_PLAN.md` 已检查，无需修改。
+
 ## 2026-07-26 冻结 registry 生产合同
 
 clean commit `d437744c030785859b61cf893d15d0463ab54ffb` 已重建稳健补充语料、组合训练、

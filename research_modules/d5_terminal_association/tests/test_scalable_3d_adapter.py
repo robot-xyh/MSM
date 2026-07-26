@@ -997,6 +997,365 @@ def test_model_missing_and_low_confidence_use_explicit_rule_fallback() -> None:
     assert loaded.probability_source == "loaded_edge_model"
 
 
+def test_async_cross_call_same_target_forms_edge_and_different_target_does_not() -> None:
+    same_target_adapter = Scalable3DTerminalAdapter()
+    first = same_target_adapter.process(
+        (_projected_batch(0, (1,), timestamp=10.0, frame_index=1),),
+        _center_tracks(),
+    )
+    same_target = same_target_adapter.process(
+        (_projected_batch(1, (1,), timestamp=10.1, frame_index=1),),
+        _center_tracks(),
+    )
+
+    assert first.association.graph.node_count == 1
+    assert first.association.graph.edge_count == 0
+    assert same_target.association.graph.node_count == 2
+    assert same_target.association.graph.edge_count == 1
+    assert len(same_target.camera_batches) == 1
+    assert len(same_target.camera_geometries) == 2
+    assert same_target.association.diagnostics[
+        "snapshot_current_update_batch_count"
+    ] == 1
+    assert same_target.association.diagnostics[
+        "snapshot_cross_call_active_camera_count"
+    ] == 1
+    assert same_target.association.diagnostics[
+        "snapshot_reused_coasting_tracklet_count"
+    ] == 1
+    snapshot_diagnostics = {
+        key: value
+        for key, value in same_target.association.diagnostics.items()
+        if key.startswith("snapshot_")
+    }
+    assert set(snapshot_diagnostics) == {
+        "snapshot_current_update_batch_count",
+        "snapshot_current_measurement_camera_count",
+        "snapshot_cross_call_active_camera_count",
+        "snapshot_reused_coasting_tracklet_count",
+        "snapshot_time_excluded_camera_count",
+        "snapshot_extrinsics_excluded_camera_count",
+        "snapshot_expired_camera_count",
+        "snapshot_oosm_ignored_batch_count",
+        "snapshot_duplicate_tracklet_excluded_count",
+        "snapshot_capacity_evicted_camera_count",
+        "snapshot_selected_camera_count",
+        "snapshot_cache_camera_count",
+    }
+    assert all(type(value) is int for value in snapshot_diagnostics.values())
+
+    different_target_adapter = Scalable3DTerminalAdapter()
+    different_target_adapter.process(
+        (_projected_batch(0, (1,), timestamp=10.0, frame_index=1),),
+        _center_tracks(),
+    )
+    different_target = different_target_adapter.process(
+        (_projected_batch(1, (2,), timestamp=10.1, frame_index=1),),
+        _center_tracks(),
+    )
+
+    assert different_target.association.graph.node_count == 2
+    assert different_target.association.graph.edge_count == 0
+    assert different_target.association.diagnostics[
+        "snapshot_cross_call_active_camera_count"
+    ] == 1
+
+
+def test_async_cross_call_snapshot_supports_model_and_rule_scoring() -> None:
+    class LoadedModel:
+        available = True
+        decision_threshold = 0.90
+
+        def forward_graph(self, graph: object) -> np.ndarray:
+            return np.full(getattr(graph, "edge_count"), 0.95)
+
+    model_adapter = Scalable3DTerminalAdapter()
+    model_adapter.process(
+        (_projected_batch(0, (1,), timestamp=10.0, frame_index=1),),
+        _center_tracks(),
+        edge_model=LoadedModel(),
+    )
+    model_result = model_adapter.process(
+        (_projected_batch(1, (1,), timestamp=10.1, frame_index=1),),
+        _center_tracks(),
+        edge_model=LoadedModel(),
+    )
+
+    rule_adapter = Scalable3DTerminalAdapter()
+    rule_adapter.process(
+        (_projected_batch(0, (1,), timestamp=10.0, frame_index=1),),
+        _center_tracks(),
+    )
+    rule_result = rule_adapter.process(
+        (_projected_batch(1, (1,), timestamp=10.1, frame_index=1),),
+        _center_tracks(),
+    )
+
+    assert model_result.association.graph.edge_count == 1
+    assert model_result.association.scoring_status == "model_scored"
+    assert model_result.association.probability_source == "loaded_edge_model"
+    assert rule_result.association.graph.edge_count == 1
+    assert rule_result.association.scoring_status == "rule_fallback_model_missing"
+    assert (
+        rule_result.association.probability_source
+        == "deterministic_geometry_rule"
+    )
+
+
+def test_cross_call_snapshot_time_window_and_ttl_fail_closed() -> None:
+    time_window_adapter = Scalable3DTerminalAdapter()
+    time_window_adapter.process(
+        (_projected_batch(0, (1,), timestamp=10.0, frame_index=1),),
+        _center_tracks(),
+    )
+    outside_pair_window = time_window_adapter.process(
+        (_projected_batch(1, (1,), timestamp=10.5, frame_index=1),),
+        _center_tracks(),
+    )
+
+    assert outside_pair_window.association.graph.node_count == 1
+    assert outside_pair_window.association.graph.edge_count == 0
+    assert outside_pair_window.association.diagnostics[
+        "snapshot_time_excluded_camera_count"
+    ] == 1
+    assert outside_pair_window.association.diagnostics[
+        "snapshot_expired_camera_count"
+    ] == 0
+
+    ttl_adapter = Scalable3DTerminalAdapter()
+    ttl_adapter.process(
+        (_projected_batch(0, (1,), timestamp=10.0, frame_index=1),),
+        _center_tracks(),
+    )
+    expired = ttl_adapter.process(
+        (_projected_batch(1, (1,), timestamp=11.2, frame_index=1),),
+        _center_tracks(),
+    )
+
+    assert expired.association.graph.node_count == 1
+    assert expired.association.graph.edge_count == 0
+    assert expired.association.diagnostics[
+        "snapshot_expired_camera_count"
+    ] == 1
+    assert expired.association.diagnostics["snapshot_cache_camera_count"] == 1
+
+
+def test_cross_call_snapshot_arrival_time_window_fails_closed() -> None:
+    adapter = Scalable3DTerminalAdapter(
+        Scalable3DAdapterConfig(active_camera_snapshot_ttl_s=2.0)
+    )
+    adapter.process(
+        (
+            _timed_projected_batch(
+                0,
+                measurement_timestamp=10.0,
+                arrival_timestamp=10.05,
+                frame_index=1,
+            ),
+        ),
+        _center_tracks(),
+    )
+    outside_arrival_window = adapter.process(
+        (
+            _timed_projected_batch(
+                1,
+                measurement_timestamp=10.1,
+                arrival_timestamp=11.20,
+                frame_index=1,
+            ),
+        ),
+        _center_tracks(),
+    )
+
+    assert outside_arrival_window.association.graph.node_count == 1
+    assert outside_arrival_window.association.graph.edge_count == 0
+    assert outside_arrival_window.association.diagnostics[
+        "snapshot_time_excluded_camera_count"
+    ] == 1
+    assert outside_arrival_window.association.diagnostics[
+        "snapshot_expired_camera_count"
+    ] == 0
+
+
+def test_cross_call_snapshot_coasts_only_within_missed_frame_limit() -> None:
+    adapter = Scalable3DTerminalAdapter(
+        Scalable3DAdapterConfig(max_missed_frames=1)
+    )
+    adapter.process(
+        (_projected_batch(0, (1,), timestamp=10.0, frame_index=1),),
+        _center_tracks(),
+    )
+    one_missed_frame = adapter.process(
+        (
+            _batch(0, (), timestamp=10.1, frame_index=2),
+            _projected_batch(1, (1,), timestamp=10.1, frame_index=1),
+        ),
+        _center_tracks(),
+    )
+
+    assert one_missed_frame.association.graph.node_count == 2
+    assert one_missed_frame.association.graph.edge_count == 1
+    assert one_missed_frame.association.diagnostics[
+        "snapshot_reused_coasting_tracklet_count"
+    ] == 1
+
+    expired = adapter.process(
+        (_batch(0, (), timestamp=10.2, frame_index=3),),
+        _center_tracks(),
+    )
+    assert expired.association.graph.node_count == 0
+    assert expired.association.diagnostics[
+        "snapshot_expired_camera_count"
+    ] == 1
+
+
+def test_oosm_batch_does_not_replace_active_cross_call_snapshot() -> None:
+    adapter = Scalable3DTerminalAdapter()
+    first = adapter.process(
+        (
+            _timed_projected_batch(
+                0,
+                measurement_timestamp=10.0,
+                arrival_timestamp=10.05,
+                frame_index=1,
+            ),
+        ),
+        _center_tracks(),
+    )
+    oosm = adapter.process(
+        (
+            _timed_projected_batch(
+                0,
+                measurement_timestamp=9.9,
+                arrival_timestamp=10.20,
+                frame_index=2,
+            ),
+        ),
+        _center_tracks(),
+    )
+    resumed = adapter.process(
+        (
+            _timed_projected_batch(
+                1,
+                measurement_timestamp=10.1,
+                arrival_timestamp=10.25,
+                frame_index=1,
+            ),
+        ),
+        _center_tracks(),
+    )
+
+    assert first.tracklets[0].measurement_timestamp == pytest.approx(10.0)
+    assert oosm.association.graph.node_count == 0
+    assert oosm.association.diagnostics[
+        "snapshot_oosm_ignored_batch_count"
+    ] == 1
+    assert resumed.association.graph.node_count == 2
+    assert resumed.association.graph.edge_count == 1
+    cached = next(
+        item for item in resumed.tracklets if item.camera_key == "RESOURCE-0/CAM-0"
+    )
+    assert cached.measurement_timestamp == pytest.approx(10.0)
+    assert cached.arrival_timestamp == pytest.approx(10.05)
+
+
+def test_missing_extrinsics_and_snapshot_capacity_fail_closed() -> None:
+    missing_extrinsics_adapter = Scalable3DTerminalAdapter()
+    missing_extrinsics = missing_extrinsics_adapter.process(
+        (
+            _batch(0, (), timestamp=10.0, frame_index=1),
+            _projected_batch(1, (1,), timestamp=10.0, frame_index=1),
+        ),
+        _center_tracks(),
+    )
+
+    assert missing_extrinsics.association.graph.node_count == 1
+    assert missing_extrinsics.association.graph.edge_count == 0
+    assert missing_extrinsics.association.diagnostics[
+        "snapshot_extrinsics_excluded_camera_count"
+    ] == 1
+
+    bounded_adapter = Scalable3DTerminalAdapter(
+        Scalable3DAdapterConfig(max_active_camera_snapshots=1)
+    )
+    bounded_adapter.process(
+        (_projected_batch(0, (1,), timestamp=10.0, frame_index=1),),
+        _center_tracks(),
+    )
+    bounded = bounded_adapter.process(
+        (_projected_batch(1, (1,), timestamp=10.1, frame_index=1),),
+        _center_tracks(),
+    )
+
+    assert bounded.association.graph.node_count == 1
+    assert bounded.association.graph.edge_count == 0
+    assert bounded.association.diagnostics[
+        "snapshot_capacity_evicted_camera_count"
+    ] == 1
+    assert bounded.association.diagnostics["snapshot_cache_camera_count"] == 1
+
+
+def test_same_camera_update_is_not_duplicated_and_reset_clears_snapshot() -> None:
+    adapter = Scalable3DTerminalAdapter()
+    adapter.process(
+        (_projected_batch(0, (1,), timestamp=10.0, frame_index=1),),
+        _center_tracks(),
+    )
+    same_camera = adapter.process(
+        (_projected_batch(0, (1,), timestamp=10.1, frame_index=2),),
+        _center_tracks(),
+    )
+
+    assert same_camera.association.graph.node_count == 1
+    assert same_camera.association.diagnostics[
+        "snapshot_duplicate_tracklet_excluded_count"
+    ] == 0
+    assert same_camera.association.diagnostics[
+        "snapshot_cross_call_active_camera_count"
+    ] == 0
+
+    adapter.reset_episode()
+    after_reset = adapter.process(
+        (_projected_batch(1, (1,), timestamp=0.1, frame_index=1),),
+        _center_tracks(),
+    )
+
+    assert after_reset.association.graph.node_count == 1
+    assert after_reset.association.graph.edge_count == 0
+    assert after_reset.association.diagnostics[
+        "snapshot_cross_call_active_camera_count"
+    ] == 0
+    assert after_reset.association.diagnostics["snapshot_cache_camera_count"] == 1
+
+
+def test_reset_stream_clears_only_the_selected_active_camera_snapshot() -> None:
+    adapter = Scalable3DTerminalAdapter()
+    adapter.process(
+        (
+            _projected_batch(0, (1,), timestamp=10.0, frame_index=1),
+            _projected_batch(1, (1,), timestamp=10.0, frame_index=1),
+        ),
+        _center_tracks(),
+    )
+
+    adapter.reset_stream("RESOURCE-0", "CAM-0")
+    after_reset = adapter.process(
+        (_projected_batch(2, (1,), timestamp=10.1, frame_index=1),),
+        _center_tracks(),
+    )
+
+    assert {
+        item.camera_key for item in after_reset.association.graph.nodes
+    } == {
+        "RESOURCE-1/CAM-1",
+        "RESOURCE-2/CAM-2",
+    }
+    assert after_reset.association.diagnostics[
+        "snapshot_cross_call_active_camera_count"
+    ] == 1
+    assert after_reset.association.diagnostics["snapshot_cache_camera_count"] == 2
+
+
 def test_real_online_sensor_batch_shape_uses_anonymous_id_and_covariance_fallback() -> None:
     centers, boxes = _projected_boxes(0, (1,))
     metadata = _camera_metadata(0)

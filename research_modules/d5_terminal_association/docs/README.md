@@ -15,6 +15,14 @@ D5 文档遵循 `research_modules/DOCUMENTATION_STANDARD.md`。推荐阅读顺�
 11. `../reports/D5_TRACKLET_GRAPH_CANONICAL_SEED_VIEW_20260721.md`：跨视角图数据共享 seed 只读视图、正式计数和失败关闭门。
 12. `../reports/D5_ACTIVE_VISION_CANONICAL_SEED_VIEW_20260721.md`：主动视觉共享 seed 只读视图、正式样本计数和 shadow-only 边界。
 
+2026-07-26，scalable 3D 在线入口增加有界跨调用活跃相机快照。异步相机可在双时间戳、外参、
+missed-frame 和 TTL 合法时进入同一关联图；快照保持匿名、协方差和中心 ID 只读边界。单元
+fixture 已形成 `2 nodes / 1 edge`。5v5 seed 1000 短复跑累计节点由 6 增至 8，但在线 6 条
+观测经离线 sidecar 核验均为 `known_false_alarm/truth_entity_id=null`，因此零边只证明虚警
+失败关闭，不能评价真实目标几何门或 G1 收益。D6 对既有 G1 v4 的 post-assembly audit 只证明
+装配完整性；当前源码摘要变化后，旧 v4 严格加载失败关闭，规则路径继续默认。详细状态见
+`ALGORITHM_AND_IMPLEMENTATION.md`、`EXPERIMENT_REPORT.md` 和模块 `PLAN.md`。
+
 2026-07-21，确定性主动视觉规则新增默认 3 帧的宽视场稳定门。状态按相机、中心目标、计划版本和
 联盟版本隔离；计划/目标变化、时间或证据回退、歧义、通信异常、友方冲突和相机忙都会清除计数。
 该阶段只有模块规则测试，未运行 AirSim 或模型训练，也没有运行时 ACK 输入。详细原理、实现和测试

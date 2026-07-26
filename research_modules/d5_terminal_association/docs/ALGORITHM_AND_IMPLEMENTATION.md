@@ -2,6 +2,141 @@
 
 **状态日期：2026-07-26**
 
+## 异步跨调用活跃相机快照
+
+### 问题
+
+`Scalable3DTerminalAdapter` 的图构造入口原先只接收当前 `process()` 调用中的最新状态更新
+批次。同步批次可正常构成多相机图，异步交替批次则每次只有一个相机节点。图评分器看到的
+跨相机候选集合为空：
+
+\[
+\mathcal E_k^{\mathrm{candidate}}=\varnothing
+\quad\text{when}\quad |\mathcal C_k|=1.
+\]
+
+其中 \(\mathcal C_k\) 是本次调用内的相机集合。该现象与规则评分或 G1 图模型性能无关，断点
+位于图输入装配阶段。
+
+### 状态结构
+
+适配器增加有界映射
+
+\[
+\mathcal S:
+(\text{resource\_id},\text{camera\_id})\mapsto
+(\mathcal T_i,G_i,n_i^{\mathrm{miss}}),
+\]
+
+其中 \(\mathcal T_i\) 是该流最近一次有效实测的匿名局部航迹集合，\(G_i\) 是对应相机外参及
+协方差，\(n_i^{\mathrm{miss}}\) 是该状态之后的连续漏帧数。每个局部航迹仍保存：
+
+- `measurement_timestamp` 和 `arrival_timestamp`；
+- 像素中心、检测框及像素协方差；
+- 相机局部轨迹标识、运动历史和置信度；
+- 来源观测标识，但不含在线 truth 或中心身份。
+
+每份外参保存相机位置、从 NED 到相机坐标的旋转、位置协方差、姿态协方差和外参量测时间。
+快照不复制或生成 `global_track_id`。
+
+### 更新顺序
+
+一次 `process()` 按以下顺序执行：
+
+1. 适配所有输入批次，先由既有相机局部跟踪器完成重复量测拒绝和 OOSM 判定。
+2. 选择本次真正更新当前状态的批次。OOSM 批次不进入该集合。
+3. 有匿名实测航迹且外参有效时，原子替换对应相机快照，并把该相机列为本次图锚点。
+4. 空批次只增加既有快照的 missed-frame 计数；超过上限时删除。新实测缺外参时不保留旧状态
+   冒充当前证据。
+5. 超过容量时按到达时间、量测时间和流键确定性淘汰最旧快照。
+6. 以本次锚点的最大量测和到达时间清理过期快照。
+7. 当前锚点直接进入图；其他相机只有通过双时间窗和外参年龄检查才进入图。
+8. 按完整 tracklet key 去重，并把实际入图相机外参随结果返回。
+9. 后续稀疏候选、几何门、规则或模型评分、受约束聚类和中心 Hungarian 绑定保持原逻辑。
+
+若本次没有有效实测锚点，步骤 7 返回空图。缓存不能仅靠历史状态反复产生关联证据。
+
+### 时间与有效性门
+
+缓存状态 \(s_i\) 相对任一当前锚点 \(a\) 的配对条件为
+
+\[
+g_t(i,a)=
+\mathbf 1\left(
+|t_i^m-t_a^m|\leq 0.35
+\land
+|t_i^a-t_a^a|\leq 1.0
+\right).
+\]
+
+单位为秒。缓存还要满足
+
+\[
+\max(t_{\mathrm{ref}}^m-t_i^m,\,
+     t_{\mathrm{ref}}^a-t_i^a)\leq T_{\mathrm{snapshot}},
+\qquad
+n_i^{\mathrm{miss}}\leq N_{\mathrm{miss,max}},
+\]
+
+以及
+
+\[
+|t_{i,\mathrm{tracklet}}^m-t_{i,\mathrm{geometry}}^m|
+\leq T_{\mathrm{geometry,max}}.
+\]
+
+`T_snapshot` 可配置；未显式给定时取图配置中量测时间窗、到达时间窗和外参年龄上限的最大值，
+当前为 `1.0 s`。最大快照数默认为 `256`。这些参数控制缓存生命周期，不替代稀疏图内部的几何
+门。
+
+### 协方差和身份边界
+
+复用状态不做前向预测，因此不会产生额外的伪协方差收缩。像素、相机位置和姿态协方差沿用原始
+实测值。时间差由图边特征和时间门显式处理。若后续需要运动外推，应由独立、可审计的预测模型
+增加过程噪声，不能在快照层隐式修改。
+
+所有局部轨迹仍在相机命名空间内匿名。`global_track_id` 只来自中心 `GlobalTrack` 候选并由既有
+Hungarian 绑定只读回显。缓存层没有 ID 创建、换绑或重写接口。AirSim actor/object/truth ID
+继续在在线适配入口被拒绝。
+
+### 诊断
+
+每次关联输出增加以下固定标量：
+
+- `snapshot_current_update_batch_count`；
+- `snapshot_current_measurement_camera_count`；
+- `snapshot_cross_call_active_camera_count`；
+- `snapshot_reused_coasting_tracklet_count`；
+- `snapshot_time_excluded_camera_count`；
+- `snapshot_extrinsics_excluded_camera_count`；
+- `snapshot_expired_camera_count`；
+- `snapshot_oosm_ignored_batch_count`；
+- `snapshot_duplicate_tracklet_excluded_count`；
+- `snapshot_capacity_evicted_camera_count`；
+- `snapshot_selected_camera_count`；
+- `snapshot_cache_camera_count`。
+
+这些字段用于区分“相机状态未入图”“已入图但无候选边”“候选边被评分拒绝”。它们只保存数量，
+不把 resource、camera、local track 或 global track ID 写入性能诊断。
+
+### 验证
+
+2026-07-26 定向 adapter 回归为 `48 passed`，D5 全量为
+`598 passed, 1 warning in 97.36s`。异步同目标 fixture 在第二次调用形成 `2` 个节点和
+`1` 条边；异步不同目标形成 `2` 个节点和 `0` 条边。规则路径状态为
+`rule_fallback_model_missing`，模型 fixture 状态为 `model_scored`。量测时间、到达时间、TTL、
+missed-frame、OOSM、外参、容量和 reset 负例均不形成非法边。
+
+等价 5v5 seed `1000`、`2.2 s` 规则复跑中，5 次 D5 发布的节点数为
+`[1, 1, 2, 2, 2]`，旧运行为 `[1, 1, 1, 2, 1]`；两次异步调用各复用 1 个匿名局部航迹。
+5 次发布的边数均为 `0`。相机对已经进入索引，缺口收敛到共同中心投影支持和真实输入几何，
+不再是跨调用状态丢失。
+
+实际 `7fb5db8b...ca71` 权重接口探针对异步同目标图输出概率 `0.9999935627`，并形成一个双节点
+簇。该探针不经过严格 bundle 准入，不能作为在线启用证据。D6 对既有 v4 的正式 post-assembly
+audit 只证明装配完整性；本轮源码变更使当前运行时摘要变为 `d1a1d1c3...61ef`，旧 v4 严格加载
+以 `bundle_implementation_runtime_mismatch` 失败关闭。
+
 ## 冻结 registry 生产
 
 冻结审计先生成五份 producer 实物：

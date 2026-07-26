@@ -1,5 +1,44 @@
 # D5 终端视觉配准与身份认证计划
 
+## 2026-07-26 异步活跃相机快照收口
+
+- [x] 复现 `Scalable3DTerminalAdapter.process()` 只消费本次 adapted batches 的问题：同步
+  两相机同目标为 `2 nodes / 1 edge`，异步分两次调用在修复前为 `1 node / 0 edge`。
+- [x] 增加按 `(resource_id, camera_id)` 隔离的有界活跃快照。只缓存匿名局部航迹及对应外参，
+  默认有效期 `1.0 s`、最大 `256` 个相机流，不读取 AirSim truth ID。
+- [x] 以本次顺序实测批次锚定图，复用其他相机仍有效的原始量测。保留双时间戳、像素与外参
+  协方差，不预测、不重编号、不创建或改写 `global_track_id`。
+- [x] 保持既有 `0.35 s` 量测时间差、`1.0 s` 到达时间差、外参年龄、missed-frame、几何和
+  图候选门限。没有为了形成边调整阈值。
+- [x] OOSM 不覆盖快照；重复量测、缺外参、旧状态、过期、容量溢出和重复节点失败关闭或剔除。
+  `reset_stream()` 与 `reset_episode()` 分别清除相机级和 episode 级快照。
+- [x] 新增固定标量诊断，区分本次更新、实测相机、跨调用活跃相机、复用航迹，以及时间、外参、
+  过期、OOSM、重复和容量排除。诊断不写业务 ID。
+- [x] 增加异步同/异目标、模型/规则评分、双时间窗、TTL、missed-frame、OOSM、缺外参、容量、
+  同相机更新和两级 reset 回归。2026-07-26 adapter 专项为 `48 passed`，D5 全量为
+  `598 passed, 1 warning in 97.36s`。
+- [x] 复跑等价 5v5 seed `1000`、`2.2 s` 短输入。在线 6 条 `vision_bbox` 在离线 sidecar
+  中均为 `known_false_alarm/truth_entity_id=null`；发布时刻 `1.25/1.75/1.95 s` 形成双相机
+  节点，累计节点 `6 -> 8`，两次跨调用复用各 1 个匿名航迹。`support_by_node` 无共同中心
+  `GlobalTrack`，预筛选正确保留 0 边，在线真值使用为 0。
+- [x] 将该短输入证据限定为异步节点同图和虚警失败关闭，不用于判断真实目标跨视角候选边、
+  几何门或 G1 收益。
+- [x] 记录 D6 clean evaluator commit `107cf075...6a63c` 的正式 G1 v4 post-assembly audit：
+  `status=pass`、blocker 为空、内容 SHA-256 `37384441...d852`、`20/900/45`，三项安全计数为
+  `0`。该结果只证明装配完整性，不授予任何默认、身份、分配或控制权限。
+- [x] 验证旧 v4 对新运行时失败关闭。当前运行时摘要 `d1a1d1c3...61ef` 与审计绑定的
+  `408e71fe...f4fe` 不同，严格加载返回 `bundle_implementation_runtime_mismatch`，不增加
+  兼容白名单。
+- [ ] 由 main 构造能产生真实目标共同可见观测的 truth-isolated 场景，可使用现有 recon cue
+  或更长时长。truth 只进入离线 sidecar/评分，在线 DTO 和候选图继续匿名。
+- [ ] 在上述场景先运行确定性规则，分别统计“入同图”“形成真实候选边”“通过几何门”和
+  “完成中心只读 binding”；不修改现有时间、几何或概率门限。
+- [ ] 规则边证据成立后，按当前运行时摘要重新生成 development/evaluation/bundle 证据，并由
+  D6 独立执行新的 post-assembly audit。完成前规则路径保持默认，G1 在线作用域关闭。
+
+本次没有改变 AirSim settings、输入 DTO、检测器、相机安装、episode 编排或 reset 调用方式。
+`docs/AIRSIM_INTEGRATION_PLAN.md` 已检查，无需修改。
+
 ## 2026-07-26 冻结 registry 生产合同收口
 
 - [x] 在 clean commit `d437744c...4ffb` 重建 supplemental/composite、development bundle、

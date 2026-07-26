@@ -77,6 +77,8 @@ class Scalable3DAdapterConfig:
     model_inference_timeout_ms: float = 50.0
     max_binding_mahalanobis: float = 6.0
     binding_ambiguity_margin: float = 0.5
+    active_camera_snapshot_ttl_s: float | None = None
+    max_active_camera_snapshots: int = 256
     graph_config: SparseTrackletGraphConfig = field(default_factory=SparseTrackletGraphConfig)
 
     def __post_init__(self) -> None:
@@ -116,6 +118,27 @@ class Scalable3DAdapterConfig:
         object.__setattr__(self, "max_missed_frames", max_missed_frames)
         if not isinstance(self.graph_config, SparseTrackletGraphConfig):
             raise TypeError("graph_config must be SparseTrackletGraphConfig")
+        snapshot_ttl = self.active_camera_snapshot_ttl_s
+        if snapshot_ttl is None:
+            snapshot_ttl = max(
+                self.graph_config.max_time_delta_s,
+                self.graph_config.max_arrival_time_delta_s,
+                self.graph_config.max_camera_geometry_age_s,
+            )
+        snapshot_ttl = float(snapshot_ttl)
+        if not np.isfinite(snapshot_ttl) or snapshot_ttl <= 0.0:
+            raise ValueError(
+                "active_camera_snapshot_ttl_s must be finite and positive"
+            )
+        object.__setattr__(self, "active_camera_snapshot_ttl_s", snapshot_ttl)
+        max_snapshots = int(self.max_active_camera_snapshots)
+        if max_snapshots <= 0:
+            raise ValueError("max_active_camera_snapshots must be positive")
+        object.__setattr__(
+            self,
+            "max_active_camera_snapshots",
+            max_snapshots,
+        )
 
 
 @dataclass(frozen=True)
@@ -222,6 +245,61 @@ class Scalable3DAdaptedCameraBatch:
 
 
 @dataclass(frozen=True)
+class _ActiveCameraSnapshot:
+    """Latest measured anonymous state retained for one camera stream."""
+
+    batch: Scalable3DAdaptedCameraBatch
+    missed_frame_count: int = 0
+
+    def __post_init__(self) -> None:
+        missed = int(self.missed_frame_count)
+        if missed < 0:
+            raise ValueError("missed_frame_count must be non-negative")
+        object.__setattr__(self, "missed_frame_count", missed)
+
+    @property
+    def stream_key(self) -> tuple[str, str]:
+        return (self.batch.resource_id, self.batch.camera_id)
+
+    @property
+    def measurement_timestamp(self) -> float:
+        return float(self.batch.measurement_timestamp)
+
+    @property
+    def arrival_timestamp(self) -> float:
+        return float(self.batch.arrival_timestamp)
+
+
+@dataclass(frozen=True)
+class _AssociationSnapshotSelection:
+    """Current graph inputs plus fixed-size scalar cache diagnostics."""
+
+    tracklets: tuple[CameraLocalTracklet, ...]
+    camera_geometries: tuple[TrackletCameraGeometry, ...]
+    diagnostics: Mapping[str, int]
+
+    def __post_init__(self) -> None:
+        tracklets = tuple(self.tracklets)
+        geometries = tuple(self.camera_geometries)
+        if len({item.tracklet_key for item in tracklets}) != len(tracklets):
+            raise ValueError("association snapshot tracklet keys must be unique")
+        if len({item.camera_key for item in geometries}) != len(geometries):
+            raise ValueError("association snapshot camera geometries must be unique")
+        diagnostic_values = {
+            str(key): int(value) for key, value in dict(self.diagnostics).items()
+        }
+        if any(value < 0 for value in diagnostic_values.values()):
+            raise ValueError("association snapshot diagnostics must be non-negative")
+        object.__setattr__(self, "tracklets", tracklets)
+        object.__setattr__(self, "camera_geometries", geometries)
+        object.__setattr__(
+            self,
+            "diagnostics",
+            MappingProxyType(diagnostic_values),
+        )
+
+
+@dataclass(frozen=True)
 class Scalable3DAssociationResult:
     """Sparse online association result with explicit model/rule provenance."""
 
@@ -267,6 +345,28 @@ class Scalable3DStepResult:
     camera_batches: tuple[Scalable3DAdaptedCameraBatch, ...]
     center_projection_tracks: tuple[GlobalTrack, ...]
     association: Scalable3DAssociationResult
+    association_camera_geometries: tuple[TrackletCameraGeometry, ...] = field(
+        default_factory=tuple,
+        repr=False,
+    )
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "camera_batches", tuple(self.camera_batches))
+        object.__setattr__(
+            self,
+            "center_projection_tracks",
+            tuple(self.center_projection_tracks),
+        )
+        geometries = tuple(self.association_camera_geometries)
+        if len({item.camera_key for item in geometries}) != len(geometries):
+            raise ValueError("association camera geometries must be unique")
+        required = {tracklet.camera_key for tracklet in self.association.graph.nodes}
+        provided = {geometry.camera_key for geometry in geometries}
+        if geometries and provided != required:
+            raise ValueError(
+                "association camera geometries must exactly cover graph cameras"
+            )
+        object.__setattr__(self, "association_camera_geometries", geometries)
 
     @property
     def tracklets(self) -> tuple[CameraLocalTracklet, ...]:
@@ -277,6 +377,8 @@ class Scalable3DStepResult:
 
     @property
     def camera_geometries(self) -> tuple[TrackletCameraGeometry, ...]:
+        if self.association_camera_geometries:
+            return self.association_camera_geometries
         required_camera_keys = {tracklet.camera_key for tracklet in self.tracklets}
         latest_by_camera: dict[str, TrackletCameraGeometry] = {}
         for batch in self.camera_batches:
@@ -662,6 +764,9 @@ class Scalable3DTerminalAdapter:
     def __init__(self, config: Scalable3DAdapterConfig | None = None) -> None:
         self.config = config or Scalable3DAdapterConfig()
         self._trackers: dict[tuple[str, str], _AnonymousCameraTracker] = {}
+        self._active_camera_snapshots: dict[
+            tuple[str, str], _ActiveCameraSnapshot
+        ] = {}
         self._center_track_source_signature: tuple[Any, ...] | None = None
         self._center_projection_tracks: tuple[GlobalTrack, ...] = ()
         self._active_local_history_count = 0
@@ -776,24 +881,31 @@ class Scalable3DTerminalAdapter:
             self._center_projection_tracks = center_tracks
             self._increment_performance("center_projection_cache_miss_count")
         association_batches = _latest_state_update_batches(adapted_batches)
+        snapshot = self._select_association_snapshot(
+            association_batches,
+            adapted_batches,
+        )
         association = run_scalable_3d_online_association(
-            tuple(tracklet for batch in association_batches for tracklet in batch.tracklets),
-            tuple(
-                batch.camera_geometry
-                for batch in association_batches
-                if batch.camera_geometry is not None
-            ),
+            snapshot.tracklets,
+            snapshot.camera_geometries,
             center_tracks,
             config=self.config,
             edge_model=edge_model,
+            diagnostics=snapshot.diagnostics,
         )
         self._record_association_operations(association, len(center_tracks))
         self._increment_performance("process_frame_count")
-        return Scalable3DStepResult(adapted_batches, center_tracks, association)
+        return Scalable3DStepResult(
+            adapted_batches,
+            center_tracks,
+            association,
+            snapshot.camera_geometries,
+        )
 
     def reset_stream(self, resource_id: str, camera_id: str) -> None:
         key = (str(resource_id).strip(), str(camera_id).strip())
         tracker = self._trackers.pop(key, None)
+        self._active_camera_snapshots.pop(key, None)
         if tracker is not None:
             self._active_local_history_count -= tracker.active_history_count
             self._received_timestamp_history_count -= tracker.received_timestamp_count
@@ -801,6 +913,7 @@ class Scalable3DTerminalAdapter:
 
     def reset_episode(self) -> None:
         self._trackers.clear()
+        self._active_camera_snapshots.clear()
         self._center_track_source_signature = None
         self._center_projection_tracks = ()
         self._active_local_history_count = 0
@@ -897,6 +1010,193 @@ class Scalable3DTerminalAdapter:
                 cluster_count,
             )
         self._increment_performance("binding_output_count", len(association.bindings))
+
+    def _select_association_snapshot(
+        self,
+        current_batches: Sequence[Scalable3DAdaptedCameraBatch],
+        adapted_batches: Sequence[Scalable3DAdaptedCameraBatch],
+    ) -> _AssociationSnapshotSelection:
+        """Assemble one bounded, truth-free cross-call camera snapshot.
+
+        A graph is anchored only by a current in-order measured batch. Cached
+        nodes from other cameras remain at their original measurement and
+        arrival timestamps; they are never predicted or relabelled here.
+        """
+
+        diagnostics = {
+            "snapshot_current_update_batch_count": len(current_batches),
+            "snapshot_current_measurement_camera_count": 0,
+            "snapshot_cross_call_active_camera_count": 0,
+            "snapshot_reused_coasting_tracklet_count": 0,
+            "snapshot_time_excluded_camera_count": 0,
+            "snapshot_extrinsics_excluded_camera_count": 0,
+            "snapshot_expired_camera_count": 0,
+            "snapshot_oosm_ignored_batch_count": sum(
+                batch.status == "oosm_ignored" for batch in adapted_batches
+            ),
+            "snapshot_duplicate_tracklet_excluded_count": 0,
+            "snapshot_capacity_evicted_camera_count": 0,
+            "snapshot_selected_camera_count": 0,
+            "snapshot_cache_camera_count": 0,
+        }
+        current_measured_streams: set[tuple[str, str]] = set()
+        for batch in current_batches:
+            stream_key = (batch.resource_id, batch.camera_id)
+            previous = self._active_camera_snapshots.get(stream_key)
+            if batch.tracklets:
+                if batch.camera_geometry is None:
+                    diagnostics["snapshot_extrinsics_excluded_camera_count"] += 1
+                    self._active_camera_snapshots.pop(stream_key, None)
+                    continue
+                if any(
+                    tracklet.camera_key != batch.camera_geometry.camera_key
+                    for tracklet in batch.tracklets
+                ):
+                    raise RuntimeError(
+                        "camera snapshot tracklet and geometry namespace mismatch"
+                    )
+                for tracklet in batch.tracklets:
+                    assert_anonymous_online_payload(tracklet)
+                self._active_camera_snapshots[stream_key] = _ActiveCameraSnapshot(
+                    batch=batch,
+                    missed_frame_count=0,
+                )
+                current_measured_streams.add(stream_key)
+                continue
+            if previous is not None:
+                missed_frames = previous.missed_frame_count + 1
+                if missed_frames > self.config.max_missed_frames:
+                    self._active_camera_snapshots.pop(stream_key, None)
+                    diagnostics["snapshot_expired_camera_count"] += 1
+                else:
+                    self._active_camera_snapshots[stream_key] = (
+                        _ActiveCameraSnapshot(
+                            batch=previous.batch,
+                            missed_frame_count=missed_frames,
+                        )
+                    )
+            elif batch.camera_geometry is None:
+                diagnostics["snapshot_extrinsics_excluded_camera_count"] += 1
+
+        while (
+            len(self._active_camera_snapshots)
+            > self.config.max_active_camera_snapshots
+        ):
+            oldest_key = min(
+                self._active_camera_snapshots,
+                key=lambda key: (
+                    self._active_camera_snapshots[key].arrival_timestamp,
+                    self._active_camera_snapshots[key].measurement_timestamp,
+                    key,
+                ),
+            )
+            self._active_camera_snapshots.pop(oldest_key)
+            diagnostics["snapshot_capacity_evicted_camera_count"] += 1
+
+        anchor_snapshots = tuple(
+            self._active_camera_snapshots[key]
+            for key in sorted(current_measured_streams)
+            if key in self._active_camera_snapshots
+        )
+        diagnostics["snapshot_current_measurement_camera_count"] = len(
+            anchor_snapshots
+        )
+        if not anchor_snapshots:
+            diagnostics["snapshot_cache_camera_count"] = len(
+                self._active_camera_snapshots
+            )
+            return _AssociationSnapshotSelection((), (), diagnostics)
+
+        reference_measurement_timestamp = max(
+            item.measurement_timestamp for item in anchor_snapshots
+        )
+        reference_arrival_timestamp = max(
+            item.arrival_timestamp for item in anchor_snapshots
+        )
+        snapshot_ttl = float(self.config.active_camera_snapshot_ttl_s)
+        for stream_key, active in tuple(self._active_camera_snapshots.items()):
+            measurement_age = (
+                reference_measurement_timestamp - active.measurement_timestamp
+            )
+            arrival_age = reference_arrival_timestamp - active.arrival_timestamp
+            if measurement_age > snapshot_ttl or arrival_age > snapshot_ttl:
+                self._active_camera_snapshots.pop(stream_key, None)
+                current_measured_streams.discard(stream_key)
+                diagnostics["snapshot_expired_camera_count"] += 1
+
+        anchor_snapshots = tuple(
+            self._active_camera_snapshots[key]
+            for key in sorted(current_measured_streams)
+            if key in self._active_camera_snapshots
+        )
+        diagnostics["snapshot_current_measurement_camera_count"] = len(
+            anchor_snapshots
+        )
+        selected_tracklets: list[CameraLocalTracklet] = []
+        selected_geometries: list[TrackletCameraGeometry] = []
+        selected_tracklet_keys: set[str] = set()
+        graph_config = self.config.graph_config
+        for stream_key in sorted(self._active_camera_snapshots):
+            active = self._active_camera_snapshots[stream_key]
+            batch = active.batch
+            geometry = batch.camera_geometry
+            if geometry is None:
+                diagnostics["snapshot_extrinsics_excluded_camera_count"] += 1
+                continue
+            if any(
+                abs(
+                    tracklet.measurement_timestamp
+                    - geometry.measurement_timestamp
+                )
+                > graph_config.max_camera_geometry_age_s
+                for tracklet in batch.tracklets
+            ):
+                diagnostics["snapshot_extrinsics_excluded_camera_count"] += 1
+                continue
+            is_current_measurement = stream_key in current_measured_streams
+            if not is_current_measurement and not any(
+                abs(
+                    active.measurement_timestamp
+                    - anchor.measurement_timestamp
+                )
+                <= graph_config.max_time_delta_s
+                and abs(active.arrival_timestamp - anchor.arrival_timestamp)
+                <= graph_config.max_arrival_time_delta_s
+                for anchor in anchor_snapshots
+                if anchor.stream_key != stream_key
+            ):
+                diagnostics["snapshot_time_excluded_camera_count"] += 1
+                continue
+
+            camera_tracklets: list[CameraLocalTracklet] = []
+            for tracklet in batch.tracklets:
+                assert_anonymous_online_payload(tracklet)
+                if tracklet.tracklet_key in selected_tracklet_keys:
+                    diagnostics[
+                        "snapshot_duplicate_tracklet_excluded_count"
+                    ] += 1
+                    continue
+                selected_tracklet_keys.add(tracklet.tracklet_key)
+                camera_tracklets.append(tracklet)
+            if not camera_tracklets:
+                continue
+            selected_tracklets.extend(camera_tracklets)
+            selected_geometries.append(geometry)
+            diagnostics["snapshot_selected_camera_count"] += 1
+            if not is_current_measurement:
+                diagnostics["snapshot_cross_call_active_camera_count"] += 1
+                diagnostics["snapshot_reused_coasting_tracklet_count"] += len(
+                    camera_tracklets
+                )
+
+        diagnostics["snapshot_cache_camera_count"] = len(
+            self._active_camera_snapshots
+        )
+        return _AssociationSnapshotSelection(
+            tuple(selected_tracklets),
+            tuple(selected_geometries),
+            diagnostics,
+        )
 
     def _commit_prepared_batch(
         self,
@@ -1092,6 +1392,7 @@ def run_scalable_3d_online_association(
     *,
     config: Scalable3DAdapterConfig | None = None,
     edge_model: Any | None = None,
+    diagnostics: Mapping[str, Any] | None = None,
 ) -> Scalable3DAssociationResult:
     """Build, score, constrain, and center-bind one anonymous online graph."""
 
@@ -1146,6 +1447,7 @@ def run_scalable_3d_online_association(
         diagnostics={
             "edge_probability_threshold": probability_threshold,
             "model_inference_latency_ms": inference_latency_ms,
+            **dict(diagnostics or {}),
         },
     )
 
