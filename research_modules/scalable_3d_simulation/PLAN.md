@@ -1209,11 +1209,31 @@ GAP、算法文档和系统总报告。
    生产分配权限、控制权限、物理结果和奖励。
 4. [x] 软件回归为 `3 passed`，覆盖严格 manifest、哈希清单、重复发布拒绝、bundle
    篡改拒绝和固定 seed 顺序。
-5. [ ] 在包含本装配器的 detached clean commit 上生成真实 20-seed 输入。
-6. [ ] 调用 D3 `isolated_intervention_batch` 完成批量重放，记录每个 seed 的首个合格
-   帧或 `no_eligible_frame`。该结果通过 D6 外审前不得作为 A1 准入证据。
+5. [x] 在 clean source commit `0ed7ca2730f5354be1e6021f9882f1ae26bc42df`
+   生成真实 20-seed、100 帧输入，manifest 和整树 SHA-256 校验通过。
+6. [x] 在代码提交 `bdb665eb8e63a17f5f15dbf3fe472af10e5e5b5c` 的 clean
+   evaluator 完成 D3 `isolated_intervention_batch`。20/20 seed 均为
+   `no_eligible_frame`，80 帧应用学习代价、20 帧分布外回退，绑定变化为 0。
+   该结果关闭批量重放合同，不构成 A1 准入。
 7. [ ] 只有存在可辨识绑定变化的 seed，才进入 D7 共同检查点物理续跑；零变化结果按
    正式负证据保留，不以延长窗口冒充学习采用。
+
+## D5 跨视角可见性校准（2026-07-26）
+
+1. [x] 新增独立 5v5 近距配置
+   `configs/d5_crossview_visibility_calibration_v1.json`。保持三维质点、针孔投影、
+   双时间戳、协方差和在线真值隔离，关闭视觉虚警及通信丢包；不替代 200v200 名义
+   场景。
+2. [x] seed 1000、12 秒开发运行状态有限，在线真值读取为 0，相机命令
+   `791/791` 接受。离线侧车确认 667 条目标视觉观测覆盖 5 个目标，虚警为 0。
+3. [x] D5 异步快照在该输入上累计形成 294 条候选边和 247 条几何边，跨调用复用
+   计数 139，证明真实目标共同可见输入能进入同一匿名图。
+4. [ ] 在包含该配置的 clean commit 上运行规则 R0 多 seed，离线计算候选边召回、
+   错误边、错误聚类和中心绑定正确率。
+5. [ ] 按当前 D5 实现摘要重新装配 G1 bundle，交 D6 完成 post-assembly audit 后，
+   与 R0 使用相同 seed、外生配置和真值隔离输入做 paired evaluation。
+6. [ ] G1 在 candidate edge、模型加载、运行时延、错误合并和安全计数全部可用前，
+   规则路径继续作为默认，旧 v4 bundle 不进入当前运行时。
 
 ## 9. 保留种子隔离执行（2026-07-21）
 
