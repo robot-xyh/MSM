@@ -1,5 +1,31 @@
 # Scalable 3D Simulation
 
+## 正式输出归档
+
+当前规模化输出约 18 GiB，文件系统可用空间约 20 GiB，已经触及正式分片运行器的保护
+下限。`artifact_archive.py` 提供非破坏性的正式输出迁移准备：
+
+```bash
+python3 -m research_modules.scalable_3d_simulation.artifact_archive \
+  inventory /path/to/source /path/to/inventory.json
+
+python3 -m research_modules.scalable_3d_simulation.artifact_archive \
+  copy /path/to/source /external/path/to/archive
+
+python3 -m research_modules.scalable_3d_simulation.artifact_archive \
+  verify /external/path/to/archive --source /path/to/source \
+  --result-json /path/to/verification.json
+```
+
+清单按相对路径保存每个普通文件的大小和 SHA-256，并计算完整树摘要。复制先写临时目录，
+复核 payload 和复制期间未变化的源目录后原子发布。归档根目录只允许 `payload/`、
+`archive_manifest.json` 和 `SHA256SUMS`。符号链接、特殊文件、内容变化、额外文件和摘要
+不一致均失败关闭。
+
+该工具没有删除入口。`source_deletion_eligible=true` 只表示指定源与归档再次逐文件相等，
+不等于已经删除，也不构成自动清理授权。当前没有可用的第二个大容量挂载点，既有正式
+输出保持原位，20 GiB 保护下限不降低。专项验证为 `12 passed`。
+
 ## 学习变体准入与分片状态
 
 2026-07-26 的实际 bundle 预检确认，G1、A1、A2、A3、C1 和 F1 当前均不能进入正式

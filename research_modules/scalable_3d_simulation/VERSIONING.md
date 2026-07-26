@@ -55,6 +55,8 @@ main
 | 实验矩阵分片进度 | `scalable3d-experiment-matrix-shard-progress-v1` | 完整单元追加、结果摘要或文件树摘要语义改变 |
 | 实验矩阵分片检查点 | `scalable3d-experiment-matrix-shard-checkpoint-v1` | 恢复、进度前缀校验或暂停/完成状态语义改变 |
 | 实验矩阵范围合并 | `scalable3d-experiment-matrix-scope-merge-v1` | scope 完成与完整矩阵完成的区分或合并准入改变 |
+| 正式输出归档清单 | `scalable3d-artifact-archive-manifest-v1` | payload 目录、逐文件摘要、源保留或原子发布语义改变 |
+| 正式输出归档复核 | `scalable3d-artifact-archive-verification-v1` | manifest、payload、源一致性或删除资格语义改变 |
 | D1 一致性评估清单 | `scalable3d-offline-consistency-evaluation-manifest-v1` | 在线证据、真值状态、D2 映射或哈希绑定改变 |
 | D1 扫描输入审计 | `d1.scan_input.audit_summary.v1` | 水位线、扫描拒绝、缓冲容量或结束排空语义改变 |
 | D1 发布元数据实现 | `per_track_copy_v1` / `immutable_shared_v2` | 共享审计树的复制、不可变共享或实现身份语义改变；`immutable_shared_v1` 仅保留为历史证据标签 |
@@ -206,6 +208,11 @@ bundle 的本地绝对路径不写入 manifest。解析成功后记录语义版�
 保留规则版本，并在 scenario metadata 与在线诊断中记录请求模式、实际模式和稳定回退原因。
 
 正式验收只使用 `repository_dirty=false` 的结果。开发期脏工作树结果可以用于调试，但报告必须明确标注，不能作为阶段标签依据。
+
+正式输出迁移使用 `scalable3d-artifact-archive-manifest-v1`。归档工具只复制和复核，
+manifest 必须声明源被保留且未执行删除。复制目标通过临时目录原子发布；payload、manifest、
+`SHA256SUMS`、源目录或根目录结构任一不一致均失败关闭。只有再次提供源目录并获得
+`source_deletion_eligible=true` 才具备申请人工删除授权的前提，工具本身不执行删除。
 
 正式学习数据生成必须在启动 episode 前验证训练 seed 与保留评估 seed 零重叠，并验证
 D5 主动视觉默认 20% 测试切分可提供至少 20 个唯一未见 seed。生成过程中逐 episode 检查
