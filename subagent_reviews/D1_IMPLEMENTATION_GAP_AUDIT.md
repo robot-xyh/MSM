@@ -8,6 +8,27 @@
 
 ## 0. 当前正式治理 GAP 增量（2026-07-25）
 
+### 正式 R0 代次收尾诊断
+
+正式来源提交 `2c7b425` 的 900 个 episode 中，5 个 `delayed_noisy` episode 因 D2 最终消费
+代次与 D1 完整后验代次不一致而被 D6 判为非 clean-formal。D1 复核确认五项完整后验代次均为
+连续 `1..G`，物化快照数等于 `G`，完整快照与 state-only 之和等于全部释放扫描；接收与释放
+扫描相等、拒绝为 0、关闭后缓冲为 0。最终五个批次均为 1 条未接受视觉观测，
+`accepted_observation_count=0`。
+
+main 独立统计得到 finalize unchanged skip 分布 `0:895, 1:5`。旧守恒式恰好失败五项，
+`consumption + pre_tick_merge + finalize_unchanged_skip = D1 generation` 在 `900/900`
+成立。该关系只证明五项进入同一运行时分支，不能证明完整后验等价。跨模块复核进一步确认，
+五项最终完整后验的状态、协方差或有效时刻发生变化，原简化来源签名 no-op 不满足正式证据
+要求。
+
+main 现已取消 finalize 相同来源签名跳过，最终 pending 后验必须实际进入 D2；D2 通过
+replay-coast 隔离重复来源证据。原五个失败 cell 的开发态定向重放均满足 D6 generation
+contract：D1 final 等于 D2 consumed、skip 为 0、pending 为空。当前判定为
+**D1-owned 无 P0；跨模块 P0 代码和五项定向回归已关闭；formal acceptance 待新 clean commit
+下完整 900-cell R0 重跑**。完整诊断见
+`D1_FORMAL_R0_GENERATION_FINALIZATION_DIAGNOSIS_20260725_CN.md`。
+
 ### 固定滞后回放与发布证据快照正式结论
 
 | GAP | 当前状态 | D1-owned 证据 | 剩余关闭条件 |

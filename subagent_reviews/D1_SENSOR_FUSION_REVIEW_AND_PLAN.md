@@ -5,6 +5,26 @@
 
 ---
 
+## 正式 R0 收尾代次复核（2026-07-25）
+
+正式来源提交 `2c7b425` 已完成 900 个 R0 episode。D6 标出的五个
+`delayed_noisy` 非 clean-formal 项没有发现 D1 漏发、重复代次或尾部扫描丢失。五项
+`posterior_generation` 均连续，完整物化与 state-only 计数对全部释放扫描守恒，扫描关闭后
+缓冲为 0；最终 D1 批次均未接受新观测。
+
+五项都进入 main 的 `finalize_unchanged_posterior_skip` 分支。该分支在 D2 source-evidence
+签名相同且无待消费歧义侧车时跳过 D2。跨模块内容复核确认，来源观测签名相同不能证明完整
+后验等价；五项最终状态、协方差或有效时刻仍发生变化，因此原 no-op 候选不满足正式验收。
+
+main 已取消 finalize 的相同来源签名跳过，最终 pending D1 后验必须实际进入 D2；失败时不能
+清空 pending。D2 replay-coast 隔离重复来源证据，不重复增加 hit、建轨或刷新来源证据时钟。
+原五个 cell 的开发态定向重放均由 D6 验证：D1 final 等于 D2 consumed、skip 为 0、pending
+为空。D1 默认算法、双时间戳、协方差、OOSM 和真值隔离不变。
+
+当前状态为“代码/定向回归关闭，formal acceptance 待完整 clean 900-cell 重跑”。旧
+`2c7b425` 的正式制品保持原判定，不能由五项开发态结果原地改写。数据和验收边界见
+`D1_FORMAL_R0_GENERATION_FINALIZATION_DIAGNOSIS_20260725_CN.md`。
+
 ## 最新增量：在线发布证据子集快照正式拒绝（2026-07-25）
 
 - D1 已复核现有
