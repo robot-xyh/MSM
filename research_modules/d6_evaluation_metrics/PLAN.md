@@ -2685,8 +2685,9 @@ manifest 形成独立证据。
    跳过。
 2. 合法修复路径是实际消费最终后验；若保留 no-op skip，则必须发布版本化完整输入摘要。
    main 已采用前一路径完成 5 个异常 cell 的定向回归。
-3. 正式证据不能跨提交拼接。5-cell 修复确认通过后，新 clean 提交应重新执行完整 900-cell
-   R0 scope，再由 D6 生成 v10 报告。
+3. D6 v10 已提交为 `8e955f3`，runtime 修复已提交为其后继 clean source commit
+   `98d01bf`。正式证据不能跨提交拼接；下一步应基于 `98d01bf` 重新执行完整 900-cell
+   R0 scope，再由 D6 v10 生成报告。
 4. 当前只允许声明 `formal_scope_complete=900/900` 和 `clean-formal=895/900`；
    不允许声明 900/900 formal acceptance 或完整 5700-cell matrix complete。
 5. 2026-07-25 D6 全量回归为 `894 passed, 1 warning in 85.66s`；5 个原始异常
@@ -2702,9 +2703,11 @@ generation contract 均为 `verified`：D1 最终代次等于 D2 最终消费代
 该批次在 dirty 工作树生成，五项均为开发态描述性证据，正式验收资格为 0/5。当前状态按两层
 管理：
 
-1. runtime P0 的错误跳过现象已在定向开发回归中消失，进入“修复待正式验收”；
+1. runtime P0 的错误跳过现象已在定向开发回归中消失，修复代码已由 clean source commit
+   `98d01bf` 固化，进入“完整 R0 待正式重跑”；
 2. R0 正式证据仍保留旧 clean 提交的 895/900 结论，不能拼接定向结果；
-3. main 形成新 clean commit 后，完整重跑 900-cell R0，并由 D6 v10 重新生成合并报告；
+3. 基于 `98d01bf` 的完整 900-cell R0 formal rerun 尚未执行，完成后由 D6 v10 重新生成
+   合并报告；
 4. 新批次验收要求 900/900 generation contract 为 `verified`、skip 为 0 或具有版本化完整
    D2 输入摘要、pending 全空、episode 全部 clean-formal；
 5. 若运行时未来重新出现 `skip=1`，没有完整输入摘要时 D6 继续失败关闭，不以计数式放行。

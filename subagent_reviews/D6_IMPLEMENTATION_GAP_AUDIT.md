@@ -2330,9 +2330,10 @@ GAP 状态：当前无 D6-owned P0。clean 单 seed 安全合同证据已闭合�
 规模和 seed 为 5v5 `1000/1005/1008/1018`、20v20 `1009`。最大差值范围为状态
 `0.043312-0.415096`、协方差 `1.515708-22.623443`、时刻 `0.018609-0.255046 s`。
 
-该 P0 不属于 D6 控制代码所有权。D6 已补齐检测并保持 fail-closed。main/D2 修复输入签名后，
-必须先重跑 5 个异常 cell，再在新 clean 提交下重跑完整 900-cell R0 scope。旧 895 个通过项
-不能与新提交的 5 个修复项拼接为正式结果。
+该 P0 不属于 D6 控制代码所有权。D6 已补齐检测并保持 fail-closed，v10 已提交为
+`8e955f3`。main/D2 修复已形成 clean source commit `98d01bf`。5 个异常 cell 的 dirty
+定向回归已经通过；完整 900-cell R0 formal rerun 尚未执行。旧 895 个通过项不能与此前
+dirty 工作树的 5 个修复项拼接为正式结果。
 
 ### D6 状态
 
@@ -2354,11 +2355,12 @@ main 已修复 runtime finalization，并在 dirty 工作树中重跑原 5 个�
 - pre-tick merge 分别为 `20`、`7`、`4`、`8`、`8`；
 - skip 全为 0，pending 全为空，generation integrity reasons 全为空。
 
-跨模块 runtime P0 现处于“代码修复、定向开发证据通过、正式验收待补”状态。五项的
+跨模块 runtime P0 现处于“代码已进入 clean source、定向开发证据通过、完整 R0 待正式重跑”
+状态。五项的
 `repository_dirty=true`，D6 正确保留为 5 个
 `descriptive_or_incomplete_evidence`，formal eligibility 为 0/5。旧 clean 895 项不得与
-该批次拼接。新 clean commit 下完整 900-cell R0 重跑通过前，900/900 formal acceptance
-仍是开放验收项。
+该批次拼接。修复已由 clean source commit `98d01bf` 固化，但完整 900-cell R0 尚未重跑。
+D6 继续保持旧正式结论 895/900，900/900 formal acceptance 仍是开放验收项。
 
 D6 的 skip 门没有放宽。此次修复通过来自 skip=0 和实际消费闭环；未来任何未经版本化完整
 D2 输入摘要验证的 skip 仍不能进入 formal 守恒式。

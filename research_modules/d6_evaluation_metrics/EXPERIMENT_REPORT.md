@@ -3138,7 +3138,8 @@ clean 提交 `2c7b425d...` 的 R0 预登记范围完成 900/900 个 cell。原 D
 
 本轮确认 D6 原失败关闭方向正确，并补充了更精确的差值原因。问题属于 main 运行时输入签名
 遗漏导致的 P0。当前结构性 scope complete 结论成立，900/900 clean formal acceptance
-不成立。完整清单见 `docs/FORMAL_R0_POSTERIOR_SKIP_AUDIT_CN.md`。
+不成立。D6 v10 已提交为 `8e955f3`。完整清单见
+`docs/FORMAL_R0_POSTERIOR_SKIP_AUDIT_CN.md`。
 
 ### 17.1 修复后五项定向回归
 
@@ -3156,5 +3157,6 @@ main 修复 finalization 后，在 dirty 工作树中重跑原 5 个异常 cell�
 五项均满足 `consumption + pre_tick_merge == d1_generation`，不再依赖 finalization skip。
 这证明错误跳过在定向开发回归中已消失。五项的 `repository_dirty=true`，D6 证据分类仍为
 5 个 `descriptive_or_incomplete_evidence`，正式验收资格为 0/5。该结果不能与旧 clean
-提交的 895 项拼接。新 clean commit 下完整 900-cell R0 重跑完成前，900/900 formal
-acceptance 仍不可声明。
+提交的 895 项拼接。runtime 修复已形成 clean source commit `98d01bf`，但完整 900-cell
+R0 formal rerun 尚未执行。D6 仍保持旧正式结论 895/900，900/900 formal acceptance
+仍不可声明。

@@ -60,7 +60,7 @@ G1、A1、A2、A3、C1 和 F1 不能在正式矩阵中声明 assist 后静默回
 clean 提交 `2c7b425d076899e1c54a3d87d6ef23a613ba6e3a` 的 900-cell R0 已完成结构性
 执行，原 D6 结果为 895 个 clean-formal 和 5 个 delayed-noisy 后验代次失败。逐轨审计确认
 这 5 项的最终状态、协方差和有效时刻已经变化，原运行时将其错误登记为一次 no-op skip。
-D6 v10 保持失败关闭，未用扩展计数式放行。
+D6 v10 保持失败关闭，未用扩展计数式放行，并已提交为 `8e955f3`。
 
 main 修复 finalization 后，在 dirty 工作树定向重跑原 5 项。D6 合并结果为：
 
@@ -74,5 +74,6 @@ main 修复 finalization 后，在 dirty 工作树定向重跑原 5 项。D6 合
 
 五项均由 D2 实际消费最终后验，generation integrity reasons 为空。该批次的
 `repository_dirty=true`，因此正式验收资格仍为 0/5，只能作为修复后的开发态定向证据。
-旧 clean 895 项与新 dirty 5 项不能拼接。正式替换需要在新 clean commit 上完整重跑
-900-cell R0。详细清单和判定边界见 `FORMAL_R0_POSTERIOR_SKIP_AUDIT_CN.md`。
+旧 clean 895 项与新 dirty 5 项不能拼接。runtime 修复已形成 clean source commit
+`98d01bf`，完整 900-cell R0 formal rerun 尚未执行。D6 仍保持旧正式结论 895/900。
+详细清单和判定边界见 `FORMAL_R0_POSTERIOR_SKIP_AUDIT_CN.md`。

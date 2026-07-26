@@ -2364,8 +2364,8 @@ D6 后续补充两项自动化：把 D3/D5/D7 未承诺继续执行计数写入�
 
 D6 v10 已收紧为逐轨完整公开后验比较，并输出最大差值。公开字段相等仍需版本化完整 D2
 输入摘要；摘要缺失时继续失败关闭。5 项当前均有内容差异。评审将根因列为
-main 运行时 P0，要求先做 5-cell 精确回归，再在新提交和新计划下重跑 900-cell R0。旧正式
-目录保持只读，不能用新评估器或新 episode 原地覆盖。
+main 运行时 P0。D6 v10 已提交为 `8e955f3`，main 修复已形成 clean source commit
+`98d01bf`。旧正式目录保持只读，不能用新评估器或新 episode 原地覆盖。
 
 评审回归为 D6 全量 `894 passed, 1 warning in 85.66s`。五个原始 episode 的 v10 逐条复核
 均保留最终代次未消费、公开完整后验不等价和未验证处置守恒原因。
@@ -2382,6 +2382,7 @@ main 在 `/tmp/msm-r0-finalize-fix-20260725` 重跑原 5 个异常 cell。D6 v10
 provenance。评审接受该结果作为修复确认，不接受把它与旧 clean 提交的 895 项拼接，也不接受
 据此声明 R0 900/900 formal acceptance。
 
-main 下一步应在新 clean commit 上完整重跑 900-cell R0。D6 继续使用 v10 逐项核对
-generation contract、clean provenance 和实验矩阵门。任何 `skip=1` 若没有版本化完整 D2
-输入摘要，仍须失败关闭；本次 `skip=0` 的结果不能作为放宽先例。
+基于 clean source commit `98d01bf` 的完整 900-cell R0 formal rerun 尚未执行。D6 继续保持
+旧正式结论 895/900，并在新批次中使用 v10 逐项核对 generation contract、clean provenance
+和实验矩阵门。任何 `skip=1` 若没有版本化完整 D2 输入摘要，仍须失败关闭；本次 `skip=0`
+的结果不能作为放宽先例。

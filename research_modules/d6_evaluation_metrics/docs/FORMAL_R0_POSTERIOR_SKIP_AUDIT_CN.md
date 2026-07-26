@@ -13,17 +13,20 @@ episode 存在 D1 最终后验未被 D2 消费的问题，继续归入
 
 main 后续修复了 finalization，并定向重跑这 5 项。修复后五项 generation contract 全部
 verified，且不再声明 skip。该批次来自 dirty 工作树，只能证明修复在定向开发回归中生效，
-不改变旧 clean 提交的 895/900 正式结论。
+不改变旧 clean 提交的 895/900 正式结论。D6 v10 已提交为 `8e955f3`，runtime 修复已形成
+clean source commit `98d01bf`；完整 900-cell R0 formal rerun 尚未执行。
 
 ## 输入
 
-- 源提交：`2c7b425d076899e1c54a3d87d6ef23a613ba6e3a`
+- 旧正式 R0 源提交：`2c7b425d076899e1c54a3d87d6ef23a613ba6e3a`
 - 场景范围：R0，9 类场景，5 个规模，20 个 seed
 - 计划单元：900
 - clean-formal：895
 - descriptive/incomplete：5
 - 在线真值使用：0
 - 原始合并目录保持只读，没有用新评估器覆盖
+- D6 v10 提交：`8e955f3d920df36818ff1961aae5484192995dba`
+- runtime 修复 clean source commit：`98d01bfa2daa0bbd279dfbde27f0dfa669150bf6`
 
 ## 异常清单
 
@@ -94,7 +97,8 @@ D6 聚合仍给出：
   `episode_not_clean_formal_evidence`。
 
 据此可确认 runtime P0 的错误跳过现象已在五项定向开发回归中消失。该结论不等同于正式关闭
-R0 验收。旧 clean 提交的 895 项与新 dirty 工作树的 5 项不能组合成同一正式批次。
+R0 验收。修复代码已经进入 clean source commit `98d01bf`，但旧 clean 提交的 895 项与此前
+dirty 工作树的 5 项仍不能组合成同一正式批次。
 
 ## 验收边界
 
@@ -113,10 +117,11 @@ episode 的算法证据均 clean。当前可以声明：
 main 已完成上述 5 个 cell 的定向修复确认，D2 最终消费代次全部追平 D1，且 D6 未发现
 generation contract 失败。该步骤只形成开发态修复证据。
 
-正式替换结果需要在新的 clean 提交和新的执行计划下重跑全部 900 个 R0 cell。运行时修复会改变
-D2 末尾状态，并可能传播到 D3、D4、D5 和 D7，不能把新提交的 5 个 cell 拼接到旧提交的 895 个
-cell 中形成新的正式范围。新批次完成后由 D6 重新生成逐 episode CSV、聚合 JSON、中文报告和
-曲线，验收目标为 900/900 clean-formal 且 generation-integrity 失败原因为空。
+正式替换结果需要以 clean source commit `98d01bf` 重跑全部 900 个 R0 cell。该 formal rerun
+尚未执行。运行时修复会改变 D2 末尾状态，并可能传播到 D3、D4、D5 和 D7，不能把此前 dirty
+工作树的 5 个 cell 拼接到旧提交的 895 个 cell 中形成新的正式范围。新批次完成后由 D6
+重新生成逐 episode CSV、聚合 JSON、中文报告和曲线，验收目标为 900/900 clean-formal 且
+generation-integrity 失败原因为空。在此之前，D6 继续保持旧正式结论 895/900。
 
 ## 验证
 

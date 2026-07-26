@@ -2863,6 +2863,7 @@ D6 审核了 clean 提交 `2c7b425d...` 的 900 个 R0 episode。执行范围为
 declared skip 不进入 formal 守恒。当前 5 项继续失败关闭，不能用
 `consumption + merge + declared skip == d1` 晋级。详细清单、差值和正式重跑边界见
 [`docs/FORMAL_R0_POSTERIOR_SKIP_AUDIT_CN.md`](docs/FORMAL_R0_POSTERIOR_SKIP_AUDIT_CN.md)。
+D6 v10 已提交为 `8e955f3d920df36818ff1961aae5484192995dba`。
 
 ### 运行时修复定向复核
 
@@ -2878,6 +2879,7 @@ main 修复 finalization 后，在 dirty 工作树中按原配置重跑上述 5 
 该结果证明运行时修复在五项定向开发回归中生效。五个 episode 的
 `repository_dirty=true`，因此 D6 将其全部保留为
 `descriptive_or_incomplete_evidence`，正式验收资格为 0/5。它们不能与旧 clean 提交的
-895 个正式 episode 拼接成 900/900 正式结果。下一步必须在新 clean commit 上重跑完整
-900-cell R0。D6 对 declared skip 的失败关闭规则没有变化：没有版本化完整 D2 输入摘要时，
-`skip=1` 仍不能进入正式守恒式。
+895 个正式 episode 拼接成 900/900 正式结果。runtime 修复已形成 clean source commit
+`98d01bfa2daa0bbd279dfbde27f0dfa669150bf6`，但基于该 source 的完整 900-cell R0 formal
+rerun 尚未执行。D6 仍保留旧正式结论 895/900。D6 对 declared skip 的失败关闭规则没有
+变化：没有版本化完整 D2 输入摘要时，`skip=1` 仍不能进入正式守恒式。
