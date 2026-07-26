@@ -1,5 +1,26 @@
 # D5 实现差距审计
 
+## 2026-07-26 G1 稳健候选状态
+
+| 缺口 | 当前状态 | 证据与剩余边界 |
+| --- | --- | --- |
+| 旧候选遮挡重现 edge/cluster F1 | **新开发候选专项门通过** | 旧值 `0.563264/0.572845`；新权重 `7fb5db8b...ca71` 在固定候选拓扑的五类合成扰动中均为 `1.0/1.0`。真实重新构图和真实相机泛化未验证。 |
+| 合成单特征捷径 | **当前合成保留集门通过** | 最高单特征 AUC 从 `0.997340` 降为 `0.720073`，满足既有 `<=0.98` 门限。没有放宽门限。 |
+| 模型与运行时谱系表达 | **D5 内部管线已关闭** | manifest 分别绑定四个模型源码和十个运行时源码，摘要为 `1883bc36...105` / `408e71fe...f4fe`，共享源码逐项交叉绑定。 |
+| clean implementation evidence | **P1 开放，fail-closed** | supplemental 和训练来源为 dirty；候选只记录 exact source hashes，不声称 clean commit。 |
+| held-out | **开发证据完成** | seed `1000-1019`、900 帧、45 cell；F1=1.0、错误合并率=0、候选召回率=1.0、CPU P95=1.121304 ms。报告文件 SHA-256 为 `7e131910...0931`。 |
+| paired-shadow | **开发证据完成** | 名义与五类困难扰动 edge/cluster F1 均为 1.0；最高单特征 AUC=0.720073；安全计数全为 0。报告/lineage SHA-256 为 `595d0c5a...3582` / `76cda5ba...e4`。 |
+| D6 外部审计 | **P1 开放，未运行** | dirty source 不具备正式审计前提。本轮内部结果不能替代 D6 独立审计。 |
+| G1 assembler | **P1 开放，未运行** | dirty source 下不运行正向 assembler，不生成 admitted v4。 |
+| 在线权限 | **保持关闭** | `development_only_fail_closed`；`default_model=false`、`g1_assist_eligible=false`，规则路径不变。 |
+
+当前没有新增 P0。四项剩余 blocker 为 `source_repository_dirty`、
+`clean_commit_retraining_required`、`d6_external_audit_not_run_dirty_source` 和
+`g1_assembler_not_run_dirty_source`。下一步必须在 clean commit 重建全部数据、模型、held-out、
+paired-shadow 和 registry evidence，再交 D6 审计。旧 `99fa4428...d4cd` 实物和五项失败审计
+保持历史原状。
+2026-07-26 D5 全量回归为 `578 passed in 103.88s`，验收要求为零失败。
+
 ## 2026-07-26 G1 证据装配闭环
 
 | 缺口 | 当前状态 | 证据与剩余边界 |

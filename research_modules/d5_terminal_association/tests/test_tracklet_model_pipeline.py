@@ -478,9 +478,9 @@ def test_partial_label_training_is_development_only_and_audit_bound(tmp_path: Pa
         "g1_assist_eligible": False,
         "readiness_audit_sha256": audit_sha256,
     }
-    assert scorer.manifest["code_provenance"]["implementation_sha256"] == report[
-        "bundle"
-    ]["implementation_sha256"]
+    assert scorer.manifest["code_provenance"][
+        "runtime_implementation_sha256"
+    ] == report["bundle"]["implementation_sha256"]
     assert promotion["status"] == "fail_closed"
     assert promotion["g1_assist_eligible"] is False
 

@@ -1,0 +1,47 @@
+{
+  "admission": {
+    "full_sample_audit_required": true,
+    "g1_assist_allowed": false,
+    "global_track_id_created_or_rebound": false,
+    "model_training_performed": false,
+    "producer_complete": true,
+    "pt_generated": false
+  },
+  "candidate_edge_count": 370190,
+  "canonical_seed_counts": {
+    "test": 20,
+    "train": 60,
+    "validation": 20
+  },
+  "class_balance": {
+    "negative_candidate_edges": 286712,
+    "positive_candidate_edges": 83478,
+    "unlabeled_candidate_edges": 0
+  },
+  "content_sha256": "79b93c2c257a6e5be93e293a6ece3a19cf8a7bda5a28b236ffdb0c543b5e7f52",
+  "dataset_manifest_sha256": "3460d03aaa96d3c7330c65201385265313fdec14ca4a6f3eb920e88164466186",
+  "duplicate_violation_count": 0,
+  "episode_count": 4500,
+  "evaluator_lineage_sha256": "dba6e16844eb289a41b6d0cf166291fe88366ca0c27fae92f43e0ebc7b20b18e",
+  "factor_coverage": {
+    "camera_local_measurement_noise": 66726,
+    "external_perturbation": 4500,
+    "false_alarm": 3050,
+    "missed_detection": 3824,
+    "occluded": 1500,
+    "occlusion_enter": 1500,
+    "occlusion_exit": 1500,
+    "occlusion_target_omitted": 4500,
+    "reentry_tracklet_fragment": 1275,
+    "time_bias": 4000
+  },
+  "formal_manifest_sha256": "d9a84007995fe94918483bd5cb5ddc38f60f61d819bea27137dfa2619bf75426",
+  "label_availability_ratio": 1.0,
+  "manifest_sha256": "be1c42664f4ac864c32af4b4b2b2749f0cc92139f05ac8f88b4a92326ffe234f",
+  "node_count": 66726,
+  "scenario_scale_cell_count": 45,
+  "schema_version": "d5.tracklet-supplemental-summary.v1",
+  "source_git_commit": "42c5e2e7e45b18fb262ce55b27d294fecdc7fc03",
+  "source_repository_dirty": true,
+  "unique_seed_count": 100
+}

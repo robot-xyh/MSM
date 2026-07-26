@@ -129,6 +129,7 @@ _IMPLEMENTATION_FILES = (
     "scalable_3d_adapter.py",
     "sparse_tracklet_graph.py",
     "tracklet_dataset.py",
+    "tracklet_g1_evidence_assembler.py",
     "tracklet_gnn.py",
     "tracklet_model_bundle.py",
     "tracklet_heldout_evaluation.py",

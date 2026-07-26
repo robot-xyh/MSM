@@ -462,8 +462,8 @@ def validate_admitted_bundle_evidence(
             "manifest.weights.model_fingerprint",
         ),
         implementation_sha256=_strict_sha256(
-            code_provenance.get("implementation_sha256"),
-            "manifest.code_provenance.implementation_sha256",
+            code_provenance.get("runtime_implementation_sha256"),
+            "manifest.code_provenance.runtime_implementation_sha256",
         ),
         dataset_manifest_sha256=_strict_sha256(
             training.get("dataset_manifest_sha256"),
@@ -616,8 +616,8 @@ def _preflight_development_bundle(
         checksums_sha256=actual["checksums"],
         model_fingerprint=f"sha256:{actual['weights']}",
         implementation_sha256=_strict_sha256(
-            code_provenance.get("implementation_sha256"),
-            "development_bundle.code_provenance.implementation_sha256",
+            code_provenance.get("runtime_implementation_sha256"),
+            "development_bundle.code_provenance.runtime_implementation_sha256",
         ),
         dataset_manifest_sha256=_strict_sha256(
             training.get("dataset_manifest_sha256"),

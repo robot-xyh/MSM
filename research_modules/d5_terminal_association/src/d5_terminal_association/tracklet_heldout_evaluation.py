@@ -50,6 +50,10 @@ from .tracklet_model_bundle import (
     load_tracklet_model_bundle,
 )
 from .tracklet_supplemental_curriculum import (
+    CAMERA_LOCAL_ANGULAR_RATE_SIGMA_RAD_S,
+    CAMERA_LOCAL_BBOX_LOG_SIDE_SIGMA,
+    CAMERA_LOCAL_MEASUREMENT_MODEL_VERSION,
+    CAMERA_LOCAL_SCALE_RATE_SIGMA_S,
     FORMAL_SCENARIO_CELLS,
     _build_curriculum_frame,
     _clutter_truth_id_from_record,
@@ -284,6 +288,15 @@ def generate_tracklet_heldout_corpus(
             "source_repository_dirty": source_repository_dirty,
             "candidate_gate_config": gate_payload,
             "candidate_gate_config_sha256": gate_sha256,
+            "camera_local_measurement_model": {
+                "version": CAMERA_LOCAL_MEASUREMENT_MODEL_VERSION,
+                "bbox_log_side_sigma": CAMERA_LOCAL_BBOX_LOG_SIDE_SIGMA,
+                "bbox_scale_rate_sigma_s": CAMERA_LOCAL_SCALE_RATE_SIGMA_S,
+                "angular_rate_sigma_rad_s": (
+                    CAMERA_LOCAL_ANGULAR_RATE_SIGMA_RAD_S
+                ),
+                "truth_or_edge_label_accessed": False,
+            },
             "online_truth_policy": "forbidden",
             "evaluator_truth_policy": "physically_separate_exact_observation_lineage",
             "training_use_forbidden": True,

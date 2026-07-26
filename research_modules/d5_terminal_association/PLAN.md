@@ -1,5 +1,28 @@
 # D5 终端视觉配准与身份认证计划
 
+## 2026-07-26 G1 稳健候选收口
+
+- [x] 为 supplemental 和 held-out 物理投影增加相机局部、标签无关的检测框尺度、尺度变化率和
+  角速度量测误差，避免同目标跨相机特征完全相等。
+- [x] 冻结 `d5-tracklet-robust-views-v2` 训练配置。每轮同时使用原图、遮挡重现代理、相似运动
+  干扰和独立尺度抖动视图；变换不读取标签，不改变候选拓扑。
+- [x] 分离模型实现来源和完整运行时来源，并要求共享源码逐项交叉绑定。当前模型/运行时摘要为
+  `1883bc36...105` / `408e71fe...f4fe`。
+- [x] 生成权重 `7fb5db8b...ca71`，完成 seed `1000-1019`、900 帧 held-out 和同图
+  paired-shadow。held-out F1=1.0、错误合并率=0、候选召回率=1.0、P95=1.121304 ms；五类困难
+  扰动 edge/cluster F1 均为 1.0；最高单特征 AUC=0.720073。
+- [x] 保持 dirty-source 结果失败关闭。没有运行 D6 外部审计或 G1 assembler，没有生成 admitted
+  v4，没有修改旧 bundle/manifest/报告、门限或兼容名单。
+- [ ] 在包含本轮实现的 clean commit 上重建 supplemental/composite、重训 development bundle，
+  再生成 held-out、paired-shadow、registry reference 和证据。
+- [ ] 由 main 协调 D6 owner 对 clean 制品执行独立外部审计。审计通过后才允许尝试 G1
+  assembler；当前 `G1=false`、`assist=false`、`authority=false`。
+
+本轮没有修改 AirSim settings、相机合同、检测器、局部多目标跟踪、episode 编排或消息接口，
+因此 `docs/AIRSIM_INTEGRATION_PLAN.md` 检查后无需更新。
+2026-07-26 D5 全量回归为 `578 passed in 103.88s`，十个修改或新增 Python 文件通过
+`python3 -m py_compile`。
+
 ## 2026-07-26 G1 证据装配闭环
 
 - [x] 实现 D5 独立 G1 evidence assembler 和命令行入口。调用方必须显式提供 v3 development

@@ -41,6 +41,8 @@ from .tracklet_supplemental_admission import (
 )
 from .tracklet_supplemental_curriculum import FORMAL_SCENARIO_CELLS
 from .tracklet_training import (
+    ROBUST_TRAINING_PROFILE_VERSION,
+    ROBUST_TRAINING_VIEW_IDS,
     TRAINING_REPORT_SCHEMA_VERSION,
     TrackletTrainingConfig,
     evaluate_tracklet_edge_model,
@@ -64,6 +66,9 @@ COMPOSITE_INTERNAL_TRAINING_PROFILE_VERSION = (
 )
 COMPOSITE_SMOKE_TRAINING_PROFILE_VERSION = (
     "d5-tracklet-native-pytorch-dirty-smoke-v1"
+)
+COMPOSITE_ROBUST_TRAINING_PROFILE_VERSION = (
+    "d5-tracklet-native-pytorch-robust-development-v2"
 )
 D6_MODEL_EVALUATION_SCHEMA_VERSION = "d5.tracklet-graph-model-evaluation.v1"
 D6_MODEL_EVALUATION_DATE = "2026-07-21"
@@ -181,6 +186,26 @@ SMOKE_TRAINING_PROFILE = CompositeInternalTrainingProfile(
         device="cpu",
     ),
 )
+ROBUST_TRAINING_PROFILE = CompositeInternalTrainingProfile(
+    profile_version=COMPOSITE_ROBUST_TRAINING_PROFILE_VERSION,
+    training=TrackletTrainingConfig(
+        seed=20260726,
+        epochs=12,
+        learning_rate=5.0e-4,
+        weight_decay=1.0e-4,
+        hidden_dim=48,
+        message_passing_steps=2,
+        dropout=0.1,
+        graphs_per_optimizer_step=32,
+        hard_negative_ratio=4.0,
+        max_hard_negatives_without_positive=64,
+        ece_bins=10,
+        latency_repeats=3,
+        device="cpu",
+        robust_training_profile_version=ROBUST_TRAINING_PROFILE_VERSION,
+        robust_training_view_ids=ROBUST_TRAINING_VIEW_IDS,
+    ),
+)
 
 
 @dataclass(frozen=True)
@@ -192,6 +217,7 @@ class LoadedCompositeTrainingCorpus:
     admission_report: Mapping[str, Any]
     admission_report_sha256: str
     corpus_audit: Mapping[str, Any]
+    hash_bound_dirty_source_accepted: bool = False
 
     @property
     def dataset(self) -> LoadedTrackletDataset:
@@ -206,6 +232,7 @@ def load_composite_training_corpus(
     shared_seed_registry_path: str | Path,
     composite_view_manifest_path: str | Path,
     composite_admission_report_path: str | Path,
+    allow_hash_bound_dirty_source: bool = False,
 ) -> LoadedCompositeTrainingCorpus:
     """Strictly load all bound sources without copying or rewriting samples."""
 
@@ -232,7 +259,19 @@ def load_composite_training_corpus(
     )
     if admission.readiness["data_support_readiness"]["status"] != "pass":
         _fail("data_support_not_ready", "composite data-support admission is not pass")
-    if admission.readiness["training_readiness"]["status"] != "pass":
+    readiness = admission.readiness["training_readiness"]
+    dirty_only = (
+        readiness["status"] == "fail_closed"
+        and readiness.get("failure_reasons")
+        == ["supplemental_source_repository_dirty"]
+        and admission.view_manifest["sources"].get(
+            "supplemental_source_repository_dirty"
+        )
+        is True
+    )
+    if readiness["status"] != "pass" and not (
+        allow_hash_bound_dirty_source and dirty_only
+    ):
         _fail("training_data_not_ready", "composite training-data admission is not pass")
     return LoadedCompositeTrainingCorpus(
         admission=admission,
@@ -242,6 +281,9 @@ def load_composite_training_corpus(
         admission_report=MappingProxyType(report),
         admission_report_sha256=sha256_file(report_path),
         corpus_audit=MappingProxyType(corpus_audit),
+        hash_bound_dirty_source_accepted=bool(
+            allow_hash_bound_dirty_source and dirty_only
+        ),
     )
 
 
@@ -447,18 +489,44 @@ def run_composite_internal_development_training(
     implementation_git_commit: str,
     implementation_repository_dirty: bool,
     smoke: bool = False,
+    robust_v2: bool = False,
+    allow_hash_bound_dirty_source: bool = False,
 ) -> Mapping[str, Any]:
     """Train a permanently development-only bundle from the read-only view."""
 
-    profile = SMOKE_TRAINING_PROFILE if smoke else PRODUCTION_TRAINING_PROFILE
-    _validate_profile(profile, smoke=smoke)
+    if smoke and robust_v2:
+        _fail("training_profile_conflict", "smoke and robust_v2 are mutually exclusive")
+    profile = (
+        SMOKE_TRAINING_PROFILE
+        if smoke
+        else ROBUST_TRAINING_PROFILE
+        if robust_v2
+        else PRODUCTION_TRAINING_PROFILE
+    )
+    _validate_profile(profile, smoke=smoke, robust_v2=robust_v2)
     commit = _validate_commit(implementation_git_commit)
     if type(implementation_repository_dirty) is not bool:
         _fail("dirty_flag_invalid", "implementation_repository_dirty must be bool")
-    if implementation_repository_dirty and not smoke:
+    if (
+        implementation_repository_dirty
+        and not smoke
+        and not allow_hash_bound_dirty_source
+    ):
         _fail(
             "dirty_production_training_forbidden",
             "final internal weights require a detached clean worktree",
+        )
+    if allow_hash_bound_dirty_source and (smoke or not robust_v2):
+        _fail(
+            "hash_bound_dirty_mode_invalid",
+            "dirty hash-bound training is restricted to the robust-v2 development profile",
+        )
+    if corpus.hash_bound_dirty_source_accepted and not (
+        robust_v2 and allow_hash_bound_dirty_source
+    ):
+        _fail(
+            "hash_bound_dirty_corpus_mode_required",
+            "dirty supplemental provenance requires explicit robust-v2 hash-bound mode",
         )
     destination = Path(output_dir).resolve()
     _assert_training_output_detached(destination, corpus)
@@ -540,12 +608,24 @@ def run_composite_internal_development_training(
             }
         final_report: dict[str, Any] = {
             "schema_version": COMPOSITE_INTERNAL_TRAINING_SCHEMA_VERSION,
-            "status": "dirty_smoke_only" if smoke else "internal_development_complete",
+            "status": (
+                "dirty_smoke_only"
+                if smoke
+                else "hash_bound_dirty_internal_development_complete"
+                if implementation_repository_dirty
+                else "internal_development_complete"
+            ),
             "sources": _source_binding(corpus),
             "implementation_provenance": {
                 "git_commit": commit,
                 "repository_dirty": implementation_repository_dirty,
                 "implementation_sha256": _implementation_hashes(),
+                "source_binding_mode": (
+                    "exact_source_hashes_dirty_development"
+                    if implementation_repository_dirty
+                    else "clean_git_commit_and_exact_source_hashes"
+                ),
+                "clean_source_claimed": not implementation_repository_dirty,
             },
             "profile": {
                 "config": profile.to_payload(),
@@ -899,6 +979,9 @@ def _source_binding(corpus: LoadedCompositeTrainingCorpus) -> dict[str, Any]:
         "supplemental_source_repository_dirty": sources[
             "supplemental_source_repository_dirty"
         ],
+        "hash_bound_dirty_source_accepted": (
+            corpus.hash_bound_dirty_source_accepted
+        ),
         "source_samples_copied_or_rewritten": False,
     }
 
@@ -1079,8 +1162,19 @@ def _estimated_resources(
     }
 
 
-def _validate_profile(profile: CompositeInternalTrainingProfile, *, smoke: bool) -> None:
-    expected = SMOKE_TRAINING_PROFILE if smoke else PRODUCTION_TRAINING_PROFILE
+def _validate_profile(
+    profile: CompositeInternalTrainingProfile,
+    *,
+    smoke: bool,
+    robust_v2: bool = False,
+) -> None:
+    expected = (
+        SMOKE_TRAINING_PROFILE
+        if smoke
+        else ROBUST_TRAINING_PROFILE
+        if robust_v2
+        else PRODUCTION_TRAINING_PROFILE
+    )
     if profile.to_payload() != expected.to_payload():
         _fail("model_config_drift", "model, feature, gate, seed, or thread profile changed")
 
@@ -1219,6 +1313,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     _add_source_arguments(train)
     train.add_argument("--output-dir", required=True)
     train.add_argument("--smoke", action="store_true")
+    train.add_argument("--robust-v2", action="store_true")
+    train.add_argument(
+        "--allow-hash-bound-dirty-source",
+        action="store_true",
+        help=(
+            "allow only robust-v2 development training from an exact-hash-bound "
+            "dirty source tree; no clean-source claim is emitted"
+        ),
+    )
     args = parser.parse_args(argv)
     corpus = load_composite_training_corpus(
         formal_dataset_dir=args.formal_dataset,
@@ -1227,6 +1330,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         shared_seed_registry_path=args.shared_seed_registry,
         composite_view_manifest_path=args.composite_view,
         composite_admission_report_path=args.composite_admission_report,
+        allow_hash_bound_dirty_source=bool(
+            args.command == "train"
+            and getattr(args, "allow_hash_bound_dirty_source", False)
+        ),
     )
     commit, dirty = _git_provenance()
     if args.command == "preflight":
@@ -1258,6 +1365,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         implementation_git_commit=commit,
         implementation_repository_dirty=dirty,
         smoke=args.smoke,
+        robust_v2=args.robust_v2,
+        allow_hash_bound_dirty_source=args.allow_hash_bound_dirty_source,
     )
     print(
         json.dumps(
@@ -1280,6 +1389,7 @@ if __name__ == "__main__":  # pragma: no cover
 
 __all__ = [
     "COMPOSITE_INTERNAL_TRAINING_PROFILE_VERSION",
+    "COMPOSITE_ROBUST_TRAINING_PROFILE_VERSION",
     "COMPOSITE_INTERNAL_TRAINING_SCHEMA_VERSION",
     "COMPOSITE_TRAINING_PREFLIGHT_SCHEMA_VERSION",
     "D6_MODEL_EVALUATION_DATE",
@@ -1289,6 +1399,7 @@ __all__ = [
     "CompositeInternalTrainingProfile",
     "LoadedCompositeTrainingCorpus",
     "PRODUCTION_TRAINING_PROFILE",
+    "ROBUST_TRAINING_PROFILE",
     "SMOKE_TRAINING_PROFILE",
     "assess_internal_model_test",
     "audit_composite_training_dataset",

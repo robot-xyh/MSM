@@ -1,5 +1,23 @@
 # D5 末端视觉配准与身份认证实验报告
 
+## 2026-07-26 G1 稳健候选失败关闭结果
+
+本轮从 4,500 帧补充课程与 472 帧正式可用图形成 4,972 帧组合视图。训练、验证和内部测试分别
+为 2,961、1,006 和 1,005 帧；独立 held-out 使用 seed `1000-1019` 的 900 帧和 45 个场景规模
+单元。训练运行 12 轮，最佳轮次为 11，耗时 234.6347 s。
+
+新候选权重 SHA-256 为 `7fb5db8b...ca71`，bundle manifest 为 `ddd7ce4a...2f17`。冻结温度
+0.6541651703、阈值 0.8964798918 后，held-out 精确率、召回率、F1 和候选召回率均为 1.0，
+错误合并率为 0，CPU P95 为 1.121304 ms。paired-shadow 中名义与五类困难扰动的 edge/cluster
+F1 均为 1.0，最高单特征 AUC 为 0.720073。在线 truth 特征、同相机互斥违规和
+`global_track_id` 改写均为 0。
+
+这些结果来自合成固定候选图。supplemental 和训练来源记录为 dirty，D6 外部审计和 G1
+assembler 未运行。候选状态为 `development_only_fail_closed`，没有生成 admitted v4，也没有
+改变默认运行路径。完整哈希、门限和 clean commit 重跑清单见
+`../reports/D5_TRACKLET_G1_ROBUST_V2_FAIL_CLOSED_20260726.md`。
+2026-07-26 D5 全量回归为 `578 passed in 103.88s`。
+
 ## 2026-07-26 G1 证据装配验证
 
 本轮实现了 D5 独立 G1 evidence assembler。正向 fixture 使用一份新生成的 development bundle、

@@ -46,7 +46,13 @@ G1_ASSIST_NOT_ELIGIBLE_REASON = "bundle_g1_assist_not_eligible"
 RUNTIME_ADMISSION_REQUIREMENT_INVALID_REASON = (
     "bundle_runtime_admission_requirement_invalid"
 )
-_IMPLEMENTATION_SOURCE_FILES = (
+_MODEL_IMPLEMENTATION_SOURCE_FILES = (
+    "tracklet_gnn.py",
+    "tracklet_model_bundle.py",
+    "tracklet_training.py",
+    "tracklet_training_audit.py",
+)
+_RUNTIME_IMPLEMENTATION_SOURCE_FILES = (
     "scalable_3d_adapter.py",
     "sparse_tracklet_graph.py",
     "tracklet_dataset.py",
@@ -55,12 +61,6 @@ _IMPLEMENTATION_SOURCE_FILES = (
     "tracklet_heldout_evaluation.py",
     "tracklet_model_bundle.py",
     "tracklet_paired_shadow.py",
-    "tracklet_training.py",
-    "tracklet_training_audit.py",
-)
-_LEGACY_IMPLEMENTATION_SOURCE_FILES = (
-    "tracklet_gnn.py",
-    "tracklet_model_bundle.py",
     "tracklet_training.py",
     "tracklet_training_audit.py",
 )
@@ -577,24 +577,22 @@ def _load_tracklet_model_bundle_impl(
     code_provenance = manifest.get("code_provenance")
     if not isinstance(code_provenance, Mapping):
         raise ModelBundleValidationError("code_provenance_missing", "bundle code provenance is missing")
-    if set(code_provenance) != {"implementation_sha256", "source_files"}:
+    if set(code_provenance) != {
+        "implementation_sha256",
+        "source_files",
+        "runtime_implementation_sha256",
+        "runtime_source_files",
+    }:
         raise ModelBundleValidationError(
             "code_provenance_fields_mismatch", "bundle code provenance fields mismatch"
         )
     source_files = code_provenance.get("source_files")
-    if (
-        isinstance(source_files, Mapping)
-        and set(source_files) == set(_LEGACY_IMPLEMENTATION_SOURCE_FILES)
-    ):
-        raise ModelBundleValidationError(
-            "implementation_runtime_mismatch",
-            "legacy bundle does not bind the complete current runtime",
-        )
     if not isinstance(source_files, Mapping) or set(source_files) != set(
-        _IMPLEMENTATION_SOURCE_FILES
+        _MODEL_IMPLEMENTATION_SOURCE_FILES
     ):
         raise ModelBundleValidationError(
-            "code_provenance_files_mismatch", "bundle source file provenance is incomplete"
+            "code_provenance_files_mismatch",
+            "bundle model source provenance is incomplete",
         )
     for filename, digest in source_files.items():
         _validate_sha256(digest, str(filename), error_type=ModelBundleValidationError)
@@ -608,10 +606,36 @@ def _load_tracklet_model_bundle_impl(
         sha256_json(dict(sorted(source_files.items()))),
         "implementation_sha_mismatch",
     )
+    runtime_source_files = code_provenance.get("runtime_source_files")
+    if not isinstance(runtime_source_files, Mapping) or set(
+        runtime_source_files
+    ) != set(_RUNTIME_IMPLEMENTATION_SOURCE_FILES):
+        raise ModelBundleValidationError(
+            "runtime_provenance_files_mismatch",
+            "bundle runtime source provenance is incomplete",
+        )
+    for filename, digest in runtime_source_files.items():
+        _validate_sha256(digest, str(filename), error_type=ModelBundleValidationError)
+    _validate_sha256(
+        code_provenance.get("runtime_implementation_sha256"),
+        "runtime_implementation_sha256",
+        error_type=ModelBundleValidationError,
+    )
+    _expect_equal(
+        code_provenance["runtime_implementation_sha256"],
+        sha256_json(dict(sorted(runtime_source_files.items()))),
+        "runtime_implementation_sha_mismatch",
+    )
+    for filename in _MODEL_IMPLEMENTATION_SOURCE_FILES:
+        _expect_equal(
+            source_files[filename],
+            runtime_source_files[filename],
+            f"model_runtime_source_mismatch.{filename}",
+        )
     current_provenance = _implementation_provenance()
     _expect_equal(
-        code_provenance["implementation_sha256"],
-        current_provenance["implementation_sha256"],
+        code_provenance["runtime_implementation_sha256"],
+        current_provenance["runtime_implementation_sha256"],
         "implementation_runtime_mismatch",
     )
 
@@ -677,7 +701,7 @@ def _load_tracklet_model_bundle_impl(
             )
         _expect_equal(
             admission_report.implementation_sha256,
-            code_provenance["implementation_sha256"],
+            code_provenance["runtime_implementation_sha256"],
             "admission_implementation_sha_mismatch",
         )
         for name in (
@@ -902,7 +926,7 @@ def tracklet_model_fingerprint(
 def tracklet_runtime_implementation_sha256() -> str:
     """Return the implementation digest a new G1 report must bind."""
 
-    return str(_implementation_provenance()["implementation_sha256"])
+    return str(_implementation_provenance()["runtime_implementation_sha256"])
 
 
 def tracklet_g1_admission_report_from_manifest(
@@ -1020,12 +1044,23 @@ def tracklet_g1_admission_report_from_manifest(
 
 def _implementation_provenance() -> dict[str, Any]:
     root = Path(__file__).resolve().parent
-    source_files = {
-        filename: sha256_file(root / filename) for filename in _IMPLEMENTATION_SOURCE_FILES
+    model_source_files = {
+        filename: sha256_file(root / filename)
+        for filename in _MODEL_IMPLEMENTATION_SOURCE_FILES
+    }
+    runtime_source_files = {
+        filename: sha256_file(root / filename)
+        for filename in _RUNTIME_IMPLEMENTATION_SOURCE_FILES
     }
     return {
-        "implementation_sha256": sha256_json(dict(sorted(source_files.items()))),
-        "source_files": dict(sorted(source_files.items())),
+        "implementation_sha256": sha256_json(
+            dict(sorted(model_source_files.items()))
+        ),
+        "source_files": dict(sorted(model_source_files.items())),
+        "runtime_implementation_sha256": sha256_json(
+            dict(sorted(runtime_source_files.items()))
+        ),
+        "runtime_source_files": dict(sorted(runtime_source_files.items())),
     }
 
 

@@ -52,6 +52,12 @@ SUPPLEMENTAL_PROFILE_VERSION = "d5-tracklet-hard-crossview-full-v1"
 SUPPLEMENTAL_SMOKE_PROFILE_VERSION = "d5-tracklet-hard-crossview-smoke-v1"
 SUPPLEMENTAL_RNG_NAMESPACE = "d5-tracklet-hard-crossview-independent-rng-v1"
 SUPPLEMENTAL_FRAME_COUNT_PER_CELL_SEED = 1
+CAMERA_LOCAL_MEASUREMENT_MODEL_VERSION = (
+    "d5-camera-local-kinematic-measurement-noise-v1"
+)
+CAMERA_LOCAL_BBOX_LOG_SIDE_SIGMA = 0.04
+CAMERA_LOCAL_SCALE_RATE_SIGMA_S = 0.0015
+CAMERA_LOCAL_ANGULAR_RATE_SIGMA_RAD_S = 0.0015
 
 FORMAL_SCENARIOS = (
     "nominal",
@@ -207,6 +213,15 @@ def generate_tracklet_supplemental_curriculum(
             "shared_seed_registry_sha256": registry["shared_file_sha256"],
             "candidate_gate_config": gate_payload,
             "candidate_gate_config_sha256": gate_sha256,
+            "camera_local_measurement_model": {
+                "version": CAMERA_LOCAL_MEASUREMENT_MODEL_VERSION,
+                "bbox_log_side_sigma": CAMERA_LOCAL_BBOX_LOG_SIDE_SIGMA,
+                "bbox_scale_rate_sigma_s": CAMERA_LOCAL_SCALE_RATE_SIGMA_S,
+                "angular_rate_sigma_rad_s": (
+                    CAMERA_LOCAL_ANGULAR_RATE_SIGMA_RAD_S
+                ),
+                "truth_or_edge_label_accessed": False,
+            },
             "online_truth_policy": "forbidden",
             "evaluator_truth_policy": "physically_separate_exact_observation_lineage",
             "implementation_sha256": implementation_hashes,
@@ -575,6 +590,19 @@ def _build_curriculum_frame(
             observation_id = _anonymous_observation_id(
                 seed, scenario, scale, camera_index, target_index, "target"
             )
+            (
+                measured_side,
+                measured_angular_velocity,
+                measured_scale_rate,
+            ) = _camera_local_kinematic_measurement(
+                observation_id=observation_id,
+                bbox_side=side,
+                angular_velocity_rad_s=np.array(
+                    [lateral_velocity[target_index] / max(depth, 1.0), 0.0],
+                    dtype=float,
+                ),
+                bbox_scale_rate_s=0.002 * math.sin(seed + target_index),
+            )
             covariance = np.eye(2) * (noise_sigma**2 + 1.0)
             tracklet = CameraLocalTracklet(
                 resource_id=resource_id,
@@ -585,21 +613,20 @@ def _build_curriculum_frame(
                 center_px=center,
                 covariance_px=covariance,
                 bbox_xyxy=(
-                    center[0] - side,
-                    center[1] - 0.75 * side,
-                    center[0] + side,
-                    center[1] + 0.75 * side,
+                    center[0] - measured_side,
+                    center[1] - 0.75 * measured_side,
+                    center[0] + measured_side,
+                    center[1] + 0.75 * measured_side,
                 ),
-                angular_velocity_rad_s=np.array(
-                    [lateral_velocity[target_index] / max(depth, 1.0), 0.0], dtype=float
-                ),
-                bbox_scale_rate_s=0.002 * math.sin(seed + target_index),
+                angular_velocity_rad_s=measured_angular_velocity,
+                bbox_scale_rate_s=measured_scale_rate,
                 confidence=0.82 + 0.03 * ((seed + target_index) % 4),
                 tracklet_start_timestamp=measurement_timestamp - 0.2 - 0.05 * target_index,
                 source_observation_id=observation_id,
                 metadata={
                     "source": "d5_supplemental_physical_projection",
                     "tracker_backend": "anonymous_curriculum_tracklet",
+                    "measurement_model": CAMERA_LOCAL_MEASUREMENT_MODEL_VERSION,
                 },
             )
             truth_entity_id = _truth_entity_id(seed, target_index)
@@ -615,6 +642,7 @@ def _build_curriculum_frame(
                     world_point_ned=point,
                 )
             )
+            factors["camera_local_measurement_noise"] += 1
 
         if false_alarm_enabled and camera_index in {0, 2}:
             clutter_slot = 100 + camera_index
@@ -626,6 +654,16 @@ def _build_curriculum_frame(
                 seed, scenario, scale, camera_index, clutter_slot, "clutter"
             )
             local_track_id = f"trk-{100 + camera_index:06d}"
+            (
+                measured_side,
+                measured_angular_velocity,
+                measured_scale_rate,
+            ) = _camera_local_kinematic_measurement(
+                observation_id=observation_id,
+                bbox_side=3.0,
+                angular_velocity_rad_s=np.zeros(2, dtype=float),
+                bbox_scale_rate_s=0.0,
+            )
             tracklet = CameraLocalTracklet(
                 resource_id=resource_id,
                 camera_id=camera_id,
@@ -634,13 +672,21 @@ def _build_curriculum_frame(
                 arrival_timestamp=measurement_timestamp + arrival_delay,
                 center_px=center,
                 covariance_px=np.eye(2) * 1.5,
-                bbox_xyxy=(center[0] - 3.0, center[1] - 2.0, center[0] + 3.0, center[1] + 2.0),
+                bbox_xyxy=(
+                    center[0] - measured_side,
+                    center[1] - (2.0 / 3.0) * measured_side,
+                    center[0] + measured_side,
+                    center[1] + (2.0 / 3.0) * measured_side,
+                ),
+                angular_velocity_rad_s=measured_angular_velocity,
+                bbox_scale_rate_s=measured_scale_rate,
                 confidence=0.45,
                 tracklet_start_timestamp=measurement_timestamp,
                 source_observation_id=observation_id,
                 metadata={
                     "source": "d5_supplemental_false_alarm",
                     "tracker_backend": "anonymous_curriculum_tracklet",
+                    "measurement_model": CAMERA_LOCAL_MEASUREMENT_MODEL_VERSION,
                 },
             )
             truth_entity_id = _clutter_truth_id(seed, scenario, scale, camera_index)
@@ -657,9 +703,39 @@ def _build_curriculum_frame(
                 )
             )
             factors["false_alarm"] += 1
+            factors["camera_local_measurement_noise"] += 1
 
     graph = build_sparse_tracklet_graph(tracklets, cameras, center_tracks=(), config=gate_config)
     return graph, tuple(offline), lineage, factors
+
+
+def _camera_local_kinematic_measurement(
+    *,
+    observation_id: str,
+    bbox_side: float,
+    angular_velocity_rad_s: np.ndarray,
+    bbox_scale_rate_s: float,
+) -> tuple[float, np.ndarray, float]:
+    """Apply one deterministic, identity-free camera-local measurement error."""
+
+    material = (
+        f"{CAMERA_LOCAL_MEASUREMENT_MODEL_VERSION}|{str(observation_id)}"
+    ).encode("utf-8")
+    seed = int.from_bytes(hashlib.sha256(material).digest()[:8], "big")
+    rng = np.random.default_rng(seed)
+    side = float(bbox_side) * math.exp(
+        float(rng.normal(0.0, CAMERA_LOCAL_BBOX_LOG_SIDE_SIGMA))
+    )
+    angular_velocity = np.asarray(angular_velocity_rad_s, dtype=float).reshape(2)
+    angular_velocity = angular_velocity + rng.normal(
+        0.0,
+        CAMERA_LOCAL_ANGULAR_RATE_SIGMA_RAD_S,
+        size=2,
+    )
+    scale_rate = float(bbox_scale_rate_s) + float(
+        rng.normal(0.0, CAMERA_LOCAL_SCALE_RATE_SIGMA_S)
+    )
+    return max(side, 1.0e-6), angular_velocity, scale_rate
 
 
 def _lineage_record(

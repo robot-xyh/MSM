@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 from dataclasses import asdict, dataclass
+import hashlib
 import json
 import math
 import os
@@ -19,9 +20,11 @@ import torch
 from torch.nn import functional as F
 
 from .canonical_seed_view import canonical_view_binding, load_tracklet_canonical_seed_view
+from .sparse_tracklet_graph import EDGE_FEATURE_NAMES, NODE_FEATURE_NAMES
 from .tracklet_dataset import (
     LoadedTrackletDataset,
     LoadedTrackletEpisode,
+    LoadedTrackletGraph,
     edge_targets,
     load_tracklet_dataset,
     sha256_json,
@@ -35,6 +38,19 @@ from .tracklet_model_bundle import (
 
 TRAINING_REPORT_SCHEMA_VERSION = "d5.tracklet-training-report.v1"
 EVALUATION_REPORT_SCHEMA_VERSION = "d5.tracklet-evaluation-report.v1"
+ROBUST_TRAINING_PROFILE_VERSION = "d5-tracklet-robust-views-v2"
+ROBUST_TRAINING_RNG_NAMESPACE = "d5-tracklet-robust-training-rng-v1"
+ROBUST_TRAINING_VIEW_IDS = (
+    "occlusion_reappearance_proxy",
+    "similar_motion_confusers",
+    "independent_bbox_scale_jitter",
+)
+_NODE_FEATURE_INDEX = {
+    name: index for index, name in enumerate(NODE_FEATURE_NAMES)
+}
+_EDGE_FEATURE_INDEX = {
+    name: index for index, name in enumerate(EDGE_FEATURE_NAMES)
+}
 
 
 @dataclass(frozen=True)
@@ -52,6 +68,8 @@ class TrackletTrainingConfig:
     ece_bins: int = 10
     latency_repeats: int = 3
     device: str = "cpu"
+    robust_training_profile_version: str | None = None
+    robust_training_view_ids: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if self.epochs <= 0 or self.hidden_dim <= 0 or self.message_passing_steps <= 0:
@@ -66,6 +84,19 @@ class TrackletTrainingConfig:
             raise ValueError("hard-negative settings are invalid")
         if self.ece_bins <= 0 or self.latency_repeats <= 0:
             raise ValueError("ece_bins and latency_repeats must be positive")
+        views = tuple(str(value) for value in self.robust_training_view_ids)
+        object.__setattr__(self, "robust_training_view_ids", views)
+        if self.robust_training_profile_version is None:
+            if views:
+                raise ValueError(
+                    "robust training views require an explicit profile version"
+                )
+        elif (
+            self.robust_training_profile_version
+            != ROBUST_TRAINING_PROFILE_VERSION
+            or views != ROBUST_TRAINING_VIEW_IDS
+        ):
+            raise ValueError("robust training profile or view catalog changed")
         torch.device(self.device)
 
 
@@ -78,6 +109,8 @@ class TrackletTrainingResult:
     selected_positive_edges: int
     selected_negative_edges: int
     selected_hard_negative_edges: int
+    robust_training_view_ids: tuple[str, ...]
+    robust_graph_presentations_per_epoch: int
 
 
 def train_tracklet_edge_model(
@@ -137,7 +170,6 @@ def train_tracklet_edge_model(
                 ]
                 if positive_count + negative_count == 0:
                     continue
-                node_features, edge_index, edge_features = _graph_tensors(episode, device)
                 targets = torch.as_tensor(
                     np.array(targets_np, copy=True), dtype=torch.float32, device=device
                 )
@@ -147,14 +179,32 @@ def train_tracklet_edge_model(
                 positive_weight = (
                     max(1.0, negative_count / positive_count) if positive_count else 1.0
                 )
-                logits = model.edge_logits(node_features, edge_index, edge_features)
-                losses.append(
-                    F.binary_cross_entropy_with_logits(
-                        logits[mask],
-                        targets[mask],
-                        pos_weight=torch.tensor(positive_weight, dtype=torch.float32, device=device),
+                for node_values, edge_values in _training_feature_views(
+                    episode,
+                    config,
+                ):
+                    node_features, edge_index, edge_features = _feature_tensors(
+                        episode,
+                        node_values,
+                        edge_values,
+                        device,
                     )
-                )
+                    logits = model.edge_logits(
+                        node_features,
+                        edge_index,
+                        edge_features,
+                    )
+                    losses.append(
+                        F.binary_cross_entropy_with_logits(
+                            logits[mask],
+                            targets[mask],
+                            pos_weight=torch.tensor(
+                                positive_weight,
+                                dtype=torch.float32,
+                                device=device,
+                            ),
+                        )
+                    )
             if not losses:
                 continue
             chunk_loss = torch.stack(losses).mean()
@@ -166,7 +216,12 @@ def train_tracklet_edge_model(
         if not per_graph_losses:
             raise ValueError("no trainable graph remained after hard-negative selection")
         epoch_loss = float(np.mean(per_graph_losses))
-        validation_loss = _binary_cross_entropy_on_split(model, validation_episodes, device)
+        validation_loss = _binary_cross_entropy_on_split(
+            model,
+            validation_episodes,
+            device,
+            config=config,
+        )
         epoch_losses.append(epoch_loss)
         validation_losses.append(validation_loss)
         if validation_loss < best_loss:
@@ -188,6 +243,10 @@ def train_tracklet_edge_model(
         selected_positive_edges=selected_positive,
         selected_negative_edges=selected_negative,
         selected_hard_negative_edges=selected_negative,
+        robust_training_view_ids=config.robust_training_view_ids,
+        robust_graph_presentations_per_epoch=(
+            len(train_episodes) * (1 + len(config.robust_training_view_ids))
+        ),
     )
 
 
@@ -460,6 +519,7 @@ def run_loaded_tracklet_training_pipeline(
         training.model,
         dataset.split("validation"),
         torch.device(cfg.device),
+        config=cfg,
     )
     temperature = fit_validation_temperature(validation_logits, validation_targets)
     validation_probabilities = _sigmoid_numpy(validation_logits / temperature)
@@ -562,6 +622,15 @@ def run_loaded_tracklet_training_pipeline(
             "selected_positive_edges": training.selected_positive_edges,
             "selected_negative_edges": training.selected_negative_edges,
             "selected_hard_negative_edges": training.selected_hard_negative_edges,
+            "robust_training": {
+                "profile_version": cfg.robust_training_profile_version,
+                "view_ids": list(training.robust_training_view_ids),
+                "label_accessed_by_transform": False,
+                "candidate_topology_changed": False,
+                "graph_presentations_per_epoch": (
+                    training.robust_graph_presentations_per_epoch
+                ),
+            },
             "hard_negative_provenance": dataset.manifest["hard_negative_provenance"],
             "training_elapsed_seconds": training_elapsed_seconds,
             "final_loss_by_split": final_loss_by_split,
@@ -580,7 +649,7 @@ def run_loaded_tracklet_training_pipeline(
             "manifest_sha256": scorer.bundle_manifest_sha256,
             "weights_sha256": scorer.bundle_weights_sha256,
             "implementation_sha256": scorer.manifest["code_provenance"][
-                "implementation_sha256"
+                "runtime_implementation_sha256"
             ],
         },
         "hardware": _hardware_summary(cfg.device),
@@ -670,8 +739,15 @@ def _binary_cross_entropy_on_split(
     model: NativeTrackletEdgeClassifier,
     episodes: Sequence[LoadedTrackletEpisode],
     device: torch.device,
+    *,
+    config: TrackletTrainingConfig | None = None,
 ) -> float:
-    logits, targets = _split_logits_and_targets(model, episodes, device)
+    logits, targets = _split_logits_and_targets(
+        model,
+        episodes,
+        device,
+        config=config,
+    )
     values = np.logaddexp(0.0, logits) - targets * logits
     loss = float(np.mean(values))
     if not np.isfinite(loss):
@@ -683,6 +759,8 @@ def _split_logits_and_targets(
     model: NativeTrackletEdgeClassifier,
     episodes: Sequence[LoadedTrackletEpisode],
     device: torch.device,
+    *,
+    config: TrackletTrainingConfig | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     logits_items: list[np.ndarray] = []
     target_items: list[np.ndarray] = []
@@ -690,11 +768,36 @@ def _split_logits_and_targets(
     with torch.no_grad():
         for episode in episodes:
             targets, eligible = edge_targets(episode)
-            node_features, edge_index, edge_features = _graph_tensors(episode, device)
-            logits = model.edge_logits(node_features, edge_index, edge_features)
-            values = logits.detach().cpu().numpy().astype(np.float64, copy=False)
-            logits_items.append(values[eligible])
-            target_items.append(np.asarray(targets[eligible], dtype=np.float64))
+            views = (
+                _training_feature_views(episode, config)
+                if config is not None
+                else (
+                    (
+                        episode.graph.node_features,
+                        episode.graph.edge_features,
+                    ),
+                )
+            )
+            for node_values, edge_values in views:
+                node_features, edge_index, edge_features = _feature_tensors(
+                    episode,
+                    node_values,
+                    edge_values,
+                    device,
+                )
+                logits = model.edge_logits(
+                    node_features,
+                    edge_index,
+                    edge_features,
+                )
+                values = logits.detach().cpu().numpy().astype(
+                    np.float64,
+                    copy=False,
+                )
+                logits_items.append(values[eligible])
+                target_items.append(
+                    np.asarray(targets[eligible], dtype=np.float64)
+                )
     logits_array = np.concatenate(logits_items) if logits_items else np.empty(0, dtype=np.float64)
     targets_array = np.concatenate(target_items) if target_items else np.empty(0, dtype=np.float64)
     if not logits_array.size:
@@ -723,15 +826,159 @@ def _require_binary_validation(
         raise ValueError(f"{prefix} calibration requires positive and negative validation edges")
 
 
+def build_robust_training_feature_view(
+    graph: LoadedTrackletGraph,
+    profile_id: str,
+    *,
+    rng_namespace: str = ROBUST_TRAINING_RNG_NAMESPACE,
+) -> tuple[np.ndarray, np.ndarray, Mapping[str, Any]]:
+    """Build one deterministic anonymous feature view without evaluator labels."""
+
+    if not isinstance(graph, LoadedTrackletGraph):
+        raise TypeError("graph must be a LoadedTrackletGraph")
+    profile = str(profile_id)
+    if profile not in ROBUST_TRAINING_VIEW_IDS:
+        raise ValueError(f"unknown robust training view: {profile}")
+    if rng_namespace != ROBUST_TRAINING_RNG_NAMESPACE:
+        raise ValueError("robust training RNG namespace changed")
+    seed_material = hashlib.sha256(
+        (
+            f"{rng_namespace}|{graph.episode_uid}|{profile}"
+        ).encode("utf-8")
+    ).digest()
+    seed = int.from_bytes(seed_material[:8], "big", signed=False)
+    rng = np.random.default_rng(seed)
+    nodes = np.array(graph.node_features, dtype=np.float32, copy=True)
+    edges = np.array(graph.edge_features, dtype=np.float32, copy=True)
+    changed_nodes: tuple[str, ...] = ()
+    changed_edges: tuple[str, ...] = ()
+
+    if profile == "occlusion_reappearance_proxy":
+        confidence = _NODE_FEATURE_INDEX["confidence"]
+        age = _NODE_FEATURE_INDEX["tracklet_age_s"]
+        edge_confidence = _EDGE_FEATURE_INDEX["confidence_product"]
+        time_delta = _EDGE_FEATURE_INDEX["time_delta_s"]
+        node_mask = rng.random(graph.node_count) < 0.35
+        if graph.node_count and not bool(np.any(node_mask)):
+            node_mask[int(seed % graph.node_count)] = True
+        nodes[node_mask, confidence] *= 0.4
+        nodes[node_mask, age] += 0.75
+        edge_mask = (
+            node_mask[graph.edge_index[0]] | node_mask[graph.edge_index[1]]
+            if graph.edge_count
+            else np.zeros(0, dtype=bool)
+        )
+        edges[edge_mask, edge_confidence] *= 0.4
+        edges[edge_mask, time_delta] = np.clip(
+            edges[edge_mask, time_delta] + 0.1,
+            0.0,
+            0.35,
+        )
+        changed_nodes = ("confidence", "tracklet_age_s")
+        changed_edges = ("confidence_product", "time_delta_s")
+    elif profile == "similar_motion_confusers":
+        changed_nodes = (
+            "angular_velocity_x_rad_s",
+            "angular_velocity_y_rad_s",
+            "bbox_scale_rate_s",
+        )
+        changed_edges = (
+            "bbox_log_scale_delta",
+            "bbox_scale_rate_delta_s",
+            "angular_velocity_delta_rad_s",
+        )
+        for name in changed_nodes:
+            nodes[:, _NODE_FEATURE_INDEX[name]] = 0.0
+        for name in changed_edges:
+            edges[:, _EDGE_FEATURE_INDEX[name]] = 0.0
+    else:
+        changed_nodes = ("log_bbox_area_ratio", "bbox_scale_rate_s")
+        changed_edges = (
+            "bbox_log_scale_delta",
+            "bbox_scale_rate_delta_s",
+        )
+        edges[:, _EDGE_FEATURE_INDEX["bbox_log_scale_delta"]] = np.abs(
+            rng.normal(0.0, 0.08, size=graph.edge_count)
+        )
+        edges[:, _EDGE_FEATURE_INDEX["bbox_scale_rate_delta_s"]] = np.abs(
+            rng.normal(0.0, 0.0015, size=graph.edge_count)
+        )
+        nodes[:, _NODE_FEATURE_INDEX["log_bbox_area_ratio"]] += rng.normal(
+            0.0,
+            0.08,
+            size=graph.node_count,
+        )
+        nodes[:, _NODE_FEATURE_INDEX["bbox_scale_rate_s"]] += rng.normal(
+            0.0,
+            0.0015,
+            size=graph.node_count,
+        )
+
+    nodes.setflags(write=False)
+    edges.setflags(write=False)
+    return (
+        nodes,
+        edges,
+        {
+            "schema_version": "d5.tracklet-robust-training-view.v1",
+            "profile_id": profile,
+            "rng_namespace": rng_namespace,
+            "deterministic_seed": seed,
+            "label_accessed": False,
+            "candidate_topology_changed": False,
+            "changed_node_features": list(changed_nodes),
+            "changed_edge_features": list(changed_edges),
+        },
+    )
+
+
+def _training_feature_views(
+    episode: LoadedTrackletEpisode,
+    config: TrackletTrainingConfig,
+) -> tuple[tuple[np.ndarray, np.ndarray], ...]:
+    views: list[tuple[np.ndarray, np.ndarray]] = [
+        (episode.graph.node_features, episode.graph.edge_features)
+    ]
+    for profile_id in config.robust_training_view_ids:
+        nodes, edges, _ = build_robust_training_feature_view(
+            episode.graph,
+            profile_id,
+        )
+        views.append((nodes, edges))
+    return tuple(views)
+
+
 def _graph_tensors(
     episode: LoadedTrackletEpisode,
     device: torch.device,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    return _feature_tensors(
+        episode,
+        episode.graph.node_features,
+        episode.graph.edge_features,
+        device,
+    )
+
+
+def _feature_tensors(
+    episode: LoadedTrackletEpisode,
+    node_features: np.ndarray,
+    edge_features: np.ndarray,
+    device: torch.device,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     graph = episode.graph
     return (
-        torch.as_tensor(np.array(graph.node_features, copy=True), dtype=torch.float32, device=device),
+        torch.as_tensor(
+            np.array(node_features, copy=True),
+            dtype=torch.float32,
+            device=device,
+        ),
         torch.as_tensor(np.array(graph.edge_index, copy=True), dtype=torch.long, device=device),
-        torch.as_tensor(np.array(graph.edge_features, copy=True), dtype=torch.float32, device=device),
+        torch.as_tensor(
+            np.array(edge_features, copy=True),
+            dtype=torch.float32,
+            device=device,
+        ),
     )
 
 
@@ -1171,9 +1418,13 @@ if __name__ == "__main__":  # pragma: no cover - exercised through the CLI.
 
 __all__ = [
     "EVALUATION_REPORT_SCHEMA_VERSION",
+    "ROBUST_TRAINING_PROFILE_VERSION",
+    "ROBUST_TRAINING_RNG_NAMESPACE",
+    "ROBUST_TRAINING_VIEW_IDS",
     "TRAINING_REPORT_SCHEMA_VERSION",
     "TrackletTrainingConfig",
     "TrackletTrainingResult",
+    "build_robust_training_feature_view",
     "evaluate_tracklet_edge_model",
     "fit_validation_temperature",
     "run_evaluation_pipeline",

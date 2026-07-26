@@ -185,7 +185,7 @@ def _consumer_contract(
 ) -> dict[str, Any]:
     training = source["manifest"]["training_dataset"]
     implementation = source["manifest"]["code_provenance"][
-        "implementation_sha256"
+        "runtime_implementation_sha256"
     ]
     values: dict[str, Any] = {
         "bundle_manifest_sha256": source["manifest_sha256"],

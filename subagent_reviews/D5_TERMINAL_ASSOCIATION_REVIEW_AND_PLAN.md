@@ -1,5 +1,24 @@
 # D5 末端视觉配准与协同身份认证综述及子方案
 
+## 2026-07-26 G1 稳健开发候选复核
+
+D5 新候选在补充语料中为每个匿名相机量测独立加入尺度、尺度变化率和角速度误差，并在训练阶段
+加入遮挡重现、相似运动干扰和独立尺度抖动三个标签无关视图。该处理针对旧合成数据中尺度变化率
+几乎单特征可分、遮挡重现召回明显下降的问题。候选边拓扑、几何门、同相机互斥和中心身份所有权
+没有变化。
+
+新权重为 `7fb5db8b...ca71`，模型/运行时实现摘要为
+`1883bc36...105` / `408e71fe...f4fe`。900 帧 held-out 的 F1、候选召回率为 1.0，错误合并率
+为 0，CPU P95 为 1.121304 ms。paired-shadow 的五类困难扰动 edge/cluster F1 均为 1.0，最高
+单特征 AUC 为 0.720073。结果来自合成、固定候选拓扑数据，只证明当前专项门，不证明真实多相机
+或 AirSim 泛化。
+
+训练来源处于 dirty 工作树。候选固定为 `development_only_fail_closed`，D6 外部审计和 G1
+assembler 未运行。后续必须在 clean commit 重建 supplemental/composite、模型 bundle、
+held-out、paired-shadow 和 registry evidence，再交 D6 独立审计。旧模型和旧审计不改写，
+`global_track_id` 所有权及规则回退保持不变。
+2026-07-26 D5 全量回归为 `578 passed in 103.88s`。
+
 ## 2026-07-26 G1 evidence assembler 复核
 
 D5 已实现独立 G1 evidence assembler。入口只接受 development bundle、held-out、

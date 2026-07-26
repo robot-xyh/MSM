@@ -2,6 +2,30 @@
 
 科研模块，用于把末端相机视场中的本地视觉轨迹保守关联到中心分配的 `global_track_id`。模块可在统一三维 episode 中在线运行；训练标签和真值评分仍保持离线。D5 只输出视觉关联与相机观察意图，不修改、重写或重新分配任何全局轨迹 ID。
 
+## 2026-07-26 G1 稳健开发候选
+
+D5 已针对旧 `99fa4428...d4cd` 候选的遮挡重现、单特征捷径和实现谱系问题形成新开发候选。
+补充课程增加相机局部、标签无关的检测框尺度、尺度变化率和角速度误差；训练增加遮挡重现、
+相似运动干扰和独立尺度抖动三个确定性困难视图。困难视图不读取 evaluator truth，不改变候选边
+拓扑。
+
+新权重 SHA-256 为
+`7fb5db8b6099ca4da5706a3bec53ff7cd634e8bd267c036ce3ee4ee4bf71ca71`，bundle manifest 为
+`ddd7ce4aa0fc5e9b01e1c388992f6e443aebcf4484ac9f0c09727a66bad72f17`。模型实现摘要与完整
+运行时实现摘要分别为 `1883bc36...105` 和 `408e71fe...f4fe`。seed `1000-1019` 的 900 帧
+held-out 得到 F1=1.0、错误合并率=0、候选召回率=1.0、CPU P95=1.121304 ms；同图
+paired-shadow 的五类困难扰动 edge/cluster F1 均为 1.0，最高单特征 AUC 为 0.720073，满足既有
+`<=0.98` 门限。在线 truth 特征、同相机互斥违规和 `global_track_id` 改写均为 0。
+
+本候选只用于开发诊断。补充语料与训练来源记录为 dirty，训练状态为
+`hash_bound_dirty_internal_development_complete`，没有 clean commit 声明。D6 外部审计和 G1
+assembler 均未运行，`default_model=false`、`g1_assist_eligible=false`。最终 blocker 为
+`source_repository_dirty`、`clean_commit_retraining_required`、
+`d6_external_audit_not_run_dirty_source` 和 `g1_assembler_not_run_dirty_source`。旧模型、旧
+审计、全部门限和兼容策略均未修改。详细结果见
+`reports/D5_TRACKLET_G1_ROBUST_V2_FAIL_CLOSED_20260726.md`。
+2026-07-26 D5 全量回归为 `578 passed in 103.88s`。
+
 ## 2026-07-26 G1 证据装配闭环
 
 D5 已实现独立 G1 证据装配器和命令行入口。输入固定为一份 v3 development bundle、一份
