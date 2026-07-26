@@ -21,13 +21,15 @@ manifest、weights、`SHA256SUMS` 及三份 JSON 的带外 SHA-256。装配器�
 篡改、跨模型/数据集/实现、字段 unavailable、布尔/整数类型伪造、装配后证据篡改、非空目标目录、
 失败残留和旧手工 v4 绕过。该 fixture 是合同测试，不是当前模型准入证据。
 
-当前 `99fa4428...d4cd` 模型仍未获准。实际 D6 审计文件 SHA-256 为
-`7cae5b1fd24fb57fa5aadf456a4798f483d88e62f6c9979773b09224fd142ca8`，内容 SHA-256 为
-`7c0c7d8291698bc4de9211edf8fa8b4106ddc4a4b0c3714372e41bfa04e9dd39`。装配器返回稳定拒绝码
-`d6_external_audit_fail_closed`，目标目录不存在。四个 blocker 保持为
-`implementation_lineage_mismatch`、`robustness_threshold_not_met.cluster_f1`、
-`robustness_threshold_not_met.edge_f1` 和 `synthetic_single_feature_shortcut`。没有调整阈值、
-增加实现兼容白名单或重写旧 bundle/报告/D6 输出。当前 G1 运行实现摘要为
+当前 `99fa4428...d4cd` 模型仍未获准。post-assembler D6 审计位于
+`research_modules/d6_evaluation_metrics/outputs/d5_g1_external_audit_99fa4428_post_assembler_20260726/d5_g1_external_audit.json`。
+文件 SHA-256 为 `98bf9e0251567a330bf16951acf07da576a6ba3dc47627c3671cd2d491cdc8ed`，
+内容 SHA-256 为 `40a42af015211d5e721584053e052a893e31aa35b7393195530a5d3d2dc9b90d`。
+装配器返回稳定拒绝码 `d6_external_audit_fail_closed`，退出码为 2，目标目录不存在。五个
+blocker 为 `implementation_evidence_unavailable`、`implementation_lineage_mismatch`、
+`robustness_threshold_not_met.cluster_f1`、`robustness_threshold_not_met.edge_f1` 和
+`synthetic_single_feature_shortcut`。没有调整阈值、增加实现兼容白名单或重写旧
+bundle/报告/D6 输出。当前 G1 运行实现摘要为
 `41381db3d11371c049e5569658820ce98abf1a9966ecf86edc0f13f140894b07`。该摘要已包含
 `tracklet_g1_evidence_assembler.py`；仅改变 assembler 即会改变摘要。旧 development bundle 未绑定
 该文件，公开严格 loader 返回 `implementation_runtime_mismatch`，不提供兼容白名单。
@@ -35,8 +37,8 @@ manifest、weights、`SHA256SUMS` 及三份 JSON 的带外 SHA-256。装配器�
 A3 主动视觉准入不在本次实现范围。其 production writer 继续拒绝 caller-provided report，公开
 assist loader 继续失败关闭。确定性几何关联和规则主动视觉仍是默认路径。
 
-2026-07-26 验证结果：assembler 专项 `14 passed in 1.21s`，模型流水线
-`20 passed in 4.23s`，D5 全量 `571 passed in 99.00s`。
+2026-07-26 最终证据同步复测：assembler 专项 `14 passed in 1.15s`，模型流水线
+`20 passed in 4.08s`。既有 D5 全量结果为 `571 passed in 99.00s`。
 
 ## 2026-07-25 同一 GNN bundle 的 20-seed 证据闭合
 

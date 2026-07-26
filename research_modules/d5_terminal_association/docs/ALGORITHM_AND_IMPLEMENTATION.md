@@ -52,14 +52,18 @@ loader 和 evidence assembler，当前为 `41381db3...94b07`。回归测试确�
 `require_g1_assist_eligible=True` 下加载。v4 只授予 G1 assist eligibility；default、全局航迹编号、
 分配和控制 authority 全为 false。该 fixture 只证明软件合同可运行。
 
-当前 `99fa4428...d4cd` 实物没有生成 admitted bundle。实际 D6 审计为 `fail_closed`，原因是
-`implementation_lineage_mismatch`、`robustness_threshold_not_met.cluster_f1`、
-`robustness_threshold_not_met.edge_f1` 和 `synthetic_single_feature_shortcut`。assembler 返回
-`d6_external_audit_fail_closed` 且不创建目标目录。后续需要新模型、新数据和新的 D6 正向审计，
-不能通过修改阈值或重写旧证据恢复权限。
+当前 `99fa4428...d4cd` 实物没有生成 admitted bundle。post-assembler D6 审计文件 SHA-256 为
+`98bf9e0251567a330bf16951acf07da576a6ba3dc47627c3671cd2d491cdc8ed`，内容 SHA-256 为
+`40a42af015211d5e721584053e052a893e31aa35b7393195530a5d3d2dc9b90d`，绑定当前实现摘要
+`41381db3d11371c049e5569658820ce98abf1a9966ecf86edc0f13f140894b07`。审计为
+`fail_closed`，原因是 `implementation_evidence_unavailable`、`implementation_lineage_mismatch`、
+`robustness_threshold_not_met.cluster_f1`、`robustness_threshold_not_met.edge_f1` 和
+`synthetic_single_feature_shortcut`。assembler 返回 `d6_external_audit_fail_closed`、退出码 2，
+且不创建目标目录。后续需要新模型、新数据和新的 D6 正向审计，不能通过修改阈值或重写旧证据
+恢复权限。
 
-2026-07-26 验证结果为 assembler 专项 `14 passed in 1.21s`、模型流水线
-`20 passed in 4.23s`、D5 全量 `571 passed in 99.00s`。
+2026-07-26 最终证据同步复测为 assembler 专项 `14 passed in 1.15s`、模型流水线
+`20 passed in 4.08s`；既有 D5 全量结果为 `571 passed in 99.00s`。
 
 ## 冻结模型审计链
 

@@ -21,10 +21,12 @@
   严格 loader 返回 `implementation_runtime_mismatch`，不设兼容白名单。
 - [x] 正向 fixture 可原子生成 v4，并由公开 strict loader/runtime 加载。该结果只证明合同可执行，
   不代表当前模型获准，也不构成真实多相机或 AirSim 性能证据。
-- [x] 用实际 D6 审计复核当前 `99fa4428...d4cd` 实物。assembler 返回
-  `d6_external_audit_fail_closed`，进程退出码为 2，目标目录不存在。四项 blocker 为
-  `implementation_lineage_mismatch`、`robustness_threshold_not_met.cluster_f1`、
-  `robustness_threshold_not_met.edge_f1`、`synthetic_single_feature_shortcut`。
+- [x] 用 post-assembler D6 审计复核当前 `99fa4428...d4cd` 实物。审计文件/内容 SHA-256 为
+  `98bf9e02...c8ed` / `40a42af0...b90d`，绑定当前实现摘要 `41381db3...94b07`。assembler 返回
+  `d6_external_audit_fail_closed`，进程退出码为 2，目标目录不存在。五项 blocker 为
+  `implementation_evidence_unavailable`、`implementation_lineage_mismatch`、
+  `robustness_threshold_not_met.cluster_f1`、`robustness_threshold_not_met.edge_f1`、
+  `synthetic_single_feature_shortcut`。
 - [ ] 训练或选择没有合成单特征捷径、困难扰动达到门限且绑定当前实现的新模型，重新生成 held-out、
   paired-shadow 和 D6 外部审计。D6 source list/config 由 main 协调 D6 owner 另行对齐。
 - [ ] A3 主动视觉 evidence assembler 仍未实现。A3 production writer 继续拒绝 caller-provided
@@ -32,8 +34,8 @@
 
 本次改变 G1 bundle 准入软件链和实现来源摘要。模块 README、原理、算法、实验报告及 D5 GAP/review
 同步更新；AirSim settings、相机、检测、局部多目标跟踪、episode 和消息接口均未改变。
-2026-07-26 验证为 assembler 专项 `14 passed in 1.21s`、模型流水线
-`20 passed in 4.23s`、D5 全量 `571 passed in 99.00s`，验收要求为零失败。
+2026-07-26 最终证据同步复测为 assembler 专项 `14 passed in 1.15s`、模型流水线
+`20 passed in 4.08s`；既有 D5 全量结果为 `571 passed in 99.00s`，验收要求为零失败。
 
 ## 2026-07-25 冻结图模型证据链
 
@@ -54,8 +56,8 @@
 - [x] main 在 D4 因果通信修正后复跑统一 module stack：
   `66 passed, 1 warning in 10.17s`。警告为既有 Matplotlib `Axes3D` 导入环境提示；
   本次只确认 D5 合同没有跨模块回归，不构成冻结图模型在线准入。
-- [ ] 由 D6 对本次固定 report、lineage、输入语料和 bundle SHA 做独立复核。复核完成前不开放
-  G1、assist 或 authority。
+- [x] D6 已对固定 report、lineage、输入语料、bundle SHA 和当前 post-assembler 实现做独立复核。
+  复核结果为 `fail_closed`，只完成外部审计，不开放 G1、assist 或 authority。
 - [ ] 建设会重新执行物理候选门的独立困难集，覆盖真实遮挡重现、独立目标外形、时钟偏差、变化
   外参和相似运动负样本。当前 post-gate 反事实视图不能替代该项。
 - [ ] 将权重迁移到可版本化的独立制品库或 Git LFS，并验证从空环境恢复。当前 tracked registry

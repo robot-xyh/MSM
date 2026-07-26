@@ -6,16 +6,19 @@ G1 独立 evidence assembler 已闭合软件证据链。合法 v4 必须实际�
 paired-shadow 和 D6 audit，并由公开 loader/runtime 逐次复核。正向 fixture 只证明该合同可运行，
 不能据此宣称图模型已适用于 M 对 N 联盟、多相机部分重叠或真实飞行条件。
 
-当前 `99fa4428...d4cd` 模型仍未准入。实际 D6 审计以
+当前 `99fa4428...d4cd` 模型仍未准入。post-assembler D6 审计文件/内容 SHA-256 为
+`98bf9e02...c8ed` / `40a42af0...b90d`，绑定当前 G1 实现摘要
+`41381db3...94b07`。审计以 `implementation_evidence_unavailable`、
 `implementation_lineage_mismatch`、`robustness_threshold_not_met.cluster_f1`、
-`robustness_threshold_not_met.edge_f1` 和 `synthetic_single_feature_shortcut` 四项 blocker
-失败关闭；assembler 返回 `d6_external_audit_fail_closed`，没有生成 v4。G1 实现摘要已包含
-assembler，当前为 `41381db3...94b07`，旧 bundle 因缺该来源绑定返回
-`implementation_runtime_mismatch`。A3 assembler 仍未实现。
+`robustness_threshold_not_met.edge_f1` 和 `synthetic_single_feature_shortcut` 五项 blocker
+失败关闭；assembler 返回 `d6_external_audit_fail_closed`，没有生成 v4。旧 bundle 因缺
+assembler 来源绑定返回 `implementation_runtime_mismatch`。A3 assembler 仍未实现。
 
 因此 M 对 N 主线继续使用确定性投影、几何门、受约束聚类和中心航迹绑定。图模型只在未来获得
 G1 assist eligibility 后参与候选边评分，仍不能创建 `global_track_id`、决定联盟成员或输出控制。
-本轮 D5 全量回归为 `571 passed in 99.00s`；该结果验证软件合同，没有新增 M 对 N 运行证据。
+最终证据同步复测为 assembler 专项 `14 passed in 1.15s`、模型流水线
+`20 passed in 4.08s`；既有 D5 全量回归为 `571 passed in 99.00s`。这些结果验证软件合同，
+没有新增 M 对 N 运行证据。
 
 ## 2026-07-25 同一模型谱系对 M 对 N 的边界
 
@@ -29,7 +32,7 @@ G1 assist eligibility 后参与候选边评分，仍不能创建 `global_track_i
 外参下的重新构图实验。D3/D4 联盟合同、D7 执行许可和物理完成不能由本次分类结果替代。
 
 该证据只关闭“当前冻结模型与 20-seed 报告不是同一权重”的谱系问题。G1、assist、authority
-继续关闭，规则回退保持默认；D6 外部复核和联盟运行时证据仍是 P1。
+继续关闭，规则回退保持默认；D6 外部复核已完成并失败关闭，联盟运行时证据仍是 P1。
 
 2026-07-25 D5 全量为 `552 passed in 114.25s`。main 在 D4 因果通信修正后复跑统一
 module stack，结果为 `66 passed, 1 warning in 10.17s`。D5 回归和统一栈复测证明新增离线

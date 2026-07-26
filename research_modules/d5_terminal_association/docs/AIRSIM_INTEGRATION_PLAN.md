@@ -11,10 +11,12 @@ G1 运行实现摘要已包含 evidence assembler，为
 也不得增加兼容白名单绕过实现摘要。
 
 G1 已有独立 evidence assembler，可从明确实物原子生成并严格加载 v4；production writer 仍不接收
-调用方 report。当前 `99fa4428...d4cd` 实物的 D6 audit 为 `fail_closed`，因此没有生成 admitted
-bundle，AirSim G1 scope 仍不能初始化。A3 assembler 尚未实现，A3/C1/F1 继续失败关闭。AirSim
-主线继续使用确定性几何关联和规则主动视觉。本次只同步准入状态，没有修改 settings、相机参数、
-检测器、局部多目标跟踪、actor、reset、消息 DTO 或导引接口。
+调用方 report。post-assembler D6 audit 绑定当前实现摘要 `41381db3...94b07`，文件/内容 SHA-256
+为 `98bf9e02...c8ed` / `40a42af0...b90d`。当前 `99fa4428...d4cd` 实物因实现证据不可用、实现谱系
+不一致、边/簇困难扰动未达门限和合成单特征捷径共五项 blocker 保持 `fail_closed`，因此没有生成
+admitted bundle，AirSim G1 scope 仍不能初始化。A3 assembler 尚未实现，A3/C1/F1 继续失败关闭。
+AirSim 主线继续使用确定性几何关联和规则主动视觉。本次只同步准入状态，没有修改 settings、相机
+参数、检测器、局部多目标跟踪、actor、reset、消息 DTO 或导引接口。
 
 ## 2026-07-25 冻结图模型的 AirSim 边界
 

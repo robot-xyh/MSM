@@ -17,19 +17,24 @@ G1 实现摘要已纳入 `tracklet_g1_evidence_assembler.py`，当前为
 assembler 文件摘要，整体实现摘要随之改变。旧 development bundle 未绑定该文件，公开严格
 loader 返回 `implementation_runtime_mismatch`，没有使用兼容白名单。
 
-实际复核使用 `99fa4428...d4cd` 权重和 D6 审计
-`d5_g1_external_audit_99fa4428_20260726`。审计状态为 `fail_closed`，assembler 稳定返回
-`d6_external_audit_fail_closed`，退出码为 2，目标 bundle 目录不存在。四项 blocker 是：
+实际复核使用 `99fa4428...d4cd` 权重和 post-assembler D6 审计
+`d5_g1_external_audit_99fa4428_post_assembler_20260726`。审计文件 SHA-256 为
+`98bf9e0251567a330bf16951acf07da576a6ba3dc47627c3671cd2d491cdc8ed`，内容 SHA-256 为
+`40a42af015211d5e721584053e052a893e31aa35b7393195530a5d3d2dc9b90d`，当前实现摘要为
+`41381db3d11371c049e5569658820ce98abf1a9966ecf86edc0f13f140894b07`。审计状态为
+`fail_closed`，assembler 稳定返回 `d6_external_audit_fail_closed`，退出码为 2，目标 bundle
+目录不存在。五项 blocker 是：
 
-1. `implementation_lineage_mismatch`
-2. `robustness_threshold_not_met.cluster_f1`
-3. `robustness_threshold_not_met.edge_f1`
-4. `synthetic_single_feature_shortcut`
+1. `implementation_evidence_unavailable`
+2. `implementation_lineage_mismatch`
+3. `robustness_threshold_not_met.cluster_f1`
+4. `robustness_threshold_not_met.edge_f1`
+5. `synthetic_single_feature_shortcut`
 
 阈值、实现兼容白名单、旧 bundle、held-out、paired-shadow 和 D6 输出均未修改。当前模型仍无
 G1 assist eligibility。A3 evidence assembler 尚未实现，主动视觉学习 assist 继续失败关闭。
-软件回归结果为 assembler 专项 `14 passed in 1.21s`、模型流水线
-`20 passed in 4.23s`、D5 全量 `571 passed in 99.00s`。
+最终证据同步复测为 assembler 专项 `14 passed in 1.15s`、模型流水线
+`20 passed in 4.08s`；既有 D5 全量结果为 `571 passed in 99.00s`。
 
 ## 2026-07-25 同一冻结权重 20-seed 成对影子评估
 

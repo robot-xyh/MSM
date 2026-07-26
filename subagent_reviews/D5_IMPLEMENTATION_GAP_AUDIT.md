@@ -10,14 +10,14 @@
 | G1 authority 边界 | **关闭并保持回归** | 合法 v4 仅有 `g1_assist_eligible=true`；`default_model`、全局航迹编号、分配和控制 authority 全 false。production writer 继续拒绝 caller-provided report。 |
 | assembler 实现来源链 | **D5-owned 已关闭** | `_IMPLEMENTATION_SOURCE_FILES` 已包含 `tracklet_g1_evidence_assembler.py`，当前实现摘要为 `41381db3...94b07`；专项测试确认只改变 assembler 摘要会改变整体摘要。旧 bundle 严格加载返回 `implementation_runtime_mismatch`，无白名单。 |
 | G1 软件正向合同 | **fixture 范围已关闭** | 正向 fixture 可原子生成 v4，并由公开 runtime strict loader 加载。该结果只证明合同可运行，不代表当前模型获准。 |
-| 当前 `99fa4428` 实物准入 | **P1 开放，fail-closed** | 实际 D6 audit 仍有 `implementation_lineage_mismatch`、`robustness_threshold_not_met.cluster_f1`、`robustness_threshold_not_met.edge_f1`、`synthetic_single_feature_shortcut`。assembler 返回 `d6_external_audit_fail_closed`、退出码 2，目标目录不存在。 |
-| 新模型和新外部审计 | **P1 开放** | 需消除实现谱系不一致和合成单特征捷径，并让边/簇困难扰动达到门限；随后重新生成 held-out、paired-shadow 和 D6 正向审计。D6 source list/config 由 main 协调 D6 owner 更新。 |
+| 当前 `99fa4428` 实物准入 | **P1 开放，fail-closed** | post-assembler D6 audit 文件/内容 SHA-256 为 `98bf9e02...c8ed` / `40a42af0...b90d`，绑定当前实现摘要 `41381db3...94b07`。五项 blocker 为 `implementation_evidence_unavailable`、`implementation_lineage_mismatch`、`robustness_threshold_not_met.cluster_f1`、`robustness_threshold_not_met.edge_f1`、`synthetic_single_feature_shortcut`。assembler 返回 `d6_external_audit_fail_closed`、退出码 2，目标目录不存在。 |
+| 新模型和新外部审计 | **P1 开放** | 需用当前实现重新形成完整实现证据，消除谱系不一致和合成单特征捷径，并让边/簇困难扰动达到门限；随后重新生成 held-out、paired-shadow 和 D6 正向审计。D6 source list/config 由 main 协调 D6 owner 更新。 |
 | A3 evidence assembler | **P1 开放，未实现** | 本轮只处理 G1。A3 production writer 继续拒绝 caller-provided report，公开 assist loader 继续失败关闭。 |
 
 本轮没有修改旧 manifest、模型权重、阈值、校准值、在线 truth 边界或 `global_track_id`。实际
 fail-closed 审计未被重写为 pass。
-2026-07-26 验证为 assembler 专项 `14 passed in 1.21s`、模型流水线
-`20 passed in 4.23s`、D5 全量 `571 passed in 99.00s`。
+2026-07-26 最终证据同步复测为 assembler 专项 `14 passed in 1.15s`、模型流水线
+`20 passed in 4.08s`；既有 D5 全量结果为 `571 passed in 99.00s`。
 
 ## 2026-07-25 冻结图模型 P1 状态
 
@@ -30,7 +30,7 @@ fail-closed 审计未被重写为 pass。
 | 合成单特征捷径 | **P1 开放** | 最高单特征 AUC `0.997340`，对应 bbox 尺度变化率差。名义满分不能作为真实跨视角泛化或 G1 准入。 |
 | 困难扰动稳定性 | **P1 开放并已量化** | 遮挡重现代理边/簇 F1 为 `0.563264/0.572845`；独立 bbox 尺度扰动为 `0.893470/0.949131`。当前是固定候选图的 post-gate 诊断，仍需重新构图的独立物理困难集。 |
 | 模型异常回退 | **代码与本次探针关闭** | 9/9 异常返回与几何规则逐值一致的概率，回退率 1.0。规则仍是默认路径。 |
-| D6 独立复核 | **P1 开放** | D5 已发布固定 report/lineage/输入和模型哈希，D6 尚未独立消费本次 `99fa4428` 证据。 |
+| D6 独立复核 | **已完成并失败关闭** | D6 已独立消费固定 report、lineage、输入、模型哈希和当前实现。post-assembler 审计保留五项 blocker，不授予模型晋级、G1 assist、默认路径或控制权限。 |
 | 权重可移交性 | **P1 开放** | tracked registry 不含权重；需独立制品库或 Git LFS 和空环境恢复验证。 |
 | 在线模型权限 | **保持关闭** | bundle 仍为 `development_only_fail_closed`；`G1=false`、`assist=false`、`authority=false`，主动视觉 PPO 未启动。 |
 

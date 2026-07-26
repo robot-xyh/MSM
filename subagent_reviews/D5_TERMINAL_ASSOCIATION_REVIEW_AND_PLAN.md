@@ -17,16 +17,19 @@ G1 来源摘要已包含 assembler，当前为 `41381db3...94b07`。测试确认
 不增加兼容白名单。
 
 正向 fixture 已由公开 strict loader/runtime 加载，说明软件合同可执行。它不代表当前模型获准。
-实际 `99fa4428...d4cd` D6 audit 为 `fail_closed`，四项 blocker 为
-`implementation_lineage_mismatch`、`robustness_threshold_not_met.cluster_f1`、
-`robustness_threshold_not_met.edge_f1`、`synthetic_single_feature_shortcut`。实际 assembler
-返回 `d6_external_audit_fail_closed`、退出码 2，未创建目标 bundle。
+post-assembler D6 audit 文件/内容 SHA-256 为 `98bf9e02...c8ed` /
+`40a42af0...b90d`，绑定当前实现摘要 `41381db3...94b07`。实际
+`99fa4428...d4cd` 审计为 `fail_closed`，五项 blocker 为
+`implementation_evidence_unavailable`、`implementation_lineage_mismatch`、
+`robustness_threshold_not_met.cluster_f1`、`robustness_threshold_not_met.edge_f1` 和
+`synthetic_single_feature_shortcut`。实际 assembler 返回
+`d6_external_audit_fail_closed`、退出码 2，未创建目标 bundle。
 
 A3 evidence assembler 仍未实现。A3 production writer 和公开 assist loader 保持失败关闭。后续
 需先获得绑定当前实现、没有单特征捷径且困难扰动达标的新 G1 模型证据，再由 D6 owner 对齐来源
 清单并生成新的正向外部审计。
-2026-07-26 验证为 assembler 专项 `14 passed in 1.21s`、模型流水线
-`20 passed in 4.23s`、D5 全量 `571 passed in 99.00s`。
+2026-07-26 最终证据同步复测为 assembler 专项 `14 passed in 1.15s`、模型流水线
+`20 passed in 4.08s`；既有 D5 全量结果为 `571 passed in 99.00s`。
 
 ## 2026-07-25 冻结图模型复核
 
@@ -46,9 +49,9 @@ D5 重新选择当前工作树可严格加载的 development bundle，并把 man
 `0.563264/0.572845`，独立 bbox 尺度扰动降至 `0.893470/0.949131`，说明当前合成数据仍过易，
 模型对低置信度重现和尺度变化不够稳健。九类模型异常的规则回退率为 1.0。
 
-本轮只关闭模型哈希与 20-seed 证据不一致的 P1 子项。D6 独立复核、重新执行候选门的独立困难集、
-真实匿名多相机回放和权重制品化仍开放。bundle 晋级字段未修改，G1、assist、authority 继续关闭，
-主动视觉 PPO 未启动。
+本轮只关闭模型哈希与 20-seed 证据不一致的 P1 子项。D6 独立复核随后已完成并按上节五项
+blocker 失败关闭；重新执行候选门的独立困难集、真实匿名多相机回放和权重制品化仍开放。
+bundle 晋级字段未修改，G1、assist、authority 继续关闭，主动视觉 PPO 未启动。
 
 最终 D5 回归为 `552 passed in 114.25s`。main 在 D4 因果通信修正后复跑统一
 module stack，结果为 `66 passed, 1 warning in 10.17s`。唯一警告为既有 Matplotlib

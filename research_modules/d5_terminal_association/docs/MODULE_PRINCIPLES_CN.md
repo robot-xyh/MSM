@@ -26,15 +26,18 @@ development bundle 未绑定该文件，严格加载返回 `implementation_runti
 兼容白名单，也不重写旧 manifest。
 
 正向 fixture 已能原子生成 v4，并由公开 strict loader/runtime 加载。该 fixture 只验证合同实现，
-不代表当前模型准入。实际 `99fa4428...d4cd` 模型的 D6 审计仍为 `fail_closed`，四项 blocker 是
-`implementation_lineage_mismatch`、`robustness_threshold_not_met.cluster_f1`、
-`robustness_threshold_not_met.edge_f1` 和 `synthetic_single_feature_shortcut`。实际装配返回
-`d6_external_audit_fail_closed`，未生成目标 bundle。
+不代表当前模型准入。post-assembler D6 审计文件/内容 SHA-256 为
+`98bf9e02...c8ed` / `40a42af0...b90d`，绑定当前实现摘要 `41381db3...94b07`。实际
+`99fa4428...d4cd` 模型审计仍为 `fail_closed`，五项 blocker 是
+`implementation_evidence_unavailable`、`implementation_lineage_mismatch`、
+`robustness_threshold_not_met.cluster_f1`、`robustness_threshold_not_met.edge_f1` 和
+`synthetic_single_feature_shortcut`。实际装配返回 `d6_external_audit_fail_closed`，退出码为 2，
+未生成目标 bundle。
 
 A3 主动视觉仍没有独立 evidence assembler。其 production writer 继续拒绝 caller-provided
 report，公开 assist loader 继续失败关闭。确定性几何关联和规则主动视觉仍是默认路径。
-2026-07-26 D5 全量回归为 `571 passed in 99.00s`，assembler 专项为
-`14 passed in 1.21s`。
+2026-07-26 最终证据同步复测为 assembler 专项 `14 passed in 1.15s`、模型流水线
+`20 passed in 4.08s`；既有 D5 全量回归为 `571 passed in 99.00s`。
 
 ## 冻结图模型的证据边界
 
