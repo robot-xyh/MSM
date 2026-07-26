@@ -1,5 +1,45 @@
 # D4 分布式协同与降级接管
 
+## 2026-07-26 A2 预准入证据装配盘点
+
+结论是：D4 已有多段严格证据合同，但尚不具备与“D6 外部审计 -> D4 证据装配器 -> 新
+bundle”等价的完整链路。该缺口当前为 P1，不是 P0。原因是
+`d4-region-resource-model-bundle-v2`、loader 和 advisor 已共同把模型限制在
+`development/shadow`；正式调用方不能用裸布尔、未绑定摘要、无 manifest 注入策略或
+20 个未见 seed 自行进入 assist。测试代码中的合成布尔和测试摘要不进入生产加载或准入路径。
+
+现有合同按证据能力分为四层：
+
+1. **bundle 完整性**：writer/loader 校验 manifest、权重、训练清单、模型版本和
+   SHA-256，并在写目录前拒绝 `qualified/assist`。
+2. **候选实际采用**：`RegionResourceRuntimeAckParser` 可证明建议经过 main 消费、D3
+   形成严格后继计划、D7 形成同代 binding，且 owner、plan、epoch、lease 和总线
+   sequence/hash 一致。它不证明物理结果或模型准入。
+3. **联盟和通信**：`CoalitionCommitState` 保存 required/acked members 和联盟代次；
+   `CausalCommunicationEvidenceGate` 校验每个成员 ACK 的实际投递回执。当前这两类证据尚未
+   与某个 A2 候选的 runtime ACK 和 D6 cell 审计装配为同一个内容身份。
+4. **结果和配对**：区域 reward 适配器可绑定 ACK 后的非重叠、truth-free 观测窗口，但明确
+   固定 `physical_execution_outcome_available=false`；隔离 paired 合同和
+   `ShadowPairedEvaluator` 也不授予物理、因果、assist 或 authority。正式物理结果和配对
+   非退化仍必须来自 main 运行制品及 D6 独立审计。
+
+未来 D4 专用装配器的最小输入必须包含：候选 bundle 全树和模型摘要；场景、seed、comparison
+key、advisory 及模型指纹；候选实际通过门控且未走规则回退；源计划和严格后继计划身份；
+owner/layer、plan version、epoch、lease 和 fault/partition generation；联盟
+ID/version、required/acked members、每个成员 ACK 的 delivered receipt 内容摘要；运行 ACK
+与 D3/D7/main 的序列和载荷摘要；采用后物理结果 availability；同外生输入 R0 配对及逐项
+non-degradation；D6 审计制品和带外校验摘要。任何一项缺失都保持 unavailable。D4 不复制
+D6 的通用外部审计 schema；待 D6 输出冻结后，只实现 D4 语义校验和内容寻址装配，并在新目录
+生成新版本 bundle，旧 v2 manifest 保持不变。
+
+现有 development bundle、nominal 20-seed 和 `active_risk` 20-seed 证据仍不能拼接：
+前者候选安全采用为 0/20，后者 188/188 区域记录执行的是规则回退且
+`production_runtime_ack=false`。正式 assist、PPO 和 authority 继续关闭。
+
+验证日期为 2026-07-26。本轮没有新增场景、seed 或性能样本；验收标准为不存在
+development bundle 自晋级入口、历史证据不被宽松拼接、D4 全量回归零失败。结果为
+**569/569 passed**。剩余限制是 D6 冻结外部审计和真实候选采用正样本尚未形成。
+
 ## 2026-07-26 A2/C1/F1 学习准入复核
 
 对照 main 提交 `d59352be83c24238fc8c41a9fe7a1c0db40a6d31` 的正式学习 scope 合同，D4 当前不能合法进入 A2、C1 或 F1。现有区域策略 bundle 为 `d4-region-bc-900-development-v1`，manifest、权重和训练清单 SHA-256 分别为 `dad2adbe9c36dd9ff8ee8bb3c11b1e07e66743c6f80dd8e956799208a10c05c9`、`3da0360be8788f3ffeb8e9f9eba3e0d5369ec0bdf9e05729dfb1db07d71d5f62` 和 `ff3081c8e320d9c8e1b032fb6234cd24159f0feedb1c6a706633cea6c1030dc6`。其生命周期和模式上限仍是 `development/shadow`。

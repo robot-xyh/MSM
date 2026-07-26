@@ -6,6 +6,14 @@
 
 现有 nominal 20-seed 候选采用为 0/20；`active_risk` 20-seed 虽有 188/188 隔离区域执行证据记录和 20/20 描述性物理比较，但所有 treatment 都是 `d4_development_candidate_not_admitted` 后的规则回退，D4 候选采用仍为 0/20。两类证据均不能用于 A2/C1/F1。D4 v2 writer 已固定为 development/shadow-only，后续 promotion 只能生成新 bundle，不能改写旧 manifest。
 
+本轮进一步确认，`coalition_ack_complete=true` 只能作为状态快照条件，不能单独进入模型准入。
+未来 D4 装配器必须同时绑定 `CoalitionCommitState` 中的 coalition ID/version、plan
+ID/version、epoch、lease、required/acked member 清单，以及每个成员
+`d4.coalition_member_ack.v1` 的 delivered receipt ID、载荷摘要、源/目的、发送/到达时间和
+partition generation。上述联盟证据还必须与同一 D4 advisory、`new_execution_plan_applied`
+运行 ACK、采用后物理窗和 D6 comparison key 一致。当前没有这个装配器；因 v2 bundle
+shadow-only，该缺口为 P1，不是可绕过的 P0。
+
 ## 2026-07-25 异步确认实施状态
 
 M 对 N 联盟确认已从“同一快照提供全部 ACK”改为“按网络到达跨快照累积”。提案和部分 ACK 保持 `collecting_acks`，完整必要成员集合到达后才原子 `committed`。普通快照不再隐式结束确认窗口；显式截止、租约到期、分区、联盟摘要冲突和成员不可执行仍失败关闭。

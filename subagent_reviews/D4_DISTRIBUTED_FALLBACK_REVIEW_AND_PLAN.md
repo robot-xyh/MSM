@@ -1,5 +1,27 @@
 # D4 分布式协同与降级接管综述及子方案
 
+## 2026-07-26 A2 证据链盘点
+
+D4 当前没有完整的“D6 外部审计 -> D4 evidence assembler -> 新 bundle”链路。已有组件能分别
+验证开发 bundle、区域建议、严格后继计划、运行消费、联盟成员业务 ACK、消息实际投递和结果
+观测窗口，但没有一个准入对象把这些事实绑定到同一候选、同一 seed、同一 comparison key 和
+同一 authority generation。该状态不会形成运行级旁路，因为 v2 bundle 和所有正式 advisor
+调用仍被限制在 development/shadow。
+
+后续分工已经收敛。D6 负责冻结通用外部审计制品，验证 clean source、bundle 树、逐 cell
+实际采用、物理结果 availability 和 R0 配对非退化；main 负责产生真实运行、通信和物理制品。
+D4 只负责模块语义装配：重验 advisory/model、严格新计划、owner/version/epoch/lease、
+coalition required/acked members、逐成员 delivered receipt 以及 D6 pair 身份。D4 不复制
+D6 schema，也不接受外部审计中的单个通过布尔作为晋级凭据。全部字段内容寻址闭合后，才另建
+新 schema bundle；旧 v2 manifest 不修改。
+
+现有 nominal 20-seed 和 `active_risk` 20-seed 仍不能合并。前者没有候选采用和物理结果，后者
+执行的是规则回退且没有生产 runtime ACK。软件合同、development bundle、不可拼接 evidence
+和正式 assist/authority 必须继续分开陈述。
+
+本轮验证日期为 2026-07-26，没有新增场景或 seed。D4 全量 **569/569 passed**；验收只覆盖
+软件旁路审计和既有合同回归，不证明新候选有效、物理非退化或正式准入。
+
 ## 2026-07-26 学习 scope 复核
 
 main `d59352b` 已为 A2、C1、F1 建立 bundle 树、设备、诊断、版本和逐单元发布前后复核。D4 当前没有合法 admitted bundle。现有模型为 development/shadow，正式 nominal 配对候选采用 0/20；另一个 `active_risk` 物理制品执行的是规则回退，不是 D4 学习候选。运行 ACK、物理值和非退化值只有与同一个实际采用候选绑定时才可组合。

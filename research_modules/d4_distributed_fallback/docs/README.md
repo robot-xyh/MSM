@@ -1,5 +1,12 @@
 # D4 文档索引
 
+2026-07-26 完成 A2 预准入证据装配盘点。D4 已有 development bundle、运行采用 ACK、联盟
+状态、通信因果回执、区域结果窗和隔离 paired 合同，但尚无模块 evidence assembler 将同一
+候选、严格后继计划、逐成员 ACK、物理结果和 D6 R0 配对非退化绑定后生成新 bundle。现有
+v2 writer/loader 和 advisor 不存在裸布尔或占位摘要自晋级路径，因此当前是 P1，不是 P0。
+D6 负责冻结通用外部审计，D4 后续只实现模块语义装配；详细字段见
+`ALGORITHM_AND_IMPLEMENTATION.md` 和 `../PLAN.md`。
+
 2026-07-26 已完成 A2/C1/F1 严格准入复核。现有 `d4-region-bc-900-development-v1` 继续是
 development/shadow-only；v2 writer 已禁止自声明 qualified/assist，无 admitted manifest 的注入策略
 也不能进入 assist。nominal 20-seed 候选采用为 0/20；`active_risk` 20-seed 虽有物理窗和描述性

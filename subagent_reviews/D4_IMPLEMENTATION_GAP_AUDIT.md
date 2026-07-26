@@ -1,5 +1,38 @@
 # D4 实现差距审计：分布式协同与降级接管
 
+## 2026-07-26 A2 预准入证据装配审计
+
+- **P0 结论**：没有发现新的模块内自晋级路径。v2 writer 在文件写入前拒绝
+  `qualified/assist`；loader 只能构造 development manifest；`assist_admitted` 恒为 false；
+  advisor 对无 manifest 注入策略保持 shadow。生产调用方没有消费裸
+  `reward_evidence_available`、`final_holdout_seed_count`、`assist_eligible` 或占位 SHA-256
+  来获得 assist/authority。
+- **已有软件合同**：bundle 树校验、候选建议内容身份、严格后继 D3 计划、main/D3/D7
+  runtime ACK、owner/plan/epoch/lease、联盟提交状态、成员 ACK 因果投递回执、非重叠区域
+  观测窗口和隔离 paired 合同均已存在。各证据 DTO 固定不能单独授予 promotion、PPO、assist
+  或 authority。
+- **尚未等价的链路**：当前没有 D4 evidence assembler 把同一候选的 runtime ACK、联盟
+  required/acked members、每条 delivered receipt、采用后物理结果和 D6 R0 配对非退化连接
+  到同一内容身份；也没有可由该装配结果生成新 admitted bundle 的 writer/loader。现有区域
+  reward 只作 truth-free 非因果窗口归因，明确不是物理执行证明。
+- **现有 evidence 不可拼接**：nominal formal 20-seed 的候选安全采用为 0/20；`active_risk`
+  20-seed 虽有物理窗和描述性非退化，但候选 considered/adopted 为 0/20，188/188 区域记录
+  均为规则回退且 `production_runtime_ack=false`。跨候选或把两批 availability 合并均不满足
+  准入。
+- **最小外部审计字段**：bundle manifest/tree/model/training 摘要；clean source、scenario、
+  seed、comparison key；advisory/model/projector 指纹和门控结果；source/applied plan
+  ID/version、new-plan adoption kind、D3/D7/main sequence 与 payload digest；owner/layer、
+  epoch、lease、fault/partition generation；coalition ID/version、required/acked members
+  及逐成员 receipt ID/digest/timestamps；采用后物理指标 availability；R0 pair 身份、逐项
+  non-degradation 和 D6 审计制品摘要。
+- **唯一剩余 P1**：D6 先冻结通用外部审计输出，main 生成实际采用正样本；D4 再实现模块专用
+  装配器和独立新 bundle 发布入口。D4 不新建通用 external-audit schema，不修改旧 v2
+  manifest，不在缺实物证据时先造可通过的测试 promotion。
+- **权限状态**：软件合同可验证局部事实；当前 bundle 仍是 development；已有实验证据仍不可
+  拼接；正式 assist、PPO、authority 均为 false。
+- **验证**：2026-07-26，无新增场景或 seed；验收阈值为零自晋级路径、零跨批宽松拼接和 D4
+  回归零失败。结果为 **569/569 passed**，限定范围 `git diff --check` 通过。
+
 ## 2026-07-26 A2/C1/F1 严格准入
 
 - **代码缺口已关闭**：v2 bundle writer 只允许 development/shadow，并在任何文件写入前拒绝自声明 qualified/assist；无 manifest 注入策略不能默认进入 assist。旧 bundle/manifest 未改写。

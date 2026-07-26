@@ -1,5 +1,21 @@
 # D4 分布式降级与接管实验报告
 
+## 0.0A 2026-07-26 A2 证据装配审计
+
+本节记录代码和制品链盘点，没有新增仿真场景或随机种子。D4 已有开发 bundle 完整性、候选
+运行采用、严格后继计划、联盟状态、成员通信投递和区域结果窗口合同；当前没有把这些合同与
+D6 物理结果和 R0 配对非退化装配为新准入 bundle 的模块。现有 v2 bundle 仍为
+development/shadow，未发现生产调用方通过裸布尔或占位摘要打开 assist/authority。
+
+nominal 20-seed 的候选安全采用为 0/20；`active_risk` 20-seed 的 188/188 区域记录均执行
+确定性规则回退且 `production_runtime_ack=false`。两批 evidence 不能拼接。后续只有在 D6
+外部审计输出冻结、main 产生真实候选 `new_execution_plan_applied`、逐成员 delivered ACK、
+采用后物理结果和同键 R0 非退化后，才进入 D4 专用装配器实现。本轮未改变算法、阈值、AirSim
+接口或正式权限。
+
+本轮验收阈值为零自晋级路径、零跨批证据拼接和 D4 全量回归零失败。结果为
+**569/569 passed**；限制是没有新增仿真样本，不能据此评价候选效果。
+
 ## 0.0 2026-07-26 A2/C1/F1 准入复核
 
 本轮执行代码合同审计，没有启动新仿真。D4 全量测试为 **569/569 passed**。新增验收点为：调用方自声明 `qualified/assist` 时，在创建 bundle 目录前拒绝；没有 admitted manifest 的注入策略即使提供 20 个未见 seed，也保持 shadow。旧 bundle 文件摘要复核不变。

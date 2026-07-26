@@ -1,5 +1,80 @@
 # D4 分布式协同与降级接管算法及实施方案
 
+## 2026-07-26 A2 证据装配审计
+
+### 已有校验链
+
+当前 A2 软件链由多个独立验证器组成：
+
+```text
+development bundle writer/loader
+        -> projected RegionResourceAdvisoryContract
+        -> RegionResourceRuntimeAckParser
+        -> CoalitionCommitState + delivered ACK receipts
+        -> RegionResourceRewardEvidenceAdapter
+        -> D6 external audit
+```
+
+前四段已经有严格数据合同，但最后没有 D4 准入装配器。`RuntimeAckParser` 能绑定
+advisory、main consumption、新 D3 plan、D7 commands 和 main plan ACK，并区分
+`new_execution_plan_applied` 与同代 evaluation refresh。联盟状态机能验证 required members
+和 ACK 位图；通信证据门能证明成员消息在决策前实际到达。reward adapter 能验证 ACK 后窗口
+内 authority 和执行/联盟 binding 不变。它明确只输出非因果区域观测，不能声明物理执行或配对
+非退化。
+
+### 最小装配键
+
+未来 D4 装配器不能只按布尔量连接证据。至少应以以下不可变键重验：
+
+```text
+candidate:
+  bundle manifest/tree/model/training SHA256
+  policy/version, advisory_id/payload SHA256, model/projector fingerprint
+
+experiment:
+  clean source commit, scenario/version, seed, comparison_key
+  paired exogenous config and random schedule identity
+
+adoption:
+  candidate considered + all gates passed + no rule fallback
+  source plan id/version -> strictly newer applied plan id/version
+  advisory/main/D3/D7 sequence and payload SHA256
+
+authority:
+  region, owner layer/id, plan version, epoch, lease
+  fault generation, partition generation
+
+coalition:
+  global_track_id, coalition id/version
+  required members == acked members
+  each member receipt id/digest/source/destination/sent/arrival
+
+outcome:
+  post-ACK physical-result availability and source artifact SHA256
+  exact R0 pair, required metric availability and non-degradation
+  D6 audit JSON/CSV/Markdown/SHA256SUMS identity
+```
+
+同一 SHA-256 字符串只证明一段字节内容，不能替代字段语义和来源关系。装配器必须从原始制品
+重算摘要并验证完整对象；跨 seed、跨计划、跨 authority、跨联盟代次或跨 comparison key 的
+证据直接拒绝。`coalition_ack_complete` 快照布尔只能作为快速条件，正式装配必须有 required/
+acked 清单和逐成员因果回执。
+
+### 后续实现边界
+
+当前不新增代码。D6 外部审计输出和真实 A2 正样本尚未冻结，先实现 schema 会产生一套无法用
+实物验证的重复合同。待 D6 输出稳定后，D4 只实现模块 evidence assembler 和新 bundle
+writer/loader；D6 继续拥有通用外部审计，main 继续拥有 episode 与物理制品。新 bundle 使用
+独立 schema 和目录，不覆写 `d4-region-resource-model-bundle-v2`。
+
+本轮审计未发现模块内 P0 旁路。v2 writer/loader、manifest-less policy、runtime/reward/
+paired evidence 均不能自行打开 assist 或 authority。现有 development bundle 和两批历史
+证据不可拼接，正式权限状态不变。
+
+验证日期为 2026-07-26，没有新增场景或 seed。验收条件为所有生产加载路径保持 shadow 上限、
+证据 DTO 不能授予下游权限、D4 全量测试零失败；结果为 **569/569 passed**。尚未验证的是
+真实候选采用、采用后物理窗和 D6 同键非退化。
+
 ## 2026-07-26 学习 bundle 失败关闭
 
 ### v2 写入门

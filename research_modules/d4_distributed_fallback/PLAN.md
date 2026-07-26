@@ -1,12 +1,42 @@
 # D4 分布式协同与降级接管计划
 
+## 2026-07-26 A2 预准入证据装配计划
+
+本轮只读盘点确认没有新的 D4 P0 软件旁路。现有 v2 bundle writer/loader、advisor、
+runtime ACK、区域 reward、联盟状态机和通信因果回执都保持原安全边界；不训练、不运行正式
+多 seed，不放宽 `minimum_confidence=0.6`、`50 ms`、assist 或 authority。
+
+当前唯一 D4 P1 代码任务是：在 D6 外部审计输出冻结且有真实正样本后，实现一个 **D4 专用**
+证据装配器及新版本 bundle 发布入口。它不重定义 D6 的通用审计 schema，不从
+`evidence_admission_allowed` 裸布尔直接晋级，也不修改旧 v2 manifest。实施顺序为：
+
+1. D6 先固定可校验的外部审计制品、逐 cell 采用状态、物理指标 availability、R0 配对、
+   non-degradation 和 `SHA256SUMS`；D4 只读消费。
+2. main 提供同一 clean execution plan 下的 A2 非 nominal 降级 episode，实际采用 D4 候选，
+   并保存 D3/D7/main 运行 ACK、严格后继计划和通信投递制品。
+3. D4 装配器按候选 bundle/advisory/model、scenario/seed/comparison key、source/applied
+   plan、owner/version/epoch/lease/fault generation、coalition required/acked members、
+   delivered receipts、物理窗和 D6 pair 逐项连接。跨候选、跨 seed、跨 authority、跨
+   comparison key 或缺 availability 一律失败关闭。
+4. 只有装配结果完整且 D6 审计明确通过，才允许新 writer 在新目录生成独立的新 schema
+   bundle。旧 development bundle、训练 manifest 和权重保持只读；新 loader 必须重算所有
+   引用制品摘要。
+5. main 最后分别验证 scope 预检、episode 内实际采用和默认规则回退。正式 assist 只能影响
+   受现有确定性投影和 authority fence 约束的区域建议，不能直接获得运行 authority。
+
+在以下实物输入形成前，不启动 D4 装配器代码任务：D6 冻结外部审计 schema 与样例制品；至少
+一条 `new_execution_plan_applied` 的真实 D4 候选 ACK；同一联盟的逐成员因果回执；采用后物理
+结果；同 comparison key 的 R0 配对非退化。当前证据不满足这些前置条件。
+
 ## 2026-07-26 A2/C1/F1 准入计划
 
 当前结论为 **D4 不可生成新的 admitted bundle，A2/C1/F1 不可启动**。现有 v2 bundle 只允许 `development/shadow`；writer 已拒绝自声明 `qualified/assist`，无 manifest 的注入策略也保持 shadow。旧 bundle 三项 SHA-256 固定为 manifest `dad2adbe...c05c9`、权重 `3da0360b...d5f62`、训练清单 `ff3081c8...30dc6`，不得修改这些文件自我晋级。
 
 下一验收按以下顺序执行：
 
-1. D4 与 D6 定义新的证据绑定 promotion schema。新 bundle 必须另目录生成，并绑定旧候选身份、clean source commit、完整制品树和带外 SHA-256；v2 manifest 不增加兼容白名单。
+1. D6 先冻结通用外部审计输出；D4 随后定义模块专用 evidence assembler 和新 bundle
+   schema。新 bundle 必须另目录生成，并绑定旧候选身份、clean source commit、完整制品树和
+   带外 SHA-256；v2 manifest 不增加兼容白名单，也不复制 D6 审计字段定义。
 2. 在 `center_failure`、`secondary_failure` 或 `active_risk` 等真实降级场景运行保留未见 seed 配对试验。nominal、同帧离线比较、规则回退和 unavailable outcome 不进入准入分母。
 3. treatment 必须实际采用 D4 候选并产生严格更新的执行计划。D4 证据需逐 seed 绑定 `new_execution_plan_applied`、有效 owner/plan/epoch/lease、完整联盟成员 ACK、无分区和零安全违规。
 4. D6 从采用后的独立物理状态窗计算候选与规则基线，输出物理结果 availability 和配对非退化。两臂相同、候选采用为 0 或只有描述性规则回退时不得通过。
