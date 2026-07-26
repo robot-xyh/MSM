@@ -1697,10 +1697,23 @@ schema/hash/bundle 不匹配、非有限值及非空输出目录均失败关闭�
 
 2026-07-26 使用三资源、两目标、一个双 primary 目标的开发夹具验证 20 个 seed。正残差
 夹具 20/20 seed 选出首个合格帧；零残差夹具 20/20 seed 明确不可用。两次独立输出逐文件
-一致。该结果是合同测试，不是真实 20-seed 实验。只读检查现有 scalable 输出后，未发现
-满足新清单的逐时刻独立匿名规划帧实物；旧 development/dirty 物理结果不能补写为正式
-输入。正式 clean batch 仍待 main 生成。
+一致。该结果仍只属于合同测试。
 
-新 batch 专项结果为 `14 passed`；与单帧 replay、eligibility 和原离线 intervention 组合
-为 `73 passed`。D3 全量收集 516 项，结果为 `515 passed, 1 skipped`，唯一 skip 仍是可选
-OR-Tools。全量中的 Matplotlib `Axes3D` 环境警告不影响 D3 合同测试。
+main 随后在 clean commit `0ed7ca2` 生成真实 manifest，固定 seed `1000-1019`，共 100 个
+匿名规划帧，在线 truth 字段计数为 0。首次运行在 seed 1011、序号 3 失败。新增目标的记录
+联盟匿名标识为 `coalition_0004`，隔离规划器按匿名目标名生成
+`d3-coalition-target_0004`；资源绑定、成本、迟滞、版本、窗口和决策状态均一致。D3 现先
+校验记录、重放和前序计划的联盟库存、唯一性、assignment、需求摘要和 metadata 引用，再
+只为新联盟恢复已哈希绑定的记录标识。既有联盟标识变化、重复标识或引用不一致继续失败
+关闭，最终仍执行原完整控制签名比较。
+
+修复后正式 batch 完成 20 seed/100 帧。结果为 0 个 eligible seed、20 个
+`unavailable/no_eligible_frame`；80 帧实际应用学习代价，20 帧因分布外回退，全部帧绑定
+变化为 0，规则组和处理组硬违规均为 0。输出 `publish=false`，运行 ACK、生产分配权限、
+生产控制权限、物理结果和 reward 均不可用，`global_track_id` 改写为 0。相同 manifest 与
+固定评估时刻写入两个空目录，四个文件逐字节一致。
+
+新增真实形态正负例后，单帧专项为 `23 passed`；相关干预合同组合为 `79 passed`。D3 全量
+结果为 `521 passed, 1 skipped`（522 项），唯一 skip 仍是可选 OR-Tools。Matplotlib
+`Axes3D` 环境警告不影响 D3 合同测试。0 个 eligible seed 表明当前冻结策略没有越过
+Hungarian 绑定边界，不能据此声明 PPO、assist、准入、物理收益或生产权限。

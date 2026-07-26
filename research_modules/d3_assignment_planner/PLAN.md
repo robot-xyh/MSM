@@ -1905,11 +1905,20 @@ writer/loader 和 assist 权限不变；AirSim 接口未变化。
 专项覆盖清单缺失/重复/乱序、frame/bundle/schema/hash、dirty source、非有限值、输入运行
 中变化和非空输出目录。
 
-现有 scalable 目录中没有满足本合同的 clean 逐帧匿名输入。旧结果只保留最终计划和消费
-证据，不能重建每个权威规划时刻，也不能改名为正式清单。runner 已实现；main 下一步需在
-clean commit 上保存 20 个 seed 的规则规划帧，再执行正式 batch，并与 D7 可执行检查点求交。
-AirSim DTO、settings、episode 和控制接口未变化，`docs/AIRSIM_INTEGRATION_PLAN.md` 检查
-后不修改。
+main 已在 clean commit `0ed7ca2` 保存固定 seed `1000-1019` 的 100 个匿名规则规划帧，
+manifest SHA-256 为
+`e5367d2651955f809b482d78ef3205cbdf44d57eae576c80f64cbd38eac59a44`，在线 truth
+计数为 0。首次 batch 暴露新增目标联盟匿名标识与隔离规划器本地命名不一致。D3 已增加
+严格的记录联盟身份恢复：只恢复记录帧已哈希绑定的新联盟标识，既有联盟连续性、成员绑定、
+需求摘要、metadata 引用和最终控制执行签名继续精确校验。
 
-验收结果：batch 专项 `14 passed`，相关干预合同组合 `73 passed`，D3 全量
-`515 passed, 1 skipped`（516 项）。唯一 skip 为可选 OR-Tools；没有运行正式物理 batch。
+正式 batch 已完成。20 个 seed 均为 `unavailable/no_eligible_frame`，100 帧中 80 帧应用
+学习代价、20 帧分布外回退，绑定差异和硬违规均为 0。两次空目录输出逐文件确定一致；
+`publish`、运行 ACK、生产分配/控制权限、物理结果和 reward 保持 false。下一步由 main
+决定是否重新训练或重新选择冻结 bundle，并与 D7 可执行检查点求交；D3 不降低资格、安全
+或联盟连续性门限。
+
+AirSim DTO、settings、episode 和控制接口未变化，`docs/AIRSIM_INTEGRATION_PLAN.md` 检查
+后不修改。验收结果：单帧专项 `23 passed`，相关干预合同组合 `79 passed`，D3 全量
+`521 passed, 1 skipped`（522 项）。唯一 skip 为可选 OR-Tools；本次 batch 没有执行物理
+世界，也不形成 PPO、assist 或模型准入证据。

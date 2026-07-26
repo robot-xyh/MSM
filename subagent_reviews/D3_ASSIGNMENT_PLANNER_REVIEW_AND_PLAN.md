@@ -1502,10 +1502,20 @@ D3 新增的外层 runner 没有把 seed 写回 `PlanningFrameEvidence`。seed �
 只比较输入、矩阵、动作掩码、绑定、bundle、回退、安全状态和选择结果。单元夹具两次运行
 的四个输出逐字节一致。该处理不会改变单帧完整 DTO，也不改变在线计划身份合同。
 
-已有 `active_risk_clean_*` 和 `checkpoint_paired_physical_20seed_*` 输出只保留最终计划、
-消费和物理侧记录，没有新 runner 要求的逐权威时刻匿名规则帧。因此未运行正式 batch，
-也没有把旧 dirty 结果改名。下一步由 main 生成 clean 输入；D3 只负责验证并选择首帧，
-D7 求交、物理执行和 D6 外审仍在模块外。
+旧 `active_risk_clean_*` 和 `checkpoint_paired_physical_20seed_*` 输出仍未改名或补写。
+main 已在 clean commit `0ed7ca2` 重新生成 20 seed、100 帧的匿名输入。首次运行在
+seed 1011 序号 3 因新增目标联盟 token 与隔离规划器本地命名不同而失败。该帧除联盟标识外，
+binding、成本、迟滞、版本、窗口、决策和规模均一致。
 
-最终回归结果为 batch 专项 `14 passed`、相关合同组合 `73 passed`、D3 全量
-`515 passed, 1 skipped`（516 项）。没有新增生产权限或物理结果声明。
+D3 增加严格记录联盟身份恢复。它只允许前序计划中尚无联盟的目标采用记录帧已哈希绑定的
+匿名标识；前序已有联盟必须保持连续。assignment、需求摘要、成员、metadata 和最终控制
+执行签名继续校验。重复联盟标识、前序标识重写及引用篡改均失败关闭。
+
+修复后正式 batch 完成。20/20 seed 均为 `unavailable/no_eligible_frame`；100 帧中 80 帧
+应用学习代价，20 帧分布外回退，绑定变化、硬违规和 `global_track_id` 改写均为 0。两个
+空目录的 JSON、CSV、中文报告和校验清单逐字节一致。D3/D7 共同检查点仍不存在，物理执行
+和 D6 外审仍在模块外。
+
+最终回归结果为单帧专项 `23 passed`、相关合同组合 `79 passed`、D3 全量
+`521 passed, 1 skipped`（522 项）。没有新增 PPO、assist、admission、生产权限或物理
+结果声明。

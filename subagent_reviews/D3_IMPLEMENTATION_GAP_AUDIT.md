@@ -1454,19 +1454,28 @@ cost weights，以及每个 seed 严格时序的匿名规划帧路径、文件 S
 运行中变化和非空输出目录均失败关闭。JSON、逐 seed CSV、中文报告与校验清单以 staging
 目录原子生成。输出固定不发布、无运行 ACK、无生产分配/控制权限、无物理结果和奖励。
 
-### 验证与仍开放项
+### 验证与状态
 
 2026-07-26 单元夹具使用 20 seed、每 seed 1 帧。可辨识残差为 20/20 eligible，零残差为
-20/20 unavailable；两个空目录的四份输出逐字节一致。该证据只验证合同。现有 scalable
-产物没有满足新 manifest 的 clean 逐帧匿名输入，旧 development/dirty 物理结果不能补写。
+20/20 unavailable；两个空目录的四份输出逐字节一致。该证据只验证合同。
 
-当前没有新增 D3 P0。D3-owned 外层 runner 缺口已关闭；跨模块 P1 收敛为 main 在 clean
-commit 上生成真实 20-seed 帧清单、运行正式 batch、与 D7 可执行检查点求交，再由 D6
-连接 runtime ACK、outcome 和后续比较。PPO、online assist、admission 和 authority 仍未
-开放。
+main 随后在 clean commit `0ed7ca2` 生成真实 manifest，固定 seed `1000-1019`、100 个匿名
+规划帧，在线 truth 计数为 0。首次重放在 seed 1011 序号 3 因新增目标联盟 token 不一致
+失败。D3 已加入严格记录联盟身份恢复，仅恢复已哈希绑定的新联盟匿名标识，并继续验证前序
+联盟连续性、assignment、需求摘要、metadata 及最终控制执行签名。重复标识、前序重写和
+引用篡改均失败关闭。
+
+修复后正式 batch 完成，20/20 seed 均为 `unavailable/no_eligible_frame`。100 帧中 80 帧
+应用学习代价，20 帧分布外回退，绑定变化和硬违规均为 0；全部生产权限字段为 false，
+`global_track_id` 改写为 0。两个独立空目录的四份输出逐字节一致。
+
+当前没有新增 D3 P0。**真实 clean batch 生成和 D3 批量重放这一 P1 已关闭**。仍开放的
+跨模块 P1 是：当前 bundle 没有产生可辨识绑定差异，因而没有 D3/D7 共同检查点；后续需由
+main 选择新冻结 bundle 或训练结果，再由 D6 连接运行 ACK、outcome 和比较。PPO、online
+assist、admission 和 authority 仍未开放，不能通过降低 eligibility 或联盟连续性门限关闭。
 
 `docs/AIRSIM_INTEGRATION_PLAN.md` 已检查。本项是离线检查点选择，不改变 AirSim runtime
 输入输出或控制接口，因此不修改该文档。
 
-最终测试：batch 专项 `14 passed`；干预合同组合 `73 passed`；D3 全量
-`515 passed, 1 skipped`（516 项），唯一 skip 为可选 OR-Tools。
+最终测试：单帧专项 `23 passed`；干预合同组合 `79 passed`；D3 全量
+`521 passed, 1 skipped`（522 项），唯一 skip 为可选 OR-Tools。

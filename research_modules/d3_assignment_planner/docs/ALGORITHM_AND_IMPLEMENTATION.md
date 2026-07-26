@@ -3201,9 +3201,84 @@ manifest 和 state-dict 哈希。任一输入改变则删除 staging 并失败�
 覆盖缺 seed、重复 seed、乱序、调用方额外 eligibility、dirty source、truth、frame 和
 bundle hash/schema、holdout 不完整、非有限值、运行中输入变化及非空输出。
 
-这些是单元夹具结果。现有 scalable 输出没有独立保存满足 manifest 的逐时刻匿名帧，正式
-clean 20-seed batch 尚未运行。默认 Hungarian、需求槽、迟滞、代价、生产 loader 和权限
-没有变化。
+以上是单元夹具结果。main 随后在 clean commit `0ed7ca2` 保存 20 seed、100 个逐时刻匿名
+帧并形成正式 manifest。该实物和后续重放结果见第 61 节。默认 Hungarian、需求槽、迟滞、
+代价、生产 loader 和权限没有变化。
 
-最终验证为 batch 专项 `14 passed`，batch/单帧/资格/原离线执行组合 `73 passed`，D3
-全量 `515 passed, 1 skipped`（516 项）。唯一跳过为未安装的可选 OR-Tools。
+加入真实形态回归后，单帧专项为 `23 passed`，batch/单帧/资格/原离线执行组合为
+`79 passed`。D3 全量为 `521 passed, 1 skipped`（522 项），唯一跳过为未安装的可选
+OR-Tools。
+
+## 61. 真实 20-seed 联盟身份重放（2026-07-26）
+
+### 61.1 输入与首次失败
+
+main 在 detached clean commit `0ed7ca2` 生成显式 manifest。seed 固定为 `1000-1019`，
+每 seed 5 帧，共 100 帧；在线 truth 字段计数为 0。manifest SHA-256 为：
+
+```text
+e5367d2651955f809b482d78ef3205cbdf44d57eae576c80f64cbd38eac59a44
+```
+
+首次运行在 seed 1011、`sequence_index=3`、`timestamp_s=4.0` 返回
+`control_plan_replay_mismatch`。记录计划和重放计划的资源目标 binding、成本、前序成本、
+迟滞释放、计划版本、窗口、决策状态、规模及 M-to-N 需求满足均一致。唯一差异是新增
+`target_0004` 的联盟标识：
+
+```text
+recorded: coalition_0004
+replayed: d3-coalition-target_0004
+```
+
+原始运行先按真实目标名创建联盟，再由规划证据层统一匿名化联盟。隔离重放已经接收匿名目标，
+规划器按本地命名规则重新创建新联盟，因而不能自行得出原匿名 token。既有目标从
+`previous_plan` 继承联盟标识，不受该问题影响。
+
+### 61.2 严格身份恢复
+
+`_replay_recorded_coalition_identity()` 位于隔离求解后、authority 投影和控制签名比较前，
+规则臂和处理臂均调用。算法步骤如下：
+
+1. 对记录、重放和前序计划建立 `target_id -> CoalitionPlan` 映射，拒绝空标识、重复目标和
+   重复联盟标识。
+2. 要求记录和重放的联盟目标库存精确相同。前序已有联盟的目标必须在两侧保持原标识，禁止
+   借匿名恢复改写联盟连续性。
+3. 校验 assignment 的 coalition id/version、需求摘要、成员角色、波次以及计划 metadata
+   中的需求摘要和联盟成员引用。
+4. 仅对前序尚无联盟、且记录与重放 token 不同的目标建立身份映射。映射同时作用于
+   `CoalitionPlan`、`Assignment`、`DemandSatisfactionSummary` 和 metadata 中的精确标识值；
+   资源目标 binding、联盟版本、成员、成本和决策状态不变。
+5. 恢复后重新验证计划并计算来源计划及身份映射 SHA-256。规则控制臂继续执行原
+   `_control_plan_replay_matches()`，因此任何非身份语义差异仍返回
+   `control_plan_replay_mismatch`。
+
+区域或二级 authority 路径应已经携带其记录联盟标识。该类路径若仍需要身份替换，执行器
+判为 authority 冲突并失败关闭。输出审计字段固定声明不发布、无 runtime ACK、无生产分配
+和控制权限。
+
+### 61.3 真实批量结果
+
+修复后，指定 manifest 在两个独立空目录完成运行，四个输出文件逐字节一致。批量内容摘要
+为：
+
+```text
+c01b13fb5925d99078a3bb9505dc0f9511ec5ab700a432399d3ebe0fcfb55592
+```
+
+20 个 seed 均完成 5 帧重放。80 帧实际应用学习代价；20 帧以
+`out_of_distribution` 回退规则。100 帧的资源目标绑定变化均为 0，规则和处理硬违规均为
+0。20 个 seed 均返回 `unavailable/no_eligible_frame`，没有伪造首个合格帧。输出中的
+`publish`、runtime ACK、production assignment authority、production control authority、
+physical outcome 和 reward 均为 false，`global_track_id` 改写计数为 0。
+
+该结果关闭了真实形态控制臂无法重放的阻塞。它同时表明当前冻结 bundle 在这 100 帧上没有
+越过 Hungarian 绑定边界；因此不支持 PPO、assist、模型准入、控制采用或物理收益结论。
+
+### 61.4 回归
+
+新增回归使用四个既有目标和一个新增目标构造真实匿名形态。正例要求规则和处理两臂都恢复
+`coalition_0004`，并保持前四个联盟连续。负例覆盖重复记录联盟标识、前序联盟重写、
+assignment/需求摘要引用不一致及 coalition metadata 篡改。
+
+单帧专项结果为 `23 passed`；batch、单帧、资格和原离线执行组合为 `79 passed`。D3 全量
+为 `521 passed, 1 skipped`（522 项），skip 为可选 OR-Tools。

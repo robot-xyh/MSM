@@ -29,7 +29,9 @@ from .learning_bundle import (
     unavailable_promotion_manifest,
 )
 from .models import (
+    Assignment,
     AssignmentPlan,
+    CoalitionPlan,
     CostWeights,
     DemandSatisfactionSummary,
     PlannerConfig,
@@ -84,6 +86,9 @@ OFFLINE_PAIRED_INTERVENTION_REPORT_KIND_V1 = (
 )
 OFFLINE_ISOLATED_TARGET_INVENTORY_SCHEMA_V1 = (
     "d3.offline-isolated-target-inventory.v1"
+)
+OFFLINE_RECORDED_COALITION_IDENTITY_SCHEMA_V1 = (
+    "d3.offline-recorded-coalition-identity.v1"
 )
 ISOLATED_LEARNING_INTERVENTION_FRAME_REPLAY_SCHEMA_V1 = (
     "d3.isolated-learning-intervention-frame-replay.v1"
@@ -1074,6 +1079,7 @@ def _replay_planning_arm(
     if replay_action_hash != action_mask_hash:
         _fail("action_mask_replay_mismatch")
 
+    plan = _replay_recorded_coalition_identity(plan, evidence=evidence)
     plan = _replay_recorded_authority_identity(plan, evidence=evidence)
     if arm_kind == CONTROL_ARM and evidence.plan is not None:
         if not _control_plan_replay_matches(plan, evidence.plan):
@@ -1751,6 +1757,480 @@ def _recorded_regional_authority_input(
         adjudicated_at_s=activation_at_s,
         grants=grants,
     )
+
+
+def _replay_recorded_coalition_identity(
+    plan: AssignmentPlan,
+    *,
+    evidence: PlanningFrameEvidence,
+) -> AssignmentPlan:
+    """Restore hash-bound anonymous coalition IDs without changing a solve.
+
+    Planning-frame anonymization assigns coalition tokens across the recorded
+    current and previous plans.  A coalition first created during replay sees
+    only the anonymous target ID, so the planner's deterministic local naming
+    rule cannot reproduce that token.  The recorded rule plan is already part
+    of the validated frame file; use its target-to-coalition namespace only
+    after proving that all other coalition references remain internally
+    consistent.
+    """
+
+    recorded = evidence.plan
+    if recorded is None:
+        _fail("offline_recorded_coalition_identity_plan_missing")
+    recorded_plan_sha256 = canonical_runtime_payload_sha256(recorded)
+    validated_assignment_plan_payload_sha256(plan)
+
+    replayed_by_target = _validated_coalition_replay_inventory(
+        plan,
+        context="replayed",
+    )
+    recorded_by_target = _validated_coalition_replay_inventory(
+        recorded,
+        context="recorded",
+    )
+    if set(replayed_by_target) != set(recorded_by_target):
+        _fail(
+            "offline_recorded_coalition_identity_inventory_mismatch",
+            "replayed and recorded target coalition inventories differ",
+        )
+
+    previous_by_target: dict[str, CoalitionPlan] = {}
+    if evidence.previous_plan is not None:
+        previous_by_target = _validated_coalition_replay_inventory(
+            evidence.previous_plan,
+            context="previous",
+        )
+
+    desired_id_by_target: dict[str, str] = {}
+    restored_target_ids: list[str] = []
+    for target_id in sorted(replayed_by_target):
+        replayed_coalition = replayed_by_target[target_id]
+        recorded_coalition = recorded_by_target[target_id]
+        previous_coalition = previous_by_target.get(target_id)
+        if previous_coalition is not None:
+            if recorded_coalition.coalition_id != previous_coalition.coalition_id:
+                _fail(
+                    "offline_recorded_coalition_identity_previous_rewrite",
+                    f"recorded coalition identity changed for {target_id}",
+                )
+            if replayed_coalition.coalition_id != previous_coalition.coalition_id:
+                _fail(
+                    "offline_recorded_coalition_identity_replay_discontinuity",
+                    f"replayed coalition identity changed for {target_id}",
+                )
+        desired_id_by_target[target_id] = recorded_coalition.coalition_id
+        if replayed_coalition.coalition_id != recorded_coalition.coalition_id:
+            restored_target_ids.append(target_id)
+
+    if restored_target_ids and evidence.planning_path in {
+        "regional_authority",
+        "authority_identity_publish",
+    }:
+        _fail(
+            "offline_recorded_coalition_identity_authority_conflict",
+            "authority replay must already carry its recorded coalition identity",
+        )
+
+    coalition_id_map = {
+        replayed_by_target[target_id].coalition_id: desired_id
+        for target_id, desired_id in desired_id_by_target.items()
+    }
+    if len(set(coalition_id_map.values())) != len(coalition_id_map):
+        _fail(
+            "offline_recorded_coalition_identity_duplicate",
+            "recorded coalition identity is not one-to-one",
+        )
+
+    coalitions = tuple(
+        replace(
+            coalition,
+            coalition_id=desired_id_by_target[coalition.target_id],
+            metadata=_replace_coalition_identity_values(
+                coalition.metadata,
+                coalition_id_map,
+            ),
+        )
+        for coalition in plan.coalitions
+    )
+    assignments = tuple(
+        _restore_assignment_coalition_identity(
+            assignment,
+            replayed_by_target=replayed_by_target,
+            desired_id_by_target=desired_id_by_target,
+            coalition_id_map=coalition_id_map,
+        )
+        for assignment in plan.assignments
+    )
+    demand_summaries = tuple(
+        _restore_summary_coalition_identity(
+            summary,
+            replayed_by_target=replayed_by_target,
+            desired_id_by_target=desired_id_by_target,
+        )
+        for summary in plan.demand_summaries
+    )
+    identity_map = tuple(
+        (
+            target_id,
+            replayed_by_target[target_id].coalition_id,
+            desired_id_by_target[target_id],
+        )
+        for target_id in sorted(desired_id_by_target)
+    )
+    restored = replace(
+        plan,
+        assignments=assignments,
+        coalitions=coalitions,
+        demand_summaries=demand_summaries,
+        metadata={
+            **dict(
+                _replace_coalition_identity_values(
+                    plan.metadata,
+                    coalition_id_map,
+                )
+            ),
+            "offline_recorded_coalition_identity_schema": (
+                OFFLINE_RECORDED_COALITION_IDENTITY_SCHEMA_V1
+            ),
+            "offline_recorded_coalition_identity_applied": bool(
+                restored_target_ids
+            ),
+            "offline_recorded_coalition_identity_restored_target_ids": tuple(
+                restored_target_ids
+            ),
+            "offline_recorded_coalition_identity_map_sha256": (
+                canonical_runtime_payload_sha256(identity_map)
+            ),
+            "offline_recorded_coalition_identity_source_plan_sha256": (
+                recorded_plan_sha256
+            ),
+            "offline_recorded_coalition_identity_publish_allowed": False,
+            "offline_recorded_coalition_identity_runtime_ack": False,
+            "offline_recorded_coalition_identity_authority": False,
+        },
+    )
+    _validated_coalition_replay_inventory(restored, context="restored")
+    validated_assignment_plan_payload_sha256(restored)
+    return restored
+
+
+def _validated_coalition_replay_inventory(
+    plan: AssignmentPlan,
+    *,
+    context: str,
+) -> dict[str, CoalitionPlan]:
+    """Validate target, assignment, summary, and metadata coalition references."""
+
+    by_target: dict[str, CoalitionPlan] = {}
+    by_id: dict[str, CoalitionPlan] = {}
+    for coalition in plan.coalitions:
+        target_id = str(coalition.target_id).strip()
+        coalition_id = str(coalition.coalition_id).strip()
+        if (
+            not target_id
+            or target_id != coalition.target_id
+            or not coalition_id
+            or coalition_id != coalition.coalition_id
+        ):
+            _fail(
+                "offline_recorded_coalition_identity_invalid",
+                f"{context} coalition identity is empty or non-canonical",
+            )
+        if target_id in by_target or coalition_id in by_id:
+            _fail(
+                "offline_recorded_coalition_identity_duplicate",
+                f"{context} coalition identity is not unique",
+            )
+        by_target[target_id] = coalition
+        by_id[coalition_id] = coalition
+
+    assignments_by_target: dict[str, list[Assignment]] = {}
+    for assignment in plan.assignments:
+        assignments_by_target.setdefault(assignment.target_id, []).append(
+            assignment
+        )
+        coalition = by_target.get(assignment.target_id)
+        if (
+            coalition is None
+            or assignment.coalition_id != coalition.coalition_id
+            or assignment.coalition_version != coalition.version
+        ):
+            _fail(
+                "offline_recorded_coalition_identity_assignment_mismatch",
+                f"{context} assignment does not reference its target coalition",
+            )
+        if context != "recorded":
+            member_by_resource = {
+                member.resource_id: member for member in coalition.members
+            }
+            member = member_by_resource.get(assignment.resource_id)
+            if (
+                member is None
+                or not member.executable
+                or member.member_role != assignment.member_role
+                or member.wave_id != assignment.wave_id
+            ):
+                _fail(
+                    "offline_recorded_coalition_identity_assignment_mismatch",
+                    f"{context} assignment does not match coalition membership",
+                )
+
+    summaries_by_target: dict[str, DemandSatisfactionSummary] = {}
+    for summary in plan.demand_summaries:
+        if summary.target_id in summaries_by_target:
+            _fail(
+                "offline_recorded_coalition_identity_summary_duplicate",
+                f"{context} demand summary target is duplicated",
+            )
+        summaries_by_target[summary.target_id] = summary
+        coalition = by_target.get(summary.target_id)
+        if coalition is None:
+            if (
+                summary.coalition_id is not None
+                or summary.coalition_version is not None
+            ):
+                _fail(
+                    "offline_recorded_coalition_identity_summary_mismatch",
+                    f"{context} demand summary references a missing coalition",
+                )
+            continue
+        if not _summary_matches_coalition(summary, coalition):
+            _fail(
+                "offline_recorded_coalition_identity_summary_mismatch",
+                f"{context} demand summary does not match its coalition",
+            )
+
+    for target_id, coalition in by_target.items():
+        if target_id not in summaries_by_target:
+            _fail(
+                "offline_recorded_coalition_identity_summary_missing",
+                f"{context} coalition has no demand summary",
+            )
+        assignments = assignments_by_target.get(target_id, ())
+        assignment_resources = {item.resource_id for item in assignments}
+        executable_members = {
+            member.resource_id
+            for member in coalition.members
+            if member.executable
+        }
+        if context == "recorded":
+            continue
+        if coalition.complete:
+            if (
+                assignment_resources != executable_members
+                or len(assignments) != coalition.assigned_resource_count
+            ):
+                _fail(
+                    "offline_recorded_coalition_identity_membership_mismatch",
+                    f"{context} complete coalition bindings are inconsistent",
+                )
+        elif assignments:
+            _fail(
+                "offline_recorded_coalition_identity_membership_mismatch",
+                f"{context} incomplete coalition has executable assignments",
+            )
+
+    _validate_coalition_identity_metadata(
+        plan.metadata,
+        by_target=by_target,
+        summaries_by_target=summaries_by_target,
+        context=context,
+    )
+    return by_target
+
+
+def _summary_matches_coalition(
+    summary: DemandSatisfactionSummary,
+    coalition: CoalitionPlan,
+) -> bool:
+    return (
+        summary.target_id == coalition.target_id
+        and summary.demand_required == coalition.required_resource_count
+        and summary.demand_assigned == coalition.assigned_resource_count
+        and summary.demand_shortfall == coalition.shortfall
+        and summary.coalition_complete == coalition.complete
+        and summary.coalition_id == coalition.coalition_id
+        and summary.coalition_version == coalition.version
+        and summary.primary_resource_count == coalition.primary_resource_count
+    )
+
+
+def _restore_assignment_coalition_identity(
+    assignment: Assignment,
+    *,
+    replayed_by_target: Mapping[str, CoalitionPlan],
+    desired_id_by_target: Mapping[str, str],
+    coalition_id_map: Mapping[str, str],
+) -> Assignment:
+    coalition = replayed_by_target.get(assignment.target_id)
+    if (
+        coalition is None
+        or assignment.coalition_id != coalition.coalition_id
+        or assignment.coalition_version != coalition.version
+    ):
+        _fail(
+            "offline_recorded_coalition_identity_assignment_mismatch",
+            "replayed assignment coalition reference changed before restoration",
+        )
+    return replace(
+        assignment,
+        coalition_id=desired_id_by_target[assignment.target_id],
+        metadata=_replace_coalition_identity_values(
+            assignment.metadata,
+            coalition_id_map,
+        ),
+    )
+
+
+def _restore_summary_coalition_identity(
+    summary: DemandSatisfactionSummary,
+    *,
+    replayed_by_target: Mapping[str, CoalitionPlan],
+    desired_id_by_target: Mapping[str, str],
+) -> DemandSatisfactionSummary:
+    coalition = replayed_by_target.get(summary.target_id)
+    if coalition is None:
+        if (
+            summary.coalition_id is not None
+            or summary.coalition_version is not None
+        ):
+            _fail(
+                "offline_recorded_coalition_identity_summary_mismatch",
+                "replayed summary references a missing coalition",
+            )
+        return summary
+    if (
+        summary.coalition_id != coalition.coalition_id
+        or summary.coalition_version != coalition.version
+    ):
+        _fail(
+            "offline_recorded_coalition_identity_summary_mismatch",
+            "replayed summary coalition reference changed before restoration",
+        )
+    return replace(
+        summary,
+        coalition_id=desired_id_by_target[summary.target_id],
+    )
+
+
+def _replace_coalition_identity_values(
+    value: Any,
+    coalition_id_map: Mapping[str, str],
+) -> Any:
+    """Replace only exact coalition-ID values in detached replay metadata."""
+
+    if isinstance(value, Mapping):
+        return {
+            str(key): _replace_coalition_identity_values(item, coalition_id_map)
+            for key, item in value.items()
+        }
+    if isinstance(value, tuple):
+        return tuple(
+            _replace_coalition_identity_values(item, coalition_id_map)
+            for item in value
+        )
+    if isinstance(value, list):
+        return [
+            _replace_coalition_identity_values(item, coalition_id_map)
+            for item in value
+        ]
+    if isinstance(value, str):
+        return coalition_id_map.get(value, value)
+    return value
+
+
+def _validate_coalition_identity_metadata(
+    metadata: Mapping[str, Any],
+    *,
+    by_target: Mapping[str, CoalitionPlan],
+    summaries_by_target: Mapping[str, DemandSatisfactionSummary],
+    context: str,
+) -> None:
+    raw_summaries = metadata.get("demand_summaries")
+    if raw_summaries is not None:
+        rows = _coalition_metadata_rows(
+            raw_summaries,
+            context=f"{context} demand_summaries",
+        )
+        if set(rows) != set(summaries_by_target):
+            _fail(
+                "offline_recorded_coalition_identity_metadata_mismatch",
+                f"{context} demand summary metadata inventory differs",
+            )
+        for target_id, row in rows.items():
+            summary = summaries_by_target[target_id]
+            expected = {
+                "target_id": summary.target_id,
+                "demand_required": summary.demand_required,
+                "demand_assigned": summary.demand_assigned,
+                "demand_shortfall": summary.demand_shortfall,
+                "coalition_complete": summary.coalition_complete,
+                "coalition_id": summary.coalition_id,
+                "coalition_version": summary.coalition_version,
+                "primary_resource_count": summary.primary_resource_count,
+            }
+            if any(row.get(key) != value for key, value in expected.items()):
+                _fail(
+                    "offline_recorded_coalition_identity_metadata_mismatch",
+                    f"{context} demand summary metadata differs",
+                )
+
+    raw_membership = metadata.get("coalition_membership")
+    if raw_membership is not None:
+        rows = _coalition_metadata_rows(
+            raw_membership,
+            context=f"{context} coalition_membership",
+        )
+        if set(rows) != set(by_target):
+            _fail(
+                "offline_recorded_coalition_identity_metadata_mismatch",
+                f"{context} coalition membership metadata inventory differs",
+            )
+        for target_id, row in rows.items():
+            coalition = by_target[target_id]
+            if (
+                row.get("target_id") != target_id
+                or row.get("coalition_id") != coalition.coalition_id
+                or row.get("coalition_version") != coalition.version
+                or row.get("coalition_epoch") != coalition.epoch
+            ):
+                _fail(
+                    "offline_recorded_coalition_identity_metadata_mismatch",
+                    f"{context} coalition membership metadata differs",
+                )
+
+
+def _coalition_metadata_rows(
+    value: Any,
+    *,
+    context: str,
+) -> dict[str, Mapping[str, Any]]:
+    if not isinstance(value, (tuple, list)):
+        _fail(
+            "offline_recorded_coalition_identity_metadata_mismatch",
+            f"{context} is not a sequence",
+        )
+    rows: dict[str, Mapping[str, Any]] = {}
+    for item in value:
+        if not isinstance(item, Mapping):
+            _fail(
+                "offline_recorded_coalition_identity_metadata_mismatch",
+                f"{context} contains a non-mapping row",
+            )
+        target_id = item.get("target_id")
+        if not isinstance(target_id, str) or not target_id.strip():
+            _fail(
+                "offline_recorded_coalition_identity_metadata_mismatch",
+                f"{context} contains an invalid target id",
+            )
+        if target_id in rows:
+            _fail(
+                "offline_recorded_coalition_identity_metadata_mismatch",
+                f"{context} contains a duplicate target id",
+            )
+        rows[target_id] = item
+    return rows
 
 
 def _replay_recorded_regional_authority_identity(

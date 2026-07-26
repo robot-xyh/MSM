@@ -1704,12 +1704,75 @@ eligibility、dirty source、truth、frame hash/schema、bundle hash/holdout、�
 
 ### 证据边界
 
-只读检查发现旧 `active_risk_clean_*` 和 `checkpoint_paired_physical_20seed_*` 目录保存了
-最终计划、计划消费和物理侧记录，但没有按权威规划时刻独立保存并哈希的新匿名规则帧。
-旧结果也早于本 batch 合同，部分来自 development/dirty 链。因此本节不能报告正式 clean
-20-seed 选择率，也不能把夹具的 20/20 写成模型能力。当前状态为 runner 已实现并验证；
-正式输入和后续 D7 检查点求交待 main 完成。
+旧 `active_risk_clean_*` 和 `checkpoint_paired_physical_20seed_*` 目录仍不能补写为新
+合同输入。main 后续已在 clean commit `0ed7ca2` 重新生成满足合同的独立匿名规划帧，结果
+见下一节。夹具的 20/20 只验证合同，不作为模型能力。
 
-代码验收结果为 batch 专项 `14 passed`，相关干预合同组合 `73 passed`，D3 全量
-`515 passed, 1 skipped`（516 项）。唯一跳过是可选 OR-Tools。本轮没有运行 AirSim 或
-三维质点物理 episode。
+加入真实形态回归后的代码验收为单帧专项 `23 passed`，相关干预合同组合 `79 passed`，
+D3 全量 `521 passed, 1 skipped`（522 项）。唯一跳过是可选 OR-Tools。本轮没有运行
+AirSim 或三维质点物理 episode。
+
+## 真实 20-seed 隔离重放（2026-07-26）
+
+### 输入
+
+输入由 main 在 detached clean commit `0ed7ca2` 生成，固定 seed `1000-1019`。每 seed
+包含 5 个按序号和规划时间严格递增的匿名规则帧，共 100 帧。在线 truth 字段计数为 0。
+manifest SHA-256 为
+`e5367d2651955f809b482d78ef3205cbdf44d57eae576c80f64cbd38eac59a44`，bundle
+manifest SHA-256 为
+`a9213d65606a9e2f921040e153488c0f4cdebb10882fa16013fce5b59f9314c0`，policy version
+为 `d3_shared_edge_actor_critic_v1`。
+
+### 首次失败
+
+首次运行在 seed 1011、序号 3、4.0 秒失败，错误为
+`control_plan_replay_mismatch`。逐字段比对表明资源目标绑定、总成本、候选成本、前序计划
+当前成本、迟滞释放、计划版本、窗口、决策状态、目标与资源数量以及需求满足均一致。新增
+`target_0004` 的记录联盟标识为 `coalition_0004`，重放侧本地生成
+`d3-coalition-target_0004`。
+
+该差异来自匿名顺序。原运行用真实目标名创建联盟后统一匿名化；隔离重放从匿名目标名重新
+创建联盟。既有目标从前序计划继承标识，因此只在新增联盟上出现。联盟标识属于计划执行
+签名，原严格门拒绝是正确行为。
+
+### 修复
+
+D3 增加记录联盟身份恢复层。恢复层先验证记录、重放和前序计划的联盟目标库存、标识唯一性、
+assignment 引用、需求摘要、成员角色和 metadata 引用。前序已有联盟必须保持原标识；只有
+前序尚无联盟的目标可采用记录计划中已哈希绑定的匿名标识。恢复只修改联盟标识及其一致性
+引用，不覆盖成员、成本、版本、迟滞、窗口或决策。规则控制臂随后继续执行原完整执行签名
+比较。
+
+负例覆盖重复联盟标识、前序联盟重写、assignment 和需求摘要引用不一致、metadata 篡改。
+非联盟资源绑定篡改仍由原控制门返回 `control_plan_replay_mismatch`。
+
+### 结果
+
+修复后两个独立空目录均成功生成 JSON、逐 seed CSV、中文报告和校验清单，四个文件逐字节
+一致。批量内容 SHA-256 为
+`c01b13fb5925d99078a3bb9505dc0f9511ec5ab700a432399d3ebe0fcfb55592`。
+
+| 指标 | 结果 |
+|---|---:|
+| seed 数 | 20 |
+| 规划帧数 | 100 |
+| 学习代价实际应用帧 | 80 |
+| 分布外规则回退帧 | 20 |
+| 有绑定变化的帧 | 0 |
+| eligible seed | 0 |
+| unavailable seed | 20 |
+| 规则组硬违规 | 0 |
+| 处理组硬违规 | 0 |
+| `global_track_id` 改写 | 0 |
+
+20 个 seed 的不可用原因均为 `no_eligible_frame`。其中 100 帧均含
+`binding_unchanged`；4 帧另有规则组和处理组需求槽证据不完整原因。输出固定
+`publish=false`，运行 ACK、生产分配权限、生产控制权限、物理结果和 reward 均为 false。
+
+### 判断
+
+真实批量输入已经越过联盟标识重放阻塞，批处理合同和失败关闭行为成立。当前冻结策略没有在
+这 100 帧中改变最终 Hungarian 绑定，因此没有可进入 D7 共同检查点的 D3 候选。该结果不
+支持 PPO、assist、模型准入、控制采用、物理拦截或收益声明。下一步应调整训练数据或冻结
+bundle 后重新执行同一 manifest 合同，不能降低硬安全、联盟连续性或 eligibility 门限。

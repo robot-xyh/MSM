@@ -123,6 +123,79 @@ def _rule_frame(
     return frame, config
 
 
+def _new_target_rule_frame():
+    """Build the real replay shape where one target gains its first coalition."""
+
+    previous_tracks = tuple(
+        committed_target_track(
+            f"global-track-{index}",
+            0.8 - index * 0.05,
+            100.0 + index * 10.0,
+            0.0,
+        )
+        for index in range(4)
+    )
+    tracks = previous_tracks + (
+        committed_target_track(
+            "global-track-4",
+            0.9,
+            140.0,
+            0.0,
+        ),
+    )
+    resources = tuple(ResourceState(f"resource-{index}") for index in range(5))
+    config = PlannerConfig(
+        enable_hysteresis=False,
+        solver_name="hungarian",
+    )
+    planner = AssignmentPlanner(config=config)
+    previous = planner.plan(previous_tracks, resources, timestamp=0.0)
+    planner.plan(
+        tracks,
+        resources,
+        timestamp=1.0,
+        previous_plan=previous,
+        expected_previous_version=previous.version,
+        publish=False,
+    )
+    frame = planner.latest_planning_evidence
+    assert frame.available
+    assert frame.plan is not None
+    assert frame.previous_plan is not None
+    assert len(frame.previous_plan.coalitions) == 4
+    assert len(frame.plan.coalitions) == 5
+    return frame, config
+
+
+def _replace_plan_coalition_id(
+    plan,
+    *,
+    target_id: str,
+    coalition_id: str,
+):
+    return replace(
+        plan,
+        assignments=tuple(
+            replace(item, coalition_id=coalition_id)
+            if item.target_id == target_id
+            else item
+            for item in plan.assignments
+        ),
+        coalitions=tuple(
+            replace(item, coalition_id=coalition_id)
+            if item.target_id == target_id
+            else item
+            for item in plan.coalitions
+        ),
+        demand_summaries=tuple(
+            replace(item, coalition_id=coalition_id)
+            if item.target_id == target_id
+            else item
+            for item in plan.demand_summaries
+        ),
+    )
+
+
 def _write_bundle(
     path: Path,
     *,
@@ -271,6 +344,186 @@ def test_positive_m_to_n_replay_is_serialized_truth_free_and_non_authoritative(
         '"reward"',
     ):
         assert forbidden not in rendered
+
+
+def test_new_target_replay_restores_hash_bound_recorded_coalition_identity(
+    tmp_path: Path,
+) -> None:
+    frame, config = _new_target_rule_frame()
+    result = _replay(
+        frame,
+        config,
+        tmp_path / "missing-bundle",
+        _digest("missing-manifest"),
+        "missing-policy",
+    )
+
+    recorded_ids = {
+        item.target_id: item.coalition_id for item in frame.plan.coalitions
+    }
+    previous_ids = {
+        item.target_id: item.coalition_id
+        for item in frame.previous_plan.coalitions
+    }
+    for replayed_frame in (result.rule_frame, result.treatment_frame):
+        replayed_plan = replayed_frame.plan
+        assert replayed_plan is not None
+        replayed_ids = {
+            item.target_id: item.coalition_id
+            for item in replayed_plan.coalitions
+        }
+        assert replayed_ids == recorded_ids
+        assert all(
+            replayed_ids[target_id] == coalition_id
+            for target_id, coalition_id in previous_ids.items()
+        )
+        assert replayed_plan.metadata[
+            "offline_recorded_coalition_identity_applied"
+        ] is True
+        assert replayed_plan.metadata[
+            "offline_recorded_coalition_identity_restored_target_ids"
+        ] == ("target_0004",)
+        assert replayed_plan.metadata[
+            "offline_recorded_coalition_identity_publish_allowed"
+        ] is False
+        assert replayed_plan.metadata[
+            "offline_recorded_coalition_identity_runtime_ack"
+        ] is False
+        assert replayed_plan.metadata[
+            "offline_recorded_coalition_identity_authority"
+        ] is False
+        summary_ids = {
+            item["target_id"]: item["coalition_id"]
+            for item in replayed_plan.metadata["demand_summaries"]
+        }
+        membership_ids = {
+            item["target_id"]: item["coalition_id"]
+            for item in replayed_plan.metadata["coalition_membership"]
+        }
+        assert summary_ids["target_0004"] == "coalition_0004"
+        assert membership_ids["target_0004"] == "coalition_0004"
+
+
+def test_recorded_new_target_coalition_duplicate_is_rejected(
+    tmp_path: Path,
+) -> None:
+    frame, config = _new_target_rule_frame()
+    duplicate_id = frame.plan.coalitions[0].coalition_id
+    tampered = replace(
+        frame,
+        plan=_replace_plan_coalition_id(
+            frame.plan,
+            target_id="target_0004",
+            coalition_id=duplicate_id,
+        ),
+    )
+
+    with pytest.raises(PairedInterventionContractError) as captured:
+        _replay(
+            tampered,
+            config,
+            tmp_path / "missing-bundle",
+            _digest("missing-manifest"),
+            "missing-policy",
+        )
+
+    assert captured.value.code == (
+        "offline_recorded_coalition_identity_duplicate"
+    )
+
+
+def test_recorded_previous_target_coalition_rewrite_is_rejected(
+    tmp_path: Path,
+) -> None:
+    frame, config = _new_target_rule_frame()
+    tampered = replace(
+        frame,
+        plan=_replace_plan_coalition_id(
+            frame.plan,
+            target_id="target_0000",
+            coalition_id="coalition_rewritten",
+        ),
+    )
+
+    with pytest.raises(PairedInterventionContractError) as captured:
+        _replay(
+            tampered,
+            config,
+            tmp_path / "missing-bundle",
+            _digest("missing-manifest"),
+            "missing-policy",
+        )
+
+    assert captured.value.code == (
+        "offline_recorded_coalition_identity_previous_rewrite"
+    )
+
+
+@pytest.mark.parametrize("tamper_kind", ("assignment", "summary", "metadata"))
+def test_recorded_coalition_reference_tampering_is_rejected(
+    tmp_path: Path,
+    tamper_kind: str,
+) -> None:
+    frame, config = _new_target_rule_frame()
+    plan = frame.plan
+    if tamper_kind == "assignment":
+        plan = replace(
+            plan,
+            assignments=tuple(
+                replace(item, coalition_id="coalition_wrong")
+                if item.target_id == "target_0004"
+                else item
+                for item in plan.assignments
+            ),
+        )
+        expected_code = (
+            "offline_recorded_coalition_identity_assignment_mismatch"
+        )
+    elif tamper_kind == "summary":
+        plan = replace(
+            plan,
+            demand_summaries=tuple(
+                replace(item, coalition_id="coalition_wrong")
+                if item.target_id == "target_0004"
+                else item
+                for item in plan.demand_summaries
+            ),
+        )
+        expected_code = "offline_recorded_coalition_identity_summary_mismatch"
+    else:
+        membership = tuple(
+            {
+                "target_id": item.target_id,
+                "coalition_id": (
+                    "coalition_wrong"
+                    if item.target_id == "target_0004"
+                    else item.coalition_id
+                ),
+                "coalition_version": item.version,
+                "coalition_epoch": item.epoch,
+            }
+            for item in plan.coalitions
+        )
+        plan = replace(
+            plan,
+            metadata={
+                **dict(plan.metadata),
+                "coalition_membership": membership,
+            },
+        )
+        expected_code = "offline_recorded_coalition_identity_metadata_mismatch"
+    tampered = replace(frame, plan=plan)
+
+    with pytest.raises(PairedInterventionContractError) as captured:
+        _replay(
+            tampered,
+            config,
+            tmp_path / "missing-bundle",
+            _digest("missing-manifest"),
+            "missing-policy",
+        )
+
+    assert captured.value.code == expected_code
 
 
 @pytest.mark.parametrize(
