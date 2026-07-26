@@ -1,5 +1,38 @@
 # D6 Evaluation Metrics Plan
 
+## 2026-07-26 D5 G1 预准入外部审计
+
+### 已完成
+
+- [x] 定义 `d6.d5-g1-external-audit.v1` 和唯一 D5 consumer contract，D6 只给证据审计
+  pass/fail，不给模型晋级、G1 辅助、控制或默认路径权限。
+- [x] 用显式输入清单冻结 99fa 候选 registry、manifest、weights、held-out、final
+  paired-shadow 和 lineage；没有使用绑定另一模型的 `e39a54d_v2`。
+- [x] 重算文件/内容 SHA-256、模型指纹、dataset/split/training-set、当前九文件实现摘要及
+  held-out/paired 联合实现摘要。
+- [x] 对缺失、篡改、跨模型、跨数据集、实现错配、非正式、严格布尔/整数、阈值不足和
+  unavailable 建立稳定 blocker code；缺失不补 0。
+- [x] 固定 20 个未见 seed、900 个 episode、45 个场景规模单元和三项安全零计数门。
+- [x] 显式审计单特征 AUC、五类鲁棒性 profile、最低边/簇 F1 和候选图是否重建。
+- [x] 输出 JSON、证据索引 CSV、中文 Markdown 与 `SHA256SUMS`，重复运行逐文件一致。
+- [x] 2026-07-26 实物审计完成：形式化目录和安全计数可用，但实现谱系、单特征 AUC、扰动
+  边 F1、扰动簇 F1 四项阻断，结果为 `fail_closed`。
+- [x] 专项 `13 passed`，覆盖全部要求的正反例、CLI 和确定性输出；D6 全量
+  `943 passed, 1 warning in 80.56s`。
+
+### 仍开放
+
+- [ ] D5 需在当前 `ff8c744e...8a1b7` 实现上重新形成同模型 held-out 与 paired-shadow
+  证据，或提供可独立验证的等价桥接；v1 审计不接受口头或布尔等价声明。
+- [ ] 合成数据单特征最高 AUC `0.997340` 仍高于 0.98。需使用更困难、独立生成的数据降低
+  尺度变化率捷径。
+- [ ] 扰动最低边/簇 F1 `0.563264/0.572845` 未达到 0.9，且候选图未重建。需按相机几何、
+  时间偏差和遮挡重新构图后复验。
+- [ ] 只有 D6 审计通过后，D5 才能装配新的 admission evidence；D6 仍不直接生成 admitted
+  bundle。
+- [ ] G1 实际执行后仍需 `learning_scope_formal_audit` 与同 comparison key 的 R0 结果做
+  完整运行证据配对。
+
 ## 2026-07-25 正式 R0/G1/A1/A2/A3/C1/F1 矩阵准入预检
 
 ### 已完成

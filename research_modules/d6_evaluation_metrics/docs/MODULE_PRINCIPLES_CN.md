@@ -1,5 +1,38 @@
 # D6 系统级离线评估模块原理
 
+## D5 G1 外部证据审计（2026-07-26）
+
+D5 的 held-out 和 paired-shadow 报告属于生产者声明。D6 不能只读取其中的 `passed=true`。
+外部审计从显式冻结的文件集合开始，逐一重算文件 SHA-256 和 JSON 内容 SHA-256，再检查模型、
+数据、实现、形式化目录、指标和安全计数是否指向同一候选。相邻目录中的同名报告不会自动进入
+证据链，绑定另一权重的 paired report 会按跨模型谱系拒绝。
+
+候选模型指纹定义为 `sha256:<weights_sha256>`。manifest、weights 和 checksums 必须与冻结
+registry 一致。训练数据的 dataset manifest、split 和 training set SHA-256 必须在模型
+manifest 与 held-out 报告中逐项相同。paired-shadow 的输入清单还必须绑定 held-out 文件和
+内容哈希。任一来源缺失时，对应 consumer 字段为 `null + unavailable reason`，不能用 0
+代替。
+
+运行实现摘要按九个 D5 源文件逐文件哈希后，对有序映射做规范 JSON SHA-256。held-out 与
+paired-shadow 的实现记录合并后形成证据实现摘要。二者必须逐文件等于当前实现。v1 不接受
+等价桥接，因此“只改了装配代码”也不能由 D6 主观判为等价，必须重新取证或提供后续版本可验证
+的桥接合同。
+
+形式化目录要求 seed `1000-1019` 完整、20 个未见 seed、900 个 episode、45 个场景规模单元、
+完整 truth evaluator、paired full profile、输入只读和 authoritative evidence status。三项安全
+计数分别是在线真值字段、`global_track_id` 改写和同相机互斥违规，均要求为 0。字段缺失与真实
+零值分开处理。
+
+名义 held-out 和 paired-shadow 门之外，D6 单独检查合成捷径与扰动泛化。单特征最高 AUC 门限
+为 0.98；五类扰动最低边 F1 和簇 F1 门限均为 0.9。每个 profile 是否使用真值、是否重新构建
+候选图写入结果。固定候选图的扰动只能说明评分器在既定候选上的变化，不能替代投影、门控和
+候选生成的全链路复验。
+
+审计结论是全部门的合取。JSON 内的 `audit_passed` 只表示证据通过。D6 始终把模型晋级、G1
+辅助、控制权和默认路径变更写为 false。D5 后续装配器以该 JSON 为唯一 D6 输入，并自行验证
+审计文件 SHA-256 和 `content_sha256`。G1 运行完成后，执行作用域仍由
+`learning_scope_formal_audit` 复核，两个审计层不能相互替代。
+
 ## 正式实验矩阵准入边界（2026-07-25）
 
 正式实验矩阵包含规则基线 R0、图模型 G1、分配策略 A1、区域策略 A2、主动视觉 A3、组合策略

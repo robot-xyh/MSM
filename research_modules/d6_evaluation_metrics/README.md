@@ -1,5 +1,50 @@
 # D6 Evaluation Metrics
 
+## 2026-07-26 D5 G1 预准入外部审计
+
+D6 已实现独立、只读、失败关闭的 D5 G1 外部审计。输出 schema 为
+`d6.d5-g1-external-audit.v1`，命令行入口为
+`scripts/run_d5_g1_external_audit.py`。输入清单显式冻结 registry reference、registry audit、
+模型 manifest/weights/checksums、held-out 报告、paired-shadow 报告和逐 episode lineage，
+不扫描相邻目录，也不接受文件名推断模型身份。
+
+审计直接重算文件 SHA-256、JSON 内容 SHA-256、模型指纹、训练数据 manifest/split/training-set
+谱系，以及当前九个 D5 运行源文件的实现摘要。held-out 与 paired-shadow 必须绑定同一模型和
+数据集；布尔值、非负整数和 metric availability 使用严格类型。缺文件、缺字段、类型错误、
+文件或内容哈希不符、跨模型、跨数据集、实现错配、非正式、门限不足和 unavailable 均返回稳定
+blocker code，缺失计数保持 `null`，不补成 0。
+
+固定形式化门要求 seed `1000-1019`、至少 20 个未见 seed、900 个 held-out episode、45 个场景
+规模单元、完整 paired catalog 和只读输入。安全计数要求在线真值字段、`global_track_id` 改写、
+同相机互斥违规均为 0。泛化门单独限制单特征最高 AUC 不高于 0.98，五类扰动的最低边/簇 F1
+均不低于 0.9。候选图是否在扰动后重建作为显式限制字段，不由名义满分覆盖。
+
+2026-07-26 对实际 99fa 候选运行审计。候选 bundle 为
+`d5_composite_internal_training_clean_6dc471b/model_bundle`；held-out 和 final paired-shadow
+均绑定 weights SHA-256 `99fa4428...d4cd`。20 个 seed、900 个 episode、45 个单元和三项安全
+零计数可用。结果仍为 `fail_closed`：
+
+- 报告联合实现摘要为 `81968e0d...066e7f`，当前运行实现摘要为
+  `ff8c744e...8a1b7`，差异位于 `tracklet_model_bundle.py`，没有可验证等价桥接；
+- 单特征最高 AUC 为 `0.997340`，超过 0.98；
+- 扰动最低边/簇 F1 为 `0.563264/0.572845`，低于 0.9；
+- 五类扰动均固定原候选图，不能代替重新投影和重新构图的外部泛化证据。
+
+输出包含 JSON、证据索引 CSV、中文 Markdown 和 `SHA256SUMS`，位于
+`outputs/d5_g1_external_audit_99fa4428_20260726/`。专项测试为 `13 passed`，D6 全量为
+`943 passed, 1 warning in 80.56s`。warning 是既有 Matplotlib `Axes3D` 环境提示。D6 输出仅表示
+evidence audit pass/fail，不授予模型晋级、G1 辅助、控制权或默认路径变更。后续 D5 evidence
+assembler 只能消费该 JSON 及其文件/内容哈希；执行 G1 后，D6 现有
+`learning_scope_formal_audit` 仍负责运行作用域与同键 R0 的下游复核。
+
+```bash
+PYTHONPATH=research_modules/d6_evaluation_metrics \
+python3 research_modules/d6_evaluation_metrics/scripts/run_d5_g1_external_audit.py \
+  --input-spec research_modules/d6_evaluation_metrics/configs/d5_g1_external_audit_99fa4428_20260726.json \
+  --repository-root . \
+  --output-dir research_modules/d6_evaluation_metrics/outputs/d5_g1_external_audit_99fa4428_20260726
+```
+
 ## 2026-07-25 正式实验矩阵准入预检
 
 D6 已实现只读、失败关闭的正式矩阵准入预检

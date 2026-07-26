@@ -1,5 +1,39 @@
 # D6 实现差距审计
 
+## 2026-07-26 D5 G1 外部审计输出 GAP 更新
+
+### 已关闭
+
+1. D6 已提供 D5 evidence assembler 可消费的唯一外部审计 schema
+   `d6.d5-g1-external-audit.v1`，并保持 D6 只读、不参与模型和控制授权。
+2. 输入清单显式绑定 99fa registry、模型 manifest/weights/checksums、held-out、final
+   paired-shadow 和 lineage。另一模型的 `e39a54d_v2` 不可被目录扫描误选。
+3. 文件 SHA、内容 SHA、模型指纹、dataset/split/training-set、当前九文件实现和报告联合实现
+   谱系均已独立重算。
+4. 缺文件、文件/内容篡改、跨模型、跨数据集、实现错配、非正式、严格类型、阈值不足和
+   unavailable 均有稳定 blocker；缺失计数不补 0。
+5. JSON、证据 CSV、中文 Markdown 和 `SHA256SUMS` 已实现。相同 fixture 的重复运行逐文件
+   一致。
+6. 专项 `13 passed`，覆盖全部正负例和 CLI；D6 全量
+   `943 passed, 1 warning in 80.56s`。
+
+### 当前 P1
+
+1. **实现谱系未闭合。** 报告联合摘要 `81968e0d...066e7f` 与当前
+   `ff8c744e...8a1b7` 不同，差异在 `tracklet_model_bundle.py`。v1 没有等价桥接，当前候选
+   失败关闭。
+2. **合成捷径超限。** 单特征最高 AUC `0.997340 > 0.98`。
+3. **扰动性能不足。** 最低边/簇 F1 `0.563264/0.572845 < 0.9`。
+4. **候选图未重建。** 五类扰动固定 post-gate 候选图，尚不能证明相机投影、门控和候选生成
+   的外部泛化。
+5. **D5 装配仍未执行。** 只有新的 D6 审计通过后，D5 才能实现 evidence assembler；D6 不
+   直接生成 admitted bundle。
+6. **运行作用域未验证。** G1 正式执行后还需现有 `learning_scope_formal_audit` 做同键 R0
+   配对。预准入审计不能替代运行证据。
+
+当前无新增 D6-owned P0。D6 外部审计软件链和报告缺口已关闭；上述 P1 属于候选实现与泛化证据
+未达到冻结门，D6 按设计保持 `fail_closed`。
+
 ## 2026-07-25 正式实验矩阵准入预检 GAP 更新
 
 ### 已关闭

@@ -1,5 +1,52 @@
 # D6 正式实验矩阵准入预检报告
 
+## D5 G1 预准入外部审计（2026-07-26）
+
+### 输入
+
+本次只读审计使用冻结的 99fa 候选。模型 manifest/weights SHA-256 为
+`c4284b24...674` / `99fa4428...d4cd`。held-out 报告文件/内容 SHA-256 为
+`765d39a5...320a` / `bada1803...067a`；paired-shadow 使用与该权重一致的 final 报告，文件/
+内容 SHA-256 为 `cc960206...bf23` / `53bdc658...57a0`。绑定另一模型的 `e39a54d_v2` 未进入
+输入清单。
+
+审计没有启动 AirSim、三维质点 episode 或新多 seed 实验。它只验证已有 20-seed 实物。输入
+覆盖 seed `1000-1019`、900 个 episode、45 个场景规模单元、13,344 个匿名局部航迹节点和
+74,024 条候选边。
+
+### 结果
+
+形式化目录通过。held-out 和 paired-shadow 均绑定 99fa weights，训练数据的 dataset
+manifest、split 和 training set SHA-256 一致。在线真值字段、`global_track_id` 改写和同相机
+互斥违规均为 0。这些字段 availability 为 true，零值有实际证据。
+
+整体结果为 `fail_closed`，包含四个稳定阻断项：
+
+1. `implementation_lineage_mismatch`。held-out 与 paired 报告联合形成的九文件实现摘要为
+   `81968e0d...066e7f`，当前 D5 运行实现摘要为 `ff8c744e...8a1b7`。
+   `tracklet_model_bundle.py` 的证据哈希为 `b92037bb...e8cc`，当前哈希为
+   `174b18b9...b0ff`。没有可验证等价桥接。
+2. `synthetic_single_feature_shortcut`。检测框尺度变化率差的最高单特征 AUC 为
+   `0.997340`，超过 0.98 门限。
+3. `robustness_threshold_not_met.edge_f1`。遮挡重现代理下最低边 F1 为 `0.563264`，低于
+   0.9。
+4. `robustness_threshold_not_met.cluster_f1`。同一 profile 的最低簇 F1 为 `0.572845`，低于
+   0.9。
+
+五类扰动均使用冻结的 post-gate 候选图，`candidate_graph_rebuilt=false`。该限制已进入结构化
+结果，不能把名义 held-out/paired 满分解释为重新投影和重新构图后的外部泛化能力。
+
+### 制品与验证
+
+结果目录为 `outputs/d5_g1_external_audit_99fa4428_20260726/`，包含 JSON、证据索引 CSV、中文
+Markdown 和 `SHA256SUMS`。三项内容文件校验通过。专项测试 `13 passed`，覆盖正例、缺文件、
+文件篡改、内容篡改、跨模型、跨数据集、实现变化、严格布尔/整数、阈值边界、unavailable、
+CLI、内容哈希和重复运行确定性。D6 全量为 `943 passed, 1 warning in 80.56s`；warning 是既有
+Matplotlib `Axes3D` 环境提示，不影响本次二维报告和哈希判定。
+
+D6 没有授予模型晋级、G1 辅助、控制权或默认路径变更。当前证据不能被 D5 装配为正向 admission。
+下一次复核需要当前实现上的新 held-out/paired 实物，并处理合成单特征捷径和扰动最低性能。
+
 ## 结论
 
 2026-07-25，D6 对 R0、G1、A1、A2、A3、C1、F1 正式实验矩阵执行静态

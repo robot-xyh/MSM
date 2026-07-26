@@ -1,5 +1,78 @@
 # D6 系统级离线评估：算法原理与实施说明
 
+## D5 G1 预准入外部审计（2026-07-26）
+
+### 审计输入
+
+输入 schema `d6.d5-g1-external-audit-input.v1` 固定九类实物：冻结引用、冻结审计摘要、registry
+校验清单、模型 manifest、模型 weights、bundle 校验清单、held-out 报告、paired-shadow 报告和
+paired lineage。每项都携带相对路径和调用方冻结的文件 SHA-256。D6 不按目录搜索替代文件。
+
+实现摘要覆盖：
+
+```text
+scalable_3d_adapter
+sparse_tracklet_graph
+tracklet_dataset
+tracklet_gnn
+tracklet_heldout_evaluation
+tracklet_model_bundle
+tracklet_paired_shadow
+tracklet_training
+tracklet_training_audit
+```
+
+每个文件先计算 SHA-256，再对按文件名排序的映射执行规范 JSON 编码和 SHA-256。held-out 与
+paired-shadow 的实现表取并集后必须覆盖上述九个文件，且共享文件哈希必须一致。证据摘要与当前
+摘要不同即产生 `implementation_lineage_mismatch`。v1 的
+`equivalence_bridge.available=false`，不接受人工等价说明。
+
+### 判定关系
+
+外部审计通过条件可写为：
+
+```text
+pass = artifact_integrity
+       AND model_lineage
+       AND dataset_lineage
+       AND implementation_lineage
+       AND formal_catalog
+       AND heldout_gates
+       AND paired_gates
+       AND safety_zero_counts
+       AND shortcut_gate
+       AND robustness_gates
+```
+
+held-out 门限为 F1 不低于 0.92、错误合并率不高于 0.01、候选召回不低于 0.95、P95 推理时延
+不高于 100 毫秒。形式化目录至少包含 20 个未见 seed、900 个 episode 和 45 个场景规模单元。
+单特征最高 AUC 不高于 0.98；至少五类扰动，最低边/簇 F1 均不低于 0.9。阈值边界包含在通过
+区间内。
+
+JSON 字段使用严格类型。权限和完成状态必须是 JSON 布尔值，计数必须是非负 JSON 整数；
+`true` 不能当作整数 1。metric 的 `available=false` 直接阻断，值保持 `null`。文件 SHA、
+内容 SHA、模型、数据集或实现谱系不一致均返回稳定 blocker code。
+
+### 输出合同
+
+主输出 schema 为 `d6.d5-g1-external-audit.v1`。其中
+`d5_consumer_contract` 固定携带：
+
+- 模型指纹、manifest 和 weights SHA-256；
+- 当前实现 SHA-256；
+- dataset manifest、split 和 training set SHA-256；
+- held-out 与 paired-shadow 文件/内容 SHA-256；
+- 形式化标志、held-out/paired 通过标志；
+- 未见 seed、episode、场景规模单元和三项安全计数；
+- D6 审计通过标志、字段 availability 和稳定 failure reasons。
+
+报告 writer 以规范 JSON 写出主报告，并按 artifact ID 排序生成证据索引 CSV。中文 Markdown
+只解释同一 JSON。`SHA256SUMS` 覆盖 JSON、CSV 和 Markdown。相同输入、固定审计时间和相同
+源码重复运行，四个输出逐字节一致。
+
+D6 的 `authority` 始终关闭。后续 D5 装配器需要把外部审计文件 SHA-256 和 JSON
+`content_sha256` 继续绑定到自己的 admission report；D6 不在本模块生成 admitted bundle。
+
 ## 正式实验矩阵准入预检（2026-07-25）
 
 实现入口为 `experiment_matrix_admission.py`。命令行入口为
