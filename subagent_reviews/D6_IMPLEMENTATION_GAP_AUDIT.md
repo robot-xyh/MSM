@@ -1,5 +1,44 @@
 # D6 实现差距审计
 
+## 2026-07-25 D1 在线发布证据子集快照正式评估 GAP 更新
+
+### 已关闭
+
+1. D6 已实现独立只读 evaluator、CLI、固定 schema、确定性报告和失败关闭结果。评估器不调用
+   producer 私有验收函数，也不写入 producer evidence。
+2. clean commit `d0219eb14c529a4fb9bf7d6610a9f32055a09206`、matrix SHA
+   `6c808c4df8759fd893c6d37ff9dce4a1efa07f9867fc71aff47a55c5f8517338`、
+   13 pair、26 fresh arm、200/200/2、seed、时长、arm 顺序、命令和路径边界已冻结。
+3. runtime profile、summary、module final、governance audit 和 nested governance 的 selector、
+   完整实现 ID、execution config 和 diagnostics 已进入 fail-closed 校验。两臂 replay-prefix
+   均要求 `per_checkpoint_prefix_rebuild_v1`。
+4. D1/D2 在线记录、在线总线、业务计数、consistency record count/digest、原 D1 fusion
+   operation counts、有限状态和 online truth use=0 已逐 pair 独立比较。
+5. 候选 fallback、lookup miss、invalid required ID 和 empty set 为 0；reference 完整路径、
+   candidate 子集路径和计数守恒均有正负测试。
+6. 正式 13/13 pair 的来源、语义、身份、原操作计数、consistency 和诊断审计通过。候选
+   `429/429` 次子集选择成功，返回记录削减 `91.641524%`。
+7. 正式 verdict 为 `reject`。short 更快数 `4/10`、D1 改善 `-0.147877%` 和 bootstrap
+   上界 `1.374681%` 未达到冻结门；门限和 pair 均未修改。
+8. 正式 bundle 已生成到
+   `research_modules/d6_evaluation_metrics/outputs/d1_publication_evidence_snapshot_multiseed_20260725_formal_d0219eb_d6/`。
+9. 同一正式 manifest 重复评估与正式 bundle 逐文件一致。聚焦测试 `14 passed`，D6 全量
+   `880 passed, 1 warning in 76.17s`。
+
+### 仍开放 P1
+
+1. **候选准入。** `required_observation_subset_v1` 保持默认关闭，reference 保持默认。重新准入
+   必须使用新候选和新预注册矩阵。
+2. **短时收益稳定性。** 记录削减已成立，short D1 墙钟收益未成立。不能用记录削减门替代
+   性能门。
+3. **系统实时容量。** 候选最低实时因子 `0.203423 < 1`，
+   `system_realtime_gap_closed=false`。
+4. **外部适用性。** 本轮仅为 200/200/2 三维质点证据，不关闭 AirSim、目标处理器、硬件、
+   实机或实飞 GAP。
+
+当前无新增 D6-owned P0。D6 evaluator、正式 evidence 消费、统计、报告和测试缺口已关闭；
+候选准入、系统实时和外部适用性保持开放。
+
 ## 2026-07-25 D1 回放前缀摘要正式评估 GAP 更新
 
 ### 已关闭

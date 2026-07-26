@@ -1,5 +1,81 @@
 # D6 系统级评估指标实验报告
 
+## 2.39 D1 在线发布证据子集快照正式多种子评估
+
+### 结论
+
+2026-07-25，D6 对在线发布证据子集快照候选完成正式独立只读评估。输出 schema 为
+`d6.d1_publication_evidence_snapshot_multiseed_evaluation.v1`，producer clean commit 为
+`d0219eb14c529a4fb9bf7d6610a9f32055a09206`，matrix SHA-256 为
+`6c808c4df8759fd893c6d37ff9dce4a1efa07f9867fc71aff47a55c5f8517338`。
+
+正式 verdict 为 `reject`，`main_default_promotion_allowed=false`。候选
+`required_observation_subset_v1` 保持默认关闭，参考 `full_consistency_snapshot_v1`
+保持默认。候选最低实时因子为 `0.2034232632 < 1`，所以系统实时门未关闭。
+
+### 场景与来源
+
+正式矩阵包含 200 个目标、200 个资源和 2 个侦察节点。short 组为 seeds 1151-1160、每个
+episode 2.2 秒；long 组为 seeds 1151-1153、每个 episode 10 秒。共 13 pair、26 个 fresh
+complete episode，0 reused、0 failed。两臂使用同一 clean commit，唯一处理差异为在线发布
+证据快照实现；回放前缀均使用 `per_checkpoint_prefix_rebuild_v1`。
+
+evidence manifest SHA-256 为
+`67813a3e850759dd4c194add4b622870345118aec5acdf74d2480f86c00735b4`。
+
+### 语义与诊断
+
+13/13 pair 的业务语义、有限状态、在线真值隔离、实现身份、D1/D2 在线记录、在线
+consistency record count/digest、原 D1 fusion operation counts 和快照诊断审计均通过。
+候选执行 429 次选择，429 次子集快照成功；fallback、lookup miss、invalid required ID 和
+empty required set 均为 0。
+
+| 工作量 | 正式值 |
+| --- | ---: |
+| 参考返回记录 | 1602170 |
+| 候选返回记录 | 133917 |
+| 返回记录削减率 | 91.641524% |
+| 候选选择 | 429 |
+| 候选子集成功 | 429 |
+| 候选回退 | 0 |
+
+### 性能
+
+| 分组 | 指标 | 参考均值 | 候选均值 | 配对改善或增幅 |
+| --- | --- | ---: | ---: | ---: |
+| short | D1 融合耗时（秒） | 2.479580 | 2.482785 | -0.147877% |
+| short | 核心流程耗时（秒） | 8.595556 | 8.566789 | 0.330057% |
+| short | D2 关联耗时（秒） | 0.504043 | 0.513980 | 增幅 1.963565% |
+| short | 最大驻留内存（KiB） | 876920.8 | 876145.6 | 降低 0.088749% |
+| long | D1 融合耗时（秒） | 17.616719 | 17.430862 | 1.047143% |
+| long | 核心流程耗时（秒） | 48.734323 | 48.325878 | 0.837777% |
+| long | D2 关联耗时（秒） | 3.508502 | 3.458793 | 降低 1.149580% |
+| long | 最大驻留内存（KiB） | 1630798.7 | 1624476.0 | 降低 0.384150% |
+
+short D1 候选更快 `4/10`，long 候选更快 `2/3`。short D1 原始相对变化的 10000 次配对
+bootstrap 95% 区间为 `[-1.003752%, 1.374681%]`。
+
+### 冻结门
+
+三个失败门为：
+
+| 门限 | 实测 | 冻结判据 |
+| --- | ---: | ---: |
+| short candidate faster | 4/10 | >=8/10 |
+| short D1 融合改善 | -0.147877% | >=1% |
+| short bootstrap 原始变化上界 | 1.374681% | <=0% |
+
+long D1 和更快数、short/long core、D2、RSS、语义、安全及返回记录削减门均通过。局部通过项
+不能覆盖三个失败门，评估没有调低门限或删除 pair。
+
+正式 bundle 位于
+`outputs/d1_publication_evidence_snapshot_multiseed_20260725_formal_d0219eb_d6/`，包含完整
+JSON、紧凑 JSON、13 条 pair CSV、中文 Markdown 和 `SHA256SUMS`。本节只覆盖三维质点仿真，
+不代表 AirSim、目标处理器、硬件、实机或实飞结果。
+
+同一正式 manifest 的第二次只读评估与正式 bundle 逐文件一致。聚焦测试为
+`14 passed, 1 warning`，D6 全量为 `880 passed, 1 warning in 76.17s`。
+
 ## 2.38 D1 回放前缀摘要正式多种子评估
 
 ### 结论

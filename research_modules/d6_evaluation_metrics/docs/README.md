@@ -1,5 +1,16 @@
 # D6 文档索引
 
+2026-07-25 D1 在线发布证据子集快照评估原理见 `MODULE_PRINCIPLES_CN.md`，严格来源绑定、
+五表面实现身份、D1/D2 在线记录比较、快照计数守恒、配对统计和失败关闭实现见
+`ALGORITHM_AND_IMPLEMENTATION.md`。入口绑定 matrix SHA
+`6c808c4df8759fd893c6d37ff9dce4a1efa07f9867fc71aff47a55c5f8517338` 与 clean commit
+`d0219eb14c529a4fb9bf7d6610a9f32055a09206`。正式 13 pair/26 fresh arm 已完成，0 reused、
+0 failed；13/13 语义和诊断合同通过，返回记录削减 `91.641524%`。short 更快数、D1 改善和
+bootstrap 上界三个门失败，正式 verdict 为 `reject`；最低实时因子 `0.203423`。正式结果见
+`../EXPERIMENT_REPORT.md` 2.39 节和
+`../outputs/d1_publication_evidence_snapshot_multiseed_20260725_formal_d0219eb_d6/`。
+同一 manifest 重复评估逐文件一致；聚焦测试 `14 passed`，D6 全量 `880 passed, 1 warning`。
+
 2026-07-25 D1 固定滞后回放前缀摘要独立评估原理见 `MODULE_PRINCIPLES_CN.md`，严格
 manifest/matrix/commit 绑定、导出前后 ledger 守恒、在线 consistency digest、原操作计数、
 性能门和投影工作量披露见 `ALGORITHM_AND_IMPLEMENTATION.md`。入口 schema 为

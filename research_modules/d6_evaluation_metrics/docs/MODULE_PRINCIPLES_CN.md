@@ -1,5 +1,29 @@
 # D6 系统级离线评估模块原理
 
+## 在线发布证据子集快照评估边界（2026-07-25）
+
+该候选只改变 D1 发布阶段取得 consistency 证据的范围。参考实现返回完整已物化记录，候选只
+请求本次发布所引用的源观测和航迹最新观测。D6 的评估对象是两臂最终发布语义和运行工作量，
+不参与必要标识选择，也不向在线总线回写判定。
+
+D6 先固定同一 clean commit、矩阵字节、13 个 seed pair、规模、时长、arm 顺序和命令。两臂
+只能改变 `d1_publication_evidence_snapshot_implementation`；回放前缀实现、D1-D7 配置、
+观测输入和真值隔离策略必须相同。任一 arm 复用、失败、路径越界或 schema 漂移都使证据不可用。
+
+语义门同时比较在线总线、D1/D2 在线记录、业务计数、离线 consistency records digest/count
+和原 D1 fusion operation counts。快照诊断门独立要求 reference 全部走完整快照，candidate
+全部成功走子集快照，且 fallback、lookup miss、invalid required ID 和 empty required set 为
+0。返回记录削减率按全矩阵总量计算：
+
+```text
+reduction = (reference_returned - candidate_returned)
+            / reference_returned * 100%
+```
+
+记录削减门与墙钟性能门分开。short/long D1、core、D2、最大驻留内存和实时因子均按同 seed
+配对；short D1 使用固定随机种子和 10000 次配对 bootstrap。实时因子达到 1 是独立系统门，
+不参与局部优化 verdict。
+
 ## 回放前缀摘要评估边界（2026-07-25）
 
 D1 候选把固定滞后回放中重复扫描的 checkpoint 前缀压缩为不可变累计摘要，并用 pending

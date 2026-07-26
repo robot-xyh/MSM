@@ -1,5 +1,52 @@
 # D6 Evaluation Metrics
 
+## 2026-07-25 D1 在线发布证据子集快照正式独立评估
+
+D6 已新增只读 evaluator
+`d1_publication_evidence_snapshot_multiseed.py` 和 CLI
+`scripts/evaluate_d1_publication_evidence_snapshot_multiseed.py`。输出 schema 为
+`d6.d1_publication_evidence_snapshot_multiseed_evaluation.v1`。入口固定绑定
+producer clean commit `d0219eb14c529a4fb9bf7d6610a9f32055a09206`、matrix SHA-256
+`6c808c4df8759fd893c6d37ff9dce4a1efa07f9867fc71aff47a55c5f8517338`、
+200 个目标、200 个资源、2 个侦察节点及 13 个平衡顺序 pair。
+
+参考实现为 `full_consistency_snapshot_v1`，候选为
+`required_observation_subset_v1`。两臂的回放前缀实现均固定为
+`per_checkpoint_prefix_rebuild_v1`，唯一运行处理差异是在线发布证据快照 selector。loader
+只接受 26 个 fresh complete arm，拒绝 dirty、reused、failed、提交或矩阵漂移、命令漂移、
+路径越界和未知字段。
+
+D6 在 runtime profile、summary、module final、governance audit 和 nested governance
+核对 selector、完整 implementation ID、execution config 和 diagnostics。逐 pair 重新比较
+在线总线、D1/D2 在线记录、业务计数、离线 consistency record count/digest、原 D1 fusion
+operation counts、有限状态和在线真值使用。候选 fallback、lookup miss、invalid required ID
+和 empty required set 必须为 0，参考臂必须全程使用完整快照路径。
+
+正式输入 manifest SHA-256 为
+`67813a3e850759dd4c194add4b622870345118aec5acdf74d2480f86c00735b4`。
+13/13 pair 的业务语义、有限状态、在线真值隔离、实现身份、D1/D2 在线记录、consistency
+digest/count、原操作计数和诊断审计均通过。候选返回记录由 `1602170` 减至 `133917`，
+削减 `91.641524%`；429 次候选选择全部成功，回退、查询缺失、非法和空集合计数均为 0。
+
+正式 verdict 为 `reject`。short 候选仅 `4/10` 更快，D1 融合配对改善均值为
+`-0.147877%`，short 原始变化 bootstrap 95% 上界为 `1.374681%`，分别未达到
+`8/10`、`>=1%` 和 `<=0%`。long 候选 `2/3` 更快，D1 改善 `1.047143%`；short/long
+core、D2 和 RSS 门通过。候选最低实时因子为 `0.203423 < 1`，该系统门独立于优化 verdict。
+
+候选保持默认关闭，参考实现保持默认。正式 bundle 位于
+`outputs/d1_publication_evidence_snapshot_multiseed_20260725_formal_d0219eb_d6/`，包含完整
+JSON、compact JSON、13 条 pair CSV、中文 Markdown 和 `SHA256SUMS`。该结论只覆盖
+2026-07-25 的三维质点冻结矩阵，不代表 AirSim、目标处理器、硬件、实机或实飞性能。
+同一正式 manifest 的第二次只读评估与正式 bundle 逐文件一致。聚焦测试为
+`14 passed, 1 warning`，D6 全量为 `880 passed, 1 warning in 76.17s`；warning 为既有
+Matplotlib `Axes3D` 环境提示，不影响本入口的二维文件、统计或判定。
+
+```bash
+python3 research_modules/d6_evaluation_metrics/scripts/evaluate_d1_publication_evidence_snapshot_multiseed.py \
+  --evidence-manifest /tmp/msm_d1_publication_evidence_multiseed_20260725_formal_d0219eb/evidence_manifest.json \
+  --output-dir research_modules/d6_evaluation_metrics/outputs/d1_publication_evidence_snapshot_multiseed_20260725_formal_d0219eb_d6
+```
+
 ## 2026-07-25 D1 回放前缀摘要正式独立评估
 
 D6 已使用只读 evaluator `d1_replay_prefix_summary_multiseed.py` 和 CLI

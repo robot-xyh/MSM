@@ -1,5 +1,40 @@
 # D6 系统评估指标综述及子方案
 
+## 2026-07-25 D1 在线发布证据子集快照正式独立评审
+
+D6 已完成 schema
+`d6.d1_publication_evidence_snapshot_multiseed_evaluation.v1` 的独立评估。正式来源固定为
+producer commit `d0219eb14c529a4fb9bf7d6610a9f32055a09206`、matrix SHA
+`6c808c4df8759fd893c6d37ff9dce4a1efa07f9867fc71aff47a55c5f8517338` 和
+manifest SHA `67813a3e850759dd4c194add4b622870345118aec5acdf74d2480f86c00735b4`。
+矩阵包含 short 10 对和 long 3 对，规模为 200 个目标、200 个资源、2 个侦察节点。
+
+参考臂每次发布读取完整 consistency 快照。候选从同一发布周期的源观测标识和已物化航迹最新
+观测标识构造去重、有序的必要集合。任何非法标识、未知标识、缺失返回记录或空集合都应回退到
+完整快照。正式诊断中这些异常均未发生。
+
+D6 不使用 producer admission 结论。评估器重算五个实现表面、唯一命令处理差异、回放前缀参考
+身份、D1/D2 在线记录语义、业务计数、离线 consistency digest/count、原 D1 操作计数、资源
+统计及配对 bootstrap。13/13 pair 的语义与安全合同通过，429 次候选选择全部成功。
+
+返回记录从 `1602170` 减至 `133917`，削减 `91.641524%`。性能结果如下：
+
+| 门限 | 实测 | 判据 | 结果 |
+| --- | ---: | ---: | --- |
+| short candidate faster | 4/10 | >=8/10 | 失败 |
+| short D1 融合改善 | -0.147877% | >=1% | 失败 |
+| short bootstrap 原始变化上界 | 1.374681% | <=0% | 失败 |
+| long candidate faster | 2/3 | >=2/3 | 通过 |
+| long D1 融合改善 | 1.047143% | >=1% | 通过 |
+| 全矩阵返回记录削减 | 91.641524% | >=50% | 通过 |
+
+short/long core、D2 和 RSS 门通过。三个 short 门失败使 verdict 为 `reject`，
+`main_default_promotion_allowed=false`。候选最低实时因子为 `0.203423`，系统实时门独立失败。
+结论只覆盖冻结三维质点矩阵。候选保持默认关闭，参考实现保持默认。
+
+同一 manifest 的重复评估与正式 bundle 逐文件一致。聚焦测试为 `14 passed`，D6 全量为
+`880 passed, 1 warning in 76.17s`。
+
 ## 2026-07-25 D1 回放前缀摘要正式独立评审
 
 D6 已完成 `d6.d1_replay_prefix_summary_multiseed_evaluation.v1` 的正式独立评估。评估器固定读取

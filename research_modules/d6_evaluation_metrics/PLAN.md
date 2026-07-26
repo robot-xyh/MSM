@@ -1,5 +1,40 @@
 # D6 Evaluation Metrics Plan
 
+## 2026-07-25 D1 在线发布证据子集快照正式评估状态
+
+### 已完成
+
+- [x] 独立只读、失败关闭 evaluator、CLI、完整/紧凑 JSON、逐 pair CSV、中文 Markdown 和
+  `SHA256SUMS` 已实现，schema 为
+  `d6.d1_publication_evidence_snapshot_multiseed_evaluation.v1`。
+- [x] 正式输入固定为 clean commit
+  `d0219eb14c529a4fb9bf7d6610a9f32055a09206`、matrix SHA
+  `6c808c4df8759fd893c6d37ff9dce4a1efa07f9867fc71aff47a55c5f8517338`、200/200/2、
+  short seeds 1151-1160 和 long seeds 1151-1153。
+- [x] 13 pair/26 arm 全部 fresh complete，0 reused、0 failed；两臂只允许
+  `d1_publication_evidence_snapshot_implementation` 不同，回放前缀均固定为参考实现。
+- [x] 五个实现表面、命令与路径隔离、D1/D2 在线记录、业务语义、consistency digest/count、
+  原 D1 操作计数、有限状态和在线真值隔离已独立重算。
+- [x] 13/13 pair 的上述合同和候选诊断通过。候选 `429/429` 次子集选择成功，fallback、
+  lookup miss、invalid ID 和 empty set 均为 0。
+- [x] 返回记录由 `1602170` 减至 `133917`，削减 `91.641524%`，通过 `>=50%` 门。
+- [x] 正式结果为 `reject`。失败门为 short 更快 `4/10 < 8/10`、short D1 改善
+  `-0.147877% < 1%` 和 short bootstrap 上界 `1.374681% > 0%`；没有调门或删除 pair。
+- [x] long D1 改善 `1.047143%`、long 更快 `2/3`，short/long core、D2 与 RSS 门通过。
+- [x] 正式 bundle 已保存到
+  `outputs/d1_publication_evidence_snapshot_multiseed_20260725_formal_d0219eb_d6/`。
+- [x] 同一正式 manifest 重复评估与正式 bundle 逐文件一致；聚焦 `14 passed`，D6 全量
+  `880 passed, 1 warning in 76.17s`。
+
+### 仍开放
+
+- [ ] 候选 `required_observation_subset_v1` 未满足冻结性能门，保持默认关闭；参考
+  `full_consistency_snapshot_v1` 保持默认。
+- [ ] 返回记录削减没有形成稳定 short D1 墙钟收益。后续优化需登记新候选和新矩阵，不得覆盖
+  本次 `reject`。
+- [ ] 候选最低实时因子 `0.203423 < 1`，200v200 系统实时 P1 未关闭。
+- [ ] 当前仅有三维质点证据；AirSim、目标处理器、硬件、实机和实飞证据仍缺失。
+
 ## 2026-07-25 D1 回放前缀摘要正式评估状态
 
 ### 已完成

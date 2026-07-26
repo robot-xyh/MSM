@@ -1,5 +1,52 @@
 # D6 系统级离线评估：算法原理与实施说明
 
+## D1 在线发布证据子集快照同提交评估（2026-07-25）
+
+入口 `d1_publication_evidence_snapshot_multiseed.py` 和
+`scripts/evaluate_d1_publication_evidence_snapshot_multiseed.py` 按以下顺序执行：
+
+```text
+manifest / matrix schema / SHA / clean source commit
+  -> 13 case / 26 fresh arm / seed / duration / command / path boundary
+  -> runtime profile / summary / module final / governance / nested governance
+  -> selector / implementation ID / execution config / diagnostics
+  -> replay-prefix reference identity and unique-treatment isolation
+  -> D1/D2 online records / online bus / finite truth sidecar / zero online truth use
+  -> consistency record count and digest / existing D1 operation counts
+  -> reference full-path and candidate subset-path conservation
+  -> paired timing / memory / bootstrap / frozen admission gates
+  -> evaluation JSON / compact JSON / pair CSV / Chinese Markdown / SHA256SUMS
+```
+
+loader 精确绑定 evaluator schema
+`d6.d1_publication_evidence_snapshot_multiseed_evaluation.v1`、matrix SHA
+`6c808c4df8759fd893c6d37ff9dce4a1efa07f9867fc71aff47a55c5f8517338` 和 source commit
+`d0219eb14c529a4fb9bf7d6610a9f32055a09206`。manifest 必须直接位于登记 output root，
+状态必须为 `episodes_complete_pending_d6`。完整/紧凑 JSON、CSV 和 Markdown 使用固定字段顺序
+与规范 JSON 编码，重复评估结果具有稳定摘要。
+
+execution config 固定必要标识来源、字典序去重、非法或未知标识完整快照回退、最终完整导出和
+无真值输入。diagnostics 对 `selection=reference+candidate`、
+`candidate=success+fallback`、`adapter=full+subset` 和
+`source_reference+track_reference=required+duplicate` 进行独立复算。producer 写出的布尔守恒
+值必须与计数一致。
+
+业务归一化只替换登记 selector、execution config、diagnostics、处理派生 episode ID 和性能字段。
+D1/D2 在线记录另按 JSON 语义生成摘要并显式比较。离线 truth state 只检查有限性并用于跨 episode
+评分，不能进入命令、运行配置或在线消息。
+
+越低越好的指标使用：
+
+```text
+r_i = (candidate_i - reference_i) / reference_i
+improvement_i = -r_i
+```
+
+short D1 原始变化使用 10000 次 paired percentile bootstrap。正式结果中返回记录削减
+`91.641524%`，但 short candidate faster=`4/10`、D1 改善=`-0.147877%`、bootstrap 上界
+=`1.374681%`，三个门失败。正式 `verdict=reject`，reference 保持默认。最低候选实时因子
+`0.203423`，系统实时门未关闭。
+
 ## D1 回放前缀摘要同提交评估（2026-07-25）
 
 入口 `d1_replay_prefix_summary_multiseed.py` 和

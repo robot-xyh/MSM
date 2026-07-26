@@ -1,5 +1,12 @@
 # D6 AirSim 离线集成计划
 
+## 2026-07-25 在线发布证据子集快照评估边界
+
+本轮新增 evaluator 只读消费三维质点 episode，不修改 AirSim topic、相机、actor、reset、
+检测、控制或 episode 调度。正式 `reject` 不能外推为 AirSim 性能结论。若后续在 AirSim 或
+目标处理器上复验，main 需要提供同一双臂处理、完整时间戳、资源测量、D1/D2 在线记录和离线
+真值 sidecar；D6 继续独立评估，不能从当前三维质点结果补写 AirSim 指标。
+
 ## 2026-07-15 legacy 1.0 settings provenance 接入与三档生成
 
 D6 未修改或启动 main runtime。旧 1.0 suite root/summary 本身无 ClockSpeed，因此 comparator 仅在
