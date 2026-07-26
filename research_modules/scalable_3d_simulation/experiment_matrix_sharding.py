@@ -1,0 +1,1626 @@
+"""Resumable, hash-bound shards for formal scalable-3D matrix execution.
+
+The contract keeps one complete parent :class:`ExperimentMatrixPlan` and
+selects a deterministic execution scope from that immutable inventory.  A
+formal R0 run therefore remains bound to the complete 5,700-cell plan even
+though only its 900 R0 cells are executed in the first phase.
+
+Shard outputs are append-only at complete-cell boundaries.  A completed cell
+is written to a temporary directory, validated, atomically renamed, and only
+then appended to the shard progress log.  Resume accepts either a fully
+indexed cell or the narrow crash window in which the final cell directory was
+published before its progress row.  Partial or conflicting evidence fails
+closed.
+"""
+
+from __future__ import annotations
+
+import csv
+from datetime import datetime, timezone
+import hashlib
+import json
+import os
+from pathlib import Path
+import shutil
+from typing import Any, Mapping, Sequence
+
+from .experiment_matrix import (
+    EXPERIMENT_MATRIX_SCHEMA_VERSION,
+    EXPERIMENT_VARIANTS,
+    PAIRED_SENSOR_RANDOM_SCHEDULE_VERSION,
+    ExperimentCell,
+    ExperimentMatrixPlan,
+    ModelBundlePaths,
+    _validate_resolved_variant,
+    paired_exogenous_config_sha256,
+    repository_state,
+    runtime_options_for_variant,
+)
+from .learning_runtime import resolve_learning_runtime
+from .models import ScenarioConfig
+from .module_stack import IntegratedStackConfig
+from .orchestrator import run_episode
+from .scenarios import AVAILABLE_SCENARIOS, make_curriculum_scenario
+
+
+EXPERIMENT_MATRIX_EXECUTION_PLAN_SCHEMA = (
+    "scalable3d-experiment-matrix-execution-plan-v1"
+)
+EXPERIMENT_MATRIX_SHARD_PLAN_SCHEMA = (
+    "scalable3d-experiment-matrix-shard-plan-v1"
+)
+EXPERIMENT_MATRIX_SHARD_PROGRESS_SCHEMA = (
+    "scalable3d-experiment-matrix-shard-progress-v1"
+)
+EXPERIMENT_MATRIX_SHARD_CHECKPOINT_SCHEMA = (
+    "scalable3d-experiment-matrix-shard-checkpoint-v1"
+)
+EXPERIMENT_MATRIX_CELL_RESULT_SCHEMA = (
+    "scalable3d-experiment-matrix-cell-result-v1"
+)
+EXPERIMENT_MATRIX_SCOPE_MERGE_SCHEMA = (
+    "scalable3d-experiment-matrix-scope-merge-v1"
+)
+FORMAL_R0_DEFAULT_SHARD_COUNT = 20
+FORMAL_R0_EXPECTED_CELL_COUNT = 900
+FORMAL_PARENT_EXPECTED_CELL_COUNT = 5700
+
+_EXECUTION_PLAN_FILENAME = "experiment_matrix_execution_plan.json"
+_EXECUTION_PLAN_CHECKSUM_FILENAME = "EXECUTION_PLAN_SHA256"
+_SHARD_PLAN_FILENAME = "shard_plan.json"
+_SHARD_PROGRESS_FILENAME = "progress.jsonl"
+_SHARD_CHECKPOINT_FILENAME = "checkpoint.json"
+_CELL_RESULT_FILENAME = "cell_result.json"
+_REQUIRED_EPISODE_ARTIFACTS = (
+    "manifest.json",
+    "scenario_config.json",
+    "summary.json",
+    "online_observations.jsonl",
+    "offline_proximity_intercepts.jsonl",
+    "stage_timings.csv",
+)
+_HEX64 = frozenset("0123456789abcdef")
+
+
+class ExperimentMatrixShardError(RuntimeError):
+    """Fail-closed matrix shard contract violation."""
+
+
+def create_experiment_matrix_execution_plan(
+    *,
+    root: str | Path,
+    output_root: str | Path,
+    base_config: ScenarioConfig,
+    parent_plan: ExperimentMatrixPlan,
+    scope_variants: Sequence[str],
+    shard_count: int,
+    created_at_utc: str | None = None,
+) -> Path:
+    """Freeze one parent inventory and deterministic round-robin shard map.
+
+    Non-formal plans are supported for development tests, but their manifests
+    remain explicitly non-formal.  A formal parent requires a clean source
+    worktree and can never be inferred from independently created subplans.
+    """
+
+    repository_root = Path(root).resolve()
+    destination = Path(output_root).resolve()
+    count = int(shard_count)
+    if count <= 0:
+        raise ValueError("shard_count must be positive")
+    if destination.exists():
+        raise FileExistsError(f"execution output already exists: {destination}")
+
+    normalized_scope = tuple(
+        dict.fromkeys(str(value).strip().upper() for value in scope_variants)
+    )
+    if not normalized_scope:
+        raise ValueError("scope_variants must not be empty")
+    unknown = sorted(set(normalized_scope) - set(parent_plan.variants))
+    if unknown:
+        raise ValueError(f"scope variants are absent from parent plan: {unknown}")
+
+    commit, dirty = repository_state(repository_root)
+    if parent_plan.formal and dirty:
+        raise ExperimentMatrixShardError(
+            "formal execution plan requires repository_dirty=false"
+        )
+
+    full_cells = tuple(parent_plan.cells())
+    scoped_pairs = tuple(
+        (global_index, cell)
+        for global_index, cell in enumerate(full_cells)
+        if cell.variant in normalized_scope
+    )
+    if not scoped_pairs:
+        raise ValueError("execution scope selected no parent cells")
+    if count > len(scoped_pairs):
+        raise ValueError("shard_count must not exceed scoped cell count")
+
+    parent_payload = _parent_plan_payload(parent_plan)
+    parent_inventory = [
+        _cell_payload(cell, global_index=index)
+        for index, cell in enumerate(full_cells)
+    ]
+    parent_plan_sha256 = _digest_json(
+        {"plan": parent_payload, "cells": parent_inventory}
+    )
+    scoped_cells: list[dict[str, Any]] = []
+    shard_cells: list[list[dict[str, Any]]] = [[] for _ in range(count)]
+    for scope_index, (global_index, cell) in enumerate(scoped_pairs):
+        shard_index = scope_index % count
+        record = {
+            **_cell_payload(cell, global_index=global_index),
+            "scope_index": scope_index,
+            "shard_index": shard_index,
+            "shard_sequence": len(shard_cells[shard_index]),
+        }
+        scoped_cells.append(record)
+        shard_cells[shard_index].append(record)
+
+    shards = []
+    for shard_index, cells in enumerate(shard_cells):
+        shards.append(
+            {
+                "shard_index": shard_index,
+                "shard_id": _shard_id(shard_index, count),
+                "cell_count": len(cells),
+                "scope_indices": [int(cell["scope_index"]) for cell in cells],
+                "global_indices": [int(cell["global_index"]) for cell in cells],
+                "cell_ids": [str(cell["cell_id"]) for cell in cells],
+                "cells_sha256": _digest_json(cells),
+            }
+        )
+
+    timestamp = (
+        _required_timestamp(created_at_utc)
+        if created_at_utc is not None
+        else datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+    )
+    base_payload = base_config.to_dict()
+    payload: dict[str, Any] = {
+        "schema_version": EXPERIMENT_MATRIX_EXECUTION_PLAN_SCHEMA,
+        "created_at_utc": timestamp,
+        "source": {
+            "git_commit": commit,
+            "repository_dirty": dirty,
+        },
+        "parent": {
+            "experiment_matrix_schema": EXPERIMENT_MATRIX_SCHEMA_VERSION,
+            "formal": bool(parent_plan.formal),
+            "plan": parent_payload,
+            "plan_sha256": parent_plan_sha256,
+            "full_cell_count": len(parent_inventory),
+            "full_cells": parent_inventory,
+        },
+        "base_config": {
+            "schema_version": base_payload["schema_version"],
+            "payload": base_payload,
+            "sha256": _digest_json(base_payload),
+        },
+        "scope": {
+            "variants": list(normalized_scope),
+            "cell_count": len(scoped_cells),
+            "cells_sha256": _digest_json(scoped_cells),
+            "cells": scoped_cells,
+        },
+        "sharding": {
+            "strategy": "scope_index_modulo_v1",
+            "shard_count": count,
+            "shards": shards,
+        },
+        "evidence_class": (
+            "formal_parent_scope"
+            if parent_plan.formal
+            else "development_parent_scope"
+        ),
+    }
+    payload["execution_plan_sha256"] = _digest_json(payload)
+
+    destination.mkdir(parents=True)
+    plan_path = destination / _EXECUTION_PLAN_FILENAME
+    _write_json_atomic(plan_path, payload)
+    _write_text_atomic(
+        destination / _EXECUTION_PLAN_CHECKSUM_FILENAME,
+        f"{_sha256_file(plan_path)}  {_EXECUTION_PLAN_FILENAME}\n",
+    )
+    if parent_plan.formal:
+        current_commit, current_dirty = repository_state(repository_root)
+        if current_commit != commit or current_dirty:
+            raise ExperimentMatrixShardError(
+                "source state changed while formal execution plan was written"
+            )
+    return plan_path
+
+
+def create_formal_r0_execution_plan(
+    *,
+    root: str | Path,
+    output_root: str | Path,
+    base_config: ScenarioConfig,
+    parent_plan: ExperimentMatrixPlan,
+    shard_count: int = FORMAL_R0_DEFAULT_SHARD_COUNT,
+    created_at_utc: str | None = None,
+) -> Path:
+    """Freeze the 900-cell R0 scope of one complete formal parent matrix."""
+
+    if not parent_plan.formal:
+        raise ValueError("formal R0 execution requires parent_plan.formal=true")
+    if set(parent_plan.variants) != set(EXPERIMENT_VARIANTS):
+        raise ValueError("formal R0 parent must contain all experiment variants")
+    if tuple(parent_plan.scenarios) != tuple(AVAILABLE_SCENARIOS):
+        raise ValueError(
+            "formal R0 parent scenarios must use the canonical scenario order"
+        )
+    path = create_experiment_matrix_execution_plan(
+        root=root,
+        output_root=output_root,
+        base_config=base_config,
+        parent_plan=parent_plan,
+        scope_variants=("R0",),
+        shard_count=shard_count,
+        created_at_utc=created_at_utc,
+    )
+    payload = load_experiment_matrix_execution_plan(path)
+    if int(payload["parent"]["full_cell_count"]) != FORMAL_PARENT_EXPECTED_CELL_COUNT:
+        raise ExperimentMatrixShardError(
+            "formal parent inventory is not the expected 5,700 cells"
+        )
+    if int(payload["scope"]["cell_count"]) != FORMAL_R0_EXPECTED_CELL_COUNT:
+        raise ExperimentMatrixShardError(
+            "formal R0 execution scope is not the expected 900 cells"
+        )
+    return path
+
+
+def load_experiment_matrix_execution_plan(
+    path: str | Path,
+) -> dict[str, Any]:
+    """Load and fully validate an execution plan and its parent inventory."""
+
+    plan_path = Path(path).resolve()
+    payload = _read_json_object(plan_path)
+    if payload.get("schema_version") != EXPERIMENT_MATRIX_EXECUTION_PLAN_SCHEMA:
+        raise ExperimentMatrixShardError("execution plan schema is unsupported")
+    expected_digest = _required_sha256(
+        payload.get("execution_plan_sha256"),
+        "execution_plan_sha256",
+    )
+    unhashed = dict(payload)
+    unhashed.pop("execution_plan_sha256", None)
+    if _digest_json(unhashed) != expected_digest:
+        raise ExperimentMatrixShardError("execution plan digest mismatch")
+
+    parent = _required_mapping(payload.get("parent"), "parent")
+    parent_plan_data = _required_mapping(parent.get("plan"), "parent.plan")
+    parent_plan = _plan_from_payload(parent_plan_data)
+    expected_cells = [
+        _cell_payload(cell, global_index=index)
+        for index, cell in enumerate(parent_plan.cells())
+    ]
+    actual_cells = parent.get("full_cells")
+    if actual_cells != expected_cells:
+        raise ExperimentMatrixShardError(
+            "parent cell inventory does not match ExperimentMatrixPlan.cells()"
+        )
+    if int(parent.get("full_cell_count", -1)) != len(expected_cells):
+        raise ExperimentMatrixShardError("parent full_cell_count mismatch")
+    if _digest_json(
+        {"plan": parent_plan_data, "cells": expected_cells}
+    ) != _required_sha256(parent.get("plan_sha256"), "parent.plan_sha256"):
+        raise ExperimentMatrixShardError("parent plan digest mismatch")
+    if bool(parent.get("formal")) != parent_plan.formal:
+        raise ExperimentMatrixShardError("parent formal flag mismatch")
+
+    base = _required_mapping(payload.get("base_config"), "base_config")
+    base_payload = _required_mapping(base.get("payload"), "base_config.payload")
+    ScenarioConfig.from_dict(dict(base_payload))
+    if _digest_json(base_payload) != _required_sha256(
+        base.get("sha256"),
+        "base_config.sha256",
+    ):
+        raise ExperimentMatrixShardError("base config digest mismatch")
+
+    scope = _required_mapping(payload.get("scope"), "scope")
+    scope_variants = tuple(str(value) for value in scope.get("variants", ()))
+    if not scope_variants or not set(scope_variants).issubset(parent_plan.variants):
+        raise ExperimentMatrixShardError("scope variants are invalid")
+    expected_scope_pairs = [
+        (index, cell)
+        for index, cell in enumerate(parent_plan.cells())
+        if cell.variant in scope_variants
+    ]
+    expected_scope: list[dict[str, Any]] = []
+    shard_count = int(
+        _required_mapping(payload.get("sharding"), "sharding").get(
+            "shard_count",
+            0,
+        )
+    )
+    if shard_count <= 0:
+        raise ExperimentMatrixShardError("shard_count must be positive")
+    for scope_index, (global_index, cell) in enumerate(expected_scope_pairs):
+        expected_scope.append(
+            {
+                **_cell_payload(cell, global_index=global_index),
+                "scope_index": scope_index,
+                "shard_index": scope_index % shard_count,
+                "shard_sequence": scope_index // shard_count,
+            }
+        )
+    if scope.get("cells") != expected_scope:
+        raise ExperimentMatrixShardError("scope cell inventory mismatch")
+    if int(scope.get("cell_count", -1)) != len(expected_scope):
+        raise ExperimentMatrixShardError("scope cell_count mismatch")
+    if _digest_json(expected_scope) != _required_sha256(
+        scope.get("cells_sha256"),
+        "scope.cells_sha256",
+    ):
+        raise ExperimentMatrixShardError("scope cell digest mismatch")
+
+    sharding = _required_mapping(payload.get("sharding"), "sharding")
+    if sharding.get("strategy") != "scope_index_modulo_v1":
+        raise ExperimentMatrixShardError("unsupported shard strategy")
+    expected_shards = []
+    for shard_index in range(shard_count):
+        cells = [
+            item
+            for item in expected_scope
+            if int(item["shard_index"]) == shard_index
+        ]
+        expected_shards.append(
+            {
+                "shard_index": shard_index,
+                "shard_id": _shard_id(shard_index, shard_count),
+                "cell_count": len(cells),
+                "scope_indices": [int(cell["scope_index"]) for cell in cells],
+                "global_indices": [int(cell["global_index"]) for cell in cells],
+                "cell_ids": [str(cell["cell_id"]) for cell in cells],
+                "cells_sha256": _digest_json(cells),
+            }
+        )
+    if sharding.get("shards") != expected_shards:
+        raise ExperimentMatrixShardError("shard inventory mismatch")
+    return payload
+
+
+def run_experiment_matrix_shard(
+    *,
+    root: str | Path,
+    execution_plan_path: str | Path,
+    shard_index: int,
+    resume: bool = False,
+    max_new_cells: int | None = None,
+    device: str = "cpu",
+) -> dict[str, Any]:
+    """Run or resume one deterministic shard at complete-cell boundaries."""
+
+    repository_root = Path(root).resolve()
+    plan_path = Path(execution_plan_path).resolve()
+    execution = load_experiment_matrix_execution_plan(plan_path)
+    _validate_source_state(repository_root, execution)
+    if tuple(execution["scope"]["variants"]) != ("R0",):
+        raise ExperimentMatrixShardError(
+            "v1 shard runner only executes the deterministic R0 scope"
+        )
+    index = int(shard_index)
+    descriptors = execution["sharding"]["shards"]
+    if index < 0 or index >= len(descriptors):
+        raise ValueError("shard_index is out of range")
+    if max_new_cells is not None and int(max_new_cells) <= 0:
+        raise ValueError("max_new_cells must be positive when provided")
+    limit = None if max_new_cells is None else int(max_new_cells)
+
+    execution_root = plan_path.parent
+    descriptor = descriptors[index]
+    shard_dir = execution_root / "shards" / str(descriptor["shard_id"])
+    expected_cells = [
+        cell
+        for cell in execution["scope"]["cells"]
+        if int(cell["shard_index"]) == index
+    ]
+    if resume:
+        if not shard_dir.is_dir():
+            raise FileNotFoundError(
+                f"resume shard directory does not exist: {shard_dir}"
+            )
+        _validate_static_shard_plan(
+            shard_dir,
+            execution=execution,
+            descriptor=descriptor,
+            expected_cells=expected_cells,
+        )
+    else:
+        if shard_dir.exists():
+            raise FileExistsError(
+                f"shard output already exists; use resume: {shard_dir}"
+            )
+        _initialize_shard(
+            shard_dir,
+            execution=execution,
+            descriptor=descriptor,
+            expected_cells=expected_cells,
+        )
+
+    progress_path = shard_dir / _SHARD_PROGRESS_FILENAME
+    progress = _load_and_validate_progress(
+        execution_root,
+        shard_dir,
+        execution,
+        expected_cells,
+    )
+    checkpoint_path = shard_dir / _SHARD_CHECKPOINT_FILENAME
+    checkpoint = _load_checkpoint(checkpoint_path)
+    _validate_checkpoint_binding(
+        checkpoint,
+        execution=execution,
+        descriptor=descriptor,
+    )
+    resume_count = int(checkpoint.get("resume_count", 0))
+    checkpoint_count = int(checkpoint.get("completed_cell_count", -1))
+    if checkpoint_count > len(progress):
+        raise ExperimentMatrixShardError(
+            "checkpoint is ahead of validated progress"
+        )
+    if checkpoint.get("progress_sha256") != _progress_prefix_sha256(
+        progress_path,
+        checkpoint_count,
+    ):
+        raise ExperimentMatrixShardError(
+            "checkpoint progress digest does not match its validated prefix"
+        )
+    recovered_checkpoint_rows = len(progress) - checkpoint_count
+    if resume:
+        resume_count += 1
+    _write_checkpoint(
+        checkpoint_path,
+        execution=execution,
+        descriptor=descriptor,
+        progress_path=progress_path,
+        completed_cell_count=len(progress),
+        status=(
+            "complete"
+            if len(progress) == len(expected_cells)
+            else "running"
+        ),
+        resume_count=resume_count,
+        recovered_checkpoint_row_count=(
+            int(checkpoint.get("recovered_checkpoint_row_count", 0))
+            + recovered_checkpoint_rows
+        ),
+    )
+
+    new_cell_count = 0
+    orphan_recovered_count = 0
+    while len(progress) < len(expected_cells):
+        if limit is not None and new_cell_count >= limit:
+            break
+        cell = expected_cells[len(progress)]
+        final_dir = _cell_container_path(shard_dir, cell)
+        if final_dir.exists():
+            row = _progress_row_from_completed_cell(
+                execution_root,
+                final_dir,
+                execution,
+                cell,
+                sequence=len(progress),
+            )
+            _append_jsonl_fsync(progress_path, row)
+            progress.append(row)
+            orphan_recovered_count += 1
+        else:
+            row = _run_one_cell(
+                repository_root=repository_root,
+                execution_root=execution_root,
+                shard_dir=shard_dir,
+                execution=execution,
+                cell=cell,
+                sequence=len(progress),
+                device=device,
+            )
+            _append_jsonl_fsync(progress_path, row)
+            progress.append(row)
+            new_cell_count += 1
+        _write_checkpoint(
+            checkpoint_path,
+            execution=execution,
+            descriptor=descriptor,
+            progress_path=progress_path,
+            completed_cell_count=len(progress),
+            status=(
+                "complete"
+                if len(progress) == len(expected_cells)
+                else "running"
+            ),
+            resume_count=resume_count,
+            recovered_checkpoint_row_count=(
+                int(checkpoint.get("recovered_checkpoint_row_count", 0))
+                + recovered_checkpoint_rows
+            ),
+        )
+
+    status = (
+        "complete" if len(progress) == len(expected_cells) else "paused"
+    )
+    _write_checkpoint(
+        checkpoint_path,
+        execution=execution,
+        descriptor=descriptor,
+        progress_path=progress_path,
+        completed_cell_count=len(progress),
+        status=status,
+        resume_count=resume_count,
+        recovered_checkpoint_row_count=(
+            int(checkpoint.get("recovered_checkpoint_row_count", 0))
+            + recovered_checkpoint_rows
+        ),
+    )
+    return {
+        "status": status,
+        "shard_index": index,
+        "shard_id": descriptor["shard_id"],
+        "expected_cell_count": len(expected_cells),
+        "completed_cell_count": len(progress),
+        "new_cell_count": new_cell_count,
+        "orphan_recovered_count": orphan_recovered_count,
+        "resume_count": resume_count,
+        "shard_dir": shard_dir,
+        "checkpoint": checkpoint_path,
+        "progress": progress_path,
+    }
+
+
+def merge_experiment_matrix_shards(
+    *,
+    root: str | Path,
+    execution_plan_path: str | Path,
+    output_dir: str | Path | None = None,
+    write_d6_report: bool = False,
+) -> dict[str, Path]:
+    """Validate and deterministically merge every shard in one scope.
+
+    A complete R0 scope remains a partial formal matrix.  The function does
+    not create the legacy ``experiment_matrix_manifest.json`` unless the scope
+    exactly equals the complete parent inventory, preventing R0 evidence from
+    being mislabeled as a 5,700-cell formal result.
+    """
+
+    repository_root = Path(root).resolve()
+    plan_path = Path(execution_plan_path).resolve()
+    execution = load_experiment_matrix_execution_plan(plan_path)
+    _validate_source_state(repository_root, execution)
+    execution_root = plan_path.parent
+    expected_scope = list(execution["scope"]["cells"])
+    all_progress: list[dict[str, Any]] = []
+    shard_digests: list[dict[str, Any]] = []
+    for descriptor in execution["sharding"]["shards"]:
+        shard_dir = (
+            execution_root / "shards" / str(descriptor["shard_id"])
+        )
+        expected_cells = [
+            cell
+            for cell in expected_scope
+            if int(cell["shard_index"]) == int(descriptor["shard_index"])
+        ]
+        _validate_static_shard_plan(
+            shard_dir,
+            execution=execution,
+            descriptor=descriptor,
+            expected_cells=expected_cells,
+        )
+        progress = _load_and_validate_progress(
+            execution_root,
+            shard_dir,
+            execution,
+            expected_cells,
+        )
+        checkpoint_path = shard_dir / _SHARD_CHECKPOINT_FILENAME
+        checkpoint = _load_checkpoint(checkpoint_path)
+        _validate_checkpoint_binding(
+            checkpoint,
+            execution=execution,
+            descriptor=descriptor,
+        )
+        if checkpoint.get("status") != "complete":
+            raise ExperimentMatrixShardError(
+                f"shard is not complete: {descriptor['shard_id']}"
+            )
+        if int(checkpoint.get("completed_cell_count", -1)) != len(
+            expected_cells
+        ):
+            raise ExperimentMatrixShardError(
+                f"shard completion count mismatch: {descriptor['shard_id']}"
+            )
+        if checkpoint.get("progress_sha256") != _sha256_file(
+            shard_dir / _SHARD_PROGRESS_FILENAME
+        ):
+            raise ExperimentMatrixShardError(
+                f"shard progress digest mismatch: {descriptor['shard_id']}"
+            )
+        all_progress.extend(progress)
+        shard_digests.append(
+            {
+                "shard_index": descriptor["shard_index"],
+                "shard_id": descriptor["shard_id"],
+                "cell_count": len(progress),
+                "shard_plan_sha256": _sha256_file(
+                    shard_dir / _SHARD_PLAN_FILENAME
+                ),
+                "progress_sha256": _sha256_file(
+                    shard_dir / _SHARD_PROGRESS_FILENAME
+                ),
+                "checkpoint_sha256": _sha256_file(checkpoint_path),
+            }
+        )
+
+    ordered = sorted(all_progress, key=lambda row: int(row["scope_index"]))
+    if [row["cell_id"] for row in ordered] != [
+        cell["cell_id"] for cell in expected_scope
+    ]:
+        raise ExperimentMatrixShardError(
+            "merged shard cells are missing, duplicated, or out of scope"
+        )
+    if len({row["cell_id"] for row in ordered}) != len(expected_scope):
+        raise ExperimentMatrixShardError("merged shard contains duplicate cells")
+
+    destination = (
+        Path(output_dir).resolve()
+        if output_dir is not None
+        else execution_root / "merged_scope"
+    )
+    if destination.exists():
+        raise FileExistsError(f"merge output already exists: {destination}")
+    destination.mkdir(parents=True)
+
+    parent_count = int(execution["parent"]["full_cell_count"])
+    scope_count = int(execution["scope"]["cell_count"])
+    parent_formal = bool(execution["parent"]["formal"])
+    full_matrix_complete = scope_count == parent_count
+    manifest = {
+        "schema_version": EXPERIMENT_MATRIX_SCOPE_MERGE_SCHEMA,
+        "source_git_commit": execution["source"]["git_commit"],
+        "source_repository_dirty": execution["source"][
+            "repository_dirty"
+        ],
+        "execution_plan_sha256": execution["execution_plan_sha256"],
+        "parent_plan_sha256": execution["parent"]["plan_sha256"],
+        "parent_formal": parent_formal,
+        "parent_full_cell_count": parent_count,
+        "scope_variants": list(execution["scope"]["variants"]),
+        "scope_expected_cell_count": scope_count,
+        "scope_completed_cell_count": len(ordered),
+        "scope_complete": len(ordered) == scope_count,
+        "formal_scope_complete": parent_formal and len(ordered) == scope_count,
+        "full_matrix_complete": full_matrix_complete,
+        "formal_matrix_complete": parent_formal and full_matrix_complete,
+        "legacy_full_matrix_manifest_written": full_matrix_complete,
+        "shard_strategy": execution["sharding"]["strategy"],
+        "shard_count": execution["sharding"]["shard_count"],
+        "shards": shard_digests,
+        "paired_random_schedule_version": (
+            PAIRED_SENSOR_RANDOM_SCHEDULE_VERSION
+        ),
+        "status": (
+            "formal_matrix_complete"
+            if parent_formal and full_matrix_complete
+            else (
+                "formal_scope_complete"
+                if parent_formal
+                else "development_scope_complete"
+            )
+        ),
+    }
+    manifest_path = destination / "experiment_matrix_scope_manifest.json"
+    cells_path = destination / "experiment_matrix_scope_cells.csv"
+    episode_dirs_path = destination / "episode_dirs.json"
+    _write_json_atomic(manifest_path, manifest)
+    rows = [
+        _merged_cell_row(execution_root, row)
+        for row in ordered
+    ]
+    _write_rows_atomic(cells_path, rows)
+    episode_relative_paths = [
+        row["episode_relative_path"] for row in rows
+    ]
+    _write_json_atomic(
+        episode_dirs_path,
+        {
+            "schema_version": EXPERIMENT_MATRIX_SCOPE_MERGE_SCHEMA,
+            "execution_plan_sha256": execution["execution_plan_sha256"],
+            "episode_count": len(episode_relative_paths),
+            "paths_relative_to_execution_root": episode_relative_paths,
+        },
+    )
+    paths: dict[str, Path] = {
+        "manifest": manifest_path,
+        "cells": cells_path,
+        "episode_dirs": episode_dirs_path,
+    }
+    if full_matrix_complete:
+        legacy = {
+            "schema_version": EXPERIMENT_MATRIX_SCHEMA_VERSION,
+            "git_commit": execution["source"]["git_commit"],
+            "repository_dirty": execution["source"]["repository_dirty"],
+            "formal": parent_formal,
+            "variants": execution["parent"]["plan"]["variants"],
+            "scenarios": execution["parent"]["plan"]["scenarios"],
+            "scales": execution["parent"]["plan"]["scales"],
+            "seeds": execution["parent"]["plan"]["seeds"],
+            "training_seed_registry_present": (
+                execution["parent"]["plan"]["training_seeds"] is not None
+            ),
+            "cell_count": parent_count,
+            "completed_cell_count": len(ordered),
+            "paired_random_schedule_version": (
+                PAIRED_SENSOR_RANDOM_SCHEDULE_VERSION
+            ),
+            "resumable_execution_plan_sha256": execution[
+                "execution_plan_sha256"
+            ],
+        }
+        legacy_path = destination / "experiment_matrix_manifest.json"
+        _write_json_atomic(legacy_path, legacy)
+        paths["legacy_full_manifest"] = legacy_path
+
+    checksum_path = destination / "SHA256SUMS"
+    checksum_lines = [
+        f"{_sha256_file(path)}  {path.name}"
+        for path in sorted(paths.values(), key=lambda item: item.name)
+    ]
+    _write_text_atomic(checksum_path, "\n".join(checksum_lines) + "\n")
+    paths["checksums"] = checksum_path
+
+    if write_d6_report:
+        from research_modules.d6_evaluation_metrics.d6_evaluation_metrics.scalable_3d_offline import (
+            Scalable3DOfflineEvaluationInputs,
+            Scalable3DOfflineReportGenerator,
+        )
+
+        episode_dirs = tuple(
+            (execution_root / relative).resolve()
+            for relative in episode_relative_paths
+        )
+        report_paths = Scalable3DOfflineReportGenerator().write_report_bundle(
+            destination / "d6_evaluation",
+            inputs=Scalable3DOfflineEvaluationInputs(
+                episode_dirs=episode_dirs
+            ),
+        )
+        paths.update(
+            {f"d6_{name}": path for name, path in report_paths.items()}
+        )
+    return paths
+
+
+def _run_one_cell(
+    *,
+    repository_root: Path,
+    execution_root: Path,
+    shard_dir: Path,
+    execution: Mapping[str, Any],
+    cell: Mapping[str, Any],
+    sequence: int,
+    device: str,
+) -> dict[str, Any]:
+    final_dir = _cell_container_path(shard_dir, cell)
+    inflight_root = shard_dir / "inflight"
+    inflight_root.mkdir(exist_ok=True)
+    partial_dir = inflight_root / f"{cell['cell_id']}.partial"
+    if partial_dir.exists():
+        marker_path = partial_dir / "inflight_marker.json"
+        marker = _read_json_object(marker_path)
+        if (
+            marker.get("execution_plan_sha256")
+            != execution["execution_plan_sha256"]
+            or marker.get("cell_id") != cell["cell_id"]
+        ):
+            raise ExperimentMatrixShardError(
+                f"conflicting partial cell output: {partial_dir}"
+            )
+        shutil.rmtree(partial_dir)
+    partial_dir.mkdir()
+    _write_json_atomic(
+        partial_dir / "inflight_marker.json",
+        {
+            "schema_version": EXPERIMENT_MATRIX_CELL_RESULT_SCHEMA,
+            "execution_plan_sha256": execution["execution_plan_sha256"],
+            "cell_id": cell["cell_id"],
+            "sequence": sequence,
+        },
+    )
+    try:
+        record = _execute_r0_cell(
+            repository_root=repository_root,
+            execution_root=execution_root,
+            execution=execution,
+            cell=cell,
+            cell_container=partial_dir,
+            final_container=final_dir,
+            device=device,
+        )
+        (partial_dir / "inflight_marker.json").unlink()
+        _write_json_atomic(partial_dir / _CELL_RESULT_FILENAME, record)
+        final_dir.parent.mkdir(parents=True, exist_ok=True)
+        partial_dir.replace(final_dir)
+        _validate_cell_container(
+            execution_root,
+            final_dir,
+            execution,
+            cell,
+        )
+    except Exception:
+        # Keep the marked partial directory for a strict, auditable resume.
+        raise
+    return _progress_row_from_completed_cell(
+        execution_root,
+        final_dir,
+        execution,
+        cell,
+        sequence=sequence,
+    )
+
+
+def _execute_r0_cell(
+    *,
+    repository_root: Path,
+    execution_root: Path,
+    execution: Mapping[str, Any],
+    cell: Mapping[str, Any],
+    cell_container: Path,
+    final_container: Path,
+    device: str,
+) -> dict[str, Any]:
+    """Execute one R0 cell. Kept separate for deterministic unit fakes."""
+
+    if cell["variant"] != "R0":
+        raise ExperimentMatrixShardError("R0 shard received a non-R0 cell")
+    parent_plan = _plan_from_payload(execution["parent"]["plan"])
+    base_config = ScenarioConfig.from_dict(
+        dict(execution["base_config"]["payload"])
+    )
+    config = make_curriculum_scenario(
+        str(cell["scenario"]),
+        scale=int(cell["scale"]),
+        seed=int(cell["seed"]),
+        duration_s=parent_plan.duration_s,
+        base=base_config,
+    )
+    config = _prepare_cell_config(config, execution, cell)
+    options = runtime_options_for_variant(
+        "R0",
+        ModelBundlePaths(),
+        device=device,
+    )
+    resolved = resolve_learning_runtime(
+        config,
+        options,
+        stack_config=IntegratedStackConfig(),
+    )
+    _validate_resolved_variant(
+        "R0",
+        resolved.diagnostics,
+        allow_rule_fallback=False,
+    )
+    episode_dir = cell_container / "episode"
+    result = run_episode(
+        resolved.config,
+        output_dir=episode_dir,
+        module_stack=resolved.stack,
+    )
+    if result.manifest.git_commit != execution["source"]["git_commit"]:
+        raise ExperimentMatrixShardError(
+            "episode source commit differs from execution plan"
+        )
+    if (
+        bool(execution["parent"]["formal"])
+        and bool(result.manifest.repository_dirty)
+    ):
+        raise ExperimentMatrixShardError(
+            "formal shard episode reports repository_dirty=true"
+        )
+    summary = result.summary
+    if not bool(summary.get("finite_state")):
+        raise ExperimentMatrixShardError("episode finite_state is false")
+    if int(summary.get("online_truth_use_count", -1)) != 0:
+        raise ExperimentMatrixShardError(
+            "episode online_truth_use_count is non-zero"
+        )
+    artifact_tree = _tree_digest(episode_dir)
+    return {
+        "schema_version": EXPERIMENT_MATRIX_CELL_RESULT_SCHEMA,
+        "execution_plan_sha256": execution["execution_plan_sha256"],
+        "parent_plan_sha256": execution["parent"]["plan_sha256"],
+        "source_git_commit": execution["source"]["git_commit"],
+        "cell": dict(cell),
+        "episode_relative_path": _relative_path(
+            final_container / "episode",
+            execution_root,
+        ),
+        "episode_id": result.manifest.episode_id,
+        "paired_exogenous_config_sha256": (
+            paired_exogenous_config_sha256(resolved.config)
+        ),
+        "sensor_random_schedule_version": (
+            resolved.config.sensor_random_schedule_version
+        ),
+        "artifact_tree_sha256": artifact_tree,
+        "metrics": {
+            "finite_state": True,
+            "online_truth_use_count": 0,
+            "real_time_factor": float(summary["real_time_factor"]),
+            "intercepted_target_count": int(
+                summary["intercepted_target_count"]
+            ),
+        },
+        "status": "complete",
+    }
+
+
+def _prepare_cell_config(
+    config: ScenarioConfig,
+    execution: Mapping[str, Any],
+    cell: Mapping[str, Any],
+) -> ScenarioConfig:
+    from dataclasses import replace
+
+    config = replace(
+        config,
+        sensor_random_schedule_version=(
+            PAIRED_SENSOR_RANDOM_SCHEDULE_VERSION
+        ),
+    )
+    pairing_hash = paired_exogenous_config_sha256(config)
+    metadata = dict(config.metadata)
+    metadata.update(
+        {
+            "experiment_matrix_schema": EXPERIMENT_MATRIX_SCHEMA_VERSION,
+            "algorithm_variant": cell["variant"],
+            "comparison_key": cell["comparison_key"],
+            "paired_exogenous_config_sha256": pairing_hash,
+            "full_system_validation": False,
+            "matrix_execution_plan_sha256": execution[
+                "execution_plan_sha256"
+            ],
+            "matrix_parent_plan_sha256": execution["parent"][
+                "plan_sha256"
+            ],
+            "matrix_scope_index": int(cell["scope_index"]),
+            "matrix_global_index": int(cell["global_index"]),
+            "matrix_shard_index": int(cell["shard_index"]),
+        }
+    )
+    return replace(config, metadata=metadata)
+
+
+def _initialize_shard(
+    shard_dir: Path,
+    *,
+    execution: Mapping[str, Any],
+    descriptor: Mapping[str, Any],
+    expected_cells: Sequence[Mapping[str, Any]],
+) -> None:
+    shard_dir.mkdir(parents=True)
+    static = {
+        "schema_version": EXPERIMENT_MATRIX_SHARD_PLAN_SCHEMA,
+        "execution_plan_sha256": execution["execution_plan_sha256"],
+        "source_git_commit": execution["source"]["git_commit"],
+        "parent_plan_sha256": execution["parent"]["plan_sha256"],
+        "descriptor": dict(descriptor),
+        "cells": [dict(cell) for cell in expected_cells],
+        "cells_sha256": _digest_json(expected_cells),
+    }
+    _write_json_atomic(shard_dir / _SHARD_PLAN_FILENAME, static)
+    _write_text_atomic(shard_dir / _SHARD_PROGRESS_FILENAME, "")
+    _write_checkpoint(
+        shard_dir / _SHARD_CHECKPOINT_FILENAME,
+        execution=execution,
+        descriptor=descriptor,
+        progress_path=shard_dir / _SHARD_PROGRESS_FILENAME,
+        completed_cell_count=0,
+        status="initialized",
+        resume_count=0,
+        recovered_checkpoint_row_count=0,
+    )
+
+
+def _validate_static_shard_plan(
+    shard_dir: Path,
+    *,
+    execution: Mapping[str, Any],
+    descriptor: Mapping[str, Any],
+    expected_cells: Sequence[Mapping[str, Any]],
+) -> None:
+    static = _read_json_object(shard_dir / _SHARD_PLAN_FILENAME)
+    expected = {
+        "schema_version": EXPERIMENT_MATRIX_SHARD_PLAN_SCHEMA,
+        "execution_plan_sha256": execution["execution_plan_sha256"],
+        "source_git_commit": execution["source"]["git_commit"],
+        "parent_plan_sha256": execution["parent"]["plan_sha256"],
+        "descriptor": dict(descriptor),
+        "cells": [dict(cell) for cell in expected_cells],
+        "cells_sha256": _digest_json(expected_cells),
+    }
+    if static != expected:
+        raise ExperimentMatrixShardError(
+            f"stored shard plan does not match execution plan: {shard_dir}"
+        )
+
+
+def _load_and_validate_progress(
+    execution_root: Path,
+    shard_dir: Path,
+    execution: Mapping[str, Any],
+    expected_cells: Sequence[Mapping[str, Any]],
+) -> list[dict[str, Any]]:
+    path = shard_dir / _SHARD_PROGRESS_FILENAME
+    if not path.is_file():
+        raise ExperimentMatrixShardError(f"shard progress is missing: {path}")
+    progress_text = path.read_text(encoding="utf-8")
+    if progress_text and not progress_text.endswith("\n"):
+        raise ExperimentMatrixShardError(
+            "shard progress does not end at a complete JSONL record"
+        )
+    rows: list[dict[str, Any]] = []
+    for line_number, raw in enumerate(
+        progress_text.splitlines(),
+        start=1,
+    ):
+        if not raw.strip():
+            raise ExperimentMatrixShardError(
+                f"blank shard progress line: {line_number}"
+            )
+        try:
+            row = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            raise ExperimentMatrixShardError(
+                f"invalid shard progress JSON at line {line_number}"
+            ) from exc
+        if not isinstance(row, dict):
+            raise ExperimentMatrixShardError("shard progress row must be an object")
+        sequence = len(rows)
+        if sequence >= len(expected_cells):
+            raise ExperimentMatrixShardError(
+                "shard progress contains excess rows"
+            )
+        expected = expected_cells[sequence]
+        if row.get("schema_version") != EXPERIMENT_MATRIX_SHARD_PROGRESS_SCHEMA:
+            raise ExperimentMatrixShardError("shard progress schema mismatch")
+        if int(row.get("sequence", -1)) != sequence:
+            raise ExperimentMatrixShardError(
+                "shard progress sequence is not contiguous"
+            )
+        for name in (
+            "cell_id",
+            "global_index",
+            "scope_index",
+            "shard_index",
+            "shard_sequence",
+        ):
+            if row.get(name) != expected.get(name):
+                raise ExperimentMatrixShardError(
+                    f"shard progress cell mismatch: {name}"
+                )
+        if (
+            row.get("execution_plan_sha256")
+            != execution["execution_plan_sha256"]
+        ):
+            raise ExperimentMatrixShardError(
+                "shard progress execution plan mismatch"
+            )
+        result_path = _resolve_relative(
+            execution_root,
+            row.get("cell_result_relative_path"),
+        )
+        expected_result_path = (
+            _cell_container_path(shard_dir, expected)
+            / _CELL_RESULT_FILENAME
+        ).resolve()
+        if result_path != expected_result_path:
+            raise ExperimentMatrixShardError(
+                "cell result path does not match its deterministic shard path"
+            )
+        if _sha256_file(result_path) != _required_sha256(
+            row.get("cell_result_sha256"),
+            "cell_result_sha256",
+        ):
+            raise ExperimentMatrixShardError("cell result digest mismatch")
+        _validate_cell_container(
+            execution_root,
+            result_path.parent,
+            execution,
+            expected,
+        )
+        rows.append(row)
+    return rows
+
+
+def _progress_row_from_completed_cell(
+    execution_root: Path,
+    final_dir: Path,
+    execution: Mapping[str, Any],
+    cell: Mapping[str, Any],
+    *,
+    sequence: int,
+) -> dict[str, Any]:
+    record = _validate_cell_container(
+        execution_root,
+        final_dir,
+        execution,
+        cell,
+    )
+    result_path = final_dir / _CELL_RESULT_FILENAME
+    return {
+        "schema_version": EXPERIMENT_MATRIX_SHARD_PROGRESS_SCHEMA,
+        "execution_plan_sha256": execution["execution_plan_sha256"],
+        "sequence": sequence,
+        "cell_id": cell["cell_id"],
+        "global_index": cell["global_index"],
+        "scope_index": cell["scope_index"],
+        "shard_index": cell["shard_index"],
+        "shard_sequence": cell["shard_sequence"],
+        "cell_result_relative_path": _relative_path(
+            result_path,
+            execution_root,
+        ),
+        "cell_result_sha256": _sha256_file(result_path),
+        "episode_artifact_tree_sha256": record["artifact_tree_sha256"],
+    }
+
+
+def _validate_cell_container(
+    execution_root: Path,
+    container: Path,
+    execution: Mapping[str, Any],
+    expected_cell: Mapping[str, Any],
+) -> dict[str, Any]:
+    record_path = container / _CELL_RESULT_FILENAME
+    record = _read_json_object(record_path)
+    if record.get("schema_version") != EXPERIMENT_MATRIX_CELL_RESULT_SCHEMA:
+        raise ExperimentMatrixShardError("cell result schema mismatch")
+    if record.get("execution_plan_sha256") != execution["execution_plan_sha256"]:
+        raise ExperimentMatrixShardError(
+            "cell result execution plan mismatch"
+        )
+    if record.get("parent_plan_sha256") != execution["parent"]["plan_sha256"]:
+        raise ExperimentMatrixShardError("cell result parent plan mismatch")
+    if record.get("source_git_commit") != execution["source"]["git_commit"]:
+        raise ExperimentMatrixShardError("cell result source commit mismatch")
+    if record.get("cell") != dict(expected_cell):
+        raise ExperimentMatrixShardError("cell result identity mismatch")
+    if record.get("status") != "complete":
+        raise ExperimentMatrixShardError("cell result is not complete")
+    episode_dir = _resolve_relative(
+        execution_root,
+        record.get("episode_relative_path"),
+    )
+    if episode_dir != (container / "episode").resolve():
+        raise ExperimentMatrixShardError("cell episode path mismatch")
+    for name in _REQUIRED_EPISODE_ARTIFACTS:
+        if not (episode_dir / name).is_file():
+            raise ExperimentMatrixShardError(
+                f"required episode artifact is missing: {name}"
+            )
+    manifest = _read_json_object(episode_dir / "manifest.json")
+    config = _read_json_object(episode_dir / "scenario_config.json")
+    summary = _read_json_object(episode_dir / "summary.json")
+    if manifest.get("git_commit") != execution["source"]["git_commit"]:
+        raise ExperimentMatrixShardError("episode manifest commit mismatch")
+    if (
+        bool(execution["parent"]["formal"])
+        and bool(manifest.get("repository_dirty"))
+    ):
+        raise ExperimentMatrixShardError("episode manifest is dirty")
+    metadata = config.get("metadata")
+    if not isinstance(metadata, Mapping):
+        raise ExperimentMatrixShardError("episode config metadata is missing")
+    if metadata.get("algorithm_variant") != expected_cell["variant"]:
+        raise ExperimentMatrixShardError("episode algorithm variant mismatch")
+    if (
+        metadata.get("matrix_execution_plan_sha256")
+        != execution["execution_plan_sha256"]
+    ):
+        raise ExperimentMatrixShardError(
+            "episode execution plan lineage mismatch"
+        )
+    if not bool(summary.get("finite_state")):
+        raise ExperimentMatrixShardError("episode finite_state is false")
+    if int(summary.get("online_truth_use_count", -1)) != 0:
+        raise ExperimentMatrixShardError(
+            "episode online truth use is non-zero"
+        )
+    artifact_digest = _tree_digest(episode_dir)
+    if artifact_digest != _required_sha256(
+        record.get("artifact_tree_sha256"),
+        "artifact_tree_sha256",
+    ):
+        raise ExperimentMatrixShardError(
+            "episode artifact tree digest mismatch"
+        )
+    return record
+
+
+def _write_checkpoint(
+    path: Path,
+    *,
+    execution: Mapping[str, Any],
+    descriptor: Mapping[str, Any],
+    progress_path: Path,
+    completed_cell_count: int,
+    status: str,
+    resume_count: int,
+    recovered_checkpoint_row_count: int,
+) -> None:
+    _write_json_atomic(
+        path,
+        {
+            "schema_version": EXPERIMENT_MATRIX_SHARD_CHECKPOINT_SCHEMA,
+            "execution_plan_sha256": execution["execution_plan_sha256"],
+            "source_git_commit": execution["source"]["git_commit"],
+            "shard_index": descriptor["shard_index"],
+            "shard_id": descriptor["shard_id"],
+            "expected_cell_count": descriptor["cell_count"],
+            "completed_cell_count": int(completed_cell_count),
+            "next_sequence": int(completed_cell_count),
+            "status": str(status),
+            "resume_count": int(resume_count),
+            "recovered_checkpoint_row_count": int(
+                recovered_checkpoint_row_count
+            ),
+            "progress_sha256": _sha256_file(progress_path),
+        },
+    )
+
+
+def _load_checkpoint(path: Path) -> dict[str, Any]:
+    payload = _read_json_object(path)
+    if payload.get("schema_version") != EXPERIMENT_MATRIX_SHARD_CHECKPOINT_SCHEMA:
+        raise ExperimentMatrixShardError("shard checkpoint schema mismatch")
+    return payload
+
+
+def _validate_checkpoint_binding(
+    checkpoint: Mapping[str, Any],
+    *,
+    execution: Mapping[str, Any],
+    descriptor: Mapping[str, Any],
+) -> None:
+    expected = {
+        "execution_plan_sha256": execution["execution_plan_sha256"],
+        "source_git_commit": execution["source"]["git_commit"],
+        "shard_index": descriptor["shard_index"],
+        "shard_id": descriptor["shard_id"],
+        "expected_cell_count": descriptor["cell_count"],
+    }
+    for name, value in expected.items():
+        if checkpoint.get(name) != value:
+            raise ExperimentMatrixShardError(
+                f"shard checkpoint binding mismatch: {name}"
+            )
+    completed = int(checkpoint.get("completed_cell_count", -1))
+    if completed < 0 or completed > int(descriptor["cell_count"]):
+        raise ExperimentMatrixShardError(
+            "shard checkpoint completion count is invalid"
+        )
+    if int(checkpoint.get("next_sequence", -1)) != completed:
+        raise ExperimentMatrixShardError(
+            "shard checkpoint next_sequence mismatch"
+        )
+    if int(checkpoint.get("resume_count", -1)) < 0:
+        raise ExperimentMatrixShardError(
+            "shard checkpoint resume_count is invalid"
+        )
+    if int(checkpoint.get("recovered_checkpoint_row_count", -1)) < 0:
+        raise ExperimentMatrixShardError(
+            "shard checkpoint recovered row count is invalid"
+        )
+    _required_sha256(
+        checkpoint.get("progress_sha256"),
+        "checkpoint.progress_sha256",
+    )
+
+
+def _merged_cell_row(
+    execution_root: Path,
+    progress: Mapping[str, Any],
+) -> dict[str, Any]:
+    result_path = _resolve_relative(
+        execution_root,
+        progress["cell_result_relative_path"],
+    )
+    record = _read_json_object(result_path)
+    cell = record["cell"]
+    metrics = record["metrics"]
+    return {
+        "cell_index": cell["global_index"],
+        "scope_index": cell["scope_index"],
+        "variant": cell["variant"],
+        "scenario": cell["scenario"],
+        "scale": cell["scale"],
+        "seed": cell["seed"],
+        "comparison_key": cell["comparison_key"],
+        "paired_exogenous_config_sha256": record[
+            "paired_exogenous_config_sha256"
+        ],
+        "sensor_random_schedule_version": record[
+            "sensor_random_schedule_version"
+        ],
+        "episode_id": record["episode_id"],
+        "episode_relative_path": record["episode_relative_path"],
+        "finite_state": metrics["finite_state"],
+        "online_truth_use_count": metrics["online_truth_use_count"],
+        "real_time_factor": metrics["real_time_factor"],
+        "intercepted_target_count": metrics["intercepted_target_count"],
+        "cell_result_sha256": progress["cell_result_sha256"],
+        "episode_artifact_tree_sha256": progress[
+            "episode_artifact_tree_sha256"
+        ],
+    }
+
+
+def _parent_plan_payload(plan: ExperimentMatrixPlan) -> dict[str, Any]:
+    return {
+        "variants": list(plan.variants),
+        "scenarios": list(plan.scenarios),
+        "scales": list(plan.scales),
+        "seeds": list(plan.seeds),
+        "duration_s": plan.duration_s,
+        "formal": plan.formal,
+        "allow_rule_fallback": plan.allow_rule_fallback,
+        "training_seeds": (
+            None
+            if plan.training_seeds is None
+            else sorted(int(value) for value in plan.training_seeds)
+        ),
+    }
+
+
+def _plan_from_payload(payload: Mapping[str, Any]) -> ExperimentMatrixPlan:
+    training = payload.get("training_seeds")
+    return ExperimentMatrixPlan(
+        variants=tuple(payload.get("variants", ())),
+        scenarios=tuple(payload.get("scenarios", ())),
+        scales=tuple(payload.get("scales", ())),
+        seeds=tuple(payload.get("seeds", ())),
+        duration_s=float(payload.get("duration_s", 0.0)),
+        formal=bool(payload.get("formal")),
+        allow_rule_fallback=bool(payload.get("allow_rule_fallback")),
+        training_seeds=(
+            None
+            if training is None
+            else frozenset(int(value) for value in training)
+        ),
+    )
+
+
+def _cell_payload(
+    cell: ExperimentCell,
+    *,
+    global_index: int,
+) -> dict[str, Any]:
+    return {
+        "cell_id": (
+            f"{int(global_index):05d}__{cell.variant.lower()}__"
+            f"{cell.scenario}__{cell.scale}v{cell.scale}__seed_{cell.seed}"
+        ),
+        "global_index": int(global_index),
+        "variant": cell.variant,
+        "scenario": cell.scenario,
+        "scale": int(cell.scale),
+        "seed": int(cell.seed),
+        "comparison_key": cell.comparison_key,
+    }
+
+
+def _shard_id(index: int, count: int) -> str:
+    width = max(3, len(str(count - 1)))
+    return f"shard_{index:0{width}d}_of_{count:0{width}d}"
+
+
+def _cell_container_path(
+    shard_dir: Path,
+    cell: Mapping[str, Any],
+) -> Path:
+    return shard_dir / "cells" / str(cell["cell_id"])
+
+
+def _validate_source_state(
+    root: Path,
+    execution: Mapping[str, Any],
+) -> None:
+    current_commit, current_dirty = repository_state(root)
+    source = execution["source"]
+    if current_commit != source["git_commit"]:
+        raise ExperimentMatrixShardError(
+            "current Git commit differs from execution plan"
+        )
+    if bool(execution["parent"]["formal"]):
+        if bool(source["repository_dirty"]):
+            raise ExperimentMatrixShardError(
+                "execution plan source is not clean"
+            )
+        if current_dirty:
+            raise ExperimentMatrixShardError(
+                "formal shard execution requires repository_dirty=false"
+            )
+
+
+def _tree_digest(root: Path) -> str:
+    if not root.is_dir():
+        raise ExperimentMatrixShardError(
+            f"artifact tree is missing: {root}"
+        )
+    entries = []
+    for path in sorted(item for item in root.rglob("*") if item.is_file()):
+        entries.append(
+            {
+                "path": path.relative_to(root).as_posix(),
+                "size_bytes": path.stat().st_size,
+                "sha256": _sha256_file(path),
+            }
+        )
+    if not entries:
+        raise ExperimentMatrixShardError("artifact tree is empty")
+    return _digest_json(entries)
+
+
+def _digest_json(payload: Any) -> str:
+    encoded = json.dumps(
+        payload,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for block in iter(lambda: stream.read(1 << 20), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def _progress_prefix_sha256(path: Path, row_count: int) -> str:
+    count = int(row_count)
+    if count < 0:
+        raise ExperimentMatrixShardError(
+            "checkpoint progress row count is negative"
+        )
+    lines = path.read_bytes().splitlines(keepends=True)
+    if count > len(lines):
+        raise ExperimentMatrixShardError(
+            "checkpoint progress row count exceeds progress file"
+        )
+    return hashlib.sha256(b"".join(lines[:count])).hexdigest()
+
+
+def _write_json_atomic(path: Path, payload: Any) -> None:
+    text = json.dumps(
+        payload,
+        ensure_ascii=False,
+        indent=2,
+        sort_keys=True,
+        allow_nan=False,
+    ) + "\n"
+    _write_text_atomic(path, text)
+
+
+def _write_text_atomic(path: Path, text: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(f".{path.name}.tmp")
+    with temporary.open("w", encoding="utf-8", newline="\n") as stream:
+        stream.write(text)
+        stream.flush()
+        os.fsync(stream.fileno())
+    os.replace(temporary, path)
+
+
+def _write_rows_atomic(
+    path: Path,
+    rows: Sequence[Mapping[str, Any]],
+) -> None:
+    if not rows:
+        raise ExperimentMatrixShardError("cannot write an empty merged cell table")
+    fieldnames = sorted({name for row in rows for name in row})
+    temporary = path.with_name(f".{path.name}.tmp")
+    with temporary.open("w", encoding="utf-8", newline="") as stream:
+        writer = csv.DictWriter(
+            stream,
+            fieldnames=fieldnames,
+            lineterminator="\n",
+        )
+        writer.writeheader()
+        writer.writerows(rows)
+        stream.flush()
+        os.fsync(stream.fileno())
+    os.replace(temporary, path)
+
+
+def _append_jsonl_fsync(path: Path, payload: Mapping[str, Any]) -> None:
+    line = json.dumps(
+        payload,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ) + "\n"
+    with path.open("a", encoding="utf-8", newline="\n") as stream:
+        stream.write(line)
+        stream.flush()
+        os.fsync(stream.fileno())
+
+
+def _read_json_object(path: Path) -> dict[str, Any]:
+    if not path.is_file():
+        raise ExperimentMatrixShardError(f"required JSON is missing: {path}")
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ExperimentMatrixShardError(f"invalid JSON artifact: {path}") from exc
+    if not isinstance(payload, dict):
+        raise ExperimentMatrixShardError(f"JSON artifact must be an object: {path}")
+    return payload
+
+
+def _required_mapping(value: Any, name: str) -> Mapping[str, Any]:
+    if not isinstance(value, Mapping):
+        raise ExperimentMatrixShardError(f"{name} must be an object")
+    return value
+
+
+def _required_sha256(value: Any, name: str) -> str:
+    text = str(value).strip().lower()
+    if len(text) != 64 or any(character not in _HEX64 for character in text):
+        raise ExperimentMatrixShardError(f"{name} must be a SHA-256 digest")
+    return text
+
+
+def _required_timestamp(value: Any) -> str:
+    text = str(value).strip()
+    if not text:
+        raise ValueError("created_at_utc must be non-empty")
+    return text
+
+
+def _relative_path(path: Path, root: Path) -> str:
+    try:
+        return path.resolve().relative_to(root.resolve()).as_posix()
+    except ValueError as exc:
+        raise ExperimentMatrixShardError(
+            f"path escapes execution root: {path}"
+        ) from exc
+
+
+def _resolve_relative(root: Path, value: Any) -> Path:
+    text = str(value).strip()
+    if not text:
+        raise ExperimentMatrixShardError("relative artifact path is empty")
+    candidate = (root / text).resolve()
+    try:
+        candidate.relative_to(root.resolve())
+    except ValueError as exc:
+        raise ExperimentMatrixShardError(
+            f"artifact path escapes execution root: {text}"
+        ) from exc
+    return candidate
+
+
+__all__ = [
+    "EXPERIMENT_MATRIX_CELL_RESULT_SCHEMA",
+    "EXPERIMENT_MATRIX_EXECUTION_PLAN_SCHEMA",
+    "EXPERIMENT_MATRIX_SCOPE_MERGE_SCHEMA",
+    "EXPERIMENT_MATRIX_SHARD_CHECKPOINT_SCHEMA",
+    "EXPERIMENT_MATRIX_SHARD_PLAN_SCHEMA",
+    "EXPERIMENT_MATRIX_SHARD_PROGRESS_SCHEMA",
+    "FORMAL_PARENT_EXPECTED_CELL_COUNT",
+    "FORMAL_R0_DEFAULT_SHARD_COUNT",
+    "FORMAL_R0_EXPECTED_CELL_COUNT",
+    "ExperimentMatrixShardError",
+    "create_experiment_matrix_execution_plan",
+    "create_formal_r0_execution_plan",
+    "load_experiment_matrix_execution_plan",
+    "merge_experiment_matrix_shards",
+    "run_experiment_matrix_shard",
+]

@@ -417,6 +417,11 @@ def paired_exogenous_config_sha256(config: ScenarioConfig) -> str:
         "full_system_validation",
         "learning_runtime",
         "paired_exogenous_config_sha256",
+        "matrix_execution_plan_sha256",
+        "matrix_parent_plan_sha256",
+        "matrix_scope_index",
+        "matrix_global_index",
+        "matrix_shard_index",
     ):
         metadata.pop(name, None)
     payload["metadata"] = metadata
