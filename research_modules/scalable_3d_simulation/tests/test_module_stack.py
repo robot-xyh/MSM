@@ -31,12 +31,13 @@ from research_modules.d3_assignment_planner.src.d3_assignment_planner import (
 )
 from research_modules.d4_distributed_fallback.d4_distributed_fallback import (
     AdvisorMode,
+    DeterministicResourceProjector,
     RecommendationSource,
-    RegionResourceAdvisor,
-    RegionResourceAdvisorConfig,
+    RegionResourceAdvisoryResult,
     RegionResourceProjectionConfig,
     RuleRegionResourcePolicy,
     RuleRegionResourcePolicyConfig,
+    formal_decision_digest,
 )
 from research_modules.scalable_3d_simulation.models import ScenarioConfig
 from research_modules.scalable_3d_simulation.module_stack import (
@@ -78,16 +79,55 @@ class _FiniteLearnedRegionPolicy:
         )
 
 
-def _assist_region_advisor(*, ttl_s: float = 1.5) -> RegionResourceAdvisor:
-    projection = RegionResourceProjectionConfig(advisory_ttl_s=ttl_s)
-    return RegionResourceAdvisor(
-        config=RegionResourceAdvisorConfig(
-            mode=AdvisorMode.ASSIST,
-            minimum_unseen_seeds=1,
-            projection=projection,
-        ),
-        learned_policy=_FiniteLearnedRegionPolicy(projection),
-    )
+class _AdmittedRegionAdvisoryFixture:
+    """Test-only source for an already-admitted D4 transport contract."""
+
+    def __init__(self, *, ttl_s: float) -> None:
+        projection = RegionResourceProjectionConfig(advisory_ttl_s=ttl_s)
+        self.projector = DeterministicResourceProjector(projection)
+        self._policy = _FiniteLearnedRegionPolicy(projection)
+
+    def advise(
+        self,
+        snapshot,
+        *,
+        formal_decision=None,
+        unseen_seed_count: int = 0,
+    ) -> RegionResourceAdvisoryResult:
+        raw = self._policy.recommend_raw(snapshot)
+        recommendation = self.projector.project(
+            snapshot,
+            raw,
+            formal_decision=formal_decision,
+        )
+        advisory_contract = self.projector.build_advisory_contract(
+            snapshot,
+            recommendation,
+            formal_decision=formal_decision,
+        )
+        digest = formal_decision_digest(formal_decision)
+        return RegionResourceAdvisoryResult(
+            requested_mode=AdvisorMode.ASSIST,
+            effective_mode=AdvisorMode.ASSIST,
+            recommendation=recommendation,
+            fallback_used=False,
+            fallback_reason=None,
+            assist_eligible=True,
+            unseen_seed_count=int(unseen_seed_count),
+            inference_latency_ms=0.0,
+            formal_decision=formal_decision,
+            formal_decision_digest_before=digest,
+            formal_decision_digest_after=digest,
+            formal_decision_unchanged=True,
+            advisory_contract=advisory_contract,
+        )
+
+
+def _assist_region_advisor(
+    *,
+    ttl_s: float = 1.5,
+) -> _AdmittedRegionAdvisoryFixture:
+    return _AdmittedRegionAdvisoryFixture(ttl_s=ttl_s)
 
 
 def test_recon_track_cues_are_fail_closed_by_default() -> None:
