@@ -1,5 +1,50 @@
 # D5 末端视觉配准与身份认证实验报告
 
+## 2026-07-26 G1 v4 正式装配
+
+### 正式输入
+
+本次只装配既有证据，不重训。输入文件 SHA-256 如下：
+
+| 输入 | SHA-256 |
+| --- | --- |
+| development manifest | `0eff183f7579551f83a0519d30e09abfa4f15899981ad8ffb2eb7e2e871bda77` |
+| development weights | `7fb5db8b6099ca4da5706a3bec53ff7cd634e8bd267c036ce3ee4ee4bf71ca71` |
+| development `SHA256SUMS` | `bf61c96e30fe8cf338a9f98152670735be657d31f338fcaa7d23c064fab58528` |
+| held-out JSON | `4ec0b82402a2ba415a8522bd3ac92fd049f0b10823cff48d2aeb544331b50c3a` |
+| paired-shadow JSON | `f25c9428933fc8bd5e4bbe5db5e9fe573c60053418da224fc047576c27eef57b` |
+| D6 外审 JSON | `10bf19f5fa89788c9cc0a24ab18b647c6cf863149bae08d22fc40796d15210b0` |
+
+D6 JSON 内容 SHA-256 为
+`4e24ab33ca290133cf107f2c4ad5fee85d763001556f35fcd0ecdb819bef9e54`。
+正式审计为 `audit_passed=true`、blocker 为空，D6 authority 全 false；其 consumer contract
+绑定运行时实现摘要 `408e71fe...f4fe` 和本次模型、held-out、paired 输入。
+
+### 装配结果
+
+2026-07-26T14:14:12Z 在 clean `fa3ec10` 生成
+`outputs/d5_g1_clean_source_chain_d437744_20260726/model_candidate/g1_assist_v4_7fb5db8b_d6_10bf19f5/`。
+
+| 输出 | SHA-256 |
+| --- | --- |
+| `manifest.json` | `a5a53de7d7a6b0aebd60f478b3c2768aa2767f4b3e440c92db4891b324337154` |
+| `weights.pt` | `7fb5db8b6099ca4da5706a3bec53ff7cd634e8bd267c036ce3ee4ee4bf71ca71` |
+| `SHA256SUMS` | `1221ec238f6b5dfeef70fca05c111877ea20ec2792eb262d8ada50f422c75956` |
+| held-out evidence | `4ec0b82402a2ba415a8522bd3ac92fd049f0b10823cff48d2aeb544331b50c3a` |
+| paired evidence | `f25c9428933fc8bd5e4bbe5db5e9fe573c60053418da224fc047576c27eef57b` |
+| D6 audit evidence | `10bf19f5fa89788c9cc0a24ab18b647c6cf863149bae08d22fc40796d15210b0` |
+
+根清单五项全部通过。输出 schema 为 `d5.tracklet-model-bundle.v4`；
+`g1_assist_eligible=true`，`default_model=false`，全局航迹标识、分配和控制 authority 均为
+false。公开 strict loader 在 `require_g1_assist_eligible=True` 下返回
+`CalibratedTrackletEdgeScorer`。第二次向同目录装配返回退出码 2 和 `output_not_empty`，六份
+输入与六份输出哈希均未变化。
+
+定向执行 `test_tracklet_g1_evidence_assembler.py` 和 `test_tracklet_model_pipeline.py`，
+结果为 `34 passed, 1 warning in 2.39s`。警告来自本机 PyTorch 无法初始化 NVML，不影响 CPU
+严格加载和证据校验。D5 全量结果为 `589 passed, 1 warning in 99.17s`。这些结果不表示在线
+G1 已启用，也不证明真实候选门或真实相机泛化。
+
 ## 2026-07-26 冻结 registry 正式发布
 
 ### clean 输入
@@ -42,8 +87,8 @@ producer 提交 `fa3ec10` 于 `2026-07-26T13:49:10Z` 在 clean worktree 完成�
 第二次发布返回非零退出码并以 `registry_destination_exists` 失败关闭，正式输出和历史输入哈希
 均未变化。
 
-D6 尚未正式消费该 registry。main 的临时 D6 preflight 不计作正式外审。当前结果不授予 G1
-assist、默认路径、全局航迹标识或控制权限。
+D6 在该 registry 发布后完成正式外审，结果及后续 G1 v4 装配见上节。main 的临时 preflight
+仍不计作正式外审。producer registry 本身不授予 G1 assist、默认路径、全局航迹标识或控制权限。
 同日 D5 全量回归为 `589 passed in 112.89s`。
 
 ## 2026-07-26 G1 稳健候选失败关闭结果

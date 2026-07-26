@@ -24,9 +24,22 @@ blocker。clean `d437744c...4ffb` 的 7fb5 输入 AUC 为 0.720073，非零共�
 registry。`audit_evidence.json` 和根 `SHA256SUMS` 的 SHA-256 为 `bcee8cbc...8f29` 和
 `c1abebfa...7f63`；第二次发布被目标目录保护拒绝，文件哈希未变化。
 
-D6 尚未正式外审该 registry。当前只是完整、可复核的 producer 输出，不是模型准入结果。
-G1、辅助、默认路径、全局身份、分配和控制权限全部保持关闭。
+D6 独立 owner 随后完成正式外审。审计 JSON 文件/内容 SHA-256 为
+`10bf19f5...10b0` / `4e24ab33...e54`，审计通过、blocker 为空且 D6 authority 全 false。
+producer registry 仍只是一份不可回写的历史输入；G1 v4 的后续资格由新 bundle 单独表达。
 2026-07-26 D5 全量回归为 `589 passed in 112.89s`。
+
+正式 G1 v4 bundle 由 clean development bundle、held-out、paired-shadow 和上述 D6 JSON 共同
+装配。目录为
+`outputs/d5_g1_clean_source_chain_d437744_20260726/model_candidate/g1_assist_v4_7fb5db8b_d6_10bf19f5/`，
+schema 为 `d5.tracklet-model-bundle.v4`。manifest/weights/checksums SHA-256 为
+`a5a53de7...37154` / `7fb5db8b...ca71` / `1221ec23...c75956`。公开 strict loader 已在
+`require_g1_assist_eligible=True` 下复核全部文件与证据，重复装配保护也已通过。
+
+该 bundle 只获得 G1 辅助资格。默认模型、全局身份、分配和控制权限均为 false；main 没有启用
+在线 G1。真实候选门重构、真实匿名多相机回放和 AirSim 在线作用域仍需后续验证。
+本轮定向回归为 `34 passed, 1 warning in 2.39s`，D5 全量回归为
+`589 passed, 1 warning in 99.17s`。警告为本机 PyTorch NVML 初始化提示。
 
 ## 稳健训练与失败关闭
 
@@ -42,8 +55,8 @@ G1、辅助、默认路径、全局身份、分配和控制权限全部保持关
 新权重 `7fb5db8b...ca71` 在 900 帧合成 held-out 和 paired-shadow 中取得名义及五类困难扰动
 edge/cluster F1=1.0，最高单特征 AUC=0.720073。该结果只适用于当前合成、固定候选拓扑数据。
 该段数值最初来自 dirty 内部运行；后续已在 clean `d437744c...4ffb` 重建完整 producer 输入。
-模型仍固定为 `development_only_fail_closed`；D6 外部审计和 G1 v4 assembler 未运行。
-确定性几何规则继续作为默认路径。
+development 输入仍保留 `development_only_fail_closed` 状态；正式证据另行形成
+G1 assist-eligible v4。该 v4 未进入默认或在线配置，确定性几何规则继续作为默认路径。
 2026-07-26 D5 全量回归为 `578 passed in 103.88s`。
 
 ## 模型读取与使用权限

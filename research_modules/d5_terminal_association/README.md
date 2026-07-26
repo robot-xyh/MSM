@@ -28,9 +28,33 @@ worktree 发布正式 registry：
 中文报告、`audit_evidence.json`、冻结引用和根 `SHA256SUMS` 的 SHA-256 分别为
 `1dfe1b3b...8c7c`、`bcee8cbc...8f29`、`9441fa84...a5d` 和 `c1abebfa...7f63`。
 根清单三项全部通过；第二次向同目录发布以 `registry_destination_exists` 失败关闭，四份输出和
-五份历史输入哈希均未变化。D6 尚未对该正式 registry 执行外部审计，G1 v4 assembler 未运行，
-没有在线、默认路径或控制权限。确定性几何规则仍是默认路径。
+五份历史输入哈希均未变化。D6 独立 owner 随后完成正式外部审计；该 registry 中
+`d6_external_audit_required` 记录的是发布当时状态，不回写历史 producer 输出。正式审计和 G1 v4
+装配结果见下节。
 2026-07-26 D5 全量回归为 `589 passed in 112.89s`，验收要求为零失败。
+
+## 2026-07-26 G1 v4 正式证据 bundle
+
+D6 正式外部审计 JSON 的文件/内容 SHA-256 为
+`10bf19f5fa89788c9cc0a24ab18b647c6cf863149bae08d22fc40796d15210b0` /
+`4e24ab33ca290133cf107f2c4ad5fee85d763001556f35fcd0ecdb819bef9e54`。
+`audit_passed=true`、blocker 为空，D6 的模型晋级、G1 辅助、默认路径和控制权限字段全部为
+false。审计绑定的运行时实现摘要为 `408e71fe...f4fe`，与 clean `fa3ec10` 的 development
+bundle、held-out 和 paired-shadow 一致。
+
+D5 于 `2026-07-26T14:14:12Z` 使用正式 D6 JSON 正向装配
+`outputs/d5_g1_clean_source_chain_d437744_20260726/model_candidate/g1_assist_v4_7fb5db8b_d6_10bf19f5/`。
+输出 schema 为 `d5.tracklet-model-bundle.v4`；manifest、weights 和根 `SHA256SUMS` 的
+SHA-256 分别为 `a5a53de7...37154`、`7fb5db8b...ca71` 和 `1221ec23...c75956`。
+公开 strict loader 在 `require_g1_assist_eligible=True` 下完成 manifest、weights 和三份
+evidence 的复核，返回 `g1_assist_eligible=true`。第二次向同目录装配以 `output_not_empty`
+失败关闭，六份输出和六份输入哈希均未变化。
+
+该 v4 只形成 G1 辅助资格证据。`default_model=false`，全局航迹标识、分配和控制 authority
+均为 false；main 没有启用在线 G1，也没有修改默认配置。真实候选门重新构图、真实相机泛化和
+AirSim 在线作用域仍未完成，确定性几何规则继续作为默认路径。
+本轮 G1 assembler/strict-loader 定向回归为 `34 passed, 1 warning in 2.39s`，D5 全量回归为
+`589 passed, 1 warning in 99.17s`。警告为本机 PyTorch 无法初始化 NVML，不影响 CPU 严格加载。
 
 ## 2026-07-26 G1 稳健开发候选
 

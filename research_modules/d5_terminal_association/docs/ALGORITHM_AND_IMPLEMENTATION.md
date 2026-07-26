@@ -54,10 +54,31 @@ producer 提交 `fa3ec10` 于 `2026-07-26T13:49:10Z` 在 clean worktree 执行�
 `9441fa84...a5d`。第二次使用相同输入和输出目录执行时，在读取或写入输出前以
 `registry_destination_exists` 拒绝；四份正式输出和五份输入哈希保持不变。
 
-该装配器只形成 D6 输入。D6 独立外审通过后，既有 G1 v4 evidence assembler 才能尝试生成
-`g1_assist_eligible=true` 的 bundle。两阶段均不授予默认路径、全局身份、分配或控制权限。
-D6 尚未正式审计本次 7fb5 registry，main 的临时 preflight 不计作 D6 正式结果。
+该装配器只形成 D6 输入。D6 独立 owner 已对 7fb5 registry 完成正式外审；正式 JSON 的
+文件/内容 SHA-256 为 `10bf19f5...10b0` / `4e24ab33...e54`，审计通过、blocker 为空且
+D6 authority 全 false。main 先前的临时 preflight 不计入该正式结论。
 2026-07-26 D5 全量回归为 `589 passed in 112.89s`。
+
+## G1 v4 正式证据装配
+
+正式装配读取 clean development bundle、held-out、paired-shadow 和 D6 外审 JSON，并要求调用方
+分别提供 manifest、weights、bundle 清单和三份 JSON 的带外 SHA-256。装配器再次复算文件及内容
+摘要，核对运行时实现摘要 `408e71fe...f4fe`、模型指纹、数据集、划分、训练集、20 个未见 seed、
+900 个 episode、45 个场景单元和三个零安全计数。D6 的正向审计状态不能替代这些交叉绑定。
+
+2026-07-26T14:14:12Z 生成的正式目录为
+`outputs/d5_g1_clean_source_chain_d437744_20260726/model_candidate/g1_assist_v4_7fb5db8b_d6_10bf19f5/`。
+输出 schema 为 `d5.tracklet-model-bundle.v4`，manifest SHA-256 为
+`a5a53de7...37154`，weights SHA-256 保持 `7fb5db8b...ca71`，根 `SHA256SUMS` SHA-256 为
+`1221ec23...c75956`。三份 evidence 的文件 SHA-256 与原 held-out、paired 和 D6 JSON 完全一致。
+
+公开 `load_tracklet_model_bundle_for_runtime(..., require_g1_assist_eligible=True)` 已严格加载该
+bundle。加载过程复核 manifest、weights、清单和三份 evidence 后返回可用 scorer。
+`g1_assist_eligible=true` 只表示 G1 辅助证据门通过；`default_model=false`，全局航迹标识、
+分配和控制 authority 均为 false。重复装配以 `output_not_empty` 拒绝，输入输出哈希不变。
+在线 G1、默认配置、真实候选门重构和真实相机泛化仍未完成。
+定向回归为 `34 passed, 1 warning in 2.39s`，D5 全量回归为
+`589 passed, 1 warning in 99.17s`。警告来自本机 PyTorch NVML 初始化，不影响 CPU 严格加载。
 
 ## 稳健候选实现
 

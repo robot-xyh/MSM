@@ -21,10 +21,18 @@ D5 已补充冻结 registry producer assembler。它接收上述五份实物及�
 分别为 `1dfe1b3b...8c7c`、`bcee8cbc...8f29`、`9441fa84...a5d` 和
 `c1abebfa...7f63`。重复发布失败关闭且文件哈希不变。
 
-D6 尚未正式消费该 registry，main 的临时 preflight 不计作正式结果。G1 v4 仍未运行，
-所有在线权限保持关闭，确定性几何规则继续作为默认路径。
-2026-07-26 D5 全量回归为 `589 passed in 112.89s`，定向冻结审计回归为
-`17 passed in 3.43s`。
+D6 独立 owner 随后正式消费该 registry。审计 JSON 文件/内容 SHA-256 为
+`10bf19f5...10b0` / `4e24ab33...e54`，`audit_passed=true`、blocker 为空且 D6 authority
+全 false。main 的临时 preflight 不计作正式结果。
+
+D5 已据此生成
+`model_candidate/g1_assist_v4_7fb5db8b_d6_10bf19f5/`。manifest/weights/checksums SHA-256
+为 `a5a53de7...37154` / `7fb5db8b...ca71` / `1221ec23...c75956`。公开 strict loader 在
+`require_g1_assist_eligible=True` 下通过，重复装配以 `output_not_empty` 失败关闭且哈希不变。
+v4 只获得 G1 assist eligibility；默认、全局身份、分配和控制权限保持关闭，确定性几何规则继续
+作为默认路径。
+2026-07-26 G1 assembler/strict-loader 定向回归为 `34 passed, 1 warning in 2.39s`，D5
+全量回归为 `589 passed, 1 warning in 99.17s`。警告为本机 PyTorch NVML 初始化提示。
 
 ## 2026-07-26 G1 稳健开发候选复核
 
@@ -69,8 +77,12 @@ post-assembler D6 audit 文件/内容 SHA-256 为 `98bf9e02...c8ed` /
 `d6_external_audit_fail_closed`、退出码 2，未创建目标 bundle。
 
 A3 evidence assembler 仍未实现。A3 production writer 和公开 assist loader 保持失败关闭。后续
-需先获得绑定当前实现、没有单特征捷径且困难扰动达标的新 G1 模型证据，再由 D6 owner 对齐来源
-清单并生成新的正向外部审计。
+上述段落记录旧 `99fa4428...d4cd` 候选的失败关闭。后续 clean `7fb5db8b...ca71` 已绑定运行时
+实现 `408e71fe...f4fe`，完成 20/900/45 held-out、paired-shadow、正式 D6 正向审计和 v4
+装配。正式 manifest 为 `a5a53de7...37154`，strict loader 已通过。
+
+该进展不启用在线 G1，不修改默认配置，也不关闭真实候选门重构、真实匿名多相机回放或真实相机
+泛化缺口。A3 evidence assembler 仍未实现。
 2026-07-26 最终证据同步复测为 assembler 专项 `14 passed in 1.15s`、模型流水线
 `20 passed in 4.08s`；既有 D5 全量结果为 `571 passed in 99.00s`。
 

@@ -21,14 +21,21 @@
   发布时刻为 `2026-07-26T13:49:10Z`。
 - [x] 校验根 `SHA256SUMS`、evidence schema、bundle 三哈希、held-out/paired/lineage 和
   20/900/45 目录；所有 authority 为 false。重复发布被拒绝且正式输出哈希不变。
-- [ ] 由 D6 owner 消费正式 registry、bundle、held-out、paired 和 lineage 执行独立外部审计。
-- [ ] 仅在 D6 审计通过后运行既有 G1 v4 evidence assembler；此前
-  `default_model=false`、`g1_assist_eligible=false`、无在线或控制权限。
+- [x] D6 owner 已消费正式 registry、bundle、held-out、paired 和 lineage 并完成独立外部审计。
+  正式 JSON 文件/内容 SHA-256 为 `10bf19f5...10b0` / `4e24ab33...e54`；
+  `audit_passed=true`、blocker 为空且 D6 authority 全 false。
+- [x] 使用正式 D6 JSON 运行 G1 v4 evidence assembler，原子生成
+  `model_candidate/g1_assist_v4_7fb5db8b_d6_10bf19f5/`。manifest/weights/checksums SHA-256
+  为 `a5a53de7...37154` / `7fb5db8b...ca71` / `1221ec23...c75956`。
+- [x] 公开 strict loader 在 `require_g1_assist_eligible=True` 下通过；重复装配以
+  `output_not_empty` 失败关闭，六份输入和六份输出哈希不变。
+- [ ] 在线 G1 作用域、默认配置和真实候选门重新构图仍保持开放。v4 仅有
+  `g1_assist_eligible=true`；default、全局身份、分配和控制权限均为 false。
 
 本轮未修改 AirSim settings、相机模型、检测器、多目标跟踪、episode 编排或消息接口。
 `docs/AIRSIM_INTEGRATION_PLAN.md` 已检查，内容不受本次离线证据生产合同影响，因此不修改。
-2026-07-26 D5 全量回归为 `589 passed in 112.89s`；定向冻结审计回归为
-`17 passed in 3.43s`。
+2026-07-26 G1 assembler/strict-loader 定向回归为 `34 passed, 1 warning in 2.39s`，D5
+全量回归为 `589 passed, 1 warning in 99.17s`。警告为本机 PyTorch NVML 初始化提示。
 
 ## 2026-07-26 G1 稳健候选收口
 
@@ -46,8 +53,8 @@
 - [x] 在 clean commit `d437744c...4ffb` 上重建 supplemental/composite、重训 development
   bundle，并生成 held-out、paired-shadow 和 registry reference；producer-compatible
   `audit_evidence.json` 已由 `fa3ec10` 在 clean worktree 正式发布。
-- [ ] 由 main 协调 D6 owner 对 clean 制品执行独立外部审计。审计通过后才允许尝试 G1
-  assembler；当前 `G1=false`、`assist=false`、`authority=false`。
+- [x] D6 owner 已对 clean 制品完成正式外部审计，D5 已据此生成 G1 assist-eligible v4。
+  该状态不启用在线 G1；`default_model=false`，全局身份、分配和控制 authority 均为 false。
 
 本轮没有修改 AirSim settings、相机合同、检测器、局部多目标跟踪、episode 编排或消息接口，
 因此 `docs/AIRSIM_INTEGRATION_PLAN.md` 检查后无需更新。
@@ -81,8 +88,10 @@
   `implementation_evidence_unavailable`、`implementation_lineage_mismatch`、
   `robustness_threshold_not_met.cluster_f1`、`robustness_threshold_not_met.edge_f1`、
   `synthetic_single_feature_shortcut`。
-- [ ] 训练或选择没有合成单特征捷径、困难扰动达到门限且绑定当前实现的新模型，重新生成 held-out、
-  paired-shadow 和 D6 外部审计。D6 source list/config 由 main 协调 D6 owner 另行对齐。
+- [x] clean `7fb5db8b...ca71` 候选已消除既有单特征 blocker，绑定运行时实现
+  `408e71fe...f4fe`，完成 held-out、paired-shadow、正式 D6 外审及 v4 装配。
+- [ ] 在真实或代表性匿名多相机输入上重新执行候选门并复核泛化；完成前不启用在线 G1，不改变
+  默认路径或权限边界。
 - [ ] A3 主动视觉 evidence assembler 仍未实现。A3 production writer 继续拒绝 caller-provided
   report，公开 assist loader 继续失败关闭；本轮不处理 A3。
 

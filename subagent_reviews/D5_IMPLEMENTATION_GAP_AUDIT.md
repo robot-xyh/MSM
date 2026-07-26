@@ -14,12 +14,17 @@
 | shared global track 捷径 | **关闭到现有数据** | 只有非零分层有候选边且 `near_deterministic=true` 时加入 `shared_global_track_count_near_deterministic_shortcut`。7fb5 clean 输入非零分层边数为 0。 |
 | 正式 registry 发布 | **D5-owned 已关闭** | `fa3ec10` 已于 `2026-07-26T13:49:10Z` 在 clean worktree 发布 `tracklet_gnn_7fb5db8b_registry_fa3ec10/`。evidence/root-checksums SHA 为 `bcee8cbc...8f29` / `c1abebfa...7f63`。 |
 | 重复发布保护 | **关闭并保持回归** | 第二次向同目录发布以 `registry_destination_exists` 失败关闭；四份输出与五份输入哈希前后完全相同。 |
-| D6 外部审计与 G1 v4 | **P1 开放** | D6 需先消费正式 registry 做独立复核；通过后才能运行既有 G1 v4 assembler。当前模型仍为 `development_only_fail_closed`。 |
+| D6 正式外部审计 | **已关闭** | 正式 JSON 文件/内容 SHA-256 为 `10bf19f5...10b0` / `4e24ab33...e54`；`audit_passed=true`、blocker 为空且 D6 authority 全 false。 |
+| G1 v4 正式装配 | **D5 证据作用域已关闭** | `g1_assist_v4_7fb5db8b_d6_10bf19f5/` 已生成；manifest/weights/checksums 为 `a5a53de7...37154` / `7fb5db8b...ca71` / `1221ec23...c75956`。strict loader 以 `require_g1_assist_eligible=True` 通过。 |
+| G1 v4 重复发布保护 | **关闭并保持回归** | 第二次装配以 `output_not_empty` 和退出码 2 失败关闭；六份输入、六份输出哈希不变。 |
+| 在线 G1 与默认路径 | **P1 开放，保持关闭** | v4 只有 `g1_assist_eligible=true`；`default_model=false`，全局身份、分配和控制 authority 全 false。main 未启用在线作用域。 |
 | 真实候选门重新构图 | **P1 开放** | clean 结果仍来自合成固定候选图，不能关闭真实时间偏差、外参漂移、遮挡重现和真实相机泛化。 |
 
-当前没有新增 P0。D5-owned producer 合同和正式发布均已关闭；尚未关闭的是 D6 独立审计、
-G1 v4 准入和真实重新构图验证。main 的临时 D6 preflight 不计作正式 D6 结果。
-2026-07-26 D5 全量回归为 `589 passed in 112.89s`，零失败门通过。
+当前没有新增 P0。D5-owned producer、D6 正式外审和 G1 v4 证据装配均已关闭；尚未关闭的是
+在线 G1 作用域、默认路径变更和真实候选门重新构图验证。main 的临时 D6 preflight 不计作正式
+D6 结果。
+2026-07-26 定向回归为 `34 passed, 1 warning in 2.39s`，D5 全量回归为
+`589 passed, 1 warning in 99.17s`，零失败门通过。警告为本机 PyTorch NVML 初始化提示。
 
 ## 2026-07-26 G1 稳健候选状态
 
@@ -31,9 +36,9 @@ G1 v4 准入和真实重新构图验证。main 的临时 D6 preflight 不计作�
 | clean implementation evidence | **已由后续 clean producer 关闭** | 本表记录此前 dirty 内部运行；最新状态见上节 commit `d437744c...4ffb`。 |
 | held-out | **开发证据完成** | seed `1000-1019`、900 帧、45 cell；F1=1.0、错误合并率=0、候选召回率=1.0、CPU P95=1.121304 ms。报告文件 SHA-256 为 `7e131910...0931`。 |
 | paired-shadow | **开发证据完成** | 名义与五类困难扰动 edge/cluster F1 均为 1.0；最高单特征 AUC=0.720073；安全计数全为 0。报告/lineage SHA-256 为 `595d0c5a...3582` / `76cda5ba...e4`。 |
-| D6 外部审计 | **P1 开放，未运行** | producer-compatible registry 已正式发布，等待 D6 owner 独立消费。 |
-| G1 assembler | **P1 开放，未运行** | 仅在 D6 外部审计通过后才可生成 admitted v4。 |
-| 在线权限 | **保持关闭** | `development_only_fail_closed`；`default_model=false`、`g1_assist_eligible=false`，规则路径不变。 |
+| D6 外部审计 | **正式通过** | D6 文件/内容 SHA-256 为 `10bf19f5...10b0` / `4e24ab33...e54`，blocker 为空，authority 全 false。 |
+| G1 assembler | **正式 7fb5 证据已关闭** | 已生成并严格加载 v4；`g1_assist_eligible=true`，manifest 为 `a5a53de7...37154`。 |
+| 在线权限 | **保持关闭** | source development bundle 不变；v4 未配置为在线或默认路径，规则路径不变。 |
 
 该表中的 dirty-source blocker 已由上节 clean producer 链替代。旧
 `99fa4428...d4cd` 实物和五项失败审计保持历史原状。
@@ -48,9 +53,10 @@ G1 v4 准入和真实重新构图验证。main 的临时 D6 preflight 不计作�
 | v4 公开加载时复核 | **D5-owned 已关闭** | 公开 loader/runtime 每次复算文件及内容摘要，核对 D6 consumer、20/900/45、三个安全计数和模型/实现/数据谱系；装配后篡改任一 evidence 均失败关闭。 |
 | G1 authority 边界 | **关闭并保持回归** | 合法 v4 仅有 `g1_assist_eligible=true`；`default_model`、全局航迹编号、分配和控制 authority 全 false。production writer 继续拒绝 caller-provided report。 |
 | assembler 实现来源链 | **D5-owned 已关闭** | `_IMPLEMENTATION_SOURCE_FILES` 已包含 `tracklet_g1_evidence_assembler.py`，当前实现摘要为 `41381db3...94b07`；专项测试确认只改变 assembler 摘要会改变整体摘要。旧 bundle 严格加载返回 `implementation_runtime_mismatch`，无白名单。 |
-| G1 软件正向合同 | **fixture 范围已关闭** | 正向 fixture 可原子生成 v4，并由公开 runtime strict loader 加载。该结果只证明合同可运行，不代表当前模型获准。 |
+| G1 软件正向合同 | **正式 7fb5 证据已关闭** | 正式 v4 已原子生成，并由公开 runtime strict loader 在 `require_g1_assist_eligible=True` 下加载；该结论只授予 G1 assist eligibility。 |
 | 当前 `99fa4428` 实物准入 | **P1 开放，fail-closed** | post-assembler D6 audit 文件/内容 SHA-256 为 `98bf9e02...c8ed` / `40a42af0...b90d`，绑定当前实现摘要 `41381db3...94b07`。五项 blocker 为 `implementation_evidence_unavailable`、`implementation_lineage_mismatch`、`robustness_threshold_not_met.cluster_f1`、`robustness_threshold_not_met.edge_f1`、`synthetic_single_feature_shortcut`。assembler 返回 `d6_external_audit_fail_closed`、退出码 2，目标目录不存在。 |
-| 新模型和新外部审计 | **P1 开放** | 需用当前实现重新形成完整实现证据，消除谱系不一致和合成单特征捷径，并让边/簇困难扰动达到门限；随后重新生成 held-out、paired-shadow 和 D6 正向审计。D6 source list/config 由 main 协调 D6 owner 更新。 |
+| 新模型和新外部审计 | **7fb5 clean 证据已关闭** | `7fb5db8b...ca71` 已绑定运行时摘要 `408e71fe...f4fe`，完成 held-out、paired-shadow、D6 正向审计和 v4 装配。 |
+| 真实候选门与在线作用域 | **P1 开放** | 合成固定候选图不能替代真实投影门重构、真实相机泛化或在线启用；default、全局身份、分配和控制权限保持关闭。 |
 | A3 evidence assembler | **P1 开放，未实现** | 本轮只处理 G1。A3 production writer 继续拒绝 caller-provided report，公开 assist loader 继续失败关闭。 |
 
 本轮没有修改旧 manifest、模型权重、阈值、校准值、在线 truth 边界或 `global_track_id`。实际
