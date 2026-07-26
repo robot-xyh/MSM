@@ -1,5 +1,34 @@
 # D5 末端视觉配准与身份认证实验报告
 
+## 2026-07-26 冻结 registry producer 验证
+
+### clean 输入
+
+验证输入来自 clean commit `d437744c030785859b61cf893d15d0463ab54ffb`。模型权重 SHA-256
+为 `7fb5db8b...ca71`，manifest 为 `0eff183f...da77`。held-out 覆盖 seed `1000-1019`、
+45 个场景规模单元和 900 帧；paired lineage 为 900 条。held-out、paired 和 lineage 文件
+SHA-256 分别为 `4ec0b824...c3a`、`f25c9428...57b` 和 `ca122b71...b57`。
+
+paired-shadow 的名义边/簇 F1 均为 1.0，五类固定候选图困难扰动的边/簇 F1 也均为 1.0。
+最高单特征 AUC 为 0.720073；`shared_global_track_count=1` 和 other 分层的候选边数均为 0。
+这些数据仍是合成固定候选图，不能代表真实候选门重新构图或真实相机泛化。
+
+### 软件验证
+
+新增 producer assembler 专项覆盖低 AUC、高 AUC、共享计数捷径、带外文件哈希、规范化内容
+哈希、schema、逐帧 lineage、权限字段、输出清单和非空目标目录。定向执行结果为
+`17 passed in 3.43s`，其中新装配专项 `11 passed`。另对 7fb5 clean 五份输入执行
+只读预检，bundle、corpus、held-out、paired、lineage、20/900/45 目录和权限边界全部一致。
+
+只读预检派生的 limitation 为
+`counterfactual_profiles_hold_candidate_graph_fixed`、
+`d6_external_audit_required` 和 `no_online_authority`。旧
+`synthetic_heldout_single_feature_shortcut` 未保留；共享全局航迹计数捷径未触发。
+
+本轮没有在当前未提交工作树发布正式 registry。正式输出需在 producer 实现提交后从 clean
+worktree 生成，再交 D6 独立审计。当前结果不授予 G1 assist、默认路径、全局航迹标识或控制权限。
+同日 D5 全量回归为 `589 passed in 112.89s`。
+
 ## 2026-07-26 G1 稳健候选失败关闭结果
 
 本轮从 4,500 帧补充课程与 472 帧正式可用图形成 4,972 帧组合视图。训练、验证和内部测试分别
@@ -12,7 +41,7 @@
 F1 均为 1.0，最高单特征 AUC 为 0.720073。在线 truth 特征、同相机互斥违规和
 `global_track_id` 改写均为 0。
 
-这些结果来自合成固定候选图。supplemental 和训练来源记录为 dirty，D6 外部审计和 G1
+该段记录 clean 重建前的内部运行。这些结果来自合成固定候选图。supplemental 和训练来源记录为 dirty，D6 外部审计和 G1
 assembler 未运行。候选状态为 `development_only_fail_closed`，没有生成 admitted v4，也没有
 改变默认运行路径。完整哈希、门限和 clean commit 重跑清单见
 `../reports/D5_TRACKLET_G1_ROBUST_V2_FAIL_CLOSED_20260726.md`。

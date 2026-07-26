@@ -1,5 +1,26 @@
 # D5 末端视觉配准与协同身份认证综述及子方案
 
+## 2026-07-26 冻结 registry producer 复核
+
+clean commit `d437744c...4ffb` 已重建 7fb5 稳健候选及其 20-seed 证据。冻结引用、审计摘要、
+held-out、paired-shadow 和逐帧 lineage 的文件 SHA-256 分别为 `9441fa84...a5d`、
+`ef299fe1...515`、`4ec0b824...c3a`、`f25c9428...57b` 和 `ca122b71...b57`。权重为
+`7fb5db8b...ca71`，manifest 为 `0eff183f...da77`。900 帧和 45 个场景规模单元完成，
+最高单特征 AUC 为 0.720073，非零共享全局航迹计数分层没有候选边。
+
+D5 已补充冻结 registry producer assembler。它接收上述五份实物及五个带外文件 SHA-256，
+复算 held-out/paired 内容 SHA，核对 bundle、corpus、held-out、paired 和 lineage 谱系，
+并逐层确认所有 authority 字段关闭。通过后只发布冻结引用、兼容旧 D6 consumer 的
+`audit_evidence.json`、中文报告和根校验清单。这个 producer 不接收准入布尔值，不授予 G1，
+也不调用既有 v4 assembler。
+
+限制项不再照抄 producer summary。AUC 达到或超过 0.995 才保留单特征捷径；共享全局航迹计数
+非零且近确定性时才增加独立 blocker。7fb5 clean 输入的只读预检保留候选图未重建、D6 外审
+待完成和无在线权限三项。正式 registry 待本轮代码提交后在 clean worktree 发布。D6 审计和
+G1 v4 仍未运行，确定性几何规则继续作为默认路径。
+2026-07-26 D5 全量回归为 `589 passed in 112.89s`，定向冻结审计回归为
+`17 passed in 3.43s`。
+
 ## 2026-07-26 G1 稳健开发候选复核
 
 D5 新候选在补充语料中为每个匿名相机量测独立加入尺度、尺度变化率和角速度误差，并在训练阶段
@@ -13,9 +34,7 @@ D5 新候选在补充语料中为每个匿名相机量测独立加入尺度、�
 单特征 AUC 为 0.720073。结果来自合成、固定候选拓扑数据，只证明当前专项门，不证明真实多相机
 或 AirSim 泛化。
 
-训练来源处于 dirty 工作树。候选固定为 `development_only_fail_closed`，D6 外部审计和 G1
-assembler 未运行。后续必须在 clean commit 重建 supplemental/composite、模型 bundle、
-held-out、paired-shadow 和 registry evidence，再交 D6 独立审计。旧模型和旧审计不改写，
+该段记录 clean 重建前的 dirty 内部运行。后续 clean producer 状态见上节。旧模型和旧审计不改写，
 `global_track_id` 所有权及规则回退保持不变。
 2026-07-26 D5 全量回归为 `578 passed in 103.88s`。
 

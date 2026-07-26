@@ -1,5 +1,31 @@
 # D5 终端视觉配准与身份认证计划
 
+## 2026-07-26 冻结 registry 生产合同收口
+
+- [x] 在 clean commit `d437744c...4ffb` 重建 supplemental/composite、development bundle、
+  seed `1000-1019` held-out、paired-shadow 和冻结引用。权重/manifest 为
+  `7fb5db8b...ca71` / `0eff183f...da77`；900 帧、45 cell、lineage 900 条。
+- [x] 实现 `assemble_frozen_tracklet_registry(...)` 和 `assemble-registry` 命令模式。五份输入
+  均要求调用方冻结的文件 SHA-256；held-out/paired 还要求规范化内容 SHA-256。
+- [x] 失败关闭地核对 reference/summary schema、bundle 三哈希、corpus manifest/config/content、
+  held-out 文件/content、paired 文件/content、逐帧 lineage、目录计数和输入前后不变性。
+- [x] 核对 reference、summary、held-out 和 paired 内全部权限字段；G1、assist、authority、
+  default、运行时默认变更及中心 `global_track_id` 改写保持关闭。
+- [x] 原子生成旧 D6 consumer 兼容的 `d5.frozen-tracklet-audit-evidence.v1`、冻结引用副本、
+  中文报告和精确覆盖三份文件的 `SHA256SUMS`。目标目录存在或输出清单不完整时不发布。
+- [x] 动态生成 limitation：单特征 AUC `>=0.995` 才保留合成捷径；共享全局航迹计数非零且近
+  确定性时才加入独立阻断项。7fb5 clean 输入的只读预检 AUC=`0.720073`，没有共享计数捷径。
+- [x] 增加低/高 AUC、共享计数、文件/内容/schema/lineage 篡改、权限、输出清单和非空目录测试。
+- [ ] 将本轮 producer 实现提交后，在对应 clean worktree 运行正式装配，生成固定 registry。
+- [ ] 由 D6 owner 消费正式 registry、bundle、held-out、paired 和 lineage 执行独立外部审计。
+- [ ] 仅在 D6 审计通过后运行既有 G1 v4 evidence assembler；此前
+  `default_model=false`、`g1_assist_eligible=false`、无在线或控制权限。
+
+本轮未修改 AirSim settings、相机模型、检测器、多目标跟踪、episode 编排或消息接口。
+`docs/AIRSIM_INTEGRATION_PLAN.md` 已检查，内容不受本次离线证据生产合同影响，因此不修改。
+2026-07-26 D5 全量回归为 `589 passed in 112.89s`；定向冻结审计回归为
+`17 passed in 3.43s`。
+
 ## 2026-07-26 G1 稳健候选收口
 
 - [x] 为 supplemental 和 held-out 物理投影增加相机局部、标签无关的检测框尺度、尺度变化率和
@@ -13,8 +39,9 @@
   扰动 edge/cluster F1 均为 1.0；最高单特征 AUC=0.720073。
 - [x] 保持 dirty-source 结果失败关闭。没有运行 D6 外部审计或 G1 assembler，没有生成 admitted
   v4，没有修改旧 bundle/manifest/报告、门限或兼容名单。
-- [ ] 在包含本轮实现的 clean commit 上重建 supplemental/composite、重训 development bundle，
-  再生成 held-out、paired-shadow、registry reference 和证据。
+- [x] 在 clean commit `d437744c...4ffb` 上重建 supplemental/composite、重训 development
+  bundle，并生成 held-out、paired-shadow 和 registry reference；producer-compatible
+  `audit_evidence.json` 待本轮装配器提交后在 clean worktree 发布。
 - [ ] 由 main 协调 D6 owner 对 clean 制品执行独立外部审计。审计通过后才允许尝试 G1
   assembler；当前 `G1=false`、`assist=false`、`authority=false`。
 

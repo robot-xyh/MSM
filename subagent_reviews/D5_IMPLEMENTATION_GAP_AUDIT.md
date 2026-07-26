@@ -1,5 +1,25 @@
 # D5 实现差距审计
 
+## 2026-07-26 冻结 registry producer 状态
+
+| 缺口 | 当前状态 | 证据与剩余边界 |
+| --- | --- | --- |
+| clean source 重建 | **D5 producer 已关闭** | commit `d437744c...4ffb` 已重建 supplemental/composite、权重 `7fb5db8b...ca71`、manifest `0eff183f...da77`、20-seed held-out、paired-shadow 和 900 条 lineage。 |
+| D6 producer schema 缺失 | **代码与 fixture 已关闭** | 新装配器输出旧 consumer 兼容的 `d5.frozen-tracklet-audit-evidence.v1`，不再以 `d5.frozen-tracklet-audit-summary.v1` 代替。 |
+| registry 根校验清单不完整 | **代码与 fixture 已关闭** | 根 `SHA256SUMS` 精确绑定冻结引用、`audit_evidence.json` 和中文报告；缺项、重复项、哈希不符或非空目标目录均失败关闭。 |
+| 文件和内容完整性 | **代码与 fixture 已关闭** | 五份输入均校验带外文件 SHA-256；held-out/paired 另复算规范化 content SHA；输出前后再次复算全部输入，变化时不发布。 |
+| bundle/corpus/report/lineage 交叉绑定 | **代码与 7fb5 只读预检已关闭** | reference、summary、held-out、paired 和 lineage 的 bundle 三哈希、corpus 三哈希、held-out 文件/content、paired 文件/content、lineage SHA/记录数及 20/900/45 目录一致。 |
+| authority 失败关闭 | **关闭并保持回归** | reference、summary、held-out、paired 的 G1/assist/authority/default/runtime-default 全 false；truth 使用和 `global_track_id` 改写计数为 0。 |
+| 单特征 limitation 误保留 | **关闭** | AUC `>=0.995` 才加入 blocker。7fb5 clean 输入 AUC=`0.720073`，不保留旧 blocker；固定保留候选图未重建、D6 外审待完成和无在线权限三项。 |
+| shared global track 捷径 | **关闭到现有数据** | 只有非零分层有候选边且 `near_deterministic=true` 时加入 `shared_global_track_count_near_deterministic_shortcut`。7fb5 clean 输入非零分层边数为 0。 |
+| 正式 registry 发布 | **P1 开放，fail-closed** | 当前源码尚未提交，未在脏工作树发布正式 registry。提交后须切 clean worktree 运行 producer CLI。 |
+| D6 外部审计与 G1 v4 | **P1 开放** | D6 需先消费正式 registry 做独立复核；通过后才能运行既有 G1 v4 assembler。当前模型仍为 `development_only_fail_closed`。 |
+| 真实候选门重新构图 | **P1 开放** | clean 结果仍来自合成固定候选图，不能关闭真实时间偏差、外参漂移、遮挡重现和真实相机泛化。 |
+
+当前没有新增 P0。D5-owned producer 合同已实现并通过 7fb5 输入只读预检；尚未关闭的是 clean
+正式发布、D6 独立审计、G1 v4 准入和真实重新构图验证。
+2026-07-26 D5 全量回归为 `589 passed in 112.89s`，零失败门通过。
+
 ## 2026-07-26 G1 稳健候选状态
 
 | 缺口 | 当前状态 | 证据与剩余边界 |
@@ -7,18 +27,15 @@
 | 旧候选遮挡重现 edge/cluster F1 | **新开发候选专项门通过** | 旧值 `0.563264/0.572845`；新权重 `7fb5db8b...ca71` 在固定候选拓扑的五类合成扰动中均为 `1.0/1.0`。真实重新构图和真实相机泛化未验证。 |
 | 合成单特征捷径 | **当前合成保留集门通过** | 最高单特征 AUC 从 `0.997340` 降为 `0.720073`，满足既有 `<=0.98` 门限。没有放宽门限。 |
 | 模型与运行时谱系表达 | **D5 内部管线已关闭** | manifest 分别绑定四个模型源码和十个运行时源码，摘要为 `1883bc36...105` / `408e71fe...f4fe`，共享源码逐项交叉绑定。 |
-| clean implementation evidence | **P1 开放，fail-closed** | supplemental 和训练来源为 dirty；候选只记录 exact source hashes，不声称 clean commit。 |
+| clean implementation evidence | **已由后续 clean producer 关闭** | 本表记录此前 dirty 内部运行；最新状态见上节 commit `d437744c...4ffb`。 |
 | held-out | **开发证据完成** | seed `1000-1019`、900 帧、45 cell；F1=1.0、错误合并率=0、候选召回率=1.0、CPU P95=1.121304 ms。报告文件 SHA-256 为 `7e131910...0931`。 |
 | paired-shadow | **开发证据完成** | 名义与五类困难扰动 edge/cluster F1 均为 1.0；最高单特征 AUC=0.720073；安全计数全为 0。报告/lineage SHA-256 为 `595d0c5a...3582` / `76cda5ba...e4`。 |
-| D6 外部审计 | **P1 开放，未运行** | dirty source 不具备正式审计前提。本轮内部结果不能替代 D6 独立审计。 |
-| G1 assembler | **P1 开放，未运行** | dirty source 下不运行正向 assembler，不生成 admitted v4。 |
+| D6 外部审计 | **P1 开放，未运行** | clean 输入已形成，但 producer-compatible registry 待本轮实现提交后正式发布。 |
+| G1 assembler | **P1 开放，未运行** | 仅在 D6 外部审计通过后才可生成 admitted v4。 |
 | 在线权限 | **保持关闭** | `development_only_fail_closed`；`default_model=false`、`g1_assist_eligible=false`，规则路径不变。 |
 
-当前没有新增 P0。四项剩余 blocker 为 `source_repository_dirty`、
-`clean_commit_retraining_required`、`d6_external_audit_not_run_dirty_source` 和
-`g1_assembler_not_run_dirty_source`。下一步必须在 clean commit 重建全部数据、模型、held-out、
-paired-shadow 和 registry evidence，再交 D6 审计。旧 `99fa4428...d4cd` 实物和五项失败审计
-保持历史原状。
+该表中的 dirty-source blocker 已由上节 clean producer 链替代。旧
+`99fa4428...d4cd` 实物和五项失败审计保持历史原状。
 2026-07-26 D5 全量回归为 `578 passed in 103.88s`，验收要求为零失败。
 
 ## 2026-07-26 G1 证据装配闭环

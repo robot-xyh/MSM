@@ -2,6 +2,55 @@
 
 **状态日期：2026-07-26**
 
+## 冻结 registry 生产
+
+冻结审计先生成五份 producer 实物：
+
+1. `frozen_bundle_reference.json`，固定模型 bundle 的 manifest、weights 和 bundle 校验清单；
+2. `frozen_audit_summary.json`，记录 held-out 与 paired-shadow 摘要；
+3. `heldout_evaluation.json`，携带规范化内容 SHA-256；
+4. `paired_shadow_report.json`，携带规范化内容 SHA-256、输入前后哈希和交叉谱系；
+5. `paired_episode_lineage.jsonl`，逐帧记录两臂同图、同候选和真值评分顺序。
+
+`assemble_frozen_tracklet_registry(...)` 要求调用方同时给出五份文件 SHA-256。装配器不依赖
+`status=pass` 作信任判断。它依次复算文件哈希、held-out/paired 内容哈希和 lineage 文件哈希，
+再核对
+
+\[
+H_{\mathrm{bundle}}^{ref}
+=H_{\mathrm{bundle}}^{summary}
+=H_{\mathrm{bundle}}^{heldout}
+=H_{\mathrm{bundle}}^{paired},
+\]
+
+\[
+H_{\mathrm{corpus}}^{heldout}
+=H_{\mathrm{corpus}}^{paired}, \qquad
+H_{\mathrm{heldout}}^{file/content}
+=H_{\mathrm{paired\ input}}^{file/content}.
+\]
+
+逐帧 lineage 的 SHA-256、schema 和记录数必须同时等于 paired 报告及 summary 声明。reference、
+summary、held-out 和 paired 内的 G1、assist、authority、default 及运行时默认变更字段必须为
+false；在线真值、中心全局航迹标识改写和同相机互斥违规计数必须为 0。任一条件不满足时，不创建
+正式 registry。
+
+输出先写入目标同级临时目录。装配器生成旧 D6 consumer 字段兼容的
+`d5.frozen-tracklet-audit-evidence.v1`、冻结引用副本、中文报告和 `SHA256SUMS`。校验清单精确
+覆盖三份文件。装配器复核清单、输出 schema 和全部输入未变化后才原子发布；目标目录已存在时
+直接拒绝。
+
+限制项由 paired 原始诊断生成。最高单特征曲线下面积
+\(AUC_{\max}\geq0.995\) 时加入 `synthetic_heldout_single_feature_shortcut`。只有非零
+`shared_global_track_count` 分层含候选边且诊断为近确定性时，才加入
+`shared_global_track_count_near_deterministic_shortcut`。固定保留候选图未重建、D6 外审待完成
+和无在线权限三项。clean `d437744c...4ffb` 的 7fb5 输入只读预检得到
+\(AUC_{\max}=0.720073\)，非零共享计数边数为 0，因此不保留两项动态捷径 blocker。
+
+该装配器只形成 D6 输入。D6 独立外审通过后，既有 G1 v4 evidence assembler 才能尝试生成
+`g1_assist_eligible=true` 的 bundle。两阶段均不授予默认路径、全局身份、分配或控制权限。
+2026-07-26 D5 全量回归为 `589 passed in 112.89s`。
+
 ## 稳健候选实现
 
 补充语料的相机局部量测模型对检测框对数边长、尺度变化率和角速度分别加入确定性伪随机误差。
@@ -29,8 +78,10 @@ H_r=\operatorname{SHA256}(\text{runtime source file hashes}).
 运行时清单且哈希逐项相同；held-out、paired-shadow 和未来 D6 audit 绑定 \(H_r\)。这种分离避免
 训练报告因评估或 assembler 文件纳入运行时后失去模型来源表达，同时不允许旧运行时兼容白名单。
 
-本轮权重为 `7fb5db8b...ca71`，温度为 0.6541651703，阈值为 0.8964798918。训练来源 dirty，
-所以只生成 development v3 bundle。`default_model` 和 `g1_assist_eligible` 均为 false。
+先前内部运行的权重为 `7fb5db8b...ca71`，温度为 0.6541651703，阈值为 0.8964798918。
+其训练来源为 dirty，因此只生成 development v3 bundle。后续已在 clean
+`d437744c...4ffb` 重建同一权重指纹和完整 producer 证据；正式 registry 待本轮装配器提交后
+发布。`default_model` 和 `g1_assist_eligible` 均为 false。
 2026-07-26 D5 全量回归为 `578 passed in 103.88s`，十个修改或新增 Python 文件通过
 `python3 -m py_compile`。
 

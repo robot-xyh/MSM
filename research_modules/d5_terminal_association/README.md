@@ -2,6 +2,30 @@
 
 科研模块，用于把末端相机视场中的本地视觉轨迹保守关联到中心分配的 `global_track_id`。模块可在统一三维 episode 中在线运行；训练标签和真值评分仍保持离线。D5 只输出视觉关联与相机观察意图，不修改、重写或重新分配任何全局轨迹 ID。
 
+## 2026-07-26 冻结 registry 生产合同
+
+clean commit `d437744c030785859b61cf893d15d0463ab54ffb` 已重建稳健补充语料、组合训练、
+development bundle、20-seed held-out 和 paired-shadow。冻结权重 SHA-256 为
+`7fb5db8b...ca71`，manifest 为 `0eff183f...da77`。held-out/paired/lineage 文件 SHA-256
+分别为 `4ec0b824...c3a`、`f25c9428...57b` 和 `ca122b71...b57`。900 帧、45 个场景规模
+单元完成；最高单特征 AUC 为 `0.720073`，非零 `shared_global_track_count` 分层没有样本。
+
+`frozen_tracklet_audit.py` 现提供 `assemble_frozen_tracklet_registry(...)` 和
+`assemble-registry` 命令模式。输入固定为冻结引用、审计摘要、held-out 报告、paired-shadow
+报告和逐帧 lineage，并要求五份调用方冻结的 SHA-256。装配器复算 held-out/paired 内容摘要，
+核对 bundle、corpus、held-out、paired 和 lineage 交叉绑定，确认所有权限字段为 false，再通过
+同级 staging 原子发布 `frozen_bundle_reference.json`、兼容
+`d5.frozen-tracklet-audit-evidence.v1` 的 `audit_evidence.json`、中文报告和
+`SHA256SUMS`。目标目录已存在、输入变化、schema/content/lineage 不一致或权限未关闭时均拒绝。
+
+限制项由 paired 诊断动态生成。最高单特征 AUC 达到或超过 `0.995` 才写入
+`synthetic_heldout_single_feature_shortcut`；非零共享全局航迹计数同时呈近确定性时才写入
+对应捷径阻断项。7fb5 clean 输入的只读预检只保留
+`counterfactual_profiles_hold_candidate_graph_fixed`、`d6_external_audit_required` 和
+`no_online_authority`。本轮未在当前未提交源码上发布正式 registry，也未运行 D6 外部审计或
+G1 v4 assembler。确定性几何规则仍是默认路径。
+2026-07-26 D5 全量回归为 `589 passed in 112.89s`，验收要求为零失败。
+
 ## 2026-07-26 G1 稳健开发候选
 
 D5 已针对旧 `99fa4428...d4cd` 候选的遮挡重现、单特征捷径和实现谱系问题形成新开发候选。
@@ -17,7 +41,7 @@ held-out 得到 F1=1.0、错误合并率=0、候选召回率=1.0、CPU P95=1.121
 paired-shadow 的五类困难扰动 edge/cluster F1 均为 1.0，最高单特征 AUC 为 0.720073，满足既有
 `<=0.98` 门限。在线 truth 特征、同相机互斥违规和 `global_track_id` 改写均为 0。
 
-本候选只用于开发诊断。补充语料与训练来源记录为 dirty，训练状态为
+该段记录 clean 重建前的内部运行。补充语料与训练来源记录为 dirty，训练状态为
 `hash_bound_dirty_internal_development_complete`，没有 clean commit 声明。D6 外部审计和 G1
 assembler 均未运行，`default_model=false`、`g1_assist_eligible=false`。最终 blocker 为
 `source_repository_dirty`、`clean_commit_retraining_required`、

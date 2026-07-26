@@ -270,6 +270,11 @@ from .scalable_3d_adapter import (
     run_scalable_3d_online_association,
     source_observation_tracklet_links,
 )
+from .frozen_tracklet_audit import (
+    FROZEN_AUDIT_EVIDENCE_SCHEMA_VERSION,
+    FrozenTrackletAuditError,
+    assemble_frozen_tracklet_registry,
+)
 from .tracklet_dataset import (
     OfflineObservationLabelJoinResult,
     join_offline_observation_labels,
@@ -507,6 +512,8 @@ __all__ = [
     "DeterministicLookAtScanPolicy",
     "DeterministicCameraCommandExecutor",
     "FriendlyObservationReservation",
+    "FROZEN_AUDIT_EVIDENCE_SCHEMA_VERSION",
+    "FrozenTrackletAuditError",
     "LoadedActiveVisionPolicy",
     "LoadedActiveVisionEpisode",
     "LoadedActiveVisionEpisodeDataset",
@@ -530,6 +537,7 @@ __all__ = [
     "UnavailableActiveVisionPolicy",
     "assert_truth_free_active_vision_payload",
     "active_vision_sample_from_decision",
+    "assemble_frozen_tracklet_registry",
     "audit_active_vision_episode_dataset",
     "assert_anonymous_online_payload",
     "bind_clusters_to_center_tracks",
