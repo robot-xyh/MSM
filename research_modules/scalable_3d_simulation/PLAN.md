@@ -20,6 +20,12 @@
    R0 约 22 GiB，旧失败现场约 1.2 GiB；新一轮仍需约 22 GiB，并保留 20 GiB 运行下限。
 8. [ ] 使用新 clean source 从零重跑 900 个 R0 单元，由 D6 v10 验证 900/900
    clean-formal。不得将修复后的 5 项与旧提交的 895 项拼接。
+9. [x] 最终正式 source 已冻结为 `1e5ed8d`，execution plan SHA-256 为
+   `8804ecb4dd0513db55906905f031832711012974fc911546df40e09fb297d373`。
+   shards 0、5、9 已完成，共 135/900 单元。
+10. [x] D6 v10 对新批次中三个原失败 cell 给出 3/3 clean-formal、formal eligible 和
+    generation verified；seeds 1008/1018 尚未重跑。可用空间只比 20 GiB 下限多约
+    65 MB，后续分片等待证据迁移、扩容或明确清理授权。
 
 ## D4 因果通信与正式矩阵准入状态（2026-07-25）
 

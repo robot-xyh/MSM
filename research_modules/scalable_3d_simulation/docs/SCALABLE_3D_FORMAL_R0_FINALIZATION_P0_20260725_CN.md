@@ -134,12 +134,38 @@ warning 来自本机 Matplotlib `Axes3D` 导入冲突，不影响本次 JSON、�
 - 5700 单元七变体矩阵完成；
 - 200 对 200 已达到实时运行目标。
 
+## 修复后正式进度
+
+最终正式 source 固定为
+`1e5ed8ddcf27f375e922a447decfbd875d21bfdf`。新 execution plan 的内部 SHA-256 为
+`8804ecb4dd0513db55906905f031832711012974fc911546df40e09fb297d373`，计划文件
+SHA-256 为 `549f67b16b02c7a82cdb0eb9a275a37dfb3b74cf6e73fb49cdaee3850eb4e71d`。
+完整父计划 SHA-256 保持
+`bde5d1482647ec63484f05b9b561d9080251cc710ad66a0c692f5039f817bde3`。
+
+shards 0、5、9 均完成 45/45，累计 135/900 单元。没有 orphan recovery、resume 或磁盘
+暂停。D6 v10 对三个已覆盖的原失败 cell 单独生成正式聚合。
+
+| 场景 | seed | D1 final | D2 consumed | consumption/publication | merge | skip | pending | D6 |
+| --- | ---: | ---: | ---: | --- | ---: | ---: | --- | --- |
+| delayed_noisy 5v5 | 1000 | 13 | 13 | 6/6 | 7 | 0 | empty | clean-formal |
+| delayed_noisy 5v5 | 1005 | 9 | 9 | 5/5 | 4 | 0 | empty | clean-formal |
+| delayed_noisy 20v20 | 1009 | 27 | 27 | 7/7 | 20 | 0 | empty | clean-formal |
+
+三项 generation contract 均为 `verified`，formal acceptance eligible 为 3/3，
+failure reason distribution 为空，repository dirty count 为 0。该结果把原五项失败中的
+三项在新正式计划内闭合。5v5 seeds 1008、1018 仍未正式重跑。
+
+新批次当前约 3.3 GiB。运行完第三个分片后，可用字节为 `21539827712`，20 GiB 运行下限为
+`21474836480`，只剩约 65 MB 安全余量。main 已停止启动新单元。当前正式进度为
+135/900，不满足 scope complete。
+
 ## 后续工作
 
 1. D1 审计、D2 复核、D6 v10 和 main runtime 已分批提交为
    `4b018e4`、`dc5821f`、`8e955f3`、`98d01bf`；
-2. 完成最终文档同步后，在 clean HEAD 上重新生成完整父计划和 R0 execution plan；
-3. 从零运行 20 个分片和 900 个 R0 单元；
+2. 已在 clean source `1e5ed8d` 上生成完整父计划和 R0 execution plan；
+3. 已完成 3/20 分片和 135/900 单元，剩余分片等待存储条件；
 4. 由 D6 v10 重新生成逐 seed CSV、聚合 JSON 和中文报告；
 5. 只有 900/900 clean-formal 后，才关闭本 P0 的正式证据项。
 

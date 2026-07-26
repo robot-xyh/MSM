@@ -26,6 +26,17 @@ runtime 已分别提交为 `4b018e4`、`dc5821f`、`8e955f3`、`98d01bf`，未�
 现有正式证据约 22 GiB，旧失败现场约 1.2 GiB；在 20 GiB 运行下限下无法并存下一份
 约 22 GiB 正式结果。现有证据在获得清理或迁移授权前不得删除。
 
+修复后的正式 source 已冻结为 `1e5ed8d`，execution plan SHA-256 为
+`8804ecb4dd0513db55906905f031832711012974fc911546df40e09fb297d373`。main 已完成
+shards 0、5、9，共 135/900 单元。新 D6 v10 对原失败的 5v5 seeds 1000/1005 和 20v20
+seed 1009 给出 3/3 clean-formal、formal eligible、generation verified，failure reason
+为空。D1/D2 最终代次一致，skip 为 0，pending 为空。原失败的 seeds 1008/1018 和其余
+765 个单元尚未运行。
+
+新批次约 3.3 GiB后，文件系统可用字节为 `21539827712`，只比 20 GiB 下限
+`21474836480` 多约 65 MB。main 已停止启动新单元。当前状态为“3/5 原失败正式闭合、
+R0 整体 135/900”；它不能关闭完整 R0 scope，也不能与旧 895 项拼接。
+
 以下 D3 shard-0 记录是本轮 R0 的前序历史，已由 `2c7b425` 批次覆盖：
 
 正式 R0 shard 0 在第 45 个单元

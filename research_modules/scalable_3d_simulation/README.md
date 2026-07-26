@@ -37,6 +37,29 @@ main 已移除 finalize 的简化签名跳过。最后一代 D1 后验现在必�
 专项记录见
 `docs/SCALABLE_3D_FORMAL_R0_FINALIZATION_P0_20260725_CN.md`。
 
+### 修复后正式重跑进度
+
+修复后的正式 source 冻结为
+`1e5ed8ddcf27f375e922a447decfbd875d21bfdf`，execution plan SHA-256 为
+`8804ecb4dd0513db55906905f031832711012974fc911546df40e09fb297d373`。父清单仍为
+5700 单元，R0 scope 仍为 900 单元，20 个分片各覆盖一个保留 seed。
+
+当前 shards 0、5、9 已完成 45/45，共 135/900 单元，无恢复和暂停。D6 v10 单独复核
+三个已覆盖的原失败 cell：
+
+- `delayed_noisy/5v5/seed_1000`；
+- `delayed_noisy/5v5/seed_1005`；
+- `delayed_noisy/20v20/seed_1009`。
+
+三项均为 `clean_formal_experiment_matrix`，formal acceptance eligible 为 3/3，
+generation contract 为 3/3 `verified`，failure reason 为空。D1 最终代次等于 D2 最终
+消费代次，消费次数等于发布次数，skip 为 0，pending 为空。原失败的 5v5 seeds 1008、
+1018 仍未在新计划下重跑。
+
+新批次当前约 3.3 GiB。文件系统可用字节为 `21539827712`，只比 20 GiB 下限
+`21474836480` 多约 65 MB，main 已停止启动新单元。该进度证明 3/5 原失败项在新 clean
+source 下正式闭合；完整 R0 仍为 135/900，不能声明 scope 完成或 900/900 正式验收。
+
 ## 正式 R0 分片合同（2026-07-25）
 
 main 已新增正式实验矩阵的可恢复分片执行层。执行计划先保存完整
