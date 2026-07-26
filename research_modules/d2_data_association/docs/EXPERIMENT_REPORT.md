@@ -1578,10 +1578,28 @@ track key 和规范 ID 集合不变。20v20 seed 1009 未 coast 的一条航迹�
 
 D6 的 generation integrity 为 5/5 通过。五个 manifest 均记录
 `repository_dirty=true`，formal admission 为 0/5，拒绝原因仅为工作树不干净和
-episode 非 clean-formal。代码和 5-cell 开发态回归已经通过；修复后的完整 900-cell R0
-formal rerun 尚未运行，当前由存储容量阻塞。
+episode 非 clean-formal。代码和 5-cell 开发态回归已经通过；这些结果继续作为开发态
+证据，不与后续正式批次拼接。
 
 本次文档同步后的 D2 replay-coast 专项为 `5 passed in 0.95s`，D2 全量为
 `305 passed, 1 warning in 29.45s`，main hotfix 五 seed 定向测试为
 `5 passed, 66 deselected in 3.51s`。没有启动 AirSim，也没有产生新的正式 900-cell
 制品。
+
+### 37.5 正式重跑进度
+
+修复后正式 source 为 `1e5ed8ddcf27f375e922a447decfbd875d21bfdf`，execution plan
+SHA-256 为
+`8804ecb4dd0513db55906905f031832711012974fc911546df40e09fb297d373`。shards
+0、5、9 各完成 45 个单元，当前进度为 135/900。
+
+| 原失败 cell | clean-formal | formal eligible | generation | skip | pending | failure reason |
+| --- | --- | --- | --- | ---: | --- | --- |
+| delayed_noisy 5v5 seed 1000 | 是 | 是 | verified | 0 | empty | empty |
+| delayed_noisy 5v5 seed 1005 | 是 | 是 | verified | 0 | empty | empty |
+| delayed_noisy 20v20 seed 1009 | 是 | 是 | verified | 0 | empty | empty |
+
+D6 v10 对三项正式准入为 3/3。原失败 5v5 seeds 1008/1018 尚未在该 source 和 plan 下
+运行，因此当前结论是 3/5 原失败项正式闭合、完整 R0 仍开放。可用磁盘只比 20 GiB
+运行下限多约 65 MB，main 已停止启动新单元。该批次是三维质点正式证据，不是 AirSim
+或实飞结果。

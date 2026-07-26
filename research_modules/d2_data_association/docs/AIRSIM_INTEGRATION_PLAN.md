@@ -390,8 +390,11 @@ runtime P0，详见 `D2_FORMAL_R0_GENERATION_CONSERVATION_AUDIT_CN.md`；它不�
 commit `98d01bf` 中实际消费最终 pending，并在未消费时失败关闭；D2 复核提交为
 `dc5821f`，D6 准入修复提交为 `8e955f3`。五个原失败 cell 的开发态回归全部满足 final
 generation 守恒、skip 为 0 和 pending 排空。重复证据没有增加 hit、birth 或改写规范
-ID。该结果不是 AirSim 证据；完整 900-cell R0 尚未运行，当前仍受正式制品存储容量
-阻塞。随后完成的脏工作树
+ID。该结果不是 AirSim 证据；修复后完整 900-cell R0 尚未完成，当前仍受正式制品存储容量
+阻塞。2026-07-25 的三维质点正式增量已改用 source `1e5ed8dd` 和固定 execution plan，
+完成 shards 0、5、9，共 135/900；原失败五项中 3 项通过 D6 v10 正式准入，seeds
+1008/1018 尚未重跑。可用空间只比 20 GiB 运行下限多约 65 MB，main 已停止新单元。
+该进度仍不是 AirSim 证据。随后完成的脏工作树
 development 20-seed active-risk 运行中，D6 七类 availability 均为 20/20，D4 adoption
 188/188，seed 1005 离线恢复 GT1-GT5 五条唯一映射且在线 truth 使用仍为 0。这关闭了
 开发期 main/D6 接线验证，不是 AirSim 验收结论。随后提交 `0fa7c00` 的 clean-tree 复跑

@@ -22,8 +22,9 @@ no-op。五个 skip 的最终后验均相对 D2 最后实际消费后验发生�
 本轮不修改 D2 算法，不伪造 `id_switch_count`，不通过调整统计公式放宽正式准入。
 D2 replay-coast 复核已提交为 `dc5821f`，D6 准入修复已提交为 `8e955f3`，main 调用
 路径修复已形成 clean source commit `98d01bf`。五个原失败 cell 的开发态定向回归通过。
-旧 `2c7b425` 正式 R0 仍是 P0 失败基线；修复后的完整 900-cell formal rerun 尚未运行，
-当前由存储容量阻塞，因此正式证据缺口保持开放。
+旧 `2c7b425` 正式 R0 仍是 P0 失败基线。修复后 source `1e5ed8dd` 已完成 135/900，
+其中 3/5 原失败项正式闭合；seeds 1008/1018 尚未运行。当前因磁盘仅比 20 GiB 下限多
+约 65 MB 而停止，因此完整正式证据缺口保持开放。
 
 ## 失败范围
 
@@ -222,20 +223,34 @@ D2 owner 使用同一五组配置在当前工作树直接快照 finalize 前后�
 最后一项是预期的 fail-safe 生命周期行为，不能写成 20/20 全部 coast。它不构成重复
 命中、重复 birth 或身份改写。
 
-### 当前状态
+### 开发态状态
 
 代码路径和五个开发态定向回归通过。D6 对五例的 generation integrity 判定均为 true，
 但五个 manifest 全部是 dirty working tree，正式准入数为 `0/5`，失败原因仅为
 `repository_dirty_not_formal_evidence` 和 `episode_not_clean_formal_evidence`。
 
-因此本 hotfix 已关闭可复现的代码路径缺陷，但尚未关闭正式 R0 证据缺口。后续必须：
-
-1. 保留 clean source commit `98d01bf` 及其 D2/D6 前置提交，不跨提交拼接正式证据；
-2. 先解决存储容量阻塞；现有正式批次约 22 GiB、旧失败现场约 1.2 GiB，新批次预计约
-   22 GiB，运行器还要求保留 20 GiB 可用空间；
-3. 绑定 `98d01bf` 创建新的正式 execution plan；
-4. 从零重跑完整 900-cell R0；
-5. 由 D6 验证 900/900 generation integrity、repository clean 和 formal admission。
+因此本 hotfix 已关闭可复现的代码路径缺陷，但五个开发态 cell 本身不关闭正式 R0。
+后续正式批次必须使用冻结 source 和 execution plan，不能跨提交拼接证据。
 
 旧 `2c7b425` 正式 900-cell 结果继续保留为失败基线；本次 5-cell dirty 输出只能作为
 开发态定向回归，二者都不能改写为修复后的正式 R0。
+
+## 修复后正式重跑进度
+
+正式 source 为 `1e5ed8ddcf27f375e922a447decfbd875d21bfdf`，execution plan SHA-256
+为 `8804ecb4dd0513db55906905f031832711012974fc911546df40e09fb297d373`。
+shards 0、5、9 已完成，各 45 个单元，合计 135/900。
+
+| 原失败 cell | D6 clean-formal | formal eligible | generation contract | skip | pending | failure reason |
+| --- | --- | --- | --- | ---: | --- | --- |
+| delayed_noisy 5v5 seed 1000 | pass | pass | verified | 0 | empty | empty |
+| delayed_noisy 5v5 seed 1005 | pass | pass | verified | 0 | empty | empty |
+| delayed_noisy 20v20 seed 1009 | pass | pass | verified | 0 | empty | empty |
+
+D6 v10 对三项的正式准入为 3/3。D1 final generation 等于 D2 consumed generation，
+D2 consumption 等于 publication。原失败 5v5 seeds 1008/1018 尚未正式重跑，故当前
+只能声明 3/5 原失败项闭合，不能声明完整 R0 scope 或 900/900 正式验收。
+
+当前可用空间只比 20 GiB 运行下限多约 65 MB，main 已在完整单元边界停止启动新单元。
+存储迁移、扩容或明确清理后，应沿同一 source、plan 和分片合同继续其余 765 个单元，
+最后由 D6 对 900/900 generation integrity、clean-formal 和 formal admission 统一验收。

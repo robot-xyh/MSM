@@ -2326,5 +2326,9 @@ D2 replay-coast 复核提交为 `dc5821f`，D6 未验证 skip 失败关闭提交
 birth map 为空且 duplicate coalescence 为 0。20v20 seed 1009 有一条航迹超出
 replay-coast 宽限期，按既有失败关闭规则增加 miss 并清零 consecutive hits；它没有增加
 累计 hit、创建新轨或改写 ID。该结论已经由代码路径和 5-cell dirty-worktree 回归验证，
-尚未由完整 900-cell R0 正式复跑确认。clean source commit 已形成；正式复跑当前由
-存储容量阻塞。
+并开始接受正式复跑验证。source
+`1e5ed8ddcf27f375e922a447decfbd875d21bfdf` 的固定计划已完成 135/900；已覆盖的原失败
+5v5 seeds 1000/1005 和 20v20 seed 1009 均通过 D6 v10 的 clean-formal、formal
+eligible 和 generation verified 门，skip 为 0、pending 为空、failure reason 为空。
+seeds 1008/1018 尚未重跑，因此只关闭 3/5 原失败项。可用空间只比 20 GiB 运行下限多
+约 65 MB，运行已停止，完整 900-cell R0 仍开放。

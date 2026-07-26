@@ -1555,9 +1555,9 @@ consumed generation 与 publication，最后清空 pending。失败返回必须�
 关闭。
 
 main 已按该顺序完成修复和五个失败 seed 的开发态复跑。D2、D6 和 main 提交依次为
-`dc5821f`、`8e955f3`、`98d01bf`；`98d01bf` 已是 clean source commit。下一步先解决
-存储容量阻塞，再绑定该提交重跑正式 R0。若后续需要 no-op 优化，必须先实现 D2 可见
-完整输入的规范摘要和独立 resolved watermark，再申请 D6 准入。
+`dc5821f`、`8e955f3`、`98d01bf`。最终正式 source 已冻结为 `1e5ed8dd`，并在同一
+execution plan 下完成 135/900。若后续需要 no-op 优化，必须先实现 D2 可见完整输入的
+规范摘要和独立 resolved watermark，再申请 D6 准入。
 
 ### 47.4 Hotfix 接受结论
 
@@ -1572,10 +1572,23 @@ duplicate coalescence 或规范 `global_track_id` 变化。Tracker 快照还确�
 增加 miss 并清零 consecutive hits；该行为不属于重复命中或身份改写。
 
 评审接受代码和 5-cell 开发态定向回归，不接受其作为正式 R0 通过证据。五个 manifest
-均为 dirty working tree，D6 formal admission 为 0/5。修复已形成 clean source commit
-`98d01bf`，但新的完整 900-cell R0 尚未运行。当前存储无法同时满足既有证据保留、新批次
-空间和 20 GiB 运行下限；正式关闭需先解决存储，再从零完成 formal rerun。
+均为 dirty working tree，D6 formal admission 为 0/5。它们继续作为开发态历史证据，
+不与正式批次拼接。
 
 本轮 D2 replay-coast 专项为 `5 passed`，D2 全量为 `305 passed, 1 warning`，main
 hotfix 五 seed 定向测试为 `5 passed`；语法检查和 scoped diff 格式检查通过。该测试结果
 接受 D2 语义与开发态接线，不改变正式证据等级。
+
+### 47.5 正式增量评审
+
+评审接受正式 source `1e5ed8ddcf27f375e922a447decfbd875d21bfdf` 和 execution plan
+SHA-256 `8804ecb4dd0513db55906905f031832711012974fc911546df40e09fb297d373`。
+shards 0、5、9 已完成，共 135/900。
+
+D6 v10 对原失败的 5v5 seeds 1000/1005 和 20v20 seed 1009 给出 3/3 clean-formal、
+formal eligible 和 generation verified；三项 skip 为 0、pending 为空、failure reason
+为空。评审据此关闭 3/5 原失败项。5v5 seeds 1008/1018 尚未运行，完整 R0 不关闭。
+
+当前可用空间只比 20 GiB 运行下限多约 65 MB。main 在完整单元边界停止新任务符合分片
+合同。正式工作下一步是先解决存储，再沿同一 source 和 plan 完成剩余 765 个单元；禁止
+与旧 `2c7b425` 的 895 个通过项拼接。

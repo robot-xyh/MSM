@@ -1599,9 +1599,14 @@ evaluation payload 严格相同；相邻计数 `133/0` 不变。
   replay-coast 不变量。
 - [x] D2 replay-coast 复核提交为 `dc5821f`，D6 skip 准入修复提交为 `8e955f3`；
   二者均包含在 `98d01bf` 的提交历史中。
-- [ ] 解决正式 R0 存储容量阻塞，在不删除或改写既有证据的前提下满足新批次空间和
-  20 GiB 运行下限。
-- [ ] 绑定 `98d01bf` 生成新 execution plan，并从零重跑完整 900-cell R0。
+- [x] 正式 source 已冻结为 `1e5ed8ddcf27f375e922a447decfbd875d21bfdf`，execution
+  plan SHA-256 为
+  `8804ecb4dd0513db55906905f031832711012974fc911546df40e09fb297d373`。
+- [x] shards 0、5、9 已完成，共 135/900；其中三个原失败 cell 已由 D6 v10 正式闭合。
+- [ ] 解决存储容量阻塞。当前可用空间只比 20 GiB 运行下限多约 65 MB，已停止启动
+  新单元。
+- [ ] 存储解阻后按同一 source、plan 和分片合同继续其余 765 个单元；不得与旧
+  `2c7b425` 的 895 个通过项拼接。
 
 ### 39.3 验收
 
@@ -1627,8 +1632,9 @@ evaluation payload 严格相同；相邻计数 `133/0` 不变。
 D2 owner 快照确认五例累计 hits、last update time、track key 和 canonical ID 集合
 不变，created map 为空、duplicate coalescence 为 0。当前输出全部
 `repository_dirty=true`，D6 formal admission 为 0/5。P0 的代码修复已通过开发态复核，
-修复已形成 clean source commit `98d01bf`。正式证据关闭仍等待存储解阻后的完整
-900-cell R0。
+修复已形成 clean source commit `98d01bf`。后续正式 source
+`1e5ed8ddcf27f375e922a447decfbd875d21bfdf` 已运行 135/900；3/5 原失败项正式闭合，
+完整 R0 仍等待存储解阻后继续。
 
 ### 39.5 当前验证
 
@@ -1638,3 +1644,18 @@ D2 owner 快照确认五例累计 hits、last update time、track key 和 canoni
 - D2 全部 Python 文件 `py_compile` 和 scoped `git diff --check`：通过；
 - 全量 `pyflakes`：仅保留 `calibration.py:6` 自提交 `d0cd548f` 起存在的未使用
   `dataclasses.field` 导入，不属于本次 finalize 修复。
+
+### 39.6 正式重跑增量
+
+2026-07-25 的正式增量固定为：
+
+1. source commit：
+   `1e5ed8ddcf27f375e922a447decfbd875d21bfdf`；
+2. execution plan SHA-256：
+   `8804ecb4dd0513db55906905f031832711012974fc911546df40e09fb297d373`；
+3. 完成 shards：0、5、9，每片 45 个单元，合计 135/900；
+4. 原失败正式闭合：5v5 seed 1000、5v5 seed 1005、20v20 seed 1009；
+5. 上述三项 D6 v10 均为 clean-formal、formal eligible、generation verified，
+   skip=0、pending empty、failure reason empty；
+6. 5v5 seeds 1008/1018 尚未正式重跑，完整 R0 不关闭；
+7. 可用空间只比 20 GiB 下限多约 65 MB，运行已停止，等待存储解阻。

@@ -1220,7 +1220,17 @@ skip 为 0、pending 为空和在线真值使用为 0。
 coalescence 或规范 `global_track_id` 变化。四个 5v5 cell 全部 replay 在宽限期内
 coast；20v20 seed 1009 有一条航迹超出宽限期并按既有生命周期记一次 miss，累计 hit
 和原始证据更新时间仍不变。代码路径修复与 5-cell 开发态回归已通过；这些制品来自 dirty
-工作树。修复后的完整 900-cell R0 formal rerun 尚未运行；现有正式证据、新批次预计
-空间和 20 GiB 运行下限无法同时满足，当前仍由存储容量阻塞。2026-07-25 D2
+工作树。
+
+修复后正式 source 为 `1e5ed8ddcf27f375e922a447decfbd875d21bfdf`，execution plan
+SHA-256 为
+`8804ecb4dd0513db55906905f031832711012974fc911546df40e09fb297d373`。shards
+0、5、9 已完成，共 135/900。D6 v10 对已覆盖的原失败 5v5 seeds 1000/1005 和
+20v20 seed 1009 均判为 clean-formal、formal eligible、generation verified；skip 为
+0，pending 为空，failure reason 为空。原失败 seeds 1008/1018 尚未正式重跑。因此
+3/5 原失败项已正式闭合，完整 R0 仍保持开放。
+
+当前可用空间只比 20 GiB 运行下限多约 65 MB，main 已停止启动新单元。释放或扩展存储后
+才能按同一 source 和 plan 继续其余 765 个单元。2026-07-25 D2
 全量回归为 `305 passed, 1 warning in 29.45s`，main hotfix 定向测试为
 `5 passed, 66 deselected in 3.51s`。

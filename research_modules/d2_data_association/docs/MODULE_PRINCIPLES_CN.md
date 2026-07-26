@@ -1709,5 +1709,8 @@ clean source commit `0d2da25` 的 seed 1000 只读复算中，严格 IDSW 保持
 8. **超宽限按失败关闭处理**：replay 超过宽限期时可增加 miss 并触发生命周期退化，但
    仍不得增加累计 hit、刷新原始证据时间、重复建轨或改写 `global_track_id`。五个开发态
    定向 cell 已验证这些不变量。D2、D6 和 main 修复已依次形成 `dc5821f`、
-   `8e955f3`、`98d01bf`，其中 `98d01bf` 为 clean source commit；完整 900-cell R0
-   尚未运行，当前由存储容量阻塞。
+   `8e955f3`、`98d01bf`，其中 `98d01bf` 为 clean source commit。
+9. **局部正式通过不等于 scope 关闭**：source `1e5ed8dd` 已完成 135/900，原失败项中
+   seeds 1000、1005、1009 为 3/3 clean-formal 且 generation verified；seeds
+   1008/1018 未运行。只有同一 plan 的 900/900 完成并由 D6 汇总通过，才可关闭完整
+   R0。当前磁盘只比 20 GiB 下限多约 65 MB，停止运行不改变已完成单元的证据等级。
