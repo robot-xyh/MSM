@@ -1,5 +1,46 @@
 # D7 比例导引与末端视觉导引算法及实施方案
 
+## 2026-07-25 分配对状态生命周期实现
+
+批处理入口增加了独立于导引律的状态对账。处理顺序为：
+
+```text
+排序并校验资源索引与 resource_id 唯一性
+  -> 从 D3 binding、active plan 和 D2 GlobalTrack 判定生命周期有效 pair
+  -> 按有效 pair 集合回收改绑、丢失、撤销、过期、旧计划和批次缺失状态
+  -> 按原 PN/视觉 PNG 路径逐 pair 生成命令
+  -> 核对输出 global_track_id 与输入 binding 完全一致
+  -> 统计创建、复用和计划升级重置
+  -> 输出资源加速度矩阵和生命周期诊断
+```
+
+生命周期有效条件包括：binding 已授权且为 current、binding 与 active plan 的编号和
+版本一致、未过期、binding 的 `global_track_id` 与 D2 GlobalTrack 一致、航迹未进入
+lost/dropped/deleted、D4 未明确 revoke。D4 重规划/降级等待、人工复核等待、D5
+`reacquire` 和视觉短时丢帧不改变该集合。它们仍按原安全门阻断本帧视觉控制，但不会
+删除同一有效 pair 的估计器。视觉历史保留时间沿用
+`ScalableGuidanceConfig3D.coast_max_duration_s=0.25 s`，超过窗口后清空并重新预热。
+
+状态对账遍历当前状态和本批有效 key，额外复杂度为 `O(P+S)`，其中 `P` 为本批 pair
+数，`S` 为批前状态数。对账在命令计算前完成，避免改绑时旧、新 key 在批内同时占用
+状态；批前、对账后和每个 pair 计算后的状态数均纳入峰值。它不分配全局 pair-pair
+矩阵。计划 id/version 改变时，
+`_ensure_pair_state()` 生成新状态并记录 reset；同资源换目标记录新状态 created 和旧
+状态 `resource_rebound`；其余回收原因包括 `global_track_not_usable`、
+`assignment_withdrawn`、`assignment_expired` 和 `stale_plan_version`。
+
+`PairStateLifecycleDiagnostics3D` 同时提供批次值和累计值。时延使用单调高分辨率时钟
+记录每个 pair，并给出批内 P50/P95；模式迁移和回收事件保留资源、全局航迹、计划和
+原因。非有限命令仍在原命令完成器内归零并标记，批次诊断只汇总，不改变控制结果。
+若同一批次重复出现 `resource_index` 或 `resource_id`，控制器在状态对账和命令计算前
+拒绝整批输入，避免一个资源同时消费两个当前分配。
+
+冻结输入基准 `d7_pair_lifecycle_frozen_3d_v1` 运行 200 pair、9 批次。它包含视觉
+预热、D4 pending、D5 locked/reacquire、视觉丢帧/恢复、计划升级、部分改绑、目标
+丢失、撤销和旧版本注入。最终状态为 170，等于最终有效 pair；峰值为 200。该实现
+没有修改 `_position_velocity_pn()`、视觉 PNG、LOS 卡尔曼滤波、检测框面积 TTC、
+短时命令衰减和目标外推公式。
+
 ## 2026-07-23 固定输入性能分析
 
 20-seed 整栈计时显示 `module.d7_guidance` 累计均值由 `3.637837 s` 增至
@@ -859,6 +900,8 @@ control_context_id = resource_id + "->" + assigned_global_track_id
 ### 13.2 P2 隔离式三维 benchmark
 
 第二优先级（Priority 2，P2）可选对照位于 `optional_p2_benchmark.py`，只运行离线三维质点或 replay，不注册到在线 selector，不输出车辆命令，也不绕过 D3/D4/D5 合同。
+它与 `scalable_3d_guidance.py` 中已实现的三维位置-速度 PN 执行基线分离；前者用于
+算法对照，后者用于可扩展质点世界的当前命令回写。
 
 包括：
 
@@ -882,7 +925,8 @@ d3_d4_d5_gate_bypassed = false
 
 以下能力仍为缺口：
 
-- 默认在线三维 PN、True PN、APN 或 FRPN；
+- AirSim/实机默认三维姿态、推力和完整动力学闭环；
+- 在线/default True PN、APN 或 FRPN；
 - 协同到达、共同 time-to-go 和 impact-time consensus；
 - 成员间预测避碰和空中冲突解脱；
 - 联盟级协同控制消息和 leader/neighbor 导引；
@@ -994,7 +1038,9 @@ python3 -m pytest -q research_modules/d7_proportional_guidance/tests
 - P2 对照不进入默认 runtime；
 - actor mesh 和交付包资产完整性。
 
-本次仅创建算法与实施文档，没有修改代码和 `png_guidance_delivery` 核心算法，因此不要求重复运行全量测试。
+2026-07-25 生命周期收尾修改了三维批处理状态对账和诊断接口，未修改
+`png_guidance_delivery` 或 PN/PNG/LOS/TTC/外推核心公式。D7 全量测试结果为
+`220 passed`。
 
 ## 17. 实施约束清单
 
@@ -1010,7 +1056,8 @@ python3 -m pytest -q research_modules/d7_proportional_guidance/tests
 8. 图像 KF 和 coast 只服务同一身份、同一 owner 和单调版本的已锁定 pair。
 9. 在线控制不使用 AirSim truth identity 或 truth state；二者必须分开计数，真值只供 D6 离线评分。
 10. 默认视觉末段保持 `png_vm`，`png_ttc` 继续作为已验证候选。
-11. 3D PN、True PN、APN 和 FRPN 继续隔离为 P2 benchmark。
+11. 可扩展质点运行时继续使用已测试的三维位置-速度 PN 基线；参考 3D PN、True PN、
+    APN 和 FRPN 继续隔离为 P2 benchmark，不进入默认 AirSim 或实机控制路径。
 12. 在实现共同到达、避碰和联盟级控制消息之前，不得宣称已实现协同导引；用户已暂缓同时到达要求，该方向不作为当前紧急 P1。
 
 ## 18. 参考文档与证据索引

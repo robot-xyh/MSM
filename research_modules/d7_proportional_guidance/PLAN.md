@@ -1,5 +1,33 @@
 # D7 经典比例导引架构计划
 
+## 2026-07-25 分配对状态生命周期计划完成
+
+本轮按以下顺序完成 D7-owned 工作：
+
+1. 将“当前分配仍有效”和“本帧暂时不能执行”拆成两类判断，并在对账前校验资源索引
+   与资源标识均唯一；
+2. 在每次 `command_batch()` 计算命令前以当前有效 pair 集合对账，并在逐 pair
+   计算期间记录真实状态峰值；
+3. 对计划升级执行状态重建，对资源改绑、目标丢失、撤销、过期、旧计划和批次缺失
+   执行显式回收；
+4. 在既有 `0.25 s` 时限内保留同一有效 pair 在 D4 pending、D5 reacquire 和短时
+   视觉丢帧期间的滤波历史，超时后清空视觉状态；
+5. 为每批输出生命周期、模式、拒绝、饱和、非有限阻断和时延诊断；
+6. 用 200 pair、9 批次冻结输入完成计划升级、部分重分配和混合末端模式验收。
+
+2026-07-25 验收结果为 D7 全量 `220 passed`。冻结输入最终有效 pair 和状态均为
+170，峰值状态 200；40 个旧目标状态在资源改绑后回收，10 个 lost 状态、20 个批次
+撤回状态和 10 个旧版本状态均回收。旧计划接受、`global_track_id` 改写、非有限命令和
+状态上界违规均为 0。核心 PN/视觉 PNG、LOS、TTC、短时外推公式没有修改。
+
+下一阶段由 main/D6 完成，不再重复实现 D7 状态容器：
+
+1. 把 `PairStateLifecycleDiagnostics3D` 持久化到统一 episode sidecar；
+2. 在 200v200 长时多 seed 中核对活动状态峰值、重分配频率、回收原因和内存趋势；
+3. 把有效 D3 binding、D7 控制许可和离线 5 米结果按 pair 关联；
+4. 在固定硬件、无 `tracemalloc` 干扰的条件下复测 P50/P95 与实时预算；
+5. 单独完成 AirSim/SimpleFlight 平台响应和视觉链路标定。
+
 ## 2026-07-23 固定输入性能复核完成
 
 本轮按“20-seed 整栈现象 -> D7 源码同一性 -> 跨构建语义 -> 固定输入 A/B ->
@@ -144,7 +172,7 @@ D7 提供一个可被主流程接入的二维比例导引研究核和被动 runt
 
 ## 2026-07-13 当前状态同步
 
-commit `33e6fa0` 已完成 delivery 增强：图像 KF 按 resource/global/local track 与 plan owner 隔离；`png_ttc` 已加入面积 EMA、窗口斜率、跳变、裁剪和 TTC 范围治理。当前增量又将所有丢检外推统一限制在最后量测后 `0.25s` 内，并提供 dropout/TTC/trend 三类报告 helper。soft innovation prediction 与水平 LOS trend coast 仍为默认关闭的 candidate，6D LOS KF 只用于 replay，不进入默认在线控制。2026-07-14 当前权威 D7 全量回归值为 `188 passed`；后文较小计数均为对应历史子任务完成时的阶段值，不代表当前全量结果。
+commit `33e6fa0` 已完成 delivery 增强：图像 KF 按 resource/global/local track 与 plan owner 隔离；`png_ttc` 已加入面积 EMA、窗口斜率、跳变、裁剪和 TTC 范围治理。当前增量又将所有丢检外推统一限制在最后量测后 `0.25s` 内，并提供 dropout/TTC/trend 三类报告 helper。soft innovation prediction 与水平 LOS trend coast 仍为默认关闭的 candidate，6D LOS KF 只用于 replay，不进入默认在线控制。2026-07-14 阶段 D7 全量回归值为 `188 passed`；后文较小计数均为对应历史子任务完成时的阶段值，不代表本文顶部最新全量结果。
 
 2026-07-12 已实现显式 per-primary terminal authorization。`AssignmentGuidanceBinding` 新增 `terminal_authorization_scope` 和 `arrival_coordination_required`；只有 `per_primary + false` 的 active primary 可跳过共同视觉完成与 arrival window，按本资源 D5 lock 和视觉/机动门控独立切换。旧合同缺省仍走完整 coalition gate；standby reserve、D4 pending/reconfiguring、身份/版本、fallback commit/ACK/lease/epoch 均未放宽。runtime 输出 scope 和 `bypassed_arrival_only` 等审计字段，PN、`png_vm`、`png_ttc` 公式未修改。
 
@@ -215,13 +243,23 @@ fallback commit 合同通过 `D4GuidancePermission` 的可选字段和 duck-type
 
 当前“部分实现”的能力如下：
 
-- AirSim SimpleFlight 真实控制已在 main/runtime 层接入 D7 API，并能输出 `control_commands.csv`、`intercept_summary.json`、D7 runtime summary 和 D6 可消费字段；正式 episode bus metrics 已可合并真实执行结果。2v2 candidate 的 `20/20` 是迁移前非退化证据，不是 soft/trend 收益证明；M5N2 的 40-episode 批次只保留为迁移前历史基线。剩余 P1 是第二 primary、同配置 multi-seed/dropout/candidate、loop latency 以及 pair funnel/closing speed/三维机动标定；3D PN、True PN、APN、FRPN 在线化不属于当前 P1，只保留 P2 隔离 benchmark。
+- AirSim SimpleFlight 真实控制已在 main/runtime 层接入 D7 API，并能输出
+  `control_commands.csv`、`intercept_summary.json`、D7 runtime summary 和 D6
+  可消费字段；正式 episode bus metrics 已可合并真实执行结果。可扩展质点运行时的
+  六维 NED 状态和三维位置-速度 PN 已实现并测试；AirSim 平台三维姿态/推力闭环仍未
+  完成。2v2 candidate 的 `20/20` 是迁移前非退化证据，不是 soft/trend 收益证明；
+  M5N2 的 40-episode 批次只保留为迁移前历史基线。剩余 P1 是第二 primary、同配置
+  multi-seed/dropout/candidate、loop latency、pair funnel/closing speed 和平台机动
+  标定；True PN、APN、FRPN 在线化不属于当前 P1，只保留 P2 隔离 benchmark。
 - 相机 `X=0.5m` 前移、`640x480`/`120deg` FOV、`look_at_target` yaw 或 ComputerVision 相机朝向目标已在 AirSim runtime/settings/tests 中接入；D7 主线只消费 bbox 和固定 `focal_length_px` 近似，不直接管理真实相机外参、畸变或姿态估计。
 - `png_guidance_delivery` 的 truth/gimbal/strapdown、PX4、MAVLink body-rate、YOLO/ByteTrack 代码作为复现实验资料随 D7 保存；主线抽取 bbox-to-bearing、LOS-rate、TTC/VM 增益、图像角度 KF、短时 command coast 和 SimpleFlight 速度命令这一轻量核。
 
 当前未实现且不应在文档中表述为已接入默认主线的能力：
 
-- 更真实的机动约束，以及在线/default 3D PN、True PN、APN、FRPN、MPC/NMPC。3D PN、True PN、APN、FRPN 的本轮证据仅为隔离式离线质点 benchmark，其中 FRPN 是研究近似；这些 P2 law 不替代默认二维位置 PN 或 `png_guidance_delivery` VM/TTC API。
+- AirSim/实机三维姿态、推力、完整动力学和硬件约束，以及在线/default True PN、
+  APN、FRPN、MPC/NMPC。`optional_p2_benchmark.py` 中的参考 3D PN、True PN、APN、
+  FRPN 仍为隔离式离线质点 benchmark，其中 FRPN 是研究近似；这些 P2 law 不替代
+  可扩展质点三维基线、默认 AirSim 位置 PN 或 `png_guidance_delivery` VM/TTC API。
 - 硬件飞控、实机 PX4 Offboard、MAVLink body-rate/attitude 作为默认 main runtime 控制路径。
 - YOLO/ByteTrack/真实视觉检测闭环直接控制 D7 主线；现阶段只允许作为 delivery 或 D7 离线 bbox/LOS replay adapter，不直接进入 SimpleFlight 控制。
 - D7 本地分配、授权、重分配或 `global_track_id` 改写。

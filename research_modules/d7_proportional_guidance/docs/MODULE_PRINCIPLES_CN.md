@@ -1,5 +1,32 @@
 # 比例导引模块中文原理
 
+## 2026-07-25 分配对状态管理原理
+
+D7 的滤波状态属于“当前有效的资源-全局航迹分配对”，不属于资源本身，也不属于局部
+相机目标。状态键固定为 `(resource_id, assigned_global_track_id)`。D7 只能使用 D3
+下发的中心全局航迹编号，不能依据视觉结果创建或改写该编号。
+
+批处理将两个概念分开。第一类是生命周期有效性，包括授权、current 状态、active
+plan id/version、有效期和 GlobalTrack 生命周期。任一条件失效，pair state 在本批
+计算命令前回收，避免改绑时旧、新状态短暂叠加。第二类是本帧可执行性，包括 D4 暂态等待、D5 重获、视觉丢帧和末端质量
+门。可执行性失败会输出保持或中段命令，但只要原分配仍有效，就保留航迹、LOS、TTC
+和近期视觉命令历史。该保留只覆盖既有 `0.25 s` coast 窗口，较长中断会清空视觉
+状态，恢复后重新建立稳定帧和视线历史。
+
+计划版本升级时，即使资源和目标编号不变，也重建该 pair 状态。这样可避免旧计划的
+滤波历史跨越新的授权边界。资源改绑时，新目标形成新 key；旧目标 key 以
+`resource_rebound` 原因回收。目标 lost/dropped/deleted、分配撤销或过期、旧计划输入
+和批次中不再出现的分配分别留下明确回收原因。
+
+一个批次内每个资源只能出现一次。控制器同时校验 `resource_index` 和 `resource_id`
+唯一性；重复输入在状态对账前拒绝，防止同一资源并行消费两个分配。
+
+每批诊断给出活动 pair/state 数、峰值、创建/复用/重置/回收、回收事件、模式迁移、
+末端拒绝、命令饱和、非有限命令阻断和逐 pair 时延。该诊断不进入控制公式，只用于
+运行约束检查和 D6 离线分析。峰值统计覆盖批前、对账后和逐 pair 命令计算阶段。
+2026-07-25 的 200 pair 冻结输入中，状态上界违规、
+旧计划接受、身份改写和非有限命令均为 0；D7 全量为 `220 passed`。
+
 ## 2026-07-23 性能归因原则
 
 集成栈中的 `module.d7_guidance` 不是纯导引公式计时。它从 main 构造当前 pair 输入
@@ -115,7 +142,7 @@ D7 对每个资源-目标 pair 使用两层漏斗。规范漏斗固定为“已�
 
 末端未切换必须按最早不可通过的阶段解释，不能只报一个 `terminal_switch_allowed=false`。当前 `d7_pair_guidance_funnel_v2` 先区分“尚未进入交接距离”和“已经进入交接区”，再区分 D5 声明锁定、D7 是否获得真实图像量测、相机框质量、视线角速度质量、闭合速度、平台机动裕度、迟滞锁存和最终控制许可。距离阶段只是诊断 D3 候选的交接区是否实际到达，不新增授权；闭合速度字段只是公开既有门限结果，不改变公式。
 
-对 seed-1 真实输出的审计表明，M5N2 两个 pair 在约 `35-39 m` 终止，未到约 `30 m` 交接区；另一个在约 `26 m` 进入交接区后仍未建立 D5 lock/measured lock。主 CSV 中 raw gate false 但 reason 为空的行属于证据缺失，必须显式报告，不能归因到 camera/LOS/maneuver。D7 当前全量测试为 `188 passed`；该结果不代表 M5N2 物理闭环已完成，也不改变上游门控或全局航迹身份。
+对 seed-1 真实输出的审计表明，M5N2 两个 pair 在约 `35-39 m` 终止，未到约 `30 m` 交接区；另一个在约 `26 m` 进入交接区后仍未建立 D5 lock/measured lock。主 CSV 中 raw gate false 但 reason 为空的行属于证据缺失，必须显式报告，不能归因到 camera/LOS/maneuver。2026-07-14 当日 D7 全量测试为 `188 passed`；该结果不代表 M5N2 物理闭环已完成，也不改变上游门控或全局航迹身份。
 
 ## 2026-07-14 末端语义规范
 
@@ -722,6 +749,10 @@ control_context_id = resource_id + "->" + assigned_global_track_id
 
 当前 `png_ttc` 已有主模块实现和真实 2v2 运行证据，但不是默认 AirSim controlled intercept 导引律。图像 KF 的常规丢帧预测已实现；soft innovation prediction、水平 trend coast 和六状态 LOS KF 在线控制均非默认，其中六状态 LOS KF 只用于离线 replay。
 
+可扩展质点运行时另有六维 NED 状态和三维位置-速度 PN 执行基线，可输出按资源索引
+排列的三维加速度。它已完成确定性测试，但不等于 AirSim/SimpleFlight 或实机已经
+具备姿态、推力和完整多旋翼动力学闭环。
+
 ### 8.2 P2 隔离式离线对照
 
 `optional_p2_benchmark.py`（P2 可选基准）只运行恒速追踪质点和带时间戳目标 replay，对照：
@@ -739,7 +770,8 @@ FRPN 项尤其只是 research approximation，未复现标准模糊规则库，�
 
 以下能力必须继续标为未实现、部分参考或未晋级：
 
-- 默认在线 3D PN、True PN、APN 或 FRPN；
+- AirSim/实机默认三维姿态、推力和完整动力学闭环；
+- 在线/default True PN、APN 或 FRPN；
 - 共同 time-to-go、impact-time consensus、leader/neighbor 协同导引通信；
 - 终端 sector/impact-angle 分配、成员间碰撞规避和协同到达控制；
 - 多旋翼完整动力学、底层姿态/推力闭环和硬件在环验证；

@@ -9,11 +9,12 @@ create/rebind global track identities.
 
 from __future__ import annotations
 
-from collections import deque
+from collections import Counter, deque
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field, replace
 from enum import Enum
 import math
+import time
 from typing import Any
 
 import numpy as np
@@ -297,11 +298,76 @@ class GuidanceCommand3D:
 
 
 @dataclass(frozen=True)
+class PairStateReclaimEvent3D:
+    """One auditable removal of an assignment-pair state bundle."""
+
+    resource_id: str
+    assigned_global_track_id: str
+    plan_id: str
+    plan_version: int
+    reason: str
+
+
+@dataclass(frozen=True)
+class GuidanceModeTransition3D:
+    """One mode transition observed while evaluating a batch."""
+
+    resource_id: str
+    assigned_global_track_id: str
+    previous_mode: str
+    current_mode: str
+    gate_reason: str
+
+
+@dataclass(frozen=True)
+class PairStateLifecycleDiagnostics3D:
+    """Batch-local and cumulative lifecycle diagnostics for pair state."""
+
+    batch_index: int
+    input_pair_count: int
+    active_pair_count: int
+    active_state_count: int
+    peak_active_state_count: int
+    created_count: int
+    reused_count: int
+    reset_count: int
+    reclaimed_count: int
+    cumulative_created_count: int
+    cumulative_reused_count: int
+    cumulative_reset_count: int
+    cumulative_reclaimed_count: int
+    reset_reasons: Mapping[str, int]
+    reclaim_reasons: Mapping[str, int]
+    reclaim_events: tuple[PairStateReclaimEvent3D, ...]
+    mode_transitions: tuple[GuidanceModeTransition3D, ...]
+    terminal_reject_reasons: Mapping[str, int]
+    command_saturation_count: int
+    nonfinite_command_block_count: int
+    stale_plan_reject_count: int
+    stale_plan_accept_count: int
+    global_track_id_rewrite_count: int
+    pair_latency_ms: tuple[float, ...]
+    pair_latency_p50_ms: float
+    pair_latency_p95_ms: float
+    batch_latency_ms: float
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "reset_reasons", dict(self.reset_reasons))
+        object.__setattr__(self, "reclaim_reasons", dict(self.reclaim_reasons))
+        object.__setattr__(
+            self,
+            "terminal_reject_reasons",
+            dict(self.terminal_reject_reasons),
+        )
+
+
+@dataclass(frozen=True)
 class GuidanceBatch3D:
     """Resource-indexed acceleration matrix suitable for ``world.step``."""
 
     acceleration_ned_mps2: np.ndarray
     pair_commands: tuple[GuidanceCommand3D, ...]
+    lifecycle_diagnostics: PairStateLifecycleDiagnostics3D | None = None
 
     def __post_init__(self) -> None:
         acceleration = np.asarray(self.acceleration_ned_mps2, dtype=float)
@@ -504,9 +570,17 @@ class ScalableGuidanceController3D:
     def __init__(self, config: ScalableGuidanceConfig3D | None = None) -> None:
         self.config = config or ScalableGuidanceConfig3D()
         self._pair_states: dict[tuple[str, str], _PairState] = {}
+        self._batch_index = 0
+        self._peak_active_state_count = 0
+        self._lifecycle_totals: Counter[str] = Counter()
+        self._last_batch_diagnostics: PairStateLifecycleDiagnostics3D | None = None
 
     def reset(self) -> None:
         self._pair_states.clear()
+        self._batch_index = 0
+        self._peak_active_state_count = 0
+        self._lifecycle_totals.clear()
+        self._last_batch_diagnostics = None
 
     def reset_pair(self, resource_id: str, assigned_global_track_id: str) -> None:
         self._pair_states.pop((str(resource_id), str(assigned_global_track_id)), None)
@@ -534,14 +608,31 @@ class ScalableGuidanceController3D:
             last_visual_command_timestamp_s=state.last_visual_command_timestamp_s,
         )
 
+    @property
+    def active_pair_state_count(self) -> int:
+        """Return the number of retained assignment-pair state bundles."""
+
+        return len(self._pair_states)
+
+    @property
+    def last_batch_diagnostics(self) -> PairStateLifecycleDiagnostics3D | None:
+        """Return the latest batch lifecycle summary."""
+
+        return self._last_batch_diagnostics
+
     def command_batch(
         self,
         pair_inputs: Iterable[AssignmentPairGuidanceInput3D],
         *,
         resource_count: int,
     ) -> GuidanceBatch3D:
-        """Return a full resource-indexed command array with zero-filled gaps."""
+        """Return a full resource-indexed command array with zero-filled gaps.
 
+        ``pair_inputs`` is the authoritative active-assignment snapshot for this
+        batch. Retained state omitted from the snapshot is reclaimed.
+        """
+
+        batch_started_ns = time.perf_counter_ns()
         if resource_count <= 0:
             raise ValueError("resource_count must be positive")
         inputs = sorted(
@@ -551,6 +642,17 @@ class ScalableGuidanceController3D:
         commands = np.zeros((resource_count, 3), dtype=float)
         outputs: list[GuidanceCommand3D] = []
         used_indices: set[int] = set()
+        used_resource_ids: set[str] = set()
+        classified_inputs: list[
+            tuple[
+                AssignmentPairGuidanceInput3D,
+                AssignmentGuidanceBinding,
+                tuple[str, str],
+            ]
+        ] = []
+        input_keys: list[tuple[str, str]] = []
+        active_keys: set[tuple[str, str]] = set()
+        invalid_reasons: dict[tuple[str, str], str] = {}
         for pair_input in inputs:
             index = int(pair_input.resource_index)
             if not 0 <= index < resource_count:
@@ -558,10 +660,152 @@ class ScalableGuidanceController3D:
             if index in used_indices:
                 raise ValueError("each resource_index may appear at most once per batch")
             used_indices.add(index)
+            binding, lifecycle_active, lifecycle_reason = self._classify_pair_lifecycle(
+                pair_input
+            )
+            if binding.resource_id in used_resource_ids:
+                raise ValueError("each resource_id may appear at most once per batch")
+            used_resource_ids.add(binding.resource_id)
+            key = (binding.resource_id, binding.assigned_global_track_id)
+            input_keys.append(key)
+            if lifecycle_active:
+                active_keys.add(key)
+            else:
+                invalid_reasons[key] = lifecycle_reason
+            classified_inputs.append((pair_input, binding, key))
+
+        before_states = dict(self._pair_states)
+        reclaim_events = self._reconcile_pair_states(
+            active_keys=active_keys,
+            invalid_reasons=invalid_reasons,
+        )
+        batch_peak_state_count = max(
+            len(before_states),
+            len(self._pair_states),
+        )
+        pair_latency_ms: list[float] = []
+        for pair_input, binding, _ in classified_inputs:
+            index = int(pair_input.resource_index)
+            pair_started_ns = time.perf_counter_ns()
             output = self.command_pair(pair_input)
+            pair_latency_ms.append((time.perf_counter_ns() - pair_started_ns) / 1.0e6)
+            if output.assigned_global_track_id != binding.assigned_global_track_id:
+                raise RuntimeError("D7 must not create or rewrite global_track_id")
             commands[index] = np.asarray(output.acceleration_ned_mps2, dtype=float)
             outputs.append(output)
-        return GuidanceBatch3D(commands, tuple(outputs))
+            batch_peak_state_count = max(
+                batch_peak_state_count,
+                len(self._pair_states),
+            )
+
+        after_command_states = dict(self._pair_states)
+        created_count = 0
+        reused_count = 0
+        reset_count = 0
+        reset_reasons: Counter[str] = Counter()
+        for key in active_keys:
+            previous = before_states.get(key)
+            current = after_command_states.get(key)
+            if current is None:
+                continue
+            if previous is None:
+                created_count += 1
+            elif previous is current:
+                reused_count += 1
+            else:
+                reset_count += 1
+                if previous.plan_id != current.plan_id:
+                    reset_reasons["plan_id_changed"] += 1
+                elif previous.plan_version != current.plan_version:
+                    reset_reasons["plan_version_changed"] += 1
+                else:
+                    reset_reasons["pair_state_reinitialized"] += 1
+
+        reclaim_reasons = Counter(event.reason for event in reclaim_events)
+        self._peak_active_state_count = max(
+            self._peak_active_state_count,
+            batch_peak_state_count,
+        )
+        self._lifecycle_totals.update(
+            {
+                "created": created_count,
+                "reused": reused_count,
+                "reset": reset_count,
+                "reclaimed": len(reclaim_events),
+            }
+        )
+        self._batch_index += 1
+
+        mode_transitions = tuple(
+            GuidanceModeTransition3D(
+                resource_id=command.resource_id,
+                assigned_global_track_id=command.assigned_global_track_id,
+                previous_mode=command.previous_mode or "",
+                current_mode=command.mode.value,
+                gate_reason=command.gate_reason,
+            )
+            for command in outputs
+            if command.mode_transition
+        )
+        terminal_reject_reasons = Counter(
+            command.gate_reason
+            for command in outputs
+            if _is_terminal_reject_reason(command.gate_reason)
+        )
+        stale_plan_reject_count = sum(
+            command.gate_reason in {"stale_plan_id", "stale_plan_version"}
+            for command in outputs
+        )
+        stale_plan_accept_count = sum(
+            key in invalid_reasons
+            and invalid_reasons[key] in {"stale_plan_id", "stale_plan_version"}
+            and command.mode is not GuidanceMode3D.HOLD
+            for key, command in zip(input_keys, outputs, strict=True)
+        )
+        latencies = np.asarray(pair_latency_ms, dtype=float)
+        pair_latency_p50_ms = (
+            float(np.percentile(latencies, 50.0)) if latencies.size else 0.0
+        )
+        pair_latency_p95_ms = (
+            float(np.percentile(latencies, 95.0)) if latencies.size else 0.0
+        )
+        batch_latency_ms = (time.perf_counter_ns() - batch_started_ns) / 1.0e6
+        diagnostics = PairStateLifecycleDiagnostics3D(
+            batch_index=self._batch_index,
+            input_pair_count=len(inputs),
+            active_pair_count=len(active_keys),
+            active_state_count=len(self._pair_states),
+            peak_active_state_count=self._peak_active_state_count,
+            created_count=created_count,
+            reused_count=reused_count,
+            reset_count=reset_count,
+            reclaimed_count=len(reclaim_events),
+            cumulative_created_count=self._lifecycle_totals["created"],
+            cumulative_reused_count=self._lifecycle_totals["reused"],
+            cumulative_reset_count=self._lifecycle_totals["reset"],
+            cumulative_reclaimed_count=self._lifecycle_totals["reclaimed"],
+            reset_reasons=reset_reasons,
+            reclaim_reasons=reclaim_reasons,
+            reclaim_events=reclaim_events,
+            mode_transitions=mode_transitions,
+            terminal_reject_reasons=terminal_reject_reasons,
+            command_saturation_count=sum(
+                command.command_saturated for command in outputs
+            ),
+            nonfinite_command_block_count=sum(
+                command.gate_reason == "nonfinite_command_blocked"
+                for command in outputs
+            ),
+            stale_plan_reject_count=stale_plan_reject_count,
+            stale_plan_accept_count=stale_plan_accept_count,
+            global_track_id_rewrite_count=0,
+            pair_latency_ms=tuple(pair_latency_ms),
+            pair_latency_p50_ms=pair_latency_p50_ms,
+            pair_latency_p95_ms=pair_latency_p95_ms,
+            batch_latency_ms=batch_latency_ms,
+        )
+        self._last_batch_diagnostics = diagnostics
+        return GuidanceBatch3D(commands, tuple(outputs), diagnostics)
 
     def command_pair(self, pair_input: AssignmentPairGuidanceInput3D) -> GuidanceCommand3D:
         """Evaluate one pair without changing any upstream object or identity."""
@@ -585,7 +829,15 @@ class ScalableGuidanceController3D:
         )
         if gate_reason:
             state = self._pair_states.get(key)
-            if state is not None:
+            preserve_transient = (
+                state is not None
+                and _preserve_state_for_transient_d4_gate(permission)
+                and self._visual_history_within_transient_window(
+                    state,
+                    timestamp_s,
+                )
+            )
+            if state is not None and not preserve_transient:
                 state.reset_visual()
             return self._hold_command(
                 pair_input=pair_input,
@@ -678,7 +930,11 @@ class ScalableGuidanceController3D:
         )
         d5_state = _string_value(pair_input.terminal_association, "decision_state").lower()
         if association_reason:
-            state.reset_visual()
+            if d5_state != "reacquire" or not self._visual_history_within_transient_window(
+                state,
+                timestamp_s,
+            ):
+                state.reset_visual()
             return self._finish_command(
                 pair_input=pair_input,
                 binding=binding,
@@ -715,7 +971,11 @@ class ScalableGuidanceController3D:
             resource_id=binding.resource_id,
         )
         if not contract.allowed:
-            state.reset_visual()
+            if d5_state != "reacquire" or not self._visual_history_within_transient_window(
+                state,
+                timestamp_s,
+            ):
+                state.reset_visual()
             return self._finish_command(
                 pair_input=pair_input,
                 binding=binding,
@@ -730,7 +990,8 @@ class ScalableGuidanceController3D:
                 terminal_contract_allowed=False,
             )
         if observation is None:
-            state.reset_visual()
+            if not self._visual_history_within_transient_window(state, timestamp_s):
+                state.reset_visual()
             return self._finish_command(
                 pair_input=pair_input,
                 binding=binding,
@@ -950,6 +1211,79 @@ class ScalableGuidanceController3D:
             )
             self._pair_states[key] = state
         return state
+
+    def _classify_pair_lifecycle(
+        self,
+        pair_input: AssignmentPairGuidanceInput3D,
+    ) -> tuple[AssignmentGuidanceBinding, bool, str]:
+        """Classify state retention separately from transient execution gates."""
+
+        binding = _coerce_binding(pair_input.binding)
+        track = _coerce_global_track(pair_input.global_track)
+        if binding.assigned_global_track_id != track.global_track_id:
+            return binding, False, "global_track_id_mismatch"
+        if not binding.is_authorized:
+            return binding, False, "assignment_revoked"
+        if not binding.is_current:
+            state = binding.assignment_validity_state.lower()
+            reason = (
+                "assignment_revoked"
+                if state in {"revoked", "superseded", "cancelled", "canceled"}
+                else "assignment_not_current"
+            )
+            return binding, False, reason
+        if binding.plan_id != str(pair_input.active_plan_id):
+            return binding, False, "stale_plan_id"
+        if binding.plan_version != int(pair_input.active_plan_version):
+            return binding, False, "stale_plan_version"
+        if (
+            binding.expires_at_s is not None
+            and pair_input.timestamp_s > binding.expires_at_s
+        ):
+            return binding, False, "assignment_expired"
+        if track.lifecycle_state in {"lost", "dropped", "deleted"}:
+            return binding, False, "global_track_not_usable"
+        permission = coerce_d4_guidance_permission(pair_input.d4_permission)
+        permission_states = {
+            permission.action.lower(),
+            permission.mode.lower(),
+            permission.reason.lower(),
+        }
+        if permission_states & {"revoke", "revoked"}:
+            return binding, False, "d4_assignment_revoked"
+        return binding, True, ""
+
+    def _reconcile_pair_states(
+        self,
+        *,
+        active_keys: set[tuple[str, str]],
+        invalid_reasons: Mapping[tuple[str, str], str],
+    ) -> tuple[PairStateReclaimEvent3D, ...]:
+        """Remove state that no longer belongs to the current assignment batch."""
+
+        active_resource_ids = {resource_id for resource_id, _ in active_keys}
+        events: list[PairStateReclaimEvent3D] = []
+        for key, state in tuple(self._pair_states.items()):
+            if key in active_keys:
+                continue
+            reason = invalid_reasons.get(key)
+            if not reason:
+                reason = (
+                    "resource_rebound"
+                    if state.resource_id in active_resource_ids
+                    else "assignment_withdrawn"
+                )
+            events.append(
+                PairStateReclaimEvent3D(
+                    resource_id=state.resource_id,
+                    assigned_global_track_id=state.assigned_global_track_id,
+                    plan_id=state.plan_id,
+                    plan_version=state.plan_version,
+                    reason=reason,
+                )
+            )
+            del self._pair_states[key]
+        return tuple(events)
 
     def _update_track_filter(
         self,
@@ -1177,6 +1511,17 @@ class ScalableGuidanceController3D:
         if not np.isfinite(value) or value < 0.0:
             raise ValueError("available_accel_mps2 must be finite and nonnegative")
         return min(value, self.config.max_accel_mps2)
+
+    def _visual_history_within_transient_window(
+        self,
+        state: _PairState,
+        timestamp_s: float,
+    ) -> bool:
+        last_measurement_s = state.los_filter.last_timestamp_s
+        if last_measurement_s is None:
+            return False
+        age_s = float(timestamp_s) - float(last_measurement_s)
+        return -EPS <= age_s <= self.config.coast_max_duration_s + EPS
 
     def _hold_command(
         self,
@@ -1518,6 +1863,44 @@ def _window_slope(window: Iterable[tuple[float, float]]) -> float | None:
     if denominator <= EPS:
         return None
     return float(np.dot(timestamps, values - values.mean()) / denominator)
+
+
+def _preserve_state_for_transient_d4_gate(
+    permission: D4GuidancePermission,
+) -> bool:
+    """Keep estimator history while an otherwise-current pair awaits D4."""
+
+    transient_states = {
+        "hold",
+        "hold_for_review",
+        "request_center_replan",
+        "degrade_to_secondary",
+        "degrade_to_distributed",
+        "reassign",
+        "coalition_fallback_unsupported",
+        "pending",
+        "reconfiguring",
+    }
+    values = {
+        permission.action.lower(),
+        permission.mode.lower(),
+        permission.reason.lower(),
+    }
+    return permission.requires_human_review or bool(values & transient_states)
+
+
+def _is_terminal_reject_reason(reason: str) -> bool:
+    """Separate terminal handoff rejects from ordinary mode annotations."""
+
+    return bool(
+        reason
+        and reason
+        not in {
+            "terminal_range_not_reached",
+            "estimated_range_stop",
+            "bounded_visual_coast",
+        }
+    )
 
 
 def _command_metadata() -> dict[str, Any]:

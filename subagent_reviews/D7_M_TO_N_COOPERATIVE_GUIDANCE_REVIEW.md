@@ -1,5 +1,16 @@
 # D7 M 对 N 多无人机协同导引与到达时序综述
 
+## 2026-07-25 分配对生命周期补充
+
+M 对 N 运行时继续按 `(resource_id, global_track_id)` 隔离状态。当前批次计算命令前
+会回收改绑、丢失、撤销、过期、旧计划和批次缺失状态；计划升级重建同 pair 状态。
+D4 pending、D5 reacquire 和短时丢帧只在既有 `0.25 s` 窗口内保留当前有效 pair 的
+滤波历史。该实现不形成联盟、不修改成员、不协调到达，也不改写 `global_track_id`。
+
+200 pair、9 批次冻结输入最终保留 170 个有效状态，峰值 200；旧计划接受、身份改写
+和非有限命令均为 0。D7 当前全量 `220 passed`。该结果关闭状态长期累积缺口，不代表
+M 对 N 协同到达、成员避碰、长时 200v200 物理闭环或实时准入已经完成。
+
 ## 2026-07-20 三维 N-pair 执行边界补充
 
 新增 `ScalableGuidanceController3D.command_batch()` 可在一次调用中处理任意长度的
@@ -59,7 +70,13 @@ baseline 和 candidate 的 active-primary 成功都是 `6/30`，target 都是 `6
 12. **M5N2 no-switch 必须按 pair 首失败解释**。`d7_pair_guidance_funnel_v2` 先区分是否进入配置交接距离，再区分 D5 declared/measured lock、raw gate、camera/LOS/closing-speed/maneuver 和 latch/effective control。seed-1 现有输出中，两个 active pair 在约 `35-39 m` 停止，未进入约 `30 m` 交接区；一个 pair 进入约 `26 m` 后仍 `d5_not_locked`。主 CSV 缺 raw reject/measured-lock 字段时必须报 evidence missing，不能把默认 false 解释成具体视觉门限失败。
 13. **配置视觉律、候选视觉律与实际执行律必须分开**。`d7_guidance_law_semantics_v1` 规定 main 选择 `png_vm/png_ttc` 只代表配置了 radar-to-vision 策略；本帧候选 PNG 经过 camera/LOS/maneuver gate 后，只有 effective control 与 visual latch 都成立才可成为 executed law。gate 失败时实际执行仍是 `radar_pn`。联盟统计必须使用同一 live state instance 的 `executed_visual_mode_switch`，不能从 candidate、handover 状态或 legacy active-sample 字段推断切换。
 
-因此，协同到达属于后置研究，不是当前 P0 或 P1 运行断链。impact-time consensus、同步到达和到达离散优化不进入当前 P1 验收；当前只保持 per-primary 独立完成、联盟版本/角色/激活合同和安全门控。D7-owned pair 诊断与导引律执行语义已由 `188 passed` 关闭，main/D6 canonical 五层也已正式闭合；开放项仅为第二 primary、multi-seed/dropout/candidate、延迟及 pair-funnel/closing-speed/三维机动标定。现有 D3/D4/D5/D7 执行链必须保持可用，且不得通过修改 `png_guidance_delivery` 公式或放宽 D3/D4/D5 gate 来伪造协同能力。
+因此，协同到达属于后置研究，不是当前 P0 或 P1 运行断链。impact-time consensus、
+同步到达和到达离散优化不进入当前 P1 验收；当前只保持 per-primary 独立完成、联盟
+版本/角色/激活合同和安全门控。D7-owned pair 诊断、导引律执行语义和状态生命周期
+已由当前 `220 passed` 覆盖，main/D6 canonical 五层也已正式闭合；开放项包括
+生命周期 sidecar 持久化、长时 200v200 多 seed、固定硬件时延、第二 primary、
+pair-funnel/closing-speed 和平台机动标定。现有 D3/D4/D5/D7 执行链必须保持可用，
+且不得通过修改 `png_guidance_delivery` 公式或放宽 D3/D4/D5 gate 来伪造协同能力。
 
 ## 2. 问题定义与判定边界
 

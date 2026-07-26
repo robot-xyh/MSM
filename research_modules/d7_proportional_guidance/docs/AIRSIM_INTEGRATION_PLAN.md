@@ -1,5 +1,17 @@
 # D7 AirSim 集成计划
 
+## 2026-07-25 分配对生命周期诊断接入
+
+D7 已在 `GuidanceBatch3D` 中提供批次生命周期诊断，但本轮没有启动 AirSim，也没有
+修改 main-owned episode 状态机。main 接入时应把同一批次的 active plan、D3
+binding、D4 permission、D5 terminal association、D7 命令和
+`PairStateLifecycleDiagnostics3D` 写入同一 episode 时序。状态创建、版本重置、改绑
+回收、目标丢失、撤销、旧计划拒绝和模式迁移必须保留 pair 身份与计划版本。
+
+冻结输入验收只证明 200 pair 状态在确定性 9 批次序列中有界，且旧计划接受和
+`global_track_id` 改写为 0。AirSim 接入仍需验证长时多 seed 状态峰值、平台响应、
+视觉时序和离线 5 米结果；单机 `tracemalloc` 时延不作为实时准入依据。
+
 ## 2026-07-21 隔离双臂接入边界
 
 本轮新增合同面向 main-owned 三维质点克隆世界，没有启动 AirSim，也没有改变

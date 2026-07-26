@@ -1,5 +1,44 @@
 # D7 比例导引与末端视觉 PNG 实现差距审计
 
+## 2026-07-25 GAP 更新：分配对状态生命周期缺口关闭
+
+此前 `ScalableGuidanceController3D` 只在调用方显式 reset 时删除 pair state。长期
+滚动分配中，已撤销、已改绑或目标已丢失的 `(resource_id, global_track_id)` 可能继续
+保留。该问题会使状态数量随历史分配累积，并限制 D6 对模式和滤波状态的归因。本轮已
+在 D7-owned 范围关闭。
+
+当前批处理先从 binding、active plan 和 GlobalTrack 生命周期判断有效 pair，在命令
+计算前对账并回收资源改绑、目标丢失、分配撤销/过期、旧计划和批次缺失状态，避免
+旧、新 key 在批内短暂叠加。同 key 的
+plan id/version 变化记为状态重置。D4 pending、D5 reacquire 和短时视觉丢帧属于暂态
+控制门，不属于分配失效，保留同一 pair 的滤波历史。每批输出活动状态、创建/复用/
+重置/回收、回收原因、模式迁移、末端拒绝、饱和、非有限阻断和时延诊断。暂态视觉
+历史只在既有 `0.25 s` coast 时限内保留，超时仍清空。
+同一批次重复 `resource_index` 或 `resource_id` 会在状态对账前拒绝，避免同一资源
+消费两个当前分配。
+
+验证日期为 2026-07-25。冻结输入共 200 pair、9 批次；峰值统计覆盖批前、对账后和
+逐 pair 计算阶段。最终有效 pair/state 为
+`170/170`，峰值状态 200。累计创建 250、复用 1120、计划版本重置 330、回收 80；
+回收分布为资源改绑 40、目标丢失 10、批次撤回 20、旧计划版本 10。状态上界违规、
+旧计划接受、身份改写和非有限命令均为 0，暂态滤波状态保持检查通过。D7 全量
+`220 passed`，验收阈值为零失败。
+
+**P0 状态：** 未新增运行级 P0。身份、计划版本、D4/D5 合同和非有限命令继续
+fail closed。
+
+**仍开放的 P1：**
+
+1. main 尚未把新的生命周期诊断写入统一 episode sidecar，D6 不能在正式多 seed
+   结果中关联状态回收、模式迁移和物理结果；
+2. 200v200 长时物理闭环、持续视觉末制导和至少 20 个未见 seed 尚未验收；
+3. 冻结输入的内存和时延来自单机、单次、启用 `tracemalloc` 的开发测量，不能替代
+   固定硬件实时预算；
+4. AirSim/SimpleFlight 姿态、推力、碰撞、相机时序和实际平台饱和仍未闭合；
+5. 多成员同时到达和避碰不在当前要求内，也未由本轮实现。
+
+本轮未修改 PN、视觉 PNG、LOS、TTC、外推或 `png_guidance_delivery` 核心公式。
+
 ## 2026-07-23 GAP 更新：整栈差异未复现为 D7 内核回归
 
 clean `0d2da25 -> 5263e2b` 的 20-seed 整栈 D7 累计墙钟均值为
@@ -97,7 +136,7 @@ GAP 状态更新如下：
 
 | GAP | 新状态 | 剩余限制 |
 | --- | --- | --- |
-| 六维 NED 3D PN 与世界回写 | D7-owned implemented/tested | main 尚未接 episode bus，也未做 200 对闭环耗时 |
+| 六维 NED 3D PN 与世界回写 | D7-owned implemented/tested，main 已接统一 episode 状态机 | 200 对长时多 seed 物理闭环与正式耗时仍开放 |
 | 末端三维 strapdown TTC PNG | D7-owned deterministic path implemented/tested | 真实 D5 相机流、姿态同步、识别率和 AirSim 外参未标定 |
 | per-pair filter/extrapolation/coast | implemented/tested | 仅 2 帧/0.25s 固定默认，尚无多 seed 平台调参 |
 | 5 米闭环 | point-mass fixture passed | 不是 AirSim truth-isolated 多 seed 物理成功率 |
@@ -143,7 +182,7 @@ P1 仍开放：第二 primary acquisition/5 米闭环、同配置 multi-seed/dro
 
 ## 2026-07-14 M5N2 no-switch 诊断 P1 关闭与外部 P1
 
-D7-owned 缺口已关闭：`d7_pair_guidance_funnel_v2` 现在按 assignment pair 输出配置交接距离、D5 declared/measured lock、raw gate、camera/LOS/closing-speed/maneuver、effective contract、latch、effective control、mode 和 physical 的 available/reached 漏斗，并汇总全 pair 首失败 stage/reason。runtime 仅新增闭合速度既有门限的显式结果/阈值，未修改 PN/PNG/LOS/外推公式或任何 D3/D4/D5/身份/版本门控。`raw gate=false` 且没有 reject reason 会产生明确数据质量告警，不再归因到默认 false 的 camera 或 maneuver 字段。D7 当前全量回归为 `188 passed`，验收阈值零失败。
+D7-owned 缺口已关闭：`d7_pair_guidance_funnel_v2` 现在按 assignment pair 输出配置交接距离、D5 declared/measured lock、raw gate、camera/LOS/closing-speed/maneuver、effective contract、latch、effective control、mode 和 physical 的 available/reached 漏斗，并汇总全 pair 首失败 stage/reason。runtime 仅新增闭合速度既有门限的显式结果/阈值，未修改 PN/PNG/LOS/外推公式或任何 D3/D4/D5/身份/版本门控。`raw gate=false` 且没有 reject reason 会产生明确数据质量告警，不再归因到默认 false 的 camera 或 maneuver 字段。2026-07-14 当日 D7 全量回归为 `188 passed`，验收阈值零失败。
 
 只读实测证据仍保留开放 P1：seed-1 M5N2 baseline/candidate 的 raw/latch/effective contract/control 均为 0；INT-01/INT-04 在约 `35-39 m` collision stop，未到约 `30 m` 交接区，INT-02 到约 `26 m` 后仍 `d5_not_locked` 并 acquisition timeout。2v2 `png_ttc` 与 1-frame dropout 为 2/2。五层 canonical 聚合已经可用，但 seed-1 的完整 raw reject/measured-lock/closing-speed pair-funnel 覆盖仍不足；航路净空、D5 acquisition、真实 dropout/candidate 和 multi-seed 仍未关闭。该 P1 不回退 D7-owned 诊断关闭状态，也不能通过放宽 gate 修复。
 
@@ -161,7 +200,10 @@ main/runtime 已在代码和 mock 回归层关闭此前外部 P0。默认、主�
 
 ## 2026-07-13 M5N2 最终 P1 证据
 
-**当前权威回归值**：D7 全量测试为 `188 passed`。本文后续出现的 `184 passed`、`181 passed`、`178 passed`、`175 passed`、`117 passed`、`109 passed`、`105 passed` 等数字均为对应子任务完成时的历史阶段计数，不得作为当前全量回归值引用。
+**2026-07-13 阶段回归值**：D7 当时全量测试为 `188 passed`。本文后续出现的
+`184 passed`、`181 passed`、`178 passed`、`175 passed`、`117 passed`、
+`109 passed`、`105 passed` 等数字均为更早子任务完成时的历史阶段计数。当前权威值
+以本文顶部最新日期小节为准。
 
 D7 已补齐 10-seed case/seed 隔离和第二 primary 全漏斗诊断，字段覆盖 assigned/active/radar、D5 visible-associated-locked、closest approach、contract/control/mode/physical、首失败、成员间距、reserve unauthorized 及 owner/version mismatch。最终批次包含 40 个真实 AirSim SimpleFlight M5N2 episode；高威胁目标采用 `2 primary + 1 standby reserve`，physical completion 定义为同一 episode 内两个 active primary 分别进入 5m，不要求同时到达。最佳 profile coalition 为 `5/10`，全部 profile 合计 `8/40`，未达到 `8/10` 晋级门限。
 
@@ -175,7 +217,7 @@ D6 四层统计为 contract `35`、control `7`、mode switch `9`、physical `62`
 
 ### 2026-07-13 secondary assist 语义修复
 
-P1 合同歧义已关闭：`request_secondary_assist` 的 `target_node_id` 现在只表示观测 cue 提供者，不再与 D3 `owner_node_id` 比较，也不再要求 `takeover_ready`。中心 plan/version 与 D5/安全门控有效时，D7 继续 radar PN，并可在视觉稳定后按原 gate 切换 PNG。真正二级接管只依据 binding 的显式 `active_plan_owner=secondary` 或 `secondary_takeover_state` 判定，仍要求 owner 一致和明确 `takeover_ready`；节点名称不再用于猜测中心、二级或 peer 角色。`request_center_replan`、二级过渡动作、未完成 distributed commit 继续 fail closed。该 secondary-assist 子任务完成时的阶段回归为 `175 passed`；当前权威全量值为顶部所列 `188 passed`。未修改 `png_guidance_delivery` 的 PN/TTC-PNG/LOS/外推公式或参数。
+P1 合同歧义已关闭：`request_secondary_assist` 的 `target_node_id` 现在只表示观测 cue 提供者，不再与 D3 `owner_node_id` 比较，也不再要求 `takeover_ready`。中心 plan/version 与 D5/安全门控有效时，D7 继续 radar PN，并可在视觉稳定后按原 gate 切换 PNG。真正二级接管只依据 binding 的显式 `active_plan_owner=secondary` 或 `secondary_takeover_state` 判定，仍要求 owner 一致和明确 `takeover_ready`；节点名称不再用于猜测中心、二级或 peer 角色。`request_center_replan`、二级过渡动作、未完成 distributed commit 继续 fail closed。该 secondary-assist 子任务完成时的阶段回归为 `175 passed`，该阶段后续全量值为 `188 passed`。当前权威值以本文顶部最新日期小节为准。未修改 `png_guidance_delivery` 的 PN/TTC-PNG/LOS/外推公式或参数。
 
 ### 2026-07-12 delivery 增强与验证同步
 
@@ -195,7 +237,9 @@ follow-up 已关闭 topology typed API 断点：`build_cooperative_guidance_topo
 
 早期 3-seed、8s 短窗口结果已被上述 40-episode 最终批次覆盖，不再作为当前缺口依据。本轮 D7-owned 本地 1-5 帧 dropout helper/测试、TTC 多 seed 拒绝汇总和 trend 晋级判据已经闭合；当前开放 P1 是第二 primary、同配置 multi-seed/dropout/candidate、loop latency 以及 pair funnel/closing speed/三维几何与平台机动标定，不是继续补 DTO/topology 或 canonical 聚合，也不修改默认 PN/PNG 公式。
 
-P2/P3 状态保持原规划：3D PN、True PN、APN、FRPN 只在隔离 benchmark，PX4/MPC/ROS2 等不提前晋级默认 runtime。
+P2/P3 状态保持原规划：可扩展质点运行时使用已测试的三维位置-速度 PN 基线；参考
+3D PN、True PN、APN、FRPN 仍在隔离 benchmark，PX4/MPC/ROS2 等不提前晋级默认
+AirSim 或实机 runtime。
 
 ### 历史实施记录
 
@@ -207,7 +251,12 @@ P2/P3 状态保持原规划：3D PN、True PN、APN、FRPN 只在隔离 benchmar
 
 2026-07-11 D7 terminal delivery API 实现：新增 `TerminalGuidanceDelivery`/`TerminalDeliveryConfig`/`TerminalDeliveryResult`，按 assignment pair 暴露 `acquiring/measured/image_kf_predict/blind_push/reacquired/expired`。默认参数与 delivery 已验证机制一致：`0.1s` control、`0.25s` 图像角度/角速度 KF predict、连续丢失 3 帧、`0.10s` 命令平均、`0.25s` blind push、`tau=0.18s`。`D7RuntimeBus` 已消费该 API 并输出状态、原因、预测年龄、丢帧、blind decay 与命令样本字段；stale D3 version、D4 block、D5 binding/friend conflict/execution safety gate 均先于外推 fail closed 并清空 pair 状态。完整 D7 回归为 `117 passed`；未修改位置 PN、TTC PNG、VM PNG 核心公式，P2 law 仍仅离线 optional benchmark。
 
-D7 当前已经实现可测试的二维位置 PN/PNG 几何核、中段雷达/全局航迹 PN、离线 `radar_midcourse -> vision_terminal` 质点仿真、AirSim phase-1 dry-run 记录适配、末端视觉 `png_vm/png_ttc` 轻量 gate、每个 assignment pair 独立视觉导引状态、D3/D4/D5 terminal contract、显式 `handover_pending/hold/reacquire/abort_revoke` 日志状态，以及 SimpleFlight 速度命令抽象。
+D7 当前已经实现可测试的二维位置 PN/PNG 几何核、中段雷达/全局航迹 PN、可扩展
+质点世界的六维 NED 三维位置-速度 PN、离线 `radar_midcourse -> vision_terminal`
+质点仿真、AirSim phase-1 dry-run 记录适配、末端视觉 `png_vm/png_ttc` 轻量 gate、
+每个 assignment pair 独立视觉导引状态和生命周期回收、D3/D4/D5 terminal contract、
+显式 `handover_pending/hold/reacquire/abort_revoke` 日志状态，以及 SimpleFlight
+速度命令抽象。
 
 真实 AirSim SimpleFlight 控制不在 D7 模块内直接执行，而是 main/runtime 的 `intercept.py` 消费 D7 API：每个 `InterceptPair` 持有自己的 `AssignmentGuidanceBinding`、`D4GuidancePermission`、D5-shaped terminal association 和 `SimpleFlightPngGuidanceFilter`，将 `PngGuidanceCommand.velocity_ned` 交给 `command_velocity_z()`/`moveByVelocityZAsync`。因此 D7 文档必须把“D7 实现了可消费的导引/gate/命令抽象”和“main runtime 实际下发 SimpleFlight 命令”分开描述。
 
@@ -259,6 +308,7 @@ D7 当前已经实现可测试的二维位置 PN/PNG 几何核、中段雷达/�
 | D5 locked 与 ID/version 一致才切换 | 已实现 | `evaluate_terminal_png_contract()`; D7 tests | 只有 locked、无 friend conflict、execution/safety gate 未显式失败、global ID/version 一致时才允许后续 measured/predicted visual gate。 |
 | 30m/稳定 bbox 等切换策略 | 已实现为可配置 gate，不是硬编码 | `PngGuidanceConfig`; D7 tests; `BlocksSmokeConfig` | D7 离线默认 terminal range `250m`，AirSim runtime 默认 `8m`；测试中 `30m` 左右相对距离用于验证 gate。bbox 稳定默认 `min_stable_frames=2`，还需面积、置信度、边缘、延迟、LOS 方差、闭合速度和机动裕度通过。 |
 | D7-owned N-pair runtime bus adapter | 已实现 | `runtime_bus.py`; `test_runtime_bus_injects_n_pairs_with_independent_filters_and_summary`; `test_runtime_bus_blocks_visual_png_for_d4_reassign_actions_even_with_good_bbox`; `test_runtime_bus_reports_d5_registration_projection_and_yolo_mot_metadata` | 调用方注入每个 pair 的 D3/D4/D5/observation 状态；D7 输出 terminal handoff、D4/D5/plan/version、terminal range、closing speed、D4 block reason、D5 lock/D3 owner-version consistency、secondary readiness、D5 registration/projection/covariance/Yolo-MOT、bbox/LOS/TTC、gate pass 和 guidance summary 字段，不创建 assignment、不控制车辆、不假设 2v2/5v5。 |
+| 可扩展三维导引与 pair 生命周期 | 已实现并测试 | `scalable_3d_guidance.py`; `pair_lifecycle_benchmark.py`; `test_scalable_3d_guidance.py`; `test_scalable_3d_pair_lifecycle.py` | 六维 NED 目标/资源状态经当前 D3/D4/D5 合同输出三维加速度；状态按资源-全局航迹 pair 隔离，计划升级重置，改绑/丢失/撤销/过期/旧计划/批次缺失回收。200 pair 冻结输入最终状态 170、峰值 200，旧计划接受和身份改写为 0。该状态不等于 AirSim/实机三维姿态推力闭环。 |
 | 四导引律 runtime selector 与审计字段 | 已实现并进入历史 SimpleFlight smoke | `selector.py`; `runtime_bus.py`; `comparison.py`; D7 selector/gate tests; `p1_guidance_four_law_smoke_20260711` | main 可按 pair 请求 `pure_pursuit|radar_pn|png_vm|png_ttc`；混合模式仅在 D3/D4/D5 + 视觉 gate 通过后由 radar PN 切换。历史单 seed、2 s smoke 只证明合同接线，不证明命中率或四律优劣。pending、过期 lease、旧 owner/version、D5 非 locked 或 ID 不一致均保持视觉阻断。未修改 delivery 核心公式。 |
 | P0-B terminal latch / reacquire grace | 已实现 | `runtime_bus.py`; `test_runtime_bus_applies_reacquire_grace_after_d5_locked_jitter` | contract 通过后才评估视觉 PNG；D5 non-locked/reacquire 等 contract reject 不发布视觉命令，并触发 filter reset 与后续 reacquire grace；日志字段包含 `terminal_dwell_active`、`terminal_release_grace_active`、`terminal_reacquire_grace_active` 和对应 reject reason。 |
 | P0-B bounded detect-loss coast contract | 已实现 | `terminal_gate.py`; `terminal_delivery.py`; `runtime_bus.py`; `test_runtime_allows_bounded_coast_for_consistent_d5_reacquire_only` | fresh switch 仍要求 D5 locked；既有 measured lock 后的 D5 `reacquire` 空观测，仅在 D3/D4、身份/版本、friend conflict 与 safety 字段均一致时允许 bounded KF/coast。D4 硬阻断立即清空。 |
@@ -282,7 +332,7 @@ D7 当前已经实现可测试的二维位置 PN/PNG 几何核、中段雷达/�
 |---|---|---|---|
 | 末端切换迟滞 | 已补 terminal latch：dwell/release/reacquire grace 字段和 reject reason 可被 runtime/D6 消费；D5 non-locked/reacquire 不会绕过 contract 发布视觉命令。 | 保持 D3/D4/D5 gate，不让 D7 分配、授权或改写 `global_track_id`；真实 AirSim 多 seed 中继续观察 switch count。 | P0-B done / P1 runtime validation |
 | LOS 角速率滤波 | 已补 raw/filtered LOS-rate、低通、限幅和 outlier reject evidence；近距视觉 PNG 尖峰由 D7 测试覆盖。 | 不引入复杂控制器；后续用真实 bbox replay/AirSim 数据校准 `max_los_rate_*` 阈值。 | P0-B done / P1 calibration |
-| 三维 PN 几何对照和日志 | 已补 `compute_three_dimensional_pn_benchmark()` 和 runtime bus 3D benchmark/log 字段；主线仍是二维水平 NED PN/PNG。 | 继续 200m 高差、3D target 或高度差拦截时保持 P0-C；否则作为 P1 calibration/benchmark。完整三维控制律和高度通道不替换默认 API。 | P0-C conditional / P1 benchmark otherwise |
+| 三维 PN 执行基线与几何对照 | 可扩展质点运行时已有六维 NED 三维位置-速度 PN 和世界加速度回写；`compute_three_dimensional_pn_benchmark()` 继续提供隔离对照字段。 | 质点基线保持当前合同；AirSim/SimpleFlight 的姿态、推力、高度和平台响应仍按 P1 标定，参考算法不替换默认 API。 | scalable baseline done / P1 platform calibration |
 | 3D PN/True PN/APN/FRPN 对照 | 隔离式离线质点 benchmark 已实现，replay 只保留为可选输入接口；FRPN 是研究近似。 | 只作为 P2 benchmark/advisory 比较 miss distance、控制努力、峰值加速度和耗时；不进入默认主线，不替换 PN/PNG。 | P2 optional benchmark |
 | PN/Pure Pursuit/PNG 多 seed 对照 | D7 已完成四律 selector、comparison rows、迁移/raw gate/timeout/saturation 字段和 calibration helper；main 已有历史 `png_vm` 2v2 10-seed 基线和四律单-seed 2 s smoke。 | 历史短时 smoke 只证明 selector 和 D3/D4/D5 gate 进入 SimpleFlight；仍需在当前 topology、相同 seed/几何/阈值下运行较长时长、多 seed 四律对照，D7 保持字段稳定且不允许对照路径绕过 gate。 | P1 main/D6 integration |
 | 预测拦截点 | 当前主要基于 PN 视线率，D7 comparison/calibration 可输出对照字段但未形成默认 intercept-point guidance。 | 输出 predicted intercept point 并与 PN 对比；只作为 P1 对照能力。 | P1 |
@@ -298,14 +348,14 @@ D7 当前已经实现可测试的二维位置 PN/PNG 几何核、中段雷达/�
 | TTC 面积通道 | `png_ttc` 已实现面积 EMA=.25、5 帧斜率、16px2 最小面积、2.5 跳变比、裁剪拒绝和 20s 最大 TTC；2026-07-14 actual-v2 2v2 seed-1 pair 物理成功 `2/2`。 | 扩展真实 `png_ttc` 多 seed，统计 jump/clipping/non-expanding/out-of-range 拒绝及物理结果。 | seed-1 actual-execution 关闭 P0 接线，不关闭专项拒绝覆盖和统计标定 P1。 | P1 calibration |
 | truth-isolated 真实执行证据 | main/runtime 代码和 `130 passed` mock 回归关闭状态真值代码 P0；2026-07-14 actual-v2 两个 seed-1 case 均 available，identity/state online use 均为 0。 | 扩展同配置多 seed，并保持逐 episode 双 truth-use 计数和 canonical artifact 校验。 | canonical P0 证据链已关闭；历史 physical 不追溯升级，统计性能仍为 P1。 | P0 done / P1 multi-seed |
 | soft prediction / trend coast | 两者实现完成但库默认关闭；本地 1-5 帧矩阵已验证统一 `0.25s` 硬上限，trend helper 固化 paired seed、实际触发、错误绑定、命令跳变和物理成功判据。 | 在 truth-isolated 真实 AirSim 中受控触发 dropout/trend 并把 execution rows 输入 helper。 | optional candidate 不能因代码存在或迁移前 2v2 非退化结果自动晋级。 | P1 optional validation |
-| 机动能力 gate | PN 有加速度/转向率限幅；视觉 gate 估计 required turn rate、turn capacity、maneuver margin。 | 真实动力学、姿态/推力/延迟、PX4 饱和响应和三维高度通道未建模；200m 高差 mobile recon stress 只能证明观测可见性改善，不能替代机动能力 gate。 | P1 继续标定现有二维 gate；3D PN、True PN、APN、FRPN 仅进入 P2 optional benchmark。 | P1 calibration / P2 benchmark |
-| D6 指标输入 | D7/runtime 日志已有 `d7_terminal_semantics_v2`、`d7_guidance_law_semantics_v1` 与 `d7_pair_guidance_funnel_v2`；canonical actual 五层均已独立 `available`，合计 `102/26/26/2/4`。 | future multi-seed/dropout/candidate 继续使用同一 live state instance；pair funnel、first-failure、closing speed 和 3D maneuver 的缺失字段保持 evidence missing，不从五层指标反推。 | 正式五层聚合已闭合；D7 本地 `188 passed` 已关闭字段语义与被动诊断接口，剩余是 P1 证据扩展和标定。 | P0 evidence done / P1 calibration |
+| 机动能力 gate | PN 有加速度/转向率限幅；视觉 gate 估计 required turn rate、turn capacity、maneuver margin；可扩展质点基线可记录三维加速度饱和。 | 真实动力学、姿态/推力/延迟、PX4 饱和响应和 AirSim 三维高度通道未标定；200m 高差 mobile recon stress 只能证明观测可见性改善，不能替代平台机动验证。 | P1 标定平台 gate；True PN、APN、FRPN 仅进入 P2 optional benchmark。 | P1 calibration / P2 benchmark |
+| D6 指标输入 | D7/runtime 日志已有 `d7_terminal_semantics_v2`、`d7_guidance_law_semantics_v1` 与 `d7_pair_guidance_funnel_v2`；canonical actual 五层均已独立 `available`，合计 `102/26/26/2/4`。D7 新增 `PairStateLifecycleDiagnostics3D`。 | future multi-seed/dropout/candidate 继续使用同一 live state instance；main/D6 尚需把生命周期诊断写入正式 episode sidecar。pair funnel、first-failure、closing speed 和 3D maneuver 的缺失字段保持 evidence missing，不从五层指标反推。 | 正式五层聚合已闭合；D7 本地 `220 passed` 已关闭字段语义、被动诊断和状态生命周期接口，剩余是 P1 持久化、证据扩展和标定。 | P0 evidence done / P1 integration/calibration |
 
 ## 未实现
 
 | 项 | 当前状态 | 未实现原因 | 缺少条件 | 优先级 |
 |---|---|---|---|---|
-| 更真实机动约束 / 在线 default 3D PN 控制律 | D7 主线仍是二维水平 NED 控制抽象；3D PN、True PN、APN、FRPN 的本轮验证证据仅为隔离式离线质点 benchmark。 | 默认三维控制、动力学和高度通道会扩大接口面，不属于当前 P1 物理闭环。 | 3D state contract、姿态/推力/高度通道、平台响应和 D6 三维指标。 | P2 benchmark complete / online deferred |
+| AirSim/实机三维平台闭环 | 可扩展质点运行时的六维 NED 状态、三维位置-速度 PN 和世界加速度回写已实现并测试；AirSim/SimpleFlight 默认链路仍是高层速度抽象，尚无姿态、推力和真实动力学闭环。 | 质点加速度命令不能替代多旋翼平台控制与饱和响应。 | 姿态/推力/高度通道、平台响应、控制时延、硬件约束和 D6 三维平台指标。 | P1 platform calibration / real control deferred |
 | 在线 default True PN / APN / FRPN | 未实现为默认主线；隔离 P2 benchmark 已实现，其中 FRPN 是研究近似。 | 高机动算法公式、目标加速度估计和场景尚未冻结，FRPN 也不是规范实现。 | 保持 P2 与在线 runtime 隔离；不绕过 D3/D4/D5 gate，不替换默认 PN/PNG。 | P2 optional benchmark complete / online deferred |
 | MPC / NMPC | 未实现。 | 当前 PN/PNG 足够支撑第一阶段闭环；MPC 需要强约束模型和求解器。 | 平台动力学、约束、求解器依赖、实时预算、失败回退。 | P3 |
 | 硬件飞控 / 实机控制 | 未实现。 | 本仓库是研究/仿真路径，不能把 D7 输出当实机控制指令。 | 实机安全流程、kill switch、围栏、台架标定、人工接管。 | P3 |
@@ -320,7 +370,11 @@ D7 当前已经实现可测试的二维位置 PN/PNG 几何核、中段雷达/�
 2. **D5 状态事件流**：`locked/ambiguous/hold/reacquire`、锁定丢失、重捕获、friend conflict、duplicate lock 和 timeout 需要持续进入 D7 pair state machine 与 D6 指标。
 3. **视觉 replay 条件**：D7 已提供 bbox rows 到 bbox/LOS gate 的离线接口；YOLO/ByteTrack 或真实图像链路只作为 replay/optional，需要图像或 bbox replay 数据源、camera intrinsics/extrinsics、bbox timestamp、local track 连续性、measurement age、LOS-rate 噪声、丢检策略和 D5 local track 事件流。
 4. **飞控/动力学条件**：PX4/MAVLink 或真实飞控升级前必须有 Offboard 状态机、推力/坐标/限幅标定、饱和日志、安全边界和回归 baseline。
-5. **对照实验条件**：P1 的 PN、Pure Pursuit、`png_vm`、`png_ttc` 物理闭环需要同批多 seed 场景、统一成功/失败判据、阈值版本和 D6 报告。3D PN、True PN、APN、FRPN 本轮仅有隔离式离线质点 P2 benchmark，不能与在线 P1 验收混写；默认 PN/PNG API 不替换，D3/D4/D5 gate 不绕过。
+5. **对照实验条件**：P1 的 PN、Pure Pursuit、`png_vm`、`png_ttc` 物理闭环需要同批
+   多 seed 场景、统一成功/失败判据、阈值版本和 D6 报告。可扩展质点运行时的三维
+   位置-速度 PN 是已实现基线；`optional_p2_benchmark.py` 中的参考 3D PN、True PN、
+   APN、FRPN 仍是隔离 P2 对照，不能与在线 P1 或平台验收混写。默认 PN/PNG API
+   不替换，D3/D4/D5 gate 不绕过。
 
 ## 下一步优先级
 
@@ -329,7 +383,7 @@ D7 当前已经实现可测试的二维位置 PN/PNG 几何核、中段雷达/�
 | P0-B done | 工程化闭环稳定性：末端视觉 PNG 切换迟滞和 LOS 角速率滤波已在 D7-owned runtime bus/filter 中补齐；继续保持 D7 不分配、不授权、不改写 `global_track_id`。 | D7 tests 通过；D4 `request_center_replan`/`degrade_to_secondary`/`degrade_to_distributed`、D5 non-locked、D5 `assigned_global_track_id` 与 binding 不一致、ID/version mismatch、friend conflict 均拒绝视觉 PNG；输出 filtered LOS rate，近距命令尖峰被限幅/拒绝。 |
 | P1 done/保持 | D7RuntimeBus、comparison、replay、calibration summary/advisory、D4 gate blocking、D4 secondary readiness block、D3/D4/D5 terminal contract gate、owner/version gate、D5 registration/projection/Yolo-MOT reporting、episode bus runtime summary、handoff/guidance summary fields、controlled 5v5 center replan 和 2v2 secondary visual PNG gate。 | D7 tests 通过；main CSV/summary 持续写出 `plan_id/plan_version/owner_node_id/track_version/d4_action/d4_action_block_reason/d5_decision_state/terminal_contract_reject_reason/terminal_range_m/closing_speed_mps`；D7 summary 保留 `guidance_mode_counts`、`terminal_handoff_state_counts`、gate pass rate、bbox/TTC/LOS 摘要、D5 lock/D3 owner-version consistency、secondary readiness、registration/projection 摘要和 `visual_png_switch_count`；D7 calibration summary 保留 threshold advisory 和 benchmark-only 3D/FRPN 字段；D4 replan/degrade 或 secondary 非 `takeover_ready` 阶段不调用旧锁定视觉 PNG。 |
 | P1 M5N2 性能校准 | 40 个真实 SimpleFlight episode 已完成，保持 `2 primary + 1 standby reserve` 且不要求同时到达；最佳 profile `5/10`、overall `8/40`。 | 逐 seed 分层输出 target、active-primary、第二 primary acquisition/gate、closing speed/range、三维高度差、maneuver margin、coalition completion、D7 filter state 和 truth-use；安全三项继续保持 0。 |
-| P1 dropout/TTC helper done | D7-owned 本地 1-5 帧矩阵和 TTC 四类拒绝多 seed 汇总已经实现；dropout 失败原因已分离 contract reset、prediction window 和 measured lock 未建立。 | 当前全量 `188 passed`；1-2 帧只在同 resource/global/local identity 和 current plan/owner/version 下有界预测，默认 10Hz 第 3-5 帧超过 0.25s 后 fail-closed；TTC helper 报告 jump/clipping/non-expanding/out-of-range。 |
+| P1 dropout/TTC helper done | D7-owned 本地 1-5 帧矩阵和 TTC 四类拒绝多 seed 汇总已经实现；dropout 失败原因已分离 contract reset、prediction window 和 measured lock 未建立。 | 当前全量 `220 passed`；1-2 帧只在同 resource/global/local identity 和 current plan/owner/version 下有界预测，默认 10Hz 第 3-5 帧超过 0.25s 后 fail-closed；TTC helper 报告 jump/clipping/non-expanding/out-of-range。 |
 | P1 trend candidate helper done | trend coast 保持默认关闭，paired 晋级 helper 已实现。 | 仅当 seeds 配对、candidate 实际触发、错误绑定为 0、命令跳变不恶化且物理成功不下降时，才输出晋级建议。 |
 | P1 real execution open | `png_ttc` 已有 actual-v2 seed-1 `2/2`；真实 AirSim dropout/trend candidate 和 `png_ttc` 专项多 seed 仍待 main 编排。 | execution rows 必须输入上述 helper，并由 D6 形成正式多 seed 结论。 |
 | P1 midcourse validation | 在 M5N2 多 seed 验证 PN -> bounded PP reacquisition -> PN 的重捕闭环。 | 按 pair 记录 selection/reason、负 closing entry、正 closing recovery、切换次数、重捕时间和发散后最终 min/final range；校准 enter/exit closing 与 2/3 帧迟滞。 |

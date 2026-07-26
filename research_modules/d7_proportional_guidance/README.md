@@ -1,5 +1,33 @@
 # D7 比例导引与末端视觉 PNG 模块
 
+## 2026-07-25 分配对状态生命周期
+
+`ScalableGuidanceController3D.command_batch()` 现会在每个批次计算命令前，以当前
+有效的 `(resource_id, assigned_global_track_id)` 集合对内部状态进行对账。计划版本升级时，
+同一资源-目标对重建状态；资源改绑、目标进入 lost/dropped/deleted、分配撤销或过期、
+旧计划输入和批次中不再出现的分配会回收状态。D4 短时重规划/降级等待、D5
+`reacquire` 和同一有效分配对的短时视觉丢帧只阻断或降级本帧命令，不再清空已经建立
+的航迹、视线和检测框面积历史。视觉历史保留仍受既有 `0.25 s` coast 时限约束，超时
+后清空视觉状态，不会无限沿用旧量测。
+
+先回收已失效 key，可避免资源改绑时旧、新状态在同一批内短暂叠加。批处理还会在每个
+pair 计算后采样状态数，因此峰值覆盖对账前、对账后和逐 pair 计算阶段。
+`GuidanceBatch3D.lifecycle_diagnostics` 输出活动状态数、创建/复用/重置/回收计数、
+回收原因、模式迁移、末端拒绝原因、命令饱和、非有限命令阻断、旧计划拒绝和逐 pair
+时延。D7 在批处理内再次核对输出身份；任何命令若与 D3 binding 的
+`global_track_id` 不一致会直接报错，不能静默重绑。同一批次的 `resource_index` 和
+`resource_id` 都必须唯一；重复资源在状态对账前拒绝，既有状态不被部分修改。
+
+2026-07-25 的冻结输入验收使用 200 个 pair、9 个批次，覆盖视觉预热、D4 pending、
+D5 locked/reacquire、视觉丢帧和恢复、计划升级、40 个资源改绑、10 个目标丢失、
+20 个分配从权威批次快照撤回以及 10 个旧版本输入。最终有效状态为 `170/170`，峰值为 `200`；
+状态上界违规、旧计划接受、身份改写和非有限命令均为 0。D7 全量结果为
+`220 passed`。本轮没有修改位置比例导引、视觉比例导引、LOS、TTC 或外推公式。
+
+该结果关闭 D7-owned 的状态长期累积缺口，不等于 200v200 长时物理拦截或实时性已经
+通过。main 仍需把生命周期诊断写入统一 episode 记录，D6 仍需在长时多 seed 场景中
+统计回收率、状态峰值、模式迁移和 5 米物理结果。
+
 ## 2026-07-23 三维导引固定输入复核
 
 clean `0d2da25 -> 5263e2b` 的 nominal 200v200、10 秒、20-seed 整栈结果中，
@@ -134,7 +162,7 @@ actual-v2 之前的 postbatch M5N2 证据曾显示 main 物理 `control_commands
 
 本轮只修复状态语义和被动诊断，不修改位置 PN、`png_vm/png_ttc`、LOS 滤波或外推公式。`D7RuntimePairOutput` 新增 `closing_speed_gate_passed` 和实际使用的 `closing_speed_gate_threshold_mps`，把既有 `min_closing_speed_mps` 判定显式化；阈值、判定顺序和控制结果均未改变。`d7_pair_guidance_funnel_v2` 将每个 assignment pair 的漏斗细化为：assigned、active、radar、配置交接距离、D5 visible/associated/declared locked、raw terminal gate、D7 measured lock、camera/LOS/closing-speed/maneuver、effective contract、latched visual mode、effective control、terminal mode 和 5 米物理结果。摘要新增全体 pair 的首失败 stage/reason、各级 available/reached 计数和缺失拒绝原因计数。
 
-对既有 `p1_terminal_closure_semantics_v2_seed1_20260714*` 做只读审计：M5N2 baseline/candidate 的三个 active pair 均未出现 raw gate、latch、effective contract/control；INT-01/INT-04 在约 `35.2-38.9 m` 停止，未进入候选 `30 m` 交接区，INT-02 进入约 `26.0-26.6 m` 后仍以 `d5_not_locked`/`terminal_detection_acquisition_timeout` 结束。2v2 `png_ttc` 和 1-frame dropout 均保持 `2/2`。现有 main `control_commands.csv` 没有导出 `raw_terminal_gate_reject_reason`、measured-lock history 和本轮新增 closing-speed gate 字段，因此 `raw=false` 且空 reason 必须标记为 `raw_terminal_gate_reject_reason_missing`，不能猜成 camera 或 maneuver 失败；完整字段接入属于 main/runtime P1。2026-07-14 D7 当前全量回归为 `188 passed`，验收阈值为零失败；没有运行新的 AirSim episode，也未放宽 D3/D4/D5、身份、版本或 `global_track_id` 规则。
+对既有 `p1_terminal_closure_semantics_v2_seed1_20260714*` 做只读审计：M5N2 baseline/candidate 的三个 active pair 均未出现 raw gate、latch、effective contract/control；INT-01/INT-04 在约 `35.2-38.9 m` 停止，未进入候选 `30 m` 交接区，INT-02 进入约 `26.0-26.6 m` 后仍以 `d5_not_locked`/`terminal_detection_acquisition_timeout` 结束。2v2 `png_ttc` 和 1-frame dropout 均保持 `2/2`。现有 main `control_commands.csv` 没有导出 `raw_terminal_gate_reject_reason`、measured-lock history 和本轮新增 closing-speed gate 字段，因此 `raw=false` 且空 reason 必须标记为 `raw_terminal_gate_reject_reason_missing`，不能猜成 camera 或 maneuver 失败；完整字段接入属于 main/runtime P1。2026-07-14 当日 D7 全量回归为 `188 passed`，验收阈值为零失败；没有运行新的 AirSim episode，也未放宽 D3/D4/D5、身份、版本或 `global_track_id` 规则。
 
 ## 2026-07-14 末端状态/指标语义 P1 关闭
 
