@@ -24,7 +24,10 @@ from research_modules.scalable_3d_simulation.isolated_physical_rollout import (
 )
 
 
-def test_reserved_seed_runner_emits_forty_fail_closed_arms(tmp_path: Path) -> None:
+def test_reserved_seed_runner_emits_forty_fail_closed_arms(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     missing_bundle = tmp_path / "missing-bundle"
     execution = execute_reserved_seed_interventions(
         ReservedSeedInterventionOptions(scale=5, duration_s=1.2),
@@ -252,8 +255,9 @@ def test_reserved_seed_runner_emits_forty_fail_closed_arms(tmp_path: Path) -> No
         and item.treatment.plan_payload["global_track_id_owner"] == "D2_center"
         for item in physical.pairs
     )
+    monkeypatch.chdir(tmp_path)
     physical_paths = write_checkpoint_paired_physical_rollouts(
-        tmp_path / "physical",
+        Path("physical"),
         physical,
     )
     physical_manifest = json.loads(

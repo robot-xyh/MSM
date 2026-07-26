@@ -26,6 +26,22 @@ python3 -m research_modules.scalable_3d_simulation.artifact_archive \
 不等于已经删除，也不构成自动清理授权。当前没有可用的第二个大容量挂载点，既有正式
 输出保持原位，20 GiB 保护下限不降低。专项验证为 `12 passed`。
 
+## D3 共同检查点物理续跑
+
+`run_checkpoint_paired_physical.py` 使用 20 个保留 seed 的共同 D1-D4 干预帧，复制规则组
+和 D3 学习处理组的独立世界，让两组计划分别经过 D7 和三维质点运动，再由 D6 离线比较。
+输出仍属于隔离仿真，不是 production runtime ACK、反事实或因果证据。
+
+2026-07-26 的名义 5 对 5 开发诊断使用 2.2 秒源 episode 和 0.5 秒物理续跑。20/20 seed
+具有计划消费、导引血缘、物理窗口、成对物理效果和非退化字段；在线真值使用与
+`global_track_id` 改写为 0。规则组和处理组各施加 980 条控制命令，但最终绑定变化为
+0/20，平均最近距离均为 3814.253961 米，五米成功均为 0。当前候选没有形成可辨识干预，
+不能进入 A1 装配或正式作用域。
+
+首次使用相对输出路径时发现 D6 绝对路径与相对临时目录混用。writer 现在先解析绝对输出
+目录；相对路径专项回归为 `3 passed, 1 warning`。开发结果和证据边界见
+`docs/SCALABLE_3D_D3_CHECKPOINT_PHYSICAL_DEVELOPMENT_20260726_CN.md`。
+
 ## 学习变体准入与分片状态
 
 2026-07-26 的实际 bundle 预检确认，G1、A1、A2、A3、C1 和 F1 当前均不能进入正式

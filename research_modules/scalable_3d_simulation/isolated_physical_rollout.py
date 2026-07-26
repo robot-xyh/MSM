@@ -1018,7 +1018,7 @@ def write_checkpoint_paired_physical_rollouts(
 ) -> dict[str, Path]:
     """Atomically write producer artifacts, a D6 input spec and D6 sidecar."""
 
-    output = Path(output_dir)
+    output = Path(output_dir).expanduser().resolve()
     if output.exists():
         raise FileExistsError(f"physical rollout output already exists: {output}")
     output.parent.mkdir(parents=True, exist_ok=True)
