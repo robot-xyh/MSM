@@ -1,5 +1,13 @@
 # D6 文档索引
 
+2026-07-25 正式 R0/G1/A1/A2/A3/C1/F1 矩阵准入预检原理见
+`MODULE_PRINCIPLES_CN.md`，expected inventory、模型 SHA、逐 cell 证据、压缩缺失范围和
+`pre_run/post_run` 实现见 `ALGORITHM_AND_IMPLEMENTATION.md`。当前实际 formal 计划动态得到
+5700 个 cell。静态 `post_run` 结果为 `fail_closed`：矩阵 manifest 缺失，四个现有学习模型
+哈希有效但 assist 均未准入。专门实验记录见 `EXPERIMENT_REPORT.md`，机器制品见
+`../outputs/formal_matrix_admission_precheck_20260725_current/`。本入口未运行大矩阵。
+不带 `--inventory` 的 CLI 结果 expected=0 只表示缺输入，不能替代上述 5700-cell 结果。
+
 2026-07-25 D1 在线发布证据子集快照评估原理见 `MODULE_PRINCIPLES_CN.md`，严格来源绑定、
 五表面实现身份、D1/D2 在线记录比较、快照计数守恒、配对统计和失败关闭实现见
 `ALGORITHM_AND_IMPLEMENTATION.md`。入口绑定 matrix SHA

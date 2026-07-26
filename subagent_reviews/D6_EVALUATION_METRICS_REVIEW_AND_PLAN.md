@@ -1,5 +1,28 @@
 # D6 系统评估指标综述及子方案
 
+## 2026-07-25 正式实验矩阵准入评审
+
+D6 已将正式算法矩阵拆成“预期清单”和“运行证据”两层。预期清单必须来自 main 的实际
+`ExperimentMatrixPlan.cells()` 或显式 cell inventory。运行目录、场景名和规模维度不能用于
+补出缺失 cell。该约束使 F1 的场景范围由生产合同决定，当前默认计划为 5700 个 cell。
+CLI 未提供 inventory 时显示的 expected=0 是缺输入拒绝路径，不是正式清单结果。
+
+`pre_run` 检查清单、seed 隔离、clean source 和模型制品。`post_run` 再核对矩阵 manifest、
+运行 cell、D6 逐 seed 证据、算法采用、回退、在线真值、有限状态、身份交换、五米物理指标、
+置信区间输入和交付制品。任一字段 unavailable 都保留 unavailable，不转换为 0。
+
+当前正式计划清单本身通过：七个变体、九类场景、五档规模、20 个未见 seed、训练 seed 交集为
+0、无重复 cell。当前运行状态未通过。仓库中没有正式矩阵 manifest；四个学习模型的文件和内部
+权重哈希一致，但 D3、D4、D5 图模型和 D5 主动视觉模型都没有 assist 授权。因此当前结论为
+`fail_closed`，5700/5700 cell 保持未准入。
+
+下一步应先由各模型 owner 完成独立准入，再由 main 在 clean detached worktree 冻结 expected
+inventory 和 model inventory。D6 先跑 `pre_run`；只有通过后才值得分批生产正式矩阵。矩阵
+完成后执行 `post_run`，D6 不承担模型授权或控制决策。
+
+专项测试 `9 passed`，D6 全量 `889 passed, 1 warning`；既有 main 矩阵合同
+`7 passed, 1 warning`。当前静态报告的三项 SHA-256 校验通过。
+
 ## 2026-07-25 D1 在线发布证据子集快照正式独立评审
 
 D6 已完成 schema

@@ -1,5 +1,81 @@
 # D6 系统级离线评估：算法原理与实施说明
 
+## 正式实验矩阵准入预检（2026-07-25）
+
+实现入口为 `experiment_matrix_admission.py`。命令行入口为
+`scripts/run_experiment_matrix_admission_precheck.py`。处理顺序如下：
+
+```text
+ExperimentMatrixPlan.cells() 或显式 expected inventory
+  -> cell 解析、唯一性和正式范围检查
+  -> 训练 seed 与评估 seed 交集检查
+  -> clean-source 检查
+  -> D3/D4/D5 模型 manifest、weights、SHA 和 assist 声明
+  -> pre_run verdict
+  -> matrix manifest 与运行 cell CSV
+  -> D6 逐 seed CSV 与 aggregate JSON
+  -> 每个 cell 的采用、回退、真值、有限状态、IDSW、5 m 指标
+  -> bootstrap/置信区间输入
+  -> 报告、曲线、动画和模型清单
+  -> post_run verdict
+  -> JSON、CSV、中文 Markdown、SHA256SUMS
+```
+
+`inventory_from_plan()` 通过鸭子类型调用传入对象的 `cells()`，不导入或改写 main 控制逻辑。
+JSON 清单接受 `cells`、`expected_cells` 或显式 `cells_path`。CSV 清单可带同名
+`.metadata.json`。只有 variants、scenarios、scales、seeds 和 cell_count 而没有 cell 列表时，
+loader 失败关闭，因为该信息不能识别 F1 的范围和任一缺失 cell。
+
+命令行允许省略 `--inventory`，用于验证失败关闭路径。该调用的 inventory 来源标记为
+`missing`，expected 和 accepted 均为 0，并输出 `expected_cell_inventory_missing`。命令行及
+中文 Markdown 会说明 0 代表缺输入，不能把该结果引用为 formal 计划规模。当前 5700-cell
+结论来自传入实际 `ExperimentMatrixPlan` 的接口调用。
+
+cell 主键为：
+
+```text
+(algorithm_variant, scenario_family, scale, seed)
+```
+
+预检先保留原始计数，再建立唯一键集合。重复键、无效键、基础变体笛卡尔积缺口和 F1 已声明范围
+内的组合缺口分别记录。缺失运行 cell 使用压缩算法：先判断一个变体下的缺失集合是否构成
+`scenario x scale x seed` 笛卡尔积，再把具有相同范围的变体合并；不规则残差按
+`variant/scenario/scale` 压缩连续 seed。
+
+模型检查支持现有四类 manifest 写法：
+
+```text
+D3              state_dict.file + state_dict.sha256
+D4              state_dict_file + state_dict_sha256
+D5 图模型       weights.filename + weights.sha256
+D5 主动视觉     weights.filename + weights.sha256
+```
+
+D6 重算文件 SHA。若 bundle 带 `SHA256SUMS`，还会逐项核对。bundle SHA 由排序后的
+`manifest.json` 和 weights 文件哈希形成。assist 声明按模块语义读取，不能以目录存在替代。
+D4 的保留 seed 数采用严格整数解析；非法文本按未授权处理并失败关闭，不向外抛出类型转换异常。
+
+`post_run` 将 `experiment_matrix_cells.csv` 和
+`d6_evaluation/scalable_3d_offline_per_episode_seed.csv` 分别按 cell 主键索引。每个 cell 必须
+恰有一条运行记录和一条离线证据。学习变体要求 `variant_execution_valid=true` 且失败原因为空。
+以下字段必须显式可用：
+
+```text
+finite_state
+online_truth_use_count
+d2_id_switch_count
+offline_proximity_within_5m_count
+offline_proximity_unique_target_count
+```
+
+`online_truth_use_count` 必须为 0，`finite_state` 必须为 true。其余指标只要求可用，物理接近
+数量可以为 0。聚合 JSON 必须包含固定 bootstrap 配置、完整 cell 分母、七个变体的 clean
+formal 统计，以及每个变体至少 20 个不同 seed 的身份与五米指标输入。
+
+当前仓库预检从实际 formal 计划读取 5700 个 cell。模型 manifest 和 weights SHA 均通过，但
+四个模型的 assist 声明均未通过；正式矩阵 manifest、运行 cell、D6 逐 seed/聚合、报告、动画
+和运行模型清单均不存在。结果为 `fail_closed`，没有调用仿真入口。
+
 ## D1 在线发布证据子集快照同提交评估（2026-07-25）
 
 入口 `d1_publication_evidence_snapshot_multiseed.py` 和

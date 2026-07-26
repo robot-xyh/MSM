@@ -1,5 +1,43 @@
 # D6 Evaluation Metrics Plan
 
+## 2026-07-25 正式 R0/G1/A1/A2/A3/C1/F1 矩阵准入预检
+
+### 已完成
+
+- [x] 实现独立只读的 `pre_run` 和 `post_run` 预检。D6 不启动 episode，不参与控制。
+- [x] 直接消费 `ExperimentMatrixPlan.cells()` 或显式 cell inventory，不从目录名或只有维度
+  的摘要推断缺失 cell。
+- [x] 使用当前实际 formal 合同动态得到 5700 个 cell；测试另验证 F1 增加一个场景后数量自动
+  变为 5800。
+- [x] 检查 cell 唯一性、七变体声明、九场景、五规模、至少 20 个未见 seed、训练 seed 零
+  交集、formal/禁止回退标志和 clean-source。
+- [x] 检查 D3、D4、D5 图模型和 D5 主动视觉 bundle、manifest、weights SHA-256 及 assist
+  声明。
+- [x] `post_run` 逐 cell 检查声明采用、静默回退、在线真值、有限状态、D2 身份交换可用性、
+  五米物理指标和逐 seed 输入。
+- [x] 检查 D6 聚合置信区间输入、中文报告、曲线、GIF/MP4 和模型清单制品。
+- [x] 缺失 cell 按变体、场景、规模和 seed range 压缩输出；不创建伪指标。
+- [x] 输出完整 JSON、逐 cell CSV、中文 Markdown 和 `SHA256SUMS`。
+- [x] 区分“缺少 CLI inventory 导致 expected=0”和“实际 formal inventory 为 5700”；
+  缺输入时命令行、JSON blocker 和中文报告均明确说明，不把 0 写成正式规模。
+- [x] D4 模型清单中的保留 seed 数非法时失败关闭，不因类型转换异常中断预检。
+- [x] 当前仓库静态 `post_run` 预检已完成：expected=5700、accepted=0、verdict=
+  `fail_closed`。矩阵 manifest 缺失；四个现有学习模型哈希有效但 assist 未准入。
+- [x] 专项 `9 passed`，D6 全量 `889 passed, 1 warning`；既有 main 矩阵合同
+  `7 passed, 1 warning`；当前报告三项 SHA-256 校验通过。
+
+### 仍开放
+
+- [ ] main 需在 clean detached worktree 生成并冻结正式 expected-cell inventory 和 model
+  inventory，D6 再执行 `pre_run`。
+- [ ] D3/D4/D5 各模型需先完成各自未见 seed 准入；D6 不替模块开放 assist。
+- [ ] 正式矩阵尚未运行。`experiment_matrix_manifest.json`、逐 cell 运行记录、D6 逐 seed
+  数据、置信区间、动画和正式模型清单仍缺失。
+- [ ] D2 `id_switch_count` 与五米物理指标必须逐 cell 可用。缺失时保持
+  `fail_closed`，不得以 0 代替 unavailable。
+- [ ] 完整 5700-cell 运行成本很高，main 应按变体和规模分批生产，但每批清单必须能回并到同一
+  冻结 expected inventory。
+
 ## 2026-07-25 D1 在线发布证据子集快照正式评估状态
 
 ### 已完成

@@ -1,5 +1,41 @@
 # D6 Evaluation Metrics
 
+## 2026-07-25 正式实验矩阵准入预检
+
+D6 已实现只读、失败关闭的正式矩阵准入预检
+`experiment_matrix_admission.py`，并提供命令行入口
+`scripts/run_experiment_matrix_admission_precheck.py`。入口支持两种模式：
+
+- `pre_run` 读取实际 `ExperimentMatrixPlan.cells()` 或 main 明确生成的 cell 清单，检查清单、
+  clean source 和模型制品，不运行 episode；
+- `post_run` 在上述检查之外，读取矩阵 manifest、逐 cell 清单、D6 逐 seed CSV、聚合 JSON、
+  中文报告、曲线、动画和模型清单。
+
+预检不会依据目录名重建缺失 cell。只有矩阵维度而没有显式 cell 清单时，结果固定为
+`fail_closed`。当前 formal 计划由实际 `cells()` 枚举得到 5700 个 cell：R0、G1、A1、A2、
+A3、C1 覆盖九类场景，F1 覆盖三类全系统场景，五档规模各使用 20 个未见 seed。若 main 修改
+F1 场景范围，D6 的数量随传入清单变化，不使用 6300 这一固定数。
+
+命令行入口没有传入 `--inventory` 时仍会生成失败关闭报告，此时
+`expected_cell_count=0` 只表示 expected inventory 缺失。它不是正式矩阵规模，也不是下述
+5700-cell 预检结果。命令行和中文报告现均显式输出该缺输入状态。
+
+逐 cell 检查覆盖唯一性、模型准入、声明采用模式、静默回退、在线真值、有限状态、D2 身份交换
+指标可用性、五米物理指标可用性和逐 seed 输入。聚合检查覆盖训练/评估 seed 零交集、置信区间
+输入、报告、动画和模型哈希清单。输出为完整 JSON、逐 cell CSV、中文 Markdown 和
+`SHA256SUMS`。
+
+2026-07-25 当前仓库静态 `post_run` 预检结果为 `fail_closed`。预期 5700 个 cell，运行
+manifest 和逐 cell 制品均不存在，因此通过数为 0。现有 D3、D4、D5 图模型和 D5 主动视觉模型
+的 manifest 与 weights SHA-256 均一致，但四个模型都只声明开发或影子模式，尚未获正式 assist
+准入。该结论不运行大矩阵，也不把缺失的 D2 身份交换、五米物理结果或置信区间补成数值。
+
+当前预检制品位于
+`outputs/formal_matrix_admission_precheck_20260725_current/`。
+专项测试 `9 passed`，D6 全量回归 `889 passed, 1 warning`；既有 main 矩阵合同测试
+`7 passed, 1 warning`。当前预检 `SHA256SUMS` 三项均校验通过。warning 为既有 Matplotlib
+三维投影导入提示，不影响本预检的 JSON、CSV 或 Markdown。
+
 ## 2026-07-25 D1 在线发布证据子集快照正式独立评估
 
 D6 已新增只读 evaluator

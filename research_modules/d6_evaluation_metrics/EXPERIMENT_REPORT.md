@@ -1,5 +1,35 @@
 # D6 系统级评估指标实验报告
 
+## 2.40 正式实验矩阵准入预检
+
+### 结论
+
+2026-07-25，D6 完成 R0/G1/A1/A2/A3/C1/F1 正式实验矩阵的静态准入预检。预检读取实际
+`ExperimentMatrixPlan.cells()`，不运行 episode。当前清单包含 5700 个 cell，清单范围和训练
+seed 隔离通过；运行 manifest 和逐 cell 证据缺失，通过数为 0，结论为 `fail_closed`。
+
+上述结果通过实际 `ExperimentMatrixPlan` 对象调用 D6 接口得到。单独运行命令行且不提供
+`--inventory` 时会得到 expected=0 和 `fail_closed`；该数字只表示缺输入，不是正式矩阵结果。
+
+### 动态范围
+
+R0、G1、A1、A2、A3、C1 覆盖九类场景、五档规模和 20 个未见 seed，共 5400 个 cell。F1
+只覆盖三类全系统场景，共 300 个 cell。D6 不使用 6300 固定值；专项测试已验证 F1 增加一个
+场景后清单数量自动变为 5800。
+
+### 模型与证据
+
+现有 D3、D4、D5 图模型和 D5 主动视觉模型的 manifest 与 weights SHA-256 均匹配，但四个
+模型均未声明正式 assist 准入。当前还没有正式矩阵 manifest、运行 cell CSV、D6 逐 seed CSV、
+聚合置信区间输入、中文正式报告、动画和运行模型清单。D2 身份交换与五米物理指标保持
+unavailable，没有填 0。
+
+预检制品位于
+`outputs/formal_matrix_admission_precheck_20260725_current/`。该结论只关闭 D6 的静态预检
+工具缺口，不关闭学习模型准入、200v200 实时性或物理拦截 GAP。
+专项测试 `9 passed`，D6 全量 `889 passed, 1 warning`；既有 main 矩阵合同
+`7 passed, 1 warning`。当前报告三项 SHA-256 校验通过。
+
 ## 2.39 D1 在线发布证据子集快照正式多种子评估
 
 ### 结论

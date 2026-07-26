@@ -289,6 +289,17 @@ from .scalable_3d_offline import (
     render_experiment_matrix_markdown_lines,
     render_scalable_3d_offline_markdown,
 )
+from .experiment_matrix_admission import (
+    EXPERIMENT_MATRIX_ADMISSION_DATE,
+    EXPERIMENT_MATRIX_ADMISSION_SCHEMA_VERSION,
+    EXPERIMENT_MATRIX_INVENTORY_SCHEMA_VERSION,
+    MatrixCellKey,
+    audit_experiment_matrix_admission,
+    inventory_from_plan,
+    load_expected_inventory,
+    render_experiment_matrix_admission_markdown,
+    write_experiment_matrix_admission_report,
+)
 from .observation_governance_calibration import (
     D1_ONLINE_METRICS,
     D1_SCAN_OOSM_AUDIT_SCHEMA_VERSION,
@@ -585,6 +596,15 @@ __all__ = [
     "ReportGenerator",
     "EXPERIMENT_MATRIX_SCHEMA_VERSION",
     "EXPERIMENT_MATRIX_VARIANTS",
+    "EXPERIMENT_MATRIX_ADMISSION_DATE",
+    "EXPERIMENT_MATRIX_ADMISSION_SCHEMA_VERSION",
+    "EXPERIMENT_MATRIX_INVENTORY_SCHEMA_VERSION",
+    "MatrixCellKey",
+    "audit_experiment_matrix_admission",
+    "inventory_from_plan",
+    "load_expected_inventory",
+    "render_experiment_matrix_admission_markdown",
+    "write_experiment_matrix_admission_report",
     "SCALABLE_3D_OFFLINE_EVALUATION_DATE",
     "SCALABLE_3D_OFFLINE_EVALUATION_SCHEMA_VERSION",
     "SCALABLE_3D_SCHEMA_REGISTRY_VERSION",

@@ -1,5 +1,17 @@
 # D6 M 对 N 协同拦截评估框架审查
 
+## 2026-07-25 正式矩阵准入状态
+
+当前 formal inventory 由实际 `ExperimentMatrixPlan.cells()` 生成。R0、G1、A1、A2、A3、C1
+覆盖九类场景，F1 覆盖中心失效、二级失效和高威胁 M 对 N 三类场景；五档规模和 20 个未见
+seed 合计 5700 个 cell。当前正式运行产物尚未形成，D6 `post_run` 结果为
+expected=5700、accepted=0、`fail_closed`。四个学习模型仍处于开发、影子或未获 assist 准入
+状态，因此本文件下方的开发期 M 对 N 证据不能替代正式矩阵。
+
+CLI 未提供 expected inventory 时出现的 expected=0 只表示缺输入。该调用不是 5700-cell 正式
+清单的审计结果。正式 M 对 N 结论仍需 clean source、冻结清单、逐 cell 身份交换与五米物理
+指标、完整模型采用证据和多 seed 聚合。
+
 ## 2026-07-22 D2 修复后动态规模合同开发期复核
 
 `active_risk` seed `1000-1019` 的开发期隔离续跑已恢复 20/20 物理窗和离线身份映射。D6 仍按实际

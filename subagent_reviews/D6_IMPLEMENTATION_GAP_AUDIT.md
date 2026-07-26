@@ -1,5 +1,41 @@
 # D6 实现差距审计
 
+## 2026-07-25 正式实验矩阵准入预检 GAP 更新
+
+### 已关闭
+
+1. D6 已具备独立 `pre_run/post_run` 静态准入预检，不再需要先运行大矩阵才能发现清单、
+   模型或制品缺口。
+2. expected cell 由实际 `ExperimentMatrixPlan.cells()` 或 main 显式清单提供。当前正式合同
+   动态得到 5700，而不是此前误写的 6300。
+3. cell 唯一性、七变体、九场景、五规模、至少 20 个未见 seed、训练 seed 隔离、clean-source
+   和禁止正式静默回退已进入失败关闭门。
+4. 四类学习模型的 bundle、manifest、weights SHA 和 assist 声明已进入预检。文件存在或哈希
+   正确不等于模型获准运行。
+5. `post_run` 已逐 cell 检查采用模式、回退、在线真值、有限状态、D2 身份交换、五米物理指标和
+   逐 seed 输入，并检查置信区间、报告、动画和模型清单。
+6. 缺失 cell 使用压缩范围输出，JSON 和 CSV 仍保留逐 cell 状态。缺失指标保持 unavailable。
+7. 当前静态结果 expected=5700、accepted=0、verdict=`fail_closed`。工具按设计拒绝，没有
+   崩溃或生成伪指标。
+8. CLI 缺少 inventory 时 expected=0 已明确标记为缺输入行为，不能与实际 5700-cell 清单
+   混用。D4 保留 seed 数非法时也按未授权失败关闭，不再因类型转换异常中断。
+9. 专项 `9 passed`，D6 全量 `889 passed, 1 warning`；既有 main 矩阵合同
+   `7 passed, 1 warning`。当前输出的 JSON、CSV、Markdown 三项校验和均通过。
+
+### 仍开放 P1
+
+1. **正式运行清单。** 当前没有 `experiment_matrix_manifest.json` 和运行 cell CSV。正式
+   5700-cell 矩阵尚未启动。
+2. **模型准入。** D3、D4、D5 图模型、D5 主动视觉模型的 manifest/weights SHA 均匹配，但
+   assist 声明均为 false。G1/A1/A2/A3/C1/F1 不能正式运行并静默回退。
+3. **身份与物理指标。** D2 `id_switch_count` 和五米物理指标尚无逐 cell 正式可用证据。
+4. **统计制品。** 正式逐 seed CSV、bootstrap 置信区间输入、中文报告、动画和运行模型清单仍
+   缺失。
+5. **系统性能。** 本项只关闭 D6 预检工具缺口，不关闭 200v200 实时性、学习收益或物理拦截
+   缺口。
+
+当前无新增 D6-owned P0。正式矩阵缺失和模型未准入属于系统 P1，预检保持失败关闭。
+
 ## 2026-07-25 D1 在线发布证据子集快照正式评估 GAP 更新
 
 ### 已关闭
