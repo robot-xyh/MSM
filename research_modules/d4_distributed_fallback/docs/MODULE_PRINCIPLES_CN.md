@@ -1,6 +1,31 @@
 # 分布式协同与降级接管模块原理（模块编号 D4）
 
+## 2026-07-26 校准 development 候选原理
+
+新版候选沿用“学习建议、确定性裁决”的边界。共享区域图网络只输出未投影的区域配额变化、
+备用比例、侦察优先级、hold、request-replan 和邻区转移。确定性投影继续检查资源守恒、
+邻接和容量、最低备用、owner、plan version、epoch、lease、联盟 ACK、故障栅栏和网络分区。
+学习模型不能形成联盟、生成 D3 系统计划或授权 D7。
+
+训练数据由两个不可变来源的规范只读视图组成。正式 900 episode 提供常态区域分布，clean
+supplemental 100 episode 提供四类稀有动作正样本。两者共享 60/20/20 seed 目录；训练桶用于
+动作拟合，validation 桶用于置信头区分域内样本与合成分布外样本，test 桶只做独立校准。
+0.6 和 50 ms 是固定系统门，不使用 test 桶调节。seed 1000-1019 作为后续外部试验保留，
+本轮使用数为 0。
+
+校准 420 个样本全部通过候选门，置信度均值为 0.972089，时延 P95 为 0.969215 ms；合成
+分布外样本 420/420 被特征边界拒绝。后投影动作覆盖 quota、transfer、hold 和
+request-replan。该结果修复旧候选置信头未训练和动作正类缺失的问题，只形成
+development/shadow 研究候选。没有保留 seed 的采用、运行 ACK、物理结果和配对非退化，
+因此不产生 assist、authority、production 或策略收益结论。
+
+本轮 D4 全量模块测试为 **577/577 passed**。测试覆盖候选正门及主要失败关闭路径，不包含
+AirSim 和保留 seed 正式评估。
+
 ## 2026-07-26 预准入证据分层
+
+本节的“当前 development bundle”指旧冻结候选；新版校准候选状态见上一节。正式权限所需的
+外部采用和结果证据对两者都不放宽。
 
 模型准入需要同时回答四个问题：候选是否为声明的模型输出，候选是否实际改变了下一版计划，
 该计划是否在有效权威和完整联盟确认下执行，执行结果是否相对同输入规则基线非退化。D4 当前
@@ -742,7 +767,7 @@ main/runtime 负责 AirSim 启停与 episode 顺序、故障注入时间轴、D3
 | CBBA 与中心化代价差距 | 辅助函数已实现；只有 D3/main 提供同场景代价矩阵时才有结果 |
 | 外部能力探测 | 只探测本地参考路径和源码能力，不导入、不执行、不增加默认依赖 |
 | 区域资源规则建议与投影 | 已实现 truth-free 变长区域图、守恒/邻边/备用/authority/commit/fault 安全投影；只输出建议 |
-| 共享区域图学习研究管线 | 正式 900 episode 已完成行为克隆开发训练；bundle/state/SHA、OOD/timeout/低置信/非有限回退和确定性投影可运行。标签动作多样性不足，模型强制 development/shadow-only，PPO/assist 不可用 |
+| 共享区域图学习研究管线 | 旧 900-episode 候选保留为历史冻结基线；新版候选合并 clean supplemental 课程并完成动作平衡训练、validation 置信拟合和独立 calibration，四类动作均有正样本。新版仍强制 development/shadow-only，PPO/assist/authority 不可用 |
 | 区域学习 episode dataset | 正式 dataset-v1 已完成 900 episode/1798 frame 审计和 70/15/15 seed 原子 split；外部 1000-1019 保持隔离。reward/causal/counterfactual 仍 unavailable |
 | 跨模块共享 seed 切分消费端 | D4 已实现独立严格校验和只读 60/20/20 canonical view；原 dataset 零修改。仅属 development/data-governance，不是模型性能证据 |
 | 区域动作覆盖补充课程 | 独立 producer 已覆盖 hold、request-replan、非零 quota 和 transfer；所有 target 经确定性投影，reward/outcome unavailable。仅用于 clean 来源下的行为克隆和离线 shadow，不是正式策略证据 |
@@ -784,7 +809,7 @@ main/runtime 负责 AirSim 启停与 episode 顺序、故障注入时间轴、D3
 - 30% 消息丢失下，7/10 因缺 ACK 保守闭锁，只有 3/10 在 ACK 完整后执行。这证明“缺确认不执行”，不是通信性能优良的证明。
 - 更早的 D4 P1 合同层正负例中，二级协调者和完全分布式对等节点都以 3/3 ACK 进入 `executing`，确认窗口显式截止后的缺 ACK 场景以 2/3 进入 `aborted`（已中止）并保持复核；截止前普通快照保持 `collecting_acks`。
 - 区域化合同验证为 23 个确定性单元 test case，无随机 seed；它关闭 D4 模块内 metadata/authority/安全门控。早期 main 质点接线定向回归为 8/8；2026-07-25 加入通信因果收据和异步三成员确认后，main-owned 模块栈为 66 passed、scalable 3D 全量为 272 passed。上述结果覆盖单二级、多二级 owner、distributed D3 plan、D7 fencing 和单随机种子三成员原子提交；仍不构成 AirSim、真实网络、硬件或长时 200 对 200 多随机种子证据。
-- 区域资源学习已形成正式数据审计和离线开发 checkpoint。内部测试只有 15 个 seed，14384 个动作标签没有 quota/transfer/hold/replan 正样本；D6 审计中 898/1798 帧只有无归因相邻状态转移，reward/causal/counterfactual 可用数均为 0。bundle 固化动作多样性不足和策略能力声明禁止，外部 20-seed paired 结果与真实网络收益仍缺失，因此 assist 资格不可用。
+- 区域资源学习的旧冻结 checkpoint 仍保留 14384 个动作无 quota/transfer/hold/replan 正样本这一历史限制。新版 development 候选已加入 clean supplemental 正类并在 calibration 桶覆盖四类动作，但 reward/causal/counterfactual 仍为 0，保留 1000-1019 尚未评估，因此 assist 资格仍不可用。
 - 独立补充课程已提供四类规则 teacher 正样本，clean 数据及 canonical BC 只读 view 已可用，但仍没有 outcome/reward。它不能覆盖正式数据的状态分布，也不能把现有 development bundle 重新分类为可推荐策略。
 
 这些结果验证的是单次试验时间轴上的顺序接管、版本/租约/ACK 门控和唯一所有者，不代表真实 RF、真实吞吐带宽、节点时钟漂移、网络设备或硬件故障已经验证。

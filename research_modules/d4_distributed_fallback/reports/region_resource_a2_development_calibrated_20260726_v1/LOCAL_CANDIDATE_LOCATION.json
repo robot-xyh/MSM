@@ -1,0 +1,13 @@
+{
+  "assist_enabled": false,
+  "authority_enabled": false,
+  "candidate_id": "region_resource_a2_development_calibrated_20260726_v1",
+  "candidate_manifest_sha256": "d3c96f0abf059d6726b4706f8380a59687d8635898253cfa04f0a8a61df036a2",
+  "lifecycle_stage": "development",
+  "local_candidate_locator": "research_modules/d4_distributed_fallback/outputs/region_resource_a2_development_calibrated_20260726_v1",
+  "maximum_advisor_mode": "shadow",
+  "model_state_sha256": "cf393eaa2e7777e63645ef244f8e9bf733123fdc768f2610a91954c5f6c4632f",
+  "model_version": "d4-region-a2-bc-calibrated-development-v2",
+  "schema": "d4-region-resource-development-candidate-locator-v1",
+  "weights_tracked_by_git": false
+}

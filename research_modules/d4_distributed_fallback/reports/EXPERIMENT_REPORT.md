@@ -1,6 +1,64 @@
 # D4 分布式降级与接管实验报告
 
+## 0.00 2026-07-26 A2 development 候选训练与校准
+
+### 结论
+
+新版候选完成训练、validation 置信拟合和独立 calibration，并在固定门下形成正样本。候选
+仍属于 development/shadow，不具备 assist、authority、production 或系统收益结论。
+
+### 数据与切分
+
+- 正式数据：900 episode、1798 frame、14384 action。
+- clean supplemental：100 episode、300 frame、1200 action。
+- 规范切分：train/validation/calibration 为 60/20/20 个 seed；对应样本为
+  1259/419/420。
+- 保留评估 seed：1000-1019；本次使用数为 0。
+- 总动作正类：非零 quota 200、transfer 100、hold 100、request-replan 200。
+
+### 训练
+
+动作模型在 CPU 单线程运行 26 epoch 后早停，最佳 epoch 为 14，最佳 validation loss 为
+0.073481。每 epoch 有效训练样本为 1979，其中正式样本 1079，补充样本 180 并重复 5 次。
+置信头在 419 个 validation 正样本和 419 个合成 OOD 负样本上训练 50 epoch，最终二元交叉
+熵为 0.033995。
+
+### 校准结果
+
+| 指标 | 结果 |
+|---|---:|
+| candidate considered | 420/420 |
+| candidate gate-pass | 420/420 |
+| 置信度 min/mean/max | 0.707421 / 0.972089 / 1.000000 |
+| 时延 mean/P95/max | 0.834955 / 0.969215 / 1.294533 ms |
+| 合成 OOD 拒绝 | 420/420 |
+| Brier score | 0.004789 |
+| 期望校准误差 | 0.028378 |
+| 预测非零 quota | 40 |
+| 预测 transfer | 20 |
+| 预测 hold | 20 |
+| 预测 request-replan | 40 |
+
+固定门限为置信度 0.6、时延 50 ms、OOD margin 0.05。test/calibration 桶没有参与门限选择。
+专项 fixture 还验证低置信、OOD、超时、非有限、旧 epoch、到期 lease、ACK 不完整、网络
+分区和安全投影异常均回退规则。fixture 不代表实际系统收益。
+
+### 产物与限制
+
+候选清单文件 SHA-256 为
+`d3c96f0abf059d6726b4706f8380a59687d8635898253cfa04f0a8a61df036a2`，权重
+SHA-256 为 `cf393eaa2e7777e63645ef244f8e9bf733123fdc768f2610a91954c5f6c4632f`，组合
+数据 SHA-256 为 `7779d1447b2a770851cb25de0b04a7ea5a1899c299d463d21b0b966fc20d318a`。
+保留 seed 的实际候选采用、严格后继计划、运行 ACK、联盟成员通信回执、物理结果和 paired
+non-degradation 尚未验证。后续必须由 main 调度隔离降级实验并由 D6 独立审计。
+
+2026-07-26 D4 全量模块测试为 **577/577 passed**。本轮未运行 AirSim、真实网络或
+reserved-seed 物理试验。
+
 ## 0.0A 2026-07-26 A2 证据装配审计
+
+本节记录新版候选形成前的证据盘点。旧候选 0/20 门控结果继续作为冻结基线；新版候选的训练
+和 calibration 结果见上一节，尚不能替代 reserved-seed 采用与物理结果。
 
 本节记录代码和制品链盘点，没有新增仿真场景或随机种子。D4 已有开发 bundle 完整性、候选
 运行采用、严格后继计划、联盟状态、成员通信投递和区域结果窗口合同；当前没有把这些合同与

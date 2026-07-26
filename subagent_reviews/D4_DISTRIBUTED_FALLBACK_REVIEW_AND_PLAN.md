@@ -1,6 +1,29 @@
 # D4 分布式协同与降级接管综述及子方案
 
+## 2026-07-26 A2 development 候选评审
+
+D4 已完成新版区域资源 development 候选的训练、置信拟合、独立校准和证据绑定。正式
+900 episode 保留原数据不变，clean supplemental 100 episode 提供 quota、transfer、hold
+和 request-replan 正类；两者通过同一规范 60/20/20 seed 视图只读组合。seed
+1000-1019 完全隔离。
+
+校准桶共 420 个样本，420 个候选被考虑并通过固定 0.6 置信、50 ms 时延、分布外、有限值和
+确定性安全投影门。校准动作覆盖非零配额 40、transfer 20、hold 20、request-replan 40；
+合成 OOD 420/420 被拒绝。候选 manifest、权重、数据、切分和实现谱系均可由隔离 loader
+复核。旧 frozen bundle 的拒绝和加载合同保持兼容。
+
+本轮不改变 D4 降级仲裁、联盟状态机或正式权限。候选清单明确
+development/shadow-only，未运行 1000-1019，未形成实际采用、新计划 ACK、成员 ACK、物理
+结果或配对非退化。下一步由 main 组织未见 seed 的隔离降级对照并由 D6 外部审计；D4 在证据
+完整前继续拒绝 assist、authority 和 production 声明。
+
+2026-07-26 D4 全量模块回归为 **577/577 passed**。本轮证据限于模块训练、校准和隔离
+fixture，不是 AirSim、真实网络或物理效果证据。
+
 ## 2026-07-26 A2 证据链盘点
+
+本节是新版校准候选形成前的历史盘点。当前候选能力和限制以上一节为准；正式证据链缺口仍按
+本节执行。
 
 D4 当前没有完整的“D6 外部审计 -> D4 evidence assembler -> 新 bundle”链路。已有组件能分别
 验证开发 bundle、区域建议、严格后继计划、运行消费、联盟成员业务 ACK、消息实际投递和结果

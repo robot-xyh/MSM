@@ -1,6 +1,39 @@
 # D4 分布式协同与降级接管
 
+## 2026-07-26 A2 校准 development 候选
+
+D4 已生成新版区域资源 `development/shadow` 候选
+`region_resource_a2_development_calibrated_20260726_v1`。该候选合并正式 900
+episode 与 clean supplemental 100 episode 的规范只读 60/20/20 视图；训练、验证和校准
+分别使用 seed 0-99 中互不重叠的 60、20、20 个 seed。保留 seed 1000-1019 的使用数为
+0，未参与训练、置信拟合、阈值选择或场景选择。
+
+行为克隆使用动作平衡损失和补充课程重复采样，置信头只在 validation 正样本与合成分布外
+样本上拟合；test 桶仅作独立校准，不调门限。校准 420 个样本中，候选
+considered/gate-pass 为 **420/420**，置信度 min/mean/max 为
+**0.707421/0.972089/1.000000**，推理时延 P95/max 为
+**0.969215/1.294533 ms**。固定置信门仍为 **0.6**，固定时延门仍为 **50 ms**。
+合成分布外样本 **420/420** 被硬门拒绝。
+
+校准桶的后投影动作覆盖非零配额 40、跨区转移 20、hold 20 和 request-replan 40。
+数据总目标动作清单为 15584 条，其中非零配额 200、transfer 100、hold 100、
+request-replan 200。候选清单文件 SHA-256 为
+`d3c96f0abf059d6726b4706f8380a59687d8635898253cfa04f0a8a61df036a2`，权重
+SHA-256 为 `cf393eaa2e7777e63645ef244f8e9bf733123fdc768f2610a91954c5f6c4632f`。
+
+该结果只证明新版候选具有动作多样性、固定门可通过且证据可绑定加载。候选仍固定
+`lifecycle_stage=development`、`maximum_advisor_mode=shadow`，
+`assist_enabled=false`、`authority_enabled=false`。正式保留 seed 降级试验、D3 严格后继
+计划、运行消费 ACK、联盟成员 ACK、采用后物理窗、规则基线配对非退化和 D6 外部审计均未
+执行，不能据此宣称系统收益、assist、生产 authority 或正式准入。
+
+2026-07-26 D4 全量模块回归为 **577/577 passed**。本轮未运行 AirSim 或
+reserved-seed 正式矩阵。
+
 ## 2026-07-26 A2 预准入证据装配盘点
+
+本节记录新版校准候选形成前的盘点。当前候选状态和后续限制以上一节为准；旧冻结 bundle 和
+历史 20-seed 结果继续保留为基线，不被新版产物改写。
 
 结论是：D4 已有多段严格证据合同，但尚不具备与“D6 外部审计 -> D4 证据装配器 -> 新
 bundle”等价的完整链路。该缺口当前为 P1，不是 P0。原因是

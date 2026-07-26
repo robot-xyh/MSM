@@ -49,6 +49,10 @@ from .region_resource_learning import (
     ModelBundleValidationError,
     load_region_resource_model_bundle,
 )
+from .region_resource_development_candidate import (
+    RegionResourceDevelopmentCandidateManifest,
+    load_region_resource_development_candidate_manifest,
+)
 from .regional_failover import REGIONAL_FAILOVER_SCHEMA, RegionalFailoverDecision
 
 
@@ -183,6 +187,7 @@ class RegionResourceCandidateBundleBinding:
     model_state_sha256: str
     policy_name: str
     policy_version: str
+    development_candidate_manifest_sha256: str | None = None
 
     def __post_init__(self) -> None:
         for name in ("bundle_id", "bundle_version", "policy_name", "policy_version"):
@@ -190,6 +195,11 @@ class RegionResourceCandidateBundleBinding:
                 raise ValueError(f"{name} must not be empty")
         _require_sha256(self.bundle_manifest_sha256, "bundle_manifest_sha256")
         _require_sha256(self.model_state_sha256, "model_state_sha256")
+        if self.development_candidate_manifest_sha256 is not None:
+            _require_sha256(
+                self.development_candidate_manifest_sha256,
+                "development_candidate_manifest_sha256",
+            )
 
     def to_dict(self) -> dict[str, Any]:
         return to_jsonable(self)
@@ -940,15 +950,42 @@ class RegionResourceIsolatedPairedCandidateLoader:
         source = Path(bundle_dir)
         if source.is_symlink():
             raise ModelBundleValidationError("paired_bundle_directory_symlink_forbidden")
-        if candidate_bundle != REGION_RESOURCE_FROZEN_DEVELOPMENT_BUNDLE_BINDING:
-            raise ModelBundleValidationError(
-                "paired_bundle_not_frozen_development_bundle"
-            )
-        if (
-            source.name != "bundle"
-            or source.parent.name != REGION_RESOURCE_FROZEN_DEVELOPMENT_BUNDLE_ID
-        ):
+        legacy_bundle = (
+            candidate_bundle == REGION_RESOURCE_FROZEN_DEVELOPMENT_BUNDLE_BINDING
+        )
+        if source.name != "bundle" or source.parent.name != candidate_bundle.bundle_id:
             raise ModelBundleValidationError("paired_bundle_id_mismatch")
+        candidate_manifest: RegionResourceDevelopmentCandidateManifest | None = None
+        if not legacy_bundle:
+            if candidate_bundle.development_candidate_manifest_sha256 is None:
+                raise ModelBundleValidationError(
+                    "paired_bundle_not_frozen_development_bundle"
+                )
+            try:
+                candidate_manifest = (
+                    load_region_resource_development_candidate_manifest(
+                        source.parent,
+                        expected_manifest_sha256=(
+                            candidate_bundle.development_candidate_manifest_sha256
+                        ),
+                    )
+                )
+            except Exception as exc:
+                raise ModelBundleValidationError(
+                    f"paired_development_candidate_evidence_invalid:{type(exc).__name__}"
+                ) from exc
+            if (
+                candidate_manifest.candidate_id != candidate_bundle.bundle_id
+                or candidate_manifest.model_version
+                != candidate_bundle.bundle_version
+                or candidate_manifest.bundle_manifest_sha256
+                != candidate_bundle.bundle_manifest_sha256
+                or candidate_manifest.model_state_sha256
+                != candidate_bundle.model_state_sha256
+            ):
+                raise ModelBundleValidationError(
+                    "paired_development_candidate_binding_mismatch"
+                )
 
         manifest_path = source / "manifest.json"
         actual_manifest_sha256 = _sha256_file(manifest_path)
@@ -981,15 +1018,33 @@ class RegionResourceIsolatedPairedCandidateLoader:
             raise ModelBundleValidationError("paired_bundle_policy_name_mismatch")
         if candidate_bundle.policy_version != loaded.manifest.model_version:
             raise ModelBundleValidationError("paired_bundle_policy_version_mismatch")
-        _validate_frozen_development_manifest(loaded)
+        if legacy_bundle:
+            _validate_frozen_development_manifest(loaded)
+        else:
+            assert candidate_manifest is not None
+            _validate_evidence_bound_development_manifest(
+                loaded, candidate_manifest
+            )
 
         self.bundle_dir = source
         self.bundle_manifest_sha256 = actual_manifest_sha256
         self.loaded_bundle = loaded
         self.policy = LearnedRegionResourcePolicy(loaded.model, loaded.manifest)
         self._bundle_fingerprint = _loaded_bundle_fingerprint(loaded)
-        if self._bundle_fingerprint != _frozen_development_bundle_fingerprint():
+        if (
+            legacy_bundle
+            and self._bundle_fingerprint
+            != _frozen_development_bundle_fingerprint()
+        ):
             raise ModelBundleValidationError("paired_bundle_fingerprint_mismatch")
+        self._candidate_manifest = candidate_manifest
+        self._candidate_fingerprint = (
+            _evidence_bound_candidate_fingerprint(
+                source.parent, candidate_manifest
+            )
+            if candidate_manifest is not None
+            else ()
+        )
 
     def evaluate(
         self,
@@ -1004,6 +1059,15 @@ class RegionResourceIsolatedPairedCandidateLoader:
         before = _loaded_bundle_fingerprint(self.loaded_bundle)
         if before != self._bundle_fingerprint:
             raise ModelBundleValidationError("paired_bundle_changed_before_inference")
+        if self._candidate_manifest is not None and (
+            _evidence_bound_candidate_fingerprint(
+                self.bundle_dir.parent, self._candidate_manifest
+            )
+            != self._candidate_fingerprint
+        ):
+            raise ModelBundleValidationError(
+                "paired_development_candidate_changed_before_inference"
+            )
 
         started_at = perf_counter()
         try:
@@ -1014,6 +1078,15 @@ class RegionResourceIsolatedPairedCandidateLoader:
             after = _loaded_bundle_fingerprint(self.loaded_bundle)
             if after != self._bundle_fingerprint:
                 raise ModelBundleValidationError("paired_bundle_changed_during_inference")
+            if self._candidate_manifest is not None and (
+                _evidence_bound_candidate_fingerprint(
+                    self.bundle_dir.parent, self._candidate_manifest
+                )
+                != self._candidate_fingerprint
+            ):
+                raise ModelBundleValidationError(
+                    "paired_development_candidate_changed_during_inference"
+                )
 
         return RegionResourceIsolatedCandidateEvaluation(
             recommendation=recommendation,
@@ -1627,6 +1700,64 @@ def _validate_frozen_development_manifest(
         raise ModelBundleValidationError(
             "paired_bundle_development_admission_flags_changed"
         )
+
+
+def _validate_evidence_bound_development_manifest(
+    loaded: LoadedRegionResourceModelBundle,
+    candidate: RegionResourceDevelopmentCandidateManifest,
+) -> None:
+    manifest = loaded.manifest
+    expected = {
+        "architecture": REGION_GRAPH_ARCHITECTURE,
+        "model_version": candidate.model_version,
+        "state_dict_sha256": candidate.model_state_sha256,
+        "training_dataset_sha256": candidate.composite_dataset_sha256,
+        "training_split_sha256": candidate.composite_split_sha256,
+        "lifecycle_stage": MODEL_LIFECYCLE_DEVELOPMENT,
+        "maximum_advisor_mode": MODEL_MAXIMUM_MODE_SHADOW,
+    }
+    for name, value in expected.items():
+        if getattr(manifest, name) != value:
+            raise ModelBundleValidationError(
+                f"paired_development_candidate_manifest_mismatch:{name}"
+            )
+    if (
+        manifest.training_dataset_available is not True
+        or loaded.training_dataset_manifest is None
+        or manifest.training_manifest_sha256
+        != candidate.composite_dataset_manifest_sha256
+        or manifest.reward_evidence_available
+        or not manifest.action_diversity_sufficient
+        or manifest.strategy_capability_claim_allowed
+        or manifest.final_holdout_seed_count != 0
+        or manifest.assist_admitted
+    ):
+        raise ModelBundleValidationError(
+            "paired_development_candidate_admission_boundary_invalid"
+        )
+
+
+def _evidence_bound_candidate_fingerprint(
+    root: Path,
+    manifest: RegionResourceDevelopmentCandidateManifest,
+) -> tuple[tuple[str, str], ...]:
+    paths = [
+        root / "development_candidate_manifest.json",
+        *(root / relative_path for relative_path in manifest.evidence_files),
+    ]
+    repository_root = Path(__file__).resolve().parents[3]
+    paths.extend(
+        repository_root / relative_path
+        for relative_path in manifest.implementation_files
+    )
+    fingerprint: list[tuple[str, str]] = []
+    for path in paths:
+        if path.is_symlink():
+            raise ModelBundleValidationError(
+                "paired_development_candidate_file_symlink_forbidden"
+            )
+        fingerprint.append((str(path), _sha256_file(path)))
+    return tuple(fingerprint)
 
 
 def _sha256_file(path: Path) -> str:

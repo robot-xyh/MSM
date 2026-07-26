@@ -1,0 +1,13 @@
+{
+  "candidate_id": "region_resource_a2_development_calibrated_20260726_v1",
+  "files": {
+    "DEVELOPMENT_CANDIDATE_REPORT_CN.md": "e53deac77c88c0b34d01397fe37dfa21073795c406f40ba070355380157799b8",
+    "LOCAL_CANDIDATE_LOCATION.json": "13f429fbdec6f33eb2ab07d5780a85bde49dc08334702f1931b7e9138a328a34",
+    "calibration_report.json": "d8089ca23a22f7819745eae2cb95e7a323baad2080b2b79cec20483235c8dfbf",
+    "candidate_gate_diagnostics.json": "97aac8335f33e98c3aebdc5664120001ee45fa07c1e036ac8dccc3f4ae8ec6a6",
+    "data_manifest.json": "69cd05ed19f700c0bfdb33b002731fc7eb2dbb32f507fcb6b3c4c4411243ebca",
+    "development_candidate_manifest.json": "d3c96f0abf059d6726b4706f8380a59687d8635898253cfa04f0a8a61df036a2",
+    "training_report.json": "ccb79c22ddb3769a4fc95a0a6a85f54f0b8fcbeb98e0f4ace28b0a25714c36c5"
+  },
+  "schema": "d4-region-resource-development-candidate-tracked-evidence-v1"
+}

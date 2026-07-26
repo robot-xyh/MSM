@@ -1,0 +1,141 @@
+{
+  "candidate_considered_count": 420,
+  "candidate_gate_pass_count": 420,
+  "failure_fixture_is_not_system_benefit_evidence": true,
+  "latency_limit_ms": 50.0,
+  "minimum_confidence": 0.6,
+  "positive_examples": [
+    {
+      "confidence": 0.9985846281051636,
+      "frame_index": 0,
+      "gate_pass": true,
+      "latency_ms": 1.245277002453804,
+      "rejection_reasons": [],
+      "scenario_id": "center_failure_50v50",
+      "seed": 1,
+      "source_kind": "formal"
+    },
+    {
+      "confidence": 0.9988375306129456,
+      "frame_index": 1,
+      "gate_pass": true,
+      "latency_ms": 1.0048800613731146,
+      "rejection_reasons": [],
+      "scenario_id": "center_failure_50v50",
+      "seed": 1,
+      "source_kind": "formal"
+    },
+    {
+      "confidence": 0.9711446762084961,
+      "frame_index": 0,
+      "gate_pass": true,
+      "latency_ms": 1.0888639371842146,
+      "rejection_reasons": [],
+      "scenario_id": "communication_degraded_5v5",
+      "seed": 1,
+      "source_kind": "formal"
+    },
+    {
+      "confidence": 0.9708158373832703,
+      "frame_index": 1,
+      "gate_pass": true,
+      "latency_ms": 0.8567420300096273,
+      "rejection_reasons": [],
+      "scenario_id": "communication_degraded_5v5",
+      "seed": 1,
+      "source_kind": "formal"
+    },
+    {
+      "confidence": 0.9999997615814209,
+      "frame_index": 0,
+      "gate_pass": true,
+      "latency_ms": 0.8490309119224548,
+      "rejection_reasons": [],
+      "scenario_id": "delayed_noisy_100v100",
+      "seed": 1,
+      "source_kind": "formal"
+    },
+    {
+      "confidence": 0.9999997615814209,
+      "frame_index": 1,
+      "gate_pass": true,
+      "latency_ms": 0.8324440568685532,
+      "rejection_reasons": [],
+      "scenario_id": "delayed_noisy_100v100",
+      "seed": 1,
+      "source_kind": "formal"
+    },
+    {
+      "confidence": 0.9985846281051636,
+      "frame_index": 0,
+      "gate_pass": true,
+      "latency_ms": 0.8510519983246922,
+      "rejection_reasons": [],
+      "scenario_id": "dense_crossing_50v50",
+      "seed": 1,
+      "source_kind": "formal"
+    },
+    {
+      "confidence": 0.998570442199707,
+      "frame_index": 1,
+      "gate_pass": true,
+      "latency_ms": 0.837762956507504,
+      "rejection_reasons": [],
+      "scenario_id": "dense_crossing_50v50",
+      "seed": 1,
+      "source_kind": "formal"
+    },
+    {
+      "confidence": 0.9994127750396729,
+      "frame_index": 0,
+      "gate_pass": true,
+      "latency_ms": 0.8220619056373835,
+      "rejection_reasons": [],
+      "scenario_id": "evasive_multilevel_20v20",
+      "seed": 1,
+      "source_kind": "formal"
+    },
+    {
+      "confidence": 0.9993878602981567,
+      "frame_index": 1,
+      "gate_pass": true,
+      "latency_ms": 0.8317449828609824,
+      "rejection_reasons": [],
+      "scenario_id": "evasive_multilevel_20v20",
+      "seed": 1,
+      "source_kind": "formal"
+    },
+    {
+      "confidence": 0.9999961853027344,
+      "frame_index": 0,
+      "gate_pass": true,
+      "latency_ms": 0.8302750065922737,
+      "rejection_reasons": [],
+      "scenario_id": "formation_split_200v200",
+      "seed": 1,
+      "source_kind": "formal"
+    },
+    {
+      "confidence": 0.9830396771430969,
+      "frame_index": 1,
+      "gate_pass": true,
+      "latency_ms": 0.8275270229205489,
+      "rejection_reasons": [],
+      "scenario_id": "formation_split_200v200",
+      "seed": 1,
+      "source_kind": "formal"
+    }
+  ],
+  "rejected_examples": [],
+  "required_regression_fallbacks": [
+    "low_confidence",
+    "ood",
+    "timeout",
+    "nonfinite",
+    "stale_epoch_or_lease",
+    "coalition_ack_incomplete",
+    "safety_projection_failure"
+  ],
+  "rule_fallback_count": 0,
+  "schema": "d4-region-resource-development-gate-diagnostics-v1"
+}

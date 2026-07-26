@@ -1,6 +1,39 @@
 # D4 实现差距审计：分布式协同与降级接管
 
+## 2026-07-26 A2 校准候选复核
+
+- **P0**：无新增 P0。0.6 置信门、50 ms 时延门、确定性 safety projection、
+  owner/plan/epoch/lease、联盟 ACK 和网络分区门均保持原值；生产 writer/loader 仍不能
+  自声明 qualified、assist 或 authority。
+- **已关闭的模块内 P1**：新增 evidence-bound development candidate 管线。它组合正式
+  900 episode 与 clean supplemental 100 episode 的规范 60/20/20 只读视图，使用动作平衡
+  行为克隆和 validation 置信拟合，独立在 test 桶校准。候选 bundle、权重、数据、切分、
+  实现文件和校准报告均以 SHA-256 绑定；旧冻结 bundle 继续按原路径加载。
+- **动作覆盖**：总目标动作 15584，非零配额 200、transfer 100、hold 100、
+  request-replan 200。校准后投影预测为非零配额 40、transfer 20、hold 20、
+  request-replan 40，四类正动作均存在。
+- **校准门**：420/420 considered 且 gate-pass；置信度 min/mean/max 为
+  0.707421/0.972089/1.000000；时延 P95/max 为 0.969215/1.294533 ms；
+  合成 OOD 420/420 拒绝；保留 seed 使用数为 0。Brier score 为 0.004789，
+  期望校准误差为 0.028378。
+- **回退覆盖**：模块 fixture 覆盖低置信、OOD、超时、非有限、旧 epoch、到期 lease、
+  ACK 不完整、网络分区和安全投影异常。fixture 只证明失败关闭代码路径，不是系统收益。
+- **证据身份**：候选清单文件 SHA-256 为
+  `d3c96f0abf059d6726b4706f8380a59687d8635898253cfa04f0a8a61df036a2`；权重
+  SHA-256 为 `cf393eaa2e7777e63645ef244f8e9bf733123fdc768f2610a91954c5f6c4632f`；
+  数据集内容 SHA-256 为
+  `7779d1447b2a770851cb25de0b04a7ea5a1899c299d463d21b0b966fc20d318a`。
+- **仍开放的 A2 P1**：保留 seed 1000-1019 尚未运行。候选实际采用、D3 严格后继计划、
+  main/D3/D7 隔离消费 ACK、逐成员通信回执、采用后物理窗、同输入规则基线非退化和 D6
+  外部审计均未形成。当前候选只能 isolated/shadow，不能宣称 assist、authority、
+  production 或实际收益。
+- **验证**：2026-07-26，D4 全量 **577/577 passed**；候选绑定加载和一次校准 seed 推理
+  复核通过。未运行 AirSim、reserved-seed 正式矩阵或物理实验。
+
 ## 2026-07-26 A2 预准入证据装配审计
+
+本节保留新版候选形成前的审计结论。模块内候选生成和校准缺口已按上一节关闭；关于实际采用
+正样本、D6 外部审计和正式 promotion 的 P1 仍有效。
 
 - **P0 结论**：没有发现新的模块内自晋级路径。v2 writer 在文件写入前拒绝
   `qualified/assist`；loader 只能构造 development manifest；`assist_admitted` 恒为 false；

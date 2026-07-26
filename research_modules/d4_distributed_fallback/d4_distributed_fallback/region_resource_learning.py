@@ -1311,7 +1311,10 @@ class LearnedRegionResourcePolicy:
         transfers: list[RegionTransferSuggestion] = []
         for index, edge_ref in enumerate(graph.edge_refs):
             fraction = max(0.0, float(torch.tanh(edge_values[index, 0])))
-            count = int(fraction * edge_ref.transferable_resources)
+            count = min(
+                edge_ref.transferable_resources,
+                int(round(fraction * edge_ref.transferable_resources)),
+            )
             if count <= 0:
                 continue
             transfers.append(

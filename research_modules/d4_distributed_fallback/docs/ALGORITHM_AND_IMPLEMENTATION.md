@@ -1,5 +1,36 @@
 # D4 分布式协同与降级接管算法及实施方案
 
+## 2026-07-26 A2 development 候选实现
+
+新版实现增加独立候选构建器和命令行入口。构建器只读加载正式与 supplemental 数据的
+canonical 60/20/20 视图，逐 episode 合成新的内容寻址数据清单，不修改两个源数据集。
+训练样本按来源分组，supplemental 训练帧重复 5 次；非零连续动作权重为 6，hold 和
+request-replan 正类权重为 8。动作网络最多训练 70 epoch，实际在第 26 epoch 早停，最佳
+checkpoint 为第 14 epoch。
+
+动作模型训练完成后冻结主体参数，只在 validation 桶训练置信头。正样本是 validation 域内
+区域图，负样本由训练特征边界外推形成；固定训练 50 epoch。test 桶只运行候选门和动作质量
+检查，不反向更新权重，不调整 0.6 门、50 ms 门或 OOD margin 0.05。校准报告记录置信分布、
+时延分布、Brier score、期望校准误差、动作覆盖和每类拒绝原因。
+
+候选门执行顺序为：原始推理、有限值检查、置信门、特征域门、时延门、确定性投影、advisory
+发布校验和下一规划边界消费校验。任一步失败都输出稳定拒绝原因并选择规则回退。非有限载荷
+使用带显式非有限标记的诊断哈希，避免规范 JSON 哈希异常中断 fail-closed。测试覆盖低置信、
+OOD、超时、非有限、旧 epoch、到期 lease、ACK 不完整、网络分区和投影异常。
+
+候选 manifest 绑定 bundle manifest、权重、组合数据、split、正式/补充源视图、实现文件及
+全部校准证据。paired loader 只允许两类输入：历史冻结 development bundle，或携带该
+evidence manifest SHA 的新版 development bundle。两类均只允许 isolated/offline；
+production writer/loader 没有 qualified、assist 或 authority 输出。
+
+本次 calibration 为 420/420 gate-pass，预测动作覆盖 quota 40、transfer 20、hold 20、
+request-replan 40；OOD 420/420 拒绝，时延 P95 为 0.969215 ms。权重 SHA-256 为
+`cf393eaa2e7777e63645ef244f8e9bf733123fdc768f2610a91954c5f6c4632f`。这些数字是
+training/validation/calibration 数据上的模块证据，不是 reserved-seed、AirSim、物理结果或
+系统收益。
+
+2026-07-26 D4 全量测试为 **577/577 passed**，新增和修改入口通过 `py_compile`。
+
 ## 2026-07-26 A2 证据装配审计
 
 ### 已有校验链

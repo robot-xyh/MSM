@@ -1,6 +1,38 @@
 # D4 分布式协同与降级接管计划
 
+## 2026-07-26 A2 development 候选收敛与后续验证
+
+模块内候选训练与校准已完成。新版候选绑定正式 900 episode、clean supplemental
+100 episode、规范 60/20/20 seed 视图、实现文件和独立校准证据；固定
+`minimum_confidence=0.6`、`latency_limit_ms=50`、分布外边界和确定性安全投影均未放宽。
+校准正门为 420/420，四类必要动作均有预测正样本，分布外拒绝为 420/420。候选只允许
+isolated/shadow，production writer/loader 仍不能自声明 qualified、assist 或 authority。
+
+下一阶段按以下顺序执行：
+
+1. main 冻结 `1000-1019` 的未见 seed 场景、通信和故障时序。这 20 个 seed 不得回流到
+   训练、阈值、温度、置信拟合或场景筛选。
+2. 在 `center_failed`、`center_and_secondary_failed` 和 `active_risk` 隔离场景生成规则
+   control 与候选 treatment。nominal 只作负对照，不进入降级采用正样本分母。
+3. treatment 必须先通过 0.6、50 ms、分布外、有限值、外部故障和原确定性安全投影，再由
+   D3 形成严格更高版本的计划；旧 epoch/lease、ACK 不完整、网络分区或投影失败继续规则
+   回退。
+4. main 保存候选清单、D4 advisory、source/applied plan、owner/epoch/lease、联盟成员
+   ACK、D3/D7 绑定和隔离消费回执。D6 独立计算采用后物理 availability 与同输入规则基线
+   非退化。
+5. reserved-seed 证据完整前，不实现或授予正式 assist。即使隔离采用通过，也只形成 A2
+   外部证据候选，不直接获得 authority。
+
+当前模块内 P1“动作正类不足、置信头未训练、候选缺少证据绑定加载路径”已关闭。A2 的外部
+P1 仍开放：20 个保留 seed 尚未运行，新执行计划 ACK、联盟投递回执、物理结果和配对因果
+证据尚未形成。
+
+本轮模块验收为 **577/577 passed**；新增和修改入口通过 `py_compile`。AirSim 接口未改变。
+
 ## 2026-07-26 A2 预准入证据装配计划
+
+本节是新版候选训练前的历史计划。模块内候选训练与校准现已按上一节完成；本节关于正式
+promotion 所需外部证据的约束继续有效。
 
 本轮只读盘点确认没有新的 D4 P0 软件旁路。现有 v2 bundle writer/loader、advisor、
 runtime ACK、区域 reward、联盟状态机和通信因果回执都保持原安全边界；不训练、不运行正式

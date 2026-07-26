@@ -1,0 +1,104 @@
+{
+  "action_quality": {
+    "action_count": 3120,
+    "hold_accuracy": 1.0,
+    "hold_correct_count": 3120,
+    "quota_exact_count": 3120,
+    "quota_exact_rate": 1.0,
+    "request_replan_accuracy": 1.0,
+    "request_replan_correct_count": 3120,
+    "transfer_frame_count": 420,
+    "transfer_frame_exact_count": 420,
+    "transfer_frame_exact_rate": 1.0
+  },
+  "actual_system_benefit_evidence": false,
+  "assist_eligible": false,
+  "calibration": {
+    "bin_count": 10,
+    "brier_score": 0.004788594473657087,
+    "expected_calibration_error": 0.0283781466264156,
+    "sample_count": 840
+  },
+  "calibration_seed_count": 20,
+  "calibration_seeds": [
+    1,
+    4,
+    5,
+    8,
+    9,
+    15,
+    28,
+    34,
+    43,
+    53,
+    56,
+    58,
+    66,
+    67,
+    70,
+    76,
+    81,
+    94,
+    95,
+    98
+  ],
+  "confidence": {
+    "count": 420,
+    "max": 1.0,
+    "mean": 0.9720893434115818,
+    "min": 0.7074214816093445,
+    "p50": 0.9984501302242279,
+    "p95": 1.0
+  },
+  "development_candidate_gate": {
+    "latency_p95_passed": true,
+    "ood_fail_closed": true,
+    "passed": true,
+    "positive_gate_sample_available": true,
+    "required_predicted_actions_present": true,
+    "reserved_seed_isolation_passed": true
+  },
+  "formal_holdout_evaluated": false,
+  "gate": {
+    "latency_limit_ms": 50.0,
+    "minimum_confidence": 0.6,
+    "pass_count": 420,
+    "pass_rate": 1.0,
+    "reject_count": 0,
+    "rejection_counts": {}
+  },
+  "latency_ms": {
+    "count": 420,
+    "max": 1.294533023610711,
+    "mean": 0.8349551154034478,
+    "min": 0.6564019713550806,
+    "p50": 0.8388370042666793,
+    "p95": 0.9692145278677343
+  },
+  "ood": {
+    "confidence": {
+      "count": 420,
+      "max": 0.3343227207660675,
+      "mean": 0.02884563666441305,
+      "min": 3.4088286718927164e-21,
+      "p50": 0.0010837994632311165,
+      "p95": 0.21839049458503723
+    },
+    "hard_gate_rejected_count": 420,
+    "hard_gate_rejection_rate": 1.0,
+    "margin": 0.05,
+    "sample_count": 420
+  },
+  "predicted_action_inventory": {
+    "action_count": 3120,
+    "hold_true_count": 20,
+    "request_replan_true_count": 40,
+    "resource_quota_nonzero_count": 40,
+    "transfer_count": 20
+  },
+  "reserved_evaluation_seed_use_count": 0,
+  "sample_count": 420,
+  "schema": "d4-region-resource-development-calibration-evidence-v1",
+  "split": "test_as_independent_calibration",
+  "threshold_tuned_on_calibration_split": false
+}
