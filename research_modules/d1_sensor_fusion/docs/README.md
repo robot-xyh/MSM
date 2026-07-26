@@ -4,6 +4,23 @@
 
 ## 当前证据索引（2026-07-25）
 
+### 在线证据子集快照 main 集成回归
+
+main 已实现默认 reference 的
+`d1_publication_evidence_snapshot_implementation`。candidate
+`required_observation_subset_v1` 从同一 release cycle 的 source observations 与
+materialized tracks `latest_observation_id` 构造去重排序集合；空集、未知/非法 ID 和返回
+子集缺项回退 `full_consistency_snapshot_v1`。selector、execution config、diagnostics 和
+CLI 已贯通。
+
+3/3/1、1.4 秒、seed 34 的模块栈 episode 中，candidate fallback/lookup miss 为 0，
+fused-tracks payload 与 reference 完全一致；空 required 集合回退 full 已由 main 专项
+覆盖。当前复跑结果为 module-stack `62 passed, 1 warning`、scalable 全量
+`263 passed, 1 warning`；D1 定向接口测试仍为
+`22 passed in 0.49s`。clean 200/200/2 smoke、正式矩阵、性能数据和 D6 判定未完成，默认
+保持 full snapshot。详细边界见 `ALGORITHM_AND_IMPLEMENTATION.md`、
+`MODULE_PRINCIPLES_CN.md`、`EXPERIMENT_REPORT.md` 和 `AIRSIM_INTEGRATION_PLAN.md`。
+
 ### 固定滞后回放前缀累计摘要正式拒绝
 
 D6 已对 producer clean commit
@@ -26,8 +43,8 @@ short D1 fusion 改善 `0.959611% < 1%`、short bootstrap 上界
 
 reference `per_checkpoint_prefix_rebuild_v1` 继续作为默认。candidate
 `fixed_lag_checkpoint_prefix_cumulative_summary_v1` 保留为默认关闭研究入口，不得声称
-已晋升。下一候选仅计划按 publication 所需 observation ID 投影 snapshot，必须使用新的
-implementation ID、独立预注册矩阵和 D6 独立判定。本证据只覆盖三维质点仿真。详细结果见
+已晋升。独立的 publication observation-ID 子集候选已完成 main 接线和模块栈回归，但尚无
+clean smoke、独立预注册矩阵或 D6 判定。本证据只覆盖三维质点仿真。详细结果见
 `ALGORITHM_AND_IMPLEMENTATION.md`、`MODULE_PRINCIPLES_CN.md`、
 `EXPERIMENT_REPORT.md` 和正式 D6 bundle
 `../../d6_evaluation_metrics/outputs/`

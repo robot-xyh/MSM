@@ -5,6 +5,42 @@
 
 ---
 
+## 最新增量：在线发布证据子集快照 main 集成回归（2026-07-25）
+
+- D1 已复核现有
+  `FusionAdapter.consistency_evidence_snapshot(observation_ids)`。传入 ID iterable 时，
+  接口先校验全部 ID，再按集合语义去重并返回精确子集；未知 ID 抛出 `KeyError`，空字符串
+  或非字符串抛出 `ValueError`。校验在 ledger 投影之前完成。
+- 子集快照使用 detached replay-counter overlay，不修改内部 evidence，不消费 pending
+  ledger。重复读取保持业务内容稳定；内部 ledger 的 evidence 所有权异常继续失败关闭。
+  最终 `consistency_evidence_records()`/`export_consistency_evidence()` 仍全量物化并清空
+  pending。
+- D1 API 对空 iterable 返回空快照。它无法知道 main 是否漏建 required ID。main 已按
+  同一 release cycle 来源合同构造集合，并把空集合、未知/非法 ID 或返回子集缺项统一回退
+  `full_consistency_snapshot_v1`，记录 fallback 原因。
+- 新候选的 required ID 只允许来自同一 release cycle 的当前 source observations 和
+  materialized tracks 的 `latest_observation_id`。D1 不读取 truth、目标真实编号或 D6
+  标签，不改变 `global_track_id`、双时间戳、协方差、NED、来源谱系或业务 payload。
+- 第一轮 A/B 只改变 publication snapshot selector，两臂均固定 replay-prefix reference
+  `per_checkpoint_prefix_rebuild_v1`。reference/candidate 分别为
+  `full_consistency_snapshot_v1` 和 `required_observation_subset_v1`。
+- 2026-07-25 定向运行 replay-prefix 与 consistency evidence 测试，结果为
+  `22 passed in 0.49s`。现有 D1 合同足以支持 main 候选，本次未修改 D1 源码或测试。
+- main 已在 `IntegratedStackConfig` 和 CLI 接入 selector，默认保持
+  `full_consistency_snapshot_v1`。source observations 与 materialized tracks
+  `latest_observation_id` 在同一 release cycle 内收集、去重、排序；空集、未知/非法 ID
+  或返回子集缺项回退 full snapshot 并记录原因。
+- selector、execution config 和 diagnostics 已进入 runtime profile、observation
+  governance、module final 与 episode summary。3/3/1、1.4 秒、seed 34 的确定性 episode
+  中，candidate fallback 与 lookup miss 均为 0，D1 fused-tracks payload 与 reference
+  完全一致；unknown-ID 与空 required 集合专项均回退 full 并形成固定 reason。
+- D1 owner 复跑 module-stack 为 `62 passed, 1 warning`，scalable 全量为
+  `263 passed, 1 warning`。警告是既有 Matplotlib `Axes3D` 环境提示；D1 定向
+  consistency snapshot/replay-prefix 证据仍为 `22 passed in 0.49s`。D1 源码和测试未变。
+- 当前只完成 main 实现和模块栈回归。clean 200/200/2 smoke、正式矩阵、性能门和 D6
+  evaluator 尚未开始，默认仍为 full snapshot。不得把本节写成候选已准入、系统实时或
+  AirSim/硬件性能结论。
+
 ## 最新增量：固定滞后回放前缀累计摘要正式拒绝（2026-07-25）
 
 - D6 已对 producer clean commit
@@ -95,9 +131,9 @@
 - 模块微基准通过只作为候选形成历史。正式准入已经以 `reject` 审结，reference 保持默认，
   candidate 保持默认关闭。本次 source commit、matrix SHA、门限、失败 pair 和 D6 verdict
   不得调整或覆盖。
-- 下一候选只计划按 publication 所需 observation ID 集合投影 snapshot。它必须使用新的
-  selector、implementation ID、schema、独立预注册矩阵和 D6 独立判定；不得复用本候选身份
-  或改写本次拒绝结论。该下一候选尚未实现。
+- 后续独立候选已完成 main selector、调用点、配置、诊断、CLI 和模块栈回归；默认仍为
+  reference。它使用新的 implementation ID 和 schema，不复用本候选身份，也不改写本次
+  拒绝结论。clean 200/200/2 smoke、独立预注册矩阵和 D6 判定尚未完成。
 - 本轮没有改变 AirSim producer、DTO、episode、坐标或双时间戳合同；新增了 D1 runtime
   publication 只读接口。`docs/AIRSIM_INTEGRATION_PLAN.md` 已同步正式默认状态和接线边界。当前结果
   不是 AirSim、目标硬件、实机、实飞、系统实时、RMSE、NEES 或 NIS 证据。

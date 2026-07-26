@@ -14,10 +14,21 @@
 | --- | --- | --- | --- |
 | 可信、完整且未变化的 checkpoint 前缀仍逐条重建 NIS、门控观测 ID 和 consistency evidence 回放计数 | **P1 主线 GAP 未关闭；本候选正式 reject** | D6 对 clean `7d2e987471b521a1e531bf03a5c99af5096f676a`、matrix SHA `85432d729877eff97e6f3dd517d4baa7a47f44a4fa42e6bfdc7ce85b8d9ec74b` 的 13 pair/26 fresh episode 完成正式评估。13/13 业务语义、consistency digest/count、原 D1 operation counts、实现身份、诊断守恒和真值隔离通过；但五个端到端性能门失败，verdict=`reject` | reference 保持默认，candidate 仅作默认关闭研究入口。本候选准入流程已审结。未来优化必须提出新的实现身份和预注册矩阵，不得调门、删 pair 或覆盖本次 verdict |
 | 正常 checkpoint append 提前物化旧 pending ledger | **D1-owned 修复已关闭并通过正式回归** | 修复前 dirty smoke 为 1,584 次 append/物化。修复后 append 物化为 0；正式 13 pair 中正常追加和不兼容追加物化均为 0，最终 pending ledger 为 0，consistency digest/count 与 reference 一致 | 保持 append、迟到插入、fixed-lag 重基准、失效和最终导出回归；不得把 append 安全修复与候选正式准入混同 |
-| 在线 publication 全量 snapshot 构造无关 evidence 记录 | **P1 开放；全量 snapshot 接线完成，子集投影未实现** | 正式矩阵已使用非破坏性 snapshot，内部物化记录减少 `52.150746%`，但在线 snapshot 仍投影构造 `656481` 条记录。最终 export 后 pending 为 0 | 作为新候选按 publication 所需 observation ID 投影 snapshot；保持 ID 所有权、完整 evidence 导出和失败关闭。必须使用新的 implementation ID、独立预注册矩阵和 D6 判定 |
+| 在线 publication 全量 snapshot 构造无关 evidence 记录 | **P1 开放；D1 API 与 main 集成回归完成，clean smoke/正式准入未完成** | main 已实现默认 reference 的 `d1_publication_evidence_snapshot_implementation`，candidate 为 `required_observation_subset_v1`；required ID 来自同一 release cycle 的 source observations 与 materialized tracks `latest_observation_id`，完成去重排序。空集、未知/非法 ID 和子集缺项回退 full 并记录原因；空 required 集合回退 full 已由 main 专项覆盖。selector/config/diagnostics 已贯通四个报告表面和 CLI。3/3/1、1.4 秒、seed 34 回归中 candidate fallback/lookup miss 均为 0，D1 fused payload 与 reference 完全一致。当前复核为 module-stack `62 passed`、scalable 全量 `263 passed`，D1 定向仍为 `22 passed` | 保持 reference 默认和 replay-prefix reference 单 treatment；运行 clean 200/200/2 smoke，验证 payload/operation-count 一致、fallback/lookup miss/final pending 均为 0并披露返回记录数。之后冻结新矩阵/evaluator，由 D6 独立判定；当前不得写入性能收益或准入结论 |
 | 累计摘要可能跳过 evidence 刷新或污染 checkpoint | **D1-owned 安全边界已关闭并持续回归** | summary 仅含不可变 tuple/标量；逻辑刷新通过独立区间账本延迟物化。正式 13/13 pair 的 consistency digest/count、原 D1 operation counts、诊断守恒、实现身份和最终 pending=0 通过 | 保持迟到量测、门控拒绝、重复/子集 snapshot、前缀变化、schema/version/修订失配和别名隔离回归；不得用陈旧 counter、跳过刷新或改变既有操作计数换性能 |
 | 候选默认值和正式治理 | **P1 默认未改变；正式判定 reject** | `main_default_promotion_allowed=false`。reference `per_checkpoint_prefix_rebuild_v1` 仍是 D1/main 默认；candidate `fixed_lag_checkpoint_prefix_cumulative_summary_v1` 默认关闭且保留 | 不删除候选，不声称已晋升。任何新方案使用新的 selector、implementation ID、schema、矩阵和判定；本轮冻结证据保持不变 |
 | 系统实时、AirSim 和融合质量 | **P1 开放** | candidate 最低 RTF `0.197441 < 1`，`system_realtime_gap_closed=false`。正式证据只覆盖 200/200/2 三维质点仿真 | 继续完成目标周期、AirSim、目标硬件、实机/实飞、RMSE、NEES 和 NIS 验收；不得从 long D1 `2.361778%` 或内部物化削减外推系统实时 |
+
+`required_observation_subset_v1` 是独立的 main 集成候选。reference 为
+`full_consistency_snapshot_v1`，第一轮两臂均保持
+`per_checkpoint_prefix_rebuild_v1`，避免把快照范围与 replay-prefix 实现同时作为
+treatment。required ID 只能来自同一 release cycle 的当前 source observations 和已物化公开
+航迹 `latest_observation_id`。D1 不生成该集合，也不读取 truth、目标真实编号或 D6 标签。
+
+D1 API 接受空 iterable 并返回空快照；该行为对通用接口是确定的，但无法证明 main 集合完整。
+main 现已将空集、未知/非法 ID 和返回子集缺项回退全量，并记录固定原因；最终 offline
+export 始终走全量 records/export。当前证据只关闭接口接线与模块栈回归，不包含 clean
+200/200/2 smoke、性能计时、正式矩阵或 D6 准入，P1 保持开放。
 
 冻结 fixture 为 `d1-replay-prefix-summary-200v200-20260725`，fixture SHA-256 为
 `sha256:4e7fcb00432fc4c6736b5ba301d06363e73357fc91689618b6ddab0b1307490e`，生成观测

@@ -30,9 +30,15 @@
   量测、子集 ID 和最终导出。scalable 三维质点正式矩阵已经使用 snapshot，并保持最终
   evidence digest、operation counts 和 ledger 守恒；在线路径仍全量投影构造 `656481`
   条记录。AirSim runtime 尚无同配置 A/B 证据。
-- 下一候选只计划按 publication 所需 observation ID 集合投影 snapshot。它必须使用新的
-  implementation ID、独立预注册矩阵和 D6 判定，不得改写本次三维质点 `reject`。在
-  AirSim 接线前仍需验证 ID 所有权、未知 ID 失败关闭和最终全量导出。
+- main 三维质点模块栈已实现独立 selector：
+  `full_consistency_snapshot_v1`/`required_observation_subset_v1`，默认保持 reference。
+  required ID 来自同一 release cycle 的 source observations 与 materialized tracks
+  `latest_observation_id`；未知/非法 ID 回退 full，selector/config/diagnostics 与 CLI
+  已接入，空 required 集合回退 full 已由 main 专项覆盖。模块栈回归为 `62 passed`，
+  scalable 全量为 `263 passed`。
+- 上述实现尚未接入 AirSim runtime，也没有 AirSim 同配置 A/B、clean 200/200/2 smoke、
+  正式矩阵或 D6 判定。后续 AirSim 接线仍需验证 ID 所有权、fallback/lookup miss 为 0、
+  最终全量导出和 episode reset 隔离；不得改写前一三维质点 `reject`。
 - 该 API 区分只改变证据读取成本，不改变 6 秒 fixed-lag、量测更新、NIS、门控、后验或
   AirSim sensor adapter。模块微基准不能替代 AirSim episode 性能证据。
 

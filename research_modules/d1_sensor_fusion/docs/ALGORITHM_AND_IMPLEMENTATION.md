@@ -8,6 +8,71 @@
 
 ## 当前权威增量（2026-07-25）
 
+### 在线 publication required-observation 子集候选
+
+#### D1 接口复核
+
+新候选只改变一次在线 publication 读取 consistency evidence 的范围。D1 现有接口为：
+
+```python
+records = adapter.consistency_evidence_snapshot(observation_ids)
+```
+
+当 `observation_ids is None` 时，接口返回当前全量精确快照。传入 iterable 时，
+`_validated_consistency_snapshot_ids()` 先检查所有元素为非空字符串，再与
+`_consistency_evidence` 的已知键比较。未知 ID 抛出 `KeyError`，非法 ID 抛出
+`ValueError`。校验结果存为 `frozenset`，因此返回语义是去重后的精确集合，不依赖调用方
+顺序。记录仍按到达时间、量测时间和 observation ID 排序。
+
+pending replay ledger 通过 `_project_all_pending_consistency_prefix_refreshes()` 生成
+detached counter overlay。投影不会写回 `_consistency_evidence`，不会删除
+`_pending_consistency_prefix_refreshes`。关联 ledger 内部若出现 observation 不存在或
+`source_global_track_id` 与 ledger 航迹不一致，接口抛出 `RuntimeError`，不返回部分结果。
+
+最终离线导出不使用子集接口。`consistency_evidence_records()` 先物化全部 pending ledger，
+`export_consistency_evidence()` 再由全量记录生成 bundle。因此子集候选不改变最终记录范围、
+排序、回放计数或 pending 清零语义。
+
+2026-07-25 定向执行 `test_replay_prefix_summary.py` 和
+`test_consistency_evidence.py`，结果为 `22 passed in 0.49s`。用例已覆盖精确子集、未知
+ID、非法空字符串、重复快照非破坏、append/迟到量测后账本一致和最终全量导出。空 required
+集合、重复来源 ID、fallback 诊断和 selector 四表面一致属于 main 新集成路径测试。审计未
+发现需要修改 D1 源码或测试的合同缺口。
+
+#### selector 与责任边界
+
+新 treatment 名称为 `d1_publication_evidence_snapshot_implementation`：
+
+```text
+reference: full_consistency_snapshot_v1
+candidate: required_observation_subset_v1
+```
+
+第一轮两臂均固定使用 replay-prefix reference
+`per_checkpoint_prefix_rebuild_v1`。这样只比较快照范围，不把已经正式拒绝的累计摘要候选
+混入 treatment。
+
+main 只可从同一 release cycle 的两类在线对象形成 required ID：
+
+1. 当前 source observations 的全部 observation ID；
+2. 已物化公开航迹的 `latest_observation_id`。
+
+main 已按上述两类来源收集 ID，完成集合去重和字符串排序。空集合、未知/非法 ID 或返回
+子集缺项统一回退 `full_consistency_snapshot_v1`，并记录固定 fallback reason 和 lookup
+miss。D1 API 对空 iterable 返回空 tuple，这是通用读取语义，不等价于 required 集合完整。
+D1 不生成该集合，也不读取 truth、目标真实编号或 D6 标签。
+
+候选不得改变 fused tracks、summary、lineage、`global_track_id`、双时间戳、协方差、
+NED、门控或 payload hash。最终 offline export 始终全量。main 已完成
+`IntegratedStackConfig`/CLI selector、调用点、execution config 和 diagnostics，并将状态
+贯通 runtime profile、observation governance、module final 与 episode summary。
+
+3/3/1、1.4 秒、seed 34 的确定性 episode 中，candidate fallback/lookup miss 为 0，
+fused-tracks payload 与 reference 完全一致；unknown-ID 与空 required 集合专项均确认回退
+full 并记录 reason。D1 owner 复跑 module-stack 为 `62 passed, 1 warning`，scalable 全量为
+`263 passed, 1 warning`。当前没有 clean 200/200/2 smoke、性能计时、冻结矩阵或 D6 判定，
+默认仍为 `full_consistency_snapshot_v1`。
+
 ### 固定滞后回放前缀累计摘要候选
 
 #### 正式状态
@@ -194,9 +259,9 @@ snapshot；最终 offline export 保持 records/export。当前在线调用仍�
 diagnostics 单独比较，不混入既有 operation-count 等价门。
 
 模块微基准通过仅记录候选形成过程。main 同提交正式矩阵已经完成并给出 `reject`，selector
-继续默认 reference。下一候选只计划按 publication 所需 observation ID 投影 snapshot，
-必须使用新的 implementation ID、独立预注册矩阵和 D6 独立判定；不得复用本候选身份或
-覆盖冻结结论。该下一候选尚未实现。不得把本节写成默认准入、系统实时、AirSim 或硬件证据。
+继续默认 reference。独立的 publication observation-ID 子集候选已完成 main 实现和模块栈
+回归，使用新的 implementation ID；clean smoke、独立预注册矩阵和 D6 判定仍未完成。它
+不得复用本候选身份或覆盖冻结结论，也不得写成默认准入、系统实时、AirSim 或硬件证据。
 
 ### 正式拒绝后保持默认关闭的模态感知保守预筛
 

@@ -1,5 +1,72 @@
 # D1 多传感器融合与目标配准实施计划
 
+## P1 在线发布证据子集快照 main 集成与回归（2026-07-25）
+
+### D1-owned 合同结论
+
+现有 `FusionAdapter.consistency_evidence_snapshot(observation_ids)` 已由 main 接入
+`required_observation_subset_v1`。本次二次复核确认接法符合 D1 合同，不修改 D1 源码或
+测试。
+
+1. `observation_ids=None` 保持全量在线快照；传入 iterable 时先校验全部 ID，再按集合语义
+   去重并返回精确子集。未知 ID 抛出 `KeyError`，空字符串或非字符串抛出
+   `ValueError`，异常发生在 pending ledger 投影之前。
+2. 传入空 iterable 的 D1 语义是返回空快照。它不能判断“当前 publication 确实不需要证据”
+   还是“main 漏建 required ID 集合”，因此空集合回退必须由 main selector 负责。
+3. 子集快照只构造 detached replay-counter overlay，不写回
+   `_consistency_evidence`，不删除 pending ledger。内部 ledger 的 observation ID 与来源航迹
+   不一致时继续以 `RuntimeError` 失败关闭。
+4. `consistency_evidence_records()` 继续全量精确物化 pending ledger；
+   `export_consistency_evidence()` 继续调用该接口。最终离线导出的记录范围、排序和
+   pending ledger 清零语义不变。
+5. 2026-07-25 定向运行
+   `test_replay_prefix_summary.py` 与 `test_consistency_evidence.py`，结果为
+   `22 passed in 0.49s`。现有用例覆盖精确子集、未知 ID、非法空字符串、重复快照非破坏、
+   append/迟到量测后的账本一致性和最终全量导出。空 required 集合、重复来源 ID、main
+   fallback 与四表面诊断属于新 selector 的集成测试，不作为 D1 API 改动。
+
+### 独立候选边界
+
+1. treatment 名称保持
+   `d1_publication_evidence_snapshot_implementation`。reference 为
+   `full_consistency_snapshot_v1`，candidate 为
+   `required_observation_subset_v1`。第一轮两臂均固定使用 replay-prefix reference
+   `per_checkpoint_prefix_rebuild_v1`，不能同时改变两个 selector。
+2. required ID 只由 main 在同一 release cycle 内从当前 source observations 的
+   observation ID，以及已物化公开航迹的 `latest_observation_id` 形成。main 负责去重、
+   排序、完整性和 publication 所有权治理；D1 不读取真值、目标真实编号或 D6 标签，也不
+   反向推导该集合。
+3. required 集合为空、含未知 ID 或未通过 main 完整性/所有权检查时，main 必须回退
+   `full_consistency_snapshot_v1` 并记录原因。D1 的 `KeyError`/`ValueError` 为回退提供
+   明确信号；正式矩阵要求 candidate fallback 和 lookup miss 均为 0。
+4. 最终 offline export 仍全量调用 `consistency_evidence_records()` 或
+   `export_consistency_evidence()`。候选不改 `global_track_id`、双时间戳、协方差、NED、
+   fixed-lag、门控、来源谱系或业务 payload hash。
+
+### 当前状态
+
+main 集成实现与回归已经完成：
+
+1. `IntegratedStackConfig` 和 CLI 已接入 selector，默认保持
+   `full_consistency_snapshot_v1`；非法 selector 在配置入口拒绝。
+2. main 从同一 release cycle 的 source observations 和 materialized tracks 的
+   `latest_observation_id` 收集 ID，完成去重与字符串排序。candidate 对空集、未知/非法 ID
+   或返回子集缺项回退 full snapshot，并记录固定原因。
+3. selector、execution config 和 diagnostics 已进入 runtime profile、observation
+   governance、module final 与 episode summary。诊断记录 selection、publication、两类
+   引用、去重、required ID、adapter 调用、返回记录、fallback、lookup miss 和守恒。
+4. `3 target/3 resource/1 recon`、1.4 秒、seed 34 的确定性模块栈 episode 中，
+   candidate `fallback=0`、`lookup miss=0`，`modules.d1.fused_tracks` payload 与 reference
+   完全一致；unknown-ID 与空 required 集合专项均确认回退 full 并记录原因。
+5. D1 owner 复跑 `test_module_stack.py` 得到 `62 passed, 1 warning`，复跑 scalable
+   全量得到 `263 passed, 1 warning`；警告是既有 Matplotlib `Axes3D` 环境提示。此前 D1
+   snapshot/replay-prefix 定向测试仍为 `22 passed in 0.49s`。
+
+当前尚未运行 clean 200/200/2 smoke，未冻结正式矩阵、evaluator schema 或 D6 判定，也没有
+候选性能数字。默认继续使用 reference。clean smoke 应先验证业务 payload digest、原 D1
+operation counts、fallback/lookup miss 为 0、最终 pending ledger 为 0，并披露
+reference/candidate 返回记录数；通过后才可冻结正式矩阵。
+
 ## P1 固定滞后回放前缀累计摘要正式拒绝与后续计划（2026-07-25）
 
 ### 正式判定
@@ -135,7 +202,7 @@ pending 为 0。该短时模块结果通过 `>=20%` 门，但不能替代 main �
 ledger 为 0。当前在线 snapshot 仍请求全量 evidence，累计投影构造 `656481` 条记录，
 是后续性能工作的直接线索。
 
-下一候选计划只研究按 publication 所需 observation ID 集合投影 snapshot：
+该独立候选现已完成 main 集成实现，继续保持以下边界：
 
 1. 冻结 publication 到 observation ID 集合的来源和所有权合同，未知 ID、空 ID、
    跨航迹 ID 或证据所有权不一致继续失败关闭；
@@ -148,8 +215,10 @@ ledger 为 0。当前在线 snapshot 仍请求全量 evidence，累计投影构�
 5. 重新预注册独立 short/long 矩阵，由 D6 独立给出 admit/reject。不得复用本次 matrix
    SHA、调低门限、删除失败 pair 或覆盖本次冻结结论。
 
-该后续候选尚未实现。系统实时因子、AirSim、目标硬件、实机、实飞、RMSE、NEES 和 NIS
-继续作为开放 P1；候选最低 RTF `0.197441` 不能写成实时闭合。
+main selector、调用点、执行配置、诊断、CLI 和模块栈回归已经完成，但 clean 200/200/2
+smoke、正式矩阵和 D6 evaluator 尚未开始。系统实时因子、AirSim、目标硬件、实机、实飞、
+RMSE、NEES 和 NIS 继续作为开放 P1；前一被拒候选最低 RTF `0.197441` 不能作为本候选
+性能结果，也不能写成实时闭合。
 
 ## P1 模态感知保守稀疏预筛正式拒绝与研究入口治理（2026-07-25）
 

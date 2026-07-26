@@ -4,6 +4,29 @@ Offline research module for radar, acoustic, EO, and optional synthetic lidar he
 
 ## 当前性能与治理证据（2026-07-25）
 
+### 第三十七阶段：在线证据子集快照 main 集成回归
+
+main 已增加 `d1_publication_evidence_snapshot_implementation`。reference 为
+`full_consistency_snapshot_v1`，candidate 为 `required_observation_subset_v1`，默认保持
+reference。第一轮比较的两臂均固定使用 replay-prefix reference
+`per_checkpoint_prefix_rebuild_v1`。
+
+candidate 从同一 release cycle 的 source observations 和 materialized tracks
+`latest_observation_id` 收集、去重并排序 required ID。空集合、未知/非法 ID 或返回子集
+缺项回退 full snapshot，并记录固定原因。selector、execution config 和 diagnostics 已进入
+runtime profile、observation governance、module final、episode summary 和 CLI。
+
+3 个目标、3 个资源、1 个侦察节点、1.4 秒、seed 34 的确定性模块栈 episode 中，candidate
+fallback 与 lookup miss 均为 0，`modules.d1.fused_tracks` payload 与 reference 完全一致；
+unknown-ID 与空 required 集合专项均按预期回退 full。D1 owner 复跑
+`test_module_stack.py` 得到 `62 passed, 1 warning`，scalable 全量得到
+`263 passed, 1 warning`。警告为既有
+Matplotlib `Axes3D` 环境提示。
+
+该结果只证明 main 接线、失败关闭和业务语义回归。clean 200/200/2 smoke、性能计时、正式
+矩阵和 D6 evaluator 尚未完成，没有候选性能数字或准入结论。默认继续使用
+`full_consistency_snapshot_v1`；最终 offline evidence export 继续全量物化。
+
 ### 第三十六阶段：固定滞后回放前缀累计摘要正式拒绝
 
 2026-07-25，D6 对 producer clean commit
@@ -35,9 +58,9 @@ reference `per_checkpoint_prefix_rebuild_v1` 继续作为 `FusionAdapter`、
 本证据只覆盖三维质点仿真，不包含 AirSim、目标硬件、实机、实飞或正式
 RMSE/NEES/NIS 证据。
 
-下一项研究只作为新候选计划：按照一次 publication 实际需要的 observation ID 集合投影
-snapshot，避免在线路径构造无关 evidence 记录。该方案必须使用新的 implementation ID、
-独立预注册矩阵和 D6 独立判定；不能复用本候选身份，也不能覆盖本次 `reject`。
+独立的 publication observation-ID 子集候选已经完成 main 实现和模块栈回归，用于避免在线
+路径构造无关 evidence 记录。该方案使用新的 implementation ID，clean smoke、独立预注册
+矩阵和 D6 判定尚未完成；不能复用本候选身份，也不能覆盖本次 `reject`。
 
 D1 新增默认关闭的固定滞后回放 selector
 `fixed_lag_checkpoint_prefix_cumulative_summary_v1`。reference 为
@@ -73,8 +96,9 @@ ledger。新增 observation ID 不得与旧 ledger 重叠，首个新排序键�
   `export_consistency_evidence()` 继续通过该接口生成 episode 最终离线证据。
 - `consistency_evidence_snapshot(observation_ids=None)` 返回当下精确的不可变记录，但不消费
   pending ledger。传入 ID 集合时只为请求记录构造 counter overlay；未知或非法 ID 失败关闭。
-- 正式三维质点矩阵的 main 在线 publication 已调用 snapshot；episode 最终导出仍使用
-  records/export。当前调用请求全量记录，尚未按 publication 所需 observation ID 做子集投影。
+- 正式回放摘要矩阵的 main 在线 publication 调用了全量 snapshot；episode 最终导出仍使用
+  records/export。新的子集 selector 已在 main 实现并保持默认关闭，尚无 clean
+  200/200/2 smoke 或正式准入证据。
 
 main 第一次 dirty smoke（200v200、2 个侦察节点、seed 1151、2.2 s）暴露 append 处理缺口：
 1,584 次正常 append 触发 1,584 次 `checkpoint_suffix_appended` 物化，逻辑刷新和物化记录

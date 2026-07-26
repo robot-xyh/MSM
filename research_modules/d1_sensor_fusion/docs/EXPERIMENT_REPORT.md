@@ -1,5 +1,33 @@
 # 第一研究模块实验结果
 
+## 在线证据子集快照集成回归
+
+**证据日期：2026-07-25**
+
+**范围：main 模块栈接口与确定性小场景回归，不含性能准入**
+
+reference 为 `full_consistency_snapshot_v1`，candidate 为
+`required_observation_subset_v1`，默认保持 reference。main 已从同一 release cycle 的
+source observations 和 materialized tracks `latest_observation_id` 构造 required ID，
+执行去重与字符串排序。空集合、未知/非法 ID 或返回子集缺项回退 full snapshot。
+
+3 个目标、3 个资源、1 个侦察节点、1.4 秒、seed 34 的确定性 episode 中，两臂
+`modules.d1.fused_tracks` payload 完全一致。candidate 的 fallback、lookup miss 和 invalid
+required ID 均为 0，返回记录数等于 required ID 数且小于 reference 返回记录数。
+unknown-ID 注入用例确认 candidate 先尝试子集，再回退 full snapshot，并记录
+`unknown_required_observation_id`。空 required 集合专项确认直接回退 full snapshot，并
+记录 `empty_required_observation_id_set`。
+
+selector、execution config 和 diagnostics 已进入 runtime profile、observation governance、
+module final 与 episode summary，CLI 默认值和显式 candidate 选择均有回归。D1 owner 复跑
+`test_module_stack.py` 得到 `62 passed, 1 warning`，复跑 scalable 全量得到
+`263 passed, 1 warning`。警告是既有 Matplotlib `Axes3D` 环境提示。D1 源码未变化，先前
+snapshot/replay-prefix 定向测试 `22 passed in 0.49s` 继续有效。
+
+本节没有 clean 200/200/2 smoke、墙钟、实时因子、内存、正式矩阵或 D6 evaluator 数据，
+不能给出性能改善或准入结论。默认仍为 full snapshot，最终 offline export 仍使用全量
+records/export。
+
 ## 固定滞后回放前缀累计摘要正式多种子评估
 
 **证据日期：2026-07-25**
@@ -42,8 +70,9 @@ D6 verdict 为 `reject`，`main_default_promotion_allowed=false`，
 没有消除全量 snapshot 的对象构造成本。
 
 reference 继续作为 D1 和 main 默认。candidate 保留为默认关闭的显式研究入口，不删除、
-不晋升，也不修改本次冻结结论。下一候选只计划按 publication 所需 observation ID 集合
-投影 snapshot；它必须使用新的 implementation ID、独立预注册矩阵和 D6 独立判定。
+不晋升，也不修改本次冻结结论。独立的 publication observation-ID 子集候选已完成 main
+实现和模块栈回归；它使用新的 implementation ID，clean smoke、独立预注册矩阵和 D6 判定
+仍未完成。
 
 正式 bundle 位于 `research_modules/d6_evaluation_metrics/outputs/`
 `d1_replay_prefix_summary_multiseed_20260725_formal_7d2e987_d6/`。本结果只覆盖三维质点
@@ -212,8 +241,8 @@ reference 继续作为默认。
 
 正式矩阵中的在线 publication 已调用 `consistency_evidence_snapshot()`；episode 最终
 offline evidence 导出继续使用 `consistency_evidence_records()` 或
-`export_consistency_evidence()`。下一步只计划建立新的 observation-ID 子集投影候选，
-不能追溯修改本节历史微基准或上节正式拒绝。
+`export_consistency_evidence()`。新的 observation-ID 子集投影候选已完成 main 实现和
+模块栈回归，但尚无 clean smoke 或正式准入；它不能追溯修改本节历史微基准或上节正式拒绝。
 
 ## 关联稀疏预筛正式多种子评估
 

@@ -6,6 +6,37 @@
 
 ## 当前权威增量（2026-07-25）
 
+### 在线发布证据子集快照候选边界
+
+前一回放摘要候选正式拒绝后，在线 publication 仍全量构造 consistency evidence 记录。
+main 现已实现独立的快照范围 selector，把 candidate 范围缩小到本次 publication 实际引用的
+observation ID。D1 现有 `consistency_evidence_snapshot(observation_ids)` 无需修改。
+
+接口把非 `None` 输入解释为 ID 集合。它先校验全部元素，再构造精确子集；重复 ID 自然
+去重，未知 ID 抛出 `KeyError`，空字符串或非字符串抛出 `ValueError`。子集投影使用 detached
+不可变记录，不写回 evidence，也不删除 pending ledger。内部 ledger 的 observation ID 与
+来源航迹不一致时继续失败关闭。最终离线导出仍调用全量
+`consistency_evidence_records()`/`export_consistency_evidence()`，并将 pending ledger
+清零。
+
+空 iterable 返回空快照。这是通用 D1 API 的确定语义，不能证明一次 publication 的 required
+集合完整。main 已从同一 release cycle 的当前 source observations 和已物化公开航迹
+`latest_observation_id` 构造集合，并对空集、未知/非法 ID 或返回子集缺项回退
+`full_consistency_snapshot_v1`。D1 不读取真值、目标真实编号或 D6 标签。
+
+新 treatment 为 `d1_publication_evidence_snapshot_implementation`，reference/candidate
+分别为 `full_consistency_snapshot_v1` 和 `required_observation_subset_v1`。第一轮两臂均
+固定使用 `per_checkpoint_prefix_rebuild_v1`，避免同时改变回放与快照两个因素。selector、
+execution config 和 diagnostics 已贯通 runtime profile、observation governance、module
+final、episode summary 和 CLI。候选不改 `global_track_id`、双时间戳、协方差、NED、
+来源谱系、门控和业务 payload。
+
+3/3/1、1.4 秒、seed 34 的模块栈回归中，candidate fallback 与 lookup miss 均为 0，
+fused-tracks payload 与 reference 完全一致；unknown-ID 与空 required 集合专项均按预期
+回退 full。D1 owner 复跑 module-stack 为 `62 passed, 1 warning`，scalable 全量为
+`263 passed, 1 warning`，D1 定向测试仍为 `22 passed in 0.49s`。clean 200/200/2 smoke、
+正式矩阵、性能数字和 D6 准入尚未形成，默认继续使用全量 snapshot。
+
 ### 固定滞后回放前缀累计摘要
 
 该候选已经完成正式多种子判定，结论为拒绝。D6 评估绑定 producer clean commit
@@ -104,11 +135,11 @@ pending 为 0。该测试锁定既有 `>=20%` 门。
 专项回归还在四个 checkpoint 的中间插入迟到观测，确认 revision 推进、旧后缀失败关闭并
 按新顺序重建。D1 全量回归为 `488 passed in 30.96s`。
 
-下一候选只计划按 publication 实际消费的 observation ID 集合投影 snapshot，减少无关
-返回记录构造。它必须使用新的 implementation ID、独立预注册矩阵和 D6 独立判定，保持
-未知 ID、跨航迹 ID 和证据所有权异常失败关闭，并保留最终全量 evidence 导出。本计划
-尚未实现，也不能改写本次冻结 `reject`。本节正式证据只来自三维质点仿真，不覆盖 AirSim、
-目标硬件、实机、实飞或正式 RMSE/NEES/NIS。
+独立的 publication observation-ID 子集候选已完成 main 实现和模块栈回归，减少无关返回
+记录构造的性能效果尚未验证。它使用新的 implementation ID，保持未知/非法 ID 回退、
+内部证据所有权失败关闭和最终全量 evidence 导出。clean 200/200/2 smoke、独立预注册矩阵
+和 D6 判定仍未完成，也不能改写本次冻结 `reject`。本节正式证据只来自三维质点仿真，
+不覆盖 AirSim、目标硬件、实机、实飞或正式 RMSE/NEES/NIS。
 
 ### 模态感知保守稀疏预筛正式拒绝后的治理
 
