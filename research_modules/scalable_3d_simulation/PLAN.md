@@ -18,8 +18,9 @@
    `272 passed, 1 warning`；warning 为既有 Matplotlib 三维投影导入提示。
 8. [x] D6 使用实际 formal 计划完成静态 `post_run` 预检：expected=`5700`、
    accepted=`0`、verdict=`fail_closed`。
-9. [ ] 在 clean detached worktree 生成 R0 正式基线产物，先按批次形成 manifest、逐 cell
-   清单、D6 逐 seed CSV、聚合 JSON、中文报告、曲线和动画。
+9. [ ] 在 clean detached worktree 生成 R0 正式基线产物。先完成 20 个各 45 单元的可恢复
+   分片，再形成 R0 scope manifest、逐 cell 清单、D6 逐 seed CSV、聚合 JSON、中文报告、
+   曲线和动画。
 10. [ ] D3、D4、D5 图模型和 D5 主动视觉模型保持 development/shadow；未通过独立非退化
     门前，不允许以模型哈希有效代替 assist 准入。
 11. [ ] 完成 R0 后再决定 G1/A1/A2/A3/C1/F1 的运行顺序；每一学习变体缺正式模型权限时
@@ -32,9 +33,19 @@
 14. [x] 最新模块回归为 D1 `496 passed`、D3 `459 passed, 1 skipped`、D4
     `569 passed`、D5 `552 passed`、D6 `889 passed, 1 warning`、D7 `220 passed`；
     修正后的统一模块栈为 `66 passed, 1 warning`。
-15. [ ] 正式 R0 运行前先冻结可恢复分块与合并合同。现有正式 inventory 是 5700 个
-    R0-G1-A1-A2-A3-C1-F1 单元，不能把非正式 R0 子计划或多个独立 manifest 直接拼成
-    正式完成证据。
+15. [x] 已冻结可恢复分片与确定性合并合同。完整父 inventory 保持 5700 个
+    R0-G1-A1-A2-A3-C1-F1 单元，R0 scope 为 900 个；默认 20 片，每片覆盖一个保留 seed
+    的 9 场景 × 5 规模。单元原子发布、进度追加、checkpoint 滞后恢复、文件树摘要和篡改
+    拒绝均已测试。
+16. [x] R0 scope 合并产物明确记录 `formal_scope_complete` 与
+    `formal_matrix_complete=false`。只有 scope 等于完整父 inventory 时才生成完整矩阵
+    manifest，多个非正式子计划不能拼成正式证据。
+17. [x] 新增分片专项 6 项，原矩阵测试 7 项，scalable 全量
+    `278 passed, 1 warning`；真实单 episode 分片写盘确认有限状态、在线真值使用为 0 和
+    D6 truth-isolated 子目录存在。
+18. [ ] 在新分片实现提交后创建 clean detached execution plan，运行一个正式 R0 单元
+    smoke，确认 manifest source commit、900-cell scope、进度/checkpoint 和恢复命令，再
+    启动完整 20 片。
 
 ## D1 在线发布证据子集快照候选（2026-07-25）
 

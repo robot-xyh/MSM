@@ -50,6 +50,11 @@ main
 | 训练 seed 注册表 | `scalable3d-training-seed-registry-v1` | 训练/保留评估 seed 身份、来源或隔离规则改变 |
 | 共享 seed 切分注册表 | `scalable3d-shared-seed-split-registry-v1` | D3/D4/D5 联合训练的数值 seed 分桶、比例、来源哈希或保留集规则改变 |
 | 实验矩阵 | `scalable3d-experiment-matrix-v1` | 变体语义、配对键或正式准入条件改变 |
+| 实验矩阵执行计划 | `scalable3d-experiment-matrix-execution-plan-v1` | 父清单、执行范围、分片策略或源提交绑定改变 |
+| 实验矩阵分片计划 | `scalable3d-experiment-matrix-shard-plan-v1` | 分片身份、单元顺序或父计划绑定改变 |
+| 实验矩阵分片进度 | `scalable3d-experiment-matrix-shard-progress-v1` | 完整单元追加、结果摘要或文件树摘要语义改变 |
+| 实验矩阵分片检查点 | `scalable3d-experiment-matrix-shard-checkpoint-v1` | 恢复、进度前缀校验或暂停/完成状态语义改变 |
+| 实验矩阵范围合并 | `scalable3d-experiment-matrix-scope-merge-v1` | scope 完成与完整矩阵完成的区分或合并准入改变 |
 | D1 一致性评估清单 | `scalable3d-offline-consistency-evaluation-manifest-v1` | 在线证据、真值状态、D2 映射或哈希绑定改变 |
 | D1 扫描输入审计 | `d1.scan_input.audit_summary.v1` | 水位线、扫描拒绝、缓冲容量或结束排空语义改变 |
 | D1 发布元数据实现 | `per_track_copy_v1` / `immutable_shared_v2` | 共享审计树的复制、不可变共享或实现身份语义改变；`immutable_shared_v1` 仅保留为历史证据标签 |

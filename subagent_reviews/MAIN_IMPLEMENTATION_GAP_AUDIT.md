@@ -42,13 +42,17 @@ expected=`5700`、accepted=`0`、verdict=`fail_closed`。阻塞项包括：
 3. 正式中文报告、曲线、动画和模型清单尚未形成；
 4. D3、D4、D5 图模型和 D5 主动视觉模型哈希有效，但只允许 development/shadow，
    尚无 assist 权限；
-5. 当前工作树含待提交代码和受保护的用户未跟踪资料，不能作为 clean formal source。
-6. 现有矩阵执行器一次写一个完整 manifest；正式 R0 分块、断点恢复和确定性合并合同尚未
-   冻结，不能用多个非正式子计划目录拼接正式 5700-cell 证据。
+5. 主工作树含受保护的用户未跟踪资料，不能直接作为 clean formal source；正式运行必须
+   使用绑定同一提交的 clean detached worktree。
+6. 正式 R0 分片、断点恢复和确定性合并合同已实现并通过专项测试。完整父清单保持
+   5700 个单元，R0 scope 固定 900 个单元，默认 20 片。R0 合并只能声明
+   `formal_scope_complete`，不能声明 5700 单元正式矩阵完成。
 
-下一步先在 clean detached worktree 运行 R0 分批基线并由 D6 回灌。学习变体只有在模型权限、
-逐单元采用证据和非退化门齐备后才进入 formal 队列。系统实时、目标硬件和 AirSim 代表
-子场景继续单独验收。
+分片专项新增 6 项测试，原矩阵 7 项测试继续通过；scalable 全量为
+`278 passed, 1 warning`。下一步在新实现提交后的 clean detached worktree 初始化正式
+execution plan，完成一个正式 R0 单元 smoke 后启动 20 个分片，并由 D6 回灌。学习变体只有
+在模型权限、逐单元采用证据和非退化门齐备后才进入 formal 队列。系统实时、目标硬件和
+AirSim 代表子场景继续单独验收。
 
 **P0/P1 状态入口**：本文是 main 层唯一的实现差距与 P0/P1 状态入口，集中维护 owner、当前状态、缺少条件和验收口径。2026-07-14 canonical actual-execution 证据链已完成真实 AirSim seed-1 复验：tuned 2v2 与 M5N2 均生成并通过校验的 `d7-actual-execution-metrics-v2`，不存在 unavailable artifact；`control_commands.csv`、`intercept_summary.json` 和 actual envelope 的物理成功数一致，控制计划 ID 与同一个 canonical D3 history 一致，身份和状态在线真值使用计数均为 0。2026-07-15 main/D6 进一步关闭“只有总耗时、无法定位预算违例阶段”的 P1 可观测性实现缺口；随后复核并关闭 D4 多入口二级接管证据不一致的系统级 P0 边界，以及 D2 continuity 固定 `+0.10` 在高基线下不可达的 P1 准入规则缺口。同日第二次只读审计发现 D4 两个公开 helper 仍把部分缺失证据 `None` 当成“非 False”放行；D4 owner 已改为 exact-true/fail-closed，补齐逐字段缺失负例并完成跨模块回归。D2/D6 随后已用原冻结 replay 生成 ceiling-aware v2 正式联合证据：总体 GNN 候选五项 gate 通过，但只有 `clutter`、`combined` 两个 difficulty 通过，dropout truth alignment 仍为 partial，JPDA 不准入，因此只形成 promotion review，默认 GNN/Hungarian 不变。最新相关回归为 D2 `113`、D4 `280`、D6 `272`、AirSim runtime `157`、integrated point-mass `7`；当前无开放运行级或证据级 P0 blocker。P1 继续包括 D3 长期 churn、M5N2 第二 primary/物理联盟、candidate `3/2/1` 机会合同、ClockSpeed 与顺序控制 RPC 解耦、D5 30/50 m 与 native MOT 准入、真实二级网络时序、D2 候选的跨 difficulty/完整系统评审，以及基于新分阶段证据达到 100 ms 实时预算。P2 仍只在隔离环境评估，不替换默认 NumPy/SciPy/PN/PNG/detect 路径。
 

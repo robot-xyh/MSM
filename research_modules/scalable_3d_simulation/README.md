@@ -1,5 +1,29 @@
 # Scalable 3D Simulation
 
+## 正式 R0 分片合同（2026-07-25）
+
+main 已新增正式实验矩阵的可恢复分片执行层。执行计划先保存完整
+`ExperimentMatrixPlan.cells()` 清单，固定 R0、G1、A1、A2、A3、C1、F1 共 5700 个
+父单元，再从同一父清单选择 900 个 R0 单元。R0 不再拆成多个互不相关的非正式子计划。
+默认采用 20 个分片，每片 45 个单元。按 R0 范围索引取模后，每个分片对应一个保留 seed，
+覆盖 9 类场景和 5 档规模。
+
+每个单元先写入带计划哈希和单元编号的临时目录。episode 完整写盘、有限状态和在线真值
+使用检查通过后，目录原子发布，再追加进度行并原子推进 checkpoint。恢复入口逐行验证
+源提交、完整父计划、分片顺序、单元结果 SHA-256 和 episode 文件树 SHA-256。checkpoint
+落后于完整进度行时可恢复；checkpoint 超前、进度截断、目录越界、重复单元或制品篡改
+均失败关闭。
+
+分片合并只生成 `experiment_matrix_scope_manifest.json`。900 个 R0 单元完成时状态为
+`formal_scope_complete`，同时明确记录 `formal_matrix_complete=false`。只有执行范围与完整
+5700 单元父清单完全相等时，才允许生成兼容的完整矩阵 manifest。因此 R0 批次不能被误写
+为七变体正式矩阵完成。
+
+本轮新增 6 项分片专项测试，并保留原矩阵 7 项测试；暂停/恢复、checkpoint 滞后恢复、
+制品篡改拒绝、确定性合并和真实单 episode 写盘均通过。scalable 全量为
+`278 passed, 1 warning`。warning 仍来自本机 Matplotlib `Axes3D` 导入冲突。正式 R0
+900 单元尚未完成，D6 正式准入仍保持失败关闭。
+
 ## D4 因果通信与 M 对 N 联盟闭环（2026-07-25）
 
 main 已将 D4 控制消息接入与传感器消息相同的确定性通信网络。二级节点就绪、区域计划广播
@@ -1190,6 +1214,42 @@ D4 区域策略、A3 主动视觉、C1 学习组合和 F1 故障/高威胁完整
 还要求完整 R0/G1/A1/A2/A3/C1/F1、完整场景目录、5/20/50/100/200 五档规模、至少
 20 个唯一 seed、独立训练 seed 注册表、训练/测试 seed 零重叠和干净工作树。每个 episode
 写盘后由 D6 从离线目录统一评分，矩阵本身不读取在线真值。
+
+正式 R0 使用独立入口。初始化命令必须在 clean commit 上执行，且输出目录应位于 Git
+忽略目录或仓库外：
+
+```bash
+python3 research_modules/scalable_3d_simulation/run_experiment_matrix_shard.py \
+  init-r0 \
+  --output research_modules/scalable_3d_simulation/outputs/formal_r0_v1
+```
+
+默认 20 个分片可以顺序执行，也可以由 main 在受控资源预算下并行调度。暂停只发生在完整
+episode 边界：
+
+```bash
+python3 research_modules/scalable_3d_simulation/run_experiment_matrix_shard.py \
+  run-shard \
+  --execution-plan research_modules/scalable_3d_simulation/outputs/formal_r0_v1/experiment_matrix_execution_plan.json \
+  --shard-index 0 \
+  --max-new-cells 5
+
+python3 research_modules/scalable_3d_simulation/run_experiment_matrix_shard.py \
+  run-shard \
+  --execution-plan research_modules/scalable_3d_simulation/outputs/formal_r0_v1/experiment_matrix_execution_plan.json \
+  --shard-index 0 \
+  --resume
+```
+
+20 个分片全部完成后再执行 `merge-r0`。合并器重新读取并校验全部单元，不信任 checkpoint
+中的完成数字：
+
+```bash
+python3 research_modules/scalable_3d_simulation/run_experiment_matrix_shard.py \
+  merge-r0 \
+  --execution-plan research_modules/scalable_3d_simulation/outputs/formal_r0_v1/experiment_matrix_execution_plan.json \
+  --write-d6-report
+```
 
 2026-07-20 使用 2v2、nominal、seed 101、0.25 秒完成一次脏工作树 R0 开发冒烟，有限状态
 为真、在线真值使用为 0，并成功生成矩阵 manifest、逐 cell CSV 和 D6 离线报告。该结果只
