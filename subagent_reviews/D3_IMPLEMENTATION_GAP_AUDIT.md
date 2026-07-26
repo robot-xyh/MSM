@@ -1,9 +1,51 @@
 # D3 实现差距审计
 
 **模块**: D3 集中式资源-目标分配
-**审计日期**: 2026-07-23
-**审计依据**: 当前 `research_modules/d3_assignment_planner/` 代码、README、PLAN、docs 和 tests，既有 2026-07-13 M5N2 40-case 报告，以及 `research_modules/airsim_runtime/outputs/p1_terminal_timing_funnel_10seed_20260715_m5n2_*/episode_006_full_flow/main_episode_bus/d3_plan_history.json` 的最新 20-case/3725-record 只读复核、main/D6/D7 物理结果汇总、`subagent_reviews/MAIN_IMPLEMENTATION_GAP_AUDIT.md` 和 `EVAL/FRAMEWORK_EVAL_P0_P1_P2_GAP_CONFIRMATION.md`。
+**审计日期**: 2026-07-25
+**审计依据**: 当前 `research_modules/d3_assignment_planner/` 代码、README、PLAN、docs 和 tests，2026-07-25 的 20-seed 多周期行为克隆影子评估，既有 2026-07-13 M5N2 40-case 报告，以及 `research_modules/airsim_runtime/outputs/p1_terminal_timing_funnel_10seed_20260715_m5n2_*/episode_006_full_flow/main_episode_bus/d3_plan_history.json` 的最新 20-case/3725-record 只读复核、main/D6/D7 物理结果汇总、`subagent_reviews/MAIN_IMPLEMENTATION_GAP_AUDIT.md` 和 `EVAL/FRAMEWORK_EVAL_P0_P1_P2_GAP_CONFIRMATION.md`。
 **边界**: 本审计只覆盖离线科研仿真中的抽象资源-目标分配、版本化计划、终端反馈合同、D7 guidance binding、D6 记录导出和 AirSim dry-run 适配；不涉及真实飞控、硬件、火控、毁伤逻辑或绕过人工授权的自动处置。
+
+## 多周期行为克隆影子 GAP 更新
+
+### 已关闭的 P1
+
+1. 原 20-seed 单帧干预虽有 `20/20` 代价矩阵变化，最终绑定变化为 0，学习干预不可辨识。
+   当前多周期评估在受控匈牙利边界中得到 20/20 seed 绑定差异，证明冻结行为克隆残差可以
+   跨越求解切换边界。
+2. 原证据没有连续 previous-plan 关系。当前两组各自连续推进计划，逐周期保存规范 plan
+   token、version、输入前序、声明前序和刷新/升版状态。旧版本采用和谱系违规均为 0。
+3. 原保留集只覆盖名义 5v5 单帧。当前覆盖 5资源3目标、3资源5目标、资源失效与恢复、
+   目标增删和 M-to-N 需求变化，共 620 个周期。
+4. 模型异常、超时和分布外回退的矩阵一致性已有专项测试。固定保留种子影子运行中
+   40 个 M-to-N 周期触发分布外回退，处理矩阵与规则矩阵逐元素相同。
+5. 收尾静态检查发现 `cost_weights` 参数曾被接收但未传入两组规划器。当前已改为分别构造
+   同配置 `CostModel`，零权重专项验证两组规则矩阵一致且参数实际生效。
+6. CSV writer 原先使用平台默认 CRLF，导致未跟踪结果在后续纳入提交时触发 Git 尾随空白
+   检查。当前已固定 LF 并重生成两份 CSV，规范化内容摘要和全部证据计数不变。
+
+### 证据
+
+本次固定保留种子影子评估使用 1000-1019，训练种子为 0-99，交集为 0。冻结权重 SHA-256 为
+`e3da9fd5b54451da83358405b6051991e0c78bcf9f538b350d459b05faf8e0b2`。580/620 个周期
+实际应用代价残差，120 个周期产生不同绑定。规则组和处理组累计抖动为 520/200；处理组按
+规则矩阵重评分的周期平均代价高 0.000707。重复资源、硬约束或谱系违规、旧版本采用和在线
+真值使用均为 0。新增专项 9 项通过；D3 全量为 `459 passed, 1 skipped`，跳过项为可选
+OR-Tools。
+
+### 仍开放的 P1
+
+1. 当前是离线 shadow-only 规划比较，没有生产 runtime ACK、后续状态、物理结果、
+   counterfactual 或 causal reward。不能据此开放 assist 或 authority。
+2. PPO 研究管线已实现并有单元测试，但没有正式训练、冻结检查点和未见种子评估。
+3. M-to-N 需求增加触发分布外回退，说明现有 BC 训练分布没有覆盖动态需求 3。后续是否扩充
+   数据应由 main/D6 先确认该场景的运行价值，不通过放宽 OOD 阈值解决。
+4. 三维可达性仍使用简化匀速截获时间，未接入 D7 的加速度、转弯率和爬升能力约束。
+5. 模型权重仍位于被忽略的输出目录，缺少正式制品仓或 Git LFS 移交路径。
+7. 多周期结果已绑定种子注册表、模型、数据和切分摘要，但生成时源码尚未形成 clean
+   commit，也没有结果级源码/配置清单；当前只能作为开发证据。
+
+当前没有新增运行级 P0。默认 Hungarian、规则回退、身份承诺、版本、stale、M-to-N
+all-or-none 和 `global_track_id` 所有权均未改变。
 
 ## 身份承诺准入更新
 

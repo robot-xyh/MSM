@@ -11,7 +11,15 @@ D3 文档遵循 `research_modules/DOCUMENTATION_STANDARD.md`。推荐阅读顺�
 
 本模块只生成候选分配计划和审计数据，不包含真实飞控、硬件、火控、毁伤或自动处置逻辑。
 
-最新证据基线为 2026-07-15 的 M5N2 baseline/candidate 各 10 seeds、共 20 case。
+当前状态基线为 2026-07-25。新增固定保留种子多周期影子评估，覆盖 1000-1019 共
+20 个种子、6 类场景和 620 个规划周期。580 个周期实际改变有效代价矩阵，120 个周期
+形成不同绑定；重复资源、硬约束或谱系违规、旧版本采用和在线真值使用均为 0。该证据
+只关闭行为克隆残差的多周期可辨识性缺口，模型仍是 `development/shadow-only`，没有
+运行确认、物理结果、因果奖励或线上准入。D3 全量收集 460 项，结果为
+`459 passed, 1 skipped`，唯一跳过为可选 OR-Tools。
+逐 seed 和逐周期 CSV 已固定为 LF 行结束符；该格式修复没有改变证据数值。
+
+AirSim 物理证据基线仍是 2026-07-15 的 M5N2 baseline/candidate 各 10 seeds、共 20 case。
 `EXPERIMENT_REPORT.md` 记录物理结果与 D3 history 聚合，`AIRSIM_INTEGRATION_PLAN.md`
 记录写盘可用性和后续接线，`PLAN.md` 记录剩余 P1。额外的
 `png_ttc_2v2_seed001` 不属于该 M5N2 聚合，未运行 case 不补零。
@@ -68,8 +76,10 @@ main 随后完成 clean-tree nominal 200v200 三 seed 集成复测。优化后 D
 100 个数值 seed 按 60/20/20 原子切分，外部保留 seed 1000-1019 未进入数据集。开发
 bundle 使用 `d3_learning_model_bundle_v3`，状态固定为 `development/shadow-only`；内部
 test 只作开发诊断，不是最终准入证据。行为克隆训练、分档时延和 rule-only/BC shadow
-对照见 `EXPERIMENT_REPORT.md`。assist promotion、外部 20-seed 验收、AirSim 收益和 PPO
-仍开放。
+对照见 `EXPERIMENT_REPORT.md`。在该训练报告生成时，assist promotion、外部 20-seed
+验收、AirSim 收益和 PPO 均开放。后续 2026-07-21 的单帧同输入比较和 2026-07-25 的
+多周期可辨识性评估已补充外部保留种子证据；运行采用、物理非退化、因果收益、assist
+promotion 和 PPO 仍开放。
 
 2026-07-21 增加 C1 detached shared seed registry 只读绑定。算法和哈希链见
 `ALGORITHM_AND_IMPLEMENTATION.md` 第 36 节，正式 900-episode 映射验证见

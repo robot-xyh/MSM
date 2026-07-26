@@ -180,7 +180,7 @@ Output candidate plan record:
 - When main/D4 requests `request_center_replan`, the next D3 plan must increment version and main/runtime must log `replan_reason`, `supersedes_plan_id`, `supersedes_plan_version`, and `active_plan_owner="center"`.
 - After every successful planning tick, main should call `plan_history_record_from_plan(plan, sequence_index=tick_sequence_index, timestamp=planning_timestamp_s, previous_plan=previous_plan, feedback_metadata=None if writeback is None else writeback.metadata).to_dict()` and persist one JSONL object. Ordering is lexicographic `[sequence_index, timestamp]`; plan version is not a tick-order substitute.
 
-## Validation Status Through 2026-07-14
+## Historical Validation Status Through 2026-07-14
 
 - The real 5v5 calibration completed 60 connected cases: seeds 1-10, secondary heights 50/200 m, and `no_degradation`, `degrade_to_secondary`, and `degrade_to_distributed` cases.
 - The historical runtime path has not activated a secondary plan. All 20 requested secondary cases fell back conservatively to distributed operation; 15 of 1300 D4 decisions reached momentary `takeover_ready`, all stopped at `pending_secondary_plan`, and `secondary_plan_active=0`.
@@ -197,8 +197,11 @@ Output candidate plan record:
 
 ## Open P1 Calibration Work
 
-- D3 canonical per-planning-tick schema/export is complete. Main still must call it and persist JSONL for each tick; no main/runtime file is changed by this D3 task.
-- D6 can expand all 40 M5N2 cases, but the formal aggregate predates main persistence of canonical records. Membership/version churn is therefore still `unavailable` and must not be inferred or filled with zero; D6 consumption is outside this task.
+- D3 canonical per-planning-tick schema/export is complete. Main has persisted
+  3725/3725 valid records for the latest 20-case M5N2 batch. The earlier
+  40-episode parameter-screening batch predates this persistence and remains
+  unavailable for per-tick membership/version churn; it must not be backfilled
+  with zero.
 - The former pair-hold-to-resource-hold promotion is a root-cause lead for churn, not proven causality for the 40-case outcomes. Causal attribution requires paired per-tick plan, feedback, classification, and hysteresis records.
 - Calibrate D5 feedback weights and `delta`, `min_dwell`, and `reassignment_switch_penalty` from paired per-tick evidence.
 - Run dynamic N/M multi-seed cases, including 3v5, 5v3, target arrival, resource loss, and demand changes.
@@ -600,3 +603,15 @@ episode 记录应保留区域权威转换摘要、前序和记录计划摘要、
 2026-07-22 的验收来自三维质点 `secondary_failure` 20 seed，不是 AirSim。当前没有新增
 相机、飞行控制、网络时延或物理拦截指标；AirSim reset、episode 调度和结果采集仍由 main
 负责。
+
+## 多周期影子评估与 AirSim 边界（2026-07-25）
+
+D3 固定保留种子多周期评估只运行离线三维规划输入，没有启动 Blocks、ComputerVision
+或 SimpleFlight，也没有修改 AirSim settings、actor、相机、检测、飞控或 episode 调度。
+处理组的残差代价只进入隔离 planner，结果不发布到 AirSim runtime bus。
+
+本次 1000-1019 共 20 个种子、620 个规划周期的结果能够证明冻结残差在受控匈牙利边界中
+产生可辨识绑定差异，并验证版本谱系、需求槽和规则回退。它不等于
+`runtime.assignment_plan_ack`、D7 控制采用或物理拦截证据。AirSim 后续接入仍须保存
+current plan、ACK、D7 command lineage、后续状态和 D6 outcome sidecar；在这些证据形成前，
+PPO、线上 assist、authority 和运行发布保持关闭。

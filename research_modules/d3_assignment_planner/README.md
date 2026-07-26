@@ -4,6 +4,45 @@ Centralized rolling `M` target / `N` resource assignment research module.
 
 Boundary: this module only supports offline simulation, evaluation, and human-review candidate planning. It excludes real fire-control parameters, damage logic, flight or hardware drivers, autonomous disposition, and authorization bypasses.
 
+## Multi-Cycle BC Residual Shadow Evaluation
+
+On 2026-07-25 D3 added an isolated multi-cycle evaluator for the frozen
+behavior-cloning residual.  It runs independent rule/control and
+residual/treatment planners on the same anonymous tracks, resources, numeric
+seed, timestamps, and exogenous events.  Both arms keep the existing
+Hungarian or demand-slot Hungarian solver and hard-safe candidate mask.  The
+treatment cost matrix is never published to the runtime bus.
+Optional `planner_config` and `cost_weights` inputs are applied symmetrically
+through separate rule and treatment `CostModel` instances.
+
+The recorded shadow run used reserved seeds 1000-1019 with zero overlap against the 100
+training seeds.  Its six scenarios cover a Hungarian switching boundary,
+5 resources/3 targets, 3 resources/5 targets, resource failure and recovery,
+target addition/removal, and M-to-N demand change.  Across 620 paired cycles:
+
+- the frozen residual changed 580 effective cost matrices;
+- 120 cycles and 20/20 seeds produced a different final binding;
+- all 20 seeds were identifiable in the controlled Hungarian boundary;
+- 40 M-to-N demand-change cycles were out of distribution and restored the
+  exact rule matrix;
+- duplicate resources, hard-constraint or lineage violations, stale-version
+  adoption, and online truth use were all zero;
+- inference latency was 0.228 ms at P50 and 0.361 ms at P95 on this host.
+
+Rule churn was 520 and treatment churn was 200, while the treatment plan cost
+rescored on the rule matrix was higher by 0.000707 per cycle on average.
+This is a measured tradeoff, not a benefit claim.  The evaluator has no
+runtime ACK, physical outcome, causal reward, or promotion authority.
+`promotion_recommended`, PPO, online assist, online authority, and runtime
+publication therefore remain false.  Artifacts are under
+`results/multi_cycle_shadow_bc_20260725/`.
+Both CSV artifacts use an explicit LF line terminator so repository whitespace
+checks do not depend on the platform default.
+The artifacts bind the seed registry, bundle manifest, weights, dataset, and
+split hashes, but they were generated before these source changes had a clean
+commit.  They remain development evidence until a clean-worktree rerun records
+the source revision and configuration digest.
+
 ## Identity Commitment Admission
 
 `TargetTrack.identity_commitment_state` supports `committed`,

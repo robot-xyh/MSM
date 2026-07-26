@@ -1,0 +1,21 @@
+binding_difference_cycle_count,boundary_binding_difference_cycle_count,cost_matrix_changed_cycle_count,cycle_count,duplicate_resource_count,fallback_cycle_count,fallback_reasons,hard_constraint_violation_count,inference_p50_ms,inference_p95_ms,online_truth_use_count,paired_rule_matrix_mismatch_count,rule_churn_total,rule_high_threat_unmet_total,scenario_count,schema_version,seed,shadow_only,stale_version_adoption_count,treatment_churn_total,treatment_high_threat_unmet_total
+6,3,29,31,0,2,"{""out_of_distribution"": 2}",0,0.32553100027143955,0.5166274786461145,0,0,26,0,6,d3.multi-cycle-shadow-seed.v1,1000,True,0,10,0
+6,3,29,31,0,2,"{""out_of_distribution"": 2}",0,0.31318701803684235,0.40162852383218706,0,0,26,0,6,d3.multi-cycle-shadow-seed.v1,1001,True,0,10,0
+6,3,29,31,0,2,"{""out_of_distribution"": 2}",0,0.2885489957407117,0.41493651224300265,0,0,26,0,6,d3.multi-cycle-shadow-seed.v1,1002,True,0,10,0
+6,3,29,31,0,2,"{""out_of_distribution"": 2}",0,0.25344599271193147,0.28904498321935534,0,0,26,0,6,d3.multi-cycle-shadow-seed.v1,1003,True,0,10,0
+6,3,29,31,0,2,"{""out_of_distribution"": 2}",0,0.22299698321148753,0.26582248392514884,0,0,26,0,6,d3.multi-cycle-shadow-seed.v1,1004,True,0,10,0
+6,3,29,31,0,2,"{""out_of_distribution"": 2}",0,0.21994998678565025,0.23955199867486954,0,0,26,0,6,d3.multi-cycle-shadow-seed.v1,1005,True,0,10,0
+6,3,29,31,0,2,"{""out_of_distribution"": 2}",0,0.2218700246885419,0.281154498225078,0,0,26,0,6,d3.multi-cycle-shadow-seed.v1,1006,True,0,10,0
+6,3,29,31,0,2,"{""out_of_distribution"": 2}",0,0.23443199461326003,0.2616439887788147,0,0,26,0,6,d3.multi-cycle-shadow-seed.v1,1007,True,0,10,0
+6,3,29,31,0,2,"{""out_of_distribution"": 2}",0,0.21934497635811567,0.250256503932178,0,0,26,0,6,d3.multi-cycle-shadow-seed.v1,1008,True,0,10,0
+6,3,29,31,0,2,"{""out_of_distribution"": 2}",0,0.22084498777985573,0.3629600105341524,0,0,26,0,6,d3.multi-cycle-shadow-seed.v1,1009,True,0,10,0
+6,3,29,31,0,2,"{""out_of_distribution"": 2}",0,0.2344310050830245,0.31515449518337846,0,0,26,0,6,d3.multi-cycle-shadow-seed.v1,1010,True,0,10,0
+6,3,29,31,0,2,"{""out_of_distribution"": 2}",0,0.22900098701938987,0.3266134881414473,0,0,26,0,6,d3.multi-cycle-shadow-seed.v1,1011,True,0,10,0
+6,3,29,31,0,2,"{""out_of_distribution"": 2}",0,0.24165399372577667,0.38169347681105137,0,0,26,0,6,d3.multi-cycle-shadow-seed.v1,1012,True,0,10,0
+6,3,29,31,0,2,"{""out_of_distribution"": 2}",0,0.2326170215383172,0.3353469946887344,0,0,26,0,6,d3.multi-cycle-shadow-seed.v1,1013,True,0,10,0
+6,3,29,31,0,2,"{""out_of_distribution"": 2}",0,0.22432301193475723,0.2964835148304701,0,0,26,0,6,d3.multi-cycle-shadow-seed.v1,1014,True,0,10,0
+6,3,29,31,0,2,"{""out_of_distribution"": 2}",0,0.221054011490196,0.2529405464883894,0,0,26,0,6,d3.multi-cycle-shadow-seed.v1,1015,True,0,10,0
+6,3,29,31,0,2,"{""out_of_distribution"": 2}",0,0.22494402946904302,0.2780570066533983,0,0,26,0,6,d3.multi-cycle-shadow-seed.v1,1016,True,0,10,0
+6,3,29,31,0,2,"{""out_of_distribution"": 2}",0,0.2200980088673532,0.23792951833456755,0,0,26,0,6,d3.multi-cycle-shadow-seed.v1,1017,True,0,10,0
+6,3,29,31,0,2,"{""out_of_distribution"": 2}",0,0.2197349676862359,0.24669102276675403,0,0,26,0,6,d3.multi-cycle-shadow-seed.v1,1018,True,0,10,0
+6,3,29,31,0,2,"{""out_of_distribution"": 2}",0,0.22451899712905288,0.3665155090857297,0,0,26,0,6,d3.multi-cycle-shadow-seed.v1,1019,True,0,10,0

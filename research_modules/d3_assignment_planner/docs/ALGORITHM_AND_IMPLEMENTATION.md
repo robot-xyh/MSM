@@ -1,6 +1,6 @@
 # D3 集中式资源-目标分配算法与实施方案
 
-> 状态基线：2026-07-23。
+> 状态基线：2026-07-25。
 >
 > 本文依据本模块当前源码、测试、`README.md`、`PLAN.md`、
 > `docs/MODULE_PRINCIPLES_CN.md` 和根目录系统汇总同步编写。本文区分默认主线、
@@ -2783,3 +2783,95 @@ ACK 的全部 plan 引用。main 的长时审计应按本节先验证关系、�
 现有 `d3_plan_history_record_v1`，直接使用其中的 previous/supersedes/latest 字段。简化
 publication 也不是完整 `AssignmentPlan.execution_signature()` 的序列化形式；只比较现有
 JSON 能证明发布业务载荷等价，不能替代完整 D3 对象或规范计划载荷的执行签名比较。
+
+## 57. 多周期可辨识行为克隆影子评估
+
+### 57.1 目的
+
+原 20-seed 隔离干预能够证明学习模型修改了代价矩阵，但最终绑定为 `0/20` 变化。该结果
+无法区分“模型没有决策作用”和“单帧输入距离匈牙利最优解切换边界较远”。新增评估器把
+同一外生时间序列分别交给规则组和处理组，让各组连续使用自己的上一计划。它只测规划层
+干预是否可辨识，不生成线上授权或任务收益结论。
+
+### 57.2 两组推进
+
+每个 seed 和场景建立两个新的 `AssignmentPlanner`：
+
+```text
+for step in shared_anonymous_steps:
+    rule_plan = rule_planner.plan(
+        tracks=step.tracks,
+        resources=step.resources,
+        previous_plan=rule_previous,
+    )
+    treatment_plan = treatment_planner.plan(
+        tracks=step.tracks,
+        resources=step.resources,
+        previous_plan=treatment_previous,
+    )
+    audit_same_input_and_rule_matrix()
+    audit_binding_cost_safety_and_lineage()
+    rule_previous = rule_plan
+    treatment_previous = treatment_plan
+```
+
+两组共享目标、资源、量测时刻、事件类型和输入摘要。组间不共享上一计划，因为上一计划是
+各自决策历史的一部分。实验配置关闭普通迟滞和改配附加成本，以单独暴露残差与匈牙利切换
+边界；该配置只存在于离线评估，不修改默认 `PlannerConfig`。调用方提供的
+`planner_config` 和 `cost_weights` 会分别构造规则组与处理组的独立 `CostModel`，两组使用
+同一冻结配置。收尾复核已增加零权重专项，防止自定义权重被静默忽略。
+
+### 57.3 处理矩阵
+
+冻结模型加载仍使用 production shadow loader。清单必须为 v3 development、只允许 shadow、
+`assist_authorized=false`、要求规则回退，并显式包含 1000-1019 保留种子。通过校验后，
+评估器仅在隔离处理组中临时计算：
+
+```text
+C_treatment(i,j) = C_rule(i,j) + alpha * tanh(delta_C(i,j))
+```
+
+残差仅作用于 `hard_safe_candidate_mask` 内的边。模型异常、非有限输出、低置信度、超时或
+分布外输入会使整个周期逐元素恢复 `C_rule`，并写入稳定回退原因。求解仍调用现有
+Hungarian 或 `HungarianDemandSlotSolver`。模型不能输出 assignment index、联盟成员、角色、
+计划号或执行权限。
+
+### 57.4 场景
+
+固定保留种子影子场景每个 seed 共 31 个周期：
+
+1. 匈牙利切换边界：一个目标、两个代价接近的资源交替越过最优边界；
+2. 5资源3目标：验证资源富余和非等量矩阵；
+3. 3资源5目标：验证资源不足和显式未分配；
+4. 资源失效与恢复：保持资源集合，改变状态和可用边；
+5. 目标增删：验证动态库存和版本推进；
+6. M-to-N 需求变化：高威胁目标的需求从 1 增至 3，再恢复为 1。
+
+目标和资源标识为匿名稳定 token。输入不携带真值、actor、object 或离线标签字段。训练
+registry 的 100 个训练 seed 与 20 个保留 seed 在规划前做集合交集检查，交集非零时拒绝
+运行。
+
+### 57.5 指标
+
+每周期保存两组绑定、规则矩阵和处理矩阵摘要、改变单元数、绑定对称差、计划 token、版本、
+输入前序 token、声明前序 token、抖动、高威胁需求短缺、重复资源、硬约束违规、旧版本
+采用、回退原因和推理时延。随机 UUID 只在运行内校验，写盘时按每组首次出现顺序规范为
+`R-Pxxxx/T-Pxxxx`，避免把随机计划号误当成算法差异。
+
+JSON 使用规范排序和非有限值拒绝。逐周期与逐 seed CSV writer 显式设置 LF 行结束符，
+避免平台默认 CRLF 被 Git 空白检查判为尾随空白。该格式修复不改变字段、列顺序或数值。
+
+两组成本统一在本周期规则矩阵上重评分。处理组使用自己的有效矩阵求解，但结果比较不以
+修改后的矩阵自证优越。M-to-N 必须满足全量需求或保持未分配；部分联盟计为硬约束违规。
+任何回退周期的处理矩阵与规则矩阵不完全相同都会使评估失败。
+
+### 57.6 结果与权限边界
+
+2026-07-25 的 20-seed 固定保留种子影子运行产生 620 个周期。有效代价矩阵改变 580 次，最终绑定不同
+120 次；匈牙利切换边界 20/20 seed 均可辨识。规则和处理累计抖动为 520/200，处理结果按
+规则矩阵重评分的周期平均代价高 0.000707。40 个 M-to-N 周期因需求特征分布外而精确回退。
+重复资源、硬约束或谱系违规、旧版本采用和在线真值使用均为 0。
+
+该结果只关闭“冻结 BC 在多周期中是否能产生可辨识决策差异”的证据缺口。抖动与规则代价
+存在取舍，且没有 runtime ACK、后续状态、物理结果、反事实或因果奖励。模型清单不更新，
+PPO、assist、authority 和运行发布继续为 false。
