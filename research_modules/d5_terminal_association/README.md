@@ -2,6 +2,35 @@
 
 科研模块，用于把末端相机视场中的本地视觉轨迹保守关联到中心分配的 `global_track_id`。模块可在统一三维 episode 中在线运行；训练标签和真值评分仍保持离线。D5 只输出视觉关联与相机观察意图，不修改、重写或重新分配任何全局轨迹 ID。
 
+## 2026-07-25 同一 GNN bundle 的 20-seed 证据闭合
+
+D5 已冻结当前可严格加载的跨视角图神经网络 bundle。模型 manifest SHA-256 为
+`c4284b2442dba56c0d2857146760f840e72cbe02ffe9a98964a0c68bb69bc674`，权重 SHA-256 为
+`99fa4428849773458eb1a537d5f6cd72a23275215a6dfe5d558dbaa3df92d4cd`。同一组哈希已贯穿严格
+加载、seed `1000-1019` 保留集评估和规则/模型成对影子评估，关闭了旧报告绑定另一份权重的谱系
+断点。模型清单仍为 `development_only_fail_closed`，`default_model=false`、
+`g1_assist_eligible=false`。
+
+本次评估覆盖 900 帧、45 个场景规模单元、13,344 个匿名局部航迹节点和 74,024 条候选边。两臂逐帧
+读取同一只读图和相同候选边；离线标签只在两臂完成评分和受约束聚类后使用。候选召回率为 1.0，
+冻结模型的名义边/簇 F1 均为 1.0，CPU 评分 P50/P95 为 `0.983052/1.219528 ms`。在线真值字段和
+`global_track_id` 改写均为 0。
+
+名义满分不能作为准入结论。单特征最高 AUC 为 `0.997340`，对应检测框尺度变化率差。五类
+label-independent 反事实扰动中，遮挡重现代理的模型边/簇 F1 降至 `0.563264/0.572845`，独立
+检测框尺度扰动降至 `0.893470/0.949131`。九类模型异常均返回与几何规则逐值一致的概率，回退率
+为 1.0。`G1=false`、`assist=false`、`authority=false`，主动视觉 PPO 未启动。
+
+可复核的小型制品位于
+`model_registry/tracklet_gnn_99fa4428/`，包含冻结引用、审计摘要、中文报告和校验清单；权重继续
+保存在被忽略的生成输出或后续独立制品库，不进入普通 Git 提交。复现入口为
+`scripts/run_frozen_tracklet_gnn_audit.py`。
+
+2026-07-25 D5 全量验收为 `552 passed in 114.25s`。main 在 D4 因果通信修正后复跑统一
+D1-D7 module stack，结果为 `66 passed, 1 warning in 10.17s`。警告是既有 Matplotlib
+`Axes3D` 导入环境提示。两组测试确认 D5 模块与当前跨模块合同没有回归，不构成冻结图模型
+在线准入或真实多相机性能证据。
+
 ## 2026-07-23 seed 1000 长窗口 profiler 收敛
 
 本轮使用 clean `4ac3bb2` nominal 200v200 seed 1000 的冻结匿名在线日志归因 2.2 秒/10 秒长短窗口成本。10 秒输入覆盖 114 次终端调用、723 个相机批次、2479 个检测/图节点和 2400 个 binding；日志 SHA-256 为 `c1dda852...6f77a`，未加载 truth source。
@@ -787,11 +816,13 @@ episode 生成端在每个在线图冻结后调用 `stage_tracklet_dataset_episo
 `46 passed`，D5 全量 `355 passed in 9.48s`，接受门为零失败。测试覆盖整 seed 无泄漏、
 图/真值分流、训练到评估、checkpoint round-trip、SHA/schema/feature/version mismatch、缺失
 bundle、非有限输出、超时、无模型、同相机唯一和中心 ID 不变；checkpoint 均在 `tmp_path`
-生成，仓库未新增正式或默认 checkpoint。
+生成，当时未新增正式或默认 checkpoint。2026-07-25 已冻结一份严格可加载的
+development-only bundle 并完成同权重审计，但它仍不是默认或已准入 checkpoint。
 
-当前仍没有来自代表性场景的正式训练数据和准入结果。至少 20 个未见 seed 的整 episode
-test、困难遮挡/近邻交叉/漂移覆盖、冻结验收阈值以及默认 checkpoint 审批均继续开放；在这些
-条件完成前，几何规则仍是默认路径，本轮不得解释为模型准入。
+当前仍没有来自代表性场景的正式训练数据和准入结果。2026-07-25 的 20 个未见 seed
+同权重审计使用合成匿名图，已关闭模型谱系断点；会重新执行物理候选门的困难整 episode
+测试、真实遮挡/近邻交叉/漂移覆盖、冻结验收阈值以及默认 checkpoint 审批继续开放。在这些
+条件完成前，几何规则仍是默认路径。
 
 ## 2026-07-20 匿名多相机 tracklet 稀疏图主线
 
@@ -864,12 +895,12 @@ tracklet 候选、各几何拒绝原因以及模型/规则路径。该证据是�
 
 小样本结果只证明原生 PyTorch 前向、反向、困难负样本和不平衡损失可运行，是过拟合 smoke，
 不是独立验证、概率校准或模型准入。版本化数据、训练、validation-only calibration、test
-评估和 bundle 校验代码现已实现，但尚无 20 个未见 seed 的正式数据结果，也没有默认图模型
-checkpoint。D5 模块入口已能消费
+评估和 bundle 校验代码现已实现。2026-07-25 已用同一 development-only 权重完成 20 个未见
+seed 的合成成对影子结果，但尚无代表性真实数据结果，也没有默认图模型 checkpoint。D5 模块入口已能消费
 `OnlineSensorBatch`/`vision_bbox` 和六维中心航迹的真实 DTO 形状，main scalable module stack
 已经调用该 adapter；新增 `association.diagnostics` 仍需由 main 持久化到 episode/D6 输出。
-后续必须用该整 episode 合同收集困难遮挡和近邻交叉数据，并以至少 20 个未见 seed 的 test、
-真实时延预算和冻结门限完成准入；模型缺失、损坏、版本不符、异常、超时或平均 certainty
+后续必须用该整 episode 合同收集困难遮挡和近邻交叉数据，并以独立困难集、真实时延预算和
+冻结门限完成准入；模型缺失、损坏、版本不符、异常、超时或平均 certainty
 不足时明确回退确定性几何规则，既有默认主线不被替换。
 
 ## 2026-07-16 AirSim ComputerVision 5+1 单种子仿真证据

@@ -1,5 +1,31 @@
 # D5 终端视觉配准与身份认证计划
 
+## 2026-07-25 冻结图模型证据链
+
+- [x] 冻结一个当前严格可加载的 development bundle，并用 tracked reference 固定 manifest、
+  weights 和 bundle 校验清单 SHA-256。权重不进入普通 Git 提交。
+- [x] 使用同一 `99fa4428...d4cd` 权重完成 seed `1000-1019` 的 held-out 评估和 paired shadow。
+  20/20 seed、45/45 cell、900/900 帧完成，模型哈希在两层报告中一致。
+- [x] 保持两臂同图、同候选和同外生输入。evaluator 标签在两臂概率输出和受约束聚类完成后才用于
+  离线评分；在线真值字段和中心 `global_track_id` 改写均为 0。
+- [x] 增加异步时间、外参漂移、遮挡重现代理、相似运动干扰和独立检测框尺度变化五类
+  label-independent 反事实视图。候选拓扑和门控分数固定，扰动只作为评分器脆弱性诊断。
+- [x] 增加在线评分边界异常回退探针。模型缺失、bundle 不可用、形状错误、非有限值、越界概率、
+  推理异常、低置信度、非法阈值和超时共 9 类异常全部精确返回规则概率。
+- [x] 发布 `model_registry/tracklet_gnn_99fa4428/` 小型可复核制品和
+  `scripts/run_frozen_tracklet_gnn_audit.py` 入口。模型仍为
+  `development_only_fail_closed`，不修改 manifest 晋级字段。
+- [x] 完成 2026-07-25 D5 全量回归：`552 passed in 114.25s`。
+- [x] main 在 D4 因果通信修正后复跑统一 module stack：
+  `66 passed, 1 warning in 10.17s`。警告为既有 Matplotlib `Axes3D` 导入环境提示；
+  本次只确认 D5 合同没有跨模块回归，不构成冻结图模型在线准入。
+- [ ] 由 D6 对本次固定 report、lineage、输入语料和 bundle SHA 做独立复核。复核完成前不开放
+  G1、assist 或 authority。
+- [ ] 建设会重新执行物理候选门的独立困难集，覆盖真实遮挡重现、独立目标外形、时钟偏差、变化
+  外参和相似运动负样本。当前 post-gate 反事实视图不能替代该项。
+- [ ] 将权重迁移到可版本化的独立制品库或 Git LFS，并验证从空环境恢复。当前 tracked registry
+  只保存哈希和证据，不包含权重。
+
 ## 2026-07-23 clean 4ac3bb2 seed 1000 profiler 收敛
 
 - [x] 用 nominal 200v200 seed 1000 的冻结匿名 2.15 秒/9.95 秒在线日志归因长窗口成本；长日志 SHA-256 为 `c1dda852...6f77a`，覆盖 114 帧、723 个相机批次、2479 个检测/图节点和 2400 个 binding，truth source 未加载。

@@ -1,5 +1,23 @@
 # D5 M 对 N 末端多视角配准与协同定位调研
 
+## 2026-07-25 同一模型谱系对 M 对 N 的边界
+
+新的 20-seed 成对影子评估绑定当前可严格加载的 `99fa4428...d4cd` 权重，覆盖
+`high_threat_m_to_n` 场景和 5/20/50/100/200 五档规模标签。900 帧中的候选图和局部轨迹仍是匿名
+输入，模型只给出边同目标概率，不能形成联盟计划、成员 ACK 或新的中心身份。
+
+名义边/簇 F1 为 1.0，但结果仍不能证明实际 M 对 N 联盟共同可见。遮挡重现代理下边/簇 F1 降至
+`0.563264/0.572845`，独立检测框尺度扰动下为 `0.893470/0.949131`；保留集最高单特征 AUC 为
+`0.997340`。因此 M 对 N 下一步仍需真实部分视场重叠、多个主用资源不同可见窗口、重遮挡和变化
+外参下的重新构图实验。D3/D4 联盟合同、D7 执行许可和物理完成不能由本次分类结果替代。
+
+该证据只关闭“当前冻结模型与 20-seed 报告不是同一权重”的谱系问题。G1、assist、authority
+继续关闭，规则回退保持默认；D6 外部复核和联盟运行时证据仍是 P1。
+
+2026-07-25 D5 全量为 `552 passed in 114.25s`。main 在 D4 因果通信修正后复跑统一
+module stack，结果为 `66 passed, 1 warning in 10.17s`。D5 回归和统一栈复测证明新增离线
+审计未破坏本模块 M 对 N 接口，但不构成 M 对 N 联盟运行时、真实多视角泛化或物理完成证据。
+
 ## 2026-07-22 M 对 N 图索引性能边界
 
 相机重叠索引现在直接从当前帧已占用的三维桶生成候选桶对，不再遍历空网格。算法仍按动态相机和局部轨迹输入运行，没有 2v2、5v5 或 200v200 数量特例。相机对预算、轨迹候选预算、几何门和中心唯一绑定保持原值。
@@ -230,7 +248,8 @@ reacquire、否则确定性扫描；候选缺失、版本旧、友方冲突、�
 behavior cloning、原生 PyTorch clipped PPO、weights-only bundle 和 paired shadow。assist 需要
 至少 20 个完全未见 seed 的正式
 非合成 paired 结果，且 safety、visibility、reacquisition delay 逐 episode 和总体均不退化；
-合成 20-seed fixture 不可晋级。库默认 disabled，CLI 默认 shadow，当前没有正式 checkpoint。
+合成 20-seed fixture 不可晋级。库默认 disabled，CLI 默认 shadow。2026-07-25 已冻结
+development-only 图关联 bundle，但没有主动视觉正式 checkpoint，也没有已准入的默认图模型。
 
 多视角数据导出同步增加匿名 `source_observation_id -> tracklet_key` 审计连接，允许 main 在
 episode 结束后连接 evaluator-only truth。该键不成为 MOT 身份或 global ID，同一帧只能属于一个
@@ -252,9 +271,10 @@ hard-negative provenance。bundle 用 SHA256 校验并只做 `weights_only=True`
 `global_track_id` 所有权不变。2026-07-20 新专项 `12 passed`，D5 全量
 `355 passed in 9.48s`；测试 checkpoint 仅生成于 `tmp_path`。
 
-该结果只关闭训练与模型制品代码管线，不关闭多视角模型准入。至少 20 个未见 seed 的整
-episode test、遮挡/近邻交叉/时延/外参漂移、冻结阈值、默认 checkpoint 和真实 AirSim 模型
-证据继续开放；几何规则仍是默认。该训练制品阶段本身没有 runtime 变化；其后主动视觉规则
+该结果只关闭训练与模型制品代码管线。2026-07-25 已完成同一 development-only 权重的 20 个
+未见 seed 合成成对影子审计，但它不关闭多视角模型准入。会重新执行候选门的整 episode、
+遮挡/近邻交叉/时延/外参漂移困难集、冻结阈值、默认 checkpoint 和真实 AirSim 模型证据继续
+开放；几何规则仍是默认。该训练制品阶段本身没有 runtime 变化；其后主动视觉规则
 合同已接入统一三维 episode，但没有模型准入或真实 AirSim 执行证据。
 
 ## 2026-07-20 匿名 tracklet 图多视角实现复核

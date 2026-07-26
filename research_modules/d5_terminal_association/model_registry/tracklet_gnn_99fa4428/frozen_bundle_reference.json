@@ -1,0 +1,23 @@
+{
+  "admission_policy": {
+    "active_visual_ppo_started": false,
+    "assist": false,
+    "authority": false,
+    "default_model": false,
+    "g1": false
+  },
+  "bundle_relative_path": "research_modules/d5_terminal_association/outputs/d5_composite_internal_training_clean_6dc471b/model_bundle",
+  "expected_hashes": {
+    "checksums_sha256": "fbc497e495b0c5b15953c178c13a044e8f7e6b96bfe32542b3a0a565b880a9e8",
+    "manifest_sha256": "c4284b2442dba56c0d2857146760f840e72cbe02ffe9a98964a0c68bb69bc674",
+    "weights_sha256": "99fa4428849773458eb1a537d5f6cd72a23275215a6dfe5d558dbaa3df92d4cd"
+  },
+  "frozen_at_utc": "2026-07-25T12:00:00Z",
+  "model_id": "d5-tracklet-development-99fa442884977345",
+  "schema_version": "d5.frozen-tracklet-audit-reference.v1",
+  "weight_storage": {
+    "included_in_registry": false,
+    "policy": "generated_outputs_or_external_artifact_store",
+    "size_bytes": 97717
+  }
+}

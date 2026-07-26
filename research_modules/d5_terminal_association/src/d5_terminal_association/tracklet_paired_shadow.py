@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import argparse
 from collections import Counter
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import hashlib
 import json
 import math
@@ -32,9 +32,11 @@ import torch
 from .scalable_3d_adapter import (
     Scalable3DAdapterConfig,
     _deterministic_edge_probabilities,
+    _score_graph_edges,
 )
 from .sparse_tracklet_graph import (
     EDGE_FEATURE_NAMES,
+    NODE_FEATURE_NAMES,
     SparseTrackletGraph,
     constrained_tracklet_clusters,
 )
@@ -57,7 +59,7 @@ from .tracklet_model_bundle import (
 from .tracklet_supplemental_curriculum import FORMAL_SCENARIO_CELLS
 
 
-PAIRED_SHADOW_SCHEMA_VERSION = "d5.tracklet-paired-shadow.v1"
+PAIRED_SHADOW_SCHEMA_VERSION = "d5.tracklet-paired-shadow.v2"
 PAIRED_SHADOW_INPUT_SPEC_SCHEMA_VERSION = "d5.tracklet-paired-shadow-input.v1"
 PAIRED_SHADOW_LINEAGE_SCHEMA_VERSION = "d5.tracklet-paired-shadow-lineage.v1"
 PAIRED_SHADOW_REPORT_FILENAME = "paired_shadow_report.json"
@@ -74,6 +76,54 @@ CLUSTER_IMPLEMENTATION = "sparse_tracklet_graph.constrained_tracklet_clusters"
 _SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 _SHARED_GLOBAL_TRACK_COUNT_INDEX = EDGE_FEATURE_NAMES.index(
     "shared_global_track_count"
+)
+_EDGE_FEATURE_INDEX = {
+    name: EDGE_FEATURE_NAMES.index(name) for name in EDGE_FEATURE_NAMES
+}
+_NODE_FEATURE_INDEX = {
+    name: NODE_FEATURE_NAMES.index(name) for name in NODE_FEATURE_NAMES
+}
+ROBUSTNESS_PROFILE_DEFINITIONS: tuple[Mapping[str, Any], ...] = (
+    MappingProxyType(
+        {
+            "profile_id": "asynchronous_timestamp_jitter",
+            "purpose": "increase anonymous cross-camera timestamp separation",
+            "truth_dependent": False,
+            "candidate_graph_rebuilt": False,
+        }
+    ),
+    MappingProxyType(
+        {
+            "profile_id": "extrinsics_drift",
+            "purpose": "increase extrinsics uncertainty and projection residuals",
+            "truth_dependent": False,
+            "candidate_graph_rebuilt": False,
+        }
+    ),
+    MappingProxyType(
+        {
+            "profile_id": "occlusion_reappearance_proxy",
+            "purpose": "lower anonymous tracklet confidence and increase age after a visibility gap",
+            "truth_dependent": False,
+            "candidate_graph_rebuilt": False,
+        }
+    ),
+    MappingProxyType(
+        {
+            "profile_id": "similar_motion_confusers",
+            "purpose": "remove most motion and scale-rate separation from every candidate edge",
+            "truth_dependent": False,
+            "candidate_graph_rebuilt": False,
+        }
+    ),
+    MappingProxyType(
+        {
+            "profile_id": "independent_bbox_scale_jitter",
+            "purpose": "replace exact scale coincidences with label-independent bbox perturbations",
+            "truth_dependent": False,
+            "candidate_graph_rebuilt": False,
+        }
+    ),
 )
 _IMPLEMENTATION_FILES = (
     "scalable_3d_adapter.py",
@@ -268,6 +318,12 @@ def _evaluate(
         _fail("development_bundle_authority_invalid", str(admission))
 
     rule_config = Scalable3DAdapterConfig()
+    if not corpus.episodes:
+        _fail("heldout_corpus_empty", str(spec.heldout_corpus_dir))
+    runtime_fallback = _runtime_fallback_probe(
+        _shared_graph_view(corpus.episodes[0]),
+        rule_config,
+    )
     records: list[Mapping[str, Any]] = []
     for episode in corpus.episodes:
         records.append(
@@ -306,6 +362,7 @@ def _evaluate(
         )
     ]
     overall = _aggregate_group(records, group_id="overall")
+    robustness_profiles = _aggregate_robustness_profiles(records)
     safety = _safety_summary(records, corpus.manifest)
     identity = _identity_summary(records)
     catalog = _catalog_summary(records, corpus.manifest["profile"])
@@ -337,6 +394,8 @@ def _evaluate(
         actual_cell_count=len(by_cell),
         expected_cell_count=expected_cell_count,
         catalog=catalog,
+        robustness_profiles=robustness_profiles,
+        runtime_fallback=runtime_fallback,
     )
     wall_seconds = time.perf_counter() - started
     report: dict[str, Any] = {
@@ -393,6 +452,8 @@ def _evaluate(
         "graph_identity": identity,
         "catalog_integrity": catalog,
         "feature_label_diagnostics": feature_label_diagnostics,
+        "robustness_profiles": robustness_profiles,
+        "runtime_fallback_probe": runtime_fallback,
         "overall": overall,
         "seed_metrics": by_seed,
         "cell_metrics": by_cell,
@@ -401,6 +462,9 @@ def _evaluate(
         "runtime": {
             "wall_seconds": wall_seconds,
             "max_rss_kib": int(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss),
+            "max_rss_mib": float(
+                resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024.0
+            ),
             "device": str(scorer.device),
             "cuda_available": bool(torch.cuda.is_available()),
             "cpu_count": os.cpu_count(),
@@ -473,6 +537,12 @@ def _evaluate_episode(
         probability_threshold=scorer.decision_threshold,
     )
     model_cluster_ms = (time.perf_counter() - model_cluster_started) * 1000.0
+    robustness_runs = _run_robustness_profiles(
+        graph,
+        episode_uid=loaded.episode_uid,
+        scorer=scorer,
+        rule_config=rule_config,
+    )
     graph_after_clustering_sha256 = _graph_arrays_sha256(graph)
     candidates_after_clustering_sha256 = _candidate_edges_sha256(graph)
 
@@ -521,6 +591,37 @@ def _evaluate_episode(
         scoring_latency_ms=model_scoring_ms,
         clustering_latency_ms=model_cluster_ms,
     )
+    robustness_profiles: dict[str, Any] = {}
+    for profile_id, run in robustness_runs.items():
+        profile_graph = run["graph"]
+        robustness_profiles[profile_id] = {
+            "profile": dict(run["profile"]),
+            "transform": dict(run["transform"]),
+            "graph_sha256": run["graph_sha256"],
+            "graph_identity_match": bool(run["graph_identity_match"]),
+            "candidate_identity_match": bool(run["candidate_identity_match"]),
+            "truth_used_for_transform": False,
+            "control": _arm_episode_metrics(
+                profile_graph,
+                labels,
+                targets,
+                run["control_probabilities"],
+                run["control_clusters"],
+                threshold=rule_config.edge_probability_threshold,
+                scoring_latency_ms=run["control_scoring_ms"],
+                clustering_latency_ms=run["control_cluster_ms"],
+            ),
+            "model": _arm_episode_metrics(
+                profile_graph,
+                labels,
+                targets,
+                run["model_probabilities"],
+                run["model_clusters"],
+                threshold=scorer.decision_threshold,
+                scoring_latency_ms=run["model_scoring_ms"],
+                clustering_latency_ms=run["model_cluster_ms"],
+            ),
+        }
     labels_after_sha256 = _evaluator_labels_sha256(labels)
     control["probabilities_sha256"] = _array_sha256(control_probabilities)
     model["probabilities_sha256"] = _array_sha256(model_probabilities)
@@ -563,8 +664,330 @@ def _evaluate_episode(
             ),
             "control": control,
             "model": model,
+            "robustness_profiles": robustness_profiles,
         }
     )
+
+
+def _run_robustness_profiles(
+    graph: SparseTrackletGraph,
+    *,
+    episode_uid: str,
+    scorer: Any,
+    rule_config: Scalable3DAdapterConfig,
+) -> dict[str, dict[str, Any]]:
+    """Run label-independent counterfactual graphs through both frozen arms."""
+
+    results: dict[str, dict[str, Any]] = {}
+    for profile in ROBUSTNESS_PROFILE_DEFINITIONS:
+        profile_id = str(profile["profile_id"])
+        profile_graph, transform = _counterfactual_graph(
+            graph,
+            profile_id=profile_id,
+            episode_uid=episode_uid,
+        )
+        graph_before = _graph_arrays_sha256(profile_graph)
+        candidates_before = _candidate_edges_sha256(profile_graph)
+
+        control_started = time.perf_counter()
+        control_probabilities = _deterministic_edge_probabilities(
+            profile_graph, rule_config
+        )
+        control_scoring_ms = (time.perf_counter() - control_started) * 1000.0
+        control_cluster_started = time.perf_counter()
+        control_clusters = constrained_tracklet_clusters(
+            profile_graph,
+            control_probabilities,
+            probability_threshold=rule_config.edge_probability_threshold,
+        )
+        control_cluster_ms = (
+            time.perf_counter() - control_cluster_started
+        ) * 1000.0
+
+        model_started = time.perf_counter()
+        model_tensor = scorer.forward_graph(profile_graph)
+        if scorer.device.type == "cuda":
+            torch.cuda.synchronize(scorer.device)
+        model_scoring_ms = (time.perf_counter() - model_started) * 1000.0
+        model_probabilities = (
+            model_tensor.detach().cpu().numpy().astype(np.float64, copy=False)
+        )
+        if model_probabilities.shape != (profile_graph.edge_count,):
+            _fail(
+                "robustness_probability_shape_mismatch",
+                f"{episode_uid}:{profile_id}",
+            )
+        if not np.all(np.isfinite(model_probabilities)):
+            _fail(
+                "robustness_probability_non_finite",
+                f"{episode_uid}:{profile_id}",
+            )
+        model_cluster_started = time.perf_counter()
+        model_clusters = constrained_tracklet_clusters(
+            profile_graph,
+            model_probabilities,
+            probability_threshold=scorer.decision_threshold,
+        )
+        model_cluster_ms = (
+            time.perf_counter() - model_cluster_started
+        ) * 1000.0
+
+        graph_after = _graph_arrays_sha256(profile_graph)
+        candidates_after = _candidate_edges_sha256(profile_graph)
+        results[profile_id] = {
+            "profile": profile,
+            "transform": transform,
+            "graph": profile_graph,
+            "graph_sha256": graph_before,
+            "graph_identity_match": graph_before == graph_after,
+            "candidate_identity_match": candidates_before == candidates_after,
+            "control_probabilities": control_probabilities,
+            "control_clusters": control_clusters,
+            "control_scoring_ms": control_scoring_ms,
+            "control_cluster_ms": control_cluster_ms,
+            "model_probabilities": model_probabilities,
+            "model_clusters": model_clusters,
+            "model_scoring_ms": model_scoring_ms,
+            "model_cluster_ms": model_cluster_ms,
+        }
+    return results
+
+
+def _counterfactual_graph(
+    graph: SparseTrackletGraph,
+    *,
+    profile_id: str,
+    episode_uid: str,
+) -> tuple[SparseTrackletGraph, Mapping[str, Any]]:
+    """Create one anonymous, deterministic post-gate stress view.
+
+    The candidate topology and gate scores remain fixed.  These views are
+    diagnostic counterfactuals, not claims that the original physical
+    projection pipeline generated the perturbed measurements.
+    """
+
+    node_features = np.array(graph.node_features, dtype=np.float32, copy=True)
+    edge_features = np.array(graph.edge_features, dtype=np.float32, copy=True)
+    seed_material = hashlib.sha256(
+        f"{episode_uid}:{profile_id}:d5-robustness-v1".encode("utf-8")
+    ).digest()
+    seed = int.from_bytes(seed_material[:8], "big", signed=False)
+    rng = np.random.default_rng(seed)
+    changed_node_features: tuple[str, ...] = ()
+    changed_edge_features: tuple[str, ...] = ()
+    modified_node_count = 0
+    modified_edge_count = graph.edge_count
+
+    if profile_id == "asynchronous_timestamp_jitter":
+        index = _EDGE_FEATURE_INDEX["time_delta_s"]
+        edge_features[:, index] = np.clip(
+            edge_features[:, index]
+            + rng.uniform(0.075, 0.175, size=graph.edge_count),
+            0.0,
+            0.35,
+        )
+        changed_edge_features = ("time_delta_s",)
+    elif profile_id == "extrinsics_drift":
+        covariance = _EDGE_FEATURE_INDEX["extrinsics_covariance_trace"]
+        reprojection = _EDGE_FEATURE_INDEX["reprojection_error_px"]
+        epipolar = _EDGE_FEATURE_INDEX["epipolar_error_px"]
+        global_projection = _EDGE_FEATURE_INDEX["global_projection_mahalanobis"]
+        edge_features[:, covariance] = np.clip(
+            edge_features[:, covariance] * 4.0 + 0.05,
+            0.0,
+            1000.0,
+        )
+        edge_features[:, reprojection] *= 1.75
+        edge_features[:, epipolar] *= 1.75
+        edge_features[:, global_projection] *= 1.5
+        changed_edge_features = (
+            "extrinsics_covariance_trace",
+            "reprojection_error_px",
+            "epipolar_error_px",
+            "global_projection_mahalanobis",
+        )
+    elif profile_id == "occlusion_reappearance_proxy":
+        confidence = _NODE_FEATURE_INDEX["confidence"]
+        age = _NODE_FEATURE_INDEX["tracklet_age_s"]
+        edge_confidence = _EDGE_FEATURE_INDEX["confidence_product"]
+        time_delta = _EDGE_FEATURE_INDEX["time_delta_s"]
+        node_mask = rng.random(graph.node_count) < 0.35
+        if graph.node_count and not bool(np.any(node_mask)):
+            node_mask[int(seed % graph.node_count)] = True
+        node_features[node_mask, confidence] *= 0.4
+        node_features[node_mask, age] += 0.75
+        modified_node_count = int(np.sum(node_mask))
+        edge_mask = (
+            node_mask[graph.edge_index[0]] | node_mask[graph.edge_index[1]]
+            if graph.edge_count
+            else np.zeros(0, dtype=bool)
+        )
+        edge_features[edge_mask, edge_confidence] *= 0.4
+        edge_features[edge_mask, time_delta] = np.clip(
+            edge_features[edge_mask, time_delta] + 0.1,
+            0.0,
+            0.35,
+        )
+        modified_edge_count = int(np.sum(edge_mask))
+        changed_node_features = ("confidence", "tracklet_age_s")
+        changed_edge_features = ("confidence_product", "time_delta_s")
+    elif profile_id == "similar_motion_confusers":
+        edge_names = (
+            "bbox_log_scale_delta",
+            "bbox_scale_rate_delta_s",
+            "angular_velocity_delta_rad_s",
+        )
+        node_names = (
+            "angular_velocity_x_rad_s",
+            "angular_velocity_y_rad_s",
+            "bbox_scale_rate_s",
+        )
+        for name in edge_names:
+            edge_features[:, _EDGE_FEATURE_INDEX[name]] = 0.0
+        for name in node_names:
+            node_features[:, _NODE_FEATURE_INDEX[name]] = 0.0
+        modified_node_count = graph.node_count
+        changed_node_features = node_names
+        changed_edge_features = edge_names
+    elif profile_id == "independent_bbox_scale_jitter":
+        log_scale = _EDGE_FEATURE_INDEX["bbox_log_scale_delta"]
+        scale_rate = _EDGE_FEATURE_INDEX["bbox_scale_rate_delta_s"]
+        node_log_area = _NODE_FEATURE_INDEX["log_bbox_area_ratio"]
+        node_scale_rate = _NODE_FEATURE_INDEX["bbox_scale_rate_s"]
+        edge_features[:, log_scale] = np.abs(
+            rng.normal(0.0, 0.08, size=graph.edge_count)
+        )
+        edge_features[:, scale_rate] = np.abs(
+            rng.normal(0.0, 0.0015, size=graph.edge_count)
+        )
+        node_features[:, node_log_area] += rng.normal(
+            0.0, 0.08, size=graph.node_count
+        )
+        node_features[:, node_scale_rate] += rng.normal(
+            0.0, 0.0015, size=graph.node_count
+        )
+        modified_node_count = graph.node_count
+        changed_node_features = ("log_bbox_area_ratio", "bbox_scale_rate_s")
+        changed_edge_features = (
+            "bbox_log_scale_delta",
+            "bbox_scale_rate_delta_s",
+        )
+    else:
+        _fail("robustness_profile_unknown", profile_id)
+
+    transformed = SparseTrackletGraph(
+        nodes=graph.nodes,  # type: ignore[arg-type]
+        node_features=node_features,
+        edge_index=graph.edge_index,
+        edge_features=edge_features,
+        edges=graph.edges,  # type: ignore[arg-type]
+        candidate_counts=graph.candidate_counts,
+    )
+    return transformed, MappingProxyType(
+        {
+            "schema_version": "d5.tracklet-counterfactual-transform.v1",
+            "profile_id": profile_id,
+            "deterministic_seed": seed,
+            "label_accessed": False,
+            "candidate_topology_changed": False,
+            "gate_score_changed": False,
+            "changed_node_features": list(changed_node_features),
+            "changed_edge_features": list(changed_edge_features),
+            "modified_node_count": modified_node_count,
+            "modified_edge_count": modified_edge_count,
+        }
+    )
+
+
+def _runtime_fallback_probe(
+    graph: SparseTrackletGraph,
+    config: Scalable3DAdapterConfig,
+) -> Mapping[str, Any]:
+    """Exercise the online scorer boundary with anonymous model failures."""
+
+    class _Unavailable:
+        available = False
+        failure_reason = "bundle_probe_unavailable"
+
+    class _OutputModel:
+        available = True
+        decision_threshold = 0.5
+
+        def __init__(self, kind: str) -> None:
+            self.kind = kind
+
+        def forward_graph(self, value: SparseTrackletGraph) -> np.ndarray:
+            if self.kind == "shape":
+                return np.zeros(value.edge_count + 1, dtype=float)
+            if self.kind == "non_finite":
+                result = np.zeros(value.edge_count, dtype=float)
+                if result.size:
+                    result[0] = np.nan
+                return result
+            if self.kind == "out_of_range":
+                return np.full(value.edge_count, 1.1, dtype=float)
+            if self.kind == "error":
+                raise RuntimeError("injected scoring failure")
+            if self.kind == "low_confidence":
+                return np.full(value.edge_count, 0.5, dtype=float)
+            if self.kind == "timeout":
+                time.sleep(0.002)
+                return np.zeros(value.edge_count, dtype=float)
+            return np.zeros(value.edge_count, dtype=float)
+
+    invalid_threshold = _OutputModel("valid")
+    invalid_threshold.decision_threshold = math.nan
+    cases: tuple[tuple[str, Any, Scalable3DAdapterConfig], ...] = (
+        ("model_missing", None, config),
+        ("bundle_unavailable", _Unavailable(), config),
+        ("shape_mismatch", _OutputModel("shape"), config),
+        ("non_finite_output", _OutputModel("non_finite"), config),
+        ("out_of_range_output", _OutputModel("out_of_range"), config),
+        ("model_exception", _OutputModel("error"), config),
+        ("low_confidence", _OutputModel("low_confidence"), config),
+        ("invalid_threshold", invalid_threshold, config),
+        (
+            "inference_timeout",
+            _OutputModel("timeout"),
+            replace(config, model_inference_timeout_ms=0.01),
+        ),
+    )
+    rule_probabilities = _deterministic_edge_probabilities(graph, config)
+    records: list[dict[str, Any]] = []
+    for case_id, edge_model, case_config in cases:
+        probabilities, status, source, reason, threshold, latency = _score_graph_edges(
+            graph,
+            case_config,
+            edge_model,
+        )
+        records.append(
+            {
+                "case_id": case_id,
+                "scoring_status": status,
+                "probability_source": source,
+                "fallback_reason": reason,
+                "decision_threshold": threshold,
+                "latency_ms": latency,
+                "rule_probability_match": bool(
+                    np.array_equal(probabilities, rule_probabilities)
+                ),
+                "fallback_applied": status.startswith("rule_fallback_"),
+            }
+        )
+    passed = sum(
+        bool(item["fallback_applied"]) and bool(item["rule_probability_match"])
+        for item in records
+    )
+    return {
+        "schema_version": "d5.tracklet-runtime-fallback-probe.v1",
+        "anonymous_graph": True,
+        "online_truth_feature_count": 0,
+        "case_count": len(records),
+        "passed_case_count": passed,
+        "fallback_rate": _ratio(passed, len(records), zero=0.0),
+        "all_failures_return_exact_rule_probabilities": passed == len(records),
+        "cases": records,
+    }
 
 
 def _shared_graph_view(episode: LoadedHeldoutEpisode) -> SparseTrackletGraph:
@@ -826,6 +1249,68 @@ def _aggregate_group(
     return result
 
 
+def _aggregate_robustness_profiles(
+    records: Sequence[Mapping[str, Any]],
+) -> list[dict[str, Any]]:
+    """Aggregate diagnostic stress profiles without changing admission gates."""
+
+    definitions = {
+        str(item["profile_id"]): dict(item)
+        for item in ROBUSTNESS_PROFILE_DEFINITIONS
+    }
+    results: list[dict[str, Any]] = []
+    for profile_id in definitions:
+        profile_records = [
+            {
+                "control": item["robustness_profiles"][profile_id]["control"],
+                "model": item["robustness_profiles"][profile_id]["model"],
+            }
+            for item in records
+        ]
+        control = _aggregate_arm(profile_records, "control")
+        model = _aggregate_arm(profile_records, "model")
+        candidate_numerator = sum(
+            int(item["candidate_recall_numerator"]) for item in records
+        )
+        candidate_denominator = sum(
+            int(item["candidate_recall_denominator"]) for item in records
+        )
+        candidate_recall = _ratio(candidate_numerator, candidate_denominator)
+        graph_matches = sum(
+            bool(item["robustness_profiles"][profile_id]["graph_identity_match"])
+            for item in records
+        )
+        candidate_matches = sum(
+            bool(item["robustness_profiles"][profile_id]["candidate_identity_match"])
+            for item in records
+        )
+        results.append(
+            {
+                "profile": definitions[profile_id],
+                "episode_count": len(records),
+                "candidate_edge_count": sum(
+                    int(item["candidate_edge_count"]) for item in records
+                ),
+                "candidate_recall": candidate_recall,
+                "control": control,
+                "model": model,
+                "delta_model_minus_rule": _metric_deltas(control, model),
+                "graph_identity_ratio": _ratio(
+                    graph_matches, len(records), zero=0.0
+                ),
+                "candidate_identity_ratio": _ratio(
+                    candidate_matches, len(records), zero=0.0
+                ),
+                "truth_used_for_transform": False,
+                "interpretation": (
+                    "diagnostic_post_gate_counterfactual_not_physical_generalization"
+                ),
+                "authority_effect": "none",
+            }
+        )
+    return results
+
+
 def _aggregate_arm(records: Sequence[Mapping[str, Any]], arm: str) -> dict[str, Any]:
     edge_counts = _sum_counts(records, arm, "edge")
     cluster_counts = _sum_counts(records, arm, "cluster_pairwise")
@@ -1049,6 +1534,8 @@ def _assessment(
     actual_cell_count: int,
     expected_cell_count: int,
     catalog: Mapping[str, Any],
+    robustness_profiles: Sequence[Mapping[str, Any]],
+    runtime_fallback: Mapping[str, Any],
 ) -> dict[str, Any]:
     gates = list(overall["quality_gates"])
     gates.extend(
@@ -1135,6 +1622,46 @@ def _assessment(
                 "tolerance": 0.0,
                 "available": True,
                 "passed": bool(immutable_inputs),
+            },
+            _comparison_gate(
+                "runtime_model_failure_fallback_rate",
+                runtime_fallback["fallback_rate"],
+                "==",
+                1.0,
+            ),
+            {
+                "name": "robustness_profiles_truth_independent",
+                "actual": all(
+                    item["truth_used_for_transform"] is False
+                    for item in robustness_profiles
+                ),
+                "operator": "is",
+                "reference": True,
+                "tolerance": 0.0,
+                "available": True,
+                "passed": all(
+                    item["truth_used_for_transform"] is False
+                    for item in robustness_profiles
+                ),
+            },
+            {
+                "name": "robustness_profiles_graph_identity",
+                "actual": sum(
+                    item["graph_identity_ratio"] == 1.0
+                    and item["candidate_identity_ratio"] == 1.0
+                    for item in robustness_profiles
+                ),
+                "operator": "==",
+                "reference": len(ROBUSTNESS_PROFILE_DEFINITIONS),
+                "tolerance": 0.0,
+                "available": True,
+                "passed": len(robustness_profiles)
+                == len(ROBUSTNESS_PROFILE_DEFINITIONS)
+                and all(
+                    item["graph_identity_ratio"] == 1.0
+                    and item["candidate_identity_ratio"] == 1.0
+                    for item in robustness_profiles
+                ),
             },
         ]
     )
@@ -1265,6 +1792,28 @@ def _feature_label_diagnostics(
     near_deterministic = [
         item["feature"] for item in diagnostics if item["near_deterministic_univariate"]
     ]
+    available_auc = [
+        (
+            str(item["feature"]),
+            float(item["univariate_auc"]["best_direction_auc"]),
+        )
+        for item in diagnostics
+        if item["univariate_auc"]["available"]
+    ]
+    maximum_single_feature_auc = (
+        {
+            "available": True,
+            "feature": max(available_auc, key=lambda item: item[1])[0],
+            "best_direction_auc": max(available_auc, key=lambda item: item[1])[1],
+        }
+        if available_auc
+        else {
+            "available": False,
+            "feature": None,
+            "best_direction_auc": None,
+            "reason": "no_feature_with_both_label_classes",
+        }
+    )
     limitation_flags: list[str] = ["perfect_score_not_online_generalization_evidence"]
     if not shared_strata["1"]["available"]:
         limitation_flags.append("shared_global_track_count_one_stratum_absent")
@@ -1278,6 +1827,7 @@ def _feature_label_diagnostics(
         "negative_candidate_edge_count": int(np.sum(~targets)),
         "near_deterministic_auc_threshold": NEAR_DETERMINISTIC_UNIVARIATE_AUC,
         "near_deterministic_feature_names": near_deterministic,
+        "maximum_single_feature_auc": maximum_single_feature_auc,
         "features": diagnostics,
         "shared_global_track_count": {
             "strata": shared_strata,
@@ -1708,9 +2258,56 @@ def render_paired_shadow_markdown(report: Mapping[str, Any]) -> str:
         [
             f"| 候选召回率 | {_format_metric(overall['candidate_recall'])} | "
             f"{_format_metric(overall['candidate_recall'])} | 0.000000 |",
+            f"| 推理 P50 毫秒 | {control['latency_ms']['scoring_p50']:.6f} | "
+            f"{model['latency_ms']['scoring_p50']:.6f} | "
+            f"{model['latency_ms']['scoring_p50'] - control['latency_ms']['scoring_p50']:.6f} |",
             f"| 推理 P95 毫秒 | {control['latency_ms']['scoring_p95']:.6f} | "
             f"{model['latency_ms']['scoring_p95']:.6f} | "
             f"{model['latency_ms']['scoring_p95'] - control['latency_ms']['scoring_p95']:.6f} |",
+            "",
+            "## 困难扰动",
+            "",
+            "五类扰动由 episode 编号确定随机种子，对标签不可见。每个扰动视图保持"
+            "候选边和门控分数不变，并把同一匿名图送入规则和模型。该结果用于检查"
+            "特征捷径，不代表候选门在真实扰动下仍能保持相同召回率。",
+            "",
+            "| 扰动 | 候选召回 | 规则边 F1 | 模型边 F1 | 规则簇 F1 | 模型簇 F1 | 模型错误合并率 | 模型 P95 毫秒 |",
+            "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+        ]
+    )
+    for profile in report["robustness_profiles"]:
+        profile_id = profile["profile"]["profile_id"]
+        lines.append(
+            f"| `{profile_id}` | {_format_metric(profile['candidate_recall'])} | "
+            f"{_format_metric(profile['control']['edge']['f1'])} | "
+            f"{_format_metric(profile['model']['edge']['f1'])} | "
+            f"{_format_metric(profile['control']['cluster_pairwise']['f1'])} | "
+            f"{_format_metric(profile['model']['cluster_pairwise']['f1'])} | "
+            f"{_format_metric(profile['model']['cluster_pairwise']['false_merge_rate'])} | "
+            f"{profile['model']['latency_ms']['scoring_p95']:.6f} |"
+        )
+    fallback = report["runtime_fallback_probe"]
+    lines.extend(
+        [
+            "",
+            "## 异常回退",
+            "",
+            f"在线评分边界注入 `{fallback['case_count']}` 类模型异常，"
+            f"`{fallback['passed_case_count']}` 类返回与几何规则逐值一致的概率，"
+            f"回退率为 `{fallback['fallback_rate']:.6f}`。",
+            "",
+            "| 异常 | 状态 | 原因 | 与规则概率一致 |",
+            "| --- | --- | --- | --- |",
+        ]
+    )
+    for item in fallback["cases"]:
+        lines.append(
+            f"| `{item['case_id']}` | `{item['scoring_status']}` | "
+            f"`{item['fallback_reason']}` | "
+            f"{'是' if item['rule_probability_match'] else '否'} |"
+        )
+    lines.extend(
+        [
             "",
             "## 特征与标签审查",
             "",
@@ -1741,6 +2338,9 @@ def render_paired_shadow_markdown(report: Mapping[str, Any]) -> str:
             "单特征最佳方向受试者工作特征曲线下面积不低于 "
             f"`{diagnostics['near_deterministic_auc_threshold']:.3f}` 的项目如下。"
             "这些统计反映数据可分性，不证明冻结模型实际依赖对应特征。",
+            f"最高单特征 AUC 为 "
+            f"`{_format_metric(diagnostics['maximum_single_feature_auc']['best_direction_auc'])}`"
+            f"，对应 `{diagnostics['maximum_single_feature_auc']['feature']}`。",
             "",
             "| 特征 | 最佳方向 AUC | 相关系数 | 正样本零值比例 | 负样本零值比例 |",
             "| --- | ---: | ---: | ---: | ---: |",

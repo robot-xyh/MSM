@@ -1,5 +1,31 @@
 # D5 末端视觉配准与协同身份认证综述及子方案
 
+## 2026-07-25 冻结图模型复核
+
+D5 重新选择当前工作树可严格加载的 development bundle，并把 manifest、weights 和
+`SHA256SUMS` 的哈希写入稳定引用。模型 manifest 为 `c4284b...674`，权重为
+`99fa4428...d4cd`。新的 held-out 和 paired shadow 均使用该组哈希，覆盖 seed `1000-1019`、
+45 个场景规模单元和 900 个匿名图帧。旧 `4f5e8cee...1e50` 权重报告继续作为历史证据，不再代表
+当前冻结模型。
+
+成对评估保持候选图、候选边、相机局部编号和外生输入完全相同。图模型只输出边属于同一目标的
+概率；受约束聚类仍禁止同相机两条轨迹进入同簇，最终中心绑定仍由既有一对一 Hungarian 完成。
+模型没有创建、改写或换绑 `global_track_id`。在线输入保持匿名，truth 只在两臂完成推理和聚类后
+用于离线评分。
+
+名义数据中，候选召回为 1.0，模型边/簇 F1 均为 1.0，P50/P95 为
+`0.983052/1.219528 ms`。最高单特征 AUC 为 `0.997340`。遮挡重现代理使模型边/簇 F1 降至
+`0.563264/0.572845`，独立 bbox 尺度扰动降至 `0.893470/0.949131`，说明当前合成数据仍过易，
+模型对低置信度重现和尺度变化不够稳健。九类模型异常的规则回退率为 1.0。
+
+本轮只关闭模型哈希与 20-seed 证据不一致的 P1 子项。D6 独立复核、重新执行候选门的独立困难集、
+真实匿名多相机回放和权重制品化仍开放。bundle 晋级字段未修改，G1、assist、authority 继续关闭，
+主动视觉 PPO 未启动。
+
+最终 D5 回归为 `552 passed in 114.25s`。main 在 D4 因果通信修正后复跑统一
+module stack，结果为 `66 passed, 1 warning in 10.17s`。唯一警告为既有 Matplotlib
+三维绘图环境提示。D5 自测和跨模块合同均为零失败；模型准入仍因数据与外部复核缺口保持关闭。
+
 ## 2026-07-23 clean 4ac3bb2 seed 1000 profiler 复核
 
 D5 使用 nominal 200v200 seed 1000 的冻结匿名在线制品复核长窗口 P1。短/长日志分别覆盖 25/114 次调用，长日志包含 723 个相机批次、2479 个检测/图节点和 2400 个 binding。输入只来自 online bus，长日志 SHA-256 为 `c1dda852...6f77a`，truth source 未加载。
@@ -395,8 +421,9 @@ scalable adapter 审查确认 `observation_id` 现在只读传播为 `source_obs
 结束后的 evaluator label join。它不进入 tracker cost、local/tracklet/global ID、图特征、聚类或
 中心 binding；同帧重复 observation 在 tracker 更新前拒绝。缺少离线标签的假目标显式造成
 labels incomplete。2026-07-20 主动视觉专项 `17 passed`，D5 全量
-`376 passed in 9.94s`。当前没有正式 checkpoint、正式 20-seed 报告或 AirSim 云台闭环，故审查
-只接受软件路径和数据连接闭合，不接受 assist/默认路径晋级。
+`376 passed in 9.94s`。该段记录 2026-07-20 状态；2026-07-25 已形成同一
+development-only 权重的 20-seed 合成报告，但仍没有已准入默认 checkpoint 或 AirSim 云台闭环，
+故审查只接受软件路径和模型谱系闭合，不接受 assist/默认路径晋级。
 
 main 后续已把上述合同接入统一三维 episode：snapshot 由 D2 中心航迹、D3 当前计划、D5 几何
 证据和模拟相机 yaw/pitch/FOV/最近接受版本构造；规则 look-at/reacquire/scan 生成版本化相机
@@ -468,10 +495,11 @@ binding。候选边在学习前经过时间、视场、极线、射线、重投�
 D5 全量在本轮训练/制品同步后为 `355 passed`。审查接受相机索引和候选上界为 D5-owned P1 代码闭合，不把单次时延
 当作 200-camera episode 性能门。
 
-独立整 episode 数据合同、validation-only 校准、test 指标和 bundle 软件现已实现，但尚无
-至少 20 个未见 seed 的正式 test、默认 checkpoint 或真实 AirSim 模型接线，因此 GNN 不得
-声明准入或替换现有默认路径。模块 DTO adapter 和训练制品代码通过不等于 episode 或
-checkpoint 验收。main scalable module stack 已调用 adapter，但新增候选与模型路径诊断仍需
+独立整 episode 数据合同、validation-only 校准、test 指标和 bundle 软件现已实现。2026-07-25
+已完成同一 development-only 权重的 20 个未见 seed 合成 test，但仍无代表性困难整 episode、
+默认 checkpoint 或真实 AirSim 模型接线，因此 GNN 不得声明准入或替换现有默认路径。模块 DTO
+adapter 和训练制品代码通过不等于运行时或默认 checkpoint 验收。main scalable module stack
+已调用 adapter，但新增候选与模型路径诊断仍需
 由 main/D6 持久化并做多 seed 预算召回、内存和 P50/P95 评估。
 
 主动视觉 API 的动作集只有观察中心目标、规则扇区扫描、云台增量和 FOV/变焦；timeout、

@@ -1,5 +1,27 @@
 # D5 实现差距审计
 
+## 2026-07-25 冻结图模型 P1 状态
+
+| 缺口 | 当前状态 | 证据与剩余边界 |
+| --- | --- | --- |
+| 训练权重与 20-seed 审计权重不一致 | **已关闭** | 同一 manifest `c4284b...674` 和 weights `99fa4428...d4cd` 贯穿严格加载、held-out 和 paired shadow；20 seed、45 cell、900 帧全部完成。 |
+| 可复核冻结引用 | **D5-owned 已关闭** | `model_registry/tracklet_gnn_99fa4428/` 保存引用 manifest、审计摘要、中文报告和 `SHA256SUMS`；普通 Git 不包含权重。 |
+| 同图与真值隔离 | **关闭并保持回归** | 每帧两臂共享同一只读匿名图和候选边；标签在两臂推理和聚类后评分。在线真值字段、同相机候选边、未标注边和 `global_track_id` 改写均为 0。 |
+| 名义 20-seed 分类指标 | **合成影子范围关闭** | 候选召回 1.0，模型边/簇 F1 均 1.0，簇错误合并率 0，CPU P50/P95 为 `0.983052/1.219528 ms`。该项只描述冻结合成图。 |
+| 合成单特征捷径 | **P1 开放** | 最高单特征 AUC `0.997340`，对应 bbox 尺度变化率差。名义满分不能作为真实跨视角泛化或 G1 准入。 |
+| 困难扰动稳定性 | **P1 开放并已量化** | 遮挡重现代理边/簇 F1 为 `0.563264/0.572845`；独立 bbox 尺度扰动为 `0.893470/0.949131`。当前是固定候选图的 post-gate 诊断，仍需重新构图的独立物理困难集。 |
+| 模型异常回退 | **代码与本次探针关闭** | 9/9 异常返回与几何规则逐值一致的概率，回退率 1.0。规则仍是默认路径。 |
+| D6 独立复核 | **P1 开放** | D5 已发布固定 report/lineage/输入和模型哈希，D6 尚未独立消费本次 `99fa4428` 证据。 |
+| 权重可移交性 | **P1 开放** | tracked registry 不含权重；需独立制品库或 Git LFS 和空环境恢复验证。 |
+| 在线模型权限 | **保持关闭** | bundle 仍为 `development_only_fail_closed`；`G1=false`、`assist=false`、`authority=false`，主动视觉 PPO 未启动。 |
+
+本轮没有新增 P0。关闭的是权重谱系断点，不关闭真实相机泛化、候选门重建、D6 外部复核、模型
+移交或在线准入。
+
+2026-07-25 D5 回归结果为 `552 passed in 114.25s`。main 在 D4 因果通信修正后复跑统一
+module stack，结果为 `66 passed, 1 warning in 10.17s`。Matplotlib `Axes3D` 警告属于既有
+环境项。当前软件验收零失败；图模型仍因困难集、D6 复核和制品移交缺口保持影子状态。
+
 ## 2026-07-23 clean 4ac3bb2 seed 1000 profiler 状态
 
 | 缺口 | 当前状态 | 权威证据与剩余边界 |
@@ -602,9 +624,11 @@ same-target probability；受约束聚类、同相机唯一、中心 Hungarian �
 超时、无模型、同相机唯一和中心 ID 不变。checkpoint 全部在 `tmp_path` 生成，没有提交正式
 checkpoint；本轮没有运行 AirSim。
 
-**GAP 判定：** 仅“训练/校准/评估/制品软件管线不可用”这一 D5-owned 子项关闭。代表性正式
-数据、近邻交叉/遮挡/时延/外参漂移覆盖、至少 20 个未见 seed 的独立 test、冻结准入门限和
-默认 checkpoint 均继续作为开放 P1。没有这些证据时不得声明模型准入，几何规则继续默认。
+**GAP 判定：** “训练/校准/评估/制品软件管线不可用”和“冻结权重与 20-seed 审计权重不一致”
+两个 D5-owned 子项已关闭。2026-07-25 同一 development-only 权重已完成 20 个未见 seed 的
+合成独立 test。代表性正式数据、会重新执行物理候选门的近邻交叉/遮挡/时延/外参漂移困难集、
+D6 独立审计、冻结准入门限和默认 checkpoint 继续作为开放 P1。没有这些证据时不得声明模型
+准入，几何规则继续默认。
 该阶段 AirSim/runtime 未变化；本轮主动视觉合同已另同步到 AirSim 集成计划，仍无实际运行证据。
 
 ## 2026-07-20 匿名稀疏图 GAP 状态
@@ -648,17 +672,18 @@ seed 4 的 8 目标/3 相机训练 smoke 为 24 节点/192 边、24 正边/72 �
 中心投影支持/时间近邻给出有界 tracklet 候选。几何规则默认路径、可选模型、Hungarian、约束
 聚类和模型缺失回退未改变。预算不足只增加 unbound，不产生身份猜测。
 
-尚未关闭的是 200-camera 真实 episode 的内存峰值、P50/P95、预算召回损失、跨场景准确率和
-多随机种子证据。训练、validation 校准、test 指标与 bundle 代码现已可用，但尚无代表性正式
-数据、至少 20 个未见 seed 的 test、已验收跨视角模型或默认 checkpoint；真实 AirSim 多 seed
-性能和学习型主动视觉闭环仍为开放 P1/P2。D5-owned DTO/tracker/association 与训练制品管线
+尚未关闭的是 200-camera 真实 episode 的内存峰值、P50/P95、预算召回损失和跨场景准确率。
+训练、validation 校准、test 指标与 bundle 代码现已可用；同一 development-only 权重已完成
+20 个未见 seed 的合成 paired shadow，但仍无代表性正式数据、独立困难集、D6 复核、已验收
+跨视角模型或默认 checkpoint。真实 AirSim 多 seed 性能和学习型主动视觉闭环仍为开放 P1/P2。
+D5-owned DTO/tracker/association 与训练制品管线
 缺口已关闭；既有几何 Hungarian/`TerminalAssociator` 继续默认。
 
 **跨模块待办：** main scalable module stack 已调用本 adapter；main 需把新增
 `association.diagnostics` 原样持久化，把 camera pose covariance 放入在线 metadata，并继续
 确保 evaluator truth 只进入 evaluator。D5 已提供 candidate recall、边 precision/recall、
-Brier/ECE 和时延的模块级输出；D6 后续仍需做 PR/ROC、IDSW 和至少 20 个未见 seed 的跨场景
-汇总。D5 本轮未修改 main-owned runtime 或其他模块。
+Brier/ECE、时延、内存和扰动分层的模块级输出；D6 后续仍需独立复核冻结哈希，并在代表性
+跨场景数据上汇总 PR/ROC 和 IDSW。D5 本轮未修改 main-owned runtime 或其他模块。
 
 ## 2026-07-16 ComputerVision 5+1 最终证据与 GAP 状态
 

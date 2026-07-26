@@ -1,5 +1,19 @@
 # AirSim 离线集成计划
 
+## 2026-07-25 冻结图模型的 AirSim 边界
+
+本轮冻结 `99fa4428...d4cd` 图模型并完成 20 个未见 seed 的匿名合成保留集和成对影子审计。
+该执行没有启动 AirSim，也没有修改 settings、相机内外参、检测器、局部多目标跟踪、云台、
+actor、episode reset 或终端导引接口。AirSim 在线主线继续使用确定性几何关联；冻结模型仅可
+在相同匿名候选图上运行 development/shadow 对照。
+
+模型在遮挡重现代理和独立检测框尺度扰动下仍有明显召回损失，且当前扰动固定候选拓扑，没有
+重新执行真实投影门。真实 AirSim 接入前仍需采集匿名 camera-local tracklet、双时间戳、逐帧
+外参、像素协方差和离线 truth 标签，并在候选门重新构图后复核。`G1=false`、
+`assist=false`、`authority=false`；主动视觉学习策略未启动。2026-07-25 D5 全量回归为
+`552 passed in 114.25s`，统一 module stack 为 `66 passed, 1 warning in 10.17s`。这些是软件
+回归证据，不计入 AirSim 检测率、跨视角准确率或运行时性能验收。
+
 ## 2026-07-22 相机重叠索引优化边界
 
 D5 已在三维质点 frozen replay 中把相机重叠索引从空网格偏移探测改为占用桶对直接枚举。视锥、时间戳、外参、协方差、候选预算、几何门和 binding 语义不变，因此后续 AirSim adapter 可沿用该实现。

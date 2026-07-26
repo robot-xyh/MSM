@@ -1,6 +1,57 @@
 # D5 终端视觉配准与身份认证算法原理与实施文档
 
-**状态日期：2026-07-23**
+**状态日期：2026-07-25**
+
+## 冻结模型审计链
+
+冻结引用只保存小型可复核信息，不复制权重。引用固定 bundle 相对路径、manifest SHA-256、
+weights SHA-256 和 bundle `SHA256SUMS` 的 SHA-256。审计入口首先逐文件复算哈希，再调用
+weights-only 严格加载器核对模型结构、特征顺序、训练来源、代码来源、温度、阈值和 admission
+字段。任一字段不一致时停止评估。
+
+完整审计按以下顺序执行：
+
+1. 严格复载 seed `1000-1019` 的匿名 held-out corpus，并验证 45 个场景规模单元和 evaluator
+   lineage。
+2. 使用冻结 bundle 内 validation 温度与阈值运行 held-out 推理；禁止重新校准、重新选阈值或更新
+   权重。
+3. 每帧构造一个不可变 `SparseTrackletGraph`，让确定性几何规则和图模型读取同一实例。
+4. 两臂分别完成边概率和受约束聚类后，才载入 evaluator 标签计算边级、簇对级和错误合并指标。
+5. 复算输入、图、候选边、报告和 lineage 哈希，发布机器摘要、中文报告和校验清单。
+
+困难扰动使用 episode 编号和 profile 编号生成确定性随机种子，不读取标签。异步时间扰动增加候选
+边时间差；外参漂移增加外参协方差和投影残差；遮挡重现代理降低部分匿名节点置信度并增加轨迹年龄；
+相似运动干扰压缩全部候选边的运动/尺度差；独立 bbox 扰动以与标签无关的随机量替换尺度一致性。
+每个 profile 的规则臂和模型臂使用同一变换后图。候选拓扑和 gate score 固定，因此候选召回只用于
+确认两臂输入一致，不能解释为真实重新构图召回。
+
+在线回退探针直接调用实际评分边界。对于每类异常，系统先计算规则概率
+\(\mathbf{p}^{rule}\)，再确认返回概率满足
+
+\[
+\mathbf{p}^{fallback}=\mathbf{p}^{rule}.
+\]
+
+9/9 异常满足逐值相等。成功加载的模型也只能输出边概率；聚类、中心 Hungarian 绑定和
+`global_track_id` 所有权不交给模型。
+
+2026-07-25 D5 回归为 `552 passed in 114.25s`。main 在 D4 因果通信修正后复跑统一
+module stack，结果为 `66 passed, 1 warning in 10.17s`。警告是既有 Matplotlib 三维绘图
+环境提示。测试仅证明当前软件合同没有回归，不改变冻结模型的
+`development_only_fail_closed` 状态。
+
+复现入口：
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 \
+PYTHONPATH=research_modules/d5_terminal_association/src \
+python3 research_modules/d5_terminal_association/scripts/run_frozen_tracklet_gnn_audit.py \
+  --reference research_modules/d5_terminal_association/model_registry/tracklet_gnn_99fa4428/frozen_bundle_reference.json \
+  --repository-root . \
+  --heldout-corpus <heldout-corpus> \
+  --output-dir <new-output-directory> \
+  --evaluated-at-utc <UTC-timestamp>
+```
 
 ## 长窗口局部缓存与物化收敛
 
@@ -936,8 +987,9 @@ python3 -m d5_terminal_association.tracklet_training evaluate \
 
 2026-07-20 验证结果为新管线 `12 passed`、组合专项 `46 passed`、D5 全量
 `355 passed in 9.48s`。所有 checkpoint 位于测试 `tmp_path`。该结果只证明数据/训练/校准/
-评估/bundle/回退实现可运行并失败关闭；没有正式数据结果、20 个未见 seed、冻结准入阈值或
-默认 checkpoint，故默认仍为几何规则。本轮未运行或修改 AirSim。
+评估/bundle/回退实现可运行并失败关闭；该段记录 2026-07-20 的状态。2026-07-25 已用同一
+development-only 权重完成 20 个未见 seed 的合成成对影子审计，但代表性正式数据、冻结准入
+阈值和默认 checkpoint 仍缺失，故默认仍为几何规则。本轮未运行或修改 AirSim。
 
 ## 2026-07-20 稀疏 tracklet 图实现
 
@@ -1036,12 +1088,13 @@ actor 或 object identity。
 真实 200 路相机的检测召回、跨视角边准确率、模型概率校准、内存峰值和多 seed P50/P95 已
 达标。main/D6 还需持久化新增诊断，量化预算造成的候选召回损失。
 
-该小样本训练结果仍仅为可过拟合性测试；独立数据切分、概率校准和 test 评估的软件已经实现，
-但未产生至少 20 个未见 seed 或真实图像的正式结果，也没有默认 checkpoint，不能解释为已
-验收 GNN。D5 模块-owned scalable 3D DTO 适配和规则主动视觉模拟相机接线已完成，main scalable
-module stack 已调用 adapter；正式 checkpoint、至少 20 个未见 seed 的 paired scalable episode、
-真实 AirSim 云台接线和学习型主动视觉训练仍未完成。现有几何规则、约束聚类和 Hungarian
-绑定仍是默认运行路径。
+该小样本训练结果仍仅为可过拟合性测试；独立数据切分、概率校准和 test 评估的软件已经实现。
+2026-07-25 已用同一 development-only 权重完成 20 个未见 seed 的合成成对影子审计，但单特征
+捷径和遮挡重现脆弱性仍明显，未产生真实图像或会重新执行候选门的独立困难集结果，也没有默认
+checkpoint，不能解释为已验收 GNN。D5 模块-owned scalable 3D DTO 适配和规则主动视觉模拟相机
+接线已完成，main scalable module stack 已调用 adapter；代表性 paired scalable episode、真实
+AirSim 云台接线和学习型主动视觉训练仍未完成。现有几何规则、约束聚类和 Hungarian 绑定仍是
+默认运行路径。
 
 ## 2026-07-16 真实 ComputerVision 5+1 实现证据
 

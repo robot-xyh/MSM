@@ -8,6 +8,9 @@ import pytest
 import torch
 
 import d5_terminal_association.tracklet_paired_shadow as paired_shadow_module
+from d5_terminal_association.frozen_tracklet_audit import (
+    run_frozen_tracklet_audit,
+)
 from d5_terminal_association.scalable_3d_adapter import Scalable3DAdapterConfig
 from d5_terminal_association.tracklet_gnn import NativeTrackletEdgeClassifier
 from d5_terminal_association.tracklet_heldout_evaluation import (
@@ -129,6 +132,22 @@ def test_paired_shadow_uses_identical_graphs_and_keeps_authority_closed(
         "rule_fallback": True,
         "runtime_default_changed": False,
     }
+    assert len(report["robustness_profiles"]) == len(
+        paired_shadow_module.ROBUSTNESS_PROFILE_DEFINITIONS
+    )
+    for profile in report["robustness_profiles"]:
+        assert profile["truth_used_for_transform"] is False
+        assert profile["graph_identity_ratio"] == 1.0
+        assert profile["candidate_identity_ratio"] == 1.0
+        assert profile["candidate_recall"] == report["overall"]["candidate_recall"]
+        assert profile["authority_effect"] == "none"
+    fallback = report["runtime_fallback_probe"]
+    assert fallback["case_count"] == 9
+    assert fallback["passed_case_count"] == 9
+    assert fallback["fallback_rate"] == 1.0
+    assert fallback["all_failures_return_exact_rule_probabilities"] is True
+    assert all(item["fallback_applied"] for item in fallback["cases"])
+    assert all(item["rule_probability_match"] for item in fallback["cases"])
     diagnostics = report["feature_label_diagnostics"]
     assert diagnostics["scope"] == "post_prediction_evaluator_only"
     assert diagnostics["interpretation_scope"] == (
@@ -141,6 +160,7 @@ def test_paired_shadow_uses_identical_graphs_and_keeps_authority_closed(
         "weights_updated": False,
         "predictions_recomputed_for_diagnostics": False,
     }
+    assert "maximum_single_feature_auc" in diagnostics
     for arm in ("control", "model"):
         strata = report["overall"][arm]["edge_by_shared_global_track_count"]
         assert strata["0"]["edge_count"] + strata["1"]["edge_count"] + strata[
@@ -304,6 +324,58 @@ def test_existing_destination_is_never_overwritten(
 
     assert error.value.code == "paired_shadow_destination_exists"
     assert sentinel.read_text(encoding="utf-8") == "keep"
+
+
+def test_frozen_audit_entrypoint_hash_binds_one_bundle(
+    paired_shadow_fixture: dict[str, Path], tmp_path: Path
+) -> None:
+    reference = paired_shadow_fixture["root"] / "frozen_reference.json"
+    _write_json(
+        reference,
+        {
+            "schema_version": "d5.frozen-tracklet-audit-reference.v1",
+            "model_id": "smoke-model",
+            "bundle_relative_path": "bundle",
+            "expected_hashes": {
+                "manifest_sha256": _sha256_file(
+                    paired_shadow_fixture["bundle"] / "manifest.json"
+                ),
+                "weights_sha256": _sha256_file(
+                    paired_shadow_fixture["bundle"] / "weights.pt"
+                ),
+                "checksums_sha256": _sha256_file(
+                    paired_shadow_fixture["bundle"] / "SHA256SUMS"
+                ),
+            },
+        },
+    )
+    output = tmp_path / "frozen-audit"
+
+    summary = run_frozen_tracklet_audit(
+        reference,
+        paired_shadow_fixture["corpus"],
+        output,
+        repository_root=paired_shadow_fixture["root"],
+        evaluated_at_utc="2026-07-21T12:30:00Z",
+        latency_repeats=1,
+        require_full_profile=False,
+    )
+
+    assert summary["model"]["model_id"] == "smoke-model"
+    assert summary["model"]["weights_sha256"] == _sha256_file(
+        paired_shadow_fixture["bundle"] / "weights.pt"
+    )
+    assert summary["authority"] == {
+        "g1": False,
+        "assist": False,
+        "authority": False,
+        "default_model_changed": False,
+        "active_visual_ppo_started": False,
+    }
+    assert summary["paired_shadow"]["runtime_fallback_rate"] == 1.0
+    assert (output / "frozen_audit_summary.json").is_file()
+    assert (output / "FROZEN_GNN_AUDIT_REPORT_CN.md").is_file()
+    assert (output / "SHA256SUMS").is_file()
 
 
 def _spec(paths: dict[str, Path], output: Path) -> PairedShadowInputSpec:

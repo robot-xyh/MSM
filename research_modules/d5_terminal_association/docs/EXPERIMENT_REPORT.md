@@ -1,5 +1,58 @@
 # D5 末端视觉配准与身份认证实验报告
 
+## 2026-07-25 同一冻结权重 20-seed 成对影子评估
+
+### 条件
+
+冻结模型 manifest SHA-256 为
+`c4284b2442dba56c0d2857146760f840e72cbe02ffe9a98964a0c68bb69bc674`，weights SHA-256 为
+`99fa4428849773458eb1a537d5f6cd72a23275215a6dfe5d558dbaa3df92d4cd`。模型状态为
+`development_only_fail_closed`。评估使用 seed `1000-1019`、45 个场景规模单元和 900 个匿名图
+帧，共 13,344 个节点和 74,024 条候选边。
+
+held-out report 文件 SHA-256 为 `765d39a...20a`。paired report/lineage 文件 SHA-256 为
+`cc960206...f23` / `14f2c1d6...19f`，内部内容 SHA-256 为 `53bdc658...7a0`。输入文件在评估前后
+哈希不变。
+
+### 名义结果
+
+| 指标 | 几何规则 | 冻结模型 | 模型减规则 |
+| --- | ---: | ---: | ---: |
+| 候选召回率 | 1.000000 | 1.000000 | 0.000000 |
+| 边 F1 | 0.367980 | 1.000000 | 0.632020 |
+| 簇对 F1 | 0.239234 | 1.000000 | 0.760766 |
+| 簇错误合并率 | 0.762462 | 0.000000 | -0.762462 |
+| 评分 P50 | 0.172179 ms | 0.983052 ms | 0.810873 ms |
+| 评分 P95 | 0.230245 ms | 1.219528 ms | 0.989283 ms |
+
+模型异常回退探针覆盖 9 类故障，9 类均返回与规则概率逐值一致的结果，回退率为 1.0。评估进程最大
+常驻内存为 2,655.551 MiB，包含语料、PyTorch 运行时、五类扰动和报告聚合，不能解释为单图推理
+独占内存。
+
+### 困难扰动
+
+| 扰动 | 模型边 F1 | 模型簇 F1 | 模型簇错误合并率 |
+| --- | ---: | ---: | ---: |
+| 异步时间抖动 | 0.998650 | 0.998830 | 0.000000 |
+| 外参漂移 | 1.000000 | 1.000000 | 0.000000 |
+| 遮挡重现代理 | 0.563264 | 0.572845 | 0.000000 |
+| 相似运动干扰 | 1.000000 | 1.000000 | 0.000000 |
+| 独立 bbox 尺度扰动 | 0.893470 | 0.949131 | 0.000000 |
+
+最高单特征 AUC 为 `0.997340`，对应 bbox 尺度变化率差。遮挡重现和独立尺度扰动主要造成同目标边
+漏判，没有产生错误合并。名义满分仍受合成数据捷径影响。
+
+### 判断
+
+本次关闭了“当前训练权重与 20-seed 审计权重不一致”的证据断点。它没有关闭真实相机泛化、候选门
+重建、D6 独立复核和模型制品移交。`G1=false`、`assist=false`、`authority=false`，默认在线路径
+仍为确定性几何规则；主动视觉 PPO 未启动。
+
+软件回归结果为 D5 `552 passed in 114.25s`。main 在 D4 因果通信修正后复跑统一
+module stack，结果为 `66 passed, 1 warning in 10.17s`。警告来自既有 Matplotlib
+三维绘图导入环境，不影响本次数值结果。该通过状态只覆盖软件合同，不替代真实相机泛化、
+D6 独立复核或在线权限准入。
+
 ## 2026-07-23 clean 4ac3bb2 seed 1000 profiler 与等价 A/B
 
 ### 条件与接受门
@@ -855,10 +908,10 @@ training-set hash。加载使用 `allow_pickle=False`，bundle 使用
 recall、Brier/ECE、P50/P95 inference latency 和 model size；不完整 truth fixture 验证这些
 身份/校准指标均为 unavailable/null，而不是 0。
 
-checkpoint round-trip 只证明 state_dict、temperature 和 threshold 可一致恢复；测试生成的
-bundle 已随 `tmp_path` 清理，仓库没有新增正式 checkpoint。至少 20 个未见 seed 的独立 test、
-代表性近邻交叉/遮挡/时延/外参漂移、冻结质量/时延门限和默认 checkpoint 均未执行或批准。
-因此本轮只关闭训练/制品管线 GAP，几何规则继续默认。
+checkpoint round-trip 只证明 state_dict、temperature 和 threshold 可一致恢复；该段记录
+2026-07-20 的管线状态。2026-07-25 已冻结一份 development-only bundle，并用同一权重完成
+20 个未见 seed 的合成独立 test；代表性近邻交叉/遮挡/时延/外参漂移困难集、冻结质量/时延
+准入门限和默认 checkpoint 仍未批准。因此几何规则继续默认。
 
 该训练制品阶段本身没有 settings、相机、detector、runtime episode、云台或 handoff 接线变化。
 其后 main 完成统一三维模拟相机接线；仍没有新增真实 AirSim 实验结论。
@@ -899,8 +952,9 @@ adapter 专项另覆盖跨帧角速度/尺度变化、中心与 bbox covariance�
 多随机种子 P50/P95 和跨视角准确率仍需 main/D6 运行集成 episode 后确认。
 
 训练 smoke 使用同一小样本拟合和评估，预期可过拟合，不能提供泛化、IDF1/IDSW、真实遮挡
-恢复或 200v200 episode 准确率证据。独立 split、概率校准和 test 指标的软件管线现已实现，
-但没有 20 个未见 seed 的正式结果或默认 checkpoint；D5 DTO adapter 已实现，
+恢复或 200v200 episode 准确率证据。独立 split、概率校准和 test 指标的软件管线现已实现。
+2026-07-25 已用同一 development-only 权重完成 20 个未见 seed 的合成成对影子审计，但没有
+代表性真实结果或默认 checkpoint；D5 DTO adapter 已实现，
 main scalable module stack 已调用该 adapter，但新增诊断尚未持久化到 episode/D6；也无真实
 大规模 AirSim 云台闭环或学习型
 主动视觉策略验收，因此既有几何默认路径不变。

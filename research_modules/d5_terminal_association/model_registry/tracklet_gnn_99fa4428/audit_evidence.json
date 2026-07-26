@@ -1,0 +1,115 @@
+{
+  "authority": {
+    "active_visual_ppo_started": false,
+    "assist": false,
+    "authority": false,
+    "default_model_changed": false,
+    "g1": false
+  },
+  "catalog": {
+    "candidate_edge_count": 74024,
+    "episode_count": 900,
+    "node_count": 13344,
+    "scenario_scale_cell_count": 45,
+    "seed_count": 20,
+    "seeds": [
+      1000,
+      1001,
+      1002,
+      1003,
+      1004,
+      1005,
+      1006,
+      1007,
+      1008,
+      1009,
+      1010,
+      1011,
+      1012,
+      1013,
+      1014,
+      1015,
+      1016,
+      1017,
+      1018,
+      1019
+    ]
+  },
+  "evaluated_at_utc": "2026-07-25T13:30:00Z",
+  "frozen_model": {
+    "admission_status": "development_only_fail_closed",
+    "manifest_sha256": "c4284b2442dba56c0d2857146760f840e72cbe02ffe9a98964a0c68bb69bc674",
+    "weights_sha256": "99fa4428849773458eb1a537d5f6cd72a23275215a6dfe5d558dbaa3df92d4cd"
+  },
+  "heldout_input": {
+    "config_sha256": "0c3569e0479f24f865f3f9b8d1169c683b544c77caa6bd04a3a672a72eb6b768",
+    "manifest_content_sha256": "da8839d48acbf24e819106d089ca9cf261de18d7a1d6d95a4e72a1832909aac9",
+    "manifest_sha256": "496f8b3139c7c439ebd68213d17ffd5791989c1200aea29b7f30867b7eb44d2f",
+    "profile_version": "d5-tracklet-heldout-1000-1019-full-v1"
+  },
+  "limitations": [
+    "synthetic_heldout_single_feature_shortcut",
+    "counterfactual_profiles_hold_candidate_graph_fixed",
+    "occlusion_reappearance_is_anonymous_feature_proxy",
+    "d6_external_audit_required",
+    "no_online_authority"
+  ],
+  "nominal_metrics": {
+    "candidate_recall": 1.0,
+    "model_cluster_f1": 1.0,
+    "model_cluster_false_merge_rate": 0.0,
+    "model_edge_f1": 1.0,
+    "model_latency_p50_ms": 0.9830519848037511,
+    "model_latency_p95_ms": 1.2195281829917803,
+    "peak_rss_mib": 2655.55078125,
+    "rule_cluster_f1": 0.23923388056150366,
+    "rule_edge_f1": 0.3679800674707296,
+    "runtime_fallback_rate": 1.0
+  },
+  "output_hashes": {
+    "heldout_evaluation_content_sha256": "bada1803a2a5497a7a65fa56c5ec5d4b55beec8ee0be34d45ce38f64b887067a",
+    "heldout_evaluation_file_sha256": "765d39a5188b4b4a7dc561f47222125995d8fce344c05c4cac2b1016c071320a",
+    "paired_lineage_sha256": "14f2c1d6d02ee6be67038ab469674eb9c7d3bec5eba0466be74f8b7bd1f9519f",
+    "paired_markdown_sha256": "509e067453f4983db7952aa4edfc798ff6656cb958895b3480338861b4b5d628",
+    "paired_report_content_sha256": "53bdc658154f4371e340382b5af3b7358bf8de9691ae89b3e301da9cf6c957a0",
+    "paired_report_file_sha256": "cc960206a13b364315baf8d315e239f7e0541469e4fa553b3ee5fb95c643bf23"
+  },
+  "robustness_profiles": [
+    {
+      "model_cluster_f1": 0.9988304093567251,
+      "model_cluster_false_merge_rate": 0.0,
+      "model_edge_f1": 0.9986502294609916,
+      "profile_id": "asynchronous_timestamp_jitter"
+    },
+    {
+      "model_cluster_f1": 1.0,
+      "model_cluster_false_merge_rate": 0.0,
+      "model_edge_f1": 1.0,
+      "profile_id": "extrinsics_drift"
+    },
+    {
+      "model_cluster_f1": 0.572845417236662,
+      "model_cluster_false_merge_rate": 0.0,
+      "model_edge_f1": 0.5632639008435187,
+      "profile_id": "occlusion_reappearance_proxy"
+    },
+    {
+      "model_cluster_f1": 1.0,
+      "model_cluster_false_merge_rate": 0.0,
+      "model_edge_f1": 1.0,
+      "profile_id": "similar_motion_confusers"
+    },
+    {
+      "model_cluster_f1": 0.9491312012087635,
+      "model_cluster_false_merge_rate": 0.0,
+      "model_edge_f1": 0.8934703347696387,
+      "profile_id": "independent_bbox_scale_jitter"
+    }
+  ],
+  "schema_version": "d5.frozen-tracklet-audit-evidence.v1",
+  "single_feature_shortcut": {
+    "best_direction_auc": 0.9973400544198703,
+    "feature": "bbox_scale_rate_delta_s"
+  },
+  "status": "evidence_chain_closed_shadow_only"
+}
