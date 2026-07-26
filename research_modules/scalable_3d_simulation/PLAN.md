@@ -1,5 +1,41 @@
 # 200 对 200 三维质点仿真实施计划
 
+## D4 因果通信与正式矩阵准入状态（2026-07-25）
+
+1. [x] main 新增 D4 点对点通信意图，将二级就绪、区域计划广播和联盟成员确认通过
+   `DeterministicCommunicationNetwork` 传输，不再使用同 tick 合成送达。
+2. [x] D4 收据校验绑定 source/destination、plan version、epoch、lease、分区代次、
+   payload digest 和 message ID；关闭通信时中心失效场景保持失败关闭。
+3. [x] D4 owner 将无确认和部分确认保持为 `collecting_acks`，完整确认原子提交；分区、
+   摘要冲突、租约到期、成员不可执行和显式终结仍失败关闭。
+4. [x] main 完成 2 目标、4 资源、单目标 3 成员的异步网络集成回归；二级计划发布后，
+   `2.05 s` 未确认时 D7 保持，`2.10 s` 三个确认到达后仅两架主机执行，备用机待命。
+5. [x] main 修复区域内不同任务提交租约未统一收紧的问题，下一规划周期不再产生
+   `regional_coalition_lease_exceeds_authority` 虚假拒绝。
+6. [x] 保留种子干预框架区分故障代次栅栏、前一计划 D4 裁决和下一版本 D3 采用；连续
+   中心/二级失效窗口延长到足以覆盖广播和确认往返。
+7. [x] D4 全量 `569 passed`，scalable 模块栈 `66 passed, 1 warning`，scalable 全量
+   `272 passed, 1 warning`；warning 为既有 Matplotlib 三维投影导入提示。
+8. [x] D6 使用实际 formal 计划完成静态 `post_run` 预检：expected=`5700`、
+   accepted=`0`、verdict=`fail_closed`。
+9. [ ] 在 clean detached worktree 生成 R0 正式基线产物，先按批次形成 manifest、逐 cell
+   清单、D6 逐 seed CSV、聚合 JSON、中文报告、曲线和动画。
+10. [ ] D3、D4、D5 图模型和 D5 主动视觉模型保持 development/shadow；未通过独立非退化
+    门前，不允许以模型哈希有效代替 assist 准入。
+11. [ ] 完成 R0 后再决定 G1/A1/A2/A3/C1/F1 的运行顺序；每一学习变体缺正式模型权限时
+    必须失败关闭，不用规则静默补齐 formal 单元。
+12. [ ] 200 对 200 系统实时、完整 20 个未见 seed、AirSim 代表子场景和冻结目标处理器
+    容量仍为开放 P1。
+13. [x] D1、D3-D7 owner 完成收尾复核和文档同步。D1 修正唯一观测谱系统计，D3 修正
+    `cost_weights` 对称接线，D6 修正非法 D4 保留种子字段失败关闭，D7 修正 pair 状态
+    回收顺序和重复资源输入检查。
+14. [x] 最新模块回归为 D1 `496 passed`、D3 `459 passed, 1 skipped`、D4
+    `569 passed`、D5 `552 passed`、D6 `889 passed, 1 warning`、D7 `220 passed`；
+    修正后的统一模块栈为 `66 passed, 1 warning`。
+15. [ ] 正式 R0 运行前先冻结可恢复分块与合并合同。现有正式 inventory 是 5700 个
+    R0-G1-A1-A2-A3-C1-F1 单元，不能把非正式 R0 子计划或多个独立 manifest 直接拼成
+    正式完成证据。
+
 ## D1 在线发布证据子集快照候选（2026-07-25）
 
 ### 问题与隔离边界

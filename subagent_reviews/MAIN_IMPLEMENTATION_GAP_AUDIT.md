@@ -4,6 +4,52 @@
 **审计目标**：列出共识算法与计划使用的开源代码哪些已经实现，哪些没有实现，为什么没有实现，以及缺少哪些条件。
 **边界**：本文只用于科研仿真、接口补齐和后续工程排期；不涉及真实硬件、实机处置、火控或绕过授权的自动动作。
 
+## 2026-07-25 可扩展三维主线最新状态
+
+当前无新增运行级 P0。D4 模块已关闭“联盟提案在网络确认到达前被永久终结”的阻塞。
+`CoalitionCommitCoordinator` 在租约有效期内保留 `collecting_acks`，完整必要成员确认后
+原子提交；过时或无效确认拒绝且不授权，摘要冲突、分区、租约到期、成员不可执行和显式
+终结继续失败关闭。D4 owner 全量回归为 `569 passed`，相关 README、PLAN、GAP 和算法
+文档已同步。
+
+main 已把 D4 二级就绪、区域计划广播和联盟确认接入真实 episode 通信队列。2 目标、4 资源、
+1 个高空侦察节点的高威胁三成员场景中，中心在 `1.5 s` 失效。二级计划版本 2 在
+`2.0 s` 发布；`2.05 s` 时确认数为 0/3，D7 不执行；`2.10 s` 时确认数为 3/3，两个
+primary 进入三维中段比例导引，reserve 保持 `assignment_not_current`。区域计划升级后重新
+确认，旧版本没有被沿用。在线真值使用和 `global_track_id` 改写均为 0。
+
+main 同步修复了跨任务租约归一化和保留种子因果帧选择。scalable 模块栈为
+`66 passed, 1 warning`，scalable 全量为 `272 passed, 1 warning`。warning 是既有
+Matplotlib `Axes3D` 环境提示，不影响本轮 JSON、状态机和控制命令验收。
+
+同日 D1、D3-D7 owner 完成未提交补丁和文档收尾复核。D1 修正唯一接受观测的谱系覆盖率
+以及真值/虚警混合谱系统计；D3 修正多周期影子评估未实际使用 `cost_weights` 的接线；
+D6 将非法 D4 保留种子数字段改为未授权失败关闭；D7 把失效 pair 回收前移到命令计算前，
+并在任何状态变更前拒绝同批次重复资源。D4 和 D5 未发现新的模块代码错误，补齐了
+development/shadow 与正式准入的文档边界。
+
+最新 owner 回归为 D1 `496 passed`、D3 `459 passed, 1 skipped`、D4 `569 passed`、
+D5 `552 passed`、D6 `889 passed, 1 warning`、D7 `220 passed`。D3 跳过项为未安装的
+可选 OR-Tools。修正后的 main 模块栈为 `66 passed, 1 warning`。这些结果关闭本轮代码和
+文档一致性收尾，不关闭正式多随机种子、200 对 200 实时、AirSim、物理拦截或模型准入。
+
+当前最高优先级仍是 P1 正式证据，而非继续增加在线算法。D6 按实际
+`ExperimentMatrixPlan.cells()` 得到 5700 个 formal cell，静态 `post_run` 预检为
+expected=`5700`、accepted=`0`、verdict=`fail_closed`。阻塞项包括：
+
+1. R0-G1-A1-A2-A3-C1-F1 正式运行 manifest 和逐 cell 制品尚未生成；
+2. D2 `id_switch_count`、五米物理拦截、有限状态和逐 seed 置信区间尚未覆盖完整矩阵；
+3. 正式中文报告、曲线、动画和模型清单尚未形成；
+4. D3、D4、D5 图模型和 D5 主动视觉模型哈希有效，但只允许 development/shadow，
+   尚无 assist 权限；
+5. 当前工作树含待提交代码和受保护的用户未跟踪资料，不能作为 clean formal source。
+6. 现有矩阵执行器一次写一个完整 manifest；正式 R0 分块、断点恢复和确定性合并合同尚未
+   冻结，不能用多个非正式子计划目录拼接正式 5700-cell 证据。
+
+下一步先在 clean detached worktree 运行 R0 分批基线并由 D6 回灌。学习变体只有在模型权限、
+逐单元采用证据和非退化门齐备后才进入 formal 队列。系统实时、目标硬件和 AirSim 代表
+子场景继续单独验收。
+
 **P0/P1 状态入口**：本文是 main 层唯一的实现差距与 P0/P1 状态入口，集中维护 owner、当前状态、缺少条件和验收口径。2026-07-14 canonical actual-execution 证据链已完成真实 AirSim seed-1 复验：tuned 2v2 与 M5N2 均生成并通过校验的 `d7-actual-execution-metrics-v2`，不存在 unavailable artifact；`control_commands.csv`、`intercept_summary.json` 和 actual envelope 的物理成功数一致，控制计划 ID 与同一个 canonical D3 history 一致，身份和状态在线真值使用计数均为 0。2026-07-15 main/D6 进一步关闭“只有总耗时、无法定位预算违例阶段”的 P1 可观测性实现缺口；随后复核并关闭 D4 多入口二级接管证据不一致的系统级 P0 边界，以及 D2 continuity 固定 `+0.10` 在高基线下不可达的 P1 准入规则缺口。同日第二次只读审计发现 D4 两个公开 helper 仍把部分缺失证据 `None` 当成“非 False”放行；D4 owner 已改为 exact-true/fail-closed，补齐逐字段缺失负例并完成跨模块回归。D2/D6 随后已用原冻结 replay 生成 ceiling-aware v2 正式联合证据：总体 GNN 候选五项 gate 通过，但只有 `clutter`、`combined` 两个 difficulty 通过，dropout truth alignment 仍为 partial，JPDA 不准入，因此只形成 promotion review，默认 GNN/Hungarian 不变。最新相关回归为 D2 `113`、D4 `280`、D6 `272`、AirSim runtime `157`、integrated point-mass `7`；当前无开放运行级或证据级 P0 blocker。P1 继续包括 D3 长期 churn、M5N2 第二 primary/物理联盟、candidate `3/2/1` 机会合同、ClockSpeed 与顺序控制 RPC 解耦、D5 30/50 m 与 native MOT 准入、真实二级网络时序、D2 候选的跨 difficulty/完整系统评审，以及基于新分阶段证据达到 100 ms 实时预算。P2 仍只在隔离环境评估，不替换默认 NumPy/SciPy/PN/PNG/detect 路径。
 
 **当前状态修订（2026-07-20）**：上段“无开放 P0”只对应此前 AirSim 审计。900-episode
