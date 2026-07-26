@@ -34,6 +34,9 @@ from research_modules.scalable_3d_simulation.module_stack import (
     D1_CV_MOTION_MODEL_REFERENCE_IMPLEMENTATION,
     D1_OPAQUE_SOURCE_IDENTITY_CANDIDATE_IMPLEMENTATION,
     D1_OPAQUE_SOURCE_IDENTITY_REFERENCE_IMPLEMENTATION,
+    D1_PUBLICATION_EVIDENCE_SNAPSHOT_CANDIDATE_IMPLEMENTATION,
+    D1_PUBLICATION_EVIDENCE_SNAPSHOT_DEFAULT_IMPLEMENTATION,
+    D1_PUBLICATION_EVIDENCE_SNAPSHOT_REFERENCE_IMPLEMENTATION,
     D1_PUBLICATION_METADATA_CANDIDATE_IMPLEMENTATION,
     D1_PUBLICATION_METADATA_REFERENCE_IMPLEMENTATION,
     D1_STRUCTURED_NUMERICAL_JACOBIAN_CANDIDATE_IMPLEMENTATION,
@@ -254,8 +257,21 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         default=REPLAY_PREFIX_SUMMARY_DEFAULT_SELECTOR,
         help=(
             "select the D1 fixed-lag replay-prefix implementation; the "
-            "cumulative-summary candidate remains default-off pending a "
-            "formal same-commit multiseed admission"
+            "cumulative-summary candidate remains default-off after its "
+            "formal same-commit multiseed rejection"
+        ),
+    )
+    parser.add_argument(
+        "--d1-publication-evidence-snapshot-implementation",
+        choices=(
+            D1_PUBLICATION_EVIDENCE_SNAPSHOT_REFERENCE_IMPLEMENTATION,
+            D1_PUBLICATION_EVIDENCE_SNAPSHOT_CANDIDATE_IMPLEMENTATION,
+        ),
+        default=D1_PUBLICATION_EVIDENCE_SNAPSHOT_DEFAULT_IMPLEMENTATION,
+        help=(
+            "select the main-to-D1 consistency-evidence snapshot scope; "
+            "the exact required-observation subset candidate remains "
+            "default-off pending a formal same-commit multiseed admission"
         ),
     )
     parser.add_argument(
@@ -364,6 +380,9 @@ def main() -> int:
                 ),
                 d1_replay_prefix_summary_implementation=(
                     args.d1_replay_prefix_summary_implementation
+                ),
+                d1_publication_evidence_snapshot_implementation=(
+                    args.d1_publication_evidence_snapshot_implementation
                 ),
             ),
         )

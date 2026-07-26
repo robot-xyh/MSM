@@ -156,6 +156,27 @@ D1_STRUCTURED_NUMERICAL_JACOBIAN_REFERENCE_IMPLEMENTATION = (
 D1_STRUCTURED_NUMERICAL_JACOBIAN_CANDIDATE_IMPLEMENTATION = (
     "known_dimension_structural_columns_v1"
 )
+D1_PUBLICATION_EVIDENCE_SNAPSHOT_REFERENCE_IMPLEMENTATION = (
+    "full_consistency_snapshot_v1"
+)
+D1_PUBLICATION_EVIDENCE_SNAPSHOT_CANDIDATE_IMPLEMENTATION = (
+    "required_observation_subset_v1"
+)
+D1_PUBLICATION_EVIDENCE_SNAPSHOT_DEFAULT_IMPLEMENTATION = (
+    D1_PUBLICATION_EVIDENCE_SNAPSHOT_REFERENCE_IMPLEMENTATION
+)
+D1_PUBLICATION_EVIDENCE_SNAPSHOT_REFERENCE_IMPLEMENTATION_ID = (
+    "main.d1_publication_evidence.full_consistency_snapshot.v1"
+)
+D1_PUBLICATION_EVIDENCE_SNAPSHOT_CANDIDATE_IMPLEMENTATION_ID = (
+    "main.d1_publication_evidence.required_observation_subset.v1"
+)
+D1_PUBLICATION_EVIDENCE_SNAPSHOT_EXECUTION_CONFIG_SCHEMA_VERSION = (
+    "scalable3d-d1-publication-evidence-snapshot-execution-config-v1"
+)
+D1_PUBLICATION_EVIDENCE_SNAPSHOT_DIAGNOSTICS_SCHEMA_VERSION = (
+    "scalable3d-d1-publication-evidence-snapshot-diagnostics-v1"
+)
 _EPS = 1.0e-9
 
 
@@ -205,6 +226,9 @@ class IntegratedStackConfig:
     )
     d1_replay_prefix_summary_implementation: str = (
         REPLAY_PREFIX_SUMMARY_DEFAULT_SELECTOR
+    )
+    d1_publication_evidence_snapshot_implementation: str = (
+        D1_PUBLICATION_EVIDENCE_SNAPSHOT_DEFAULT_IMPLEMENTATION
     )
     d2_claim_retention_s: float = 30.0
     d2_claim_max_lateness_s: float = 5.0
@@ -437,6 +461,23 @@ class IntegratedStackConfig:
             "d1_replay_prefix_summary_implementation",
             replay_prefix_summary_implementation,
         )
+        publication_evidence_snapshot_implementation = str(
+            self.d1_publication_evidence_snapshot_implementation
+        ).strip()
+        if publication_evidence_snapshot_implementation not in {
+            D1_PUBLICATION_EVIDENCE_SNAPSHOT_REFERENCE_IMPLEMENTATION,
+            D1_PUBLICATION_EVIDENCE_SNAPSHOT_CANDIDATE_IMPLEMENTATION,
+        }:
+            raise ValueError(
+                "d1_publication_evidence_snapshot_implementation must be "
+                "full_consistency_snapshot_v1 or "
+                "required_observation_subset_v1"
+            )
+        object.__setattr__(
+            self,
+            "d1_publication_evidence_snapshot_implementation",
+            publication_evidence_snapshot_implementation,
+        )
         if (
             not np.isfinite(self.d2_claim_capacity_safety_factor)
             or self.d2_claim_capacity_safety_factor < 1.0
@@ -630,6 +671,59 @@ def _initial_replay_prefix_summary_diagnostics(
     ).replay_prefix_summary_diagnostics()
 
 
+def _d1_publication_evidence_snapshot_execution_config(
+    config: IntegratedStackConfig,
+) -> dict[str, Any]:
+    selector = config.d1_publication_evidence_snapshot_implementation
+    candidate_enabled = (
+        selector
+        == D1_PUBLICATION_EVIDENCE_SNAPSHOT_CANDIDATE_IMPLEMENTATION
+    )
+    return {
+        "schema_version": (
+            D1_PUBLICATION_EVIDENCE_SNAPSHOT_EXECUTION_CONFIG_SCHEMA_VERSION
+        ),
+        "selector": selector,
+        "implementation_id": (
+            D1_PUBLICATION_EVIDENCE_SNAPSHOT_CANDIDATE_IMPLEMENTATION_ID
+            if candidate_enabled
+            else D1_PUBLICATION_EVIDENCE_SNAPSHOT_REFERENCE_IMPLEMENTATION_ID
+        ),
+        "candidate_enabled": candidate_enabled,
+        "required_id_sources": (
+            "source_observations",
+            "materialized_track_latest_observation",
+        ),
+        "required_id_order": "deduplicated_lexicographic",
+        "invalid_or_unknown_id_policy": "fallback_to_full_snapshot",
+        "episode_final_export_scope": "full_exact_materialized_records",
+        "truth_dependent_inputs_allowed": False,
+    }
+
+
+def _initial_d1_publication_evidence_snapshot_diagnostics(
+    config: IntegratedStackConfig,
+) -> dict[str, Any]:
+    return {
+        "schema_version": (
+            D1_PUBLICATION_EVIDENCE_SNAPSHOT_DIAGNOSTICS_SCHEMA_VERSION
+        ),
+        "execution_config": (
+            _d1_publication_evidence_snapshot_execution_config(config)
+        ),
+        "operation_counts": {},
+        "fallback_reason_counts": {},
+        "conservation": {
+            "selection_partition": True,
+            "candidate_selection_partition": True,
+            "adapter_call_partition": True,
+            "reference_deduplication_partition": True,
+            "fallback_not_above_candidate_selection": True,
+            "all_required_records_available": True,
+        },
+    }
+
+
 @dataclass(frozen=True)
 class D4RegionLearningFrame:
     """One truth-free regional snapshot and its formal D4 source evidence."""
@@ -797,6 +891,10 @@ class IntegratedScalableModuleStack:
         self._d1_state_only_scan_count = 0
         self._d1_materialized_snapshot_count = 0
         self._d1_same_fusion_time_coalesced_scan_count = 0
+        self._d1_publication_evidence_snapshot_counts: Counter[str] = Counter()
+        self._d1_publication_evidence_snapshot_fallback_reasons: Counter[
+            str
+        ] = Counter()
         self._d1_scan_input_closed = False
         self._stage_wall_time_s: dict[str, float] = {}
         self._stage_call_count: dict[str, int] = {}
@@ -876,6 +974,20 @@ class IntegratedScalableModuleStack:
             ),
             "d1_replay_prefix_summary_diagnostics": (
                 replay_prefix_summary_diagnostics
+            ),
+            "d1_publication_evidence_snapshot_implementation": (
+                self.stack_config
+                .d1_publication_evidence_snapshot_implementation
+            ),
+            "d1_publication_evidence_snapshot_execution_config": (
+                _d1_publication_evidence_snapshot_execution_config(
+                    self.stack_config
+                )
+            ),
+            "d1_publication_evidence_snapshot_diagnostics": (
+                _initial_d1_publication_evidence_snapshot_diagnostics(
+                    self.stack_config
+                )
             ),
         }
 
@@ -1120,6 +1232,8 @@ class IntegratedScalableModuleStack:
         self._d1_state_only_scan_count = 0
         self._d1_materialized_snapshot_count = 0
         self._d1_same_fusion_time_coalesced_scan_count = 0
+        self._d1_publication_evidence_snapshot_counts.clear()
+        self._d1_publication_evidence_snapshot_fallback_reasons.clear()
         self._d1_scan_input_closed = False
         self._stage_wall_time_s.clear()
         self._stage_call_count.clear()
@@ -1438,6 +1552,18 @@ class IntegratedScalableModuleStack:
             "d1_replay_prefix_summary_diagnostics": (
                 self.d1.replay_prefix_summary_diagnostics()
             ),
+            "d1_publication_evidence_snapshot_implementation": (
+                self.stack_config
+                .d1_publication_evidence_snapshot_implementation
+            ),
+            "d1_publication_evidence_snapshot_execution_config": (
+                _d1_publication_evidence_snapshot_execution_config(
+                    self.stack_config
+                )
+            ),
+            "d1_publication_evidence_snapshot_diagnostics": (
+                self._d1_publication_evidence_snapshot_diagnostics()
+            ),
             "d1_scan_event_total_count": self._d1_scan_event_total_count,
             "d1_scan_event_retained_count": len(self._d1_scan_events),
             "d1_scan_event_log_limit": self._d1_scan_events.maxlen,
@@ -1639,6 +1765,236 @@ class IntegratedScalableModuleStack:
             "online_truth_use_count": 0,
         }
 
+    def _d1_publication_evidence_snapshot_diagnostics(
+        self,
+    ) -> dict[str, Any]:
+        names = (
+            "selection_count",
+            "reference_selection_count",
+            "candidate_selection_count",
+            "candidate_subset_success_count",
+            "candidate_fallback_count",
+            "adapter_snapshot_call_count",
+            "full_snapshot_call_count",
+            "subset_snapshot_call_count",
+            "publication_count",
+            "source_observation_reference_count",
+            "track_latest_observation_reference_count",
+            "required_observation_id_count",
+            "duplicate_reference_count",
+            "invalid_required_id_count",
+            "empty_required_id_selection_count",
+            "returned_record_count",
+            "lookup_miss_count",
+        )
+        counts = {
+            name: int(
+                self._d1_publication_evidence_snapshot_counts.get(name, 0)
+            )
+            for name in names
+        }
+        return {
+            "schema_version": (
+                D1_PUBLICATION_EVIDENCE_SNAPSHOT_DIAGNOSTICS_SCHEMA_VERSION
+            ),
+            "execution_config": (
+                _d1_publication_evidence_snapshot_execution_config(
+                    self.stack_config
+                )
+            ),
+            "operation_counts": counts,
+            "fallback_reason_counts": dict(
+                sorted(
+                    self
+                    ._d1_publication_evidence_snapshot_fallback_reasons
+                    .items()
+                )
+            ),
+            "conservation": {
+                "selection_partition": (
+                    counts["selection_count"]
+                    == counts["reference_selection_count"]
+                    + counts["candidate_selection_count"]
+                ),
+                "candidate_selection_partition": (
+                    counts["candidate_selection_count"]
+                    == counts["candidate_subset_success_count"]
+                    + counts["candidate_fallback_count"]
+                ),
+                "adapter_call_partition": (
+                    counts["adapter_snapshot_call_count"]
+                    == counts["full_snapshot_call_count"]
+                    + counts["subset_snapshot_call_count"]
+                ),
+                "reference_deduplication_partition": (
+                    counts["source_observation_reference_count"]
+                    + counts["track_latest_observation_reference_count"]
+                    == counts["required_observation_id_count"]
+                    + counts["duplicate_reference_count"]
+                ),
+                "fallback_not_above_candidate_selection": (
+                    counts["candidate_fallback_count"]
+                    <= counts["candidate_selection_count"]
+                ),
+                "all_required_records_available": (
+                    counts["lookup_miss_count"] == 0
+                    and counts["invalid_required_id_count"] == 0
+                ),
+            },
+        }
+
+    @staticmethod
+    def _required_d1_publication_evidence_ids(
+        processed: Iterable[tuple[Any, ...]],
+    ) -> tuple[tuple[str, ...], int, int, int]:
+        required_ids: set[str] = set()
+        source_reference_count = 0
+        track_reference_count = 0
+        invalid_required_id_count = 0
+        for item in processed:
+            result, batch = item[0], item[1]
+            source_observations = tuple(
+                getattr(
+                    batch,
+                    "measurements",
+                    getattr(batch, "observations", ()),
+                )
+            )
+            for observation in source_observations:
+                raw_observation_id = getattr(
+                    observation,
+                    "observation_id",
+                    None,
+                )
+                if (
+                    not isinstance(raw_observation_id, str)
+                    or not raw_observation_id
+                ):
+                    invalid_required_id_count += 1
+                    continue
+                source_reference_count += 1
+                required_ids.add(raw_observation_id)
+
+            if not bool(getattr(result, "tracks_materialized", True)):
+                continue
+            for track in tuple(getattr(result, "tracks", ())):
+                metadata = getattr(track, "metadata", {})
+                if not isinstance(metadata, Mapping):
+                    continue
+                observation_id = str(
+                    metadata.get("latest_observation_id", "")
+                ).strip()
+                if not observation_id:
+                    continue
+                track_reference_count += 1
+                required_ids.add(observation_id)
+        return (
+            tuple(sorted(required_ids)),
+            source_reference_count,
+            track_reference_count,
+            invalid_required_id_count,
+        )
+
+    def _d1_publication_evidence_by_observation(
+        self,
+        processed: tuple[tuple[Any, ...], ...],
+    ) -> dict[str, Any]:
+        counts = self._d1_publication_evidence_snapshot_counts
+        counts["selection_count"] += 1
+        counts["publication_count"] += len(processed)
+        candidate_enabled = (
+            self.stack_config
+            .d1_publication_evidence_snapshot_implementation
+            == D1_PUBLICATION_EVIDENCE_SNAPSHOT_CANDIDATE_IMPLEMENTATION
+        )
+        if not candidate_enabled:
+            counts["reference_selection_count"] += 1
+            counts["full_snapshot_call_count"] += 1
+            counts["adapter_snapshot_call_count"] += 1
+            records = self.d1.consistency_evidence_snapshot()
+            counts["returned_record_count"] += len(records)
+            return {item.observation_id: item for item in records}
+
+        (
+            required_ids,
+            source_reference_count,
+            track_reference_count,
+            invalid_required_id_count,
+        ) = self._required_d1_publication_evidence_ids(processed)
+        counts["source_observation_reference_count"] += (
+            source_reference_count
+        )
+        counts["track_latest_observation_reference_count"] += (
+            track_reference_count
+        )
+        counts["required_observation_id_count"] += len(required_ids)
+        counts["duplicate_reference_count"] += (
+            source_reference_count
+            + track_reference_count
+            - len(required_ids)
+        )
+        counts["invalid_required_id_count"] += (
+            invalid_required_id_count
+        )
+        if not required_ids:
+            counts["empty_required_id_selection_count"] += 1
+
+        fallback_reason: str | None = None
+        records: tuple[Any, ...]
+        counts["candidate_selection_count"] += 1
+        if invalid_required_id_count:
+            fallback_reason = "invalid_required_observation_id"
+            records = ()
+        elif not required_ids:
+            fallback_reason = "empty_required_observation_id_set"
+            records = ()
+        else:
+            counts["subset_snapshot_call_count"] += 1
+            counts["adapter_snapshot_call_count"] += 1
+            try:
+                records = self.d1.consistency_evidence_snapshot(
+                    required_ids
+                )
+            except KeyError:
+                fallback_reason = "unknown_required_observation_id"
+                records = ()
+            except ValueError:
+                fallback_reason = "invalid_required_observation_id"
+                records = ()
+
+        evidence_by_observation = {
+            item.observation_id: item for item in records
+        }
+        missing_required_ids = set(required_ids).difference(
+            evidence_by_observation
+        )
+        if (
+            fallback_reason is None
+            and missing_required_ids
+        ):
+            fallback_reason = "subset_snapshot_missing_required_record"
+
+        if fallback_reason is not None:
+            counts["candidate_fallback_count"] += 1
+            self._d1_publication_evidence_snapshot_fallback_reasons[
+                fallback_reason
+            ] += 1
+            counts["full_snapshot_call_count"] += 1
+            counts["adapter_snapshot_call_count"] += 1
+            records = self.d1.consistency_evidence_snapshot()
+            evidence_by_observation = {
+                item.observation_id: item for item in records
+            }
+            missing_required_ids = set(required_ids).difference(
+                evidence_by_observation
+            )
+        else:
+            counts["candidate_subset_success_count"] += 1
+
+        counts["returned_record_count"] += len(records)
+        counts["lookup_miss_count"] += len(missing_required_ids)
+        return evidence_by_observation
+
     def _consume_d1_scan_result(
         self,
         scan_result: Any,
@@ -1784,10 +2140,9 @@ class IntegratedScalableModuleStack:
                 )
             )
 
-        evidence_by_observation = {
-            item.observation_id: item
-            for item in self.d1.consistency_evidence_snapshot()
-        }
+        evidence_by_observation = (
+            self._d1_publication_evidence_by_observation(tuple(processed))
+        )
         for (
             result,
             released_scan,
@@ -5492,6 +5847,19 @@ class IntegratedScalableModuleStack:
             ),
             "d1_replay_prefix_summary_diagnostics": dict(
                 governance["d1_replay_prefix_summary_diagnostics"]
+            ),
+            "d1_publication_evidence_snapshot_implementation": governance[
+                "d1_publication_evidence_snapshot_implementation"
+            ],
+            "d1_publication_evidence_snapshot_execution_config": dict(
+                governance[
+                    "d1_publication_evidence_snapshot_execution_config"
+                ]
+            ),
+            "d1_publication_evidence_snapshot_diagnostics": dict(
+                governance[
+                    "d1_publication_evidence_snapshot_diagnostics"
+                ]
             ),
             "d2_publication_metadata_audit": dict(
                 governance["d2_publication_metadata_audit"]

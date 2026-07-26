@@ -18,6 +18,30 @@
 实时、逐批审计明细、严格精度、AirSim 和目标硬件证据仍为 P1。以下最新专项记录优先于
 “扫描输入或发布元数据仍待治理”的历史表述。
 
+## 2026-07-25 D1 在线发布证据子集快照待 clean smoke
+
+当前无新增 P0。main 已实现独立 selector
+`d1_publication_evidence_snapshot_implementation`。reference
+`full_consistency_snapshot_v1` 仍是默认；candidate
+`required_observation_subset_v1` 只读取当前 release cycle 的源观测 ID 和已物化公开航迹
+`latest_observation_id`。第一轮 A/B 两臂固定 replay-prefix reference，避免同时改变
+回放摘要和 publication 快照范围。
+
+候选对 required ID 去重并按字符串排序，调用 D1 已有精确非破坏性子集接口。未知、非法或
+缺失 ID 回退全量快照并记录原因；最终离线 export 始终全量。selector、实现 ID、执行配置和
+诊断已贯通 runtime profile、observation governance、module final 和 episode summary。
+诊断记录 source/track 引用、required ID、返回记录、lookup miss、fallback 和守恒关系。
+
+3 对 3 开发回归中，reference/candidate 的 D1 fused-track publication payload 完全一致，
+候选 fallback、lookup miss 和非法 ID 均为 0，返回记录数低于 reference。未知 ID 负例按预期
+回退 full 并记录 `unknown_required_observation_id`；空 required 集合也回退 full。
+`test_module_stack.py` 为 `62 passed`，scalable 全量为 `263 passed, 1 warning`。
+
+本项仍为 P1。clean 200/200/2 单配对 smoke、正式 matrix/evidence schema、D6 evaluator 和
+多 seed 判定尚未完成，默认不得改变。正式准入还需证明 13/13 业务语义和原 D1 操作计数一致、
+0 fallback、0 lookup miss、返回记录削减至少 50%，并通过预注册的 D1/core/D2/RSS 门。系统
+实时、AirSim、目标硬件和实飞证据继续独立开放。
+
 ## 2026-07-25 D1 固定滞后回放前缀摘要正式拒绝
 
 当前无新增 P0。D1 owner 已实现默认关闭的

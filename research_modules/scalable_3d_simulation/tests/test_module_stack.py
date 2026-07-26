@@ -40,6 +40,8 @@ from research_modules.d4_distributed_fallback.d4_distributed_fallback import (
 )
 from research_modules.scalable_3d_simulation.models import ScenarioConfig
 from research_modules.scalable_3d_simulation.module_stack import (
+    D1_PUBLICATION_EVIDENCE_SNAPSHOT_CANDIDATE_IMPLEMENTATION,
+    D1_PUBLICATION_EVIDENCE_SNAPSHOT_REFERENCE_IMPLEMENTATION,
     IntegratedScalableModuleStack,
     IntegratedStackConfig,
 )
@@ -1034,6 +1036,278 @@ def test_episode_cli_exposes_d1_replay_prefix_summary_selector() -> None:
     )
     assert args.d1_replay_prefix_summary_implementation == (
         "fixed_lag_checkpoint_prefix_cumulative_summary_v1"
+    )
+
+
+def test_d1_publication_evidence_snapshot_scope_is_explicit_and_exact() -> None:
+    config = ScenarioConfig(
+        scenario_name="d1_publication_evidence_snapshot_selection",
+        scenario_version="d1-publication-evidence-snapshot-selection-v1",
+        target_count=3,
+        resource_count=3,
+        recon_count=1,
+        region_count=1,
+        duration_s=1.4,
+        seed=34,
+    )
+    default = IntegratedStackConfig()
+    assert (
+        default.d1_publication_evidence_snapshot_implementation
+        == D1_PUBLICATION_EVIDENCE_SNAPSHOT_REFERENCE_IMPLEMENTATION
+    )
+    reference_stack = IntegratedScalableModuleStack(
+        IntegratedStackConfig(
+            d1_publication_evidence_snapshot_implementation=(
+                D1_PUBLICATION_EVIDENCE_SNAPSHOT_REFERENCE_IMPLEMENTATION
+            )
+        )
+    )
+    candidate_stack = IntegratedScalableModuleStack(
+        IntegratedStackConfig(
+            d1_publication_evidence_snapshot_implementation=(
+                D1_PUBLICATION_EVIDENCE_SNAPSHOT_CANDIDATE_IMPLEMENTATION
+            )
+        )
+    )
+    reference_profile = reference_stack.runtime_manifest_profile_for_scenario(
+        config
+    )
+    candidate_profile = candidate_stack.runtime_manifest_profile_for_scenario(
+        config
+    )
+    assert reference_profile != candidate_profile
+    for profile, selector, candidate_enabled in (
+        (
+            reference_profile,
+            D1_PUBLICATION_EVIDENCE_SNAPSHOT_REFERENCE_IMPLEMENTATION,
+            False,
+        ),
+        (
+            candidate_profile,
+            D1_PUBLICATION_EVIDENCE_SNAPSHOT_CANDIDATE_IMPLEMENTATION,
+            True,
+        ),
+    ):
+        assert profile[
+            "d1_publication_evidence_snapshot_implementation"
+        ] == selector
+        execution = profile[
+            "d1_publication_evidence_snapshot_execution_config"
+        ]
+        assert execution["selector"] == selector
+        assert execution["candidate_enabled"] is candidate_enabled
+        assert execution["truth_dependent_inputs_allowed"] is False
+        assert profile[
+            "d1_publication_evidence_snapshot_diagnostics"
+        ]["operation_counts"] == {}
+
+    reference_result = run_episode(config, module_stack=reference_stack)
+    candidate_result = run_episode(config, module_stack=candidate_stack)
+    assert (
+        reference_result.manifest.runtime_profile_sha256
+        != candidate_result.manifest.runtime_profile_sha256
+    )
+    reference_publications = [
+        message.payload
+        for message in reference_result.online_messages
+        if message.topic == "modules.d1.fused_tracks"
+    ]
+    candidate_publications = [
+        message.payload
+        for message in candidate_result.online_messages
+        if message.topic == "modules.d1.fused_tracks"
+    ]
+    assert candidate_publications == reference_publications
+
+    for result, selector, candidate_enabled in (
+        (
+            reference_result,
+            D1_PUBLICATION_EVIDENCE_SNAPSHOT_REFERENCE_IMPLEMENTATION,
+            False,
+        ),
+        (
+            candidate_result,
+            D1_PUBLICATION_EVIDENCE_SNAPSHOT_CANDIDATE_IMPLEMENTATION,
+            True,
+        ),
+    ):
+        governance = result.observation_governance_audit
+        assert governance is not None
+        assert governance[
+            "d1_publication_evidence_snapshot_implementation"
+        ] == selector
+        diagnostics = governance[
+            "d1_publication_evidence_snapshot_diagnostics"
+        ]
+        assert diagnostics["execution_config"]["selector"] == selector
+        assert diagnostics["execution_config"][
+            "candidate_enabled"
+        ] is candidate_enabled
+        assert all(diagnostics["conservation"].values())
+        assert result.summary[
+            "d1_publication_evidence_snapshot_implementation"
+        ] == selector
+        assert result.summary[
+            "d1_publication_evidence_snapshot_diagnostics"
+        ] == diagnostics
+        assert result.summary["module_final_diagnostics"][
+            "d1_publication_evidence_snapshot_diagnostics"
+        ] == diagnostics
+
+    reference_counts = reference_result.summary[
+        "d1_publication_evidence_snapshot_diagnostics"
+    ]["operation_counts"]
+    candidate_counts = candidate_result.summary[
+        "d1_publication_evidence_snapshot_diagnostics"
+    ]["operation_counts"]
+    assert reference_counts["reference_selection_count"] > 0
+    assert candidate_counts["candidate_subset_success_count"] > 0
+    assert candidate_counts["candidate_fallback_count"] == 0
+    assert candidate_counts["lookup_miss_count"] == 0
+    assert candidate_counts["invalid_required_id_count"] == 0
+    assert (
+        candidate_counts["returned_record_count"]
+        == candidate_counts["required_observation_id_count"]
+    )
+    assert (
+        candidate_counts["returned_record_count"]
+        < reference_counts["returned_record_count"]
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="d1_publication_evidence_snapshot_implementation must be",
+    ):
+        IntegratedStackConfig(
+            d1_publication_evidence_snapshot_implementation="unsafe"
+        )
+
+
+def test_d1_publication_evidence_snapshot_subset_falls_back_on_unknown_id() -> None:
+    stack = IntegratedScalableModuleStack(
+        IntegratedStackConfig(
+            d1_publication_evidence_snapshot_implementation=(
+                D1_PUBLICATION_EVIDENCE_SNAPSHOT_CANDIDATE_IMPLEMENTATION
+            )
+        )
+    )
+    stack.reset(
+        ScenarioConfig(
+            scenario_name="d1_publication_evidence_unknown",
+            scenario_version="d1-publication-evidence-unknown-v1",
+            target_count=1,
+            resource_count=1,
+            recon_count=1,
+            region_count=1,
+            duration_s=0.2,
+            seed=35,
+        )
+    )
+    result = SimpleNamespace(tracks_materialized=False, tracks=())
+    batch = SimpleNamespace(
+        observations=(
+            SimpleNamespace(observation_id="unknown-observation"),
+        )
+    )
+    evidence = stack._d1_publication_evidence_by_observation(
+        ((result, batch, None, None, None),)
+    )
+    assert evidence == {}
+    diagnostics = stack._d1_publication_evidence_snapshot_diagnostics()
+    counts = diagnostics["operation_counts"]
+    assert counts["candidate_selection_count"] == 1
+    assert counts["candidate_fallback_count"] == 1
+    assert counts["subset_snapshot_call_count"] == 1
+    assert counts["full_snapshot_call_count"] == 1
+    assert counts["adapter_snapshot_call_count"] == 2
+    assert counts["lookup_miss_count"] == 1
+    assert diagnostics["fallback_reason_counts"] == {
+        "unknown_required_observation_id": 1
+    }
+    assert diagnostics["conservation"][
+        "all_required_records_available"
+    ] is False
+
+
+def test_d1_publication_evidence_snapshot_subset_falls_back_on_empty_set() -> None:
+    stack = IntegratedScalableModuleStack(
+        IntegratedStackConfig(
+            d1_publication_evidence_snapshot_implementation=(
+                D1_PUBLICATION_EVIDENCE_SNAPSHOT_CANDIDATE_IMPLEMENTATION
+            )
+        )
+    )
+    stack.reset(
+        ScenarioConfig(
+            scenario_name="d1_publication_evidence_empty",
+            scenario_version="d1-publication-evidence-empty-v1",
+            target_count=1,
+            resource_count=1,
+            recon_count=1,
+            region_count=1,
+            duration_s=0.2,
+            seed=36,
+        )
+    )
+    result = SimpleNamespace(tracks_materialized=False, tracks=())
+    batch = SimpleNamespace(observations=())
+    evidence = stack._d1_publication_evidence_by_observation(
+        ((result, batch, None, None, None),)
+    )
+    assert evidence == {}
+    diagnostics = stack._d1_publication_evidence_snapshot_diagnostics()
+    counts = diagnostics["operation_counts"]
+    assert counts["empty_required_id_selection_count"] == 1
+    assert counts["candidate_fallback_count"] == 1
+    assert counts["subset_snapshot_call_count"] == 0
+    assert counts["full_snapshot_call_count"] == 1
+    assert diagnostics["fallback_reason_counts"] == {
+        "empty_required_observation_id_set": 1
+    }
+
+
+def test_d1_publication_evidence_required_ids_are_deduplicated() -> None:
+    track = SimpleNamespace(
+        metadata={"latest_observation_id": "obs-1"}
+    )
+    result = SimpleNamespace(tracks_materialized=True, tracks=(track,))
+    batch = SimpleNamespace(
+        observations=(
+            SimpleNamespace(observation_id="obs-1"),
+            SimpleNamespace(observation_id="obs-1"),
+            SimpleNamespace(observation_id="obs-2"),
+        )
+    )
+    required, source_count, track_count, invalid_count = (
+        IntegratedScalableModuleStack
+        ._required_d1_publication_evidence_ids(
+            ((result, batch, None, None, None),)
+        )
+    )
+    assert required == ("obs-1", "obs-2")
+    assert source_count == 3
+    assert track_count == 1
+    assert invalid_count == 0
+
+
+def test_episode_cli_exposes_d1_publication_evidence_snapshot_selector() -> None:
+    episode_cli = importlib.import_module(
+        "research_modules.scalable_3d_simulation.run_episode"
+    )
+    default_args = episode_cli.parse_args(["--integrated-stack"])
+    assert (
+        default_args.d1_publication_evidence_snapshot_implementation
+        == D1_PUBLICATION_EVIDENCE_SNAPSHOT_REFERENCE_IMPLEMENTATION
+    )
+    args = episode_cli.parse_args(
+        [
+            "--integrated-stack",
+            "--d1-publication-evidence-snapshot-implementation",
+            D1_PUBLICATION_EVIDENCE_SNAPSHOT_CANDIDATE_IMPLEMENTATION,
+        ]
+    )
+    assert args.d1_publication_evidence_snapshot_implementation == (
+        D1_PUBLICATION_EVIDENCE_SNAPSHOT_CANDIDATE_IMPLEMENTATION
     )
 
 

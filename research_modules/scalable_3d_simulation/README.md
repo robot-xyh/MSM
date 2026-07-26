@@ -1,5 +1,29 @@
 # Scalable 3D Simulation
 
+## D1 在线发布证据子集快照候选（2026-07-25）
+
+main 已实现独立的 D1 consistency evidence 快照范围 selector。默认
+`full_consistency_snapshot_v1` 继续读取当时全部在线证据；候选
+`required_observation_subset_v1` 只请求同一 release cycle 内当前源扫描观测和已物化公开
+航迹 `latest_observation_id` 的确定性去重集合。第一轮 A/B 的两臂均保持 D1 replay-prefix
+reference `per_checkpoint_prefix_rebuild_v1`，不会把前一正式拒绝候选混入新 treatment。
+
+候选调用 D1 既有精确非破坏性子集接口。未知或非法 ID、返回集合缺项均回退全量快照并记录
+原因；正式准入要求 fallback、lookup miss 和非法 ID 为 0。episode 最终离线 consistency
+export 仍走全量精确物化，不改变 pending ledger 清零、双时间戳、协方差、NED、
+`global_track_id`、来源谱系、门控或 D1 fused-track payload。
+
+selector、完整实现 ID、执行配置和诊断已进入 runtime profile、observation governance、
+module final 和 episode summary；CLI 为
+`--d1-publication-evidence-snapshot-implementation`。3 对 3 定向回归确认两臂 D1
+publication payload 完全一致，候选 fallback/lookup miss 为 0，返回记录少于 reference；
+未知 ID 和空 required 集合专项确认候选回退 full 并保留原因。
+`test_module_stack.py` 为 `62 passed`，scalable 全量为 `263 passed, 1 warning`。
+
+当前状态仅为实现和开发回归完成。尚未在 clean commit 上运行 200/200/2 单配对 smoke，
+也未冻结正式多 seed matrix 或 D6 evaluator；默认仍是全量快照。本候选不能写成性能准入、
+系统实时、AirSim、目标硬件、实机或实飞证据。
+
 ## D1 固定滞后回放前缀摘要正式拒绝（2026-07-25）
 
 main 已接入 D1 回放前缀实现选择器。默认

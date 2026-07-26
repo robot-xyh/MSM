@@ -24,16 +24,19 @@
 
 ### 实现与诊断
 
-6. [ ] main 增加显式 selector、实现 ID、执行配置和诊断 schema，并贯通 runtime
+6. [x] main 增加显式 selector、实现 ID、执行配置和诊断 schema，并贯通 runtime
    profile、observation governance、module final 和 episode summary。
-7. [ ] 诊断至少记录 snapshot 调用数、release/publication 数、源观测引用数、航迹最新
+7. [x] 诊断记录 snapshot 调用数、release/publication 数、源观测引用数、航迹最新
    观测引用数、去重后的 required ID 数、返回记录数、lookup miss、fallback 及原因。
-8. [ ] `_d1_publication()` 的 fused track、summary、lineage、双时间戳、协方差、
-   `global_track_id` 和 payload hash 必须与参考路径一致；新诊断不得进入业务 payload。
-9. [ ] `run_episode.py` 提供显式 CLI；默认保持
+8. [x] 3 对 3 定向 episode 中，`_d1_publication()` 的 fused track、summary、lineage、
+   双时间戳、协方差、`global_track_id` 和完整 payload 与参考路径一致；新诊断未进入
+   业务 payload。
+9. [x] `run_episode.py` 提供显式 CLI；默认保持
    `full_consistency_snapshot_v1`，不能在正式准入前静默启用候选。
-10. [ ] 单元测试覆盖默认值、非法 selector、CLI、空集合、重复 ID、未知 ID 回退、
-    多 scan 合并、state-only publication、业务语义一致和四表面诊断一致。
+10. [x] 单元测试覆盖默认值、非法 selector、CLI、重复 ID、未知 ID 回退、正常 episode
+    业务语义和四表面诊断；`test_module_stack.py` 为 `62 passed`，scalable 全量为
+    `263 passed, 1 warning`。空集合回退 full 的 main 专项已覆盖，clean smoke 前不声称
+    该边界已有 200/200/2 证据。
 
 ### 预注册准入
 
