@@ -11,6 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import hashlib
 import json
+import math
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
@@ -35,6 +36,7 @@ _SUMMARY_COUNT_FIELDS = (
     "d2_consumed_d1_posterior_generation",
     "d2_posterior_consumption_count",
     "d2_pre_tick_posterior_merge_count",
+    "d2_finalize_unchanged_posterior_skip_count",
 )
 
 
@@ -134,9 +136,12 @@ def evaluate_posterior_governance(
             str(online_unavailable_reason),
         )
     else:
-        d1_generations, d2_generations, bus_reasons = _audit_bus_generations(
-            online_records
-        )
+        (
+            d1_generations,
+            d2_generations,
+            d1_payloads,
+            bus_reasons,
+        ) = _audit_bus_generations(online_records)
         reasons.extend(bus_reasons)
         _put_available(
             metrics,
@@ -162,6 +167,7 @@ def evaluate_posterior_governance(
             summary_counts,
             d1_generations,
             d2_generations,
+            d1_payloads,
             pending_is_empty=pending_is_empty,
             reasons=reasons,
         )
@@ -235,9 +241,10 @@ def register_module_performance_evidence(
 
 def _audit_bus_generations(
     records: Sequence[Mapping[str, Any]],
-) -> tuple[list[int], list[int], list[str]]:
+) -> tuple[list[int], list[int], dict[int, Mapping[str, Any]], list[str]]:
     d1_generations: list[int] = []
     d2_generations: list[int] = []
+    d1_payloads: dict[int, Mapping[str, Any]] = {}
     published: set[int] = set()
     reasons: list[str] = []
 
@@ -262,6 +269,7 @@ def _audit_bus_generations(
                     f"d1_generation_not_contiguous:expected={expected}:actual={parsed}"
                 )
             d1_generations.append(parsed)
+            d1_payloads[parsed] = payload
             published.add(parsed)
         elif topic == _D2_TOPIC:
             generation = payload.get("source_d1_posterior_generation")
@@ -277,13 +285,14 @@ def _audit_bus_generations(
             if parsed not in published:
                 reasons.append(f"d2_source_generation_not_previously_published:{parsed}")
             d2_generations.append(parsed)
-    return d1_generations, d2_generations, reasons
+    return d1_generations, d2_generations, d1_payloads, reasons
 
 
 def _cross_check_summary_and_bus(
     summary_counts: Mapping[str, int],
     d1_generations: Sequence[int],
     d2_generations: Sequence[int],
+    d1_payloads: Mapping[int, Mapping[str, Any]],
     *,
     pending_is_empty: bool | None,
     reasons: list[str],
@@ -291,6 +300,9 @@ def _cross_check_summary_and_bus(
     d1_final = summary_counts.get("d1_posterior_generation")
     d2_final = summary_counts.get("d2_consumed_d1_posterior_generation")
     consumption_count = summary_counts.get("d2_posterior_consumption_count")
+    finalize_skip_count = summary_counts.get(
+        "d2_finalize_unchanged_posterior_skip_count"
+    )
     if d1_final is not None and d1_final != len(d1_generations):
         reasons.append(
             "d1_final_generation_publication_count_mismatch:"
@@ -300,26 +312,49 @@ def _cross_check_summary_and_bus(
         reasons.append(
             f"d2_consumed_generation_exceeds_d1:consumed={d2_final}:d1={d1_final}"
         )
+    if finalize_skip_count is not None and finalize_skip_count > 1:
+        reasons.append(
+            "d2_finalize_unchanged_posterior_skip_count_exceeds_one:"
+            f"skip={finalize_skip_count}"
+        )
+    finalize_skip_is_equivalent = False
     if (
-        pending_is_empty is True
+        finalize_skip_count == 1
         and d2_final is not None
         and d1_final is not None
-        and d2_final != d1_final
     ):
-        reasons.append(
-            "d2_final_consumed_generation_not_equal_d1_when_pending_empty:"
-            f"consumed={d2_final}:d1={d1_final}"
+        finalize_skip_is_equivalent = _audit_finalize_unchanged_skip(
+            d1_final=d1_final,
+            d2_final=d2_final,
+            d1_payloads=d1_payloads,
+            reasons=reasons,
         )
+    if pending_is_empty is True and d2_final is not None and d1_final is not None:
+        if d2_final != d1_final and not finalize_skip_is_equivalent:
+            reasons.append(
+                "d2_final_consumed_generation_not_equal_d1_when_pending_empty:"
+                f"consumed={d2_final}:d1={d1_final}"
+            )
     merge_count = summary_counts.get("d2_pre_tick_posterior_merge_count")
+    verified_finalize_skip_count = int(finalize_skip_is_equivalent)
     if (
         consumption_count is not None
         and merge_count is not None
+        and finalize_skip_count is not None
         and d1_final is not None
-        and consumption_count + merge_count != d1_final
+        and (
+            consumption_count
+            + merge_count
+            + verified_finalize_skip_count
+            != d1_final
+        )
     ):
         reasons.append(
-            "d2_consumption_plus_pre_tick_merge_not_equal_d1:"
-            f"consumption={consumption_count}:merge={merge_count}:d1={d1_final}"
+            "d2_consumption_plus_pre_tick_merge_plus_verified_finalize_skip_"
+            "not_equal_d1:"
+            f"consumption={consumption_count}:merge={merge_count}:"
+            f"declared_skip={finalize_skip_count}:"
+            f"verified_skip={verified_finalize_skip_count}:d1={d1_final}"
         )
     expected_final = d2_generations[-1] if d2_generations else 0
     if d2_final is not None and d2_final != expected_final:
@@ -332,6 +367,244 @@ def _cross_check_summary_and_bus(
             "d2_consumption_count_publication_count_mismatch:"
             f"summary={consumption_count}:bus={len(d2_generations)}"
         )
+
+
+def _audit_finalize_unchanged_skip(
+    *,
+    d1_final: int,
+    d2_final: int,
+    d1_payloads: Mapping[int, Mapping[str, Any]],
+    reasons: list[str],
+) -> bool:
+    """Verify one final skip against the complete persisted D1 track payload."""
+
+    if d2_final <= 0:
+        reasons.append("d2_finalize_unchanged_skip_without_prior_consumption")
+        return False
+    if d2_final >= d1_final:
+        reasons.append(
+            "d2_finalize_unchanged_skip_without_generation_lag:"
+            f"consumed={d2_final}:d1={d1_final}"
+        )
+        return False
+
+    consumed_payload = d1_payloads.get(d2_final)
+    if consumed_payload is None:
+        reasons.append(
+            "d2_finalize_unchanged_skip_consumed_payload_missing:"
+            f"generation={d2_final}"
+        )
+        return False
+    consumed_tracks = _canonical_full_posterior_tracks(consumed_payload)
+    if consumed_tracks is None:
+        reasons.append(
+            "d2_finalize_unchanged_skip_consumed_full_posterior_invalid:"
+            f"generation={d2_final}"
+        )
+        return False
+    consumed_track_ids = tuple(item[0] for item in consumed_tracks)
+
+    for generation in range(d2_final + 1, d1_final + 1):
+        payload = d1_payloads.get(generation)
+        if payload is None:
+            reasons.append(
+                "d2_finalize_unchanged_skip_tail_payload_missing:"
+                f"generation={generation}"
+            )
+            continue
+        summary = payload.get("summary")
+        if not isinstance(summary, Mapping):
+            reasons.append(
+                "d2_finalize_unchanged_skip_tail_summary_missing:"
+                f"generation={generation}"
+            )
+            continue
+        for field in (
+            "accepted_observation_count",
+            "updated_observation_count",
+            "created_track_count",
+        ):
+            value = summary.get(field)
+            if not _is_nonnegative_int(value):
+                reasons.append(
+                    "d2_finalize_unchanged_skip_tail_summary_invalid:"
+                    f"generation={generation}:field={field}"
+                )
+            elif int(value) != 0:
+                reasons.append(
+                    "d2_finalize_unchanged_skip_tail_has_new_evidence:"
+                    f"generation={generation}:field={field}:value={int(value)}"
+                )
+        ambiguity_count = payload.get("structural_ambiguity_evidence_count")
+        if not _is_nonnegative_int(ambiguity_count):
+            reasons.append(
+                "d2_finalize_unchanged_skip_tail_ambiguity_count_invalid:"
+                f"generation={generation}"
+            )
+        elif int(ambiguity_count) != 0:
+            reasons.append(
+                "d2_finalize_unchanged_skip_tail_has_structural_ambiguity:"
+                f"generation={generation}:count={int(ambiguity_count)}"
+            )
+        tracks = _canonical_full_posterior_tracks(payload)
+        if tracks is None:
+            reasons.append(
+                "d2_finalize_unchanged_skip_tail_full_posterior_invalid:"
+                f"generation={generation}"
+            )
+        elif tuple(item[0] for item in tracks) != consumed_track_ids:
+            reasons.append(
+                "d2_finalize_unchanged_skip_tail_track_set_changed:"
+                f"generation={generation}"
+            )
+
+    final_payload = d1_payloads.get(d1_final)
+    final_tracks = (
+        _canonical_full_posterior_tracks(final_payload)
+        if final_payload is not None
+        else None
+    )
+    if final_tracks is None:
+        reasons.append(
+            "d2_finalize_unchanged_skip_final_full_posterior_invalid:"
+            f"generation={d1_final}"
+        )
+        return False
+    if final_tracks != consumed_tracks:
+        state_delta, covariance_delta, timestamp_delta = (
+            _full_posterior_max_deltas(consumed_tracks, final_tracks)
+        )
+        reasons.append(
+            "d2_finalize_unchanged_skip_full_posterior_not_equivalent:"
+            f"consumed={d2_final}:final={d1_final}:"
+            f"max_state_abs_delta={_format_delta(state_delta)}:"
+            f"max_covariance_abs_delta={_format_delta(covariance_delta)}:"
+            f"max_timestamp_delta_s={_format_delta(timestamp_delta)}"
+        )
+        return False
+    reasons.append(
+        "d2_finalize_unchanged_skip_complete_input_equivalence_unproven:"
+        "versioned_complete_d2_input_digest_missing"
+    )
+    return False
+
+
+def _canonical_full_posterior_tracks(
+    payload: Mapping[str, Any] | None,
+) -> tuple[tuple[str, str], ...] | None:
+    if payload is None:
+        return None
+    tracks = payload.get("tracks")
+    if not isinstance(tracks, list):
+        return None
+    canonical: list[tuple[str, str]] = []
+    for track in tracks:
+        if not isinstance(track, Mapping):
+            return None
+        value = track.get("global_track_id")
+        if value is None or not str(value).strip():
+            return None
+        state = track.get("state_ned")
+        covariance = track.get("covariance")
+        timestamp = track.get("timestamp")
+        track_state = track.get("track_state")
+        if (
+            not _is_finite_vector(state, 6)
+            or not _is_finite_matrix(covariance, 6, 6)
+            or not _is_finite_number(timestamp)
+            or track_state is None
+            or not str(track_state).strip()
+        ):
+            return None
+        try:
+            encoded = json.dumps(
+                track,
+                allow_nan=False,
+                ensure_ascii=False,
+                separators=(",", ":"),
+                sort_keys=True,
+            )
+        except (TypeError, ValueError):
+            return None
+        canonical.append((str(value), encoded))
+    track_ids = [item[0] for item in canonical]
+    if len(track_ids) != len(set(track_ids)):
+        return None
+    return tuple(sorted(canonical))
+
+
+def _full_posterior_max_deltas(
+    consumed_tracks: Sequence[tuple[str, str]],
+    final_tracks: Sequence[tuple[str, str]],
+) -> tuple[float | None, float | None, float | None]:
+    consumed = {
+        track_id: json.loads(encoded) for track_id, encoded in consumed_tracks
+    }
+    final = {track_id: json.loads(encoded) for track_id, encoded in final_tracks}
+    if set(consumed) != set(final):
+        return None, None, None
+    state_delta = 0.0
+    covariance_delta = 0.0
+    timestamp_delta = 0.0
+    for track_id in consumed:
+        before = consumed[track_id]
+        after = final[track_id]
+        state_delta = max(
+            state_delta,
+            max(
+                abs(float(left) - float(right))
+                for left, right in zip(
+                    before["state_ned"],
+                    after["state_ned"],
+                    strict=True,
+                )
+            ),
+        )
+        covariance_delta = max(
+            covariance_delta,
+            max(
+                abs(float(left) - float(right))
+                for before_row, after_row in zip(
+                    before["covariance"],
+                    after["covariance"],
+                    strict=True,
+                )
+                for left, right in zip(before_row, after_row, strict=True)
+            ),
+        )
+        timestamp_delta = max(
+            timestamp_delta,
+            abs(float(before["timestamp"]) - float(after["timestamp"])),
+        )
+    return state_delta, covariance_delta, timestamp_delta
+
+
+def _format_delta(value: float | None) -> str:
+    return "unavailable" if value is None else f"{value:.12g}"
+
+
+def _is_finite_number(value: Any) -> bool:
+    return (
+        isinstance(value, (int, float))
+        and not isinstance(value, bool)
+        and math.isfinite(float(value))
+    )
+
+
+def _is_finite_vector(value: Any, size: int) -> bool:
+    return (
+        isinstance(value, list)
+        and len(value) == size
+        and all(_is_finite_number(item) for item in value)
+    )
+
+
+def _is_finite_matrix(value: Any, rows: int, columns: int) -> bool:
+    return (
+        isinstance(value, list)
+        and len(value) == rows
+        and all(_is_finite_vector(row, columns) for row in value)
+    )
 
 
 def _summary_governance(summary: Mapping[str, Any] | None) -> Mapping[str, Any] | None:
@@ -355,6 +628,7 @@ def _put_unavailable_contract(metrics: dict[str, Any], reason: str) -> None:
         "d2_posterior_consumption_count",
         "d2_association_publication_count",
         "d2_pre_tick_posterior_merge_count",
+        "d2_finalize_unchanged_posterior_skip_count",
         "d2_pending_generation_empty",
         "d1_posterior_generation_sequence_json",
         "d2_source_d1_posterior_generation_sequence_json",

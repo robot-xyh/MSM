@@ -1191,14 +1191,14 @@ def test_current_schema_registry_matches_real_producer_contract(tmp_path: Path) 
 
     assert SCALABLE_3D_SCHEMA_REGISTRY_VERSION == "d6-scalable3d-schema-registry-v2"
     assert SCALABLE_3D_OFFLINE_EVALUATION_SCHEMA_VERSION == (
-        "d6-scalable3d-offline-evaluation-v9"
+        "d6-scalable3d-offline-evaluation-v10"
     )
     assert (
         SCALABLE_3D_STAGE_TIMING_SCHEMA_VERSION
         == "scalable3d-stage-timings-v2"
     )
-    assert SCALABLE_3D_OFFLINE_EVALUATION_DATE == "2026-07-23"
-    assert row["evaluation_date"] == "2026-07-23"
+    assert SCALABLE_3D_OFFLINE_EVALUATION_DATE == "2026-07-25"
+    assert row["evaluation_date"] == "2026-07-25"
     assert SCALABLE_3D_CURRENT_SCHEMA_REGISTRY == {
         "world_schema": "scalable3d-world-v1",
         "bus_schema": "scalable3d-episode-bus-v1",
@@ -1834,6 +1834,7 @@ def test_v2_posterior_governance_is_integrated_and_fails_formal_on_repeat(
         "d2_consumed_d1_posterior_generation": 1,
         "d2_posterior_consumption_count": 2,
         "d2_pre_tick_posterior_merge_count": 0,
+        "d2_finalize_unchanged_posterior_skip_count": 0,
     }
     _write_json(summary_path, summary)
 

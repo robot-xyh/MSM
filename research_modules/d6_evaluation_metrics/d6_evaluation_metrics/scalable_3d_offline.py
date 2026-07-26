@@ -53,9 +53,9 @@ from .observation_truth_sidecar import (
 
 
 SCALABLE_3D_OFFLINE_EVALUATION_SCHEMA_VERSION = (
-    "d6-scalable3d-offline-evaluation-v9"
+    "d6-scalable3d-offline-evaluation-v10"
 )
-SCALABLE_3D_OFFLINE_EVALUATION_DATE = "2026-07-23"
+SCALABLE_3D_OFFLINE_EVALUATION_DATE = "2026-07-25"
 SCALABLE_3D_SCHEMA_REGISTRY_VERSION = "d6-scalable3d-schema-registry-v2"
 SCALABLE_3D_STAGE_TIMING_SCHEMA_VERSION = "scalable3d-stage-timings-v2"
 SCALABLE_3D_CURRENT_SCHEMA_REGISTRY = {
@@ -151,6 +151,7 @@ _METRIC_FIELDS = (
     "d2_posterior_consumption_count",
     "d2_association_publication_count",
     "d2_pre_tick_posterior_merge_count",
+    "d2_finalize_unchanged_posterior_skip_count",
     "d2_pending_generation_empty",
     "d1_track_count",
     "d1_speed_p50_mps",
@@ -914,16 +915,17 @@ def render_scalable_3d_offline_markdown(
             "",
             "## D1-D2 后验代次审计",
             "",
-            "运行时 v2 同时核对最终治理快照和在线总线。D1 完整后验代次必须从 1 连续递增；D2 来源代次必须严格递增、不得重复，并且只能引用此前发布的完整后验。episode 结束时待处理代次必须为空，累计消费次数必须等于实际 D2 发布数。v1 没有这些字段，结果保持 unavailable，不按 0 处理。",
+            "运行时 v2 同时核对最终治理快照和在线总线。D1 完整后验代次必须从 1 连续递增；D2 来源代次必须严格递增、不得重复，并且只能引用此前发布的完整后验。episode 结束时待处理代次必须为空，累计消费次数必须等于实际 D2 发布数。D6 会比较末尾逐轨状态、协方差、有效时刻和航迹状态，但现有持久化字段不能证明完整 D2 输入等价；在上游发布版本化完整输入摘要前，declared skip 不进入 formal 守恒。计数守恒本身不能替代内容等价证明。v1 没有这些字段，结果保持 unavailable，不按 0 处理。",
             "",
-            "| seed | runtime schema | integrity | D1 final/full pub | D2 final/consumption/pub | pre-tick merge | pending empty | status/reasons |",
-            "| ---: | --- | :---: | --- | --- | ---: | :---: | --- |",
+            "| seed | runtime schema | integrity | D1 final/full pub | D2 final/consumption/pub | pre-tick merge | declared final skip | pending empty | status/reasons |",
+            "| ---: | --- | :---: | --- | --- | ---: | ---: | :---: | --- |",
         ]
     )
     for row in rows:
         lines.append(
             "| {seed} | {schema} | {integrity} | {d1}/{d1_pub} | "
-            "{d2}/{consume}/{d2_pub} | {merge} | {pending} | {status}/{reasons} |".format(
+            "{d2}/{consume}/{d2_pub} | {merge} | {skip} | {pending} | "
+            "{status}/{reasons} |".format(
                 seed=_fmt(row.get("seed")),
                 schema=_fmt_available(
                     row, "observation_governance_runtime_schema"
@@ -941,6 +943,10 @@ def render_scalable_3d_offline_markdown(
                 consume=_fmt_available(row, "d2_posterior_consumption_count"),
                 d2_pub=_fmt_available(row, "d2_association_publication_count"),
                 merge=_fmt_available(row, "d2_pre_tick_posterior_merge_count"),
+                skip=_fmt_available(
+                    row,
+                    "d2_finalize_unchanged_posterior_skip_count",
+                ),
                 pending=_fmt_available(row, "d2_pending_generation_empty"),
                 status=_fmt_available(
                     row, "observation_governance_generation_contract_status"

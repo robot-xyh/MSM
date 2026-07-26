@@ -2665,3 +2665,46 @@ manifest 形成独立证据。
 
 本节不改变 D6 算法、控制路径或 AirSim 接口。完整结果见
 `docs/IDENTITY_GATE_CLEAN_SEED_1100_AUDIT_CN.md`。
+
+## 20. 正式 R0 后验跳过审计（2026-07-25）
+
+### 已完成
+
+1. 复核 900 个 R0 episode 的后验代次证据。结构性 scope 为 900/900，D6 clean-formal
+   为 895/900。
+2. 精确定位 5 个 delayed-noisy episode。它们的 pending 均为空、declared skip 均为 1，
+   但最终后验与 D2 最后消费后验的状态、协方差和有效时刻不相等。
+3. 将离线评估升级到 v10。D6 对 skip 增加逐轨完整后验比较；现有公共 payload 不能证明完整
+   D2 输入等价，因此上游版本化完整摘要缺失时 skip 不进入正式代次守恒。
+4. 保留原最终代次未消费门限，新增完整后验不等价差值原因。缺字段、伪 skip、航迹集合变化、
+   新接受证据和内容变化均失败关闭。
+
+### P0 与后续
+
+1. 原始 main 运行时 P0：D2 输入签名遗漏状态、协方差和有效时刻，导致变化后的最终后验被
+   跳过。
+2. 合法修复路径是实际消费最终后验；若保留 no-op skip，则必须发布版本化完整输入摘要。
+   main 已采用前一路径完成 5 个异常 cell 的定向回归。
+3. 正式证据不能跨提交拼接。5-cell 修复确认通过后，新 clean 提交应重新执行完整 900-cell
+   R0 scope，再由 D6 生成 v10 报告。
+4. 当前只允许声明 `formal_scope_complete=900/900` 和 `clean-formal=895/900`；
+   不允许声明 900/900 formal acceptance 或完整 5700-cell matrix complete。
+5. 2026-07-25 D6 全量回归为 `894 passed, 1 warning in 85.66s`；5 个原始异常
+   episode 的 v10 实物复核均保持三层 formal gate 为 false。
+
+### 定向修复状态
+
+main 已修复 finalization 输入判定，并在
+`/tmp/msm-r0-finalize-fix-20260725` 定向重跑 5 个异常 cell。D6 v10 合并结果显示五项
+generation contract 均为 `verified`：D1 最终代次等于 D2 最终消费代次，消费次数等于
+发布次数，消费与节拍前合并之和等于 D1 代次，declared skip 为 0，pending 为空。
+
+该批次在 dirty 工作树生成，五项均为开发态描述性证据，正式验收资格为 0/5。当前状态按两层
+管理：
+
+1. runtime P0 的错误跳过现象已在定向开发回归中消失，进入“修复待正式验收”；
+2. R0 正式证据仍保留旧 clean 提交的 895/900 结论，不能拼接定向结果；
+3. main 形成新 clean commit 后，完整重跑 900-cell R0，并由 D6 v10 重新生成合并报告；
+4. 新批次验收要求 900/900 generation contract 为 `verified`、skip 为 0 或具有版本化完整
+   D2 输入摘要、pending 全空、episode 全部 clean-formal；
+5. 若运行时未来重新出现 `skip=1`，没有完整输入摘要时 D6 继续失败关闭，不以计数式放行。

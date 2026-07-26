@@ -502,3 +502,14 @@ baseline/candidate 已完成最终三维质点 A/B。两组 manifest v2 均绑�
 truth-isolated 与 runtime-plan-outcome 确定性重建、D3 计划强制升版、11 个未承诺目标的
 D3/D5/D7 零继续执行，以及质心候选 `46/0/46` 的零 treatment 边界。本轮不是 AirSim、
 多 seed 或算法晋级证据。
+
+2026-07-25 新增
+[`FORMAL_R0_POSTERIOR_SKIP_AUDIT_CN.md`](FORMAL_R0_POSTERIOR_SKIP_AUDIT_CN.md)。
+该报告复核正式 R0 的 900 个 episode，确认 895 个 clean-formal、5 个 delayed-noisy
+后验未消费。D6 v10 核对逐轨状态、协方差、有效时刻和航迹状态，并要求上游提供版本化完整
+D2 输入摘要；公开载荷相等本身不足以认可 no-op skip。当前 5 项继续失败关闭，并登记 main
+运行时输入签名遗漏为 P0。本次没有修改 AirSim 接口或控制模块。
+
+同日 main 修复 finalization 后完成五项定向重跑。D6 v10 确认五项 skip 均为 0，D1/D2 最终
+代次一致，消费与发布一致，消费加节拍前合并等于 D1 代次，pending 为空。该批工作树 dirty，
+因此只形成开发态修复证据；完整结论和正式重跑边界已同步写入上述审计报告。

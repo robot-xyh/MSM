@@ -3121,3 +3121,40 @@ D6 从原 producer 制品重建 truth-isolated episode 后，episode record 和 
 身份承诺执行门的 clean 单 seed 安全合同通过。候选臂没有产生被接受的质心修正，两臂不能
 估计质心算法效应，也不支持多 seed、AirSim 或正式晋级结论。详细来源、11 个目标清单和文件
 摘要见 `docs/IDENTITY_GATE_CLEAN_SEED_1100_AUDIT_CN.md`。
+
+## 17. 正式 R0 后验跳过复核（2026-07-25）
+
+clean 提交 `2c7b425d...` 的 R0 预登记范围完成 900/900 个 cell。原 D6 合并结果为
+895 个 clean-formal 和 5 个 descriptive/incomplete。5 项均来自 delayed-noisy：
+5v5 seed 1000、1005、1008、1018，以及 20v20 seed 1009。
+
+五项都满足声明计数式
+`consumption + pre_tick_merge + finalize_skip = d1_generation`，但逐轨内容不等价。
+20v20 seed 1009 的最大状态差为 `0.415096`，最大协方差元素差为 `22.623443`，有效时刻差
+为 `0.255046 s`；其余 4 项也存在非零差值。D6 v10 逐轨比较状态、协方差、时刻和航迹状态后，
+五项 generation integrity、基础 formal eligibility 和矩阵 formal eligibility 均保持 false。
+当前 producer 也没有发布可独立复核的版本化完整 D2 输入摘要。即使后续公开轨迹载荷相等，
+摘要缺失时 D6 仍保持失败关闭。
+
+本轮确认 D6 原失败关闭方向正确，并补充了更精确的差值原因。问题属于 main 运行时输入签名
+遗漏导致的 P0。当前结构性 scope complete 结论成立，900/900 clean formal acceptance
+不成立。完整清单见 `docs/FORMAL_R0_POSTERIOR_SKIP_AUDIT_CN.md`。
+
+### 17.1 修复后五项定向回归
+
+main 修复 finalization 后，在 dirty 工作树中重跑原 5 个异常 cell。D6 v10 对
+`/tmp/msm-r0-finalize-fix-20260725/combined_d6` 的结果如下。
+
+| 场景 | seed | D1 final / D2 consumed | consume / publication | pre-tick merge | skip | pending | generation contract |
+| --- | ---: | --- | --- | ---: | ---: | :---: | --- |
+| delayed_noisy 20v20 | 1009 | 27 / 27 | 7 / 7 | 20 | 0 | empty | verified |
+| delayed_noisy 5v5 | 1000 | 13 / 13 | 6 / 6 | 7 | 0 | empty | verified |
+| delayed_noisy 5v5 | 1005 | 9 / 9 | 5 / 5 | 4 | 0 | empty | verified |
+| delayed_noisy 5v5 | 1008 | 13 / 13 | 5 / 5 | 8 | 0 | empty | verified |
+| delayed_noisy 5v5 | 1018 | 14 / 14 | 6 / 6 | 8 | 0 | empty | verified |
+
+五项均满足 `consumption + pre_tick_merge == d1_generation`，不再依赖 finalization skip。
+这证明错误跳过在定向开发回归中已消失。五项的 `repository_dirty=true`，D6 证据分类仍为
+5 个 `descriptive_or_incomplete_evidence`，正式验收资格为 0/5。该结果不能与旧 clean
+提交的 895 项拼接。新 clean commit 下完整 900-cell R0 重跑完成前，900/900 formal
+acceptance 仍不可声明。

@@ -54,3 +54,25 @@ G1、A1、A2、A3、C1 和 F1 不能在正式矩阵中声明 assist 后静默回
 该结果只说明正式矩阵尚未具备准入条件，不构成算法性能比较，也不代表物理拦截结果。
 专项测试为 `9 passed`，D6 全量为 `889 passed, 1 warning`；既有 main 矩阵合同测试为
 `7 passed, 1 warning`。当前 JSON、CSV 和中文 Markdown 的 SHA-256 校验均通过。
+
+## R0 后验代次定向复核
+
+clean 提交 `2c7b425d076899e1c54a3d87d6ef23a613ba6e3a` 的 900-cell R0 已完成结构性
+执行，原 D6 结果为 895 个 clean-formal 和 5 个 delayed-noisy 后验代次失败。逐轨审计确认
+这 5 项的最终状态、协方差和有效时刻已经变化，原运行时将其错误登记为一次 no-op skip。
+D6 v10 保持失败关闭，未用扩展计数式放行。
+
+main 修复 finalization 后，在 dirty 工作树定向重跑原 5 项。D6 合并结果为：
+
+| 场景与 seed | D1 final / D2 consumed | consume / publication / merge | skip | pending | contract |
+| --- | --- | --- | ---: | :---: | --- |
+| delayed_noisy 20v20 seed 1009 | 27 / 27 | 7 / 7 / 20 | 0 | empty | verified |
+| delayed_noisy 5v5 seed 1000 | 13 / 13 | 6 / 6 / 7 | 0 | empty | verified |
+| delayed_noisy 5v5 seed 1005 | 9 / 9 | 5 / 5 / 4 | 0 | empty | verified |
+| delayed_noisy 5v5 seed 1008 | 13 / 13 | 5 / 5 / 8 | 0 | empty | verified |
+| delayed_noisy 5v5 seed 1018 | 14 / 14 | 6 / 6 / 8 | 0 | empty | verified |
+
+五项均由 D2 实际消费最终后验，generation integrity reasons 为空。该批次的
+`repository_dirty=true`，因此正式验收资格仍为 0/5，只能作为修复后的开发态定向证据。
+旧 clean 895 项与新 dirty 5 项不能拼接。正式替换需要在新 clean commit 上完整重跑
+900-cell R0。详细清单和判定边界见 `FORMAL_R0_POSTERIOR_SKIP_AUDIT_CN.md`。

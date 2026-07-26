@@ -2850,3 +2850,34 @@ D6 已只读审计 clean commit `7e15dac9cdaf6743999dfe045a70676fd31a17d6` 的
 实际应用数为 0。该结果是 clean 单 seed 安全合同证据，不是有效 treatment、算法收益、
 多 seed 或正式晋级证据。完整审计见
 [`docs/IDENTITY_GATE_CLEAN_SEED_1100_AUDIT_CN.md`](docs/IDENTITY_GATE_CLEAN_SEED_1100_AUDIT_CN.md)。
+
+## 正式 R0 后验跳过审计（2026-07-25）
+
+D6 审核了 clean 提交 `2c7b425d...` 的 900 个 R0 episode。执行范围为 900/900，
+其中 895 个为 `clean_formal_experiment_matrix`，5 个 delayed-noisy 小规模 episode 为
+`descriptive_or_incomplete_evidence`。5 项均声明一次 finalization no-op skip，但最终 D1
+后验相对 D2 最后消费后验的状态、协方差和有效时刻已经变化。
+
+离线评估升级为 `d6-scalable3d-offline-evaluation-v10`。D6 会核对尾部新证据、结构歧义和
+逐轨完整公开后验；这些字段仍不足以证明完整 D2 输入等价。上游发布版本化完整输入摘要前，
+declared skip 不进入 formal 守恒。当前 5 项继续失败关闭，不能用
+`consumption + merge + declared skip == d1` 晋级。详细清单、差值和正式重跑边界见
+[`docs/FORMAL_R0_POSTERIOR_SKIP_AUDIT_CN.md`](docs/FORMAL_R0_POSTERIOR_SKIP_AUDIT_CN.md)。
+
+### 运行时修复定向复核
+
+main 修复 finalization 后，在 dirty 工作树中按原配置重跑上述 5 个异常 cell。D6 v10
+读取 `/tmp/msm-r0-finalize-fix-20260725/combined_d6` 后确认，五项均满足：
+
+- D1 最终代次等于 D2 最终消费代次；
+- D2 消费次数等于 D2 发布次数；
+- `consumption + pre_tick_merge == d1_generation`；
+- `d2_finalize_unchanged_posterior_skip_count=0`；
+- pending 为空，generation contract 状态为 `verified`。
+
+该结果证明运行时修复在五项定向开发回归中生效。五个 episode 的
+`repository_dirty=true`，因此 D6 将其全部保留为
+`descriptive_or_incomplete_evidence`，正式验收资格为 0/5。它们不能与旧 clean 提交的
+895 个正式 episode 拼接成 900/900 正式结果。下一步必须在新 clean commit 上重跑完整
+900-cell R0。D6 对 declared skip 的失败关闭规则没有变化：没有版本化完整 D2 输入摘要时，
+`skip=1` 仍不能进入正式守恒式。

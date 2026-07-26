@@ -2352,3 +2352,36 @@ D6 后续补充两项自动化：把 D3/D5/D7 未承诺继续执行计数写入�
 3D 报告中显式联接 truth-isolated strict identity，同时保留在线 summary availability。
 完整专项报告见
 `research_modules/d6_evaluation_metrics/docs/IDENTITY_GATE_CLEAN_SEED_1100_AUDIT_CN.md`。
+
+## 2026-07-25 正式 R0 后验跳过评审
+
+评审读取 `2c7b425d...` 的 900 个 R0 episode。scope manifest 的 900/900 完成、分片哈希和
+`formal_scope_complete=true` 可以接受。D6 episode 证据只能接受 895/900 clean-formal。
+
+其余 5 项声明的 finalization skip 不是合法 no-op。D1 最终后验相对 D2 最后消费后验存在
+非零状态、协方差和有效时刻差。main 的 D2 输入签名没有覆盖这些字段。仅把 skip 加入代次
+计数会掩盖未消费后验，评审不接受该做法。
+
+D6 v10 已收紧为逐轨完整公开后验比较，并输出最大差值。公开字段相等仍需版本化完整 D2
+输入摘要；摘要缺失时继续失败关闭。5 项当前均有内容差异。评审将根因列为
+main 运行时 P0，要求先做 5-cell 精确回归，再在新提交和新计划下重跑 900-cell R0。旧正式
+目录保持只读，不能用新评估器或新 episode 原地覆盖。
+
+评审回归为 D6 全量 `894 passed, 1 warning in 85.66s`。五个原始 episode 的 v10 逐条复核
+均保留最终代次未消费、公开完整后验不等价和未验证处置守恒原因。
+
+### 修复后评审
+
+main 在 `/tmp/msm-r0-finalize-fix-20260725` 重跑原 5 个异常 cell。D6 v10 的
+`combined_d6` 结果确认五项均满足最终代次一致、消费与发布一致、消费加节拍前合并等于 D1
+代次、skip 为 0、pending 为空，generation contract 状态均为 `verified`。因此原 runtime
+错误跳过现象已在定向开发回归中消失。
+
+五个 episode 均来自 dirty 工作树。D6 将其全部归入
+`descriptive_or_incomplete_evidence`，正式验收资格为 0/5，失败原因只剩 dirty/non-clean
+provenance。评审接受该结果作为修复确认，不接受把它与旧 clean 提交的 895 项拼接，也不接受
+据此声明 R0 900/900 formal acceptance。
+
+main 下一步应在新 clean commit 上完整重跑 900-cell R0。D6 继续使用 v10 逐项核对
+generation contract、clean provenance 和实验矩阵门。任何 `skip=1` 若没有版本化完整 D2
+输入摘要，仍须失败关闭；本次 `skip=0` 的结果不能作为放宽先例。

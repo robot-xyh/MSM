@@ -4190,3 +4190,37 @@ partial adapter 同时验证 baseline/candidate 的 available/unavailable mappin
 最终验证关闭配置谱系 P1。算法准入仍失败：candidate D2 航迹 `203 -> 201`、D3 分配
 `200 -> 197`、track continuity `0.865 -> 0.8266667`、coverage continuity
 `0.870 -> 0.8283333`。因此候选保持默认关闭，不扩展到后续 seed、长时或 AirSim。
+
+## 22. 后验跳过完整等价审计（2026-07-25）
+
+运行时 v2 的最终快照新增读取
+`d2_finalize_unchanged_posterior_skip_count`。该字段必须是非负整数，单个 episode 的
+finalization skip 不得大于 1。D6 同时保留 D1 完整后验代次序列和各代次公共 payload。
+
+当 skip 为 1 时，算法先检查 D2 已消费至少一个代次且最终 D1 代次更高。随后检查未消费尾部
+没有 accepted/update/create、没有结构歧义，航迹集合不变。最后把 D2 已消费代次和 D1
+最终代次的 tracks 按 `global_track_id` 排序，规范化 JSON 后逐字节比较。每条 track 必须具有
+六维状态、六阶协方差、有限时刻和非空航迹状态。
+
+内容不等价时，D6 计算逐轨状态、协方差元素和时刻的最大绝对差，写入
+`d2_finalize_unchanged_skip_full_posterior_not_equivalent`。未验证 skip 的有效计数为 0，
+因此既保留最终代次未消费原因，也保留代次处置不守恒原因。
+
+公开 tracks 完全相等仍不是完整 D2 输入等价证明。当前 payload 没有覆盖 D2 转换后的全部
+逐轨元数据，也没有版本化完整输入摘要。此时 D6 写入
+`d2_finalize_unchanged_skip_complete_input_equivalence_unproven`，继续令 verified skip 为 0。
+上游定义并发布可独立复算的完整摘要前，v10 不提供 declared skip 的 formal 放行路径。
+该实现不读取 truth，不导入 runtime，也不修改 D2 控制状态。
+
+### 修复后路径
+
+main 的定向修复没有要求 D6 认可 declared skip。修复后的 5 个 episode 均由 D2 实际消费
+最终 D1 后验，`d2_finalize_unchanged_posterior_skip_count=0`。因此 v10 使用原有严格守恒式
+直接验证：
+
+`D2 consumption count + pre-tick merge count = D1 posterior generation`
+
+同时要求 D1 最终代次等于 D2 最终消费代次、D2 消费次数等于发布次数、pending 为空。
+五项全部通过这些检查。该验证与 `skip=1` 的等价性判定相互独立，未增加任何跳过放行分支。
+如果后续运行时再次声明 skip，仍须提供版本化完整 D2 输入摘要，否则 formal admission
+保持 false。
