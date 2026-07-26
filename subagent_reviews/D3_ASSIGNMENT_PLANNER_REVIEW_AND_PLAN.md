@@ -1,5 +1,26 @@
 # D3 中心化资源-目标分配综述及子方案
 
+## 2026-07-25 正式 R0 滚动需求复核
+
+clean commit `32b3b40` 的 `high_threat_m_to_n` 200v200、seed 1000、2.0 秒正式单元
+在 `t=1.0` 暴露运行级 P0。一个无 executable assignment 的旧 `k=1` incomplete
+coalition 本周期升为完整 `k=3` 候选；其他 coalition 的成员迟滞触发全局 hold，旧需求
+库存被错误保留，最终规范化抛出需求不一致异常。
+
+D3 已把需求合同检查前移到旧计划可行性评分。需求数量、主资源数量、协同模式、时间模板
+或 assignment demand 变化时，上一计划不能被迟滞保留。当前求解器重建版本化候选，最终
+规范化仍严格执行容量、资源唯一性、all-or-none、主备角色和需求一致性检查。需求未变化
+的成员换位仍执行原驻留和收益迟滞。
+
+同一配置的当前工作树开发复验完成 2.0 秒。`GT3D-000021` 在 `t=1.0` 重建为完整
+`k=3` coalition；有限状态为真、在线真值使用为 0，197 个 assignment 使用 197 个唯一
+资源，过分配和需求摘要失配为 0。新增回归覆盖需求升高、降低、同需求保持、过分配拒绝
+和 200 输入规模。D3 全量为 `464 passed, 1 skipped`。
+
+owner 结论：P0 代码路径已修复并完成开发复验，正式证据尚未闭合。原分片和 marker 仍
+绑定 `32b3b40`；main 需在新 clean commit 下重跑正式单元和分片，不能把当前结果标为
+formal complete。
+
 ## 2026-07-25 多周期行为克隆影子复核
 
 D3 已把原单帧处理臂扩展为多周期成对评估。规则组和处理组接收相同匿名输入、时间戳和
@@ -71,6 +92,9 @@ AirSim/module unit regression 证明。该结果验证运行时安全撤回，�
 
 当前 D3 P0/P1 缺口清单：
 
+- P0 implementation done / formal rerun open：`32b3b40` 正式 R0 暴露的空 coalition
+  需求升高与全局成员迟滞冲突已修复；同配置开发复验通过。新 clean commit 下的正式单元
+  和分片尚未重跑，当前不能标记 formal closed。
 - P0 done：旧“无 P0 blocker”结论已撤销；active plan 后缺失 `previous_plan` 的版本回退入口已关闭，拒绝 reason 固定为 `previous_plan_required` 并返回 latest plan id/version。首次调用仍允许 `None`，新 episode 使用新 planner 实例。
 - P1 done：switch penalty 已在 Hungarian/fallback solve 前加入可行改配边，matrix/breakdown/objective/evidence 单次计费一致；unassigned/release 和 current binding 语义不变。
 - P1 合同层 done：5-resource/2-target ComputerVision 10 seeds 中，T001 双 primary 视觉共识与当前计划授权达到 8/10；seeds 7/27 保留回归。

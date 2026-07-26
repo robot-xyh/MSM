@@ -42,7 +42,6 @@ from .planning_evidence import (
 )
 from .regional import (
     REGIONAL_ASSIGNMENT_PLAN_SCHEMA_V1,
-    RegionalAuthorityGrant,
     RegionalAuthorityInput,
     RegionalPlanAuthorityError,
 )
@@ -5249,13 +5248,30 @@ class AssignmentPlanner:
             previous_plan,
             candidate,
         )
-        membership_audit = self._coalition_membership_audit(
-            candidate=candidate,
-            previous_plan=previous_plan,
-            rescored_previous_assignments=previous_assignments,
-            rescored_candidate_assignments=candidate_comparison_assignments,
-            timestamp=timestamp,
+        demand_incompatible_target_ids = (
+            self._previous_demand_incompatible_target_ids(
+                previous_plan,
+                candidate,
+            )
         )
+        membership_audit = {
+            **self._coalition_membership_audit(
+                candidate=candidate,
+                previous_plan=previous_plan,
+                rescored_previous_assignments=previous_assignments,
+                rescored_candidate_assignments=candidate_comparison_assignments,
+                timestamp=timestamp,
+            ),
+            "previous_demand_contract_incompatible_target_ids": (
+                demand_incompatible_target_ids
+            ),
+            "previous_demand_contract_incompatible_count": len(
+                demand_incompatible_target_ids
+            ),
+            "previous_demand_inventory_rebuild_required": bool(
+                demand_incompatible_target_ids
+            ),
+        }
         if membership_audit["membership_hold_required"] and previous_feasible and not (
             execution_control_change_reasons
         ):
@@ -5452,7 +5468,11 @@ class AssignmentPlanner:
             )
 
         reason = "accepted_previous_infeasible"
-        release_reason = "previous_assignment_infeasible"
+        release_reason = (
+            "previous_coalition_demand_changed"
+            if demand_incompatible_target_ids
+            else "previous_assignment_infeasible"
+        )
         if previous_feasible:
             if execution_control_change_reasons:
                 reason = "accepted_execution_control_change"
@@ -5515,6 +5535,9 @@ class AssignmentPlanner:
                 ),
                 "execution_control_change_reasons": (
                     execution_control_change_reasons
+                ),
+                "previous_demand_inventory_rebuild_applied": bool(
+                    demand_incompatible_target_ids
                 ),
             },
         )
@@ -5674,13 +5697,19 @@ class AssignmentPlanner:
         candidate_coalition_by_target = {
             coalition.target_id: coalition for coalition in candidate.coalitions
         }
-        previous_coalition_by_target = {
-            coalition.target_id: coalition for coalition in previous_plan.coalitions
-        }
+        demand_incompatible_target_ids = set(
+            self._previous_demand_incompatible_target_ids(
+                previous_plan,
+                candidate,
+            )
+        )
         total = 0.0
-        feasible = not self._missing_previous_execution_target_ids(
-            previous_plan,
-            matrix_result,
+        feasible = (
+            not self._missing_previous_execution_target_ids(
+                previous_plan,
+                matrix_result,
+            )
+            and not demand_incompatible_target_ids
         )
         assignments: list[Assignment] = []
         unassigned: list[str] = []
@@ -5694,29 +5723,11 @@ class AssignmentPlanner:
                 if candidate_coalition is not None
                 else 1
             )
-            previous_coalition = previous_coalition_by_target.get(target_id)
             if not target_assignments:
                 total += float(matrix_result.unassigned_costs[target_index[target_id]]) * required
                 unassigned.append(target_id)
                 continue
             if len(target_assignments) != required:
-                feasible = False
-            if (
-                candidate_coalition is not None
-                and previous_coalition is not None
-                and (
-                    candidate_coalition.required_resource_count
-                    != previous_coalition.required_resource_count
-                    or candidate_coalition.primary_resource_count
-                    != previous_coalition.primary_resource_count
-                    or candidate_coalition.coordination_mode
-                    != previous_coalition.coordination_mode
-                    or candidate_coalition.minimum_separation_s
-                    != previous_coalition.minimum_separation_s
-                    or candidate_coalition.metadata.get("demand_template")
-                    != previous_coalition.metadata.get("demand_template")
-                )
-            ):
                 feasible = False
             rescored_target: list[Assignment] = []
             for previous_assignment in target_assignments:
@@ -5754,6 +5765,53 @@ class AssignmentPlanner:
             assignments.extend(rescored_target)
 
         return total, feasible, tuple(assignments), tuple(unassigned)
+
+    @staticmethod
+    def _coalition_demand_contract_signature(
+        coalition: CoalitionPlan,
+    ) -> tuple[object, ...]:
+        return (
+            coalition.required_resource_count,
+            coalition.primary_resource_count,
+            coalition.coordination_mode,
+            coalition.minimum_separation_s,
+            coalition.terminal_authorization_scope,
+            coalition.arrival_coordination_required,
+            coalition.metadata.get("demand_template"),
+        )
+
+    @classmethod
+    def _previous_demand_incompatible_target_ids(
+        cls,
+        previous_plan: AssignmentPlan,
+        candidate: AssignmentPlan,
+    ) -> tuple[str, ...]:
+        """Return targets whose previous inventory cannot represent current demand."""
+
+        previous_coalition_by_target = {
+            coalition.target_id: coalition
+            for coalition in previous_plan.coalitions
+        }
+        previous_assignments_by_target = previous_plan.assignments_by_target()
+        incompatible: list[str] = []
+        for current in candidate.coalitions:
+            previous = previous_coalition_by_target.get(current.target_id)
+            coalition_mismatch = (
+                previous is not None
+                and cls._coalition_demand_contract_signature(previous)
+                != cls._coalition_demand_contract_signature(current)
+            )
+            assignment_mismatch = any(
+                assignment.required_resource_count
+                != current.required_resource_count
+                for assignment in previous_assignments_by_target.get(
+                    current.target_id,
+                    (),
+                )
+            )
+            if coalition_mismatch or assignment_mismatch:
+                incompatible.append(current.target_id)
+        return tuple(sorted(incompatible))
 
     @staticmethod
     def _missing_previous_execution_target_ids(

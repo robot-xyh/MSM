@@ -337,6 +337,262 @@ def test_primary_count_change_increments_coalition_version() -> None:
     assert second.stable_signature != first.stable_signature
 
 
+def test_demand_increase_rebuilds_empty_inventory_before_membership_hold() -> None:
+    planner = _planner(hysteresis=True)
+    resources = [ResourceState(f"R{i}") for i in range(1, 8)]
+    hold_feasibility = {
+        resource.resource_id: resource.resource_id in {"R1", "R2", "R3", "R4"}
+        for resource in resources
+    }
+    unavailable = {resource.resource_id: False for resource in resources}
+    first = planner.plan(
+        [
+            _track(
+                "HOLD",
+                demand=TargetDemand(),
+                feasibility_by_resource=hold_feasibility,
+                fov_difficulty_by_resource={
+                    "R1": 0.0,
+                    "R2": 0.1,
+                    "R3": 0.2,
+                    "R4": 5.0,
+                },
+            ),
+            _track("CHANGING", feasibility_by_resource=unavailable),
+        ],
+        resources,
+        timestamp=0.0,
+    )
+    previous_changing = next(
+        coalition
+        for coalition in first.coalitions
+        if coalition.target_id == "CHANGING"
+    )
+    assert previous_changing.required_resource_count == 1
+    assert previous_changing.complete is False
+    assert previous_changing.members == ()
+
+    changing_feasibility = {
+        resource.resource_id: resource.resource_id in {"R5", "R6", "R7"}
+        for resource in resources
+    }
+    second = planner.plan(
+        [
+            _track(
+                "HOLD",
+                demand=TargetDemand(),
+                feasibility_by_resource=hold_feasibility,
+                fov_difficulty_by_resource={
+                    "R1": 5.0,
+                    "R2": 0.1,
+                    "R3": 0.2,
+                    "R4": 0.0,
+                },
+            ),
+            _track(
+                "CHANGING",
+                demand=TargetDemand(),
+                feasibility_by_resource=changing_feasibility,
+            ),
+        ],
+        resources,
+        timestamp=0.5,
+        previous_plan=first,
+    )
+
+    current = next(
+        coalition
+        for coalition in second.coalitions
+        if coalition.target_id == "CHANGING"
+    )
+    assert second.decision_state == "accepted_previous_infeasible"
+    assert second.metadata["hysteresis_release_reason"] == (
+        "previous_coalition_demand_changed"
+    )
+    assert second.metadata["previous_demand_contract_incompatible_target_ids"] == (
+        "CHANGING",
+    )
+    assert second.metadata["previous_demand_inventory_rebuild_applied"] is True
+    assert current.required_resource_count == 3
+    assert current.complete is True
+    assert len(second.assignments_by_target()["CHANGING"]) == 3
+
+
+def test_demand_decrease_rebuilds_old_complete_coalition() -> None:
+    planner = _planner(hysteresis=True)
+    resources = [ResourceState(f"R{i}") for i in range(1, 4)]
+    first = planner.plan(
+        [_track("T", demand=TargetDemand())],
+        resources,
+        timestamp=0.0,
+    )
+    second = planner.plan(
+        [_track("T", demand=TargetDemand.independent())],
+        resources,
+        timestamp=0.5,
+        previous_plan=first,
+    )
+
+    assert second.decision_state == "accepted_previous_infeasible"
+    assert second.metadata["previous_demand_contract_incompatible_target_ids"] == (
+        "T",
+    )
+    assert second.metadata["previous_demand_inventory_rebuild_applied"] is True
+    assert second.coalitions[0].required_resource_count == 1
+    assert len(second.assignments) == 1
+    assert second.assignments[0].required_resource_count == 1
+
+
+def test_same_demand_keeps_membership_hysteresis_unchanged() -> None:
+    planner = _planner(hysteresis=True)
+    resources = [ResourceState(f"R{i}") for i in range(1, 5)]
+    first = planner.plan(
+        [
+            _track(
+                "T",
+                demand=TargetDemand(),
+                fov_difficulty_by_resource={
+                    "R1": 0.0,
+                    "R2": 0.1,
+                    "R3": 0.2,
+                    "R4": 5.0,
+                },
+            )
+        ],
+        resources,
+        timestamp=0.0,
+    )
+    second = planner.plan(
+        [
+            _track(
+                "T",
+                demand=TargetDemand(),
+                fov_difficulty_by_resource={
+                    "R1": 5.0,
+                    "R2": 0.1,
+                    "R3": 0.2,
+                    "R4": 0.0,
+                },
+            )
+        ],
+        resources,
+        timestamp=0.5,
+        previous_plan=first,
+    )
+
+    assert second.decision_state == "held_by_coalition_membership_hysteresis"
+    assert second.metadata["previous_demand_contract_incompatible_target_ids"] == ()
+    assert second.assignment_signature() == first.assignment_signature()
+
+
+def test_versioned_inventory_still_rejects_overallocated_target() -> None:
+    planner = _planner()
+    track = _track("T", demand=TargetDemand.independent())
+    plan = planner.plan(
+        [track],
+        [ResourceState("R1"), ResourceState("R2")],
+        timestamp=0.0,
+    )
+    invalid = replace(
+        plan,
+        assignments=(
+            plan.assignments[0],
+            replace(plan.assignments[0], resource_id="R2"),
+        ),
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="target assignments exceed current demand",
+    ):
+        AssignmentPlanner._normalize_versioned_target_inventory(
+            invalid,
+            tracks=(track,),
+            timestamp=1.0,
+            source="test_overallocation",
+        )
+
+
+def test_200_scale_demand_change_does_not_retain_old_inventory() -> None:
+    planner = _planner(hysteresis=True)
+    resources = tuple(ResourceState(f"R{i:03d}") for i in range(1, 201))
+    resource_ids = tuple(resource.resource_id for resource in resources)
+    hold_feasibility = {
+        resource_id: resource_id in {"R001", "R002", "R003", "R004"}
+        for resource_id in resource_ids
+    }
+    unavailable = {resource_id: False for resource_id in resource_ids}
+    padding = tuple(
+        _track(
+            f"PAD-{index:03d}",
+            threat=0.1,
+            assignable=False,
+        )
+        for index in range(198)
+    )
+    first = planner.plan(
+        (
+            _track(
+                "HIGH",
+                demand=TargetDemand(),
+                feasibility_by_resource=hold_feasibility,
+                fov_difficulty_by_resource={
+                    "R001": 0.0,
+                    "R002": 0.1,
+                    "R003": 0.2,
+                    "R004": 5.0,
+                },
+            ),
+            _track("DYNAMIC", feasibility_by_resource=unavailable),
+            *padding,
+        ),
+        resources,
+        timestamp=0.0,
+    )
+    dynamic_feasibility = {
+        resource_id: resource_id in {"R005", "R006", "R007"}
+        for resource_id in resource_ids
+    }
+    second = planner.plan(
+        (
+            _track(
+                "HIGH",
+                demand=TargetDemand(),
+                feasibility_by_resource=hold_feasibility,
+                fov_difficulty_by_resource={
+                    "R001": 5.0,
+                    "R002": 0.1,
+                    "R003": 0.2,
+                    "R004": 0.0,
+                },
+            ),
+            _track(
+                "DYNAMIC",
+                demand=TargetDemand(),
+                feasibility_by_resource=dynamic_feasibility,
+            ),
+            *padding,
+        ),
+        resources,
+        timestamp=0.5,
+        previous_plan=first,
+    )
+
+    dynamic = next(
+        coalition
+        for coalition in second.coalitions
+        if coalition.target_id == "DYNAMIC"
+    )
+    assert second.target_count == 200
+    assert second.resource_count == 200
+    assert second.decision_state == "accepted_previous_infeasible"
+    assert second.metadata["previous_demand_contract_incompatible_target_ids"] == (
+        "DYNAMIC",
+    )
+    assert dynamic.required_resource_count == 3
+    assert dynamic.complete is True
+
+
 def test_legal_multiplicity_is_not_duplicate_but_excess_and_resource_conflict_are() -> None:
     legal = _planner().plan(
         [_track("T", demand=TargetDemand())],

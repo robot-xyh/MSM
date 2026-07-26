@@ -4,6 +4,38 @@ Centralized rolling `M` target / `N` resource assignment research module.
 
 Boundary: this module only supports offline simulation, evaluation, and human-review candidate planning. It excludes real fire-control parameters, damage logic, flight or hardware drivers, autonomous disposition, and authorization bypasses.
 
+## R0 Rolling-Demand Inventory Guard
+
+On 2026-07-25 the clean-source R0 cell at commit `32b3b40`, scenario
+`high_threat_m_to_n`, scale 200, seed 1000, and duration 2.0 s failed at
+`t=1.0 s`. Target `GT3D-000021` changed from an empty incomplete `k=1`
+coalition to a complete `k=3` candidate. Other coalition membership changes
+were still inside dwell, so the global membership hold retained the previous
+inventory. Previous-plan scoring had skipped demand compatibility for a
+target with no executable assignment; final inventory normalization then
+raised `coalition demand does not match current demand`.
+
+The planner now evaluates the previous coalition demand contract before the
+empty-assignment branch. A changed required count, primary count, coordination
+mode, timing contract, or assignment demand marks the previous plan
+incompatible. Hysteresis cannot retain that inventory; the current
+solver-produced candidate is rebuilt and still passes the existing capacity,
+unique-resource, all-or-none, primary/reserve, stale-plan, and version checks.
+The plan records the incompatible target IDs and whether the rebuild was
+required and applied.
+
+An exact-configuration development rerun on 2026-07-25 completed 2.0 s with
+finite state and zero online truth use. At `t=1.0 s`,
+`GT3D-000021` was rebuilt as a complete `k=3` coalition under
+`accepted_previous_infeasible`; 197 final assignments used 197 unique
+resources, with zero overallocated targets and zero demand-summary mismatch.
+The D3 suite passed `464 passed, 1 skipped`; the skip remains the optional
+OR-Tools test.
+
+This is implemented and tested development evidence. The failed formal
+artifact remains bound to clean commit `32b3b40`; main must rerun the cell and
+formal shard from a new clean source commit before marking formal R0 complete.
+
 ## Multi-Cycle BC Residual Shadow Evaluation
 
 On 2026-07-25 D3 added an isolated multi-cycle evaluator for the frozen

@@ -1,5 +1,28 @@
 # D3 集中式 Assignment Planner 计划
 
+## 2026-07-25 正式 R0 滚动需求 P0
+
+状态为“代码已修复、开发复验通过、正式重跑待完成”。
+
+1. clean commit `32b3b40` 的 `high_threat_m_to_n`、200v200、seed 1000、
+   2.0 秒正式单元在 `t=1.0` 失败。`GT3D-000021` 的旧库存是无成员的
+   `k=1` incomplete coalition，本周期需求升为 `k=3`，候选 coalition 已完整。
+2. 同一周期另有多个 coalition 处于成员驻留期。全局成员迟滞试图保持旧计划，而旧计划
+   可行性评分在“无 executable assignment”分支提前返回，漏掉上述需求合同变化。
+   最终库存规范化因此抛出未治理异常。
+3. 当前实现先比较旧/新 coalition 的需求合同，再判断旧目标是否有 executable
+   assignment。需求数量、主资源数量、协同模式、时间合同或 assignment demand 不一致时，
+   旧计划立即标为不可保留，采用当前求解器重新生成的版本化候选。
+4. 该安全释放不放宽资源容量、资源唯一性、all-or-none、primary/reserve、stale plan、
+   计划版本和需求一致性检查。最终库存规范化仍承担失败关闭校验。
+5. 新增回归覆盖需求升高、需求降低、同需求成员迟滞保持、过分配拒绝和 200 输入规模。
+   2026-07-25 D3 全量结果为 `464 passed, 1 skipped`，唯一跳过为可选 OR-Tools。
+6. 同一配置的当前工作树开发复验完成 2.0 秒，有限状态为真、在线真值使用为 0。
+   `t=1.0` 对 `GT3D-000021` 记录需求重建，最终 197 个 assignment 使用 197 个唯一资源，
+   过分配和需求摘要失配均为 0。
+7. 当前结果不是新的 formal R0 证据。旧失败制品仍绑定 `32b3b40`；main 需要在新 clean
+   commit 下重建正式执行来源并重跑该单元及分片，才能关闭正式验收边界。
+
 ## 2026-07-25 多周期可辨识影子评估
 
 本阶段已完成，范围限定为 D3 离线研究臂。
@@ -346,6 +369,9 @@ P1 集成时，main 应保证：
 
 ### P0
 
+- 2026-07-25 正式 R0 新暴露的滚动需求库存 P0 已完成 D3 代码修复和同配置开发复验。
+  clean-source formal 单元/分片尚未在新提交上重跑，因此状态是“实现关闭、正式证据待补”，
+  不能写成完整 R0 已通过。
 - 旧“无 P0 blocker”结论已撤销。P0 `previous_plan` 连续性缺口已于 2026-07-10 修复并标记 done：首次调用仍允许 `None`；active plan 存在后省略 `previous_plan` 会以 `previous_plan_required` 拒绝并返回 latest plan id/version，版本不会回退到 1；新 episode 使用新 planner 实例。
 - 其余 Hungarian/DP fallback、版本化 `AssignmentPlan`、迟滞与 stale 拒绝、D5 feedback helper/writeback、secondary takeover owner/version DTO、D7 binding、D6 export、`AssignmentEvidenceExport` 和轻量 hard time-window closed-edge rejection baseline 当前均已实现并保持回归。
 - P0-B 已补齐：`ResourceState` 标准化 energy、availability、intercept feasibility、current load、history failure 字段，`CostModel` 消费这些字段并导出可解释资源状态/不可行原因。
@@ -421,7 +447,9 @@ git diff --check -- research_modules/d3_assignment_planner subagent_reviews/D3_*
 
 ### 9.4 P0/P1 状态
 
-- **P0**: 当前无新增 blocker。现有 `k_j=1` Hungarian、plan version、stale rejection、迟滞和 `global_track_id` 约束保持回归。
+- **P0**: 2026-07-25 的滚动需求库存异常已在 D3 代码和同配置开发复验中修复；新 clean
+  commit 的 formal R0 重跑待 main 完成。现有 `k_j=1` Hungarian、plan version、
+  stale rejection、迟滞和 `global_track_id` 约束保持回归。
 - **P1 done**: `target_demand=k_j`、可配置 `primary_resource_count`、全有或全无 admission、成员角色、simultaneous/sequential/hybrid 波次、coalition version、coalition-aware duplicate、D7 multi-binding 和 demand summary 已实现并单测。
 - **P1 evidence done**: 5-resource/2-target ComputerVision 10-seed 运行中 T001 双 primary 视觉共识与当前计划授权达到 8/10；二级/分布式 commit 正例及缺 ACK fail-closed 通过。D3 P1 合同层闭合。
 - **P1 interface done**: `plan_incremental`、changed-set 完整性检查、独立连通分量求解、全量回退原因、M-to-N all-or-none、全局迟滞、分级 feedback、版本化 transient feedback dwell、reserve-soft-feedback primary role protection、canonical planning-tick history export 和增量/全量 comparison summary 已实现；帧级 transient 窗口不替代 `min_dwell`。

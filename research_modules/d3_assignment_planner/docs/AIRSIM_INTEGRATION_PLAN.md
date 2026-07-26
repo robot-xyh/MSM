@@ -1,5 +1,26 @@
 # AirSim Integration Plan For D3 Assignment Planner
 
+## Rolling Demand Changes
+
+Main must rebuild each current `TargetTrack.demand` before a rolling D3 call.
+When the current demand contract differs from the previous coalition, D3 marks
+the previous inventory non-retainable and publishes the current solver result
+under a newer plan identity. Main must adopt that new plan before forwarding
+bindings to D5 or D7; it must not keep an old empty or executable coalition
+because another target is still inside membership dwell.
+
+AirSim logs should retain
+`previous_demand_contract_incompatible_target_ids`,
+`previous_demand_inventory_rebuild_required`, the release reason, and the
+adopted plan ID/version. Capacity, unique-resource, all-or-none, primary/reserve,
+stale-plan, and demand-summary checks remain mandatory.
+
+The 2026-07-25 validation for this guard used the scalable three-dimensional
+point-mass R0 configuration, not AirSim. The module test suite and an exact
+200v200 development replay passed, but a new clean-source AirSim or formal R0
+run has not yet been produced. This plan therefore records the integration
+contract without claiming AirSim evidence.
+
 ## Identity Commitment Field
 
 Main should join D2's current commitment publication by `global_track_id` and

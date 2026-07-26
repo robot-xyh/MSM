@@ -6,6 +6,52 @@
 > `docs/MODULE_PRINCIPLES_CN.md` 和根目录系统汇总同步编写。本文区分默认主线、
 > 已实现辅助能力、可选离线对照和未实现能力，不把计划项写成已完成能力。
 
+## 需求变化释放
+
+### 判定
+
+设上一计划中目标 \(j\) 的联盟需求合同为 \(D_j^{-}\)，当前候选合同为
+\(D_j\)。合同由需求数量、主资源数量、协同模式、能力和时间模板组成。滚动迟滞的前置条件
+改为：
+
+\[
+\operatorname{retainable}(P^{-}) =
+\operatorname{feasible}(P^{-}) \land
+\left(\forall j,\ D_j^{-}=D_j\right)
+\]
+
+原实现先判断目标是否存在 executable assignment。旧 incomplete coalition 没有绑定时会
+提前进入未分配计分，跳过 \(D_j^{-}=D_j\) 检查。多个目标共享一次全局迟滞判定时，其他
+目标的成员驻留会把这个不兼容库存一起保留，异常延迟到最终规范化才暴露。
+
+### 实施
+
+`_previous_demand_incompatible_target_ids()` 在旧计划计分前比较 coalition 需求合同，并
+核对上一 assignment 的 `required_resource_count`。发现不兼容目标后，
+`_score_previous_plan()` 将上一计划标为不可保留。`_apply_hysteresis()` 采用当前求解器
+生成的候选，决策状态保持 `accepted_previous_infeasible`，释放原因记录为
+`previous_coalition_demand_changed`。
+
+计划 metadata 同时记录：
+
+- `previous_demand_contract_incompatible_target_ids`；
+- `previous_demand_contract_incompatible_count`；
+- `previous_demand_inventory_rebuild_required`；
+- `previous_demand_inventory_rebuild_applied`。
+
+该路径没有直接编辑上一计划，也不按目标数写特殊分支。当前候选仍由 Hungarian 或需求槽
+Hungarian 按输入规模求解。最终 `_normalize_versioned_target_inventory()` 继续拒绝过分配、
+assignment 需求不一致、coalition 成员数错误、incomplete coalition 发布 executable
+binding 等状态。
+
+### 验证
+
+2026-07-25 新增五类回归：需求由 1 升至 3、由 3 降至 1、同需求成员迟滞正常保持、
+过分配继续失败关闭、200 目标/200 资源输入规模。D3 全量结果为
+`464 passed, 1 skipped`。同一 R0 配置的开发复验完成 2.0 秒，
+`GT3D-000021` 在 `t=1.0` 形成当前完整 `k=3` coalition，197 个最终 assignment
+对应 197 个唯一资源。正式 clean-source R0 尚未重跑。
+
 ## 身份承诺准入
 
 `TargetTrack.identity_commitment_state` 支持 `committed`、
