@@ -2,51 +2,41 @@
 
 科研模块，用于把末端相机视场中的本地视觉轨迹保守关联到中心分配的 `global_track_id`。模块可在统一三维 episode 中在线运行；训练标签和真值评分仍保持离线。D5 只输出视觉关联与相机观察意图，不修改、重写或重新分配任何全局轨迹 ID。
 
-## 2026-07-26 G1 与 A3 严格准入复核
+## 2026-07-26 G1 证据装配闭环
 
-main 提交 `d59352b` 要求学习 scope 在创建执行目录前验证 bundle 完整文件树、准入诊断、设备和
-解析后的模型版本。D5 保留既有运行边界：G1 调用必须显式设置
-`require_g1_assist_eligible=True`，A3 assist 调用必须请求
-`ActiveVisionRuntimeMode.ASSIST`。加载失败只返回 unavailable，规则路径继续工作。
+D5 已实现独立 G1 证据装配器和命令行入口。输入固定为一份 v3 development bundle、一份
+held-out JSON、一份 paired-shadow JSON 和一份 D6 外部审计 JSON；调用方还必须提供 bundle
+manifest、weights、`SHA256SUMS` 及三份 JSON 的带外 SHA-256。装配器不接收
+`TrackletG1AdmissionReport`、准入布尔值或调用方填写的权限对象。生产
+`write_tracklet_model_bundle()` 仍拒绝任何 caller-provided report。
 
-主审发现裸 `TrackletG1AdmissionReport` 可由调用方用占位 SHA 和布尔值构造，原 writer 没有读取
-held-out、paired shadow 或 D6 审计实物。D5 采用保守关闭方案：生产
-`write_tracklet_model_bundle()` 对任何 `g1_admission_report` 在创建目录前直接拒绝；公开 loader
-和 runtime 对手工拼装的 v4 清单返回
-`bundle_g1_admission_evidence_assembler_unavailable`。v4 schema 和严格 parser 仅通过未导出的
-私有测试 loader 验证，不能获得生产权限。
+审计通过时，装配器在同级临时目录生成 `d5.tracklet-model-bundle.v4`，实际打包
+`evidence/heldout_evaluation.json`、`evidence/paired_shadow_report.json` 和
+`evidence/d6_external_audit.json`。新 `SHA256SUMS` 精确覆盖 manifest、weights 和三份证据。
+公开 loader/runtime 每次加载都会复算文件与内容摘要，核对 D6 consumer contract、字段可用性、
+20/900/45、三个安全计数、模型/实现/数据集/划分/训练集绑定和 admission report。v4 只获得
+`g1_assist_eligible=true`；`default_model`、全局航迹编号、分配和控制权限均为 `false`。
 
-A3 存在同类裸 `ActiveVisionAdmissionReport` 路径。生产
-`write_active_vision_model_bundle()` 现在同样拒绝调用方报告；公开 loader/runtime 对正向 assist
-清单返回 `bundle_admission_evidence_assembler_unavailable`。字符串、整数等权限字段仍按严格
-类型拒绝。后续只有独立证据装配器逐文件校验、打包并建立可信来源后，才可讨论恢复正式写入和
-运行加载。
+正向 fixture 已证明该软件合同可原子生成并由公开 runtime 严格加载。负例覆盖缺文件、文件及内容
+篡改、跨模型/数据集/实现、字段 unavailable、布尔/整数类型伪造、装配后证据篡改、非空目标目录、
+失败残留和旧手工 v4 绕过。该 fixture 是合同测试，不是当前模型准入证据。
 
-当前 G1 制品尚不能晋级。旧 manifest/weights SHA-256 为
-`c4284b2442dba56c0d2857146760f840e72cbe02ffe9a98964a0c68bb69bc674` /
-`99fa4428849773458eb1a537d5f6cd72a23275215a6dfe5d558dbaa3df92d4cd`。held-out 文件/内容
-SHA-256 为 `765d39a5188b4b4a7dc561f47222125995d8fce344c05c4cac2b1016c071320a` /
-`bada1803a2a5497a7a65fa56c5ec5d4b55beec8ee0be34d45ce38f64b887067a`；paired shadow 文件/
-内容 SHA-256 为 `cc960206a13b364315baf8d315e239f7e0541469e4fa553b3ee5fb95c643bf23` /
-`53bdc658154f4371e340382b5af3b7358bf8de9691ae89b3e301da9cf6c957a0`。paired 门本身通过，但
-权限状态仍为 `pending_d6_external_audit`。当前 G1 实现摘要为
-`ff8c744ed2583d9f6b6d3992faf935c5ced085726ac664d2e2f27c05c838a1b7`，旧制品严格加载结果为
-`bundle_implementation_runtime_mismatch`。2026-07-21 的 D6 审计早于本次 paired 证据，未签发
-绑定上述报告和当前实现的正向准入。
+当前 `99fa4428...d4cd` 模型仍未获准。实际 D6 审计文件 SHA-256 为
+`7cae5b1fd24fb57fa5aadf456a4798f483d88e62f6c9979773b09224fd142ca8`，内容 SHA-256 为
+`7c0c7d8291698bc4de9211edf8fa8b4106ddc4a4b0c3714372e41bfa04e9dd39`。装配器返回稳定拒绝码
+`d6_external_audit_fail_closed`，目标目录不存在。四个 blocker 保持为
+`implementation_lineage_mismatch`、`robustness_threshold_not_met.cluster_f1`、
+`robustness_threshold_not_met.edge_f1` 和 `synthetic_single_feature_shortcut`。没有调整阈值、
+增加实现兼容白名单或重写旧 bundle/报告/D6 输出。当前 G1 运行实现摘要为
+`41381db3d11371c049e5569658820ce98abf1a9966ecf86edc0f13f140894b07`。该摘要已包含
+`tracklet_g1_evidence_assembler.py`；仅改变 assembler 即会改变摘要。旧 development bundle 未绑定
+该文件，公开严格 loader 返回 `implementation_runtime_mismatch`，不提供兼容白名单。
 
-A3 当前实现摘要为
-`e7db827f5f2bbbf8a89e94ceeae8a4bdef31c646d003983c5928b46879b533b4`。现有开发 bundle 的
-manifest/weights SHA-256 为
-`9c0cb50c25eb3f47f609172be3bdadca1a2b65a0244fc3e3cf5464602aa70ad4` /
-`829d016611967d7f7adddcb58c99a96e418486e33a7fc987042a16d294c2b77b`，严格 assist 同样返回
-`bundle_implementation_runtime_mismatch`。现有行为克隆报告文件 SHA-256 为
-`8a40aeb890dec8748591ba699850e15554924a7e9feb83ef3724331273fe781e`，明确记录
-`assist=false`，且没有至少 20 个未见 seed 的正式 paired non-degradation 结果。
+A3 主动视觉准入不在本次实现范围。其 production writer 继续拒绝 caller-provided report，公开
+assist loader 继续失败关闭。确定性几何关联和规则主动视觉仍是默认路径。
 
-因此，生产代码当前不能生成或运行加载 G1/A3 admitted bundle。私有 fixture 只验证未来 parser
-所需的缺失、篡改、跨模型、跨数据集和 D6 fail-closed 行为。定向测试
-`47 passed in 2.32s`，D5 全量测试 `562 passed in 99.88s`；未修改旧 manifest、权重、温度、
-阈值、`global_track_id` 或在线真值边界。
+2026-07-26 验证结果：assembler 专项 `14 passed in 1.21s`，模型流水线
+`20 passed in 4.23s`，D5 全量 `571 passed in 99.00s`。
 
 ## 2026-07-25 同一 GNN bundle 的 20-seed 证据闭合
 

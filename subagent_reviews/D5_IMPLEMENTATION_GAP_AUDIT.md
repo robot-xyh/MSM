@@ -1,24 +1,23 @@
 # D5 实现差距审计
 
-## 2026-07-26 G1/A3 严格准入边界
+## 2026-07-26 G1 证据装配闭环
 
 | 缺口 | 当前状态 | 证据与剩余边界 |
 | --- | --- | --- |
-| D5 严格 assist 加载接口 | **D5-owned 已关闭** | development bundle 仍返回 `bundle_g1_assist_not_eligible`；手工拼装正向 G1/A3 清单分别返回 `bundle_g1_admission_evidence_assembler_unavailable` / `bundle_admission_evidence_assembler_unavailable`。 |
-| 旧 manifest 自我晋级 | **关闭并保持回归** | G1 v3 继续只允许 `g1_assist_eligible=false`。删除字段、改为 `true` 或使用字符串权限值均失败关闭；旧 manifest 未修改。 |
-| G1 裸 report 自声明 | **关闭并保持回归** | production writer 在创建目录前拒绝任何 `g1_admission_report`；公开 loader/runtime 不执行 v4。私有 fixture 仅验证 parser，不授予生产权限。 |
-| A3 裸 report 自声明 | **关闭并保持回归** | production writer 拒绝任何 `admission_report`；公开 loader/runtime 不执行正向 assist。严格类型解析继续保留。 |
-| 独立证据装配器 | **P1 开放** | 当前未实现实际 held-out/paired/D6 文件读取、严格 schema、交叉模型/实现/数据绑定和 bundle checksum tree 打包，因此生产 G1/A3 admission 整体关闭。 |
-| G1 现有证据 | **部分完成，仍 fail-closed** | `c4284b...674` / `99fa4428...d4cd` 的 held-out 文件/内容为 `765d39a...20a` / `bada1803...67a`，paired 文件/内容为 `cc960206...f23` / `53bdc658...7a0`。paired 门通过但仍为 `pending_d6_external_audit`；2026-07-21 D6 审计未绑定该证据。 |
-| A3 parser 与实现溯源 | **D5-owned 已关闭** | admission/runtime 权限值不再隐式转 bool；准入评估器和运行控制器纳入实现 SHA。字符串 `"true"` 等类型伪造返回 `bundle_admission_invalid`。 |
-| A3 正式非退化证据 | **P1 开放** | 现有 `9c0cb50...ad4` / `829d0166...77b` 仅是 behavior-cloning development bundle；报告 `8a40aeb8...81e` 明确 `assist=false`，缺至少 20 unseen seed 的正式 paired non-degradation。 |
-| main 正式 G1 调用 | **P0 跨模块已关闭** | 统一 episode 总线显式传入 `require_g1_assist_eligible=True`；`learning_runtime` 与 `experiment_matrix` 专项 `12 passed, 1 warning`。实际旧 bundle 在 G1/A1/A2/A3/C1/F1 预检中均失败关闭。 |
-| 旧冻结 bundle 的当前源码复载 | **P1 开放** | G1/A3 当前实现 SHA 分别为 `ff8c744e...a1b7` / `e7db827f...3b4`，两个旧 bundle 均返回 `bundle_implementation_runtime_mismatch`。禁止重算旧清单或增加兼容白名单。 |
+| G1 独立 evidence assembler | **D5-owned 已关闭** | 只接收 development bundle、held-out、paired-shadow、D6 audit 四类明确实物及带外 SHA-256；不接收 caller-provided `TrackletG1AdmissionReport` 或准入布尔值。 |
+| v4 evidence 实物与原子发布 | **D5-owned 已关闭** | v4 打包三份 `evidence/*.json`；`SHA256SUMS` 精确覆盖 manifest、weights 和 evidence。staging 经 strict loader 与输入不变性复核后原子发布，失败无半成品。 |
+| v4 公开加载时复核 | **D5-owned 已关闭** | 公开 loader/runtime 每次复算文件及内容摘要，核对 D6 consumer、20/900/45、三个安全计数和模型/实现/数据谱系；装配后篡改任一 evidence 均失败关闭。 |
+| G1 authority 边界 | **关闭并保持回归** | 合法 v4 仅有 `g1_assist_eligible=true`；`default_model`、全局航迹编号、分配和控制 authority 全 false。production writer 继续拒绝 caller-provided report。 |
+| assembler 实现来源链 | **D5-owned 已关闭** | `_IMPLEMENTATION_SOURCE_FILES` 已包含 `tracklet_g1_evidence_assembler.py`，当前实现摘要为 `41381db3...94b07`；专项测试确认只改变 assembler 摘要会改变整体摘要。旧 bundle 严格加载返回 `implementation_runtime_mismatch`，无白名单。 |
+| G1 软件正向合同 | **fixture 范围已关闭** | 正向 fixture 可原子生成 v4，并由公开 runtime strict loader 加载。该结果只证明合同可运行，不代表当前模型获准。 |
+| 当前 `99fa4428` 实物准入 | **P1 开放，fail-closed** | 实际 D6 audit 仍有 `implementation_lineage_mismatch`、`robustness_threshold_not_met.cluster_f1`、`robustness_threshold_not_met.edge_f1`、`synthetic_single_feature_shortcut`。assembler 返回 `d6_external_audit_fail_closed`、退出码 2，目标目录不存在。 |
+| 新模型和新外部审计 | **P1 开放** | 需消除实现谱系不一致和合成单特征捷径，并让边/簇困难扰动达到门限；随后重新生成 held-out、paired-shadow 和 D6 正向审计。D6 source list/config 由 main 协调 D6 owner 更新。 |
+| A3 evidence assembler | **P1 开放，未实现** | 本轮只处理 G1。A3 production writer 继续拒绝 caller-provided report，公开 assist loader 继续失败关闭。 |
 
-2026-07-26 定向测试 `47 passed in 2.32s`，D5 全量
-`562 passed in 99.88s`，验收阈值为零失败。G1 负例覆盖 missing、tampered、cross-model、
-cross-dataset 和 D6-fail。没有修改旧 manifest、模型权重、校准值、在线 truth 边界或
-`global_track_id`。
+本轮没有修改旧 manifest、模型权重、阈值、校准值、在线 truth 边界或 `global_track_id`。实际
+fail-closed 审计未被重写为 pass。
+2026-07-26 验证为 assembler 专项 `14 passed in 1.21s`、模型流水线
+`20 passed in 4.23s`、D5 全量 `571 passed in 99.00s`。
 
 ## 2026-07-25 冻结图模型 P1 状态
 

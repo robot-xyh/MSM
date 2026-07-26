@@ -1,28 +1,32 @@
 # D5 末端视觉配准与协同身份认证综述及子方案
 
-## 2026-07-26 G1/A3 bundle 复核
+## 2026-07-26 G1 evidence assembler 复核
 
-D5 已对齐 main `d59352b` 的学习 scope 准入合同。G1 旧 v3 bundle 仍只允许开发和 shadow，
-`require_g1_assist_eligible=True` 不接受通过修改旧 manifest 得到的正向布尔值。主审进一步确认
-裸 `TrackletG1AdmissionReport` 不能证明 held-out、paired shadow 和 D6 审计实物存在。D5 采用
-保守关闭方案：production writer 不接收 report，公开 loader/runtime 不执行 v4；严格 parser
-仅通过私有 fixture 回归。A3 同样禁止裸 report 写入和正向运行加载。
+D5 已实现独立 G1 evidence assembler。入口只接受 development bundle、held-out、
+paired-shadow、D6 audit 四类实物和调用方冻结的 SHA-256，不接受
+`TrackletG1AdmissionReport`、正向布尔或权限对象。装配器独立复算文件与内容摘要，核对 D6
+schema、consumer contract、field availability、模型/实现/数据谱系、20/900/45 和三个安全计数。
 
-当前 G1 manifest/weights 仍是 `c4284b...674` / `99fa4428...d4cd`。held-out 文件/内容为
-`765d39a...20a` / `bada1803...67a`，paired 文件/内容为 `cc960206...f23` /
-`53bdc658...7a0`。paired 门已通过，但权限状态仍是 `pending_d6_external_audit`；现有 D6 审计
-生成于 2026-07-21，没有绑定 2026-07-25 paired 结果和当前实现。当前 G1 实现摘要为
-`ff8c744e...a1b7`，旧 bundle 返回 `bundle_implementation_runtime_mismatch`。
+证据全部通过时，装配器才在内部构造准入报告，通过 staging 原子生成
+`d5.tracklet-model-bundle.v4`。v4 实际携带 held-out、paired-shadow 和 D6 audit，校验清单精确
+覆盖 manifest、weights 和三份 evidence。公开 loader/runtime 每次加载都会重验这些实物。合法
+v4 只获得 G1 assist eligibility，不获得 default、全局身份、分配或控制权限。
 
-A3 当前实现 SHA 为 `e7db827f...3b4`，旧 manifest/weights 为 `9c0cb50...ad4` /
-`829d0166...77b`，严格 assist 同样因实现不一致拒绝。行为克隆报告 `8a40aeb8...81e` 明确
-`assist=false`，没有 20 个未见 seed 的正式 paired non-degradation。
+G1 来源摘要已包含 assembler，当前为 `41381db3...94b07`。测试确认改变 assembler 会改变实现
+摘要。旧 development bundle 未绑定该文件，严格加载返回 `implementation_runtime_mismatch`，
+不增加兼容白名单。
 
-因此，D5 已关闭裸 report 自声明和权限字段类型强转的代码缺口；独立证据装配器仍是 P1。G1
-私有 fixture 负例覆盖 missing、tampered、cross-model、cross-dataset 和 D6-fail，公开 runtime
-对结构完整 fixture 仍失败关闭。定向测试 `47 passed in 2.32s`，D5 全量
-`562 passed in 99.88s`。旧 manifest、权重、校准参数、`global_track_id` 和在线 truth 边界均
-未修改。
+正向 fixture 已由公开 strict loader/runtime 加载，说明软件合同可执行。它不代表当前模型获准。
+实际 `99fa4428...d4cd` D6 audit 为 `fail_closed`，四项 blocker 为
+`implementation_lineage_mismatch`、`robustness_threshold_not_met.cluster_f1`、
+`robustness_threshold_not_met.edge_f1`、`synthetic_single_feature_shortcut`。实际 assembler
+返回 `d6_external_audit_fail_closed`、退出码 2，未创建目标 bundle。
+
+A3 evidence assembler 仍未实现。A3 production writer 和公开 assist loader 保持失败关闭。后续
+需先获得绑定当前实现、没有单特征捷径且困难扰动达标的新 G1 模型证据，再由 D6 owner 对齐来源
+清单并生成新的正向外部审计。
+2026-07-26 验证为 assembler 专项 `14 passed in 1.21s`、模型流水线
+`20 passed in 4.23s`、D5 全量 `571 passed in 99.00s`。
 
 ## 2026-07-25 冻结图模型复核
 

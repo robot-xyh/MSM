@@ -1,5 +1,22 @@
 # D5 M 对 N 末端多视角配准与协同定位调研
 
+## 2026-07-26 G1 装配与 M 对 N 使用边界
+
+G1 独立 evidence assembler 已闭合软件证据链。合法 v4 必须实际打包 held-out、
+paired-shadow 和 D6 audit，并由公开 loader/runtime 逐次复核。正向 fixture 只证明该合同可运行，
+不能据此宣称图模型已适用于 M 对 N 联盟、多相机部分重叠或真实飞行条件。
+
+当前 `99fa4428...d4cd` 模型仍未准入。实际 D6 审计以
+`implementation_lineage_mismatch`、`robustness_threshold_not_met.cluster_f1`、
+`robustness_threshold_not_met.edge_f1` 和 `synthetic_single_feature_shortcut` 四项 blocker
+失败关闭；assembler 返回 `d6_external_audit_fail_closed`，没有生成 v4。G1 实现摘要已包含
+assembler，当前为 `41381db3...94b07`，旧 bundle 因缺该来源绑定返回
+`implementation_runtime_mismatch`。A3 assembler 仍未实现。
+
+因此 M 对 N 主线继续使用确定性投影、几何门、受约束聚类和中心航迹绑定。图模型只在未来获得
+G1 assist eligibility 后参与候选边评分，仍不能创建 `global_track_id`、决定联盟成员或输出控制。
+本轮 D5 全量回归为 `571 passed in 99.00s`；该结果验证软件合同，没有新增 M 对 N 运行证据。
+
 ## 2026-07-25 同一模型谱系对 M 对 N 的边界
 
 新的 20-seed 成对影子评估绑定当前可严格加载的 `99fa4428...d4cd` 权重，覆盖

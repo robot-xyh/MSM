@@ -1,40 +1,39 @@
 # D5 终端视觉配准与身份认证计划
 
-## 2026-07-26 G1 与 A3 严格准入合同
+## 2026-07-26 G1 证据装配闭环
 
-- [x] 保留 G1 运行时显式门
-  `require_g1_assist_eligible=True`。旧 v3 development bundle 仍只允许 shadow；缺失字段、
-  修改旧 manifest 或把非布尔值写入权限字段均失败关闭。
-- [x] 关闭 G1 裸报告自声明。生产 writer 拒绝任何 `g1_admission_report`；公开 loader/runtime
-  拒绝所有手工拼装 v4，原因码为
-  `bundle_g1_admission_evidence_assembler_unavailable`。v4 parser 只保留私有 fixture 回归。
-- [x] 关闭 A3 裸报告自声明。生产 writer 拒绝任何 `admission_report`；公开 loader/runtime
-  拒绝正向 assist 清单，原因码为 `bundle_admission_evidence_assembler_unavailable`。
-- [x] G1 当前实现 SHA-256 为
-  `ff8c744ed2583d9f6b6d3992faf935c5ced085726ac664d2e2f27c05c838a1b7`。旧
-  `c4284b...674` / `99fa4428...d4cd` bundle 返回
-  `bundle_implementation_runtime_mismatch`，没有兼容白名单。
-- [x] A3 当前实现 SHA-256 为
-  `e7db827f5f2bbbf8a89e94ceeae8a4bdef31c646d003983c5928b46879b533b4`。权限布尔值和计数继续
-  严格解析，不允许隐式类型转换。
-- [x] G1 私有 loader 负例覆盖 missing、tampered、cross-model、cross-dataset 和 D6-fail；
-  A3 覆盖生产 writer 拒绝、公开 runtime 拒绝和类型篡改。定向 `47 passed in 2.32s`，
-  D5 全量 `562 passed in 99.88s`。
-- [ ] 设计独立证据装配器。它必须接收实际 held-out、paired shadow 和 D6 audit 文件，逐文件
-  校验 SHA、内容摘要、严格 schema、同一模型/实现/数据集/划分绑定，并把证据纳入 bundle
-  checksum tree。该任务完成前不恢复 G1/A3 正向生产写入或运行加载。
-- [ ] G1 在当前实现上重新运行 seed `1000-1019` 的 900-episode held-out 与 paired shadow，
-  再由 D6 生成绑定两个报告、模型指纹和当前实现的正向外部审计。现有 paired 报告虽通过，
-  权限仍为 `pending_d6_external_audit`。
-- [ ] A3 采集至少 20 个完全未见 seed 的正式、非合成、同 seed 规则/模型 paired 结果，覆盖
-  安全违规、可见率和重捕获时延非退化。现有行为克隆报告明确 `assist=false`。
-- [ ] 独立装配器完成并通过主审后，才由 main 分别执行 G1/A3 scope 初始化。任何
-  `bundle_implementation_runtime_mismatch`、证据 SHA 不一致、未获准、规则回退或模型版本变化
-  都应在创建 shard 前终止。
+- [x] 实现 D5 独立 G1 evidence assembler 和命令行入口。调用方必须显式提供 v3 development
+  bundle、held-out、paired-shadow、D6 audit 四类实物及各自带外 SHA-256；接口不接受
+  `TrackletG1AdmissionReport`、准入布尔值或权限对象。
+- [x] 严格校验 D6 顶层 schema/content SHA、consumer schema、field availability、审计状态、
+  全 false authority、failure reasons、20/900/45、三个安全计数，以及模型、实现、数据集、划分、
+  训练集和两份评估报告的文件/内容哈希交叉绑定。
+- [x] 仅在全部证据通过后，由 assembler 内部构造 admission report，并通过同级 staging 目录原子
+  发布 `d5.tracklet-model-bundle.v4`。失败时删除 staging，不创建或覆盖目标 bundle。
+- [x] v4 实际打包 held-out、paired-shadow 和 D6 audit 三份 JSON。`SHA256SUMS` 精确覆盖
+  manifest、weights 和三份 evidence；公开 loader/runtime 每次加载都复算这些实物与 admission
+  交叉绑定，任一篡改均失败关闭。
+- [x] v4 只允许 `g1_assist_eligible=true`。`default_model`、全局航迹编号、分配和控制权限均保持
+  `false`；production `write_tracklet_model_bundle()` 继续拒绝 caller-provided report。
+- [x] 将 `tracklet_g1_evidence_assembler.py` 纳入 G1 `_IMPLEMENTATION_SOURCE_FILES`。当前运行
+  实现摘要为 `41381db3d11371c049e5569658820ce98abf1a9966ecf86edc0f13f140894b07`；
+  回归测试确认仅改变 assembler 摘要即可改变整体实现摘要。旧 development bundle 未绑定该文件，
+  严格 loader 返回 `implementation_runtime_mismatch`，不设兼容白名单。
+- [x] 正向 fixture 可原子生成 v4，并由公开 strict loader/runtime 加载。该结果只证明合同可执行，
+  不代表当前模型获准，也不构成真实多相机或 AirSim 性能证据。
+- [x] 用实际 D6 审计复核当前 `99fa4428...d4cd` 实物。assembler 返回
+  `d6_external_audit_fail_closed`，进程退出码为 2，目标目录不存在。四项 blocker 为
+  `implementation_lineage_mismatch`、`robustness_threshold_not_met.cluster_f1`、
+  `robustness_threshold_not_met.edge_f1`、`synthetic_single_feature_shortcut`。
+- [ ] 训练或选择没有合成单特征捷径、困难扰动达到门限且绑定当前实现的新模型，重新生成 held-out、
+  paired-shadow 和 D6 外部审计。D6 source list/config 由 main 协调 D6 owner 另行对齐。
+- [ ] A3 主动视觉 evidence assembler 仍未实现。A3 production writer 继续拒绝 caller-provided
+  report，公开 assist loader 继续失败关闭；本轮不处理 A3。
 
-本次影响学习 bundle、准入实验口径和后续 AirSim shadow 计划，已同步检查并更新
-`docs/MODULE_PRINCIPLES_CN.md`、`docs/ALGORITHM_AND_IMPLEMENTATION.md`、
-`docs/AIRSIM_INTEGRATION_PLAN.md` 与 `docs/EXPERIMENT_REPORT.md`。
+本次改变 G1 bundle 准入软件链和实现来源摘要。模块 README、原理、算法、实验报告及 D5 GAP/review
+同步更新；AirSim settings、相机、检测、局部多目标跟踪、episode 和消息接口均未改变。
+2026-07-26 验证为 assembler 专项 `14 passed in 1.21s`、模型流水线
+`20 passed in 4.23s`、D5 全量 `571 passed in 99.00s`，验收要求为零失败。
 
 ## 2026-07-25 冻结图模型证据链
 

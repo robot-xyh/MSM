@@ -46,14 +46,11 @@ G1_ASSIST_NOT_ELIGIBLE_REASON = "bundle_g1_assist_not_eligible"
 RUNTIME_ADMISSION_REQUIREMENT_INVALID_REASON = (
     "bundle_runtime_admission_requirement_invalid"
 )
-G1_EVIDENCE_ASSEMBLER_UNAVAILABLE_CODE = (
-    "g1_admission_evidence_assembler_unavailable"
-)
-_G1_LOADER_FIXTURE_TOKEN = object()
 _IMPLEMENTATION_SOURCE_FILES = (
     "scalable_3d_adapter.py",
     "sparse_tracklet_graph.py",
     "tracklet_dataset.py",
+    "tracklet_g1_evidence_assembler.py",
     "tracklet_gnn.py",
     "tracklet_heldout_evaluation.py",
     "tracklet_model_bundle.py",
@@ -413,7 +410,7 @@ def load_tracklet_model_bundle(
     expected_training_set_sha256: str | None = None,
     expected_readiness_audit_sha256: str | None = None,
 ) -> CalibratedTrackletEdgeScorer:
-    """Load a production bundle; admitted v4 remains disabled."""
+    """Strictly load a development v3 or evidence-assembled G1 v4 bundle."""
 
     return _load_tracklet_model_bundle_impl(
         bundle_dir,
@@ -423,26 +420,6 @@ def load_tracklet_model_bundle(
         expected_split_sha256=expected_split_sha256,
         expected_training_set_sha256=expected_training_set_sha256,
         expected_readiness_audit_sha256=expected_readiness_audit_sha256,
-        fixture_token=None,
-    )
-
-
-def _load_tracklet_model_bundle_fixture(
-    bundle_dir: str | Path,
-    *,
-    device: torch.device | str = "cpu",
-) -> CalibratedTrackletEdgeScorer:
-    """Exercise the future v4 parser in tests without granting runtime access."""
-
-    return _load_tracklet_model_bundle_impl(
-        bundle_dir,
-        device=device,
-        expected_model_semantic_version=MODEL_SEMANTIC_VERSION,
-        expected_dataset_manifest_sha256=None,
-        expected_split_sha256=None,
-        expected_training_set_sha256=None,
-        expected_readiness_audit_sha256=None,
-        fixture_token=_G1_LOADER_FIXTURE_TOKEN,
     )
 
 
@@ -455,7 +432,6 @@ def _load_tracklet_model_bundle_impl(
     expected_split_sha256: str | None,
     expected_training_set_sha256: str | None,
     expected_readiness_audit_sha256: str | None,
-    fixture_token: object | None,
 ) -> CalibratedTrackletEdgeScorer:
     """Strictly validate checksums/schema/order and load weights safely."""
 
@@ -474,9 +450,11 @@ def _load_tracklet_model_bundle_impl(
             raise ModelBundleValidationError(code, f"required bundle file is missing: {path.name}")
 
     checksums = _read_checksums(checksums_path)
-    expected_files = {MANIFEST_FILENAME, WEIGHTS_FILENAME}
-    if set(checksums) != expected_files:
-        raise ModelBundleValidationError("checksums_fields_mismatch", "SHA256SUMS must cover manifest and weights")
+    if MANIFEST_FILENAME not in checksums or WEIGHTS_FILENAME not in checksums:
+        raise ModelBundleValidationError(
+            "checksums_fields_mismatch",
+            "SHA256SUMS must cover manifest and weights",
+        )
     manifest_sha256 = sha256_file(manifest_path)
     weights_sha256 = sha256_file(weights_path)
     _expect_equal(manifest_sha256, checksums[MANIFEST_FILENAME], "manifest_sha_mismatch")
@@ -492,10 +470,30 @@ def _load_tracklet_model_bundle_impl(
             "bundle_schema_mismatch", "unsupported model bundle schema"
         )
     admitted_schema = bundle_schema == G1_ADMITTED_MODEL_BUNDLE_SCHEMA_VERSION
-    if admitted_schema and fixture_token is not _G1_LOADER_FIXTURE_TOKEN:
+    if admitted_schema:
+        from .tracklet_g1_evidence_assembler import (
+            G1_BUNDLE_CHECKSUM_FILES,
+        )
+
+        expected_files = set(G1_BUNDLE_CHECKSUM_FILES)
+    else:
+        expected_files = {MANIFEST_FILENAME, WEIGHTS_FILENAME}
+    if set(checksums) != expected_files:
         raise ModelBundleValidationError(
-            G1_EVIDENCE_ASSEMBLER_UNAVAILABLE_CODE,
-            "v4 admission is disabled until verified evidence assembly exists",
+            "checksums_fields_mismatch",
+            "SHA256SUMS does not cover the exact bundle file set",
+        )
+    for filename in expected_files - {MANIFEST_FILENAME, WEIGHTS_FILENAME}:
+        artifact_path = root / filename
+        if not artifact_path.is_file():
+            raise ModelBundleValidationError(
+                "evidence_missing",
+                f"required evidence file is missing: {filename}",
+            )
+        _expect_equal(
+            sha256_file(artifact_path),
+            checksums[filename],
+            "evidence_sha_mismatch",
         )
     _expect_equal(
         manifest.get("model_semantic_version"),
@@ -644,6 +642,9 @@ def _load_tracklet_model_bundle_impl(
             "status",
             "default_model",
             "g1_assist_eligible",
+            "global_track_id_authority",
+            "assignment_authority",
+            "control_authority",
             "report",
         }:
             raise ModelBundleValidationError(
@@ -653,6 +654,9 @@ def _load_tracklet_model_bundle_impl(
             admission.get("status") != "g1_assist_admitted"
             or admission.get("default_model") is not False
             or admission.get("g1_assist_eligible") is not True
+            or admission.get("global_track_id_authority") is not False
+            or admission.get("assignment_authority") is not False
+            or admission.get("control_authority") is not False
             or not isinstance(admission.get("report"), Mapping)
         ):
             raise ModelBundleValidationError(
@@ -773,7 +777,7 @@ def _load_tracklet_model_bundle_impl(
         if not bool(torch.all(torch.isfinite(value))):
             raise ModelBundleValidationError("state_dict_non_finite", f"non-finite tensor: {key}")
     if admitted_schema:
-        model_fingerprint = tracklet_model_fingerprint(state_dict)
+        model_fingerprint = f"sha256:{weights_sha256}"
         _expect_equal(
             weights.get("model_fingerprint"),
             model_fingerprint,
@@ -785,6 +789,22 @@ def _load_tracklet_model_bundle_impl(
             model_fingerprint,
             "admission_model_fingerprint_mismatch",
         )
+        try:
+            from .tracklet_g1_evidence_assembler import (
+                TrackletG1EvidenceAssemblyError,
+                validate_admitted_bundle_evidence,
+            )
+
+            validate_admitted_bundle_evidence(
+                root,
+                manifest,
+                admission_report,
+            )
+        except TrackletG1EvidenceAssemblyError as exc:
+            raise ModelBundleValidationError(
+                f"evidence_{exc.code}",
+                exc.detail,
+            ) from exc
     try:
         model.load_state_dict(state_dict, strict=True)
     except (RuntimeError, TypeError, ValueError) as exc:
@@ -1020,7 +1040,15 @@ def _read_checksums(path: Path) -> dict[str, str]:
         if len(parts) != 2 or not _SHA256_PATTERN.fullmatch(parts[0]):
             raise ModelBundleValidationError("checksums_invalid", "invalid SHA256SUMS line")
         filename = parts[1]
-        if filename in result or Path(filename).name != filename:
+        relative = Path(filename)
+        if (
+            filename in result
+            or not filename
+            or relative.is_absolute()
+            or ".." in relative.parts
+            or "." in relative.parts
+            or relative.as_posix() != filename
+        ):
             raise ModelBundleValidationError("checksums_invalid", "invalid checksum filename")
         result[filename] = parts[0]
     return result

@@ -4,17 +4,17 @@
 
 AirSim 和统一三维 episode 接入 D5 学习能力时，G1 图模型必须通过
 `require_g1_assist_eligible=True` 的严格加载，A3 主动视觉必须通过 assist 模式的严格加载。当前
-运行实现摘要分别为
-`ff8c744ed2583d9f6b6d3992faf935c5ced085726ac664d2e2f27c05c838a1b7` 和
+G1 运行实现摘要已包含 evidence assembler，为
+`41381db3d11371c049e5569658820ce98abf1a9966ecf86edc0f13f140894b07`；A3 仍为
 `e7db827f5f2bbbf8a89e94ceeae8a4bdef31c646d003983c5928b46879b533b4`。现有两个开发 bundle
 均绑定旧实现，严格加载返回 `bundle_implementation_runtime_mismatch`。不得重算旧 manifest，
 也不得增加兼容白名单绕过实现摘要。
 
-当前生产 writer 不接收 G1/A3 正向报告，公开 loader/runtime 不执行手工拼装的 admitted 清单。
-原因是现有 report 结构只携带 SHA 和布尔值，没有逐文件验证或打包实际 held-out、paired shadow
-和 D6 audit。独立证据装配器完成前，G1、A3、C1、F1 均不能创建正式学习 scope，AirSim 主线继续
-使用确定性几何关联和规则主动视觉。本次没有修改 settings、相机参数、检测器、局部多目标跟踪、
-actor、reset 或导引接口。
+G1 已有独立 evidence assembler，可从明确实物原子生成并严格加载 v4；production writer 仍不接收
+调用方 report。当前 `99fa4428...d4cd` 实物的 D6 audit 为 `fail_closed`，因此没有生成 admitted
+bundle，AirSim G1 scope 仍不能初始化。A3 assembler 尚未实现，A3/C1/F1 继续失败关闭。AirSim
+主线继续使用确定性几何关联和规则主动视觉。本次只同步准入状态，没有修改 settings、相机参数、
+检测器、局部多目标跟踪、actor、reset、消息 DTO 或导引接口。
 
 ## 2026-07-25 冻结图模型的 AirSim 边界
 

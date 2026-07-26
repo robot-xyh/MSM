@@ -1,24 +1,35 @@
 # D5 末端视觉配准与身份认证实验报告
 
-## 2026-07-26 G1/A3 严格合同复核
+## 2026-07-26 G1 证据装配验证
 
-主审复核发现，原 G1/A3 production writer 可以直接消费调用方构造的正向 report。report 内的
-SHA 和布尔值没有对应实物文件验证，不能证明 held-out、paired shadow 或 D6 audit 实际存在。
-本轮采用失败关闭方案：两个生产 writer 均拒绝调用方 admission report；公开 loader/runtime 均
-拒绝手工构造的正向清单。严格 parser/loader 仅通过私有 fixture 验证未来格式。
+本轮实现了 D5 独立 G1 evidence assembler。正向 fixture 使用一份新生成的 development bundle、
+held-out、paired-shadow 和 D6 pass audit，完成原子 v4 装配。公开 strict loader 和 runtime 在
+每次加载时复核 manifest、weights、三份 evidence、内容摘要和 admission 交叉绑定。fixture
+只验证软件合同可运行，不代表当前模型获准，也不提供真实多相机、AirSim 或物理拦截证据。
 
-现有 G1 manifest/weights SHA-256 为 `c4284b...674` / `99fa4428...d4cd`，当前实现 SHA-256 为
-`ff8c744e...a1b7`。held-out 与 paired shadow 证据已存在，paired 门通过，但仍为
-`pending_d6_external_audit`；2026-07-21 的 D6 审计没有绑定后续 paired 报告和当前实现。现有
-A3 manifest/weights 为 `9c0cb50...ad4` / `829d0166...77b`，当前实现 SHA-256 为
-`e7db827f...3b4`；行为克隆报告 `8a40aeb8...81e` 明确 `assist=false`，且没有正式 20-seed
-paired non-degradation。两个旧 bundle 均以 `bundle_implementation_runtime_mismatch` 拒绝。
+负例覆盖 D6 fail、缺文件、文件及内容 SHA 篡改、跨模型/数据集/实现、field unavailable、布尔与
+整数类型伪造、装配后 evidence 篡改、非空目标目录、失败无半成品和旧手工 v4 绕过。生产
+`write_tracklet_model_bundle()` 仍拒绝 caller-provided report。v4 的 `default_model`、全局航迹
+编号、分配和控制 authority 均为 false。
 
-结论为 G1、A3、C1、F1 全部正式准入失败关闭，正式学习 episode 为 0。C1 和 F1 同时依赖 D5
-图模型、D5 主动视觉及 D3/D4 学习 bundle，任一分项未获辅助权限即不得初始化 scope。G1 私有
-fixture 负例覆盖 missing、tampered、cross-model、cross-dataset 和 D6-fail。本轮定向测试
-`47 passed in 2.32s`，D5 全量测试 `562 passed in 99.88s`。旧 manifest、模型权重、阈值和
-校准值均未修改，在线真值仍不进入关联与主动视觉输入。
+G1 实现摘要已纳入 `tracklet_g1_evidence_assembler.py`，当前为
+`41381db3d11371c049e5569658820ce98abf1a9966ecf86edc0f13f140894b07`。专项回归模拟只改变
+assembler 文件摘要，整体实现摘要随之改变。旧 development bundle 未绑定该文件，公开严格
+loader 返回 `implementation_runtime_mismatch`，没有使用兼容白名单。
+
+实际复核使用 `99fa4428...d4cd` 权重和 D6 审计
+`d5_g1_external_audit_99fa4428_20260726`。审计状态为 `fail_closed`，assembler 稳定返回
+`d6_external_audit_fail_closed`，退出码为 2，目标 bundle 目录不存在。四项 blocker 是：
+
+1. `implementation_lineage_mismatch`
+2. `robustness_threshold_not_met.cluster_f1`
+3. `robustness_threshold_not_met.edge_f1`
+4. `synthetic_single_feature_shortcut`
+
+阈值、实现兼容白名单、旧 bundle、held-out、paired-shadow 和 D6 输出均未修改。当前模型仍无
+G1 assist eligibility。A3 evidence assembler 尚未实现，主动视觉学习 assist 继续失败关闭。
+软件回归结果为 assembler 专项 `14 passed in 1.21s`、模型流水线
+`20 passed in 4.23s`、D5 全量 `571 passed in 99.00s`。
 
 ## 2026-07-25 同一冻结权重 20-seed 成对影子评估
 

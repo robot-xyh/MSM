@@ -6,8 +6,7 @@
 
 加载器先校验目录、`SHA256SUMS`、manifest、权重、schema、特征顺序、训练来源、实现来源和校准
 参数，再处理使用权限。shadow 只在完整性校验通过后返回只读模型。G1 调用还必须设置
-`require_g1_assist_eligible=True`；A3 调用必须请求 `ASSIST`。当前没有独立证据装配器，生产
-writer 禁止生成正向 G1/A3 bundle，公开 loader/runtime 也禁止执行手工拼装的正向清单。
+`require_g1_assist_eligible=True`；A3 调用必须请求 `ASSIST`。
 
 G1 v4 准入报告采用以下判据：
 
@@ -20,10 +19,15 @@ I_{n_{\mathrm{samecam}}=0}.
 \]
 
 其中 \(N_s\) 为完全未见 seed 数，\(N_e\) 为 held-out episode 数，\(N_c\) 为场景规模单元数。
-该公式是未来证据装配器的准入判据，当前 parser 不能自行证明文件存在。装配器还必须逐文件读取
-模型、训练数据、held-out、paired shadow 和 D6 audit，校验文件及内容 SHA、严格 schema 和交叉
-绑定，并把证据纳入 bundle checksum tree。实现前，公开 loader 对任何正向 v4 均返回
-`bundle_g1_admission_evidence_assembler_unavailable`。
+该判据已由 G1 独立 evidence assembler 实施。输入必须是 development bundle、held-out、
+paired-shadow、D6 audit 四类实物和各自带外 SHA-256。装配器不接受调用方构造的 admission
+report。它先复算文件与规范化内容摘要，再核对 D6 顶层与 consumer schema、field availability、
+审计状态、全 false authority、failure reasons、模型/实现/数据谱系、20/900/45 和三个安全计数。
+
+通过后，装配器内部构造 `TrackletG1AdmissionReport`，在同级临时目录写入 manifest、weights 和
+三份 `evidence/*.json`。`SHA256SUMS` 必须精确覆盖这五份文件。staging bundle 经公开 strict
+loader 复核且输入实物未发生变化后，才用原子目录替换发布。目标目录非空、输入变化或任一验证
+失败都会清除 staging，不留下半成品。
 
 A3 使用已有成对非退化判据：
 
@@ -36,19 +40,26 @@ I_{\mathrm{synthetic}}^{\,0}.
 \]
 
 \(\Delta V\) 是模型减规则的平均可见率差，\(\Delta t_{\mathrm{reacquire}}\) 是重捕获时延差。除平均
-门外，每个 episode 也不得出现安全、可见率或重捕获退化。该判据当前只用于离线评估；生产 writer
-不接受报告对象，公开 loader 对正向 assist 返回
-`bundle_admission_evidence_assembler_unavailable`。
+门外，每个 episode 也不得出现安全、可见率或重捕获退化。A3 独立 evidence assembler 尚未实现；
+该判据当前只用于离线评估，production writer 不接受报告对象，公开 assist loader 继续失败关闭。
 
-G1 的实现摘要覆盖 `scalable_3d_adapter.py`、稀疏图、数据合同、模型、held-out、paired shadow、
-训练和 bundle loader，当前为 `ff8c744e...a1b7`。A3 摘要覆盖准入评估器、主动视觉控制器、数据
-合同、模型、训练和 loader，当前为 `e7db827f...3b4`。两份旧 bundle 均因
-`bundle_implementation_runtime_mismatch` 拒绝。G1 paired 仍等待 D6 正向外部审计；A3 没有正式
-paired 数据。生产代码不能写入或执行 admitted bundle，未来恢复必须经过独立装配器和主审。
+G1 的实现摘要覆盖运行适配、稀疏图、数据合同、模型、held-out、paired shadow、训练、bundle
+loader 和 evidence assembler，当前为 `41381db3...94b07`。回归测试确认改变 assembler 会改变
+摘要。旧 development bundle 未包含该来源文件，严格 loader 返回 `implementation_runtime_mismatch`，
+没有兼容白名单。
 
-2026-07-26 定向测试为 `47 passed in 2.32s`，D5 全量为
-`562 passed in 99.88s`。私有 fixture 正例只检查 parser/loader 结构；公开 runtime 对同一 fixture
-保持失败关闭。
+正向 fixture 可原子生成 v4，并由公开 loader/runtime 在
+`require_g1_assist_eligible=True` 下加载。v4 只授予 G1 assist eligibility；default、全局航迹编号、
+分配和控制 authority 全为 false。该 fixture 只证明软件合同可运行。
+
+当前 `99fa4428...d4cd` 实物没有生成 admitted bundle。实际 D6 审计为 `fail_closed`，原因是
+`implementation_lineage_mismatch`、`robustness_threshold_not_met.cluster_f1`、
+`robustness_threshold_not_met.edge_f1` 和 `synthetic_single_feature_shortcut`。assembler 返回
+`d6_external_audit_fail_closed` 且不创建目标目录。后续需要新模型、新数据和新的 D6 正向审计，
+不能通过修改阈值或重写旧证据恢复权限。
+
+2026-07-26 验证结果为 assembler 专项 `14 passed in 1.21s`、模型流水线
+`20 passed in 4.23s`、D5 全量 `571 passed in 99.00s`。
 
 ## 冻结模型审计链
 

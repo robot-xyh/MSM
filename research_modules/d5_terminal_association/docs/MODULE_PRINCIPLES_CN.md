@@ -4,25 +4,37 @@
 
 ## 模型读取与使用权限
 
-模型完整性和模型使用权限是两层独立条件。开发训练与成对影子评估可以读取通过完整性校验的
-development bundle。G1 跨视角图辅助和 A3 主动视觉辅助属于正式使用权限，调用方必须显式请求
-assist。任何加载或准入失败都返回 unavailable，由确定性几何和扫描规则继续工作。
+模型完整性、证据准入和运行权限分三层处理。development bundle 可用于离线训练与影子评估；
+G1 跨视角图辅助只有在外部证据链完整、D6 审计通过且运行时再次核验后才可用。无论 G1 是否通过，
+模型都没有创建或改写 `global_track_id`、改变分配计划或输出控制命令的权限。
 
-G1 旧 v3 manifest 永久保持 `g1_assist_eligible=false`。主审确认裸 v4 report 不能作为权限来源：
-调用方可以手工填写占位 SHA 和正向布尔值，但这些字段不能证明 held-out、paired shadow 和 D6
-审计文件实际存在。生产 writer 因此禁止接收 G1 report，公开 loader/runtime 也拒绝所有正向 v4。
-v4 schema 和 parser 只保留在私有测试 fixture 中，用于未来独立证据装配器的合同回归。
+G1 独立证据装配器接收四类明确实物：v3 development bundle、held-out 报告、paired-shadow
+报告和 D6 外部审计。每个输入都带调用方冻结的文件 SHA-256。装配器独立读取并重算文件与规范化
+内容摘要，核对严格 schema、字段可用性、模型指纹、当前实现、数据集、划分、训练集、20 个未见
+seed、900 个 held-out episode、45 个场景规模单元和三个零安全计数。调用方不能传入
+`TrackletG1AdmissionReport` 或一个正向布尔值替代证据。
 
-A3 原 writer 也可依据裸成对报告授予 assist，现已按同一原则关闭。生产 writer 不接收
-admission report，公开 loader/runtime 不运行正向 assist 清单。权限字段仍要求严格 JSON 布尔和
-整数类型。缺失独立证据装配器期间，主动视觉只允许 development/shadow。
+全部验证通过后，装配器才在内部构造准入报告，通过临时目录生成
+`d5.tracklet-model-bundle.v4`，并以原子目录替换发布。v4 内含 held-out、paired-shadow 和 D6
+audit 三份证据 JSON；`SHA256SUMS` 同时覆盖 manifest、weights 和三份证据。公开 loader/runtime
+每次加载都重新验证五份文件、三份内容摘要和 manifest admission 交叉绑定。任一文件缺失、篡改、
+跨模型复用、字段不可用或类型不严格都会失败关闭。
 
-当前 G1/A3 实现 SHA-256 分别为 `ff8c744e...a1b7` 和 `e7db827f...3b4`。两份旧 bundle 均返回
-`bundle_implementation_runtime_mismatch`。G1 的 900-episode held-out 与 paired shadow 已完成，
-但 paired 权限仍为 `pending_d6_external_audit`；A3 只有明确 `assist=false` 的行为克隆开发报告，
-没有正式 paired 结果。因此生产代码不能生成或运行 admitted bundle。定向测试
-`47 passed in 2.32s`，D5 全量 `562 passed in 99.88s`。这些测试验证失败关闭边界，不替代正式
-证据。
+G1 实现来源摘要现包含 `tracklet_g1_evidence_assembler.py`，当前值为
+`41381db3...94b07`。测试通过替换 assembler 文件摘要确认整体实现摘要随之改变。旧
+development bundle 未绑定该文件，严格加载返回 `implementation_runtime_mismatch`；系统不提供
+兼容白名单，也不重写旧 manifest。
+
+正向 fixture 已能原子生成 v4，并由公开 strict loader/runtime 加载。该 fixture 只验证合同实现，
+不代表当前模型准入。实际 `99fa4428...d4cd` 模型的 D6 审计仍为 `fail_closed`，四项 blocker 是
+`implementation_lineage_mismatch`、`robustness_threshold_not_met.cluster_f1`、
+`robustness_threshold_not_met.edge_f1` 和 `synthetic_single_feature_shortcut`。实际装配返回
+`d6_external_audit_fail_closed`，未生成目标 bundle。
+
+A3 主动视觉仍没有独立 evidence assembler。其 production writer 继续拒绝 caller-provided
+report，公开 assist loader 继续失败关闭。确定性几何关联和规则主动视觉仍是默认路径。
+2026-07-26 D5 全量回归为 `571 passed in 99.00s`，assembler 专项为
+`14 passed in 1.21s`。
 
 ## 冻结图模型的证据边界
 
