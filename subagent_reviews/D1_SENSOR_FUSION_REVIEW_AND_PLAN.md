@@ -5,7 +5,7 @@
 
 ---
 
-## 最新增量：在线发布证据子集快照 clean smoke（2026-07-25）
+## 最新增量：在线发布证据子集快照正式拒绝（2026-07-25）
 
 - D1 已复核现有
   `FusionAdapter.consistency_evidence_snapshot(observation_ids)`。传入 ID iterable 时，
@@ -38,16 +38,26 @@
   `263 passed, 1 warning`。警告是既有 Matplotlib `Axes3D` 环境提示；D1 定向
   consistency snapshot/replay-prefix 证据仍为 `22 passed in 0.49s`。D1 源码和测试未变。
 - detached clean commit
-  `028ac34debcfc5ca6ed2f6f88a5868d7b5f0f67b` 上完成一对 200/200/2、seed 1151、
-  2.2 秒、2028 条在线观测的三维质点 smoke。两臂均为有限状态且在线真值使用为 0；
-  D1/D2 在线记录 SHA-256、consistency count/digest 和原 D1 operation counts 一致。
-- candidate 14/14 次选择命中子集，fallback、lookup miss、非法 ID 和空 required 集合
-  均为 0。累计在线返回记录由 `13679` 降为 `4429`，减少 `67.621902%`；最终离线
-  consistency 仍全量导出 2028 条。
-- 单 pair 的 D1、module stack、episode 与外部命令计时方向混合，实时因子约
-  `0.265 < 1`。clean smoke 允许进入正式矩阵预注册，不是候选准入、系统实时或
-  AirSim/硬件性能结论。正式 13-pair matrix 与 D6 evaluator 尚未完成，默认仍为 full
-  snapshot。
+  `028ac34debcfc5ca6ed2f6f88a5868d7b5f0f67b` 上的一对 200/200/2 smoke 先确认语义与
+  失败关闭边界。该单 pair 结果只作为候选形成历史。
+- D6 随后对 producer clean commit
+  `d0219eb14c529a4fb9bf7d6610a9f32055a09206`、matrix SHA-256
+  `6c808c4df8759fd893c6d37ff9dce4a1efa07f9867fc71aff47a55c5f8517338`
+  完成独立评估。short seeds 1151-1160 各 2.2 秒，long seeds 1151-1153 各 10 秒，
+  共 13 pair/26 个 fresh episode，0 reused、0 failed。
+- 13/13 pair 的业务语义、有限状态、在线真值隔离、实现身份、D1/D2 在线记录、
+  consistency digest/count、原 D1 operation counts 和诊断审计通过。candidate
+  429/429 次子集成功，fallback、lookup miss、非法 ID 和空 required 集合均为 0。
+  返回记录由 `1602170` 降为 `133917`，削减 `91.641524%`。
+- 正式 verdict 为 `reject`，`main_default_promotion_allowed=false`。失败门为 short
+  candidate 更快 `4/10 < 8/10`、short D1 fusion 改善 `-0.147877% < 1%`、short
+  bootstrap 95% 上界 `1.374681% > 0%`。
+- long candidate 更快 `2/3`、long D1 改善 `1.047143%`、short/long core 改善
+  `0.330057%/0.837777%`、D2/RSS 守门和返回记录削减门通过，不能覆盖短时失败门。
+  candidate 最低 RTF 为 `0.203423 < 1`。
+- 内部返回对象工作量削减已经证实，短时端到端收益不稳定。candidate 不晋升，
+  `full_consistency_snapshot_v1` 保持默认；系统实时 P1 继续开放。本结果不覆盖 AirSim、
+  目标硬件、实机、实飞或正式 RMSE/NEES/NIS。
 
 ## 最新增量：固定滞后回放前缀累计摘要正式拒绝（2026-07-25）
 
@@ -139,9 +149,9 @@
 - 模块微基准通过只作为候选形成历史。正式准入已经以 `reject` 审结，reference 保持默认，
   candidate 保持默认关闭。本次 source commit、matrix SHA、门限、失败 pair 和 D6 verdict
   不得调整或覆盖。
-- 后续独立候选已完成 main selector、调用点、配置、诊断、CLI、模块栈回归和一对 clean
-  200/200/2 smoke；默认仍为 reference。它使用新的 implementation ID 和 schema，不复用
-  本候选身份，也不改写本次拒绝结论。独立预注册矩阵和 D6 判定尚未完成。
+- 后续独立候选已完成 main selector、调用点、配置、诊断、CLI、模块栈回归、一对 clean
+  200/200/2 smoke 和独立正式评估；默认仍为 reference。它使用新的 implementation ID 和
+  schema，不复用本候选身份，也不改写任一拒绝结论。
 - 本轮没有改变 AirSim producer、DTO、episode、坐标或双时间戳合同；新增了 D1 runtime
   publication 只读接口。`docs/AIRSIM_INTEGRATION_PLAN.md` 已同步正式默认状态和接线边界。当前结果
   不是 AirSim、目标硬件、实机、实飞、系统实时、RMSE、NEES 或 NIS 证据。

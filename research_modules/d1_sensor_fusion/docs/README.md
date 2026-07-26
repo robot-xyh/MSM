@@ -4,7 +4,7 @@
 
 ## 当前证据索引（2026-07-25）
 
-### 在线证据子集快照 clean smoke
+### 在线证据子集快照正式拒绝
 
 main 已实现默认 reference 的
 `d1_publication_evidence_snapshot_implementation`。candidate
@@ -13,17 +13,22 @@ materialized tracks `latest_observation_id` 构造去重排序集合；空集、
 子集缺项回退 `full_consistency_snapshot_v1`。selector、execution config、diagnostics 和
 CLI 已贯通。
 
-3/3/1、1.4 秒、seed 34 的模块栈 episode 中，candidate fallback/lookup miss 为 0，
-fused-tracks payload 与 reference 完全一致；空 required 集合回退 full 已由 main 专项
-覆盖。当前复跑结果为 module-stack `62 passed, 1 warning`、scalable 全量
-`263 passed, 1 warning`；D1 定向接口测试仍为
-`22 passed in 0.49s`。
+候选形成阶段的 3/3/1 模块栈回归、失败关闭专项和一对 detached clean 200/200/2 smoke
+均通过。正式结论由 D6 对 producer clean commit
+`d0219eb14c529a4fb9bf7d6610a9f32055a09206`、matrix SHA-256
+`6c808c4df8759fd893c6d37ff9dce4a1efa07f9867fc71aff47a55c5f8517338`
+的独立评估给出。
 
-detached clean `028ac34debcfc5ca6ed2f6f88a5868d7b5f0f67b` 上的一对
-200/200/2、seed 1151、2.2 秒 smoke 中，D1/D2 在线记录、consistency count/digest 和原
-D1 operation counts 一致。candidate 14/14 次子集成功，fallback/lookup miss/invalid/empty
-均为 0，累计返回记录由 `13679` 降为 `4429`，削减 `67.621902%`。单 pair 计时方向混合，
-实时因子约 `0.265 < 1`。正式矩阵和 D6 判定未完成，默认保持 full snapshot。详细边界见
+冻结矩阵包含 short seeds 1151-1160 各 2.2 秒和 long seeds 1151-1153 各 10 秒，
+共 13 pair/26 个 fresh episode，0 reused、0 failed。13/13 业务语义、有限状态、在线
+真值隔离、实现身份、D1/D2 在线记录、consistency digest/count、原 D1 operation counts
+和诊断审计通过。candidate 429/429 次子集成功，fallback/lookup miss/invalid/empty 均为
+0；返回记录由 `1602170` 降为 `133917`，削减 `91.641524%`。
+
+D6 verdict 为 `reject`，`main_default_promotion_allowed=false`。short candidate 更快
+`4/10 < 8/10`、short D1 改善 `-0.147877% < 1%`、short bootstrap 上界
+`1.374681% > 0%`。candidate 最低 RTF 为 `0.203423 < 1`。内部工作量削减已证实，
+短时收益不稳定；默认保持 full snapshot，系统实时 P1 继续开放。详细边界见
 `ALGORITHM_AND_IMPLEMENTATION.md`、
 `MODULE_PRINCIPLES_CN.md`、`EXPERIMENT_REPORT.md` 和 `AIRSIM_INTEGRATION_PLAN.md`。
 
@@ -49,8 +54,8 @@ short D1 fusion 改善 `0.959611% < 1%`、short bootstrap 上界
 
 reference `per_checkpoint_prefix_rebuild_v1` 继续作为默认。candidate
 `fixed_lag_checkpoint_prefix_cumulative_summary_v1` 保留为默认关闭研究入口，不得声称
-已晋升。独立的 publication observation-ID 子集候选已完成 main 接线、模块栈回归和一对
-clean smoke，但尚无独立预注册矩阵或 D6 判定。本证据只覆盖三维质点仿真。详细结果见
+已晋升。独立的 publication observation-ID 子集候选也已完成正式矩阵，结论为
+`reject`。两项结论均只覆盖三维质点仿真。详细结果见
 `ALGORITHM_AND_IMPLEMENTATION.md`、`MODULE_PRINCIPLES_CN.md`、
 `EXPERIMENT_REPORT.md` 和正式 D6 bundle
 `../../d6_evaluation_metrics/outputs/`

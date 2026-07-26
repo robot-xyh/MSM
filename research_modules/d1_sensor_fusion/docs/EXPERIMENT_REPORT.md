@@ -1,6 +1,72 @@
 # 第一研究模块实验结果
 
-## 在线证据子集快照 Clean Smoke
+## 在线证据子集快照正式多种子评估
+
+**证据日期：2026-07-25**
+
+**范围：200 个目标、200 个资源、2 个侦察节点的三维质点 short/long 同提交冻结矩阵**
+
+### 来源与规模
+
+- producer clean commit：
+  `d0219eb14c529a4fb9bf7d6610a9f32055a09206`；
+- matrix SHA-256：
+  `6c808c4df8759fd893c6d37ff9dce4a1efa07f9867fc71aff47a55c5f8517338`；
+- reference：`full_consistency_snapshot_v1`；
+- candidate：`required_observation_subset_v1`；
+- short seeds 1151-1160，每臂 2.2 秒，共 10 pair；
+- long seeds 1151-1153，每臂 10 秒，共 3 pair；
+- 合计 13 pair/26 个 fresh episode，0 reused、0 failed。
+
+两臂均固定使用 replay-prefix reference
+`per_checkpoint_prefix_rebuild_v1`，唯一 treatment 是在线发布证据快照 selector。
+
+### 语义与工作量
+
+13/13 pair 的业务语义、有限状态、实现身份、D1/D2 在线记录、consistency digest/count、
+原 D1 operation counts 和诊断审计全部通过。在线真值使用次数为 0。candidate
+429/429 次选择成功，fallback、lookup miss、非法 required ID 和空 required 集合均为 0。
+
+| 工作量 | Reference | Candidate | 变化 |
+| --- | ---: | ---: | ---: |
+| 累计返回记录 | `1602170` | `133917` | 削减 `91.641524%` |
+| 子集选择成功 | 不适用 | `429/429` | 全部成功 |
+| fallback/lookup miss/invalid/empty | `0/0/0/0` | `0/0/0/0` | 守门通过 |
+
+该削减描述在线返回对象构造范围。最终离线 consistency evidence 仍按全量、精确语义导出。
+
+### 性能与判定
+
+| 分组 | 指标 | Reference 均值 | Candidate 均值 | 改善或增幅 |
+| --- | --- | ---: | ---: | ---: |
+| Short | D1 fusion | `2.479580 s` | `2.482785 s` | `-0.147877%` |
+| Short | core wall | `8.595556 s` | `8.566789 s` | `0.330057%` |
+| Short | D2 association | `0.504043 s` | `0.513980 s` | `+1.963565%` |
+| Long | D1 fusion | `17.616719 s` | `17.430862 s` | `1.047143%` |
+| Long | core wall | `48.734323 s` | `48.325878 s` | `0.837777%` |
+| Long | D2 association | `3.508502 s` | `3.458793 s` | `-1.149580%` |
+
+D6 verdict 为 `reject`，`main_default_promotion_allowed=false`。失败门为：
+
+| 冻结门 | 实测 | 阈值 | 判定 |
+| --- | ---: | ---: | --- |
+| Short candidate 更快数 | `4/10` | `>=8/10` | 失败 |
+| Short D1 fusion 改善 | `-0.147877%` | `>=1%` | 失败 |
+| Short paired bootstrap 相对变化 95% 上界 | `1.374681%` | `<=0%` | 失败 |
+
+long candidate 更快 `2/3`、long D1 改善、short/long core 改善、D2/RSS 守门和返回记录
+削减门通过。正式准入要求全部冻结门通过，因此上述通过项不能改变 `reject`。candidate
+最低 RTF 为 `0.203423 < 1`，系统实时 P1 独立未关闭。
+
+reference `full_consistency_snapshot_v1` 继续作为默认。candidate
+`required_observation_subset_v1` 保留为默认关闭的研究入口。正式 bundle 位于
+`research_modules/d6_evaluation_metrics/outputs/`
+`d1_publication_evidence_snapshot_multiseed_20260725_formal_d0219eb_d6/`，稳定摘要为
+`sha256:66717e42512c030da0cccaaf125952e637107fe2ce256bb450c12954dd39275d`。
+本结果只覆盖冻结三维质点矩阵，不包含 AirSim、目标硬件、实机、实飞或正式
+RMSE/NEES/NIS。
+
+## 在线证据子集快照候选形成历史
 
 **证据日期：2026-07-25**
 
@@ -53,9 +119,9 @@ candidate 14/14 次选择走子集快照，fallback、lookup miss、非法 requi
 | 实时因子 | `0.264761` | `0.264632` | 均未达到 1 |
 
 episode、外部命令、D1 fusion 和 module stack 的计时方向不一致，单 pair 不能排除缓存、
-调度和后处理波动。本次结果只允许候选进入正式矩阵预注册。正式 13-pair balanced matrix、
-性能门和 D6 evaluator 尚未完成，默认仍为 full snapshot。本结果不覆盖 AirSim、冻结目标
-处理器、硬件、实机、实飞或正式 RMSE/NEES/NIS。
+调度和后处理波动。本次结果只用于候选形成；后续正式 13-pair balanced matrix 已完成并
+给出 `reject`，默认仍为 full snapshot。本结果不覆盖 AirSim、冻结目标处理器、硬件、
+实机、实飞或正式 RMSE/NEES/NIS。
 
 此前 3/3/1、1.4 秒、seed 34 的小场景集成回归、unknown-ID/空集合失败关闭专项、
 module-stack `62 passed, 1 warning`、scalable 全量 `263 passed, 1 warning` 和 D1 定向
@@ -105,8 +171,8 @@ D6 verdict 为 `reject`，`main_default_promotion_allowed=false`，
 
 reference 继续作为 D1 和 main 默认。candidate 保留为默认关闭的显式研究入口，不删除、
 不晋升，也不修改本次冻结结论。独立的 publication observation-ID 子集候选已完成 main
-实现、模块栈回归和一对 clean smoke；它使用新的 implementation ID，独立预注册矩阵和 D6
-判定仍未完成。
+实现、模块栈回归、一对 clean smoke 和独立正式评估；它使用新的 implementation ID，
+正式 verdict 同样为 `reject`。
 
 正式 bundle 位于 `research_modules/d6_evaluation_metrics/outputs/`
 `d1_replay_prefix_summary_multiseed_20260725_formal_7d2e987_d6/`。本结果只覆盖三维质点
@@ -275,9 +341,9 @@ reference 继续作为默认。
 
 正式矩阵中的在线 publication 已调用 `consistency_evidence_snapshot()`；episode 最终
 offline evidence 导出继续使用 `consistency_evidence_records()` 或
-`export_consistency_evidence()`。新的 observation-ID 子集投影候选已完成 main 实现和
-模块栈回归，并通过一对 clean smoke，但尚无正式多 seed 准入；它不能追溯修改本节历史
-微基准或上节正式拒绝。
+`export_consistency_evidence()`。新的 observation-ID 子集投影候选已完成 main 实现、
+模块栈回归、一对 clean smoke 和独立正式多 seed 评估，结论为 `reject`；它不能追溯修改
+本节历史微基准或任一冻结拒绝结论。
 
 ## 关联稀疏预筛正式多种子评估
 

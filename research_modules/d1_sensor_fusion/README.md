@@ -4,7 +4,7 @@ Offline research module for radar, acoustic, EO, and optional synthetic lidar he
 
 ## 当前性能与治理证据（2026-07-25）
 
-### 第三十七阶段：在线证据子集快照 clean smoke
+### 第三十七阶段：在线证据子集快照正式拒绝
 
 main 已增加 `d1_publication_evidence_snapshot_implementation`。reference 为
 `full_consistency_snapshot_v1`，candidate 为 `required_observation_subset_v1`，默认保持
@@ -16,22 +16,34 @@ candidate 从同一 release cycle 的 source observations 和 materialized track
 缺项回退 full snapshot，并记录固定原因。selector、execution config 和 diagnostics 已进入
 runtime profile、observation governance、module final、episode summary 和 CLI。
 
-2026-07-25 在 detached clean commit
-`028ac34debcfc5ca6ed2f6f88a5868d7b5f0f67b` 上完成一对 200 个目标、200 个资源、
-2 个侦察节点、seed 1151、2.2 秒的三维质点 smoke，共 2028 条在线观测。两臂均为
-有限状态且在线真值使用为 0；D1/D2 在线记录 SHA-256、最终 consistency count/digest 和
-原 D1 fusion operation counts 分别严格一致。
+2026-07-25，D6 对 producer clean commit
+`d0219eb14c529a4fb9bf7d6610a9f32055a09206` 和 matrix SHA-256
+`6c808c4df8759fd893c6d37ff9dce4a1efa07f9867fc71aff47a55c5f8517338`
+完成独立评估。冻结矩阵为 200 个目标、200 个资源和 2 个侦察节点；short seeds
+1151-1160 各 2.2 秒，long seeds 1151-1153 各 10 秒，共 13 pair/26 个 fresh
+episode，0 reused、0 failed。
 
-candidate 的 14 次选择全部命中子集快照，fallback、lookup miss、非法 required ID 和空
-required 集合均为 0。14 次在线选择累计返回记录由 `13679` 降至 `4429`，减少
-`67.621902%`；最终离线 consistency 仍全量导出 2028 条记录。此前 3/3/1、1.4 秒、
-seed 34 的模块栈回归、unknown-ID/空集合失败关闭专项，以及 module-stack
-`62 passed, 1 warning`、scalable 全量 `263 passed, 1 warning` 结果继续有效。
+13/13 pair 的业务语义、有限状态、在线真值使用为 0、实现身份、D1/D2 在线记录、
+consistency digest/count、原 D1 operation counts 和诊断审计全部通过。candidate
+429/429 次子集选择成功，fallback、lookup miss、非法 required ID 和空 required 集合均为
+0。累计返回记录由 `1602170` 降至 `133917`，削减 `91.641524%`；最终离线
+consistency 仍保持全量、精确导出。
 
-单 pair 的 episode、外部命令、D1 fusion 与 module stack 计时方向混合，实时因子约
-`0.265 < 1`。该 clean smoke 只允许候选进入正式矩阵预注册，不构成性能准入、实时、
-AirSim、硬件、实机或实飞证据。正式 13-pair matrix 和 D6 独立判定仍待完成；默认继续
-使用 `full_consistency_snapshot_v1`，最终 offline evidence export 继续全量物化。
+D6 正式 verdict 为 `reject`，`main_default_promotion_allowed=false`。三个失败门为：
+short candidate 更快数 `4/10 < 8/10`，short D1 fusion 改善
+`-0.147877% < 1%`，short paired bootstrap 相对变化 95% 上界
+`1.374681% > 0%`。long candidate 更快 `2/3`、long D1 改善 `1.047143%`、
+short/long core 改善 `0.330057%/0.837777%`、D2/RSS 守门和返回记录削减门通过，
+但不能覆盖短时失败门。
+
+candidate 最低实时因子为 `0.203423 < 1`，系统实时 P1 独立保持开放。内部返回对象工作量
+削减已经证实，短时端到端收益不稳定；candidate 不晋升，reference
+`full_consistency_snapshot_v1` 继续作为默认。正式 bundle 位于
+`research_modules/d6_evaluation_metrics/outputs/`
+`d1_publication_evidence_snapshot_multiseed_20260725_formal_d0219eb_d6/`，稳定摘要为
+`sha256:66717e42512c030da0cccaaf125952e637107fe2ce256bb450c12954dd39275d`。
+本证据只覆盖三维质点仿真，不覆盖 AirSim、硬件、实机、实飞或正式
+RMSE/NEES/NIS。
 
 ### 第三十六阶段：固定滞后回放前缀累计摘要正式拒绝
 
@@ -64,10 +76,9 @@ reference `per_checkpoint_prefix_rebuild_v1` 继续作为 `FusionAdapter`、
 本证据只覆盖三维质点仿真，不包含 AirSim、目标硬件、实机、实飞或正式
 RMSE/NEES/NIS 证据。
 
-独立的 publication observation-ID 子集候选已经完成 main 实现、模块栈回归和一对 clean
-200/200/2 smoke，用于避免在线路径构造无关 evidence 记录。该方案使用新的 implementation
-ID；正式独立预注册矩阵和 D6 判定尚未完成，不能复用本候选身份，也不能覆盖本次
-`reject`。
+独立的 publication observation-ID 子集候选已完成 main 实现、模块栈回归、一对 clean
+200/200/2 smoke 和独立正式矩阵。该方案使用新的 implementation ID，正式结论同样为
+`reject`；它不能复用回放摘要候选身份，也不能覆盖任一冻结结论。
 
 D1 新增默认关闭的固定滞后回放 selector
 `fixed_lag_checkpoint_prefix_cumulative_summary_v1`。reference 为
@@ -104,8 +115,8 @@ ledger。新增 observation ID 不得与旧 ledger 重叠，首个新排序键�
 - `consistency_evidence_snapshot(observation_ids=None)` 返回当下精确的不可变记录，但不消费
   pending ledger。传入 ID 集合时只为请求记录构造 counter overlay；未知或非法 ID 失败关闭。
 - 正式回放摘要矩阵的 main 在线 publication 调用了全量 snapshot；episode 最终导出仍使用
-  records/export。新的子集 selector 已在 main 实现并保持默认关闭，尚无 clean
-  200/200/2 smoke 或正式准入证据。
+  records/export。新的子集 selector 已在 main 实现并完成独立正式评估，结论为
+  `reject`；reference 保持默认。
 
 main 第一次 dirty smoke（200v200、2 个侦察节点、seed 1151、2.2 s）暴露 append 处理缺口：
 1,584 次正常 append 触发 1,584 次 `checkpoint_suffix_appended` 物化，逻辑刷新和物化记录

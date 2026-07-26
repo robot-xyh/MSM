@@ -8,16 +8,16 @@
 
 ## 0. 当前正式治理 GAP 增量（2026-07-25）
 
-### 固定滞后回放前缀累计摘要正式拒绝
+### 固定滞后回放与发布证据快照正式结论
 
 | GAP | 当前状态 | D1-owned 证据 | 剩余关闭条件 |
 | --- | --- | --- | --- |
 | 可信、完整且未变化的 checkpoint 前缀仍逐条重建 NIS、门控观测 ID 和 consistency evidence 回放计数 | **P1 主线 GAP 未关闭；本候选正式 reject** | D6 对 clean `7d2e987471b521a1e531bf03a5c99af5096f676a`、matrix SHA `85432d729877eff97e6f3dd517d4baa7a47f44a4fa42e6bfdc7ce85b8d9ec74b` 的 13 pair/26 fresh episode 完成正式评估。13/13 业务语义、consistency digest/count、原 D1 operation counts、实现身份、诊断守恒和真值隔离通过；但五个端到端性能门失败，verdict=`reject` | reference 保持默认，candidate 仅作默认关闭研究入口。本候选准入流程已审结。未来优化必须提出新的实现身份和预注册矩阵，不得调门、删 pair 或覆盖本次 verdict |
 | 正常 checkpoint append 提前物化旧 pending ledger | **D1-owned 修复已关闭并通过正式回归** | 修复前 dirty smoke 为 1,584 次 append/物化。修复后 append 物化为 0；正式 13 pair 中正常追加和不兼容追加物化均为 0，最终 pending ledger 为 0，consistency digest/count 与 reference 一致 | 保持 append、迟到插入、fixed-lag 重基准、失效和最终导出回归；不得把 append 安全修复与候选正式准入混同 |
-| 在线 publication 全量 snapshot 构造无关 evidence 记录 | **P1 开放；clean smoke 通过，正式准入未完成** | main 已实现默认 reference 的 `d1_publication_evidence_snapshot_implementation`，candidate 为 `required_observation_subset_v1`。detached clean `028ac34debcfc5ca6ed2f6f88a5868d7b5f0f67b` 的 200/200/2、seed 1151、2.2 秒单 pair 中，D1/D2 在线记录、consistency count/digest 和原 D1 operation counts 一致；14/14 次子集成功，fallback/lookup miss/invalid/empty 均为 0，累计返回记录 `13679 -> 4429`，削减 `67.621902%`。单 pair 计时方向混合，RTF 约 `0.265 < 1` | 保持 reference 默认和 replay-prefix reference 单 treatment；冻结新的 13-pair balanced matrix、evidence/evaluator schema，由 D6 独立判定。当前不得写入性能准入、实时、AirSim、硬件、实机或实飞结论 |
+| 在线 publication 全量 snapshot 构造无关 evidence 记录 | **P1 主线 GAP 未关闭；本候选正式 reject** | D6 对 clean `d0219eb14c529a4fb9bf7d6610a9f32055a09206`、matrix SHA `6c808c4df8759fd893c6d37ff9dce4a1efa07f9867fc71aff47a55c5f8517338` 的 13 pair/26 fresh episode 完成正式评估。13/13 业务语义、有限状态、在线真值隔离、实现身份、D1/D2 在线记录、consistency digest/count、原 D1 operation counts 和诊断审计通过；429/429 子集成功，失败关闭计数均为 0，返回记录 `1602170 -> 133917`，削减 `91.641524%`。short 更快、short D1 改善和 short bootstrap 三门失败，verdict=`reject` | `full_consistency_snapshot_v1` 保持默认，candidate 仅作默认关闭研究入口。本候选准入流程已审结。未来优化必须提出新的实现身份和预注册矩阵，不得调门、删 pair 或覆盖本次 verdict |
 | 累计摘要可能跳过 evidence 刷新或污染 checkpoint | **D1-owned 安全边界已关闭并持续回归** | summary 仅含不可变 tuple/标量；逻辑刷新通过独立区间账本延迟物化。正式 13/13 pair 的 consistency digest/count、原 D1 operation counts、诊断守恒、实现身份和最终 pending=0 通过 | 保持迟到量测、门控拒绝、重复/子集 snapshot、前缀变化、schema/version/修订失配和别名隔离回归；不得用陈旧 counter、跳过刷新或改变既有操作计数换性能 |
 | 候选默认值和正式治理 | **P1 默认未改变；正式判定 reject** | `main_default_promotion_allowed=false`。reference `per_checkpoint_prefix_rebuild_v1` 仍是 D1/main 默认；candidate `fixed_lag_checkpoint_prefix_cumulative_summary_v1` 默认关闭且保留 | 不删除候选，不声称已晋升。任何新方案使用新的 selector、implementation ID、schema、矩阵和判定；本轮冻结证据保持不变 |
-| 系统实时、AirSim 和融合质量 | **P1 开放** | candidate 最低 RTF `0.197441 < 1`，`system_realtime_gap_closed=false`。正式证据只覆盖 200/200/2 三维质点仿真 | 继续完成目标周期、AirSim、目标硬件、实机/实飞、RMSE、NEES 和 NIS 验收；不得从 long D1 `2.361778%` 或内部物化削减外推系统实时 |
+| 系统实时、AirSim 和融合质量 | **P1 开放** | 回放摘要 candidate 最低 RTF `0.197441 < 1`，发布证据子集 candidate 最低 RTF `0.203423 < 1`，`system_realtime_gap_closed=false`。正式证据只覆盖 200/200/2 三维质点仿真 | 继续完成目标周期、AirSim、目标硬件、实机/实飞、RMSE、NEES 和 NIS 验收；不得从 long D1 局部改善或内部工作量削减外推系统实时 |
 
 `required_observation_subset_v1` 是独立的 main 集成候选。reference 为
 `full_consistency_snapshot_v1`，第一轮两臂均保持
@@ -27,10 +27,26 @@ treatment。required ID 只能来自同一 release cycle 的当前 source observ
 
 D1 API 接受空 iterable 并返回空快照；该行为对通用接口是确定的，但无法证明 main 集合完整。
 main 现已将空集、未知/非法 ID 和返回子集缺项回退全量，并记录固定原因；最终 offline
-export 始终走全量 records/export。2026-07-25 clean 200/200/2 smoke 已关闭“只有 dirty
-或小场景接线证据”的子项，但只有一个 seed。D1/D2 在线记录、consistency count/digest 和
-原 D1 operation counts 等价，14/14 子集成功，失败关闭计数为 0，累计返回记录削减
-`67.621902%`。正式 13-pair matrix、性能门和 D6 准入仍未完成，P1 保持开放。
+export 始终走全量 records/export。单 pair clean smoke 关闭了“只有 dirty 或小场景接线
+证据”的子项，随后正式 13-pair matrix 关闭了准入等待流程。
+
+正式矩阵绑定 producer clean commit
+`d0219eb14c529a4fb9bf7d6610a9f32055a09206` 和 matrix SHA-256
+`6c808c4df8759fd893c6d37ff9dce4a1efa07f9867fc71aff47a55c5f8517338`。
+short seeds 1151-1160 各 2.2 秒，long seeds 1151-1153 各 10 秒；共 13 pair/26 个
+fresh episode，0 reused、0 failed。13/13 语义和审计门通过，429/429 子集成功，
+fallback/lookup miss/invalid/empty 均为 0，返回记录削减 `91.641524%`。
+
+失败门为 short candidate 更快 `4/10 < 8/10`、short D1 fusion 改善
+`-0.147877% < 1%`、short bootstrap 95% 上界 `1.374681% > 0%`。long candidate 更快
+`2/3`、long D1 改善 `1.047143%`、short/long core 改善
+`0.330057%/0.837777%` 和 D2/RSS 守门通过，不能覆盖失败门。D6 verdict 为
+`reject`，`main_default_promotion_allowed=false`。候选最低 RTF 为 `0.203423 < 1`，
+因此候选准入流程关闭，底层系统实时 P1 保持开放。
+
+正式 bundle 位于 `research_modules/d6_evaluation_metrics/outputs/`
+`d1_publication_evidence_snapshot_multiseed_20260725_formal_d0219eb_d6/`，稳定摘要为
+`sha256:66717e42512c030da0cccaaf125952e637107fe2ce256bb450c12954dd39275d`。
 
 冻结 fixture 为 `d1-replay-prefix-summary-200v200-20260725`，fixture SHA-256 为
 `sha256:4e7fcb00432fc4c6736b5ba301d06363e73357fc91689618b6ddab0b1307490e`，生成观测

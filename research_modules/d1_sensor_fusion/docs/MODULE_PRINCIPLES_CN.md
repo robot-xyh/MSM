@@ -6,7 +6,7 @@
 
 ## 当前权威增量（2026-07-25）
 
-### 在线发布证据子集快照候选边界
+### 在线发布证据子集快照正式判定与接口边界
 
 前一回放摘要候选正式拒绝后，在线 publication 仍全量构造 consistency evidence 记录。
 main 现已实现独立的快照范围 selector，把 candidate 范围缩小到本次 publication 实际引用的
@@ -40,11 +40,30 @@ detached clean commit `028ac34debcfc5ca6ed2f6f88a5868d7b5f0f67b` 的单 pair
 200/200/2、seed 1151、2.2 秒 smoke 含 2028 条在线观测。两臂的 D1/D2 在线记录、
 consistency count/digest 和原 D1 operation counts 一致。candidate 14/14 次子集成功，
 fallback、lookup miss、非法 ID 和空 required 集合均为 0；累计返回记录由 `13679` 降为
-`4429`，削减 `67.621902%`。最终离线 consistency 仍全量导出 2028 条。
+`4429`，削减 `67.621902%`。该结果是候选形成历史，不承担正式准入结论。
 
-单 pair 的 D1、module stack、episode 和外部命令计时方向混合，实时因子约
-`0.265 < 1`。该 smoke 只证明业务语义和工作量边界，正式矩阵、性能门与 D6 准入尚未形成，
-默认继续使用全量 snapshot。
+D6 随后对 producer clean commit
+`d0219eb14c529a4fb9bf7d6610a9f32055a09206` 和 matrix SHA-256
+`6c808c4df8759fd893c6d37ff9dce4a1efa07f9867fc71aff47a55c5f8517338`
+完成 13 pair/26 个 fresh episode 的独立评估。场景为 200 个目标、200 个资源和 2 个侦察
+节点；short seeds 1151-1160 各 2.2 秒，long seeds 1151-1153 各 10 秒，0 reused、
+0 failed。
+
+13/13 pair 的业务语义、有限状态、在线真值使用为 0、实现身份、D1/D2 在线记录、
+consistency digest/count、原 D1 operation counts 和诊断审计通过。candidate
+429/429 次选择成功，fallback、lookup miss、非法/空 required 集合均为 0；累计返回记录
+由 `1602170` 降为 `133917`，削减 `91.641524%`。
+
+正式 verdict 为 `reject`，`main_default_promotion_allowed=false`。short candidate 更快数
+`4/10 < 8/10`，short D1 fusion 改善 `-0.147877% < 1%`，short bootstrap 95% 上界
+`1.374681% > 0%`。long D1 改善 `1.047143%`、short/long core 改善
+`0.330057%/0.837777%` 和 D2/RSS 守门通过，不能覆盖短时失败门。candidate 最低 RTF
+`0.203423 < 1`。
+
+因此接口与失败关闭设计继续保留，`required_observation_subset_v1` 不晋升，
+`full_consistency_snapshot_v1` 保持默认。内部返回对象工作量削减已经证实，短时端到端
+收益不稳定。系统实时 P1 继续开放；本结果不覆盖 AirSim、硬件、实机、实飞或正式
+RMSE/NEES/NIS。
 
 ### 固定滞后回放前缀累计摘要
 
@@ -144,11 +163,10 @@ pending 为 0。该测试锁定既有 `>=20%` 门。
 专项回归还在四个 checkpoint 的中间插入迟到观测，确认 revision 推进、旧后缀失败关闭并
 按新顺序重建。D1 全量回归为 `488 passed in 30.96s`。
 
-独立的 publication observation-ID 子集候选已完成 main 实现、模块栈回归和一对 clean
-200/200/2 smoke。单次 smoke 的累计返回记录削减已观察到，但计时方向混合，不能据此形成
-性能结论。它使用新的 implementation ID，保持未知/非法 ID 回退、内部证据所有权失败关闭
-和最终全量 evidence 导出。独立预注册矩阵和 D6 判定仍未完成，也不能改写本次冻结
-`reject`。本节证据只来自三维质点仿真，不覆盖 AirSim、目标硬件、实机、实飞或正式
+独立的 publication observation-ID 子集候选已完成 main 实现、模块栈回归、一对 clean
+200/200/2 smoke 和独立正式评估。它使用新的 implementation ID，保持未知/非法 ID 回退、
+内部证据所有权失败关闭和最终全量 evidence 导出；正式 verdict 同样为 `reject`，不能改写
+本次冻结结论。本节证据只来自三维质点仿真，不覆盖 AirSim、目标硬件、实机、实飞或正式
 RMSE/NEES/NIS。
 
 ### 模态感知保守稀疏预筛正式拒绝后的治理

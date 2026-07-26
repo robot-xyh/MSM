@@ -8,7 +8,7 @@
 
 ## 当前权威增量（2026-07-25）
 
-### 在线 publication required-observation 子集候选
+### 在线 publication required-observation 子集正式判定
 
 #### D1 接口复核
 
@@ -73,21 +73,32 @@ full 并记录 reason。D1 owner 复跑 module-stack 为 `62 passed, 1 warning`�
 `263 passed, 1 warning`。
 
 2026-07-25 在 detached clean commit
-`028ac34debcfc5ca6ed2f6f88a5868d7b5f0f67b` 上运行一对 200/200/2、seed 1151、
-2.2 秒 smoke，共 2028 条在线观测。两臂均为有限状态且在线真值使用为 0；D1 在线记录
-SHA-256 均为
-`d89c17baa598f9fd58f95013a3e5bdb077f7e82f66cfbcdde6920669ade56bbc`，D2 在线记录
-SHA-256 均为
-`0e75586d2b195db1fa3b6a3591a3b06d761e55e9b34892cbda5f87a57dbb4f43`。最终
-consistency count 均为 2028，digest 均为
-`sha256:b579e62b65169791a1c9526eb5310ba7016149ddd501efe34e82a732c8bbda3a`；
-原 D1 operation counts 一致。
+`028ac34debcfc5ca6ed2f6f88a5868d7b5f0f67b` 上运行的一对 200/200/2、seed 1151、
+2.2 秒 smoke 先确认了接口语义和失败关闭边界。该候选形成证据不承担正式性能准入。
 
-candidate 14/14 次选择使用子集，fallback、lookup miss、非法 ID 和空 required 集合均为
-0。14 次在线选择累计返回记录由 `13679` 降为 `4429`，削减 `67.621902%`。最终离线
-consistency 仍执行全量导出。单 pair 的 D1、module stack、episode 与外部命令计时方向
-混合，实时因子约 `0.265 < 1`；该 smoke 不构成性能准入。冻结 13-pair matrix 与 D6 判定
-仍待完成，默认仍为 `full_consistency_snapshot_v1`。
+D6 随后对 producer clean commit
+`d0219eb14c529a4fb9bf7d6610a9f32055a09206` 和 matrix SHA-256
+`6c808c4df8759fd893c6d37ff9dce4a1efa07f9867fc71aff47a55c5f8517338`
+完成独立评估。冻结场景为 200 个目标、200 个资源和 2 个侦察节点；short seeds
+1151-1160 各 2.2 秒，long seeds 1151-1153 各 10 秒，共 13 pair/26 个 fresh
+episode，0 reused、0 failed。
+
+13/13 pair 的业务语义、有限状态、在线真值使用为 0、实现身份、D1/D2 在线记录、
+consistency digest/count、原 D1 operation counts 和诊断审计通过。candidate
+429/429 次选择成功，fallback、lookup miss、非法 ID 和空 required 集合均为 0。
+累计返回记录由 `1602170` 降为 `133917`，削减 `91.641524%`；最终离线 consistency
+继续全量导出。
+
+D6 verdict 为 `reject`，`main_default_promotion_allowed=false`。失败门为 short candidate
+更快 `4/10 < 8/10`、short D1 fusion 改善 `-0.147877% < 1%` 和 short paired
+bootstrap 相对变化 95% 上界 `1.374681% > 0%`。long candidate 更快 `2/3`、long D1
+改善 `1.047143%`、short/long core 改善 `0.330057%/0.837777%`、D2/RSS 守门和
+`>=50%` 返回记录削减门通过，不能覆盖三个失败门。
+
+candidate 最低 RTF 为 `0.203423 < 1`。内部返回对象工作量削减已经证实，短时端到端收益
+不稳定。`required_observation_subset_v1` 不晋升，
+`full_consistency_snapshot_v1` 保持默认；系统实时 P1 继续开放。本证据不覆盖 AirSim、
+硬件、实机、实飞或正式 RMSE/NEES/NIS。
 
 ### 固定滞后回放前缀累计摘要候选
 
@@ -275,9 +286,10 @@ snapshot；最终 offline export 保持 records/export。当前在线调用仍�
 diagnostics 单独比较，不混入既有 operation-count 等价门。
 
 模块微基准通过仅记录候选形成过程。main 同提交正式矩阵已经完成并给出 `reject`，selector
-继续默认 reference。独立的 publication observation-ID 子集候选已完成 main 实现、模块栈
-回归和一对 clean smoke，使用新的 implementation ID；独立预注册矩阵和 D6 判定仍未完成。
-它不得复用本候选身份或覆盖冻结结论，也不得写成默认准入、系统实时、AirSim 或硬件证据。
+继续默认 reference。独立的 publication observation-ID 子集候选也已完成 main 实现、模块栈
+回归、clean smoke 和正式 D6 评估，结论同样为 `reject`。两项候选使用不同
+implementation ID，不得相互复用身份或覆盖冻结结论，也不得写成默认准入、系统实时、
+AirSim 或硬件证据。
 
 ### 正式拒绝后保持默认关闭的模态感知保守预筛
 

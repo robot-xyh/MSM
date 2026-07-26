@@ -2,6 +2,22 @@
 
 ## 0. 在线证据发布边界（2026-07-25）
 
+- 在线发布证据子集快照候选已经完成三维质点正式评估。producer clean commit 为
+  `d0219eb14c529a4fb9bf7d6610a9f32055a09206`，matrix SHA-256 为
+  `6c808c4df8759fd893c6d37ff9dce4a1efa07f9867fc71aff47a55c5f8517338`。
+  short seeds 1151-1160、long seeds 1151-1153 共形成 13 pair/26 个 fresh episode；
+  场景为 200 个目标、200 个资源和 2 个侦察节点，0 reused、0 failed。
+- 13/13 业务语义、有限状态、在线真值隔离、实现身份、D1/D2 在线记录、
+  consistency digest/count、原 D1 operation counts 和诊断审计通过。candidate
+  429/429 次子集成功，fallback、lookup miss、非法/空 required 集合均为 0；返回记录由
+  `1602170` 降为 `133917`，削减 `91.641524%`。
+- D6 对该候选给出 `reject`，`main_default_promotion_allowed=false`。short 更快
+  `4/10 < 8/10`、short D1 改善 `-0.147877% < 1%`、short bootstrap 上界
+  `1.374681% > 0%` 三个冻结门失败。reference
+  `full_consistency_snapshot_v1` 继续作为默认，candidate
+  `required_observation_subset_v1` 保持默认关闭。
+- candidate 最低 RTF 为 `0.203423 < 1`。本结论证实三维质点在线返回对象工作量削减，
+  没有形成稳定的短时端到端收益，也不构成 AirSim 实时性证据。
 - D1 固定滞后回放前缀累计摘要候选已经完成三维质点正式评估。producer clean commit 为
   `7d2e987471b521a1e531bf03a5c99af5096f676a`，matrix SHA-256 为
   `85432d729877eff97e6f3dd517d4baa7a47f44a4fa42e6bfdc7ce85b8d9ec74b`。
@@ -36,14 +52,13 @@
   `latest_observation_id`；未知/非法 ID 回退 full，selector/config/diagnostics 与 CLI
   已接入，空 required 集合回退 full 已由 main 专项覆盖。模块栈回归为 `62 passed`，
   scalable 全量为 `263 passed`。
-- detached clean `028ac34debcfc5ca6ed2f6f88a5868d7b5f0f67b` 已完成一对
+- detached clean `028ac34debcfc5ca6ed2f6f88a5868d7b5f0f67b` 先完成一对
   200/200/2、seed 1151、2.2 秒三维质点 smoke。两臂在线记录与最终 consistency 等价，
   candidate 14/14 次子集成功，累计返回记录削减 `67.621902%`，但单 pair 计时方向混合且
-  RTF 约 `0.265 < 1`。
-- 上述实现尚未接入 AirSim runtime，也没有 AirSim 同配置 A/B、正式矩阵或 D6 判定。
-  后续 AirSim 接线仍需验证 ID 所有权、fallback/lookup miss 为 0、最终全量导出和 episode
-  reset 隔离；三维质点 clean smoke 不能改写前一候选的 `reject`，也不能外推为 AirSim
-  性能。
+  RTF 约 `0.265 < 1`。后续正式矩阵结果以上述 D6 `reject` 为准。
+- 上述实现尚未接入 AirSim runtime，也没有 AirSim 同配置 A/B 或目标硬件判定。后续
+  AirSim 接线仍需验证 ID 所有权、fallback/lookup miss 为 0、最终全量导出和 episode
+  reset 隔离；三维质点正式矩阵不能外推为 AirSim 性能。
 - 该 API 区分只改变证据读取成本，不改变 6 秒 fixed-lag、量测更新、NIS、门控、后验或
   AirSim sensor adapter。模块微基准不能替代 AirSim episode 性能证据。
 

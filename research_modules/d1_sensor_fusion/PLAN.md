@@ -1,6 +1,6 @@
 # D1 多传感器融合与目标配准实施计划
 
-## P1 在线发布证据子集快照 main 集成与回归（2026-07-25）
+## P1 在线发布证据子集快照正式拒绝与后续治理（2026-07-25）
 
 ### D1-owned 合同结论
 
@@ -43,7 +43,7 @@
    `export_consistency_evidence()`。候选不改 `global_track_id`、双时间戳、协方差、NED、
    fixed-lag、门控、来源谱系或业务 payload hash。
 
-### 当前状态
+### 实现与候选形成证据
 
 main 集成实现与回归已经完成：
 
@@ -71,10 +71,39 @@ main 集成实现与回归已经完成：
 8. 单 pair 的 D1、module stack、episode 和外部命令计时方向混合，实时因子约
    `0.265 < 1`。该数据只证明 clean smoke 语义与工作量边界，不用于性能晋升。
 
-下一步由 main 冻结独立的 13-pair balanced matrix、evidence schema 和 evaluator schema，
-再由 D6 独立给出 `admit/reject`。正式判定前默认继续使用
-`full_consistency_snapshot_v1`，不得把返回记录削减解释为实时闭合、AirSim、硬件、实机或
-实飞能力。
+### 正式判定
+
+D6 已对 producer clean commit
+`d0219eb14c529a4fb9bf7d6610a9f32055a09206` 和 matrix SHA-256
+`6c808c4df8759fd893c6d37ff9dce4a1efa07f9867fc71aff47a55c5f8517338`
+完成独立评估。冻结矩阵包含 200 个目标、200 个资源和 2 个侦察节点；short seeds
+1151-1160 各 2.2 秒，long seeds 1151-1153 各 10 秒，共 13 pair/26 个 fresh
+episode，0 reused、0 failed。
+
+13/13 pair 的业务语义、有限状态、在线真值使用为 0、实现身份、D1/D2 在线记录、
+consistency digest/count、原 D1 operation counts 和诊断审计全部通过。candidate
+429/429 次子集选择成功，fallback、lookup miss、非法 ID 和空 required 集合均为 0。
+累计返回记录由 `1602170` 降为 `133917`，削减 `91.641524%`，超过 `>=50%` 冻结门。
+
+正式 verdict 为 `reject`，`main_default_promotion_allowed=false`。失败门如下。
+
+| 冻结性能门 | 正式结果 | 阈值 | 判定 |
+| --- | ---: | ---: | --- |
+| Short candidate 更快数 | `4/10` | `>=8/10` | 失败 |
+| Short D1 fusion 改善 | `-0.147877%` | `>=1%` | 失败 |
+| Short paired bootstrap 相对变化 95% 上界 | `1.374681%` | `<=0%` | 失败 |
+
+long candidate 更快 `2/3`，long D1 改善 `1.047143%`，short/long core 改善
+`0.330057%/0.837777%`，D2/RSS 守门通过。这些通过项不能覆盖短时失败门。candidate
+最低 RTF 为 `0.203423 < 1`，系统实时 P1 独立保持开放。
+
+### 后续状态
+
+本候选准入流程已审结。candidate `required_observation_subset_v1` 保留为默认关闭的研究
+入口，reference `full_consistency_snapshot_v1` 保持默认，最终 offline export 继续全量。
+内部返回对象工作量削减已经证实，短时端到端收益不稳定。未来若继续治理该热点，必须使用
+新的实现身份、预注册矩阵和 D6 独立判定，不得调低本轮门限、删除失败 pair 或覆盖
+`reject`。系统实时、AirSim、目标硬件、实机、实飞、RMSE、NEES 和 NIS 继续作为开放 P1。
 
 ## P1 固定滞后回放前缀累计摘要正式拒绝与后续计划（2026-07-25）
 
@@ -211,7 +240,7 @@ pending 为 0。该短时模块结果通过 `>=20%` 门，但不能替代 main �
 ledger 为 0。当前在线 snapshot 仍请求全量 evidence，累计投影构造 `656481` 条记录，
 是后续性能工作的直接线索。
 
-该独立候选现已完成 main 集成实现，继续保持以下边界：
+该独立候选已完成 main 集成实现和正式评估，继续保持以下边界：
 
 1. 冻结 publication 到 observation ID 集合的来源和所有权合同，未知 ID、空 ID、
    跨航迹 ID 或证据所有权不一致继续失败关闭；
@@ -221,13 +250,13 @@ ledger 为 0。当前在线 snapshot 仍请求全量 evidence，累计投影构�
    `global_track_id`、既有 operation counts 或在线真值隔离；
 4. 使用新的 selector、implementation ID、execution config、diagnostics 和报告 schema，
    与本次被拒候选完全分离；
-5. 重新预注册独立 short/long 矩阵，由 D6 独立给出 admit/reject。不得复用本次 matrix
-   SHA、调低门限、删除失败 pair 或覆盖本次冻结结论。
+5. 正式 short/long 矩阵和 D6 独立判定已经完成。不得复用任一历史 matrix SHA、调低门限、
+   删除失败 pair 或覆盖冻结结论。
 
-main selector、调用点、执行配置、诊断、CLI 和模块栈回归已经完成，但 clean 200/200/2
-smoke、正式矩阵和 D6 evaluator 尚未开始。系统实时因子、AirSim、目标硬件、实机、实飞、
-RMSE、NEES 和 NIS 继续作为开放 P1；前一被拒候选最低 RTF `0.197441` 不能作为本候选
-性能结果，也不能写成实时闭合。
+main selector、调用点、执行配置、诊断、CLI、模块栈回归、clean 200/200/2 smoke 和正式
+矩阵均已完成。D6 对本候选给出 `reject`；reference 保持默认。系统实时因子、AirSim、
+目标硬件、实机、实飞、RMSE、NEES 和 NIS 继续作为开放 P1，本候选最低 RTF
+`0.203423 < 1`，不能写成实时闭合。
 
 ## P1 模态感知保守稀疏预筛正式拒绝与研究入口治理（2026-07-25）
 
