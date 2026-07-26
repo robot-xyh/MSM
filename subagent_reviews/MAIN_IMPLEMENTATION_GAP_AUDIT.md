@@ -4,6 +4,44 @@
 **审计目标**：列出共识算法与计划使用的开源代码哪些已经实现，哪些没有实现，为什么没有实现，以及缺少哪些条件。
 **边界**：本文只用于科研仿真、接口补齐和后续工程排期；不涉及真实硬件、实机处置、火控或绕过授权的自动动作。
 
+## 2026-07-26 模块准入复核与 D6 正式证据审计
+
+main 按 D3、D4、D5、D6 owner 边界完成第二轮复核并分四次提交。结论仍是“准入治理
+代码增强，实际模型全部未准入”，没有生成或写入任何正式学习 episode。
+
+1. D3 关闭 legacy v2 bundle 仅凭旧 promotion 字段进入 assist 的缺口。v2 shadow
+   保持兼容，v2 assist 返回 `bundle_assist_admission_missing`；新 v3 仍须同时满足
+   qualified admission 和哈希绑定 promotion。实际 D3 bundle 继续返回
+   `bundle_shadow_only`。
+2. D4 将 `d4-region-resource-model-bundle-v2` 固定为 development/shadow-only。
+   writer 在创建目录前拒绝自声明 qualified/assist，无 manifest 注入策略也不能取得
+   assist。实际 A2 状态保持 `pending_runtime_shadow_gate`。
+3. D5 首轮设计的 v4 正向报告虽然字段完整，但调用方可以用占位摘要直接构造，不能视为
+   可验证证据。主审退回后，D5 采用保守方案：G1/A3 production writer 均拒绝裸 report，
+   公开 loader/runtime 拒绝手工 admitted manifest；正向 parser 只由私有 fixture 测试。
+   独立 evidence assembler 未完成前，生产路径不能生成或执行 admitted G1/A3 bundle。
+4. D6 新增只读 `d6.learning-scope-formal-evidence-audit.v1`。它绑定 execution plan、
+   bundle 树、预检设备、merge、shard plan、progress、checkpoint、cell result 和 episode
+   文件树，并要求同 `comparison_key` 的唯一 R0、相同父计划、源提交、外生配置和随机
+   序列。缺失值不补零。
+5. D6 对实际采用采用严格门：D3/D4 必须有正应用计数，D5 图模型必须
+   `loaded_edge_model + model_scored + fallback=0 + candidate_edge_count>0`，主动视觉
+   必须同时有策略采用和运行确认。C1/F1 任一必要组件未采用即失败关闭。
+6. D6 输出只允许声明作用域证据是否完整以及相对 R0 是否非退化，固定
+   `model_promotion.allowed=false`。它不能替代模块预准入、不能授予控制权限，也不能用
+   shadow/fallback 结果填充学习组。
+
+旧 D3、D4、D5 bundle、manifest 和权重未修改；implementation hash 不设兼容白名单。
+main 复跑的 owner 全量结果为 D3 `464 passed, 1 skipped`、D4 `569 passed`、D5
+`562 passed`、D6 `930 passed, 1 warning`。D3 跳过项为未安装的可选 OR-Tools，
+warning 为既有 Matplotlib `Axes3D` 环境提示。
+
+开放 P1 现在分为两层。第一层是模块预准入证据和新 bundle：D3/D4 仍缺可验证的隔离
+采用、物理窗口和 paired non-degradation；D5 仍缺逐文件验证并打包 held-out、paired
+shadow 和 D6 外部审计实物的 evidence assembler。第二层是获准后正式 scope：只有新
+bundle 通过 `init-scope`，完成逐 cell 实际采用并存在唯一 R0 配对后，D6 才能给出作用域
+非退化结论。当前 G1/A1/A2/A3/C1/F1 正式 episode 均为 0。
+
 ## 2026-07-26 学习变体正式准入预检
 
 main 对当前实际 D3、D4、D5 图模型和 D5 主动视觉 bundle 做了不写 episode 的解析预检。

@@ -2,18 +2,25 @@
 
 ## 学习变体 assist 准入预检（2026-07-26）
 
-1. [x] D5 owner 将模型完整性与 G1/assist 使用权限分离。development bundle 仍可用于
-   D5 离线 shadow；严格调用在 `g1_assist_eligible` 未获准时返回 unavailable。
-2. [x] main 统一 episode 运行时加载 D5 图模型时显式要求
-   `require_g1_assist_eligible=True`，关闭“scorer 可加载即视为 G1 获准”的治理缺口。
-3. [x] main 学习运行时与实验矩阵专项为 `12 passed, 1 warning`；warning 为既有
-   Matplotlib `Axes3D` 环境提示。D5 专项和全量分别为 `19 passed`、`555 passed`。
-4. [x] 使用当前实际 bundle 进行无 episode 写盘预检。G1、A1、A2、A3、C1、F1 全部
-   fail-closed；R0 不加载模型，现有正式 R0 execution plan 不受影响。
-5. [ ] D3、D4、D5 图模型和 D5 主动视觉模型完成独立 holdout、非退化门与 D6 证据绑定后，
-   才能生成允许 assist 的新 bundle。不得修改旧 development manifest 自我晋级。
-6. [ ] 新 bundle 必须绑定当前实现 SHA-256。旧冻结 D5 bundle 当前返回
-   `bundle_implementation_runtime_mismatch`；不得通过兼容白名单绕过代码溯源。
+1. [x] D3 关闭旧 `d3_learning_model_bundle_v2` 仅凭 promotion 字段进入 assist 的
+   兼容缺口。v2 继续可用于 development shadow，assist 固定返回
+   `bundle_assist_admission_missing`；只有带独立正向准入和哈希绑定 promotion 的新 v3
+   才可能进入 assist。
+2. [x] D4 将现有 `d4-region-resource-model-bundle-v2` 固定为
+   development/shadow-only。writer 在创建目录和写权重前拒绝自声明
+   `qualified/assist`，无 manifest 的注入策略也不能取得 assist 权限。
+3. [x] D5 将模型完整性、解析能力和 G1/A3 使用权限分离。main 加载图模型时固定要求
+   `require_g1_assist_eligible=True`；development scorer 即使可读也不能影响集成在线
+   关联。
+4. [x] D5 主审进一步关闭裸报告自声明。G1 和 A3 的 production writer 均拒绝调用方
+   直接提供正向 admission report；公开 loader/runtime 也拒绝手工拼装的 admitted
+   manifest。未来 v4/正向报告解析仅由私有合同测试覆盖，不构成生产权限。
+5. [x] 旧 D3、D4、D5 图模型和 D5 主动视觉 bundle、manifest、权重均未修改或重算。
+   旧冻结 D5 bundle 因实现文件集合变化继续返回
+   `bundle_implementation_runtime_mismatch`，不得设置兼容白名单。
+6. [x] 使用当前实际 bundle 进行无 episode 写盘预检。G1、A1、A2、A3、C1、F1 全部
+   fail-closed；R0 不加载模型，现有正式 R0 execution plan 和 135/900 进度未被读取、
+   改写或重新生成。
 7. [x] main 已为 G1/A1/A2/A3/C1/F1 增加与 R0 同级的可恢复分片基础设施。
    `init-scope` 绑定完整 bundle 文件树、manifest、预检设备、准入诊断和模型版本；
    `run-shard` 在写 shard 前、每个学习单元开始前和发布前复核绑定，单元发布后再次核对
@@ -22,12 +29,26 @@
 8. [x] G1 开发伪 bundle 已完成缺失/未准入拒绝、设备不一致、文件篡改、暂停恢复和合并
    回归。矩阵/分片/学习运行时定向测试为 `26 passed, 1 warning`，scalable 全量为
    `292 passed, 1 warning`。
-9. [ ] D3、D4、D5 图模型和 D5 主动视觉模型实际 bundle 仍未获 assist 准入。各 owner
-   完成独立非退化门并形成新 bundle 后，main 才能冻结学习 scope；当前不得用伪 bundle
-   或 development bundle 生成正式证据。
-10. [ ] R0 完整闭合、存储条件满足且模型获准后，按 G1、A1、A2、A3、C1、F1 顺序运行
-    正式 scope，并由 D6 核对逐单元采用、规则基线非退化和完整矩阵状态。当前正式学习
-    episode 仍为 0。
+9. [x] D6 已实现可选、只读的
+   `d6.learning-scope-formal-evidence-audit.v1`。审计重新校验 execution plan、bundle
+   文件树、merge、shard plan、progress、checkpoint、cell result 和 episode 文件树；
+   shadow、规则回退、仅加载模型、零候选边、缺物理结果或缺唯一 R0 配对均失败关闭。
+10. [x] D6 审计要求每个必要组件有正实际采用证据：D3 学习修正应用计数、D4 建议进入
+    控制计数、D5 图模型正候选边评分、D5 主动视觉采用及运行确认。审计输出 JSON、逐
+    cell CSV、中文 Markdown 和 SHA256SUMS，但始终保持
+    `model_promotion.allowed=false`。
+11. [x] 最新 owner 全量回归为 D3 `464 passed, 1 skipped`、D4 `569 passed`、D5
+    `562 passed`、D6 `930 passed, 1 warning`。D3 跳过项为未安装的可选 OR-Tools；
+    warning 为既有 Matplotlib `Axes3D` 环境提示。
+12. [ ] 预准入阶段仍需为 D3、D4、D5 图模型和 D5 主动视觉分别形成新的、可验证的
+    holdout/paired-shadow/隔离采用证据。D5 还缺独立 evidence assembler，必须逐文件
+    校验并将 held-out、paired shadow 和 D6 外部审计实物纳入新 bundle；完成前生产代码
+    不能生成或执行 admitted G1/A3 bundle。
+13. [ ] 各 owner 形成新 admitted bundle 后，main 才能冻结学习 scope。预准入证据与
+    scope 后验审计不得混用：前者只决定是否允许启动，后者只评价实际采用和相对 R0
+    非退化，不反向授予模型权限。
+14. [ ] R0 完整闭合、存储条件满足且模型获准后，按 G1、A1、A2、A3、C1、F1 顺序运行
+    正式 scope。当前实际模型全部未获 assist 准入，正式学习 episode 仍为 0。
 
 ## 正式 R0 后验收尾 P0（2026-07-25）
 

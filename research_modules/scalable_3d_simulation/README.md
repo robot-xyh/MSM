@@ -6,9 +6,16 @@
 assist。D3 模型仅允许 shadow；D4 模型仍处于运行时 shadow gate；D5 图模型和主动视觉模型
 没有正式 assist 权限，旧冻结 bundle 还绑定修改前的实现哈希。
 
-D5 已提供严格的 `require_g1_assist_eligible` 加载边界。main 在统一 episode 总线注入图模型时
-固定启用该边界，因此 development scorer 即使能够读取，也不能影响集成在线关联。main 专项为
-`12 passed, 1 warning`，D5 全量为 `555 passed`。当前 R0 路径不加载模型，本次治理修复不改变
+D3 已禁止旧 v2 bundle 仅凭旧 promotion 字段进入 assist；D4 已把现有 v2 writer 和
+runtime 固定为 development/shadow-only。D5 提供严格的
+`require_g1_assist_eligible` 加载边界，main 在统一 episode 总线注入图模型时固定启用。
+D5 随后关闭了 G1 和 A3 的裸报告自声明路径：production writer 在写文件前拒绝调用方
+直接提供正向 admission report，公开 loader/runtime 也拒绝手工拼装的 admitted manifest。
+未来正向清单解析只存在于私有合同测试中，独立证据装配器完成前不能取得生产权限。
+
+四个 owner 没有修改旧 bundle、manifest 或权重，也没有增加 implementation hash
+兼容白名单。最新完整回归为 D3 `464 passed, 1 skipped`、D4 `569 passed`、D5
+`562 passed`、D6 `930 passed, 1 warning`。当前 R0 路径不加载模型，本次治理修复不改变
 已冻结的 R0 source、execution plan 或已完成的 135 个单元。
 
 main 已将可恢复分片执行器扩展到 G1、A1、A2、A3、C1 和 F1。执行计划保存各变体所需
@@ -23,9 +30,16 @@ bundle 的完整文件树摘要、manifest 摘要、预检设备、准入诊断�
 `292 passed, 1 warning`。当前实际模型仍全部未获 assist 准入，因此本次只关闭“学习变体
 没有可恢复正式执行基础设施”的实现缺口，没有生成任何 G1/A1/A2/A3/C1/F1 正式 episode。
 
-正式学习变体仍需两个外部条件：模块 owner 生成通过独立非退化门的新 bundle；D6 绑定模型
-采用、运行结果和规则基线非退化证据。模型文件存在、哈希有效或开发指标可用均不能替代
-assist 准入。
+正式学习变体分成两个证据阶段。预准入阶段由模块 owner 使用未见 seed、隔离采用和
+paired-shadow 结果生成新的 evidence-bound bundle；D5 还需实现独立 evidence assembler，
+逐文件验证并打包 held-out、paired shadow 和 D6 外部审计实物。正式 scope 完成后，D6
+使用 `d6.learning-scope-formal-evidence-audit.v1` 重新校验 execution plan、bundle
+文件树、merge、shard、cell 和 episode 证据，并与唯一同键 R0 比较。D6 审计要求模型
+实际采用，shadow、规则回退、仅加载模型、D5 零候选边、缺物理结果或缺 R0 均判为
+unavailable/fail-closed；审计从不授予模型晋级或控制权限。
+
+模型文件存在、哈希有效、开发指标可用或 D6 审计合同通过单元测试均不能替代 assist
+准入。当前没有实际学习 scope、merge 或可用 R0 配对输入，正式学习 episode 仍为 0。
 
 ## 正式 R0 后验收尾状态（2026-07-25）
 

@@ -74,6 +74,26 @@ D7 接入后，D3 初始分配和 D4 二次分配都会触发离线二维 PN 子
 
 AirSim runtime 已经从“规划接入”推进到可运行的 Blocks 验证路径。当前 main 负责一次启动 Blocks、按 episode reset 场景、采集相机/检测/actor pose/SimpleFlight 控制日志，并把 D1-D7 的 DTO、summary 和 record 接入统一 `main_episode_bus`。最新 P1 D4/D5 registration calibration v2 使用 5v5、3 个机动高空二级侦察节点、200 m 高差、110 deg FOV、1920x1080 和 AirSim `simGetDetections`：`projection_valid_rate=1.0`，`geometry_gate_pass_rate≈0.474`，稳定跨视角注册约 51/55/53，`secondary_network_mean_coverage_ratio≈0.771`，`secondary_network_joint_full_view_frame_rate` 均值约 0.048、最佳约 0.143，cross-view association 为 4/4/5。当前瓶颈已经从相机姿态/投影无效转为覆盖不完整和 `not_all_targets_visible` / `network_union_incomplete`；二级 detect 可以形成候选注册，但仍不能绕过 D3/D4/D5 的全局绑定、仲裁和视觉 PNG gate。
 
+## 1.2 200 对 200 三维学习增强状态
+
+规模化主线在独立功能分支中保留现有 2v2、5v5、M5N2 和 AirSim 基线，新增三维质点世界、
+统一 episode 总线、匿名视觉投影、稀疏跨视角图和学习辅助接口。规则基线 R0 使用 900 个
+正式单元覆盖 9 类场景、5 档规模和 20 个保留 seed。修复后 clean source 已完成
+135/900 单元；磁盘可用空间约 21 GiB，接近 20 GiB 安全下限，因此后续分片等待证据迁移、
+扩容或明确清理授权。已有三处正式证据保持不动，不能跨提交拼接。
+
+学习增强保持确定性安全外壳。D3 学习模型只修正规则代价，D4 学习模型只给出区域资源建议，
+D5 图模型只输出跨视角同目标概率，主动视觉模型只给出观察目标和云台建议。容量、不可达边、
+身份所有权、计划版本、联盟确认、友方冲突和导引许可仍由规则合同判定。D3、D4、D5 图模型
+和 D5 主动视觉现有 bundle 均为 development/shadow，G1、A1、A2、A3、C1、F1 全部
+失败关闭，正式学习 episode 为 0。
+
+当前已关闭三类权限漏洞：旧 D3/D4 bundle 不能凭缺省字段进入 assist；D5 development
+scorer 可读不等于 G1 获准；调用方不能用裸报告或手工清单生成可执行的 G1/A3 bundle。
+下一步先建设独立证据装配器并形成新的、绑定当前代码和未见 seed 证据的 bundle。获准模型
+完成正式作用域后，再由 D6 审计实际采用、物理结果和同键 R0 非退化。D6 审计只评价证据，
+不授予模型晋级或控制权限。
+
 ## 2. 总体架构
 
 系统采用“复合探测网 + 中心化主控 + 二级区域节点 + 分布式保底 + 末端保守配准 + 全链路评估”的架构。
