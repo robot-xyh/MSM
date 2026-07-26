@@ -24,8 +24,8 @@ main 已取消 finalize 的相同来源签名跳过，最终 pending D1 后验�
 不重复建轨，也不刷新原始来源证据时钟。五个原失败 cell 的开发态定向重放现已全部通过 D6
 generation contract：D1 最终代次等于 D2 实际消费代次，skip 为 0，pending 为空。
 
-当前状态为：**D1 本身从未漏发；跨模块 P0 已完成代码修复和五项定向回归，formal acceptance
-仍待新 clean commit 下完整 900-cell R0 正式重跑。**
+当前状态为：**D1 本身从未漏发；修复已形成 clean source commit `98d01bf`；代码和五项定向
+验证已关闭；完整 900-cell formal rerun 仍待存储条件和新最终 plan。**
 
 ## 原正式证据
 
@@ -60,7 +60,8 @@ main 对 900 个 `summary.json` 的独立统计为：
 
 ## 修复后定向证据
 
-main 在当前开发工作树使用原正式构造参数重放以下五个 cell：
+main 使用原正式构造参数重放以下五个 cell；对应修复随后固化为 clean source commit
+`98d01bf`：
 
 | 场景 | Seed | D6 generation contract | D1 final 与 D2 consumed | Final skip | Pending |
 | --- | ---: | --- | --- | ---: | --- |
@@ -113,14 +114,16 @@ finalize 抛出异常并保留失败可见性；只有实际处理成功后才�
 2. 未实际处理最终 pending 后验时失败关闭，不能静默清空 pending；
 3. D2 replay-coast 隔离重复来源观测，不重复增加 hit、建轨或刷新来源证据；
 4. 五个原失败 cell 定向回归全部满足 D1 final 等于 D2 consumed、skip 为 0、pending 为空；
-5. D6 对五项的 generation contract 均给出 `verified`。
+5. D6 对五项的 generation contract 均给出 `verified`；
+6. D1 审计、D2、D6 和 main 修复依次形成提交 `4b018e4`、`dc5821f`、`8e955f3` 和
+   clean source commit `98d01bf`。
 
 仍需 main、D2 和 D6 完成：
 
-1. 将当前修复固化为新的 clean source commit；
-2. 在该提交上重新运行完整 900-cell R0，不复用或原地改写 `2c7b425` 的旧制品；
-3. 由 D6 重新聚合 900 项 generation、pending、在线真值隔离和业务指标，确认没有新增失败；
-4. 只有完整矩阵满足冻结验收口径后，才能把 formal acceptance 标记为关闭。
+1. 在存储条件满足并形成新最终 plan 后，从 `98d01bf` 运行完整 900-cell R0，不复用或原地
+   改写 `2c7b425` 的旧制品；
+2. 由 D6 重新聚合 900 项 generation、pending、在线真值隔离和业务指标，确认没有新增失败；
+3. 只有完整矩阵满足冻结验收口径后，才能把 formal acceptance 标记为关闭。
 
 ## D1 验证
 
