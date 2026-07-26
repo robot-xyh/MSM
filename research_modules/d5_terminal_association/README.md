@@ -2,6 +2,30 @@
 
 科研模块，用于把末端相机视场中的本地视觉轨迹保守关联到中心分配的 `global_track_id`。模块可在统一三维 episode 中在线运行；训练标签和真值评分仍保持离线。D5 只输出视觉关联与相机观察意图，不修改、重写或重新分配任何全局轨迹 ID。
 
+## 2026-07-26 图模型 assist 准入治理
+
+`load_tracklet_model_bundle_for_runtime()` 新增向后兼容参数
+`require_g1_assist_eligible=False`。默认值保留开发训练、离线评估和 paired shadow 的读取语义；
+调用方准备把模型概率用于 G1 辅助关联时，必须显式传入 `True`。完整性校验通过但 manifest 保持
+`g1_assist_eligible=false` 的 bundle 此时返回 unavailable，稳定原因码为
+`bundle_g1_assist_not_eligible`。删除准入字段或自行把字段改成 `true` 仍由原严格 manifest 校验
+返回 `bundle_admission_invalid`，不能通过修改清单自我晋级。
+
+2026-07-26 专项测试为 `19 passed in 2.24s`，D5 全量测试为
+`555 passed in 97.04s`，验收门为零失败。测试覆盖当前源码生成的 development bundle 可用于
+shadow、严格 assist 必须拒绝、字段缺失和字段篡改必须拒绝。未修改模型权重、温度、决策阈值、
+`global_track_id` 或在线真值边界。
+
+main 已在统一 episode 总线的 D5 图模型注入处显式设置
+`require_g1_assist_eligible=True`。`learning_runtime` 与 `experiment_matrix` 专项为
+`12 passed, 1 warning`；警告是既有 Matplotlib 导入提示。实际旧 bundle 预检中
+G1/A1/A2/A3/C1/F1 均失败关闭，跨模块 P0 接线已关闭。
+
+模型准入 P1 仍开放。旧冻结 bundle 绑定修改前的实现 SHA-256，严格代码溯源以
+`bundle_implementation_runtime_mismatch` 拒绝它；当前也没有获准的正式 G1 模型。若继续开展
+shadow 复核，需要在当前源码下保持原权重、阈值和关闭状态重新封装并重建审计证据，不能放宽代码
+溯源校验。
+
 ## 2026-07-25 同一 GNN bundle 的 20-seed 证据闭合
 
 D5 已冻结当前可严格加载的跨视角图神经网络 bundle。模型 manifest SHA-256 为

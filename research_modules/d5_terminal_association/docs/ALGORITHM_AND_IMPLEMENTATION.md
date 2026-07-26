@@ -1,6 +1,30 @@
 # D5 终端视觉配准与身份认证算法原理与实施文档
 
-**状态日期：2026-07-25**
+**状态日期：2026-07-26**
+
+## 运行时准入算法
+
+运行时加载按以下次序处理：
+
+1. 校验目录、`SHA256SUMS`、manifest、权重、schema、特征顺序、训练来源、实现来源、校准参数和
+   admission 字段。
+2. 默认 shadow 调用在全部校验通过后返回只读 scorer，用于开发评估和成对影子比较。
+3. G1/assist 调用必须设置 `require_g1_assist_eligible=True`。若
+   `admission.g1_assist_eligible` 不是严格布尔值 `true`，返回 unavailable 和
+   `bundle_g1_assist_not_eligible`。
+4. 字段缺失、字段集合变化或自行把当前开发清单改成 `true` 时，严格加载器先返回
+   `bundle_admission_invalid`。运行时包装器不会获得 scorer，也不会执行模型评分。
+
+默认参数保持既有调用兼容性。严格参数只决定 scorer 能否用于辅助路径，不修改 bundle schema、
+温度 \(T_{val}\)、阈值 \(\tau_{val}\)、权重或规则回退。2026-07-26 的专项测试为
+`19 passed in 2.24s`，D5 全量为 `555 passed in 97.04s`，验收门为零失败。
+
+加载器源码属于 bundle 的实现溯源。旧冻结 bundle 记录修改前的 SHA-256，因此当前源码会返回
+`bundle_implementation_runtime_mismatch`。这一拒绝保持完整性边界。后续若继续 shadow，应在当前
+源码下保持权重、校准值和 `g1_assist_eligible=false` 重新封装并重建审计证据。main 正式 G1
+调用已显式设置严格参数；`learning_runtime` 与 `experiment_matrix` 专项
+`12 passed, 1 warning`，实际旧 bundle 在 G1/A1/A2/A3/C1/F1 中均失败关闭。当前没有获准的正式
+G1 模型，该 P1 不能由接线测试关闭。
 
 ## 冻结模型审计链
 

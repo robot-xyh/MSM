@@ -1,6 +1,23 @@
 # 第五研究模块末端视觉关联（Terminal Association, D5）原理
 
-**状态日期：2026-07-25**
+**状态日期：2026-07-26**
+
+## 图模型的读取权限与使用权限
+
+模型完整性和模型使用权限是两层独立条件。开发训练与成对影子评估需要读取权重并复现概率，因此
+运行时加载器默认允许通过严格完整性校验的 development bundle 进入 shadow。G1 辅助关联属于另一
+权限层，调用方必须显式要求 `g1_assist_eligible`。清单没有正向授权时，加载器返回 unavailable，
+规则关联继续工作。
+
+当前稳定拒绝原因是 `bundle_g1_assist_not_eligible`。若清单字段缺失或被改为正向授权，原 schema
+校验返回 `bundle_admission_invalid`。D5 不从 held-out 指标、文件存在、权重可加载或 scorer
+`available` 推导权限。该边界防止开发模型因主程序只检查“可执行”而进入正式辅助路径。
+
+2026-07-26 专项 `19 passed in 2.24s`，D5 全量 `555 passed in 97.04s`，零失败。旧冻结 bundle
+绑定修改前的实现哈希，在当前源码下会失败关闭；若需要继续影子复核，应重新封装并重建证据，不能
+取消代码溯源校验。main 统一 episode 总线已显式请求严格 assist admission；相关专项
+`12 passed, 1 warning`，旧 bundle 在 G1/A1/A2/A3/C1/F1 中均失败关闭。当前仍没有获准的正式
+G1 模型。
 
 ## 冻结图模型的证据边界
 

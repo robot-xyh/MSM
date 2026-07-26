@@ -1,5 +1,23 @@
 # D5 末端视觉配准与协同身份认证综述及子方案
 
+## 2026-07-26 图模型运行权限复核
+
+D5 将“bundle 通过完整性校验”和“bundle 获准参与 G1 辅助关联”拆成两个显式条件。运行时加载器
+默认保持 development/shadow 读取能力；调用方显式设置
+`require_g1_assist_eligible=True` 后，还必须得到 manifest 的正向准入声明。当前 bundle 固定
+`g1_assist_eligible=false`，所以严格路径返回 unavailable 和
+`bundle_g1_assist_not_eligible`。该结果不会修改模型概率、阈值或候选图。
+
+manifest 缺少准入字段或自行改成 `true` 时，既有 schema 校验先返回
+`bundle_admission_invalid`。本次没有新增可获准状态，开发 bundle 仍不能自我晋级。专项
+`19 passed in 2.24s`、全量 `555 passed in 97.04s`，均以零失败为验收阈值。
+
+main 已在统一 episode 总线注入 D5 图模型时显式启用严格参数。`learning_runtime` 与
+`experiment_matrix` 专项为 `12 passed, 1 warning`，实际旧 bundle 在
+G1/A1/A2/A3/C1/F1 预检中均失败关闭，跨模块 P0 接线已关闭。旧冻结 bundle 仍绑定修改前的实现
+哈希，当前源码按 `bundle_implementation_runtime_mismatch` 拒绝；当前没有获准的正式 G1 模型。
+后续 shadow 证据刷新应重新封装和复核，不应放宽代码溯源。AirSim 计划和既有实验数据未受影响。
+
 ## 2026-07-25 冻结图模型复核
 
 D5 重新选择当前工作树可严格加载的 development bundle，并把 manifest、weights 和

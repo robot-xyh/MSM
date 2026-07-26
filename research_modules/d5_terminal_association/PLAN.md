@@ -1,5 +1,27 @@
 # D5 终端视觉配准与身份认证计划
 
+## 2026-07-26 图模型 assist 准入治理
+
+- [x] 为 `load_tracklet_model_bundle_for_runtime()` 增加
+  `require_g1_assist_eligible=False`。默认路径保持 development/shadow 可读；显式 G1/assist
+  路径必须检查 manifest 权限。
+- [x] 未获准 bundle 在严格路径返回 unavailable 和稳定原因码
+  `bundle_g1_assist_not_eligible`。manifest 字段缺失或把 `g1_assist_eligible` 自行改为 `true`
+  仍由既有严格校验返回 `bundle_admission_invalid`。
+- [x] 保持 bundle schema、允许状态、温度、阈值、权重、真值隔离和中心
+  `global_track_id` 所有权不变。
+- [x] 2026-07-26 完成专项 `19 passed in 2.24s` 和 D5 全量
+  `555 passed in 97.04s`，零失败门通过。
+- [x] main-owned 统一 episode 总线在注入 D5 图模型时显式传入
+  `require_g1_assist_eligible=True`。`learning_runtime` 与 `experiment_matrix` 专项
+  `12 passed, 1 warning`；实际旧 bundle 在 G1/A1/A2/A3/C1/F1 预检中均失败关闭。
+- [ ] 若继续复用 2026-07-25 冻结 development 权重开展 shadow，在当前源码下重新封装并重建
+  manifest、代码溯源和审计哈希。旧 bundle 继续严格失败关闭，当前没有获准的正式 G1 模型，不
+  通过兼容白名单放宽校验。
+
+本次不影响 AirSim、末端决策状态或实验场景，`docs/AIRSIM_INTEGRATION_PLAN.md` 和
+`docs/EXPERIMENT_REPORT.md` 已检查，无需修改。
+
 ## 2026-07-25 冻结图模型证据链
 
 - [x] 冻结一个当前严格可加载的 development bundle，并用 tracked reference 固定 manifest、

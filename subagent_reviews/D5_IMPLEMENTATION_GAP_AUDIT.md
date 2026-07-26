@@ -1,5 +1,19 @@
 # D5 实现差距审计
 
+## 2026-07-26 GNN assist 准入边界
+
+| 缺口 | 当前状态 | 证据与剩余边界 |
+| --- | --- | --- |
+| D5 严格 assist 加载接口 | **D5-owned 已关闭** | `require_g1_assist_eligible=True` 时，未获准 bundle 返回 unavailable，原因码为 `bundle_g1_assist_not_eligible`；默认值继续服务 development/shadow。 |
+| manifest 自我晋级 | **关闭并保持回归** | 删除字段或把 `g1_assist_eligible` 改为 `true` 均返回 `bundle_admission_invalid`；未增加允许状态，也未放宽 schema、哈希或阈值校验。 |
+| main 正式 G1 调用 | **P0 跨模块已关闭** | 统一 episode 总线显式传入 `require_g1_assist_eligible=True`；`learning_runtime` 与 `experiment_matrix` 专项 `12 passed, 1 warning`。实际旧 bundle 在 G1/A1/A2/A3/C1/F1 预检中均失败关闭。 |
+| 旧冻结 bundle 的当前源码复载与正式准入 | **P1 开放** | 加载器属于代码溯源范围，旧 bundle 在当前源码下返回 `bundle_implementation_runtime_mismatch`，且当前没有获准的正式 G1 模型。需保持原权重、阈值和关闭状态重新封装并重建审计，禁止增加兼容白名单绕过溯源。 |
+
+2026-07-26 专项测试 `19 passed in 2.24s`，D5 全量测试
+`555 passed in 97.04s`，验收阈值为零失败。测试使用当前源码生成的 development bundle，覆盖 shadow
+可读、严格 assist 拒绝、准入字段缺失和准入字段篡改。没有修改 AirSim、在线 truth 边界、
+`global_track_id` 或模型校准值。
+
 ## 2026-07-25 冻结图模型 P1 状态
 
 | 缺口 | 当前状态 | 证据与剩余边界 |

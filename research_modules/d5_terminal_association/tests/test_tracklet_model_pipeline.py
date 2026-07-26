@@ -158,7 +158,12 @@ def _stage_dataset(root: Path, seeds: range = range(1, 6)) -> None:
     finalize_tracklet_dataset(root, split_seed=77)
 
 
-def _write_bundle(root: Path) -> NativeTrackletEdgeClassifier:
+def _write_bundle(
+    root: Path,
+    *,
+    admission_status: str = "research_candidate_not_default",
+    readiness_audit_sha256: str | None = None,
+) -> NativeTrackletEdgeClassifier:
     torch.manual_seed(7)
     model = NativeTrackletEdgeClassifier(hidden_dim=8, message_passing_steps=1)
     write_tracklet_model_bundle(
@@ -171,6 +176,8 @@ def _write_bundle(root: Path) -> NativeTrackletEdgeClassifier:
         calibration_temperature=1.0,
         decision_threshold=0.6,
         validation_results={"f1": {"available": True, "value": 0.8}},
+        admission_status=admission_status,
+        readiness_audit_sha256=readiness_audit_sha256,
     )
     return model
 
@@ -531,6 +538,64 @@ def test_bundle_sha_corruption_fails_closed_and_runtime_wrapper_stays_unavailabl
     runtime = load_tracklet_model_bundle_for_runtime(tmp_path)
     assert runtime.available is False
     assert runtime.failure_reason == "bundle_weights_sha_mismatch"
+
+
+def test_development_bundle_is_available_for_shadow_but_rejected_for_g1_assist(
+    tmp_path: Path,
+) -> None:
+    graph, _ = _anonymous_graph()
+    _write_bundle(
+        tmp_path,
+        admission_status="development_only_fail_closed",
+        readiness_audit_sha256="e" * 64,
+    )
+
+    shadow = load_tracklet_model_bundle_for_runtime(tmp_path)
+    assist = load_tracklet_model_bundle_for_runtime(
+        tmp_path,
+        require_g1_assist_eligible=True,
+    )
+
+    assert shadow.available is True
+    assert shadow.manifest["admission"] == {
+        "status": "development_only_fail_closed",
+        "default_model": False,
+        "g1_assist_eligible": False,
+        "readiness_audit_sha256": "e" * 64,
+    }
+    assert shadow.decision_threshold == pytest.approx(0.6)
+    assert tuple(shadow.forward_graph(graph).shape) == (graph.edge_count,)
+    assert assist.available is False
+    assert assist.failure_reason == "bundle_g1_assist_not_eligible"
+
+
+@pytest.mark.parametrize(
+    "update",
+    [
+        lambda manifest: manifest["admission"].pop("g1_assist_eligible"),
+        lambda manifest: manifest["admission"].__setitem__(
+            "g1_assist_eligible", True
+        ),
+    ],
+)
+def test_runtime_g1_assist_rejects_missing_or_self_promoted_admission_fields(
+    tmp_path: Path,
+    update: Callable[[dict[str, Any]], None],
+) -> None:
+    _write_bundle(
+        tmp_path,
+        admission_status="development_only_fail_closed",
+        readiness_audit_sha256="e" * 64,
+    )
+    _rewrite_manifest_checksum(tmp_path, update)
+
+    runtime = load_tracklet_model_bundle_for_runtime(
+        tmp_path,
+        require_g1_assist_eligible=True,
+    )
+
+    assert runtime.available is False
+    assert runtime.failure_reason == "bundle_admission_invalid"
 
 
 def test_incomplete_truth_metrics_are_unavailable_not_zero(tmp_path: Path) -> None:

@@ -34,6 +34,10 @@ _SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 _ALLOWED_ADMISSION_STATUSES = frozenset(
     {"research_candidate_not_default", "development_only_fail_closed"}
 )
+G1_ASSIST_NOT_ELIGIBLE_REASON = "bundle_g1_assist_not_eligible"
+RUNTIME_ADMISSION_REQUIREMENT_INVALID_REASON = (
+    "bundle_runtime_admission_requirement_invalid"
+)
 _IMPLEMENTATION_SOURCE_FILES = (
     "tracklet_gnn.py",
     "tracklet_model_bundle.py",
@@ -458,11 +462,23 @@ def load_tracklet_model_bundle_for_runtime(
     bundle_dir: str | Path,
     *,
     device: torch.device | str = "cpu",
+    require_g1_assist_eligible: bool = False,
 ) -> CalibratedTrackletEdgeScorer | UnavailableTrackletEdgeScorer:
-    """Convert every strict load failure into an explicit online fallback token."""
+    """Load for shadow use, or fail closed when G1/assist admission is required.
+
+    The default preserves the historical development/shadow loading behavior.
+    Callers that intend to use model scores as G1 assist must explicitly set
+    ``require_g1_assist_eligible=True``. A valid but unadmitted bundle then
+    returns an unavailable token instead of an executable scorer.
+    """
+
+    if type(require_g1_assist_eligible) is not bool:
+        return UnavailableTrackletEdgeScorer(
+            failure_reason=RUNTIME_ADMISSION_REQUIREMENT_INVALID_REASON
+        )
 
     try:
-        return load_tracklet_model_bundle(bundle_dir, device=device)
+        scorer = load_tracklet_model_bundle(bundle_dir, device=device)
     except ModelBundleValidationError as exc:
         reason = exc.code if exc.code.startswith("bundle_") else f"bundle_{exc.code}"
         return UnavailableTrackletEdgeScorer(failure_reason=reason)
@@ -470,6 +486,14 @@ def load_tracklet_model_bundle_for_runtime(
         return UnavailableTrackletEdgeScorer(
             failure_reason=f"bundle_unexpected_{type(exc).__name__}"
         )
+    if (
+        require_g1_assist_eligible
+        and scorer.manifest["admission"]["g1_assist_eligible"] is not True
+    ):
+        return UnavailableTrackletEdgeScorer(
+            failure_reason=G1_ASSIST_NOT_ELIGIBLE_REASON
+        )
+    return scorer
 
 
 def _implementation_provenance() -> dict[str, Any]:
@@ -585,10 +609,12 @@ def _torch_save_atomic(path: Path, state_dict: Mapping[str, torch.Tensor]) -> No
 __all__ = [
     "CHECKSUMS_FILENAME",
     "CalibratedTrackletEdgeScorer",
+    "G1_ASSIST_NOT_ELIGIBLE_REASON",
     "MANIFEST_FILENAME",
     "MODEL_BUNDLE_SCHEMA_VERSION",
     "MODEL_SEMANTIC_VERSION",
     "ModelBundleValidationError",
+    "RUNTIME_ADMISSION_REQUIREMENT_INVALID_REASON",
     "UnavailableTrackletEdgeScorer",
     "WEIGHTS_FILENAME",
     "load_tracklet_model_bundle",
