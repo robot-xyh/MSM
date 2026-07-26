@@ -2412,3 +2412,45 @@ reference/candidate 共 26 个 arm 均重新执行，`0 reused/0 failed`。13/13
 该矩阵是三维质点系统性能和合同证据，不含 AirSim、目标硬件、RMSE、NEES、NIS 或物理拦截
 验收。候选最低实时因子为 `0.1730801`，因此
 `system_realtime_gap_closed=false`。系统实时容量和逐批 D2 审计明细仍为 P1。
+
+## 200 目标真值隔离质量基准（2026-07-25）
+
+D1 新增独立质量基准，用于测量现有融合主线在漏检、虚警、密集交叉、遮挡和乱序延迟同时
+存在时的表现。该基准不改 `FusionAdapter`、关联门限、滤波更新或航迹生命周期。
+
+输入被拆成两个对象：
+
+1. `D1AnonymousQualityScenario` 只含匿名雷达扫描、双时间戳、协方差和不带身份语义的
+   `source_lineage_key`，是唯一允许进入在线融合器的对象；
+2. `D1QualityEvaluatorSidecar` 保存匀速真值轨迹以及“匿名源谱系到离线真值”的映射，固定
+   标记为 `offline_evaluation_only`。它只在融合完成后进入评分器，不进入
+   `FusionAdapter`。
+
+评分输出为带可用性状态的 `D1QualityMetric`。没有有效样本时，`value=None` 且必须给出
+`reason`，禁止补零。当前指标包括暖机后召回率、重复航迹率、混合谱系航迹率、虚假航迹数量
+和寿命、位置均方根误差、归一化估计误差平方（NEES）、归一化创新平方（NIS）、航迹数量
+增长、谱系映射覆盖率以及每扫描处理时间 P50/P95。基准不创建或改写 D2 规范
+`global_track_id`。
+
+默认批量入口运行 200 目标和 seeds 1000-1019：
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 \
+PYTHONPATH=research_modules/d1_sensor_fusion/src \
+python3 research_modules/d1_sensor_fusion/scripts/run_scalable_quality_benchmark.py \
+  --target-counts 200 \
+  --seed-start 1000 \
+  --seed-count 20
+```
+
+2026-07-25 的开发验收包含两层证据。5 目标、0.61 s、seeds 2000-2019 的快速夹具完成
+20/20 个运行，共评分 248 条唯一接受观测，谱系映射覆盖率为 1.0；专项测试 `8 passed`。
+200 目标、0.61 s、seed 1000 的短时冒烟完成 3 个发布帧，终态 201 条 D1 航迹、164 条
+OOSM 观测，共评分 532 条唯一接受观测，谱系覆盖率 1.0，暖机后召回率 0.8183。同日重复开发
+运行观察到处理时间 P95 为 166.41--310.96 ms；该墙钟范围不作为门限。D1 全量回归为
+`496 passed in 33.19s`。
+
+上述结果只证明数据隔离、指标可计算性、20-seed 入口和 200 目标短时执行能力。快速夹具的
+20-seed 均值不作为正式性能门；200 目标冒烟也没有覆盖长时虚假航迹累积。200 目标、20 个
+未见 seed 的正式质量矩阵，以及据此决定是否增加 tentative/confirmed/expiry 生命周期，仍为
+P1。

@@ -3491,3 +3491,68 @@ D1 的布尔配置默认仍为 `False`，直接构造时保留 reference。main 
 已将系统默认 selector 晋级为 `immutable_shared_v2`，并保留 `per_track_copy_v1` 显式对照。
 最低实时因子为 `0.1730801`，所以该实现只完成发布元数据候选准入，没有关闭系统实时、
 AirSim、硬件、RMSE/NEES/NIS 或物理拦截验收。逐批 D2 审计明细仍为 P1。
+
+## 200 目标质量基准
+
+### 数据分离
+
+基准生成器一次返回两个彼此独立的对象。在线对象按到达时刻排序，只含匿名雷达扫描。每条
+观测保存 `measurement_timestamp`、`arrival_timestamp`、球坐标量测、距离相关协方差、
+扫描编号和匿名 `source_lineage_key`。观测编号和谱系令牌由运行编号、扫描序号和帧内序号
+生成，不包含离线目标名称。
+
+离线 sidecar 保存六维匀速真值轨迹及
+`source_lineage -> truth_id` 映射。生成结束后，在线对象会在全部离线真值令牌条件下通过
+身份暴露检查。运行函数只把在线扫描传给 `FusionAdapter.process_scan_batch()`。融合结束后，
+评分器读取 D1 内部已接受观测的源谱系，再与 sidecar 连接。sidecar 没有在线 adapter 接口，
+也不保存 D2 `global_track_id`。
+
+### 场景构造
+
+目标按 8 个一组生成多个交叉簇。每组成员从不同方向接近同一局部区域，并在仿真时间约 55%
+处形成密集交叉。第一个扫描用于建立可评分的起始航迹；后续扫描按配置注入独立漏检。每 7 个
+目标中至少一个在交叉窗口进入遮挡条件，检测概率降低，量测协方差放大 4 倍。虚警数量服从
+泊松分布，虚警只携带匿名谱系。
+
+第二个扫描被强制延迟，第三个扫描按正常延迟到达，因此至少形成一次乱序量测。其余扫描按
+`oosm_probability` 注入附加延迟。扫描最终按到达时刻送入 D1，量测时刻保持原值，固定滞后
+重放逻辑由现有融合器处理。
+
+### 谱系评分
+
+评分器统计每条 D1 航迹接受的匿名谱系。某个真值谱系支持数最大时，该航迹归属于该真值；支持
+数相同时按稳定字符串顺序选择，避免用真值距离打破平局。谱系纯度的分母包含真值和虚警谱系，
+同时含多个真值谱系或同时含真值与虚警谱系的航迹计入混合谱系率。每个真值只选择支持数最多、
+谱系纯度最高的一条航迹计算状态误差。该规则保留重复航迹和混轨现象，不使用真值位置帮助在线
+关联。
+
+六维 NEES 为
+
+\[
+\epsilon_x=(\hat{x}-x)^T P^{-1}(\hat{x}-x)
+\]
+
+位置 RMSE 为全部可用航迹-真值对三维位置误差平方的均方根。NIS 从
+`consistency_evidence_records()` 读取，并通过同一匿名观测记录的 evaluator-only 句柄确认
+它对应真实量测。谱系映射覆盖率以运行结束时融合器保留的唯一观测编号计数，同一历史观测不会
+随后续发布帧重复累计。处理时间 P50/P95 包含单次 `process_scan_batch()` 和完整航迹物化。
+
+### 接口
+
+```python
+config = D1QualityBenchmarkConfig(target_count=200, seed=1000)
+result = run_d1_quality_benchmark(config)
+
+batch = run_d1_quality_benchmark_batch(
+    target_counts=(5, 20, 50, 100, 200),
+    seeds=range(1000, 1020),
+    base_config=config,
+)
+write_d1_quality_benchmark_outputs(batch, output_dir)
+```
+
+缺少样本时，指标输出 `available=False`、`value=None` 和具体 `reason`。合法的零值仍以
+`available=True` 输出，例如一个已评估 episode 的虚假航迹数量为 0。两种情况不能混用。
+
+2026-07-25 专项测试 `8 passed`，D1 全量 `496 passed in 33.19s`。200 目标短时冒烟可运行，
+但未执行 200 目标正式 20-seed 长时矩阵，也没有据此调整生命周期。

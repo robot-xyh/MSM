@@ -1246,3 +1246,21 @@ D6 已判定 `d1_optimization_admitted=true`。候选最低实时因子为 `0.17
 fixed-lag、扫描/发布频率、门限、观测内容、双时间戳、covariance、NED 或
 `global_track_id` 合同。AirSim 集成计划已检查；本次准入只改变三维质点 main 默认 selector
 和发布审计内存表示，不改变 AirSim topic、settings、时间戳或 episode 流程，因此无需更新。
+
+## 200 目标质量基准 P1 状态（2026-07-25）
+
+| 缺口 | 当前状态 | 已有证据 | 剩余验收 |
+| --- | --- | --- | --- |
+| 在线真值隔离质量输入 | **D1-owned 实现关闭** | 在线匿名扫描与 evaluator-only sidecar 分离；真值令牌检查、源谱系连接和 sidecar 内容摘要已实现 | 保持身份暴露负测 |
+| 指标可用性合同 | **D1-owned 实现关闭** | 召回、重复、虚假航迹、RMSE、NEES、NIS、航迹增长、P50/P95 均输出 availability；缺样本时 `value=None` 且带 reason | 与 D6 长期 schema 对齐 |
+| 规模与批量入口 | **接口关闭，正式证据 P1 开放** | 5/20/50/100/200 参数化；5 目标快速 20-seed 为 20/20 完成；200 目标单 seed 短时冒烟完成 | clean 200 目标、20 未见 seed、长时正式矩阵 |
+| 虚假航迹生命周期 | **P1 开放** | 基准可测唯一虚假航迹数、寿命和航迹增长；默认融合器未改 | 根据正式矩阵决定 tentative/confirmed/expiry 候选 |
+| 正式身份连续性 | **D2/D6 P1** | D1 基准不创建或改写 D2 规范身份 | 由 D2/D6 单独验收 ID switch 与 continuity |
+
+2026-07-25 专项 `8 passed`，D1 全量 `496 passed in 33.19s`。短时 200 目标冒烟对 532 条
+唯一接受观测评分，谱系映射覆盖率为 1.0，但暖机召回率只有 0.8183；该数值没有通过调整融合
+算法改善。当前无新增 P0。
+
+`D1_M_TO_N_COOPERATIVE_LOCALIZATION_REVIEW.md` 和
+`D1_STRUCTURAL_AMBIGUITY_HOLD_CAUSAL_AUDIT_CN.md` 已检查。本次只增加独立质量测量，不改变
+协同定位或结构歧义候选，两个文件无需修改。AirSim 集成计划同样无需修改。

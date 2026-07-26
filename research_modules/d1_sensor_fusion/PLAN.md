@@ -2757,3 +2757,39 @@ selector 晋级为 `immutable_shared_v2`，同时保留 `per_track_copy_v1` 显�
    `system_realtime_gap_closed=false`。
 4. AirSim、目标硬件、正式 RMSE/NEES/NIS 和物理拦截继续按独立证据验收，不能由本次质点性能
    矩阵外推。
+
+## 32. P1 真值隔离质量基准
+
+### 32.1 已完成
+
+1. 建立 `D1AnonymousQualityScenario`，按输入数量生成 5/20/50/100/200 及任意正整数规模的
+   匀速三维密集交叉扫描；场景包含漏检、虚警、遮挡协方差放大、固定延迟和强制乱序扫描。
+2. 建立 `D1QualityEvaluatorSidecar`。在线侧只持有匿名源谱系；离线 sidecar 单独保存轨迹
+   真值和谱系映射，并以内容摘要约束。sidecar 不传给 `FusionAdapter`。
+3. 建立带 `available/value/sample_count/reason/unit` 的指标合同。不可用指标必须返回
+   `value=None` 和原因，不能用 0 代替缺失数据。
+4. 实现 20-seed 批量入口、逐 seed JSON、中文 Markdown 报告和分规模聚合。基准不修改
+   D2 规范身份，不改变 D1 默认算法和生命周期。
+
+### 32.2 开发验收
+
+- 2026-07-25，5 目标、0.61 s、seeds 2000-2019：20/20 运行完成，共评分 248 条唯一接受
+  观测，谱系映射覆盖率 1.0；
+- 2026-07-25，200 目标、0.61 s、seed 1000：3 个发布帧，终态 201 条航迹，164 条 OOSM
+  观测，共评分 532 条唯一接受观测，暖机召回率 0.8183，谱系覆盖率 1.0；同日重复开发运行
+  的处理 P95 为 166.41--310.96 ms，不作为门限；
+- 专项 `8 passed`，D1 全量 `496 passed in 33.19s`；
+- 通过门限：在线真值暴露为 0、D2 规范身份写入为 0、快速 20-seed 完成率 20/20、谱系
+  覆盖率 100%、不可用指标均带原因。
+
+### 32.3 下一步
+
+1. 在 clean 工作树运行 200 目标、seeds 1000-1019 的正式长时质量矩阵，固定持续时间、漏检、
+   虚警、遮挡和延迟参数；
+2. 先确认 20/20 seeds 的 RMSE、NEES、NIS、召回、重复航迹和虚假航迹寿命均可用，再冻结
+   验收门限；
+3. 依据测量结果单独设计 tentative/confirmed/expiry 候选，不在基准代码内修改生命周期；
+4. main/D6 后续可读取结果 JSON，但 D1 sidecar 不进入在线 episode bus。
+
+`docs/AIRSIM_INTEGRATION_PLAN.md` 已检查。本项是 D1-owned 质点离线基准，不改变 AirSim
+topic、相机/雷达 adapter、settings、reset 顺序或日志接口，因此该文档无需修改。
