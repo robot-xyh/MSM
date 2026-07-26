@@ -63,7 +63,7 @@ def _parser() -> argparse.ArgumentParser:
         "--frame-index-sidecar",
         action="append",
         type=_variant_path,
-        default=(),
+        default=None,
         help=(
             "repeatable stable frame coordinate sidecar; required for formal "
             "R0/G1 candidate-graph pairing"
@@ -114,7 +114,7 @@ def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     try:
         sidecars: dict[str, Path] = {}
-        for variant, path in args.frame_index_sidecar:
+        for variant, path in args.frame_index_sidecar or ():
             if variant in sidecars:
                 raise D5CrossviewCalibrationError(
                     "frame_index_sidecar_variant_duplicate",

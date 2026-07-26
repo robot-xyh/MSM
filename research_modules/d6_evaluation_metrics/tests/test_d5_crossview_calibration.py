@@ -541,6 +541,7 @@ def test_tamper_duplicate_self_nonfinite_and_tracklet_key_fail_closed(
 
 def test_writer_cli_and_sha_inventory(tmp_path: Path) -> None:
     dataset = _dataset(tmp_path / "dataset", seeds=range(3), edge_mode="mixed")
+    sidecar = _frame_sidecar(dataset, tmp_path / "frames.json")
     result = evaluate_d5_crossview_calibration(
         (D5CrossviewDatasetInput("R0", dataset),),
         config=D5CrossviewCalibrationConfig(
@@ -572,6 +573,8 @@ def test_writer_cli_and_sha_inventory(tmp_path: Path) -> None:
             str(script),
             "--dataset",
             f"R0={dataset}",
+            "--frame-index-sidecar",
+            f"R0={sidecar}",
             "--mode",
             "development",
             "--bootstrap-resamples",
@@ -586,6 +589,13 @@ def test_writer_cli_and_sha_inventory(tmp_path: Path) -> None:
     assert completed.returncode == 0, completed.stderr
     stdout = json.loads(completed.stdout)
     assert stdout["status"] == "development_descriptive"
+    aggregate = json.loads(
+        (cli_output / "d5_crossview_calibration_aggregate.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert aggregate["variants"]["R0"]["frame_index_sidecar"]["status"] == "pass"
+    assert aggregate["variants"]["R0"]["frame_index_sidecar"]["record_count"] == 3
     assert verify_d5_crossview_calibration_sha256sums(cli_output) is True
     (cli_output / "D5_CROSSVIEW_CALIBRATION_CN.md").write_text(
         "tampered\n",
