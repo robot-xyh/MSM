@@ -31,9 +31,17 @@ fallback/lookup miss 为 0，返回记录由 `13679` 降至 `4429`，减少 `67.
 evidence 和 D6 evaluator 使用独立 schema；两臂只允许发布证据快照 selector 不同，
 回放前缀保持 `per_checkpoint_prefix_rebuild_v1`。矩阵运行器定向测试为 `63 passed`。
 
-D6 evaluator 和 13 对 fresh episode 尚未完成，默认仍是全量快照。本候选不能写成性能准入、
-系统实时、AirSim、目标硬件、实机或实飞证据。clean smoke 详见
-`docs/D1_PUBLICATION_EVIDENCE_SNAPSHOT_CLEAN_SMOKE_20260725_CN.md`。
+clean `d0219eb` 上已完成 13 对/26 个 fresh episode，0 reused、0 failed。D6 独立确认
+13/13 业务语义、consistency digest/count、原 D1 操作计数、实现身份和诊断审计通过；
+候选 429/429 次子集成功，返回记录由 `1602170` 降至 `133917`，削减
+`91.641524%`，且 fallback/lookup miss/非法或空 required 均为 0。
+
+D6 正式判定 `reject`：short 候选更快 `4/10 < 8/10`，D1 fusion 改善
+`-0.147877% < 1%`，bootstrap 上界 `1.374681% > 0%`。默认继续使用全量快照。
+候选最低实时因子 `0.203423 < 1`；本证据不覆盖 AirSim、目标硬件、实机或实飞。当前
+scalable 全量回归为 `268 passed, 1 warning`。clean smoke 与正式结果分别见
+`docs/D1_PUBLICATION_EVIDENCE_SNAPSHOT_CLEAN_SMOKE_20260725_CN.md` 和
+`docs/D1_PUBLICATION_EVIDENCE_SNAPSHOT_FORMAL_EVALUATION_20260725_CN.md`。
 
 ## D1 固定滞后回放前缀摘要正式拒绝（2026-07-25）
 

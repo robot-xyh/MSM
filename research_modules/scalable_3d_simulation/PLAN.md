@@ -52,8 +52,11 @@
 13. [x] 正式门预注册为：13/13 业务语义及原 D1 操作计数一致；候选 fallback 和 lookup
     miss 均为 0；返回记录数减少至少 50%；short/long 候选更快数至少 8/10 和 2/3；
     D1 fusion 改善至少 1%；core wall 改善至少 0.25%；D2 和 RSS 均值增幅不超过 5%。
-14. [ ] D6 独立读取 fresh episode 并给出 admit/reject。系统实时继续单独要求每个候选
-    episode 的实时因子不低于 1；局部候选准入不能替代 AirSim、目标硬件或实飞证据。
+14. [x] clean `d0219eb` 上完成 13 对/26 个 fresh episode，0 reused、0 failed。D6 独立
+    确认 13/13 语义与原操作计数一致、429/429 子集成功、0 fallback/lookup miss，返回记录
+    削减 `91.641524%`；但 short 仅 `4/10` 更快、D1 改善 `-0.147877%`、bootstrap
+    上界 `1.374681%`，正式判定 `reject`。reference 保持默认。候选最低实时因子
+    `0.203423 < 1`，系统实时以及 AirSim、目标硬件和实飞证据继续独立开放。
 
 ## D1 固定滞后回放前缀摘要准入（2026-07-25）
 

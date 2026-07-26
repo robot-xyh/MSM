@@ -18,7 +18,7 @@
 实时、逐批审计明细、严格精度、AirSim 和目标硬件证据仍为 P1。以下最新专项记录优先于
 “扫描输入或发布元数据仍待治理”的历史表述。
 
-## 2026-07-25 D1 在线发布证据子集快照待正式矩阵
+## 2026-07-25 D1 在线发布证据子集快照正式拒绝
 
 当前无新增 P0。main 已实现独立 selector
 `d1_publication_evidence_snapshot_implementation`。reference
@@ -43,16 +43,23 @@ fallback/lookup miss/非法或空 required 均为 0，返回记录由 `13679` �
 减少 `67.621902%`。单 pair 的 D1 fusion、module stack、episode 与外部命令计时方向混合，
 不形成性能准入。
 
-新的 matrix/evidence/evaluator schema 和 13 对矩阵已冻结为
-`configs/d1_publication_evidence_snapshot_multiseed_v1.json`。矩阵运行器定向测试
-`63 passed`，并已重新校验 clean smoke 两臂。short seeds 1151-1160、long seeds
-1151-1153，规模 200/200/2；唯一 treatment 是发布证据快照 selector，回放前缀保持
-reference。
+clean `d0219eb14c529a4fb9bf7d6610a9f32055a09206` 上已完成 13 对/26 个 fresh
+episode，0 reused、0 failed。matrix SHA-256 为
+`6c808c4df8759fd893c6d37ff9dce4a1efa07f9867fc71aff47a55c5f8517338`。
+D6 独立确认 13/13 业务语义、D1/D2 在线记录、consistency digest/count、原 D1 操作
+计数、实现身份、在线真值隔离和诊断审计通过。候选 429/429 次子集成功，fallback、
+lookup miss、非法或空 required 均为 0；返回记录由 `1602170` 降至 `133917`，削减
+`91.641524%`。
 
-本项仍为 P1。D6 evaluator、26 个 fresh episode 和正式判定尚未完成，默认不得改变。正式
-准入还需证明 13/13 业务语义和原 D1 操作计数一致、0 fallback、0 lookup miss、返回记录
-削减至少 50%，并通过预注册的 D1/core/D2/RSS 门。系统实时、AirSim、目标硬件和实飞证据
-继续独立开放。
+D6 正式判定 `reject`，`main_default_promotion_allowed=false`。失败门为：short 更快
+`4/10 < 8/10`、short D1 fusion 改善 `-0.147877% < 1%`、bootstrap 上界
+`1.374681% > 0%`。reference `full_consistency_snapshot_v1` 继续作为默认；candidate
+只保留为显式研究路径，不修改冻结门限和正式证据。
+
+本候选准入流程已审结。系统实时 P1 仍开放，候选最低实时因子
+`0.203423 < 1`；AirSim、目标硬件、实机和实飞证据继续独立开放。正式 D6 bundle 位于
+`research_modules/d6_evaluation_metrics/outputs/`
+`d1_publication_evidence_snapshot_multiseed_20260725_formal_d0219eb_d6/`。
 
 ## 2026-07-25 D1 固定滞后回放前缀摘要正式拒绝
 

@@ -102,3 +102,7 @@ short/long 多 seed 矩阵、配对置信区间和 D6 独立评估。
 本次 smoke 仅覆盖三维质点仿真。它不证明系统实时，不覆盖 AirSim、冻结目标处理器、硬件、
 实机或实飞。后续矩阵必须使用新的 matrix/evidence/evaluator schema，不得复用或覆盖
 回放前缀摘要候选的正式 `reject` 证据。
+
+后续 13 对正式矩阵已经完成，D6 判定为 `reject`。正式结果见
+`D1_PUBLICATION_EVIDENCE_SNAPSHOT_FORMAL_EVALUATION_20260725_CN.md`；本文件继续保留为
+矩阵预注册前的单 pair 证据，不追溯改写其观察值。
