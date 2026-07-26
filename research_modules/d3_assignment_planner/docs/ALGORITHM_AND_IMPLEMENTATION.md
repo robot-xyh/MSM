@@ -3043,3 +3043,87 @@ M-to-N 部分执行、字段缺失、手工 eligibility、占位摘要、摘要�
 D3 全量收集 485 项，结果为 `484 passed, 1 skipped`。唯一跳过为未安装时的可选 OR-Tools
 对照。此次实现没有修改 Hungarian、规则成本、迟滞、分布外阈值、生产模型加载或 AirSim
 适配。
+
+## 59. 单帧隔离双臂重放（2026-07-26）
+
+### 59.1 接口
+
+`replay_isolated_learning_intervention_frame(...)` 接收一份冻结规则
+`PlanningFrameEvidence`、main 分配的 `sequence_index`、bundle 路径、带外 manifest
+SHA-256、policy version，以及可选规划配置和成本权重。输出
+`IsolatedLearningInterventionFrameReplay`：
+
+```text
+frozen rule PlanningFrameEvidence
+        |
+        +--> validate source matrix / plan version / identifier lineage
+        |
+        +--> isolated rule replay, publish=False
+        |
+        +--> load frozen development shadow-only bundle
+               |
+               +--> isolated treatment replay, publish=False
+        |
+        +--> evaluate_learning_intervention_candidate_frame
+        |
+        +--> versioned DTO + canonical content SHA-256
+```
+
+DTO 包含规则帧、处理帧、资格证据、预期和实际 bundle 身份、模型状态摘要、回退原因、输入
+快照摘要及完整内容摘要。执行边界固定为 isolated simulation。运行发布、运行 ACK 和
+authority 均为 false。
+
+### 59.2 源帧校验
+
+源帧必须 available 且为 `learning_state=rule_only`。规则矩阵与有效矩阵通过完整规则输入
+摘要比较，摘要覆盖目标和资源顺序、矩阵、未分配成本、威胁分数、拒绝原因、硬候选掩码和
+成本分解。只比较数值矩阵不足以通过。
+
+帧内 `previous_plan_version` 必须等于实际前序计划版本。当前计划只能保持同一前序身份，
+或严格升一版并以 `previous_plan_id` 指向前序计划。规划时刻不得早于前序计划创建时刻，
+也不得超过其 `stale_after_s`。匿名航迹和资源标识的集合、唯一性及顺序必须与冻结矩阵
+完全一致。输入出现 truth、物理结果、拦截成功、reward 或非有限值时立即拒绝。
+
+### 59.3 双臂计算
+
+两个 arm 复用 `_replay_planning_arm(...)`。该函数也是原
+`execute_offline_paired_intervention(...)` 的内部计算路径，避免复制规划器。每个 arm
+新建隔离 `AssignmentPlanner`，把前序计划写入该实例的本地 latest 状态，然后以
+`publish=False` 计算候选。这里的本地 `publish_plan()` 不连接 runtime bus。
+
+规则 arm 使用冻结规则矩阵和无学习助手。处理 arm 先调用既有
+`_load_offline_development_bundle()`。只有 manifest SHA-256、policy version、模型状态和
+v3 development/shadow-only admission 全部合法时，loader 才返回处理助手。其他情况返回
+规则回退助手；处理有效矩阵保持规则值，`eligible` 不得为真。OOD、超时、非有限输出和
+置信度门继续由既有学习安全外壳处理。
+
+### 59.4 内容与权限
+
+两份输出规划帧必须重新计算出相同输入快照 SHA-256，且航迹标识顺序不得变化。资格证据由
+既有评估器重新生成，DTO 构造时再次验证。内容 SHA-256 覆盖除自身外的全部 DTO 字段；
+输入谱系、资格内容或摘要被修改时拒绝反序列化。
+
+`PlanningFrameEvidence` 是匿名单帧对象，不携带实验 seed。接口调用 loader 时只验证
+development/shadow-only 能力边界，不声明某个 seed 属于保留集。seed `1000-1019`、
+split 身份、清单完整性、逐 seed 首帧选择和 D7 检查点求交由 main/D6 外层
+manifest/runner 完成。该 DTO 也不包含 outcome、reward、runtime ACK、admission 或
+authority。
+
+### 59.5 验证
+
+新增 17 项专项测试。正例为三资源、两目标，其中一个目标要求两个 primary；冻结模型对
+前序 binding 施加正残差、对其他 hard-safe 边施加负残差，处理组实际改变 6 条边并改变
+3 个资源绑定，两组 M-to-N 计划均完整。负例覆盖：
+
+- manifest SHA-256 与 policy version 错误；
+- 非 development/shadow-only 清单；
+- truth、reward 和物理 outcome 字段；
+- 旧版本、过期前序计划、规则/有效输入不等价和非有限值；
+- 航迹标识顺序或集合变化；
+- 内容摘要与输入谱系篡改；
+- OOD、超时、零残差和绑定不变。
+
+专项结果为 `17 passed`。与原离线双臂执行和资格选择测试合并为 `59 passed`。D3 全量
+502 项结果为 `501 passed, 1 skipped`，唯一跳过为可选 OR-Tools。原
+`execute_offline_paired_intervention(...)` 的 23 项专项继续通过，说明共享 arm 重构未改变
+既有批量执行行为。20-seed 外层正式重放尚未完成。

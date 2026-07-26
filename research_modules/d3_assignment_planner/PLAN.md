@@ -1834,3 +1834,41 @@ main 负责与同 seed 的 D7 可执行检查点求交、预注册续跑区间�
 eligibility、占位摘要、规范摘要篡改、序号乱序、重复及逆序时间戳。D3 全量为
 `484 passed, 1 skipped`（485 项）。默认求解器、代价公式、阈值、生产 writer/loader 和
 assist 权限均未改变。本项没有 AirSim 接口变化，不要求改动 AirSim 适配计划。
+
+## 54. 单帧隔离重放生产者（2026-07-26）
+
+### 目标
+
+main 现有历史只有规则组 `PlanningFrameEvidence`。在调用候选资格接口前，需要按规划时刻
+隔离重放同一冻结输入，产生完整规则组和处理组规划帧。该生产者只提供 single-frame
+checkpoint-selection evidence，不读取真值、D6 结果、物理 outcome 或 reward，也不取得
+运行发布、ACK、admission 或 authority。
+
+### 已完成
+
+1. 增加 `replay_isolated_learning_intervention_frame(...)` 和版本化
+   `IsolatedLearningInterventionFrameReplay`。输入为冻结规则帧、`sequence_index`、
+   development bundle 路径、带外 manifest SHA-256、policy version，以及必要的规划配置
+   和成本权重。
+2. 复用 `_load_offline_development_bundle()`、冻结规则矩阵和既有规划器。规则组和处理组
+   均使用 `publish=False`；本地 `publish_plan(previous_plan)` 只初始化隔离实例的前序
+   状态，不产生 runtime bus 发布。
+3. 源帧严格校验规则/有效矩阵完整证据、前序版本与有效期、当前计划升版链、航迹和资源
+   标识顺序、数值有限性及在线标签隔离。bundle hash/version、development/shadow-only
+   边界、模型状态、OOD、超时或非有限值失败时规则回退，资格不得为真。
+4. DTO 保存两份完整规划帧、资格证据、bundle 实际身份、输入谱系和内容 SHA-256，并固定
+   声明运行发布、运行 ACK 和 authority 为 false。内容或谱系篡改失败关闭。
+
+### seed 与外层运行
+
+匿名 `PlanningFrameEvidence` 不增加 seed 字段。保留 seed `1000-1019`、split/清单完整性、
+逐 seed 时间历史和 D7 共同检查点由 main/D6 外层 manifest/runner 校验。D3 单帧接口不声称
+holdout inventory 完整、物理结果可用或正式准入完成。
+
+### 验收与后续
+
+新增专项 `17 passed`；单帧重放、既有离线双臂执行和资格选择组合为 `59 passed`。D3 全量
+502 项结果为 `501 passed, 1 skipped`，skip 仍是可选 OR-Tools。后续由 main 按每个 seed
+的权威规划时间遍历调用本接口，把 `.eligibility` 送入严格 first-eligible selector，再与
+D7 检查点求交。20-seed 外层正式运行未完成。默认 Hungarian、规则代价、阈值、生产
+writer/loader 和 assist 权限不变；AirSim 接口未变化。

@@ -15,7 +15,7 @@ from hashlib import sha256
 import json
 from math import isfinite
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
@@ -70,6 +70,11 @@ from .shadow_evaluation import (
     ShadowFrameMetrics,
 )
 
+if TYPE_CHECKING:
+    from .learning_intervention_eligibility import (
+        LearningInterventionFrameEvidence,
+    )
+
 
 OFFLINE_PAIRED_INTERVENTION_EXECUTION_SCHEMA_V1 = (
     "d3.offline-paired-intervention-execution.v1"
@@ -79,6 +84,12 @@ OFFLINE_PAIRED_INTERVENTION_REPORT_KIND_V1 = (
 )
 OFFLINE_ISOLATED_TARGET_INVENTORY_SCHEMA_V1 = (
     "d3.offline-isolated-target-inventory.v1"
+)
+ISOLATED_LEARNING_INTERVENTION_FRAME_REPLAY_SCHEMA_V1 = (
+    "d3.isolated-learning-intervention-frame-replay.v1"
+)
+ISOLATED_LEARNING_INTERVENTION_FRAME_REPLAY_SCOPE = (
+    "single-frame-checkpoint-selection-no-admission-no-authority"
 )
 
 _FORBIDDEN_INPUT_KEYS = frozenset(
@@ -94,6 +105,9 @@ _FORBIDDEN_INPUT_KEYS = frozenset(
         "object_name",
         "airsim_id",
         "offline_truth_labels",
+        "physical_outcome",
+        "intercept_success",
+        "reward",
     }
 )
 
@@ -239,6 +253,159 @@ class OfflinePairedInterventionExecution:
 
 
 @dataclass(frozen=True, slots=True)
+class IsolatedLearningInterventionFrameReplay:
+    """One truth-free rule/treatment replay for checkpoint selection.
+
+    This DTO covers one anonymous planning frame only.  It does not validate
+    holdout seed inventory or split completeness, and it carries no runtime
+    acknowledgement, outcome, reward, admission, publication, or authority.
+    Main/D6 must validate the reserved-seed manifest around a sequence of these
+    records before any formal experiment claim is made.
+    """
+
+    sequence_index: int
+    input_snapshot_sha256: str
+    expected_bundle_manifest_sha256: str
+    actual_bundle_manifest_sha256: str | None
+    expected_policy_version: str
+    actual_policy_version: str | None
+    bundle_state_dict_sha256: str | None
+    bundle_loaded: bool
+    bundle_fallback_reason: str | None
+    rule_frame: PlanningFrameEvidence
+    treatment_frame: PlanningFrameEvidence
+    eligibility: "LearningInterventionFrameEvidence"
+    content_sha256: str
+    schema_version: str = (
+        ISOLATED_LEARNING_INTERVENTION_FRAME_REPLAY_SCHEMA_V1
+    )
+    replay_scope: str = ISOLATED_LEARNING_INTERVENTION_FRAME_REPLAY_SCOPE
+
+    def __post_init__(self) -> None:
+        from .learning_intervention_eligibility import (
+            evaluate_learning_intervention_candidate_frame,
+            validate_learning_intervention_frame_evidence,
+        )
+
+        if (
+            self.schema_version
+            != ISOLATED_LEARNING_INTERVENTION_FRAME_REPLAY_SCHEMA_V1
+        ):
+            _fail("single_frame_replay_schema_unsupported")
+        if self.replay_scope != ISOLATED_LEARNING_INTERVENTION_FRAME_REPLAY_SCOPE:
+            _fail("single_frame_replay_scope_invalid")
+        _single_frame_sequence_index(self.sequence_index)
+        _single_frame_sha256(
+            self.input_snapshot_sha256,
+            "input_snapshot_sha256",
+        )
+        _single_frame_sha256(
+            self.expected_bundle_manifest_sha256,
+            "expected_bundle_manifest_sha256",
+        )
+        _single_frame_required_text(
+            self.expected_policy_version,
+            "expected_policy_version",
+        )
+        if self.actual_bundle_manifest_sha256 is not None:
+            _single_frame_sha256(
+                self.actual_bundle_manifest_sha256,
+                "actual_bundle_manifest_sha256",
+            )
+        if self.actual_policy_version is not None:
+            _single_frame_required_text(
+                self.actual_policy_version,
+                "actual_policy_version",
+            )
+        if self.bundle_state_dict_sha256 is not None:
+            _single_frame_sha256(
+                self.bundle_state_dict_sha256,
+                "bundle_state_dict_sha256",
+            )
+        if type(self.bundle_loaded) is not bool:
+            _fail("single_frame_replay_bundle_loaded_type_invalid")
+        if self.bundle_loaded:
+            if (
+                self.bundle_fallback_reason is not None
+                or self.actual_bundle_manifest_sha256
+                != self.expected_bundle_manifest_sha256
+                or self.actual_policy_version != self.expected_policy_version
+                or self.bundle_state_dict_sha256 is None
+            ):
+                _fail("single_frame_replay_bundle_state_invalid")
+        else:
+            _single_frame_required_text(
+                self.bundle_fallback_reason,
+                "bundle_fallback_reason",
+            )
+
+        source_hashes = (
+            canonical_planning_frame_snapshot_sha256(self.rule_frame),
+            canonical_planning_frame_snapshot_sha256(self.treatment_frame),
+        )
+        if source_hashes != (
+            self.input_snapshot_sha256,
+            self.input_snapshot_sha256,
+        ):
+            _fail("single_frame_replay_input_lineage_mismatch")
+        if self.rule_frame.learning_state != "rule_only":
+            _fail("single_frame_replay_rule_state_invalid")
+        if tuple(item.track_id for item in self.rule_frame.tracks) != tuple(
+            item.track_id for item in self.treatment_frame.tracks
+        ):
+            _fail("single_frame_replay_global_track_id_rewrite")
+
+        validated = validate_learning_intervention_frame_evidence(
+            self.eligibility
+        )
+        expected = evaluate_learning_intervention_candidate_frame(
+            sequence_index=self.sequence_index,
+            rule_frame=self.rule_frame,
+            treatment_frame=self.treatment_frame,
+        )
+        if canonical_runtime_payload_sha256(validated.to_dict()) != (
+            canonical_runtime_payload_sha256(expected.to_dict())
+        ):
+            _fail("single_frame_replay_eligibility_mismatch")
+        if not self.bundle_loaded and validated.eligible:
+            _fail("single_frame_replay_fallback_marked_eligible")
+
+        _assert_truth_free(self)
+        _assert_all_finite(self)
+        _single_frame_sha256(self.content_sha256, "content_sha256")
+        expected_content = (
+            canonical_isolated_learning_intervention_frame_replay_sha256(self)
+        )
+        if self.content_sha256 != expected_content:
+            _fail("single_frame_replay_content_sha256_mismatch")
+
+    @property
+    def isolated_simulation(self) -> bool:
+        return True
+
+    @property
+    def runtime_publication_allowed(self) -> bool:
+        return False
+
+    @property
+    def runtime_ack_available(self) -> bool:
+        return False
+
+    @property
+    def authority_available(self) -> bool:
+        return False
+
+    def to_dict(self) -> dict[str, Any]:
+        """Return the complete finite, truth-free replay payload."""
+
+        payload = _single_frame_replay_payload(self)
+        payload["content_sha256"] = self.content_sha256
+        _assert_truth_free(payload)
+        _assert_all_finite(payload)
+        return payload
+
+
+@dataclass(frozen=True, slots=True)
 class _OfflineBundle:
     assistant: LearningCostAssistant | RuleFallbackLearningAssistant
     loaded: bool
@@ -261,6 +428,17 @@ class _RawArmExecution:
     fallback_reason: str | None
     inference_elapsed_ms: float
     frame_metrics: ShadowFrameMetrics | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class _PlanningArmReplay:
+    planning_frame_evidence: PlanningFrameEvidence
+    plan: AssignmentPlan
+    effective_matrix: CostMatrixResult
+    learning_cost_applied: bool
+    rule_fallback_applied: bool
+    fallback_reason: str | None
+    inference_elapsed_ms: float
 
 
 class _FrozenPlanningFrameCostModel:
@@ -354,6 +532,168 @@ def canonical_learning_action_mask_sha256(
         "mask": mask,
     }
     return canonical_runtime_payload_sha256(payload)
+
+
+def canonical_isolated_learning_intervention_frame_replay_sha256(
+    value: IsolatedLearningInterventionFrameReplay,
+) -> str:
+    """Hash the complete replay payload except its self-referential hash."""
+
+    if not isinstance(value, IsolatedLearningInterventionFrameReplay):
+        _fail("single_frame_replay_type_invalid")
+    payload = _single_frame_replay_payload(value)
+    _assert_truth_free(payload)
+    _assert_all_finite(payload)
+    return canonical_runtime_payload_sha256(payload)
+
+
+def replay_isolated_learning_intervention_frame(
+    rule_frame: PlanningFrameEvidence,
+    *,
+    sequence_index: int,
+    bundle_dir: str | Path,
+    expected_manifest_sha256: str,
+    expected_policy_version: str,
+    planner_config: PlannerConfig | None = None,
+    cost_weights: CostWeights | None = None,
+) -> IsolatedLearningInterventionFrameReplay:
+    """Replay one frozen rule frame through isolated rule and treatment arms.
+
+    The development bundle is loaded through the existing shadow-only loader.
+    Both planning calls use ``publish=False``.  The returned evidence is only
+    single-frame checkpoint-selection evidence and cannot provide runtime ACK,
+    outcome, reward, admission, publication, or authority.
+
+    ``PlanningFrameEvidence`` is anonymous and deliberately has no experiment
+    seed.  Reserved seeds, split identity, and holdout inventory completeness
+    remain main/D6 manifest-runner responsibilities.  The local
+    ``planner.publish_plan(previous_plan)`` call seeds only the isolated
+    planner instance; neither replayed candidate is published to a runtime bus.
+    """
+
+    sequence = _single_frame_sequence_index(sequence_index)
+    expected_manifest = _single_frame_sha256(
+        expected_manifest_sha256,
+        "expected_manifest_sha256",
+    )
+    expected_policy = _single_frame_required_text(
+        expected_policy_version,
+        "expected_policy_version",
+    )
+    _validate_planning_frame_basics(rule_frame)
+    if rule_frame.learning_state != "rule_only":
+        _fail("single_frame_replay_input_not_rule_control")
+    if rule_frame.previous_plan is None:
+        _fail("single_frame_replay_previous_plan_missing")
+    effective_rule_result = rule_frame.effective_matrix_result
+    if effective_rule_result is None:
+        _fail("single_frame_replay_rule_effective_matrix_mismatch")
+    _validate_matrix_result(effective_rule_result)
+    if canonical_rule_cost_matrix_sha256(
+        _required_rule_result(rule_frame)
+    ) != canonical_rule_cost_matrix_sha256(effective_rule_result):
+        _fail("single_frame_replay_rule_effective_matrix_mismatch")
+    _validate_single_frame_rule_source_contract(rule_frame)
+
+    config = planner_config or PlannerConfig()
+    weights = cost_weights or CostWeights()
+    _validate_execution_config(config, weights)
+    input_snapshot_sha256 = canonical_planning_frame_snapshot_sha256(
+        rule_frame
+    )
+    original_rule_matrix = np.asarray(rule_frame.rule_matrix, dtype=float).copy()
+    rule_result = _required_rule_result(rule_frame)
+    previous_version = int(rule_frame.previous_plan.version)
+    rule_matrix_sha256 = canonical_rule_cost_matrix_sha256(rule_result)
+    action_mask_sha256 = canonical_learning_action_mask_sha256(
+        rule_result,
+        expected_previous_version=previous_version,
+        current_plan_version=previous_version,
+    )
+
+    offline_bundle = _load_offline_development_bundle(
+        bundle_dir,
+        expected_manifest_sha256=expected_manifest,
+        expected_policy_version=expected_policy,
+        reserved_seeds=(),
+    )
+    rule_arm = _replay_planning_arm(
+        arm_kind=CONTROL_ARM,
+        evidence=rule_frame,
+        assistant=None,
+        bundle_loaded=False,
+        config=config,
+        weights=weights,
+        rule_hash=rule_matrix_sha256,
+        action_mask_hash=action_mask_sha256,
+        expected_previous_version=previous_version,
+        current_plan_version=previous_version,
+    )
+    treatment_arm = _replay_planning_arm(
+        arm_kind=TREATMENT_ARM,
+        evidence=rule_frame,
+        assistant=offline_bundle.assistant,
+        bundle_loaded=offline_bundle.loaded,
+        config=config,
+        weights=weights,
+        rule_hash=rule_matrix_sha256,
+        action_mask_hash=action_mask_sha256,
+        expected_previous_version=previous_version,
+        current_plan_version=previous_version,
+    )
+    if not np.array_equal(
+        original_rule_matrix,
+        np.asarray(rule_frame.rule_matrix, dtype=float),
+    ):
+        _fail("rule_matrix_mutated_during_intervention")
+    for replayed in (
+        rule_arm.planning_frame_evidence,
+        treatment_arm.planning_frame_evidence,
+    ):
+        if (
+            canonical_planning_frame_snapshot_sha256(replayed)
+            != input_snapshot_sha256
+        ):
+            _fail("single_frame_replay_input_lineage_mismatch")
+
+    from .learning_intervention_eligibility import (
+        evaluate_learning_intervention_candidate_frame,
+    )
+
+    eligibility = evaluate_learning_intervention_candidate_frame(
+        sequence_index=sequence,
+        rule_frame=rule_arm.planning_frame_evidence,
+        treatment_frame=treatment_arm.planning_frame_evidence,
+    )
+    if not offline_bundle.loaded and eligibility.eligible:
+        _fail("single_frame_replay_fallback_marked_eligible")
+
+    actual_policy_version = (
+        None
+        if offline_bundle.manifest is None
+        else offline_bundle.manifest.policy_version
+    )
+    values = {
+        "sequence_index": sequence,
+        "input_snapshot_sha256": input_snapshot_sha256,
+        "expected_bundle_manifest_sha256": expected_manifest,
+        "actual_bundle_manifest_sha256": offline_bundle.manifest_sha256,
+        "expected_policy_version": expected_policy,
+        "actual_policy_version": actual_policy_version,
+        "bundle_state_dict_sha256": offline_bundle.state_dict_sha256,
+        "bundle_loaded": offline_bundle.loaded,
+        "bundle_fallback_reason": offline_bundle.fallback_reason,
+        "rule_frame": rule_arm.planning_frame_evidence,
+        "treatment_frame": treatment_arm.planning_frame_evidence,
+        "eligibility": eligibility,
+    }
+    content_sha256 = canonical_runtime_payload_sha256(
+        _single_frame_replay_payload_from_values(**values)
+    )
+    return IsolatedLearningInterventionFrameReplay(
+        **values,
+        content_sha256=content_sha256,
+    )
 
 
 def execute_offline_paired_intervention(
@@ -614,15 +954,73 @@ def _execute_arm(
     rule_hash: str,
     action_mask_hash: str,
 ) -> _RawArmExecution:
-    if arm.arm_kind == CONTROL_ARM:
+    replay = _replay_planning_arm(
+        arm_kind=arm.arm_kind,
+        evidence=evidence,
+        assistant=assistant,
+        bundle_loaded=bundle_loaded,
+        config=config,
+        weights=weights,
+        rule_hash=rule_hash,
+        action_mask_hash=action_mask_hash,
+        expected_previous_version=arm.expected_previous_plan_version,
+        current_plan_version=arm.current_plan_version,
+    )
+    plan = _annotate_isolated_plan(
+        replay.plan,
+        pair=pair,
+        arm=arm,
+        planning_frame_evidence=evidence,
+        offline_solve_source_plan=evidence.previous_plan,
+        formal_authority_plan=evidence.plan,
+        current_tracks=evidence.tracks,
+        bundle_loaded=bundle_loaded,
+        learning_applied=replay.learning_cost_applied,
+        fallback_reason=replay.fallback_reason,
+    )
+    validated_assignment_plan_payload_sha256(plan)
+    return _RawArmExecution(
+        pair=pair,
+        arm=arm,
+        plan=plan,
+        rule_matrix_sha256=rule_hash,
+        action_mask_sha256=action_mask_hash,
+        effective_matrix_sha256=canonical_rule_cost_matrix_sha256(
+            replay.effective_matrix
+        ),
+        learning_cost_applied=replay.learning_cost_applied,
+        rule_fallback_applied=replay.rule_fallback_applied,
+        fallback_reason=replay.fallback_reason,
+        inference_elapsed_ms=replay.inference_elapsed_ms,
+    )
+
+
+def _replay_planning_arm(
+    *,
+    arm_kind: str,
+    evidence: PlanningFrameEvidence,
+    assistant: LearningCostAssistant | RuleFallbackLearningAssistant | None,
+    bundle_loaded: bool,
+    config: PlannerConfig,
+    weights: CostWeights,
+    rule_hash: str,
+    action_mask_hash: str,
+    expected_previous_version: int,
+    current_plan_version: int,
+) -> _PlanningArmReplay:
+    if arm_kind == CONTROL_ARM:
         if assistant is not None or bundle_loaded:
             _fail("offline_control_arm_learning_boundary_invalid")
+    elif arm_kind != TREATMENT_ARM:
+        _fail("offline_arm_kind_invalid")
     elif assistant is None or bundle_loaded != isinstance(
         assistant, LearningCostAssistant
     ):
         _fail("offline_treatment_bundle_state_invalid")
 
     rule_result = _required_rule_result(evidence)
+    if canonical_rule_cost_matrix_sha256(rule_result) != rule_hash:
+        _fail("rule_matrix_replay_hash_mismatch")
     replay_config = _offline_replay_planner_config(config, evidence)
     frozen_model = _FrozenPlanningFrameCostModel(
         rule_result,
@@ -647,7 +1045,7 @@ def _execute_arm(
             timestamp=float(evidence.timestamp_s),
             previous_plan=previous_plan,
             authority=authority,
-            expected_previous_version=arm.expected_previous_plan_version,
+            expected_previous_version=expected_previous_version,
             window_id=None if evidence.plan is None else evidence.plan.window_id,
             publish=False,
         )
@@ -658,7 +1056,7 @@ def _execute_arm(
             timestamp=float(evidence.timestamp_s),
             previous_plan=previous_plan,
             window_id=None if evidence.plan is None else evidence.plan.window_id,
-            expected_previous_version=arm.expected_previous_plan_version,
+            expected_previous_version=expected_previous_version,
             forced_replan=evidence.forced_replan,
             publish=False,
         )
@@ -670,15 +1068,23 @@ def _execute_arm(
         _fail("rule_matrix_replay_mismatch")
     replay_action_hash = canonical_learning_action_mask_sha256(
         replay_rule,
-        expected_previous_version=arm.expected_previous_plan_version,
-        current_plan_version=arm.current_plan_version,
+        expected_previous_version=expected_previous_version,
+        current_plan_version=current_plan_version,
     )
     if replay_action_hash != action_mask_hash:
         _fail("action_mask_replay_mismatch")
+
     plan = _replay_recorded_authority_identity(plan, evidence=evidence)
-    if arm.arm_kind == CONTROL_ARM and evidence.plan is not None:
+    if arm_kind == CONTROL_ARM and evidence.plan is not None:
         if not _control_plan_replay_matches(plan, evidence.plan):
             _fail("control_plan_replay_mismatch")
+    replay = replace(
+        replay,
+        plan=plan,
+        plan_id=plan.plan_id,
+        plan_version=plan.version,
+        solver_name=plan.solver_name,
+    )
 
     effective = replay.effective_matrix_result
     if effective is None:
@@ -692,34 +1098,18 @@ def _execute_arm(
     learning_applied = bool(metadata.get("learning_applied", False))
     fallback_reason = metadata.get("learning_fallback_reason")
     fallback_reason = None if fallback_reason is None else str(fallback_reason)
-    rule_fallback = arm.arm_kind == TREATMENT_ARM and not learning_applied
-    if arm.arm_kind == CONTROL_ARM:
+    rule_fallback = arm_kind == TREATMENT_ARM and not learning_applied
+    if arm_kind == CONTROL_ARM:
         learning_applied = False
         rule_fallback = False
         fallback_reason = None
     inference_s = float(metadata.get("learning_inference_elapsed_s", 0.0) or 0.0)
     if not isfinite(inference_s) or inference_s < 0.0:
         _fail("offline_inference_elapsed_invalid")
-    plan = _annotate_isolated_plan(
-        plan,
-        pair=pair,
-        arm=arm,
-        planning_frame_evidence=evidence,
-        offline_solve_source_plan=evidence.previous_plan,
-        formal_authority_plan=evidence.plan,
-        current_tracks=evidence.tracks,
-        bundle_loaded=bundle_loaded,
-        learning_applied=learning_applied,
-        fallback_reason=fallback_reason,
-    )
-    validated_assignment_plan_payload_sha256(plan)
-    return _RawArmExecution(
-        pair=pair,
-        arm=arm,
+    return _PlanningArmReplay(
+        planning_frame_evidence=replay,
         plan=plan,
-        rule_matrix_sha256=rule_hash,
-        action_mask_sha256=action_mask_hash,
-        effective_matrix_sha256=canonical_rule_cost_matrix_sha256(effective),
+        effective_matrix=effective,
         learning_cost_applied=learning_applied,
         rule_fallback_applied=rule_fallback,
         fallback_reason=fallback_reason,
@@ -1757,6 +2147,56 @@ def _validate_planning_frame_basics(evidence: PlanningFrameEvidence) -> None:
         _fail("offline_recorded_authority_transition_unexpected")
 
 
+def _validate_single_frame_rule_source_contract(
+    evidence: PlanningFrameEvidence,
+) -> None:
+    """Validate the frozen rule frame before isolated dual-arm replay."""
+
+    previous = evidence.previous_plan
+    plan = evidence.plan
+    rule_result = evidence.rule_matrix_result
+    if previous is None:
+        _fail("single_frame_replay_previous_plan_missing")
+    if plan is None or rule_result is None:
+        _fail("single_frame_replay_source_plan_missing")
+    if evidence.previous_plan_version != previous.version:
+        _fail("single_frame_replay_previous_plan_version_mismatch")
+    if evidence.plan_id != plan.plan_id or evidence.plan_version != plan.version:
+        _fail("single_frame_replay_source_plan_identity_mismatch")
+    if plan.version == previous.version:
+        if plan.plan_id != previous.plan_id:
+            _fail("single_frame_replay_stale_plan_version")
+    elif plan.version == previous.version + 1:
+        if plan.previous_plan_id != previous.plan_id:
+            _fail("single_frame_replay_stale_plan_version")
+    else:
+        _fail("single_frame_replay_stale_plan_version")
+
+    timestamp_s = float(evidence.timestamp_s)
+    if timestamp_s < float(previous.created_at):
+        _fail("single_frame_replay_stale_previous_plan")
+    if previous.stale_after_s is not None:
+        freshness_base_s = max(
+            float(previous.created_at),
+            float(previous.last_changed_at),
+        )
+        if timestamp_s > freshness_base_s + float(previous.stale_after_s):
+            _fail("single_frame_replay_stale_previous_plan")
+
+    track_ids = tuple(item.track_id for item in evidence.tracks)
+    resource_ids = tuple(item.resource_id for item in evidence.resources)
+    if (
+        len(track_ids) != len(set(track_ids))
+        or track_ids != tuple(rule_result.target_ids)
+    ):
+        _fail("single_frame_replay_global_track_id_snapshot_mismatch")
+    if (
+        len(resource_ids) != len(set(resource_ids))
+        or resource_ids != tuple(rule_result.resource_ids)
+    ):
+        _fail("single_frame_replay_resource_id_snapshot_mismatch")
+
+
 def _validate_matrix_result(result: CostMatrixResult) -> None:
     matrix = np.asarray(result.matrix, dtype=float)
     unassigned = np.asarray(result.unassigned_costs, dtype=float)
@@ -1930,6 +2370,97 @@ def _control_plan_replay_matches(
     )
 
 
+def _single_frame_replay_payload(
+    value: IsolatedLearningInterventionFrameReplay,
+) -> dict[str, Any]:
+    return _single_frame_replay_payload_from_values(
+        sequence_index=value.sequence_index,
+        input_snapshot_sha256=value.input_snapshot_sha256,
+        expected_bundle_manifest_sha256=(
+            value.expected_bundle_manifest_sha256
+        ),
+        actual_bundle_manifest_sha256=value.actual_bundle_manifest_sha256,
+        expected_policy_version=value.expected_policy_version,
+        actual_policy_version=value.actual_policy_version,
+        bundle_state_dict_sha256=value.bundle_state_dict_sha256,
+        bundle_loaded=value.bundle_loaded,
+        bundle_fallback_reason=value.bundle_fallback_reason,
+        rule_frame=value.rule_frame,
+        treatment_frame=value.treatment_frame,
+        eligibility=value.eligibility,
+    )
+
+
+def _single_frame_replay_payload_from_values(
+    *,
+    sequence_index: int,
+    input_snapshot_sha256: str,
+    expected_bundle_manifest_sha256: str,
+    actual_bundle_manifest_sha256: str | None,
+    expected_policy_version: str,
+    actual_policy_version: str | None,
+    bundle_state_dict_sha256: str | None,
+    bundle_loaded: bool,
+    bundle_fallback_reason: str | None,
+    rule_frame: PlanningFrameEvidence,
+    treatment_frame: PlanningFrameEvidence,
+    eligibility: "LearningInterventionFrameEvidence",
+) -> dict[str, Any]:
+    return {
+        "schema_version": (
+            ISOLATED_LEARNING_INTERVENTION_FRAME_REPLAY_SCHEMA_V1
+        ),
+        "replay_scope": ISOLATED_LEARNING_INTERVENTION_FRAME_REPLAY_SCOPE,
+        "sequence_index": int(sequence_index),
+        "input_snapshot_sha256": input_snapshot_sha256,
+        "bundle": {
+            "expected_manifest_sha256": expected_bundle_manifest_sha256,
+            "actual_manifest_sha256": actual_bundle_manifest_sha256,
+            "expected_policy_version": expected_policy_version,
+            "actual_policy_version": actual_policy_version,
+            "state_dict_sha256": bundle_state_dict_sha256,
+            "loaded": bool(bundle_loaded),
+            "fallback_reason": bundle_fallback_reason,
+        },
+        "execution_boundary": {
+            "isolated_simulation": True,
+            "publish_allowed": False,
+            "runtime_ack_available": False,
+            "authority_available": False,
+            "global_track_id_rewrite_count": 0,
+        },
+        "rule_frame": _jsonable(rule_frame),
+        "treatment_frame": _jsonable(treatment_frame),
+        "eligibility": eligibility.to_dict(),
+    }
+
+
+def _single_frame_sequence_index(value: Any) -> int:
+    if isinstance(value, bool) or not isinstance(value, (int, np.integer)):
+        _fail("single_frame_replay_sequence_index_invalid")
+    result = int(value)
+    if result < 0:
+        _fail("single_frame_replay_sequence_index_invalid")
+    return result
+
+
+def _single_frame_required_text(value: Any, context: str) -> str:
+    if not isinstance(value, str) or not value.strip():
+        _fail("single_frame_replay_text_invalid", context)
+    return value.strip()
+
+
+def _single_frame_sha256(value: Any, context: str) -> str:
+    text = _single_frame_required_text(value, context)
+    if (
+        len(text) != 64
+        or any(character not in "0123456789abcdef" for character in text)
+        or len(set(text)) == 1
+    ):
+        _fail("single_frame_replay_sha256_invalid", context)
+    return text
+
+
 def _policy_parameters_are_finite(policy: Any) -> bool:
     try:
         return all(
@@ -2005,13 +2536,18 @@ def _fail(code: str, message: str | None = None) -> None:
 
 
 __all__ = [
+    "ISOLATED_LEARNING_INTERVENTION_FRAME_REPLAY_SCHEMA_V1",
+    "ISOLATED_LEARNING_INTERVENTION_FRAME_REPLAY_SCOPE",
     "OFFLINE_PAIRED_INTERVENTION_EXECUTION_SCHEMA_V1",
     "OFFLINE_PAIRED_INTERVENTION_REPORT_KIND_V1",
+    "IsolatedLearningInterventionFrameReplay",
     "OfflineInterventionArmExecution",
     "OfflinePairedInterventionExecution",
+    "canonical_isolated_learning_intervention_frame_replay_sha256",
     "canonical_learning_action_mask_sha256",
     "canonical_planning_frame_snapshot_sha256",
     "canonical_rule_cost_matrix_sha256",
     "execute_offline_paired_intervention",
+    "replay_isolated_learning_intervention_frame",
     "write_offline_paired_intervention_execution",
 ]

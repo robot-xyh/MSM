@@ -1641,3 +1641,31 @@ main 先前对 20 个保留 seed 的共同检查点做过物理续跑。规则�
 2026-07-26 专项测试为 `19 passed`。D3 全量收集 485 项，结果为
 `484 passed, 1 skipped`，唯一跳过仍是可选 OR-Tools。此次没有改变 AirSim 输入输出、
 episode 编排或控制行为。
+
+## 2026-07-26 单帧隔离干预重放
+
+D3 新增 `replay_isolated_learning_intervention_frame(...)`。main 可把一份冻结的
+`learning_state=rule_only` 匿名规划帧、时间序号、development/shadow-only bundle 路径及
+带外 manifest SHA-256、policy version 交给该接口。接口复用既有安全 bundle loader、
+冻结规则矩阵和规划器，分别以 `publish=False` 重放规则组与处理组，再调用
+`evaluate_learning_intervention_candidate_frame(...)` 生成资格证据。
+
+返回对象 `IsolatedLearningInterventionFrameReplay` 同时保存完整规则帧、处理帧、bundle
+实际装载状态、稳定回退原因、输入谱系摘要、资格证据和完整内容 SHA-256。源帧必须满足：
+
+- 规则矩阵与有效矩阵的完整输入证据一致；
+- 前序计划版本、当前计划身份、升版关系和有效期均合法；
+- 航迹与资源标识的集合、顺序和矩阵谱系一致；
+- 输入不含 truth、物理结果、拦截成功或 reward 字段，所有数值有限；
+- 处理学习只在 manifest/hash/version 正确且 bundle 保持 v3 development、
+  shadow-only 时实际应用；其他情况使用原规则回退并保持 `eligible=false`。
+
+接口内部调用 `planner.publish_plan(previous_plan)` 只为新的隔离规划器设置本地前序状态。
+两个候选计划仍以 `publish=False` 计算，不发布到运行总线。DTO 固定声明运行发布、运行 ACK
+和 authority 均不可用，也不提供 outcome、reward 或正式 admission。
+
+匿名 `PlanningFrameEvidence` 不携带实验 seed。保留 seed `1000-1019`、split 身份、清单
+完整性和逐 seed 首个共同检查点由 main/D6 外层 manifest/runner 校验；本接口不声称完成
+holdout inventory 验证。2026-07-26 新增专项 `17 passed`，与既有离线执行和资格测试合并
+为 `59 passed`。D3 全量收集 502 项，结果为 `501 passed, 1 skipped`，唯一跳过是可选
+OR-Tools。20-seed 外层正式运行尚未使用本接口重新执行。

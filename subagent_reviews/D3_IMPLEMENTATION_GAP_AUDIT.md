@@ -1409,3 +1409,33 @@ main 尚需把每个 seed 的规则/处理规划帧按权威时间顺序持久�
 
 `docs/AIRSIM_INTEGRATION_PLAN.md` 已检查。本次没有 AirSim DTO、settings、episode 调度或
 控制行为变化，因此无需修改。
+
+## 51. 单帧隔离重放生产者 GAP 更新（2026-07-26）
+
+### 已关闭的 D3 缺口
+
+main 只有规则组 `PlanningFrameEvidence` 时，旧 API 无法在资格判断前公开返回同输入的
+规则组和处理组完整规划帧。D3 已增加
+`replay_isolated_learning_intervention_frame(...)` 和
+`d3.isolated-learning-intervention-frame-replay.v1`。接口复用既有 development bundle
+loader、冻结规则矩阵、Hungarian/需求槽规划器和学习安全外壳，不复制求解器。
+
+源帧现严格检查规则/有效输入证据一致、前序版本和有效期、当前计划升版链、航迹与资源标识
+顺序、数值有限性及线上标签隔离。bundle hash/version、清单权限、OOD、超时或非有限值不
+满足时使用规则回退，处理资格不得为真。DTO 绑定完整规则帧、处理帧、资格证据、bundle
+身份、输入谱系和内容 SHA-256；内容或谱系篡改失败关闭。运行发布、runtime ACK 和
+authority 固定为 false。
+
+新增专项 `17 passed`。原离线执行器 23 项继续通过；单帧重放、离线执行和资格选择组合为
+`59 passed`。D3 全量 502 项结果为 `501 passed, 1 skipped`，skip 是可选 OR-Tools。
+当前没有新增 D3 P0。D3-owned 的单帧生产者、资格评估和 first-eligible 选择合同已完成。
+
+### 仍开放的外层 P1
+
+匿名 `PlanningFrameEvidence` 不携带 seed。seed `1000-1019`、split 身份、清单完整性、
+逐 seed 权威时间顺序、D7 共同检查点、runtime ACK、outcome、reward 和正式 admission
+继续由 main/D6 外层 manifest/runner 校验。旧 20-seed 脏工作树续跑仍为绑定变化 0/20，
+不能作为合格检查点证据。main 尚未用新生产者完成 clean 20-seed 正式运行。
+
+`docs/AIRSIM_INTEGRATION_PLAN.md` 再次检查。本项没有 AirSim DTO、相机/飞行设置、episode
+编排或控制路径变化，因此不修改该文件。

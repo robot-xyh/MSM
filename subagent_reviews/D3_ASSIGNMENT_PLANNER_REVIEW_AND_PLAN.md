@@ -1470,3 +1470,23 @@ authority。证据 schema、规范摘要和内容 SHA-256 可供 main 后续预�
 专项 `19 passed`，D3 全量为 `484 passed, 1 skipped`（485 项）。默认规则/Hungarian、
 需求槽、代价、迟滞、OOD 阈值、production writer/loader 和 assist 权限未改。D3 模块内
 资格合同已完成；main 仍需接入真实逐帧历史并重跑 clean 多 seed。
+
+## 55. 单帧隔离重放生产者复核（2026-07-26）
+
+main 不能只凭一份规则规划帧构造处理帧，也不能把手工“模型已采用”布尔传给资格接口。
+D3 现提供公开单帧重放生产者。它从同一冻结规则输入新建两个隔离规划器，规则组不加载
+学习助手，处理组只加载 manifest SHA-256、policy version 和 development/shadow-only
+边界均通过的冻结 bundle。两个候选均以 `publish=False` 计算。
+
+接口先校验前序版本、计划升版链、有效期、完整规则输入摘要、航迹和资源标识顺序以及有限
+数值。输出 DTO 保存两份完整 `PlanningFrameEvidence`、资格证据、bundle 实际身份、回退
+原因、输入谱系和内容摘要。truth、reward、物理 outcome、旧版本、矩阵差异、标识变化和
+摘要篡改均失败关闭。运行发布、运行 ACK 和 authority 始终不可用。
+
+17 项新专项全部通过。原离线执行器 23 项回归继续通过，证明共享 arm 重构没有改变既有
+批量执行；与资格选择测试合计 `59 passed`。D3 全量为 `501 passed, 1 skipped`（502 项）。
+默认 Hungarian、需求槽、规则代价、阈值、生产 loader/writer 和 assist 权限均未改变。
+
+该接口只提供 single-frame checkpoint-selection evidence。匿名帧没有 seed，seed
+`1000-1019`、split 和清单完整性由 main/D6 外层校验。20-seed clean 正式运行、D7 共同
+检查点、runtime ACK、outcome、reward 和 admission 仍未完成，不能从模块单元测试推导。
