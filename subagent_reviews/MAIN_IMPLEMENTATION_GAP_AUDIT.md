@@ -37,10 +37,16 @@
 回退 full 并记录 `unknown_required_observation_id`；空 required 集合也回退 full。
 `test_module_stack.py` 为 `62 passed`，scalable 全量为 `263 passed, 1 warning`。
 
-本项仍为 P1。clean 200/200/2 单配对 smoke、正式 matrix/evidence schema、D6 evaluator 和
-多 seed 判定尚未完成，默认不得改变。正式准入还需证明 13/13 业务语义和原 D1 操作计数一致、
-0 fallback、0 lookup miss、返回记录削减至少 50%，并通过预注册的 D1/core/D2/RSS 门。系统
-实时、AirSim、目标硬件和实飞证据继续独立开放。
+clean `028ac34`、seed 1151 的 200/200/2 单配对 smoke 已完成。两臂 D1/D2 在线记录 SHA、
+consistency digest/count 和原 D1 操作计数一致；candidate 14/14 子集成功，
+fallback/lookup miss/非法或空 required 均为 0，返回记录由 `13679` 降至 `4429`，
+减少 `67.621902%`。单 pair 的 D1 fusion、module stack、episode 与外部命令计时方向混合，
+不形成性能准入。
+
+本项仍为 P1。正式 matrix/evidence schema、D6 evaluator 和多 seed 判定尚未完成，默认不得
+改变。正式准入还需证明 13/13 业务语义和原 D1 操作计数一致、0 fallback、0 lookup miss、
+返回记录削减至少 50%，并通过预注册的 D1/core/D2/RSS 门。系统实时、AirSim、目标硬件和
+实飞证据继续独立开放。
 
 ## 2026-07-25 D1 固定滞后回放前缀摘要正式拒绝
 

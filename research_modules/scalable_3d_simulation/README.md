@@ -20,9 +20,14 @@ publication payload 完全一致，候选 fallback/lookup miss 为 0，返回记
 未知 ID 和空 required 集合专项确认候选回退 full 并保留原因。
 `test_module_stack.py` 为 `62 passed`，scalable 全量为 `263 passed, 1 warning`。
 
-当前状态仅为实现和开发回归完成。尚未在 clean commit 上运行 200/200/2 单配对 smoke，
-也未冻结正式多 seed matrix 或 D6 evaluator；默认仍是全量快照。本候选不能写成性能准入、
-系统实时、AirSim、目标硬件、实机或实飞证据。
+clean `028ac34`、seed 1151 的 200/200/2 单配对 smoke 已完成。D1/D2 在线记录 SHA、
+consistency digest/count 和原 D1 操作计数一致；candidate 14/14 子集成功，
+fallback/lookup miss 为 0，返回记录由 `13679` 降至 `4429`，减少 `67.621902%`。
+单 pair 的 D1、module stack 和外部命令计时方向不一致，因此当前只允许进入矩阵预注册。
+
+正式多 seed matrix 和 D6 evaluator 尚未冻结，默认仍是全量快照。本候选不能写成性能准入、
+系统实时、AirSim、目标硬件、实机或实飞证据。clean smoke 详见
+`docs/D1_PUBLICATION_EVIDENCE_SNAPSHOT_CLEAN_SMOKE_20260725_CN.md`。
 
 ## D1 固定滞后回放前缀摘要正式拒绝（2026-07-25）
 

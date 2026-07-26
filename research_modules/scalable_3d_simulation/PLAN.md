@@ -40,8 +40,10 @@
 
 ### 预注册准入
 
-11. [ ] clean 单 pair smoke 先确认业务 payload digest 一致、0 fallback、0 lookup
-    miss、最终 pending ledger 为 0，并披露 reference/candidate 返回记录数。
+11. [x] clean `028ac34`、seed 1151 的 200/200/2 单 pair smoke 确认 D1/D2 在线记录
+    SHA、consistency digest/count 和原 D1 操作计数一致；candidate 14/14 子集成功，
+    fallback/lookup miss/非法或空 required 均为 0，返回记录由 `13679` 降至 `4429`，
+    减少 `67.621902%`。性能方向混合，只允许进入矩阵预注册。
 12. [ ] smoke 通过后冻结新的 matrix/evidence/evaluator schema、实现 ID、命令、
     short/long seeds、时长、200/200/2 规模和唯一 treatment；不得复用前一候选矩阵。
 13. [ ] 正式门预注册为：13/13 业务语义及原 D1 操作计数一致；候选 fallback 和 lookup
