@@ -64,6 +64,7 @@ EXPERIMENT_MATRIX_SCOPE_MERGE_SCHEMA = (
 FORMAL_R0_DEFAULT_SHARD_COUNT = 20
 FORMAL_R0_EXPECTED_CELL_COUNT = 900
 FORMAL_PARENT_EXPECTED_CELL_COUNT = 5700
+FORMAL_R0_DEFAULT_MINIMUM_FREE_BYTES = 20 * 1024**3
 
 _EXECUTION_PLAN_FILENAME = "experiment_matrix_execution_plan.json"
 _EXECUTION_PLAN_CHECKSUM_FILENAME = "EXECUTION_PLAN_SHA256"
@@ -392,6 +393,7 @@ def run_experiment_matrix_shard(
     resume: bool = False,
     max_new_cells: int | None = None,
     device: str = "cpu",
+    minimum_free_bytes: int = 0,
 ) -> dict[str, Any]:
     """Run or resume one deterministic shard at complete-cell boundaries."""
 
@@ -410,6 +412,9 @@ def run_experiment_matrix_shard(
     if max_new_cells is not None and int(max_new_cells) <= 0:
         raise ValueError("max_new_cells must be positive when provided")
     limit = None if max_new_cells is None else int(max_new_cells)
+    free_floor = int(minimum_free_bytes)
+    if free_floor < 0:
+        raise ValueError("minimum_free_bytes must be non-negative")
 
     execution_root = plan_path.parent
     descriptor = descriptors[index]
@@ -492,8 +497,10 @@ def run_experiment_matrix_shard(
 
     new_cell_count = 0
     orphan_recovered_count = 0
+    pause_reason: str | None = None
     while len(progress) < len(expected_cells):
         if limit is not None and new_cell_count >= limit:
+            pause_reason = "max_new_cells_reached"
             break
         cell = expected_cells[len(progress)]
         final_dir = _cell_container_path(shard_dir, cell)
@@ -509,6 +516,10 @@ def run_experiment_matrix_shard(
             progress.append(row)
             orphan_recovered_count += 1
         else:
+            available = shutil.disk_usage(execution_root).free
+            if available < free_floor:
+                pause_reason = "minimum_free_space_reached"
+                break
             row = _run_one_cell(
                 repository_root=repository_root,
                 execution_root=execution_root,
@@ -539,9 +550,7 @@ def run_experiment_matrix_shard(
             ),
         )
 
-    status = (
-        "complete" if len(progress) == len(expected_cells) else "paused"
-    )
+    status = "complete" if len(progress) == len(expected_cells) else "paused"
     _write_checkpoint(
         checkpoint_path,
         execution=execution,
@@ -564,6 +573,9 @@ def run_experiment_matrix_shard(
         "new_cell_count": new_cell_count,
         "orphan_recovered_count": orphan_recovered_count,
         "resume_count": resume_count,
+        "pause_reason": pause_reason,
+        "minimum_free_bytes": free_floor,
+        "available_free_bytes": shutil.disk_usage(execution_root).free,
         "shard_dir": shard_dir,
         "checkpoint": checkpoint_path,
         "progress": progress_path,
@@ -1615,6 +1627,7 @@ __all__ = [
     "EXPERIMENT_MATRIX_SHARD_PLAN_SCHEMA",
     "EXPERIMENT_MATRIX_SHARD_PROGRESS_SCHEMA",
     "FORMAL_PARENT_EXPECTED_CELL_COUNT",
+    "FORMAL_R0_DEFAULT_MINIMUM_FREE_BYTES",
     "FORMAL_R0_DEFAULT_SHARD_COUNT",
     "FORMAL_R0_EXPECTED_CELL_COUNT",
     "ExperimentMatrixShardError",

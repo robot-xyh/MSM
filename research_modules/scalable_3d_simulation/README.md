@@ -12,17 +12,23 @@ main 已新增正式实验矩阵的可恢复分片执行层。执行计划先保
 使用检查通过后，目录原子发布，再追加进度行并原子推进 checkpoint。恢复入口逐行验证
 源提交、完整父计划、分片顺序、单元结果 SHA-256 和 episode 文件树 SHA-256。checkpoint
 落后于完整进度行时可恢复；checkpoint 超前、进度截断、目录越界、重复单元或制品篡改
-均失败关闭。
+均失败关闭。命令行运行器默认保留 20 GiB 可用磁盘；低于下限时不启动下一个单元，只在
+完整 episode 边界暂停。
 
 分片合并只生成 `experiment_matrix_scope_manifest.json`。900 个 R0 单元完成时状态为
 `formal_scope_complete`，同时明确记录 `formal_matrix_complete=false`。只有执行范围与完整
 5700 单元父清单完全相等时，才允许生成兼容的完整矩阵 manifest。因此 R0 批次不能被误写
 为七变体正式矩阵完成。
 
-本轮新增 6 项分片专项测试，并保留原矩阵 7 项测试；暂停/恢复、checkpoint 滞后恢复、
-制品篡改拒绝、确定性合并和真实单 episode 写盘均通过。scalable 全量为
-`278 passed, 1 warning`。warning 仍来自本机 Matplotlib `Axes3D` 导入冲突。正式 R0
-900 单元尚未完成，D6 正式准入仍保持失败关闭。
+本轮分片专项现有 8 项测试，并保留原矩阵测试；暂停/恢复、低磁盘暂停、checkpoint 滞后
+恢复、制品篡改拒绝、确定性合并和真实单 episode 写盘均通过。scalable 全量为
+`280 passed, 1 warning`。warning 仍来自本机 Matplotlib `Axes3D` 导入冲突。
+
+绑定 clean commit `32b3b40` 的首次正式 shard 0 已完成 44/45 单元。最后一个
+`high_threat_m_to_n/200v200/seed_1000` 单元在 `t=1.0 s` 暴露 D3 旧联盟需求库存与当前
+需求不一致。D3 owner 已修复需求合同变化时的旧库存保留，并完成 `464 passed, 1 skipped`
+全量回归和同配置开发复验。旧执行目录固定保留为失败证据，不再续跑。正式 R0 900 单元
+尚未完成；main 将绑定新 clean commit，从 shard 0 零开始复跑，D6 正式准入继续失败关闭。
 
 ## D4 因果通信与 M 对 N 联盟闭环（2026-07-25）
 
@@ -68,7 +74,7 @@ GAP。复核没有发现新的运行级 P0，并修正了四个会影响后续�
 - D6 对 D4 模型清单中的非法保留种子数字段按未授权失败关闭，不再抛出未治理异常；
 - D7 在命令计算前回收失效 pair 状态，并在状态变更前拒绝同批次重复资源索引或资源编号。
 
-模块回归结果为 D1 `496 passed`，D3 `459 passed, 1 skipped`，D4 `569 passed`，
+模块回归结果为 D1 `496 passed`，D3 `464 passed, 1 skipped`，D4 `569 passed`，
 D5 `552 passed`，D6 `889 passed, 1 warning`，D7 `220 passed`。D3 唯一跳过项是未安装的
 可选 OR-Tools；D6 warning 和 main 模块栈 warning 均为既有 Matplotlib `Axes3D` 导入问题。
 所有 owner 均完成 scoped `git diff --check` 和 Python 语法检查。修正后的统一模块栈再次
@@ -1224,21 +1230,25 @@ python3 research_modules/scalable_3d_simulation/run_experiment_matrix_shard.py \
   --output research_modules/scalable_3d_simulation/outputs/formal_r0_v1
 ```
 
-默认 20 个分片可以顺序执行，也可以由 main 在受控资源预算下并行调度。暂停只发生在完整
-episode 边界：
+默认 20 个分片可以顺序执行，也可以由 main 在受控资源预算下并行调度。`run-shard`
+默认保留 20 GiB 可用磁盘；低于下限时不启动下一个 episode，并在当前完整单元边界写入
+`paused` checkpoint。可用空间恢复后使用 `--resume` 继续。`--minimum-free-gib` 可以显式
+调整保留量，但正式运行不得关闭该保护。暂停只发生在完整 episode 边界：
 
 ```bash
 python3 research_modules/scalable_3d_simulation/run_experiment_matrix_shard.py \
   run-shard \
   --execution-plan research_modules/scalable_3d_simulation/outputs/formal_r0_v1/experiment_matrix_execution_plan.json \
   --shard-index 0 \
-  --max-new-cells 5
+  --max-new-cells 5 \
+  --minimum-free-gib 20
 
 python3 research_modules/scalable_3d_simulation/run_experiment_matrix_shard.py \
   run-shard \
   --execution-plan research_modules/scalable_3d_simulation/outputs/formal_r0_v1/experiment_matrix_execution_plan.json \
   --shard-index 0 \
-  --resume
+  --resume \
+  --minimum-free-gib 20
 ```
 
 20 个分片全部完成后再执行 `merge-r0`。合并器重新读取并校验全部单元，不信任 checkpoint

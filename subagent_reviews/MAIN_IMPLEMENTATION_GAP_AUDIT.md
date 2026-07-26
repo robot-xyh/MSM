@@ -6,7 +6,20 @@
 
 ## 2026-07-25 可扩展三维主线最新状态
 
-当前无新增运行级 P0。D4 模块已关闭“联盟提案在网络确认到达前被永久终结”的阻塞。
+正式 R0 shard 0 在第 45 个单元
+`high_threat_m_to_n/200v200/seed_1000` 暴露新的运行级 P0：D3 滚动规划把旧联盟需求
+直接带入当前需求，触发 `coalition demand does not match current demand`。前 44 个完整
+单元及最后一个 `.partial` 目录保留为失败证据；绑定 `32b3b40` 的执行计划不得在修复后
+继续使用。
+
+D3 owner 已关闭代码层 P0。迟滞评分现在先比较旧、新联盟的资源数量、主资源数量、协同
+模式、时间模板和 assignment demand；合同不兼容时旧库存不可保留，使用当前求解候选重建。
+同需求成员迟滞、容量、资源唯一性、all-or-none、主备角色、计划版本和过分配拒绝保持不变。
+D3 全量为 `464 passed, 1 skipped`；同配置 200v200、seed 1000、2.0 秒开发复验有限状态为
+真、在线真值使用为 0，197 个 assignment 使用 197 个唯一资源。正式关闭仍以新 clean
+commit 的 shard 0 全部 45 单元通过为准。
+
+D4 模块此前已关闭“联盟提案在网络确认到达前被永久终结”的阻塞。
 `CoalitionCommitCoordinator` 在租约有效期内保留 `collecting_acks`，完整必要成员确认后
 原子提交；过时或无效确认拒绝且不授权，摘要冲突、分区、租约到期、成员不可执行和显式
 终结继续失败关闭。D4 owner 全量回归为 `569 passed`，相关 README、PLAN、GAP 和算法
@@ -28,7 +41,7 @@ D6 将非法 D4 保留种子数字段改为未授权失败关闭；D7 把失效 
 并在任何状态变更前拒绝同批次重复资源。D4 和 D5 未发现新的模块代码错误，补齐了
 development/shadow 与正式准入的文档边界。
 
-最新 owner 回归为 D1 `496 passed`、D3 `459 passed, 1 skipped`、D4 `569 passed`、
+最新 owner 回归为 D1 `496 passed`、D3 `464 passed, 1 skipped`、D4 `569 passed`、
 D5 `552 passed`、D6 `889 passed, 1 warning`、D7 `220 passed`。D3 跳过项为未安装的
 可选 OR-Tools。修正后的 main 模块栈为 `66 passed, 1 warning`。这些结果关闭本轮代码和
 文档一致性收尾，不关闭正式多随机种子、200 对 200 实时、AirSim、物理拦截或模型准入。
@@ -48,11 +61,12 @@ expected=`5700`、accepted=`0`、verdict=`fail_closed`。阻塞项包括：
    5700 个单元，R0 scope 固定 900 个单元，默认 20 片。R0 合并只能声明
    `formal_scope_complete`，不能声明 5700 单元正式矩阵完成。
 
-分片专项新增 6 项测试，原矩阵 7 项测试继续通过；scalable 全量为
-`278 passed, 1 warning`。下一步在新实现提交后的 clean detached worktree 初始化正式
-execution plan，完成一个正式 R0 单元 smoke 后启动 20 个分片，并由 D6 回灌。学习变体只有
-在模型权限、逐单元采用证据和非退化门齐备后才进入 formal 队列。系统实时、目标硬件和
-AirSim 代表子场景继续单独验收。
+正式运行器已增加 20 GiB 默认可用磁盘下限，低于下限时只在完整单元边界暂停，并保留
+追加式进度和 checkpoint 以供恢复。main 必须在包含 D3 修复的新 clean commit 上重新
+初始化 execution plan，从 shard 0 零开始运行；旧 44 个单元不能拼入新计划。shard 0
+全部 45 单元通过后才能启动其余 19 片并由 D6 回灌。学习变体只有在模型权限、逐单元采用
+证据和非退化门齐备后才进入 formal 队列。系统实时、目标硬件和 AirSim 代表子场景继续
+单独验收。
 
 **P0/P1 状态入口**：本文是 main 层唯一的实现差距与 P0/P1 状态入口，集中维护 owner、当前状态、缺少条件和验收口径。2026-07-14 canonical actual-execution 证据链已完成真实 AirSim seed-1 复验：tuned 2v2 与 M5N2 均生成并通过校验的 `d7-actual-execution-metrics-v2`，不存在 unavailable artifact；`control_commands.csv`、`intercept_summary.json` 和 actual envelope 的物理成功数一致，控制计划 ID 与同一个 canonical D3 history 一致，身份和状态在线真值使用计数均为 0。2026-07-15 main/D6 进一步关闭“只有总耗时、无法定位预算违例阶段”的 P1 可观测性实现缺口；随后复核并关闭 D4 多入口二级接管证据不一致的系统级 P0 边界，以及 D2 continuity 固定 `+0.10` 在高基线下不可达的 P1 准入规则缺口。同日第二次只读审计发现 D4 两个公开 helper 仍把部分缺失证据 `None` 当成“非 False”放行；D4 owner 已改为 exact-true/fail-closed，补齐逐字段缺失负例并完成跨模块回归。D2/D6 随后已用原冻结 replay 生成 ceiling-aware v2 正式联合证据：总体 GNN 候选五项 gate 通过，但只有 `clutter`、`combined` 两个 difficulty 通过，dropout truth alignment 仍为 partial，JPDA 不准入，因此只形成 promotion review，默认 GNN/Hungarian 不变。最新相关回归为 D2 `113`、D4 `280`、D6 `272`、AirSim runtime `157`、integrated point-mass `7`；当前无开放运行级或证据级 P0 blocker。P1 继续包括 D3 长期 churn、M5N2 第二 primary/物理联盟、candidate `3/2/1` 机会合同、ClockSpeed 与顺序控制 RPC 解耦、D5 30/50 m 与 native MOT 准入、真实二级网络时序、D2 候选的跨 difficulty/完整系统评审，以及基于新分阶段证据达到 100 ms 实时预算。P2 仍只在隔离环境评估，不替换默认 NumPy/SciPy/PN/PNG/detect 路径。
 

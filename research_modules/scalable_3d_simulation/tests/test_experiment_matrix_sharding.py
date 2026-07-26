@@ -145,6 +145,76 @@ def test_shard_pause_resume_recovers_checkpoint_lag_and_is_idempotent(
     )
 
 
+def test_shard_pauses_at_cell_boundary_when_free_space_reaches_floor(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    executed_cells: list[str] = []
+
+    def _recording_execute(**kwargs: object) -> dict[str, object]:
+        cell = kwargs["cell"]
+        assert isinstance(cell, dict)
+        executed_cells.append(str(cell["cell_id"]))
+        return _fake_execute_r0_cell(**kwargs)
+
+    free_bytes = [30 * 1024**3, 19 * 1024**3]
+
+    def _disk_usage(_path: Path) -> object:
+        free = free_bytes.pop(0) if len(free_bytes) > 1 else free_bytes[0]
+        return type("DiskUsage", (), {"free": free})()
+
+    monkeypatch.setattr(sharding, "_execute_r0_cell", _recording_execute)
+    monkeypatch.setattr(sharding.shutil, "disk_usage", _disk_usage)
+    path = _development_plan(tmp_path, seeds=(14, 15), shard_count=1)
+
+    paused = run_experiment_matrix_shard(
+        root=ROOT,
+        execution_plan_path=path,
+        shard_index=0,
+        minimum_free_bytes=20 * 1024**3,
+    )
+
+    assert paused["status"] == "paused"
+    assert paused["pause_reason"] == "minimum_free_space_reached"
+    assert paused["completed_cell_count"] == 1
+    assert paused["new_cell_count"] == 1
+    assert paused["available_free_bytes"] == 19 * 1024**3
+    assert len(executed_cells) == 1
+    assert not list(Path(paused["shard_dir"]).glob("inflight/*.partial"))
+
+    free_bytes[:] = [30 * 1024**3]
+    completed = run_experiment_matrix_shard(
+        root=ROOT,
+        execution_plan_path=path,
+        shard_index=0,
+        resume=True,
+        minimum_free_bytes=20 * 1024**3,
+    )
+
+    assert completed["status"] == "complete"
+    assert completed["pause_reason"] is None
+    assert completed["completed_cell_count"] == 2
+    assert completed["new_cell_count"] == 1
+    assert len(executed_cells) == 2
+
+
+def test_shard_rejects_negative_free_space_floor(tmp_path: Path) -> None:
+    path = _development_plan(tmp_path, seeds=(16,), shard_count=1)
+
+    with pytest.raises(
+        ValueError,
+        match="minimum_free_bytes must be non-negative",
+    ):
+        run_experiment_matrix_shard(
+            root=ROOT,
+            execution_plan_path=path,
+            shard_index=0,
+            minimum_free_bytes=-1,
+        )
+
+    assert not (path.parent / "shards").exists()
+
+
 def test_resume_rejects_tampered_episode_artifact(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

@@ -19,6 +19,7 @@ from research_modules.scalable_3d_simulation.experiment_matrix import (  # noqa:
     load_training_seeds,
 )
 from research_modules.scalable_3d_simulation.experiment_matrix_sharding import (  # noqa: E402
+    FORMAL_R0_DEFAULT_MINIMUM_FREE_BYTES,
     FORMAL_R0_DEFAULT_SHARD_COUNT,
     create_formal_r0_execution_plan,
     merge_experiment_matrix_shards,
@@ -77,6 +78,15 @@ def parse_args() -> argparse.Namespace:
     run.add_argument("--resume", action="store_true")
     run.add_argument("--max-new-cells", type=int)
     run.add_argument("--device", default="cpu")
+    run.add_argument(
+        "--minimum-free-gib",
+        type=float,
+        default=FORMAL_R0_DEFAULT_MINIMUM_FREE_BYTES / 1024**3,
+        help=(
+            "pause before a new cell when available disk falls below this "
+            "GiB reserve"
+        ),
+    )
 
     merge = subparsers.add_parser(
         "merge-r0",
@@ -136,6 +146,7 @@ def main() -> int:
             resume=bool(args.resume),
             max_new_cells=args.max_new_cells,
             device=args.device,
+            minimum_free_bytes=int(args.minimum_free_gib * 1024**3),
         )
         for name, value in result.items():
             print(f"{name}: {value}")

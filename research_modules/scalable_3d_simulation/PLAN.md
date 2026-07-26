@@ -30,7 +30,7 @@
 13. [x] D1、D3-D7 owner 完成收尾复核和文档同步。D1 修正唯一观测谱系统计，D3 修正
     `cost_weights` 对称接线，D6 修正非法 D4 保留种子字段失败关闭，D7 修正 pair 状态
     回收顺序和重复资源输入检查。
-14. [x] 最新模块回归为 D1 `496 passed`、D3 `459 passed, 1 skipped`、D4
+14. [x] 最新模块回归为 D1 `496 passed`、D3 `464 passed, 1 skipped`、D4
     `569 passed`、D5 `552 passed`、D6 `889 passed, 1 warning`、D7 `220 passed`；
     修正后的统一模块栈为 `66 passed, 1 warning`。
 15. [x] 已冻结可恢复分片与确定性合并合同。完整父 inventory 保持 5700 个
@@ -40,12 +40,20 @@
 16. [x] R0 scope 合并产物明确记录 `formal_scope_complete` 与
     `formal_matrix_complete=false`。只有 scope 等于完整父 inventory 时才生成完整矩阵
     manifest，多个非正式子计划不能拼成正式证据。
-17. [x] 新增分片专项 6 项，原矩阵测试 7 项，scalable 全量
-    `278 passed, 1 warning`；真实单 episode 分片写盘确认有限状态、在线真值使用为 0 和
-    D6 truth-isolated 子目录存在。
-18. [ ] 在新分片实现提交后创建 clean detached execution plan，运行一个正式 R0 单元
-    smoke，确认 manifest source commit、900-cell scope、进度/checkpoint 和恢复命令，再
-    启动完整 20 片。
+17. [x] 分片专项现有 8 项，scalable 全量 `280 passed, 1 warning`；真实单 episode
+    分片写盘确认有限状态、在线真值使用为 0 和 D6 truth-isolated 子目录存在。新增低磁盘
+    暂停与恢复测试，不改变单元内容和顺序。
+18. [x] 在 clean detached worktree 初始化绑定 `32b3b40` 的正式 R0 execution plan。
+    shard 0 已完成 44/45 单元，最后一个 high-threat 200v200 单元暴露 D3 旧联盟需求与
+    当前需求不一致异常。该执行目录固定保留为失败证据，修复后不得续跑或混合产物。
+19. [x] 分片运行器增加 20 GiB 默认可用磁盘下限。每个新单元启动前检查空间，低于下限
+    时在完整单元边界暂停并写 checkpoint；恢复后继续使用同一追加式进度账本。
+20. [x] D3 owner 已关闭联盟需求变化代码 P0：不兼容旧需求库存不再进入迟滞保持，同需求
+    保留和过分配失败关闭不变；D3 全量为 `464 passed, 1 skipped`，同配置开发复验通过。
+21. [ ] main 绑定新 clean commit 生成新的 execution plan，从 shard 0 零开始复跑并确认
+    high-threat 200v200 单元通过。
+22. [ ] shard 0 全部 45 单元通过且可用磁盘高于下限后，再顺序运行其余 19 片；900/900
+    后执行 `merge-r0 --write-d6-report`。
 
 ## D1 在线发布证据子集快照候选（2026-07-25）
 
