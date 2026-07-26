@@ -146,6 +146,18 @@ from .isolated_physical_rollout import (
     execute_checkpoint_paired_physical_rollouts,
     write_checkpoint_paired_physical_rollouts,
 )
+from .d3_intervention_batch_input import (
+    D3_INTERVENTION_BATCH_INPUT_CHECKSUMS,
+    D3_INTERVENTION_BATCH_INPUT_MANIFEST,
+    D3_INTERVENTION_BATCH_INPUT_SCOPE,
+    D3_INTERVENTION_BATCH_INPUT_SUMMARY,
+    D3_INTERVENTION_BATCH_INPUT_SUMMARY_SCHEMA_V1,
+    D3InterventionBatchCapture,
+    D3InterventionBatchInputOptions,
+    D3InterventionSeedCapture,
+    collect_d3_intervention_batch_input,
+    write_d3_intervention_batch_input,
+)
 from .world import ProximityInterceptEvent, VectorizedPointMassWorld
 from .animation import write_trajectory_animation
 
@@ -223,6 +235,14 @@ __all__ = [
     "INTERVENTION_SELECTION_POLICY",
     "INTERVENTION_KINDS",
     "D3DevelopmentBundleBinding",
+    "D3_INTERVENTION_BATCH_INPUT_CHECKSUMS",
+    "D3_INTERVENTION_BATCH_INPUT_MANIFEST",
+    "D3_INTERVENTION_BATCH_INPUT_SCOPE",
+    "D3_INTERVENTION_BATCH_INPUT_SUMMARY",
+    "D3_INTERVENTION_BATCH_INPUT_SUMMARY_SCHEMA_V1",
+    "D3InterventionBatchCapture",
+    "D3InterventionBatchInputOptions",
+    "D3InterventionSeedCapture",
     "InterventionGlobalTrackSnapshot",
     "ISOLATED_PHYSICAL_ROLLOUT_SCHEMA_VERSION",
     "CheckpointPhysicalRolloutOptions",
@@ -263,6 +283,7 @@ __all__ = [
     "resolve_learning_runtime",
     "resolve_d3_development_bundle_binding",
     "collect_reserved_seed_sources",
+    "collect_d3_intervention_batch_input",
     "execute_reserved_seed_interventions",
     "execute_checkpoint_paired_physical_rollouts",
     "evaluate_d4_isolated_physical_adoption",
@@ -276,4 +297,5 @@ __all__ = [
     "write_shared_seed_split_registry",
     "write_reserved_seed_intervention_execution",
     "write_checkpoint_paired_physical_rollouts",
+    "write_d3_intervention_batch_input",
 ]

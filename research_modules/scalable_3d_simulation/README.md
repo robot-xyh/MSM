@@ -1659,3 +1659,18 @@ SHA-256 分别为 `6fb64252292aaedd3c68d1bfea64b76496136ce6edb32add61a281d511c4e
 阈值版本。在线总线拒绝任何包含 truth/actor/object identity 字段的观测负载。
 
 分支、提交、模型制品和阶段标签规则见 [VERSIONING.md](VERSIONING.md)。
+
+### D3 隔离批量输入
+
+`run_d3_intervention_batch_input.py` 负责把统一三维 episode 中的规则规划证据转换为
+D3 隔离重放输入。运行器固定使用保留 seed `1000-1019`，每个 seed 保留所有可重放的
+匿名规划帧。帧必须来自规则路径，已有前序计划，并携带完整代价矩阵、计划、资源和航迹
+快照。在线运行不加载 D3 学习 bundle。
+
+输出目录包含严格 `manifest.json`、逐 seed 帧文件、冻结 development bundle 副本、
+来源摘要和整树 `SHA256SUMS`。生产者要求 20 个源 episode 来自同一 clean commit，状态
+有限且在线真值使用为 0。D3 后续只在隔离环境内重放 control/treatment，按时间顺序选择
+首个合格帧。该输入不发布分配计划，不生成运行确认、物理结果、奖励或控制权限。
+
+2026-07-26 已完成生产者软件回归 `3 passed`。真实 clean 20-seed 输入与隔离重放尚未
+执行，因此本节只记录接口能力，不构成 A1 准入或学习收益证据。

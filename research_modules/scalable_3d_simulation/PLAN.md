@@ -1199,6 +1199,22 @@ commit。
 5/20/50/100/200 实验、多 seed 报告、三维图和 GIF/MP4，以及同步后的 README、PLAN、
 GAP、算法文档和系统总报告。
 
+## D3 匿名规划帧批量输入（2026-07-26）
+
+1. [x] main 新增独立输入装配器，固定 seed `1000-1019`，从统一规则 episode 捕获所有
+   `rule_only`、已有前序计划且矩阵完整的匿名规划帧。
+2. [x] 输入目录原子发布，包含严格 manifest、逐帧文件、冻结 bundle 副本、来源摘要和
+   整树 SHA-256。20 个 episode 必须同一 clean commit、有限状态且在线真值使用为 0。
+3. [x] 在线栈固定不加载学习 bundle；输入合同明确关闭 treatment 发布、runtime ACK、
+   生产分配权限、控制权限、物理结果和奖励。
+4. [x] 软件回归为 `3 passed`，覆盖严格 manifest、哈希清单、重复发布拒绝、bundle
+   篡改拒绝和固定 seed 顺序。
+5. [ ] 在包含本装配器的 detached clean commit 上生成真实 20-seed 输入。
+6. [ ] 调用 D3 `isolated_intervention_batch` 完成批量重放，记录每个 seed 的首个合格
+   帧或 `no_eligible_frame`。该结果通过 D6 外审前不得作为 A1 准入证据。
+7. [ ] 只有存在可辨识绑定变化的 seed，才进入 D7 共同检查点物理续跑；零变化结果按
+   正式负证据保留，不以延长窗口冒充学习采用。
+
 ## 9. 保留种子隔离执行（2026-07-21）
 
 ### 已完成
