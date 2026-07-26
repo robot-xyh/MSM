@@ -1,5 +1,39 @@
 # D6 Evaluation Metrics Plan
 
+## 2026-07-26 D5 跨视角候选图几何校准
+
+### 已完成
+
+- [x] 复用 D5 finalized `d5.tracklet-dataset.v2` 严格加载器，保持匿名数值图和 evaluator
+  标签物理分离，不读取在线控制路径，不向 D5、D3 或 D7 回写。
+- [x] 将评估边界限定为 candidate-graph geometry calibration。所有
+  `graph.edge_index` 只按几何候选边解释；G1 概率、阈值、聚类和 scoring 收益明确 unavailable。
+- [x] 按 `measurement <= 0.35 s`、`arrival <= 1.0 s` 枚举同真值跨相机时间合格节点对，
+  计算几何保留真边、假边、候选精确率、候选召回率、候选 F1 和几何假边率。
+- [x] 无分母和缺合同字段保持 unavailable，不补 0。逐帧结果进入 aggregate JSON，逐 seed
+  微平均结果进入 CSV；至少 20 个 available seed 时计算均值、总体标准差和 bootstrap 95% CI。
+- [x] 实现 `d6.d5-crossview-frame-index.v1` sidecar。sidecar 绑定 dataset manifest
+  SHA-256，精确覆盖 episode，并以 `scenario_version + seed + frame_index` 作为唯一稳定配对
+  坐标。禁止使用或解析 `episode_id` 配对。
+- [x] formal 门要求显式不少于 20 个 expected seed、实际集合精确一致、场景版本单一、标签和
+  candidate recall 声明全覆盖、候选召回分母可用及硬违规为 0。缺稳定帧坐标时 R0/G1 formal
+  配对失败关闭。
+- [x] 显式统计同相机边、自环、重复无向边、缺标签、重复标签键、非有限数组/值、重复
+  tracklet key、非法端点和超时候选边。
+- [x] 输出确定性 JSON、逐 seed CSV、中文 Markdown 和 `SHA256SUMS`。权限固定为只评估，
+  promotion、default、assignment、failover 和 control 全部关闭。
+- [x] 专项测试 `12 passed, 1 warning`；D6 全量
+  `1022 passed, 1 warning in 89.47s`；变更 Python 入口编译通过。
+
+### 后续输入
+
+- [ ] main 生成正式候选图 R0/G1 数据集时，同时生成各自 manifest 绑定的稳定 frame-index
+  sidecar。真实输入到位前不能形成候选图正式校准结论。
+- [ ] 如需评价 G1 scoring 收益，由 main 或后续明确 owner 设计独立 prediction sidecar，
+  至少携带候选边键、边概率、冻结阈值、选中边和聚类结果，并与 dataset/模型/实现 SHA
+  绑定。本工具不从 finalized dataset 推断这些字段。
+- [ ] cluster purity、中心绑定正确率和控制/物理结果继续由具备相应显式字段的独立合同评估。
+
 ## 2026-07-26 D3 A1 与 D4 A2 预准入外部审计
 
 ### 已完成

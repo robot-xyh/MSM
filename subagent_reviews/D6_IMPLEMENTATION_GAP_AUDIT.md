@@ -1,5 +1,48 @@
 # D6 实现差距审计
 
+## 2026-07-26 D5 候选图几何校准 GAP 更新
+
+### 已关闭
+
+1. D6 已提供 finalized `d5.tracklet-dataset.v2` 的只读候选图几何评估器和 CLI。评估复用
+   D5 严格加载器，不读取在线控制路径，不向 D5/D3/D7 回写。
+2. 评估范围已从可能混淆的“R0/G1 模型结果”收窄为
+   `candidate_graph_geometry_calibration`。`graph.edge_index` 只按几何候选边解释。G1
+   edge probability、threshold、cluster 和 scoring benefit 均明确 unavailable。
+3. 同真值跨相机候选召回分母同时使用 measurement `0.35 s` 和 arrival `1.0 s` 时间窗。
+   无分母、标签缺失或 candidate recall 声明不可用时不补 0。
+4. 图帧、seed、节点、边、时间合格真值对、几何真/假候选边、精确率、召回率、F1、假边率和
+   标签覆盖均带 availability。20 个及以上 available seed 输出均值、总体标准差和 bootstrap
+   95% CI。
+5. 同相机边、自环、重复无向边、缺标签、重复标签键、非有限数组/值、重复 tracklet key、
+   非法端点和超时候选边均有显式硬违规计数。
+6. R0/G1 配对不再使用 `episode_id`。新增 `d6.d5-crossview-frame-index.v1` sidecar，绑定
+   dataset manifest SHA-256，精确覆盖 episode，并以
+   `scenario_version + seed + frame_index` 作为唯一稳定坐标。
+7. formal 要求显式不少于 20 个 expected seed、实际集合精确一致、场景版本单一、标签和
+   candidate recall 全覆盖、召回分母可用及硬违规为 0。缺 sidecar 的成对比较失败关闭。
+8. JSON、逐 seed CSV、中文 Markdown、`SHA256SUMS`、CLI 和原子输出已实现。权限固定为
+   evaluation only；promotion/default/assignment/failover/control 均为 false。
+9. 合成专项 `12 passed, 1 warning`，D6 全量
+   `1022 passed, 1 warning in 89.47s`，变更入口编译通过。
+
+### 当前 P1
+
+1. **正式候选图输入缺失。** main 尚未提供至少 20 个显式 seed、单一 scenario version、
+   标签全覆盖的真实跨视角 R0/G1 候选图 dataset 及 frame-index sidecar。当前只有软件 fixture，
+   不能形成项目场景指标。
+2. **G1 scoring 合同缺失。** finalized dataset 没有 edge probabilities、冻结 threshold、
+   selected edges 或 clusters。若要比较模型收益，需要独立 prediction sidecar，并绑定
+   dataset、模型权重、实现和阈值摘要。D6 不从候选边反推模型输出。
+3. **绑定和物理字段缺失。** cluster purity、中心 `global_track_id` binding correctness、
+   control outcome 和 physical intercept outcome 仍 unavailable，需要各自显式输入合同。
+4. **真实相机泛化未验证。** 外参漂移、时间偏差、漏检、虚警、遮挡和纹理退化下的候选图几何
+   质量仍需 main 的真实或 AirSim 数据。
+
+当前无新增 D6-owned P0。评估软件和失败关闭配对合同已闭合；开放项是正式输入生产、模型输出
+sidecar 和真实相机证据。本项不改变 AirSim 接口，`AIRSIM_INTEGRATION_PLAN.md` 已检查且无需
+修改。
+
 ## 2026-07-26 D3 A1 与 D4 A2 外部审计 GAP 更新
 
 ### 已关闭

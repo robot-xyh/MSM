@@ -1,5 +1,11 @@
 # D6 文档索引
 
+2026-07-26 D5 跨视角候选图几何校准见 `MODULE_PRINCIPLES_CN.md`、
+`ALGORITHM_AND_IMPLEMENTATION.md` 和 `EXPERIMENT_REPORT.md`。该工具只评价 finalized
+dataset 中的几何候选边，不评价 G1 边概率、阈值或聚类收益。R0/G1 配对要求 manifest 绑定的
+显式 frame-index sidecar，禁止使用 `episode_id`。当前完成合成合同验证，专项 `12 passed`、
+D6 全量 `1022 passed`；真实校准 dataset 尚未生成。
+
 2026-07-26 D5 G1 预准入外部审计及装配器后软件谱系复核见
 `MODULE_PRINCIPLES_CN.md`、`ALGORITHM_AND_IMPLEMENTATION.md` 和 `EXPERIMENT_REPORT.md`。
 D6 与 D5 当前运行时摘要均为十文件规范摘要 `41381db3...4b07`。同一 99fa 历史证据复核仍为

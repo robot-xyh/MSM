@@ -1,5 +1,83 @@
 # D6 系统级离线评估：算法原理与实施说明
 
+## 跨视角候选图几何校准（2026-07-26）
+
+### 输入合同
+
+评估入口接收一至两份显式标记为 R0 或 G1 的 finalized
+`d5.tracklet-dataset.v2`。R0/G1 在这里表示候选图来源标签，不表示模型输出类别。加载过程直接
+复用 D5 `load_tracklet_dataset`，不自行放宽 schema、哈希或数组校验。
+
+R0/G1 成对比较另接收 `d6.d5-crossview-frame-index.v1` sidecar：
+
+```json
+{
+  "schema_version": "d6.d5-crossview-frame-index.v1",
+  "coordinate_semantics": "scenario_version_seed_frame_index",
+  "dataset_manifest_sha256": "<64 hex>",
+  "records": [
+    {
+      "episode_uid": "<dataset episode uid>",
+      "scenario_version": "<explicit version>",
+      "seed": 1000,
+      "frame_index": 0
+    }
+  ]
+}
+```
+
+记录集合必须精确覆盖 dataset episode。`seed` 和 `frame_index` 必须是 JSON 整数，
+`frame_index` 非负，同一数据集内配对坐标不得重复。sidecar 只负责稳定帧坐标，不携带模型
+概率或真值。
+
+### 处理流程
+
+```text
+显式 dataset 路径
+  -> 原始结构预检和硬违规计数
+  -> D5 finalized dataset 严格加载
+  -> 离线 evaluator 标签连接
+  -> 按双时间窗枚举同真值跨相机节点对
+  -> 统计几何候选真边和假边
+  -> 逐帧指标
+  -> 逐 seed 微平均
+  -> 至少 20 seed 的均值、标准差和 bootstrap 区间
+  -> 可选稳定 frame-index 成对比较
+  -> 原子报告和 SHA256SUMS
+```
+
+原始结构预检用于在严格加载失败时保留稳定的违规代码。严格加载仍是数据有效性的最终判据。
+同相机边、自环、重复无向边、缺标签、重复标签键、非有限数组或数值、重复 tracklet key、
+非法端点和超出双时间窗的候选边均显式计数。formal 要求总数为 0。
+
+逐 seed 指标按计数求微平均，避免小图帧和大图帧获得相同权重。20 个及以上 available seed
+使用固定随机种子 percentile bootstrap 计算均值的 95% 置信区间。少于 20 个 seed 只保留
+描述性均值和总体标准差，置信区间 unavailable。
+
+### 范围限制
+
+finalized dataset 没有 `Scalable3DAssociationResult.edge_probabilities`、模型阈值和 clusters。
+评估器不会把 `graph.edge_index` 当成模型选中边，也不会输出 G1 scoring 收益。若后续需要该
+能力，应增加独立 prediction sidecar，并绑定 dataset manifest、模型权重、阈值、实现摘要和
+逐边键。本轮未定义或采信该合同。
+
+### 命令行
+
+```bash
+python3 research_modules/d6_evaluation_metrics/scripts/run_d5_crossview_calibration.py \
+  --dataset R0=/path/to/r0_dataset \
+  --dataset G1=/path/to/g1_dataset \
+  --frame-index-sidecar R0=/path/to/r0_frames.json \
+  --frame-index-sidecar G1=/path/to/g1_frames.json \
+  --mode formal \
+  --expected-seeds 1000 1001 1002 1003 1004 1005 1006 1007 1008 1009 \
+                   1010 1011 1012 1013 1014 1015 1016 1017 1018 1019 \
+  --output-dir /path/to/d6_report
+```
+
+输出目录不存在时才允许原子发布。目录包含 aggregate JSON、逐 seed CSV、中文 Markdown 和
+精确覆盖前三项文件的 `SHA256SUMS`。
+
 ## D3 A1 与 D4 A2 预准入外部审计（2026-07-26）
 
 ### 软件结构

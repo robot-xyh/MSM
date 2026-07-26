@@ -1,5 +1,38 @@
 # D6 Evaluation Metrics
 
+## 2026-07-26 D5 跨视角候选图几何校准
+
+D6 已新增只读评估器 `d5_crossview_calibration.py` 和命令行入口
+`scripts/run_d5_crossview_calibration.py`。输入复用 D5 finalized
+`d5.tracklet-dataset.v2` 严格加载器。匿名图数组和 evaluator 标签在加载前保持物理分离，
+D6 只在离线评估阶段按 `tracklet_key` 连接。
+
+本工具评价几何门后的候选图，不评价 G1 模型打分。数据集的 `graph.edge_index` 只有几何候选
+边，不含 `edge_probabilities`、判定阈值和模型聚类。报告中的精确率、召回率、F1 和假边率均
+使用 `geometry_candidate_*` 语义。G1 打分收益、聚类纯度、中心
+`global_track_id` 绑定正确率、控制结果和物理拦截结果固定为 unavailable。
+
+候选召回分母只统计同真值、不同相机，且量测时间差不超过 `0.35 s`、到达时间差不超过
+`1.0 s` 的节点对。没有分母时指标保持 unavailable，不补 0。每个 finalized dataset episode
+按一个图帧处理，逐帧指标进入 aggregate JSON，逐 seed 微平均指标进入 CSV。至少 20 个
+available seed 时输出均值、总体标准差和固定随机数 bootstrap 95% 置信区间。
+
+R0/G1 候选图配对不使用 `episode_id`。调用方需为每个数据集提供
+`d6.d5-crossview-frame-index.v1` sidecar。sidecar 绑定 dataset manifest SHA-256，并精确覆盖
+全部 episode；唯一配对坐标为 `scenario_version + seed + frame_index`。缺少或损坏 sidecar
+时比较 unavailable，formal 成对比较失败关闭。
+
+formal 模式要求显式 expected seed 列表不少于 20，实际 seed 集精确一致，场景版本单一，标签
+和候选召回声明全覆盖，候选召回分母可用，硬违规为 0。输出为 aggregate JSON、逐 seed CSV、
+中文 Markdown 和 `SHA256SUMS`。权限固定为 evaluation only；模型晋级、默认路径、分配、
+降级和控制均为 false。
+
+2026-07-26 合成合同测试覆盖完整正例、真/假候选边混合、无分母、缺标签、同相机边、超时边、
+seed 不足、场景混杂、重复边、自环、非有限数组、重复航迹键、sidecar 缺失/缺记录、CLI 和
+SHA 清单。专项 `12 passed, 1 warning`，D6 全量
+`1022 passed, 1 warning in 89.47s`。该结果只证明评估软件合同，尚无 main 生产的真实
+跨视角校准数据或 G1 输出 sidecar。
+
 ## 2026-07-26 D3 A1 与 D4 A2 预准入外部审计
 
 D6 已新增 D3/A1、D4/A2 两套角色明确的预准入外部审计接口。两者共用只读校验核心，但分别使用

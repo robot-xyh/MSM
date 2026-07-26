@@ -1,5 +1,32 @@
 # D6 系统评估指标综述及子方案
 
+## 2026-07-26 D5 候选图几何校准评审
+
+D5 finalized dataset 适合评价几何候选图是否保留了应有的同目标跨相机节点对，以及候选集合中
+混入了多少不同目标边。它不适合直接评价 G1 模型。`graph.edge_index` 是几何门结果，dataset
+没有 `Scalable3DAssociationResult.edge_probabilities`、阈值和 clusters。D6 已据此收窄
+结论口径，并将所有指标命名为 geometry candidate 指标。
+
+候选召回分母由离线标签和双时间戳共同定义。同真值、不同相机、量测时间差不超过 0.35 秒、
+到达时间差不超过 1.0 秒的节点对才算应被几何候选图保留。候选边命中该集合记为几何真边，
+连接不同真值的合格跨相机边记为几何假边。分母不存在时，精确率、召回率或 F1 按各自条件
+保持 unavailable。
+
+dataset episode 可以作为一个图帧，但 `episode_id` 不能作为跨变体坐标。main runner 会把运行
+配置摘要写入该字符串，R0/G1 对应同一物理帧时也可能不同。D6 新增 manifest 绑定的
+frame-index sidecar。两臂只有在 `scenario_version + seed + frame_index` 相同，且节点、
+相机、时间和离线标签合同一致时才配对。缺 sidecar 时 development 可继续输出单臂描述统计，
+formal R0/G1 比较失败关闭。
+
+formal 数据门包括显式不少于 20 个 expected seed、实际集合精确匹配、单一 scenario version、
+标签和 candidate recall 声明全覆盖、至少一个时间合格真值对以及硬违规为 0。通过只说明输入
+和候选图指标合同成立。模型晋级、默认路径、分配、降级和控制权限保持关闭。
+
+当前验证使用合成 fixture。20-seed 正例中，R0 候选图只保留真边，G1 标签的数据集额外包含一条
+假边，用于检查候选精确率 1.0/0.5、召回率 1.0/1.0 和稳定帧坐标配对。该构造不代表 G1 模型
+性能。专项 `12 passed`，D6 全量 `1022 passed`。下一步由 main 生产真实候选图 dataset 和
+sidecar；如需模型比较，再单独定义 prediction sidecar。
+
 ## 2026-07-26 D3 A1 与 D4 A2 预准入外部审计评审
 
 D3/A1 和 D4/A2 的模型文件存在，不代表学习算法已经在正式作用域内实际工作。D6 将静态候选
