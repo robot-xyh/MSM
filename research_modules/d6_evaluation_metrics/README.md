@@ -1,5 +1,63 @@
 # D6 Evaluation Metrics
 
+## 2026-07-26 D3 A1 与 D4 A2 预准入外部审计
+
+D6 已新增 D3/A1、D4/A2 两套角色明确的预准入外部审计接口。两者共用只读校验核心，但分别使用
+以下版本化合同和命令行入口：
+
+- D3/A1：`d6.d3-a1-external-audit.v1`、
+  `d6.d3-a1-external-audit-consumer.v1`、
+  `scripts/run_d3_a1_external_audit.py`；
+- D4/A2：`d6.d4-a2-external-audit.v1`、
+  `d6.d4-a2-external-audit-consumer.v1`、
+  `scripts/run_d4_a2_external_audit.py`。
+
+审计输入显式冻结数据 manifest、数据内容、切分、全样本审计、模型 manifest、权重、当前实现
+摘要、正式作用域报告和校验清单。D4 还绑定模型 readiness。D6 不扫描相邻目录，不接受调用方
+附加 `promotion_allowed` 等自声明字段。每个文件先核对输入清单给出的带外 SHA-256；带内容
+摘要的 JSON 再重算 `content_sha256`。
+
+正式作用域必须包含至少 20 个与训练集不重叠的未见 seed。D3/A1 只认可隔离执行中
+`d3_learning_applied_count` 已实际采用的 episode；D4/A2 只认可
+`d4_advice_control_adoption_count` 已形成运行确认的 episode。加载模型、shadow、规则回退和
+采用计数为 0 均不算实际采用。每个学习单元还必须有后续物理状态、在线真值零使用、安全与硬
+约束通过，以及唯一同 comparison key 的 R0 单元。R0 配对至少要求拦截目标数和离线五米接近
+唯一目标数可用且不退化。
+
+缺失证据保持 `null`，并在 `field_availability` 中标记 `unavailable`。审计结果中的模型晋级、
+辅助运行、分配、降级、默认路径和控制权限始终为 false。通过软件正例 fixture 只证明 schema
+和判定器可工作，不代表当前 D3 或 D4 候选通过。
+
+2026-07-26 对当前实际证据进行严格复跑。两者均为 `fail_closed`，正式学习 episode、实际采用、
+物理窗口和唯一 R0 均不可用。D3 与 D4 各有 15 个 blocker：
+
+- 正式作用域报告、正式校验清单和实现证据文件缺失；
+- 未见 seed、正式 episode、实际采用、物理窗口、唯一 R0、paired non-degradation 和安全门
+  均不可用；
+- 候选指纹无法在缺失实现证据时形成；
+- 冻结配置中的当前实现摘要与现工作树源文件摘要不一致。
+
+D3 配置摘要为 `86b06e07...c27`，当前实算为 `2e06c9d2...bdf`。D4 配置摘要为
+`ecab1eb7...3d8`，当前实算为 `044284d7...431`。D6 没有更新输入配置来消除该阻断。D3 候选
+仍声明 development/shadow 且外部 holdout 实际评估数为 0；D4 候选也为
+development/shadow，final holdout 为 0，并记录动作多样性和策略能力不足。这些静态限制继续
+保留在报告中，不能替代正式运行证据。
+
+严格复跑输出位于：
+
+- `outputs/d3_a1_external_audit_actual_20260726_strict_v2/`：JSON 文件 SHA-256
+  `837f95c6...529`，内容 SHA-256 `c1db7bb0...c0a`；
+- `outputs/d4_a2_external_audit_actual_20260726_strict_v2/`：JSON 文件 SHA-256
+  `0547fe50...c0a`，内容 SHA-256 `e5a11679...830`。
+
+专项测试 `31 passed, 1 warning`，覆盖正例、负例、文件与内容篡改、实现和提交来源漂移、
+角色采用证据替换、缺测 availability、shadow/fallback、物理窗口、隐藏 blocker、R0 缺失/
+重复/复用及必选指标退化。D6 全量为
+`975 passed, 1 warning in 103.81s`。warning 是既有 Matplotlib `Axes3D` 环境提示。
+
+`AIRSIM_INTEGRATION_PLAN.md` 已检查。本项只消费持久化证据，不改变 AirSim settings、actor、
+相机、episode、reset、检测或控制接口，因此无需修改。
+
 ## 2026-07-26 D5 G1 预准入外部审计与装配器后复核
 
 D6 已实现独立、只读、失败关闭的 D5 G1 外部审计。输出 schema 为

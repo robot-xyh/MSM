@@ -1,0 +1,42 @@
+{
+  "artifacts": {
+    "bundle_manifest": {
+      "path": "research_modules/d3_assignment_planner/outputs/formal_bc_development_20260720/bundle/manifest.json",
+      "sha256": "a9213d65606a9e2f921040e153488c0f4cdebb10882fa16013fce5b59f9314c0"
+    },
+    "bundle_weights": {
+      "path": "research_modules/d3_assignment_planner/outputs/formal_bc_development_20260720/bundle/state_dict.pt",
+      "sha256": "e3da9fd5b54451da83358405b6051991e0c78bcf9f538b350d459b05faf8e0b2"
+    },
+    "dataset_manifest": {
+      "path": "research_modules/scalable_3d_simulation/outputs/learning_generation_v1_multibatchfix/learning_dataset/d3_assignment/dataset_manifest.json",
+      "sha256": "816fe6e965d4f8d790e89a00a7c90e28bb8cd08a257fe685790669ab774a9089"
+    },
+    "dataset_payload": {
+      "path": "research_modules/scalable_3d_simulation/outputs/learning_generation_v1_multibatchfix/learning_dataset/d3_assignment/frames.jsonl",
+      "sha256": "6761d35d6b48639a5eb4f3306f7b3f12ca72352a1028296a0c39a4b90fdb59a2"
+    },
+    "formal_scope_audit": {
+      "path": "research_modules/scalable_3d_simulation/outputs/formal_a1_pre_admission/learning_scope_formal_audit.json",
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    "formal_scope_checksums": {
+      "path": "research_modules/scalable_3d_simulation/outputs/formal_a1_pre_admission/SHA256SUMS",
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    "full_sample_audit": {
+      "path": "research_modules/d3_assignment_planner/results/assignment_full_sample_audit_20260721.json",
+      "sha256": "62a47df8058c0238498f2181229a5f6d45f6d958799eda354f03e25ea24b17fb"
+    },
+    "implementation_evidence": {
+      "path": "research_modules/d3_assignment_planner/outputs/formal_a1_pre_admission/implementation_evidence.json",
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+  },
+  "audit_id": "d3-a1-actual-development-evidence-20260726",
+  "evaluated_at_utc": "2026-07-26T11:36:56Z",
+  "expected_current_implementation_sha256": "86b06e0705d91f42e7cf49d9e21ef56f5118dd604b2596296624adc4a19adc27",
+  "formal_profile_version": "d6.d3-a1-formal-pre-admission.v1",
+  "module_source_dir": "research_modules/d3_assignment_planner/src/d3_assignment_planner",
+  "schema_version": "d6.d3-a1-external-audit-input.v1"
+}

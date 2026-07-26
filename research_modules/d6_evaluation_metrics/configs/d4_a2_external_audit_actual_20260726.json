@@ -1,0 +1,42 @@
+{
+  "artifacts": {
+    "bundle_manifest": {
+      "path": "research_modules/d4_distributed_fallback/outputs/region_resource_bc_900_20260720/bundle/manifest.json",
+      "sha256": "dad2adbe9c36dd9ff8ee8bb3c11b1e07e66743c6f80dd8e956799208a10c05c9"
+    },
+    "bundle_weights": {
+      "path": "research_modules/d4_distributed_fallback/outputs/region_resource_bc_900_20260720/bundle/state_dict.pt",
+      "sha256": "3da0360be8788f3ffeb8e9f9eba3e0d5369ec0bdf9e05729dfb1db07d71d5f62"
+    },
+    "dataset_manifest": {
+      "path": "research_modules/d4_distributed_fallback/outputs/region_resource_bc_900_20260720/bundle/training_dataset_manifest.json",
+      "sha256": "ff3081c8e320d9c8e1b032fb6234cd24159f0feedb1c6a706633cea6c1030dc6"
+    },
+    "formal_scope_audit": {
+      "path": "research_modules/scalable_3d_simulation/outputs/formal_a2_pre_admission/learning_scope_formal_audit.json",
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    "formal_scope_checksums": {
+      "path": "research_modules/scalable_3d_simulation/outputs/formal_a2_pre_admission/SHA256SUMS",
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    "full_sample_audit": {
+      "path": "research_modules/d4_distributed_fallback/reports/D4_REGION_RESOURCE_FULL_SAMPLE_ADMISSION_20260721.json",
+      "sha256": "4245f1db36f1af47259554f0770e75a3fe97fcc5e9b75c1b04c83d5bfb5c9e46"
+    },
+    "implementation_evidence": {
+      "path": "research_modules/d4_distributed_fallback/outputs/formal_a2_pre_admission/implementation_evidence.json",
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    "model_readiness": {
+      "path": "research_modules/d4_distributed_fallback/outputs/region_resource_bc_900_20260720/model_readiness.json",
+      "sha256": "915bbd4190853308d3b24328a4030e3d99176ed28973b27d86473b780421bf11"
+    }
+  },
+  "audit_id": "d4-a2-actual-development-evidence-20260726",
+  "evaluated_at_utc": "2026-07-26T11:36:56Z",
+  "expected_current_implementation_sha256": "ecab1eb7b4e73e622dbae86c494a4dd316b9b4ec10dd0dc9ab92f6ff2882f3d8",
+  "formal_profile_version": "d6.d4-a2-formal-pre-admission.v1",
+  "module_source_dir": "research_modules/d4_distributed_fallback/d4_distributed_fallback",
+  "schema_version": "d6.d4-a2-external-audit-input.v1"
+}

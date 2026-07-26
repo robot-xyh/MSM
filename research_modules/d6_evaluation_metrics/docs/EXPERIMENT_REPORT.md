@@ -1,5 +1,76 @@
 # D6 正式实验矩阵准入预检报告
 
+## D3 A1 与 D4 A2 实际预准入审计（2026-07-26）
+
+### 输入范围
+
+本次分别读取
+`configs/d3_a1_external_audit_actual_20260726.json` 和
+`configs/d4_a2_external_audit_actual_20260726.json`。审计只消费现有文件，没有启动 AirSim、
+三维质点 episode、900 单元正式矩阵或模型训练，也没有修改 D3/D4 阈值。
+
+D3 静态数据、切分、全样本审计、bundle manifest 和 weights 文件可用。候选仍为
+development/shadow，manifest 声明的外部 holdout 已评估数为 0。D4 的对应静态文件和
+readiness 可用，候选同样为 development/shadow，final holdout 已评估数为 0；readiness 另
+记录动作多样性不足和策略能力未证明。
+
+### 结果
+
+| 角色 | 状态 | 正式 episode | 实际采用 | 物理窗口 | 唯一 R0 | blocker |
+| --- | --- | --- | --- | --- | --- | ---: |
+| D3/A1 | fail_closed | unavailable | unavailable | unavailable | unavailable | 15 |
+| D4/A2 | fail_closed | unavailable | unavailable | unavailable | unavailable | 15 |
+
+表中的 unavailable 不等于 0。正式作用域文件不存在，D6 没有形成正式学习 episode 的观测值。
+候选 manifest 中“已评估数为 0”是另一项静态声明，不能用于补齐正式作用域。
+
+两份结果的 blocker code 相同：
+
+1. `actual_adoption_unavailable`
+2. `artifact_missing.formal_scope_audit`
+3. `artifact_missing.formal_scope_checksums`
+4. `artifact_missing.implementation_evidence`
+5. `candidate_fingerprint_unavailable`
+6. `current_implementation_sha256_mismatch`
+7. `formal_episode_count_unavailable`
+8. `formal_scope_checksum_unavailable`
+9. `formal_scope_evidence_unavailable`
+10. `formal_unseen_seed_count_unavailable`
+11. `implementation_evidence_unavailable`
+12. `paired_non_degradation_unavailable`
+13. `physical_state_window_unavailable`
+14. `safety_hard_constraint_unavailable`
+15. `unique_same_key_r0_unavailable`
+
+D3 配置中的预期当前实现摘要为
+`86b06e0705d91f42e7cf49d9e21ef56f5118dd604b2596296624adc4a19adc27`，复跑实算为
+`2e06c9d2d66e7ab672421564dcd82b0dcbc6748a871721388656cd010e9bebdf`。D4 对应值为
+`ecab1eb7b4e73e622dbae86c494a4dd316b9b4ec10dd0dc9ab92f6ff2882f3d8` 和
+`044284d7327a939724659c6ee5784842dcf4fd83621aa366d4d33ad50f68b431`。D6 保留来源漂移，
+没有重写输入摘要。
+
+### 制品
+
+| 角色 | 输出目录 | JSON 文件 SHA-256 | JSON 内容 SHA-256 | SHA256SUMS 文件 SHA-256 |
+| --- | --- | --- | --- | --- |
+| D3/A1 | `outputs/d3_a1_external_audit_actual_20260726_strict_v2/` | `837f95c64efeab9b0a8d4db60c9fc3628b83d6e17dc36a77a2200a32b9255529` | `c1db7bb0b6e8f5776fd7e027dfc30360efd605705f1e8b4afed1047185db8c0a` | `e8af2aab72eef82d6cb071c7613a8800e9013b10b5976f4903f2c5d716836d24` |
+| D4/A2 | `outputs/d4_a2_external_audit_actual_20260726_strict_v2/` | `0547fe50d11d8a3735bdfb3bbd9ba330bf1335d3e00bda368f7f49fb967c7c0a` | `e5a116794e7d582ccc16fb600efb6209e0ab642e659c0817a3b60d446025f830` | `fc53e959241cfcd08ab5df83485d8dbc670245f57b7a0107665be3067b6ef0d5` |
+
+旧的 `actual_20260726` 和 `actual_20260726_final` 输出均保留，没有覆盖或删除。
+
+### 验证
+
+专项测试结果为 `31 passed, 1 warning in 8.53s`。测试包含角色正例、缺文件、文件/内容哈希
+篡改、当前实现与来源 commit 漂移、错误角色采用证据、19 个未见 seed、shadow、规则 fallback、
+零采用、物理状态缺失、硬约束失败、隐藏 blocker、R0 缺失/重复/复用、必选指标缺失或退化、
+调用方自声明拒绝、CLI 和确定性输出。
+
+D6 全量结果为 `975 passed, 1 warning in 103.81s`。新增 Python 入口编译通过，限定 D6 路径的
+差异格式检查通过。warning 为既有 Matplotlib `Axes3D` 环境提示。
+
+D6 没有授予模型晋级、辅助运行、分配、故障接管、默认路径或控制权限。当前两份失败结果只能供
+D3/D4 assembler 读取并继续失败关闭。
+
 ## D5 G1 预准入外部审计（2026-07-26）
 
 ### 输入

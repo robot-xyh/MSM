@@ -1,5 +1,48 @@
 # D6 实现差距审计
 
+## 2026-07-26 D3 A1 与 D4 A2 外部审计 GAP 更新
+
+### 已关闭
+
+1. D6 已提供 D3/A1 和 D4/A2 evidence assembler 可消费的角色专用、版本化外部审计合同。
+   共享核心不合并角色语义：A1 要求隔离实际采用，A2 要求运行确认。
+2. 数据 manifest、数据内容、切分、全样本审计、模型 manifest、权重、实现文件集合、来源
+   commit、正式作用域报告及校验清单均已进入显式带外 SHA-256 绑定。D4 readiness 另行绑定。
+3. 至少 20 个未见 seed、训练 seed 零交集、实际采用、后续物理状态、在线真值零使用、安全/
+   硬约束、唯一同键 R0 和 paired non-degradation 已进入失败关闭门。
+4. `unavailable` 不补 0。正式报告缺失时，计数和
+   `formal_scope_audit_passed` 均保持 `null/unavailable`。
+5. 调用方自声明字段、shadow、规则 fallback、零采用、错误角色采用证据、隐藏的作用域或配对
+   blocker、文件/内容篡改、来源漂移、R0 缺失/重复/复用和必选指标退化均有负向测试。
+6. D6 只给 evidence audit pass/fail。模型晋级、辅助运行、分配、降级、默认路径和控制权限
+   固定为 false。
+7. 当前 D3/A1 与 D4/A2 实物已分别严格审计一次。两者均为 `fail_closed`，各 15 个 blocker；
+   原审计目录未删除，新结果写入独立 `strict_v2` 目录。
+8. 专项 `31 passed, 1 warning`，D6 全量
+   `975 passed, 1 warning in 103.81s`。新增入口编译和 D6 路径差异检查通过。
+
+### 当前 P1
+
+1. **正式作用域证据缺失。** D3/A1 与 D4/A2 均没有正式作用域 JSON 和对应
+   `SHA256SUMS`。未见 seed 数、正式 episode 数、实际采用数、物理窗口、唯一 R0 和 paired
+   non-degradation 因而全部 unavailable。
+2. **实现证据缺失。** 两模块均没有版本化 `implementation_evidence.json`，候选指纹和来源
+   commit 无法形成完整消费合同。
+3. **当前实现摘要漂移。** D3 冻结摘要/当前摘要为
+   `86b06e07...c27` / `2e06c9d2...bdf`；D4 为
+   `ecab1eb7...3d8` / `044284d7...431`。D6 保留
+   `current_implementation_sha256_mismatch`，不通过改配置制造一致。
+4. **候选仍处于开发阶段。** D3、D4 均为 development/shadow，实际正式 holdout 数为 0。
+   D4 另记录动作多样性不足和策略能力未证明。开发候选可以进入预准入测试，但 shadow episode
+   或只加载模型不能计作实际采用。
+5. **装配器只能消费失败关闭合同。** D3/D4 assembler 需校验外部 JSON 文件哈希、
+   `content_sha256`、角色/变体、所有来源摘要、availability、审计通过位和失败原因。当前结果
+   不得生成正向 admission evidence。
+
+当前无新增 D6-owned P0。D6 外部审计软件、严格 availability、报告和测试缺口已关闭。开放项
+属于 D3/D4 正式证据生产和 assembler 接线；在模块 owner 补齐前，D6 按设计保持失败关闭。
+本项不改变 AirSim 接口，`AIRSIM_INTEGRATION_PLAN.md` 已检查且无需修改。
+
 ## 2026-07-26 D5 G1 外部审计与装配器后谱系 GAP 更新
 
 ### 已关闭

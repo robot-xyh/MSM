@@ -1,5 +1,44 @@
 # D6 Evaluation Metrics Plan
 
+## 2026-07-26 D3 A1 与 D4 A2 预准入外部审计
+
+### 已完成
+
+- [x] 实现共享只读核心和 D3/A1、D4/A2 两套角色专用 API、CLI、输入 schema、输出 schema
+  及 consumer schema。
+- [x] 显式冻结数据/内容/切分、全样本审计、manifest、weights、实现来源、正式作用域报告和
+  校验清单；D4 另冻结 readiness。所有输入均使用仓库内相对路径和带外 SHA-256。
+- [x] 拒绝额外调用方自声明字段，不从相邻目录补找证据，不以文件名推断候选身份。
+- [x] D3/A1 固定检查隔离实际采用语义
+  `isolated_application/d3_learning_applied_count`；D4/A2 固定检查运行确认语义
+  `runtime_ack/d4_advice_control_adoption_count`。
+- [x] 检查至少 20 个训练集外未见 seed、实际采用、后续物理窗口、在线真值零使用、安全与
+  硬约束、唯一同键 R0 和两项必选 paired non-degradation。
+- [x] shadow、规则 fallback、零采用、缺物理窗口、缺失或重复 R0、隐藏 scope/pair blocker、
+  来源漂移和 SHA-256 篡改均失败关闭。
+- [x] 缺测字段输出 `null + unavailable`，包括正式审计通过标志；不以 false 或 0 冒充缺测
+  观测。
+- [x] 输出确定性 JSON、证据 CSV、中文 Markdown 和 `SHA256SUMS`。D6 的晋级、辅助、分配、
+  降级、默认路径和控制权限固定关闭。
+- [x] 当前 D3/A1、D4/A2 实际证据各完成一次严格审计，均为 `fail_closed`，各 15 个
+  blocker。原输出保留，新输出写入独立 `strict_v2` 目录。
+- [x] 专项 `31 passed, 1 warning`，D6 全量
+  `975 passed, 1 warning in 103.81s`；新增入口 `py_compile` 通过。
+- [x] 已检查 `AIRSIM_INTEGRATION_PLAN.md`。本项不改变 AirSim 接口或运行编排，无需修改。
+
+### 仍开放
+
+- [ ] D3 owner 需在冻结的 clean 源码上生成版本化实现证据，并提供至少 20 个未见 seed 的
+  A1 隔离实际采用、后续物理状态和唯一同键 R0 正式作用域。
+- [ ] D4 owner 需在冻结的 clean 源码上生成版本化实现证据，并提供至少 20 个未见 seed 的
+  A2 运行确认、后续物理状态和唯一同键 R0 正式作用域。
+- [ ] D3/D4 evidence assembler 必须复算 D6 JSON 文件 SHA-256 和
+  `content_sha256`，校验角色、变体、来源摘要、availability、`d6_external_audit_passed` 和
+  `failure_reasons`。当前两份失败结果不得装配为正向 evidence。
+- [ ] 当前 D3/D4 配置中的预期实现摘要已与现工作树漂移。只有模块 owner 在 clean 状态冻结新
+  候选时才能形成新配置；D6 不通过改写摘要消除来源阻断。
+- [ ] 不启动 900 单元正式矩阵。预准入证据未闭合前，A1/A2 继续保持 development/shadow。
+
 ## 2026-07-26 D5 G1 预准入外部审计与装配器后复核
 
 ### 已完成

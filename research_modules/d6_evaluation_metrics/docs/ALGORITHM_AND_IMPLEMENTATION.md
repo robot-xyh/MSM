@@ -1,5 +1,125 @@
 # D6 系统级离线评估：算法原理与实施说明
 
+## D3 A1 与 D4 A2 预准入外部审计（2026-07-26）
+
+### 软件结构
+
+共享核心位于 `learning_module_external_audit.py`。D3/A1 和 D4/A2 分别由
+`d3_a1_external_audit.py`、`d4_a2_external_audit.py` 提供角色专用 API。对应 CLI 为：
+
+```text
+scripts/run_d3_a1_external_audit.py
+scripts/run_d4_a2_external_audit.py
+```
+
+四类 schema 分开版本化：
+
+```text
+D3 input     d6.d3-a1-external-audit-input.v1
+D3 output    d6.d3-a1-external-audit.v1
+D3 consumer  d6.d3-a1-external-audit-consumer.v1
+
+D4 input     d6.d4-a2-external-audit-input.v1
+D4 output    d6.d4-a2-external-audit.v1
+D4 consumer  d6.d4-a2-external-audit-consumer.v1
+```
+
+输入顶层字段和 artifact 集合必须精确匹配 schema。路径只能是仓库根目录内的相对路径。每个
+artifact 都携带调用方冻结的文件 SHA-256；额外权限位或通过位会触发
+`input_fields_mismatch`，不能进入审计。
+
+### 校验顺序
+
+处理顺序固定为：
+
+```text
+输入 schema 与路径边界
+  -> artifact 文件 SHA-256 与 JSON 内容 SHA-256
+  -> 数据、切分、全样本审计
+  -> bundle manifest、weights、readiness
+  -> 当前实现文件清单与来源 commit
+  -> 正式 scope 文件及 SHA256SUMS
+  -> 至少 20 个未见 seed
+  -> A1 隔离采用或 A2 运行确认
+  -> 后续物理状态和在线真值
+  -> 唯一同键 R0 与 paired non-degradation
+  -> 安全与硬约束
+  -> consumer contract、JSON、CSV、中文报告、SHA256SUMS
+```
+
+D3 数据检查绑定 `dataset_manifest.json`、`frames.jsonl`、split hash、全样本审计、模型 manifest
+和 `state_dict.pt`。D4 数据内容摘要从 manifest 中移除自摘要字段后重算，并绑定 seed split、
+全样本审计、模型 manifest、`state_dict.pt` 和 model readiness。
+
+实现摘要按角色冻结的源文件集合逐文件计算 SHA-256，再对按文件名排序的映射执行规范 JSON
+SHA-256。证据实现摘要、当前实现摘要、输入清单预期摘要和数据来源 commit 必须一致。缺少实现
+证据时，候选指纹保持 null。
+
+正式作用域采用既有 schema
+`d6.learning-scope-formal-evidence-audit.v1`。A1 单元要求
+`required_components=["d3"]`，采用语义为
+`isolated_application/d3_learning_applied_count`。A2 要求
+`required_components=["d4"]`，采用语义为
+`runtime_ack/d4_advice_control_adoption_count`。`assist_adoption_status` 必须为
+`actual_assist_adopted`；shadow、fallback 和零采用均阻断。
+
+R0 从报告的 `r0_scopes[].cells` 建立同键索引。每个学习 pair 必须满足：
+
+```text
+count(R0 cells with same comparison_key) = 1
+pair.learned_cell_id = learned cell_id
+pair.r0_cell_id = indexed R0 cell_id
+R0 evidence_status = accepted
+R0 cell_id is not reused by another key
+```
+
+`intercepted_target_count` 与 `offline_proximity_unique_target_count` 必须标记
+`required=true`、`availability=available`、`non_degraded=true`。顶层、learned scope 和
+R0 pairing 任一 blocker 都不能被隐藏。
+
+### Consumer contract
+
+后续 D3/D4 assembler 必须消费并核对：
+
+```text
+schema_version
+role
+variant
+formal_profile_version
+adoption_evidence_kind
+adoption_source_metric
+candidate_fingerprint
+dataset_manifest_sha256
+dataset_content_sha256
+dataset_split_sha256
+bundle_manifest_sha256
+bundle_weights_sha256
+implementation_sha256
+source_git_commit
+formal_scope_audit_sha256
+formal_scope_checksums_sha256
+formal_scope_checksum_verified
+unseen_seed_count
+formal_episode_count
+actual_adoption_count
+physical_window_count
+unique_r0_pair_count
+paired_non_degraded_count
+safety_hard_constraint_passed
+formal_scope_audit_passed
+d6_external_audit_passed
+failure_reasons
+field_availability
+```
+
+assembler 还需从带外来源取得并复算 D6 审计 JSON 文件 SHA-256，同时验证 JSON
+`content_sha256`。任一字段缺失、角色不符、摘要漂移、availability 不可用或
+`d6_external_audit_passed=false` 时继续失败关闭。
+
+writer 拒绝覆盖非空目录。相同输入、固定评估时间和相同源码产生逐字节一致的 JSON、CSV、
+Markdown 和 `SHA256SUMS`。D6 `authority` 中的晋级、辅助、分配、故障接管、默认路径和控制
+权限始终为 false。
+
 ## D5 G1 预准入外部审计（2026-07-26）
 
 ### 审计输入

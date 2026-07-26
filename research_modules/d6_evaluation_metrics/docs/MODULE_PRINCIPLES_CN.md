@@ -1,5 +1,62 @@
 # D6 系统级离线评估模块原理
 
+## D3 A1 与 D4 A2 外部证据审计（2026-07-26）
+
+D3/A1 和 D4/A2 的预准入采用同一条证据链：
+
+```text
+数据与切分
+  -> 全样本完整性
+  -> 模型 manifest 与权重
+  -> 当前实现来源
+  -> 正式作用域实际采用
+  -> 后续物理状态
+  -> 唯一同键 R0
+  -> 配对非退化与安全门
+  -> D6 失败关闭合同
+```
+
+共享流程不等于共享角色。A1 表示 D3 分配学习策略，实际采用证据来自隔离执行中的
+`d3_learning_applied_count`。A2 表示 D4 区域资源学习策略，实际采用证据来自
+`d4_advice_control_adoption_count` 运行确认。D6 在结果中固定写出
+`adoption_evidence_kind` 和 `adoption_source_metric`，防止 D3 的隔离采用记录被当成 D4
+运行确认，或反向替换。
+
+静态候选允许保持 development 状态，因为该审计处于模块晋级之前。正式 episode 必须实际采用
+学习输出。shadow 只记录建议，规则 fallback 使用确定性路径，二者都不算采用。模型成功加载、
+推理无异常或调用方声明 `assist=true` 也不能替代实际采用记录。
+
+未见 seed 集合必须至少包含 20 个不同整数，并与训练、验证和测试 seed 集合无交集。正式 seed
+还应与候选预留外部 holdout 目录一致。缺失 seed 目录时输出 unavailable，不把“没有记录”写成
+seed 数 0。
+
+后续物理状态是实际采用之后的状态窗口。它用于确认学习动作进入了可评估的系统演化过程。只有
+日志存在、状态有限且正式作用域审计标记为 available，物理窗口才计数。缺少窗口时不能用
+拦截数 0 代替，因为 0 是有效观测值，缺测不是。
+
+R0 是同一外生条件下的确定性规则基线。配对键由场景、规模和 seed 等冻结条件构成。对每个学习
+单元，D6 要求 R0 scope 中恰有一个同键单元，pair 指向该单元，同一 R0 单元不被重复复用。
+必选指标满足：
+
+```text
+intercepted_target_count(Ai) >= intercepted_target_count(R0)
+
+offline_proximity_unique_target_count(Ai)
+  >= offline_proximity_unique_target_count(R0)
+```
+
+两项指标都必须显式 available。任一缺失、非数值或退化，paired non-degradation 不成立。
+在线真值使用、正式单元 failure reasons、作用域 blocker 和配对 blocker同时进入安全与硬约束
+检查。上层 `verdict=pass` 不能掩盖嵌套 blocker。
+
+外部审计使用两类摘要。文件 SHA-256 绑定实际字节；JSON `content_sha256` 绑定去除自身摘要字段
+后的规范内容。正式作用域报告还必须出现在独立 `SHA256SUMS` 中。后续 assembler 需要再次计算
+D6 审计 JSON 的文件 SHA-256 和 `content_sha256`，形成跨模块带外绑定。
+
+D6 的通过位只说明证据完整、一致且满足冻结门。D6 不授予模型晋级、辅助运行、分配、降级、
+默认路径或控制权限。当前 D3/A1、D4/A2 缺正式作用域和实现证据，严格结果均为
+`fail_closed`。
+
 ## D5 G1 外部证据审计（2026-07-26）
 
 D5 的 held-out 和 paired-shadow 报告属于生产者声明。D6 不能只读取其中的 `passed=true`。

@@ -1,5 +1,40 @@
 # D6 系统评估指标综述及子方案
 
+## 2026-07-26 D3 A1 与 D4 A2 预准入外部审计评审
+
+D3/A1 和 D4/A2 的模型文件存在，不代表学习算法已经在正式作用域内实际工作。D6 将静态候选
+绑定、当前实现绑定和正式运行证据分成三层。任一层缺失或来源不一致，最终 consumer contract
+失败关闭。
+
+静态层核对数据 manifest、数据内容、seed 切分、全样本审计、模型 manifest、weights 和
+readiness。实现层对角色固定的源文件逐项计算 SHA-256，再对有序文件摘要计算实现 SHA-256，
+并与数据、模型和来源 commit 交叉绑定。运行层只接受既有正式作用域审计器输出的
+`d6.learning-scope-formal-evidence-audit.v1`，同时复核报告文件和 `SHA256SUMS`。
+
+两个角色的采用证据不同。A1 必须在隔离执行中出现正的
+`d3_learning_applied_count`，A2 必须出现正的
+`d4_advice_control_adoption_count` 运行确认。正式报告还需证明预检与 episode 诊断一致。
+shadow、规则 fallback、仅加载 bundle 或采用为 0 均被拒绝。开发态 bundle 可以作为预准入
+候选，但不能用开发态声明替代实际采用证据。
+
+每个学习单元按 comparison key 查找 R0。D6 从正式报告的 R0 scope 建立索引，要求同键只有一个
+可接受 R0，pair 中的 `r0_cell_id` 与实际单元一致，且同一 R0 不被多个 key 复用。拦截目标数和
+离线五米接近唯一目标数是必选非退化指标。缺指标、指标不可用或任一指标退化均失败关闭。
+
+当前实物不具备正式作用域和实现证据。D3/A1、D4/A2 的正式学习 episode 均为 unavailable，
+不是观测到的 0；候选 manifest 中声明的 holdout 已评估数才是 0。两份冻结配置还分别与当前
+D3、D4 实现摘要不一致。因此严格复跑均为 `fail_closed`，各 15 个 blocker。D6 没有调整门限、
+替换摘要、启动 900 单元矩阵或删除旧输出。
+
+D3 严格结果的 JSON 文件/内容 SHA-256 为
+`837f95c6...529` / `c1db7bb0...c0a`；D4 为
+`0547fe50...c0a` / `e5a11679...830`。专项测试
+`31 passed, 1 warning`，D6 全量 `975 passed, 1 warning in 103.81s`。
+
+后续由 D3、D4 各自生成 clean-source 实现证据和至少 20 个未见 seed 的正式作用域，再由各自
+assembler 消费 D6 合同。D6 不授予 promotion、assist、默认路径或控制权限。AirSim 运行接口
+未变化，相关集成文档已检查，无需修改。
+
 ## 2026-07-26 D5 G1 预准入外部审计与装配器后复核
 
 D6 已把 D5 G1 预准入输入收敛为一个内容寻址的外部审计 JSON。该 JSON 同时绑定 99fa 候选模型、
