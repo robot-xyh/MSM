@@ -2503,6 +2503,63 @@ def test_finalize_consumes_pending_d1_posterior_without_emitting_control() -> No
     )
 
 
+@pytest.mark.parametrize(
+    ("scale", "seed"),
+    (
+        (5, 1000),
+        (5, 1005),
+        (5, 1008),
+        (5, 1018),
+        (20, 1009),
+    ),
+)
+def test_formal_r0_delayed_noisy_final_posterior_is_consumed_once(
+    scale: int,
+    seed: int,
+) -> None:
+    config = make_curriculum_scenario(
+        "delayed_noisy",
+        scale=scale,
+        seed=seed,
+        duration_s=2.0,
+        base=ScenarioConfig(),
+    )
+    config = replace(
+        config,
+        sensor_random_schedule_version="entity_fixed_v1",
+    )
+    stack = IntegratedScalableModuleStack()
+
+    result = run_episode(config, module_stack=stack)
+
+    governance = result.observation_governance_audit
+    d2_publications = tuple(
+        message
+        for message in result.online_messages
+        if message.topic == "modules.d2.associated_tracks"
+    )
+    assert governance["d2_consumed_d1_posterior_generation"] == (
+        governance["d1_posterior_generation"]
+    )
+    assert governance["d2_pending_d1_posterior_generation"] is None
+    assert governance["d2_posterior_consumption_count"] == len(
+        d2_publications
+    )
+    assert governance["d2_finalize_unchanged_posterior_skip_count"] == 0
+    assert int(
+        d2_publications[-1].payload["source_d1_posterior_generation"]
+    ) == governance["d1_posterior_generation"]
+    assert result.summary["online_truth_use_count"] == 0
+
+    final_metadata = stack.latest_d2_result.metadata
+    assert final_metadata["fresh_detection_count"] == 0
+    assert final_metadata["replay_quarantined_detection_count"] > 0
+    assert final_metadata["replay_coast_count"] > 0
+    assert final_metadata["created_track_ids_by_detection"] == {}
+    assert final_metadata["duplicate_coalescence_count"] == 0
+    assert final_metadata["global_track_id_owner"] == "D2_center"
+
+
 def test_5v5_online_stack_connects_d1_to_d7_without_truth_identity(tmp_path) -> None:
     config = ScenarioConfig(
         scenario_name="integrated_5v5",

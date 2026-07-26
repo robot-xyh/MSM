@@ -1,5 +1,25 @@
 # 200 对 200 三维质点仿真实施计划
 
+## 正式 R0 后验收尾 P0（2026-07-25）
+
+1. [x] clean commit `2c7b425` 的 20 个 R0 分片全部完成，900/900 单元写盘并确定性合并；
+   scope 完成，完整 5700 单元矩阵未完成。
+2. [x] D6 首轮评估给出 895 个 clean-formal 单元和 5 个后验代次失败单元。失败集中在
+   `delayed_noisy` 5v5 seeds 1000/1005/1008/1018 与 20v20 seed 1009。
+3. [x] main 确认根因是 finalize 简化签名遗漏状态有效时刻、状态和协方差，并在签名相同
+   时跳过 D2 调用后清空 pending generation。
+4. [x] main 改为最后 D1 后验必须实际进入 D2，且仅在 D2 成功发布后清空 pending；
+   D2 replay-coast 负责隔离重复来源证据，D7 控制公式不变。
+5. [x] 五个原失败单元完成开发态定向复跑。D6 generation contract 为 5/5 verified，
+   skip=0、pending empty、在线真值使用为 0；scalable/D2/D6 全量分别为
+   `285/305/894 passed`。
+6. [ ] 将 main runtime、D1/D2 审计和 D6 v10 按子系统分批提交，形成新的 clean source
+   commit，并据此重新冻结完整父计划与 R0 execution plan。
+7. [ ] 在不删除或改写现有正式证据的前提下解决存储容量。当前可用约 24 GiB，现有正式
+   R0 约 22 GiB，旧失败现场约 1.2 GiB；新一轮仍需约 22 GiB，并保留 20 GiB 运行下限。
+8. [ ] 使用新 clean source 从零重跑 900 个 R0 单元，由 D6 v10 验证 900/900
+   clean-formal。不得将修复后的 5 项与旧提交的 895 项拼接。
+
 ## D4 因果通信与正式矩阵准入状态（2026-07-25）
 
 1. [x] main 新增 D4 点对点通信意图，将二级就绪、区域计划广播和联盟成员确认通过
@@ -18,9 +38,9 @@
    `272 passed, 1 warning`；warning 为既有 Matplotlib 三维投影导入提示。
 8. [x] D6 使用实际 formal 计划完成静态 `post_run` 预检：expected=`5700`、
    accepted=`0`、verdict=`fail_closed`。
-9. [ ] 在 clean detached worktree 生成 R0 正式基线产物。先完成 20 个各 45 单元的可恢复
-   分片，再形成 R0 scope manifest、逐 cell 清单、D6 逐 seed CSV、聚合 JSON、中文报告、
-   曲线和动画。
+9. [x] clean commit `2c7b425` 已完成 20 个各 45 单元的可恢复 R0 分片，并形成 scope
+   manifest、逐 cell 清单和 D6 报告。首轮 D6 为 895/900 clean-formal；该批次保留为
+   后验收尾 P0 的正式失败证据，不能作为最终 R0 acceptance。
 10. [ ] D3、D4、D5 图模型和 D5 主动视觉模型保持 development/shadow；未通过独立非退化
     门前，不允许以模型哈希有效代替 assist 准入。
 11. [ ] 完成 R0 后再决定 G1/A1/A2/A3/C1/F1 的运行顺序；每一学习变体缺正式模型权限时
@@ -50,10 +70,13 @@
     时在完整单元边界暂停并写 checkpoint；恢复后继续使用同一追加式进度账本。
 20. [x] D3 owner 已关闭联盟需求变化代码 P0：不兼容旧需求库存不再进入迟滞保持，同需求
     保留和过分配失败关闭不变；D3 全量为 `464 passed, 1 skipped`，同配置开发复验通过。
-21. [ ] main 绑定新 clean commit 生成新的 execution plan，从 shard 0 零开始复跑并确认
-    high-threat 200v200 单元通过。
-22. [ ] shard 0 全部 45 单元通过且可用磁盘高于下限后，再顺序运行其余 19 片；900/900
-    后执行 `merge-r0 --write-d6-report`。
+21. [x] main 绑定 clean commit `2c7b425` 生成新 execution plan，从 shard 0 零开始运行；
+    原 high-threat 200v200 单元通过。
+22. [x] 20/20 分片和 900/900 R0 scope 已完成并执行
+    `merge-r0 --write-d6-report`；D6 随后发现五项 finalize 后验未消费，故 formal
+    acceptance 仍失败关闭。
+23. [ ] 完成上节后验收尾修复的分批提交和存储安排后，使用新 clean commit 与新 execution
+    plan 整体重跑 900 单元。
 
 ## D1 在线发布证据子集快照候选（2026-07-25）
 

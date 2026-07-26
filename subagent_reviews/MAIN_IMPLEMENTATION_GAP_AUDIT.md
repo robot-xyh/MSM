@@ -6,6 +6,27 @@
 
 ## 2026-07-25 可扩展三维主线最新状态
 
+**当前优先状态：正式 R0 后验收尾 P0。** clean commit
+`2c7b425d076899e1c54a3d87d6ef23a613ba6e3a` 的 20/20 分片和 900/900 R0 单元已经
+完成。D6 只确认 895 个 clean-formal 单元；5 个 `delayed_noisy` 单元因最后 D1 后验未被
+D2 实际消费而失败。main finalize 使用的简化签名没有状态有效时刻、六维状态和协方差，
+却在签名相同时清空 pending generation。五项后验的最大状态、协方差元素和时刻差分别为
+`0.415096`、`22.623443` 和 `0.255046 s`，因此不能按合法 no-op 放行。
+
+main 已改为最后 D1 后验必须实际调用 D2，且仅在 D2 成功发布后清空 pending。重复来源
+证据由 D2 replay-coast 隔离，不增加命中、不创建新航迹、不刷新原始证据时钟；D7 控制
+公式未修改。五个原失败 cell 的开发态复跑全部通过 D6 v10 后验代次合同：
+D1 final=D2 consumed、consumption=publication、consumption+merge=generation、skip=0、
+pending empty、在线真值使用为 0。scalable、D2、D6 全量分别为 285、305、894 passed。
+
+该 P0 的代码和定向回归已关闭，正式证据尚未关闭。修复后的运行来自脏工作树，不能与旧
+提交的 895 项拼接。下一步必须先形成新 clean commit 和新 execution plan，再整体重跑
+900 项。当前文件系统约余 24 GiB，现有正式证据约 22 GiB，旧失败现场约 1.2 GiB；在
+20 GiB 运行下限下无法并存下一份约 22 GiB 正式结果。现有证据在获得清理或迁移授权前
+不得删除。
+
+以下 D3 shard-0 记录是本轮 R0 的前序历史，已由 `2c7b425` 批次覆盖：
+
 正式 R0 shard 0 在第 45 个单元
 `high_threat_m_to_n/200v200/seed_1000` 暴露新的运行级 P0：D3 滚动规划把旧联盟需求
 直接带入当前需求，触发 `coalition demand does not match current demand`。前 44 个完整

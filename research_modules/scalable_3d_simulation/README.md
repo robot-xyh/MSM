@@ -1,5 +1,41 @@
 # Scalable 3D Simulation
 
+## 正式 R0 后验收尾状态（2026-07-25）
+
+绑定 clean commit `2c7b425d076899e1c54a3d87d6ef23a613ba6e3a` 的正式 R0 已完成
+20/20 分片和 900/900 单元。执行计划 SHA-256 为
+`3e96e434c485e84aa85b654d93f9a022bd0216272390d852c73763d961ae4fb8`。
+合并结果只能声明 `formal_scope_complete=true` 和
+`formal_matrix_complete=false`，不能代表完整 5700 单元七变体矩阵完成。
+
+D6 首轮评估确认 895 个单元满足 clean-formal 准入，5 个 `delayed_noisy` 单元失败：
+5v5 的 seed 1000、1005、1008、1018，以及 20v20 的 seed 1009。失败原因是 main 在
+episode 收尾时使用简化 D2 输入签名跳过最后 D1 后验；该签名没有包含状态有效时刻、六维
+状态和协方差。五项最终 D1 后验相对 D2 最后实际消费后验均发生了语义变化，最大状态差
+为 `0.415096`，最大协方差元素差为 `22.623443`，最大时刻差为 `0.255046 s`。计数守恒
+不能替代完整后验内容一致性。
+
+main 已移除 finalize 的简化签名跳过。最后一代 D1 后验现在必须实际调用 D2 Tracker，
+只有 D2 成功发布后才能清除 pending generation。重复来源证据由 D2 已有 replay-coast
+路径隔离，不增加命中、不创建新航迹、不刷新原始证据时钟。D7 的比例导引、视觉比例导引、
+视线滤波和切换公式未修改。四个 5v5 尾帧均为 5/5 coast；20v20 seed 1009 的 20 条重复
+证据全部隔离，其中 19 条在宽限期内 coast，1 条超过宽限期并按既有生命周期增加一次 miss。
+
+五个原失败单元已按原 2.0 秒配置完成开发态定向复跑。D6 v10 对五项后验代次合同均判为
+`verified`：D1 最终代次等于 D2 最终消费代次，D2 消费次数等于发布次数，
+`consumption + pre_tick_merge = generation`，skip 为 0，pending 为空，在线真值使用为
+0。scalable 全量为 `285 passed, 1 warning`，D2 为 `305 passed, 1 warning`，D6 为
+`894 passed, 1 warning`。warning 均为本机 Matplotlib `Axes3D` 导入冲突。
+
+这些定向结果来自脏工作树，只证明代码修复和失败 seed 回归通过。正式 R0 必须在包含修复
+的新 clean commit、新 execution plan 下从 900 个单元整体重跑，不能将新 5 项与旧 895 项
+拼接。当前正式产物约 22 GiB，旧失败现场约 1.2 GiB，文件系统仅余约 24 GiB；在保留
+20 GiB 运行下限的条件下无法并存第二份约 22 GiB 正式矩阵。旧证据在获得明确清理或迁移
+授权前保持不动。
+
+专项记录见
+`docs/SCALABLE_3D_FORMAL_R0_FINALIZATION_P0_20260725_CN.md`。
+
 ## 正式 R0 分片合同（2026-07-25）
 
 main 已新增正式实验矩阵的可恢复分片执行层。执行计划先保存完整
@@ -24,11 +60,10 @@ main 已新增正式实验矩阵的可恢复分片执行层。执行计划先保
 恢复、制品篡改拒绝、确定性合并和真实单 episode 写盘均通过。scalable 全量为
 `280 passed, 1 warning`。warning 仍来自本机 Matplotlib `Axes3D` 导入冲突。
 
-绑定 clean commit `32b3b40` 的首次正式 shard 0 已完成 44/45 单元。最后一个
-`high_threat_m_to_n/200v200/seed_1000` 单元在 `t=1.0 s` 暴露 D3 旧联盟需求库存与当前
-需求不一致。D3 owner 已修复需求合同变化时的旧库存保留，并完成 `464 passed, 1 skipped`
-全量回归和同配置开发复验。旧执行目录固定保留为失败证据，不再续跑。正式 R0 900 单元
-尚未完成；main 将绑定新 clean commit，从 shard 0 零开始复跑，D6 正式准入继续失败关闭。
+绑定 clean commit `32b3b40` 的首次执行曾在 shard 0 第 45 个单元暴露 D3 旧联盟需求库存
+问题，该现场继续作为历史失败证据。D3 修复后，main 使用 clean commit `2c7b425` 重新生成
+execution plan 并从零完成 900 个 R0 单元。随后 D6 暴露的五项后验收尾失败已在上节记录；
+因此当前状态是“R0 scope 执行完成，formal acceptance 待新 clean 提交整体重跑”。
 
 ## D4 因果通信与 M 对 N 联盟闭环（2026-07-25）
 

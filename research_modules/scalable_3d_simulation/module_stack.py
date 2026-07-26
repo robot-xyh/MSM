@@ -1580,7 +1580,6 @@ class IntegratedScalableModuleStack:
                 publications,
                 publication_timestamp=now,
                 timing_stage="d2_association_finalize",
-                skip_unchanged_posterior=True,
                 source_d1_posterior_generation=(
                     self._d2_pending_d1_posterior_generation
                 ),
@@ -1592,6 +1591,11 @@ class IntegratedScalableModuleStack:
                 raise RuntimeError(
                     "finalization cannot discard pending structural "
                     "ambiguity evidence"
+                )
+            if not associated:
+                raise RuntimeError(
+                    "finalization failed to consume pending D1 posterior "
+                    f"generation {self._d2_pending_d1_posterior_generation}"
                 )
             self._d2_pending_d1_update = False
             self._d2_pending_d1_posterior_generation = None
