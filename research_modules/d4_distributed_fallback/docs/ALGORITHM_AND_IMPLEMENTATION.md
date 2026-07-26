@@ -1,5 +1,23 @@
 # D4 分布式协同与降级接管算法及实施方案
 
+## 2026-07-26 学习 bundle 失败关闭
+
+### v2 写入门
+
+`save_region_resource_model_bundle()` 现在只接受 `lifecycle_stage=development` 和 `maximum_advisor_mode=shadow`。该检查位于目录创建和 `torch.save()` 之前。调用方传入 `qualified/assist`、伪造 reward availability、holdout 数量或动作多样性布尔值时，函数直接抛出异常，不留下部分 bundle。
+
+`RegionResourceModelManifest.assist_admitted` 对 v2 固定返回 false。`RegionResourceAdvisor` 只在 manifest 类型和准入属性同时成立时考虑 assist；没有 manifest 的测试注入策略不再默认获得 assist。推理、置信度、分布外、时延和确定性投影逻辑保持原样，规则回退和正式 D4 裁决未放宽。
+
+### 证据判定
+
+正式 nominal 20-seed 干预只证明冻结 development 候选可加载并按门限失败关闭。候选置信度为 `0.508892953` 至 `0.569492280`，低于既定 `0.6`，安全采用为 0/20。运行 ACK、物理 outcome 和配对非退化均不能从同帧比较推导。
+
+`active_risk` clean 制品绑定提交 `0fa7c00c3514c4fa87a17953ab66fdfb73489b0b`。其根 manifest SHA-256 为 `58f01f4fe055de60eb7db44fd82e3b74ef575fd9a43fcfe5fd8e82ec5015191a`，D6 sidecar 文件/内容 SHA-256 为 `dbbda16194f14a63b66e3fc9f2360103b8fe401a6db9b1f1e693dc8c169a7515`/`1aae70cd5612cce3f20ab4e2723533bd6ab1a0775d5e254cf425aeede85e3489`。20/20 对具有物理窗和非退化值，188/188 区域具有隔离执行证据记录；但每条 treatment 都写明 `d4_development_candidate_not_admitted`、`candidate_considered=false`、`execution_source=deterministic_rule_fallback` 和 `production_runtime_ack=false`。因此该制品验证的是规则回退后的隔离链路，不是 D4 模型干预效果。
+
+### 后续接口
+
+新的 admitted bundle 需要独立 promotion schema。该 schema 应引用候选 bundle 全树摘要、D6 审计摘要和逐 seed 运行证据，并由 loader 重新计算。D4 只消费证据，不自行把 nominal、同帧离线比较或 unavailable 字段改写为通过。main 还需在 scope 预检和 episode 发布后分别核验准入与实际 assist 采用；当前 `d59352b` 已提供 bundle 树绑定，但 D4 仍因运行 shadow gate 未闭合而被拒绝。
+
 ## 2026-07-25 异步联盟确认算法
 
 ### 状态保持

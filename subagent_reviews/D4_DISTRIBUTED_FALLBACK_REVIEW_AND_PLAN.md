@@ -1,5 +1,13 @@
 # D4 分布式协同与降级接管综述及子方案
 
+## 2026-07-26 学习 scope 复核
+
+main `d59352b` 已为 A2、C1、F1 建立 bundle 树、设备、诊断、版本和逐单元发布前后复核。D4 当前没有合法 admitted bundle。现有模型为 development/shadow，正式 nominal 配对候选采用 0/20；另一个 `active_risk` 物理制品执行的是规则回退，不是 D4 学习候选。运行 ACK、物理值和非退化值只有与同一个实际采用候选绑定时才可组合。
+
+D4 本轮删除了模块内自声明准入旁路。v2 writer 不能输出 qualified/assist，manifest-less 注入策略也不能 assist。后续应由 D6 产生独立、带外 SHA-256 固定的 promotion evidence，新 bundle 另目录生成；旧 manifest 不修改。2026-07-26 D4 全量为 569/569 passed。
+
+正式验收应选择非 nominal 降级场景和未见 seed，要求 treatment 真实改变下一版计划并获得运行和联盟成员 ACK，再从采用后的物理状态窗计算配对非退化。候选 0 次采用、两臂相同规则路径、同帧离线比较或 unavailable outcome 都不能进入准入分母。
+
 ## 2026-07-25 异步联盟确认补充
 
 真实通信把联盟提案、计划广播和成员 ACK 分散到多个 tick。D4 区域编排此前在提案快照结束时立即终结确认窗口，首帧缺 ACK 会永久中止该代次。修复后，同一版本化联盟的成员位图跨快照保留，提案和部分 ACK 均处于 `collecting_acks`；全部必要 ACK 到达后才原子提交。

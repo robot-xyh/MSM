@@ -7,15 +7,16 @@ from typing import Any
 import pytest
 
 from research_modules.d4_distributed_fallback.d4_distributed_fallback.region_resource import (
+    AdvisorMode,
+    DeterministicResourceProjector,
     RecommendationSource,
     RegionResourceProjectionConfig,
     RuleRegionResourcePolicy,
     RuleRegionResourcePolicyConfig,
+    formal_decision_digest,
 )
 from research_modules.d4_distributed_fallback.d4_distributed_fallback.region_resource_learning import (
-    AdvisorMode,
-    RegionResourceAdvisor,
-    RegionResourceAdvisorConfig,
+    RegionResourceAdvisoryResult,
 )
 from d4_distributed_fallback.region_resource_runtime_ack import (
     RegionResourceRuntimeAckCode,
@@ -53,16 +54,52 @@ class _FiniteAssistPolicy:
         )
 
 
-def _assist_advisor() -> RegionResourceAdvisor:
-    projection = RegionResourceProjectionConfig(advisory_ttl_s=1.5)
-    return RegionResourceAdvisor(
-        config=RegionResourceAdvisorConfig(
-            mode=AdvisorMode.ASSIST,
-            minimum_unseen_seeds=1,
-            projection=projection,
-        ),
-        learned_policy=_FiniteAssistPolicy(projection),
-    )
+class _RuntimeAckContractFixture:
+    """Test-only source for an already-admitted advisory transport contract."""
+
+    def __init__(self) -> None:
+        projection = RegionResourceProjectionConfig(advisory_ttl_s=1.5)
+        self.projector = DeterministicResourceProjector(projection)
+        self._policy = _FiniteAssistPolicy(projection)
+
+    def advise(
+        self,
+        snapshot: Any,
+        *,
+        formal_decision: Any = None,
+        unseen_seed_count: int = 0,
+    ) -> RegionResourceAdvisoryResult:
+        raw = self._policy.recommend_raw(snapshot)
+        recommendation = self.projector.project(
+            snapshot,
+            raw,
+            formal_decision=formal_decision,
+        )
+        advisory_contract = self.projector.build_advisory_contract(
+            snapshot,
+            recommendation,
+            formal_decision=formal_decision,
+        )
+        digest = formal_decision_digest(formal_decision)
+        return RegionResourceAdvisoryResult(
+            requested_mode=AdvisorMode.ASSIST,
+            effective_mode=AdvisorMode.ASSIST,
+            recommendation=recommendation,
+            fallback_used=False,
+            fallback_reason=None,
+            assist_eligible=True,
+            unseen_seed_count=int(unseen_seed_count),
+            inference_latency_ms=0.0,
+            formal_decision=formal_decision,
+            formal_decision_digest_before=digest,
+            formal_decision_digest_after=digest,
+            formal_decision_unchanged=True,
+            advisory_contract=advisory_contract,
+        )
+
+
+def _assist_advisor() -> _RuntimeAckContractFixture:
+    return _RuntimeAckContractFixture()
 
 
 def _envelope_dict(message: Any) -> dict[str, Any]:

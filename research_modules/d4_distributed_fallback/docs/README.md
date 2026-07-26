@@ -1,5 +1,11 @@
 # D4 文档索引
 
+2026-07-26 已完成 A2/C1/F1 严格准入复核。现有 `d4-region-bc-900-development-v1` 继续是
+development/shadow-only；v2 writer 已禁止自声明 qualified/assist，无 admitted manifest 的注入策略
+也不能进入 assist。nominal 20-seed 候选采用为 0/20；`active_risk` 20-seed 虽有物理窗和描述性
+非退化结果，但 D4 候选采用为 0/20，执行路径均为确定性规则回退。当前不得生成 admitted bundle，
+正式学习 scope 数为 0。详细结论见 `../README.md`、`../PLAN.md` 和本目录两份原理文档。
+
 2026-07-25 当前 D4 全量为 **569/569 passed**。新增通信因果证据门和异步联盟确认状态机均已实现并完成模块回归。main-owned scalable 3D 单随机种子场景 `1271` 已验证 2 目标、4 资源下的 0/3 ACK 保持、3/3 ACK 原子提交、两个主成员释放和备用成员待命；在线真值使用与 `global_track_id` 改写均为 0。该结果不是 AirSim、多随机种子、真实网络、正式 5700 单元矩阵或 200 对 200 性能证据。
 
 2026-07-22 已复核隔离多周期 degraded rollout 的 source/applied 代际。source 必须是 formal D4 decision 命名的当前区域 authority 计划；被动降级前的中心/二级 `previous_plan` 只能作为 D3 祖先。applied 只能是同 owner/epoch/lease 下的严格更高版本，或同身份、同 binding 的显式刷新。中心失效 20-seed 首轮 196 条区域记录均因同版本异 ID 被安全拒绝；这是当时的生产者缺口记录。专项 26/26、该阶段 D4 全量 508/508；`production_runtime_ack`、因果和生产 authority 仍保持不可用。详细判据见算法文档 0.0A 和模块计划的 2026-07-22 复核项。

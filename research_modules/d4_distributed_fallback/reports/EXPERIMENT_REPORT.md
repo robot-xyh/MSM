@@ -1,5 +1,13 @@
 # D4 分布式降级与接管实验报告
 
+## 0.0 2026-07-26 A2/C1/F1 准入复核
+
+本轮执行代码合同审计，没有启动新仿真。D4 全量测试为 **569/569 passed**。新增验收点为：调用方自声明 `qualified/assist` 时，在创建 bundle 目录前拒绝；没有 admitted manifest 的注入策略即使提供 20 个未见 seed，也保持 shadow。旧 bundle 文件摘要复核不变。
+
+正式 nominal 20-seed 干预中，D4 candidate considered 为 20/20，但置信度门通过 0/20、安全采用 0/20、规则回退 20/20；运行 ACK 和物理结果不可用。`active_risk` clean 20-seed 制品中，物理窗、描述性非退化和降级计划执行均为 20/20 可用，但 D4 候选 considered/adopted 为 0/20，188 条区域执行证据记录全部指向确定性规则回退，隔离 ACK 明确不是 production runtime ACK。两组结果都不满足模型准入。
+
+main `d59352b` 的正式 scope 会绑定 bundle 文件树、设备、预检诊断和模型版本。D4 当前诊断仍为 `pending_runtime_shadow_gate`，因此 A2/C1/F1 正式 episode 为 0。剩余工作是新的证据绑定 promotion 合同、clean 未见 seed 降级候选实际采用、运行/联盟 ACK、采用后物理窗和 D6 配对非退化审计。
+
 ## 0. 2026-07-25 异步联盟确认
 
 本轮针对真实通信下 M-to-N 联盟确认开展模块回归。原区域编排在提案快照末尾立即执行显式终结，网络 ACK 尚未到达时就把联盟永久置为 `aborted/missing_required_acks`。后续同一代次 ACK 即使全部送达，也无法恢复该状态。

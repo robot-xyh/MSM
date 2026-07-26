@@ -1,5 +1,15 @@
 # D4 分布式协同与降级接管
 
+## 2026-07-26 A2/C1/F1 学习准入复核
+
+对照 main 提交 `d59352be83c24238fc8c41a9fe7a1c0db40a6d31` 的正式学习 scope 合同，D4 当前不能合法进入 A2、C1 或 F1。现有区域策略 bundle 为 `d4-region-bc-900-development-v1`，manifest、权重和训练清单 SHA-256 分别为 `dad2adbe9c36dd9ff8ee8bb3c11b1e07e66743c6f80dd8e956799208a10c05c9`、`3da0360be8788f3ffeb8e9f9eba3e0d5369ec0bdf9e05729dfb1db07d71d5f62` 和 `ff3081c8e320d9c8e1b032fb6234cd24159f0feedb1c6a706633cea6c1030dc6`。其生命周期和模式上限仍是 `development/shadow`。
+
+本轮收紧 `d4-region-resource-model-bundle-v2`：bundle writer 只能生成 `development/shadow`，调用方不能再靠布尔字段生成 `qualified/assist`；拒绝发生在目录和权重写入前。没有 D4 manifest 的注入策略也不能进入 assist。旧 bundle、manifest 和权重未修改。
+
+已有两组证据都不能用于晋级。正式 nominal 20-seed 干预的源 manifest SHA-256 为 `d6ef23b28add92e9a24a185ea72a7275e341bd796a2e11930c4d5f46b19a883c`，D4 干预文件 SHA-256 为 `aa6b22d252184d9bfc58c6e35cf6798551d26447a74ea7619c8a37a8969e2329`；候选安全采用为 0/20，运行 ACK 和物理结果不可用。`active_risk` 20-seed 隔离物理 sidecar 文件/内容 SHA-256 为 `dbbda16194f14a63b66e3fc9f2360103b8fe401a6db9b1f1e693dc8c169a7515`/`1aae70cd5612cce3f20ab4e2723533bd6ab1a0775d5e254cf425aeede85e3489`，虽然物理窗和描述性非退化为 20/20 可用，但 D4 候选均为 `candidate_considered=false`，执行的是确定性规则回退，且 `production_runtime_ack=false`。这两组制品不能拼接为模型准入。
+
+2026-07-26 D4 全量回归为 **569 passed**。正式晋级仍需新的、内容寻址的 promotion 合同，以及在 clean、未见 seed、真实降级场景中绑定 D4 候选实际采用、新执行计划 ACK、联盟成员 ACK、采用后物理窗和配对非退化的 D6 独立审计。在此之前保持 fail-closed。
+
 ## 2026-07-25 异步 M-to-N 联盟确认
 
 区域联盟确认现按真实通信到达顺序跨快照累积。提案建立后进入 `collecting_acks`；没有 ACK 或只有部分 ACK 时保持该状态，`execution_authorized=false`。同一 `plan_id/plan_version/epoch/coalition_version` 的后续快照复用现有成员位图，全部必要成员 ACK 到达后才原子进入 `committed`。普通评估不再把“当前缺 ACK”解释为“确认窗口已经结束”。

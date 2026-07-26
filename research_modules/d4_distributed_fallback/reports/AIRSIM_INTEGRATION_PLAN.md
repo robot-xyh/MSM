@@ -1,5 +1,13 @@
 # D4 AirSim Episode 集成计划
 
+## 2026-07-26 学习准入试验边界
+
+本轮没有启动 AirSim，也没有新增 AirSim 性能证据。D4 v2 bundle 已在模块侧固定为 development/shadow-only；AirSim 运行参数、飞控、actor 和既有确定性降级路径均未改变。
+
+后续 AirSim 或三维质点正式试验必须把规则 control 与 D4 treatment 放在 reset 隔离、外生输入一致的 episode 中。只有非 nominal 降级场景、D4 候选实际采用、严格更新计划的运行 ACK、完整联盟成员 ACK、采用后物理状态窗和 D6 配对非退化同时可用时，才可交给新的 promotion 合同。仅能看到物理轨迹、两臂均规则回退或 outcome unavailable 时保持失败关闭。
+
+main 提交 `d59352b` 已能在 execution plan 中绑定 bundle 树、设备和运行诊断，但现有 D4 bundle 会在 A2/C1/F1 预检阶段停在 `pending_runtime_shadow_gate`。在新 admitted bundle 和 episode 内实际采用证据形成前，不安排正式学习 scope AirSim 验收。
+
 ## 2026-07-25 异步 M-to-N 质点验证与 AirSim 计划
 
 D4 已取消区域快照的隐式 ACK 终结。main 已在一个连续 scalable 3D episode 中按真实到达时刻投递计划广播和成员 ACK，没有在提案同 tick 合成全部 ACK，也没有在每个决策 tick 强制结束确认窗口。

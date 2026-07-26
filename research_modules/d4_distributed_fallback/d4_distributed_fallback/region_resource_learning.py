@@ -931,6 +931,14 @@ class RegionResourceModelManifest:
             MODEL_MAXIMUM_MODE_ASSIST,
         }:
             raise ValueError("unsupported maximum advisor mode")
+        if (
+            self.lifecycle_stage != MODEL_LIFECYCLE_DEVELOPMENT
+            or self.maximum_advisor_mode != MODEL_MAXIMUM_MODE_SHADOW
+        ):
+            raise ValueError(
+                "model bundle v2 is development/shadow only; "
+                "assist requires an independent evidence-bound promotion contract"
+            )
         if type(self.reward_evidence_available) is not bool:
             raise ValueError("reward_evidence_available must be a boolean")
         if type(self.action_diversity_sufficient) is not bool:
@@ -972,19 +980,6 @@ class RegionResourceModelManifest:
         object.__setattr__(self, "target_action_inventory", inventory)
         reasons = tuple(sorted({str(item) for item in self.admission_reasons if str(item)}))
         object.__setattr__(self, "admission_reasons", reasons)
-        if self.maximum_advisor_mode == MODEL_MAXIMUM_MODE_ASSIST:
-            if self.lifecycle_stage != MODEL_LIFECYCLE_QUALIFIED:
-                raise ValueError("assist bundles must be qualified")
-            if not self.reward_evidence_available:
-                raise ValueError("assist bundles require reward evidence")
-            if int(self.final_holdout_seed_count) < 20:
-                raise ValueError("assist bundles require at least twenty final holdout seeds")
-            if not self.action_diversity_sufficient:
-                raise ValueError("assist bundles require sufficient action diversity")
-            if not self.strategy_capability_claim_allowed:
-                raise ValueError("assist bundles require strategy capability evidence")
-            if reasons:
-                raise ValueError("assist bundles must not carry admission reasons")
         groups = tuple(
             sorted({(str(item[0]), int(item[1])) for item in self.training_groups})
         )
@@ -1014,6 +1009,12 @@ class RegionResourceModelManifest:
                     raise ValueError(f"{name} must be a SHA256 hex digest")
         elif any(value is not None for value in provenance):
             raise ValueError("unavailable training dataset must not carry provenance")
+
+    @property
+    def assist_admitted(self) -> bool:
+        """Bundle v2 has no independently bound assist-admission evidence."""
+
+        return False
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -1098,6 +1099,14 @@ def save_region_resource_model_bundle(
     ),
 ) -> RegionResourceModelManifest:
     _require_torch()
+    if (
+        lifecycle_stage != MODEL_LIFECYCLE_DEVELOPMENT
+        or maximum_advisor_mode != MODEL_MAXIMUM_MODE_SHADOW
+    ):
+        raise ValueError(
+            "model bundle writer only emits development/shadow bundles; "
+            "assist requires an independent evidence-bound promotion contract"
+        )
     destination = Path(bundle_dir)
     destination.mkdir(parents=True, exist_ok=True)
     state_path = destination / "state_dict.pt"
@@ -1534,9 +1543,8 @@ class RegionResourceAdvisor:
 
         manifest = getattr(self.learned_policy, "manifest", None)
         bundle_allows_assist = bool(
-            manifest is None
-            or getattr(manifest, "maximum_advisor_mode", MODEL_MAXIMUM_MODE_ASSIST)
-            == MODEL_MAXIMUM_MODE_ASSIST
+            isinstance(manifest, RegionResourceModelManifest)
+            and manifest.assist_admitted
         )
         assist_eligible = bool(
             self.config.mode == AdvisorMode.ASSIST

@@ -1,5 +1,19 @@
 # D4 分布式协同与降级接管计划
 
+## 2026-07-26 A2/C1/F1 准入计划
+
+当前结论为 **D4 不可生成新的 admitted bundle，A2/C1/F1 不可启动**。现有 v2 bundle 只允许 `development/shadow`；writer 已拒绝自声明 `qualified/assist`，无 manifest 的注入策略也保持 shadow。旧 bundle 三项 SHA-256 固定为 manifest `dad2adbe...c05c9`、权重 `3da0360b...d5f62`、训练清单 `ff3081c8...30dc6`，不得修改这些文件自我晋级。
+
+下一验收按以下顺序执行：
+
+1. D4 与 D6 定义新的证据绑定 promotion schema。新 bundle 必须另目录生成，并绑定旧候选身份、clean source commit、完整制品树和带外 SHA-256；v2 manifest 不增加兼容白名单。
+2. 在 `center_failure`、`secondary_failure` 或 `active_risk` 等真实降级场景运行保留未见 seed 配对试验。nominal、同帧离线比较、规则回退和 unavailable outcome 不进入准入分母。
+3. treatment 必须实际采用 D4 候选并产生严格更新的执行计划。D4 证据需逐 seed 绑定 `new_execution_plan_applied`、有效 owner/plan/epoch/lease、完整联盟成员 ACK、无分区和零安全违规。
+4. D6 从采用后的独立物理状态窗计算候选与规则基线，输出物理结果 availability 和配对非退化。两臂相同、候选采用为 0 或只有描述性规则回退时不得通过。
+5. main 在新 bundle 形成后再修改学习预检，把 D4 的证据绑定准入和 episode 内实际 assist 采用同时写入诊断。提交 `d59352b` 当前预检仍显示 `pending_runtime_shadow_gate`，正式学习 episode 数为 0。
+
+本轮验收日期为 2026-07-26，无新增仿真 seed。代码验收要求“自声明 assist 不创建目录”和“无 admitted manifest 的注入策略不进入 assist”；D4 全量结果为 **569/569 passed**。
+
 ## 2026-07-25 异步 M-to-N 联盟确认计划
 
 **D4 模块修复和 main 单随机种子集成复跑已完成；AirSim 多随机种子与正式矩阵待执行。**

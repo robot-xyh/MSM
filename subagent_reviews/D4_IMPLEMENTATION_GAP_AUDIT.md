@@ -1,5 +1,15 @@
 # D4 实现差距审计：分布式协同与降级接管
 
+## 2026-07-26 A2/C1/F1 严格准入
+
+- **代码缺口已关闭**：v2 bundle writer 只允许 development/shadow，并在任何文件写入前拒绝自声明 qualified/assist；无 manifest 注入策略不能默认进入 assist。旧 bundle/manifest 未改写。
+- **当前 bundle**：`d4-region-bc-900-development-v1`；manifest/weights/training-manifest SHA-256 为 `dad2adbe...c05c9`/`3da0360b...d5f62`/`ff3081c8...30dc6`。`assist_admitted=false`。
+- **nominal 证据不准入**：formal `7891296` 的 20 个候选在 0.6 门限下安全采用 0/20、规则回退 20/20；runtime ACK、physical outcome、paired non-degradation 均不可用。D6 sidecar 文件/内容 SHA-256 为 `f3852251...1c3b`/`c02a345c...5d2d`。
+- **active_risk 证据不准入**：clean commit `0fa7c00c...b0b` 的 20-seed sidecar 具有 20/20 物理窗和描述性非退化，文件/内容 SHA-256 为 `dbbda161...a7515`/`1aae70cd...3489`；但 D4 candidate considered/adopted 为 0/20，188/188 区域记录均为 rule fallback，production runtime ACK=false。
+- **main blocker**：`d59352b` 的 scope 基础设施已严格绑定 bundle 树和运行诊断，但 D4 预检仍为 `pending_runtime_shadow_gate`。A2/C1/F1 当前会在创建正式执行目录前失败关闭，正式学习 episode 数为 0。
+- **剩余 P1**：定义 D4/D6 内容寻址 promotion schema；在 clean 未见 seed 的非 nominal 降级场景实际采用 D4 候选；绑定新执行计划 ACK、联盟成员 ACK、采用后物理窗和配对非退化；由 main 同时核验预检准入与 episode 内实际采用。
+- **验证**：2026-07-26，无新增场景或 seed；D4 全量 **569/569 passed**，`py_compile` 通过。
+
 ## 2026-07-25 P1 异步 M-to-N 联盟确认
 
 - **根因**：`RegionalFailoverCoordinator._authorize_tasks()` 在提案快照末尾无条件 `finalize=True`。真实网络 ACK 需要后续 tick 才能到达，首帧因此永久 `aborted/missing_required_acks`。
