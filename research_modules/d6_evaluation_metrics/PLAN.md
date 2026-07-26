@@ -65,20 +65,33 @@
   `98bf9e02...c8ed` / `40a42af0...90d`，原审计未覆盖。
 - [x] 装配器后专项 `14 passed`，覆盖正反例、旧证据双文件差异、CLI 和确定性输出；D6 全量
   `944 passed, 1 warning in 80.12s`。
+- [x] 对 clean worktree `fa3ec10` 发布的 7fb5 robust-v2 registry 新建独立冻结配置。九类输入
+  文件、两份校验清单、两份 JSON 内容摘要和十文件当前实现摘要均由 D6 重新计算，没有照抄
+  producer 结论。
+- [x] 7fb5 正式外审在 `2026-07-26T14:01:34Z` 完成。20 个未见 seed、900 个 episode、45 个
+  场景规模单元、held-out/paired-shadow、三项安全零计数、单特征 AUC 和五类扰动门均通过；
+  `audit_passed=true`，blocker 为空。
+- [x] 正式输出写入 clean worktree 的
+  `outputs/d5_g1_external_audit_7fb5db8b_fa3ec10_20260726/`。主 JSON 文件/内容 SHA-256 为
+  `10bf19f5...10b0` / `4e24ab33...9e54`，输出校验清单复算通过。
+- [x] D6 只发布 evidence audit pass。模型晋级、G1 assist、默认路径和控制权限继续固定为
+  false。
+- [x] 本轮专项为 `14 passed, 1 warning in 4.54s`，D6 全量为
+  `975 passed, 1 warning in 86.70s`；相关 Python 入口编译通过。
 
 ### 仍开放
 
-- [ ] D5 需在当前 `41381db3...4b07` 十文件实现上重新形成同模型 held-out 与 paired-shadow
-  证据，或提供可独立验证的等价桥接；旧证据缺少 assembler 文件并绑定旧
-  `tracklet_model_bundle.py`，v1 审计不接受口头或布尔等价声明。
-- [ ] 合成数据单特征最高 AUC `0.997340` 仍高于 0.98。需使用更困难、独立生成的数据降低
-  尺度变化率捷径。
-- [ ] 扰动最低边/簇 F1 `0.563264/0.572845` 未达到 0.9，且候选图未重建。需按相机几何、
-  时间偏差和遮挡重新构图后复验。
-- [ ] D5 assembler 已实现并以本次 `audit_passed=false` 实物验证拒绝正向装配。只有新的 D6
-  审计通过后才能生成 admission evidence；D6 仍不直接生成 admitted bundle。
+- [ ] D5 evidence assembler 需独立复算本次 D6 JSON 文件和内容 SHA-256，消费
+  `d6_external_audit_passed=true` 合同并形成 D5-owned admission evidence。D6 不直接生成
+  admitted bundle，也不授予运行权限。
+- [ ] 五类扰动仍固定 post-gate 候选图。需要在相机投影、时间偏差和遮挡扰动后重新门控、重新
+  构图，才能关闭候选生成全链路的外部泛化限制。
+- [ ] 当前证据来自合成三维质点投影和离线 truth evaluator，未覆盖真实相机内外参误差、真实
+  检测漏检/虚警、纹理退化和在线计算预算。真实相机证据保持开放。
 - [ ] G1 实际执行后仍需 `learning_scope_formal_audit` 与同 comparison key 的 R0 结果做
   完整运行证据配对。
+- [ ] 本次通过不能作为默认路径切换依据。D5 admission、main 运行配置和后续作用域审计缺一
+  不可。
 
 ## 2026-07-25 正式 R0/G1/A1/A2/A3/C1/F1 矩阵准入预检
 

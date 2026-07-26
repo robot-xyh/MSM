@@ -63,25 +63,30 @@
    `98bf9e02...c8ed` / `40a42af0...90d`，原审计未覆盖。
 7. 装配器后专项 `14 passed`，覆盖正负例、旧证据双文件差异和 CLI；D6 全量
    `944 passed, 1 warning in 80.12s`。
+8. D5 已在 clean worktree `fa3ec10` 发布 7fb5 robust-v2 正式 registry。D6 对 registry、
+   bundle、held-out、paired-shadow、lineage 和十个运行时源文件重新计算摘要，当前实现摘要为
+   `408e71fe...f4fe`。
+9. 2026-07-26T14:01:34Z 正式外审结果为 `pass`，blocker 为空。20 个未见 seed、900 个
+   episode、45 个场景规模单元、三项安全零计数和全部冻结性能门均通过。主 JSON 文件/内容
+   SHA-256 为 `10bf19f5...10b0` / `4e24ab33...9e54`。
+10. 模型晋级、G1 assist、默认路径和控制权限仍全部为 false。本次只关闭 D6 冻结证据链审计
+    GAP。专项为 `14 passed, 1 warning`，D6 全量为 `975 passed, 1 warning`。
 
 ### 当前 P1
 
-1. **实现谱系未闭合。** 当前十文件摘要为 `41381db3...4b07`。旧 held-out/paired 证据缺少
-   `tracklet_g1_evidence_assembler.py`，且 `tracklet_model_bundle.py` 仍绑定旧哈希，因此
-   `implementation_evidence_unavailable` 与 `implementation_lineage_mismatch` 同时成立。v1
-   没有等价桥接，当前候选失败关闭。
-2. **合成捷径超限。** 单特征最高 AUC `0.997340 > 0.98`。
-3. **扰动性能不足。** 最低边/簇 F1 `0.563264/0.572845 < 0.9`。
-4. **候选图未重建。** 五类扰动固定 post-gate 候选图，尚不能证明相机投影、门控和候选生成
-   的外部泛化。
-5. **正向装配被阻断。** D5 evidence assembler 已实现，但对本次
-   `d6_external_audit_passed=false` 实物必须拒绝输出。只有新的 D6 审计通过后才可能形成
-   admission evidence；D6 不直接生成 admitted bundle。
-6. **运行作用域未验证。** G1 正式执行后还需现有 `learning_scope_formal_audit` 做同键 R0
+1. **D5 准入装配待执行。** D5 assembler 尚未消费本次通过的 D6 合同并生成 D5-owned
+   admission evidence。装配时必须重新计算 D6 JSON 文件/内容摘要和全部 consumer 字段。
+2. **候选图未重建。** 五类扰动固定 post-gate 候选图。当前满分只证明评分器在固定候选边上的
+   稳定性，不能证明重投影、门控和候选生成的全链路泛化。
+3. **真实相机证据缺失。** 当前 20-seed/900-episode 证据来自合成三维质点投影和离线 truth
+   evaluator，未覆盖真实内外参漂移、同步误差、检测漏检/虚警和纹理退化。
+4. **运行作用域未验证。** G1 正式执行后还需现有 `learning_scope_formal_audit` 做同键 R0
    配对。预准入审计不能替代运行证据。
+5. **运行权限保持关闭。** D6 pass 不等于模型晋级、assist、默认路径或控制授权。D5 admission
+   与 main 显式配置完成前，规则路径继续保持默认。
 
-当前无新增 D6-owned P0。D6 外部审计软件链和报告缺口已关闭；上述 P1 属于候选实现与泛化证据
-未达到冻结门，D6 按设计保持 `fail_closed`。
+当前无新增 D6-owned P0。7fb5 robust-v2 已关闭 D6 外部审计输入、实现谱系、冻结门和报告
+缺口；上述 P1 属于 D5 准入装配、候选图全链路泛化、真实相机证据和正式运行作用域。
 
 ## 2026-07-25 正式实验矩阵准入预检 GAP 更新
 

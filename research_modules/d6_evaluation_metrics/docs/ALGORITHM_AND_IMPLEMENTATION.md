@@ -150,7 +150,7 @@ tracklet_training_audit
 摘要不同即产生 `implementation_lineage_mismatch`。v1 的
 `equivalence_bridge.available=false`，不接受人工等价说明。
 
-D5 加入 G1 evidence assembler 后，D6 对同一源目录独立计算得到
+D5 加入 G1 evidence assembler 后，D6 对 99fa 历史复核源目录独立计算得到
 `41381db3...4b07`，与 D5 API 返回值一致。旧 held-out/paired 证据没有 assembler 文件，证据摘要
 因此不可计算，并产生 `implementation_evidence_unavailable`。旧证据中的
 `tracklet_model_bundle.py` 与当前文件哈希不同，两项逐文件差异继续写入
@@ -201,6 +201,38 @@ JSON 字段使用严格类型。权限和完成状态必须是 JSON 布尔值，
 
 D6 的 `authority` 始终关闭。后续 D5 装配器需要把外部审计文件 SHA-256 和 JSON
 `content_sha256` 继续绑定到自己的 admission report；D6 不在本模块生成 admitted bundle。
+
+### 7fb5 正式执行实例
+
+正式输入配置为
+`configs/d5_g1_external_audit_7fb5db8b_fa3ec10_20260726.json`。运行时从 clean worktree
+`fa3ec10` 加载 D6 脚本和十个 D5 源文件，从同一 clean source chain 读取 registry、bundle、
+held-out、paired-shadow 和 lineage。输入配置位于主工作树，证据解析根固定为 clean worktree，
+避免主工作树未提交文件进入审计。
+
+D6 在配置生成前独立计算每个文件 SHA-256。registry 和 bundle 的 `SHA256SUMS` 逐行复算；
+held-out 和 paired-shadow 去除自身 `content_sha256` 后按规范 JSON 再计算内容摘要。十文件
+当前实现摘要为
+`408e71fe6a31bca03de61d10cefbf73c6b32e193fd6b2d7bf734389972f9f4fe`。正式运行得到：
+
+```text
+status = pass
+audit_passed = true
+blocker_codes = []
+formal_evaluation = true
+online_truth_feature_count = 0
+global_track_id_rewrite_count = 0
+same_camera_mutual_exclusion_violation_count = 0
+```
+
+正式输出目录为 clean worktree 的
+`outputs/d5_g1_external_audit_7fb5db8b_fa3ec10_20260726/`。JSON 文件 SHA-256 为
+`10bf19f5...10b0`，JSON 内容 SHA-256 为 `4e24ab33...9e54`；CSV、JSON 和中文 Markdown 的
+校验清单均通过。输出权限对象继续将模型晋级、G1 辅助、控制和默认路径变更写为 false。
+
+当前外审器把 `candidate_graph_rebuilt=false` 保留为结构化限制，但 v1 不把它作为单独
+blocker。五类扰动最低边/簇 F1 为 1.0，只表示固定候选图上的评分结果。真实相机或在扰动后
+重新投影、门控、构图的证据需要另行生产，不能由本次 `pass` 推断。
 
 ## 正式实验矩阵准入预检（2026-07-25）
 

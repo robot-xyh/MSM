@@ -145,6 +145,76 @@ AirSim、三维质点 episode、训练或新多 seed 评估。结果为 `fail_cl
 三项通过。定向测试 `14 passed`，D6 全量 `944 passed, 1 warning in 80.12s`。原审计目录和
 原结论未覆盖。本节是同一历史证据的软件 provenance 复核，不是新实验。
 
+### 7fb5 robust-v2 正式外审
+
+#### 输入与来源
+
+正式审计时间为 `2026-07-26T14:01:34Z`。D5 模型训练来源提交为
+`d437744c030785859b61cf893d15d0463ab54ffb`，registry producer 和本次 clean worktree HEAD 为
+`fa3ec10712cd03533c718283b36a6326bd29f5c7`。D6 使用 clean worktree 的审计脚本，不使用 main
+临时预检结果。
+
+| 输入 | SHA-256 |
+| --- | --- |
+| registry reference | `9441fa843928c45125cda4ee160ed22bd145e721cd82ef66163f714ffa73da5d` |
+| registry audit evidence | `bcee8cbcaeda066398127fcf2da8697ace8922404774a0d84235aac4194c8f29` |
+| registry checksums | `c1abebfa957d8bea5be5e03a76d2027d964ea0db219b63eb84c4aaed04097f63` |
+| bundle manifest | `0eff183f7579551f83a0519d30e09abfa4f15899981ad8ffb2eb7e2e871bda77` |
+| bundle weights | `7fb5db8b6099ca4da5706a3bec53ff7cd634e8bd267c036ce3ee4ee4bf71ca71` |
+| bundle checksums | `bf61c96e30fe8cf338a9f98152670735be657d31f338fcaa7d23c064fab58528` |
+| held-out report | `4ec0b82402a2ba415a8522bd3ac92fd049f0b10823cff48d2aeb544331b50c3a` |
+| paired-shadow report | `f25c9428933fc8bd5e4bbe5db5e9fe573c60053418da224fc047576c27eef57b` |
+| paired lineage | `ca122b71477000ff6cfbd6f1b5c807cf533c00366d55d9e51f7f9fbd615aab57` |
+
+held-out 和 paired-shadow 的内容 SHA-256 分别为 `19b9d0d6...3b00` 和
+`18d2cd11...dc12`，均由 D6 去除摘要字段后按规范 JSON 复算。十个 D5 运行时源文件当前实现摘要
+为 `408e71fe...f4fe`，与报告联合实现谱系一致。
+
+#### 样本与门限
+
+正式证据覆盖 seed `1000-1019`、900 个 episode、45 个场景规模单元、13,344 个匿名局部航迹
+节点和 74,024 条候选边。门限和结果如下。
+
+| 检查项 | 冻结门 | 结果 |
+| --- | ---: | ---: |
+| 未见 seed | >=20 | 20 |
+| held-out episode | >=900 | 900 |
+| 场景规模单元 | >=45 | 45 |
+| held-out F1 | >=0.92 | 1.0 |
+| 错误合并率 | <=0.01 | 0.0 |
+| 候选召回率 | >=0.95 | 1.0 |
+| held-out P95 推理时延 | <=100 ms | 0.885900 ms |
+| 单特征最高 AUC | <=0.98 | 0.720073 |
+| 扰动 profile | >=5 | 5 |
+| 扰动最低边 F1 | >=0.9 | 1.0 |
+| 扰动最低簇 F1 | >=0.9 | 1.0 |
+
+在线真值字段、`global_track_id` 改写和同相机互斥违规均为 0。三项计数均有来源，未使用缺测
+补零。
+
+#### 结果与制品
+
+正式结论为 `pass`，`blocker_codes=[]`，consumer contract 的全部必选字段可用。输出目录为
+clean worktree 的
+`research_modules/d6_evaluation_metrics/outputs/d5_g1_external_audit_7fb5db8b_fa3ec10_20260726/`。
+
+| 输出 | SHA-256 |
+| --- | --- |
+| `d5_g1_external_audit.json` | `10bf19f5fa89788c9cc0a24ab18b647c6cf863149bae08d22fc40796d15210b0` |
+| JSON 内容 | `4e24ab33ca290133cf107f2c4ad5fee85d763001556f35fcd0ecdb819bef9e54` |
+| 证据 CSV | `c831382e935287bf731b4477b37d259085f3dde555e115a2555d08f396f77ae8` |
+| 中文报告 | `b800dfc4a04bd7b06e086f6e84d56618dd1b0765ee17a3db1385b08ca3492dc7` |
+| 输出校验清单 | `adcc09453c515d83eb89ef487568f531991a819053a069d923382e6162422ac8` |
+
+D6 的模型晋级、G1 辅助、控制和默认路径权限全部为 false。本次通过只说明冻结证据完整、一致且
+达到现有门限。D5 准入装配、main 显式启用和运行作用域审计尚未完成。
+
+五类扰动使用固定 post-gate 候选图，没有在扰动后重新执行相机投影、门控和候选图构建。当前
+样本来自合成三维质点投影和离线 truth evaluator，不代表真实相机、真实外参漂移、真实遮挡、
+在线检测误差或实机时延。专项测试为 `14 passed, 1 warning in 4.54s`；D6 全量为
+`975 passed, 1 warning in 86.70s`。warning 来自既有 Matplotlib `Axes3D` 导入环境，不影响本次
+文件、内容哈希和二维报告。
+
 ## 结论
 
 2026-07-25，D6 对 R0、G1、A1、A2、A3、C1、F1 正式实验矩阵执行静态

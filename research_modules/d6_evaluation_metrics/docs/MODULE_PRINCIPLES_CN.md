@@ -76,10 +76,9 @@ paired-shadow 的实现记录合并后形成证据实现摘要。二者必须逐
 等价桥接，因此“只改了装配代码”也不能由 D6 主观判为等价，必须重新取证或提供后续版本可验证
 的桥接合同。
 
-装配器加入后的实算摘要为 `41381db3...4b07`。使用同一 99fa 历史证据复核时，旧报告没有
-assembler 哈希，且 `tracklet_model_bundle.py` 已变化。证据实现摘要保持 unavailable，审计同时
-记录缺失证据和逐文件不一致。该复核只更新软件谱系判断，没有增加 seed、episode 或模型性能
-证据。
+装配器加入后的 99fa 历史复核摘要为 `41381db3...4b07`。旧报告没有 assembler 哈希，且
+`tracklet_model_bundle.py` 已变化。证据实现摘要保持 unavailable，审计同时记录缺失证据和
+逐文件不一致。该复核只更新软件谱系判断，没有增加 seed、episode 或模型性能证据。
 
 形式化目录要求 seed `1000-1019` 完整、20 个未见 seed、900 个 episode、45 个场景规模单元、
 完整 truth evaluator、paired full profile、输入只读和 authoritative evidence status。三项安全
@@ -95,6 +94,15 @@ assembler 哈希，且 `tracklet_model_bundle.py` 已变化。证据实现摘要
 辅助、控制权和默认路径变更写为 false。D5 后续装配器以该 JSON 为唯一 D6 输入，并自行验证
 审计文件 SHA-256 和 `content_sha256`。G1 运行完成后，执行作用域仍由
 `learning_scope_formal_audit` 复核，两个审计层不能相互替代。
+
+7fb5 robust-v2 正式实例在 clean worktree `fa3ec10` 上重新闭合模型、数据、实现和报告谱系。
+D6 独立计算的十文件当前实现摘要为 `408e71fe...f4fe`。20 个未见 seed、900 个 episode、
+45 个场景规模单元、三项安全零计数、单特征 AUC 和五类扰动门均通过，正式外审 blocker 为空。
+主 JSON 文件/内容 SHA-256 为 `10bf19f5...10b0` / `4e24ab33...9e54`。
+
+该通过结果仍保留两项边界。五类扰动固定 post-gate 候选图，只覆盖既定候选边上的评分稳定性；
+合成三维投影也不能代替真实相机、真实外参漂移、遮挡和检测误差测试。D5 完成准入装配且 main
+显式启用之前，规则路径继续保持默认。
 
 ## 正式实验矩阵准入边界（2026-07-25）
 

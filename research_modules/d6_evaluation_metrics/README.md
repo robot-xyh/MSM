@@ -78,6 +78,34 @@ blocker code，缺失计数保持 `null`，不补成 0。
 同相机互斥违规均为 0。泛化门单独限制单特征最高 AUC 不高于 0.98，五类扰动的最低边/簇 F1
 均不低于 0.9。候选图是否在扰动后重建作为显式限制字段，不由名义满分覆盖。
 
+### 7fb5 robust-v2 正式外审
+
+2026-07-26T14:01:34Z，D6 使用 clean worktree
+`/home/linux/Documents/MSM-d5-training-clean` 的 `fa3ec10` 源码，对正式 registry
+`tracklet_gnn_7fb5db8b_registry_fa3ec10` 执行独立外审。冻结配置为
+`configs/d5_g1_external_audit_7fb5db8b_fa3ec10_20260726.json`。D6 独立重算九类输入文件、
+registry 与 bundle 的 `SHA256SUMS`、held-out/paired-shadow 内容摘要，以及十个 D5 运行时源文件
+摘要；当前实现摘要为
+`408e71fe6a31bca03de61d10cefbf73c6b32e193fd6b2d7bf734389972f9f4fe`。
+
+正式输入绑定 manifest `0eff183f...a77`、weights `7fb5db8b...a71`、20 个未见 seed、900 个
+episode 和 45 个场景规模单元。held-out F1、错误合并率、候选召回率和 P95 推理时延均满足
+`0.92/0.01/0.95/100 ms` 冻结门。最高单特征 AUC 为 `0.720073 <= 0.98`；五类扰动最低边/簇
+F1 均为 `1.0 >= 0.9`。在线真值字段、`global_track_id` 改写和同相机互斥违规均为 0。
+
+外审结果为 `pass`，blocker 为空。正式输出位于 clean worktree 的
+`outputs/d5_g1_external_audit_7fb5db8b_fa3ec10_20260726/`。主 JSON 文件 SHA-256 为
+`10bf19f5...10b0`，内容 SHA-256 为 `4e24ab33...9e54`，输出 `SHA256SUMS` 全部通过。D6 的模型
+晋级、G1 辅助、控制和默认路径权限仍全部为 false。该结果只关闭冻结证据链外审，不表示模型已
+进入在线主路径。
+
+五类扰动仍固定 post-gate 候选图，没有重新执行相机重投影、门控和候选图构建。证据也未覆盖
+真实相机、真实外参漂移、真实遮挡和在线检测误差。D5 仍需消费本次通过合同形成自己的准入证据；
+实际 G1 运行后还需 D6 用同键 R0 做作用域审计。专项测试为 `14 passed, 1 warning in 4.54s`，
+D6 全量为 `975 passed, 1 warning in 86.70s`。
+
+### 99fa 历史审计
+
 2026-07-26 首次对实际 99fa 候选运行审计。候选 bundle 为
 `d5_composite_internal_training_clean_6dc471b/model_bundle`；held-out 和 final paired-shadow
 均绑定 weights SHA-256 `99fa4428...d4cd`。20 个 seed、900 个 episode、45 个单元和三项安全
