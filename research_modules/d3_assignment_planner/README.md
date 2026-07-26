@@ -4,6 +4,62 @@ Centralized rolling `M` target / `N` resource assignment research module.
 
 Boundary: this module only supports offline simulation, evaluation, and human-review candidate planning. It excludes real fire-control parameters, damage logic, flight or hardware drivers, autonomous disposition, and authorization bypasses.
 
+## A1/C1/F1 Assist Admission Audit
+
+The 2026-07-26 audit against main commit `d59352b` found one narrow loader
+gap and closed it. Legacy `d3_learning_model_bundle_v2` bundles do not carry an
+explicit admission object. They may still be loaded for development shadow,
+but they can no longer enter `assist` on the strength of a legacy promotion
+manifest alone. The stable fallback reason is
+`bundle_assist_admission_missing`. An assist request now requires a v3 bundle
+with qualified admission and an authorized, hash-bound promotion manifest.
+The existing `promotion_bypass_forbidden`, hard candidate mask, deterministic
+rule fallback, version checks, and solver path are unchanged.
+
+The actual bundle at
+`outputs/formal_bc_development_20260720/bundle/` remains unmodified. Its
+manifest/state SHA-256 values are
+`a9213d65606a9e2f921040e153488c0f4cdebb10882fa16013fce5b59f9314c0` and
+`e3da9fd5b54451da83358405b6051991e0c78bcf9f538b350d459b05faf8e0b2`.
+Under the `d59352b` binding algorithm its two-file tree SHA-256 is
+`3c08e58171c0474de9596fd3285d17bb50614a88cd7bbf3bf9af5345c7fee085`,
+and its A1 binding SHA-256 is
+`70aa1b0f0f2869cdae0f9ba32b18499b003c88ebfcdb9e9dce0bc950b13542a8`.
+The manifest is still `stage=development`, `allowed_modes=[shadow]`,
+`assist_authorized=false`, and `promotion_status=unavailable`. Shadow loading
+succeeds; assist loading returns `bundle_shadow_only`.
+
+Main runtime resolution therefore produces `effective_mode=rule_fallback` and
+`bundle_loaded=false`. With rule fallback forbidden, A1 is rejected before an
+episode is written. C1 and F1 reject D3 for the same reason and also require
+independently admitted D4/D5 bundles. The current D3 bundle cannot legally
+create A1, C1, or F1 formal evidence.
+
+The strongest existing independent result remains the D6 sidecar
+`d6_evaluation_metrics/outputs/reserved_seed_interventions_nominal_5v5_1000_1019_formal_7891296_d6_profile_bound_v2_audit_20260722/outcome_availability_sidecar.json`
+(file SHA-256
+`f3852251daf02ec87fe878e7fb80aad6f381d8c0756a5c956a32e737a3871c3b`).
+Its status is `pass_offline_assignment_comparison_only`; runtime ACK, physical
+outcome, and paired non-degradation are explicitly unavailable. A new admitted
+bundle therefore requires new main/D7 runtime-adoption evidence, paired
+post-intervention outcomes, and a D6 non-degradation decision. Existing files
+must not be edited to claim that state.
+
+After those external artifacts exist and a new qualified bundle is generated,
+main's first admission check is:
+
+```bash
+python3 -m research_modules.scalable_3d_simulation.run_experiment_matrix_shard \
+  init-scope --scope-variants A1 --formal \
+  --d3-model-bundle "$D3_ADMITTED_BUNDLE" \
+  --output "$A1_EXECUTION_ROOT"
+```
+
+On 2026-07-26 the focused bundle tests passed `20/20`; the complete D3 suite
+collected 465 tests and completed with `464 passed, 1 skipped`. The skip is the
+optional installed-only OR-Tools case. One existing Matplotlib `Axes3D` import
+warning does not affect D3 admission.
+
 ## R0 Rolling-Demand Inventory Guard
 
 On 2026-07-25 the clean-source R0 cell at commit `32b3b40`, scenario

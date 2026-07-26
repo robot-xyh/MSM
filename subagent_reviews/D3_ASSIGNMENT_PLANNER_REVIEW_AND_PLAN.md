@@ -1,5 +1,39 @@
 # D3 中心化资源-目标分配综述及子方案
 
+## 2026-07-26 A1/C1/F1 准入复核
+
+main `d59352b` 要求学习 scope 在创建执行计划时绑定完整 bundle 文件树，并在 episode
+写盘前确认所声明组件实际进入 assist。D3 复核发现 legacy v2 bundle 没有 admission，
+原实现仍可能在旧 promotion 满足时加载 assist。该模块合同缺口已关闭：v2 继续允许
+development shadow，assist 固定返回 `bundle_assist_admission_missing`；跳过 promotion
+检查仍以 `promotion_bypass_forbidden` 拒绝。v3 qualified admission 和 promotion 双门
+保持不变。
+
+实际 bundle 未修改，路径为
+`research_modules/d3_assignment_planner/outputs/formal_bc_development_20260720/bundle/`。
+manifest/state/tree/binding SHA-256 分别为：
+
+- `a9213d65606a9e2f921040e153488c0f4cdebb10882fa16013fce5b59f9314c0`
+- `e3da9fd5b54451da83358405b6051991e0c78bcf9f538b350d459b05faf8e0b2`
+- `3c08e58171c0474de9596fd3285d17bb50614a88cd7bbf3bf9af5345c7fee085`
+- `70aa1b0f0f2869cdae0f9ba32b18499b003c88ebfcdb9e9dce0bc950b13542a8`
+
+该 bundle 为 development/shadow-only，promotion unavailable。模块 shadow 加载成功，
+assist 返回 `bundle_shadow_only`；main 解析为规则回退。A1、C1、F1 均在 D3 条件上失败
+关闭。C1/F1 还需要 D4、D5 各自独立准入，不能由 D3 状态替代。
+
+D6 sidecar 文件 SHA-256 为
+`f3852251daf02ec87fe878e7fb80aad6f381d8c0756a5c956a32e737a3871c3b`，状态仅为
+`pass_offline_assignment_comparison_only`。runtime ACK、post-intervention physical
+outcome 和 paired non-degradation 均不可用。当前不能合法生成新 admitted bundle。
+
+下一验收顺序为：main/D7 生成模型实际采用 ACK 和成对物理窗口，D6 对至少 20 个未见 seed
+给出可用的规则基线非退化结论，D3 据此生成全新 v3 qualified bundle，main 再执行
+`init-scope --scope-variants A1 --formal`。不得修改旧 bundle 或把 unavailable 补零。
+
+2026-07-26 定向 `20 passed`；D3 全量收集 465 项，结果为
+`464 passed, 1 skipped`。唯一跳过为可选 OR-Tools。
+
 ## 2026-07-25 正式 R0 滚动需求复核
 
 clean commit `32b3b40` 的 `high_threat_m_to_n` 200v200、seed 1000、2.0 秒正式单元

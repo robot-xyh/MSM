@@ -14,6 +14,7 @@ from d3_assignment_planner import (
     LEARNING_DATASET_SPLIT_POLICY_V2,
     LearningFrameRecord,
     MODEL_BUNDLE_SCHEMA_V2,
+    MODEL_BUNDLE_SCHEMA_V3,
     OfflineRewardComponents,
     SharedEdgeActorCriticPolicy,
     assign_episode_split,
@@ -461,7 +462,7 @@ def test_bundle_is_weights_only_checksum_verified_and_assist_requires_promotion(
     assist = load_model_bundle(tmp_path, mode="assist")
     assert shadow.loaded is True
     assert assist.loaded is False
-    assert assist.fallback_reason == "promotion_not_recommended"
+    assert assist.fallback_reason == "bundle_assist_admission_missing"
     assert manifest.to_dict()["state_dict"]["load_policy"] == "torch_weights_only_true"
     assert manifest.bundle_schema_version == MODEL_BUNDLE_SCHEMA_V2
     assert manifest.dataset_schema_version == LEARNING_DATASET_SCHEMA_V2
@@ -495,8 +496,33 @@ def test_bundle_is_weights_only_checksum_verified_and_assist_requires_promotion(
     )
     underpowered = load_model_bundle(tmp_path, mode="assist")
     assert underpowered.loaded is False
-    assert underpowered.fallback_reason == "promotion_not_recommended"
+    assert underpowered.fallback_reason == "bundle_assist_admission_missing"
     raw["promotion_manifest"]["unseen_seed_count"] = 20
+    (tmp_path / "manifest.json").write_text(
+        json.dumps(raw, sort_keys=True), encoding="utf-8"
+    )
+    assert load_model_bundle(tmp_path, mode="assist").fallback_reason == (
+        "bundle_assist_admission_missing"
+    )
+
+    raw["bundle_schema_version"] = MODEL_BUNDLE_SCHEMA_V3
+    raw["provenance"] = {
+        "repository_git_commit": "1" * 40,
+        "repository_git_commit_role": "exact_training_source_commit",
+        "training_worktree_state": "clean",
+        "training_date": "2026-07-26",
+        "dataset_manifest_sha256": "2" * 64,
+        "training_source_sha256": "3" * 64,
+        "training_entrypoint": "unit_test",
+    }
+    raw["admission"] = {
+        "stage": "qualified",
+        "allowed_modes": ["shadow", "assist"],
+        "assist_authorized": True,
+        "external_holdout_status": "passed",
+        "external_holdout_seed_values": list(range(1000, 1020)),
+        "rule_fallback_required": True,
+    }
     (tmp_path / "manifest.json").write_text(
         json.dumps(raw, sort_keys=True), encoding="utf-8"
     )

@@ -1,10 +1,39 @@
 # D3 集中式资源-目标分配算法与实施方案
 
-> 状态基线：2026-07-25。
+> 状态基线：2026-07-26。
 >
 > 本文依据本模块当前源码、测试、`README.md`、`PLAN.md`、
 > `docs/MODULE_PRINCIPLES_CN.md` 和根目录系统汇总同步编写。本文区分默认主线、
 > 已实现辅助能力、可选离线对照和未实现能力，不把计划项写成已完成能力。
+
+## 正向准入
+
+`d59352b` 的正式学习 scope 在 episode 写盘前要求所声明模型实际解析为 assist。D3
+loader 因此需要同时区分“模型可读”“离线 promotion 满足”和“运行 assist 获准”。
+
+加载顺序为：
+
+1. 解析 manifest，校验数据、切分、特征、归一化、模型配置和权重摘要。
+2. shadow 允许读取 v2/v3 合法 bundle，用于离线复现，不改变在线代价矩阵。
+3. assist 拒绝没有显式 admission 的 legacy v2，原因码为
+   `bundle_assist_admission_missing`。
+4. v3 assist 要求 qualified admission，再检查 promotion 的 test seed 数量、证据摘要、
+   零回退、安全非退化和共同规则成本非退化。
+5. 任一条件失败均返回 `RuleFallbackLearningAssistant`。main 的正式 scope 禁止把该规则
+   回退解释为 A1/C1/F1 已执行。
+
+实际 development bundle 未修改。其 manifest/state/tree SHA-256 为
+`a9213d65...9314c0`、`e3da9fd5...f8e0b2` 和 `3c08e581...fee085`。当前
+admission 为 shadow-only，模块 assist 返回 `bundle_shadow_only`，main A1/C1/F1 预检均
+在 D3 条件上失败关闭。
+
+现有 D6 sidecar 只证明同帧离线分配比较可用。runtime ACK、干预后物理状态和 paired
+non-degradation 为 unavailable。它不能产生 qualified admission。后续必须由 main/D7
+生成模型实际采用和物理窗口，再由 D6 独立判定；D3 只能据新证据生成新 bundle，不能修改
+现有 manifest。
+
+2026-07-26 定向测试为 `20 passed`；全量收集 465 项，结果为
+`464 passed, 1 skipped`。跳过项仍是可选 OR-Tools。
 
 ## 需求变化释放
 

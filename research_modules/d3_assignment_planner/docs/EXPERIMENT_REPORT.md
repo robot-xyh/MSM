@@ -1,5 +1,34 @@
 # D3 集中式资源-目标分配实验报告
 
+## 学习准入复核（2026-07-26）
+
+本轮没有运行新的物理仿真，也没有修改模型制品。实际 bundle 位于
+`outputs/formal_bc_development_20260720/bundle/`。manifest 和权重 SHA-256 分别为
+`a9213d65606a9e2f921040e153488c0f4cdebb10882fa16013fce5b59f9314c0`、
+`e3da9fd5b54451da83358405b6051991e0c78bcf9f538b350d459b05faf8e0b2`。
+
+只读加载结果如下：
+
+| 检查 | 结果 |
+| --- | --- |
+| shadow | loaded=true |
+| assist | loaded=false，`bundle_shadow_only` |
+| main effective mode | `rule_fallback` |
+| A1 正式预检 | 写 episode 前拒绝 |
+| C1/F1 正式预检 | D3 条件拒绝，且仍需其他模型独立准入 |
+
+现有多周期 shadow 汇总文件 SHA-256 为
+`5093e5d0b0a3df63ad23f49c543030a52412d71b25fe8a300a446e74825c135c`。该开发结果有
+20 个保留 seed 和 120 个绑定差异周期，但没有生产 runtime ACK 或物理结果。D6
+profile-bound sidecar 的文件 SHA-256 为
+`f3852251daf02ec87fe878e7fb80aad6f381d8c0756a5c956a32e737a3871c3b`，状态为
+`pass_offline_assignment_comparison_only`；paired non-degradation 明确不可用。
+
+代码复核关闭了 legacy v2 仅凭旧 promotion 进入 assist 的入口。v2 shadow 保持兼容，
+v2 assist 返回 `bundle_assist_admission_missing`。定向测试 `20 passed`；全量收集
+465 项，结果为 `464 passed, 1 skipped`。本轮结果只证明准入失败关闭，不构成模型效果
+证据。
+
 ## 正式 R0 滚动需求复验（2026-07-25）
 
 ### 原始失败

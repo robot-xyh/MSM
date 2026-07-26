@@ -1,5 +1,52 @@
 # D3 集中式 Assignment Planner 计划
 
+## 2026-07-26 A1/C1/F1 学习准入复核
+
+状态为“legacy assist 绕过已关闭，实际模型仍未准入”。
+
+1. [x] 对照 main `d59352b` 检查 A1、C1、F1 的 bundle 需求、文件树哈希绑定、
+   运行前预检和禁止规则回退合同。
+2. [x] 关闭旧 `d3_learning_model_bundle_v2` 仅凭旧 promotion manifest 进入 assist 的
+   缺口。v2 继续可用于 development shadow；assist 固定返回
+   `bundle_assist_admission_missing`。`require_promotion_for_assist=False` 仍返回
+   `promotion_bypass_forbidden`。
+3. [x] 保持 v3 正向准入：只有 `stage=qualified`、允许 assist、外部保留评估通过且
+   promotion 的数据、切分和权重 SHA-256 一致时，loader 才可能返回 assist。硬禁边、
+   Hungarian/需求槽 Hungarian、计划版本和规则回退均未放宽。
+4. [x] 只读复核实际 bundle，未修改旧 manifest 或权重。路径为
+   `outputs/formal_bc_development_20260720/bundle/`；manifest/state SHA-256 分别为
+   `a9213d65606a9e2f921040e153488c0f4cdebb10882fa16013fce5b59f9314c0` 和
+   `e3da9fd5b54451da83358405b6051991e0c78bcf9f538b350d459b05faf8e0b2`。
+   main 口径的 tree/binding SHA-256 分别为
+   `3c08e58171c0474de9596fd3285d17bb50614a88cd7bbf3bf9af5345c7fee085` 和
+   `70aa1b0f0f2869cdae0f9ba32b18499b003c88ebfcdb9e9dce0bc950b13542a8`。
+5. [x] 当前实际 bundle 的 admission 为 development/shadow-only，promotion 为
+   unavailable。模块 assist 返回 `bundle_shadow_only`；main 解析为
+   `effective_mode=rule_fallback`、`bundle_loaded=false`。A1 在 episode 写盘前拒绝；
+   C1/F1 同样拒绝 D3，并另受 D4/D5 准入约束。
+6. [x] 核对 D6 现有 sidecar。文件 SHA-256 为
+   `f3852251daf02ec87fe878e7fb80aad6f381d8c0756a5c956a32e737a3871c3b`，状态仅为
+   `pass_offline_assignment_comparison_only`。runtime ACK、干预后物理结果和 paired
+   non-degradation 均为 unavailable，不能生成新 admitted bundle。
+7. [ ] main/D7 先生成模型实际采用的版本化 runtime ACK 和成对物理状态窗口；D6 再对
+   至少 20 个未见 seed 输出可用的模型采用、物理结果和规则基线非退化结论。不可用指标
+   不补零。
+8. [ ] D3 只在上述外部证据可验证后生成一个新的 v3 qualified bundle，并绑定当前源码、
+   数据、切分、权重和 D6 证据。不得修改现有 development bundle 自我晋级。
+9. [ ] 新 bundle 首先由 main 执行：
+
+   ```bash
+   python3 -m research_modules.scalable_3d_simulation.run_experiment_matrix_shard \
+     init-scope --scope-variants A1 --formal \
+     --d3-model-bundle "$D3_ADMITTED_BUNDLE" \
+     --output "$A1_EXECUTION_ROOT"
+   ```
+
+   只有 A1 预检和正式成对验收通过后，才评审 C1/F1；后两者还要求其他模块独立准入。
+10. [x] 2026-07-26 定向 bundle 测试 `20 passed`；D3 全量收集 465 项，结果为
+    `464 passed, 1 skipped`。唯一跳过是可选 OR-Tools，另有一条既有 Matplotlib
+    `Axes3D` 导入告警。
+
 ## 2026-07-25 正式 R0 滚动需求 P0
 
 状态为“代码已修复、开发复验通过、正式重跑待完成”。

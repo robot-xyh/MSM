@@ -438,7 +438,11 @@ def load_model_bundle(
         return fallback("promotion_bypass_forbidden", manifest)
     if (
         normalized_mode == "assist"
-        and manifest.bundle_schema_version == MODEL_BUNDLE_SCHEMA_V3
+        and manifest.bundle_schema_version != MODEL_BUNDLE_SCHEMA_V3
+    ):
+        return fallback("bundle_assist_admission_missing", manifest)
+    if (
+        normalized_mode == "assist"
         and not _admission_allows_assist(manifest.admission)
     ):
         return fallback("bundle_shadow_only", manifest)

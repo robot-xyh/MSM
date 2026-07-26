@@ -1,9 +1,57 @@
 # D3 实现差距审计
 
 **模块**: D3 集中式资源-目标分配
-**审计日期**: 2026-07-25
+**审计日期**: 2026-07-26
 **审计依据**: 当前 `research_modules/d3_assignment_planner/` 代码、README、PLAN、docs 和 tests，2026-07-25 的 20-seed 多周期行为克隆影子评估，既有 2026-07-13 M5N2 40-case 报告，以及 `research_modules/airsim_runtime/outputs/p1_terminal_timing_funnel_10seed_20260715_m5n2_*/episode_006_full_flow/main_episode_bus/d3_plan_history.json` 的最新 20-case/3725-record 只读复核、main/D6/D7 物理结果汇总、`subagent_reviews/MAIN_IMPLEMENTATION_GAP_AUDIT.md` 和 `EVAL/FRAMEWORK_EVAL_P0_P1_P2_GAP_CONFIRMATION.md`。
 **边界**: 本审计只覆盖离线科研仿真中的抽象资源-目标分配、版本化计划、终端反馈合同、D7 guidance binding、D6 记录导出和 AirSim dry-run 适配；不涉及真实飞控、硬件、火控、毁伤逻辑或绕过人工授权的自动处置。
+
+## A1/C1/F1 学习准入 GAP
+
+**代码 GAP 已关闭**：legacy v2 bundle 没有显式 admission。原 loader 在旧 promotion
+满足时可能允许 assist，与 main `d59352b` 的“所声明模型必须有正向准入”不一致。当前
+v2 shadow 保持兼容，v2 assist 固定失败关闭并返回
+`bundle_assist_admission_missing`。v3 assist 继续要求 qualified admission 和哈希绑定
+promotion；规则回退、硬禁边、Hungarian、版本和 stale 合同未改。
+
+**实际 bundle 状态**：路径为
+`research_modules/d3_assignment_planner/outputs/formal_bc_development_20260720/bundle/`。
+manifest/state SHA-256 为
+`a9213d65606a9e2f921040e153488c0f4cdebb10882fa16013fce5b59f9314c0` /
+`e3da9fd5b54451da83358405b6051991e0c78bcf9f538b350d459b05faf8e0b2`；
+main 文件树/绑定 SHA-256 为
+`3c08e58171c0474de9596fd3285d17bb50614a88cd7bbf3bf9af5345c7fee085` /
+`70aa1b0f0f2869cdae0f9ba32b18499b003c88ebfcdb9e9dce0bc950b13542a8`。
+旧文件未修改。
+
+**预检结果**：当前 manifest 是 development/shadow-only，assist 未授权，外部 holdout
+状态未评估，promotion unavailable。模块 assist 返回 `bundle_shadow_only`，main 解析为
+`effective_mode=rule_fallback`、`bundle_loaded=false`。禁止规则回退时，A1 在写 episode
+前拒绝；C1/F1 在 D3 条件上同样拒绝，并还依赖其他模块准入。
+
+**开放 P1 证据 GAP**：多周期 shadow summary 文件 SHA-256 为
+`5093e5d0b0a3df63ad23f49c543030a52412d71b25fe8a300a446e74825c135c`，仍是开发影子
+证据。D6 sidecar 文件 SHA-256 为
+`f3852251daf02ec87fe878e7fb80aad6f381d8c0756a5c956a32e737a3871c3b`，状态为
+`pass_offline_assignment_comparison_only`。runtime ACK、干预后物理结果和 paired
+non-degradation 均为 unavailable。当前不具备生成新 admitted bundle 的证据条件。
+
+**下一验收**：main/D7 生成版本化模型采用 ACK 和同 seed 成对物理状态窗口；D6 对至少
+20 个未见 seed 给出可用的模型采用及规则基线非退化结论；D3 生成一个新的 v3 qualified
+bundle。随后由 main 执行：
+
+```bash
+python3 -m research_modules.scalable_3d_simulation.run_experiment_matrix_shard \
+  init-scope --scope-variants A1 --formal \
+  --d3-model-bundle "$D3_ADMITTED_BUNDLE" \
+  --output "$A1_EXECUTION_ROOT"
+```
+
+不得修改现有 bundle/manifest 自我晋级，不得把 unavailable 指标补零。A1 独立通过前不
+评审 C1/F1。
+
+**验证**：2026-07-26 定向 bundle 测试 `20 passed`；D3 全量收集 465 项，结果为
+`464 passed, 1 skipped`。唯一跳过是可选 OR-Tools，另有一条既有 Matplotlib
+`Axes3D` 导入告警。
 
 ## 正式 R0 滚动需求 P0
 
