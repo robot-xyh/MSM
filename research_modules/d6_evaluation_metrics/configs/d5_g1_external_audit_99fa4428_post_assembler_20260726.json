@@ -1,0 +1,59 @@
+{
+  "schema_version": "d6.d5-g1-external-audit-input.v1",
+  "audit_id": "d5-g1-99fa4428-post-assembler-runtime-20260726",
+  "evaluated_at_utc": "2026-07-26T00:00:00Z",
+  "formal_profile_version": "d6.d5-g1-formal-heldout-paired-shadow.v1",
+  "d5_source_dir": "research_modules/d5_terminal_association/src/d5_terminal_association",
+  "expected_current_implementation_sha256": "41381db3d11371c049e5569658820ce98abf1a9966ecf86edc0f13f140894b07",
+  "thresholds": {
+    "minimum_unseen_seed_count": 20,
+    "minimum_heldout_episode_count": 900,
+    "minimum_scenario_scale_cell_count": 45,
+    "minimum_heldout_f1": 0.92,
+    "maximum_heldout_false_merge_rate": 0.01,
+    "minimum_heldout_candidate_recall": 0.95,
+    "maximum_heldout_p95_inference_latency_ms": 100.0,
+    "maximum_single_feature_auc": 0.98,
+    "minimum_robustness_profile_count": 5,
+    "minimum_robustness_edge_f1": 0.9,
+    "minimum_robustness_cluster_f1": 0.9
+  },
+  "artifacts": {
+    "registry_reference": {
+      "path": "research_modules/d5_terminal_association/model_registry/tracklet_gnn_99fa4428/frozen_bundle_reference.json",
+      "sha256": "40e04cb70816d5f91bb229c43233a9d665e0f5dd6ea31808bcc6e0e31a5928ab"
+    },
+    "registry_audit_evidence": {
+      "path": "research_modules/d5_terminal_association/model_registry/tracklet_gnn_99fa4428/audit_evidence.json",
+      "sha256": "81c31fa6ee95d073f3699cc96ad6e07b63e44f0a494a633b05dbf5a8e56737ab"
+    },
+    "registry_checksums": {
+      "path": "research_modules/d5_terminal_association/model_registry/tracklet_gnn_99fa4428/SHA256SUMS",
+      "sha256": "c8af4fad54d8cb7b5984881445d153c54b58ac02b170d04ab3facf3c930389c2"
+    },
+    "bundle_manifest": {
+      "path": "research_modules/d5_terminal_association/outputs/d5_composite_internal_training_clean_6dc471b/model_bundle/manifest.json",
+      "sha256": "c4284b2442dba56c0d2857146760f840e72cbe02ffe9a98964a0c68bb69bc674"
+    },
+    "bundle_weights": {
+      "path": "research_modules/d5_terminal_association/outputs/d5_composite_internal_training_clean_6dc471b/model_bundle/weights.pt",
+      "sha256": "99fa4428849773458eb1a537d5f6cd72a23275215a6dfe5d558dbaa3df92d4cd"
+    },
+    "bundle_checksums": {
+      "path": "research_modules/d5_terminal_association/outputs/d5_composite_internal_training_clean_6dc471b/model_bundle/SHA256SUMS",
+      "sha256": "fbc497e495b0c5b15953c178c13a044e8f7e6b96bfe32542b3a0a565b880a9e8"
+    },
+    "heldout_report": {
+      "path": "research_modules/d5_terminal_association/outputs/d5_tracklet_heldout_evaluation_1000_1019_99fa4428_20260725/heldout_evaluation.json",
+      "sha256": "765d39a5188b4b4a7dc561f47222125995d8fce344c05c4cac2b1016c071320a"
+    },
+    "paired_shadow_report": {
+      "path": "research_modules/d5_terminal_association/outputs/d5_tracklet_paired_shadow_1000_1019_99fa4428_20260725_final/paired_shadow_report.json",
+      "sha256": "cc960206a13b364315baf8d315e239f7e0541469e4fa553b3ee5fb95c643bf23"
+    },
+    "paired_shadow_lineage": {
+      "path": "research_modules/d5_terminal_association/outputs/d5_tracklet_paired_shadow_1000_1019_99fa4428_20260725_final/paired_episode_lineage.jsonl",
+      "sha256": "14f2c1d6d02ee6be67038ab469674eb9c7d3bec5eba0466be74f8b7bd1f9519f"
+    }
+  }
+}

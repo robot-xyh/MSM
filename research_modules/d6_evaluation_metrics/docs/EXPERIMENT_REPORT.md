@@ -47,6 +47,33 @@ Matplotlib `Axes3D` 环境提示，不影响本次二维报告和哈希判定。
 D6 没有授予模型晋级、G1 辅助、控制权或默认路径变更。当前证据不能被 D5 装配为正向 admission。
 下一次复核需要当前实现上的新 held-out/paired 实物，并处理合成单特征捷径和扰动最低性能。
 
+### 装配器后谱系复核
+
+D5 在提交 `005c74e` 中增加 G1 evidence assembler，并将其纳入运行时实现摘要。D6 随后把审计
+清单从九个文件对齐为同一十文件集合。D5 API 与 D6 独立计算均得到
+`41381db3d11371c049e5569658820ce98abf1a9966ecf86edc0f13f140894b07`。两侧规范 JSON 的排序、
+分隔符、ASCII 转义和末尾换行相同。
+
+复核继续使用上述 99fa bundle、原 held-out 报告和正确的 final paired-shadow 报告。没有运行
+AirSim、三维质点 episode、训练或新多 seed 评估。结果为 `fail_closed`，包含五个 blocker：
+
+1. `implementation_evidence_unavailable`：旧证据没有
+   `tracklet_g1_evidence_assembler.py` 的文件哈希。
+2. `implementation_lineage_mismatch`：assembler 的证据哈希为 `null`；同时
+   `tracklet_model_bundle.py` 的证据哈希为 `b92037bb...e8cc`，当前哈希为
+   `1bc610d3...89bd`。
+3. `synthetic_single_feature_shortcut`：最高单特征 AUC 仍为 `0.997340`。
+4. `robustness_threshold_not_met.edge_f1`：最低边 F1 仍为 `0.563264`。
+5. `robustness_threshold_not_met.cluster_f1`：最低簇 F1 仍为 `0.572845`。
+
+新输入配置为
+`configs/d5_g1_external_audit_99fa4428_post_assembler_20260726.json`，输出写入独立目录
+`outputs/d5_g1_external_audit_99fa4428_post_assembler_20260726/`。主 JSON 文件 SHA-256 为
+`98bf9e0251567a330bf16951acf07da576a6ba3dc47627c3671cd2d491cdc8ed`，内容 SHA-256 为
+`40a42af015211d5e721584053e052a893e31aa35b7393195530a5d3d2dc9b90d`。`SHA256SUMS`
+三项通过。定向测试 `14 passed`，D6 全量 `944 passed, 1 warning in 80.12s`。原审计目录和
+原结论未覆盖。本节是同一历史证据的软件 provenance 复核，不是新实验。
+
 ## 结论
 
 2026-07-25，D6 对 R0、G1、A1、A2、A3、C1、F1 正式实验矩阵执行静态

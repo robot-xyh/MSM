@@ -13,10 +13,16 @@ manifest 与 held-out 报告中逐项相同。paired-shadow 的输入清单还�
 内容哈希。任一来源缺失时，对应 consumer 字段为 `null + unavailable reason`，不能用 0
 代替。
 
-运行实现摘要按九个 D5 源文件逐文件哈希后，对有序映射做规范 JSON SHA-256。held-out 与
+运行实现摘要按十个 D5 源文件逐文件哈希后，对有序映射做规范 JSON SHA-256。文件集合包含
+G1 evidence assembler，并与 D5 的运行时摘要 API 保持一致。held-out 与
 paired-shadow 的实现记录合并后形成证据实现摘要。二者必须逐文件等于当前实现。v1 不接受
 等价桥接，因此“只改了装配代码”也不能由 D6 主观判为等价，必须重新取证或提供后续版本可验证
 的桥接合同。
+
+装配器加入后的实算摘要为 `41381db3...4b07`。使用同一 99fa 历史证据复核时，旧报告没有
+assembler 哈希，且 `tracklet_model_bundle.py` 已变化。证据实现摘要保持 unavailable，审计同时
+记录缺失证据和逐文件不一致。该复核只更新软件谱系判断，没有增加 seed、episode 或模型性能
+证据。
 
 形式化目录要求 seed `1000-1019` 完整、20 个未见 seed、900 个 episode、45 个场景规模单元、
 完整 truth evaluator、paired full profile、输入只读和 authoritative evidence status。三项安全

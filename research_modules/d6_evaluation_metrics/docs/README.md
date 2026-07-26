@@ -1,5 +1,11 @@
 # D6 文档索引
 
+2026-07-26 D5 G1 预准入外部审计及装配器后软件谱系复核见
+`MODULE_PRINCIPLES_CN.md`、`ALGORITHM_AND_IMPLEMENTATION.md` 和 `EXPERIMENT_REPORT.md`。
+D6 与 D5 当前运行时摘要均为十文件规范摘要 `41381db3...4b07`。同一 99fa 历史证据复核仍为
+`fail_closed`：旧证据缺 assembler 哈希，`tracklet_model_bundle.py` 不一致，原鲁棒性和单特征
+阻断保持不变。该复核没有运行新 episode；新旧审计分别保存在独立输出目录。
+
 2026-07-25 正式 R0/G1/A1/A2/A3/C1/F1 矩阵准入预检原理见
 `MODULE_PRINCIPLES_CN.md`，expected inventory、模型 SHA、逐 cell 证据、压缩缺失范围和
 `pre_run/post_run` 实现见 `ALGORITHM_AND_IMPLEMENTATION.md`。当前实际 formal 计划动态得到

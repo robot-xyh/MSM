@@ -1,6 +1,6 @@
 # D6 Evaluation Metrics
 
-## 2026-07-26 D5 G1 预准入外部审计
+## 2026-07-26 D5 G1 预准入外部审计与装配器后复核
 
 D6 已实现独立、只读、失败关闭的 D5 G1 外部审计。输出 schema 为
 `d6.d5-g1-external-audit.v1`，命令行入口为
@@ -9,7 +9,8 @@ D6 已实现独立、只读、失败关闭的 D5 G1 外部审计。输出 schema
 不扫描相邻目录，也不接受文件名推断模型身份。
 
 审计直接重算文件 SHA-256、JSON 内容 SHA-256、模型指纹、训练数据 manifest/split/training-set
-谱系，以及当前九个 D5 运行源文件的实现摘要。held-out 与 paired-shadow 必须绑定同一模型和
+谱系，以及与 D5 `tracklet_runtime_implementation_sha256()` 一致的十个运行源文件实现摘要。
+held-out 与 paired-shadow 必须绑定同一模型和
 数据集；布尔值、非负整数和 metric availability 使用严格类型。缺文件、缺字段、类型错误、
 文件或内容哈希不符、跨模型、跨数据集、实现错配、非正式、门限不足和 unavailable 均返回稳定
 blocker code，缺失计数保持 `null`，不补成 0。
@@ -19,7 +20,7 @@ blocker code，缺失计数保持 `null`，不补成 0。
 同相机互斥违规均为 0。泛化门单独限制单特征最高 AUC 不高于 0.98，五类扰动的最低边/簇 F1
 均不低于 0.9。候选图是否在扰动后重建作为显式限制字段，不由名义满分覆盖。
 
-2026-07-26 对实际 99fa 候选运行审计。候选 bundle 为
+2026-07-26 首次对实际 99fa 候选运行审计。候选 bundle 为
 `d5_composite_internal_training_clean_6dc471b/model_bundle`；held-out 和 final paired-shadow
 均绑定 weights SHA-256 `99fa4428...d4cd`。20 个 seed、900 个 episode、45 个单元和三项安全
 零计数可用。结果仍为 `fail_closed`：
@@ -30,19 +31,32 @@ blocker code，缺失计数保持 `null`，不补成 0。
 - 扰动最低边/簇 F1 为 `0.563264/0.572845`，低于 0.9；
 - 五类扰动均固定原候选图，不能代替重新投影和重新构图的外部泛化证据。
 
-输出包含 JSON、证据索引 CSV、中文 Markdown 和 `SHA256SUMS`，位于
+该历史输出包含 JSON、证据索引 CSV、中文 Markdown 和 `SHA256SUMS`，位于
 `outputs/d5_g1_external_audit_99fa4428_20260726/`。专项测试为 `13 passed`，D6 全量为
 `943 passed, 1 warning in 80.56s`。warning 是既有 Matplotlib `Axes3D` 环境提示。D6 输出仅表示
 evidence audit pass/fail，不授予模型晋级、G1 辅助、控制权或默认路径变更。后续 D5 evidence
 assembler 只能消费该 JSON 及其文件/内容哈希；执行 G1 后，D6 现有
 `learning_scope_formal_audit` 仍负责运行作用域与同键 R0 的下游复核。
 
+D5 在提交 `005c74e` 中加入 G1 evidence assembler，并把该文件纳入运行时实现摘要。D6 随后将
+审计文件集合对齐为同一十文件集合；两侧均使用排序键、紧凑 JSON、ASCII 转义和末尾换行计算
+规范摘要，实算结果均为 `41381db3...4b07`。本次只对同一 99fa bundle、同一 held-out 和同一
+final paired-shadow 重新核对软件谱系，没有启动新 episode，也没有生成新模型性能样本。
+
+装配器后复核继续 `fail_closed`。旧证据没有
+`tracklet_g1_evidence_assembler.py` 哈希，`tracklet_model_bundle.py` 的证据哈希也与当前文件
+不同，因此同时产生 `implementation_evidence_unavailable` 和
+`implementation_lineage_mismatch`。单特征、边 F1 和簇 F1 三项原阻断保持不变。新审计写入
+`outputs/d5_g1_external_audit_99fa4428_post_assembler_20260726/`，主 JSON 文件 SHA-256 为
+`98bf9e02...c8ed`，JSON 内容 SHA-256 为 `40a42af0...90d`。原审计目录保持不变。装配器后
+定向回归为 `14 passed`，D6 全量为 `944 passed, 1 warning in 80.12s`。
+
 ```bash
 PYTHONPATH=research_modules/d6_evaluation_metrics \
 python3 research_modules/d6_evaluation_metrics/scripts/run_d5_g1_external_audit.py \
-  --input-spec research_modules/d6_evaluation_metrics/configs/d5_g1_external_audit_99fa4428_20260726.json \
+  --input-spec research_modules/d6_evaluation_metrics/configs/d5_g1_external_audit_99fa4428_post_assembler_20260726.json \
   --repository-root . \
-  --output-dir research_modules/d6_evaluation_metrics/outputs/d5_g1_external_audit_99fa4428_20260726
+  --output-dir research_modules/d6_evaluation_metrics/outputs/d5_g1_external_audit_99fa4428_post_assembler_20260726
 ```
 
 ## 2026-07-25 正式实验矩阵准入预检

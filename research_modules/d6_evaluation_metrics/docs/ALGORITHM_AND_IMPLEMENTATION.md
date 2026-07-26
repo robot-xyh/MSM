@@ -14,6 +14,7 @@ paired lineage。每项都携带相对路径和调用方冻结的文件 SHA-256�
 scalable_3d_adapter
 sparse_tracklet_graph
 tracklet_dataset
+tracklet_g1_evidence_assembler
 tracklet_gnn
 tracklet_heldout_evaluation
 tracklet_model_bundle
@@ -22,10 +23,18 @@ tracklet_training
 tracklet_training_audit
 ```
 
-每个文件先计算 SHA-256，再对按文件名排序的映射执行规范 JSON 编码和 SHA-256。held-out 与
-paired-shadow 的实现表取并集后必须覆盖上述九个文件，且共享文件哈希必须一致。证据摘要与当前
+每个文件先计算 SHA-256，再对按文件名排序的映射执行规范 JSON 编码和 SHA-256。规范编码固定为
+排序键、紧凑分隔符、ASCII 转义、禁止非有限数和末尾换行，与 D5
+`tracklet_runtime_implementation_sha256()` 相同。held-out 与 paired-shadow 的实现表取并集后
+必须覆盖上述十个文件，且共享文件哈希必须一致。证据摘要与当前
 摘要不同即产生 `implementation_lineage_mismatch`。v1 的
 `equivalence_bridge.available=false`，不接受人工等价说明。
+
+D5 加入 G1 evidence assembler 后，D6 对同一源目录独立计算得到
+`41381db3...4b07`，与 D5 API 返回值一致。旧 held-out/paired 证据没有 assembler 文件，证据摘要
+因此不可计算，并产生 `implementation_evidence_unavailable`。旧证据中的
+`tracklet_model_bundle.py` 与当前文件哈希不同，两项逐文件差异继续写入
+`source_mismatches`；缺文件不能被聚合摘要或人工等价声明掩盖。
 
 ### 判定关系
 

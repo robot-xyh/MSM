@@ -1,6 +1,6 @@
 # D6 Evaluation Metrics Plan
 
-## 2026-07-26 D5 G1 预准入外部审计
+## 2026-07-26 D5 G1 预准入外部审计与装配器后复核
 
 ### 已完成
 
@@ -8,8 +8,10 @@
   pass/fail，不给模型晋级、G1 辅助、控制或默认路径权限。
 - [x] 用显式输入清单冻结 99fa 候选 registry、manifest、weights、held-out、final
   paired-shadow 和 lineage；没有使用绑定另一模型的 `e39a54d_v2`。
-- [x] 重算文件/内容 SHA-256、模型指纹、dataset/split/training-set、当前九文件实现摘要及
+- [x] 重算文件/内容 SHA-256、模型指纹、dataset/split/training-set、当前十文件实现摘要及
   held-out/paired 联合实现摘要。
+- [x] 将 D6 运行实现文件集合与 D5 `tracklet_runtime_implementation_sha256()` 对齐，加入
+  `tracklet_g1_evidence_assembler.py`；两侧规范摘要实算均为 `41381db3...4b07`。
 - [x] 对缺失、篡改、跨模型、跨数据集、实现错配、非正式、严格布尔/整数、阈值不足和
   unavailable 建立稳定 blocker code；缺失不补 0。
 - [x] 固定 20 个未见 seed、900 个 episode、45 个场景规模单元和三项安全零计数门。
@@ -17,19 +19,25 @@
 - [x] 输出 JSON、证据索引 CSV、中文 Markdown 与 `SHA256SUMS`，重复运行逐文件一致。
 - [x] 2026-07-26 实物审计完成：形式化目录和安全计数可用，但实现谱系、单特征 AUC、扰动
   边 F1、扰动簇 F1 四项阻断，结果为 `fail_closed`。
-- [x] 专项 `13 passed`，覆盖全部要求的正反例、CLI 和确定性输出；D6 全量
-  `943 passed, 1 warning in 80.56s`。
+- [x] 使用独立 post-assembler 配置对同一 99fa 实物复核；没有运行新实验。旧证据缺少
+  assembler 哈希且 `tracklet_model_bundle.py` 已变化，结果保持 `fail_closed`，原鲁棒性和
+  单特征阻断均保留。
+- [x] 新旧审计分别保存在独立目录；新主 JSON 文件/内容 SHA-256 为
+  `98bf9e02...c8ed` / `40a42af0...90d`，原审计未覆盖。
+- [x] 装配器后专项 `14 passed`，覆盖正反例、旧证据双文件差异、CLI 和确定性输出；D6 全量
+  `944 passed, 1 warning in 80.12s`。
 
 ### 仍开放
 
-- [ ] D5 需在当前 `ff8c744e...8a1b7` 实现上重新形成同模型 held-out 与 paired-shadow
-  证据，或提供可独立验证的等价桥接；v1 审计不接受口头或布尔等价声明。
+- [ ] D5 需在当前 `41381db3...4b07` 十文件实现上重新形成同模型 held-out 与 paired-shadow
+  证据，或提供可独立验证的等价桥接；旧证据缺少 assembler 文件并绑定旧
+  `tracklet_model_bundle.py`，v1 审计不接受口头或布尔等价声明。
 - [ ] 合成数据单特征最高 AUC `0.997340` 仍高于 0.98。需使用更困难、独立生成的数据降低
   尺度变化率捷径。
 - [ ] 扰动最低边/簇 F1 `0.563264/0.572845` 未达到 0.9，且候选图未重建。需按相机几何、
   时间偏差和遮挡重新构图后复验。
-- [ ] 只有 D6 审计通过后，D5 才能装配新的 admission evidence；D6 仍不直接生成 admitted
-  bundle。
+- [ ] D5 assembler 已实现并以本次 `audit_passed=false` 实物验证拒绝正向装配。只有新的 D6
+  审计通过后才能生成 admission evidence；D6 仍不直接生成 admitted bundle。
 - [ ] G1 实际执行后仍需 `learning_scope_formal_audit` 与同 comparison key 的 R0 结果做
   完整运行证据配对。
 

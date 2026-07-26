@@ -1,6 +1,6 @@
 # D6 实现差距审计
 
-## 2026-07-26 D5 G1 外部审计输出 GAP 更新
+## 2026-07-26 D5 G1 外部审计与装配器后谱系 GAP 更新
 
 ### 已关闭
 
@@ -8,26 +8,32 @@
    `d6.d5-g1-external-audit.v1`，并保持 D6 只读、不参与模型和控制授权。
 2. 输入清单显式绑定 99fa registry、模型 manifest/weights/checksums、held-out、final
    paired-shadow 和 lineage。另一模型的 `e39a54d_v2` 不可被目录扫描误选。
-3. 文件 SHA、内容 SHA、模型指纹、dataset/split/training-set、当前九文件实现和报告联合实现
-   谱系均已独立重算。
+3. 文件 SHA、内容 SHA、模型指纹、dataset/split/training-set、当前十文件实现和报告联合实现
+   谱系均已独立重算。D6 与 D5 运行时摘要 API 使用相同文件集合和规范 JSON，实算均为
+   `41381db3...4b07`。
 4. 缺文件、文件/内容篡改、跨模型、跨数据集、实现错配、非正式、严格类型、阈值不足和
    unavailable 均有稳定 blocker；缺失计数不补 0。
 5. JSON、证据 CSV、中文 Markdown 和 `SHA256SUMS` 已实现。相同 fixture 的重复运行逐文件
    一致。
-6. 专项 `13 passed`，覆盖全部正负例和 CLI；D6 全量
-   `943 passed, 1 warning in 80.56s`。
+6. D5 assembler 加入后，D6 使用独立配置对同一 99fa、held-out 和 final paired 实物完成复核。
+   新旧输出目录分离；新主 JSON 文件/内容 SHA-256 为
+   `98bf9e02...c8ed` / `40a42af0...90d`，原审计未覆盖。
+7. 装配器后专项 `14 passed`，覆盖正负例、旧证据双文件差异和 CLI；D6 全量
+   `944 passed, 1 warning in 80.12s`。
 
 ### 当前 P1
 
-1. **实现谱系未闭合。** 报告联合摘要 `81968e0d...066e7f` 与当前
-   `ff8c744e...8a1b7` 不同，差异在 `tracklet_model_bundle.py`。v1 没有等价桥接，当前候选
-   失败关闭。
+1. **实现谱系未闭合。** 当前十文件摘要为 `41381db3...4b07`。旧 held-out/paired 证据缺少
+   `tracklet_g1_evidence_assembler.py`，且 `tracklet_model_bundle.py` 仍绑定旧哈希，因此
+   `implementation_evidence_unavailable` 与 `implementation_lineage_mismatch` 同时成立。v1
+   没有等价桥接，当前候选失败关闭。
 2. **合成捷径超限。** 单特征最高 AUC `0.997340 > 0.98`。
 3. **扰动性能不足。** 最低边/簇 F1 `0.563264/0.572845 < 0.9`。
 4. **候选图未重建。** 五类扰动固定 post-gate 候选图，尚不能证明相机投影、门控和候选生成
    的外部泛化。
-5. **D5 装配仍未执行。** 只有新的 D6 审计通过后，D5 才能实现 evidence assembler；D6 不
-   直接生成 admitted bundle。
+5. **正向装配被阻断。** D5 evidence assembler 已实现，但对本次
+   `d6_external_audit_passed=false` 实物必须拒绝输出。只有新的 D6 审计通过后才可能形成
+   admission evidence；D6 不直接生成 admitted bundle。
 6. **运行作用域未验证。** G1 正式执行后还需现有 `learning_scope_formal_audit` 做同键 R0
    配对。预准入审计不能替代运行证据。
 

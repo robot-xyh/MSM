@@ -27,6 +27,7 @@ _SOURCE_FILES = (
     "scalable_3d_adapter.py",
     "sparse_tracklet_graph.py",
     "tracklet_dataset.py",
+    "tracklet_g1_evidence_assembler.py",
     "tracklet_gnn.py",
     "tracklet_heldout_evaluation.py",
     "tracklet_model_bundle.py",
@@ -43,6 +44,7 @@ _MODEL_SOURCE_FILES = (
 _HELDOUT_SOURCE_FILES = (
     "sparse_tracklet_graph.py",
     "tracklet_dataset.py",
+    "tracklet_g1_evidence_assembler.py",
     "tracklet_gnn.py",
     "tracklet_heldout_evaluation.py",
     "tracklet_model_bundle.py",
@@ -53,6 +55,7 @@ _PAIRED_SOURCE_FILES = (
     "scalable_3d_adapter.py",
     "sparse_tracklet_graph.py",
     "tracklet_dataset.py",
+    "tracklet_g1_evidence_assembler.py",
     "tracklet_gnn.py",
     "tracklet_heldout_evaluation.py",
     "tracklet_model_bundle.py",
@@ -584,6 +587,70 @@ def test_current_implementation_change_without_evidence_bridge_is_rejected(
         result["candidate"]["implementation"]["equivalence_bridge"]["verified"]
         is False
     )
+
+
+def test_pre_assembler_evidence_exposes_both_source_mismatches(
+    tmp_path: Path,
+) -> None:
+    fixture = _make_fixture(tmp_path)
+    assembler = "tracklet_g1_evidence_assembler.py"
+
+    heldout = json.loads(
+        fixture.paths["heldout_report"].read_text(encoding="utf-8")
+    )
+    heldout["implementation_sha256"].pop(assembler)
+    fixture.refresh_json("heldout_report", heldout, content_hash=True)
+
+    paired = json.loads(
+        fixture.paths["paired_shadow_report"].read_text(encoding="utf-8")
+    )
+    paired["implementation_sha256"].pop(assembler)
+    paired["input_spec"]["expected_hashes"].update(
+        {
+            "heldout_report_sha256": _sha_file(
+                fixture.paths["heldout_report"]
+            ),
+            "heldout_report_content_sha256": heldout["content_sha256"],
+        }
+    )
+    paired["input_spec_sha256"] = _sha_json(paired["input_spec"])
+    paired["input_hashes_before"] = deepcopy(
+        paired["input_spec"]["expected_hashes"]
+    )
+    paired["input_hashes_after"] = deepcopy(
+        paired["input_spec"]["expected_hashes"]
+    )
+    fixture.refresh_json("paired_shadow_report", paired, content_hash=True)
+    fixture.refresh_registry()
+
+    model_bundle = fixture.root / "d5_source" / "tracklet_model_bundle.py"
+    model_bundle.write_text(
+        "# post-assembler runtime implementation\n",
+        encoding="ascii",
+    )
+    current = {
+        name: _sha_file(fixture.root / "d5_source" / name)
+        for name in _SOURCE_FILES
+    }
+    fixture.spec["expected_current_implementation_sha256"] = _sha_json(
+        dict(sorted(current.items()))
+    )
+
+    result = audit_d5_g1_external_evidence(fixture.inputs())
+
+    assert "implementation_evidence_unavailable" in result["blocker_codes"]
+    assert "implementation_lineage_mismatch" in result["blocker_codes"]
+    mismatches = result["candidate"]["implementation"]["source_mismatches"]
+    assert mismatches[assembler] == {
+        "evidence_sha256": None,
+        "current_sha256": current[assembler],
+    }
+    assert mismatches["tracklet_model_bundle.py"] == {
+        "evidence_sha256": fixture.source_hashes[
+            "tracklet_model_bundle.py"
+        ],
+        "current_sha256": current["tracklet_model_bundle.py"],
+    }
 
 
 @pytest.mark.parametrize(
