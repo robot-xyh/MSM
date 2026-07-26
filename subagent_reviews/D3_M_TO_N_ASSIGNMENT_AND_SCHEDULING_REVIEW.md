@@ -554,3 +554,21 @@ coalition、commit 或执行许可。
 该项只补齐 M-to-N 多周期需求变化、回退原因和矩阵一致性证据。PPO、线上 assist、
 authority 和运行时计划发布继续关闭；默认 Hungarian 与需求槽 Hungarian 不变。真实成员
 确认、联盟执行、后续物理结果和协同收益仍缺失，因此 M-to-N 运行闭环 P1 保持开放。
+
+## 30. M-to-N 干预候选帧资格（2026-07-26）
+
+学习处理帧只有在 M-to-N 联盟完整时才能进入后续共同检查点。D3 现从当前匿名航迹重新读取
+`required_resource_count` 和 primary 数量，并逐目标核对需求摘要、联盟成员、角色、波次、
+可执行 assignment、未分配清单及不完整清单。完整联盟必须 committed 且执行全部所需成员；
+不完整联盟必须执行零成员。任何部分联盟均返回
+`rule_m_to_n_all_or_none_incomplete` 或
+`treatment_m_to_n_all_or_none_incomplete`。
+
+专项正例包含一个双 primary 目标和一个普通目标。规则与处理计划均有 3 个完整需求槽，学习
+实际改变 6 条 hard-safe 边并形成 3 个资源绑定差异。负例删除一个处理组可执行成员后资格
+失败。该资格只支持 main 选择物理续跑前的候选帧，不确认成员 ACK、D4 联盟提交、D7 控制
+采用或协同物理完成。
+
+D3 全量为 `484 passed, 1 skipped`（485 项）。默认 `hungarian_demand_slots`、成员角色、
+迟滞、计划版本和全有或全无准入未改变。真实多成员共同检查点、D4/D7 求交和 clean 多 seed
+物理比较仍属于跨模块 P1。

@@ -2967,3 +2967,79 @@ JSON 使用规范排序和非有限值拒绝。逐周期与逐 seed CSV writer �
 该结果只关闭“冻结 BC 在多周期中是否能产生可辨识决策差异”的证据缺口。抖动与规则代价
 存在取舍，且没有 runtime ACK、后续状态、物理结果、反事实或因果奖励。模型清单不更新，
 PPO、assist、authority 和运行发布继续为 false。
+
+## 58. 真值无关干预候选帧合同（2026-07-26）
+
+### 58.1 输入和判据
+
+接口接收同一时间序号的一对 `PlanningFrameEvidence`：
+
+- 规则帧使用 `learning_state=rule_only`；
+- 处理帧必须记录 `learning_state=assist_effective`；
+- 两帧的匿名航迹、资源、时间、规划路径、选择来源、规则矩阵和前序计划组成同一输入
+  快照。
+
+设输入谱系判据为 \(L\)，学习安全判据为 \(A\)，两份计划的可行与版本判据为 \(P_r,P_t\)，
+需求槽和联盟原子性判据为 \(M_r,M_t\)，绑定差异为 \(\Delta B\)。候选资格为：
+
+\[
+E=L\land A\land P_r\land P_t\land M_r\land M_t\land(\Delta B>0)
+\]
+
+其中 \(A\) 要求模型实际改变的 hard-safe 边数大于零，`learning_applied=true`，没有
+fallback，分布外标志为 false，推理时间不超过记录门限，置信度不低于记录门限，所有学习
+数值有限。候选边计数必须与有效矩阵的 hard-safe 掩码一致。配置的分布外阈值必须与诊断
+使用的阈值相同。本合同只核验既有阈值，没有修改阈值。
+
+### 58.2 计划检查
+
+每份计划先通过规范载荷校验，再逐项检查资源和目标是否属于当前矩阵、同一资源是否重复、
+assignment 成本是否等于所选矩阵单元、可行状态是否有效、所选边是否属于
+`hard_safe_candidate_mask`。目标数、资源数和总代价必须有限且与输入一致。
+
+对每个目标，算法从匿名 `TargetTrack.effective_demand` 重新取得需求数量、primary 数量、
+协同模式、终端授权范围和到达协调要求。`DemandSatisfactionSummary`、`CoalitionPlan` 与
+可执行 assignment 必须相互一致。完整联盟必须处于 committed，成员数等于需求数，角色和
+波次与 assignment 一致；不完整联盟必须没有可执行 assignment。需求数大于一时求解器必须
+为 `hungarian_demand_slots`。该检查不复用调用方提交的“计划可行”布尔。
+
+计划版本只能保持为前序计划同一身份，或严格升一版并通过 `previous_plan_id` 指向前序
+计划。帧中的 plan id/version 和 previous version 必须匹配实际对象。候选时刻不得早于
+前序计划创建时刻，也不得超过其 `stale_after_s` 有效期。
+
+### 58.3 绑定差异和证据
+
+绑定签名按资源排序，覆盖目标、联盟号、联盟版本、成员角色和波次。规则组与处理组逐资源
+比较，至少一项不同才满足 \(\Delta B>0\)。仅改变成本矩阵而不改变最终绑定时，原因码为
+`binding_unchanged`。
+
+输出 schema 为 `d3.learning-intervention-frame-evidence.v1`。规范摘要分为 frame、
+lineage、plans、intervention 和 decision 五部分。内容 SHA-256 覆盖除自身摘要外的全部
+字段。反序列化要求字段集合精确匹配，并重建规范摘要和内容摘要；缺失、额外、占位或篡改
+均拒绝。SHA-256 只提供内容完整性，不替代带密钥签名或来源认证。
+
+### 58.4 main 调用流程
+
+1. main 为同一 seed 按权威规划时刻生成规则帧和处理帧；
+2. 对每对帧调用 `evaluate_learning_intervention_candidate_frame()`；
+3. 将所得证据按 `sequence_index` 和 `timestamp_s` 分别严格递增的顺序传给
+   `select_first_eligible_learning_intervention_frame()`；一个规划周期只有一个时间戳，
+   重复或逆序时间戳失败关闭；
+4. D3 返回首个 eligibility 为真的证据，或在没有合格帧时返回 `None`；
+5. main 再与 D7 的同 seed 检查点求交并预注册物理续跑。
+
+选择作用域固定为 `checkpoint-selection-only-no-admission-no-authority`。D3 不读取目标
+真值、D6 指标、物理结果、成功标记或奖励，也不自行选择 seed。模型准入、生产 assist、
+计划发布和控制权限均保持原合同。
+
+### 58.5 验证
+
+专项测试共 19 项。正例使用一个需要两个 primary 的目标和一个普通目标，三资源条件下，
+处理残差改变 6 条候选边并形成 3 个资源绑定差异。负例覆盖模型未应用和回退、分布外、
+超时、非有限值、绑定不变、输入谱系和前序计划不一致、版本或有效期错误、硬拒绝边、
+M-to-N 部分执行、字段缺失、手工 eligibility、占位摘要、摘要篡改、序号乱序、时间戳重复
+和时间戳逆序。
+
+D3 全量收集 485 项，结果为 `484 passed, 1 skipped`。唯一跳过为未安装时的可选 OR-Tools
+对照。此次实现没有修改 Hungarian、规则成本、迟滞、分布外阈值、生产模型加载或 AirSim
+适配。

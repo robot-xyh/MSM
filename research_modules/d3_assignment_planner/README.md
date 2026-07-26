@@ -1609,3 +1609,35 @@ scalable runtime 的简化 D3 publication 未直接携带顶层 `previous_plan_i
 `derived`。该简化载荷也不是完整 `AssignmentPlan.execution_signature()` 的序列化形式，
 因此现有日志只能证明规范化后的发布业务载荷等价。后续正式审计优先持久化 D3 已提供的
 `PlanningTickHistoryRecord`，需要完整签名证明时同时保留规范计划载荷。
+
+## 2026-07-26 真值无关干预候选帧资格
+
+D3 新增版本化 `LearningInterventionFrameEvidence`。它从同一时刻的规则组和处理组
+`PlanningFrameEvidence` 推导候选帧资格，不接收调用方填写的 eligibility、准入或执行权限
+布尔值。公开接口如下：
+
+- `evaluate_learning_intervention_candidate_frame(...)`：严格核验一对规划帧并生成证据；
+- `validate_learning_intervention_frame_evidence(...)`：拒绝缺字段、额外字段、占位摘要和
+  内容篡改；
+- `select_first_eligible_learning_intervention_frame(...)`：只接受 `sequence_index` 和
+  `timestamp_s` 同时严格递增的历史，返回按规划时间的首个合格帧；重复或逆序时间戳拒绝；
+- `canonical_learning_intervention_frame_evidence_sha256(...)`：计算除自引用内容摘要外的
+  完整证据 SHA-256。
+
+资格必须由同输入快照、同前序计划、模型实际作用、无回退、无分布外、无超时、无非有限值、
+两份计划均可行、硬候选边有效、版本链有效、需求槽与 M-to-N 全有或全无合同完整，以及
+规则/处理绑定确有差异共同成立。任一条件不满足时输出稳定原因码并
+`eligible=false`。证据作用域固定为
+`checkpoint-selection-only-no-admission-no-authority`，不改变规则 Hungarian、需求槽
+Hungarian、代价公式、迟滞、分布外门限、生产模型加载器或 assist 权限。
+
+main 先前对 20 个保留 seed 的共同检查点做过物理续跑。规则组和处理组各施加 980 条控制
+命令，计划消费及物理观察窗口均为 20/20，但最终绑定变化为 0/20，轨迹和指标相同。该结果
+来自脏工作树开发运行，只能判定本批检查点没有形成可辨识规划干预，不能用于模型准入。
+后续 main 应按 seed 向上述 API 提供规则/处理帧，并保证序号和规划时间戳分别严格递增，
+再把 D3 首个合格帧与 D7 共同检查点求交。一个规划周期只允许一个时间戳，不采用二级排序
+容纳同刻帧。
+
+2026-07-26 专项测试为 `19 passed`。D3 全量收集 485 项，结果为
+`484 passed, 1 skipped`，唯一跳过仍是可选 OR-Tools。此次没有改变 AirSim 输入输出、
+episode 编排或控制行为。

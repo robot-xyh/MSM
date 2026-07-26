@@ -1380,3 +1380,32 @@ D7 来源和 ACK 后，再按总线顺序选择首个非保持 binding 接入 D6
 Hungarian、迟滞、时间戳、D7 时效门或 PN/PNG。定向测试通过；D3 全量 439 项为
 `438 passed, 1 skipped, 0 failed`，唯一跳过仍是可选 OR-Tools。该测试口径缺口已关闭，
 没有形成新的 P0/P1 算法缺口。
+
+## 50. 真值无关候选帧资格 GAP 更新（2026-07-26）
+
+### 已关闭的 D3 缺口
+
+旧 20-seed 共同检查点续跑中，规则和处理两组各执行 980 条控制命令，计划消费与物理窗口
+均为 20/20，但最终绑定变化为 0/20。旧流程缺少一个可在物理运行前证明“模型实际改变安全
+候选成本并改变最终绑定”的严格选择合同。
+
+D3 已增加 `d3.learning-intervention-frame-evidence.v1` 和四个公开接口，用匿名规则/处理
+`PlanningFrameEvidence` 重新计算输入谱系、模型实际作用、回退和分布外状态、超时与有限
+性、计划可行性、硬候选边、版本和前序计划、需求槽、联盟全有或全无及绑定差异。证据缺
+字段、额外字段、手工 eligibility、占位摘要、内容篡改、序号乱序、重复和逆序时间戳均
+失败关闭。模型未应用、任一回退、分布外、超时、非有限值、绑定不变、旧版本和 M-to-N
+部分执行均不能成为候选。
+
+专项 `19 passed`；D3 全量 `484 passed, 1 skipped`（485 项），skip 为可选 OR-Tools。
+当前没有新增 D3 P0。D3-owned 的候选帧资格与 first-eligible 选择接口缺口已关闭。
+
+### 仍开放的 main 集成项
+
+main 尚需把每个 seed 的规则/处理规划帧按权威时间顺序持久化，保证 `sequence_index` 与
+`timestamp_s` 分别严格递增，再调用 D3 API 并与 D7 同 seed 的可执行检查点求交。旧
+20-seed 脏工作树结果不能事后补写为合格证据。没有共同合格帧时应报告 unavailable，不能
+降低分布外或硬安全门。本项属于 main/scalable 集成和后续 clean 运行证据，不要求 D3
+改写默认 Hungarian、阈值、生产 loader 或权限边界。
+
+`docs/AIRSIM_INTEGRATION_PLAN.md` 已检查。本次没有 AirSim DTO、settings、episode 调度或
+控制行为变化，因此无需修改。

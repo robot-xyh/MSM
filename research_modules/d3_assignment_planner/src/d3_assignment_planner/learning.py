@@ -472,6 +472,12 @@ class LearningCostAssistant:
             "learning_mode": self.config.mode,
             "learning_formula": "C_final=C_rule+alpha*tanh(delta_C)",
             "learning_alpha": float(self.config.alpha),
+            "learning_timeout_s": float(self.config.timeout_s),
+            "learning_min_confidence": float(self.config.min_confidence),
+            "learning_ood_z_threshold": float(self.config.ood_z_threshold),
+            "learning_absolute_feature_limit": float(
+                self.config.absolute_feature_limit
+            ),
             "learning_candidate_action_count": batch.edge_count,
             "learning_dense_action_count": 0,
             "learning_action_mask_reason_counts": batch.action_mask.reason_counts,
@@ -535,6 +541,7 @@ class LearningCostAssistant:
             )
 
         adjustment = float(self.config.alpha) * np.tanh(delta)
+        applied_edge_count = int(np.count_nonzero(adjustment != 0.0))
         proposed_matrix = matrix_result.matrix.copy()
         breakdown_rows = [
             [dict(breakdown) for breakdown in row]
@@ -567,6 +574,9 @@ class LearningCostAssistant:
                 "learning_inference_elapsed_s": elapsed,
                 "learning_confidence": confidence,
                 "learning_applied": applied,
+                "learning_applied_edge_count": (
+                    applied_edge_count if applied else 0
+                ),
                 "learning_shadow_only": not applied,
                 "learning_fallback_reason": None,
                 "learning_max_abs_adjustment": float(np.max(np.abs(adjustment))),
@@ -674,6 +684,7 @@ class LearningCostAssistant:
                 **dict(matrix_result.metadata),
                 **dict(metadata),
                 "learning_applied": False,
+                "learning_applied_edge_count": 0,
                 "learning_shadow_only": False,
                 "learning_fallback_reason": reason,
             },
