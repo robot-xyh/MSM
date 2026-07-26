@@ -79,7 +79,7 @@ def test_selector_never_relabels_a_precondition_frame(
     options = ReservedSeedInterventionOptions(
         scenario=scenario,
         scale=5,
-        duration_s=3.2,
+        duration_s=4.2 if scenario == "secondary_failure" else 3.2,
         intervention_kind=requested_kind,
     )
     config = _make_intervention_scenario(options, seed=1000)
@@ -195,7 +195,7 @@ def test_d4_post_application_evidence_is_region_scoped(
     options = ReservedSeedInterventionOptions(
         scenario=scenario,
         scale=5,
-        duration_s=3.2,
+        duration_s=4.2 if scenario == "secondary_failure" else 3.2,
         intervention_kind=requested_kind,
     )
     config = _make_intervention_scenario(options, seed=1000)
@@ -320,7 +320,8 @@ def test_d4_post_application_evidence_is_region_scoped(
     assert records
     assert all(item.available for item in records)
     assert all(
-        item.adoption_evidence["evaluation_refresh_applied"] is True
+        item.adoption_evidence["new_execution_plan_applied"] is True
+        or item.adoption_evidence["evaluation_refresh_applied"] is True
         for item in records
     )
     assert all(

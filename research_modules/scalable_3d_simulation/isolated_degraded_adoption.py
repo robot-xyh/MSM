@@ -290,7 +290,23 @@ def _source_region_plan(
     decision: Any,
     target_ids: set[str],
 ) -> dict[str, Any]:
-    plan = source.d3_planning_frame.plan
+    frame = source.d3_planning_frame
+    plan = frame.plan
+    ownership = decision.ownership
+    if (
+        str(plan.plan_id) != str(ownership.plan_id)
+        or int(plan.version) != int(ownership.plan_version)
+    ):
+        previous_plan = getattr(frame, "previous_plan", None)
+        if (
+            previous_plan is None
+            or str(previous_plan.plan_id) != str(ownership.plan_id)
+            or int(previous_plan.version) != int(ownership.plan_version)
+        ):
+            raise ValueError(
+                "D4 ownership does not match the D3 current or predecessor plan"
+            )
+        plan = previous_plan
     target_bridge = dict(source.planning_target_identity_bridge)
     resource_bridge = dict(source.planning_resource_identity_bridge)
     assignments = []

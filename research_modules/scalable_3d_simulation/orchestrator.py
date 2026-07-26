@@ -250,6 +250,13 @@ class Scalable3DEpisodeRunner:
         assignment_plan_binding_ack_count = 0
         assignment_plan_control_applied_count = 0
         assignment_plan_hold_count = 0
+        communication_intent_issued_count = 0
+        communication_intent_queued_count = 0
+        communication_intent_dropped_count = 0
+        communication_intent_disabled_count = 0
+        communication_intent_topic_counts: Counter[str] = Counter()
+        delivered_control_message_count = 0
+        delivered_control_topic_counts: Counter[str] = Counter()
 
         for step_index in range(step_count):
             snapshot = self.world.snapshot()
@@ -312,6 +319,7 @@ class Scalable3DEpisodeRunner:
                 next_visual_time += self.config.visual_period_s
 
             arrived_batches: list[OnlineSensorBatch] = []
+            delivered_control_messages: list[Any] = []
             started = time.perf_counter()
             while pending and pending[0][0] <= current_time + 1.0e-12:
                 _, _, online_batch = heapq.heappop(pending)
@@ -333,13 +341,28 @@ class Scalable3DEpisodeRunner:
                 else:
                     arrived_batches.append(online_batch)
             if self.config.communication_enabled:
-                arrived_batches.extend(
-                    _retime_sensor_batch(
-                        delivered.envelope.payload,
-                        arrival_timestamp=delivered.arrival_timestamp,
+                for delivered in self.communication.deliver(current_time):
+                    if delivered.envelope.topic == "sensor.observations":
+                        arrived_batches.append(
+                            _retime_sensor_batch(
+                                delivered.envelope.payload,
+                                arrival_timestamp=delivered.arrival_timestamp,
+                            )
+                        )
+                        continue
+                    delivered_control_messages.append(delivered)
+                    delivered_control_message_count += 1
+                    delivered_control_topic_counts[
+                        delivered.envelope.topic
+                    ] += 1
+                    self.bus.publish(
+                        topic=delivered.envelope.topic,
+                        source=delivered.source,
+                        timestamp=delivered.arrival_timestamp,
+                        schema_version=delivered.envelope.schema_version,
+                        payload=delivered.envelope.payload,
+                        copy_payload=False,
                     )
-                    for delivered in self.communication.deliver(current_time)
-                )
             arrived_batches.sort(
                 key=lambda item: (
                     item.arrival_timestamp,
@@ -377,6 +400,15 @@ class Scalable3DEpisodeRunner:
                             cameras=tuple(
                                 camera_states[camera_id]
                                 for camera_id in sorted(camera_states)
+                            ),
+                            delivered_communication_messages=tuple(
+                                delivered_control_messages
+                            ),
+                            communication_partition_generation=(
+                                _communication_partition_generation(
+                                    self.config,
+                                    current_time,
+                                )
                             ),
                         )
                     ).validated(
@@ -469,6 +501,35 @@ class Scalable3DEpisodeRunner:
                         "module_publication_bus",
                         time.perf_counter() - publication_started,
                     )
+                    communication_started = time.perf_counter()
+                    for intent in module_output.communication_intents:
+                        communication_intent_issued_count += 1
+                        communication_intent_topic_counts[intent.topic] += 1
+                        if not self.config.communication_enabled:
+                            communication_intent_disabled_count += 1
+                            continue
+                        transport_sequence += 1
+                        queued = self.communication.send(
+                            source=intent.source,
+                            destination=intent.destination,
+                            send_timestamp=current_time,
+                            envelope=VersionedEnvelope(
+                                sequence=transport_sequence,
+                                topic=intent.topic,
+                                source=intent.source,
+                                timestamp=current_time,
+                                schema_version=intent.schema_version,
+                                payload=intent.payload,
+                            ),
+                        )
+                        if queued:
+                            communication_intent_queued_count += 1
+                        else:
+                            communication_intent_dropped_count += 1
+                    timing.add(
+                        "module_communication_transport",
+                        time.perf_counter() - communication_started,
+                    )
                     control_command_tick_count += 1
                     timing.add("module_stack", time.perf_counter() - started)
                 started = time.perf_counter()
@@ -492,6 +553,10 @@ class Scalable3DEpisodeRunner:
                 if final_output.camera_commands:
                     raise ValueError(
                         "module finalization must not emit camera commands"
+                    )
+                if final_output.communication_intents:
+                    raise ValueError(
+                        "module finalization must not emit communication intents"
                     )
                 if np.any(final_output.interceptor_acceleration_ned) or np.any(
                     final_output.recon_acceleration_ned
@@ -599,6 +664,27 @@ class Scalable3DEpisodeRunner:
             "communication_pending_count": communication_stats.pending_count,
             "communication_sent_bytes": communication_stats.sent_bytes,
             "communication_delivered_bytes": communication_stats.delivered_bytes,
+            "communication_intent_issued_count": (
+                communication_intent_issued_count
+            ),
+            "communication_intent_queued_count": (
+                communication_intent_queued_count
+            ),
+            "communication_intent_dropped_count": (
+                communication_intent_dropped_count
+            ),
+            "communication_intent_disabled_count": (
+                communication_intent_disabled_count
+            ),
+            "communication_intent_topic_counts": dict(
+                sorted(communication_intent_topic_counts.items())
+            ),
+            "delivered_control_message_count": (
+                delivered_control_message_count
+            ),
+            "delivered_control_topic_counts": dict(
+                sorted(delivered_control_topic_counts.items())
+            ),
             **learning_artifact_counts,
             "online_truth_use_count": 0,
             "module_stack_enabled": self.module_stack is not None,
@@ -1381,6 +1467,42 @@ def _nonnegative_int(value: Any, name: str) -> int:
 
 def _optional_bool(value: Any) -> bool | None:
     return value if isinstance(value, bool) else None
+
+
+def _communication_partition_generation(
+    config: ScenarioConfig,
+    timestamp: float,
+) -> int:
+    """Resolve a deterministic partition generation from scenario metadata."""
+
+    generation = 0
+    schedule = config.metadata.get("communication_partition_schedule", ())
+    if not isinstance(schedule, (list, tuple)):
+        raise ValueError("communication_partition_schedule must be a sequence")
+    previous_time = -1.0
+    previous_generation = -1
+    for item in schedule:
+        if not isinstance(item, Mapping):
+            raise ValueError(
+                "communication partition schedule entries must be mappings"
+            )
+        event_time = float(item.get("time_s", -1.0))
+        event_generation = int(item.get("generation", -1))
+        if (
+            not np.isfinite(event_time)
+            or event_time < 0.0
+            or event_time <= previous_time
+            or event_generation <= previous_generation
+        ):
+            raise ValueError(
+                "communication partition schedule must have increasing "
+                "non-negative times and generations"
+            )
+        previous_time = event_time
+        previous_generation = event_generation
+        if event_time <= float(timestamp) + 1.0e-12:
+            generation = event_generation
+    return generation
 
 
 def _optional_float(value: Any) -> float | None:

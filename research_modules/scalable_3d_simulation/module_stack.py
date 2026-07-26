@@ -87,7 +87,11 @@ from research_modules.d3_assignment_planner.src.d3_assignment_planner import (
 from research_modules.d4_distributed_fallback.d4_distributed_fallback import (
     AdvisorMode,
     C2Health,
+    CausalCommunicationEvidenceGate,
+    CausalMessageKind,
     CoalitionMemberAck,
+    CommunicationDeliveryReceipt,
+    CommunicationEvidenceExpectation,
     D5Consistency,
     MobileReconSecondary,
     RegionDefinition,
@@ -105,6 +109,7 @@ from research_modules.d4_distributed_fallback.d4_distributed_fallback import (
     RegionalScenarioMetadata,
     RegionalTaskEvidence,
     SecondaryReadinessEvidence,
+    canonical_payload_digest,
 )
 from research_modules.d5_terminal_association.src.d5_terminal_association import (
     ActiveVisionAssignmentReference,
@@ -133,6 +138,7 @@ from .runtime_ports import (
     CameraObservationCommand,
     CameraRuntimeState,
     PlatformNavigationBatch,
+    RuntimeCommunicationIntent,
     RuntimePublication,
     RuntimeStepInput,
     RuntimeStepOutput,
@@ -178,6 +184,26 @@ D1_PUBLICATION_EVIDENCE_SNAPSHOT_DIAGNOSTICS_SCHEMA_VERSION = (
     "scalable3d-d1-publication-evidence-snapshot-diagnostics-v1"
 )
 _EPS = 1.0e-9
+_D4_GATE_NODE_ID = "D4-AUTHORITY-GATE"
+_D4_READINESS_TOPIC = "d4.secondary_readiness.v1"
+_D4_PLAN_TOPIC = "d4.regional_plan_broadcast.v1"
+_D4_ACK_TOPIC = "d4.coalition_member_ack.v1"
+_D4_CONTROL_SCHEMA = "scalable3d-d4-causal-message-v1"
+
+
+@dataclass
+class _D4ReadinessReception:
+    payload: dict[str, Any]
+    receipt: CommunicationDeliveryReceipt
+    first_arrival_s: float
+    last_arrival_s: float
+    observation_count: int
+
+
+@dataclass(frozen=True)
+class _D4AcceptedDelivery:
+    payload: dict[str, Any]
+    receipt: CommunicationDeliveryReceipt
 
 
 @dataclass(frozen=True)
@@ -189,6 +215,9 @@ class IntegratedStackConfig:
     d3_unassigned_base_cost: float = 50.0
     d3_human_authorization_state: str = "approved"
     d4_advisory_ttl_multiplier: float = 1.5
+    d4_readiness_period_s: float = 0.10
+    d4_plan_broadcast_period_s: float = 0.10
+    d4_communication_stale_after_s: float = 1.10
     terminal_switch_range_m: float = 120.0
     secondary_coverage_ratio: float = 0.90
     secondary_network_full_view_rate: float = 0.90
@@ -254,6 +283,21 @@ class IntegratedStackConfig:
             raise ValueError("d3_unassigned_base_cost must be positive")
         if self.d4_advisory_ttl_multiplier <= 1.0:
             raise ValueError("d4_advisory_ttl_multiplier must exceed one")
+        for name in (
+            "d4_readiness_period_s",
+            "d4_plan_broadcast_period_s",
+            "d4_communication_stale_after_s",
+        ):
+            value = float(getattr(self, name))
+            if not np.isfinite(value) or value <= 0.0:
+                raise ValueError(f"{name} must be finite and positive")
+        if (
+            self.d4_communication_stale_after_s
+            <= self.d4_plan_broadcast_period_s
+        ):
+            raise ValueError(
+                "d4_communication_stale_after_s must exceed the plan broadcast period"
+            )
         if self.terminal_switch_range_m <= 0.0:
             raise ValueError("terminal_switch_range_m must be positive")
         active_mode = str(self.d5_active_vision_mode).strip().lower()
@@ -836,6 +880,34 @@ class IntegratedScalableModuleStack:
         self._d4_region_hint_bridge_rejection_reason: str | None = None
         self._d4_region_advisory_gate: RegionResourceAdvisoryGate | None = None
         self._next_d4_region_hint_version = 1
+        self._d4_causal_gate = CausalCommunicationEvidenceGate()
+        self._next_d4_readiness_s = 0.0
+        self._next_d4_plan_broadcast_s = 0.0
+        self._d4_message_sequence = 0
+        self._d4_partition_generation = 0
+        self._d4_last_broadcast_plan_key: tuple[
+            str, int, int, int
+        ] | None = None
+        self._d4_readiness_receptions: dict[
+            tuple[str, str, int, int, int], _D4ReadinessReception
+        ] = {}
+        self._d4_plan_deliveries: dict[
+            tuple[str, int, int, int], _D4AcceptedDelivery
+        ] = {}
+        self._d4_ack_deliveries: dict[
+            tuple[str, str, int, int, int], _D4AcceptedDelivery
+        ] = {}
+        self._d4_expected_plan_authorities: dict[
+            tuple[str, int, int, int, str], str
+        ] = {}
+        self._d4_communication_received_count = 0
+        self._d4_communication_accepted_count = 0
+        self._d4_communication_rejected_count = 0
+        self._d4_communication_accept_counts: Counter[str] = Counter()
+        self._d4_communication_rejection_counts: Counter[str] = Counter()
+        self._d4_communication_intent_counts: Counter[str] = Counter()
+        self._d4_communication_event_evaluation_count = 0
+        self._d4_vetted_secondary_by_region: dict[str, str] = {}
         self._d3_learning_frames: list[Any] = []
         self._d4_learning_frames: list[D4RegionLearningFrame] = []
         self._d5_learning_frames: list[D5GraphLearningFrame] = []
@@ -1187,6 +1259,24 @@ class IntegratedScalableModuleStack:
         self._regional_plan_rejection_reason = None
         self._d4_region_hint_bridge_rejection_reason = None
         self._next_d4_region_hint_version = 1
+        self._d4_causal_gate = CausalCommunicationEvidenceGate()
+        self._next_d4_readiness_s = 0.0
+        self._next_d4_plan_broadcast_s = 0.0
+        self._d4_message_sequence = 0
+        self._d4_partition_generation = 0
+        self._d4_last_broadcast_plan_key = None
+        self._d4_readiness_receptions.clear()
+        self._d4_plan_deliveries.clear()
+        self._d4_ack_deliveries.clear()
+        self._d4_expected_plan_authorities.clear()
+        self._d4_communication_received_count = 0
+        self._d4_communication_accepted_count = 0
+        self._d4_communication_rejected_count = 0
+        self._d4_communication_accept_counts.clear()
+        self._d4_communication_rejection_counts.clear()
+        self._d4_communication_intent_counts.clear()
+        self._d4_communication_event_evaluation_count = 0
+        self._d4_vetted_secondary_by_region.clear()
         self._d3_learning_frames.clear()
         self._d4_learning_frames.clear()
         self._d5_learning_frames.clear()
@@ -1251,6 +1341,11 @@ class IntegratedScalableModuleStack:
             for index, resource_id in enumerate(step_input.interceptors.platform_ids)
         }
         publications: list[RuntimePublication] = []
+        communication_intents, d4_evidence_changed, d4_delivery_seen = (
+            self._consume_d4_communication_deliveries(step_input, now=now)
+        )
+        if d4_delivery_seen:
+            publications.append(self._d4_communication_publication(now))
 
         arrived = tuple(
             sorted(
@@ -1340,10 +1435,36 @@ class IntegratedScalableModuleStack:
         )
         self._last_center_health = center_health
         self._last_secondary_failed = secondary_failed
-        if (
+        assignment_due = bool(
             self.latest_d2_tracks
             and now + _EPS >= self._next_assignment_s
+        )
+        if (
+            d4_evidence_changed
+            and not assignment_due
+            and center_health is C2Health.FAILED
+            and self.latest_plan is not None
+            and self.latest_d2_tracks
         ):
+            started = perf_counter()
+            snapshot = self._d4_snapshot(
+                step_input,
+                now=now,
+                center_health=center_health,
+                secondary_failed=secondary_failed,
+            )
+            self.latest_d4_decision = self.d4.evaluate(snapshot)
+            self._remember_d4_vetted_secondaries(
+                self.latest_d4_decision
+            )
+            self._d4_communication_event_evaluation_count += 1
+            self._record_timing(
+                "d4_communication_event_failover",
+                perf_counter() - started,
+            )
+            publications.append(self._d4_publication(now))
+
+        if assignment_due:
             self._run_assignment_and_failover(
                 step_input,
                 now=now,
@@ -1369,6 +1490,15 @@ class IntegratedScalableModuleStack:
                 config.assignment_period_s,
                 now,
             )
+
+        communication_intents.extend(
+            self._d4_periodic_communication_intents(
+                step_input,
+                now=now,
+                center_health=center_health,
+                secondary_failed=secondary_failed,
+            )
+        )
 
         camera_commands: tuple[CameraObservationCommand, ...] = ()
         if (
@@ -1405,6 +1535,7 @@ class IntegratedScalableModuleStack:
             recon_acceleration_ned=np.zeros((config.recon_count, 3), dtype=float),
             camera_commands=camera_commands,
             publications=tuple(publications),
+            communication_intents=tuple(communication_intents),
             diagnostics=self._diagnostics(now),
         )
 
@@ -2316,6 +2447,25 @@ class IntegratedScalableModuleStack:
         resources = self._d3_resources(step_input.interceptors)
         self._record_timing("main_d3_adapter", perf_counter() - adapter_started)
         previous_plan = self.latest_plan
+        preplanning_snapshot: RegionalFailoverSnapshot | None = None
+        if previous_plan is not None and not self._fault_generation_changed:
+            preplanning_snapshot = self._d4_snapshot(
+                step_input,
+                now=now,
+                center_health=center_health,
+                secondary_failed=secondary_failed,
+            )
+            started = perf_counter()
+            self.latest_d4_decision = self.d4.evaluate(
+                preplanning_snapshot
+            )
+            self._remember_d4_vetted_secondaries(
+                self.latest_d4_decision
+            )
+            self._record_timing(
+                "d4_preplanning_refresh",
+                perf_counter() - started,
+            )
         current_target_ids = {track.track_id for track in tracks}
         previous_target_ids = (
             set()
@@ -2348,8 +2498,14 @@ class IntegratedScalableModuleStack:
                 self.latest_bindings = ()
                 self.latest_d4_decision = None
                 return
+            force_secondary_failure_fence = bool(
+                self._fault_generation_changed and secondary_failed
+            )
             regional_authority: RegionalAuthorityInput | None = None
-            regional_authority_attempted = self._has_fallback_authority_decision()
+            regional_authority_attempted = bool(
+                not force_secondary_failure_fence
+                and self._has_fallback_authority_decision()
+            )
             if regional_authority_attempted:
                 try:
                     regional_authority = self._regional_authority_from_d4(
@@ -2360,7 +2516,26 @@ class IntegratedScalableModuleStack:
                 except RegionalPlanAuthorityError as error:
                     self._regional_plan_rejection_reason = error.reason
 
-            if regional_authority is not None:
+            if force_secondary_failure_fence:
+                if previous_region_advice is not None:
+                    self._d4_region_hint_bridge_rejection_reason = (
+                        "secondary_failure_generation_fence_before_advisory"
+                    )
+                started = perf_counter()
+                self.latest_plan = self.d3.advance_authority_generation(
+                    previous_plan,
+                    timestamp=now,
+                    expected_previous_version=previous_plan.version,
+                    fence_reason=(
+                        "secondary_failure_before_distributed_adjudication"
+                    ),
+                )
+                self._record_timing(
+                    "d3_authority_fence",
+                    perf_counter() - started,
+                )
+                self._regional_plan_rejection_reason = None
+            elif regional_authority is not None:
                 if previous_region_advice is not None:
                     self._d4_region_hint_bridge_rejection_reason = (
                         "regional_authority_path_does_not_consume_resource_advice"
@@ -2518,17 +2693,29 @@ class IntegratedScalableModuleStack:
             and not self._identity_commitment_binding_hold_target_ids
         ):
             self._identity_commitment_replan_required = False
-        adapter_started = perf_counter()
-        snapshot = self._d4_snapshot(
-            step_input,
-            now=now,
-            center_health=center_health,
-            secondary_failed=secondary_failed,
-        )
-        self._record_timing("main_d4_adapter", perf_counter() - adapter_started)
-        started = perf_counter()
-        self.latest_d4_decision = self.d4.evaluate(snapshot)
-        self._record_timing("d4_regional_failover", perf_counter() - started)
+        if preplanning_snapshot is None:
+            adapter_started = perf_counter()
+            snapshot = self._d4_snapshot(
+                step_input,
+                now=now,
+                center_health=center_health,
+                secondary_failed=secondary_failed,
+            )
+            self._record_timing(
+                "main_d4_adapter",
+                perf_counter() - adapter_started,
+            )
+            started = perf_counter()
+            self.latest_d4_decision = self.d4.evaluate(snapshot)
+            self._remember_d4_vetted_secondaries(
+                self.latest_d4_decision
+            )
+            self._record_timing(
+                "d4_regional_failover",
+                perf_counter() - started,
+            )
+        else:
+            snapshot = preplanning_snapshot
         self._run_d4_region_resource_advisor(
             step_input,
             formal_snapshot=snapshot,
@@ -3430,6 +3617,766 @@ class IntegratedScalableModuleStack:
             )
         return tuple(edges)
 
+    def _consume_d4_communication_deliveries(
+        self,
+        step_input: RuntimeStepInput,
+        *,
+        now: float,
+    ) -> tuple[list[RuntimeCommunicationIntent], bool, bool]:
+        """Turn actual network deliveries into bounded D4 evidence.
+
+        The main transport remains authoritative for arrival time. D4's causal
+        gate validates the receipt, while this adapter checks the current plan
+        and payload-specific identities before exposing any readiness or ACK.
+        """
+
+        partition_generation = int(
+            step_input.communication_partition_generation
+        )
+        changed = partition_generation != self._d4_partition_generation
+        self._d4_partition_generation = partition_generation
+        seen = False
+        intents: list[RuntimeCommunicationIntent] = []
+        deliveries = tuple(
+            sorted(
+                step_input.delivered_communication_messages,
+                key=lambda item: (
+                    float(getattr(item, "arrival_timestamp", 0.0)),
+                    int(getattr(getattr(item, "envelope", None), "sequence", 0)),
+                ),
+            )
+        )
+        for delivered in deliveries:
+            seen = True
+            self._d4_communication_received_count += 1
+            try:
+                receipt = CommunicationDeliveryReceipt.from_delivered_message(
+                    delivered
+                )
+                payload = dict(delivered.envelope.payload)
+            except (AttributeError, KeyError, TypeError, ValueError):
+                self._record_d4_communication_rejection(
+                    "receipt_invalid"
+                )
+                continue
+            plan = self.latest_plan
+            if plan is None:
+                self._record_d4_communication_rejection(
+                    "current_plan_missing"
+                )
+                continue
+            expected_epoch = self._plan_authority_epoch(plan)
+            custom_reasons = self._d4_payload_rejection_reasons(
+                receipt,
+                payload,
+                plan=plan,
+                expected_epoch=expected_epoch,
+                partition_generation=partition_generation,
+            )
+            if custom_reasons:
+                self._record_d4_communication_rejection(*custom_reasons)
+                continue
+            expectation = CommunicationEvidenceExpectation(
+                expected_source_node_id=receipt.source_node_id,
+                expected_destination_node_id=receipt.destination_node_id,
+                expected_authority_id=receipt.authority_id,
+                expected_plan_version=int(plan.version),
+                expected_epoch=expected_epoch,
+                expected_lease_expires_at_s=receipt.lease_expires_at_s,
+                decision_timestamp_s=now,
+                expected_partition_generation=partition_generation,
+                expected_payload_digest=canonical_payload_digest(payload),
+                expected_message_id=receipt.message_id,
+            )
+            if receipt.message_kind == CausalMessageKind.SECONDARY_READINESS.value:
+                validation = self._d4_causal_gate.validate_secondary_readiness(
+                    receipt,
+                    expectation,
+                )
+            elif (
+                receipt.message_kind
+                == CausalMessageKind.REGIONAL_PLAN_BROADCAST.value
+            ):
+                validation = (
+                    self._d4_causal_gate.validate_regional_plan_broadcast(
+                        receipt,
+                        expectation,
+                    )
+                )
+            elif (
+                receipt.message_kind
+                == CausalMessageKind.COALITION_MEMBER_ACK.value
+            ):
+                validation = (
+                    self._d4_causal_gate.validate_coalition_member_ack(
+                        receipt,
+                        expectation,
+                    )
+                )
+            else:
+                self._record_d4_communication_rejection(
+                    "message_kind_unsupported"
+                )
+                continue
+            if not validation.accepted:
+                self._record_d4_communication_rejection(
+                    *validation.reason_codes
+                )
+                continue
+
+            self._d4_communication_accepted_count += 1
+            self._d4_communication_accept_counts[
+                receipt.message_kind
+            ] += 1
+            if validation.idempotent_replay:
+                continue
+            if receipt.message_kind == CausalMessageKind.SECONDARY_READINESS.value:
+                changed = (
+                    self._record_d4_readiness_delivery(payload, receipt)
+                    or changed
+                )
+            elif (
+                receipt.message_kind
+                == CausalMessageKind.REGIONAL_PLAN_BROADCAST.value
+            ):
+                key = (
+                    receipt.destination_node_id,
+                    receipt.plan_version,
+                    receipt.epoch,
+                    receipt.partition_generation,
+                )
+                self._d4_plan_deliveries[key] = _D4AcceptedDelivery(
+                    payload=payload,
+                    receipt=receipt,
+                )
+                intents.extend(
+                    self._d4_ack_intents_from_plan_delivery(
+                        payload,
+                        receipt,
+                        step_input.interceptors,
+                        now=now,
+                    )
+                )
+                changed = True
+            else:
+                key = (
+                    str(payload["resource_id"]),
+                    str(payload["global_track_id"]),
+                    receipt.plan_version,
+                    receipt.epoch,
+                    receipt.partition_generation,
+                )
+                self._d4_ack_deliveries[key] = _D4AcceptedDelivery(
+                    payload=payload,
+                    receipt=receipt,
+                )
+                changed = True
+        return intents, changed, seen
+
+    def _d4_payload_rejection_reasons(
+        self,
+        receipt: CommunicationDeliveryReceipt,
+        payload: Mapping[str, Any],
+        *,
+        plan: Any,
+        expected_epoch: int,
+        partition_generation: int,
+    ) -> tuple[str, ...]:
+        reasons: list[str] = []
+        if str(payload.get("plan_id", "")) != str(plan.plan_id):
+            reasons.append("plan_id_mismatch")
+        if receipt.plan_version != int(plan.version):
+            reasons.append(
+                "plan_version_stale"
+                if receipt.plan_version < int(plan.version)
+                else "plan_version_mismatch"
+            )
+        if receipt.epoch != int(expected_epoch):
+            reasons.append(
+                "epoch_stale"
+                if receipt.epoch < int(expected_epoch)
+                else "epoch_mismatch"
+            )
+        if receipt.partition_generation != int(partition_generation):
+            reasons.append("partition_generation_mismatch")
+        if receipt.message_kind == CausalMessageKind.SECONDARY_READINESS.value:
+            if receipt.destination_node_id != _D4_GATE_NODE_ID:
+                reasons.append("destination_node_mismatch")
+            if str(payload.get("node_id", "")) != receipt.source_node_id:
+                reasons.append("readiness_node_mismatch")
+            if receipt.authority_id != receipt.source_node_id:
+                reasons.append("authority_id_mismatch")
+        elif (
+            receipt.message_kind
+            == CausalMessageKind.REGIONAL_PLAN_BROADCAST.value
+        ):
+            if str(payload.get("member_id", "")) != receipt.destination_node_id:
+                reasons.append("plan_member_mismatch")
+            expected_authority = self._d4_expected_authority_for_delivery(
+                plan,
+                receipt.destination_node_id,
+                receipt,
+            )
+            if (
+                receipt.source_node_id != expected_authority
+                or receipt.authority_id != expected_authority
+            ):
+                reasons.append("plan_authority_mismatch")
+        elif receipt.message_kind == CausalMessageKind.COALITION_MEMBER_ACK.value:
+            if str(payload.get("resource_id", "")) != receipt.source_node_id:
+                reasons.append("ack_member_mismatch")
+            expected_authority = self._d4_expected_authority_for_delivery(
+                plan,
+                receipt.source_node_id,
+                receipt,
+            )
+            if (
+                receipt.destination_node_id != expected_authority
+                or receipt.authority_id != expected_authority
+            ):
+                reasons.append("ack_authority_mismatch")
+        return tuple(dict.fromkeys(reasons))
+
+    def _record_d4_communication_rejection(self, *reasons: str) -> None:
+        self._d4_communication_rejected_count += 1
+        normalized = tuple(
+            dict.fromkeys(str(reason or "receipt_invalid") for reason in reasons)
+        )
+        self._d4_communication_rejection_counts.update(normalized)
+
+    def _record_d4_readiness_delivery(
+        self,
+        payload: Mapping[str, Any],
+        receipt: CommunicationDeliveryReceipt,
+    ) -> bool:
+        changed = False
+        for region_id in tuple(str(item) for item in payload.get("region_ids", ())):
+            key = (
+                receipt.source_node_id,
+                region_id,
+                receipt.plan_version,
+                receipt.epoch,
+                receipt.partition_generation,
+            )
+            previous = self._d4_readiness_receptions.get(key)
+            if previous is None:
+                continuous_predecessors = tuple(
+                    item
+                    for candidate_key, item in self._d4_readiness_receptions.items()
+                    if candidate_key[0] == receipt.source_node_id
+                    and candidate_key[1] == region_id
+                    and candidate_key[4] == receipt.partition_generation
+                    and 0.0
+                    <= receipt.arrival_timestamp_s - item.last_arrival_s
+                    <= self.stack_config.d4_communication_stale_after_s
+                )
+                predecessor = (
+                    max(
+                        continuous_predecessors,
+                        key=lambda item: item.last_arrival_s,
+                    )
+                    if continuous_predecessors
+                    else None
+                )
+                self._d4_readiness_receptions[key] = _D4ReadinessReception(
+                    payload=dict(payload),
+                    receipt=receipt,
+                    first_arrival_s=(
+                        receipt.arrival_timestamp_s
+                        if predecessor is None
+                        else predecessor.first_arrival_s
+                    ),
+                    last_arrival_s=receipt.arrival_timestamp_s,
+                    observation_count=(
+                        1
+                        if predecessor is None
+                        else predecessor.observation_count + 1
+                    ),
+                )
+            else:
+                previous.payload = dict(payload)
+                previous.receipt = receipt
+                previous.last_arrival_s = receipt.arrival_timestamp_s
+                previous.observation_count += 1
+            changed = True
+        return changed
+
+    def _d4_ack_intents_from_plan_delivery(
+        self,
+        payload: Mapping[str, Any],
+        receipt: CommunicationDeliveryReceipt,
+        navigation: PlatformNavigationBatch,
+        *,
+        now: float,
+    ) -> list[RuntimeCommunicationIntent]:
+        resource_id = receipt.destination_node_id
+        active_by_id = {
+            node_id: bool(navigation.active[index])
+            for index, node_id in enumerate(navigation.platform_ids)
+        }
+        intents: list[RuntimeCommunicationIntent] = []
+        for assignment in tuple(payload.get("member_assignments", ())):
+            if not isinstance(assignment, Mapping):
+                continue
+            required_count = int(assignment.get("required_member_count", 1))
+            if required_count <= 1:
+                continue
+            coalition_id = str(assignment.get("coalition_id") or "")
+            coalition_version = int(assignment.get("coalition_version") or 0)
+            global_track_id = str(assignment.get("global_track_id") or "")
+            if not coalition_id or not global_track_id:
+                continue
+            ack_payload = self._d4_message_payload(
+                message_kind=CausalMessageKind.COALITION_MEMBER_ACK.value,
+                source=resource_id,
+                destination=receipt.source_node_id,
+                authority_id=receipt.authority_id,
+                plan_id=str(payload["plan_id"]),
+                plan_version=receipt.plan_version,
+                epoch=receipt.epoch,
+                lease_expires_at_s=receipt.lease_expires_at_s,
+                partition_generation=receipt.partition_generation,
+                now=now,
+                extra={
+                    "resource_id": resource_id,
+                    "global_track_id": global_track_id,
+                    "coalition_id": coalition_id,
+                    "coalition_version": coalition_version,
+                    "can_execute": active_by_id.get(resource_id, False),
+                    "evidence_timestamp": now,
+                    "valid_until": receipt.lease_expires_at_s,
+                    "source_plan_message_id": receipt.message_id,
+                },
+            )
+            intents.append(
+                self._d4_intent(
+                    source=resource_id,
+                    destination=receipt.source_node_id,
+                    topic=_D4_ACK_TOPIC,
+                    payload=ack_payload,
+                )
+            )
+        return intents
+
+    def _d4_periodic_communication_intents(
+        self,
+        step_input: RuntimeStepInput,
+        *,
+        now: float,
+        center_health: C2Health,
+        secondary_failed: bool,
+    ) -> list[RuntimeCommunicationIntent]:
+        config = self._require_ready()
+        plan = self.latest_plan
+        if not config.communication_enabled or plan is None:
+            return []
+        epoch = self._plan_authority_epoch(plan)
+        partition_generation = int(
+            step_input.communication_partition_generation
+        )
+        intents: list[RuntimeCommunicationIntent] = []
+        lease_duration_s = max(
+            config.assignment_period_s
+            * self.stack_config.assignment_lease_multiplier,
+            config.region_policy_period_s,
+        )
+        if (
+            not secondary_failed
+            and now + _EPS >= self._next_d4_readiness_s
+        ):
+            active_indices = [
+                index
+                for index, active in enumerate(step_input.recon.active)
+                if bool(active)
+            ]
+            all_regions = _region_ids(config.region_count)
+            for rank, index in enumerate(active_indices):
+                node_id = step_input.recon.platform_ids[index]
+                region_ids = tuple(
+                    region_id
+                    for region_index, region_id in enumerate(all_regions)
+                    if region_index % len(active_indices) == rank
+                )
+                lease_expires_at = now + lease_duration_s
+                payload = self._d4_message_payload(
+                    message_kind=CausalMessageKind.SECONDARY_READINESS.value,
+                    source=node_id,
+                    destination=_D4_GATE_NODE_ID,
+                    authority_id=node_id,
+                    plan_id=plan.plan_id,
+                    plan_version=plan.version,
+                    epoch=epoch,
+                    lease_expires_at_s=lease_expires_at,
+                    partition_generation=partition_generation,
+                    now=now,
+                    extra={
+                        "node_id": node_id,
+                        "region_ids": region_ids,
+                        "readiness_timestamp_s": now,
+                        "heartbeat_timestamp_s": now,
+                        "cue_freshness_s": 0.0,
+                        "availability_confirmed": True,
+                        "gimbal_pointing_ok": True,
+                        "coverage_matches_requested_cell": True,
+                        "coverage_ratio": (
+                            self.stack_config.secondary_coverage_ratio
+                        ),
+                        "network_full_view_rate": (
+                            self.stack_config.secondary_network_full_view_rate
+                        ),
+                    },
+                )
+                intents.append(
+                    self._d4_intent(
+                        source=node_id,
+                        destination=_D4_GATE_NODE_ID,
+                        topic=_D4_READINESS_TOPIC,
+                        payload=payload,
+                    )
+                )
+            self._next_d4_readiness_s = _advance_schedule(
+                self._next_d4_readiness_s,
+                self.stack_config.d4_readiness_period_s,
+                now,
+            )
+
+        if now + _EPS >= self._next_d4_plan_broadcast_s:
+            plan_key = (
+                str(plan.plan_id),
+                int(plan.version),
+                int(epoch),
+                partition_generation,
+            )
+            plan_changed = plan_key != self._d4_last_broadcast_plan_key
+            for index, resource_id in enumerate(
+                step_input.interceptors.platform_ids
+            ):
+                if not bool(step_input.interceptors.active[index]):
+                    continue
+                delivery = self._d4_plan_deliveries.get(
+                    (
+                        resource_id,
+                        int(plan.version),
+                        int(epoch),
+                        partition_generation,
+                    )
+                )
+                refresh_due = bool(
+                    delivery is None
+                    or now - delivery.receipt.arrival_timestamp_s
+                    >= (
+                        self.stack_config.d4_communication_stale_after_s
+                        - self.stack_config.d4_plan_broadcast_period_s
+                    )
+                )
+                if not plan_changed and not refresh_due:
+                    continue
+                authority_id = self._d4_authority_for_member(
+                    plan,
+                    resource_id,
+                )
+                if not self._d4_authority_can_transmit(
+                    authority_id,
+                    step_input,
+                    center_health=center_health,
+                    secondary_failed=secondary_failed,
+                ):
+                    continue
+                lease_expires_at = self._d4_plan_lease_for_member(
+                    plan,
+                    resource_id,
+                    now=now,
+                    default_duration_s=lease_duration_s,
+                )
+                if lease_expires_at <= now + _EPS:
+                    continue
+                self._d4_expected_plan_authorities[
+                    (
+                        str(plan.plan_id),
+                        int(plan.version),
+                        int(epoch),
+                        partition_generation,
+                        resource_id,
+                    )
+                ] = authority_id
+                member_assignments = tuple(
+                    {
+                        "global_track_id": assignment.target_id,
+                        "required_member_count": (
+                            assignment.required_resource_count
+                        ),
+                        "coalition_id": assignment.coalition_id,
+                        "coalition_version": assignment.coalition_version,
+                        "member_role": assignment.member_role,
+                    }
+                    for assignment in plan.assignments
+                    if assignment.resource_id == resource_id
+                )
+                payload = self._d4_message_payload(
+                    message_kind=(
+                        CausalMessageKind.REGIONAL_PLAN_BROADCAST.value
+                    ),
+                    source=authority_id,
+                    destination=resource_id,
+                    authority_id=authority_id,
+                    plan_id=plan.plan_id,
+                    plan_version=plan.version,
+                    epoch=epoch,
+                    lease_expires_at_s=lease_expires_at,
+                    partition_generation=partition_generation,
+                    now=now,
+                    extra={
+                        "member_id": resource_id,
+                        "member_assignments": member_assignments,
+                    },
+                )
+                intents.append(
+                    self._d4_intent(
+                        source=authority_id,
+                        destination=resource_id,
+                        topic=_D4_PLAN_TOPIC,
+                        payload=payload,
+                    )
+                )
+            self._d4_last_broadcast_plan_key = plan_key
+            self._next_d4_plan_broadcast_s = _advance_schedule(
+                self._next_d4_plan_broadcast_s,
+                self.stack_config.d4_plan_broadcast_period_s,
+                now,
+            )
+        return intents
+
+    def _d4_message_payload(
+        self,
+        *,
+        message_kind: str,
+        source: str,
+        destination: str,
+        authority_id: str,
+        plan_id: str,
+        plan_version: int,
+        epoch: int,
+        lease_expires_at_s: float,
+        partition_generation: int,
+        now: float,
+        extra: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        self._d4_message_sequence += 1
+        return {
+            "schema": _D4_CONTROL_SCHEMA,
+            "message_id": (
+                f"d4:{message_kind}:{self._d4_message_sequence:012d}"
+            ),
+            "message_kind": message_kind,
+            "source_node_id": source,
+            "destination_node_id": destination,
+            "authority_id": authority_id,
+            "plan_id": str(plan_id),
+            "plan_version": int(plan_version),
+            "epoch": int(epoch),
+            "lease_expires_at_s": float(lease_expires_at_s),
+            "partition_generation": int(partition_generation),
+            "generated_timestamp_s": float(now),
+            **dict(extra),
+        }
+
+    def _d4_intent(
+        self,
+        *,
+        source: str,
+        destination: str,
+        topic: str,
+        payload: Mapping[str, Any],
+    ) -> RuntimeCommunicationIntent:
+        self._d4_communication_intent_counts[topic] += 1
+        return RuntimeCommunicationIntent(
+            source=source,
+            destination=destination,
+            topic=topic,
+            schema_version=_D4_CONTROL_SCHEMA,
+            payload=payload,
+        )
+
+    def _d4_authority_for_member(self, plan: Any, resource_id: str) -> str:
+        assignments = tuple(
+            assignment
+            for assignment in plan.assignments
+            if assignment.resource_id == resource_id
+        )
+        for assignment in assignments:
+            metadata = dict(assignment.metadata)
+            owner = metadata.get("regional_owner_node_id") or metadata.get(
+                "owner_node_id"
+            )
+            if owner:
+                if (
+                    self._last_secondary_failed
+                    and str(owner).startswith("RECON-")
+                ):
+                    distributed_owner = (
+                        self._d4_distributed_authority_for_member(
+                            resource_id
+                        )
+                    )
+                    if distributed_owner is not None:
+                        return distributed_owner
+                return str(owner)
+        metadata = dict(plan.metadata)
+        owner = metadata.get("owner_node_id") or metadata.get(
+            "current_plan_owner_node_id"
+        )
+        if owner and str(owner) != "regional_multi_owner":
+            if (
+                str(owner) == "d3_central"
+                and self._last_center_health is C2Health.FAILED
+            ):
+                for assignment in assignments:
+                    region_id = self._track_region_by_id.get(
+                        assignment.target_id
+                    )
+                    if (
+                        region_id is not None
+                        and region_id
+                        in self._d4_vetted_secondary_by_region
+                    ):
+                        return self._d4_vetted_secondary_by_region[
+                            region_id
+                        ]
+                if self._d4_vetted_secondary_by_region:
+                    return self._d4_vetted_secondary_by_region[
+                        sorted(self._d4_vetted_secondary_by_region)[0]
+                    ]
+            return str(owner)
+        source = getattr(plan, "source_node_id", None)
+        if source and str(source) != "d3_regional_router":
+            return str(source)
+        return str(resource_id)
+
+    def _d4_expected_authority_for_delivery(
+        self,
+        plan: Any,
+        resource_id: str,
+        receipt: CommunicationDeliveryReceipt,
+    ) -> str:
+        return self._d4_expected_plan_authorities.get(
+            (
+                str(plan.plan_id),
+                int(receipt.plan_version),
+                int(receipt.epoch),
+                int(receipt.partition_generation),
+                str(resource_id),
+            ),
+            self._d4_authority_for_member(plan, resource_id),
+        )
+
+    def _d4_distributed_authority_for_member(
+        self,
+        resource_id: str,
+    ) -> str | None:
+        decision = self.latest_d4_decision
+        if decision is None:
+            return None
+        for region in decision.region_decisions:
+            if (
+                region.selected_layer
+                is not RegionalAuthorityLayer.DISTRIBUTED
+                or not region.execution_allowed
+                or region.fail_closed
+            ):
+                continue
+            assigned_members = {
+                member_id
+                for member_ids in region.fallback_assignments.values()
+                for member_id in member_ids
+            }
+            if resource_id in assigned_members and region.ownership.owner_id:
+                return str(region.ownership.owner_id)
+        return None
+
+    def _remember_d4_vetted_secondaries(self, decision: Any) -> None:
+        """Retain only D4-assessed ready owners for one authority transition."""
+
+        for region in decision.region_decisions:
+            selected = region.selected_secondary_id
+            if selected is None:
+                continue
+            readiness = region.secondary_readiness.get(selected, {})
+            if readiness.get("ready") is True:
+                self._d4_vetted_secondary_by_region[
+                    region.region_id
+                ] = selected
+
+    @staticmethod
+    def _d4_authority_can_transmit(
+        authority_id: str,
+        step_input: RuntimeStepInput,
+        *,
+        center_health: C2Health,
+        secondary_failed: bool,
+    ) -> bool:
+        if authority_id == "d3_central":
+            return center_health is not C2Health.FAILED
+        if authority_id in set(step_input.recon.platform_ids):
+            if secondary_failed:
+                return False
+            index = step_input.recon.platform_ids.index(authority_id)
+            return bool(step_input.recon.active[index])
+        if authority_id in set(step_input.interceptors.platform_ids):
+            index = step_input.interceptors.platform_ids.index(authority_id)
+            return bool(step_input.interceptors.active[index])
+        return False
+
+    @staticmethod
+    def _d4_plan_lease_for_member(
+        plan: Any,
+        resource_id: str,
+        *,
+        now: float,
+        default_duration_s: float,
+    ) -> float:
+        for assignment in plan.assignments:
+            if assignment.resource_id != resource_id:
+                continue
+            metadata = dict(assignment.metadata)
+            for key in (
+                "regional_lease_expires_at_s",
+                "secondary_lease_expires_at_s",
+            ):
+                if metadata.get(key) is not None:
+                    return float(metadata[key])
+        metadata = dict(plan.metadata)
+        for key in (
+            "regional_min_lease_expires_at_s",
+            "secondary_lease_expires_at_s",
+        ):
+            if metadata.get(key) is not None:
+                return float(metadata[key])
+        return float(now) + float(default_duration_s)
+
+    def _d4_communication_publication(
+        self,
+        now: float,
+    ) -> RuntimePublication:
+        return RuntimePublication(
+            topic="modules.d4.communication_evidence",
+            source="MAIN-STACK",
+            schema_version="scalable3d-d4-communication-evidence-v1",
+            payload={
+                "timestamp_s": now,
+                "partition_generation": self._d4_partition_generation,
+                "received_count": self._d4_communication_received_count,
+                "accepted_count": self._d4_communication_accepted_count,
+                "rejected_count": self._d4_communication_rejected_count,
+                "accept_counts": dict(
+                    sorted(self._d4_communication_accept_counts.items())
+                ),
+                "rejection_counts": dict(
+                    sorted(self._d4_communication_rejection_counts.items())
+                ),
+            },
+            copy_payload=False,
+        )
+
     def _selected_secondary_for_active_regions(self, plan: Any) -> str | None:
         """Return one D4-vetted owner only when it covers every active region."""
 
@@ -3468,7 +4415,11 @@ class IntegratedScalableModuleStack:
             RegionalAuthorityLayer.DISTRIBUTED,
         }
         return any(
-            decision.task_ids and decision.selected_layer in fallback_layers
+            decision.task_ids
+            and decision.selected_layer in fallback_layers
+            and decision.execution_allowed
+            and not decision.fail_closed
+            and decision.ownership.active
             for decision in self.latest_d4_decision.region_decisions
         )
 
@@ -3655,6 +4606,16 @@ class IntegratedScalableModuleStack:
                 assigned_by_target[target_id] = assigned_resource_ids
                 covered_targets.add(target_id)
 
+            commit_evidence = [
+                replace(
+                    evidence,
+                    lease_expires_at_s=min(
+                        float(evidence.lease_expires_at_s),
+                        grant_lease,
+                    ),
+                )
+                for evidence in commit_evidence
+            ]
             grants.append(
                 RegionalAuthorityGrant(
                     region_id=decision.region_id,
@@ -3878,15 +4839,30 @@ class IntegratedScalableModuleStack:
         members = self._d4_members(
             step_input.interceptors,
             tuple(tasks),
+            now=now,
+            plan_version=plan.version,
+            epoch=snapshot_epoch,
+            partition_generation=step_input.communication_partition_generation,
         )
         secondaries = () if secondary_failed else self._d4_secondaries(
             step_input.recon,
             scenario.region_ids,
             now=now,
+            plan_id=plan.plan_id,
+            plan_version=plan.version,
             epoch=snapshot_epoch,
             lease_expires_at=lease_expires_at,
+            partition_generation=step_input.communication_partition_generation,
         )
-        acks = self._d4_acks(tasks, step_input.interceptors, now, lease_expires_at)
+        acks = self._d4_acks(
+            tasks,
+            step_input.interceptors,
+            now,
+            lease_expires_at,
+            plan_version=plan.version,
+            epoch=snapshot_epoch,
+            partition_generation=step_input.communication_partition_generation,
+        )
         return RegionalFailoverSnapshot(
             timestamp_s=now,
             scenario=scenario,
@@ -3906,6 +4882,8 @@ class IntegratedScalableModuleStack:
     @staticmethod
     def _plan_authority_epoch(plan: Any) -> int:
         metadata = dict(plan.metadata)
+        if bool(metadata.get("fault_authority_generation_fence", False)):
+            return int(plan.version)
         for key in ("regional_max_epoch", "secondary_leader_epoch"):
             value = metadata.get(key)
             if value is not None:
@@ -3916,6 +4894,11 @@ class IntegratedScalableModuleStack:
         self,
         navigation: PlatformNavigationBatch,
         tasks: tuple[RegionalTaskEvidence, ...],
+        *,
+        now: float,
+        plan_version: int,
+        epoch: int,
+        partition_generation: int,
     ) -> tuple[RegionalFallbackMember, ...]:
         config = self._require_ready()
         task_track = {
@@ -3929,6 +4912,54 @@ class IntegratedScalableModuleStack:
         all_regions = _region_ids(config.region_count)
         members: list[RegionalFallbackMember] = []
         for index, resource_id in enumerate(navigation.platform_ids):
+            delivery = self._d4_plan_deliveries.get(
+                (
+                    resource_id,
+                    int(plan_version),
+                    int(epoch),
+                    int(partition_generation),
+                )
+            )
+            if (
+                delivery is None
+                and self._fault_generation_changed
+                and self._last_secondary_failed
+            ):
+                expected_targets = {
+                    task.global_track_id
+                    for task in tasks
+                    if resource_id in task.d3_assigned_member_ids
+                }
+                bridged = tuple(
+                    candidate
+                    for key, candidate in self._d4_plan_deliveries.items()
+                    if key[0] == resource_id
+                    and key[1] == int(plan_version) - 1
+                    and key[3] == int(partition_generation)
+                    and {
+                        str(item.get("global_track_id", ""))
+                        for item in candidate.payload.get(
+                            "member_assignments",
+                            (),
+                        )
+                        if isinstance(item, Mapping)
+                    }
+                    == expected_targets
+                )
+                if bridged:
+                    delivery = max(
+                        bridged,
+                        key=lambda item: (
+                            item.receipt.arrival_timestamp_s
+                        ),
+                    )
+            communication_ready = bool(
+                delivery is not None
+                and delivery.receipt.arrival_timestamp_s <= now + _EPS
+                and delivery.receipt.lease_expires_at_s > now
+                and now - delivery.receipt.arrival_timestamp_s
+                <= self.stack_config.d4_communication_stale_after_s
+            )
             scores: dict[str, float] = {}
             for task in tasks:
                 distance = float(
@@ -3946,7 +4977,10 @@ class IntegratedScalableModuleStack:
                     capabilities=("intercept", "visual"),
                     task_bid_scores=scores,
                     available=bool(navigation.active[index]),
-                    communication_ready=bool(navigation.active[index]),
+                    communication_ready=(
+                        bool(navigation.active[index])
+                        and communication_ready
+                    ),
                     max_concurrent_tasks=1,
                 )
             )
@@ -3958,8 +4992,11 @@ class IntegratedScalableModuleStack:
         region_ids: tuple[str, ...],
         *,
         now: float,
+        plan_id: str,
+        plan_version: int,
         epoch: int,
         lease_expires_at: float,
+        partition_generation: int,
     ) -> tuple[MobileReconSecondary, ...]:
         active_indices = [
             index for index, active in enumerate(navigation.active) if bool(active)
@@ -3974,33 +5011,89 @@ class IntegratedScalableModuleStack:
                 for region_index, region_id in enumerate(region_ids)
                 if region_index % len(active_indices) == rank
             )
-            readiness = {
-                region_id: SecondaryReadinessEvidence(
+            readiness: dict[str, SecondaryReadinessEvidence] = {}
+            for region_id in covered_regions:
+                reception = self._d4_readiness_receptions.get(
+                    (
+                        node_id,
+                        region_id,
+                        int(plan_version),
+                        int(epoch),
+                        int(partition_generation),
+                    )
+                )
+                if reception is None:
+                    continue
+                payload = reception.payload
+                if str(payload.get("plan_id", "")) != str(plan_id):
+                    continue
+                receipt = reception.receipt
+                sustained = bool(
+                    reception.observation_count >= 3
+                    and reception.last_arrival_s - reception.first_arrival_s
+                    >= 0.20 - _EPS
+                )
+                generated = float(
+                    payload.get(
+                        "generated_timestamp_s",
+                        receipt.sent_timestamp_s,
+                    )
+                )
+                readiness[region_id] = SecondaryReadinessEvidence(
                     node_id=node_id,
                     current_time_s=now,
-                    readiness_timestamp_s=now,
-                    readiness_stale_after_s=1.0,
-                    availability_confirmed=True,
-                    lease_epoch=epoch,
-                    lease_expires_at_s=lease_expires_at,
-                    heartbeat_timestamp_s=now,
-                    heartbeat_stale_after_s=1.0,
-                    cue_freshness_s=0.0,
-                    cue_stale_after_s=1.0,
-                    gimbal_pointing_ok=True,
-                    communication_received_timestamp_s=now,
-                    communication_stale_after_s=1.0,
-                    coverage_matches_requested_cell=True,
-                    coverage_ratio=self.stack_config.secondary_coverage_ratio,
-                    network_full_view_rate=(
-                        self.stack_config.secondary_network_full_view_rate
+                    readiness_timestamp_s=float(
+                        payload.get("readiness_timestamp_s", generated)
                     ),
-                    takeover_ready_sustained=True,
-                    takeover_ready_since_s=max(0.0, now - 0.25),
-                    takeover_ready_observation_count=3,
+                    readiness_stale_after_s=(
+                        self.stack_config.d4_communication_stale_after_s
+                    ),
+                    availability_confirmed=bool(
+                        navigation.active[index]
+                        and payload.get("availability_confirmed", False)
+                    ),
+                    lease_epoch=receipt.epoch,
+                    lease_expires_at_s=min(
+                        receipt.lease_expires_at_s,
+                        lease_expires_at,
+                    ),
+                    heartbeat_timestamp_s=float(
+                        payload.get("heartbeat_timestamp_s", generated)
+                    ),
+                    heartbeat_stale_after_s=(
+                        self.stack_config.d4_communication_stale_after_s
+                    ),
+                    cue_freshness_s=max(0.0, now - generated),
+                    cue_stale_after_s=(
+                        self.stack_config.d4_communication_stale_after_s
+                    ),
+                    gimbal_pointing_ok=bool(
+                        payload.get("gimbal_pointing_ok", False)
+                    ),
+                    communication_received_timestamp_s=(
+                        reception.last_arrival_s
+                    ),
+                    communication_stale_after_s=(
+                        self.stack_config.d4_communication_stale_after_s
+                    ),
+                    coverage_matches_requested_cell=bool(
+                        payload.get(
+                            "coverage_matches_requested_cell",
+                            False,
+                        )
+                    ),
+                    coverage_ratio=float(
+                        payload.get("coverage_ratio", 0.0)
+                    ),
+                    network_full_view_rate=float(
+                        payload.get("network_full_view_rate", 0.0)
+                    ),
+                    takeover_ready_sustained=sustained,
+                    takeover_ready_since_s=reception.first_arrival_s,
+                    takeover_ready_observation_count=(
+                        reception.observation_count
+                    ),
                 )
-                for region_id in covered_regions
-            }
             output.append(
                 MobileReconSecondary(
                     node_id=node_id,
@@ -4016,6 +5109,10 @@ class IntegratedScalableModuleStack:
         navigation: PlatformNavigationBatch,
         now: float,
         lease_expires_at: float,
+        *,
+        plan_version: int,
+        epoch: int,
+        partition_generation: int,
     ) -> tuple[CoalitionMemberAck, ...]:
         active_by_id = {
             resource_id: bool(navigation.active[index])
@@ -4026,6 +5123,28 @@ class IntegratedScalableModuleStack:
             if task.required_member_count <= 1:
                 continue
             for resource_id in task.d3_assigned_member_ids:
+                delivery = self._d4_ack_deliveries.get(
+                    (
+                        resource_id,
+                        task.global_track_id,
+                        int(plan_version),
+                        int(epoch),
+                        int(partition_generation),
+                    )
+                )
+                if delivery is None:
+                    continue
+                payload = delivery.payload
+                receipt = delivery.receipt
+                if (
+                    receipt.lease_expires_at_s <= now
+                    or float(payload.get("valid_until", 0.0)) <= now
+                    or str(payload.get("coalition_id", ""))
+                    != str(task.coalition_id)
+                    or int(payload.get("coalition_version", -1))
+                    != int(task.coalition_version or 0)
+                ):
+                    continue
                 acks.append(
                     CoalitionMemberAck(
                         resource_id=resource_id,
@@ -4035,9 +5154,27 @@ class IntegratedScalableModuleStack:
                         plan_id=task.d3_plan_id,
                         plan_version=task.d3_plan_version,
                         epoch=task.d3_epoch,
-                        can_execute=active_by_id.get(resource_id, False),
-                        evidence_timestamp=now,
-                        valid_until=lease_expires_at,
+                        can_execute=bool(
+                            active_by_id.get(resource_id, False)
+                            and payload.get("can_execute", False)
+                        ),
+                        evidence_timestamp=float(
+                            payload.get(
+                                "evidence_timestamp",
+                                receipt.sent_timestamp_s,
+                            )
+                        ),
+                        valid_until=min(
+                            float(payload["valid_until"]),
+                            receipt.lease_expires_at_s,
+                            lease_expires_at,
+                        ),
+                        metadata={
+                            "communication_receipt_id": receipt.receipt_id,
+                            "communication_arrival_timestamp_s": (
+                                receipt.arrival_timestamp_s
+                            ),
+                        },
                     )
                 )
         return tuple(acks)
@@ -5767,6 +6904,35 @@ class IntegratedScalableModuleStack:
                 if self.latest_d4_decision is None
                 else len(self.latest_d4_decision.region_decisions)
             ),
+            "d4_communication_partition_generation": (
+                self._d4_partition_generation
+            ),
+            "d4_communication_received_count": (
+                self._d4_communication_received_count
+            ),
+            "d4_communication_accepted_count": (
+                self._d4_communication_accepted_count
+            ),
+            "d4_communication_rejected_count": (
+                self._d4_communication_rejected_count
+            ),
+            "d4_communication_accept_counts": dict(
+                sorted(self._d4_communication_accept_counts.items())
+            ),
+            "d4_communication_rejection_counts": dict(
+                sorted(self._d4_communication_rejection_counts.items())
+            ),
+            "d4_communication_intent_counts": dict(
+                sorted(self._d4_communication_intent_counts.items())
+            ),
+            "d4_communication_event_evaluation_count": (
+                self._d4_communication_event_evaluation_count
+            ),
+            "d4_readiness_reception_count": len(
+                self._d4_readiness_receptions
+            ),
+            "d4_plan_delivery_count": len(self._d4_plan_deliveries),
+            "d4_ack_delivery_count": len(self._d4_ack_deliveries),
             "d5_binding_count": (
                 0
                 if self.latest_d5_result is None

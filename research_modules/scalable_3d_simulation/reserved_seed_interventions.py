@@ -842,6 +842,7 @@ def _select_common_intervention_frames(
         for d3 in d3_candidates
         for d4 in d4_candidates
         if abs(float(d3.timestamp_s) - float(d4.timestamp_s)) <= 1.0e-9
+        and _d3_frame_matches_intervention(d3, intervention_kind)
         and _d4_frame_matches_scenario(d4, intervention_kind)
     ]
     if not matches:
@@ -951,11 +952,31 @@ def _d4_frame_matches_scenario(frame: Any, intervention_kind: str) -> bool:
                 getattr(getattr(item, "selected_layer", None), "value", None)
                 == "center"
                 and getattr(getattr(item, "action", None), "value", None)
-                in {"request_center_replan", "request_secondary_assist"}
+                == "request_secondary_assist"
+                and bool(getattr(item, "execution_allowed", False))
                 and bool(getattr(item, "risk_factors", ()))
                 for item in regions
             )
         )
+    return True
+
+
+def _d3_frame_matches_intervention(
+    frame: Any,
+    intervention_kind: str,
+) -> bool:
+    """Reject fence-only frames that have not adopted the D4 authority yet."""
+
+    family = str(intervention_kind).strip().lower()
+    plan = getattr(frame, "plan", None)
+    metadata = getattr(plan, "metadata", {})
+    owner = str(metadata.get("active_plan_owner", "center"))
+    if family == "center_failed":
+        return owner in {"secondary", "regional"}
+    if family == "center_and_secondary_failed":
+        return owner == "regional"
+    if family in {"active_risk", "nominal"}:
+        return owner == "center"
     return True
 
 

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Protocol
+from typing import Any, Mapping, Protocol
 
 import numpy as np
 
@@ -54,6 +54,25 @@ class RuntimePublication:
     schema_version: str
     payload: Any
     copy_payload: bool = True
+
+
+@dataclass(frozen=True)
+class RuntimeCommunicationIntent:
+    """One truth-free point-to-point message request emitted through main."""
+
+    source: str
+    destination: str
+    topic: str
+    schema_version: str
+    payload: Mapping[str, Any]
+
+    def __post_init__(self) -> None:
+        for name in ("source", "destination", "topic", "schema_version"):
+            value = str(getattr(self, name)).strip()
+            if not value:
+                raise ValueError(f"{name} must be non-empty")
+            object.__setattr__(self, name, value)
+        object.__setattr__(self, "payload", dict(self.payload))
 
 
 @dataclass(frozen=True)
@@ -195,6 +214,19 @@ class RuntimeStepInput:
     interceptors: PlatformNavigationBatch
     recon: PlatformNavigationBatch
     cameras: tuple[CameraRuntimeState, ...] = ()
+    delivered_communication_messages: tuple[Any, ...] = ()
+    communication_partition_generation: int = 0
+
+    def __post_init__(self) -> None:
+        generation = int(self.communication_partition_generation)
+        if generation < 0:
+            raise ValueError("communication_partition_generation must be non-negative")
+        object.__setattr__(self, "communication_partition_generation", generation)
+        object.__setattr__(
+            self,
+            "delivered_communication_messages",
+            tuple(self.delivered_communication_messages),
+        )
 
 
 @dataclass(frozen=True)
@@ -203,6 +235,7 @@ class RuntimeStepOutput:
     recon_acceleration_ned: np.ndarray
     camera_commands: tuple[CameraObservationCommand, ...] = ()
     publications: tuple[RuntimePublication, ...] = ()
+    communication_intents: tuple[RuntimeCommunicationIntent, ...] = ()
     diagnostics: dict[str, Any] = field(default_factory=dict)
 
     def validated(
@@ -227,6 +260,11 @@ class RuntimeStepOutput:
         camera_ids = tuple(command.camera_id for command in commands)
         if len(camera_ids) != len(set(camera_ids)):
             raise ValueError("runtime output contains duplicate camera commands")
+        intents = tuple(self.communication_intents)
+        if any(not isinstance(intent, RuntimeCommunicationIntent) for intent in intents):
+            raise TypeError(
+                "runtime communication intents must be RuntimeCommunicationIntent values"
+            )
         return self
 
 

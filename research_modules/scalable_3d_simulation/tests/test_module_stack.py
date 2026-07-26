@@ -3049,6 +3049,305 @@ def test_center_failure_reissues_a_secondary_owned_plan_before_guidance_continue
     )
 
 
+def test_d4_secondary_execution_waits_for_delivered_plan_messages() -> None:
+    config = make_curriculum_scenario(
+        "center_failure",
+        scale=5,
+        seed=3,
+        duration_s=1.2,
+    )
+    config = replace(
+        config,
+        metadata={
+            **config.metadata,
+            "fault_schedule": [
+                {"time_s": 0.6, "component": "center", "action": "failed"}
+            ],
+        },
+    )
+    result = run_episode(
+        config,
+        module_stack=IntegratedScalableModuleStack(
+            IntegratedStackConfig(d1_scan_max_lateness_s=0.0)
+        ),
+    )
+
+    secondary_plan = next(
+        message
+        for message in result.online_messages
+        if message.topic == "modules.d3.assignment_plan"
+        and message.payload["metadata"].get("active_plan_owner") == "secondary"
+    )
+    transition = next(
+        message.payload
+        for message in result.online_messages
+        if message.topic == "modules.d4.regional_failover"
+        and abs(message.timestamp - secondary_plan.timestamp) <= 1.0e-9
+    )
+    released = next(
+        message
+        for message in result.online_messages
+        if message.topic == "modules.d4.regional_failover"
+        and message.timestamp > secondary_plan.timestamp
+        and message.payload["summary"]["execution_allowed_region_count"] == 8
+    )
+
+    assert transition["summary"]["execution_allowed_region_count"] == 0
+    assert released.timestamp - secondary_plan.timestamp <= 0.15
+    assert result.summary["delivered_control_topic_counts"][
+        "d4.regional_plan_broadcast.v1"
+    ] >= 5
+    assert result.summary["delivered_control_topic_counts"][
+        "d4.secondary_readiness.v1"
+    ] >= 3
+
+
+def test_center_failure_without_communication_stays_fail_closed() -> None:
+    config = ScenarioConfig(
+        scenario_name="center_failure_without_communication",
+        scenario_version="center-failure-without-communication-v1",
+        target_count=5,
+        resource_count=5,
+        recon_count=1,
+        region_count=8,
+        duration_s=3.2,
+        seed=1251,
+        radar_detection_probability=1.0,
+        acoustic_enabled=False,
+        visual_enabled=False,
+        communication_enabled=False,
+        metadata={
+            "fault_schedule": [
+                {"time_s": 1.5, "component": "center", "action": "failed"}
+            ]
+        },
+    )
+    stack = IntegratedScalableModuleStack(
+        IntegratedStackConfig(d1_scan_max_lateness_s=0.0)
+    )
+
+    result = run_episode(config, module_stack=stack)
+
+    final_d4 = next(
+        message.payload
+        for message in reversed(result.online_messages)
+        if message.topic == "modules.d4.regional_failover"
+    )
+    assert final_d4["summary"]["execution_allowed_region_count"] == 0
+    assert final_d4["summary"]["fail_closed_region_count"] == 8
+    assert result.summary["delivered_control_message_count"] == 0
+    assert stack.latest_plan.metadata["active_plan_owner"] == "center"
+    assert Counter(
+        (command.mode.value, command.gate_reason)
+        for command in stack.latest_guidance_batch.pair_commands
+    ) == {("hold", "d4_hold_for_review"): 5}
+
+
+def test_m_to_n_secondary_coalition_waits_for_all_delivered_acks() -> None:
+    config = ScenarioConfig(
+        scenario_name="center_failure_m_to_n_async_ack",
+        scenario_version="center-failure-m-to-n-async-ack-v1",
+        target_count=2,
+        resource_count=4,
+        recon_count=1,
+        region_count=1,
+        duration_s=3.2,
+        seed=1271,
+        radar_detection_probability=1.0,
+        acoustic_enabled=False,
+        visual_enabled=False,
+        communication_latency_s=0.04,
+        communication_jitter_s=0.0,
+        communication_drop_probability=0.0,
+        metadata={
+            "demand_pattern": "hybrid_2_primary_1_reserve",
+            "high_threat_fraction": 0.5,
+            "fault_schedule": [
+                {"time_s": 1.5, "component": "center", "action": "failed"}
+            ],
+        },
+    )
+    stack = IntegratedScalableModuleStack(
+        IntegratedStackConfig(d1_scan_max_lateness_s=0.0)
+    )
+
+    result = run_episode(config, module_stack=stack)
+
+    secondary_plan = next(
+        message
+        for message in result.online_messages
+        if message.topic == "modules.d3.assignment_plan"
+        and message.payload["metadata"].get("active_plan_owner") == "secondary"
+    )
+    assignment_counts = Counter(
+        item["global_track_id"] for item in secondary_plan.payload["assignments"]
+    )
+    coalition_target_id, required_count = max(
+        assignment_counts.items(),
+        key=lambda item: item[1],
+    )
+    assert required_count == 3
+    coalition_assignments = [
+        item
+        for item in secondary_plan.payload["assignments"]
+        if item["global_track_id"] == coalition_target_id
+    ]
+    primary_resource_ids = {
+        item["resource_id"]
+        for item in coalition_assignments
+        if item["member_role"] == "primary"
+    }
+    reserve_resource_ids = {
+        item["resource_id"]
+        for item in coalition_assignments
+        if item["member_role"] == "reserve"
+    }
+    assert len(primary_resource_ids) == 2
+    assert len(reserve_resource_ids) == 1
+
+    commit_frames = []
+    for message in result.online_messages:
+        if (
+            message.topic != "modules.d4.regional_failover"
+            or message.timestamp < secondary_plan.timestamp
+        ):
+            continue
+        commits = [
+            commit
+            for region in message.payload["regions"]
+            for commit in region["coalition_commits"]
+            if commit["global_track_id"] == coalition_target_id
+            and commit["commit_required"]
+        ]
+        if commits:
+            commit_frames.append((message, commits[0]))
+
+    collecting_message, collecting = next(
+        item
+        for item in commit_frames
+        if item[1]["state"] == "collecting_acks"
+    )
+    committed_message, committed = next(
+        item for item in commit_frames if item[1]["state"] == "committed"
+    )
+    assert collecting_message.timestamp < committed_message.timestamp
+    assert collecting["acked_member_ids"] == []
+    assert len(collecting["missing_member_ids"]) == required_count
+    assert collecting["execution_authorized"] is False
+    assert set(committed["acked_member_ids"]) == set(
+        committed["required_member_ids"]
+    )
+    assert len(committed["acked_member_ids"]) == required_count
+    assert committed["missing_member_ids"] == []
+    assert committed["execution_authorized"] is True
+
+    coalition_resource_ids = set(committed["required_member_ids"])
+    precommit_commands = [
+        command
+        for message in result.online_messages
+        if message.topic == "modules.d7.guidance_commands"
+        and collecting_message.timestamp
+        <= message.timestamp
+        < committed_message.timestamp
+        for command in message.payload["commands"]
+        if command["resource_id"] in coalition_resource_ids
+        and command["global_track_id"] == coalition_target_id
+    ]
+    assert len(precommit_commands) == required_count
+    assert {command["mode"] for command in precommit_commands} == {"hold"}
+    assert {
+        command["gate_reason"]
+        for command in precommit_commands
+        if command["resource_id"] in primary_resource_ids
+    } == {"d4_hold_for_review"}
+    assert {
+        command["gate_reason"]
+        for command in precommit_commands
+        if command["resource_id"] in reserve_resource_ids
+    } == {"assignment_not_current"}
+
+    released_commands = next(
+        [
+            command
+            for command in message.payload["commands"]
+            if command["resource_id"] in coalition_resource_ids
+            and command["global_track_id"] == coalition_target_id
+        ]
+        for message in result.online_messages
+        if message.topic == "modules.d7.guidance_commands"
+        and message.timestamp >= committed_message.timestamp
+        and sum(
+            command["mode"] == "midcourse_pn_3d"
+            for command in message.payload["commands"]
+            if command["resource_id"] in primary_resource_ids
+            and command["global_track_id"] == coalition_target_id
+        )
+        == len(primary_resource_ids)
+    )
+    assert len(released_commands) == required_count
+    assert {
+        command["mode"]
+        for command in released_commands
+        if command["resource_id"] in primary_resource_ids
+    } == {"midcourse_pn_3d"}
+    assert {
+        (command["mode"], command["gate_reason"])
+        for command in released_commands
+        if command["resource_id"] in reserve_resource_ids
+    } == {("hold", "assignment_not_current")}
+    assert sum(
+        decision.execution_allowed
+        for decision in stack.latest_d4_decision.region_decisions
+    ) == 1
+    assert result.summary["delivered_control_topic_counts"][
+        "d4.coalition_member_ack.v1"
+    ] >= required_count
+    assert result.summary["online_truth_use_count"] == 0
+    assert stack.latest_guidance_batch.lifecycle_diagnostics is not None
+    assert (
+        stack.latest_guidance_batch.lifecycle_diagnostics
+        .global_track_id_rewrite_count
+        == 0
+    )
+
+
+def test_partition_generation_change_rejects_in_flight_d4_evidence() -> None:
+    config = ScenarioConfig(
+        scenario_name="d4_partition_generation_change",
+        scenario_version="d4-partition-generation-change-v1",
+        target_count=2,
+        resource_count=2,
+        recon_count=1,
+        region_count=2,
+        duration_s=1.4,
+        seed=1261,
+        radar_detection_probability=1.0,
+        acoustic_enabled=False,
+        visual_enabled=False,
+        communication_latency_s=0.20,
+        communication_jitter_s=0.0,
+        communication_drop_probability=0.0,
+        metadata={
+            "communication_partition_schedule": [
+                {"time_s": 0.8, "generation": 1}
+            ]
+        },
+    )
+    stack = IntegratedScalableModuleStack(
+        IntegratedStackConfig(d1_scan_max_lateness_s=0.0)
+    )
+
+    result = run_episode(config, module_stack=stack)
+    diagnostics = result.summary["module_final_diagnostics"]
+
+    assert diagnostics["d4_communication_partition_generation"] == 1
+    assert diagnostics["d4_communication_rejection_counts"][
+        "partition_generation_mismatch"
+    ] > 0
+    assert diagnostics["d4_communication_accepted_count"] > 0
+    assert result.summary["online_truth_use_count"] == 0
+
+
 def test_secondary_failure_reissues_a_distributed_regional_plan() -> None:
     config = make_curriculum_scenario(
         "secondary_failure",
@@ -3090,22 +3389,33 @@ def test_secondary_failure_reissues_a_distributed_regional_plan() -> None:
             message.payload["metadata"].get("regional_owner_layers", ())
         ) == ("distributed",)
     )
-    distributed_guidance = next(
+    transition_guidance = next(
         message
         for message in result.online_messages
         if message.topic == "modules.d7.guidance_commands"
         and abs(message.timestamp - distributed_plan.timestamp) <= 1.0e-9
     )
     assert Counter(
-        command["mode"] for command in distributed_guidance.payload["commands"]
-    ) == {"midcourse_pn_3d": 5}
+        command["mode"] for command in transition_guidance.payload["commands"]
+    ) == {"hold": 5}
+    distributed_guidance = next(
+        message
+        for message in result.online_messages
+        if message.topic == "modules.d7.guidance_commands"
+        and message.timestamp > distributed_plan.timestamp
+        and Counter(
+            command["mode"] for command in message.payload["commands"]
+        )
+        == {"midcourse_pn_3d": 5}
+    )
+    assert distributed_guidance.timestamp - distributed_plan.timestamp <= 0.15
     distributed_ack = next(
         message
         for message in result.online_messages
         if message.topic == "runtime.assignment_plan_ack"
         and abs(message.timestamp - distributed_plan.timestamp) <= 1.0e-9
     )
-    assert distributed_ack.payload["held_binding_count"] == 0
+    assert distributed_ack.payload["held_binding_count"] == 5
     assert Counter(
         (command.mode.value, command.gate_reason)
         for command in stack.latest_guidance_batch.pair_commands
@@ -3197,7 +3507,7 @@ def test_regional_authority_adapter_rejects_incomplete_d4_evidence(
     run_episode(config, module_stack=stack)
 
     target_ids = {track.global_track_id for track in stack.latest_d2_tracks}
-    now = 1.1
+    now = float(stack.latest_d4_decision.timestamp_s)
     if mutation == "expired":
         now = 10.0
     else:
