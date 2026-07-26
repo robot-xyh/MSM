@@ -25,8 +25,12 @@ main 独立统计得到 finalize unchanged skip 分布 `0:895, 1:5`。旧守恒�
 main 现已取消 finalize 相同来源签名跳过，最终 pending 后验必须实际进入 D2；D2 通过
 replay-coast 隔离重复来源证据。原五个失败 cell 的开发态定向重放均满足 D6 generation
 contract：D1 final 等于 D2 consumed、skip 为 0、pending 为空。当前判定为
-**D1-owned 无 P0；修复已形成 clean source commit `98d01bf`；跨模块 P0 代码和五项定向验证
-已关闭；完整 900-cell formal rerun 仍待存储条件和新最终 plan**。完整诊断见
+**D1-owned 无 P0；运行时代码和五项定向验证已关闭；正式 clean source 已冻结为
+`1e5ed8ddcf27f375e922a447decfbd875d21bfdf`，execution plan SHA-256 为
+`8804ecb4dd0513db55906905f031832711012974fc911546df40e09fb297d373`。shards `0/5/9`
+已完成 `135/900`；原失败项 seeds `1000/1005/1009` 为 clean-formal，正式闭合 `3/5`；
+seeds `1008/1018` 和完整 900-cell formal acceptance 仍开放。运行因磁盘只比 `20 GiB`
+下限多约 `65 MB` 暂停**。完整诊断见
 `D1_FORMAL_R0_GENERATION_FINALIZATION_DIAGNOSIS_20260725_CN.md`。
 
 ### 固定滞后回放与发布证据快照正式结论

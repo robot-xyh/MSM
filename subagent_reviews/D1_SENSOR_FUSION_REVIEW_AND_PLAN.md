@@ -21,9 +21,16 @@ main 已取消 finalize 的相同来源签名跳过，最终 pending D1 后验�
 原五个 cell 的开发态定向重放均由 D6 验证：D1 final 等于 D2 consumed、skip 为 0、pending
 为空。D1 默认算法、双时间戳、协方差、OOSM 和真值隔离不变。
 
-修复已形成 clean source commit `98d01bf`，代码和五项定向验证已关闭。完整 900-cell
-formal rerun 仍待存储条件和新最终 plan。旧 `2c7b425` 的正式制品保持原判定，不能由五项
-定向结果原地改写。数据和验收边界见
+运行时修复提交为 `98d01bf`，代码和五项定向验证已关闭。正式重跑 clean source 已冻结为
+`1e5ed8ddcf27f375e922a447decfbd875d21bfdf`，execution plan SHA-256 为
+`8804ecb4dd0513db55906905f031832711012974fc911546df40e09fb297d373`。main 已完成 shards
+`0/5/9`，进度为 `135/900`。
+
+D6 已正式闭合原失败 `delayed_noisy` 5v5 seeds `1000/1005` 和 20v20 seed `1009`。三项均为
+clean-formal、formal eligible、generation verified，failure reason 为空；D1 final 等于 D2
+consumed、skip 为 0、pending 为空。原失败项正式进度为 `3/5`，seeds `1008/1018` 尚未正式
+重跑。运行因可用磁盘只比 `20 GiB` 下限多约 `65 MB` 暂停，完整 900-cell formal acceptance
+继续开放。旧 `2c7b425` 正式制品保持原判定。数据和验收边界见
 `D1_FORMAL_R0_GENERATION_FINALIZATION_DIAGNOSIS_20260725_CN.md`。
 
 ## 最新增量：在线发布证据子集快照正式拒绝（2026-07-25）

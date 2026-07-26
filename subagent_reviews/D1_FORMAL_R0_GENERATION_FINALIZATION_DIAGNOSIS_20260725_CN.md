@@ -2,7 +2,12 @@
 
 **日期**：2026-07-25
 
-**正式来源提交**：`2c7b425d076899e1c54a3d87d6ef23a613ba6e3a`
+**原正式来源提交**：`2c7b425d076899e1c54a3d87d6ef23a613ba6e3a`
+
+**修复重跑 clean source**：`1e5ed8ddcf27f375e922a447decfbd875d21bfdf`
+
+**Execution plan SHA-256**：
+`8804ecb4dd0513db55906905f031832711012974fc911546df40e09fb297d373`
 
 **范围**：正式 R0 的 900 个 episode，重点复核 5 个 `delayed_noisy` 非 clean-formal episode
 
@@ -24,8 +29,10 @@ main 已取消 finalize 的相同来源签名跳过，最终 pending D1 后验�
 不重复建轨，也不刷新原始来源证据时钟。五个原失败 cell 的开发态定向重放现已全部通过 D6
 generation contract：D1 最终代次等于 D2 实际消费代次，skip 为 0，pending 为空。
 
-当前状态为：**D1 本身从未漏发；修复已形成 clean source commit `98d01bf`；代码和五项定向
-验证已关闭；完整 900-cell formal rerun 仍待存储条件和新最终 plan。**
+当前状态为：**D1 本身从未漏发；运行时修复和五项定向验证已关闭；正式重跑来源已冻结为
+clean source `1e5ed8ddcf27f375e922a447decfbd875d21bfdf`。原五个失败项已有 `3/5`
+正式闭合，完整矩阵完成 `135/900`，其余正式验收仍开放。运行因可用磁盘只比 `20 GiB`
+安全下限多约 `65 MB` 而暂停。**
 
 ## 原正式证据
 
@@ -60,8 +67,8 @@ main 对 900 个 `summary.json` 的独立统计为：
 
 ## 修复后定向证据
 
-main 使用原正式构造参数重放以下五个 cell；对应修复随后固化为 clean source commit
-`98d01bf`：
+main 使用原正式构造参数重放以下五个 cell；运行时修复随后固化为提交 `98d01bf`，正式重跑
+来源再冻结为 clean source `1e5ed8ddcf27f375e922a447decfbd875d21bfdf`：
 
 | 场景 | Seed | D6 generation contract | D1 final 与 D2 consumed | Final skip | Pending |
 | --- | ---: | --- | --- | ---: | --- |
@@ -75,6 +82,24 @@ main 使用原正式构造参数重放以下五个 cell；对应修复随后固�
 coast 数均大于 0，没有按重复检测新建航迹，重复合并计数为 0，`global_track_id` 仍由中心
 D2 所有。该结果证明原五项运行时断点已被修复，不代表 900 个 cell 的 clean-formal 矩阵已经
 重新生成。
+
+## 正式重跑增量
+
+main 已从 clean source `1e5ed8ddcf27f375e922a447decfbd875d21bfdf` 按冻结 execution plan
+运行 shards `0/5/9`，共完成 `135/900` 个 cell。D6 对其中三个原失败项给出一致结论：
+
+| 原失败项 | Clean formal | Formal eligible | Generation | D1 final 与 D2 consumed | Skip | Pending | Failure reason |
+| --- | --- | --- | --- | --- | ---: | --- | --- |
+| delayed_noisy 5v5 seed 1000 | 是 | 是 | verified | 相等 | 0 | 空 | 空 |
+| delayed_noisy 5v5 seed 1005 | 是 | 是 | verified | 相等 | 0 | 空 | 空 |
+| delayed_noisy 20v20 seed 1009 | 是 | 是 | verified | 相等 | 0 | 空 | 空 |
+
+原失败项的正式闭合进度为 `3/5`。`delayed_noisy` 5v5 seeds `1008/1018` 尚未进入本轮正式
+重跑，不能从开发态定向结果外推为 clean-formal 通过。完整 R0 仍为 `135/900`，因此整体
+formal acceptance 保持开放。
+
+运行已按存储安全门暂停。暂停时可用磁盘仅比 `20 GiB` 下限多约 `65 MB`。该暂停不构成算法
+失败，也不改变已完成 135 个 cell 和上述三个正式项的证据等级。
 
 ## 代码边界
 
@@ -116,14 +141,18 @@ finalize 抛出异常并保留失败可见性；只有实际处理成功后才�
 4. 五个原失败 cell 定向回归全部满足 D1 final 等于 D2 consumed、skip 为 0、pending 为空；
 5. D6 对五项的 generation contract 均给出 `verified`；
 6. D1 审计、D2、D6 和 main 修复依次形成提交 `4b018e4`、`dc5821f`、`8e955f3` 和
-   clean source commit `98d01bf`。
+   运行时修复提交 `98d01bf`；
+7. 正式重跑来源冻结为 clean source `1e5ed8ddcf27f375e922a447decfbd875d21bfdf`，
+   shards `0/5/9` 已完成 `135/900`；
+8. 原失败项 seeds `1000/1005/1009` 已由 D6 正式闭合，进度为 `3/5`。
 
 仍需 main、D2 和 D6 完成：
 
-1. 在存储条件满足并形成新最终 plan 后，从 `98d01bf` 运行完整 900-cell R0，不复用或原地
-   改写 `2c7b425` 的旧制品；
-2. 由 D6 重新聚合 900 项 generation、pending、在线真值隔离和业务指标，确认没有新增失败；
-3. 只有完整矩阵满足冻结验收口径后，才能把 formal acceptance 标记为关闭。
+1. 恢复满足安全余量的存储条件后，继续冻结 execution plan 的剩余 shards；
+2. 正式重跑 seeds `1008/1018`，关闭剩余 `2/5` 原失败项；
+3. 完成剩余 `765` 个 cell，并由 D6 聚合全部 900 项 generation、pending、在线真值隔离和
+   业务指标；
+4. 只有完整矩阵满足冻结验收口径后，才能把 formal acceptance 标记为关闭。
 
 ## D1 验证
 
