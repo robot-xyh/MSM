@@ -91,3 +91,29 @@ contract 为 `verified`，episode/matrix/variant failure reasons 全为空。
 13/13、9/9、27/27；skip 均为 0，pending 均为空。该证据不能外推到其余已执行 cell。
 新批次剩余 765 个 cell，原失败项 5v5 seed 1008、1018 仍开放。磁盘可用空间仅比 20 GiB
 下限多约 64 MB。完整批次结束前，旧正式结论保持 895/900。
+
+## 学习作用域审计合同验证
+
+2026-07-26 完成 D6 学习作用域审计器的合同测试。测试使用临时构造且完整哈希绑定的
+G1/R0 单 cell 制品，不是 d59352b 的正式运行结果，也不是 AirSim 或物理拦截证据。
+
+完整 G1 与唯一 R0 配对时，审计可验证正候选边上的实际模型评分、零 fallback、在线真值使用
+为 0、物理结果可用和两项必选指标非退化，同时明确
+`model_promotion.allowed=false`。其余 35 项负向测试覆盖：
+
+1. 缺 R0 时配对 availability 为 unavailable，`non_degraded=None`；
+2. shadow/fallback 时实际采用状态为 unavailable，不能进入比较；
+3. bundle 文件树被篡改时在准入前阻断；
+4. 预检设备与预期不一致时阻断；
+5. 物理结果缺失时不以 0 补齐，配对非退化保持空值；
+6. scope merge 未完成时阻断整个作用域；
+7. execution plan 内容或摘要、merge checksum、progress/checkpoint、episode tree 被篡改时
+   阻断；
+8. R0 comparison key 重复，或来源提交、父计划、外生配置、随机计划不一致时阻断；
+9. D3、D4、D5 主动视觉仅加载 bundle、处于 shadow 或实际采用为 0 时阻断；
+10. C1/F1 任一必要组件未采用，以及 D5 图模型候选边为 0 时阻断。
+
+定向测试结果为 `36 passed, 1 warning in 2.35s`，D6 全量回归为
+`930 passed, 1 warning in 78.98s`。warning 为既有 Matplotlib `Axes3D` 环境提示。正式审计
+仍需 main 提供学习 execution plan、完整 merge、同键 R0 计划与 merge、实际绑定 bundle
+根目录，以及可选预期设备。上述实物输入缺失前，D6 不形成学习采用率、R0 非退化或晋级结论。

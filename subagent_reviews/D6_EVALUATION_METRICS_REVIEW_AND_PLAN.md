@@ -2405,3 +2405,28 @@ D2 consumed 一致，skip 为 0，pending 为空。评审接受这三个 cell �
 新 source 当前只有 135/900 执行完成，D6 定向报告只覆盖其中三项。5v5 seed 1008/1018 和
 其余 765 个 cell 保持开放。磁盘可用空间仅比 20 GiB 下限多约 64 MB，main 应先处理运行空间，
 再继续同一 source、同一 plan 的剩余分片。
+
+## 2026-07-26 学习作用域正式证据审计评审
+
+评审接受 D6 新增的可选只读审计接口。接口要求 main 显式提供学习 execution plan、完整
+scope merge、R0 对照和实际 bundle 根目录。它复核计划、分片、cell、episode、模型绑定、
+设备、版本、诊断和在线真值隔离，不读取控制器内部状态，也不改变默认规则路径。
+
+评审采用以下硬门：
+
+1. `requested_mode` 和 `effective_mode` 都必须为 `assist`，bundle 已加载且无 fallback。
+2. D3/D4/D5 各自必须存在正的实际采用证据。D5 图模型还要求
+   `loaded_edge_model + model_scored + fallback_count=0`，并要求候选边计数 available 且
+   大于 0；D5 主动视觉同时要求选择计数和 runtime ACK 应用计数为正。
+3. shadow、fallback、仅加载 bundle 和 applied count 为 0 全部不算 adoption。
+4. 每个学习 cell 必须有唯一同 `comparison_key` R0，且父计划、来源提交、外生配置和传感器
+   随机计划一致。
+5. `intercepted_target_count` 与 `offline_proximity_unique_target_count` 两侧均可用且
+   学习侧不低于 R0，才可给出必选指标非退化。缺值保持 unavailable。
+6. scope merge 不完整、episode 物理结果缺失、在线真值非零或任何哈希不一致均失败关闭。
+
+主审补充后的定向测试为 `36 passed, 1 warning in 2.35s`，D6 全量回归为
+`930 passed, 1 warning in 78.98s`。29 个新增负例对计划和持久化制品篡改、重复/错配 R0、
+三个单组件空采用、C1/F1 必要组件缺失和 D5 零候选边作直接断言。缺 R0 或 lineage 不可比时
+`non_degraded=None`。评审不接受把该合同测试写成 d59352b 的正式性能证据。main 实物输入
+尚未提供，当前不形成学习准入或模型晋级结论。

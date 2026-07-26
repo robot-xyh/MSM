@@ -2898,3 +2898,36 @@ contract 为 `verified`，三类 failure reason 均为空，skip 为 0，pending
 完成正式准入，也不改变旧批次 895/900 的整体结论。原失败项 5v5 seed 1008、1018 尚未执行；
 新批次仍有 765 个 cell。检查时文件系统可用空间为 21,538,787,328 bytes，仅比 20 GiB
 运行下限多 63,950,848 bytes，约 64 MB（61 MiB）。
+
+## 学习作用域正式证据审计（2026-07-26）
+
+D6 新增可选、只读的学习作用域审计器。它消费 main 持久化的 execution plan、作用域 merge
+目录和显式 R0 对照，不导入控制器，也不改变默认规则路径。公开入口为
+`audit_learning_scope_formal_evidence()`；命令行入口为
+`scripts/run_learning_scope_formal_audit.py`。
+
+审计逐层验证模型 bundle 绑定、预检设备、执行计划和父计划摘要、分片计划/进度/checkpoint、
+逐 cell 结果、episode 制品树、来源提交、在线真值使用、版本与运行诊断。学习变体还必须提供
+逐 episode 的实际 assist 采用证据。D5 图模型还要求候选边计数可用且大于 0，避免把零边空
+调用记为采用。shadow、fallback 和仅加载 bundle 均不计采用。
+
+同 `comparison_key` 的 R0 必须唯一、来源一致且物理指标可用。当前两个必选非退化指标为
+`intercepted_target_count` 和 `offline_proximity_unique_target_count`。缺 R0、缺实际采用、
+缺物理结果或 scope 不完整时，输出保持 `unavailable`，总判定为 `fail_closed`，不补零。
+审计通过也不授予模型晋级。
+
+输入由 main 显式提供：
+
+```text
+learned execution plan + learned scope merge directory
+zero or more R0 execution plan + scope merge directory pairs
+actual model bundle directories
+optional expected preflight device
+```
+
+输出包括审计 JSON、逐 cell CSV、中文 Markdown 和 `SHA256SUMS`。主审负例补充后，定向测试
+为 `36 passed, 1 warning in 2.35s`，其中新增 29 项；D6 全量回归为
+`930 passed, 1 warning in 78.98s`。新增覆盖计划/摘要、merge/checkpoint/progress/episode
+tree 篡改，重复或错配 R0，D3/D4/D5 主动视觉空采用，C1/F1 缺必要组件，以及 D5 零候选边。
+warning 为既有 Matplotlib `Axes3D` 导入提示。正式 d59352b 学习作用域及其 R0 制品尚未在
+本任务中提供，因此当前只有审计能力证据，没有模型非退化或晋级结论。

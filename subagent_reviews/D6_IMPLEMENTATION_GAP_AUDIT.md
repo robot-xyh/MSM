@@ -2376,3 +2376,33 @@ D2 输入摘要验证的 skip 仍不能进入 formal 守恒式。
 - 该 3/3 关闭三个目标 cell，不关闭其余已执行 cell。5v5 seed 1008/1018 仍开放。
 - 当前磁盘仅比 20 GiB 下限高 63,950,848 bytes。该运行条件阻塞完整批次，不改变 D6
   evaluator 状态；当前无新增 D6-owned 代码 P0。
+
+## 2026-07-26 学习作用域证据审计 GAP
+
+### 已关闭的 D6-owned 项
+
+1. 已实现对 execution plan、scope merge、分片状态、cell 结果和 episode 制品树的完整性与
+   SHA-256 绑定审计。
+2. 已实现模型 bundle binding、preflight device、resolved versions 和 config/summary
+   diagnostics 一致性检查。
+3. 已实现逐 episode 实际 assist 采用门。D5 图模型除模型来源、评分状态和零回退外，还要求
+   候选边计数 available 且大于 0。shadow、fallback、仅加载 bundle、采用计数为 0 或零边
+   空调用均不构成 adoption。
+4. 已实现同 `comparison_key` 的唯一 R0 配对和 availability-aware 非退化。必选物理指标缺失
+   时 `non_degraded=None`，不补零。
+5. 已实现在线真值使用为 0、有限状态和物理结果可用性检查，以及 JSON/CSV/中文
+   Markdown/校验和输出。
+
+主审补充后定向回归为 `36 passed, 1 warning in 2.35s`，其中新增 29 项；D6 全量回归为
+`930 passed, 1 warning in 78.98s`。新增测试证明 execution plan 内容/摘要、merge checksum、
+progress/checkpoint、episode tree 篡改，重复或 lineage 错配 R0，D3/D4/D5 主动视觉空采用，
+C1/F1 缺任一必要组件和 D5 零候选边均返回 `fail_closed`。warning 为既有 Matplotlib
+`Axes3D` 环境提示。
+
+### 仍开放的跨模块证据项
+
+main 尚未向本任务提供 d59352b 的实际学习 execution plan/merge、同键 R0 execution
+plan/merge、实际绑定 bundle 根目录和可选预期设备。因此正式 scope 的实际采用、R0 非退化和
+模型准入均为 unavailable。该项属于待运行证据，不是 D6 解析器代码 P0。
+
+当前无新增 D6-owned P0。D6 审计器完成后仍不拥有模型晋级权，不修改默认控制路径。

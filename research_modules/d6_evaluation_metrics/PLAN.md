@@ -2725,3 +2725,38 @@ generation contract 均为 `verified`：D1 最终代次等于 D2 最终消费代
    也不得用三项定向结果声明 135/135。
 5. 当前磁盘余量仅比 20 GiB 下限高 63,950,848 bytes。继续执行前由 main 处理空间约束，
    完成其余 765 cell 后再生成同一 source、同一 plan 的完整 D6 合并报告。
+
+## 21. 学习作用域正式证据审计（2026-07-26）
+
+### 已完成
+
+1. 实现独立、只读审计入口，消费一个学习 execution plan、对应 scope merge 目录和显式
+   R0 对照目录，不接入控制路径。
+2. 验证父计划、作用域、分片、cell、episode 和模型 bundle 的哈希绑定；验证 preflight
+   device、版本、运行诊断、在线真值为 0 和有限状态。
+3. 按变体检查 D3、D4、D5 图模型和 D5 主动视觉的实际 assist 采用。D5 图模型同时要求正的
+   候选边计数；shadow、fallback、bundle-loaded-only 和零边空调用均失败关闭。
+4. 按 `comparison_key` 唯一配对 R0。必选物理指标任何一侧不可用时不计算非退化，不补零。
+5. 输出 JSON、逐 cell CSV、中文 Markdown 和 SHA-256 清单；定向测试覆盖完整通过、缺 R0、
+   计划/merge/分片/episode 篡改、重复与错配 R0、设备不符、物理结果缺失、scope 不完整、
+   单组件空采用、C1/F1 缺必要组件和 D5 零候选边。
+
+2026-07-26 主审补充后定向回归为 `36 passed, 1 warning in 2.35s`，其中新增 29 项；D6
+全量回归为 `930 passed, 1 warning in 78.98s`。warning 为既有 Matplotlib `Axes3D`
+环境提示。
+
+### 验收边界
+
+审计 `pass` 只表示证据链完整、实际采用成立且必选 R0 配对指标未退化。它不表示因果效果，
+不授予模型晋级，也不修改默认控制路径。缺少任一必要证据时，`non_degraded` 保持空值并返回
+`fail_closed`。
+
+### main 待提供
+
+1. d59352b 对应学习 execution plan 与完整 scope merge 目录。
+2. 相同父计划、来源提交、外生配置和传感器随机计划的 R0 execution plan/merge 对。
+3. execution plan 实际绑定的 D3、D4、D5 图模型或 D5 主动视觉 bundle 根目录。
+4. 若需设备强校验，提供预期 preflight device。
+
+收到上述输入后只运行既有审计，不再扩展算法。正式制品缺失前，D6 不声明学习采用、非退化或
+晋级。

@@ -4224,3 +4224,69 @@ main 的定向修复没有要求 D6 认可 declared skip。修复后的 5 个 ep
 五项全部通过这些检查。该验证与 `skip=1` 的等价性判定相互独立，未增加任何跳过放行分支。
 如果后续运行时再次声明 skip，仍须提供版本化完整 D2 输入摘要，否则 formal admission
 保持 false。
+
+## 23. 学习作用域正式证据审计（2026-07-26）
+
+### 23.1 输入模型
+
+`ScopeEvidenceArtifacts` 描述一组 execution plan 与 scope merge 目录。
+`LearningScopeFormalAuditInputs` 接收一个学习作用域、零个或多个显式 R0 作用域，以及可选
+预期预检设备。实际 D3、D4、D5 图模型和 D5 主动视觉 bundle 根目录通过独立映射传入，避免
+从文档或默认路径猜测模型。
+
+### 23.2 完整性与绑定
+
+审计器依次验证 execution plan schema 与自摘要、父计划摘要、formal 和 fallback 声明、
+scope cell 清单、分片清单、bundle binding 摘要与实际文件树。merge 层验证 manifest、
+cell CSV、episode inventory 和 `SHA256SUMS`。随后逐分片核对 plan、progress、checkpoint，
+逐 cell 核对 result 摘要和 episode artifact-tree 摘要。
+
+episode 层要求来源提交一致且工作树声明 clean，场景配置、manifest 和 summary 的学习版本及
+诊断一致，状态有限，`online_truth_use_count=0`。任何文件缺失、路径越界、摘要不符或数量
+不守恒都写入稳定 blocker，并保持失败关闭。
+
+### 23.3 实际采用
+
+学习变体的 preflight 和 episode diagnostics 必须声明
+`requested_mode=assist`、`effective_mode=assist`、`bundle_loaded=true` 且
+`fallback_reason=null`。随后使用离线 episode 评估结果确认真实采用：
+
+```text
+D3: d3_learning_applied_count > 0
+D4: d4_advice_control_adoption_count > 0
+D5 图模型: probability_source=loaded_edge_model
+           scoring_status=model_scored
+           model_fallback_event_count=0
+           d5_candidate_edge_count availability=available
+           d5_candidate_edge_count > 0
+D5 主动视觉: assist adopted count > 0
+             runtime ACK applied count > 0
+```
+
+模式为 shadow、出现 fallback、只加载模型或应用计数不可用/为 0 时，cell 的
+`assist_adoption_status` 为 `unavailable_or_not_adopted`。
+
+### 23.4 R0 配对与非退化
+
+学习 cell 按 `comparison_key` 查找唯一 R0。两侧必须具有相同父计划摘要、来源提交、外生配置
+摘要和传感器随机计划版本。必选指标
+`intercepted_target_count` 与 `offline_proximity_unique_target_count` 采用
+“学习侧大于等于 R0”门限。任一侧不可用时，该比较的 `non_degraded` 为 `None`，总审计
+`fail_closed`。其他可选指标仅在两侧都有证据时计算，不补零。
+
+### 23.5 输出与验证
+
+`write_learning_scope_formal_audit_report()` 写出：
+
+```text
+learning_scope_formal_audit.json
+learning_scope_formal_audit_cells.csv
+LEARNING_SCOPE_FORMAL_AUDIT_CN.md
+SHA256SUMS
+```
+
+命令行入口为 `scripts/run_learning_scope_formal_audit.py`。通过时退出码为 0，失败关闭时为
+2。主审补充后定向测试共 36 项，其中新增 29 项，覆盖 execution plan 内容/摘要、
+merge checksum、progress/checkpoint、episode tree 篡改，重复或 lineage 错配 R0，
+D3/D4/D5 主动视觉仅加载、shadow 和零采用，C1/F1 缺任一必要组件，以及 D5 图模型零候选边。
+该模块只生成审计证据，不授予模型晋级或控制权限。
