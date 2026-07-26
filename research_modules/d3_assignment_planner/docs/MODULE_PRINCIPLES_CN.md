@@ -1674,6 +1674,16 @@ SHA-256 和输入快照 SHA-256。runner 只读取清单列出的路径，不能
 隔离求解结果决定。输出增加来源计划摘要和身份映射摘要，且明确
 `publish=false`、runtime ACK=false、assignment/control authority=false。
 
-clean commit `0ed7ca2` 的 20-seed/100-frame 输入已验证该原则。首次失败的 seed 1011
-序号 3 仅存在新联盟 token 差异；修复后全部帧可重放，硬违规和全局航迹编号改写均为 0。
-最终仍无合格帧，说明身份可重放性和学习干预可辨识性是两个独立判据。
+clean source commit `0ed7ca2730f5354be1e6021f9882f1ae26bc42df` 的
+20-seed/100-frame 输入已验证该原则。输入 manifest SHA-256 为
+`e5367d2651955f809b482d78ef3205cbdf44d57eae576c80f64cbd38eac59a44`，输入
+`SHA256SUMS` 全部通过。首次失败的 seed 1011 序号 3 仅存在新联盟 token 差异；修复后
+全部帧可重放，硬违规和全局航迹编号改写均为 0。
+
+正式 clean evaluator 使用代码提交
+`bdb665eb8e63a17f5f15dbf3fe472af10e5e5b5c`。输出校验清单全部通过，内容 SHA-256 为
+`c01b13fb5925d99078a3bb9505dc0f9511ec5ab700a432399d3ebe0fcfb55592`，输入与输出外部
+归档 SHA-256 为
+`127ad91d864b136ab10cde7111bf6241a7a765ad4467aa449ef29cbb5557ef5e`。正式结果仍无
+合格帧，说明身份可重放性、批量合同闭合和学习干预可辨识性是三个独立判据。前两项通过
+不能授予 D7 checkpoint、A1 准入、默认路径或生产权限。

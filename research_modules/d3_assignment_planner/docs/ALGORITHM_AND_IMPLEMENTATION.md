@@ -3126,7 +3126,7 @@ authority。
 专项结果为 `17 passed`。与原离线双臂执行和资格选择测试合并为 `59 passed`。D3 全量
 502 项结果为 `501 passed, 1 skipped`，唯一跳过为可选 OR-Tools。原
 `execute_offline_paired_intervention(...)` 的 23 项专项继续通过，说明共享 arm 重构未改变
-既有批量执行行为。20-seed 外层正式重放尚未完成。
+既有批量执行行为。该能力形成时尚未完成的 20-seed 外层正式重放，现已按第 61 节完成。
 
 ## 60. 20-seed 隔离干预批量实现（2026-07-26）
 
@@ -3213,8 +3213,10 @@ OR-Tools。
 
 ### 61.1 输入与首次失败
 
-main 在 detached clean commit `0ed7ca2` 生成显式 manifest。seed 固定为 `1000-1019`，
-每 seed 5 帧，共 100 帧；在线 truth 字段计数为 0。manifest SHA-256 为：
+main 在 detached clean source commit
+`0ed7ca2730f5354be1e6021f9882f1ae26bc42df` 生成显式 manifest。seed 固定为
+`1000-1019`，每 seed 5 帧，共 100 帧；在线 truth 字段计数为 0。输入 `SHA256SUMS`
+全部通过，manifest SHA-256 为：
 
 ```text
 e5367d2651955f809b482d78ef3205cbdf44d57eae576c80f64cbd38eac59a44
@@ -3258,11 +3260,18 @@ replayed: d3-coalition-target_0004
 
 ### 61.3 真实批量结果
 
-修复后，指定 manifest 在两个独立空目录完成运行，四个输出文件逐字节一致。批量内容摘要
-为：
+开发确定性复核中，指定 manifest 在两个独立空目录完成运行，四个输出文件逐字节一致。
+随后以代码提交 `bdb665eb8e63a17f5f15dbf3fe472af10e5e5b5c` 作为正式 clean evaluator，
+对相同冻结输入重新执行。正式输出 `SHA256SUMS` 全部通过，批量内容摘要为：
 
 ```text
 c01b13fb5925d99078a3bb9505dc0f9511ec5ab700a432399d3ebe0fcfb55592
+```
+
+输入与正式输出的外部归档 SHA-256 为：
+
+```text
+127ad91d864b136ab10cde7111bf6241a7a765ad4467aa449ef29cbb5557ef5e
 ```
 
 20 个 seed 均完成 5 帧重放。80 帧实际应用学习代价；20 帧以
@@ -3271,8 +3280,9 @@ c01b13fb5925d99078a3bb9505dc0f9511ec5ab700a432399d3ebe0fcfb55592
 `publish`、runtime ACK、production assignment authority、production control authority、
 physical outcome 和 reward 均为 false，`global_track_id` 改写计数为 0。
 
-该结果关闭了真实形态控制臂无法重放的阻塞。它同时表明当前冻结 bundle 在这 100 帧上没有
-越过 Hungarian 绑定边界；因此不支持 PPO、assist、模型准入、控制采用或物理收益结论。
+该结果正式关闭了真实形态隔离批量重放合同。它同时表明当前 development policy 在这
+100 帧上没有越过 Hungarian 离散绑定边界；因此不能形成 D7 checkpoint，也不支持 A1
+准入、默认路径、PPO、assist、生产控制采用或物理收益结论。
 
 ### 61.4 回归
 

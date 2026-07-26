@@ -1488,8 +1488,9 @@ D3 现提供公开单帧重放生产者。它从同一冻结规则输入新建�
 默认 Hungarian、需求槽、规则代价、阈值、生产 loader/writer 和 assist 权限均未改变。
 
 该接口只提供 single-frame checkpoint-selection evidence。匿名帧没有 seed，seed
-`1000-1019`、split 和清单完整性由 main/D6 外层校验。20-seed clean 正式运行、D7 共同
-检查点、runtime ACK、outcome、reward 和 admission 仍未完成，不能从模块单元测试推导。
+`1000-1019`、split 和清单完整性由 main/D6 外层校验。该接口形成时尚未完成的 20-seed
+clean 正式运行现已由下一节闭合；D7 共同检查点、runtime ACK、outcome、reward 和
+admission 仍未完成，不能从模块单元测试或批量合同推导。
 
 ## 56. 20-seed 外层 runner 复核（2026-07-26）
 
@@ -1503,19 +1504,28 @@ D3 新增的外层 runner 没有把 seed 写回 `PlanningFrameEvidence`。seed �
 的四个输出逐字节一致。该处理不会改变单帧完整 DTO，也不改变在线计划身份合同。
 
 旧 `active_risk_clean_*` 和 `checkpoint_paired_physical_20seed_*` 输出仍未改名或补写。
-main 已在 clean commit `0ed7ca2` 重新生成 20 seed、100 帧的匿名输入。首次运行在
-seed 1011 序号 3 因新增目标联盟 token 与隔离规划器本地命名不同而失败。该帧除联盟标识外，
-binding、成本、迟滞、版本、窗口、决策和规模均一致。
+main 已在 clean source commit `0ed7ca2730f5354be1e6021f9882f1ae26bc42df`
+重新生成 20 seed、每 seed 5 帧、共 100 帧的匿名输入。manifest SHA-256 为
+`e5367d2651955f809b482d78ef3205cbdf44d57eae576c80f64cbd38eac59a44`，输入
+`SHA256SUMS` 全部通过。首次运行在 seed 1011 序号 3 因新增目标联盟 token 与隔离规划器
+本地命名不同而失败。该帧除联盟标识外，binding、成本、迟滞、版本、窗口、决策和规模均
+一致。
 
 D3 增加严格记录联盟身份恢复。它只允许前序计划中尚无联盟的目标采用记录帧已哈希绑定的
 匿名标识；前序已有联盟必须保持连续。assignment、需求摘要、成员、metadata 和最终控制
 执行签名继续校验。重复联盟标识、前序标识重写及引用篡改均失败关闭。
 
-修复后正式 batch 完成。20/20 seed 均为 `unavailable/no_eligible_frame`；100 帧中 80 帧
-应用学习代价，20 帧分布外回退，绑定变化、硬违规和 `global_track_id` 改写均为 0。两个
-空目录的 JSON、CSV、中文报告和校验清单逐字节一致。D3/D7 共同检查点仍不存在，物理执行
-和 D6 外审仍在模块外。
+修复后的正式 clean evaluator 使用代码提交
+`bdb665eb8e63a17f5f15dbf3fe472af10e5e5b5c`。正式输出 `SHA256SUMS` 全部通过，内容
+SHA-256 为 `c01b13fb5925d99078a3bb9505dc0f9511ec5ab700a432399d3ebe0fcfb55592`；
+输入与输出外部归档 SHA-256 为
+`127ad91d864b136ab10cde7111bf6241a7a765ad4467aa449ef29cbb5557ef5e`。
+20/20 seed 均为 `unavailable/no_eligible_frame`；100 帧中 80 帧应用学习代价，20 帧
+分布外回退，每个 seed 的 binding change、硬违规和 `global_track_id` 改写均为 0。
+`publish=false`，生产分配/控制权限均为 false。两个空目录逐文件一致属于开发确定性复核；
+正式输出由独立校验清单和内容摘要约束。
 
 最终回归结果为单帧专项 `23 passed`、相关合同组合 `79 passed`、D3 全量
-`521 passed, 1 skipped`（522 项）。没有新增 PPO、assist、admission、生产权限或物理
-结果声明。
+`521 passed, 1 skipped`（522 项）。隔离批量重放合同正式闭合，但当前 development
+policy 没有跨过 Hungarian 离散边界。D3/D7 共同检查点不存在，A1、默认路径、PPO、
+assist、生产权限和物理结果仍未准入。

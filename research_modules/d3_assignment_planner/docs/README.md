@@ -11,6 +11,13 @@ D3 文档遵循 `research_modules/DOCUMENTATION_STANDARD.md`。推荐阅读顺�
 
 本模块只生成候选分配计划和审计数据，不包含真实飞控、硬件、火控、毁伤或自动处置逻辑。
 
+2026-07-26，D3 的 20-seed 隔离批量重放合同完成正式 clean evaluator 复核。冻结输入来自
+提交 `0ed7ca2730f5354be1e6021f9882f1ae26bc42df`，正式评估代码提交为
+`bdb665eb8e63a17f5f15dbf3fe472af10e5e5b5c`。固定 seed `1000-1019`，每 seed 5 帧，
+共 100 帧；80 帧应用学习代价，20 帧分布外回退，逐 seed binding change、硬违规和
+`global_track_id` 改写均为 0。输入和输出校验清单全部通过。该结果只关闭隔离重放合同；
+`eligible_seed_count=0`，D7 checkpoint、A1 准入、默认路径和生产权限仍未形成。
+
 2026-07-26，D3 完成 A1 学习证据装配复核。production writer 不再接受调用方提供的
 qualified admission，production loader 也不接受手工正向布尔和占位 SHA 自我晋级。
 现有 development bundle 的 shadow 行为不变；正式 assist 等待 D6 实物审计和 D3
@@ -90,9 +97,9 @@ main 随后完成 clean-tree nominal 200v200 三 seed 集成复测。优化后 D
 bundle 使用 `d3_learning_model_bundle_v3`，状态固定为 `development/shadow-only`；内部
 test 只作开发诊断，不是最终准入证据。行为克隆训练、分档时延和 rule-only/BC shadow
 对照见 `EXPERIMENT_REPORT.md`。在该训练报告生成时，assist promotion、外部 20-seed
-验收、AirSim 收益和 PPO 均开放。后续 2026-07-21 的单帧同输入比较和 2026-07-25 的
-多周期可辨识性评估已补充外部保留种子证据；运行采用、物理非退化、因果收益、assist
-promotion 和 PPO 仍开放。
+验收、AirSim 收益和 PPO 均未完成。后续单帧同输入比较、多周期可辨识性评估和正式
+20-seed 隔离重放已补充外部保留种子证据；运行采用、物理非退化、因果收益、assist
+promotion 和 PPO 仍未完成。
 
 2026-07-21 增加 C1 detached shared seed registry 只读绑定。算法和哈希链见
 `ALGORITHM_AND_IMPLEMENTATION.md` 第 36 节，正式 900-episode 映射验证见

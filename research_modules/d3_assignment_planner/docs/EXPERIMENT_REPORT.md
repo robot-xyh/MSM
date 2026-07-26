@@ -1672,8 +1672,8 @@ truth/reward/outcome 字段、前序版本与有效期、规则/有效矩阵不�
 
 本次证据只说明匿名单帧生产者和失败关闭合同已实现并测试。匿名规划帧没有 seed，本接口
 不验证 seed `1000-1019` 是否齐全，也不验证 split manifest、逐 seed 时间历史、D7 共同
-检查点或物理结果。旧 20-seed 开发续跑的绑定变化仍为 0/20，不能由本次单元测试改写为
-正式正例。main/D6 仍需完成外层 manifest/runner 校验和 clean 20-seed 正式运行。
+检查点或物理结果。该接口形成时尚未完成的外层 manifest/runner 校验和 clean 20-seed
+正式运行，现已按后续两节完成；正式结果仍为绑定变化 0/20，不能改写为策略正例。
 
 ## 20-seed 隔离批量合同验证（2026-07-26）
 
@@ -1716,9 +1716,10 @@ AirSim 或三维质点物理 episode。
 
 ### 输入
 
-输入由 main 在 detached clean commit `0ed7ca2` 生成，固定 seed `1000-1019`。每 seed
-包含 5 个按序号和规划时间严格递增的匿名规则帧，共 100 帧。在线 truth 字段计数为 0。
-manifest SHA-256 为
+输入由 main 在 detached clean source commit
+`0ed7ca2730f5354be1e6021f9882f1ae26bc42df` 生成，固定 seed `1000-1019`。每 seed
+包含 5 个按序号和规划时间严格递增的匿名规则帧，共 100 帧。在线 truth 字段计数为 0，
+输入 `SHA256SUMS` 全部通过。manifest SHA-256 为
 `e5367d2651955f809b482d78ef3205cbdf44d57eae576c80f64cbd38eac59a44`，bundle
 manifest SHA-256 为
 `a9213d65606a9e2f921040e153488c0f4cdebb10882fa16013fce5b59f9314c0`，policy version
@@ -1749,9 +1750,13 @@ assignment 引用、需求摘要、成员角色和 metadata 引用。前序已�
 
 ### 结果
 
-修复后两个独立空目录均成功生成 JSON、逐 seed CSV、中文报告和校验清单，四个文件逐字节
-一致。批量内容 SHA-256 为
-`c01b13fb5925d99078a3bb9505dc0f9511ec5ab700a432399d3ebe0fcfb55592`。
+开发确定性复核中，两个独立空目录均成功生成 JSON、逐 seed CSV、中文报告和校验清单，
+四个文件逐字节一致。正式 clean evaluator 使用代码提交
+`bdb665eb8e63a17f5f15dbf3fe472af10e5e5b5c` 对同一冻结输入重放，输出
+`SHA256SUMS` 全部通过。批量内容 SHA-256 为
+`c01b13fb5925d99078a3bb9505dc0f9511ec5ab700a432399d3ebe0fcfb55592`。输入与正式输出的
+外部归档 SHA-256 为
+`127ad91d864b136ab10cde7111bf6241a7a765ad4467aa449ef29cbb5557ef5e`。
 
 | 指标 | 结果 |
 |---|---:|
@@ -1768,11 +1773,13 @@ assignment 引用、需求摘要、成员角色和 metadata 引用。前序已�
 
 20 个 seed 的不可用原因均为 `no_eligible_frame`。其中 100 帧均含
 `binding_unchanged`；4 帧另有规则组和处理组需求槽证据不完整原因。输出固定
-`publish=false`，运行 ACK、生产分配权限、生产控制权限、物理结果和 reward 均为 false。
+`publish=false`，运行 ACK、生产分配权限、生产控制权限、物理结果和 reward 均为 false；
+`production_authority=false`，不存在默认路径授权。
 
 ### 判断
 
-真实批量输入已经越过联盟标识重放阻塞，批处理合同和失败关闭行为成立。当前冻结策略没有在
-这 100 帧中改变最终 Hungarian 绑定，因此没有可进入 D7 共同检查点的 D3 候选。该结果不
-支持 PPO、assist、模型准入、控制采用、物理拦截或收益声明。下一步应调整训练数据或冻结
-bundle 后重新执行同一 manifest 合同，不能降低硬安全、联盟连续性或 eligibility 门限。
+真实批量输入已经越过联盟标识重放阻塞，隔离批处理合同和失败关闭行为正式成立。当前
+development policy 没有在这 100 帧中改变最终 Hungarian 绑定，因此没有可进入 D7
+共同检查点的 D3 候选。该结果不支持 A1 准入、默认路径、PPO、assist、生产控制采用、
+物理拦截或收益声明。下一步应调整训练数据或冻结 bundle 后重新执行同一 manifest 合同，
+不能降低硬安全、联盟连续性或 eligibility 门限。

@@ -1665,10 +1665,10 @@ D3 新增 `replay_isolated_learning_intervention_frame(...)`。main 可把一份
 和 authority 均不可用，也不提供 outcome、reward 或正式 admission。
 
 匿名 `PlanningFrameEvidence` 不携带实验 seed。保留 seed `1000-1019`、split 身份、清单
-完整性和逐 seed 首个共同检查点由 main/D6 外层 manifest/runner 校验；本接口不声称完成
+完整性和逐 seed 首个共同检查点由 main/D6 外层 manifest/runner 校验；本接口不单独声称
 holdout inventory 验证。2026-07-26 新增专项 `17 passed`，与既有离线执行和资格测试合并
 为 `59 passed`。D3 全量收集 502 项，结果为 `501 passed, 1 skipped`，唯一跳过是可选
-OR-Tools。20-seed 外层正式运行尚未使用本接口重新执行。
+OR-Tools。该接口形成时尚未完成的 20-seed 外层正式运行，现已按下节批量合同完成。
 
 ## 2026-07-26 隔离干预 20-seed 批量合同
 
@@ -1699,21 +1699,36 @@ schema/hash/bundle 不匹配、非有限值及非空输出目录均失败关闭�
 夹具 20/20 seed 选出首个合格帧；零残差夹具 20/20 seed 明确不可用。两次独立输出逐文件
 一致。该结果仍只属于合同测试。
 
-main 随后在 clean commit `0ed7ca2` 生成真实 manifest，固定 seed `1000-1019`，共 100 个
-匿名规划帧，在线 truth 字段计数为 0。首次运行在 seed 1011、序号 3 失败。新增目标的记录
-联盟匿名标识为 `coalition_0004`，隔离规划器按匿名目标名生成
+main 随后在 clean source commit
+`0ed7ca2730f5354be1e6021f9882f1ae26bc42df` 生成真实 manifest，固定 seed
+`1000-1019`，每 seed 5 帧，共 100 个匿名规划帧，在线 truth 字段计数为 0。输入
+manifest SHA-256 为
+`e5367d2651955f809b482d78ef3205cbdf44d57eae576c80f64cbd38eac59a44`，输入
+`SHA256SUMS` 全部通过。首次运行在 seed 1011、序号 3 失败。新增目标的记录联盟匿名标识
+为 `coalition_0004`，隔离规划器按匿名目标名生成
 `d3-coalition-target_0004`；资源绑定、成本、迟滞、版本、窗口和决策状态均一致。D3 现先
 校验记录、重放和前序计划的联盟库存、唯一性、assignment、需求摘要和 metadata 引用，再
 只为新联盟恢复已哈希绑定的记录标识。既有联盟标识变化、重复标识或引用不一致继续失败
 关闭，最终仍执行原完整控制签名比较。
 
-修复后正式 batch 完成 20 seed/100 帧。结果为 0 个 eligible seed、20 个
-`unavailable/no_eligible_frame`；80 帧实际应用学习代价，20 帧因分布外回退，全部帧绑定
-变化为 0，规则组和处理组硬违规均为 0。输出 `publish=false`，运行 ACK、生产分配权限、
-生产控制权限、物理结果和 reward 均不可用，`global_track_id` 改写为 0。相同 manifest 与
-固定评估时刻写入两个空目录，四个文件逐字节一致。
+修复后的正式 clean evaluator 使用代码提交
+`bdb665eb8e63a17f5f15dbf3fe472af10e5e5b5c`，完成 20 seed/100 帧重放。输出
+`SHA256SUMS` 全部通过，内容 SHA-256 为
+`c01b13fb5925d99078a3bb9505dc0f9511ec5ab700a432399d3ebe0fcfb55592`。输入与正式输出的
+外部归档 SHA-256 为
+`127ad91d864b136ab10cde7111bf6241a7a765ad4467aa449ef29cbb5557ef5e`；临时证据未复制进
+本模块。
+
+正式结果为 `eligible_seed_count=0`，20/20 seed 均为
+`unavailable/no_eligible_frame`。80 帧实际应用学习代价，20 帧因分布外使用规则回退；
+每个 seed 的 binding change 均为 0，规则组和处理组硬违规均为 0。输出固定
+`publish=false`、`production_assignment_authority=false` 和
+`production_control_authority=false`，运行 ACK、物理结果和 reward 均不可用，
+`global_track_id` 改写为 0。相同 manifest 与固定评估时刻的开发确定性复核还验证了两个
+空目录四个文件逐字节一致。
 
 新增真实形态正负例后，单帧专项为 `23 passed`；相关干预合同组合为 `79 passed`。D3 全量
 结果为 `521 passed, 1 skipped`（522 项），唯一 skip 仍是可选 OR-Tools。Matplotlib
-`Axes3D` 环境警告不影响 D3 合同测试。0 个 eligible seed 表明当前冻结策略没有越过
-Hungarian 绑定边界，不能据此声明 PPO、assist、准入、物理收益或生产权限。
+`Axes3D` 环境警告不影响 D3 合同测试。正式结果只关闭隔离批量重放合同。0 个 eligible
+seed 表明当前 development policy 没有越过 Hungarian 离散绑定边界，不能形成 D7
+checkpoint，也不能授予 A1 准入、默认路径、PPO、assist、物理收益或生产权限。

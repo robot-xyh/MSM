@@ -1868,10 +1868,10 @@ holdout inventory 完整、物理结果可用或正式准入完成。
 ### 验收与后续
 
 新增专项 `17 passed`；单帧重放、既有离线双臂执行和资格选择组合为 `59 passed`。D3 全量
-502 项结果为 `501 passed, 1 skipped`，skip 仍是可选 OR-Tools。后续由 main 按每个 seed
-的权威规划时间遍历调用本接口，把 `.eligibility` 送入严格 first-eligible selector，再与
-D7 检查点求交。20-seed 外层正式运行未完成。默认 Hungarian、规则代价、阈值、生产
-writer/loader 和 assist 权限不变；AirSim 接口未变化。
+502 项结果为 `501 passed, 1 skipped`，skip 仍是可选 OR-Tools。该能力形成时待完成的
+20-seed 外层正式运行，现已由下节 runner 在 clean evaluator 中闭合。正式结果未产生合格
+帧，因此不能与 D7 形成共同检查点。默认 Hungarian、规则代价、阈值、生产 writer/loader
+和 assist 权限不变；AirSim 接口未变化。
 
 ## 55. 20-seed 隔离干预批量合同（2026-07-26）
 
@@ -1905,18 +1905,26 @@ writer/loader 和 assist 权限不变；AirSim 接口未变化。
 专项覆盖清单缺失/重复/乱序、frame/bundle/schema/hash、dirty source、非有限值、输入运行
 中变化和非空输出目录。
 
-main 已在 clean commit `0ed7ca2` 保存固定 seed `1000-1019` 的 100 个匿名规则规划帧，
-manifest SHA-256 为
+main 已在 clean source commit `0ed7ca2730f5354be1e6021f9882f1ae26bc42df`
+保存固定 seed `1000-1019` 的 100 个匿名规则规划帧，每 seed 5 帧。manifest SHA-256 为
 `e5367d2651955f809b482d78ef3205cbdf44d57eae576c80f64cbd38eac59a44`，在线 truth
-计数为 0。首次 batch 暴露新增目标联盟匿名标识与隔离规划器本地命名不一致。D3 已增加
-严格的记录联盟身份恢复：只恢复记录帧已哈希绑定的新联盟标识，既有联盟连续性、成员绑定、
-需求摘要、metadata 引用和最终控制执行签名继续精确校验。
+计数为 0，输入 `SHA256SUMS` 全部通过。首次 batch 暴露新增目标联盟匿名标识与隔离规划器
+本地命名不一致。D3 已增加严格的记录联盟身份恢复：只恢复记录帧已哈希绑定的新联盟标识，
+既有联盟连续性、成员绑定、需求摘要、metadata 引用和最终控制执行签名继续精确校验。
 
-正式 batch 已完成。20 个 seed 均为 `unavailable/no_eligible_frame`，100 帧中 80 帧应用
-学习代价、20 帧分布外回退，绑定差异和硬违规均为 0。两次空目录输出逐文件确定一致；
-`publish`、运行 ACK、生产分配/控制权限、物理结果和 reward 保持 false。下一步由 main
-决定是否重新训练或重新选择冻结 bundle，并与 D7 可执行检查点求交；D3 不降低资格、安全
-或联盟连续性门限。
+正式 clean evaluator 使用代码提交
+`bdb665eb8e63a17f5f15dbf3fe472af10e5e5b5c`。输出 `SHA256SUMS` 全部通过，内容
+SHA-256 为 `c01b13fb5925d99078a3bb9505dc0f9511ec5ab700a432399d3ebe0fcfb55592`；
+输入与输出外部归档 SHA-256 为
+`127ad91d864b136ab10cde7111bf6241a7a765ad4467aa449ef29cbb5557ef5e`。20 个 seed 均为
+`unavailable/no_eligible_frame`，100 帧中 80 帧应用学习代价、20 帧分布外回退；逐 seed
+binding change、硬违规和 `global_track_id` 改写均为 0。`publish=false`，生产分配/控制
+权限、运行 ACK、物理结果和 reward 保持 false。
+
+当前计划状态是“批量重放合同正式闭合、策略准入未通过”。后续由 main 提供重新训练或重新
+冻结的 development policy，再复用同一 manifest 合同；只有出现合格 D3 帧后才能与 D7
+可执行检查点求交并进入 A1 证据装配。D3 不降低资格、安全或联盟连续性门限，默认路径和
+生产权限继续关闭。
 
 AirSim DTO、settings、episode 和控制接口未变化，`docs/AIRSIM_INTEGRATION_PLAN.md` 检查
 后不修改。验收结果：单帧专项 `23 passed`，相关干预合同组合 `79 passed`，D3 全量

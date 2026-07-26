@@ -1432,10 +1432,10 @@ authority 固定为 false。
 
 ### 仍开放的外层 P1
 
-匿名 `PlanningFrameEvidence` 不携带 seed。seed `1000-1019`、split 身份、清单完整性、
-逐 seed 权威时间顺序、D7 共同检查点、runtime ACK、outcome、reward 和正式 admission
-继续由 main/D6 外层 manifest/runner 校验。旧 20-seed 脏工作树续跑仍为绑定变化 0/20，
-不能作为合格检查点证据。main 尚未用新生产者完成 clean 20-seed 正式运行。
+匿名 `PlanningFrameEvidence` 不携带 seed。seed `1000-1019`、split 身份、清单完整性和
+逐 seed 权威时间顺序必须由外层 manifest/runner 校验。该段形成时尚未完成的 clean
+20-seed 正式运行，现已由第 52 节所列正式 evaluator 完成。D7 共同检查点、runtime ACK、
+outcome、reward 和正式 admission 仍未形成。
 
 `docs/AIRSIM_INTEGRATION_PLAN.md` 再次检查。本项没有 AirSim DTO、相机/飞行设置、episode
 编排或控制路径变化，因此不修改该文件。
@@ -1459,20 +1459,30 @@ cost weights，以及每个 seed 严格时序的匿名规划帧路径、文件 S
 2026-07-26 单元夹具使用 20 seed、每 seed 1 帧。可辨识残差为 20/20 eligible，零残差为
 20/20 unavailable；两个空目录的四份输出逐字节一致。该证据只验证合同。
 
-main 随后在 clean commit `0ed7ca2` 生成真实 manifest，固定 seed `1000-1019`、100 个匿名
-规划帧，在线 truth 计数为 0。首次重放在 seed 1011 序号 3 因新增目标联盟 token 不一致
-失败。D3 已加入严格记录联盟身份恢复，仅恢复已哈希绑定的新联盟匿名标识，并继续验证前序
-联盟连续性、assignment、需求摘要、metadata 及最终控制执行签名。重复标识、前序重写和
-引用篡改均失败关闭。
+main 随后在 clean source commit `0ed7ca2730f5354be1e6021f9882f1ae26bc42df`
+生成真实 manifest，固定 seed `1000-1019`、每 seed 5 帧，共 100 个匿名规划帧，在线 truth
+计数为 0。manifest SHA-256 为
+`e5367d2651955f809b482d78ef3205cbdf44d57eae576c80f64cbd38eac59a44`，输入
+`SHA256SUMS` 全部通过。首次重放在 seed 1011 序号 3 因新增目标联盟 token 不一致失败。
+D3 已加入严格记录联盟身份恢复，仅恢复已哈希绑定的新联盟匿名标识，并继续验证前序联盟
+连续性、assignment、需求摘要、metadata 及最终控制执行签名。重复标识、前序重写和引用
+篡改均失败关闭。
 
-修复后正式 batch 完成，20/20 seed 均为 `unavailable/no_eligible_frame`。100 帧中 80 帧
-应用学习代价，20 帧分布外回退，绑定变化和硬违规均为 0；全部生产权限字段为 false，
-`global_track_id` 改写为 0。两个独立空目录的四份输出逐字节一致。
+正式 clean evaluator 使用代码提交
+`bdb665eb8e63a17f5f15dbf3fe472af10e5e5b5c`。输出 `SHA256SUMS` 全部通过，内容
+SHA-256 为 `c01b13fb5925d99078a3bb9505dc0f9511ec5ab700a432399d3ebe0fcfb55592`。
+输入与输出外部归档 SHA-256 为
+`127ad91d864b136ab10cde7111bf6241a7a765ad4467aa449ef29cbb5557ef5e`。
+20/20 seed 均为 `unavailable/no_eligible_frame`。100 帧中 80 帧应用学习代价，20 帧
+分布外回退；每个 seed 的 binding change、规则/处理硬违规和 `global_track_id` 改写均为
+0。`publish=false`，生产分配和控制权限均为 false。两个独立空目录的逐文件一致性属于
+此前开发确定性复核；本次正式输出另由校验清单和内容摘要约束。
 
 当前没有新增 D3 P0。**真实 clean batch 生成和 D3 批量重放这一 P1 已关闭**。仍开放的
-跨模块 P1 是：当前 bundle 没有产生可辨识绑定差异，因而没有 D3/D7 共同检查点；后续需由
-main 选择新冻结 bundle 或训练结果，再由 D6 连接运行 ACK、outcome 和比较。PPO、online
-assist、admission 和 authority 仍未开放，不能通过降低 eligibility 或联盟连续性门限关闭。
+策略与跨模块 P1 是：当前 development policy 没有跨过 Hungarian 离散边界，因而没有
+D3/D7 共同检查点，也不能形成 A1 证据。后续需由 main 选择新的冻结训练结果，再由 D6 连接
+运行 ACK、outcome 和成对比较。PPO、online assist、A1 admission、默认路径和生产
+authority 仍未开放，不能通过降低 eligibility 或联盟连续性门限关闭。
 
 `docs/AIRSIM_INTEGRATION_PLAN.md` 已检查。本项是离线检查点选择，不改变 AirSim runtime
 输入输出或控制接口，因此不修改该文档。

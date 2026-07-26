@@ -599,15 +599,25 @@ seed 的首个完整且绑定发生变化的候选。夹具使用一个双 prima
 可辨识夹具 20/20 seed 有首个合格帧，零残差夹具 20/20 seed 明确不可用。该批次使用重复
 匿名单元夹具验证 manifest、顺序和失败关闭，不是 20 个独立物理场景。
 
-main 后续在 clean commit `0ed7ca2` 保存了 20 seed、100 个真实形态匿名帧。首次重放暴露
-新增目标联盟匿名标识与隔离规划器本地命名不一致。D3 只恢复记录帧已哈希绑定的新联盟
-token，并继续校验前序联盟连续性、成员引用、需求摘要和完整控制执行签名。修复后 100 帧
-全部可重放，但资源目标绑定变化为 0；80 帧应用学习代价，20 帧分布外回退，20/20 seed
-均为 `no_eligible_frame`。
+main 后续在 clean source commit `0ed7ca2730f5354be1e6021f9882f1ae26bc42df`
+保存了 20 seed、每 seed 5 帧、共 100 个真实形态匿名帧。输入 manifest SHA-256 为
+`e5367d2651955f809b482d78ef3205cbdf44d57eae576c80f64cbd38eac59a44`，输入
+`SHA256SUMS` 全部通过。首次重放暴露新增目标联盟匿名标识与隔离规划器本地命名不一致。
+D3 只恢复记录帧已哈希绑定的新联盟 token，并继续校验前序联盟连续性、成员引用、需求摘要
+和完整控制执行签名。
+
+正式 clean evaluator 使用代码提交
+`bdb665eb8e63a17f5f15dbf3fe472af10e5e5b5c`。输出 `SHA256SUMS` 全部通过，内容
+SHA-256 为 `c01b13fb5925d99078a3bb9505dc0f9511ec5ab700a432399d3ebe0fcfb55592`，
+输入与输出外部归档 SHA-256 为
+`127ad91d864b136ab10cde7111bf6241a7a765ad4467aa449ef29cbb5557ef5e`。修复后 100 帧
+全部可重放，但逐 seed 资源目标绑定变化为 0；80 帧应用学习代价，20 帧分布外回退，
+20/20 seed 均为 `no_eligible_frame`，硬违规和 `global_track_id` 改写均为 0。
 
 真实多成员 ACK、D4 联盟提交、D7 控制采用、协同 outcome 和 reward 仍未形成。当前 bundle
-没有产生可辨识 M-to-N 检查点，跨模块物理闭环 P1 保持开放。不能通过降低全有或全无、
-联盟连续性或 eligibility 门限获得候选。
+没有产生可辨识 M-to-N 检查点，不能形成 D7 checkpoint 或 A1 准入，跨模块物理闭环 P1
+保持开放。`publish=false`，默认路径和生产权限保持关闭。不能通过降低全有或全无、联盟
+连续性或 eligibility 门限获得候选。
 
 该合同和新增真实形态正负例包含在单帧专项 `23 passed`、相关合同组合 `79 passed` 和 D3
 全量 `521 passed, 1 skipped`（522 项）中；它没有关闭真实 M-to-N 物理协同证据缺口。
