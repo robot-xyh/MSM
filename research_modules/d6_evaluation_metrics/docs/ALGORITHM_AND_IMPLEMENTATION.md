@@ -326,11 +326,14 @@ writer 先在输出目录同级创建临时目录，完整写出版本化 JSON�
 `91d627fb9cf0978e95d2bdca14fa90dad8eb1489c24833668068760d3497007e`。该结论只确认 v4 装配
 证据完整、一致。固定 post-gate 候选图、真实相机泛化和正式 G1 运行作用域仍未验证。
 
-上述文件是首次正式输出，保持只读。增加文件树和符号链接失败关闭后，D6 对同一真实 bundle
-执行了不写输出的 dry audit。实际树为六个约定文件和 `evidence/` 目录，`tree_evidence.exact`
-为 true；结果仍为 `pass`，blocker 为空，强化后结果内容 SHA-256 为
-`3738444168138584c7ec3eb895d123178092176ec751a5b455e575b177a2d852`。该 dry audit 用于代码
-复核，不替代 clean commit 上的新正式发布。
+上述文件是首次正式输出，保持只读。增加文件树和符号链接失败关闭后，main 在 detached clean
+evaluator commit `107cf0756d7b75cd6bf1456d1f1aa940fec6a63c` 上正式运行同一输入合同，并写入
+独立的 `formal_107cf07` 输出目录。实际树为六个约定文件和 `evidence/` 目录，
+`tree_evidence.exact=true`；结果为 `pass`，`audit_passed=true`，blocker 为空。强化版结果
+JSON 文件 SHA-256 为 `12f457e2e7cc721960fe05e31022d3779652aa8452e7cfba2fb8ad06f662a8ea`，
+内容 SHA-256 为
+`3738444168138584c7ec3eb895d123178092176ec751a5b455e575b177a2d852`。Markdown、JSON 和 CSV
+三项输出校验均通过，首次正式输出和 producer evidence 均未覆盖。
 
 专项回归为 `35 passed, 1 warning in 4.33s`，D6 全量为
 `1010 passed, 1 warning in 87.38s`。负例覆盖六类制品逐项篡改、额外未列文件、清单缺项/

@@ -95,8 +95,11 @@
 - [x] 正式输出位于 clean worktree 的
   `outputs/d5_g1_post_assembly_audit_7fb5db8b_a5a53de7_20260726/`。主 JSON 文件/内容
   SHA-256 为 `a78c5edb...cf33` / `91d627fb...007e`。
-- [x] 强化后对同一真实 v4 bundle 执行只读 dry audit，目录树精确，结果仍为 `pass`，
-  blocker 为空，结果内容 SHA-256 为 `37384441...d852`。未覆盖原证据目录或首次正式输出。
+- [x] main 已在 detached clean evaluator commit
+  `107cf0756d7b75cd6bf1456d1f1aa940fec6a63c` 上正式执行强化后的装配审计。输出写入新的独立
+  `formal_107cf07` 目录，未覆盖原证据目录或首次正式输出。
+- [x] 强化版正式结果为 `pass`、`audit_passed=true`、blocker 为空且实际目录树精确；结果
+  JSON 文件/内容 SHA-256 为 `12f457e2...8ea` / `37384441...d852`，三项输出校验均通过。
 - [x] post-assembly 专项 `35 passed, 1 warning in 4.33s`，D6 全量
   `1010 passed, 1 warning in 87.38s`；Python 编译、JSON 和差异格式检查通过。
 - [x] 已检查 `AIRSIM_INTEGRATION_PLAN.md`。本项不改变 AirSim 数据、episode 或控制接口，
@@ -112,8 +115,6 @@
   完整运行证据配对。
 - [ ] 本次通过不能作为默认路径切换依据。v4 仅具备 D5 G1 assist eligibility；main 显式作用域
   配置、无静默回退证据和后续作用域审计仍未完成。
-- [ ] 当前树完整性强化只形成只读 dry audit。待本实现进入 clean commit 后，才能在新的独立
-  输出目录发布强化版正式结果；首次正式输出保持历史只读，不得覆盖。
 
 ## 2026-07-25 正式 R0/G1/A1/A2/A3/C1/F1 矩阵准入预检
 

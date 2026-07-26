@@ -274,10 +274,31 @@ research_modules/d6_evaluation_metrics/outputs/
 输出通过临时目录原子发布，没有残留 staging 目录。固定时间和同一输入重复写入不同空目录时，
 JSON、CSV、Markdown 和校验清单逐字节一致。
 
-该输出保持历史只读，没有由本次强化复核覆盖。树完整性与符号链接检查加入后，对同一真实 bundle
-执行了不写结果文件的 dry audit。结论仍为 `pass`，`blocker_codes=[]`，强化后结果内容
-SHA-256 为 `3738444168138584c7ec3eb895d123178092176ec751a5b455e575b177a2d852`。当前实现形成
-clean commit 前，不把该 dry audit 写成新的正式输出。
+### 强化版正式输出
+
+首次正式输出保持历史只读。树完整性与符号链接检查加入后，main 在 detached clean evaluator
+commit `107cf0756d7b75cd6bf1456d1f1aa940fec6a63c` 上执行正式复核，输出写入：
+
+```text
+research_modules/d6_evaluation_metrics/outputs/
+  d5_g1_post_assembly_audit_7fb5db8b_a5a53de7_formal_107cf07_20260726/
+```
+
+结果为 `status=pass`、`audit_passed=true`、`blocker_codes=[]`。
+`tree_evidence.exact=true`，实际树精确包含六个约定文件和 `evidence/` 目录，没有符号链接或
+特殊文件。20 个未见 seed、900 个 episode、45 个场景规模单元均可用；在线真值字段、
+`global_track_id` 改写和同相机互斥违规均为 0。
+
+| 输出 | SHA-256 |
+| --- | --- |
+| `d5_g1_post_assembly_audit.json` | `12f457e2e7cc721960fe05e31022d3779652aa8452e7cfba2fb8ad06f662a8ea` |
+| JSON 内容 | `3738444168138584c7ec3eb895d123178092176ec751a5b455e575b177a2d852` |
+| 证据 CSV | `5e50f1e75fb918864a434e154e4e781f10a53efc3d757ff32631b834af229162` |
+| 中文 Markdown | `1e1fe11e8f098a94317ab00493a26fb9888bb6fd8c7897955389a7fd0af1c9e2` |
+| 输出 `SHA256SUMS` | `0cad5c0b9176ab9d555ed78114ed4c76063fd6178e98bda4683ade94ba192113` |
+
+`SHA256SUMS` 中的 Markdown、JSON 和 CSV 三项均复算通过。producer evidence 和首次正式输出均
+未覆盖。
 
 ### 验证与限制
 
@@ -289,6 +310,8 @@ warning 是既有 Matplotlib `Axes3D` 环境提示。
 
 本次证据仍使用固定 post-gate 候选图，没有在扰动后重新投影、门控和构图。样本来自合成三维
 质点投影，没有真实相机证据。G1 的正式在线作用域、规则回退情况和同键 R0 非退化尚未审计。
+本次 `pass` 只确认 v4 装配后的文件、内容、谱系和权限边界一致，不授予默认路径、模型晋级、
+身份、分配或控制权限。
 `AIRSIM_INTEGRATION_PLAN.md` 已检查；本项不改变 AirSim 数据、episode 或控制接口，因此未修改。
 
 ## 结论

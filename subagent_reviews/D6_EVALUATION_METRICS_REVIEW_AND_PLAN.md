@@ -80,9 +80,10 @@ D5 将正式通过的预准入 JSON、held-out 和 paired-shadow 复制进 v4 bu
 主 JSON 文件/内容 SHA-256 为 `a78c5edb...cf33` / `91d627fb...007e`。输出目录通过临时目录
 原子发布，没有残留 staging。
 
-首次正式输出保持只读。本轮补齐实际树精确覆盖和全路径符号链接拒绝后，对同一真实 bundle
-执行只读 dry audit，结果仍为 `pass`，`tree_evidence.exact=true`，结果内容 SHA-256 为
-`37384441...d852`。当前实现尚未形成 clean commit，因此没有把 dry audit 冒充新的正式发布。
+首次正式输出保持只读。本轮补齐实际树精确覆盖和全路径符号链接拒绝后，main 在 detached clean
+evaluator commit `107cf0756d7b75cd6bf1456d1f1aa940fec6a63c` 上执行正式复核。新输出位于独立的
+`formal_107cf07` 目录，结果仍为 `pass`，`tree_evidence.exact=true`；结果 JSON 文件/内容
+SHA-256 为 `12f457e2...8ea` / `37384441...d852`，三项输出校验均通过。
 
 v4 中的 `g1_assist_eligible=true` 表示 D5 已形成受证据约束的辅助资格。D6 没有授予模型晋级、
 assist、默认路径、全局航迹标识、分配或控制权限。实际 G1 作用域、规则回退记录、同键 R0 和

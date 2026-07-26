@@ -128,10 +128,12 @@ blocker 为空。输出位于 clean worktree 的
 `outputs/d5_g1_post_assembly_audit_7fb5db8b_a5a53de7_20260726/`。主 JSON 文件/内容 SHA-256
 为 `a78c5edb...cf33` / `91d627fb...007e`，输出校验清单复算通过。
 
-上述输出保留为首次正式装配审计记录，没有被本轮覆盖。加入实际目录树和全路径符号链接检查后，
-D6 对同一真实 v4 bundle 执行了只读 dry audit。结果仍为 `pass`，目录树精确包含六个文件和一个
-`evidence/` 目录，强化后结果内容 SHA-256 为 `37384441...d852`。本次 dry audit 未写入新的正式
-输出；当前实现提交并在 clean source 上发布前，该摘要不替代首次正式输出。
+上述输出保留为首次正式装配审计记录，没有被覆盖。main 随后在 detached clean evaluator commit
+`107cf0756d7b75cd6bf1456d1f1aa940fec6a63c` 上运行强化后的同一合同，正式输出位于
+`outputs/d5_g1_post_assembly_audit_7fb5db8b_a5a53de7_formal_107cf07_20260726/`。结果仍为
+`pass`，`audit_passed=true`，blocker 为空；目录树精确包含六个文件和一个 `evidence/` 目录。
+结果 JSON 文件/内容 SHA-256 为 `12f457e2...8ea` / `37384441...d852`。Markdown、JSON 和 CSV
+三项 `SHA256SUMS` 全部复算通过。
 
 v4 的 `g1_assist_eligible=true` 是 D5 装配后的资格声明。D6 输出中的模型晋级、G1 assist、
 默认路径、`global_track_id`、分配和控制权限仍全部为 false。本轮 post-assembly 专项为
