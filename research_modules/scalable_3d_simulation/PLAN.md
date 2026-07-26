@@ -1,5 +1,31 @@
 # 200 对 200 三维质点仿真实施计划
 
+## 证据装配实施收尾（2026-07-26）
+
+1. [x] D3 已关闭 production 自我准入。调用方构造的 qualified admission 在写文件前
+   被拒绝；手工正向 v3 manifest 返回
+   `bundle_assist_evidence_assembler_unavailable`。现有 development/shadow bundle
+   未修改。
+2. [x] D4 复核未发现新的自我晋级 P0。A2 模块专用 evidence assembler 仍等待实际采用、
+   物理窗口、同键 R0 和成对非退化证据，保持 P1。
+3. [x] D6 已实现 D5 G1 外部预准入审计，并将 G1 assembler 纳入当前实现摘要
+   `41381db3...94b07`。审计只给出证据结论，不授予模型晋级、默认路径或控制权限。
+4. [x] D5 已实现 G1 evidence assembler。正向 fixture 可以原子生成并由 strict
+   loader/runtime 加载 v4；该 fixture 只验收合同。A3 assembler 仍未实现。
+5. [x] 使用当前 `99fa4428...d4cd` 模型执行 post-assembler 审计。结果为
+   `fail_closed`，assembler 退出码为 2，未创建目标 bundle。五项 blocker 为实现证据
+   不可用、实现谱系不一致、困难扰动 cluster/edge F1 未达到 `0.9`，以及单特征曲线下面积
+   `0.997340` 超过 `0.98` 上限。
+6. [x] 没有调整阈值、兼容白名单、旧 bundle、manifest 或权重；没有运行正式学习
+   episode。G1、A1、A2、A3、C1、F1 继续失败关闭。
+7. [ ] D3 在实际 A1 采用确认、物理结果和同键 R0 非退化证据齐备后实现模块专用
+   assembler，形成新的 immutable bundle。
+8. [ ] D4 在实际 A2 隔离采用与成对非退化证据齐备后实现模块专用 assembler。
+9. [ ] D5 使用当前实现重新形成无单特征捷径、困难扰动达标的 G1 模型证据并通过 D6
+   外部审计；另行实现 A3 assembler。
+10. [ ] 只有模块预准入通过后，main 才按 G1、A1、A2、A3、C1、F1 启动正式 scope，
+    D6 再审计逐 cell 实际采用、物理结果和唯一同键 R0 非退化。
+
 ## 学习变体 assist 准入预检（2026-07-26）
 
 1. [x] D3 关闭旧 `d3_learning_model_bundle_v2` 仅凭 promotion 字段进入 assist 的
@@ -14,7 +40,7 @@
    关联。
 4. [x] D5 主审进一步关闭裸报告自声明。G1 和 A3 的 production writer 均拒绝调用方
    直接提供正向 admission report；公开 loader/runtime 也拒绝手工拼装的 admitted
-   manifest。未来 v4/正向报告解析仅由私有合同测试覆盖，不构成生产权限。
+   manifest。此后 G1 已增加独立装配器；A3 仍只有私有合同测试和失败关闭边界。
 5. [x] 旧 D3、D4、D5 图模型和 D5 主动视觉 bundle、manifest、权重均未修改或重算。
    旧冻结 D5 bundle 因实现文件集合变化继续返回
    `bundle_implementation_runtime_mismatch`，不得设置兼容白名单。
@@ -37,13 +63,13 @@
     控制计数、D5 图模型正候选边评分、D5 主动视觉采用及运行确认。审计输出 JSON、逐
     cell CSV、中文 Markdown 和 SHA256SUMS，但始终保持
     `model_promotion.allowed=false`。
-11. [x] 最新 owner 全量回归为 D3 `464 passed, 1 skipped`、D4 `569 passed`、D5
-    `562 passed`、D6 `930 passed, 1 warning`。D3 跳过项为未安装的可选 OR-Tools；
+11. [x] 最新 owner 全量回归为 D3 `465 passed, 1 skipped`、D4 `569 passed`、D5
+    `571 passed`、D6 `944 passed, 1 warning`。D3 跳过项为未安装的可选 OR-Tools；
     warning 为既有 Matplotlib `Axes3D` 环境提示。
 12. [ ] 预准入阶段仍需为 D3、D4、D5 图模型和 D5 主动视觉分别形成新的、可验证的
-    holdout/paired-shadow/隔离采用证据。D5 还缺独立 evidence assembler，必须逐文件
-    校验并将 held-out、paired shadow 和 D6 外部审计实物纳入新 bundle；完成前生产代码
-    不能生成或执行 admitted G1/A3 bundle。
+    holdout/paired-shadow/隔离采用证据。D5 G1 装配器软件已完成，但当前模型因五项
+    blocker 失败关闭；D3、D4 和 A3 装配器仍未实现。生产路径不能生成或执行未经外部
+    证据约束的 admitted bundle。
 13. [ ] 各 owner 形成新 admitted bundle 后，main 才能冻结学习 scope。预准入证据与
     scope 后验审计不得混用：前者只决定是否允许启动，后者只评价实际采用和相对 R0
     非退化，不反向授予模型权限。

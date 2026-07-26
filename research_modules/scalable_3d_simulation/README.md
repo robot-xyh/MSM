@@ -4,19 +4,30 @@
 
 2026-07-26 的实际 bundle 预检确认，G1、A1、A2、A3、C1 和 F1 当前均不能进入正式
 assist。D3 模型仅允许 shadow；D4 模型仍处于运行时 shadow gate；D5 图模型和主动视觉模型
-没有正式 assist 权限，旧冻结 bundle 还绑定修改前的实现哈希。
+没有正式 assist 权限。正式学习 episode 仍为 0。
 
-D3 已禁止旧 v2 bundle 仅凭旧 promotion 字段进入 assist；D4 已把现有 v2 writer 和
-runtime 固定为 development/shadow-only。D5 提供严格的
-`require_g1_assist_eligible` 加载边界，main 在统一 episode 总线注入图模型时固定启用。
-D5 随后关闭了 G1 和 A3 的裸报告自声明路径：production writer 在写文件前拒绝调用方
-直接提供正向 admission report，公开 loader/runtime 也拒绝手工拼装的 admitted manifest。
-未来正向清单解析只存在于私有合同测试中，独立证据装配器完成前不能取得生产权限。
+D3 已关闭 legacy v2 和 v3 自我晋级路径。production writer 在写文件前拒绝调用方
+构造的 qualified admission；手工正向 v3 manifest 稳定返回
+`bundle_assist_evidence_assembler_unavailable`。D4 复核没有发现新的 P0，自声明
+qualified/assist 和无 manifest 注入仍失败关闭。D3、D4 现有 bundle 均保持
+development/shadow-only。
+
+D5 已实现 G1 evidence assembler。它逐文件验证 manifest、weights、held-out、
+paired-shadow、D6 外部审计和带外 SHA-256，使用临时目录原子发布 v4，再由 strict
+loader/runtime 复核。正向 fixture 能生成并加载 v4，只证明软件合同可执行。A3 assembler
+仍未实现。
+
+D6 已实现 `d6.d5-g1-external-audit.v1`，并将 D5 G1 assembler 纳入当前实现摘要
+`41381db3d11371c049e5569658820ce98abf1a9966ecf86edc0f13f140894b07`。对当前
+`99fa4428...d4cd` 模型的 post-assembler 审计仍为 `fail_closed`。五项 blocker 是
+`implementation_evidence_unavailable`、`implementation_lineage_mismatch`、困难扰动
+cluster/edge F1 未达到 `0.9`，以及单特征最佳方向曲线下面积 `0.997340` 超过 `0.98`
+上限。assembler 返回 `d6_external_audit_fail_closed`、退出码 2，未创建目标 bundle。
 
 四个 owner 没有修改旧 bundle、manifest 或权重，也没有增加 implementation hash
-兼容白名单。最新完整回归为 D3 `464 passed, 1 skipped`、D4 `569 passed`、D5
-`562 passed`、D6 `930 passed, 1 warning`。当前 R0 路径不加载模型，本次治理修复不改变
-已冻结的 R0 source、execution plan 或已完成的 135 个单元。
+兼容白名单或放宽阈值。最新完整回归为 D3 `465 passed, 1 skipped`、D4 `569 passed`、
+D5 `571 passed`、D6 `944 passed, 1 warning`。当前 R0 路径不加载模型，本次治理修复
+不改变已冻结的 R0 source、execution plan 或已完成的 135 个单元。
 
 main 已将可恢复分片执行器扩展到 G1、A1、A2、A3、C1 和 F1。执行计划保存各变体所需
 bundle 的完整文件树摘要、manifest 摘要、预检设备、准入诊断摘要和解析后的模型版本。
@@ -31,11 +42,12 @@ bundle 的完整文件树摘要、manifest 摘要、预检设备、准入诊断�
 没有可恢复正式执行基础设施”的实现缺口，没有生成任何 G1/A1/A2/A3/C1/F1 正式 episode。
 
 正式学习变体分成两个证据阶段。预准入阶段由模块 owner 使用未见 seed、隔离采用和
-paired-shadow 结果生成新的 evidence-bound bundle；D5 还需实现独立 evidence assembler，
-逐文件验证并打包 held-out、paired shadow 和 D6 外部审计实物。正式 scope 完成后，D6
-使用 `d6.learning-scope-formal-evidence-audit.v1` 重新校验 execution plan、bundle
-文件树、merge、shard、cell 和 episode 证据，并与唯一同键 R0 比较。D6 审计要求模型
-实际采用，shadow、规则回退、仅加载模型、D5 零候选边、缺物理结果或缺 R0 均判为
+paired-shadow 结果生成新的 evidence-bound bundle。D3 和 D4 模块专用 assembler 尚未
+实现；D5 G1 assembler 已实现，但需要绑定当前实现、没有单特征捷径且困难扰动达标的新
+模型证据；A3 assembler 仍未实现。正式 scope 完成后，D6 使用
+`d6.learning-scope-formal-evidence-audit.v1` 重新校验 execution plan、bundle 文件树、
+merge、shard、cell 和 episode 证据，并与唯一同键 R0 比较。D6 审计要求模型实际采用，
+shadow、规则回退、仅加载模型、D5 零候选边、缺物理结果或缺 R0 均判为
 unavailable/fail-closed；审计从不授予模型晋级或控制权限。
 
 模型文件存在、哈希有效、开发指标可用或 D6 审计合同通过单元测试均不能替代 assist

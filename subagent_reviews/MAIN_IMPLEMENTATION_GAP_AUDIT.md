@@ -4,6 +4,61 @@
 **审计目标**：列出共识算法与计划使用的开源代码哪些已经实现，哪些没有实现，为什么没有实现，以及缺少哪些条件。
 **边界**：本文只用于科研仿真、接口补齐和后续工程排期；不涉及真实硬件、实机处置、火控或绕过授权的自动动作。
 
+## 2026-07-26 证据装配收尾与当前准入状态
+
+本节是学习辅助准入的当前结论，优先于下方同日早期记录。当前没有开放的模型越权 P0；
+G1、A1、A2、A3、C1、F1 仍全部失败关闭，正式学习 episode 仍为 0。软件合同完成不等于
+模型性能达标，也不等于取得 assist、默认路径或控制权限。
+
+1. **D3 自我准入 P0 已关闭。** production writer 在写目录或权重前拒绝调用方构造的
+   qualified admission；手工正向 v3 manifest 即使字段和占位 SHA 格式正确，也稳定返回
+   `bundle_assist_evidence_assembler_unavailable`。现有 development bundle 未修改，
+   shadow 仍可用，assist 仍关闭。D3 定向 bundle 测试为 `21 passed`，全量为
+   `465 passed, 1 skipped`；跳过项是未安装的可选 OR-Tools。
+2. **D4 没有新的 P0。** 现有 v2 writer/loader、运行确认、区域收益、联盟状态机和通信
+   因果回执没有自我晋级路径。A2 模块专用 evidence assembler 仍是 P1，必须等待可验证的
+   实际采用、物理窗口、同键 R0 和成对非退化证据后实现。D4 全量为 `569 passed`。
+3. **D6 外部审计软件已完成。** 新增
+   `d6.d5-g1-external-audit.v1`，逐项复核 registry、bundle、held-out、paired-shadow、
+   实现来源、鲁棒性和单特征捷径，并输出失败关闭的 D5 consumer contract。D6 已把
+   D5 G1 assembler 纳入运行实现摘要；当前实现 SHA-256 为
+   `41381db3d11371c049e5569658820ce98abf1a9966ecf86edc0f13f140894b07`。
+   D6 全量为 `944 passed, 1 warning`；warning 是既有 Matplotlib `Axes3D` 环境提示。
+4. **D5 G1 evidence assembler 软件已完成。** 装配器逐文件校验 manifest、weights、
+   held-out、paired-shadow、D6 audit 和带外 SHA-256，使用临时目录原子发布 v4，并由
+   公开 strict loader/runtime 复核。正向 fixture 能生成并加载 v4，只证明合同可执行，
+   不证明当前模型获准。A3 assembler 仍未实现并保持失败关闭。
+5. **当前 D5 图模型仍未准入。** post-assembler 审计文件 SHA-256 为
+   `98bf9e0251567a330bf16951acf07da576a6ba3dc47627c3671cd2d491cdc8ed`，
+   内容 SHA-256 为
+   `40a42af015211d5e721584053e052a893e31aa35b7393195530a5d3d2dc9b90d`。
+   实际 assembler 返回 `d6_external_audit_fail_closed`、退出码 2，目标 bundle 目录
+   不存在。五项 blocker 为：
+
+   - `implementation_evidence_unavailable`；
+   - `implementation_lineage_mismatch`；
+   - `robustness_threshold_not_met.cluster_f1`；
+   - `robustness_threshold_not_met.edge_f1`；
+   - `synthetic_single_feature_shortcut`。
+
+   困难遮挡重现代理的 cluster/edge F1 约为 `0.572845/0.563264`，低于 `0.9`；
+   单特征最佳方向曲线下面积约为 `0.997340`，高于允许上限 `0.98`。旧证据缺少 assembler
+   来源且 `tracklet_model_bundle.py` 与当前实现不一致。没有放宽门限、增加实现兼容白名单
+   或把 fixture 写成模型效果。D5 最终专项为 assembler `14 passed`、模型流水线
+   `20 passed`，既有全量为 `571 passed`。
+
+当前开放 P1 分为三组：
+
+1. D3 仍需实际 A1 采用确认、后续物理状态、同键 R0 非退化结果和模块专用 assembler；
+   C1/F1 还依赖其他组件独立准入。
+2. D4 仍需实际 A2 隔离采用、物理窗口、成对非退化结果和模块专用 assembler。
+3. D5 需用当前实现形成没有单特征捷径、困难扰动达到门限的新 G1 模型与完整证据，重新
+   通过 D6 外部审计；A3 还需独立 assembler 和实际主动视觉证据。
+
+只有模块预准入形成新的 immutable bundle 后，main 才能启动相应学习 scope。随后 D6
+仍须审计逐 cell 实际采用、物理结果和唯一同键 R0 非退化。D3/D4/A3 assembler、实际
+合格证据和所有正式学习 scope 目前均未完成。
+
 ## 2026-07-26 模块准入复核与 D6 正式证据审计
 
 main 按 D3、D4、D5、D6 owner 边界完成第二轮复核并分四次提交。结论仍是“准入治理
