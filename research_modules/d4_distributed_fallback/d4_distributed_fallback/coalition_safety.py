@@ -283,6 +283,8 @@ class CoalitionCommitCoordinator:
             return current
         rejection = _ack_rejection_reason(current, ack, timestamp=float(timestamp))
         if rejection:
+            # A rejected packet cannot authorize execution, but it must not let one
+            # spoofed or reordered ACK permanently poison an otherwise valid lease.
             return self._remember(
                 replace(
                     current,
@@ -356,6 +358,19 @@ class CoalitionCommitCoordinator:
             return self._fail(current, timestamp=now, reason="coalition_lease_expired")
         if finalize and current.missing_member_ids:
             return self._fail(current, timestamp=now, reason="missing_required_acks")
+        if current.state == "proposed":
+            return self._remember(
+                replace(
+                    current,
+                    state="collecting_acks",
+                    updated_at=now,
+                    reason="collecting_member_acks",
+                    metadata={
+                        **current.metadata,
+                        "missing_member_ids": list(current.missing_member_ids),
+                    },
+                )
+            )
         return current
 
     def mark_executing(

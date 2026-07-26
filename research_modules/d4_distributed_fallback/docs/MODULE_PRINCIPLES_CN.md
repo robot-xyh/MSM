@@ -1,6 +1,46 @@
 # 分布式协同与降级接管模块原理（模块编号 D4）
 
-**状态日期**：2026-07-22
+## 2026-07-25 异步联盟确认原则
+
+联盟确认窗口与一次区域状态快照不是同一个时间尺度。区域状态机每次只处理决策时刻前已经送达的 ACK，并把同一计划代次的确认位图保留到下一快照。没有 ACK 或 ACK 不完整时，状态保持“收集确认”，所有成员继续等待；必要成员全部确认后，联盟才整体获得执行资格。
+
+状态转移为：
+
+```text
+proposed -> collecting_acks
+collecting_acks + partial ACK -> collecting_acks
+collecting_acks + all required ACK -> committed
+collecting_acks + explicit finalization/lease expiry/partition/conflict -> aborted
+committed/executing + lease expiry/partition/member failure -> reconfiguring
+```
+
+陈旧版本、过期、非必要成员或内容不匹配 ACK 会被拒绝并记录原因。它们不进入确认位图，当前快照仍不授权执行。若同一有效代次随后收到合法 ACK，可继续收集；这样既保持失败关闭，也避免网络乱序旧包形成永久拒绝服务。分区代次由通信因果证据门先行校验，区域状态机只消费通过该门的 ACK。
+
+2026-07-25 验证包含提案无 ACK、部分 ACK、三成员分时完整 ACK、显式终结、租约到期、分区、陈旧代次和无效 ACK。三文件专项 **97 passed**，D4 全量 **569 passed**；完整 ACK 前执行授权必须为 0。该组数字限于纯 Python 模块测试。
+
+main-owned scalable 3D 已完成随机种子 `1271` 的单场景集成验证。2 目标、4 资源和 1 个二级侦察节点条件下，高威胁目标采用 2 个主成员与 1 个备用成员。二级计划版本 2 发布后先保持 0/3 ACK，随后按实际通信投递达到 3/3 ACK 并原子提交；提交前主成员保持，提交后主成员进入三维中段比例导引，备用成员继续待命。在线真值使用和 `global_track_id` 改写均为 0。该结果不是 AirSim、多随机种子、真实网络或规模性能证据。
+
+## 2026-07-25 通信因果证据原则
+
+二级节点就绪、区域计划广播和联盟成员确认都属于通信事实。布尔量只能描述节点当前自报状态，不能证明消息已经经过链路并在决策前到达。D4 因此把“业务内容正确”和“通信实际发生”分成两层：既有 readiness/coalition 状态机继续检查业务条件；新增通信证据门检查投递回执。
+
+一条可接受回执需同时满足：
+
+```text
+topic 映射的消息类型 = payload 声明类型 = 当前验证入口类型
+source/destination/authority/plan/epoch = 当前期望
+sent_time <= arrival_time <= decision_time < lease_expiry
+partition_generation = 当前网络分区代次
+SHA256(payload) = expectation.payload_digest
+```
+
+回执记录版本化 topic、总线序号和 envelope schema。严格工厂从 delivered message 及其 envelope/payload 取值，调用方不能另传一套 authority、plan、epoch、lease 或消息类型覆盖运输事实。payload 缺少协议字段、包含 evaluator truth 字段，或 envelope source/timestamp 与 transport 不一致时，回执不能建立。
+
+证据门保存 receipt ID 对应的不可变摘要。相同 receipt 和相同 expectation 重复验证只返回幂等结果，不重复产生状态作用；相同 receipt ID 的内容变化、同一回执转用于另一证据或不同决策上下文均被拒绝。验证结果只表示“这条通信证据可供后续状态机使用”，固定不授予 authority，也不推进 plan version、epoch、lease 或 coalition commit。
+
+2026-07-25 验证覆盖 5/20/50/100/200 成员、三类消息、顺序反转、精确重复、冲突重放和全部主要负例。因果证据专项 56/56 通过；加入异步联盟回归后 D4 全量为 569/569。main 的 5v5 通信关闭复现现为 0 个可执行区域、8 个失败关闭区域；随机种子 `1271` 的三成员分时 ACK 单场景系统正例也已通过。AirSim 多随机种子和真实通信条件仍需复跑。
+
+**状态日期**：2026-07-25
 **适用范围**：离线科研仿真、合同验证、故障注入与评估日志。
 **事实来源**：当前 D4 源码与测试、模块说明文件 `README.md`、模块计划文件 `PLAN.md`、D4 实现差距审计与综述，以及 2026-07-13 主级优先级 1 收敛验证报告 `MAIN_P1_CONVERGENCE_VALIDATION_REPORT_20260713.md`。
 **状态声明**：本文只解释当前能力，不改变能力状态。凡标为“可选/离线”或“未实现”的内容，不属于默认在线主线。
@@ -17,7 +57,7 @@ arm evidence v2 保存 confidence/最小置信门、OOD、latency/limit、finite
 
 **当前事实增量**：main-owned scalable 3D 质点模块栈已接入单一二级、多二级区域 owner 和中心/二级连续失效后的 distributed D3 plan；D7 依据 owner、plan version、epoch、lease、commit 与 fault generation fence 恢复导引。此前定向集成测试 8/8 passed，仅是质点接口证据。D4 同时具备默认 disabled/shadow 的区域资源学习建议层，以及 `d4-region-resource-advisory-v1` 后投影消费合同；它只建议区域配额和邻区转移，下一轮消费必须重验 current snapshot/authority，确定性 D4 安全状态机继续拥有健康检测、leader、epoch/lease、ACK/commit 和最终降级裁决。2026-07-21 新增独立动作覆盖补充课程，100 个 seed 的 300 帧中已形成 hold、request-replan、非零 quota 和 transfer 正类；该课程 reward/outcome 全部不可用，未改变正式 900 episode、PPO、assist 或在线裁决状态。
 
-**运行时证据增量**：D4 的只读验证器已升级为 `d4-region-resource-runtime-ack-evidence-v2`。执行签名发生变化时，验证器要求严格更新的 plan ID/version、完整 owner/epoch/lease 和 D3-D7-main 绑定，输出 `new_execution_plan_applied`。执行签名不变时，只允许显式 refresh-only 元数据，并要求前序 D3 source-plan envelope 与当前资源、全局航迹、联盟标识/版本、成员角色、区域 owner 和未分配集合一致，输出 `evaluation_refresh_applied`。后者只证明建议经过同代评估并被采纳；D3 ACK 缺省 epoch/lease 时仍由 D4 advisory 的有效 authority fence 限定，不能推导新执行权限。5v5 seed 41 的真实 main 质点链路及篡改负例为 5/5，运行时专项合计 33/33；当前 D4 全量 482/482。两类确认都不等于联盟成员确认、物理结果或因果策略回报，也不授予 PPO、assist 或正式 authority。冻结 900 episode 不含这条证据链。
+**运行时证据增量**：D4 的只读验证器已升级为 `d4-region-resource-runtime-ack-evidence-v2`。执行签名发生变化时，验证器要求严格更新的 plan ID/version、完整 owner/epoch/lease 和 D3-D7-main 绑定，输出 `new_execution_plan_applied`。执行签名不变时，只允许显式 refresh-only 元数据，并要求前序 D3 source-plan envelope 与当前资源、全局航迹、联盟标识/版本、成员角色、区域 owner 和未分配集合一致，输出 `evaluation_refresh_applied`。后者只证明建议经过同代评估并被采纳；D3 ACK 缺省 epoch/lease 时仍由 D4 advisory 的有效 authority fence 限定，不能推导新执行权限。5v5 seed 41 的真实 main 质点链路及篡改负例为 5/5，运行时专项合计 33/33；该历史阶段 D4 全量为 482/482，当前全量为 569/569。两类确认都不等于联盟成员确认、物理结果或因果策略回报，也不授予 PPO、assist 或正式 authority。冻结 900 episode 不含这条证据链。
 
 **区域结果证据增量**：`d4-region-resource-observational-reward-v1` 已把区域 reward 的组成、归一化和证据边界固定下来。八项成本分别为高威胁积压、配额满足缺口、转移完成缺口、备用不足、通信负载、分配冲突、降级失败和计划抖动。每项保留原值、单位、归一化分母、来源哈希和可用原因；缺测时整项不可用，不使用相邻状态差或控制命令补零。ACK 时间是窗口起点，结果快照是窗口终点，执行和联盟绑定在首尾必须一致，owner/epoch/lease/fault generation 在窗口内不得改变。新执行计划可得到时间窗口层面的非因果观测奖励，同代评估刷新只能得到观测成本。两者都不证明 `CoalitionMemberAck`、物理执行、因果改善或策略优于规则。新增专项 19/19、D4 全量 449/449；正式 episode producer、paired shadow、on-policy 数据和 PPO 仍未完成。
 
@@ -694,7 +734,7 @@ main/runtime 负责 AirSim 启停与 episode 顺序、故障注入时间轴、D3
 
 根据 2026-07-13 主验证报告与 D4 审计：
 
-- 2026-07-21 全样本准入阶段为 **397/397 项通过**，验收阈值为零失败；加入运行时确认和区域奖励合同时为 **449/449**，当前 D4 全量为 **482/482**。全样本审计专项 10/10，覆盖正常数据、非有限值、规范切分错误、配额不守恒、非法转移、旧 epoch/lease/version、generation 回退、真值泄漏和文件篡改。正式 900 episode 与补充 100 episode 的模块内全样本状态均为 complete；D6 外部复核和真实 ACK/outcome/reward/paired-shadow 仍 pending。该结果不包含新的 AirSim 或真实网络样本，历史阶段计数保持不变。
+- 2026-07-21 全样本准入阶段为 **397/397 项通过**，验收阈值为零失败；加入运行时确认和区域奖励合同时为 **449/449**，候选门诊断阶段为 **482/482**。2026-07-25 当前 D4 全量为 **569/569**。全样本审计专项 10/10，覆盖正常数据、非有限值、规范切分错误、配额不守恒、非法转移、旧 epoch/lease/version、generation 回退、真值泄漏和文件篡改。正式 900 episode 与补充 100 episode 的模块内全样本状态均为 complete；D6 外部复核和真实 ACK/outcome/reward/paired-shadow 仍 pending。该结果不包含新的 AirSim 或真实网络样本，历史阶段计数保持不变。
 - `build_d7_secondary_handoff()` 与 `build_secondary_takeover_plan_metadata()` 当前统一要求 readiness exact-true、expected/actual source 均存在且匹配、plan/required lease epoch 均存在且满足、expiry/current time 均存在且严格 `current_time < expiry`。逐字段 `None`、完整正例和同 id/version 维持路径均有回归；未运行新 AirSim episode。
 - 完全分布式 interceptor/peer 选择不套用二级视觉 readiness 门；动态 N/M、版本/epoch/lease、ACK 和 `global_track_id` 所有权规则未改变。
 - 二级 resource 和 plan lease 只有在 expiry/current time 均存在且严格 `current_time < expiry` 时有效；等于边界按过期处理。缺字段分别输出可审计原因并 fail-closed，不能发布或维持 executable secondary plan。
@@ -702,8 +742,8 @@ main/runtime 负责 AirSim 启停与 episode 顺序、故障注入时间轴、D3
 - 在 0.25 秒逻辑时钟步下，中心故障到二级可执行所有者为 **1.25 秒**，二级故障到对等节点原子执行为 **1.00 秒**；对应验收上限为 1.5 秒和 2.5 秒。
 - 主编排器/运行时又按 AirSim 单次试验时钟（episode clock）运行六类场景、每类 10 个随机种子（seed），共 **60 个试验用例（case）**：安全结果 **60/60**，误降级 0，重复所有者 0，脑裂防护失败 0。
 - 30% 消息丢失下，7/10 因缺 ACK 保守闭锁，只有 3/10 在 ACK 完整后执行。这证明“缺确认不执行”，不是通信性能优良的证明。
-- 更早的 D4 P1 合同层正负例中，二级协调者和完全分布式对等节点都以 3/3 ACK 进入 `executing`，缺 ACK 场景以 2/3 进入 `aborted`（已中止）并保持复核。
-- 区域化合同验证为 23 个确定性单元 test case，无随机 seed；它关闭 D4 模块内 metadata/authority/安全门控。main 后续质点接线的定向 `test_module_stack.py` 为 8/8 passed，覆盖单二级、多二级 owner、distributed D3 plan 和 D7 fencing；二者均不构成 AirSim、真实网络、硬件或长时 200v200 多 seed 证据。
+- 更早的 D4 P1 合同层正负例中，二级协调者和完全分布式对等节点都以 3/3 ACK 进入 `executing`，确认窗口显式截止后的缺 ACK 场景以 2/3 进入 `aborted`（已中止）并保持复核；截止前普通快照保持 `collecting_acks`。
+- 区域化合同验证为 23 个确定性单元 test case，无随机 seed；它关闭 D4 模块内 metadata/authority/安全门控。早期 main 质点接线定向回归为 8/8；2026-07-25 加入通信因果收据和异步三成员确认后，main-owned 模块栈为 66 passed、scalable 3D 全量为 272 passed。上述结果覆盖单二级、多二级 owner、distributed D3 plan、D7 fencing 和单随机种子三成员原子提交；仍不构成 AirSim、真实网络、硬件或长时 200 对 200 多随机种子证据。
 - 区域资源学习已形成正式数据审计和离线开发 checkpoint。内部测试只有 15 个 seed，14384 个动作标签没有 quota/transfer/hold/replan 正样本；D6 审计中 898/1798 帧只有无归因相邻状态转移，reward/causal/counterfactual 可用数均为 0。bundle 固化动作多样性不足和策略能力声明禁止，外部 20-seed paired 结果与真实网络收益仍缺失，因此 assist 资格不可用。
 - 独立补充课程已提供四类规则 teacher 正样本，clean 数据及 canonical BC 只读 view 已可用，但仍没有 outcome/reward。它不能覆盖正式数据的状态分布，也不能把现有 development bundle 重新分类为可推荐策略。
 

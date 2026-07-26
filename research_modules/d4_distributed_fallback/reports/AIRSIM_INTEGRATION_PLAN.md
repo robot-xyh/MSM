@@ -1,5 +1,44 @@
 # D4 AirSim Episode 集成计划
 
+## 2026-07-25 异步 M-to-N 质点验证与 AirSim 计划
+
+D4 已取消区域快照的隐式 ACK 终结。main 已在一个连续 scalable 3D episode 中按真实到达时刻投递计划广播和成员 ACK，没有在提案同 tick 合成全部 ACK，也没有在每个决策 tick 强制结束确认窗口。
+
+已完成的最小复现使用 2 目标、4 资源和 1 个二级侦察节点，其中一个目标要求 2 个主成员和 1 个备用成员：
+
+1. 随机种子为 `1271`，中心在 `1.5 s` 失效，单程通信时延 `0.04 s`，无抖动和丢包。
+2. 二级计划版本 2 在 `2.00 s` 发布；`2.05 s` 为 0/3 ACK、`collecting_acks` 和 `execution_allowed=false`。
+3. `2.10 s` 达到 3/3 ACK，联盟一次性 `committed`；两个主成员进入 `midcourse_pn_3d`，备用成员继续 `assignment_not_current`。
+4. 在线真值使用和 `global_track_id` 改写均为 0；新计划版本仍需重新收集当前版本 ACK。
+
+验收阈值为：完整 ACK 前控制许可 0；正例最终 3/3 ACK 且原子提交 1；`global_track_id` 改写 0；旧版本 ACK 不沿用。2026-07-25 D4 模块专项 **97 passed**、全量 **569 passed**；main-owned 模块栈 **66 passed**、scalable 3D 全量 **272 passed**。D4 的租约到期、显式截止、分区、旧 epoch/version 和无效成员 ACK 负例由模块测试覆盖。AirSim 后续需按同一合同运行多随机种子正负例，不能把本次质点单场景结果当作 AirSim 或真实网络验收。
+
+## 2026-07-25 通信因果证据接线
+
+D4 已提供不依赖 AirSim/main 包的 `CommunicationDeliveryReceipt.from_delivered_message()` 和 `CausalCommunicationEvidenceGate`。main 的 `DeliveredMessage` 已具备 source、destination、send/arrival timestamp 和 envelope，并已接入以下三类版本化消息：
+
+- `d4.secondary_readiness.v1`
+- `d4.regional_plan_broadcast.v1`
+- `d4.coalition_member_ack.v1`
+
+每个 payload 必须包含 `schema`、`message_id`、`message_kind`、`authority_id`、`plan_version`、`epoch`、`lease_expires_at_s` 和 `partition_generation`。严格工厂从 delivered message 和 envelope/payload 读取全部字段，核对 envelope source/timestamp 与 transport，按 topic 映射消息类型，并计算 payload SHA-256 和内容寻址 receipt ID。main 不应另传或覆盖 authority、plan、epoch、lease、partition generation、message kind 或 message ID。
+
+接线顺序固定为：
+
+```text
+bus publish versioned envelope
+  -> DeterministicCommunicationNetwork.send
+  -> deliver(current_episode_time)
+  -> CommunicationDeliveryReceipt.from_delivered_message
+  -> build current expectation
+  -> validate secondary readiness / plan broadcast / member ACK
+  -> existing readiness and coalition state machines
+```
+
+只有 `deliver()` 实际返回的消息可以建立 receipt。通信关闭、丢包或尚未到达时不得根据 heartbeat/readiness/ACK 布尔量补造回执。main 的 5v5 通信关闭固定验收现为 8/8 失败关闭、`execution_allowed=false`。全丢包、到达晚于决策、旧 plan/epoch、租约到期和 partition generation 不一致继续作为回归负例。
+
+2026-07-25 因果证据专项 56/56、异步联盟三文件专项 97/97、D4 全量 569/569 通过，覆盖 5/20/50/100/200 成员。原通信禁用 P0 已关闭；异步 M-to-N 单随机种子 scalable 3D 系统正例也已通过。本轮没有运行新的 AirSim episode，AirSim 多随机种子、真实网络和正式规模验收仍待验证。
+
 ## 1. 范围与边界
 
 本计划覆盖 AirSim episode 时间轴上的 D4 通信摘要输入、故障注入、顺序接管、原子 ACK、恢复审计和 D6 指标输出。D4 不直接启动 AirSim、不发布飞控命令、不处理视频帧，也不实现真实 socket、mesh、RF、硬件驱动、自动处置或授权绕过。
@@ -10,9 +49,9 @@ AirSim episode clock 只提供统一的仿真时间基准。已通过的 delay/l
 
 D4 已增加隔离 degraded rollout 采用合同，供 main 在未来 AirSim reset-separated control/treatment episode 或 scalable3d 克隆世界中生成逐周期证据。每个 receipt 必须绑定 `center_failed|center_and_secondary_failed|active_risk`、场景/初态/通信/故障 schedule SHA、D4 source snapshot/decision、源/新 D3 plan 和 candidate gate。它固定 `isolated_simulation_only=true`、`production_runtime_ack=false`，不能写入现有生产 `runtime.assignment_plan_ack` 口径。AirSim 接入时只有实际消费全部 D3 binding 并形成 D7/control lineage 后才能生成 receipt；D3 v1 隔离消费证据还必须通过 D4 独立桥接校验，截图、simGetDetections metadata、单帧建议或 projected flag 均不能代替。该合同专项 26/26、D4 全量 508/508；本轮未启动 AirSim，故没有新增 AirSim 结果。
 
-main 适配器必须先按 region 将同帧当前 D3 plan 转为 formal D4 source view。`center_failed` 使用 secondary owner，`center_and_secondary_failed` 使用各区域 distributed owner，`active_risk` 保持 center owner；epoch 和 lease 均取 formal ownership。D3 `previous_plan` 不得直接替代这个 source。需要改变执行时，main/D3 从 formal source 发布新 ID 和严格更高版本的 applied plan；继续执行原计划时，applied 保持同一身份、binding、未分配清单和创建时间，并显式设置一个 refresh-only 标志。owner/epoch/lease 变化必须先生成新 formal decision。中心失效首轮 20-seed 的 20 pair、196 条区域记录全部以 `isolated_execution_plan_not_strictly_new` 拒绝，说明现有 producer 尚未满足该规则；D7 世界命令已应用不能替代计划代际门。
+main 适配器必须先按 region 将同帧当前 D3 plan 转为 formal D4 source view。`center_failed` 使用 secondary owner，`center_and_secondary_failed` 使用各区域 distributed owner，`active_risk` 保持 center owner；epoch 和 lease 均取 formal ownership。D3 `previous_plan` 不得直接替代这个 source。需要改变执行时，main/D3 从 formal source 发布新 ID 和严格更高版本的 applied plan；继续执行原计划时，applied 保持同一身份、binding、未分配清单和创建时间，并显式设置一个 refresh-only 标志。owner/epoch/lease 变化必须先生成新 formal decision。中心失效首轮 20-seed 的 20 pair、196 条区域记录全部以 `isolated_execution_plan_not_strictly_new` 拒绝，这是历史 producer 证据。2026-07-25 main-owned 选择器已跳过故障栅栏帧，并要求 D4 裁决完成且 D3 已采用相应区域计划；相关选择测试 11/11 通过。原 20-seed 物理制品尚未按新逻辑正式重生，D7 世界命令已应用仍不能替代计划代际门。
 
-D4 已完成保留 seed 1000-1019 的配对干预消费合同和冻结候选隔离加载器；scalable 3D nominal 5v5 的正式 v2 40-arm execution receipts 位于 `reserved_seed_interventions_nominal_5v5_1000_1019_formal_7891296`，绑定源提交 `78912963b67fe86ee9a8d29186b18a9dd60c460c`。D6 已生成 profile-bound v2 outcome-availability sidecar，目录为 `research_modules/d6_evaluation_metrics/outputs/reserved_seed_interventions_nominal_5v5_1000_1019_formal_7891296_d6_profile_bound_v2_audit_20260722/`，状态 `pass_offline_assignment_comparison_only`，文件/内容 SHA256 为 `f3852251...1c3b`/`c02a345c...5d2d`。D6 独立重算确认 20/20 source clean/finite、truth=0、candidate considered 20/20；保持 `minimum_confidence=0.6` 后 confidence 0/20，OOD/latency/finite/failure 各 20/20，aggregate 0/20，safe adoption 0/20，规则回退 20/20。执行时延 `treatment_candidate_latency_ms` 的 nearest-rank P95 为 `2.241315 ms`，门控汇总的线性插值 P95 为 `2.264415 ms`。本轮未修改 main/AirSim runtime，也未启动 AirSim。未来 AirSim 配对仍由 main 为每个 seed 生成规则 control 与候选 treatment 两个 reset 隔离 episode，并冻结相同 settings/scenario config、actor/资源初始状态、通信 schedule、故障 schedule 和区域快照 lineage SHA。D4 treatment 只读加载 `region_resource_bc_900_20260720/bundle`，核对 manifest、权重和训练清单 SHA，生成 raw candidate 后进入原确定性投影；加载、推理、阈值或投影失败均记录并回退规则。arm evidence v2 不改变 bundle、authority、projection 或 next-cycle 安全门，`isolated_treatment_safe_adopted` 也不能改变线上 authority。availability sidecar 已存在不表示 physical outcome 有值；runtime ACK、AirSim 干预后物理结果、paired effect/non-degradation、counterfactual、causal 和故障场景降级策略效果仍未执行或不可用。当前专项 33/33、D4 全量 482/482；`formal_twenty_seed_performance_completed=false`，nominal 5v5 只证明门控和规则回退。
+D4 已完成保留 seed 1000-1019 的配对干预消费合同和冻结候选隔离加载器；scalable 3D nominal 5v5 的正式 v2 40-arm execution receipts 位于 `reserved_seed_interventions_nominal_5v5_1000_1019_formal_7891296`，绑定源提交 `78912963b67fe86ee9a8d29186b18a9dd60c460c`。D6 已生成 profile-bound v2 outcome-availability sidecar，目录为 `research_modules/d6_evaluation_metrics/outputs/reserved_seed_interventions_nominal_5v5_1000_1019_formal_7891296_d6_profile_bound_v2_audit_20260722/`，状态 `pass_offline_assignment_comparison_only`，文件/内容 SHA256 为 `f3852251...1c3b`/`c02a345c...5d2d`。D6 独立重算确认 20/20 source clean/finite、truth=0、candidate considered 20/20；保持 `minimum_confidence=0.6` 后 confidence 0/20，OOD/latency/finite/failure 各 20/20，aggregate 0/20，safe adoption 0/20，规则回退 20/20。执行时延 `treatment_candidate_latency_ms` 的 nearest-rank P95 为 `2.241315 ms`，门控汇总的线性插值 P95 为 `2.264415 ms`。本轮未修改 main/AirSim runtime，也未启动 AirSim。未来 AirSim 配对仍由 main 为每个 seed 生成规则 control 与候选 treatment 两个 reset 隔离 episode，并冻结相同 settings/scenario config、actor/资源初始状态、通信 schedule、故障 schedule 和区域快照 lineage SHA。D4 treatment 只读加载 `region_resource_bc_900_20260720/bundle`，核对 manifest、权重和训练清单 SHA，生成 raw candidate 后进入原确定性投影；加载、推理、阈值或投影失败均记录并回退规则。arm evidence v2 不改变 bundle、authority、projection 或 next-cycle 安全门，`isolated_treatment_safe_adopted` 也不能改变线上 authority。availability sidecar 已存在不表示 physical outcome 有值；runtime ACK、AirSim 干预后物理结果、paired effect/non-degradation、counterfactual、causal 和故障场景降级策略效果仍未执行或不可用。专项 33/33、该历史阶段 D4 全量 482/482；2026-07-25 当前全量为 569/569。`formal_twenty_seed_performance_completed=false`，nominal 5v5 只证明门控和规则回退。
 
 最新 M5N2 baseline/candidate 各 10 seeds 已完成，共 20/20 case。该批中心 owner 始终有效且 `active degradation=0`，是中心继续执行负对照：coalition completion `0/20`、第二 primary 进入 5 m `0/20`，20 个第二 primary 均为 `collision_stop`。由于 collision object 未写盘，runtime 后续必须补充碰撞对象/来源字段，D4 不能把该终态自动转换成主动降级事件。D4 main-bus 阶段 mean/P95/max 约 `5.59/6.70/94.10 ms`。`png_ttc_2v2_seed001` 排除在 M5N2 聚合之外，dropout case 完成数为 0。
 
@@ -55,7 +94,7 @@ main/runtime 已按 AirSim episode clock 对以下六类场景各运行 10 seeds
 
 30% loss 场景中，7 个缺 ACK case 保守阻断，只有 3 个完整 ACK case 执行。该结果关闭 episode-clock 多 seed 安全矩阵缺口，不关闭真实网络 P1。
 
-2026-07-15 的 280/280 回归关闭了公开 secondary plan helper 的 readiness/source/epoch/time 缺失门控，更早 278/278 不再作为全部入口证据。区域合同阶段为 303/303，建议管线阶段 335/335，next-cycle 消费合同阶段 350/350，课程阶段为 387/387，全样本准入阶段为 397/397，运行时确认阶段为 430/430；加入区域 reward、冻结 bundle 隔离加载、候选门诊断、degraded rollout 合同和 D3 隔离消费证据桥接后，当前 D4 全量为 501/501。新增隔离合同不改变任何 AirSim 控制、场景或在线门控，也不提供新的 AirSim、真实网络或硬件证据。main 既有质点模块栈定向 8/8 覆盖单一二级、多二级区域 owner、连续失效后的 distributed D3 plan，以及 D7 owner/epoch/lease/commit/fault fence。正式 development checkpoint 强制 shadow-only；冻结数据中的真实 ACK/outcome/reward 仍 unavailable，PPO、assist 和 authority 继续关闭。
+2026-07-15 的 280/280 回归关闭了公开 secondary plan helper 的 readiness/source/epoch/time 缺失门控，更早 278/278 不再作为全部入口证据。区域合同阶段为 303/303，建议管线阶段 335/335，next-cycle 消费合同阶段 350/350，课程阶段为 387/387，全样本准入阶段为 397/397，运行时确认阶段为 430/430；加入区域 reward、冻结 bundle 隔离加载、候选门诊断、degraded rollout 合同和 D3 隔离消费证据桥接后，该历史阶段 D4 全量为 501/501。2026-07-25 当前全量为 569/569。main 质点模块栈已从早期 8/8 定向接线扩展到 66 passed，并完成单随机种子异步三成员正例；该结果仍不提供 AirSim、真实网络或硬件证据。正式 development checkpoint 强制 shadow-only；冻结数据中的真实 ACK/outcome/reward 仍 unavailable，PPO、assist 和 authority 继续关闭。
 
 ## 3. 状态与所有权规则
 
@@ -163,6 +202,7 @@ D4 每个 tick 输出：
 
 ```bash
 python3 -m py_compile \
+  research_modules/d4_distributed_fallback/d4_distributed_fallback/communication_causal_evidence.py \
   research_modules/d4_distributed_fallback/d4_distributed_fallback/region_resource.py \
   research_modules/d4_distributed_fallback/d4_distributed_fallback/region_resource_learning.py \
   research_modules/d4_distributed_fallback/d4_distributed_fallback/region_resource_curriculum.py \

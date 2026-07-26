@@ -164,6 +164,30 @@ def _commit(
     return state
 
 
+def test_proposal_and_partial_ack_remain_collecting_until_all_members_ack() -> None:
+    coordinator = CoalitionCommitCoordinator()
+    state = coordinator.evaluate(_propose(coordinator), timestamp=10.05)
+
+    assert state.state == "collecting_acks"
+    assert state.acked_member_ids == ()
+    assert state.missing_member_ids == MEMBERS
+
+    state = coordinator.record_ack(state, _ack("INT-1"), timestamp=10.2)
+    assert state.state == "collecting_acks"
+    assert state.acked_member_ids == ("INT-1",)
+    assert state.missing_member_ids == ("INT-2", "INT-3")
+
+    state = coordinator.record_ack(state, _ack("INT-2"), timestamp=10.3)
+    assert state.state == "collecting_acks"
+    assert state.acked_member_ids == ("INT-1", "INT-2")
+
+    state = coordinator.record_ack(state, _ack("INT-3"), timestamp=10.4)
+    assert state.state == "committed"
+    assert state.acked_member_ids == MEMBERS
+    assert state.missing_member_ids == ()
+    assert state.committed_at == 10.4
+
+
 def test_normal_center_keeps_existing_coalition_path_without_commit() -> None:
     plan = _plan()
     result = D4ArbitrationAdapter().evaluate(
@@ -273,6 +297,21 @@ def test_missing_ack_fails_closed_when_collection_is_finalized() -> None:
     assert build_coalition_commit_d6_metadata(state)["atomic_coalition_formed"] is False
 
 
+def test_collecting_ack_window_aborts_at_lease_expiry() -> None:
+    coordinator = CoalitionCommitCoordinator()
+    state = coordinator.evaluate(
+        _propose(coordinator, lease_expires_at=10.5),
+        timestamp=10.1,
+    )
+
+    expired = coordinator.evaluate(state, timestamp=10.5)
+
+    assert state.state == "collecting_acks"
+    assert expired.state == "aborted"
+    assert expired.reason == "coalition_lease_expired"
+    assert expired.resolved_at == 10.5
+
+
 def test_stale_epoch_proposal_is_rejected_without_replacing_current_state() -> None:
     coordinator = CoalitionCommitCoordinator()
     current = _propose(coordinator, epoch=7)
@@ -334,10 +373,33 @@ def test_non_member_ack_is_rejected_without_counting_member() -> None:
 
     rejected = coordinator.record_ack(state, _ack("INT-9"), timestamp=10.2)
 
-    assert rejected.state == "proposed"
+    assert rejected.state == "collecting_acks"
     assert rejected.acked_member_ids == ()
     assert rejected.reason == "ack_resource_not_required_member"
     assert rejected.metadata["rejected_ack_count"] == 1
+
+
+def test_stale_ack_is_rejected_without_authorizing_current_generation() -> None:
+    coordinator = CoalitionCommitCoordinator()
+    state = coordinator.evaluate(_propose(coordinator), timestamp=10.05)
+
+    rejected = coordinator.record_ack(
+        state,
+        _ack("INT-1", epoch=6),
+        timestamp=10.2,
+    )
+
+    assert rejected.state == "collecting_acks"
+    assert rejected.reason == "ack_epoch_stale"
+    assert rejected.acked_member_ids == ()
+    assert rejected.metadata["rejected_ack_count"] == 1
+    assert (
+        build_coalition_commit_d6_metadata(
+            rejected,
+            current_time_s=10.2,
+        )["atomic_coalition_formed"]
+        is False
+    )
 
 
 def test_network_partition_aborts_collecting_and_reconfigures_committed() -> None:

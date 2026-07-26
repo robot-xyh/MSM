@@ -1,5 +1,22 @@
 # D4 实现差距审计：分布式协同与降级接管
 
+## 2026-07-25 P1 异步 M-to-N 联盟确认
+
+- **根因**：`RegionalFailoverCoordinator._authorize_tasks()` 在提案快照末尾无条件 `finalize=True`。真实网络 ACK 需要后续 tick 才能到达，首帧因此永久 `aborted/missing_required_acks`。
+- **D4 缺口已关闭**：普通快照保持 `collecting_acks`，同一 plan/epoch/coalition generation 的 ACK 位图跨快照累积，完整后原子提交。新增显式终结开关，默认关闭；租约、分区、摘要冲突和成员不可执行继续失败关闭。
+- **无效消息边界**：旧 epoch/version、过期、越权或不匹配 ACK 被拒绝且不计入位图，当前快照不授权。后续合法 ACK 可恢复，避免乱序旧包永久毒化有效代次。partition generation 仍由已实现的通信因果证据门拒绝。
+- **验证**：2026-07-25 新增 5 项异步回归；三文件专项 97/97、D4 全量 569/569。验收阈值为完整 ACK 前授权 0、三成员完整 ACK 后原子提交 1、全部负例授权 0。
+- **main 单随机种子证据已闭合**：2026-07-25，随机种子 `1271` 的 2 目标、4 资源、1 个二级侦察节点 scalable 3D 场景已按实际通信投递完成 0/3 ACK 保持、3/3 ACK 原子提交、两个主成员释放和备用成员待命。在线真值使用与 `global_track_id` 改写均为 0；main-owned 模块栈 66 passed，scalable 3D 全量 272 passed。
+- **剩余 P1**：AirSim 多随机种子故障矩阵、真实网络时延/乱序/丢包/分区条件、长期恢复统计和 D6 正式 5700 单元矩阵仍未形成。单随机种子质点结果不能替代物理连续性或 200 对 200 性能结论。
+
+## 2026-07-25 P0 区域通信因果证据
+
+- **P0 历史复现**：main 曾在 5v5 `center_failure`、duration 3.2 秒、`communication_enabled=false`、雷达探测概率 1.0 条件下，输出 8/8 区域可执行二级层。
+- **D4-owned 第一半已关闭**：新增不可变 delivered receipt、版本化 topic 映射、truth-free payload digest、内容寻址 receipt ID，以及 readiness、区域计划广播、联盟成员 ACK 三类验证入口。严格工厂从 delivered message/envelope/payload 提取 authority、plan、epoch、lease、partition 和 message ID，调用方不能覆盖。
+- **失败关闭语义**：无实际回执固定返回 `receipt_missing`。错源/目的/类型、旧 plan/epoch、过期或错 scope lease、晚到、分区代次和 payload digest 不一致均有稳定 reason code。精确重复仅在 receipt 与 expectation 完全不变时幂等；冲突重放和跨证据复用被拒绝。结果固定 `authority_granted=false`，不改变既有状态机。
+- **验证日期与范围**：2026-07-25，因果证据专项 56/56；加入异步联盟回归后 D4 全量 569/569。参数化规模为 5/20/50/100/200。
+- **P0 已关闭**：main 已将三类控制消息接入 `DeterministicCommunicationNetwork`。通信关闭复现现为 0 个可执行区域、8 个失败关闭区域，D7 全部 hold。该结论关闭原因果通信 P0；真实通信 M-to-N 正例复跑列为上节 P1。
+
 ## 2026-07-22 跨提交内容身份审计
 
 - **D4 P0 无新增代码缺口**：原始 `formal_decision_digest`、`authority_digest` 和内容寻址 `advisory_id` 的生成及校验语义正确。三者在单次运行内必须保持原值，消费 ledger 继续使用原始 advisory identity。
@@ -93,7 +110,7 @@
 - **开发训练结果**：固定 seed `20260720` 完成 66 epoch，最佳 epoch 54，内部测试 loss `0.071545`；2026-07-21 准入复跑耗时 66.02 秒、推理 P95 `0.7774 ms`，权重 SHA256 `3da0360be8788f3ffeb8e9f9eba3e0d5369ec0bdf9e05729dfb1db07d71d5f62` 与首次训练一致。结果只证明训练、加载、推理和确定性投影管线可运行。
 - **bundle admission**：manifest 与 model readiness 固化 `lifecycle_stage=development`、`maximum_advisor_mode=shadow`、`action_diversity_sufficient=false`、`strategy_capability_claim_allowed=false`、`reward_evidence_available=false` 及全部动作计数；即使调用方声明 20 个 unseen seed 也不能进入 assist。当前严格结论为“管线可用但动作多样性不足，shadow-only”。
 - **仍开放的 P1**：独立 producer 已生成 quota/transfer/hold/replan 规则 teacher 正样本，clean 课程及 canonical BC 只读 view 已准入，但该课程不是正式状态分布。仍需正式/课程混合策略、D6 版本化 outcome/reward/causal/counterfactual 字段与审计制品 SHA256，以及外部 1000-1019 paired shadow。上述项目未完成前，不启动 PPO，不评审 assist，不宣称 learned policy 优于规则。
-- **版本与验收**：权重和完整 bundle 位于 ignored `outputs/`，当前无 Git LFS；可跟踪结果只含配置、命令、指标、准备度、权重 SHA256 和本地定位。全样本审计专项 10/10 后为 397/397；运行时原合同 28/28、真实集成与篡改 5/5；区域 reward 专项 19/19 加入后为 449/449，当前 D4 全量 **482/482 passed**。
+- **版本与验收**：权重和完整 bundle 位于 ignored `outputs/`，当前无 Git LFS；可跟踪结果只含配置、命令、指标、准备度、权重 SHA256 和本地定位。全样本审计专项 10/10 后为 397/397；运行时原合同 28/28、真实集成与篡改 5/5；区域 reward 专项 19/19 加入后为 449/449，候选门诊断阶段 D4 全量 **482/482 passed**，2026-07-25 当前全量为 **569/569 passed**。
 
 ## 2026-07-20 区域资源建议与 main 质点接线同步
 
@@ -112,7 +129,7 @@
 - **已关闭的 D4 模块缺口**：新增 `d4-regional-failover-v1`，不导入 main-owned simulator 即可消费 `scalable3d-scenario-v1` mapping，按动态 resource/recon/region/task 数量输出 truth-free 逐区域 authority payload，并拒绝 schema 或声明节点数量溢出。中心未 `failed` 时保持中心 owner；中心失效后按区域 coverage + strict readiness + lease epoch 选择 `mobile_high_recon`；无有效二级节点时才进入 bounded capability/跨区域 capacity bid fallback。
 - **安全合同**：owner/layer 变化要求 `epoch` 与 `plan_version` 同时提升，租约严格 `timestamp < expiry` 并收缩到 authority、D3 task 和二级 lease 的最早 expiry。中心、二级、distributed 任一 `k>1` candidate 都必须 required ACK 完整且 target/coalition/plan version、epoch、lease 一致后原子 `committed`；commit metadata 分别使用 `d3_center_assignment`、`d3_assignment_secondary_coordination` 和 `bounded_constrained_bid_selection`，只有 distributed fallback 使用最后一种 formation。缺 ACK、旧 authority/ACK epoch、旧 plan version、过期 lease 和任一层级网络分区均 fail closed。
 - **输入证据**：逐任务显式消费 D1 covariance/measurement age、D2 ambiguity/IDSW/duplicate、D3 plan id/version/epoch/lease/current/feasible、D5 consistent/inconsistent/binding/friend/duplicate 及 member support/hold/ambiguity；D4 只复制上游 `global_track_id`。
-- **验证日期/样本/结果**：2026-07-20，23 个确定性 pytest case，无随机 seed。五档参数分别为 5/20/50/100/200 region，每档构造相同数量 active task/resource metadata；其余 case 覆盖声明节点数上限、中心/二级连续失效、双区域 coverage、全层完整/缺失 ACK、D5 member hold、单成员多能力、跨区域 capacity、旧 generation、最早 lease 和全层分区。新增 23/23、当时 D4 全量 **303/303 passed**；当前全量为 482/482。
+- **验证日期/样本/结果**：2026-07-20，23 个确定性 pytest case，无随机 seed。五档参数分别为 5/20/50/100/200 region，每档构造相同数量 active task/resource metadata；其余 case 覆盖声明节点数上限、中心/二级连续失效、双区域 coverage、全层完整/缺失 ACK、D5 member hold、单成员多能力、跨区域 capacity、旧 generation、最早 lease 和全层分区。新增 23/23、当时 D4 全量 **303/303 passed**；候选门诊断阶段为 482/482，当前全量为 569/569。
 - **仍开放**：长时 200v200 与多 seed 性能、真实 AirSim/RF/mesh/socket/时钟漂移/队列、D6 区域统计、物理拦截。bounded candidate formation 是确定性贪心，不是 CBBA 多轮共识或 CCBBA，也无全局组合最优、timing coupling、reserve 激活、补位/缩编/整盟重构。
 - **所有权边界**：根级系统文档与 scalable3d/main 文件不在 D4 owned paths，本轮未修改，需 main 在集成时同步。
 
@@ -139,7 +156,7 @@ P0 已关闭：`FailoverCoordinator`、`AirSimEpisodeCommunicationAdapter` 和 `
 
 新确认的 P0 边界已关闭：secondary resource candidate、plan 发布/维持、active owner 消费和 D7 handoff 统一要求 expiry/current time 均存在且严格 `current_time < expiry`。缺 expiry、缺 current time、`now == expiry`、`now > expiry`、旧 lease epoch 和 source mismatch 均不可发布或维持 executable secondary plan；active secondary owner 失效时转为 `hold_review`。中心健康、主动降级策略及 heartbeat/readiness/cue/gimbal/link 门控未改变。
 
-该轮 2026-07-14 历史验收为 211/211 passed；2026-07-15 的 278/278 与 280/280、区域阶段 303/303、建议管线阶段 335/335、消费合同阶段 350/350、共享切分阶段 381/381、课程阶段 387/387、全样本阶段 397/397、运行时确认阶段 430/430 都是历史结果，当前 D4 全量为 482/482。未运行新 AirSim episode。member replacement 仍只是测试手工给定替换成员后的 replay，不是自主 reserve 激活、补位、缩编或整盟重组。
+该轮 2026-07-14 历史验收为 211/211 passed；2026-07-15 的 278/278 与 280/280、区域阶段 303/303、建议管线阶段 335/335、消费合同阶段 350/350、共享切分阶段 381/381、课程阶段 387/387、全样本阶段 397/397、运行时确认阶段 430/430、候选门诊断阶段 482/482 都是历史结果，2026-07-25 当前 D4 全量为 569/569。未运行新 AirSim episode。member replacement 仍只是测试手工给定替换成员后的 replay，不是自主 reserve 激活、补位、缩编或整盟重组。
 
 ## 2026-07-13 P1 episode-time 故障验收增量
 
@@ -153,7 +170,7 @@ D4 已把原四场景 replay 扩展为 7 个规范 episode-time 场景：`normal
 
 ## 总体结论
 
-D4 所属 P1 合同层已闭合。最新验证中 ComputerVision 总体验收为 8/10；二级协调者 `Secondary_Recon_1` 以 ACK 3/3 进入 `executing`，完全分布式 `INT-02` peer 以 ACK 3/3 进入 `executing`，缺 ACK 场景以 2/3 ACK 进入 `aborted` 并令 T001 三成员 `hold_for_review`。因此 secondary/distributed commit 正例和缺 ACK fail-closed 都属于已通过，不再列为当前缺口。
+D4 所属 P1 合同层已闭合。2026-07-11 ComputerVision 总体验收为 8/10；二级协调者 `Secondary_Recon_1` 以 ACK 3/3 进入 `executing`，完全分布式 `INT-02` peer 以 ACK 3/3 进入 `executing`，确认窗口显式截止后的缺 ACK 场景以 2/3 ACK 进入 `aborted` 并令 T001 三成员 `hold_for_review`。2026-07-25 后，截止前普通快照保持 `collecting_acks`。因此 secondary/distributed commit 正例和缺 ACK fail-closed 都属于已通过，不再列为当前缺口。
 
 状态分层如下，后续审计不得合并这些口径：
 
@@ -161,7 +178,7 @@ D4 所属 P1 合同层已闭合。最新验证中 ComputerVision 总体验收为
 |---|---|---|
 | scalable3d 区域合同与质点接线 | **D4 合同及 main 质点接口已完成** | 区域阶段 23/23、main 定向 8/8；覆盖单二级、多二级 owner、distributed D3 plan 和 D7 fencing。不等于 AirSim、真实网络、长时 200v200、多 seed、全局组合最优或完整 CCBBA |
 | 区域资源建议、episode 数据、开发训练与 next-cycle 消费合同 | **D4 接口、clean 补充课程、development checkpoint、严格 runtime ACK 消费端和区域 reward schema/适配器已实现；D4 全样本准入 complete，D6 external admission 仍 pending** | 全样本专项 10/10、runtime ACK 专项 33/33、reward 专项 19/19、D4 全量 449/449；规则教师 target/projected 不代表 runtime ACK。新执行计划需严格更新的 plan ID/version 与完整 owner/epoch/lease；同代评估刷新需 source-plan envelope 和不变 binding，且不能获得动作 reward。冻结数据无 v2 ACK/result window，paired shadow 和 D6 外部复核仍缺失，bundle 强制 shadow-only |
-| P1 合同层 | **已完成** | 已关闭 secondary/peer 3/3 ACK `executing` 正例和 missing ACK 2/3 `aborted` fail-closed；不等于自主成员形成或物理执行完成 |
+| P1 合同层 | **已完成** | 已关闭 secondary/peer 3/3 ACK `executing` 正例和显式截止后 missing ACK 2/3 `aborted` fail-closed；不等于自主成员形成或物理执行完成 |
 | P1 扰动合同矩阵 | **模块 replay 已完成** | `d4_p1_failover_disturbance_replay_v1` 九场景 9/9 通过，覆盖正常中心、secondary takeover、missing ACK、member replacement、partition recovery、stale epoch、expired lease、digest conflict 和 center recovery dual-track audit；不生成 `AssignmentPlan`，不降低外部 gate |
 | P1 episode-time 批量验收 | **已完成** | `d4_airsim_episode_communication_v1` 支持逐 tick 输入；2026-07-13 六类、10-seed、60-case 矩阵为 60/60 safety outcome，误降级、重复 owner 和 split-brain prevention failure 均为 0。该结果仅覆盖 AirSim episode clock 故障注入 |
 | P1 真实网络/长期标定 | **仍开放** | episode-time 注入不能替代真实带宽、拥塞、时钟漂移、网络排队/抖动/乱序/重传和 RF 链路；secondary-interceptor/peer 实际网络与长时间恢复仍未闭合 |
@@ -200,7 +217,7 @@ D4 当前已具备 `C2Health`、被动降级、主动降级仲裁、固定系留
 | P0 terminal plan-binding 一致性 | **已修复，保持回归** | posefix smoke 证明旧逻辑仍把 D5 readiness 当作 binding：四组历史输出各有 1087/1094/585/1064 条无 hard risk 的 false，并导致 158/112/113/122 条控制拒绝。现 `terminal_consistent` 只由 current resource/global-track/version/coalition binding 与 friend/duplicate/mismatch 决定；持续失锁只请求 cue，不单独置 false。D5/D7 lock/handoff 仍独立 |
 | P0 hard mismatch/stale gate | **已实现，保持回归** | resource/global-track mismatch、friend、duplicate、not-current/stale plan 和显式 resource infeasible 均不允许二级 readiness 改写中心 owner；observed mismatch 达到 `mismatch_frame_limit/risk_window` 后请求中心重规划，单窗口暂态仍防抖 |
 | 其他 P0 合同 | **无行为变化、保持原状态** | heartbeat smoothing、secondary readiness/source/lease/epoch、center-replan cooldown/lifecycle、D2 truth 隔离和 `global_track_id` ownership 本轮未改；没有新增 P0 blocker 或新增完成项 |
-| P1 原子联盟 commit/ACK | **无行为变化、合同层仍已完成** | secondary ACK 3/3 `executing`、peer ACK 3/3 `executing`、missing ACK 2/3 `aborted` 仍是权威正负例；本轮 PNG delivery 工作未改变 commit、epoch、lease、digest 或 recovery 行为 |
+| P1 原子联盟 commit/ACK | **合同层仍已完成；异步收集语义已更新** | secondary ACK 3/3 `executing`、peer ACK 3/3 `executing`、显式截止后 missing ACK 2/3 `aborted` 仍是正负例；截止前普通快照保持 `collecting_acks`。PNG delivery 工作未改变 commit、epoch、lease、digest 或 recovery 行为 |
 | P1 真实运行与长期标定 | **部分实现，仍开放** | 早期 PNG delivery 的 M5N2 `0/9` 是历史短窗口结果；最新中心继续执行 paired 负对照已完成 20/20 case，coalition 和第二 primary 5 m 均为 0/20，`active degradation=0`。该批没有 secondary/distributed 动作，不能关闭 D4 完整扰动、成员重构/恢复、误降级成对标定或物理协同缺口 |
 
 下一验收条件：main 复用已完成的 M5N2 20-case 几何/seeds，增加中心失效、中心与二级连续失效和 D1/D2/D3/D5 可审计主动风险 paired case；同时补充 collision object/source lineage。验证所有无硬冲突 reacquire 保持 binding、D5/D7 仍独立阻止未锁定 PNG，并对任意 mismatch/friend/duplicate/stale-plan/version/ACK/lease 保持立即阻断；报告 D4 action/reject、错误绑定、active-primary、coalition completion、误降级和恢复。旧 epoch、过期 lease、成员不可执行、分区恢复、digest conflict 和成员补位已由版本化模块 replay 固化，六类 episode-time 的 60-case 批量安全矩阵也已完成；其余 P1 为真实带宽、时钟漂移、网络排队/抖动/乱序/重传、secondary-interceptor/peer 实际链路与长时恢复统计。
@@ -299,7 +316,7 @@ D4 不构造“虚拟中心”，不在 no-center 路径临时调用 Hungarian/M
 | 中心恢复合并 | assignment-only merge 已实现 | 未比较 track version、plan digest、terminal lock、communication link、D5/D7 gate 状态 | 需要完整双轨 episode log 和恢复前后版本序列 |
 | CBBA vs 中心化最优差距 | D4 已有单场景 helper、benchmark 字段和 `build_cbba_d6_metadata()`，可比较 D4 CBBA 与 D3/main 提供的中心 plan/cost matrix 并输出多 seed 报告字段 | 真实 episode 还未持续保存 D3 cost matrix/current plan，D6 还未做多 seed 聚合 | main/D3 需要保存中心化 cost matrix/current plan，D6 需要聚合 cost gap |
 | D5 distributed visual evidence 运行时接线 | D4 模块内可消费 D5 distributed association/hypothesis 的对象或 dict，并在 CBBA scoring 中使用 | 真实多 seed no-center case 中 D5 多 peer 输出到 D4 `TrackSummary.visual_evidence` 的合流频率和风险权重还未标定 | main 需要在 episode 状态机中持续调用 `merge_distributed_visual_evidence_into_tracks()` 或等价接线并形成 D6 统计 |
-| AirSim D4/D5 stress | 历史 sweep 与最新 commit 正负例均可审计；二级和 peer 3/3 `executing`、缺 ACK 2/3 `aborted` 已通过；模块 replay 九类扰动 9/9 通过 | 同类扰动在真实 AirSim 中的成员退出/重构、误降级和恢复多 seed 统计仍开放 | main 使用统一 D4 schema 增加同 seed 成对扰动 |
+| AirSim D4/D5 stress | 历史 sweep 与 commit 正负例均可审计；二级和 peer 3/3 `executing`、显式截止后缺 ACK 2/3 `aborted` 已通过；模块 replay 九类扰动 9/9 通过 | 同类扰动在真实 AirSim 中的成员退出/重构、误降级和恢复多 seed 统计仍开放 | main 使用统一 D4 schema 增加同 seed 成对扰动 |
 | M 对 N 联盟降级 | 已实现 member ACK、commit lifecycle、lease/epoch、digest、分区和恢复审计；secondary/peer commit 正例与缺 ACK fail-closed 已通过，member replacement 仅为手工 replay | 自主成员形成、reserve 激活、补位/缩编/整盟重组、D7 时序可达性和真实 AirSim 扰动矩阵尚未闭合 | P1 保持开放；P2 隔离比较不得绕过合同 |
 
 ## 未实现
@@ -337,7 +354,7 @@ D4 不构造“虚拟中心”，不在 no-center 路径临时调用 Hungarian/M
 
 ## P1/P2 下一步
 
-0. **P1 M 对 N 联盟合同回归**：二级 ACK 3/3 `executing`、peer ACK 3/3 `executing` 和缺 ACK 2/3 `aborted` 已通过；后续保持这些场景并增加成员退出 `reconfiguring`、恢复和误降级统计。不得把 single-winner CBBA 宣称为自主 `k_j=3` 成员形成算法。
+0. **P1 M 对 N 联盟合同回归**：二级 ACK 3/3 `executing`、peer ACK 3/3 `executing` 和显式截止后缺 ACK 2/3 `aborted` 已通过；截止前普通快照保持 `collecting_acks`。后续保持这些场景并增加成员退出 `reconfiguring`、恢复和误降级统计。不得把 single-winner CBBA 宣称为自主 `k_j=3` 成员形成算法。
 1. **P1 terminal consistency 重跑验收**：对同 plan/同 ID 的 1-5 帧及长时 dropout 逐帧记录 `d4_action`、`terminal_consistent`、binding reject reasons、hard/soft risk、D5 decision/lock 和 D7 gate；无硬冲突始终保留 binding，但未锁定 PNG 仍由 D5/D7 阻断；任意 mismatch/friend/duplicate/stale-plan/version/ACK/lease 必须立即 fail closed 且错误绑定为 0。
 2. **P1 D4/D5 定向校准**：D4 逐决策审计和连续 readiness 已完成；main/D5 继续输入真实 stable/not-registered，构造持续 network full-view 与 coverage-cell 切换 case，统计各状态驻留、source 分布和接管必要性。该视觉证据校准与已通过的 episode-time 60-case 安全矩阵分开统计。
 3. **P1 真实链路时序验证**：保持已通过的 secondary/peer 顺序接管和 ACK/epoch/lease fail-closed，不降低门限；引入可配置带宽、节点时钟漂移、排队抖动、乱序/重传以及 secondary-interceptor/peer 断链，统计 executing 后回落、恢复和 activation delay。

@@ -196,6 +196,7 @@ def _snapshot(
     acks: tuple[CoalitionMemberAck, ...] = (),
     lease_expires_at_s: float = 20.0,
     partitions: tuple[str, ...] = (),
+    finalize_coalition_collection: bool = False,
     scenario: RegionalScenarioMetadata | None = None,
 ) -> RegionalFailoverSnapshot:
     resolved_scenario = scenario or _scenario(
@@ -218,6 +219,7 @@ def _snapshot(
         fallback_members=members,
         coalition_acks=acks,
         partitioned_region_ids=partitions,
+        finalize_coalition_collection=finalize_coalition_collection,
     )
 
 
@@ -334,7 +336,7 @@ def test_center_k2_requires_atomic_full_ack_before_execution() -> None:
     assert missing.action == RegionalAction.HOLD_FOR_REVIEW
     assert missing.ownership.owner_id == CENTER_ID
     assert missing.ownership.active is False
-    assert missing.coalition_commits[0].state == "aborted"
+    assert missing.coalition_commits[0].state == "collecting_acks"
     assert missing.coalition_commits[0].atomic_committed is False
 
     committed = RegionalFailoverCoordinator().evaluate(
@@ -532,6 +534,114 @@ def test_secondary_failure_enters_distributed_and_k2_requires_atomic_full_ack() 
     assert commit.formation_algorithm == "bounded_constrained_bid_selection"
 
 
+def test_regional_k3_collects_network_acks_across_successive_snapshots() -> None:
+    coordinator = RegionalFailoverCoordinator()
+    members = _members("INT-1", "INT-2", "INT-3")
+    task = _task(
+        required_member_count=3,
+        assigned_member_ids=("INT-1", "INT-2", "INT-3"),
+    )
+
+    proposed = coordinator.evaluate(
+        _snapshot(
+            now_s=1.0,
+            health=C2Health.NORMAL,
+            plan_version=1,
+            epoch=1,
+            tasks=(task,),
+            members=members,
+        )
+    ).region_decisions[0]
+    first_ack = coordinator.evaluate(
+        _snapshot(
+            now_s=1.2,
+            health=C2Health.NORMAL,
+            plan_version=1,
+            epoch=1,
+            tasks=(task,),
+            members=members,
+            acks=(_ack("INT-1", plan_version=1, epoch=1, now_s=1.1),),
+        )
+    ).region_decisions[0]
+    second_ack = coordinator.evaluate(
+        _snapshot(
+            now_s=1.4,
+            health=C2Health.NORMAL,
+            plan_version=1,
+            epoch=1,
+            tasks=(task,),
+            members=members,
+            acks=(_ack("INT-2", plan_version=1, epoch=1, now_s=1.3),),
+        )
+    ).region_decisions[0]
+    completed = coordinator.evaluate(
+        _snapshot(
+            now_s=1.6,
+            health=C2Health.NORMAL,
+            plan_version=1,
+            epoch=1,
+            tasks=(task,),
+            members=members,
+            acks=(_ack("INT-3", plan_version=1, epoch=1, now_s=1.5),),
+        )
+    ).region_decisions[0]
+
+    assert proposed.coalition_commits[0].state == "collecting_acks"
+    assert proposed.coalition_commits[0].acked_member_ids == ()
+    assert proposed.execution_allowed is False
+    assert first_ack.coalition_commits[0].state == "collecting_acks"
+    assert first_ack.coalition_commits[0].acked_member_ids == ("INT-1",)
+    assert first_ack.execution_allowed is False
+    assert second_ack.coalition_commits[0].state == "collecting_acks"
+    assert second_ack.coalition_commits[0].acked_member_ids == (
+        "INT-1",
+        "INT-2",
+    )
+    assert second_ack.execution_allowed is False
+    assert completed.coalition_commits[0].state == "committed"
+    assert completed.coalition_commits[0].acked_member_ids == (
+        "INT-1",
+        "INT-2",
+        "INT-3",
+    )
+    assert completed.execution_allowed is True
+
+
+def test_regional_explicit_collection_finalization_aborts_missing_ack() -> None:
+    coordinator = RegionalFailoverCoordinator()
+    members = _members("INT-1", "INT-2")
+    task = _task(
+        required_member_count=2,
+        assigned_member_ids=("INT-1", "INT-2"),
+    )
+    collecting = coordinator.evaluate(
+        _snapshot(
+            now_s=1.0,
+            health=C2Health.NORMAL,
+            plan_version=1,
+            epoch=1,
+            tasks=(task,),
+            members=members,
+        )
+    ).region_decisions[0]
+    finalized = coordinator.evaluate(
+        _snapshot(
+            now_s=1.2,
+            health=C2Health.NORMAL,
+            plan_version=1,
+            epoch=1,
+            tasks=(task,),
+            members=members,
+            finalize_coalition_collection=True,
+        )
+    ).region_decisions[0]
+
+    assert collecting.coalition_commits[0].state == "collecting_acks"
+    assert finalized.coalition_commits[0].state == "aborted"
+    assert finalized.coalition_commits[0].reason == "missing_required_acks"
+    assert finalized.execution_allowed is False
+
+
 @pytest.mark.parametrize("missing_member", ["INT-1", "INT-2"])
 def test_k2_missing_ack_is_never_partially_committed(missing_member: str) -> None:
     members = _members("INT-1", "INT-2")
@@ -559,7 +669,7 @@ def test_k2_missing_ack_is_never_partially_committed(missing_member: str) -> Non
     assert decision.action == RegionalAction.HOLD_FOR_REVIEW
     assert decision.execution_allowed is False
     assert decision.ownership.owner_id is None
-    assert commit.state == "aborted"
+    assert commit.state == "collecting_acks"
     assert commit.atomic_committed is False
     assert commit.missing_member_ids == (missing_member,)
 
@@ -589,7 +699,7 @@ def test_stale_ack_epoch_is_rejected_and_commit_fails_closed() -> None:
 
     commit = decision.coalition_commits[0]
     assert decision.fail_closed is True
-    assert commit.state == "aborted"
+    assert commit.state == "collecting_acks"
     assert "ack_epoch_stale" in commit.rejected_ack_reasons
     assert commit.atomic_committed is False
 

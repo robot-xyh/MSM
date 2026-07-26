@@ -1,5 +1,23 @@
 # D4 分布式协同与降级接管综述及子方案
 
+## 2026-07-25 异步联盟确认补充
+
+真实通信把联盟提案、计划广播和成员 ACK 分散到多个 tick。D4 区域编排此前在提案快照结束时立即终结确认窗口，首帧缺 ACK 会永久中止该代次。修复后，同一版本化联盟的成员位图跨快照保留，提案和部分 ACK 均处于 `collecting_acks`；全部必要 ACK 到达后才原子提交。
+
+显式截止通过默认关闭的快照字段触发。租约到期、网络分区、联盟摘要冲突和成员不可执行仍直接中止或重构。陈旧、过期、越权和不匹配 ACK 只做拒绝和审计，不进入位图，当前时刻不授予权限；后续正确 ACK 仍可在有效租约内完成确认。
+
+2026-07-25 新增 5 项异步生命周期用例，三文件专项 97/97、D4 全量 569/569。完整 ACK 前执行授权 0、三成员分时到达后原子提交、负例授权 0。
+
+main 已完成 2 目标、4 资源、1 个二级侦察节点的单随机种子三维通信复跑。随机种子 `1271` 下，高威胁目标采用 2 个主成员和 1 个备用成员；二级计划版本 2 发布后先出现 0/3 ACK 的 `collecting_acks` 帧，随后 3/3 ACK 原子提交。提交前主成员保持，提交后两个主成员进入三维中段比例导引，备用成员继续待命。在线真值使用和 `global_track_id` 改写均为 0。该结果不是 AirSim、多随机种子、真实网络或物理拦截证据。
+
+## 2026-07-25 通信因果证据补充
+
+现有二级 readiness 和联盟 ACK 合同检查内容是否完整，但此前没有证明消息实际经过通信链路。main 的 5v5 通信关闭复现显示，heartbeat、communication 和 sustained readiness 可全部被适配层直接填成 true，导致 8/8 区域在中心失效后仍进入可执行二级层。
+
+D4 已增加独立通信证据门。每条 readiness、区域计划广播和联盟 ACK 都必须引用 delivered receipt。回执由版本化 envelope 和 truth-free payload 严格生成，保存 source/destination、双时间戳、authority、plan、epoch、lease、partition generation 与 payload SHA-256。调用方不能另传这些字段覆盖 envelope/payload。无回执返回 `receipt_missing`；旧代次、晚到、摘要不一致和冲突重放均失败关闭。验证器只输出证据结果，不授予 owner 或推进 coalition。
+
+因果证据专项 56/56 通过，规模覆盖 5/20/50/100/200。main 已把 D4 控制消息接到实际通信队列，通信关闭负例现为 0 个可执行区域、8 个失败关闭区域，原 P0 已关闭。异步三成员单随机种子正例已按上节通过；AirSim 多随机种子与正式矩阵仍按 P1 复跑。
+
 **2026-07-22 跨独立运行身份审查**：D4 已复核 clean `8f86192` 与 `f80b5bd` 的 seed 42000-42002、三组 10 秒 200v200 运行。两侧各 30 条 `regional_failover` 和 30 条 `region_resource_advice` 均通过原始正式裁决摘要、authority 摘要、advisory 内容地址及摘要副本一致性检查。独立 D3 planner 的原始 `plan_id` 不同会确定性改变 `formal_decision_digest`、`authority_digest` 和 `advisory_id`；先验证单运行完整性，再规范 D3 谱系并按原算法重算后，30/30 对 D4 正式裁决和建议逐字段相同。`advisory_id` 可在只读比较视图中重算，不能按事件序号替换，也不能修改原日志或消费 ledger。owner/layer/role、plan version、epoch、lease、ACK/fence、region/task/global-track/resource/node/coalition identity、正式 decision 和 recommendation 仍要求严格相等。当前批次可从合同回算 authority 原始输入；通用跨提交审计仍需 main 持久化完整 authority payload，缺失或回算不闭合时失败关闭。
 
 **2026-07-22 计划代际适配复核**：main 的中心失效 20-seed 物理续跑形成 20 pair、196 region，D7 世界命令已应用，但 D4 以 `isolated_execution_plan_not_strictly_new` 拒绝 196/196。formal decision 绑定同帧故障后 current plan，物理 arm 却从故障前 `previous_plan` 重新求解，得到同版本异 ID applied plan。D4 合同不需要放宽：被动降级 source 必须分别匹配 secondary 或 distributed formal owner；主动风险 source 保持 center owner。applied 改变执行时必须严格升版，未改变时只能做同身份、同 binding 的 refresh。authority 变化需先重建 formal decision/lineage。新增三类刷新、同版本异 ID 和故障前 owner 负例后，隔离专项 26/26、D4 全量 508/508。main producer 和 D6 复跑仍是开放 P1，本轮结果不能解释为降级采用或策略收益。
@@ -13,15 +31,15 @@
 
 **2026-07-21 区域结果与 reward 合同更新**：D4 新增只读 `d4-region-resource-reward-evidence-v1`。它以 ACK v2 为窗口起点，绑定 advisory/模型、源与当前计划、owner/epoch/lease/fault generation、ACK 序号/时间、源与结果快照、执行/联盟首尾哈希和来源制品 SHA。八项成本均保存 raw value、单位、归一化分母、availability/reason，缺测不补零。新执行计划在全部分项可用时只得到非因果时间窗口观测 reward；同代评估刷新只能记录观测成本。新增专项 19/19，D4 全量 449/449。该合同没有生成正式 episode、paired、causal 或 on-policy 证据，不能代替成员 ACK、物理执行或正式策略准入；PPO、assist、authority 仍关闭。
 
-**2026-07-21 区域建议运行时确认更新**：D4 的 main-independent parser 已升级为 `d4-region-resource-runtime-ack-evidence-v2`。新执行计划仍要求 plan ID/version 严格推进和完整 owner/epoch/lease；同代评估刷新则要求显式 refresh-only flags、`execution_signature_changed=false`、前序 source-plan envelope，以及前后 binding/coalition/version/区域 owner/未分配集合一致。输出分别标记 `new_execution_plan_applied` 和 `evaluation_refresh_applied`。5v5 seed 41、1.2 s 的真实 main 质点链路及四项篡改负例为 5/5，运行时专项合计 33/33；当前 D4 全量 **482/482 passed**。评估刷新不表示执行计划改变，也不修改 formal D4 authority、D3 plan 或 D7 gate。冻结 900 episode 没有 v2 字段；`CoalitionMemberAck`、真实 outcome、paired shadow、PPO、assist 和 authority 仍 unavailable/false。
+**2026-07-21 区域建议运行时确认更新**：D4 的 main-independent parser 已升级为 `d4-region-resource-runtime-ack-evidence-v2`。新执行计划仍要求 plan ID/version 严格推进和完整 owner/epoch/lease；同代评估刷新则要求显式 refresh-only flags、`execution_signature_changed=false`、前序 source-plan envelope，以及前后 binding/coalition/version/区域 owner/未分配集合一致。输出分别标记 `new_execution_plan_applied` 和 `evaluation_refresh_applied`。5v5 seed 41、1.2 s 的真实 main 质点链路及四项篡改负例为 5/5，运行时专项合计 33/33；该历史阶段 D4 全量 **482/482 passed**，当前全量为 **569/569 passed**。评估刷新不表示执行计划改变，也不修改 formal D4 authority、D3 plan 或 D7 gate。冻结 900 episode 没有 v2 字段；`CoalitionMemberAck`、真实 outcome、paired shadow、PPO、assist 和 authority 仍 unavailable/false。
 
 **2026-07-21 区域调度全样本准入更新**：D4 已新增只读、失败关闭的全样本审计。正式区域数据共 900 episode、1798 frame/sample、14384 action，规范 60/20/20 视图为 540/180/180 episode、1079/359/360 sample、8632/2872/2880 action；clean supplemental 课程共 100 episode、300 frame/sample、1200 action，规范切分为 60/20/20 episode、180/60/60 sample、720/240/240 action。900/900 与 100/100 episode SHA256 通过，1798/1798 与 300/300 样本数值有限且通过 action/transfer 配额守恒、邻接容量、owner/plan/version/epoch/lease、安全投影、保留 seed、dirty 和真值隔离检查，违规数为 0。`target.kind=rule` 只作规则教师标签，不是 truth；projected recommendation 只作后投影建议，不是 runtime applied ACK。真实 `CoalitionMemberAck`、outcome、可归因 reward、被拒旧 generation 样本和 paired shadow 均 unavailable/pending，D6 外部带外 SHA256 复核尚未完成。审计专项 10/10，D4 全量 **397/397 passed**；PPO、assist、authority 仍关闭。
 
 **2026-07-21 区域动作覆盖课程更新**：D4 已实现独立、truth-free、确定性的区域课程 producer。它按共享 registry 的 100 个训练 seed 生成 100 episode/300 frame，动作分布为 hold 100、request-replan 200、nonzero quota 200、transfer 100；60/20/20 三个 canonical 桶均覆盖四类动作，硬约束违规、在线真值字段和保留 seed 泄漏均为 0。main 已在 detached clean worktree commit `9445ed6` 上重生当前证据，dirty episode 数为 0，dataset SHA256 为 `7e17aba...9e72`，canonical view SHA256 为 `9aa28765...cc8de`，行为克隆只读 view 可用。首次 dirty 产物只保留为开发历史。reward/outcome 300/300 unavailable，PPO、assist 和 authority 不开放。该增量关闭动作覆盖 producer、审计接口和 clean BC 数据准入缺口，不关闭正式状态分布、策略收益、D6 因果回报或外部保留 seed 评估。课程专项 6/6，该阶段 D4 全量 **387/387 passed**。
 
-**2026-07-21 共享 seed 切分更新**：D4 已增加 source-external shared registry 的独立消费者。它严格核对 `scalable3d-shared-seed-split-registry-v1` 的 schema/policy、D3 兼容排序、content/assignment SHA、源 training-seed-registry SHA，以及 100 个 dataset seed 的完整覆盖和 1000-1019 保留集隔离。原 900-episode dataset 和 70/15/15 split 不改写；显式只读视图映射为 60/20/20 seed、540/180/180 episode、1079/359/360 frame。BC loader 默认仍使用模块内 split，只有调用方传入 canonical view 才切换。正式审计前后源数据目录树哈希一致。共享切分阶段为 381/381；当前 D4 全量为 **482/482 passed**。该更新只关闭 D4 的跨模块数据切分消费缺口，不提供策略收益、PPO 或 assist 证据。
+**2026-07-21 共享 seed 切分更新**：D4 已增加 source-external shared registry 的独立消费者。它严格核对 `scalable3d-shared-seed-split-registry-v1` 的 schema/policy、D3 兼容排序、content/assignment SHA、源 training-seed-registry SHA，以及 100 个 dataset seed 的完整覆盖和 1000-1019 保留集隔离。原 900-episode dataset 和 70/15/15 split 不改写；显式只读视图映射为 60/20/20 seed、540/180/180 episode、1079/359/360 frame。BC loader 默认仍使用模块内 split，只有调用方传入 canonical view 才切换。正式审计前后源数据目录树哈希一致。共享切分阶段为 381/381；候选门诊断阶段 D4 全量为 **482/482 passed**，当前全量见本文顶部。该更新只关闭 D4 的跨模块数据切分消费缺口，不提供策略收益、PPO 或 assist 证据。
 
-**2026-07-21 正式行为克隆审计与准入更新**：D4 只读审计 2026-07-20 正式区域数据 900 episode/1798 frame，900/900 episode SHA256、source/schema identity、70/15/15 数值 seed 原子 split 和外部 1000-1019 隔离均通过。固定 seed `20260720` 的开发训练完成 66 epoch，最佳 epoch 54，内部测试 loss `0.071545`；准入复跑耗时 66.02 秒、推理 P95 `0.7774 ms`，权重 SHA256 `3da0360be8788f3ffeb8e9f9eba3e0d5369ec0bdf9e05729dfb1db07d71d5f62` 与首次结果一致。D6 正式审计确认正式数据 14384 个区域动作中的 nonzero quota、transfer、hold、request_replan 均为 0，898/1798 帧只有无归因相邻状态转移，reward/causal/counterfactual 可用数均为 0。独立补充课程和 reward schema 不改写该结论，也不提供正式回报。bundle admission 继续固定 `action_diversity_sufficient=false` 和 `strategy_capability_claim_allowed=false`。结论严格限定为 development/shadow-only；低损失不代表策略能力，PPO/assist 不可用。当前 D4 全量 **482/482 passed**。
+**2026-07-21 正式行为克隆审计与准入更新**：D4 只读审计 2026-07-20 正式区域数据 900 episode/1798 frame，900/900 episode SHA256、source/schema identity、70/15/15 数值 seed 原子 split 和外部 1000-1019 隔离均通过。固定 seed `20260720` 的开发训练完成 66 epoch，最佳 epoch 54，内部测试 loss `0.071545`；准入复跑耗时 66.02 秒、推理 P95 `0.7774 ms`，权重 SHA256 `3da0360be8788f3ffeb8e9f9eba3e0d5369ec0bdf9e05729dfb1db07d71d5f62` 与首次结果一致。D6 正式审计确认正式数据 14384 个区域动作中的 nonzero quota、transfer、hold、request_replan 均为 0，898/1798 帧只有无归因相邻状态转移，reward/causal/counterfactual 可用数均为 0。独立补充课程和 reward schema 不改写该结论，也不提供正式回报。bundle admission 继续固定 `action_diversity_sufficient=false` 和 `strategy_capability_claim_allowed=false`。结论严格限定为 development/shadow-only；低损失不代表策略能力，PPO/assist 不可用。该历史阶段 D4 全量 **482/482 passed**，当前全量见本文顶部。
 
 **2026-07-20 区域学习 episode 数据合同更新**：D4 新增 truth-free `d4-region-learning-dataset-v1` 及公开 source/frame、stage/finalize/load API。复核后训练 target 不再信任外部 `projected=true`，固定重验 projector、owner/plan/version/epoch/lease、备用、edge 和 quota；manifest 独立重验 canonical episode inventory、availability 与 split，truth/object/global-track key 变体失败关闭。该合同阶段数据测试 13/13、建议/消费 49/49、合计 62/62，D4 全量 **365/365 passed**。96-episode/192-frame 高基数样本只证明确定性合同，不是正式数据或模型收益证据；后续正式数据和开发 checkpoint 结论见上一段。正式降级控制路径未改变。
 
@@ -37,7 +55,7 @@
 
 ## 0. 2026-07-11 P1 状态更新
 
-当前结论以 `p1_p2_validation_20260711/P1_P2_VALIDATION_SUMMARY_CN.md` 为准：D4 所属 P1 合同层已闭合，ComputerVision 总体验收为 8/10。二级协调者 `Secondary_Recon_1` 以 ACK 3/3 进入 `executing` 并输出 `degrade_to_secondary`；完全分布式 `INT-02` peer 以 ACK 3/3 进入 `executing` 并输出 `degrade_to_distributed`；缺 ACK 场景以 2/3 ACK 进入 `aborted`，T001 三成员均 `hold_for_review`。这组正负例证明 commit 与 fail-closed，不证明物理拦截。
+2026-07-11 的 `p1_p2_validation_20260711/P1_P2_VALIDATION_SUMMARY_CN.md` 记录 D4 P1 合同层 ComputerVision 总体验收为 8/10。二级协调者 `Secondary_Recon_1` 以 ACK 3/3 进入 `executing` 并输出 `degrade_to_secondary`；完全分布式 `INT-02` peer 以 ACK 3/3 进入 `executing` 并输出 `degrade_to_distributed`；确认窗口显式截止后的缺 ACK 场景以 2/3 ACK 进入 `aborted`，T001 三成员均 `hold_for_review`。2026-07-25 后，截止前普通快照保持 `collecting_acks`。这组正负例证明 commit 与 fail-closed，不证明物理拦截。
 
 2026-07-12 P1 增量：新增 `d4_p1_failover_disturbance_replay_v1` 版本化扰动矩阵和 CLI。九个确定性场景 9/9 满足预期：中心正常保持 `continue_center`；二级节点只有 required-member ACK 完整后才能 `executing`；missing ACK、旧 epoch、过期 lease 和 digest conflict 均 fail-closed；成员丢失和网络分区先进入 `reconfiguring`，随后必须使用更高 epoch/plan/coalition version 并全员重新 ACK；中心恢复只进入 dual-track review，不立即夺权。该阶段 D4 全量测试 155 项通过，并包含四成员规模无关回归。该结论只关闭模块合同 replay，不关闭真实 AirSim 多 seed 的分区时序、误降级、恢复时间和物理任务连续性。
 
@@ -619,7 +637,7 @@ CBBA 通过 winner/bid 向量扩散和一致性消解，在连通图、确定仲
 | 中心 failed + 二级节点 unavailable | `degrade_to_distributed`，启动 CBBA/拍卖 |
 | 二级 commit 全员 ACK | ACK 3/3，最终 `executing`；已通过 |
 | peer commit 全员 ACK | ACK 3/3，最终 `executing`；已通过 |
-| peer commit 缺 ACK | ACK 2/3，最终 `aborted` 并 `hold_for_review`；已通过 |
+| peer commit 缺 ACK | 确认窗口显式截止时 ACK 2/3，最终 `aborted` 并 `hold_for_review`；已通过 |
 | 二级节点接管后失效 | 二次被动降级到局部代表/CBBA |
 | D1 协方差增大但 D5 一致 | 请求二级辅助，不直接分布式 |
 | D2 ID switch 上升但 D5 一致 | 请求二级辅助或中心重分配 |

@@ -299,6 +299,7 @@ class RegionalFailoverSnapshot:
     fallback_members: tuple[RegionalFallbackMember, ...] = ()
     coalition_acks: tuple[CoalitionMemberAck, ...] = ()
     partitioned_region_ids: tuple[str, ...] = ()
+    finalize_coalition_collection: bool = False
 
     def __post_init__(self) -> None:
         if not _finite_non_negative(self.timestamp_s):
@@ -379,6 +380,8 @@ class RegionalFailoverSnapshot:
         if not set(partitions).issubset(known_regions):
             raise ValueError("partitioned_region_ids must reference known regions")
         object.__setattr__(self, "partitioned_region_ids", partitions)
+        if not isinstance(self.finalize_coalition_collection, bool):
+            raise TypeError("finalize_coalition_collection must be a bool")
 
 
 @dataclass(frozen=True)
@@ -1439,7 +1442,7 @@ class RegionalFailoverCoordinator:
             state = self._coalition_coordinator.evaluate(
                 state,
                 timestamp=float(snapshot.timestamp_s),
-                finalize=True,
+                finalize=snapshot.finalize_coalition_collection,
             )
             self._coalition_states[(region_id, task.global_track_id)] = state
             committed = bool(
