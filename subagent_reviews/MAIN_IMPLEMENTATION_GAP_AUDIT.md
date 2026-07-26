@@ -18,7 +18,7 @@
 实时、逐批审计明细、严格精度、AirSim 和目标硬件证据仍为 P1。以下最新专项记录优先于
 “扫描输入或发布元数据仍待治理”的历史表述。
 
-## 2026-07-25 D1 在线发布证据子集快照待 clean smoke
+## 2026-07-25 D1 在线发布证据子集快照待正式矩阵
 
 当前无新增 P0。main 已实现独立 selector
 `d1_publication_evidence_snapshot_implementation`。reference
@@ -43,10 +43,16 @@ fallback/lookup miss/非法或空 required 均为 0，返回记录由 `13679` �
 减少 `67.621902%`。单 pair 的 D1 fusion、module stack、episode 与外部命令计时方向混合，
 不形成性能准入。
 
-本项仍为 P1。正式 matrix/evidence schema、D6 evaluator 和多 seed 判定尚未完成，默认不得
-改变。正式准入还需证明 13/13 业务语义和原 D1 操作计数一致、0 fallback、0 lookup miss、
-返回记录削减至少 50%，并通过预注册的 D1/core/D2/RSS 门。系统实时、AirSim、目标硬件和
-实飞证据继续独立开放。
+新的 matrix/evidence/evaluator schema 和 13 对矩阵已冻结为
+`configs/d1_publication_evidence_snapshot_multiseed_v1.json`。矩阵运行器定向测试
+`63 passed`，并已重新校验 clean smoke 两臂。short seeds 1151-1160、long seeds
+1151-1153，规模 200/200/2；唯一 treatment 是发布证据快照 selector，回放前缀保持
+reference。
+
+本项仍为 P1。D6 evaluator、26 个 fresh episode 和正式判定尚未完成，默认不得改变。正式
+准入还需证明 13/13 业务语义和原 D1 操作计数一致、0 fallback、0 lookup miss、返回记录
+削减至少 50%，并通过预注册的 D1/core/D2/RSS 门。系统实时、AirSim、目标硬件和实飞证据
+继续独立开放。
 
 ## 2026-07-25 D1 固定滞后回放前缀摘要正式拒绝
 

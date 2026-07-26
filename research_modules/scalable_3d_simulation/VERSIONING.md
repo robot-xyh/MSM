@@ -81,6 +81,9 @@ main
 | main/D1 在线发布证据快照实现 | `full_consistency_snapshot_v1` / `required_observation_subset_v1` | 全量证据读取、当前 release cycle 所需观测 ID 推导、确定性去重排序或全量回退语义改变；当前默认前者 |
 | main/D1 在线发布证据快照执行配置 | `scalable3d-d1-publication-evidence-snapshot-execution-config-v1` | selector、完整实现标识、required ID 来源、异常回退、最终全量导出或真值隔离声明改变 |
 | main/D1 在线发布证据快照诊断 | `scalable3d-d1-publication-evidence-snapshot-diagnostics-v1` | selection、publication、source/track 引用、required/returned 记录、lookup miss、fallback 或守恒语义改变 |
+| main/D1 在线发布证据快照矩阵 | `scalable3d-d1-publication-evidence-snapshot-multiseed-matrix-v1` | 实验臂、seed、时长、原 D1 操作计数、返回记录削减门或证据边界改变 |
+| main/D1 在线发布证据快照证据 | `scalable3d-d1-publication-evidence-snapshot-multiseed-evidence-v1` | clean source、episode/resource 路径、arm 状态、快照诊断或 D6 evaluator 绑定改变 |
+| D6 在线发布证据快照准入 | `d6.d1_publication_evidence_snapshot_multiseed_evaluation.v1` | 业务归一化、consistency digest、原 D1 操作计数、D1/core/D2/RSS 门、返回记录削减率或准入结论语义改变 |
 | D1 常速度模型构造实现 | `per_prediction_build_v1` / `bounded_exact_lru_v1` | 状态转移和过程噪声矩阵的逐次构造或精确有界缓存语义改变 |
 | D1 常速度模型缓存诊断 | `d1.cv_motion_model_cache_diagnostics.v1` | 实现 ID、容量、条目数、预测请求、构造、命中、未命中或淘汰计数语义改变 |
 | D1 常速度模型缓存矩阵 | `scalable3d-d1-cv-motion-model-cache-multiseed-matrix-v1` | 实验臂、seed、时长、容量、准入门或证据边界改变 |

@@ -44,9 +44,12 @@
     SHA、consistency digest/count 和原 D1 操作计数一致；candidate 14/14 子集成功，
     fallback/lookup miss/非法或空 required 均为 0，返回记录由 `13679` 降至 `4429`，
     减少 `67.621902%`。性能方向混合，只允许进入矩阵预注册。
-12. [ ] smoke 通过后冻结新的 matrix/evidence/evaluator schema、实现 ID、命令、
-    short/long seeds、时长、200/200/2 规模和唯一 treatment；不得复用前一候选矩阵。
-13. [ ] 正式门预注册为：13/13 业务语义及原 D1 操作计数一致；候选 fallback 和 lookup
+12. [x] 已冻结
+    `configs/d1_publication_evidence_snapshot_multiseed_v1.json` 及新的
+    matrix/evidence/evaluator schema。short seeds 1151-1160、long seeds
+    1151-1153、200/200/2；两臂唯一 treatment 为发布证据快照 selector，回放前缀保持
+    reference。运行器定向测试为 `63 passed`，并能重新校验 clean smoke 两臂。
+13. [x] 正式门预注册为：13/13 业务语义及原 D1 操作计数一致；候选 fallback 和 lookup
     miss 均为 0；返回记录数减少至少 50%；short/long 候选更快数至少 8/10 和 2/3；
     D1 fusion 改善至少 1%；core wall 改善至少 0.25%；D2 和 RSS 均值增幅不超过 5%。
 14. [ ] D6 独立读取 fresh episode 并给出 admit/reject。系统实时继续单独要求每个候选

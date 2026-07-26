@@ -79,6 +79,13 @@ REPLAY_PREFIX_SUMMARY_MATRIX_PATH = (
     / "configs"
     / "d1_replay_prefix_summary_multiseed_v1.json"
 )
+PUBLICATION_EVIDENCE_SNAPSHOT_MATRIX_PATH = (
+    ROOT
+    / "research_modules"
+    / "scalable_3d_simulation"
+    / "configs"
+    / "d1_publication_evidence_snapshot_multiseed_v1.json"
+)
 
 
 def test_publication_metadata_matrix_freezes_same_commit_13_pair_contract() -> None:
@@ -580,6 +587,218 @@ def test_replay_prefix_summary_manifest_binds_contract_and_d6_evaluator(
         assert case["arms"]["candidate"][
             "expected_d1_implementation_id"
         ].endswith("frozen_cumulative_summary_lazy_evidence_ranges.v1")
+
+
+def test_publication_evidence_snapshot_matrix_freezes_safe_admission_contract(
+) -> None:
+    matrix = matrix_runner.load_matrix(
+        PUBLICATION_EVIDENCE_SNAPSHOT_MATRIX_PATH
+    )
+    short = [case for case in matrix["cases"] if case["group"] == "short"]
+    long = [case for case in matrix["cases"] if case["group"] == "long"]
+
+    assert matrix["arm_implementations"] == {
+        "reference": "full_consistency_snapshot_v1",
+        "candidate": "required_observation_subset_v1",
+    }
+    assert matrix["run_flags"] == ["--integrated-stack"]
+    assert [case["seed"] for case in short] == list(range(1151, 1161))
+    assert [case["seed"] for case in long] == [1151, 1152, 1153]
+    gates = matrix["admission_gates"]
+    assert gates[
+        "all_pairs_publication_evidence_snapshot_audit_valid"
+    ] is True
+    assert gates[
+        "all_pairs_consistency_evidence_records_digest_equal"
+    ] is True
+    assert gates["all_pairs_existing_operation_counts_equal"] is True
+    assert gates[
+        "minimum_candidate_returned_record_reduction_pct"
+    ] == 50.0
+    boundary = matrix["evidence_boundary"]
+    assert boundary["candidate_default_off"] is True
+    assert boundary["same_release_cycle_required_ids"] is True
+    assert boundary["published_payload_semantics_changed"] is False
+    assert boundary["consistency_evidence_semantics_changed"] is False
+    assert boundary["replay_prefix_implementation"] == (
+        "per_checkpoint_prefix_rebuild_v1"
+    )
+
+
+def test_publication_evidence_snapshot_commands_isolate_only_selector(
+    tmp_path: Path,
+) -> None:
+    matrix = matrix_runner.load_matrix(
+        PUBLICATION_EVIDENCE_SNAPSHOT_MATRIX_PATH
+    )
+    case = matrix["cases"][0]
+    reference = matrix_runner.build_episode_command(
+        ROOT,
+        matrix,
+        case,
+        "reference",
+        tmp_path / "reference",
+    )
+    candidate = matrix_runner.build_episode_command(
+        ROOT,
+        matrix,
+        case,
+        "candidate",
+        tmp_path / "candidate",
+    )
+
+    selector_index = reference.index(
+        "--d1-publication-evidence-snapshot-implementation"
+    )
+    output_index = reference.index("--output")
+    assert reference[selector_index + 1] == (
+        "full_consistency_snapshot_v1"
+    )
+    assert candidate[selector_index + 1] == (
+        "required_observation_subset_v1"
+    )
+    assert "--d1-replay-prefix-summary-implementation" not in reference
+    for index, (left, right) in enumerate(
+        zip(reference, candidate, strict=True)
+    ):
+        if index not in {selector_index + 1, output_index + 1}:
+            assert left == right
+
+
+def test_publication_evidence_snapshot_manifest_binds_d6_contract(
+    tmp_path: Path,
+) -> None:
+    matrix = matrix_runner.load_matrix(
+        PUBLICATION_EVIDENCE_SNAPSHOT_MATRIX_PATH
+    )
+    commit = "c" * 40
+    manifest = matrix_runner.planned_evidence_manifest(
+        PUBLICATION_EVIDENCE_SNAPSHOT_MATRIX_PATH,
+        matrix,
+        ROOT,
+        commit,
+        tmp_path / "evidence",
+    )
+
+    assert manifest["schema_version"] == (
+        "scalable3d-d1-publication-evidence-snapshot-"
+        "multiseed-evidence-v1"
+    )
+    assert manifest["required_d6_evaluator_schema_version"] == (
+        "d6.d1_publication_evidence_snapshot_multiseed_evaluation.v1"
+    )
+    assert manifest[
+        "publication_evidence_snapshot_execution_config_schema_version"
+    ] == (
+        "scalable3d-d1-publication-evidence-snapshot-execution-config-v1"
+    )
+    assert manifest[
+        "publication_evidence_snapshot_diagnostics_schema_version"
+    ] == (
+        "scalable3d-d1-publication-evidence-snapshot-diagnostics-v1"
+    )
+    for case in manifest["cases"]:
+        assert case["arms"]["reference"]["validation_kind"] == (
+            "publication_evidence_snapshot"
+        )
+        assert case["arms"]["reference"][
+            "expected_d1_implementation_id"
+        ].endswith("full_consistency_snapshot.v1")
+        assert case["arms"]["candidate"][
+            "expected_d1_implementation_id"
+        ].endswith("required_observation_subset.v1")
+
+
+@pytest.mark.parametrize(
+    ("selector", "implementation_id", "candidate"),
+    [
+        (
+            "full_consistency_snapshot_v1",
+            "main.d1_publication_evidence.full_consistency_snapshot.v1",
+            False,
+        ),
+        (
+            "required_observation_subset_v1",
+            "main.d1_publication_evidence.required_observation_subset.v1",
+            True,
+        ),
+    ],
+)
+def test_publication_evidence_snapshot_diagnostics_accept_valid_workload(
+    selector: str,
+    implementation_id: str,
+    candidate: bool,
+) -> None:
+    execution_config = {
+        "schema_version": (
+            "scalable3d-d1-publication-evidence-snapshot-"
+            "execution-config-v1"
+        ),
+        "selector": selector,
+        "implementation_id": implementation_id,
+        "candidate_enabled": candidate,
+        "required_id_sources": [
+            "source_observations",
+            "materialized_track_latest_observation",
+        ],
+        "required_id_order": "deduplicated_lexicographic",
+        "invalid_or_unknown_id_policy": "fallback_to_full_snapshot",
+        "episode_final_export_scope": "full_exact_materialized_records",
+        "truth_dependent_inputs_allowed": False,
+    }
+    counts = {
+        "selection_count": 2,
+        "reference_selection_count": 0 if candidate else 2,
+        "candidate_selection_count": 2 if candidate else 0,
+        "candidate_subset_success_count": 2 if candidate else 0,
+        "candidate_fallback_count": 0,
+        "adapter_snapshot_call_count": 2,
+        "full_snapshot_call_count": 0 if candidate else 2,
+        "subset_snapshot_call_count": 2 if candidate else 0,
+        "publication_count": 4,
+        "source_observation_reference_count": 5 if candidate else 0,
+        "track_latest_observation_reference_count": 7 if candidate else 0,
+        "required_observation_id_count": 8 if candidate else 0,
+        "duplicate_reference_count": 4 if candidate else 0,
+        "invalid_required_id_count": 0,
+        "empty_required_id_selection_count": 0,
+        "returned_record_count": 8 if candidate else 20,
+        "lookup_miss_count": 0,
+    }
+    diagnostics = {
+        "schema_version": (
+            "scalable3d-d1-publication-evidence-snapshot-diagnostics-v1"
+        ),
+        "execution_config": execution_config,
+        "operation_counts": counts,
+        "fallback_reason_counts": {},
+        "conservation": {
+            "selection_partition": True,
+            "candidate_selection_partition": True,
+            "adapter_call_partition": True,
+            "reference_deduplication_partition": True,
+            "fallback_not_above_candidate_selection": True,
+            "all_required_records_available": True,
+        },
+    }
+
+    assert matrix_runner._publication_evidence_snapshot_diagnostics_match(
+        diagnostics,
+        expected_implementation=selector,
+        expected_implementation_id=implementation_id,
+        candidate=candidate,
+        require_workload=True,
+    )
+
+    invalid = copy.deepcopy(diagnostics)
+    invalid["operation_counts"]["lookup_miss_count"] = 1
+    assert not matrix_runner._publication_evidence_snapshot_diagnostics_match(
+        invalid,
+        expected_implementation=selector,
+        expected_implementation_id=implementation_id,
+        candidate=candidate,
+        require_workload=True,
+    )
 
 
 def test_arm_commands_differ_only_by_explicit_implementation_and_output(

@@ -101,6 +101,15 @@ REPLAY_PREFIX_SUMMARY_EVIDENCE_MANIFEST_SCHEMA_VERSION = (
 REPLAY_PREFIX_SUMMARY_REQUIRED_D6_EVALUATOR_SCHEMA_VERSION = (
     "d6.d1_replay_prefix_summary_multiseed_evaluation.v1"
 )
+PUBLICATION_EVIDENCE_SNAPSHOT_MATRIX_SCHEMA_VERSION = (
+    "scalable3d-d1-publication-evidence-snapshot-multiseed-matrix-v1"
+)
+PUBLICATION_EVIDENCE_SNAPSHOT_EVIDENCE_MANIFEST_SCHEMA_VERSION = (
+    "scalable3d-d1-publication-evidence-snapshot-multiseed-evidence-v1"
+)
+PUBLICATION_EVIDENCE_SNAPSHOT_REQUIRED_D6_EVALUATOR_SCHEMA_VERSION = (
+    "d6.d1_publication_evidence_snapshot_multiseed_evaluation.v1"
+)
 _ARMS = ("reference", "candidate")
 _V1_EXPECTED_IMPLEMENTATIONS = {
     "reference": "per_track_copy_v1",
@@ -137,6 +146,10 @@ _ASSOCIATION_SPARSE_PREFILTER_EXPECTED_IMPLEMENTATIONS = {
 _REPLAY_PREFIX_SUMMARY_EXPECTED_IMPLEMENTATIONS = {
     "reference": "per_checkpoint_prefix_rebuild_v1",
     "candidate": "fixed_lag_checkpoint_prefix_cumulative_summary_v1",
+}
+_PUBLICATION_EVIDENCE_SNAPSHOT_EXPECTED_IMPLEMENTATIONS = {
+    "reference": "full_consistency_snapshot_v1",
+    "candidate": "required_observation_subset_v1",
 }
 _D1_IMPLEMENTATION_IDS = {
     "per_track_copy_v1": (
@@ -187,6 +200,12 @@ _D1_IMPLEMENTATION_IDS = {
     "fixed_lag_checkpoint_prefix_cumulative_summary_v1": (
         "d1.fusion.replay_prefix."
         "frozen_cumulative_summary_lazy_evidence_ranges.v1"
+    ),
+    "full_consistency_snapshot_v1": (
+        "main.d1_publication_evidence.full_consistency_snapshot.v1"
+    ),
+    "required_observation_subset_v1": (
+        "main.d1_publication_evidence.required_observation_subset.v1"
     ),
 }
 _MATRIX_SPECS = {
@@ -335,6 +354,25 @@ _MATRIX_SPECS = {
         "validation_kind": "replay_prefix_summary",
         "treatment_field": "d1_replay_prefix_summary_implementation",
     },
+    PUBLICATION_EVIDENCE_SNAPSHOT_MATRIX_SCHEMA_VERSION: {
+        "expected_implementations": (
+            _PUBLICATION_EVIDENCE_SNAPSHOT_EXPECTED_IMPLEMENTATIONS
+        ),
+        "evidence_manifest_schema_version": (
+            PUBLICATION_EVIDENCE_SNAPSHOT_EVIDENCE_MANIFEST_SCHEMA_VERSION
+        ),
+        "required_d6_evaluator_schema_version": (
+            PUBLICATION_EVIDENCE_SNAPSHOT_REQUIRED_D6_EVALUATOR_SCHEMA_VERSION
+        ),
+        "publication_audit_contract_version": None,
+        "selector_flag": (
+            "--d1-publication-evidence-snapshot-implementation"
+        ),
+        "validation_kind": "publication_evidence_snapshot",
+        "treatment_field": (
+            "d1_publication_evidence_snapshot_implementation"
+        ),
+    },
 }
 _COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
 _SHA256_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
@@ -355,6 +393,7 @@ _FORBIDDEN_RUN_FLAGS = {
     "--d1-structured-numerical-jacobian-implementation",
     "--d1-association-sparse-prefilter-implementation",
     "--d1-replay-prefix-summary-implementation",
+    "--d1-publication-evidence-snapshot-implementation",
     "--online-truth-guard-implementation",
 }
 
@@ -736,6 +775,93 @@ def load_matrix(path: str | Path) -> dict[str, Any]:
                 raise ValueError(
                     f"replay-prefix admission gate {field} must be {expected}"
                 )
+    if spec["validation_kind"] == "publication_evidence_snapshot":
+        if (
+            boundary.get("execution_config_schema_version")
+            != "scalable3d-d1-publication-evidence-snapshot-execution-config-v1"
+        ):
+            raise ValueError(
+                "publication-evidence snapshot must bind execution config "
+                "schema v1"
+            )
+        if (
+            boundary.get("diagnostics_schema_version")
+            != "scalable3d-d1-publication-evidence-snapshot-diagnostics-v1"
+        ):
+            raise ValueError(
+                "publication-evidence snapshot must bind diagnostics schema "
+                "v1"
+            )
+        expected_boundary = {
+            "candidate_default_off": True,
+            "truth_dependent_inputs_forbidden": True,
+            "same_release_cycle_required_ids": True,
+            "published_payload_semantics_changed": False,
+            "consistency_evidence_semantics_changed": False,
+            "replay_prefix_selector_changed": False,
+            "prior_episode_outputs_reused": False,
+        }
+        for field, expected in expected_boundary.items():
+            if boundary.get(field) is not expected:
+                raise ValueError(
+                    "publication-evidence snapshot must freeze "
+                    f"{field}={str(expected).lower()}"
+                )
+        if boundary.get("required_id_sources") != [
+            "source_observations",
+            "materialized_track_latest_observation",
+        ]:
+            raise ValueError(
+                "publication-evidence snapshot must freeze required ID "
+                "sources"
+            )
+        if (
+            boundary.get("required_id_order")
+            != "deduplicated_lexicographic"
+        ):
+            raise ValueError(
+                "publication-evidence snapshot must freeze required ID order"
+            )
+        if (
+            boundary.get("invalid_or_unknown_id_policy")
+            != "fallback_to_full_snapshot"
+        ):
+            raise ValueError(
+                "publication-evidence snapshot must fail over to the full "
+                "snapshot"
+            )
+        if (
+            boundary.get("episode_final_export_scope")
+            != "full_exact_materialized_records"
+        ):
+            raise ValueError(
+                "publication-evidence snapshot must retain the full final "
+                "export"
+            )
+        if (
+            boundary.get("replay_prefix_implementation")
+            != "per_checkpoint_prefix_rebuild_v1"
+        ):
+            raise ValueError(
+                "publication-evidence snapshot must freeze the replay-prefix "
+                "reference"
+            )
+        required_gates = {
+            "all_pairs_publication_evidence_snapshot_audit_valid": True,
+            "all_pairs_consistency_evidence_records_digest_equal": True,
+            "all_pairs_existing_operation_counts_equal": True,
+            "short_minimum_d1_fusion_improvement_pct": 1.0,
+            "long_minimum_d1_fusion_improvement_pct": 1.0,
+            "short_minimum_core_wall_improvement_pct": 0.25,
+            "long_minimum_core_wall_improvement_pct": 0.25,
+            "minimum_candidate_returned_record_reduction_pct": 50.0,
+        }
+        for field, expected in required_gates.items():
+            if gates.get(field) != expected:
+                raise ValueError(
+                    "publication-evidence snapshot admission gate "
+                    f"{field} must be {expected}"
+                )
     return value
 
 
@@ -927,6 +1053,18 @@ def planned_evidence_manifest(
         manifest[
             "replay_prefix_summary_schema_version"
         ] = "d1.fixed_lag_replay_prefix_summary.v1"
+    if spec["validation_kind"] == "publication_evidence_snapshot":
+        manifest[
+            "publication_evidence_snapshot_execution_config_schema_version"
+        ] = (
+            "scalable3d-d1-publication-evidence-snapshot-"
+            "execution-config-v1"
+        )
+        manifest[
+            "publication_evidence_snapshot_diagnostics_schema_version"
+        ] = (
+            "scalable3d-d1-publication-evidence-snapshot-diagnostics-v1"
+        )
     return manifest
 
 
@@ -1270,6 +1408,20 @@ def _episode_matches(
         )
     if validation_kind == "replay_prefix_summary":
         return _replay_prefix_summary_episode_matches(
+            episode_dir,
+            manifest=manifest,
+            config=config,
+            summary=summary,
+            expected_commit=expected_commit,
+            expected_implementation=expected_implementation,
+            seed=seed,
+            duration_s=duration_s,
+            target_count=target_count,
+            resource_count=resource_count,
+            recon_count=recon_count,
+        )
+    if validation_kind == "publication_evidence_snapshot":
+        return _publication_evidence_snapshot_episode_matches(
             episode_dir,
             manifest=manifest,
             config=config,
@@ -2869,6 +3021,316 @@ def _replay_prefix_summary_diagnostics_match(
         and reused == 0
         and logical_refreshes == 0
         and materialized_records == 0
+    )
+
+
+def _publication_evidence_snapshot_episode_matches(
+    episode_dir: Path,
+    *,
+    manifest: Mapping[str, Any],
+    config: Mapping[str, Any],
+    summary: Mapping[str, Any],
+    expected_commit: str,
+    expected_implementation: str,
+    seed: int,
+    duration_s: float,
+    target_count: int,
+    resource_count: int,
+    recon_count: int,
+) -> bool:
+    expected_id = _D1_IMPLEMENTATION_IDS.get(expected_implementation)
+    if expected_id is None:
+        return False
+    candidate = (
+        expected_implementation == "required_observation_subset_v1"
+    )
+    if expected_implementation not in {
+        "full_consistency_snapshot_v1",
+        "required_observation_subset_v1",
+    }:
+        return False
+
+    runtime_profile = manifest.get("runtime_profile")
+    runtime_configuration = (
+        runtime_profile.get("configuration")
+        if isinstance(runtime_profile, Mapping)
+        else None
+    )
+    initial_execution_config = (
+        runtime_profile.get(
+            "d1_publication_evidence_snapshot_execution_config"
+        )
+        if isinstance(runtime_profile, Mapping)
+        else None
+    )
+    initial_diagnostics = (
+        runtime_profile.get("d1_publication_evidence_snapshot_diagnostics")
+        if isinstance(runtime_profile, Mapping)
+        else None
+    )
+    summary_execution_config = summary.get(
+        "d1_publication_evidence_snapshot_execution_config"
+    )
+    diagnostics = summary.get(
+        "d1_publication_evidence_snapshot_diagnostics"
+    )
+    final = summary.get("module_final_diagnostics")
+    final_execution_config = (
+        final.get("d1_publication_evidence_snapshot_execution_config")
+        if isinstance(final, Mapping)
+        else None
+    )
+    final_diagnostics = (
+        final.get("d1_publication_evidence_snapshot_diagnostics")
+        if isinstance(final, Mapping)
+        else None
+    )
+    try:
+        governance = _read_mapping(
+            episode_dir / "observation_governance_audit.json"
+        )
+        online_evidence = _read_mapping(
+            episode_dir / "offline_consistency" / "online_evidence.json"
+        )
+    except (OSError, ValueError, json.JSONDecodeError):
+        return False
+    governance_execution_config = governance.get(
+        "d1_publication_evidence_snapshot_execution_config"
+    )
+    governance_diagnostics = governance.get(
+        "d1_publication_evidence_snapshot_diagnostics"
+    )
+    if not all(
+        isinstance(value, Mapping)
+        for value in (
+            runtime_profile,
+            runtime_configuration,
+            initial_execution_config,
+            initial_diagnostics,
+            summary_execution_config,
+            diagnostics,
+            final,
+            final_execution_config,
+            final_diagnostics,
+            governance_execution_config,
+            governance_diagnostics,
+            online_evidence,
+        )
+    ):
+        return False
+
+    execution_configs = (
+        initial_execution_config,
+        summary_execution_config,
+        final_execution_config,
+        governance_execution_config,
+    )
+    if not all(
+        _publication_evidence_snapshot_execution_config_matches(
+            item,
+            expected_implementation=expected_implementation,
+            expected_implementation_id=expected_id,
+            candidate=candidate,
+        )
+        for item in execution_configs
+    ):
+        return False
+    if not _publication_evidence_snapshot_diagnostics_match(
+        initial_diagnostics,
+        expected_implementation=expected_implementation,
+        expected_implementation_id=expected_id,
+        candidate=candidate,
+        require_workload=False,
+    ):
+        return False
+    if (
+        diagnostics != governance_diagnostics
+        or diagnostics != final_diagnostics
+        or not _publication_evidence_snapshot_diagnostics_match(
+            diagnostics,
+            expected_implementation=expected_implementation,
+            expected_implementation_id=expected_id,
+            candidate=candidate,
+            require_workload=True,
+        )
+    ):
+        return False
+
+    record_count = online_evidence.get("record_count")
+    records_digest = online_evidence.get("records_digest")
+    if (
+        online_evidence.get("schema_version")
+        != "d1.consistency.online_evidence_bundle.v1"
+        or isinstance(record_count, bool)
+        or not isinstance(record_count, int)
+        or record_count <= 0
+        or not isinstance(records_digest, str)
+        or _SHA256_RE.fullmatch(records_digest) is None
+    ):
+        return False
+
+    selector_field = "d1_publication_evidence_snapshot_implementation"
+    return (
+        manifest.get("git_commit") == expected_commit
+        and manifest.get("repository_dirty") is False
+        and manifest.get("seed") == seed
+        and runtime_profile.get(selector_field) == expected_implementation
+        and runtime_configuration.get(selector_field)
+        == expected_implementation
+        and summary.get(selector_field) == expected_implementation
+        and final.get(selector_field) == expected_implementation
+        and governance.get(selector_field) == expected_implementation
+        and config.get("seed") == seed
+        and _float_equal(config.get("duration_s"), duration_s)
+        and config.get("target_count") == target_count
+        and config.get("resource_count") == resource_count
+        and config.get("recon_count") == recon_count
+        and summary.get("finite_state") is True
+        and summary.get("online_truth_use_count") == 0
+        and _float_equal(summary.get("simulated_duration_s"), duration_s)
+    )
+
+
+def _publication_evidence_snapshot_execution_config_matches(
+    execution_config: Mapping[str, Any],
+    *,
+    expected_implementation: str,
+    expected_implementation_id: str,
+    candidate: bool,
+) -> bool:
+    return (
+        execution_config.get("schema_version")
+        == "scalable3d-d1-publication-evidence-snapshot-"
+        "execution-config-v1"
+        and execution_config.get("selector") == expected_implementation
+        and execution_config.get("implementation_id")
+        == expected_implementation_id
+        and execution_config.get("candidate_enabled") is candidate
+        and execution_config.get("required_id_sources")
+        == [
+            "source_observations",
+            "materialized_track_latest_observation",
+        ]
+        and execution_config.get("required_id_order")
+        == "deduplicated_lexicographic"
+        and execution_config.get("invalid_or_unknown_id_policy")
+        == "fallback_to_full_snapshot"
+        and execution_config.get("episode_final_export_scope")
+        == "full_exact_materialized_records"
+        and execution_config.get("truth_dependent_inputs_allowed") is False
+    )
+
+
+def _publication_evidence_snapshot_diagnostics_match(
+    diagnostics: Mapping[str, Any],
+    *,
+    expected_implementation: str,
+    expected_implementation_id: str,
+    candidate: bool,
+    require_workload: bool,
+) -> bool:
+    if (
+        diagnostics.get("schema_version")
+        != "scalable3d-d1-publication-evidence-snapshot-diagnostics-v1"
+    ):
+        return False
+    execution_config = diagnostics.get("execution_config")
+    operation_counts = diagnostics.get("operation_counts")
+    fallback_reasons = diagnostics.get("fallback_reason_counts")
+    conservation = diagnostics.get("conservation")
+    expected_conservation = {
+        "selection_partition",
+        "candidate_selection_partition",
+        "adapter_call_partition",
+        "reference_deduplication_partition",
+        "fallback_not_above_candidate_selection",
+        "all_required_records_available",
+    }
+    if (
+        not isinstance(execution_config, Mapping)
+        or not _publication_evidence_snapshot_execution_config_matches(
+            execution_config,
+            expected_implementation=expected_implementation,
+            expected_implementation_id=expected_implementation_id,
+            candidate=candidate,
+        )
+        or not isinstance(operation_counts, Mapping)
+        or not isinstance(fallback_reasons, Mapping)
+        or not isinstance(conservation, Mapping)
+        or set(conservation) != expected_conservation
+        or any(value is not True for value in conservation.values())
+    ):
+        return False
+    for counts in (operation_counts, fallback_reasons):
+        if any(
+            isinstance(value, bool)
+            or not isinstance(value, int)
+            or value < 0
+            for value in counts.values()
+        ):
+            return False
+    if not require_workload:
+        return not operation_counts and not fallback_reasons
+
+    fields = {
+        "selection_count",
+        "reference_selection_count",
+        "candidate_selection_count",
+        "candidate_subset_success_count",
+        "candidate_fallback_count",
+        "adapter_snapshot_call_count",
+        "full_snapshot_call_count",
+        "subset_snapshot_call_count",
+        "publication_count",
+        "source_observation_reference_count",
+        "track_latest_observation_reference_count",
+        "required_observation_id_count",
+        "duplicate_reference_count",
+        "invalid_required_id_count",
+        "empty_required_id_selection_count",
+        "returned_record_count",
+        "lookup_miss_count",
+    }
+    if set(operation_counts) != fields:
+        return False
+    counts = {field: int(operation_counts[field]) for field in fields}
+    selection_count = counts["selection_count"]
+    common_valid = (
+        selection_count > 0
+        and counts["publication_count"] > 0
+        and counts["adapter_snapshot_call_count"] == selection_count
+        and counts["candidate_fallback_count"] == 0
+        and counts["invalid_required_id_count"] == 0
+        and counts["empty_required_id_selection_count"] == 0
+        and counts["lookup_miss_count"] == 0
+        and counts["returned_record_count"] > 0
+        and not fallback_reasons
+    )
+    if not common_valid:
+        return False
+    if candidate:
+        return (
+            counts["reference_selection_count"] == 0
+            and counts["candidate_selection_count"] == selection_count
+            and counts["candidate_subset_success_count"] == selection_count
+            and counts["full_snapshot_call_count"] == 0
+            and counts["subset_snapshot_call_count"] == selection_count
+            and counts["source_observation_reference_count"] > 0
+            and counts["track_latest_observation_reference_count"] > 0
+            and counts["required_observation_id_count"] > 0
+            and counts["returned_record_count"]
+            == counts["required_observation_id_count"]
+        )
+    return (
+        counts["reference_selection_count"] == selection_count
+        and counts["candidate_selection_count"] == 0
+        and counts["candidate_subset_success_count"] == 0
+        and counts["full_snapshot_call_count"] == selection_count
+        and counts["subset_snapshot_call_count"] == 0
+        and counts["source_observation_reference_count"] == 0
+        and counts["track_latest_observation_reference_count"] == 0
+        and counts["required_observation_id_count"] == 0
+        and counts["duplicate_reference_count"] == 0
     )
 
 

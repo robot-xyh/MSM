@@ -25,7 +25,13 @@ consistency digest/count 和原 D1 操作计数一致；candidate 14/14 子集�
 fallback/lookup miss 为 0，返回记录由 `13679` 降至 `4429`，减少 `67.621902%`。
 单 pair 的 D1、module stack 和外部命令计时方向不一致，因此当前只允许进入矩阵预注册。
 
-正式多 seed matrix 和 D6 evaluator 尚未冻结，默认仍是全量快照。本候选不能写成性能准入、
+正式矩阵已冻结为
+`configs/d1_publication_evidence_snapshot_multiseed_v1.json`，包含 10 个
+2.2 秒 short seed 和 3 个 10 秒 long seed，规模固定为 200/200/2。matrix、
+evidence 和 D6 evaluator 使用独立 schema；两臂只允许发布证据快照 selector 不同，
+回放前缀保持 `per_checkpoint_prefix_rebuild_v1`。矩阵运行器定向测试为 `63 passed`。
+
+D6 evaluator 和 13 对 fresh episode 尚未完成，默认仍是全量快照。本候选不能写成性能准入、
 系统实时、AirSim、目标硬件、实机或实飞证据。clean smoke 详见
 `docs/D1_PUBLICATION_EVIDENCE_SNAPSHOT_CLEAN_SMOKE_20260725_CN.md`。
 
