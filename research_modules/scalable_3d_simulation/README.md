@@ -1,6 +1,6 @@
 # Scalable 3D Simulation
 
-## 学习变体准入状态
+## 学习变体准入与分片状态
 
 2026-07-26 的实际 bundle 预检确认，G1、A1、A2、A3、C1 和 F1 当前均不能进入正式
 assist。D3 模型仅允许 shadow；D4 模型仍处于运行时 shadow gate；D5 图模型和主动视觉模型
@@ -11,9 +11,21 @@ D5 已提供严格的 `require_g1_assist_eligible` 加载边界。main 在统一
 `12 passed, 1 warning`，D5 全量为 `555 passed`。当前 R0 路径不加载模型，本次治理修复不改变
 已冻结的 R0 source、execution plan 或已完成的 135 个单元。
 
-正式学习变体仍需三个条件：模块 owner 生成通过独立非退化门的新 bundle；D6 绑定模型、运行采用
-和结果证据；main 将现有 R0-only 分片执行器扩展到非 R0 scope。在这些条件完成前，模型文件存在、
-哈希有效或开发指标可用均不能替代 assist 准入。
+main 已将可恢复分片执行器扩展到 G1、A1、A2、A3、C1 和 F1。执行计划保存各变体所需
+bundle 的完整文件树摘要、manifest 摘要、预检设备、准入诊断摘要和解析后的模型版本。
+`run-shard` 必须提供同一文件树和同一设备，并在每个学习单元开始前和发布前重复校验；
+缺 bundle、额外 bundle、文件篡改、设备变化、规则回退、诊断变化或模型版本变化都会在
+新建 shard 或发布单元前失败关闭。旧版不含
+`learning_bundles` 的 R0 执行计划仍可读取和恢复。
+
+新增回归覆盖 G1 缺失/未准入拒绝、bundle 树绑定、设备绑定、篡改拒绝、暂停恢复和确定性
+合并。实验矩阵、分片和学习运行时定向测试为 `26 passed, 1 warning`，scalable 全量为
+`292 passed, 1 warning`。当前实际模型仍全部未获 assist 准入，因此本次只关闭“学习变体
+没有可恢复正式执行基础设施”的实现缺口，没有生成任何 G1/A1/A2/A3/C1/F1 正式 episode。
+
+正式学习变体仍需两个外部条件：模块 owner 生成通过独立非退化门的新 bundle；D6 绑定模型
+采用、运行结果和规则基线非退化证据。模型文件存在、哈希有效或开发指标可用均不能替代
+assist 准入。
 
 ## 正式 R0 后验收尾状态（2026-07-25）
 
@@ -95,9 +107,10 @@ main 已新增正式实验矩阵的可恢复分片执行层。执行计划先保
 5700 单元父清单完全相等时，才允许生成兼容的完整矩阵 manifest。因此 R0 批次不能被误写
 为七变体正式矩阵完成。
 
-本轮分片专项现有 8 项测试，并保留原矩阵测试；暂停/恢复、低磁盘暂停、checkpoint 滞后
-恢复、制品篡改拒绝、确定性合并和真实单 episode 写盘均通过。scalable 全量为
-`280 passed, 1 warning`。warning 仍来自本机 Matplotlib `Axes3D` 导入冲突。
+本轮分片专项现有 14 项测试，并保留原矩阵测试；暂停/恢复、低磁盘暂停、checkpoint 滞后
+恢复、制品篡改拒绝、学习 bundle/设备绑定、学习运行证据校验、确定性合并和真实单 episode
+写盘均通过。scalable 全量为 `292 passed, 1 warning`。warning 仍来自本机 Matplotlib
+`Axes3D` 导入冲突。
 
 绑定 clean commit `32b3b40` 的首次执行曾在 shard 0 第 45 个单元暴露 D3 旧联盟需求库存
 问题，该现场继续作为历史失败证据。D3 修复后，main 使用 clean commit `2c7b425` 重新生成
@@ -1294,6 +1307,39 @@ D4 区域策略、A3 主动视觉、C1 学习组合和 F1 故障/高威胁完整
 还要求完整 R0/G1/A1/A2/A3/C1/F1、完整场景目录、5/20/50/100/200 五档规模、至少
 20 个唯一 seed、独立训练 seed 注册表、训练/测试 seed 零重叠和干净工作树。每个 episode
 写盘后由 D6 从离线目录统一评分，矩阵本身不读取在线真值。
+
+学习 scope 使用 `init-scope`、`run-shard` 和 `merge-scope`。以下 G1 命令只说明获准
+bundle 生成后的调用方式；当前实际 D5 图模型会在 `init-scope` 预检阶段被拒绝，不会创建
+执行目录：
+
+```bash
+python3 research_modules/scalable_3d_simulation/run_experiment_matrix_shard.py \
+  init-scope \
+  --formal \
+  --scope-variants G1 \
+  --device cpu \
+  --d5-graph-model-bundle /path/to/admitted_d5_graph_bundle \
+  --output /path/to/formal_g1_scope
+
+python3 research_modules/scalable_3d_simulation/run_experiment_matrix_shard.py \
+  run-shard \
+  --execution-plan /path/to/formal_g1_scope/experiment_matrix_execution_plan.json \
+  --shard-index 0 \
+  --device cpu \
+  --d5-graph-model-bundle /path/to/admitted_d5_graph_bundle \
+  --minimum-free-gib 20
+
+python3 research_modules/scalable_3d_simulation/run_experiment_matrix_shard.py \
+  merge-scope \
+  --execution-plan /path/to/formal_g1_scope/experiment_matrix_execution_plan.json \
+  --write-d6-report
+```
+
+变体与 bundle 的对应关系为：G1 使用 D5 图模型，A1 使用 D3 代价修正模型，A2 使用 D4
+区域策略模型，A3 使用 D5 主动视觉模型，C1/F1 同时要求四类 bundle。执行计划不保存本机
+绝对路径；内容完全一致的 bundle 可以迁移目录。文件树、设备或运行时准入诊断不一致时
+不得续跑旧计划。`merge-scope` 仍只声明当前 scope 完成；只有 scope 与完整父清单一致时
+才允许声明完整矩阵完成。
 
 正式 R0 使用独立入口。初始化命令必须在 clean commit 上执行，且输出目录应位于 Git
 忽略目录或仓库外：

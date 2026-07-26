@@ -14,8 +14,20 @@
    才能生成允许 assist 的新 bundle。不得修改旧 development manifest 自我晋级。
 6. [ ] 新 bundle 必须绑定当前实现 SHA-256。旧冻结 D5 bundle 当前返回
    `bundle_implementation_runtime_mismatch`；不得通过兼容白名单绕过代码溯源。
-7. [ ] R0 900/900 完成后，为 G1/A1/A2/A3/C1/F1 增加与当前 R0 同等级的可恢复分片执行。
-   现有正式分片执行器只接受 R0，不能直接宣称 5700-cell 矩阵可运行。
+7. [x] main 已为 G1/A1/A2/A3/C1/F1 增加与 R0 同级的可恢复分片基础设施。
+   `init-scope` 绑定完整 bundle 文件树、manifest、预检设备、准入诊断和模型版本；
+   `run-shard` 在写 shard 前、每个学习单元开始前和发布前复核绑定，单元发布后再次核对
+   episode 诊断与版本；
+   `merge-scope` 复用确定性合并合同。旧 R0 计划保持可读。
+8. [x] G1 开发伪 bundle 已完成缺失/未准入拒绝、设备不一致、文件篡改、暂停恢复和合并
+   回归。矩阵/分片/学习运行时定向测试为 `26 passed, 1 warning`，scalable 全量为
+   `292 passed, 1 warning`。
+9. [ ] D3、D4、D5 图模型和 D5 主动视觉模型实际 bundle 仍未获 assist 准入。各 owner
+   完成独立非退化门并形成新 bundle 后，main 才能冻结学习 scope；当前不得用伪 bundle
+   或 development bundle 生成正式证据。
+10. [ ] R0 完整闭合、存储条件满足且模型获准后，按 G1、A1、A2、A3、C1、F1 顺序运行
+    正式 scope，并由 D6 核对逐单元采用、规则基线非退化和完整矩阵状态。当前正式学习
+    episode 仍为 0。
 
 ## 正式 R0 后验收尾 P0（2026-07-25）
 

@@ -34,7 +34,9 @@ from .experiment_matrix import (
     _validate_resolved_variant,
     paired_exogenous_config_sha256,
     repository_state,
+    required_model_components,
     runtime_options_for_variant,
+    validate_required_bundles,
 )
 from .learning_runtime import resolve_learning_runtime
 from .models import ScenarioConfig
@@ -60,6 +62,9 @@ EXPERIMENT_MATRIX_CELL_RESULT_SCHEMA = (
 )
 EXPERIMENT_MATRIX_SCOPE_MERGE_SCHEMA = (
     "scalable3d-experiment-matrix-scope-merge-v1"
+)
+EXPERIMENT_MATRIX_MODEL_BUNDLE_BINDING_SCHEMA = (
+    "scalable3d-experiment-matrix-model-bundle-binding-v1"
 )
 FORMAL_R0_DEFAULT_SHARD_COUNT = 20
 FORMAL_R0_EXPECTED_CELL_COUNT = 900
@@ -95,6 +100,8 @@ def create_experiment_matrix_execution_plan(
     parent_plan: ExperimentMatrixPlan,
     scope_variants: Sequence[str],
     shard_count: int,
+    bundles: ModelBundlePaths | None = None,
+    device: str = "cpu",
     created_at_utc: str | None = None,
 ) -> Path:
     """Freeze one parent inventory and deterministic round-robin shard map.
@@ -120,6 +127,11 @@ def create_experiment_matrix_execution_plan(
     unknown = sorted(set(normalized_scope) - set(parent_plan.variants))
     if unknown:
         raise ValueError(f"scope variants are absent from parent plan: {unknown}")
+    selected_bundles = bundles or ModelBundlePaths()
+    validate_required_bundles(normalized_scope, selected_bundles)
+    selected_device = str(device).strip()
+    if not selected_device:
+        raise ValueError("learning device must be non-empty")
 
     commit, dirty = repository_state(repository_root)
     if parent_plan.formal and dirty:
@@ -179,6 +191,27 @@ def create_experiment_matrix_execution_plan(
         else datetime.now(timezone.utc).replace(microsecond=0).isoformat()
     )
     base_payload = base_config.to_dict()
+    learning_binding = _build_learning_bundle_binding(
+        normalized_scope,
+        selected_bundles,
+    )
+    variant_preflight = _preflight_scope_variants(
+        base_config,
+        parent_plan,
+        normalized_scope,
+        selected_bundles,
+        device=selected_device,
+    )
+    if (
+        _build_learning_bundle_binding(
+            normalized_scope,
+            selected_bundles,
+        )
+        != learning_binding
+    ):
+        raise ExperimentMatrixShardError(
+            "model bundle changed during execution plan preflight"
+        )
     payload: dict[str, Any] = {
         "schema_version": EXPERIMENT_MATRIX_EXECUTION_PLAN_SCHEMA,
         "created_at_utc": timestamp,
@@ -198,6 +231,11 @@ def create_experiment_matrix_execution_plan(
             "schema_version": base_payload["schema_version"],
             "payload": base_payload,
             "sha256": _digest_json(base_payload),
+        },
+        "learning_bundles": {
+            **learning_binding,
+            "preflight_device": selected_device,
+            "variant_preflight": variant_preflight,
         },
         "scope": {
             "variants": list(normalized_scope),
@@ -382,6 +420,7 @@ def load_experiment_matrix_execution_plan(
         )
     if sharding.get("shards") != expected_shards:
         raise ExperimentMatrixShardError("shard inventory mismatch")
+    _validate_learning_bundle_plan(payload, scope_variants)
     return payload
 
 
@@ -394,6 +433,7 @@ def run_experiment_matrix_shard(
     max_new_cells: int | None = None,
     device: str = "cpu",
     minimum_free_bytes: int = 0,
+    bundles: ModelBundlePaths | None = None,
 ) -> dict[str, Any]:
     """Run or resume one deterministic shard at complete-cell boundaries."""
 
@@ -401,10 +441,12 @@ def run_experiment_matrix_shard(
     plan_path = Path(execution_plan_path).resolve()
     execution = load_experiment_matrix_execution_plan(plan_path)
     _validate_source_state(repository_root, execution)
-    if tuple(execution["scope"]["variants"]) != ("R0",):
-        raise ExperimentMatrixShardError(
-            "v1 shard runner only executes the deterministic R0 scope"
-        )
+    selected_bundles = bundles or ModelBundlePaths()
+    _validate_runtime_learning_bundles(
+        execution,
+        selected_bundles,
+        device=device,
+    )
     index = int(shard_index)
     descriptors = execution["sharding"]["shards"]
     if index < 0 or index >= len(descriptors):
@@ -528,6 +570,7 @@ def run_experiment_matrix_shard(
                 cell=cell,
                 sequence=len(progress),
                 device=device,
+                bundles=selected_bundles,
             )
             _append_jsonl_fsync(progress_path, row)
             progress.append(row)
@@ -813,7 +856,14 @@ def _run_one_cell(
     cell: Mapping[str, Any],
     sequence: int,
     device: str,
+    bundles: ModelBundlePaths,
 ) -> dict[str, Any]:
+    if cell["variant"] != "R0":
+        _validate_runtime_learning_bundles(
+            execution,
+            bundles,
+            device=device,
+        )
     final_dir = _cell_container_path(shard_dir, cell)
     inflight_root = shard_dir / "inflight"
     inflight_root.mkdir(exist_ok=True)
@@ -841,15 +891,27 @@ def _run_one_cell(
         },
     )
     try:
-        record = _execute_r0_cell(
-            repository_root=repository_root,
-            execution_root=execution_root,
-            execution=execution,
-            cell=cell,
-            cell_container=partial_dir,
-            final_container=final_dir,
-            device=device,
-        )
+        common = {
+            "repository_root": repository_root,
+            "execution_root": execution_root,
+            "execution": execution,
+            "cell": cell,
+            "cell_container": partial_dir,
+            "final_container": final_dir,
+            "device": device,
+        }
+        if cell["variant"] == "R0":
+            record = _execute_r0_cell(**common)
+        else:
+            record = _execute_learning_cell(
+                **common,
+                bundles=bundles,
+            )
+            _validate_runtime_learning_bundles(
+                execution,
+                bundles,
+                device=device,
+            )
         (partial_dir / "inflight_marker.json").unlink()
         _write_json_atomic(partial_dir / _CELL_RESULT_FILENAME, record)
         final_dir.parent.mkdir(parents=True, exist_ok=True)
@@ -886,6 +948,61 @@ def _execute_r0_cell(
 
     if cell["variant"] != "R0":
         raise ExperimentMatrixShardError("R0 shard received a non-R0 cell")
+    return _execute_matrix_cell(
+        repository_root=repository_root,
+        execution_root=execution_root,
+        execution=execution,
+        cell=cell,
+        cell_container=cell_container,
+        final_container=final_container,
+        device=device,
+        bundles=ModelBundlePaths(),
+    )
+
+
+def _execute_learning_cell(
+    *,
+    repository_root: Path,
+    execution_root: Path,
+    execution: Mapping[str, Any],
+    cell: Mapping[str, Any],
+    cell_container: Path,
+    final_container: Path,
+    device: str,
+    bundles: ModelBundlePaths,
+) -> dict[str, Any]:
+    """Execute one declared learning cell after bundle binding validation."""
+
+    if cell["variant"] == "R0":
+        raise ExperimentMatrixShardError(
+            "learning executor received an R0 cell"
+        )
+    return _execute_matrix_cell(
+        repository_root=repository_root,
+        execution_root=execution_root,
+        execution=execution,
+        cell=cell,
+        cell_container=cell_container,
+        final_container=final_container,
+        device=device,
+        bundles=bundles,
+    )
+
+
+def _execute_matrix_cell(
+    *,
+    repository_root: Path,
+    execution_root: Path,
+    execution: Mapping[str, Any],
+    cell: Mapping[str, Any],
+    cell_container: Path,
+    final_container: Path,
+    device: str,
+    bundles: ModelBundlePaths,
+) -> dict[str, Any]:
+    """Execute one cell without allowing undeclared model fallback."""
+
+    variant = str(cell["variant"])
     parent_plan = _plan_from_payload(execution["parent"]["plan"])
     base_config = ScenarioConfig.from_dict(
         dict(execution["base_config"]["payload"])
@@ -899,8 +1016,8 @@ def _execute_r0_cell(
     )
     config = _prepare_cell_config(config, execution, cell)
     options = runtime_options_for_variant(
-        "R0",
-        ModelBundlePaths(),
+        variant,
+        bundles,
         device=device,
     )
     resolved = resolve_learning_runtime(
@@ -909,9 +1026,9 @@ def _execute_r0_cell(
         stack_config=IntegratedStackConfig(),
     )
     _validate_resolved_variant(
-        "R0",
+        variant,
         resolved.diagnostics,
-        allow_rule_fallback=False,
+        allow_rule_fallback=parent_plan.allow_rule_fallback,
     )
     episode_dir = cell_container / "episode"
     result = run_episode(
@@ -938,7 +1055,7 @@ def _execute_r0_cell(
             "episode online_truth_use_count is non-zero"
         )
     artifact_tree = _tree_digest(episode_dir)
-    return {
+    record = {
         "schema_version": EXPERIMENT_MATRIX_CELL_RESULT_SCHEMA,
         "execution_plan_sha256": execution["execution_plan_sha256"],
         "parent_plan_sha256": execution["parent"]["plan_sha256"],
@@ -966,6 +1083,22 @@ def _execute_r0_cell(
         },
         "status": "complete",
     }
+    if variant != "R0":
+        record["learning_runtime"] = {
+            "bundle_binding_sha256": execution["learning_bundles"][
+                "binding_sha256"
+            ],
+            "diagnostics_sha256": _digest_json(resolved.diagnostics),
+            "resolved_versions": {
+                "d3_policy_version": resolved.config.d3_policy_version,
+                "d4_policy_version": resolved.config.d4_policy_version,
+                "d5_model_version": resolved.config.d5_model_version,
+                "d5_active_vision_policy_version": (
+                    resolved.config.d5_active_vision_policy_version
+                ),
+            },
+        }
+    return record
 
 
 def _prepare_cell_config(
@@ -989,7 +1122,7 @@ def _prepare_cell_config(
             "algorithm_variant": cell["variant"],
             "comparison_key": cell["comparison_key"],
             "paired_exogenous_config_sha256": pairing_hash,
-            "full_system_validation": False,
+            "full_system_validation": cell["variant"] == "F1",
             "matrix_execution_plan_sha256": execution[
                 "execution_plan_sha256"
             ],
@@ -1234,6 +1367,89 @@ def _validate_cell_container(
         raise ExperimentMatrixShardError(
             "episode execution plan lineage mismatch"
         )
+    if expected_cell["variant"] != "R0":
+        learning_record = _required_mapping(
+            record.get("learning_runtime"),
+            "cell_result.learning_runtime",
+        )
+        binding = _required_mapping(
+            execution.get("learning_bundles"),
+            "learning_bundles",
+        )
+        if learning_record.get("bundle_binding_sha256") != binding.get(
+            "binding_sha256"
+        ):
+            raise ExperimentMatrixShardError(
+                "cell learning bundle binding mismatch"
+            )
+        diagnostics = _required_mapping(
+            metadata.get("learning_runtime"),
+            "scenario_config.metadata.learning_runtime",
+        )
+        if _digest_json(diagnostics) != _required_sha256(
+            learning_record.get("diagnostics_sha256"),
+            "cell_result.learning_runtime.diagnostics_sha256",
+        ):
+            raise ExperimentMatrixShardError(
+                "cell learning diagnostics digest mismatch"
+            )
+        preflight = _required_mapping(
+            _required_mapping(
+                binding.get("variant_preflight"),
+                "learning_bundles.variant_preflight",
+            ).get(str(expected_cell["variant"])),
+            (
+                "learning_bundles.variant_preflight."
+                f"{expected_cell['variant']}"
+            ),
+        )
+        if learning_record.get("diagnostics_sha256") != _required_sha256(
+            preflight.get("diagnostics_sha256"),
+            (
+                f"{expected_cell['variant']}."
+                "preflight.diagnostics_sha256"
+            ),
+        ):
+            raise ExperimentMatrixShardError(
+                "cell learning diagnostics differ from execution preflight"
+            )
+        parent_plan = _plan_from_payload(execution["parent"]["plan"])
+        try:
+            _validate_resolved_variant(
+                str(expected_cell["variant"]),
+                diagnostics,
+                allow_rule_fallback=parent_plan.allow_rule_fallback,
+            )
+        except RuntimeError as exc:
+            raise ExperimentMatrixShardError(
+                "cell learning variant did not retain declared runtime mode"
+            ) from exc
+        resolved_versions = _required_mapping(
+            learning_record.get("resolved_versions"),
+            "cell_result.learning_runtime.resolved_versions",
+        )
+        if dict(resolved_versions) != dict(
+            _required_mapping(
+                preflight.get("resolved_versions"),
+                (
+                    f"{expected_cell['variant']}."
+                    "preflight.resolved_versions"
+                ),
+            )
+        ):
+            raise ExperimentMatrixShardError(
+                "cell learning versions differ from execution preflight"
+            )
+        for name in (
+            "d3_policy_version",
+            "d4_policy_version",
+            "d5_model_version",
+            "d5_active_vision_policy_version",
+        ):
+            if resolved_versions.get(name) != config.get(name):
+                raise ExperimentMatrixShardError(
+                    f"cell learning version mismatch: {name}"
+                )
     if not bool(summary.get("finite_state")):
         raise ExperimentMatrixShardError("episode finite_state is false")
     if int(summary.get("online_truth_use_count", -1)) != 0:
@@ -1369,6 +1585,281 @@ def _merged_cell_row(
     }
 
 
+def _build_learning_bundle_binding(
+    variants: Sequence[str],
+    bundles: ModelBundlePaths,
+) -> dict[str, Any]:
+    required = required_model_components(variants)
+    components: dict[str, dict[str, Any]] = {}
+    for component in required:
+        path = getattr(bundles, component)
+        if path is None or not path.is_dir():
+            raise ValueError(f"required model bundle is missing: {component}")
+        manifest_path = path / "manifest.json"
+        if not manifest_path.is_file():
+            raise ExperimentMatrixShardError(
+                f"model bundle manifest is missing: {component}"
+            )
+        inventory = _tree_inventory(path)
+        components[component] = {
+            "component": component,
+            "manifest_sha256": _sha256_file(manifest_path),
+            "tree_sha256": _digest_json(inventory),
+            "file_count": len(inventory),
+            "total_size_bytes": sum(
+                int(item["size_bytes"]) for item in inventory
+            ),
+        }
+    binding_payload = {
+        "required_components": list(required),
+        "components": components,
+    }
+    return {
+        "schema_version": EXPERIMENT_MATRIX_MODEL_BUNDLE_BINDING_SCHEMA,
+        **binding_payload,
+        "binding_sha256": _digest_json(binding_payload),
+    }
+
+
+def _preflight_scope_variants(
+    base_config: ScenarioConfig,
+    parent_plan: ExperimentMatrixPlan,
+    variants: Sequence[str],
+    bundles: ModelBundlePaths,
+    *,
+    device: str,
+) -> dict[str, dict[str, Any]]:
+    records: dict[str, dict[str, Any]] = {}
+    for variant in variants:
+        if variant == "R0":
+            records[variant] = {
+                "variant": variant,
+                "status": "deterministic_no_model",
+                "required_components": [],
+            }
+            continue
+        options = runtime_options_for_variant(
+            variant,
+            bundles,
+            device=device,
+        )
+        resolved = resolve_learning_runtime(
+            base_config,
+            options,
+            stack_config=IntegratedStackConfig(),
+        )
+        try:
+            _validate_resolved_variant(
+                variant,
+                resolved.diagnostics,
+                allow_rule_fallback=parent_plan.allow_rule_fallback,
+            )
+        except RuntimeError as exc:
+            raise ExperimentMatrixShardError(
+                f"variant preflight failed: {variant}"
+            ) from exc
+        records[variant] = {
+            "variant": variant,
+            "status": (
+                "resolved_with_rule_fallback_allowed"
+                if parent_plan.allow_rule_fallback
+                else "assist_resolved"
+            ),
+            "required_components": list(
+                required_model_components((variant,))
+            ),
+            "diagnostics_sha256": _digest_json(resolved.diagnostics),
+            "resolved_versions": {
+                "d3_policy_version": resolved.config.d3_policy_version,
+                "d4_policy_version": resolved.config.d4_policy_version,
+                "d5_model_version": resolved.config.d5_model_version,
+                "d5_active_vision_policy_version": (
+                    resolved.config.d5_active_vision_policy_version
+                ),
+            },
+        }
+    return records
+
+
+def _validate_learning_bundle_plan(
+    execution: Mapping[str, Any],
+    scope_variants: Sequence[str],
+) -> None:
+    learning = execution.get("learning_bundles")
+    required = required_model_components(scope_variants)
+    if learning is None:
+        if required:
+            raise ExperimentMatrixShardError(
+                "learned scope is missing model bundle binding"
+            )
+        return
+    payload = _required_mapping(learning, "learning_bundles")
+    if (
+        payload.get("schema_version")
+        != EXPERIMENT_MATRIX_MODEL_BUNDLE_BINDING_SCHEMA
+    ):
+        raise ExperimentMatrixShardError(
+            "model bundle binding schema is unsupported"
+        )
+    device = payload.get("preflight_device")
+    if not isinstance(device, str) or not device.strip():
+        raise ExperimentMatrixShardError(
+            "model bundle preflight device is invalid"
+        )
+    if payload.get("required_components") != list(required):
+        raise ExperimentMatrixShardError(
+            "model bundle required component list mismatch"
+        )
+    components = _required_mapping(
+        payload.get("components"),
+        "learning_bundles.components",
+    )
+    if set(components) != set(required):
+        raise ExperimentMatrixShardError(
+            "model bundle component inventory mismatch"
+        )
+    for component in required:
+        descriptor = _required_mapping(
+            components.get(component),
+            f"learning_bundles.components.{component}",
+        )
+        if descriptor.get("component") != component:
+            raise ExperimentMatrixShardError(
+                f"model bundle component identity mismatch: {component}"
+            )
+        _required_sha256(
+            descriptor.get("manifest_sha256"),
+            f"{component}.manifest_sha256",
+        )
+        _required_sha256(
+            descriptor.get("tree_sha256"),
+            f"{component}.tree_sha256",
+        )
+        if int(descriptor.get("file_count", 0)) <= 0:
+            raise ExperimentMatrixShardError(
+                f"model bundle file count is invalid: {component}"
+            )
+        if int(descriptor.get("total_size_bytes", -1)) < 0:
+            raise ExperimentMatrixShardError(
+                f"model bundle size is invalid: {component}"
+            )
+    binding_payload = {
+        "required_components": list(required),
+        "components": dict(components),
+    }
+    if _digest_json(binding_payload) != _required_sha256(
+        payload.get("binding_sha256"),
+        "learning_bundles.binding_sha256",
+    ):
+        raise ExperimentMatrixShardError(
+            "model bundle binding digest mismatch"
+        )
+    preflight = _required_mapping(
+        payload.get("variant_preflight"),
+        "learning_bundles.variant_preflight",
+    )
+    if set(preflight) != set(scope_variants):
+        raise ExperimentMatrixShardError(
+            "model bundle variant preflight inventory mismatch"
+        )
+    parent_plan = _plan_from_payload(execution["parent"]["plan"])
+    for variant in scope_variants:
+        record = _required_mapping(
+            preflight.get(variant),
+            f"learning_bundles.variant_preflight.{variant}",
+        )
+        if record.get("variant") != variant:
+            raise ExperimentMatrixShardError(
+                f"model bundle preflight variant mismatch: {variant}"
+            )
+        expected_components = list(
+            required_model_components((variant,))
+        )
+        if record.get("required_components") != expected_components:
+            raise ExperimentMatrixShardError(
+                f"model bundle preflight component mismatch: {variant}"
+            )
+        if variant == "R0":
+            expected_status = "deterministic_no_model"
+        elif parent_plan.allow_rule_fallback:
+            expected_status = "resolved_with_rule_fallback_allowed"
+        else:
+            expected_status = "assist_resolved"
+        if record.get("status") != expected_status:
+            raise ExperimentMatrixShardError(
+                f"model bundle preflight status mismatch: {variant}"
+            )
+        if variant != "R0":
+            _required_sha256(
+                record.get("diagnostics_sha256"),
+                f"{variant}.diagnostics_sha256",
+            )
+            versions = _required_mapping(
+                record.get("resolved_versions"),
+                f"{variant}.resolved_versions",
+            )
+            expected_version_keys = {
+                "d3_policy_version",
+                "d4_policy_version",
+                "d5_model_version",
+                "d5_active_vision_policy_version",
+            }
+            if set(versions) != expected_version_keys:
+                raise ExperimentMatrixShardError(
+                    f"model bundle preflight version inventory mismatch: {variant}"
+                )
+
+
+def _validate_runtime_learning_bundles(
+    execution: Mapping[str, Any],
+    bundles: ModelBundlePaths,
+    *,
+    device: str,
+) -> None:
+    scope_variants = tuple(execution["scope"]["variants"])
+    required = required_model_components(scope_variants)
+    provided = tuple(
+        component
+        for component in (
+            "d3",
+            "d4",
+            "d5_graph",
+            "d5_active_vision",
+        )
+        if getattr(bundles, component) is not None
+    )
+    extra = sorted(set(provided) - set(required))
+    if extra:
+        raise ExperimentMatrixShardError(
+            f"undeclared model bundles were supplied: {extra}"
+        )
+    validate_required_bundles(scope_variants, bundles)
+    learning = execution.get("learning_bundles")
+    if learning is None:
+        if required:
+            raise ExperimentMatrixShardError(
+                "learned scope is missing model bundle binding"
+            )
+        return
+    runtime_device = str(device).strip()
+    if not runtime_device:
+        raise ValueError("learning device must be non-empty")
+    if required and learning.get("preflight_device") != runtime_device:
+        raise ExperimentMatrixShardError(
+            "runtime learning device differs from execution preflight"
+        )
+    expected = {
+        key: value
+        for key, value in dict(learning).items()
+        if key not in {"preflight_device", "variant_preflight"}
+    }
+    actual = _build_learning_bundle_binding(scope_variants, bundles)
+    if actual != expected:
+        raise ExperimentMatrixShardError(
+            "runtime model bundle differs from execution plan binding"
+        )
+
+
 def _parent_plan_payload(plan: ExperimentMatrixPlan) -> dict[str, Any]:
     return {
         "variants": list(plan.variants),
@@ -1457,22 +1948,25 @@ def _validate_source_state(
 
 
 def _tree_digest(root: Path) -> str:
+    return _digest_json(_tree_inventory(root))
+
+
+def _tree_inventory(root: Path) -> list[dict[str, Any]]:
     if not root.is_dir():
         raise ExperimentMatrixShardError(
             f"artifact tree is missing: {root}"
         )
-    entries = []
-    for path in sorted(item for item in root.rglob("*") if item.is_file()):
-        entries.append(
-            {
-                "path": path.relative_to(root).as_posix(),
-                "size_bytes": path.stat().st_size,
-                "sha256": _sha256_file(path),
-            }
-        )
+    entries = [
+        {
+            "path": path.relative_to(root).as_posix(),
+            "size_bytes": path.stat().st_size,
+            "sha256": _sha256_file(path),
+        }
+        for path in sorted(item for item in root.rglob("*") if item.is_file())
+    ]
     if not entries:
         raise ExperimentMatrixShardError("artifact tree is empty")
-    return _digest_json(entries)
+    return entries
 
 
 def _digest_json(payload: Any) -> str:

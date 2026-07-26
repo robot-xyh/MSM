@@ -25,6 +25,15 @@ from .scenarios import AVAILABLE_SCENARIOS, make_curriculum_scenario
 EXPERIMENT_MATRIX_SCHEMA_VERSION = "scalable3d-experiment-matrix-v1"
 PAIRED_SENSOR_RANDOM_SCHEDULE_VERSION = "entity_fixed_v1"
 EXPERIMENT_VARIANTS = ("R0", "G1", "A1", "A2", "A3", "C1", "F1")
+VARIANT_MODEL_COMPONENTS = {
+    "R0": (),
+    "G1": ("d5_graph",),
+    "A1": ("d3",),
+    "A2": ("d4",),
+    "A3": ("d5_active_vision",),
+    "C1": ("d3", "d4", "d5_graph", "d5_active_vision"),
+    "F1": ("d3", "d4", "d5_graph", "d5_active_vision"),
+}
 FULL_SYSTEM_SCENARIOS = frozenset(
     {"center_failure", "secondary_failure", "high_threat_m_to_n"}
 )
@@ -188,19 +197,37 @@ def validate_required_bundles(
     variants: Iterable[str],
     bundles: ModelBundlePaths,
 ) -> None:
-    required: dict[str, Path | None] = {}
-    selected = {str(item).strip().upper() for item in variants}
-    if selected & {"A1", "C1", "F1"}:
-        required["D3"] = bundles.d3
-    if selected & {"A2", "C1", "F1"}:
-        required["D4"] = bundles.d4
-    if selected & {"G1", "C1", "F1"}:
-        required["D5 graph"] = bundles.d5_graph
-    if selected & {"A3", "C1", "F1"}:
-        required["D5 active vision"] = bundles.d5_active_vision
-    missing = [name for name, path in required.items() if path is None or not path.is_dir()]
+    labels = {
+        "d3": "D3",
+        "d4": "D4",
+        "d5_graph": "D5 graph",
+        "d5_active_vision": "D5 active vision",
+    }
+    required = required_model_components(variants)
+    missing = [
+        labels[name]
+        for name in required
+        if getattr(bundles, name) is None or not getattr(bundles, name).is_dir()
+    ]
     if missing:
         raise ValueError(f"required model bundles are missing: {', '.join(missing)}")
+
+
+def required_model_components(variants: Iterable[str]) -> tuple[str, ...]:
+    """Return the stable union of model components required by variants."""
+
+    selected = tuple(
+        dict.fromkeys(str(item).strip().upper() for item in variants)
+    )
+    unknown = sorted(set(selected) - set(EXPERIMENT_VARIANTS))
+    if unknown:
+        raise ValueError(f"unknown experiment variants: {unknown}")
+    required: list[str] = []
+    for variant in selected:
+        for component in VARIANT_MODEL_COMPONENTS[variant]:
+            if component not in required:
+                required.append(component)
+    return tuple(required)
 
 
 def repository_state(root: Path) -> tuple[str, bool]:
@@ -363,14 +390,11 @@ def _validate_resolved_variant(
 ) -> None:
     if variant == "R0":
         return
-    required = {
-        "G1": ("d5",),
-        "A1": ("d3",),
-        "A2": ("d4",),
-        "A3": ("d5_active_vision",),
-        "C1": ("d3", "d4", "d5", "d5_active_vision"),
-        "F1": ("d3", "d4", "d5", "d5_active_vision"),
-    }[variant]
+    diagnostic_names = {"d5_graph": "d5"}
+    required = tuple(
+        diagnostic_names.get(component, component)
+        for component in VARIANT_MODEL_COMPONENTS[variant]
+    )
     failures: list[str] = []
     for component in required:
         record = diagnostics.get(component)
@@ -455,12 +479,14 @@ def _write_rows(path: Path, rows: Sequence[Mapping[str, Any]]) -> Path:
 __all__ = [
     "EXPERIMENT_MATRIX_SCHEMA_VERSION",
     "EXPERIMENT_VARIANTS",
+    "VARIANT_MODEL_COMPONENTS",
     "ExperimentCell",
     "ExperimentMatrixPlan",
     "ModelBundlePaths",
     "load_training_seeds",
     "paired_exogenous_config_sha256",
     "repository_state",
+    "required_model_components",
     "run_experiment_matrix",
     "runtime_options_for_variant",
     "validate_required_bundles",
