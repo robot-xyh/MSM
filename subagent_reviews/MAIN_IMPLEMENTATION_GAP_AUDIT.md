@@ -19,11 +19,12 @@ main 已改为最后 D1 后验必须实际调用 D2，且仅在 D2 成功发布�
 D1 final=D2 consumed、consumption=publication、consumption+merge=generation、skip=0、
 pending empty、在线真值使用为 0。scalable、D2、D6 全量分别为 285、305、894 passed。
 
-该 P0 的代码和定向回归已关闭，正式证据尚未关闭。修复后的运行来自脏工作树，不能与旧
-提交的 895 项拼接。下一步必须先形成新 clean commit 和新 execution plan，再整体重跑
-900 项。当前文件系统约余 24 GiB，现有正式证据约 22 GiB，旧失败现场约 1.2 GiB；在
-20 GiB 运行下限下无法并存下一份约 22 GiB 正式结果。现有证据在获得清理或迁移授权前
-不得删除。
+该 P0 的代码和定向回归已关闭，正式证据尚未关闭。D1 审计、D2 复核、D6 v10 和 main
+runtime 已分别提交为 `4b018e4`、`dc5821f`、`8e955f3`、`98d01bf`，未改写分支历史。
+修复后的五项运行来自提交前脏工作树，不能与旧提交的 895 项拼接。最终文档同步后还需
+以 clean HEAD 生成新 execution plan，再整体重跑 900 项。当前文件系统约余 24 GiB，
+现有正式证据约 22 GiB，旧失败现场约 1.2 GiB；在 20 GiB 运行下限下无法并存下一份
+约 22 GiB 正式结果。现有证据在获得清理或迁移授权前不得删除。
 
 以下 D3 shard-0 记录是本轮 R0 的前序历史，已由 `2c7b425` 批次覆盖：
 

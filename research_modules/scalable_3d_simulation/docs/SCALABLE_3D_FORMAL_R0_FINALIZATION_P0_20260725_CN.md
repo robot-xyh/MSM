@@ -136,8 +136,9 @@ warning 来自本机 Matplotlib `Axes3D` 导入冲突，不影响本次 JSON、�
 
 ## 后续工作
 
-1. 将 main runtime、D1/D2 审计和 D6 v10 分批提交；
-2. 在新 clean commit 上重新生成完整父计划和 R0 execution plan；
+1. D1 审计、D2 复核、D6 v10 和 main runtime 已分批提交为
+   `4b018e4`、`dc5821f`、`8e955f3`、`98d01bf`；
+2. 完成最终文档同步后，在 clean HEAD 上重新生成完整父计划和 R0 execution plan；
 3. 从零运行 20 个分片和 900 个 R0 单元；
 4. 由 D6 v10 重新生成逐 seed CSV、聚合 JSON 和中文报告；
 5. 只有 900/900 clean-formal 后，才关闭本 P0 的正式证据项。

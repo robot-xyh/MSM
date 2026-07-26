@@ -27,11 +27,12 @@ main 已移除 finalize 的简化签名跳过。最后一代 D1 后验现在必�
 0。scalable 全量为 `285 passed, 1 warning`，D2 为 `305 passed, 1 warning`，D6 为
 `894 passed, 1 warning`。warning 均为本机 Matplotlib `Axes3D` 导入冲突。
 
-这些定向结果来自脏工作树，只证明代码修复和失败 seed 回归通过。正式 R0 必须在包含修复
-的新 clean commit、新 execution plan 下从 900 个单元整体重跑，不能将新 5 项与旧 895 项
-拼接。当前正式产物约 22 GiB，旧失败现场约 1.2 GiB，文件系统仅余约 24 GiB；在保留
-20 GiB 运行下限的条件下无法并存第二份约 22 GiB 正式矩阵。旧证据在获得明确清理或迁移
-授权前保持不动。
+这些定向结果来自脏工作树，只证明代码修复和失败 seed 回归通过。修复已形成分批提交
+`4b018e4`、`dc5821f`、`8e955f3` 和 `98d01bf`，提交历史未改写。正式 R0 仍须在最终文档
+同步后的 clean HEAD 和新 execution plan 下从 900 个单元整体重跑，不能将新 5 项与旧
+895 项拼接。当前正式产物约 22 GiB，旧失败现场约 1.2 GiB，文件系统仅余约 24 GiB；
+在保留 20 GiB 运行下限的条件下无法并存第二份约 22 GiB 正式矩阵。旧证据在获得明确
+清理或迁移授权前保持不动。
 
 专项记录见
 `docs/SCALABLE_3D_FORMAL_R0_FINALIZATION_P0_20260725_CN.md`。

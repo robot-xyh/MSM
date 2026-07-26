@@ -13,8 +13,9 @@
 5. [x] 五个原失败单元完成开发态定向复跑。D6 generation contract 为 5/5 verified，
    skip=0、pending empty、在线真值使用为 0；scalable/D2/D6 全量分别为
    `285/305/894 passed`。
-6. [ ] 将 main runtime、D1/D2 审计和 D6 v10 按子系统分批提交，形成新的 clean source
-   commit，并据此重新冻结完整父计划与 R0 execution plan。
+6. [x] main runtime、D1/D2 审计和 D6 v10 已按子系统分批提交：
+   `4b018e4`、`dc5821f`、`8e955f3`、`98d01bf`。提交历史未改写；最终文档同步完成后，
+   再以新的 HEAD 冻结完整父计划与 R0 execution plan。
 7. [ ] 在不删除或改写现有正式证据的前提下解决存储容量。当前可用约 24 GiB，现有正式
    R0 约 22 GiB，旧失败现场约 1.2 GiB；新一轮仍需约 22 GiB，并保留 20 GiB 运行下限。
 8. [ ] 使用新 clean source 从零重跑 900 个 R0 单元，由 D6 v10 验证 900/900
