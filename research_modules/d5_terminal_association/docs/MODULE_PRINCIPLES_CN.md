@@ -2,22 +2,27 @@
 
 **状态日期：2026-07-26**
 
-## 图模型的读取权限与使用权限
+## 模型读取与使用权限
 
-模型完整性和模型使用权限是两层独立条件。开发训练与成对影子评估需要读取权重并复现概率，因此
-运行时加载器默认允许通过严格完整性校验的 development bundle 进入 shadow。G1 辅助关联属于另一
-权限层，调用方必须显式要求 `g1_assist_eligible`。清单没有正向授权时，加载器返回 unavailable，
-规则关联继续工作。
+模型完整性和模型使用权限是两层独立条件。开发训练与成对影子评估可以读取通过完整性校验的
+development bundle。G1 跨视角图辅助和 A3 主动视觉辅助属于正式使用权限，调用方必须显式请求
+assist。任何加载或准入失败都返回 unavailable，由确定性几何和扫描规则继续工作。
 
-当前稳定拒绝原因是 `bundle_g1_assist_not_eligible`。若清单字段缺失或被改为正向授权，原 schema
-校验返回 `bundle_admission_invalid`。D5 不从 held-out 指标、文件存在、权重可加载或 scorer
-`available` 推导权限。该边界防止开发模型因主程序只检查“可执行”而进入正式辅助路径。
+G1 旧 v3 manifest 永久保持 `g1_assist_eligible=false`。主审确认裸 v4 report 不能作为权限来源：
+调用方可以手工填写占位 SHA 和正向布尔值，但这些字段不能证明 held-out、paired shadow 和 D6
+审计文件实际存在。生产 writer 因此禁止接收 G1 report，公开 loader/runtime 也拒绝所有正向 v4。
+v4 schema 和 parser 只保留在私有测试 fixture 中，用于未来独立证据装配器的合同回归。
 
-2026-07-26 专项 `19 passed in 2.24s`，D5 全量 `555 passed in 97.04s`，零失败。旧冻结 bundle
-绑定修改前的实现哈希，在当前源码下会失败关闭；若需要继续影子复核，应重新封装并重建证据，不能
-取消代码溯源校验。main 统一 episode 总线已显式请求严格 assist admission；相关专项
-`12 passed, 1 warning`，旧 bundle 在 G1/A1/A2/A3/C1/F1 中均失败关闭。当前仍没有获准的正式
-G1 模型。
+A3 原 writer 也可依据裸成对报告授予 assist，现已按同一原则关闭。生产 writer 不接收
+admission report，公开 loader/runtime 不运行正向 assist 清单。权限字段仍要求严格 JSON 布尔和
+整数类型。缺失独立证据装配器期间，主动视觉只允许 development/shadow。
+
+当前 G1/A3 实现 SHA-256 分别为 `ff8c744e...a1b7` 和 `e7db827f...3b4`。两份旧 bundle 均返回
+`bundle_implementation_runtime_mismatch`。G1 的 900-episode held-out 与 paired shadow 已完成，
+但 paired 权限仍为 `pending_d6_external_audit`；A3 只有明确 `assist=false` 的行为克隆开发报告，
+没有正式 paired 结果。因此生产代码不能生成或运行 admitted bundle。定向测试
+`47 passed in 2.32s`，D5 全量 `562 passed in 99.88s`。这些测试验证失败关闭边界，不替代正式
+证据。
 
 ## 冻结图模型的证据边界
 

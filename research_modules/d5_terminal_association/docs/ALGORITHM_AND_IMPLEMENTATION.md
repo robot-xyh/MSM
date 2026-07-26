@@ -2,29 +2,53 @@
 
 **状态日期：2026-07-26**
 
-## 运行时准入算法
+## 运行时准入
 
-运行时加载按以下次序处理：
+加载器先校验目录、`SHA256SUMS`、manifest、权重、schema、特征顺序、训练来源、实现来源和校准
+参数，再处理使用权限。shadow 只在完整性校验通过后返回只读模型。G1 调用还必须设置
+`require_g1_assist_eligible=True`；A3 调用必须请求 `ASSIST`。当前没有独立证据装配器，生产
+writer 禁止生成正向 G1/A3 bundle，公开 loader/runtime 也禁止执行手工拼装的正向清单。
 
-1. 校验目录、`SHA256SUMS`、manifest、权重、schema、特征顺序、训练来源、实现来源、校准参数和
-   admission 字段。
-2. 默认 shadow 调用在全部校验通过后返回只读 scorer，用于开发评估和成对影子比较。
-3. G1/assist 调用必须设置 `require_g1_assist_eligible=True`。若
-   `admission.g1_assist_eligible` 不是严格布尔值 `true`，返回 unavailable 和
-   `bundle_g1_assist_not_eligible`。
-4. 字段缺失、字段集合变化或自行把当前开发清单改成 `true` 时，严格加载器先返回
-   `bundle_admission_invalid`。运行时包装器不会获得 scorer，也不会执行模型评分。
+G1 v4 准入报告采用以下判据：
 
-默认参数保持既有调用兼容性。严格参数只决定 scorer 能否用于辅助路径，不修改 bundle schema、
-温度 \(T_{val}\)、阈值 \(\tau_{val}\)、权重或规则回退。2026-07-26 的专项测试为
-`19 passed in 2.24s`，D5 全量为 `555 passed in 97.04s`，验收门为零失败。
+\[
+A_{G1}=I_{\mathrm{formal}} I_{\mathrm{heldout}}
+I_{\mathrm{paired}} I_{\mathrm{D6}}
+I_{N_s\geq20} I_{N_e\geq900} I_{N_c\geq45}
+I_{n_{\mathrm{truth}}=0} I_{n_{\mathrm{id}}=0}
+I_{n_{\mathrm{samecam}}=0}.
+\]
 
-加载器源码属于 bundle 的实现溯源。旧冻结 bundle 记录修改前的 SHA-256，因此当前源码会返回
-`bundle_implementation_runtime_mismatch`。这一拒绝保持完整性边界。后续若继续 shadow，应在当前
-源码下保持权重、校准值和 `g1_assist_eligible=false` 重新封装并重建审计证据。main 正式 G1
-调用已显式设置严格参数；`learning_runtime` 与 `experiment_matrix` 专项
-`12 passed, 1 warning`，实际旧 bundle 在 G1/A1/A2/A3/C1/F1 中均失败关闭。当前没有获准的正式
-G1 模型，该 P1 不能由接线测试关闭。
+其中 \(N_s\) 为完全未见 seed 数，\(N_e\) 为 held-out episode 数，\(N_c\) 为场景规模单元数。
+该公式是未来证据装配器的准入判据，当前 parser 不能自行证明文件存在。装配器还必须逐文件读取
+模型、训练数据、held-out、paired shadow 和 D6 audit，校验文件及内容 SHA、严格 schema 和交叉
+绑定，并把证据纳入 bundle checksum tree。实现前，公开 loader 对任何正向 v4 均返回
+`bundle_g1_admission_evidence_assembler_unavailable`。
+
+A3 使用已有成对非退化判据：
+
+\[
+A_{A3}=I_{\mathrm{formal}}I_{N_s\geq20}
+I_{\Delta n_{\mathrm{safety}}\leq0}
+I_{\Delta V\geq0}
+I_{\Delta t_{\mathrm{reacquire}}\leq0}
+I_{\mathrm{synthetic}}^{\,0}.
+\]
+
+\(\Delta V\) 是模型减规则的平均可见率差，\(\Delta t_{\mathrm{reacquire}}\) 是重捕获时延差。除平均
+门外，每个 episode 也不得出现安全、可见率或重捕获退化。该判据当前只用于离线评估；生产 writer
+不接受报告对象，公开 loader 对正向 assist 返回
+`bundle_admission_evidence_assembler_unavailable`。
+
+G1 的实现摘要覆盖 `scalable_3d_adapter.py`、稀疏图、数据合同、模型、held-out、paired shadow、
+训练和 bundle loader，当前为 `ff8c744e...a1b7`。A3 摘要覆盖准入评估器、主动视觉控制器、数据
+合同、模型、训练和 loader，当前为 `e7db827f...3b4`。两份旧 bundle 均因
+`bundle_implementation_runtime_mismatch` 拒绝。G1 paired 仍等待 D6 正向外部审计；A3 没有正式
+paired 数据。生产代码不能写入或执行 admitted bundle，未来恢复必须经过独立装配器和主审。
+
+2026-07-26 定向测试为 `47 passed in 2.32s`，D5 全量为
+`562 passed in 99.88s`。私有 fixture 正例只检查 parser/loader 结构；公开 runtime 对同一 fixture
+保持失败关闭。
 
 ## 冻结模型审计链
 

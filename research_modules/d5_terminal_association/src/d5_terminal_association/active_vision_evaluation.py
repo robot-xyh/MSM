@@ -112,8 +112,14 @@ class ActiveVisionAdmissionReport:
     def __post_init__(self) -> None:
         if self.schema_version != ACTIVE_VISION_SHADOW_REPORT_SCHEMA_VERSION:
             raise ValueError("active-vision admission report schema mismatch")
-        if not str(self.model_fingerprint).strip():
+        if (
+            not isinstance(self.model_fingerprint, str)
+            or not self.model_fingerprint.strip()
+        ):
             raise ValueError("model_fingerprint must be non-empty")
+        for name in ("assist_admitted", "formal_evaluation"):
+            if type(getattr(self, name)) is not bool:
+                raise TypeError(f"{name} must be bool")
         for name in (
             "dataset_manifest_sha256",
             "split_sha256",
@@ -127,14 +133,33 @@ class ActiveVisionAdmissionReport:
             "paired_episode_count",
             "synthetic_fixture_count",
         ):
-            if int(getattr(self, name)) < 0:
-                raise ValueError(f"{name} must be non-negative")
+            value = getattr(self, name)
+            if type(value) is not int or value < 0:
+                raise TypeError(f"{name} must be a non-negative int")
         if not np.isfinite(self.mean_visibility_delta) or not np.isfinite(
             self.mean_reacquisition_delay_delta_s
         ):
             raise ValueError("paired non-degradation deltas must be finite")
         object.__setattr__(self, "failure_reasons", tuple(self.failure_reasons))
         object.__setattr__(self, "evaluated_group_keys", tuple(self.evaluated_group_keys))
+        if any(
+            not isinstance(reason, str) or not reason.strip()
+            for reason in self.failure_reasons
+        ):
+            raise ValueError("failure_reasons must contain non-empty strings")
+        if len(self.failure_reasons) != len(set(self.failure_reasons)):
+            raise ValueError("failure_reasons must be unique")
+        for group in self.evaluated_group_keys:
+            if (
+                not isinstance(group, tuple)
+                or len(group) != 2
+                or not isinstance(group[0], str)
+                or not group[0].strip()
+                or type(group[1]) is not int
+            ):
+                raise TypeError(
+                    "evaluated_group_keys must contain (scenario, seed) tuples"
+                )
         if len(self.evaluated_group_keys) != len(set(self.evaluated_group_keys)):
             raise ValueError("evaluated group keys must be unique")
         if len(self.evaluated_group_keys) != int(self.paired_episode_count):
@@ -282,27 +307,70 @@ def admission_report_from_manifest(payload: Mapping[str, Any]) -> ActiveVisionAd
         "failure_reasons",
         "evaluated_group_keys",
     }
-    if set(payload) != required or payload.get("schema_version") != ACTIVE_VISION_SHADOW_REPORT_SCHEMA_VERSION:
+    if (
+        not isinstance(payload, Mapping)
+        or set(payload) != required
+        or payload.get("schema_version")
+        != ACTIVE_VISION_SHADOW_REPORT_SCHEMA_VERSION
+    ):
         raise ValueError("active-vision admission report schema mismatch")
+    for name in ("assist_admitted", "formal_evaluation"):
+        if type(payload[name]) is not bool:
+            raise TypeError(f"{name} must be bool")
+    for name in (
+        "unseen_seed_count",
+        "paired_episode_count",
+        "synthetic_fixture_count",
+        "safety_violation_delta",
+    ):
+        if type(payload[name]) is not int:
+            raise TypeError(f"{name} must be int")
+    for name in (
+        "mean_visibility_delta",
+        "mean_reacquisition_delay_delta_s",
+    ):
+        if (
+            isinstance(payload[name], bool)
+            or not isinstance(payload[name], (int, float))
+        ):
+            raise TypeError(f"{name} must be numeric")
+    raw_reasons = payload["failure_reasons"]
+    if not isinstance(raw_reasons, list) or any(
+        not isinstance(item, str) for item in raw_reasons
+    ):
+        raise TypeError("failure_reasons must be a list of strings")
+    raw_groups = payload["evaluated_group_keys"]
+    if not isinstance(raw_groups, list):
+        raise TypeError("evaluated_group_keys must be a list")
+    parsed_groups: list[tuple[str, int]] = []
+    for item in raw_groups:
+        if (
+            not isinstance(item, list)
+            or len(item) != 2
+            or not isinstance(item[0], str)
+            or type(item[1]) is not int
+        ):
+            raise TypeError(
+                "evaluated_group_keys must contain [scenario, seed] pairs"
+            )
+        parsed_groups.append((item[0], item[1]))
     report = ActiveVisionAdmissionReport(
-        model_fingerprint=str(payload["model_fingerprint"]),
-        dataset_manifest_sha256=str(payload["dataset_manifest_sha256"]),
-        split_sha256=str(payload["split_sha256"]),
-        training_set_sha256=str(payload["training_set_sha256"]),
-        assist_admitted=bool(payload["assist_admitted"]),
-        formal_evaluation=bool(payload["formal_evaluation"]),
-        unseen_seed_count=int(payload["unseen_seed_count"]),
-        paired_episode_count=int(payload["paired_episode_count"]),
-        synthetic_fixture_count=int(payload["synthetic_fixture_count"]),
-        safety_violation_delta=int(payload["safety_violation_delta"]),
+        model_fingerprint=payload["model_fingerprint"],
+        dataset_manifest_sha256=payload["dataset_manifest_sha256"],
+        split_sha256=payload["split_sha256"],
+        training_set_sha256=payload["training_set_sha256"],
+        assist_admitted=payload["assist_admitted"],
+        formal_evaluation=payload["formal_evaluation"],
+        unseen_seed_count=payload["unseen_seed_count"],
+        paired_episode_count=payload["paired_episode_count"],
+        synthetic_fixture_count=payload["synthetic_fixture_count"],
+        safety_violation_delta=payload["safety_violation_delta"],
         mean_visibility_delta=float(payload["mean_visibility_delta"]),
         mean_reacquisition_delay_delta_s=float(
             payload["mean_reacquisition_delay_delta_s"]
         ),
-        failure_reasons=tuple(str(item) for item in payload["failure_reasons"]),
-        evaluated_group_keys=tuple(
-            (str(item[0]), int(item[1])) for item in payload["evaluated_group_keys"]
-        ),
+        failure_reasons=tuple(raw_reasons),
+        evaluated_group_keys=tuple(parsed_groups),
     )
     if report.assist_admitted and (
         not report.formal_evaluation

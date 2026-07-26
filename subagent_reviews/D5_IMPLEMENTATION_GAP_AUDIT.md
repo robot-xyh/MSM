@@ -1,18 +1,24 @@
 # D5 实现差距审计
 
-## 2026-07-26 GNN assist 准入边界
+## 2026-07-26 G1/A3 严格准入边界
 
 | 缺口 | 当前状态 | 证据与剩余边界 |
 | --- | --- | --- |
-| D5 严格 assist 加载接口 | **D5-owned 已关闭** | `require_g1_assist_eligible=True` 时，未获准 bundle 返回 unavailable，原因码为 `bundle_g1_assist_not_eligible`；默认值继续服务 development/shadow。 |
-| manifest 自我晋级 | **关闭并保持回归** | 删除字段或把 `g1_assist_eligible` 改为 `true` 均返回 `bundle_admission_invalid`；未增加允许状态，也未放宽 schema、哈希或阈值校验。 |
+| D5 严格 assist 加载接口 | **D5-owned 已关闭** | development bundle 仍返回 `bundle_g1_assist_not_eligible`；手工拼装正向 G1/A3 清单分别返回 `bundle_g1_admission_evidence_assembler_unavailable` / `bundle_admission_evidence_assembler_unavailable`。 |
+| 旧 manifest 自我晋级 | **关闭并保持回归** | G1 v3 继续只允许 `g1_assist_eligible=false`。删除字段、改为 `true` 或使用字符串权限值均失败关闭；旧 manifest 未修改。 |
+| G1 裸 report 自声明 | **关闭并保持回归** | production writer 在创建目录前拒绝任何 `g1_admission_report`；公开 loader/runtime 不执行 v4。私有 fixture 仅验证 parser，不授予生产权限。 |
+| A3 裸 report 自声明 | **关闭并保持回归** | production writer 拒绝任何 `admission_report`；公开 loader/runtime 不执行正向 assist。严格类型解析继续保留。 |
+| 独立证据装配器 | **P1 开放** | 当前未实现实际 held-out/paired/D6 文件读取、严格 schema、交叉模型/实现/数据绑定和 bundle checksum tree 打包，因此生产 G1/A3 admission 整体关闭。 |
+| G1 现有证据 | **部分完成，仍 fail-closed** | `c4284b...674` / `99fa4428...d4cd` 的 held-out 文件/内容为 `765d39a...20a` / `bada1803...67a`，paired 文件/内容为 `cc960206...f23` / `53bdc658...7a0`。paired 门通过但仍为 `pending_d6_external_audit`；2026-07-21 D6 审计未绑定该证据。 |
+| A3 parser 与实现溯源 | **D5-owned 已关闭** | admission/runtime 权限值不再隐式转 bool；准入评估器和运行控制器纳入实现 SHA。字符串 `"true"` 等类型伪造返回 `bundle_admission_invalid`。 |
+| A3 正式非退化证据 | **P1 开放** | 现有 `9c0cb50...ad4` / `829d0166...77b` 仅是 behavior-cloning development bundle；报告 `8a40aeb8...81e` 明确 `assist=false`，缺至少 20 unseen seed 的正式 paired non-degradation。 |
 | main 正式 G1 调用 | **P0 跨模块已关闭** | 统一 episode 总线显式传入 `require_g1_assist_eligible=True`；`learning_runtime` 与 `experiment_matrix` 专项 `12 passed, 1 warning`。实际旧 bundle 在 G1/A1/A2/A3/C1/F1 预检中均失败关闭。 |
-| 旧冻结 bundle 的当前源码复载与正式准入 | **P1 开放** | 加载器属于代码溯源范围，旧 bundle 在当前源码下返回 `bundle_implementation_runtime_mismatch`，且当前没有获准的正式 G1 模型。需保持原权重、阈值和关闭状态重新封装并重建审计，禁止增加兼容白名单绕过溯源。 |
+| 旧冻结 bundle 的当前源码复载 | **P1 开放** | G1/A3 当前实现 SHA 分别为 `ff8c744e...a1b7` / `e7db827f...3b4`，两个旧 bundle 均返回 `bundle_implementation_runtime_mismatch`。禁止重算旧清单或增加兼容白名单。 |
 
-2026-07-26 专项测试 `19 passed in 2.24s`，D5 全量测试
-`555 passed in 97.04s`，验收阈值为零失败。测试使用当前源码生成的 development bundle，覆盖 shadow
-可读、严格 assist 拒绝、准入字段缺失和准入字段篡改。没有修改 AirSim、在线 truth 边界、
-`global_track_id` 或模型校准值。
+2026-07-26 定向测试 `47 passed in 2.32s`，D5 全量
+`562 passed in 99.88s`，验收阈值为零失败。G1 负例覆盖 missing、tampered、cross-model、
+cross-dataset 和 D6-fail。没有修改旧 manifest、模型权重、校准值、在线 truth 边界或
+`global_track_id`。
 
 ## 2026-07-25 冻结图模型 P1 状态
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -26,10 +27,17 @@ from .tracklet_gnn import NativeTrackletEdgeClassifier, graph_tensors
 
 
 MODEL_BUNDLE_SCHEMA_VERSION = "d5.tracklet-model-bundle.v3"
+G1_ADMITTED_MODEL_BUNDLE_SCHEMA_VERSION = "d5.tracklet-model-bundle.v4"
+TRACKLET_G1_ADMISSION_REPORT_SCHEMA_VERSION = (
+    "d5.tracklet-g1-admission-report.v1"
+)
 MODEL_SEMANTIC_VERSION = "1.0.0"
 WEIGHTS_FILENAME = "weights.pt"
 MANIFEST_FILENAME = "manifest.json"
 CHECKSUMS_FILENAME = "SHA256SUMS"
+TRACKLET_G1_MINIMUM_UNSEEN_SEEDS = 20
+TRACKLET_G1_MINIMUM_HELDOUT_EPISODES = 900
+TRACKLET_G1_MINIMUM_SCENARIO_SCALE_CELLS = 45
 _SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 _ALLOWED_ADMISSION_STATUSES = frozenset(
     {"research_candidate_not_default", "development_only_fail_closed"}
@@ -38,7 +46,22 @@ G1_ASSIST_NOT_ELIGIBLE_REASON = "bundle_g1_assist_not_eligible"
 RUNTIME_ADMISSION_REQUIREMENT_INVALID_REASON = (
     "bundle_runtime_admission_requirement_invalid"
 )
+G1_EVIDENCE_ASSEMBLER_UNAVAILABLE_CODE = (
+    "g1_admission_evidence_assembler_unavailable"
+)
+_G1_LOADER_FIXTURE_TOKEN = object()
 _IMPLEMENTATION_SOURCE_FILES = (
+    "scalable_3d_adapter.py",
+    "sparse_tracklet_graph.py",
+    "tracklet_dataset.py",
+    "tracklet_gnn.py",
+    "tracklet_heldout_evaluation.py",
+    "tracklet_model_bundle.py",
+    "tracklet_paired_shadow.py",
+    "tracklet_training.py",
+    "tracklet_training_audit.py",
+)
+_LEGACY_IMPLEMENTATION_SOURCE_FILES = (
     "tracklet_gnn.py",
     "tracklet_model_bundle.py",
     "tracklet_training.py",
@@ -52,6 +75,165 @@ class ModelBundleValidationError(ValueError):
     def __init__(self, code: str, message: str) -> None:
         super().__init__(message)
         self.code = str(code)
+
+
+@dataclass(frozen=True)
+class TrackletG1AdmissionReport:
+    """Immutable evidence required to create a new G1-admitted bundle."""
+
+    model_fingerprint: str
+    implementation_sha256: str
+    dataset_manifest_sha256: str
+    split_sha256: str
+    training_set_sha256: str
+    heldout_report_sha256: str
+    heldout_report_content_sha256: str
+    paired_shadow_report_sha256: str
+    paired_shadow_report_content_sha256: str
+    d6_external_audit_sha256: str
+    d6_external_audit_content_sha256: str
+    formal_evaluation: bool
+    heldout_passed: bool
+    paired_shadow_passed: bool
+    d6_external_audit_passed: bool
+    unseen_seed_count: int
+    heldout_episode_count: int
+    scenario_scale_cell_count: int
+    online_truth_feature_count: int
+    global_track_id_rewrite_count: int
+    same_camera_mutual_exclusion_violation_count: int
+    failure_reasons: tuple[str, ...]
+    g1_assist_eligible: bool
+    schema_version: str = TRACKLET_G1_ADMISSION_REPORT_SCHEMA_VERSION
+
+    def __post_init__(self) -> None:
+        if self.schema_version != TRACKLET_G1_ADMISSION_REPORT_SCHEMA_VERSION:
+            raise ValueError("tracklet G1 admission report schema mismatch")
+        fingerprint = self.model_fingerprint
+        if (
+            not isinstance(fingerprint, str)
+            or not fingerprint.startswith("sha256:")
+            or not _SHA256_PATTERN.fullmatch(
+                fingerprint.removeprefix("sha256:")
+            )
+        ):
+            raise ValueError("model_fingerprint must be a sha256 fingerprint")
+        for name in (
+            "implementation_sha256",
+            "dataset_manifest_sha256",
+            "split_sha256",
+            "training_set_sha256",
+            "heldout_report_sha256",
+            "heldout_report_content_sha256",
+            "paired_shadow_report_sha256",
+            "paired_shadow_report_content_sha256",
+            "d6_external_audit_sha256",
+            "d6_external_audit_content_sha256",
+        ):
+            _validate_sha256(getattr(self, name), name)
+        for name in (
+            "formal_evaluation",
+            "heldout_passed",
+            "paired_shadow_passed",
+            "d6_external_audit_passed",
+            "g1_assist_eligible",
+        ):
+            if type(getattr(self, name)) is not bool:
+                raise TypeError(f"{name} must be bool")
+        for name in (
+            "unseen_seed_count",
+            "heldout_episode_count",
+            "scenario_scale_cell_count",
+            "online_truth_feature_count",
+            "global_track_id_rewrite_count",
+            "same_camera_mutual_exclusion_violation_count",
+        ):
+            value = getattr(self, name)
+            if type(value) is not int or value < 0:
+                raise TypeError(f"{name} must be a non-negative int")
+        reasons = tuple(self.failure_reasons)
+        if any(not isinstance(item, str) or not item.strip() for item in reasons):
+            raise ValueError("failure_reasons must contain non-empty strings")
+        if len(reasons) != len(set(reasons)):
+            raise ValueError("failure_reasons must be unique")
+        object.__setattr__(self, "failure_reasons", reasons)
+        if self.g1_assist_eligible:
+            failures: list[str] = []
+            if not self.formal_evaluation:
+                failures.append("evaluation_not_formal")
+            if not self.heldout_passed:
+                failures.append("heldout_not_passed")
+            if not self.paired_shadow_passed:
+                failures.append("paired_shadow_not_passed")
+            if not self.d6_external_audit_passed:
+                failures.append("d6_external_audit_not_passed")
+            if self.unseen_seed_count < TRACKLET_G1_MINIMUM_UNSEEN_SEEDS:
+                failures.append("insufficient_unseen_seeds")
+            if (
+                self.heldout_episode_count
+                < TRACKLET_G1_MINIMUM_HELDOUT_EPISODES
+            ):
+                failures.append("insufficient_heldout_episodes")
+            if (
+                self.scenario_scale_cell_count
+                < TRACKLET_G1_MINIMUM_SCENARIO_SCALE_CELLS
+            ):
+                failures.append("insufficient_scenario_scale_cells")
+            if self.online_truth_feature_count:
+                failures.append("online_truth_feature_use")
+            if self.global_track_id_rewrite_count:
+                failures.append("global_track_id_rewrite")
+            if self.same_camera_mutual_exclusion_violation_count:
+                failures.append("same_camera_mutual_exclusion_violation")
+            if reasons:
+                failures.append("reported_failure_reasons")
+            if failures:
+                raise ValueError(
+                    "tracklet G1 report attempts unsafe admission: "
+                    + ",".join(failures)
+                )
+
+    def to_manifest(self) -> Mapping[str, Any]:
+        return MappingProxyType(
+            {
+                "schema_version": self.schema_version,
+                "model_fingerprint": self.model_fingerprint,
+                "implementation_sha256": self.implementation_sha256,
+                "dataset_manifest_sha256": self.dataset_manifest_sha256,
+                "split_sha256": self.split_sha256,
+                "training_set_sha256": self.training_set_sha256,
+                "heldout_report_sha256": self.heldout_report_sha256,
+                "heldout_report_content_sha256": (
+                    self.heldout_report_content_sha256
+                ),
+                "paired_shadow_report_sha256": (
+                    self.paired_shadow_report_sha256
+                ),
+                "paired_shadow_report_content_sha256": (
+                    self.paired_shadow_report_content_sha256
+                ),
+                "d6_external_audit_sha256": self.d6_external_audit_sha256,
+                "d6_external_audit_content_sha256": (
+                    self.d6_external_audit_content_sha256
+                ),
+                "formal_evaluation": self.formal_evaluation,
+                "heldout_passed": self.heldout_passed,
+                "paired_shadow_passed": self.paired_shadow_passed,
+                "d6_external_audit_passed": self.d6_external_audit_passed,
+                "unseen_seed_count": self.unseen_seed_count,
+                "heldout_episode_count": self.heldout_episode_count,
+                "scenario_scale_cell_count": self.scenario_scale_cell_count,
+                "online_truth_feature_count": self.online_truth_feature_count,
+                "global_track_id_rewrite_count": (
+                    self.global_track_id_rewrite_count
+                ),
+                "same_camera_mutual_exclusion_violation_count": (
+                    self.same_camera_mutual_exclusion_violation_count
+                ),
+                "failure_reasons": list(self.failure_reasons),
+                "g1_assist_eligible": self.g1_assist_eligible,
+            }
+        )
 
 
 @dataclass(frozen=True)
@@ -102,11 +284,22 @@ def write_tracklet_model_bundle(
     model_semantic_version: str = MODEL_SEMANTIC_VERSION,
     admission_status: str = "research_candidate_not_default",
     readiness_audit_sha256: str | None = None,
+    g1_admission_report: TrackletG1AdmissionReport | None = None,
 ) -> Mapping[str, Any]:
-    """Write a fail-closed bundle that can never self-admit to G1/assist."""
+    """Write an unadmitted research or development bundle.
+
+    The production writer cannot emit v4 admitted bundles until an independent
+    evidence assembler validates and packages the held-out, paired-shadow, and
+    D6 audit artifacts. A caller-provided report is not an authority source.
+    """
 
     if not isinstance(model, NativeTrackletEdgeClassifier):
         raise TypeError("model must be NativeTrackletEdgeClassifier")
+    if g1_admission_report is not None:
+        raise ValueError(
+            "G1 admission evidence assembler is unavailable; "
+            "the production writer rejects caller-provided reports"
+        )
     hashes = {
         "dataset_manifest_sha256": dataset_manifest_sha256,
         "split_sha256": split_sha256,
@@ -220,6 +413,50 @@ def load_tracklet_model_bundle(
     expected_training_set_sha256: str | None = None,
     expected_readiness_audit_sha256: str | None = None,
 ) -> CalibratedTrackletEdgeScorer:
+    """Load a production bundle; admitted v4 remains disabled."""
+
+    return _load_tracklet_model_bundle_impl(
+        bundle_dir,
+        device=device,
+        expected_model_semantic_version=expected_model_semantic_version,
+        expected_dataset_manifest_sha256=expected_dataset_manifest_sha256,
+        expected_split_sha256=expected_split_sha256,
+        expected_training_set_sha256=expected_training_set_sha256,
+        expected_readiness_audit_sha256=expected_readiness_audit_sha256,
+        fixture_token=None,
+    )
+
+
+def _load_tracklet_model_bundle_fixture(
+    bundle_dir: str | Path,
+    *,
+    device: torch.device | str = "cpu",
+) -> CalibratedTrackletEdgeScorer:
+    """Exercise the future v4 parser in tests without granting runtime access."""
+
+    return _load_tracklet_model_bundle_impl(
+        bundle_dir,
+        device=device,
+        expected_model_semantic_version=MODEL_SEMANTIC_VERSION,
+        expected_dataset_manifest_sha256=None,
+        expected_split_sha256=None,
+        expected_training_set_sha256=None,
+        expected_readiness_audit_sha256=None,
+        fixture_token=_G1_LOADER_FIXTURE_TOKEN,
+    )
+
+
+def _load_tracklet_model_bundle_impl(
+    bundle_dir: str | Path,
+    *,
+    device: torch.device | str,
+    expected_model_semantic_version: str,
+    expected_dataset_manifest_sha256: str | None,
+    expected_split_sha256: str | None,
+    expected_training_set_sha256: str | None,
+    expected_readiness_audit_sha256: str | None,
+    fixture_token: object | None,
+) -> CalibratedTrackletEdgeScorer:
     """Strictly validate checksums/schema/order and load weights safely."""
 
     root = Path(bundle_dir)
@@ -246,7 +483,20 @@ def load_tracklet_model_bundle(
     _expect_equal(weights_sha256, checksums[WEIGHTS_FILENAME], "weights_sha_mismatch")
     manifest = _read_json(manifest_path)
 
-    _expect_equal(manifest.get("schema_version"), MODEL_BUNDLE_SCHEMA_VERSION, "bundle_schema_mismatch")
+    bundle_schema = manifest.get("schema_version")
+    if bundle_schema not in {
+        MODEL_BUNDLE_SCHEMA_VERSION,
+        G1_ADMITTED_MODEL_BUNDLE_SCHEMA_VERSION,
+    }:
+        raise ModelBundleValidationError(
+            "bundle_schema_mismatch", "unsupported model bundle schema"
+        )
+    admitted_schema = bundle_schema == G1_ADMITTED_MODEL_BUNDLE_SCHEMA_VERSION
+    if admitted_schema and fixture_token is not _G1_LOADER_FIXTURE_TOKEN:
+        raise ModelBundleValidationError(
+            G1_EVIDENCE_ASSEMBLER_UNAVAILABLE_CODE,
+            "v4 admission is disabled until verified evidence assembly exists",
+        )
     _expect_equal(
         manifest.get("model_semantic_version"),
         expected_model_semantic_version,
@@ -334,7 +584,17 @@ def load_tracklet_model_bundle(
             "code_provenance_fields_mismatch", "bundle code provenance fields mismatch"
         )
     source_files = code_provenance.get("source_files")
-    if not isinstance(source_files, Mapping) or set(source_files) != set(_IMPLEMENTATION_SOURCE_FILES):
+    if (
+        isinstance(source_files, Mapping)
+        and set(source_files) == set(_LEGACY_IMPLEMENTATION_SOURCE_FILES)
+    ):
+        raise ModelBundleValidationError(
+            "implementation_runtime_mismatch",
+            "legacy bundle does not bind the complete current runtime",
+        )
+    if not isinstance(source_files, Mapping) or set(source_files) != set(
+        _IMPLEMENTATION_SOURCE_FILES
+    ):
         raise ModelBundleValidationError(
             "code_provenance_files_mismatch", "bundle source file provenance is incomplete"
         )
@@ -378,43 +638,115 @@ def load_tracklet_model_bundle(
     if not isinstance(manifest.get("validation_results"), Mapping):
         raise ModelBundleValidationError("validation_results_missing", "validation results are missing")
     admission = manifest.get("admission")
-    if not isinstance(admission, Mapping) or set(admission) != {
-        "status",
-        "default_model",
-        "g1_assist_eligible",
-        "readiness_audit_sha256",
-    }:
-        raise ModelBundleValidationError("admission_invalid", "bundle admission fields are invalid")
-    admission_status = admission.get("status")
-    if (
-        admission_status not in _ALLOWED_ADMISSION_STATUSES
-        or admission.get("default_model") is not False
-        or admission.get("g1_assist_eligible") is not False
-    ):
-        raise ModelBundleValidationError(
-            "admission_invalid", "bundle must remain outside default and G1/assist admission"
-        )
-    audit_sha256 = admission.get("readiness_audit_sha256")
-    if audit_sha256 is not None:
-        _validate_sha256(
-            audit_sha256,
-            "readiness_audit_sha256",
-            error_type=ModelBundleValidationError,
-        )
-    if admission_status == "development_only_fail_closed" and audit_sha256 is None:
-        raise ModelBundleValidationError(
-            "admission_invalid", "development-only bundle is missing its readiness audit hash"
-        )
-    if expected_readiness_audit_sha256 is not None:
+    admission_report: TrackletG1AdmissionReport | None = None
+    if admitted_schema:
+        if not isinstance(admission, Mapping) or set(admission) != {
+            "status",
+            "default_model",
+            "g1_assist_eligible",
+            "report",
+        }:
+            raise ModelBundleValidationError(
+                "admission_invalid", "admitted bundle fields are invalid"
+            )
+        if (
+            admission.get("status") != "g1_assist_admitted"
+            or admission.get("default_model") is not False
+            or admission.get("g1_assist_eligible") is not True
+            or not isinstance(admission.get("report"), Mapping)
+        ):
+            raise ModelBundleValidationError(
+                "admission_invalid",
+                "admitted bundle requires a bound positive evidence report",
+            )
+        try:
+            admission_report = tracklet_g1_admission_report_from_manifest(
+                admission["report"]
+            )
+        except (TypeError, ValueError) as exc:
+            raise ModelBundleValidationError(
+                "admission_invalid", "G1 admission report failed validation"
+            ) from exc
+        if not admission_report.g1_assist_eligible:
+            raise ModelBundleValidationError(
+                "admission_invalid", "G1 admission report is not eligible"
+            )
         _expect_equal(
-            audit_sha256,
-            expected_readiness_audit_sha256,
-            "readiness_audit_sha_mismatch",
+            admission_report.implementation_sha256,
+            code_provenance["implementation_sha256"],
+            "admission_implementation_sha_mismatch",
         )
+        for name in (
+            "dataset_manifest_sha256",
+            "split_sha256",
+            "training_set_sha256",
+        ):
+            _expect_equal(
+                getattr(admission_report, name),
+                training_dataset[name],
+                f"admission_{name}_mismatch",
+            )
+        if expected_readiness_audit_sha256 is not None:
+            raise ModelBundleValidationError(
+                "readiness_audit_sha_mismatch",
+                "legacy readiness audit cannot authorize an admitted bundle",
+            )
+    else:
+        if not isinstance(admission, Mapping) or set(admission) != {
+            "status",
+            "default_model",
+            "g1_assist_eligible",
+            "readiness_audit_sha256",
+        }:
+            raise ModelBundleValidationError(
+                "admission_invalid", "bundle admission fields are invalid"
+            )
+        admission_status = admission.get("status")
+        if (
+            admission_status not in _ALLOWED_ADMISSION_STATUSES
+            or admission.get("default_model") is not False
+            or admission.get("g1_assist_eligible") is not False
+        ):
+            raise ModelBundleValidationError(
+                "admission_invalid",
+                "legacy bundle must remain outside G1/assist admission",
+            )
+        audit_sha256 = admission.get("readiness_audit_sha256")
+        if audit_sha256 is not None:
+            _validate_sha256(
+                audit_sha256,
+                "readiness_audit_sha256",
+                error_type=ModelBundleValidationError,
+            )
+        if (
+            admission_status == "development_only_fail_closed"
+            and audit_sha256 is None
+        ):
+            raise ModelBundleValidationError(
+                "admission_invalid",
+                "development-only bundle is missing its readiness audit hash",
+            )
+        if expected_readiness_audit_sha256 is not None:
+            _expect_equal(
+                audit_sha256,
+                expected_readiness_audit_sha256,
+                "readiness_audit_sha_mismatch",
+            )
 
     weights = manifest.get("weights")
     if not isinstance(weights, Mapping):
         raise ModelBundleValidationError("weights_metadata_missing", "weights metadata is missing")
+    expected_weight_fields = {
+        "filename",
+        "format",
+        "sha256",
+        "size_bytes",
+        *(("model_fingerprint",) if admitted_schema else ()),
+    }
+    if set(weights) != expected_weight_fields:
+        raise ModelBundleValidationError(
+            "weights_fields_mismatch", "bundle weights fields mismatch"
+        )
     _expect_equal(weights.get("filename"), WEIGHTS_FILENAME, "weights_filename_mismatch")
     _expect_equal(weights.get("format"), "pytorch_state_dict_weights_only", "weights_format_mismatch")
     _expect_equal(weights.get("sha256"), weights_sha256, "weights_manifest_sha_mismatch")
@@ -440,6 +772,19 @@ def load_tracklet_model_bundle(
             raise ModelBundleValidationError("state_dict_invalid", "state_dict contains an unsafe value")
         if not bool(torch.all(torch.isfinite(value))):
             raise ModelBundleValidationError("state_dict_non_finite", f"non-finite tensor: {key}")
+    if admitted_schema:
+        model_fingerprint = tracklet_model_fingerprint(state_dict)
+        _expect_equal(
+            weights.get("model_fingerprint"),
+            model_fingerprint,
+            "model_fingerprint_mismatch",
+        )
+        assert admission_report is not None
+        _expect_equal(
+            admission_report.model_fingerprint,
+            model_fingerprint,
+            "admission_model_fingerprint_mismatch",
+        )
     try:
         model.load_state_dict(state_dict, strict=True)
     except (RuntimeError, TypeError, ValueError) as exc:
@@ -494,6 +839,163 @@ def load_tracklet_model_bundle_for_runtime(
             failure_reason=G1_ASSIST_NOT_ELIGIBLE_REASON
         )
     return scorer
+
+
+def tracklet_model_fingerprint(
+    model_or_state: (
+        NativeTrackletEdgeClassifier | Mapping[str, torch.Tensor]
+    ),
+) -> str:
+    """Hash tensor names, types, shapes, and bytes independently of packaging."""
+
+    state = (
+        model_or_state.state_dict()
+        if isinstance(model_or_state, NativeTrackletEdgeClassifier)
+        else model_or_state
+    )
+    if not isinstance(state, Mapping) or not state:
+        raise ValueError("tracklet model fingerprint requires a state_dict")
+    digest = hashlib.sha256()
+    for key in sorted(state):
+        value = state[key]
+        if not isinstance(key, str) or not isinstance(value, torch.Tensor):
+            raise ValueError("tracklet model fingerprint state_dict is invalid")
+        tensor = value.detach().cpu().contiguous()
+        if not bool(torch.all(torch.isfinite(tensor))):
+            raise ValueError(
+                "tracklet model fingerprint cannot include non-finite tensors"
+            )
+        digest.update(key.encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(str(tensor.dtype).encode("ascii"))
+        digest.update(b"\0")
+        digest.update(
+            json.dumps(list(tensor.shape), separators=(",", ":")).encode(
+                "ascii"
+            )
+        )
+        digest.update(b"\0")
+        digest.update(tensor.numpy().tobytes(order="C"))
+    return f"sha256:{digest.hexdigest()}"
+
+
+def tracklet_runtime_implementation_sha256() -> str:
+    """Return the implementation digest a new G1 report must bind."""
+
+    return str(_implementation_provenance()["implementation_sha256"])
+
+
+def tracklet_g1_admission_report_from_manifest(
+    payload: Mapping[str, Any],
+) -> TrackletG1AdmissionReport:
+    """Parse an embedded G1 report without coercing authority-bearing values."""
+
+    required = {
+        "schema_version",
+        "model_fingerprint",
+        "implementation_sha256",
+        "dataset_manifest_sha256",
+        "split_sha256",
+        "training_set_sha256",
+        "heldout_report_sha256",
+        "heldout_report_content_sha256",
+        "paired_shadow_report_sha256",
+        "paired_shadow_report_content_sha256",
+        "d6_external_audit_sha256",
+        "d6_external_audit_content_sha256",
+        "formal_evaluation",
+        "heldout_passed",
+        "paired_shadow_passed",
+        "d6_external_audit_passed",
+        "unseen_seed_count",
+        "heldout_episode_count",
+        "scenario_scale_cell_count",
+        "online_truth_feature_count",
+        "global_track_id_rewrite_count",
+        "same_camera_mutual_exclusion_violation_count",
+        "failure_reasons",
+        "g1_assist_eligible",
+    }
+    if not isinstance(payload, Mapping) or set(payload) != required:
+        raise ValueError("tracklet G1 admission report fields mismatch")
+    for name in (
+        "formal_evaluation",
+        "heldout_passed",
+        "paired_shadow_passed",
+        "d6_external_audit_passed",
+        "g1_assist_eligible",
+    ):
+        if type(payload[name]) is not bool:
+            raise TypeError(f"{name} must be bool")
+    for name in (
+        "unseen_seed_count",
+        "heldout_episode_count",
+        "scenario_scale_cell_count",
+        "online_truth_feature_count",
+        "global_track_id_rewrite_count",
+        "same_camera_mutual_exclusion_violation_count",
+    ):
+        if type(payload[name]) is not int:
+            raise TypeError(f"{name} must be int")
+    raw_reasons = payload["failure_reasons"]
+    if not isinstance(raw_reasons, list):
+        raise TypeError("failure_reasons must be a list")
+    if any(not isinstance(item, str) for item in raw_reasons):
+        raise TypeError("failure_reasons must contain strings")
+    for name in (
+        "schema_version",
+        "model_fingerprint",
+        "implementation_sha256",
+        "dataset_manifest_sha256",
+        "split_sha256",
+        "training_set_sha256",
+        "heldout_report_sha256",
+        "heldout_report_content_sha256",
+        "paired_shadow_report_sha256",
+        "paired_shadow_report_content_sha256",
+        "d6_external_audit_sha256",
+        "d6_external_audit_content_sha256",
+    ):
+        if not isinstance(payload[name], str):
+            raise TypeError(f"{name} must be str")
+    return TrackletG1AdmissionReport(
+        model_fingerprint=payload["model_fingerprint"],
+        implementation_sha256=payload["implementation_sha256"],
+        dataset_manifest_sha256=payload["dataset_manifest_sha256"],
+        split_sha256=payload["split_sha256"],
+        training_set_sha256=payload["training_set_sha256"],
+        heldout_report_sha256=payload["heldout_report_sha256"],
+        heldout_report_content_sha256=payload[
+            "heldout_report_content_sha256"
+        ],
+        paired_shadow_report_sha256=payload[
+            "paired_shadow_report_sha256"
+        ],
+        paired_shadow_report_content_sha256=payload[
+            "paired_shadow_report_content_sha256"
+        ],
+        d6_external_audit_sha256=payload["d6_external_audit_sha256"],
+        d6_external_audit_content_sha256=payload[
+            "d6_external_audit_content_sha256"
+        ],
+        formal_evaluation=payload["formal_evaluation"],
+        heldout_passed=payload["heldout_passed"],
+        paired_shadow_passed=payload["paired_shadow_passed"],
+        d6_external_audit_passed=payload["d6_external_audit_passed"],
+        unseen_seed_count=payload["unseen_seed_count"],
+        heldout_episode_count=payload["heldout_episode_count"],
+        scenario_scale_cell_count=payload["scenario_scale_cell_count"],
+        online_truth_feature_count=payload["online_truth_feature_count"],
+        global_track_id_rewrite_count=payload[
+            "global_track_id_rewrite_count"
+        ],
+        same_camera_mutual_exclusion_violation_count=payload[
+            "same_camera_mutual_exclusion_violation_count"
+        ],
+        failure_reasons=tuple(raw_reasons),
+        g1_assist_eligible=payload["g1_assist_eligible"],
+        schema_version=payload["schema_version"],
+    )
 
 
 def _implementation_provenance() -> dict[str, Any]:
@@ -609,15 +1111,24 @@ def _torch_save_atomic(path: Path, state_dict: Mapping[str, torch.Tensor]) -> No
 __all__ = [
     "CHECKSUMS_FILENAME",
     "CalibratedTrackletEdgeScorer",
+    "G1_ADMITTED_MODEL_BUNDLE_SCHEMA_VERSION",
     "G1_ASSIST_NOT_ELIGIBLE_REASON",
     "MANIFEST_FILENAME",
     "MODEL_BUNDLE_SCHEMA_VERSION",
     "MODEL_SEMANTIC_VERSION",
     "ModelBundleValidationError",
     "RUNTIME_ADMISSION_REQUIREMENT_INVALID_REASON",
+    "TRACKLET_G1_ADMISSION_REPORT_SCHEMA_VERSION",
+    "TRACKLET_G1_MINIMUM_HELDOUT_EPISODES",
+    "TRACKLET_G1_MINIMUM_SCENARIO_SCALE_CELLS",
+    "TRACKLET_G1_MINIMUM_UNSEEN_SEEDS",
+    "TrackletG1AdmissionReport",
     "UnavailableTrackletEdgeScorer",
     "WEIGHTS_FILENAME",
     "load_tracklet_model_bundle",
     "load_tracklet_model_bundle_for_runtime",
+    "tracklet_g1_admission_report_from_manifest",
+    "tracklet_model_fingerprint",
+    "tracklet_runtime_implementation_sha256",
     "write_tracklet_model_bundle",
 ]

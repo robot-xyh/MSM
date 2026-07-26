@@ -43,7 +43,20 @@ ACTIVE_VISION_MANIFEST_FILENAME = "manifest.json"
 ACTIVE_VISION_CHECKSUMS_FILENAME = "SHA256SUMS"
 _SHA_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 _BUNDLE_PROFILES = frozenset({"research_candidate", "development_shadow_only"})
+ACTIVE_VISION_EVIDENCE_ASSEMBLER_UNAVAILABLE_CODE = (
+    "admission_evidence_assembler_unavailable"
+)
+_ACTIVE_VISION_LOADER_FIXTURE_TOKEN = object()
 _IMPLEMENTATION_SOURCE_FILES = (
+    "active_vision.py",
+    "active_vision_contracts.py",
+    "active_vision_episode_dataset.py",
+    "active_vision_evaluation.py",
+    "active_vision_learning.py",
+    "active_vision_bundle.py",
+    "active_vision_bc_training.py",
+)
+_LEGACY_IMPLEMENTATION_SOURCE_FILES = (
     "active_vision_contracts.py",
     "active_vision_episode_dataset.py",
     "active_vision_learning.py",
@@ -186,10 +199,20 @@ def write_active_vision_model_bundle(
     model_semantic_version: str = ACTIVE_VISION_MODEL_SEMANTIC_VERSION,
     bundle_profile: str = "research_candidate",
 ) -> Mapping[str, Any]:
-    """Write a research bundle.  No report means assist remains unadmitted."""
+    """Write an unadmitted research bundle.
+
+    A caller-provided paired report is not sufficient authority to emit an
+    assist-admitted bundle. Production admission remains disabled until an
+    independent evidence assembler validates and packages the source evidence.
+    """
 
     if not isinstance(model, ActiveVisionActorCritic):
         raise TypeError("model must be ActiveVisionActorCritic")
+    if admission_report is not None:
+        raise ValueError(
+            "active-vision admission evidence assembler is unavailable; "
+            "the production writer rejects caller-provided reports"
+        )
     for name, value in {
         "dataset_manifest_sha256": dataset_manifest_sha256,
         "split_sha256": split_sha256,
@@ -205,9 +228,7 @@ def write_active_vision_model_bundle(
     profile = str(bundle_profile).strip().lower()
     if profile not in _BUNDLE_PROFILES:
         raise ValueError("unsupported active-vision bundle profile")
-    if profile == "development_shadow_only" and (
-        method != "behavior_cloning" or admission_report is not None
-    ):
+    if profile == "development_shadow_only" and method != "behavior_cloning":
         raise ValueError(
             "development shadow-only bundles require behavior cloning without admission"
         )
@@ -232,14 +253,6 @@ def write_active_vision_model_bundle(
     _torch_save_atomic(weights_path, state_dict)
     weights_sha = _sha256_file(weights_path)
     fingerprint = active_vision_model_fingerprint(state_dict)
-    if admission_report is not None and admission_report.model_fingerprint != fingerprint:
-        raise ValueError("admission report fingerprint does not match bundle weights")
-    if admission_report is not None and (
-        admission_report.dataset_manifest_sha256 != dataset_manifest_sha256
-        or admission_report.split_sha256 != split_sha256
-        or admission_report.training_set_sha256 != training_set_sha256
-    ):
-        raise ValueError("admission report dataset hashes do not match bundle training data")
     admission_payload: Mapping[str, Any]
     if profile == "development_shadow_only":
         admission_payload = {
@@ -247,19 +260,13 @@ def write_active_vision_model_bundle(
             "assist_admitted": False,
             "report": None,
         }
-    elif admission_report is None:
+    else:
         admission_payload = {
             "status": "research_candidate_not_admitted",
             "assist_admitted": False,
             "report": None,
         }
-    else:
-        admission_payload = {
-            "status": "assist_admitted" if admission_report.assist_admitted else "research_candidate_not_admitted",
-            "assist_admitted": admission_report.assist_admitted,
-            "report": dict(admission_report.to_manifest()),
-        }
-    assist_admitted = bool(admission_payload["assist_admitted"])
+    assist_admitted = admission_payload["assist_admitted"]
     ppo_enabled = method in {"clipped_ppo", "behavior_cloning_then_clipped_ppo"}
     runtime_status = str(admission_payload["status"])
     allowed_runtime_modes = (
@@ -331,6 +338,41 @@ def load_active_vision_model_bundle(
     safety_config: ActiveVisionSafetyConfigV1 | None = None,
     expected_model_semantic_version: str = ACTIVE_VISION_MODEL_SEMANTIC_VERSION,
 ) -> LoadedActiveVisionPolicy:
+    """Load a production bundle; positive assist admission remains disabled."""
+
+    return _load_active_vision_model_bundle_impl(
+        bundle_dir,
+        device=device,
+        safety_config=safety_config,
+        expected_model_semantic_version=expected_model_semantic_version,
+        fixture_token=None,
+    )
+
+
+def _load_active_vision_model_bundle_fixture(
+    bundle_dir: str | Path,
+    *,
+    device: str | torch.device = "cpu",
+) -> LoadedActiveVisionPolicy:
+    """Exercise the future assist parser in tests without runtime authority."""
+
+    return _load_active_vision_model_bundle_impl(
+        bundle_dir,
+        device=device,
+        safety_config=None,
+        expected_model_semantic_version=ACTIVE_VISION_MODEL_SEMANTIC_VERSION,
+        fixture_token=_ACTIVE_VISION_LOADER_FIXTURE_TOKEN,
+    )
+
+
+def _load_active_vision_model_bundle_impl(
+    bundle_dir: str | Path,
+    *,
+    device: str | torch.device,
+    safety_config: ActiveVisionSafetyConfigV1 | None,
+    expected_model_semantic_version: str,
+    fixture_token: object | None,
+) -> LoadedActiveVisionPolicy:
     root = Path(bundle_dir)
     if not root.is_dir():
         raise ActiveVisionBundleValidationError("bundle_missing", "bundle directory is missing")
@@ -394,6 +436,14 @@ def load_active_vision_model_bundle(
             "code_provenance_fields_mismatch", "code provenance fields mismatch"
         )
     source_files = code_provenance.get("source_files")
+    if (
+        isinstance(source_files, Mapping)
+        and set(source_files) == set(_LEGACY_IMPLEMENTATION_SOURCE_FILES)
+    ):
+        raise ActiveVisionBundleValidationError(
+            "implementation_runtime_mismatch",
+            "legacy bundle does not bind the complete current runtime",
+        )
     if not isinstance(source_files, Mapping) or set(source_files) != set(
         _IMPLEMENTATION_SOURCE_FILES
     ):
@@ -493,7 +543,19 @@ def load_active_vision_model_bundle(
     admission = _required_mapping(manifest, "admission")
     if set(admission) != {"status", "assist_admitted", "report"}:
         raise ActiveVisionBundleValidationError("admission_fields_mismatch", "admission fields mismatch")
-    assist_admitted = bool(admission["assist_admitted"])
+    if type(admission["assist_admitted"]) is not bool:
+        raise ActiveVisionBundleValidationError(
+            "admission_invalid", "assist admission flag must be bool"
+        )
+    assist_admitted = admission["assist_admitted"]
+    if (
+        assist_admitted
+        and fixture_token is not _ACTIVE_VISION_LOADER_FIXTURE_TOKEN
+    ):
+        raise ActiveVisionBundleValidationError(
+            ACTIVE_VISION_EVIDENCE_ASSEMBLER_UNAVAILABLE_CODE,
+            "assist admission is disabled until verified evidence assembly exists",
+        )
     report_payload = admission["report"]
     if report_payload is None:
         if assist_admitted or admission["status"] not in {
@@ -547,7 +609,18 @@ def load_active_vision_model_bundle(
         raise ActiveVisionBundleValidationError(
             "runtime_policy_status_mismatch", "runtime and admission status differ"
         )
-    if bool(runtime_policy["assist_admitted"]) != assist_admitted:
+    for name in (
+        "assist_admitted",
+        "ppo_enabled",
+        "rule_fallback_required",
+        "camera_command_authority",
+    ):
+        if type(runtime_policy[name]) is not bool:
+            raise ActiveVisionBundleValidationError(
+                "runtime_policy_boolean_invalid",
+                f"runtime policy {name} must be bool",
+            )
+    if runtime_policy["assist_admitted"] != assist_admitted:
         raise ActiveVisionBundleValidationError(
             "runtime_policy_assist_mismatch", "runtime assist flag differs"
         )
@@ -574,7 +647,7 @@ def load_active_vision_model_bundle(
         else (ActiveVisionRuntimeMode.SHADOW,)
     )
     _expect(allowed_runtime_modes, expected_modes, "allowed_runtime_modes_mismatch")
-    ppo_enabled = bool(runtime_policy["ppo_enabled"])
+    ppo_enabled = runtime_policy["ppo_enabled"]
     expected_ppo = training["method"] in {
         "clipped_ppo",
         "behavior_cloning_then_clipped_ppo",

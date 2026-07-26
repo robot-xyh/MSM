@@ -36,10 +36,15 @@ from d5_terminal_association.tracklet_gnn import (
     OfflineTrackletTruthLabel,
 )
 from d5_terminal_association.tracklet_model_bundle import (
+    G1_ADMITTED_MODEL_BUNDLE_SCHEMA_VERSION,
     MODEL_BUNDLE_SCHEMA_VERSION,
     ModelBundleValidationError,
+    TrackletG1AdmissionReport,
+    _load_tracklet_model_bundle_fixture,
     load_tracklet_model_bundle,
     load_tracklet_model_bundle_for_runtime,
+    tracklet_model_fingerprint,
+    tracklet_runtime_implementation_sha256,
     write_tracklet_model_bundle,
 )
 from d5_terminal_association.tracklet_training import (
@@ -596,6 +601,184 @@ def test_runtime_g1_assist_rejects_missing_or_self_promoted_admission_fields(
 
     assert runtime.available is False
     assert runtime.failure_reason == "bundle_admission_invalid"
+
+
+def _g1_admission_report(
+    model: NativeTrackletEdgeClassifier,
+) -> TrackletG1AdmissionReport:
+    return TrackletG1AdmissionReport(
+        model_fingerprint=tracklet_model_fingerprint(model),
+        implementation_sha256=tracklet_runtime_implementation_sha256(),
+        dataset_manifest_sha256="a" * 64,
+        split_sha256="b" * 64,
+        training_set_sha256="c" * 64,
+        heldout_report_sha256="1" * 64,
+        heldout_report_content_sha256="2" * 64,
+        paired_shadow_report_sha256="3" * 64,
+        paired_shadow_report_content_sha256="4" * 64,
+        d6_external_audit_sha256="5" * 64,
+        d6_external_audit_content_sha256="6" * 64,
+        formal_evaluation=True,
+        heldout_passed=True,
+        paired_shadow_passed=True,
+        d6_external_audit_passed=True,
+        unseen_seed_count=20,
+        heldout_episode_count=900,
+        scenario_scale_cell_count=45,
+        online_truth_feature_count=0,
+        global_track_id_rewrite_count=0,
+        same_camera_mutual_exclusion_violation_count=0,
+        failure_reasons=(),
+        g1_assist_eligible=True,
+    )
+
+
+def _write_g1_loader_fixture(
+    root: Path,
+    model: NativeTrackletEdgeClassifier,
+    report: TrackletG1AdmissionReport,
+) -> None:
+    write_tracklet_model_bundle(
+        root,
+        model,
+        dataset_manifest_sha256="a" * 64,
+        split_sha256="b" * 64,
+        training_set_sha256="c" * 64,
+        training_config_sha256="d" * 64,
+        calibration_temperature=1.0,
+        decision_threshold=0.6,
+        validation_results={"f1": {"available": True, "value": 1.0}},
+    )
+    _rewrite_manifest_checksum(
+        root,
+        lambda manifest: (
+            manifest.__setitem__(
+                "schema_version", G1_ADMITTED_MODEL_BUNDLE_SCHEMA_VERSION
+            ),
+            manifest["weights"].__setitem__(
+                "model_fingerprint", tracklet_model_fingerprint(model)
+            ),
+            manifest.__setitem__(
+                "admission",
+                {
+                    "status": "g1_assist_admitted",
+                    "default_model": False,
+                    "g1_assist_eligible": True,
+                    "report": dict(report.to_manifest()),
+                },
+            ),
+        ),
+    )
+
+
+def test_production_writer_and_runtime_block_unassembled_g1_admission(
+    tmp_path: Path,
+) -> None:
+    torch.manual_seed(17)
+    model = NativeTrackletEdgeClassifier(
+        hidden_dim=8,
+        message_passing_steps=1,
+    )
+    report = _g1_admission_report(model)
+    production = tmp_path / "production"
+    with pytest.raises(ValueError, match="evidence assembler is unavailable"):
+        write_tracklet_model_bundle(
+            production,
+            model,
+            dataset_manifest_sha256="a" * 64,
+            split_sha256="b" * 64,
+            training_set_sha256="c" * 64,
+            training_config_sha256="d" * 64,
+            calibration_temperature=1.0,
+            decision_threshold=0.6,
+            validation_results={"f1": {"available": True, "value": 1.0}},
+            g1_admission_report=report,
+        )
+    assert not production.exists()
+
+    fixture = tmp_path / "private-loader-fixture"
+    _write_g1_loader_fixture(fixture, model, report)
+    parsed = _load_tracklet_model_bundle_fixture(fixture)
+    runtime = load_tracklet_model_bundle_for_runtime(
+        fixture,
+        require_g1_assist_eligible=True,
+    )
+
+    assert parsed.available is True
+    assert (
+        parsed.manifest["schema_version"]
+        == G1_ADMITTED_MODEL_BUNDLE_SCHEMA_VERSION
+    )
+    assert parsed.manifest["admission"]["g1_assist_eligible"] is True
+    assert parsed.manifest["admission"]["report"] == dict(
+        report.to_manifest()
+    )
+    assert runtime.available is False
+    assert (
+        runtime.failure_reason
+        == "bundle_g1_admission_evidence_assembler_unavailable"
+    )
+
+
+@pytest.mark.parametrize(
+    ("case", "update", "expected_code"),
+    [
+        (
+            "missing",
+            lambda manifest: manifest["admission"]["report"].pop(
+                "heldout_report_sha256"
+            ),
+            "admission_invalid",
+        ),
+        (
+            "tampered",
+            lambda manifest: manifest["admission"]["report"].__setitem__(
+                "heldout_report_sha256", "not-a-sha"
+            ),
+            "admission_invalid",
+        ),
+        (
+            "cross-model",
+            lambda manifest: manifest["admission"]["report"].__setitem__(
+                "model_fingerprint", "sha256:" + "9" * 64
+            ),
+            "admission_model_fingerprint_mismatch",
+        ),
+        (
+            "cross-dataset",
+            lambda manifest: manifest["admission"]["report"].__setitem__(
+                "dataset_manifest_sha256", "9" * 64
+            ),
+            "admission_dataset_manifest_sha256_mismatch",
+        ),
+        (
+            "d6-fail",
+            lambda manifest: manifest["admission"]["report"].__setitem__(
+                "d6_external_audit_passed", False
+            ),
+            "admission_invalid",
+        ),
+    ],
+)
+def test_private_g1_loader_rejects_unbound_or_invalid_evidence(
+    tmp_path: Path,
+    case: str,
+    update: Callable[[dict[str, Any]], None],
+    expected_code: str,
+) -> None:
+    torch.manual_seed(19)
+    model = NativeTrackletEdgeClassifier(
+        hidden_dim=8,
+        message_passing_steps=1,
+    )
+    report = _g1_admission_report(model)
+    fixture = tmp_path / case
+    _write_g1_loader_fixture(fixture, model, report)
+    _rewrite_manifest_checksum(fixture, update)
+
+    with pytest.raises(ModelBundleValidationError) as exc_info:
+        _load_tracklet_model_bundle_fixture(fixture)
+    assert exc_info.value.code == expected_code
 
 
 def test_incomplete_truth_metrics_are_unavailable_not_zero(tmp_path: Path) -> None:

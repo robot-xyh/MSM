@@ -1,26 +1,40 @@
 # D5 终端视觉配准与身份认证计划
 
-## 2026-07-26 图模型 assist 准入治理
+## 2026-07-26 G1 与 A3 严格准入合同
 
-- [x] 为 `load_tracklet_model_bundle_for_runtime()` 增加
-  `require_g1_assist_eligible=False`。默认路径保持 development/shadow 可读；显式 G1/assist
-  路径必须检查 manifest 权限。
-- [x] 未获准 bundle 在严格路径返回 unavailable 和稳定原因码
-  `bundle_g1_assist_not_eligible`。manifest 字段缺失或把 `g1_assist_eligible` 自行改为 `true`
-  仍由既有严格校验返回 `bundle_admission_invalid`。
-- [x] 保持 bundle schema、允许状态、温度、阈值、权重、真值隔离和中心
-  `global_track_id` 所有权不变。
-- [x] 2026-07-26 完成专项 `19 passed in 2.24s` 和 D5 全量
-  `555 passed in 97.04s`，零失败门通过。
-- [x] main-owned 统一 episode 总线在注入 D5 图模型时显式传入
-  `require_g1_assist_eligible=True`。`learning_runtime` 与 `experiment_matrix` 专项
-  `12 passed, 1 warning`；实际旧 bundle 在 G1/A1/A2/A3/C1/F1 预检中均失败关闭。
-- [ ] 若继续复用 2026-07-25 冻结 development 权重开展 shadow，在当前源码下重新封装并重建
-  manifest、代码溯源和审计哈希。旧 bundle 继续严格失败关闭，当前没有获准的正式 G1 模型，不
-  通过兼容白名单放宽校验。
+- [x] 保留 G1 运行时显式门
+  `require_g1_assist_eligible=True`。旧 v3 development bundle 仍只允许 shadow；缺失字段、
+  修改旧 manifest 或把非布尔值写入权限字段均失败关闭。
+- [x] 关闭 G1 裸报告自声明。生产 writer 拒绝任何 `g1_admission_report`；公开 loader/runtime
+  拒绝所有手工拼装 v4，原因码为
+  `bundle_g1_admission_evidence_assembler_unavailable`。v4 parser 只保留私有 fixture 回归。
+- [x] 关闭 A3 裸报告自声明。生产 writer 拒绝任何 `admission_report`；公开 loader/runtime
+  拒绝正向 assist 清单，原因码为 `bundle_admission_evidence_assembler_unavailable`。
+- [x] G1 当前实现 SHA-256 为
+  `ff8c744ed2583d9f6b6d3992faf935c5ced085726ac664d2e2f27c05c838a1b7`。旧
+  `c4284b...674` / `99fa4428...d4cd` bundle 返回
+  `bundle_implementation_runtime_mismatch`，没有兼容白名单。
+- [x] A3 当前实现 SHA-256 为
+  `e7db827f5f2bbbf8a89e94ceeae8a4bdef31c646d003983c5928b46879b533b4`。权限布尔值和计数继续
+  严格解析，不允许隐式类型转换。
+- [x] G1 私有 loader 负例覆盖 missing、tampered、cross-model、cross-dataset 和 D6-fail；
+  A3 覆盖生产 writer 拒绝、公开 runtime 拒绝和类型篡改。定向 `47 passed in 2.32s`，
+  D5 全量 `562 passed in 99.88s`。
+- [ ] 设计独立证据装配器。它必须接收实际 held-out、paired shadow 和 D6 audit 文件，逐文件
+  校验 SHA、内容摘要、严格 schema、同一模型/实现/数据集/划分绑定，并把证据纳入 bundle
+  checksum tree。该任务完成前不恢复 G1/A3 正向生产写入或运行加载。
+- [ ] G1 在当前实现上重新运行 seed `1000-1019` 的 900-episode held-out 与 paired shadow，
+  再由 D6 生成绑定两个报告、模型指纹和当前实现的正向外部审计。现有 paired 报告虽通过，
+  权限仍为 `pending_d6_external_audit`。
+- [ ] A3 采集至少 20 个完全未见 seed 的正式、非合成、同 seed 规则/模型 paired 结果，覆盖
+  安全违规、可见率和重捕获时延非退化。现有行为克隆报告明确 `assist=false`。
+- [ ] 独立装配器完成并通过主审后，才由 main 分别执行 G1/A3 scope 初始化。任何
+  `bundle_implementation_runtime_mismatch`、证据 SHA 不一致、未获准、规则回退或模型版本变化
+  都应在创建 shard 前终止。
 
-本次不影响 AirSim、末端决策状态或实验场景，`docs/AIRSIM_INTEGRATION_PLAN.md` 和
-`docs/EXPERIMENT_REPORT.md` 已检查，无需修改。
+本次影响学习 bundle、准入实验口径和后续 AirSim shadow 计划，已同步检查并更新
+`docs/MODULE_PRINCIPLES_CN.md`、`docs/ALGORITHM_AND_IMPLEMENTATION.md`、
+`docs/AIRSIM_INTEGRATION_PLAN.md` 与 `docs/EXPERIMENT_REPORT.md`。
 
 ## 2026-07-25 冻结图模型证据链
 

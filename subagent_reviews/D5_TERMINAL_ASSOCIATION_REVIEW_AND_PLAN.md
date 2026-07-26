@@ -1,22 +1,28 @@
 # D5 末端视觉配准与协同身份认证综述及子方案
 
-## 2026-07-26 图模型运行权限复核
+## 2026-07-26 G1/A3 bundle 复核
 
-D5 将“bundle 通过完整性校验”和“bundle 获准参与 G1 辅助关联”拆成两个显式条件。运行时加载器
-默认保持 development/shadow 读取能力；调用方显式设置
-`require_g1_assist_eligible=True` 后，还必须得到 manifest 的正向准入声明。当前 bundle 固定
-`g1_assist_eligible=false`，所以严格路径返回 unavailable 和
-`bundle_g1_assist_not_eligible`。该结果不会修改模型概率、阈值或候选图。
+D5 已对齐 main `d59352b` 的学习 scope 准入合同。G1 旧 v3 bundle 仍只允许开发和 shadow，
+`require_g1_assist_eligible=True` 不接受通过修改旧 manifest 得到的正向布尔值。主审进一步确认
+裸 `TrackletG1AdmissionReport` 不能证明 held-out、paired shadow 和 D6 审计实物存在。D5 采用
+保守关闭方案：production writer 不接收 report，公开 loader/runtime 不执行 v4；严格 parser
+仅通过私有 fixture 回归。A3 同样禁止裸 report 写入和正向运行加载。
 
-manifest 缺少准入字段或自行改成 `true` 时，既有 schema 校验先返回
-`bundle_admission_invalid`。本次没有新增可获准状态，开发 bundle 仍不能自我晋级。专项
-`19 passed in 2.24s`、全量 `555 passed in 97.04s`，均以零失败为验收阈值。
+当前 G1 manifest/weights 仍是 `c4284b...674` / `99fa4428...d4cd`。held-out 文件/内容为
+`765d39a...20a` / `bada1803...67a`，paired 文件/内容为 `cc960206...f23` /
+`53bdc658...7a0`。paired 门已通过，但权限状态仍是 `pending_d6_external_audit`；现有 D6 审计
+生成于 2026-07-21，没有绑定 2026-07-25 paired 结果和当前实现。当前 G1 实现摘要为
+`ff8c744e...a1b7`，旧 bundle 返回 `bundle_implementation_runtime_mismatch`。
 
-main 已在统一 episode 总线注入 D5 图模型时显式启用严格参数。`learning_runtime` 与
-`experiment_matrix` 专项为 `12 passed, 1 warning`，实际旧 bundle 在
-G1/A1/A2/A3/C1/F1 预检中均失败关闭，跨模块 P0 接线已关闭。旧冻结 bundle 仍绑定修改前的实现
-哈希，当前源码按 `bundle_implementation_runtime_mismatch` 拒绝；当前没有获准的正式 G1 模型。
-后续 shadow 证据刷新应重新封装和复核，不应放宽代码溯源。AirSim 计划和既有实验数据未受影响。
+A3 当前实现 SHA 为 `e7db827f...3b4`，旧 manifest/weights 为 `9c0cb50...ad4` /
+`829d0166...77b`，严格 assist 同样因实现不一致拒绝。行为克隆报告 `8a40aeb8...81e` 明确
+`assist=false`，没有 20 个未见 seed 的正式 paired non-degradation。
+
+因此，D5 已关闭裸 report 自声明和权限字段类型强转的代码缺口；独立证据装配器仍是 P1。G1
+私有 fixture 负例覆盖 missing、tampered、cross-model、cross-dataset 和 D6-fail，公开 runtime
+对结构完整 fixture 仍失败关闭。定向测试 `47 passed in 2.32s`，D5 全量
+`562 passed in 99.88s`。旧 manifest、权重、校准参数、`global_track_id` 和在线 truth 边界均
+未修改。
 
 ## 2026-07-25 冻结图模型复核
 

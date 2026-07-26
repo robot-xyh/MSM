@@ -1,5 +1,25 @@
 # D5 末端视觉配准与身份认证实验报告
 
+## 2026-07-26 G1/A3 严格合同复核
+
+主审复核发现，原 G1/A3 production writer 可以直接消费调用方构造的正向 report。report 内的
+SHA 和布尔值没有对应实物文件验证，不能证明 held-out、paired shadow 或 D6 audit 实际存在。
+本轮采用失败关闭方案：两个生产 writer 均拒绝调用方 admission report；公开 loader/runtime 均
+拒绝手工构造的正向清单。严格 parser/loader 仅通过私有 fixture 验证未来格式。
+
+现有 G1 manifest/weights SHA-256 为 `c4284b...674` / `99fa4428...d4cd`，当前实现 SHA-256 为
+`ff8c744e...a1b7`。held-out 与 paired shadow 证据已存在，paired 门通过，但仍为
+`pending_d6_external_audit`；2026-07-21 的 D6 审计没有绑定后续 paired 报告和当前实现。现有
+A3 manifest/weights 为 `9c0cb50...ad4` / `829d0166...77b`，当前实现 SHA-256 为
+`e7db827f...3b4`；行为克隆报告 `8a40aeb8...81e` 明确 `assist=false`，且没有正式 20-seed
+paired non-degradation。两个旧 bundle 均以 `bundle_implementation_runtime_mismatch` 拒绝。
+
+结论为 G1、A3、C1、F1 全部正式准入失败关闭，正式学习 episode 为 0。C1 和 F1 同时依赖 D5
+图模型、D5 主动视觉及 D3/D4 学习 bundle，任一分项未获辅助权限即不得初始化 scope。G1 私有
+fixture 负例覆盖 missing、tampered、cross-model、cross-dataset 和 D6-fail。本轮定向测试
+`47 passed in 2.32s`，D5 全量测试 `562 passed in 99.88s`。旧 manifest、模型权重、阈值和
+校准值均未修改，在线真值仍不进入关联与主动视觉输入。
+
 ## 2026-07-25 同一冻结权重 20-seed 成对影子评估
 
 ### 条件

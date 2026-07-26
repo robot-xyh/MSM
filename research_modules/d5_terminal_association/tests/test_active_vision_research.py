@@ -12,6 +12,7 @@ import torch
 
 from d5_terminal_association.active_vision_bundle import (
     ActiveVisionBundleValidationError,
+    _load_active_vision_model_bundle_fixture,
     active_vision_model_fingerprint,
     load_active_vision_model_bundle,
     load_active_vision_model_bundle_for_runtime,
@@ -50,6 +51,7 @@ from d5_terminal_association.active_vision_contracts import (
 )
 from d5_terminal_association.active_vision_evaluation import (
     PairedShadowEpisodeResult,
+    admission_report_from_manifest,
     evaluate_paired_shadow_admission,
 )
 from d5_terminal_association.active_vision_learning import (
@@ -641,6 +643,58 @@ def _rewrite_checksums(bundle: Path) -> None:
     )
 
 
+def _write_active_vision_loader_fixture(
+    bundle: Path,
+    snapshot: ActiveVisionSnapshotV1,
+    model: ActiveVisionActorCritic,
+    report: object,
+) -> None:
+    episode = ActiveVisionResearchEpisode(
+        scenario_version="bundle-unit-v1",
+        seed=1,
+        episode_id="episode-a",
+        transitions=(
+            ActiveVisionTransition(
+                snapshot=snapshot,
+                camera_id="CAM-0",
+                selected_action=_rule_action(snapshot),
+                done=True,
+            ),
+        ),
+        synthetic_fixture=True,
+    )
+    write_active_vision_model_bundle(
+        bundle,
+        model,
+        feature_bounds=fit_active_vision_feature_bounds((episode,)),
+        dataset_manifest_sha256="a" * 64,
+        split_sha256="b" * 64,
+        training_set_sha256="c" * 64,
+        training_method="behavior_cloning",
+        training_config={"seed": 23},
+        validation_results={"status": "unit_contract_only"},
+    )
+    manifest_path = bundle / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["admission"] = {
+        "status": "assist_admitted",
+        "assist_admitted": True,
+        "report": dict(report.to_manifest()),
+    }
+    manifest["runtime_policy"].update(
+        {
+            "status": "assist_admitted",
+            "allowed_runtime_modes": ["shadow", "assist"],
+            "assist_admitted": True,
+        }
+    )
+    manifest_path.write_text(
+        json.dumps(manifest, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    _rewrite_checksums(bundle)
+
+
 def test_bundle_round_trip_sha_tamper_schema_and_ood_fail_closed(tmp_path: Path) -> None:
     snapshot = _snapshot()
     valid = tmp_path / "valid"
@@ -813,8 +867,11 @@ def test_cached_behavior_cloning_uses_full_split_and_stratifies_metrics(
     )
 
 
-def _paired_results(*, synthetic: bool) -> tuple[PairedShadowEpisodeResult, ...]:
-    fingerprint = "sha256:" + "d" * 64
+def _paired_results(
+    *,
+    synthetic: bool,
+    fingerprint: str = "sha256:" + "d" * 64,
+) -> tuple[PairedShadowEpisodeResult, ...]:
     return tuple(
         PairedShadowEpisodeResult(
             scenario_version="held-out-active-vision-v1",
@@ -861,6 +918,88 @@ def test_paired_shadow_requires_20_unseen_non_synthetic_non_degrading_seeds() ->
     assert admitted.mean_reacquisition_delay_delta_s < 0.0
     assert synthetic.assist_admitted is False
     assert "synthetic_fixture_cannot_grant_formal_admission" in synthetic.failure_reasons
+
+
+def test_active_vision_production_writer_blocks_bare_admission_report(
+    tmp_path: Path,
+) -> None:
+    snapshot = _snapshot()
+    torch.manual_seed(23)
+    model = ActiveVisionActorCritic(hidden_dim=8)
+    fingerprint = active_vision_model_fingerprint(model)
+    report = evaluate_paired_shadow_admission(
+        _paired_results(synthetic=False, fingerprint=fingerprint),
+        training_group_keys=(("training-v1", 1),),
+        validation_group_keys=(("validation-v1", 2),),
+        dataset_manifest_sha256="a" * 64,
+        split_sha256="b" * 64,
+        training_set_sha256="c" * 64,
+        formal_evaluation=True,
+    )
+    production = tmp_path / "production"
+    with pytest.raises(ValueError, match="evidence assembler is unavailable"):
+        write_active_vision_model_bundle(
+            production,
+            model,
+            feature_bounds=fit_active_vision_feature_bounds(
+                (
+                    ActiveVisionResearchEpisode(
+                        scenario_version="bundle-unit-v1",
+                        seed=1,
+                        episode_id="episode-a",
+                        transitions=(
+                            ActiveVisionTransition(
+                                snapshot=snapshot,
+                                camera_id="CAM-0",
+                                selected_action=_rule_action(snapshot),
+                                done=True,
+                            ),
+                        ),
+                        synthetic_fixture=True,
+                    ),
+                )
+            ),
+            dataset_manifest_sha256="a" * 64,
+            split_sha256="b" * 64,
+            training_set_sha256="c" * 64,
+            training_method="behavior_cloning",
+            training_config={"seed": 23},
+            validation_results={"status": "unit_contract_only"},
+            admission_report=report,
+        )
+    assert not production.exists()
+
+    bundle = tmp_path / "private-loader-fixture"
+    _write_active_vision_loader_fixture(bundle, snapshot, model, report)
+    parsed = _load_active_vision_model_bundle_fixture(bundle)
+    runtime = load_active_vision_model_bundle_for_runtime(
+        bundle,
+        requested_mode=ActiveVisionRuntimeMode.ASSIST,
+    )
+    assert parsed.available is True
+    assert parsed.assist_admitted is True
+    assert runtime.available is False
+    assert (
+        runtime.failure_reason
+        == "bundle_admission_evidence_assembler_unavailable"
+    )
+
+    payload = dict(report.to_manifest())
+    payload["formal_evaluation"] = "true"
+    with pytest.raises(TypeError, match="formal_evaluation must be bool"):
+        admission_report_from_manifest(payload)
+
+    manifest_path = bundle / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["admission"]["report"]["assist_admitted"] = "true"
+    manifest_path.write_text(
+        json.dumps(manifest, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    _rewrite_checksums(bundle)
+    with pytest.raises(ActiveVisionBundleValidationError) as exc_info:
+        _load_active_vision_model_bundle_fixture(bundle)
+    assert exc_info.value.code == "admission_invalid"
 
 
 def test_library_default_is_disabled_but_cli_default_is_shadow() -> None:
