@@ -71,22 +71,41 @@
    SHA-256 为 `10bf19f5...10b0` / `4e24ab33...9e54`。
 10. 模型晋级、G1 assist、默认路径和控制权限仍全部为 false。本次只关闭 D6 冻结证据链审计
     GAP。专项为 `14 passed, 1 warning`，D6 全量为 `975 passed, 1 warning`。
+11. D5 已生成 `d5.tracklet-model-bundle.v4`。D6 新增独立、只读、失败关闭的
+    `d6.d5-g1-post-assembly-audit.v1`，避免把 development-v3 预准入重跑误写成 v4 审计。
+12. v4 manifest、weights、校验清单和三份 evidence 均由配置显式带外冻结。审计精确检查五项
+    清单覆盖、三份内容摘要、来源开发包、训练/代码谱系、admission report、20/900/45 和安全
+    零计数。
+13. 2026-07-26T14:43:17Z 正式 post-assembly 结果为 `pass`，blocker 为空。v4
+    manifest/weights/checksums 为 `a5a53de7...7154` / `7fb5db8b...ca71` /
+    `1221ec23...5956`；输出 JSON 文件/内容为 `a78c5edb...cf33` / `91d627fb...007e`。
+14. v4 `g1_assist_eligible=true` 已通过装配完整性审计；D6 的模型晋级、assist、默认路径、
+    全局航迹标识、分配和控制授权仍全部为 false。
+15. 装配后审计已增加实际 bundle 树精确覆盖和全路径符号链接拒绝。指定根目录只允许六个文件
+    和 `evidence/` 目录；额外文件/目录、特殊文件、清单缺项/重复/越界均失败关闭。
+16. 强化后对同一真实 v4 bundle 的只读 dry audit 仍为 `pass`，
+    `tree_evidence.exact=true`，结果内容 SHA-256 为 `37384441...d852`。首次正式输出保持
+    历史只读，没有覆盖。
+17. post-assembly 专项 `35 passed`、D6 全量 `1010 passed`。回归覆盖六类制品逐项篡改、
+    额外未列文件、清单缺项/重复/路径逃逸、符号链接、bundle/外审权限误开、三份内容摘要错误、
+    外审绑定不一致、原子写入和确定性。
 
 ### 当前 P1
 
-1. **D5 准入装配待执行。** D5 assembler 尚未消费本次通过的 D6 合同并生成 D5-owned
-   admission evidence。装配时必须重新计算 D6 JSON 文件/内容摘要和全部 consumer 字段。
-2. **候选图未重建。** 五类扰动固定 post-gate 候选图。当前满分只证明评分器在固定候选边上的
+1. **候选图未重建。** 五类扰动固定 post-gate 候选图。当前满分只证明评分器在固定候选边上的
    稳定性，不能证明重投影、门控和候选生成的全链路泛化。
-3. **真实相机证据缺失。** 当前 20-seed/900-episode 证据来自合成三维质点投影和离线 truth
+2. **真实相机证据缺失。** 当前 20-seed/900-episode 证据来自合成三维质点投影和离线 truth
    evaluator，未覆盖真实内外参漂移、同步误差、检测漏检/虚警和纹理退化。
-4. **运行作用域未验证。** G1 正式执行后还需现有 `learning_scope_formal_audit` 做同键 R0
+3. **运行作用域未验证。** G1 正式执行后还需现有 `learning_scope_formal_audit` 做同键 R0
    配对。预准入审计不能替代运行证据。
-5. **运行权限保持关闭。** D6 pass 不等于模型晋级、assist、默认路径或控制授权。D5 admission
-   与 main 显式配置完成前，规则路径继续保持默认。
+4. **在线启用保持开放。** v4 已具备 D5 G1 assist eligibility，但 main 尚未提供显式 G1
+   作用域、无静默回退和同键 R0 运行证据。D6 pass 不等于在线启用或默认路径变更。
+5. **强化版正式输出待 clean 发布。** 当前树完整性强化已用真实 bundle 只读复核，但实现尚未
+   进入 clean commit。后续只能写入新的独立输出目录，不能覆盖首次正式结果。
 
 当前无新增 D6-owned P0。7fb5 robust-v2 已关闭 D6 外部审计输入、实现谱系、冻结门和报告
-缺口；上述 P1 属于 D5 准入装配、候选图全链路泛化、真实相机证据和正式运行作用域。
+缺口；v4 已关闭 D6 post-assembly 审计 GAP。上述 P1 属于候选图全链路泛化、真实相机证据和
+正式运行作用域；强化版正式输出属于发布边界，不影响当前失败关闭能力。
 
 ## 2026-07-25 正式实验矩阵准入预检 GAP 更新
 

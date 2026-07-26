@@ -62,6 +62,34 @@ D6 的模型晋级、G1 辅助、控制和默认路径权限仍全部关闭。�
 `learning_scope_formal_audit` 对实际采用、回退、在线真值、物理结果和同键 R0 做第二层审计。
 当前无 D6-owned P0。
 
+### v4 装配后审计
+
+D5 将正式通过的预准入 JSON、held-out 和 paired-shadow 复制进 v4 bundle，并保持同一
+7fb5 weights。D6 没有把对 development-v3 输入的再次运行当作 v4 结论，而是新增
+`d6.d5-g1-post-assembly-audit.v1`。输入配置只允许 manifest、weights、校验清单和三份 evidence
+六个显式制品，不接受 caller-provided pass 字段，也不搜索相邻目录补找替代证据。审计器会
+在不跟随符号链接的前提下枚举指定 bundle 根目录，实际树只允许六个文件和 `evidence/` 目录。
+
+审计先核对 v4 的五项校验清单是否精确覆盖且有序，再重算三份 evidence 的文件和内容摘要。
+随后从 held-out、paired-shadow 和原 D6 consumer 分别提取 20 个 seed、900 个 episode、
+45 个场景规模单元、在线真值、航迹标识改写和同相机互斥计数，与 manifest admission report
+逐项核对。来源 development bundle、训练数据、模型源文件和十文件运行实现也进入交叉束缚。
+
+正式结果于 2026-07-26T14:43:17Z 生成。v4 manifest/weights/checksums SHA-256 为
+`a5a53de7...7154` / `7fb5db8b...ca71` / `1221ec23...5956`。结果为 `pass`，blocker 为空；
+主 JSON 文件/内容 SHA-256 为 `a78c5edb...cf33` / `91d627fb...007e`。输出目录通过临时目录
+原子发布，没有残留 staging。
+
+首次正式输出保持只读。本轮补齐实际树精确覆盖和全路径符号链接拒绝后，对同一真实 bundle
+执行只读 dry audit，结果仍为 `pass`，`tree_evidence.exact=true`，结果内容 SHA-256 为
+`37384441...d852`。当前实现尚未形成 clean commit，因此没有把 dry audit 冒充新的正式发布。
+
+v4 中的 `g1_assist_eligible=true` 表示 D5 已形成受证据约束的辅助资格。D6 没有授予模型晋级、
+assist、默认路径、全局航迹标识、分配或控制权限。实际 G1 作用域、规则回退记录、同键 R0 和
+真实相机证据仍需后续审计。post-assembly 专项 `35 passed`，覆盖任意制品篡改、额外文件、
+清单缺项/重复/越界、符号链接、权限误开、内容摘要和外审绑定错误；D6 全量
+`1010 passed, 1 warning in 87.38s`。
+
 ## 2026-07-25 正式实验矩阵准入评审
 
 D6 已将正式算法矩阵拆成“预期清单”和“运行证据”两层。预期清单必须来自 main 的实际

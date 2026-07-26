@@ -78,20 +78,42 @@
   false。
 - [x] 本轮专项为 `14 passed, 1 warning in 4.54s`，D6 全量为
   `975 passed, 1 warning in 86.70s`；相关 Python 入口编译通过。
+- [x] 新增独立 `d6.d5-g1-post-assembly-audit.v1`、输入 schema、consumer schema 和 CLI。
+  post-assembly 审计只读取显式冻结的 v4 六类文件，不从相邻目录发现替代证据，也不复用
+  development-v3 审计结论作为 v4 结论。
+- [x] 严格检查 v4 schema、五项 `SHA256SUMS` 精确覆盖、三份 evidence 文件/内容摘要、来源
+  development bundle、weights、训练与代码谱系、admission report、20/900/45 和三项安全零
+  计数。
+- [x] 不跟随符号链接地枚举实际 bundle 树；只允许六个约定文件和 `evidence/` 目录。额外文件/
+  目录、特殊文件、任一路径分量的符号链接、清单缺项/重复/越界均失败关闭。
+- [x] v4 仅允许 `g1_assist_eligible=true`；default model、全局航迹标识、分配和控制权限必须
+  为 false。D6 自身六类授权位固定为 false。
+- [x] writer 使用同级临时目录写完 JSON、CSV、中文 Markdown 和校验清单后原子改名。固定时间
+  和同输入写入不同目录时逐字节一致，输出与全部输入路径必须分离。
+- [x] 2026-07-26T14:43:17Z 正式 post-assembly 审计通过。v4 manifest/weights/checksums 为
+  `a5a53de7...7154` / `7fb5db8b...ca71` / `1221ec23...5956`，blocker 为空。
+- [x] 正式输出位于 clean worktree 的
+  `outputs/d5_g1_post_assembly_audit_7fb5db8b_a5a53de7_20260726/`。主 JSON 文件/内容
+  SHA-256 为 `a78c5edb...cf33` / `91d627fb...007e`。
+- [x] 强化后对同一真实 v4 bundle 执行只读 dry audit，目录树精确，结果仍为 `pass`，
+  blocker 为空，结果内容 SHA-256 为 `37384441...d852`。未覆盖原证据目录或首次正式输出。
+- [x] post-assembly 专项 `35 passed, 1 warning in 4.33s`，D6 全量
+  `1010 passed, 1 warning in 87.38s`；Python 编译、JSON 和差异格式检查通过。
+- [x] 已检查 `AIRSIM_INTEGRATION_PLAN.md`。本项不改变 AirSim 数据、episode 或控制接口，
+  无需修改。
 
 ### 仍开放
 
-- [ ] D5 evidence assembler 需独立复算本次 D6 JSON 文件和内容 SHA-256，消费
-  `d6_external_audit_passed=true` 合同并形成 D5-owned admission evidence。D6 不直接生成
-  admitted bundle，也不授予运行权限。
 - [ ] 五类扰动仍固定 post-gate 候选图。需要在相机投影、时间偏差和遮挡扰动后重新门控、重新
   构图，才能关闭候选生成全链路的外部泛化限制。
 - [ ] 当前证据来自合成三维质点投影和离线 truth evaluator，未覆盖真实相机内外参误差、真实
   检测漏检/虚警、纹理退化和在线计算预算。真实相机证据保持开放。
 - [ ] G1 实际执行后仍需 `learning_scope_formal_audit` 与同 comparison key 的 R0 结果做
   完整运行证据配对。
-- [ ] 本次通过不能作为默认路径切换依据。D5 admission、main 运行配置和后续作用域审计缺一
-  不可。
+- [ ] 本次通过不能作为默认路径切换依据。v4 仅具备 D5 G1 assist eligibility；main 显式作用域
+  配置、无静默回退证据和后续作用域审计仍未完成。
+- [ ] 当前树完整性强化只形成只读 dry audit。待本实现进入 clean commit 后，才能在新的独立
+  输出目录发布强化版正式结果；首次正式输出保持历史只读，不得覆盖。
 
 ## 2026-07-25 正式 R0/G1/A1/A2/A3/C1/F1 矩阵准入预检
 

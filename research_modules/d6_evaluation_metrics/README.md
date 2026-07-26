@@ -104,6 +104,43 @@ F1 均为 `1.0 >= 0.9`。在线真值字段、`global_track_id` 改写和同相�
 实际 G1 运行后还需 D6 用同键 R0 做作用域审计。专项测试为 `14 passed, 1 warning in 4.54s`，
 D6 全量为 `975 passed, 1 warning in 86.70s`。
 
+### v4 装配后正式外审
+
+D5 已将上述正式外审 JSON 与同一 held-out、paired-shadow 装配为
+`d5.tracklet-model-bundle.v4`。D6 为此新增独立 post-assembly 合同
+`d6.d5-g1-post-assembly-audit.v1` 和命令行入口
+`scripts/run_d5_g1_post_assembly_audit.py`。该审计不重跑 development-v3 预准入逻辑，也不把
+manifest 内的通过布尔值当作审计结论。
+
+输入配置
+`configs/d5_g1_post_assembly_audit_7fb5db8b_a5a53de7_20260726.json`
+显式冻结 v4 manifest、weights、`SHA256SUMS` 和三份内嵌 evidence 的文件摘要，并单独冻结原
+D6 外审 JSON 内容摘要。审计要求 `SHA256SUMS` 精确且有序覆盖五项文件，逐项重算文件和内容
+SHA-256；同时交叉核对 source development bundle、训练数据、十文件运行实现、admission
+report、20/900/45 和三项安全零计数。审计器不会到相邻目录发现替代证据，但会在不跟随符号
+链接的前提下枚举指定 bundle 根目录。目录树只能包含六个约定文件和 `evidence/` 目录；额外
+文件、空目录、符号链接、特殊文件、清单缺项/重复/越界、篡改、权限误开、内容摘要不符和外部
+审计绑定错误均返回稳定 blocker。
+
+2026-07-26T14:43:17Z，正式 v4 manifest/weights/checksums SHA-256 为
+`a5a53de7...7154` / `7fb5db8b...ca71` / `1221ec23...5956`。正式结果为 `pass`，
+blocker 为空。输出位于 clean worktree 的
+`outputs/d5_g1_post_assembly_audit_7fb5db8b_a5a53de7_20260726/`。主 JSON 文件/内容 SHA-256
+为 `a78c5edb...cf33` / `91d627fb...007e`，输出校验清单复算通过。
+
+上述输出保留为首次正式装配审计记录，没有被本轮覆盖。加入实际目录树和全路径符号链接检查后，
+D6 对同一真实 v4 bundle 执行了只读 dry audit。结果仍为 `pass`，目录树精确包含六个文件和一个
+`evidence/` 目录，强化后结果内容 SHA-256 为 `37384441...d852`。本次 dry audit 未写入新的正式
+输出；当前实现提交并在 clean source 上发布前，该摘要不替代首次正式输出。
+
+v4 的 `g1_assist_eligible=true` 是 D5 装配后的资格声明。D6 输出中的模型晋级、G1 assist、
+默认路径、`global_track_id`、分配和控制权限仍全部为 false。本轮 post-assembly 专项为
+`35 passed, 1 warning in 4.33s`，D6 全量为
+`1010 passed, 1 warning in 87.38s`。负例覆盖六类制品逐项篡改、额外未列文件、清单缺项/
+重复/路径逃逸、直接和父目录符号链接、bundle 与原 D6 外审权限误开、三份内容摘要错误及外审
+绑定不一致。`AIRSIM_INTEGRATION_PLAN.md` 已检查；本项只审计文件，不改变 AirSim 接口，因此
+未修改。
+
 ### 99fa 历史审计
 
 2026-07-26 首次对实际 99fa 候选运行审计。候选 bundle 为

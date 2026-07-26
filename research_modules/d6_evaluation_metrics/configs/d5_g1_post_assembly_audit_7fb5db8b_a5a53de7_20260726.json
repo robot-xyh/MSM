@@ -1,0 +1,33 @@
+{
+  "schema_version": "d6.d5-g1-post-assembly-audit-input.v1",
+  "audit_id": "d5-g1-v4-7fb5db8b-a5a53de7-formal-20260726",
+  "evaluated_at_utc": "2026-07-26T14:43:17Z",
+  "profile_version": "d6.d5-g1-post-assembly-integrity.v1",
+  "expected_external_audit_content_sha256": "4e24ab33ca290133cf107f2c4ad5fee85d763001556f35fcd0ecdb819bef9e54",
+  "artifacts": {
+    "bundle_manifest": {
+      "path": "research_modules/d5_terminal_association/outputs/d5_g1_clean_source_chain_d437744_20260726/model_candidate/g1_assist_v4_7fb5db8b_d6_10bf19f5/manifest.json",
+      "sha256": "a5a53de7d7a6b0aebd60f478b3c2768aa2767f4b3e440c92db4891b324337154"
+    },
+    "bundle_weights": {
+      "path": "research_modules/d5_terminal_association/outputs/d5_g1_clean_source_chain_d437744_20260726/model_candidate/g1_assist_v4_7fb5db8b_d6_10bf19f5/weights.pt",
+      "sha256": "7fb5db8b6099ca4da5706a3bec53ff7cd634e8bd267c036ce3ee4ee4bf71ca71"
+    },
+    "bundle_checksums": {
+      "path": "research_modules/d5_terminal_association/outputs/d5_g1_clean_source_chain_d437744_20260726/model_candidate/g1_assist_v4_7fb5db8b_d6_10bf19f5/SHA256SUMS",
+      "sha256": "1221ec238f6b5dfeef70fca05c111877ea20ec2792eb262d8ada50f422c75956"
+    },
+    "heldout_evidence": {
+      "path": "research_modules/d5_terminal_association/outputs/d5_g1_clean_source_chain_d437744_20260726/model_candidate/g1_assist_v4_7fb5db8b_d6_10bf19f5/evidence/heldout_evaluation.json",
+      "sha256": "4ec0b82402a2ba415a8522bd3ac92fd049f0b10823cff48d2aeb544331b50c3a"
+    },
+    "paired_shadow_evidence": {
+      "path": "research_modules/d5_terminal_association/outputs/d5_g1_clean_source_chain_d437744_20260726/model_candidate/g1_assist_v4_7fb5db8b_d6_10bf19f5/evidence/paired_shadow_report.json",
+      "sha256": "f25c9428933fc8bd5e4bbe5db5e9fe573c60053418da224fc047576c27eef57b"
+    },
+    "d6_external_audit_evidence": {
+      "path": "research_modules/d5_terminal_association/outputs/d5_g1_clean_source_chain_d437744_20260726/model_candidate/g1_assist_v4_7fb5db8b_d6_10bf19f5/evidence/d6_external_audit.json",
+      "sha256": "10bf19f5fa89788c9cc0a24ab18b647c6cf863149bae08d22fc40796d15210b0"
+    }
+  }
+}

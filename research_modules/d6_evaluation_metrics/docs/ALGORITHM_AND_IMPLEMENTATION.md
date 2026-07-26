@@ -234,6 +234,108 @@ same_camera_mutual_exclusion_violation_count = 0
 blocker。五类扰动最低边/簇 F1 为 1.0，只表示固定候选图上的评分结果。真实相机或在扰动后
 重新投影、门控、构图的证据需要另行生产，不能由本次 `pass` 推断。
 
+## D5 G1 v4 装配后完整性审计（2026-07-26）
+
+### 审计边界
+
+预准入外部审计检查 development-v3 候选及其 held-out、paired-shadow 证据。D5 把通过的外审
+结果装入 `d5.tracklet-model-bundle.v4` 后，文件布局、证据副本和 admission 声明发生了新的
+装配动作。`d5_g1_post_assembly_audit.py` 从这一新边界开始检查，不重跑 v3 审计，也不把对
+同一预准入输入的重复执行写成 v4 审计。
+
+输入 schema 为 `d6.d5-g1-post-assembly-audit-input.v1`。调用方必须逐项冻结以下六个文件：
+
+```text
+manifest.json
+weights.pt
+SHA256SUMS
+evidence/heldout_evaluation.json
+evidence/paired_shadow_report.json
+evidence/d6_external_audit.json
+```
+
+每项输入都携带仓库根目录内的相对路径和带外文件 SHA-256。配置另行冻结原正式 D6 外审 JSON
+内容 SHA-256。输入字段、artifact 集合或单项字段多一项、少一项均被拒绝；审计器不搜索相邻
+目录来补找替代证据，也不接受调用方传入的通过布尔值。指定 bundle 根目录会被完整枚举，用于
+确认实际文件树与冻结布局一致。
+
+### 完整性与交叉绑定
+
+处理顺序固定为：
+
+```text
+严格输入 schema 与路径边界
+  -> 任一路径分量的符号链接拒绝
+  -> 六个文件存在性、普通文件属性和带外 SHA-256
+  -> 三份 JSON evidence 的规范内容 SHA-256
+  -> v4 固定目录布局和实际文件树精确覆盖
+  -> SHA256SUMS 精确五项覆盖、顺序和逐项摘要
+  -> source development bundle、weights 和模型指纹
+  -> 训练数据、代码来源和十文件运行实现摘要
+  -> admission report 与三份 evidence 交叉绑定
+  -> 20 个未见 seed、900 个 episode、45 个场景规模单元
+  -> 在线真值、全局航迹标识改写和同相机互斥违规
+  -> 权限门、consumer contract 和确定性输出
+```
+
+`SHA256SUMS` 只能包含 manifest、weights 和三份 evidence，文件名集合必须精确相同，并按文件名
+排序。审计器逐项复算，不采信清单自身。held-out、paired-shadow 和 D6 外审 JSON 均移除自身
+`content_sha256` 后按排序键、紧凑分隔符、ASCII 转义、禁止非有限数和末尾换行的规范编码重新
+计算内容摘要。
+
+文件树审计不跟随符号链接。根目录只允许 `manifest.json`、`weights.pt`、`SHA256SUMS` 和
+`evidence/`，证据目录只允许三份固定 JSON。额外文件、额外目录、特殊文件、缺失项和任一层
+符号链接都形成 blocker。该检查与 `SHA256SUMS` 精确覆盖同时生效，避免“额外文件没有进入
+校验清单”或“链接在解析后伪装成普通文件”。
+
+v4 manifest 必须把来源 development-v3 manifest、weights 和校验清单绑定到原正式 D6 外审中的
+候选；v4 weights 必须与来源权重逐字节一致。训练数据 manifest、split、training set，十个
+D5 运行源文件摘要、模型指纹，以及 held-out/paired 的文件和内容摘要，必须在 manifest
+admission report、三份 evidence 和原 D6 consumer contract 之间一致。20/900/45 以及三项安全
+零计数由这些独立来源交叉核对，不能由单一 manifest 声明建立。
+
+权限采用严格白名单。v4 只允许 `g1_assist_eligible=true`；`default_model`、
+`global_track_id_authority`、`assignment_authority` 和 `control_authority` 必须为 false。
+原 D6 外审中的模型晋级、G1 辅助、默认路径、全局航迹标识、分配和控制权限也必须全部为 false。
+任一权限变为 true 即失败关闭。
+
+### 输出与确定性
+
+输出 schema 为 `d6.d5-g1-post-assembly-audit.v1`，consumer schema 为
+`d6.d5-g1-post-assembly-audit-consumer.v1`。结果固定包含装配完整性判定、每个 artifact 的文件/
+内容摘要、交叉绑定结果、字段 availability、稳定 blocker code、限制和全部为 false 的 D6
+authority。
+
+writer 先在输出目录同级创建临时目录，完整写出版本化 JSON、证据索引 CSV、中文 Markdown 和
+`SHA256SUMS`，再以原子重命名发布。输出路径不得与任一输入或 bundle 根目录重叠，既有输出目录
+不得覆盖。固定评估时间、同一输入和同一实现写入不同空目录时，四个文件逐字节一致；异常时临时
+目录被清理。
+
+### 7fb5 v4 正式实例
+
+冻结配置为
+`configs/d5_g1_post_assembly_audit_7fb5db8b_a5a53de7_20260726.json`，配置 SHA-256 为
+`972bdfeb756e23c0001be2de36693aef43345eaa5d040c9d280e4786bda4bd17`。正式评估时间为
+`2026-07-26T14:43:17Z`。v4 manifest、weights 和 bundle 校验清单 SHA-256 分别为
+`a5a53de7d7a6b0aebd60f478b3c2768aa2767f4b3e440c92db4891b324337154`、
+`7fb5db8b6099ca4da5706a3bec53ff7cd634e8bd267c036ce3ee4ee4bf71ca71` 和
+`1221ec238f6b5dfeef70fca05c111877ea20ec2792eb262d8ada50f422c75956`。
+
+正式结果为 `pass`，`blocker_codes=[]`。主 JSON 文件 SHA-256 为
+`a78c5edb3c70e2d92cf45f7fb8085149b9932d943ccd3cc53f8f578c4529cf33`，内容 SHA-256 为
+`91d627fb9cf0978e95d2bdca14fa90dad8eb1489c24833668068760d3497007e`。该结论只确认 v4 装配
+证据完整、一致。固定 post-gate 候选图、真实相机泛化和正式 G1 运行作用域仍未验证。
+
+上述文件是首次正式输出，保持只读。增加文件树和符号链接失败关闭后，D6 对同一真实 bundle
+执行了不写输出的 dry audit。实际树为六个约定文件和 `evidence/` 目录，`tree_evidence.exact`
+为 true；结果仍为 `pass`，blocker 为空，强化后结果内容 SHA-256 为
+`3738444168138584c7ec3eb895d123178092176ec751a5b455e575b177a2d852`。该 dry audit 用于代码
+复核，不替代 clean commit 上的新正式发布。
+
+专项回归为 `35 passed, 1 warning in 4.33s`，D6 全量为
+`1010 passed, 1 warning in 87.38s`。负例覆盖六类制品逐项篡改、额外未列文件、清单缺项/
+重复/路径逃逸、符号链接、bundle 和原外审权限误开、三份内容摘要错误及外审绑定不一致。
+
 ## 正式实验矩阵准入预检（2026-07-25）
 
 实现入口为 `experiment_matrix_admission.py`。命令行入口为

@@ -215,6 +215,82 @@ D6 的模型晋级、G1 辅助、控制和默认路径权限全部为 false。�
 `975 passed, 1 warning in 86.70s`。warning 来自既有 Matplotlib `Axes3D` 导入环境，不影响本次
 文件、内容哈希和二维报告。
 
+## D5 G1 v4 装配后正式审计（2026-07-26）
+
+### 输入
+
+正式审计时间为 `2026-07-26T14:43:17Z`。输入配置 SHA-256 为
+`972bdfeb756e23c0001be2de36693aef43345eaa5d040c9d280e4786bda4bd17`。配置显式冻结 clean
+worktree 中的 v4 manifest、weights、bundle 校验清单和三份内嵌 evidence，没有按目录搜索
+替代文件。审计器只枚举指定 bundle 根目录核对实际树，不跟随符号链接。
+
+| 输入 | 文件 SHA-256 | JSON 内容 SHA-256 |
+| --- | --- | --- |
+| v4 manifest | `a5a53de7d7a6b0aebd60f478b3c2768aa2767f4b3e440c92db4891b324337154` | 不适用 |
+| weights | `7fb5db8b6099ca4da5706a3bec53ff7cd634e8bd267c036ce3ee4ee4bf71ca71` | 不适用 |
+| bundle `SHA256SUMS` | `1221ec238f6b5dfeef70fca05c111877ea20ec2792eb262d8ada50f422c75956` | 不适用 |
+| held-out evidence | `4ec0b82402a2ba415a8522bd3ac92fd049f0b10823cff48d2aeb544331b50c3a` | `19b9d0d61fcaaeb3c92bfe3ded414e546b26b0eb5c354cab1b483fa844da3b00` |
+| paired-shadow evidence | `f25c9428933fc8bd5e4bbe5db5e9fe573c60053418da224fc047576c27eef57b` | `18d2cd1177dcb0690309d18eba0b0edf350ca9019f91a1f6a8ae77185f9ddc12` |
+| 原 D6 外审 evidence | `10bf19f5fa89788c9cc0a24ab18b647c6cf863149bae08d22fc40796d15210b0` | `4e24ab33ca290133cf107f2c4ad5fee85d763001556f35fcd0ecdb819bef9e54` |
+
+bundle `SHA256SUMS` 精确覆盖 manifest、weights 和三份 evidence，没有缺项或额外项。v4 manifest
+中的来源 development-v3 manifest/checksums SHA-256 为
+`0eff183f7579551f83a0519d30e09abfa4f15899981ad8ffb2eb7e2e871bda77` /
+`bf61c96e30fe8cf338a9f98152670735be657d31f338fcaa7d23c064fab58528`。十文件运行实现摘要为
+`408e71fe6a31bca03de61d10cefbf73c6b32e193fd6b2d7bf734389972f9f4fe`。
+
+强化复核枚举到六个普通文件：根目录的 manifest、weights、校验清单，以及 `evidence/` 下三份
+JSON。目录项只有 `evidence/`。没有额外文件、额外目录、特殊文件或符号链接，
+`tree_evidence.exact=true`。
+
+### 核对结果
+
+v4 schema 为 `d5.tracklet-model-bundle.v4`。模型、数据、代码来源、admission report、
+held-out、paired-shadow 和原 D6 外审交叉绑定一致。形式化证据覆盖 20 个未见 seed、900 个
+episode 和 45 个场景规模单元。在线真值字段、`global_track_id` 改写和同相机互斥违规均为 0，
+三项字段 availability 均为 true。
+
+正式结论为 `pass`，`blocker_codes=[]`。v4 中只有 `g1_assist_eligible=true`；default model、
+全局航迹标识、分配和控制权限均为 false。D6 输出中的模型晋级、G1 assist、默认路径变更、
+全局航迹标识、分配和控制授权也全部为 false。本次结论只确认装配证据完整性。
+
+### 首次正式输出
+
+正式输出位于 clean worktree：
+
+```text
+research_modules/d6_evaluation_metrics/outputs/
+  d5_g1_post_assembly_audit_7fb5db8b_a5a53de7_20260726/
+```
+
+| 输出 | SHA-256 |
+| --- | --- |
+| `d5_g1_post_assembly_audit.json` | `a78c5edb3c70e2d92cf45f7fb8085149b9932d943ccd3cc53f8f578c4529cf33` |
+| JSON 内容 | `91d627fb9cf0978e95d2bdca14fa90dad8eb1489c24833668068760d3497007e` |
+| 证据 CSV | `5e50f1e75fb918864a434e154e4e781f10a53efc3d757ff32631b834af229162` |
+| 中文 Markdown | `1e1fe11e8f098a94317ab00493a26fb9888bb6fd8c7897955389a7fd0af1c9e2` |
+| 输出 `SHA256SUMS` | `a974734cdb5903078e00169db5705a95468be7d618f82d8001a5d6903e1e9f8a` |
+
+输出通过临时目录原子发布，没有残留 staging 目录。固定时间和同一输入重复写入不同空目录时，
+JSON、CSV、Markdown 和校验清单逐字节一致。
+
+该输出保持历史只读，没有由本次强化复核覆盖。树完整性与符号链接检查加入后，对同一真实 bundle
+执行了不写结果文件的 dry audit。结论仍为 `pass`，`blocker_codes=[]`，强化后结果内容
+SHA-256 为 `3738444168138584c7ec3eb895d123178092176ec751a5b455e575b177a2d852`。当前实现形成
+clean commit 前，不把该 dry audit 写成新的正式输出。
+
+### 验证与限制
+
+专项测试为 `35 passed, 1 warning in 4.33s`。六类冻结制品分别执行字节篡改；其余负例覆盖
+缺文件、额外未列文件、校验清单缺项/重复/路径逃逸、符号链接、bundle 权限误开、原 D6 外审
+权限误开、三份 evidence 内容摘要错误、外审绑定不一致、输出路径重叠、原子写入和确定性。
+D6 全量为 `1010 passed, 1 warning in 87.38s`。新增模块、命令行入口和测试文件编译通过。
+warning 是既有 Matplotlib `Axes3D` 环境提示。
+
+本次证据仍使用固定 post-gate 候选图，没有在扰动后重新投影、门控和构图。样本来自合成三维
+质点投影，没有真实相机证据。G1 的正式在线作用域、规则回退情况和同键 R0 非退化尚未审计。
+`AIRSIM_INTEGRATION_PLAN.md` 已检查；本项不改变 AirSim 数据、episode 或控制接口，因此未修改。
+
 ## 结论
 
 2026-07-25，D6 对 R0、G1、A1、A2、A3、C1、F1 正式实验矩阵执行静态
