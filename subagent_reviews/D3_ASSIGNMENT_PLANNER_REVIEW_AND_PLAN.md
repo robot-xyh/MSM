@@ -1490,3 +1490,22 @@ D3 现提供公开单帧重放生产者。它从同一冻结规则输入新建�
 该接口只提供 single-frame checkpoint-selection evidence。匿名帧没有 seed，seed
 `1000-1019`、split 和清单完整性由 main/D6 外层校验。20-seed clean 正式运行、D7 共同
 检查点、runtime ACK、outcome、reward 和 admission 仍未完成，不能从模块单元测试推导。
+
+## 56. 20-seed 外层 runner 复核（2026-07-26）
+
+D3 新增的外层 runner 没有把 seed 写回 `PlanningFrameEvidence`。seed 与匿名帧的关系由
+显式 manifest 保存，且 seed 清单固定为 `1000-1019`。每个文件同时使用文件 SHA、完整
+内容 SHA 和输入快照 SHA；bundle 使用 manifest 与 state-dict 双摘要。runner 不枚举目录，
+也不接收调用方 eligibility、物理结果或真值。
+
+跨运行确定性没有沿用单帧 DTO 的随机 plan id 和墙钟推理耗时。batch 重新生成语义摘要，
+只比较输入、矩阵、动作掩码、绑定、bundle、回退、安全状态和选择结果。单元夹具两次运行
+的四个输出逐字节一致。该处理不会改变单帧完整 DTO，也不改变在线计划身份合同。
+
+已有 `active_risk_clean_*` 和 `checkpoint_paired_physical_20seed_*` 输出只保留最终计划、
+消费和物理侧记录，没有新 runner 要求的逐权威时刻匿名规则帧。因此未运行正式 batch，
+也没有把旧 dirty 结果改名。下一步由 main 生成 clean 输入；D3 只负责验证并选择首帧，
+D7 求交、物理执行和 D6 外审仍在模块外。
+
+最终回归结果为 batch 专项 `14 passed`、相关合同组合 `73 passed`、D3 全量
+`515 passed, 1 skipped`（516 项）。没有新增生产权限或物理结果声明。

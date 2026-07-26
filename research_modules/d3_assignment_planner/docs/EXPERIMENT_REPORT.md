@@ -1674,3 +1674,42 @@ truth/reward/outcome 字段、前序版本与有效期、规则/有效矩阵不�
 不验证 seed `1000-1019` 是否齐全，也不验证 split manifest、逐 seed 时间历史、D7 共同
 检查点或物理结果。旧 20-seed 开发续跑的绑定变化仍为 0/20，不能由本次单元测试改写为
 正式正例。main/D6 仍需完成外层 manifest/runner 校验和 clean 20-seed 正式运行。
+
+## 20-seed 隔离批量合同验证（2026-07-26）
+
+### 试验条件
+
+本次验证 batch runner，不验证物理拦截。输入由生产 writer 生成 20 个匿名文件，对应固定
+seed `1000-1019`，每 seed 1 帧。每帧为三资源、两目标，其中一个目标需要两个 primary。
+planner 使用 `hungarian_demand_slots`，规则矩阵、资源和目标与单帧生产者正例一致。
+bundle 为临时 v3 development/shadow-only 产物，外部 holdout 明确覆盖全部 20 seed。
+
+测试包含两种处理策略。第一种根据 previous binding 输出残差，预期改变资源目标绑定。
+第二种输出零残差，预期不能形成可辨识干预。两者都没有生产 assist、计划发布、运行 ACK、
+authority、物理 outcome 或 reward。
+
+### 结果
+
+可辨识夹具的 20/20 seed 均选择序号 0 为首个合格帧。零残差夹具的 20/20 seed 均返回
+`unavailable/no_eligible_frame`，没有替换为规则/处理绑定相同的帧。全部 seed 的规则和
+处理硬约束违规计数为 0，全局航迹编号改写计数为 0。
+
+同一输入 manifest 和固定 `2026-07-26T16:00:00Z` 分别写入两个空目录。四个输出文件逐
+字节一致，校验清单中的三个业务文件 SHA-256 可复算。非空目录和第二次发布均拒绝，原
+文件保持不变。运行中修改输入帧时，最终输入复核拒绝发布。
+
+专项当前覆盖正常、不可用和失败关闭路径。它还检查缺失/重复/乱序 seed、乱序帧、额外
+eligibility、dirty source、truth、frame hash/schema、bundle hash/holdout、非有限值和
+输入变化。
+
+### 证据边界
+
+只读检查发现旧 `active_risk_clean_*` 和 `checkpoint_paired_physical_20seed_*` 目录保存了
+最终计划、计划消费和物理侧记录，但没有按权威规划时刻独立保存并哈希的新匿名规则帧。
+旧结果也早于本 batch 合同，部分来自 development/dirty 链。因此本节不能报告正式 clean
+20-seed 选择率，也不能把夹具的 20/20 写成模型能力。当前状态为 runner 已实现并验证；
+正式输入和后续 D7 检查点求交待 main 完成。
+
+代码验收结果为 batch 专项 `14 passed`，相关干预合同组合 `73 passed`，D3 全量
+`515 passed, 1 skipped`（516 项）。唯一跳过是可选 OR-Tools。本轮没有运行 AirSim 或
+三维质点物理 episode。

@@ -1669,3 +1669,38 @@ D3 新增 `replay_isolated_learning_intervention_frame(...)`。main 可把一份
 holdout inventory 验证。2026-07-26 新增专项 `17 passed`，与既有离线执行和资格测试合并
 为 `59 passed`。D3 全量收集 502 项，结果为 `501 passed, 1 skipped`，唯一跳过是可选
 OR-Tools。20-seed 外层正式运行尚未使用本接口重新执行。
+
+## 2026-07-26 隔离干预 20-seed 批量合同
+
+D3 新增 `isolated_intervention_batch`。该模块把单帧重放扩展为固定 seed
+`1000-1019` 的外层检查点选择合同，仍不进入物理世界。输入必须是一份显式
+`d3.isolated-learning-intervention-batch-manifest.v1` 清单，内容包括：
+
+- 唯一且按数值顺序排列的 20 个 seed；
+- 每个 seed 按 `sequence_index` 和 `timestamp_s` 同时严格递增的匿名
+  `PlanningFrameEvidence` 文件、文件 SHA-256 和内容 SHA-256；
+- development bundle 目录、manifest SHA-256、policy version；
+- 生成输入的 40 位源提交和 `worktree_state=clean`；
+- 完整 `PlannerConfig` 与 `CostWeights`，避免调用方使用隐式默认值。
+
+runner 不扫描相邻目录，也不从物理结果、真值、Actor 标识或调用方布尔值推导资格。每个
+显式帧调用既有 `replay_isolated_learning_intervention_frame(...)`，然后使用既有 selector
+选择本 seed 的首个合格帧。没有合格帧时写入 `unavailable/no_eligible_frame`，不补选。
+manifest、帧文件、模型文件在运行前后都复算 SHA-256；输入变化、seed 缺失或重复、乱序、
+schema/hash/bundle 不匹配、非有限值及非空输出目录均失败关闭。
+
+输出目录以 staging 目录完整生成后原子替换，固定包含 JSON、逐 seed CSV、中文 Markdown
+和 `SHA256SUMS`。逐帧 replay/evidence 摘要只覆盖可复现业务语义；本地随机计划号和墙钟
+推理耗时不进入批量摘要。相同清单和固定 `evaluated_at` 写到两个空目录时，四个文件应逐
+字节一致。所有输出固定 `publish=false`，运行 ACK、生产分配权限、生产控制权限、物理
+结果和 reward 均不可用，`global_track_id` 改写计数为 0。
+
+2026-07-26 使用三资源、两目标、一个双 primary 目标的开发夹具验证 20 个 seed。正残差
+夹具 20/20 seed 选出首个合格帧；零残差夹具 20/20 seed 明确不可用。两次独立输出逐文件
+一致。该结果是合同测试，不是真实 20-seed 实验。只读检查现有 scalable 输出后，未发现
+满足新清单的逐时刻独立匿名规划帧实物；旧 development/dirty 物理结果不能补写为正式
+输入。正式 clean batch 仍待 main 生成。
+
+新 batch 专项结果为 `14 passed`；与单帧 replay、eligibility 和原离线 intervention 组合
+为 `73 passed`。D3 全量收集 516 项，结果为 `515 passed, 1 skipped`，唯一 skip 仍是可选
+OR-Tools。全量中的 Matplotlib `Axes3D` 环境警告不影响 D3 合同测试。

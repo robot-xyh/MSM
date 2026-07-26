@@ -1872,3 +1872,44 @@ holdout inventory 完整、物理结果可用或正式准入完成。
 的权威规划时间遍历调用本接口，把 `.eligibility` 送入严格 first-eligible selector，再与
 D7 检查点求交。20-seed 外层正式运行未完成。默认 Hungarian、规则代价、阈值、生产
 writer/loader 和 assist 权限不变；AirSim 接口未变化。
+
+## 55. 20-seed 隔离干预批量合同（2026-07-26）
+
+### 目标
+
+把单帧生产者接到 D3-owned 的确定性外层 runner。runner 只消费 main 显式保存的匿名规则
+规划帧，为每个保留 seed 选择首个资格为真的帧。它不执行三维质点或 AirSim，不发布计划，
+不生成运行 ACK、物理 outcome、reward、admission 或 authority。
+
+### 已完成
+
+1. 增加版本化 manifest、匿名规划帧文件和 batch result schema。manifest 固定且唯一要求
+   seed `1000-1019`，记录源码 commit/clean 状态、test split、bundle 目录/hash/version、
+   完整 planner config、cost weights 及逐帧路径/hash/序号/时间。
+2. 增加匿名规划帧 JSON writer 和严格 loader。loader 按 dataclass 类型重建完整
+   `PlanningFrameEvidence`，拒绝缺字段、额外字段、重复 JSON key、真值字段、非有限值、
+   内容摘要和输入快照摘要不一致。
+3. 每帧调用既有单帧重放。每 seed 调用既有 first-eligible selector；无合格帧返回稳定
+   unavailable reason。bundle 是否装载、模型是否作用、规则回退、绑定差异和硬约束状态
+   均进入逐帧/逐 seed 摘要。
+4. 输出采用同级临时目录 staging，完整生成 JSON、CSV、中文报告和校验清单后再替换目标
+   空目录。非空目录、运行中输入变化及二次发布均失败关闭。
+5. 批量摘要排除 planner 随机 UUID 和墙钟推理耗时，保留输入、矩阵、动作掩码、绑定和
+   bundle 的稳定摘要。因此同一 manifest 和固定 `evaluated_at` 对不同空输出目录逐文件
+   确定一致。
+
+### 验证与边界
+
+模块夹具固定 20 seed、每 seed 1 帧。可辨识模型得到 20/20 首帧可用；零残差模型得到
+20/20 `no_eligible_frame`。输出权限字段全部为 false，在线真值和全局航迹编号改写为 0。
+专项覆盖清单缺失/重复/乱序、frame/bundle/schema/hash、dirty source、非有限值、输入运行
+中变化和非空输出目录。
+
+现有 scalable 目录中没有满足本合同的 clean 逐帧匿名输入。旧结果只保留最终计划和消费
+证据，不能重建每个权威规划时刻，也不能改名为正式清单。runner 已实现；main 下一步需在
+clean commit 上保存 20 个 seed 的规则规划帧，再执行正式 batch，并与 D7 可执行检查点求交。
+AirSim DTO、settings、episode 和控制接口未变化，`docs/AIRSIM_INTEGRATION_PLAN.md` 检查
+后不修改。
+
+验收结果：batch 专项 `14 passed`，相关干预合同组合 `73 passed`，D3 全量
+`515 passed, 1 skipped`（516 项）。唯一 skip 为可选 OR-Tools；没有运行正式物理 batch。

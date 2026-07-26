@@ -3127,3 +3127,83 @@ authority。
 502 项结果为 `501 passed, 1 skipped`，唯一跳过为可选 OR-Tools。原
 `execute_offline_paired_intervention(...)` 的 23 项专项继续通过，说明共享 arm 重构未改变
 既有批量执行行为。20-seed 外层正式重放尚未完成。
+
+## 60. 20-seed 隔离干预批量实现（2026-07-26）
+
+### 60.1 输入合同
+
+批量入口为：
+
+```bash
+PYTHONPATH=research_modules/d3_assignment_planner/src \
+python3 research_modules/d3_assignment_planner/scripts/run_isolated_intervention_batch.py \
+  --manifest <explicit_manifest.json> \
+  --output <empty_output_directory>
+```
+
+manifest 的顶层字段固定为 schema、batch id、固定评估时间、test split、source、bundle、
+planner config、cost weights 和 seeds。source 必须给出 40 位提交摘要且状态为 clean。
+seeds 必须按 `1000...1019` 精确排列，不允许缺失、重复或额外 seed。每个 seed 至少包含
+一帧，帧引用包含 sequence、timestamp、显式路径、文件 SHA-256 和内容 SHA-256。序号及
+时间分别严格递增。
+
+匿名帧文件使用 `d3.anonymous-planning-frame-file.v1`。文件保存完整
+`PlanningFrameEvidence`、内容摘要和输入快照摘要，不保存 seed 或 eligibility。严格解码器
+按 dataclass 类型恢复嵌套矩阵、航迹、资源、前序计划、联盟和需求摘要。JSON 字段缺失、
+额外字段、重复 key、类型错误、非有限值和线上真值字段均被拒绝。重建对象再次序列化后
+必须得到相同内容摘要。
+
+### 60.2 bundle 与逐帧执行
+
+runner 在执行前验证 bundle manifest 文件哈希、policy version、state-dict 文件哈希及
+v3 development/shadow-only 边界。bundle 的外部 holdout 必须覆盖 seed `1000-1019`，
+assist authorization 必须为 false，规则回退必须启用。
+
+每个显式帧调用：
+
+```text
+anonymous rule frame
+        |
+        v
+replay_isolated_learning_intervention_frame
+        |
+        +-- rule arm, publish=false
+        +-- treatment arm, publish=false
+        |
+        v
+truth-free eligibility evidence
+```
+
+同一 seed 的全部资格证据交给既有
+`select_first_eligible_learning_intervention_frame()`。该 selector 再次校验序号和时间。
+首个合格帧进入 seed 摘要；没有合格帧时记录 `no_eligible_frame`。
+
+### 60.3 确定性摘要
+
+单帧 DTO 包含随机 planner identity 和实测推理耗时，适合运行内完整性检查，不适合作为
+跨运行逐字节比较字段。batch 为此生成稳定 frame summary。其 evidence hash 覆盖输入、
+前序计划、规则/处理矩阵、动作掩码、规则/处理 binding、模型作用边数、绑定变化、需求槽、
+M-to-N 数量、硬约束和原因码；不包含新生成计划号。replay hash 再绑定帧文件、bundle
+manifest/policy/state-dict、加载和回退状态及固定执行边界。
+
+### 60.4 原子输出
+
+runner 先确认目标目录不存在或为空，再在同一父目录创建 staging。JSON、逐 seed CSV、
+中文 Markdown 和前三个文件的 `SHA256SUMS` 完成后，重新计算 manifest、全部帧文件、bundle
+manifest 和 state-dict 哈希。任一输入改变则删除 staging 并失败。校验通过后以目录替换
+发布；目标非空或第二次发布均不覆盖。
+
+### 60.5 验证
+
+2026-07-26 合同夹具包含 20 seed、每 seed 1 个三资源/两目标 M-to-N 匿名帧。可辨识残差
+路径为 20/20 eligible；零残差路径为 20/20 unavailable。相同 manifest 和固定
+`evaluated_at` 写入两个空目录后，JSON、CSV、中文报告和校验清单逐字节相同。专项同时
+覆盖缺 seed、重复 seed、乱序、调用方额外 eligibility、dirty source、truth、frame 和
+bundle hash/schema、holdout 不完整、非有限值、运行中输入变化及非空输出。
+
+这些是单元夹具结果。现有 scalable 输出没有独立保存满足 manifest 的逐时刻匿名帧，正式
+clean 20-seed batch 尚未运行。默认 Hungarian、需求槽、迟滞、代价、生产 loader 和权限
+没有变化。
+
+最终验证为 batch 专项 `14 passed`，batch/单帧/资格/原离线执行组合 `73 passed`，D3
+全量 `515 passed, 1 skipped`（516 项）。唯一跳过为未安装的可选 OR-Tools。

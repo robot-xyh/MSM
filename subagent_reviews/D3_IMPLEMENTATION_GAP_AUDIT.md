@@ -1439,3 +1439,34 @@ authority 固定为 false。
 
 `docs/AIRSIM_INTEGRATION_PLAN.md` 再次检查。本项没有 AirSim DTO、相机/飞行设置、episode
 编排或控制路径变化，因此不修改该文件。
+
+## 52. 20-seed 隔离批量 runner GAP 更新（2026-07-26）
+
+### 已关闭的 D3-owned P1
+
+D3 已提供固定 seed `1000-1019` 的版本化外层 manifest/runner。它显式绑定 source
+commit/clean 状态、test split、development bundle 路径/hash/version、planner config、
+cost weights，以及每个 seed 严格时序的匿名规划帧路径、文件 SHA 和内容 SHA。runner
+逐帧调用既有单帧生产者，逐 seed 调用既有 first-eligible selector。没有合格帧时输出
+`no_eligible_frame`，不伪造候选。
+
+输入缺失、重复、乱序、hash/schema/bundle/holdout 错配、dirty source、truth、非有限值、
+运行中变化和非空输出目录均失败关闭。JSON、逐 seed CSV、中文报告与校验清单以 staging
+目录原子生成。输出固定不发布、无运行 ACK、无生产分配/控制权限、无物理结果和奖励。
+
+### 验证与仍开放项
+
+2026-07-26 单元夹具使用 20 seed、每 seed 1 帧。可辨识残差为 20/20 eligible，零残差为
+20/20 unavailable；两个空目录的四份输出逐字节一致。该证据只验证合同。现有 scalable
+产物没有满足新 manifest 的 clean 逐帧匿名输入，旧 development/dirty 物理结果不能补写。
+
+当前没有新增 D3 P0。D3-owned 外层 runner 缺口已关闭；跨模块 P1 收敛为 main 在 clean
+commit 上生成真实 20-seed 帧清单、运行正式 batch、与 D7 可执行检查点求交，再由 D6
+连接 runtime ACK、outcome 和后续比较。PPO、online assist、admission 和 authority 仍未
+开放。
+
+`docs/AIRSIM_INTEGRATION_PLAN.md` 已检查。本项是离线检查点选择，不改变 AirSim runtime
+输入输出或控制接口，因此不修改该文档。
+
+最终测试：batch 专项 `14 passed`；干预合同组合 `73 passed`；D3 全量
+`515 passed, 1 skipped`（516 项），唯一 skip 为可选 OR-Tools。

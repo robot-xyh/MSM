@@ -588,3 +588,18 @@ D3 全量为 `484 passed, 1 skipped`（485 项）。默认 `hungarian_demand_slo
 本项只关闭 D3 生成同输入规则/处理帧的接口缺口。main/D6 仍需从外层 manifest 校验 20 个
 保留 seed，并与 D4 联盟提交、D7 共同检查点和后续物理窗口连接。成员 ACK、协同 outcome
 和 reward 仍不可用。
+
+## 32. M-to-N 20-seed 批量检查点合同（2026-07-26）
+
+外层 batch runner 已能对固定 seed `1000-1019` 逐帧执行 M-to-N 单帧重放，并选择每个
+seed 的首个完整且绑定发生变化的候选。夹具使用一个双 primary 目标和一个普通目标，两组
+计划都必须完成三个需求槽；任何部分联盟仍由原资格合同拒绝。batch 没有增加成员、改变
+角色或绕过需求槽 Hungarian。
+
+可辨识夹具 20/20 seed 有首个合格帧，零残差夹具 20/20 seed 明确不可用。该批次使用重复
+匿名单元夹具验证 manifest、顺序和失败关闭，不是 20 个独立物理场景。真实多成员 ACK、
+D4 联盟提交、D7 控制采用、协同 outcome 和 reward 仍未形成。main 还需保存 clean 逐帧
+输入并完成跨模块检查点求交，M-to-N 物理闭环 P1 因此保持开放。
+
+该 batch 合同包含在新增专项 `14 passed` 和 D3 全量
+`515 passed, 1 skipped`（516 项）中；它没有关闭真实 M-to-N 物理协同证据缺口。
