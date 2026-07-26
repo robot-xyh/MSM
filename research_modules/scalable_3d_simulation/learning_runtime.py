@@ -220,6 +220,7 @@ def resolve_learning_runtime(
             d5_edge_model = load_tracklet_model_bundle_for_runtime(
                 selected.d5_bundle_dir,
                 device=selected.device,
+                require_g1_assist_eligible=True,
             )
         except Exception as exc:
             d5_edge_model = _UnavailableEdgeModel(

@@ -1,5 +1,20 @@
 # Scalable 3D Simulation
 
+## 学习变体准入状态
+
+2026-07-26 的实际 bundle 预检确认，G1、A1、A2、A3、C1 和 F1 当前均不能进入正式
+assist。D3 模型仅允许 shadow；D4 模型仍处于运行时 shadow gate；D5 图模型和主动视觉模型
+没有正式 assist 权限，旧冻结 bundle 还绑定修改前的实现哈希。
+
+D5 已提供严格的 `require_g1_assist_eligible` 加载边界。main 在统一 episode 总线注入图模型时
+固定启用该边界，因此 development scorer 即使能够读取，也不能影响集成在线关联。main 专项为
+`12 passed, 1 warning`，D5 全量为 `555 passed`。当前 R0 路径不加载模型，本次治理修复不改变
+已冻结的 R0 source、execution plan 或已完成的 135 个单元。
+
+正式学习变体仍需三个条件：模块 owner 生成通过独立非退化门的新 bundle；D6 绑定模型、运行采用
+和结果证据；main 将现有 R0-only 分片执行器扩展到非 R0 scope。在这些条件完成前，模型文件存在、
+哈希有效或开发指标可用均不能替代 assist 准入。
+
 ## 正式 R0 后验收尾状态（2026-07-25）
 
 绑定 clean commit `2c7b425d076899e1c54a3d87d6ef23a613ba6e3a` 的正式 R0 已完成

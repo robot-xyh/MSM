@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from research_modules.scalable_3d_simulation.episode_bus import build_episode_manifest
 from research_modules.scalable_3d_simulation.learning_runtime import (
     LearningRuntimeOptions,
@@ -163,4 +165,57 @@ def test_missing_active_vision_bundle_falls_back_to_rule_camera_actions(
         "bundle_" in command["reason"]
         for payload in messages
         for command in payload["commands"]
+    )
+
+
+def test_integrated_d5_bundle_requires_g1_assist_admission(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from research_modules.d5_terminal_association.src.d5_terminal_association import (
+        tracklet_model_bundle,
+    )
+
+    bundle = tmp_path / "d5-development-bundle"
+    bundle.mkdir()
+    captured: dict[str, object] = {}
+
+    class _Unavailable:
+        available = False
+        failure_reason = "bundle_g1_assist_not_eligible"
+
+    def _load(
+        bundle_dir: Path,
+        *,
+        device: str,
+        require_g1_assist_eligible: bool = False,
+    ) -> _Unavailable:
+        captured.update(
+            bundle_dir=Path(bundle_dir),
+            device=device,
+            require_g1_assist_eligible=require_g1_assist_eligible,
+        )
+        return _Unavailable()
+
+    monkeypatch.setattr(
+        tracklet_model_bundle,
+        "load_tracklet_model_bundle_for_runtime",
+        _load,
+    )
+
+    resolved = resolve_learning_runtime(
+        _short_integrated_config(),
+        LearningRuntimeOptions(d5_bundle_dir=bundle),
+    )
+
+    assert captured == {
+        "bundle_dir": bundle,
+        "device": "cpu",
+        "require_g1_assist_eligible": True,
+    }
+    assert resolved.diagnostics["d5"]["bundle_loaded"] is False
+    assert resolved.diagnostics["d5"]["effective_mode"] == "rule_fallback"
+    assert (
+        resolved.diagnostics["d5"]["fallback_reason"]
+        == "bundle_g1_assist_not_eligible"
     )

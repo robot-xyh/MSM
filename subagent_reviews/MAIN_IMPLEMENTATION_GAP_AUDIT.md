@@ -4,6 +4,25 @@
 **审计目标**：列出共识算法与计划使用的开源代码哪些已经实现，哪些没有实现，为什么没有实现，以及缺少哪些条件。
 **边界**：本文只用于科研仿真、接口补齐和后续工程排期；不涉及真实硬件、实机处置、火控或绕过授权的自动动作。
 
+## 2026-07-26 学习变体正式准入预检
+
+main 对当前实际 D3、D4、D5 图模型和 D5 主动视觉 bundle 做了不写 episode 的解析预检。
+修复前，D3、D4 和主动视觉都正确失败关闭，但 D5 图模型只要完整性校验通过就会被
+`learning_runtime` 标为 assist，未核对 manifest 中
+`g1_assist_eligible=false`。这会使 development-only 模型绕过 G1 使用权限。
+
+D5 owner 已增加严格运行时参数。默认读取继续服务模块内 development/shadow；G1/assist 调用
+必须显式要求正向准入，未获准时返回 `bundle_g1_assist_not_eligible`，缺失或自行篡改准入字段
+返回 `bundle_admission_invalid`。main 统一 episode 运行时现固定传入严格参数，并增加跨模块
+回归。D5 专项和全量为 `19/555 passed`，main 学习运行时与实验矩阵专项为
+`12 passed, 1 warning`。
+
+修复后的实际预检中，G1、A1、A2、A3、C1、F1 全部 fail-closed。旧 D5 bundle 还因实现
+SHA-256 变化返回 `bundle_implementation_runtime_mismatch`；该拒绝不得通过兼容白名单放宽。
+当前无开放的学习模型越权 P0。正式学习变体仍有三项 P1：模块模型未通过独立 assist 晋级，
+D6 尚未形成采用后非退化证据，正式分片执行器目前只支持 R0。R0 不加载模型，现有
+`1e5ed8d` source、execution plan 和 135/900 进度不受本次修改影响。
+
 ## 2026-07-25 可扩展三维主线最新状态
 
 **当前优先状态：正式 R0 后验收尾 P0。** clean commit

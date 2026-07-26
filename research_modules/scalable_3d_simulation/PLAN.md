@@ -1,5 +1,22 @@
 # 200 对 200 三维质点仿真实施计划
 
+## 学习变体 assist 准入预检（2026-07-26）
+
+1. [x] D5 owner 将模型完整性与 G1/assist 使用权限分离。development bundle 仍可用于
+   D5 离线 shadow；严格调用在 `g1_assist_eligible` 未获准时返回 unavailable。
+2. [x] main 统一 episode 运行时加载 D5 图模型时显式要求
+   `require_g1_assist_eligible=True`，关闭“scorer 可加载即视为 G1 获准”的治理缺口。
+3. [x] main 学习运行时与实验矩阵专项为 `12 passed, 1 warning`；warning 为既有
+   Matplotlib `Axes3D` 环境提示。D5 专项和全量分别为 `19 passed`、`555 passed`。
+4. [x] 使用当前实际 bundle 进行无 episode 写盘预检。G1、A1、A2、A3、C1、F1 全部
+   fail-closed；R0 不加载模型，现有正式 R0 execution plan 不受影响。
+5. [ ] D3、D4、D5 图模型和 D5 主动视觉模型完成独立 holdout、非退化门与 D6 证据绑定后，
+   才能生成允许 assist 的新 bundle。不得修改旧 development manifest 自我晋级。
+6. [ ] 新 bundle 必须绑定当前实现 SHA-256。旧冻结 D5 bundle 当前返回
+   `bundle_implementation_runtime_mismatch`；不得通过兼容白名单绕过代码溯源。
+7. [ ] R0 900/900 完成后，为 G1/A1/A2/A3/C1/F1 增加与当前 R0 同等级的可恢复分片执行。
+   现有正式分片执行器只接受 R0，不能直接宣称 5700-cell 矩阵可运行。
+
 ## 正式 R0 后验收尾 P0（2026-07-25）
 
 1. [x] clean commit `2c7b425` 的 20 个 R0 分片全部完成，900/900 单元写盘并确定性合并；
