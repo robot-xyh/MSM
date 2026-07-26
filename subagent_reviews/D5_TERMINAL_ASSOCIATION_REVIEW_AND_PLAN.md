@@ -1,5 +1,31 @@
 # D5 末端视觉配准与协同身份认证综述及子方案
 
+## 2026-07-26 关联图来源合同复核
+
+main 的提交 `690858a` 近距正向开发场景已产生 667 条真实目标视觉观测、294 条 candidate edge
+和 247 条 retained edge，online truth use=0。复核发现学习 artifact 保存 graph 和
+`result.source_observation_links` 时，结果对象没有把缓存图节点来源作为显式、可验证的冻结合同。
+缺链会阻断离线 observation label 到 graph node 的精确回接，因此该运行不能直接作为正式 R0。
+
+D5 现把当前输入与关联快照分开表达。`camera_batches` 保持本次调用语义；
+`association_tracklets` 对应 graph nodes；`association_source_links` 与当前及缓存节点共同冻结。
+旧属性继续兼容。link 保存匿名 observation ID、tracklet/camera namespace 和双时间戳，不包含
+truth、actor、object 或 global ID。
+
+结果构造器执行集合全覆盖和字段逐值校验。漏链、重链、未知 tracklet、错相机命名空间、错
+observation、错量测或到达时间均失败关闭。缓存/coast 保持原链接，OOSM 不覆盖，缓存淘汰和两级
+reset 同步删除。连续帧可让同一 local tracklet 对应新的 observation，但每个图快照只链接当前
+节点状态。
+
+异步同目标回归为 `2 nodes / 1 edge / 2 links`。同步、OOSM、coast、多来源接续、淘汰和 reset
+均通过；负例全部失败关闭。adapter 专项 `50 passed`，D5 全量
+`600 passed, 1 warning in 94.80s`。
+
+正式 R0 仍由 main 重跑。输入必须是真实目标共同可见、truth-isolated 的当前源码场景，并同时
+冻结 graph、source links 和离线 labels；验收 node-link 全覆盖、label join 完整、edge truth、
+availability、哈希/lineage 和零安全计数。通过后按 runtime SHA `55066382...b8ea` 重新装配
+G1，再由 D6 独立复审。旧 v4 继续失败关闭，默认规则和所有门限不变。
+
 ## 2026-07-26 异步相机状态复核
 
 ### 根因
@@ -47,7 +73,7 @@ D6 已在 clean evaluator commit `107cf0756d7b75cd6bf1456d1f1aa940fec6a63c` 完�
 在线真值、同相机互斥违规和中心 ID 改写均为 0。该结果只证明装配完整性，不授予模型晋级、
 默认、在线 G1、身份、分配或控制权限。
 
-本轮适配器变更使当前 runtime SHA 变为 `d1a1d1c3...61ef`，旧 v4 绑定的是
+本轮来源合同变更使当前 runtime SHA 变为 `55066382...b8ea`，旧 v4 绑定的是
 `408e71fe...f4fe`。严格加载以 `bundle_implementation_runtime_mismatch` 失败关闭。规则路径
 继续默认；若要恢复 G1 在线资格，必须对当前运行时重新装配并由 D6 复审。
 

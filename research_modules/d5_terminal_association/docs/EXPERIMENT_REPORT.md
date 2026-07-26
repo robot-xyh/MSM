@@ -1,5 +1,56 @@
 # D5 末端视觉配准与身份认证实验报告
 
+## 2026-07-26 关联图来源覆盖验证
+
+### 开发场景输入
+
+main 在提交 `690858a` 的近距正向开发场景记录：
+
+| 指标 | 数值 |
+| --- | ---: |
+| 真实目标视觉观测 | 667 |
+| candidate edge | 294 |
+| retained edge | 247 |
+| online truth use | 0 |
+
+该结果证明 truth-isolated 在线规则链可以形成真实目标候选和保留边。运行发生在来源覆盖修复前，
+不能作为正式 R0：跨调用缓存节点虽进入 graph，保存到学习 artifact 的 source link 尚未由显式
+全覆盖合同冻结。
+
+### 软件合同结果
+
+| 场景 | 结果 |
+| --- | --- |
+| 异步同目标 | `2 nodes / 1 edge / 2 exact links` |
+| 同步两相机 | 图节点和链接集合完全一致 |
+| 缺失链接 | 构造结果失败关闭 |
+| 重复链接 | 构造结果失败关闭 |
+| 错 camera namespace | 构造结果失败关闭 |
+| 错 measurement timestamp | 构造结果失败关闭 |
+| OOSM | 不产生 OOSM link，不覆盖当前 link |
+| coast | 保留原 observation ID 和双时间戳 |
+| 同 local tracklet 后续实测 | tracklet key 不变，source ID 和双时间戳更新 |
+| 缓存淘汰 | 被淘汰节点和 link 同时消失 |
+| stream/episode reset | reset 前 link 不再出现 |
+
+adapter 专项为 `50 passed`。D5 全量为
+`600 passed, 1 warning in 94.80s`，warning 是既有 PyTorch NVML 初始化提示。没有修改
+truth 隔离、中心 ID 所有权或几何门限。
+
+### 正式 R0 边界
+
+当前只关闭 D5 软件覆盖合同。正式 R0 仍需 main：
+
+1. 用当前源码重跑能产生真实目标共同可见观测的 truth-isolated 正向场景；
+2. 同时冻结 graph、association source links 和物理分离的 offline observation labels；
+3. 证明每个 source-bearing node 恰有一条链接，离线 label join 完整；
+4. 输出 candidate/retained edge truth、availability、输入/config/source SHA-256 和逐帧 lineage；
+5. 保持 online truth use、同相机互斥违规和 `global_track_id` 改写为 0；
+6. 在 R0 通过后按 runtime SHA `55066382...b8ea` 重新装配 G1，并由 D6 独立复审。
+
+旧 G1 v4 当前严格加载仍返回 `bundle_implementation_runtime_mismatch`。本节不授予 G1、默认、
+身份、分配或控制权限。
+
 ## 2026-07-26 异步相机快照验证
 
 ### 复现
@@ -81,7 +132,7 @@ D6 clean evaluator commit `107cf0756d7b75cd6bf1456d1f1aa940fec6a63c` 已对既�
 | `global_track_id` 改写 | 0 |
 
 审计只证明被审 v4 的装配完整性。D6 明确没有授予模型晋级、默认路径变更、G1 在线辅助、全局
-身份、分配或控制权限。本轮异步快照修改后，当前运行时实现摘要为 `d1a1d1c3...61ef`，v4 绑定
+身份、分配或控制权限。本轮来源合同修改后，当前运行时实现摘要为 `55066382...b8ea`，v4 绑定
 摘要为 `408e71fe...f4fe`。公开严格加载器返回
 `available=false/failure_reason=bundle_implementation_runtime_mismatch`。新的在线 G1 证据
 必须在当前源码上重新装配并接受 D6 复审。

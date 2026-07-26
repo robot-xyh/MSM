@@ -15,6 +15,12 @@ D5 文档遵循 `research_modules/DOCUMENTATION_STANDARD.md`。推荐阅读顺�
 11. `../reports/D5_TRACKLET_GRAPH_CANONICAL_SEED_VIEW_20260721.md`：跨视角图数据共享 seed 只读视图、正式计数和失败关闭门。
 12. `../reports/D5_ACTIVE_VISION_CANONICAL_SEED_VIEW_20260721.md`：主动视觉共享 seed 只读视图、正式样本计数和 shadow-only 边界。
 
+2026-07-26，关联图来源合同增加 `association_tracklets` 和冻结
+`association_source_links`。当前调用批次继续单独审计，缓存图节点则保留原 observation ID 和
+双时间戳；漏链、重链、错命名空间或错时间均失败关闭。adapter 专项 `50 passed`，D5 全量
+`600 passed, 1 warning`。main 的 667 条正向观测开发场景仍需按当前源码重跑并冻结完整离线
+label join，才能形成正式 R0。
+
 2026-07-26，scalable 3D 在线入口增加有界跨调用活跃相机快照。异步相机可在双时间戳、外参、
 missed-frame 和 TTL 合法时进入同一关联图；快照保持匿名、协方差和中心 ID 只读边界。单元
 fixture 已形成 `2 nodes / 1 edge`。5v5 seed 1000 短复跑累计节点由 6 增至 8，但在线 6 条

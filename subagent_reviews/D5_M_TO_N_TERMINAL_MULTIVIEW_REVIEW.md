@@ -1,5 +1,21 @@
 # D5 M 对 N 末端多视角配准与协同定位调研
 
+## 2026-07-26 M 对 N 图节点来源覆盖
+
+异步 M 对 N 图可能同时包含本次相机节点和其他相机的缓存节点。D5 现为整个
+`association.graph.nodes` 冻结 `association_source_links`，而不是把学习来源范围限制为当前
+`camera_batches`。每个带来源的匿名节点必须有唯一 observation/camera/双时间戳链接，任一漏链、
+重链或命名空间错误均失败关闭。
+
+该合同使部分重叠视场和跨调用节点具备离线 edge truth 回接入口，但不自行生成 truth 标签，也不
+证明 M 对 N 泛化。main 提交 `690858a` 的 667 条真实观测和 294/247 candidate/retained edge
+证明开发场景有正向边；它发生在本修复前，仍需按当前源码重跑正式 R0。
+
+正式 R0 必须冻结 graph、links、物理分离的 offline labels 和谱系哈希，证明 source-bearing
+node 全覆盖、join 完整和安全计数为零。随后才可按 runtime SHA `55066382...b8ea` 重新装配 G1
+并由 D6 复审。当前没有改变 M 对 N 几何门、联盟语义、`global_track_id` 所有权或在线 truth
+隔离。
+
 ## 2026-07-26 异步相机快照与 M 对 N 边界
 
 M 对 N 场景中的资源相机不会严格同步发布。旧在线入口只使用本次调用批次，使部分重叠视场在
@@ -20,7 +36,7 @@ recon cue 或更长时长；truth 只供离线评分。规则候选和几何门�
 
 D6 clean commit `107cf075...6a63c` 对既有 G1 v4 的正式 post-assembly audit 为 pass，
 blocker 为空，内容 SHA 为 `37384441...d852`，覆盖 `20/900/45` 且三项安全计数为 0。该审计
-只证明装配完整性。本轮源码修改后 runtime SHA 为 `d1a1d1c3...61ef`，旧 v4 严格加载返回
+只证明装配完整性。本轮源码修改后 runtime SHA 为 `55066382...b8ea`，旧 v4 严格加载返回
 `bundle_implementation_runtime_mismatch`。M 对 N 默认路径仍是确定性几何规则；当前运行时
 重新装配、D6 复审和真实多 seed 候选门验证继续列为 P1。
 

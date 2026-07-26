@@ -1,5 +1,32 @@
 # D5 终端视觉配准与身份认证计划
 
+## 2026-07-26 关联图来源合同收口
+
+- [x] 复核 main 提交 `690858a` 的近距正向开发结果：667 条真实目标视觉观测、294 条 candidate
+  edge、247 条 retained edge、online truth use=0。该结果属于开发场景，不替代正式 R0。
+- [x] 明确 `camera_batches` 只表示本次调用；新增 `association_tracklets` 和冻结
+  `association_source_links` 表示实际关联图快照。保留 `tracklets`/
+  `source_observation_links` 向后兼容别名。
+- [x] 为 source link 增加 `arrival_timestamp`，并保留匿名 observation ID、tracklet key、
+  camera namespace 和 measurement timestamp。
+- [x] 对所有 source-bearing graph node 执行精确全覆盖校验。缺失、重复、未知 tracklet、
+  错 camera namespace、observation 不一致和双时间戳不一致均失败关闭。
+- [x] 保持缓存节点原来源和双时间戳，不预测、不重新标识；同一 local tracklet 跨调用可接续
+  不同 observation，但每个图快照只链接当前节点状态。
+- [x] 覆盖异步 `2-node/1-edge`、同步调用、OOSM、coast、多来源接续、缓存淘汰、stream/
+  episode reset、缺失/重复/错命名空间/错时间链接。adapter 专项 `50 passed`，D5 全量
+  `600 passed, 1 warning in 94.80s`。
+- [x] 保持 truth/actor/object ID 隔离、中心 `global_track_id` 只读和全部几何门限不变。
+- [ ] main 用当前源码在 truth-isolated 近距正向场景重跑 R0 输入，冻结 graph、source links、
+  offline labels 和 producer/config/source SHA-256。
+- [ ] 正式 R0 必须证明每个 source-bearing graph node 恰有一条可 join 链接、离线标签完整，
+  candidate/retained edge truth 可计算，online truth use 和 global-ID rewrite 均为 0。
+- [ ] R0 通过后，按当前 runtime SHA `55066382...b8ea` 重新装配 G1，并由 D6 独立执行
+  post-assembly audit。完成前规则路径默认，G1 在线作用域关闭。
+
+本次没有改变 AirSim 消息、settings、检测器、相机外参或 reset 接口。
+`docs/AIRSIM_INTEGRATION_PLAN.md` 已检查，无需修改。
+
 ## 2026-07-26 异步活跃相机快照收口
 
 - [x] 复现 `Scalable3DTerminalAdapter.process()` 只消费本次 adapted batches 的问题：同步
@@ -26,7 +53,7 @@
 - [x] 记录 D6 clean evaluator commit `107cf075...6a63c` 的正式 G1 v4 post-assembly audit：
   `status=pass`、blocker 为空、内容 SHA-256 `37384441...d852`、`20/900/45`，三项安全计数为
   `0`。该结果只证明装配完整性，不授予任何默认、身份、分配或控制权限。
-- [x] 验证旧 v4 对新运行时失败关闭。当前运行时摘要 `d1a1d1c3...61ef` 与审计绑定的
+- [x] 验证旧 v4 对新运行时失败关闭。当前运行时摘要 `55066382...b8ea` 与审计绑定的
   `408e71fe...f4fe` 不同，严格加载返回 `bundle_implementation_runtime_mismatch`，不增加
   兼容白名单。
 - [ ] 由 main 构造能产生真实目标共同可见观测的 truth-isolated 场景，可使用现有 recon cue

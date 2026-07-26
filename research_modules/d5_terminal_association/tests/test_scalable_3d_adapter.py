@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 import inspect
 from types import SimpleNamespace
 
@@ -10,6 +11,7 @@ import d5_terminal_association.scalable_3d_adapter as adapter_module
 import d5_terminal_association.sparse_tracklet_graph as graph_module
 from d5_terminal_association.scalable_3d_adapter import (
     Scalable3DAdapterConfig,
+    Scalable3DStepResult,
     Scalable3DTerminalAdapter,
     global_track3d_to_projection_track,
     global_tracks3d_to_projection_tracks,
@@ -1014,6 +1016,21 @@ def test_async_cross_call_same_target_forms_edge_and_different_target_does_not()
     assert same_target.association.graph.edge_count == 1
     assert len(same_target.camera_batches) == 1
     assert len(same_target.camera_geometries) == 2
+    assert same_target.association_tracklets == same_target.association.graph.nodes
+    assert len(same_target.association_source_links) == 2
+    links_by_tracklet = {
+        item.tracklet_key: item
+        for item in same_target.association_source_links
+    }
+    assert set(links_by_tracklet) == {
+        item.tracklet_key for item in same_target.association.graph.nodes
+    }
+    for node in same_target.association.graph.nodes:
+        link = links_by_tracklet[node.tracklet_key]
+        assert link.source_observation_id == node.source_observation_id
+        assert link.camera_key == node.camera_key
+        assert link.measurement_timestamp == node.measurement_timestamp
+        assert link.arrival_timestamp == node.arrival_timestamp
     assert same_target.association.diagnostics[
         "snapshot_current_update_batch_count"
     ] == 1
@@ -1059,6 +1076,94 @@ def test_async_cross_call_same_target_forms_edge_and_different_target_does_not()
     assert different_target.association.diagnostics[
         "snapshot_cross_call_active_camera_count"
     ] == 1
+
+
+def test_association_source_link_contract_fails_closed_and_keeps_legacy_construction() -> None:
+    result = Scalable3DTerminalAdapter().process(
+        (
+            _projected_batch(0, (1,), timestamp=10.0, frame_index=1),
+            _projected_batch(1, (1,), timestamp=10.0, frame_index=1),
+        ),
+        _center_tracks(),
+    )
+    links = result.association_source_links
+    assert len(links) == 2
+
+    legacy = Scalable3DStepResult(
+        camera_batches=result.camera_batches,
+        center_projection_tracks=result.center_projection_tracks,
+        association=result.association,
+        association_camera_geometries=result.camera_geometries,
+    )
+    assert legacy.association_source_links == links
+
+    with pytest.raises(ValueError, match="exactly cover"):
+        Scalable3DStepResult(
+            camera_batches=result.camera_batches,
+            center_projection_tracks=result.center_projection_tracks,
+            association=result.association,
+            association_camera_geometries=result.camera_geometries,
+            association_source_links=(),
+        )
+
+    with pytest.raises(ValueError, match="duplicate association source link"):
+        Scalable3DStepResult(
+            camera_batches=result.camera_batches,
+            center_projection_tracks=result.center_projection_tracks,
+            association=result.association,
+            association_camera_geometries=result.camera_geometries,
+            association_source_links=(links[0], links[0], links[1]),
+        )
+
+    with pytest.raises(ValueError, match="camera namespace mismatch"):
+        Scalable3DStepResult(
+            camera_batches=result.camera_batches,
+            center_projection_tracks=result.center_projection_tracks,
+            association=result.association,
+            association_camera_geometries=result.camera_geometries,
+            association_source_links=(
+                replace(links[0], camera_key="RESOURCE-X/CAM-X"),
+                links[1],
+            ),
+        )
+
+    with pytest.raises(ValueError, match="measurement timestamp mismatch"):
+        Scalable3DStepResult(
+            camera_batches=result.camera_batches,
+            center_projection_tracks=result.center_projection_tracks,
+            association=result.association,
+            association_camera_geometries=result.camera_geometries,
+            association_source_links=(
+                replace(
+                    links[0],
+                    measurement_timestamp=links[0].measurement_timestamp + 0.01,
+                ),
+                links[1],
+            ),
+        )
+
+
+def test_same_local_tracklet_can_link_successive_source_observations_across_calls() -> None:
+    adapter = Scalable3DTerminalAdapter()
+    first = adapter.process(
+        (_projected_batch(0, (1,), timestamp=10.0, frame_index=1),),
+        _center_tracks(),
+    )
+    second = adapter.process(
+        (_projected_batch(0, (1,), timestamp=10.1, frame_index=2),),
+        _center_tracks(),
+    )
+
+    first_link = first.association_source_links[0]
+    second_link = second.association_source_links[0]
+    assert first_link.tracklet_key == second_link.tracklet_key
+    assert first_link.source_observation_id == "obs-c00-f0001-d0000"
+    assert second_link.source_observation_id == "obs-c00-f0002-d0000"
+    assert first_link.source_observation_id != second_link.source_observation_id
+    assert first_link.measurement_timestamp == pytest.approx(10.0)
+    assert first_link.arrival_timestamp == pytest.approx(10.05)
+    assert second_link.measurement_timestamp == pytest.approx(10.1)
+    assert second_link.arrival_timestamp == pytest.approx(10.15)
 
 
 def test_async_cross_call_snapshot_supports_model_and_rule_scoring() -> None:
@@ -1198,6 +1303,19 @@ def test_cross_call_snapshot_coasts_only_within_missed_frame_limit() -> None:
     assert one_missed_frame.association.diagnostics[
         "snapshot_reused_coasting_tracklet_count"
     ] == 1
+    coast_links = {
+        item.camera_key: item
+        for item in one_missed_frame.association_source_links
+    }
+    assert coast_links["RESOURCE-0/CAM-0"].source_observation_id == (
+        "obs-c00-f0001-d0000"
+    )
+    assert coast_links["RESOURCE-0/CAM-0"].measurement_timestamp == pytest.approx(
+        10.0
+    )
+    assert coast_links["RESOURCE-0/CAM-0"].arrival_timestamp == pytest.approx(
+        10.05
+    )
 
     expired = adapter.process(
         (_batch(0, (), timestamp=10.2, frame_index=3),),
@@ -1207,6 +1325,7 @@ def test_cross_call_snapshot_coasts_only_within_missed_frame_limit() -> None:
     assert expired.association.diagnostics[
         "snapshot_expired_camera_count"
     ] == 1
+    assert expired.association_source_links == ()
 
 
 def test_oosm_batch_does_not_replace_active_cross_call_snapshot() -> None:
@@ -1250,6 +1369,7 @@ def test_oosm_batch_does_not_replace_active_cross_call_snapshot() -> None:
     assert oosm.association.diagnostics[
         "snapshot_oosm_ignored_batch_count"
     ] == 1
+    assert oosm.association_source_links == ()
     assert resumed.association.graph.node_count == 2
     assert resumed.association.graph.edge_count == 1
     cached = next(
@@ -1257,6 +1377,17 @@ def test_oosm_batch_does_not_replace_active_cross_call_snapshot() -> None:
     )
     assert cached.measurement_timestamp == pytest.approx(10.0)
     assert cached.arrival_timestamp == pytest.approx(10.05)
+    resumed_links = {
+        item.camera_key: item
+        for item in resumed.association_source_links
+    }
+    assert resumed_links["RESOURCE-0/CAM-0"].source_observation_id == (
+        "obs-c00-f0001-d0000"
+    )
+    assert "obs-c00-f0002-d0000" not in {
+        item.source_observation_id
+        for item in resumed.association_source_links
+    }
 
 
 def test_missing_extrinsics_and_snapshot_capacity_fail_closed() -> None:
@@ -1293,6 +1424,9 @@ def test_missing_extrinsics_and_snapshot_capacity_fail_closed() -> None:
         "snapshot_capacity_evicted_camera_count"
     ] == 1
     assert bounded.association.diagnostics["snapshot_cache_camera_count"] == 1
+    assert {
+        item.camera_key for item in bounded.association_source_links
+    } == {"RESOURCE-1/CAM-1"}
 
 
 def test_same_camera_update_is_not_duplicated_and_reset_clears_snapshot() -> None:
@@ -1313,6 +1447,7 @@ def test_same_camera_update_is_not_duplicated_and_reset_clears_snapshot() -> Non
     assert same_camera.association.diagnostics[
         "snapshot_cross_call_active_camera_count"
     ] == 0
+    assert len(same_camera.association_source_links) == 1
 
     adapter.reset_episode()
     after_reset = adapter.process(
@@ -1326,6 +1461,12 @@ def test_same_camera_update_is_not_duplicated_and_reset_clears_snapshot() -> Non
         "snapshot_cross_call_active_camera_count"
     ] == 0
     assert after_reset.association.diagnostics["snapshot_cache_camera_count"] == 1
+    assert {
+        item.camera_key for item in after_reset.association_source_links
+    } == {"RESOURCE-1/CAM-1"}
+    assert {
+        item.source_observation_id for item in after_reset.association_source_links
+    } == {"obs-c01-f0001-d0000"}
 
 
 def test_reset_stream_clears_only_the_selected_active_camera_snapshot() -> None:
@@ -1354,6 +1495,12 @@ def test_reset_stream_clears_only_the_selected_active_camera_snapshot() -> None:
         "snapshot_cross_call_active_camera_count"
     ] == 1
     assert after_reset.association.diagnostics["snapshot_cache_camera_count"] == 2
+    assert {
+        item.camera_key for item in after_reset.association_source_links
+    } == {
+        "RESOURCE-1/CAM-1",
+        "RESOURCE-2/CAM-2",
+    }
 
 
 def test_real_online_sensor_batch_shape_uses_anonymous_id_and_covariance_fallback() -> None:
@@ -1426,6 +1573,8 @@ def test_source_observation_link_is_one_to_one_and_does_not_drive_tracker_identi
     )
 
     links = result.source_observation_links
+    assert links == result.association_source_links
+    assert result.tracklets == result.association_tracklets
     assert {item.source_observation_id for item in links} == {
         "source-measurement-0",
         "source-measurement-1",
@@ -1436,6 +1585,11 @@ def test_source_observation_link_is_one_to_one_and_does_not_drive_tracker_identi
     assert all(
         tracklet.local_track_id != tracklet.source_observation_id
         for tracklet in result.tracklets
+    )
+    assert all(
+        item.measurement_timestamp == pytest.approx(6.0)
+        and item.arrival_timestamp == pytest.approx(6.05)
+        for item in links
     )
     assert result.association.graph.node_features.shape[0] == len(result.tracklets)
 

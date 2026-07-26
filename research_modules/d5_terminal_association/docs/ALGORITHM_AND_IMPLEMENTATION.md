@@ -2,6 +2,74 @@
 
 **状态日期：2026-07-26**
 
+## 关联节点来源链接合同
+
+### 数据边界
+
+`Scalable3DStepResult` 现在显式公开：
+
+- `camera_batches`：本次 `process()` 输入并完成时序审计的批次；
+- `association_tracklets`：`association.graph.nodes` 的只读快照；
+- `association_source_links`：与上述节点共同冻结的来源链接；
+- `tracklets` 和 `source_observation_links`：兼容既有 consumer 的只读别名。
+
+旧调用方不传 `association_source_links` 时，结果对象从图节点派生并立即验证链接。在线适配器
+不会依赖该兼容分支；它在活跃相机快照选择完成后生成链接，并与 tracklet、外参和诊断一起显式
+传入结果对象。
+
+### 链接结构
+
+`SourceObservationTrackletLink` 包含：
+
+```text
+source_observation_id
+tracklet_key
+camera_key
+measurement_timestamp
+arrival_timestamp
+```
+
+`source_observation_id` 只能是匿名量测键。它不作为 tracker identity、图特征、中心 binding 或
+`global_track_id` 来源。`arrival_timestamp` 不早于 `measurement_timestamp`；缓存节点继续使用
+原始双时间戳。
+
+### 覆盖校验
+
+构造关联结果时先按 `tracklet_key` 建立图节点索引，再逐条检查 source link：
+
+1. link 类型必须正确；
+2. 一个 tracklet 只能有一条 link；
+3. 一个 observation ID 不能映射到多个图节点；
+4. link 必须引用图内节点；
+5. camera namespace 必须与节点一致；
+6. observation ID 必须与节点一致；
+7. measurement/arrival timestamp 必须逐值一致；
+8. 全部 source-bearing node 必须被覆盖，且不得有额外链接。
+
+任一条件失败即拒绝 `Scalable3DStepResult`。链接构造不会静默跳过带来源的节点。无来源的纯合成
+节点仍可用于不带离线标签的结构测试，但正式 R0 可由 availability 合同判定标签不完整。
+
+### 时序行为
+
+跨调用缓存节点的 link 与节点一起复用。coast 不生成预测 observation，也不更新时间戳。OOSM
+批次不进入图，已有快照 link 保持不变。容量淘汰删除对应节点和 link。`reset_stream()` 仅删除
+指定相机状态，`reset_episode()` 清空全部状态。
+
+同一 camera-local tracklet 在连续帧可以对应不同 observation ID。每次结果按该帧节点状态生成
+一条 link，tracklet key 保持稳定，source ID 和双时间戳随新实测更新。该设计表达“同一局部轨迹
+的连续量测”，不把 observation ID 当作身份，也不在一个图快照中重复链接。
+
+### 验证
+
+异步两相机同目标测试得到 `2 nodes / 1 edge / 2 links`，两个当前及缓存节点均有精确来源。
+负例覆盖缺链、重复链、错 camera namespace 和错 measurement timestamp。同步调用、多来源接续、
+OOSM、coast、容量淘汰、stream reset 和 episode reset 均通过。
+
+2026-07-26 adapter 专项为 `50 passed`，D5 全量为
+`600 passed, 1 warning in 94.80s`。main 提交 `690858a` 的 667 条真实观测、294/247
+candidate/retained edge 是修复前正向开发证据；当前源码尚需正式 R0 重跑。当前 runtime SHA 为
+`55066382...b8ea`，旧 G1 v4 以 `bundle_implementation_runtime_mismatch` 失败关闭。
+
 ## 异步跨调用活跃相机快照
 
 ### 问题
@@ -134,7 +202,7 @@ missed-frame、OOSM、外参、容量和 reset 负例均不形成非法边。
 
 实际 `7fb5db8b...ca71` 权重接口探针对异步同目标图输出概率 `0.9999935627`，并形成一个双节点
 簇。该探针不经过严格 bundle 准入，不能作为在线启用证据。D6 对既有 v4 的正式 post-assembly
-audit 只证明装配完整性；本轮源码变更使当前运行时摘要变为 `d1a1d1c3...61ef`，旧 v4 严格加载
+audit 只证明装配完整性；本轮源码变更使当前运行时摘要变为 `55066382...b8ea`，旧 v4 严格加载
 以 `bundle_implementation_runtime_mismatch` 失败关闭。
 
 ## 冻结 registry 生产

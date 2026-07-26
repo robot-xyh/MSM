@@ -276,15 +276,18 @@ class _AssociationSnapshotSelection:
 
     tracklets: tuple[CameraLocalTracklet, ...]
     camera_geometries: tuple[TrackletCameraGeometry, ...]
+    source_observation_links: tuple["SourceObservationTrackletLink", ...]
     diagnostics: Mapping[str, int]
 
     def __post_init__(self) -> None:
         tracklets = tuple(self.tracklets)
         geometries = tuple(self.camera_geometries)
+        source_links = tuple(self.source_observation_links)
         if len({item.tracklet_key for item in tracklets}) != len(tracklets):
             raise ValueError("association snapshot tracklet keys must be unique")
         if len({item.camera_key for item in geometries}) != len(geometries):
             raise ValueError("association snapshot camera geometries must be unique")
+        _validate_association_source_link_coverage(tracklets, source_links)
         diagnostic_values = {
             str(key): int(value) for key, value in dict(self.diagnostics).items()
         }
@@ -292,6 +295,7 @@ class _AssociationSnapshotSelection:
             raise ValueError("association snapshot diagnostics must be non-negative")
         object.__setattr__(self, "tracklets", tracklets)
         object.__setattr__(self, "camera_geometries", geometries)
+        object.__setattr__(self, "source_observation_links", source_links)
         object.__setattr__(
             self,
             "diagnostics",
@@ -349,6 +353,9 @@ class Scalable3DStepResult:
         default_factory=tuple,
         repr=False,
     )
+    association_source_links: (
+        tuple["SourceObservationTrackletLink", ...] | None
+    ) = field(default=None, repr=False)
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "camera_batches", tuple(self.camera_batches))
@@ -366,14 +373,32 @@ class Scalable3DStepResult:
             raise ValueError(
                 "association camera geometries must exactly cover graph cameras"
             )
+        source_links = self.association_source_links
+        if source_links is None:
+            source_links = source_observation_tracklet_links(
+                self.association.graph.nodes
+            )
+        else:
+            source_links = tuple(source_links)
+            _validate_association_source_link_coverage(
+                self.association.graph.nodes,
+                source_links,
+            )
         object.__setattr__(self, "association_camera_geometries", geometries)
+        object.__setattr__(self, "association_source_links", source_links)
 
     @property
-    def tracklets(self) -> tuple[CameraLocalTracklet, ...]:
+    def association_tracklets(self) -> tuple[CameraLocalTracklet, ...]:
         # One process call may drain several scans from the same camera.  The
         # association graph is a current-state snapshot, so expose only the
         # de-duplicated tracklets that actually entered that graph.
         return tuple(self.association.graph.nodes)
+
+    @property
+    def tracklets(self) -> tuple[CameraLocalTracklet, ...]:
+        """Backward-compatible alias for the association graph snapshot."""
+
+        return self.association_tracklets
 
     @property
     def camera_geometries(self) -> tuple[TrackletCameraGeometry, ...]:
@@ -392,7 +417,10 @@ class Scalable3DStepResult:
 
     @property
     def source_observation_links(self) -> tuple["SourceObservationTrackletLink", ...]:
-        return source_observation_tracklet_links(self.tracklets)
+        """Backward-compatible alias for frozen association-node links."""
+
+        assert self.association_source_links is not None
+        return self.association_source_links
 
 
 @dataclass(frozen=True)
@@ -403,6 +431,7 @@ class SourceObservationTrackletLink:
     tracklet_key: str
     camera_key: str
     measurement_timestamp: float
+    arrival_timestamp: float | None = None
 
     def __post_init__(self) -> None:
         for name in ("source_observation_id", "tracklet_key", "camera_key"):
@@ -410,11 +439,29 @@ class SourceObservationTrackletLink:
             if not value:
                 raise ValueError(f"{name} must be non-empty")
             object.__setattr__(self, name, value)
+        if is_truth_like_local_track_id(self.source_observation_id):
+            raise ValueError(
+                "source_observation_id must be an anonymous measurement key"
+            )
+        measurement_timestamp = _finite_float(
+            self.measurement_timestamp,
+            "measurement_timestamp",
+        )
+        arrival_timestamp = (
+            measurement_timestamp
+            if self.arrival_timestamp is None
+            else _finite_float(self.arrival_timestamp, "arrival_timestamp")
+        )
+        if arrival_timestamp + 1.0e-12 < measurement_timestamp:
+            raise ValueError(
+                "source link arrival_timestamp must not precede measurement_timestamp"
+            )
         object.__setattr__(
             self,
             "measurement_timestamp",
-            _finite_float(self.measurement_timestamp, "measurement_timestamp"),
+            measurement_timestamp,
         )
+        object.__setattr__(self, "arrival_timestamp", arrival_timestamp)
 
 
 @dataclass(frozen=True)
@@ -896,10 +943,11 @@ class Scalable3DTerminalAdapter:
         self._record_association_operations(association, len(center_tracks))
         self._increment_performance("process_frame_count")
         return Scalable3DStepResult(
-            adapted_batches,
-            center_tracks,
-            association,
-            snapshot.camera_geometries,
+            camera_batches=adapted_batches,
+            center_projection_tracks=center_tracks,
+            association=association,
+            association_camera_geometries=snapshot.camera_geometries,
+            association_source_links=snapshot.source_observation_links,
         )
 
     def reset_stream(self, resource_id: str, camera_id: str) -> None:
@@ -1105,7 +1153,12 @@ class Scalable3DTerminalAdapter:
             diagnostics["snapshot_cache_camera_count"] = len(
                 self._active_camera_snapshots
             )
-            return _AssociationSnapshotSelection((), (), diagnostics)
+            return _AssociationSnapshotSelection(
+                tracklets=(),
+                camera_geometries=(),
+                source_observation_links=(),
+                diagnostics=diagnostics,
+            )
 
         reference_measurement_timestamp = max(
             item.measurement_timestamp for item in anchor_snapshots
@@ -1192,10 +1245,14 @@ class Scalable3DTerminalAdapter:
         diagnostics["snapshot_cache_camera_count"] = len(
             self._active_camera_snapshots
         )
+        selected_tracklets_tuple = tuple(selected_tracklets)
         return _AssociationSnapshotSelection(
-            tuple(selected_tracklets),
-            tuple(selected_geometries),
-            diagnostics,
+            tracklets=selected_tracklets_tuple,
+            camera_geometries=tuple(selected_geometries),
+            source_observation_links=source_observation_tracklet_links(
+                selected_tracklets_tuple
+            ),
+            diagnostics=diagnostics,
         )
 
     def _commit_prepared_batch(
@@ -2060,34 +2117,103 @@ def _field(value: Any, name: str, default: Any = _MISSING) -> Any:
 def source_observation_tracklet_links(
     tracklets: Iterable[CameraLocalTracklet],
 ) -> tuple[SourceObservationTrackletLink, ...]:
-    """Export one-to-one frame links without using the key as track identity."""
+    """Export exact graph-node links without using observations as identity."""
 
+    tracklet_items = tuple(tracklets)
     links = tuple(
         SourceObservationTrackletLink(
             source_observation_id=tracklet.source_observation_id,
             tracklet_key=tracklet.tracklet_key,
             camera_key=tracklet.camera_key,
             measurement_timestamp=tracklet.measurement_timestamp,
+            arrival_timestamp=tracklet.arrival_timestamp,
         )
-        for tracklet in tracklets
+        for tracklet in tracklet_items
         if tracklet.source_observation_id is not None
     )
-    frame_keys = tuple(
-        (link.measurement_timestamp, link.source_observation_id)
-        for link in links
-    )
-    if len(frame_keys) != len(set(frame_keys)):
-        raise ValueError("one source observation maps to multiple tracklets in one frame")
+    _validate_association_source_link_coverage(tracklet_items, links)
     return tuple(
         sorted(
             links,
             key=lambda item: (
                 item.measurement_timestamp,
+                item.arrival_timestamp,
                 item.camera_key,
                 item.source_observation_id,
             ),
         )
     )
+
+
+def _validate_association_source_link_coverage(
+    tracklets: Iterable[CameraLocalTracklet],
+    links: Iterable[SourceObservationTrackletLink],
+) -> None:
+    """Fail closed unless links exactly cover source-bearing graph nodes."""
+
+    tracklet_items = tuple(tracklets)
+    link_items = tuple(links)
+    node_by_key: dict[str, CameraLocalTracklet] = {}
+    for tracklet in tracklet_items:
+        assert_anonymous_online_payload(tracklet)
+        if tracklet.tracklet_key in node_by_key:
+            raise ValueError("association graph tracklet keys must be unique")
+        node_by_key[tracklet.tracklet_key] = tracklet
+
+    linked_tracklet_keys: set[str] = set()
+    linked_source_ids: set[str] = set()
+    for link in link_items:
+        if not isinstance(link, SourceObservationTrackletLink):
+            raise TypeError(
+                "association source links must be SourceObservationTrackletLink"
+            )
+        if link.tracklet_key in linked_tracklet_keys:
+            raise ValueError(
+                "duplicate association source link for one graph tracklet"
+            )
+        if link.source_observation_id in linked_source_ids:
+            raise ValueError(
+                "one source observation maps to multiple association graph tracklets"
+            )
+        tracklet = node_by_key.get(link.tracklet_key)
+        if tracklet is None:
+            raise ValueError(
+                "association source link references an unknown graph tracklet"
+            )
+        if link.camera_key != tracklet.camera_key:
+            raise ValueError(
+                "association source link camera namespace mismatch"
+            )
+        if tracklet.source_observation_id is None:
+            raise ValueError(
+                "association source link targets a graph node without an observation"
+            )
+        if link.source_observation_id != tracklet.source_observation_id:
+            raise ValueError(
+                "association source link observation mismatch"
+            )
+        if link.measurement_timestamp != tracklet.measurement_timestamp:
+            raise ValueError(
+                "association source link measurement timestamp mismatch"
+            )
+        if link.arrival_timestamp != tracklet.arrival_timestamp:
+            raise ValueError(
+                "association source link arrival timestamp mismatch"
+            )
+        linked_tracklet_keys.add(link.tracklet_key)
+        linked_source_ids.add(link.source_observation_id)
+
+    required_tracklet_keys = {
+        tracklet.tracklet_key
+        for tracklet in tracklet_items
+        if tracklet.source_observation_id is not None
+    }
+    missing = required_tracklet_keys - linked_tracklet_keys
+    extra = linked_tracklet_keys - required_tracklet_keys
+    if missing or extra:
+        raise ValueError(
+            "association source links must exactly cover graph nodes with observations"
+        )
 
 
 def _first_present(

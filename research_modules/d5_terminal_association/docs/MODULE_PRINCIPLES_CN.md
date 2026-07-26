@@ -2,6 +2,55 @@
 
 **状态日期：2026-07-26**
 
+## 关联图来源守恒
+
+在线输入批次与关联图快照是两个不同集合。设本次调用批次为 \(\mathcal B_k\)，实际关联图节点为
+\(\mathcal V_k\)。异步缓存启用后，\(\mathcal V_k\) 可同时包含 \(\mathcal B_k\) 的当前节点和
+其他相机的有效历史实测节点。学习制品若只保存当前批次来源，就会丢失缓存节点的离线标签入口。
+
+D5 为关联图定义来源链接集合 \(\mathcal L_k\)。对所有携带匿名来源观测的节点，必须满足
+
+\[
+\{\ell.\mathrm{tracklet\_key}\mid \ell\in\mathcal L_k\}
+=
+\{v.\mathrm{tracklet\_key}\mid v\in\mathcal V_k,\,
+v.\mathrm{source\_observation\_id}\neq\varnothing\}.
+\]
+
+每条链接还必须逐项满足
+
+\[
+\begin{aligned}
+\ell.\mathrm{source\_observation\_id}&=v.\mathrm{source\_observation\_id},\\
+\ell.\mathrm{camera\_key}&=v.\mathrm{camera\_key},\\
+\ell.t_m&=v.t_m,\\
+\ell.t_a&=v.t_a.
+\end{aligned}
+\]
+
+同一个来源观测不能映射到多个图节点，同一个图节点不能出现多条来源链接。缺失、重复、未知节点、
+错相机命名空间或双时间戳不一致均拒绝结果。没有来源观测的合成节点可以无链接，但不得生成伪
+observation ID 补齐。
+
+缓存和 coast 节点保留原始 observation ID、量测时间和到达时间，不做预测或重新标识。OOSM
+不会覆盖较新链接。缓存淘汰、stream reset 和 episode reset 同时移除节点及链接。同一
+camera-local tracklet 可在后续调用接续新的来源观测；两个调用分别保存各自节点状态对应的链接，
+不会把历史来源合并成身份。
+
+`camera_batches` 继续表达本次输入审计，`association_tracklets` 与
+`association_source_links` 表达关联图快照。旧 `tracklets` 和 `source_observation_links`
+仍是只读兼容别名。该合同不使用 truth、actor、object 或中心身份，不改变 `global_track_id`、
+几何门、图候选门和评分阈值。
+
+main 在提交 `690858a` 的近距开发场景已观察到 667 条真实目标视觉观测、294 条 candidate edge
+和 247 条 retained edge，online truth use=0。该结果说明正向规则边可产生，但修复后的来源守恒
+尚未在正式制品中重跑。正式 R0 仍需用当前源码冻结 graph、source links 和物理分离的 offline
+labels，证明全覆盖、join 完整、edge truth 可计算、谱系哈希完整和安全计数为零。
+
+2026-07-26 adapter 专项为 `50 passed`，D5 全量为
+`600 passed, 1 warning in 94.80s`。当前运行时摘要为 `55066382...b8ea`，旧 G1 v4 严格加载
+继续失败关闭。
+
 ## 异步相机状态合图
 
 跨视角关联要求同一张候选图中至少包含两个相机的匿名局部航迹。在线 runtime 的相机批次并不
@@ -53,8 +102,8 @@ D6 已在 clean evaluator commit `107cf0756d7b75cd6bf1456d1f1aa940fec6a63c` 对�
 均为零。
 
 该审计核验的是当时 v4 的文件布局、哈希、交叉绑定和安全计数。它不授予模型晋级、默认路径、
-在线 G1、身份、分配或控制权限。本轮异步快照修改改变了运行时实现摘要。当前摘要为
-`d1a1d1c3...61ef`，v4 绑定摘要为 `408e71fe...f4fe`，严格加载返回
+在线 G1、身份、分配或控制权限。本轮来源合同修改改变了运行时实现摘要。当前摘要为
+`55066382...b8ea`，v4 绑定摘要为 `408e71fe...f4fe`，严格加载返回
 `bundle_implementation_runtime_mismatch`。规则路径继续作为默认；新的 G1 在线证据必须基于
 当前运行时重新装配并接受 D6 独立复审。
 

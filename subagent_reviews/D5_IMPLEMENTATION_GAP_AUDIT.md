@@ -1,5 +1,23 @@
 # D5 实现差距审计
 
+## 2026-07-26 关联图来源覆盖状态
+
+| 缺口 | 当前状态 | 证据与剩余边界 |
+| --- | --- | --- |
+| 缓存图节点来源链接未冻结 | **D5-owned 已关闭** | `association_source_links` 与 association graph snapshot 同时生成并冻结；`camera_batches` 仍只表示本次调用。 |
+| 图节点覆盖守恒 | **关闭并保持回归** | 每个 source-bearing node 恰有一条 link；缺失、重复、未知节点、错 camera namespace、observation 或双时间戳不一致均失败关闭。 |
+| arrival timestamp | **关闭并保持回归** | link 现在同时携带 measurement/arrival timestamp，缓存及 coast 保留原值，不预测。 |
+| 向后兼容 | **关闭并保持回归** | 新增 `association_tracklets`；旧 `tracklets`/`source_observation_links` 保持只读别名，旧构造省略显式 links 时从 graph nodes 派生并立即校验。 |
+| OOSM/coast/reset/淘汰 | **关闭并保持回归** | OOSM 不覆盖，coast 保留原 link，容量淘汰和 stream/episode reset 同步移除节点与 link。 |
+| 同 local tracklet 多来源接续 | **关闭并保持回归** | 连续调用中 tracklet key 可稳定，新的实测 observation ID 与双时间戳只进入对应新快照，不把 observation 当身份。 |
+| truth 和中心身份边界 | **关闭并保持回归** | link 不含 truth/actor/object/global ID；online truth use 与 global-ID rewrite 保持 0，几何门限未变。 |
+| 正向开发边可产生 | **开发证据完成** | main 提交 `690858a`：667 条真实目标视觉观测、294 candidate edge、247 retained edge、online truth use=0。发生在本修复前，不是正式 R0。 |
+| 修复后正式 R0 | **P1 开放** | 需 main 用当前源码重跑 truth-isolated 正向场景，冻结 graph/link/offline-label/hash/lineage，证明 node-link 全覆盖、label join 完整和 edge truth 可计算。 |
+| 当前源码 G1 装配与 D6 复审 | **P1 开放并 fail-closed** | runtime SHA 为 `55066382...b8ea`；旧 v4 返回 `bundle_implementation_runtime_mismatch`。R0 通过后才能重新装配并交 D6 复审。 |
+
+本轮没有新增 P0。D5 软件链接覆盖合同已关闭，修复后正式 R0 和当前源码 G1 证据链仍为 P1。
+adapter 专项 `50 passed`，D5 全量 `600 passed, 1 warning in 94.80s`。
+
 ## 2026-07-26 异步活跃相机快照状态
 
 | 缺口 | 当前状态 | 证据与剩余边界 |
@@ -15,7 +33,7 @@
 | 短输入异步合图与虚警关闭 | **局部关闭** | 5v5 seed 1000、2.2 s 在线共 6 条 `vision_bbox`；离线 sidecar 全为 `known_false_alarm/truth_entity_id=null`。发布时刻 `1.25/1.75/1.95 s` 形成双相机节点，累计节点 `6 -> 8`；`support_by_node` 无共同中心 `GlobalTrack`，预筛选正确保留 0 边，在线 truth 为 0。 |
 | 真实目标跨视角候选与 binding | **P1 开放、未被本短复测评价** | 当前 6 条输入全是离线确认的虚警，不能用于判断真实目标候选边、几何门或 G1 收益。main 需先运行真实目标共同可见的 truth-isolated 规则场景，再验收几何门和中心只读 binding；不得放宽门限或把 truth 写入在线路径。 |
 | 既有 G1 v4 post-assembly audit | **审计作用域已关闭** | D6 clean commit `107cf075...6a63c` 输出 `status=pass`、blocker 为空、content SHA `37384441...d852`、`20/900/45`，三项安全计数 0。只证明被审 v4 的装配完整性。 |
-| G1 对当前运行时可加载性 | **P1 开放并 fail-closed** | 当前 runtime SHA `d1a1d1c3...61ef` 与 v4 绑定的 `408e71fe...f4fe` 不同；strict loader 返回 `bundle_implementation_runtime_mismatch`。需重新装配和 D6 独立复审，不能加兼容白名单。 |
+| G1 对当前运行时可加载性 | **P1 开放并 fail-closed** | 当前 runtime SHA `55066382...b8ea` 与 v4 绑定的 `408e71fe...f4fe` 不同；strict loader 返回 `bundle_implementation_runtime_mismatch`。需重新装配和 D6 独立复审，不能加兼容白名单。 |
 | 默认/身份/分配/控制权限 | **保持关闭** | D6 post-assembly pass 不授予模型晋级、默认路径、G1 在线辅助、全局身份、分配或控制权限；确定性规则仍为默认。 |
 
 本轮没有新增 P0。跨调用状态装配和虚警失败关闭在 D5-owned 范围内关闭；真实目标规则边、

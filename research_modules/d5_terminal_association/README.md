@@ -2,6 +2,42 @@
 
 科研模块，用于把末端相机视场中的本地视觉轨迹保守关联到中心分配的 `global_track_id`。模块可在统一三维 episode 中在线运行；训练标签和真值评分仍保持离线。D5 只输出视觉关联与相机观察意图，不修改、重写或重新分配任何全局轨迹 ID。
 
+## 2026-07-26 关联图来源链接覆盖
+
+main 在提交 `690858a` 的近距正向开发场景记录到 667 条真实目标视觉观测、294 条 candidate
+edge 和 247 条 retained edge，在线真值使用为 0。该场景证明当前规则候选链能产生真实目标边，
+但正式学习制品还缺一项来源合同：跨调用缓存节点已经进入 `association.graph.nodes`，来源链接
+却没有作为关联快照的冻结字段进行全覆盖校验。缺链接会使离线 observation label 无法精确回接
+缓存节点，正式 R0/G1 边真值评估不能据此开始。
+
+`Scalable3DStepResult` 现在明确区分两类数据：
+
+- `camera_batches` 继续只表示本次调用收到并审计的批次；
+- `association_tracklets` 表示实际进入关联图的当前和缓存节点；
+- `association_source_links` 冻结这些图节点的来源链接；
+- 既有 `tracklets` 和 `source_observation_links` 保留为向后兼容只读别名。
+
+每个带 `source_observation_id` 的图节点必须恰有一条链接。链接精确保存匿名 observation ID、
+tracklet key、camera namespace、`measurement_timestamp` 和 `arrival_timestamp`。结果构造时
+逐项核对节点覆盖、来源 ID、相机命名空间和双时间戳；缺失、重复、未知节点、错命名空间或时间
+不一致均失败关闭。无来源观测的合成节点不伪造链接。缓存或 coast 节点保留原量测链接，不预测、
+不重新标识。同一 camera-local tracklet 在后续调用可关联新的来源观测，但每个图快照只保存与
+该节点状态对应的精确链接。
+
+OOSM 不替换当前链接；缓存淘汰和 stream/episode reset 同时移除对应节点与链接。整个合同不读取
+truth/actor/object ID，不改写 `global_track_id`，不改变任何时间、几何或模型门限。
+2026-07-26 adapter 专项为 `50 passed`，D5 全量为
+`600 passed, 1 warning in 94.80s`。warning 是既有 PyTorch NVML 初始化提示。
+
+当前运行时实现 SHA-256 为
+`5506638201623048fb53c8e15493a2dc367d5682abbee3b7235704721586b8ea`。旧 G1 v4 仍返回
+`bundle_implementation_runtime_mismatch`，规则路径继续默认。正式 R0 还需要 main 用当前源码
+重跑 truth-isolated 正向场景，确认所有 source-bearing graph node 链接覆盖完整、离线标签 join
+完整且哈希/谱系冻结；随后才能重新装配 G1 并交 D6 独立复审。
+
+本次没有改变 AirSim 输入、settings、相机、检测器或 episode reset 接口。
+`docs/AIRSIM_INTEGRATION_PLAN.md` 已检查，无需修改。
+
 ## 2026-07-26 异步跨调用活跃相机快照
 
 `Scalable3DTerminalAdapter.process()` 原先只把本次调用中完成状态更新的相机批次送入关联图。统一
@@ -55,7 +91,7 @@ D6 已在 clean evaluator commit
 晋级、默认路径、G1 在线辅助、全局身份、分配或控制权限。
 
 本次修改改变了 `scalable_3d_adapter.py`，当前运行时实现摘要为
-`d1a1d1c3212f84ab668d2ca32686532cb93b0da4f3c617ffec57c36187f461ef`，不再等于 v4 审计绑定的
+`5506638201623048fb53c8e15493a2dc367d5682abbee3b7235704721586b8ea`，不再等于 v4 审计绑定的
 `408e71fe...f4fe`。公开严格加载器因此返回
 `available=false/failure_reason=bundle_implementation_runtime_mismatch`。这项失败关闭保持
 证据边界正确；新运行时若要使用 G1，必须重新装配并由 D6 独立复审。确定性几何规则仍为默认路径。
