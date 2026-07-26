@@ -1,5 +1,50 @@
 # D4 分布式降级与接管实验报告
 
+## 0.000 2026-07-26 A2 证据装配验证
+
+### 结论
+
+D4 A2 证据装配器和严格加载器的软件正向路径已经通过。当前实际候选仍被 D6 外部审计拒绝，
+没有生成 A2 外层包，没有改变 development/shadow 状态。
+
+### 合成合同试验
+
+试验生成一个完整的 development bundle、当前实现摘要、D6 通过型外审、seed 1000-1019
+正式 scope、逐 seed runtime ACK、ACK 后物理窗口、唯一 same-key R0、paired
+non-degradation 及完整联盟 ACK。装配器生成
+`d4-region-resource-a2-evidence-bundle-v1`，strict loader 随后重新计算清单、摘要、候选
+指纹、实现谱系和跨证据绑定。
+
+| 检查范围 | 结果 |
+|---|---:|
+| A2 assembler 专项 | 17/17 passed |
+| runtime/paired/reward/coalition/candidate 相关合同 | 124/124 passed |
+| D4 全量模块测试 | 594/594 passed |
+| `py_compile` | 4/4 入口通过 |
+
+负例包含文件和内容哈希篡改、候选指纹错配、实现谱系过期、权限字段误开、低于 0.6、规则
+回退冒充学习采用、后继计划未严格升版、旧 epoch、过期 lease、物理窗越界、R0/配对失败、
+联盟 ACK 不完整、额外文件和覆盖已有输出。所有负例均失败关闭。
+
+### 当前实物拒绝
+
+实际输入使用现有 development bundle 和 D6
+`d4_a2_external_audit_actual_20260726_final`。装配返回
+`d6_external_audit_fail_closed`。D6 blocker 包括实现 evidence 缺失、正式 scope 及其
+校验清单缺失、候选指纹不可用、正式 episode/实际采用不可用、物理状态窗口不可用、唯一
+same-key R0 不可用、paired non-degradation 不可用及硬约束证据不可用。
+
+拒绝前后，原 manifest、权重和训练清单 SHA-256 分别保持
+`dad2adbe...c05c9`、`3da0360b...d5f62`、`ff3081c8...30dc6`，输出目录不存在。软件验证未
+运行 AirSim、真实网络或正式物理 episode，也没有把 nominal 或 `active_risk` 规则回退计为
+候选采用。
+
+### 权限状态
+
+合成正例的最高输出仅为 `a2_assist_eligible=true`。默认模型、PPO、模型晋级、故障接管权、
+分配权和控制权均为 false，规则回退为 true。当前实物未达到该最高输出，A2 assist 仍未
+授予。
+
 ## 0.00 2026-07-26 A2 development 候选训练与校准
 
 ### 结论
@@ -60,9 +105,10 @@ reserved-seed 物理试验。
 本节记录新版候选形成前的证据盘点。旧候选 0/20 门控结果继续作为冻结基线；新版候选的训练
 和 calibration 结果见上一节，尚不能替代 reserved-seed 采用与物理结果。
 
-本节记录代码和制品链盘点，没有新增仿真场景或随机种子。D4 已有开发 bundle 完整性、候选
-运行采用、严格后继计划、联盟状态、成员通信投递和区域结果窗口合同；当前没有把这些合同与
-D6 物理结果和 R0 配对非退化装配为新准入 bundle 的模块。现有 v2 bundle 仍为
+本节记录当时的代码和制品链盘点，没有新增仿真场景或随机种子。D4 已有开发 bundle
+完整性、候选运行采用、严格后继计划、联盟状态、成员通信投递和区域结果窗口合同；当时尚未
+实现把这些合同与 D6 物理结果和 R0 配对非退化装配为新准入 bundle 的模块。该软件模块现已
+按 0.000 节完成，真实外部制品仍不满足装配条件。现有 v2 bundle 继续为
 development/shadow，未发现生产调用方通过裸布尔或占位摘要打开 assist/authority。
 
 nominal 20-seed 的候选安全采用为 0/20；`active_risk` 20-seed 的 188/188 区域记录均执行

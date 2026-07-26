@@ -1,5 +1,36 @@
 # D4 分布式协同与降级接管
 
+## 2026-07-26 A2 证据装配合同
+
+D4 已实现版本化 `d4-region-resource-a2-evidence-bundle-v1` 装配器、严格加载器和命令行
+入口。原 `d4-region-resource-model-bundle-v2` 继续作为不可变的
+`development/shadow` 内层；装配器只在新目录发布外层证据包，不修改原 manifest、权重或
+训练清单，也拒绝覆盖已有输出目录。
+
+外层包要求同一候选的开发 manifest/权重、训练数据身份、当前实现摘要、D6 外部审计、
+seed 1000-1019 的 20 个未见 seed 正式 scope 及精确 `SHA256SUMS`、逐 seed 运行证据全部
+闭合。每条运行证据必须证明候选置信度不低于 0.6，实际通过安全投影并被采用，D3 生成严格
+更高版本后继计划，runtime ACK 有效，owner/node/epoch/lease/fault generation 当前，联盟
+全部必要成员已确认并进入执行态，ACK 后物理窗口可用，同 comparison key 只有一个 R0，
+配对指标非退化且硬约束违规为零。nominal 回退和 `active_risk` 规则臂都不能冒充学习采用。
+
+成功装配只授予 `a2_assist_eligible=true`。`default_model`、`ppo_enabled`、模型晋级、
+故障接管权、分配权和控制权均保持 false，规则回退保持必需。严格加载器重新计算精确文件
+清单、全部文件和 JSON 内容摘要、候选指纹、实现谱系及跨证据绑定；额外文件、额外字段、
+旧 epoch、过期 lease、权限误开或任一摘要不一致均失败关闭。
+
+2026-07-26 的合成完整 fixture 验证装配与严格加载正向路径，专项 **17/17 passed**；
+runtime ACK、配对干预、结果证据、联盟安全和候选合同联合回归 **124/124 passed**；D4
+全量 **594/594 passed**。这些是软件合同测试，不是正式模型性能证据。
+
+当前实物路径仍拒绝装配。实际 development bundle 与 D6
+`d4_a2_external_audit_actual_20260726_final` 组合返回
+`d6_external_audit_fail_closed`；原 manifest、权重、训练清单 SHA-256 前后分别保持
+`dad2adbe...c05c9`、`3da0360b...d5f62`、`ff3081c8...30dc6`，没有生成外层包。仍缺当前
+实现 evidence、正式 20-seed scope 及校验清单、候选实际安全采用、D3 严格后继计划、
+runtime ACK、干预后物理窗口、唯一同键 R0、配对非退化和硬约束/联盟完整性证据。因此当前
+候选没有获得 A2 assist 资格。
+
 ## 2026-07-26 A2 校准 development 候选
 
 D4 已生成新版区域资源 `development/shadow` 候选
@@ -35,8 +66,9 @@ reserved-seed 正式矩阵。
 本节记录新版校准候选形成前的盘点。当前候选状态和后续限制以上一节为准；旧冻结 bundle 和
 历史 20-seed 结果继续保留为基线，不被新版产物改写。
 
-结论是：D4 已有多段严格证据合同，但尚不具备与“D6 外部审计 -> D4 证据装配器 -> 新
-bundle”等价的完整链路。该缺口当前为 P1，不是 P0。原因是
+当时的结论是：D4 已有多段严格证据合同，但尚不具备与“D6 外部审计 -> D4 证据装配器 ->
+新 bundle”等价的完整链路。该软件缺口现已按页首关闭，真实证据缺口仍为 P1，不是 P0。
+原安全判断的原因是
 `d4-region-resource-model-bundle-v2`、loader 和 advisor 已共同把模型限制在
 `development/shadow`；正式调用方不能用裸布尔、未绑定摘要、无 manifest 注入策略或
 20 个未见 seed 自行进入 assist。测试代码中的合成布尔和测试摘要不进入生产加载或准入路径。
@@ -56,14 +88,14 @@ bundle”等价的完整链路。该缺口当前为 P1，不是 P0。原因是
    `ShadowPairedEvaluator` 也不授予物理、因果、assist 或 authority。正式物理结果和配对
    非退化仍必须来自 main 运行制品及 D6 独立审计。
 
-未来 D4 专用装配器的最小输入必须包含：候选 bundle 全树和模型摘要；场景、seed、comparison
+现有 D4 专用装配器的最小输入包含：候选 bundle 全树和模型摘要；场景、seed、comparison
 key、advisory 及模型指纹；候选实际通过门控且未走规则回退；源计划和严格后继计划身份；
 owner/layer、plan version、epoch、lease 和 fault/partition generation；联盟
 ID/version、required/acked members、每个成员 ACK 的 delivered receipt 内容摘要；运行 ACK
 与 D3/D7/main 的序列和载荷摘要；采用后物理结果 availability；同外生输入 R0 配对及逐项
 non-degradation；D6 审计制品和带外校验摘要。任何一项缺失都保持 unavailable。D4 不复制
-D6 的通用外部审计 schema；待 D6 输出冻结后，只实现 D4 语义校验和内容寻址装配，并在新目录
-生成新版本 bundle，旧 v2 manifest 保持不变。
+D6 的通用外部审计 schema；D4 已实现语义校验和内容寻址装配，并只在新目录生成新版本
+bundle，旧 v2 manifest 保持不变。当前 D6 实物输出仍失败关闭，所以尚无真实外层包。
 
 现有 development bundle、nominal 20-seed 和 `active_risk` 20-seed 证据仍不能拼接：
 前者候选安全采用为 0/20，后者 188/188 区域记录执行的是规则回退且

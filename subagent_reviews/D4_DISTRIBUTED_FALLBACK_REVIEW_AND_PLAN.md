@@ -1,5 +1,23 @@
 # D4 分布式协同与降级接管综述及子方案
 
+## 2026-07-26 A2 evidence assembler 评审
+
+D4 已完成模块专用 `d4-region-resource-a2-evidence-bundle-v1` 装配器、严格 loader 和
+CLI。它把不可变 development bundle、当前实现摘要、D6 外审、20 个未见 seed 正式 scope、
+实际安全采用、D3 严格后继计划、runtime ACK、干预后物理窗口、唯一 same-key R0、paired
+non-degradation、硬约束和联盟完整性绑定为同一内容身份。任何缺项、摘要或候选指纹不一致、
+旧 epoch/lease、权限误开、额外清单项或输出覆盖均失败关闭。
+
+权限边界没有扩大。新外层包最多表达 `a2_assist_eligible`；default、PPO、model promotion、
+failover、assignment 和 control authority 均为 false，规则回退保留。旧
+`d4-region-resource-model-bundle-v2` 继续是 development/shadow，不能被原地改写。
+
+2026-07-26 合成完整 fixture 专项 17/17、相关合同 124/124、D4 全量 594/594 通过。当前
+实际 development bundle 与 D6 fail-closed audit 的组合稳定返回
+`d6_external_audit_fail_closed`，源三项制品哈希保持不变且未创建输出包。当前仍缺实现
+evidence、正式 20-seed scope、实际采用、严格后继计划及 ACK、物理窗口、唯一 R0、配对
+非退化和硬约束/联盟完整性实物。软件装配缺口关闭，真实准入证据 P1 保持开放。
+
 ## 2026-07-26 A2 development 候选评审
 
 D4 已完成新版区域资源 development 候选的训练、置信拟合、独立校准和证据绑定。正式
@@ -25,7 +43,8 @@ fixture，不是 AirSim、真实网络或物理效果证据。
 本节是新版校准候选形成前的历史盘点。当前候选能力和限制以上一节为准；正式证据链缺口仍按
 本节执行。
 
-D4 当前没有完整的“D6 外部审计 -> D4 evidence assembler -> 新 bundle”链路。已有组件能分别
+D4 当时没有完整的“D6 外部审计 -> D4 evidence assembler -> 新 bundle”链路；该软件链现已
+按页首实现。已有组件能分别
 验证开发 bundle、区域建议、严格后继计划、运行消费、联盟成员业务 ACK、消息实际投递和结果
 观测窗口，但没有一个准入对象把这些事实绑定到同一候选、同一 seed、同一 comparison key 和
 同一 authority generation。该状态不会形成运行级旁路，因为 v2 bundle 和所有正式 advisor

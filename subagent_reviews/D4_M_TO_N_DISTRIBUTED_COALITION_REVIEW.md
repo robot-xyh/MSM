@@ -1,5 +1,21 @@
 # D4 M 对 N 分布式联盟形成与降级接管调研
 
+## 2026-07-26 A2 装配与联盟完整性
+
+A2 外层证据合同现已把区域学习建议与 M 对 N 联盟执行事实放入同一逐 seed 链。每条记录必须
+绑定当前 owner、authority epoch、fault generation 和最早 lease，并重新构造
+`CoalitionCommitState` 与全部 `CoalitionMemberAck`。只有状态为 executing、required 与
+acked 成员集合完全一致、成员均可执行、计划/联盟版本一致且 ACK 有效期覆盖物理窗口时，联盟
+完整性才通过。`coalition_ack_complete=true` 单个快照布尔仍不能替代该链。
+
+装配器不形成联盟，也不修改成员或目标身份。它只审计候选 advisory 是否实际产生严格后继
+D3 计划，以及该计划是否在完整联盟下执行。输出最多授予 A2 区域建议资格，不授予
+failover、assignment 或 control authority。规则回退继续由原状态机和安全投影管理。
+
+2026-07-26 合成完整 fixture 的联盟正向及篡改负例纳入 A2 专项 17/17、相关合同 124/124、
+D4 全量 594/594。当前实际 D6 audit 仍失败关闭，尚无 20 个未见 seed 的候选实际采用、成员
+ACK 后物理窗口或同键配对非退化，因此真实 M 对 N 联盟没有形成 A2 准入证据。
+
 ## 2026-07-26 development 候选与联盟边界
 
 新版区域资源候选已完成动作多样性和独立校准，但它仍只建议区域配额、邻区转移、hold 和
@@ -22,12 +38,12 @@ center failure、secondary failure 和 active risk 联盟采用尚未运行，�
 现有 nominal 20-seed 候选采用为 0/20；`active_risk` 20-seed 虽有 188/188 隔离区域执行证据记录和 20/20 描述性物理比较，但所有 treatment 都是 `d4_development_candidate_not_admitted` 后的规则回退，D4 候选采用仍为 0/20。两类证据均不能用于 A2/C1/F1。D4 v2 writer 已固定为 development/shadow-only，后续 promotion 只能生成新 bundle，不能改写旧 manifest。
 
 本轮进一步确认，`coalition_ack_complete=true` 只能作为状态快照条件，不能单独进入模型准入。
-未来 D4 装配器必须同时绑定 `CoalitionCommitState` 中的 coalition ID/version、plan
+D4 装配器现已要求同时绑定 `CoalitionCommitState` 中的 coalition ID/version、plan
 ID/version、epoch、lease、required/acked member 清单，以及每个成员
 `d4.coalition_member_ack.v1` 的 delivered receipt ID、载荷摘要、源/目的、发送/到达时间和
 partition generation。上述联盟证据还必须与同一 D4 advisory、`new_execution_plan_applied`
-运行 ACK、采用后物理窗和 D6 comparison key 一致。当前没有这个装配器；因 v2 bundle
-shadow-only，该缺口为 P1，不是可绕过的 P0。
+运行 ACK、采用后物理窗和 D6 comparison key 一致。软件装配器已经完成；当前缺的是满足
+该合同的真实外部制品。因 v2 bundle 仍为 shadow-only，真实证据 P1 不能绕过。
 
 ## 2026-07-25 异步确认实施状态
 

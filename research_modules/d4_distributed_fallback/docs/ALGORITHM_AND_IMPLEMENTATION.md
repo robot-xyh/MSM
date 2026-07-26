@@ -1,5 +1,66 @@
 # D4 分布式协同与降级接管算法及实施方案
 
+## 2026-07-26 A2 evidence assembler
+
+### 分层结构
+
+实现保留 `d4-region-resource-model-bundle-v2` 作为内层 development/shadow 候选，新增
+`d4-region-resource-a2-evidence-bundle-v1` 外层证据包。装配入口接收调用方预先冻结的每个
+输入文件 SHA-256，先验证原开发包及 D6 审计，再读取实现 evidence、正式 scope、
+`SHA256SUMS` 和逐 seed runtime chain。全部校验完成后才在 staging 目录复制制品、生成
+manifest 和总校验清单，并用原子重命名发布。输出目录已存在时直接拒绝。
+
+```text
+development manifest / weights / training manifest
+                    + current implementation evidence
+                    + D6 external audit
+                    + 20-seed formal scope and SHA256SUMS
+                    + per-seed advisory -> D3 plan -> runtime ACK
+                    + physical window -> same-key R0 -> paired result
+                    + coalition commit and member ACK
+                                      |
+                                      v
+                  d4-region-resource-a2-evidence-bundle-v1
+                                      |
+                                      v
+                       strict loader recomputation
+```
+
+### 逐种子校验
+
+正式 scope 固定为未见 seed 1000-1019，要求 20 个候选 cell、20 个唯一 R0 cell 和 20 个
+可用配对键完全一致。advisory 必须声明 assist 请求和实际安全采用，`effective_mode=assist`，
+置信度不低于 0.6，且三种规则回退标志均为 false。后继计划必须引用该 advisory，使用新
+plan ID 和严格更高 plan version，并受当前 owner、epoch 和最早 lease 约束。
+
+`d4-region-resource-runtime-ack-evidence-v2` 必须表示
+`new_execution_plan_applied`，其 advisory、计划、owner、epoch、lease、模型状态和确认时间
+与本条记录一致。物理窗口从 ACK 后开始，在租约前结束；same-key R0 必须唯一且绑定该物理
+窗口；paired 结果的必需指标全部 available 且 non-degraded。联盟校验重新构造
+`CoalitionCommitState` 和 `CoalitionMemberAck`，要求状态为 executing、required 与 acked
+集合相等、成员 ACK 与计划/联盟/epoch 一致，并覆盖物理窗口。
+
+### 加载与权限
+
+strict loader 拒绝符号链接、额外清单项、额外 manifest 字段和任一摘要变化。它重新加载内层
+模型，复算当前 12 个 D4 实现文件摘要，并再次执行 D6、正式 scope、runtime chain 和联盟
+语义校验。返回对象只设置 `a2_assist_eligible=true`；default、PPO、model promotion、
+failover、assignment 和 control 均为 false，`rule_fallback_required=true`。
+
+命令行入口提供 `assemble` 和 `validate` 两个子命令，失败关闭时输出稳定错误码并返回 2。
+脚本入口为 `scripts/run_region_resource_a2_evidence.py`。
+
+### 验证
+
+2026-07-26 合成完整 fixture 专项 **17/17 passed**。负例覆盖输入文件和 JSON 内容摘要、
+候选指纹、实现谱系、D6/runtime 权限、0.6 门限、规则臂冒充、非严格后继计划、旧 epoch、
+过期 lease、配对非退化、联盟完整性、额外清单项和输出覆盖。相关证据合同
+**124/124 passed**，D4 全量 **594/594 passed**，四个新增或修改入口通过 `py_compile`。
+
+实际 development bundle 与 D6 当前 fail-closed 审计的组合返回
+`d6_external_audit_fail_closed`，不创建输出，也不改写源包。该结果确认当前真实候选仍没有
+A2 资格；合成正例只验证软件装配路径。
+
 ## 2026-07-26 A2 development 候选实现
 
 新版实现增加独立候选构建器和命令行入口。构建器只读加载正式与 supplemental 数据的
@@ -46,7 +107,7 @@ development bundle writer/loader
         -> D6 external audit
 ```
 
-前四段已经有严格数据合同，但最后没有 D4 准入装配器。`RuntimeAckParser` 能绑定
+这些分段合同现已由页首的 D4 准入装配器连接。`RuntimeAckParser` 能绑定
 advisory、main consumption、新 D3 plan、D7 commands 和 main plan ACK，并区分
 `new_execution_plan_applied` 与同代 evaluation refresh。联盟状态机能验证 required members
 和 ACK 位图；通信证据门能证明成员消息在决策前实际到达。reward adapter 能验证 ACK 后窗口
@@ -55,7 +116,7 @@ advisory、main consumption、新 D3 plan、D7 commands 和 main plan ACK，并�
 
 ### 最小装配键
 
-未来 D4 装配器不能只按布尔量连接证据。至少应以以下不可变键重验：
+现有 D4 装配器不按布尔量直接连接证据，而是按以下不可变键重验：
 
 ```text
 candidate:

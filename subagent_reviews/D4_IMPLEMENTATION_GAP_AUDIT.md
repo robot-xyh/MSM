@@ -1,5 +1,28 @@
 # D4 实现差距审计：分布式协同与降级接管
 
+## 2026-07-26 A2 证据装配 GAP 更新
+
+- **已关闭的 P1 软件缺口**：D4 已实现版本化 A2 evidence assembler、strict loader、CLI
+  和原子发布。外层包精确绑定 development manifest/weights/training identity、当前实现
+  evidence、D6 external audit、正式 20-seed scope/校验清单以及逐 seed runtime chain。
+- **安全语义**：装配结果最多设置 `a2_assist_eligible=true`；default/PPO/model
+  promotion/failover/assignment/control 全为 false，规则回退为 true。原 development
+  bundle 不修改，已有输出不覆盖。
+- **逐 seed 强制项**：实际安全采用且置信度不低于 0.6、非规则回退、D3 严格后继计划、
+  current owner/epoch/lease/fault generation、runtime ACK、ACK 后物理窗口、唯一同键 R0、
+  paired non-degradation、零硬约束违规、执行态联盟和全部必要成员 ACK。
+- **负例**：文件/内容摘要、候选指纹、实现谱系、D6/runtime 权限、门限、规则臂、计划代际、
+  epoch/lease、R0/配对、联盟、文件清单和覆盖保护均有失败关闭测试。
+- **验证**：2026-07-26，A2 专项 **17/17**、相关合同 **124/124**、D4 全量
+  **594/594 passed**；新增和修改入口通过 `py_compile`。
+- **真实路径状态**：现有 development bundle 配合 D6 当前 audit 返回
+  `d6_external_audit_fail_closed`；源 manifest、权重和训练清单哈希不变，未发布外层包。
+- **仍开放的 P1 证据**：当前实现 evidence、seed 1000-1019 正式 scope 及精确
+  `SHA256SUMS`、20/20 实际候选采用、D3/runtime ACK、干预后物理窗口、唯一 same-key R0、
+  paired non-degradation、硬约束和联盟完整性实物。该项由 main/D6 生产和外审，D4 只读
+  装配；缺任一项继续规则回退。
+- **P0**：无新增 P0。当前真实候选没有 A2 assist 资格，所有运行 authority 均关闭。
+
 ## 2026-07-26 A2 校准候选复核
 
 - **P0**：无新增 P0。0.6 置信门、50 ms 时延门、确定性 safety projection、
@@ -44,10 +67,11 @@
   runtime ACK、owner/plan/epoch/lease、联盟提交状态、成员 ACK 因果投递回执、非重叠区域
   观测窗口和隔离 paired 合同均已存在。各证据 DTO 固定不能单独授予 promotion、PPO、assist
   或 authority。
-- **尚未等价的链路**：当前没有 D4 evidence assembler 把同一候选的 runtime ACK、联盟
-  required/acked members、每条 delivered receipt、采用后物理结果和 D6 R0 配对非退化连接
-  到同一内容身份；也没有可由该装配结果生成新 admitted bundle 的 writer/loader。现有区域
-  reward 只作 truth-free 非因果窗口归因，明确不是物理执行证明。
+- **该阶段尚未等价的链路**：当时没有 D4 evidence assembler 把同一候选的 runtime ACK、
+  联盟 required/acked members、采用后物理结果和 D6 R0 配对非退化连接到同一内容身份，也
+  没有对应 writer/loader。该软件缺口现已按页首关闭。真实 delivered receipt、物理结果和
+  D6 通过型外审仍未形成；现有区域 reward 只作 truth-free 非因果窗口归因，明确不是物理
+  执行证明。
 - **现有 evidence 不可拼接**：nominal formal 20-seed 的候选安全采用为 0/20；`active_risk`
   20-seed 虽有物理窗和描述性非退化，但候选 considered/adopted 为 0/20，188/188 区域记录
   均为规则回退且 `production_runtime_ack=false`。跨候选或把两批 availability 合并均不满足
@@ -58,9 +82,9 @@
   epoch、lease、fault/partition generation；coalition ID/version、required/acked members
   及逐成员 receipt ID/digest/timestamps；采用后物理指标 availability；R0 pair 身份、逐项
   non-degradation 和 D6 审计制品摘要。
-- **唯一剩余 P1**：D6 先冻结通用外部审计输出，main 生成实际采用正样本；D4 再实现模块专用
-  装配器和独立新 bundle 发布入口。D4 不新建通用 external-audit schema，不修改旧 v2
-  manifest，不在缺实物证据时先造可通过的测试 promotion。
+- **该阶段剩余 P1 的现状**：D4 模块专用装配器和独立外层 bundle 已按页首完成；D6 仍需
+  冻结通过型通用外部审计，main 仍需生成实际采用正样本和物理证据。D4 不新建通用
+  external-audit schema，不修改旧 v2 manifest；合成 fixture 不作为真实 promotion。
 - **权限状态**：软件合同可验证局部事实；当前 bundle 仍是 development；已有实验证据仍不可
   拼接；正式 assist、PPO、authority 均为 false。
 - **验证**：2026-07-26，无新增场景或 seed；验收阈值为零自晋级路径、零跨批宽松拼接和 D4

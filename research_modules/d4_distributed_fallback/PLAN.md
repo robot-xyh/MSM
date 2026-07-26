@@ -1,5 +1,33 @@
 # D4 分布式协同与降级接管计划
 
+## 2026-07-26 A2 证据装配实施状态
+
+模块专用 evidence assembler 和 strict loader 已完成，先前“缺少证据装配软件合同”的 P1
+代码项关闭。新合同使用 `d4-region-resource-a2-evidence-bundle-v1` 外层包裹不可变
+development bundle，并按候选指纹、实现谱系、D6 审计、正式 scope、逐 seed runtime chain
+和联盟执行事实进行内容寻址。输出只表达 `a2_assist_eligible`；默认模型、PPO、模型晋级、
+故障接管、分配和控制权限继续关闭。
+
+软件合同验收日期为 2026-07-26。合成完整 fixture 专项 **17/17 passed**，相关证据合同
+**124/124 passed**，D4 全量 **594/594 passed**，新增入口均通过 `py_compile`。正例采用
+合成的 20-seed 完整制品，仅证明装配器和严格加载器在完整输入下可以工作。
+
+当前实物准入仍失败关闭。实际 development bundle 配合 D6 当前外审时稳定返回
+`d6_external_audit_fail_closed`，输出目录未创建，源 manifest、权重和训练清单未改写。后续
+按以下顺序补齐真实证据：
+
+1. main 和 D6 冻结 seed 1000-1019 的正式 scope、精确校验清单和当前实现 evidence。
+2. 非 nominal 降级 treatment 实际采用候选并通过 0.6 置信门、确定性投影和全部 authority
+   fence；规则回退不计入采用。
+3. D3 发布严格更高版本后继计划，main 保存生产语义 runtime ACK、owner/epoch/lease/fault
+   generation 及完整联盟成员 ACK。
+4. D6 从 ACK 后物理窗口形成唯一 same-key R0 和 paired non-degradation，并确认零硬约束
+   违规、零在线真值使用和零 `global_track_id` 改写。
+5. D4 只读装配这些实物。任一缺项或摘要不闭合时继续使用规则路径，不生成 A2 外层包。
+
+当前开放项属于证据生产与正式验证，不再是 D4 assembler 软件缺口。AirSim 接口、故障状态机
+和区域 advisory 运行接口未改变。
+
 ## 2026-07-26 A2 development 候选收敛与后续验证
 
 模块内候选训练与校准已完成。新版候选绑定正式 900 episode、clean supplemental
@@ -38,9 +66,9 @@ promotion 所需外部证据的约束继续有效。
 runtime ACK、区域 reward、联盟状态机和通信因果回执都保持原安全边界；不训练、不运行正式
 多 seed，不放宽 `minimum_confidence=0.6`、`50 ms`、assist 或 authority。
 
-当前唯一 D4 P1 代码任务是：在 D6 外部审计输出冻结且有真实正样本后，实现一个 **D4 专用**
-证据装配器及新版本 bundle 发布入口。它不重定义 D6 的通用审计 schema，不从
-`evidence_admission_allowed` 裸布尔直接晋级，也不修改旧 v2 manifest。实施顺序为：
+本节所列 D4 P1 代码任务已由页首的软件合同完成；以下内容保留为原设计约束和真实证据生产
+顺序。装配器不重定义 D6 的通用审计 schema，不从 `evidence_admission_allowed` 裸布尔
+直接晋级，也不修改旧 v2 manifest。实施顺序为：
 
 1. D6 先固定可校验的外部审计制品、逐 cell 采用状态、物理指标 availability、R0 配对、
    non-degradation 和 `SHA256SUMS`；D4 只读消费。
@@ -56,9 +84,9 @@ runtime ACK、区域 reward、联盟状态机和通信因果回执都保持原�
 5. main 最后分别验证 scope 预检、episode 内实际采用和默认规则回退。正式 assist 只能影响
    受现有确定性投影和 authority fence 约束的区域建议，不能直接获得运行 authority。
 
-在以下实物输入形成前，不启动 D4 装配器代码任务：D6 冻结外部审计 schema 与样例制品；至少
-一条 `new_execution_plan_applied` 的真实 D4 候选 ACK；同一联盟的逐成员因果回执；采用后物理
-结果；同 comparison key 的 R0 配对非退化。当前证据不满足这些前置条件。
+上述实物尚未形成，因此当前不能执行真实装配。合成 fixture 只用于验证代码路径，不替代
+`new_execution_plan_applied` 的真实 D4 候选 ACK、同一联盟的逐成员因果回执、采用后物理
+结果或同 comparison key 的 R0 配对非退化。
 
 ## 2026-07-26 A2/C1/F1 准入计划
 
