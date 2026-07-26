@@ -2880,6 +2880,21 @@ main 修复 finalization 后，在 dirty 工作树中按原配置重跑上述 5 
 `repository_dirty=true`，因此 D6 将其全部保留为
 `descriptive_or_incomplete_evidence`，正式验收资格为 0/5。它们不能与旧 clean 提交的
 895 个正式 episode 拼接成 900/900 正式结果。runtime 修复已形成 clean source commit
-`98d01bfa2daa0bbd279dfbde27f0dfa669150bf6`，但基于该 source 的完整 900-cell R0 formal
-rerun 尚未执行。D6 仍保留旧正式结论 895/900。D6 对 declared skip 的失败关闭规则没有
-变化：没有版本化完整 D2 输入摘要时，`skip=1` 仍不能进入正式守恒式。
+`98d01bfa2daa0bbd279dfbde27f0dfa669150bf6`。完整 R0 formal rerun 已在其后继 clean source
+`1e5ed8ddcf27f375e922a447decfbd875d21bfdf` 上启动，但尚未完成。D6 仍保留旧正式结论
+895/900。D6 对 declared skip 的失败关闭规则没有变化：没有版本化完整 D2 输入摘要时，
+`skip=1` 仍不能进入正式守恒式。
+
+### R0 正式增量复核（2026-07-25）
+
+新执行计划 SHA-256 为
+`8804ecb4dd0513db55906905f031832711012974fc911546df40e09fb297d373`。shard 0、5、9
+各完成 45 个 cell，当前执行进度为 135/900。D6 定向报告只包含其中三个原失败 cell：
+5v5 seed 1000、1005 和 20v20 seed 1009。三项均为
+`clean_formal_experiment_matrix`，基础与矩阵 formal eligibility 均为 true，generation
+contract 为 `verified`，三类 failure reason 均为空，skip 为 0，pending 为空。
+
+该结果关闭上述三个 cell 在新批次中的后验代次疑点，不代表 135 个已执行 cell 已全部由 D6
+完成正式准入，也不改变旧批次 895/900 的整体结论。原失败项 5v5 seed 1008、1018 尚未执行；
+新批次仍有 765 个 cell。检查时文件系统可用空间为 21,538,787,328 bytes，仅比 20 GiB
+运行下限多 63,950,848 bytes，约 64 MB（61 MiB）。

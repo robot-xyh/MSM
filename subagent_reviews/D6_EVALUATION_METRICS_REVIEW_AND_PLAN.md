@@ -2382,7 +2382,26 @@ main 在 `/tmp/msm-r0-finalize-fix-20260725` 重跑原 5 个异常 cell。D6 v10
 provenance。评审接受该结果作为修复确认，不接受把它与旧 clean 提交的 895 项拼接，也不接受
 据此声明 R0 900/900 formal acceptance。
 
-基于 clean source commit `98d01bf` 的完整 900-cell R0 formal rerun 尚未执行。D6 继续保持
+完整 R0 formal rerun 已在 clean source `1e5ed8d` 上启动，当前完成 135/900。D6 继续保持
 旧正式结论 895/900，并在新批次中使用 v10 逐项核对 generation contract、clean provenance
 和实验矩阵门。任何 `skip=1` 若没有版本化完整 D2 输入摘要，仍须失败关闭；本次 `skip=0`
 的结果不能作为放宽先例。
+
+### 2026-07-25 增量正式评审
+
+评审核对 execution plan SHA-256
+`8804ecb4dd0513db55906905f031832711012974fc911546df40e09fb297d373`。shard 0、5、9
+checkpoint 均为 complete，各 45/45。`targeted_formal_d6` 中三个原失败 cell 为：
+
+1. delayed_noisy 5v5 seed 1000；
+2. delayed_noisy 5v5 seed 1005；
+3. delayed_noisy 20v20 seed 1009。
+
+三项均为 clean-formal，基础与矩阵 formal eligibility 为 true，generation contract 为
+verified，integrity 为 true，episode/matrix/variant failure reasons 全为空；D1 final 与
+D2 consumed 一致，skip 为 0，pending 为空。评审接受这三个 cell 的新批次正式准入。
+
+评审不接受 898/900、135/135 或 900/900 的组合声明。旧 895/900 属于旧 source 的整体结论；
+新 source 当前只有 135/900 执行完成，D6 定向报告只覆盖其中三项。5v5 seed 1008/1018 和
+其余 765 个 cell 保持开放。磁盘可用空间仅比 20 GiB 下限多约 64 MB，main 应先处理运行空间，
+再继续同一 source、同一 plan 的剩余分片。

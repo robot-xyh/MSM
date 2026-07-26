@@ -2332,8 +2332,8 @@ GAP 状态：当前无 D6-owned P0。clean 单 seed 安全合同证据已闭合�
 
 该 P0 不属于 D6 控制代码所有权。D6 已补齐检测并保持 fail-closed，v10 已提交为
 `8e955f3`。main/D2 修复已形成 clean source commit `98d01bf`。5 个异常 cell 的 dirty
-定向回归已经通过；完整 900-cell R0 formal rerun 尚未执行。旧 895 个通过项不能与此前
-dirty 工作树的 5 个修复项拼接为正式结果。
+定向回归已经通过。正式 R0 已在后继 clean source `1e5ed8d` 上启动，当前完成 135/900。
+旧 895 个通过项不能与此前 dirty 工作树的 5 个修复项或新批次局部结果拼接。
 
 ### D6 状态
 
@@ -2359,8 +2359,20 @@ main 已修复 runtime finalization，并在 dirty 工作树中重跑原 5 个�
 状态。五项的
 `repository_dirty=true`，D6 正确保留为 5 个
 `descriptive_or_incomplete_evidence`，formal eligibility 为 0/5。旧 clean 895 项不得与
-该批次拼接。修复已由 clean source commit `98d01bf` 固化，但完整 900-cell R0 尚未重跑。
-D6 继续保持旧正式结论 895/900，900/900 formal acceptance 仍是开放验收项。
+该批次拼接。修复已由 clean source commit `98d01bf` 固化，后继 source `1e5ed8d` 的完整
+R0 已执行 135/900，但尚未完成。D6 继续保持旧正式结论 895/900，900/900 formal
+acceptance 仍是开放验收项。
 
 D6 的 skip 门没有放宽。此次修复通过来自 skip=0 和实际消费闭环；未来任何未经版本化完整
 D2 输入摘要验证的 skip 仍不能进入 formal 守恒式。
+
+### Clean-source 增量正式状态（2026-07-25）
+
+- source/plan 为 `1e5ed8d` /
+  `8804ecb4dd0513db55906905f031832711012974fc911546df40e09fb297d373`，来源 dirty=false。
+- shard 0、5、9 各完成 45/45，总计 135/900；剩余 765。
+- D6 定向报告中的 5v5 seed 1000/1005、20v20 seed 1009 为 3/3 clean-formal、两层
+  formal eligible、generation verified，failure reasons 为空。
+- 该 3/3 关闭三个目标 cell，不关闭其余已执行 cell。5v5 seed 1008/1018 仍开放。
+- 当前磁盘仅比 20 GiB 下限高 63,950,848 bytes。该运行条件阻塞完整批次，不改变 D6
+  evaluator 状态；当前无新增 D6-owned 代码 P0。

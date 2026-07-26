@@ -3157,6 +3157,23 @@ main 修复 finalization 后，在 dirty 工作树中重跑原 5 个异常 cell�
 五项均满足 `consumption + pre_tick_merge == d1_generation`，不再依赖 finalization skip。
 这证明错误跳过在定向开发回归中已消失。五项的 `repository_dirty=true`，D6 证据分类仍为
 5 个 `descriptive_or_incomplete_evidence`，正式验收资格为 0/5。该结果不能与旧 clean
-提交的 895 项拼接。runtime 修复已形成 clean source commit `98d01bf`，但完整 900-cell
-R0 formal rerun 尚未执行。D6 仍保持旧正式结论 895/900，900/900 formal acceptance
-仍不可声明。
+提交的 895 项拼接。runtime 修复已形成 clean source commit `98d01bf`；完整 R0 formal
+rerun 已在后继 source `1e5ed8d` 上启动，但尚未完成。D6 仍保持旧正式结论 895/900，
+900/900 formal acceptance 仍不可声明。
+
+### 17.2 Clean-source 增量结果
+
+执行计划 SHA-256 为
+`8804ecb4dd0513db55906905f031832711012974fc911546df40e09fb297d373`。shard 0、5、9
+各完成 45 个 cell，执行进度为 135/900。D6 定向报告复核三个原失败 cell：
+
+| 场景 | seed | D1 final / D2 consumed | consume / publication / merge | skip | clean-formal | 两层 formal eligible | generation | failure reasons |
+| --- | ---: | --- | --- | ---: | :---: | :---: | --- | --- |
+| delayed_noisy 5v5 | 1000 | 13 / 13 | 6 / 6 / 7 | 0 | true | true / true | verified | `[]` |
+| delayed_noisy 5v5 | 1005 | 9 / 9 | 5 / 5 / 4 | 0 | true | true / true | verified | `[]` |
+| delayed_noisy 20v20 | 1009 | 27 / 27 | 7 / 7 / 20 | 0 | true | true / true | verified | `[]` |
+
+三项 `repository_dirty=false`、pending 为空，generation integrity reasons 也为空。该表只
+关闭三项定向准入，不证明其余 132 个已执行 cell 的 D6 正式状态。5v5 seed 1008、1018 和
+其余 765 个 cell 尚待执行或复核。检查时磁盘仅比 20 GiB 下限多 63,950,848 bytes。旧批次
+整体结论继续保持 895/900。

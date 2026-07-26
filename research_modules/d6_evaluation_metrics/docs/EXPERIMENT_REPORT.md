@@ -75,5 +75,19 @@ main 修复 finalization 后，在 dirty 工作树定向重跑原 5 项。D6 合
 五项均由 D2 实际消费最终后验，generation integrity reasons 为空。该批次的
 `repository_dirty=true`，因此正式验收资格仍为 0/5，只能作为修复后的开发态定向证据。
 旧 clean 895 项与新 dirty 5 项不能拼接。runtime 修复已形成 clean source commit
-`98d01bf`，完整 900-cell R0 formal rerun 尚未执行。D6 仍保持旧正式结论 895/900。
+`98d01bf`。完整 R0 formal rerun 已在后继 clean source `1e5ed8d` 上启动，当前完成
+135/900，尚未形成整体结果。D6 仍保持旧正式结论 895/900。
 详细清单和判定边界见 `FORMAL_R0_POSTERIOR_SKIP_AUDIT_CN.md`。
+
+## Clean-source 正式增量复核
+
+执行计划 SHA-256 为
+`8804ecb4dd0513db55906905f031832711012974fc911546df40e09fb297d373`。shard 0、5、9
+均完成 45/45。D6 定向结果覆盖三个原失败 cell，3/3 均为
+`clean_formal_experiment_matrix`，基础与矩阵 formal eligibility 均为 true，generation
+contract 为 `verified`，episode/matrix/variant failure reasons 全为空。
+
+三个 cell 分别为 5v5 seed 1000、1005 和 20v20 seed 1009。D1/D2 最终代次分别为
+13/13、9/9、27/27；skip 均为 0，pending 均为空。该证据不能外推到其余已执行 cell。
+新批次剩余 765 个 cell，原失败项 5v5 seed 1008、1018 仍开放。磁盘可用空间仅比 20 GiB
+下限多约 64 MB。完整批次结束前，旧正式结论保持 895/900。
