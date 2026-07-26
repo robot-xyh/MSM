@@ -20,7 +20,12 @@ blocker。clean `d437744c...4ffb` 的 7fb5 输入 AUC 为 0.720073，非零共�
 
 第一阶段输出的 `audit_evidence.json` 与旧 D6 consumer 字段兼容，但不包含模型权重，也不改变
 模型清单。它不能开放 G1，不能生成或改写中心 `global_track_id`，不能调整分配计划，也不能输出
-控制命令。正式 registry 待 producer 实现提交后在 clean worktree 发布。
+控制命令。producer 提交 `fa3ec10` 已于 `2026-07-26T13:49:10Z` 在 clean worktree 发布正式
+registry。`audit_evidence.json` 和根 `SHA256SUMS` 的 SHA-256 为 `bcee8cbc...8f29` 和
+`c1abebfa...7f63`；第二次发布被目标目录保护拒绝，文件哈希未变化。
+
+D6 尚未正式外审该 registry。当前只是完整、可复核的 producer 输出，不是模型准入结果。
+G1、辅助、默认路径、全局身份、分配和控制权限全部保持关闭。
 2026-07-26 D5 全量回归为 `589 passed in 112.89s`。
 
 ## 稳健训练与失败关闭

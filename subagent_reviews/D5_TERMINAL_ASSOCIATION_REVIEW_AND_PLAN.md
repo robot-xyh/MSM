@@ -16,8 +16,13 @@ D5 已补充冻结 registry producer assembler。它接收上述五份实物及�
 
 限制项不再照抄 producer summary。AUC 达到或超过 0.995 才保留单特征捷径；共享全局航迹计数
 非零且近确定性时才增加独立 blocker。7fb5 clean 输入的只读预检保留候选图未重建、D6 外审
-待完成和无在线权限三项。正式 registry 待本轮代码提交后在 clean worktree 发布。D6 审计和
-G1 v4 仍未运行，确定性几何规则继续作为默认路径。
+待完成和无在线权限三项。producer 提交 `fa3ec10` 已于 `2026-07-26T13:49:10Z` 正式发布
+`tracklet_gnn_7fb5db8b_registry_fa3ec10/`。中文报告、evidence、reference 和根清单 SHA-256
+分别为 `1dfe1b3b...8c7c`、`bcee8cbc...8f29`、`9441fa84...a5d` 和
+`c1abebfa...7f63`。重复发布失败关闭且文件哈希不变。
+
+D6 尚未正式消费该 registry，main 的临时 preflight 不计作正式结果。G1 v4 仍未运行，
+所有在线权限保持关闭，确定性几何规则继续作为默认路径。
 2026-07-26 D5 全量回归为 `589 passed in 112.89s`，定向冻结审计回归为
 `17 passed in 3.43s`。
 

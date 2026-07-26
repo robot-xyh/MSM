@@ -8,16 +8,17 @@
 | D6 producer schema 缺失 | **代码与 fixture 已关闭** | 新装配器输出旧 consumer 兼容的 `d5.frozen-tracklet-audit-evidence.v1`，不再以 `d5.frozen-tracklet-audit-summary.v1` 代替。 |
 | registry 根校验清单不完整 | **代码与 fixture 已关闭** | 根 `SHA256SUMS` 精确绑定冻结引用、`audit_evidence.json` 和中文报告；缺项、重复项、哈希不符或非空目标目录均失败关闭。 |
 | 文件和内容完整性 | **代码与 fixture 已关闭** | 五份输入均校验带外文件 SHA-256；held-out/paired 另复算规范化 content SHA；输出前后再次复算全部输入，变化时不发布。 |
-| bundle/corpus/report/lineage 交叉绑定 | **代码与 7fb5 只读预检已关闭** | reference、summary、held-out、paired 和 lineage 的 bundle 三哈希、corpus 三哈希、held-out 文件/content、paired 文件/content、lineage SHA/记录数及 20/900/45 目录一致。 |
+| bundle/corpus/report/lineage 交叉绑定 | **正式 producer 输出已关闭** | reference、summary、held-out、paired 和 lineage 的 bundle 三哈希、corpus 三哈希、held-out 文件/content、paired 文件/content、lineage SHA/900 条记录及 20/900/45 目录一致。 |
 | authority 失败关闭 | **关闭并保持回归** | reference、summary、held-out、paired 的 G1/assist/authority/default/runtime-default 全 false；truth 使用和 `global_track_id` 改写计数为 0。 |
 | 单特征 limitation 误保留 | **关闭** | AUC `>=0.995` 才加入 blocker。7fb5 clean 输入 AUC=`0.720073`，不保留旧 blocker；固定保留候选图未重建、D6 外审待完成和无在线权限三项。 |
 | shared global track 捷径 | **关闭到现有数据** | 只有非零分层有候选边且 `near_deterministic=true` 时加入 `shared_global_track_count_near_deterministic_shortcut`。7fb5 clean 输入非零分层边数为 0。 |
-| 正式 registry 发布 | **P1 开放，fail-closed** | 当前源码尚未提交，未在脏工作树发布正式 registry。提交后须切 clean worktree 运行 producer CLI。 |
+| 正式 registry 发布 | **D5-owned 已关闭** | `fa3ec10` 已于 `2026-07-26T13:49:10Z` 在 clean worktree 发布 `tracklet_gnn_7fb5db8b_registry_fa3ec10/`。evidence/root-checksums SHA 为 `bcee8cbc...8f29` / `c1abebfa...7f63`。 |
+| 重复发布保护 | **关闭并保持回归** | 第二次向同目录发布以 `registry_destination_exists` 失败关闭；四份输出与五份输入哈希前后完全相同。 |
 | D6 外部审计与 G1 v4 | **P1 开放** | D6 需先消费正式 registry 做独立复核；通过后才能运行既有 G1 v4 assembler。当前模型仍为 `development_only_fail_closed`。 |
 | 真实候选门重新构图 | **P1 开放** | clean 结果仍来自合成固定候选图，不能关闭真实时间偏差、外参漂移、遮挡重现和真实相机泛化。 |
 
-当前没有新增 P0。D5-owned producer 合同已实现并通过 7fb5 输入只读预检；尚未关闭的是 clean
-正式发布、D6 独立审计、G1 v4 准入和真实重新构图验证。
+当前没有新增 P0。D5-owned producer 合同和正式发布均已关闭；尚未关闭的是 D6 独立审计、
+G1 v4 准入和真实重新构图验证。main 的临时 D6 preflight 不计作正式 D6 结果。
 2026-07-26 D5 全量回归为 `589 passed in 112.89s`，零失败门通过。
 
 ## 2026-07-26 G1 稳健候选状态
@@ -30,7 +31,7 @@
 | clean implementation evidence | **已由后续 clean producer 关闭** | 本表记录此前 dirty 内部运行；最新状态见上节 commit `d437744c...4ffb`。 |
 | held-out | **开发证据完成** | seed `1000-1019`、900 帧、45 cell；F1=1.0、错误合并率=0、候选召回率=1.0、CPU P95=1.121304 ms。报告文件 SHA-256 为 `7e131910...0931`。 |
 | paired-shadow | **开发证据完成** | 名义与五类困难扰动 edge/cluster F1 均为 1.0；最高单特征 AUC=0.720073；安全计数全为 0。报告/lineage SHA-256 为 `595d0c5a...3582` / `76cda5ba...e4`。 |
-| D6 外部审计 | **P1 开放，未运行** | clean 输入已形成，但 producer-compatible registry 待本轮实现提交后正式发布。 |
+| D6 外部审计 | **P1 开放，未运行** | producer-compatible registry 已正式发布，等待 D6 owner 独立消费。 |
 | G1 assembler | **P1 开放，未运行** | 仅在 D6 外部审计通过后才可生成 admitted v4。 |
 | 在线权限 | **保持关闭** | `development_only_fail_closed`；`default_model=false`、`g1_assist_eligible=false`，规则路径不变。 |
 

@@ -47,8 +47,16 @@ false；在线真值、中心全局航迹标识改写和同相机互斥违规计
 和无在线权限三项。clean `d437744c...4ffb` 的 7fb5 输入只读预检得到
 \(AUC_{\max}=0.720073\)，非零共享计数边数为 0，因此不保留两项动态捷径 blocker。
 
+producer 提交 `fa3ec10` 于 `2026-07-26T13:49:10Z` 在 clean worktree 执行正式装配。输出目录为
+`outputs/d5_g1_clean_source_chain_d437744_20260726/model_registry/tracklet_gnn_7fb5db8b_registry_fa3ec10/`。
+正式 `audit_evidence.json` SHA-256 为 `bcee8cbc...8f29`，根 `SHA256SUMS` 为
+`c1abebfa...7f63`。根清单绑定的中文报告和冻结引用分别为 `1dfe1b3b...8c7c` 和
+`9441fa84...a5d`。第二次使用相同输入和输出目录执行时，在读取或写入输出前以
+`registry_destination_exists` 拒绝；四份正式输出和五份输入哈希保持不变。
+
 该装配器只形成 D6 输入。D6 独立外审通过后，既有 G1 v4 evidence assembler 才能尝试生成
 `g1_assist_eligible=true` 的 bundle。两阶段均不授予默认路径、全局身份、分配或控制权限。
+D6 尚未正式审计本次 7fb5 registry，main 的临时 preflight 不计作 D6 正式结果。
 2026-07-26 D5 全量回归为 `589 passed in 112.89s`。
 
 ## 稳健候选实现
@@ -80,8 +88,8 @@ H_r=\operatorname{SHA256}(\text{runtime source file hashes}).
 
 先前内部运行的权重为 `7fb5db8b...ca71`，温度为 0.6541651703，阈值为 0.8964798918。
 其训练来源为 dirty，因此只生成 development v3 bundle。后续已在 clean
-`d437744c...4ffb` 重建同一权重指纹和完整 producer 证据；正式 registry 待本轮装配器提交后
-发布。`default_model` 和 `g1_assist_eligible` 均为 false。
+`d437744c...4ffb` 重建同一权重指纹和完整 producer 证据，并由 `fa3ec10` 正式发布 registry。
+`default_model` 和 `g1_assist_eligible` 均为 false。
 2026-07-26 D5 全量回归为 `578 passed in 103.88s`，十个修改或新增 Python 文件通过
 `python3 -m py_compile`。
 

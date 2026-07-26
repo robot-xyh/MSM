@@ -1,6 +1,6 @@
 # D5 末端视觉配准与身份认证实验报告
 
-## 2026-07-26 冻结 registry producer 验证
+## 2026-07-26 冻结 registry 正式发布
 
 ### clean 输入
 
@@ -15,7 +15,7 @@ paired-shadow 的名义边/簇 F1 均为 1.0，五类固定候选图困难扰动
 
 ### 软件验证
 
-新增 producer assembler 专项覆盖低 AUC、高 AUC、共享计数捷径、带外文件哈希、规范化内容
+producer assembler 专项覆盖低 AUC、高 AUC、共享计数捷径、带外文件哈希、规范化内容
 哈希、schema、逐帧 lineage、权限字段、输出清单和非空目标目录。定向执行结果为
 `17 passed in 3.43s`，其中新装配专项 `11 passed`。另对 7fb5 clean 五份输入执行
 只读预检，bundle、corpus、held-out、paired、lineage、20/900/45 目录和权限边界全部一致。
@@ -25,8 +25,25 @@ paired-shadow 的名义边/簇 F1 均为 1.0，五类固定候选图困难扰动
 `d6_external_audit_required` 和 `no_online_authority`。旧
 `synthetic_heldout_single_feature_shortcut` 未保留；共享全局航迹计数捷径未触发。
 
-本轮没有在当前未提交工作树发布正式 registry。正式输出需在 producer 实现提交后从 clean
-worktree 生成，再交 D6 独立审计。当前结果不授予 G1 assist、默认路径、全局航迹标识或控制权限。
+producer 提交 `fa3ec10` 于 `2026-07-26T13:49:10Z` 在 clean worktree 完成正式发布。输出目录为
+`outputs/d5_g1_clean_source_chain_d437744_20260726/model_registry/tracklet_gnn_7fb5db8b_registry_fa3ec10/`。
+正式文件摘要如下：
+
+| 文件 | SHA-256 |
+| --- | --- |
+| `FROZEN_GNN_AUDIT_REPORT_CN.md` | `1dfe1b3b5c13d7be1ec4c20cf2e32a45040a16709deedc0d93484bce392e8c7c` |
+| `audit_evidence.json` | `bcee8cbcaeda066398127fcf2da8697ace8922404774a0d84235aac4194c8f29` |
+| `frozen_bundle_reference.json` | `9441fa843928c45125cda4ee160ed22bd145e721cd82ef66163f714ffa73da5d` |
+| `SHA256SUMS` | `c1abebfa957d8bea5be5e03a76d2027d964ea0db219b63eb84c4aaed04097f63` |
+
+根清单三项全部通过。正式 evidence schema 为
+`d5.frozen-tracklet-audit-evidence.v1`；manifest、weights 和 lineage SHA-256 分别为
+`0eff183f...da77`、`7fb5db8b...ca71` 和 `ca122b71...b57`。所有 authority 字段为 false。
+第二次发布返回非零退出码并以 `registry_destination_exists` 失败关闭，正式输出和历史输入哈希
+均未变化。
+
+D6 尚未正式消费该 registry。main 的临时 D6 preflight 不计作正式外审。当前结果不授予 G1
+assist、默认路径、全局航迹标识或控制权限。
 同日 D5 全量回归为 `589 passed in 112.89s`。
 
 ## 2026-07-26 G1 稳健候选失败关闭结果

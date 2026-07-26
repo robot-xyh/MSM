@@ -16,7 +16,11 @@
 - [x] 动态生成 limitation：单特征 AUC `>=0.995` 才保留合成捷径；共享全局航迹计数非零且近
   确定性时才加入独立阻断项。7fb5 clean 输入的只读预检 AUC=`0.720073`，没有共享计数捷径。
 - [x] 增加低/高 AUC、共享计数、文件/内容/schema/lineage 篡改、权限、输出清单和非空目录测试。
-- [ ] 将本轮 producer 实现提交后，在对应 clean worktree 运行正式装配，生成固定 registry。
+- [x] producer 实现提交为 `fa3ec10`，已在对应 clean worktree 运行正式装配。固定目录为
+  `outputs/d5_g1_clean_source_chain_d437744_20260726/model_registry/tracklet_gnn_7fb5db8b_registry_fa3ec10/`；
+  发布时刻为 `2026-07-26T13:49:10Z`。
+- [x] 校验根 `SHA256SUMS`、evidence schema、bundle 三哈希、held-out/paired/lineage 和
+  20/900/45 目录；所有 authority 为 false。重复发布被拒绝且正式输出哈希不变。
 - [ ] 由 D6 owner 消费正式 registry、bundle、held-out、paired 和 lineage 执行独立外部审计。
 - [ ] 仅在 D6 审计通过后运行既有 G1 v4 evidence assembler；此前
   `default_model=false`、`g1_assist_eligible=false`、无在线或控制权限。
@@ -41,7 +45,7 @@
   v4，没有修改旧 bundle/manifest/报告、门限或兼容名单。
 - [x] 在 clean commit `d437744c...4ffb` 上重建 supplemental/composite、重训 development
   bundle，并生成 held-out、paired-shadow 和 registry reference；producer-compatible
-  `audit_evidence.json` 待本轮装配器提交后在 clean worktree 发布。
+  `audit_evidence.json` 已由 `fa3ec10` 在 clean worktree 正式发布。
 - [ ] 由 main 协调 D6 owner 对 clean 制品执行独立外部审计。审计通过后才允许尝试 G1
   assembler；当前 `G1=false`、`assist=false`、`authority=false`。
 

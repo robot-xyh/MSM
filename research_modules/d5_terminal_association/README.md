@@ -22,8 +22,14 @@ development bundle、20-seed held-out 和 paired-shadow。冻结权重 SHA-256 �
 `synthetic_heldout_single_feature_shortcut`；非零共享全局航迹计数同时呈近确定性时才写入
 对应捷径阻断项。7fb5 clean 输入的只读预检只保留
 `counterfactual_profiles_hold_candidate_graph_fixed`、`d6_external_audit_required` 和
-`no_online_authority`。本轮未在当前未提交源码上发布正式 registry，也未运行 D6 外部审计或
-G1 v4 assembler。确定性几何规则仍是默认路径。
+`no_online_authority`。producer 提交 `fa3ec10` 已于 `2026-07-26T13:49:10Z` 在 clean
+worktree 发布正式 registry：
+`outputs/d5_g1_clean_source_chain_d437744_20260726/model_registry/tracklet_gnn_7fb5db8b_registry_fa3ec10/`。
+中文报告、`audit_evidence.json`、冻结引用和根 `SHA256SUMS` 的 SHA-256 分别为
+`1dfe1b3b...8c7c`、`bcee8cbc...8f29`、`9441fa84...a5d` 和 `c1abebfa...7f63`。
+根清单三项全部通过；第二次向同目录发布以 `registry_destination_exists` 失败关闭，四份输出和
+五份历史输入哈希均未变化。D6 尚未对该正式 registry 执行外部审计，G1 v4 assembler 未运行，
+没有在线、默认路径或控制权限。确定性几何规则仍是默认路径。
 2026-07-26 D5 全量回归为 `589 passed in 112.89s`，验收要求为零失败。
 
 ## 2026-07-26 G1 稳健开发候选
