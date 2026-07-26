@@ -1593,11 +1593,15 @@ evaluation payload 严格相同；相邻计数 `133/0` 不变。
 - [x] 不把未调用记为消费，不增加虚假 merge，不丢弃 late batch。
 - [x] 发布
   `docs/D2_FORMAL_R0_GENERATION_CONSERVATION_AUDIT_CN.md`。
-- [x] main runtime bus 工作树 hotfix 已实际消费最终 pending 后验，消费失败时不再
-  清空 pending。
+- [x] main runtime bus 修复已实际消费最终 pending 后验，消费失败时不再清空 pending；
+  修复已形成 clean source commit `98d01bf`。
 - [x] 五个原失败 seed 的开发态定向回归已通过 generation integrity 和 D2
   replay-coast 不变量。
-- [ ] 将 hotfix 形成新 clean commit，并从零重跑完整 900-cell R0。
+- [x] D2 replay-coast 复核提交为 `dc5821f`，D6 skip 准入修复提交为 `8e955f3`；
+  二者均包含在 `98d01bf` 的提交历史中。
+- [ ] 解决正式 R0 存储容量阻塞，在不删除或改写既有证据的前提下满足新批次空间和
+  20 GiB 运行下限。
+- [ ] 绑定 `98d01bf` 生成新 execution plan，并从零重跑完整 900-cell R0。
 
 ### 39.3 验收
 
@@ -1623,7 +1627,8 @@ evaluation payload 严格相同；相邻计数 `133/0` 不变。
 D2 owner 快照确认五例累计 hits、last update time、track key 和 canonical ID 集合
 不变，created map 为空、duplicate coalescence 为 0。当前输出全部
 `repository_dirty=true`，D6 formal admission 为 0/5。P0 的代码修复已通过开发态复核，
-正式证据关闭仍等待新 clean commit 的 900-cell R0。
+修复已形成 clean source commit `98d01bf`。正式证据关闭仍等待存储解阻后的完整
+900-cell R0。
 
 ### 39.5 当前验证
 

@@ -2315,14 +2315,16 @@ D1 generation
 actual consumption 分开。详细证据见
 `D2_FORMAL_R0_GENERATION_CONSERVATION_AUDIT_CN.md`。
 
-main-owned hotfix 已取消 finalize 的简化签名跳过，最终 pending 后验现在实际调用
-`Scalable3DTracker.step()`；调用未消费时 runtime 失败关闭。五个原失败 delayed-noisy
-cell 的开发态复跑中，全部最终输入都先进入 replay quarantine，`fresh_detection_count`
-为 0，因此不进入 GNN/Hungarian、命中更新或未匹配检测建轨。符合宽限期的绑定航迹只做
-prediction-only coast。
+main finalize 修复已在 clean source commit `98d01bf` 中取消简化签名跳过，最终
+pending 后验现在实际调用 `Scalable3DTracker.step()`；调用未消费时 runtime 失败关闭。
+D2 replay-coast 复核提交为 `dc5821f`，D6 未验证 skip 失败关闭提交为 `8e955f3`。五个
+原失败 delayed-noisy cell 的开发态复跑中，全部最终输入都先进入 replay quarantine，
+`fresh_detection_count` 为 0，因此不进入 GNN/Hungarian、命中更新或未匹配检测建轨。
+符合宽限期的绑定航迹只做 prediction-only coast。
 
 五例累计 hit、`last_update_time`、track key 集合和规范 `global_track_id` 集合保持不变，
 birth map 为空且 duplicate coalescence 为 0。20v20 seed 1009 有一条航迹超出
 replay-coast 宽限期，按既有失败关闭规则增加 miss 并清零 consecutive hits；它没有增加
 累计 hit、创建新轨或改写 ID。该结论已经由代码路径和 5-cell dirty-worktree 回归验证，
-尚未由新 clean commit 的完整 900-cell R0 正式复跑确认。
+尚未由完整 900-cell R0 正式复跑确认。clean source commit 已形成；正式复跑当前由
+存储容量阻塞。

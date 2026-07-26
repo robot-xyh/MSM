@@ -1554,13 +1554,14 @@ main 修复顺序应为：关闭 D1 scan input，形成最终完整后验，调�
 consumed generation 与 publication，最后清空 pending。失败返回必须保留原因并失败
 关闭。
 
-main 已按该顺序完成工作树修复和五个失败 seed 的开发态复跑。下一步是在新 clean
-source commit 上重跑正式 R0。若后续需要 no-op 优化，必须先实现 D2 可见完整输入的
-规范摘要和独立 resolved watermark，再申请 D6 准入。
+main 已按该顺序完成修复和五个失败 seed 的开发态复跑。D2、D6 和 main 提交依次为
+`dc5821f`、`8e955f3`、`98d01bf`；`98d01bf` 已是 clean source commit。下一步先解决
+存储容量阻塞，再绑定该提交重跑正式 R0。若后续需要 no-op 优化，必须先实现 D2 可见
+完整输入的规范摘要和独立 resolved watermark，再申请 D6 准入。
 
 ### 47.4 Hotfix 接受结论
 
-评审接受 main-owned 工作树 hotfix 的代码路径：finalize 最终后验实际调用
+评审接受 main hotfix 的代码路径：finalize 最终后验实际调用
 `Scalable3DTracker.step()`，未消费时失败关闭。五个原失败 cell 的开发态复跑均满足
 D1 final generation 等于 D2 consumed generation、skip 为 0、pending 为空和在线真值
 使用为 0。
@@ -1571,8 +1572,9 @@ duplicate coalescence 或规范 `global_track_id` 变化。Tracker 快照还确�
 增加 miss 并清零 consecutive hits；该行为不属于重复命中或身份改写。
 
 评审接受代码和 5-cell 开发态定向回归，不接受其作为正式 R0 通过证据。五个 manifest
-均为 dirty working tree，D6 formal admission 为 0/5。正式关闭需要把 hotfix 形成新
-clean commit，并从零完成 900-cell R0 formal rerun。
+均为 dirty working tree，D6 formal admission 为 0/5。修复已形成 clean source commit
+`98d01bf`，但新的完整 900-cell R0 尚未运行。当前存储无法同时满足既有证据保留、新批次
+空间和 20 GiB 运行下限；正式关闭需先解决存储，再从零完成 formal rerun。
 
 本轮 D2 replay-coast 专项为 `5 passed`，D2 全量为 `305 passed, 1 warning`，main
 hotfix 五 seed 定向测试为 `5 passed`；语法检查和 scoped diff 格式检查通过。该测试结果

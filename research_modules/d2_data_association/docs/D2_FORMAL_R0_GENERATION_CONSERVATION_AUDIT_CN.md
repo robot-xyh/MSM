@@ -20,9 +20,10 @@ generation。
 no-op。五个 skip 的最终后验均相对 D2 最后实际消费后验发生状态和协方差变化。
 
 本轮不修改 D2 算法，不伪造 `id_switch_count`，不通过调整统计公式放宽正式准入。
-main-owned 工作树 hotfix 已修正调用路径，五个原失败 cell 的开发态定向回归通过。
-旧 `2c7b425` 正式 R0 仍是 P0 失败基线；新 clean source commit 的完整 900-cell
-formal rerun 尚未完成，因此正式证据缺口保持开放。
+D2 replay-coast 复核已提交为 `dc5821f`，D6 准入修复已提交为 `8e955f3`，main 调用
+路径修复已形成 clean source commit `98d01bf`。五个原失败 cell 的开发态定向回归通过。
+旧 `2c7b425` 正式 R0 仍是 P0 失败基线；修复后的完整 900-cell formal rerun 尚未运行，
+当前由存储容量阻塞，因此正式证据缺口保持开放。
 
 ## 失败范围
 
@@ -178,13 +179,14 @@ replay-coast 专项为 `5 passed in 0.95s`；main-owned hotfix 五 seed 定向�
 
 ### 代码路径
 
-2026-07-25 复核 main-owned 工作树 hotfix。main 已删除 finalize 调用中的
+2026-07-25 复核 main finalize 修复。main 已删除 finalize 调用中的
 `skip_unchanged_posterior=True`，因此最后一个 pending D1 后验实际进入
 `Scalable3DTracker.step()`。若 D2 返回未消费，finalize 现在抛出异常，不再清空 pending
 后继续运行。
 
 该改动符合上文“Main 所需动作”中的首选修复，不修改 D2 replay-coast、claim ledger、
-`global_track_id` 或 `id_switch_count`。
+`global_track_id` 或 `id_switch_count`。D2 复核、D6 准入修复和 main 修复分别提交为
+`dc5821f`、`8e955f3`、`98d01bf`；`98d01bf` 是完整修复链的 clean source commit。
 
 ### 五个定向 Cell
 
@@ -228,10 +230,12 @@ D2 owner 使用同一五组配置在当前工作树直接快照 finalize 前后�
 
 因此本 hotfix 已关闭可复现的代码路径缺陷，但尚未关闭正式 R0 证据缺口。后续必须：
 
-1. 将 main hotfix 和相关测试形成新 clean commit；
-2. 从该 commit 创建新的正式 execution plan；
-3. 从零重跑完整 900-cell R0；
-4. 由 D6 验证 900/900 generation integrity、repository clean 和 formal admission。
+1. 保留 clean source commit `98d01bf` 及其 D2/D6 前置提交，不跨提交拼接正式证据；
+2. 先解决存储容量阻塞；现有正式批次约 22 GiB、旧失败现场约 1.2 GiB，新批次预计约
+   22 GiB，运行器还要求保留 20 GiB 可用空间；
+3. 绑定 `98d01bf` 创建新的正式 execution plan；
+4. 从零重跑完整 900-cell R0；
+5. 由 D6 验证 900/900 generation integrity、repository clean 和 formal admission。
 
 旧 `2c7b425` 正式 900-cell 结果继续保留为失败基线；本次 5-cell dirty 输出只能作为
 开发态定向回归，二者都不能改写为修复后的正式 R0。

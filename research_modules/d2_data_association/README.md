@@ -1210,15 +1210,17 @@ replay-coast 保证重复来源证据不增加 hit、不建新轨、不刷新原
 `finalize_skip` 加入正式准入式会掩盖合法后验丢失。
 
 完整证据与 no-op 准入条件见
-`docs/D2_FORMAL_R0_GENERATION_CONSERVATION_AUDIT_CN.md`。main-owned 工作树 hotfix
-已经取消该简化跳过，并在 D2 未消费时失败关闭。五个原失败 cell 的开发态定向回归均
-满足 D1 final generation 等于 D2 consumed generation、skip 为 0、pending 为空和在线
-真值使用为 0。
+`docs/D2_FORMAL_R0_GENERATION_CONSERVATION_AUDIT_CN.md`。D2 replay-coast 复核已提交
+为 `dc5821f`，D6 未验证 skip 失败关闭已提交为 `8e955f3`，main finalize 修复已形成
+clean source commit `98d01bf`。该修复取消简化跳过，并在 D2 未消费时失败关闭。五个
+原失败 cell 的开发态定向回归均满足 D1 final generation 等于 D2 consumed generation、
+skip 为 0、pending 为空和在线真值使用为 0。
 
 五例最终调用全部为 `fresh_detection_count=0`，且没有新 birth、duplicate
 coalescence 或规范 `global_track_id` 变化。四个 5v5 cell 全部 replay 在宽限期内
 coast；20v20 seed 1009 有一条航迹超出宽限期并按既有生命周期记一次 miss，累计 hit
 和原始证据更新时间仍不变。代码路径修复与 5-cell 开发态回归已通过；这些制品来自 dirty
-工作树，新的 clean commit 完整 900-cell R0 formal rerun 尚未完成。2026-07-25 D2
+工作树。修复后的完整 900-cell R0 formal rerun 尚未运行；现有正式证据、新批次预计
+空间和 20 GiB 运行下限无法同时满足，当前仍由存储容量阻塞。2026-07-25 D2
 全量回归为 `305 passed, 1 warning in 29.45s`，main hotfix 定向测试为
 `5 passed, 66 deselected in 3.51s`。

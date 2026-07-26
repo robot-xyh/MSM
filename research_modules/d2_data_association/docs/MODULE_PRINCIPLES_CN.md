@@ -1708,4 +1708,6 @@ clean source commit `0d2da25` 的 seed 1000 只读复算中，严格 IDSW 保持
    关联、命中更新或未匹配检测 birth。宽限期内只允许 prediction-only coast。
 8. **超宽限按失败关闭处理**：replay 超过宽限期时可增加 miss 并触发生命周期退化，但
    仍不得增加累计 hit、刷新原始证据时间、重复建轨或改写 `global_track_id`。五个开发态
-   定向 cell 已验证这些不变量；完整 clean 900-cell R0 仍待复跑。
+   定向 cell 已验证这些不变量。D2、D6 和 main 修复已依次形成 `dc5821f`、
+   `8e955f3`、`98d01bf`，其中 `98d01bf` 为 clean source commit；完整 900-cell R0
+   尚未运行，当前由存储容量阻塞。

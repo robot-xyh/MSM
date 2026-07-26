@@ -12,6 +12,7 @@ D2 文档遵循 `research_modules/DOCUMENTATION_STANDARD.md`。推荐阅读顺�
 8. `AIRSIM_INTEGRATION_PLAN.md`：AirSim 离线回放接入计划，以及 D1 观测谱系、versioned claim ledger、整帧 OOSM adapter、v2 truth sidecar、部分身份诊断和 main/D6 持久化字段要求。
 9. `D2_FORMAL_R0_GENERATION_CONSERVATION_AUDIT_CN.md`：正式 R0 五个
    delayed-noisy generation 守恒失败审计及 main runtime hotfix 复核，区分算术分区、
-   replay-coast 不变量、5-cell 开发态证据与待完成的 clean 900-cell 正式复跑。
+   replay-coast 不变量、5-cell 开发态证据、clean source commit `98d01bf` 与受存储
+   阻塞的 900-cell 正式复跑。
 
 本模块只用于离线科研仿真和数据关联评估，不包含真实飞控、硬件、火控、毁伤或自动处置逻辑。

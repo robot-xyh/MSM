@@ -1554,13 +1554,14 @@ main 追加核对 900 个 raw summary：
 原始证据时钟。
 
 该阶段没有修改 D2 算法，也没有生成新的性能结论。审计要求 main 取消 finalize 简化
-签名跳过并实际消费最终 pending；后续工作树 hotfix 已按此执行。直接调整 D6 公式仍不
-满足验收，正式 R0 仍需在新 clean commit 上完整复跑。
+签名跳过并实际消费最终 pending；后续修复已按此执行并形成 clean source commit
+`98d01bf`。直接调整 D6 公式仍不满足验收，正式 R0 仍需绑定该提交完整复跑。
 
 ### 37.4 Hotfix 定向回归
 
-main-owned 工作树 hotfix 已按上述路径实际调用 D2，并在消费失败时抛出异常。开发态
-输出位于 `/tmp/msm-r0-finalize-fix-20260725`。
+main 修复已按上述路径实际调用 D2，并在消费失败时抛出异常。D2 复核提交为
+`dc5821f`，D6 准入修复提交为 `8e955f3`，main clean source commit 为 `98d01bf`。
+开发态输出位于 `/tmp/msm-r0-finalize-fix-20260725`。
 
 | 规模和 seed | D1/D2 final | consumption/merge | quarantine/coast | skip |
 | --- | --- | --- | --- | ---: |
@@ -1577,8 +1578,8 @@ track key 和规范 ID 集合不变。20v20 seed 1009 未 coast 的一条航迹�
 
 D6 的 generation integrity 为 5/5 通过。五个 manifest 均记录
 `repository_dirty=true`，formal admission 为 0/5，拒绝原因仅为工作树不干净和
-episode 非 clean-formal。代码和 5-cell 开发态回归已经通过；新 clean commit 的完整
-900-cell R0 formal rerun 未完成。
+episode 非 clean-formal。代码和 5-cell 开发态回归已经通过；修复后的完整 900-cell R0
+formal rerun 尚未运行，当前由存储容量阻塞。
 
 本次文档同步后的 D2 replay-coast 专项为 `5 passed in 0.95s`，D2 全量为
 `305 passed, 1 warning in 29.45s`，main hotfix 五 seed 定向测试为

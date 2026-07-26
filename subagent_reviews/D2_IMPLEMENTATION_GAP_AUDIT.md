@@ -1482,7 +1482,8 @@ AssignmentPlan 合同。
 
 ### P0 状态
 
-**main runtime 代码路径已在工作树修复；正式证据关闭仍开放。D2-owned 算法无缺陷。**
+**main runtime 修复已形成 clean source commit `98d01bf`；正式证据关闭仍开放。
+D2-owned 算法无缺陷。**
 
 source commit `2c7b425` 的正式 R0 完成 900 个 episode。5 个 delayed-noisy episode
 未通过 generation integrity：5v5 seeds 1000/1005/1008/1018 和 20v20 seed 1009。
@@ -1506,10 +1507,12 @@ D1 已发布完整且严格递增的 generation。D2 Tracker 没有收到调用�
 - 不把未调用记为消费，不增加虚假 merge，不丢弃 late batch。
 - 已形成
   `research_modules/d2_data_association/docs/D2_FORMAL_R0_GENERATION_CONSERVATION_AUDIT_CN.md`。
-- 已复核 main-owned hotfix：最终 pending 实际进入 `Scalable3DTracker.step()`，未消费
-  时失败关闭。
+- 已复核 main hotfix：最终 pending 实际进入 `Scalable3DTracker.step()`，未消费时
+  失败关闭。
 - 已在 D2 replay-coast 单元测试中显式锁定累计 hit、birth count、track key 和规范
   `global_track_id` 集合不变。
+- D2 复核提交为 `dc5821f`，D6 准入修复提交为 `8e955f3`，完整修复链已形成 clean
+  source commit `98d01bf`。
 
 ### 开发态证据
 
@@ -1523,13 +1526,15 @@ admission 为 0/5。
 
 ### 正式关闭条件
 
-main hotfix 和定向测试需形成新 clean commit，并从零重跑完整 900-cell R0。D6 必须确认
-900/900 generation integrity、clean repository 和 formal admission。若未来恢复
-no-op，必须使用 D2 可见完整输入的强内容摘要，并把 resolved watermark 与 actual
-consumption 分开；不能仅把 finalize skip 加入正式守恒式。
+clean source commit 已形成。当前存储容量不足以同时保留既有正式证据、新一轮约 22 GiB
+制品和 20 GiB 运行下限；需先迁移旧证据、扩展存储或获得明确清理方案。解阻后绑定
+`98d01bf` 从零重跑完整 900-cell R0，D6 必须确认 900/900 generation integrity、
+clean repository 和 formal admission。若未来恢复 no-op，必须使用 D2 可见完整输入的
+强内容摘要，并把 resolved watermark 与 actual consumption 分开；不能仅把 finalize
+skip 加入正式守恒式。
 
-口径固定为：代码和 5-cell 开发态定向回归已通过；新 clean commit 的完整 900-cell R0
-formal rerun 未完成。
+口径固定为：代码和 5-cell 开发态定向回归已通过；修复已形成 clean source commit
+`98d01bf`；完整 900-cell R0 formal rerun 尚未运行，存储仍阻塞。
 
 2026-07-25 验证结果：D2 replay-coast 专项 `5 passed`，D2 全量
 `305 passed, 1 warning`，main hotfix 五 seed 定向测试 `5 passed`；`py_compile` 和
