@@ -79,6 +79,11 @@ def test_repeated_full_posterior_coasts_without_hit_birth_or_measurement_update(
     track_id = first.metadata["created_track_ids_by_detection"][
         "posterior-00000-000"
     ]
+    initial_track_keys = set(tracker.tracks)
+    initial_global_track_ids = {
+        track.global_track_id for track in tracker.tracks.values()
+    }
+    initial_birth_count = tracker.summary()["birth_count"]
 
     replay_one = tracker.step(
         [
@@ -112,8 +117,13 @@ def test_repeated_full_posterior_coasts_without_hit_birth_or_measurement_update(
         "repeated_latest_observation_id": 1
     }
     assert replay_two.metadata["created_track_ids_by_detection"] == {}
+    assert replay_two.metadata["duplicate_coalescence_count"] == 0
     assert replay_two.matched_pairs == []
     assert replay_two.metadata["missed_track_ids"] == []
+    assert set(tracker.tracks) == initial_track_keys
+    assert {
+        item.global_track_id for item in tracker.tracks.values()
+    } == initial_global_track_ids
     assert track.hits == 1
     assert track.misses == 0
     assert track.last_update_time == 0.0
@@ -121,6 +131,7 @@ def test_repeated_full_posterior_coasts_without_hit_birth_or_measurement_update(
     assert track.position_ned[0] == pytest.approx(0.4)
     assert track.lifecycle_state.value == "confirmed"
     assert tracker.summary()["replay_coast_count"] == 2
+    assert tracker.summary()["birth_count"] == initial_birth_count
 
 
 def test_replay_after_grace_resumes_miss_and_lost_transition() -> None:
@@ -142,6 +153,12 @@ def test_replay_after_grace_resumes_miss_and_lost_transition() -> None:
         ]
     )
     track_id = next(iter(first.metadata["created_track_ids_by_detection"].values()))
+    initial_track_keys = set(tracker.tracks)
+    initial_global_track_ids = {
+        track.global_track_id for track in tracker.tracks.values()
+    }
+    initial_birth_count = tracker.summary()["birth_count"]
+    initial_hits = tracker.tracks[track_id].hits
     within_grace = tracker.step(
         [
             _posterior(
@@ -168,6 +185,14 @@ def test_replay_after_grace_resumes_miss_and_lost_transition() -> None:
     assert within_grace.metadata["replay_coast_count"] == 1
     assert expired.metadata["replay_coast_count"] == 0
     assert expired.metadata["missed_track_ids"] == [track_id]
+    assert expired.metadata["created_track_ids_by_detection"] == {}
+    assert expired.metadata["duplicate_coalescence_count"] == 0
+    assert set(tracker.tracks) == initial_track_keys
+    assert {
+        item.global_track_id for item in tracker.tracks.values()
+    } == initial_global_track_ids
+    assert tracker.summary()["birth_count"] == initial_birth_count
+    assert tracker.tracks[track_id].hits == initial_hits
     assert tracker.tracks[track_id].misses == 1
     assert tracker.tracks[track_id].last_update_time == 0.0
     assert tracker.tracks[track_id].lifecycle_state.value == "lost"

@@ -1190,3 +1190,35 @@ unavailable 且排除计数为 0。处置专项为 `12 passed`，完整 D2 为
 `292 passed, 1 warning in 28.81s`，验收阈值为零失败。该修复只校正离线审计聚合，
 没有改变在线 GNN/Hungarian、门控、生命周期、中心 `global_track_id`、严格 IDSW
 公式或 AirSim 接口。
+
+## 2026-07-25 正式 R0 代次守恒审计
+
+source commit `2c7b425` 的正式 R0 共完成 900 个 episode。D6 判定 5 个
+`delayed_noisy` episode 非 clean-formal，范围为 5v5 seeds
+1000/1005/1008/1018 和 20v20 seed 1009。900 个 summary 的 finalize skip 分布为
+`{0: 895, 1: 5}`；旧守恒式恰好失败 5 项，加入 skip 的扩展式在 900/900 上成立。
+
+扩展式只证明 runtime 对 generation 的计数分区完整，不能证明 skip 是合法 no-op。
+五例最终 D1 后验相对 D2 最后实际消费后验的全部航迹均发生状态和协方差变化。20v20
+seed 1009 的状态最大绝对变化约 `0.4151`，协方差元素最大绝对变化约 `22.6234`，
+状态有效时刻前移约 `0.2550 s`。
+
+D2 Tracker 没有收到这五次 finalize 调用。根因是 main 的简化签名不含状态有效时刻、
+状态、协方差和 posterior generation，签名相等后仍无条件清空 pending。D2 代码和
+默认 GNN/Hungarian 未修改。main 应把最终 pending 后验实际交给 D2，由现有
+replay-coast 保证重复来源证据不增加 hit、不建新轨、不刷新原始证据时钟。直接把
+`finalize_skip` 加入正式准入式会掩盖合法后验丢失。
+
+完整证据与 no-op 准入条件见
+`docs/D2_FORMAL_R0_GENERATION_CONSERVATION_AUDIT_CN.md`。main-owned 工作树 hotfix
+已经取消该简化跳过，并在 D2 未消费时失败关闭。五个原失败 cell 的开发态定向回归均
+满足 D1 final generation 等于 D2 consumed generation、skip 为 0、pending 为空和在线
+真值使用为 0。
+
+五例最终调用全部为 `fresh_detection_count=0`，且没有新 birth、duplicate
+coalescence 或规范 `global_track_id` 变化。四个 5v5 cell 全部 replay 在宽限期内
+coast；20v20 seed 1009 有一条航迹超出宽限期并按既有生命周期记一次 miss，累计 hit
+和原始证据更新时间仍不变。代码路径修复与 5-cell 开发态回归已通过；这些制品来自 dirty
+工作树，新的 clean commit 完整 900-cell R0 formal rerun 尚未完成。2026-07-25 D2
+全量回归为 `305 passed, 1 warning in 29.45s`，main hotfix 定向测试为
+`5 passed, 66 deselected in 3.51s`。

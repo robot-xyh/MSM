@@ -1522,3 +1522,58 @@ evaluation payload 完全相同，相邻计数保持 `133/0`。专项 `12 passed
 
 评审接受该 D2-owned 离线合同修复，D6 校验不得放宽。该结论不接受 D2 算法晋级，不
 关闭 AirSim、多 seed、结构歧义运动学或系统实时性 P1。
+
+## 47. 2026-07-25 正式 R0 generation 守恒评审
+
+### 47.1 证据
+
+评审读取 source commit `2c7b425` 的 900 个正式 R0 episode。五个失败项全部来自
+delayed-noisy：5v5 seeds 1000/1005/1008/1018 和 20v20 seed 1009。
+
+main 对 900 个 raw summary 的计数复核表明，finalize skip 分布为 `{0: 895, 1: 5}`；
+旧守恒式恰好失败五项，加入 skip 的扩展式 900/900 成立。五例 pending 均为空、
+skip 均为 1。
+
+D2 进一步逐轨比较最后实际消费后验与最终后验。五例全部航迹的状态和协方差发生变化；
+20v20 seed 1009 的状态有效时刻前移约 `0.2550 s`，状态和协方差最大变化分别约
+`0.4151` 和 `22.6234`。
+
+### 47.2 判断
+
+扩展式证明 runtime 分支计数完备，不证明 no-op 语义。当前 skip 签名未覆盖状态、
+协方差、状态时刻和 posterior generation，不能获得正式准入。直接放宽 D6 公式会掩盖
+合法最终后验丢失。
+
+接受“main finalize 适配层缺陷”的诊断，不接受把问题归为 D2 Tracker 漏消费。D2
+根本没有收到最终调用，timestamp conflict 为 0。现有 replay-coast 能处理重复来源
+证据的后验前推，不需要修改 IDSW 或制造补偿 generation。
+
+### 47.3 后续
+
+main 修复顺序应为：关闭 D1 scan input，形成最终完整后验，调用 D2，确认成功，更新
+consumed generation 与 publication，最后清空 pending。失败返回必须保留原因并失败
+关闭。
+
+main 已按该顺序完成工作树修复和五个失败 seed 的开发态复跑。下一步是在新 clean
+source commit 上重跑正式 R0。若后续需要 no-op 优化，必须先实现 D2 可见完整输入的
+规范摘要和独立 resolved watermark，再申请 D6 准入。
+
+### 47.4 Hotfix 接受结论
+
+评审接受 main-owned 工作树 hotfix 的代码路径：finalize 最终后验实际调用
+`Scalable3DTracker.step()`，未消费时失败关闭。五个原失败 cell 的开发态复跑均满足
+D1 final generation 等于 D2 consumed generation、skip 为 0、pending 为空和在线真值
+使用为 0。
+
+最终调用全部进入 replay quarantine，`fresh_detection_count=0`，没有新 birth、
+duplicate coalescence 或规范 `global_track_id` 变化。Tracker 快照还确认累计 hit 和
+`last_update_time` 不变。20v20 seed 1009 有一条航迹超过 coast 宽限，按既有生命周期
+增加 miss 并清零 consecutive hits；该行为不属于重复命中或身份改写。
+
+评审接受代码和 5-cell 开发态定向回归，不接受其作为正式 R0 通过证据。五个 manifest
+均为 dirty working tree，D6 formal admission 为 0/5。正式关闭需要把 hotfix 形成新
+clean commit，并从零完成 900-cell R0 formal rerun。
+
+本轮 D2 replay-coast 专项为 `5 passed`，D2 全量为 `305 passed, 1 warning`，main
+hotfix 五 seed 定向测试为 `5 passed`；语法检查和 scoped diff 格式检查通过。该测试结果
+接受 D2 语义与开发态接线，不改变正式证据等级。

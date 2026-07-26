@@ -1571,3 +1571,65 @@ evaluation payload 严格相同；相邻计数 `133/0` 不变。
 3. 本矩阵不验收 IDSW、track/identity/coverage continuity、RMSE、NEES 或 NIS；
 4. 本矩阵是三维质点正式证据，不是 AirSim、固定硬件或实飞精度验收；
 5. `global_track_id` 仍由中心 D2 所有，发布元数据优化不得改变身份合同。
+
+## 39. 正式 R0 generation 守恒阻断
+
+### 39.1 已完成复核
+
+- [x] 读取 source commit `2c7b425` 的正式 R0 900-episode D6 聚合和五个失败
+  episode 原始制品。
+- [x] 核对 D1 posterior generation、D2 source generation 序列、pre-tick merge、
+  pending、finalize skip、D2 publication 和 tracker timestamp。
+- [x] 确认 finalize skip 分布为 `{0: 895, 1: 5}`，扩展计数式在 900/900 上成立。
+- [x] 逐轨比较五例最后实际消费后验与最终后验，确认全部航迹的状态和协方差变化。
+- [x] 确认五例均在 main 调用 D2 前被简化签名跳过，D2 Tracker 没有收到最终
+  generation。
+- [x] 确认 D2 replay-coast 已具备重复来源证据的无 hit、无 birth、无 freshness
+  refresh 治理。
+
+### 39.2 D2 决定
+
+- [x] 不修改 D2 在线关联器、claim ledger、IDSW 统计或生命周期。
+- [x] 不把未调用记为消费，不增加虚假 merge，不丢弃 late batch。
+- [x] 发布
+  `docs/D2_FORMAL_R0_GENERATION_CONSERVATION_AUDIT_CN.md`。
+- [x] main runtime bus 工作树 hotfix 已实际消费最终 pending 后验，消费失败时不再
+  清空 pending。
+- [x] 五个原失败 seed 的开发态定向回归已通过 generation integrity 和 D2
+  replay-coast 不变量。
+- [ ] 将 hotfix 形成新 clean commit，并从零重跑完整 900-cell R0。
+
+### 39.3 验收
+
+修复后的每个 episode 必须同时满足：
+
+1. pending 只在 D2 成功消费或强内容摘要证明合法 no-op 后清空；
+2. 实际 D2 consumption count 等于 D2 publication count；
+3. 最终 D2 source generation 等于 D1 final generation；
+4. 合法 late/OOSM 后验没有丢失；
+5. 重复来源证据没有增加 hit、创建新轨或刷新原始证据时钟；
+6. `global_track_id` 未改写，`id_switch_count` 没有回填或伪造。
+
+扩展式 `consumption + pre_tick_merge + finalize_skip = d1_generation` 只保留为诊断。
+在当前 skip 缺少强内容等价证据时，不得把它用作 clean-formal 准入条件。
+
+### 39.4 Hotfix 复核状态
+
+五个定向 cell 的 D1/D2 final generation 分别为
+`13/13、9/9、13/13、14/14、27/27`，skip 全为 0，pending 全部排空，在线真值使用为
+0。四个 5v5 cell 的 replay quarantine/coast 均为 5/5；20v20 seed 1009 为 20/19，
+剩余一条只触发既有 miss/lifecycle 路径。
+
+D2 owner 快照确认五例累计 hits、last update time、track key 和 canonical ID 集合
+不变，created map 为空、duplicate coalescence 为 0。当前输出全部
+`repository_dirty=true`，D6 formal admission 为 0/5。P0 的代码修复已通过开发态复核，
+正式证据关闭仍等待新 clean commit 的 900-cell R0。
+
+### 39.5 当前验证
+
+- D2 replay-coast 专项：`5 passed in 0.95s`；
+- D2 全量：`305 passed, 1 warning in 29.45s`；
+- main hotfix 五 seed 定向测试：`5 passed, 66 deselected in 3.51s`；
+- D2 全部 Python 文件 `py_compile` 和 scoped `git diff --check`：通过；
+- 全量 `pyflakes`：仅保留 `calibration.py:6` 自提交 `d0cd548f` 起存在的未使用
+  `dataclasses.field` 导入，不属于本次 finalize 修复。

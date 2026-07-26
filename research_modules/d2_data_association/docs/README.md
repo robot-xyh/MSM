@@ -10,5 +10,8 @@ D2 文档遵循 `research_modules/DOCUMENTATION_STANDARD.md`。推荐阅读顺�
 6. `D2_SCALABLE_3D_PERFORMANCE_BENCHMARK_CN.md`：200v200 五 seed 热路径 profile、分阶段墙钟、逐域语义哈希和已知限制。
 7. `D2_SCALABLE_3D_IDENTITY_BLOCKER_AUDIT_CN.md`：20-seed producer 重放、严格指标阻断分型、逐航迹时间段和 D1 mapping completeness 结论；聚合机器数据见 `d2_scalable_3d_identity_blocker_audit_20260723.json`。
 8. `AIRSIM_INTEGRATION_PLAN.md`：AirSim 离线回放接入计划，以及 D1 观测谱系、versioned claim ledger、整帧 OOSM adapter、v2 truth sidecar、部分身份诊断和 main/D6 持久化字段要求。
+9. `D2_FORMAL_R0_GENERATION_CONSERVATION_AUDIT_CN.md`：正式 R0 五个
+   delayed-noisy generation 守恒失败审计及 main runtime hotfix 复核，区分算术分区、
+   replay-coast 不变量、5-cell 开发态证据与待完成的 clean 900-cell 正式复跑。
 
 本模块只用于离线科研仿真和数据关联评估，不包含真实飞控、硬件、火控、毁伤或自动处置逻辑。

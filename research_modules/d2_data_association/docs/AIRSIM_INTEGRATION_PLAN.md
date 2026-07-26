@@ -380,9 +380,17 @@ conflict、coalescence、suppressed births 和 tentative stale drop 的累计值
 
 2026-07-22 的早期专项采用 point-mass seed 1005，不启动 Blocks。当时 10 帧活动航迹数为
 `5,6,6,5,5,5,5,5,5,5`，quarantine 9 次、tentative stale drop 1 次、在线 truth 使用
-0 次；该结果只保留为 main 尾部合并前的历史证据。当前 main 逐扫描融合 D1 尾部输入，
-只把最终后验送 D2 一次，seed1005 集成 replay=0 合法；v3 复现验收同时接受 replay=0 与
-bounded replay。随后完成的脏工作树
+0 次；该结果只保留为 main 尾部合并前的历史证据。设计要求是 main 逐扫描融合 D1
+尾部输入，并把合并后的最终后验送 D2 一次。2026-07-25 的正式 R0 复核发现，该要求尚未
+完全落实：900 个 episode 中有 5 个 delayed-noisy 尾部后验被 main 简化签名跳过，
+没有进入 D2。五例后验均有状态和协方差变化，不能按合法 no-op 处理。该问题属于
+runtime P0，详见 `D2_FORMAL_R0_GENERATION_CONSERVATION_AUDIT_CN.md`；它不是 AirSim
+实测结论。seed1005 的既有 v3 复现验收仍只说明 replay=0 与 bounded replay 均可由 D2
+治理，不能证明 main finalize 已对全部随机种子正确排空。main-owned 工作树 hotfix
+现已实际消费最终 pending，并在未消费时失败关闭；五个原失败 cell 的开发态回归全部
+满足 final generation 守恒、skip 为 0 和 pending 排空。重复证据没有增加 hit、birth
+或改写规范 ID。该结果不是 AirSim 证据，且尚未由新 clean commit 的完整 900-cell R0
+正式复跑确认。随后完成的脏工作树
 development 20-seed active-risk 运行中，D6 七类 availability 均为 20/20，D4 adoption
 188/188，seed 1005 离线恢复 GT1-GT5 五条唯一映射且在线 truth 使用仍为 0。这关闭了
 开发期 main/D6 接线验证，不是 AirSim 验收结论。随后提交 `0fa7c00` 的 clean-tree 复跑

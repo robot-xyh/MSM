@@ -1688,3 +1688,24 @@ clean source commit `0d2da25` 的 seed 1000 只读复算中，严格 IDSW 保持
    IDSW、continuity、candidate 或 `global_track_id`。
 6. **证据边界保持**：本次只有单个长时质点 fixture 和模块测试，不是 AirSim、多 seed
    或算法性能结论。完整 D2 回归为 `292 passed, 1 warning in 28.81s`。
+
+## 三十八、尾部后验原则（2026-07-25）
+
+1. **finalize 不改变证据语义**：D1 关闭扫描缓冲后发布的最终完整后验仍是合法输入。
+   只要 posterior generation 严格递增且 pending 尚未确认，main 就应把它送入 D2。
+2. **来源观测相同不等于后验相同**：延迟观测、乱序重放和状态传播可能在最新观测编号
+   不变时改变航迹有效时刻、状态均值或协方差。少量元数据签名不能证明 no-op。
+3. **重复证据由 D2 治理**：D2 replay-coast 和 claim ledger 负责阻止重复 hit、birth
+   和 freshness refresh，同时允许合法后验时刻前推。runtime 不应绕过该路径。
+4. **计数完整不代表语义完整**：900/900 满足包含 finalize skip 的扩展计数式，只能
+   证明每代被某个分支计数。五个 skip 的后验内容均变化，因此正式准入仍失败。
+5. **pending 清空需要确认**：只有 D2 实际成功消费，或未来由强内容摘要证明合法 no-op，
+   才能清空 pending。no-op resolved watermark 与 actual consumption 必须分开。
+6. **安全字段不回填**：不得通过修改 `id_switch_count`、publication count 或离线标签
+   掩盖尾部后验丢失。
+7. **隔离先于关联和建轨**：重复来源证据在
+   `_partition_observation_freshness()` 中被移出 fresh detection 集合，因此不会进入
+   关联、命中更新或未匹配检测 birth。宽限期内只允许 prediction-only coast。
+8. **超宽限按失败关闭处理**：replay 超过宽限期时可增加 miss 并触发生命周期退化，但
+   仍不得增加累计 hit、刷新原始证据时间、重复建轨或改写 `global_track_id`。五个开发态
+   定向 cell 已验证这些不变量；完整 clean 900-cell R0 仍待复跑。

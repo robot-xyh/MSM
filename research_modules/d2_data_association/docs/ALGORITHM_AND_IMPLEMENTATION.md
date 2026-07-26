@@ -2284,3 +2284,45 @@ disposition 组口径的 14 修正为最终 mapping 口径的 11。其余 evalua
 逐项相同；`target_with_known_false_alarm_mapping_count=133`、
 `unknown_disposition_mapping_count=0` 未改变。该修复只影响离线审计聚合，不改变在线
 关联、身份绑定、严格 IDSW 或航迹状态机。
+
+## 三十八、正式 R0 尾部后验消费
+
+D1 posterior generation 是 main runtime bus 对完整融合后验的单调序号。D2
+publication 携带本次实际输入的 `source_d1_posterior_generation`。常规节拍中，未被
+实际送入 D2 的中间 generation 可由 pre-tick merge 计数；D2 最终消费的是合并后的最新
+完整后验。
+
+正式 R0 暴露出 finalize 的等价性判定不足。当前简化签名只覆盖最新观测标识、量测
+时刻、命中数和回放次数，不能证明六维均值、六维协方差和状态有效时刻等价。延迟观测、
+乱序重放和状态传播可能在最新观测编号不变时形成新的合法后验。
+
+D2 的正确入口是 replay-coast。同一来源证据在更晚的合法后验时刻到达时，D2 不增加
+hit、不建新轨、不刷新 original-observation freshness，但允许航迹状态按后验时刻有界
+前推。main 不应在 D2 调用之前用不完整签名替代该治理。
+
+900 个正式 summary 满足：
+
+```text
+D1 generation
+  = actual D2 consumption
+  + pre-tick merge
+  + finalize skip
+```
+
+该等式只能证明计数分区完整。五个 `finalize skip` 的最终后验均发生状态和协方差变化，
+因此不能晋级为合法 no-op。正式准入仍要求实际消费最终 pending；未来若保留 no-op，
+必须比较 D2 可见完整 Detection3D 批次的规范内容摘要，并把 resolved watermark 与
+actual consumption 分开。详细证据见
+`D2_FORMAL_R0_GENERATION_CONSERVATION_AUDIT_CN.md`。
+
+main-owned hotfix 已取消 finalize 的简化签名跳过，最终 pending 后验现在实际调用
+`Scalable3DTracker.step()`；调用未消费时 runtime 失败关闭。五个原失败 delayed-noisy
+cell 的开发态复跑中，全部最终输入都先进入 replay quarantine，`fresh_detection_count`
+为 0，因此不进入 GNN/Hungarian、命中更新或未匹配检测建轨。符合宽限期的绑定航迹只做
+prediction-only coast。
+
+五例累计 hit、`last_update_time`、track key 集合和规范 `global_track_id` 集合保持不变，
+birth map 为空且 duplicate coalescence 为 0。20v20 seed 1009 有一条航迹超出
+replay-coast 宽限期，按既有失败关闭规则增加 miss 并清零 consecutive hits；它没有增加
+累计 hit、创建新轨或改写 ID。该结论已经由代码路径和 5-cell dirty-worktree 回归验证，
+尚未由新 clean commit 的完整 900-cell R0 正式复跑确认。

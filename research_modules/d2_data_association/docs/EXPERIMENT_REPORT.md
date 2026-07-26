@@ -1517,3 +1517,70 @@ D2 producer 与 D6 strict consumer 的已知虚警排除计数合同恢复一致
 隔离、unknown 阻断或消费者校验，也没有改写严格 IDSW、continuity、候选映射和
 `global_track_id`。该结果关闭单项离线审计合同缺口，不关闭真实 AirSim、多 seed
 身份效果或实时性 P1。
+
+## 三十七、正式 R0 generation 失败复核
+
+### 37.1 输入
+
+正式 R0 source commit 为 `2c7b425`，共完成 900 个 episode。D6 报告中 895 个
+episode 通过 generation integrity，5 个 delayed-noisy episode 失败。失败集中在
+5v5 seeds 1000/1005/1008/1018 和 20v20 seed 1009。
+
+main 追加核对 900 个 raw summary：
+
+- finalize skip 分布为 `{0: 895, 1: 5}`；
+- `consumption + pre_tick_merge = d1_generation` 恰好失败 5 项；
+- 加上 `finalize_skip` 的扩展式在 900/900 上成立；
+- 五个失败 summary 的 pending 均为空，skip 均为 1。
+
+### 37.2 内容结果
+
+| 规模和 seed | D1 final | D2 consumed | 状态变化航迹 | 状态最大变化 | 协方差最大变化 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 5v5 seed 1000 | 13 | 11 | 5/5 | 0.054740 | 2.334662 |
+| 5v5 seed 1005 | 9 | 7 | 5/5 | 0.044125 | 1.515708 |
+| 5v5 seed 1008 | 13 | 10 | 5/5 | 0.043312 | 1.954943 |
+| 5v5 seed 1018 | 14 | 11 | 5/5 | 0.065072 | 2.759925 |
+| 20v20 seed 1009 | 27 | 17 | 20/20 | 0.415096 | 22.623443 |
+
+五例最终后验的全部航迹均发生状态和协方差变化。20v20 seed 1009 的状态有效时刻从
+`1.648471199 s` 前移至 `1.903517306 s`。扩展式虽然覆盖了计数，不能把这些后验证明为
+无副作用 no-op。
+
+### 37.3 判定
+
+根因位于 main finalize 适配层。D2 Tracker 没有收到最终后验，D2 timestamp conflict
+均为 0。现有 replay-coast 已验证重复来源证据不会增加 hit、不会创建新轨、不会刷新
+原始证据时钟。
+
+该阶段没有修改 D2 算法，也没有生成新的性能结论。审计要求 main 取消 finalize 简化
+签名跳过并实际消费最终 pending；后续工作树 hotfix 已按此执行。直接调整 D6 公式仍不
+满足验收，正式 R0 仍需在新 clean commit 上完整复跑。
+
+### 37.4 Hotfix 定向回归
+
+main-owned 工作树 hotfix 已按上述路径实际调用 D2，并在消费失败时抛出异常。开发态
+输出位于 `/tmp/msm-r0-finalize-fix-20260725`。
+
+| 规模和 seed | D1/D2 final | consumption/merge | quarantine/coast | skip |
+| --- | --- | --- | --- | ---: |
+| 5v5 seed 1000 | 13/13 | 6/7 | 5/5 | 0 |
+| 5v5 seed 1005 | 9/9 | 5/4 | 5/5 | 0 |
+| 5v5 seed 1008 | 13/13 | 5/8 | 5/5 | 0 |
+| 5v5 seed 1018 | 14/14 | 6/8 | 5/5 | 0 |
+| 20v20 seed 1009 | 27/27 | 7/20 | 20/19 | 0 |
+
+五例 pending 全部排空，`fresh_detection_count=0`、birth map 为空、duplicate
+coalescence 为 0、在线真值使用为 0。Tracker 前后快照确认累计 hit、原始证据更新时间、
+track key 和规范 ID 集合不变。20v20 seed 1009 未 coast 的一条航迹因超过宽限期增加
+一次 miss，属于既有生命周期失败关闭。
+
+D6 的 generation integrity 为 5/5 通过。五个 manifest 均记录
+`repository_dirty=true`，formal admission 为 0/5，拒绝原因仅为工作树不干净和
+episode 非 clean-formal。代码和 5-cell 开发态回归已经通过；新 clean commit 的完整
+900-cell R0 formal rerun 未完成。
+
+本次文档同步后的 D2 replay-coast 专项为 `5 passed in 0.95s`，D2 全量为
+`305 passed, 1 warning in 29.45s`，main hotfix 五 seed 定向测试为
+`5 passed, 66 deselected in 3.51s`。没有启动 AirSim，也没有产生新的正式 900-cell
+制品。

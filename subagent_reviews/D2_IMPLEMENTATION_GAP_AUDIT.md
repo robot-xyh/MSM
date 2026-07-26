@@ -1477,3 +1477,60 @@ AssignmentPlan 合同。
 
 本轮无新增 P0。`global_track_id` 继续由中心 D2 所有，发布元数据优化不改变身份、
 状态机或下游分配合同。
+
+## 2026-07-25 正式 R0 generation 守恒
+
+### P0 状态
+
+**main runtime 代码路径已在工作树修复；正式证据关闭仍开放。D2-owned 算法无缺陷。**
+
+source commit `2c7b425` 的正式 R0 完成 900 个 episode。5 个 delayed-noisy episode
+未通过 generation integrity：5v5 seeds 1000/1005/1008/1018 和 20v20 seed 1009。
+
+900 个 summary 的 finalize skip 分布为 `{0: 895, 1: 5}`。旧守恒式恰好失败 5 项，
+包含 skip 的扩展式在 900/900 上成立。该结果只证明 runtime disposition 计数没有漏项，
+不证明五个 skip 合法。
+
+### 根因
+
+五例最终 D1 后验相对 D2 最后实际消费后验的全部航迹均发生状态和协方差变化。main
+finalize 使用的签名不含状态有效时刻、六维均值、六维协方差和 posterior generation，
+在调用 D2 前错误跳过，并无条件清空 pending。
+
+D1 已发布完整且严格递增的 generation。D2 Tracker 没有收到调用，timestamp conflict
+为 0。当前没有证据要求修改 D1 发布器或 D2 关联器。
+
+### D2 处置
+
+- 不改 GNN/Hungarian、claim ledger、replay-coast、生命周期或 IDSW。
+- 不把未调用记为消费，不增加虚假 merge，不丢弃 late batch。
+- 已形成
+  `research_modules/d2_data_association/docs/D2_FORMAL_R0_GENERATION_CONSERVATION_AUDIT_CN.md`。
+- 已复核 main-owned hotfix：最终 pending 实际进入 `Scalable3DTracker.step()`，未消费
+  时失败关闭。
+- 已在 D2 replay-coast 单元测试中显式锁定累计 hit、birth count、track key 和规范
+  `global_track_id` 集合不变。
+
+### 开发态证据
+
+五个原失败 cell 均达到 D1 final generation 等于 D2 consumed generation、skip 为 0、
+pending 为空和在线真值使用为 0。最终调用的 `fresh_detection_count=0`，birth map 为空，
+duplicate coalescence 为 0。四个 5v5 cell 全部在 replay-coast 宽限期内；20v20 seed
+1009 有一条航迹超宽限而增加 miss，但未增加 hit、建轨或改写 ID。
+
+五个 manifest 均为 dirty working tree。D6 generation integrity 为 5/5，formal
+admission 为 0/5。
+
+### 正式关闭条件
+
+main hotfix 和定向测试需形成新 clean commit，并从零重跑完整 900-cell R0。D6 必须确认
+900/900 generation integrity、clean repository 和 formal admission。若未来恢复
+no-op，必须使用 D2 可见完整输入的强内容摘要，并把 resolved watermark 与 actual
+consumption 分开；不能仅把 finalize skip 加入正式守恒式。
+
+口径固定为：代码和 5-cell 开发态定向回归已通过；新 clean commit 的完整 900-cell R0
+formal rerun 未完成。
+
+2026-07-25 验证结果：D2 replay-coast 专项 `5 passed`，D2 全量
+`305 passed, 1 warning`，main hotfix 五 seed 定向测试 `5 passed`；`py_compile` 和
+scoped `git diff --check` 通过。未启动 AirSim。
