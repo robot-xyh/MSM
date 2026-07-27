@@ -1,5 +1,84 @@
 # D5 末端视觉配准与协同身份认证综述及子方案
 
+## 2026-07-27 A3 主动视觉采用证据复核
+
+D5 已补齐 A3 的模块级采用证据组装和严格验证。实现直接复用
+`ActiveVisionDecisionV1`、`ActiveVisionRuntimeAckV1`、`ActiveVisionCameraFeedbackV1` 与
+`ActiveVisionCameraState`，并结构化读取 main 的 `CameraObservationCommand`、
+`runtime.camera_command_ack` 和 `CameraRuntimeState`。D5 没有另建 ACK、相机状态或命令
+路由，也没有获得相机控制权限。
+
+证据链把模型求值、建议、确定性投影、命令下发、ACK、相机反馈、姿态与版本生效及后续物理
+观测分开。验证器根据命令前姿态和最终动作重算期望方位、俯仰、视场模式，检查 ACK 后反馈的
+最后接受版本和计划/联盟/通信版本。后续匿名轨迹以
+`resource_id/camera_id:local_id` 命名，逐帧保留双时间戳和本地绑定；D5 只引用中心给出的
+`global_track_id`。只有非模拟的完整采用链、可用的关联/覆盖结果和同键独立规则 R0 窗口同时
+存在，才允许将记录交给 D6 做收益审计。
+
+本轮补充 observation-frame v2，关闭“相机已处理图像但零检测被误记为无观测”的 D5 模块
+合同缺口。历史 v1 仍要求非空匿名轨迹且序列化口径不变；v2 明确保存
+`processed_zero_detections`、中心航迹只读清单和来源序号。有分配目标时，零检测帧只产生
+`reacquire` 和覆盖率 0；没有分配目标时结果不可用。该合同不读取 truth/actor ID，不创建或
+改写 `global_track_id`，也不授予相机、分配、接管或控制权限。main 正式 writer 和 clean/
+frozen 重跑原为跨模块 P1；当前 scalable 3D 开发 writer/runtime 已接入，正式证据仍开放。
+
+main 现为每台相机生成 truth-free frame event，只有零检测走 `sensor.camera_empty_frame`；
+事件携带相机/资源、双时间戳、scan index 和三类版本。A3/R0 按时间和版本绑定，观测触发命令
+后保留 0.25 秒证据尾窗，通信丢包/抖动使用独立随机流。scalable 3D 全量为
+`352 passed, 1 warning`。
+默认通信退化 seeds `1000-1019` 开发复跑为 candidate=492、pairable=488、unpairable=4、
+coverage=`99.18699%`；329 个 v2 零检测为 `reacquire/coverage=false`，159 个 v1 为
+`locked`，empty rejected=0、权限全 false。零丢包/零抖动对照为 `500/500`、coverage=100%。
+新结果均为 dirty-worktree、`formal_evidence=false`，seed 未证明 unseen，不能证明收益或授权。
+
+本轮增加 `ActiveVisionA3RuleArmTrace` 和两级公开组装 API。规则 trace 不含候选模型
+provenance，只接受学习关闭的确定性规则决定、独立命令、运行 ACK 和相机反馈。它可在规则
+episode 结束后序列化，在另一进程中重建并结合匿名帧形成 R0 窗口。唯一配对 API 拒绝重复 R0、
+跨键/相机/版本、同日志复用、窗口时长不一致、双时间戳缺失和不完整运行反馈。
+
+本轮再增加逐候选只读 API `attempt_active_vision_a3_pairing()`。它把现有严格配对器的结果
+整理为 `ActiveVisionA3PairingDisposition`，每条记录只有一个稳定主原因，并保留底层诊断码。
+候选窗口缺失时不从 `None` 推断具体断点。新增
+`ActiveVisionA3CandidateStageEvidence` 后，调用方只有在明确声明运行/观测事件清单完整，并
+提供与 trace 和来源日志绑定的命令、ACK、反馈、匿名观测及窗口装配信息时，v2 disposition
+才细分 ACK 缺失/未确认、命令过期/时序不匹配、反馈缺失、匿名观测缺失/不完整和物理窗口
+缺失/不完整。失败结果不携带 paired evidence，成功结果也只开放 D6 审计输入。
+
+持久化 disposition 现在可通过 `from_mapping()` 或公开 validator 严格复载。顶层字段与 JSON
+类型必须精确，摘要必须由内容重算一致。pairable 记录的 paired evidence 由原 validator 完整
+重建，权限篡改会被拒绝；unpairable 记录不得夹带 paired evidence。复载通过不能独立证明
+reason 的因果真实性，只能说明保存的制品未被篡改且内部约束一致。v2 会递归复载阶段证据并
+重算细分原因，未知原因或重算摘要后替换成另一已知原因同样拒绝。旧 v1 保持严格复载。
+
+历史冻结批次完成状态隔离的候选与规则 episode，并对 20 个受控开发 seed 的 536 条候选逐条保存
+disposition。536/536 可严格复载，其中 152 条可配对、384 条不可配对；384 条主原因均为
+`candidate_physical_window_missing`。可配对覆盖率为 `28.36%`，20/20 seed 至少存在一个
+可配对子集。批次 SHA-256 为
+`455d181076553a485ff824618abc6d037a4477bb6342877d1d1e427fd28583a9`。
+
+D6 按完整候选分母复核后得到 `a3_auditable_pair_count=0`。合法 unpairable 存在时，完整批次
+的实际采用、物理窗口、同键 R0 和收益计数均为 `unavailable`，所有权限为 `false`。152 条
+可配对子集不能替代完整批次。
+
+main 已用同配置 seeds `1000-1019` 和当前 candidate-stage sidecar 做不落盘全量重跑。
+536/536 候选有阶段证据，152 条 pairable、384 条 unpairable，完整可审计 seed 仍为 `0/20`。
+344 条同时为匿名观测缺失和物理窗口确认缺失；其余 40 条因观测清单不完整保持空细因，计为
+物理窗口缺失细因未解析。D6 聚合 evidenced=344、unresolved=40、
+`detail_completeness=false`，每 seed unresolved=2。部分清单门控避免了将这 40 条越界归为
+物理窗口不完整。ACK 缺失、确认缺失、命令过期、时序错配和相机反馈缺失均为 0。开发摘要
+SHA-256 为 `1ba6040e7c3e7e3b9e7d5506dfd20cf3539ce12c5aac13cca7f02799f0cd99ef`，并标记
+`formal_evidence=false`、`source_worktree_clean=false` 和
+`persisted_full_pair_inventory=false`。旧持久化记录不追溯
+改写。后续 P1 是 clean/frozen v2 全清单持久化、默认通信退化缺失的因果核验和正式未见策略
+成对非退化。
+
+当前 A3 专项测试为 `84 passed in 1.38s`，D5 完整回归为
+`739 passed, 2 warnings in 97.98s`，无测试失败。新增测试固定了历史 v1、v2 零检测、中心
+目标约束、同源混合窗口、篡改拒绝、零覆盖和全部权限关闭。正向 case 是软件 fixture，
+20 seed 使用测试
+策略替身，不是 AirSim、实机、未见 seed 或模型收益证据。A3 assist、G1、分配、接管、导引、控制及
+`global_track_id` 修改权限保持关闭。
+
 ## 2026-07-27 G1 v5 正式证据复核
 
 D5 在 clean commit `8d5e02ec989259ce3d39e1e4ad6a90dd0d8d5b54` 上完成最终 runtime
@@ -267,13 +346,15 @@ post-assembler D6 audit 文件/内容 SHA-256 为 `98bf9e02...c8ed` /
 `synthetic_single_feature_shortcut`。实际 assembler 返回
 `d6_external_audit_fail_closed`、退出码 2，未创建目标 bundle。
 
-A3 evidence assembler 仍未实现。A3 production writer 和公开 assist loader 保持失败关闭。后续
+A3 evidence assembler 在该历史 v4 阶段仍未实现。2026-07-27 已补齐 D5 采用证据软件合同，
+但 A3 production writer 和公开 assist loader 仍保持失败关闭。后续
 上述段落记录旧 `99fa4428...d4cd` 候选的失败关闭。后续 clean `7fb5db8b...ca71` 已绑定运行时
 实现 `408e71fe...f4fe`，完成 20/900/45 held-out、paired-shadow、正式 D6 正向审计和 v4
 装配。正式 manifest 为 `a5a53de7...37154`，strict loader 已通过。
 
 该进展不启用在线 G1，不修改默认配置，也不关闭真实候选门重构、真实匿名多相机回放或真实相机
-泛化缺口。A3 evidence assembler 仍未实现。
+泛化缺口。该历史阶段缺少的 A3 evidence assembler 已由 2026-07-27 首节的软件合同补齐，
+真实运行接线、收益证据和授权仍未完成。
 2026-07-26 最终证据同步复测为 assembler 专项 `14 passed in 1.15s`、模型流水线
 `20 passed in 4.08s`；既有 D5 全量结果为 `571 passed in 99.00s`。
 

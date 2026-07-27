@@ -2,6 +2,99 @@
 
 **状态日期：2026-07-27**
 
+## A3 主动视觉采用证据
+
+A3 主动视觉策略只能提出有界云台和视场建议。确定性投影、安全、视场、身份和版本门继续决定
+建议是否可执行。D5 现已增加独立证据组装器，用来区分策略已求值、建议已产生、确定性投影已
+接受、命令已下发、运行时已确认、相机姿态已生效和后续观测结果已形成。模型加载成功、建议
+字段存在、模拟 ACK 或日志中出现命令均不能替代这条链。
+
+组装器复用现有 `ActiveVisionDecisionV1`、`ActiveVisionRuntimeAckV1`、
+`ActiveVisionCameraFeedbackV1` 和 `ActiveVisionCameraState`。main 的
+`CameraObservationCommand`、`runtime.camera_command_ack` 和 `CameraRuntimeState` 通过结构
+适配转成规范载荷，D5 不导入 main，也不另建 ACK 类型。相机反馈必须出现在 ACK 之后，
+`ActiveVisionA3CameraPoseLineage` 中的计划、联盟、通信版本必须与命令和 ACK 一致。验证器再
+根据命令前相机状态和 `effective_action` 重算期望方位、俯仰和视场模式，确认物理状态在冻结
+容差内生效。
+
+收益审计采用同键配对。A3 候选臂与确定性规则 R0 臂必须具有相同场景、规模、seed、相机、
+资源、目标只读引用、窗口序号、配对上下文和计划版本，观测时长相同，来源日志不同。两臂都要
+携带逐帧匿名视觉观测、量测时间、到达时间、关联状态和覆盖结果。匿名轨迹键固定为
+`resource_id/camera_id:local_id`；D5 公共 API 将 `bound/ambiguous/unbound` 映射为
+`locked/ambiguous/reacquire`，但不据此创建或改写中心全局编号。只有模型动作真实采用且两臂
+物理窗口完整时，
+`d6_benefit_audit_input_allowed` 才为真。该字段只允许 D6 继续审计，不产生主动视觉、相机、
+分配、接管、导引、模型晋级、全局编号修改或 G1 权限。
+
+观测合同区分“没有相机帧”和“相机帧已处理但零检测”。历史 observation-frame v1 保持原
+字段和哈希口径，并继续要求至少一个匿名轨迹。v2 用
+`processed_zero_detections` 表示显式负观测，同时保存相机、资源、双时间戳、三类版本、来源
+序号和中心航迹只读清单。有分配目标时，零检测只能产生 `reacquire`，已分配目标可见性为
+false；没有分配目标时两项结果均不可用。该负观测可以进入物理窗口，但不能证明检测器发现过
+目标，也不能证明主动视觉策略、模型或相机性能有收益。
+
+main 已按该语义接入 scalable 3D 开发 writer/runtime。逐相机帧事件不含 truth 身份，只有零
+检测帧进入 `sensor.camera_empty_frame`；事件携带双时间戳、扫描序号、相机/资源和三类版本。
+A3/R0 用时间和版本匹配，观测触发命令后保留 0.25 秒尾窗，通信丢包和抖动使用独立随机流。
+默认通信退化的 20-seed 复跑为 492 条候选、488 条可配对、4 条不可配对，覆盖率
+`99.18699%`；329 个 v2 零检测窗口为 `reacquire/coverage=false`，159 个 v1 窗口为
+`locked`。零丢包/零抖动对照为 `500/500`、覆盖率 `100%`。两组均来自 dirty worktree，
+`formal_evidence=false`，seed 未证明 unseen，不能形成收益或授权结论。
+
+规则 R0 使用独立 `ActiveVisionA3RuleArmTrace`。该对象不携带候选模型指纹、bundle、权重、
+实现或采用 trace，只接受学习关闭、无模型建议、规则动作等于有效动作的决定。规则 episode
+自己的命令、ACK、相机反馈和姿态 lineage 完整后，trace 可序列化并在另一进程中重建，再与该
+episode 的匿名双时间戳帧形成 R0 窗口。唯一配对入口拒绝重复 R0、跨键/相机/版本、同日志和
+不等长窗口。
+
+逐候选配对结果使用冻结的 `ActiveVisionA3PairingDisposition`。主原因码按失败关闭顺序选择：
+未实际采用、候选物理窗口缺失、同键 R0 缺失、R0 重复或歧义、键或配置不一致、物理证据
+不完整、收益结果不可用、证据合同无效，最后才是可配对。底层 blocker 或异常码保留为诊断码。
+候选窗口为 `None` 时只证明窗口不可用。D5 不从空对象反推 ACK、相机反馈和匿名观测断点。
+
+细分原因使用与 adoption trace、相机、资源、配对上下文和来源事件日志摘要绑定的
+`ActiveVisionA3CandidateStageEvidence`。运行事件清单与匿名观测清单分别声明是否完整。清单
+不完整时，空字段保持 unknown；清单完整时，才允许把空 ACK、空反馈或零匿名帧解释为缺失。
+命令签发/过期、ACK、反馈和首末量测/到达时间用于识别过期和时序不匹配。物理窗口状态由运行
+装配器明确写为 unknown、missing、incomplete 或 complete。运行细因只从完整运行清单生成，
+观测细因只从完整观测清单生成，物理窗口细因要求两类清单都完整。部分清单中的时间、状态和
+计数不单独触发归因。v2 disposition 保持原顶层主原因，另行保存并重算受控细分原因。未知
+原因、摘要篡改和跨 trace 引用均失败关闭。旧 v1 记录仍按原合同复载，不自动增加细分结果。
+
+disposition 的持久化完整性与原因真实性分开判断。严格 mapping validator 复核精确字段、JSON
+类型、schema、顶层摘要和候选引用。pairable 记录递归复载 paired evidence，重新计算 trace、
+窗口、权限和内部摘要；unpairable 记录禁止携带 paired evidence。上述检查只能证明保存内容
+没有被篡改且各字段自洽，不能独立证明 reason 是物理窗口缺失的真实因果。
+
+历史冻结批次使用同一外生配置运行状态隔离的候选和规则 episode。2026-07-27 的 20 个受控开发
+seed 产生 536 条候选动作；536/536 disposition 已持久化并可严格复载。其中 152 条可配对、
+384 条不可配对，384 条主原因均为 `candidate_physical_window_missing`。可配对覆盖率为
+`28.36%`，20/20 seed 至少存在一个可配对子集。批次 SHA-256 为
+`455d181076553a485ff824618abc6d037a4477bb6342877d1d1e427fd28583a9`。
+
+D6 完整分母审计得到 `a3_auditable_pair_count=0`。合法 unpairable 存在时，完整批次的实际
+采用、物理窗口、同键 R0 和收益计数均为 `unavailable`，所有权限为 `false`。152 条仅说明
+存在可配对子集，不能作为完整收益审计分母。
+
+同配置 seeds `1000-1019` 的当前 candidate-stage sidecar 已用于一次不落盘全量重跑。
+536/536 候选有阶段证据，结果仍为 152 条 pairable、384 条 unpairable，完整可审计 seed 为
+`0/20`。344 条同时为匿名观测缺失和物理窗口确认缺失；其余 40 条因观测清单不完整而保持
+空细因，计入物理窗口缺失细因未解析。D6 聚合 evidenced=344、unresolved=40、
+`detail_completeness=false`。部分清单门控防止了对这 40 条作物理窗口不完整的越界归因；
+五类运行阶段原因均为 0。开发摘要 SHA-256 为
+`1ba6040e7c3e7e3b9e7d5506dfd20cf3539ce12c5aac13cca7f02799f0cd99ef`，并标记
+`formal_evidence=false`、`source_worktree_clean=false` 和
+`persisted_full_pair_inventory=false`。旧落盘 disposition
+不追溯改写。
+
+当前 A3 专项合同共 84 项，结果为 `84 passed in 1.38s`；D5 完整回归为
+`739 passed, 2 warnings in 97.98s`，零失败。新增测试固定了 v1 严格兼容、v2 零检测、
+中心身份约束、v1/v2 同源混合、篡改拒绝、零覆盖和权限关闭。20 seed 使用测试策略替身，
+未验证为正式未见
+seed，也没有 AirSim、实机或非退化收益证据。后续 P1 是 clean/frozen v2 全清单持久化，并在
+不放宽门控的前提下复核通信退化归因和未见 seed 非退化。A3 继续失败关闭，确定性规则扫描仍
+是运行基线。
+
 ## 正式证据与权限分离
 
 2026-07-27，D5 在 clean commit

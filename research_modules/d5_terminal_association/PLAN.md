@@ -1,5 +1,116 @@
 # D5 终端视觉配准与身份认证计划
 
+## 2026-07-27 A3 主动视觉真实采用证据
+
+- [x] 新增 D5 独立 A3 证据组装器和严格验证器，不在 D5 内下发相机命令。
+- [x] 直接复用 `ActiveVisionDecisionV1`、`ActiveVisionRuntimeAckV1`、
+  `ActiveVisionCameraFeedbackV1` 和 `ActiveVisionCameraState`；通过结构适配器读取 main
+  的 `CameraObservationCommand`、`runtime.camera_command_ack` 和
+  `CameraRuntimeState`，不新增平行 ACK 或相机控制合同。
+- [x] 分层保存策略已求值、模型建议、确定性投影接受/拒绝、命令已下发、运行 ACK、相机反馈、
+  姿态和视场已生效、后续物理观测窗口及关联/覆盖结果。
+- [x] 用命令前相机状态和最终有效动作重算期望方位、俯仰及视场模式，同时核对 ACK 命令版本、
+  计划/联盟/通信版本、命令有效期和反馈中的 `last_accepted_command_version`；新增
+  `ActiveVisionA3CameraPoseLineage` 保存 ACK 后相机状态的三类版本和来源序号。
+- [x] 新增 `ActiveVisionA3AnonymousObservationFrame` 和
+  `ActiveVisionA3BindingEvidence`，保存逐帧匿名视觉观测、双时间戳、版本和只读中心绑定；轨迹键
+  固定为 `resource_id/camera_id:local_id`。
+- [x] 保留历史 observation-frame v1 的精确字段、非空轨迹和内容哈希合同；新增 v2
+  `processed_zero_detections` 负观测语义及公开零检测帧工厂。v2 必须显式携带相机/资源、
+  双时间戳、三类版本、来源序号和中心航迹只读清单。有分配目标时结果固定为 `reacquire`、
+  覆盖为 0；无分配目标时 outcome 保持 unavailable。
+- [x] 严格 loader、内容哈希和物理窗口支持同源 v1 非空帧/v2 零检测帧混合；继续拒绝
+  runtime/synthetic provenance 混装、非中心目标引用及时间/版本/来源篡改。
+- [x] 公共 API 固定匿名状态映射：`bound -> locked`、`ambiguous -> ambiguous`、
+  `unbound -> reacquire`，且禁止据此本地创建或改写 `global_track_id`。
+- [x] 只有非模拟 ACK、非模拟反馈、姿态版本真实生效、在线真值使用为零且中心全局编号改写为零
+  时，才把模型动作记为 adopted。
+- [x] 要求 A3 候选窗口与独立规则 R0 窗口在场景、规模、seed、相机、资源、目标只读引用、
+  窗口序号、配对上下文、计划/联盟/通信版本及窗口时长上完全一致，且两臂来源日志不同。
+- [x] 新增不含模型 provenance 的 `ActiveVisionA3RuleArmTrace`。规则臂只接受
+  `requested_mode=effective_mode=disabled`、无模型建议、无模型指纹、零推理时延且
+  `rule_action=effective_action` 的决定。
+- [x] 新增 `assemble_active_vision_a3_rule_arm_trace()` 和
+  `assemble_active_vision_a3_rule_arm_physical_observation_window()`。独立 R0 episode 可保存
+  规则决定、命令、ACK、相机反馈和匿名帧，在不同进程中重建 trace 后形成 R0 窗口，不依赖候选
+  trace 或候选模型制品。
+- [x] 新增 `assemble_active_vision_a3_paired_evidence()` 唯一配对门。零个 R0 保持
+  unavailable，两个及以上 R0 直接拒绝；跨键、跨相机、跨版本、同日志、时长不一致和双时间戳
+  不完整均失败关闭。
+- [x] 新增 `attempt_active_vision_a3_pairing()` 和冻结的
+  `ActiveVisionA3PairingDisposition`。每条候选记录得到唯一 `pairable` 与稳定主原因码；成功时
+  引用既有 paired evidence，失败时不携带 paired evidence。候选窗口为 `None` 时只记录粗粒度
+  缺失，不虚构 ACK、相机反馈或匿名观测的细分类。
+- [x] 固定逐候选原因优先级和诊断码：未实际采用、候选物理窗口缺失、同键 R0 缺失、R0 重复/
+  歧义、键或配置不一致、物理证据不完整、收益结果不可用、证据合同无效。输入可为已验证对象
+  或其严格 mapping；篡改和 schema 错误转为失败关闭 disposition，不从批处理中静默丢弃。
+- [x] 新增 `ActiveVisionA3PairingDisposition.from_mapping()` 和
+  `validate_active_vision_a3_pairing_disposition()`，严格校验精确字段、JSON 类型、schema、
+  顶层摘要和候选引用。pairable 时复用 paired evidence validator 重算权限与内部一致性；
+  unpairable 时禁止任何 paired evidence。
+- [x] 新增 `ActiveVisionA3CandidateStageEvidence`，以 comparison/sample、相机/资源、
+  adoption trace SHA-256、来源事件日志 SHA-256 和事件清单时间窗绑定候选运行阶段。只有
+  对应的 inventory-complete 标志明确为真时，缺失字段才能解释为缺测：运行原因要求完整运行
+  清单，观测原因要求完整观测清单，物理窗口细因要求两类清单都完整。
+- [x] disposition 升级为 v2，同时保留 v1 严格复载。顶层 `reason_code` 不变；v2 使用受控的
+  `candidate_stage_reason_codes` 区分运行 ACK 缺失/未确认、命令过期/时序不匹配、相机反馈
+  缺失、匿名观测缺失/不完整和候选物理窗口明确缺失/不完整。细分原因由嵌入的阶段证据重算，
+  未知原因、重算不一致、摘要篡改和跨 trace 引用均失败关闭。
+- [x] 明确严格复载只证明 disposition 制品完整且内部自洽。原因码的物理或因果真实性仍需原始
+  运行日志、时序链和外部审计证明，validator 不根据摘要反推原因。
+- [x] 输出 `d5.active-vision-a3-benefit-audit-input.v1`，只开放
+  `d6_benefit_audit_input_allowed`；模型、相机、分配、接管、控制、模型晋级、全局编号修改和
+  G1 授权均固定为 `false`。
+- [x] A3 专项合同累计 84 项，结果为 `84 passed in 1.38s`。覆盖阶段原因分类、
+  部分或无完整清单时禁止猜测、v1/v2 持久化往返、v1 混入 v2 字段拒绝、阶段证据和顶层摘要
+  篡改、未知细分原因、字段增删、精确 JSON 类型、嵌套权限篡改、pairable/evidence 矛盾，
+  以及历史 observation-frame v1、v2 零检测、混合窗口、零覆盖和全部权限关闭。
+- [x] 2026-07-27 当前完整 D5 回归为 `739 passed, 2 warnings in 97.98s`，零失败。警告来自
+  Matplotlib `Axes3D` 多版本环境和 NVML 初始化失败。
+- [x] 只读运行 D6 严格采用审计消费者回归，结果为 `58 passed, 1 warning in 9.40s`，证明
+  v1/v2 disposition 公共 validator 未破坏现有完整分母消费；未修改 D6 代码。警告为既有
+  Matplotlib `Axes3D` 环境提示。
+- [x] main 已优先使用 `config.metadata.paired_exogenous_config_sha256` 形成
+  `pairing_context_sha256`，把 `episode_id` 纳入来源事件日志摘要，并逐 episode 持久化
+  `learning_adoption_evidence.json`。
+- [x] 历史冻结批次以同一外生配置运行状态隔离的候选和规则 episode；20 个开发 seed 形成
+  536 条候选动作。536/536 disposition 已持久化并可严格复载，其中 152 条可配对、384 条
+  不可配对，主原因均为 `candidate_physical_window_missing`；覆盖率 `28.36%`，20/20 seed
+  至少有一个可配对子集。批次 SHA-256 为
+  `455d181076553a485ff824618abc6d037a4477bb6342877d1d1e427fd28583a9`。
+- [x] D6 已按完整候选分母严格消费 disposition。由于存在合法 unpairable 记录，
+  `a3_auditable_pair_count=0`，完整批次的实际采用、物理窗口、同键 R0 和收益计数均为
+  `unavailable`，所有权限为 `false`。152 条可配对子集不能替代完整批次审计。
+- [x] main 已对 536 条候选逐条调用 disposition API，保存原因分布并核对总数守恒；此前
+  384 条静默跳过记录现均有失败关闭处置。
+- [x] main 已用同配置 seeds `1000-1019` 和当前 candidate-stage sidecar 做不落盘全量重跑。
+  536/536 候选有阶段证据，152 条 pairable、384 条 unpairable，完整可审计 seed 为 `0/20`。
+  344 条同时为匿名观测缺失和物理窗口确认缺失；其余 40 条因观测清单不完整保持
+  `candidate_stage_reason_codes=[]`，作为物理窗口缺失细因未解析。D6 聚合 evidenced=344、
+  unresolved=40、`detail_completeness=false`；每 seed unresolved=2。部分清单门控因此避免
+  把这 40 条越界归因为物理窗口不完整。ACK、确认、命令过期、时序错配和反馈缺失均为 0。
+  摘要 SHA-256 为
+  `1ba6040e7c3e7e3b9e7d5506dfd20cf3539ce12c5aac13cca7f02799f0cd99ef`。
+  该摘要标记 `formal_evidence=false`、`source_worktree_clean=false` 和
+  `persisted_full_pair_inventory=false`，只用于开发
+  定位，不能关闭未见 seed、非退化、收益或授权缺口。
+- [x] 完成 D5 侧可审计运行阶段证据 DTO、细分原因重算和持久化失败关闭合同。
+- [x] main 已在 scalable 3D 开发运行中接入 truth-free 逐相机帧事件和 v2 零检测工厂。事件
+  保留双时间戳、扫描序号、相机/资源及三类版本；A3/R0 按时间和版本绑定，观测触发命令并
+  保留 0.25 秒尾窗，通信丢包/抖动使用独立随机流。scalable 3D 全量为
+  `352 passed, 1 warning`。
+- [x] 同配置 seeds `1000-1019` 默认通信退化开发复跑为 candidate `492`、pairable `488`、
+  unpairable `4`、覆盖率 `99.18699%`；329 个 v2 零检测帧为 `reacquire/coverage=false`，
+  159 个 v1 帧为 `locked`，empty rejected=0、权限全 false。零丢包/零抖动对照为
+  `500/500`、覆盖率 `100%`。
+- [ ] main 在 clean/frozen 后续批次逐候选持久化 v2 stage evidence、disposition 和完整 pair
+  inventory。旧持久化 disposition 继续保留粗粒度 `candidate_physical_window_missing`，
+  不得追溯改写。新开发结果为 `formal_evidence=false`、dirty worktree，seed 未证明 unseen。
+- [ ] 在不放宽采用、版本、身份、时间窗或唯一 R0 门控的条件下，用 clean/frozen 制品复核
+  默认 1% 通信丢包下的 4 条缺失，并区分相关性与唯一因果。
+- [ ] 在至少 20 个未见 seed 上形成真实运行时 paired evidence。当前没有 AirSim 或实机收益
+  证据；需完成正式未见策略的成对非退化评估后再讨论准入，A3 assist 和 G1 权限继续关闭。
+
 ## 2026-07-27 G1 v5 正式证据闭环
 
 - [x] 在 clean commit
@@ -315,8 +426,8 @@ unavailable；assist 探针按六权限合同失败关闭。规则路径继续�
   `408e71fe...f4fe`，完成 held-out、paired-shadow、正式 D6 外审及 v4 装配。
 - [ ] 在真实或代表性匿名多相机输入上重新执行候选门并复核泛化；完成前不启用在线 G1，不改变
   默认路径或权限边界。
-- [ ] A3 主动视觉 evidence assembler 仍未实现。A3 production writer 继续拒绝 caller-provided
-  report，公开 assist loader 继续失败关闭；本轮不处理 A3。
+- [x] （历史状态说明）该 v4 阶段未实现 A3 主动视觉 evidence assembler。2026-07-27 已补齐
+  独立采用证据组装和验证合同；真实运行接线、D6 收益审计和 assist 授权仍按本文件首节开放。
 
 本次改变 G1 bundle 准入软件链和实现来源摘要。模块 README、原理、算法、实验报告及 D5 GAP/review
 同步更新；AirSim settings、相机、检测、局部多目标跟踪、episode 和消息接口均未改变。

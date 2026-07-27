@@ -9,11 +9,38 @@ D5 文档遵循 `research_modules/DOCUMENTATION_STANDARD.md`。推荐阅读顺�
 5. `ALGORITHM_AND_IMPLEMENTATION.md`：图像投影、几何门控、局部 MOT、身份正向确认、`ReconImageCue` 约束、`TerminalConsistencyTracker`、distributed visual association 和 D4/D7 合同。
 6. `EXPERIMENT_REPORT.md`：离线仿真结果、终端决策曲线和二级侦察 cue 说明。
 7. `AIRSIM_INTEGRATION_PLAN.md`：AirSim 离线回放接入计划。
-8. `../reports/D5_MANUAL_VIDEO_TRACKING_B_20260715.md`：人工初始化五目标视频 local MOT 实测报告。
-9. `../reports/D5_TRACKLET_GRAPH_TRAINING_READINESS_20260720.md`：正式跨视角图数据训练准入、开发模型和补数要求。
-10. `../reports/D5_ACTIVE_VISION_BC_FORMAL_20260720.md`：正式主动视觉行为克隆数据审计、分层指标、校准和 shadow-only 准入结论。
-11. `../reports/D5_TRACKLET_GRAPH_CANONICAL_SEED_VIEW_20260721.md`：跨视角图数据共享 seed 只读视图、正式计数和失败关闭门。
-12. `../reports/D5_ACTIVE_VISION_CANONICAL_SEED_VIEW_20260721.md`：主动视觉共享 seed 只读视图、正式样本计数和 shadow-only 边界。
+8. `A3_ACTIVE_VISION_EVIDENCE_CONTRACT_CN.md`：A3 模型建议、真实命令采用、ACK 后姿态生效、同键 R0 物理窗口、逐候选 disposition 及严格持久化复载合同。
+9. `../reports/D5_MANUAL_VIDEO_TRACKING_B_20260715.md`：人工初始化五目标视频 local MOT 实测报告。
+10. `../reports/D5_TRACKLET_GRAPH_TRAINING_READINESS_20260720.md`：正式跨视角图数据训练准入、开发模型和补数要求。
+11. `../reports/D5_ACTIVE_VISION_BC_FORMAL_20260720.md`：正式主动视觉行为克隆数据审计、分层指标、校准和 shadow-only 准入结论。
+12. `../reports/D5_TRACKLET_GRAPH_CANONICAL_SEED_VIEW_20260721.md`：跨视角图数据共享 seed 只读视图、正式计数和失败关闭门。
+13. `../reports/D5_ACTIVE_VISION_CANONICAL_SEED_VIEW_20260721.md`：主动视觉共享 seed 只读视图、正式样本计数和 shadow-only 边界。
+
+2026-07-27，A3 证据桥已增加 main runtime 的严格结构适配、相机姿态版本血缘、逐帧匿名观测
+窗口、独立规则 `ActiveVisionA3RuleArmTrace`、唯一同键 R0 配对验证和逐候选 disposition。
+规则 trace 不携带候选模型 provenance，可序列化后在另一进程中重建并组装 R0 窗口。
+A3 专项测试为 `84 passed in 1.38s`。observation-frame v2 现可显式记录“相机帧已处理但
+零检测”，历史 v1 字段、哈希和非空轨迹要求保持不变。main 已完成 scalable 3D 开发接线；
+默认通信退化复跑为 `488/492` 可配对、覆盖率 `99.18699%`，零丢包/零抖动对照为
+`500/500`、覆盖率 `100%`，scalable 3D 全量为 `352 passed, 1 warning`。这些结果来自 dirty worktree，
+seed 未证明 unseen，`formal_evidence=false`。disposition v2 在保持顶层主原因不变的
+同时，运行细因只读取完整运行清单，观测细因只读取完整观测清单，物理窗口细因要求两类清单
+都完整；旧 v1 仍可按原字段集合严格复载。当前 D5 完整回归为
+`739 passed, 2 warnings in 97.98s`。历史冻结批次运行 20 个受控开发 seed，得到 536 条候选动作和
+536/536 条持久化 disposition。其中 152 条可配对、384 条不可配对，后者主原因均为
+`candidate_physical_window_missing`；覆盖率 `28.36%`，20/20 seed 至少有一个可配对子集。
+批次 SHA-256 为
+`455d181076553a485ff824618abc6d037a4477bb6342877d1d1e427fd28583a9`。D6 完整分母审计得到
+`a3_auditable_pair_count=0`，完整采用、窗口、同键 R0 和收益计数保持 `unavailable`，所有
+权限为 `false`。该批次不是未见 seed、AirSim、实机或模型收益证据。
+同配置内存重跑已为 536/536 候选生成阶段证据。344 条同时为匿名观测缺失和物理窗口确认
+缺失；其余 40 条因观测清单不完整保持空细因，记为物理窗口缺失细因未解析。D6 聚合
+evidenced=344、unresolved=40、`detail_completeness=false`，完整可审计 seed 仍为 `0/20`。
+部分清单门控避免了将这 40 条越界归因为物理窗口不完整。摘要 SHA-256 为
+`1ba6040e7c3e7e3b9e7d5506dfd20cf3539ce12c5aac13cca7f02799f0cd99ef`，并标记
+`formal_evidence=false`、`source_worktree_clean=false` 和
+`persisted_full_pair_inventory=false`。旧落盘 disposition 不
+追溯改写，clean/frozen 正式持久化仍开放。
 
 2026-07-27，clean commit `8d5e02ec989259ce3d39e1e4ad6a90dd0d8d5b54` 已完成 D5 G1
 正式合成证据闭环。runtime SHA-256 为

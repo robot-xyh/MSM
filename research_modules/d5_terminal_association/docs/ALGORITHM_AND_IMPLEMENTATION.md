@@ -2,6 +2,230 @@
 
 **状态日期：2026-07-27**
 
+## A3 主动视觉采用与配对证据
+
+### 输入合同
+
+实现入口位于 `active_vision_a3_evidence_assembler.py`。它直接接收现有
+`ActiveVisionDecisionV1`、命令前 `ActiveVisionCameraState`、
+`ActiveVisionRuntimeAckV1` 和 `ActiveVisionCameraFeedbackV1`。main 的
+`CameraObservationCommand`、`runtime.camera_command_ack` 和 `CameraRuntimeState` 分别通过
+`camera_observation_command_payload()`、`active_vision_runtime_ack_from_payload()` 和
+`active_vision_camera_feedback_from_runtime_state()` 做结构适配。适配器核对相机、资源、目标
+只读引用、意图、视场、命令有效期及计划、联盟、通信版本，不引入跨模块导入，也不定义第二套
+ACK。
+
+### 采用重算
+
+模型动作采用要求模型建议通过确定性投影并成为 `effective_action`，对应命令实际下发，且已有
+运行时 ACK 为非模拟、已接受和版本一致。ACK 之后的相机反馈还要满足：
+
+\[
+\psi_{\mathrm{expected}} =
+\operatorname{wrap}(\psi_{\mathrm{pre}}+\Delta\psi),\qquad
+\theta_{\mathrm{expected}} =
+\theta_{\mathrm{pre}}+\Delta\theta .
+\]
+
+验证器比较反馈方位、俯仰和视场模式，姿态容差由证据固定且不得超过 1 度。
+`ActiveVisionA3CameraPoseLineage` 同时保存 ACK 后相机状态的计划、联盟、通信版本和可选来源
+序号。反馈的 `last_accepted_command_version` 必须等于 ACK 命令版本，反馈时间不得早于命令或
+ACK。任一条件不满足都返回稳定 blocker。规则回退、投影拒绝、模拟 ACK、模拟反馈、在线真值
+使用或 `global_track_id` 改写也会阻断 adopted。
+
+### 物理窗口配对
+
+`active_vision_a3_observation_frame()` 把同一相机、同一量测时刻的匿名本地轨迹与 D5 本地绑定
+整理为 `ActiveVisionA3AnonymousObservationFrame`。轨迹键必须是
+`resource_id/camera_id:local_id`，绑定中的 `global_track_id` 只能取自调用方提供的中心候选
+集合。公共函数 `map_active_vision_binding_state()` 固定执行
+`bound -> locked`、`ambiguous -> ambiguous` 和 `unbound -> reacquire`。
+
+历史 `d5.active-vision-a3-anonymous-observation-frame.v1` 保持精确字段集合和原内容哈希
+口径，`observed_tracklet_keys` 仍须非空。新
+`d5.active-vision-a3-anonymous-observation-frame.v2` 增加
+`frame_observation_state` 和 `center_global_track_ids`。状态为
+`tracklets_observed` 时仍要求非空匿名轨迹；状态为 `processed_zero_detections` 时轨迹和绑定
+都必须为空，并要求显式 `source_sequence`。目标引用和绑定中的全局编号必须属于随帧保存的
+中心航迹只读清单。
+
+`active_vision_a3_zero_detection_frame()` 从显式 `camera_id`、`resource_id`、量测/到达时间、
+计划/联盟/通信版本、目标只读引用、中心航迹清单、证据来源和来源序号构造 v2 负观测。工厂不
+读取 truth/actor ID，不生成全局编号。有分配目标时，帧级结果按以下规则重算：
+
+\[
+\text{association\_state}=\text{reacquire},\qquad
+\text{assigned\_reference\_visible}=\mathrm{false}.
+\]
+
+没有分配目标时，两项均为 unavailable。零检测帧不能变成 locked 或 ambiguous。窗口 loader
+可同时复载 v1 非空帧和 v2 零检测帧，并重算帧哈希、窗口哈希、时间摘要、三类版本和 outcome；
+同一窗口仍只允许一种 `runtime_observed` 或 `synthetic_fixture` provenance。
+
+### 开发运行接线
+
+main 已在 scalable 3D 中为每台相机生成 truth-free frame event。非空检测继续形成 v1 帧；
+只有已处理零检测帧进入 `sensor.camera_empty_frame` 并由 v2 工厂转换。事件携带
+`camera_id`、`resource_id`、量测/到达时间、scan index 和计划/联盟/通信版本。A3 与 R0 的
+帧按时间和版本绑定，观测事件触发相机命令，命令后保留 0.25 秒证据尾窗。通信丢包与抖动使用
+独立随机流，避免候选臂和规则臂共享同一随机实现状态。
+
+默认 1% 通信丢包配置下，seeds `1000-1019` 开发复跑得到：
+
+```text
+candidate = 492
+pairable / unpairable = 488 / 4
+pairable coverage = 99.18699%
+v2 zero-detection reacquire / v1 locked = 329 / 159
+empty frame rejected = 0
+all permissions = false
+```
+
+4 条缺失与默认通信丢包相关，尚不能仅凭该对照认定唯一因果。把通信丢包和抖动都设为 0 后，
+同一 20 seeds 得到 `500/500` 可配对、覆盖率 `100%`。scalable 3D 全量回归为
+`352 passed, 1 warning`。两次复跑均为 dirty-worktree 开发证据，`formal_evidence=false`，seed 未证明
+unseen，不用于主动视觉收益、模型准入或权限判断。
+
+规则基线不再依赖候选 `ActiveVisionA3AdoptionTrace`。
+`assemble_active_vision_a3_rule_arm_trace()` 从独立规则 episode 的
+`ActiveVisionDecisionV1`、命令、运行 ACK 和 ACK 后相机状态生成
+`ActiveVisionA3RuleArmTrace`。规则决定必须满足：
+
+```text
+requested_mode = disabled
+effective_mode = disabled
+requested_action = None
+model_fingerprint = None
+inference_latency_ms = 0
+rule_action = effective_action
+```
+
+该 trace 没有候选模型 manifest、权重、实现摘要或模型评估时间字段。其规范序列化可在另一
+进程中由 `from_mapping()` 严格重建。随后
+`assemble_active_vision_a3_rule_arm_physical_observation_window()` 只使用规则 trace 和该
+episode 的运行时匿名帧形成 R0 窗口，不读取候选模型 provenance。
+
+`ActiveVisionA3PhysicalObservationWindow` 只接受姿态反馈之后的逐帧观测。窗口保存每个匿名帧、
+起止时间、首末量测时间、首末到达时间，并从帧重新计算关联四态计数和已分配目标引用覆盖。A3
+窗口绑定采用 trace 的 SHA-256；规则 R0 窗口必须来自独立日志。两臂比较身份由以下字段共同确定：
+
+```text
+comparison_key / scenario_id / scale / seed / window_index
+camera_id / resource_id / target_global_track_id
+pairing_context_sha256
+plan_version / coalition_version / communication_version
+```
+
+`assemble_active_vision_a3_paired_evidence()` 只允许一个 comparison key 对应零个或一个 R0。
+两个及以上 R0 直接拒绝。上述字段、窗口时长或证据来源不一致时，组装器失败关闭；候选和 R0
+使用同一来源事件日志摘要也会拒绝。两臂 outcome 均 available 且采用链完整时，才生成
+`d5.active-vision-a3-benefit-audit-input.v1` 并允许 D6 进入配对收益审计。输出不会授予 A3
+assist、相机命令、分配、接管、控制、模型晋级、全局编号修改或 G1 权限。
+
+### 逐候选结果合同
+
+`attempt_active_vision_a3_pairing()` 对单条采用 trace、可选候选窗口和零至多个 R0 窗口进行
+只读尝试。输入可以是已验证对象，也可以是规范 mapping；mapping 会先调用现有严格
+`from_mapping()` 重建。函数不修改相机状态，不下发命令，也不改变采用、窗口有效期、身份或
+版本门。
+
+输出 `ActiveVisionA3PairingDisposition` 包含候选 comparison/sample 引用、trace SHA-256、
+`pairable`、稳定主原因、底层诊断码和可选 paired evidence。主原因按下列顺序确定：
+
+```text
+trace 合同无效
+model action not adopted
+candidate physical window missing
+same-key R0 missing
+same-key R0 duplicate or ambiguous
+pairing key/configuration mismatch
+candidate/R0 physical evidence incomplete
+benefit outcome unavailable
+pairable
+```
+
+成功项引用现有 `ActiveVisionA3BenefitAuditInput`，不创建第二套收益合同。失败项的 paired
+evidence 固定为 `None`。候选窗口缺失的顶层原因继续使用
+`candidate_physical_window_missing`。没有阶段证据时，`None` 仍不用于推断 ACK、相机反馈或
+匿名观测断点。
+
+细分使用独立的 `ActiveVisionA3CandidateStageEvidence`。该记录绑定 comparison/sample、
+相机、资源、配对上下文、adoption trace SHA-256 和来源事件日志 SHA-256，并保存事件清单起止
+时间。运行事件和匿名观测分别携带 inventory-complete 标志。只有对应标志为真时，空 ACK、空
+反馈或零匿名帧才表示明确缺失；标志为假时保持 unknown。阶段记录还保存命令签发/过期时间、
+ACK 时间和应用状态、相机反馈时间、匿名帧数量、首末量测/到达时间及物理窗口装配状态。
+
+细分归因按清单边界执行。ACK、反馈、命令过期和运行时序只在
+`runtime_event_inventory_complete=true` 时生成；匿名观测缺失、不完整及其内部时序只在
+`observation_inventory_complete=true` 时生成；物理窗口 missing/incomplete 只有在两类清单
+都完整时生成。部分清单中已有的时间戳、状态和计数不能绕过该门。
+
+v2 disposition 从上述记录重算 `candidate_stage_reason_codes`，稳定区分：
+
+```text
+runtime ACK missing / runtime confirmation missing
+command window expired / command timing mismatch
+camera feedback missing
+anonymous observation missing / incomplete
+candidate physical window confirmed missing / incomplete
+```
+
+时间不一致由显式时间戳判断，包括 ACK 早于命令、ACK 晚于有效期、反馈早于 ACK、命令或事件
+超出清单时间窗，以及匿名帧首末时间逆序或量测早于姿态反馈。算法不读取后续 truth 标签，也不
+用其他 episode 的窗口反推断点。main 可按输入顺序遍历全部候选，按 `reason_code.value` 保持
+完整分母，再单独统计细分原因。
+
+持久化后使用 `ActiveVisionA3PairingDisposition.from_mapping()` 或
+`validate_active_vision_a3_pairing_disposition()` 严格复载。validator 先校验顶层精确字段和
+JSON 类型，再按 `pairable` 分支处理嵌套证据。pairable 必须携带对象，并调用
+`validate_active_vision_a3_evidence()` 重算 trace、窗口、eligibility、权限和内部摘要；
+unpairable 必须携带 JSON `null`。最后重建 disposition 并比较顶层 `content_sha256` 和完整
+规范字典。pairable 顶层场景、seed、窗口、sample、相机、资源、目标和配对上下文还必须逐项
+等于嵌套 adoption trace。v2 还递归复载阶段证据并重算细分原因。未知细分原因、阶段摘要变化、
+重算后替换细分原因、跨 trace 引用、未知字段、缺字段、整数写成浮点数、权限变化或
+pairable/evidence 矛盾均失败关闭。历史
+`d5.active-vision-a3-pairing-disposition.v1` 继续按原字段集合严格复载，不会被自动补写阶段
+原因。
+
+该 validator 不重新访问原始命令、事件流或物理相机。它能证明的是“这份 disposition 与其中
+嵌套的证据结构一致且未被修改”，不能证明“保存的 reason 一定是现实中的首要因果”。因果审计
+仍需 main/D6 连接原始运行日志、时序链和外部配置。
+
+### 当前实施状态
+
+历史冻结批次使用 `paired_exogenous_config_sha256` 运行状态隔离的候选和规则 episode，并保持不同
+来源日志。2026-07-27 的 20 个受控开发 seed 形成 536 条候选动作。536/536 disposition 已
+持久化并严格复载，其中 152 条可配对、384 条不可配对；不可配对主原因全部为
+`candidate_physical_window_missing`。可配对覆盖率为 `28.36%`，20/20 seed 至少存在一个
+可配对子集。批次 SHA-256 为
+`455d181076553a485ff824618abc6d037a4477bb6342877d1d1e427fd28583a9`。
+
+D6 使用完整候选分母后得到 `a3_auditable_pair_count=0`。存在合法 unpairable 时，完整批次
+的实际采用、物理窗口、同键 R0 和收益计数均保持 `unavailable`，所有权限为 `false`；不能将
+152 条子集写成完整可审计结果。
+
+main 已用同配置 seeds `1000-1019` 和当前 candidate-stage sidecar 做不落盘全量重跑。
+536/536 候选有阶段证据，仍为 152 条 pairable、384 条 unpairable，完整可审计 seed 为
+`0/20`。344 条同时为匿名观测缺失和物理窗口确认缺失；其余 40 条的观测清单不完整，
+`candidate_stage_reason_codes=[]`，因此只能记为物理窗口缺失细因未解析。D6 聚合
+evidenced=344、unresolved=40、`detail_completeness=false`；每 seed 的 scope 约为 20，
+evidenced=`scope-2`、unresolved=2。部分清单门控正是为了阻止把这 40 条越界归为
+`candidate_physical_window_incomplete`。ACK、确认、命令过期、时序错配和反馈缺失均为 0。
+摘要 SHA-256 为
+`1ba6040e7c3e7e3b9e7d5506dfd20cf3539ce12c5aac13cca7f02799f0cd99ef`，并标记
+`formal_evidence=false`、`source_worktree_clean=false` 和
+`persisted_full_pair_inventory=false`。旧持久化记录保持原
+粗粒度主原因，不追溯改写。
+
+阶段证据与严格 mapping validator 专项共 84 项，结果为 `84 passed in 1.38s`。覆盖
+明确缺失分类、部分清单边界、v1/v2 往返、v1/v2 字段隔离、阶段摘要篡改、重算后原因篡改、
+未知原因、精确 JSON 类型、嵌套权限篡改、pairable/evidence 矛盾，以及历史 observation-frame
+v1、v2 零检测、中心目标约束、同源混合窗口、时间/版本/来源/哈希篡改和零覆盖。当前 D5
+完整回归为
+`739 passed, 2 warnings in 97.98s`，零失败。D6 已接入严格配对消费，但开发 seed、测试策略
+替身和可配对合同不构成正式未见 seed、非退化、AirSim 或实机收益证据。后续 P1 是 clean/
+frozen v2 全清单持久化，并在不放宽门控的前提下复核通信退化归因和未见 seed 非退化。
+
 ## G1 v5 正式装配与验证
 
 ### 冻结输入
@@ -618,8 +842,9 @@ I_{\mathrm{synthetic}}^{\,0}.
 \]
 
 \(\Delta V\) 是模型减规则的平均可见率差，\(\Delta t_{\mathrm{reacquire}}\) 是重捕获时延差。除平均
-门外，每个 episode 也不得出现安全、可见率或重捕获退化。A3 独立 evidence assembler 尚未实现；
-该判据当前只用于离线评估，production writer 不接受报告对象，公开 assist loader 继续失败关闭。
+门外，每个 episode 也不得出现安全、可见率或重捕获退化。该历史阶段尚未实现 A3 独立 evidence
+assembler；2026-07-27 已补齐采用证据软件合同。当前仍无真实 paired evidence，production
+writer 不接受报告对象，公开 assist loader 继续失败关闭。
 
 该历史 v4 的 G1 实现摘要覆盖运行适配、稀疏图、数据合同、模型、held-out、paired shadow、训练、
 bundle loader 和 evidence assembler，当时为 `41381db3...94b07`。回归测试确认改变 assembler 会改变

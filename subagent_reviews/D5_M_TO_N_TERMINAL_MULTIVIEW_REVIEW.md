@@ -1,5 +1,54 @@
 # D5 M 对 N 末端多视角配准与协同定位调研
 
+## 2026-07-27 A3 证据对 M 对 N 的边界
+
+A3 采用证据按相机、资源和中心目标只读引用构造，`scale` 由运行场景输入，不写死 2v2、5v5
+或 200v200。每个窗口保留计划、联盟和通信版本，因此可在 M 对 N 场景中分别审计不同成员的
+实际相机命令采用及后续关联/覆盖结果。D5 仍不选择联盟成员、不分配目标，也不合并或改写
+`global_track_id`。
+
+observation-frame v2 允许每个成员相机独立记录“图像已处理但零检测”。有中心分配目标时，该
+成员结果为 `reacquire`、覆盖为 0；没有目标引用时保持 unavailable。一个成员的零检测不能
+推断其他成员的视场或检测结果，也不能替代联盟共同窗口。历史 v1 非空帧与 v2 零检测帧可在
+同一来源窗口中共存，runtime 与 synthetic provenance 仍严格隔离。
+
+main scalable 3D 开发 writer 已为每台成员相机生成 truth-free frame event，并按相机/资源、
+双时间戳、scan index 和三类版本独立绑定 A3/R0。默认通信退化的 20-seed 复跑为
+488/492 可配对、覆盖率 `99.18699%`；其中 329 个 v2 零检测帧为
+`reacquire/coverage=false`，159 个 v1 帧为 `locked`。零丢包/零抖动对照为 `500/500`、
+覆盖率 `100%`，scalable 3D 全量为 `352 passed, 1 warning`。这些计数按成员帧形成，不能替代多成员共同
+窗口或联盟 ACK。结果非正式、
+worktree dirty、seed 未证明 unseen，不产生联盟或执行权限。
+
+每个成员相机的规则基线现在可用独立 `ActiveVisionA3RuleArmTrace` 记录。规则 trace 不读取
+候选模型 provenance，可跨进程重建，并用该成员自己的命令、ACK、相机反馈和匿名帧形成 R0
+物理窗口。唯一配对 API 按相机、资源、目标引用和三类版本逐项比较，不允许一个联盟成员的 R0
+替代另一个成员，也不允许多个 R0 竞争同一 comparison key。
+
+`attempt_active_vision_a3_pairing()` 现在为每个成员相机的每条候选分别输出 disposition。其
+comparison/sample 引用保留相机、资源和中心目标，不把多个联盟成员合成一条结果。main 可按
+成员和稳定原因聚合，但不能用一个成员的可配对窗口补足另一成员的缺失窗口。
+
+候选阶段证据同样按成员相机独立绑定。一个成员的 ACK、反馈、匿名观测或窗口装配状态不能替代
+另一成员；运行/观测清单不完整时保持粗粒度。v2 细分原因只用于诊断和完整分母统计，不授予
+联盟成员资格或共同执行权限。
+
+当前专项结果为 `84 passed in 1.38s`，D5 完整回归为
+`739 passed, 2 warnings in 97.98s`，无测试失败。这些测试只验证单成员证据合同、持久化完整性和失败关闭
+条件，没有生成多资源共同物理窗口、联盟 ACK、第二 primary 完成或跨相机收益。main/D4 的
+联盟执行证据与 A3 相机采用证据仍需按版本对齐，但两者不能互相替代。G1 授权状态不受本次
+A3 工作影响。
+
+在 observation-frame v2 runtime 接线前，main 的同配置开发内存重跑曾为 536/536 候选生成
+阶段证据。344 条同时为匿名观测缺失和物理
+窗口确认缺失；其余 40 条因观测清单不完整保持空细因，计为 unresolved，不能归为物理窗口
+不完整。D6 聚合 evidenced=344、unresolved=40、`detail_completeness=false`，完整可审计 seed
+仍为 `0/20`。部分清单门控正是为了防止该越界归因。运行阶段五类原因均为 0；摘要 SHA-256
+为 `1ba6040e7c3e7e3b9e7d5506dfd20cf3539ce12c5aac13cca7f02799f0cd99ef`，并标记
+`formal_evidence=false`、`source_worktree_clean=false` 和
+`persisted_full_pair_inventory=false`。该场景是单目标、单资源的 A3 配对诊断，不能作为 M 对 N 共同窗口或
+联盟成员协同证据。
+
 ## 2026-07-27 G1 v5 证据与 M 对 N 边界
 
 clean commit `8d5e02ec989259ce3d39e1e4ad6a90dd0d8d5b54` 已完成最终 runtime
@@ -137,7 +186,8 @@ paired-shadow 和 D6 audit，并由公开 loader/runtime 逐次复核。正向 f
 `implementation_lineage_mismatch`、`robustness_threshold_not_met.cluster_f1`、
 `robustness_threshold_not_met.edge_f1` 和 `synthetic_single_feature_shortcut` 五项 blocker
 失败关闭；assembler 返回 `d6_external_audit_fail_closed`，没有生成 v4。旧 bundle 因缺
-assembler 来源绑定返回 `implementation_runtime_mismatch`。A3 assembler 仍未实现。
+assembler 来源绑定返回 `implementation_runtime_mismatch`。该历史阶段 A3 assembler 仍未实现；
+2026-07-27 已补齐采用证据软件合同，但没有新增 M 对 N 运行或权限证据。
 
 该 v4 阶段的 M 对 N 主线继续使用确定性投影、几何门、受约束聚类和中心航迹绑定。2026-07-27
 正式 v5 已达到 `g1_evidence_eligible_not_authorized`，但 G1 辅助权限仍为 `false`，因此在线

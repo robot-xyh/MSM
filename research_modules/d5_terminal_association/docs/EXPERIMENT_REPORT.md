@@ -1,5 +1,92 @@
 # D5 末端视觉配准与身份认证实验报告
 
+## 2026-07-27 A3 证据合同验证
+
+本轮完成 A3 主动视觉采用证据的软件合同验证，没有启动 AirSim，也没有形成物理收益数据。
+A3 专项测试结果为 `84 passed in 1.38s`，D5 完整回归为
+`739 passed, 2 warnings in 97.98s`，无测试失败。两条警告分别来自 Matplotlib `Axes3D`
+多版本环境和 NVML 初始化失败。测试覆盖
+候选采用、独立规则 trace 跨对象重建、无 ACK、缺姿态版本血缘、规则回退、确定性投影拒绝、
+缺匿名观测帧、错本地轨迹命名空间、非中心航迹引用、缺候选物理窗口、重复或缺失同键 R0、
+跨键/相机/版本、同日志复用、关联或覆盖结果不可用、模拟 ACK/反馈、在线真值污染、中心 ID
+改写、SHA-256 篡改、双时间戳和窗口时长错配。新增 7 项用例验证成功引用、未实际采用、候选
+窗口缺失、R0 缺失、R0 歧义、键/配置不一致和 mapping 篡改均返回稳定 disposition。新增
+mapping 往返、顶层摘要、字段集合、精确类型、嵌套权限及 pairable/evidence 矛盾测试证明
+持久化制品可严格复载。新增用例还覆盖 ACK 缺失/未确认、命令过期/时序不匹配、相机反馈
+缺失、匿名观测缺失/不完整、候选窗口缺失/不完整、v1/v2 往返、阶段证据篡改和未知细分原因
+拒绝。新增部分清单用例确认运行、观测和物理窗口原因分别受完整运行清单、完整观测清单和
+两类完整清单约束；部分清单中的显式时间、状态或计数不会越界触发归因。v1 混入 v2 字段也按
+精确字段合同拒绝。本轮增加的 observation-frame v2 用例覆盖历史 v1 正向与空帧拒绝、v2
+零检测正向、非中心目标引用、时间/版本/来源/哈希篡改、v1/v2 同源混合窗口、runtime/synthetic
+混装拒绝、`reacquire`、coverage 0 和全部权限关闭。
+
+同日只读运行 D6 严格采用审计消费者测试，结果为
+`58 passed, 1 warning in 9.40s`，验收阈值为零失败。警告是既有 Matplotlib `Axes3D` 环境
+提示。该结果只证明 v1/v2 disposition 可被现有 D6 公共验证路径消费，没有产生新的收益数据。
+
+正向 fixture 证明组装器能够复用现有命令、ACK 和相机反馈合同，重算 ACK 后的姿态及命令版本，
+按 `resource_id/camera_id:local_id` 保存逐帧匿名轨迹及只读中心绑定，并将后续观测窗口与独立
+规则 R0 配对。R0 trace 不含候选模型 provenance；测试将其序列化后作为新对象重建，再使用
+持久化匿名帧形成物理窗口，验证两次 episode 不需要共享 Python 进程对象。
+
+v2 正向 fixture 只证明相机帧可被明确记录为“已处理但零检测”。它不证明检测器发现目标、
+模型优于规则、AirSim 中存在目标可见性或实机视觉性能。该次合同测试当时尚未接入 main
+writer；后续接线结果单列如下，既有冻结证据不追溯改写。
+
+### 开发运行接线复跑
+
+main 随后已在 scalable 3D writer/runtime 接入 truth-free 逐相机帧事件。只有已处理零检测帧
+进入 `sensor.camera_empty_frame`；事件保存相机/资源、双时间戳、scan index 和三类版本。
+A3/R0 按时间和版本绑定，观测触发命令后保留 0.25 秒证据尾窗，通信丢包和抖动使用独立随机
+流。scalable 3D 全量回归为 `352 passed, 1 warning`。
+
+默认 1% 通信丢包配置下，同配置 seeds `1000-1019` 结果如下：
+
+| 指标 | 开发结果 |
+| --- | ---: |
+| candidate | 492 |
+| pairable / unpairable | 488 / 4 |
+| pairable coverage | 99.18699% |
+| v2 zero-detection reacquire | 329 |
+| v1 locked | 159 |
+| empty frame rejected | 0 |
+| 任一权限为 true | 0 |
+
+将通信丢包和抖动都设为 0 后，同一 20 seeds 对照为 `500/500` pairable、覆盖率 `100%`。默认
+配置的 4 条缺失与通信丢包相关，但当前证据不能证明其为唯一因果。两组均来自 dirty worktree，
+`formal_evidence=false`，seed 未证明 unseen。结果验证 writer/runtime 接线和 v1/v2 outcome
+口径，不证明模型收益、AirSim 性能、实机能力或授权。
+
+历史 `536/152/384` 批次及 SHA-256、历史 `344/40` 阶段细分结果均未改写。
+
+### 历史冻结批次
+
+历史冻结批次运行状态隔离的候选与规则 episode。20 个受控开发 seed 共形成 536 条候选动作，并保存
+536/536 条 disposition。152 条可配对、384 条不可配对；不可配对主原因全部为
+`candidate_physical_window_missing`。可配对覆盖率为 `28.36%`，20/20 seed 至少存在一个
+可配对子集。批次 SHA-256 为
+`455d181076553a485ff824618abc6d037a4477bb6342877d1d1e427fd28583a9`。
+
+D6 完整分母审计得到 `a3_auditable_pair_count=0`。合法 unpairable 存在时，完整批次的实际
+采用、物理窗口、同键 R0 和收益计数均为 `unavailable`，所有权限为 `false`。152 条子集不能
+替代完整批次。该批次使用测试策略替身，不是 AirSim 物理观测、正式未见 seed、实机或模型
+收益证据。
+
+main 随后对同配置 seeds `1000-1019` 使用当前 candidate-stage sidecar 做不落盘全量重跑。
+536/536 候选有阶段证据，仍为 152 条 pairable、384 条 unpairable，完整可审计 seed 为
+`0/20`。344 条同时为匿名观测缺失和物理窗口确认缺失；其余 40 条因
+`observation_inventory_complete=false` 保持 `candidate_stage_reason_codes=[]`，记为物理
+窗口缺失细因未解析。D6 聚合 evidenced=344、unresolved=40、
+`detail_completeness=false`；每 seed 的 scope 约为 20、evidenced=`scope-2`、unresolved=2。
+这正是部分清单门控防止越界归因的结果，不能再写为物理窗口不完整 40。ACK 缺失、运行确认
+缺失、命令过期、时序错配和相机反馈缺失均为 0。开发摘要 SHA-256 为
+`1ba6040e7c3e7e3b9e7d5506dfd20cf3539ce12c5aac13cca7f02799f0cd99ef`。摘要标记
+`formal_evidence=false`、`source_worktree_clean=false` 和
+`persisted_full_pair_inventory=false`。该结果定位了匿名观测窗口形成不足，但不能写成正式
+clean/frozen 证据，也不能关闭未见 seed、非退化、收益或授权缺口。旧持久化 disposition
+保持粗粒度主原因。只读来源为
+`research_modules/scalable_3d_simulation/docs/SCALABLE_3D_A3_STAGE_BREAKDOWN_DEVELOPMENT_20260727.json`。
+
 ## 2026-07-27 G1 v5 正式证据结果
 
 ### 执行基线
@@ -543,8 +630,8 @@ loader 返回 `implementation_runtime_mismatch`，没有使用兼容白名单。
 
 阈值、实现兼容白名单、旧 bundle、held-out、paired-shadow 和 D6 输出均未修改。该历史模型未获
 G1 assist eligibility；2026-07-27 的正式 v5 也仅达到
-`g1_evidence_eligible_not_authorized`，未获得在线辅助权限。A3 evidence assembler 尚未实现，
-主动视觉学习 assist 继续失败关闭。
+`g1_evidence_eligible_not_authorized`，未获得在线辅助权限。该历史阶段尚未实现 A3 evidence
+assembler；2026-07-27 已补齐 D5 软件合同，但主动视觉学习 assist 仍继续失败关闭。
 最终证据同步复测为 assembler 专项 `14 passed in 1.15s`、模型流水线
 `20 passed in 4.08s`；既有 D5 全量结果为 `571 passed in 99.00s`。
 

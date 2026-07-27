@@ -1,5 +1,100 @@
 # AirSim 离线集成计划
 
+## 2026-07-27 A3 运行证据接线
+
+D5 已提供 A3 采用证据 DTO、组装器和严格验证器。main 已在 scalable 3D 开发 runtime 完成
+truth-free 逐相机帧、v2 零检测、A3/R0 时间/版本绑定、观测触发命令和 0.25 秒尾窗接线；
+scalable 3D 全量为 `352 passed, 1 warning`。本轮仍未启动 AirSim，也没有修改 settings、相机参数、
+云台执行器、检测器、actor 或 episode reset。AirSim 接线应继续使用 main 已有
+`CameraObservationCommand`、`runtime.camera_command_ack`、`CameraRuntimeState` 和
+`IntegratedModuleStack.record_active_vision_runtime_feedback()`，不增加第二套 ACK 或相机状态。
+
+每个 A3 决策周期由 main 保存命令前相机状态、策略决策、规范化命令、运行时 ACK 以及 ACK 后
+相机反馈。建议按下列 D5 公共 API 顺序接线：
+
+```text
+assemble_active_vision_a3_adoption_trace
+  -> 检测非空: active_vision_a3_observation_frame
+  -> 图像已处理但零检测: active_vision_a3_zero_detection_frame
+  -> assemble_active_vision_a3_physical_observation_window
+
+assemble_active_vision_a3_rule_arm_trace
+  -> 同样按检测非空/零检测选择 observation-frame v1/v2 工厂
+  -> assemble_active_vision_a3_rule_arm_physical_observation_window
+
+候选窗口 + 唯一 R0 窗口
+  -> ActiveVisionA3CandidateStageEvidence
+  -> attempt_active_vision_a3_pairing
+  -> pairable 时引用 assemble_active_vision_a3_paired_evidence 的既有结果
+```
+
+第一步内部可调用 `active_vision_runtime_ack_from_payload()` 和
+`active_vision_camera_feedback_from_runtime_state()`。后者同步生成带计划、联盟、通信版本的
+`ActiveVisionA3CameraPoseLineage`。只有反馈中的命令版本、方位、俯仰和视场模式真实生效后，
+才允许从下一物理观测开始形成候选窗口。窗口必须保存逐帧匿名轨迹、本地绑定、量测时间、到达
+时间、三类版本、关联状态、覆盖结果和来源日志摘要。
+
+scalable 3D writer 已区分未采集/未处理相机帧与已处理零检测帧。前者不创建 observation
+frame，窗口和
+阶段证据按清单完整性保持 unavailable 或 missing；后者调用 v2 工厂，显式保存
+`processed_zero_detections`、中心航迹只读清单和 `source_sequence`。有分配目标时该帧计为
+`reacquire`、coverage 0。该负观测不能写成检测成功、模型收益或 AirSim 目标可见，也不能从
+AirSim actor/object ID 生成本地或全局身份。AirSim writer 后续应复用相同边界。
+
+规则 R0 与 A3 应使用 reset 隔离的同场景、同 seed、同相机和相同冻结外生条件，保持相同窗口
+时长，并使用不同来源日志。main 已优先把
+`config.metadata.paired_exogenous_config_sha256` 作为 `pairing_context_sha256`，把
+`episode_id` 纳入 `source_event_log_sha256`，并逐 episode 保存
+`learning_adoption_evidence.json`。独立规则 trace 可以在 R0 episode 内生成并序列化，配对进程
+只需严格重建该 trace 和匿名帧，不需要候选模型对象或同一 Python 进程状态。
+
+AirSim actor/object ID 只能写入 D6 离线 truth sidecar，不能进入 D5 在线证据。main 应对每条
+AirSim 候选保存一条 disposition，包括不可配对原因。需要细分候选窗口缺失时，main 还要按同一
+来源事件日志生成 `ActiveVisionA3CandidateStageEvidence`，至少提供：
+
+```text
+comparison/sample/camera/resource 与 adoption_trace_sha256
+source_event_log_sha256
+事件清单起止时间
+runtime_event_inventory_complete
+命令签发与过期时间
+ACK 时间和 applied 状态，包括拒绝或迟到 ACK
+相机反馈时间
+observation_inventory_complete
+匿名观测帧数量及首末 measurement/arrival timestamp
+physical_window_status = unknown | missing | incomplete | complete
+```
+
+运行细因要求运行清单完整，观测细因要求观测清单完整，物理窗口细因要求两类清单都完整。
+任一对应标志为假时，D5 不把该部分空字段、时间、状态或计数解释为具体断点。细分结果不读取
+actor truth，也不根据后续 R0 或其他相机结果回填。
+
+在 observation-frame v2 runtime 接线前，scalable 同配置 seeds `1000-1019` 曾用
+candidate-stage sidecar 完成一次不落盘开发
+重跑。536/536 候选有阶段证据，152 条 pairable、384 条 unpairable，完整可审计 seed 仍为
+`0/20`。344 条同时为匿名观测缺失和物理窗口确认缺失；其余 40 条因观测清单不完整保持
+`candidate_stage_reason_codes=[]`，作为物理窗口缺失细因未解析。D6 聚合 evidenced=344、
+unresolved=40、`detail_completeness=false`。这表明部分清单门控阻止了 40 条物理窗口
+不完整的越界归因；运行阶段五类原因均为 0。摘要 SHA-256 为
+`1ba6040e7c3e7e3b9e7d5506dfd20cf3539ce12c5aac13cca7f02799f0cd99ef`。该运行没有启动
+AirSim，且摘要标记 `formal_evidence=false`、`source_worktree_clean=false` 和
+`persisted_full_pair_inventory=false`。旧
+落盘 disposition 继续保持粗粒度主原因。下一轮仍需 clean/frozen 持久化；当前没有 AirSim
+A3/R0 配对收益结果。A3 assist、G1 和控制权限继续关闭。
+
+v2 runtime 接线后的同 20 seeds 开发复跑，在默认 1% 通信丢包下得到 492 条候选、488 条
+pairable、4 条 unpairable，覆盖率 `99.18699%`；329 个 v2 零检测帧为
+`reacquire/coverage=false`，159 个 v1 帧为 `locked`，empty rejected=0，所有权限为 false。
+通信丢包和抖动使用独立随机流。将两者设为 0 后，对照为 `500/500`、覆盖率 `100%`。4 条
+缺失与默认通信丢包相关，仍需 clean/frozen 事件链确认因果。两组结果均不是 AirSim 运行，
+`formal_evidence=false`、worktree dirty，seed 未证明 unseen，不构成收益或授权。
+
+持久化后，main/D6 应使用 `validate_active_vision_a3_pairing_disposition()` 复载每条记录。
+pairable 项会递归验证 paired evidence 及权限，unpairable 项不得夹带 paired evidence。该检查
+v2 还会复载阶段证据并重算受控细分原因，旧 v1 仍按原字段集合复载。该检查只验证文件结构、
+摘要和内部一致性；AirSim 中真实缺测原因仍需 episode 事件日志和相机时序审计。离线 truth
+sidecar 只用于评分，不参与在线分类。
+
 ## 2026-07-27 G1 v5 的 AirSim 使用边界
 
 clean commit `8d5e02ec989259ce3d39e1e4ad6a90dd0d8d5b54` 已形成绑定 runtime
@@ -48,8 +143,9 @@ G1 已有独立 evidence assembler，可从明确实物原子生成并严格加�
 不一致、边/簇困难扰动未达门限和合成单特征捷径共五项 blocker 保持 `fail_closed`，因此没有生成
 admitted bundle，该阶段的 AirSim G1 scope 不能初始化。2026-07-27 的最终 runtime 已形成
 external audit v2、v5 和 post-assembly v2，但六项权限全部为 `false`，因此 AirSim 在线 G1
-scope 仍不得初始化。A3 assembler 尚未实现，A3/C1/F1 继续失败关闭。AirSim 主线继续使用确定性
-几何关联和规则主动视觉。本次只同步准入状态，没有修改 settings、相机参数、检测器、局部多目标
+scope 仍不得初始化。该历史阶段 A3 assembler 尚未实现；2026-07-27 已补齐 D5 软件合同，但
+A3/C1/F1 运行权限继续失败关闭。AirSim 主线继续使用确定性几何关联和规则主动视觉。本次只同步
+准入状态，没有修改 settings、相机参数、检测器、局部多目标
 跟踪、actor、reset、消息 DTO 或导引接口。
 
 ## 2026-07-25 冻结图模型的 AirSim 边界
