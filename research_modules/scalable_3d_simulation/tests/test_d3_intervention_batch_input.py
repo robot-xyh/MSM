@@ -4,14 +4,18 @@ from dataclasses import asdict
 from hashlib import sha256
 import json
 from pathlib import Path
-import shutil
 
+import numpy as np
 import pytest
 
 from research_modules.d3_assignment_planner.src.d3_assignment_planner import (
+    EDGE_FEATURE_NAMES,
     ISOLATED_INTERVENTION_BATCH_SEEDS_V1,
+    SharedEdgeActorCriticPolicy,
+    development_shadow_admission,
     load_isolated_intervention_batch_manifest,
     run_isolated_intervention_batch,
+    save_model_bundle,
 )
 from research_modules.scalable_3d_simulation.d3_intervention_batch_input import (
     D3_INTERVENTION_BATCH_INPUT_CHECKSUMS,
@@ -32,17 +36,6 @@ from research_modules.scalable_3d_simulation.orchestrator import (
 )
 from research_modules.scalable_3d_simulation.scenarios import (
     make_curriculum_scenario,
-)
-
-
-ROOT = Path(__file__).resolve().parents[3]
-SOURCE_BUNDLE = (
-    ROOT
-    / "research_modules"
-    / "d3_assignment_planner"
-    / "outputs"
-    / "formal_bc_development_20260720"
-    / "bundle"
 )
 
 
@@ -106,16 +99,56 @@ def _capture():
     )
 
 
-def _copy_bundle(tmp_path: Path) -> Path:
-    if not SOURCE_BUNDLE.is_dir():
-        pytest.skip("frozen D3 development bundle is unavailable")
+def _write_bundle(tmp_path: Path) -> Path:
+    torch = pytest.importorskip("torch")
     bundle = tmp_path / "source-bundle"
-    shutil.copytree(SOURCE_BUNDLE, bundle)
+    policy = SharedEdgeActorCriticPolicy(
+        hidden_size=1,
+        residual_bound=1.0,
+    )
+    with torch.no_grad():
+        for parameter in policy.parameters():
+            parameter.zero_()
+    save_model_bundle(
+        bundle,
+        policy,
+        split_hash=sha256(b"fixture-split").hexdigest(),
+        dataset_frames_sha256=sha256(b"fixture-dataset").hexdigest(),
+        normalization_mean=np.zeros(
+            len(EDGE_FEATURE_NAMES),
+            dtype=float,
+        ),
+        normalization_scale=np.ones(
+            len(EDGE_FEATURE_NAMES),
+            dtype=float,
+        ),
+        training_results={"stage": "integration_test_fixture"},
+        alpha=1.0,
+        min_confidence=0.0,
+        deadline_s=1.0,
+        provenance={
+            "repository_git_commit": "b" * 40,
+            "repository_git_commit_role": "exact_training_source_commit",
+            "training_worktree_state": "clean",
+            "training_source_sha256": sha256(
+                b"fixture-training-source"
+            ).hexdigest(),
+            "dataset_manifest_sha256": sha256(
+                b"fixture-dataset-manifest"
+            ).hexdigest(),
+            "training_entrypoint": "integration_test_fixture",
+            "training_date": "2026-07-27",
+        },
+        admission=development_shadow_admission(
+            ISOLATED_INTERVENTION_BATCH_SEEDS_V1
+        ),
+        promotion_unavailable_reason="integration_test_fixture_only",
+    )
     return bundle
 
 
 def test_writer_produces_strict_self_contained_manifest(tmp_path: Path) -> None:
-    bundle = _copy_bundle(tmp_path)
+    bundle = _write_bundle(tmp_path)
     capture = _capture()
     output = tmp_path / "input"
 
@@ -182,7 +215,7 @@ def test_writer_produces_strict_self_contained_manifest(tmp_path: Path) -> None:
 def test_writer_rejects_bundle_tampering_and_invalid_capture(
     tmp_path: Path,
 ) -> None:
-    bundle = _copy_bundle(tmp_path)
+    bundle = _write_bundle(tmp_path)
     capture = _capture()
     state_path = bundle / "state_dict.pt"
     state_path.write_bytes(state_path.read_bytes() + b"tamper")
@@ -206,7 +239,7 @@ def test_writer_rejects_bundle_tampering_and_invalid_capture(
 
 
 def test_manifest_configuration_is_plain_json(tmp_path: Path) -> None:
-    bundle = _copy_bundle(tmp_path)
+    bundle = _write_bundle(tmp_path)
     capture = _capture()
     output = tmp_path / "plain-json"
     paths = write_d3_intervention_batch_input(
