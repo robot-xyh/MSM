@@ -17,7 +17,39 @@ from d3_assignment_planner import AssignmentPlanner, CostModel, CostWeights, Pla
 from d3_assignment_planner.models import ResourceState, TargetTrack
 from d5_terminal_association import Assignment as D5Assignment
 from d5_terminal_association import CameraModel, GlobalTrack, LocalVisualTrack, TerminalAssociator
+from d5_terminal_association.tracklet_g1_evidence_assembler import (
+    D6_EXTERNAL_AUDIT_CONSUMER_SCHEMA_VERSION,
+    D6_EXTERNAL_AUDIT_FORMAL_PROFILE_VERSION,
+    D6_EXTERNAL_AUDIT_INPUT_SCHEMA_VERSION,
+    D6_EXTERNAL_AUDIT_SCHEMA_VERSION,
+    G1_BUNDLE_CHECKSUM_FILES,
+    PAIRED_SHADOW_LINEAGE_EVIDENCE_FILENAME,
+)
+from d5_terminal_association.tracklet_model_bundle import (
+    G1_ADMITTED_MODEL_BUNDLE_SCHEMA_VERSION,
+    TRACKLET_G1_ADMISSION_REPORT_SCHEMA_VERSION,
+    TRACKLET_G1_AUTHORITY_CONTRACT_SCHEMA_VERSION,
+    TRACKLET_G1_REQUIRED_PAIRED_LINEAGE_RECORD_COUNT,
+    TRACKLET_G1_RUNTIME_AUTHORITY_FIELDS,
+)
 from d6_evaluation_metrics import MetricsCollector, TerminalRecord
+from d6_evaluation_metrics.d5_g1_external_audit import (
+    D5_G1_EXTERNAL_AUDIT_CONSUMER_SCHEMA_VERSION,
+    D5_G1_EXTERNAL_AUDIT_FORMAL_PROFILE_VERSION,
+    D5_G1_EXTERNAL_AUDIT_INPUT_SCHEMA_VERSION,
+    D5_G1_EXTERNAL_AUDIT_SCHEMA_VERSION,
+)
+from d6_evaluation_metrics.d5_g1_post_assembly_audit import (
+    _D5_ADMISSION_REPORT_SCHEMA,
+    _D5_AUTHORITY_CONTRACT_SCHEMA,
+    _D5_V5_SCHEMA,
+    _D6_EXTERNAL_CONSUMER_SCHEMA,
+    _D6_EXTERNAL_PROFILE,
+    _D6_EXTERNAL_SCHEMA,
+    _EXPECTED_BUNDLE_LAYOUT,
+    _FORMAL_EPISODE_COUNT,
+    _RUNTIME_AUTHORITY_FIELDS,
+)
 from integration_contracts import (
     LocalImageTrackObservation,
     assignment_handoff_from_d3,
@@ -25,6 +57,79 @@ from integration_contracts import (
     d2_detection_kwargs,
     d5_assignment_kwargs,
 )
+
+
+def test_d5_d6_g1_admission_contract_versions_are_identical() -> None:
+    assert (
+        D6_EXTERNAL_AUDIT_SCHEMA_VERSION
+        == D5_G1_EXTERNAL_AUDIT_SCHEMA_VERSION
+        == _D6_EXTERNAL_SCHEMA
+        == "d6.d5-g1-external-audit.v2"
+    )
+    assert (
+        D6_EXTERNAL_AUDIT_INPUT_SCHEMA_VERSION
+        == D5_G1_EXTERNAL_AUDIT_INPUT_SCHEMA_VERSION
+        == "d6.d5-g1-external-audit-input.v1"
+    )
+    assert (
+        D6_EXTERNAL_AUDIT_CONSUMER_SCHEMA_VERSION
+        == D5_G1_EXTERNAL_AUDIT_CONSUMER_SCHEMA_VERSION
+        == _D6_EXTERNAL_CONSUMER_SCHEMA
+        == "d6.d5-g1-external-audit-consumer.v1"
+    )
+    assert (
+        D6_EXTERNAL_AUDIT_FORMAL_PROFILE_VERSION
+        == D5_G1_EXTERNAL_AUDIT_FORMAL_PROFILE_VERSION
+        == _D6_EXTERNAL_PROFILE
+        == "d6.d5-g1-formal-heldout-paired-shadow.v1"
+    )
+    assert (
+        G1_ADMITTED_MODEL_BUNDLE_SCHEMA_VERSION
+        == _D5_V5_SCHEMA
+        == "d5.tracklet-model-bundle.v5"
+    )
+    assert (
+        TRACKLET_G1_ADMISSION_REPORT_SCHEMA_VERSION
+        == _D5_ADMISSION_REPORT_SCHEMA
+        == "d5.tracklet-g1-admission-report.v2"
+    )
+    assert (
+        TRACKLET_G1_AUTHORITY_CONTRACT_SCHEMA_VERSION
+        == _D5_AUTHORITY_CONTRACT_SCHEMA
+        == "d5.tracklet-g1-authority-contract.v2"
+    )
+    assert (
+        TRACKLET_G1_RUNTIME_AUTHORITY_FIELDS
+        == _RUNTIME_AUTHORITY_FIELDS
+        == (
+            "model_promotion_granted",
+            "g1_assist_granted",
+            "default_path_change_granted",
+            "assignment_authority_granted",
+            "failover_authority_granted",
+            "control_authority_granted",
+        )
+    )
+    assert (
+        PAIRED_SHADOW_LINEAGE_EVIDENCE_FILENAME
+        == _EXPECTED_BUNDLE_LAYOUT["paired_shadow_lineage"]
+        == "evidence/paired_episode_lineage.jsonl"
+    )
+    assert (
+        TRACKLET_G1_REQUIRED_PAIRED_LINEAGE_RECORD_COUNT
+        == _FORMAL_EPISODE_COUNT
+        == 900
+    )
+    assert G1_BUNDLE_CHECKSUM_FILES == frozenset(
+        {
+            _EXPECTED_BUNDLE_LAYOUT["bundle_manifest"],
+            _EXPECTED_BUNDLE_LAYOUT["bundle_weights"],
+            _EXPECTED_BUNDLE_LAYOUT["heldout_evidence"],
+            _EXPECTED_BUNDLE_LAYOUT["paired_shadow_evidence"],
+            _EXPECTED_BUNDLE_LAYOUT["paired_shadow_lineage"],
+            _EXPECTED_BUNDLE_LAYOUT["d6_external_audit_evidence"],
+        }
+    )
 
 
 def test_d1_canonical_track_can_feed_d2_detection_contract() -> None:

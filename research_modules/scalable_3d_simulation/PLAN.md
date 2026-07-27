@@ -41,22 +41,32 @@
    未修改。
 2. [x] D4 复核未发现新的自我晋级 P0。A2 模块专用 evidence assembler 仍等待实际采用、
    物理窗口、同键 R0 和成对非退化证据，保持 P1。
-3. [x] D6 已实现 D5 G1 外部预准入审计，并将 G1 assembler 纳入当前实现摘要
-   `41381db3...94b07`。审计只给出证据结论，不授予模型晋级、默认路径或控制权限。
-4. [x] D5 已实现 G1 evidence assembler。正向 fixture 可以原子生成并由 strict
-   loader/runtime 加载 v4；该 fixture 只验收合同。A3 assembler 仍未实现。
-5. [x] 使用当前 `99fa4428...d4cd` 模型执行 post-assembler 审计。结果为
+3. [x] D6 external audit 输出已升为 `d6.d5-g1-external-audit.v2`。结构未变的
+   input spec 和 consumer contract 分别保留 v1。审计只给出证据结论，不授予模型
+   晋级、在线辅助、默认路径、分配、故障接管或控制权限。
+4. [x] D5 G1 evidence assembler 已升为 bundle v5、admission report v2 和 authority
+   contract v2。六项运行权限必须精确存在且全部为 false。旧 bundle v4、report v1、
+   external audit v1 和混合版本输入均失败关闭。
+5. [x] D6 post-assembly 的 input、output、consumer 和 profile 已升为 v2，只接受
+   bundle v5、report v2、authority contract v2 和 external audit v2，并交叉校验
+   paired lineage 的 900 条记录及 900 个唯一 episode UID。D6 已用 D5 生产装配器
+   生成的真实 v5 完成正向、lineage 篡改和缺失三项回归；正向结果为 pass，两个负例
+   失败关闭。D5/D6 全量分别为 `655/1042 passed`。
+6. [x] 使用历史 `99fa4428...d4cd` 模型执行 post-assembler 审计。结果为
    `fail_closed`，assembler 退出码为 2，未创建目标 bundle。五项 blocker 为实现证据
    不可用、实现谱系不一致、困难扰动 cluster/edge F1 未达到 `0.9`，以及单特征曲线下面积
    `0.997340` 超过 `0.98` 上限。
-6. [x] 没有调整阈值、兼容白名单、旧 bundle、manifest 或权重；没有运行正式学习
+7. [x] 没有调整阈值、兼容白名单、旧 bundle、manifest 或权重；没有运行正式学习
    episode。G1、A1、A2、A3、C1、F1 继续失败关闭。
-7. [ ] D3 在实际 A1 采用确认、物理结果和同键 R0 非退化证据齐备后实现模块专用
+8. [ ] D3 在实际 A1 采用确认、物理结果和同键 R0 非退化证据齐备后实现模块专用
    assembler，形成新的 immutable bundle。
-8. [ ] D4 在实际 A2 隔离采用与成对非退化证据齐备后实现模块专用 assembler。
-9. [ ] D5 使用当前实现重新形成无单特征捷径、困难扰动达标的 G1 模型证据并通过 D6
-   外部审计；另行实现 A3 assembler。
-10. [ ] 只有模块预准入通过后，main 才按 G1、A1、A2、A3、C1、F1 启动正式 scope，
+9. [ ] D4 在实际 A2 隔离采用与成对非退化证据齐备后实现模块专用 assembler。
+10. [ ] 在包含本次合同修订的 clean commit 上重新生成当前 runtime 的 held-out 和
+    paired-shadow 证据；通过 D6 external audit v2 后装配 v5，再运行 post-assembly
+    v2。真实相机泛化、中心身份绑定和物理闭环结果仍不可用。
+11. [ ] D5 继续形成无单特征捷径、困难扰动达标的 G1 模型证据；另行实现 A3
+    assembler。
+12. [ ] 只有模块预准入通过后，main 才按 G1、A1、A2、A3、C1、F1 启动正式 scope，
     D6 再审计逐 cell 实际采用、物理结果和唯一同键 R0 非退化。
 
 ## 学习变体 assist 准入预检（2026-07-26）
@@ -96,7 +106,7 @@
     控制计数、D5 图模型正候选边评分、D5 主动视觉采用及运行确认。审计输出 JSON、逐
     cell CSV、中文 Markdown 和 SHA256SUMS，但始终保持
     `model_promotion.allowed=false`。
-11. [x] 最新 owner 全量回归为 D3 `465 passed, 1 skipped`、D4 `569 passed`、D5
+11. [x] 该阶段 owner 全量回归为 D3 `465 passed, 1 skipped`、D4 `569 passed`、D5
     `571 passed`、D6 `944 passed, 1 warning`。D3 跳过项为未安装的可选 OR-Tools；
     warning 为既有 Matplotlib `Axes3D` 环境提示。
 12. [ ] 预准入阶段仍需为 D3、D4、D5 图模型和 D5 主动视觉分别形成新的、可验证的
@@ -1228,15 +1238,18 @@ GAP、算法文档和系统总报告。
    `791/791` 接受。离线侧车确认 667 条目标视觉观测覆盖 5 个目标，虚警为 0。
 3. [x] D5 异步快照在该输入上累计形成 294 条候选边和 247 条几何边，跨调用复用
    计数 139，证明真实目标共同可见输入能进入同一匿名图。
-4. [ ] main 已增加原子批处理器，正式模式固定 seed `1000-1019` 并要求 clean
+4. [x] main 已增加原子批处理器，正式模式固定 seed `1000-1019` 并要求 clean
    worktree。3-seed 开发复跑形成 392 个完整标签图帧、2473 个节点、833 条候选边、
    713 条图边和 2473 条一对一来源链接，在线真值读取和来源违规均为 0；稳定帧
    sidecar 覆盖 392/392 帧并通过 D6 哈希校验。开发评估的 713 条几何边均为真边，
    精确率、召回率和 F1 为 1.0。当前配置没有虚警或困难负边，结果只关闭正向管线
    合同。单元测试 `5 passed`；该结果来自脏工作树，不替代正式 R0。
-5. [ ] 在包含批处理器和 D6 独立候选图评估器的 clean commit 上运行规则 R0
-   20-seed，计算几何候选精确率、召回率、F1、错误边和置信区间。候选图不携带模型
-   阈值后预测，因此不得据此声明 G1 收益、聚类纯度、中心绑定或控制结果。
+5. [x] clean commit `64cb865b9933d45b13878019c0e1a21a8fbb2b05` 已完成规则
+   R0 20-seed。2670 个图帧标签与 sidecar 全覆盖，在线真值读取和硬违规均为 0；
+   4642 条真边、16 条假边、4645 个时间合格真值对，微平均精确率 0.996565、召回率
+   0.999354、F1 0.997958。20-seed F1 均值 0.997652，95% bootstrap 区间
+   `[0.995325, 0.999571]`。候选图不携带模型阈值后预测，因此该正式通过不声明
+   G1 收益、聚类纯度、中心绑定或控制结果。
 6. [ ] 按当前 D5 实现摘要重新装配 G1 bundle，交 D6 完成 post-assembly audit 后，
    与 R0 使用相同 seed、外生配置和真值隔离输入做 paired evaluation。
 7. [ ] G1 在 candidate edge、模型加载、运行时延、错误合并和安全计数全部可用前，

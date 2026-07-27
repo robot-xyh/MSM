@@ -4,10 +4,49 @@
 **审计目标**：列出共识算法与计划使用的开源代码哪些已经实现，哪些没有实现，为什么没有实现，以及缺少哪些条件。
 **边界**：本文只用于科研仿真、接口补齐和后续工程排期；不涉及真实硬件、实机处置、火控或绕过授权的自动动作。
 
+## 2026-07-26 D5/D6 G1 证据与权限合同修订
+
+本节是 D5 图模型准入合同的当前状态，优先于下方 v4/v1 历史记录。当前没有开放的模型
+越权 P0。规则路径仍为默认，G1 未获得在线辅助、默认路径、分配、故障接管或控制权限。
+
+1. **同版本双语义缺口已关闭。** D6 external audit 从四权限扩展到六权限后不再沿用
+   输出 schema v1，当前输出固定为 `d6.d5-g1-external-audit.v2`。结构未变化的 input
+   spec 和 consumer contract 分别保留其 v1，三个版本独立校验。
+2. **D5 新装配边界已升版。** 新 admitted bundle 固定为
+   `d5.tracklet-model-bundle.v5`，admission report 为
+   `d5.tracklet-g1-admission-report.v2`，并嵌入
+   `d5.tracklet-g1-authority-contract.v2`。权限合同绑定 D6 审计文件和规范化内容
+   SHA-256、证据通过状态、证据资格状态、原因及六项运行权限。
+3. **证据资格与运行授权已经分离。** 六项权限为模型晋级、G1 辅助、默认路径变更、
+   分配、故障接管和控制。字段必须精确存在、类型为布尔值并全部为 false。证据通过后
+   只允许声明 `g1_evidence_eligible_not_authorized`；请求在线 G1 辅助仍失败关闭。
+4. **装配后审计升为完整 v2 链。** D6 post-assembly 的 input、output、consumer 和
+   profile 均升为 v2，只接受 bundle v5、report v2、authority contract v2 和
+   external audit v2。审计交叉校验 held-out、paired-shadow、paired lineage、当前运行
+   实现摘要、文件/内容哈希，以及 900 条 lineage 记录和 900 个唯一 `episode_uid`。
+5. **旧版和混合版本显式拒绝。** bundle v4、report v1、external audit v1、权限字段
+   增删、非布尔值、任一权限为 true 或任一哈希篡改均返回稳定拒绝，不允许兼容白名单
+   绕过。旧临时目录中名称带 v2 但内部仍为 schema v1 的制品已标记为 transition
+   reject，不能输入新装配链。
+6. **真实生产装配正向链已通过。** D5 assembler、lineage 联合专项和模型流水线分别为
+   `69/86/20 passed`，D5 全量为 `655 passed, 1 warning`。D6 使用
+   `assemble_tracklet_g1_bundle()` 的真实产物完成三项正向/篡改/缺失回归；正向
+   post-assembly 结果为 `pass`、blocker 为空，两个负例均失败关闭。D6
+   external/post-assembly 专项为 `14/55 passed`，全量为 `1042 passed`。main 另有
+   D5/D6 版本、布局、profile、input/consumer、lineage 和六权限直接对照回归。warning
+   为既有运行环境提示，不改变测试结论。
+
+当前开放 P1 是形成新正式证据，不是继续放宽合同：先在包含本次修订的 clean commit 上
+重新生成当前 runtime 的 held-out 和 paired-shadow 证据，再由 D6 运行 external audit
+v2；只有审计通过后才能装配 v5，并将 v5 交给 D6 运行 post-assembly v2。真实相机泛化、
+中心 `global_track_id` 绑定正确率和物理闭环结果继续明确标记为 unavailable。正式 v5
+形成前不得启动 G1 学习组。
+
 ## 2026-07-26 D3/D4/D5 正式证据与跨视角正向校准
 
-本节优先于下方同日早期状态。当前没有新增 P0。规则路径仍是默认，G1、A1、A2、A3、
-C1 和 F1 均未获得在线 assist、默认路径、分配、故障接管或控制权限。
+本节记录正式证据和跨视角 R0 校准；D5/D6 当前合同版本以上节为准。当前没有新增 P0。
+规则路径仍是默认，G1、A1、A2、A3、C1 和 F1 均未获得在线 assist、默认路径、分配、
+故障接管或控制权限。
 
 1. **D3 隔离批量重放合同已正式闭合，A1 未准入。** clean source commit
    `0ed7ca2730f5354be1e6021f9882f1ae26bc42df` 生成 seed `1000-1019`、100 帧
@@ -37,32 +76,34 @@ C1 和 F1 均未获得在线 assist、默认路径、分配、故障接管或控
    并精确校验相机命名空间、量测时间和到达时间。漏链、重链、错时间或未知节点均失败
    关闭。D5 全量为 `600 passed, 1 warning`。旧 G1 v4 与当前实现摘要不匹配，仍按预期
    拒绝加载。
-5. **main 已形成可冻结的跨视角开发校准输入。**
-   `d5_crossview_visibility_calibration_v1` 的 5v5、2 个侦察节点、seed `1000-1002`、
-   每 seed 12 秒开发复跑均为有限状态，在线真值读取为 0。累计记录 2155 条目标视觉
-   观测、0 条虚警、392 个完整标签图帧、2473 个图节点、833 条几何候选边、713 条图边
-   和 2473 条来源链接；来源覆盖违规为 0。main 批处理器原子保存逐 seed episode、
-   `d5.tracklet-dataset.v2`、稳定帧坐标 sidecar、中文报告和整树 SHA-256。sidecar
-   使用 `scenario_version + seed + frame_index`，并绑定 dataset manifest SHA-256。
-   main 专项测试为 `5 passed`。
-6. **D6 候选图几何评估合同已完成。** D6 严格加载匿名图和 evaluator-only 标签，
-   输出逐 seed CSV、聚合 JSON、中文报告和校验清单。三 seed 开发输入中的 713 个时间
-   合格同目标跨相机对均形成几何边，候选精确率、召回率和 F1 为 1.0，假边为 0；
-   sidecar 覆盖 392/392 帧。该配置关闭虚警且没有困难负边，结果只验证正向几何候选
-   链路。`graph.edge_index` 不含 G1 概率、阈值或聚类决定，因此 G1 收益、聚类纯度、
-   中心绑定和控制结果明确不可用。D6 全量为 `1022 passed, 1 warning`。
+5. **main 已完成 clean R0 20-seed 跨视角输入冻结。** detached clean commit
+   `64cb865b9933d45b13878019c0e1a21a8fbb2b05` 使用固定 seed `1000-1019`，
+   形成 2670 个完整标签图帧、16842 个图节点、5400 条门前候选边、4658 条几何图边
+   和 16842 条来源链接。在线真值读取、来源覆盖违规和非有限状态均为 0。dataset
+   manifest SHA-256 为
+   `5ee284fd3a998c7ec415000cda3def1b1db7b866a762bcc68b6667858730b247`，
+   稳定帧 sidecar SHA-256 为
+   `f0db1b13913c69ba6b4beb5c07e242135885a3fb16fc9f559f193ac632611a1e`。
+   批处理器原子保存逐 seed episode、数据集、sidecar、中文报告和整树 SHA-256。
+6. **D6 候选图几何正式评估通过。** 评估状态 `pass`，无 blocker，硬违规为 0。
+   4645 个时间合格同目标跨相机对中保留 4642 条真边，另有 16 条假边；微平均精确率
+   0.996565、召回率 0.999354、F1 0.997958、假边率 0.003435。20-seed F1 均值
+   0.997652，95% bootstrap 区间 `[0.995325, 0.999571]`。评估内容 SHA-256 为
+   `dc84c90b90378ba0579311b7b5654018bf3a910ad98f30a59e5dc76eecd422af`。
+   `graph.edge_index` 不含 G1 概率、阈值或聚类决定，因此 G1 收益、聚类纯度、中心
+   绑定和控制结果明确不可用。D6 全量为 `1022 passed, 1 warning`。
 
 当前最短 P1 路径是：
 
-1. 在 clean commit 上对跨视角可见性配置运行至少 20 个保留 seed，离线统计规则 R0 的
-   几何候选精确率、召回率、F1、错误边、运行时延和置信区间。错误聚类与中心绑定不从
-   candidate-graph 数据集中推断。
-2. 按当前 D5 实现重新装配不可变 G1 bundle，由 D6 重做 post-assembly audit；未通过前
+1. 按当前 D5 实现重新生成 held-out 和 paired-shadow 证据，重新装配不可变 G1 bundle，
+   由 D6 重做 external audit 与 post-assembly audit；未通过前
    不运行学习组。
-3. 使用相同 seed、外生配置和随机日程运行 R0/G1。候选图只比较外生输入等价性；G1
+2. 使用相同 seed、外生配置和随机日程运行 R0/G1。候选图只比较外生输入等价性；G1
    模型收益必须另有带概率、冻结阈值和预测谱系的 prediction sidecar，或使用既有严格
    held-out evaluator。G1 还必须满足实际加载、无 fallback、错误合并不恶化和全部安全
    计数为 0。
+3. 在当前近距正向配置之外增加虚警、相似运动、遮挡重现和外参漂移压力组；现有 R0
+   正式通过不能替代困难负样本或真实跨视角泛化。
 4. D3 需重新训练或冻结能产生离散绑定变化的新 development policy；D4 仍需 20/20
    实际安全采用、D3 后继计划、运行确认、联盟完整确认、物理窗口和唯一同键 R0。
 

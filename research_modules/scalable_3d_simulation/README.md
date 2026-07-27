@@ -54,22 +54,31 @@ D3 已关闭 legacy v2 和 v3 自我晋级路径。production writer 在写文�
 qualified/assist 和无 manifest 注入仍失败关闭。D3、D4 现有 bundle 均保持
 development/shadow-only。
 
-D5 已实现 G1 evidence assembler。它逐文件验证 manifest、weights、held-out、
-paired-shadow、D6 外部审计和带外 SHA-256，使用临时目录原子发布 v4，再由 strict
-loader/runtime 复核。正向 fixture 能生成并加载 v4，只证明软件合同可执行。A3 assembler
-仍未实现。
+D5 G1 evidence assembler 当前发布 `d5.tracklet-model-bundle.v5`，准入报告为
+`d5.tracklet-g1-admission-report.v2`，并嵌入
+`d5.tracklet-g1-authority-contract.v2`。权限合同绑定 D6 审计文件/内容哈希、证据状态、
+原因和六项运行权限。模型晋级、G1 辅助、默认路径、分配、故障接管和控制权限必须精确
+存在且全部为 false。证据通过只表示 eligible，不会打开在线路径。
 
-D6 已实现 `d6.d5-g1-external-audit.v1`，并将 D5 G1 assembler 纳入当前实现摘要
-`41381db3d11371c049e5569658820ce98abf1a9966ecf86edc0f13f140894b07`。对当前
-`99fa4428...d4cd` 模型的 post-assembler 审计仍为 `fail_closed`。五项 blocker 是
+D6 external audit 输出已升为 `d6.d5-g1-external-audit.v2`；结构未变化的 input spec
+和 consumer contract 分别保留 v1。Post-assembly 的 input、output、consumer 和 profile
+全部使用 v2，只接受 bundle v5、准入报告 v2、权限合同 v2 和 external audit v2。它还
+交叉校验 paired lineage 文件、900 条记录、900 个唯一 episode UID 以及当前运行实现
+摘要。旧 bundle v4、audit v1、report v1、混合版本和权限字段漂移均失败关闭。
+
+历史 `99fa4428...d4cd` 模型的 post-assembler 审计为 `fail_closed`。五项 blocker 是
 `implementation_evidence_unavailable`、`implementation_lineage_mismatch`、困难扰动
 cluster/edge F1 未达到 `0.9`，以及单特征最佳方向曲线下面积 `0.997340` 超过 `0.98`
-上限。assembler 返回 `d6_external_audit_fail_closed`、退出码 2，未创建目标 bundle。
+上限。该旧证据不能输入 v5 装配。当前必须在包含合同修订的 clean commit 上重新生成
+held-out 和 paired-shadow，运行 external audit v2，通过后装配 v5，再运行
+post-assembly v2。
 
 四个 owner 没有修改旧 bundle、manifest 或权重，也没有增加 implementation hash
-兼容白名单或放宽阈值。最新完整回归为 D3 `465 passed, 1 skipped`、D4 `569 passed`、
-D5 `571 passed`、D6 `944 passed, 1 warning`。当前 R0 路径不加载模型，本次治理修复
-不改变已冻结的 R0 source、execution plan 或已完成的 135 个单元。
+兼容白名单或放宽阈值。本次合同修订后的 D5 全量为 `655 passed, 1 warning`，D6 全量为
+`1042 passed`。D6 已用 D5 生产装配器生成的真实 v5 完成正向审计，结果为 pass、blocker
+为空；lineage 篡改和缺失两个真实产物负例均失败关闭。main 另有 D5/D6 跨模块版本、
+布局、lineage 和权限合同直接对照回归。D3、D4 算法没有变化。当前 R0 路径不加载模型，
+本次治理修复不改变已冻结的 R0 source、execution plan 或已经完成的规则实验。
 
 main 已将可恢复分片执行器扩展到 G1、A1、A2、A3、C1 和 F1。执行计划保存各变体所需
 bundle 的完整文件树摘要、manifest 摘要、预检设备、准入诊断摘要和解析后的模型版本。
@@ -1718,3 +1727,20 @@ dataset-manifest 哈希绑定检查。D6 开发评估得到 713 个时间合格�
 几何边均为真边，几何候选精确率、召回率和 F1 均为 1.0。该场景关闭虚警且目标分离
 明显，结果只说明正向几何门可用，不能作为困难负样本、真实跨视角泛化或 G1 模型收益
 证据。该复跑来自脏工作树，不是正式 R0。批处理器单元测试为 `5 passed`。
+
+2026-07-26，main 在 detached clean commit
+`64cb865b9933d45b13878019c0e1a21a8fbb2b05` 完成正式 R0。固定 seed
+`1000-1019` 共形成 2670 个完整标签图帧、16842 个节点、5400 条门前候选边和
+4658 条几何图边；16842 条来源链接全部覆盖，在线真值读取、来源违规和非有限状态均
+为 0。dataset manifest SHA-256 为
+`5ee284fd3a998c7ec415000cda3def1b1db7b866a762bcc68b6667858730b247`，
+稳定帧 sidecar SHA-256 为
+`f0db1b13913c69ba6b4beb5c07e242135885a3fb16fc9f559f193ac632611a1e`。
+
+D6 正式评估状态为 `pass`，无 blocker、硬违规为 0。4645 个时间合格同目标跨相机对
+中保留 4642 条真边，另有 16 条假边。微平均精确率为 0.996565，召回率为 0.999354，
+F1 为 0.997958，假边率为 0.003435。20-seed F1 均值为 0.997652，95% bootstrap
+置信区间为 `[0.995325, 0.999571]`。评估内容 SHA-256 为
+`dc84c90b90378ba0579311b7b5654018bf3a910ad98f30a59e5dc76eecd422af`。
+该结论只验收当前近距、无视觉虚警配置下的几何候选图。G1 边概率和阈值、聚类纯度、
+中心绑定正确率、控制结果及物理拦截结果仍不可用。
