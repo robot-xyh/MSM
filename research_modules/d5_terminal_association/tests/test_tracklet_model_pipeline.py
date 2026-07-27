@@ -623,7 +623,7 @@ def test_production_writer_and_runtime_block_hand_built_g1_admission(
         )
     assert not production.exists()
 
-    fixture = tmp_path / "hand-built-v4"
+    fixture = tmp_path / "hand-built-v5"
     write_tracklet_model_bundle(
         fixture,
         model,

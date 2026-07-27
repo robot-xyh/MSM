@@ -15,11 +15,57 @@ D5 文档遵循 `research_modules/DOCUMENTATION_STANDARD.md`。推荐阅读顺�
 11. `../reports/D5_TRACKLET_GRAPH_CANONICAL_SEED_VIEW_20260721.md`：跨视角图数据共享 seed 只读视图、正式计数和失败关闭门。
 12. `../reports/D5_ACTIVE_VISION_CANONICAL_SEED_VIEW_20260721.md`：主动视觉共享 seed 只读视图、正式样本计数和 shadow-only 边界。
 
+2026-07-26，D5 已关闭 v5 paired lineage 的 D5-owned P0。生产 assembler 现在显式接收并冻结
+`paired_episode_lineage.jsonl`，逐行校验非空且唯一的 `episode_uid`，并要求正式
+`record_count/unique_episode_uid_count=900/900`。v5 manifest、admission report v2、
+paired report 和 D6 external audit v2 `candidate.paired_lineage` 必须对同一 lineage SHA 与计数
+一致；`SHA256SUMS` 和 strict loader 已覆盖 lineage 实物。当前 runtime SHA 为
+`b0708e71...baffe`，D5 全量 `655 passed, 1 warning`。本轮只有代码和 fixture 证据，没有正式
+重训、外审或 v5 制品。
+
+2026-07-26，D5 已完成版本治理修正。新 admitted bundle 为
+`d5.tracklet-model-bundle.v5`，admission report 为
+`d5.tracklet-g1-admission-report.v2`，权限合同继续使用
+`d5.tracklet-g1-authority-contract.v2`。新装配只接受
+`d6.d5-g1-external-audit.v2`；结构未变的 input spec 和 consumer contract 分别继续使用各自
+v1，三者独立校验。
+
+新合同精确保存六个
+运行权限字段，要求全部存在、严格为布尔值且全部为 `false`；旧四字段审计、未知 schema、字段
+增删或拼写错误、非布尔和任一授权值均失败关闭。v5 manifest、准入报告和打包的 D6 审计同时绑定
+合同版本、审计文件 SHA-256 和内容 SHA-256，公开严格加载器每次重新核验。
+
+证据资格与运行权限已分离。v5 代码状态为 `g1_evidence_eligible_not_authorized`，影子加载与
+G1 在线辅助请求采用不同门；六权限关闭时，辅助请求返回
+`bundle_g1_assist_authority_not_granted`。新 runtime SHA-256 为
+`fe116fd5...1c91`，专项测试 `70 passed, 1 warning`，D5 全量
+`636 passed, 1 warning`。该段记录 lineage P0 修复前的六权限中间实现；当时未重训、未运行
+held-out/paired-shadow、D6 外审或正式 v5 装配。旧 bundle v4、report v1 和 D6 audit v1 均以
+专用错误码拒绝，不解释为新版本。
+
+修复前带 `v2` 后缀的 D6 输出目录已通过自身检查，但其中 JSON 顶层 schema 实际是
+`d6.d5-g1-external-audit.v1`。其文件 SHA-256 为 `24c8b0cd...9ad7d`，内容
+SHA-256 为 `f17acecf...35f`，blocker 为空且六类权限全部关闭。当时的 runtime 正式 assembler
+随后以 `d6_authority_fields_mismatch` 拒绝历史 v4 装配：该 audit authority 比冻结 assembler contract 多出
+分配权限和故障接管权限字段。没有创建 v4、loader 探针或 post-assembly handoff。规则路径继续
+默认。该段为合同修复前失败证据，记录文件保留；该 audit v1 不能用于新 v5。
+
+2026-07-26，main clean commit `64cb865b...2b05` 的 20-seed 几何候选图 R0 覆盖
+`2670` 帧、`16842` 节点和 `4658` 边，precision/recall/F1 为
+`0.996565/0.999354/0.997958`，hard violation 为 `0`。该结果不包含 G1 模型评分。
+随后正式 writer 以冻结输入重训出相同权重，并原生生成绑定当前 runtime
+`55066382...b8ea` 的 manifest `db908b05...1d14`。当前实现下 held-out `20/900/45` 和
+paired-shadow 均通过，5 类扰动最低边/簇 F1 为 `1.0`，最高单特征 AUC 为 `0.720073`。
+shadow-only registry 与 D6 输入清单已形成；随后通过自身门限的审计文件虽然位于带 `v2`
+后缀的目录，其顶层 schema 实际仍为 external audit v1。历史 v4 因当时合同不兼容未生成。
+真正绑定六权限合同和新 runtime 的 external audit v2 尚待 D6 重跑，因此当前没有正式 v5。
+正式流水线专项 `46 passed`，clean D5 全量 `600 passed, 1 warning`。
+
 2026-07-26，关联图来源合同增加 `association_tracklets` 和冻结
 `association_source_links`。当前调用批次继续单独审计，缓存图节点则保留原 observation ID 和
 双时间戳；漏链、重链、错命名空间或错时间均失败关闭。adapter 专项 `50 passed`，D5 全量
-`600 passed, 1 warning`。main 的 667 条正向观测开发场景仍需按当前源码重跑并冻结完整离线
-label join，才能形成正式 R0。
+`600 passed, 1 warning`。main 的 667 条正向观测属于修复前开发证据；正式状态以上述 clean
+R0 为准。
 
 2026-07-26，scalable 3D 在线入口增加有界跨调用活跃相机快照。异步相机可在双时间戳、外参、
 missed-frame 和 TTL 合法时进入同一关联图；快照保持匿名、协方差和中心 ID 只读边界。单元

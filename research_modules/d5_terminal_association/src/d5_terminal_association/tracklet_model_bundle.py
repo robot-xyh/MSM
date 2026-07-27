@@ -27,9 +27,29 @@ from .tracklet_gnn import NativeTrackletEdgeClassifier, graph_tensors
 
 
 MODEL_BUNDLE_SCHEMA_VERSION = "d5.tracklet-model-bundle.v3"
-G1_ADMITTED_MODEL_BUNDLE_SCHEMA_VERSION = "d5.tracklet-model-bundle.v4"
-TRACKLET_G1_ADMISSION_REPORT_SCHEMA_VERSION = (
+LEGACY_G1_ADMITTED_MODEL_BUNDLE_SCHEMA_VERSION = (
+    "d5.tracklet-model-bundle.v4"
+)
+G1_ADMITTED_MODEL_BUNDLE_SCHEMA_VERSION = "d5.tracklet-model-bundle.v5"
+LEGACY_TRACKLET_G1_ADMISSION_REPORT_SCHEMA_VERSION = (
     "d5.tracklet-g1-admission-report.v1"
+)
+TRACKLET_G1_ADMISSION_REPORT_SCHEMA_VERSION = (
+    "d5.tracklet-g1-admission-report.v2"
+)
+TRACKLET_G1_AUTHORITY_CONTRACT_SCHEMA_VERSION = (
+    "d5.tracklet-g1-authority-contract.v2"
+)
+TRACKLET_G1_RUNTIME_AUTHORITY_FIELDS = (
+    "model_promotion_granted",
+    "g1_assist_granted",
+    "default_path_change_granted",
+    "assignment_authority_granted",
+    "failover_authority_granted",
+    "control_authority_granted",
+)
+TRACKLET_G1_EXTERNAL_AUTHORITY_FIELDS = frozenset(
+    {*TRACKLET_G1_RUNTIME_AUTHORITY_FIELDS, "reason"}
 )
 MODEL_SEMANTIC_VERSION = "1.0.0"
 WEIGHTS_FILENAME = "weights.pt"
@@ -38,11 +58,15 @@ CHECKSUMS_FILENAME = "SHA256SUMS"
 TRACKLET_G1_MINIMUM_UNSEEN_SEEDS = 20
 TRACKLET_G1_MINIMUM_HELDOUT_EPISODES = 900
 TRACKLET_G1_MINIMUM_SCENARIO_SCALE_CELLS = 45
+TRACKLET_G1_REQUIRED_PAIRED_LINEAGE_RECORD_COUNT = 900
 _SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 _ALLOWED_ADMISSION_STATUSES = frozenset(
     {"research_candidate_not_default", "development_only_fail_closed"}
 )
 G1_ASSIST_NOT_ELIGIBLE_REASON = "bundle_g1_assist_not_eligible"
+G1_ASSIST_AUTHORITY_NOT_GRANTED_REASON = (
+    "bundle_g1_assist_authority_not_granted"
+)
 RUNTIME_ADMISSION_REQUIREMENT_INVALID_REASON = (
     "bundle_runtime_admission_requirement_invalid"
 )
@@ -75,6 +99,131 @@ class ModelBundleValidationError(ValueError):
 
 
 @dataclass(frozen=True)
+class TrackletG1AuthorityContract:
+    """Versioned evidence/authority boundary embedded in every new v5."""
+
+    d6_external_audit_sha256: str
+    d6_external_audit_content_sha256: str
+    evidence_audit_passed: bool
+    evidence_eligible: bool
+    runtime_authority: Mapping[str, bool]
+    reason: str
+    schema_version: str = TRACKLET_G1_AUTHORITY_CONTRACT_SCHEMA_VERSION
+
+    def __post_init__(self) -> None:
+        if self.schema_version != TRACKLET_G1_AUTHORITY_CONTRACT_SCHEMA_VERSION:
+            raise ValueError("tracklet G1 authority contract schema mismatch")
+        _validate_sha256(
+            self.d6_external_audit_sha256,
+            "authority_contract.d6_external_audit_sha256",
+        )
+        _validate_sha256(
+            self.d6_external_audit_content_sha256,
+            "authority_contract.d6_external_audit_content_sha256",
+        )
+        for name in ("evidence_audit_passed", "evidence_eligible"):
+            if type(getattr(self, name)) is not bool:
+                raise TypeError(f"authority_contract.{name} must be bool")
+        if self.evidence_eligible and not self.evidence_audit_passed:
+            raise ValueError(
+                "authority contract cannot be eligible without a passed audit"
+            )
+        authority = self.runtime_authority
+        if not isinstance(authority, Mapping) or set(authority) != set(
+            TRACKLET_G1_RUNTIME_AUTHORITY_FIELDS
+        ):
+            raise ValueError(
+                "authority contract runtime_authority fields mismatch"
+            )
+        normalized: dict[str, bool] = {}
+        for name in TRACKLET_G1_RUNTIME_AUTHORITY_FIELDS:
+            value = authority[name]
+            if type(value) is not bool:
+                raise TypeError(
+                    f"authority_contract.runtime_authority.{name} must be bool"
+                )
+            if value is not False:
+                raise ValueError(
+                    f"authority_contract.runtime_authority.{name} "
+                    "must remain false"
+                )
+            normalized[name] = value
+        if not isinstance(self.reason, str) or not self.reason.strip():
+            raise ValueError("authority contract reason must be non-empty")
+        object.__setattr__(
+            self,
+            "runtime_authority",
+            MappingProxyType(normalized),
+        )
+
+    def to_manifest(self) -> Mapping[str, Any]:
+        return MappingProxyType(
+            {
+                "schema_version": self.schema_version,
+                "d6_external_audit_sha256": (
+                    self.d6_external_audit_sha256
+                ),
+                "d6_external_audit_content_sha256": (
+                    self.d6_external_audit_content_sha256
+                ),
+                "evidence_audit_passed": self.evidence_audit_passed,
+                "evidence_eligible": self.evidence_eligible,
+                "runtime_authority": {
+                    name: self.runtime_authority[name]
+                    for name in TRACKLET_G1_RUNTIME_AUTHORITY_FIELDS
+                },
+                "reason": self.reason,
+            }
+        )
+
+    @classmethod
+    def from_manifest(
+        cls,
+        payload: Mapping[str, Any],
+    ) -> TrackletG1AuthorityContract:
+        required = {
+            "schema_version",
+            "d6_external_audit_sha256",
+            "d6_external_audit_content_sha256",
+            "evidence_audit_passed",
+            "evidence_eligible",
+            "runtime_authority",
+            "reason",
+        }
+        if not isinstance(payload, Mapping) or set(payload) != required:
+            raise ValueError("tracklet G1 authority contract fields mismatch")
+        for name in (
+            "schema_version",
+            "d6_external_audit_sha256",
+            "d6_external_audit_content_sha256",
+            "reason",
+        ):
+            if not isinstance(payload[name], str):
+                raise TypeError(f"authority_contract.{name} must be str")
+        for name in ("evidence_audit_passed", "evidence_eligible"):
+            if type(payload[name]) is not bool:
+                raise TypeError(f"authority_contract.{name} must be bool")
+        authority = payload["runtime_authority"]
+        if not isinstance(authority, Mapping):
+            raise TypeError(
+                "authority_contract.runtime_authority must be a mapping"
+            )
+        return cls(
+            d6_external_audit_sha256=payload[
+                "d6_external_audit_sha256"
+            ],
+            d6_external_audit_content_sha256=payload[
+                "d6_external_audit_content_sha256"
+            ],
+            evidence_audit_passed=payload["evidence_audit_passed"],
+            evidence_eligible=payload["evidence_eligible"],
+            runtime_authority=dict(authority),
+            reason=payload["reason"],
+            schema_version=payload["schema_version"],
+        )
+
+
+@dataclass(frozen=True)
 class TrackletG1AdmissionReport:
     """Immutable evidence required to create a new G1-admitted bundle."""
 
@@ -87,6 +236,9 @@ class TrackletG1AdmissionReport:
     heldout_report_content_sha256: str
     paired_shadow_report_sha256: str
     paired_shadow_report_content_sha256: str
+    paired_shadow_lineage_sha256: str
+    paired_shadow_lineage_record_count: int
+    paired_shadow_lineage_unique_episode_uid_count: int
     d6_external_audit_sha256: str
     d6_external_audit_content_sha256: str
     formal_evaluation: bool
@@ -101,6 +253,7 @@ class TrackletG1AdmissionReport:
     same_camera_mutual_exclusion_violation_count: int
     failure_reasons: tuple[str, ...]
     g1_assist_eligible: bool
+    authority_contract: TrackletG1AuthorityContract
     schema_version: str = TRACKLET_G1_ADMISSION_REPORT_SCHEMA_VERSION
 
     def __post_init__(self) -> None:
@@ -124,6 +277,7 @@ class TrackletG1AdmissionReport:
             "heldout_report_content_sha256",
             "paired_shadow_report_sha256",
             "paired_shadow_report_content_sha256",
+            "paired_shadow_lineage_sha256",
             "d6_external_audit_sha256",
             "d6_external_audit_content_sha256",
         ):
@@ -141,6 +295,8 @@ class TrackletG1AdmissionReport:
             "unseen_seed_count",
             "heldout_episode_count",
             "scenario_scale_cell_count",
+            "paired_shadow_lineage_record_count",
+            "paired_shadow_lineage_unique_episode_uid_count",
             "online_truth_feature_count",
             "global_track_id_rewrite_count",
             "same_camera_mutual_exclusion_violation_count",
@@ -154,6 +310,30 @@ class TrackletG1AdmissionReport:
         if len(reasons) != len(set(reasons)):
             raise ValueError("failure_reasons must be unique")
         object.__setattr__(self, "failure_reasons", reasons)
+        if not isinstance(
+            self.authority_contract, TrackletG1AuthorityContract
+        ):
+            raise TypeError(
+                "authority_contract must be TrackletG1AuthorityContract"
+            )
+        if (
+            self.authority_contract.d6_external_audit_sha256
+            != self.d6_external_audit_sha256
+            or self.authority_contract.d6_external_audit_content_sha256
+            != self.d6_external_audit_content_sha256
+        ):
+            raise ValueError(
+                "authority contract audit hashes differ from admission report"
+            )
+        if (
+            self.authority_contract.evidence_audit_passed
+            is not self.d6_external_audit_passed
+            or self.authority_contract.evidence_eligible
+            is not self.g1_assist_eligible
+        ):
+            raise ValueError(
+                "authority contract evidence state differs from admission report"
+            )
         if self.g1_assist_eligible:
             failures: list[str] = []
             if not self.formal_evaluation:
@@ -176,6 +356,16 @@ class TrackletG1AdmissionReport:
                 < TRACKLET_G1_MINIMUM_SCENARIO_SCALE_CELLS
             ):
                 failures.append("insufficient_scenario_scale_cells")
+            if (
+                self.paired_shadow_lineage_record_count
+                != TRACKLET_G1_REQUIRED_PAIRED_LINEAGE_RECORD_COUNT
+            ):
+                failures.append("paired_lineage_record_count_not_formal")
+            if (
+                self.paired_shadow_lineage_unique_episode_uid_count
+                != self.paired_shadow_lineage_record_count
+            ):
+                failures.append("paired_lineage_episode_uid_not_unique")
             if self.online_truth_feature_count:
                 failures.append("online_truth_feature_use")
             if self.global_track_id_rewrite_count:
@@ -209,6 +399,15 @@ class TrackletG1AdmissionReport:
                 "paired_shadow_report_content_sha256": (
                     self.paired_shadow_report_content_sha256
                 ),
+                "paired_shadow_lineage_sha256": (
+                    self.paired_shadow_lineage_sha256
+                ),
+                "paired_shadow_lineage_record_count": (
+                    self.paired_shadow_lineage_record_count
+                ),
+                "paired_shadow_lineage_unique_episode_uid_count": (
+                    self.paired_shadow_lineage_unique_episode_uid_count
+                ),
                 "d6_external_audit_sha256": self.d6_external_audit_sha256,
                 "d6_external_audit_content_sha256": (
                     self.d6_external_audit_content_sha256
@@ -229,6 +428,9 @@ class TrackletG1AdmissionReport:
                 ),
                 "failure_reasons": list(self.failure_reasons),
                 "g1_assist_eligible": self.g1_assist_eligible,
+                "authority_contract": dict(
+                    self.authority_contract.to_manifest()
+                ),
             }
         )
 
@@ -285,7 +487,7 @@ def write_tracklet_model_bundle(
 ) -> Mapping[str, Any]:
     """Write an unadmitted research or development bundle.
 
-    The production writer cannot emit v4 admitted bundles until an independent
+    The production writer cannot emit v5 admitted bundles until an independent
     evidence assembler validates and packages the held-out, paired-shadow, and
     D6 audit artifacts. A caller-provided report is not an authority source.
     """
@@ -410,7 +612,7 @@ def load_tracklet_model_bundle(
     expected_training_set_sha256: str | None = None,
     expected_readiness_audit_sha256: str | None = None,
 ) -> CalibratedTrackletEdgeScorer:
-    """Strictly load a development v3 or evidence-assembled G1 v4 bundle."""
+    """Strictly load a development v3 or evidence-assembled G1 v5 bundle."""
 
     return _load_tracklet_model_bundle_impl(
         bundle_dir,
@@ -462,6 +664,15 @@ def _load_tracklet_model_bundle_impl(
     manifest = _read_json(manifest_path)
 
     bundle_schema = manifest.get("schema_version")
+    if bundle_schema == LEGACY_G1_ADMITTED_MODEL_BUNDLE_SCHEMA_VERSION:
+        raise ModelBundleValidationError(
+            "legacy_g1_bundle_schema_unsupported",
+            (
+                f"{LEGACY_G1_ADMITTED_MODEL_BUNDLE_SCHEMA_VERSION} retains "
+                "its historical admission semantics and cannot be loaded "
+                "as a v5 six-authority bundle"
+            ),
+        )
     if bundle_schema not in {
         MODEL_BUNDLE_SCHEMA_VERSION,
         G1_ADMITTED_MODEL_BUNDLE_SCHEMA_VERSION,
@@ -661,26 +872,26 @@ def _load_tracklet_model_bundle_impl(
         raise ModelBundleValidationError("validation_results_missing", "validation results are missing")
     admission = manifest.get("admission")
     admission_report: TrackletG1AdmissionReport | None = None
+    authority_contract: TrackletG1AuthorityContract | None = None
     if admitted_schema:
         if not isinstance(admission, Mapping) or set(admission) != {
             "status",
             "default_model",
             "g1_assist_eligible",
             "global_track_id_authority",
-            "assignment_authority",
-            "control_authority",
+            "authority_contract",
             "report",
         }:
             raise ModelBundleValidationError(
                 "admission_invalid", "admitted bundle fields are invalid"
             )
         if (
-            admission.get("status") != "g1_assist_admitted"
+            admission.get("status")
+            != "g1_evidence_eligible_not_authorized"
             or admission.get("default_model") is not False
             or admission.get("g1_assist_eligible") is not True
             or admission.get("global_track_id_authority") is not False
-            or admission.get("assignment_authority") is not False
-            or admission.get("control_authority") is not False
+            or not isinstance(admission.get("authority_contract"), Mapping)
             or not isinstance(admission.get("report"), Mapping)
         ):
             raise ModelBundleValidationError(
@@ -688,9 +899,16 @@ def _load_tracklet_model_bundle_impl(
                 "admitted bundle requires a bound positive evidence report",
             )
         try:
+            authority_contract = (
+                TrackletG1AuthorityContract.from_manifest(
+                    admission["authority_contract"]
+                )
+            )
             admission_report = tracklet_g1_admission_report_from_manifest(
                 admission["report"]
             )
+        except ModelBundleValidationError:
+            raise
         except (TypeError, ValueError) as exc:
             raise ModelBundleValidationError(
                 "admission_invalid", "G1 admission report failed validation"
@@ -698,6 +916,15 @@ def _load_tracklet_model_bundle_impl(
         if not admission_report.g1_assist_eligible:
             raise ModelBundleValidationError(
                 "admission_invalid", "G1 admission report is not eligible"
+            )
+        if (
+            not authority_contract.evidence_audit_passed
+            or not authority_contract.evidence_eligible
+            or authority_contract != admission_report.authority_contract
+        ):
+            raise ModelBundleValidationError(
+                "admission_invalid",
+                "authority contract differs from the evidence report",
             )
         _expect_equal(
             admission_report.implementation_sha256,
@@ -853,12 +1080,13 @@ def load_tracklet_model_bundle_for_runtime(
     device: torch.device | str = "cpu",
     require_g1_assist_eligible: bool = False,
 ) -> CalibratedTrackletEdgeScorer | UnavailableTrackletEdgeScorer:
-    """Load for shadow use, or fail closed when G1/assist admission is required.
+    """Load for shadow use, or fail closed for an unauthorized assist request.
 
     The default preserves the historical development/shadow loading behavior.
-    Callers that intend to use model scores as G1 assist must explicitly set
-    ``require_g1_assist_eligible=True``. A valid but unadmitted bundle then
-    returns an unavailable token instead of an executable scorer.
+    ``require_g1_assist_eligible=True`` is a runtime assist request: the
+    bundle must be evidence-eligible and its versioned authority contract must
+    explicitly grant G1 assist. Evidence eligibility alone never grants that
+    runtime authority.
     """
 
     if type(require_g1_assist_eligible) is not bool:
@@ -882,6 +1110,29 @@ def load_tracklet_model_bundle_for_runtime(
         return UnavailableTrackletEdgeScorer(
             failure_reason=G1_ASSIST_NOT_ELIGIBLE_REASON
         )
+    if require_g1_assist_eligible:
+        raw_contract = scorer.manifest["admission"].get(
+            "authority_contract"
+        )
+        if not isinstance(raw_contract, Mapping):
+            return UnavailableTrackletEdgeScorer(
+                failure_reason=G1_ASSIST_AUTHORITY_NOT_GRANTED_REASON
+            )
+        try:
+            authority_contract = TrackletG1AuthorityContract.from_manifest(
+                raw_contract
+            )
+        except (TypeError, ValueError):
+            return UnavailableTrackletEdgeScorer(
+                failure_reason=G1_ASSIST_AUTHORITY_NOT_GRANTED_REASON
+            )
+        if (
+            authority_contract.runtime_authority["g1_assist_granted"]
+            is not True
+        ):
+            return UnavailableTrackletEdgeScorer(
+                failure_reason=G1_ASSIST_AUTHORITY_NOT_GRANTED_REASON
+            )
     return scorer
 
 
@@ -934,6 +1185,22 @@ def tracklet_g1_admission_report_from_manifest(
 ) -> TrackletG1AdmissionReport:
     """Parse an embedded G1 report without coercing authority-bearing values."""
 
+    if not isinstance(payload, Mapping):
+        raise ValueError("tracklet G1 admission report must be a mapping")
+    schema_version = payload.get("schema_version")
+    if schema_version == LEGACY_TRACKLET_G1_ADMISSION_REPORT_SCHEMA_VERSION:
+        raise ModelBundleValidationError(
+            "legacy_g1_admission_report_schema_unsupported",
+            (
+                f"{LEGACY_TRACKLET_G1_ADMISSION_REPORT_SCHEMA_VERSION} "
+                "retains its historical four-authority semantics"
+            ),
+        )
+    if schema_version != TRACKLET_G1_ADMISSION_REPORT_SCHEMA_VERSION:
+        raise ModelBundleValidationError(
+            "g1_admission_report_schema_mismatch",
+            f"unsupported G1 admission report schema: {schema_version!r}",
+        )
     required = {
         "schema_version",
         "model_fingerprint",
@@ -945,6 +1212,9 @@ def tracklet_g1_admission_report_from_manifest(
         "heldout_report_content_sha256",
         "paired_shadow_report_sha256",
         "paired_shadow_report_content_sha256",
+        "paired_shadow_lineage_sha256",
+        "paired_shadow_lineage_record_count",
+        "paired_shadow_lineage_unique_episode_uid_count",
         "d6_external_audit_sha256",
         "d6_external_audit_content_sha256",
         "formal_evaluation",
@@ -959,8 +1229,9 @@ def tracklet_g1_admission_report_from_manifest(
         "same_camera_mutual_exclusion_violation_count",
         "failure_reasons",
         "g1_assist_eligible",
+        "authority_contract",
     }
-    if not isinstance(payload, Mapping) or set(payload) != required:
+    if set(payload) != required:
         raise ValueError("tracklet G1 admission report fields mismatch")
     for name in (
         "formal_evaluation",
@@ -975,6 +1246,8 @@ def tracklet_g1_admission_report_from_manifest(
         "unseen_seed_count",
         "heldout_episode_count",
         "scenario_scale_cell_count",
+        "paired_shadow_lineage_record_count",
+        "paired_shadow_lineage_unique_episode_uid_count",
         "online_truth_feature_count",
         "global_track_id_rewrite_count",
         "same_camera_mutual_exclusion_violation_count",
@@ -997,11 +1270,15 @@ def tracklet_g1_admission_report_from_manifest(
         "heldout_report_content_sha256",
         "paired_shadow_report_sha256",
         "paired_shadow_report_content_sha256",
+        "paired_shadow_lineage_sha256",
         "d6_external_audit_sha256",
         "d6_external_audit_content_sha256",
     ):
         if not isinstance(payload[name], str):
             raise TypeError(f"{name} must be str")
+    authority_contract = TrackletG1AuthorityContract.from_manifest(
+        payload["authority_contract"]
+    )
     return TrackletG1AdmissionReport(
         model_fingerprint=payload["model_fingerprint"],
         implementation_sha256=payload["implementation_sha256"],
@@ -1017,6 +1294,15 @@ def tracklet_g1_admission_report_from_manifest(
         ],
         paired_shadow_report_content_sha256=payload[
             "paired_shadow_report_content_sha256"
+        ],
+        paired_shadow_lineage_sha256=payload[
+            "paired_shadow_lineage_sha256"
+        ],
+        paired_shadow_lineage_record_count=payload[
+            "paired_shadow_lineage_record_count"
+        ],
+        paired_shadow_lineage_unique_episode_uid_count=payload[
+            "paired_shadow_lineage_unique_episode_uid_count"
         ],
         d6_external_audit_sha256=payload["d6_external_audit_sha256"],
         d6_external_audit_content_sha256=payload[
@@ -1038,6 +1324,7 @@ def tracklet_g1_admission_report_from_manifest(
         ],
         failure_reasons=tuple(raw_reasons),
         g1_assist_eligible=payload["g1_assist_eligible"],
+        authority_contract=authority_contract,
         schema_version=payload["schema_version"],
     )
 
@@ -1175,17 +1462,25 @@ __all__ = [
     "CHECKSUMS_FILENAME",
     "CalibratedTrackletEdgeScorer",
     "G1_ADMITTED_MODEL_BUNDLE_SCHEMA_VERSION",
+    "G1_ASSIST_AUTHORITY_NOT_GRANTED_REASON",
     "G1_ASSIST_NOT_ELIGIBLE_REASON",
+    "LEGACY_G1_ADMITTED_MODEL_BUNDLE_SCHEMA_VERSION",
+    "LEGACY_TRACKLET_G1_ADMISSION_REPORT_SCHEMA_VERSION",
     "MANIFEST_FILENAME",
     "MODEL_BUNDLE_SCHEMA_VERSION",
     "MODEL_SEMANTIC_VERSION",
     "ModelBundleValidationError",
     "RUNTIME_ADMISSION_REQUIREMENT_INVALID_REASON",
     "TRACKLET_G1_ADMISSION_REPORT_SCHEMA_VERSION",
+    "TRACKLET_G1_AUTHORITY_CONTRACT_SCHEMA_VERSION",
+    "TRACKLET_G1_EXTERNAL_AUTHORITY_FIELDS",
     "TRACKLET_G1_MINIMUM_HELDOUT_EPISODES",
     "TRACKLET_G1_MINIMUM_SCENARIO_SCALE_CELLS",
     "TRACKLET_G1_MINIMUM_UNSEEN_SEEDS",
+    "TRACKLET_G1_REQUIRED_PAIRED_LINEAGE_RECORD_COUNT",
+    "TRACKLET_G1_RUNTIME_AUTHORITY_FIELDS",
     "TrackletG1AdmissionReport",
+    "TrackletG1AuthorityContract",
     "UnavailableTrackletEdgeScorer",
     "WEIGHTS_FILENAME",
     "load_tracklet_model_bundle",

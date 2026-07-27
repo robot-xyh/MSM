@@ -2161,11 +2161,9 @@ def _publish(
     lineage_bytes = b"".join(_canonical_json_bytes(dict(item)) for item in lineage)
     report["paired_lineage"] = {
         "schema_version": PAIRED_SHADOW_LINEAGE_SCHEMA_VERSION,
-        "file": PAIRED_SHADOW_LINEAGE_FILENAME,
+        "filename": PAIRED_SHADOW_LINEAGE_FILENAME,
         "record_count": len(lineage),
         "sha256": hashlib.sha256(lineage_bytes).hexdigest(),
-        "same_seed_pairing": True,
-        "predictions_reused_from_heldout_report": False,
     }
     report["content_sha256"] = _sha256_json(report)
     temporary = destination.with_name(f".{destination.name}.tmp-{uuid.uuid4().hex}")

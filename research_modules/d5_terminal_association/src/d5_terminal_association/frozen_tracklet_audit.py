@@ -667,7 +667,7 @@ def _validate_frozen_registry_chain(
         "paired_lineage_record_count_mismatch",
     )
     _registry_equal(
-        paired_lineage.get("file"),
+        paired_lineage.get("filename"),
         _path_name(lineage["path"]),
         "paired_lineage_filename_mismatch",
     )

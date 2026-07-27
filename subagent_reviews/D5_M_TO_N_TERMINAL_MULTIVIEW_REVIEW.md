@@ -1,5 +1,47 @@
 # D5 M 对 N 末端多视角配准与协同定位调研
 
+## 2026-07-26 v5 paired lineage 对 M 对 N 的边界
+
+M 对 N 的 paired-shadow 评估需要逐 episode 保留成员规模、候选图和配对结果的共同谱系。D5
+现将 `paired_episode_lineage.jsonl` 作为 v5 独立证据，要求 900 条记录和 900 个唯一非空
+`episode_uid`。manifest、admission report v2、paired report 和 D6 external audit v2 必须绑定
+同一 SHA 与计数。
+
+该修复只关闭模型证据可追溯性断点，不改变 M 对 N 的几何门、聚类、中心只读 binding、联盟成员
+选择或完成判据。当前 runtime SHA 为 `b0708e71...baffe`，D5 全量 `655 passed, 1 warning`。
+正式 M 对 N 模型证据仍需 clean commit 后重跑，完成前继续使用确定性路径。
+
+## 2026-07-26 G1 v5 版本治理状态（lineage 修复前）
+
+D5 已实现 `d5.tracklet-g1-authority-contract.v2`，原生保存模型晋级、G1 辅助、默认路径、
+分配、故障接管和控制六个权限字段。六项必须全部为严格布尔 `false`。分配和故障接管字段不会被
+删除，也不会被解释为 M 对 N 联盟权限；证据通过状态与运行权限分开。
+
+该中间代码 runtime SHA-256 为 `fe116fd5...1c91`，专项测试 `70 passed, 1 warning`，D5 全量
+`636 passed, 1 warning`。新 admitted bundle/report 分别为
+`d5.tracklet-model-bundle.v5` 和 `d5.tracklet-g1-admission-report.v2`。旧 v4/report v1
+保持历史语义，不能进入新严格路径。新的 development、held-out、paired-shadow、registry、
+D6 external audit v2 和 v5 尚未按该实现重跑；该实现也未携带 D6 post-assembly v2 所需
+lineage。M 对 N 在线路径继续使用确定性投影、几何门、受约束
+聚类和中心只读 binding；没有模型默认、联盟分配、故障接管或控制扩权。
+
+## 2026-07-26 clean R0 与 M 对 N 边界
+
+main clean commit `64cb865b...2b05` 的 20-seed 几何候选图 R0 覆盖 `2670` 帧、
+`16842` 节点和 `4658` 边，得到 `4642` 真边、`16` 假边和 `4645` 个真值合格对。
+precision/recall/F1 为 `0.996565/0.999354/0.997958`，hard violation 为 `0`。该结果说明
+异步匿名多相机节点可形成高覆盖候选图，但没有评价联盟成员选择、多个 primary 完成条件或 G1
+模型收益。
+
+正式 writer 已用冻结输入在当前 clean runtime `55066382...b8ea` 下重训。权重仍为
+`7fb5db8b...ca71`，新 manifest 为 `db908b05...1d14`。held-out `20/900/45` 与
+paired-shadow 已通过；5 类扰动最低边/簇 F1 为 `1.0`，最高单特征 AUC 为 `0.720073`。
+该结果使用冻结合成图和固定候选拓扑，不评价联盟成员完成条件或真实相机重建图。后续通过自身
+门限的审计文件顶层 schema 实际为 external audit v1，历史 v4 因 authority schema 不一致未
+生成。真正 external audit v2 和新 v5 尚待重跑。M 对 N 默认路径继续使用确定性投影、
+几何门、受约束聚类和中心只读 binding。本轮 clean D5 全量为
+`600 passed, 1 warning in 97.84s`。
+
 ## 2026-07-26 M 对 N 图节点来源覆盖
 
 异步 M 对 N 图可能同时包含本次相机节点和其他相机的缓存节点。D5 现为整个
@@ -7,14 +49,10 @@
 `camera_batches`。每个带来源的匿名节点必须有唯一 observation/camera/双时间戳链接，任一漏链、
 重链或命名空间错误均失败关闭。
 
-该合同使部分重叠视场和跨调用节点具备离线 edge truth 回接入口，但不自行生成 truth 标签，也不
-证明 M 对 N 泛化。main 提交 `690858a` 的 667 条真实观测和 294/247 candidate/retained edge
-证明开发场景有正向边；它发生在本修复前，仍需按当前源码重跑正式 R0。
-
-正式 R0 必须冻结 graph、links、物理分离的 offline labels 和谱系哈希，证明 source-bearing
-node 全覆盖、join 完整和安全计数为零。随后才可按 runtime SHA `55066382...b8ea` 重新装配 G1
-并由 D6 复审。当前没有改变 M 对 N 几何门、联盟语义、`global_track_id` 所有权或在线 truth
-隔离。
+该合同使部分重叠视场和跨调用节点具备离线 edge truth 回接入口，但不自行生成 truth 标签。
+main 提交 `690858a` 的开发场景之后，clean 20-seed R0 已完成正式候选图与离线 edge truth
+评分。当前仍未证明 M 对 N 联盟执行或 G1 泛化，也没有改变几何门、联盟语义、
+`global_track_id` 所有权或在线 truth 隔离。
 
 ## 2026-07-26 异步相机快照与 M 对 N 边界
 
@@ -30,17 +68,18 @@ main 独立核验确认在线 6 条观测在离线 sidecar 中全部为
 稀疏预筛选正确保留 0 边。因此当前只关闭“异步相机不能入同图”和虚警失败关闭，没有评价
 M 对 N 真实目标共同可见、候选边、几何门、第二 primary binding、G1 收益或联盟完成。
 
-后续由 main 使用能产生真实目标共同可见观测的 truth-isolated 场景先运行规则路径，可考虑
-recon cue 或更长时长；truth 只供离线评分。规则候选和几何门成立后，再按当前源码重新装配 G1
-并交 D6 复审。现有门限和在线 truth 隔离保持不变。
+后续 clean R0 已补充真实目标共同可见的规则候选图证据，truth 只供离线评分。当前 runtime
+development、held-out、paired-shadow 和 shadow-only registry 已完成；随后旧 audit v1 通过
+自身门限，但历史 v4 因 authority schema 不一致未生成。现有门限和在线 truth 隔离保持不变。
 
 D6 clean commit `107cf075...6a63c` 对既有 G1 v4 的正式 post-assembly audit 为 pass，
 blocker 为空，内容 SHA 为 `37384441...d852`，覆盖 `20/900/45` 且三项安全计数为 0。该审计
-只证明装配完整性。本轮源码修改后 runtime SHA 为 `55066382...b8ea`，旧 v4 严格加载返回
-`bundle_implementation_runtime_mismatch`。M 对 N 默认路径仍是确定性几何规则；当前运行时
-重新装配、D6 复审和真实多 seed 候选门验证继续列为 P1。
+只证明装配完整性。本轮源码修改后 runtime SHA 为 `55066382...b8ea`，旧 v4 仍绑定
+`408e71fe...f4fe`。合同修复前 runtime 的 development/held-out/paired 已形成证据，但真正
+external audit v2 与新 v5 尚未形成。M 对 N 默认路径仍是确定性几何规则；新 runtime 完整证据、
+v5 装配和联盟执行验证继续列为 P1。
 
-## 2026-07-26 稳健候选对 M 对 N 的边界
+## 2026-07-26 稳健候选对 M 对 N 的边界（历史开发阶段）
 
 新开发候选 `7fb5db8b...ca71` 在 `high_threat_m_to_n` 等 45 个合成场景规模单元的
 900 帧保留集中完成同图评估。名义和五类困难扰动的 edge/cluster F1 均为 1.0，最高单特征 AUC

@@ -168,6 +168,14 @@ def test_paired_shadow_uses_identical_graphs_and_keeps_authority_closed(
         ]["edge_count"] == report["totals"]["candidate_edge_count"]
     lineage = (output / PAIRED_SHADOW_LINEAGE_FILENAME).read_text().splitlines()
     assert len(lineage) == 2
+    assert report["paired_lineage"] == {
+        "schema_version": "d5.tracklet-paired-shadow-lineage.v1",
+        "filename": PAIRED_SHADOW_LINEAGE_FILENAME,
+        "record_count": 2,
+        "sha256": hashlib.sha256(
+            (output / PAIRED_SHADOW_LINEAGE_FILENAME).read_bytes()
+        ).hexdigest(),
+    }
     for raw in lineage:
         item = json.loads(raw)
         assert item["loaded_graph_instance_count"] == 1

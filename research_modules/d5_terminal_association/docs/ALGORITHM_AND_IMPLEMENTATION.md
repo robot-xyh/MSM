@@ -2,6 +2,203 @@
 
 **状态日期：2026-07-26**
 
+## v5 配对谱系装配
+
+### 输入与读取
+
+`TrackletG1EvidenceInputs` 新增 `paired_shadow_lineage_path` 和
+`expected_paired_shadow_lineage_sha256`。assembler 在读取 D6 audit 前完成文件 SHA-256 和逐行
+JSONL 审计。每条记录必须是对象，并携带非空、唯一的 `episode_uid`。空行、非法 JSON、非对象、
+空 UID 和重复 UID 分别返回稳定拒绝码。
+
+正式门固定为 `900/900`。assembler 同时核对 paired report 的
+`schema_version/filename/record_count/sha256`、D6 external audit v2
+`candidate.paired_lineage` 的 `available/sha256/record_count/unique_episode_uid_count`，以及
+D6 consumer 的 `heldout_episode_count`。旧 paired report `file` 字段不再进入 v5。
+
+### 打包与加载
+
+`_stage_admitted_bundle()` 把输入复制到
+`evidence/paired_episode_lineage.jsonl`。manifest 增加
+`evidence.paired_shadow_lineage`，记录相对文件名、SHA-256、记录数和唯一 UID 数。
+`G1_BUNDLE_CHECKSUM_FILES` 已包含该文件，因此 `SHA256SUMS` 和公开 loader 的精确文件集合检查
+都会覆盖 lineage。
+
+`TrackletG1AdmissionReport` v2 增加以下字段：
+
+```text
+paired_shadow_lineage_sha256
+paired_shadow_lineage_record_count
+paired_shadow_lineage_unique_episode_uid_count
+```
+
+解析器不填默认值，也不从 paired report 推导缺失字段。strict loader 每次重新解析打包 JSONL，
+再对 manifest、admission report、paired report、D6 audit 和实物执行交叉绑定。装配结束前还会
+再次复算原始 lineage 文件 SHA，防止输入在 staging 期间变化。
+
+当前 runtime implementation SHA-256 为
+`b0708e718b374e5bb52db41c7bd2f994e340a2b009cfd348881a5f9d549baffe`。
+assembler 专项 `69 passed`，lineage 联合专项 `86 passed`，D5 全量
+`655 passed, 1 warning in 100.57s`。本轮没有运行正式重训、外审或 v5 装配。
+
+## 六权限合同 v2
+
+### 合同结构
+
+D5 在 `tracklet_model_bundle.py` 中集中定义
+`d5.tracklet-g1-authority-contract.v2`。合同包含 D6 审计文件和内容摘要、证据审计状态、证据
+资格状态、原因说明，以及以下精确权限集合：
+
+```text
+model_promotion_granted
+g1_assist_granted
+default_path_change_granted
+assignment_authority_granted
+failover_authority_granted
+control_authority_granted
+```
+
+六个值必须使用 JSON 布尔值 `false`。整数 `0`、字符串 `"false"`、空值和任何 `true` 均不
+接受。集合比较同时拒绝缺字段、多字段和拼写错误。旧四字段审计不能装配当前 v5；未知外审
+schema 和旧 authority contract schema 也不能通过。
+
+新路径的版本矩阵为：
+
+```text
+admitted bundle      d5.tracklet-model-bundle.v5
+admission report     d5.tracklet-g1-admission-report.v2
+authority contract   d5.tracklet-g1-authority-contract.v2
+D6 external audit    d6.d5-g1-external-audit.v2
+D6 input spec        d6.d5-g1-external-audit-input.v1
+D6 consumer contract d6.d5-g1-external-audit-consumer.v1
+```
+
+input spec 与 consumer contract 结构未变，因此分别保留 v1；两者不能与 external audit 顶层
+schema 混用。
+
+### 装配与复核
+
+assembler 先校验原始 D6 审计的完整字段，再构造不可变权限合同。v5 manifest 的 admission 和
+内嵌准入报告各保存一份相同合同，并绑定：
+
+- D6 审计文件 SHA-256；
+- D6 审计规范化内容 SHA-256；
+- `d5.tracklet-g1-authority-contract.v2`；
+- 证据通过与合格状态；
+- 六项运行权限及解释原因。
+
+post-assembly verifier 从 v5 的 `evidence/d6_external_audit.json` 重新解析六权限，不使用
+manifest 中的投影值代替原审计。随后比较打包审计、manifest 合同和准入报告合同。任一实物、
+摘要、schema 或字段值变化都会失败关闭。
+
+### 加载边界
+
+`load_tracklet_model_bundle()` 是装配完整性严格加载器。合法 v5 的 admission 状态为
+`g1_evidence_eligible_not_authorized`。`load_tracklet_model_bundle_for_runtime()` 默认只提供
+影子加载；调用方请求 G1 辅助时，还必须通过运行权限门。当前合同要求
+`g1_assist_granted=false`，因此辅助请求返回
+`bundle_g1_assist_authority_not_granted`。证据通过不会隐式改变默认规则路径，也不会产生
+身份、分配、故障接管或控制权限。
+
+旧 bundle v4、admission report v1 和 D6 external audit v1 保留历史语义。新路径分别返回
+`legacy_g1_bundle_schema_unsupported`、
+`legacy_g1_admission_report_schema_unsupported` 和
+`legacy_d6_external_audit_schema_unsupported`。不存在兼容白名单或同 schema 双语义。
+
+lineage P0 修复前的中间代码 runtime SHA-256 为
+`fe116fd50975e4adc63354a591bbf88d5da0700b43c557dde569658d67e11c91`。
+专项测试 `70 passed, 1 warning in 2.78s`，D5 全量
+`636 passed, 1 warning in 106.54s`。该实现没有重训或运行正式证据流水线，现已由上述
+lineage 完整实现取代。
+
+## 旧 D6 audit v1 装配尝试（修复前记录）
+
+### 输入核验
+
+带 `v2` 后缀的输出目录 `SHA256SUMS` 全部通过，但审计 JSON 顶层 schema 实际为
+`d6.d5-g1-external-audit.v1`。文件 SHA-256 为
+`24c8b0cd80c20d0dc2929fbf10cf7982109e9627b633dcd8a81ef19549e9ad7d`，规范化内容
+SHA-256 为 `f17acecff26285c3fdfc228399468af784ea5760abed25ec7d6bc54bd1cb135f`。
+审计引用的 registry reference、registry evidence、registry checksums、development manifest、
+weights、bundle checksums、held-out、paired-shadow 和 paired lineage 共 9 项文件均与声明
+SHA-256 一致。
+
+审计状态为 `pass`，blocker 为空。以下六项权限全部为 `false`：
+
+1. 模型晋级；
+2. G1 辅助；
+3. 默认路径变更；
+4. 分配；
+5. 故障接管；
+6. 控制。
+
+### 严格 schema 拒绝
+
+正式入口 `assemble_tracklet_g1_bundle.py` 使用原始输入和调用方冻结的 SHA-256 运行，没有修改
+manifest、阈值、证据或输出路径。校验依次通过 development bundle 文件、held-out 文件、
+paired-shadow 文件和 D6 文件内容，随后在 D6 authority 结构检查处返回：
+
+```json
+{"code":"d6_authority_fields_mismatch","detail":"authority fields differ","status":"rejected"}
+```
+
+当时实现中的权限集合只包含四项权限布尔值和原因字段。该旧 audit 增加
+`assignment_authority_granted` 与 `failover_authority_granted`，因此严格集合比较拒绝。目标
+v4 目录未创建，public strict loader、runtime loader 和 post-assembly handoff 均未执行。
+
+不能通过删除两个新增字段解决该问题。不能修改旧 audit 后重算哈希，也不能在 assembler 中增加
+兼容白名单。当前 assembler 已按新合同版本修复，runtime SHA-256 已改变，现有 D5 与 D6 证据
+必须按新实现谱系重新生成。失败记录位于
+`/tmp/MSM-d5-g1-current-runtime-v4-64cb865-20260726-failed/`。
+
+## clean R0 与当前运行时模型证据
+
+### 候选图评分
+
+clean commit `64cb865b...2b05` 的 20-seed R0 先运行匿名在线候选图，再加载物理分离的离线标签。
+`2670` 帧共形成 `16842` 个节点和 `4658` 条图边。边级计数为
+
+```text
+true_positive  = 4642
+false_positive = 16
+truth_eligible = 4645
+```
+
+由此得到 precision `0.996565`、recall `0.999354`、F1 `0.997958`，hard violation 为 `0`。
+这里的预测量是“几何门是否保留候选边”，没有调用 G1 概率评分。R0 证明当前跨调用来源链接可供
+离线 truth join，且几何候选图具有较高覆盖和较少假边；它不提供 G1 与确定性规则的对照结论。
+
+### 实现谱系门
+
+formal held-out 使用公开 `load_tracklet_model_bundle()`。加载器在读取权重和推理前核对 bundle
+内十个运行时源文件摘要与当前源码摘要。当前 clean runtime 为
+`5506638201623048fb53c8e15493a2dc367d5682abbee3b7235704721586b8ea`。旧 bundle 绑定
+`408e71fe...f4fe`，不能继续作为当前证据。
+
+恢复过程调用正式 `run_tracklet_composite_training.py train --robust-v2`。writer 严格复载
+formal manifest `d9a84007...426`、supplemental manifest `c657af31...636`、训练 seed 注册表、
+共享 split 注册表、composite view 和 admission report。训练使用原
+`seed=20260726`、12 epochs、学习率 `5e-4`、权重衰减 `1e-4`、隐藏维数 `48` 和两步消息传递。
+输出权重仍为 `7fb5db8b...ca71`，证明该训练配置在当前环境中可重复。writer 同时生成新的
+manifest `db908b05...1d14` 和 checksums `2fe079ed...856`，没有复制旧 bundle 后改写哈希。
+
+冻结 corpus 规模为 `20/900/45`，manifest/config/lineage SHA-256 分别为
+`a91d5540...196f`、`528bdd1b...ad18` 和 `19f35ebb...a63eb`。当前 runtime held-out 覆盖
+`13344` 个节点、`74024` 条候选边，总体 precision、recall、F1 和候选召回均为 `1.0`，
+错误合并率为 `0`，期望校准误差为 `0.0000347`，CPU P95 推理时延约 `0.872 ms`。
+
+paired-shadow 让确定性规则与模型读取同一只读候选图。5 类扰动分别覆盖异步时间、外参漂移、
+遮挡重现代理、相似运动干扰和独立检测框尺度扰动。所有扰动均不读取标签，最低模型边/簇 F1
+均为 `1.0`；最高单特征 AUC 为 `0.720073`。在线真值特征、同相机候选和全局编号创建或换绑
+均为 `0`。另行执行的 9 类故障注入探针全部正确回退到确定性几何规则，探针回退成功率为
+`1.0`；该数值不表示正常模型推理发生回退。
+
+正式冻结审计随后生成逐 episode lineage，并由 `assemble-registry` 原子发布
+shadow-only registry。其状态为 `evidence_chain_closed_shadow_only`，限制项为固定候选图扰动、
+仍需 D6 独立外审和无在线权限。当时只准备了 D6 输入清单，没有调用 D6 或装配历史 v4。
+writer/held-out/paired/registry 专项 `46 passed in 3.40s`，clean D5 全量
+`600 passed, 1 warning in 97.84s`；相关 Python 入口语法检查通过。
+
 ## 关联节点来源链接合同
 
 ### 数据边界
@@ -67,8 +264,10 @@ OOSM、coast、容量淘汰、stream reset 和 episode reset 均通过。
 
 2026-07-26 adapter 专项为 `50 passed`，D5 全量为
 `600 passed, 1 warning in 94.80s`。main 提交 `690858a` 的 667 条真实观测、294/247
-candidate/retained edge 是修复前正向开发证据；当前源码尚需正式 R0 重跑。当前 runtime SHA 为
-`55066382...b8ea`，旧 G1 v4 以 `bundle_implementation_runtime_mismatch` 失败关闭。
+candidate/retained edge 是修复前正向开发证据；后续 clean 20-seed R0 已用当前源码完成。
+当前 runtime SHA 为 `55066382...b8ea`，旧 G1 v4 以
+`bundle_implementation_runtime_mismatch` 失败关闭；current-runtime development 证据已形成，
+等待 D6 外审。
 
 ## 异步跨调用活跃相机快照
 
@@ -205,7 +404,7 @@ missed-frame、OOSM、外参、容量和 reset 负例均不形成非法边。
 audit 只证明装配完整性；本轮源码变更使当前运行时摘要变为 `55066382...b8ea`，旧 v4 严格加载
 以 `bundle_implementation_runtime_mismatch` 失败关闭。
 
-## 冻结 registry 生产
+## 冻结 registry 生产（历史 v4）
 
 冻结审计先生成五份 producer 实物：
 
@@ -247,7 +446,9 @@ false；在线真值、中心全局航迹标识改写和同相机互斥违规计
 \(AUC_{\max}\geq0.995\) 时加入 `synthetic_heldout_single_feature_shortcut`。只有非零
 `shared_global_track_count` 分层含候选边且诊断为近确定性时，才加入
 `shared_global_track_count_near_deterministic_shortcut`。固定保留候选图未重建、D6 外审待完成
-和无在线权限三项。clean `d437744c...4ffb` 的 7fb5 输入只读预检得到
+和无在线权限三项是该冻结 registry 发布时的限制记录。后续带 `v2` 后缀目录中的旧 D6 audit v1
+完成自身外审，但历史 v4 装配受 authority schema 不一致阻断。clean `d437744c...4ffb` 的
+7fb5 输入只读预检得到
 \(AUC_{\max}=0.720073\)，非零共享计数边数为 0，因此不保留两项动态捷径 blocker。
 
 producer 提交 `fa3ec10` 于 `2026-07-26T13:49:10Z` 在 clean worktree 执行正式装配。输出目录为
@@ -262,7 +463,7 @@ producer 提交 `fa3ec10` 于 `2026-07-26T13:49:10Z` 在 clean worktree 执行�
 D6 authority 全 false。main 先前的临时 preflight 不计入该正式结论。
 2026-07-26 D5 全量回归为 `589 passed in 112.89s`。
 
-## G1 v4 正式证据装配
+## G1 v4 正式证据装配（历史制品）
 
 正式装配读取 clean development bundle、held-out、paired-shadow 和 D6 外审 JSON，并要求调用方
 分别提供 manifest、weights、bundle 清单和三份 JSON 的带外 SHA-256。装配器再次复算文件及内容
@@ -317,7 +518,7 @@ H_r=\operatorname{SHA256}(\text{runtime source file hashes}).
 2026-07-26 D5 全量回归为 `578 passed in 103.88s`，十个修改或新增 Python 文件通过
 `python3 -m py_compile`。
 
-## 运行时准入
+## 运行时准入（历史 v4 合同）
 
 加载器先校验目录、`SHA256SUMS`、manifest、权重、schema、特征顺序、训练来源、实现来源和校准
 参数，再处理使用权限。shadow 只在完整性校验通过后返回只读模型。G1 调用还必须设置

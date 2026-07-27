@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Assemble one D5 G1 v4 bundle from explicit, hashed evidence files."""
+"""Assemble one D5 G1 v5 bundle from explicit, hashed evidence files."""
 
 from __future__ import annotations
 
@@ -19,7 +19,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
             "Validate a development bundle, held-out report, paired-shadow "
-            "report, and D6 external audit before atomically writing v4."
+            "report, paired episode lineage, and D6 external audit before "
+            "atomically writing v5."
         )
     )
     parser.add_argument("--development-bundle-dir", type=Path, required=True)
@@ -30,6 +31,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--heldout-report-sha256", required=True)
     parser.add_argument("--paired-shadow-report", type=Path, required=True)
     parser.add_argument("--paired-shadow-report-sha256", required=True)
+    parser.add_argument("--paired-shadow-lineage", type=Path, required=True)
+    parser.add_argument("--paired-shadow-lineage-sha256", required=True)
     parser.add_argument("--d6-audit", type=Path, required=True)
     parser.add_argument("--d6-audit-sha256", required=True)
     parser.add_argument("--output-bundle-dir", type=Path, required=True)
@@ -49,6 +52,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             paired_shadow_report_path=args.paired_shadow_report,
             expected_paired_shadow_report_sha256=(
                 args.paired_shadow_report_sha256
+            ),
+            paired_shadow_lineage_path=args.paired_shadow_lineage,
+            expected_paired_shadow_lineage_sha256=(
+                args.paired_shadow_lineage_sha256
             ),
             d6_audit_path=args.d6_audit,
             expected_d6_audit_sha256=args.d6_audit_sha256,

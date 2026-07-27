@@ -395,7 +395,7 @@ def registry_fixture(tmp_path: Path) -> dict[str, Path]:
             "report_used_for_predictions": False,
         },
         "paired_lineage": {
-            "file": paths["lineage"].name,
+            "filename": paths["lineage"].name,
             "record_count": 2,
             "schema_version": "d5.tracklet-paired-shadow-lineage.v1",
             "sha256": sha256_file(paths["lineage"]),

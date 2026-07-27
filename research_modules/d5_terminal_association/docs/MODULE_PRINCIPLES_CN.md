@@ -2,6 +2,111 @@
 
 **状态日期：2026-07-26**
 
+## 配对谱系完整性
+
+G1 v5 的 held-out 和 paired-shadow 结论必须能回到逐 episode 的同一配对记录。D5 因此把
+`paired_episode_lineage.jsonl` 作为独立证据，不再只在 paired report 中保存一个摘要。设 lineage
+文件摘要为 \(H_L\)，记录数为 \(N_L\)，唯一 episode UID 数为 \(U_L\)。正式装配要求：
+
+\[
+H_L=H_{\text{paired}}=H_{\text{D6}}=H_{\text{manifest}}=H_{\text{report}},
+\qquad N_L=U_L=900.
+\]
+
+每行必须是 JSON 对象，`episode_uid` 必须是非空字符串且全文件唯一。v5 manifest 保存 lineage
+文件名、SHA-256、记录数和唯一 UID 数；admission report v2 保存 SHA-256 和两个计数。strict
+loader 每次重新读取实物并复算上述关系。文件缺失、摘要变化、非法记录、重复 UID、旧 `file`
+字段、899 条记录或任一方计数不一致都会拒绝。
+
+该完整性门只证明配对证据可追溯。它不授予 G1 在线辅助、身份、分配、接管、默认路径或控制
+权限。当前 runtime SHA 为 `b0708e71...baffe`，D5 全量回归为
+`655 passed, 1 warning`；尚未生成与该 runtime 绑定的正式模型证据。
+
+## 六权限证据边界
+
+D5 将“证据是否合格”和“运行时是否有权执行”分成两个互不替代的判断。证据层确认模型、数据、
+实现、held-out、paired-shadow 和 D6 审计的完整性。权限层固定检查以下六项：
+
+1. 模型晋级权限；
+2. G1 辅助权限；
+3. 默认路径变更权限；
+4. 分配权限；
+5. 故障接管权限；
+6. 控制权限。
+
+`d5.tracklet-g1-authority-contract.v2` 要求六项精确存在、类型为布尔值且全部为 `false`。原因
+说明字段只解释关闭原因，不产生授权。缺失、多余、拼写错误、旧四字段、未知版本、非布尔值或
+任一 `true` 都会拒绝装配或加载。该规则避免加载器把上游新增权限字段静默丢弃。
+
+版本治理将新 bundle、准入报告和外审输出分别升级为
+`d5.tracklet-model-bundle.v5`、`d5.tracklet-g1-admission-report.v2` 和
+`d6.d5-g1-external-audit.v2`。权限合同继续使用 v2。D6 input spec 与 consumer contract
+结构未变，分别保持各自 v1。旧 bundle v4、report v1 和 external audit v1 不进入新路径。
+
+v5 同时保存 D6 审计文件 SHA-256、规范化内容 SHA-256、证据通过状态和完整权限映射。严格加载
+时重新读取打包审计，并对照 manifest 与准入报告。三者必须完全相同。通过这一检查只得到
+`g1_evidence_eligible_not_authorized`，不能据此改变默认路径、分配、接管或控制。影子推理仍可
+用于离线对照；G1 在线辅助请求在 `g1_assist_granted=false` 时失败关闭。
+
+lineage P0 修复前，六权限合同阶段的中间运行时摘要为
+`fe116fd50975e4adc63354a591bbf88d5da0700b43c557dde569658d67e11c91`。
+专项测试 `70 passed, 1 warning`，D5 全量 `636 passed, 1 warning`。该摘要没有 held-out、
+paired-shadow、D6 外审或正式 v5，且已由当前 lineage 实现取代，只作为中间记录保留。
+
+## 外审通过与装配准入（修复前记录）
+
+当时带 `v2` 后缀的输出目录中，D6 external audit JSON 顶层 schema 实际为
+`d6.d5-g1-external-audit.v1`。它确认了当时 development、held-out、paired-shadow、paired
+lineage、registry evidence 和实现摘要的哈希链一致。审计为 `pass`，blocker 为空；模型晋级、
+G1 辅助、默认路径、分配、故障接管和控制六类权限全部关闭。
+
+外审通过只是装配输入条件。当前 evidence assembler 还要求 D6 `authority` 对象与其冻结 schema
+完全相等。当前 runtime `55066382...b8ea` 的 assembler 接受控制、默认路径、G1 辅助和模型晋级
+四个权限布尔字段；该旧 audit 额外携带分配和故障接管权限。即使新增字段同样为 `false`，结构也不
+相等，正式装配必须拒绝。
+
+当时实际拒绝码为 `d6_authority_fields_mismatch`。该结果保持了证据解释的封闭性：D5 不能删除
+上游字段，也不能用兼容白名单把不同 schema 解释为等价。修改 assembler 会改变被审计的 runtime
+摘要。六权限代码合同现已修复，但必须重新生成与新摘要绑定的 development、held-out、
+paired-shadow、registry 和 D6 外审证据。当前新 runtime 没有 v5，也没有 G1 运行权限。
+
+## 几何候选图与模型证据分层
+
+main 在 clean commit `64cb865b...2b05` 上完成 20-seed 几何候选图 R0。`2670` 帧中共有
+`16842` 个匿名节点和 `4658` 条候选图边。离线评分得到 `4642` 条真边、`16` 条假边和
+`4645` 个真值合格同目标对，因此
+
+\[
+P=\frac{4642}{4658}=0.996565,\qquad
+R=\frac{4642}{4645}=0.999354,\qquad
+F_1=0.997958.
+\]
+
+hard violation 合计为 `0`。真值只在候选图冻结后用于离线评分。该结果验证投影、时序、协方差、
+跨调用节点来源和稀疏几何门的组合，不包含 G1 输出，不能用于计算模型相对规则的增益。
+
+G1 证据受实现谱系门控制。当前 runtime 摘要为 `55066382...b8ea`，旧 development bundle
+和旧 v4 绑定 `408e71fe...f4fe`，因此不能直接复用。D5 以冻结训练输入、原 seed 和原
+robust-v2 超参数通过正式 writer 重训。新权重仍为 `7fb5db8b...ca71`，新 manifest
+`db908b05...1d14` 原生绑定当前 runtime，避免跨实现沿用旧报告。
+
+当前 bundle 已在冻结 held-out corpus 上通过 `20 seeds / 900 episodes / 45 cells`。
+名义边 F1 为 `1.0`，5 类真值无关扰动的最低边/簇 F1 均为 `1.0`，最高单特征 AUC 为
+`0.720073`。在线真值特征、同相机候选边和中心全局编号创建或换绑均为 `0`。这些指标来自
+冻结合成图及固定候选拓扑，仍不能替代真实相机泛化验证。
+
+这一区分保持三层证据边界：
+
+1. R0 只评价几何候选图；
+2. held-out 和 paired-shadow 评价与当前 runtime 一致的冻结模型；
+3. D6 external audit 独立复算前两层的文件哈希、内容摘要、实现谱系和冻结门限；
+4. D6 external audit v2 通过后才允许 main 决定是否装配新的 v5，并再次进行装配后审计。
+
+本轮完成第二层和 shadow-only registry，停在 D6 外审之前。权重与历史候选完全一致，温度、
+阈值、数据和真值边界未变化；在线 G1、默认、身份、分配和控制权限仍关闭。
+正式流水线专项 `46 passed in 3.40s`，clean D5 全量
+`600 passed, 1 warning in 97.84s`。warning 为 PyTorch NVML 初始化提示。
+
 ## 关联图来源守恒
 
 在线输入批次与关联图快照是两个不同集合。设本次调用批次为 \(\mathcal B_k\)，实际关联图节点为
@@ -42,10 +147,9 @@ camera-local tracklet 可在后续调用接续新的来源观测；两个调用�
 仍是只读兼容别名。该合同不使用 truth、actor、object 或中心身份，不改变 `global_track_id`、
 几何门、图候选门和评分阈值。
 
-main 在提交 `690858a` 的近距开发场景已观察到 667 条真实目标视觉观测、294 条 candidate edge
-和 247 条 retained edge，online truth use=0。该结果说明正向规则边可产生，但修复后的来源守恒
-尚未在正式制品中重跑。正式 R0 仍需用当前源码冻结 graph、source links 和物理分离的 offline
-labels，证明全覆盖、join 完整、edge truth 可计算、谱系哈希完整和安全计数为零。
+main 在提交 `690858a` 的近距开发场景曾观察到 667 条真实目标视觉观测、294 条 candidate edge
+和 247 条 retained edge，online truth use=0。后续 clean R0 已用当前源码完成正式候选图与
+离线 edge truth 评分；其 `0.997958` F1 属于几何候选图，仍不代表 G1 模型收益。
 
 2026-07-26 adapter 专项为 `50 passed`，D5 全量为
 `600 passed, 1 warning in 94.80s`。当前运行时摘要为 `55066382...b8ea`，旧 G1 v4 严格加载
@@ -93,7 +197,7 @@ D5 现在保存每个相机流最近一次有效实测状态。快照键为资�
 `2.2 s` 真实输入中，累计节点由 `6` 增至 `8`，两次发布复用跨调用匿名航迹，边仍为 `0`，
 在线真值使用为 `0`。
 
-## G1 装配审计边界
+## G1 装配审计边界（历史 v4）
 
 D6 已在 clean evaluator commit `107cf0756d7b75cd6bf1456d1f1aa940fec6a63c` 对既有 G1 v4
 完成正式装配后审计。审计输出状态为通过，blocker 为空，内容 SHA-256 为
@@ -104,10 +208,11 @@ D6 已在 clean evaluator commit `107cf0756d7b75cd6bf1456d1f1aa940fec6a63c` 对�
 该审计核验的是当时 v4 的文件布局、哈希、交叉绑定和安全计数。它不授予模型晋级、默认路径、
 在线 G1、身份、分配或控制权限。本轮来源合同修改改变了运行时实现摘要。当前摘要为
 `55066382...b8ea`，v4 绑定摘要为 `408e71fe...f4fe`，严格加载返回
-`bundle_implementation_runtime_mismatch`。规则路径继续作为默认；新的 G1 在线证据必须基于
-当前运行时重新装配并接受 D6 独立复审。
+`bundle_implementation_runtime_mismatch`。current-runtime development、held-out、
+paired-shadow 和 shadow-only registry 已形成；规则路径继续作为默认。当前版本治理下，下一门
+是重新生成 D6 external audit v2、新 v5 装配和装配后复审。
 
-## 冻结证据生产
+## 冻结证据生产（历史 v4）
 
 D5 的冻结证据生产与模型准入分开。第一阶段只把冻结引用、审计摘要、保留集报告、成对影子报告
 和逐帧谱系装配成 D6 可独立读取的 registry。第二阶段由 D6 复核这些实物。只有 D6 通过，既有
@@ -164,7 +269,7 @@ development 输入仍保留 `development_only_fail_closed` 状态；正式证据
 G1 assist-eligible v4。该 v4 未进入默认或在线配置，确定性几何规则继续作为默认路径。
 2026-07-26 D5 全量回归为 `578 passed in 103.88s`。
 
-## 模型读取与使用权限
+## 模型读取与使用权限（历史 v4 合同）
 
 模型完整性、证据准入和运行权限分三层处理。development bundle 可用于离线训练与影子评估；
 G1 跨视角图辅助只有在外部证据链完整、D6 审计通过且运行时再次核验后才可用。无论 G1 是否通过，

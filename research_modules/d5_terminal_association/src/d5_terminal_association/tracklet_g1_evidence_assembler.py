@@ -17,17 +17,25 @@ from .tracklet_model_bundle import (
     G1_ADMITTED_MODEL_BUNDLE_SCHEMA_VERSION,
     MANIFEST_FILENAME,
     MODEL_BUNDLE_SCHEMA_VERSION,
+    TRACKLET_G1_AUTHORITY_CONTRACT_SCHEMA_VERSION,
+    TRACKLET_G1_EXTERNAL_AUTHORITY_FIELDS,
     TRACKLET_G1_MINIMUM_HELDOUT_EPISODES,
     TRACKLET_G1_MINIMUM_SCENARIO_SCALE_CELLS,
     TRACKLET_G1_MINIMUM_UNSEEN_SEEDS,
+    TRACKLET_G1_REQUIRED_PAIRED_LINEAGE_RECORD_COUNT,
+    TRACKLET_G1_RUNTIME_AUTHORITY_FIELDS,
     WEIGHTS_FILENAME,
     ModelBundleValidationError,
     TrackletG1AdmissionReport,
+    TrackletG1AuthorityContract,
     load_tracklet_model_bundle,
 )
 
 
-D6_EXTERNAL_AUDIT_SCHEMA_VERSION = "d6.d5-g1-external-audit.v1"
+D6_LEGACY_EXTERNAL_AUDIT_SCHEMA_VERSION = (
+    "d6.d5-g1-external-audit.v1"
+)
+D6_EXTERNAL_AUDIT_SCHEMA_VERSION = "d6.d5-g1-external-audit.v2"
 D6_EXTERNAL_AUDIT_CONSUMER_SCHEMA_VERSION = (
     "d6.d5-g1-external-audit-consumer.v1"
 )
@@ -39,11 +47,17 @@ D6_EXTERNAL_AUDIT_FORMAL_PROFILE_VERSION = (
 )
 HELDOUT_REPORT_SCHEMA_VERSION = "d5.tracklet-heldout-model-evaluation.v1"
 PAIRED_SHADOW_REPORT_SCHEMA_VERSION = "d5.tracklet-paired-shadow.v2"
+PAIRED_SHADOW_LINEAGE_SCHEMA_VERSION = (
+    "d5.tracklet-paired-shadow-lineage.v1"
+)
 
 EVIDENCE_DIRECTORY = "evidence"
 HELDOUT_EVIDENCE_FILENAME = f"{EVIDENCE_DIRECTORY}/heldout_evaluation.json"
 PAIRED_SHADOW_EVIDENCE_FILENAME = (
     f"{EVIDENCE_DIRECTORY}/paired_shadow_report.json"
+)
+PAIRED_SHADOW_LINEAGE_EVIDENCE_FILENAME = (
+    f"{EVIDENCE_DIRECTORY}/paired_episode_lineage.jsonl"
 )
 D6_AUDIT_EVIDENCE_FILENAME = (
     f"{EVIDENCE_DIRECTORY}/d6_external_audit.json"
@@ -54,20 +68,12 @@ G1_BUNDLE_CHECKSUM_FILES = frozenset(
         WEIGHTS_FILENAME,
         HELDOUT_EVIDENCE_FILENAME,
         PAIRED_SHADOW_EVIDENCE_FILENAME,
+        PAIRED_SHADOW_LINEAGE_EVIDENCE_FILENAME,
         D6_AUDIT_EVIDENCE_FILENAME,
     }
 )
 
 _SHA256_LENGTH = 64
-_D6_AUTHORITY_FIELDS = frozenset(
-    {
-        "control_authority_granted",
-        "default_path_change_granted",
-        "g1_assist_granted",
-        "model_promotion_granted",
-        "reason",
-    }
-)
 _D6_CONSUMER_EVIDENCE_FIELDS = frozenset(
     {
         "bundle_manifest_sha256",
@@ -166,6 +172,8 @@ class TrackletG1EvidenceInputs:
     expected_heldout_report_sha256: str
     paired_shadow_report_path: Path
     expected_paired_shadow_report_sha256: str
+    paired_shadow_lineage_path: Path
+    expected_paired_shadow_lineage_sha256: str
     d6_audit_path: Path
     expected_d6_audit_sha256: str
 
@@ -174,6 +182,7 @@ class TrackletG1EvidenceInputs:
             "development_bundle_dir",
             "heldout_report_path",
             "paired_shadow_report_path",
+            "paired_shadow_lineage_path",
             "d6_audit_path",
         ):
             value = getattr(self, name)
@@ -188,6 +197,7 @@ class TrackletG1EvidenceInputs:
             "expected_bundle_checksums_sha256",
             "expected_heldout_report_sha256",
             "expected_paired_shadow_report_sha256",
+            "expected_paired_shadow_lineage_sha256",
             "expected_d6_audit_sha256",
         ):
             _strict_sha256(getattr(self, name), f"inputs.{name}")
@@ -195,19 +205,29 @@ class TrackletG1EvidenceInputs:
 
 @dataclass(frozen=True, slots=True)
 class TrackletG1AssemblyResult:
-    """Published v4 bundle identity."""
+    """Published v5 bundle identity."""
 
     bundle_dir: Path
     manifest_sha256: str
     weights_sha256: str
     heldout_report_sha256: str
     paired_shadow_report_sha256: str
+    paired_shadow_lineage_sha256: str
+    paired_shadow_lineage_record_count: int
+    paired_shadow_lineage_unique_episode_uid_count: int
     d6_external_audit_sha256: str
     g1_assist_eligible: bool = True
+    authority_contract_schema_version: str = (
+        TRACKLET_G1_AUTHORITY_CONTRACT_SCHEMA_VERSION
+    )
     default_model: bool = False
     global_track_id_authority: bool = False
-    assignment_authority: bool = False
-    control_authority: bool = False
+    model_promotion_granted: bool = False
+    g1_assist_granted: bool = False
+    default_path_change_granted: bool = False
+    assignment_authority_granted: bool = False
+    failover_authority_granted: bool = False
+    control_authority_granted: bool = False
 
     def to_dict(self) -> Mapping[str, Any]:
         return MappingProxyType(
@@ -219,14 +239,38 @@ class TrackletG1AssemblyResult:
                 "paired_shadow_report_sha256": (
                     self.paired_shadow_report_sha256
                 ),
+                "paired_shadow_lineage_sha256": (
+                    self.paired_shadow_lineage_sha256
+                ),
+                "paired_shadow_lineage_record_count": (
+                    self.paired_shadow_lineage_record_count
+                ),
+                "paired_shadow_lineage_unique_episode_uid_count": (
+                    self.paired_shadow_lineage_unique_episode_uid_count
+                ),
                 "d6_external_audit_sha256": self.d6_external_audit_sha256,
                 "g1_assist_eligible": self.g1_assist_eligible,
+                "authority_contract_schema_version": (
+                    self.authority_contract_schema_version
+                ),
                 "default_model": self.default_model,
                 "global_track_id_authority": (
                     self.global_track_id_authority
                 ),
-                "assignment_authority": self.assignment_authority,
-                "control_authority": self.control_authority,
+                "model_promotion_granted": self.model_promotion_granted,
+                "g1_assist_granted": self.g1_assist_granted,
+                "default_path_change_granted": (
+                    self.default_path_change_granted
+                ),
+                "assignment_authority_granted": (
+                    self.assignment_authority_granted
+                ),
+                "failover_authority_granted": (
+                    self.failover_authority_granted
+                ),
+                "control_authority_granted": (
+                    self.control_authority_granted
+                ),
             }
         )
 
@@ -237,6 +281,14 @@ class _JsonArtifact:
     payload: Mapping[str, Any]
     file_sha256: str
     content_sha256: str
+
+
+@dataclass(frozen=True, slots=True)
+class _LineageArtifact:
+    path: Path
+    file_sha256: str
+    record_count: int
+    unique_episode_uid_count: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -257,7 +309,7 @@ def assemble_tracklet_g1_bundle(
     output_bundle_dir: str | Path,
     inputs: TrackletG1EvidenceInputs,
 ) -> TrackletG1AssemblyResult:
-    """Validate four explicit evidence inputs and atomically publish one v4."""
+    """Validate five explicit evidence classes and atomically publish one v5."""
 
     if not isinstance(inputs, TrackletG1EvidenceInputs):
         raise TrackletG1EvidenceAssemblyError(
@@ -279,15 +331,21 @@ def assemble_tracklet_g1_bundle(
         inputs.expected_paired_shadow_report_sha256,
         "paired_shadow_report",
     )
+    lineage = _read_lineage_artifact(
+        inputs.paired_shadow_lineage_path,
+        inputs.expected_paired_shadow_lineage_sha256,
+        "paired_shadow_lineage",
+    )
     audit = _read_json_artifact(
         inputs.d6_audit_path,
         inputs.expected_d6_audit_sha256,
         "d6_external_audit",
     )
-    contract = _validate_evidence_chain(
+    contract, authority_contract = _validate_evidence_chain(
         source=source,
         heldout=heldout,
         paired=paired,
+        lineage=lineage,
         audit=audit,
         require_audit_pass=True,
     )
@@ -319,6 +377,11 @@ def assemble_tracklet_g1_bundle(
         heldout_report_content_sha256=heldout.content_sha256,
         paired_shadow_report_sha256=paired.file_sha256,
         paired_shadow_report_content_sha256=paired.content_sha256,
+        paired_shadow_lineage_sha256=lineage.file_sha256,
+        paired_shadow_lineage_record_count=lineage.record_count,
+        paired_shadow_lineage_unique_episode_uid_count=(
+            lineage.unique_episode_uid_count
+        ),
         d6_external_audit_sha256=audit.file_sha256,
         d6_external_audit_content_sha256=audit.content_sha256,
         formal_evaluation=contract["formal_evaluation"],
@@ -337,6 +400,7 @@ def assemble_tracklet_g1_bundle(
         ],
         failure_reasons=tuple(contract["failure_reasons"]),
         g1_assist_eligible=True,
+        authority_contract=authority_contract,
     )
 
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -352,8 +416,10 @@ def assemble_tracklet_g1_bundle(
             source=source,
             heldout=heldout,
             paired=paired,
+            lineage=lineage,
             audit=audit,
             report=report,
+            authority_contract=authority_contract,
         )
         try:
             load_tracklet_model_bundle(staging)
@@ -361,7 +427,7 @@ def assemble_tracklet_g1_bundle(
             raise TrackletG1EvidenceAssemblyError(
                 f"assembled_bundle_{exc.code}", str(exc)
             ) from exc
-        _recheck_input_files(source, heldout, paired, audit)
+        _recheck_input_files(source, heldout, paired, lineage, audit)
         os.replace(staging, output)
     except Exception:
         shutil.rmtree(staging, ignore_errors=True)
@@ -373,6 +439,11 @@ def assemble_tracklet_g1_bundle(
         weights_sha256=source.weights_sha256,
         heldout_report_sha256=heldout.file_sha256,
         paired_shadow_report_sha256=paired.file_sha256,
+        paired_shadow_lineage_sha256=lineage.file_sha256,
+        paired_shadow_lineage_record_count=lineage.record_count,
+        paired_shadow_lineage_unique_episode_uid_count=(
+            lineage.unique_episode_uid_count
+        ),
         d6_external_audit_sha256=audit.file_sha256,
     )
 
@@ -382,12 +453,12 @@ def validate_admitted_bundle_evidence(
     manifest: Mapping[str, Any],
     admission_report: TrackletG1AdmissionReport,
 ) -> None:
-    """Revalidate every packaged v4 evidence file during each public load."""
+    """Revalidate every packaged v5 evidence file during each public load."""
 
     root = Path(bundle_root)
     if not isinstance(manifest, Mapping):
         raise TrackletG1EvidenceAssemblyError(
-            "manifest_type_invalid", "v4 manifest must be a mapping"
+            "manifest_type_invalid", "v5 manifest must be a mapping"
         )
     source_record = _strict_mapping(
         manifest.get("source_development_bundle"),
@@ -421,9 +492,14 @@ def validate_admitted_bundle_evidence(
         )
 
     evidence = _strict_mapping(manifest.get("evidence"), "manifest.evidence")
-    if set(evidence) != {"heldout", "paired_shadow", "d6_external_audit"}:
+    if set(evidence) != {
+        "heldout",
+        "paired_shadow",
+        "paired_shadow_lineage",
+        "d6_external_audit",
+    }:
         raise TrackletG1EvidenceAssemblyError(
-            "evidence_fields_mismatch", "v4 evidence fields differ"
+            "evidence_fields_mismatch", "v5 evidence fields differ"
         )
     heldout = _read_packaged_json_artifact(
         root,
@@ -436,6 +512,10 @@ def validate_admitted_bundle_evidence(
         evidence["paired_shadow"],
         PAIRED_SHADOW_EVIDENCE_FILENAME,
         "paired_shadow_report",
+    )
+    lineage = _read_packaged_lineage_artifact(
+        root,
+        evidence["paired_shadow_lineage"],
     )
     audit = _read_packaged_json_artifact(
         root,
@@ -483,10 +563,11 @@ def validate_admitted_bundle_evidence(
             "source_bundle_weights_mismatch",
             identity.weights_sha256,
         )
-    contract = _validate_evidence_chain(
+    contract, authority_contract = _validate_evidence_chain(
         source=identity,
         heldout=heldout,
         paired=paired,
+        lineage=lineage,
         audit=audit,
         require_audit_pass=True,
     )
@@ -502,6 +583,11 @@ def validate_admitted_bundle_evidence(
         "heldout_report_content_sha256": heldout.content_sha256,
         "paired_shadow_report_sha256": paired.file_sha256,
         "paired_shadow_report_content_sha256": paired.content_sha256,
+        "paired_shadow_lineage_sha256": lineage.file_sha256,
+        "paired_shadow_lineage_record_count": lineage.record_count,
+        "paired_shadow_lineage_unique_episode_uid_count": (
+            lineage.unique_episode_uid_count
+        ),
         "d6_external_audit_sha256": audit.file_sha256,
         "d6_external_audit_content_sha256": audit.content_sha256,
         "formal_evaluation": contract["formal_evaluation"],
@@ -520,11 +606,35 @@ def validate_admitted_bundle_evidence(
         ],
         "failure_reasons": contract["failure_reasons"],
         "g1_assist_eligible": True,
+        "authority_contract": dict(authority_contract.to_manifest()),
     }
     if dict(report) != expected_report:
         raise TrackletG1EvidenceAssemblyError(
             "admission_report_cross_binding_mismatch",
             "embedded report differs from packaged evidence",
+        )
+    admission = _strict_mapping(
+        manifest.get("admission"), "manifest.admission"
+    )
+    try:
+        embedded_authority = TrackletG1AuthorityContract.from_manifest(
+            _strict_mapping(
+                admission.get("authority_contract"),
+                "manifest.admission.authority_contract",
+            )
+        )
+    except (TypeError, ValueError) as exc:
+        raise TrackletG1EvidenceAssemblyError(
+            "authority_contract_manifest_invalid",
+            str(exc),
+        ) from exc
+    if (
+        embedded_authority != authority_contract
+        or admission_report.authority_contract != authority_contract
+    ):
+        raise TrackletG1EvidenceAssemblyError(
+            "authority_contract_cross_binding_mismatch",
+            "manifest, report, and packaged D6 audit differ",
         )
 
 
@@ -639,18 +749,35 @@ def _validate_evidence_chain(
     source: _DevelopmentBundleIdentity,
     heldout: _JsonArtifact,
     paired: _JsonArtifact,
+    lineage: _LineageArtifact,
     audit: _JsonArtifact,
     require_audit_pass: bool,
-) -> Mapping[str, Any]:
+) -> tuple[Mapping[str, Any], TrackletG1AuthorityContract]:
     _validate_report_schemas(heldout, paired)
-    contract = _validate_d6_contract_structure(audit.payload)
+    contract, runtime_authority, authority_reason = (
+        _validate_d6_contract_structure(audit.payload)
+    )
+    _validate_paired_lineage_bindings(
+        lineage=lineage,
+        paired=paired.payload,
+        audit=audit.payload,
+        contract=contract,
+    )
+    authority_contract = TrackletG1AuthorityContract(
+        d6_external_audit_sha256=audit.file_sha256,
+        d6_external_audit_content_sha256=audit.content_sha256,
+        evidence_audit_passed=contract["d6_external_audit_passed"],
+        evidence_eligible=contract["d6_external_audit_passed"],
+        runtime_authority=runtime_authority,
+        reason=authority_reason,
+    )
     if not contract["d6_external_audit_passed"]:
         if require_audit_pass:
             reasons = ",".join(contract["failure_reasons"])
             raise TrackletG1EvidenceAssemblyError(
                 "d6_external_audit_fail_closed", reasons
             )
-        return contract
+        return contract, authority_contract
 
     expected = {
         "bundle_manifest_sha256": source.manifest_sha256,
@@ -672,19 +799,28 @@ def _validate_evidence_chain(
                 f"expected {expected_value}, received {contract[name]}",
             )
     _validate_report_lineage(source, heldout.payload, paired.payload, contract)
-    return contract
+    return contract, authority_contract
 
 
 def _validate_d6_contract_structure(
     audit: Mapping[str, Any],
-) -> Mapping[str, Any]:
+) -> tuple[Mapping[str, Any], Mapping[str, bool], str]:
     if set(audit) != _D6_TOP_LEVEL_FIELDS:
         raise TrackletG1EvidenceAssemblyError(
             "d6_top_level_fields_mismatch", "external audit fields differ"
         )
-    if audit.get("schema_version") != D6_EXTERNAL_AUDIT_SCHEMA_VERSION:
+    audit_schema = audit.get("schema_version")
+    if audit_schema == D6_LEGACY_EXTERNAL_AUDIT_SCHEMA_VERSION:
         raise TrackletG1EvidenceAssemblyError(
-            "d6_schema_mismatch", str(audit.get("schema_version"))
+            "legacy_d6_external_audit_schema_unsupported",
+            (
+                f"{D6_LEGACY_EXTERNAL_AUDIT_SCHEMA_VERSION} retains its "
+                "historical authority semantics"
+            ),
+        )
+    if audit_schema != D6_EXTERNAL_AUDIT_SCHEMA_VERSION:
+        raise TrackletG1EvidenceAssemblyError(
+            "d6_schema_mismatch", str(audit_schema)
         )
     if (
         audit.get("formal_profile_version")
@@ -706,11 +842,12 @@ def _validate_d6_contract_structure(
             )
 
     authority = _strict_mapping(audit.get("authority"), "d6.authority")
-    if set(authority) != _D6_AUTHORITY_FIELDS:
+    if set(authority) != TRACKLET_G1_EXTERNAL_AUTHORITY_FIELDS:
         raise TrackletG1EvidenceAssemblyError(
             "d6_authority_fields_mismatch", "authority fields differ"
         )
-    for name in _D6_AUTHORITY_FIELDS - {"reason"}:
+    runtime_authority: dict[str, bool] = {}
+    for name in TRACKLET_G1_RUNTIME_AUTHORITY_FIELDS:
         if type(authority[name]) is not bool:
             raise TrackletG1EvidenceAssemblyError(
                 f"d6_type_invalid.authority.{name}", "must be bool"
@@ -719,7 +856,11 @@ def _validate_d6_contract_structure(
             raise TrackletG1EvidenceAssemblyError(
                 f"d6_authority_not_closed.{name}", "must remain false"
             )
-    if not isinstance(authority["reason"], str) or not authority["reason"]:
+        runtime_authority[name] = authority[name]
+    if (
+        not isinstance(authority["reason"], str)
+        or not authority["reason"].strip()
+    ):
         raise TrackletG1EvidenceAssemblyError(
             "d6_authority_reason_invalid", "reason must be non-empty"
         )
@@ -882,7 +1023,11 @@ def _validate_d6_contract_structure(
             raise TrackletG1EvidenceAssemblyError(
                 f"d6_safety_count_nonzero.{name}", str(contract[name])
             )
-    return contract
+    return (
+        contract,
+        MappingProxyType(runtime_authority),
+        authority["reason"],
+    )
 
 
 def _validate_report_schemas(
@@ -901,6 +1046,140 @@ def _validate_report_schemas(
         raise TrackletG1EvidenceAssemblyError(
             "paired_shadow_report_schema_mismatch",
             str(paired.payload.get("schema_version")),
+        )
+
+
+def _validate_paired_lineage_bindings(
+    *,
+    lineage: _LineageArtifact,
+    paired: Mapping[str, Any],
+    audit: Mapping[str, Any],
+    contract: Mapping[str, Any],
+) -> None:
+    if (
+        lineage.record_count
+        != TRACKLET_G1_REQUIRED_PAIRED_LINEAGE_RECORD_COUNT
+    ):
+        raise TrackletG1EvidenceAssemblyError(
+            "paired_lineage_formal_record_count_mismatch",
+            (
+                f"{lineage.record_count}!="
+                f"{TRACKLET_G1_REQUIRED_PAIRED_LINEAGE_RECORD_COUNT}"
+            ),
+        )
+    if lineage.unique_episode_uid_count != lineage.record_count:
+        raise TrackletG1EvidenceAssemblyError(
+            "paired_lineage_unique_episode_uid_count_mismatch",
+            (
+                f"{lineage.unique_episode_uid_count}!="
+                f"{lineage.record_count}"
+            ),
+        )
+    if contract["heldout_episode_count"] != lineage.record_count:
+        raise TrackletG1EvidenceAssemblyError(
+            "paired_lineage_d6_consumer_count_mismatch",
+            (
+                f"{lineage.record_count}!="
+                f"{contract['heldout_episode_count']}"
+            ),
+        )
+
+    paired_lineage = _strict_mapping(
+        paired.get("paired_lineage"), "paired.paired_lineage"
+    )
+    expected_paired_fields = {
+        "schema_version",
+        "filename",
+        "record_count",
+        "sha256",
+    }
+    if set(paired_lineage) != expected_paired_fields:
+        raise TrackletG1EvidenceAssemblyError(
+            "paired_lineage_fields_mismatch",
+            ",".join(sorted(set(paired_lineage) ^ expected_paired_fields)),
+        )
+    if (
+        paired_lineage.get("schema_version")
+        != PAIRED_SHADOW_LINEAGE_SCHEMA_VERSION
+    ):
+        raise TrackletG1EvidenceAssemblyError(
+            "paired_lineage_schema_mismatch",
+            str(paired_lineage.get("schema_version")),
+        )
+    if (
+        paired_lineage.get("filename")
+        != Path(PAIRED_SHADOW_LINEAGE_EVIDENCE_FILENAME).name
+    ):
+        raise TrackletG1EvidenceAssemblyError(
+            "paired_lineage_filename_mismatch",
+            str(paired_lineage.get("filename")),
+        )
+    paired_sha = _strict_sha256(
+        paired_lineage.get("sha256"),
+        "paired.paired_lineage.sha256",
+    )
+    if paired_sha != lineage.file_sha256:
+        raise TrackletG1EvidenceAssemblyError(
+            "paired_lineage_sha256_mismatch",
+            f"{paired_sha}!={lineage.file_sha256}",
+        )
+    paired_count = _strict_nonnegative_int(
+        paired_lineage.get("record_count"),
+        "paired.paired_lineage.record_count",
+    )
+    if paired_count != lineage.record_count:
+        raise TrackletG1EvidenceAssemblyError(
+            "paired_lineage_record_count_mismatch",
+            f"{paired_count}!={lineage.record_count}",
+        )
+
+    candidate = _strict_mapping(audit.get("candidate"), "d6.candidate")
+    d6_lineage = _strict_mapping(
+        candidate.get("paired_lineage"),
+        "d6.candidate.paired_lineage",
+    )
+    expected_d6_fields = {
+        "available",
+        "sha256",
+        "record_count",
+        "unique_episode_uid_count",
+    }
+    if set(d6_lineage) != expected_d6_fields:
+        raise TrackletG1EvidenceAssemblyError(
+            "d6_paired_lineage_fields_mismatch",
+            ",".join(sorted(set(d6_lineage) ^ expected_d6_fields)),
+        )
+    if d6_lineage.get("available") is not True:
+        raise TrackletG1EvidenceAssemblyError(
+            "d6_paired_lineage_unavailable",
+            str(d6_lineage.get("available")),
+        )
+    d6_sha = _strict_sha256(
+        d6_lineage.get("sha256"),
+        "d6.candidate.paired_lineage.sha256",
+    )
+    if d6_sha != lineage.file_sha256:
+        raise TrackletG1EvidenceAssemblyError(
+            "d6_paired_lineage_sha256_mismatch",
+            f"{d6_sha}!={lineage.file_sha256}",
+        )
+    d6_record_count = _strict_nonnegative_int(
+        d6_lineage.get("record_count"),
+        "d6.candidate.paired_lineage.record_count",
+    )
+    if d6_record_count != lineage.record_count:
+        raise TrackletG1EvidenceAssemblyError(
+            "d6_paired_lineage_record_count_mismatch",
+            f"{d6_record_count}!={lineage.record_count}",
+        )
+    d6_unique_count = _strict_nonnegative_int(
+        d6_lineage.get("unique_episode_uid_count"),
+        "d6.candidate.paired_lineage.unique_episode_uid_count",
+    )
+    if d6_unique_count != lineage.unique_episode_uid_count:
+        raise TrackletG1EvidenceAssemblyError(
+            "d6_paired_lineage_unique_episode_uid_count_mismatch",
+            f"{d6_unique_count}!={lineage.unique_episode_uid_count}",
         )
 
 
@@ -1079,14 +1358,20 @@ def _stage_admitted_bundle(
     source: _DevelopmentBundleIdentity,
     heldout: _JsonArtifact,
     paired: _JsonArtifact,
+    lineage: _LineageArtifact,
     audit: _JsonArtifact,
     report: TrackletG1AdmissionReport,
+    authority_contract: TrackletG1AuthorityContract,
 ) -> None:
     evidence_dir = staging / EVIDENCE_DIRECTORY
     evidence_dir.mkdir(parents=True, exist_ok=False)
     shutil.copyfile(source.root / WEIGHTS_FILENAME, staging / WEIGHTS_FILENAME)
     shutil.copyfile(heldout.path, staging / HELDOUT_EVIDENCE_FILENAME)
     shutil.copyfile(paired.path, staging / PAIRED_SHADOW_EVIDENCE_FILENAME)
+    shutil.copyfile(
+        lineage.path,
+        staging / PAIRED_SHADOW_LINEAGE_EVIDENCE_FILENAME,
+    )
     shutil.copyfile(audit.path, staging / D6_AUDIT_EVIDENCE_FILENAME)
 
     manifest = json.loads(_canonical_json_bytes(source.manifest))
@@ -1104,17 +1389,24 @@ def _stage_admitted_bundle(
         "paired_shadow": _evidence_record(
             PAIRED_SHADOW_EVIDENCE_FILENAME, paired
         ),
+        "paired_shadow_lineage": {
+            "filename": PAIRED_SHADOW_LINEAGE_EVIDENCE_FILENAME,
+            "sha256": lineage.file_sha256,
+            "record_count": lineage.record_count,
+            "unique_episode_uid_count": (
+                lineage.unique_episode_uid_count
+            ),
+        },
         "d6_external_audit": _evidence_record(
             D6_AUDIT_EVIDENCE_FILENAME, audit
         ),
     }
     manifest["admission"] = {
-        "status": "g1_assist_admitted",
+        "status": "g1_evidence_eligible_not_authorized",
         "default_model": False,
         "g1_assist_eligible": True,
         "global_track_id_authority": False,
-        "assignment_authority": False,
-        "control_authority": False,
+        "authority_contract": dict(authority_contract.to_manifest()),
         "report": dict(report.to_manifest()),
     }
     _write_bytes(staging / MANIFEST_FILENAME, _canonical_json_bytes(manifest))
@@ -1175,6 +1467,63 @@ def _read_packaged_json_artifact(
     return artifact
 
 
+def _read_packaged_lineage_artifact(
+    root: Path,
+    record_value: Any,
+) -> _LineageArtifact:
+    artifact_id = "paired_shadow_lineage"
+    record = _strict_mapping(record_value, f"evidence.{artifact_id}")
+    required_fields = {
+        "filename",
+        "sha256",
+        "record_count",
+        "unique_episode_uid_count",
+    }
+    if set(record) != required_fields:
+        raise TrackletG1EvidenceAssemblyError(
+            f"evidence_record_fields_mismatch.{artifact_id}",
+            "evidence record fields differ",
+        )
+    if (
+        record.get("filename")
+        != PAIRED_SHADOW_LINEAGE_EVIDENCE_FILENAME
+    ):
+        raise TrackletG1EvidenceAssemblyError(
+            f"evidence_filename_mismatch.{artifact_id}",
+            str(record.get("filename")),
+        )
+    artifact = _read_lineage_artifact(
+        root / PAIRED_SHADOW_LINEAGE_EVIDENCE_FILENAME,
+        _strict_sha256(
+            record.get("sha256"),
+            f"evidence.{artifact_id}.sha256",
+        ),
+        artifact_id,
+    )
+    expected_record_count = _strict_nonnegative_int(
+        record.get("record_count"),
+        f"evidence.{artifact_id}.record_count",
+    )
+    expected_unique_count = _strict_nonnegative_int(
+        record.get("unique_episode_uid_count"),
+        f"evidence.{artifact_id}.unique_episode_uid_count",
+    )
+    if artifact.record_count != expected_record_count:
+        raise TrackletG1EvidenceAssemblyError(
+            f"evidence_record_count_mismatch.{artifact_id}",
+            f"{artifact.record_count}!={expected_record_count}",
+        )
+    if artifact.unique_episode_uid_count != expected_unique_count:
+        raise TrackletG1EvidenceAssemblyError(
+            f"evidence_unique_episode_uid_count_mismatch.{artifact_id}",
+            (
+                f"{artifact.unique_episode_uid_count}!="
+                f"{expected_unique_count}"
+            ),
+        )
+    return artifact
+
+
 def _read_json_artifact(
     path: Path,
     expected_sha256: str,
@@ -1209,10 +1558,85 @@ def _read_json_artifact(
     )
 
 
+def _read_lineage_artifact(
+    path: Path,
+    expected_sha256: str,
+    artifact_id: str,
+) -> _LineageArtifact:
+    _strict_sha256(expected_sha256, f"{artifact_id}.expected_sha256")
+    if not path.is_file():
+        raise TrackletG1EvidenceAssemblyError(
+            f"input_missing.{artifact_id}", str(path)
+        )
+    actual_sha = sha256_file(path)
+    if actual_sha != expected_sha256:
+        raise TrackletG1EvidenceAssemblyError(
+            f"input_sha256_mismatch.{artifact_id}",
+            f"expected {expected_sha256}, received {actual_sha}",
+        )
+
+    episode_uids: set[str] = set()
+    record_count = 0
+    try:
+        with path.open("r", encoding="utf-8") as stream:
+            for line_number, line in enumerate(stream, start=1):
+                if not line.strip():
+                    raise TrackletG1EvidenceAssemblyError(
+                        "paired_lineage_blank_record",
+                        f"line {line_number}",
+                    )
+                try:
+                    record = json.loads(
+                        line,
+                        parse_constant=lambda token: _reject_json_constant(
+                            token
+                        ),
+                    )
+                except (json.JSONDecodeError, ValueError) as exc:
+                    raise TrackletG1EvidenceAssemblyError(
+                        "paired_lineage_record_json_invalid",
+                        f"line {line_number}: {exc}",
+                    ) from exc
+                if not isinstance(record, dict):
+                    raise TrackletG1EvidenceAssemblyError(
+                        "paired_lineage_record_type_invalid",
+                        f"line {line_number}",
+                    )
+                episode_uid = record.get("episode_uid")
+                if (
+                    not isinstance(episode_uid, str)
+                    or not episode_uid.strip()
+                ):
+                    raise TrackletG1EvidenceAssemblyError(
+                        "paired_lineage_episode_uid_invalid",
+                        f"line {line_number}",
+                    )
+                if episode_uid in episode_uids:
+                    raise TrackletG1EvidenceAssemblyError(
+                        "paired_lineage_duplicate_episode_uid",
+                        f"line {line_number}: {episode_uid}",
+                    )
+                episode_uids.add(episode_uid)
+                record_count += 1
+    except TrackletG1EvidenceAssemblyError:
+        raise
+    except (OSError, UnicodeError) as exc:
+        raise TrackletG1EvidenceAssemblyError(
+            "paired_lineage_read_failed", str(path)
+        ) from exc
+    return _LineageArtifact(
+        path=path,
+        file_sha256=actual_sha,
+        record_count=record_count,
+        unique_episode_uid_count=len(episode_uids),
+    )
+
+
 def _recheck_input_files(
     source: _DevelopmentBundleIdentity,
     heldout: _JsonArtifact,
     paired: _JsonArtifact,
+    lineage: _LineageArtifact,
     audit: _JsonArtifact,
 ) -> None:
     expected = {
@@ -1221,6 +1645,7 @@ def _recheck_input_files(
         source.root / CHECKSUMS_FILENAME: source.checksums_sha256,
         heldout.path: heldout.file_sha256,
         paired.path: paired.file_sha256,
+        lineage.path: lineage.file_sha256,
         audit.path: audit.file_sha256,
     }
     for path, digest in expected.items():
@@ -1256,6 +1681,7 @@ def _validate_output_separation(
         inputs.development_bundle_dir,
         inputs.heldout_report_path,
         inputs.paired_shadow_report_path,
+        inputs.paired_shadow_lineage_path,
         inputs.d6_audit_path,
     )
     for source in source_paths:
@@ -1339,6 +1765,14 @@ def _strict_sha256(value: Any, name: str) -> str:
     return value
 
 
+def _strict_nonnegative_int(value: Any, name: str) -> int:
+    if type(value) is not int or value < 0:
+        raise TrackletG1EvidenceAssemblyError(
+            f"type_invalid.{name}", "must be a non-negative int"
+        )
+    return value
+
+
 def _strict_model_fingerprint(value: Any, name: str) -> str:
     if not isinstance(value, str) or not value.startswith("sha256:"):
         raise TrackletG1EvidenceAssemblyError(
@@ -1386,11 +1820,15 @@ def _reject_json_constant(token: str) -> None:
 __all__ = [
     "D6_AUDIT_EVIDENCE_FILENAME",
     "D6_EXTERNAL_AUDIT_CONSUMER_SCHEMA_VERSION",
+    "D6_EXTERNAL_AUDIT_INPUT_SCHEMA_VERSION",
     "D6_EXTERNAL_AUDIT_SCHEMA_VERSION",
+    "D6_LEGACY_EXTERNAL_AUDIT_SCHEMA_VERSION",
     "EVIDENCE_DIRECTORY",
     "G1_BUNDLE_CHECKSUM_FILES",
     "HELDOUT_EVIDENCE_FILENAME",
     "PAIRED_SHADOW_EVIDENCE_FILENAME",
+    "PAIRED_SHADOW_LINEAGE_EVIDENCE_FILENAME",
+    "PAIRED_SHADOW_LINEAGE_SCHEMA_VERSION",
     "TrackletG1AssemblyResult",
     "TrackletG1EvidenceAssemblyError",
     "TrackletG1EvidenceInputs",
