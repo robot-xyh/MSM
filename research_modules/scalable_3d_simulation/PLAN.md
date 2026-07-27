@@ -1,5 +1,59 @@
 # 200 对 200 三维质点仿真实施计划
 
+## A2/A3 运行证据收口（2026-07-26）
+
+1. [x] D3 对实际应用的区域提示传播统一 owner、authority epoch 和 lease。跨区域权属
+   不一致时整份提示失败关闭；D3 全量为 `546 passed, 1 skipped`。
+2. [x] D4 因果门将不可变绑定与评估时刻分离。同一 owner ACK 可在更晚物理窗口中幂等
+   引用；时间回退、租约到期或任一绑定变化仍拒绝。D4 全量为 `637 passed`。
+3. [x] main 累计同一当前计划后续出现的非 hold D7 控制，只接受计划内资源-目标绑定，
+   已被新计划替代的待定窗口失败关闭。
+4. [x] 5 对 5、seed 1、3.0 秒 A2 正向用例已改用 D4 真实受约束开发适配器，形成
+   1 次 owner ACK、3 个非 hold 绑定、1 个状态变化物理窗口和 1 条安全采用证据，
+   在线真值使用为 0。适配器仍为 development-only，正式收益审计按合同拒绝。
+5. [x] A3 按相机排队命令窗口，并用量测时刻匹配已经执行且有效的最近命令。受控探针
+   得到 40 条运行确认、21 帧匿名观测和 21 个物理观测窗口。
+6. [x] 新增严格 D4 证据专用确定性通信随机流，避免证据报文数量改变传感器传输抖动。
+   原失败的 delayed-noisy 20v20 seed 1009 回归恢复。
+7. [x] 回归结果：scalable `338 passed`、跨模块合同 `8 passed`、D5 `682 passed`、
+   D6 `1071 passed`；`git diff --check` 另在交付前执行。
+8. [x] main 已用独立世界、总线、模块栈、episode 和事件日志生成 A2/A3 同键 R0
+   开发配对。A2 的 20 个开发 seed 均形成候选评估记录，但受控策略没有产生可识别区域
+   干预，实际采纳和可审计配对均为 0；A3 的 536 条候选均有处置记录，其中 152 条
+   可配对、384 条候选物理窗口缺失。
+9. [x] D6 已区分合法 `safe_adoption_rejected` 与合同矛盾，并消费 A3 完整处置清单。
+   A2 无操作记录不得产生后继计划或权限；A3 存在不可配对记录时，完整采用、物理窗口、
+   同键 R0 收益和非退化指标保持不可用。D6 专项为 `51 passed`，配对编排专项为
+   `6 passed`，D4 全量为 `674 passed, 1 warning`，可扩展三维全量为
+   `346 passed, 1 warning`，跨模块合同为 `8 passed, 1 warning`。2026-07-27 收尾
+   回归进一步确认 D3 全量 `551 passed, 1 skipped`、D5 全量
+   `726 passed, 2 warnings`、D6 全量 `1101 passed, 1 warning`。main 模块栈专项为
+   `76 passed`；警告均为既有运行环境提示。
+10. [x] 批量结果已区分达到 20 个开发 seed 与完成未见 seed 验证。本批
+    `minimum_seed_count_met=true`、`seeds_verified_unseen=false`、
+    `minimum_unseen_seed_target_met=false`。开发配对批次现拒绝调用方直接将
+    `seeds_verified_unseen` 置为 true；未见性只能由正式执行计划、冻结 seed 注册表和
+    模型训练谱系联合证明。
+11. [x] 使用 D4 真实受约束开发适配器完成单 seed 正向链。适配器只发布一个安全
+    `request_replan`，首次判定与正式投影共用 `formal_decision`；D3 后继计划、运行
+    确认和物理窗口均可达，权限与收益仍关闭。
+12. [ ] 使用实际可准入、能够形成非零干预的 A2 学习策略运行至少 20 个严格未见 seed，
+    完成独立 R0、成对非退化和正式收益审计。development adapter 不得进入该审计。
+13. [x] A3 已为每条候选增加候选阶段证据，并将 384 条
+    `candidate_physical_window_missing` 拆分为 344 条匿名观测/确认缺窗和 40 条细因未解析。
+    后 40 条的观测清单在 episode 结束时尚未闭合，不能越界标记为物理窗口不完整；本批没有
+    ACK、确认、命令过期、时序错配或反馈缺失。完整 A3 分母仍不可审计。
+14. [ ] 使用真实获准模型和严格隔离的未见 seed 重复运行，完成成对非退化审计。受控
+    区域策略和主动视觉夹具只验证软件合同，不授予 assist、默认路径、分配、降级、
+    主动视觉或控制权限。
+15. [x] 主动视觉已采用观测触发、零检测帧 v2 和 0.25 秒证据尾窗。默认通信条件下，
+    seed 1000-1019 的开发复跑由历史 536/152/384 提高到 492/488/4，覆盖率 99.19%；
+    零丢包对照为 500/500。旧版本、资源和时间门保持严格，空帧不创建身份、不计为锁定，
+    所有权限为 false。旧冻结制品不改写。
+16. [ ] 从 clean commit 使用严格隔离的未见 seed 持久化完整候选/R0 清单，并把通信
+    丢包作为独立实验因素。只有实际获准模型、完整配对清单和 D6 成对非退化同时成立时，
+    才评估 A3 准入；开发夹具和零丢包控制不能替代该步骤。
+
 ## G1 影子评分人工授权（2026-07-27）
 
 1. [x] 新增 main-owned G1 影子实验授权合同。请求固定绑定干净 Git 提交、D5 v5
@@ -63,8 +117,8 @@
    被拒绝；手工正向 v3 manifest 返回
    `bundle_assist_evidence_assembler_unavailable`。现有 development/shadow bundle
    未修改。
-2. [x] D4 复核未发现新的自我晋级 P0。A2 模块专用 evidence assembler 仍等待实际采用、
-   物理窗口、同键 R0 和成对非退化证据，保持 P1。
+2. [x] D4 复核未发现新的自我晋级 P0。A2 模块专用 evidence assembler 和实际运行时
+   safe-adoption 正向链已完成；实际模型授权、唯一同键 R0 和成对非退化仍保持 P1。
 3. [x] D6 external audit 输出已升为 `d6.d5-g1-external-audit.v2`。结构未变的
    input spec 和 consumer contract 分别保留 v1。审计只给出证据结论，不授予模型
    晋级、在线辅助、默认路径、分配、故障接管或控制权限。
@@ -84,7 +138,8 @@
    episode。G1、A1、A2、A3、C1、F1 继续失败关闭。
 8. [ ] D3 在实际 A1 采用确认、物理结果和同键 R0 非退化证据齐备后实现模块专用
    assembler，形成新的 immutable bundle。
-9. [ ] D4 在实际 A2 隔离采用与成对非退化证据齐备后实现模块专用 assembler。
+9. [x] D4 已实现模块专用 assembler、strict loader 和运行时 safe-adoption 证据桥。
+   当前正向运行使用受控策略夹具，不能替代实际模型与同键 R0 非退化证据。
 10. [x] 在 clean commit `8d5e02e...b54` 上重建当前 runtime 的 development、
     held-out、paired-shadow、900 条唯一 lineage 和 shadow-only registry。D6
     external audit v2 通过后，D5 生产装配器生成 v5；D6 post-assembly v2 再次
@@ -96,9 +151,9 @@
     身份边界。当前 v5 六项权限仍全部为 false，在线 G1 assist 请求继续按
     `bundle_g1_assist_authority_not_granted` 失败关闭；尚未生成获批授权实例或启动
     G1 scope。
-13. [ ] A3 仍需实现独立 evidence assembler。只有各变体预准入和实验授权均通过后，
-    main 才按 G1、A1、A2、A3、C1、F1 启动正式 scope，D6 再审计逐 cell 实际采用、
-    物理结果和唯一同键 R0 非退化。
+13. [x] A3 独立 evidence assembler 和 main 运行时命令/观测/物理窗口桥已实现。
+    [ ] 只有各变体预准入、实际模型授权和唯一同键 R0 齐备后，main 才按
+    G1、A1、A2、A3、C1、F1 启动正式 scope，D6 再审计逐 cell 实际采用和非退化。
 
 ## 学习变体 assist 准入预检（2026-07-26）
 
@@ -141,9 +196,9 @@
     `571 passed`、D6 `944 passed, 1 warning`。D3 跳过项为未安装的可选 OR-Tools；
     warning 为既有 Matplotlib `Axes3D` 环境提示。
 12. [ ] 预准入阶段仍需为 D3、D4、D5 图模型和 D5 主动视觉分别形成新的、可验证的
-    holdout/paired-shadow/隔离采用证据。D5 G1 装配器软件已完成，但当前模型因五项
-    blocker 失败关闭；D3、D4 和 A3 装配器仍未实现。生产路径不能生成或执行未经外部
-    证据约束的 admitted bundle。
+    holdout/paired-shadow/隔离采用证据。D4 A2 与 D5 A3 装配器和运行桥已实现，但
+    同键 R0、实际模型授权和多 seed 非退化尚缺；D3 A1 仍需形成可辨识干预及完整
+    准入证据。生产路径不能生成或执行未经外部证据约束的 admitted bundle。
 13. [ ] 各 owner 形成新 admitted bundle 后，main 才能冻结学习 scope。预准入证据与
     scope 后验审计不得混用：前者只决定是否允许启动，后者只评价实际采用和相对 R0
     非退化，不反向授予模型权限。

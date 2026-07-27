@@ -1,0 +1,263 @@
+{
+  "schema_version": "scalable3d-a3-stage-breakdown-development-summary-v1",
+  "generated_on": "2026-07-27",
+  "evidence_scope": "development_in_memory_probe_only",
+  "formal_evidence": false,
+  "source_git_commit": "1815673",
+  "source_worktree_clean": false,
+  "persisted_full_pair_inventory": false,
+  "scenario": {
+    "scenario_name": "a3_paired_anonymous_window",
+    "scenario_version": "a3-paired-anonymous-window-v1",
+    "target_count": 1,
+    "resource_count": 1,
+    "recon_count": 0,
+    "duration_s": 3.5,
+    "world_half_extent_m": 500.0,
+    "protected_radius_m": 100.0,
+    "target_proxy_width_m": 10.0,
+    "target_proxy_height_m": 4.0,
+    "visual_detection_probability": 1.0,
+    "visual_false_alarm_rate": 0.0,
+    "seeds": [
+      1000,
+      1001,
+      1002,
+      1003,
+      1004,
+      1005,
+      1006,
+      1007,
+      1008,
+      1009,
+      1010,
+      1011,
+      1012,
+      1013,
+      1014,
+      1015,
+      1016,
+      1017,
+      1018,
+      1019
+    ]
+  },
+  "aggregate": {
+    "seed_count": 20,
+    "candidate_record_count": 536,
+    "pairable_record_count": 152,
+    "unpairable_record_count": 384,
+    "auditable_pair_count": 0,
+    "candidate_stage_evidence_count": 536,
+    "candidate_stage_evidence_missing_count": 0,
+    "candidate_stage_inventory_complete": true,
+    "pairing_reason_counts": {
+      "candidate_physical_window_missing": 384,
+      "pairable": 152
+    },
+    "candidate_stage_reason_counts": {
+      "candidate_anonymous_observation_missing": 344,
+      "candidate_physical_window_confirmed_missing": 344
+    },
+    "physical_window_missing_detail_scope_count": 384,
+    "physical_window_missing_detail_evidenced_count": 344,
+    "physical_window_missing_detail_unresolved_count": 40,
+    "physical_window_missing_detail_completeness": false
+  },
+  "per_seed": [
+    {
+      "seed": 1000,
+      "candidate_count": 27,
+      "pairable_count": 7,
+      "anonymous_observation_missing_count": 18,
+      "physical_window_confirmed_missing_count": 18,
+      "physical_window_incomplete_count": 0,
+      "physical_window_missing_detail_unresolved_count": 2
+    },
+    {
+      "seed": 1001,
+      "candidate_count": 27,
+      "pairable_count": 8,
+      "anonymous_observation_missing_count": 17,
+      "physical_window_confirmed_missing_count": 17,
+      "physical_window_incomplete_count": 0,
+      "physical_window_missing_detail_unresolved_count": 2
+    },
+    {
+      "seed": 1002,
+      "candidate_count": 27,
+      "pairable_count": 9,
+      "anonymous_observation_missing_count": 16,
+      "physical_window_confirmed_missing_count": 16,
+      "physical_window_incomplete_count": 0,
+      "physical_window_missing_detail_unresolved_count": 2
+    },
+    {
+      "seed": 1003,
+      "candidate_count": 27,
+      "pairable_count": 7,
+      "anonymous_observation_missing_count": 18,
+      "physical_window_confirmed_missing_count": 18,
+      "physical_window_incomplete_count": 0,
+      "physical_window_missing_detail_unresolved_count": 2
+    },
+    {
+      "seed": 1004,
+      "candidate_count": 27,
+      "pairable_count": 9,
+      "anonymous_observation_missing_count": 16,
+      "physical_window_confirmed_missing_count": 16,
+      "physical_window_incomplete_count": 0,
+      "physical_window_missing_detail_unresolved_count": 2
+    },
+    {
+      "seed": 1005,
+      "candidate_count": 27,
+      "pairable_count": 7,
+      "anonymous_observation_missing_count": 18,
+      "physical_window_confirmed_missing_count": 18,
+      "physical_window_incomplete_count": 0,
+      "physical_window_missing_detail_unresolved_count": 2
+    },
+    {
+      "seed": 1006,
+      "candidate_count": 27,
+      "pairable_count": 9,
+      "anonymous_observation_missing_count": 16,
+      "physical_window_confirmed_missing_count": 16,
+      "physical_window_incomplete_count": 0,
+      "physical_window_missing_detail_unresolved_count": 2
+    },
+    {
+      "seed": 1007,
+      "candidate_count": 26,
+      "pairable_count": 6,
+      "anonymous_observation_missing_count": 18,
+      "physical_window_confirmed_missing_count": 18,
+      "physical_window_incomplete_count": 0,
+      "physical_window_missing_detail_unresolved_count": 2
+    },
+    {
+      "seed": 1008,
+      "candidate_count": 27,
+      "pairable_count": 7,
+      "anonymous_observation_missing_count": 18,
+      "physical_window_confirmed_missing_count": 18,
+      "physical_window_incomplete_count": 0,
+      "physical_window_missing_detail_unresolved_count": 2
+    },
+    {
+      "seed": 1009,
+      "candidate_count": 26,
+      "pairable_count": 7,
+      "anonymous_observation_missing_count": 17,
+      "physical_window_confirmed_missing_count": 17,
+      "physical_window_incomplete_count": 0,
+      "physical_window_missing_detail_unresolved_count": 2
+    },
+    {
+      "seed": 1010,
+      "candidate_count": 27,
+      "pairable_count": 7,
+      "anonymous_observation_missing_count": 18,
+      "physical_window_confirmed_missing_count": 18,
+      "physical_window_incomplete_count": 0,
+      "physical_window_missing_detail_unresolved_count": 2
+    },
+    {
+      "seed": 1011,
+      "candidate_count": 27,
+      "pairable_count": 7,
+      "anonymous_observation_missing_count": 18,
+      "physical_window_confirmed_missing_count": 18,
+      "physical_window_incomplete_count": 0,
+      "physical_window_missing_detail_unresolved_count": 2
+    },
+    {
+      "seed": 1012,
+      "candidate_count": 27,
+      "pairable_count": 8,
+      "anonymous_observation_missing_count": 17,
+      "physical_window_confirmed_missing_count": 17,
+      "physical_window_incomplete_count": 0,
+      "physical_window_missing_detail_unresolved_count": 2
+    },
+    {
+      "seed": 1013,
+      "candidate_count": 27,
+      "pairable_count": 9,
+      "anonymous_observation_missing_count": 16,
+      "physical_window_confirmed_missing_count": 16,
+      "physical_window_incomplete_count": 0,
+      "physical_window_missing_detail_unresolved_count": 2
+    },
+    {
+      "seed": 1014,
+      "candidate_count": 27,
+      "pairable_count": 7,
+      "anonymous_observation_missing_count": 18,
+      "physical_window_confirmed_missing_count": 18,
+      "physical_window_incomplete_count": 0,
+      "physical_window_missing_detail_unresolved_count": 2
+    },
+    {
+      "seed": 1015,
+      "candidate_count": 27,
+      "pairable_count": 8,
+      "anonymous_observation_missing_count": 17,
+      "physical_window_confirmed_missing_count": 17,
+      "physical_window_incomplete_count": 0,
+      "physical_window_missing_detail_unresolved_count": 2
+    },
+    {
+      "seed": 1016,
+      "candidate_count": 27,
+      "pairable_count": 7,
+      "anonymous_observation_missing_count": 18,
+      "physical_window_confirmed_missing_count": 18,
+      "physical_window_incomplete_count": 0,
+      "physical_window_missing_detail_unresolved_count": 2
+    },
+    {
+      "seed": 1017,
+      "candidate_count": 25,
+      "pairable_count": 7,
+      "anonymous_observation_missing_count": 16,
+      "physical_window_confirmed_missing_count": 16,
+      "physical_window_incomplete_count": 0,
+      "physical_window_missing_detail_unresolved_count": 2
+    },
+    {
+      "seed": 1018,
+      "candidate_count": 27,
+      "pairable_count": 9,
+      "anonymous_observation_missing_count": 16,
+      "physical_window_confirmed_missing_count": 16,
+      "physical_window_incomplete_count": 0,
+      "physical_window_missing_detail_unresolved_count": 2
+    },
+    {
+      "seed": 1019,
+      "candidate_count": 27,
+      "pairable_count": 7,
+      "anonymous_observation_missing_count": 18,
+      "physical_window_confirmed_missing_count": 18,
+      "physical_window_incomplete_count": 0,
+      "physical_window_missing_detail_unresolved_count": 2
+    }
+  ],
+  "interpretation": {
+    "runtime_ack_missing_count": 0,
+    "runtime_confirmation_missing_count": 0,
+    "command_window_expired_count": 0,
+    "command_timing_mismatch_count": 0,
+    "camera_feedback_missing_count": 0,
+    "physical_window_incomplete_count": 0,
+    "physical_window_missing_detail_unresolved_count": 40,
+    "primary_blocker": "camera commands outnumber subsequent anonymous observation frames",
+    "complete_denominator_auditable": false,
+    "positive_benefit_claimed": false,
+    "model_authorization_allowed": false,
+    "runtime_authority_granted": false
+  }
+}

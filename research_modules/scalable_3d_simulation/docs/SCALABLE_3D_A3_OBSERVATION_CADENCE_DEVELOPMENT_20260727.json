@@ -1,0 +1,122 @@
+{
+  "schema_version": "scalable3d-a3-observation-cadence-development-summary-v1",
+  "generated_on": "2026-07-27",
+  "evidence_scope": "development_in_memory_probe_only",
+  "formal_evidence": false,
+  "source_git_commit": "1815673",
+  "source_worktree_clean": false,
+  "persisted_full_pair_inventory": false,
+  "seeds_verified_unseen": false,
+  "runtime_authority_granted": false,
+  "positive_benefit_claimed": false,
+  "scenario": {
+    "scenario_name": "a3_paired_anonymous_window",
+    "scenario_version": "a3-paired-anonymous-window-v1",
+    "target_count": 1,
+    "resource_count": 1,
+    "recon_count": 0,
+    "duration_s": 3.5,
+    "world_half_extent_m": 500.0,
+    "protected_radius_m": 100.0,
+    "target_proxy_width_m": 10.0,
+    "target_proxy_height_m": 4.0,
+    "visual_detection_probability": 1.0,
+    "visual_false_alarm_rate": 0.0,
+    "seed_start": 1000,
+    "seed_end": 1019,
+    "seed_count": 20
+  },
+  "historical_frozen_baseline": {
+    "candidate_record_count": 536,
+    "pairable_record_count": 152,
+    "unpairable_record_count": 384,
+    "pairing_coverage": 0.2835820895522388,
+    "artifact_sha256": "455d181076553a485ff824618abc6d037a4477bb6342877d1d1e427fd28583a9",
+    "artifact_unchanged": true
+  },
+  "default_communication": {
+    "communication_drop_probability": 0.01,
+    "communication_jitter_s": 0.01,
+    "candidate_record_count": 492,
+    "pairable_record_count": 488,
+    "unpairable_record_count": 4,
+    "pairing_coverage": 0.991869918699187,
+    "pairing_reason_counts": {
+      "candidate_physical_window_missing": 4,
+      "pairable": 488
+    },
+    "candidate_stage_reason_counts": {
+      "candidate_anonymous_observation_missing": 4,
+      "candidate_physical_window_confirmed_missing": 4
+    },
+    "camera_empty_frame_received_count": 515,
+    "camera_empty_frame_consumed_count": 329,
+    "camera_empty_frame_rejected_count": 0,
+    "camera_empty_frame_unmatched_count": 186,
+    "camera_empty_frame_transport_dropped_count": 4,
+    "communication_dropped_count": 17,
+    "evidence_tail_suppressed_command_count": 40,
+    "association_state_counts": {
+      "locked": 159,
+      "reacquire": 329
+    },
+    "permissions_all_false": true,
+    "per_seed": [
+      {"seed": 1000, "candidate_count": 25, "pairable_count": 25, "unpairable_count": 0},
+      {"seed": 1001, "candidate_count": 24, "pairable_count": 23, "unpairable_count": 1},
+      {"seed": 1002, "candidate_count": 25, "pairable_count": 25, "unpairable_count": 0},
+      {"seed": 1003, "candidate_count": 25, "pairable_count": 25, "unpairable_count": 0},
+      {"seed": 1004, "candidate_count": 25, "pairable_count": 25, "unpairable_count": 0},
+      {"seed": 1005, "candidate_count": 25, "pairable_count": 25, "unpairable_count": 0},
+      {"seed": 1006, "candidate_count": 25, "pairable_count": 25, "unpairable_count": 0},
+      {"seed": 1007, "candidate_count": 23, "pairable_count": 22, "unpairable_count": 1},
+      {"seed": 1008, "candidate_count": 24, "pairable_count": 23, "unpairable_count": 1},
+      {"seed": 1009, "candidate_count": 24, "pairable_count": 24, "unpairable_count": 0},
+      {"seed": 1010, "candidate_count": 25, "pairable_count": 25, "unpairable_count": 0},
+      {"seed": 1011, "candidate_count": 25, "pairable_count": 25, "unpairable_count": 0},
+      {"seed": 1012, "candidate_count": 25, "pairable_count": 25, "unpairable_count": 0},
+      {"seed": 1013, "candidate_count": 25, "pairable_count": 25, "unpairable_count": 0},
+      {"seed": 1014, "candidate_count": 25, "pairable_count": 25, "unpairable_count": 0},
+      {"seed": 1015, "candidate_count": 25, "pairable_count": 25, "unpairable_count": 0},
+      {"seed": 1016, "candidate_count": 24, "pairable_count": 23, "unpairable_count": 1},
+      {"seed": 1017, "candidate_count": 23, "pairable_count": 23, "unpairable_count": 0},
+      {"seed": 1018, "candidate_count": 25, "pairable_count": 25, "unpairable_count": 0},
+      {"seed": 1019, "candidate_count": 25, "pairable_count": 25, "unpairable_count": 0}
+    ]
+  },
+  "lossless_control": {
+    "communication_drop_probability": 0.0,
+    "communication_jitter_s": 0.0,
+    "candidate_record_count": 500,
+    "pairable_record_count": 500,
+    "unpairable_record_count": 0,
+    "pairing_coverage": 1.0,
+    "pairing_reason_counts": {
+      "pairable": 500
+    },
+    "camera_empty_frame_received_count": 512,
+    "camera_empty_frame_consumed_count": 332,
+    "camera_empty_frame_rejected_count": 0,
+    "camera_empty_frame_unmatched_count": 180,
+    "camera_empty_frame_transport_dropped_count": 0,
+    "communication_dropped_count": 0,
+    "evidence_tail_suppressed_command_count": 40,
+    "association_state_counts": {
+      "locked": 168,
+      "reacquire": 332
+    },
+    "permissions_all_false": true,
+    "per_seed_candidate_count": 25,
+    "per_seed_pairable_count": 25
+  },
+  "interpretation": {
+    "cadence_and_zero_detection_contract_closed": true,
+    "remaining_default_case_blocker": "simulated_communication_loss",
+    "zero_detection_means_target_not_visible": true,
+    "zero_detection_does_not_create_identity": true,
+    "zero_detection_does_not_count_as_lock": true,
+    "unmatched_empty_frames_are_precommand_or_noneligible_camera_frames": true,
+    "formal_non_degradation_available": false,
+    "model_promotion_allowed": false
+  }
+}

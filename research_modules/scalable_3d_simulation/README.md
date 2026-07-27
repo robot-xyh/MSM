@@ -1,9 +1,111 @@
 # Scalable 3D Simulation
 
+## A3 零检测帧与观测节拍（2026-07-27）
+
+main 已将 D5 零检测帧 v2 接入可扩展三维 episode。每台工作相机在每次扫描后生成
+truth-free 成像事件。带检测框的帧继续使用原视觉批次；零检测帧通过独立通信主题和随机
+流送入模块栈。事件保留相机、资源、双时间戳、扫描序号及计划、联盟和通信版本，不携带
+目标真实标识。
+
+A3 和独立 R0 按量测时刻选择最近的合法命令窗口，并严格核对资源和版本。已分配目标的
+零检测帧输出 `reacquire` 和 `assigned_reference_visible=false`，不创建局部轨迹或身份。
+主动视觉改为观测触发，并在 episode 末段保留 0.25 秒证据尾窗。旧版本、错误资源、丢包
+和无后续观测均失败关闭。
+
+同旧场景 seed 1000-1019 的开发复跑中，默认 1% 通信丢包和 0.01 秒抖动得到 492 条候选、
+488 条可配对、4 条不可配对，覆盖率为 99.19%。329 条零检测帧进入有效窗口并记为
+`reacquire`，159 条原视觉帧记为 `locked`，空帧合同拒绝为 0。将通信丢包和抖动设为零后，
+500 条候选全部可配对。旧冻结 536/152/384 制品及哈希保持不变。
+
+新结果来自未提交工作树和开发 seed，不替代正式证据，不证明模型收益或现实视觉性能。
+所有运行权限保持为 false。结果见
+`docs/SCALABLE_3D_A3_OBSERVATION_CADENCE_DEVELOPMENT_20260727_CN.md`，机器摘要见
+`docs/SCALABLE_3D_A3_OBSERVATION_CADENCE_DEVELOPMENT_20260727.json`，其 SHA-256 为
+`2b3fd9f2be093c3613328e330d444189b6d8ee42b43b40793f3af477a324adb5`。当前可扩展三维
+全量回归为 `352 passed, 1 warning`。
+
+## A2/A3 独立 R0 配对开发验证（2026-07-27）
+
+main 已实现候选组与规则组的独立 episode 编排。两组使用同一外部配置摘要，但分别创建
+世界、消息总线、模块栈、episode 标识和事件日志。A2 使用 D4 安全采用及物理执行窗口，
+A3 使用 D5 命令、确认、相机反馈和匿名观测窗口；D6 重新计算实际采用、同键 R0 和收益
+审计输入，不授予任何运行权限。
+
+seed 1000-1019 的 A2 开发回归共审计 20 组。受控策略没有产生资源变化、保持状态或
+跨区转移，20 组均记为可识别区域干预缺失，实际采纳和可审计同键收益配对均为 0。
+并行发生的 D3 常规重规划不再归因给 A2。A3 开发回归冻结了全部 536 条候选的配对处置：
+152 条可配对，384 条为候选物理窗口缺失，记录级覆盖率为 28.36%。存在不可配对记录时，
+D6 保留原因分布，但完整 A3 采用、物理窗口、同键规则基线和收益计数保持 unavailable。
+
+修复正式裁决上下文传递后，main 另用 D4
+`ConstrainedDevelopmentRegionResourceAdapter` 完成一次 5 对 5、seed 1 的全 episode
+探针。适配器只生成一个受约束 `request_replan`，形成 D3 严格后继计划、owner ACK、
+安全采用和物理窗口，在线真值使用为 0。适配器仍是 development-only，标准 advisor
+限制为 shadow，正式 A2 收益装配器按
+`development_intervention_benefit_forbidden` 拒绝其进入收益审计。该探针只证明真实
+D4 适配器与 main 运行桥可达，不替换上述 20-seed 无操作批次。
+
+main 现已为每条 A3 候选记录命令、运行确认、相机反馈、匿名观测清单和物理窗口状态，
+并持久化 `active_vision_a3_candidate_stages.json`。同配置 seed 1000-1019 的不落盘开发
+复跑保持 536/152/384 分母不变，536 条均有阶段证据。384 条不可配对记录中，344 条同时
+标记为匿名观测缺失和物理窗口确认缺失，剩余 40 条因 episode 结束时观测清单未闭合而
+保持细因未解析；物理窗口细因完整率为 344/384。
+本批没有运行确认缺失、命令过期、时序错配或相机反馈缺失。细分原因是多标签统计，不能
+直接相加为候选数。该复跑来自未提交工作树，只用于定位命令频率与观测频率不匹配，不替代
+原冻结批次，也不形成模型非退化或授权证据。
+
+批量制品现在分别报告 `minimum_seed_count_met` 和
+`minimum_unseen_seed_target_met`。本批数量达到 20，但
+`seeds_verified_unseen=false`，因此未见 seed 门限仍未满足。实验使用受控测试策略夹具，
+不是实际模型性能证据；开发配对 API 已禁止调用方通过布尔参数自声明未见性，正式结论必须
+绑定冻结 seed 注册表、模型训练谱系和执行计划。D6 非退化、模型晋级及分配、降级、相机和
+控制权限全部为 false。
+结果和边界见
+`docs/SCALABLE_3D_A2_A3_INDEPENDENT_R0_PAIRING_DEVELOPMENT_20260727_CN.md`。
+阶段细分开发摘要见
+`docs/SCALABLE_3D_A3_STAGE_BREAKDOWN_DEVELOPMENT_20260727.json`，文件 SHA-256 为
+`1ba6040e7c3e7e3b9e7d5506dfd20cf3539ce12c5aac13cca7f02799f0cd99ef`；摘要明确
+`formal_evidence=false`。
+本轮 D6 严格采用审计专项为 `51 passed`，配对编排专项为 `6 passed`，D4 全量为
+`674 passed, 1 warning`，可扩展三维模块全量为 `346 passed, 1 warning`，跨模块合同为
+`8 passed, 1 warning`。2026-07-27 收尾回归进一步确认 D3
+`551 passed, 1 skipped`、D5 `726 passed, 2 warnings`、D6
+`1101 passed, 1 warning`；main 模块栈专项为 `76 passed`。既有 Matplotlib `Axes3D`
+和显卡管理接口警告不影响二维报告或合同结论。
+
+## A2/A3 运行证据桥（2026-07-26）
+
+main 已把 D3、D4、D5、D7 的运行时证据接到同一 episode 状态机。D3 对已应用区域提示
+写入统一的 owner、authority epoch 和 lease；多区域 owner、epoch 或 lease 不一致时整份
+提示失败关闭。D4 的不可变 owner ACK 收据允许在同一绑定下由后续物理窗口重复引用，
+同时保留消息标识、目的节点、计划版本、epoch、lease、分区代次、载荷摘要和评估时间
+单调门。
+
+5 对 5、seed 1、3.0 秒的 A2 动态正向用例现使用 D4 真实受约束开发适配器，并由
+test-only admitted transport 夹具传递合同。该用例形成计划版本 2、1 次 owner ACK、
+3 个同计划非 hold 绑定、1 个状态变化物理窗口和 1 条
+`safe_adoption_available=true` 证据；在线真值使用为 0。适配器没有正式模型 manifest，
+标准 advisor 只允许 shadow，正式收益装配器拒绝 development intervention。该结果不能
+声明策略收益、assist 准入或控制权限。
+
+A3 主动视觉桥按相机维护命令窗口队列，并按观测量测时刻匹配已经执行且仍有效的最近命令。
+受控正向探针得到 40 条运行确认、21 帧匿名观测和 21 个物理观测窗口，实际采用状态可验证；
+全部候选仍因 `same_key_r0_window_missing` 不具备收益证据。该结果只关闭异步命令/观测
+错配，不代表正式主动视觉模型、多 seed 非退化或现实相机效果。
+
+严格 D4 证据重发使用独立、确定性的通信随机流。新增 owner ACK、联盟 ACK 和带计划哈希/
+总线序号的严格计划广播仍执行原有丢包和抖动模型，但不再改变共享传感器报文的随机序列。
+规模 20、seed 1009 的延迟噪声 R0 结束缓冲已恢复为 20 条重放证据、0 条新鲜量测。
+
+本轮验证为：D3 `546 passed, 1 skipped`，D4 `637 passed`，D5 `682 passed`，D6
+`1071 passed`，scalable `338 passed`，跨模块合同 `8 passed`。跳过项是可选
+OR-Tools；警告来自本机 Matplotlib 三维投影和显卡管理接口。当前工作树未冻结为 clean
+正式来源，A2/A3 同键 R0、多 seed、实际模型授权和相对收益仍为 P1。
+
 ## 正式输出归档
 
-当前规模化输出约 18 GiB，文件系统可用空间约 20 GiB，已经触及正式分片运行器的保护
-下限。`artifact_archive.py` 提供非破坏性的正式输出迁移准备：
+当前规模化输出约 18 GiB。2026-07-27 实测文件系统可用空间约 15 GiB，已经低于正式
+分片运行器的 20 GiB 保护下限。`artifact_archive.py` 提供非破坏性的正式输出迁移准备：
 
 ```bash
 python3 -m research_modules.scalable_3d_simulation.artifact_archive \
