@@ -14,6 +14,7 @@ WORLD_SCHEMA_VERSION = "scalable3d-world-v1"
 BUS_SCHEMA_VERSION = "scalable3d-episode-bus-v1"
 SCENARIO_SCHEMA_VERSION = "scalable3d-scenario-v1"
 ONLINE_OBSERVATION_SCHEMA_VERSION = "scalable3d-observation-v1"
+CAMERA_FRAME_EVENT_SCHEMA_VERSION = "scalable3d-camera-frame-event-v1"
 OFFLINE_TRUTH_SCHEMA_VERSION_V1 = "scalable3d-offline-truth-v1"
 OFFLINE_TRUTH_SCHEMA_VERSION = "scalable3d-offline-truth-v2"
 OFFLINE_TRUTH_DISPOSITION_TARGET = "target"
@@ -446,11 +447,75 @@ class OfflineTruthLabel:
 
 
 @dataclass(frozen=True)
+class CameraFrameEvent:
+    """Truth-free evidence that one camera frame was processed.
+
+    A frame event records image acquisition independently of detector output.
+    The current transport path publishes only events whose detection count is
+    zero; non-empty frames continue through ``OnlineSensorBatch``.
+    """
+
+    event_id: str
+    camera_id: str
+    resource_id: str
+    measurement_timestamp: float
+    arrival_timestamp: float
+    frame_id: str
+    scan_index: int
+    detection_count: int
+    plan_version: int
+    coalition_version: int
+    communication_version: int
+    schema_version: str = CAMERA_FRAME_EVENT_SCHEMA_VERSION
+
+    def __post_init__(self) -> None:
+        for name in ("event_id", "camera_id", "resource_id", "frame_id"):
+            value = str(getattr(self, name)).strip()
+            if not value:
+                raise ValueError(f"{name} must be non-empty")
+            object.__setattr__(self, name, value)
+        measurement = float(self.measurement_timestamp)
+        arrival = float(self.arrival_timestamp)
+        if not np.isfinite(measurement) or measurement < 0.0:
+            raise ValueError("measurement_timestamp must be finite and non-negative")
+        if not np.isfinite(arrival) or arrival + 1.0e-12 < measurement:
+            raise ValueError(
+                "arrival_timestamp must be finite and not precede measurement_timestamp"
+            )
+        scan_index = int(self.scan_index)
+        detection_count = int(self.detection_count)
+        if isinstance(self.scan_index, bool) or scan_index <= 0:
+            raise ValueError("scan_index must be a positive integer")
+        if isinstance(self.detection_count, bool) or detection_count < 0:
+            raise ValueError("detection_count must be a non-negative integer")
+        for name in (
+            "plan_version",
+            "coalition_version",
+            "communication_version",
+        ):
+            value = int(getattr(self, name))
+            if isinstance(getattr(self, name), bool) or value < 0:
+                raise ValueError(f"{name} must be a non-negative integer")
+            object.__setattr__(self, name, value)
+        if self.schema_version != CAMERA_FRAME_EVENT_SCHEMA_VERSION:
+            raise ValueError("camera frame event schema version is unsupported")
+        object.__setattr__(self, "measurement_timestamp", measurement)
+        object.__setattr__(self, "arrival_timestamp", arrival)
+        object.__setattr__(self, "scan_index", scan_index)
+        object.__setattr__(self, "detection_count", detection_count)
+
+    @property
+    def empty(self) -> bool:
+        return self.detection_count == 0
+
+
+@dataclass(frozen=True)
 class ObservationBatch:
     """Online measurements and evaluator-only labels produced together but routed separately."""
 
     measurements: tuple[SensorMeasurement, ...]
     offline_truth_labels: tuple[OfflineTruthLabel, ...]
+    camera_frame_events: tuple[CameraFrameEvent, ...] = ()
 
 
 @dataclass(frozen=True)

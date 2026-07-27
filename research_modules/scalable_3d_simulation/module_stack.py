@@ -89,11 +89,15 @@ from research_modules.d4_distributed_fallback.d4_distributed_fallback import (
     C2Health,
     CausalCommunicationEvidenceGate,
     CausalMessageKind,
+    CoalitionCommitState,
     CoalitionMemberAck,
     CommunicationDeliveryReceipt,
     CommunicationEvidenceExpectation,
     D5Consistency,
     MobileReconSecondary,
+    REGION_RESOURCE_COALITION_ACK_DELIVERY_SCHEMA,
+    REGION_RESOURCE_COALITION_ACK_TOPIC,
+    REGION_RESOURCE_OWNER_ACK_TOPIC,
     RegionDefinition,
     RegionalAction,
     RegionalAuthorityLayer,
@@ -104,14 +108,36 @@ from research_modules.d4_distributed_fallback.d4_distributed_fallback import (
     RegionResourceAdvisoryGate,
     RegionResourceAdvisor,
     RegionResourceAdvisorConfig,
+    RegionResourceCoalitionAckDelivery,
+    RegionResourceCoalitionCommitEvidence,
+    RegionResourceCoalitionRequirement,
+    RegionResourceD3PlanReference,
+    RegionResourceOwnerAckDelivery,
+    RegionResourcePhysicalWindowEvidence,
     RegionResourceProjectionConfig,
+    RegionResourceRuntimeAckParser,
+    RegionResourceSafeAdoptionAssembler,
+    RegionResourceSafeAdoptionContext,
     RegionResourceSnapshot,
     RegionalScenarioMetadata,
     RegionalTaskEvidence,
     SecondaryReadinessEvidence,
+    build_region_resource_owner_plan_ack,
     canonical_payload_digest,
+    canonical_runtime_payload_sha256,
+    validate_region_resource_coalition_ack_delivery,
+    validate_region_resource_owner_ack_delivery,
 )
 from research_modules.d5_terminal_association.src.d5_terminal_association import (
+    RUNTIME_OBSERVED_EVIDENCE_KIND,
+    ActiveVisionA3AdoptionTrace,
+    ActiveVisionA3AnonymousObservationFrame,
+    ActiveVisionA3BenefitAuditInput,
+    ActiveVisionA3CandidatePhysicalWindowStatus,
+    ActiveVisionA3CandidateStageEvidence,
+    ActiveVisionA3PhysicalObservationWindow,
+    ActiveVisionA3RuleArmTrace,
+    ActiveVisionA3WindowArm,
     ActiveVisionAssignmentReference,
     ActiveVisionCameraState,
     ActiveVisionCameraFeedbackV1,
@@ -123,6 +149,14 @@ from research_modules.d5_terminal_association.src.d5_terminal_association import
     ActiveVisionRuntimeMode,
     ActiveVisionSnapshotV1,
     ActiveVisionTrackReference,
+    active_vision_a3_observation_frame,
+    active_vision_a3_zero_detection_frame,
+    assemble_active_vision_a3_adoption_trace,
+    assemble_active_vision_a3_evidence,
+    assemble_active_vision_a3_physical_observation_window,
+    assemble_active_vision_a3_rule_arm_physical_observation_window,
+    assemble_active_vision_a3_rule_arm_trace,
+    camera_observation_command_payload,
     Scalable3DTerminalAdapter,
 )
 from research_modules.d7_proportional_guidance.d7_proportional_guidance import (
@@ -133,7 +167,7 @@ from research_modules.d7_proportional_guidance.d7_proportional_guidance import (
     TerminalVisualObservation3D,
 )
 
-from .models import OnlineSensorBatch, ScenarioConfig
+from .models import CameraFrameEvent, OnlineSensorBatch, ScenarioConfig
 from .runtime_ports import (
     CameraObservationCommand,
     CameraRuntimeState,
@@ -187,8 +221,10 @@ _EPS = 1.0e-9
 _D4_GATE_NODE_ID = "D4-AUTHORITY-GATE"
 _D4_READINESS_TOPIC = "d4.secondary_readiness.v1"
 _D4_PLAN_TOPIC = "d4.regional_plan_broadcast.v1"
-_D4_ACK_TOPIC = "d4.coalition_member_ack.v1"
+_D4_ACK_TOPIC = REGION_RESOURCE_COALITION_ACK_TOPIC
+_D4_OWNER_ACK_TOPIC = REGION_RESOURCE_OWNER_ACK_TOPIC
 _D4_CONTROL_SCHEMA = "scalable3d-d4-causal-message-v1"
+_D4_STRICT_EVIDENCE_RANDOM_STREAM = "d4_strict_evidence_v1"
 
 
 @dataclass
@@ -204,6 +240,52 @@ class _D4ReadinessReception:
 class _D4AcceptedDelivery:
     payload: dict[str, Any]
     receipt: CommunicationDeliveryReceipt
+
+
+@dataclass(frozen=True)
+class _D4RegionAdvisorySource:
+    snapshot: Any
+    recommendation: Any
+    formal_snapshot: RegionalFailoverSnapshot
+    formal_decision: Any
+
+
+@dataclass
+class _D4A2PendingAdoption:
+    context: RegionResourceSafeAdoptionContext
+    preparation: Any
+    plan_reference: RegionResourceD3PlanReference
+    runtime_ack: Any
+    expected_owner_ack: Any
+    source_state_payload_sha256: str
+    non_hold_control_applied_count: int
+    owner_ack_delivery: RegionResourceOwnerAckDelivery | None = None
+    coalition_ack_deliveries: dict[
+        tuple[str, str, int], dict[str, RegionResourceCoalitionAckDelivery]
+    ] | None = None
+    coalition_commits: tuple[RegionResourceCoalitionCommitEvidence, ...] = ()
+    physical_window_start_s: float | None = None
+    physical_window_source_payload_sha256: str | None = None
+    final_evidence: Any | None = None
+
+    def __post_init__(self) -> None:
+        if self.coalition_ack_deliveries is None:
+            self.coalition_ack_deliveries = {}
+
+
+@dataclass(frozen=True)
+class _D5A3CommandContext:
+    window_index: int
+    timestamp_s: float
+    snapshot: ActiveVisionSnapshotV1
+    decision: Any
+    command: CameraObservationCommand
+
+
+@dataclass
+class _D5A3PendingObservationWindow:
+    trace: ActiveVisionA3AdoptionTrace | ActiveVisionA3RuleArmTrace
+    observation_frames: list[ActiveVisionA3AnonymousObservationFrame]
 
 
 @dataclass(frozen=True)
@@ -225,6 +307,8 @@ class IntegratedStackConfig:
     d5_active_vision_enabled: bool = True
     d5_active_vision_mode: str = "disabled"
     d5_active_vision_zoom_fov_deg: float = 30.0
+    d5_active_vision_observation_triggered: bool = True
+    d5_active_vision_evidence_tail_s: float = 0.25
     d5_recon_track_cues_enabled: bool = False
     d1_scan_max_lateness_s: float = 0.5
     d1_scan_max_buffer_residence_s: float = 5.0
@@ -308,6 +392,16 @@ class IntegratedStackConfig:
         object.__setattr__(self, "d5_active_vision_mode", active_mode)
         if not 1.0 < float(self.d5_active_vision_zoom_fov_deg) < 179.0:
             raise ValueError("d5_active_vision_zoom_fov_deg must be in (1, 179)")
+        evidence_tail = float(self.d5_active_vision_evidence_tail_s)
+        if not np.isfinite(evidence_tail) or evidence_tail < 0.0:
+            raise ValueError(
+                "d5_active_vision_evidence_tail_s must be finite and non-negative"
+            )
+        object.__setattr__(
+            self,
+            "d5_active_vision_evidence_tail_s",
+            evidence_tail,
+        )
         for name in (
             "d1_scan_max_lateness_s",
             "d1_scan_max_buffer_residence_s",
@@ -893,7 +987,7 @@ class IntegratedScalableModuleStack:
         self._d4_message_sequence = 0
         self._d4_partition_generation = 0
         self._d4_last_broadcast_plan_key: tuple[
-            str, int, int, int
+            str, int, int, int, bool
         ] | None = None
         self._d4_readiness_receptions: dict[
             tuple[str, str, int, int, int], _D4ReadinessReception
@@ -904,6 +998,23 @@ class IntegratedScalableModuleStack:
         self._d4_ack_deliveries: dict[
             tuple[str, str, int, int, int], _D4AcceptedDelivery
         ] = {}
+        self._d4_runtime_ack_parser = RegionResourceRuntimeAckParser()
+        self._d4_safe_adoption_assembler = RegionResourceSafeAdoptionAssembler()
+        self._d4_plan_source_envelopes: dict[tuple[str, int], Any] = {}
+        self._d4_plan_transport_references: dict[
+            tuple[str, int], tuple[str, int]
+        ] = {}
+        self._d4_advice_source_envelopes: dict[str, Any] = {}
+        self._d4_advisory_sources: dict[str, _D4RegionAdvisorySource] = {}
+        self._d4_a2_pending_by_plan: dict[
+            tuple[str, int], _D4A2PendingAdoption
+        ] = {}
+        self._d4_a2_evidence_by_application: dict[str, Any] = {}
+        self._d4_owner_ack_delivery_count = 0
+        self._d4_coalition_ack_delivery_count = 0
+        self._d4_a2_physical_window_count = 0
+        self._d4_a2_bridge_blocker_counts: Counter[str] = Counter()
+        self._latest_runtime_state_payload_sha256: str | None = None
         self._d4_expected_plan_authorities: dict[
             tuple[str, int, int, int, str], str
         ] = {}
@@ -926,6 +1037,37 @@ class IntegratedScalableModuleStack:
         self._d5_active_vision_learning_frames: list[
             D5ActiveVisionLearningFrame
         ] = []
+        self._d5_a3_command_index = 0
+        self._d5_a3_command_context_by_camera: dict[
+            str, _D5A3CommandContext
+        ] = {}
+        self._d5_a3_pending_by_camera: dict[
+            str, list[_D5A3PendingObservationWindow]
+        ] = {}
+        self._d5_a3_evidence_by_comparison_key: dict[
+            str, ActiveVisionA3BenefitAuditInput
+        ] = {}
+        self._d5_a3_candidate_stage_by_comparison_key: dict[
+            str, ActiveVisionA3CandidateStageEvidence
+        ] = {}
+        self._d5_a3_r0_pending_by_camera: dict[
+            str, list[_D5A3PendingObservationWindow]
+        ] = {}
+        self._d5_a3_r0_window_by_comparison_key: dict[
+            str, ActiveVisionA3PhysicalObservationWindow
+        ] = {}
+        self._d5_a3_runtime_ack_count = 0
+        self._d5_a3_r0_runtime_ack_count = 0
+        self._d5_a3_observation_frame_count = 0
+        self._d5_a3_r0_observation_frame_count = 0
+        self._d5_a3_physical_window_count = 0
+        self._d5_a3_r0_physical_window_count = 0
+        self._d5_camera_empty_frame_received_count = 0
+        self._d5_camera_empty_frame_consumed_count = 0
+        self._d5_camera_empty_frame_rejected_count = 0
+        self._d5_camera_empty_frame_unmatched_count = 0
+        self._d5_active_vision_tail_suppressed_count = 0
+        self._d5_a3_bridge_blocker_counts: Counter[str] = Counter()
         self._d2_identity_lineage_by_track: dict[str, tuple[dict[str, Any], ...]] = {}
         self._d2_observation_replay_generation: dict[str, int] = {}
         self._latest_d2_input_signature: tuple[tuple[Any, ...], ...] | None = None
@@ -1281,6 +1423,21 @@ class IntegratedScalableModuleStack:
         self._d4_readiness_receptions.clear()
         self._d4_plan_deliveries.clear()
         self._d4_ack_deliveries.clear()
+        self._d4_runtime_ack_parser = RegionResourceRuntimeAckParser()
+        self._d4_safe_adoption_assembler = RegionResourceSafeAdoptionAssembler(
+            projector=getattr(self.d4_region_advisor, "projector", None)
+        )
+        self._d4_plan_source_envelopes.clear()
+        self._d4_plan_transport_references.clear()
+        self._d4_advice_source_envelopes.clear()
+        self._d4_advisory_sources.clear()
+        self._d4_a2_pending_by_plan.clear()
+        self._d4_a2_evidence_by_application.clear()
+        self._d4_owner_ack_delivery_count = 0
+        self._d4_coalition_ack_delivery_count = 0
+        self._d4_a2_physical_window_count = 0
+        self._d4_a2_bridge_blocker_counts.clear()
+        self._latest_runtime_state_payload_sha256 = None
         self._d4_expected_plan_authorities.clear()
         self._d4_communication_received_count = 0
         self._d4_communication_accepted_count = 0
@@ -1299,6 +1456,25 @@ class IntegratedScalableModuleStack:
         self._d5_shadow_scoring_edge_count = 0
         self._d5_shadow_scoring_rejection_reasons.clear()
         self._d5_active_vision_learning_frames.clear()
+        self._d5_a3_command_index = 0
+        self._d5_a3_command_context_by_camera.clear()
+        self._d5_a3_pending_by_camera.clear()
+        self._d5_a3_evidence_by_comparison_key.clear()
+        self._d5_a3_candidate_stage_by_comparison_key.clear()
+        self._d5_a3_r0_pending_by_camera.clear()
+        self._d5_a3_r0_window_by_comparison_key.clear()
+        self._d5_a3_runtime_ack_count = 0
+        self._d5_a3_r0_runtime_ack_count = 0
+        self._d5_a3_observation_frame_count = 0
+        self._d5_a3_r0_observation_frame_count = 0
+        self._d5_a3_physical_window_count = 0
+        self._d5_a3_r0_physical_window_count = 0
+        self._d5_camera_empty_frame_received_count = 0
+        self._d5_camera_empty_frame_consumed_count = 0
+        self._d5_camera_empty_frame_rejected_count = 0
+        self._d5_camera_empty_frame_unmatched_count = 0
+        self._d5_active_vision_tail_suppressed_count = 0
+        self._d5_a3_bridge_blocker_counts.clear()
         self._d2_identity_lineage_by_track.clear()
         self._d2_observation_replay_generation.clear()
         self._latest_d2_input_signature = None
@@ -1354,6 +1530,9 @@ class IntegratedScalableModuleStack:
             raise ValueError("runtime timestamp must be finite and non-negative")
         self._validate_navigation(step_input.interceptors, "interceptor")
         self._validate_navigation(step_input.recon, "recon")
+        self._latest_runtime_state_payload_sha256 = (
+            self._runtime_state_payload_sha256(step_input)
+        )
         self._resource_index_by_id = {
             resource_id: index
             for index, resource_id in enumerate(step_input.interceptors.platform_ids)
@@ -1450,6 +1629,11 @@ class IntegratedScalableModuleStack:
             if self.latest_d5_shadow_scoring is not None:
                 publications.append(self._d5_shadow_scoring_publication(now))
 
+        if step_input.arrived_camera_frame_events:
+            self._record_active_vision_zero_detection_frames(
+                step_input.arrived_camera_frame_events
+            )
+
         center_health, secondary_failed = self._fault_state(now)
         self._fault_generation_changed = bool(
             self._fault_generation_changed
@@ -1514,6 +1698,8 @@ class IntegratedScalableModuleStack:
                 now,
             )
 
+        self._advance_d4_a2_physical_windows(step_input, now=now)
+
         communication_intents.extend(
             self._d4_periodic_communication_intents(
                 step_input,
@@ -1524,12 +1710,33 @@ class IntegratedScalableModuleStack:
         )
 
         camera_commands: tuple[CameraObservationCommand, ...] = ()
-        if (
+        active_vision_ready = bool(
             self.stack_config.d5_active_vision_enabled
             and self.latest_plan is not None
             and self.latest_d2_tracks
             and step_input.cameras
             and now + _EPS >= self._next_active_vision_s
+        )
+        observation_trigger_satisfied = bool(
+            not self.stack_config.d5_active_vision_observation_triggered
+            or self._active_vision_communication_version == 0
+            or vision_batches
+            or step_input.arrived_camera_frame_events
+        )
+        evidence_tail_open = bool(
+            now + self.stack_config.d5_active_vision_evidence_tail_s
+            <= config.duration_s + _EPS
+        )
+        if (
+            active_vision_ready
+            and observation_trigger_satisfied
+            and not evidence_tail_open
+        ):
+            self._d5_active_vision_tail_suppressed_count += 1
+        if (
+            active_vision_ready
+            and observation_trigger_satisfied
+            and evidence_tail_open
         ):
             started = perf_counter()
             camera_commands = self._run_active_vision(step_input, now)
@@ -1574,6 +1781,7 @@ class IntegratedScalableModuleStack:
         now = float(timestamp)
         if not np.isfinite(now) or now < 0.0:
             raise ValueError("finalization timestamp must be finite and non-negative")
+        self._finalize_all_d5_a3_pending(timestamp_s=now)
         if self._d1_scan_input_closed:
             return RuntimeStepOutput(
                 interceptor_acceleration_ned=np.zeros(
@@ -2890,10 +3098,29 @@ class IntegratedScalableModuleStack:
         if regional_hint is None:
             return
         metadata = getattr(plan, "metadata", {})
-        if bool(metadata.get("regional_hint_applied", False)):
+        successor_available = bool(
+            metadata.get(
+                "regional_hint_successor_plan_available",
+                False,
+            )
+        )
+        successor_matches_plan = bool(
+            metadata.get("regional_hint_successor_plan_id")
+            == getattr(plan, "plan_id", None)
+            and metadata.get("regional_hint_successor_plan_version")
+            == getattr(plan, "version", None)
+        )
+        if (
+            bool(metadata.get("regional_hint_applied", False))
+            and successor_available
+            and successor_matches_plan
+        ):
             self._d4_region_hint_bridge_rejection_reason = None
             return
-        reason = metadata.get("regional_hint_fallback_reason")
+        reason = (
+            metadata.get("regional_hint_successor_rejection_reason")
+            or metadata.get("regional_hint_fallback_reason")
+        )
         self._d4_region_hint_bridge_rejection_reason = (
             "d3_regional_hint_rejected:"
             f"{reason or 'unspecified'}"
@@ -2930,6 +3157,17 @@ class IntegratedScalableModuleStack:
                 unseen_seed_count=self.d4_unseen_seed_count,
             )
             self.latest_d4_region_advice = recommendation
+            advisory = getattr(recommendation, "advisory_contract", None)
+            candidate = getattr(recommendation, "recommendation", None)
+            if advisory is not None and candidate is not None:
+                self._d4_advisory_sources[str(advisory.advisory_id)] = (
+                    _D4RegionAdvisorySource(
+                        snapshot=regional_snapshot,
+                        recommendation=candidate,
+                        formal_snapshot=formal_snapshot,
+                        formal_decision=self.latest_d4_decision,
+                    )
+                )
         if self.stack_config.capture_learning_artifacts:
             self._d4_learning_frames.append(
                 D4RegionLearningFrame(
@@ -2958,30 +3196,984 @@ class IntegratedScalableModuleStack:
             ),
         )
 
+    def record_assignment_plan_runtime_ack(
+        self,
+        *,
+        acknowledgement: Mapping[str, Any],
+        acknowledgement_envelope: Any,
+        source_publication_envelopes: Iterable[Any],
+        timestamp_s: float,
+        partition_generation: int,
+    ) -> tuple[RuntimeCommunicationIntent, ...]:
+        """Bind a real assignment ACK to D4 evidence and route the owner ACK.
+
+        This callback is invoked only after main has published the D3 plan,
+        D7 guidance batch, and assignment ACK. Missing source envelopes or an
+        unavailable learned advisory remain audit blockers and do not affect
+        the active plan.
+        """
+
+        envelopes = tuple(source_publication_envelopes)
+        self._cache_d4_runtime_source_envelopes(envelopes)
+        consumption_envelope = next(
+            (
+                item
+                for item in envelopes
+                if getattr(item, "topic", "")
+                == "modules.d4.region_resource_consumption"
+            ),
+            None,
+        )
+        if consumption_envelope is None:
+            return ()
+        d3_envelope = next(
+            (
+                item
+                for item in envelopes
+                if getattr(item, "topic", "") == "modules.d3.assignment_plan"
+            ),
+            None,
+        )
+        d7_envelope = next(
+            (
+                item
+                for item in envelopes
+                if getattr(item, "topic", "")
+                == "modules.d7.guidance_commands"
+            ),
+            None,
+        )
+        if d3_envelope is None or d7_envelope is None:
+            self._d4_a2_bridge_blocker_counts[
+                "runtime_ack_source_envelope_missing"
+            ] += 1
+            return ()
+
+        try:
+            consumption_payload = dict(consumption_envelope.payload)
+            successor_published = not (
+                consumption_payload.get("bridge_rejection_reason") is not None
+                or consumption_payload.get("d3_hint_applied") is not True
+                or consumption_payload.get(
+                    "d3_successor_plan_available"
+                )
+                is not True
+                or consumption_payload.get("d3_successor_state")
+                != "successor_published"
+            )
+            nested_advisory = dict(consumption_payload["advisory"])
+            advisory_id = str(nested_advisory["advisory_id"])
+            source_versions = tuple(
+                (str(item[0]), int(item[1]))
+                for item in nested_advisory["source_plan_versions"]
+            )
+            if len(source_versions) != 1:
+                raise ValueError("A2 runtime bridge requires one source plan")
+            source = self._d4_advisory_sources[advisory_id]
+            plan_payload = dict(d3_envelope.payload)
+            plan_metadata = dict(plan_payload.get("metadata", {}))
+            advisory_version_value = plan_metadata.get(
+                "regional_hint_advisory_version"
+            )
+            if not isinstance(advisory_version_value, Integral):
+                self._d4_a2_bridge_blocker_counts[
+                    "current_plan_advisory_version_missing"
+                ] += 1
+                return ()
+            advisory_version = int(advisory_version_value)
+            context = self._d4_safe_adoption_context(
+                source,
+                advisory_version=advisory_version,
+                partition_generation=int(partition_generation),
+                consumption_timestamp_s=float(
+                    consumption_payload["evaluated_at_s"]
+                ),
+            )
+            preparation = self._d4_safe_adoption_assembler.prepare(
+                snapshot=source.snapshot,
+                candidate=source.recommendation,
+                context=context,
+                formal_decision=source.formal_decision,
+            )
+            if (
+                not preparation.available
+                or preparation.applied_recommendation is None
+            ):
+                partial = self._d4_safe_adoption_assembler.assemble(
+                    preparation=preparation,
+                    context=context,
+                    evaluated_at_s=float(timestamp_s),
+                )
+                self._remember_d4_a2_evidence(partial)
+                self._d4_a2_bridge_blocker_counts[
+                    "candidate_preparation_unavailable"
+                ] += 1
+                return ()
+            if not successor_published:
+                partial = self._d4_safe_adoption_assembler.assemble(
+                    preparation=preparation,
+                    context=context,
+                    evaluated_at_s=float(timestamp_s),
+                )
+                self._remember_d4_a2_evidence(partial)
+                self._d4_a2_bridge_blocker_counts[
+                    "consumption_not_applied_to_current_plan"
+                ] += 1
+                return ()
+            if (
+                consumption_payload.get("d3_successor_plan_id")
+                != plan_payload.get("plan_id")
+                or consumption_payload.get(
+                    "d3_successor_plan_version"
+                )
+                != plan_payload.get("plan_version")
+            ):
+                self._d4_a2_bridge_blocker_counts[
+                    "consumption_successor_identity_mismatch"
+                ] += 1
+                return ()
+            advisory_envelope = self._d4_advice_source_envelopes[advisory_id]
+            source_plan_envelope = self._d4_plan_source_envelopes[
+                source_versions[0]
+            ]
+            runtime_ack = self._d4_runtime_ack_parser.consume(
+                advisory_source=advisory_envelope,
+                consumption_source=consumption_envelope,
+                assignment_plan_ack_source=acknowledgement_envelope,
+                d3_plan_source_envelope=d3_envelope,
+                d7_guidance_source_envelope=d7_envelope,
+                advisory_source_plan_envelope=source_plan_envelope,
+            )
+            plan_reference = self._d4_plan_reference_from_runtime_ack(
+                runtime_ack=runtime_ack,
+                d3_envelope=d3_envelope,
+                preparation=preparation,
+            )
+            partial = self._d4_safe_adoption_assembler.assemble(
+                preparation=preparation,
+                context=context,
+                evaluated_at_s=float(timestamp_s),
+                d3_successor_plan=plan_reference,
+                runtime_ack=runtime_ack,
+            )
+            self._remember_d4_a2_evidence(partial)
+            if (
+                not runtime_ack.runtime_advisory_applied_ack_available
+                or runtime_ack.adoption_kind
+                != "new_execution_plan_applied"
+                or plan_reference.plan_id
+                == plan_reference.previous_plan_id
+                or plan_reference.plan_version
+                <= plan_reference.previous_plan_version
+            ):
+                self._d4_a2_bridge_blocker_counts[
+                    "owner_ack_not_eligible"
+                ] += 1
+                return ()
+            source_state_sha = self._latest_runtime_state_payload_sha256
+            if source_state_sha is None:
+                self._d4_a2_bridge_blocker_counts[
+                    "runtime_state_snapshot_missing"
+                ] += 1
+                return ()
+            expected_owner_ack = build_region_resource_owner_plan_ack(
+                message_id=(
+                    "d4-owner-ack:"
+                    f"{plan_reference.plan_id}:v{plan_reference.plan_version}:"
+                    f"a{advisory_version}"
+                ),
+                applied_recommendation=preparation.applied_recommendation,
+                d3_successor_plan=plan_reference,
+                runtime_ack=runtime_ack,
+                context=context,
+                acknowledged_at_s=float(timestamp_s),
+                accepted=True,
+            )
+            pending = _D4A2PendingAdoption(
+                context=context,
+                preparation=preparation,
+                plan_reference=plan_reference,
+                runtime_ack=runtime_ack,
+                expected_owner_ack=expected_owner_ack,
+                source_state_payload_sha256=source_state_sha,
+                non_hold_control_applied_count=max(
+                    0,
+                    int(acknowledgement["control_applied_binding_count"])
+                    - int(acknowledgement["held_binding_count"]),
+                ),
+                final_evidence=partial,
+            )
+            self._d4_a2_pending_by_plan[
+                (plan_reference.plan_id, plan_reference.plan_version)
+            ] = pending
+            return (
+                self._d4_intent(
+                    source=expected_owner_ack.owner_node_id,
+                    destination=context.runtime_node_id,
+                    topic=_D4_OWNER_ACK_TOPIC,
+                    payload=expected_owner_ack.to_transport_payload(),
+                    random_stream=_D4_STRICT_EVIDENCE_RANDOM_STREAM,
+                ),
+            )
+        except (KeyError, TypeError, ValueError) as exc:
+            self._d4_a2_bridge_blocker_counts[
+                f"runtime_ack_bridge_{type(exc).__name__.lower()}"
+            ] += 1
+            return ()
+
+    def _cache_d4_runtime_source_envelopes(
+        self,
+        envelopes: Iterable[Any],
+    ) -> None:
+        for envelope in envelopes:
+            topic = str(getattr(envelope, "topic", ""))
+            payload = getattr(envelope, "payload", None)
+            if not isinstance(payload, Mapping):
+                continue
+            if topic == "modules.d3.assignment_plan":
+                plan_id = str(payload.get("plan_id", "")).strip()
+                plan_version = payload.get("plan_version")
+                if plan_id and isinstance(plan_version, Integral):
+                    key = (plan_id, int(plan_version))
+                    self._d4_plan_source_envelopes[key] = envelope
+                    self._d4_plan_transport_references[key] = (
+                        canonical_runtime_payload_sha256(payload),
+                        int(getattr(envelope, "sequence")),
+                    )
+            elif topic == "modules.d4.region_resource_advice":
+                advisory_value = payload.get("advisory_contract")
+                if isinstance(advisory_value, Mapping):
+                    advisory_id = str(
+                        advisory_value.get("advisory_id", "")
+                    ).strip()
+                    if advisory_id:
+                        self._d4_advice_source_envelopes[
+                            advisory_id
+                        ] = envelope
+
+    def _d4_safe_adoption_context(
+        self,
+        source: _D4RegionAdvisorySource,
+        *,
+        advisory_version: int,
+        partition_generation: int,
+        consumption_timestamp_s: float,
+    ) -> RegionResourceSafeAdoptionContext:
+        center_health = source.formal_snapshot.center_health
+        secondary_regions = tuple(
+            sorted(
+                item.region_id
+                for item in source.snapshot.regions
+                if item.current_owner_layer
+                is RegionalAuthorityLayer.SECONDARY
+            )
+        )
+        active_regions = ()
+        if center_health not in {C2Health.NORMAL, C2Health.FAILED}:
+            active_regions = tuple(
+                sorted(
+                    item.region_id
+                    for item in source.snapshot.regions
+                    if item.current_owner_layer
+                    is not RegionalAuthorityLayer.CENTER
+                )
+            )
+        return RegionResourceSafeAdoptionContext(
+            consumption_timestamp_s=consumption_timestamp_s,
+            center_health=center_health,
+            runtime_node_id="MAIN-RUNTIME",
+            advisory_version=advisory_version,
+            partition_generation=partition_generation,
+            secondary_available_region_ids=secondary_regions,
+            partitioned_region_ids=tuple(
+                source.formal_snapshot.partitioned_region_ids
+            ),
+            active_degradation_region_ids=active_regions,
+            active_degradation_evidence_sha256=(
+                canonical_runtime_payload_sha256(
+                    source.formal_decision.to_dict()
+                )
+                if active_regions
+                else None
+            ),
+        )
+
+    def _d4_plan_reference_from_runtime_ack(
+        self,
+        *,
+        runtime_ack: Any,
+        d3_envelope: Any,
+        preparation: Any,
+    ) -> RegionResourceD3PlanReference:
+        payload = dict(d3_envelope.payload)
+        metadata = dict(payload.get("metadata", {}))
+        applied = preparation.applied_recommendation
+        if applied is None:
+            raise ValueError("D4 plan reference requires a prepared advisory")
+        advisory_payload_sha = applied.advisory_payload_sha256
+        lease = applied.lease_expires_at_s
+        created_at = float(payload["created_at"])
+        valid_until = float(lease)
+        if valid_until <= created_at:
+            raise ValueError("D4 successor plan has no positive authority lease")
+        owner_layer = applied.owner_layer.value
+        owner_node_id = applied.owner_node_id
+        if owner_layer is None or owner_node_id is None:
+            raise ValueError("D4 successor plan owner is unavailable")
+        return RegionResourceD3PlanReference(
+            plan_id=str(payload["plan_id"]),
+            plan_version=int(payload["plan_version"]),
+            previous_plan_id=str(applied.source_plan_id),
+            previous_plan_version=int(applied.source_plan_version),
+            owner_node_id=str(owner_node_id),
+            owner_layer=str(owner_layer),
+            epoch=int(applied.epoch),
+            created_at_s=created_at,
+            valid_until_s=valid_until,
+            source_advisory_id=str(applied.advisory.advisory_id),
+            source_advisory_version=int(applied.advisory_version),
+            source_advisory_payload_sha256=advisory_payload_sha,
+            plan_payload_sha256=canonical_runtime_payload_sha256(payload),
+            plan_bus_sequence=int(getattr(d3_envelope, "sequence")),
+            accepted_by_main_runtime=True,
+            regional_hint_applied=bool(
+                metadata.get("regional_hint_applied", False)
+            ),
+            stale_version_rejected=True,
+            coalition_requirements=self._d4_coalition_requirements(),
+        )
+
+    def _d4_coalition_requirements(
+        self,
+    ) -> tuple[RegionResourceCoalitionRequirement, ...]:
+        plan = self.latest_plan
+        if plan is None:
+            return ()
+        requirements: list[RegionResourceCoalitionRequirement] = []
+        for coalition in tuple(getattr(plan, "coalitions", ())):
+            members = tuple(
+                sorted(
+                    assignment.resource_id
+                    for assignment in plan.assignments
+                    if assignment.target_id == coalition.target_id
+                    and assignment.coalition_id == coalition.coalition_id
+                )
+            )
+            required_count = max(
+                (
+                    int(assignment.required_resource_count)
+                    for assignment in plan.assignments
+                    if assignment.target_id == coalition.target_id
+                    and assignment.coalition_id == coalition.coalition_id
+                ),
+                default=1,
+            )
+            if required_count <= 1:
+                continue
+            if len(members) != required_count:
+                raise ValueError(
+                    "incomplete coalition cannot enter A2 adoption evidence"
+                )
+            requirements.append(
+                RegionResourceCoalitionRequirement(
+                    global_track_id=str(coalition.target_id),
+                    coalition_id=str(coalition.coalition_id),
+                    coalition_version=int(coalition.version),
+                    required_member_ids=members,
+                )
+            )
+        return tuple(requirements)
+
+    def _remember_d4_a2_evidence(self, evidence: Any) -> None:
+        applied = getattr(evidence, "applied_recommendation", None)
+        key = (
+            str(applied.application_id)
+            if applied is not None
+            else str(getattr(evidence, "input_sha256", "unavailable"))
+        )
+        self._d4_a2_evidence_by_application[key] = evidence
+
+    def _runtime_state_payload_sha256(
+        self,
+        step_input: RuntimeStepInput,
+    ) -> str:
+        return canonical_runtime_payload_sha256(
+            {
+                "interceptors": {
+                    "platform_ids": list(step_input.interceptors.platform_ids),
+                    "state_ned": step_input.interceptors.state_ned.tolist(),
+                    "covariance": step_input.interceptors.covariance.tolist(),
+                    "active": step_input.interceptors.active.tolist(),
+                },
+                "recon": {
+                    "platform_ids": list(step_input.recon.platform_ids),
+                    "state_ned": step_input.recon.state_ned.tolist(),
+                    "covariance": step_input.recon.covariance.tolist(),
+                    "active": step_input.recon.active.tolist(),
+                },
+            }
+        )
+
+    def _advance_d4_a2_physical_windows(
+        self,
+        step_input: RuntimeStepInput,
+        *,
+        now: float,
+    ) -> None:
+        current_state_sha = self._latest_runtime_state_payload_sha256
+        if current_state_sha is None:
+            return
+        for plan_key, pending in tuple(
+            self._d4_a2_pending_by_plan.items()
+        ):
+            if pending.final_evidence is not None and bool(
+                getattr(
+                    pending.final_evidence,
+                    "safe_adoption_available",
+                    False,
+                )
+            ):
+                continue
+            plan = pending.plan_reference
+            if now >= plan.valid_until_s - _EPS:
+                self._d4_a2_bridge_blocker_counts[
+                    "physical_window_lease_expired"
+                ] += 1
+                continue
+            current_plan = self.latest_plan
+            if (
+                current_plan is None
+                or str(current_plan.plan_id) != plan.plan_id
+                or int(current_plan.version) != plan.plan_version
+            ):
+                self._d4_a2_bridge_blocker_counts[
+                    "physical_window_plan_superseded"
+                ] += 1
+                continue
+            pending.non_hold_control_applied_count = max(
+                pending.non_hold_control_applied_count,
+                self._d4_current_plan_non_hold_control_count(
+                    plan_id=plan.plan_id,
+                    plan_version=plan.plan_version,
+                ),
+            )
+            if pending.owner_ack_delivery is None:
+                continue
+            commits = self._d4_coalition_commits_for_pending(
+                pending,
+                now=now,
+            )
+            if plan.coalition_requirements and not commits:
+                partial = self._d4_safe_adoption_assembler.assemble(
+                    preparation=pending.preparation,
+                    context=pending.context,
+                    evaluated_at_s=now,
+                    d3_successor_plan=plan,
+                    runtime_ack=pending.runtime_ack,
+                    owner_ack_delivery=pending.owner_ack_delivery,
+                )
+                pending.final_evidence = partial
+                self._remember_d4_a2_evidence(partial)
+                continue
+            pending.coalition_commits = commits
+            if pending.physical_window_start_s is None:
+                pending.physical_window_start_s = now
+                pending.physical_window_source_payload_sha256 = (
+                    current_state_sha
+                )
+                partial = self._d4_safe_adoption_assembler.assemble(
+                    preparation=pending.preparation,
+                    context=pending.context,
+                    evaluated_at_s=now,
+                    d3_successor_plan=plan,
+                    runtime_ack=pending.runtime_ack,
+                    owner_ack_delivery=pending.owner_ack_delivery,
+                    coalition_commits=commits,
+                )
+                pending.final_evidence = partial
+                self._remember_d4_a2_evidence(partial)
+                continue
+            if now <= pending.physical_window_start_s + _EPS:
+                continue
+            source_sha = pending.physical_window_source_payload_sha256
+            if (
+                source_sha is None
+                or source_sha == current_state_sha
+                or pending.non_hold_control_applied_count <= 0
+            ):
+                continue
+            hard_violations = self._d4_physical_hard_constraint_violations(
+                step_input
+            )
+            if hard_violations:
+                self._d4_a2_bridge_blocker_counts[
+                    "physical_window_hard_constraint_violation"
+                ] += hard_violations
+                continue
+            window = RegionResourcePhysicalWindowEvidence(
+                window_id=(
+                    f"d4-a2-window:{plan.plan_id}:v{plan.plan_version}:"
+                    f"{pending.physical_window_start_s:.6f}"
+                ),
+                available=True,
+                window_start_s=pending.physical_window_start_s,
+                window_end_s=now,
+                advisory_id=str(pending.runtime_ack.advisory_id),
+                advisory_version=int(
+                    pending.runtime_ack.advisory_version
+                ),
+                advisory_payload_sha256=str(
+                    pending.runtime_ack.advisory_payload_sha256
+                ),
+                applied_plan_id=plan.plan_id,
+                applied_plan_version=plan.plan_version,
+                runtime_ack_sha256=_d4_safe_adoption_sha256(
+                    pending.runtime_ack.to_dict()
+                ),
+                owner_ack_receipt_id=(
+                    pending.owner_ack_delivery.receipt.receipt_id
+                ),
+                coalition_commit_sha256=tuple(
+                    sorted(item.immutable_digest for item in commits)
+                ),
+                source_state_payload_sha256=source_sha,
+                post_state_payload_sha256=current_state_sha,
+                physical_execution_observed=True,
+                hard_constraint_violation_count=0,
+            )
+            evidence = self._d4_safe_adoption_assembler.assemble(
+                preparation=pending.preparation,
+                context=pending.context,
+                evaluated_at_s=now,
+                d3_successor_plan=plan,
+                runtime_ack=pending.runtime_ack,
+                owner_ack_delivery=pending.owner_ack_delivery,
+                coalition_commits=commits,
+                physical_window=window,
+            )
+            pending.final_evidence = evidence
+            self._remember_d4_a2_evidence(evidence)
+            if bool(getattr(evidence, "safe_adoption_available", False)):
+                self._d4_a2_physical_window_count += 1
+
+    def _d4_current_plan_non_hold_control_count(
+        self,
+        *,
+        plan_id: str,
+        plan_version: int,
+    ) -> int:
+        """Count executable D7 bindings from the latest applied plan batch."""
+
+        current_plan = self.latest_plan
+        guidance_batch = self.latest_guidance_batch
+        if (
+            current_plan is None
+            or guidance_batch is None
+            or str(current_plan.plan_id) != str(plan_id)
+            or int(current_plan.version) != int(plan_version)
+        ):
+            return 0
+        active_bindings = {
+            (str(assignment.resource_id), str(assignment.target_id))
+            for assignment in current_plan.assignments
+        }
+        applied_bindings = {
+            (
+                str(command.resource_id),
+                str(command.assigned_global_track_id),
+            )
+            for command in guidance_batch.pair_commands
+            if (
+                str(command.plan_id) == str(plan_id)
+                and int(command.plan_version) == int(plan_version)
+                and str(getattr(command.mode, "value", command.mode))
+                != "hold"
+                and (
+                    str(command.resource_id),
+                    str(command.assigned_global_track_id),
+                )
+                in active_bindings
+            )
+        }
+        return len(applied_bindings)
+
+    def _d4_coalition_commits_for_pending(
+        self,
+        pending: _D4A2PendingAdoption,
+        *,
+        now: float,
+    ) -> tuple[RegionResourceCoalitionCommitEvidence, ...]:
+        requirements = pending.plan_reference.coalition_requirements
+        if not requirements:
+            return ()
+        summaries = tuple(
+            summary
+            for region in (
+                ()
+                if self.latest_d4_decision is None
+                else self.latest_d4_decision.region_decisions
+            )
+            for summary in region.coalition_commits
+        )
+        output: list[RegionResourceCoalitionCommitEvidence] = []
+        for requirement in requirements:
+            deliveries = tuple(
+                pending.coalition_ack_deliveries.get(
+                    (
+                        requirement.global_track_id,
+                        requirement.coalition_id,
+                        requirement.coalition_version,
+                    ),
+                    {},
+                ).values()
+            )
+            by_member = {
+                item.member_ack.resource_id: item for item in deliveries
+            }
+            if set(by_member) != set(requirement.required_member_ids):
+                return ()
+            summary = next(
+                (
+                    item
+                    for item in summaries
+                    if item.global_track_id
+                    == requirement.global_track_id
+                    and tuple(item.required_member_ids)
+                    == requirement.required_member_ids
+                    and item.atomic_committed
+                    and item.execution_authorized
+                    and item.state == "executing"
+                ),
+                None,
+            )
+            if summary is None:
+                return ()
+            committed_at = max(
+                item.receipt.arrival_timestamp_s
+                for item in by_member.values()
+            )
+            state = CoalitionCommitState(
+                global_track_id=requirement.global_track_id,
+                coalition_id=requirement.coalition_id,
+                coalition_version=requirement.coalition_version,
+                plan_id=pending.plan_reference.plan_id,
+                plan_version=pending.plan_reference.plan_version,
+                epoch=pending.plan_reference.epoch,
+                coordinator_id=pending.plan_reference.owner_node_id,
+                coordinator_role=pending.plan_reference.owner_layer.value,
+                required_member_ids=requirement.required_member_ids,
+                acked_member_ids=requirement.required_member_ids,
+                state="executing",
+                lease_expires_at=pending.plan_reference.valid_until_s,
+                proposed_at=pending.plan_reference.created_at_s,
+                updated_at=now,
+                committed_at=committed_at,
+                executing_at=now,
+                reason=str(summary.reason),
+            )
+            output.append(
+                RegionResourceCoalitionCommitEvidence(
+                    state=state,
+                    member_ack_deliveries=tuple(
+                        by_member[member_id]
+                        for member_id in requirement.required_member_ids
+                    ),
+                )
+            )
+        return tuple(output)
+
+    def _d4_physical_hard_constraint_violations(
+        self,
+        step_input: RuntimeStepInput,
+    ) -> int:
+        config = self._require_ready()
+        violations = 0
+        speed_limit = max(20.0, config.interceptor_speed_mps * 1.5)
+        speeds = np.linalg.norm(
+            step_input.interceptors.state_ned[:, 3:6],
+            axis=1,
+        )
+        violations += int(np.count_nonzero(speeds > speed_limit + 1.0e-6))
+        if self.latest_guidance_batch is not None:
+            for command in self.latest_guidance_batch.pair_commands:
+                acceleration = np.asarray(
+                    command.acceleration_ned_mps2,
+                    dtype=float,
+                )
+                if (
+                    not np.all(np.isfinite(acceleration))
+                    or np.linalg.norm(acceleration)
+                    > self.d7.config.max_accel_mps2 + 1.0e-6
+                ):
+                    violations += 1
+        return violations
+
     def record_active_vision_runtime_feedback(
         self,
         *,
         timestamp_s: float,
         camera_states: Iterable[CameraRuntimeState],
         acknowledgements: Iterable[Mapping[str, Any]],
+        acknowledgement_envelopes: Iterable[Any] = (),
+        source_publication_envelopes: Iterable[Any] = (),
+        episode_id: str | None = None,
+        pairing_context_sha256: str | None = None,
+        source_git_commit: str | None = None,
     ) -> None:
-        """Attach post-command camera state to the latest active-vision frame.
+        """Bind camera ACK envelopes and post-command state to A3 evidence.
 
         D5 decides from the pre-command snapshot. Main applies the bounded camera
-        command immediately afterwards, so the learning sample must carry the
-        resulting runtime state alongside that command's acknowledgement.
+        command immediately afterwards and publishes the ACK before this callback.
+        A valid A3 trace therefore requires the ACK bus sequence, the matching D5
+        publication, frozen model provenance, and the resulting runtime state.
         """
 
+        timestamp = float(timestamp_s)
+        states = tuple(camera_states)
+        acknowledgement_items = tuple(acknowledgements)
+        self._record_active_vision_learning_feedback(
+            timestamp_s=timestamp,
+            camera_states=states,
+            acknowledgements=acknowledgement_items,
+        )
+        if not acknowledgement_items:
+            return
+
+        state_by_camera = {state.camera_id: state for state in states}
+        ack_envelope_by_camera: dict[str, Any] = {}
+        for envelope in tuple(acknowledgement_envelopes):
+            if str(getattr(envelope, "topic", "")) != "runtime.camera_command_ack":
+                self._d5_a3_bridge_blocker_counts[
+                    "camera_ack_envelope_topic_invalid"
+                ] += 1
+                continue
+            payload = getattr(envelope, "payload", None)
+            if not isinstance(payload, Mapping):
+                self._d5_a3_bridge_blocker_counts[
+                    "camera_ack_envelope_payload_invalid"
+                ] += 1
+                continue
+            camera_id = str(payload.get("camera_id", "")).strip()
+            if not camera_id or camera_id in ack_envelope_by_camera:
+                self._d5_a3_bridge_blocker_counts[
+                    "camera_ack_envelope_membership_invalid"
+                ] += 1
+                continue
+            ack_envelope_by_camera[camera_id] = envelope
+
+        active_vision_envelope = next(
+            (
+                envelope
+                for envelope in tuple(source_publication_envelopes)
+                if str(getattr(envelope, "topic", ""))
+                == "modules.d5.active_vision"
+            ),
+            None,
+        )
+        if active_vision_envelope is None:
+            self._d5_a3_bridge_blocker_counts[
+                "active_vision_publication_envelope_missing"
+            ] += len(acknowledgement_items)
+
+        config = self._require_ready()
+        scale = max(config.target_count, config.resource_count)
+        for acknowledgement in acknowledgement_items:
+            camera_id = str(acknowledgement.get("camera_id", "")).strip()
+            context = self._d5_a3_command_context_by_camera.get(camera_id)
+            runtime_state = state_by_camera.get(camera_id)
+            ack_envelope = ack_envelope_by_camera.get(camera_id)
+            if context is None:
+                self._d5_a3_bridge_blocker_counts[
+                    "active_vision_command_context_missing"
+                ] += 1
+                continue
+            if (
+                abs(context.timestamp_s - timestamp) > _EPS
+                or runtime_state is None
+                or ack_envelope is None
+                or active_vision_envelope is None
+            ):
+                self._d5_a3_bridge_blocker_counts[
+                    "active_vision_runtime_chain_incomplete"
+                ] += 1
+                continue
+            if (
+                pairing_context_sha256 is None
+                or not _is_sha256_text(pairing_context_sha256)
+            ):
+                self._d5_a3_bridge_blocker_counts[
+                    "active_vision_pairing_context_missing"
+                ] += 1
+                continue
+
+            resolved_episode_id = str(
+                episode_id
+                or f"{config.scenario_name}-s{config.seed}"
+            ).strip()
+            source_event_sha256 = canonical_runtime_payload_sha256(
+                {
+                    "episode_id": resolved_episode_id,
+                    "event_log_stream": "modules.d5.active_vision",
+                    "schema_version": str(
+                        getattr(active_vision_envelope, "schema_version", "")
+                    ),
+                }
+            )
+            comparison_key = (
+                f"{config.scenario_name}|scale={scale}|seed={config.seed}|"
+                f"window={context.window_index}|camera={camera_id}"
+            )
+            sample_key = (
+                f"{resolved_episode_id}:active-vision:"
+                f"{context.window_index:06d}:{camera_id}"
+            )
+            requested_mode = ActiveVisionRuntimeMode(
+                context.decision.requested_mode
+            )
+            effective_mode = ActiveVisionRuntimeMode(
+                context.decision.effective_mode
+            )
+            if (
+                requested_mode is ActiveVisionRuntimeMode.DISABLED
+                and effective_mode is ActiveVisionRuntimeMode.DISABLED
+            ):
+                try:
+                    trace = assemble_active_vision_a3_rule_arm_trace(
+                        comparison_key=comparison_key,
+                        scenario_id=config.scenario_name,
+                        scale=scale,
+                        seed=config.seed,
+                        window_index=context.window_index,
+                        sample_key=sample_key,
+                        pairing_context_sha256=str(
+                            pairing_context_sha256
+                        ),
+                        source_event_log_sha256=source_event_sha256,
+                        snapshot=context.snapshot,
+                        rule_decision=context.decision,
+                        issued_command=context.command,
+                        runtime_ack_payload=acknowledgement,
+                        post_command_camera_state=runtime_state,
+                        runtime_ack_evidence_kind=(
+                            RUNTIME_OBSERVED_EVIDENCE_KIND
+                        ),
+                        camera_feedback_evidence_kind=(
+                            RUNTIME_OBSERVED_EVIDENCE_KIND
+                        ),
+                        camera_state_source_sequence=int(
+                            getattr(ack_envelope, "sequence")
+                        ),
+                        online_truth_use_count=0,
+                        global_track_id_rewrite_count=0,
+                    )
+                except (TypeError, ValueError) as exc:
+                    self._d5_a3_bridge_blocker_counts[
+                        f"active_vision_r0_trace_{type(exc).__name__.lower()}"
+                    ] += 1
+                    continue
+                self._d5_a3_r0_runtime_ack_count += 1
+                self._d5_a3_r0_pending_by_camera.setdefault(
+                    camera_id,
+                    [],
+                ).append(
+                    _D5A3PendingObservationWindow(
+                        trace=trace,
+                        observation_frames=[],
+                    )
+                )
+                continue
+
+            provenance = self._d5_a3_runtime_provenance(
+                source_git_commit=source_git_commit,
+            )
+            if provenance is None:
+                continue
+            (
+                model_fingerprint,
+                manifest_sha256,
+                weights_sha256,
+                implementation_sha256,
+                commit,
+            ) = provenance
+            if context.decision.model_fingerprint != model_fingerprint:
+                self._d5_a3_bridge_blocker_counts[
+                    "active_vision_decision_fingerprint_mismatch"
+                ] += 1
+                continue
+            try:
+                trace = assemble_active_vision_a3_adoption_trace(
+                    comparison_key=comparison_key,
+                    scenario_id=config.scenario_name,
+                    scale=scale,
+                    seed=config.seed,
+                    window_index=context.window_index,
+                    sample_key=sample_key,
+                    pairing_context_sha256=str(pairing_context_sha256),
+                    source_event_log_sha256=source_event_sha256,
+                    snapshot=context.snapshot,
+                    decision=context.decision,
+                    issued_command=context.command,
+                    runtime_ack_payload=acknowledgement,
+                    post_command_camera_state=runtime_state,
+                    policy_evaluated=True,
+                    policy_evaluated_timestamp=context.timestamp_s,
+                    model_fingerprint=model_fingerprint,
+                    bundle_manifest_sha256=manifest_sha256,
+                    bundle_weights_sha256=weights_sha256,
+                    implementation_sha256=implementation_sha256,
+                    source_git_commit=commit,
+                    runtime_ack_evidence_kind=(
+                        RUNTIME_OBSERVED_EVIDENCE_KIND
+                    ),
+                    camera_feedback_evidence_kind=(
+                        RUNTIME_OBSERVED_EVIDENCE_KIND
+                    ),
+                    camera_state_source_sequence=int(
+                        getattr(ack_envelope, "sequence")
+                    ),
+                    online_truth_use_count=0,
+                    global_track_id_rewrite_count=0,
+                )
+            except (TypeError, ValueError) as exc:
+                self._d5_a3_bridge_blocker_counts[
+                    f"active_vision_trace_{type(exc).__name__.lower()}"
+                ] += 1
+                continue
+            self._d5_a3_runtime_ack_count += 1
+            initial = assemble_active_vision_a3_evidence(
+                trace,
+                candidate_window=None,
+                same_key_r0_window=None,
+            )
+            self._d5_a3_evidence_by_comparison_key[
+                trace.comparison_key
+            ] = initial
+            if trace.model_action_adopted:
+                self._d5_a3_pending_by_camera.setdefault(
+                    camera_id,
+                    [],
+                ).append(
+                    _D5A3PendingObservationWindow(
+                    trace=trace,
+                    observation_frames=[],
+                )
+                )
+
+    def _record_active_vision_learning_feedback(
+        self,
+        *,
+        timestamp_s: float,
+        camera_states: Iterable[CameraRuntimeState],
+        acknowledgements: Iterable[Mapping[str, Any]],
+    ) -> None:
         if not self.stack_config.capture_learning_artifacts:
             return
         if not self._d5_active_vision_learning_frames:
             raise RuntimeError("active-vision feedback has no captured decision frame")
-
         frame = self._d5_active_vision_learning_frames[-1]
         timestamp = float(timestamp_s)
         if abs(float(frame.timestamp_s) - timestamp) > _EPS:
             raise ValueError("active-vision feedback timestamp does not match latest frame")
-
         state_by_camera = {state.camera_id: state for state in camera_states}
         ack_by_camera: dict[str, Mapping[str, Any]] = {}
         for acknowledgement in acknowledgements:
@@ -3021,6 +4213,863 @@ class IntegratedScalableModuleStack:
             frame,
             camera_feedback=tuple(feedback),
         )
+
+    def _d5_a3_runtime_provenance(
+        self,
+        *,
+        source_git_commit: str | None,
+    ) -> tuple[str, str, str, str, str] | None:
+        diagnostics = self.learning_runtime_diagnostics.get(
+            "d5_active_vision",
+            {},
+        )
+        policy = self.d5_active_vision_policy
+        manifest = getattr(policy, "manifest", None)
+        code_provenance = (
+            manifest.get("code_provenance")
+            if isinstance(manifest, Mapping)
+            else None
+        )
+        values = {
+            "model_fingerprint": diagnostics.get("model_fingerprint"),
+            "bundle_manifest_sha256": diagnostics.get(
+                "bundle_manifest_sha256"
+            ),
+            "bundle_weights_sha256": diagnostics.get(
+                "bundle_weights_sha256"
+            ),
+            "implementation_sha256": (
+                code_provenance.get("implementation_sha256")
+                if isinstance(code_provenance, Mapping)
+                else None
+            ),
+            "source_git_commit": source_git_commit,
+        }
+        if (
+            diagnostics.get("bundle_loaded") is not True
+            or diagnostics.get("assist_admitted") is not True
+            or diagnostics.get("effective_mode") != "assist"
+            or not bool(getattr(policy, "available", False))
+            or not bool(getattr(policy, "assist_admitted", False))
+        ):
+            self._d5_a3_bridge_blocker_counts[
+                "active_vision_assist_provenance_unavailable"
+            ] += 1
+            return None
+        fingerprint = str(values["model_fingerprint"] or "").strip()
+        if (
+            fingerprint != str(getattr(policy, "model_fingerprint", ""))
+            or str(values["bundle_manifest_sha256"])
+            != str(getattr(policy, "bundle_manifest_sha256", ""))
+            or str(values["bundle_weights_sha256"])
+            != str(getattr(policy, "bundle_weights_sha256", ""))
+        ):
+            self._d5_a3_bridge_blocker_counts[
+                "active_vision_bundle_provenance_mismatch"
+            ] += 1
+            return None
+        digests = (
+            str(values["bundle_manifest_sha256"] or ""),
+            str(values["bundle_weights_sha256"] or ""),
+            str(values["implementation_sha256"] or ""),
+        )
+        commit = str(values["source_git_commit"] or "").strip().lower()
+        if (
+            not fingerprint
+            or any(not _is_sha256_text(value) for value in digests)
+            or not _is_git_commit_text(commit)
+        ):
+            self._d5_a3_bridge_blocker_counts[
+                "active_vision_frozen_provenance_incomplete"
+            ] += 1
+            return None
+        return (fingerprint, *digests, commit)
+
+    def record_active_vision_observation_publication(
+        self,
+        *,
+        publication_envelope: Any,
+    ) -> None:
+        """Attach one published anonymous D5 frame to prior A3 commands."""
+
+        if str(getattr(publication_envelope, "topic", "")) != (
+            "modules.d5.terminal_association"
+        ):
+            raise ValueError("active-vision observation source topic is invalid")
+        if (
+            not self._d5_a3_pending_by_camera
+            and not self._d5_a3_r0_pending_by_camera
+        ):
+            return
+        result = self.latest_d5_result
+        if result is None:
+            self._d5_a3_bridge_blocker_counts[
+                "active_vision_d5_result_missing"
+            ] += 1
+            return
+        payload = getattr(publication_envelope, "payload", None)
+        if not isinstance(payload, Mapping):
+            self._d5_a3_bridge_blocker_counts[
+                "active_vision_d5_publication_invalid"
+            ] += 1
+            return
+        published_keys = {
+            str(item.get("tracklet_key", ""))
+            for item in payload.get("local_tracklets", ())
+            if isinstance(item, Mapping)
+        }
+        actual_keys = {item.tracklet_key for item in result.tracklets}
+        if published_keys != actual_keys:
+            self._d5_a3_bridge_blocker_counts[
+                "active_vision_tracklet_publication_mismatch"
+            ] += 1
+            return
+
+        center_track_ids = tuple(
+            track.global_track_id for track in self.latest_d2_tracks
+        )
+        bindings = tuple(result.association.bindings)
+        source_sequence = int(getattr(publication_envelope, "sequence"))
+        publication_timestamp = float(
+            getattr(publication_envelope, "timestamp")
+        )
+        pending_maps = (
+            (False, self._d5_a3_pending_by_camera),
+            (True, self._d5_a3_r0_pending_by_camera),
+        )
+        for is_r0, pending_map in pending_maps:
+            for camera_id in tuple(pending_map):
+                self._record_d5_a3_observations_for_camera(
+                    camera_id=camera_id,
+                    pending_map=pending_map,
+                    is_r0=is_r0,
+                    result=result,
+                    bindings=bindings,
+                    center_track_ids=center_track_ids,
+                    source_sequence=source_sequence,
+                    publication_timestamp=publication_timestamp,
+                )
+
+    def _record_active_vision_zero_detection_frames(
+        self,
+        frame_events: Iterable[CameraFrameEvent],
+    ) -> None:
+        """Attach processed zero-detection frames to eligible A3 or R0 commands."""
+
+        center_track_ids = tuple(
+            track.global_track_id for track in self.latest_d2_tracks
+        )
+        for event in sorted(
+            tuple(frame_events),
+            key=lambda item: (
+                item.arrival_timestamp,
+                item.measurement_timestamp,
+                item.camera_id,
+                item.event_id,
+            ),
+        ):
+            self._d5_camera_empty_frame_received_count += 1
+            if not event.empty:
+                self._d5_camera_empty_frame_rejected_count += 1
+                self._d5_a3_bridge_blocker_counts[
+                    "camera_empty_frame_contains_detections"
+                ] += 1
+                continue
+            consumed = False
+            for is_r0, pending_map in (
+                (False, self._d5_a3_pending_by_camera),
+                (True, self._d5_a3_r0_pending_by_camera),
+            ):
+                consumed = bool(
+                    self._record_d5_a3_zero_detection_for_camera(
+                        event=event,
+                        pending_map=pending_map,
+                        is_r0=is_r0,
+                        center_track_ids=center_track_ids,
+                    )
+                    or consumed
+                )
+            if consumed:
+                self._d5_camera_empty_frame_consumed_count += 1
+            else:
+                self._d5_camera_empty_frame_unmatched_count += 1
+
+    def _record_d5_a3_zero_detection_for_camera(
+        self,
+        *,
+        event: CameraFrameEvent,
+        pending_map: dict[str, list[_D5A3PendingObservationWindow]],
+        is_r0: bool,
+        center_track_ids: tuple[str, ...],
+    ) -> bool:
+        """Bind one empty camera frame using command time and version lineage."""
+
+        current_pending = tuple(pending_map.get(event.camera_id, ()))
+        if not current_pending:
+            return False
+        expired: list[
+            tuple[
+                _D5A3PendingObservationWindow,
+                bool,
+                ActiveVisionA3CandidatePhysicalWindowStatus,
+            ]
+        ] = []
+        eligible: list[_D5A3PendingObservationWindow] = []
+        for pending in current_pending:
+            trace = pending.trace
+            target_id = trace.target_global_track_id
+            if target_id is not None and target_id not in center_track_ids:
+                self._d5_a3_bridge_blocker_counts[
+                    "active_vision_target_reference_stale"
+                ] += 1
+                expired.append(
+                    (
+                        pending,
+                        False,
+                        ActiveVisionA3CandidatePhysicalWindowStatus.INCOMPLETE,
+                    )
+                )
+                continue
+            if (
+                self.latest_plan is None
+                or int(self.latest_plan.version) != trace.decision.plan_version
+            ):
+                self._d5_a3_bridge_blocker_counts[
+                    "active_vision_plan_version_changed"
+                ] += 1
+                expired.append(
+                    (
+                        pending,
+                        False,
+                        ActiveVisionA3CandidatePhysicalWindowStatus.INCOMPLETE,
+                    )
+                )
+                continue
+            feedback = trace.camera_feedback
+            command = trace.issued_command_payload
+            if feedback is None or command is None:
+                expired.append(
+                    (
+                        pending,
+                        False,
+                        ActiveVisionA3CandidatePhysicalWindowStatus.INCOMPLETE,
+                    )
+                )
+                continue
+            window_start = feedback.camera_state.state_timestamp
+            window_expires = float(command["expires_timestamp"])
+            if window_expires + _EPS < event.measurement_timestamp:
+                expired.append(
+                    (
+                        pending,
+                        True,
+                        ActiveVisionA3CandidatePhysicalWindowStatus.MISSING,
+                    )
+                )
+                continue
+            if not (
+                window_start + _EPS < event.measurement_timestamp
+                and event.measurement_timestamp <= window_expires + _EPS
+            ):
+                continue
+            eligible.append(pending)
+
+        for pending, inventory_complete, status in expired:
+            self._finalize_d5_a3_pending(
+                event.camera_id,
+                pending,
+                is_r0=is_r0,
+                inventory_end_timestamp=event.arrival_timestamp,
+                observation_inventory_complete=inventory_complete,
+                physical_window_status=status,
+            )
+        if not eligible:
+            return False
+        selected = max(
+            eligible,
+            key=lambda item: (
+                item.trace.camera_feedback.camera_state.state_timestamp,
+                item.trace.window_index,
+            ),
+        )
+        for pending in eligible:
+            if pending is not selected:
+                self._finalize_d5_a3_pending(
+                    event.camera_id,
+                    pending,
+                    is_r0=is_r0,
+                    inventory_end_timestamp=event.arrival_timestamp,
+                    observation_inventory_complete=True,
+                    physical_window_status=(
+                        ActiveVisionA3CandidatePhysicalWindowStatus.MISSING
+                    ),
+                )
+        trace = selected.trace
+        event_versions = (
+            event.plan_version,
+            event.coalition_version,
+            event.communication_version,
+        )
+        trace_versions = (
+            trace.decision.plan_version,
+            trace.decision.coalition_version,
+            trace.decision.communication_version,
+        )
+        if event.resource_id != trace.resource_id:
+            self._d5_camera_empty_frame_rejected_count += 1
+            self._d5_a3_bridge_blocker_counts[
+                "camera_empty_frame_resource_mismatch"
+            ] += 1
+            return False
+        if event_versions != trace_versions:
+            self._d5_camera_empty_frame_rejected_count += 1
+            self._d5_a3_bridge_blocker_counts[
+                "camera_empty_frame_version_mismatch"
+            ] += 1
+            return False
+        arm_label = "r0" if is_r0 else "a3"
+        try:
+            frame = active_vision_a3_zero_detection_frame(
+                frame_key=f"{arm_label}-empty:{event.event_id}",
+                camera_id=event.camera_id,
+                resource_id=event.resource_id,
+                measurement_timestamp=event.measurement_timestamp,
+                arrival_timestamp=event.arrival_timestamp,
+                plan_version=trace.decision.plan_version,
+                coalition_version=trace.decision.coalition_version,
+                communication_version=trace.decision.communication_version,
+                target_global_track_id=trace.target_global_track_id,
+                center_global_track_ids=center_track_ids,
+                evidence_kind=RUNTIME_OBSERVED_EVIDENCE_KIND,
+                source_sequence=event.scan_index,
+            )
+        except (TypeError, ValueError) as exc:
+            self._d5_camera_empty_frame_rejected_count += 1
+            self._d5_a3_bridge_blocker_counts[
+                f"camera_empty_frame_{type(exc).__name__.lower()}"
+            ] += 1
+            self._finalize_d5_a3_pending(
+                event.camera_id,
+                selected,
+                is_r0=is_r0,
+                inventory_end_timestamp=event.arrival_timestamp,
+                observation_inventory_complete=True,
+                physical_window_status=(
+                    ActiveVisionA3CandidatePhysicalWindowStatus.INCOMPLETE
+                ),
+            )
+            return False
+        selected.observation_frames.append(frame)
+        if is_r0:
+            self._d5_a3_r0_observation_frame_count += 1
+        else:
+            self._d5_a3_observation_frame_count += 1
+        self._finalize_d5_a3_pending(
+            event.camera_id,
+            selected,
+            is_r0=is_r0,
+            inventory_end_timestamp=event.arrival_timestamp,
+            observation_inventory_complete=True,
+            physical_window_status=(
+                ActiveVisionA3CandidatePhysicalWindowStatus.COMPLETE
+            ),
+        )
+        return True
+
+    def _record_d5_a3_observations_for_camera(
+        self,
+        *,
+        camera_id: str,
+        pending_map: dict[str, list[_D5A3PendingObservationWindow]],
+        is_r0: bool,
+        result: Any,
+        bindings: tuple[Any, ...],
+        center_track_ids: tuple[str, ...],
+        source_sequence: int,
+        publication_timestamp: float,
+    ) -> None:
+        """Attach one publication to either the candidate or R0 pending set."""
+
+        tracklets = tuple(
+            item
+            for item in result.tracklets
+            if item.camera_id == camera_id
+        )
+        grouped: dict[float, list[Any]] = {}
+        for tracklet in tracklets:
+            grouped.setdefault(
+                float(tracklet.measurement_timestamp),
+                [],
+            ).append(tracklet)
+        for measurement_timestamp in sorted(grouped):
+            current_pending = tuple(pending_map.get(camera_id, ()))
+            expired: list[
+                tuple[
+                    _D5A3PendingObservationWindow,
+                    bool,
+                    ActiveVisionA3CandidatePhysicalWindowStatus,
+                ]
+            ] = []
+            eligible: list[_D5A3PendingObservationWindow] = []
+            for pending in current_pending:
+                trace = pending.trace
+                target_id = trace.target_global_track_id
+                if (
+                    target_id is not None
+                    and target_id not in center_track_ids
+                ):
+                    self._d5_a3_bridge_blocker_counts[
+                        "active_vision_target_reference_stale"
+                    ] += 1
+                    expired.append(
+                        (
+                            pending,
+                            False,
+                            ActiveVisionA3CandidatePhysicalWindowStatus.INCOMPLETE,
+                        )
+                    )
+                    continue
+                if (
+                    self.latest_plan is None
+                    or int(self.latest_plan.version)
+                    != trace.decision.plan_version
+                ):
+                    self._d5_a3_bridge_blocker_counts[
+                        "active_vision_plan_version_changed"
+                    ] += 1
+                    expired.append(
+                        (
+                            pending,
+                            False,
+                            ActiveVisionA3CandidatePhysicalWindowStatus.INCOMPLETE,
+                        )
+                    )
+                    continue
+                feedback = trace.camera_feedback
+                command = trace.issued_command_payload
+                if feedback is None or command is None:
+                    expired.append(
+                        (
+                            pending,
+                            False,
+                            ActiveVisionA3CandidatePhysicalWindowStatus.INCOMPLETE,
+                        )
+                    )
+                    continue
+                window_start = feedback.camera_state.state_timestamp
+                window_expires = float(command["expires_timestamp"])
+                if window_expires + _EPS < measurement_timestamp:
+                    expired.append(
+                        (
+                            pending,
+                            True,
+                            ActiveVisionA3CandidatePhysicalWindowStatus.MISSING,
+                        )
+                    )
+                elif (
+                    window_start + _EPS < measurement_timestamp
+                    and measurement_timestamp <= window_expires + _EPS
+                ):
+                    eligible.append(pending)
+
+            for pending, inventory_complete, status in expired:
+                self._finalize_d5_a3_pending(
+                    camera_id,
+                    pending,
+                    is_r0=is_r0,
+                    inventory_end_timestamp=publication_timestamp,
+                    observation_inventory_complete=inventory_complete,
+                    physical_window_status=status,
+                )
+            if not eligible:
+                continue
+            selected = max(
+                eligible,
+                key=lambda item: (
+                    item.trace.camera_feedback.camera_state.state_timestamp,
+                    item.trace.window_index,
+                ),
+            )
+            for pending in eligible:
+                if pending is not selected:
+                    self._finalize_d5_a3_pending(
+                        camera_id,
+                        pending,
+                        is_r0=is_r0,
+                        inventory_end_timestamp=publication_timestamp,
+                        observation_inventory_complete=True,
+                        physical_window_status=(
+                            ActiveVisionA3CandidatePhysicalWindowStatus.MISSING
+                        ),
+                    )
+
+            trace = selected.trace
+            target_id = trace.target_global_track_id
+            observations = tuple(
+                sorted(
+                    (
+                        item
+                        for item in grouped[measurement_timestamp]
+                        if item.resource_id == trace.resource_id
+                    ),
+                    key=lambda item: item.tracklet_key,
+                )
+            )
+            if not observations:
+                self._finalize_d5_a3_pending(
+                    camera_id,
+                    selected,
+                    is_r0=is_r0,
+                    inventory_end_timestamp=publication_timestamp,
+                    observation_inventory_complete=True,
+                    physical_window_status=(
+                        ActiveVisionA3CandidatePhysicalWindowStatus.MISSING
+                    ),
+                )
+                continue
+            arm_label = "r0" if is_r0 else "a3"
+            frame_key = (
+                f"{arm_label}-frame:{source_sequence}:{camera_id}:"
+                f"{measurement_timestamp:.9f}"
+            )
+            try:
+                frame = active_vision_a3_observation_frame(
+                    frame_key=frame_key,
+                    observations=observations,
+                    bindings=bindings,
+                    target_global_track_id=target_id,
+                    center_global_track_ids=center_track_ids,
+                    plan_version=trace.decision.plan_version,
+                    coalition_version=trace.decision.coalition_version,
+                    communication_version=(
+                        trace.decision.communication_version
+                    ),
+                    evidence_kind=RUNTIME_OBSERVED_EVIDENCE_KIND,
+                    source_sequence=source_sequence,
+                )
+            except (TypeError, ValueError) as exc:
+                self._d5_a3_bridge_blocker_counts[
+                    f"active_vision_observation_{type(exc).__name__.lower()}"
+                ] += 1
+            else:
+                selected.observation_frames.append(frame)
+                if is_r0:
+                    self._d5_a3_r0_observation_frame_count += 1
+                else:
+                    self._d5_a3_observation_frame_count += 1
+            self._finalize_d5_a3_pending(
+                camera_id,
+                selected,
+                is_r0=is_r0,
+                inventory_end_timestamp=publication_timestamp,
+                observation_inventory_complete=True,
+                physical_window_status=(
+                    ActiveVisionA3CandidatePhysicalWindowStatus.COMPLETE
+                    if selected.observation_frames
+                    else ActiveVisionA3CandidatePhysicalWindowStatus.INCOMPLETE
+                ),
+            )
+
+    def _finalize_d5_a3_pending(
+        self,
+        camera_id: str,
+        pending: _D5A3PendingObservationWindow,
+        *,
+        is_r0: bool = False,
+        inventory_end_timestamp: float | None = None,
+        observation_inventory_complete: bool = False,
+        physical_window_status: (
+            ActiveVisionA3CandidatePhysicalWindowStatus
+        ) = ActiveVisionA3CandidatePhysicalWindowStatus.UNKNOWN,
+    ) -> None:
+        pending_map = (
+            self._d5_a3_r0_pending_by_camera
+            if is_r0
+            else self._d5_a3_pending_by_camera
+        )
+        pending_items = pending_map.get(camera_id)
+        if not pending_items:
+            return
+        for index, item in enumerate(pending_items):
+            if item is pending:
+                pending_items.pop(index)
+                break
+        else:
+            return
+        if not pending_items:
+            pending_map.pop(camera_id, None)
+        trace = pending.trace
+        if is_r0:
+            r0_window = None
+            if pending.observation_frames:
+                frames = tuple(pending.observation_frames)
+                feedback = trace.camera_feedback
+                start = feedback.camera_state.state_timestamp
+                end = max(
+                    max(item.measurement_timestamp for item in frames),
+                    max(item.arrival_timestamp for item in frames),
+                    start + 1.0e-6,
+                )
+                try:
+                    r0_window = (
+                        assemble_active_vision_a3_rule_arm_physical_observation_window(
+                            trace,
+                            observation_frames=frames,
+                            window_start_timestamp=start,
+                            window_end_timestamp=end,
+                        )
+                    )
+                except (TypeError, ValueError) as exc:
+                    self._d5_a3_bridge_blocker_counts[
+                        f"active_vision_r0_window_{type(exc).__name__.lower()}"
+                    ] += 1
+            if r0_window is not None:
+                self._d5_a3_r0_window_by_comparison_key[
+                    trace.comparison_key
+                ] = r0_window
+                self._d5_a3_r0_physical_window_count += 1
+            return
+
+        candidate_window = None
+        if trace.model_action_adopted and pending.observation_frames:
+            frames = tuple(pending.observation_frames)
+            feedback = trace.camera_feedback
+            if feedback is not None:
+                start = feedback.camera_state.state_timestamp
+                end = max(
+                    max(item.measurement_timestamp for item in frames),
+                    max(item.arrival_timestamp for item in frames),
+                    start + 1.0e-6,
+                )
+                try:
+                    candidate_window = (
+                        assemble_active_vision_a3_physical_observation_window(
+                            trace,
+                            arm=ActiveVisionA3WindowArm.A3,
+                            observation_frames=frames,
+                            window_start_timestamp=start,
+                            window_end_timestamp=end,
+                        )
+                    )
+                except (TypeError, ValueError) as exc:
+                    self._d5_a3_bridge_blocker_counts[
+                        f"active_vision_window_{type(exc).__name__.lower()}"
+                    ] += 1
+        resolved_status = physical_window_status
+        if candidate_window is not None:
+            resolved_status = (
+                ActiveVisionA3CandidatePhysicalWindowStatus.COMPLETE
+            )
+            observation_inventory_complete = True
+        elif (
+            resolved_status
+            is ActiveVisionA3CandidatePhysicalWindowStatus.COMPLETE
+        ):
+            resolved_status = (
+                ActiveVisionA3CandidatePhysicalWindowStatus.INCOMPLETE
+            )
+        try:
+            stage_evidence = self._d5_a3_candidate_stage_evidence(
+                trace=trace,
+                frames=tuple(pending.observation_frames),
+                inventory_end_timestamp=inventory_end_timestamp,
+                observation_inventory_complete=(
+                    observation_inventory_complete
+                ),
+                physical_window_status=resolved_status,
+            )
+        except (TypeError, ValueError) as exc:
+            self._d5_a3_bridge_blocker_counts[
+                f"active_vision_candidate_stage_{type(exc).__name__.lower()}"
+            ] += 1
+        else:
+            self._d5_a3_candidate_stage_by_comparison_key[
+                trace.comparison_key
+            ] = stage_evidence
+        evidence = assemble_active_vision_a3_evidence(
+            trace,
+            candidate_window=candidate_window,
+            same_key_r0_window=None,
+        )
+        self._d5_a3_evidence_by_comparison_key[
+            trace.comparison_key
+        ] = evidence
+        if candidate_window is not None:
+            self._d5_a3_physical_window_count += 1
+
+    def _d5_a3_candidate_stage_evidence(
+        self,
+        *,
+        trace: ActiveVisionA3AdoptionTrace,
+        frames: tuple[ActiveVisionA3AnonymousObservationFrame, ...],
+        inventory_end_timestamp: float | None,
+        observation_inventory_complete: bool,
+        physical_window_status: ActiveVisionA3CandidatePhysicalWindowStatus,
+    ) -> ActiveVisionA3CandidateStageEvidence:
+        command = trace.issued_command_payload
+        ack = trace.runtime_ack
+        feedback = trace.camera_feedback
+        if command is None:
+            raise ValueError("candidate-stage trace is missing its command")
+        issued = float(command["issued_timestamp"])
+        expires = float(command["expires_timestamp"])
+        inventory_end = (
+            issued
+            if inventory_end_timestamp is None
+            else max(issued, float(inventory_end_timestamp))
+        )
+        status = physical_window_status
+        inventory_complete = bool(observation_inventory_complete)
+        if (
+            status is ActiveVisionA3CandidatePhysicalWindowStatus.UNKNOWN
+        ):
+            if inventory_end + _EPS >= expires:
+                status = ActiveVisionA3CandidatePhysicalWindowStatus.MISSING
+                inventory_complete = True
+            else:
+                status = (
+                    ActiveVisionA3CandidatePhysicalWindowStatus.INCOMPLETE
+                )
+        measurements = tuple(
+            float(item.measurement_timestamp) for item in frames
+        )
+        arrivals = tuple(float(item.arrival_timestamp) for item in frames)
+        return ActiveVisionA3CandidateStageEvidence(
+            comparison_key=trace.comparison_key,
+            scenario_id=trace.scenario_id,
+            scale=trace.scale,
+            seed=trace.seed,
+            window_index=trace.window_index,
+            sample_key=trace.sample_key,
+            camera_id=trace.camera_id,
+            resource_id=trace.resource_id,
+            pairing_context_sha256=trace.pairing_context_sha256,
+            adoption_trace_sha256=trace.trace_sha256,
+            source_event_log_sha256=trace.source_event_log_sha256,
+            inventory_start_timestamp=issued,
+            inventory_end_timestamp=inventory_end,
+            runtime_event_inventory_complete=True,
+            command_issued_timestamp=issued,
+            command_expires_timestamp=expires,
+            runtime_ack_timestamp=(
+                None if ack is None else float(ack.ack_timestamp)
+            ),
+            runtime_ack_applied=(
+                None
+                if ack is None
+                else bool(ack.accepted and ack.status_code == "applied")
+            ),
+            camera_feedback_timestamp=(
+                None
+                if feedback is None
+                else float(feedback.camera_state.state_timestamp)
+            ),
+            observation_inventory_complete=inventory_complete,
+            anonymous_observation_frame_count=len(frames),
+            first_measurement_timestamp=(
+                None if not measurements else min(measurements)
+            ),
+            last_measurement_timestamp=(
+                None if not measurements else max(measurements)
+            ),
+            first_arrival_timestamp=(
+                None if not arrivals else min(arrivals)
+            ),
+            last_arrival_timestamp=(
+                None if not arrivals else max(arrivals)
+            ),
+            physical_window_status=status,
+            evidence_kind=RUNTIME_OBSERVED_EVIDENCE_KIND,
+        )
+
+    def _finalize_all_d5_a3_pending(
+        self,
+        *,
+        timestamp_s: float,
+    ) -> None:
+        inventory_end = float(timestamp_s)
+        for camera_id in tuple(self._d5_a3_pending_by_camera):
+            for pending in tuple(
+                self._d5_a3_pending_by_camera.get(camera_id, ())
+            ):
+                command = pending.trace.issued_command_payload
+                expires = (
+                    None
+                    if command is None
+                    else float(command["expires_timestamp"])
+                )
+                complete = bool(
+                    expires is not None
+                    and inventory_end + _EPS >= expires
+                )
+                self._finalize_d5_a3_pending(
+                    camera_id,
+                    pending,
+                    inventory_end_timestamp=inventory_end,
+                    observation_inventory_complete=complete,
+                    physical_window_status=(
+                        ActiveVisionA3CandidatePhysicalWindowStatus.MISSING
+                        if complete
+                        else ActiveVisionA3CandidatePhysicalWindowStatus.INCOMPLETE
+                    ),
+                )
+        for camera_id in tuple(self._d5_a3_r0_pending_by_camera):
+            for pending in tuple(
+                self._d5_a3_r0_pending_by_camera.get(camera_id, ())
+            ):
+                self._finalize_d5_a3_pending(
+                    camera_id,
+                    pending,
+                    is_r0=True,
+                    inventory_end_timestamp=inventory_end,
+                )
+
+    def active_vision_r0_window_records(
+        self,
+    ) -> tuple[dict[str, Any], ...]:
+        """Return independent deterministic R0 windows for main pairing."""
+
+        return tuple(
+            window.to_dict()
+            for _, window in sorted(
+                self._d5_a3_r0_window_by_comparison_key.items()
+            )
+        )
+
+    def active_vision_a3_candidate_stage_records(
+        self,
+    ) -> tuple[dict[str, Any], ...]:
+        """Return runtime-observed A3 stage inventories for main pairing."""
+
+        return tuple(
+            evidence.to_dict()
+            for _, evidence in sorted(
+                self._d5_a3_candidate_stage_by_comparison_key.items()
+            )
+        )
+
+    def learning_adoption_evidence_records(
+        self,
+    ) -> dict[str, tuple[dict[str, Any], ...]]:
+        """Return truth-free A1/A2/A3 records for D6 read-only auditing."""
+
+        a2 = tuple(
+            evidence.to_dict()
+            for _, evidence in sorted(
+                self._d4_a2_evidence_by_application.items()
+            )
+        )
+        a3 = tuple(
+            evidence.to_dict()
+            for _, evidence in sorted(
+                self._d5_a3_evidence_by_comparison_key.items()
+            )
+        )
+        return {
+            "a1": (),
+            "a2": a2,
+            "a3": a3,
+        }
 
     def d1_consistency_evidence_records(self) -> tuple[Any, ...]:
         """Return the final truth-free D1 evidence snapshot for offline scoring."""
@@ -3149,6 +5198,17 @@ class IntegratedScalableModuleStack:
             )
             for decision in decisions
         )
+        self._d5_a3_command_context_by_camera.clear()
+        for decision, command in zip(decisions, commands, strict=True):
+            context = _D5A3CommandContext(
+                window_index=self._d5_a3_command_index,
+                timestamp_s=now,
+                snapshot=snapshot,
+                decision=decision,
+                command=command,
+            )
+            self._d5_a3_command_context_by_camera[command.camera_id] = context
+            self._d5_a3_command_index += 1
         self.latest_active_vision_snapshot = snapshot
         self.latest_active_vision_decisions = decisions
         self.latest_active_vision_recon_cue_count = len(recon_assignments)
@@ -3692,6 +5752,221 @@ class IntegratedScalableModuleStack:
                     "current_plan_missing"
                 )
                 continue
+            if (
+                receipt.message_kind
+                == CausalMessageKind.REGIONAL_PLAN_OWNER_ACK.value
+            ):
+                try:
+                    delivery = (
+                        RegionResourceOwnerAckDelivery.from_delivered_message(
+                            delivered
+                        )
+                    )
+                    ack = delivery.ack
+                    pending = self._d4_a2_pending_by_plan[
+                        (ack.applied_plan_id, ack.applied_plan_version)
+                    ]
+                    if (
+                        str(plan.plan_id) != ack.applied_plan_id
+                        or int(plan.version) != ack.applied_plan_version
+                    ):
+                        raise ValueError("owner ACK references a stale plan")
+                    validation = validate_region_resource_owner_ack_delivery(
+                        delivery,
+                        expected_ack=pending.expected_owner_ack,
+                        expected_destination_node_id=(
+                            pending.context.runtime_node_id
+                        ),
+                        decision_timestamp_s=now,
+                        communication_gate=self._d4_causal_gate,
+                    )
+                except (KeyError, TypeError, ValueError):
+                    self._record_d4_communication_rejection(
+                        "owner_ack_delivery_invalid"
+                    )
+                    continue
+                if not validation.accepted:
+                    self._record_d4_communication_rejection(
+                        *validation.reason_codes
+                    )
+                    continue
+                self._d4_communication_accepted_count += 1
+                self._d4_communication_accept_counts[
+                    receipt.message_kind
+                ] += 1
+                communication_validation = (
+                    validation.communication_validation
+                )
+                if (
+                    communication_validation is not None
+                    and communication_validation.idempotent_replay
+                ):
+                    continue
+                pending.owner_ack_delivery = delivery
+                self._d4_owner_ack_delivery_count += 1
+                changed = True
+                partial = self._d4_safe_adoption_assembler.assemble(
+                    preparation=pending.preparation,
+                    context=pending.context,
+                    evaluated_at_s=now,
+                    d3_successor_plan=pending.plan_reference,
+                    runtime_ack=pending.runtime_ack,
+                    owner_ack_delivery=delivery,
+                )
+                pending.final_evidence = partial
+                self._remember_d4_a2_evidence(partial)
+                continue
+            if (
+                receipt.message_kind
+                == CausalMessageKind.COALITION_MEMBER_ACK.value
+                and isinstance(payload.get("member_ack"), Mapping)
+            ):
+                try:
+                    delivery = (
+                        RegionResourceCoalitionAckDelivery.from_delivered_message(
+                            delivered
+                        )
+                    )
+                    member_ack = delivery.member_ack
+                    if (
+                        str(plan.plan_id) != member_ack.plan_id
+                        or int(plan.version) != member_ack.plan_version
+                    ):
+                        raise ValueError(
+                            "coalition ACK references a stale plan"
+                        )
+                    matching_assignment = next(
+                        assignment
+                        for assignment in plan.assignments
+                        if assignment.resource_id == member_ack.resource_id
+                        and assignment.target_id == member_ack.global_track_id
+                        and assignment.coalition_id == member_ack.coalition_id
+                        and int(assignment.coalition_version or 0)
+                        == member_ack.coalition_version
+                    )
+                    pending = self._d4_a2_pending_by_plan.get(
+                        (member_ack.plan_id, member_ack.plan_version)
+                    )
+                    transport_reference = self._d4_plan_transport_references.get(
+                        (member_ack.plan_id, member_ack.plan_version)
+                    )
+                    if pending is not None:
+                        requirement = next(
+                            item
+                            for item in pending.plan_reference.coalition_requirements
+                            if item.global_track_id
+                            == member_ack.global_track_id
+                            and item.coalition_id == member_ack.coalition_id
+                            and item.coalition_version
+                            == member_ack.coalition_version
+                            and member_ack.resource_id
+                            in item.required_member_ids
+                        )
+                        expected_authority = (
+                            pending.plan_reference.owner_node_id
+                        )
+                        expected_plan_payload_sha256 = (
+                            pending.plan_reference.plan_payload_sha256
+                        )
+                        expected_plan_bus_sequence = (
+                            pending.plan_reference.plan_bus_sequence
+                        )
+                        expected_lease_expires_at_s = (
+                            pending.plan_reference.valid_until_s
+                        )
+                        expected_partition_generation = (
+                            pending.context.partition_generation
+                        )
+                    else:
+                        if transport_reference is None:
+                            raise ValueError(
+                                "coalition ACK has no published plan reference"
+                            )
+                        requirement = None
+                        expected_authority = (
+                            self._d4_expected_authority_for_delivery(
+                                plan,
+                                member_ack.resource_id,
+                                receipt,
+                            )
+                        )
+                        (
+                            expected_plan_payload_sha256,
+                            expected_plan_bus_sequence,
+                        ) = transport_reference
+                        expected_lease_expires_at_s = (
+                            delivery.lease_expires_at_s
+                        )
+                        expected_partition_generation = partition_generation
+                    validation = (
+                        validate_region_resource_coalition_ack_delivery(
+                            delivery,
+                            expected_member_ack=member_ack,
+                            expected_authority_id=expected_authority,
+                            expected_plan_payload_sha256=(
+                                expected_plan_payload_sha256
+                            ),
+                            expected_plan_bus_sequence=(
+                                expected_plan_bus_sequence
+                            ),
+                            expected_lease_expires_at_s=(
+                                expected_lease_expires_at_s
+                            ),
+                            expected_partition_generation=(
+                                expected_partition_generation
+                            ),
+                            expected_destination_node_id=expected_authority,
+                            decision_timestamp_s=now,
+                            expected_message_id=delivery.message_id,
+                            communication_gate=self._d4_causal_gate,
+                        )
+                    )
+                except (KeyError, StopIteration, TypeError, ValueError):
+                    self._record_d4_communication_rejection(
+                        "coalition_ack_delivery_invalid"
+                    )
+                    continue
+                if not validation.accepted:
+                    self._record_d4_communication_rejection(
+                        *validation.reason_codes
+                    )
+                    continue
+                self._d4_communication_accepted_count += 1
+                self._d4_communication_accept_counts[
+                    receipt.message_kind
+                ] += 1
+                communication_validation = (
+                    validation.communication_validation
+                )
+                if (
+                    communication_validation is not None
+                    and communication_validation.idempotent_replay
+                ):
+                    continue
+                key = (
+                    member_ack.resource_id,
+                    member_ack.global_track_id,
+                    member_ack.plan_version,
+                    member_ack.epoch,
+                    delivery.partition_generation,
+                )
+                self._d4_ack_deliveries[key] = _D4AcceptedDelivery(
+                    payload=member_ack.to_dict(),
+                    receipt=delivery.receipt,
+                )
+                if pending is not None and requirement is not None:
+                    coalition_key = (
+                        requirement.global_track_id,
+                        requirement.coalition_id,
+                        requirement.coalition_version,
+                    )
+                    pending.coalition_ack_deliveries.setdefault(
+                        coalition_key,
+                        {},
+                    )[member_ack.resource_id] = delivery
+                    self._d4_coalition_ack_delivery_count += 1
+                changed = True
+                continue
             expected_epoch = self._plan_authority_epoch(plan)
             custom_reasons = self._d4_payload_rejection_reasons(
                 receipt,
@@ -3953,34 +6228,91 @@ class IntegratedScalableModuleStack:
             global_track_id = str(assignment.get("global_track_id") or "")
             if not coalition_id or not global_track_id:
                 continue
-            ack_payload = self._d4_message_payload(
-                message_kind=CausalMessageKind.COALITION_MEMBER_ACK.value,
-                source=resource_id,
-                destination=receipt.source_node_id,
-                authority_id=receipt.authority_id,
+            plan_payload_sha256 = str(
+                payload.get("plan_payload_sha256", "")
+            )
+            plan_bus_sequence = payload.get("plan_bus_sequence")
+            if (
+                len(plan_payload_sha256) != 64
+                or not isinstance(plan_bus_sequence, Integral)
+                or int(plan_bus_sequence) <= 0
+            ):
+                self._d4_a2_bridge_blocker_counts[
+                    "coalition_plan_transport_reference_missing"
+                ] += 1
+                ack_payload = self._d4_message_payload(
+                    message_kind=CausalMessageKind.COALITION_MEMBER_ACK.value,
+                    source=resource_id,
+                    destination=receipt.source_node_id,
+                    authority_id=receipt.authority_id,
+                    plan_id=str(payload["plan_id"]),
+                    plan_version=receipt.plan_version,
+                    epoch=receipt.epoch,
+                    lease_expires_at_s=receipt.lease_expires_at_s,
+                    partition_generation=receipt.partition_generation,
+                    now=now,
+                    extra={
+                        "resource_id": resource_id,
+                        "global_track_id": global_track_id,
+                        "coalition_id": coalition_id,
+                        "coalition_version": coalition_version,
+                        "can_execute": active_by_id.get(resource_id, False),
+                        "evidence_timestamp": now,
+                        "valid_until": receipt.lease_expires_at_s,
+                        "source_plan_message_id": receipt.message_id,
+                    },
+                )
+                intents.append(
+                    self._d4_intent(
+                        source=resource_id,
+                        destination=receipt.source_node_id,
+                        topic=_D4_ACK_TOPIC,
+                        payload=ack_payload,
+                    )
+                )
+                continue
+            member_ack = CoalitionMemberAck(
+                resource_id=resource_id,
+                global_track_id=global_track_id,
+                coalition_id=coalition_id,
+                coalition_version=coalition_version,
                 plan_id=str(payload["plan_id"]),
                 plan_version=receipt.plan_version,
                 epoch=receipt.epoch,
-                lease_expires_at_s=receipt.lease_expires_at_s,
-                partition_generation=receipt.partition_generation,
-                now=now,
-                extra={
-                    "resource_id": resource_id,
-                    "global_track_id": global_track_id,
-                    "coalition_id": coalition_id,
-                    "coalition_version": coalition_version,
-                    "can_execute": active_by_id.get(resource_id, False),
-                    "evidence_timestamp": now,
-                    "valid_until": receipt.lease_expires_at_s,
+                can_execute=active_by_id.get(resource_id, False),
+                evidence_timestamp=now,
+                valid_until=receipt.lease_expires_at_s,
+                metadata={
                     "source_plan_message_id": receipt.message_id,
                 },
             )
+            self._d4_message_sequence += 1
+            message_id = (
+                "d4:coalition_member_ack:"
+                f"{self._d4_message_sequence:012d}"
+            )
+            ack_payload = {
+                "schema": REGION_RESOURCE_COALITION_ACK_DELIVERY_SCHEMA,
+                "message_id": message_id,
+                "message_kind": (
+                    CausalMessageKind.COALITION_MEMBER_ACK.value
+                ),
+                "authority_id": receipt.authority_id,
+                "plan_version": receipt.plan_version,
+                "plan_payload_sha256": plan_payload_sha256,
+                "plan_bus_sequence": int(plan_bus_sequence),
+                "epoch": receipt.epoch,
+                "lease_expires_at_s": receipt.lease_expires_at_s,
+                "partition_generation": receipt.partition_generation,
+                "member_ack": member_ack.to_dict(),
+            }
             intents.append(
                 self._d4_intent(
                     source=resource_id,
                     destination=receipt.source_node_id,
                     topic=_D4_ACK_TOPIC,
                     payload=ack_payload,
+                    random_stream=_D4_STRICT_EVIDENCE_RANDOM_STREAM,
                 )
             )
         return intents
@@ -4068,11 +6400,26 @@ class IntegratedScalableModuleStack:
             )
 
         if now + _EPS >= self._next_d4_plan_broadcast_s:
+            transport_reference = self._d4_plan_transport_references.get(
+                (str(plan.plan_id), int(plan.version))
+            )
+            strict_transport_reference_available = (
+                transport_reference is not None
+            )
+            if transport_reference is None:
+                self._d4_a2_bridge_blocker_counts[
+                    "plan_transport_reference_not_yet_published"
+                ] += 1
+                plan_payload_sha256 = None
+                plan_bus_sequence = None
+            else:
+                plan_payload_sha256, plan_bus_sequence = transport_reference
             plan_key = (
                 str(plan.plan_id),
                 int(plan.version),
                 int(epoch),
                 partition_generation,
+                strict_transport_reference_available,
             )
             plan_changed = plan_key != self._d4_last_broadcast_plan_key
             for index, resource_id in enumerate(
@@ -4139,6 +6486,14 @@ class IntegratedScalableModuleStack:
                     for assignment in plan.assignments
                     if assignment.resource_id == resource_id
                 )
+                transport_binding = (
+                    {
+                        "plan_payload_sha256": plan_payload_sha256,
+                        "plan_bus_sequence": plan_bus_sequence,
+                    }
+                    if strict_transport_reference_available
+                    else {}
+                )
                 payload = self._d4_message_payload(
                     message_kind=(
                         CausalMessageKind.REGIONAL_PLAN_BROADCAST.value
@@ -4155,6 +6510,7 @@ class IntegratedScalableModuleStack:
                     extra={
                         "member_id": resource_id,
                         "member_assignments": member_assignments,
+                        **transport_binding,
                     },
                 )
                 intents.append(
@@ -4163,14 +6519,20 @@ class IntegratedScalableModuleStack:
                         destination=resource_id,
                         topic=_D4_PLAN_TOPIC,
                         payload=payload,
+                        random_stream=(
+                            _D4_STRICT_EVIDENCE_RANDOM_STREAM
+                            if strict_transport_reference_available
+                            else "shared_v1"
+                        ),
                     )
                 )
             self._d4_last_broadcast_plan_key = plan_key
-            self._next_d4_plan_broadcast_s = _advance_schedule(
-                self._next_d4_plan_broadcast_s,
-                self.stack_config.d4_plan_broadcast_period_s,
-                now,
-            )
+            if strict_transport_reference_available:
+                self._next_d4_plan_broadcast_s = _advance_schedule(
+                    self._next_d4_plan_broadcast_s,
+                    self.stack_config.d4_plan_broadcast_period_s,
+                    now,
+                )
         return intents
 
     def _d4_message_payload(
@@ -4214,6 +6576,7 @@ class IntegratedScalableModuleStack:
         destination: str,
         topic: str,
         payload: Mapping[str, Any],
+        random_stream: str = "shared_v1",
     ) -> RuntimeCommunicationIntent:
         self._d4_communication_intent_counts[topic] += 1
         return RuntimeCommunicationIntent(
@@ -4222,6 +6585,7 @@ class IntegratedScalableModuleStack:
             topic=topic,
             schema_version=_D4_CONTROL_SCHEMA,
             payload=payload,
+            random_stream=random_stream,
         )
 
     def _d4_authority_for_member(self, plan: Any, resource_id: str) -> str:
@@ -6918,6 +9282,17 @@ class IntegratedScalableModuleStack:
         now: float,
     ) -> RuntimePublication:
         consumption = self.latest_d4_region_consumption
+        plan_metadata = (
+            {}
+            if self.latest_plan is None
+            else dict(self.latest_plan.metadata)
+        )
+        successor_available = bool(
+            plan_metadata.get(
+                "regional_hint_successor_plan_available",
+                False,
+            )
+        )
         return RuntimePublication(
             topic="modules.d4.region_resource_consumption",
             source="main",
@@ -6930,10 +9305,21 @@ class IntegratedScalableModuleStack:
                 ),
                 "d3_hint_applied": bool(
                     self.latest_plan is not None
-                    and self.latest_plan.metadata.get(
+                    and plan_metadata.get(
                         "regional_hint_applied",
                         False,
                     )
+                    and successor_available
+                ),
+                "d3_successor_plan_available": successor_available,
+                "d3_successor_state": plan_metadata.get(
+                    "regional_hint_successor_state"
+                ),
+                "d3_successor_plan_id": plan_metadata.get(
+                    "regional_hint_successor_plan_id"
+                ),
+                "d3_successor_plan_version": plan_metadata.get(
+                    "regional_hint_successor_plan_version"
                 ),
             },
             copy_payload=False,
@@ -6941,6 +9327,11 @@ class IntegratedScalableModuleStack:
 
     def _d5_publication(self, now: float) -> RuntimePublication:
         association = self.latest_d5_result.association
+        binding_by_tracklet_key = {
+            tracklet_key: binding
+            for binding in association.bindings
+            for tracklet_key in binding.supporting_tracklet_keys
+        }
         return RuntimePublication(
             topic="modules.d5.terminal_association",
             source="D5",
@@ -6955,6 +9346,52 @@ class IntegratedScalableModuleStack:
                 "scoring_status": association.scoring_status,
                 "fallback_reason": association.fallback_reason,
                 "diagnostics": dict(association.diagnostics),
+                "local_tracklets": [
+                    {
+                        "resource_id": item.resource_id,
+                        "camera_id": item.camera_id,
+                        "local_track_id": item.local_track_id,
+                        "tracklet_key": item.tracklet_key,
+                        "measurement_timestamp": item.measurement_timestamp,
+                        "arrival_timestamp": item.arrival_timestamp,
+                        "bbox_xyxy": (
+                            None
+                            if item.bbox_xyxy is None
+                            else list(item.bbox_xyxy)
+                        ),
+                        "center_px": item.center_px.tolist(),
+                        "covariance_px": item.covariance_px.tolist(),
+                        "confidence": item.confidence,
+                        "center_binding": (
+                            None
+                            if item.tracklet_key
+                            not in binding_by_tracklet_key
+                            else {
+                                "cluster_key": (
+                                    binding_by_tracklet_key[
+                                        item.tracklet_key
+                                    ].cluster_key
+                                ),
+                                "global_track_id": (
+                                    binding_by_tracklet_key[
+                                        item.tracklet_key
+                                    ].global_track_id
+                                ),
+                                "decision_state": (
+                                    binding_by_tracklet_key[
+                                        item.tracklet_key
+                                    ].decision_state
+                                ),
+                                "cost": (
+                                    binding_by_tracklet_key[
+                                        item.tracklet_key
+                                    ].cost
+                                ),
+                            }
+                        ),
+                    }
+                    for item in self.latest_d5_result.tracklets
+                ],
                 "bindings": [
                     {
                         "cluster_key": item.cluster_key,
@@ -7011,22 +9448,7 @@ class IntegratedScalableModuleStack:
                 "effective_mode_counts": dict(sorted(mode_counts.items())),
                 "intent_counts": dict(sorted(intent_counts.items())),
                 "commands": [
-                    {
-                        "camera_id": command.camera_id,
-                        "resource_id": command.resource_id,
-                        "issued_timestamp": command.issued_timestamp,
-                        "expires_timestamp": command.expires_timestamp,
-                        "plan_version": command.plan_version,
-                        "coalition_version": command.coalition_version,
-                        "communication_version": command.communication_version,
-                        "intent": command.intent,
-                        "horizontal_fov_deg": command.horizontal_fov_deg,
-                        "fov_mode": command.fov_mode,
-                        "target_global_track_id": command.target_global_track_id,
-                        "requested_mode": command.requested_mode,
-                        "effective_mode": command.effective_mode,
-                        "reason": command.reason,
-                    }
+                    camera_observation_command_payload(command)
                     for command in commands
                 ],
             },
@@ -7094,6 +9516,14 @@ class IntegratedScalableModuleStack:
                     }
                 )
             stage_timings[stage] = record
+        a2_evidence = tuple(self._d4_a2_evidence_by_application.values())
+        a2_stage_counts = Counter(
+            getattr(item.stage, "value", str(item.stage))
+            for item in a2_evidence
+        )
+        a3_evidence = tuple(
+            self._d5_a3_evidence_by_comparison_key.values()
+        )
         return {
             "schema_version": INTEGRATED_STACK_SCHEMA_VERSION,
             "timestamp": now,
@@ -7156,6 +9586,35 @@ class IntegratedScalableModuleStack:
             ),
             "d4_plan_delivery_count": len(self._d4_plan_deliveries),
             "d4_ack_delivery_count": len(self._d4_ack_deliveries),
+            "d4_a2_owner_ack_delivery_count": (
+                self._d4_owner_ack_delivery_count
+            ),
+            "d4_a2_coalition_ack_delivery_count": (
+                self._d4_coalition_ack_delivery_count
+            ),
+            "d4_a2_physical_window_count": (
+                self._d4_a2_physical_window_count
+            ),
+            "d4_a2_evidence_record_count": len(a2_evidence),
+            "d4_a2_evidence_stage_counts": dict(
+                sorted(a2_stage_counts.items())
+            ),
+            "d4_a2_safe_adoption_count": sum(
+                bool(item.safe_adoption_available)
+                for item in a2_evidence
+            ),
+            "d4_a2_evidence_status": (
+                "verified_safe_adoption"
+                if any(item.safe_adoption_available for item in a2_evidence)
+                else (
+                    "evidence_incomplete"
+                    if a2_evidence
+                    else "evidence_unavailable"
+                )
+            ),
+            "d4_a2_bridge_blocker_counts": dict(
+                sorted(self._d4_a2_bridge_blocker_counts.items())
+            ),
             "d5_binding_count": (
                 0
                 if self.latest_d5_result is None
@@ -7163,6 +9622,65 @@ class IntegratedScalableModuleStack:
                     item.global_track_id is not None
                     for item in self.latest_d5_result.association.bindings
                 )
+            ),
+            "d5_a3_runtime_ack_count": self._d5_a3_runtime_ack_count,
+            "d5_a3_observation_frame_count": (
+                self._d5_a3_observation_frame_count
+            ),
+            "d5_a3_physical_window_count": (
+                self._d5_a3_physical_window_count
+            ),
+            "d5_a3_r0_runtime_ack_count": (
+                self._d5_a3_r0_runtime_ack_count
+            ),
+            "d5_a3_r0_observation_frame_count": (
+                self._d5_a3_r0_observation_frame_count
+            ),
+            "d5_a3_r0_physical_window_count": (
+                self._d5_a3_r0_physical_window_count
+            ),
+            "d5_camera_empty_frame_received_count": (
+                self._d5_camera_empty_frame_received_count
+            ),
+            "d5_camera_empty_frame_consumed_count": (
+                self._d5_camera_empty_frame_consumed_count
+            ),
+            "d5_camera_empty_frame_rejected_count": (
+                self._d5_camera_empty_frame_rejected_count
+            ),
+            "d5_camera_empty_frame_unmatched_count": (
+                self._d5_camera_empty_frame_unmatched_count
+            ),
+            "d5_active_vision_observation_triggered": (
+                self.stack_config.d5_active_vision_observation_triggered
+            ),
+            "d5_active_vision_evidence_tail_s": (
+                self.stack_config.d5_active_vision_evidence_tail_s
+            ),
+            "d5_active_vision_tail_suppressed_count": (
+                self._d5_active_vision_tail_suppressed_count
+            ),
+            "d5_a3_r0_window_record_count": len(
+                self._d5_a3_r0_window_by_comparison_key
+            ),
+            "d5_a3_evidence_record_count": len(a3_evidence),
+            "d5_a3_candidate_stage_record_count": len(
+                self._d5_a3_candidate_stage_by_comparison_key
+            ),
+            "d5_a3_model_action_adopted_count": sum(
+                bool(item.model_action_adopted) for item in a3_evidence
+            ),
+            "d5_a3_evidence_status": (
+                "verified_adoption"
+                if any(item.model_action_adopted for item in a3_evidence)
+                else (
+                    "verified_zero_adoption"
+                    if a3_evidence
+                    else "evidence_unavailable"
+                )
+            ),
+            "d5_a3_bridge_blocker_counts": dict(
+                sorted(self._d5_a3_bridge_blocker_counts.items())
             ),
             "d5_g1_shadow_scoring_frame_count": int(
                 self._d5_shadow_scoring_frame_count
@@ -7658,6 +10176,19 @@ def _d1_shadow_sha256_bytes(encoded: bytes) -> str:
     return f"sha256:{hashlib.sha256(encoded).hexdigest()}"
 
 
+def _d4_safe_adoption_sha256(value: Any) -> str:
+    """Match D4's immutable evidence digest for cross-module validation."""
+
+    encoded = json.dumps(
+        value,
+        ensure_ascii=True,
+        allow_nan=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
 def _d1_shadow_canonical_json_bytes(value: Any) -> bytes:
     return json.dumps(
         _d1_shadow_canonicalize(value),
@@ -7754,3 +10285,17 @@ def _coalition_epoch_for(plan: Any, target_id: str) -> int | None:
     if coalition is None:
         return None
     return int(coalition.metadata.get("coalition_epoch", coalition.version))
+
+
+def _is_sha256_text(value: Any) -> bool:
+    text = str(value or "").strip().lower()
+    return len(text) == 64 and all(
+        character in "0123456789abcdef" for character in text
+    )
+
+
+def _is_git_commit_text(value: Any) -> bool:
+    text = str(value or "").strip().lower()
+    return len(text) == 40 and all(
+        character in "0123456789abcdef" for character in text
+    )

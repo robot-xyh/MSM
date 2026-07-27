@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from contextlib import ExitStack
 import csv
+import hashlib
 import json
 from pathlib import Path
 from time import perf_counter
@@ -18,6 +19,15 @@ from .orchestrator import EpisodeResult
 
 POST_RUN_TIMING_SCHEMA_VERSION = "scalable3d-post-run-timings-v1"
 STAGE_TIMING_SCHEMA_VERSION = "scalable3d-stage-timings-v2"
+LEARNING_ADOPTION_EVIDENCE_RECORDS_SCHEMA_VERSION = (
+    "scalable3d-learning-adoption-evidence-records-v1"
+)
+ACTIVE_VISION_R0_WINDOW_RECORDS_SCHEMA_VERSION = (
+    "scalable3d-active-vision-r0-window-records-v1"
+)
+ACTIVE_VISION_A3_CANDIDATE_STAGE_RECORDS_SCHEMA_VERSION = (
+    "scalable3d-active-vision-a3-candidate-stage-records-v1"
+)
 
 
 def write_episode_outputs(
@@ -43,6 +53,49 @@ def write_episode_outputs(
         paths["observation_governance_audit"] = _write_json(
             output_dir / "observation_governance_audit.json",
             result.observation_governance_audit,
+        )
+    if result.learning_adoption_evidence_records is not None:
+        evidence_payload = {
+            "schema_version": (
+                LEARNING_ADOPTION_EVIDENCE_RECORDS_SCHEMA_VERSION
+            ),
+            "episode_id": result.manifest.episode_id,
+            "records": result.learning_adoption_evidence_records,
+        }
+        evidence_payload["content_sha256"] = _canonical_sha256(
+            evidence_payload
+        )
+        paths["learning_adoption_evidence"] = _write_json(
+            output_dir / "learning_adoption_evidence.json",
+            evidence_payload,
+        )
+    if result.active_vision_r0_window_records is not None:
+        r0_payload = {
+            "schema_version": (
+                ACTIVE_VISION_R0_WINDOW_RECORDS_SCHEMA_VERSION
+            ),
+            "episode_id": result.manifest.episode_id,
+            "records": result.active_vision_r0_window_records,
+        }
+        r0_payload["content_sha256"] = _canonical_sha256(r0_payload)
+        paths["active_vision_r0_windows"] = _write_json(
+            output_dir / "active_vision_r0_windows.json",
+            r0_payload,
+        )
+    if result.active_vision_a3_candidate_stage_records is not None:
+        candidate_stage_payload = {
+            "schema_version": (
+                ACTIVE_VISION_A3_CANDIDATE_STAGE_RECORDS_SCHEMA_VERSION
+            ),
+            "episode_id": result.manifest.episode_id,
+            "records": result.active_vision_a3_candidate_stage_records,
+        }
+        candidate_stage_payload["content_sha256"] = _canonical_sha256(
+            candidate_stage_payload
+        )
+        paths["active_vision_a3_candidate_stages"] = _write_json(
+            output_dir / "active_vision_a3_candidate_stages.json",
+            candidate_stage_payload,
         )
     _append_post_run_timing(timings, "core_metadata", stage_started)
 
@@ -554,3 +607,14 @@ def _write_json(path: Path, payload: Any) -> Path:
         encoding="utf-8",
     )
     return path
+
+
+def _canonical_sha256(payload: Any) -> str:
+    encoded = json.dumps(
+        jsonable(payload),
+        ensure_ascii=False,
+        allow_nan=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import hashlib
 import heapq
 import json
 from typing import Any
@@ -56,7 +57,9 @@ class DeterministicCommunicationNetwork:
     """Seeded network queue with directed-link overrides."""
 
     def __init__(self, *, seed: int, default_profile: LinkProfile | None = None) -> None:
-        self.rng = np.random.default_rng(int(seed))
+        self._base_seed = int(seed)
+        self.rng = np.random.default_rng(self._base_seed)
+        self._rng_by_stream: dict[str, np.random.Generator] = {}
         self.default_profile = default_profile or LinkProfile()
         self._profiles: dict[tuple[str, str], LinkProfile] = {}
         self._queue: list[tuple[float, int, DeliveredMessage]] = []
@@ -77,11 +80,15 @@ class DeterministicCommunicationNetwork:
         destination: str,
         send_timestamp: float,
         envelope: VersionedEnvelope,
+        random_stream: str = "shared_v1",
     ) -> bool:
         """Queue one message and return False when the seeded loss model drops it."""
 
         if not source or not destination:
             raise ValueError("source and destination must be non-empty")
+        stream = str(random_stream).strip()
+        if not stream:
+            raise ValueError("random_stream must be non-empty")
         if not np.isfinite(send_timestamp) or send_timestamp < 0.0:
             raise ValueError("send_timestamp must be finite and non-negative")
         assert_online_payload_truth_free(envelope.payload)
@@ -91,10 +98,15 @@ class DeterministicCommunicationNetwork:
         )
         self._sent_count += 1
         self._sent_bytes += payload_size
-        if self.rng.random() < profile.drop_probability:
+        rng = self._random_stream(stream)
+        if rng.random() < profile.drop_probability:
             self._dropped_count += 1
             return False
-        jitter = float(self.rng.normal(0.0, profile.jitter_s)) if profile.jitter_s > 0.0 else 0.0
+        jitter = (
+            float(rng.normal(0.0, profile.jitter_s))
+            if profile.jitter_s > 0.0
+            else 0.0
+        )
         serialization_delay = payload_size / profile.bandwidth_bytes_per_s
         arrival = float(send_timestamp) + max(0.0, profile.latency_s + jitter) + serialization_delay
         message = DeliveredMessage(
@@ -108,6 +120,20 @@ class DeterministicCommunicationNetwork:
         self._counter += 1
         heapq.heappush(self._queue, (arrival, self._counter, message))
         return True
+
+    def _random_stream(self, stream: str) -> np.random.Generator:
+        if stream == "shared_v1":
+            return self.rng
+        existing = self._rng_by_stream.get(stream)
+        if existing is not None:
+            return existing
+        stream_digest = hashlib.sha256(stream.encode("utf-8")).digest()
+        stream_seed = int.from_bytes(stream_digest[:8], "big", signed=False)
+        generated = np.random.default_rng(
+            np.random.SeedSequence([self._base_seed, stream_seed])
+        )
+        self._rng_by_stream[stream] = generated
+        return generated
 
     def deliver(self, timestamp: float) -> tuple[DeliveredMessage, ...]:
         """Release all messages whose arrival time is no later than timestamp."""
@@ -134,7 +160,9 @@ class DeterministicCommunicationNetwork:
 
     def reset(self, *, seed: int | None = None) -> None:
         if seed is not None:
-            self.rng = np.random.default_rng(int(seed))
+            self._base_seed = int(seed)
+            self.rng = np.random.default_rng(self._base_seed)
+            self._rng_by_stream.clear()
         self._queue.clear()
         self._counter = 0
         self._sent_count = 0

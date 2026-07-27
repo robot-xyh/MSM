@@ -13,6 +13,11 @@ from typing import Any, Mapping
 
 import numpy as np
 
+from research_modules.d6_evaluation_metrics.d6_evaluation_metrics.strict_learning_adoption_audit import (
+    audit_learning_adoption_evidence,
+    build_learning_adoption_audit_input,
+)
+
 from .communication import DeterministicCommunicationNetwork, LinkProfile
 from .episode_bus import (
     EpisodeManifest,
@@ -23,7 +28,9 @@ from .episode_bus import (
     jsonable,
 )
 from .models import (
+    CAMERA_FRAME_EVENT_SCHEMA_VERSION,
     ONLINE_OBSERVATION_SCHEMA_VERSION,
+    CameraFrameEvent,
     OfflineTruthLabel,
     OnlineSensorBatch,
     ScenarioConfig,
@@ -34,6 +41,7 @@ from .runtime_ports import (
     CameraObservationCommand,
     CameraRuntimeState,
     PlatformNavigationBatch,
+    RuntimeCommunicationIntent,
     RuntimeStepInput,
     ScalableModuleStack,
 )
@@ -77,6 +85,15 @@ class EpisodeResult:
     stage_timings: tuple[StageTiming, ...]
     summary: dict[str, Any]
     observation_governance_audit: dict[str, Any] | None = None
+    learning_adoption_evidence_records: (
+        dict[str, tuple[dict[str, Any], ...]] | None
+    ) = None
+    active_vision_r0_window_records: (
+        tuple[dict[str, Any], ...] | None
+    ) = None
+    active_vision_a3_candidate_stage_records: (
+        tuple[dict[str, Any], ...] | None
+    ) = None
     output_paths: dict[str, Path] | None = None
 
 
@@ -218,6 +235,7 @@ class Scalable3DEpisodeRunner:
             self.module_stack.reset(self.config)
         timing = _TimingAccumulator()
         pending: list[tuple[float, int, OnlineSensorBatch]] = []
+        pending_camera_frames: list[tuple[float, int, CameraFrameEvent]] = []
         pending_counter = 0
         transport_sequence = 0
         offline_labels: list[OfflineTruthLabel] = []
@@ -250,6 +268,7 @@ class Scalable3DEpisodeRunner:
         assignment_plan_binding_ack_count = 0
         assignment_plan_control_applied_count = 0
         assignment_plan_hold_count = 0
+        assignment_plan_post_ack_intent_count = 0
         communication_intent_issued_count = 0
         communication_intent_queued_count = 0
         communication_intent_dropped_count = 0
@@ -257,6 +276,11 @@ class Scalable3DEpisodeRunner:
         communication_intent_topic_counts: Counter[str] = Counter()
         delivered_control_message_count = 0
         delivered_control_topic_counts: Counter[str] = Counter()
+        camera_frame_event_generated_count = 0
+        camera_empty_frame_generated_count = 0
+        camera_empty_frame_queued_count = 0
+        camera_empty_frame_dropped_count = 0
+        camera_empty_frame_delivered_count = 0
 
         for step_index in range(step_count):
             snapshot = self.world.snapshot()
@@ -307,18 +331,43 @@ class Scalable3DEpisodeRunner:
                         camera_id: state.horizontal_fov_deg
                         for camera_id, state in camera_states.items()
                     },
+                    camera_command_versions={
+                        camera_id: (
+                            state.last_plan_version,
+                            state.last_coalition_version,
+                            state.last_communication_version,
+                        )
+                        for camera_id, state in camera_states.items()
+                    },
                 )
                 timing.add("visual_scene", time.perf_counter() - started)
                 offline_labels.extend(batch.offline_truth_labels)
+                camera_frame_event_generated_count += len(
+                    batch.camera_frame_events
+                )
                 for online_batch in _group_sensor_batches(batch.measurements):
                     pending_counter += 1
                     heapq.heappush(
                         pending,
                         (online_batch.arrival_timestamp, pending_counter, online_batch),
                     )
+                for frame_event in batch.camera_frame_events:
+                    if not frame_event.empty:
+                        continue
+                    camera_empty_frame_generated_count += 1
+                    pending_counter += 1
+                    heapq.heappush(
+                        pending_camera_frames,
+                        (
+                            frame_event.arrival_timestamp,
+                            pending_counter,
+                            frame_event,
+                        ),
+                    )
                 next_visual_time += self.config.visual_period_s
 
             arrived_batches: list[OnlineSensorBatch] = []
+            arrived_camera_frame_events: list[CameraFrameEvent] = []
             delivered_control_messages: list[Any] = []
             started = time.perf_counter()
             while pending and pending[0][0] <= current_time + 1.0e-12:
@@ -340,6 +389,34 @@ class Scalable3DEpisodeRunner:
                     )
                 else:
                     arrived_batches.append(online_batch)
+            while (
+                pending_camera_frames
+                and pending_camera_frames[0][0] <= current_time + 1.0e-12
+            ):
+                _, _, frame_event = heapq.heappop(pending_camera_frames)
+                if self.config.communication_enabled:
+                    transport_sequence += 1
+                    queued = self.communication.send(
+                        source=frame_event.camera_id,
+                        destination="FUSION-CENTER",
+                        send_timestamp=frame_event.arrival_timestamp,
+                        random_stream="camera_frame_heartbeat_v1",
+                        envelope=VersionedEnvelope(
+                            sequence=transport_sequence,
+                            topic="sensor.camera_empty_frame",
+                            source=frame_event.camera_id,
+                            timestamp=frame_event.arrival_timestamp,
+                            schema_version=CAMERA_FRAME_EVENT_SCHEMA_VERSION,
+                            payload=frame_event,
+                        ),
+                    )
+                    if queued:
+                        camera_empty_frame_queued_count += 1
+                    else:
+                        camera_empty_frame_dropped_count += 1
+                else:
+                    arrived_camera_frame_events.append(frame_event)
+                    camera_empty_frame_delivered_count += 1
             if self.config.communication_enabled:
                 for delivered in self.communication.deliver(current_time):
                     if delivered.envelope.topic == "sensor.observations":
@@ -349,6 +426,15 @@ class Scalable3DEpisodeRunner:
                                 arrival_timestamp=delivered.arrival_timestamp,
                             )
                         )
+                        continue
+                    if delivered.envelope.topic == "sensor.camera_empty_frame":
+                        arrived_camera_frame_events.append(
+                            _retime_camera_frame_event(
+                                delivered.envelope.payload,
+                                arrival_timestamp=delivered.arrival_timestamp,
+                            )
+                        )
+                        camera_empty_frame_delivered_count += 1
                         continue
                     delivered_control_messages.append(delivered)
                     delivered_control_message_count += 1
@@ -371,6 +457,14 @@ class Scalable3DEpisodeRunner:
                     item.batch_id,
                 )
             )
+            arrived_camera_frame_events.sort(
+                key=lambda item: (
+                    item.arrival_timestamp,
+                    item.measurement_timestamp,
+                    item.camera_id,
+                    item.event_id,
+                )
+            )
             for online_batch in arrived_batches:
                 self.bus.publish(
                     topic="sensor.observations",
@@ -378,6 +472,15 @@ class Scalable3DEpisodeRunner:
                     timestamp=online_batch.arrival_timestamp,
                     schema_version=ONLINE_OBSERVATION_SCHEMA_VERSION,
                     payload=online_batch,
+                    copy_payload=False,
+                )
+            for frame_event in arrived_camera_frame_events:
+                self.bus.publish(
+                    topic="sensor.camera_empty_frame",
+                    source=frame_event.camera_id,
+                    timestamp=frame_event.arrival_timestamp,
+                    schema_version=CAMERA_FRAME_EVENT_SCHEMA_VERSION,
+                    payload=frame_event,
                     copy_payload=False,
                 )
             timing.add("episode_bus", time.perf_counter() - started)
@@ -401,6 +504,9 @@ class Scalable3DEpisodeRunner:
                                 camera_states[camera_id]
                                 for camera_id in sorted(camera_states)
                             ),
+                            arrived_camera_frame_events=tuple(
+                                arrived_camera_frame_events
+                            ),
                             delivered_communication_messages=tuple(
                                 delivered_control_messages
                             ),
@@ -418,12 +524,68 @@ class Scalable3DEpisodeRunner:
                     interceptor_command = module_output.interceptor_acceleration_ned
                     recon_command = module_output.recon_acceleration_ned
                     camera_command_issued_count += len(module_output.camera_commands)
+                    last_module_diagnostics = dict(module_output.diagnostics)
+                    publication_started = time.perf_counter()
+                    publication_envelopes: list[VersionedEnvelope] = []
+                    for publication in module_output.publications:
+                        envelope = self.bus.publish(
+                            topic=publication.topic,
+                            source=publication.source,
+                            timestamp=current_time,
+                            schema_version=publication.schema_version,
+                            payload=publication.payload,
+                            copy_payload=publication.copy_payload,
+                        )
+                        publication_envelopes.append(envelope)
+                        module_publication_count += 1
+                        module_publication_topic_counts[publication.topic] = (
+                            module_publication_topic_counts.get(
+                                publication.topic,
+                                0,
+                            )
+                            + 1
+                        )
+                    observation_recorder = getattr(
+                        self.module_stack,
+                        "record_active_vision_observation_publication",
+                        None,
+                    )
+                    if callable(observation_recorder):
+                        for envelope in publication_envelopes:
+                            if (
+                                envelope.topic
+                                == "modules.d5.terminal_association"
+                            ):
+                                observation_recorder(
+                                    publication_envelope=envelope,
+                                )
+
                     camera_acks = _apply_camera_commands(
                         camera_states,
                         module_output.camera_commands,
                         snapshot=snapshot,
                         current_timestamp=current_time,
                     )
+                    camera_ack_envelopes: list[VersionedEnvelope] = []
+                    for ack in camera_acks:
+                        camera_command_ack_count += 1
+                        if ack["status"] == "applied":
+                            camera_command_applied_count += 1
+                        else:
+                            camera_command_rejected_count += 1
+                            camera_command_rejection_reasons[str(ack["reason"])] += 1
+                        camera_ack_envelopes.append(
+                            self.bus.publish(
+                                topic="runtime.camera_command_ack",
+                                source="MAIN-RUNTIME",
+                                timestamp=current_time,
+                                schema_version=(
+                                    "scalable3d-camera-command-ack-v1"
+                                ),
+                                payload=ack,
+                                copy_payload=False,
+                            )
+                        )
                     feedback_recorder = getattr(
                         self.module_stack,
                         "record_active_vision_runtime_feedback",
@@ -437,47 +599,28 @@ class Scalable3DEpisodeRunner:
                                 for camera_id in sorted(camera_states)
                             ),
                             acknowledgements=camera_acks,
-                        )
-                    for ack in camera_acks:
-                        camera_command_ack_count += 1
-                        if ack["status"] == "applied":
-                            camera_command_applied_count += 1
-                        else:
-                            camera_command_rejected_count += 1
-                            camera_command_rejection_reasons[str(ack["reason"])] += 1
-                        self.bus.publish(
-                            topic="runtime.camera_command_ack",
-                            source="MAIN-RUNTIME",
-                            timestamp=current_time,
-                            schema_version="scalable3d-camera-command-ack-v1",
-                            payload=ack,
-                            copy_payload=False,
-                        )
-                    last_module_diagnostics = dict(module_output.diagnostics)
-                    publication_started = time.perf_counter()
-                    publication_envelopes: list[VersionedEnvelope] = []
-                    for publication in module_output.publications:
-                        publication_envelopes.append(
-                            self.bus.publish(
-                                topic=publication.topic,
-                                source=publication.source,
-                                timestamp=current_time,
-                                schema_version=publication.schema_version,
-                                payload=publication.payload,
-                                copy_payload=publication.copy_payload,
-                            )
-                        )
-                        module_publication_count += 1
-                        module_publication_topic_counts[publication.topic] = (
-                            module_publication_topic_counts.get(publication.topic, 0) + 1
+                            acknowledgement_envelopes=tuple(
+                                camera_ack_envelopes
+                            ),
+                            source_publication_envelopes=tuple(
+                                publication_envelopes
+                            ),
+                            episode_id=self.manifest.episode_id,
+                            pairing_context_sha256=(
+                                _active_vision_pairing_context_sha256(
+                                    self.config
+                                )
+                            ),
+                            source_git_commit=self.manifest.git_commit,
                         )
                     plan_ack = _assignment_plan_runtime_ack(
                         module_output.publications,
                         source_envelopes=tuple(publication_envelopes),
                         ack_timestamp=current_time,
                     )
+                    post_ack_intents: tuple[RuntimeCommunicationIntent, ...] = ()
                     if plan_ack is not None:
-                        self.bus.publish(
+                        plan_ack_envelope = self.bus.publish(
                             topic="runtime.assignment_plan_ack",
                             source="MAIN-RUNTIME",
                             timestamp=current_time,
@@ -497,12 +640,47 @@ class Scalable3DEpisodeRunner:
                         assignment_plan_hold_count += int(
                             plan_ack["held_binding_count"]
                         )
+                        ack_recorder = getattr(
+                            self.module_stack,
+                            "record_assignment_plan_runtime_ack",
+                            None,
+                        )
+                        if callable(ack_recorder):
+                            recorded = ack_recorder(
+                                acknowledgement=plan_ack,
+                                acknowledgement_envelope=plan_ack_envelope,
+                                source_publication_envelopes=tuple(
+                                    publication_envelopes
+                                ),
+                                timestamp_s=current_time,
+                                partition_generation=(
+                                    _communication_partition_generation(
+                                        self.config,
+                                        current_time,
+                                    )
+                                ),
+                            )
+                            post_ack_intents = tuple(recorded or ())
+                            if any(
+                                not isinstance(intent, RuntimeCommunicationIntent)
+                                for intent in post_ack_intents
+                            ):
+                                raise TypeError(
+                                    "assignment-plan ACK callback must return "
+                                    "RuntimeCommunicationIntent values"
+                                )
+                            assignment_plan_post_ack_intent_count += len(
+                                post_ack_intents
+                            )
                     timing.add(
                         "module_publication_bus",
                         time.perf_counter() - publication_started,
                     )
                     communication_started = time.perf_counter()
-                    for intent in module_output.communication_intents:
+                    for intent in (
+                        *module_output.communication_intents,
+                        *post_ack_intents,
+                    ):
                         communication_intent_issued_count += 1
                         communication_intent_topic_counts[intent.topic] += 1
                         if not self.config.communication_enabled:
@@ -513,6 +691,7 @@ class Scalable3DEpisodeRunner:
                             source=intent.source,
                             destination=intent.destination,
                             send_timestamp=current_time,
+                            random_stream=intent.random_stream,
                             envelope=VersionedEnvelope(
                                 sequence=transport_sequence,
                                 topic=intent.topic,
@@ -597,6 +776,23 @@ class Scalable3DEpisodeRunner:
             self.module_stack
         )
         observation_governance = observation_governance_audit or {}
+        learning_adoption_records = _learning_adoption_evidence_records(
+            self.module_stack
+        )
+        active_vision_r0_records = _active_vision_r0_window_records(
+            self.module_stack
+        )
+        active_vision_a3_stage_records = (
+            _active_vision_a3_candidate_stage_records(
+                self.module_stack
+            )
+        )
+        learning_adoption_audit = _learning_adoption_audit_from_records(
+            learning_adoption_records
+        )
+        learning_adoption_status = _learning_adoption_status(
+            learning_adoption_audit
+        )
         learning_artifact_counts = _learning_artifact_counts(self.module_stack)
         radar_count = sum(
             len(message.payload.measurements)
@@ -656,7 +852,22 @@ class Scalable3DEpisodeRunner:
                 isinstance(message.payload, OnlineSensorBatch) for message in messages
             ),
             "offline_truth_label_count": len(offline_labels),
-            "pending_after_episode_count": len(pending),
+            "pending_after_episode_count": (
+                len(pending) + len(pending_camera_frames)
+            ),
+            "pending_sensor_batch_count": len(pending),
+            "pending_camera_frame_event_count": len(pending_camera_frames),
+            "camera_frame_event_generated_count": (
+                camera_frame_event_generated_count
+            ),
+            "camera_empty_frame_generated_count": (
+                camera_empty_frame_generated_count
+            ),
+            "camera_empty_frame_queued_count": camera_empty_frame_queued_count,
+            "camera_empty_frame_dropped_count": camera_empty_frame_dropped_count,
+            "camera_empty_frame_delivered_count": (
+                camera_empty_frame_delivered_count
+            ),
             "communication_enabled": self.config.communication_enabled,
             "communication_sent_count": communication_stats.sent_count,
             "communication_delivered_count": communication_stats.delivered_count,
@@ -699,6 +910,11 @@ class Scalable3DEpisodeRunner:
                 self.bus.truth_guard_diagnostics()
             ),
             "module_final_diagnostics": last_module_diagnostics,
+            "learning_adoption_audit": learning_adoption_audit,
+            "learning_adoption_status": learning_adoption_status,
+            "active_vision_a3_candidate_stage_record_count": len(
+                active_vision_a3_stage_records
+            ),
             "d1_scan_input_implementation": observation_governance.get(
                 "d1_scan_input_implementation"
             ),
@@ -823,6 +1039,9 @@ class Scalable3DEpisodeRunner:
                 assignment_plan_control_applied_count
             ),
             "assignment_plan_hold_count": assignment_plan_hold_count,
+            "assignment_plan_post_ack_intent_count": (
+                assignment_plan_post_ack_intent_count
+            ),
             "camera_state_count": len(camera_states),
             "intercepted_target_count": len(self.world.intercepted_target_indices),
             "max_target_speed_mps": diagnostics.max_target_speed_mps,
@@ -845,6 +1064,11 @@ class Scalable3DEpisodeRunner:
             stage_timings=timing.records(),
             summary=summary,
             observation_governance_audit=observation_governance_audit,
+            learning_adoption_evidence_records=learning_adoption_records,
+            active_vision_r0_window_records=active_vision_r0_records,
+            active_vision_a3_candidate_stage_records=(
+                active_vision_a3_stage_records
+            ),
         )
 
 
@@ -928,6 +1152,15 @@ def run_episode(
         stage_timings=result.stage_timings,
         summary=result.summary,
         observation_governance_audit=result.observation_governance_audit,
+        learning_adoption_evidence_records=(
+            result.learning_adoption_evidence_records
+        ),
+        active_vision_r0_window_records=(
+            result.active_vision_r0_window_records
+        ),
+        active_vision_a3_candidate_stage_records=(
+            result.active_vision_a3_candidate_stage_records
+        ),
         output_paths=paths,
     )
 
@@ -980,6 +1213,21 @@ def _retime_sensor_batch(
         arrival_timestamp=actual_arrival,
         measurements=measurements,
     )
+
+
+def _retime_camera_frame_event(
+    event: CameraFrameEvent,
+    *,
+    arrival_timestamp: float,
+) -> CameraFrameEvent:
+    """Set the consumer arrival after image processing and network transport."""
+
+    if not isinstance(event, CameraFrameEvent):
+        raise TypeError("camera frame transport payload has an invalid type")
+    actual_arrival = float(arrival_timestamp)
+    if actual_arrival + 1.0e-12 < event.arrival_timestamp:
+        raise ValueError("network arrival must not precede camera-ready timestamp")
+    return replace(event, arrival_timestamp=actual_arrival)
 
 
 def _platform_navigation_batch(
@@ -1036,6 +1284,127 @@ def _d1_consistency_evidence_records(
     return tuple(provider())
 
 
+def _learning_adoption_evidence_records(
+    module_stack: ScalableModuleStack | None,
+) -> dict[str, tuple[dict[str, Any], ...]]:
+    provider = getattr(
+        module_stack,
+        "learning_adoption_evidence_records",
+        None,
+    )
+    records: Mapping[str, Any] = {}
+    if callable(provider):
+        supplied = provider()
+        if not isinstance(supplied, Mapping):
+            raise TypeError(
+                "learning adoption evidence provider must return a mapping"
+            )
+        records = supplied
+
+    normalized: dict[str, tuple[dict[str, Any], ...]] = {}
+    for variant in ("a1", "a2", "a3"):
+        items = tuple(records.get(variant, ()))
+        rows: list[dict[str, Any]] = []
+        for item in items:
+            row = item.to_dict() if hasattr(item, "to_dict") else item
+            if not isinstance(row, Mapping):
+                raise TypeError(
+                    f"learning adoption {variant} record must be a mapping"
+                )
+            rows.append(dict(row))
+        normalized[variant] = tuple(rows)
+    return normalized
+
+
+def _active_vision_r0_window_records(
+    module_stack: ScalableModuleStack | None,
+) -> tuple[dict[str, Any], ...]:
+    provider = getattr(
+        module_stack,
+        "active_vision_r0_window_records",
+        None,
+    )
+    if not callable(provider):
+        return ()
+    rows: list[dict[str, Any]] = []
+    for item in tuple(provider()):
+        row = item.to_dict() if hasattr(item, "to_dict") else item
+        if not isinstance(row, Mapping):
+            raise TypeError(
+                "active-vision R0 window record must be a mapping"
+            )
+        rows.append(dict(row))
+    return tuple(rows)
+
+
+def _active_vision_a3_candidate_stage_records(
+    module_stack: ScalableModuleStack | None,
+) -> tuple[dict[str, Any], ...]:
+    provider = getattr(
+        module_stack,
+        "active_vision_a3_candidate_stage_records",
+        None,
+    )
+    if not callable(provider):
+        return ()
+    rows: list[dict[str, Any]] = []
+    for item in tuple(provider()):
+        row = item.to_dict() if hasattr(item, "to_dict") else item
+        if not isinstance(row, Mapping):
+            raise TypeError(
+                "active-vision A3 candidate-stage record must be a mapping"
+            )
+        rows.append(dict(row))
+    return tuple(rows)
+
+
+def _learning_adoption_audit(
+    module_stack: ScalableModuleStack | None,
+) -> dict[str, Any]:
+    return _learning_adoption_audit_from_records(
+        _learning_adoption_evidence_records(module_stack)
+    )
+
+
+def _learning_adoption_audit_from_records(
+    records: Mapping[str, tuple[dict[str, Any], ...]],
+) -> dict[str, Any]:
+    audit_input = build_learning_adoption_audit_input(
+        a1=records["a1"],
+        a2=records["a2"],
+        a3=records["a3"],
+    )
+    audit = audit_learning_adoption_evidence(audit_input)
+    if any(bool(value) for value in audit["permissions"].values()):
+        raise ValueError("D6 learning adoption audit granted runtime authority")
+    for variant in ("A1", "A2", "A3"):
+        if any(
+            bool(value)
+            for value in audit["variants"][variant]["permissions"].values()
+        ):
+            raise ValueError(
+                f"D6 {variant} audit granted runtime authority"
+            )
+    return audit
+
+
+def _learning_adoption_status(
+    audit: Mapping[str, Any],
+) -> dict[str, str]:
+    statuses: dict[str, str] = {}
+    variants = audit.get("variants", {})
+    for variant in ("A1", "A2", "A3"):
+        record = variants.get(variant, {})
+        actual = record.get("actual_adoption_count", {})
+        if actual.get("availability") != "available":
+            statuses[variant] = "evidence_unavailable"
+        elif int(actual.get("value", 0)) == 0:
+            statuses[variant] = "verified_zero_adoption"
+        else:
+            statuses[variant] = "verified_adoption"
+    return statuses
+
+
 def _runtime_manifest_profile(
     module_stack: ScalableModuleStack | None,
     config: ScenarioConfig,
@@ -1072,6 +1441,64 @@ def _runtime_manifest_profile(
     if not isinstance(profile, Mapping):
         raise TypeError("runtime manifest profile must be a mapping")
     return {**dict(profile), **base}
+
+
+def _active_vision_pairing_context_sha256(
+    config: ScenarioConfig,
+) -> str:
+    """Hash exogenous episode settings while excluding learning-arm identity."""
+
+    payload = dict(config.to_dict())
+    for field_name in (
+        "d3_policy_version",
+        "d4_policy_version",
+        "d5_model_version",
+        "d5_active_vision_policy_version",
+    ):
+        payload.pop(field_name, None)
+    metadata = dict(payload.get("metadata", {}))
+    frozen_pairing_hash = str(
+        metadata.get("paired_exogenous_config_sha256", "")
+    ).strip().lower()
+    for field_name in (
+        "algorithm_variant",
+        "comparison_key",
+        "experiment_matrix_schema",
+        "full_system_validation",
+        "learning_runtime",
+        "matrix_execution_plan_sha256",
+        "matrix_parent_plan_sha256",
+        "matrix_scope_index",
+        "matrix_global_index",
+        "matrix_shard_index",
+        "paired_exogenous_config_sha256",
+    ):
+        metadata.pop(field_name, None)
+    payload["metadata"] = metadata
+    encoded = json.dumps(
+        payload,
+        ensure_ascii=False,
+        allow_nan=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    computed_pairing_hash = hashlib.sha256(encoded).hexdigest()
+    if frozen_pairing_hash:
+        if (
+            len(frozen_pairing_hash) != 64
+            or any(
+                character not in "0123456789abcdef"
+                for character in frozen_pairing_hash
+            )
+        ):
+            raise ValueError(
+                "paired_exogenous_config_sha256 must be a lowercase SHA-256"
+            )
+        if frozen_pairing_hash != computed_pairing_hash:
+            raise ValueError(
+                "frozen paired exogenous hash differs from episode configuration"
+            )
+    return computed_pairing_hash
 
 
 def _observation_governance_audit(

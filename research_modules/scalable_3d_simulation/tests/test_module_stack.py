@@ -31,13 +31,19 @@ from research_modules.d3_assignment_planner.src.d3_assignment_planner import (
 )
 from research_modules.d4_distributed_fallback.d4_distributed_fallback import (
     AdvisorMode,
+    ConstrainedDevelopmentRegionResourceAdapter,
     DeterministicResourceProjector,
     RecommendationSource,
     RegionResourceAdvisoryResult,
+    RegionResourceDevelopmentInterventionConfig,
     RegionResourceProjectionConfig,
     RuleRegionResourcePolicy,
     RuleRegionResourcePolicyConfig,
     formal_decision_digest,
+)
+from research_modules.d5_terminal_association.src.d5_terminal_association import (
+    ActiveVisionPolicyProposal,
+    DeterministicLookAtScanPolicy,
 )
 from research_modules.scalable_3d_simulation.models import ScenarioConfig
 from research_modules.scalable_3d_simulation.module_stack import (
@@ -79,13 +85,59 @@ class _FiniteLearnedRegionPolicy:
         )
 
 
+class _IdentifiableHoldRegionPolicy:
+    """Force one bounded, D3-consumable intervention for audit tests."""
+
+    def __init__(self, base: _FiniteLearnedRegionPolicy) -> None:
+        self._base = base
+
+    def is_ood(self, snapshot, *, margin: float) -> bool:
+        return self._base.is_ood(snapshot, margin=margin)
+
+    def recommend_raw(self, snapshot):
+        recommendation = self._base.recommend_raw(snapshot)
+        selected_region_id = min(
+            action.region_id for action in recommendation.actions
+        )
+        return replace(
+            recommendation,
+            actions=tuple(
+                replace(
+                    action,
+                    hold=action.region_id == selected_region_id,
+                    request_replan=(
+                        action.region_id == selected_region_id
+                    ),
+                )
+                for action in recommendation.actions
+            ),
+        )
+
+
 class _AdmittedRegionAdvisoryFixture:
     """Test-only source for an already-admitted D4 transport contract."""
 
-    def __init__(self, *, ttl_s: float) -> None:
+    def __init__(
+        self,
+        *,
+        ttl_s: float,
+        identifiable_intervention: bool = False,
+        constrained_development_intervention: bool = False,
+    ) -> None:
+        if identifiable_intervention and constrained_development_intervention:
+            raise ValueError("select only one intervention fixture")
         projection = RegionResourceProjectionConfig(advisory_ttl_s=ttl_s)
+        self.projection_config = projection
         self.projector = DeterministicResourceProjector(projection)
-        self._policy = _FiniteLearnedRegionPolicy(projection)
+        self._base_policy = _FiniteLearnedRegionPolicy(projection)
+        self._policy = (
+            _IdentifiableHoldRegionPolicy(self._base_policy)
+            if identifiable_intervention
+            else self._base_policy
+        )
+        self._constrained_development_intervention = bool(
+            constrained_development_intervention
+        )
 
     def advise(
         self,
@@ -94,7 +146,23 @@ class _AdmittedRegionAdvisoryFixture:
         formal_decision=None,
         unseen_seed_count: int = 0,
     ) -> RegionResourceAdvisoryResult:
-        raw = self._policy.recommend_raw(snapshot)
+        if self._constrained_development_intervention:
+            policy = ConstrainedDevelopmentRegionResourceAdapter(
+                self._base_policy,
+                config=RegionResourceDevelopmentInterventionConfig(
+                    enabled=True,
+                    run_label="main-a2-full-episode-development-probe",
+                    allowed_scenario_ids=(snapshot.scenario_id,),
+                    force_request_replan_on_projected_noop=True,
+                    projection=self.projection_config,
+                ),
+            )
+            raw = policy.recommend_raw(
+                snapshot,
+                formal_decision=formal_decision,
+            )
+        else:
+            raw = self._policy.recommend_raw(snapshot)
         recommendation = self.projector.project(
             snapshot,
             raw,
@@ -126,8 +194,68 @@ class _AdmittedRegionAdvisoryFixture:
 def _assist_region_advisor(
     *,
     ttl_s: float = 1.5,
+    identifiable_intervention: bool = False,
 ) -> _AdmittedRegionAdvisoryFixture:
-    return _AdmittedRegionAdvisoryFixture(ttl_s=ttl_s)
+    return _AdmittedRegionAdvisoryFixture(
+        ttl_s=ttl_s,
+        identifiable_intervention=identifiable_intervention,
+    )
+
+
+def _development_region_advisor(
+    *,
+    ttl_s: float = 1.5,
+) -> _AdmittedRegionAdvisoryFixture:
+    """Route D4's real development adapter without admitting it for benefit."""
+
+    return _AdmittedRegionAdvisoryFixture(
+        ttl_s=ttl_s,
+        constrained_development_intervention=True,
+    )
+
+
+class _AdmittedActiveVisionPolicyFixture:
+    """Admitted policy stand-in for the main A3 runtime evidence bridge."""
+
+    available = True
+    assist_admitted = True
+    failure_reason = None
+    model_fingerprint = f"sha256:{'a' * 64}"
+    bundle_manifest_sha256 = "b" * 64
+    bundle_weights_sha256 = "c" * 64
+    manifest = {
+        "model_semantic_version": "test-a3",
+        "code_provenance": {
+            "implementation_sha256": "d" * 64,
+        },
+    }
+
+    def __init__(self) -> None:
+        self._rule = DeterministicLookAtScanPolicy()
+
+    def propose(
+        self,
+        snapshot,
+        *,
+        camera_id: str,
+        current_timestamp: float,
+    ) -> ActiveVisionPolicyProposal:
+        action = self._rule.select_action(
+            snapshot,
+            camera_id=camera_id,
+            current_timestamp=current_timestamp,
+            expected_plan_version=snapshot.plan.plan_version,
+            expected_coalition_version=snapshot.plan.coalition_version,
+            expected_communication_version=(
+                snapshot.communication.communication_version
+            ),
+        )
+        return ActiveVisionPolicyProposal(
+            action=action,
+            confidence=1.0,
+            inference_latency_ms=0.01,
+            model_fingerprint=self.model_fingerprint,
+        )
 
 
 def test_recon_track_cues_are_fail_closed_by_default() -> None:
@@ -2600,6 +2728,353 @@ def test_formal_r0_delayed_noisy_final_posterior_is_consumed_once(
     assert final_metadata["global_track_id_owner"] == "D2_center"
 
 
+def test_a3_runtime_bridge_keeps_delayed_anonymous_observation_window() -> None:
+    policy = _AdmittedActiveVisionPolicyFixture()
+    stack = IntegratedScalableModuleStack(
+        IntegratedStackConfig(
+            d5_active_vision_mode="assist",
+            capture_learning_artifacts=True,
+        ),
+        d5_active_vision_policy=policy,
+        learning_runtime_diagnostics={
+            "d5_active_vision": {
+                "bundle_loaded": True,
+                "assist_admitted": True,
+                "effective_mode": "assist",
+                "model_fingerprint": policy.model_fingerprint,
+                "bundle_manifest_sha256": (
+                    policy.bundle_manifest_sha256
+                ),
+                "bundle_weights_sha256": policy.bundle_weights_sha256,
+            }
+        },
+    )
+    config = ScenarioConfig(
+        scenario_name="a3_delayed_anonymous_window",
+        scenario_version="a3-delayed-anonymous-window-v1",
+        target_count=1,
+        resource_count=1,
+        recon_count=0,
+        duration_s=3.5,
+        seed=9,
+        world_half_extent_m=500.0,
+        protected_radius_m=100.0,
+        target_proxy_width_m=10.0,
+        target_proxy_height_m=4.0,
+        visual_detection_probability=1.0,
+        visual_false_alarm_rate=0.0,
+    )
+
+    result = run_episode(config, module_stack=stack)
+
+    records = stack.learning_adoption_evidence_records()["a3"]
+    stage_records = stack.active_vision_a3_candidate_stage_records()
+    candidate_records = tuple(
+        item for item in records if item["candidate_physical_window_available"]
+    )
+    assert candidate_records
+    assert len(stage_records) == len(records)
+    assert {
+        item["comparison_key"] for item in stage_records
+    } == {
+        item["adoption_trace"]["comparison_key"] for item in records
+    }
+    assert all(
+        item["evidence_kind"] == "runtime_observed"
+        and item["runtime_event_inventory_complete"] is True
+        and item["runtime_ack_applied"] is True
+        and item["camera_feedback_timestamp"] is not None
+        for item in stage_records
+    )
+    assert all(item["model_action_adopted"] for item in records)
+    assert all(
+        item["blocker_codes"] == ["same_key_r0_window_missing"]
+        for item in candidate_records
+    )
+    assert all(
+        item["candidate_window"]["outcome"][
+            "association_outcome_available"
+        ]
+        and item["candidate_window"]["outcome"][
+            "coverage_outcome_available"
+        ]
+        for item in candidate_records
+    )
+    diagnostics = result.summary["module_final_diagnostics"]
+    assert diagnostics["d5_a3_runtime_ack_count"] > 0
+    assert diagnostics["d5_a3_observation_frame_count"] == len(
+        candidate_records
+    )
+    assert diagnostics["d5_a3_physical_window_count"] == len(
+        candidate_records
+    )
+    assert diagnostics["d5_a3_candidate_stage_record_count"] == len(
+        records
+    )
+    assert result.active_vision_a3_candidate_stage_records == (
+        stage_records
+    )
+    assert result.summary["learning_adoption_status"]["A3"] == (
+        "verified_adoption"
+    )
+    audit = result.summary["learning_adoption_audit"]
+    assert audit["variants"]["A3"]["highest_evidence_stage"] == (
+        "physical_window_validated"
+    )
+    assert audit["variants"]["A3"]["actual_adoption_count"] == {
+        "availability": "available",
+        "value": len(records),
+        "reason_codes": [],
+    }
+    assert "a3_same_key_r0_incomplete" in audit["blocker_codes"]
+    assert not any(audit["permissions"].values())
+
+
+def test_a3_runtime_bridge_records_assigned_zero_detection_as_reacquire() -> None:
+    policy = _AdmittedActiveVisionPolicyFixture()
+    stack = IntegratedScalableModuleStack(
+        IntegratedStackConfig(
+            d5_active_vision_mode="assist",
+            capture_learning_artifacts=True,
+            d5_active_vision_evidence_tail_s=0.25,
+        ),
+        d5_active_vision_policy=policy,
+        learning_runtime_diagnostics={
+            "d5_active_vision": {
+                "bundle_loaded": True,
+                "assist_admitted": True,
+                "effective_mode": "assist",
+                "model_fingerprint": policy.model_fingerprint,
+                "bundle_manifest_sha256": policy.bundle_manifest_sha256,
+                "bundle_weights_sha256": policy.bundle_weights_sha256,
+            }
+        },
+    )
+    config = ScenarioConfig(
+        scenario_name="a3_zero_detection_window",
+        scenario_version="a3-zero-detection-window-v1",
+        target_count=1,
+        resource_count=1,
+        recon_count=0,
+        duration_s=2.5,
+        seed=9,
+        world_half_extent_m=500.0,
+        protected_radius_m=100.0,
+        target_proxy_width_m=10.0,
+        target_proxy_height_m=4.0,
+        visual_detection_probability=0.0,
+        visual_false_alarm_rate=0.0,
+        communication_drop_probability=0.0,
+        communication_jitter_s=0.0,
+    )
+
+    result = run_episode(config, module_stack=stack)
+
+    records = stack.learning_adoption_evidence_records()["a3"]
+    physical = tuple(
+        item
+        for item in records
+        if item["candidate_physical_window_available"]
+    )
+    assert physical
+    frames = tuple(
+        frame
+        for item in physical
+        for frame in item["candidate_window"]["observation_frames"]
+    )
+    assigned_frames = tuple(
+        frame
+        for frame in frames
+        if frame["target_global_track_id"] is not None
+    )
+    assert assigned_frames
+    assert all(
+        frame["schema_version"]
+        == "d5.active-vision-a3-anonymous-observation-frame.v2"
+        and frame["frame_observation_state"] == "processed_zero_detections"
+        and frame["association_state"] == "reacquire"
+        and frame["assigned_reference_visible"] is False
+        and frame["observed_tracklet_keys"] == []
+        and frame["bindings"] == []
+        for frame in assigned_frames
+    )
+    diagnostics = result.summary["module_final_diagnostics"]
+    assert diagnostics["d5_camera_empty_frame_received_count"] > 0
+    assert diagnostics["d5_camera_empty_frame_consumed_count"] > 0
+    assert diagnostics["d5_camera_empty_frame_rejected_count"] == 0
+    assert diagnostics["d5_active_vision_tail_suppressed_count"] > 0
+    assert result.summary["online_truth_use_count"] == 0
+    assert not any(
+        result.summary["learning_adoption_audit"]["permissions"].values()
+    )
+
+
+class _StaleCameraFrameVersionStack(IntegratedScalableModuleStack):
+    def step(self, step_input):
+        stale_events = tuple(
+            replace(
+                event,
+                communication_version=max(
+                    0,
+                    event.communication_version - 1,
+                ),
+            )
+            for event in step_input.arrived_camera_frame_events
+        )
+        return super().step(
+            replace(
+                step_input,
+                arrived_camera_frame_events=stale_events,
+            )
+        )
+
+
+def test_a3_zero_detection_frame_with_stale_command_version_fails_closed() -> None:
+    policy = _AdmittedActiveVisionPolicyFixture()
+    stack = _StaleCameraFrameVersionStack(
+        IntegratedStackConfig(
+            d5_active_vision_mode="assist",
+            capture_learning_artifacts=True,
+            d5_active_vision_evidence_tail_s=0.25,
+        ),
+        d5_active_vision_policy=policy,
+        learning_runtime_diagnostics={
+            "d5_active_vision": {
+                "bundle_loaded": True,
+                "assist_admitted": True,
+                "effective_mode": "assist",
+                "model_fingerprint": policy.model_fingerprint,
+                "bundle_manifest_sha256": policy.bundle_manifest_sha256,
+                "bundle_weights_sha256": policy.bundle_weights_sha256,
+            }
+        },
+    )
+    config = ScenarioConfig(
+        scenario_name="a3_stale_empty_frame_version",
+        scenario_version="a3-stale-empty-frame-version-v1",
+        target_count=1,
+        resource_count=1,
+        recon_count=0,
+        duration_s=2.5,
+        seed=9,
+        world_half_extent_m=500.0,
+        protected_radius_m=100.0,
+        target_proxy_width_m=10.0,
+        target_proxy_height_m=4.0,
+        visual_detection_probability=0.0,
+        visual_false_alarm_rate=0.0,
+        communication_drop_probability=0.0,
+        communication_jitter_s=0.0,
+    )
+
+    result = run_episode(config, module_stack=stack)
+
+    diagnostics = result.summary["module_final_diagnostics"]
+    assert diagnostics["d5_camera_empty_frame_received_count"] > 0
+    assert diagnostics["d5_camera_empty_frame_consumed_count"] == 0
+    assert diagnostics["d5_a3_bridge_blocker_counts"][
+        "camera_empty_frame_version_mismatch"
+    ] > 0
+    assert all(
+        not item["candidate_physical_window_available"]
+        for item in stack.learning_adoption_evidence_records()["a3"]
+    )
+    assert result.summary["online_truth_use_count"] == 0
+    assert not any(
+        result.summary["learning_adoption_audit"]["permissions"].values()
+    )
+
+
+def test_active_vision_observation_trigger_blocks_blind_periodic_reissue() -> None:
+    config = ScenarioConfig(
+        scenario_name="active_vision_no_camera_frames",
+        scenario_version="active-vision-no-camera-frames-v1",
+        target_count=1,
+        resource_count=1,
+        recon_count=0,
+        duration_s=2.0,
+        seed=12,
+        radar_detection_probability=1.0,
+        acoustic_enabled=False,
+        visual_enabled=False,
+        communication_enabled=False,
+    )
+    triggered = run_episode(
+        config,
+        module_stack=IntegratedScalableModuleStack(
+            IntegratedStackConfig(
+                d5_active_vision_observation_triggered=True,
+                d5_active_vision_evidence_tail_s=0.25,
+            )
+        ),
+    )
+    periodic = run_episode(
+        config,
+        module_stack=IntegratedScalableModuleStack(
+            IntegratedStackConfig(
+                d5_active_vision_observation_triggered=False,
+                d5_active_vision_evidence_tail_s=0.25,
+            )
+        ),
+    )
+
+    assert 0 < triggered.summary["camera_command_issued_count"]
+    assert triggered.summary["camera_command_issued_count"] < (
+        periodic.summary["camera_command_issued_count"]
+    )
+    assert periodic.summary["module_final_diagnostics"][
+        "d5_active_vision_tail_suppressed_count"
+    ] > 0
+
+
+def test_active_vision_r0_runtime_bridge_exports_independent_rule_windows() -> None:
+    stack = IntegratedScalableModuleStack(
+        IntegratedStackConfig(
+            d5_active_vision_mode="disabled",
+            capture_learning_artifacts=True,
+        )
+    )
+    config = ScenarioConfig(
+        scenario_name="a3_delayed_anonymous_window",
+        scenario_version="a3-delayed-anonymous-window-v1",
+        target_count=1,
+        resource_count=1,
+        recon_count=0,
+        duration_s=3.5,
+        seed=9,
+        world_half_extent_m=500.0,
+        protected_radius_m=100.0,
+        target_proxy_width_m=10.0,
+        target_proxy_height_m=4.0,
+        visual_detection_probability=1.0,
+        visual_false_alarm_rate=0.0,
+    )
+
+    result = run_episode(config, module_stack=stack)
+
+    windows = stack.active_vision_r0_window_records()
+    assert windows
+    assert result.active_vision_r0_window_records == windows
+    assert all(item["arm"] == "R0" for item in windows)
+    assert all(item["command_source"] == "deterministic_rule" for item in windows)
+    assert all(item["adoption_trace_sha256"] is None for item in windows)
+    assert all(
+        item["runtime_ack_evidence_kind"] == "runtime_observed"
+        and item["camera_feedback_evidence_kind"] == "runtime_observed"
+        and item["observation_evidence_kind"] == "runtime_observed"
+        and item["synthetic_fixture"] is False
+        for item in windows
+    )
+    assert all(item["online_truth_use_count"] == 0 for item in windows)
+    assert all(item["global_track_id_rewrite_count"] == 0 for item in windows)
+    diagnostics = result.summary["module_final_diagnostics"]
+    assert diagnostics["d5_a3_r0_runtime_ack_count"] > 0
+    assert diagnostics["d5_a3_r0_observation_frame_count"] == len(windows)
+    assert diagnostics["d5_a3_r0_physical_window_count"] == len(windows)
+    assert diagnostics["d5_a3_r0_window_record_count"] == len(windows)
+    assert not stack.learning_adoption_evidence_records()["a3"]
+
+
 def test_5v5_online_stack_connects_d1_to_d7_without_truth_identity(tmp_path) -> None:
     config = ScenarioConfig(
         scenario_name="integrated_5v5",
@@ -2696,6 +3171,18 @@ def test_5v5_online_stack_connects_d1_to_d7_without_truth_identity(tmp_path) -> 
     )
     assert "all_possible_camera_pairs" in d5_payload["diagnostics"]
     assert "candidate_tracklet_edges" in d5_payload["diagnostics"]
+    assert len(d5_payload["local_tracklets"]) == d5_payload["tracklet_count"]
+    assert all(
+        item["tracklet_key"]
+        == (
+            f"{item['resource_id']}/{item['camera_id']}:"
+            f"{item['local_track_id']}"
+        )
+        and len(item["center_px"]) == 2
+        and np.asarray(item["covariance_px"]).shape == (2, 2)
+        and item["measurement_timestamp"] <= item["arrival_timestamp"]
+        for item in d5_payload["local_tracklets"]
+    )
     assert stack.latest_d5_result is not None
     assert all(
         tracklet.local_track_id.startswith("trk-")
@@ -2725,6 +3212,14 @@ def test_5v5_online_stack_connects_d1_to_d7_without_truth_identity(tmp_path) -> 
         for command in payload["commands"]
     )
     assert all(
+        command["payload_version"]
+        == "main.camera-observation-command-payload.v1"
+        and len(command["aim_point_ned"]) == 3
+        and all(np.isfinite(command["aim_point_ned"]))
+        for payload in active_vision_payloads
+        for command in payload["commands"]
+    )
+    assert all(
         not str(command["target_global_track_id"]).startswith("TGT-")
         for payload in active_vision_payloads
         for command in payload["commands"]
@@ -2744,6 +3239,11 @@ def test_5v5_online_stack_connects_d1_to_d7_without_truth_identity(tmp_path) -> 
     ]
     assert len(camera_acks) == result.summary["camera_command_ack_count"]
     assert {ack["status"] for ack in camera_acks} == {"applied"}
+    assert result.summary["learning_adoption_status"] == {
+        "A1": "evidence_unavailable",
+        "A2": "evidence_unavailable",
+        "A3": "evidence_unavailable",
+    }
     timings = {item.stage: item for item in result.stage_timings}
     assert timings["module.d1_fusion"].call_count > 0
     assert timings["module.d3_assignment"].wall_time_s > 0.0
@@ -3638,7 +4138,7 @@ def test_regional_authority_adapter_rejects_incomplete_d4_evidence(
     assert error.value.reason == expected_reason
 
 
-def test_d4_assist_advisory_is_consumed_once_by_next_center_plan() -> None:
+def test_d4_noop_advisory_is_consumed_without_false_successor() -> None:
     config = ScenarioConfig(
         scenario_name="d4_d3_next_cycle_bridge",
         scenario_version="d4-d3-next-cycle-bridge-v1",
@@ -3662,7 +4162,13 @@ def test_d4_assist_advisory_is_consumed_once_by_next_center_plan() -> None:
     assert result.summary["online_truth_use_count"] == 0
     assert stack.latest_d4_region_consumption is not None
     assert stack.latest_d4_region_consumption.consumable is True
-    assert stack.latest_plan.metadata["regional_hint_applied"] is True
+    assert stack.latest_plan.metadata["regional_hint_applied"] is False
+    assert stack.latest_plan.metadata[
+        "regional_hint_successor_plan_available"
+    ] is False
+    assert stack.latest_plan.metadata["regional_hint_successor_state"] == (
+        "no_successor"
+    )
     assert stack.latest_plan.metadata["regional_hint_advisory_version"] == 1
     consumption_payloads = [
         item.payload
@@ -3671,8 +4177,179 @@ def test_d4_assist_advisory_is_consumed_once_by_next_center_plan() -> None:
     ]
     assert len(consumption_payloads) == 1
     assert consumption_payloads[0]["consumable"] is True
-    assert consumption_payloads[0]["d3_hint_applied"] is True
-    assert consumption_payloads[0]["bridge_rejection_reason"] is None
+    assert consumption_payloads[0]["d3_hint_applied"] is False
+    assert consumption_payloads[0][
+        "d3_successor_plan_available"
+    ] is False
+    assert consumption_payloads[0]["d3_successor_state"] == "no_successor"
+    assert consumption_payloads[0]["bridge_rejection_reason"] == (
+        "d3_regional_hint_rejected:"
+        "regional_hint_no_executable_successor"
+    )
+    a2_records = stack.learning_adoption_evidence_records()["a2"]
+    assert len(a2_records) == 1
+    assert a2_records[0]["stage"] == "safe_adoption_rejected"
+    assert a2_records[0]["reason_codes"] == [
+        "identifiable_regional_intervention_missing"
+    ]
+    assert a2_records[0]["identifiable_intervention_available"] is False
+    assert a2_records[0]["d3_successor_plan_available"] is False
+    assert a2_records[0]["safe_adoption_available"] is False
+    assert a2_records[0]["authority_granted"] is False
+
+
+def test_d4_a2_runtime_bridge_observes_later_current_plan_control() -> None:
+    config = ScenarioConfig(
+        scenario_name="d4_a2_dynamic_physical_adoption",
+        scenario_version="d4-a2-dynamic-physical-adoption-v1",
+        target_count=5,
+        resource_count=5,
+        recon_count=1,
+        region_count=2,
+        duration_s=3.0,
+        seed=1,
+        radar_detection_probability=0.45,
+        acoustic_enabled=False,
+        visual_enabled=False,
+        communication_drop_probability=0.0,
+        communication_jitter_s=0.0,
+        communication_latency_s=0.01,
+    )
+    stack = IntegratedScalableModuleStack(
+        d4_region_advisor=_development_region_advisor(),
+        d4_unseen_seed_count=1,
+    )
+
+    result = run_episode(config, module_stack=stack)
+    diagnostics = stack._diagnostics(config.duration_s)
+
+    assert result.summary["online_truth_use_count"] == 0
+    assert stack.latest_d4_region_advice.recommendation.policy_name == (
+        "d4-a2-constrained-development-intervention"
+    )
+    assert stack.latest_plan.metadata["regional_hint_applied"] is True
+    assert stack.latest_plan.metadata[
+        "regional_hint_successor_plan_available"
+    ] is True
+    assert stack.latest_plan.metadata["regional_hint_successor_state"] == (
+        "successor_published"
+    )
+    assert stack.latest_plan.metadata["authority_epoch"] == 1
+    consumption_payload = next(
+        item.payload
+        for item in result.online_messages
+        if item.topic == "modules.d4.region_resource_consumption"
+        and item.payload.get("d3_successor_plan_available") is True
+    )
+    assert consumption_payload["d3_hint_applied"] is True
+    assert consumption_payload["d3_successor_state"] == (
+        "successor_published"
+    )
+    assert consumption_payload["d3_successor_plan_id"] == (
+        stack.latest_plan.plan_id
+    )
+    assert consumption_payload["d3_successor_plan_version"] == (
+        stack.latest_plan.version
+    )
+    assert diagnostics["d4_a2_owner_ack_delivery_count"] == 1
+    assert diagnostics["d4_a2_physical_window_count"] == 1
+    assert diagnostics["d4_a2_safe_adoption_count"] == 1
+    assert diagnostics["d4_a2_evidence_stage_counts"] == {
+        "physical_window_available": 1
+    }
+    pending = next(iter(stack._d4_a2_pending_by_plan.values()))
+    assert pending.non_hold_control_applied_count > 0
+    assert pending.plan_reference.plan_id == stack.latest_plan.plan_id
+    assert pending.plan_reference.plan_version == stack.latest_plan.version
+
+
+def test_d4_a2_runtime_bridge_rejects_incomplete_consumption_payload() -> None:
+    stack = IntegratedScalableModuleStack()
+    source_envelopes = (
+        SimpleNamespace(
+            topic="modules.d4.region_resource_consumption",
+            payload={
+                "bridge_rejection_reason": None,
+                "d3_hint_applied": True,
+                "d3_successor_plan_available": False,
+                "d3_successor_state": "no_successor",
+            },
+        ),
+        SimpleNamespace(topic="modules.d3.assignment_plan", payload={}),
+        SimpleNamespace(topic="modules.d7.guidance_commands", payload={}),
+    )
+
+    intents = stack.record_assignment_plan_runtime_ack(
+        acknowledgement={},
+        acknowledgement_envelope=SimpleNamespace(),
+        source_publication_envelopes=source_envelopes,
+        timestamp_s=1.0,
+        partition_generation=0,
+    )
+
+    assert intents == ()
+    assert stack._d4_a2_bridge_blocker_counts == {
+        "runtime_ack_bridge_keyerror": 1
+    }
+
+
+def test_d4_a2_later_control_count_is_current_plan_and_binding_scoped() -> None:
+    stack = IntegratedScalableModuleStack()
+    stack.latest_plan = SimpleNamespace(
+        plan_id="plan-current",
+        version=2,
+        assignments=(
+            SimpleNamespace(resource_id="R-1", target_id="T-1"),
+            SimpleNamespace(resource_id="R-2", target_id="T-2"),
+        ),
+    )
+    stack.latest_guidance_batch = SimpleNamespace(
+        pair_commands=(
+            SimpleNamespace(
+                resource_id="R-1",
+                assigned_global_track_id="T-1",
+                plan_id="plan-current",
+                plan_version=2,
+                mode=SimpleNamespace(value="midcourse_pn_3d"),
+            ),
+            SimpleNamespace(
+                resource_id="R-2",
+                assigned_global_track_id="T-2",
+                plan_id="plan-current",
+                plan_version=2,
+                mode=SimpleNamespace(value="hold"),
+            ),
+            SimpleNamespace(
+                resource_id="R-3",
+                assigned_global_track_id="T-3",
+                plan_id="plan-current",
+                plan_version=2,
+                mode=SimpleNamespace(value="midcourse_pn_3d"),
+            ),
+            SimpleNamespace(
+                resource_id="R-1",
+                assigned_global_track_id="T-1",
+                plan_id="plan-stale",
+                plan_version=1,
+                mode=SimpleNamespace(value="midcourse_pn_3d"),
+            ),
+        )
+    )
+
+    assert (
+        stack._d4_current_plan_non_hold_control_count(
+            plan_id="plan-current",
+            plan_version=2,
+        )
+        == 1
+    )
+    assert (
+        stack._d4_current_plan_non_hold_control_count(
+            plan_id="plan-stale",
+            plan_version=1,
+        )
+        == 0
+    )
 
 
 def test_d4_advisory_bridge_rejects_replay_and_strict_expiry() -> None:

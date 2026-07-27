@@ -15,6 +15,7 @@ from .camera_projection import (
     project_points,
 )
 from .models import (
+    CameraFrameEvent,
     ObservationBatch,
     OfflineTruthLabel,
     ScenarioConfig,
@@ -254,6 +255,7 @@ class SensorScene:
         *,
         camera_aim_points: Mapping[str, np.ndarray] | None = None,
         camera_horizontal_fov_deg: Mapping[str, float] | None = None,
+        camera_command_versions: Mapping[str, tuple[int, int, int]] | None = None,
     ) -> ObservationBatch:
         """Project active intruders into all interceptor and recon cameras."""
 
@@ -264,6 +266,7 @@ class SensorScene:
             camera_aim_points=camera_aim_points,
             camera_horizontal_fov_deg=camera_horizontal_fov_deg,
         )
+        command_versions = camera_command_versions or {}
         active_indices = np.flatnonzero(snapshot.intruders.active)
         active_positions = snapshot.intruders.position_ned[active_indices]
         point_covariance = np.broadcast_to(
@@ -272,7 +275,9 @@ class SensorScene:
         ).copy()
         measurements: list[SensorMeasurement] = []
         labels: list[OfflineTruthLabel] = []
+        frame_events: list[CameraFrameEvent] = []
         for view in views:
+            measurement_start = len(measurements)
             fixed_detection_draws = None
             fixed_center_noise = None
             fixed_scale_noise = None
@@ -289,6 +294,18 @@ class SensorScene:
                     timestamp,
                     measurements,
                     labels,
+                )
+                frame_events.append(
+                    self._camera_frame_event(
+                        view,
+                        snapshot,
+                        timestamp=timestamp,
+                        detection_count=len(measurements) - measurement_start,
+                        command_versions=command_versions.get(
+                            view.sensor_id,
+                            (0, 0, 0),
+                        ),
+                    )
                 )
                 continue
             projection = project_points(
@@ -420,7 +437,61 @@ class SensorScene:
                 measurements,
                 labels,
             )
-        return ObservationBatch(tuple(measurements), tuple(labels))
+            frame_events.append(
+                self._camera_frame_event(
+                    view,
+                    snapshot,
+                    timestamp=timestamp,
+                    detection_count=len(measurements) - measurement_start,
+                    command_versions=command_versions.get(
+                        view.sensor_id,
+                        (0, 0, 0),
+                    ),
+                )
+            )
+        return ObservationBatch(
+            tuple(measurements),
+            tuple(labels),
+            tuple(frame_events),
+        )
+
+    def _camera_frame_event(
+        self,
+        view: CameraView,
+        snapshot: WorldSnapshot,
+        *,
+        timestamp: float,
+        detection_count: int,
+        command_versions: tuple[int, int, int],
+    ) -> CameraFrameEvent:
+        """Describe one processed frame without target or actor identity."""
+
+        if len(command_versions) != 3:
+            raise ValueError(
+                "camera command versions must contain plan, coalition, and communication"
+            )
+        platform = (
+            snapshot.interceptors
+            if view.platform_kind == "interceptor"
+            else snapshot.recon
+        )
+        resource_id = platform.entity_ids[view.platform_index]
+        return CameraFrameEvent(
+            event_id=(
+                f"camera-frame-s{self._visual_scan_index:06d}-"
+                f"{view.sensor_id.lower()}"
+            ),
+            camera_id=view.sensor_id,
+            resource_id=resource_id,
+            measurement_timestamp=timestamp,
+            arrival_timestamp=timestamp + self.config.visual_latency_s,
+            frame_id=f"{view.sensor_id.lower()}_optical_frame",
+            scan_index=self._visual_scan_index,
+            detection_count=detection_count,
+            plan_version=command_versions[0],
+            coalition_version=command_versions[1],
+            communication_version=command_versions[2],
+        )
 
     def camera_views(
         self,

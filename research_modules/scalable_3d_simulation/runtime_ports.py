@@ -7,7 +7,7 @@ from typing import Any, Mapping, Protocol
 
 import numpy as np
 
-from .models import OnlineSensorBatch, ScenarioConfig
+from .models import CameraFrameEvent, OnlineSensorBatch, ScenarioConfig
 
 
 @dataclass(frozen=True)
@@ -65,9 +65,16 @@ class RuntimeCommunicationIntent:
     topic: str
     schema_version: str
     payload: Mapping[str, Any]
+    random_stream: str = "shared_v1"
 
     def __post_init__(self) -> None:
-        for name in ("source", "destination", "topic", "schema_version"):
+        for name in (
+            "source",
+            "destination",
+            "topic",
+            "schema_version",
+            "random_stream",
+        ):
             value = str(getattr(self, name)).strip()
             if not value:
                 raise ValueError(f"{name} must be non-empty")
@@ -214,6 +221,7 @@ class RuntimeStepInput:
     interceptors: PlatformNavigationBatch
     recon: PlatformNavigationBatch
     cameras: tuple[CameraRuntimeState, ...] = ()
+    arrived_camera_frame_events: tuple[CameraFrameEvent, ...] = ()
     delivered_communication_messages: tuple[Any, ...] = ()
     communication_partition_generation: int = 0
 
@@ -222,6 +230,18 @@ class RuntimeStepInput:
         if generation < 0:
             raise ValueError("communication_partition_generation must be non-negative")
         object.__setattr__(self, "communication_partition_generation", generation)
+        object.__setattr__(
+            self,
+            "arrived_camera_frame_events",
+            tuple(self.arrived_camera_frame_events),
+        )
+        if any(
+            not isinstance(event, CameraFrameEvent)
+            for event in self.arrived_camera_frame_events
+        ):
+            raise TypeError(
+                "arrived_camera_frame_events must contain CameraFrameEvent values"
+            )
         object.__setattr__(
             self,
             "delivered_communication_messages",

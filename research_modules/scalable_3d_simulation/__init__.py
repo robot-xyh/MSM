@@ -81,6 +81,7 @@ from .communication import (
 )
 from .models import (
     BUS_SCHEMA_VERSION,
+    CAMERA_FRAME_EVENT_SCHEMA_VERSION,
     OFFLINE_TRUTH_DISPOSITION_KNOWN_FALSE_ALARM,
     OFFLINE_TRUTH_DISPOSITION_TARGET,
     OFFLINE_TRUTH_DISPOSITION_UNKNOWN,
@@ -90,6 +91,7 @@ from .models import (
     ONLINE_OBSERVATION_SCHEMA_VERSION,
     SCENARIO_SCHEMA_VERSION,
     WORLD_SCHEMA_VERSION,
+    CameraFrameEvent,
     EntityKind,
     EntitySnapshot,
     KinematicLimits,
@@ -101,6 +103,18 @@ from .models import (
     WorldSnapshot,
 )
 from .orchestrator import EpisodeResult, Scalable3DEpisodeRunner, run_episode
+from .paired_learning_adoption import (
+    PAIRED_LEARNING_ADOPTION_ARTIFACT_SCHEMA_VERSION,
+    PAIRED_LEARNING_ADOPTION_BATCH_SCHEMA_VERSION,
+    PAIRED_LEARNING_ADOPTION_SCHEMA_VERSION,
+    PairedLearningAdoptionBatchResult,
+    PairedLearningAdoptionResult,
+    assemble_paired_learning_adoption_evidence,
+    run_paired_learning_adoption_batch,
+    run_paired_learning_adoption_episodes,
+    write_paired_learning_adoption_batch_output,
+    write_paired_learning_adoption_output,
+)
 from .sensor_scene import CameraView, SensorScene
 from .scenarios import AVAILABLE_SCENARIOS, SCENARIO_CATALOG_VERSION, make_curriculum_scenario
 from .runtime_ports import (
@@ -193,10 +207,12 @@ __all__ = [
     "BatchLearningArtifactWriter",
     "AVAILABLE_SCENARIOS",
     "CameraIntrinsics",
+    "CameraFrameEvent",
     "CameraObservationCommand",
     "CameraPose",
     "CameraRuntimeState",
     "CameraView",
+    "CAMERA_FRAME_EVENT_SCHEMA_VERSION",
     "CommunicationStats",
     "DeliveredMessage",
     "DeterministicCommunicationNetwork",
@@ -250,6 +266,11 @@ __all__ = [
     "LEARNING_EXPORT_SCHEMA_VERSION",
     "ModelBundlePaths",
     "ObservationBatch",
+    "PAIRED_LEARNING_ADOPTION_ARTIFACT_SCHEMA_VERSION",
+    "PAIRED_LEARNING_ADOPTION_BATCH_SCHEMA_VERSION",
+    "PAIRED_LEARNING_ADOPTION_SCHEMA_VERSION",
+    "PairedLearningAdoptionBatchResult",
+    "PairedLearningAdoptionResult",
     "OnlineSensorBatch",
     "OFFLINE_TRUTH_DISPOSITION_KNOWN_FALSE_ALARM",
     "OFFLINE_TRUTH_DISPOSITION_TARGET",
@@ -306,6 +327,7 @@ __all__ = [
     "SharedSeedSplitError",
     "assign_shared_seed_splits",
     "approve_g1_shadow_authorization_request",
+    "assemble_paired_learning_adoption_evidence",
     "assert_online_payload_truth_free",
     "build_shared_seed_split_registry",
     "build_episode_manifest",
@@ -334,6 +356,8 @@ __all__ = [
     "execute_checkpoint_paired_physical_rollouts",
     "evaluate_d4_isolated_physical_adoption",
     "run_episode",
+    "run_paired_learning_adoption_batch",
+    "run_paired_learning_adoption_episodes",
     "run_experiment_matrix",
     "run_experiment_matrix_shard",
     "sha256_file",
@@ -344,6 +368,8 @@ __all__ = [
     "validate_authorization_scope_binding",
     "write_trajectory_animation",
     "write_episode_learning_artifacts",
+    "write_paired_learning_adoption_batch_output",
+    "write_paired_learning_adoption_output",
     "write_shared_seed_split_registry",
     "write_reserved_seed_intervention_execution",
     "write_checkpoint_paired_physical_rollouts",

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+from dataclasses import replace
 from hashlib import sha256
 import json
 from pathlib import Path
@@ -22,11 +23,13 @@ from research_modules.scalable_3d_simulation.episode_bus import (
     build_episode_manifest,
 )
 from research_modules.scalable_3d_simulation.models import (
+    CameraFrameEvent,
     OfflineTruthLabel,
     ScenarioConfig,
 )
 from research_modules.scalable_3d_simulation.orchestrator import (
     _TimingAccumulator,
+    _active_vision_pairing_context_sha256,
     run_episode,
 )
 from research_modules.scalable_3d_simulation.offline_evaluation import (
@@ -36,10 +39,13 @@ from research_modules.scalable_3d_simulation.offline_evaluation import (
 )
 from research_modules.scalable_3d_simulation.runtime_ports import (
     CameraObservationCommand,
+    RuntimeCommunicationIntent,
     RuntimePublication,
     RuntimeStepInput,
     RuntimeStepOutput,
 )
+from research_modules.scalable_3d_simulation.sensor_scene import SensorScene
+from research_modules.scalable_3d_simulation.world import VectorizedPointMassWorld
 
 _TEST_IDENTITY_RECOVERY_CONFIG = {
     "schema_version": "d2.identity-commitment-recovery-config.v2",
@@ -98,6 +104,50 @@ def test_timing_accumulator_does_not_backfill_missing_child_distribution() -> No
     assert records["module.legacy"].distribution_unavailable_reason == (
         "child_timing_distribution_unavailable"
     )
+
+
+def test_active_vision_pairing_context_uses_frozen_exogenous_hash() -> None:
+    unfrozen = ScenarioConfig(
+        target_count=2,
+        resource_count=2,
+        recon_count=1,
+        seed=17,
+        sensor_random_schedule_version="entity_fixed_v1",
+        metadata={
+            "comparison_key": "nominal|2|17",
+            "algorithm_variant": "R0",
+        },
+    )
+    frozen_hash = _active_vision_pairing_context_sha256(unfrozen)
+    base = replace(
+        unfrozen,
+        metadata={
+            **unfrozen.metadata,
+            "paired_exogenous_config_sha256": frozen_hash,
+        },
+    )
+    candidate = replace(
+        base,
+        d5_active_vision_policy_version="candidate-a3",
+        metadata={
+            **base.metadata,
+            "algorithm_variant": "A3",
+            "learning_runtime": {"d5_active_vision": {"effective_mode": "assist"}},
+        },
+    )
+
+    assert _active_vision_pairing_context_sha256(base) == frozen_hash
+    assert _active_vision_pairing_context_sha256(candidate) == frozen_hash
+    with pytest.raises(ValueError, match="differs from episode configuration"):
+        _active_vision_pairing_context_sha256(
+            replace(
+                base,
+                metadata={
+                    **base.metadata,
+                    "paired_exogenous_config_sha256": "f" * 64,
+                },
+            )
+        )
 
 
 def test_timing_accumulator_rejects_partial_child_distribution() -> None:
@@ -223,6 +273,69 @@ def test_bus_sequences_messages_and_network_applies_transport_delay() -> None:
     assert delivered[0].arrival_timestamp > 1.1
 
 
+def test_separate_communication_random_stream_does_not_perturb_shared_transport() -> None:
+    profile = LinkProfile(
+        latency_s=0.1,
+        jitter_s=0.02,
+        drop_probability=0.0,
+        bandwidth_bytes_per_s=1_000_000.0,
+    )
+
+    def shared_arrivals(*, include_strict_evidence: bool) -> tuple[float, ...]:
+        bus = InMemoryEpisodeBus()
+        network = DeterministicCommunicationNetwork(
+            seed=17,
+            default_profile=profile,
+        )
+        first = bus.publish(
+            topic="sensor.observations",
+            source="RADAR",
+            timestamp=1.0,
+            payload={"batch": 1},
+        )
+        second = bus.publish(
+            topic="sensor.observations",
+            source="RADAR",
+            timestamp=1.1,
+            payload={"batch": 2},
+        )
+        assert network.send(
+            source="RADAR",
+            destination="FUSION",
+            send_timestamp=1.0,
+            envelope=first,
+        )
+        if include_strict_evidence:
+            evidence = bus.publish(
+                topic="d4.regional_plan_owner_ack.v1",
+                source="D4",
+                timestamp=1.05,
+                payload={"ack": 1},
+            )
+            assert network.send(
+                source="D4",
+                destination="MAIN",
+                send_timestamp=1.05,
+                envelope=evidence,
+                random_stream="d4_strict_evidence_v1",
+            )
+        assert network.send(
+            source="RADAR",
+            destination="FUSION",
+            send_timestamp=1.1,
+            envelope=second,
+        )
+        return tuple(
+            item.arrival_timestamp
+            for item in network.deliver(2.0)
+            if item.envelope.topic == "sensor.observations"
+        )
+
+    assert shared_arrivals(include_strict_evidence=False) == shared_arrivals(
+        include_strict_evidence=True
+    )
+
+
 def test_bus_truth_guard_candidate_is_explicit_auditable_and_default_off() -> None:
     reference = InMemoryEpisodeBus()
     candidate = InMemoryEpisodeBus(
@@ -297,6 +410,28 @@ def test_small_episode_writes_separate_online_and_truth_artifacts(tmp_path: Path
     assert "truth_entity_id" in truth_text
     manifest = json.loads((tmp_path / "manifest.json").read_text(encoding="utf-8"))
     assert manifest["config_sha256"] == result.manifest.config_sha256
+    learning_evidence = json.loads(
+        (tmp_path / "learning_adoption_evidence.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert learning_evidence["schema_version"] == (
+        "scalable3d-learning-adoption-evidence-records-v1"
+    )
+    assert learning_evidence["episode_id"] == result.manifest.episode_id
+    assert learning_evidence["records"] == {"a1": [], "a2": [], "a3": []}
+    assert len(learning_evidence["content_sha256"]) == 64
+    r0_windows = json.loads(
+        (tmp_path / "active_vision_r0_windows.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert r0_windows["schema_version"] == (
+        "scalable3d-active-vision-r0-window-records-v1"
+    )
+    assert r0_windows["episode_id"] == result.manifest.episode_id
+    assert r0_windows["records"] == []
+    assert len(r0_windows["content_sha256"]) == 64
     with np.load(tmp_path / "offline_truth_state.npz") as payload:
         assert payload["intruder_state"].shape[1:] == (5, 6)
         assert payload["intruder_ids"].tolist() == [
@@ -661,6 +796,130 @@ def test_200v200_episode_has_finite_states_without_array_limits() -> None:
     assert result.summary["radar_observation_count"] > 0
 
 
+def test_visual_scan_emits_one_truth_free_frame_event_per_active_camera() -> None:
+    config = ScenarioConfig(
+        target_count=2,
+        resource_count=2,
+        recon_count=1,
+        duration_s=0.2,
+        radar_enabled=False,
+        acoustic_enabled=False,
+        visual_detection_probability=0.0,
+        visual_false_alarm_rate=0.0,
+        communication_enabled=False,
+    )
+    world = VectorizedPointMassWorld(config)
+    scene = SensorScene(config)
+    world.reset()
+    scene.reset()
+
+    batch = scene.visual_scan(world.snapshot())
+
+    assert batch.measurements == ()
+    assert len(batch.camera_frame_events) == 3
+    assert all(event.empty for event in batch.camera_frame_events)
+    assert {event.camera_id for event in batch.camera_frame_events} == {
+        "CAM-INT-0001",
+        "CAM-INT-0002",
+        "CAM-RECON-001",
+    }
+    for event in batch.camera_frame_events:
+        assert event.measurement_timestamp == 0.0
+        assert event.arrival_timestamp == config.visual_latency_s
+        assert event.detection_count == 0
+        assert_online_payload_truth_free(event)
+
+
+class _CameraFrameCaptureStack:
+    def __init__(self) -> None:
+        self.config: ScenarioConfig | None = None
+        self.frame_events: list[CameraFrameEvent] = []
+
+    def reset(self, config: ScenarioConfig) -> None:
+        self.config = config
+        self.frame_events.clear()
+
+    def step(self, step_input: RuntimeStepInput) -> RuntimeStepOutput:
+        assert self.config is not None
+        self.frame_events.extend(step_input.arrived_camera_frame_events)
+        return RuntimeStepOutput(
+            interceptor_acceleration_ned=np.zeros(
+                (self.config.resource_count, 3)
+            ),
+            recon_acceleration_ned=np.zeros((self.config.recon_count, 3)),
+        )
+
+
+def test_zero_detection_camera_frame_survives_transport_without_truth() -> None:
+    config = ScenarioConfig(
+        target_count=1,
+        resource_count=1,
+        recon_count=1,
+        duration_s=0.35,
+        radar_enabled=False,
+        acoustic_enabled=False,
+        visual_detection_probability=0.0,
+        visual_false_alarm_rate=0.0,
+        communication_enabled=True,
+        communication_drop_probability=0.0,
+        communication_jitter_s=0.0,
+    )
+    stack = _CameraFrameCaptureStack()
+
+    result = run_episode(config, module_stack=stack)
+
+    assert stack.frame_events
+    assert all(event.empty for event in stack.frame_events)
+    assert all(
+        event.arrival_timestamp
+        >= event.measurement_timestamp
+        + config.visual_latency_s
+        + config.communication_latency_s
+        for event in stack.frame_events
+    )
+    messages = [
+        message
+        for message in result.online_messages
+        if message.topic == "sensor.camera_empty_frame"
+    ]
+    assert len(messages) >= len(stack.frame_events)
+    assert {
+        event.event_id for event in stack.frame_events
+    }.issubset({message.payload.event_id for message in messages})
+    assert result.summary["camera_empty_frame_generated_count"] > 0
+    assert result.summary["camera_empty_frame_delivered_count"] == len(messages)
+    assert result.summary["camera_empty_frame_dropped_count"] == 0
+    assert result.summary["online_truth_use_count"] == 0
+
+
+def test_dropped_zero_detection_frame_is_not_delivered_to_module_stack() -> None:
+    config = ScenarioConfig(
+        target_count=1,
+        resource_count=1,
+        recon_count=0,
+        duration_s=0.25,
+        radar_enabled=False,
+        acoustic_enabled=False,
+        visual_detection_probability=0.0,
+        visual_false_alarm_rate=0.0,
+        communication_enabled=True,
+        communication_drop_probability=1.0,
+        communication_jitter_s=0.0,
+    )
+    stack = _CameraFrameCaptureStack()
+
+    result = run_episode(config, module_stack=stack)
+
+    assert stack.frame_events == []
+    assert result.summary["camera_empty_frame_generated_count"] > 0
+    assert result.summary["camera_empty_frame_queued_count"] == 0
+    assert result.summary["camera_empty_frame_dropped_count"] > 0
+    assert not any(
+        message.topic == "sensor.camera_empty_frame"
+        for message in result.online_messages
+    )
+
+
 def test_offline_truth_history_can_render_three_dimensional_gif(tmp_path: Path) -> None:
     config = ScenarioConfig(
         target_count=2,
@@ -741,6 +1000,47 @@ class _StaleCameraCommandStack:
         )
 
 
+class _CameraAckEvidenceStack(_StaleCameraCommandStack):
+    def __init__(self) -> None:
+        super().__init__()
+        self.feedback_calls: list[dict[str, object]] = []
+
+    def step(self, step_input: RuntimeStepInput) -> RuntimeStepOutput:
+        output = super().step(step_input)
+        return RuntimeStepOutput(
+            interceptor_acceleration_ned=output.interceptor_acceleration_ned,
+            recon_acceleration_ned=output.recon_acceleration_ned,
+            camera_commands=output.camera_commands,
+            publications=(
+                RuntimePublication(
+                    topic="modules.d5.active_vision",
+                    source="D5",
+                    schema_version="d5.active-vision-runtime.v1",
+                    payload={
+                        "timestamp": step_input.timestamp,
+                        "command_count": len(output.camera_commands),
+                        "commands": [
+                            {
+                                "camera_id": command.camera_id,
+                                "communication_version": (
+                                    command.communication_version
+                                ),
+                            }
+                            for command in output.camera_commands
+                        ],
+                    },
+                    copy_payload=False,
+                ),
+            ),
+        )
+
+    def record_active_vision_runtime_feedback(
+        self,
+        **kwargs: object,
+    ) -> None:
+        self.feedback_calls.append(dict(kwargs))
+
+
 class _AssignmentPlanAckStack:
     def __init__(self, *, stale_guidance: bool = False) -> None:
         self.config: ScenarioConfig | None = None
@@ -815,6 +1115,46 @@ class _AssignmentPlanAckStack:
                         ],
                     },
                 ),
+            ),
+        )
+
+
+class _AssignmentPlanAckIntentStack(_AssignmentPlanAckStack):
+    def __init__(self) -> None:
+        super().__init__()
+        self.recorded_acknowledgements: list[dict[str, object]] = []
+
+    def record_assignment_plan_runtime_ack(
+        self,
+        *,
+        acknowledgement: dict[str, object],
+        acknowledgement_envelope: VersionedEnvelope,
+        source_publication_envelopes: tuple[VersionedEnvelope, ...],
+        timestamp_s: float,
+        partition_generation: int,
+    ) -> tuple[RuntimeCommunicationIntent, ...]:
+        assert acknowledgement_envelope.topic == "runtime.assignment_plan_ack"
+        assert acknowledgement_envelope.payload is acknowledgement
+        assert {
+            item.topic for item in source_publication_envelopes
+        } == {
+            "modules.d3.assignment_plan",
+            "modules.d7.guidance_commands",
+        }
+        self.recorded_acknowledgements.append(dict(acknowledgement))
+        return (
+            RuntimeCommunicationIntent(
+                source="C2",
+                destination="D4-GATE",
+                topic="test.assignment_owner_ack",
+                schema_version="test-assignment-owner-ack-v1",
+                payload={
+                    "plan_id": acknowledgement["plan_id"],
+                    "plan_version": acknowledgement["plan_version"],
+                    "ack_bus_sequence": acknowledgement_envelope.sequence,
+                    "ack_timestamp": timestamp_s,
+                    "partition_generation": partition_generation,
+                },
             ),
         )
 
@@ -894,6 +1234,40 @@ def test_runtime_applies_current_camera_command_and_rejects_stale_plan() -> None
     ]
 
 
+def test_camera_ack_is_published_before_runtime_feedback_is_recorded() -> None:
+    config = ScenarioConfig(
+        target_count=1,
+        resource_count=1,
+        recon_count=0,
+        duration_s=0.05,
+        radar_enabled=False,
+        acoustic_enabled=False,
+        visual_enabled=False,
+    )
+    stack = _CameraAckEvidenceStack()
+
+    result = run_episode(config, module_stack=stack)
+
+    assert len(stack.feedback_calls) == 1
+    callback = stack.feedback_calls[0]
+    ack_envelope = callback["acknowledgement_envelopes"][0]
+    source_envelope = callback["source_publication_envelopes"][0]
+    assert source_envelope.topic == "modules.d5.active_vision"
+    assert ack_envelope.topic == "runtime.camera_command_ack"
+    assert source_envelope.sequence < ack_envelope.sequence
+    assert ack_envelope in result.online_messages
+    assert callback["source_git_commit"] == result.manifest.git_commit
+    assert len(callback["pairing_context_sha256"]) == 64
+    assert result.summary["learning_adoption_status"] == {
+        "A1": "evidence_unavailable",
+        "A2": "evidence_unavailable",
+        "A3": "evidence_unavailable",
+    }
+    assert not any(
+        result.summary["learning_adoption_audit"]["permissions"].values()
+    )
+
+
 def test_runtime_acknowledges_d3_plan_binding_consumed_by_d7() -> None:
     config = ScenarioConfig(
         target_count=1,
@@ -961,6 +1335,28 @@ def test_runtime_acknowledges_d3_plan_binding_consumed_by_d7() -> None:
             "held": False,
         }
     ]
+
+
+def test_runtime_routes_post_assignment_ack_intents_through_network() -> None:
+    config = ScenarioConfig(
+        target_count=1,
+        resource_count=1,
+        recon_count=0,
+        duration_s=0.05,
+        radar_enabled=False,
+        acoustic_enabled=False,
+        visual_enabled=False,
+    )
+    stack = _AssignmentPlanAckIntentStack()
+
+    result = run_episode(config, module_stack=stack)
+
+    assert len(stack.recorded_acknowledgements) == 1
+    assert result.summary["assignment_plan_post_ack_intent_count"] == 1
+    assert result.summary["communication_intent_issued_count"] == 1
+    assert result.summary["communication_intent_topic_counts"] == {
+        "test.assignment_owner_ack": 1
+    }
 
 
 def test_runtime_rejects_guidance_ack_for_stale_d3_plan_version() -> None:
