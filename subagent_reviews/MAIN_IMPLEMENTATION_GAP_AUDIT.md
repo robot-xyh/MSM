@@ -4,7 +4,7 @@
 **审计目标**：列出共识算法与计划使用的开源代码哪些已经实现，哪些没有实现，为什么没有实现，以及缺少哪些条件。
 **边界**：本文只用于科研仿真、接口补齐和后续工程排期；不涉及真实硬件、实机处置、火控或绕过授权的自动动作。
 
-## 2026-07-26 D5/D6 G1 证据与权限合同修订
+## 2026-07-27 D5/D6 G1 正式证据与权限边界
 
 本节是 D5 图模型准入合同的当前状态，优先于下方 v4/v1 历史记录。当前没有开放的模型
 越权 P0。规则路径仍为默认，G1 未获得在线辅助、默认路径、分配、故障接管或控制权限。
@@ -35,12 +35,29 @@
    external/post-assembly 专项为 `14/55 passed`，全量为 `1042 passed`。main 另有
    D5/D6 版本、布局、profile、input/consumer、lineage 和六权限直接对照回归。warning
    为既有运行环境提示，不改变测试结论。
+7. **当前运行时正式证据链已闭合。** main 在 detached clean commit
+   `8d5e02ec989259ce3d39e1e4ad6a90dd0d8d5b54` 上重建补充语料、development bundle、
+   seed `1000-1019` held-out、paired-shadow、逐帧 lineage 和 shadow-only registry。
+   运行实现摘要为
+   `b0708e718b374e5bb52db41c7bd2f994e340a2b009cfd348881a5f9d549baffe`，
+   权重仍为 `7fb5db8b...ca71`。held-out 覆盖 20 个未见 seed、900 个 episode 和
+   45 个场景规模单元；精确率、召回率、F1 和候选召回率均为 `1.0`，错误合并率为
+   `0`，CPU P95 推理时延约 `0.913 ms`。这些结果来自合成匿名候选图。
+8. **D6 两级正式审计通过。** external audit v2 状态为 `pass`、blocker 为空，文件/
+   内容 SHA-256 为 `cbd6c72b...0cd6` / `334cf662...2d15`。D5 生产装配器随后生成
+   manifest SHA-256 为 `b431d066...317d` 的 v5；post-assembly v2 再次得到
+   `pass`、blocker 为空，内容 SHA-256 为 `17dda42d...3e1d`。lineage 为 900 条记录、
+   900 个唯一 `episode_uid`，SHA-256 为 `83e10529...af1`。
+9. **资格没有转化为授权。** v5 strict 和 shadow loader 均通过；
+   `require_g1_assist_eligible=True` 的在线辅助请求返回
+   `bundle_g1_assist_authority_not_granted`。模型晋级、G1 辅助、默认路径、分配、
+   故障接管和控制六项权限全部为 false。当前允许保存和审计该候选，不允许其影响在线
+   身份、分配、降级或控制。
 
-当前开放 P1 是形成新正式证据，不是继续放宽合同：先在包含本次修订的 clean commit 上
-重新生成当前 runtime 的 held-out 和 paired-shadow 证据，再由 D6 运行 external audit
-v2；只有审计通过后才能装配 v5，并将 v5 交给 D6 运行 post-assembly v2。真实相机泛化、
-中心 `global_track_id` 绑定正确率和物理闭环结果继续明确标记为 unavailable。正式 v5
-形成前不得启动 G1 学习组。
+本轮关闭了“正式 external audit v2、v5 装配和 post-assembly v2 尚未形成”的 P1。
+仍开放的 P1 是现实证据和运行授权：真实相机泛化、中心 `global_track_id` 绑定正确率和
+物理闭环结果继续明确标记为 unavailable；另需定义独立于 D5/D6 制品的人工批准实验授权
+合同，再决定是否启动 G1 受控作用域。不得通过改写 v5 权限字段或放宽 loader 绕过该步骤。
 
 ## 2026-07-26 D3/D4/D5 正式证据与跨视角正向校准
 
@@ -95,10 +112,11 @@ v2；只有审计通过后才能装配 v5，并将 v5 交给 D6 运行 post-asse
 
 当前最短 P1 路径是：
 
-1. 按当前 D5 实现重新生成 held-out 和 paired-shadow 证据，重新装配不可变 G1 bundle，
-   由 D6 重做 external audit 与 post-assembly audit；未通过前
-   不运行学习组。
-2. 使用相同 seed、外生配置和随机日程运行 R0/G1。候选图只比较外生输入等价性；G1
+1. 当前 runtime 的 external audit v2、v5 和 post-assembly v2 已闭合。下一步定义
+   main-owned、人工批准、带作用域和有效期的实验授权包。授权包与 v5 证据包分离，
+   只允许 G1 在既有候选边上参与受控评分；不得授予 `global_track_id`、分配、降级或
+   控制权限。
+2. 授权合同完成后，使用相同 seed、外生配置和随机日程运行 R0/G1。候选图只比较外生输入等价性；G1
    模型收益必须另有带概率、冻结阈值和预测谱系的 prediction sidecar，或使用既有严格
    held-out evaluator。G1 还必须满足实际加载、无 fallback、错误合并不恶化和全部安全
    计数为 0。

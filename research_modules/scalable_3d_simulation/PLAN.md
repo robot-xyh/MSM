@@ -61,13 +61,19 @@
 8. [ ] D3 在实际 A1 采用确认、物理结果和同键 R0 非退化证据齐备后实现模块专用
    assembler，形成新的 immutable bundle。
 9. [ ] D4 在实际 A2 隔离采用与成对非退化证据齐备后实现模块专用 assembler。
-10. [ ] 在包含本次合同修订的 clean commit 上重新生成当前 runtime 的 held-out 和
-    paired-shadow 证据；通过 D6 external audit v2 后装配 v5，再运行 post-assembly
-    v2。真实相机泛化、中心身份绑定和物理闭环结果仍不可用。
-11. [ ] D5 继续形成无单特征捷径、困难扰动达标的 G1 模型证据；另行实现 A3
-    assembler。
-12. [ ] 只有模块预准入通过后，main 才按 G1、A1、A2、A3、C1、F1 启动正式 scope，
-    D6 再审计逐 cell 实际采用、物理结果和唯一同键 R0 非退化。
+10. [x] 在 clean commit `8d5e02e...b54` 上重建当前 runtime 的 development、
+    held-out、paired-shadow、900 条唯一 lineage 和 shadow-only registry。D6
+    external audit v2 通过后，D5 生产装配器生成 v5；D6 post-assembly v2 再次
+    `pass` 且 blocker 为空。
+11. [x] D5 当前合成 G1 候选满足无单特征捷径和五类固定候选图困难扰动门限。20 个
+    未见 seed、900 个 episode、45 个场景规模单元的 held-out F1 为 `1.0`，最高单
+    特征 AUC 为 `0.720073`。该结论不覆盖真实相机泛化、中心身份绑定和物理闭环。
+12. [ ] main 定义独立于 v5 的人工批准实验授权包，明确作用域、有效期、撤销和只读
+    身份边界。当前 v5 六项权限全部为 false，在线 G1 assist 请求按
+    `bundle_g1_assist_authority_not_granted` 失败关闭，不得直接启动正式 G1 scope。
+13. [ ] A3 仍需实现独立 evidence assembler。只有各变体预准入和实验授权均通过后，
+    main 才按 G1、A1、A2、A3、C1、F1 启动正式 scope，D6 再审计逐 cell 实际采用、
+    物理结果和唯一同键 R0 非退化。
 
 ## 学习变体 assist 准入预检（2026-07-26）
 

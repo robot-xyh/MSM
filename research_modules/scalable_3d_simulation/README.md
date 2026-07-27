@@ -69,9 +69,23 @@ D6 external audit 输出已升为 `d6.d5-g1-external-audit.v2`；结构未变化
 历史 `99fa4428...d4cd` 模型的 post-assembler 审计为 `fail_closed`。五项 blocker 是
 `implementation_evidence_unavailable`、`implementation_lineage_mismatch`、困难扰动
 cluster/edge F1 未达到 `0.9`，以及单特征最佳方向曲线下面积 `0.997340` 超过 `0.98`
-上限。该旧证据不能输入 v5 装配。当前必须在包含合同修订的 clean commit 上重新生成
-held-out 和 paired-shadow，运行 external audit v2，通过后装配 v5，再运行
-post-assembly v2。
+上限。该旧证据不能输入 v5 装配。
+
+当前运行时证据已在 detached clean commit
+`8d5e02ec989259ce3d39e1e4ad6a90dd0d8d5b54` 上重新生成。运行实现摘要为
+`b0708e718b374e5bb52db41c7bd2f994e340a2b009cfd348881a5f9d549baffe`，
+权重 SHA-256 为 `7fb5db8b...ca71`。held-out 覆盖 20 个未见 seed、900 个 episode
+和 45 个场景规模单元；精确率、召回率、F1 和候选召回率均为 `1.0`，错误合并率为
+`0`，CPU P95 推理时延约 `0.913 ms`。paired-shadow 的模型边和聚类 F1 均为
+`1.0`，最高单特征 AUC 为 `0.720073`。逐帧 lineage 为 900 条记录和 900 个唯一
+`episode_uid`。
+
+D6 external audit v2 得到 `pass`、blocker 为空，文件/内容 SHA-256 为
+`cbd6c72b...0cd6` / `334cf662...2d15`。D5 生产装配器生成 v5 manifest
+`b431d066...317d` 后，D6 post-assembly v2 再次得到 `pass`、blocker 为空，内容
+SHA-256 为 `17dda42d...3e1d`。v5 strict 和 shadow loader 均可加载；在线 assist
+请求返回 `bundle_g1_assist_authority_not_granted`。这条链关闭了当前 runtime 的证据
+装配缺口，但没有开放任何运行权限。
 
 四个 owner 没有修改旧 bundle、manifest 或权重，也没有增加 implementation hash
 兼容白名单或放宽阈值。本次合同修订后的 D5 全量为 `655 passed, 1 warning`，D6 全量为
@@ -94,8 +108,9 @@ bundle 的完整文件树摘要、manifest 摘要、预检设备、准入诊断�
 
 正式学习变体分成两个证据阶段。预准入阶段由模块 owner 使用未见 seed、隔离采用和
 paired-shadow 结果生成新的 evidence-bound bundle。D3 和 D4 模块专用 assembler 尚未
-实现；D5 G1 assembler 已实现，但需要绑定当前实现、没有单特征捷径且困难扰动达标的新
-模型证据；A3 assembler 仍未实现。正式 scope 完成后，D6 使用
+实现；D5 G1 已形成当前运行时 v5 证据资格，但六项运行权限均为 false；A3 assembler
+仍未实现。main 还需定义与 v5 分离的人工批准实验授权包，才能启动受控 G1 作用域。
+正式 scope 完成后，D6 使用
 `d6.learning-scope-formal-evidence-audit.v1` 重新校验 execution plan、bundle 文件树、
 merge、shard、cell 和 episode 证据，并与唯一同键 R0 比较。D6 审计要求模型实际采用，
 shadow、规则回退、仅加载模型、D5 零候选边、缺物理结果或缺 R0 均判为
