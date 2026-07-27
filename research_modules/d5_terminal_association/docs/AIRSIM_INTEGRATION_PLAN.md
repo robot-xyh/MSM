@@ -1,9 +1,41 @@
 # AirSim 离线集成计划
 
-## 2026-07-26 学习 scope 准入边界
+## 2026-07-27 G1 v5 的 AirSim 使用边界
+
+clean commit `8d5e02ec989259ce3d39e1e4ad6a90dd0d8d5b54` 已形成绑定 runtime
+`b0708e718b374e5bb52db41c7bd2f994e340a2b009cfd348881a5f9d549baffe` 的正式 G1 v5。
+development manifest、权重和 v5 manifest SHA-256 分别为
+`7d459ed855cf74b810fa1f79ed0327efd39eb4be4409451266da3f3a95387ce0`、
+`7fb5db8b6099ca4da5706a3bec53ff7cd634e8bd267c036ce3ee4ee4bf71ca71` 和
+`b431d066362005868374d038eb93a83b773c03715a53d8a9dfd0da21784f317d`。
+
+冻结合成证据覆盖 20 个未见 seed、900 个 episode、45 个场景规模单元和 74024 条
+paired-shadow 边。held-out precision/recall/F1/candidate recall 均为 1.0，false merge 为 0，
+CPU P95 约 0.913 ms；paired-shadow 模型 edge/cluster F1 均为 1.0，最高单特征 AUC 为
+0.720073。lineage SHA-256 为
+`83e105290f3e624f267d92ceaf050d32291bd5bbbabf98580846cd31498b1af1`，计数为
+900 records/900 unique UIDs。
+
+D6 external audit v2 已通过，文件/内容 SHA-256 为
+`cbd6c72b2d9e7b78bf3aa36f975e6627250d2bf18de5a0b0ebc2c8f6cf760cd6` /
+`334cf662e49c735931019ff358be1894d1358f1b4a5a868759eee41d3d282d15`。D6 post-assembly
+v2 也已通过，内容 SHA-256 为
+`17dda42d06b4be1d21ff8f1f8baecc320fd49b532be06a9f9f6b304341763e1d`。
+
+v5 的 strict loader 和 shadow loader 已通过，但 AirSim 在线初始化不得请求 G1 assist。该请求
+按合同返回 `bundle_g1_assist_authority_not_granted`。模型晋级、G1 辅助、默认路径变更、分配、
+故障接管和控制六项权限全部为 `false`，AirSim 主线继续使用确定性几何关联。
+
+本轮没有启动 AirSim，也没有改变 settings、相机参数、检测器、多目标跟踪器、actor、reset、
+消息 DTO、云台命令或导引接口。D6 仍将真实相机泛化、中心 `global_track_id` binding 正确性和
+物理闭环结果标记为 `unavailable`。下一阶段应在代表性 AirSim 图像上保持真值离线隔离，采集
+匿名本地轨迹、双时间戳、逐帧外参和协方差，先运行 shadow 对照；在独立授权之前不得切换在线
+G1。
+
+## 2026-07-26 学习 scope 准入边界（历史 v4 中间阶段）
 
 AirSim 和统一三维 episode 接入 D5 学习能力时，G1 图模型必须通过
-`require_g1_assist_eligible=True` 的严格加载，A3 主动视觉必须通过 assist 模式的严格加载。当前
+`require_g1_assist_eligible=True` 的严格加载，A3 主动视觉必须通过 assist 模式的严格加载。当时
 G1 运行实现摘要已包含 evidence assembler，为
 `41381db3d11371c049e5569658820ce98abf1a9966ecf86edc0f13f140894b07`；A3 仍为
 `e7db827f5f2bbbf8a89e94ceeae8a4bdef31c646d003983c5928b46879b533b4`。现有两个开发 bundle
@@ -11,12 +43,14 @@ G1 运行实现摘要已包含 evidence assembler，为
 也不得增加兼容白名单绕过实现摘要。
 
 G1 已有独立 evidence assembler，可从明确实物原子生成并严格加载 v4；production writer 仍不接收
-调用方 report。post-assembler D6 audit 绑定当前实现摘要 `41381db3...94b07`，文件/内容 SHA-256
-为 `98bf9e02...c8ed` / `40a42af0...b90d`。当前 `99fa4428...d4cd` 实物因实现证据不可用、实现谱系
+调用方 report。post-assembler D6 audit 绑定当时实现摘要 `41381db3...94b07`，文件/内容 SHA-256
+为 `98bf9e02...c8ed` / `40a42af0...b90d`。该历史 `99fa4428...d4cd` 实物因实现证据不可用、实现谱系
 不一致、边/簇困难扰动未达门限和合成单特征捷径共五项 blocker 保持 `fail_closed`，因此没有生成
-admitted bundle，AirSim G1 scope 仍不能初始化。A3 assembler 尚未实现，A3/C1/F1 继续失败关闭。
-AirSim 主线继续使用确定性几何关联和规则主动视觉。本次只同步准入状态，没有修改 settings、相机
-参数、检测器、局部多目标跟踪、actor、reset、消息 DTO 或导引接口。
+admitted bundle，该阶段的 AirSim G1 scope 不能初始化。2026-07-27 的最终 runtime 已形成
+external audit v2、v5 和 post-assembly v2，但六项权限全部为 `false`，因此 AirSim 在线 G1
+scope 仍不得初始化。A3 assembler 尚未实现，A3/C1/F1 继续失败关闭。AirSim 主线继续使用确定性
+几何关联和规则主动视觉。本次只同步准入状态，没有修改 settings、相机参数、检测器、局部多目标
+跟踪、actor、reset、消息 DTO 或导引接口。
 
 ## 2026-07-25 冻结图模型的 AirSim 边界
 

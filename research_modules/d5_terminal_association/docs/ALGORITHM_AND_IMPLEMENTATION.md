@@ -1,8 +1,68 @@
 # D5 终端视觉配准与身份认证算法原理与实施文档
 
-**状态日期：2026-07-26**
+**状态日期：2026-07-27**
 
-## v5 配对谱系装配
+## G1 v5 正式装配与验证
+
+### 冻结输入
+
+正式流水线在 clean commit
+`8d5e02ec989259ce3d39e1e4ad6a90dd0d8d5b54` 上运行。运行时实现、development manifest 和
+权重 SHA-256 依次为：
+
+```text
+runtime implementation
+b0708e718b374e5bb52db41c7bd2f994e340a2b009cfd348881a5f9d549baffe
+
+development manifest
+7d459ed855cf74b810fa1f79ed0327efd39eb4be4409451266da3f3a95387ce0
+
+weights
+7fb5db8b6099ca4da5706a3bec53ff7cd634e8bd267c036ce3ee4ee4bf71ca71
+```
+
+held-out 使用 20 个未见 seed、900 个 episode 和 45 个场景规模单元。precision、recall、F1
+与 candidate recall 均为 1.0，false merge 为 0，CPU P95 推理时延为
+0.9130288 ms。paired-shadow 使用相同 900 个 episode，形成 74024 条候选边；模型 edge F1 和
+cluster F1 均为 1.0，最高单特征 AUC 为 0.720073。
+
+正式打包使用的 `paired_episode_lineage.jsonl` SHA-256 为
+`83e105290f3e624f267d92ceaf050d32291bd5bbbabf98580846cd31498b1af1`。文件含 900 条合法记录和
+900 个唯一 episode UID。该实物同时受 paired report、D6 external audit v2、v5 manifest、
+admission report v2 和 `SHA256SUMS` 约束。
+
+### 两级 D6 审计
+
+D6 external audit 顶层 schema 为 `d6.d5-g1-external-audit.v2`，结果为 `pass`，blocker 为空。
+审计文件 SHA-256 为
+`cbd6c72b2d9e7b78bf3aa36f975e6627250d2bf18de5a0b0ebc2c8f6cf760cd6`，规范化内容 SHA-256
+为 `334cf662e49c735931019ff358be1894d1358f1b4a5a868759eee41d3d282d15`。
+
+外审通过后，生产入口 `assemble_tracklet_g1_bundle.py` 生成
+`d5.tracklet-model-bundle.v5`。其 manifest SHA-256 为
+`b431d066362005868374d038eb93a83b773c03715a53d8a9dfd0da21784f317d`。D6
+post-assembly v2 对目录布局、清单覆盖、打包证据、准入报告、权限合同和实现谱系重新检查，
+结果为 `pass`、blocker 为空，内容 SHA-256 为
+`17dda42d06b4be1d21ff8f1f8baecc320fd49b532be06a9f9f6b304341763e1d`。
+
+### 加载与运行边界
+
+v5 已通过 strict loader 和 shadow loader。strict loader 验证证据树和跨文件绑定，shadow
+loader 只允许离线影子推理。请求 G1 在线辅助时，runtime loader 必须返回：
+
+```text
+bundle_g1_assist_authority_not_granted
+```
+
+模型晋级、G1 辅助、默认路径变更、分配、故障接管和控制六项权限全部为 `false`。准入状态
+`g1_evidence_eligible_not_authorized` 表示证据完整，不表示在线 G1 已启用。确定性投影、几何门、
+受约束聚类和中心只读 binding 继续作为默认路径。
+
+外审和装配后审计均将真实相机泛化、中心 `global_track_id` binding 正确性和物理闭环结果标为
+`unavailable`。冻结合成图没有这些输入，系统不得以零值代替，也不得从满分合成指标外推真实
+相机或拦截能力。
+
+## v5 配对谱系装配（代码机制）
 
 ### 输入与读取
 
@@ -39,7 +99,8 @@ paired_shadow_lineage_unique_episode_uid_count
 当前 runtime implementation SHA-256 为
 `b0708e718b374e5bb52db41c7bd2f994e340a2b009cfd348881a5f9d549baffe`。
 assembler 专项 `69 passed`，lineage 联合专项 `86 passed`，D5 全量
-`655 passed, 1 warning in 100.57s`。本轮没有运行正式重训、外审或 v5 装配。
+`655 passed, 1 warning in 100.57s`。该句记录 2026-07-26 代码阶段；正式重训、外审和 v5
+装配已于 2026-07-27 按本文件首节完成。
 
 ## 六权限合同 v2
 
@@ -147,11 +208,11 @@ paired-shadow 文件和 D6 文件内容，随后在 D6 authority 结构检查处
 v4 目录未创建，public strict loader、runtime loader 和 post-assembly handoff 均未执行。
 
 不能通过删除两个新增字段解决该问题。不能修改旧 audit 后重算哈希，也不能在 assembler 中增加
-兼容白名单。当前 assembler 已按新合同版本修复，runtime SHA-256 已改变，现有 D5 与 D6 证据
-必须按新实现谱系重新生成。失败记录位于
+兼容白名单。当时 assembler 已按新合同版本修复，runtime SHA-256 随之改变，因此该中间阶段要求
+D5 与 D6 证据按新实现谱系重新生成；最终正式证据链已于 2026-07-27 完成。失败记录位于
 `/tmp/MSM-d5-g1-current-runtime-v4-64cb865-20260726-failed/`。
 
-## clean R0 与当前运行时模型证据
+## clean R0 与模型证据（历史 5506 runtime）
 
 ### 候选图评分
 
@@ -171,19 +232,19 @@ truth_eligible = 4645
 ### 实现谱系门
 
 formal held-out 使用公开 `load_tracklet_model_bundle()`。加载器在读取权重和推理前核对 bundle
-内十个运行时源文件摘要与当前源码摘要。当前 clean runtime 为
+内十个运行时源文件摘要与该阶段源码摘要。该阶段 clean runtime 为
 `5506638201623048fb53c8e15493a2dc367d5682abbee3b7235704721586b8ea`。旧 bundle 绑定
-`408e71fe...f4fe`，不能继续作为当前证据。
+`408e71fe...f4fe`，不能继续作为该阶段证据。
 
 恢复过程调用正式 `run_tracklet_composite_training.py train --robust-v2`。writer 严格复载
 formal manifest `d9a84007...426`、supplemental manifest `c657af31...636`、训练 seed 注册表、
 共享 split 注册表、composite view 和 admission report。训练使用原
 `seed=20260726`、12 epochs、学习率 `5e-4`、权重衰减 `1e-4`、隐藏维数 `48` 和两步消息传递。
-输出权重仍为 `7fb5db8b...ca71`，证明该训练配置在当前环境中可重复。writer 同时生成新的
+输出权重仍为 `7fb5db8b...ca71`，证明该训练配置在当时环境中可重复。writer 同时生成新的
 manifest `db908b05...1d14` 和 checksums `2fe079ed...856`，没有复制旧 bundle 后改写哈希。
 
 冻结 corpus 规模为 `20/900/45`，manifest/config/lineage SHA-256 分别为
-`a91d5540...196f`、`528bdd1b...ad18` 和 `19f35ebb...a63eb`。当前 runtime held-out 覆盖
+`a91d5540...196f`、`528bdd1b...ad18` 和 `19f35ebb...a63eb`。该阶段 runtime held-out 覆盖
 `13344` 个节点、`74024` 条候选边，总体 precision、recall、F1 和候选召回均为 `1.0`，
 错误合并率为 `0`，期望校准误差为 `0.0000347`，CPU P95 推理时延约 `0.872 ms`。
 
@@ -265,9 +326,10 @@ OOSM、coast、容量淘汰、stream reset 和 episode reset 均通过。
 2026-07-26 adapter 专项为 `50 passed`，D5 全量为
 `600 passed, 1 warning in 94.80s`。main 提交 `690858a` 的 667 条真实观测、294/247
 candidate/retained edge 是修复前正向开发证据；后续 clean 20-seed R0 已用当前源码完成。
-当前 runtime SHA 为 `55066382...b8ea`，旧 G1 v4 以
-`bundle_implementation_runtime_mismatch` 失败关闭；current-runtime development 证据已形成，
-等待 D6 外审。
+该阶段 runtime SHA 为 `55066382...b8ea`，旧 G1 v4 以
+`bundle_implementation_runtime_mismatch` 失败关闭；截至该段记录时，development 证据已形成并
+等待 D6 外审。最终 runtime 的 external audit v2、v5 和 post-assembly v2 已于 2026-07-27
+完成。
 
 ## 异步跨调用活跃相机快照
 
@@ -401,7 +463,7 @@ missed-frame、OOSM、外参、容量和 reset 负例均不形成非法边。
 
 实际 `7fb5db8b...ca71` 权重接口探针对异步同目标图输出概率 `0.9999935627`，并形成一个双节点
 簇。该探针不经过严格 bundle 准入，不能作为在线启用证据。D6 对既有 v4 的正式 post-assembly
-audit 只证明装配完整性；本轮源码变更使当前运行时摘要变为 `55066382...b8ea`，旧 v4 严格加载
+audit 只证明装配完整性；该阶段源码变更使当时运行时摘要变为 `55066382...b8ea`，旧 v4 严格加载
 以 `bundle_implementation_runtime_mismatch` 失败关闭。
 
 ## 冻结 registry 生产（历史 v4）
@@ -507,7 +569,7 @@ H_m=\operatorname{SHA256}(\text{model source file hashes})
 H_r=\operatorname{SHA256}(\text{runtime source file hashes}).
 \]
 
-当前 \(H_m=\)`1883bc36...105`，\(H_r=\)`408e71fe...f4fe`。四个模型源码必须同时出现在
+该历史训练阶段的 \(H_m=\)`1883bc36...105`，\(H_r=\)`408e71fe...f4fe`。四个模型源码必须同时出现在
 运行时清单且哈希逐项相同；held-out、paired-shadow 和未来 D6 audit 绑定 \(H_r\)。这种分离避免
 训练报告因评估或 assembler 文件纳入运行时后失去模型来源表达，同时不允许旧运行时兼容白名单。
 
@@ -559,8 +621,8 @@ I_{\mathrm{synthetic}}^{\,0}.
 门外，每个 episode 也不得出现安全、可见率或重捕获退化。A3 独立 evidence assembler 尚未实现；
 该判据当前只用于离线评估，production writer 不接受报告对象，公开 assist loader 继续失败关闭。
 
-G1 的实现摘要覆盖运行适配、稀疏图、数据合同、模型、held-out、paired shadow、训练、bundle
-loader 和 evidence assembler，当前为 `41381db3...94b07`。回归测试确认改变 assembler 会改变
+该历史 v4 的 G1 实现摘要覆盖运行适配、稀疏图、数据合同、模型、held-out、paired shadow、训练、
+bundle loader 和 evidence assembler，当时为 `41381db3...94b07`。回归测试确认改变 assembler 会改变
 摘要。旧 development bundle 未包含该来源文件，严格 loader 返回 `implementation_runtime_mismatch`，
 没有兼容白名单。
 
@@ -568,15 +630,15 @@ loader 和 evidence assembler，当前为 `41381db3...94b07`。回归测试确�
 `require_g1_assist_eligible=True` 下加载。v4 只授予 G1 assist eligibility；default、全局航迹编号、
 分配和控制 authority 全为 false。该 fixture 只证明软件合同可运行。
 
-当前 `99fa4428...d4cd` 实物没有生成 admitted bundle。post-assembler D6 审计文件 SHA-256 为
+该历史 `99fa4428...d4cd` 实物没有生成 admitted bundle。post-assembler D6 审计文件 SHA-256 为
 `98bf9e0251567a330bf16951acf07da576a6ba3dc47627c3671cd2d491cdc8ed`，内容 SHA-256 为
-`40a42af015211d5e721584053e052a893e31aa35b7393195530a5d3d2dc9b90d`，绑定当前实现摘要
+`40a42af015211d5e721584053e052a893e31aa35b7393195530a5d3d2dc9b90d`，绑定当时实现摘要
 `41381db3d11371c049e5569658820ce98abf1a9966ecf86edc0f13f140894b07`。审计为
 `fail_closed`，原因是 `implementation_evidence_unavailable`、`implementation_lineage_mismatch`、
 `robustness_threshold_not_met.cluster_f1`、`robustness_threshold_not_met.edge_f1` 和
 `synthetic_single_feature_shortcut`。assembler 返回 `d6_external_audit_fail_closed`、退出码 2，
-且不创建目标目录。后续需要新模型、新数据和新的 D6 正向审计，不能通过修改阈值或重写旧证据
-恢复权限。
+且不创建目标目录。该失败在当时要求重新形成模型、数据和 D6 正向审计，不能通过修改阈值或重写
+旧证据恢复权限；后续 `7fb5db8b...ca71` 正式链已形成，但六项运行权限仍全部为 `false`。
 
 2026-07-26 最终证据同步复测为 assembler 专项 `14 passed in 1.15s`、模型流水线
 `20 passed in 4.08s`；既有 D5 全量结果为 `571 passed in 99.00s`。

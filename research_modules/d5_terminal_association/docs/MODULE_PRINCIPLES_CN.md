@@ -1,8 +1,42 @@
 # 第五研究模块末端视觉关联（Terminal Association, D5）原理
 
-**状态日期：2026-07-26**
+**状态日期：2026-07-27**
 
-## 配对谱系完整性
+## 正式证据与权限分离
+
+2026-07-27，D5 在 clean commit
+`8d5e02ec989259ce3d39e1e4ad6a90dd0d8d5b54` 上完成 G1 v5 合成证据闭环。runtime
+implementation SHA-256 为
+`b0708e718b374e5bb52db41c7bd2f994e340a2b009cfd348881a5f9d549baffe`，development
+manifest 和权重 SHA-256 分别为
+`7d459ed855cf74b810fa1f79ed0327efd39eb4be4409451266da3f3a95387ce0` 与
+`7fb5db8b6099ca4da5706a3bec53ff7cd634e8bd267c036ce3ee4ee4bf71ca71`。
+
+held-out 覆盖 20 个未见 seed、900 个 episode 和 45 个场景规模单元。precision、recall、F1
+和 candidate recall 均为 1.0，false merge 为 0，CPU P95 推理时延约为 0.913 ms。
+paired-shadow 覆盖 900 帧和 74024 条边，模型 edge F1 与 cluster F1 均为 1.0，最高单特征
+AUC 为 0.720073。配对谱系 SHA-256 为
+`83e105290f3e624f267d92ceaf050d32291bd5bbbabf98580846cd31498b1af1`，记录数和唯一 episode
+UID 数均为 900。
+
+D6 external audit v2 已通过，文件与内容 SHA-256 分别为
+`cbd6c72b2d9e7b78bf3aa36f975e6627250d2bf18de5a0b0ebc2c8f6cf760cd6` 和
+`334cf662e49c735931019ff358be1894d1358f1b4a5a868759eee41d3d282d15`。D5 生产 assembler
+随后生成 `d5.tracklet-model-bundle.v5`，manifest SHA-256 为
+`b431d066362005868374d038eb93a83b773c03715a53d8a9dfd0da21784f317d`。D6
+post-assembly v2 再次通过，内容 SHA-256 为
+`17dda42d06b4be1d21ff8f1f8baecc320fd49b532be06a9f9f6b304341763e1d`。
+
+这条证据链只回答“冻结模型、实现、数据和审计制品是否一致”。strict loader 与 shadow loader
+通过，说明制品可做完整性检查和离线影子推理。G1 assist 请求仍返回
+`bundle_g1_assist_authority_not_granted`。模型晋级、G1 辅助、默认路径变更、分配、故障接管和
+控制六项权限全部为 `false`，因此不能由证据通过推导在线授权。
+
+D6 仍把真实相机泛化、中心 `global_track_id` binding 正确性和物理闭环结果标记为
+`unavailable`。本轮数据是冻结合成 tracklet 图，不是 AirSim 真实图像、实机相机或物理拦截
+结果。在线路径继续使用确定性几何规则，后续真实相机和跨模块闭环证据作为独立 P1 处理。
+
+## 配对谱系完整性（代码原理）
 
 G1 v5 的 held-out 和 paired-shadow 结论必须能回到逐 episode 的同一配对记录。D5 因此把
 `paired_episode_lineage.jsonl` 作为独立证据，不再只在 paired report 中保存一个摘要。设 lineage
@@ -19,8 +53,8 @@ loader 每次重新读取实物并复算上述关系。文件缺失、摘要变�
 字段、899 条记录或任一方计数不一致都会拒绝。
 
 该完整性门只证明配对证据可追溯。它不授予 G1 在线辅助、身份、分配、接管、默认路径或控制
-权限。当前 runtime SHA 为 `b0708e71...baffe`，D5 全量回归为
-`655 passed, 1 warning`；尚未生成与该 runtime 绑定的正式模型证据。
+权限。代码阶段 D5 全量回归为 `655 passed, 1 warning`；与当前 runtime 绑定的正式模型证据
+已于 2026-07-27 形成，其作用域和权限边界以上一节为准。
 
 ## 六权限证据边界
 
@@ -60,15 +94,16 @@ paired-shadow、D6 外审或正式 v5，且已由当前 lineage 实现取代，�
 lineage、registry evidence 和实现摘要的哈希链一致。审计为 `pass`，blocker 为空；模型晋级、
 G1 辅助、默认路径、分配、故障接管和控制六类权限全部关闭。
 
-外审通过只是装配输入条件。当前 evidence assembler 还要求 D6 `authority` 对象与其冻结 schema
-完全相等。当前 runtime `55066382...b8ea` 的 assembler 接受控制、默认路径、G1 辅助和模型晋级
+外审通过只是装配输入条件。当时的 evidence assembler 还要求 D6 `authority` 对象与其冻结
+schema 完全相等。该阶段 runtime `55066382...b8ea` 的 assembler 接受控制、默认路径、G1 辅助和模型晋级
 四个权限布尔字段；该旧 audit 额外携带分配和故障接管权限。即使新增字段同样为 `false`，结构也不
 相等，正式装配必须拒绝。
 
 当时实际拒绝码为 `d6_authority_fields_mismatch`。该结果保持了证据解释的封闭性：D5 不能删除
 上游字段，也不能用兼容白名单把不同 schema 解释为等价。修改 assembler 会改变被审计的 runtime
-摘要。六权限代码合同现已修复，但必须重新生成与新摘要绑定的 development、held-out、
-paired-shadow、registry 和 D6 外审证据。当前新 runtime 没有 v5，也没有 G1 运行权限。
+摘要。该中间阶段因此要求重新生成与新摘要绑定的 development、held-out、paired-shadow、
+registry 和 D6 外审证据；这些证据以及 v5、post-assembly v2 已于 2026-07-27 完成。G1 运行权限
+仍未授予，六项权限全部为 `false`。
 
 ## 几何候选图与模型证据分层
 
@@ -85,12 +120,12 @@ F_1=0.997958.
 hard violation 合计为 `0`。真值只在候选图冻结后用于离线评分。该结果验证投影、时序、协方差、
 跨调用节点来源和稀疏几何门的组合，不包含 G1 输出，不能用于计算模型相对规则的增益。
 
-G1 证据受实现谱系门控制。当前 runtime 摘要为 `55066382...b8ea`，旧 development bundle
+G1 证据受实现谱系门控制。该 R0 阶段的 runtime 摘要为 `55066382...b8ea`，旧 development bundle
 和旧 v4 绑定 `408e71fe...f4fe`，因此不能直接复用。D5 以冻结训练输入、原 seed 和原
 robust-v2 超参数通过正式 writer 重训。新权重仍为 `7fb5db8b...ca71`，新 manifest
-`db908b05...1d14` 原生绑定当前 runtime，避免跨实现沿用旧报告。
+`db908b05...1d14` 原生绑定该阶段 runtime，避免跨实现沿用旧报告。
 
-当前 bundle 已在冻结 held-out corpus 上通过 `20 seeds / 900 episodes / 45 cells`。
+该阶段 bundle 已在冻结 held-out corpus 上通过 `20 seeds / 900 episodes / 45 cells`。
 名义边 F1 为 `1.0`，5 类真值无关扰动的最低边/簇 F1 均为 `1.0`，最高单特征 AUC 为
 `0.720073`。在线真值特征、同相机候选边和中心全局编号创建或换绑均为 `0`。这些指标来自
 冻结合成图及固定候选拓扑，仍不能替代真实相机泛化验证。
@@ -152,7 +187,7 @@ main 在提交 `690858a` 的近距开发场景曾观察到 667 条真实目标�
 离线 edge truth 评分；其 `0.997958` F1 属于几何候选图，仍不代表 G1 模型收益。
 
 2026-07-26 adapter 专项为 `50 passed`，D5 全量为
-`600 passed, 1 warning in 94.80s`。当前运行时摘要为 `55066382...b8ea`，旧 G1 v4 严格加载
+`600 passed, 1 warning in 94.80s`。该阶段运行时摘要为 `55066382...b8ea`，旧 G1 v4 严格加载
 继续失败关闭。
 
 ## 异步相机状态合图
@@ -287,14 +322,14 @@ audit 三份证据 JSON；`SHA256SUMS` 同时覆盖 manifest、weights 和三份
 每次加载都重新验证五份文件、三份内容摘要和 manifest admission 交叉绑定。任一文件缺失、篡改、
 跨模型复用、字段不可用或类型不严格都会失败关闭。
 
-G1 实现来源摘要现包含 `tracklet_g1_evidence_assembler.py`，当前值为
+该历史 v4 的 G1 实现来源摘要包含 `tracklet_g1_evidence_assembler.py`，当时值为
 `41381db3...94b07`。测试通过替换 assembler 文件摘要确认整体实现摘要随之改变。旧
 development bundle 未绑定该文件，严格加载返回 `implementation_runtime_mismatch`；系统不提供
 兼容白名单，也不重写旧 manifest。
 
 正向 fixture 已能原子生成 v4，并由公开 strict loader/runtime 加载。该 fixture 只验证合同实现，
-不代表当前模型准入。post-assembler D6 审计文件/内容 SHA-256 为
-`98bf9e02...c8ed` / `40a42af0...b90d`，绑定当前实现摘要 `41381db3...94b07`。实际
+不代表该历史模型准入。post-assembler D6 审计文件/内容 SHA-256 为
+`98bf9e02...c8ed` / `40a42af0...b90d`，绑定当时实现摘要 `41381db3...94b07`。实际
 `99fa4428...d4cd` 模型审计仍为 `fail_closed`，五项 blocker 是
 `implementation_evidence_unavailable`、`implementation_lineage_mismatch`、
 `robustness_threshold_not_met.cluster_f1`、`robustness_threshold_not_met.edge_f1` 和

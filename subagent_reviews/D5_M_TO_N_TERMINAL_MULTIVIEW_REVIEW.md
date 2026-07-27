@@ -1,6 +1,38 @@
 # D5 M 对 N 末端多视角配准与协同定位调研
 
-## 2026-07-26 v5 paired lineage 对 M 对 N 的边界
+## 2026-07-27 G1 v5 证据与 M 对 N 边界
+
+clean commit `8d5e02ec989259ce3d39e1e4ad6a90dd0d8d5b54` 已完成最终 runtime
+`b0708e718b374e5bb52db41c7bd2f994e340a2b009cfd348881a5f9d549baffe` 的 G1 v5 合成证据
+闭环。development manifest 和权重 SHA-256 分别为
+`7d459ed855cf74b810fa1f79ed0327efd39eb4be4409451266da3f3a95387ce0` 和
+`7fb5db8b6099ca4da5706a3bec53ff7cd634e8bd267c036ce3ee4ee4bf71ca71`。
+
+held-out 覆盖 20 个未见 seed、900 个 episode 和 45 个场景规模单元，precision、recall、F1、
+candidate recall 均为 1.0，false merge 为 0，CPU P95 约 0.913 ms。paired-shadow 覆盖 900
+帧和 74024 条边，模型 edge/cluster F1 均为 1.0，最高单特征 AUC 为 0.720073。lineage
+SHA-256 为
+`83e105290f3e624f267d92ceaf050d32291bd5bbbabf98580846cd31498b1af1`，记录数和唯一 UID 数均
+为 900。
+
+D6 external audit v2 已通过，文件/内容 SHA-256 为
+`cbd6c72b2d9e7b78bf3aa36f975e6627250d2bf18de5a0b0ebc2c8f6cf760cd6` /
+`334cf662e49c735931019ff358be1894d1358f1b4a5a868759eee41d3d282d15`。D5 生产 assembler
+生成的 v5 manifest SHA-256 为
+`b431d066362005868374d038eb93a83b773c03715a53d8a9dfd0da21784f317d`；D6 post-assembly v2
+通过，内容 SHA-256 为
+`17dda42d06b4be1d21ff8f1f8baecc320fd49b532be06a9f9f6b304341763e1d`。
+
+strict/shadow loader 已通过。assist 请求以
+`bundle_g1_assist_authority_not_granted` 失败关闭；模型晋级、G1 辅助、默认路径变更、分配、
+故障接管和控制六项权限全部为 false。因此这次闭环只关闭 M 对 N 学习制品的谱系和装配完整性，
+没有启用在线 G1，也没有授予联盟分配、故障接管或控制权限。
+
+真实相机泛化、中心 `global_track_id` binding 正确性和物理闭环结果仍为 unavailable。当前冻结
+图没有验证多个 primary 的实际共同可见窗口、联盟 ACK、分批执行或物理完成。M 对 N 在线主线
+继续使用确定性投影、几何门、受约束聚类和中心只读 binding；上述真实运行项目继续列为 P1。
+
+## 2026-07-26 v5 paired lineage 对 M 对 N 的边界（历史，已闭环）
 
 M 对 N 的 paired-shadow 评估需要逐 episode 保留成员规模、候选图和配对结果的共同谱系。D5
 现将 `paired_episode_lineage.jsonl` 作为 v5 独立证据，要求 900 条记录和 900 个唯一非空
@@ -9,9 +41,9 @@ M 对 N 的 paired-shadow 评估需要逐 episode 保留成员规模、候选图
 
 该修复只关闭模型证据可追溯性断点，不改变 M 对 N 的几何门、聚类、中心只读 binding、联盟成员
 选择或完成判据。当前 runtime SHA 为 `b0708e71...baffe`，D5 全量 `655 passed, 1 warning`。
-正式 M 对 N 模型证据仍需 clean commit 后重跑，完成前继续使用确定性路径。
+本节所述正式模型证据重跑已于 2026-07-27 完成；确定性路径仍因六项权限关闭而继续默认。
 
-## 2026-07-26 G1 v5 版本治理状态（lineage 修复前）
+## 2026-07-26 G1 v5 版本治理状态（lineage 修复前的历史中间阶段）
 
 D5 已实现 `d5.tracklet-g1-authority-contract.v2`，原生保存模型晋级、G1 辅助、默认路径、
 分配、故障接管和控制六个权限字段。六项必须全部为严格布尔 `false`。分配和故障接管字段不会被
@@ -20,9 +52,9 @@ D5 已实现 `d5.tracklet-g1-authority-contract.v2`，原生保存模型晋级�
 该中间代码 runtime SHA-256 为 `fe116fd5...1c91`，专项测试 `70 passed, 1 warning`，D5 全量
 `636 passed, 1 warning`。新 admitted bundle/report 分别为
 `d5.tracklet-model-bundle.v5` 和 `d5.tracklet-g1-admission-report.v2`。旧 v4/report v1
-保持历史语义，不能进入新严格路径。新的 development、held-out、paired-shadow、registry、
-D6 external audit v2 和 v5 尚未按该实现重跑；该实现也未携带 D6 post-assembly v2 所需
-lineage。M 对 N 在线路径继续使用确定性投影、几何门、受约束
+保持历史语义，不能进入新严格路径。截至该阶段，新的 development、held-out、paired-shadow、
+registry、D6 external audit v2 和 v5 尚未重跑，该实现也未携带 D6 post-assembly v2 所需
+lineage；最终 runtime 的完整证据链已于 2026-07-27 闭环。M 对 N 在线路径继续使用确定性投影、几何门、受约束
 聚类和中心只读 binding；没有模型默认、联盟分配、故障接管或控制扩权。
 
 ## 2026-07-26 clean R0 与 M 对 N 边界
@@ -33,13 +65,13 @@ precision/recall/F1 为 `0.996565/0.999354/0.997958`，hard violation 为 `0`。
 异步匿名多相机节点可形成高覆盖候选图，但没有评价联盟成员选择、多个 primary 完成条件或 G1
 模型收益。
 
-正式 writer 已用冻结输入在当前 clean runtime `55066382...b8ea` 下重训。权重仍为
+正式 writer 已用冻结输入在该阶段 clean runtime `55066382...b8ea` 下重训。权重仍为
 `7fb5db8b...ca71`，新 manifest 为 `db908b05...1d14`。held-out `20/900/45` 与
 paired-shadow 已通过；5 类扰动最低边/簇 F1 为 `1.0`，最高单特征 AUC 为 `0.720073`。
 该结果使用冻结合成图和固定候选拓扑，不评价联盟成员完成条件或真实相机重建图。后续通过自身
 门限的审计文件顶层 schema 实际为 external audit v1，历史 v4 因 authority schema 不一致未
-生成。真正 external audit v2 和新 v5 尚待重跑。M 对 N 默认路径继续使用确定性投影、
-几何门、受约束聚类和中心只读 binding。本轮 clean D5 全量为
+生成。该节当时待重跑的 external audit v2 和新 v5 已于 2026-07-27 闭环。M 对 N 默认路径
+继续使用确定性投影、几何门、受约束聚类和中心只读 binding。本轮 clean D5 全量为
 `600 passed, 1 warning in 97.84s`。
 
 ## 2026-07-26 M 对 N 图节点来源覆盖
@@ -65,10 +97,10 @@ runtime 中退化为一系列单相机图。D5 已增加有界活跃相机快照
 `2.2 s` 短复跑累计节点由 `6` 增至 `8`，发布时刻 `1.25/1.75/1.95 s` 形成双相机节点。
 main 独立核验确认在线 6 条观测在离线 sidecar 中全部为
 `known_false_alarm/truth_entity_id=null`。`support_by_node` 没有共同中心 `GlobalTrack`，
-稀疏预筛选正确保留 0 边。因此当前只关闭“异步相机不能入同图”和虚警失败关闭，没有评价
+稀疏预筛选正确保留 0 边。因此该短复跑只关闭“异步相机不能入同图”和虚警失败关闭，没有评价
 M 对 N 真实目标共同可见、候选边、几何门、第二 primary binding、G1 收益或联盟完成。
 
-后续 clean R0 已补充真实目标共同可见的规则候选图证据，truth 只供离线评分。当前 runtime
+后续 clean R0 已补充真实目标共同可见的规则候选图证据，truth 只供离线评分。该阶段 runtime
 development、held-out、paired-shadow 和 shadow-only registry 已完成；随后旧 audit v1 通过
 自身门限，但历史 v4 因 authority schema 不一致未生成。现有门限和在线 truth 隔离保持不变。
 
@@ -76,8 +108,9 @@ D6 clean commit `107cf075...6a63c` 对既有 G1 v4 的正式 post-assembly audit
 blocker 为空，内容 SHA 为 `37384441...d852`，覆盖 `20/900/45` 且三项安全计数为 0。该审计
 只证明装配完整性。本轮源码修改后 runtime SHA 为 `55066382...b8ea`，旧 v4 仍绑定
 `408e71fe...f4fe`。合同修复前 runtime 的 development/held-out/paired 已形成证据，但真正
-external audit v2 与新 v5 尚未形成。M 对 N 默认路径仍是确定性几何规则；新 runtime 完整证据、
-v5 装配和联盟执行验证继续列为 P1。
+external audit v2 与新 v5 当时尚未形成。最终 runtime 的完整证据、external audit v2 和 v5
+装配已于 2026-07-27 闭环；联盟执行、真实相机泛化和物理完成仍列为 P1。M 对 N 默认路径仍是
+确定性几何规则。
 
 ## 2026-07-26 稳健候选对 M 对 N 的边界（历史开发阶段）
 
@@ -92,29 +125,30 @@ v5 装配和联盟执行验证继续列为 P1。
 受约束聚类和中心绑定继续作为默认方案。
 2026-07-26 D5 全量回归为 `578 passed in 103.88s`；本轮没有新增 M 对 N 运行或 AirSim 证据。
 
-## 2026-07-26 G1 装配与 M 对 N 使用边界
+## 2026-07-26 G1 装配与 M 对 N 使用边界（历史 v4 阶段）
 
 G1 独立 evidence assembler 已闭合软件证据链。合法 v4 必须实际打包 held-out、
 paired-shadow 和 D6 audit，并由公开 loader/runtime 逐次复核。正向 fixture 只证明该合同可运行，
 不能据此宣称图模型已适用于 M 对 N 联盟、多相机部分重叠或真实飞行条件。
 
-当前 `99fa4428...d4cd` 模型仍未准入。post-assembler D6 审计文件/内容 SHA-256 为
-`98bf9e02...c8ed` / `40a42af0...b90d`，绑定当前 G1 实现摘要
+该历史 `99fa4428...d4cd` 模型未准入。post-assembler D6 审计文件/内容 SHA-256 为
+`98bf9e02...c8ed` / `40a42af0...b90d`，绑定当时 G1 实现摘要
 `41381db3...94b07`。审计以 `implementation_evidence_unavailable`、
 `implementation_lineage_mismatch`、`robustness_threshold_not_met.cluster_f1`、
 `robustness_threshold_not_met.edge_f1` 和 `synthetic_single_feature_shortcut` 五项 blocker
 失败关闭；assembler 返回 `d6_external_audit_fail_closed`，没有生成 v4。旧 bundle 因缺
 assembler 来源绑定返回 `implementation_runtime_mismatch`。A3 assembler 仍未实现。
 
-因此 M 对 N 主线继续使用确定性投影、几何门、受约束聚类和中心航迹绑定。图模型只在未来获得
-G1 assist eligibility 后参与候选边评分，仍不能创建 `global_track_id`、决定联盟成员或输出控制。
+该 v4 阶段的 M 对 N 主线继续使用确定性投影、几何门、受约束聚类和中心航迹绑定。2026-07-27
+正式 v5 已达到 `g1_evidence_eligible_not_authorized`，但 G1 辅助权限仍为 `false`，因此在线
+主线仍不调用图模型。图模型不能创建 `global_track_id`、决定联盟成员或输出控制。
 最终证据同步复测为 assembler 专项 `14 passed in 1.15s`、模型流水线
 `20 passed in 4.08s`；既有 D5 全量回归为 `571 passed in 99.00s`。这些结果验证软件合同，
 没有新增 M 对 N 运行证据。
 
 ## 2026-07-25 同一模型谱系对 M 对 N 的边界
 
-新的 20-seed 成对影子评估绑定当前可严格加载的 `99fa4428...d4cd` 权重，覆盖
+该 20-seed 成对影子评估绑定当时可严格加载的 `99fa4428...d4cd` 权重，覆盖
 `high_threat_m_to_n` 场景和 5/20/50/100/200 五档规模标签。900 帧中的候选图和局部轨迹仍是匿名
 输入，模型只给出边同目标概率，不能形成联盟计划、成员 ACK 或新的中心身份。
 

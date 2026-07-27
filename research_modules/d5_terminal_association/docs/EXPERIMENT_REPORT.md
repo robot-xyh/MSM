@@ -1,6 +1,74 @@
 # D5 末端视觉配准与身份认证实验报告
 
-## 2026-07-26 v5 paired lineage P0 回归
+## 2026-07-27 G1 v5 正式证据结果
+
+### 执行基线
+
+正式流水线在 clean commit
+`8d5e02ec989259ce3d39e1e4ad6a90dd0d8d5b54` 上执行，证据根目录为
+`/tmp/MSM-d5-g1-formal-evidence-8d5e02e-20260727`。输入和实现绑定如下。
+
+| 项目 | SHA-256 |
+| --- | --- |
+| runtime implementation | `b0708e718b374e5bb52db41c7bd2f994e340a2b009cfd348881a5f9d549baffe` |
+| development manifest | `7d459ed855cf74b810fa1f79ed0327efd39eb4be4409451266da3f3a95387ce0` |
+| weights | `7fb5db8b6099ca4da5706a3bec53ff7cd634e8bd267c036ce3ee4ee4bf71ca71` |
+| paired lineage | `83e105290f3e624f267d92ceaf050d32291bd5bbbabf98580846cd31498b1af1` |
+
+### 离线评估
+
+| 指标 | 结果 |
+| --- | ---: |
+| 未见 seed | 20 |
+| episode | 900 |
+| 场景规模单元 | 45 |
+| held-out precision | 1.0 |
+| held-out recall | 1.0 |
+| held-out F1 | 1.0 |
+| candidate recall | 1.0 |
+| false merge | 0 |
+| CPU P95 推理时延 | 0.9130288 ms |
+| paired-shadow 帧数 | 900 |
+| paired-shadow 边数 | 74024 |
+| 模型 edge F1 | 1.0 |
+| 模型 cluster F1 | 1.0 |
+| 最高单特征 AUC | 0.720073 |
+| lineage 记录数 / 唯一 UID 数 | 900 / 900 |
+
+这些数值来自冻结合成 tracklet 图。最高单特征 AUC 低于审计捷径门限，但 paired-shadow 的扰动
+保持候选图拓扑固定；结果不能代表真实相机发生外参漂移、遮挡和漏检后重新构图的性能。
+
+### 外审与装配
+
+| 阶段 | 结果 |
+| --- | --- |
+| D6 external audit | `d6.d5-g1-external-audit.v2`，`pass`，blocker 为空 |
+| external audit 文件 SHA-256 | `cbd6c72b2d9e7b78bf3aa36f975e6627250d2bf18de5a0b0ebc2c8f6cf760cd6` |
+| external audit 内容 SHA-256 | `334cf662e49c735931019ff358be1894d1358f1b4a5a868759eee41d3d282d15` |
+| D5 生产装配 | `d5.tracklet-model-bundle.v5` |
+| v5 manifest SHA-256 | `b431d066362005868374d038eb93a83b773c03715a53d8a9dfd0da21784f317d` |
+| D6 post-assembly | `d6.d5-g1-post-assembly-audit.v2`，`pass`，blocker 为空 |
+| post-assembly 内容 SHA-256 | `17dda42d06b4be1d21ff8f1f8baecc320fd49b532be06a9f9f6b304341763e1d` |
+| strict loader | 通过 |
+| shadow loader | 通过 |
+| assist loader | 失败关闭：`bundle_g1_assist_authority_not_granted` |
+
+两级 D6 审计与生产装配关闭了此前“正式 external audit v2、v5 和 post-assembly v2 待生成”的
+证据缺口。装配状态为 `g1_evidence_eligible_not_authorized`。模型晋级、G1 辅助、默认路径
+变更、分配、故障接管和控制六项权限全部为 `false`，在线 G1 没有启用。
+
+### 保留限制
+
+| 项目 | D6 状态 | 原因 |
+| --- | --- | --- |
+| 真实相机泛化 | `unavailable` | 输入只含合成 held-out 与 paired-shadow |
+| 中心 `global_track_id` binding 正确性 | `unavailable` | 没有中心 binding 结果与离线真值的连接记录 |
+| 物理闭环结果 | `unavailable` | 没有导引、控制或物理拦截记录 |
+
+上述三项不能用 0 填充，也不能由合成指标外推。确定性几何规则继续作为默认路径；后续 P1 分别
+由真实相机回放、离线身份真值连接和 main/D6/D7 物理闭环提供证据。
+
+## 2026-07-26 v5 paired lineage P0 回归（历史，已由正式证据闭环）
 
 | 项目 | 结果 |
 | --- | --- |
@@ -21,8 +89,9 @@ report 三字段、`SHA256SUMS` 和 strict/runtime loader。负例覆盖缺失�
 非法 JSON、非对象、空 UID、重复 UID、899 条记录、旧 `file` 字段、paired/D6 摘要或计数不一致、
 manifest/report 缺字段和装配后篡改。
 
-本轮只形成代码与 fixture 证据，没有运行正式重训、external audit、正式 v5 装配或 G1 episode。
-六项运行权限仍全部关闭，确定性几何规则继续默认。
+本节只记录 2026-07-26 的代码与 fixture 阶段。正式重训、external audit v2、v5 装配和
+post-assembly v2 已于 2026-07-27 完成；没有运行在线 G1 episode。六项运行权限仍全部关闭，
+确定性几何规则继续默认。
 
 ## 2026-07-26 六权限合同回归（lineage 修复前）
 
@@ -49,15 +118,16 @@ manifest/report 缺字段和装配后篡改。
 空原因、仅原因字段、bundle v4/report v1/audit v1 混用以及装配后审计篡改。所有负例均拒绝，
 没有放宽任何模型、几何或身份门限。
 
-本轮只验证代码合同。没有重训，没有运行 `20 seeds / 900 episodes / 45 cells` held-out，
+该阶段只验证代码合同。当时没有重训，没有运行 `20 seeds / 900 episodes / 45 cells` held-out，
 没有运行 paired-shadow、D6 external audit、正式 v5 装配或 G1 episode。该中间 runtime 后续又
 因 lineage P0 修复而变化，相关指标不能转移到当前 `b0708e71...baffe`。
 
-### 保留限制
+### 当时限制
 
-当前没有绑定新 runtime 的 development bundle、registry、D6 外审和 post-assembly audit。
-默认确定性几何规则保持启用，模型晋级、G1 辅助、默认路径变更、分配、故障接管和控制权限均
-保持关闭。AirSim 接口未变化，本轮没有新增仿真结果。
+截至该段记录时，没有绑定新 runtime 的 development bundle、registry、D6 外审和
+post-assembly audit。上述正式证据与 v5 已于 2026-07-27 完成；默认确定性几何规则仍启用，模型
+晋级、G1 辅助、默认路径变更、分配、故障接管和控制权限仍全部关闭。AirSim 接口未变化，该阶段
+没有新增仿真结果。
 
 ## 2026-07-26 旧 D6 audit v1 与 v4 装配（修复前记录）
 
@@ -88,7 +158,7 @@ assembler 含四个。两个新增字段本身为 `false`，但当前合同不�
 保存在 `/tmp/MSM-d5-g1-current-runtime-v4-64cb865-20260726-failed/`。由于没有 v4，strict
 loader、runtime loader、post-assembly handoff 和 G1 episode 均未运行。确定性规则继续默认。
 
-## 2026-07-26 clean R0 与当前运行时 G1 证据
+## 2026-07-26 clean R0 与 G1 证据（历史 5506 runtime）
 
 ### 几何候选图
 
@@ -112,7 +182,7 @@ main 在 clean commit `64cb865b9933d45b13878019c0e1a21a8fbb2b05` 上完成 20-se
 
 ### 冻结输入
 
-当前 clean 源码严格复载既有 held-out corpus：
+该阶段 clean 源码严格复载既有 held-out corpus：
 
 | 项目 | 结果 |
 | --- | --- |
@@ -131,7 +201,7 @@ main 在 clean commit `64cb865b9933d45b13878019c0e1a21a8fbb2b05` 上完成 20-se
 
 ### 正式重训
 
-旧 development bundle 绑定 runtime `408e71fe...f4fe`，不能在当前 runtime
+旧 development bundle 绑定 runtime `408e71fe...f4fe`，不能在该阶段 runtime
 `55066382...b8ea` 下作为证据。D5 使用正式 writer、原始冻结输入、原 seed 和 robust-v2
 超参数重新训练，没有修改阈值、数据、真值边界或旧 manifest。
 
@@ -142,7 +212,7 @@ main 在 clean commit `64cb865b9933d45b13878019c0e1a21a8fbb2b05` 上完成 20-se
 | bundle checksums | `2fe079ed...856` |
 | 训练 admission 内容 | `dc520c9e...531` |
 
-新权重与历史候选完全一致。manifest 由 writer 原生生成并绑定当前 runtime，不属于旧权重的
+新权重与历史候选完全一致。manifest 由 writer 原生生成并绑定该阶段 runtime，不属于旧权重的
 手工重新标记。
 
 ### Held-out
@@ -229,11 +299,12 @@ truth 隔离、中心 ID 所有权或几何门限。
 
 ### 正式 R0 边界
 
-上述软件覆盖合同已由 main 的 clean 20-seed R0 形成正式几何候选图证据。当前 runtime
-development bundle、held-out、paired-shadow 和 shadow-only registry 已完成；剩余工作是
-D6 独立 external audit，以及审计通过后由 main 决定的历史 v4 装配和装配后审计。
+上述软件覆盖合同已由 main 的 clean 20-seed R0 形成正式几何候选图证据。截至该段记录时，该
+runtime 的 development bundle、held-out、paired-shadow 和 shadow-only registry 已完成，剩余
+工作是 D6 独立 external audit，以及审计通过后的历史 v4 装配和装配后审计。最终 runtime 的
+external audit v2、v5 和 post-assembly v2 已于 2026-07-27 完成。
 
-旧 G1 v4 当前严格加载仍返回 `bundle_implementation_runtime_mismatch`。本节不授予 G1、默认、
+该历史 G1 v4 严格加载返回 `bundle_implementation_runtime_mismatch`。本节不授予 G1、默认、
 身份、分配或控制权限。
 
 ## 2026-07-26 异步相机快照验证
@@ -317,7 +388,7 @@ D6 clean evaluator commit `107cf0756d7b75cd6bf1456d1f1aa940fec6a63c` 已对既�
 | `global_track_id` 改写 | 0 |
 
 审计只证明被审 v4 的装配完整性。D6 明确没有授予模型晋级、默认路径变更、G1 在线辅助、全局
-身份、分配或控制权限。本轮来源合同修改后，当前运行时实现摘要为 `55066382...b8ea`，v4 绑定
+身份、分配或控制权限。该阶段来源合同修改后，当时运行时实现摘要为 `55066382...b8ea`，v4 绑定
 摘要为 `408e71fe...f4fe`。公开严格加载器返回
 `available=false/failure_reason=bundle_implementation_runtime_mismatch`。current-runtime
 development、held-out、paired-shadow 和 shadow-only registry 已在后续正式流程中形成；
@@ -327,8 +398,8 @@ development、held-out、paired-shadow 和 shadow-only registry 已在后续正�
 
 跨调用相机状态丢失已在 D5-owned 代码和回归范围内关闭，本短输入同时验证了虚警失败关闭。
 后续 clean R0 已提供真实目标候选边和几何门证据，current-runtime shadow 评估也已完成。
-中心 binding 的完整业务覆盖、新 v5 证据重建、装配后审计和真实相机泛化仍待后续。确定性
-几何规则继续作为默认路径，不修改现有门限。
+新 v5 证据重建和装配后审计已于 2026-07-27 完成。中心 binding 的完整业务覆盖和真实相机
+泛化仍待后续。确定性几何规则继续作为默认路径，不修改现有门限。
 
 ## 2026-07-26 G1 v4 正式装配（历史制品）
 
@@ -451,7 +522,7 @@ held-out、paired-shadow 和 D6 pass audit，完成原子 v4 装配。公开 str
 `write_tracklet_model_bundle()` 仍拒绝 caller-provided report。v4 的 `default_model`、全局航迹
 编号、分配和控制 authority 均为 false。
 
-G1 实现摘要已纳入 `tracklet_g1_evidence_assembler.py`，当前为
+该历史 v4 的 G1 实现摘要已纳入 `tracklet_g1_evidence_assembler.py`，当时为
 `41381db3d11371c049e5569658820ce98abf1a9966ecf86edc0f13f140894b07`。专项回归模拟只改变
 assembler 文件摘要，整体实现摘要随之改变。旧 development bundle 未绑定该文件，公开严格
 loader 返回 `implementation_runtime_mismatch`，没有使用兼容白名单。
@@ -459,7 +530,7 @@ loader 返回 `implementation_runtime_mismatch`，没有使用兼容白名单。
 实际复核使用 `99fa4428...d4cd` 权重和 post-assembler D6 审计
 `d5_g1_external_audit_99fa4428_post_assembler_20260726`。审计文件 SHA-256 为
 `98bf9e0251567a330bf16951acf07da576a6ba3dc47627c3671cd2d491cdc8ed`，内容 SHA-256 为
-`40a42af015211d5e721584053e052a893e31aa35b7393195530a5d3d2dc9b90d`，当前实现摘要为
+`40a42af015211d5e721584053e052a893e31aa35b7393195530a5d3d2dc9b90d`，当时实现摘要为
 `41381db3d11371c049e5569658820ce98abf1a9966ecf86edc0f13f140894b07`。审计状态为
 `fail_closed`，assembler 稳定返回 `d6_external_audit_fail_closed`，退出码为 2，目标 bundle
 目录不存在。五项 blocker 是：
@@ -470,8 +541,10 @@ loader 返回 `implementation_runtime_mismatch`，没有使用兼容白名单。
 4. `robustness_threshold_not_met.edge_f1`
 5. `synthetic_single_feature_shortcut`
 
-阈值、实现兼容白名单、旧 bundle、held-out、paired-shadow 和 D6 输出均未修改。当前模型仍无
-G1 assist eligibility。A3 evidence assembler 尚未实现，主动视觉学习 assist 继续失败关闭。
+阈值、实现兼容白名单、旧 bundle、held-out、paired-shadow 和 D6 输出均未修改。该历史模型未获
+G1 assist eligibility；2026-07-27 的正式 v5 也仅达到
+`g1_evidence_eligible_not_authorized`，未获得在线辅助权限。A3 evidence assembler 尚未实现，
+主动视觉学习 assist 继续失败关闭。
 最终证据同步复测为 assembler 专项 `14 passed in 1.15s`、模型流水线
 `20 passed in 4.08s`；既有 D5 全量结果为 `571 passed in 99.00s`。
 

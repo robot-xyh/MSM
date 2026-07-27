@@ -1,6 +1,28 @@
 # D5 实现差距审计
 
-## 2026-07-26 v5 paired lineage P0 状态
+## 2026-07-27 G1 v5 正式证据 GAP 状态
+
+| 缺口 | 当前状态 | 证据与剩余边界 |
+| --- | --- | --- |
+| clean runtime 谱系 | **P1 已关闭并保持回归** | clean commit `8d5e02ec989259ce3d39e1e4ad6a90dd0d8d5b54`；runtime SHA-256=`b0708e718b374e5bb52db41c7bd2f994e340a2b009cfd348881a5f9d549baffe`。 |
+| development 制品 | **关闭** | manifest SHA-256=`7d459ed855cf74b810fa1f79ed0327efd39eb4be4409451266da3f3a95387ce0`；weights SHA-256=`7fb5db8b6099ca4da5706a3bec53ff7cd634e8bd267c036ce3ee4ee4bf71ca71`。 |
+| held-out 正式证据 | **关闭到冻结合成范围** | `20 seeds / 900 episodes / 45 cells`；precision/recall/F1/candidate recall=`1/1/1/1`，false merge=`0`，CPU P95 约 `0.913 ms`。 |
+| paired-shadow 正式证据 | **关闭到冻结合成范围** | 900 帧、74024 边；模型 edge/cluster F1=`1.0/1.0`，最高单特征 AUC=`0.720073`。 |
+| paired lineage | **关闭并保持回归** | SHA-256=`83e105290f3e624f267d92ceaf050d32291bd5bbbabf98580846cd31498b1af1`；900 records/900 unique UIDs。 |
+| D6 external audit v2 | **跨模块 P1 已关闭** | `pass`；文件 SHA-256=`cbd6c72b2d9e7b78bf3aa36f975e6627250d2bf18de5a0b0ebc2c8f6cf760cd6`，内容 SHA-256=`334cf662e49c735931019ff358be1894d1358f1b4a5a868759eee41d3d282d15`。 |
+| D5 生产 v5 | **关闭** | `d5.tracklet-model-bundle.v5` 已由生产 assembler 生成；manifest SHA-256=`b431d066362005868374d038eb93a83b773c03715a53d8a9dfd0da21784f317d`。 |
+| D6 post-assembly v2 | **跨模块 P1 已关闭** | `pass`、blocker 为空；内容 SHA-256=`17dda42d06b4be1d21ff8f1f8baecc320fd49b532be06a9f9f6b304341763e1d`。 |
+| loader 门 | **关闭并保持失败关闭** | strict/shadow loader 通过；assist 请求以 `bundle_g1_assist_authority_not_granted` 拒绝。 |
+| 六项运行权限 | **保持关闭，不是待实现授权** | 模型晋级、G1 辅助、默认路径变更、分配、故障接管、控制全部为 `false`；在线 G1 未启用，规则路径继续默认。 |
+| 真实相机泛化 | **P1 开放，unavailable** | 当前输入只含合成 held-out 与 paired-shadow；需代表性真实相机或真实 AirSim 图像重新建图。 |
+| 中心 binding 正确性 | **P1 开放，unavailable** | 缺少中心 binding 结果与物理隔离离线真值的连接记录；不能用合成 edge F1 替代。 |
+| 物理闭环结果 | **跨模块 P1 开放，unavailable** | 当前输入没有导引、控制或物理拦截记录；由 main、D6、D7 闭环提供。 |
+
+此前“正式 external audit v2、v5 和 post-assembly v2 待生成”的 P1 已关闭。当前没有 D5-owned
+P0；保留 P1 已收敛到真实相机泛化、中心身份 binding 真值验证和跨模块物理闭环。六项权限关闭
+是正式安全合同，不应重分类为实现缺陷。
+
+## 2026-07-26 v5 paired lineage P0 状态（历史，已由正式证据闭环）
 
 | 缺口 | 当前状态 | 证据与剩余边界 |
 | --- | --- | --- |
@@ -11,11 +33,11 @@
 | admission report v2 | **关闭并保持回归** | 新增 lineage SHA、record count 和 unique UID count；缺失、类型错误和篡改失败关闭。 |
 | paired report 字段 | **关闭并保持回归** | writer 与 frozen registry consumer 已统一为 D6 v2 的 `filename`；旧 `file` 结构拒绝。 |
 | 当前实现回归 | **关闭** | runtime SHA=`b0708e71...baffe`；assembler `69 passed`，lineage 联合专项 `86 passed`，D5 全量 `655 passed, 1 warning`。 |
-| 当前 runtime 正式证据 | **P1 开放，fail-closed** | 尚未重跑 development、held-out、paired-shadow/lineage、registry、D6 external audit v2 或正式 v5。 |
-| D6 post-assembly v2 | **P1 等待新证据** | D5 软件结构已满足已知字段；仍需 D6 用当前 runtime 正式制品独立复核。 |
+| 当前 runtime 正式证据 | **已关闭到冻结合成范围** | 2026-07-27 已重跑 development、held-out、paired-shadow/lineage、registry、D6 external audit v2 并生成正式 v5。 |
+| D6 post-assembly v2 | **已关闭到装配完整性范围** | D6 已使用当前 runtime 正式制品独立复核并通过；不授予在线权限。 |
 
-当前没有新的 D5-owned P0。跨模块 P0 已关闭到代码和 fixture 范围；P1 是 clean commit 后的完整
-重证据与 D6 独立复审。默认规则路径和六项运行权限保持关闭。
+当前没有新的 D5-owned P0。该节当时开放的完整重证据与 D6 独立复审已于 2026-07-27 关闭。
+默认规则路径和六项运行权限保持关闭。
 
 ## 2026-07-26 六权限合同 v2 与 v5 版本治理状态（lineage 修复前）
 
@@ -26,12 +48,12 @@
 | v5 审计绑定 | **D5-owned 代码已关闭** | manifest/report 同时绑定合同版本、D6 文件 SHA、内容 SHA 和完整六权限；post-assembly verifier 每次重读打包审计并交叉核对。 |
 | 制品版本隔离 | **关闭并保持回归** | 新 bundle/report 使用 v5/v2；旧 bundle v4、report v1 和 audit v1 使用专用错误码拒绝，不提供同 schema 双语义。 |
 | 证据资格与运行权限 | **关闭并保持回归** | admission=`g1_evidence_eligible_not_authorized`；影子加载与辅助请求分离，辅助请求因 `g1_assist_granted=false` 返回 `bundle_g1_assist_authority_not_granted`。 |
-| 当前实现回归 | **历史中间状态** | runtime SHA=`fe116fd5...1c91`；assembler/loader `70 passed, 1 warning`，D5 全量 `636 passed, 1 warning`。该实现未携带 lineage，不能生成当前 D6 可受理 v5。 |
-| 新 runtime 正式证据 | **P1 开放，fail-closed** | 本阶段未重训、未跑 held-out/paired-shadow、未生成 registry、未做 D6 external audit v2 或 v5 装配；旧 `55066382...b8ea` 证据不得复用。 |
-| post-assembly D6 复审 | **P1 等待上游证据** | 必须在 clean commit、完整重证据、新 D6 external audit v2 和全新 v5 后执行。当前没有 handoff。 |
+| 该中间实现回归 | **历史中间状态** | runtime SHA=`fe116fd5...1c91`；assembler/loader `70 passed, 1 warning`，D5 全量 `636 passed, 1 warning`。该实现未携带 lineage，不能生成最终 D6 可受理 v5。 |
+| 新 runtime 正式证据 | **已由最终 runtime 闭合** | 中间实现未直接迁移证据；最终 `b0708e71...baffe` 已完成重训、held-out/paired-shadow、registry、D6 external audit v2 和 v5 装配。 |
+| post-assembly D6 复审 | **已关闭到装配完整性范围** | 最终 clean commit、完整重证据、新 D6 external audit v2、全新 v5 和 post-assembly v2 均已形成。 |
 
-当前没有新增 P0。D5 六权限软件合同已关闭；P1 从“schema 不支持”收敛为“新 runtime 正式证据
-链尚未重跑”。默认规则路径及六项运行权限保持关闭。
+当前没有新增 P0。D5 六权限软件合同和最终 runtime 正式证据链均已关闭；真实相机、中心 binding
+真值验证和物理闭环仍按本文件首节保持 P1。默认规则路径及六项运行权限保持关闭。
 
 ## 2026-07-26 旧 D6 audit v1 与 v4 装配 GAP（修复前记录）
 
@@ -39,32 +61,31 @@
 | --- | --- | --- |
 | 旧 D6 audit v1 | **历史审计范围关闭** | 带 `v2` 后缀的目录与 9 项 D5 引用输入哈希通过；JSON 顶层 schema 实际为 audit v1，JSON/content SHA-256=`24c8b0cd...9ad7d`/`f17acecf...35f`，status=pass、blocker=[]、六类权限全 false。该文件不能输入新 v5。 |
 | current-runtime v4 装配 | **历史 blocker，已由代码修复取代** | 正式 assembler 返回 `d6_authority_fields_mismatch`；旧 audit v1 六权限结构与当时 runtime 四权限结构不相等，未创建 v4。 |
-| loader 与 post-assembly handoff | **unavailable** | 没有合法 v4，因此不得运行 strict/runtime loader，也没有可交 D6 的装配后审计输入。 |
+| loader 与 post-assembly handoff | **当时 unavailable，后续已关闭** | 该历史 v4 没有合法制品，因此不得运行 strict/runtime loader，也没有可交 D6 的装配后审计输入；最终 runtime 的 v5 loader 与 post-assembly v2 已于 2026-07-27 通过。 |
 | 默认和运行权限 | **保持关闭** | 不删除 D6 新字段，不修改 audit，不增加兼容白名单；规则路径继续默认。 |
 
-版本化 authority contract 现已实现。修改后的 runtime implementation SHA-256 已变化，仍必须
+版本化 authority contract 随后实现。runtime implementation SHA-256 因此变化，该中间阶段要求
 从正式 writer 开始重建实现绑定的 development、held-out、paired-shadow、registry 和 D6
-外审证据。失败记录
+外审证据；最终重建已于 2026-07-27 完成。失败记录
 `/tmp/MSM-d5-g1-current-runtime-v4-64cb865-20260726-failed/ASSEMBLY_FAILURE.json`
 及其 SHA-256 `196174e5...2482` 继续作为修复前证据保留。
 
-## 2026-07-26 clean R0 与当前运行时 G1 状态
+## 2026-07-26 clean R0 与 G1 状态（历史 5506 runtime）
 
 | 缺口 | 当前状态 | 证据与剩余边界 |
 | --- | --- | --- |
-| 当前源码几何候选图 R0 | **已关闭到 20-seed 正式范围** | clean `64cb865b...2b05`：2670 帧、16842 节点、4658 边；4642 真边、16 假边、4645 真值合格对，precision/recall/F1=`0.996565/0.999354/0.997958`，hard violation=0。 |
+| 该阶段源码几何候选图 R0 | **已关闭到 20-seed 正式范围** | clean `64cb865b...2b05`：2670 帧、16842 节点、4658 边；4642 真边、16 假边、4645 真值合格对，precision/recall/F1=`0.996565/0.999354/0.997958`，hard violation=0。 |
 | R0 与 G1 收益边界 | **关闭并保持审计** | R0 只评价几何候选图，没有调用 G1，不得写成模型收益或在线准入。 |
-| 冻结 held-out corpus | **输入完整性关闭** | 当前 clean 源码严格复载 `20 seeds / 900 episodes / 45 cells`；在线真值特征、同相机候选边和全局编号创建或换绑均为 0。 |
-| 当前 runtime development bundle | **已关闭到 shadow-only 正式范围** | 正式 writer 用冻结输入重训；权重仍为 `7fb5db8b...ca71`，manifest=`db908b05...1d14`，原生绑定 runtime `55066382...b8ea`。 |
-| 当前 runtime held-out 指标 | **已关闭到 20/900/45 正式范围** | precision/recall/F1/candidate recall=`1/1/1/1`，false merge=`0`，P95 约 `0.872 ms`，三项安全计数为 0。 |
-| 当前 runtime paired-shadow | **已关闭到冻结图正式范围** | 5 类真值无关扰动最低边/簇 F1=`1.0/1.0`，最高单特征 AUC=`0.720073`；9 类故障注入探针回退成功率为 1.0。候选图在扰动中固定，探针数值不表示正常推理发生回退。 |
-| current-runtime registry | **已关闭到 shadow-only producer 范围** | `evidence_chain_closed_shadow_only`；registry audit evidence=`c18f4149...4477`，所有权限关闭。 |
-| D6 external audit 与 admitted bundle | **P1 fail-closed** | 旧 audit v1 通过自身门限且六类权限全 false；历史 v4 因 `d6_authority_fields_mismatch` 未生成。新 runtime 的 audit v2 和 v5 均待重跑，旧 v4 继续 runtime mismatch。 |
+| 冻结 held-out corpus | **输入完整性关闭** | 该阶段 clean 源码严格复载 `20 seeds / 900 episodes / 45 cells`；在线真值特征、同相机候选边和全局编号创建或换绑均为 0。 |
+| 该阶段 runtime development bundle | **已关闭到 shadow-only 正式范围** | 正式 writer 用冻结输入重训；权重仍为 `7fb5db8b...ca71`，manifest=`db908b05...1d14`，原生绑定 runtime `55066382...b8ea`。 |
+| 该阶段 runtime held-out 指标 | **已关闭到 20/900/45 正式范围** | precision/recall/F1/candidate recall=`1/1/1/1`，false merge=`0`，P95 约 `0.872 ms`，三项安全计数为 0。 |
+| 该阶段 runtime paired-shadow | **已关闭到冻结图正式范围** | 5 类真值无关扰动最低边/簇 F1=`1.0/1.0`，最高单特征 AUC=`0.720073`；9 类故障注入探针回退成功率为 1.0。候选图在扰动中固定，探针数值不表示正常推理发生回退。 |
+| 该阶段 runtime registry | **已关闭到 shadow-only producer 范围** | `evidence_chain_closed_shadow_only`；registry audit evidence=`c18f4149...4477`，所有权限关闭。 |
+| D6 external audit 与 admitted bundle | **最终 runtime 已关闭** | 旧 audit v1 和历史 v4 继续保留失败关闭语义；最终 runtime 已生成 audit v2 和 v5，并通过 post-assembly v2。 |
 
-本轮没有新增 P0。几何候选图 R0、当前 runtime development bundle、held-out、paired-shadow
-和 shadow-only registry 已关闭。P1 主断点收敛为新 runtime 完整证据、external audit v2、
-新 v5 装配和 post-assembly audit；全部通过前规则路径继续默认。正式流水线专项 `46 passed`，clean D5
-全量 `600 passed, 1 warning in 97.84s`。
+本节记录 2026-07-26 状态。最终 runtime 完整证据、external audit v2、新 v5 和
+post-assembly audit 已于 2026-07-27 通过。规则路径因六项权限全部关闭而继续默认。正式流水线
+专项 `46 passed`，当时 clean D5 全量 `600 passed, 1 warning in 97.84s`。
 
 ## 2026-07-26 关联图来源覆盖状态
 
@@ -79,10 +100,11 @@
 | truth 和中心身份边界 | **关闭并保持回归** | link 不含 truth/actor/object/global ID；online truth use 与 global-ID rewrite 保持 0，几何门限未变。 |
 | 正向开发边可产生 | **开发证据完成** | main 提交 `690858a`：667 条真实目标视觉观测、294 candidate edge、247 retained edge、online truth use=0。发生在本修复前，不是正式 R0。 |
 | 修复后正式 R0 | **20-seed 正式范围已关闭** | clean `64cb865b...2b05` 已形成可计算 edge truth；几何候选图 F1=`0.997958`，hard violation=0。 |
-| 当前源码 G1 装配与 D6 复审 | **P1 开放并 fail-closed** | 合同修复前 runtime 的 development/held-out/paired/registry 已完成；旧 audit v1 不能输入新路径。当前 runtime 的完整证据、audit v2 与 v5 均待生成，无法进入 post-assembly audit。 |
+| 当前源码 G1 装配与 D6 复审 | **最终 runtime 已关闭到合成证据范围** | 旧 audit v1 仍不能输入新路径；最终 runtime 已完成完整证据、audit v2、v5 和 post-assembly v2。 |
 
 本轮没有新增 P0。D5 软件链接覆盖合同、clean R0 和合同修复前的 D5-owned shadow 证据链已
-关闭；当前 runtime 重证据、external audit v2、新 v5 装配和装配后审计仍为 P1。
+关闭；当时开放的 runtime 重证据、external audit v2、新 v5 装配和装配后审计已于
+2026-07-27 关闭。真实相机和中心 binding P1 仍按本文件首节执行。
 adapter 专项 `50 passed`，D5 全量 `600 passed, 1 warning in 94.80s`。
 
 ## 2026-07-26 异步活跃相机快照状态
@@ -100,12 +122,12 @@ adapter 专项 `50 passed`，D5 全量 `600 passed, 1 warning in 94.80s`。
 | 短输入异步合图与虚警关闭 | **局部关闭** | 5v5 seed 1000、2.2 s 在线共 6 条 `vision_bbox`；离线 sidecar 全为 `known_false_alarm/truth_entity_id=null`。发布时刻 `1.25/1.75/1.95 s` 形成双相机节点，累计节点 `6 -> 8`；`support_by_node` 无共同中心 `GlobalTrack`，预筛选正确保留 0 边，在线 truth 为 0。 |
 | 真实目标跨视角候选与 binding | **候选图 R0 已关闭，中心 binding 仍为 P1** | 后续 clean 20-seed R0 已验证真实候选边和几何门；该结果没有单独验收全部中心只读 binding，也不评价 G1 收益。 |
 | 既有 G1 v4 post-assembly audit | **审计作用域已关闭** | D6 clean commit `107cf075...6a63c` 输出 `status=pass`、blocker 为空、content SHA `37384441...d852`、`20/900/45`，三项安全计数 0。只证明被审 v4 的装配完整性。 |
-| G1 对合同修复前运行时可加载性 | **development 历史范围已关闭，当前 v5 仍 P1** | development manifest `db908b05...1d14` 可在 `55066382...b8ea` 下严格加载并完成正式评估；旧 v4 仍绑定 `408e71fe...f4fe`。旧 audit v1 通过自身门限，但历史 v4 因 authority schema 不一致未生成。当前 runtime 需重建证据并取得 audit v2 后才能装配 v5。 |
+| G1 对合同修复前运行时可加载性 | **development 历史范围已关闭，最终 v5 已形成** | development manifest `db908b05...1d14` 可在 `55066382...b8ea` 下严格加载并完成正式评估；旧 v4 仍绑定 `408e71fe...f4fe`。旧 audit v1 通过自身门限，但历史 v4 因 authority schema 不一致未生成。最终 runtime 已重建证据、取得 audit v2、装配 v5 并通过 post-assembly v2。 |
 | 默认/身份/分配/控制权限 | **保持关闭** | D6 post-assembly pass 不授予模型晋级、默认路径、G1 在线辅助、全局身份、分配或控制权限；确定性规则仍为默认。 |
 
-本轮没有新增 P0。跨调用状态装配、虚警失败关闭和真实目标几何候选图已关闭；中心 binding 与
-当前运行时 G1 证据仍为 P1。2026-07-26 adapter 专项为 `48 passed`，D5 全量为
-`598 passed, 1 warning in 97.36s`，零失败。
+该节没有新增 P0。跨调用状态装配、虚警失败关闭和真实目标几何候选图已关闭；当时开放的运行时
+G1 正式证据已于 2026-07-27 关闭。中心 binding 正确性、真实相机泛化和物理闭环仍为 P1。
+2026-07-26 adapter 专项为 `48 passed`，D5 全量为 `598 passed, 1 warning in 97.36s`，零失败。
 
 ## 2026-07-26 冻结 registry producer 状态（历史 408e runtime）
 
@@ -151,7 +173,7 @@ D6 结果。
 `99fa4428...d4cd` 实物和五项失败审计保持历史原状。
 2026-07-26 D5 全量回归为 `578 passed in 103.88s`，验收要求为零失败。
 
-## 2026-07-26 G1 证据装配闭环
+## 2026-07-26 G1 证据装配闭环（历史 v4 合同）
 
 | 缺口 | 当前状态 | 证据与剩余边界 |
 | --- | --- | --- |
@@ -159,9 +181,9 @@ D6 结果。
 | v4 evidence 实物与原子发布 | **D5-owned 已关闭** | v4 打包三份 `evidence/*.json`；`SHA256SUMS` 精确覆盖 manifest、weights 和 evidence。staging 经 strict loader 与输入不变性复核后原子发布，失败无半成品。 |
 | v4 公开加载时复核 | **D5-owned 已关闭** | 公开 loader/runtime 每次复算文件及内容摘要，核对 D6 consumer、20/900/45、三个安全计数和模型/实现/数据谱系；装配后篡改任一 evidence 均失败关闭。 |
 | G1 authority 边界 | **关闭并保持回归** | 合法 v4 仅有 `g1_assist_eligible=true`；`default_model`、全局航迹编号、分配和控制 authority 全 false。production writer 继续拒绝 caller-provided report。 |
-| assembler 实现来源链 | **D5-owned 已关闭** | `_IMPLEMENTATION_SOURCE_FILES` 已包含 `tracklet_g1_evidence_assembler.py`，当前实现摘要为 `41381db3...94b07`；专项测试确认只改变 assembler 摘要会改变整体摘要。旧 bundle 严格加载返回 `implementation_runtime_mismatch`，无白名单。 |
+| assembler 实现来源链 | **D5-owned 已关闭** | `_IMPLEMENTATION_SOURCE_FILES` 已包含 `tracklet_g1_evidence_assembler.py`，该历史 v4 阶段实现摘要为 `41381db3...94b07`；专项测试确认只改变 assembler 摘要会改变整体摘要。旧 bundle 严格加载返回 `implementation_runtime_mismatch`，无白名单。 |
 | G1 软件正向合同 | **正式 7fb5 证据已关闭** | 正式 v4 已原子生成，并由公开 runtime strict loader 在 `require_g1_assist_eligible=True` 下加载；该结论只授予 G1 assist eligibility。 |
-| 当前 `99fa4428` 实物准入 | **P1 开放，fail-closed** | post-assembler D6 audit 文件/内容 SHA-256 为 `98bf9e02...c8ed` / `40a42af0...b90d`，绑定当前实现摘要 `41381db3...94b07`。五项 blocker 为 `implementation_evidence_unavailable`、`implementation_lineage_mismatch`、`robustness_threshold_not_met.cluster_f1`、`robustness_threshold_not_met.edge_f1`、`synthetic_single_feature_shortcut`。assembler 返回 `d6_external_audit_fail_closed`、退出码 2，目标目录不存在。 |
+| 历史 `99fa4428` 实物准入 | **历史 fail-closed，记录保留** | post-assembler D6 audit 文件/内容 SHA-256 为 `98bf9e02...c8ed` / `40a42af0...b90d`，绑定当时实现摘要 `41381db3...94b07`。五项 blocker 为 `implementation_evidence_unavailable`、`implementation_lineage_mismatch`、`robustness_threshold_not_met.cluster_f1`、`robustness_threshold_not_met.edge_f1`、`synthetic_single_feature_shortcut`。assembler 返回 `d6_external_audit_fail_closed`、退出码 2，目标目录不存在；该记录没有被后续 v5 覆写。 |
 | 新模型和新外部审计 | **7fb5 clean 证据已关闭** | `7fb5db8b...ca71` 已绑定运行时摘要 `408e71fe...f4fe`，完成 held-out、paired-shadow、D6 正向审计和 v4 装配。 |
 | 真实候选门与在线作用域 | **P1 开放** | 合成固定候选图不能替代真实投影门重构、真实相机泛化或在线启用；default、全局身份、分配和控制权限保持关闭。 |
 | A3 evidence assembler | **P1 开放，未实现** | 本轮只处理 G1。A3 production writer 继续拒绝 caller-provided report，公开 assist loader 继续失败关闭。 |

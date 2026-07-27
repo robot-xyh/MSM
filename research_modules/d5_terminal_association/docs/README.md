@@ -15,13 +15,35 @@ D5 文档遵循 `research_modules/DOCUMENTATION_STANDARD.md`。推荐阅读顺�
 11. `../reports/D5_TRACKLET_GRAPH_CANONICAL_SEED_VIEW_20260721.md`：跨视角图数据共享 seed 只读视图、正式计数和失败关闭门。
 12. `../reports/D5_ACTIVE_VISION_CANONICAL_SEED_VIEW_20260721.md`：主动视觉共享 seed 只读视图、正式样本计数和 shadow-only 边界。
 
+2026-07-27，clean commit `8d5e02ec989259ce3d39e1e4ad6a90dd0d8d5b54` 已完成 D5 G1
+正式合成证据闭环。runtime SHA-256 为
+`b0708e718b374e5bb52db41c7bd2f994e340a2b009cfd348881a5f9d549baffe`；development manifest
+和权重 SHA-256 分别为
+`7d459ed855cf74b810fa1f79ed0327efd39eb4be4409451266da3f3a95387ce0` 与
+`7fb5db8b6099ca4da5706a3bec53ff7cd634e8bd267c036ce3ee4ee4bf71ca71`。held-out
+`20/900/45` 全部通过，precision/recall/F1/candidate recall 均为 1.0，false merge 为 0，
+CPU P95 约 0.913 ms。paired-shadow 覆盖 900 帧和 74024 条边，模型 edge/cluster F1 均为
+1.0，最高单特征 AUC 为 0.720073；lineage SHA-256 为
+`83e105290f3e624f267d92ceaf050d32291bd5bbbabf98580846cd31498b1af1`，记录数和唯一 UID 数均
+为 900。
+
+D6 external audit v2 的文件/内容 SHA-256 为
+`cbd6c72b2d9e7b78bf3aa36f975e6627250d2bf18de5a0b0ebc2c8f6cf760cd6` /
+`334cf662e49c735931019ff358be1894d1358f1b4a5a868759eee41d3d282d15`，结果为 pass。D5 生产
+assembler 生成的 v5 manifest SHA-256 为
+`b431d066362005868374d038eb93a83b773c03715a53d8a9dfd0da21784f317d`；D6 post-assembly v2
+结果为 pass，内容 SHA-256 为
+`17dda42d06b4be1d21ff8f1f8baecc320fd49b532be06a9f9f6b304341763e1d`。strict/shadow loader
+通过，assist 请求以 `bundle_g1_assist_authority_not_granted` 失败关闭。六项权限全部为
+false，在线 G1 未启用。真实相机泛化、中心身份 binding 正确性和物理闭环仍为 unavailable。
+
 2026-07-26，D5 已关闭 v5 paired lineage 的 D5-owned P0。生产 assembler 现在显式接收并冻结
 `paired_episode_lineage.jsonl`，逐行校验非空且唯一的 `episode_uid`，并要求正式
 `record_count/unique_episode_uid_count=900/900`。v5 manifest、admission report v2、
 paired report 和 D6 external audit v2 `candidate.paired_lineage` 必须对同一 lineage SHA 与计数
 一致；`SHA256SUMS` 和 strict loader 已覆盖 lineage 实物。当前 runtime SHA 为
-`b0708e71...baffe`，D5 全量 `655 passed, 1 warning`。本轮只有代码和 fixture 证据，没有正式
-重训、外审或 v5 制品。
+`b0708e71...baffe`，D5 全量 `655 passed, 1 warning`。该段是代码和 fixture 阶段记录；正式
+重训、外审和 v5 制品状态以上述 2026-07-27 记录为准。
 
 2026-07-26，D5 已完成版本治理修正。新 admitted bundle 为
 `d5.tracklet-model-bundle.v5`，admission report 为
@@ -37,7 +59,7 @@ v1，三者独立校验。
 
 证据资格与运行权限已分离。v5 代码状态为 `g1_evidence_eligible_not_authorized`，影子加载与
 G1 在线辅助请求采用不同门；六权限关闭时，辅助请求返回
-`bundle_g1_assist_authority_not_granted`。新 runtime SHA-256 为
+`bundle_g1_assist_authority_not_granted`。该中间 runtime SHA-256 为
 `fe116fd5...1c91`，专项测试 `70 passed, 1 warning`，D5 全量
 `636 passed, 1 warning`。该段记录 lineage P0 修复前的六权限中间实现；当时未重训、未运行
 held-out/paired-shadow、D6 外审或正式 v5 装配。旧 bundle v4、report v1 和 D6 audit v1 均以
@@ -53,12 +75,12 @@ SHA-256 为 `f17acecf...35f`，blocker 为空且六类权限全部关闭。当�
 2026-07-26，main clean commit `64cb865b...2b05` 的 20-seed 几何候选图 R0 覆盖
 `2670` 帧、`16842` 节点和 `4658` 边，precision/recall/F1 为
 `0.996565/0.999354/0.997958`，hard violation 为 `0`。该结果不包含 G1 模型评分。
-随后正式 writer 以冻结输入重训出相同权重，并原生生成绑定当前 runtime
-`55066382...b8ea` 的 manifest `db908b05...1d14`。当前实现下 held-out `20/900/45` 和
+随后正式 writer 以冻结输入重训出相同权重，并原生生成绑定该阶段 runtime
+`55066382...b8ea` 的 manifest `db908b05...1d14`。该阶段实现下 held-out `20/900/45` 和
 paired-shadow 均通过，5 类扰动最低边/簇 F1 为 `1.0`，最高单特征 AUC 为 `0.720073`。
 shadow-only registry 与 D6 输入清单已形成；随后通过自身门限的审计文件虽然位于带 `v2`
 后缀的目录，其顶层 schema 实际仍为 external audit v1。历史 v4 因当时合同不兼容未生成。
-真正绑定六权限合同和新 runtime 的 external audit v2 尚待 D6 重跑，因此当前没有正式 v5。
+本段所述 external audit v2 与正式 v5 缺口已由 2026-07-27 的当前 runtime 证据闭合。
 正式流水线专项 `46 passed`，clean D5 全量 `600 passed, 1 warning`。
 
 2026-07-26，关联图来源合同增加 `association_tracklets` 和冻结
@@ -72,7 +94,7 @@ missed-frame 和 TTL 合法时进入同一关联图；快照保持匿名、协�
 fixture 已形成 `2 nodes / 1 edge`。5v5 seed 1000 短复跑累计节点由 6 增至 8，但在线 6 条
 观测经离线 sidecar 核验均为 `known_false_alarm/truth_entity_id=null`，因此零边只证明虚警
 失败关闭，不能评价真实目标几何门或 G1 收益。D6 对既有 G1 v4 的 post-assembly audit 只证明
-装配完整性；当前源码摘要变化后，旧 v4 严格加载失败关闭，规则路径继续默认。详细状态见
+装配完整性；当时源码摘要变化后，旧 v4 严格加载失败关闭，规则路径继续默认。详细状态见
 `ALGORITHM_AND_IMPLEMENTATION.md`、`EXPERIMENT_REPORT.md` 和模块 `PLAN.md`。
 
 2026-07-21，确定性主动视觉规则新增默认 3 帧的宽视场稳定门。状态按相机、中心目标、计划版本和
