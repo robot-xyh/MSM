@@ -1,5 +1,52 @@
 # D6 文档索引
 
+2026-07-27 A1/A2/A3 实际采用与同键配对审计的证据阶段、可用性和权限边界见
+`MODULE_PRINCIPLES_CN.md`，输入 v1/v2 迁移、旧记录/新 pair 分派、四级重算、A3 disposition
+完整分母和跨 episode 日志绑定见 `ALGORITHM_AND_IMPLEMENTATION.md`。A2 已兼容真实 D4
+input/batch/public validator；A3 同时调用 D5 paired-evidence 与 pairing-disposition 公共
+validator。当前 v4 输出在 v3 候选阶段细分基础上增加候选观测结果清单，分别记录普通轨迹帧、
+已处理零检测帧、locked/ambiguous/hold/reacquire 和分配目标覆盖率。合法 unpairable 保留原因，但 A3
+执行/收益计数 unavailable，完整模型证据声明及全部权限为 false。D5 disposition v1 只保留
+顶层原因，细分计入 unresolved；旧 strict input v1 的 disposition inventory 明确
+unavailable。零检测帧有中心分配目标时只能形成 reacquire 和 0 覆盖，无分配目标时结果保持
+unavailable；两种情况都不能产生 locked/ambiguous 或运行权限。当前 strict audit 专项为
+`64 passed, 1 warning in 11.79s`，纯导入及干净
+子进程输出复载通过，main A3 paired smoke 为 `1 passed, 1 warning in 3.29s`。当前 D6 全量
+回归为 `1106 passed, 1 warning in 100.94s`。此前
+`paired_learning_adoption 5 passed`、scalable `345 passed, 1 warning`、cross-module
+`8 passed` 和 D6 全量 `1093 passed, 1 warning in 98.33s` 均为 v3 修改前的冻结历史证据。
+本次没有新增 AirSim 或性能实验结论。
+
+main 的 seeds 1000-1019 开发批次已由当前 v2 consumer 消费。A2 为 20/20 候选评估、0 个
+可识别区域干预、0 个实际采用和 0 个 A2/R0 收益审计，原因均为
+`identifiable_regional_intervention_missing`；批次 SHA-256 为
+`ff3c10a089b6a94582451ae05d8a884af3a2bd7485acd4df0496442ea7e0ec55`。A3 为 536 条
+disposition，其中 152 条 pairable、384 条 unpairable，覆盖率 28.36%，不可配对原因均为
+`candidate_physical_window_missing`；批次 SHA-256 为
+`455d181076553a485ff824618abc6d037a4477bb6342877d1d1e427fd28583a9`。完整清单下
+`a3_auditable_pair_count=0`，四级计数 unavailable，pairable 子集不构成完整模型证据。该
+冻结批次没有 D5 v2 候选阶段证据，其自身仍保留粗粒度原因。
+
+main 后续完成同配置 seeds 1000-1019 的不落盘开发探针。536/536 个候选有 stage evidence，
+细分为匿名观测缺失 `344` 和物理窗口确认缺失 `344`。另 40 条 observation inventory 不完整，
+但 stage reason 为空；D6 将其保留为 unresolved，不记录
+`candidate_physical_window_incomplete`。物理窗口缺失细分 scope/evidenced/unresolved 为
+`384/344/40`，completeness 为 `false`。ACK、运行确认、命令过期、时序错配和相机反馈缺失均为
+`0`。152 条 pairable、384 条 unpairable，完整可审计 seed 仍为 `0`。非正式摘要 SHA-256 为
+`1ba6040e7c3e7e3b9e7d5506dfd20cf3539ce12c5aac13cca7f02799f0cd99ef`。该摘要保持
+`source_worktree_clean=false`、`formal_evidence=false`、
+`persisted_full_pair_inventory=false`，只用于开发诊断，不替换冻结批次或开放指标和权限。
+
+同配置第二次开发复跑在 D5 v2 零检测帧和 main truth-free 帧事件接线后得到 492 个候选、
+488 个可配对、4 个不可配对，覆盖率 99.18699%。329 个零检测帧全部计为 reacquire，159 个
+v1 帧计为 locked；零检测帧 locked/ambiguous 为 0。4 个缺失来自默认 1% 通信丢包，对应
+4 个 seed 关闭丢包后全部配对。该批次未持久化完整逐候选清单、来源工作树不干净，不能替换
+旧 536/152/384 冻结结果，也不能证明未见 seed、正收益或运行授权。
+
+A2 旧记录还区分投影前候选拒绝和投影后安全采用拒绝。合法
+`safe_adoption_rejected` 只确认实际采用数为 0；拒绝原因缺失、投影字段篡改或携带后继计划、
+运行确认、联盟执行证据和物理窗口时失败关闭。该状态不生成物理窗口、R0 或收益计数。
+
 2026-07-27 D5 G1 正式 v5 证据链已同步到 `MODULE_PRINCIPLES_CN.md`、
 `ALGORITHM_AND_IMPLEMENTATION.md` 和 `EXPERIMENT_REPORT.md`。clean commit
 `8d5e02ec...b54` 上的 external audit v2 与 post-assembly v2 均为 `pass`、blocker 为空；

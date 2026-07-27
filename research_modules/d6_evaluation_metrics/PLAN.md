@@ -1,5 +1,134 @@
 # D6 Evaluation Metrics Plan
 
+## 2026-07-27 A1/A2/A3 实际采用与同键配对审计
+
+### 已完成
+
+- [x] 增加统一的只读输入、输出和 consumer schema，精确限制顶层字段并重算
+  `content_sha256`。
+- [x] A1 复用 D3 公共 strict validator，校验 candidate、selection、publication、lifecycle
+  及其候选摘要、计划摘要和注册摘要绑定。
+- [x] A2 使用 D4 公共数据对象和严格 `from_value()` / `from_dict()` 接口逐层重建安全采用
+  证据，要求与 `to_dict()` 精确往返，并复核后继计划、运行确认、权属确认、联盟确认和物理
+  窗口的交叉绑定。
+- [x] 对 D4 pair wrapper 实施两遍审计：先严格重建并按内容摘要索引旧安全采用记录，再使用
+  `safe_adoption_evidence_sha256` 调用真实 D4 public validator。被引用旧记录不重复计数，
+  未引用旧记录保持兼容口径。
+- [x] 对齐 D4 投影后拒绝语义。结构合法的 `safe_adoption_rejected` 可确认实际采用数为 0；
+  必须保留有效 preparation、投影和非空拒绝原因，并禁止携带 D3 后继计划、运行确认、权属
+  确认、联盟执行证据或物理窗口。后三层计数和全部权限保持不可用或 false。
+- [x] 兼容真实 `RegionResourceA2BenefitAuditInput` 和
+  `RegionResourceA2BenefitAuditBatch`，并独立核对候选物理窗、同键身份、冻结外生摘要、
+  episode/事件日志和 R0 唯一性。
+- [x] A3 复用 D5 公共 strict validator，校验实际模型命令、运行确认、相机位姿反馈、后续物理
+  观测窗口和唯一同键 R0；批次层新增跨 episode 事件日志绑定和 R0 单次消费检查。
+- [x] 新增 strict input v2 的 `a3_pairing_dispositions`。旧 v1 构建调用保持不变；输出和
+  consumer 先显式升为 v2，并对 v1 输入报告 disposition inventory unavailable。
+- [x] 消费 D5 pairing disposition v2 的 `candidate_stage_reason_codes` 与
+  `candidate_stage_evidence`。D6 输出和 consumer 升为 v3，同时保留 D5 disposition v1
+  顶层原因兼容；v1 缺少的阶段细分计入 unresolved，不补零。
+- [x] D6 输出和 consumer 升为 v4，新增
+  `observation_outcome_inventory`。候选观测证据可用、覆盖率为 0、正收益未声明和权限全关
+  分开表达；D5 v2 零检测帧只能计入 reacquire，不能计入 locked/ambiguous 或可见引用。
+- [x] 逐条调用 D5 公共 disposition validator，复核精确字段、内容摘要、唯一 trace、pairable
+  与顶层 A3 证据一一对应，以及嵌套/顶层 paired evidence 完全相同。
+- [x] 输出候选数、pairable/unpairable 数、覆盖率、reason code 计数、inventory completeness
+  和 paired-evidence completeness。合法 unpairable 保留完整原因，但 A3 四级执行/收益计数
+  失败关闭，完整模型证据声明固定为 false。
+- [x] 分开输出顶层原因和候选阶段细分原因。重算阶段证据有/无记录数、细分原因记录数与
+  多标签 assignment 数、全局细分分布、顶层到细分矩阵，以及候选物理窗口缺失的
+  scope/evidenced/unresolved/completeness。
+- [x] 新增当前 v3 输出 strict loader。输入与输出均支持 JSON round-trip；未知/重复细分、
+  细分与哈希绑定阶段证据不一致、schema/顶层/细分计数不守恒及重算摘要后的输出篡改均失败
+  关闭。
+- [x] 对未知字段、摘要篡改、在线真值或 outcome 泄漏、synthetic fixture、重复 comparison
+  key、跨键 R0、证据复用和权限越界提供失败关闭路径。
+- [x] availability 与四类计数分开记录。规范输出为 `benefit_auditable_count`，并保留旧字段
+  兼容别名。完整配对只表示 `audit_input_available`，正收益和非退化声明固定为 false。
+- [x] 支持显式读取多个 `learning_adoption_evidence.json`。逐文件校验 schema、唯一
+  `episode_id` 和内容摘要，并要求 D4/D5 wrapper 引用的候选/R0 episode 文件实际存在；
+  D4 候选 execution arm 还必须匹配安全采用记录所在 episode。D6 不扫描目录、不自动拼造
+  pair wrapper。
+- [x] A3 不再访问 trace 不存在的派生 `comparison_identity`；改由 trace 的场景、规模、seed、
+  窗口、相机、资源、目标引用、冻结外生摘要和三类版本显式重算，再与窗口公开身份比较。
+- [x] A3 事件日志按 episode 级身份审计。同一 episode 多窗口可共享一个日志摘要；同一摘要
+  不得跨 episode，同一 episode 不得声明第二个日志身份。
+- [x] 公共模块解析兼容安装/`PYTHONPATH` 顶层包和仓库根目录 `research_modules...` 两种
+  布局。只有请求模块路径缺失才回退，真实内部依赖错误保持可见。
+- [x] strict audit 专项测试增至 59 项，直接使用 D4/D5 生产装配器，覆盖旧兼容、缺窗、身份/汇总篡改、
+  R0 重复使用、跨 episode 来源、A3 同 episode 多窗口日志身份，以及投影后拒绝态的四类
+  正反例和 disposition inventory 的正向、缺失、重复、篡改、错配、守恒测试；新增 D5 v2
+  细分正例、D5 v1 兼容、输入/输出 round-trip、未知/重复/矛盾细分及输出计数篡改负例。
+- [x] main 已用 seeds 1000-1019 运行 A2 开发批次。20/20 个候选均被评估，可识别区域干预、
+  实际采用和 A2/R0 收益审计均为 0，原因均为
+  `identifiable_regional_intervention_missing`；无操作没有被归因为学习采用。批次 SHA-256 为
+  `ff3c10a089b6a94582451ae05d8a884af3a2bd7485acd4df0496442ea7e0ec55`。
+- [x] main/D5 已为同一批 seeds 提供完整 A3 disposition inventory。536 个候选中 152 个
+  pairable、384 个 unpairable，覆盖率 28.36%，全部不可配对原因均为
+  `candidate_physical_window_missing`。完整清单下 `a3_auditable_pair_count=0`，四级计数
+  unavailable；批次 SHA-256 为
+  `455d181076553a485ff824618abc6d037a4477bb6342877d1d1e427fd28583a9`。
+- [x] main 以同配置 seeds 1000-1019 完成 A3 候选阶段不落盘开发探针。536/536 个候选具备
+  stage evidence，152 条 pairable、384 条 unpairable，完整可审计 seed 为 0。多标签细分为
+  anonymous observation missing `344` 和 physical window confirmed missing `344`。其余
+  40 条 observation inventory 不完整但 stage reason 为空，D6 保留为 physical-window
+  missing detail unresolved；对应 scope/evidenced/unresolved 为 `384/344/40`，detail
+  completeness 为 `false`。ACK、确认、命令过期、时序错配和相机反馈缺失均为 0。摘要
+  SHA-256 为
+  `1ba6040e7c3e7e3b9e7d5506dfd20cf3539ce12c5aac13cca7f02799f0cd99ef`。
+  该探针保持 `source_worktree_clean=false`、`formal_evidence=false`、
+  `persisted_full_pair_inventory=false`，不替换冻结 v1 批次。
+- [x] 本次 v3 修改后，D6 strict 专项为 `59 passed, 1 warning in 11.75s`，纯模块/包导入
+  及独立子进程输出复载通过，main A3 paired smoke 为 `1 passed, 1 warning in 3.29s`。
+- [x] `_validate_a3_pairing_inventory_output` 入口已在公开输出校验器之前定义，完整实现由内部
+  implementation 函数承载；新增干净子进程回归直接构造、审计并复载当前 v3 输出，关闭 D6
+  初始化阶段的 `NameError` 阻断。
+- [x] 本次 v3 修改前，main 回归结果为 `paired_learning_adoption 5 passed`、scalable
+  `345 passed, 1 warning`、cross-module `8 passed`；这些保留为冻结历史证据。
+- [x] 本次 v3 修改前，main 运行 D6 全量测试，结果为
+  `1093 passed, 1 warning in 98.33s`；warning 是既有 Matplotlib `Axes3D` 环境提示，无失败。
+- [x] 本次 v3/候选阶段证据消费逻辑完成后，D6 全量回归为
+  `1101 passed, 1 warning in 101.09s`。warning 仍是既有 Matplotlib `Axes3D` 环境提示；
+  旧 `1093 passed` 只保留为修改前基线。
+- [x] main 在 D5 v2 零检测帧和 truth-free 相机帧事件接线后，以相同 seeds 1000-1019 完成
+  第二次未提交工作树开发复跑。492 个候选中 488 个可配对、4 个不可配对，覆盖率
+  99.18699%；消费零检测帧 329 个、拒绝 0 个，v1 locked 159 个、v2 reacquire 329 个。4 个
+  缺失均出现在默认 1% 通信丢包条件，对应 seed 设为 0 丢包后全部配对。该结果没有持久化完整
+  pair inventory，不是正式证据，不替换旧 536/152/384 冻结批次，也不授予运行权限。
+- [x] 新增 D5 v2 零检测帧的 D6 正向和输出篡改回归。完整证据且 0 覆盖时
+  `benefit_auditable_count` 可用，但 `positive_benefit_claimed`、非退化声明和全部权限保持
+  false；locked/ambiguous 伪造及覆盖率篡改失败关闭。
+- [x] v4 strict 专项为 `64 passed, 1 warning in 11.79s`；D6 全量为
+  `1106 passed, 1 warning in 100.94s`。warning 是既有 Matplotlib `Axes3D` 环境提示。
+
+### 状态与待补
+
+- [ ] D3 为 A1 batch candidate/selection inventory 提供公开 strict loader，并在 lifecycle
+  中持久化可复核的 runtime provenance、物理窗口载荷和 R0 comparison identity。
+- [x] D4 已落地实际 pair DTO、batch 和 public validator；D6 已使用真实正反例替换预留
+  fixture，并兼容安装包与仓库根目录两种导入布局。
+- [ ] main 继续生成正式候选/R0 双 episode 样本，使用相同冻结
+  `paired_exogenous_config_sha256`、不同 episode 和 episode 级事件日志身份，由 D4/D5 形成
+  唯一 pair wrapper 后再送入 D6。开发批次已完成，但 A2 没有可识别干预，A3 缺候选物理
+  窗口，尚未形成正式结果证据。
+- [x] main/D5 开发批次已向 v2 输入提供每个候选的一条 disposition，包括 pairable 和
+  unpairable，完整分母消费链已运行。
+- [ ] main/D5 为正式候选逐条持久化 D5 disposition v2 的原始
+  `candidate_stage_reason_codes` 和哈希绑定 `candidate_stage_evidence`。现有冻结 v1 批次
+  仍是粗粒度证据；同配置开发探针已经给出阶段诊断，但
+  `source_worktree_clean=false`、`formal_evidence=false` 且完整逐候选清单未落盘，不能回填或
+  替换冻结批次。
+- [ ] 正式验收批次继续要求完整 disposition inventory。仅提供 pairable 子集时，D6 v1
+  兼容路径只报告局部范围，不能形成完整模型证据。
+- [ ] 将第二次开发复跑的 492 条 disposition、488 条 pair evidence 和 4 条丢包处置逐条
+  持久化到 clean source 双 episode 批次，再由 v4 consumer 生成正式观测结果清单。当前只有
+  main 提供的开发汇总，不能确认未见 seed、模型收益或通信鲁棒性。
+- [ ] 结果指标形成后另行计算收益和非退化。当前 `benefit_auditable_count=available` 只代表
+  输入可以审计，不代表任何性能结论。
+
+本项不改变 AirSim settings、episode reset、检测、相机控制、计划发布或物理结果 schema。
+AirSim 集成计划已检查，因没有 AirSim 接口变化而保持原状；开发证据边界已同步到实验文档。
+
 ## 2026-07-27 D5 G1 v5 正式证据链
 
 ### 已完成

@@ -1,5 +1,199 @@
 # D6 系统级离线评估模块原理
 
+## 学习策略实际采用审计（2026-07-27）
+
+### 证据问题
+
+模型被加载、输出建议或通过影子评测，都不能证明建议进入了运行系统。D6 将证据拆成政策评估、
+确定性安全投影、实际发布、运行确认、物理状态窗口和同键规则基线六类阶段。每个阶段只使用对应
+模块已经持久化的事实，缺一层时停止在已证实的最高阶段。
+
+审计覆盖三个变体。A1 是 D3 分配代价修正，A2 是 D4 区域资源建议，A3 是 D5 主动视觉动作。
+三者不能共享“采用”定义。A1 要证明学习修正确实改变计划并被运行时消费；A2 要证明区域建议
+形成后继 D3 计划并被当前权属节点确认；A3 要证明模型动作经安全投影后形成相机命令、收到运行
+确认，并由相机反馈证实位姿和视场已经生效。
+
+输入合同分为两个版本。v1 只携带 A1/A2/A3 记录，继续用于旧调用方。v2 增加
+`a3_pairing_dispositions`，要求把每个 A3 配对候选的 pairable 或 unpairable 处置结果全部
+送入 D6。审计输出和 consumer 当前为 v4：v2 负责完整 disposition 分母，v3 增加候选阶段
+细分及输出严格复载，v4 增加候选观测结果清单。旧 v1 输入仍可审计原有 paired 记录，但
+disposition 分母明确不可用。
+
+### 可用性
+
+每个变体独立输出四个计数：
+
+```text
+actual_adoption_count
+physical_window_count
+same_key_r0_pair_count
+benefit_auditable_count
+```
+
+计数携带独立 availability。没有记录、缺运行确认、缺物理窗口或缺同键 R0 时，值为
+`null/unavailable`。显式记录到“规则 fallback 已执行”时，实际学习采用可记为可用的 0；
+该 0 不能扩展为物理窗口或收益 0。这样可以区分“已观察到没有采用”和“没有证据判断是否采用”。
+旧 `auditable_benefit_count` 作为等值兼容字段保留。第四级只说明输入可供后续收益审计，
+输出写作 `audit_input_available`，不声明正收益或非退化。
+
+A2 在确定性投影后仍可能被安全采用链拒绝。例如 D3 后继计划版本没有严格递增时，D4 记录
+`safe_adoption_rejected`，并清空未获认可的后继计划和执行证据。D6 只有在 preparation 与投影
+有效、拒绝原因非空、后继计划至物理窗口的全部证据均不存在时，才将实际采用计为可用的 0。
+该 0 不产生物理窗口、同键 R0 或收益输入。拒绝记录被篡改、缺原因或夹带后续证据时，四级
+计数全部失败关闭。
+
+### A3 配对分母
+
+D5 paired evidence 只覆盖能够形成候选窗口和同键规则窗口的记录。它不能说明有多少候选因未
+采用模型动作、缺候选物理窗口、缺规则窗口、规则窗口重复、身份不一致或物理结果不完整而无法
+配对。D6 因此把 disposition inventory 作为独立分母。
+
+每条 disposition 先由 D5 公共严格校验器重构。D6 随后要求
+`adoption_trace_sha256` 唯一。pairable disposition 必须对应一条且仅一条顶层 A3 paired
+evidence，内嵌证据与顶层记录必须逐字段相同。顶层 A3 记录也不得游离在 pairable disposition
+之外。候选数 \(N\)、可配对数 \(N_p\) 和不可配对数 \(N_u\) 满足：
+
+\[
+N=N_p+N_u,\qquad r_p=\frac{N_p}{N}
+\]
+
+其中 \(r_p\) 为配对覆盖率。D6 对 D5 枚举的每个 reason code 输出计数，并再次检查 reason
+计数总和等于候选数。字段、摘要、trace 唯一性、嵌套证据或计数任一不一致时，inventory
+失败关闭。
+
+D5 disposition v2 在顶层原因之外携带候选阶段证据。该证据将命令有效期、运行确认、相机
+反馈、匿名观测双时间戳和物理窗口状态绑定到同一候选 trace。D6 以多标签方式统计运行确认
+缺失、确认未生效、命令过期或时序不一致、反馈缺失、匿名观测缺失或不完整、物理窗口确认
+缺失或不完整。一个候选可以同时命中多个细分原因，因此细分 assignment 数不要求等于候选数；
+带细分和无细分的记录数必须守恒。
+
+顶层 `candidate_physical_window_missing` 构成独立细分分母。D6 分别记录已有明确阶段证据和
+仍未解决的数量。D5 disposition v1 没有阶段证据，只保留顶层原因并计入未解决。D6 不从后续
+窗口、离线真值或空字段推断缺失阶段。
+
+合法 unpairable 记录仍可形成完整原因清单。它不能补出该候选的实际采用、物理窗口、同键
+规则参考或收益。只要 inventory 中存在 unpairable，A3 四级执行和收益计数保持 unavailable。
+`inventory_completeness=true` 只说明调用方提供的 disposition 集合内部守恒且与顶层 paired
+evidence 一致，不代表模型在全部场景上的证据完整。输出
+`complete_model_evidence_claimed=false`。因此 152 条 pairable 子集不能替代 536 个候选的完整
+分母。阶段细分完整也不改变该权限和可用性边界。
+
+### 开发批次结果
+
+main 使用 seeds 1000-1019 生成开发批次并交由当前 D6 v2 consumer 只读审计。A2 共评估 20/20
+个候选，没有识别到区域干预，实际采用和 A2/R0 收益审计均为 0。20 条原因全部是
+`identifiable_regional_intervention_missing`。该结果证明无操作候选没有被归因成学习采用，
+不证明区域策略有效或无效。A2 批次 SHA-256 为
+`ff3c10a089b6a94582451ae05d8a884af3a2bd7485acd4df0496442ea7e0ec55`。
+
+A3 完整清单有 536 条 disposition。152 条可配对，384 条不可配对，覆盖率为 28.36%；20/20
+个 seed 都有可配对子集。全部不可配对原因是 `candidate_physical_window_missing`。完整清单
+下 `a3_auditable_pair_count=0`，实际采用、物理窗口、同键 R0 和收益计数均不可用。该结果说明
+物理窗口证据链没有覆盖完整候选分母。它不支持主动视觉模型收益、非退化或准入结论。A3 批次
+SHA-256 为 `455d181076553a485ff824618abc6d037a4477bb6342877d1d1e427fd28583a9`。
+该冻结批次没有 D5 disposition v2 候选阶段证据，其自身仍不能进一步归因。
+
+main 随后用同配置 seeds 1000-1019 进行一次内存态开发探针。536/536 个候选均形成阶段证据，
+但完整可审计 seed 仍为 0。344 条候选同时出现匿名观测缺失和物理窗口确认缺失，另有 40 条
+observation inventory 不完整但没有 stage reason。D6 不从 inventory 状态推导一个未声明的
+细分枚举，而是将物理窗口缺失的 384 条分母保留为 344 条 evidenced 和 40 条 unresolved，
+detail completeness 为 false。运行 ACK 缺失、运行确认缺失、命令过期、命令时序错配和相机
+反馈缺失均为 0。开发摘要 SHA-256 为
+`1ba6040e7c3e7e3b9e7d5506dfd20cf3539ce12c5aac13cca7f02799f0cd99ef`。该运行保持
+`source_worktree_clean=false`、`formal_evidence=false`、
+`persisted_full_pair_inventory=false`。这些细分只缩小当前断点范围，不替换冻结 v1 批次，
+也不改变四级指标和全部权限的失败关闭状态。
+
+第二次同配置开发复跑接入 D5 v2 零检测帧后，候选数由 536 调整为 492，其中 488 条可配对、
+4 条不可配对，配对覆盖率为 99.18699%。候选窗口包含 159 个 v1 locked 帧和 329 个 v2
+reacquire 帧。329 个 v2 帧均表示图像已处理但没有检测，不是目标可见证据，其覆盖率为 0，
+locked 和 ambiguous 计数为 0。4 条缺失来自默认 1% 通信丢包；相应 4 个 seed 关闭丢包后均
+可配对。该复跑来自未提交工作树，没有持久化完整逐候选清单，也没有未见 seed 证明。旧
+536/152/384 冻结批次及其摘要不变。
+
+### 零检测帧口径
+
+D6 将“物理观测证据可审计”和“目标被看见”作为两个变量。D5 v2 零检测帧证明相机在命令生效
+后处理了一帧图像，因而可以关闭原来的“没有观测事实”缺口。有中心分配目标时，该帧的关联
+状态固定为重新捕获，分配目标可见标志固定为 false；无分配目标时，关联和覆盖结果均不可用。
+它不创建局部轨迹，不绑定全局航迹，也不提供正向身份依据。
+
+v4 的候选观测结果清单分别汇总普通轨迹帧、零检测帧、四类关联状态、分配引用数和可见引用数。
+覆盖率为可见引用数与分配引用数之比，可以合法等于 0。清单可用只说明输入完整且数值可复算。
+正收益、非退化和全部运行权限继续固定为 false。零检测帧若被序列化为 locked、ambiguous、
+hold 或可见，输出严格复载失败。
+
+### 严格边界
+
+A3 的公共 validator 可以重算命令、运行确认、相机反馈、窗口摘要、同键身份和权限。D6 不依赖
+adoption trace 上不存在的派生属性，而是用 trace 已有的场景、规模、seed、窗口、相机、资源、
+目标引用、冻结外生摘要和计划/联盟/通信版本显式形成身份元组，再与候选/R0 窗口公开身份比较。
+候选窗与 R0 窗可以来自两个独立 episode，但必须使用相同冻结外生配置摘要。
+
+D6 从 sample key 提取 episode 标识。候选与 R0 episode 必须不同。同一 episode 的多个窗口
+允许共享一个事件日志身份摘要，这与 main 当前按 `episode_id + stream + schema` 生成摘要的
+方式一致；一个摘要不能绑定不同 episode，同一 episode 不能出现第二个日志身份。窗口不能跨
+comparison key 复用，一个 R0 窗口不能支撑多个配对。synthetic 来源、在线真值计数和全局航迹
+身份改写继续作为硬阻断。
+
+A1 的核心 DTO 有公共 validator，可以确认候选、选择、发布和 lifecycle 摘要没有被改写。
+当前 lifecycle 只保留运行确认和物理窗口的摘要计数，没有持久化运行来源载荷及 R0 配对身份。
+D6 因此只报告“声明已通过模块校验”的最高阶段，不将其换算为实际采用或收益。
+
+A2 按旧单臂和新配对两路审计。旧记录仍使用 D4 安全采用 DTO，逐层重建建议、后继计划、运行
+分配确认、权属确认、联盟成员确认和物理窗口。完整链可报告实际采用和物理窗口；没有 R0 时
+保持后两级 unavailable。
+
+旧单臂记录的终止态单独处理。`candidate_rejected` 表示投影前拒绝；
+`safe_adoption_rejected` 表示投影完成后，安全采用链在形成有效后继执行证据前拒绝。后一状态
+要求 D3 计划、运行确认、权属回执、联盟提交对象和物理窗口均为空。无联盟需求时
+`coalition_commit_available=true` 只表示该条件无需提交，不作为执行证据。两类合法拒绝都只
+能证明实际采用为 0。
+
+新 pair wrapper 使用 D4 已发布的 `RegionResourceA2BenefitAuditInput`，批量输入使用
+`RegionResourceA2BenefitAuditBatch`。D6 先严格重建输入中的旧安全采用记录，并以其原始
+`content_sha256` 建立唯一索引；随后根据 wrapper 的
+`safe_adoption_evidence_sha256` 查找来源并调用 D4 public validator。来源缺失、重复或被多个
+wrapper 复用时失败关闭。被引用的旧记录只用于验证来源，不再作为第二次采用计数。
+
+D6 不采用 wrapper 的汇总计数，而是核对候选物理窗摘要，再比较场景、场景版本、规模、seed、
+逻辑窗口、窗口时长和 `paired_exogenous_config_sha256`。候选与 R0 必须来自不同 execution
+arm，日志摘要不能跨 episode，窗口不能跨键复用，一个 R0 不能重复配对。真实 D4 DTO、public
+validator 和 batch 已通过正反向兼容测试。
+
+A1 批量 inventory 仍没有公共 strict loader。D6 不按字段名称构造宽松替代实现，输出
+`a1_batch_public_strict_loader_unavailable`。软件 fixture 只验证 consumer 合同；没有 main
+持久化的真实 episode 记录时，不形成实际系统收益结论。
+
+main 持久化的运行证据使用
+`scalable3d-learning-adoption-evidence-records-v1`。D6 只读取调用方明确列出的
+`learning_adoption_evidence.json`，校验固定字段、唯一 episode 标识和内容摘要后合并记录。
+跨文件 A2 配对要求安全采用来源文件所在 episode 等于候选 execution arm，且候选/R0 episode
+文件都在调用方列表中。A3 trace、候选窗和 R0 窗引用的 episode 也必须存在。D6 不搜索相邻
+目录，也不把候选单臂和规则单臂自行组装成新事实；pair wrapper 由 D4/D5 公共装配器生成并只
+持久化一次。
+
+### 模块布局
+
+同一公共合同在两种部署方式下具有不同的 Python 导入路径。安装包或显式配置
+`PYTHONPATH` 时使用 D3、D4、D5 的顶层包名；在仓库根目录直接运行时，模块位于
+`research_modules...` 命名空间。D6 先查找顶层包，只在异常明确指出请求模块或其父包不存在时
+查找仓库路径。A2 的区域建议、运行确认和通信回执使用同一规则。
+
+该回退只处理包布局。若公共模块存在，但导入时缺少内部依赖或执行失败，原异常继续向上抛出。
+D6 不把模块故障降格成“证据不可用”，避免掩盖损坏的上游合同。
+
+所有结果权限固定为 false。通过审计不允许模型晋级，不改变默认路径，也不授予分配、降级、
+相机、控制或 `global_track_id` 修改权限。
+
+当前软件验证口径为 D6 strict audit `64 passed, 1 warning in 11.79s` 和 main A3 paired
+smoke `1 passed, 1 warning in 3.29s`。严格专项包含不依赖 D5 测试夹具的独立子进程输出复载，
+并已将 A3 inventory validator 入口固定在公开输出校验器之前。v4 新增零检测帧 0 覆盖正例
+和 locked/ambiguous/覆盖率篡改负例。当前 D6 全量回归为
+`1106 passed, 1 warning in 100.94s`。此前 main 的
+`paired_learning_adoption 5 passed`、scalable `345 passed, 1 warning`、cross-module
+`8 passed` 和 D6 全量 `1093 passed, 1 warning in 98.33s` 都是当前 v3 改动前的冻结历史证据。
+
 ## 跨视角候选图几何校准（2026-07-26）
 
 ### 评估边界

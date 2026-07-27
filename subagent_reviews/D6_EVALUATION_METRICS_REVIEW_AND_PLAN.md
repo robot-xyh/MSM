@@ -1,5 +1,100 @@
 # D6 系统评估指标综述及子方案
 
+## 2026-07-27 A1/A2/A3 实际采用与配对审计评审
+
+D6 已形成统一只读 consumer。A1、A2、A3 分别审计，不共用采用计数。输出同时保留最高证据
+阶段和四类 availability-aware 计数。第四级表示收益审计输入是否完整，不表示收益为正或相对
+规则基线非退化。结果中的权限、正收益和非退化声明全部固定为 false。
+
+当前 A3 公共合同可以装配来自两个 episode 的候选/R0 窗口。D6 已修复对 trace 不存在
+`comparison_identity` 属性的访问，改用已有字段显式重算身份。D6 复核相同外生配置摘要、不同
+episode、episode 级日志身份、窗口跨键复用和 R0 单次消费。同一 episode 多窗口共享一个日志
+摘要合法，日志摘要跨 episode 或同 episode 出现第二个摘要失败关闭。A1 核心摘要可复核，但
+运行来源和 R0 身份仍未落入 lifecycle。
+
+A3 strict input 新增 v2。v2 携带每个候选的 pairing disposition，D6 逐条调用 D5 公共
+validator，再核对唯一 trace、pairable 与顶层 A3 证据双向一一对应、内嵌证据一致和计数守恒。
+输出候选数、pairable/unpairable 数、覆盖率、reason code 计数、inventory completeness 和
+paired-evidence completeness。旧 v1 输入继续可读，但 inventory 明确 unavailable。
+
+D5 disposition v2 进一步提供 `candidate_stage_reason_codes` 和哈希绑定的
+`candidate_stage_evidence`。D6 分开统计顶层原因和阶段明细，保持多标签计数、层次矩阵和
+物理窗口缺失分母守恒。D5 disposition v1 不具备该证据，只保留顶层原因并计入 unresolved；
+不能把缺失明细解释为零故障，也不能据此提升完整 A3 批次的可审计性。
+
+当前输出和 consumer 为 v4。新增候选观测结果清单，把“窗口证据可审计”“分配目标可见”和
+“收益为正”分成三个判断。D5 v2 零检测帧有中心分配目标时只计入 reacquire，覆盖率为 0；
+无分配目标时关联和覆盖均不可用。零检测帧不得进入 locked、ambiguous、hold 或可见计数。
+即使观测结果完整，正收益、非退化和全部权限仍固定为 false。
+
+合法 unpairable 不作为坏记录丢弃。D6 保留其原因分布，同时把 A3 实际采用、物理、同键 R0
+和收益计数置为 unavailable。`complete_model_evidence_claimed` 与全部权限固定为 false。
+因此 152 条 pairable 记录不能表述为 536 个候选的完整模型证据；完整分母必须由 v2 disposition
+inventory 给出。
+
+A2 保留旧单臂安全采用兼容路径，能够确认实际采用和物理窗。新 pair 路径已对齐真实 D4 input、
+batch 和 public validator。D6 先按内容摘要索引旧安全采用记录，再解析 wrapper；被引用旧记录
+只作来源，不重复计数。随后独立复核安全采用、候选窗、场景/版本/规模/seed/逻辑窗口/时长、
+`paired_exogenous_config_sha256`、episode/日志和唯一 R0。
+
+D4 还会在建议已投影、但后继计划版本或其他安全条件失败时发布
+`safe_adoption_rejected`。这类记录不等于等待 D3 计划。D6 现按 D4 公共语义确认其实际采用数
+为 0，并要求拒绝原因存在、投影有效且后继计划至物理窗口的全部执行证据为空。字段篡改、空
+原因或夹带后续证据均使计数不可用；R0、收益和全部权限不会由拒绝记录产生。
+
+main 持久化的 `learning_adoption_evidence.json` 可由 D6 按显式文件列表读取。文件 schema、
+episode 标识和内容摘要必须有效且唯一。D4 安全采用来源所在 episode 必须匹配候选 execution
+arm，D4/D5 wrapper 引用的候选/R0 episode 文件必须存在。D6 不扫描目录，也不把两个旧单臂
+记录自动拼成配对；D4/D5 assembler 必须先生成唯一 wrapper。
+
+审计器已兼容安装/`PYTHONPATH` 顶层包和仓库根目录 `research_modules...` 两种布局。A1/A2/A3
+以及 A2 的内部公共合同统一解析。布局回退只响应请求模块路径缺失；内部依赖和导入期故障保持
+原异常，不会误写为 unavailable。
+
+main 已用当前 consumer 完成 seeds 1000-1019 的开发批次。A2 为 20/20 候选评估、0 个可识别
+区域干预、0 个实际采用和 0 个 A2/R0 收益审计，20 条原因均为
+`identifiable_regional_intervention_missing`。无操作没有被归因成学习采用。A2 批次
+SHA-256 为 `ff3c10a089b6a94582451ae05d8a884af3a2bd7485acd4df0496442ea7e0ec55`。
+
+A3 完整清单为 536 条 disposition，其中 152 条 pairable、384 条 unpairable，覆盖率 28.36%；
+20/20 个 seed 均存在 pairable 子集。全部不可配对原因均为
+`candidate_physical_window_missing`。完整清单下 `a3_auditable_pair_count=0`，实际采用、
+物理窗口、同键 R0 和收益计数 unavailable。A3 批次 SHA-256 为
+`455d181076553a485ff824618abc6d037a4477bb6342877d1d1e427fd28583a9`。152 条子集不能作为
+536 个候选的完整模型证据。
+
+main 在 D6 全量回归后完成同配置 seeds 1000-1019 的不落盘阶段探针。536/536 个候选有 stage
+evidence，152 条 pairable、384 条 unpairable，完整可审计 seed 仍为 0。多标签原因包括匿名
+观测缺失 `344` 和物理窗口确认缺失 `344`。另 40 条 observation inventory 不完整，但 stage
+reason 为空；D6 正确保留为 physical-window missing detail unresolved。因此细分
+scope/evidenced/unresolved 为 `384/344/40`，completeness 为 `false`。ACK、运行确认、命令
+过期、时序错配和相机反馈缺失均为 `0`。非正式摘要 SHA-256 为
+`1ba6040e7c3e7e3b9e7d5506dfd20cf3539ce12c5aac13cca7f02799f0cd99ef`。该摘要明确声明
+`source_worktree_clean=false`、`formal_evidence=false`、
+`persisted_full_pair_inventory=false`。因此
+评审只将其用于定位开发断点，不用它替换冻结 v1 批次、形成正式收益证据或授予模型、相机和
+控制权限。
+
+第二次同配置开发复跑在 D5 v2 零检测帧和 main truth-free 帧事件接线后得到
+492/488/4 个候选/可配对/不可配对记录，覆盖率 99.18699%。329 个零检测帧全部为
+reacquire，159 个 v1 帧为 locked，零检测帧 locked/ambiguous 为 0。4 个缺失来自默认 1%
+通信丢包；对应 seed 关闭丢包后全部配对。该结果没有完整逐候选持久化清单，来源工作树不
+干净，也未证明未见 seed。评审将其归类为开发性接线结果，不替换旧 536/152/384 冻结批次。
+
+strict audit 专项测试 `64 passed, 1 warning in 11.79s`。正例和负例覆盖旧 A2
+兼容、真实 D4 pair 四级计数、缺窗、身份/汇总篡改、跨 episode 来源、R0 重复配对、A3 trace
+身份重算、同 episode 多窗口日志身份、投影后拒绝态，以及 disposition 完整分母的正向、
+缺失、重复、篡改、错配和守恒，以及 D5 v2 明细、D5 v1 兼容、输入输出往返和层次计数篡改。
+A3 inventory validator 入口已固定在公开输出校验器之前；干净子进程输出复载通过，关闭此前
+阻断 D3 集成专项和 main 探针的 D6 初始化 `NameError`。main A3 paired smoke 为
+`1 passed, 1 warning in 3.29s`。v4 另有零检测 0 覆盖正例及 locked、ambiguous、覆盖率
+篡改负例。当前 D6 全量回归为 `1106 passed, 1 warning in 100.94s`。此前
+`paired_learning_adoption 5 passed`、scalable
+`345 passed, 1 warning`、cross-module `8 passed` 和 D6 全量
+`1093 passed, 1 warning in 98.33s` 均为 v3 修改前的冻结历史证据。软件正例和开发批次不代表
+模型已准入，也不授予模型、分配、降级、相机或控制权限。下一步是补齐 A2 可识别干预、A3
+正式逐候选阶段载荷、候选物理窗口、同键 R0 和结果指标；没有完整输入前不开展收益结论判定。
+
 ## 2026-07-27 D5 G1 正式证据链评审
 
 本次正式执行遵循“外审通过后装配、装配后再次审计”的顺序。证据来自 clean commit
