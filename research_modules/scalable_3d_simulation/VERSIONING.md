@@ -50,7 +50,12 @@ main
 | 训练 seed 注册表 | `scalable3d-training-seed-registry-v1` | 训练/保留评估 seed 身份、来源或隔离规则改变 |
 | 共享 seed 切分注册表 | `scalable3d-shared-seed-split-registry-v1` | D3/D4/D5 联合训练的数值 seed 分桶、比例、来源哈希或保留集规则改变 |
 | 实验矩阵 | `scalable3d-experiment-matrix-v1` | 变体语义、配对键或正式准入条件改变 |
-| 实验矩阵执行计划 | `scalable3d-experiment-matrix-execution-plan-v1` | 父清单、执行范围、分片策略或源提交绑定改变 |
+| 实验矩阵执行计划 | `scalable3d-experiment-matrix-execution-plan-v1` / `v2` | v1 为无授权的 R0/开发计划；v2 增加独立 G1 影子授权绑定。父清单、执行范围、分片策略、源提交或授权语义改变时升版 |
+| G1 影子授权请求 | `scalable3d-g1-shadow-authorization-request-envelope-v1` | 请求字段、规范摘要、干净来源、scope、D5 bundle、设备、有效期或权限语义改变 |
+| G1 影子实验授权 | `scalable3d-g1-shadow-authorization-v1` | 人工批准身份、固定确认短语、请求摘要绑定或审批状态语义改变 |
+| G1 影子授权计划绑定 | `scalable3d-g1-shadow-authorization-binding-v1` | 执行计划内不可变授权摘要、scope、bundle、设备、有效期或权限字段改变 |
+| G1 影子撤销表 | `scalable3d-g1-shadow-authorization-revocations-v1` | 注册表身份、撤销记录或失败关闭语义改变 |
+| G1 影子评分旁路 | `scalable3d-d5-g1-shadow-scoring-v1` | 匿名边概率、模型/授权摘要、时延、拒绝原因或不生效权限声明改变 |
 | 实验矩阵分片计划 | `scalable3d-experiment-matrix-shard-plan-v1` | 分片身份、单元顺序或父计划绑定改变 |
 | 实验矩阵分片进度 | `scalable3d-experiment-matrix-shard-progress-v1` | 完整单元追加、结果摘要或文件树摘要语义改变 |
 | 实验矩阵分片检查点 | `scalable3d-experiment-matrix-shard-checkpoint-v1` | 恢复、进度前缀校验或暂停/完成状态语义改变 |
@@ -238,8 +243,16 @@ checkpoint 领先、staging 领先或来源提交改变仍拒绝恢复。不同 
 
 正式实验矩阵还必须记录 R0/G1/A1/A2/A3/C1/F1、完整场景目录、5/20/50/100/200
 规模、至少 20 个测试 seed 和训练 seed 注册表摘要。测试 seed 与训练 seed 有交集、模型
-bundle 未加载、assist 未准入或运行时回退规则时，相关学习变体不得进入正式比较。矩阵
-manifest 只记录版本和摘要，不记录 bundle 的本地绝对路径。
+bundle 未加载、所需 assist 未准入或运行时回退规则时，相关学习变体不得进入正式比较。
+G1 只在独立人工授权精确绑定当前提交、D5 v5 bundle、scope、设备和有效期后进入
+`authorized_shadow` 比较；其模型输出不得改变在线关联。矩阵 manifest 只记录版本和摘要，
+不记录 bundle 或授权控制文件的本地绝对路径。
+
+G1 请求、批准文件和撤销表属于仓库外控制面，不进入 Git 或模型 bundle。请求文件只表达
+待审批范围；批准文件必须绑定请求 SHA-256 和固定确认短语；撤销表在计划创建和每次分片
+启动/恢复时重新读取。带授权执行计划使用 v2，并只允许 G1-only scope。缺任一文件、摘要
+不符、过期、撤销、来源提交变化、设备变化或 D5 文件树变化均拒绝执行。v1 执行计划不含
+授权字段，继续只按既有 R0/开发语义解释。
 
 跨模块学习另使用源外 `scalable3d-shared-seed-split-registry-v1`。注册表绑定冻结的
 `training_seed_registry.json` 文件 SHA256，以数值 seed 为不可分单元，统一采用

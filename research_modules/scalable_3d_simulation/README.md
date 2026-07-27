@@ -109,12 +109,14 @@ bundle 的完整文件树摘要、manifest 摘要、预检设备、准入诊断�
 正式学习变体分成两个证据阶段。预准入阶段由模块 owner 使用未见 seed、隔离采用和
 paired-shadow 结果生成新的 evidence-bound bundle。D3 和 D4 模块专用 assembler 尚未
 实现；D5 G1 已形成当前运行时 v5 证据资格，但六项运行权限均为 false；A3 assembler
-仍未实现。main 还需定义与 v5 分离的人工批准实验授权包，才能启动受控 G1 作用域。
+仍未实现。main 已实现与 v5 分离的人工批准影子实验授权合同，但尚无批准实例；因此受控
+G1 作用域仍未启动。
 正式 scope 完成后，D6 使用
 `d6.learning-scope-formal-evidence-audit.v1` 重新校验 execution plan、bundle 文件树、
 merge、shard、cell 和 episode 证据，并与唯一同键 R0 比较。D6 审计要求模型实际采用，
 shadow、规则回退、仅加载模型、D5 零候选边、缺物理结果或缺 R0 均判为
-unavailable/fail-closed；审计从不授予模型晋级或控制权限。
+unavailable/fail-closed；该口径适用于后续 assist 收益声明。获批 G1 影子 scope 只评估
+候选边概率和运行风险，不声明在线采用或物理收益。审计从不授予模型晋级或控制权限。
 
 模型文件存在、哈希有效、开发指标可用或 D6 审计合同通过单元测试均不能替代 assist
 准入。当前没有实际学习 scope、merge 或可用 R0 配对输入，正式学习 episode 仍为 0。
@@ -1394,38 +1396,90 @@ D4 区域策略、A3 主动视觉、C1 学习组合和 F1 故障/高威胁完整
 `comparison_key` 另记录剔除算法版本后的外生配置 SHA-256；不同变体的该哈希不一致时停止
 运行。普通 episode 继续默认 `sequential_v1`，因此既有正式数据和小规模回归不被重解释。
 
-学习变体必须提供对应 bundle，且运行时诊断必须证明模型实际加载、辅助模式获准并生效。
-缺 bundle、未准入或规则回退会阻断声明的学习变体，不能把规则结果记到学习组。正式模式
-还要求完整 R0/G1/A1/A2/A3/C1/F1、完整场景目录、5/20/50/100/200 五档规模、至少
-20 个唯一 seed、独立训练 seed 注册表、训练/测试 seed 零重叠和干净工作树。每个 episode
-写盘后由 D6 从离线目录统一评分，矩阵本身不读取在线真值。
+学习变体必须提供对应 bundle。A1/A2/A3/C1/F1 仍要求运行时诊断证明模型实际加载、辅助
+模式获得相应权限并生效；缺 bundle、未准入或规则回退时不能把规则结果记到学习组。G1
+采用更窄的人工授权影子路径：D5 v5 证据合格只说明候选可供评估，不能授予运行权限；独立
+授权文件只允许模型为已经由确定性几何规则生成的匿名候选边计算概率。模型概率不参与在线
+聚类、中心身份绑定、分配、降级、主动视觉或控制。
 
-学习 scope 使用 `init-scope`、`run-shard` 和 `merge-scope`。以下 G1 命令只说明获准
-bundle 生成后的调用方式；当前实际 D5 图模型会在 `init-scope` 预检阶段被拒绝，不会创建
-执行目录：
+G1 影子授权固定绑定干净 Git 提交、D5 manifest/文件树/权重 SHA-256、场景、规模、seed、
+时长、设备、有效期和撤销表。批准者必须显式确认请求 SHA-256 和固定短语
+`APPROVE G1 SHADOW SCORING ONLY`。授权文件、请求和可变撤销表保存在仓库外。缺文件、
+摘要不符、超期、撤销、设备或 scope 不符均失败关闭。运行栈保持 `d5_edge_model=None`，
+只在独立 `d5_shadow_edge_model` 中计算旁路结果，并发布
+`modules.d5.g1_shadow_scoring`；所有记录固定 `model_output_applied=false`。
+
+正式模式还要求完整 R0/G1/A1/A2/A3/C1/F1、完整场景目录、5/20/50/100/200 五档规模、
+至少 20 个唯一 seed、独立训练 seed 注册表、训练/测试 seed 零重叠和干净工作树。每个
+episode 写盘后由 D6 从离线目录统一评分，矩阵本身不读取在线真值。
+
+学习 scope 使用 `init-scope`、`run-shard` 和 `merge-scope`。G1 的准备、审批和执行分开
+进行。`prepare` 只生成待审批请求和空撤销表，不授予权限；下列路径应位于仓库外：
 
 ```bash
+COMMIT=$(git rev-parse HEAD)
+python3 research_modules/scalable_3d_simulation/run_experiment_authorization.py \
+  prepare \
+  --authorization-id g1-shadow-eval-001 \
+  --purpose "bounded G1 shadow comparison" \
+  --expected-git-commit "$COMMIT" \
+  --scenarios nominal dense_crossing \
+  --scales 5 20 \
+  --seeds 1000 1001 \
+  --duration 2.0 \
+  --d5-graph-model-bundle /path/to/d5_v5_bundle \
+  --device cpu \
+  --not-before-utc 2026-07-27T00:00:00+00:00 \
+  --expires-at-utc 2026-07-28T00:00:00+00:00 \
+  --revocation-registry-id g1-shadow-eval-registry \
+  --request-output /external/control/g1_request.json \
+  --revocation-registry-output /external/control/g1_revocations.json
+
+# 读取 request_sha256 后，由获授权人员独立执行；程序不会自动批准。
+python3 research_modules/scalable_3d_simulation/run_experiment_authorization.py \
+  approve \
+  --request /external/control/g1_request.json \
+  --output /external/control/g1_authorization.json \
+  --expected-request-sha256 <REQUEST_SHA256> \
+  --approver-id <APPROVER_ID> \
+  --approval-reason "bounded shadow evaluation" \
+  --confirmation "APPROVE G1 SHADOW SCORING ONLY"
+
 python3 research_modules/scalable_3d_simulation/run_experiment_matrix_shard.py \
   init-scope \
-  --formal \
   --scope-variants G1 \
+  --scenarios nominal dense_crossing \
+  --scales 5 20 \
+  --evaluation-seeds 1000 1001 \
+  --duration 2.0 \
   --device cpu \
-  --d5-graph-model-bundle /path/to/admitted_d5_graph_bundle \
-  --output /path/to/formal_g1_scope
+  --d5-graph-model-bundle /path/to/d5_v5_bundle \
+  --experiment-authorization /external/control/g1_authorization.json \
+  --experiment-authorization-sha256 <AUTHORIZATION_FILE_SHA256> \
+  --revocation-registry /external/control/g1_revocations.json \
+  --output /path/to/g1_shadow_scope
 
 python3 research_modules/scalable_3d_simulation/run_experiment_matrix_shard.py \
   run-shard \
-  --execution-plan /path/to/formal_g1_scope/experiment_matrix_execution_plan.json \
+  --execution-plan /path/to/g1_shadow_scope/experiment_matrix_execution_plan.json \
   --shard-index 0 \
   --device cpu \
-  --d5-graph-model-bundle /path/to/admitted_d5_graph_bundle \
+  --d5-graph-model-bundle /path/to/d5_v5_bundle \
+  --experiment-authorization /external/control/g1_authorization.json \
+  --revocation-registry /external/control/g1_revocations.json \
   --minimum-free-gib 20
 
 python3 research_modules/scalable_3d_simulation/run_experiment_matrix_shard.py \
   merge-scope \
-  --execution-plan /path/to/formal_g1_scope/experiment_matrix_execution_plan.json \
+  --execution-plan /path/to/g1_shadow_scope/experiment_matrix_execution_plan.json \
   --write-d6-report
 ```
+
+`run-shard` 在新建、恢复和每个新 cell 前重新检查干净来源、授权摘要、有效期、撤销表和
+scope。旧版 v1 R0/开发执行计划保持兼容；带授权的 G1 计划使用执行计划 schema v2。当前
+代码只完成授权合同和影子执行入口，尚未生成真实批准文件，也未运行正式 G1 scope。
+完整边界见
+[`docs/SCALABLE_3D_G1_SHADOW_AUTHORIZATION_CONTRACT_CN.md`](docs/SCALABLE_3D_G1_SHADOW_AUTHORIZATION_CONTRACT_CN.md)。
 
 变体与 bundle 的对应关系为：G1 使用 D5 图模型，A1 使用 D3 代价修正模型，A2 使用 D4
 区域策略模型，A3 使用 D5 主动视觉模型，C1/F1 同时要求四类 bundle。执行计划不保存本机
