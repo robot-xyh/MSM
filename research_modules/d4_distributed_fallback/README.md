@@ -1,5 +1,225 @@
 # D4 分布式协同与降级接管
 
+## 2026-07-27 提交就绪复核
+
+本轮收紧了 A2 安全采用边界。联盟成员 `can_execute` 只接受布尔值，成员确认和联盟提交
+时间只接受有限非负数；字符串 `"false"` 和非有限时间不再可能穿过确认门。安全采用
+preparation/evidence 的可用性与权限字段改为严格布尔值，不可用 preparation 不能携带已应用
+建议。通信回执和期望从映射加载时要求版本化字段全集完全一致，并拒绝额外真值字段。
+
+中心、二级和完全分布式 owner 均通过同一安全采用链回归。三层正例只证明证据链可用，
+`authority_granted`、A2 收益和在线真值使用保持 false。开发适配器的策略身份现在从正式
+收益审计入口即被拒绝。2026-07-27 D4 全量结果为 **679 passed, 1 warning**；警告是既有
+Matplotlib `Axes3D` 环境提示。关键文件语法检查和 D4 scoped `git diff --check` 通过。
+
+## 2026-07-27 A2 开发态非零干预探针
+
+D4 新增 `ConstrainedDevelopmentRegionResourceAdapter`，用于解决学习 development 候选在
+开发配对中持续输出零动作、导致后续合同无法被测试的问题。适配器只包装已有
+`source=learned` 的未投影候选；候选原本已有可消费动作时保持原样，候选为无操作时才从现有
+确定性规则策略提取一个最小干预。该干预明确标记为
+`development_test_only_intervention`，不能归因于模型。
+
+“原本已有可消费动作”现在按投影后的 D3 消费语义判断。适配器与规则策略共享同一个
+`DeterministicResourceProjector`：先投影候选、构造 advisory、执行同 snapshot 消费检查，
+再复用安全采用链的干预证据口径。原始 `reserve_ratio` 看似变化，但因 committed resource、
+最低备用或可行域约束在投影后回到基线时，候选仍按无操作处理，不再提前返回。
+
+适配器声明 `formal_decision_aware=true`。`RegionResourceAdvisor` 只对该显式协议传入当前
+formal decision；适配器选择动作时和 advisor 发布建议时均使用同一正式裁决投影。默认
+`force_request_replan_on_projected_noop=false`。开发探针显式打开该项后，即使规则策略在
+“全部资源已承诺、无 deficit、无 transfer budget、无安全 hold”场景返回无操作，也只会在
+权威、ACK、fault fence 和租约均有效的一个区域发出 request-replan-only。
+
+候选选择顺序固定为：
+
+1. 优先在权威和租约仍有效的区域输出单区域 `request_replan=true`，不同时输出 `hold` 或
+   transfer。
+2. 没有合法重规划请求时，输出受 `maximum_total_transfer_resources` 限制的最小跨区转移。
+3. 前两项均不可用时，只允许 `committed_resources=0` 的区域进入 `hold`；已承诺区域不进入
+   hold 候选。
+
+每一级候选都重新经过上述投影和消费判定。投影后仍是无操作或出现投影/发布/消费拒绝时，
+适配器继续尝试下一优先级；所有候选均不可消费时返回原始候选，由正式链路失败关闭。
+
+适配器不修正候选的 owner、plan、version、epoch 或 lease，也不直接发布 advisory。输出仍
+必须经过 `DeterministicResourceProjector`、正式 D4 裁决和
+`RegionResourceSafeAdoptionAssembler`。旧时期、过期租约、网络分区、容量、备用资源和
+D3 held-assignment 安全拒绝均未放宽。
+
+该适配器没有 admitted manifest，最大建议模式固定为 `shadow`，assist、authority、control
+和模型准入均为 false。正式 A2/R0 收益审计还会按策略身份返回
+`development_intervention_benefit_forbidden`。它只能生成开发链路证据，不能生成模型收益
+证据。
+
+main 提供的原 hold+request helper 内存探针为 15/20；seed
+1000、1002、1007、1009、1013 因固定区域已有 committed binding，依次停在
+`regional_hint_no_executable_successor` 和 `regional_hint_held_assignment_infeasible`。
+D4 已把这五个 seed 加入回归。新候选对它们只输出 request-replan，不输出 hold，均形成可
+辨识干预并停在 `awaiting_d3_plan / d3_successor_plan_missing`。这只是 D4 模块合同结果，
+main 尚需重跑同一 20-seed 内存探针。
+
+验证日期为 2026-07-27。新增单样本回归把 3 个区域资源中的 2 个设为 committed，原始
+`reserve_ratio=0.6` 表面对应 2 个备用资源，投影后受可行域限制回到基线 1 个备用资源。
+原候选被正确识别为无操作，适配器继续生成一个 request-replan-only 候选；投影后的
+`identifiable_intervention_available=true`，hold 和 transfer 均为空。另一单样本确认
+formal-only committed member 会参与适配器首次投影。安全采用专项 **68/68 passed**，
+D4 全量 **674/674 passed**，仅有既有 Matplotlib `Axes3D` 环境警告。
+
+同日使用真实适配器和 development-only admitted transport 夹具完成 1 次内存 full episode：
+5 target/5 resource/1 recon/2 region、3.0 s、seed 1、radar detection probability 0.45。
+结果为 1 条 A2 记录，stage=`physical_window_available`，可辨识干预、安全采用和物理窗口
+均为 true，`regional_hint_successor_state=successor_published`，在线真值使用为 0；
+`authority_granted=false`、`a2_benefit_available=false`。未运行 AirSim。标准 advisor 仍把
+该适配器限制为 shadow；上述夹具结果不构成模型准入、收益或生产权限结论。
+
+## 2026-07-27 A2 无操作建议归因修正
+
+D4 现将区域资源建议分成三层证据：建议经过确定性投影并被消费、建议产生可辨识的区域资源
+干预、该干预被后继计划和物理执行采用。第一层只证明链路可达，不能直接计为学习动作采用。
+
+可辨识干预由 D4 根据投影后建议独立重算。当前计入项为逐区域资源配额变化、跨区域转移、
+按整数资源计算的备用资源变化、`hold` 和 `request_replan`。资源守恒时
+`total_quota_delta=0` 很常见，因此不能单独作为无操作判据。侦察优先级尚未进入 main 到 D3
+的可执行提示接口，也不计为当前 D3 可消费干预。
+
+无操作建议仍可生成投影/消费链路证据，但 `assemble()` 在读取普通 D3 后继计划之前返回
+`safe_adoption_rejected`，原因为 `identifiable_regional_intervention_missing`。后继计划、
+运行确认、所有者确认、联盟提交和物理窗口均不得附着到该记录。收益审计入口也要求非空干预
+字段，因而不能把同期常规 D3 重规划归因于 A2。
+
+main/D6 已于 2026-07-27 按该口径完成 20-seed 开发批次重算。正确统计为：投影/消费链路
+20/20，可辨识区域资源干预 0/20，实际 A2 动作采用 0/20，A2/R0 收益审计 0/20；20 个拒绝
+原因均为 `identifiable_regional_intervention_missing`。批次 SHA-256 为
+`ff3c10a089b6a94582451ae05d8a884af3a2bd7485acd4df0496442ea7e0ec55`。此前 18 个
+`safe_adoption_available=true` 只反映普通计划升版与链路可达，已被本次正确结果取代，
+不是模型动作采用。assist、分配、接管和控制权限继续全部为 false。
+
+验证日期为 2026-07-27。安全采用专项 **52/52 passed**，包括“同期存在无关后继计划也不能
+把无操作建议转为采用”的负例。运行时集成专项 **6/6 passed**：无操作链停在
+`no_successor` 且不刷新 authority/lease；真实 `hold/request_replan` 干预形成新计划标识、
+严格更高版本、正确 `previous_plan_id` 和 `new_execution_plan_applied`。D4 全量
+**658/658 passed**。本轮没有运行 AirSim。
+
+## 2026-07-27 A2 同键规则参考审计合同
+
+D4 已增加独立的 `region_resource_a2_benefit_audit.py`。该合同位于在线安全采用证据和 D6
+收益计算之间，本身不扩大 `RegionResourceSafeAdoptionEvidence` 的权限。安全采用记录先
+通过上述非空干预门，再证明候选建议绑定严格后继计划、运行确认、当前所有者确认、必要联盟
+提交和物理执行窗口；其中 `a2_benefit_available=false`、`authority_granted=false` 保持
+不变。
+
+每个配对审计输入显式携带 comparison key、场景及版本、规模、seed、逻辑窗口标识和
+`paired_exogenous_config_sha256`。候选 A2 臂必须哈希绑定安全采用记录及其建议、计划和物理
+窗口；规则 R0 臂必须使用冻结的 `d4-region-resource-rule/v1`。两臂必须来自独立
+execution arm、独立 episode 事件日志和不同物理窗口载荷，同时具有相同外生配置摘要和逻辑
+时间窗。跨 key、窗口复用、事件日志复用、重复 R0、版本错绑、窗口时长不一致、计划或租约
+过期、窗口不完整和硬约束违规均失败关闭。
+
+main 可直接传入进程内安全采用对象，也可从 episode 持久化的
+`learning_adoption_evidence.json` 读取完整 A2 记录后离线组装。持久化路径会重新计算原记录
+内容 SHA-256，再提取候选建议、严格后继计划和物理窗口绑定；不要求候选和 R0 在同一进程
+运行。事件日志摘要由 main 绑定 episode identity，外生身份优先使用场景 metadata 中的
+`paired_exogenous_config_sha256`。
+
+输出只允许设置 `d6_benefit_audit_input_allowed=true`。合同不携带结果指标，不计算
+non-degradation 或最终收益，也不授予模型、A2 assist、分配、故障接管或控制权限。批量
+合同还会拒绝 comparison key、R0 窗口、R0 事件日志和 R0 execution arm 的重复引用。
+
+验证日期为 2026-07-27。安全采用专项 **50/50 passed**，D4 全量 **655/655 passed**。
+测试覆盖进程内与持久化记录等价、严格往返和内容哈希，以及缺失、篡改、跨键、重复、日志
+复用、窗口复用、过期、不完整、时长不一致、硬约束和真值字段负例。结果来自纯 Python 合同
+fixture，未启动 AirSim，也未形成实际双 episode R0 或收益证据。下一步由 main 生产独立
+A2/R0 episode，由 D6 读取事件日志并计算收益；正式权限继续关闭。
+
+## 2026-07-27 A2 确认收据后续引用
+
+`CausalCommunicationEvidenceGate` 已修复同一不可变确认收据在后续物理窗口评估中被误判为
+跨证据复用的问题。收据绑定身份现在由消息类型、源节点、目的节点、权威所有者、消息标识、
+计划版本、时期号、租约范围、分区代次和载荷 SHA-256 共同确定；评估时刻不再进入该不可变
+绑定身份。一个已经接受的 owner 或 coalition ACK 可在同一绑定链中被更晚的安全采用评估
+再次引用。
+
+后续引用仍重新执行时间门控。评估时刻必须不早于该绑定已处理的最新时刻，消息必须已到达，
+评估必须发生在租约到期前。时间回退返回 `decision_timestamp_rewind`；租约到期返回
+`lease_expired`。改变 expected message、目的节点、载荷摘要、计划、时期、租约或分区代次
+仍返回 `receipt_reused_for_different_evidence`；同一 receipt ID 对应不同收据内容仍返回
+`receipt_conflict_replay`。验证结果继续固定 `authority_granted=false`。
+
+2026-07-27 的正向回归先在 `t=2.05 s` 验证 owner ACK 并停留在
+`awaiting_physical_window`，再于 `t=2.30 s` 使用同一收据装配物理窗口，结果进入
+`physical_window_available`。通信与安全采用专项 **99/99 passed**，D4 全量
+**637/637 passed**。这些结果来自纯 Python 合同 fixture，不是 AirSim、真实网络或 A2 收益
+证据；same-key R0 仍未形成。
+
+## 2026-07-27 A2 所有者确认公共合同
+
+D4 已补齐 main runtime 可直接调用的 A2 所有者确认和联盟成员确认公共接口。生产
+`runtime.assignment_plan_ack` 经 `RegionResourceRuntimeAckParser` 验证后，除原有 D3/D7
+计划与导引摘要外，还保留该确认载荷的 SHA-256 和确认 envelope 的总线序号。当前二级或
+对等所有者生成的 `RegionResourceOwnerPlanAck` 必须同时绑定权限所有者和层级、时期号、
+租约、分区代次、建议谱系、D3 严格后继计划 ID/版本/载荷摘要/总线序号，以及 main 运行时
+确认载荷摘要和总线序号。发送时间由确认对象记录，实际到达时间由
+`CommunicationDeliveryReceipt` 记录。
+
+公共调用入口如下：
+
+- `build_region_resource_owner_plan_ack()`：从已投影建议、D3 后继计划、运行时确认和当前
+  context 构造期望确认，不要求 main 重复填写交叉绑定字段。
+- `RegionResourceOwnerPlanAck.from_transport_payload()`：严格解析
+  `d4.regional_plan_owner_ack.v1` 的 payload，拒绝缺字段、额外字段和别名不一致。
+- `RegionResourceOwnerAckDelivery.from_delivered_message()`：从实际 delivered message
+  解析 payload，并调用 D4 内容寻址回执工厂。
+- `RegionResourceCoalitionAckDelivery.from_delivered_message()`：严格解析嵌套
+  `CoalitionMemberAck`。该嵌套对象沿用现有
+  resource/global-track/coalition/plan/epoch/can-execute/evidence-time/valid-until 字段，
+  未增加虚构字段。
+- `validate_region_resource_owner_ack_delivery()` 和
+  `validate_region_resource_coalition_ack_delivery()`：复核内容寻址回执、source、
+  destination、topic、payload 摘要、计划代次、租约、双时间戳和分区代次。结果固定
+  `authority_granted=false`。
+
+安全采用顺序保持为：学习候选通过确定性投影，D3 发布严格后继计划，main 发布并验证运行时
+计划确认，当前所有者确认实际到达，需要联盟时全部必要成员确认并原子提交，最后形成不含真值
+和奖励的物理执行窗口。缺运行时确认、所有者确认、联盟提交、物理窗口或同键 R0 时保持
+unavailable。确定性规则回退不计为 learned adoption。
+
+验证日期为 2026-07-27。所有者/运行时/通信/联盟四文件联合回归 **130/130 passed**，D4
+全量 **626/626 passed**。验收门限为公共正例全部通过、篡改运行时确认摘要或联盟嵌套字段
+全部失败关闭、权限授予数为 0。测试为纯 Python 合同 fixture，未运行 AirSim、真实网络或
+新随机种子；main 尚未生产真实 owner ACK、采用后物理窗口和同键 R0，正式 A2 采用仍为
+0，收益仍不可用。
+
+## 2026-07-26 A2 安全采用生产合同
+
+D4 新增 `RegionResourceSafeAdoptionAssembler`，用于连接真实学习候选与既有 A2 最终证据
+装配器。该合同不改写 `region_resource_a2_evidence.py` 的 20 个实际采用、同键规则基线、
+物理窗口、配对非退化和联盟完整性要求。它只负责生成并核验最终装配器之前的单次采用证据。
+
+采用分为两个阶段。`prepare()` 只接受 `source=learned`、没有规则回退标记、模型摘要有效且
+置信度不低于冻结门限 0.60 的候选。候选经过现有确定性资源投影后，继续检查区域邻接和容量、
+保留与已提交资源、正式 D4 所有者、计划版本、时期号、租约、中心/二级/对等节点优先级和网络
+分区。通过后生成 `RegionResourceAppliedRecommendation`。该对象仍固定
+`execution_authority_granted=false` 和 `a2_benefit_claimed=false`。
+
+`assemble()` 要求 D3 严格后继计划引用同一建议标识、版本和载荷摘要，并核对计划总线序号及
+载荷摘要。随后验证现有 `new_execution_plan_applied` 运行时确认、二级或对等所有者通过
+`d4.regional_plan_owner_ack.v1` 实际投递的确认、必要联盟的全部成员确认及执行态提交，以及
+租约内的物理执行窗口。所有者确认、联盟确认和物理窗口均以内容寻址摘要绑定后继计划。缺计划、
+缺确认、旧版本或时期、过期租约、非法转移、容量超限、网络分区、联盟不完整或物理窗口缺失时，
+输出明确的 `awaiting_*` 或 `safe_adoption_rejected`，不形成可用采用证据。
+
+在线输入递归拒绝真值、结果和奖励字段。混合所有者区域必须由 main 按权威域拆分，D4 不跨域
+声称原子采用。即使全部采用证据完整，D4 也只输出 `safe_adoption_available=true`；
+候选相对规则基线的收益仍由 D6 带外验证，同键规则基线和 20 个正式采用仍由既有 A2 装配器
+强制检查。
+
+2026-07-26 模块专项 **27/27 passed**，与通信因果证据和既有 A2 装配器联合测试
+**100/100 passed**，D4 全量 **621/621 passed**。这是纯 Python 合同与单元测试结果。本轮未
+运行 AirSim、真实网络或正式多随机种子试验；现有 main 隔离制品仍为
+`candidate_considered=false`、`execution_source=deterministic_rule_fallback`，因此真实
+学习候选采用数仍为 0，不能宣称 A2 收益或开放 assist、PPO、默认模型和运行权威。
+
 ## 2026-07-26 A2 证据装配合同
 
 D4 已实现版本化 `d4-region-resource-a2-evidence-bundle-v1` 装配器、严格加载器和命令行
@@ -129,9 +349,17 @@ main 随后完成单随机种子 scalable 3D 集成复跑。场景为 2 目标�
 
 D4 已完成运行级 P0 的模块合同部分。新增不可变 `CommunicationDeliveryReceipt`，记录回执号、消息号、源节点、目的节点、版本化 topic、总线序号、envelope schema、发送/到达时间、authority、plan version、epoch、lease expiry、partition generation 和 payload SHA-256。`CommunicationDeliveryReceipt.from_delivered_message()` 采用 duck typing，直接从 main 的 delivered message、envelope 和 truth-free payload 提取这些字段，不导入 main、AirSim 或 scalable3d。调用方不能覆盖消息类型、authority、plan、epoch、lease、partition generation 或 message ID；回执号按实际投递事实内容寻址生成。
 
-版本化 topic 固定映射为 `d4.secondary_readiness.v1`、`d4.regional_plan_broadcast.v1` 和 `d4.coalition_member_ack.v1`。payload 必须同时携带 `schema/message_id/message_kind/authority_id/plan_version/epoch/lease_expires_at_s/partition_generation`，且 envelope source/timestamp、topic 映射和 payload 自声明必须相互一致。缺字段、truth 字段、错源、错时间或错消息类型在构造阶段失败关闭。
+版本化 topic 固定映射为 `d4.secondary_readiness.v1`、`d4.regional_plan_broadcast.v1`、
+`d4.regional_plan_owner_ack.v1` 和 `d4.coalition_member_ack.v1`。payload 必须同时携带
+`schema/message_id/message_kind/authority_id/plan_version/epoch/lease_expires_at_s/partition_generation`，
+且 envelope source/timestamp、topic 映射和 payload 自声明必须相互一致。缺字段、truth
+字段、错源、错时间或错消息类型在构造阶段失败关闭。
 
-`CausalCommunicationEvidenceGate` 分别验证二级 readiness、区域计划广播和联盟成员 ACK。缺回执、冲突重放、错源/目的/类型、旧 plan/epoch、过期或错 scope lease、到达晚于决策、分区代次和 payload digest 不一致均输出稳定 reason code。完全相同的 receipt 和 expectation 可幂等重放；同 receipt ID 的内容变化或跨证据复用被拒绝。验证结果固定 `authority_granted=false`，不修改既有 owner、epoch、lease、plan 或 coalition 状态机。
+`CausalCommunicationEvidenceGate` 分别验证二级 readiness、区域计划广播、区域计划所有者确认和
+联盟成员 ACK。缺回执、冲突重放、错源/目的/类型、旧 plan/epoch、过期或错 scope lease、
+到达晚于决策、分区代次和 payload digest 不一致均输出稳定 reason code。完全相同的 receipt
+和 expectation 可幂等重放；同 receipt ID 的内容变化或跨证据复用被拒绝。验证结果固定
+`authority_granted=false`，不修改既有 owner、epoch、lease、plan 或 coalition 状态机。
 
 main 已把 readiness、计划广播和 ACK 接入 `DeterministicCommunicationNetwork`，只用实际 delivered message 建立回执。原 5v5 通信关闭复现现为 D4 可执行区域 0、失败关闭区域 8，全部 D7 命令保持 `hold/d4_hold_for_review`，原 P0 已关闭。异步联盟修复后的 2 目标/4 资源单随机种子系统正例也已按上一节通过；该证据仍不能替代 AirSim 多随机种子、真实网络或正式规模验收。
 
@@ -174,7 +402,7 @@ D4 没有放宽 strictly-new、owner、epoch、lease 或 production-runtime-ack 
 
 **2026-07-21 区域结果与奖励证据合同**：新增 `region_resource_reward_evidence.py`，冻结 `d4-region-resource-observational-reward-v1`。适配器只接受已通过 ACK v2 的区域建议，并把 advisory/模型指纹、源计划与当前计划、owner/epoch/lease/fault generation、ACK sequence/time、源/结果区域快照、执行与联盟绑定以及来源制品 SHA256 固定到一个左闭右开的非重叠窗口。高威胁积压、配额满足缺口、转移完成缺口、备用不足、通信负载、分配冲突、降级失败和计划抖动均保留 raw value、单位、归一化分母、来源 SHA、availability 和 reason；缺测分项保持 `unavailable`，不补零。冻结观测成本为 `sum(weight*min(raw/denominator,1))/sum(weight)`，新执行计划的时间窗口观测奖励取其负值；`evaluation_refresh_applied` 只输出观测成本，不获得动作归因奖励。窗口重叠、缺 ACK、旧 generation、租约覆盖不足、执行/联盟绑定变化、哈希篡改、真值字段或缺字段均失败关闭。该阶段新增专项 **19/19 passed**，运行时 ACK 与奖励专项合计 **52/52 passed**，D4 全量 **449/449 passed**。该合同没有回填正式 900 episode，也没有产生 paired、counterfactual、causal 或 on-policy 证据；`CoalitionMemberAck`、物理执行、PPO、assist 和 authority 继续不可用，规则回退保持必选。
 
-**2026-07-21 区域建议运行时确认接口**：`region_resource_runtime_ack.py` 已升级为只读 `d4-region-resource-runtime-ack-evidence-v2`，在不导入 main、D3、D7 或 scalable3d 的条件下消费 D4 advisory/result、main consumption、运行时 ACK，以及 D3/D7 源 envelope。输出用 `adoption_kind` 区分两种证据：执行签名变化时，只有 plan ID 和版本严格推进、owner/epoch/lease 完整、D3/D7 序列/哈希与全部 binding 一致，才产生 `new_execution_plan_applied`；执行签名不变时，允许同 plan ID/version 的 `evaluation_refresh_applied`，但必须显式满足 `evaluation_refresh_only|plan_refresh_only`、`execution_signature_changed=false`，并用 advisory source-plan envelope 证明资源、全局航迹、coalition、coalition version、member role、区域 owner 字段和未分配集合均未改变。5v5 seed 41、1.2 s 的真实 main 质点集成正例已通过；篡改 refresh flags、同版本 binding 和无版本提升的 execution change 均失败关闭。专项 **33/33 passed**；加入该专项时 D4 全量为 **430/430**，加入奖励合同时为 **449/449 passed**。评估刷新中缺省的 D3 epoch/lease 不被解释为新执行权限；验证器只依赖仍有效的 D4 source authority，并保持 `CoalitionMemberAck`、物理 outcome、真实 paired reward、PPO、assist 和 authority 为不可用/false。冻结 900 episode 没有新 runtime 字段，仍不能补造 applied ACK。
+**2026-07-21 区域建议运行时确认接口**：`region_resource_runtime_ack.py` 已升级为只读 `d4-region-resource-runtime-ack-evidence-v2`，在不导入 main、D3、D7 或 scalable3d 的条件下消费 D4 advisory/result、main consumption、运行时 ACK，以及 D3/D7 源 envelope。输出用 `adoption_kind` 区分两种证据：执行签名变化时，只有 plan ID 和版本严格推进、owner/epoch/lease 完整、D3/D7 序列/哈希与全部 binding 一致，才产生 `new_execution_plan_applied`；执行签名不变时，parser 仍能校验显式同代 `evaluation_refresh_applied`，但它不属于 A2 动作采用。2026-07-27 集成夹具已按当前合同改为：无操作建议只产生 `no_successor`，不生成 applied ACK 或刷新 authority/lease；显式 `hold/request_replan` 干预才形成具有新 ID、严格更高版本和正确 `previous_plan_id` 的 successor。当前集成专项 **6/6 passed**，D4 全量 **658/658 passed**。验证器继续保持 `CoalitionMemberAck`、物理 outcome、真实 paired reward、PPO、assist 和 authority 为不可用/false。冻结 900 episode 没有新 runtime 字段，仍不能补造 applied ACK。
 
 **2026-07-21 区域调度全样本准入审计**：新增只读、失败关闭的 `region_resource_full_sample_audit.py`。正式数据路径为 `research_modules/scalable_3d_simulation/outputs/learning_generation_v1_multibatchfix/learning_dataset/d4_region`，共 900 episode、1798 frame/sample、14384 个区域动作；规范只读切分为 train/validation/test = 540/180/180 episode、1079/359/360 sample、8632/2872/2880 action。补充课程路径为 `outputs/region_action_coverage_curriculum_20260721_clean_9445ed6/dataset`，共 100 episode、300 frame/sample、1200 action；规范切分为 60/20/20 episode、180/60/60 sample、720/240/240 action。900/900 和 100/100 episode 文件哈希均通过，全部样本数值有限并通过动作/transfer 合同、配额守恒、owner/plan/epoch/lease/version、保留 seed、dirty 状态和在线真值隔离检查，违规数为 0。`target.kind=rule` 只表示规则教师标签；`recommendation.projected=true` 只表示离线确定性投影通过，二者都不是运行时 applied ACK。显式投影前动作掩码、被拒旧计划/旧租约样本、真实 `CoalitionMemberAck`、outcome、可归因 reward 和同 seed paired shadow 均为 `unavailable/pending`。D6 外部路径与带外 SHA256 复核尚未完成；PPO、assist、authority 继续关闭，确定性规则、lease/epoch 和安全投影仍是唯一可执行路径。审计专项 10/10，该阶段 D4 全量 **397/397 passed**；后续候选门诊断阶段为 **482/482 passed**，当前全量见本文顶部的 **569/569 passed**。
 

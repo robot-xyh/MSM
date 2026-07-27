@@ -131,6 +131,8 @@ def _validate(
         return gate.validate_secondary_readiness(receipt, expectation)
     if message_kind == CausalMessageKind.REGIONAL_PLAN_BROADCAST.value:
         return gate.validate_regional_plan_broadcast(receipt, expectation)
+    if message_kind == CausalMessageKind.REGIONAL_PLAN_OWNER_ACK.value:
+        return gate.validate_regional_plan_owner_ack(receipt, expectation)
     if message_kind == CausalMessageKind.COALITION_MEMBER_ACK.value:
         return gate.validate_coalition_member_ack(receipt, expectation)
     raise AssertionError(f"unsupported test message kind: {message_kind}")
@@ -229,13 +231,17 @@ def test_causal_gate_scales_and_is_order_independent(member_count: int) -> None:
     }
 
 
-def test_exact_receipt_replay_is_idempotent_and_conflict_is_rejected() -> None:
+def test_exact_and_later_receipt_replay_are_idempotent() -> None:
     gate = CausalCommunicationEvidenceGate()
     receipt = _receipt()
     expectation = _expectation(receipt)
 
     first = gate.validate_secondary_readiness(receipt, expectation)
     duplicate = gate.validate_secondary_readiness(receipt, expectation)
+    later = gate.validate_secondary_readiness(
+        receipt,
+        replace(expectation, decision_timestamp_s=2.1),
+    )
     conflict = gate.validate_secondary_readiness(
         replace(
             receipt,
@@ -243,19 +249,89 @@ def test_exact_receipt_replay_is_idempotent_and_conflict_is_rejected() -> None:
         ),
         expectation,
     )
-    reused = gate.validate_secondary_readiness(
-        receipt,
-        replace(expectation, decision_timestamp_s=2.1),
-    )
 
     assert first.accepted and not first.idempotent_replay
     assert duplicate.accepted and duplicate.idempotent_replay
+    assert later.accepted and later.idempotent_replay
+    assert later.decision_timestamp_s == 2.1
     assert conflict.fail_closed
     assert conflict.reason_codes == (
         CommunicationEvidenceReason.RECEIPT_CONFLICT_REPLAY.value,
     )
-    assert reused.fail_closed
-    assert reused.reason_codes == (
+
+
+def test_later_receipt_reuse_keeps_binding_and_time_fences() -> None:
+    gate = CausalCommunicationEvidenceGate()
+    receipt = _receipt()
+    expectation = _expectation(receipt)
+
+    first = gate.validate_secondary_readiness(receipt, expectation)
+    later = gate.validate_secondary_readiness(
+        receipt,
+        replace(expectation, decision_timestamp_s=3.0),
+    )
+    rewound = gate.validate_secondary_readiness(
+        receipt,
+        replace(expectation, decision_timestamp_s=2.5),
+    )
+    changed_evidence_kind = gate.validate_regional_plan_owner_ack(
+        receipt,
+        replace(expectation, decision_timestamp_s=3.1),
+    )
+    expired = gate.validate_secondary_readiness(
+        receipt,
+        replace(expectation, decision_timestamp_s=_LEASE_EXPIRY_S),
+    )
+
+    assert first.accepted
+    assert later.accepted and later.idempotent_replay
+    assert rewound.reason_codes == (
+        CommunicationEvidenceReason.DECISION_TIMESTAMP_REWIND.value,
+    )
+    assert changed_evidence_kind.reason_codes == (
+        CommunicationEvidenceReason.RECEIPT_REUSED_FOR_DIFFERENT_EVIDENCE.value,
+    )
+    assert expired.reason_codes == (
+        CommunicationEvidenceReason.LEASE_EXPIRED.value,
+    )
+
+
+@pytest.mark.parametrize(
+    "expectation_changes",
+    (
+        {"expected_source_node_id": "OTHER-SOURCE"},
+        {"expected_destination_node_id": "OTHER-GATE"},
+        {"expected_authority_id": "OTHER-AUTHORITY"},
+        {"expected_message_id": "other-message"},
+        {"expected_plan_version": _PLAN_VERSION + 1},
+        {"expected_epoch": _EPOCH + 1},
+        {"expected_lease_expires_at_s": _LEASE_EXPIRY_S + 1.0},
+        {"expected_partition_generation": _PARTITION_GENERATION + 1},
+        {
+            "expected_payload_digest": canonical_payload_digest(
+                {"different": "payload"}
+            )
+        },
+    ),
+)
+def test_accepted_receipt_cannot_be_rebound(
+    expectation_changes: dict[str, object],
+) -> None:
+    gate = CausalCommunicationEvidenceGate()
+    receipt = _receipt()
+    expectation = _expectation(receipt)
+    assert gate.validate_secondary_readiness(receipt, expectation).accepted
+
+    rebound = gate.validate_secondary_readiness(
+        receipt,
+        replace(
+            expectation,
+            decision_timestamp_s=2.1,
+            **expectation_changes,
+        ),
+    )
+
+    assert rebound.reason_codes == (
         CommunicationEvidenceReason.RECEIPT_REUSED_FOR_DIFFERENT_EVIDENCE.value,
     )
 
@@ -378,6 +454,7 @@ def test_message_id_mismatch_is_rejected() -> None:
     [
         "validate_secondary_readiness",
         "validate_regional_plan_broadcast",
+        "validate_regional_plan_owner_ack",
         "validate_coalition_member_ack",
     ],
 )
@@ -455,6 +532,33 @@ def test_mapping_input_and_invalid_mapping_fail_closed() -> None:
     assert rejected.reason_codes == (
         CommunicationEvidenceReason.RECEIPT_INVALID.value,
     )
+
+
+def test_mapping_inputs_reject_extra_fields_and_truth_prefixes() -> None:
+    receipt = _receipt()
+    expectation = _expectation(receipt)
+    extra_receipt = receipt.to_dict()
+    extra_receipt["unversioned_extension"] = "not-allowed"
+    truth_receipt = receipt.to_dict()
+    truth_receipt["truth_score"] = 1.0
+    truth_expectation = expectation.to_dict()
+    truth_expectation["ground_truth_label"] = "offline-only"
+
+    gate = CausalCommunicationEvidenceGate()
+    assert gate.validate_secondary_readiness(
+        extra_receipt,
+        expectation,
+    ).reason_codes == (
+        CommunicationEvidenceReason.RECEIPT_INVALID.value,
+    )
+    assert gate.validate_secondary_readiness(
+        truth_receipt,
+        expectation,
+    ).reason_codes == (
+        CommunicationEvidenceReason.RECEIPT_INVALID.value,
+    )
+    with pytest.raises(ValueError, match="truth fields"):
+        gate.validate_secondary_readiness(receipt, truth_expectation)
 
 
 def test_delivery_receipt_is_strict_frozen_and_truth_free() -> None:

@@ -1,5 +1,125 @@
 # D4 AirSim Episode 集成计划
 
+## 2026-07-27 提交就绪复核
+
+本轮未启动 AirSim。D4 已完成 ACK 和安全采用输入的严格类型加固，并用纯 Python fixture
+覆盖中心、二级和完全分布式 owner。AirSim producer 后续必须发送原生布尔
+`can_execute`、有限双时间戳和字段全集固定的版本化 payload；附加真值字段或字符串布尔值
+按无效回执处理。
+
+main 仍需在真实 episode 中路由并持久化 owner/coalition delivery receipt，形成 ACK 后物理
+窗口，再运行二级与完全分布式多随机种子场景。D4 模块回归为 **679/679 passed**；该结果
+不替代 AirSim、真实网络或收益验收。
+
+## 2026-07-27 A2 无操作统计口径
+
+AirSim 或三维质点 producer 不得从“建议已消费”或“同周期计划升版”直接生成 A2 实际采用。
+每个候选 episode 应分别持久化以下四个计数：
+
+1. 建议完成确定性投影和消费；
+2. D4 重算得到可辨识区域资源干预；
+3. 同一干预标识绑定严格后继计划、确认链和物理窗口；
+4. 候选窗口具备独立同键 R0 收益审计资格。
+
+无操作建议允许保留第 1 项，用作模型加载和运行桥探针。第 2 项为 false 时，第 3、4 项必须
+为 false，后继计划、运行确认、所有者确认、联盟提交和物理窗口字段必须为空。main 应从
+`intervention_id`、`intervention_fields` 和干预内容摘要建立因果绑定，不能使用时间相邻
+关系替代。
+
+当前 20-seed 开发制品应由 main/D6 重新汇总为链路 20/20、干预 0/20、实际采用 0/20、
+收益审计 0/20。该重算不需要重跑 AirSim，但应生成新的统计制品，保留旧结果作为被修正的
+开发记录。下一轮真实候选实验只有在出现非空资源转移、配额、备用资源、保持或重规划动作时，
+才进入后继计划和物理窗口验证。
+
+## 2026-07-27 A2/R0 独立 Episode 接线
+
+D4 已提供离线配对 DTO，AirSim/runtime 的运行和 reset 仍由 main 负责。建议对每个
+scenario/scale/seed 执行两个相互独立的 episode：
+
+```text
+冻结 config.metadata.paired_exogenous_config_sha256
+  -> episode A2：候选安全采用、计划、ACK、物理窗口和事件日志
+  -> reset
+  -> episode R0：确定性规则、独立计划、ACK、物理窗口和事件日志
+  -> 离线组装 D4 benefit-audit input
+  -> D6 从两份事件日志计算结果
+```
+
+两次运行共享外生配置摘要、comparison key 和逻辑窗口，不共享 episode ID、execution arm、
+事件日志 ID/hash 或物理窗口 ID/hash。main 已持久化 `learning_adoption_evidence.json`；
+D4 可从其中的完整 A2 记录重算内容哈希并提取候选来源。事件日志摘要应包含 episode ID，
+防止 reset 前后的日志被误认成同一执行臂。
+
+本轮没有启动 AirSim。2026-07-27 的纯 Python 验证为安全采用专项 **50/50 passed**、D4
+全量 **655/655 passed**，只证明离线接线合同可用。正式验收仍需至少 20 个未见 seed 的
+独立 A2/R0 episode，并由 D6 计算非退化；D4 审计资格不能替代收益和权限结论。
+
+## 2026-07-27 A2 所有者确认接线
+
+D4 已提供 main-independent 公共接口，main/AirSim runtime 仍需完成实际消息路由。每次
+发布 `runtime.assignment_plan_ack` 后，main 应保留该 envelope，将其交给
+`RegionResourceRuntimeAckParser`。解析结果中的 ACK payload SHA-256 和 ACK bus sequence
+必须进入后续 owner ACK，不能只保留 D3 plan 的摘要和序号。
+
+建议的 episode 接线如下：
+
+```text
+publish D3 successor plan
+  -> publish D7 guidance bindings
+  -> publish runtime.assignment_plan_ack
+  -> parse RegionResourceRuntimeAckEvidence
+  -> owner publishes d4.regional_plan_owner_ack.v1
+  -> deterministic network delivers message
+  -> RegionResourceOwnerAckDelivery.from_delivered_message
+  -> validate_region_resource_owner_ack_delivery
+  -> collect/validate nested CoalitionMemberAck（需要时）
+  -> atomic commit
+  -> start physical observation window
+```
+
+owner payload 必传 authority/owner layer、epoch、lease、partition generation、advisory
+lineage、D3 successor plan ID/version/payload SHA/bus sequence、runtime assignment ACK
+payload SHA/bus sequence 和 acknowledged timestamp。交付对象还必须提供 source、
+destination、send/arrival timestamp、topic、transport sequence 和 envelope schema。
+这些传输字段由 `CommunicationDeliveryReceipt.from_delivered_message()` 读取，main 不另行
+计算 receipt ID。
+
+联盟 payload 必须嵌套现有 `CoalitionMemberAck`，覆盖 resource、`global_track_id`、
+coalition ID/version、plan ID/version、epoch、can-execute、evidence timestamp 和
+valid-until。缺字段、旧代次、租约外确认、分区 generation 错误或未实际交付时保持 hold。
+
+2026-07-27 的 D4 纯 Python 验证为四文件联合 **130/130 passed**、全量
+**626/626 passed**。本轮没有启动 AirSim。main 尚未回调保存实际 assignment ACK envelope，
+也未路由 owner ACK，因此 AirSim A2 仍是 P1 接线项。即使路由完成，缺采用后物理窗口或同键
+R0 时仍输出 unavailable，不能写成 0 或收益通过。
+
+## 2026-07-26 A2 安全采用运行时接线
+
+D4 已完成真实候选采用的模块 DTO、校验器和失败关闭状态机，但没有修改 main-owned AirSim
+运行时。本轮没有启动 AirSim，也没有形成新的候选采用或物理结果。
+
+main 后续在每个 treatment episode 中按以下顺序接线：
+
+1. 对每个权威域保存真实学习候选、区域 snapshot、正式 D4 裁决和采用 context。规则回退或
+   低于 0.60 的候选不进入采用链。
+2. D3 从当前正式 source plan 产生新 ID、严格更高版本的后继计划；main 保存建议
+   ID/version/hash、计划 payload SHA-256 和总线 sequence。
+3. 现有 production runtime ACK 必须确认该后继计划。二级或 peer owner 再通过
+   `d4.regional_plan_owner_ack.v1` 返回 ACK，只有实际送达的消息可建立 receipt。
+4. 多成员任务继续通过 `d4.coalition_member_ack.v1` 收集全部必要成员 ACK，并在同一
+   plan/coalition/epoch/lease 下进入 executing。分区或缺成员时不积分 treatment 动作。
+5. main 从确认完成后的状态积分区间生成物理窗口，绑定 runtime ACK 摘要、owner receipt 和
+   coalition commit 摘要。D6 在带外形成同键规则基线和非退化结果。
+
+正式 AirSim 验收至少要求 20 个未见 seed 的非 nominal 降级 treatment 实际采用。每个 seed
+都要有完整 successor plan、runtime ACK、owner ACK、必要联盟 ACK、物理窗口和同键 R0。
+模块 fixture 不计入该数量。现有 `isolated_degraded_adoption.py` 明确记录
+`candidate_considered=false`、`execution_source=deterministic_rule_fallback`，因此仍为
+规则负对照。
+
+2026-07-26 D4 模块专项 27/27、相邻证据链 100/100、全量 621/621 通过。该结果只证明 AirSim
+接线所需的 D4 消费合同已存在，不证明 main 已接线或 AirSim treatment 有收益。
+
 ## 2026-07-26 学习准入试验边界
 
 本轮没有启动 AirSim，也没有新增 AirSim 性能证据。D4 v2 bundle 已在模块侧固定为 development/shadow-only；AirSim 运行参数、飞控、actor 和既有确定性降级路径均未改变。
@@ -23,10 +143,14 @@ D4 已取消区域快照的隐式 ACK 终结。main 已在一个连续 scalable 
 
 ## 2026-07-25 通信因果证据接线
 
-D4 已提供不依赖 AirSim/main 包的 `CommunicationDeliveryReceipt.from_delivered_message()` 和 `CausalCommunicationEvidenceGate`。main 的 `DeliveredMessage` 已具备 source、destination、send/arrival timestamp 和 envelope，并已接入以下三类版本化消息：
+D4 已提供不依赖 AirSim/main 包的 `CommunicationDeliveryReceipt.from_delivered_message()`
+和 `CausalCommunicationEvidenceGate`。main 的 `DeliveredMessage` 已具备 source、
+destination、send/arrival timestamp 和 envelope，并已接入原三类版本化消息；A2 安全采用
+还需接入第四类所有者确认：
 
 - `d4.secondary_readiness.v1`
 - `d4.regional_plan_broadcast.v1`
+- `d4.regional_plan_owner_ack.v1`（待 main 接线）
 - `d4.coalition_member_ack.v1`
 
 每个 payload 必须包含 `schema`、`message_id`、`message_kind`、`authority_id`、`plan_version`、`epoch`、`lease_expires_at_s` 和 `partition_generation`。严格工厂从 delivered message 和 envelope/payload 读取全部字段，核对 envelope source/timestamp 与 transport，按 topic 映射消息类型，并计算 payload SHA-256 和内容寻址 receipt ID。main 不应另传或覆盖 authority、plan、epoch、lease、partition generation、message kind 或 message ID。
@@ -39,7 +163,7 @@ bus publish versioned envelope
   -> deliver(current_episode_time)
   -> CommunicationDeliveryReceipt.from_delivered_message
   -> build current expectation
-  -> validate secondary readiness / plan broadcast / member ACK
+  -> validate secondary readiness / plan broadcast / owner ACK / member ACK
   -> existing readiness and coalition state machines
 ```
 
@@ -65,7 +189,14 @@ D4 已完成保留 seed 1000-1019 的配对干预消费合同和冻结候选隔�
 
 该证据没有运行二级或完全分布式接管，故真实 secondary/distributed 多 seed 仍为 P1。后续 AirSim 集成必须构造与中心负对照配对的故障 case，并让 D4 从 D1/D2/D3/D5 摘要得出动作，不得由 `collision_stop` 标签直接注入动作。
 
-2026-07-21，D4 的 main-independent 区域建议运行时确认验证器升级为 v2。AirSim 或质点 runtime 启用区域建议时，main 必须保存 `modules.d4.region_resource_consumption`、当前 `modules.d3.assignment_plan`、同周期 `modules.d7.guidance_commands` 和 `runtime.assignment_plan_ack`。执行签名变化时仍必须发布严格更新的新计划并携带完整 owner/epoch/lease。同 plan ID/version 的评估刷新还必须保存 advisory 对应的前序 D3 plan envelope；D4 只在 refresh-only flags、时间、绑定集合、coalition/version、source sequence 与 payload SHA 全部一致时输出 `evaluation_refresh_applied`。5v5 seed 41 质点集成与篡改专项 5/5，运行时专项合计 33/33，该阶段 D4 全量 430/430；加入区域奖励合同时为 449/449。该结果不是 AirSim 证据；冻结历史 episode 仍不能回填，验证器也不改变 AirSim 控制、D3 计划或 D7 gate。
+区域建议运行时确认验证器保持 v2。AirSim 或质点 runtime 启用区域建议时，main 必须保存
+`modules.d4.region_resource_consumption`、当前 `modules.d3.assignment_plan`、同周期
+`modules.d7.guidance_commands` 和 `runtime.assignment_plan_ack`。无操作建议只保存消费和
+`no_successor` 拒绝事实，不发布 applied ACK，也不刷新 authority/lease。存在可辨识干预时，
+D3 必须发布新 plan ID、严格更高版本、正确 `previous_plan_id` 和完整 owner/epoch/lease，
+随后才可进入 `new_execution_plan_applied`。当前质点集成专项 **6/6 passed**，D4 全量
+**658/658 passed**。该结果不是 AirSim 证据；冻结历史 episode 仍不能回填，验证器也不改变
+AirSim 控制、D3 计划或 D7 gate。
 
 同日新增区域结果/奖励证据 v1。AirSim 集成时，main/D6 需要按每个 ACK occurrence 生成 `[ack_time,next_ack_or_lease)` 区域窗口，保存源/结果区域快照、执行绑定首尾哈希、联盟绑定首尾哈希、region owner/epoch/lease/fault generation 以及区域指标来源制品 SHA256。窗口必须使用在线区域聚合数据，目标真值和 AirSim actor ID 只能留在 D6 离线评分侧。D4 适配器不从碰撞、五米事件、D7 command 或 D6 目标距离诊断反推区域 reward。新执行计划和评估刷新的样本分别统计，窗口相交、跨 lease、binding/coalition 改变和分项缺测必须进入 unavailable/failure reason。该合同的纯 Python 专项为 19/19，D4 全量 449/449；尚未运行 AirSim producer，因此不能宣称已有真实 AirSim 区域 reward、paired shadow 或 on-policy 样本。
 

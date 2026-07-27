@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
 from enum import Enum
+from math import isfinite
 from typing import Any, Iterable, Mapping, Sequence
 
 from .models import to_jsonable
@@ -66,10 +67,25 @@ class CoalitionMemberAck:
             if not str(getattr(self, name)).strip():
                 raise ValueError(f"{name} must not be empty")
         for name in ("coalition_version", "plan_version", "epoch"):
-            if int(getattr(self, name)) < 0:
-                raise ValueError(f"{name} must be non-negative")
-        if float(self.valid_until) < float(self.evidence_timestamp):
+            object.__setattr__(
+                self,
+                name,
+                _strict_nonnegative_int(getattr(self, name), name),
+            )
+        if not isinstance(self.can_execute, bool):
+            raise TypeError("can_execute must be a bool")
+        evidence_timestamp = _strict_nonnegative_float(
+            self.evidence_timestamp,
+            "evidence_timestamp",
+        )
+        valid_until = _strict_nonnegative_float(
+            self.valid_until,
+            "valid_until",
+        )
+        if valid_until < evidence_timestamp:
             raise ValueError("valid_until must not precede evidence_timestamp")
+        object.__setattr__(self, "evidence_timestamp", evidence_timestamp)
+        object.__setattr__(self, "valid_until", valid_until)
         object.__setattr__(self, "metadata", dict(self.metadata))
 
     def to_dict(self) -> dict[str, Any]:
@@ -115,8 +131,25 @@ class CoalitionCommitState:
             if not str(getattr(self, name)).strip():
                 raise ValueError(f"{name} must not be empty")
         for name in ("coalition_version", "plan_version", "epoch"):
-            if int(getattr(self, name)) < 0:
-                raise ValueError(f"{name} must be non-negative")
+            object.__setattr__(
+                self,
+                name,
+                _strict_nonnegative_int(getattr(self, name), name),
+            )
+        for name in ("lease_expires_at", "proposed_at", "updated_at"):
+            object.__setattr__(
+                self,
+                name,
+                _strict_nonnegative_float(getattr(self, name), name),
+            )
+        for name in ("committed_at", "executing_at", "resolved_at"):
+            value = getattr(self, name)
+            if value is not None:
+                object.__setattr__(
+                    self,
+                    name,
+                    _strict_nonnegative_float(value, name),
+                )
         required = _unique_strings(self.required_member_ids)
         acked = _unique_strings(self.acked_member_ids)
         if not required:
@@ -1235,6 +1268,21 @@ def _optional_boolean(value: Any) -> bool | None:
     if text in {"false", "0", "no"}:
         return False
     return None
+
+
+def _strict_nonnegative_int(value: Any, name: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ValueError(f"{name} must be a non-negative integer")
+    return value
+
+
+def _strict_nonnegative_float(value: Any, name: str) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError(f"{name} must be finite and non-negative")
+    parsed = float(value)
+    if not isfinite(parsed) or parsed < 0.0:
+        raise ValueError(f"{name} must be finite and non-negative")
+    return parsed
 
 
 def _unique_strings(values: Iterable[Any]) -> tuple[str, ...]:

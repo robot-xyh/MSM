@@ -7,7 +7,7 @@ not mutate D4 epoch, lease, plan, or coalition state.
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, is_dataclass, replace
+from dataclasses import asdict, dataclass, fields, is_dataclass, replace
 from enum import Enum
 from hashlib import sha256
 import json
@@ -30,6 +30,7 @@ CAUSAL_TOPIC_MESSAGE_KIND: Mapping[str, str] = MappingProxyType(
     {
         "d4.secondary_readiness.v1": "secondary_readiness",
         "d4.regional_plan_broadcast.v1": "regional_plan_broadcast",
+        "d4.regional_plan_owner_ack.v1": "regional_plan_owner_ack",
         "d4.coalition_member_ack.v1": "coalition_member_ack",
     }
 )
@@ -62,6 +63,7 @@ class CausalMessageKind(str, Enum):
 
     SECONDARY_READINESS = "secondary_readiness"
     REGIONAL_PLAN_BROADCAST = "regional_plan_broadcast"
+    REGIONAL_PLAN_OWNER_ACK = "regional_plan_owner_ack"
     COALITION_MEMBER_ACK = "coalition_member_ack"
 
 
@@ -70,6 +72,7 @@ class CausalEvidenceKind(str, Enum):
 
     SECONDARY_READINESS = "secondary_readiness_delivery"
     REGIONAL_PLAN_BROADCAST = "regional_plan_broadcast_delivery"
+    REGIONAL_PLAN_OWNER_ACK = "regional_plan_owner_ack_delivery"
     COALITION_MEMBER_ACK = "coalition_member_ack_delivery"
 
 
@@ -97,6 +100,7 @@ class CommunicationEvidenceReason(str, Enum):
     LEASE_EXPIRED = "lease_expired"
     LEASE_SCOPE_MISMATCH = "lease_scope_mismatch"
     ARRIVAL_AFTER_DECISION = "arrival_after_decision"
+    DECISION_TIMESTAMP_REWIND = "decision_timestamp_rewind"
     PARTITION_GENERATION_MISMATCH = "partition_generation_mismatch"
     PAYLOAD_DIGEST_MISMATCH = "payload_digest_mismatch"
 
@@ -189,24 +193,30 @@ class CommunicationDeliveryReceipt:
             return value
         if not isinstance(value, Mapping):
             raise TypeError("communication delivery receipt must be a mapping or DTO")
+        _assert_truth_free(value)
+        _require_exact_mapping_fields(
+            value,
+            {item.name for item in fields(cls)},
+            "communication delivery receipt",
+        )
         return cls(
-            schema=value.get("schema", COMMUNICATION_DELIVERY_RECEIPT_SCHEMA),
-            receipt_id=value.get("receipt_id"),
-            message_id=value.get("message_id"),
-            source_node_id=value.get("source_node_id"),
-            destination_node_id=value.get("destination_node_id"),
-            transport_topic=value.get("transport_topic"),
-            transport_sequence=value.get("transport_sequence"),
-            envelope_schema=value.get("envelope_schema"),
-            message_kind=value.get("message_kind"),
-            sent_timestamp_s=value.get("sent_timestamp_s"),
-            arrival_timestamp_s=value.get("arrival_timestamp_s"),
-            authority_id=value.get("authority_id"),
-            plan_version=value.get("plan_version"),
-            epoch=value.get("epoch"),
-            lease_expires_at_s=value.get("lease_expires_at_s"),
-            partition_generation=value.get("partition_generation"),
-            payload_digest=value.get("payload_digest"),
+            schema=value["schema"],
+            receipt_id=value["receipt_id"],
+            message_id=value["message_id"],
+            source_node_id=value["source_node_id"],
+            destination_node_id=value["destination_node_id"],
+            transport_topic=value["transport_topic"],
+            transport_sequence=value["transport_sequence"],
+            envelope_schema=value["envelope_schema"],
+            message_kind=value["message_kind"],
+            sent_timestamp_s=value["sent_timestamp_s"],
+            arrival_timestamp_s=value["arrival_timestamp_s"],
+            authority_id=value["authority_id"],
+            plan_version=value["plan_version"],
+            epoch=value["epoch"],
+            lease_expires_at_s=value["lease_expires_at_s"],
+            partition_generation=value["partition_generation"],
+            payload_digest=value["payload_digest"],
         )
 
     @classmethod
@@ -416,27 +426,30 @@ class CommunicationEvidenceExpectation:
             raise TypeError(
                 "communication evidence expectation must be a mapping or DTO"
             )
+        _assert_truth_free(value)
+        _require_exact_mapping_fields(
+            value,
+            {item.name for item in fields(cls)},
+            "communication evidence expectation",
+        )
         return cls(
-            schema=value.get(
-                "schema",
-                COMMUNICATION_EVIDENCE_EXPECTATION_SCHEMA,
-            ),
-            expected_source_node_id=value.get("expected_source_node_id"),
-            expected_destination_node_id=value.get(
+            schema=value["schema"],
+            expected_source_node_id=value["expected_source_node_id"],
+            expected_destination_node_id=value[
                 "expected_destination_node_id"
-            ),
-            expected_authority_id=value.get("expected_authority_id"),
-            expected_plan_version=value.get("expected_plan_version"),
-            expected_epoch=value.get("expected_epoch"),
-            expected_lease_expires_at_s=value.get(
+            ],
+            expected_authority_id=value["expected_authority_id"],
+            expected_plan_version=value["expected_plan_version"],
+            expected_epoch=value["expected_epoch"],
+            expected_lease_expires_at_s=value[
                 "expected_lease_expires_at_s"
-            ),
-            decision_timestamp_s=value.get("decision_timestamp_s"),
-            expected_partition_generation=value.get(
+            ],
+            decision_timestamp_s=value["decision_timestamp_s"],
+            expected_partition_generation=value[
                 "expected_partition_generation"
-            ),
-            expected_payload_digest=value.get("expected_payload_digest"),
-            expected_message_id=value.get("expected_message_id"),
+            ],
+            expected_payload_digest=value["expected_payload_digest"],
+            expected_message_id=value["expected_message_id"],
         )
 
     @property
@@ -464,6 +477,9 @@ class CommunicationEvidenceValidation:
     schema: str = COMMUNICATION_EVIDENCE_VALIDATION_SCHEMA
 
     def __post_init__(self) -> None:
+        for name in ("accepted", "idempotent_replay", "authority_granted"):
+            if not isinstance(getattr(self, name), bool):
+                raise TypeError(f"{name} must be a bool")
         if self.authority_granted:
             raise ValueError("communication evidence validation cannot grant authority")
         if bool(self.accepted) == bool(self.reason_codes):
@@ -508,6 +524,11 @@ class CausalCommunicationEvidenceGate:
 
     def __init__(self) -> None:
         self._receipt_digests: dict[str, str] = {}
+        self._receipt_bindings: dict[str, tuple[str, str]] = {}
+        self._latest_decision_timestamps: dict[
+            tuple[str, str, str],
+            float,
+        ] = {}
         self._results: dict[
             tuple[str, str, str],
             CommunicationEvidenceValidation,
@@ -535,6 +556,18 @@ class CausalCommunicationEvidenceGate:
             expectation,
             evidence_kind=CausalEvidenceKind.REGIONAL_PLAN_BROADCAST.value,
             expected_message_kind=CausalMessageKind.REGIONAL_PLAN_BROADCAST.value,
+        )
+
+    def validate_regional_plan_owner_ack(
+        self,
+        receipt: CommunicationDeliveryReceipt | Mapping[str, Any] | None,
+        expectation: CommunicationEvidenceExpectation | Mapping[str, Any],
+    ) -> CommunicationEvidenceValidation:
+        return self._validate(
+            receipt,
+            expectation,
+            evidence_kind=CausalEvidenceKind.REGIONAL_PLAN_OWNER_ACK.value,
+            expected_message_kind=CausalMessageKind.REGIONAL_PLAN_OWNER_ACK.value,
         )
 
     def validate_coalition_member_ack(
@@ -575,6 +608,13 @@ class CausalCommunicationEvidenceGate:
 
         receipt_digest = receipt.immutable_digest
         expectation_digest = expectation.immutable_digest
+        binding_digest = _expectation_binding_digest(expectation)
+        receipt_binding = (evidence_kind, binding_digest)
+        binding_key = (
+            receipt.receipt_id,
+            evidence_kind,
+            binding_digest,
+        )
         existing_digest = self._receipt_digests.get(receipt.receipt_id)
         if existing_digest is not None and existing_digest != receipt_digest:
             return self._result(
@@ -587,15 +627,8 @@ class CausalCommunicationEvidenceGate:
                 ),
             )
 
-        result_key = (
-            receipt.receipt_id,
-            evidence_kind,
-            expectation_digest,
-        )
-        existing_result = self._results.get(result_key)
-        if existing_result is not None:
-            return replace(existing_result, idempotent_replay=True)
-        if existing_digest is not None:
+        existing_binding = self._receipt_bindings.get(receipt.receipt_id)
+        if existing_binding is not None and existing_binding != receipt_binding:
             return self._result(
                 evidence_kind=evidence_kind,
                 expectation=expectation,
@@ -606,7 +639,41 @@ class CausalCommunicationEvidenceGate:
                 ),
             )
 
-        self._receipt_digests[receipt.receipt_id] = receipt_digest
+        latest_decision_timestamp = self._latest_decision_timestamps.get(
+            binding_key
+        )
+        if (
+            latest_decision_timestamp is not None
+            and expectation.decision_timestamp_s + _TIME_TOLERANCE_S
+            < latest_decision_timestamp
+        ):
+            return self._result(
+                evidence_kind=evidence_kind,
+                expectation=expectation,
+                receipt=receipt,
+                receipt_digest=receipt_digest,
+                reasons=(
+                    CommunicationEvidenceReason.DECISION_TIMESTAMP_REWIND.value,
+                ),
+            )
+
+        result_key = (
+            receipt.receipt_id,
+            evidence_kind,
+            expectation_digest,
+        )
+        existing_result = self._results.get(result_key)
+        if existing_result is not None:
+            return replace(existing_result, idempotent_replay=True)
+
+        idempotent_replay = existing_digest is not None
+        if existing_digest is None:
+            self._receipt_digests[receipt.receipt_id] = receipt_digest
+            self._receipt_bindings[receipt.receipt_id] = receipt_binding
+        self._latest_decision_timestamps[binding_key] = max(
+            expectation.decision_timestamp_s,
+            latest_decision_timestamp or expectation.decision_timestamp_s,
+        )
         reasons: list[str] = []
         if receipt.schema != COMMUNICATION_DELIVERY_RECEIPT_SCHEMA:
             reasons.append(
@@ -680,6 +747,8 @@ class CausalCommunicationEvidenceGate:
             receipt_digest=receipt_digest,
             reasons=tuple(reasons),
         )
+        if idempotent_replay:
+            result = replace(result, idempotent_replay=True)
         self._results[result_key] = result
         return result
 
@@ -709,6 +778,57 @@ def canonical_payload_digest(payload: Any) -> str:
 
     _assert_truth_free(payload)
     return _canonical_sha256(payload)
+
+
+def _expectation_binding_digest(
+    expectation: CommunicationEvidenceExpectation,
+) -> str:
+    """Hash immutable expected binding fields, excluding evaluation time."""
+
+    return _canonical_sha256(
+        {
+            "schema": expectation.schema,
+            "expected_source_node_id": expectation.expected_source_node_id,
+            "expected_destination_node_id": (
+                expectation.expected_destination_node_id
+            ),
+            "expected_authority_id": expectation.expected_authority_id,
+            "expected_plan_version": expectation.expected_plan_version,
+            "expected_epoch": expectation.expected_epoch,
+            "expected_lease_expires_at_s": (
+                expectation.expected_lease_expires_at_s
+            ),
+            "expected_partition_generation": (
+                expectation.expected_partition_generation
+            ),
+            "expected_payload_digest": expectation.expected_payload_digest,
+            "expected_message_id": expectation.expected_message_id,
+        }
+    )
+
+
+def expected_delivery_receipt_id(
+    receipt: CommunicationDeliveryReceipt | Mapping[str, Any],
+) -> str:
+    """Recompute the content-addressed ID produced by ``from_delivered_message``.
+
+    Generic communication audits retain support for externally supplied receipt
+    identifiers.  Authority-adoption contracts can call this helper when they
+    require evidence produced from an actual delivered-message envelope.
+    """
+
+    parsed = CommunicationDeliveryReceipt.from_value(receipt)
+    return _delivery_receipt_id(
+        message_id=parsed.message_id,
+        source_node_id=parsed.source_node_id,
+        destination_node_id=parsed.destination_node_id,
+        sent_timestamp_s=parsed.sent_timestamp_s,
+        arrival_timestamp_s=parsed.arrival_timestamp_s,
+        transport_topic=parsed.transport_topic,
+        transport_sequence=parsed.transport_sequence,
+        envelope_schema=parsed.envelope_schema,
+        payload_digest=parsed.payload_digest,
+    )
 
 
 def _delivery_receipt_id(
@@ -791,7 +911,11 @@ def _assert_truth_free(value: Any) -> None:
             forbidden = {
                 str(key).strip().lower()
                 for key in item
-                if str(key).strip().lower() in _FORBIDDEN_ONLINE_KEYS
+                if (
+                    str(key).strip().lower() in _FORBIDDEN_ONLINE_KEYS
+                    or str(key).strip().lower().startswith("truth_")
+                    or str(key).strip().lower().startswith("ground_truth_")
+                )
             }
             if forbidden:
                 raise ValueError(
@@ -802,6 +926,20 @@ def _assert_truth_free(value: Any) -> None:
             continue
         if isinstance(item, (list, tuple, set)):
             pending.extend(item)
+
+
+def _require_exact_mapping_fields(
+    value: Mapping[str, Any],
+    expected: set[str],
+    name: str,
+) -> None:
+    actual = set(value)
+    if actual != expected:
+        missing = sorted(expected - actual)
+        extra = sorted(actual - expected)
+        raise ValueError(
+            f"{name} fields mismatch missing={missing} extra={extra}"
+        )
 
 
 def _required_text(value: Any, name: str) -> str:

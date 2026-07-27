@@ -1516,7 +1516,19 @@ class RegionResourceAdvisor:
                     fallback_reason = "feature_ood"
                 else:
                     started = perf_counter()
-                    raw = self.learned_policy.recommend_raw(snapshot)
+                    if bool(
+                        getattr(
+                            self.learned_policy,
+                            "formal_decision_aware",
+                            False,
+                        )
+                    ):
+                        raw = self.learned_policy.recommend_raw(
+                            snapshot,
+                            formal_decision=formal_decision,
+                        )
+                    else:
+                        raw = self.learned_policy.recommend_raw(snapshot)
                     elapsed_s = perf_counter() - started
                     if elapsed_s > self.config.inference_timeout_s:
                         fallback_reason = "learning_timeout"

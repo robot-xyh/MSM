@@ -282,6 +282,10 @@ def test_runtime_ack_accepts_supported_advisory_shapes(shape: str) -> None:
     assert evidence.applied_plan_id == "PLAN-NEW"
     assert evidence.applied_plan_version == 3
     assert evidence.authority_epoch == 4
+    assert evidence.ack_bus_sequence == fixture["ack_envelope"]["sequence"]
+    assert evidence.assignment_plan_ack_payload_sha256 == (
+        canonical_runtime_payload_sha256(fixture["ack"])
+    )
     assert evidence.coalition_member_ack_available is False
     assert evidence.physical_outcome_available is False
     assert evidence.attributable_reward_available is False

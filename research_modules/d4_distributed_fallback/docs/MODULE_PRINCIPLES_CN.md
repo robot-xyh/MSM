@@ -1,5 +1,254 @@
 # 分布式协同与降级接管模块原理（模块编号 D4）
 
+## 2026-07-27 安全采用类型边界
+
+权威证据中的布尔值不做字符串真值转换。成员 `can_execute`、采用可用性和所有权限字段只
+接受原生布尔值；`"false"` 不再被解释为可执行。成员确认、提交和执行时间必须为有限非负
+数。通信回执映射必须与版本化字段全集一致，附加真值字段会在进入因果门前被拒绝。
+
+中心、二级和完全分布式 owner 使用相同的建议、后继计划、运行确认、owner ACK、必要联盟
+ACK 和物理窗口链。链路可用只表示观察事实闭合，不产生 authority 或收益。开发探针也可以
+验证软件链，但其固定策略身份不能进入正式 A2/R0 收益审计。
+
+## 2026-07-27 开发态干预选择
+
+开发态非零候选用于测试“建议到后继计划”的软件链。它不用于替代学习策略。原学习候选已经
+给出投影后可由 D3 消费的非零动作时不做修改；原候选投影后为零动作时，D4 从确定性规则
+结果中选择一个最小且可审计的动作。
+
+判定发生在确定性投影之后。适配器先投影原候选，构造 advisory 并完成同 snapshot 消费
+检查，再按资源配额、整数备用资源、跨区转移、保持和请求重规划五类字段计算干预。这样可
+排除一类假变化：原始备用比例不同，但 committed resource 限制使投影后的备用资源数量与
+受保护基线完全相同。侦察优先级仍不是 D3 可执行字段，不进入该判定。
+
+snapshot 和 formal decision 对已承诺资源的观察范围可能不同。正式裁决还可携带已原子提交
+的联盟成员。适配器现在在选择干预前接收 current formal decision，使首次判断和正式发布
+投影采用同一资源保护边界。标准 advisor 仍会再次投影，适配器不能修改裁决。
+
+优先动作是 request-replan-only。请求重规划只表达当前区域资源配置需要由 D3 重新计算，
+不会冻结已有 assignment。固定区域同时输出 hold 会使已承诺资源进入
+`held_assignment_infeasible`，因此不作为首选。没有合法重规划请求时，适配器才尝试满足
+资源守恒、邻接、容量和备用约束的跨区转移。hold 位于最后，只允许
+`committed_resources=0` 的区域。每一级都重新投影；投影后仍为无操作时继续下一级，所有
+级别均不可消费时保留原候选并交由正式链路失败关闭。
+
+开发场景若所有资源均已承诺，规则策略可能没有可用动作。显式开发开关允许对一个权威有效
+区域发出 request-replan-only。该动作只请求 D3 重新计算，不冻结任务、不移动资源。开关
+默认关闭，标准 advisor 仍把适配器限制为 shadow。
+
+设区域 \(i\) 的可用资源为 \(n_i\)，已承诺资源为 \(c_i\)，最低备用为 \(r_i\)。跨区转移
+仍需满足
+
+\[
+\sum_i \Delta n_i=0,\qquad n_i+\Delta n_i\ge c_i+r_i.
+\]
+
+适配器只选择候选，不执行动作。owner、计划版本、时期号和租约来自原候选，随后由原投影器
+和正式 D4 裁决复核。D3 对 held assignment 的拒绝、网络分区门和严格后继计划门保持不变。
+
+该适配器没有准入模型清单，最大模式为 shadow。开发策略名被正式收益审计明确拒绝。当前
+五个 committed-region 问题 seed 的 D4 回归均输出 request-replan-only 并到达
+`awaiting_d3_plan`。新增单样本回归确认，投影前备用比例差异在投影后消失时，适配器会继续
+生成 request-replan-only；formal-only committed member 和显式开发 request 也已覆盖。
+安全采用专项为 68/68，D4 全量为 674/674。
+
+指定 seed 1 内存 full episode 的 1 条 A2 记录到达 `physical_window_available`，在线真值
+使用为 0，authority 和 benefit 为 false。该结果使用 development-only admitted transport
+夹具，只说明非空干预链可被测试。main 尚未重跑完整 20 seed，也没有形成模型效果或生产
+控制权限证据。
+
+## 2026-07-27 无操作建议的因果边界
+
+区域建议被程序读取，不等于模型改变了区域资源状态。A2 证据需要区分三个事件：
+
+\[
+E_{\mathrm{link}}=\text{建议通过投影并被消费},
+\]
+
+\[
+E_{\mathrm{int}}=\text{建议产生可辨识且可执行的区域干预},
+\]
+
+\[
+E_{\mathrm{exec}}=\text{该干预被后继计划和物理窗口采用}.
+\]
+
+实际动作采用至少要求
+
+\[
+E_{\mathrm{adopt}}=
+E_{\mathrm{link}}\land E_{\mathrm{int}}\land E_{\mathrm{exec}}.
+\]
+
+D4 对 \(E_{\mathrm{int}}\) 不采用单一总量字段，而是比较投影前后载荷。干预集合包括区域资源
+配额、跨区域转移、按 \(\lceil r_i n_i\rceil\) 计算的整数备用资源、保持命令和请求重规划。
+资源守恒的跨区转移满足 \(\sum_i\Delta n_i=0\)，因此 `total_quota_delta=0` 不能说明无
+干预。反过来，所有区域 \(\Delta n_i=0\)、转移为空、备用资源不变且两个布尔动作均为假时，
+属于无操作建议。
+
+侦察优先级变化目前不属于可执行干预。现有 main 到 D3 的提示接口没有传递该字段，D3 后继
+计划也无法据此形成可归因状态变化。它可以保留为研究输出，不能用于增加实际采用计数。
+
+无操作建议允许完成 \(E_{\mathrm{link}}\)，便于检查模型加载、确定性投影和消息消费链路。
+装配器随后以 `identifiable_regional_intervention_missing` 失败关闭，不读取或附着同期普通
+D3 后继计划。收益审计要求非空干预字段和内容摘要，进一步阻断普通重规划被误归因到 A2。
+
+main/D6 已于 2026-07-27 完成开发批次的正确 20-seed 重算：
+\(E_{\mathrm{link}}=20/20\)、\(E_{\mathrm{int}}=0/20\)、
+\(E_{\mathrm{adopt}}=0/20\)，A2/R0 收益审计为 0/20。20 个拒绝原因均为
+`identifiable_regional_intervention_missing`，批次 SHA-256 为
+`ff3c10a089b6a94582451ae05d8a884af3a2bd7485acd4df0496442ea7e0ec55`。原先 18 个安全
+采用布尔值由普通 D3 后继计划误归因产生，已被本次结果取代。所有权限保持关闭。
+
+## 2026-07-27 A2 同外生条件配对原理
+
+候选策略已经产生物理动作，只能说明动作确实执行，不能说明动作优于规则策略。收益判断至少
+需要两个相互独立的执行臂：候选 A2 臂和确定性规则 R0 臂。两臂共享外生条件，不共享执行
+日志、物理窗口或计划结果。
+
+设外生配置为 \(\xi\)，逻辑评估窗口为 \(w\)，候选臂和规则臂分别为 \(A2\) 与 \(R0\)。
+可交给 D6 的必要配对条件为
+
+\[
+\xi_{A2}=\xi_{R0},\quad
+w_{A2}=w_{R0},\quad
+k_{A2}=k_{R0},\quad
+L_{A2}\ne L_{R0},\quad
+E_{A2}\ne E_{R0}.
+\]
+
+其中 \(k\) 是 comparison key，\(L\) 是事件日志内容身份，\(E\) 是独立执行臂身份。
+外生配置以 `paired_exogenous_config_sha256` 固定，至少覆盖场景配置、规模、seed 和调用方
+冻结的外部扰动。窗口身份还包含场景版本、逻辑窗口编号和持续时间。候选与 R0 的仿真时钟
+区间相同，但物理窗口 ID、窗口载荷摘要、episode 事件日志 ID/hash 和 execution arm ID
+必须不同。
+
+候选窗口不能自行声明其来源。它必须引用
+`RegionResourceSafeAdoptionEvidence.content_sha256`，并与其中的建议 ID/版本、策略身份、
+后继计划 ID/版本、计划有效期、权威租约及物理窗口摘要逐项一致。R0 不允许引用候选的安全
+采用记录或建议，只能声明冻结的确定性规则身份。两臂均要求物理执行已观测、窗口完整、硬约束
+违规为零，且窗口在计划和租约到期前结束。
+
+D4 只判断这组输入是否具备 D6 审计资格。结果指标不进入 D4 配对 DTO，真值、奖励和 outcome
+字段也不进入安全采用前缀。D6 根据两份独立事件日志计算结果和非退化结论。D4 输出继续固定
+`a2_benefit_available=false` 和 `authority_granted=false`，即使配对输入完整也不获得
+assist、模型晋级、分配、接管或控制权限。
+
+main 可以在两个独立进程或两个 reset-separated episode 中运行 A2 与 R0。候选 episode 的
+完整安全采用记录从 `learning_adoption_evidence.json` 读取后重新计算内容哈希；R0 episode
+通过独立事件日志摘要引用。该方式不依赖内存对象，也不允许把同一 episode 日志复制成两臂。
+
+2026-07-27 的纯 Python 合同回归为专项 **50/50 passed**、D4 全量 **655/655 passed**。
+验证覆盖正常配对、持久化读取、篡改、缺失、跨键、重复 R0、事件日志/窗口复用、过期、
+不完整、时长错误、硬约束和真值字段。尚未运行实际双 episode 或多 seed，当前只证明合同
+能够失败关闭。
+
+## 2026-07-27 不可变确认收据的时间语义
+
+确认收据表示一条消息已经从指定源节点送达指定目的节点。该历史事实由收据内容、消息类型、
+消息标识、权威所有者、计划版本、时期号、租约范围、分区代次和载荷摘要确定。安全采用的
+评估时刻表示系统何时引用这条历史事实，两者不应使用同一个摘要。
+
+设不可变绑定为 \(b\)，收据为 \(r\)，第 \(i\) 次评估时刻为 \(t_i\)。同一收据的后续引用
+仅在以下条件下成立：
+
+\[
+b_i=b_{i-1},\qquad
+t_i \ge t_{i-1},\qquad
+t_i \ge t_{\mathrm{arrival}},\qquad
+t_i < t_{\mathrm{lease}}.
+\]
+
+实现保存每个 receipt ID 的唯一绑定摘要和该绑定的最新评估时刻。更晚评估不会直接复用旧
+通过结论，而是重新检查到达时间与租约。绑定变化按跨证据复用拒绝，时间回退单独拒绝，收据
+内容变化按冲突重放拒绝。该处理允许早期 owner ACK 支撑稍后形成的物理窗口，同时不允许 ACK
+被改绑到其他计划、节点、消息或权威代次。
+
+2026-07-27 的纯 Python 回归覆盖一次早期确认和一次后续物理窗口装配，通信与安全采用专项
+**99/99 passed**，D4 全量 **637/637 passed**。验证没有授予 authority，也没有形成 A2
+收益或 AirSim 物理效果证据。
+
+## 2026-07-27 A2 确认链原理
+
+A2 采纳证据由相互独立的业务绑定和通信事实组成。业务绑定回答“哪个建议产生了哪个后继
+计划、由谁在什么时期和租约内执行”；通信事实回答“确认消息是否经过指定链路并在决策前
+到达”。只验证其中一层不能形成安全采纳。
+
+所有者确认按以下不可变关系建立：
+
+```text
+advisory identity
+  + D3 successor plan ID/version/payload SHA/bus sequence
+  + runtime assignment ACK payload SHA/bus sequence
+  + authority owner/layer/epoch/lease
+  + partition generation
+  + sent timestamp/arrival timestamp
+  -> delivered owner-ACK evidence
+```
+
+运行时确认散列来自 main 实际发布的 `runtime.assignment_plan_ack` payload，不由所有者自行
+声明。回执 ID 和 payload 摘要由
+`CommunicationDeliveryReceipt.from_delivered_message()` 根据实际 envelope 和交付事实
+计算。main 使用 D4 公共 builder、parser 和 validator，不复制散列算法。
+
+联盟确认继续使用现有 `CoalitionMemberAck`。嵌套对象绑定
+resource、`global_track_id`、coalition ID/version、plan ID/version、epoch、执行能力、证据
+时间和有效期。外层交付合同再绑定协调者、计划 payload SHA/总线序号、租约和分区代次。
+required member 全部确认并原子提交前，任何单个成员确认都不能授予执行权限。
+
+证据状态遵循失败关闭原则。缺确认表示 unavailable，不等于指标值 0；确认错绑、晚到、过期
+或分区代次不一致表示 rejected；两者都不能产生 authority。规则回退只证明安全后备路径被
+使用，不属于 learned adoption。2026-07-27 的纯 Python 合同回归为四文件
+**130/130 passed**、D4 全量 **626/626 passed**。本轮无 AirSim、真实网络、物理窗口或同键
+R0 证据，正式 A2 收益仍不可用。
+
+## 2026-07-26 A2 安全采用证据原理
+
+区域学习策略的输出先被视为候选建议，不直接改变计划或权威。D4 把一次安全采用拆成“建议
+准备”和“运行证据装配”两个阶段。这样可以单独回答两个问题：候选是否通过确定性约束；通过
+后的动作是否真正进入新计划并在有效权威下执行。
+
+设候选建议为 \(a_\theta\)，确定性安全可行域为 \(\mathcal{F}(s_k,d_k)\)。其中 \(s_k\)
+包含区域资源、备用和已提交资源、区域邻接与容量、通信和分区状态；\(d_k\) 是正式 D4 裁决
+中的所有者、计划版本、时期号和租约。第一阶段计算
+
+\[
+a_k^{safe} = \Pi_{\mathcal{F}(s_k,d_k)}(a_\theta).
+\]
+
+当前正式采用口径只接受学习来源、无规则回退标记、模型摘要有效且置信度
+\(p_\theta \ge 0.60\) 的候选。投影发生非法邻接、容量裁剪、备用或已提交资源越界、权威不
+一致、网络分区或正式裁决不可执行时，本次建议不可用于实际采用。通过后的
+`RegionResourceAppliedRecommendation` 只表示可交给后继计划生成器，仍不授予执行权限。
+
+第二阶段把安全建议与运行事实做内容寻址绑定。可用性判据为
+
+\[
+G_{adopt} =
+G_{plan}\land G_{runtime}\land G_{owner}\land G_{coalition}
+\land G_{physical}.
+\]
+
+其中 \(G_{plan}\) 要求 D3 计划具有新标识和严格更高版本，并引用同一建议标识、建议版本和
+载荷摘要；计划载荷摘要和总线序号也必须一致。\(G_{runtime}\) 要求生产运行时确认明确为
+“新执行计划已采用”。\(G_{owner}\) 要求当前二级或对等所有者的确认消息实际到达 main，
+并与所有者、区域、计划、时期、租约和分区代次一致。\(G_{coalition}\) 在多成员任务中要求
+联盟进入执行态、必要成员集合与已确认集合完全相等，且每个确认均有实际投递回执。
+\(G_{physical}\) 要求确认后的状态窗口可用、无硬约束违规，并在计划有效期和权威租约内结束。
+
+中心正常时只能接受中心所有者。中心失效后，具有有效二级节点的区域必须先采用二级所有者；
+只有二级不可用时才允许完全分布式对等所有者。中心未失效的主动降级还需正式 D4 裁决和显式
+主动降级证据。证据不足时保持中心路径或失败关闭，学习建议不能改变这一层级。
+
+在线输入递归拒绝目标真值、离线结果和奖励字段。D4 输出的
+`safe_adoption_available=true` 只证明运行证据链完整，固定不声明 A2 收益，也不授予
+assist、PPO、分配权、接管权或控制权。D6 在带外使用同一比较键的规则基线和物理结果计算
+非退化；既有 A2 最终装配器继续要求 20 个实际采用及完整配对证据。
+
+2026-07-26 的模块验证为专项 27/27、相邻证据链 100/100、D4 全量 621/621。测试覆盖二级和
+对等节点正例及主要失败关闭门。这些结果来自纯 Python 单元合同。本轮没有 AirSim、真实网络
+或正式多随机种子物理证据，现有真实学习候选采用仍为 0。
+
 ## 2026-07-26 A2 证据装配原理
 
 A2 准入采用“双层不可变包”。内层仍是 development/shadow 模型及其训练身份，外层只保存
@@ -112,7 +361,10 @@ main-owned scalable 3D 已完成随机种子 `1271` 的单场景集成验证。2
 
 ## 2026-07-25 通信因果证据原则
 
-二级节点就绪、区域计划广播和联盟成员确认都属于通信事实。布尔量只能描述节点当前自报状态，不能证明消息已经经过链路并在决策前到达。D4 因此把“业务内容正确”和“通信实际发生”分成两层：既有 readiness/coalition 状态机继续检查业务条件；新增通信证据门检查投递回执。
+二级节点就绪、区域计划广播、区域计划所有者确认和联盟成员确认都属于通信事实。布尔量只能
+描述节点当前自报状态，不能证明消息已经经过链路并在决策前到达。D4 因此把“业务内容正确”
+和“通信实际发生”分成两层：既有 readiness/coalition 状态机继续检查业务条件；新增通信
+证据门检查投递回执。
 
 一条可接受回执需同时满足：
 
@@ -147,7 +399,7 @@ arm evidence v2 保存 confidence/最小置信门、OOD、latency/limit、finite
 
 **当前事实增量**：main-owned scalable 3D 质点模块栈已接入单一二级、多二级区域 owner 和中心/二级连续失效后的 distributed D3 plan；D7 依据 owner、plan version、epoch、lease、commit 与 fault generation fence 恢复导引。此前定向集成测试 8/8 passed，仅是质点接口证据。D4 同时具备默认 disabled/shadow 的区域资源学习建议层，以及 `d4-region-resource-advisory-v1` 后投影消费合同；它只建议区域配额和邻区转移，下一轮消费必须重验 current snapshot/authority，确定性 D4 安全状态机继续拥有健康检测、leader、epoch/lease、ACK/commit 和最终降级裁决。2026-07-21 新增独立动作覆盖补充课程，100 个 seed 的 300 帧中已形成 hold、request-replan、非零 quota 和 transfer 正类；该课程 reward/outcome 全部不可用，未改变正式 900 episode、PPO、assist 或在线裁决状态。
 
-**运行时证据增量**：D4 的只读验证器已升级为 `d4-region-resource-runtime-ack-evidence-v2`。执行签名发生变化时，验证器要求严格更新的 plan ID/version、完整 owner/epoch/lease 和 D3-D7-main 绑定，输出 `new_execution_plan_applied`。执行签名不变时，只允许显式 refresh-only 元数据，并要求前序 D3 source-plan envelope 与当前资源、全局航迹、联盟标识/版本、成员角色、区域 owner 和未分配集合一致，输出 `evaluation_refresh_applied`。后者只证明建议经过同代评估并被采纳；D3 ACK 缺省 epoch/lease 时仍由 D4 advisory 的有效 authority fence 限定，不能推导新执行权限。5v5 seed 41 的真实 main 质点链路及篡改负例为 5/5，运行时专项合计 33/33；该历史阶段 D4 全量为 482/482，当前全量为 569/569。两类确认都不等于联盟成员确认、物理结果或因果策略回报，也不授予 PPO、assist 或正式 authority。冻结 900 episode 不含这条证据链。
+**运行时证据增量**：D4 的只读验证器已升级为 `d4-region-resource-runtime-ack-evidence-v2`。执行签名发生变化时，验证器要求严格更新的 plan ID/version、完整 owner/epoch/lease 和 D3-D7-main 绑定，输出 `new_execution_plan_applied`。执行签名不变时，验证器可校验显式 refresh-only 元数据，但该事实不构成 A2 动作采用。无操作区域建议只允许 `no_successor`，不能刷新 authority/lease，也不能生成 applied ACK。当前集成测试以无操作和显式 `hold/request_replan` 两条链验证该差异，并覆盖四个 successor 篡改负例，结果 **6/6 passed**；D4 全量 **658/658 passed**。两类运行记录都不等于联盟成员确认、物理结果或因果策略回报，也不授予 PPO、assist 或正式 authority。冻结 900 episode 不含这条证据链。
 
 **区域结果证据增量**：`d4-region-resource-observational-reward-v1` 已把区域 reward 的组成、归一化和证据边界固定下来。八项成本分别为高威胁积压、配额满足缺口、转移完成缺口、备用不足、通信负载、分配冲突、降级失败和计划抖动。每项保留原值、单位、归一化分母、来源哈希和可用原因；缺测时整项不可用，不使用相邻状态差或控制命令补零。ACK 时间是窗口起点，结果快照是窗口终点，执行和联盟绑定在首尾必须一致，owner/epoch/lease/fault generation 在窗口内不得改变。新执行计划可得到时间窗口层面的非因果观测奖励，同代评估刷新只能得到观测成本。两者都不证明 `CoalitionMemberAck`、物理执行、因果改善或策略优于规则。新增专项 19/19、D4 全量 449/449；正式 episode producer、paired shadow、on-policy 数据和 PPO 仍未完成。
 

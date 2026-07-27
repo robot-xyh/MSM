@@ -1,5 +1,50 @@
 # D4 M 对 N 分布式联盟形成与降级接管调研
 
+## 2026-07-27 联盟输入严格性复核
+
+联盟成员确认现在要求 `can_execute` 为原生布尔值，确认和状态时间为有限非负数。字符串
+`"false"`、非有限执行时间和含额外字段的通信映射不能进入原子提交或安全采用链。中心、
+二级和 peer owner 的正例仍只形成观察证据，不授予联盟执行权限或学习收益权限。
+
+相关专项 **156/156 passed**，D4 全量 **679/679 passed**。真实 M 对 N 网络投递、二级/
+完全分布式 AirSim 多 seed、独立 R0 联盟 episode 和 D6 收益审计仍未完成。
+
+## 2026-07-27 联盟 A2/R0 配对边界
+
+M 对 N 场景的候选与规则对照必须分别完成各自的联盟提交和物理执行。新增 D4 配对合同只引用
+两臂的 truth-free 物理窗口和独立 episode 事件日志，不把一个候选臂的联盟 ACK、窗口或日志
+复制给 R0。两臂通过相同的 `paired_exogenous_config_sha256`、comparison key、场景版本、
+规模、seed 和逻辑时间窗建立可比关系；计划和联盟结果仍由各自执行臂独立产生。
+
+窗口完整、物理执行已观察、计划和租约覆盖、硬约束违规为零只是 D6 收益审计的输入门。
+这些条件不替代两臂各自的 required-member ACK 和原子 committed/executing 状态，也不证明
+候选联盟优于规则联盟。2026-07-27 D4 全量 **655/655 passed**；尚无真实 M 对 N 双 episode
+R0 或多 seed 收益证据，联盟执行权与模型权限均未改变。
+
+## 2026-07-27 联盟确认收据后续引用
+
+联盟成员确认也是不可变通信事实。相同成员 ACK 可在同一 coalition、plan、epoch、lease、
+coordinator、destination、partition generation 和 payload 绑定下，被更晚的原子提交或
+物理窗口评估再次引用。后续引用重新检查到达时刻、决策时刻单调性和租约有效性，不复用旧
+时刻的通过结论。
+
+该语义不允许把一个成员 ACK 移到其他联盟、计划、协调者或分区代次。required-member 全集、
+原子 committed/executing 状态和逐成员 ACK 仍分别验证。2026-07-27 相关通信与安全采用专项
+**99/99 passed**，D4 全量 **637/637 passed**；真实 M 对 N 网络和多随机种子证据仍开放。
+
+## 2026-07-27 联盟确认交付合同
+
+联盟成员确认现有公共 transport parser 和 validator。payload 必须嵌套完整
+`CoalitionMemberAck`，继续绑定 member/resource、`global_track_id`、coalition ID/version、
+plan ID/version、epoch、执行能力、证据时间和有效期；外层只增加既有协调者、计划载荷摘要
+与总线序号、租约和分区代次绑定，不改变联盟业务 DTO。
+
+`RegionResourceCoalitionAckDelivery.from_delivered_message()` 从实际投递消息生成内容寻址
+receipt，`validate_region_resource_coalition_ack_delivery()` 检查嵌套对象、路由、双时间戳
+和当前计划代次。该验证不能替代 required-member 全集和原子 commit，也不能授予 authority。
+2026-07-27 相关四文件联合 **130/130 passed**、D4 全量 **626/626 passed**。main 的真实
+delivery sidecar、物理执行窗口和同键 R0 尚未形成，因此 M 对 N 的 A2 证据仍 unavailable。
+
 ## 2026-07-26 A2 装配与联盟完整性
 
 A2 外层证据合同现已把区域学习建议与 M 对 N 联盟执行事实放入同一逐 seed 链。每条记录必须

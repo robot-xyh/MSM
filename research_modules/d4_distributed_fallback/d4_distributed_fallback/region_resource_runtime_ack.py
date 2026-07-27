@@ -126,6 +126,7 @@ class RegionResourceRuntimeAckEvidence:
     advisory_source_plan_bus_sequence: int | None = None
     source_guidance_bus_sequence: int | None = None
     ack_bus_sequence: int | None = None
+    assignment_plan_ack_payload_sha256: str | None = None
     advisory_payload_sha256: str | None = None
     source_plan_payload_sha256: str | None = None
     source_guidance_payload_sha256: str | None = None
@@ -188,6 +189,7 @@ class _EvidenceContext:
     advisory_source_plan_bus_sequence: int | None = None
     source_guidance_bus_sequence: int | None = None
     ack_bus_sequence: int | None = None
+    assignment_plan_ack_payload_sha256: str | None = None
     advisory_payload_sha256: str | None = None
     source_plan_payload_sha256: str | None = None
     source_guidance_payload_sha256: str | None = None
@@ -310,6 +312,9 @@ class RegionResourceRuntimeAckParser:
             )
             ack = ack_envelope.payload
             context.ack_bus_sequence = ack_envelope.sequence
+            context.assignment_plan_ack_payload_sha256 = (
+                canonical_runtime_payload_sha256(ack)
+            )
             acknowledged_at = _finite_time(
                 _required(ack, "ack_timestamp", "assignment_plan_ack"),
                 "assignment_plan_ack.ack_timestamp",

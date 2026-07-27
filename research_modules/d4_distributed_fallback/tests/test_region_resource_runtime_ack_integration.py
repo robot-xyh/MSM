@@ -54,13 +54,47 @@ class _FiniteAssistPolicy:
         )
 
 
+class _IdentifiableHoldAssistPolicy:
+    """Add one bounded D3-consumable action to the learned fixture."""
+
+    def __init__(self, base: _FiniteAssistPolicy) -> None:
+        self._base = base
+
+    def is_ood(self, snapshot: Any, *, margin: float) -> bool:
+        return self._base.is_ood(snapshot, margin=margin)
+
+    def recommend_raw(self, snapshot: Any) -> Any:
+        recommendation = self._base.recommend_raw(snapshot)
+        selected_region_id = min(
+            action.region_id for action in recommendation.actions
+        )
+        return replace(
+            recommendation,
+            actions=tuple(
+                replace(
+                    action,
+                    hold=action.region_id == selected_region_id,
+                    request_replan=(
+                        action.region_id == selected_region_id
+                    ),
+                )
+                for action in recommendation.actions
+            ),
+        )
+
+
 class _RuntimeAckContractFixture:
     """Test-only source for an already-admitted advisory transport contract."""
 
-    def __init__(self) -> None:
+    def __init__(self, *, identifiable_intervention: bool = False) -> None:
         projection = RegionResourceProjectionConfig(advisory_ttl_s=1.5)
         self.projector = DeterministicResourceProjector(projection)
-        self._policy = _FiniteAssistPolicy(projection)
+        base_policy = _FiniteAssistPolicy(projection)
+        self._policy = (
+            _IdentifiableHoldAssistPolicy(base_policy)
+            if identifiable_intervention
+            else base_policy
+        )
 
     def advise(
         self,
@@ -98,8 +132,13 @@ class _RuntimeAckContractFixture:
         )
 
 
-def _assist_advisor() -> _RuntimeAckContractFixture:
-    return _RuntimeAckContractFixture()
+def _assist_advisor(
+    *,
+    identifiable_intervention: bool = False,
+) -> _RuntimeAckContractFixture:
+    return _RuntimeAckContractFixture(
+        identifiable_intervention=identifiable_intervention
+    )
 
 
 def _envelope_dict(message: Any) -> dict[str, Any]:
@@ -113,27 +152,101 @@ def _envelope_dict(message: Any) -> dict[str, Any]:
     }
 
 
-@pytest.fixture(scope="module")
-def real_refresh_chain() -> dict[str, dict[str, Any]]:
-    config = ScenarioConfig(
+def _scenario_config(*, identifiable_intervention: bool) -> ScenarioConfig:
+    return ScenarioConfig(
         scenario_name="d4_d3_next_cycle_bridge",
         scenario_version="d4-d3-next-cycle-bridge-v1",
         target_count=5,
         resource_count=5,
         recon_count=1,
         region_count=2,
-        duration_s=1.2,
-        seed=41,
-        radar_detection_probability=1.0,
+        duration_s=3.0 if identifiable_intervention else 1.2,
+        seed=1 if identifiable_intervention else 41,
+        radar_detection_probability=(
+            0.45 if identifiable_intervention else 1.0
+        ),
         acoustic_enabled=False,
         visual_enabled=False,
+        communication_drop_probability=0.0,
+        communication_jitter_s=0.0,
+        communication_latency_s=0.01,
+    )
+
+
+@pytest.fixture(scope="module")
+def real_noop_chain() -> dict[str, Any]:
+    stack = IntegratedScalableModuleStack(
+        d4_region_advisor=_assist_advisor(),
+        d4_unseen_seed_count=1,
     )
     result = run_episode(
-        config,
-        module_stack=IntegratedScalableModuleStack(
-            d4_region_advisor=_assist_advisor(),
-            d4_unseen_seed_count=1,
+        _scenario_config(identifiable_intervention=False),
+        module_stack=stack,
+    )
+    messages = tuple(result.online_messages)
+    advice = next(
+        item
+        for item in messages
+        if item.topic == "modules.d4.region_resource_advice"
+        and item.payload["advisory_contract"] is not None
+    )
+    advisory = advice.payload["advisory_contract"]
+    advisory_id = advisory["advisory_id"]
+    consumption = next(
+        item
+        for item in messages
+        if item.topic == "modules.d4.region_resource_consumption"
+        and item.payload["advisory"]["advisory_id"] == advisory_id
+    )
+    current_plan = next(
+        item
+        for item in messages
+        if item.topic == "modules.d3.assignment_plan"
+        and item.payload["metadata"].get("regional_hint_advisory_id")
+        == advisory_id
+    )
+    source_plan_id, source_plan_version = advisory[
+        "source_plan_versions"
+    ][0]
+    source_plan = min(
+        (
+            item
+            for item in messages
+            if item.topic == "modules.d3.assignment_plan"
+            and item.sequence < current_plan.sequence
+            and item.payload["plan_id"] == source_plan_id
+            and item.payload["plan_version"] == source_plan_version
         ),
+        key=lambda item: item.sequence,
+    )
+    applied_acks = tuple(
+        item
+        for item in messages
+        if item.topic == "runtime.assignment_plan_ack"
+        and item.payload["d4_regional_hint_evidence"].get("advisory_id")
+        == advisory_id
+        and item.payload["d4_regional_hint_evidence"]["applied"] is True
+    )
+    return {
+        "advisory": _envelope_dict(advice),
+        "consumption": _envelope_dict(consumption),
+        "current_plan": _envelope_dict(current_plan),
+        "source_plan": _envelope_dict(source_plan),
+        "applied_acks": applied_acks,
+    }
+
+
+@pytest.fixture(scope="module")
+def real_successor_chain() -> dict[str, Any]:
+    stack = IntegratedScalableModuleStack(
+        d4_region_advisor=_assist_advisor(
+            identifiable_intervention=True
+        ),
+        d4_unseen_seed_count=1,
+    )
+    result = run_episode(
+        _scenario_config(identifiable_intervention=True),
+        module_stack=stack,
     )
     messages = tuple(result.online_messages)
     sequence_index = {int(item.sequence): item for item in messages}
@@ -184,10 +297,11 @@ def real_refresh_chain() -> dict[str, dict[str, Any]]:
         "current_plan": _envelope_dict(current_plan),
         "current_guidance": _envelope_dict(current_guidance),
         "source_plan": _envelope_dict(source_plan),
+        "latest_plan": stack.latest_plan,
     }
 
 
-def _consume(chain: dict[str, dict[str, Any]]):
+def _consume(chain: dict[str, Any]) -> Any:
     return RegionResourceRuntimeAckParser().consume(
         advisory_source=chain["advisory"],
         consumption_source=chain["consumption"],
@@ -198,11 +312,53 @@ def _consume(chain: dict[str, dict[str, Any]]):
     )
 
 
-def test_real_main_5v5_evaluation_refresh_is_adoption_ack(
-    real_refresh_chain: dict[str, dict[str, Any]],
+def test_real_main_5v5_noop_has_no_successor_or_adoption_ack(
+    real_noop_chain: dict[str, Any],
+) -> None:
+    advisory = real_noop_chain["advisory"]["payload"][
+        "advisory_contract"
+    ]
+    assert advisory["total_quota_delta"] == 0
+    assert advisory["transfers"] == []
+    assert all(
+        region["resources_before"] == region["resources_after"]
+        and region["resource_quota_delta"] == 0
+        and region["hold"] is False
+        and region["request_replan"] is False
+        for region in advisory["regions"]
+    )
+
+    consumption = real_noop_chain["consumption"]["payload"]
+    assert consumption["consumable"] is True
+    assert consumption["d3_hint_applied"] is False
+    assert consumption["d3_successor_plan_available"] is False
+    assert consumption["d3_successor_state"] == "no_successor"
+    assert consumption["bridge_rejection_reason"] == (
+        "d3_regional_hint_rejected:"
+        "regional_hint_no_executable_successor"
+    )
+
+    source_payload = real_noop_chain["source_plan"]["payload"]
+    current_payload = real_noop_chain["current_plan"]["payload"]
+    metadata = current_payload["metadata"]
+    assert current_payload["plan_id"] == source_payload["plan_id"]
+    assert current_payload["plan_version"] == source_payload["plan_version"]
+    assert metadata["regional_hint_applied"] is False
+    assert metadata["regional_hint_rejected"] is True
+    assert metadata["regional_hint_successor_state"] == "no_successor"
+    assert metadata["regional_hint_successor_plan_available"] is False
+    assert metadata["regional_hint_successor_plan_id"] is None
+    assert metadata["regional_hint_successor_plan_version"] is None
+    assert "authority_epoch" not in metadata
+    assert "lease_expires_at_s" not in metadata
+    assert real_noop_chain["applied_acks"] == ()
+
+
+def test_real_main_5v5_successor_is_new_plan_adoption_ack(
+    real_successor_chain: dict[str, Any],
 ) -> None:
     sequences = {
-        name: int(real_refresh_chain[name]["sequence"])
+        name: int(real_successor_chain[name]["sequence"])
         for name in (
             "source_plan",
             "advisory",
@@ -213,25 +369,52 @@ def test_real_main_5v5_evaluation_refresh_is_adoption_ack(
         )
     }
     assert list(sequences.values()) == sorted(sequences.values())
-    assert real_refresh_chain["ack"]["payload"]["source_plan_bus_sequence"] == (
-        sequences["current_plan"]
+    assert (
+        real_successor_chain["ack"]["payload"]["source_plan_bus_sequence"]
+        == sequences["current_plan"]
     )
-    assert real_refresh_chain["ack"]["payload"]["source_guidance_bus_sequence"] == (
+    assert real_successor_chain["ack"]["payload"][
+        "source_guidance_bus_sequence"
+    ] == (
         sequences["current_guidance"]
     )
-    source_payload = real_refresh_chain["source_plan"]["payload"]
-    current_payload = real_refresh_chain["current_plan"]["payload"]
-    assert current_payload["plan_id"] == source_payload["plan_id"]
-    assert current_payload["plan_version"] == source_payload["plan_version"] == 1
+    source_payload = real_successor_chain["source_plan"]["payload"]
+    current_payload = real_successor_chain["current_plan"]["payload"]
+    metadata = current_payload["metadata"]
+    latest_plan = real_successor_chain["latest_plan"]
+    assert current_payload["plan_id"] != source_payload["plan_id"]
+    assert current_payload["plan_version"] > source_payload["plan_version"]
+    assert latest_plan.plan_id == current_payload["plan_id"]
+    assert latest_plan.version == current_payload["plan_version"]
+    assert latest_plan.previous_plan_id == source_payload["plan_id"]
+    assert metadata["regional_hint_source_plan_id"] == source_payload["plan_id"]
+    assert metadata["regional_hint_source_plan_version"] == (
+        source_payload["plan_version"]
+    )
+    assert metadata["execution_signature_changed"] is True
+    assert metadata["plan_refresh_only"] is False
+    assert metadata["evaluation_refresh_only"] is False
+    assert metadata["regional_hint_applied"] is True
+    assert metadata["regional_hint_rejected"] is False
+    assert metadata["regional_hint_successor_state"] == "successor_published"
+    assert metadata["regional_hint_successor_plan_available"] is True
+    assert metadata["regional_hint_successor_plan_id"] == (
+        current_payload["plan_id"]
+    )
+    assert metadata["regional_hint_successor_plan_version"] == (
+        current_payload["plan_version"]
+    )
+    assert metadata["authority_epoch"] == 1
+    assert metadata["lease_expires_at_s"] > current_payload["timestamp"]
 
-    evidence = _consume(deepcopy(real_refresh_chain))
+    evidence = _consume(deepcopy(real_successor_chain))
 
     assert evidence.runtime_advisory_applied_ack_available is True
     assert evidence.adoption_kind == (
-        RegionResourceRuntimeAdoptionKind.EVALUATION_REFRESH_APPLIED.value
+        RegionResourceRuntimeAdoptionKind.NEW_EXECUTION_PLAN_APPLIED.value
     )
-    assert evidence.applied_plan_id == evidence.source_plan_id
-    assert evidence.applied_plan_version == evidence.source_plan_version
+    assert evidence.applied_plan_id != evidence.source_plan_id
+    assert evidence.applied_plan_version > evidence.source_plan_version
     assert evidence.coalition_member_ack_available is False
     assert evidence.physical_outcome_available is False
     assert evidence.attributable_reward_available is False
@@ -244,49 +427,53 @@ def test_real_main_5v5_evaluation_refresh_is_adoption_ack(
 @pytest.mark.parametrize(
     ("mutation", "expected_code"),
     (
-        ("refresh_flags", RegionResourceRuntimeAckCode.PLAN_REFRESH_FLAGS_INVALID),
         (
-            "binding_changed",
-            RegionResourceRuntimeAckCode.PLAN_REFRESH_BINDINGS_CHANGED,
+            "refresh_flags",
+            RegionResourceRuntimeAckCode.PLAN_REFRESH_FLAGS_INVALID,
         ),
-        ("execution_changed", RegionResourceRuntimeAckCode.PLAN_NOT_NEW),
         (
-            "source_plan_missing",
-            RegionResourceRuntimeAckCode.PLAN_REFRESH_SOURCE_MISSING,
+            "execution_unchanged",
+            RegionResourceRuntimeAckCode.PLAN_REFRESH_FLAGS_INVALID,
         ),
+        ("plan_id_reused", RegionResourceRuntimeAckCode.PLAN_NOT_NEW),
+        ("version_not_higher", RegionResourceRuntimeAckCode.PLAN_NOT_NEW),
     ),
 )
-def test_real_main_refresh_tampering_fails_closed(
-    real_refresh_chain: dict[str, dict[str, Any]],
+def test_real_main_successor_tampering_fails_closed(
+    real_successor_chain: dict[str, Any],
     mutation: str,
     expected_code: RegionResourceRuntimeAckCode,
 ) -> None:
-    chain = deepcopy(real_refresh_chain)
+    chain = deepcopy(real_successor_chain)
     current_payload = chain["current_plan"]["payload"]
     metadata = current_payload["metadata"]
     if mutation == "refresh_flags":
-        metadata["evaluation_refresh_only"] = False
-    elif mutation == "binding_changed":
-        current_payload["assignments"][0]["coalition_version"] += 1
-    elif mutation == "execution_changed":
-        metadata["execution_signature_changed"] = True
-    elif mutation == "source_plan_missing":
-        chain["source_plan"] = None  # type: ignore[assignment]
+        metadata["evaluation_refresh_only"] = True
+    elif mutation == "execution_unchanged":
+        metadata["execution_signature_changed"] = False
+    elif mutation == "plan_id_reused":
+        source_plan_id = chain["source_plan"]["payload"]["plan_id"]
+        current_payload["plan_id"] = source_plan_id
+        metadata["current_plan_id"] = source_plan_id
+        chain["ack"]["payload"]["plan_id"] = source_plan_id
+        chain["ack"]["payload"]["decision_id"] = (
+            f"{source_plan_id}:v{current_payload['plan_version']}"
+        )
+    elif mutation == "version_not_higher":
+        source_version = chain["source_plan"]["payload"]["plan_version"]
+        current_payload["plan_version"] = source_version
+        metadata["current_plan_version"] = source_version
+        chain["ack"]["payload"]["plan_version"] = source_version
+        chain["ack"]["payload"]["decision_id"] = (
+            f"{current_payload['plan_id']}:v{source_version}"
+        )
     else:  # pragma: no cover
         raise AssertionError(mutation)
-    if mutation != "source_plan_missing":
-        chain["ack"]["payload"]["source_plan_payload_sha256"] = (
-            canonical_runtime_payload_sha256(current_payload)
-        )
-
-    evidence = RegionResourceRuntimeAckParser().consume(
-        advisory_source=chain["advisory"],
-        consumption_source=chain["consumption"],
-        assignment_plan_ack_source=chain["ack"],
-        d3_plan_source_envelope=chain["current_plan"],
-        d7_guidance_source_envelope=chain["current_guidance"],
-        advisory_source_plan_envelope=chain["source_plan"],
+    chain["ack"]["payload"]["source_plan_payload_sha256"] = (
+        canonical_runtime_payload_sha256(current_payload)
     )
+
+    evidence = _consume(chain)
 
     assert evidence.runtime_advisory_applied_ack_available is False
     assert evidence.adoption_kind is None
