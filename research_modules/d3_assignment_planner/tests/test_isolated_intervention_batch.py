@@ -11,6 +11,9 @@ import pytest
 from commitment_test_support import committed_target_track
 import d3_assignment_planner.isolated_intervention_batch as batch_module
 from d3_assignment_planner import (
+    A1_BATCH_CANDIDATES_FILENAME,
+    A1_BATCH_RESULT_FILENAME,
+    A1_BATCH_SELECTIONS_FILENAME,
     BATCH_CHECKSUMS_FILENAME,
     BATCH_PER_SEED_FILENAME,
     BATCH_REPORT_FILENAME,
@@ -26,8 +29,11 @@ from d3_assignment_planner import (
     ResourceState,
     SharedEdgeActorCriticPolicy,
     TargetDemand,
+    build_a1_intervention_preregistration,
     development_shadow_admission,
+    load_a1_intervention_preregistration_file,
     load_isolated_intervention_batch_manifest,
+    run_a1_isolated_intervention_batch,
     run_isolated_intervention_batch,
     save_model_bundle,
     write_anonymous_planning_frame_evidence,
@@ -85,7 +91,7 @@ def _file_digest(path: Path) -> str:
     return sha256(path.read_bytes()).hexdigest()
 
 
-def _rule_frame():
+def _rule_frame(timestamp_s: float = 1.0):
     tracks = (
         committed_target_track(
             "global-track-a",
@@ -112,7 +118,7 @@ def _rule_frame():
     planner.plan(
         tracks,
         resources,
-        timestamp=1.0,
+        timestamp=timestamp_s,
         previous_plan=previous,
         expected_previous_version=previous.version,
         forced_replan=True,
@@ -183,8 +189,12 @@ def _build_manifest(
     *,
     binding_changing: bool = True,
     bundle_reserved_seeds=ISOLATED_INTERVENTION_BATCH_SEEDS_V1,
+    frame_timestamps: tuple[float, ...] = (1.0,),
 ) -> tuple[Path, dict, Path]:
-    frame, config = _rule_frame()
+    if not frame_timestamps:
+        raise ValueError("frame_timestamps must not be empty")
+    frames = tuple(_rule_frame(value) for value in frame_timestamps)
+    config = frames[0][1]
     bundle_dir = root / "bundle"
     bundle, bundle_manifest_sha256 = _write_bundle(
         bundle_dir,
@@ -193,20 +203,31 @@ def _build_manifest(
     )
     seed_entries = []
     for seed in ISOLATED_INTERVENTION_BATCH_SEEDS_V1:
-        frame_path = root / "frames" / f"seed_{seed}" / "frame_0000.json"
-        hashes = write_anonymous_planning_frame_evidence(frame_path, frame)
+        frame_entries = []
+        for sequence_index, (frame, _) in enumerate(frames):
+            frame_path = (
+                root
+                / "frames"
+                / f"seed_{seed}"
+                / f"frame_{sequence_index:04d}.json"
+            )
+            hashes = write_anonymous_planning_frame_evidence(
+                frame_path,
+                frame,
+            )
+            frame_entries.append(
+                {
+                    "sequence_index": sequence_index,
+                    "timestamp_s": frame_timestamps[sequence_index],
+                    "path": str(frame_path.relative_to(root)),
+                    "file_sha256": hashes["file_sha256"],
+                    "content_sha256": hashes["content_sha256"],
+                }
+            )
         seed_entries.append(
             {
                 "seed": seed,
-                "frames": [
-                    {
-                        "sequence_index": 0,
-                        "timestamp_s": 1.0,
-                        "path": str(frame_path.relative_to(root)),
-                        "file_sha256": hashes["file_sha256"],
-                        "content_sha256": hashes["content_sha256"],
-                    }
-                ],
+                "frames": frame_entries,
             }
         )
     payload = {
@@ -234,6 +255,51 @@ def _build_manifest(
     return manifest_path, payload, bundle_dir
 
 
+def _write_a1_preregistration(
+    root: Path,
+    manifest_payload: dict,
+    bundle_dir: Path,
+    *,
+    evaluation_seeds=ISOLATED_INTERVENTION_BATCH_SEEDS_V1,
+    sequence_index_max: int | None = None,
+    timestamp_s_max: float | None = None,
+) -> Path:
+    state_dict_sha256 = json.loads(
+        (bundle_dir / "manifest.json").read_text(encoding="utf-8")
+    )["state_dict"]["sha256"]
+    frame_references = [
+        frame
+        for seed in manifest_payload["seeds"]
+        for frame in seed["frames"]
+    ]
+    registration = build_a1_intervention_preregistration(
+        experiment_id="a1-isolated-batch-unit",
+        experiment_version="v1",
+        policy_artifact_sha256=state_dict_sha256,
+        evaluation_seeds=evaluation_seeds,
+        sequence_index_min=0,
+        sequence_index_max=(
+            max(item["sequence_index"] for item in frame_references)
+            if sequence_index_max is None
+            else sequence_index_max
+        ),
+        timestamp_s_min=0.0,
+        timestamp_s_max=(
+            max(item["timestamp_s"] for item in frame_references)
+            if timestamp_s_max is None
+            else timestamp_s_max
+        ),
+        max_abs_cost_correction=20.0,
+        max_rule_cost_difference=100.0,
+        max_relative_rule_cost_difference=100.0,
+        max_binding_change_count=3,
+        high_threat_threshold=0.7,
+    )
+    path = root / "a1_preregistration.json"
+    _write_json(path, registration.to_dict())
+    return path
+
+
 def _write_json(path: Path, payload: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
@@ -257,6 +323,26 @@ def _assert_checksums(output: Path) -> None:
     for line in lines:
         digest, name = line.split("  ", maxsplit=1)
         assert _file_digest(output / name) == digest
+
+
+def _assert_a1_checksums(output: Path) -> None:
+    lines = (output / BATCH_CHECKSUMS_FILENAME).read_text(
+        encoding="ascii"
+    ).splitlines()
+    assert len(lines) == 6
+    names = set()
+    for line in lines:
+        digest, name = line.split("  ", maxsplit=1)
+        names.add(name)
+        assert _file_digest(output / name) == digest
+    assert {
+        BATCH_RESULT_FILENAME,
+        BATCH_PER_SEED_FILENAME,
+        BATCH_REPORT_FILENAME,
+        A1_BATCH_RESULT_FILENAME,
+        A1_BATCH_CANDIDATES_FILENAME,
+        A1_BATCH_SELECTIONS_FILENAME,
+    } == names
 
 
 def test_batch_is_deterministic_and_cli_outputs_are_non_authoritative(
@@ -470,6 +556,40 @@ def test_frame_hash_schema_and_nonfinite_values_fail_closed(
     assert finite_error.value.code == "batch_nonfinite_value"
 
 
+@pytest.mark.parametrize(
+    "forbidden_key",
+    (
+        "target_truth_id",
+        "actor_truth_id",
+        "resource_actor_name",
+        "target_object_id",
+    ),
+)
+def test_nested_frame_identity_metadata_fails_closed_before_hash_acceptance(
+    tmp_path: Path,
+    forbidden_key: str,
+) -> None:
+    manifest_path, payload, _ = _build_manifest(tmp_path / "input")
+    frame_reference = payload["seeds"][0]["frames"][0]
+    frame_path = manifest_path.parent / frame_reference["path"]
+    frame_payload = json.loads(frame_path.read_text(encoding="ascii"))
+    frame_payload["planning_frame"]["effective_matrix_result"]["metadata"][
+        forbidden_key
+    ] = "must-not-be-read"
+    _write_json(frame_path, frame_payload)
+    frame_reference["file_sha256"] = _file_digest(frame_path)
+    _write_json(manifest_path, payload)
+
+    with pytest.raises(PairedInterventionContractError) as captured:
+        run_isolated_intervention_batch(
+            manifest_path,
+            tmp_path / "output",
+        )
+
+    assert captured.value.code == "batch_forbidden_input_key"
+    assert not (tmp_path / "output").exists()
+
+
 def test_nonempty_output_and_second_publication_fail_closed(
     tmp_path: Path,
 ) -> None:
@@ -526,4 +646,246 @@ def test_input_change_during_replay_prevents_publication(
         )
 
     assert captured.value.code == "batch_input_changed_during_replay"
+    assert not (tmp_path / "output").exists()
+
+
+def test_a1_batch_is_deterministic_and_selects_first_synthetic_frame(
+    tmp_path: Path,
+    capsys,
+) -> None:
+    manifest_path, payload, bundle_dir = _build_manifest(
+        tmp_path / "input",
+        frame_timestamps=(1.0, 2.0),
+    )
+    preregistration_path = _write_a1_preregistration(
+        manifest_path.parent,
+        payload,
+        bundle_dir,
+    )
+    output_a = tmp_path / "a1-output-a"
+    output_b = tmp_path / "a1-output-b"
+
+    result_a = run_a1_isolated_intervention_batch(
+        manifest_path,
+        preregistration_path,
+        output_a,
+    )
+    assert batch_module.main(
+        [
+            "--manifest",
+            str(manifest_path),
+            "--a1-preregistration",
+            str(preregistration_path),
+            "--output",
+            str(output_b),
+        ]
+    ) == 0
+    console = json.loads(capsys.readouterr().out)
+
+    assert result_a["candidate_contract"]["candidate_count"] == 40
+    assert result_a["selection_contract"] == {
+        "seed_count": 20,
+        "selected_seed_count": 20,
+        "no_safe_discrete_intervention_seed_count": 0,
+        "inventory_content_sha256": result_a["selection_contract"][
+            "inventory_content_sha256"
+        ],
+    }
+    assert console["selected_seed_count"] == 20
+    assert console["candidate_file"] == A1_BATCH_CANDIDATES_FILENAME
+    assert console["selection_file"] == A1_BATCH_SELECTIONS_FILENAME
+    assert console["publish"] is False
+    assert console["runtime_ack"] is False
+    assert console["physical_window_available"] is False
+    assert console["production_authority"] is False
+
+    candidates = json.loads(
+        (output_a / A1_BATCH_CANDIDATES_FILENAME).read_text(
+            encoding="ascii"
+        )
+    )
+    selections = json.loads(
+        (output_a / A1_BATCH_SELECTIONS_FILENAME).read_text(
+            encoding="ascii"
+        )
+    )
+    assert candidates["record_count"] == 40
+    assert selections["record_count"] == 20
+    assert all(item["selected"] for item in selections["records"])
+    assert all(
+        item["selected_sequence_index"] == 0
+        and item["selected_timestamp_s"] == 1.0
+        for item in selections["records"]
+    )
+    assert all(
+        item["execution_boundary"]["publish"] is False
+        and item["execution_boundary"]["runtime_ack"] is False
+        and item["execution_boundary"]["physical_window_available"] is False
+        and item["execution_boundary"]["physical_outcome_available"] is False
+        and item["execution_boundary"]["r0_pair_available"] is False
+        and item["plan_published"] is False
+        and item["runtime_ack"] is False
+        and item["physical_window_available"] is False
+        and item["r0_pair_available"] is False
+        for item in candidates["records"] + selections["records"]
+    )
+    for path in output_a.iterdir():
+        assert path.read_bytes() == (output_b / path.name).read_bytes()
+    _assert_a1_checksums(output_a)
+
+
+def test_a1_batch_zero_eligible_is_fail_closed(
+    tmp_path: Path,
+) -> None:
+    manifest_path, payload, bundle_dir = _build_manifest(
+        tmp_path / "input",
+        binding_changing=False,
+    )
+    preregistration_path = _write_a1_preregistration(
+        manifest_path.parent,
+        payload,
+        bundle_dir,
+    )
+    output = tmp_path / "output"
+
+    result = run_a1_isolated_intervention_batch(
+        manifest_path,
+        preregistration_path,
+        output,
+    )
+    candidates = json.loads(
+        (output / A1_BATCH_CANDIDATES_FILENAME).read_text(
+            encoding="ascii"
+        )
+    )["records"]
+    selections = json.loads(
+        (output / A1_BATCH_SELECTIONS_FILENAME).read_text(
+            encoding="ascii"
+        )
+    )["records"]
+
+    assert result["selection_contract"]["selected_seed_count"] == 0
+    assert (
+        result["selection_contract"][
+            "no_safe_discrete_intervention_seed_count"
+        ]
+        == 20
+    )
+    assert all(
+        item["selected"] is False
+        and item["reason"] == "no_safe_discrete_intervention"
+        and item["selected_candidate_content_sha256"] is None
+        for item in selections
+    )
+    assert all(
+        item["assignment_changed"] is False
+        and item["selected_for_paired_evaluation"] is False
+        and (
+            "assignment_unchanged" in item["reason_codes"]
+            or "safety_shell_rejected" in item["reason_codes"]
+        )
+        and item["execution_boundary"]["publish"] is False
+        and item["execution_boundary"]["runtime_ack"] is False
+        and item["plan_published"] is False
+        and item["runtime_ack"] is False
+        and item["physical_window_available"] is False
+        and item["r0_pair_available"] is False
+        for item in candidates
+    )
+    _assert_a1_checksums(output)
+
+
+@pytest.mark.parametrize(
+    ("mutation", "expected_code"),
+    (
+        (
+            lambda payload: payload.update({"truth_id": "forbidden"}),
+            "batch_forbidden_input_key",
+        ),
+        (
+            lambda payload: payload.update(
+                {
+                    "max_abs_cost_correction": (
+                        payload["max_abs_cost_correction"] + 1.0
+                    )
+                }
+            ),
+            "a1_batch_preregistration_invalid",
+        ),
+    ),
+)
+def test_a1_batch_preregistration_truth_and_tamper_fail_closed(
+    tmp_path: Path,
+    mutation,
+    expected_code: str,
+) -> None:
+    manifest_path, payload, bundle_dir = _build_manifest(
+        tmp_path / "input"
+    )
+    preregistration_path = _write_a1_preregistration(
+        manifest_path.parent,
+        payload,
+        bundle_dir,
+    )
+    registration_payload = json.loads(
+        preregistration_path.read_text(encoding="ascii")
+    )
+    mutation(registration_payload)
+    _write_json(preregistration_path, registration_payload)
+
+    with pytest.raises(PairedInterventionContractError) as captured:
+        run_a1_isolated_intervention_batch(
+            manifest_path,
+            preregistration_path,
+            tmp_path / "output",
+        )
+
+    assert captured.value.code == expected_code
+    assert not (tmp_path / "output").exists()
+
+
+@pytest.mark.parametrize(
+    ("registration_kwargs", "expected_code"),
+    (
+        (
+            {
+                "evaluation_seeds": tuple(range(1000, 1019)),
+            },
+            "a1_batch_preregistration_seed_scope_mismatch",
+        ),
+        (
+            {
+                "sequence_index_max": 0,
+            },
+            "a1_batch_preregistration_frame_scope_mismatch",
+        ),
+    ),
+)
+def test_a1_batch_preregistration_scope_is_rejected(
+    tmp_path: Path,
+    registration_kwargs,
+    expected_code: str,
+) -> None:
+    manifest_path, payload, bundle_dir = _build_manifest(
+        tmp_path / "input",
+        frame_timestamps=(1.0, 2.0),
+    )
+    preregistration_path = _write_a1_preregistration(
+        manifest_path.parent,
+        payload,
+        bundle_dir,
+        **registration_kwargs,
+    )
+    assert load_a1_intervention_preregistration_file(
+        preregistration_path
+    )
+
+    with pytest.raises(PairedInterventionContractError) as captured:
+        run_a1_isolated_intervention_batch(
+            manifest_path,
+            preregistration_path,
+            tmp_path / "output",
+        )
+
+    assert captured.value.code == expected_code
     assert not (tmp_path / "output").exists()

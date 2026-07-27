@@ -1,5 +1,16 @@
 # D3 Assignment Planner
 
+## 2026-07-27 提交前复核
+
+A1 候选反序列化现重新检查规则计划和处理计划相对前序版本只能保持或递增一次；发生绑定
+变化且版本合同为真时，处理计划必须严格为 `previous_version + 1`。只修改版本字段并
+重算内容摘要会以 `candidate_plan_version_lineage_invalid` 拒绝。
+
+A1 和隔离批处理同时拒绝 `target_truth_id`、`actor_truth_id`、
+`resource_actor_name`、`target_object_id` 等复合身份键。D6 后选择物理窗口中已校验的
+离线制品摘要名称仍可作为 provenance，不进入候选选择。D3 全量收集 563 项，结果为
+`562 passed, 1 skipped`；跳过项为可选 OR-Tools，另有既有 Matplotlib 环境警告。
+
 Centralized rolling `M` target / `N` resource assignment research module.
 
 Boundary: this module only supports offline simulation, evaluation, and human-review candidate planning. It excludes real fire-control parameters, damage logic, flight or hardware drivers, autonomous disposition, and authorization bypasses.
@@ -1732,3 +1743,177 @@ manifest SHA-256 为
 `Axes3D` 环境警告不影响 D3 合同测试。正式结果只关闭隔离批量重放合同。0 个 eligible
 seed 表明当前 development policy 没有越过 Hungarian 离散绑定边界，不能形成 D7
 checkpoint，也不能授予 A1 准入、默认路径、PPO、assist、物理收益或生产权限。
+
+## 2026-07-26 A1 选择后阶段证据
+
+D3 新增 `a1_intervention_selection`，用于把候选帧选择后的事实分阶段记录。该模块不重复
+`learning_intervention_eligibility` 的输入谱系、模型作用、硬约束、需求槽或 M-to-N
+原子性判断。`evaluate_a1_intervention_candidate(...)` 先调用既有
+`evaluate_learning_intervention_candidate_frame(...)`，再在预注册范围内检查学习代价
+修正上限、规则代价下的近似竞争程度、需求覆盖非退化、高威胁目标覆盖非退化和严格升版。
+
+预注册合同冻结实验标识、模型制品摘要、seed 清单、序号和时间范围、最大代价修正、规则
+代价差及最大绑定变化数。在线真值固定禁用，规则回退和确定性安全外壳固定启用，预注册本身
+不授予生产权限。selector 按严格序号和时间顺序选取首个安全离散变化；没有候选时返回
+`no_safe_discrete_intervention`，不会用绑定未变化的帧补位。
+
+阶段证据分别记录：
+
+1. `policy_evaluated`：冻结学习策略在该帧实际完成安全评估；
+2. `cost_correction_accepted`：代价修正通过既有资格层和预注册边界；
+3. `assignment_changed`：资源、目标或联盟绑定出现可审计的离散变化；
+4. `plan_published`：main 的 D3 总线载荷与选中 `AssignmentPlan` 完全一致；
+5. `runtime_ack`：既有运行确认合同验证同一计划、来源序号、载荷摘要和学习采用状态；
+6. `physical_window_available` 与 `r0_pair_available`：计划全部执行 binding 分别具备完整
+   后续观察窗口和同 seed 规则基线配对证据。
+
+后续证据缺失时状态停留在最后一个已证明阶段。发布记录不能推出运行确认，运行确认不能
+推出物理窗口，部分 binding 窗口不能推出整份计划可用，未配对窗口不能推出 R0 非退化。
+候选证据和选择结果固定声明运行阶段为 false，防止调用方预填后续事实。
+
+专项测试 `13 passed`，覆盖无真值选择、确定性复现、无竞争帧失败关闭、安全近似竞争下的
+离散变化、重复资源、硬禁边、旧版本、预注册绑定变化上限、发布谱系、运行确认、完整物理
+窗口、R0 配对及伪造阶段字段拒绝。D3 全量收集 535 项，结果为
+`534 passed, 1 skipped`，skip 为可选 OR-Tools。正式 20-seed/100-frame 结果没有重跑，仍为
+`0/20 eligible`；本次没有形成新的计划发布、运行确认或物理结果。AirSim 接口和 episode
+流程未改变。
+
+## 2026-07-27 A1 隔离批处理入口
+
+现有隔离 batch 新增可选 `--a1-preregistration` 模式。main 不再需要复制 bundle 校验、
+匿名帧读取或单帧 replay 逻辑。公开 Python 入口为：
+
+```python
+run_a1_isolated_intervention_batch(
+    manifest_path,
+    preregistration_path,
+    output_dir,
+)
+```
+
+命令行入口继续使用原脚本：
+
+```bash
+PYTHONPATH=research_modules/d3_assignment_planner/src \
+python3 research_modules/d3_assignment_planner/scripts/run_isolated_intervention_batch.py \
+  --manifest <strict_batch_manifest.json> \
+  --a1-preregistration <a1_preregistration.json> \
+  --output <empty_output_directory>
+```
+
+入口只执行一次既有 batch replay。每帧直接把
+`replay.rule_frame/replay.treatment_frame` 交给核心
+`evaluate_a1_intervention_candidate(...)`，每 seed 再调用
+`select_a1_intervention_candidate(...)`。重新生成的 eligibility 内容摘要必须与 replay
+已有证据一致，否则失败关闭。
+
+预注册 seed 必须精确覆盖 `1000-1019`，序号和时间范围必须覆盖清单全部帧，
+`policy_artifact_sha256` 必须等于 bundle 的 state-dict SHA-256。预注册文件与 manifest、
+匿名帧、bundle manifest 和 state-dict 一并在运行前后复核，真值字段、摘要篡改、作用域
+缺失或运行中变化均阻断输出。
+
+A1 模式原子写出：
+
+- `isolated_intervention_batch.json`；
+- `isolated_intervention_per_seed.csv`；
+- `D3_ISOLATED_INTERVENTION_BATCH_REPORT_CN.md`；
+- `a1_intervention_batch.json`；
+- `a1_intervention_candidates.json`；
+- `a1_intervention_selections.json`；
+- `SHA256SUMS`，覆盖前六个文件。
+
+候选和选择文件使用独立、版本化的隔离 batch schema。核心 A1 选择仍在内存中使用完整
+DTO；写盘投影保留阶段布尔、成本、需求缺口、版本、规则/处理 binding 摘要、拒绝原因和
+预注册谱系。随机 plan id、完整 plan payload SHA-256 及墙钟推理时间不进入稳定投影。
+因此相同输入的独立重跑可逐文件一致。该投影不能作为后续 `plan_published` 证据；main
+实际发布时仍须用精确运行计划和总线 envelope 构造
+`A1PlanPublicationEvidence`。
+
+2026-07-27 新增 6 项 batch 专项。40 帧合成正例两次独立运行逐文件一致，20/20 seed 均
+选择序号 0 的首帧；零残差负例 20/20 seed 返回
+`no_safe_discrete_intervention`。真值、预注册内容篡改、seed 范围和帧范围均被拒绝。
+batch 专项共 `20 passed`，与核心 A1 合计 `33 passed`。D3 全量收集 541 项，结果为
+`540 passed, 1 skipped`；skip 仍为可选 OR-Tools。正式 20-seed/100-frame 数据没有重跑，
+既有 `0/20 eligible` 结论不变。
+
+## 2026-07-27 A2 区域提示权属绑定
+
+D3 在采用区域规划提示前，现要求全部区域约束具有完全相同的 `owner_layer`、`owner_id`、
+`owner_epoch` 和 `lease_expires_at_s`。任一字段不一致时，整份提示以
+`regional_hint_authority_scope_mismatch` 拒绝，规划器回到原规则候选图。单个区域租约
+过期、提示超出租约等既有检查仍先返回原有的更具体原因。
+
+提示通过原有来源计划、时间、区域集合、租约、资源守恒、保护资源和跨区额度检查，并且
+形成新的可执行语义后，D3 才把统一权属写入严格后继计划。`plan_owner`、
+`active_plan_owner`、`current_plan_owner` 及对应 owner node 字段采用同一权属；
+`authority_epoch` 和 `lease_expires_at_s` 同时写入。`runtime_plan_ack` 原有解析器会从
+计划 metadata 读取这两个字段，因此无需另建 ACK 字段。提示被拒绝、没有提示或没有形成
+可辨识后继时，不刷新 epoch/lease，也不改变源计划的执行权属。
+
+2026-07-27 的模块夹具覆盖两目标增加到三目标后的严格新计划、owner/epoch/lease 三类
+不一致、同权属无动作提示和无提示刷新。无动作提示保持源计划身份，并明确返回
+`no_successor`，不再以“提示已应用”表示后继计划已发布。
+
+本次只关闭 D3 计划缺失权属元数据的合同缺口。测试没有生成真实 main ACK、owner ACK、
+coalition ACK、后续物理窗口或同键规则基线，不能据此声明 A2 已完成物理采用。
+本段记录的是后续 20-seed 重跑前的模块合同状态；当前证据以“2026-07-27 A2 后继计划
+判定”一节为准。
+
+## 2026-07-27 A2 后继计划判定
+
+早期开发输出曾将 18/20 普通 D3 滚动重规划归因给 A2，并只在 seed 1002、1007 观察到
+版本门拒绝。该结论已被按修正后 successor 合同完成的 20-seed 重跑取代。新证据显示：
+20/20 seed 均有候选评估记录，但受控策略在全部 seed 都没有资源配额变化、hold、
+`request_replan` 或跨区 transfer。可识别区域干预、实际 A2 采用和 A2/R0 收益审计均为
+0/20。普通滚动重规划不得反向归因给 A2。
+
+区域提示结果现使用 `d3_regional_planning_hint_successor_v1` 合同。内部候选约束是否生效
+由 `regional_hint_constraint_applied` 记录。只有执行签名改变、`plan_id` 不同、
+`version` 严格递增且 `previous_plan_id` 指向源计划时，
+`regional_hint_successor_plan_available=true` 和
+`regional_hint_successor_state=successor_published` 才成立。
+
+执行签名未变化时，D3 保持源身份和原权属控制字段，返回
+`regional_hint_successor_state=no_successor`、
+`regional_hint_successor_plan_available=false` 和
+`regional_hint_no_executable_successor`。`regional_hint_applied` 同时为 false，防止旧
+消费者继续把该结果包装成后继计划。无效或过时提示使用 `hint_rejected`，仍按原规则路径
+规划。上述处理没有机械升版，也没有放宽迟滞、旧版本拒绝或幂等发布。
+
+验收结果：区域提示专项 `21 passed`；区域提示、计划身份、规划证据和运行回执组合
+`65 passed, 1 warning`；D3 全量收集 548 项，结果为 `547 passed, 1 skipped`。唯一
+skip 为可选 OR-Tools，warning 为既有 Matplotlib 三维导入提示。
+
+main 重跑已验证上述失败关闭行为。20 条候选均以
+`identifiable_regional_intervention_missing` 保留为无操作拒绝，不携带后继计划、运行
+确认、所有者确认、联盟提交或物理窗口。证据文件 SHA-256 为
+`ff3c10a089b6a94582451ae05d8a884af3a2bd7485acd4df0496442ea7e0ec55`。
+
+A2 下一步必须提供经过确定性投影后仍能形成受约束非零配额、hold、重规划请求或 transfer
+的候选，再重新建立 successor、运行确认和同键 R0 物理窗口。D3 继续对无执行变化返回
+`no_successor`；不得机械升版，也不得把同期普通规划变化计作 A2 采用。
+
+## 2026-07-27 A2 非零区域干预消费边界
+
+D3 进一步补齐区域 `hold` 的实际候选图语义。处于 hold 的区域不允许新增或更换目标-资源
+边；仅保留来源计划中触及该区域且仍通过硬安全门的绑定。来源绑定已经因资源不可用、身份
+门或其他硬约束失效时，整份提示以 `regional_hint_held_assignment_infeasible` 拒绝并
+回到无提示规则规划。该拒绝不能为提高 A2 采用率而绕过。
+
+`request_replan=true` 表示本轮需要重新求解并留下审计记录。重新求解后的执行签名不变时，
+仍返回 `no_successor`，计划号和版本不变。无来源承诺的区域可以合法进入 hold：若新目标
+进入该区域，规则基线会形成新绑定，而 hold 约束会保持其未分配状态；该执行库存变化可
+形成严格后继。另一条合法路径是守恒的非零配额和跨区转移直接改变可执行绑定。
+
+严格后继现显式携带 advisory id/version、source plan id/version、owner layer/id、
+authority epoch 和 lease，同时记录 hold 与 request-replan 区域。模块测试以三区域构造
+验证 A→B 的守恒转移、C 区来源绑定保持、无承诺 C 区保持、request-replan-only 无操作和
+held edge 硬失效拒绝。区域提示专项为 `25 passed`；D3 全量收集 552 项，结果为
+`551 passed, 1 skipped`，另有 1 条既有 Matplotlib `Axes3D` 环境警告。skip 仍为可选
+OR-Tools。
+
+main 提供的未落盘 20-seed 诊断中，15/20 形成 safe/auditable A2，seed
+1000/1002/1007/1009/1013 停在 `d3_successor_plan_missing`。seed 1000 在 t=1 为
+`regional_hint_no_executable_successor`，t=2 为
+`regional_hint_held_assignment_infeasible`。该诊断用于定位策略选择边界，不替代前述
+正式 20-seed 0/20 证据，也不构成运行确认或物理结果。

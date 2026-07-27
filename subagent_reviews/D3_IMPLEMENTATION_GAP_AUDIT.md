@@ -1,5 +1,19 @@
 # D3 实现差距审计
 
+## 2026-07-27 提交前状态
+
+本次复核关闭两个模块内提交缺陷：A1 序列化候选过去只校验版本字段类型和内容摘要，现已
+复算相对前序计划的连续版本；A1/隔离批处理过去只覆盖部分精确真值键，现已覆盖复合
+truth/Actor/Object 身份键。对应负例均失败关闭。区域提示的严格后继、hold 硬禁边、
+非等量规模和规则回退未发现新的 P0。
+
+D3 全量收集 563 项，结果为 `562 passed, 1 skipped`；skip 为可选 OR-Tools。当前建议
+作为独立 D3 提交，但不能标记 A1/A2 物理闭环完成。
+
+仍开放 P1：A1 需要 clean commit 上冻结输入的可辨识 20-seed 候选，并由 main 接入发布、
+运行 ACK、完整物理窗口和同键 R0；A2 需要持久化非零安全区域动作、严格后继、owner ACK
+及同键物理证据；真实非等量多 seed 参数与收益仍由 main/D6 校准。没有新增 D3 P0。
+
 **模块**: D3 集中式资源-目标分配
 **审计日期**: 2026-07-26
 **审计依据**: 当前 `research_modules/d3_assignment_planner/` 代码、README、PLAN、docs 和 tests，2026-07-25 的 20-seed 多周期行为克隆影子评估，既有 2026-07-13 M5N2 40-case 报告，以及 `research_modules/airsim_runtime/outputs/p1_terminal_timing_funnel_10seed_20260715_m5n2_*/episode_006_full_flow/main_episode_bus/d3_plan_history.json` 的最新 20-case/3725-record 只读复核、main/D6/D7 物理结果汇总、`subagent_reviews/MAIN_IMPLEMENTATION_GAP_AUDIT.md` 和 `EVAL/FRAMEWORK_EVAL_P0_P1_P2_GAP_CONFIRMATION.md`。
@@ -32,9 +46,9 @@
 
 | 层次 | 当前状态 |
 | --- | --- |
-| loader/writer 软件能力 | development shadow 可用；caller-qualified writer 和手工正向 loader 已失败关闭；production 正向 assembler 尚未实现 |
+| loader/writer 软件能力 | development shadow 可用；caller-qualified writer 和手工正向 loader 已失败关闭；A1 选择后阶段 DTO/assembler 已实现，但 production bundle 正向 admission assembler 尚未实现 |
 | development bundle | manifest/state/tree/binding SHA 分别为 `a9213d65...9314c0`、`e3da9fd5...f8e0b2`、`3c08e581...fee085`、`70aa1b0...542a8`；文件未修改 |
-| 实际外部证据 | D6 旧 sidecar 只通过同帧离线分配比较；runtime ACK、物理结果和 paired non-degradation 不可用；新 formal-scope auditor 尚无实际 A1 输出 |
+| 实际外部证据 | D6 旧 sidecar 只通过同帧离线分配比较；正式 20-seed/100-frame 为 0/20 eligible；runtime ACK、物理结果和 paired non-degradation 不可用；新 formal-scope auditor 尚无实际 A1 输出 |
 | 正式 assist 权限 | `false`；现有 bundle assist 返回 `bundle_shadow_only`，A1/C1/F1 在 D3 条件上失败关闭 |
 
 ### D6 字段复用与缺失
@@ -43,8 +57,8 @@
 | --- | --- | --- | --- |
 | 数据、切分、零泄漏 | 跨模块数据审计含 D3 manifest/frames SHA、60/20/20 seed、保留 seed 泄漏 0、全样本审计 SHA | 精确 `split_hash`、训练源码摘要与目标 bundle 的联合绑定 | D3 assembler；D6 复核输入实物 |
 | 模型/文件树 | 旧 sidecar 含 manifest/state SHA；formal-scope auditor 可重算 manifest/tree/file count/size | 旧 sidecar 标明 `bundle_files_rehashed=false`；实际 A1 tree 复核不存在 | main 提供 bundle；D6 审计 |
-| 运行采用 | formal-scope auditor 可验证 assist 诊断和正的 `d3_learning_applied_count` | 旧 sidecar runtime ACK unavailable；缺版本化采用记录及其制品树绑定 | main/D7 生产；D6 审计 |
-| 物理结果 | formal-scope auditor 可检查物理指标 availability | 当前无干预后物理状态窗口 | main/D7 生产；D6 审计 |
+| 运行采用 | formal-scope auditor 可验证 assist 诊断和正的 `d3_learning_applied_count`；D3 已能验证选中计划发布和现有 runtime ACK 谱系 | 旧 sidecar runtime ACK unavailable；没有真实 A1 发布/确认及其制品树绑定 | main/D7 生产；D6 审计 |
+| 物理结果 | formal-scope auditor 可检查物理指标 availability；D3 已能逐 binding 装配现有窗口证据 | 当前无干预后物理状态窗口；接口能力不能替代实际窗口 | main/D7 生产；D6 审计 |
 | paired non-degradation | formal-scope auditor 可唯一配对同键 R0 并逐指标判断 | 当前实际值 unavailable；新结果必须覆盖 1000-1019 全部 20 个未见 seed | main 运行；D6 判定 |
 | 晋级结论 | formal-scope audit 有 `verdict` 和 `evidence_admission_allowed` | D6 明确 `model_promotion.allowed=false`，也不强制 20-seed D3 门限 | D3 assembler/owner |
 
@@ -53,13 +67,18 @@ execution plan/merge、同键 R0、实际 bundle 根目录和审计结果均未�
 
 ### 开放 P1
 
-1. main/D7 需为 1000-1019 生成版本化模型采用 ACK、后续状态和成对物理窗口。
-2. D6 需输出实际 A1 审计 JSON、CSV、中文报告和 `SHA256SUMS`，结果必须覆盖 20 个未见
+1. 当前冻结 development policy 在正式 20-seed/100-frame 输入上为 `0/20 eligible`。
+   main 需提供重新训练或重新冻结的策略；D3 继续按既有资格和预注册边界评估，不降低安全
+   或离散变化条件。
+2. main/D7 需把选中 `AssignmentPlan` 接入真实 D3 发布总线，并为 1000-1019 生成版本化
+   模型采用 ACK、后续状态和成对物理窗口。没有选中帧时整条链保持 unavailable。
+3. D6 需输出实际 A1 审计 JSON、CSV、中文报告和 `SHA256SUMS`，结果必须覆盖 20 个未见
    seed、实际采用、物理可用和规则基线非退化，不能用单 cell 或 unavailable 补零。
-3. D3 需在实物到位后实现模块专用 evidence assembler，绑定 dataset manifest、split、
-   frames、training source、state dict、bundle tree 和 D6 报告双哈希。装配器生成新
-   immutable bundle/schema，不改写 v3 development bundle。
-4. 新 bundle 形成后由 main 执行：
+4. D3 的 selection-to-lifecycle assembler 已完成；production admission assembler 仍需在
+   实物到位后绑定 dataset manifest、split、frames、training source、state dict、bundle
+   tree 和 D6 报告双哈希。它应生成新 immutable bundle/schema，不改写 v3 development
+   bundle。
+5. 新 bundle 形成后由 main 执行：
 
 ```bash
 python3 -m research_modules.scalable_3d_simulation.run_experiment_matrix_shard \
@@ -74,6 +93,56 @@ python3 -m research_modules.scalable_3d_simulation.run_experiment_matrix_shard \
 summary SHA 为 `5093e5d0...c135c`；D6 旧 sidecar 文件 SHA 为
 `f3852251...1c3b`，状态为 `pass_offline_assignment_comparison_only`。这些事实不能提前
 关闭上述 P1。A1 独立通过前不评审 C1/F1。
+
+### A1 选择后阶段合同更新（2026-07-26）
+
+D3 已关闭“selector 输出后没有分阶段可验证 DTO”的模块级缺口。新增预注册、候选、选择、
+发布和生命周期五类严格 schema，复用现有
+`evaluate_learning_intervention_candidate_frame(...)`、`AssignmentPlanRuntimeAckEvidence`
+和 `RuntimePlanWindowRewardEvidence`，没有复制既有资格逻辑。
+
+阶段分别为 `policy_evaluated -> cost_correction_accepted -> assignment_changed ->
+plan_published -> runtime_ack -> physical_window_available -> r0_pair_available`。预注册固定
+模型摘要、seed/时间范围、代价修正、规则代价差和绑定变化上限。在线 truth 与生产权限固定
+关闭。处理计划增加未满足需求槽或高威胁未满足槽、违反容量/硬边/M-to-N、未严格升版或
+规则成本差超限时不能被选择。
+
+发布证据要求 main 的 D3 总线 envelope 与选中计划完整一致。ACK 必须来自现有严格验证
+对象，并绑定同一 plan id/version、总线序号和 payload 摘要。物理窗口按选中计划全部
+binding 检查；缺任一成员窗口时整体不可用。R0 配对同样要求全部 binding 可用。不存在
+后续实物时，装配器只返回等待状态，不推断发布、采用或物理结果。
+
+专项测试 `13 passed`，覆盖无真值、确定性、无竞争帧、安全离散变化、重复资源、硬禁边、
+旧版本、绑定变化上限、发布篡改、运行确认、物理窗口、R0 配对和伪造阶段。该结果是模块
+合同夹具，不是新的 20-seed 运行。D3 全量收集 535 项，结果为
+`534 passed, 1 skipped`，skip 为可选 OR-Tools。正式 100 帧仍为 `0/20 eligible`，所以
+本次没有实际 A1 计划发布、runtime ACK、physical window 或 R0 pair。
+
+### A1 batch 接线状态（2026-07-27）
+
+“main 必须复制 D3 replay 内部逻辑才能得到 candidate/selection evidence”这一模块级缺口
+已关闭。现有 batch runner 增加可选预注册模式，公开
+`run_a1_isolated_intervention_batch(...)`。入口在同一严格 manifest、bundle 和匿名帧
+循环内复用 `replay.rule_frame/treatment_frame`，调用核心 candidate API 和 selector。
+
+预注册必须精确覆盖 20 个 seed 及全部帧范围，并绑定实际 state-dict SHA-256。文件内容、
+manifest、匿名帧、bundle manifest 和权重在运行前后都受摘要约束。truth、内容篡改、缺
+seed 和帧范围不足均失败关闭，不生成部分输出。
+
+输出保留原 v1 JSON、CSV 和中文报告，新增 A1 summary、逐帧 candidate、逐 seed selection，
+统一由 `SHA256SUMS` 覆盖。写盘记录是版本化稳定投影：核心 selector 仍消费完整 A1 DTO；
+跨运行输出排除随机 plan id、依赖随机身份的完整 plan payload 摘要和墙钟推理时间，同时
+保留 binding、版本、成本、需求、安全和原因码。该投影明确不是
+`A1PlanPublicationEvidence`。
+
+新增 6 项通过。合成 40 帧双跑逐文件一致并得到 20/20 首帧选择；零残差为 20/20
+`no_safe_discrete_intervention`。batch 合计 `20 passed`，核心 A1 加 batch 为
+`33 passed`。D3 全量收集 541 项，结果为 `540 passed, 1 skipped`；skip 为可选 OR-Tools。
+
+开放 P1 不变为运行后半链：正式策略仍需先产生 eligible/near-competitive 离散变化，main
+再发布严格新版本计划，D7 提供真实 ACK，D6 提供全部 binding 物理窗口和同 seed R0
+配对，最后才允许 production admission 审计。正式 100 帧没有重跑，仍为
+`0/20 eligible`。
 
 ## 正式 R0 滚动需求 P0
 
@@ -1489,3 +1558,99 @@ authority 仍未开放，不能通过降低 eligibility 或联盟连续性门限
 
 最终测试：单帧专项 `23 passed`；干预合同组合 `79 passed`；D3 全量
 `521 passed, 1 skipped`（522 项），唯一 skip 为可选 OR-Tools。
+
+## 53. A2 区域权属元数据 GAP 更新（2026-07-27）
+
+### 已关闭的 D3 缺口
+
+真实集成探针已证明：D4 区域提示可以被 D3 considered/applied，目标集合变化也能产生严格
+新执行计划，但新计划此前只携带 `active_plan_owner/owner_node_id`。缺少
+`authority_epoch/lease_expires_at_s` 时，D4 runtime adoption parser 必须失败关闭。
+
+D3 现从全部严格约束提取统一 `(owner_layer, owner_id, owner_epoch, lease)`。四项任一不
+一致，整份提示以 `regional_hint_authority_scope_mismatch` 拒绝并回退原规则规划。提示
+成功采用时，owner 系列字段保持同源，并成对写入 epoch/lease。提示拒绝或不存在时，不补写
+权属代次与租约。
+
+专项验证覆盖目标集合 2 到 3 的严格新计划、owner/id/lease 三类不一致、同权属无动作提示
+和无提示刷新。无动作提示现明确返回 `no_successor`，不再把旧身份称为后继计划。
+
+### 仍开放的跨模块 P1
+
+本项关闭的是 D3 计划元数据合同，不是 A2 物理采用。main 仍须发布真实新计划并形成同 tick
+runtime ACK；D4 仍须完成 owner ACK、必要 coalition ACK、租约内执行和物理窗口；D6 仍须
+对完整谱系只读审计。上述实物缺一项时，A2 状态继续为 unavailable 或 fail closed。
+
+该段是 20-seed successor 重跑前的通用采用条件。最新批次没有产生真实后继，当前状态以
+第 54 节“最新证据和开放 P1”为准。
+
+本次没有运行 AirSim，也没有新的物理指标、奖励或模型准入。AirSim 集成计划和实验报告已
+检查，接口与证据未变化，因此未修改。
+
+## 54. A2 严格后继计划 GAP 更新（2026-07-27）
+
+### 已关闭的 D3 P1
+
+早期 A2 独立配对批次只把 seed 1002、1007 识别为零动作区域建议，并把其余 18 个 seed
+的普通 D3 滚动重规划误归因给 A2。修正 successor 合同后的重跑证明，20/20 策略候选均为
+零动作。D3 保留来源计划身份符合幂等合同；旧 `regional_hint_applied` 把候选约束生效与
+后继计划发布混为一个状态。
+
+D3 现公开版本化后继结果合同。真实执行变化必须产生不同计划号、严格递增版本，并正确
+引用来源计划；任一条件不满足均失败关闭。执行签名不变时返回 `no_successor`，不刷新来源
+计划的权属代次和租约，也不把旧计划交给 D4 当作新计划。提示无效时返回
+`hint_rejected`。迟滞、stale 拒绝、幂等发布和默认 Hungarian 路径没有放宽。
+
+确定性测试使用两种资源规模复现零配额、无转移、无重规划请求条件，并重复消费同一提示；
+测试不写死 seed 或 5v5。严格新计划正例同时核对来源和后继身份字段。
+
+区域提示专项 `21 passed`；相关合同组合 `65 passed, 1 warning`；D3 全量收集 548 项，
+结果为 `547 passed, 1 skipped`。唯一 skip 为可选 OR-Tools。
+
+### 最新证据和开放 P1
+
+main 已按新合同重跑 seed 1000-1019。20/20 均有候选评估；非零配额、hold、
+`request_replan` 和 transfer 均为 0/20；可识别区域干预、实际 A2 采用及 A2/R0 收益审计
+均为 0/20。输出 SHA-256 为
+`ff3c10a089b6a94582451ae05d8a884af3a2bd7485acd4df0496442ea7e0ec55`。
+
+D3 successor 合同 P1 已关闭。当前开放 P1 是 A2 候选策略可辨识性和后续物理证据：策略
+必须产生安全投影后仍非零的区域动作，才可进入严格后继、运行确认和同键 R0 审计。普通
+D3 重规划不得计入 A2 采用，D3 也不得机械升版。
+
+本轮没有新增 D3 P0。没有运行 AirSim 或产生新的物理、收益、非退化和准入证据。
+`docs/AIRSIM_INTEGRATION_PLAN.md`、`docs/EXPERIMENT_REPORT.md` 与 M-to-N 专项已检查，
+本次不需要修改。
+
+## 55. A2 非零区域干预消费 GAP 更新（2026-07-27）
+
+### 已关闭的 D3 P1
+
+`hold` 此前仅作为 transfer 禁止条件和审计字段，不能证明 held region 的来源绑定被实际
+保持。D3 现将其落实到 hard-safe candidate mask：触及 hold 区域的候选只能是来源计划原
+边。原边已硬不可行时，整份提示以
+`regional_hint_held_assignment_infeasible` 拒绝。该分支继续保留规则回退和完整拒绝原因。
+
+后继合同已补齐 advisory id/version、source plan id/version、owner layer/id、epoch 和
+lease 的显式同域绑定。`request_replan` 不单独触发版本；执行签名不变时仍为
+`no_successor`。无来源承诺区域 hold 新目标和守恒非零 transfer 均已有严格后继正例。
+
+区域提示专项 `25 passed`；D3 全量为 `551 passed, 1 skipped`（552 项）。没有新增 P0。
+
+### 仍开放的跨模块 P1
+
+main 的未落盘探针当前只有 15/20 safe/auditable。五个失败 seed 的
+`d3_successor_plan_missing` 不是 D3 版本故障：其中 seed 1000 先无执行变化，后因 held
+来源边硬失效而拒绝。D4 策略应选择无来源承诺区域，或生成满足守恒、备用和承诺保护的
+非零 transfer；不得要求 D3 保留硬失效边。
+
+正式关闭仍需持久化 20-seed advisory/consumption/plan/guidance envelope、owner ACK、
+租约内 runtime ACK、完整物理窗口和同键 R0。上述字段由 main/D4/D6 提供，不属于 D3
+模块内可补造证据。现有正式 20-seed 0/20 结果和 SHA-256 保持不变。
+
+D4-D3 runtime ACK 集成专项当前还被 D6
+`_validate_a3_pairing_inventory_output` 未定义的 `NameError` 阻断。6 个用例均未进入
+D3-D4 合同断言。该项归 D6/main 集成修复，不重开 D3 模块内 P1。
+
+本轮未改变 AirSim DTO、episode、M-to-N 需求槽或控制链；AirSim 集成计划、实验报告和
+M-to-N 专项检查后无需更新。

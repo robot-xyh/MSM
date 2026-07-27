@@ -147,3 +147,10 @@ AirSim 接入边界已检查，本轮未运行 AirSim，也未生成生产 ACK�
 `ALGORITHM_AND_IMPLEMENTATION.md` 第 51 节，原则见 `MODULE_PRINCIPLES_CN.md`，真实 20-seed
 结果见 `EXPERIMENT_REPORT.md`，AirSim 边界见 `AIRSIM_INTEGRATION_PLAN.md`。离线干预专项
 `23 passed`，D3 全量 `419 passed, 1 skipped`。本轮未运行 AirSim 或生产 ACK。
+
+2026-07-27，D3 完成 A2 非零区域干预严格后继复核。`hold` 现冻结来源计划中仍硬安全的
+区域绑定；失效来源边以 `regional_hint_held_assignment_infeasible` 失败关闭。
+`request_replan` 单独且执行签名不变时不升版。三区域模块夹具验证守恒跨区转移、无承诺
+区域保持和完整 successor 权属谱系。区域提示专项 `25 passed`，D3 全量
+`551 passed, 1 skipped`（552 项）。算法见 `ALGORITHM_AND_IMPLEMENTATION.md` 第 66 节，
+原则见 `MODULE_PRINCIPLES_CN.md`。本轮未运行 AirSim，未产生运行确认或物理结果。

@@ -1,5 +1,18 @@
 # D3 集中式 Assignment Planner 计划
 
+## 2026-07-27 提交前复核
+
+1. [x] 复核 A1 预注册、候选选择、发布与生命周期证据的失败关闭边界。
+2. [x] 补齐序列化候选的计划版本谱系复算，拒绝跳版、回退版和绑定变化不升版。
+3. [x] 补齐复合真值、Actor 和 Object 身份键的在线输入隔离。
+4. [x] 复核区域提示的来源版本、严格后继、hold 硬不可达边、非等量规模和规则回退。
+5. [x] D3 全量验证：563 项中 `562 passed, 1 skipped`；关键文件语法和 scoped
+   diff 检查由本次提交前复核执行。
+
+剩余 P1 不在本轮扩大：A1 仍缺 clean commit 上的真实 20-seed 可辨识候选、main
+publication/runtime ACK、完整物理窗口和同键 R0；A2 仍缺持久化的非零安全区域动作及
+owner ACK。默认规则加 Hungarian、M-to-N 需求槽和生产权限未改变。
+
 ## 2026-07-26 A1/C1/F1 学习证据装配复核
 
 状态为“production 自我晋级入口已关闭，外部证据和装配器仍未具备”。
@@ -1930,3 +1943,224 @@ AirSim DTO、settings、episode 和控制接口未变化，`docs/AIRSIM_INTEGRAT
 后不修改。验收结果：单帧专项 `23 passed`，相关干预合同组合 `79 passed`，D3 全量
 `521 passed, 1 skipped`（522 项）。唯一 skip 为可选 OR-Tools；本次 batch 没有执行物理
 世界，也不形成 PPO、assist 或模型准入证据。
+
+## 56. A1 选择后阶段证据计划（2026-07-26）
+
+### 目标
+
+既有资格层已经能够在匿名规划历史中选择首个 eligible 帧。当前模块缺口位于选择之后：
+必须区分学习策略完成评估、代价修正被安全外壳接受、Hungarian 输出发生离散变化、计划被
+main 发布、运行时确认采用、后续物理窗口完整以及同 seed R0 配对可用。任何阶段都不能由
+前一阶段推断。
+
+### D3 已完成
+
+1. 增加内容寻址的 `A1InterventionPreRegistration`。预注册冻结模型摘要、seed、序号和
+   时间范围、代价修正上限、规则代价差上限、绑定变化上限和高威胁门限。在线真值、生产
+   权限固定为 false，规则回退和确定性安全外壳固定为 true。
+2. 增加 `A1InterventionCandidateEvidence`。它复用既有
+   `LearningInterventionFrameEvidence`，只补充代价接受、规则成本近似竞争、覆盖非退化、
+   严格升版和离散绑定变化证据，不再实现一套资格判断。
+3. 增加确定性 `A1InterventionSelectionDecision`。历史必须按序号和时间同时严格递增，
+   selector 只选预注册范围内首个安全离散变化；没有候选时失败关闭。
+4. 增加 `A1PlanPublicationEvidence`。main 总线 envelope 的 topic、source、schema、
+   序号、发布时间和完整 runtime payload 必须与选中 `AssignmentPlan` 一致。
+5. 增加 `A1InterventionLifecycleEvidence`。装配器复用既有
+   `AssignmentPlanRuntimeAckEvidence` 和 `RuntimePlanWindowRewardEvidence`，分别记录
+   发布、运行确认、全部 binding 物理窗口和全部 binding R0 配对状态。
+6. 所有 DTO 均采用严格字段集合和内容 SHA-256。候选、选择、发布、确认、窗口的计划号、
+   版本、来源总线序号和载荷摘要必须形成同一谱系。缺少任何后续输入时相应阶段保持 false。
+
+### main 与 D6 接线
+
+1. main 在实际评估前持久化预注册 DTO，并将同一 DTO 摘要写入本次 A1 执行清单。
+2. main 只对 `selected=true` 的处理计划生成新的版本化发布。发布后调用
+   `build_a1_plan_publication_evidence(...)`；未发布时直接保留
+   `selected_not_published`。
+3. main 将真实运行确认传给 `assemble_a1_intervention_lifecycle(...)`。确认必须来自现有
+   D3/D7 ACK 验证路径，不能由控制命令数量或日志存在性代替。
+4. D6 为选中计划的每个执行 binding 生成后续物理窗口，并在同 seed、同场景、同窗口口径
+   下提供 R0 配对。缺一个成员窗口时整份计划的 physical availability 仍为 false。
+5. D6 输出逐 seed 阶段漏斗，至少包含 evaluated、accepted、changed、published、ACK、
+   physical window 和 R0 pair；unavailable 不得补零。
+
+### 验收与开放项
+
+模块专项 `13 passed`。测试证明合同能在合成的三资源、两目标、一个双 primary 夹具中形成
+安全离散计划变化，并能逐级接入发布、确认、物理窗口和 R0 配对；它不证明真实策略可用。
+D3 全量收集 535 项，结果为 `534 passed, 1 skipped`；skip 为可选 OR-Tools。正式
+20-seed/100-frame 记录仍为 `0/20 eligible`，因此目前没有可发布的 A1 处理计划，也没有
+新的运行确认或物理结果。
+
+下一步由 main 接入上述 DTO，并在新的冻结策略确实产生 eligible 且近似竞争的离散变化后
+执行配对续跑。D3 不通过降低硬约束、需求覆盖、版本、M-to-N 原子性或真值隔离门限制造
+候选。`docs/AIRSIM_INTEGRATION_PLAN.md` 和 `docs/EXPERIMENT_REPORT.md` 已检查；本次未改
+AirSim 接口、未运行实验，因而不修改。
+
+## 57. A1 batch 到 selector 的模块内接线（2026-07-27）
+
+### 已完成
+
+1. 扩展现有隔离 batch CLI，增加可选 `--a1-preregistration`。未提供该参数时仍执行原 v1
+   路径并写出原四个文件，旧 schema、函数签名和控制台字段保持不变。
+2. 增加 `run_a1_isolated_intervention_batch(...)` 和
+   `load_a1_intervention_preregistration_file(...)`。main 只提供严格 batch manifest、
+   预注册 JSON 和空输出目录，不需要读取匿名帧或调用单帧 replay。
+3. batch 在同一次 replay 循环中把规则帧和处理帧交给核心 A1 candidate API，并核对新
+   eligibility 与 replay 已有 eligibility 的内容摘要。每个 seed 的完整 candidate 列表
+   交给核心 selector。
+4. 预注册必须覆盖完整 seed/帧作用域，并与实际 state-dict SHA-256 一致。输入文件在输出
+   前再次复核，防止运行中替换。
+5. 新模式保留 legacy JSON/CSV/中文报告，另写 A1 summary、逐帧 candidate、逐 seed
+   selection 和统一 `SHA256SUMS`。全部文件在 staging 目录完成后一次替换目标目录。
+6. A1 写盘 schema 使用稳定计划语义。随机 plan id、依赖随机身份的 plan payload SHA 和
+   墙钟推理耗时不参与跨运行摘要；资源目标 binding、版本、成本、需求、安全和拒绝原因
+   保持不变。
+
+### main 后续接线
+
+main 可直接调用：
+
+```text
+run_a1_isolated_intervention_batch(
+    strict_manifest,
+    preregistration_json,
+    empty_output_directory,
+)
+```
+
+返回的 `selection_contract` 给出 selected/no-safe seed 数。逐 seed 文件给出选中序号、
+时间、稳定 candidate 摘要和处理 binding 摘要。main 只能据此安排后续 paired runtime；
+不能把隔离摘要直接标成在线计划发布。
+
+若后续真实运行生成同一业务 binding 的严格新版本 `AssignmentPlan`，main 再调用
+`build_a1_plan_publication_evidence(...)` 绑定实际总线 envelope，随后接入 ACK 和 D6
+物理窗口。当前入口固定 `publish=false`、runtime ACK=false、physical window=false、
+R0 pair=false 和 production admission=false。
+
+### 验收
+
+新增 6 项覆盖合成双帧首选、独立重跑确定性、零 eligible、真值、预注册篡改、seed 和帧
+作用域。旧 batch 14 项保持通过，batch 合计 `20 passed`，核心 A1 与 batch 合计
+`33 passed`。D3 全量为 `540 passed, 1 skipped`（541 项），唯一 skip 为可选 OR-Tools。
+
+本项关闭 main 到 D3 selector 之间的模块内生产入口缺口。实际 A1 计划发布、runtime ACK、
+物理窗口、同 seed R0 配对和 production admission 仍是跨模块开放项。AirSim DTO、episode
+和控制路径未改变；相关 AirSim 和实验文档检查后无需更新。
+
+## 58. A2 区域提示权属元数据闭合（2026-07-27）
+
+### 已完成
+
+1. 在区域提示候选图生效前，从全部已解析约束提取
+   `(owner_layer, owner_id, owner_epoch, lease_expires_at_s)`。
+2. 一份提示只允许一个统一四元组。多区域 owner、epoch 或 lease 不一致时，整份提示被
+   拒绝并使用原规则规划，不选择任一区域的值。
+3. 只有区域提示形成严格可执行后继且 `regional_hint_applied=true` 时，计划 metadata 才同步
+   `plan_owner/active_plan_owner/current_plan_owner`、owner node、
+   `authority_epoch` 和 `lease_expires_at_s`。
+4. 原来源计划、提示版本、时间、区域集合、租约、资源守恒、保护资源、迟滞和安全门控未
+   放宽。无提示和拒绝提示不获得新的 authority 字段。
+5. 评估刷新继续按执行签名决定是否保留原计划身份。无执行变化的有效提示只记录候选约束
+   已评估，明确返回无后继，并保留源计划的 epoch/lease；owner 真正变化仍按现有执行签名
+   严格升版。
+
+### 验收
+
+合成正例从两个目标扩展为三个目标，D3 产生严格 `version+1` 计划，并携带统一中心 owner、
+epoch 和 lease。三类不一致权属均失败关闭。同 owner 的无转移提示保持 evaluation refresh，
+并明确标记 `no_successor`；无提示刷新不获得 authority 字段。
+
+### 外层工作
+
+main 仍需用真实总线发布该严格新计划并形成 runtime assignment ACK。D4 仍需验证 owner
+ACK、必要 coalition ACK、执行中 lease 和后续物理窗口。D6 必须保持只读审计。本节不证明
+A2 物理采用、奖励可用或生产准入。
+
+该段是 successor 合同修正前的通用外层条件。2026-07-27 的最新 20-seed 重跑没有产生
+任何严格后继，当前状态以下一节的证据更新为准。
+
+本次没有改变 AirSim settings、actor、相机、检测、episode 或控制接口，也没有运行新的
+AirSim 实验。`docs/AIRSIM_INTEGRATION_PLAN.md` 和 `docs/EXPERIMENT_REPORT.md` 已检查，
+无需修改。
+
+## 59. A2 后继计划合同闭合（2026-07-27）
+
+### 根因
+
+早期批次只在 seed 1002、1007 暴露严格版本门拒绝，并把其余 18 个 seed 的普通 D3
+滚动重规划误归因给 A2。修正后重跑证明全部 20 个策略候选均为零动作。D3 因执行签名相同
+而保留源身份是正确行为；旧 `regional_hint_applied` 字段未区分“约束参与求解”和“后继
+计划发布”，使普通重规划被错误接入 A2 证据链。
+
+### 已完成
+
+1. 增加 `d3_regional_planning_hint_successor_v1` 后继结果合同。
+2. 独立记录候选约束生效状态和可执行后继状态。
+3. 严格后继必须同时满足不同 `plan_id`、递增 `version` 和正确 `previous_plan_id`。
+4. 执行签名不变时返回 `no_successor`，保持源身份、迟滞结果和源权属控制字段。
+5. 无效提示返回 `hint_rejected`；不通过机械升版生成 A2 采用证据。
+6. 确定性测试使用不同资源规模的零动作提示，不写死 seed、2v2 或 5v5。
+
+### 验收
+
+区域提示专项 `21 passed`；相关身份、规划证据和运行回执组合
+`65 passed, 1 warning`；D3 全量为 `547 passed, 1 skipped`（548 项）。唯一 skip 为可选
+OR-Tools，warning 为既有 Matplotlib 环境提示。语法和 D3 范围内 diff 检查通过。
+
+### 证据更新
+
+main 已按新合同完成 seed 1000-1019 重跑：
+
+- 候选评估记录：20/20；
+- 非零配额、hold、`request_replan` 或 transfer：0/20；
+- 可识别区域干预：0/20；
+- 实际 A2 采用：0/20；
+- A2/R0 收益审计：0/20；
+- 输出 SHA-256：
+  `ff3c10a089b6a94582451ae05d8a884af3a2bd7485acd4df0496442ea7e0ec55`。
+
+20 条无操作记录继续保留在审计分母。D3 的 `no_successor` 状态正确，不构成版本缺口。
+开放项转为 A2 策略可辨识性：候选必须在确定性安全投影后产生受约束非零干预。同期普通
+D3 重规划不能计作 A2 实际采用，且不得为提高采用率机械升版。
+
+本项不改变 AirSim DTO、episode 调度、M-to-N 求解或控制接口。AirSim 集成计划和实验报告
+已检查，无新物理证据可同步。
+
+## 60. A2 非零区域干预严格后继复核（2026-07-27）
+
+### D3 已完成
+
+1. `resource_quota_delta` 继续要求全区域守恒，并与逐边 transfer 净额完全一致。非零转移
+   只开放经过硬安全门、备用资源和来源承诺保护后的固定候选池。
+2. `hold` 从审计标志收紧为来源计划绑定约束。触及 hold 区域的目标或资源只能保留来源
+   计划原边；来源边已经硬不可行时拒绝整份提示，不允许继续执行失效绑定。
+3. `request_replan` 只要求本轮重新求解。执行签名不变时保留来源身份并返回
+   `no_successor`；不以重规划请求本身机械提升版本。
+4. 严格后继除新计划号、递增版本和正确前序计划外，显式绑定 advisory id/version、
+   source plan id/version、owner layer/id、epoch 和 lease。拒绝与无后继分支不暴露后继
+   owner/lease。
+5. 新增三区域对照：A→B 非零守恒转移改变 B 区绑定，C 区 hold 保留仍安全的来源边；另用
+   无来源承诺 C 区验证 hold 新目标、request-replan-only 无操作和 held edge 硬失效拒绝。
+
+### 验收
+
+区域提示专项 `25 passed`。D3 全量共收集 552 项，结果为
+`551 passed, 1 skipped`；skip 为未安装的可选 OR-Tools，另有 1 条既有 Matplotlib
+`Axes3D` 环境警告。测试均为模块确定性夹具，没有生成 AirSim、运行 ACK、owner ACK 或
+物理结果。
+
+### main 与 D4 后续输入
+
+1. D4 候选应优先选择无来源承诺且有明确保持需求的区域，或生成可通过守恒、reserve 和
+   protected commitment 检查的非零 transfer。不得把已硬失效的承诺边继续包装为 hold。
+2. main 必须传入稳定 advisory id/version、精确 source plan id/version、统一
+   owner/epoch/lease，并保存 advisory、D3 plan 和 D7 binding 的总线序号及 payload 摘要。
+3. D4 仍需提供 owner ACK、租约内运行确认和拒绝原因；D6 仍需同键 R0 物理窗口。缺任一
+   实物时，A2 采用或收益保持 unavailable。
+4. main 未落盘 20-seed 探针当前为 15/20 safe/auditable；五个失败 seed 保留
+   `d3_successor_plan_missing`。该探针应持久化后再进入正式证据，不得覆盖现有正式
+   0/20 批次。
+
+本项不修改 AirSim DTO、episode、M-to-N 需求槽或控制算法。AirSim 集成计划与实验报告
+已检查，无新运行证据可同步。

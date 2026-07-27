@@ -47,6 +47,7 @@ from .regional import (
 )
 from .regional_hint import (
     REGIONAL_PLANNING_HINT_SCHEMA_V1,
+    REGIONAL_PLANNING_HINT_SUCCESSOR_SCHEMA_V1,
     RegionalPlanningConstraint,
     RegionalPlanningHint,
     RegionalPlanningHintError,
@@ -80,8 +81,17 @@ class _WindowChangeBudget:
 
 
 @dataclass(frozen=True)
+class _RegionalHintAuthorityBinding:
+    owner_layer: str
+    owner_id: str
+    owner_epoch: int
+    lease_expires_at_s: float
+
+
+@dataclass(frozen=True)
 class _RegionalHintContext:
     hint: RegionalPlanningHint
+    authority: _RegionalHintAuthorityBinding
     constraint_by_region: Mapping[str, RegionalPlanningConstraint]
     resource_ids_by_region: Mapping[str, tuple[str, ...]]
     protected_resource_ids: frozenset[str]
@@ -127,6 +137,14 @@ _PLAN_ACTIVATION_CONTROL_KEYS = (
     "activation_state",
     "activation_at_s",
     "executable",
+)
+_REGIONAL_HINT_AUTHORITY_REFRESH_KEYS = (
+    *_PLAN_OWNER_CONTROL_KEYS,
+    "authority_epoch",
+    "lease_expires_at_s",
+)
+_REGIONAL_HINT_NO_SUCCESSOR_REASON = (
+    "regional_hint_no_executable_successor"
 )
 
 
@@ -416,6 +434,7 @@ class AssignmentPlanner:
         track_items = tuple(tracks)
         resource_items = tuple(resources)
         hint: RegionalPlanningHint | None = None
+        hint_context: _RegionalHintContext | None = None
         hint_rejection_reason: str | None = None
         hint_available = regional_planning_hint is not None
         try:
@@ -466,6 +485,7 @@ class AssignmentPlanner:
                 resources=resource_items,
                 raw_hint=regional_planning_hint,
                 hint=hint,
+                hint_context=hint_context,
                 applied=hint_available and hint_rejection_reason is None,
                 rejection_reason=hint_rejection_reason,
             )
@@ -2041,6 +2061,7 @@ class AssignmentPlanner:
                 raise RegionalPlanningHintError(
                     "regional_hint_expiry_exceeds_region_lease"
                 )
+        authority = self._regional_hint_authority_binding(hint)
         self._validate_regional_hint_previous_authority(
             previous_plan,
             constraint_by_region,
@@ -2162,6 +2183,7 @@ class AssignmentPlanner:
 
         return _RegionalHintContext(
             hint=hint,
+            authority=authority,
             constraint_by_region=constraint_by_region,
             resource_ids_by_region=resource_ids_by_region,
             protected_resource_ids=frozenset(protected_resource_ids),
@@ -2170,6 +2192,39 @@ class AssignmentPlanner:
                 route: tuple(sorted(set(resource_ids)))
                 for route, resource_ids in protected_cross.items()
             },
+        )
+
+    @staticmethod
+    def _regional_hint_authority_binding(
+        hint: RegionalPlanningHint,
+    ) -> _RegionalHintAuthorityBinding:
+        authority_bindings = {
+            (
+                constraint.owner_layer,
+                constraint.owner_id,
+                constraint.owner_epoch,
+                constraint.lease_expires_at_s,
+            )
+            for constraint in hint.constraints
+        }
+        if len(authority_bindings) != 1:
+            raise RegionalPlanningHintError(
+                "regional_hint_authority_scope_mismatch",
+                "one assignment plan cannot inherit inconsistent regional authority",
+            )
+        owner_layer, owner_id, owner_epoch, lease_expires_at_s = next(
+            iter(authority_bindings)
+        )
+        if owner_layer == "hold" or owner_id is None:
+            raise RegionalPlanningHintError(
+                "regional_hint_active_authority_required",
+                "an applied regional hint requires one active plan owner",
+            )
+        return _RegionalHintAuthorityBinding(
+            owner_layer=owner_layer,
+            owner_id=owner_id,
+            owner_epoch=owner_epoch,
+            lease_expires_at_s=lease_expires_at_s,
         )
 
     @staticmethod
@@ -2313,7 +2368,35 @@ class AssignmentPlanner:
             resource_id: index
             for index, resource_id in enumerate(matrix_result.resource_ids)
         }
+        target_row_by_id = {
+            target_id: index
+            for index, target_id in enumerate(matrix_result.target_ids)
+        }
         candidate_mask = matrix_result.hard_safe_candidate_mask
+        held_region_ids = frozenset(
+            region_id
+            for region_id, constraint in context.constraint_by_region.items()
+            if constraint.hold
+        )
+        held_source_assignment_edges = frozenset(
+            (target_id, resource_id)
+            for target_id, resource_id in context.protected_assignment_edges
+            if (
+                target_region_by_id.get(target_id) in held_region_ids
+                or resource_region_by_id.get(resource_id) in held_region_ids
+            )
+        )
+        for target_id, resource_id in held_source_assignment_edges:
+            row = target_row_by_id.get(target_id)
+            column = resource_index.get(resource_id)
+            if (
+                row is None
+                or column is None
+                or not candidate_mask[row, column]
+            ):
+                raise RegionalPlanningHintError(
+                    "regional_hint_held_assignment_infeasible"
+                )
 
         selected_ids_by_route: dict[tuple[str, str], tuple[str, ...]] = {}
         used_transfer_resource_ids: set[str] = set()
@@ -2382,6 +2465,7 @@ class AssignmentPlanner:
         breakdown_rows = [list(row) for row in matrix_result.breakdowns]
         reject_reason_rows = [list(row) for row in matrix_result.reject_reasons]
         newly_rejected = 0
+        hold_rejected = 0
         for target_index, target_id in enumerate(matrix_result.target_ids):
             track = tracks[target_index]
             target_region = target_region_by_id[target_id]
@@ -2392,7 +2476,17 @@ class AssignmentPlanner:
                     continue
                 resource = resources[resource_index_value]
                 resource_region = resource_region_by_id[resource_id]
-                if target_region == resource_region:
+                touches_held_region = (
+                    target_region in held_region_ids
+                    or resource_region in held_region_ids
+                )
+                if touches_held_region:
+                    allowed = (
+                        target_id,
+                        resource_id,
+                    ) in held_source_assignment_edges
+                    reject_reason = "regional_hint_hold_preserves_source_plan"
+                elif target_region == resource_region:
                     allowed = self.cost_model.region_compatible(track, resource)
                     reject_reason = "region_incompatible"
                 else:
@@ -2422,6 +2516,8 @@ class AssignmentPlanner:
                 breakdown["total"] = self.config.infeasible_penalty
                 breakdown_rows[target_index][resource_index_value] = breakdown
                 newly_rejected += 1
+                if touches_held_region:
+                    hold_rejected += 1
 
         reason_counts: dict[str, int] = {}
         for row in reject_reason_rows:
@@ -2462,6 +2558,14 @@ class AssignmentPlanner:
                 "regional_planning_hint_schema": REGIONAL_PLANNING_HINT_SCHEMA_V1,
                 "regional_hint_candidate_constraint_applied": True,
                 "regional_hint_candidate_new_reject_count": newly_rejected,
+                "regional_hint_hold_candidate_constraint_applied": bool(
+                    held_region_ids
+                ),
+                "regional_hint_hold_candidate_reject_count": hold_rejected,
+                "regional_hint_hold_region_ids": tuple(sorted(held_region_ids)),
+                "regional_hint_hold_source_assignment_edges": tuple(
+                    sorted(held_source_assignment_edges)
+                ),
                 "regional_hint_transfer_candidate_pools": transfer_records,
                 "candidate_edge_count": candidate_edge_count,
                 "candidate_full_edge_count": full_edge_count,
@@ -2485,6 +2589,7 @@ class AssignmentPlanner:
         resources: tuple[ResourceState, ...],
         raw_hint: RegionalPlanningHint | Mapping[str, Any] | None,
         hint: RegionalPlanningHint | None,
+        hint_context: _RegionalHintContext | None,
         applied: bool,
         rejection_reason: str | None,
     ) -> AssignmentPlan:
@@ -2576,11 +2681,29 @@ class AssignmentPlanner:
                 for route, allowed in allowance_by_route.items()
             ) and not (set(actual_by_route) - set(allowance_by_route))
 
+        authority_metadata: dict[str, object] = {}
+        if applied:
+            if hint_context is None:
+                raise RuntimeError(
+                    "applied regional hint has no validated authority context"
+                )
+            authority = hint_context.authority
+            authority_metadata = {
+                "plan_owner": authority.owner_layer,
+                "active_plan_owner": authority.owner_layer,
+                "owner_node_id": authority.owner_id,
+                "current_plan_owner": authority.owner_layer,
+                "current_plan_owner_node_id": authority.owner_id,
+                "authority_epoch": authority.owner_epoch,
+                "lease_expires_at_s": authority.lease_expires_at_s,
+            }
+
         metadata = {
             **dict(plan.metadata),
             "regional_planning_hint_schema": REGIONAL_PLANNING_HINT_SCHEMA_V1,
             "regional_hint_available": raw_hint is not None,
             "regional_hint_considered": raw_hint is not None,
+            "regional_hint_constraint_applied": bool(applied),
             "regional_hint_applied": bool(applied),
             "regional_hint_rejected": bool(raw_hint is not None and not applied),
             "regional_hint_advisory_id": advisory_id,
@@ -2617,6 +2740,11 @@ class AssignmentPlanner:
                     )
                 )
             ),
+            "regional_hint_request_replan_requested": bool(
+                hint is not None
+                and any(item.request_replan for item in hint.constraints)
+            ),
+            **authority_metadata,
         }
         return replace(plan, metadata=metadata)
 
@@ -2976,12 +3104,213 @@ class AssignmentPlanner:
             plan_execution_signature=plan_execution_signature,
             previous_execution_signature=previous_execution_signature,
         )
+        result = self._finalize_regional_hint_successor_contract(
+            result,
+            previous_plan=previous_plan,
+            execution_changed=(
+                previous_plan is None
+                or plan_execution_signature != previous_execution_signature
+            ),
+        )
         if publish:
             self._publish_plan(
                 result,
                 plan_execution_signature=plan_execution_signature,
             )
         return result
+
+    @staticmethod
+    def _finalize_regional_hint_successor_contract(
+        plan: AssignmentPlan,
+        *,
+        previous_plan: AssignmentPlan | None,
+        execution_changed: bool,
+    ) -> AssignmentPlan:
+        """Separate candidate-constraint use from executable-plan adoption.
+
+        A valid regional hint may be evaluated without changing executable
+        semantics. Such an evaluation remains an idempotent refresh of the
+        source plan and must not be exposed as a D3 successor plan.
+        """
+
+        metadata = dict(plan.metadata)
+        if not bool(metadata.get("regional_hint_available", False)):
+            return plan
+
+        constraint_applied = bool(
+            metadata.get("regional_hint_constraint_applied", False)
+        )
+        source_plan_id = metadata.get("regional_hint_source_plan_id")
+        source_plan_version = metadata.get(
+            "regional_hint_source_plan_version"
+        )
+        advisory_id = metadata.get("regional_hint_advisory_id")
+        advisory_version = metadata.get("regional_hint_advisory_version")
+        hold_region_ids = tuple(metadata.get("regional_hint_hold_region_ids", ()))
+        request_replan_region_ids = tuple(
+            metadata.get("regional_hint_request_replan_region_ids", ())
+        )
+        base_contract = {
+            "regional_hint_successor_schema": (
+                REGIONAL_PLANNING_HINT_SUCCESSOR_SCHEMA_V1
+            ),
+            "regional_hint_successor_advisory_id": advisory_id,
+            "regional_hint_successor_advisory_version": advisory_version,
+            "regional_hint_successor_source_plan_id": source_plan_id,
+            "regional_hint_successor_source_plan_version": (
+                source_plan_version
+            ),
+            "regional_hint_successor_hold_region_ids": hold_region_ids,
+            "regional_hint_successor_request_replan_region_ids": (
+                request_replan_region_ids
+            ),
+        }
+        empty_authority_contract = {
+            "regional_hint_successor_owner_layer": None,
+            "regional_hint_successor_owner_id": None,
+            "regional_hint_successor_owner_epoch": None,
+            "regional_hint_successor_lease_expires_at_s": None,
+        }
+        if not constraint_applied:
+            reason = (
+                metadata.get("regional_hint_fallback_reason")
+                or "regional_hint_rejected"
+            )
+            metadata.update(
+                {
+                    **base_contract,
+                    **empty_authority_contract,
+                    "regional_hint_applied": False,
+                    "regional_hint_rejected": True,
+                    "regional_hint_successor_state": "hint_rejected",
+                    "regional_hint_successor_plan_available": False,
+                    "regional_hint_successor_plan_id": None,
+                    "regional_hint_successor_plan_version": None,
+                    "regional_hint_successor_rejection_reason": reason,
+                }
+            )
+            return replace(plan, metadata=metadata)
+
+        if previous_plan is None:
+            raise RuntimeError(
+                "an applied regional hint requires one source plan"
+            )
+
+        if execution_changed:
+            owner_layer = metadata.get("plan_owner")
+            owner_id = metadata.get("owner_node_id")
+            owner_epoch = metadata.get("authority_epoch")
+            lease_expires_at_s = metadata.get("lease_expires_at_s")
+            if (
+                not isinstance(advisory_id, str)
+                or not advisory_id.strip()
+                or not isinstance(advisory_version, int)
+                or isinstance(advisory_version, bool)
+                or advisory_version <= 0
+                or source_plan_id != previous_plan.plan_id
+                or source_plan_version != previous_plan.version
+            ):
+                raise RuntimeError(
+                    "regional hint successor is missing advisory or source binding"
+                )
+            if (
+                not isinstance(owner_layer, str)
+                or not owner_layer.strip()
+                or not isinstance(owner_id, str)
+                or not owner_id.strip()
+                or not isinstance(owner_epoch, int)
+                or isinstance(owner_epoch, bool)
+                or owner_epoch < 0
+            ):
+                raise RuntimeError(
+                    "regional hint successor is missing owner or epoch binding"
+                )
+            try:
+                lease_value = float(lease_expires_at_s)
+            except (TypeError, ValueError) as error:
+                raise RuntimeError(
+                    "regional hint successor is missing lease binding"
+                ) from error
+            if not np.isfinite(lease_value) or lease_value <= plan.created_at:
+                raise RuntimeError(
+                    "regional hint successor lease is not live at publication"
+                )
+            if (
+                plan.plan_id == previous_plan.plan_id
+                or plan.version <= previous_plan.version
+                or plan.previous_plan_id != previous_plan.plan_id
+            ):
+                raise RuntimeError(
+                    "regional hint executable successor did not strictly "
+                    "advance plan identity"
+                )
+            metadata.update(
+                {
+                    **base_contract,
+                    "regional_hint_successor_owner_layer": owner_layer,
+                    "regional_hint_successor_owner_id": owner_id,
+                    "regional_hint_successor_owner_epoch": owner_epoch,
+                    "regional_hint_successor_lease_expires_at_s": lease_value,
+                    "regional_hint_applied": True,
+                    "regional_hint_rejected": False,
+                    "regional_hint_successor_state": "successor_published",
+                    "regional_hint_successor_plan_available": True,
+                    "regional_hint_successor_plan_id": plan.plan_id,
+                    "regional_hint_successor_plan_version": plan.version,
+                    "regional_hint_successor_rejection_reason": None,
+                }
+            )
+            return replace(plan, metadata=metadata)
+
+        if (
+            plan.plan_id != previous_plan.plan_id
+            or plan.version != previous_plan.version
+        ):
+            raise RuntimeError(
+                "regional hint no-op evaluation advanced plan identity"
+            )
+
+        # A no-op advisory may carry a newer lease or authority epoch for
+        # audit. Those control fields cannot refresh the executable source
+        # identity, so retain the source plan's values.
+        for key in _REGIONAL_HINT_AUTHORITY_REFRESH_KEYS:
+            if key in previous_plan.metadata:
+                metadata[key] = previous_plan.metadata[key]
+            else:
+                metadata.pop(key, None)
+        rejection_reasons = tuple(
+            dict.fromkeys(
+                (
+                    *tuple(
+                        metadata.get(
+                            "regional_hint_rejection_reasons",
+                            (),
+                        )
+                    ),
+                    _REGIONAL_HINT_NO_SUCCESSOR_REASON,
+                )
+            )
+        )
+        metadata.update(
+            {
+                **base_contract,
+                **empty_authority_contract,
+                "regional_hint_applied": False,
+                "regional_hint_rejected": True,
+                "regional_hint_fallback_reason": (
+                    _REGIONAL_HINT_NO_SUCCESSOR_REASON
+                ),
+                "regional_hint_rejection_reasons": rejection_reasons,
+                "regional_hint_successor_state": "no_successor",
+                "regional_hint_successor_plan_available": False,
+                "regional_hint_successor_plan_id": None,
+                "regional_hint_successor_plan_version": None,
+                "regional_hint_successor_rejection_reason": (
+                    _REGIONAL_HINT_NO_SUCCESSOR_REASON
+                ),
+            }
+        )
+        return replace(plan, metadata=metadata)
 
     def _full_plan_from_incremental_request(
         self,

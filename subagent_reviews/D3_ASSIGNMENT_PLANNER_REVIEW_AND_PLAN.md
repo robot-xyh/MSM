@@ -1,5 +1,16 @@
 # D3 中心化资源-目标分配综述及子方案
 
+## 2026-07-27 提交前复核
+
+当前 A1、隔离批量和区域提示实现可进入独立 D3 提交。新增复核确保序列化候选不能通过
+重算摘要伪造计划连续版本，复合真值/Actor/Object 身份字段不能进入在线候选选择。区域
+提示仍坚持来源版本、统一权属、租约、资源守恒、hold 原边硬安全和严格后继条件；无动作
+提示不机械升版。
+
+全量测试共 563 项，`562 passed, 1 skipped`。开放项仍是跨模块证据闭环：A1 的实际
+publication/runtime ACK/物理窗口与同键 R0，A2 的持久化非零安全动作、owner ACK 和物理
+非退化。当前实现不授予生产 assist、分配或控制权限。
+
 ## 2026-07-26 A1/C1/F1 证据装配复核
 
 main `d59352b` 要求学习 scope 在 episode 写盘前证明模型实际进入 assist。D3 此前关闭了
@@ -1529,3 +1540,157 @@ SHA-256 为 `c01b13fb5925d99078a3bb9505dc0f9511ec5ab700a432399d3ebe0fcfb55592`�
 `521 passed, 1 skipped`（522 项）。隔离批量重放合同正式闭合，但当前 development
 policy 没有跨过 Hungarian 离散边界。D3/D7 共同检查点不存在，A1、默认路径、PPO、
 assist、生产权限和物理结果仍未准入。
+
+## 57. A1 选择后证据复核（2026-07-26）
+
+现有 `learning_intervention_eligibility.py` 和 `isolated_intervention_batch.py` 已经负责
+匿名输入、真值隔离、安全资格和首个 eligible 帧选择。D3 本轮没有重写这些条件。新增
+`a1_intervention_selection.py` 消费既有资格证据，只处理预注册后的近似竞争选择、严格
+版本变化和后续运行事实装配。
+
+模块接口把七个状态分开：策略已评估、代价修正已接受、离散分配已变化、计划已发布、运行
+确认已取得、完整物理窗口可用、同 seed R0 配对可用。候选和选择对象不能携带发布、ACK
+或物理真值。发布对象必须由 main D3 总线实物构造；运行确认复用现有
+`AssignmentPlanRuntimeAckEvidence`；物理与配对状态复用现有
+`RuntimePlanWindowRewardEvidence`。每一级都绑定计划号、版本、来源总线序号和 payload
+摘要。
+
+近似竞争选择仍受确定性安全外壳约束。处理计划不得增加总需求缺口或高威胁目标需求缺口，
+不得越过 hard-safe candidate mask，不得重复资源或破坏 M-to-N 原子性。计划必须相对前序
+严格升版。规则成本基准下的绝对差、相对差、最大代价修正和最大绑定变化数均在评估前
+预注册。seed、序号、时间超出预注册范围时失败关闭。
+
+专项 `13 passed`。正例仅是三资源、两目标、一个双 primary 的模块夹具，用于证明有竞争帧
+可以形成安全离散变化以及后续阶段可独立装配。正式 20-seed/100-frame 输入没有重跑，既有
+结果仍为 20/20 `no_eligible_frame` 和逐 seed binding change 0。D3 全量收集 535 项，
+结果为 `534 passed, 1 skipped`，skip 为可选 OR-Tools。正式结果不能通过新 selector
+事后改写。
+
+main 尚需完成四项接线：在运行前持久化预注册；把选中处理计划按严格新版本发布到真实总线；
+将 D7/运行时 ACK 对回该发布；把 D6 为全部 binding 生成的物理窗口及同 seed R0 配对交给
+生命周期装配器。当前 policy 无选中帧时，这些阶段应全部保持 unavailable。production
+admission bundle 仍需另外绑定训练数据、切分、模型树和 D6 正式审计，不能用本次 DTO
+合同替代。
+
+`docs/AIRSIM_INTEGRATION_PLAN.md`、`docs/EXPERIMENT_REPORT.md` 和
+`D3_M_TO_N_ASSIGNMENT_AND_SCHEDULING_REVIEW.md` 已检查。本次未改变 AirSim 输入输出、
+未产生新实验结果，也未修改 M-to-N 求解或调度算法，因此不更新这三个文件。
+
+## 58. A1 隔离 batch 接线复核（2026-07-27）
+
+复核确认上一阶段的核心 A1 API 尚未被旧 batch 调用。main 虽可得到 eligibility 首帧，
+但无法在不复制 bundle、匿名帧和 replay 内部逻辑的条件下生成 A1 candidate 与 selection。
+D3 现扩展原 runner，以一个可选预注册文件打开 A1 模式。旧模式不带新参数，输出和 schema
+保持不变。
+
+新入口只执行一轮 replay。每帧使用 replay 已产生的规则帧和处理帧调用核心 candidate
+评估器，并核对 eligibility 内容摘要。每 seed 的候选序列继续由核心 selector 决策。batch
+没有引入调用方 eligibility、candidate accepted 或 selected 布尔。
+
+预注册文件与实际模型强绑定。seed 必须精确为 `1000-1019`，序号和时间必须覆盖 manifest
+全部帧，policy artifact SHA 必须等于 bundle state-dict。输入在输出前后复核，任一摘要
+变化时不发布 staging 目录。
+
+完整核心 A1 DTO 含运行内随机计划号及实测推理时间，不能直接形成确定性批量制品。新写盘
+schema 使用稳定投影。它保留 candidate 阶段、成本、需求缺口、版本、规则/处理 binding、
+拒绝原因和预注册谱系，排除随机计划身份及其 payload 摘要。核心选择发生在投影之前。
+稳定投影只能作为 paired runtime 的检查点证据，不能声称计划已发布。
+
+输出文件为 legacy result/CSV/中文报告、A1 result/candidates/selections 和统一校验清单。
+main 的公开调用为：
+
+```text
+run_a1_isolated_intervention_batch(
+    manifest_path,
+    preregistration_path,
+    output_dir,
+)
+```
+
+新增 6 项通过：双帧合成正例两次独立输出一致，20/20 选择首帧；零残差 20/20 失败关闭；
+truth、预注册篡改、seed 和帧作用域均拒绝。batch 共 `20 passed`，A1 相关合计
+`33 passed`，D3 全量 `540 passed, 1 skipped`（541 项）。
+
+本项只关闭模块内 batch-to-selector 接线。main 仍须把未来选中业务 binding 转成实际严格
+升版计划并提供真实总线 envelope；D7 ACK、D6 physical window/R0 pair 和 production
+admission 仍开放。当前正式 20-seed/100-frame 为 `0/20 eligible`，没有可发布处理计划。
+AirSim 集成计划、实验报告和 M-to-N 专项已检查，本次无需更新。
+
+## 59. A2 权属传播复核（2026-07-27）
+
+main 的正向探针定位到 D3 与 D4 之间的明确合同缺口：D3 已采用有效区域提示并生成严格新
+计划，但计划 metadata 没有 authority epoch 和 lease，D4 无法证明该计划仍处于提示来源
+权属范围内。D4 的失败关闭结论正确，不能在 D4 侧用默认值补齐。
+
+D3 已把权属统一性加入区域提示严格 context。全部区域约束必须共享 owner layer、owner id、
+epoch 和 lease。任一差异都拒绝整份提示；D3 不从多个地区任取一个值。成功采用时，
+`plan_owner`、`active_plan_owner`、`current_plan_owner`、owner node、epoch 和 lease
+来自同一已验证四元组。D3 发布节点字段保持原值。
+
+测试用目标新增触发真实执行签名变化和严格升版，验证新 metadata 完整。owner、epoch、
+lease 三类不一致均回退规则规划。相同 owner 的无动作提示不被 epoch/lease 审计字段强制
+升版，并明确返回无后继；无提示刷新不获得新权属字段。
+
+复核结论限于 D3 合同。当前没有新的真实总线 ACK、owner ACK、coalition member ACK、
+租约内物理窗口或配对规则基线，A2 不能标记为实际采用完成。main/D4/D6 应在下一次集成
+探针中消费该新计划，不应从本次单元测试推断物理结果。
+
+该段记录 successor 重跑前的接口状态。新批次没有可消费的严格后继，当前证据和后续动作
+以第 60 节为准。
+
+`docs/AIRSIM_INTEGRATION_PLAN.md`、`docs/EXPERIMENT_REPORT.md` 和 M-to-N 专项已检查。
+本次未改变 AirSim 接口、分配算法或 M-to-N 调度，也未运行新实验，因此无需更新。
+
+## 60. A2 后继身份复核（2026-07-27）
+
+早期开发批次只在 seed 1002、1007 识别出无动作建议。main 按修正后的 successor 合同
+重跑后确认：全部 20 个策略候选都没有配额变化、hold、跨区转移或重规划请求。原 18/20
+采用表象来自并行普通 D3 滚动重规划的错误归因。D3 求解结果与来源计划具有相同执行签名，
+保留同一身份是正确行为。
+
+D3 已把内部约束应用和可执行后继发布拆开。严格后继必须使用不同计划号、递增版本和正确
+来源引用。无执行变化时返回 `no_successor`、`successor_plan_available=false`，并保留
+来源计划的控制权属和租约。无效提示返回 `hint_rejected`。重复零动作提示继续幂等，不
+推进版本。
+
+区域提示专项 `21 passed`；相关身份、规划证据和运行回执组合
+`65 passed, 1 warning`；D3 全量 `547 passed, 1 skipped`（548 项）。
+
+main 重跑的正式开发证据为：候选评估 20/20，可识别区域干预 0/20，实际 A2 采用 0/20，
+A2/R0 收益审计 0/20。20 条记录均以
+`identifiable_regional_intervention_missing` 失败关闭。输出 SHA-256 为
+`ff3c10a089b6a94582451ae05d8a884af3a2bd7485acd4df0496442ea7e0ec55`。
+
+后续应修改 A2 策略候选，使其在确定性安全投影后产生可识别的非零配额、hold、
+`request_replan` 或 transfer，再建立严格后继和物理配对。D3 不修改版本合同，不机械升版，
+也不把同期普通规划变化归因给 A2。
+
+本次检查了 AirSim 集成计划、实验报告和 M-to-N 专项。代码没有改变 AirSim 消息、仿真
+场景、分配代价或多机需求槽，因此这些文档不更新。
+
+## 61. A2 非零区域干预消费复核（2026-07-27）
+
+D3 发现 `hold` 先前只阻止 transfer 触及区域，没有冻结该区域的来源绑定。当前实现已把
+hold 收紧为严格候选图约束：只保留来源计划中触及该区域且仍硬安全的边；新增、换绑和
+空闲资源重新使用均被阻断。来源边硬失效时返回
+`regional_hint_held_assignment_infeasible`，不恢复失效边。
+
+`request_replan` 保持触发语义。单独请求且执行签名不变时返回 `no_successor`，不推进版本。
+无来源承诺区域可以合法 hold 新进入目标并形成严格后继；守恒跨区 transfer 可以直接改变
+资源绑定。严格后继新增显式 advisory、source plan、owner、epoch 和 lease 字段。
+
+main 的不落盘 20-seed 探针为 15/20 safe/auditable。seed
+1000/1002/1007/1009/1013 的 `d3_successor_plan_missing` 保留。seed 1000 的
+`regional_hint_no_executable_successor` 和
+`regional_hint_held_assignment_infeasible` 均符合合同。D3 不通过放宽 hold 硬安全门
+追求 20/20。
+
+区域提示专项 `25 passed`；D3 全量收集 552 项，结果为
+`551 passed, 1 skipped`，另有 1 条既有 Matplotlib 警告。仍需 main/D4 提供持久化
+advisory/plan/binding envelope、owner ACK、运行租约确认和同键物理窗口。本轮未运行
+AirSim，AirSim 集成计划与实验报告检查后无需更新。
+
+补跑 D4-D3 runtime ACK 集成专项时，6 个用例均在 fixture 初始化阶段被 D6
+`strict_learning_adoption_audit.py` 的
+`NameError: _validate_a3_pairing_inventory_output is not defined` 阻断，尚未进入 D3-D4
+断言。该问题不在 D3 owned path，本轮未越权修改；需由 D6 owner 修复后再复跑。

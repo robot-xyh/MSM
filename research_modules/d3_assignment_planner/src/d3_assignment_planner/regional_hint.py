@@ -8,6 +8,9 @@ from typing import Any, Mapping
 
 
 REGIONAL_PLANNING_HINT_SCHEMA_V1 = "d3_regional_planning_hint_v1"
+REGIONAL_PLANNING_HINT_SUCCESSOR_SCHEMA_V1 = (
+    "d3_regional_planning_hint_successor_v1"
+)
 REGIONAL_HINT_OWNER_LAYERS = frozenset(
     {"center", "secondary", "distributed", "hold"}
 )

@@ -27,6 +27,15 @@ from typing import Any, get_args, get_origin, get_type_hints
 
 import numpy as np
 
+from .a1_intervention_selection import (
+    A1InterventionCandidateEvidence,
+    A1InterventionContractError,
+    A1InterventionPreRegistration,
+    A1InterventionSelectionDecision,
+    evaluate_a1_intervention_candidate,
+    select_a1_intervention_candidate,
+    validate_a1_intervention_preregistration,
+)
 from .learning_bundle import (
     MODEL_BUNDLE_MANIFEST_FILENAME,
     ModelBundleManifest,
@@ -54,8 +63,26 @@ ISOLATED_INTERVENTION_BATCH_RESULT_SCHEMA_V1 = (
 ISOLATED_INTERVENTION_BATCH_FRAME_SUMMARY_SCHEMA_V1 = (
     "d3.isolated-learning-intervention-batch-frame-summary.v1"
 )
+A1_ISOLATED_INTERVENTION_BATCH_RESULT_SCHEMA_V1 = (
+    "d3.a1-isolated-intervention-batch-result.v1"
+)
+A1_ISOLATED_INTERVENTION_CANDIDATE_SCHEMA_V1 = (
+    "d3.a1-isolated-intervention-candidate-evidence.v1"
+)
+A1_ISOLATED_INTERVENTION_CANDIDATE_INVENTORY_SCHEMA_V1 = (
+    "d3.a1-isolated-intervention-candidate-inventory.v1"
+)
+A1_ISOLATED_INTERVENTION_SELECTION_SCHEMA_V1 = (
+    "d3.a1-isolated-intervention-selection-decision.v1"
+)
+A1_ISOLATED_INTERVENTION_SELECTION_INVENTORY_SCHEMA_V1 = (
+    "d3.a1-isolated-intervention-selection-inventory.v1"
+)
 ISOLATED_INTERVENTION_BATCH_SCOPE = (
     "reserved-seed-first-eligible-selection-no-publication-no-authority"
+)
+A1_ISOLATED_INTERVENTION_BATCH_SCOPE = (
+    "preregistered-paired-evaluation-selection-no-publication-no-authority"
 )
 ISOLATED_INTERVENTION_BATCH_SEEDS_V1 = tuple(range(1000, 1020))
 
@@ -63,6 +90,9 @@ BATCH_RESULT_FILENAME = "isolated_intervention_batch.json"
 BATCH_PER_SEED_FILENAME = "isolated_intervention_per_seed.csv"
 BATCH_REPORT_FILENAME = "D3_ISOLATED_INTERVENTION_BATCH_REPORT_CN.md"
 BATCH_CHECKSUMS_FILENAME = "SHA256SUMS"
+A1_BATCH_RESULT_FILENAME = "a1_intervention_batch.json"
+A1_BATCH_CANDIDATES_FILENAME = "a1_intervention_candidates.json"
+A1_BATCH_SELECTIONS_FILENAME = "a1_intervention_selections.json"
 
 _SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 _COMMIT_PATTERN = re.compile(r"^[0-9a-f]{40}$")
@@ -90,6 +120,17 @@ _FORBIDDEN_INPUT_KEYS = frozenset(
         "intercept_success",
         "reward",
     }
+)
+_FORBIDDEN_TRUTH_KEY_MARKERS = (
+    "truth_entity",
+    "truth_id",
+    "truth_label",
+    "truth_position",
+    "truth_state",
+    "truth_velocity",
+)
+_IDENTITY_KEY_QUALIFIERS = frozenset(
+    {"alias", "aliases", "id", "ids", "name", "names"}
 )
 _TOP_LEVEL_FIELDS = frozenset(
     {
@@ -172,6 +213,17 @@ class IsolatedInterventionBatchManifest:
     seeds: tuple[IsolatedInterventionSeedManifest, ...]
     split: str = "test"
     schema_version: str = ISOLATED_INTERVENTION_BATCH_MANIFEST_SCHEMA_V1
+
+
+@dataclass(frozen=True, slots=True)
+class _IsolatedInterventionBatchExecution:
+    """One in-memory replay used by either the legacy or A1 writer."""
+
+    legacy_result: Mapping[str, Any]
+    legacy_csv_rows: tuple[Mapping[str, Any], ...]
+    a1_result: Mapping[str, Any] | None = None
+    a1_candidate_inventory: Mapping[str, Any] | None = None
+    a1_selection_inventory: Mapping[str, Any] | None = None
 
 
 def write_anonymous_planning_frame_evidence(
@@ -366,15 +418,90 @@ def load_isolated_intervention_batch_manifest(
     )
 
 
+def load_a1_intervention_preregistration_file(
+    path: str | Path,
+) -> A1InterventionPreRegistration:
+    """Load one strict, truth-free A1 preregistration JSON file."""
+
+    source = Path(path)
+    payload = _load_json_file(
+        source,
+        "a1_batch_preregistration_load_failed",
+    )
+    _assert_truth_free(payload)
+    _assert_all_finite(payload)
+    try:
+        return validate_a1_intervention_preregistration(
+            _mapping(payload, "a1_preregistration")
+        )
+    except A1InterventionContractError as exc:
+        _fail("a1_batch_preregistration_invalid", exc.code)
+
+
 def run_isolated_intervention_batch(
     manifest_path: str | Path,
     output_dir: str | Path,
 ) -> Mapping[str, Any]:
     """Replay every explicit frame and atomically publish four audit files."""
 
-    source_path = Path(manifest_path).resolve()
     output = Path(output_dir)
     _assert_output_target_empty(output)
+    execution = _execute_isolated_intervention_batch(manifest_path)
+    _write_batch_outputs_atomically(
+        output,
+        execution.legacy_result,
+        execution.legacy_csv_rows,
+    )
+    return execution.legacy_result
+
+
+def run_a1_isolated_intervention_batch(
+    manifest_path: str | Path,
+    preregistration_path: str | Path,
+    output_dir: str | Path,
+) -> Mapping[str, Any]:
+    """Replay once and emit deterministic A1 candidate/selection evidence."""
+
+    output = Path(output_dir)
+    _assert_output_target_empty(output)
+    registration_path = Path(preregistration_path).resolve()
+    registration_file_sha256 = _file_sha256(registration_path)
+    registration = load_a1_intervention_preregistration_file(
+        registration_path
+    )
+    execution = _execute_isolated_intervention_batch(
+        manifest_path,
+        a1_preregistration=registration,
+        a1_preregistration_path=registration_path,
+        a1_preregistration_file_sha256=registration_file_sha256,
+    )
+    if (
+        execution.a1_result is None
+        or execution.a1_candidate_inventory is None
+        or execution.a1_selection_inventory is None
+    ):
+        _fail("a1_batch_execution_output_missing")
+    _write_batch_outputs_atomically(
+        output,
+        execution.legacy_result,
+        execution.legacy_csv_rows,
+        a1_result=execution.a1_result,
+        a1_candidate_inventory=execution.a1_candidate_inventory,
+        a1_selection_inventory=execution.a1_selection_inventory,
+    )
+    return execution.a1_result
+
+
+def _execute_isolated_intervention_batch(
+    manifest_path: str | Path,
+    *,
+    a1_preregistration: A1InterventionPreRegistration | None = None,
+    a1_preregistration_path: Path | None = None,
+    a1_preregistration_file_sha256: str | None = None,
+) -> _IsolatedInterventionBatchExecution:
+    """Execute the strict replay once without writing any output."""
+
+    source_path = Path(manifest_path).resolve()
     manifest_file_sha256 = _file_sha256(source_path)
     manifest = load_isolated_intervention_batch_manifest(source_path)
     base_directory = source_path.parent
@@ -431,11 +558,33 @@ def run_isolated_intervention_batch(
         bundle_manifest_path.resolve(): manifest.bundle_manifest_sha256,
         state_dict_path.resolve(): bundle_manifest.state_dict_sha256,
     }
+    if a1_preregistration is not None:
+        if (
+            a1_preregistration_path is None
+            or a1_preregistration_file_sha256 is None
+        ):
+            _fail("a1_batch_preregistration_source_missing")
+        registration_path = a1_preregistration_path.resolve()
+        if registration_path in tracked_inputs:
+            _fail("batch_input_path_reused")
+        tracked_inputs[registration_path] = _sha256_text(
+            a1_preregistration_file_sha256,
+            "a1_preregistration_file_sha256",
+        )
+        _validate_a1_preregistration_scope(
+            registration=a1_preregistration,
+            manifest=manifest,
+            state_dict_sha256=bundle_manifest.state_dict_sha256,
+        )
     seed_results: list[dict[str, Any]] = []
     csv_rows: list[dict[str, Any]] = []
+    a1_candidate_records: list[dict[str, Any]] = []
+    a1_selection_records: list[dict[str, Any]] = []
     for seed_manifest in manifest.seeds:
         frame_results: list[dict[str, Any]] = []
         eligibility_records = []
+        a1_candidates = []
+        a1_stable_candidates: list[dict[str, Any]] = []
         for reference in seed_manifest.frames:
             frame_path = _resolve_explicit_path(
                 base_directory,
@@ -469,6 +618,34 @@ def run_isolated_intervention_batch(
             )
             frame_results.append(frame_summary)
             eligibility_records.append(replay.eligibility)
+            if a1_preregistration is not None:
+                try:
+                    candidate = evaluate_a1_intervention_candidate(
+                        preregistration=a1_preregistration,
+                        seed=seed_manifest.seed,
+                        sequence_index=reference.sequence_index,
+                        rule_frame=replay.rule_frame,
+                        treatment_frame=replay.treatment_frame,
+                    )
+                except A1InterventionContractError as exc:
+                    _fail("a1_batch_candidate_evaluation_failed", exc.code)
+                if (
+                    candidate.eligibility.content_sha256
+                    != replay.eligibility.content_sha256
+                ):
+                    _fail("a1_batch_eligibility_reuse_mismatch")
+                stable_candidate = _stable_a1_candidate_record(
+                    manifest=manifest,
+                    registration=a1_preregistration,
+                    reference=reference,
+                    replay=replay,
+                    frame_summary=frame_summary,
+                    seed=seed_manifest.seed,
+                    candidate=candidate,
+                )
+                a1_candidates.append(candidate)
+                a1_stable_candidates.append(stable_candidate)
+                a1_candidate_records.append(stable_candidate)
 
         from .learning_intervention_eligibility import (
             select_first_eligible_learning_intervention_frame,
@@ -549,6 +726,24 @@ def run_isolated_intervention_batch(
         }
         seed_results.append(seed_payload)
         csv_rows.append(_seed_csv_row(seed_payload))
+        if a1_preregistration is not None:
+            try:
+                decision = select_a1_intervention_candidate(
+                    preregistration=a1_preregistration,
+                    seed=seed_manifest.seed,
+                    candidates=a1_candidates,
+                )
+            except A1InterventionContractError as exc:
+                _fail("a1_batch_selection_failed", exc.code)
+            a1_selection_records.append(
+                _stable_a1_selection_record(
+                    manifest=manifest,
+                    registration=a1_preregistration,
+                    decision=decision,
+                    candidates=a1_candidates,
+                    stable_candidates=a1_stable_candidates,
+                )
+            )
 
     _verify_inputs_unchanged(tracked_inputs)
     result: dict[str, Any] = {
@@ -591,8 +786,423 @@ def run_isolated_intervention_batch(
     _assert_truth_free(result)
     _assert_all_finite(result)
     result["content_sha256"] = canonical_runtime_payload_sha256(result)
-    _write_batch_outputs_atomically(output, result, csv_rows)
-    return result
+    if a1_preregistration is None:
+        return _IsolatedInterventionBatchExecution(
+            legacy_result=result,
+            legacy_csv_rows=tuple(csv_rows),
+        )
+
+    candidate_inventory = _build_a1_candidate_inventory(
+        manifest=manifest,
+        preregistration=a1_preregistration,
+        records=a1_candidate_records,
+    )
+    selection_inventory = _build_a1_selection_inventory(
+        manifest=manifest,
+        preregistration=a1_preregistration,
+        records=a1_selection_records,
+    )
+    a1_result = _build_a1_batch_result(
+        manifest=manifest,
+        manifest_file_sha256=manifest_file_sha256,
+        preregistration=a1_preregistration,
+        preregistration_file_sha256=_required_text(
+            a1_preregistration_file_sha256,
+            "a1_preregistration_file_sha256",
+        ),
+        bundle_manifest=bundle_manifest,
+        legacy_result=result,
+        candidate_inventory=candidate_inventory,
+        selection_inventory=selection_inventory,
+    )
+    return _IsolatedInterventionBatchExecution(
+        legacy_result=result,
+        legacy_csv_rows=tuple(csv_rows),
+        a1_result=a1_result,
+        a1_candidate_inventory=candidate_inventory,
+        a1_selection_inventory=selection_inventory,
+    )
+
+
+def _validate_a1_preregistration_scope(
+    *,
+    registration: A1InterventionPreRegistration,
+    manifest: IsolatedInterventionBatchManifest,
+    state_dict_sha256: str,
+) -> None:
+    expected_seeds = tuple(item.seed for item in manifest.seeds)
+    if registration.evaluation_seeds != expected_seeds:
+        _fail("a1_batch_preregistration_seed_scope_mismatch")
+    if registration.policy_artifact_sha256 != state_dict_sha256:
+        _fail("a1_batch_preregistration_policy_mismatch")
+    for seed in manifest.seeds:
+        for frame in seed.frames:
+            if not (
+                registration.sequence_index_min
+                <= frame.sequence_index
+                <= registration.sequence_index_max
+                and registration.timestamp_s_min
+                <= frame.timestamp_s
+                <= registration.timestamp_s_max
+            ):
+                _fail("a1_batch_preregistration_frame_scope_mismatch")
+
+
+def _stable_a1_candidate_record(
+    *,
+    manifest: IsolatedInterventionBatchManifest,
+    registration: A1InterventionPreRegistration,
+    reference: IsolatedInterventionFrameReference,
+    replay: IsolatedLearningInterventionFrameReplay,
+    frame_summary: Mapping[str, Any],
+    seed: int,
+    candidate: A1InterventionCandidateEvidence,
+) -> dict[str, Any]:
+    """Project one exact candidate onto deterministic isolated-run semantics."""
+
+    evidence = candidate.eligibility
+    policy_payload = _stable_policy_evaluation_payload(replay)
+    values: dict[str, Any] = {
+        "schema_version": A1_ISOLATED_INTERVENTION_CANDIDATE_SCHEMA_V1,
+        "evidence_kind": "a1-isolated-intervention-candidate",
+        "batch_id": manifest.batch_id,
+        "registration_id": registration.registration_id,
+        "preregistration_sha256": registration.content_sha256,
+        "seed": seed,
+        "sequence_index": reference.sequence_index,
+        "timestamp_s": reference.timestamp_s,
+        "input_path": reference.path,
+        "input_file_sha256": reference.file_sha256,
+        "input_content_sha256": reference.content_sha256,
+        "stable_replay_sha256": frame_summary["replay_sha256"],
+        "stable_eligibility_sha256": frame_summary["evidence_sha256"],
+        "rule_binding_sha256": evidence.rule_binding_sha256,
+        "treatment_binding_sha256": evidence.treatment_binding_sha256,
+        "policy_evaluated": candidate.policy_evaluated,
+        "policy_evaluation_semantics_sha256": (
+            canonical_runtime_payload_sha256(policy_payload)
+        ),
+        "cost_correction_accepted": candidate.cost_correction_accepted,
+        "assignment_changed": candidate.assignment_changed,
+        "near_competitive": candidate.near_competitive,
+        "selected_for_paired_evaluation": (
+            candidate.selected_for_paired_evaluation
+        ),
+        "version_contract_valid": candidate.version_contract_valid,
+        "max_abs_cost_correction": candidate.max_abs_cost_correction,
+        "rule_basis_score": candidate.rule_basis_score,
+        "treatment_rule_basis_score": candidate.treatment_rule_basis_score,
+        "absolute_rule_cost_difference": (
+            candidate.absolute_rule_cost_difference
+        ),
+        "relative_rule_cost_difference": (
+            candidate.relative_rule_cost_difference
+        ),
+        "rule_unmet_demand_slots": candidate.rule_unmet_demand_slots,
+        "treatment_unmet_demand_slots": (
+            candidate.treatment_unmet_demand_slots
+        ),
+        "rule_unmet_high_threat_slots": (
+            candidate.rule_unmet_high_threat_slots
+        ),
+        "treatment_unmet_high_threat_slots": (
+            candidate.treatment_unmet_high_threat_slots
+        ),
+        "rule_plan_version": candidate.rule_plan_version,
+        "treatment_plan_version": candidate.treatment_plan_version,
+        "previous_plan_version": candidate.previous_plan_version,
+        "reason_codes": list(candidate.reason_codes),
+        "plan_published": False,
+        "runtime_ack": False,
+        "physical_window_available": False,
+        "r0_pair_available": False,
+        "normalization": {
+            "schema_version": "d3.a1-isolated-identity-normalization.v1",
+            "excluded_run_local_fields": [
+                "plan_id",
+                "plan_payload_sha256",
+                "candidate_runtime_content_sha256",
+                "learning_inference_elapsed_s",
+            ],
+            "binding_identity_preserved": True,
+            "runtime_publication_evidence": False,
+        },
+        "execution_boundary": _a1_execution_boundary(),
+    }
+    _assert_truth_free(values)
+    _assert_all_finite(values)
+    values["content_sha256"] = canonical_runtime_payload_sha256(values)
+    return values
+
+
+def _stable_policy_evaluation_payload(
+    replay: IsolatedLearningInterventionFrameReplay,
+) -> dict[str, Any]:
+    result = replay.treatment_frame.effective_matrix_result
+    metadata = {} if result is None else result.metadata
+    payload = {
+        "learning_residual_schema": metadata.get(
+            "learning_residual_schema"
+        ),
+        "learning_mode": metadata.get("learning_mode"),
+        "learning_formula": metadata.get("learning_formula"),
+        "learning_alpha": metadata.get("learning_alpha"),
+        "learning_candidate_action_count": metadata.get(
+            "learning_candidate_action_count"
+        ),
+        "learning_expected_previous_version": metadata.get(
+            "learning_expected_previous_version"
+        ),
+        "learning_current_plan_version": metadata.get(
+            "learning_current_plan_version"
+        ),
+        "learning_timeout_s": metadata.get("learning_timeout_s"),
+        "learning_confidence": metadata.get("learning_confidence"),
+        "learning_min_confidence": metadata.get(
+            "learning_min_confidence"
+        ),
+        "learning_distribution_is_ood": metadata.get(
+            "learning_distribution_is_ood"
+        ),
+        "learning_fallback_reason": metadata.get(
+            "learning_fallback_reason"
+        ),
+        "learning_applied": metadata.get("learning_applied"),
+        "bundle_manifest_sha256": replay.actual_bundle_manifest_sha256,
+        "bundle_state_dict_sha256": replay.bundle_state_dict_sha256,
+        "policy_version": replay.actual_policy_version,
+    }
+    _assert_truth_free(payload)
+    _assert_all_finite(payload)
+    return payload
+
+
+def _stable_a1_selection_record(
+    *,
+    manifest: IsolatedInterventionBatchManifest,
+    registration: A1InterventionPreRegistration,
+    decision: A1InterventionSelectionDecision,
+    candidates: Sequence[A1InterventionCandidateEvidence],
+    stable_candidates: Sequence[Mapping[str, Any]],
+) -> dict[str, Any]:
+    if len(candidates) != len(stable_candidates):
+        _fail("a1_batch_candidate_inventory_mismatch")
+    selected_index: int | None = None
+    if decision.selected:
+        for index, candidate in enumerate(candidates):
+            if (
+                candidate.content_sha256
+                == decision.selected_candidate_content_sha256
+            ):
+                selected_index = index
+                break
+        if selected_index is None:
+            _fail("a1_batch_selected_candidate_missing")
+    selected_candidate = (
+        None if selected_index is None else stable_candidates[selected_index]
+    )
+    stable_hashes = tuple(
+        _sha256_text(item["content_sha256"], "a1_candidate_content_sha256")
+        for item in stable_candidates
+    )
+    values: dict[str, Any] = {
+        "schema_version": A1_ISOLATED_INTERVENTION_SELECTION_SCHEMA_V1,
+        "evidence_kind": "a1-isolated-intervention-selection",
+        "batch_id": manifest.batch_id,
+        "registration_id": registration.registration_id,
+        "preregistration_sha256": registration.content_sha256,
+        "seed": decision.seed,
+        "candidate_count": len(stable_candidates),
+        "policy_evaluated_count": decision.policy_evaluated_count,
+        "cost_correction_accepted_count": (
+            decision.cost_correction_accepted_count
+        ),
+        "assignment_changed_count": decision.assignment_changed_count,
+        "near_competitive_count": decision.near_competitive_count,
+        "candidate_content_sha256s": list(stable_hashes),
+        "candidate_history_sha256": canonical_runtime_payload_sha256(
+            {
+                "registration_id": registration.registration_id,
+                "seed": decision.seed,
+                "candidate_content_sha256s": stable_hashes,
+            }
+        ),
+        "selected": decision.selected,
+        "reason": decision.reason,
+        "selected_candidate_content_sha256": (
+            None
+            if selected_candidate is None
+            else selected_candidate["content_sha256"]
+        ),
+        "selected_sequence_index": (
+            None
+            if selected_candidate is None
+            else selected_candidate["sequence_index"]
+        ),
+        "selected_timestamp_s": (
+            None
+            if selected_candidate is None
+            else selected_candidate["timestamp_s"]
+        ),
+        "selected_treatment_binding_sha256": (
+            None
+            if selected_candidate is None
+            else selected_candidate["treatment_binding_sha256"]
+        ),
+        "plan_published": False,
+        "runtime_ack": False,
+        "physical_window_available": False,
+        "r0_pair_available": False,
+        "normalization": {
+            "schema_version": "d3.a1-isolated-identity-normalization.v1",
+            "selection_uses_core_a1_decision": True,
+            "stable_candidate_hashes_replace_runtime_candidate_hashes": True,
+            "runtime_publication_evidence": False,
+        },
+        "execution_boundary": _a1_execution_boundary(),
+    }
+    _assert_truth_free(values)
+    _assert_all_finite(values)
+    values["content_sha256"] = canonical_runtime_payload_sha256(values)
+    return values
+
+
+def _build_a1_candidate_inventory(
+    *,
+    manifest: IsolatedInterventionBatchManifest,
+    preregistration: A1InterventionPreRegistration,
+    records: Sequence[Mapping[str, Any]],
+) -> dict[str, Any]:
+    values: dict[str, Any] = {
+        "schema_version": (
+            A1_ISOLATED_INTERVENTION_CANDIDATE_INVENTORY_SCHEMA_V1
+        ),
+        "batch_id": manifest.batch_id,
+        "registration_id": preregistration.registration_id,
+        "preregistration_sha256": preregistration.content_sha256,
+        "record_count": len(records),
+        "records": list(records),
+    }
+    _assert_truth_free(values)
+    _assert_all_finite(values)
+    values["content_sha256"] = canonical_runtime_payload_sha256(values)
+    return values
+
+
+def _build_a1_selection_inventory(
+    *,
+    manifest: IsolatedInterventionBatchManifest,
+    preregistration: A1InterventionPreRegistration,
+    records: Sequence[Mapping[str, Any]],
+) -> dict[str, Any]:
+    values: dict[str, Any] = {
+        "schema_version": (
+            A1_ISOLATED_INTERVENTION_SELECTION_INVENTORY_SCHEMA_V1
+        ),
+        "batch_id": manifest.batch_id,
+        "registration_id": preregistration.registration_id,
+        "preregistration_sha256": preregistration.content_sha256,
+        "record_count": len(records),
+        "records": list(records),
+    }
+    _assert_truth_free(values)
+    _assert_all_finite(values)
+    values["content_sha256"] = canonical_runtime_payload_sha256(values)
+    return values
+
+
+def _build_a1_batch_result(
+    *,
+    manifest: IsolatedInterventionBatchManifest,
+    manifest_file_sha256: str,
+    preregistration: A1InterventionPreRegistration,
+    preregistration_file_sha256: str,
+    bundle_manifest: ModelBundleManifest,
+    legacy_result: Mapping[str, Any],
+    candidate_inventory: Mapping[str, Any],
+    selection_inventory: Mapping[str, Any],
+) -> dict[str, Any]:
+    candidates = _strict_sequence(
+        candidate_inventory["records"],
+        "a1_candidate_records",
+    )
+    selections = _strict_sequence(
+        selection_inventory["records"],
+        "a1_selection_records",
+    )
+    values: dict[str, Any] = {
+        "schema_version": A1_ISOLATED_INTERVENTION_BATCH_RESULT_SCHEMA_V1,
+        "batch_scope": A1_ISOLATED_INTERVENTION_BATCH_SCOPE,
+        "batch_id": manifest.batch_id,
+        "evaluated_at": manifest.evaluated_at,
+        "input_manifest_sha256": manifest_file_sha256,
+        "legacy_batch_result_schema_version": legacy_result["schema_version"],
+        "legacy_batch_result_content_sha256": legacy_result["content_sha256"],
+        "preregistration": preregistration.to_dict(),
+        "preregistration_file_sha256": preregistration_file_sha256,
+        "bundle": {
+            "manifest_sha256": manifest.bundle_manifest_sha256,
+            "policy_version": manifest.policy_version,
+            "state_dict_sha256": bundle_manifest.state_dict_sha256,
+        },
+        "output_files": {
+            "legacy_result": BATCH_RESULT_FILENAME,
+            "legacy_per_seed": BATCH_PER_SEED_FILENAME,
+            "legacy_report": BATCH_REPORT_FILENAME,
+            "a1_result": A1_BATCH_RESULT_FILENAME,
+            "a1_candidates": A1_BATCH_CANDIDATES_FILENAME,
+            "a1_selections": A1_BATCH_SELECTIONS_FILENAME,
+            "checksums": BATCH_CHECKSUMS_FILENAME,
+        },
+        "candidate_contract": {
+            "candidate_count": len(candidates),
+            "policy_evaluated_count": sum(
+                item["policy_evaluated"] for item in candidates
+            ),
+            "cost_correction_accepted_count": sum(
+                item["cost_correction_accepted"] for item in candidates
+            ),
+            "assignment_changed_count": sum(
+                item["assignment_changed"] for item in candidates
+            ),
+            "near_competitive_count": sum(
+                item["near_competitive"] for item in candidates
+            ),
+            "selected_candidate_count": sum(
+                item["selected_for_paired_evaluation"]
+                for item in candidates
+            ),
+            "inventory_content_sha256": candidate_inventory[
+                "content_sha256"
+            ],
+        },
+        "selection_contract": {
+            "seed_count": len(selections),
+            "selected_seed_count": sum(
+                item["selected"] for item in selections
+            ),
+            "no_safe_discrete_intervention_seed_count": sum(
+                not item["selected"] for item in selections
+            ),
+            "inventory_content_sha256": selection_inventory[
+                "content_sha256"
+            ],
+        },
+        "execution_boundary": _a1_execution_boundary(),
+    }
+    _assert_truth_free(values)
+    _assert_all_finite(values)
+    values["content_sha256"] = canonical_runtime_payload_sha256(values)
+    return values
+
+
+def _a1_execution_boundary() -> dict[str, bool | int]:
+    return {
+        **_execution_boundary(),
+        "physical_window_available": False,
+        "r0_pair_available": False,
+        "production_admission_granted": False,
+    }
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -604,6 +1214,15 @@ def build_parser() -> argparse.ArgumentParser:
         )
     )
     parser.add_argument("--manifest", type=Path, required=True)
+    parser.add_argument(
+        "--a1-preregistration",
+        type=Path,
+        default=None,
+        help=(
+            "Optional strict A1 preregistration JSON. When present, emit "
+            "deterministic per-frame candidate and per-seed selection evidence."
+        ),
+    )
     parser.add_argument("--output", type=Path, required=True)
     return parser
 
@@ -613,12 +1232,12 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     args = build_parser().parse_args(argv)
     try:
-        result = run_isolated_intervention_batch(args.manifest, args.output)
-    except PairedInterventionContractError as exc:
-        raise SystemExit(f"{exc.code}: {exc}") from exc
-    print(
-        json.dumps(
-            {
+        if args.a1_preregistration is None:
+            result = run_isolated_intervention_batch(
+                args.manifest,
+                args.output,
+            )
+            console_payload = {
                 "batch_id": result["batch_id"],
                 "content_sha256": result["content_sha256"],
                 "eligible_seed_count": result["seed_contract"][
@@ -627,7 +1246,34 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "output": str(args.output),
                 "publish": False,
                 "production_authority": False,
-            },
+            }
+        else:
+            result = run_a1_isolated_intervention_batch(
+                args.manifest,
+                args.a1_preregistration,
+                args.output,
+            )
+            console_payload = {
+                "batch_id": result["batch_id"],
+                "schema_version": result["schema_version"],
+                "content_sha256": result["content_sha256"],
+                "selected_seed_count": result["selection_contract"][
+                    "selected_seed_count"
+                ],
+                "output": str(args.output),
+                "candidate_file": A1_BATCH_CANDIDATES_FILENAME,
+                "selection_file": A1_BATCH_SELECTIONS_FILENAME,
+                "checksum_file": BATCH_CHECKSUMS_FILENAME,
+                "publish": False,
+                "runtime_ack": False,
+                "physical_window_available": False,
+                "production_authority": False,
+            }
+    except PairedInterventionContractError as exc:
+        raise SystemExit(f"{exc.code}: {exc}") from exc
+    print(
+        json.dumps(
+            console_payload,
             ensure_ascii=True,
             sort_keys=True,
         )
@@ -820,7 +1466,20 @@ def _write_batch_outputs_atomically(
     output: Path,
     result: Mapping[str, Any],
     csv_rows: Sequence[Mapping[str, Any]],
+    *,
+    a1_result: Mapping[str, Any] | None = None,
+    a1_candidate_inventory: Mapping[str, Any] | None = None,
+    a1_selection_inventory: Mapping[str, Any] | None = None,
 ) -> None:
+    a1_values = (
+        a1_result,
+        a1_candidate_inventory,
+        a1_selection_inventory,
+    )
+    if any(value is not None for value in a1_values) and not all(
+        value is not None for value in a1_values
+    ):
+        _fail("a1_batch_output_inventory_partial")
     output_parent = output.parent
     output_parent.mkdir(parents=True, exist_ok=True)
     staging = Path(
@@ -837,11 +1496,26 @@ def _write_batch_outputs_atomically(
             encoding="utf-8",
             newline="\n",
         )
-        checksum_names = (
+        checksum_names: tuple[str, ...] = (
             BATCH_RESULT_FILENAME,
             BATCH_PER_SEED_FILENAME,
             BATCH_REPORT_FILENAME,
         )
+        if a1_result is not None:
+            _write_json(staging / A1_BATCH_RESULT_FILENAME, a1_result)
+            _write_json(
+                staging / A1_BATCH_CANDIDATES_FILENAME,
+                a1_candidate_inventory,
+            )
+            _write_json(
+                staging / A1_BATCH_SELECTIONS_FILENAME,
+                a1_selection_inventory,
+            )
+            checksum_names += (
+                A1_BATCH_RESULT_FILENAME,
+                A1_BATCH_CANDIDATES_FILENAME,
+                A1_BATCH_SELECTIONS_FILENAME,
+            )
         checksum_text = "".join(
             f"{_file_sha256(staging / name)}  {name}\n"
             for name in checksum_names
@@ -1168,7 +1842,7 @@ def _assert_truth_free(
     if isinstance(value, Mapping):
         for key, item in value.items():
             normalized = str(key).strip().lower()
-            if normalized in _FORBIDDEN_INPUT_KEYS:
+            if _is_forbidden_input_key(normalized):
                 _fail("batch_forbidden_input_key", f"{path}.{key}")
             _assert_truth_free(
                 item,
@@ -1181,6 +1855,19 @@ def _assert_truth_free(
                 item,
                 f"{path}[{index}]",
             )
+
+
+def _is_forbidden_input_key(key: str) -> bool:
+    normalized = str(key).strip().lower()
+    if normalized in _FORBIDDEN_INPUT_KEYS or normalized.startswith("truth_"):
+        return True
+    if any(marker in normalized for marker in _FORBIDDEN_TRUTH_KEY_MARKERS):
+        return True
+    parts = frozenset(part for part in normalized.split("_") if part)
+    return bool(
+        parts.intersection({"actor", "object"})
+        and parts.intersection(_IDENTITY_KEY_QUALIFIERS)
+    )
 
 
 def _assert_all_finite(value: Any, path: str = "$") -> None:
@@ -1294,6 +1981,15 @@ def _fail(code: str, message: str | None = None) -> None:
 
 
 __all__ = [
+    "A1_BATCH_CANDIDATES_FILENAME",
+    "A1_BATCH_RESULT_FILENAME",
+    "A1_BATCH_SELECTIONS_FILENAME",
+    "A1_ISOLATED_INTERVENTION_BATCH_RESULT_SCHEMA_V1",
+    "A1_ISOLATED_INTERVENTION_BATCH_SCOPE",
+    "A1_ISOLATED_INTERVENTION_CANDIDATE_INVENTORY_SCHEMA_V1",
+    "A1_ISOLATED_INTERVENTION_CANDIDATE_SCHEMA_V1",
+    "A1_ISOLATED_INTERVENTION_SELECTION_INVENTORY_SCHEMA_V1",
+    "A1_ISOLATED_INTERVENTION_SELECTION_SCHEMA_V1",
     "ANONYMOUS_PLANNING_FRAME_FILE_SCHEMA_V1",
     "BATCH_CHECKSUMS_FILENAME",
     "BATCH_PER_SEED_FILENAME",
@@ -1307,8 +2003,10 @@ __all__ = [
     "IsolatedInterventionBatchManifest",
     "IsolatedInterventionFrameReference",
     "IsolatedInterventionSeedManifest",
+    "load_a1_intervention_preregistration_file",
     "load_isolated_intervention_batch_manifest",
     "main",
+    "run_a1_isolated_intervention_batch",
     "run_isolated_intervention_batch",
     "write_anonymous_planning_frame_evidence",
 ]

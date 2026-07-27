@@ -6,6 +6,25 @@
 > `docs/MODULE_PRINCIPLES_CN.md` 和根目录系统汇总同步编写。本文区分默认主线、
 > 已实现辅助能力、可选离线对照和未实现能力，不把计划项写成已完成能力。
 
+## 2026-07-27 提交前合同复核
+
+A1 候选验证增加两层派生检查。第一层递归识别复合真值和仿真实体身份键，使污染帧只产生
+失败关闭候选。第二层复算计划版本谱系：
+
+\[
+v_{\mathrm{rule}},v_{\mathrm{treatment}}
+\in\{v_{\mathrm{previous}},v_{\mathrm{previous}}+1\}
+\]
+
+若处理组改变目标-资源绑定且版本合同有效，则
+\(v_{\mathrm{treatment}}=v_{\mathrm{previous}}+1\)。该检查在读取序列化证据时重复执行，
+因此修改字段后重算 SHA-256 仍不能伪造连续版本。
+
+区域提示复核保持既有结论：过时来源、权属不一致、租约无效和 held 来源边硬不可达均整体
+回退规则候选图；无执行变化不升版；非等量规模由输入矩阵和需求槽决定。专项与全量回归
+通过。D3 全量共 563 项，结果为 `562 passed, 1 skipped`；本轮未运行 AirSim 或物理
+episode。
+
 ## 正向准入
 
 `d59352b` 的正式学习 scope 在 episode 写盘前要求所声明模型实际解析为 assist。D3
@@ -3292,3 +3311,447 @@ assignment/需求摘要引用不一致及 coalition metadata 篡改。
 
 单帧专项结果为 `23 passed`；batch、单帧、资格和原离线执行组合为 `79 passed`。D3 全量
 为 `521 passed, 1 skipped`（522 项），skip 为可选 OR-Tools。
+
+## 62. A1 选择后阶段证据实现（2026-07-26）
+
+### 62.1 与既有资格层的关系
+
+`a1_intervention_selection.py` 不重新判断匿名输入、前序计划、模型是否作用、硬候选边、
+版本、需求槽和 M-to-N 全有或全无。这些判据继续由
+`evaluate_learning_intervention_candidate_frame(...)` 产生
+`LearningInterventionFrameEvidence`。A1 候选评估先调用该函数，再计算预注册实验所需的
+二级选择和后续阶段证据。
+
+既有资格证据允许两类输入进入代价接受判断：`eligible`，以及安全外壳已通过但
+`binding_unchanged`。保留后一类是为了区分“学习代价已被接受”和“Hungarian 离散输出已
+变化”。其余 reason code 均视为安全外壳拒绝。
+
+### 62.2 预注册与候选选择
+
+`A1InterventionPreRegistration` 固定：
+
+- 实验标识和版本、冻结策略 SHA-256、评估 seed；
+- 帧序号和规划时间范围；
+- 最大绝对代价修正；
+- 两份计划在规则成本基准下的最大绝对和相对差；
+- 最大离散绑定变化数及高威胁门限。
+
+注册标识和内容摘要由上述字段确定。`online_truth_allowed=false`、
+`production_authority_granted=false`、`rule_fallback_required=true` 和
+`deterministic_safety_shell_required=true` 是不可修改合同。
+
+对规则计划 \(P_r\) 和处理计划 \(P_t\)，二者都用规则矩阵 \(C_{\text{rule}}\) 重评分：
+
+\[
+J_{\text{rule}}(P)=
+\sum_{(i,j)\in P}C_{\text{rule},ij}
++\sum_j u_j(P)c^{\text{unassigned}}_j
+\]
+
+其中 \(u_j(P)\) 是目标未满足的需求槽数。若处理计划增加总未满足槽或高威胁目标未满足槽，
+代价修正被拒绝。规则代价差定义为：
+
+\[
+\Delta J =
+\left|J_{\text{rule}}(P_t)-J_{\text{rule}}(P_r)\right|,
+\qquad
+\Delta J_{\text{rel}} =
+\frac{\Delta J}{\max(|J_{\text{rule}}(P_r)|,10^{-12})}
+\]
+
+处理计划只有在以下条件同时成立时进入 paired evaluation：
+
+1. 既有资格安全状态允许，策略完成评估且没有真值、回退、分布外或非有限污染；
+2. 最大代价修正未超过预注册上限；
+3. 需求覆盖和高威胁覆盖不退化；
+4. 绑定变化数大于零且不超过预注册上限；
+5. \(\Delta J\) 和 \(\Delta J_{\text{rel}}\) 均在预注册近似竞争范围内；
+6. 处理计划相对前序计划严格升一版，assignment 中的版本一致；
+7. seed、序号和时间位于预注册范围，处理计划至少含一个可执行 binding。
+
+`select_a1_intervention_candidate(...)` 要求候选历史的序号和时间分别严格递增，并返回首个
+满足上述条件的候选。无候选时状态为 `no_safe_discrete_intervention`。候选 history 摘要
+绑定预注册、seed 和全部候选内容摘要，保证相同输入确定复现。
+
+### 62.3 发布证据
+
+`build_a1_plan_publication_evidence(...)` 消费选中 `AssignmentPlan` 和 main 的原始总线
+envelope。envelope 只能使用 `modules.d3.assignment_plan`、来源 `D3` 和正整数序号。
+发布时间不得早于计划创建时间。runtime payload 必须完整包含时间、计划号、版本、创建
+时间、assignment/target/resource 数、逐 assignment 绑定与联盟字段、未分配全局航迹、
+求解器和 metadata。
+
+函数先用现有 `validated_assignment_plan_payload_sha256(...)` 验证 D3 计划，再重建预期
+runtime payload。任一字段、版本、schema、来源、序号或摘要不一致均拒绝。该对象只证明
+计划已经从 main 总线发布，不证明 D7 接收或控制采用。
+
+### 62.4 运行确认与物理窗口
+
+`assemble_a1_intervention_lifecycle(...)` 将选择、候选、计划和可选后续证据连接为同一谱系。
+运行确认必须是已构造的 `AssignmentPlanRuntimeAckEvidence`，且满足：
+
+- plan id、version 和 schema 与选中计划一致；
+- 来源计划总线序号和 runtime payload SHA-256 与发布证据一致；
+- 既有 ACK 验证器接受全部 binding；
+- `runtime_learning_applied_ack_available=true`。
+
+物理窗口继续使用 `RuntimePlanWindowRewardEvidence`。每个窗口的资源、全局航迹、计划、
+来源发布、运行 ACK 摘要必须一致。同一 binding 不能重复。对于计划 binding 集合
+\(\mathcal{B}\)，完整物理窗口条件为：
+
+\[
+\mathcal{B}_{\text{window}}
+=\mathcal{B}_{\text{available}}
+=\mathcal{B}
+\]
+
+其中 available 要求 command、ACK applied 和 observed outcome 均可用。R0 配对还要求：
+
+\[
+\mathcal{B}_{R0}=\mathcal{B}
+\]
+
+缺发布时拒绝 ACK，缺 ACK 时拒绝窗口。部分窗口可以保留计数和摘要，但
+`physical_window_available=false`。全部物理窗口可用而 R0 不完整时，状态停留在
+`physical_window_available_waiting_r0_pair`。该合同不生成反事实、因果奖励或模型晋级
+结论。
+
+### 62.5 阶段状态
+
+生命周期依次记录：
+
+```text
+policy evaluated
+  -> cost correction accepted
+  -> assignment changed
+  -> plan published
+  -> runtime ACK
+  -> complete physical window
+  -> complete same-seed R0 pair
+```
+
+前三级来自选中候选且必须全部为真；后四级只能由对应实物装配。稳定状态包括
+`selected_not_published`、`published_waiting_runtime_ack`、
+`runtime_ack_waiting_complete_physical_window`、
+`physical_window_available_waiting_r0_pair` 和 `r0_pair_available`。候选与选择 DTO
+固定声明发布、ACK 和物理窗口为 false，序列化后伪造任一阶段都会被拒绝。
+
+### 62.6 验证与证据边界
+
+新增 `13` 项专项测试。合成正例为三资源、两目标和一个双 primary 目标。学习残差在既有
+安全掩码内改变连续代价，规则与处理计划都满足容量和需求合同，最终形成三个资源的离散
+binding 变化。测试还覆盖无真值选择、确定性首帧、无竞争帧失败关闭、重复资源、硬禁边、
+旧版本、绑定变化上限、发布载荷篡改、ACK、物理窗口、R0 配对、缺字段和伪造阶段。D3
+全量收集 535 项，结果为 `534 passed, 1 skipped`，skip 为可选 OR-Tools。
+
+该正例是模块合同夹具。正式 20-seed/100-frame 结果没有重新执行，仍为
+`0/20 eligible`、逐 seed binding change 为 0。当前代码只提供 D3 DTO、选择约束、发布
+验证和生命周期装配；main 尚未发布真实 A1 处理计划，D6 尚未提供完整物理窗口和同 seed
+R0 配对。默认规则加 Hungarian、M-to-N 需求槽、安全掩码、生产权限和 AirSim 接口均未
+改变。
+
+## 63. A1 隔离批处理装配（2026-07-27）
+
+### 63.1 入口
+
+原 CLI 增加可选参数：
+
+```bash
+PYTHONPATH=research_modules/d3_assignment_planner/src \
+python3 research_modules/d3_assignment_planner/scripts/run_isolated_intervention_batch.py \
+  --manifest <manifest.json> \
+  --a1-preregistration <preregistration.json> \
+  --output <empty-directory>
+```
+
+对应 Python API 为
+`run_a1_isolated_intervention_batch(manifest_path, preregistration_path, output_dir)`。
+不带预注册参数时，`run_isolated_intervention_batch(...)` 继续走原路径。原 batch result
+schema、CSV、中文报告、校验文件和 CLI JSON 字段不变。
+
+### 63.2 单次 replay 装配
+
+两个公开入口复用 `_execute_isolated_intervention_batch(...)`。公共核心先完成原 manifest、
+bundle、state-dict、匿名帧和输入变更检查。A1 模式在每次单帧 replay 后执行：
+
+```text
+replay.rule_frame + replay.treatment_frame
+                  |
+                  v
+evaluate_a1_intervention_candidate
+                  |
+                  +--> stable per-frame candidate projection
+                  |
+all candidates for one seed
+                  |
+                  v
+select_a1_intervention_candidate
+                  |
+                  +--> stable per-seed selection projection
+```
+
+candidate 内部生成的 `LearningInterventionFrameEvidence.content_sha256` 必须与
+`replay.eligibility.content_sha256` 一致。该检查保证新入口没有形成另一套资格实现。
+
+### 63.3 预注册约束
+
+预注册文件由 `load_a1_intervention_preregistration_file(...)` 使用核心严格 validator
+读取。额外 batch 条件为：
+
+1. `evaluation_seeds` 与 manifest 的 `1000-1019` 精确相等；
+2. 序号和时间上下界覆盖清单列出的每一帧；
+3. `policy_artifact_sha256` 等于实际 bundle state-dict SHA-256；
+4. 文件不含 truth、Actor、物理结果或 reward 字段；
+5. 预注册文件在 replay 前后 SHA-256 不变。
+
+作用域不完整属于输入合同错误，不输出 20 个 `registration_scope_mismatch` 记录。这样可
+避免调用方误把错误实验清单统计成策略拒绝。
+
+### 63.4 确定性投影
+
+核心 candidate 包含完整计划 payload 摘要和实测推理时间。隔离 planner 的新计划号由
+随机 UUID 生成，因此这些字段不适合作为跨进程 batch checksum。A1 batch 写盘 schema
+保留：
+
+- 策略评估、代价接受、assignment changed、near-competitive 和 selected 状态；
+- 规则基准成本、绝对/相对代价差、最大修正；
+- 总需求和高威胁需求缺口；
+- 前序、规则和处理计划版本；
+- 规则/处理 binding SHA-256、输入帧、replay 和资格稳定摘要；
+- reason code、预注册和 bundle 谱系。
+
+写盘时排除随机 plan id、完整 plan payload SHA-256、核心 candidate 运行内 SHA-256 和
+`learning_inference_elapsed_s`。投影中保存固定 normalization schema 和排除字段清单。
+核心 selector 在投影前运行，调用方不能根据投影自行改写选择。
+
+### 63.5 文件
+
+A1 模式原子生成七个文件，其中 `SHA256SUMS` 覆盖其余六个：
+
+```text
+isolated_intervention_batch.json
+isolated_intervention_per_seed.csv
+D3_ISOLATED_INTERVENTION_BATCH_REPORT_CN.md
+a1_intervention_batch.json
+a1_intervention_candidates.json
+a1_intervention_selections.json
+SHA256SUMS
+```
+
+`a1_intervention_batch.json` 绑定 legacy result、预注册文件、bundle 和两个 A1 inventory
+摘要。candidate inventory 按 seed、sequence 顺序保存逐帧记录；selection inventory
+固定每 seed 一条。全部权限字段为 false。
+
+### 63.6 验证
+
+合成正例使用 20 seed、每 seed 2 帧、三资源、两目标和一个双 primary 目标。两次独立
+运行的七个文件逐字节一致，20/20 seed 都选择序号 0、时间 1.0 秒的首个安全离散变化。
+零残差夹具 20/20 返回 `no_safe_discrete_intervention`，没有补选。
+
+负例覆盖预注册 truth 字段、内容篡改、缺一个 seed 和未覆盖第二帧。新增 6 项，原 batch
+14 项保持通过，batch 合计 `20 passed`；核心 A1 与 batch 合计 `33 passed`。D3 全量为
+`540 passed, 1 skipped`（541 项），skip 为可选 OR-Tools。
+
+本次没有运行正式 20-seed/100-frame 数据，既有 `0/20 eligible` 不变。输出只关闭
+batch-to-selector 模块内接线；计划发布、ACK、物理窗口、R0 配对和 admission 仍不可用。
+
+## 64. 区域提示到计划权属绑定（2026-07-27）
+
+### 64.1 单一权属判定
+
+对已解析的区域约束集合 \(\mathcal{C}\)，D3 构造：
+
+\[
+\mathcal{A} =
+\{(l_c, o_c, e_c, t_c^{lease}) \mid c \in \mathcal{C}\}
+\]
+
+其中 \(l_c\) 为 owner layer，\(o_c\) 为 owner id，\(e_c\) 为 authority epoch，
+\(t_c^{lease}\) 为租约截止时刻。只有 \(|\mathcal{A}|=1\)，且 owner 为活动节点时，提示
+才具备写入一份顶层计划的权属条件。集合大小大于 1 返回
+`regional_hint_authority_scope_mismatch`；hold/no-owner 返回
+`regional_hint_active_authority_required`。
+
+该检查在逐区域租约有效性之后执行。已经过期的单区租约仍返回
+`regional_hint_region_lease_expired`，提示 expiry 超出单区 lease 仍返回
+`regional_hint_expiry_exceeds_region_lease`。这样保留原有故障定位，同时阻断多个各自
+有效但互不一致的权属被合并为一份计划。
+
+### 64.2 元数据传播
+
+规划调用先构造严格 `_RegionalHintContext`。context 保存统一权属与原候选约束。候选求解、
+迟滞、身份承诺、需求槽和版本化目标库存完成后，只有提示形成严格可执行后继且
+`regional_hint_applied=true` 时才加入：
+
+```text
+plan_owner = owner_layer
+active_plan_owner = owner_layer
+current_plan_owner = owner_layer
+owner_node_id = owner_id
+current_plan_owner_node_id = owner_id
+authority_epoch = owner_epoch
+lease_expires_at_s = lease_expires_at_s
+```
+
+`source_node_id` 继续表示 D3 消息发布节点，不被改成权属节点。现有 runtime ACK 验证器从
+计划 metadata 和 ACK 同时读取 owner、epoch、lease，并检查 ACK 时刻早于 lease。提示拒绝
+时重新运行无提示规则候选；提示合法但没有形成新执行语义时保留来源计划的权属控制字段。
+
+### 64.3 计划身份
+
+owner layer/id 已属于执行签名。owner 改变时计划必须严格升版。epoch 和 lease 用于同一
+执行计划的权属有效期核对，不单独进入执行签名。相同 owner 且绑定不变时，提示可形成
+evaluation refresh，但后继状态为 `no_successor`，且不在原计划身份上刷新控制租约或权属
+代次。无提示刷新不新增 authority 字段。
+
+### 64.4 验证
+
+正例使用两个区域、三个资源，目标集合从两个增加到三个。统一中心权属提示打开一个受限
+跨区候选，输出严格新计划，并携带 owner、epoch、lease。负例分别修改第二个区域的 owner
+id、epoch 和未过期 lease，三者均整体拒绝。另有同 owner 零动作提示和无提示刷新。
+
+## 65. 区域提示后继结果合同（2026-07-27）
+
+### 65.1 根因
+
+A2 早期开发批次曾只把 seed 1002、1007 识别为 D4 版本门拒绝。修正 successor 合同后的
+20-seed 重跑证明，全部候选都满足：
+
+```text
+total_quota_delta = 0
+transfers = []
+request_replan = false
+```
+
+D3 最终执行签名没有变化，因此 `_finalize_identity()` 保留来源 `plan_id/version`。旧实现
+在身份最终判定之前写入 `regional_hint_applied=true`。该字段原本表示候选图约束已生效，
+main 却把同周期普通 D3 重规划作为严格后继和 A2 采用凭据。原 18/20 结论属于因果归因
+错误。问题位于结果语义，不在 UUID、版本计数器、迟滞或 Hungarian 求解器。
+
+### 65.2 判定过程
+
+`_finalize_regional_hint_successor_contract()` 在身份最终确定后执行：
+
+```text
+区域提示无效
+  -> successor_state = hint_rejected
+  -> successor_plan_available = false
+
+区域提示有效，执行签名变化
+  -> 校验 plan_id != source plan_id
+  -> 校验 plan_version > source plan_version
+  -> 校验 previous_plan_id == source plan_id
+  -> successor_state = successor_published
+
+区域提示有效，执行签名不变
+  -> 保留 source plan_id/version
+  -> 保留来源权属和租约控制字段
+  -> successor_state = no_successor
+  -> successor_plan_available = false
+```
+
+后继结果注释只修改审计字段；无后继分支把候选携带的权属刷新恢复为来源计划值。它不能
+反向改变资源绑定、联盟、所有者或授权语义。实现复用规划阶段已经计算的执行签名结果，
+不额外增加 200 对 200 热路径上的签名遍历。
+
+### 65.3 接口字段
+
+`regional_hint_constraint_applied` 表示严格提示约束参与了候选求解。
+`regional_hint_applied` 只在严格后继已形成时为 true。后继 schema、状态、来源身份、结果
+身份和拒绝原因均放在独立 `regional_hint_successor_*` 字段中。修正后的 main 已把
+`regional_hint_successor_plan_available=true` 作为后继链必要条件，并完成 20-seed
+重跑。兼容路径上的 `regional_hint_applied=false` 仍会对零动作建议失败关闭。
+
+### 65.4 保留行为
+
+该修复不改变候选成本、Hungarian/需求槽求解、迟滞阈值、强制重规划状态或 stale 检查。
+迟滞保留、零动作建议和幂等重复消费都返回无后继。真实执行变化仍按连续版本发布。若 A2
+实验需要更多实际采用样本，应调整策略候选或预注册选择，不能为同一执行计划机械升版。
+
+专项测试覆盖两种资源规模的零配额、无转移、无重规划请求，以及重复消费和严格后继正例。
+区域提示文件 `21 passed`；相关合同组合 `65 passed, 1 warning`；D3 全量
+`547 passed, 1 skipped`（548 项）。
+
+### 65.5 20-seed 重跑
+
+main 使用修正后的 successor 合同重跑 seed 1000-1019。每个 seed 均生成一条候选评估
+记录，但所有候选的资源配额增量为 0，hold 和 `request_replan` 均未触发，transfer 集合
+为空。结果为：
+
+```text
+candidate evaluation       20/20
+identifiable intervention   0/20
+actual A2 adoption          0/20
+same-key A2/R0 audit        0/20
+```
+
+每条候选以 `identifiable_regional_intervention_missing` 结束，不携带 successor、运行
+确认、owner ACK、联盟提交或物理窗口。输出 SHA-256 为
+`ff3c10a089b6a94582451ae05d8a884af3a2bd7485acd4df0496442ea7e0ec55`。
+
+下一轮 A2 策略必须输出可通过资源守恒、reserve、权属、租约和保护资源投影的非零区域动作。
+只有该动作实际改变 D3 执行签名，才可建立 successor。普通周期重规划与 A2 候选同时发生
+时，必须保持独立因果标识，不能用计划版本变化替代 A2 干预证据。
+
+## 66. 非零区域干预的严格消费（2026-07-27）
+
+### 66.1 保持约束
+
+设来源计划的目标-资源边集合为 \(E_s\)，hold 区域集合为 \(H\)。当前候选边
+\((t,r)\) 触及 hold 区域时，准入条件为：
+
+\[
+(t,r)\in E_s
+\quad\land\quad
+\operatorname{HardSafe}(t,r)=1
+\]
+
+因此 hold 不允许该区域新增、换绑或借出资源。来源边已经触发资源不可用、身份未提交、
+硬禁边或其他安全拒绝时，D3 返回
+`regional_hint_held_assignment_infeasible`，整份提示回退到无提示规则规划。D3 不把
+失效来源边重新加入候选，也不把该拒绝改写为采用。
+
+### 66.2 重规划请求
+
+`request_replan` 是重新求解请求和审计字段，不是独立的执行语义。D3 完成候选图约束、
+Hungarian 或需求槽求解、迟滞和身份承诺后，再比较完整执行签名。请求存在但签名未变化时：
+
+```text
+plan_id/version = source plan_id/version
+successor_state = no_successor
+successor_plan_available = false
+```
+
+无来源承诺的区域可以形成合法 hold 后继。例如新目标进入该区域时，规则基线会分配空闲
+资源，hold 候选则保持该目标未分配。未分配库存属于执行签名，因而结果严格升版。该路径
+不会保留任何已失效承诺。
+
+### 66.3 后继谱系
+
+严格后继必须同时满足：
+
+```text
+plan_id != source_plan_id
+plan_version > source_plan_version
+previous_plan_id == source_plan_id
+```
+
+后继合同还显式记录 advisory id/version、source plan id/version、owner layer/id、
+authority epoch、lease expiry、hold region 和 request-replan region。owner、epoch 或
+lease 缺失时失败关闭。无后继和拒绝分支的 successor owner/lease 为 null，防止调用方把
+候选权属误当成已发布权属。
+
+### 66.4 验证
+
+三区域正例同时施加 A→B 的一单位守恒转移和 C 区 hold。无提示规则基线无法用 A 区资源
+接替 B 区失效资源，并会把 C 区目标切换到更低成本资源；处理计划恢复 B 区绑定，同时保持
+C 区来源边，形成 `version+1` 严格后继。另一正例选择没有来源承诺的 C 区，新增目标保持
+未分配并形成严格后继。
+
+负例覆盖 request-replan-only 且签名不变、hold 来源边硬不可行、零动作和过时来源。
+区域提示专项 `25 passed`；D3 全量为 `551 passed, 1 skipped`（552 项）。以上均为模块
+合同验证，不含运行确认、所有者确认、物理窗口或 A2 收益。
+
+main 的未落盘探针当前为 15/20 safe/auditable。五个失败 seed 均保留
+`d3_successor_plan_missing`；seed 1000 的两个阶段分别为无可执行后继和 hold 来源边硬
+不可行。该结果说明策略应改选无承诺区域或安全非零 transfer，不能放宽 D3 安全拒绝。

@@ -9,6 +9,7 @@ import pytest
 
 from d3_assignment_planner import (
     REGIONAL_PLANNING_HINT_SCHEMA_V1,
+    REGIONAL_PLANNING_HINT_SUCCESSOR_SCHEMA_V1,
     AssignmentPlanner,
     LearningAssistConfig,
     LearningCostAssistant,
@@ -32,7 +33,11 @@ class _ZeroResidualPredictor:
         )
 
 
-def _planner(*, learning: bool = False) -> AssignmentPlanner:
+def _planner(
+    *,
+    learning: bool = False,
+    source_node_id: str = "d3_central",
+) -> AssignmentPlanner:
     assistant = None
     if learning:
         assistant = LearningCostAssistant(
@@ -48,6 +53,7 @@ def _planner(*, learning: bool = False) -> AssignmentPlanner:
             enable_hysteresis=False,
             max_candidate_edges_per_target=16,
             human_authorization_state="approved",
+            source_node_id=source_node_id,
         ),
         learning_assistant=assistant,
     )
@@ -166,6 +172,63 @@ def _hint_mapping(
     }
 
 
+def _no_transfer_hint_mapping(previous) -> dict[str, object]:
+    hint = _hint_mapping(previous)
+    for constraint in hint["constraints"]:  # type: ignore[union-attr]
+        constraint["resource_quota_delta"] = 0
+        constraint["request_replan"] = False
+    hint["transfer_allowances"] = []
+    return hint
+
+
+def _three_region_intervention_hint_mapping(previous) -> dict[str, object]:
+    hint = _hint_mapping(previous)
+    hint["constraints"].append(  # type: ignore[union-attr]
+        {
+            "region_id": "C",
+            "owner_id": "CENTER",
+            "owner_layer": "center",
+            "owner_epoch": previous.version,
+            "lease_expires_at_s": 10.0,
+            "source_plan_id": previous.plan_id,
+            "source_plan_version": previous.version,
+            "resource_quota_delta": 0,
+            "reserve_ratio": 0.0,
+            "hold": True,
+            "request_replan": True,
+        }
+    )
+    return hint
+
+
+def _uncommitted_region_hold_hint_mapping(previous) -> dict[str, object]:
+    hint = _three_region_intervention_hint_mapping(previous)
+    for constraint in hint["constraints"]:  # type: ignore[union-attr]
+        constraint["resource_quota_delta"] = 0
+        constraint["request_replan"] = constraint["region_id"] == "C"
+    hint["transfer_allowances"] = []
+    return hint
+
+
+def _three_region_intervention_inputs() -> tuple[
+    tuple[TargetTrack, ...],
+    tuple[ResourceState, ...],
+]:
+    tracks = (
+        _track("T-A", "A", 100.0),
+        _track("T-B", "B", 1_000.0),
+        _track("T-C", "C", 2_000.0),
+    )
+    resources = (
+        _resource("R-A0", "A", 90.0),
+        _resource("R-A1", "A", 980.0),
+        _resource("R-B0", "B", 990.0),
+        _resource("R-C0", "C", 1_990.0),
+        _resource("R-C1", "C", 2_500.0),
+    )
+    return tracks, resources
+
+
 def _assignment_pairs(plan) -> tuple[tuple[str, str], ...]:
     return tuple(sorted((item.target_id, item.resource_id) for item in plan.assignments))
 
@@ -262,6 +325,371 @@ def test_valid_hint_opens_a_real_bounded_cross_region_candidate_edge() -> None:
             "actual_resource_count": 1,
         },
     )
+
+
+def test_applied_hint_binds_new_execution_plan_to_uniform_authority() -> None:
+    planner = _planner()
+    tracks, resources = _baseline_inputs()
+    previous = planner.plan(tracks, resources, timestamp=0.0)
+    next_tracks = (*tracks, _track("T-B2", "B", 1_020.0))
+
+    plan = planner.plan(
+        next_tracks,
+        resources,
+        timestamp=1.0,
+        previous_plan=previous,
+        regional_planning_hint=_hint_mapping(previous),
+    )
+
+    assert plan.version == previous.version + 1
+    assert plan.plan_id != previous.plan_id
+    assert plan.metadata["execution_signature_changed"] is True
+    assert plan.metadata["regional_hint_constraint_applied"] is True
+    assert plan.metadata["regional_hint_applied"] is True
+    assert plan.metadata["regional_hint_rejected"] is False
+    assert plan.metadata["regional_hint_successor_schema"] == (
+        REGIONAL_PLANNING_HINT_SUCCESSOR_SCHEMA_V1
+    )
+    assert plan.metadata["regional_hint_successor_state"] == (
+        "successor_published"
+    )
+    assert plan.metadata["regional_hint_successor_plan_available"] is True
+    assert plan.metadata["regional_hint_successor_plan_id"] == plan.plan_id
+    assert plan.metadata["regional_hint_successor_plan_version"] == plan.version
+    assert plan.metadata["regional_hint_successor_source_plan_id"] == (
+        previous.plan_id
+    )
+    assert plan.metadata["regional_hint_successor_source_plan_version"] == (
+        previous.version
+    )
+    assert plan.metadata["regional_hint_successor_rejection_reason"] is None
+    assert plan.metadata["plan_owner"] == "center"
+    assert plan.metadata["active_plan_owner"] == "center"
+    assert plan.metadata["current_plan_owner"] == "center"
+    assert plan.metadata["owner_node_id"] == "CENTER"
+    assert plan.metadata["current_plan_owner_node_id"] == "CENTER"
+    assert plan.metadata["authority_epoch"] == previous.version
+    assert plan.metadata["lease_expires_at_s"] == pytest.approx(10.0)
+
+
+def test_nonzero_transfer_and_hold_produce_attributable_strict_successor() -> None:
+    planner = _planner(source_node_id="CENTER")
+    initial_tracks, initial_resources = _three_region_intervention_inputs()
+    previous = planner.plan(initial_tracks, initial_resources, timestamp=0.0)
+    assert _assignment_pairs(previous) == (
+        ("T-A", "R-A0"),
+        ("T-B", "R-B0"),
+        ("T-C", "R-C0"),
+    )
+
+    next_resources = (
+        initial_resources[0],
+        initial_resources[1],
+        _resource("R-B0", "B", 990.0, status="unavailable"),
+        _resource("R-C0", "C", 2_400.0),
+        _resource("R-C1", "C", 1_995.0),
+    )
+    rule_baseline = planner.plan(
+        initial_tracks,
+        next_resources,
+        timestamp=1.0,
+        previous_plan=previous,
+        publish=False,
+    )
+    assert ("T-B", "R-A1") not in _assignment_pairs(rule_baseline)
+    assert ("T-C", "R-C1") in _assignment_pairs(rule_baseline)
+
+    hint = _three_region_intervention_hint_mapping(previous)
+    successor = planner.plan(
+        initial_tracks,
+        next_resources,
+        timestamp=1.0,
+        previous_plan=previous,
+        regional_planning_hint=hint,
+    )
+
+    assert _assignment_pairs(successor) == (
+        ("T-A", "R-A0"),
+        ("T-B", "R-A1"),
+        ("T-C", "R-C0"),
+    )
+    assert successor.plan_id != previous.plan_id
+    assert successor.version == previous.version + 1
+    assert successor.previous_plan_id == previous.plan_id
+    assert successor.metadata["execution_signature_changed"] is True
+    assert successor.metadata["regional_hint_successor_state"] == (
+        "successor_published"
+    )
+    assert successor.metadata["regional_hint_successor_plan_available"] is True
+    assert successor.metadata["regional_hint_successor_advisory_id"] == (
+        "d4-advice-frame-0001"
+    )
+    assert successor.metadata["regional_hint_successor_advisory_version"] == 1
+    assert successor.metadata["regional_hint_successor_source_plan_id"] == (
+        previous.plan_id
+    )
+    assert successor.metadata[
+        "regional_hint_successor_source_plan_version"
+    ] == previous.version
+    assert successor.metadata["regional_hint_successor_owner_layer"] == "center"
+    assert successor.metadata["regional_hint_successor_owner_id"] == "CENTER"
+    assert successor.metadata["regional_hint_successor_owner_epoch"] == (
+        previous.version
+    )
+    assert successor.metadata[
+        "regional_hint_successor_lease_expires_at_s"
+    ] == pytest.approx(10.0)
+    assert successor.metadata["regional_hint_successor_hold_region_ids"] == (
+        "C",
+    )
+    assert successor.metadata[
+        "regional_hint_successor_request_replan_region_ids"
+    ] == ("A", "B", "C")
+    assert successor.metadata["regional_hint_hold_candidate_constraint_applied"] is True
+    assert successor.metadata["regional_hint_hold_source_assignment_edges"] == (
+        ("T-C", "R-C0"),
+    )
+    assert successor.metadata["regional_hint_hold_candidate_reject_count"] > 0
+    assert successor.metadata["regional_hint_actual_cross_region_resource_count"] == 1
+    assert successor.metadata["regional_hint_cross_region_limit_satisfied"] is True
+
+
+def test_hold_rejects_hint_when_source_assignment_is_no_longer_hard_safe() -> None:
+    planner = _planner(source_node_id="CENTER")
+    tracks, resources = _three_region_intervention_inputs()
+    previous = planner.plan(tracks, resources, timestamp=0.0)
+    next_resources = (
+        resources[0],
+        resources[1],
+        _resource("R-B0", "B", 990.0, status="unavailable"),
+        _resource("R-C0", "C", 1_990.0, status="unavailable"),
+        _resource("R-C1", "C", 1_995.0),
+    )
+    rule_baseline = planner.plan(
+        tracks,
+        next_resources,
+        timestamp=1.0,
+        previous_plan=previous,
+        publish=False,
+    )
+
+    result = planner.plan(
+        tracks,
+        next_resources,
+        timestamp=1.0,
+        previous_plan=previous,
+        regional_planning_hint=_three_region_intervention_hint_mapping(previous),
+    )
+
+    assert _assignment_pairs(result) == _assignment_pairs(rule_baseline)
+    assert result.metadata["regional_hint_constraint_applied"] is False
+    assert result.metadata["regional_hint_applied"] is False
+    assert result.metadata["regional_hint_successor_state"] == "hint_rejected"
+    assert result.metadata["regional_hint_successor_plan_available"] is False
+    assert result.metadata["regional_hint_fallback_reason"] == (
+        "regional_hint_held_assignment_infeasible"
+    )
+    assert result.metadata["regional_hint_successor_owner_id"] is None
+    assert result.metadata["regional_hint_successor_lease_expires_at_s"] is None
+
+
+@pytest.mark.parametrize(
+    ("field", "replacement"),
+    (
+        ("owner_id", "OTHER-CENTER"),
+        ("owner_epoch", 99),
+        ("lease_expires_at_s", 11.0),
+    ),
+)
+def test_inconsistent_regional_authority_rejects_whole_hint(
+    field: str,
+    replacement: object,
+) -> None:
+    planner = _planner()
+    tracks, resources = _baseline_inputs()
+    previous = planner.plan(tracks, resources, timestamp=0.0)
+    next_tracks = (*tracks, _track("T-B2", "B", 1_020.0))
+    baseline = planner.plan(
+        next_tracks,
+        resources,
+        timestamp=1.0,
+        previous_plan=previous,
+        publish=False,
+    )
+    hint = _hint_mapping(previous)
+    hint["constraints"][1][field] = replacement  # type: ignore[index]
+
+    plan = planner.plan(
+        next_tracks,
+        resources,
+        timestamp=1.0,
+        previous_plan=previous,
+        regional_planning_hint=hint,
+    )
+
+    assert _assignment_pairs(plan) == _assignment_pairs(baseline)
+    assert plan.total_cost == pytest.approx(baseline.total_cost)
+    assert plan.metadata["regional_hint_applied"] is False
+    assert plan.metadata["regional_hint_rejected"] is True
+    assert plan.metadata["regional_hint_fallback_reason"] == (
+        "regional_hint_authority_scope_mismatch"
+    )
+    assert plan.metadata["owner_node_id"] == "d3_central"
+    assert "authority_epoch" not in plan.metadata
+    assert "lease_expires_at_s" not in plan.metadata
+
+
+@pytest.mark.parametrize("extra_source_resources", (0, 3))
+def test_zero_delta_hint_returns_explicit_no_successor_without_identity_bump(
+    extra_source_resources: int,
+) -> None:
+    planner = _planner(source_node_id="CENTER")
+    tracks, resources = _baseline_inputs(
+        extra_source_resources=extra_source_resources
+    )
+    previous = planner.plan(tracks, resources, timestamp=0.0)
+    hint = _no_transfer_hint_mapping(previous)
+
+    plan = planner.plan(
+        tracks,
+        resources,
+        timestamp=1.0,
+        previous_plan=previous,
+        regional_planning_hint=hint,
+    )
+
+    assert plan.plan_id == previous.plan_id
+    assert plan.version == previous.version
+    assert plan.previous_plan_id == previous.previous_plan_id
+    assert plan.metadata["execution_signature_changed"] is False
+    assert plan.metadata["evaluation_refresh_only"] is True
+    assert plan.metadata["regional_hint_constraint_applied"] is True
+    assert plan.metadata["regional_hint_applied"] is False
+    assert plan.metadata["regional_hint_rejected"] is True
+    assert plan.metadata["regional_hint_fallback_reason"] == (
+        "regional_hint_no_executable_successor"
+    )
+    assert plan.metadata["regional_hint_successor_schema"] == (
+        REGIONAL_PLANNING_HINT_SUCCESSOR_SCHEMA_V1
+    )
+    assert plan.metadata["regional_hint_successor_state"] == "no_successor"
+    assert plan.metadata["regional_hint_successor_plan_available"] is False
+    assert plan.metadata["regional_hint_successor_plan_id"] is None
+    assert plan.metadata["regional_hint_successor_plan_version"] is None
+    assert plan.metadata["regional_hint_successor_rejection_reason"] == (
+        "regional_hint_no_executable_successor"
+    )
+    assert plan.metadata["owner_node_id"] == previous.metadata["owner_node_id"]
+    assert "authority_epoch" not in plan.metadata
+    assert "lease_expires_at_s" not in plan.metadata
+
+    repeated = planner.plan(
+        tracks,
+        resources,
+        timestamp=2.0,
+        previous_plan=plan,
+        regional_planning_hint=hint,
+    )
+    assert repeated.plan_id == previous.plan_id
+    assert repeated.version == previous.version
+    assert repeated.metadata["regional_hint_successor_state"] == "no_successor"
+    assert repeated.metadata["regional_hint_successor_plan_available"] is False
+
+
+def test_request_replan_only_noop_does_not_mechanically_advance_plan() -> None:
+    planner = _planner(source_node_id="CENTER")
+    tracks, resources = _baseline_inputs()
+    previous = planner.plan(tracks, resources, timestamp=0.0)
+    hint = _no_transfer_hint_mapping(previous)
+    hint["constraints"][0]["request_replan"] = True  # type: ignore[index]
+
+    result = planner.plan(
+        tracks,
+        resources,
+        timestamp=1.0,
+        previous_plan=previous,
+        regional_planning_hint=hint,
+    )
+
+    assert result.plan_id == previous.plan_id
+    assert result.version == previous.version
+    assert result.metadata["regional_hint_request_replan_requested"] is True
+    assert result.metadata["regional_hint_request_replan_region_ids"] == ("A",)
+    assert result.metadata["regional_hint_successor_state"] == "no_successor"
+    assert result.metadata["regional_hint_successor_plan_available"] is False
+    assert result.metadata["regional_hint_successor_owner_id"] is None
+
+
+def test_hold_without_source_commitment_can_form_attributable_successor() -> None:
+    planner = _planner(source_node_id="CENTER")
+    source_tracks = (
+        _track("T-A", "A", 100.0),
+        _track("T-B", "B", 1_000.0),
+    )
+    resources = (
+        _resource("R-A0", "A", 90.0),
+        _resource("R-A1", "A", 880.0),
+        _resource("R-B0", "B", 990.0),
+        _resource("R-C0", "C", 1_990.0),
+    )
+    previous = planner.plan(source_tracks, resources, timestamp=0.0)
+    next_tracks = (*source_tracks, _track("T-C", "C", 2_000.0))
+    rule_baseline = planner.plan(
+        next_tracks,
+        resources,
+        timestamp=1.0,
+        previous_plan=previous,
+        publish=False,
+    )
+    assert ("T-C", "R-C0") in _assignment_pairs(rule_baseline)
+
+    successor = planner.plan(
+        next_tracks,
+        resources,
+        timestamp=1.0,
+        previous_plan=previous,
+        regional_planning_hint=_uncommitted_region_hold_hint_mapping(previous),
+    )
+
+    assert ("T-C", "R-C0") not in _assignment_pairs(successor)
+    assert "T-C" in successor.unassigned_target_ids
+    assert successor.plan_id != previous.plan_id
+    assert successor.version == previous.version + 1
+    assert successor.previous_plan_id == previous.plan_id
+    assert successor.metadata["regional_hint_successor_state"] == (
+        "successor_published"
+    )
+    assert successor.metadata["regional_hint_successor_plan_available"] is True
+    assert successor.metadata["regional_hint_successor_hold_region_ids"] == (
+        "C",
+    )
+    assert successor.metadata[
+        "regional_hint_successor_request_replan_region_ids"
+    ] == ("C",)
+    assert successor.metadata["regional_hint_hold_source_assignment_edges"] == ()
+    assert successor.metadata["regional_hint_hold_candidate_reject_count"] > 0
+
+
+def test_no_hint_refresh_does_not_gain_authority_binding() -> None:
+    planner = _planner()
+    tracks, resources = _baseline_inputs()
+    previous = planner.plan(tracks, resources, timestamp=0.0)
+
+    plan = planner.plan(
+        tracks,
+        resources,
+        timestamp=1.0,
+        previous_plan=previous,
+    )
+
+    assert plan.plan_id == previous.plan_id
+    assert plan.version == previous.version
+    assert plan.metadata["execution_signature_changed"] is False
+    assert plan.metadata["evaluation_refresh_only"] is True
+    assert plan.metadata["regional_hint_applied"] is False
+    assert plan.metadata["owner_node_id"] == "d3_central"
+    assert "authority_epoch" not in plan.metadata
+    assert "lease_expires_at_s" not in plan.metadata
 
 
 @pytest.mark.parametrize(
