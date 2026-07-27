@@ -4,7 +4,8 @@ This module is a read-only D6 boundary. It authenticates one frozen D5 model,
 its held-out report, paired-shadow report, registry records, and the current
 runtime implementation. A passing result means only that the evidence bundle
 is internally consistent and meets the frozen audit profile. D6 never grants
-model promotion, G1 assist, control authority, or a default-path change.
+model promotion, G1 assist, control, assignment, failover, or a default-path
+change.
 """
 
 from __future__ import annotations
@@ -19,7 +20,7 @@ import re
 from typing import Any, Mapping, Sequence
 
 
-D5_G1_EXTERNAL_AUDIT_SCHEMA_VERSION = "d6.d5-g1-external-audit.v1"
+D5_G1_EXTERNAL_AUDIT_SCHEMA_VERSION = "d6.d5-g1-external-audit.v2"
 D5_G1_EXTERNAL_AUDIT_INPUT_SCHEMA_VERSION = (
     "d6.d5-g1-external-audit-input.v1"
 )
@@ -128,7 +129,7 @@ class D5G1ExternalAuditArtifact:
 
 @dataclass(frozen=True, slots=True)
 class D5G1ExternalAuditThresholds:
-    """Frozen thresholds used by the v1 pre-admission audit."""
+    """Frozen thresholds used by the formal pre-admission audit."""
 
     minimum_unseen_seed_count: int
     minimum_heldout_episode_count: int
@@ -470,6 +471,8 @@ def audit_d5_g1_external_evidence(
             "g1_assist_granted": False,
             "control_authority_granted": False,
             "default_path_change_granted": False,
+            "assignment_authority_granted": False,
+            "failover_authority_granted": False,
             "reason": (
                 "D6 only issues an evidence audit pass/fail; promotion and "
                 "runtime authority remain outside D6"
@@ -580,7 +583,7 @@ def render_d5_g1_external_audit_markdown(
         f"证据审计结果为 **{result.get('status')}**。",
         (
             "D6 只确认证据链是否通过，不授予模型晋级、G1 辅助权限、"
-            "控制权或默认路径变更。"
+            "控制权、默认路径变更、分配权或故障接管权。"
         ),
         "",
         "## 候选绑定",
@@ -632,6 +635,21 @@ def render_d5_g1_external_audit_markdown(
         (
             "- 扰动过程重新构建候选图："
             f"`{robustness.get('all_profiles_rebuilt_candidate_graph')}`。"
+        ),
+        "",
+        "## 未覆盖证据",
+        "",
+        (
+            "- 真实相机泛化：`unavailable`。输入只包含合成 held-out 和 "
+            "paired-shadow 证据。"
+        ),
+        (
+            "- 中心 global_track_id 绑定正确率：`unavailable`。输入只证明"
+            "零创建或换绑违规，不含中心绑定结果与离线真值配对。"
+        ),
+        (
+            "- 物理闭环结果：`unavailable`。输入不含导引、控制或物理"
+            "拦截结果记录。"
         ),
         "",
         "## 阻断项",
@@ -2128,6 +2146,29 @@ def _audit_limitations(
                 else None
             ),
             "profiles": profiles,
+        },
+        "unavailable_evidence": {
+            "real_camera_generalization": {
+                "availability": "unavailable",
+                "reason": (
+                    "input_contains_only_synthetic_heldout_and_"
+                    "paired_shadow_evidence"
+                ),
+            },
+            "center_global_track_id_binding_correctness": {
+                "availability": "unavailable",
+                "reason": (
+                    "input_contains_no_center_binding_result_joined_to_"
+                    "offline_truth"
+                ),
+            },
+            "physical_closed_loop_outcome": {
+                "availability": "unavailable",
+                "reason": (
+                    "input_contains_no_guidance_control_or_physical_"
+                    "intercept_record"
+                ),
+            },
         },
         "interpretation": (
             "Synthetic shortcut and fixed-candidate robustness evidence are "

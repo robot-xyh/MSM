@@ -55,6 +55,23 @@ sidecar 缺失、记录不全、episode 身份不一致、坐标重复或 manife
 D6 输出只具有评估权限。候选图合同不能推导聚类纯度、中心全局航迹绑定正确率、控制结果或物理
 拦截结果，也不能授予模型晋级、默认路径、分配、降级和控制权限。
 
+### 正式 R0 实例
+
+正式 R0 制品来源于 clean commit `64cb865b...b05`。D6 先复算批次 8834 项和评估报告 3 项
+`SHA256SUMS`，再校验 batch manifest 与 aggregate 的规范内容摘要。dataset manifest
+SHA-256 为 `5ee284fd...247`，sidecar 对该摘要的绑定一致；2670 个 episode 与 2670 条
+sidecar 记录一一对应，稳定帧坐标无重复、无错配。seed 为 `1000-1019`，场景版本单一。
+
+该实例包含 2670 帧、16842 个节点、4658 条候选边和 4645 个时间合格真值对。几何候选图保留
+4642 条真边和 16 条假边。按全部计数计算的微平均精确率、召回率、F1 和假边率分别为
+`0.9965650494`、`0.9993541442`、`0.9979576481` 和 `0.0034349506`。逐 seed F1 均值为
+`0.9976519241`，bootstrap 95% 置信区间为
+`[0.9953251507, 0.9995705026]`。两类标签覆盖均为 100%，硬违规为 0。
+
+微平均 F1 与逐 seed F1 均值使用不同聚合口径，不能相互替代。本实例只有 R0 候选图；
+`formal/pass` 表示几何候选图输入和评估合同满足冻结门，不表示 G1 打分、聚类、中心绑定或
+控制链路通过。
+
 ## D3 A1 与 D4 A2 外部证据审计（2026-07-26）
 
 D3/A1 和 D4/A2 的预准入采用同一条证据链：
@@ -112,6 +129,38 @@ D6 的通过位只说明证据完整、一致且满足冻结门。D6 不授予�
 默认路径或控制权限。当前 D3/A1、D4/A2 缺正式作用域和实现证据，严格结果均为
 `fail_closed`。
 
+## D5 G1 审计版本边界（2026-07-26）
+
+审计输出 schema 表达结果字段的完整语义。权限字段由四项增加为六项属于破坏性变更，不能沿用
+`d6.d5-g1-external-audit.v1`。当前输出为
+`d6.d5-g1-external-audit.v2`；输入 spec 字段和 D5 consumer 字段没有变化，因此分别保留
+`d6.d5-g1-external-audit-input.v1` 和
+`d6.d5-g1-external-audit-consumer.v1`。三者在 JSON 中分开记录。
+
+v2 的权限集合固定为模型晋级、G1 辅助、默认路径、分配、故障接管和控制，所有值必须为严格
+布尔 `false`。真实相机泛化、中心全局航迹标识绑定正确率和物理闭环结果固定为 unavailable，
+并携带缺少证据的原因。审计器不允许用边或簇指标推断这些系统结果。
+
+装配完整性审计采用新的 v2 合同，只接受 `d5.tracklet-model-bundle.v5`、admission report
+v2、authority contract v2 和 external audit v2。bundle v5 比旧 v4 多冻结 paired lineage
+文件。D6 解析每条
+`episode_uid`，要求 900 条记录全部唯一，并把文件摘要和计数与 paired 报告、external audit、
+manifest 及准入报告交叉绑定。六权限、D6 文件/内容摘要、held-out、paired-shadow 和运行实现
+摘要也必须在各层完全一致。
+
+跨模块正向复核不能只手工构造一份理想 manifest。D6 测试先使用 D5 生产写包器形成
+development-v3，再由公开 `assemble_tracklet_g1_bundle()` 复制四类 evidence、生成
+admission report v2 和 authority contract v2、写入 lineage 并发布 v5。随后先走 D5 公共
+严格加载器，再走 D6 post-assembly v2。该路径确认双方对布局、报告字段、权限、文件/内容
+摘要、运行实现摘要和 900 个唯一 episode UID 的解释一致。修改或删除装配后的 lineage 会
+破坏带外摘要、清单、manifest 和报告绑定，因此必须失败关闭。
+
+此前目录
+`/tmp/MSM-d5-g1-current-runtime-d6-external-audit-64cb865-20260726-v2/`
+的名称虽带 v2，内部结果仍声明 external audit v1。它被版本审查否决，只能作为历史统计记录，
+不能交给 v5 assembler。正式 v2 证据必须在本次代码形成提交后重新运行。本轮没有执行正式
+external audit、post-assembly audit 或 bundle 装配。
+
 ## D5 G1 外部证据审计（2026-07-26）
 
 D5 的 held-out 和 paired-shadow 报告属于生产者声明。D6 不能只读取其中的 `passed=true`。
@@ -146,7 +195,8 @@ paired-shadow 的实现记录合并后形成证据实现摘要。二者必须逐
 候选生成的全链路复验。
 
 审计结论是全部门的合取。JSON 内的 `audit_passed` 只表示证据通过。D6 始终把模型晋级、G1
-辅助、控制权和默认路径变更写为 false。D5 后续装配器以该 JSON 为唯一 D6 输入，并自行验证
+辅助、默认路径变更、分配、故障接管和控制权写为 false。D5 后续装配器以该 JSON 为唯一 D6
+输入，并自行验证
 审计文件 SHA-256 和 `content_sha256`。G1 运行完成后，执行作用域仍由
 `learning_scope_formal_audit` 复核，两个审计层不能相互替代。
 
@@ -155,38 +205,56 @@ D6 独立计算的十文件当前实现摘要为 `408e71fe...f4fe`。20 个未�
 45 个场景规模单元、三项安全零计数、单特征 AUC 和五类扰动门均通过，正式外审 blocker 为空。
 主 JSON 文件/内容 SHA-256 为 `10bf19f5...10b0` / `4e24ab33...9e54`。
 
+当前运行实现的历史复核使用 clean commit `64cb865b...b05`。D6 重新计算十个运行文件后得到
+`55066382...b8ea`，与 manifest、输入期望及 held-out/paired 联合证据一致。输入清单只绑定
+当前批次的 registry、bundle、held-out、paired-shadow 和 lineage；文件与内容摘要、训练数据
+谱系和 900 条唯一 lineage 均交叉一致。输入目录在审计前后没有变化。
+
+当前实例仍覆盖 20 个未见 seed、900 个 episode 和 45 个场景规模单元。held-out F1、错误
+合并率、候选召回和 P95 推理时延为 `1.0`、`0.0`、`1.0` 和 `0.8715935983 ms`。五类扰动
+最低边/簇 F1 为 `1.0/1.0`，单特征最高 AUC 为 `0.7200734257`。三类身份安全计数为 0，
+当时的形式化门结果为 `pass`，blocker 为空。
+
+该结果的输出 schema 仍为 v1，现标记为 `rejected_transition_schema_v1`。它不能作为 v5
+装配输入。其指标只说明冻结证据链在当时满足性能门。D6 将模型晋级、G1 assist、默认路径、
+控制、分配和故障
+接管权限全部置为 false。真实相机泛化、中心全局航迹绑定正确率和物理闭环结果没有输入合同，
+因此显式 unavailable。该结论不运行 G1，也不形成新的 bundle。
+
 该通过结果仍保留两项边界。五类扰动固定 post-gate 候选图，只覆盖既定候选边上的评分稳定性；
 合成三维投影也不能代替真实相机、真实外参漂移、遮挡和检测误差测试。D5 完成准入装配且 main
 显式启用之前，规则路径继续保持默认。
 
 ## D5 G1 装配后审计原理（2026-07-26）
 
-D5 的 v4 bundle 是新的受审对象。预准入外审通过只证明 development-v3 候选及其原始证据满足
+D5 的 v5 bundle 是新的受审对象。预准入外审通过只证明 development-v3 候选及其原始证据满足
 冻结门，不能证明后续装配没有漏文件、换权重、改权限或引用错误报告。装配后审计因此采用独立
-schema 和独立输出目录，把 v4 manifest、weights、校验清单及三份内嵌 evidence 作为一个不可
+v2 schema 和独立输出目录，把 v5 manifest、weights、校验清单及四份内嵌 evidence 作为一个不可
 拆分的证据单元重新核对。
 
 该审计使用双重摘要。文件 SHA-256 绑定实际字节，JSON 内容 SHA-256 绑定去除自身摘要字段后的
-规范内容。六个输入文件都由配置带外冻结；原正式 D6 外审还单独冻结内容摘要。bundle
-`SHA256SUMS` 只能精确覆盖 manifest、weights、held-out、paired-shadow 和 D6 外审五项。
+规范内容。七个输入文件都由配置带外冻结；正式 D6 外审还单独冻结内容摘要。bundle
+`SHA256SUMS` 只能精确覆盖 manifest、weights、held-out、paired-shadow、paired lineage 和
+D6 外审六项。
 审计器不从相邻目录发现替代输入，但会在不跟随符号链接的条件下枚举 bundle 实际文件树。树中
-只允许六个约定文件和 `evidence/` 目录。同名文件替换、额外文件或目录、缺项、特殊文件、任一
+只允许七个约定文件和 `evidence/` 目录。同名文件替换、额外文件或目录、缺项、特殊文件、任一
 路径分量的符号链接、额外清单项和调用方提供的通过标志都不能通过判定。
 
 通过关系是多源合取。来源 development bundle、模型权重、训练数据、十文件运行实现、admission
-report 和三份 evidence 必须指向同一模型指纹。20 个未见 seed、900 个 episode、45 个场景规模
-单元、在线真值零使用、全局航迹标识零改写和同相机互斥零违规，均需从内嵌 evidence 交叉核对。
-单一 manifest 的声明不足以形成通过结论。
+report v2、authority contract v2 和四份 evidence 必须指向同一模型指纹。20 个未见 seed、
+900 个 episode、45 个场景规模单元、900 条唯一 lineage、在线真值零使用、全局航迹标识零改写
+和同相机互斥零违规，均需从内嵌 evidence 交叉核对。单一 manifest 的声明不足以形成通过结论。
 
-资格与授权分开处理。v4 允许声明 `g1_assist_eligible=true`，表示 D5 装配器已形成满足当前证据
-门的辅助候选。D6 的模型晋级、辅助启用、默认路径、全局航迹标识、分配和控制权限始终为 false。
-装配完整性通过不会向在线总线发消息，也不会改变运行配置。
+资格与授权分开处理。v5 可以声明 `g1_assist_eligible=true`，表示 D5 装配器已形成满足当前证据
+门的辅助候选。权限合同中的模型晋级、辅助启用、默认路径、分配、故障接管和控制六项始终为
+false。装配完整性通过不会向在线总线发消息，也不会改变运行配置。
 
-正式 7fb5 v4 审计于 `2026-07-26T14:43:17Z` 完成，结果为 `pass`，blocker 为空。v4
+下述结果仅为旧版历史记录。正式 7fb5 v4 审计于 `2026-07-26T14:43:17Z` 完成，结果为
+`pass`，blocker 为空。v4
 manifest/weights/checksums SHA-256 为 `a5a53de7...7154` / `7fb5db8b...ca71` /
 `1221ec23...5956`；结果 JSON 文件/内容 SHA-256 为 `a78c5edb...cf33` /
 `91d627fb...007e`。结论仍受固定候选图和合成三维投影证据限制，不能外推到真实相机或正式在线
-G1 作用域。
+G1 作用域，也不满足当前 v5/v2 版本链。
 
 树完整性强化后，main 在 detached clean evaluator commit `107cf075...a63c` 上正式复核运行同一
 真实 v4 bundle。结果仍为 `pass`，实际树精确包含六个文件和一个 `evidence/` 目录，结果 JSON

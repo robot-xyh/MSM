@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run the deterministic D6 post-assembly audit for one D5 G1 v4 bundle."""
+"""Run the deterministic D6 post-assembly audit for one D5 G1 v5 bundle."""
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ from d6_evaluation_metrics.d5_g1_post_assembly_audit import (
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
-            "Audit a frozen D5 G1 v4 assembly. A pass confirms assembly "
+            "Audit a frozen D5 G1 v5 assembly. A pass confirms assembly "
             "integrity only and grants no runtime authority."
         )
     )

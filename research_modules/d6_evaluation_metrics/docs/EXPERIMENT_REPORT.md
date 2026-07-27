@@ -1,35 +1,67 @@
 # D6 正式实验矩阵准入预检报告
 
-## D5 候选图几何校准软件验证（2026-07-26）
+## D5 R0 候选图几何正式复核（2026-07-26）
 
 ### 结论
 
-候选图几何校准的软件合同已通过单元和全量回归。当前没有 main 生产的真实跨视角校准 dataset，
-因此没有形成项目场景的候选召回或假边率结论。finalized dataset 不含模型边概率、阈值和聚类，
-本次也没有评价 G1 scoring 收益。
+正式 R0 候选图制品通过 D6 独立复核。状态为 `formal/pass`，20 个 expected seed 与实际
+seed 集合均为 `1000-1019`，场景版本统一为 `d5-crossview-visible-v1`。标签覆盖、候选召回
+声明覆盖和稳定帧坐标覆盖均为 2670/2670，硬违规为 0。
 
-### 合成正例
+该结论只覆盖几何门生成的候选图。finalized dataset 不含 G1 边概率、冻结阈值、选中边和
+聚类，也不含中心绑定、导引控制或物理拦截字段。本次不能评价 G1 scoring、cluster purity、
+`global_track_id` binding correctness、control outcome 或 physical intercept outcome。
 
-正例使用 20 个 seed，每个 seed 一个图帧、三个匿名相机局部节点。两个节点属于同一离线真值
-目标，第三个节点属于另一目标。量测和到达时间均满足默认窗口。R0 候选图只包含真边，G1 标记
-的数据集包含同一真边和一条假边。R0/G1 使用不同 `episode_id`，通过各自 manifest 绑定的
-frame-index sidecar 按相同稳定坐标配对。
+### 输入完整性
 
-| 合成合同指标 | R0 候选图 | G1 标记候选图 |
-| --- | ---: | ---: |
-| seed | 20 | 20 |
-| 时间合格同真值对 | 20 | 20 |
-| 几何保留真边 | 20 | 20 |
-| 几何保留假边 | 0 | 20 |
-| 候选精确率 | 1.0 | 0.5 |
-| 候选召回率 | 1.0 | 1.0 |
-| 候选 F1 | 1.0 | 0.666667 |
-| 几何假边率 | 0.0 | 0.5 |
+输入批次由 clean source commit
+`64cb865b9933d45b13878019c0e1a21a8fbb2b05` 生成。批次目录的 `SHA256SUMS` 共 8834 项，
+D6 报告目录的 `SHA256SUMS` 共 3 项，两套清单均无失败项。
 
-这些数值用于验证公式、聚合和 sidecar 配对，不代表 G1 模型退化或项目视觉性能。输入没有模型
-输出，两份数据只是不同候选边集合的合成 fixture。
+| 证据 | SHA-256 | 复核结果 |
+| --- | --- | --- |
+| 批次 manifest 规范内容 | `448b5ff15c458bb8d745f8e0a2ae80b03d9b062790f8a7fafaf18338a8c794c5` | 一致 |
+| dataset manifest 文件 | `5ee284fd3a998c7ec415000cda3def1b1db7b866a762bcc68b6667858730b247` | batch 与 sidecar 绑定一致 |
+| frame-index sidecar 文件 | `f0db1b13913c69ba6b4beb5c07e242135885a3fb16fc9f559f193ac632611a1e` | 2670 条记录精确覆盖 |
+| D6 aggregate 规范内容 | `dc84c90b90378ba0579311b7b5654018bf3a910ad98f30a59e5dc76eecd422af` | 一致 |
 
-### 失败关闭验证
+sidecar 使用 `scenario_version + seed + frame_index`。2670 个坐标均唯一，episode UID
+集合与 dataset 完全一致，显式场景、seed 和 frame provenance 无错配。
+
+### 候选图结果
+
+| 指标 | R0 结果 |
+| --- | ---: |
+| seed | 20 |
+| 图帧 | 2670 |
+| 节点 | 16842 |
+| 几何候选边 | 4658 |
+| 时间合格同真值跨相机节点对 | 4645 |
+| 几何保留真边 | 4642 |
+| 几何保留假边 | 16 |
+| 微平均候选精确率 | 0.9965650494 |
+| 微平均候选召回率 | 0.9993541442 |
+| 微平均候选 F1 | 0.9979576481 |
+| 微平均几何假边率 | 0.0034349506 |
+| 逐 seed F1 均值 | 0.9976519241 |
+| 逐 seed F1 总体标准差 | 0.0047860563 |
+| 逐 seed F1 bootstrap 95% CI | [0.9953251507, 0.9995705026] |
+
+微平均指标先汇总全部边计数。逐 seed 均值先在各 seed 内做微平均，再对 20 个 seed 求均值，
+两者口径不同。16 条假边和 3 个未保留的时间合格真值对均保留在统计中，没有按高总体 F1
+隐藏。
+
+### 权限与限制
+
+报告权限固定为 `evaluation_only=true`。`model_promotion`、`default_path`、`assignment`、
+`failover` 和 `control` 均为 false。`candidate_graph_R0_G1_comparison` 不可用，因为本次
+只有 R0 输入。G1 edge scoring benefit、selected-edge metrics、cluster purity、中心绑定、
+控制结果和物理拦截结果均按缺合同字段标记 unavailable，没有从候选图指标推断。
+
+该制品来自当前跨视角可见性校准流程，不是实机相机数据。真实外参漂移、同步偏差、检测漏检、
+虚警、遮挡和纹理退化仍需独立验证。
+
+### 软件回归
 
 负例覆盖无真值对分母、缺标签、同相机边、超出双时间窗的候选边、formal seed 不足、场景版本
 混杂、重复无向边、自环、非有限数组、重复 tracklet key、图文件篡改、sidecar 缺失和 sidecar
@@ -37,16 +69,16 @@ frame-index sidecar 按相同稳定坐标配对。
 失败关闭。没有通过字符串解析补出 `frame_index`。
 
 专项测试结果为 `12 passed, 1 warning`。D6 全量结果为
-`1022 passed, 1 warning in 89.47s`。warning 来自既有 Matplotlib Axes3D 导入环境，与本项
+`1022 passed, 1 warning in 88.77s`。warning 来自既有 Matplotlib Axes3D 导入环境，与本项
 计算和报告无关。变更 Python 文件 `py_compile` 通过。
 
-### 待验证
+### 后续证据
 
-1. main 需生成至少 20 个显式 seed、单一 scenario version、标签全覆盖的正式候选图数据和
-   frame-index sidecar。
-2. 真实相机外参、时间同步、漏检、虚警和遮挡条件下的候选召回、假边率和跨 seed 区间待测。
-3. G1 scoring、阈值后选边、聚类纯度和中心绑定正确率需要独立 prediction/binding sidecar。
-4. 本项没有修改 AirSim 接口、episode 顺序或运行时日志，不能视为 AirSim 验证。
+1. 正式 G1 候选图比较需要同稳定坐标的 G1 dataset 与 sidecar。
+2. G1 scoring、阈值后选边和聚类需要独立 prediction sidecar。
+3. 中心绑定、控制和物理拦截需要独立版本化结果合同。
+4. 真实相机外参、同步、漏检、虚警、遮挡和纹理退化条件仍待验证。
+5. 本项没有修改 AirSim 接口、episode 顺序或运行时日志，不能视为 AirSim 验证。
 
 ## D3 A1 与 D4 A2 实际预准入审计（2026-07-26）
 
@@ -118,6 +150,37 @@ D6 全量结果为 `975 passed, 1 warning in 103.81s`。新增 Python 入口编�
 
 D6 没有授予模型晋级、辅助运行、分配、故障接管、默认路径或控制权限。当前两份失败结果只能供
 D3/D4 assembler 读取并继续失败关闭。
+
+## D5 G1 审计版本修正（2026-07-26）
+
+main 的版本审查确认，六权限输出不能继续声明
+`d6.d5-g1-external-audit.v1`。D6 已将主输出升为
+`d6.d5-g1-external-audit.v2`。输入 spec 和 consumer 字段没有变化，分别保留 input v1 和
+consumer v1。external audit v2 精确输出模型晋级、G1 辅助、默认路径、分配、故障接管和控制
+六项 false 权限，并保留真实相机、中心 binding 和物理闭环三类 unavailable evidence。
+
+post-assembly 审计输出、输入、consumer 和 profile 同步升为 v2。软件正例只接受
+`d5.tracklet-model-bundle.v5`、admission report v2、authority contract v2 和 external audit
+v2。v5 fixture 还包含 900 条
+唯一 paired lineage；文件摘要和计数与 paired 报告、external audit、manifest 和 admission
+report 交叉绑定。旧 v4、audit v1、report v1 或其他权限合同版本均有失败关闭回归。
+
+本轮没有执行正式 external audit 或 post-assembly audit，也没有组装 v5。目录
+`/tmp/MSM-d5-g1-current-runtime-d6-external-audit-64cb865-20260726-v2/`
+内部仍是 external audit v1，现标记为 `rejected_transition_schema_v1`。下文保留其指标和哈希
+用于追溯，但它不得进入新装配。正式 v2 证据需在本次代码提交后重新生成。
+
+软件 fixture 验证覆盖 schema 精确值、六权限、三类 unavailable、v5 七制品、lineage 文件
+摘要与 900 个唯一 episode UID、D6 文件/内容摘要、held-out、paired-shadow、运行实现摘要、
+旧版本单项拒绝和组合混用拒绝。新增正例不再手工拼装 v5；它调用 D5 公共生产写包器和
+`assemble_tracklet_g1_bundle()`，再依次通过 D5 公共严格加载器与 D6 post-assembly v2。
+实际产物的 lineage 三字段、900/900 计数、六权限、D6 外审双哈希和运行实现摘要全部通过。
+对同一产物篡改或删除 lineage 均失败关闭。
+
+external 专项为 `14 passed, 1 warning in 4.40s`，post-assembly 专项为
+`55 passed, 1 warning in 4.93s`，D6 全量为
+`1042 passed, 1 warning in 91.36s`。这些结果只验证软件合同，不是正式候选审计或正式 v5
+装配结果。
 
 ## D5 G1 预准入外部审计（2026-07-26）
 
@@ -263,7 +326,83 @@ D6 的模型晋级、G1 辅助、控制和默认路径权限全部为 false。�
 `975 passed, 1 warning in 86.70s`。warning 来自既有 Matplotlib `Axes3D` 导入环境，不影响本次
 文件、内容哈希和二维报告。
 
-## D5 G1 v4 装配后正式审计（2026-07-26）
+### 当前运行实现 64cb865 外审
+
+#### 输入
+
+受审输入位于 `/tmp/MSM-d5-g1-current-runtime-retrain-64cb865-20260726/`，源码来自 clean
+commit `64cb865b9933d45b13878019c0e1a21a8fbb2b05`。输入 JSON 文件 SHA-256 为
+`f98b42d328f8def4fabfca779ce9e322de90b053ef69ff98e579d7b8f8d423a5`。
+
+| 输入 | SHA-256 |
+| --- | --- |
+| registry reference | `a8b93ba2fafaee2f6aeddb3becc404c864a9a64f066ebca54e63890cba4e7e5b` |
+| registry audit evidence | `c18f414907521f90a3eade261ad7f511c24594423ecb6daa4c8dc504166e4477` |
+| registry checksums | `8d5c6b39313b9bb899077f4f393e1139942236a21679cd95a853e3497897b81a` |
+| bundle manifest | `db908b05f10b277f3e8415b0576d3ec43f3572851ea443d658c9837075671d14` |
+| bundle weights | `7fb5db8b6099ca4da5706a3bec53ff7cd634e8bd267c036ce3ee4ee4bf71ca71` |
+| bundle checksums | `2fe079ed0224e7eda24f5a1388e0f2977fd72de4312011737b635d3234100856` |
+| held-out 文件/内容 | `9393c1929eb62fb9564398b33bf07a08f1f41cd8c0c1c80c41f0e985f12d0294` / `e031f7fe2c0f93f0955b30d3e1c0e994c0e461be0cbd46f8dd8c2b28f0eb36e9` |
+| paired-shadow 文件/内容 | `2caac3f770f0174b5f48f964e036f6d4d8763e573d11a914c2d125e588f2546b` / `380c9092a208cd67ee470cedc666794895aeec4d14370fc6b29533e86d4be190` |
+| paired lineage | `21204bc36964ff80da81d9223be79120b83d163c10bd4d6b7dad0e333c43b8b5` |
+
+顶层、bundle、formal 和 current-runtime registry 的 `SHA256SUMS` 分别覆盖 24、2、2 和
+3 项，全部通过。当前十文件 runtime implementation SHA-256 为
+`5506638201623048fb53c8e15493a2dc367d5682abbee3b7235704721586b8ea`，与输入期望、
+manifest 和 held-out/paired 联合证据相同。九个 artifact 均来自当前批次，paired 没有
+`supersedes` 项，所有交叉绑定均一致。
+
+#### 结果
+
+| 核对项 | 门限 | 结果 |
+| --- | ---: | ---: |
+| 未见 seed | >=20 | 20 |
+| held-out episode | >=900 | 900 |
+| 场景规模单元 | >=45 | 45 |
+| held-out F1 | >=0.92 | 1.0 |
+| held-out 错误合并率 | <=0.01 | 0.0 |
+| held-out 候选召回 | >=0.95 | 1.0 |
+| held-out P95 推理时延 | <=100 ms | 0.8715935983 ms |
+| 单特征最高 AUC | <=0.98 | 0.7200734257 |
+| 扰动 profile | >=5 | 5 |
+| 扰动最低边 F1 | >=0.9 | 1.0 |
+| 扰动最低簇 F1 | >=0.9 | 1.0 |
+
+在线真值字段、同相机候选边、同相机互斥违规、`global_track_id` 改写以及创建或换绑违规均为
+0。900 条 lineage 的 episode UID 全部唯一。审计前后输入树 80 个文件逐字节一致，未发生
+输入修改。
+
+按当时性能和完整性门，结果为 `pass` 且 `blocker_codes=[]`；版本治理结论为
+`rejected_transition_schema_v1`。过渡输出目录为
+`/tmp/MSM-d5-g1-current-runtime-d6-external-audit-64cb865-20260726-v2/`。
+
+| 输出 | SHA-256 |
+| --- | --- |
+| JSON 文件 | `24c8b0cd80c20d0dc2929fbf10cf7982109e9627b633dcd8a81ef19549e9ad7d` |
+| JSON 内容 | `f17acecff26285c3fdfc228399468af784ea5760abed25ec7d6bc54bd1cb135f` |
+| 证据 CSV | `a2e9004c9501a4b8a57053dd70caf97e7fc75eab66ca6bcd54d5cb59adcfe380` |
+| 中文报告 | `8a3b90ad340b2ba512695027e0c036f62339ae231d315dfdfe754c6d6ed8087d` |
+| 输出校验清单 | `92a9ab327312730de308d7252e6ba0904f629ea2f1b1a040d950f634fcc18768` |
+
+同输入再次写入独立目录，JSON、CSV、Markdown 和校验清单逐字节一致。确定性不能替代正确的
+schema 版本。输出只给证据审计结论；
+model promotion、G1 assist、default、control、assignment 和 failover 权限全部为 false。
+
+#### 限制
+
+五类扰动均保持原 post-gate 候选图，`candidate_graph_rebuilt=false`。因此满分只证明固定
+候选边上的评分稳定性。真实相机泛化、中心 `global_track_id` 绑定正确率和物理闭环结果在
+输入合同中不存在，均为 unavailable。本次没有启动 G1 episode，没有调用 D5 assembler，也
+没有生成新的 bundle。该制品不得用于 v5 装配。
+
+外审专项为 `14 passed, 1 warning in 4.39s`，D6 全量为
+`1022 passed, 1 warning in 89.39s`。Python 编译通过。warning 来自既有 Matplotlib
+`Axes3D` 导入环境，不影响本次文件、内容哈希和审计判定。
+
+## D5 G1 历史 v4 装配后正式审计（2026-07-26）
+
+本节记录旧 v4/report v1/audit v1/post-assembly v1 链路。该结果不满足当前 v5/v2 受理条件，
+不能作为新装配或新准入证据复用。
 
 ### 输入
 

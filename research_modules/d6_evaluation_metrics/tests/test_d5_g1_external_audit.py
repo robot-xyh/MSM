@@ -13,6 +13,7 @@ from typing import Any
 import pytest
 
 from d6_evaluation_metrics.d5_g1_external_audit import (
+    D5_G1_EXTERNAL_AUDIT_CONSUMER_SCHEMA_VERSION,
     D5_G1_EXTERNAL_AUDIT_FORMAL_PROFILE_VERSION,
     D5_G1_EXTERNAL_AUDIT_INPUT_SCHEMA_VERSION,
     D5_G1_EXTERNAL_AUDIT_SCHEMA_VERSION,
@@ -473,18 +474,54 @@ def test_positive_fixture_passes_at_all_threshold_boundaries(
 
     result = audit_d5_g1_external_evidence(fixture.inputs())
 
+    assert D5_G1_EXTERNAL_AUDIT_SCHEMA_VERSION == (
+        "d6.d5-g1-external-audit.v2"
+    )
+    assert D5_G1_EXTERNAL_AUDIT_INPUT_SCHEMA_VERSION == (
+        "d6.d5-g1-external-audit-input.v1"
+    )
+    assert D5_G1_EXTERNAL_AUDIT_CONSUMER_SCHEMA_VERSION == (
+        "d6.d5-g1-external-audit-consumer.v1"
+    )
     assert result["schema_version"] == D5_G1_EXTERNAL_AUDIT_SCHEMA_VERSION
+    assert result["schema_version"] != "d6.d5-g1-external-audit.v1"
+    assert result["input_contract"]["schema_version"] == (
+        D5_G1_EXTERNAL_AUDIT_INPUT_SCHEMA_VERSION
+    )
     assert result["status"] == "pass"
     assert result["audit_passed"] is True
     assert result["blocker_codes"] == []
     contract = result["d5_consumer_contract"]
+    assert contract["schema_version"] == (
+        D5_G1_EXTERNAL_AUDIT_CONSUMER_SCHEMA_VERSION
+    )
     assert contract["model_fingerprint"].startswith("sha256:")
     assert contract["formal_evaluation"] is True
     assert contract["unseen_seed_count"] == 20
     assert contract["heldout_episode_count"] == 900
     assert contract["scenario_scale_cell_count"] == 45
     assert contract["d6_external_audit_passed"] is True
-    assert all(value is False for value in result["authority"].values() if isinstance(value, bool))
+    assert set(result["authority"]) == {
+        "model_promotion_granted",
+        "g1_assist_granted",
+        "default_path_change_granted",
+        "assignment_authority_granted",
+        "failover_authority_granted",
+        "control_authority_granted",
+        "reason",
+    }
+    assert all(
+        value is False
+        for value in result["authority"].values()
+        if isinstance(value, bool)
+    )
+    assert result["authority"]["assignment_authority_granted"] is False
+    assert result["authority"]["failover_authority_granted"] is False
+    unavailable = result["limitations"]["unavailable_evidence"]
+    assert all(
+        item["availability"] == "unavailable"
+        for item in unavailable.values()
+    )
 
 
 def test_missing_file_is_unavailable_and_not_zero(tmp_path: Path) -> None:
@@ -732,6 +769,11 @@ def test_outputs_are_reproducible_and_checksums_verify(tmp_path: Path) -> None:
     unsigned = dict(loaded)
     content_sha = unsigned.pop("content_sha256")
     assert _sha_json(unsigned) == content_sha
+    markdown = first["markdown"].read_text(encoding="utf-8")
+    assert "真实相机泛化：`unavailable`" in markdown
+    assert "中心 global_track_id 绑定正确率：`unavailable`" in markdown
+    assert "物理闭环结果：`unavailable`" in markdown
+    assert "分配权或故障接管权" in markdown
 
 
 def test_cli_runs_the_same_fixture_contract(tmp_path: Path) -> None:

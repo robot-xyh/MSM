@@ -1,12 +1,12 @@
-"""Strict, read-only post-assembly audit for one D5 G1 v4 bundle.
+"""Strict, read-only post-assembly audit for one D5 G1 v5 bundle.
 
 The existing D5 G1 external audit authenticates a development v3 candidate
-and its held-out evidence. This module starts at the separately assembled v4
-bundle boundary. It verifies that the v4 manifest, weights, checksum catalog,
-and three packaged evidence files are byte- and content-bound to the formal
-D6 result. A passing result confirms assembly integrity only. D6 never grants
-model promotion, G1 assist, default-path, identity, assignment, or control
-authority.
+and its held-out evidence. This module starts at the separately assembled v5
+bundle boundary. It verifies that the v5 manifest, weights, checksum catalog,
+four packaged evidence files, v2 admission report, and v2 authority contract
+are byte- and content-bound to the formal D6 result. A passing result confirms
+assembly integrity only. D6 never grants model promotion, G1 assist,
+default-path, assignment, failover, or control authority.
 """
 
 from __future__ import annotations
@@ -24,26 +24,41 @@ from typing import Any, Mapping, Sequence
 
 
 D5_G1_POST_ASSEMBLY_AUDIT_SCHEMA_VERSION = (
-    "d6.d5-g1-post-assembly-audit.v1"
+    "d6.d5-g1-post-assembly-audit.v2"
 )
 D5_G1_POST_ASSEMBLY_AUDIT_INPUT_SCHEMA_VERSION = (
-    "d6.d5-g1-post-assembly-audit-input.v1"
+    "d6.d5-g1-post-assembly-audit-input.v2"
 )
 D5_G1_POST_ASSEMBLY_AUDIT_CONSUMER_SCHEMA_VERSION = (
-    "d6.d5-g1-post-assembly-audit-consumer.v1"
+    "d6.d5-g1-post-assembly-audit-consumer.v2"
 )
 D5_G1_POST_ASSEMBLY_AUDIT_PROFILE_VERSION = (
-    "d6.d5-g1-post-assembly-integrity.v1"
+    "d6.d5-g1-post-assembly-integrity.v2"
 )
 
-_D5_V4_SCHEMA = "d5.tracklet-model-bundle.v4"
+_D5_V5_SCHEMA = "d5.tracklet-model-bundle.v5"
 _D5_V3_SCHEMA = "d5.tracklet-model-bundle.v3"
-_D5_ADMISSION_REPORT_SCHEMA = "d5.tracklet-g1-admission-report.v1"
+_D5_ADMISSION_REPORT_SCHEMA = "d5.tracklet-g1-admission-report.v2"
+_D5_AUTHORITY_CONTRACT_SCHEMA = "d5.tracklet-g1-authority-contract.v2"
 _D5_HELDOUT_SCHEMA = "d5.tracklet-heldout-model-evaluation.v1"
 _D5_PAIRED_SCHEMA = "d5.tracklet-paired-shadow.v2"
-_D6_EXTERNAL_SCHEMA = "d6.d5-g1-external-audit.v1"
+_D5_PAIRED_LINEAGE_SCHEMA = "d5.tracklet-paired-shadow-lineage.v1"
+_D6_EXTERNAL_SCHEMA = "d6.d5-g1-external-audit.v2"
 _D6_EXTERNAL_CONSUMER_SCHEMA = "d6.d5-g1-external-audit-consumer.v1"
 _D6_EXTERNAL_PROFILE = "d6.d5-g1-formal-heldout-paired-shadow.v1"
+_RUNTIME_AUTHORITY_FIELDS = (
+    "model_promotion_granted",
+    "g1_assist_granted",
+    "default_path_change_granted",
+    "assignment_authority_granted",
+    "failover_authority_granted",
+    "control_authority_granted",
+)
+_UNAVAILABLE_EVIDENCE_FIELDS = (
+    "real_camera_generalization",
+    "center_global_track_id_binding_correctness",
+    "physical_closed_loop_outcome",
+)
 
 _REQUIRED_ARTIFACT_NAMES = (
     "bundle_manifest",
@@ -51,6 +66,7 @@ _REQUIRED_ARTIFACT_NAMES = (
     "bundle_checksums",
     "heldout_evidence",
     "paired_shadow_evidence",
+    "paired_shadow_lineage",
     "d6_external_audit_evidence",
 )
 _JSON_ARTIFACT_NAMES = (
@@ -70,6 +86,7 @@ _EXPECTED_BUNDLE_LAYOUT = {
     "bundle_checksums": "SHA256SUMS",
     "heldout_evidence": "evidence/heldout_evaluation.json",
     "paired_shadow_evidence": "evidence/paired_shadow_report.json",
+    "paired_shadow_lineage": "evidence/paired_episode_lineage.jsonl",
     "d6_external_audit_evidence": "evidence/d6_external_audit.json",
 }
 _EXPECTED_BUNDLE_DIRECTORIES = ("evidence",)
@@ -77,6 +94,7 @@ _CHECKSUM_ARTIFACTS = (
     "d6_external_audit_evidence",
     "heldout_evidence",
     "paired_shadow_evidence",
+    "paired_shadow_lineage",
     "bundle_manifest",
     "bundle_weights",
 )
@@ -144,7 +162,7 @@ class D5G1PostAssemblyAuditArtifact:
 
 @dataclass(frozen=True, slots=True)
 class D5G1PostAssemblyAuditInputs:
-    """Repository root and fully frozen v4 artifact set."""
+    """Repository root and fully frozen v5 artifact set."""
 
     repository_root: Path
     audit_id: str
@@ -230,7 +248,7 @@ class D5G1PostAssemblyAuditInputs:
         if not isinstance(payload, Mapping) or set(payload) != expected_fields:
             raise D5G1PostAssemblyAuditError(
                 "input_fields_mismatch",
-                "top-level fields differ from v1 schema",
+                "top-level fields differ from v2 schema",
             )
         raw_artifacts = payload.get("artifacts")
         if not isinstance(raw_artifacts, Mapping):
@@ -325,7 +343,7 @@ def load_d5_g1_post_assembly_audit_inputs(
 def audit_d5_g1_post_assembly_bundle(
     inputs: D5G1PostAssemblyAuditInputs,
 ) -> dict[str, Any]:
-    """Audit one assembled v4 bundle and return a fail-closed result."""
+    """Audit one assembled v5 bundle and return a fail-closed result."""
 
     context = _AuditContext()
     artifact_rows, payloads, actual_hashes = _audit_artifacts(inputs, context)
@@ -362,10 +380,12 @@ def audit_d5_g1_post_assembly_bundle(
         inputs,
         context,
     )
+    lineage = _audit_lineage_artifact(inputs, actual_hashes, context)
     cross = _audit_cross_bindings(
         manifest=manifest,
         heldout=heldout,
         paired=paired,
+        lineage=lineage,
         external=external,
         actual_hashes=actual_hashes,
         context=context,
@@ -411,6 +431,15 @@ def audit_d5_g1_post_assembly_bundle(
         "same_camera_mutual_exclusion_violation_count": cross.get(
             "same_camera_mutual_exclusion_violation_count"
         ),
+        "paired_shadow_lineage_sha256": cross.get(
+            "paired_shadow_lineage_sha256"
+        ),
+        "paired_shadow_lineage_record_count": cross.get(
+            "paired_shadow_lineage_record_count"
+        ),
+        "paired_shadow_lineage_unique_episode_uid_count": cross.get(
+            "paired_shadow_lineage_unique_episode_uid_count"
+        ),
         "bundle_declared_g1_assist_eligible": manifest.get(
             "g1_assist_eligible"
         ),
@@ -450,6 +479,7 @@ def audit_d5_g1_post_assembly_bundle(
         "evidence": {
             "heldout": heldout,
             "paired_shadow": paired,
+            "paired_shadow_lineage": lineage,
             "d6_external_audit": external,
         },
         "cross_binding": cross,
@@ -460,8 +490,8 @@ def audit_d5_g1_post_assembly_bundle(
             "model_promotion_granted": False,
             "g1_assist_granted": False,
             "default_path_change_granted": False,
-            "global_track_id_authority_granted": False,
             "assignment_authority_granted": False,
+            "failover_authority_granted": False,
             "control_authority_granted": False,
             "reason": (
                 "D6 confirms post-assembly evidence integrity only; all "
@@ -472,10 +502,10 @@ def audit_d5_g1_post_assembly_bundle(
             "fixed_candidate_graph": external.get(
                 "fixed_candidate_graph_limitation"
             ),
-            "real_camera_evidence": False,
+            "unavailable_evidence": external.get("unavailable_evidence"),
             "online_runtime_enabled_by_this_audit": False,
             "interpretation": (
-                "A pass authenticates v4 assembly only. It does not prove "
+                "A pass authenticates v5 assembly only. It does not prove "
                 "real-camera generalization or enable an online path."
             ),
         },
@@ -565,8 +595,9 @@ def render_d5_g1_post_assembly_audit_markdown(
     consumer = _as_mapping(result.get("d5_consumer_contract"))
     authority = _as_mapping(result.get("authority"))
     limitations = _as_mapping(result.get("limitations"))
+    unavailable = _as_mapping(limitations.get("unavailable_evidence"))
     lines = [
-        "# D5 G1 v4 装配后外部审计",
+        "# D5 G1 v5 装配后外部审计",
         "",
         f"审计时间：`{result.get('evaluated_at_utc')}`",
         "",
@@ -574,14 +605,14 @@ def render_d5_g1_post_assembly_audit_markdown(
         "",
         f"装配证据审计结果为 **{result.get('status')}**。",
         (
-            "D6 只确认 v4 装配证据完整性，不授予模型晋级、G1 辅助、"
-            "默认路径、身份、分配或控制权限。"
+            "D6 只确认 v5 装配证据完整性，不授予模型晋级、G1 辅助、"
+            "默认路径、分配、故障接管或控制权限。"
         ),
         "",
         "## 束缚关系",
         "",
         (
-            "- v4 manifest SHA-256："
+            "- v5 manifest SHA-256："
             f"`{consumer.get('bundle_manifest_sha256')}`。"
         ),
         (
@@ -622,11 +653,20 @@ def render_d5_g1_post_assembly_audit_markdown(
             "- 同相机互斥违规："
             f"{consumer.get('same_camera_mutual_exclusion_violation_count')}。"
         ),
+        (
+            "- paired lineage SHA-256："
+            f"`{consumer.get('paired_shadow_lineage_sha256')}`。"
+        ),
+        (
+            "- paired lineage 记录/唯一 episode："
+            f"`{consumer.get('paired_shadow_lineage_record_count')}` / "
+            f"`{consumer.get('paired_shadow_lineage_unique_episode_uid_count')}`。"
+        ),
         "",
         "## 权限边界",
         "",
         (
-            "- v4 声明的 G1 辅助资格："
+            "- v5 声明的 G1 辅助资格："
             f"`{consumer.get('bundle_declared_g1_assist_eligible')}`。"
         ),
         (
@@ -641,6 +681,14 @@ def render_d5_g1_post_assembly_audit_markdown(
             "- D6 控制授权："
             f"`{authority.get('control_authority_granted')}`。"
         ),
+        (
+            "- D6 分配授权："
+            f"`{authority.get('assignment_authority_granted')}`。"
+        ),
+        (
+            "- D6 故障接管授权："
+            f"`{authority.get('failover_authority_granted')}`。"
+        ),
         "",
         "## 限制",
         "",
@@ -648,7 +696,18 @@ def render_d5_g1_post_assembly_audit_markdown(
             "- 固定候选图限制："
             f"`{limitations.get('fixed_candidate_graph')}`。"
         ),
-        "- 真实相机证据：未覆盖。",
+        (
+            "- 真实相机泛化："
+            f"`{_availability_name(unavailable, 'real_camera_generalization')}`。"
+        ),
+        (
+            "- 中心 global_track_id 绑定正确率："
+            f"`{_availability_name(unavailable, 'center_global_track_id_binding_correctness')}`。"
+        ),
+        (
+            "- 物理闭环结果："
+            f"`{_availability_name(unavailable, 'physical_closed_loop_outcome')}`。"
+        ),
         "- 在线路径：本审计不启用。",
         "",
         "## 阻断项",
@@ -819,6 +878,106 @@ def _audit_layout_and_checksums(
     }
 
 
+def _audit_authority_contract(
+    payload: Any,
+    context: _AuditContext,
+    blocker_prefix: str,
+) -> dict[str, Any]:
+    contract = _strict_mapping(
+        payload,
+        context,
+        f"{blocker_prefix}_type_invalid",
+        blocker_prefix,
+    )
+    expected_fields = {
+        "schema_version",
+        "d6_external_audit_sha256",
+        "d6_external_audit_content_sha256",
+        "evidence_audit_passed",
+        "evidence_eligible",
+        "runtime_authority",
+        "reason",
+    }
+    if set(contract) != expected_fields:
+        context.block(
+            f"{blocker_prefix}_fields_mismatch",
+            ",".join(sorted(set(contract) ^ expected_fields)),
+        )
+    if contract.get("schema_version") != _D5_AUTHORITY_CONTRACT_SCHEMA:
+        context.block(
+            f"{blocker_prefix}_schema_mismatch",
+            str(contract.get("schema_version")),
+        )
+    for field in (
+        "d6_external_audit_sha256",
+        "d6_external_audit_content_sha256",
+    ):
+        _require_sha(
+            contract.get(field),
+            context,
+            f"{blocker_prefix}_type_invalid",
+            f"{blocker_prefix}.{field}",
+        )
+    for field in ("evidence_audit_passed", "evidence_eligible"):
+        value = _strict_bool(
+            contract.get(field),
+            context,
+            f"{blocker_prefix}_type_invalid",
+            f"{blocker_prefix}.{field}",
+        )
+        if value is not True:
+            context.block(
+                f"{blocker_prefix}_evidence_state_invalid.{field}",
+                str(value),
+            )
+    runtime = _strict_mapping(
+        contract.get("runtime_authority"),
+        context,
+        f"{blocker_prefix}_type_invalid",
+        f"{blocker_prefix}.runtime_authority",
+    )
+    if set(runtime) != set(_RUNTIME_AUTHORITY_FIELDS):
+        context.block(
+            f"{blocker_prefix}_runtime_fields_mismatch",
+            ",".join(
+                sorted(set(runtime) ^ set(_RUNTIME_AUTHORITY_FIELDS))
+            ),
+        )
+    normalized_runtime: dict[str, bool | None] = {}
+    for field in _RUNTIME_AUTHORITY_FIELDS:
+        value = _strict_bool(
+            runtime.get(field),
+            context,
+            f"{blocker_prefix}_type_invalid",
+            f"{blocker_prefix}.runtime_authority.{field}",
+        )
+        normalized_runtime[field] = value
+        if value is not False:
+            context.block(
+                f"{blocker_prefix}_authority_not_closed.{field}",
+                str(value),
+            )
+    reason = contract.get("reason")
+    if not isinstance(reason, str) or not reason.strip():
+        context.block(
+            f"{blocker_prefix}_reason_invalid",
+            str(reason),
+        )
+    return {
+        "schema_version": contract.get("schema_version"),
+        "d6_external_audit_sha256": contract.get(
+            "d6_external_audit_sha256"
+        ),
+        "d6_external_audit_content_sha256": contract.get(
+            "d6_external_audit_content_sha256"
+        ),
+        "evidence_audit_passed": contract.get("evidence_audit_passed"),
+        "evidence_eligible": contract.get("evidence_eligible"),
+        "runtime_authority": normalized_runtime,
+        "reason": reason,
+    }
+
+
 def _audit_manifest(
     payload: Mapping[str, Any] | None,
     actual_hashes: Mapping[str, str],
@@ -835,13 +994,14 @@ def _audit_manifest(
         "evidence": None,
         "admission": None,
         "admission_report": None,
+        "authority_contract": None,
         "g1_assist_eligible": None,
     }
     if payload is None:
         context.block("bundle_manifest_unavailable", "manifest")
         return result
     result["schema_version"] = payload.get("schema_version")
-    if payload.get("schema_version") != _D5_V4_SCHEMA:
+    if payload.get("schema_version") != _D5_V5_SCHEMA:
         context.block(
             "bundle_schema_mismatch",
             str(payload.get("schema_version")),
@@ -1038,7 +1198,12 @@ def _audit_manifest(
         "bundle_manifest_type_invalid",
         "evidence",
     )
-    if set(evidence) != {"heldout", "paired_shadow", "d6_external_audit"}:
+    if set(evidence) != {
+        "heldout",
+        "paired_shadow",
+        "paired_shadow_lineage",
+        "d6_external_audit",
+    }:
         context.block(
             "bundle_evidence_fields_mismatch",
             "manifest.evidence",
@@ -1079,6 +1244,45 @@ def _audit_manifest(
                 f"evidence.{name}.{field}",
             )
         evidence_result[name] = dict(record)
+    lineage_record = _strict_mapping(
+        evidence.get("paired_shadow_lineage"),
+        context,
+        "bundle_manifest_type_invalid",
+        "evidence.paired_shadow_lineage",
+    )
+    expected_lineage_fields = {
+        "filename",
+        "sha256",
+        "record_count",
+        "unique_episode_uid_count",
+    }
+    if set(lineage_record) != expected_lineage_fields:
+        context.block(
+            "bundle_evidence_record_fields_mismatch.paired_shadow_lineage",
+            "paired_shadow_lineage",
+        )
+    if (
+        lineage_record.get("filename")
+        != _EXPECTED_BUNDLE_LAYOUT["paired_shadow_lineage"]
+    ):
+        context.block(
+            "bundle_evidence_filename_mismatch.paired_shadow_lineage",
+            str(lineage_record.get("filename")),
+        )
+    _require_sha(
+        lineage_record.get("sha256"),
+        context,
+        "bundle_manifest_type_invalid",
+        "evidence.paired_shadow_lineage.sha256",
+    )
+    for field in ("record_count", "unique_episode_uid_count"):
+        _strict_int(
+            lineage_record.get(field),
+            context,
+            "bundle_manifest_type_invalid",
+            f"evidence.paired_shadow_lineage.{field}",
+        )
+    evidence_result["paired_shadow_lineage"] = dict(lineage_record)
     result["evidence"] = evidence_result
 
     admission = _strict_mapping(
@@ -1092,8 +1296,7 @@ def _audit_manifest(
         "default_model",
         "g1_assist_eligible",
         "global_track_id_authority",
-        "assignment_authority",
-        "control_authority",
+        "authority_contract",
         "report",
     }
     if set(admission) != expected_admission_fields:
@@ -1103,7 +1306,7 @@ def _audit_manifest(
                 sorted(set(admission) ^ expected_admission_fields)
             ),
         )
-    if admission.get("status") != "g1_assist_admitted":
+    if admission.get("status") != "g1_evidence_eligible_not_authorized":
         context.block(
             "bundle_admission_status_invalid",
             str(admission.get("status")),
@@ -1112,8 +1315,6 @@ def _audit_manifest(
         "default_model": False,
         "g1_assist_eligible": True,
         "global_track_id_authority": False,
-        "assignment_authority": False,
-        "control_authority": False,
     }
     for name, expected in permission_expectations.items():
         value = _strict_bool(
@@ -1127,6 +1328,11 @@ def _audit_manifest(
                 f"bundle_admission_permission_invalid.{name}",
                 f"{value}!={expected}",
             )
+    authority_contract = _audit_authority_contract(
+        admission.get("authority_contract"),
+        context,
+        "bundle_authority_contract",
+    )
     report = _strict_mapping(
         admission.get("report"),
         context,
@@ -1144,6 +1350,7 @@ def _audit_manifest(
         if name != "report"
     }
     result["admission_report"] = dict(report)
+    result["authority_contract"] = authority_contract
     result["g1_assist_eligible"] = admission.get("g1_assist_eligible")
     return result
 
@@ -1342,6 +1549,48 @@ def _audit_paired_shadow(
                 f"paired_shadow_authority_not_closed.{field}",
                 str(authority.get(field)),
             )
+    lineage = _strict_mapping(
+        payload.get("paired_lineage"),
+        context,
+        "paired_shadow_type_invalid",
+        "paired_lineage",
+    )
+    expected_lineage_fields = {
+        "schema_version",
+        "filename",
+        "record_count",
+        "sha256",
+    }
+    if set(lineage) != expected_lineage_fields:
+        context.block(
+            "paired_shadow_lineage_fields_mismatch",
+            ",".join(sorted(set(lineage) ^ expected_lineage_fields)),
+        )
+    if lineage.get("schema_version") != _D5_PAIRED_LINEAGE_SCHEMA:
+        context.block(
+            "paired_shadow_lineage_schema_mismatch",
+            str(lineage.get("schema_version")),
+        )
+    if (
+        lineage.get("filename")
+        != Path(_EXPECTED_BUNDLE_LAYOUT["paired_shadow_lineage"]).name
+    ):
+        context.block(
+            "paired_shadow_lineage_filename_mismatch",
+            str(lineage.get("filename")),
+        )
+    _require_sha(
+        lineage.get("sha256"),
+        context,
+        "paired_shadow_type_invalid",
+        "paired_lineage.sha256",
+    )
+    _strict_int(
+        lineage.get("record_count"),
+        context,
+        "paired_shadow_type_invalid",
+        "paired_lineage.record_count",
+    )
     result.update(
         {
             "input_spec": dict(spec),
@@ -1369,9 +1618,67 @@ def _audit_paired_shadow(
                 "implementation_sha256",
             ),
             "authority": dict(authority),
+            "paired_lineage": dict(lineage),
             "content_sha256": payload.get("content_sha256"),
         }
     )
+    return result
+
+
+def _audit_lineage_artifact(
+    inputs: D5G1PostAssemblyAuditInputs,
+    actual_hashes: Mapping[str, str],
+    context: _AuditContext,
+) -> dict[str, Any]:
+    path = inputs.resolve_artifact("paired_shadow_lineage")
+    result: dict[str, Any] = {
+        "available": False,
+        "sha256": actual_hashes.get("paired_shadow_lineage"),
+        "record_count": None,
+        "unique_episode_uid_count": None,
+    }
+    if not _is_regular_file_without_symlink(path, inputs.repository_root):
+        context.block("paired_lineage_unavailable", str(path))
+        return result
+    episode_uids: set[str] = set()
+    record_count = 0
+    try:
+        with path.open("r", encoding="utf-8") as stream:
+            for line_number, line in enumerate(stream, start=1):
+                if not line.strip():
+                    raise ValueError(f"blank line {line_number}")
+                record = json.loads(line)
+                if not isinstance(record, dict):
+                    raise ValueError(f"non-object line {line_number}")
+                episode_uid = record.get("episode_uid")
+                if not isinstance(episode_uid, str) or not episode_uid:
+                    raise ValueError(f"episode_uid line {line_number}")
+                if episode_uid in episode_uids:
+                    raise ValueError(
+                        f"duplicate episode_uid {episode_uid}"
+                    )
+                episode_uids.add(episode_uid)
+                record_count += 1
+    except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as exc:
+        context.block("paired_lineage_invalid", str(exc))
+        return result
+    result.update(
+        {
+            "available": True,
+            "record_count": record_count,
+            "unique_episode_uid_count": len(episode_uids),
+        }
+    )
+    if record_count != _FORMAL_EPISODE_COUNT:
+        context.block(
+            "paired_lineage_record_count_mismatch",
+            f"{record_count}!={_FORMAL_EPISODE_COUNT}",
+        )
+    if len(episode_uids) != record_count:
+        context.block(
+            "paired_lineage_unique_count_mismatch",
+            f"{len(episode_uids)}!={record_count}",
+        )
     return result
 
 
@@ -1423,12 +1730,7 @@ def _audit_external_audit(
         "external_audit_type_invalid",
         "authority",
     )
-    expected_authority_fields = {
-        "model_promotion_granted",
-        "g1_assist_granted",
-        "control_authority_granted",
-        "default_path_change_granted",
-    }
+    expected_authority_fields = set(_RUNTIME_AUTHORITY_FIELDS)
     if set(authority) != expected_authority_fields | {"reason"}:
         context.block(
             "external_audit_authority_fields_mismatch",
@@ -1529,6 +1831,46 @@ def _audit_external_audit(
         "external_audit_type_invalid",
         "limitations.robustness_generalization",
     )
+    unavailable = _strict_mapping(
+        limitations.get("unavailable_evidence"),
+        context,
+        "external_audit_type_invalid",
+        "limitations.unavailable_evidence",
+    )
+    if set(unavailable) != set(_UNAVAILABLE_EVIDENCE_FIELDS):
+        context.block(
+            "external_audit_unavailable_evidence_fields_mismatch",
+            ",".join(
+                sorted(
+                    set(unavailable) ^ set(_UNAVAILABLE_EVIDENCE_FIELDS)
+                )
+            ),
+        )
+    normalized_unavailable: dict[str, dict[str, Any]] = {}
+    for field in _UNAVAILABLE_EVIDENCE_FIELDS:
+        record = _strict_mapping(
+            unavailable.get(field),
+            context,
+            "external_audit_type_invalid",
+            f"limitations.unavailable_evidence.{field}",
+        )
+        if set(record) != {"availability", "reason"}:
+            context.block(
+                f"external_audit_unavailable_evidence_invalid.{field}",
+                "fields",
+            )
+        if record.get("availability") != "unavailable":
+            context.block(
+                f"external_audit_unavailable_evidence_invalid.{field}",
+                str(record.get("availability")),
+            )
+        reason = record.get("reason")
+        if not isinstance(reason, str) or not reason.strip():
+            context.block(
+                f"external_audit_unavailable_evidence_invalid.{field}",
+                str(reason),
+            )
+        normalized_unavailable[field] = dict(record)
     result.update(
         {
             "content_sha256": declared_content,
@@ -1538,6 +1880,7 @@ def _audit_external_audit(
             "fixed_candidate_graph_limitation": robustness.get(
                 "candidate_graph_limitation"
             ),
+            "unavailable_evidence": normalized_unavailable,
         }
     )
     return result
@@ -1548,6 +1891,7 @@ def _audit_cross_bindings(
     manifest: Mapping[str, Any],
     heldout: Mapping[str, Any],
     paired: Mapping[str, Any],
+    lineage: Mapping[str, Any],
     external: Mapping[str, Any],
     actual_hashes: Mapping[str, str],
     context: _AuditContext,
@@ -1590,9 +1934,19 @@ def _audit_cross_bindings(
     external_paired = _as_mapping(
         external_candidate.get("paired_shadow")
     )
+    external_lineage = _as_mapping(
+        external_candidate.get("paired_lineage")
+    )
     manifest_heldout = _as_mapping(evidence.get("heldout"))
     manifest_paired = _as_mapping(evidence.get("paired_shadow"))
+    manifest_lineage = _as_mapping(
+        evidence.get("paired_shadow_lineage")
+    )
     manifest_external = _as_mapping(evidence.get("d6_external_audit"))
+    manifest_authority = _as_mapping(manifest.get("authority_contract"))
+    report_authority = _as_mapping(
+        admission_report.get("authority_contract")
+    )
 
     source_manifest = _equal_group(
         "source_development_manifest_sha256",
@@ -1692,6 +2046,86 @@ def _audit_cross_bindings(
         ),
         context,
     )
+    lineage_file = _equal_group(
+        "paired_shadow_lineage_sha256",
+        (
+            actual_hashes.get("paired_shadow_lineage"),
+            lineage.get("sha256"),
+            manifest_lineage.get("sha256"),
+            _as_mapping(paired.get("paired_lineage")).get("sha256"),
+            external_lineage.get("sha256"),
+            admission_report.get("paired_shadow_lineage_sha256"),
+        ),
+        context,
+    )
+    lineage_records = _equal_group(
+        "paired_shadow_lineage_record_count",
+        (
+            lineage.get("record_count"),
+            manifest_lineage.get("record_count"),
+            _as_mapping(paired.get("paired_lineage")).get("record_count"),
+            external_lineage.get("record_count"),
+            admission_report.get("paired_shadow_lineage_record_count"),
+        ),
+        context,
+    )
+    lineage_unique = _equal_group(
+        "paired_shadow_lineage_unique_episode_uid_count",
+        (
+            lineage.get("unique_episode_uid_count"),
+            manifest_lineage.get("unique_episode_uid_count"),
+            external_lineage.get("unique_episode_uid_count"),
+            admission_report.get(
+                "paired_shadow_lineage_unique_episode_uid_count"
+            ),
+        ),
+        context,
+    )
+    if lineage_records != _FORMAL_EPISODE_COUNT:
+        context.block(
+            "paired_shadow_lineage_record_count_mismatch",
+            str(lineage_records),
+        )
+    if lineage_unique != lineage_records:
+        context.block(
+            "paired_shadow_lineage_unique_count_mismatch",
+            f"{lineage_unique}!={lineage_records}",
+        )
+
+    if manifest_authority != report_authority:
+        context.block(
+            "authority_contract_cross_binding_mismatch",
+            "manifest/report",
+        )
+    external_authority = _as_mapping(external.get("authority"))
+    expected_runtime_authority = {
+        field: external_authority.get(field)
+        for field in _RUNTIME_AUTHORITY_FIELDS
+    }
+    if _as_mapping(
+        manifest_authority.get("runtime_authority")
+    ) != expected_runtime_authority:
+        context.block(
+            "authority_contract_external_authority_mismatch",
+            "runtime_authority",
+        )
+    for field, value in expected_runtime_authority.items():
+        if value is not False:
+            context.block(
+                f"authority_contract_external_not_closed.{field}",
+                str(value),
+            )
+    for field, expected in (
+        ("d6_external_audit_sha256", external_file),
+        ("d6_external_audit_content_sha256", external_content),
+        ("evidence_audit_passed", True),
+        ("evidence_eligible", True),
+    ):
+        if manifest_authority.get(field) != expected:
+            context.block(
+                f"authority_contract_cross_binding_mismatch.{field}",
+                f"{manifest_authority.get(field)}!={expected}",
+            )
 
     dataset = _equal_group(
         "dataset_manifest_sha256",
@@ -1789,14 +2223,14 @@ def _audit_cross_bindings(
     ):
         context.block(
             "model_source_files_mismatch",
-            "v4 manifest/external audit",
+            "v5 manifest/external audit",
         )
     if provenance.get("implementation_sha256") != external_model.get(
         "manifest_implementation_sha256"
     ):
         context.block(
             "model_implementation_sha256_mismatch",
-            "v4 manifest/external audit",
+            "v5 manifest/external audit",
         )
 
     model_fingerprint = _equal_group(
@@ -1992,6 +2426,9 @@ def _audit_cross_bindings(
         "heldout_report_content_sha256": heldout_content,
         "paired_shadow_report_sha256": paired_file,
         "paired_shadow_report_content_sha256": paired_content,
+        "paired_shadow_lineage_sha256": lineage_file,
+        "paired_shadow_lineage_record_count": lineage_records,
+        "paired_shadow_lineage_unique_episode_uid_count": lineage_unique,
         "d6_external_audit_sha256": external_file,
         "d6_external_audit_content_sha256": external_content,
         "formal_evaluation": formal,
@@ -2006,6 +2443,7 @@ def _audit_cross_bindings(
         "same_camera_mutual_exclusion_violation_count": same_camera,
         "failure_reasons": [],
         "g1_assist_eligible": True,
+        "authority_contract": manifest_authority,
     }
     if dict(admission_report) != expected_report:
         context.block(
@@ -2020,6 +2458,9 @@ def _audit_cross_bindings(
         "heldout_content_sha256": heldout_content,
         "paired_shadow_file_sha256": paired_file,
         "paired_shadow_content_sha256": paired_content,
+        "paired_shadow_lineage_sha256": lineage_file,
+        "paired_shadow_lineage_record_count": lineage_records,
+        "paired_shadow_lineage_unique_episode_uid_count": lineage_unique,
         "d6_external_audit_file_sha256": external_file,
         "d6_external_audit_content_sha256": external_content,
         "dataset_manifest_sha256": dataset,
@@ -2037,6 +2478,7 @@ def _audit_cross_bindings(
         "heldout_passed": heldout_passed,
         "paired_shadow_passed": paired_passed,
         "d6_external_audit_passed": external_passed,
+        "authority_contract": manifest_authority,
         "admission_report_exact_match": (
             dict(admission_report) == expected_report
         ),
@@ -2201,6 +2643,13 @@ def _availability(value: Any) -> dict[str, Any]:
         "available": value is not None,
         "reason": None if value is not None else "source_evidence_unavailable",
     }
+
+
+def _availability_name(
+    unavailable: Mapping[str, Any],
+    field: str,
+) -> Any:
+    return _as_mapping(unavailable.get(field)).get("availability")
 
 
 def _paths_overlap(left: Path, right: Path) -> bool:

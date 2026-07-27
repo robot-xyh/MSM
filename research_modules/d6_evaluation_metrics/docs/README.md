@@ -1,5 +1,20 @@
 # D6 文档索引
 
+2026-07-26 D5 v5 生产装配正向复核已同步到 `MODULE_PRINCIPLES_CN.md`、
+`ALGORITHM_AND_IMPLEMENTATION.md` 和 `EXPERIMENT_REPORT.md`。D6 测试直接调用 D5 公共
+`assemble_tracklet_g1_bundle()` 生成 v5，再由 D5 严格加载器和 D6 post-assembly v2
+连续验证。实际七文件布局、900/900 lineage、准入报告 lineage 三字段、六权限、external
+audit 双哈希和运行实现摘要全部通过；生产产物 lineage 篡改和缺失均失败关闭。最新回归为
+external `14 passed`、post-assembly `55 passed`、D6 全量 `1042 passed`。
+
+2026-07-26 D5 G1 审计版本治理修正见 `MODULE_PRINCIPLES_CN.md`、
+`ALGORITHM_AND_IMPLEMENTATION.md` 和 `EXPERIMENT_REPORT.md`。external audit 主输出已升为
+`d6.d5-g1-external-audit.v2`；post-assembly 的 input/output/consumer/profile 均升为 v2，
+只接受 `d5.tracklet-model-bundle.v5`、admission report v2、authority contract v2 和
+external audit v2。旧 `/tmp/...-v2` 目录内部仍是 audit v1，已标记为版本审查否决的过渡制品
+`rejected_transition_schema_v1`，不得用于新装配。正式 v2 证据需在代码提交后重跑。
+本轮没有执行正式审计或正式装配，最新软件回归见上一段。
+
 2026-07-26 D5 跨视角候选图几何校准见 `MODULE_PRINCIPLES_CN.md`、
 `ALGORITHM_AND_IMPLEMENTATION.md` 和 `EXPERIMENT_REPORT.md`。该工具只评价 finalized
 dataset 中的几何候选边，不评价 G1 边概率、阈值或聚类收益。R0/G1 配对要求 manifest 绑定的

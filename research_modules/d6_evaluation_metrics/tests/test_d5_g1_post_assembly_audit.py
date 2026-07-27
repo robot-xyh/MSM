@@ -11,10 +11,33 @@ import sys
 from typing import Any
 
 import pytest
+import torch
+
+_D5_SOURCE_ROOT = (
+    Path(__file__).resolve().parents[2]
+    / "d5_terminal_association"
+    / "src"
+)
+if str(_D5_SOURCE_ROOT) not in sys.path:
+    sys.path.insert(0, str(_D5_SOURCE_ROOT))
+
+from d5_terminal_association.tracklet_g1_evidence_assembler import (
+    TrackletG1EvidenceInputs,
+    assemble_tracklet_g1_bundle,
+)
+from d5_terminal_association.tracklet_gnn import (
+    NativeTrackletEdgeClassifier,
+)
+from d5_terminal_association.tracklet_model_bundle import (
+    load_tracklet_model_bundle,
+    write_tracklet_model_bundle,
+)
 
 from d6_evaluation_metrics.d5_g1_post_assembly_audit import (
+    D5_G1_POST_ASSEMBLY_AUDIT_CONSUMER_SCHEMA_VERSION,
     D5_G1_POST_ASSEMBLY_AUDIT_INPUT_SCHEMA_VERSION,
     D5_G1_POST_ASSEMBLY_AUDIT_PROFILE_VERSION,
+    D5_G1_POST_ASSEMBLY_AUDIT_SCHEMA_VERSION,
     D5G1PostAssemblyAuditError,
     D5G1PostAssemblyAuditInputs,
     audit_d5_g1_post_assembly_bundle,
@@ -41,6 +64,14 @@ _MODEL_FILES = (
     "tracklet_training.py",
     "tracklet_training_audit.py",
 )
+_AUTHORITY_FIELDS = (
+    "model_promotion_granted",
+    "g1_assist_granted",
+    "default_path_change_granted",
+    "assignment_authority_granted",
+    "failover_authority_granted",
+    "control_authority_granted",
+)
 _ARTIFACT_RELATIVE = {
     "bundle_manifest": "bundle/manifest.json",
     "bundle_weights": "bundle/weights.pt",
@@ -48,6 +79,9 @@ _ARTIFACT_RELATIVE = {
     "heldout_evidence": "bundle/evidence/heldout_evaluation.json",
     "paired_shadow_evidence": (
         "bundle/evidence/paired_shadow_report.json"
+    ),
+    "paired_shadow_lineage": (
+        "bundle/evidence/paired_episode_lineage.jsonl"
     ),
     "d6_external_audit_evidence": (
         "bundle/evidence/d6_external_audit.json"
@@ -57,6 +91,7 @@ _CHECKSUM_RELATIVE = {
     "d6_external_audit_evidence": "evidence/d6_external_audit.json",
     "heldout_evidence": "evidence/heldout_evaluation.json",
     "paired_shadow_evidence": "evidence/paired_shadow_report.json",
+    "paired_shadow_lineage": "evidence/paired_episode_lineage.jsonl",
     "bundle_manifest": "manifest.json",
     "bundle_weights": "weights.pt",
 }
@@ -183,6 +218,12 @@ class _Fixture:
         manifest["admission"]["report"][
             "d6_external_audit_content_sha256"
         ] = content_sha
+        for contract in (
+            manifest["admission"]["authority_contract"],
+            manifest["admission"]["report"]["authority_contract"],
+        ):
+            contract["d6_external_audit_sha256"] = file_sha
+            contract["d6_external_audit_content_sha256"] = content_sha
         self.write_json("bundle_manifest", manifest)
         self.spec["expected_external_audit_content_sha256"] = content_sha
         self.refresh_checksums()
@@ -193,7 +234,7 @@ def _make_fixture(root: Path) -> _Fixture:
     evidence_dir = bundle / "evidence"
     evidence_dir.mkdir(parents=True)
     weights_path = bundle / "weights.pt"
-    weights_path.write_bytes(b"fixture-v4-weights")
+    weights_path.write_bytes(b"fixture-v5-weights")
     weights_sha = _sha_file(weights_path)
     source_manifest_sha = "1" * 64
     source_checksums_sha = "2" * 64
@@ -266,6 +307,20 @@ def _make_fixture(root: Path) -> _Fixture:
     _write_json(heldout_path, heldout)
     heldout_file_sha = _sha_file(heldout_path)
 
+    lineage_path = evidence_dir / "paired_episode_lineage.jsonl"
+    lineage_path.write_bytes(
+        b"".join(
+            _canonical(
+                {
+                    "episode_uid": f"fixture-episode-{index:04d}",
+                    "seed": 1000 + (index % 20),
+                }
+            )
+            for index in range(900)
+        )
+    )
+    lineage_file_sha = _sha_file(lineage_path)
+
     paired_expected = {
         "bundle_manifest_sha256": source_manifest_sha,
         "bundle_weights_sha256": weights_sha,
@@ -315,6 +370,12 @@ def _make_fixture(root: Path) -> _Fixture:
                     "tracklet_model_bundle.py",
                     "tracklet_paired_shadow.py",
                 )
+            },
+            "paired_lineage": {
+                "schema_version": "d5.tracklet-paired-shadow-lineage.v1",
+                "filename": "paired_episode_lineage.jsonl",
+                "record_count": 900,
+                "sha256": lineage_file_sha,
             },
             "authority": {
                 "status": "pending_d6_external_audit",
@@ -370,7 +431,7 @@ def _make_fixture(root: Path) -> _Fixture:
     }
     external = _with_content(
         {
-            "schema_version": "d6.d5-g1-external-audit.v1",
+            "schema_version": "d6.d5-g1-external-audit.v2",
             "audit_id": "fixture-external",
             "evaluated_at_utc": "2026-07-26T00:00:00Z",
             "formal_profile_version": (
@@ -442,13 +503,33 @@ def _make_fixture(root: Path) -> _Fixture:
                     "same_camera_mutual_exclusion_violation_count": 0,
                     "passed": True,
                 },
+                "paired_lineage": {
+                    "available": True,
+                    "sha256": lineage_file_sha,
+                    "record_count": 900,
+                    "unique_episode_uid_count": 900,
+                },
             },
             "limitations": {
                 "robustness_generalization": {
                     "candidate_graph_limitation": (
                         "profiles hold the post-gate candidate graph fixed"
                     )
-                }
+                },
+                "unavailable_evidence": {
+                    "real_camera_generalization": {
+                        "availability": "unavailable",
+                        "reason": "synthetic_evidence_only",
+                    },
+                    "center_global_track_id_binding_correctness": {
+                        "availability": "unavailable",
+                        "reason": "center_binding_truth_join_absent",
+                    },
+                    "physical_closed_loop_outcome": {
+                        "availability": "unavailable",
+                        "reason": "physical_records_absent",
+                    },
+                },
             },
             "d5_consumer_contract": consumer,
             "blocker_codes": [],
@@ -458,6 +539,8 @@ def _make_fixture(root: Path) -> _Fixture:
                 "g1_assist_granted": False,
                 "control_authority_granted": False,
                 "default_path_change_granted": False,
+                "assignment_authority_granted": False,
+                "failover_authority_granted": False,
                 "reason": "fixture",
             },
             "availability_policy": {},
@@ -467,8 +550,25 @@ def _make_fixture(root: Path) -> _Fixture:
     _write_json(external_path, external)
     external_file_sha = _sha_file(external_path)
 
+    runtime_authority = {
+        "model_promotion_granted": False,
+        "g1_assist_granted": False,
+        "default_path_change_granted": False,
+        "assignment_authority_granted": False,
+        "failover_authority_granted": False,
+        "control_authority_granted": False,
+    }
+    authority_contract = {
+        "schema_version": "d5.tracklet-g1-authority-contract.v2",
+        "d6_external_audit_sha256": external_file_sha,
+        "d6_external_audit_content_sha256": external["content_sha256"],
+        "evidence_audit_passed": True,
+        "evidence_eligible": True,
+        "runtime_authority": runtime_authority,
+        "reason": "evidence_audit_only_no_runtime_authority",
+    }
     admission_report = {
-        "schema_version": "d5.tracklet-g1-admission-report.v1",
+        "schema_version": "d5.tracklet-g1-admission-report.v2",
         "model_fingerprint": model_fingerprint,
         "implementation_sha256": runtime_sha,
         "dataset_manifest_sha256": training[
@@ -480,6 +580,9 @@ def _make_fixture(root: Path) -> _Fixture:
         "heldout_report_content_sha256": heldout["content_sha256"],
         "paired_shadow_report_sha256": paired_file_sha,
         "paired_shadow_report_content_sha256": paired["content_sha256"],
+        "paired_shadow_lineage_sha256": lineage_file_sha,
+        "paired_shadow_lineage_record_count": 900,
+        "paired_shadow_lineage_unique_episode_uid_count": 900,
         "d6_external_audit_sha256": external_file_sha,
         "d6_external_audit_content_sha256": external["content_sha256"],
         "formal_evaluation": True,
@@ -494,9 +597,10 @@ def _make_fixture(root: Path) -> _Fixture:
         "same_camera_mutual_exclusion_violation_count": 0,
         "failure_reasons": [],
         "g1_assist_eligible": True,
+        "authority_contract": deepcopy(authority_contract),
     }
     manifest = {
-        "schema_version": "d5.tracklet-model-bundle.v4",
+        "schema_version": "d5.tracklet-model-bundle.v5",
         "source_development_bundle": {
             "schema_version": "d5.tracklet-model-bundle.v3",
             "admission_status": "development_only_fail_closed",
@@ -529,6 +633,12 @@ def _make_fixture(root: Path) -> _Fixture:
                 "sha256": paired_file_sha,
                 "content_sha256": paired["content_sha256"],
             },
+            "paired_shadow_lineage": {
+                "filename": "evidence/paired_episode_lineage.jsonl",
+                "sha256": lineage_file_sha,
+                "record_count": 900,
+                "unique_episode_uid_count": 900,
+            },
             "d6_external_audit": {
                 "filename": "evidence/d6_external_audit.json",
                 "sha256": external_file_sha,
@@ -536,12 +646,11 @@ def _make_fixture(root: Path) -> _Fixture:
             },
         },
         "admission": {
-            "status": "g1_assist_admitted",
+            "status": "g1_evidence_eligible_not_authorized",
             "default_model": False,
             "g1_assist_eligible": True,
             "global_track_id_authority": False,
-            "assignment_authority": False,
-            "control_authority": False,
+            "authority_contract": deepcopy(authority_contract),
             "report": admission_report,
         },
     }
@@ -558,6 +667,7 @@ def _make_fixture(root: Path) -> _Fixture:
     paths["bundle_checksums"] = checksums_path
     paths["heldout_evidence"] = heldout_path
     paths["paired_shadow_evidence"] = paired_path
+    paths["paired_shadow_lineage"] = lineage_path
     paths["d6_external_audit_evidence"] = external_path
     spec = {
         "schema_version": D5_G1_POST_ASSEMBLY_AUDIT_INPUT_SCHEMA_VERSION,
@@ -589,19 +699,446 @@ def _make_fixture(root: Path) -> _Fixture:
     return fixture
 
 
-def test_positive_v4_bundle_passes_without_d6_authority(
+def _make_production_assembler_fixture(root: Path) -> _Fixture:
+    """Build the positive v5 fixture through D5's public assembler."""
+
+    source_root = root / "development"
+    torch.manual_seed(31)
+    model = NativeTrackletEdgeClassifier(
+        hidden_dim=8,
+        message_passing_steps=1,
+    )
+    write_tracklet_model_bundle(
+        source_root,
+        model,
+        dataset_manifest_sha256="3" * 64,
+        split_sha256="4" * 64,
+        training_set_sha256="6" * 64,
+        training_config_sha256="5" * 64,
+        calibration_temperature=1.0,
+        decision_threshold=0.6,
+        validation_results={"f1": {"available": True, "value": 0.95}},
+        admission_status="development_only_fail_closed",
+        readiness_audit_sha256="7" * 64,
+    )
+    source_manifest_path = source_root / "manifest.json"
+    source_weights_path = source_root / "weights.pt"
+    source_checksums_path = source_root / "SHA256SUMS"
+    source_manifest = json.loads(
+        source_manifest_path.read_text(encoding="utf-8")
+    )
+    source_manifest_sha = _sha_file(source_manifest_path)
+    source_weights_sha = _sha_file(source_weights_path)
+    source_checksums_sha = _sha_file(source_checksums_path)
+    training = dict(source_manifest["training_dataset"])
+    provenance = source_manifest["code_provenance"]
+    runtime_files = dict(provenance["runtime_source_files"])
+    model_files = dict(provenance["source_files"])
+    assert set(runtime_files) == set(_RUNTIME_FILES)
+    assert set(model_files) == set(_MODEL_FILES)
+    runtime_sha = provenance["runtime_implementation_sha256"]
+    model_sha = provenance["implementation_sha256"]
+    model_fingerprint = f"sha256:{source_weights_sha}"
+
+    evidence_source = root / "evidence-source"
+    evidence_source.mkdir(parents=True)
+    heldout = _with_content(
+        {
+            "schema_version": "d5.tracklet-heldout-model-evaluation.v1",
+            "evaluation_role": "held_out_evaluation",
+            "development_model": {
+                "admission_status": "development_only_fail_closed",
+                "bundle_manifest_sha256": source_manifest_sha,
+                "weights_sha256": source_weights_sha,
+                "model_id": "d5-production-assembler-fixture",
+                "training_dataset": training,
+            },
+            "heldout_corpus": {
+                "episode_count": 900,
+                "scenario_scale_cell_count": 45,
+                "seed_values": list(range(1000, 1020)),
+            },
+            "implementation_sha256": {
+                name: runtime_files[name]
+                for name in (
+                    "sparse_tracklet_graph.py",
+                    "tracklet_dataset.py",
+                    "tracklet_gnn.py",
+                    "tracklet_heldout_evaluation.py",
+                    "tracklet_model_bundle.py",
+                    "tracklet_training.py",
+                    "tracklet_training_audit.py",
+                )
+            },
+            "heldout_assessment": {
+                "status": "pass",
+                "passed": True,
+                "authority_enabled": False,
+                "g1_assist_eligible": False,
+                "cell_catalog_gate": {
+                    "actual": 45,
+                    "expected": 45,
+                    "passed": True,
+                },
+            },
+            "overall": {
+                "complete_truth": True,
+                "episode_count": 900,
+            },
+            "identity_and_truth_safety": {
+                "global_track_id_created_or_rebound": False,
+                "online_truth_feature_count": 0,
+                "same_camera_candidate_edge_count": 0,
+            },
+        }
+    )
+    heldout_path = evidence_source / "heldout_evaluation.json"
+    _write_json(heldout_path, heldout)
+    heldout_file_sha = _sha_file(heldout_path)
+
+    lineage_path = evidence_source / "paired_episode_lineage.jsonl"
+    lineage_path.write_bytes(
+        b"".join(
+            _canonical(
+                {
+                    "episode_uid": f"production-episode-{index:04d}",
+                    "seed": 1000 + (index % 20),
+                }
+            )
+            for index in range(900)
+        )
+    )
+    lineage_file_sha = _sha_file(lineage_path)
+
+    paired_expected = {
+        "bundle_manifest_sha256": source_manifest_sha,
+        "bundle_weights_sha256": source_weights_sha,
+        "bundle_checksums_sha256": source_checksums_sha,
+        "heldout_report_sha256": heldout_file_sha,
+        "heldout_report_content_sha256": heldout["content_sha256"],
+    }
+    paired = _with_content(
+        {
+            "schema_version": "d5.tracklet-paired-shadow.v2",
+            "execution_completed": True,
+            "evaluation_role": "evaluator_only_paired_shadow",
+            "status": "pass",
+            "input_spec": {
+                "schema_version": "d5.tracklet-paired-shadow-input.v1",
+                "require_full_profile": True,
+                "expected_hashes": paired_expected,
+            },
+            "input_hashes_before": paired_expected,
+            "input_hashes_after": paired_expected,
+            "input_artifacts_unchanged": True,
+            "evidence_status": {"status": "authoritative"},
+            "totals": {
+                "seed_count": 20,
+                "episode_count": 900,
+                "scenario_scale_cell_count": 45,
+            },
+            "catalog_integrity": {"complete": True},
+            "paired_shadow_assessment": {
+                "status": "pass",
+                "passed": True,
+            },
+            "identity_and_truth_safety": {
+                "online_truth_feature_count": 0,
+                "global_track_id_rewrite_count": 0,
+                "same_camera_mutual_exclusion_violation_count": 0,
+            },
+            "implementation_sha256": {
+                name: runtime_files[name]
+                for name in (
+                    "scalable_3d_adapter.py",
+                    "sparse_tracklet_graph.py",
+                    "tracklet_dataset.py",
+                    "tracklet_g1_evidence_assembler.py",
+                    "tracklet_gnn.py",
+                    "tracklet_heldout_evaluation.py",
+                    "tracklet_model_bundle.py",
+                    "tracklet_paired_shadow.py",
+                )
+            },
+            "paired_lineage": {
+                "schema_version": (
+                    "d5.tracklet-paired-shadow-lineage.v1"
+                ),
+                "filename": "paired_episode_lineage.jsonl",
+                "record_count": 900,
+                "sha256": lineage_file_sha,
+            },
+            "authority": {
+                "status": "pending_d6_external_audit",
+                "g1": False,
+                "assist": False,
+                "authority": False,
+                "paired_shadow_passed": True,
+                "rule_fallback": True,
+                "runtime_default_changed": False,
+            },
+        }
+    )
+    paired_path = evidence_source / "paired_shadow_report.json"
+    _write_json(paired_path, paired)
+    paired_file_sha = _sha_file(paired_path)
+
+    consumer = {
+        "schema_version": "d6.d5-g1-external-audit-consumer.v1",
+        "model_fingerprint": model_fingerprint,
+        "bundle_manifest_sha256": source_manifest_sha,
+        "bundle_weights_sha256": source_weights_sha,
+        "implementation_sha256": runtime_sha,
+        "dataset_manifest_sha256": training[
+            "dataset_manifest_sha256"
+        ],
+        "split_sha256": training["split_sha256"],
+        "training_set_sha256": training["training_set_sha256"],
+        "heldout_report_sha256": heldout_file_sha,
+        "heldout_report_content_sha256": heldout["content_sha256"],
+        "paired_shadow_report_sha256": paired_file_sha,
+        "paired_shadow_report_content_sha256": paired["content_sha256"],
+        "formal_evaluation": True,
+        "heldout_passed": True,
+        "paired_shadow_passed": True,
+        "unseen_seed_count": 20,
+        "heldout_episode_count": 900,
+        "scenario_scale_cell_count": 45,
+        "online_truth_feature_count": 0,
+        "global_track_id_rewrite_count": 0,
+        "same_camera_mutual_exclusion_violation_count": 0,
+        "d6_external_audit_passed": True,
+        "failure_reasons": [],
+    }
+    consumer["field_availability"] = {
+        name: {"available": True, "reason": None}
+        for name in consumer
+        if name
+        not in {
+            "schema_version",
+            "d6_external_audit_passed",
+            "failure_reasons",
+        }
+    }
+    external = _with_content(
+        {
+            "schema_version": "d6.d5-g1-external-audit.v2",
+            "audit_id": "production-assembler-external",
+            "evaluated_at_utc": "2026-07-26T00:00:00Z",
+            "formal_profile_version": (
+                "d6.d5-g1-formal-heldout-paired-shadow.v1"
+            ),
+            "status": "pass",
+            "audit_passed": True,
+            "fail_closed": False,
+            "evidence_audit_only": True,
+            "input_contract": {
+                "schema_version": (
+                    "d6.d5-g1-external-audit-input.v1"
+                ),
+                "expected_current_implementation_sha256": runtime_sha,
+                "thresholds": {},
+            },
+            "artifact_evidence": [
+                {
+                    "artifact_id": f"artifact-{index}",
+                    "availability": "available",
+                    "sha256_match": True,
+                    "blocker_codes": [],
+                }
+                for index in range(9)
+            ],
+            "candidate": {
+                "model": {
+                    "available": True,
+                    "manifest_sha256": source_manifest_sha,
+                    "weights_sha256": source_weights_sha,
+                    "checksums_sha256": source_checksums_sha,
+                    "model_fingerprint": model_fingerprint,
+                    "dataset_manifest_sha256": training[
+                        "dataset_manifest_sha256"
+                    ],
+                    "split_sha256": training["split_sha256"],
+                    "training_set_sha256": training[
+                        "training_set_sha256"
+                    ],
+                    "manifest_implementation_sha256": model_sha,
+                    "manifest_source_files": model_files,
+                },
+                "implementation": {
+                    "current_implementation_sha256": runtime_sha,
+                    "evidence_implementation_sha256": runtime_sha,
+                    "current_source_files": runtime_files,
+                    "evidence_source_files": runtime_files,
+                },
+                "heldout": {
+                    "report_sha256": heldout_file_sha,
+                    "report_content_sha256": heldout["content_sha256"],
+                    "unseen_seed_count": 20,
+                    "episode_count": 900,
+                    "scenario_scale_cell_count": 45,
+                    "online_truth_feature_count": 0,
+                    "passed": True,
+                    "training_dataset": {
+                        "dataset_manifest_sha256": training[
+                            "dataset_manifest_sha256"
+                        ],
+                        "split_sha256": training["split_sha256"],
+                        "training_set_sha256": training[
+                            "training_set_sha256"
+                        ],
+                    },
+                },
+                "paired_shadow": {
+                    "report_sha256": paired_file_sha,
+                    "report_content_sha256": paired["content_sha256"],
+                    "seed_count": 20,
+                    "episode_count": 900,
+                    "scenario_scale_cell_count": 45,
+                    "online_truth_feature_count": 0,
+                    "global_track_id_rewrite_count": 0,
+                    "same_camera_mutual_exclusion_violation_count": 0,
+                    "passed": True,
+                },
+                "paired_lineage": {
+                    "available": True,
+                    "sha256": lineage_file_sha,
+                    "record_count": 900,
+                    "unique_episode_uid_count": 900,
+                },
+            },
+            "limitations": {
+                "robustness_generalization": {
+                    "candidate_graph_limitation": (
+                        "profiles hold the post-gate candidate graph fixed"
+                    )
+                },
+                "unavailable_evidence": {
+                    "real_camera_generalization": {
+                        "availability": "unavailable",
+                        "reason": "synthetic_evidence_only",
+                    },
+                    "center_global_track_id_binding_correctness": {
+                        "availability": "unavailable",
+                        "reason": "center_binding_truth_join_absent",
+                    },
+                    "physical_closed_loop_outcome": {
+                        "availability": "unavailable",
+                        "reason": "physical_records_absent",
+                    },
+                },
+            },
+            "d5_consumer_contract": consumer,
+            "blocker_codes": [],
+            "blocker_details": {},
+            "authority": {
+                "model_promotion_granted": False,
+                "g1_assist_granted": False,
+                "control_authority_granted": False,
+                "default_path_change_granted": False,
+                "assignment_authority_granted": False,
+                "failover_authority_granted": False,
+                "reason": "fixture",
+            },
+            "availability_policy": {},
+        }
+    )
+    external_path = evidence_source / "d6_external_audit.json"
+    _write_json(external_path, external)
+
+    bundle = root / "bundle"
+    assemble_tracklet_g1_bundle(
+        bundle,
+        TrackletG1EvidenceInputs(
+            development_bundle_dir=source_root,
+            expected_bundle_manifest_sha256=source_manifest_sha,
+            expected_bundle_weights_sha256=source_weights_sha,
+            expected_bundle_checksums_sha256=source_checksums_sha,
+            heldout_report_path=heldout_path,
+            expected_heldout_report_sha256=heldout_file_sha,
+            paired_shadow_report_path=paired_path,
+            expected_paired_shadow_report_sha256=paired_file_sha,
+            paired_shadow_lineage_path=lineage_path,
+            expected_paired_shadow_lineage_sha256=lineage_file_sha,
+            d6_audit_path=external_path,
+            expected_d6_audit_sha256=_sha_file(external_path),
+        ),
+    )
+
+    paths = {
+        name: root / relative
+        for name, relative in _ARTIFACT_RELATIVE.items()
+    }
+    spec = {
+        "schema_version": D5_G1_POST_ASSEMBLY_AUDIT_INPUT_SCHEMA_VERSION,
+        "audit_id": "d5-production-assembler-post-assembly",
+        "evaluated_at_utc": "2026-07-26T00:00:00Z",
+        "profile_version": D5_G1_POST_ASSEMBLY_AUDIT_PROFILE_VERSION,
+        "expected_external_audit_content_sha256": external[
+            "content_sha256"
+        ],
+        "artifacts": {
+            name: {
+                "path": str(path.relative_to(root)),
+                "sha256": _sha_file(path),
+            }
+            for name, path in paths.items()
+        },
+    }
+    return _Fixture(
+        root=root,
+        bundle=bundle,
+        spec=spec,
+        paths=paths,
+    )
+
+
+def test_positive_v5_bundle_passes_without_d6_authority(
     tmp_path: Path,
 ) -> None:
     fixture = _make_fixture(tmp_path)
 
     result = audit_d5_g1_post_assembly_bundle(fixture.inputs())
 
+    assert D5_G1_POST_ASSEMBLY_AUDIT_SCHEMA_VERSION == (
+        "d6.d5-g1-post-assembly-audit.v2"
+    )
+    assert D5_G1_POST_ASSEMBLY_AUDIT_INPUT_SCHEMA_VERSION == (
+        "d6.d5-g1-post-assembly-audit-input.v2"
+    )
+    assert D5_G1_POST_ASSEMBLY_AUDIT_CONSUMER_SCHEMA_VERSION == (
+        "d6.d5-g1-post-assembly-audit-consumer.v2"
+    )
+    assert D5_G1_POST_ASSEMBLY_AUDIT_PROFILE_VERSION == (
+        "d6.d5-g1-post-assembly-integrity.v2"
+    )
+    assert result["schema_version"] == (
+        D5_G1_POST_ASSEMBLY_AUDIT_SCHEMA_VERSION
+    )
+    assert result["input_contract"]["schema_version"] == (
+        D5_G1_POST_ASSEMBLY_AUDIT_INPUT_SCHEMA_VERSION
+    )
+    assert result["profile_version"] == (
+        D5_G1_POST_ASSEMBLY_AUDIT_PROFILE_VERSION
+    )
+    assert result["d5_consumer_contract"]["schema_version"] == (
+        D5_G1_POST_ASSEMBLY_AUDIT_CONSUMER_SCHEMA_VERSION
+    )
     assert result["status"] == "pass"
     assert result["audit_passed"] is True
     assert result["blocker_codes"] == []
     assert result["d5_consumer_contract"][
         "bundle_declared_g1_assist_eligible"
     ] is True
+    assert set(result["authority"]) == {
+        "model_promotion_granted",
+        "g1_assist_granted",
+        "default_path_change_granted",
+        "assignment_authority_granted",
+        "failover_authority_granted",
+        "control_authority_granted",
+        "reason",
+    }
     assert all(
         value is False
         for name, value in result["authority"].items()
@@ -621,6 +1158,12 @@ def test_positive_v4_bundle_passes_without_d6_authority(
     assert result["d5_consumer_contract"][
         "same_camera_mutual_exclusion_violation_count"
     ] == 0
+    assert result["d5_consumer_contract"][
+        "paired_shadow_lineage_record_count"
+    ] == 900
+    assert result["d5_consumer_contract"][
+        "paired_shadow_lineage_unique_episode_uid_count"
+    ] == 900
     assert result["checksum_evidence"]["exact_coverage"] is True
     assert result["checksum_evidence"]["tree_evidence"]["exact"] is True
     assert result["cross_binding"]["runtime_implementation_sha256"] == (
@@ -642,12 +1185,235 @@ def test_positive_v4_bundle_passes_without_d6_authority(
         in {
             "heldout_evidence",
             "paired_shadow_evidence",
+            "paired_shadow_lineage",
             "d6_external_audit_evidence",
         }
     }
     assert all(
         row["content_sha256_verified"] is True
-        for row in content_rows.values()
+        for name, row in content_rows.items()
+        if name != "paired_shadow_lineage"
+    )
+    unavailable = result["limitations"]["unavailable_evidence"]
+    assert all(
+        record["availability"] == "unavailable"
+        for record in unavailable.values()
+    )
+
+
+def test_real_d5_production_assembler_v5_passes_d6_v2(
+    tmp_path: Path,
+) -> None:
+    fixture = _make_production_assembler_fixture(tmp_path)
+    manifest = fixture.read_json("bundle_manifest")
+    scorer = load_tracklet_model_bundle(fixture.bundle)
+
+    result = audit_d5_g1_post_assembly_bundle(fixture.inputs())
+
+    assert scorer.bundle_manifest_sha256 == _sha_file(
+        fixture.paths["bundle_manifest"]
+    )
+    assert set(path.relative_to(fixture.bundle).as_posix() for path in (
+        fixture.paths["bundle_manifest"],
+        fixture.paths["bundle_weights"],
+        fixture.paths["bundle_checksums"],
+        fixture.paths["heldout_evidence"],
+        fixture.paths["paired_shadow_evidence"],
+        fixture.paths["paired_shadow_lineage"],
+        fixture.paths["d6_external_audit_evidence"],
+    )) == {
+        "manifest.json",
+        "weights.pt",
+        "SHA256SUMS",
+        "evidence/heldout_evaluation.json",
+        "evidence/paired_shadow_report.json",
+        "evidence/paired_episode_lineage.jsonl",
+        "evidence/d6_external_audit.json",
+    }
+    assert result["status"] == "pass"
+    assert result["audit_passed"] is True
+    assert result["blocker_codes"] == []
+    assert result["checksum_evidence"]["exact_coverage"] is True
+    assert result["checksum_evidence"]["tree_evidence"]["exact"] is True
+
+    lineage = result["evidence"]["paired_shadow_lineage"]
+    report = manifest["admission"]["report"]
+    assert lineage["record_count"] == 900
+    assert lineage["unique_episode_uid_count"] == 900
+    assert report["paired_shadow_lineage_sha256"] == lineage["sha256"]
+    assert report["paired_shadow_lineage_record_count"] == 900
+    assert (
+        report["paired_shadow_lineage_unique_episode_uid_count"]
+        == 900
+    )
+
+    external = fixture.read_json("d6_external_audit_evidence")
+    external_file_sha = _sha_file(
+        fixture.paths["d6_external_audit_evidence"]
+    )
+    authority_contract = manifest["admission"]["authority_contract"]
+    assert report["authority_contract"] == authority_contract
+    assert authority_contract["d6_external_audit_sha256"] == (
+        external_file_sha
+    )
+    assert authority_contract[
+        "d6_external_audit_content_sha256"
+    ] == external["content_sha256"]
+    assert result["cross_binding"][
+        "d6_external_audit_file_sha256"
+    ] == external_file_sha
+    assert result["cross_binding"][
+        "d6_external_audit_content_sha256"
+    ] == external["content_sha256"]
+    assert result["cross_binding"][
+        "runtime_implementation_sha256"
+    ] == manifest["code_provenance"]["runtime_implementation_sha256"]
+    assert set(authority_contract["runtime_authority"]) == set(
+        _AUTHORITY_FIELDS
+    )
+    assert not any(authority_contract["runtime_authority"].values())
+    assert not any(
+        value
+        for name, value in result["authority"].items()
+        if name != "reason"
+    )
+
+
+def test_real_d5_production_v5_lineage_tamper_fails_closed(
+    tmp_path: Path,
+) -> None:
+    fixture = _make_production_assembler_fixture(tmp_path)
+    with fixture.paths["paired_shadow_lineage"].open(
+        "ab"
+    ) as stream:
+        stream.write(_canonical({"episode_uid": "tampered-episode"}))
+
+    result = audit_d5_g1_post_assembly_bundle(fixture.inputs())
+
+    assert result["audit_passed"] is False
+    assert (
+        "artifact_sha256_mismatch.paired_shadow_lineage"
+        in result["blocker_codes"]
+    )
+    assert (
+        "paired_lineage_record_count_mismatch"
+        in result["blocker_codes"]
+    )
+    assert result["authority"]["g1_assist_granted"] is False
+
+
+def test_real_d5_production_v5_lineage_missing_fails_closed(
+    tmp_path: Path,
+) -> None:
+    fixture = _make_production_assembler_fixture(tmp_path)
+    fixture.paths["paired_shadow_lineage"].unlink()
+
+    result = audit_d5_g1_post_assembly_bundle(fixture.inputs())
+
+    assert (
+        "artifact_unavailable.paired_shadow_lineage"
+        in result["blocker_codes"]
+    )
+    assert "bundle_tree_missing_entry" in result["blocker_codes"]
+    assert "paired_lineage_unavailable" in result["blocker_codes"]
+    assert result["audit_passed"] is False
+    assert result["authority"]["control_authority_granted"] is False
+
+
+def test_legacy_v4_bundle_schema_fails_closed(tmp_path: Path) -> None:
+    fixture = _make_fixture(tmp_path)
+    manifest = fixture.read_json("bundle_manifest")
+    manifest["schema_version"] = "d5.tracklet-model-bundle.v4"
+    fixture.write_json("bundle_manifest", manifest)
+    fixture.refresh_checksums()
+
+    result = audit_d5_g1_post_assembly_bundle(fixture.inputs())
+
+    assert "bundle_schema_mismatch" in result["blocker_codes"]
+    assert result["audit_passed"] is False
+
+
+def test_legacy_external_audit_v1_with_six_permissions_fails_closed(
+    tmp_path: Path,
+) -> None:
+    fixture = _make_fixture(tmp_path)
+    external = fixture.read_json("d6_external_audit_evidence")
+    external["schema_version"] = "d6.d5-g1-external-audit.v1"
+    fixture.rebind_external(external)
+
+    result = audit_d5_g1_post_assembly_bundle(fixture.inputs())
+
+    assert "external_audit_schema_mismatch" in result["blocker_codes"]
+    assert result["audit_passed"] is False
+
+
+def test_legacy_admission_report_v1_fails_closed(tmp_path: Path) -> None:
+    fixture = _make_fixture(tmp_path)
+    manifest = fixture.read_json("bundle_manifest")
+    manifest["admission"]["report"][
+        "schema_version"
+    ] = "d5.tracklet-g1-admission-report.v1"
+    fixture.write_json("bundle_manifest", manifest)
+    fixture.refresh_checksums()
+
+    result = audit_d5_g1_post_assembly_bundle(fixture.inputs())
+
+    assert (
+        "bundle_admission_report_schema_mismatch"
+        in result["blocker_codes"]
+    )
+    assert result["audit_passed"] is False
+
+
+def test_authority_contract_other_version_fails_closed(
+    tmp_path: Path,
+) -> None:
+    fixture = _make_fixture(tmp_path)
+    manifest = fixture.read_json("bundle_manifest")
+    for contract in (
+        manifest["admission"]["authority_contract"],
+        manifest["admission"]["report"]["authority_contract"],
+    ):
+        contract["schema_version"] = "d5.tracklet-g1-authority-contract.v1"
+    fixture.write_json("bundle_manifest", manifest)
+    fixture.refresh_checksums()
+
+    result = audit_d5_g1_post_assembly_bundle(fixture.inputs())
+
+    assert (
+        "bundle_authority_contract_schema_mismatch"
+        in result["blocker_codes"]
+    )
+    assert result["audit_passed"] is False
+
+
+def test_legacy_v4_report_v1_and_six_permission_audit_v1_mix_fails_closed(
+    tmp_path: Path,
+) -> None:
+    fixture = _make_fixture(tmp_path)
+    manifest = fixture.read_json("bundle_manifest")
+    manifest["schema_version"] = "d5.tracklet-model-bundle.v4"
+    manifest["admission"]["report"][
+        "schema_version"
+    ] = "d5.tracklet-g1-admission-report.v1"
+    fixture.write_json("bundle_manifest", manifest)
+    external = fixture.read_json("d6_external_audit_evidence")
+    external["schema_version"] = "d6.d5-g1-external-audit.v1"
+    fixture.rebind_external(external)
+
+    result = audit_d5_g1_post_assembly_bundle(fixture.inputs())
+
+    assert "bundle_schema_mismatch" in result["blocker_codes"]
+    assert (
+        "bundle_admission_report_schema_mismatch"
+        in result["blocker_codes"]
+    )
+    assert "external_audit_schema_mismatch" in result["blocker_codes"]
+    assert result["audit_passed"] is False
+    assert all(
+        value is False
+        for name, value in result["authority"].items()
+        if name != "reason"
     )
 
 
@@ -787,8 +1553,6 @@ def test_required_artifact_parent_symlink_fails_closed(
     (
         "default_model",
         "global_track_id_authority",
-        "assignment_authority",
-        "control_authority",
     ),
 )
 def test_forbidden_bundle_permission_fails_closed(
@@ -810,6 +1574,39 @@ def test_forbidden_bundle_permission_fails_closed(
     assert result["authority"]["g1_assist_granted"] is False
 
 
+@pytest.mark.parametrize("field", (
+    "model_promotion_granted",
+    "g1_assist_granted",
+    "default_path_change_granted",
+    "assignment_authority_granted",
+    "failover_authority_granted",
+    "control_authority_granted",
+))
+def test_bundle_authority_contract_permission_reopen_fails_closed(
+    tmp_path: Path,
+    field: str,
+) -> None:
+    fixture = _make_fixture(tmp_path)
+    manifest = fixture.read_json("bundle_manifest")
+    manifest["admission"]["authority_contract"][
+        "runtime_authority"
+    ][field] = True
+    manifest["admission"]["report"]["authority_contract"][
+        "runtime_authority"
+    ][field] = True
+    fixture.write_json("bundle_manifest", manifest)
+    fixture.refresh_checksums()
+
+    result = audit_d5_g1_post_assembly_bundle(fixture.inputs())
+
+    assert (
+        f"bundle_authority_contract_authority_not_closed.{field}"
+        in result["blocker_codes"]
+    )
+    assert result["audit_passed"] is False
+    assert result["authority"][field] is False
+
+
 @pytest.mark.parametrize(
     "field",
     (
@@ -817,6 +1614,8 @@ def test_forbidden_bundle_permission_fails_closed(
         "g1_assist_granted",
         "control_authority_granted",
         "default_path_change_granted",
+        "assignment_authority_granted",
+        "failover_authority_granted",
     ),
 )
 def test_external_audit_permission_reopen_fails_closed(
@@ -943,6 +1742,89 @@ def test_manifest_external_binding_mismatch_fails_closed(
     assert result["audit_passed"] is False
 
 
+def test_authority_contract_external_hash_binding_fails_closed(
+    tmp_path: Path,
+) -> None:
+    fixture = _make_fixture(tmp_path)
+    manifest = fixture.read_json("bundle_manifest")
+    for contract in (
+        manifest["admission"]["authority_contract"],
+        manifest["admission"]["report"]["authority_contract"],
+    ):
+        contract["d6_external_audit_sha256"] = "f" * 64
+    fixture.write_json("bundle_manifest", manifest)
+    fixture.refresh_checksums()
+
+    result = audit_d5_g1_post_assembly_bundle(fixture.inputs())
+
+    assert (
+        "authority_contract_cross_binding_mismatch."
+        "d6_external_audit_sha256"
+        in result["blocker_codes"]
+    )
+    assert result["audit_passed"] is False
+
+
+def test_lineage_manifest_binding_mismatch_fails_closed(
+    tmp_path: Path,
+) -> None:
+    fixture = _make_fixture(tmp_path)
+    manifest = fixture.read_json("bundle_manifest")
+    manifest["evidence"]["paired_shadow_lineage"]["sha256"] = "f" * 64
+    fixture.write_json("bundle_manifest", manifest)
+    fixture.refresh_checksums()
+
+    result = audit_d5_g1_post_assembly_bundle(fixture.inputs())
+
+    assert (
+        "cross_binding_mismatch.paired_shadow_lineage_sha256"
+        in result["blocker_codes"]
+    )
+    assert result["audit_passed"] is False
+
+
+def test_runtime_implementation_binding_mismatch_fails_closed(
+    tmp_path: Path,
+) -> None:
+    fixture = _make_fixture(tmp_path)
+    manifest = fixture.read_json("bundle_manifest")
+    manifest["code_provenance"][
+        "runtime_implementation_sha256"
+    ] = "f" * 64
+    fixture.write_json("bundle_manifest", manifest)
+    fixture.refresh_checksums()
+
+    result = audit_d5_g1_post_assembly_bundle(fixture.inputs())
+
+    assert (
+        "bundle_runtime_implementation_sha256_mismatch"
+        in result["blocker_codes"]
+    )
+    assert (
+        "cross_binding_mismatch.runtime_implementation_sha256"
+        in result["blocker_codes"]
+    )
+
+
+def test_external_unavailable_evidence_must_remain_explicit(
+    tmp_path: Path,
+) -> None:
+    fixture = _make_fixture(tmp_path)
+    external = fixture.read_json("d6_external_audit_evidence")
+    del external["limitations"]["unavailable_evidence"][
+        "physical_closed_loop_outcome"
+    ]
+    fixture.rebind_external(external)
+
+    result = audit_d5_g1_post_assembly_bundle(fixture.inputs())
+
+    assert (
+        "external_audit_unavailable_evidence_fields_mismatch"
+        in result["blocker_codes"]
+    )
+    assert result["authority"]["control_authority_granted"] is False
+
+
 def test_outputs_are_atomic_deterministic_and_checksummed(
     tmp_path: Path,
 ) -> None:
@@ -1001,6 +1883,21 @@ def test_input_rejects_caller_pass_boolean(tmp_path: Path) -> None:
             payload,
             repository_root=fixture.root,
         )
+
+
+def test_legacy_post_assembly_input_v1_is_rejected(
+    tmp_path: Path,
+) -> None:
+    fixture = _make_fixture(tmp_path)
+    fixture.spec[
+        "schema_version"
+    ] = "d6.d5-g1-post-assembly-audit-input.v1"
+
+    with pytest.raises(
+        D5G1PostAssemblyAuditError,
+        match="input_schema_mismatch",
+    ):
+        fixture.inputs()
 
 
 def test_input_rejects_artifact_path_escape(tmp_path: Path) -> None:
