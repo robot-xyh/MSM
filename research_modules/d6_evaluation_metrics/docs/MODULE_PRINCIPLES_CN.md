@@ -158,8 +158,45 @@ admission report v2 和 authority contract v2、写入 lineage 并发布 v5。�
 此前目录
 `/tmp/MSM-d5-g1-current-runtime-d6-external-audit-64cb865-20260726-v2/`
 的名称虽带 v2，内部结果仍声明 external audit v1。它被版本审查否决，只能作为历史统计记录，
-不能交给 v5 assembler。正式 v2 证据必须在本次代码形成提交后重新运行。本轮没有执行正式
-external audit、post-assembly audit 或 bundle 装配。
+不能交给 v5 assembler。正式 v2 证据已于 2026-07-27 使用全新证据目录运行，旧目录未被复制、
+重绑定或复用。
+
+## D5 G1 正式证据链（2026-07-27）
+
+正式证据链在 clean commit `8d5e02ec989259ce3d39e1e4ad6a90dd0d8d5b54` 上按三个阶段执行：
+
+```text
+冻结 development-v3、held-out、paired-shadow 和 paired lineage
+  -> D6 external audit v2
+  -> D5 生产 assembler 生成 bundle v5
+  -> D5 strict/shadow loader
+  -> D6 post-assembly v2
+  -> D5 assist 权限门
+```
+
+external audit 输出为 `d6.d5-g1-external-audit.v2`，结果 `pass`、blocker 为空。文件
+SHA-256 为 `cbd6c72b2d9e7b78bf3aa36f975e6627250d2bf18de5a0b0ebc2c8f6cf760cd6`，
+规范内容 SHA-256 为
+`334cf662e49c735931019ff358be1894d1358f1b4a5a868759eee41d3d282d15`。candidate lineage
+包含 900 条记录和 900 个唯一 episode UID，文件 SHA-256 为
+`83e105290f3e624f267d92ceaf050d32291bd5bbbabf98580846cd31498b1af1`。
+
+D5 生产 assembler 生成的 v5 manifest 文件 SHA-256 为
+`b431d066362005868374d038eb93a83b773c03715a53d8a9dfd0da21784f317d`。D5 strict loader
+和 shadow loader 均通过。D6 装配后输出为 `d6.d5-g1-post-assembly-audit.v2`，结果
+`pass`、blocker 为空，内容 SHA-256 为
+`17dda42d06b4be1d21ff8f1f8baecc320fd49b532be06a9f9f6b304341763e1`，consumer 为
+`d6.d5-g1-post-assembly-audit-consumer.v2`。
+
+两层 D6 审计及 D5 authority contract 均把模型晋级、G1 辅助、默认路径变更、分配、故障
+接管和控制权限设为 false。D5 assist 请求因此以
+`bundle_g1_assist_authority_not_granted` 失败关闭。外审通过和
+`g1_assist_eligible=true` 只表示证据资格，不表示运行授权。
+
+真实相机泛化、中心全局航迹标识绑定正确性和物理闭环结果在两层审计中均显式 unavailable。
+前者需要真实相机、外参漂移、遮挡和在线检测误差数据；中心绑定需要 binding 与隔离离线真值
+的连接；物理结果需要导引、控制和拦截记录。三类证据不能由合成边分类、簇指标或装配完整性
+代替。
 
 ## D5 G1 外部证据审计（2026-07-26）
 
@@ -195,22 +232,22 @@ paired-shadow 的实现记录合并后形成证据实现摘要。二者必须逐
 候选生成的全链路复验。
 
 审计结论是全部门的合取。JSON 内的 `audit_passed` 只表示证据通过。D6 始终把模型晋级、G1
-辅助、默认路径变更、分配、故障接管和控制权写为 false。D5 后续装配器以该 JSON 为唯一 D6
+辅助、默认路径变更、分配、故障接管和控制权写为 false。D5 装配器以该 JSON 为唯一 D6
 输入，并自行验证
 审计文件 SHA-256 和 `content_sha256`。G1 运行完成后，执行作用域仍由
 `learning_scope_formal_audit` 复核，两个审计层不能相互替代。
 
 7fb5 robust-v2 正式实例在 clean worktree `fa3ec10` 上重新闭合模型、数据、实现和报告谱系。
-D6 独立计算的十文件当前实现摘要为 `408e71fe...f4fe`。20 个未见 seed、900 个 episode、
+D6 独立计算的十文件当次实现摘要为 `408e71fe...f4fe`。20 个未见 seed、900 个 episode、
 45 个场景规模单元、三项安全零计数、单特征 AUC 和五类扰动门均通过，正式外审 blocker 为空。
 主 JSON 文件/内容 SHA-256 为 `10bf19f5...10b0` / `4e24ab33...9e54`。
 
-当前运行实现的历史复核使用 clean commit `64cb865b...b05`。D6 重新计算十个运行文件后得到
+64cb865 历史运行实现复核使用 clean commit `64cb865b...b05`。D6 重新计算十个运行文件后得到
 `55066382...b8ea`，与 manifest、输入期望及 held-out/paired 联合证据一致。输入清单只绑定
-当前批次的 registry、bundle、held-out、paired-shadow 和 lineage；文件与内容摘要、训练数据
+当次批次的 registry、bundle、held-out、paired-shadow 和 lineage；文件与内容摘要、训练数据
 谱系和 900 条唯一 lineage 均交叉一致。输入目录在审计前后没有变化。
 
-当前实例仍覆盖 20 个未见 seed、900 个 episode 和 45 个场景规模单元。held-out F1、错误
+该历史实例覆盖 20 个未见 seed、900 个 episode 和 45 个场景规模单元。held-out F1、错误
 合并率、候选召回和 P95 推理时延为 `1.0`、`0.0`、`1.0` 和 `0.8715935983 ms`。五类扰动
 最低边/簇 F1 为 `1.0/1.0`，单特征最高 AUC 为 `0.7200734257`。三类身份安全计数为 0，
 当时的形式化门结果为 `pass`，blocker 为空。
@@ -222,8 +259,8 @@ D6 独立计算的十文件当前实现摘要为 `408e71fe...f4fe`。20 个未�
 因此显式 unavailable。该结论不运行 G1，也不形成新的 bundle。
 
 该通过结果仍保留两项边界。五类扰动固定 post-gate 候选图，只覆盖既定候选边上的评分稳定性；
-合成三维投影也不能代替真实相机、真实外参漂移、遮挡和检测误差测试。D5 完成准入装配且 main
-显式启用之前，规则路径继续保持默认。
+合成三维投影也不能代替真实相机、真实外参漂移、遮挡和检测误差测试。在 D6 之外完成独立运行
+授权并通过实际运行作用域审计之前，规则路径继续保持默认。
 
 ## D5 G1 装配后审计原理（2026-07-26）
 

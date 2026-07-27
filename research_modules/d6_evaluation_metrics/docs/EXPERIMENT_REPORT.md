@@ -151,6 +151,47 @@ D6 全量结果为 `975 passed, 1 warning in 103.81s`。新增 Python 入口编�
 D6 没有授予模型晋级、辅助运行、分配、故障接管、默认路径或控制权限。当前两份失败结果只能供
 D3/D4 assembler 读取并继续失败关闭。
 
+## D5 G1 v5 正式审计（2026-07-27）
+
+### 条件
+
+正式执行使用 clean commit `8d5e02ec989259ce3d39e1e4ad6a90dd0d8d5b54`。证据根目录为
+`/tmp/MSM-d5-g1-formal-evidence-8d5e02e-20260727`。该批覆盖 20 个未见 seed、900 个
+episode 和 45 个场景规模单元。candidate lineage 有 900 条记录和 900 个唯一
+`episode_uid`，文件 SHA-256 为
+`83e105290f3e624f267d92ceaf050d32291bd5bbbabf98580846cd31498b1af1`。
+
+外部门限沿用冻结配置：held-out F1 不低于 0.92、错误合并率不高于 0.01、候选召回不低于
+0.95、P95 推理时延不高于 100 毫秒、单特征最高 AUC 不高于 0.98、扰动 profile 不少于 5，
+扰动最低边 F1 和簇 F1 均不低于 0.9。形式化目录至少包含 20 个未见 seed、900 个 episode
+和 45 个场景规模单元。
+
+### 外审结果
+
+external audit 输出 schema 为 `d6.d5-g1-external-audit.v2`。结果为 `status=pass`、
+`audit_passed=true`、`blocker_codes=[]`。主 JSON 文件 SHA-256 为
+`cbd6c72b2d9e7b78bf3aa36f975e6627250d2bf18de5a0b0ebc2c8f6cf760cd6`，内容
+SHA-256 为 `334cf662e49c735931019ff358be1894d1358f1b4a5a868759eee41d3d282d15`。
+
+模型晋级、G1 辅助、默认路径变更、分配、故障接管和控制六项权限全部为 false。真实相机
+泛化、中心 `global_track_id` binding 正确性和物理闭环结果均带原因声明为 unavailable。
+
+### 装配结果
+
+D5 生产 assembler 随后生成 `d5.tracklet-model-bundle.v5`。manifest 文件 SHA-256 为
+`b431d066362005868374d038eb93a83b773c03715a53d8a9dfd0da21784f317d`。D5 strict loader
+和 shadow loader 均通过。
+
+D6 post-assembly 输出 schema 为 `d6.d5-g1-post-assembly-audit.v2`。结果为
+`status=pass`、`audit_passed=true`、`blocker_codes=[]`，内容 SHA-256 为
+`17dda42d06b4be1d21ff8f1f8baecc320fd49b532be06a9f9f6b304341763e1`。consumer schema
+为 `d6.d5-g1-post-assembly-audit-consumer.v2`。六项权限仍全部为 false。
+
+D5 assist 请求没有获得 authority contract 授权，以
+`bundle_g1_assist_authority_not_granted` 失败关闭。该结果关闭正式 external audit v2、
+正式 v5 和正式 post-assembly v2 待运行项。它没有启动在线 G1、AirSim 控制或物理拦截，
+三类 unavailable 工程证据继续保留。
+
 ## D5 G1 审计版本修正（2026-07-26）
 
 main 的版本审查确认，六权限输出不能继续声明
@@ -165,10 +206,11 @@ v2。v5 fixture 还包含 900 条
 唯一 paired lineage；文件摘要和计数与 paired 报告、external audit、manifest 和 admission
 report 交叉绑定。旧 v4、audit v1、report v1 或其他权限合同版本均有失败关闭回归。
 
-本轮没有执行正式 external audit 或 post-assembly audit，也没有组装 v5。目录
+本节记录 2026-07-27 正式执行前的版本修正状态。当时没有执行正式 external audit 或
+post-assembly audit，也没有组装 v5。目录
 `/tmp/MSM-d5-g1-current-runtime-d6-external-audit-64cb865-20260726-v2/`
 内部仍是 external audit v1，现标记为 `rejected_transition_schema_v1`。下文保留其指标和哈希
-用于追溯，但它不得进入新装配。正式 v2 证据需在本次代码提交后重新生成。
+用于追溯，但它不得进入新装配。正式 v2 证据已在上节所列新目录生成。
 
 软件 fixture 验证覆盖 schema 精确值、六权限、三类 unavailable、v5 七制品、lineage 文件
 摘要与 900 个唯一 episode UID、D6 文件/内容摘要、held-out、paired-shadow、运行实现摘要、
@@ -205,7 +247,7 @@ manifest、split 和 training set SHA-256 一致。在线真值字段、`global_
 整体结果为 `fail_closed`，包含四个稳定阻断项：
 
 1. `implementation_lineage_mismatch`。held-out 与 paired 报告联合形成的九文件实现摘要为
-   `81968e0d...066e7f`，当前 D5 运行实现摘要为 `ff8c744e...8a1b7`。
+   `81968e0d...066e7f`，当次 D5 运行实现摘要为 `ff8c744e...8a1b7`。
    `tracklet_model_bundle.py` 的证据哈希为 `b92037bb...e8cc`，当前哈希为
    `174b18b9...b0ff`。没有可验证等价桥接。
 2. `synthetic_single_feature_shortcut`。检测框尺度变化率差的最高单特征 AUC 为
@@ -226,8 +268,9 @@ Markdown 和 `SHA256SUMS`。三项内容文件校验通过。专项测试 `13 pa
 CLI、内容哈希和重复运行确定性。D6 全量为 `943 passed, 1 warning in 80.56s`；warning 是既有
 Matplotlib `Axes3D` 环境提示，不影响本次二维报告和哈希判定。
 
-D6 没有授予模型晋级、G1 辅助、控制权或默认路径变更。当前证据不能被 D5 装配为正向 admission。
-下一次复核需要当前实现上的新 held-out/paired 实物，并处理合成单特征捷径和扰动最低性能。
+D6 没有授予模型晋级、G1 辅助、控制权或默认路径变更。该 99fa 证据不能被 D5 装配为正向
+admission。该候选如需复核，必须在同一候选实现上生成新的 held-out/paired 实物，并处理合成
+单特征捷径和扰动最低性能。
 
 ### 装配器后谱系复核
 
@@ -278,7 +321,7 @@ AirSim、三维质点 episode、训练或新多 seed 评估。结果为 `fail_cl
 | paired lineage | `ca122b71477000ff6cfbd6f1b5c807cf533c00366d55d9e51f7f9fbd615aab57` |
 
 held-out 和 paired-shadow 的内容 SHA-256 分别为 `19b9d0d6...3b00` 和
-`18d2cd11...dc12`，均由 D6 去除摘要字段后按规范 JSON 复算。十个 D5 运行时源文件当前实现摘要
+`18d2cd11...dc12`，均由 D6 去除摘要字段后按规范 JSON 复算。十个 D5 运行时源文件当次实现摘要
 为 `408e71fe...f4fe`，与报告联合实现谱系一致。
 
 #### 样本与门限
@@ -318,7 +361,9 @@ clean worktree 的
 | 输出校验清单 | `adcc09453c515d83eb89ef487568f531991a819053a069d923382e6162422ac8` |
 
 D6 的模型晋级、G1 辅助、控制和默认路径权限全部为 false。本次通过只说明冻结证据完整、一致且
-达到现有门限。D5 准入装配、main 显式启用和运行作用域审计尚未完成。
+达到现有门限。该结果生成时 D5 准入装配、main 显式启用和运行作用域审计均未完成。
+2026-07-27 已完成 v5 正式装配和两级审计；D6 之外的独立运行授权与实际运行作用域审计仍未
+发生。
 
 五类扰动使用固定 post-gate 候选图，没有在扰动后重新执行相机投影、门控和候选图构建。当前
 样本来自合成三维质点投影和离线 truth evaluator，不代表真实相机、真实外参漂移、真实遮挡、
@@ -326,7 +371,7 @@ D6 的模型晋级、G1 辅助、控制和默认路径权限全部为 false。�
 `975 passed, 1 warning in 86.70s`。warning 来自既有 Matplotlib `Axes3D` 导入环境，不影响本次
 文件、内容哈希和二维报告。
 
-### 当前运行实现 64cb865 外审
+### 64cb865 历史运行实现外审
 
 #### 输入
 
@@ -347,9 +392,9 @@ commit `64cb865b9933d45b13878019c0e1a21a8fbb2b05`。输入 JSON 文件 SHA-256 �
 | paired lineage | `21204bc36964ff80da81d9223be79120b83d163c10bd4d6b7dad0e333c43b8b5` |
 
 顶层、bundle、formal 和 current-runtime registry 的 `SHA256SUMS` 分别覆盖 24、2、2 和
-3 项，全部通过。当前十文件 runtime implementation SHA-256 为
+3 项，全部通过。当次十文件 runtime implementation SHA-256 为
 `5506638201623048fb53c8e15493a2dc367d5682abbee3b7235704721586b8ea`，与输入期望、
-manifest 和 held-out/paired 联合证据相同。九个 artifact 均来自当前批次，paired 没有
+manifest 和 held-out/paired 联合证据相同。九个 artifact 均来自当次批次，paired 没有
 `supersedes` 项，所有交叉绑定均一致。
 
 #### 结果

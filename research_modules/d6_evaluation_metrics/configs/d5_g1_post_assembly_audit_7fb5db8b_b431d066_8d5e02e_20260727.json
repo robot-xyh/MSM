@@ -1,0 +1,37 @@
+{
+  "schema_version": "d6.d5-g1-post-assembly-audit-input.v2",
+  "audit_id": "d5-g1-v5-7fb5db8b-post-assembly-8d5e02e-20260727",
+  "evaluated_at_utc": "2026-07-27T02:38:00Z",
+  "profile_version": "d6.d5-g1-post-assembly-integrity.v2",
+  "expected_external_audit_content_sha256": "334cf662e49c735931019ff358be1894d1358f1b4a5a868759eee41d3d282d15",
+  "artifacts": {
+    "bundle_manifest": {
+      "path": "g1_assist_v5_7fb5db8b_d6_cbd6c72b/manifest.json",
+      "sha256": "b431d066362005868374d038eb93a83b773c03715a53d8a9dfd0da21784f317d"
+    },
+    "bundle_weights": {
+      "path": "g1_assist_v5_7fb5db8b_d6_cbd6c72b/weights.pt",
+      "sha256": "7fb5db8b6099ca4da5706a3bec53ff7cd634e8bd267c036ce3ee4ee4bf71ca71"
+    },
+    "bundle_checksums": {
+      "path": "g1_assist_v5_7fb5db8b_d6_cbd6c72b/SHA256SUMS",
+      "sha256": "0c13b355c659bd6545182469069d6b92bf59a17214a5e4dc8f23623ce0d4b69e"
+    },
+    "heldout_evidence": {
+      "path": "g1_assist_v5_7fb5db8b_d6_cbd6c72b/evidence/heldout_evaluation.json",
+      "sha256": "d6a3b15505a6d5de434a66ac2f5f76bac5b5fe4c0aaf8237dc58055e5f5cbff1"
+    },
+    "paired_shadow_evidence": {
+      "path": "g1_assist_v5_7fb5db8b_d6_cbd6c72b/evidence/paired_shadow_report.json",
+      "sha256": "b08a44908c13fa385b5706bd90a56e79aca501af70490d3552b53104c53ead94"
+    },
+    "paired_shadow_lineage": {
+      "path": "g1_assist_v5_7fb5db8b_d6_cbd6c72b/evidence/paired_episode_lineage.jsonl",
+      "sha256": "83e105290f3e624f267d92ceaf050d32291bd5bbbabf98580846cd31498b1af1"
+    },
+    "d6_external_audit_evidence": {
+      "path": "g1_assist_v5_7fb5db8b_d6_cbd6c72b/evidence/d6_external_audit.json",
+      "sha256": "cbd6c72b2d9e7b78bf3aa36f975e6627250d2bf18de5a0b0ebc2c8f6cf760cd6"
+    }
+  }
+}

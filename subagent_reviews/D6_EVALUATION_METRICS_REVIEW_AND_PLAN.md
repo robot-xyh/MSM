@@ -1,5 +1,23 @@
 # D6 系统评估指标综述及子方案
 
+## 2026-07-27 D5 G1 正式证据链评审
+
+本次正式执行遵循“外审通过后装配、装配后再次审计”的顺序。证据来自 clean commit
+`8d5e02ec989259ce3d39e1e4ad6a90dd0d8d5b54`，根目录为
+`/tmp/MSM-d5-g1-formal-evidence-8d5e02e-20260727`。external audit v2 的结果为 `pass`，
+blocker 为空；文件/内容 SHA-256 为 `cbd6c72b...60cd6` / `334cf662...82d15`。候选
+lineage 的 900 条记录对应 900 个唯一 episode UID，文件 SHA-256 为 `83e10529...b1af1`。
+
+D5 生产 assembler 生成 v5 后，manifest 文件 SHA-256 为 `b431d066...f317d`。strict loader
+与 shadow loader 通过。D6 post-assembly v2 随后返回 `pass`、blocker 为空，内容 SHA-256
+为 `17dda42d...63e1`，consumer 使用 v2。该顺序证明外审文件、lineage、manifest、准入报告、
+权限合同和打包副本形成同一条可复算证据链。
+
+外审和装配后审计中的六项权限全部为 false。assist 请求以
+`bundle_g1_assist_authority_not_granted` 失败关闭。该结果关闭正式 v2/v5/v2 待运行项，
+不改变运行授权边界。真实相机泛化、中心 `global_track_id` binding 正确性和物理闭环结果
+仍为 explicit unavailable，后续必须分别取证。
+
 ## 2026-07-26 D5 v5 生产装配正向复核
 
 D6 对 D5 当前公共生产装配实现进行了字段级复核。复核范围包括 development-v3 来源记录、
@@ -14,8 +32,8 @@ episode UID、准入报告三个 lineage 字段、六项 false 权限、D6 外�
 本次结果关闭“手工 fixture 无法证明 D5→D6 正向兼容”的软件缺口。external 专项为
 `14 passed, 1 warning in 4.40s`，post-assembly 专项为
 `55 passed, 1 warning in 4.93s`，D6 全量为
-`1042 passed, 1 warning in 91.36s`。pytest 临时装配不是正式 v5 证据；正式链路仍需在代码
-提交后依次运行 external audit v2、D5 v5 生产装配和 D6 post-assembly v2。
+`1042 passed, 1 warning in 91.36s`。pytest 临时装配不是正式 v5 证据；正式链路随后已于
+2026-07-27 完成，见本页顶部。
 
 ## 2026-07-26 D5 G1 审计版本治理评审
 
@@ -37,14 +55,15 @@ external audit 和 post-assembly 输出中的模型晋级、G1 辅助、默认�
 
 先前 `/tmp/MSM-d5-g1-current-runtime-d6-external-audit-64cb865-20260726-v2/`
 目录内部仍是 external audit v1。该结果按当时门限具有确定性，但版本治理状态为
-`rejected_transition_schema_v1`，不得进入 v5 装配。下一步由 main/D5 在本次代码形成提交后
-重跑 external audit v2，再由 D5 生成 v5，最后由 D6 运行 post-assembly v2。本轮没有执行这三
-项正式动作。
+`rejected_transition_schema_v1`，不得进入 v5 装配。该待执行步骤已由 2026-07-27 新证据
+目录完成；旧过渡制品仍保持拒绝状态。
 
-最新回归已增加真实 D5 生产装配正例和两个真实产物 lineage 负例，结果见上节。该结果证明
-verifier 与生产装配合同可执行，不代表任何正式模型或装配制品通过。
+上述 2026-07-26 pytest 回归已增加真实 D5 生产装配正例和两个真实产物 lineage 负例，结果见
+上节。该软件回归只证明 verifier 与生产装配合同可执行；正式 v5 制品状态以本页顶部的
+2026-07-27 两级审计为准。
 
-AirSim 接口没有变化。`AIRSIM_INTEGRATION_PLAN.md` 已检查，无需修改。
+AirSim 接口没有变化。本模块当前没有 `docs/AIRSIM_INTEGRATION_PLAN.md`，本次离线审计不要求
+新建。
 
 ## 2026-07-26 D5 候选图几何校准评审
 
@@ -125,13 +144,13 @@ assembler 消费 D6 合同。D6 不授予 promotion、assist、默认路径或�
 本节保留旧 v1/v4 证据链的历史结果。其性能数据可追溯，但不能作为当前 v2/v5 装配输入。
 
 D6 将 D5 G1 预准入输入收敛为一个内容寻址的外部审计合同。合同同时绑定模型、训练数据谱系、
-20-seed held-out、同权重 paired-shadow、逐 episode 谱系、当前运行实现和三项安全计数。D5
+20-seed held-out、同权重 paired-shadow、逐 episode 谱系、受审运行实现和三项安全计数。D5
 后续装配器只能消费该合同，不能用调用方构造的正向布尔值替代实物复核。
 
 99fa 候选的两次审计保留为历史失败记录。其问题包括实现谱系漂移、单特征 AUC 超限和扰动
 性能不足。D5 随后在 clean source chain 上生成 7fb5 robust-v2 候选，并由 `fa3ec10` registry
 producer 发布正式冻结目录。D6 没有复用 main 的临时预检，独立复算九类文件、两份校验清单、
-两份 JSON 内容摘要和十个运行时源文件摘要。当前实现摘要为 `408e71fe...f4fe`。
+两份 JSON 内容摘要和十个运行时源文件摘要。当次实现摘要为 `408e71fe...f4fe`。
 
 2026-07-26T14:01:34Z 正式外审通过。输入包含 seed `1000-1019`、900 个 episode、45 个场景规模
 单元、13,344 个匿名局部航迹节点和 74,024 条候选边。held-out F1、错误合并率、候选召回和
@@ -143,21 +162,22 @@ P95 推理时延达到冻结门。最高单特征 AUC 为 `0.720073 <= 0.98`；�
 `10bf19f5...10b0` / `4e24ab33...9e54`，输出校验清单复算通过。专项测试为
 `14 passed, 1 warning in 4.54s`，D6 全量为 `975 passed, 1 warning in 86.70s`。
 
-D6 的模型晋级、G1 辅助、控制和默认路径权限仍全部关闭。通过结果只允许 D5 继续执行自己的
-准入装配。五类扰动固定 post-gate 候选图，尚未验证重投影、门控和候选生成全链路；当前证据
-也不包含真实相机、真实外参漂移、真实遮挡和在线检测误差。G1 实际运行后仍需
+D6 的模型晋级、G1 辅助、控制和默认路径权限在该历史 v1 输出中全部关闭。当时的通过结果只
+允许 D5 继续执行自己的准入装配；该待执行项已由 2026-07-27 v5 正式证据链关闭。五类扰动固定
+post-gate 候选图，尚未验证重投影、门控和候选生成全链路；该历史证据也不包含真实相机、真实
+外参漂移、真实遮挡和在线检测误差。G1 实际运行后仍需
 `learning_scope_formal_audit` 对实际采用、回退、在线真值、物理结果和同键 R0 做第二层审计。
 当前无 D6-owned P0。
 
-### 当前运行实现 64cb865 外审
+### 64cb865 历史运行实现外审
 
-D6 对 clean commit `64cb865b...b05` 的当前 runtime 证据重新执行预准入外审。输入 JSON
+D6 对 clean commit `64cb865b...b05` 的当次 runtime 证据重新执行预准入外审。输入 JSON
 SHA-256 为 `f98b42d3...23a5`。顶层 24 项、bundle 2 项、formal 2 项和 registry 3 项
 `SHA256SUMS` 全部通过。manifest/weights/checksums、held-out 文件/内容、paired 文件/内容、
 lineage 和 registry 三件套均由 D6 独立复算。
 
-十文件当前实现摘要为 `55066382...b8ea`，与输入期望、manifest 和 held-out/paired 联合证据
-相同。九个 artifact 全部位于当前批次，paired `supersedes=[]`，模型、训练数据、报告、
+十文件当次实现摘要为 `55066382...b8ea`，与输入期望、manifest 和 held-out/paired 联合证据
+相同。九个 artifact 全部位于当次批次，paired `supersedes=[]`，模型、训练数据、报告、
 lineage 和实现交叉绑定一致。审计前后输入树 80 个文件的完整摘要列表相同。
 
 形式化证据覆盖 20 seeds、900 episodes 和 45 cells。held-out F1/错误合并率/候选召回/P95
@@ -171,7 +191,7 @@ SHA-256 为 `24c8b0cd...ad7d` / `f17acecf...135f`。同输入重复运行四项�
 
 通过结果没有授予 model promotion、G1 assist、default、control、assignment 或 failover
 权限。真实相机泛化、中心 binding 和物理闭环证据明确 unavailable。固定候选图限制保留；
-本轮未运行 G1 episode，未组装新的 v4，也未改变默认规则路径。
+当次未运行 G1 episode，未组装新的 v4，也未改变默认规则路径。
 
 专项测试为 `14 passed, 1 warning in 4.39s`，D6 全量为
 `1022 passed, 1 warning in 89.39s`。warning 为既有 Matplotlib `Axes3D` 导入提示。

@@ -1,0 +1,59 @@
+{
+  "schema_version": "d6.d5-g1-external-audit-input.v1",
+  "audit_id": "d5-g1-7fb5db8b-current-runtime-8d5e02e-formal-20260727",
+  "evaluated_at_utc": "2026-07-27T02:36:00Z",
+  "formal_profile_version": "d6.d5-g1-formal-heldout-paired-shadow.v1",
+  "d5_source_dir": "MSM-d5-g1-formal-8d5e02e/research_modules/d5_terminal_association/src/d5_terminal_association",
+  "expected_current_implementation_sha256": "b0708e718b374e5bb52db41c7bd2f994e340a2b009cfd348881a5f9d549baffe",
+  "thresholds": {
+    "minimum_unseen_seed_count": 20,
+    "minimum_heldout_episode_count": 900,
+    "minimum_scenario_scale_cell_count": 45,
+    "minimum_heldout_f1": 0.92,
+    "maximum_heldout_false_merge_rate": 0.01,
+    "minimum_heldout_candidate_recall": 0.95,
+    "maximum_heldout_p95_inference_latency_ms": 100.0,
+    "maximum_single_feature_auc": 0.98,
+    "minimum_robustness_profile_count": 5,
+    "minimum_robustness_edge_f1": 0.9,
+    "minimum_robustness_cluster_f1": 0.9
+  },
+  "artifacts": {
+    "registry_reference": {
+      "path": "MSM-d5-g1-formal-evidence-8d5e02e-20260727/current_runtime_registry/frozen_bundle_reference.json",
+      "sha256": "3873326e1d394bbfdcf452b5b3248ceb614adee176bb51c6bc6ac44dead2112e"
+    },
+    "registry_audit_evidence": {
+      "path": "MSM-d5-g1-formal-evidence-8d5e02e-20260727/current_runtime_registry/audit_evidence.json",
+      "sha256": "0430194bcb15fae6173926d762ec6da0afe4dbcbf91e7249ca51dcbccbe8baf5"
+    },
+    "registry_checksums": {
+      "path": "MSM-d5-g1-formal-evidence-8d5e02e-20260727/current_runtime_registry/SHA256SUMS",
+      "sha256": "bb882f2dc28f86efcfb3004a6bf6fab078c58e66649b00f2cb4878a10b444fdc"
+    },
+    "bundle_manifest": {
+      "path": "MSM-d5-g1-formal-evidence-8d5e02e-20260727/model_candidate/model_bundle/manifest.json",
+      "sha256": "7d459ed855cf74b810fa1f79ed0327efd39eb4be4409451266da3f3a95387ce0"
+    },
+    "bundle_weights": {
+      "path": "MSM-d5-g1-formal-evidence-8d5e02e-20260727/model_candidate/model_bundle/weights.pt",
+      "sha256": "7fb5db8b6099ca4da5706a3bec53ff7cd634e8bd267c036ce3ee4ee4bf71ca71"
+    },
+    "bundle_checksums": {
+      "path": "MSM-d5-g1-formal-evidence-8d5e02e-20260727/model_candidate/model_bundle/SHA256SUMS",
+      "sha256": "9d47e303211b2d63b0046ac5fc76886ea82f3fd92ba7faed789888f76797387f"
+    },
+    "heldout_report": {
+      "path": "MSM-d5-g1-formal-evidence-8d5e02e-20260727/formal_audit/heldout_evaluation/heldout_evaluation.json",
+      "sha256": "d6a3b15505a6d5de434a66ac2f5f76bac5b5fe4c0aaf8237dc58055e5f5cbff1"
+    },
+    "paired_shadow_report": {
+      "path": "MSM-d5-g1-formal-evidence-8d5e02e-20260727/formal_audit/paired_shadow/paired_shadow_report.json",
+      "sha256": "b08a44908c13fa385b5706bd90a56e79aca501af70490d3552b53104c53ead94"
+    },
+    "paired_shadow_lineage": {
+      "path": "MSM-d5-g1-formal-evidence-8d5e02e-20260727/formal_audit/paired_shadow/paired_episode_lineage.jsonl",
+      "sha256": "83e105290f3e624f267d92ceaf050d32291bd5bbbabf98580846cd31498b1af1"
+    }
+  }
+}

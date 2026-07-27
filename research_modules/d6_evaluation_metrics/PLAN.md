@@ -1,5 +1,31 @@
 # D6 Evaluation Metrics Plan
 
+## 2026-07-27 D5 G1 v5 正式证据链
+
+### 已完成
+
+- [x] 在 clean commit `8d5e02ec989259ce3d39e1e4ad6a90dd0d8d5b54` 上运行正式 external
+  audit v2；结果 `pass`，blocker 为空，文件/内容 SHA-256 为
+  `cbd6c72b...60cd6` / `334cf662...82d15`。
+- [x] 核对 paired lineage 的 900 条记录、900 个唯一 episode UID 和文件 SHA-256
+  `83e10529...b1af1`。
+- [x] 由 D5 生产 assembler 生成正式 bundle v5；manifest 文件 SHA-256 为
+  `b431d066...f317d`，D5 strict loader 和 shadow loader 均通过。
+- [x] 运行正式 post-assembly v2；结果 `pass`，blocker 为空，内容 SHA-256 为
+  `17dda42d...63e1`，consumer 为 `d6.d5-g1-post-assembly-audit-consumer.v2`。
+- [x] 核对外审、authority contract 和装配后审计中的六项权限全部为 false；assist 请求以
+  `bundle_g1_assist_authority_not_granted` 失败关闭。
+- [x] 关闭“正式 external audit v2、正式 v5、正式 post-assembly v2 待运行”GAP。
+
+### 后续证据
+
+- [ ] 使用真实相机数据验证跨场景、外参漂移、遮挡和检测误差条件下的泛化；在输入形成前保持
+  `real_camera_generalization=unavailable`。
+- [ ] 将中心 `global_track_id` binding 与隔离的离线真值连接，形成绑定正确性证据；不得从
+  边分类或簇指标推断。
+- [ ] 接入导引、控制和五米物理结果，形成物理闭环证据；不得把装配完整性写成拦截结果。
+- [ ] 后续若申请任何运行权限，必须由独立授权流程处理。D6 审计本身继续只读且不授予权限。
+
 ## 2026-07-26 D5 v5 生产装配正向复核
 
 ### 已完成
@@ -16,10 +42,10 @@
 - [x] external 专项 `14 passed, 1 warning in 4.40s`，post-assembly 专项
   `55 passed, 1 warning in 4.93s`，D6 全量 `1042 passed, 1 warning in 91.36s`。
 
-### 后续输入
+### 状态更新
 
-- [ ] main/D5 在相关代码形成提交后生成正式 external audit v2，再使用生产装配器生成正式
-  v5，最后由 D6 运行正式 post-assembly v2。本轮 pytest 临时装配不作为正式证据。
+- [x] 正式 external audit v2、生产 v5 和 post-assembly v2 已于 2026-07-27 按顺序完成；
+  本节的 pytest 临时装配仍只作为软件回归证据。
 
 ## 2026-07-26 D5 G1 审计版本治理修正
 
@@ -45,12 +71,13 @@
 - [x] 已检查 `AIRSIM_INTEGRATION_PLAN.md`。离线 schema 改动不影响 AirSim 接口，无需修改。
 - [x] 最新回归由真实 D5 生产装配正例和 lineage 负例补强，结果见上节。
 
-### 后续输入
+### 状态更新
 
-- [ ] 本次代码形成提交后，由 main/D5 生成满足 v5/report v2/authority contract v2 的装配
-  输入，并重新运行 external audit v2。旧 `/tmp` 过渡制品不得复制或重绑定。
-- [ ] external audit v2 正式通过后才可生成 v5；随后使用 post-assembly v2 独立配置执行正式
-  装配完整性审计。D6 本轮不执行两次正式审计，也不授予运行权限。
+- [x] 2026-07-27 已使用新证据目录重跑 external audit v2，未复制或重绑定旧 `/tmp` v1
+  过渡制品。
+- [x] external audit v2 通过后由 D5 生产 assembler 生成 v5，随后由 D6 完成
+  post-assembly v2。六项运行权限仍全部关闭。
+- [ ] 真实相机、中心 binding 和物理闭环三类证据继续按本页顶部计划补充。
 
 ## 2026-07-26 D5 跨视角候选图几何校准
 
@@ -146,7 +173,7 @@ post-assembly v2 和 bundle v5 合同为准。
   pass/fail，不给模型晋级、G1 辅助、控制或默认路径权限。
 - [x] 用显式输入清单冻结 99fa 候选 registry、manifest、weights、held-out、final
   paired-shadow 和 lineage；没有使用绑定另一模型的 `e39a54d_v2`。
-- [x] 重算文件/内容 SHA-256、模型指纹、dataset/split/training-set、当前十文件实现摘要及
+- [x] 重算文件/内容 SHA-256、模型指纹、dataset/split/training-set、当次十文件实现摘要及
   held-out/paired 联合实现摘要。
 - [x] 将 D6 运行实现文件集合与 D5 `tracklet_runtime_implementation_sha256()` 对齐，加入
   `tracklet_g1_evidence_assembler.py`；两侧规范摘要实算均为 `41381db3...4b07`。
@@ -165,7 +192,7 @@ post-assembly v2 和 bundle v5 合同为准。
 - [x] 装配器后专项 `14 passed`，覆盖正反例、旧证据双文件差异、CLI 和确定性输出；D6 全量
   `944 passed, 1 warning in 80.12s`。
 - [x] 对 clean worktree `fa3ec10` 发布的 7fb5 robust-v2 registry 新建独立冻结配置。九类输入
-  文件、两份校验清单、两份 JSON 内容摘要和十文件当前实现摘要均由 D6 重新计算，没有照抄
+  文件、两份校验清单、两份 JSON 内容摘要和十文件当次实现摘要均由 D6 重新计算，没有照抄
   producer 结论。
 - [x] 7fb5 正式外审在 `2026-07-26T14:01:34Z` 完成。20 个未见 seed、900 个 episode、45 个
   场景规模单元、held-out/paired-shadow、三项安全零计数、单特征 AUC 和五类扰动门均通过；
@@ -201,22 +228,22 @@ post-assembly v2 和 bundle v5 合同为准。
   JSON 文件/内容 SHA-256 为 `12f457e2...8ea` / `37384441...d852`，三项输出校验均通过。
 - [x] post-assembly 专项 `35 passed, 1 warning in 4.33s`，D6 全量
   `1010 passed, 1 warning in 87.38s`；Python 编译、JSON 和差异格式检查通过。
-- [x] 对 clean commit `64cb865b...b05` 的当前 D5 runtime 重新执行独立预准入外审。输入
+- [x] 对 clean commit `64cb865b...b05` 的当次 D5 runtime 重新执行独立预准入外审。输入
   JSON SHA-256 为 `f98b42d3...23a5`；顶层、bundle、formal 和 current-runtime registry
   四套校验清单分别为 24/2/2/3 项，全部通过。
-- [x] 独立重算当前十文件 runtime implementation SHA-256
+- [x] 独立重算当次十文件 runtime implementation SHA-256
   `55066382...b8ea`，与输入、manifest 及 held-out/paired 联合证据一致。九个 artifact
-  均来自当前批次，未混用历史证据；审计前后 80 个输入文件逐字节不变。
-- [x] 当前 runtime 正式证据覆盖 20 seeds、900 episodes、45 cells。五类扰动最低边/簇
+  均来自当次批次，未混用历史证据；审计前后 80 个输入文件逐字节不变。
+- [x] 当次 runtime 证据覆盖 20 seeds、900 episodes、45 cells。五类扰动最低边/簇
   F1 为 `1.0/1.0`，最高单特征 AUC 为 `0.7200734257`；在线真值、同相机边/互斥违规和
   `global_track_id` 创建或换绑违规为 0。
-- [x] 当前 runtime 外审为 `pass`、blocker 为空。最终 JSON 文件/内容 SHA-256 为
+- [x] 当次 runtime 外审按旧 v1 门限为 `pass`、blocker 为空。最终 JSON 文件/内容 SHA-256 为
   `24c8b0cd...ad7d` / `f17acecf...135f`；重复运行 JSON、CSV、中文 Markdown 和
   `SHA256SUMS` 逐字节一致。
 - [x] external-audit 输出显式关闭 model promotion、G1 assist、default、control、
   assignment 和 failover 权限，并把真实相机泛化、中心 binding 和物理闭环证据标记为
-  unavailable。本轮未运行 G1 episode，未装配新的 v4。
-- [x] 当前 runtime 外审专项 `14 passed, 1 warning in 4.39s`，D6 全量
+  unavailable。当次未运行 G1 episode，未装配新的 v4。
+- [x] 当次 runtime 外审专项 `14 passed, 1 warning in 4.39s`，D6 全量
   `1022 passed, 1 warning in 89.39s`；Python 编译、文档和差异格式检查通过。
 - [x] 已检查 `AIRSIM_INTEGRATION_PLAN.md`。本项不改变 AirSim 数据、episode 或控制接口，
   无需修改。
@@ -232,8 +259,8 @@ post-assembly v2 和 bundle v5 合同为准。
 - [ ] 当前输入不含导引、控制或物理拦截记录；物理闭环结果保持 unavailable。
 - [ ] G1 实际执行后仍需 `learning_scope_formal_audit` 与同 comparison key 的 R0 结果做
   完整运行证据配对。
-- [ ] 本次通过不能作为默认路径切换依据。历史 v4 资格不等于当前 runtime 已重新装配；
-  main 显式作用域、无静默回退证据和后续作用域审计仍未完成。
+- [ ] 2026-07-27 正式 v5 已完成装配和两级审计，但六项权限仍全部为 false。任何后续运行都
+  需要 D6 之外的独立授权；实际采用、无静默回退证据和后续作用域审计仍未完成。
 
 ## 2026-07-25 正式 R0/G1/A1/A2/A3/C1/F1 矩阵准入预检
 

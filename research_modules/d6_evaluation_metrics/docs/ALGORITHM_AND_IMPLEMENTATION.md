@@ -240,8 +240,71 @@ paired 报告、external audit、manifest 和 admission report 交叉核对。
 
 旧 `/tmp/MSM-d5-g1-current-runtime-d6-external-audit-64cb865-20260726-v2/`
 输出目录虽然带 v2，主 JSON schema 仍为 external audit v1，现标记为
-`rejected_transition_schema_v1`。它不得作为 v5 装配输入。正式 external audit v2 必须在本次
-代码提交后重跑，本轮不执行正式外审或装配。
+`rejected_transition_schema_v1`。它不得作为 v5 装配输入。正式 external audit v2 已于
+2026-07-27 在独立 clean commit 证据目录重跑，未复用该过渡制品。
+
+## D5 G1 v5 正式审计执行（2026-07-27）
+
+### 执行顺序
+
+正式执行使用 clean commit `8d5e02ec989259ce3d39e1e4ad6a90dd0d8d5b54` 和只读证据根目录
+`/tmp/MSM-d5-g1-formal-evidence-8d5e02e-20260727`。顺序固定为 external audit v2、D5
+生产装配、D5 strict/shadow load、post-assembly v2 和 assist 权限探测。后一步只消费前一步
+冻结输出，不从邻近目录发现替代文件。
+
+external audit 的门限保持为：未见 seed 不少于 20、episode 不少于 900、场景规模单元不少于
+45、held-out F1 不低于 0.92、错误合并率不高于 0.01、候选召回不低于 0.95、P95 推理时延
+不高于 100 毫秒、单特征 AUC 不高于 0.98、扰动 profile 不少于 5，且最低边/簇 F1 均不低于
+0.9。未放宽门限，也没有把 unavailable 字段补成 0。
+
+### 外审输出
+
+external audit 主输出 schema 为 `d6.d5-g1-external-audit.v2`，结果为：
+
+```text
+status = pass
+audit_passed = true
+blocker_codes = []
+paired_lineage_record_count = 900
+paired_lineage_unique_episode_uid_count = 900
+```
+
+主 JSON 文件 SHA-256 为
+`cbd6c72b2d9e7b78bf3aa36f975e6627250d2bf18de5a0b0ebc2c8f6cf760cd6`，内容
+SHA-256 为 `334cf662e49c735931019ff358be1894d1358f1b4a5a868759eee41d3d282d15`。
+paired lineage 文件 SHA-256 为
+`83e105290f3e624f267d92ceaf050d32291bd5bbbabf98580846cd31498b1af1`。900 条记录对应
+900 个唯一 episode UID。
+
+### v5 装配与装配后审计
+
+D5 公共生产 assembler 生成 `d5.tracklet-model-bundle.v5`。manifest 文件 SHA-256 为
+`b431d066362005868374d038eb93a83b773c03715a53d8a9dfd0da21784f317d`。D5 strict loader
+和 shadow loader 均通过。随后 D6 输出
+`d6.d5-g1-post-assembly-audit.v2`：
+
+```text
+status = pass
+audit_passed = true
+blocker_codes = []
+consumer_schema = d6.d5-g1-post-assembly-audit-consumer.v2
+content_sha256 = 17dda42d06b4be1d21ff8f1f8baecc320fd49b532be06a9f9f6b304341763e1
+```
+
+post-assembly 重新核对 v5 manifest、权重、清单、四份 evidence、900/900 lineage、
+external audit 文件/内容摘要、admission report v2、authority contract v2 和十文件运行实现
+摘要。结果通过表示这些制品属于同一冻结候选且装配后未漂移。
+
+### 权限与不可用证据
+
+external audit、authority contract 和 post-assembly 中的模型晋级、G1 辅助、默认路径变更、
+分配、故障接管和控制六项权限均为 false。D5 assist 请求返回
+`bundle_g1_assist_authority_not_granted`，保持失败关闭。审计器没有写入运行总线，也没有修改
+默认路径。
+
+真实相机泛化、中心 `global_track_id` binding 正确性和物理闭环结果继续显式 unavailable。
+本次只关闭正式 external audit v2、v5 装配和 post-assembly v2 的待运行项，不关闭上述三类
+工程证据缺口。
 
 ## D5 G1 预准入外部审计（2026-07-26）
 
@@ -276,7 +339,7 @@ tracklet_training_audit
 D5 加入 G1 evidence assembler 后，D6 对 99fa 历史复核源目录独立计算得到
 `41381db3...4b07`，与 D5 API 返回值一致。旧 held-out/paired 证据没有 assembler 文件，证据摘要
 因此不可计算，并产生 `implementation_evidence_unavailable`。旧证据中的
-`tracklet_model_bundle.py` 与当前文件哈希不同，两项逐文件差异继续写入
+`tracklet_model_bundle.py` 与当次复核源文件哈希不同，两项逐文件差异继续写入
 `source_mismatches`；缺文件不能被聚合摘要或人工等价声明掩盖。
 
 ### 判定关系
@@ -337,7 +400,7 @@ held-out、paired-shadow 和 lineage。输入配置位于主工作树，证据�
 
 D6 在配置生成前独立计算每个文件 SHA-256。registry 和 bundle 的 `SHA256SUMS` 逐行复算；
 held-out 和 paired-shadow 去除自身 `content_sha256` 后按规范 JSON 再计算内容摘要。十文件
-当前实现摘要为
+当次实现摘要为
 `408e71fe6a31bca03de61d10cefbf73c6b32e193fd6b2d7bf734389972f9f4fe`。正式运行得到：
 
 ```text
@@ -355,21 +418,21 @@ same_camera_mutual_exclusion_violation_count = 0
 `10bf19f5...10b0`，JSON 内容 SHA-256 为 `4e24ab33...9e54`；CSV、JSON 和中文 Markdown 的
 校验清单均通过。输出权限对象继续将模型晋级、G1 辅助、控制和默认路径变更写为 false。
 
-当前外审器把 `candidate_graph_rebuilt=false` 保留为结构化限制，但 v1 不把它作为单独
+该旧版外审器把 `candidate_graph_rebuilt=false` 保留为结构化限制，但 v1 不把它作为单独
 blocker。五类扰动最低边/簇 F1 为 1.0，只表示固定候选图上的评分结果。真实相机或在扰动后
 重新投影、门控、构图的证据需要另行生产，不能由本次 `pass` 推断。
 
-### 当前 runtime 64cb865 执行实例
+### 64cb865 历史 runtime 执行实例
 
 本次输入 JSON 文件 SHA-256 为 `f98b42d3...23a5`，解析根为 `/tmp`，D5 源码来自 clean
 commit `64cb865b...b05`。D6 在调用审计入口前独立复算四套清单、九个 artifact 文件摘要、
 held-out/paired 内容摘要、900 条 lineage 和十文件 runtime 实现摘要。四套清单分别覆盖
 24、2、2 和 3 项，均无失败。
 
-当前 manifest/weights/checksums 为
+当次 manifest/weights/checksums 为
 `db908b05...d14` / `7fb5db8b...a71` / `2fe079ed...856`。十文件 runtime 摘要
 `55066382...b8ea` 同时等于输入期望、manifest 声明和 held-out/paired 联合证据。所有受审
-路径均位于当前批次，模型、训练数据、报告、lineage 和实现的交叉绑定全部成立；没有从相邻
+路径均位于当次批次，模型、训练数据、报告、lineage 和实现的交叉绑定全部成立；没有从相邻
 目录补找历史证据。审计前后输入树的 80 个文件摘要列表相同。
 
 审计输出满足：
