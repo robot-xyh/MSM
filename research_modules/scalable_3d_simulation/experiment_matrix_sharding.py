@@ -24,6 +24,14 @@ from pathlib import Path
 import shutil
 from typing import Any, Mapping, Sequence
 
+from .experiment_authorization import (
+    ExperimentAuthorizationError,
+    G1ShadowExperimentAuthorization,
+    g1_shadow_scope_payload,
+    load_g1_shadow_experiment_authorization,
+    validate_authorization_binding_payload,
+    validate_authorization_scope_binding,
+)
 from .experiment_matrix import (
     EXPERIMENT_MATRIX_SCHEMA_VERSION,
     EXPERIMENT_VARIANTS,
@@ -48,6 +56,9 @@ from .scenarios import AVAILABLE_SCENARIOS, make_curriculum_scenario
 EXPERIMENT_MATRIX_EXECUTION_PLAN_SCHEMA = (
     "scalable3d-experiment-matrix-execution-plan-v1"
 )
+EXPERIMENT_MATRIX_AUTHORIZED_EXECUTION_PLAN_SCHEMA = (
+    "scalable3d-experiment-matrix-execution-plan-v2"
+)
 EXPERIMENT_MATRIX_SHARD_PLAN_SCHEMA = (
     "scalable3d-experiment-matrix-shard-plan-v1"
 )
@@ -70,6 +81,16 @@ FORMAL_R0_DEFAULT_SHARD_COUNT = 20
 FORMAL_R0_EXPECTED_CELL_COUNT = 900
 FORMAL_PARENT_EXPECTED_CELL_COUNT = 5700
 FORMAL_R0_DEFAULT_MINIMUM_FREE_BYTES = 20 * 1024**3
+_D5_V5_RUNTIME_AUTHORITY_FIELDS = frozenset(
+    {
+        "model_promotion_granted",
+        "g1_assist_granted",
+        "default_path_change_granted",
+        "assignment_authority_granted",
+        "failover_authority_granted",
+        "control_authority_granted",
+    }
+)
 
 _EXECUTION_PLAN_FILENAME = "experiment_matrix_execution_plan.json"
 _EXECUTION_PLAN_CHECKSUM_FILENAME = "EXECUTION_PLAN_SHA256"
@@ -92,6 +113,22 @@ class ExperimentMatrixShardError(RuntimeError):
     """Fail-closed matrix shard contract violation."""
 
 
+def describe_g1_shadow_d5_bundle(
+    bundle_dir: str | Path,
+) -> dict[str, str]:
+    """Return the immutable D5 v5 hashes required by an approval request.
+
+    The descriptor is produced through the same model-bundle inventory and
+    authority checks used when an execution plan is frozen.  It therefore
+    cannot describe a development bundle that grants runtime authority or a
+    bundle whose declared weights digest no longer matches the file.
+    """
+
+    bundles = ModelBundlePaths(d5_graph=Path(bundle_dir))
+    binding = _build_learning_bundle_binding(("G1",), bundles)
+    return _authorization_d5_bundle_descriptor(binding, bundles)
+
+
 def create_experiment_matrix_execution_plan(
     *,
     root: str | Path,
@@ -103,6 +140,10 @@ def create_experiment_matrix_execution_plan(
     bundles: ModelBundlePaths | None = None,
     device: str = "cpu",
     created_at_utc: str | None = None,
+    experiment_authorization_path: str | Path | None = None,
+    expected_experiment_authorization_sha256: str | None = None,
+    revocation_registry_path: str | Path | None = None,
+    authorization_now_utc: datetime | str | None = None,
 ) -> Path:
     """Freeze one parent inventory and deterministic round-robin shard map.
 
@@ -137,6 +178,14 @@ def create_experiment_matrix_execution_plan(
     if parent_plan.formal and dirty:
         raise ExperimentMatrixShardError(
             "formal execution plan requires repository_dirty=false"
+        )
+    if (
+        experiment_authorization_path is not None
+        or expected_experiment_authorization_sha256 is not None
+        or revocation_registry_path is not None
+    ) and dirty:
+        raise ExperimentMatrixShardError(
+            "authorized experiment plan requires repository_dirty=false"
         )
 
     full_cells = tuple(parent_plan.cells())
@@ -195,12 +244,30 @@ def create_experiment_matrix_execution_plan(
         normalized_scope,
         selected_bundles,
     )
+    experiment_authorization = _load_plan_experiment_authorization(
+        source_git_commit=commit,
+        scope_variants=normalized_scope,
+        scenarios=parent_plan.scenarios,
+        scales=parent_plan.scales,
+        seeds=parent_plan.seeds,
+        duration_s=parent_plan.duration_s,
+        learning_binding=learning_binding,
+        bundles=selected_bundles,
+        device=selected_device,
+        authorization_path=experiment_authorization_path,
+        expected_authorization_sha256=(
+            expected_experiment_authorization_sha256
+        ),
+        revocation_registry_path=revocation_registry_path,
+        now_utc=authorization_now_utc,
+    )
     variant_preflight = _preflight_scope_variants(
         base_config,
         parent_plan,
         normalized_scope,
         selected_bundles,
         device=selected_device,
+        experiment_authorization=experiment_authorization,
     )
     if (
         _build_learning_bundle_binding(
@@ -213,7 +280,11 @@ def create_experiment_matrix_execution_plan(
             "model bundle changed during execution plan preflight"
         )
     payload: dict[str, Any] = {
-        "schema_version": EXPERIMENT_MATRIX_EXECUTION_PLAN_SCHEMA,
+        "schema_version": (
+            EXPERIMENT_MATRIX_AUTHORIZED_EXECUTION_PLAN_SCHEMA
+            if experiment_authorization is not None
+            else EXPERIMENT_MATRIX_EXECUTION_PLAN_SCHEMA
+        ),
         "created_at_utc": timestamp,
         "source": {
             "git_commit": commit,
@@ -254,6 +325,10 @@ def create_experiment_matrix_execution_plan(
             else "development_parent_scope"
         ),
     }
+    if experiment_authorization is not None:
+        payload["experiment_authorization"] = (
+            experiment_authorization.binding_payload()
+        )
     payload["execution_plan_sha256"] = _digest_json(payload)
 
     destination.mkdir(parents=True)
@@ -263,11 +338,12 @@ def create_experiment_matrix_execution_plan(
         destination / _EXECUTION_PLAN_CHECKSUM_FILENAME,
         f"{_sha256_file(plan_path)}  {_EXECUTION_PLAN_FILENAME}\n",
     )
-    if parent_plan.formal:
+    if parent_plan.formal or experiment_authorization is not None:
         current_commit, current_dirty = repository_state(repository_root)
         if current_commit != commit or current_dirty:
             raise ExperimentMatrixShardError(
-                "source state changed while formal execution plan was written"
+                "source state changed while formal or authorized execution "
+                "plan was written"
             )
     return plan_path
 
@@ -319,8 +395,26 @@ def load_experiment_matrix_execution_plan(
 
     plan_path = Path(path).resolve()
     payload = _read_json_object(plan_path)
-    if payload.get("schema_version") != EXPERIMENT_MATRIX_EXECUTION_PLAN_SCHEMA:
+    schema_version = payload.get("schema_version")
+    if schema_version not in {
+        EXPERIMENT_MATRIX_EXECUTION_PLAN_SCHEMA,
+        EXPERIMENT_MATRIX_AUTHORIZED_EXECUTION_PLAN_SCHEMA,
+    }:
         raise ExperimentMatrixShardError("execution plan schema is unsupported")
+    if (
+        schema_version == EXPERIMENT_MATRIX_EXECUTION_PLAN_SCHEMA
+        and "experiment_authorization" in payload
+    ):
+        raise ExperimentMatrixShardError(
+            "legacy execution plan cannot contain experiment authorization"
+        )
+    if (
+        schema_version == EXPERIMENT_MATRIX_AUTHORIZED_EXECUTION_PLAN_SCHEMA
+        and "experiment_authorization" not in payload
+    ):
+        raise ExperimentMatrixShardError(
+            "authorized execution plan is missing experiment authorization"
+        )
     expected_digest = _required_sha256(
         payload.get("execution_plan_sha256"),
         "execution_plan_sha256",
@@ -421,6 +515,7 @@ def load_experiment_matrix_execution_plan(
     if sharding.get("shards") != expected_shards:
         raise ExperimentMatrixShardError("shard inventory mismatch")
     _validate_learning_bundle_plan(payload, scope_variants)
+    _validate_execution_authorization_binding(payload, parent_plan)
     return payload
 
 
@@ -434,6 +529,9 @@ def run_experiment_matrix_shard(
     device: str = "cpu",
     minimum_free_bytes: int = 0,
     bundles: ModelBundlePaths | None = None,
+    experiment_authorization_path: str | Path | None = None,
+    revocation_registry_path: str | Path | None = None,
+    authorization_now_utc: datetime | str | None = None,
 ) -> dict[str, Any]:
     """Run or resume one deterministic shard at complete-cell boundaries."""
 
@@ -446,6 +544,12 @@ def run_experiment_matrix_shard(
         execution,
         selected_bundles,
         device=device,
+    )
+    experiment_authorization = _load_runtime_experiment_authorization(
+        execution,
+        authorization_path=experiment_authorization_path,
+        revocation_registry_path=revocation_registry_path,
+        now_utc=authorization_now_utc,
     )
     index = int(shard_index)
     descriptors = execution["sharding"]["shards"]
@@ -562,6 +666,16 @@ def run_experiment_matrix_shard(
             if available < free_floor:
                 pause_reason = "minimum_free_space_reached"
                 break
+            _validate_source_state(repository_root, execution)
+            if execution.get("experiment_authorization") is not None:
+                experiment_authorization = (
+                    _load_runtime_experiment_authorization(
+                        execution,
+                        authorization_path=experiment_authorization_path,
+                        revocation_registry_path=revocation_registry_path,
+                        now_utc=authorization_now_utc,
+                    )
+                )
             row = _run_one_cell(
                 repository_root=repository_root,
                 execution_root=execution_root,
@@ -571,6 +685,8 @@ def run_experiment_matrix_shard(
                 sequence=len(progress),
                 device=device,
                 bundles=selected_bundles,
+                experiment_authorization=experiment_authorization,
+                authorization_now_utc=authorization_now_utc,
             )
             _append_jsonl_fsync(progress_path, row)
             progress.append(row)
@@ -857,7 +973,18 @@ def _run_one_cell(
     sequence: int,
     device: str,
     bundles: ModelBundlePaths,
+    experiment_authorization: G1ShadowExperimentAuthorization | None,
+    authorization_now_utc: datetime | str | None,
 ) -> dict[str, Any]:
+    if experiment_authorization is not None:
+        experiment_authorization.assert_cell(
+            variant=str(cell["variant"]),
+            scenario=str(cell["scenario"]),
+            scale=int(cell["scale"]),
+            seed=int(cell["seed"]),
+            duration_s=float(execution["parent"]["plan"]["duration_s"]),
+            now_utc=authorization_now_utc,
+        )
     if cell["variant"] != "R0":
         _validate_runtime_learning_bundles(
             execution,
@@ -903,10 +1030,12 @@ def _run_one_cell(
         if cell["variant"] == "R0":
             record = _execute_r0_cell(**common)
         else:
-            record = _execute_learning_cell(
-                **common,
-                bundles=bundles,
-            )
+            learning_arguments: dict[str, Any] = {"bundles": bundles}
+            if experiment_authorization is not None:
+                learning_arguments["experiment_authorization"] = (
+                    experiment_authorization
+                )
+            record = _execute_learning_cell(**common, **learning_arguments)
             _validate_runtime_learning_bundles(
                 execution,
                 bundles,
@@ -970,6 +1099,7 @@ def _execute_learning_cell(
     final_container: Path,
     device: str,
     bundles: ModelBundlePaths,
+    experiment_authorization: G1ShadowExperimentAuthorization | None = None,
 ) -> dict[str, Any]:
     """Execute one declared learning cell after bundle binding validation."""
 
@@ -986,6 +1116,7 @@ def _execute_learning_cell(
         final_container=final_container,
         device=device,
         bundles=bundles,
+        experiment_authorization=experiment_authorization,
     )
 
 
@@ -999,6 +1130,7 @@ def _execute_matrix_cell(
     final_container: Path,
     device: str,
     bundles: ModelBundlePaths,
+    experiment_authorization: G1ShadowExperimentAuthorization | None = None,
 ) -> dict[str, Any]:
     """Execute one cell without allowing undeclared model fallback."""
 
@@ -1019,6 +1151,7 @@ def _execute_matrix_cell(
         variant,
         bundles,
         device=device,
+        d5_g1_shadow_authorization=experiment_authorization,
     )
     resolved = resolve_learning_runtime(
         config,
@@ -1041,11 +1174,15 @@ def _execute_matrix_cell(
             "episode source commit differs from execution plan"
         )
     if (
-        bool(execution["parent"]["formal"])
+        bool(
+            execution["parent"]["formal"]
+            or experiment_authorization is not None
+        )
         and bool(result.manifest.repository_dirty)
     ):
         raise ExperimentMatrixShardError(
-            "formal shard episode reports repository_dirty=true"
+            "formal or authorized shard episode reports "
+            "repository_dirty=true"
         )
     summary = result.summary
     if not bool(summary.get("finite_state")):
@@ -1084,6 +1221,10 @@ def _execute_matrix_cell(
         "status": "complete",
     }
     if variant != "R0":
+        module_diagnostics = _required_mapping(
+            summary.get("module_final_diagnostics"),
+            "summary.module_final_diagnostics",
+        )
         record["learning_runtime"] = {
             "bundle_binding_sha256": execution["learning_bundles"][
                 "binding_sha256"
@@ -1097,6 +1238,35 @@ def _execute_matrix_cell(
                     resolved.config.d5_active_vision_policy_version
                 ),
             },
+            "experiment_authorization_sha256": (
+                None
+                if experiment_authorization is None
+                else experiment_authorization.authorization_file_sha256
+            ),
+            "d5_g1_shadow_scoring_frame_count": int(
+                module_diagnostics.get(
+                    "d5_g1_shadow_scoring_frame_count",
+                    0,
+                )
+            ),
+            "d5_g1_shadow_scoring_success_count": int(
+                module_diagnostics.get(
+                    "d5_g1_shadow_scoring_success_count",
+                    0,
+                )
+            ),
+            "d5_g1_shadow_scoring_rejected_count": int(
+                module_diagnostics.get(
+                    "d5_g1_shadow_scoring_rejected_count",
+                    0,
+                )
+            ),
+            "d5_g1_shadow_model_output_applied": bool(
+                module_diagnostics.get(
+                    "d5_g1_shadow_model_output_applied",
+                    False,
+                )
+            ),
         }
     return record
 
@@ -1351,7 +1521,10 @@ def _validate_cell_container(
     if manifest.get("git_commit") != execution["source"]["git_commit"]:
         raise ExperimentMatrixShardError("episode manifest commit mismatch")
     if (
-        bool(execution["parent"]["formal"])
+        bool(
+            execution["parent"]["formal"]
+            or execution.get("experiment_authorization") is not None
+        )
         and bool(manifest.get("repository_dirty"))
     ):
         raise ExperimentMatrixShardError("episode manifest is dirty")
@@ -1382,6 +1555,41 @@ def _validate_cell_container(
             raise ExperimentMatrixShardError(
                 "cell learning bundle binding mismatch"
             )
+        authorization_binding = execution.get(
+            "experiment_authorization"
+        )
+        if authorization_binding is None:
+            if (
+                learning_record.get(
+                    "experiment_authorization_sha256"
+                )
+                is not None
+            ):
+                raise ExperimentMatrixShardError(
+                    "cell claims undeclared experiment authorization"
+                )
+        else:
+            authorization = validate_authorization_binding_payload(
+                authorization_binding
+            )
+            if (
+                learning_record.get(
+                    "experiment_authorization_sha256"
+                )
+                != authorization["authorization_file_sha256"]
+            ):
+                raise ExperimentMatrixShardError(
+                    "cell experiment authorization mismatch"
+                )
+            if (
+                learning_record.get(
+                    "d5_g1_shadow_model_output_applied"
+                )
+                is not False
+            ):
+                raise ExperimentMatrixShardError(
+                    "authorized G1 shadow output changed online association"
+                )
         diagnostics = _required_mapping(
             metadata.get("learning_runtime"),
             "scenario_config.metadata.learning_runtime",
@@ -1424,6 +1632,23 @@ def _validate_cell_container(
             raise ExperimentMatrixShardError(
                 "cell learning variant did not retain declared runtime mode"
             ) from exc
+        if authorization_binding is not None:
+            d5_diagnostics = _required_mapping(
+                diagnostics.get("d5"),
+                "scenario_config.metadata.learning_runtime.d5",
+            )
+            if (
+                d5_diagnostics.get("effective_mode")
+                != "authorized_shadow"
+                or d5_diagnostics.get(
+                    "experiment_authorization_valid"
+                )
+                is not True
+                or d5_diagnostics.get("model_output_applied") is not False
+            ):
+                raise ExperimentMatrixShardError(
+                    "cell did not retain authorized shadow-only D5 mode"
+                )
         resolved_versions = _required_mapping(
             learning_record.get("resolved_versions"),
             "cell_result.learning_runtime.resolved_versions",
@@ -1628,6 +1853,7 @@ def _preflight_scope_variants(
     bundles: ModelBundlePaths,
     *,
     device: str,
+    experiment_authorization: G1ShadowExperimentAuthorization | None = None,
 ) -> dict[str, dict[str, Any]]:
     records: dict[str, dict[str, Any]] = {}
     for variant in variants:
@@ -1642,6 +1868,7 @@ def _preflight_scope_variants(
             variant,
             bundles,
             device=device,
+            d5_g1_shadow_authorization=experiment_authorization,
         )
         resolved = resolve_learning_runtime(
             base_config,
@@ -1661,9 +1888,16 @@ def _preflight_scope_variants(
         records[variant] = {
             "variant": variant,
             "status": (
-                "resolved_with_rule_fallback_allowed"
-                if parent_plan.allow_rule_fallback
-                else "assist_resolved"
+                "authorized_shadow_resolved"
+                if (
+                    variant == "G1"
+                    and experiment_authorization is not None
+                )
+                else (
+                    "resolved_with_rule_fallback_allowed"
+                    if parent_plan.allow_rule_fallback
+                    else "assist_resolved"
+                )
             ),
             "required_components": list(
                 required_model_components((variant,))
@@ -1763,6 +1997,7 @@ def _validate_learning_bundle_plan(
             "model bundle variant preflight inventory mismatch"
         )
     parent_plan = _plan_from_payload(execution["parent"]["plan"])
+    authorized_shadow = execution.get("experiment_authorization") is not None
     for variant in scope_variants:
         record = _required_mapping(
             preflight.get(variant),
@@ -1781,6 +2016,8 @@ def _validate_learning_bundle_plan(
             )
         if variant == "R0":
             expected_status = "deterministic_no_model"
+        elif variant == "G1" and authorized_shadow:
+            expected_status = "authorized_shadow_resolved"
         elif parent_plan.allow_rule_fallback:
             expected_status = "resolved_with_rule_fallback_allowed"
         else:
@@ -1860,6 +2097,253 @@ def _validate_runtime_learning_bundles(
         )
 
 
+def _load_plan_experiment_authorization(
+    *,
+    source_git_commit: str,
+    scope_variants: Sequence[str],
+    scenarios: Sequence[str],
+    scales: Sequence[int],
+    seeds: Sequence[int],
+    duration_s: float,
+    learning_binding: Mapping[str, Any],
+    bundles: ModelBundlePaths,
+    device: str,
+    authorization_path: str | Path | None,
+    expected_authorization_sha256: str | None,
+    revocation_registry_path: str | Path | None,
+    now_utc: datetime | str | None,
+) -> G1ShadowExperimentAuthorization | None:
+    provided = (
+        authorization_path is not None,
+        expected_authorization_sha256 is not None,
+        revocation_registry_path is not None,
+    )
+    if not any(provided):
+        return None
+    if not all(provided):
+        raise ExperimentMatrixShardError(
+            "authorization path, explicit SHA-256, and revocation registry "
+            "must be provided together"
+        )
+    if tuple(scope_variants) != ("G1",):
+        raise ExperimentMatrixShardError(
+            "current experiment authorization permits only a G1-only scope"
+        )
+    d5_bundle = _authorization_d5_bundle_descriptor(
+        learning_binding,
+        bundles,
+    )
+    try:
+        grant = load_g1_shadow_experiment_authorization(
+            authorization_path,
+            expected_authorization_sha256=str(
+                expected_authorization_sha256
+            ),
+            revocation_registry_path=revocation_registry_path,
+            now_utc=now_utc,
+        )
+        validate_authorization_scope_binding(
+            grant,
+            source_git_commit=source_git_commit,
+            scenarios=scenarios,
+            scales=scales,
+            seeds=seeds,
+            duration_s=duration_s,
+            d5_bundle_manifest_sha256=d5_bundle["manifest_sha256"],
+            d5_bundle_tree_sha256=d5_bundle["tree_sha256"],
+            d5_weights_sha256=d5_bundle["weights_sha256"],
+            device=device,
+            now_utc=now_utc,
+        )
+    except ExperimentAuthorizationError as exc:
+        raise ExperimentMatrixShardError(
+            f"G1 shadow experiment authorization rejected: {exc}"
+        ) from exc
+    return grant
+
+
+def _load_runtime_experiment_authorization(
+    execution: Mapping[str, Any],
+    *,
+    authorization_path: str | Path | None,
+    revocation_registry_path: str | Path | None,
+    now_utc: datetime | str | None,
+) -> G1ShadowExperimentAuthorization | None:
+    binding_payload = execution.get("experiment_authorization")
+    if binding_payload is None:
+        if (
+            authorization_path is not None
+            or revocation_registry_path is not None
+        ):
+            raise ExperimentMatrixShardError(
+                "authorization supplied for an execution plan without one"
+            )
+        return None
+    if authorization_path is None or revocation_registry_path is None:
+        raise ExperimentMatrixShardError(
+            "authorized execution requires authorization and revocation files"
+        )
+    try:
+        binding = validate_authorization_binding_payload(binding_payload)
+        grant = load_g1_shadow_experiment_authorization(
+            authorization_path,
+            expected_authorization_sha256=binding[
+                "authorization_file_sha256"
+            ],
+            revocation_registry_path=revocation_registry_path,
+            now_utc=now_utc,
+        )
+    except ExperimentAuthorizationError as exc:
+        raise ExperimentMatrixShardError(
+            f"runtime G1 shadow authorization rejected: {exc}"
+        ) from exc
+    if grant.binding_payload() != binding:
+        raise ExperimentMatrixShardError(
+            "runtime authorization differs from execution plan binding"
+        )
+    return grant
+
+
+def _validate_execution_authorization_binding(
+    execution: Mapping[str, Any],
+    parent_plan: ExperimentMatrixPlan,
+) -> None:
+    raw_binding = execution.get("experiment_authorization")
+    if raw_binding is None:
+        return
+    try:
+        binding = validate_authorization_binding_payload(raw_binding)
+    except ExperimentAuthorizationError as exc:
+        raise ExperimentMatrixShardError(
+            f"execution authorization binding is invalid: {exc}"
+        ) from exc
+    scope_variants = tuple(execution["scope"]["variants"])
+    if scope_variants != ("G1",):
+        raise ExperimentMatrixShardError(
+            "authorized execution plan must contain only G1"
+        )
+    if binding["source_git_commit"] != execution["source"]["git_commit"]:
+        raise ExperimentMatrixShardError(
+            "authorization source differs from execution source"
+        )
+    expected_scope = g1_shadow_scope_payload(
+        scenarios=parent_plan.scenarios,
+        scales=parent_plan.scales,
+        seeds=parent_plan.seeds,
+        duration_s=parent_plan.duration_s,
+    )
+    if binding["scope_sha256"] != expected_scope["scope_sha256"]:
+        raise ExperimentMatrixShardError(
+            "authorization scope digest differs from execution scope"
+        )
+    learning = _required_mapping(
+        execution.get("learning_bundles"),
+        "learning_bundles",
+    )
+    component = _required_mapping(
+        _required_mapping(
+            learning.get("components"),
+            "learning_bundles.components",
+        ).get("d5_graph"),
+        "learning_bundles.components.d5_graph",
+    )
+    d5_binding = _required_mapping(
+        binding["d5_bundle"],
+        "experiment_authorization.d5_bundle",
+    )
+    if (
+        d5_binding["manifest_sha256"] != component["manifest_sha256"]
+        or d5_binding["tree_sha256"] != component["tree_sha256"]
+    ):
+        raise ExperimentMatrixShardError(
+            "authorization bundle differs from execution bundle"
+        )
+    if binding["device"] != learning["preflight_device"]:
+        raise ExperimentMatrixShardError(
+            "authorization device differs from execution preflight"
+        )
+
+
+def _authorization_d5_bundle_descriptor(
+    learning_binding: Mapping[str, Any],
+    bundles: ModelBundlePaths,
+) -> dict[str, str]:
+    components = _required_mapping(
+        learning_binding.get("components"),
+        "learning_bundles.components",
+    )
+    component = _required_mapping(
+        components.get("d5_graph"),
+        "learning_bundles.components.d5_graph",
+    )
+    bundle_root = bundles.d5_graph
+    if bundle_root is None or not bundle_root.is_dir():
+        raise ExperimentMatrixShardError(
+            "authorized G1 scope requires a D5 graph bundle"
+        )
+    manifest = _read_json_object(bundle_root / "manifest.json")
+    if manifest.get("schema_version") != "d5.tracklet-model-bundle.v5":
+        raise ExperimentMatrixShardError(
+            "authorized G1 shadow scoring requires a D5 v5 bundle"
+        )
+    admission = _required_mapping(
+        manifest.get("admission"),
+        "d5_bundle.manifest.admission",
+    )
+    if admission.get("g1_assist_eligible") is not True:
+        raise ExperimentMatrixShardError(
+            "D5 v5 bundle is not evidence-eligible"
+        )
+    authority_contract = _required_mapping(
+        admission.get("authority_contract"),
+        "d5_bundle.manifest.admission.authority_contract",
+    )
+    runtime_authority = _required_mapping(
+        authority_contract.get("runtime_authority"),
+        "d5_bundle.manifest.admission.authority_contract.runtime_authority",
+    )
+    if set(runtime_authority) != _D5_V5_RUNTIME_AUTHORITY_FIELDS:
+        raise ExperimentMatrixShardError(
+            "D5 v5 runtime authority fields are invalid"
+        )
+    if any(
+        value is not False for value in runtime_authority.values()
+    ):
+        raise ExperimentMatrixShardError(
+            "D5 v5 runtime authority must remain fully closed"
+        )
+    weights = _required_mapping(
+        manifest.get("weights"),
+        "d5_bundle.manifest.weights",
+    )
+    weights_sha256 = _required_sha256(
+        weights.get("sha256"),
+        "d5_bundle.manifest.weights.sha256",
+    )
+    weights_filename = weights.get("filename")
+    if not isinstance(weights_filename, str) or not weights_filename:
+        raise ExperimentMatrixShardError(
+            "D5 bundle weights filename is invalid"
+        )
+    weights_path = bundle_root / weights_filename
+    if not weights_path.is_file() or _sha256_file(weights_path) != weights_sha256:
+        raise ExperimentMatrixShardError(
+            "D5 bundle weights digest mismatch"
+        )
+    return {
+        "component": "d5_graph",
+        "manifest_sha256": _required_sha256(
+            component.get("manifest_sha256"),
+            "d5_graph.manifest_sha256",
+        ),
+        "tree_sha256": _required_sha256(
+            component.get("tree_sha256"),
+            "d5_graph.tree_sha256",
+        ),
+        "weights_sha256": weights_sha256,
+    }
+
+
 def _parent_plan_payload(plan: ExperimentMatrixPlan) -> dict[str, Any]:
     return {
         "variants": list(plan.variants),
@@ -1936,14 +2420,19 @@ def _validate_source_state(
         raise ExperimentMatrixShardError(
             "current Git commit differs from execution plan"
         )
-    if bool(execution["parent"]["formal"]):
+    clean_source_required = bool(
+        execution["parent"]["formal"]
+        or execution.get("experiment_authorization") is not None
+    )
+    if clean_source_required:
         if bool(source["repository_dirty"]):
             raise ExperimentMatrixShardError(
                 "execution plan source is not clean"
             )
         if current_dirty:
             raise ExperimentMatrixShardError(
-                "formal shard execution requires repository_dirty=false"
+                "formal or authorized shard execution requires "
+                "repository_dirty=false"
             )
 
 

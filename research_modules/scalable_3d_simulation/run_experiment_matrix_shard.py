@@ -7,6 +7,7 @@ import argparse
 import json
 from pathlib import Path
 import sys
+from typing import Sequence
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -43,7 +44,7 @@ DEFAULT_SEED_REGISTRY = (
 )
 
 
-def parse_args() -> argparse.Namespace:
+def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     subparsers = parser.add_subparsers(dest="command", required=True)
 
@@ -138,6 +139,23 @@ def parse_args() -> argparse.Namespace:
     )
     initialize_scope.add_argument("--output", type=Path, required=True)
     initialize_scope.add_argument("--created-at-utc")
+    initialize_scope.add_argument(
+        "--experiment-authorization",
+        type=Path,
+        help=(
+            "approved G1 shadow authorization; requires the explicit digest "
+            "and revocation registry"
+        ),
+    )
+    initialize_scope.add_argument(
+        "--experiment-authorization-sha256",
+        help="explicit SHA-256 confirmation for the authorization file",
+    )
+    initialize_scope.add_argument(
+        "--revocation-registry",
+        type=Path,
+        help="mutable revocation registry bound to the authorization",
+    )
     _add_model_bundle_arguments(initialize_scope)
 
     run = subparsers.add_parser(
@@ -149,6 +167,16 @@ def parse_args() -> argparse.Namespace:
     run.add_argument("--resume", action="store_true")
     run.add_argument("--max-new-cells", type=int)
     run.add_argument("--device", default="cpu")
+    run.add_argument(
+        "--experiment-authorization",
+        type=Path,
+        help="approved authorization bound into this execution plan",
+    )
+    run.add_argument(
+        "--revocation-registry",
+        type=Path,
+        help="current revocation registry checked before shard execution",
+    )
     run.add_argument(
         "--minimum-free-gib",
         type=float,
@@ -175,7 +203,7 @@ def parse_args() -> argparse.Namespace:
     merge_scope.add_argument("--execution-plan", type=Path, required=True)
     merge_scope.add_argument("--output", type=Path)
     merge_scope.add_argument("--write-d6-report", action="store_true")
-    return parser.parse_args()
+    return parser.parse_args(argv)
 
 
 def _add_model_bundle_arguments(parser: argparse.ArgumentParser) -> None:
@@ -231,8 +259,8 @@ def _validated_evaluation_seeds(
     return requested
 
 
-def main() -> int:
-    args = parse_args()
+def main(argv: Sequence[str] | None = None) -> int:
+    args = parse_args(argv)
     if args.command == "init-r0":
         base = _read_base_config(args.config)
         registry = _read_seed_registry(args.seed_registry)
@@ -296,6 +324,13 @@ def main() -> int:
             bundles=_model_bundle_paths(args),
             device=args.device,
             created_at_utc=args.created_at_utc,
+            experiment_authorization_path=(
+                args.experiment_authorization
+            ),
+            expected_experiment_authorization_sha256=(
+                args.experiment_authorization_sha256
+            ),
+            revocation_registry_path=args.revocation_registry,
         )
         print(f"execution_plan: {path}")
         return 0
@@ -310,6 +345,10 @@ def main() -> int:
             device=args.device,
             minimum_free_bytes=int(args.minimum_free_gib * 1024**3),
             bundles=_model_bundle_paths(args),
+            experiment_authorization_path=(
+                args.experiment_authorization
+            ),
+            revocation_registry_path=args.revocation_registry,
         )
         for name, value in result.items():
             print(f"{name}: {value}")

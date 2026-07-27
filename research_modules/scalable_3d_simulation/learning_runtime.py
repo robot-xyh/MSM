@@ -12,6 +12,11 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
+from .experiment_authorization import (
+    G1ShadowExperimentAuthorization,
+    canonical_json_sha256,
+    sha256_file,
+)
 from .models import ScenarioConfig
 from .module_stack import IntegratedScalableModuleStack, IntegratedStackConfig
 
@@ -33,6 +38,7 @@ class LearningRuntimeOptions:
     d4_mode: str = "disabled"
     d4_bundle_dir: Path | None = None
     d5_bundle_dir: Path | None = None
+    d5_g1_shadow_authorization: G1ShadowExperimentAuthorization | None = None
     d5_active_vision_mode: str = "disabled"
     d5_active_vision_bundle_dir: Path | None = None
     device: str = "cpu"
@@ -52,6 +58,19 @@ class LearningRuntimeOptions:
             value = getattr(self, name)
             if value is not None:
                 object.__setattr__(self, name, Path(value))
+        authorization = self.d5_g1_shadow_authorization
+        if authorization is not None and not isinstance(
+            authorization,
+            G1ShadowExperimentAuthorization,
+        ):
+            raise TypeError(
+                "d5_g1_shadow_authorization must be "
+                "G1ShadowExperimentAuthorization"
+            )
+        if authorization is not None and self.d5_bundle_dir is None:
+            raise ValueError(
+                "D5 G1 shadow authorization requires d5_bundle_dir"
+            )
         device = str(self.device).strip()
         if not device:
             raise ValueError("learning device must be non-empty")
@@ -63,6 +82,7 @@ class LearningRuntimeOptions:
             self.d3_mode != "disabled"
             or self.d4_mode != "disabled"
             or self.d5_bundle_dir is not None
+            or self.d5_g1_shadow_authorization is not None
             or self.d5_active_vision_mode != "disabled"
             or self.d5_active_vision_bundle_dir is not None
         )
@@ -87,6 +107,20 @@ class _UnavailableEdgeModel:
         raise RuntimeError(self.failure_reason)
 
 
+def _bundle_tree_sha256(root: Path) -> str:
+    entries = [
+        {
+            "path": path.relative_to(root).as_posix(),
+            "size_bytes": path.stat().st_size,
+            "sha256": sha256_file(path),
+        }
+        for path in sorted(item for item in root.rglob("*") if item.is_file())
+    ]
+    if not entries:
+        raise ValueError("authorized D5 bundle tree is empty")
+    return canonical_json_sha256(entries)
+
+
 def resolve_learning_runtime(
     config: ScenarioConfig,
     options: LearningRuntimeOptions | None = None,
@@ -100,6 +134,7 @@ def resolve_learning_runtime(
     d3_assistant: Any | None = None
     d4_advisor: Any | None = None
     d5_edge_model: Any | None = None
+    d5_shadow_edge_model: Any | None = None
     d5_active_vision_policy: Any | None = None
     d3_version = config.d3_policy_version
     d4_version = config.d4_policy_version
@@ -204,44 +239,106 @@ def resolve_learning_runtime(
             d4_version = f"{manifest.model_version}+{fingerprint[:12]}"
 
     d5_diagnostics: dict[str, Any] = {
-        "requested_mode": "assist" if selected.d5_bundle_dir is not None else "disabled",
+        "requested_mode": (
+            "authorized_shadow"
+            if selected.d5_g1_shadow_authorization is not None
+            else ("assist" if selected.d5_bundle_dir is not None else "disabled")
+        ),
         "effective_mode": "disabled",
         "bundle_requested": selected.d5_bundle_dir is not None,
         "bundle_loaded": False,
         "fallback_reason": None,
         "model_fingerprint": None,
+        "model_output_applied": False,
+        "experiment_authorization_valid": False,
+        "experiment_authorization_id": None,
+        "experiment_authorization_sha256": None,
+        "experiment_authorization_expires_at_utc": None,
     }
     if selected.d5_bundle_dir is not None:
+        shadow_authorization = selected.d5_g1_shadow_authorization
         try:
             from research_modules.d5_terminal_association.src.d5_terminal_association.tracklet_model_bundle import (
                 load_tracklet_model_bundle_for_runtime,
             )
 
-            d5_edge_model = load_tracklet_model_bundle_for_runtime(
+            loaded_edge_model = load_tracklet_model_bundle_for_runtime(
                 selected.d5_bundle_dir,
                 device=selected.device,
-                require_g1_assist_eligible=True,
+                require_g1_assist_eligible=shadow_authorization is None,
             )
         except Exception as exc:
-            d5_edge_model = _UnavailableEdgeModel(
+            loaded_edge_model = _UnavailableEdgeModel(
                 failure_reason=f"bundle_import_{type(exc).__name__}"
             )
-        available = getattr(d5_edge_model, "available", False) is True
+        available = getattr(loaded_edge_model, "available", False) is True
         reason = None if available else str(
-            getattr(d5_edge_model, "failure_reason", "model_unavailable")
+            getattr(loaded_edge_model, "failure_reason", "model_unavailable")
         )
+        if available and shadow_authorization is not None:
+            try:
+                shadow_authorization.assert_active()
+                if shadow_authorization.device != selected.device:
+                    raise ValueError("authorization_device_mismatch")
+                if (
+                    str(loaded_edge_model.bundle_manifest_sha256)
+                    != shadow_authorization.d5_bundle["manifest_sha256"]
+                ):
+                    raise ValueError("authorization_manifest_mismatch")
+                if (
+                    str(loaded_edge_model.bundle_weights_sha256)
+                    != shadow_authorization.d5_bundle["weights_sha256"]
+                ):
+                    raise ValueError("authorization_weights_mismatch")
+                if (
+                    _bundle_tree_sha256(selected.d5_bundle_dir)
+                    != shadow_authorization.d5_bundle["tree_sha256"]
+                ):
+                    raise ValueError("authorization_tree_mismatch")
+            except Exception as exc:
+                available = False
+                reason = f"experiment_authorization_{type(exc).__name__}"
         d5_diagnostics.update(
-            effective_mode="assist" if available else "rule_fallback",
+            effective_mode=(
+                (
+                    "authorized_shadow"
+                    if shadow_authorization is not None
+                    else "assist"
+                )
+                if available
+                else "rule_fallback"
+            ),
             bundle_loaded=available,
             fallback_reason=reason,
         )
+        if shadow_authorization is None:
+            d5_edge_model = loaded_edge_model
         if available:
-            fingerprint = str(d5_edge_model.bundle_weights_sha256)
+            fingerprint = str(loaded_edge_model.bundle_weights_sha256)
             d5_diagnostics["model_fingerprint"] = fingerprint
             semantic_version = str(
-                d5_edge_model.manifest.get("model_semantic_version", "unknown")
+                loaded_edge_model.manifest.get(
+                    "model_semantic_version",
+                    "unknown",
+                )
             )
             d5_version = f"d5-crossview-gnn-v{semantic_version}+{fingerprint[:12]}"
+            if shadow_authorization is None:
+                d5_diagnostics["model_output_applied"] = True
+            else:
+                d5_shadow_edge_model = loaded_edge_model
+                d5_diagnostics.update(
+                    experiment_authorization_valid=True,
+                    experiment_authorization_id=(
+                        shadow_authorization.authorization_id
+                    ),
+                    experiment_authorization_sha256=(
+                        shadow_authorization.authorization_file_sha256
+                    ),
+                    experiment_authorization_expires_at_utc=(
+                        shadow_authorization.expires_at_utc
+                    ),
+                )
 
     d5_active_vision_diagnostics: dict[str, Any] = {
         "requested_mode": selected.d5_active_vision_mode,
@@ -349,6 +446,7 @@ def resolve_learning_runtime(
         d4_region_advisor=d4_advisor,
         d4_unseen_seed_count=0,
         d5_edge_model=d5_edge_model,
+        d5_shadow_edge_model=d5_shadow_edge_model,
         d5_active_vision_policy=d5_active_vision_policy,
         learning_runtime_diagnostics=diagnostics,
     )

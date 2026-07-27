@@ -15,6 +15,7 @@ from pathlib import Path
 import subprocess
 from typing import Any, Iterable, Mapping, Sequence
 
+from .experiment_authorization import G1ShadowExperimentAuthorization
 from .learning_runtime import LearningRuntimeOptions, resolve_learning_runtime
 from .models import ScenarioConfig
 from .module_stack import IntegratedStackConfig
@@ -169,6 +170,9 @@ def runtime_options_for_variant(
     bundles: ModelBundlePaths,
     *,
     device: str,
+    d5_g1_shadow_authorization: (
+        G1ShadowExperimentAuthorization | None
+    ) = None,
 ) -> LearningRuntimeOptions:
     """Map one named ablation to explicit optional-learning runtime inputs."""
 
@@ -185,6 +189,9 @@ def runtime_options_for_variant(
         d4_mode="assist" if use_d4 else "disabled",
         d4_bundle_dir=bundles.d4 if use_d4 else None,
         d5_bundle_dir=bundles.d5_graph if use_d5_graph else None,
+        d5_g1_shadow_authorization=(
+            d5_g1_shadow_authorization if use_d5_graph else None
+        ),
         d5_active_vision_mode="assist" if use_active_vision else "disabled",
         d5_active_vision_bundle_dir=(
             bundles.d5_active_vision if use_active_vision else None
@@ -403,6 +410,14 @@ def _validate_resolved_variant(
             continue
         if component == "d5_active_vision" and not bool(record.get("assist_admitted")):
             failures.append(f"{component}:assist_not_admitted")
+            continue
+        if (
+            variant == "G1"
+            and component == "d5"
+            and str(record.get("effective_mode")) == "authorized_shadow"
+            and record.get("experiment_authorization_valid") is True
+            and record.get("model_output_applied") is False
+        ):
             continue
         if str(record.get("effective_mode")) != "assist":
             failures.append(f"{component}:effective_mode={record.get('effective_mode')}")

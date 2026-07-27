@@ -828,6 +828,7 @@ class IntegratedScalableModuleStack:
         d4_region_advisor: Any | None = None,
         d4_unseen_seed_count: int = 0,
         d5_edge_model: Any | None = None,
+        d5_shadow_edge_model: Any | None = None,
         d5_active_vision_policy: Any | None = None,
         learning_runtime_diagnostics: Mapping[str, Any] | None = None,
     ) -> None:
@@ -838,7 +839,12 @@ class IntegratedScalableModuleStack:
         self._configured_d4_region_advisor = d4_region_advisor
         self.d4_region_advisor = d4_region_advisor
         self.d4_unseen_seed_count = int(d4_unseen_seed_count)
+        if d5_edge_model is not None and d5_shadow_edge_model is not None:
+            raise ValueError(
+                "D5 applied and shadow edge models are mutually exclusive"
+            )
         self.d5_edge_model = d5_edge_model
+        self.d5_shadow_edge_model = d5_shadow_edge_model
         self.d5_active_vision_policy = d5_active_vision_policy
         self.learning_runtime_diagnostics = dict(
             learning_runtime_diagnostics or {}
@@ -862,6 +868,7 @@ class IntegratedScalableModuleStack:
         self.latest_d4_region_advice: Any | None = None
         self.latest_d4_region_consumption: Any | None = None
         self.latest_d5_result: Any | None = None
+        self.latest_d5_shadow_scoring: dict[str, Any] | None = None
         self.latest_guidance_batch: Any | None = None
         self.latest_active_vision_snapshot: ActiveVisionSnapshotV1 | None = None
         self.latest_active_vision_decisions: tuple[Any, ...] = ()
@@ -911,6 +918,11 @@ class IntegratedScalableModuleStack:
         self._d3_learning_frames: list[Any] = []
         self._d4_learning_frames: list[D4RegionLearningFrame] = []
         self._d5_learning_frames: list[D5GraphLearningFrame] = []
+        self._d5_shadow_scoring_frame_count = 0
+        self._d5_shadow_scoring_success_count = 0
+        self._d5_shadow_scoring_rejected_count = 0
+        self._d5_shadow_scoring_edge_count = 0
+        self._d5_shadow_scoring_rejection_reasons: Counter[str] = Counter()
         self._d5_active_vision_learning_frames: list[
             D5ActiveVisionLearningFrame
         ] = []
@@ -1242,6 +1254,7 @@ class IntegratedScalableModuleStack:
         self.latest_d4_region_advice = None
         self.latest_d4_region_consumption = None
         self.latest_d5_result = None
+        self.latest_d5_shadow_scoring = None
         self.latest_guidance_batch = None
         self.latest_active_vision_snapshot = None
         self.latest_active_vision_decisions = ()
@@ -1280,6 +1293,11 @@ class IntegratedScalableModuleStack:
         self._d3_learning_frames.clear()
         self._d4_learning_frames.clear()
         self._d5_learning_frames.clear()
+        self._d5_shadow_scoring_frame_count = 0
+        self._d5_shadow_scoring_success_count = 0
+        self._d5_shadow_scoring_rejected_count = 0
+        self._d5_shadow_scoring_edge_count = 0
+        self._d5_shadow_scoring_rejection_reasons.clear()
         self._d5_active_vision_learning_frames.clear()
         self._d2_identity_lineage_by_track.clear()
         self._d2_observation_replay_generation.clear()
@@ -1410,6 +1428,9 @@ class IntegratedScalableModuleStack:
                 self.latest_d2_tracks,
                 edge_model=self.d5_edge_model,
             )
+            self.latest_d5_shadow_scoring = (
+                self._evaluate_d5_shadow_scoring(now)
+            )
             self._latest_terminal_by_pair = self._terminal_pairs_from_d5(
                 self.latest_d5_result
             )
@@ -1426,6 +1447,8 @@ class IntegratedScalableModuleStack:
                 )
             self._record_timing("d5_terminal_association", perf_counter() - started)
             publications.append(self._d5_publication(now))
+            if self.latest_d5_shadow_scoring is not None:
+                publications.append(self._d5_shadow_scoring_publication(now))
 
         center_health, secondary_failed = self._fault_state(now)
         self._fault_generation_changed = bool(
@@ -5583,6 +5606,180 @@ class IntegratedScalableModuleStack:
                 )
         return output
 
+    def _evaluate_d5_shadow_scoring(
+        self,
+        now: float,
+    ) -> dict[str, Any] | None:
+        """Score the frozen D5 graph without changing clusters or bindings."""
+
+        if self.d5_shadow_edge_model is None:
+            return None
+        if self.latest_d5_result is None:
+            raise RuntimeError("D5 shadow scoring requires a D5 result")
+        association = self.latest_d5_result.association
+        graph = association.graph
+        diagnostics = dict(
+            self.learning_runtime_diagnostics.get("d5", {})
+        )
+        self._d5_shadow_scoring_frame_count += 1
+        base = {
+            "schema_version": "scalable3d-d5-g1-shadow-scoring-v1",
+            "timestamp": float(now),
+            "authorization_id": diagnostics.get(
+                "experiment_authorization_id"
+            ),
+            "authorization_sha256": diagnostics.get(
+                "experiment_authorization_sha256"
+            ),
+            "authorization_expires_at_utc": diagnostics.get(
+                "experiment_authorization_expires_at_utc"
+            ),
+            "model_fingerprint": diagnostics.get("model_fingerprint"),
+            "graph_node_count": int(graph.node_count),
+            "graph_edge_count": int(graph.edge_count),
+            "online_probability_source": association.probability_source,
+            "model_output_applied": False,
+            "global_track_id_authority": False,
+            "assignment_authority": False,
+            "failover_authority": False,
+            "control_authority": False,
+        }
+
+        def reject(reason: str, *, latency_ms: float | None = None) -> dict[str, Any]:
+            self._d5_shadow_scoring_rejected_count += 1
+            self._d5_shadow_scoring_rejection_reasons[reason] += 1
+            return {
+                **base,
+                "status": "rejected",
+                "rejection_reason": reason,
+                "inference_latency_ms": latency_ms,
+                "decision_threshold": None,
+                "probabilities_sha256": None,
+                "edge_scores": [],
+            }
+
+        if diagnostics.get("effective_mode") != "authorized_shadow":
+            return reject("runtime_mode_not_authorized_shadow")
+        if diagnostics.get("experiment_authorization_valid") is not True:
+            return reject("experiment_authorization_not_valid")
+        if diagnostics.get("model_output_applied") is not False:
+            return reject("model_output_application_not_closed")
+        if association.probability_source != "deterministic_geometry_rule":
+            return reject("online_association_not_rule_authoritative")
+        if getattr(self.d5_shadow_edge_model, "available", False) is not True:
+            return reject(
+                str(
+                    getattr(
+                        self.d5_shadow_edge_model,
+                        "failure_reason",
+                        "shadow_model_unavailable",
+                    )
+                )
+            )
+
+        binding_signature = tuple(
+            (
+                item.cluster_key,
+                item.global_track_id,
+                item.decision_state,
+                item.cost,
+                tuple(item.supporting_tracklet_keys),
+            )
+            for item in association.bindings
+        )
+        started = perf_counter()
+        try:
+            raw = self.d5_shadow_edge_model.forward_graph(graph)
+            if hasattr(raw, "detach") and callable(raw.detach):
+                raw = raw.detach().cpu().numpy()
+            probabilities = np.asarray(raw, dtype=float).reshape(-1)
+        except Exception as exc:
+            latency_ms = (perf_counter() - started) * 1_000.0
+            self._record_timing(
+                "d5_g1_shadow_scoring",
+                latency_ms / 1_000.0,
+            )
+            return reject(
+                f"model_error:{type(exc).__name__}",
+                latency_ms=latency_ms,
+            )
+        latency_ms = (perf_counter() - started) * 1_000.0
+        self._record_timing("d5_g1_shadow_scoring", latency_ms / 1_000.0)
+        if probabilities.shape != (graph.edge_count,):
+            return reject(
+                "model_output_shape_mismatch",
+                latency_ms=latency_ms,
+            )
+        if not np.all(np.isfinite(probabilities)):
+            return reject(
+                "model_output_non_finite",
+                latency_ms=latency_ms,
+            )
+        if np.any((probabilities < 0.0) | (probabilities > 1.0)):
+            return reject(
+                "model_output_out_of_range",
+                latency_ms=latency_ms,
+            )
+        if latency_ms > float(self.d5.config.model_inference_timeout_ms):
+            return reject(
+                "model_inference_timeout",
+                latency_ms=latency_ms,
+            )
+        if tuple(
+            (
+                item.cluster_key,
+                item.global_track_id,
+                item.decision_state,
+                item.cost,
+                tuple(item.supporting_tracklet_keys),
+            )
+            for item in association.bindings
+        ) != binding_signature:
+            raise RuntimeError(
+                "D5 shadow scoring mutated the online association result"
+            )
+        threshold = float(
+            getattr(
+                self.d5_shadow_edge_model,
+                "decision_threshold",
+                self.d5.config.edge_probability_threshold,
+            )
+        )
+        if not np.isfinite(threshold) or not 0.0 <= threshold <= 1.0:
+            return reject(
+                "model_decision_threshold_invalid",
+                latency_ms=latency_ms,
+            )
+        probability_bytes = probabilities.astype(
+            "<f8",
+            copy=False,
+        ).tobytes(order="C")
+        edge_scores = [
+            {
+                "source_tracklet_key": edge.source_tracklet_key,
+                "target_tracklet_key": edge.target_tracklet_key,
+                "probability": float(probability),
+            }
+            for edge, probability in zip(
+                graph.edges,
+                probabilities,
+                strict=True,
+            )
+        ]
+        self._d5_shadow_scoring_success_count += 1
+        self._d5_shadow_scoring_edge_count += int(graph.edge_count)
+        return {
+            **base,
+            "status": "scored",
+            "rejection_reason": None,
+            "inference_latency_ms": latency_ms,
+            "decision_threshold": threshold,
+            "probabilities_sha256": hashlib.sha256(
+                probability_bytes
+            ).hexdigest(),
+            "edge_scores": edge_scores,
+        }
+
     def _fault_state(self, now: float) -> tuple[C2Health, bool]:
         config = self._require_ready()
         center = C2Health.NORMAL
@@ -6772,6 +6969,28 @@ class IntegratedScalableModuleStack:
             copy_payload=False,
         )
 
+    def _d5_shadow_scoring_publication(
+        self,
+        now: float,
+    ) -> RuntimePublication:
+        payload = self.latest_d5_shadow_scoring
+        if payload is None:
+            raise RuntimeError("D5 shadow scoring publication is unavailable")
+        if not math.isclose(
+            float(payload["timestamp"]),
+            float(now),
+            rel_tol=0.0,
+            abs_tol=1.0e-12,
+        ):
+            raise RuntimeError("D5 shadow scoring timestamp mismatch")
+        return RuntimePublication(
+            topic="modules.d5.g1_shadow_scoring",
+            source="main",
+            schema_version="scalable3d-d5-g1-shadow-scoring-v1",
+            payload=payload,
+            copy_payload=False,
+        )
+
     def _d5_active_vision_publication(
         self,
         now: float,
@@ -6945,6 +7164,22 @@ class IntegratedScalableModuleStack:
                     for item in self.latest_d5_result.association.bindings
                 )
             ),
+            "d5_g1_shadow_scoring_frame_count": int(
+                self._d5_shadow_scoring_frame_count
+            ),
+            "d5_g1_shadow_scoring_success_count": int(
+                self._d5_shadow_scoring_success_count
+            ),
+            "d5_g1_shadow_scoring_rejected_count": int(
+                self._d5_shadow_scoring_rejected_count
+            ),
+            "d5_g1_shadow_scoring_edge_count": int(
+                self._d5_shadow_scoring_edge_count
+            ),
+            "d5_g1_shadow_scoring_rejection_reasons": dict(
+                sorted(self._d5_shadow_scoring_rejection_reasons.items())
+            ),
+            "d5_g1_shadow_model_output_applied": False,
             "d1_fusion_performance": (
                 self.d1.fusion_performance_diagnostics().to_dict()
             ),

@@ -2,9 +2,20 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 from research_modules.scalable_3d_simulation.episode_bus import build_episode_manifest
+from research_modules.scalable_3d_simulation.experiment_authorization import (
+    G1_SHADOW_APPROVAL_CONFIRMATION,
+    approve_g1_shadow_authorization_request,
+    build_g1_shadow_authorization_request,
+    canonical_json_sha256,
+    load_g1_shadow_experiment_authorization,
+    sha256_file,
+    write_g1_shadow_authorization_request,
+    write_g1_shadow_revocation_registry,
+)
 from research_modules.scalable_3d_simulation.learning_runtime import (
     LearningRuntimeOptions,
     resolve_learning_runtime,
@@ -218,4 +229,160 @@ def test_integrated_d5_bundle_requires_g1_assist_admission(
     assert (
         resolved.diagnostics["d5"]["fallback_reason"]
         == "bundle_g1_assist_not_eligible"
+    )
+
+
+def test_human_authorized_g1_is_shadow_only_and_cannot_change_d5_bindings(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from research_modules.d5_terminal_association.src.d5_terminal_association import (
+        tracklet_model_bundle,
+    )
+
+    bundle = tmp_path / "d5-v5"
+    bundle.mkdir()
+    (bundle / "manifest.json").write_text(
+        '{"schema_version":"test-v5"}\n',
+        encoding="utf-8",
+    )
+    (bundle / "weights.pt").write_bytes(b"test-shadow-weights")
+    manifest_sha256 = sha256_file(bundle / "manifest.json")
+    weights_sha256 = sha256_file(bundle / "weights.pt")
+    tree_sha256 = canonical_json_sha256(
+        [
+            {
+                "path": path.relative_to(bundle).as_posix(),
+                "size_bytes": path.stat().st_size,
+                "sha256": sha256_file(path),
+            }
+            for path in sorted(bundle.iterdir())
+            if path.is_file()
+        ]
+    )
+    request = build_g1_shadow_authorization_request(
+        authorization_id="g1-shadow-runtime-test",
+        purpose="bounded runtime test",
+        source_git_commit="e" * 40,
+        scenarios=("learning_runtime_smoke",),
+        scales=(5,),
+        seeds=(31,),
+        duration_s=1.2,
+        d5_bundle_manifest_sha256=manifest_sha256,
+        d5_bundle_tree_sha256=tree_sha256,
+        d5_weights_sha256=weights_sha256,
+        device="cpu",
+        not_before_utc="2020-01-01T00:00:00+00:00",
+        expires_at_utc="2099-01-01T00:00:00+00:00",
+        revocation_registry_id="g1-shadow-registry-test",
+    )
+    request_path = write_g1_shadow_authorization_request(
+        tmp_path / "request.json",
+        request,
+    )
+    registry_path = write_g1_shadow_revocation_registry(
+        tmp_path / "revocations.json",
+        registry_id="g1-shadow-registry-test",
+        updated_at_utc="2026-07-27T00:00:00+00:00",
+    )
+    authorization_path, authorization_sha256 = (
+        approve_g1_shadow_authorization_request(
+            request_path,
+            tmp_path / "authorization.json",
+            expected_request_sha256=str(request["request_sha256"]),
+            approver_id="test-operator",
+            approval_reason="bounded test",
+            confirmation=G1_SHADOW_APPROVAL_CONFIRMATION,
+            approved_at_utc="2026-07-27T00:00:00+00:00",
+        )
+    )
+    authorization = load_g1_shadow_experiment_authorization(
+        authorization_path,
+        expected_authorization_sha256=authorization_sha256,
+        revocation_registry_path=registry_path,
+        now_utc="2026-07-27T00:00:00+00:00",
+    )
+    captured: dict[str, object] = {}
+
+    class _ShadowScorer:
+        available = True
+        bundle_manifest_sha256 = manifest_sha256
+        bundle_weights_sha256 = weights_sha256
+        decision_threshold = 0.5
+        manifest = {"model_semantic_version": "1.0.0"}
+
+        def forward_graph(self, graph: object) -> np.ndarray:
+            return np.full(graph.edge_count, 0.9, dtype=float)
+
+    def _load(
+        bundle_dir: Path,
+        *,
+        device: str,
+        require_g1_assist_eligible: bool = False,
+    ) -> _ShadowScorer:
+        captured.update(
+            bundle_dir=Path(bundle_dir),
+            device=device,
+            require_g1_assist_eligible=require_g1_assist_eligible,
+        )
+        return _ShadowScorer()
+
+    monkeypatch.setattr(
+        tracklet_model_bundle,
+        "load_tracklet_model_bundle_for_runtime",
+        _load,
+    )
+    resolved = resolve_learning_runtime(
+        _short_integrated_config(),
+        LearningRuntimeOptions(
+            d5_bundle_dir=bundle,
+            d5_g1_shadow_authorization=authorization,
+        ),
+    )
+
+    assert captured["require_g1_assist_eligible"] is False
+    assert resolved.stack.d5_edge_model is None
+    assert resolved.stack.d5_shadow_edge_model is not None
+    assert resolved.diagnostics["d5"]["effective_mode"] == "authorized_shadow"
+    assert resolved.diagnostics["d5"]["model_output_applied"] is False
+    assert (
+        resolved.diagnostics["d5"]["experiment_authorization_valid"] is True
+    )
+
+    result = run_episode(resolved.config, module_stack=resolved.stack)
+    online_d5 = [
+        message.payload
+        for message in result.online_messages
+        if message.topic == "modules.d5.terminal_association"
+    ]
+    shadow = [
+        message.payload
+        for message in result.online_messages
+        if message.topic == "modules.d5.g1_shadow_scoring"
+    ]
+    assert online_d5
+    assert shadow
+    assert {
+        payload["probability_source"] for payload in online_d5
+    } == {"deterministic_geometry_rule"}
+    assert all(payload["model_output_applied"] is False for payload in shadow)
+    assert all(payload["global_track_id_authority"] is False for payload in shadow)
+    assert all(payload["control_authority"] is False for payload in shadow)
+    module_summary = result.summary["module_final_diagnostics"]
+    assert module_summary["d5_g1_shadow_scoring_frame_count"] == len(shadow)
+    assert module_summary["d5_g1_shadow_model_output_applied"] is False
+
+    (bundle / "unexpected.txt").write_text("tampered\n", encoding="utf-8")
+    rejected = resolve_learning_runtime(
+        _short_integrated_config(),
+        LearningRuntimeOptions(
+            d5_bundle_dir=bundle,
+            d5_g1_shadow_authorization=authorization,
+        ),
+    )
+    assert rejected.stack.d5_shadow_edge_model is None
+    assert rejected.diagnostics["d5"]["effective_mode"] == "rule_fallback"
+    assert (
+        rejected.diagnostics["d5"]["fallback_reason"]
+        == "experiment_authorization_ValueError"
     )
