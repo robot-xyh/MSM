@@ -1,11 +1,16 @@
 # D4 文档索引
 
-2026-07-29 已补充 v4 外部数据候选框架。首版放宽备用资源、压制规则 R0 和内生 dirty
-数据的原型已删除且未登记。当前 builder 固定 main/v3 安全合同，只接受外部内容寻址、
-在线无真值且来源 clean 的数据；train/validation 都必须含合法跨区正例与 no-op 负例，
-test/holdout payload 不读取。专项 11/11、D4 全量 780/780 通过。当前没有 v4 模型，
-真实数据、clean build、登记、D3 successor 和收益仍为 P1。原理与实现细节见本目录两份
-主文档及 `../PLAN.md`。
+2026-07-29 已补充 v4 训练集专用类别平衡和组合数据只读验证。actor 对 frame 正例和非零
+edge 分别使用上限 8/32 的有界权重；checkpoint 优先选择 validation 正负双类均命中的
+模型。只读结果为 train 正/负命中 59/60、278/290，validation 为 14/15、58/60，
+直接投影拒绝均为 0，干预不变量拒绝各 2。confidence 也使用训练集专用有界权重，但固定
+0.60 门下 validation 仍有 1 条负类且不一致样本越门，流程失败关闭。专项 21/21、D4
+全量 804/804 通过。当前没有 clean v4 候选或登记，D3 successor、D6 审计和收益仍未
+完成。原理与实现细节见本目录两份主文档及 `../PLAN.md`。
+
+同日较早完成的 v4 外部数据候选框架继续有效。首版放宽备用资源、压制规则 R0 和内生
+dirty 数据的原型已删除且未登记。当前 builder 固定 main/v3 安全合同，只接受外部内容
+寻址、在线无真值且来源 clean 的数据；test/holdout payload 不读取。
 
 2026-07-29 新增 readiness v3 隔离 development pairing。新 schema 固定 seeds
 2003-2012，旧 formal paired schema 继续固定 1000-1019。只读 loader 验证 v3 registry

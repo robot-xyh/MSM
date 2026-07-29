@@ -1,5 +1,46 @@
 # D4 分布式协同与降级接管计划
 
+## 2026-07-29 v4 类别平衡阶段计划
+
+### 已完成
+
+- v4 actor 使用训练集专用样本与边目标平衡。正类权重为
+  `min(train_negative/train_positive, 8)`，非零边权重为
+  `min(train_zero_edge/train_nonzero_edge, 32)`；负类和零边权重固定为 1。
+- 权重计数、原始比例、封顶状态和训练标签清单摘要进入 `training_summary`。validation
+  和 test 的权重拟合计数固定为 0，test payload 不读取。
+- validation checkpoint 选择优先保证正负两类均有命中，再最大化较低类别命中率和平衡
+  命中率；同分时比较固定训练权重下的 validation loss、直接投影拒绝数和较早 epoch。
+- actor 审计保留全部记录。直接投影拒绝与投影后干预不变量拒绝分开统计，并写入负因清单。
+- confidence head 增加训练集专用有界权重。正类和动作不一致负类分别按训练集比例计算，
+  上限均为 8；普通负类为 1。固定 0.60 门和负类/不一致必须零越门的条件未修改。
+- 外部组合数据只读复核得到 actor train 正/负命中 59/60、278/290，validation 为
+  14/15、58/60；直接投影拒绝均为 0，干预不变量拒绝各 2。最佳 epoch 为 150。
+- confidence 阈值通过数在 train 为 59/11/11/70，在 validation 为 14/1/1/15，顺序为
+  positive/negative/inconsistent/executable。validation 仍有 1 条负类且不一致样本越过
+  0.60，训练链按合同失败关闭。
+- 专项 21/21、D4 全量 804/804 通过；未修改通用行为克隆、v3 registry、v4 注册常量或
+  生产权限。
+
+### 当前 P1
+
+1. confidence 必须在不修改 0.60 门和零负类/零不一致越门合同的条件下通过。当前组合数据
+   的 train/validation 仍分别有 11/1 条负类且不一致样本越门。
+2. 需要从 clean commit 独立构建 v4 候选，并保存本次训练摘要、数据身份和全部源码摘要。
+   本阶段只读验证没有候选目录，不能用于登记。
+3. clean 制品仍需 D4 不可变 review、main 准入决策和 D6 独立审计。v4 五项注册摘要保持
+   空值，全部生产权限保持 false。
+4. D3 successor、运行 ACK、D7/物理窗口、独立双臂非退化、正收益和扰动场景均未开始。
+
+### 下一步
+
+1. 先检查越门的 1 条 validation 负例及 train 11 条负例的可观测特征重叠，保持 test
+   封存，不用 validation/test 反推权重或阈值。
+2. 只有 confidence 合同通过后，才由 main 在 clean checkout 下运行正式 builder；失败
+   时不保留候选、不写 registry。
+3. clean build 通过后由 D4 执行只读不可变 review，再交 main/D3/D6 完成后继、配对和
+   收益证据。任一链路不完整时继续使用 v3/确定性规则。
+
 ## 2026-07-29 规划资格解耦计划
 
 ### 已完成
@@ -58,12 +99,12 @@
 
 ### 当前 P1
 
-1. main 尚未导出满足 v4 数据合同的真实 runtime frame 数据集及来源制品 SHA。当前没有
-   可供 clean build 的输入。
-2. 尚未从 clean commit 完成 v4 训练、正负置信度校准、不可变 artifact review 和登记。
+1. main 已提供外部组合数据并完成只读训练机制验证，但该数据尚未形成通过 confidence
+   合同的 clean candidate。正式 runtime 数据代表性和来源链仍需在构建审计中确认。
+2. 尚未从 clean commit 完成 v4 候选构建、正负置信度验收、不可变 artifact review 和登记。
    注册 SHA 保持空值，不得从失败原型回填。
-3. 尚未证明学习模型在安全投影后形成区别于同键 R0 的动作。受控 fixture 只证明合同允许
-   一个安全差异。
+3. 只读 actor 已在 train/validation 同时形成区别于同键 R0 的双类命中，但 confidence
+   未通过固定门。该结果不能替代 clean candidate 或运行采用证据。
 4. D3 尚未消费 v4 treatment 并形成可归因的严格后继计划，也没有 successor ACK、
    D7/物理窗口和完整执行映射。
 5. 独立 control/treatment episode、D6 非退化和正收益、扰动场景以及正式 holdout 均未

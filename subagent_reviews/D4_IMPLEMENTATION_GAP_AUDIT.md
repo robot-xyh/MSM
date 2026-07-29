@@ -1,5 +1,34 @@
 # D4 实现差距审计：分布式协同与降级接管
 
+## 2026-07-29 v4 类别平衡与置信门 GAP
+
+- **无新增 P0。** projector、同键 R0、0.10 备用比例、1 个备用资源、单边最多 1、
+  transfer 总上限、0.60 置信门、OOD、fixture 和全部权限边界均未修改。v4 未登记，
+  v3 registry 未修改。
+- **已关闭 D4 内 P1：actor 被 no-op/零边淹没。** train 60/290 的正负 frame 使用
+  4.833333/1 权重；71/3849 的非零/零 edge 使用 32/1 权重。权重只来自 train，
+  上限、计数、截断状态和标签清单摘要可审计。
+- **已关闭 D4 内 P1：总体 loss 选择全 no-op checkpoint。** 新 selection key 先要求
+  validation 正负两类均有命中，再比较较低类别命中率、平衡命中率、固定训练权重下的
+  validation loss、直接投影拒绝和 epoch。
+- **已关闭 D4 内 P1：拒绝样本被过滤。** train/validation 中直接投影拒绝和投影后干预
+  不变量拒绝均保留并进入负因清单。当前只读结果直接投影拒绝为 0/0，干预不变量拒绝为
+  2/2。
+- **只读证据。** actor train 正/负命中 59/60、278/290，validation 为
+  14/15、58/60，最佳 epoch 150。test episode 加载数和 test 权重拟合数均为 0。
+- **已实现但未关闭 P1：confidence 类别平衡。** train confidence 正/负标签为 59/291，
+  正类权重 4.932203；13 条不一致负例权重按上限 8 截断，普通负例为 1。validation/test
+  不参与拟合权重。
+- **当前 blocker。** 固定 0.60 门下 train 的
+  positive/negative/inconsistent/executable 通过数为 59/11/11/70，validation 为
+  14/1/1/15。validation 仍有 1 条负类且不一致样本越门，既有零容忍条件未通过，流程
+  正确失败关闭。
+- **开放 P1。** clean candidate build、候选制品、不可变 review、registry、D6 独立
+  审计、D3 successor、D7/物理窗口、双臂非退化与收益均未完成。当前只可声明训练机制
+  和只读组合数据验证完成。
+- **验证。** 2026-07-29 v4 专项 21/21、D4 全量 804/804 通过；仅有既有 Matplotlib
+  `Axes3D` 环境警告。
+
 ## 2026-07-29 规划资格与执行权限 GAP
 
 - **无新增 P0。** D4 的中心、二级、分布式接管和控制围栏仍保持失败关闭。规划资格不能
@@ -46,11 +75,11 @@
 - **验证。** 2026-07-29 v4 专项 11/11、D4 全量 780/780 通过；仅有既有 Matplotlib
   `Axes3D` 环境警告。验证对象是 builder/framework 和受控 fixture，不是 AirSim、
   clean-build 模型或实飞证据。
-- **开放 P1：真实数据与 clean build。** main runtime 数据集、外部来源制品 SHA、
-  clean commit 构建、正负校准结果、模型/manifest/数据集不可变登记均未完成。
-- **开放 P1：模型可执行差异。** 8 区域受控 fixture 使用 21 资源、19 条绑定，源区
-  2 个未承诺资源允许安全转移 1 个；该结果只证明合同可表达差异。尚无真实训练模型通过
-  相同门控并形成区别于同键 R0 的动作。
+- **开放 P1：clean build。** 外部组合数据和来源证据已用于只读训练机制验证，但
+  confidence 尚未通过固定门。clean commit 构建、模型/manifest/数据集不可变登记均未完成。
+- **部分关闭 P1：模型可执行差异。** 只读 actor 已在 train/validation 形成双类命中，
+  证明学习模型不再全 no-op；confidence 仍失败，且没有 clean candidate、运行采用或
+  successor，因此该项不能按正式候选能力关闭。
 - **开放 P1：后继和收益。** D3 successor、新目标实际绑定、ACK、D7/物理窗口、独立
   双臂 episode、D6 非退化/正收益、扰动多 seed 和正式 holdout 均未完成。证据形成前
   admission 保持 closed，rule fallback required。

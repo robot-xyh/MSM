@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field
 from hashlib import sha256
 import json
-from math import ceil, isfinite
+from math import ceil, isclose, isfinite
 from pathlib import Path
 import random
 import shutil
@@ -46,8 +46,6 @@ from .region_resource_learning import (
     LearnedRegionResourcePolicy,
     LoadedRegionResourceModelBundle,
     SharedRegionGraphActorCritic,
-    behavior_cloning_loss,
-    behavior_cloning_step,
     load_region_behavior_cloning_samples,
     load_region_resource_model_bundle,
     save_region_resource_model_bundle,
@@ -92,6 +90,12 @@ REGION_RESOURCE_V4_FIXTURE_SCHEMA = (
 REGION_RESOURCE_V4_INTERVENTION_GATE_SCHEMA = (
     "d4-region-resource-executable-intervention-gate-v4"
 )
+REGION_RESOURCE_V4_CLASS_BALANCE_SCHEMA = (
+    "d4-region-resource-v4-train-only-class-balance-v1"
+)
+REGION_RESOURCE_V4_CONFIDENCE_BALANCE_SCHEMA = (
+    "d4-region-resource-v4-train-only-confidence-balance-v1"
+)
 REGION_RESOURCE_V4_CANDIDATE_FILENAME = "v4_shadow_candidate_manifest.json"
 REGION_RESOURCE_V4_CONFIG_FILENAME = "training_config.json"
 REGION_RESOURCE_V4_TRAINING_FILENAME = "training_summary.json"
@@ -128,6 +132,9 @@ _V4_RULE_CONFIG = RuleRegionResourcePolicyConfig(
     transfer_pressure_margin=0.05,
 )
 _V4_INFERENCE_TIMEOUT_S = 0.250
+_V4_POSITIVE_SAMPLE_WEIGHT_CAP = 8.0
+_V4_NONZERO_EDGE_WEIGHT_CAP = 32.0
+_V4_ZERO_TARGET_TOLERANCE = 1.0e-12
 
 
 class RegionResourceV4CandidateError(RuntimeError):
@@ -337,6 +344,374 @@ class RegionResourceV4ExternalDatasetEvidence:
             value,
             cls.__dataclass_fields__,
             "v4_external_dataset_evidence",
+        )
+        return cls(**dict(value))
+
+
+@dataclass(frozen=True)
+class RegionResourceV4ClassBalance:
+    """Content-bound weights derived exclusively from v4 TRAIN targets."""
+
+    train_sample_count: int
+    target_positive_count: int
+    target_negative_count: int
+    edge_target_count: int
+    nonzero_edge_target_count: int
+    zero_edge_target_count: int
+    raw_positive_sample_ratio: float
+    raw_nonzero_edge_ratio: float
+    positive_sample_weight: float
+    negative_sample_weight: float
+    nonzero_edge_weight: float
+    zero_edge_weight: float
+    positive_sample_weight_cap: float = _V4_POSITIVE_SAMPLE_WEIGHT_CAP
+    nonzero_edge_weight_cap: float = _V4_NONZERO_EDGE_WEIGHT_CAP
+    positive_sample_weight_clipped: bool = False
+    nonzero_edge_weight_clipped: bool = False
+    weight_source_split: str = RegionLearningSplit.TRAIN.value
+    validation_weight_fit_count: int = 0
+    test_payload_weight_fit_count: int = 0
+    train_label_inventory_sha256: str = ""
+    content_sha256: str = ""
+    schema: str = REGION_RESOURCE_V4_CLASS_BALANCE_SCHEMA
+
+    def __post_init__(self) -> None:
+        if self.schema != REGION_RESOURCE_V4_CLASS_BALANCE_SCHEMA:
+            raise ValueError("unsupported v4 class balance schema")
+        for name in (
+            "train_sample_count",
+            "target_positive_count",
+            "target_negative_count",
+            "edge_target_count",
+            "nonzero_edge_target_count",
+            "zero_edge_target_count",
+            "validation_weight_fit_count",
+            "test_payload_weight_fit_count",
+        ):
+            value = getattr(self, name)
+            if type(value) is not int or value < 0:
+                raise ValueError(
+                    f"v4 class balance {name} must be a non-negative integer"
+                )
+        if (
+            self.target_positive_count <= 0
+            or self.target_negative_count <= 0
+            or self.nonzero_edge_target_count <= 0
+            or self.zero_edge_target_count <= 0
+        ):
+            raise ValueError(
+                "v4 class balance requires positive and negative TRAIN targets"
+            )
+        if (
+            self.train_sample_count
+            != self.target_positive_count + self.target_negative_count
+            or self.edge_target_count
+            != self.nonzero_edge_target_count + self.zero_edge_target_count
+        ):
+            raise ValueError("v4 class balance inventory mismatch")
+        if (
+            self.weight_source_split != RegionLearningSplit.TRAIN.value
+            or self.validation_weight_fit_count != 0
+            or self.test_payload_weight_fit_count != 0
+        ):
+            raise ValueError("v4 actor weights must be fit from TRAIN only")
+        for name in (
+            "raw_positive_sample_ratio",
+            "raw_nonzero_edge_ratio",
+            "positive_sample_weight",
+            "negative_sample_weight",
+            "nonzero_edge_weight",
+            "zero_edge_weight",
+            "positive_sample_weight_cap",
+            "nonzero_edge_weight_cap",
+        ):
+            value = float(getattr(self, name))
+            if not isfinite(value) or value <= 0.0:
+                raise ValueError(
+                    f"v4 class balance {name} must be finite and positive"
+                )
+        if (
+            not isclose(
+                self.positive_sample_weight_cap,
+                _V4_POSITIVE_SAMPLE_WEIGHT_CAP,
+            )
+            or not isclose(
+                self.nonzero_edge_weight_cap,
+                _V4_NONZERO_EDGE_WEIGHT_CAP,
+            )
+            or not isclose(self.negative_sample_weight, 1.0)
+            or not isclose(self.zero_edge_weight, 1.0)
+        ):
+            raise ValueError("v4 class balance fixed weights changed")
+        raw_sample_ratio = (
+            self.target_negative_count / self.target_positive_count
+        )
+        raw_edge_ratio = (
+            self.zero_edge_target_count / self.nonzero_edge_target_count
+        )
+        expected_sample_weight = min(
+            raw_sample_ratio,
+            _V4_POSITIVE_SAMPLE_WEIGHT_CAP,
+        )
+        expected_edge_weight = min(
+            raw_edge_ratio,
+            _V4_NONZERO_EDGE_WEIGHT_CAP,
+        )
+        expected_values = (
+            (
+                self.raw_positive_sample_ratio,
+                raw_sample_ratio,
+                "raw positive sample ratio",
+            ),
+            (
+                self.raw_nonzero_edge_ratio,
+                raw_edge_ratio,
+                "raw nonzero edge ratio",
+            ),
+            (
+                self.positive_sample_weight,
+                expected_sample_weight,
+                "positive sample weight",
+            ),
+            (
+                self.nonzero_edge_weight,
+                expected_edge_weight,
+                "nonzero edge weight",
+            ),
+        )
+        for observed, expected, label in expected_values:
+            if not isclose(
+                float(observed),
+                float(expected),
+                rel_tol=1.0e-12,
+                abs_tol=1.0e-12,
+            ):
+                raise ValueError(f"v4 class balance {label} was altered")
+        if self.positive_sample_weight_clipped is not bool(
+            raw_sample_ratio > _V4_POSITIVE_SAMPLE_WEIGHT_CAP
+        ):
+            raise ValueError(
+                "v4 positive sample weight clipping status mismatch"
+            )
+        if self.nonzero_edge_weight_clipped is not bool(
+            raw_edge_ratio > _V4_NONZERO_EDGE_WEIGHT_CAP
+        ):
+            raise ValueError(
+                "v4 nonzero edge weight clipping status mismatch"
+            )
+        _require_sha256(
+            self.train_label_inventory_sha256,
+            "v4_class_balance.train_label_inventory_sha256",
+        )
+        expected_sha256 = _canonical_sha256(self.content_dict())
+        if self.content_sha256 and self.content_sha256 != expected_sha256:
+            raise ValueError("v4 class balance content SHA256 mismatch")
+        object.__setattr__(self, "content_sha256", expected_sha256)
+
+    def content_dict(self) -> dict[str, Any]:
+        payload = asdict(self)
+        payload.pop("content_sha256", None)
+        return payload
+
+    def to_dict(self) -> dict[str, Any]:
+        return {**self.content_dict(), "content_sha256": self.content_sha256}
+
+    @classmethod
+    def from_mapping(
+        cls,
+        value: Mapping[str, Any],
+    ) -> "RegionResourceV4ClassBalance":
+        _require_exact_keys(
+            value,
+            cls.__dataclass_fields__,
+            "v4_class_balance",
+        )
+        return cls(**dict(value))
+
+
+@dataclass(frozen=True)
+class RegionResourceV4ConfidenceBalance:
+    """Bounded confidence-label balance derived only from TRAIN records."""
+
+    train_sample_count: int
+    target_positive_count: int
+    target_negative_count: int
+    inconsistent_negative_count: int
+    ordinary_negative_count: int
+    raw_positive_sample_ratio: float
+    raw_inconsistent_negative_ratio: float
+    positive_sample_weight: float
+    inconsistent_negative_weight: float
+    negative_sample_weight: float
+    positive_sample_weight_cap: float = _V4_POSITIVE_SAMPLE_WEIGHT_CAP
+    inconsistent_negative_weight_cap: float = (
+        _V4_POSITIVE_SAMPLE_WEIGHT_CAP
+    )
+    positive_sample_weight_clipped: bool = False
+    inconsistent_negative_weight_clipped: bool = False
+    weight_source_split: str = RegionLearningSplit.TRAIN.value
+    validation_weight_fit_count: int = 0
+    test_payload_weight_fit_count: int = 0
+    train_label_inventory_sha256: str = ""
+    content_sha256: str = ""
+    schema: str = REGION_RESOURCE_V4_CONFIDENCE_BALANCE_SCHEMA
+
+    def __post_init__(self) -> None:
+        if self.schema != REGION_RESOURCE_V4_CONFIDENCE_BALANCE_SCHEMA:
+            raise ValueError("unsupported v4 confidence balance schema")
+        for name in (
+            "train_sample_count",
+            "target_positive_count",
+            "target_negative_count",
+            "inconsistent_negative_count",
+            "ordinary_negative_count",
+            "validation_weight_fit_count",
+            "test_payload_weight_fit_count",
+        ):
+            value = getattr(self, name)
+            if type(value) is not int or value < 0:
+                raise ValueError(
+                    f"v4 confidence balance {name} must be a "
+                    "non-negative integer"
+                )
+        if (
+            self.target_positive_count <= 0
+            or self.target_negative_count <= 0
+            or self.train_sample_count
+            != self.target_positive_count + self.target_negative_count
+            or self.target_negative_count
+            != self.inconsistent_negative_count
+            + self.ordinary_negative_count
+        ):
+            raise ValueError(
+                "v4 confidence balance requires positive and negative "
+                "TRAIN labels"
+            )
+        if (
+            self.weight_source_split != RegionLearningSplit.TRAIN.value
+            or self.validation_weight_fit_count != 0
+            or self.test_payload_weight_fit_count != 0
+        ):
+            raise ValueError(
+                "v4 confidence weights must be fit from TRAIN only"
+            )
+        for name in (
+            "raw_positive_sample_ratio",
+            "raw_inconsistent_negative_ratio",
+            "positive_sample_weight",
+            "inconsistent_negative_weight",
+            "negative_sample_weight",
+            "positive_sample_weight_cap",
+            "inconsistent_negative_weight_cap",
+        ):
+            value = float(getattr(self, name))
+            if not isfinite(value) or value <= 0.0:
+                raise ValueError(
+                    f"v4 confidence balance {name} must be finite and positive"
+                )
+        if (
+            not isclose(
+                self.positive_sample_weight_cap,
+                _V4_POSITIVE_SAMPLE_WEIGHT_CAP,
+            )
+            or not isclose(
+                self.inconsistent_negative_weight_cap,
+                _V4_POSITIVE_SAMPLE_WEIGHT_CAP,
+            )
+            or not isclose(self.negative_sample_weight, 1.0)
+        ):
+            raise ValueError("v4 confidence fixed weights changed")
+        raw_ratio = self.target_negative_count / self.target_positive_count
+        expected_weight = min(
+            raw_ratio,
+            _V4_POSITIVE_SAMPLE_WEIGHT_CAP,
+        )
+        raw_inconsistent_ratio = (
+            self.target_negative_count / self.inconsistent_negative_count
+            if self.inconsistent_negative_count
+            else 1.0
+        )
+        expected_inconsistent_weight = min(
+            raw_inconsistent_ratio,
+            _V4_POSITIVE_SAMPLE_WEIGHT_CAP,
+        )
+        if not isclose(
+            self.raw_positive_sample_ratio,
+            raw_ratio,
+            rel_tol=1.0e-12,
+            abs_tol=1.0e-12,
+        ):
+            raise ValueError(
+                "v4 confidence raw positive sample ratio was altered"
+            )
+        if not isclose(
+            self.positive_sample_weight,
+            expected_weight,
+            rel_tol=1.0e-12,
+            abs_tol=1.0e-12,
+        ):
+            raise ValueError(
+                "v4 confidence positive sample weight was altered"
+            )
+        if not isclose(
+            self.raw_inconsistent_negative_ratio,
+            raw_inconsistent_ratio,
+            rel_tol=1.0e-12,
+            abs_tol=1.0e-12,
+        ):
+            raise ValueError(
+                "v4 confidence raw inconsistent-negative ratio was altered"
+            )
+        if not isclose(
+            self.inconsistent_negative_weight,
+            expected_inconsistent_weight,
+            rel_tol=1.0e-12,
+            abs_tol=1.0e-12,
+        ):
+            raise ValueError(
+                "v4 confidence inconsistent-negative weight was altered"
+            )
+        if self.positive_sample_weight_clipped is not bool(
+            raw_ratio > _V4_POSITIVE_SAMPLE_WEIGHT_CAP
+        ):
+            raise ValueError(
+                "v4 confidence positive weight clipping status mismatch"
+            )
+        if self.inconsistent_negative_weight_clipped is not bool(
+            self.inconsistent_negative_count > 0
+            and raw_inconsistent_ratio > _V4_POSITIVE_SAMPLE_WEIGHT_CAP
+        ):
+            raise ValueError(
+                "v4 confidence inconsistent-negative clipping status mismatch"
+            )
+        _require_sha256(
+            self.train_label_inventory_sha256,
+            "v4_confidence_balance.train_label_inventory_sha256",
+        )
+        expected_sha256 = _canonical_sha256(self.content_dict())
+        if self.content_sha256 and self.content_sha256 != expected_sha256:
+            raise ValueError(
+                "v4 confidence balance content SHA256 mismatch"
+            )
+        object.__setattr__(self, "content_sha256", expected_sha256)
+
+    def content_dict(self) -> dict[str, Any]:
+        payload = asdict(self)
+        payload.pop("content_sha256", None)
+        return payload
+
+    def to_dict(self) -> dict[str, Any]:
+        return {**self.content_dict(), "content_sha256": self.content_sha256}
+
+    @classmethod
+    def from_mapping(
+        cls,
+        value: Mapping[str, Any],
+    ) -> "RegionResourceV4ConfidenceBalance":
+        _require_exact_keys(
+            value,
+            cls.__dataclass_fields__,
+            "v4_confidence_balance",
         )
         return cls(**dict(value))
 
@@ -1891,6 +2266,457 @@ def _copy_selected_external_dataset(
         shutil.copy2(source, target)
 
 
+@dataclass(frozen=True)
+class _V4ActorRecord:
+    sample: Any
+    snapshot: RegionResourceSnapshot
+    target: RegionResourceRecommendation
+    source_episode_id: str
+    frame_index: int
+    split: RegionLearningSplit
+    target_positive: bool
+    target_executable_signature_sha256: str
+    rule_executable_signature_sha256: str
+    nonzero_edge_target_count: int
+    edge_target_count: int
+
+
+def _v4_actor_records(
+    loaded: LoadedRegionLearningDataset,
+    *,
+    split: RegionLearningSplit,
+    projector: DeterministicResourceProjector,
+    rule_policy: RuleRegionResourcePolicy,
+) -> tuple[_V4ActorRecord, ...]:
+    if split not in {
+        RegionLearningSplit.TRAIN,
+        RegionLearningSplit.VALIDATION,
+    }:
+        raise RegionResourceV4CandidateError(
+            "v4_actor_test_or_holdout_payload_read_forbidden"
+        )
+    samples = load_region_behavior_cloning_samples(
+        loaded,
+        split=split,
+        device="cpu",
+        allow_dirty_source=False,
+    )
+    frame_records = tuple(
+        (episode.source.episode_id, frame)
+        for episode in loaded.episodes(split)
+        for frame in episode.frames
+    )
+    if len(samples) != len(frame_records):
+        raise RegionResourceV4CandidateError(
+            "v4_actor_sample_frame_inventory_mismatch"
+        )
+    records: list[_V4ActorRecord] = []
+    for sample, (episode_id, frame) in zip(
+        samples,
+        frame_records,
+        strict=True,
+    ):
+        target = frame.target.recommendation
+        if target is None:
+            raise RegionResourceV4CandidateError(
+                "v4_actor_external_target_unavailable"
+            )
+        r0 = rule_policy.recommend(frame.snapshot)
+        target_advisory = projector.build_advisory_contract(
+            frame.snapshot,
+            target,
+        )
+        r0_advisory = projector.build_advisory_contract(
+            frame.snapshot,
+            r0,
+        )
+        target_signature, _ = executable_signature(target_advisory)
+        r0_signature, _ = executable_signature(r0_advisory)
+        target_positive = target_signature != r0_signature
+        if target_positive:
+            valid, reasons = evaluate_v4_intervention_invariants(
+                frame.snapshot,
+                target,
+                r0,
+                gate=REGION_RESOURCE_V4_INTERVENTION_GATE,
+                projector=projector,
+                formal_decision=None,
+            )
+            if not valid:
+                raise RegionResourceV4CandidateError(
+                    "v4_actor_external_positive_target_unsafe:"
+                    + ",".join(reasons)
+                )
+        edge_targets = sample.target.edge_continuous
+        edge_target_count = int(edge_targets.numel())
+        nonzero_edge_target_count = int(
+            torch.count_nonzero(
+                edge_targets.abs() > _V4_ZERO_TARGET_TOLERANCE
+            ).item()
+        )
+        records.append(
+            _V4ActorRecord(
+                sample=sample,
+                snapshot=frame.snapshot,
+                target=target,
+                source_episode_id=episode_id,
+                frame_index=int(frame.frame_index),
+                split=split,
+                target_positive=target_positive,
+                target_executable_signature_sha256=target_signature,
+                rule_executable_signature_sha256=r0_signature,
+                nonzero_edge_target_count=nonzero_edge_target_count,
+                edge_target_count=edge_target_count,
+            )
+        )
+    return tuple(records)
+
+
+def _derive_v4_actor_class_balance(
+    records: Sequence[_V4ActorRecord],
+    *,
+    split: RegionLearningSplit = RegionLearningSplit.TRAIN,
+) -> RegionResourceV4ClassBalance:
+    if split != RegionLearningSplit.TRAIN or any(
+        record.split != RegionLearningSplit.TRAIN for record in records
+    ):
+        raise RegionResourceV4CandidateError(
+            "v4_actor_weights_train_split_only"
+        )
+    positive_count = sum(record.target_positive for record in records)
+    negative_count = len(records) - positive_count
+    nonzero_edge_count = sum(
+        record.nonzero_edge_target_count for record in records
+    )
+    edge_count = sum(record.edge_target_count for record in records)
+    zero_edge_count = edge_count - nonzero_edge_count
+    if (
+        positive_count <= 0
+        or negative_count <= 0
+        or nonzero_edge_count <= 0
+        or zero_edge_count <= 0
+    ):
+        raise RegionResourceV4CandidateError(
+            "v4_actor_balance_requires_positive_negative_and_edge_diversity"
+        )
+    raw_sample_ratio = negative_count / positive_count
+    raw_edge_ratio = zero_edge_count / nonzero_edge_count
+    label_inventory = [
+        {
+            "source_episode_id": record.source_episode_id,
+            "frame_index": record.frame_index,
+            "target_positive": record.target_positive,
+            "target_executable_signature_sha256": (
+                record.target_executable_signature_sha256
+            ),
+            "rule_executable_signature_sha256": (
+                record.rule_executable_signature_sha256
+            ),
+            "nonzero_edge_target_count": (
+                record.nonzero_edge_target_count
+            ),
+            "edge_target_count": record.edge_target_count,
+        }
+        for record in records
+    ]
+    return RegionResourceV4ClassBalance(
+        train_sample_count=len(records),
+        target_positive_count=positive_count,
+        target_negative_count=negative_count,
+        edge_target_count=edge_count,
+        nonzero_edge_target_count=nonzero_edge_count,
+        zero_edge_target_count=zero_edge_count,
+        raw_positive_sample_ratio=raw_sample_ratio,
+        raw_nonzero_edge_ratio=raw_edge_ratio,
+        positive_sample_weight=min(
+            raw_sample_ratio,
+            _V4_POSITIVE_SAMPLE_WEIGHT_CAP,
+        ),
+        negative_sample_weight=1.0,
+        nonzero_edge_weight=min(
+            raw_edge_ratio,
+            _V4_NONZERO_EDGE_WEIGHT_CAP,
+        ),
+        zero_edge_weight=1.0,
+        positive_sample_weight_clipped=bool(
+            raw_sample_ratio > _V4_POSITIVE_SAMPLE_WEIGHT_CAP
+        ),
+        nonzero_edge_weight_clipped=bool(
+            raw_edge_ratio > _V4_NONZERO_EDGE_WEIGHT_CAP
+        ),
+        train_label_inventory_sha256=_canonical_sha256(label_inventory),
+    )
+
+
+def _v4_actor_loss(
+    model: SharedRegionGraphActorCritic,
+    record: _V4ActorRecord,
+    balance: RegionResourceV4ClassBalance,
+) -> Any:
+    output = model(record.sample.graph)
+    target = record.sample.target
+    continuous = torch.nn.functional.mse_loss(
+        output.node_mean[:, :3],
+        target.node_continuous,
+    )
+    binary = torch.nn.functional.binary_cross_entropy_with_logits(
+        output.node_mean[:, 3:],
+        target.node_binary,
+    )
+    if record.sample.graph.edge_count:
+        squared_error = (
+            output.edge_mean - target.edge_continuous
+        ).square()
+        edge_weights = torch.where(
+            target.edge_continuous.abs() > _V4_ZERO_TARGET_TOLERANCE,
+            torch.full_like(
+                squared_error,
+                balance.nonzero_edge_weight,
+            ),
+            torch.full_like(
+                squared_error,
+                balance.zero_edge_weight,
+            ),
+        )
+        edge = (squared_error * edge_weights).sum() / edge_weights.sum()
+    else:
+        edge = output.node_mean.sum() * 0.0
+    return continuous + binary + edge
+
+
+def _v4_actor_step(
+    model: SharedRegionGraphActorCritic,
+    optimizer: Any,
+    records: Sequence[_V4ActorRecord],
+    *,
+    balance: RegionResourceV4ClassBalance,
+    max_grad_norm: float,
+) -> tuple[float, float]:
+    if not records:
+        raise RegionResourceV4CandidateError(
+            "v4_actor_batch_must_not_be_empty"
+        )
+    optimizer.zero_grad()
+    losses = torch.stack(
+        [_v4_actor_loss(model, record, balance) for record in records]
+    )
+    sample_weights = torch.tensor(
+        [
+            balance.positive_sample_weight
+            if record.target_positive
+            else balance.negative_sample_weight
+            for record in records
+        ],
+        dtype=losses.dtype,
+        device=losses.device,
+    )
+    denominator = sample_weights.sum()
+    loss = (losses * sample_weights).sum() / denominator
+    if not bool(torch.isfinite(loss).item()):
+        raise RegionResourceV4CandidateError(
+            "v4_actor_balanced_loss_nonfinite"
+        )
+    loss.backward()
+    torch.nn.utils.clip_grad_norm_(model.parameters(), max_grad_norm)
+    optimizer.step()
+    if not _model_parameters_finite(model):
+        raise RegionResourceV4CandidateError(
+            "v4_actor_balanced_update_nonfinite"
+        )
+    return float(loss.detach().cpu()), float(denominator.detach().cpu())
+
+
+def _mean_v4_actor_loss(
+    model: SharedRegionGraphActorCritic,
+    records: Sequence[_V4ActorRecord],
+    *,
+    balance: RegionResourceV4ClassBalance,
+) -> float:
+    if not records:
+        raise RegionResourceV4CandidateError(
+            "v4_actor_loss_records_unavailable"
+        )
+    model.eval()
+    with torch.no_grad():
+        losses = torch.stack(
+            [_v4_actor_loss(model, record, balance) for record in records]
+        )
+        sample_weights = torch.tensor(
+            [
+                balance.positive_sample_weight
+                if record.target_positive
+                else balance.negative_sample_weight
+                for record in records
+            ],
+            dtype=losses.dtype,
+            device=losses.device,
+        )
+        loss = (losses * sample_weights).sum() / sample_weights.sum()
+    value = float(loss.cpu())
+    if not isfinite(value):
+        raise RegionResourceV4CandidateError(
+            "v4_actor_balanced_validation_loss_nonfinite"
+        )
+    return value
+
+
+def _v4_actor_metrics(
+    model: SharedRegionGraphActorCritic,
+    records: Sequence[_V4ActorRecord],
+    *,
+    projector: DeterministicResourceProjector,
+    rule_policy: RuleRegionResourcePolicy,
+) -> dict[str, Any]:
+    policy = LearnedRegionResourcePolicy(
+        model,
+        _PolicyIdentity(REGION_RESOURCE_V4_MODEL_VERSION, "0" * 64),
+    )
+    positive_count = sum(record.target_positive for record in records)
+    negative_count = len(records) - positive_count
+    positive_hit_count = 0
+    negative_hit_count = 0
+    executable_difference_count = 0
+    projection_rejection_count = 0
+    invalid_executable_difference_count = 0
+    negative_reason_inventory: dict[str, int] = {}
+    for record in records:
+        raw = policy.recommend_raw(record.snapshot)
+        projected = projector.project(record.snapshot, raw)
+        candidate_advisory = projector.build_advisory_contract(
+            record.snapshot,
+            projected,
+        )
+        candidate_signature, _ = executable_signature(candidate_advisory)
+        executable = (
+            candidate_signature
+            != record.rule_executable_signature_sha256
+        )
+        executable_difference_count += int(executable)
+        projection_rejected = bool(projected.projection_rejections)
+        projection_rejection_count += int(projection_rejected)
+        valid = True
+        invariant_reasons: tuple[str, ...] = ()
+        if executable:
+            r0 = rule_policy.recommend(record.snapshot)
+            valid, invariant_reasons = evaluate_v4_intervention_invariants(
+                record.snapshot,
+                projected,
+                r0,
+                gate=REGION_RESOURCE_V4_INTERVENTION_GATE,
+                projector=projector,
+                formal_decision=None,
+            )
+            invalid_executable_difference_count += int(not valid)
+        exact_target = (
+            candidate_signature
+            == record.target_executable_signature_sha256
+        )
+        positive_hit = bool(
+            record.target_positive
+            and executable
+            and exact_target
+            and valid
+            and not projection_rejected
+        )
+        negative_hit = bool(
+            not record.target_positive
+            and not executable
+            and exact_target
+            and not projection_rejected
+        )
+        positive_hit_count += int(positive_hit)
+        negative_hit_count += int(negative_hit)
+        reasons: list[str] = []
+        if projection_rejected:
+            reasons.append("actor_projection_clipped_or_rejected")
+            reasons.extend(projected.projection_rejections)
+        if record.target_positive and not executable:
+            reasons.append("actor_no_executable_difference")
+        if record.target_positive and executable and not exact_target:
+            reasons.append("actor_target_signature_mismatch")
+        if not record.target_positive and executable:
+            reasons.append("actor_executable_difference_on_negative_target")
+        if executable and not valid:
+            reasons.append("actor_action_inconsistent")
+            reasons.extend(invariant_reasons)
+        if record.target_positive and not positive_hit and not reasons:
+            reasons.append("actor_positive_target_not_hit")
+        if not record.target_positive and not negative_hit and not reasons:
+            reasons.append("actor_negative_target_not_hit")
+        for reason in dict.fromkeys(reasons):
+            negative_reason_inventory[reason] = (
+                negative_reason_inventory.get(reason, 0) + 1
+            )
+    positive_rate = (
+        positive_hit_count / positive_count if positive_count else 0.0
+    )
+    negative_rate = (
+        negative_hit_count / negative_count if negative_count else 0.0
+    )
+    dual_class_passed = bool(
+        positive_count > 0
+        and negative_count > 0
+        and positive_hit_count > 0
+        and negative_hit_count > 0
+    )
+    checkpoint_failure_reasons: list[str] = []
+    if positive_count <= 0:
+        checkpoint_failure_reasons.append("target_positive_class_missing")
+    elif positive_hit_count <= 0:
+        checkpoint_failure_reasons.append("actor_positive_hit_missing")
+    if negative_count <= 0:
+        checkpoint_failure_reasons.append("target_negative_class_missing")
+    elif negative_hit_count <= 0:
+        checkpoint_failure_reasons.append("actor_negative_hit_missing")
+    return {
+        "sample_count": len(records),
+        "target_positive_count": positive_count,
+        "target_negative_count": negative_count,
+        "actor_positive_hit_count": positive_hit_count,
+        "actor_negative_hit_count": negative_hit_count,
+        "actor_positive_miss_count": positive_count - positive_hit_count,
+        "actor_negative_miss_count": negative_count - negative_hit_count,
+        "actor_executable_difference_count": executable_difference_count,
+        "actor_projection_rejection_count": projection_rejection_count,
+        "actor_invalid_executable_difference_count": (
+            invalid_executable_difference_count
+        ),
+        "positive_hit_rate": positive_rate,
+        "negative_hit_rate": negative_rate,
+        "minimum_class_hit_rate": min(positive_rate, negative_rate),
+        "balanced_hit_rate": (positive_rate + negative_rate) / 2.0,
+        "dual_class_checkpoint_threshold_passed": dual_class_passed,
+        "checkpoint_failure_reasons": checkpoint_failure_reasons,
+        "negative_reason_inventory": dict(
+            sorted(negative_reason_inventory.items())
+        ),
+    }
+
+
+def _v4_checkpoint_selection_key(
+    metrics: Mapping[str, Any],
+    *,
+    weighted_validation_loss: float,
+    epoch: int,
+) -> tuple[int, float, float, float, int, int]:
+    if not isfinite(float(weighted_validation_loss)):
+        raise RegionResourceV4CandidateError(
+            "v4_actor_checkpoint_loss_nonfinite"
+        )
+    if type(epoch) is not int or epoch <= 0:
+        raise RegionResourceV4CandidateError(
+            "v4_actor_checkpoint_epoch_invalid"
+        )
+    return (
+        int(bool(metrics["dual_class_checkpoint_threshold_passed"])),
+        float(metrics["minimum_class_hit_rate"]),
+        float(metrics["balanced_hit_rate"]),
+        -float(weighted_validation_loss),
+        -int(metrics["actor_projection_rejection_count"]),
+        -epoch,
+    )
+
+
 def _train_actor(
     loaded: LoadedRegionLearningDataset,
     *,
@@ -1900,22 +2726,28 @@ def _train_actor(
     torch.set_num_threads(config.torch_num_threads)
     random.seed(config.random_seed)
     torch.manual_seed(config.random_seed)
-    train_samples = load_region_behavior_cloning_samples(
+    projector = DeterministicResourceProjector(_V4_PROJECTION)
+    rule_policy = RuleRegionResourcePolicy(
+        _V4_RULE_CONFIG,
+        projector=projector,
+    )
+    train_records = _v4_actor_records(
         loaded,
         split=RegionLearningSplit.TRAIN,
-        device="cpu",
-        allow_dirty_source=False,
+        projector=projector,
+        rule_policy=rule_policy,
     )
-    validation_samples = load_region_behavior_cloning_samples(
+    validation_records = _v4_actor_records(
         loaded,
         split=RegionLearningSplit.VALIDATION,
-        device="cpu",
-        allow_dirty_source=False,
+        projector=projector,
+        rule_policy=rule_policy,
     )
-    if not train_samples or not validation_samples:
+    if not train_records or not validation_records:
         raise RegionResourceV4CandidateError(
             "v4_train_or_validation_samples_unavailable"
         )
+    balance = _derive_v4_actor_class_balance(train_records)
     model = SharedRegionGraphActorCritic(
         hidden_dim=config.hidden_dim,
         message_passing_steps=config.message_passing_steps,
@@ -1927,38 +2759,90 @@ def _train_actor(
     )
     generator = torch.Generator(device="cpu")
     generator.manual_seed(config.random_seed)
-    best_loss = float("inf")
+    best_key: tuple[int, float, float, float, int, int] | None = None
+    best_weighted_loss = float("inf")
     best_epoch = 0
     best_state: dict[str, Any] | None = None
     no_improvement = 0
+    perfect_checkpoint_seen = False
     history: list[dict[str, Any]] = []
     for epoch in range(1, config.epochs + 1):
         model.train()
         order = torch.randperm(
-            len(train_samples), generator=generator
+            len(train_records), generator=generator
         ).tolist()
         weighted = 0.0
+        fitted_weight = 0.0
         for offset in range(0, len(order), config.batch_size):
             indices = order[offset : offset + config.batch_size]
-            batch = tuple(train_samples[index] for index in indices)
-            loss = behavior_cloning_step(
+            batch = tuple(train_records[index] for index in indices)
+            loss, batch_weight = _v4_actor_step(
                 model,
                 optimizer,
                 batch,
+                balance=balance,
                 max_grad_norm=config.max_grad_norm,
             )
-            weighted += loss * len(indices)
-        train_loss = weighted / len(train_samples)
-        validation_loss = _mean_bc_loss(model, validation_samples)
+            weighted += loss * batch_weight
+            fitted_weight += batch_weight
+        train_loss = weighted / fitted_weight
+        validation_loss = _mean_v4_actor_loss(
+            model,
+            validation_records,
+            balance=balance,
+        )
+        validation_metrics = _v4_actor_metrics(
+            model,
+            validation_records,
+            projector=projector,
+            rule_policy=rule_policy,
+        )
+        selection_key = _v4_checkpoint_selection_key(
+            validation_metrics,
+            weighted_validation_loss=validation_loss,
+            epoch=epoch,
+        )
         history.append(
             {
                 "epoch": epoch,
-                "train_loss": train_loss,
-                "validation_loss": validation_loss,
+                "train_weighted_loss": train_loss,
+                "validation_train_weighted_loss": validation_loss,
+                "validation_target_positive_count": (
+                    validation_metrics["target_positive_count"]
+                ),
+                "validation_target_negative_count": (
+                    validation_metrics["target_negative_count"]
+                ),
+                "validation_actor_positive_hit_count": (
+                    validation_metrics["actor_positive_hit_count"]
+                ),
+                "validation_actor_negative_hit_count": (
+                    validation_metrics["actor_negative_hit_count"]
+                ),
+                "validation_minimum_class_hit_rate": (
+                    validation_metrics["minimum_class_hit_rate"]
+                ),
+                "validation_balanced_hit_rate": (
+                    validation_metrics["balanced_hit_rate"]
+                ),
+                "validation_projection_rejection_count": (
+                    validation_metrics[
+                        "actor_projection_rejection_count"
+                    ]
+                ),
+                "dual_class_checkpoint_threshold_passed": (
+                    validation_metrics[
+                        "dual_class_checkpoint_threshold_passed"
+                    ]
+                ),
+                "checkpoint_failure_reasons": (
+                    validation_metrics["checkpoint_failure_reasons"]
+                ),
             }
         )
-        if validation_loss < best_loss - 1.0e-9:
-            best_loss = validation_loss
+        if best_key is None or selection_key > best_key:
+            best_key = selection_key
+            best_weighted_loss = validation_loss
             best_epoch = epoch
             best_state = {
                 name: value.detach().cpu().clone()
@@ -1966,9 +2850,29 @@ def _train_actor(
             }
             no_improvement = 0
         else:
-            no_improvement += 1
-            if no_improvement >= config.early_stopping_patience:
-                break
+            if perfect_checkpoint_seen:
+                no_improvement += 1
+        perfect_checkpoint_seen = bool(
+            perfect_checkpoint_seen
+            or (
+                validation_metrics[
+                    "dual_class_checkpoint_threshold_passed"
+                ]
+                and isclose(
+                    validation_metrics["minimum_class_hit_rate"],
+                    1.0,
+                )
+                and validation_metrics[
+                    "actor_projection_rejection_count"
+                ]
+                == 0
+            )
+        )
+        if (
+            perfect_checkpoint_seen
+            and no_improvement >= config.early_stopping_patience
+        ):
+            break
     if best_state is None:
         raise RegionResourceV4CandidateError(
             "v4_training_produced_no_checkpoint"
@@ -1979,6 +2883,32 @@ def _train_actor(
         raise RegionResourceV4CandidateError(
             "v4_training_produced_nonfinite_model"
         )
+    train_metrics = _v4_actor_metrics(
+        model,
+        train_records,
+        projector=projector,
+        rule_policy=rule_policy,
+    )
+    validation_metrics = _v4_actor_metrics(
+        model,
+        validation_records,
+        projector=projector,
+        rule_policy=rule_policy,
+    )
+    if not train_metrics["dual_class_checkpoint_threshold_passed"]:
+        raise RegionResourceV4CandidateError(
+            "v4_actor_train_dual_class_checkpoint_unavailable:"
+            + ",".join(train_metrics["checkpoint_failure_reasons"])
+        )
+    if not validation_metrics["dual_class_checkpoint_threshold_passed"]:
+        raise RegionResourceV4CandidateError(
+            "v4_actor_validation_dual_class_checkpoint_unavailable:"
+            + ",".join(validation_metrics["checkpoint_failure_reasons"])
+        )
+    train_samples = tuple(record.sample for record in train_records)
+    validation_samples = tuple(
+        record.sample for record in validation_records
+    )
     return model, {
         "schema": REGION_RESOURCE_V4_TRAINING_SCHEMA,
         "training_split": RegionLearningSplit.TRAIN.value,
@@ -1986,9 +2916,31 @@ def _train_actor(
         "train_sample_count": len(train_samples),
         "validation_sample_count": len(validation_samples),
         "test_payload_fit_count": 0,
+        "validation_weight_fit_count": 0,
+        "test_payload_weight_fit_count": 0,
         "epochs_completed": len(history),
         "best_epoch": best_epoch,
-        "best_validation_loss": best_loss,
+        "best_validation_loss": best_weighted_loss,
+        "best_validation_loss_kind": (
+            "TRAIN-derived sample and edge weighted validation loss"
+        ),
+        "checkpoint_selection_rule": (
+            "dual-class validation hit present; maximize minimum class hit "
+            "rate; maximize balanced hit rate; minimize fixed TRAIN-weighted "
+            "validation loss; minimize projection rejections; prefer earlier "
+            "epoch"
+        ),
+        "class_balance": balance.to_dict(),
+        "target_class_definition": (
+            "positive only when the external target safely differs from the "
+            "same-key deterministic R0 executable signature; matching R0 is "
+            "the negative class"
+        ),
+        "train_actor_audit": train_metrics,
+        "validation_actor_audit": validation_metrics,
+        "best_checkpoint_dual_class_threshold_passed": bool(
+            best_key is not None and best_key[0] == 1
+        ),
         "history": history,
         "model_parameter_count": sum(
             int(parameter.numel()) for parameter in model.parameters()
@@ -2000,6 +2952,74 @@ def _train_actor(
         "ppo_used": False,
         "formal_evaluation_authorized": False,
     }
+
+
+def _derive_v4_confidence_balance(
+    records: Sequence[
+        tuple[Any, bool, bool, bool, tuple[str, ...]]
+    ],
+    *,
+    split: RegionLearningSplit = RegionLearningSplit.TRAIN,
+) -> RegionResourceV4ConfidenceBalance:
+    if split != RegionLearningSplit.TRAIN:
+        raise RegionResourceV4CandidateError(
+            "v4_confidence_weights_train_split_only"
+        )
+    positive_count = sum(record[1] for record in records)
+    negative_count = len(records) - positive_count
+    inconsistent_negative_count = sum(
+        not record[1] and not record[2] for record in records
+    )
+    ordinary_negative_count = (
+        negative_count - inconsistent_negative_count
+    )
+    if positive_count <= 0 or negative_count <= 0:
+        raise RegionResourceV4CandidateError(
+            "v4_confidence_balance_requires_positive_and_negative_train_labels"
+        )
+    raw_ratio = negative_count / positive_count
+    raw_inconsistent_ratio = (
+        negative_count / inconsistent_negative_count
+        if inconsistent_negative_count
+        else 1.0
+    )
+    label_inventory = [
+        {
+            "record_index": index,
+            "target_positive": record[1],
+            "action_consistent": record[2],
+            "executable_difference": record[3],
+            "negative_reasons": list(record[4]),
+        }
+        for index, record in enumerate(records)
+    ]
+    return RegionResourceV4ConfidenceBalance(
+        train_sample_count=len(records),
+        target_positive_count=positive_count,
+        target_negative_count=negative_count,
+        inconsistent_negative_count=inconsistent_negative_count,
+        ordinary_negative_count=ordinary_negative_count,
+        raw_positive_sample_ratio=raw_ratio,
+        raw_inconsistent_negative_ratio=raw_inconsistent_ratio,
+        positive_sample_weight=min(
+            raw_ratio,
+            _V4_POSITIVE_SAMPLE_WEIGHT_CAP,
+        ),
+        inconsistent_negative_weight=min(
+            raw_inconsistent_ratio,
+            _V4_POSITIVE_SAMPLE_WEIGHT_CAP,
+        ),
+        negative_sample_weight=1.0,
+        positive_sample_weight_clipped=bool(
+            raw_ratio > _V4_POSITIVE_SAMPLE_WEIGHT_CAP
+        ),
+        inconsistent_negative_weight_clipped=bool(
+            inconsistent_negative_count > 0
+            and raw_inconsistent_ratio
+            > _V4_POSITIVE_SAMPLE_WEIGHT_CAP
+        ),
+        train_label_inventory_sha256=_canonical_sha256(label_inventory),
+    )
 
 
 def _fit_confidence_head(
@@ -2034,6 +3054,7 @@ def _fit_confidence_head(
             raise RegionResourceV4CandidateError(
                 f"v4_confidence_{name}_requires_positive_and_negative_samples"
             )
+    balance = _derive_v4_confidence_balance(train_records)
     for parameter in model.parameters():
         parameter.requires_grad_(False)
     for parameter in model.confidence_head.parameters():
@@ -2048,6 +3069,7 @@ def _fit_confidence_head(
     for _ in range(config.confidence_epochs):
         randomizer.shuffle(order)
         weighted = 0.0
+        fitted_weight = 0.0
         for offset in range(0, len(order), config.confidence_batch_size):
             indices = order[offset : offset + config.confidence_batch_size]
             optimizer.zero_grad()
@@ -2062,15 +3084,31 @@ def _fit_confidence_head(
                 dtype=probabilities.dtype,
                 device=probabilities.device,
             )
-            loss = torch.nn.functional.mse_loss(probabilities, targets)
+            sample_weights = torch.tensor(
+                [
+                    balance.positive_sample_weight
+                    if train_records[index][1]
+                    else balance.inconsistent_negative_weight
+                    if not train_records[index][2]
+                    else balance.negative_sample_weight
+                    for index in indices
+                ],
+                dtype=probabilities.dtype,
+                device=probabilities.device,
+            )
+            squared_error = (probabilities - targets).square()
+            denominator = sample_weights.sum()
+            loss = (squared_error * sample_weights).sum() / denominator
             if not bool(torch.isfinite(loss).item()):
                 raise RegionResourceV4CandidateError(
                     "v4_confidence_fit_loss_nonfinite"
                 )
             loss.backward()
             optimizer.step()
-            weighted += float(loss.detach().cpu()) * len(indices)
-        history.append(weighted / len(order))
+            batch_weight = float(denominator.detach().cpu())
+            weighted += float(loss.detach().cpu()) * batch_weight
+            fitted_weight += batch_weight
+        history.append(weighted / fitted_weight)
     for parameter in model.parameters():
         parameter.requires_grad_(True)
     model.eval()
@@ -2083,7 +3121,21 @@ def _fit_confidence_head(
         or validation_metrics["executable_threshold_pass_count"] <= 0
     ):
         raise RegionResourceV4CandidateError(
-            "v4_confidence_validation_gate_not_accepted"
+            "v4_confidence_validation_gate_not_accepted:"
+            f"train_positive={train_metrics['positive_threshold_pass_count']},"
+            f"train_negative={train_metrics['negative_threshold_pass_count']},"
+            "train_inconsistent="
+            f"{train_metrics['inconsistent_threshold_pass_count']},"
+            "train_executable="
+            f"{train_metrics['executable_threshold_pass_count']},"
+            "validation_positive="
+            f"{validation_metrics['positive_threshold_pass_count']},"
+            "validation_negative="
+            f"{validation_metrics['negative_threshold_pass_count']},"
+            "validation_inconsistent="
+            f"{validation_metrics['inconsistent_threshold_pass_count']},"
+            "validation_executable="
+            f"{validation_metrics['executable_threshold_pass_count']}"
         )
     return {
         "target_definition": (
@@ -2095,6 +3147,7 @@ def _fit_confidence_head(
         "audit_split": RegionLearningSplit.VALIDATION.value,
         "fit_sample_count": len(train_records),
         "validation_sample_count": len(validation_records),
+        "class_balance": balance.to_dict(),
         "history": history,
         "train": train_metrics,
         "validation": validation_metrics,
@@ -2103,6 +3156,7 @@ def _fit_confidence_head(
         ),
         "confidence_head_only_parameter_update": True,
         "actor_frozen_during_confidence_fit": True,
+        "validation_weight_fit_count": 0,
         "test_payload_fit_count": 0,
         "truth_identifier_use_count": 0,
         "future_outcome_use_count": 0,
@@ -2478,23 +3532,6 @@ def _target_action_inventory(
                 action.request_replan for action in target.actions
             )
     return inventory
-
-
-def _mean_bc_loss(
-    model: SharedRegionGraphActorCritic,
-    samples: Sequence[Any],
-) -> float:
-    model.eval()
-    with torch.no_grad():
-        loss = torch.stack(
-            [behavior_cloning_loss(model, sample.graph, sample.target) for sample in samples]
-        ).mean()
-    value = float(loss.cpu())
-    if not isfinite(value):
-        raise RegionResourceV4CandidateError(
-            "v4_validation_loss_nonfinite"
-        )
-    return value
 
 
 def _model_parameters_finite(model: SharedRegionGraphActorCritic) -> bool:

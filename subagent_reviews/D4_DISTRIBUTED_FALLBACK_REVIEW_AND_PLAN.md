@@ -1,5 +1,27 @@
 # D4 分布式协同与降级接管综述及子方案
 
+## 2026-07-29 v4 类别平衡评审
+
+本轮只评审 v4 训练机制，不形成正式候选。外部组合数据的 train 有 60 个安全可执行差异
+正例和 290 个 no-op 负例，3920 条有向边目标中 71 条非零。D4 在 v4 私有路径使用
+train-only 有界权重：正 frame 权重 4.833333，非零 edge 权重封顶为 32，负 frame 和
+零 edge 权重为 1。通用行为克隆语义未修改。
+
+checkpoint 不再按总体 no-op loss 决定。validation 必须先同时命中正负两类，再按较低
+类别命中率、平衡命中率、固定 train 权重 loss、直接投影拒绝和较早 epoch 排序。最佳
+epoch 150 的 train 命中为 59/60、278/290，validation 为 14/15、58/60。直接投影拒绝
+均为 0；两个 split 各有 2 条投影后干预不变量拒绝，记录已保留在负因清单。
+
+confidence 只从 train 计算权重。正/负标签为 59/291，正类权重 4.932203；13 条动作
+不一致负例权重封顶为 8。固定 0.60 门未调整。train 的
+positive/negative/inconsistent/executable 通过数为 59/11/11/70，validation 为
+14/1/1/15。validation 仍有 1 条不合格样本越门，评审结论为 actor 类别平衡有效、
+confidence 未验收、构建失败关闭。
+
+当前证据仅为内存训练和只读数据验证。正式 clean build、候选制品、不可变 review、D6
+审计、D3 successor、物理结果和收益均未完成。v4 未登记，全部生产权限为 false；v3
+身份和 registry 保持不变。专项 21/21、D4 全量 804/804 通过。
+
 ## 2026-07-29 规划权限解耦评审
 
 区域资源不足时，正式 D4 裁决会关闭当前执行。此前区域资源投影器把这项闭锁同时解释为
@@ -38,9 +60,10 @@ test/holdout 参与、动作多样性不足和投影裁剪均失败关闭。未�
 `None`，默认 runtime loader 直接拒绝。2026-07-29 专项 11/11、D4 全量 780/780 通过，
 v3 文件树摘要仍为 `07c770b0...a93a`。
 
-评审结论是“v4 builder/framework 可保留，v4 候选不存在”。开放 P1 包括真实 main
-runtime 数据、clean build、正负校准、不可变登记、模型可执行差异、D3 successor、
-独立双臂非退化和正收益。AirSim 与实验结果未受本轮代码变化影响，也没有新增实验数据。
+该阶段评审结论是“v4 builder/framework 可保留，v4 候选不存在”。后续外部组合数据
+只读训练已证明 actor 可形成双类命中，但 confidence 仍未通过固定门，当前状态以本文件
+首节为准。开放 P1 包括 clean build、不可变登记、D3 successor、独立双臂非退化和
+正收益。AirSim 与实验结果未受本轮代码变化影响。
 
 ## 2026-07-29 D6 v2b 最终评审
 

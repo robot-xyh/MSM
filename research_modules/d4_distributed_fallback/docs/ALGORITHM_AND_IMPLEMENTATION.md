@@ -1,5 +1,43 @@
 # D4 分布式协同与降级接管算法及实施方案
 
+## 2026-07-29 v4 类别平衡实现
+
+v4 actor 训练先把 train 和 validation frame 转为带可执行签名的审计记录。正样本必须是
+外部 target 相对同键 \(R_0\) 的安全可执行差异；与 \(R_0\) 相同的 target 是 no-op
+负样本。投影器直接拒绝、目标签名不匹配和投影后干预不变量失败的记录均保留，不能在训练
+或审计前过滤。
+
+`RegionResourceV4ClassBalance` 只从 train 记录计算 frame 与 edge 计数。正 frame 权重
+按负正比计算，上限 8；非零 edge 权重按零边与非零边之比计算，上限 32；负 frame 和零边
+权重为 1。对象保存原始比例、截断状态、来源 split、validation/test 拟合计数和训练标签
+清单 SHA-256，并在构造时重算校验。通用 `behavior_cloning_loss()` 和
+`behavior_cloning_step()` 没有修改。
+
+每轮训练后在完整 validation 记录上重算 actor 命中。checkpoint key 按以下顺序比较：
+
+1. 正、负两类均至少命中一条；
+2. 较低类别命中率；
+3. 两类平衡命中率；
+4. 使用 train 固定权重计算的 validation loss；
+5. 直接投影拒绝数；
+6. epoch，优先较早轮次。
+
+confidence head 在 actor 冻结后单独训练。`RegionResourceV4ConfidenceBalance` 只读取
+train 的 confidence 标签；正类和动作不一致负类分别按训练集比例加权，上限均为 8，
+普通负类为 1。损失为有界样本权重下的均方误差。validation 只执行固定 0.60 门审计，
+test payload 不读取。正类或可执行差异没有越门，或者任一负类/不一致样本越门，均抛出
+失败关闭错误。
+
+只读复核使用外部组合数据目录，不调用 candidate writer。训练集有 350 帧，
+正/负 target 为 60/290；3920 条有向 edge 中非零/零为 71/3849。最终 actor 最佳 epoch
+为 150，train 正/负命中 59/60、278/290，validation 为 14/15、58/60。直接投影拒绝均
+为 0，投影后干预不变量拒绝各 2，test episode 加载数为 0。
+
+confidence 的 train 正/负标签为 59/291，动作不一致负例为 13。固定门通过数按
+positive/negative/inconsistent/executable 排列，train 为 59/11/11/70，validation 为
+14/1/1/15。validation 的负类与不一致通过数未达到 0，构建按合同终止。专项 21/21、
+D4 全量 804/804 通过。本阶段没有写候选、registry 或权限字段。
+
 ## 2026-07-29 规划资格和执行权限实现
 
 `RegionResourceAuthorityCapabilities` 从同一份正式区域裁决生成。对象保存正式动作、
@@ -53,12 +91,13 @@ SHA-256、main runtime 或独立数据生产制品 SHA-256、来源类型、无�
 3. 对每个 train 和 validation frame 使用固定 0.10/1/1.5 投影器重算同键 R0。每个
    split 必须同时有合法跨区差异和 no-op，且差异通过资源守恒、转移容量、权威版本和
    配额净流检查。
-4. 只用 train 更新图网络动作参数，只用 validation 早停选模。test 不用于梯度、选模、
-   阈值或诊断。
+4. 只用 train 更新图网络动作参数。frame 正例和非零 edge 分别使用上限 8/32 的 train-only
+   权重。validation 以双类命中、平衡命中率、固定加权 loss、投影拒绝和 epoch 的确定性
+   顺序选模。test 不用于梯度、选模、阈值或诊断。
 5. 冻结动作网络，构造正负置信度记录。模型必须匹配外部正例的可执行签名才能得到正标签；
    no-op、目标签名不匹配、投影裁剪和动作不一致得到负标签。
-6. train 与 validation 均具正负标签后拟合置信度头。validation 中负例越过 0.60 或
-   不一致样本越过门限时，构建失败。
+6. train 与 validation 均具正负标签后拟合置信度头。置信度正类和不一致负类权重只由
+   train 计算且上限为 8；validation 中负例越过 0.60 或不一致样本越过门限时，构建失败。
 7. 保存 development/shadow bundle、数据 manifest、train/validation episode、训练摘要、
    外部来源证据和独立 intervention gate。test episode 不复制。
 8. 用固定受控 fixture 检查模型在完整安全外壳后是否形成区别于 source 和 R0 的可执行

@@ -20,10 +20,15 @@ from d4_distributed_fallback.region_resource_dataset import (
     RegionLearningEpisodeSource,
     RegionLearningFrame,
     RegionLearningReward,
+    RegionLearningSplit,
     RegionLearningTarget,
     RegionLearningTargetKind,
     finalize_region_learning_dataset,
+    load_region_learning_dataset_splits,
     stage_region_learning_episode,
+)
+from d4_distributed_fallback.region_resource_learning import (
+    LearnedRegionResourcePolicy,
 )
 from d4_distributed_fallback.region_resource_v4_shadow_candidate import (
     REGION_RESOURCE_V3_FROZEN_TREE_SHA256,
@@ -37,12 +42,19 @@ from d4_distributed_fallback.region_resource_v4_shadow_candidate import (
     RegionResourceV4BuildConfig,
     RegionResourceV4CandidateError,
     RegionResourceV4CandidateLoader,
+    RegionResourceV4ClassBalance,
+    RegionResourceV4ConfidenceBalance,
     RegionResourceV4ExternalDatasetEvidence,
     RegionResourceV4Permissions,
     RegionResourceV4ShadowAdvisor,
     _V4_PROJECTION,
     _V4_RULE_CONFIG,
+    _derive_v4_actor_class_balance,
+    _derive_v4_confidence_balance,
     _load_external_dataset_for_v4,
+    _v4_actor_metrics,
+    _v4_actor_records,
+    _v4_checkpoint_selection_key,
     build_region_resource_v4_development_candidate,
     build_region_resource_v4_development_fixture,
     evaluate_v4_intervention_invariants,
@@ -142,8 +154,14 @@ def _dataset(
     tmp_path: Path,
     *,
     dirty: bool = False,
+    include_positive: bool = True,
     include_negative: bool = True,
+    negative_frames_per_episode: int = 1,
 ) -> tuple[Path, Path]:
+    if not include_positive and not include_negative:
+        raise ValueError("test dataset requires at least one target class")
+    if negative_frames_per_episode <= 0:
+        raise ValueError("negative frame count must be positive")
     staging = tmp_path / "staging"
     dataset = tmp_path / "dataset"
     for seed in range(7100, 7106):
@@ -158,13 +176,31 @@ def _dataset(
             config_sha256=sha256(f"runtime:{seed}".encode()).hexdigest(),
         )
         frames: list[RegionLearningFrame] = []
-        frame_count = 2 if include_negative else 1
-        for frame_index in range(frame_count):
+        target_classes = (
+            ([True] if include_positive else [])
+            + (
+                [False] * negative_frames_per_episode
+                if include_negative
+                else []
+            )
+        )
+        for frame_index, target_positive in enumerate(target_classes):
             timestamp_s = 0.5 * frame_index
             base = build_region_resource_v4_development_fixture(
                 seed=seed,
                 timestamp_s=timestamp_s,
             )
+            if not target_positive:
+                regions = tuple(
+                    replace(node, target_demand=2.0)
+                    if node.region_id == "region-001"
+                    else node
+                    for node in base.regions
+                )
+                base = replace(
+                    base,
+                    regions=regions,
+                )
             snapshot = replace(
                 base,
                 snapshot_id=f"runtime-{seed}-{frame_index}",
@@ -174,7 +210,7 @@ def _dataset(
             _, rule_policy = _policies()
             target = (
                 _projected_transfer_target(snapshot)
-                if frame_index == 0
+                if target_positive
                 else rule_policy.recommend(snapshot)
             )
             frames.append(
@@ -226,6 +262,32 @@ def _small_config() -> RegionResourceV4BuildConfig:
         epochs=1,
         confidence_epochs=1,
     )
+
+
+def _actor_records(
+    dataset: Path,
+) -> tuple[object, tuple[object, ...], tuple[object, ...]]:
+    loaded = load_region_learning_dataset_splits(
+        dataset,
+        splits=(
+            RegionLearningSplit.TRAIN,
+            RegionLearningSplit.VALIDATION,
+        ),
+    )
+    projector, rule_policy = _policies()
+    train_records = _v4_actor_records(
+        loaded,
+        split=RegionLearningSplit.TRAIN,
+        projector=projector,
+        rule_policy=rule_policy,
+    )
+    validation_records = _v4_actor_records(
+        loaded,
+        split=RegionLearningSplit.VALIDATION,
+        projector=projector,
+        rule_policy=rule_policy,
+    )
+    return loaded, train_records, validation_records
 
 
 def _evaluation_loader(policy: object) -> RegionResourceV4CandidateLoader:
@@ -381,6 +443,250 @@ def test_external_dataset_governance_rejects_dirty_or_all_positive(
             source_evidence_path=evidence,
             config=_small_config(),
         )
+
+
+def test_v4_train_only_class_balance_counts_and_caps(
+    tmp_path: Path,
+) -> None:
+    pytest.importorskip("torch")
+    dataset, _ = _dataset(
+        tmp_path,
+        negative_frames_per_episode=40,
+    )
+    _, train_records, _ = _actor_records(dataset)
+
+    balance = _derive_v4_actor_class_balance(train_records)
+
+    assert balance.target_positive_count > 0
+    assert (
+        balance.target_negative_count
+        == 40 * balance.target_positive_count
+    )
+    assert balance.raw_positive_sample_ratio == pytest.approx(40.0)
+    assert balance.positive_sample_weight == 8.0
+    assert balance.positive_sample_weight_clipped is True
+    assert balance.raw_nonzero_edge_ratio > 32.0
+    assert balance.nonzero_edge_weight == 32.0
+    assert balance.nonzero_edge_weight_clipped is True
+    assert balance.negative_sample_weight == 1.0
+    assert balance.zero_edge_weight == 1.0
+    assert balance.weight_source_split == "train"
+    assert balance.validation_weight_fit_count == 0
+    assert balance.test_payload_weight_fit_count == 0
+    assert RegionResourceV4ClassBalance.from_mapping(
+        balance.to_dict()
+    ) == balance
+
+
+def test_v4_class_balance_rejects_all_noop_train_targets(
+    tmp_path: Path,
+) -> None:
+    pytest.importorskip("torch")
+    dataset, _ = _dataset(
+        tmp_path,
+        include_positive=False,
+    )
+    _, train_records, _ = _actor_records(dataset)
+
+    with pytest.raises(
+        RegionResourceV4CandidateError,
+        match="v4_actor_balance_requires_positive_negative",
+    ):
+        _derive_v4_actor_class_balance(train_records)
+
+
+@pytest.mark.parametrize(
+    "split",
+    (RegionLearningSplit.VALIDATION, RegionLearningSplit.TEST),
+)
+def test_v4_class_balance_rejects_validation_or_test_weight_source(
+    tmp_path: Path,
+    split: RegionLearningSplit,
+) -> None:
+    pytest.importorskip("torch")
+    dataset, _ = _dataset(tmp_path)
+    loaded, _, validation_records = _actor_records(dataset)
+    if split == RegionLearningSplit.VALIDATION:
+        with pytest.raises(
+            RegionResourceV4CandidateError,
+            match="v4_actor_weights_train_split_only",
+        ):
+            _derive_v4_actor_class_balance(
+                validation_records,
+                split=split,
+            )
+    else:
+        projector, rule_policy = _policies()
+        with pytest.raises(
+            RegionResourceV4CandidateError,
+            match="v4_actor_test_or_holdout_payload_read_forbidden",
+        ):
+            _v4_actor_records(
+                loaded,
+                split=split,
+                projector=projector,
+                rule_policy=rule_policy,
+            )
+
+
+def test_v4_class_balance_rejects_tampered_or_nonfinite_weights(
+    tmp_path: Path,
+) -> None:
+    pytest.importorskip("torch")
+    dataset, _ = _dataset(tmp_path)
+    _, train_records, _ = _actor_records(dataset)
+    balance = _derive_v4_actor_class_balance(train_records)
+
+    with pytest.raises(ValueError, match="positive sample weight was altered"):
+        replace(
+            balance,
+            positive_sample_weight=balance.positive_sample_weight + 0.25,
+            content_sha256="",
+        )
+    with pytest.raises(ValueError, match="must be finite and positive"):
+        replace(
+            balance,
+            nonzero_edge_weight=float("nan"),
+            content_sha256="",
+        )
+    with pytest.raises(ValueError, match="fit from TRAIN only"):
+        replace(
+            balance,
+            validation_weight_fit_count=1,
+            content_sha256="",
+        )
+
+
+def test_v4_confidence_balance_is_train_only_bounded_and_content_bound() -> None:
+    records = (
+        (None, True, True, True, ()),
+        (None, False, False, True, ("inconsistent",)),
+        *(
+            (None, False, True, False, ("negative",))
+            for _ in range(19)
+        ),
+    )
+
+    balance = _derive_v4_confidence_balance(records)
+
+    assert balance.target_positive_count == 1
+    assert balance.target_negative_count == 20
+    assert balance.inconsistent_negative_count == 1
+    assert balance.ordinary_negative_count == 19
+    assert balance.raw_positive_sample_ratio == 20.0
+    assert balance.positive_sample_weight == 8.0
+    assert balance.positive_sample_weight_clipped is True
+    assert balance.raw_inconsistent_negative_ratio == 20.0
+    assert balance.inconsistent_negative_weight == 8.0
+    assert balance.inconsistent_negative_weight_clipped is True
+    assert balance.negative_sample_weight == 1.0
+    assert balance.weight_source_split == "train"
+    assert balance.validation_weight_fit_count == 0
+    assert balance.test_payload_weight_fit_count == 0
+    assert RegionResourceV4ConfidenceBalance.from_mapping(
+        balance.to_dict()
+    ) == balance
+
+    with pytest.raises(
+        ValueError,
+        match="positive sample weight was altered",
+    ):
+        replace(
+            balance,
+            positive_sample_weight=7.5,
+            content_sha256="",
+        )
+    with pytest.raises(ValueError, match="finite and positive"):
+        replace(
+            balance,
+            positive_sample_weight=float("inf"),
+            content_sha256="",
+        )
+    with pytest.raises(ValueError, match="fit from TRAIN only"):
+        replace(
+            balance,
+            test_payload_weight_fit_count=1,
+            content_sha256="",
+        )
+
+
+@pytest.mark.parametrize(
+    "split",
+    (RegionLearningSplit.VALIDATION, RegionLearningSplit.TEST),
+)
+def test_v4_confidence_balance_rejects_nontrain_weight_source(
+    split: RegionLearningSplit,
+) -> None:
+    records = (
+        (None, True, True, True, ()),
+        (None, False, False, False, ("negative",)),
+    )
+    with pytest.raises(
+        RegionResourceV4CandidateError,
+        match="v4_confidence_weights_train_split_only",
+    ):
+        _derive_v4_confidence_balance(records, split=split)
+
+
+def test_v4_checkpoint_selection_prefers_dual_class_over_noop_loss() -> None:
+    all_noop = {
+        "dual_class_checkpoint_threshold_passed": False,
+        "minimum_class_hit_rate": 0.0,
+        "balanced_hit_rate": 0.5,
+        "actor_projection_rejection_count": 0,
+    }
+    dual_class = {
+        "dual_class_checkpoint_threshold_passed": True,
+        "minimum_class_hit_rate": 0.1,
+        "balanced_hit_rate": 0.2,
+        "actor_projection_rejection_count": 5,
+    }
+
+    assert _v4_checkpoint_selection_key(
+        dual_class,
+        weighted_validation_loss=10.0,
+        epoch=20,
+    ) > _v4_checkpoint_selection_key(
+        all_noop,
+        weighted_validation_loss=0.001,
+        epoch=1,
+    )
+
+
+def test_v4_actor_audit_retains_projection_rejected_records(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pytest.importorskip("torch")
+    dataset, _ = _dataset(tmp_path)
+    _, train_records, _ = _actor_records(dataset)
+    projector, rule_policy = _policies()
+    monkeypatch.setattr(
+        LearnedRegionResourcePolicy,
+        "recommend_raw",
+        lambda _self, snapshot: _transfer_proposal(
+            snapshot,
+            count=2,
+        ),
+    )
+
+    metrics = _v4_actor_metrics(
+        object(),
+        train_records,
+        projector=projector,
+        rule_policy=rule_policy,
+    )
+
+    assert metrics["sample_count"] == len(train_records)
+    assert metrics["actor_projection_rejection_count"] == len(
+        train_records
+    )
+    assert (
+        metrics["negative_reason_inventory"][
+            "actor_projection_clipped_or_rejected"
+        ]
+        == len(train_records)
+    )
 
 
 def test_external_source_evidence_rejects_missing_or_dirty_identity() -> None:
