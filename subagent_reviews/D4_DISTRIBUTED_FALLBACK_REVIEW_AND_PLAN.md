@@ -1,5 +1,16 @@
 # D4 分布式协同与降级接管综述及子方案
 
+## 2026-07-29 readiness v3 运行评审
+
+main 从 clean commit `83b8869...0226` 加载固定 v3 registry。20v20/8-region seed 2001
+和 200v200/8-region seed 2002 各 3 帧，均为 3/3 分布内、3/3 原始推理、3/3 门应用、
+3/3 动作一致、3/3 候选许可，规则回退和所有安全异常为 0。两组满足 0.80 分布内比例和
+至少 1 次模型评价的开发验收门。
+
+5v5/2-region seed 2000 在 3 帧内预期失败关闭，边距离与转移时间对数越界，候选适用域不
+兼容。该结果不否定 8-region 正例。当前允许开始受控 paired development rollout，但尚无
+多 seed、同键规则非退化、时延、收益或正式 holdout 结论，全部权限继续关闭。
+
 ## 2026-07-29 readiness v3 评审
 
 main 已对不可变 readiness v2 执行真实 development preflight。5v5/2-region 总线通过，
@@ -19,8 +30,8 @@ main 已从 clean commit `4ba2c8a...4114` 构建 v3，D4 独立 review 后将 8 
 293/344 通过，动作不一致通过 0；在线 truth 使用为 0。
 
 v3/v2 registry 联合专项 13/13、D4 全量 754/754 passed，v2 registry 字节保持不变。
-v3 的 5v5、20v20、200v200 runtime preflight 和正式评价均未执行；全部运行权限继续为
-false。main 下一步只从登记目录加载，任何 preflight 失败都保留规则路径。
+后续单 seed 8-region runtime preflight 已通过，2-region 负例按适用域拒绝；正式评价和
+全部运行权限仍为 false。多 seed 与 paired 非退化是下一阶段。
 
 ## 2026-07-28 readiness v2 登记评审
 

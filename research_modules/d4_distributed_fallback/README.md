@@ -1,5 +1,31 @@
 # D4 分布式协同与降级接管
 
+## 2026-07-29 readiness v3 clean development preflight
+
+main 从 clean commit `83b8869b49c4ac26b6a5b6fb336dfe9af6960226` 加载固定 v3
+registry，完成三组 2.2 秒、单 seed、三维质点 development preflight。验收条件为至少
+2 帧、分布内帧比例不低于 0.80、至少 1 帧完成模型评价。候选 manifest、模型和运行门保持
+`7978aec0...ada2`、`ace5df6d...7f52d` 和 `77972834...6872`。
+
+| 场景 | 几何 | seed | 三帧结果 | 结论 |
+| --- | --- | ---: | --- | --- |
+| 5v5，侦察节点 2 | 2 region | 2000 | 分布内/原始推理/门应用/候选许可均 0/3 | exit 2，预期适用域拒绝 |
+| 20v20，侦察节点 2 | 8 region | 2001 | 分布内/原始推理/门应用/一致/许可均 3/3，回退 0 | exit 0，单 seed 兼容 |
+| 200v200，侦察节点 8 | 8 region | 2002 | 分布内/原始推理/门应用/一致/许可均 3/3，回退 0 | exit 0，单 seed 兼容 |
+
+三组均为有限状态，在线 truth、运行门 truth、非有限值和 formal decision 变化数均为 0。
+两组 8-region 的 context/formal/permission mismatch 和 blocker 均为 0，
+`paired_development_rollout_allowed=true`。5v5 的主要 OOD 是
+`distance_log` 与 `transfer_time_log`，且 `candidate_scope_compatible=false`；该结果是
+8-region 候选对 2-region 输入的预期拒绝，不是 8-region 正例失败。需要支持 2-region 时
+应另建 adapter 或候选。
+
+单 seed 8-region 运行兼容性 P1 已闭合。尚未完成 20v20/200v200 多 development seed、
+受控 paired rollout、同键确定性规则基线非退化、时延与收益分析和正式 holdout。外部
+preflight 不改写 registry 内 `runtime_preflight_completed=false`。assist、assignment、
+takeover、coalition、control、physical、runtime ACK 和 formal evaluation 权限继续为
+false。
+
 ## 2026-07-29 readiness v3 不可变登记
 
 main 已从 clean commit `8421de138442c17e379cd09d27e2e36c110652e0` 对 readiness v2
@@ -28,10 +54,9 @@ main 已在 detached clean worktree commit
 
 validation 门后通过 293/344，动作不一致通过 0，动作一致率 1.0，Brier 为
 0.056837453793788656；在线 truth、test payload、calibration seed 和保留 seed 使用数均为
-0。v3/v2 registry 联合专项 13/13、D4 全量 754/754 passed。v3 尚未执行 main runtime
-preflight，也未运行正式 seed。development/read-only shadow 边界不变；assist、
-assignment、takeover、coalition、control、physical、runtime ACK 和 formal evaluation
-权限全部为 false。
+0。v3/v2 registry 联合专项 13/13、D4 全量 754/754 passed。后续单 seed clean
+development preflight 结果见上；多 seed 和正式评价尚未运行。development/read-only
+shadow 边界不变，全部权限仍为 false。
 
 ## 2026-07-28 readiness v2 不可变登记
 

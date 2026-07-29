@@ -1,5 +1,23 @@
 # D4 实现差距审计：分布式协同与降级接管
 
+## 2026-07-29 readiness v3 preflight 后 GAP
+
+- **已关闭 P1：单 seed 8-region 运行兼容性。** clean commit `83b8869...0226` 下，
+  20v20/8-region seed 2001 和 200v200/8-region seed 2002 各 3 帧，分布内、raw
+  inference、gate applied、action consistent 和 candidate permitted 均为 3/3，规则回退
+  和 blocker 为 0。验收阈值为分布内比例至少 0.80、至少 1 次模型评价；实际均通过。
+- **安全审计。** 两组 finite=true，online truth、gate truth、nonfinite、
+  context/formal/permission mismatch 和 formal decision changed 均为 0。固定候选身份未变。
+- **不支持范围。** 5v5/2-region seed 2000 的 3 帧按 8-region 适用域失败关闭，主要 OOD
+  为 `distance_log` 和 `transfer_time_log`。该负例不列为 8-region blocker。2-region
+  支持需要独立 adapter/候选。
+- **仍开放 P1。** 20v20/200v200 多 development seed；受控 paired rollout；同键规则
+  基线非退化；运行时延、物理结果和收益；正式 holdout。当前 6 个正例 frame 不足以证明
+  稳定性或收益。
+- **权限。** `paired_development_rollout_allowed=true` 只开放下一项开发比较，不开放
+  assist、assignment、takeover、coalition、control、physical 或 formal evaluation。
+  registry 内 `runtime_preflight_completed=false` 保持不变。
+
 ## 2026-07-29 readiness v3 GAP
 
 - **已识别并保留的 v2 失败证据。** main 从 clean commit `8421de1...52e0` 运行
@@ -22,10 +40,11 @@
   Brier 0.056837453793788656；在线 truth、test、calibration 和 reserved 使用均为 0。
 - **验证。** 2026-07-29 v3/v2 registry 联合专项 13/13、D4 全量 754/754 passed；仅有
   既有 Matplotlib `Axes3D` 环境警告。
-- **仍开放 P1。** main 尚未从登记目录完成 5v5、20v20、200v200 development preflight。
-  需要分别统计 8-region 适用域、OOD、有限值、TTL 上下文、门应用、门后许可和规则回退。
-- **P0 与权限。** 无新增运行级 P0。v3 已 clean-build/登记但未 preflight，正式评价关闭；
-  assist、assignment、takeover、coalition、control、physical 和 runtime ACK 全部 false。
+- **后续状态。** 单 seed 8-region development preflight 已闭合；2-region 按适用域拒绝。
+  当前剩余项见上一节，不再把 2-region 记为 8-region blocker。
+- **P0 与权限。** 无新增运行级 P0。v3 已 clean-build/登记并完成 8-region 单 seed
+  development preflight，正式评价仍关闭；assist、assignment、takeover、coalition、
+  control、physical 和 runtime ACK 全部 false。
 
 ## 2026-07-28 readiness v2 登记后 GAP
 

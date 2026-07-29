@@ -1,5 +1,29 @@
 # D4 分布式协同与降级接管算法及实施方案
 
+## 2026-07-29 clean development preflight
+
+main 在 clean commit `83b8869...0226` 上从固定 v3 registry 加载模型。兼容性判定同时要求：
+
+\[
+N_{\mathrm{frame}}\geq 2,\qquad
+\frac{N_{\mathrm{in\mbox{-}distribution}}}{N_{\mathrm{frame}}}\geq0.80,
+\qquad N_{\mathrm{model\ evaluated}}\geq1.
+\]
+
+20v20/8-region seed 2001 和 200v200/8-region seed 2002 均有 3 帧。每组
+`raw inference/gate applied/action consistent/candidate permitted=3/3/3/3`，规则回退、
+在线 truth、gate truth、非有限值、context/formal/permission mismatch 和 formal decision
+变化均为 0。两组 blocker 为空，进入受控 paired development rollout 的前置门。
+
+5v5/2-region seed 2000 的 3 帧均被适用域和 OOD 门拒绝。`distance_log` 与
+`transfer_time_log` 各有 6/6 个边值超过训练上界，原始推理、门应用和候选许可均为 0。
+这条负例验证 8-region 候选不会静默接受 2-region 几何。2-region 支持不通过修改 v3
+阈值实现。
+
+preflight 只读取 shadow 建议，不生成 D3 后继计划、运行 ACK、联盟提交或收益。下一阶段
+需要多 development seed，并把候选 episode 与同键确定性规则 episode 分开运行，随后检查
+时延、物理结果可用性和非退化。正式 holdout 仍关闭。
+
 ## 2026-07-29 readiness v3 实现
 
 readiness v3 在 v2 训练流程外增加独立的版本合同，不修改 v2 registry。候选 ID 为
@@ -37,8 +61,9 @@ main 已在 clean commit `4ba2c8a...4114` 构建 v3。D4 review loader 核对后
 1.0，Brier 为 0.056837453793788656。
 
 2026-07-29 v3/v2 registry 联合专项 13/13、D4 全量 754/754 passed；v2 registry 文件树
-摘要 `324a5118...5010` 未改变，旧 v1/v2 兼容测试通过。v3 尚未进入 5v5、20v20、200v200
-main preflight，全部运行和正式评价权限为 false。
+摘要 `324a5118...5010` 未改变，旧 v1/v2 兼容测试通过。后续单 seed 8-region main
+preflight 已通过，2-region 负例按适用域拒绝；多 seed、收益和正式评价仍未完成，全部
+运行权限为 false。
 
 ## 2026-07-28 readiness v2 实施状态
 

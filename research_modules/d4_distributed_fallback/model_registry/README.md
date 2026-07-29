@@ -25,8 +25,12 @@ assist、assignment、takeover、coalition commit 或 control 权限。
 
 候选仍只允许 development/read-only shadow。`runtime_preflight_completed=false`，
 formal evaluation 未授权，assist、assignment、takeover、coalition commit、control、
-physical 和 runtime ACK 权限全部为 false。main 尚未完成 5v5、20v20、200v200 preflight。
-该目录不得改写；后续状态变化必须使用独立外部审计，不得修改候选字节。
+physical 和 runtime ACK 权限全部为 false。main 后续从 clean commit `83b8869...0226`
+完成外部单 seed development preflight：20v20/8-region seed 2001 和
+200v200/8-region seed 2002 均为 3/3 分布内、3/3 门后许可；5v5/2-region seed 2000
+按 8-region 适用域预期拒绝。该外部证据不改写本目录的
+`runtime_preflight_completed=false`。目录不得改写；多 seed、配对非退化、收益和正式
+holdout 状态继续由外部审计记录。
 
 ## region_resource_a2_8region_runtime_action_readiness_shadow_v2
 

@@ -1,5 +1,31 @@
 # D4 分布式降级与接管实验报告
 
+## 2026-07-29 readiness v3 clean development preflight
+
+main 从 clean commit `83b8869b49c4ac26b6a5b6fb336dfe9af6960226` 加载固定 v3
+registry。三组场景均运行 2.2 秒并产生 3 帧。验收阈值为至少 2 帧、分布内比例不低于
+0.80、至少 1 帧完成模型评价。候选 manifest、模型和 gate 分别为
+`7978aec0...ada2`、`ace5df6d...7f52d` 和 `77972834...6872`。
+
+| 场景 | seed | region / recon | exit | 分布内 | raw / gate / consistent / permitted | 回退 |
+| --- | ---: | --- | ---: | ---: | --- | ---: |
+| 5v5 | 2000 | 2 / 2 | 2 | 0/3 | 0 / 0 / 0 / 0 | 规则回退 3 |
+| 20v20 | 2001 | 8 / 2 | 0 | 3/3 | 3 / 3 / 3 / 3 | 0 |
+| 200v200 | 2002 | 8 / 8 | 0 | 3/3 | 3 / 3 / 3 / 3 | 0 |
+
+三组 finite 均为 true，在线 truth、gate truth、非有限值和 formal decision 变化数均为 0。
+20v20 与 200v200 的 context、formal 和 permission mismatch 均为 0，blocker 为空，
+`paired_development_rollout_allowed=true`。两份 JSON 的 SHA-256 为
+`cd90ab75...a1b` 和 `cf98552f...7db`。
+
+5v5 是 2-region 负例。候选声明适用域为 8-region，`candidate_scope_compatible=false`；
+`distance_log` 与 `transfer_time_log` 各有 6/6 个边值越界。其 JSON SHA-256 为
+`06458d5e...3ff`。exit 2 表示预期失败关闭，不是 v3 在 8-region 正例中的兼容性失败。
+
+本批闭合单 seed 8-region 运行兼容性，不提供多 seed 稳定性、执行时延、相对规则收益、
+实际接管或正式 holdout 证据。paired rollout 许可只是下一项开发试验入口。registry 内
+`runtime_preflight_completed=false` 和全部权限字段保持不变。
+
 ## 2026-07-29 readiness v3 构建与登记
 
 main 在 detached clean worktree commit
@@ -21,7 +47,7 @@ main 在 detached clean worktree commit
 | test / calibration / reserved 使用 | 0 / 0 / 0 |
 | v3/v2 registry 联合专项 | 13 / 13 passed |
 | D4 全量 | 754 / 754 passed |
-| v3 clean-build / registry / preflight | 已完成 / 已登记 / 未执行 |
+| v3 clean-build / registry / 单 seed 8-region preflight | 已完成 / 已登记 / 已通过 |
 | 正式评价和运行权限 | 关闭 |
 
 实际哈希如下：
@@ -41,10 +67,9 @@ main 在 detached clean worktree commit
 时仍可加载和 review，篡改 bundle manifest 后失败关闭。v2 文件树继续保持
 `324a5118...5010`。
 
-上述结果是 shadow 候选构建和软件回归证据，不是 AirSim 性能或正式准入证据。main 仍需
-从登记目录完成 5v5、20v20、200v200 development preflight。assist、assignment、
-takeover、coalition、control、physical、runtime ACK 和 formal evaluation 权限全部为
-false。
+上述结果是 shadow 候选构建和软件回归证据，不是 AirSim 性能或正式准入证据。后续单
+seed 8-region preflight 已通过，2-region 负例按适用域拒绝；多 seed、配对非退化、收益
+和正式 holdout 仍未完成。全部权限为 false。
 
 ## 2026-07-28 readiness v2 构建与登记
 

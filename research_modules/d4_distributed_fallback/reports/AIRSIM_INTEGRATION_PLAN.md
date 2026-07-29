@@ -1,22 +1,20 @@
 # D4 AirSim Episode 集成计划
 
-## 2026-07-29 readiness v3 preflight 计划
+## 2026-07-29 readiness v3 preflight 结果与集成计划
 
-main 已在 clean commit `8421de1...52e0` 对 v2 执行 5v5/2-region preflight。总线检查
-通过，3/3 帧均返回 `runtime_confidence_gate_context_mismatch`。main Advisor 的投影合同
-为 0.1/1/1.5，v2 bundle 为 0.1/1/1.0。在线真值使用数为 0，formal decision 未改变。
-该批次是 v2 不可变失败证据，不得通过改写 v2 registry 修复。
+main 已从 clean commit `83b8869...0226` 和固定 v3 registry 完成三组单 seed development
+preflight。20v20/8-region seed 2001、侦察节点 2 与 200v200/8-region seed 2002、
+侦察节点 8 均在 3 帧内完成 3 次原始推理、3 次门应用和 3 次候选许可，无回退、真值或
+安全异常。两组达到分布内比例 0.80 和至少 1 次模型评价的验收条件。
 
-v3 已从 clean commit `4ba2c8a...4114` 构建并登记。固定 manifest 内容、模型、运行门和
-登记树为 `7978aec0...ada2`、`ace5df6d...7f52d`、`77972834...6872` 和
-`07c770b0...a93a`。validation 门后 293/344 通过，动作不一致通过 0。该结果不替代
-runtime preflight。
+5v5/2-region seed 2000、侦察节点 2 在 3 帧内按适用域失败关闭。主要 OOD 为边距离和转移
+时间对数。该场景用于检查 2-region 拒绝，不纳入 8-region 兼容性失败分母。后续 AirSim
+若仍以 2-region 生产快照，应继续规则回退，或单独设计 2-region adapter/候选。
 
-main 应从固定 registry 依次运行 5v5、20v20、200v200 development preflight。每个尺度
-分别统计原始推理、门应用、门后许可、门拒绝规则回退、8-region 适用域、OOD、有限值和
-配置不匹配，并保存候选、模型、配置和 gate 哈希。1.5 秒正例应实际进入门；1.0 秒负例必须
-返回上下文不匹配。正式 seed、AirSim 正式评价及 assist/assignment/takeover/coalition/
-control/physical 权限继续关闭。
+下一阶段不直接进入正式 AirSim 控制。main 先在三维质点环境扩展 20v20/200v200 多
+development seed，再对每个 seed 运行候选 shadow 与同键规则基线的独立 episode。日志需
+保留原始推理、门诊断、D3 后继计划、ACK、物理窗口、时延和结果 availability。D6 只有在
+两臂均有同键结果时计算非退化和收益。完成前，AirSim 正式评价和全部权限保持关闭。
 
 ## 2026-07-28 readiness v2 preflight 接口
 

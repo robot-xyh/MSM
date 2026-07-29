@@ -1,5 +1,16 @@
 # D4 M 对 N 分布式联盟形成与降级接管调研
 
+## 2026-07-29 readiness v3 preflight 与联盟边界
+
+20v20 和 200v200 的单 seed 8-region preflight 均通过运行门，但只产生 shadow 区域建议。
+`candidate_permitted_after_gate=3/3` 和
+`paired_development_rollout_allowed=true` 不等于 D3 后继计划、成员 ACK、原子 commit、
+接管或物理执行。5v5 的 2-region 输入在模型推理前回退，也没有形成联盟证据。
+
+下一阶段需要多 development seed，并为候选臂和同键规则臂分别形成独立计划、ACK 与物理
+窗口，才能检查 M 对 N 联盟非退化和收益。缺任一证据时结果保持 unavailable，全部联盟和
+控制权限保持 false。
+
 ## 2026-07-29 readiness v3 与联盟边界
 
 v2 preflight 的 3/3 配置不匹配回退没有形成区域干预、后继计划或联盟证据。v3 只修复
@@ -8,10 +19,9 @@ v2 preflight 的 3/3 配置不匹配回退没有形成区域干预、后继计�
 `committed/executing`。
 
 v3 已从 clean commit `4ba2c8a...4114` 构建并逐字节登记。validation 门后 293/344 通过，
-动作不一致通过 0；v3/v2 registry 联合专项 13/13、D4 全量 754/754 passed。该登记仍未
-形成 M 对 N 联盟证据，5v5、20v20、200v200 runtime preflight 均未执行。全部联盟、接管、
-分配和控制权限仍为 false，M 对 N 路径继续使用既有版本、epoch、lease 和
-required-member ACK 门控。
+动作不一致通过 0；v3/v2 registry 联合专项 13/13、D4 全量 754/754 passed。后续单 seed
+8-region preflight 已通过，但没有形成 M 对 N 联盟证据。全部联盟、接管、分配和控制权限
+仍为 false，M 对 N 路径继续使用既有版本、epoch、lease 和 required-member ACK 门控。
 
 ## 2026-07-28 readiness v2 与联盟权限边界
 
