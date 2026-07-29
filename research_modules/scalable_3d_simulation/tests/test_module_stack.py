@@ -45,6 +45,9 @@ from research_modules.d5_terminal_association.src.d5_terminal_association import
     ActiveVisionPolicyProposal,
     DeterministicLookAtScanPolicy,
 )
+from research_modules.d6_evaluation_metrics.d6_evaluation_metrics.regional_planning_chain_audit import (
+    audit_regional_planning_chain,
+)
 from research_modules.scalable_3d_simulation.models import ScenarioConfig
 from research_modules.scalable_3d_simulation.module_stack import (
     D1_PUBLICATION_EVIDENCE_SNAPSHOT_CANDIDATE_IMPLEMENTATION,
@@ -257,6 +260,86 @@ def _development_region_advisor(
     return _AdmittedRegionAdvisoryFixture(
         ttl_s=ttl_s,
         constrained_development_intervention=True,
+    )
+
+
+class _FormalDecisionAwareRuleAssistRegionAdvisor:
+    """Test-only admitted rule advisor bound to the formal D4 decision."""
+
+    def __init__(self, *, ttl_s: float = 1.5) -> None:
+        projection = RegionResourceProjectionConfig(advisory_ttl_s=ttl_s)
+        self._rule = RuleRegionResourcePolicy(
+            RuleRegionResourcePolicyConfig(projection=projection)
+        )
+        self.projector = self._rule.projector
+
+    def advise(
+        self,
+        snapshot,
+        *,
+        formal_decision=None,
+        unseen_seed_count: int = 0,
+    ) -> RegionResourceAdvisoryResult:
+        recommendation = self._rule.recommend(
+            snapshot,
+            formal_decision=formal_decision,
+        )
+        advisory_contract = self.projector.build_advisory_contract(
+            snapshot,
+            recommendation,
+            formal_decision=formal_decision,
+        )
+        digest = formal_decision_digest(formal_decision)
+        return RegionResourceAdvisoryResult(
+            requested_mode=AdvisorMode.ASSIST,
+            effective_mode=AdvisorMode.ASSIST,
+            recommendation=recommendation,
+            fallback_used=False,
+            fallback_reason=None,
+            assist_eligible=True,
+            unseen_seed_count=int(unseen_seed_count),
+            inference_latency_ms=0.0,
+            formal_decision=formal_decision,
+            formal_decision_digest_before=digest,
+            formal_decision_digest_after=digest,
+            formal_decision_unchanged=True,
+            advisory_contract=advisory_contract,
+        )
+
+
+def _regional_resource_planning_probe_config(
+    *,
+    duration_s: float = 3.2,
+    fault_schedule: tuple[dict[str, object], ...] = (),
+) -> ScenarioConfig:
+    target_counts = (2, 4, 2, 3, 2, 3, 2, 2)
+    resource_counts = (4, 1, 2, 3, 2, 3, 2, 3)
+    metadata: dict[str, object] = {
+        "regional_resource_locality_enforced": True,
+        "regional_resource_probe": {
+            "schema": REGIONAL_RESOURCE_PROBE_SCHEMA_VERSION,
+            "target_counts_by_region": target_counts,
+            "resource_counts_by_region": resource_counts,
+        },
+    }
+    if fault_schedule:
+        metadata["fault_schedule"] = list(fault_schedule)
+    return ScenarioConfig(
+        scenario_name="d4_planning_only_regional_transfer",
+        scenario_version="d4-planning-only-regional-transfer-v1",
+        target_count=sum(target_counts),
+        resource_count=sum(resource_counts),
+        recon_count=2,
+        region_count=8,
+        duration_s=duration_s,
+        seed=29,
+        radar_detection_probability=1.0,
+        acoustic_enabled=False,
+        visual_enabled=False,
+        communication_drop_probability=0.0,
+        communication_jitter_s=0.0,
+        communication_latency_s=0.01,
+        metadata=metadata,
     )
 
 
@@ -4182,6 +4265,162 @@ def test_regional_authority_adapter_rejects_incomplete_d4_evidence(
             now=now,
         )
     assert error.value.reason == expected_reason
+
+
+def test_d4_planning_only_transfer_publishes_strict_d3_successor() -> None:
+    config = _regional_resource_planning_probe_config()
+    stack = IntegratedScalableModuleStack(
+        IntegratedStackConfig(d1_scan_max_lateness_s=0.0),
+        d4_region_advisor=_FormalDecisionAwareRuleAssistRegionAdvisor(),
+        d4_unseen_seed_count=1,
+    )
+
+    result = run_episode(config, module_stack=stack)
+
+    plan_payloads = [
+        item.payload
+        for item in result.online_messages
+        if item.topic == "modules.d3.assignment_plan"
+    ]
+    source_plan = next(
+        item
+        for item in plan_payloads
+        if item["plan_version"] == 1 and item["assignment_count"] == 17
+    )
+    successor_plan = next(
+        item
+        for item in plan_payloads
+        if item["plan_version"] == 2 and item["assignment_count"] == 18
+    )
+    source_bindings = {
+        (item["resource_id"], item["global_track_id"])
+        for item in source_plan["assignments"]
+    }
+    successor_bindings = {
+        (item["resource_id"], item["global_track_id"])
+        for item in successor_plan["assignments"]
+    }
+    source_targets = {target_id for _, target_id in source_bindings}
+    successor_targets = {target_id for _, target_id in successor_bindings}
+
+    assert result.summary["online_truth_use_count"] == 0
+    assert successor_plan["plan_id"] != source_plan["plan_id"]
+    assert successor_plan["plan_version"] > source_plan["plan_version"]
+    assert successor_bindings != source_bindings
+    assert len(successor_bindings) == len(source_bindings) + 1
+    assert len(successor_targets - source_targets) == 1
+    assert source_targets - successor_targets == set()
+    assert successor_plan["metadata"]["regional_hint_applied"] is True
+    assert successor_plan["metadata"][
+        "regional_hint_successor_plan_available"
+    ] is True
+    assert successor_plan["metadata"]["regional_hint_successor_state"] == (
+        "successor_published"
+    )
+
+    consumption = stack.latest_d4_region_consumption
+    assert consumption is not None
+    assert consumption.consumable is True
+    assert consumption.planning_replan_eligible is True
+    assert consumption.execution_authorized is False
+    assert consumption.assignment_execution_authorized is False
+    assert consumption.coalition_execution_authorized is False
+    assert consumption.takeover_execution_authorized is False
+    assert consumption.control_execution_authorized is False
+    advisory = consumption.advisory
+    assert advisory.schema == "d4-region-resource-advisory-v2"
+    assert advisory.planning_only_region_ids == ("region-001",)
+    assert advisory.projection_rejections == ()
+    assert advisory.publication_rejections == ()
+    assert len(advisory.transfers) == 1
+    transfer = advisory.transfers[0]
+    assert (
+        transfer.source_region_id,
+        transfer.target_region_id,
+        transfer.resource_count,
+        transfer.planning_only_target,
+    ) == ("region-000", "region-001", 1, True)
+    source_region = next(
+        region
+        for region in advisory.regions
+        if region.region_id == "region-000"
+    )
+    assert source_region.resources_before == 4
+    assert source_region.protected_committed_resources == 2
+    assert source_region.protected_reserve_resources == 1
+
+    d6_audit = audit_regional_planning_chain(result.online_messages)
+    assert d6_audit.status == "contract_chain_verified"
+    assert d6_audit.contract_chain_available is True
+    assert d6_audit.planning_only_authority_safe is True
+    assert d6_audit.real_binding_intervention_available is True
+    assert d6_audit.non_degradation_available is True
+    assert d6_audit.non_degraded is True
+    assert d6_audit.same_key_r0_available is False
+    assert d6_audit.model_benefit_available is False
+    assert d6_audit.assignment_count_delta == 1
+    assert d6_audit.unassigned_count_delta == -1
+    assert d6_audit.safety_violation_codes == ()
+
+
+def test_fault_generation_fences_planning_only_regional_transfer() -> None:
+    config = _regional_resource_planning_probe_config(
+        duration_s=2.2,
+        fault_schedule=(
+            {
+                "time_s": 2.0,
+                "component": "center",
+                "action": "failed",
+            },
+        ),
+    )
+    stack = IntegratedScalableModuleStack(
+        IntegratedStackConfig(
+            d1_scan_max_lateness_s=0.0,
+            capture_learning_artifacts=True,
+        ),
+        d4_region_advisor=_FormalDecisionAwareRuleAssistRegionAdvisor(),
+        d4_unseen_seed_count=1,
+    )
+
+    result = run_episode(config, module_stack=stack)
+
+    fault_frame = next(
+        frame
+        for frame in stack.learning_artifacts().d4_region_frames
+        if frame.timestamp_s == pytest.approx(2.0)
+    )
+    assert result.summary["online_truth_use_count"] == 0
+    assert all(
+        region.fault_generation_fenced
+        for region in fault_frame.snapshot.regions
+    )
+    assert all(
+        not region.authority_capabilities.planning_replan_eligible
+        for region in fault_frame.snapshot.regions
+    )
+    advisory = fault_frame.recommendation.advisory_contract
+    assert advisory.transfers == ()
+    assert advisory.planning_only_region_ids == ()
+    assert any(
+        reason.endswith(":formal_d4_execution_fenced")
+        for reason in advisory.projection_rejections
+    )
+    assert stack.latest_d4_region_consumption is None
+    assert stack.latest_plan.version == 2
+    assert stack.latest_plan.metadata["regional_hint_applied"] is False
+    assert stack._d4_region_hint_bridge_rejection_reason == (
+        "fault_generation_changed_before_advisory_consumption"
+    )
+
+    d6_audit = audit_regional_planning_chain(result.online_messages)
+    assert d6_audit.status == "fault_generation_fence_verified"
+    assert d6_audit.fault_generation_fence_evidence_available is True
+    assert d6_audit.fault_generation_fence_passed is True
+    assert d6_audit.contract_chain_available is False
+    assert d6_audit.real_binding_intervention_available is False
+    assert d6_audit.model_benefit_available is False
+    assert d6_audit.safety_violation_codes == ()
 
 
 def test_d4_noop_advisory_is_consumed_without_false_successor() -> None:

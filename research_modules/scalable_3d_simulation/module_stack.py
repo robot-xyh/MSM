@@ -5638,6 +5638,9 @@ class IntegratedScalableModuleStack:
                     for reason in decision.risk_factors
                 ),
                 "degradation_failed": bool(decision.fail_closed),
+                "fault_generation_fenced": bool(
+                    self._fault_generation_changed
+                ),
             }
 
         edges = self._d4_region_resource_edges(
