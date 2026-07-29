@@ -2491,3 +2491,43 @@ episode 正式复跑。四档各 5 seed 均通过 `formal_only` 准入，`reposi
 详细证据见
 `research_modules/scalable_3d_simulation/docs/SCALABLE_3D_RULE_PERFORMANCE_CALIBRATION_CN.md` 和
 `research_modules/scalable_3d_simulation/docs/SCALABLE_3D_LONG_DURATION_PERFORMANCE_CALIBRATION_CN.md`。
+
+## 2026-07-28 D4 当前谱系运行兼容性
+
+### 已关闭
+
+1. main 已增加运行兼容性预检，按候选清单中的固定特征边界复核统一三维质点运行快照。
+2. D4 已增加冻结候选只读影子适配器、main-owned seed 注册、内容寻址记录、独立重放
+   verifier 和逐特征 OOD 诊断。
+3. D3 已增加候选身份、确定性投影动作、同输入 R0 和严格后继计划的归因证据边界。
+4. `ood_margin` 固定为 0.05；确定性资源投影、规则回退和所有权限门保持不变。
+5. 冻结候选已逐字节登记到 D4 `model_registry`。D4/D6 的来源审计和测试不再依赖
+   `.gitignore` 下的本机输出目录，clean clone 可以复核相同清单与权重摘要。
+
+### 实测结论
+
+| 场景 | 区域快照 | `feature_ood` | 非回退模型执行 | 在线真值 |
+| --- | ---: | ---: | ---: | ---: |
+| 5 资源/5 目标/2 区域，seed 2000 | 3 | 3 | 0 | 0 |
+| 200 资源/200 目标/8 区域，seed 2001 | 2 | 2 | 0 | 0 |
+
+当前 current-lineage 候选可以可信加载，但不具运行分布兼容性。正式 20-seed A2/R0
+评价继续关闭。D3 successor、运行 ACK、owner/coalition ACK、物理窗口、D7 执行和收益
+均不可由本轮预检推断。
+
+### 当前 P1
+
+1. D4 需基于运行数据集
+   `b06d741bd22a0cd84ef1e47a48a0b8cd81ceb7e4ea294eeeb38b892e69d36158`
+   和动作课程
+   `7e17aba7911602c1b9e9f5b917aea97f1eeec478f03963b119fbcfc8de299e72`
+   构建新的运行兼容训练视图。
+2. 两套数据的数字 seed 都是 0 至 99，原切分不同。下一视图必须全局原子重分割，并完全
+   排除 seed 1000 至 1019。
+3. 新候选先限定 8 区域几何，在 D4 代码形成干净提交后从 clean checkout 训练。
+4. main 必须先以非正式 seed 预检。只有出现分布内、非回退模型执行且安全投影通过，
+   才可冻结新候选并准备正式 20-seed。
+5. 2 区域边几何仍未覆盖，继续规则回退，不以扩大 OOD 余量代替数据补齐。
+
+当前没有新增运行级 P0。规则主线可继续使用；A2 assist、分配权、降级权、联盟提交和
+控制权保持关闭。

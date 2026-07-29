@@ -148,6 +148,13 @@ from .learning_runtime import (
     ResolvedLearningRuntime,
     resolve_learning_runtime,
 )
+from .d4_runtime_compatibility import (
+    D4_RUNTIME_COMPATIBILITY_PREFLIGHT_SCHEMA_VERSION,
+    D4RuntimeCompatibilityOptions,
+    D4RuntimeCompatibilityThresholds,
+    assess_d4_runtime_compatibility,
+    run_d4_runtime_compatibility_preflight,
+)
 from .shared_seed_split import (
     SHARED_SEED_SPLIT_POLICY_VERSION,
     SHARED_SEED_SPLIT_SCHEMA_VERSION,
@@ -217,6 +224,9 @@ __all__ = [
     "DeliveredMessage",
     "DeterministicCommunicationNetwork",
     "D4RegionLearningFrame",
+    "D4_RUNTIME_COMPATIBILITY_PREFLIGHT_SCHEMA_VERSION",
+    "D4RuntimeCompatibilityOptions",
+    "D4RuntimeCompatibilityThresholds",
     "D1_CV_MOTION_MODEL_CANDIDATE_IMPLEMENTATION",
     "D1_CV_MOTION_MODEL_REFERENCE_IMPLEMENTATION",
     "D4_ISOLATED_PHYSICAL_ADOPTION_SCHEMA",
@@ -348,6 +358,8 @@ __all__ = [
     "merge_experiment_matrix_shards",
     "project_points",
     "resolve_learning_runtime",
+    "assess_d4_runtime_compatibility",
+    "run_d4_runtime_compatibility_preflight",
     "revoke_g1_shadow_authorization",
     "resolve_d3_development_bundle_binding",
     "collect_reserved_seed_sources",
