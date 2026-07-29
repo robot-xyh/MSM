@@ -4,7 +4,60 @@
 **审计目标**：列出共识算法与计划使用的开源代码哪些已经实现，哪些没有实现，为什么没有实现，以及缺少哪些条件。
 **边界**：本文只用于科研仿真、接口补齐和后续工程排期；不涉及真实硬件、实机处置、火控或绕过授权的自动动作。
 
+## 2026-07-29 D4 readiness v3 隔离双臂最终审计
+
+本轮没有新增运行级 P0。main 已完成 10 组 development control/treatment episode，
+D6 已完成紧凑批次和 seed 2007 完整链路的独立审计。软件链能够从 D4 候选评价到 D3
+后继、开发 ACK、D7 指令和离线物理窗口，但当前候选没有形成可辨识的可执行动作，
+不能声明策略收益或开放生产权限。
+
+1. **10-seed 双臂制品完整。** 20v20、8 区域、seeds 2003-2012 的初态一致和外生
+   配置一致均为 10/10。原始推理、运行门、投影和隔离采用覆盖 10/10；D3 严格后继、
+   开发 ACK 和摘要级物理窗口只覆盖 seed 2007，即 1/10。其余 9 个 seed 按
+   `regional_hint_no_executable_successor` 失败关闭。
+2. **非退化与正收益已分开。** 拦截数和最小距离的有界非退化在当前声明口径内
+   available/true。该结论只表示候选没有比规则臂更差。10/10 双臂均无拦截，逐 seed
+   最小距离完全相同，可辨识候选动作计数为 0；正收益为 unavailable/false。
+3. **seed 2007 完整链可重放。** control/treatment 均有 4 条 ACK、77 条 binding 和
+   1 次同身份 refresh，treatment 另有 1 次 D4 regional applied。D6 重算确认后继
+   首次发布和 refresh 使用相同严格执行签名，authority epoch 与 lease 未丢失。
+4. **候选干预不可归因。** source/successor 以及 control/treatment 的资源—目标、
+   角色和联盟可执行字段相同。当前 `regional applied` 只证明开发消息被消费，不能把
+   后继计划、D7 控制或物理结果归因于学习候选。
+5. **身份窗口已按离线评估口径闭合。** seed 2007 的 19 条 D7 非 hold 指令原生有
+   18 条物理状态窗口。D2 追踪确认 `GT3D-000004` 在 1.035193 秒经历一次
+   confirmed/unmatched 雷达漏检；0.833472 秒和 1.236149 秒的前后 available 锚点
+   均唯一指向 `TGT-0004`，无歧义、竞争声明或未承诺身份。D2 保持该帧在线
+   unavailable，不复制观测谱系。
+6. **D6 已增加有界 coast bridge。** bridge 默认关闭，只在 D4 v3 完整离线审计中
+   显式启用。它要求 D2 v2、同航迹/同真值双锚、confirmed/unmatched、reason 精确为
+   `track_not_assigned_in_frame`、持续 committed、锚点谱系完整、无竞争声明且间隔
+   不超过 0.9 秒。任一条件不满足继续 unavailable。完整链按原生 18 加桥接 1 得到
+   有效 19/19；通用 runtime replay 和冻结持久结果仍保持原生 18/19。
+7. **权限边界不变。** v3 保持 development/shadow-only、admission closed 和
+   rule fallback required。开发 ACK 与生产 authority 分离；assist、assignment、
+   degradation、takeover、coalition、control、physical 和 model promotion 权限
+   全部为 false。
+8. **验证结果。** D2 全量为 `305 passed, 1 warning`，D4 全量为
+   `769 passed, 1 warning`，D6 全量为 `1196 passed, 1 warning`，scalable 3D 全量为
+   `374 passed, 1 warning`。main 复核 coast/runtime/full-chain 专项为
+   `78 passed, 1 warning`，跨模块合同为 `8 passed, 1 warning`。warning 来自本机
+   Matplotlib 三维投影依赖，不影响合同和二维输出。
+
+当前 P1：
+
+1. D4 重新形成经安全投影后确实改变资源配额、跨区转移、备用比例或侦察优先级的
+   可执行候选；无可执行差异时不得把普通重规划或 evaluation refresh 计为采用。
+2. 可辨识干预形成后，再运行独立 full episode 双臂，覆盖通信退化、中心失效、
+   二级节点部分就绪和负载变化；逐 seed 保留 ACK、D7、物理状态和同键规则臂。
+3. compact 10-seed 仍只保存摘要级结果。若要计算逐 seed ACK、D7 和物理链覆盖率，
+   main 必须保存对应 full control/treatment episode，不能由摘要补造。
+4. 只有未见 seed、完整分母、可辨识采用、同链确认、物理结果、真值隔离、有限状态、
+   非退化和外部权限全部通过后，才可讨论 assist 或 authority 准入。
+
 ## 2026-07-29 D4 readiness v3 运行兼容性
+
+本节保留单 seed 预检历史，当前状态以顶部“隔离双臂最终审计”为准。
 
 本轮没有新增运行级 P0。D4 readiness v3 已完成干净构建、不可变登记和单随机种子
 development preflight。结论限定为 8 区域影子候选的运行兼容性，不代表区域策略收益、

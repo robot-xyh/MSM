@@ -1,5 +1,34 @@
 # 200 对 200 三维质点仿真实施计划
 
+## D4 readiness v3 隔离双臂收口（2026-07-29）
+
+1. [x] main 已使用同一冻结外生配置分别运行规则臂和 v3 候选臂。development seeds
+   2003-2012 共 10 对 episode，初态一致和外生配置一致均为 10/10；在线真值使用、
+   非有限状态和生产权限提升均为 0。
+2. [x] 10/10 seed 完成原始推理、运行门、投影和隔离采用。D3 严格后继计划、开发
+   ACK 和摘要级物理窗口均只覆盖 seed 2007，即 1/10；其余 9 个 seed 因
+   `regional_hint_no_executable_successor` 保持规则执行。
+3. [x] D6 已对 10-seed 紧凑制品完成清单、摘要、有限值、真值隔离和权限边界审计。
+   拦截数和最小距离的有界非退化在声明口径内可评价且通过，但 10/10 双臂均无拦截，
+   最小距离 10/10 完全相同，正收益保持 unavailable/false。
+4. [x] main 已对 seed 2007 保存完整 control/treatment episode，D6 独立重算 D4
+   advisory、D3 successor、开发 ACK、D7 指令和物理状态联接。两臂均有 4 条 ACK、
+   77 条 binding 和 1 次同身份 refresh；treatment 另有 1 次 D4 regional applied。
+5. [x] seed 2007 的首次后继与 refresh 保持同一严格执行签名、authority epoch 和
+   lease。候选与规则臂的资源—目标及联盟可执行字段相同，候选动作不可辨识，不得
+   将普通 D3 重规划或 evaluation refresh 归因于学习策略。
+6. [x] D2 已核对 `GT3D-000004`。原生 18/19 的唯一缺口来自一次
+   confirmed/unmatched 雷达漏检帧；前后 available 锚点均唯一指向 `TGT-0004`，
+   间隔 0.402677 秒。D6 已增加默认关闭、仅离线评估可用的 0.9 秒双锚 coast
+   bridge，完整链有效覆盖达到 19/19；D2 在线逐帧 unavailable、真值隔离和
+   `global_track_id` 所有权均未改变。
+7. [ ] 重新设计能在安全投影后形成非零可执行字段变化的 A2 候选。先在 development
+   双臂证明干预可辨识，再扩展独立 full episode；不得通过放宽计划版本、联盟、
+   authority、lease 或真值隔离门获得采用。
+8. [ ] 当前候选继续保持 development/shadow-only、admission closed 和 rule
+   fallback required。assist、assignment、degradation、takeover、coalition、
+   control、physical 和 model promotion 权限全部为 false。
+
 ## D4 readiness v3 单 seed 预检（2026-07-29）
 
 1. [x] D4 在 clean commit `4ba2c8a...4114` 构建并登记
@@ -15,10 +44,11 @@
 5. [x] 保持 registry 不可变。外部预检不改写
    `runtime_preflight_completed=false`，也不开放 assist、assignment、takeover、
    coalition、control、physical 或 formal evaluation。
-6. [ ] 使用多个非正式 development seed 扩展 20v20/200v200，覆盖通信退化、中心失效、
-   二级节点部分就绪和负载变化，冻结通过率、回退原因和时延分布。
-7. [ ] 运行 v3 与唯一同键规则基线的受控配对，补齐可辨识干预、D3 后继计划、
-   runtime/owner/coalition ACK、物理窗口和 D6 成对非退化。
+6. [x] 已用 20v20/8 区域 seeds 2003-2012 完成 10 组非正式 development 双臂；
+   当前批次只覆盖名义场景。通信退化、中心失效、二级节点部分就绪和负载变化仍待
+   候选先形成可辨识动作后开展。
+7. [x] 已运行 v3 与唯一同键规则基线并闭合 seed 2007 的完整开发链。D6 有界
+   非退化可评价，但候选动作不可辨识、正收益不可用；该项不等于正式采用验收通过。
 8. [ ] 在上述证据完成前保持正式 holdout 和所有运行权限关闭。2 区域需求另建候选或
    显式适配器，不修改当前 8 区域 registry。
 

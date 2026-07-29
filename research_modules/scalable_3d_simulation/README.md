@@ -1,6 +1,41 @@
 # Scalable 3D Simulation
 
+## D4 readiness v3 隔离双臂（2026-07-29）
+
+main 已运行 20v20、8 区域、seeds 2003-2012 的 10 组独立规则臂/候选臂
+development episode。两臂使用相同初态和外生配置，但分别建立世界、总线、日志和
+episode 身份。10/10 seed 完成 v3 原始推理、运行门、投影和隔离采用；D3 严格后继、
+开发 ACK 和摘要级物理窗口只在 seed 2007 出现，其余 9 个 seed 因
+`regional_hint_no_executable_successor` 保持规则路径。
+
+D6 对紧凑制品重算完整性、有限值、在线真值使用和生产权限。拦截数与最小距离的有界
+非退化在 10/10 seed 上可评价且通过，但双臂均无拦截，最小距离逐 seed 完全相同。
+因此正收益仍为 unavailable/false，不能据此开放候选权限。
+
+seed 2007 另保存了完整 control/treatment episode。D6 独立联接得到两臂各 4 条 ACK、
+77 条 binding 和 1 次同身份 refresh，treatment 另有 1 次 D4 regional applied。
+后继计划的首次发布与 refresh 保持相同严格执行签名、authority epoch 和 lease。
+候选与规则臂的资源—目标、角色及联盟可执行字段相同，实际干预不可辨识。19 条 D7
+非 hold 指令原生形成 18 条物理状态窗口。D2 审计确认唯一缺口是
+`GT3D-000004` 在 1.035193 秒的一次 confirmed/unmatched 雷达漏检；0.833472 秒和
+1.236149 秒的前后锚点均唯一映射到 `TGT-0004`。
+
+D6 在完整链审计中增加显式 evaluator-only bounded coast bridge。该桥只接受 D2 v2、
+同航迹、同真值、confirmed/unmatched、持续 committed、无竞争声明、锚点谱系完整且
+间隔不超过 0.9 秒的窗口。通用 runtime replay 默认不启用，冻结的原生 18/19 事实保持
+不变；完整离线审计按“原生 18 + 桥接 1”得到有效 19/19。该结果不回写在线总线，不
+恢复 D2 在线身份，也不改写 `global_track_id`。
+
+当前 v3 继续保持 development/shadow-only、admission closed 和 rule fallback
+required。开发 ACK 不产生生产 authority，所有分配、降级、接管、联盟、控制和模型
+晋级权限均为 false。D6 报告位于
+`../d6_evaluation_metrics/outputs/d4_v3_isolated_final_v2b_paired_audit_20260729/`
+和
+`../d6_evaluation_metrics/outputs/d4_v3_isolated_final_v2b_full_chain_audit_20260729/`。
+
 ## D4 readiness v3 预检（2026-07-29）
+
+本节保留单 seed 预检历史，当前状态以本文件顶部“隔离双臂”结论为准。
 
 D4 readiness v3 已完成可复现 clean build、不可变登记和 main 单随机种子运行兼容性
 预检。候选只适用于 8 区域，运行投影合同为最小备用比例 0.1、最小备用资源 1、建议
@@ -23,8 +58,9 @@ registry，得到以下结果：
 `transfer_time_log` 触发分布外。3 帧均在运行置信门前走规则路径，因此总回退为 3；
 运行置信门自身的回退计数为 0。该结果不作为 v3 的 8 区域 blocker。
 
-这批证据只关闭 20v20/200v200 单 seed 运行兼容性。多 development seed、同键规则
-基线、可辨识区域干预、后继计划、运行确认、物理窗口、时延和成对非退化仍为 P1。
+这批预检证据当时只关闭 20v20/200v200 单 seed 运行兼容性。后续已完成 10-seed 同键
+规则基线、单 seed 完整链和离线物理窗口覆盖；可辨识区域干预、正收益、扰动场景和
+正式准入仍为 P1。
 `paired_development_rollout_allowed=true` 不授予实际采用或控制权限；registry 内
 `runtime_preflight_completed=false` 和全部 false 权限保持不变。详细报告见
 `docs/SCALABLE_3D_D4_READINESS_V3_PREFLIGHT_20260729_CN.md`。
