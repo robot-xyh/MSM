@@ -206,6 +206,18 @@ from .d3_intervention_batch_input import (
     collect_d3_intervention_batch_input,
     write_d3_intervention_batch_input,
 )
+from .d4_v3_isolated_rollout import (
+    D4_V3_ISOLATED_ROLLOUT_SCHEMA_VERSION,
+    D4_V3_ISOLATED_RUNTIME_RECORD_SCHEMA_VERSION,
+    D4_V3_ISOLATED_RUNTIME_TOPIC,
+    D4V3IsolatedRolloutExecution,
+    D4V3IsolatedRolloutOptions,
+    D4V3IsolatedSeedPair,
+    D4V3SourceEvidence,
+    execute_d4_v3_isolated_rollouts,
+    normalized_region_snapshot_lineage_sha256,
+    write_d4_v3_isolated_rollout_execution,
+)
 from .world import ProximityInterceptEvent, VectorizedPointMassWorld
 from .animation import write_trajectory_animation
 
@@ -225,8 +237,15 @@ __all__ = [
     "DeterministicCommunicationNetwork",
     "D4RegionLearningFrame",
     "D4_RUNTIME_COMPATIBILITY_PREFLIGHT_SCHEMA_VERSION",
+    "D4_V3_ISOLATED_ROLLOUT_SCHEMA_VERSION",
+    "D4_V3_ISOLATED_RUNTIME_RECORD_SCHEMA_VERSION",
+    "D4_V3_ISOLATED_RUNTIME_TOPIC",
     "D4RuntimeCompatibilityOptions",
     "D4RuntimeCompatibilityThresholds",
+    "D4V3IsolatedRolloutExecution",
+    "D4V3IsolatedRolloutOptions",
+    "D4V3IsolatedSeedPair",
+    "D4V3SourceEvidence",
     "D1_CV_MOTION_MODEL_CANDIDATE_IMPLEMENTATION",
     "D1_CV_MOTION_MODEL_REFERENCE_IMPLEMENTATION",
     "D4_ISOLATED_PHYSICAL_ADOPTION_SCHEMA",
@@ -356,6 +375,7 @@ __all__ = [
     "load_shared_seed_split_registry",
     "make_curriculum_scenario",
     "merge_experiment_matrix_shards",
+    "normalized_region_snapshot_lineage_sha256",
     "project_points",
     "resolve_learning_runtime",
     "assess_d4_runtime_compatibility",
@@ -366,6 +386,7 @@ __all__ = [
     "collect_d3_intervention_batch_input",
     "execute_reserved_seed_interventions",
     "execute_checkpoint_paired_physical_rollouts",
+    "execute_d4_v3_isolated_rollouts",
     "evaluate_d4_isolated_physical_adoption",
     "run_episode",
     "run_paired_learning_adoption_batch",
@@ -386,6 +407,7 @@ __all__ = [
     "write_reserved_seed_intervention_execution",
     "write_checkpoint_paired_physical_rollouts",
     "write_d3_intervention_batch_input",
+    "write_d4_v3_isolated_rollout_execution",
     "write_g1_shadow_authorization_request",
     "write_g1_shadow_revocation_registry",
 ]
