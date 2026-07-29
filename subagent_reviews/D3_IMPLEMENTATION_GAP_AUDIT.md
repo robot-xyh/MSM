@@ -1695,3 +1695,40 @@ formal/unseen-seed 为 false，发布、分配和控制权限均为 false。
 
 本项没有新增 P0。`docs/AIRSIM_INTEGRATION_PLAN.md`、`docs/EXPERIMENT_REPORT.md` 和
 D3 M-to-N 专项已检查。没有 AirSim 接口或新物理证据，故无需修改。
+
+## 57. A1 isolated batch 公共 strict loader GAP 更新（2026-07-28）
+
+### 已关闭的 D3 模块级 P1
+
+D6 此前只能看到 A1 candidate/selection 文件，没有 D3-owned 公共 strict loader，因而
+以 `a1_batch_public_strict_loader_unavailable` 阻断。D3 现公开目录级
+`load_a1_isolated_intervention_batch(...)` 和重新读取别名
+`validate_a1_isolated_intervention_batch(...)`。
+
+读取器严格验证 writer 的七文件布局和六文件 `SHA256SUMS` 覆盖；四个 JSON 继续检查精确
+字段、schema、有限值、内容摘要和整树在线身份隔离。预注册复用核心 validator。input
+manifest、bundle manifest、state-dict、逐帧文件/内容/replay/eligibility、candidate
+inventory 和 selection inventory 摘要形成交叉绑定。
+
+候选必须完整覆盖旧批次 20-seed 帧，逐 seed 选择重新计算阶段计数、候选历史和首个安全
+离散变化。计划版本只能相对前序保持或递增一次；有效版本合同下的换绑必须严格升一版。
+缺文件、额外文件、符号链接、路径逃逸、摘要错配、未知字段、非有限值、truth/Actor/Object
+身份键和权限升级均失败关闭。
+
+主合成合同夹具为 20 seed、40 candidate、20 selection，另有 20-seed 零选择夹具。专项
+`46 passed`；D3 全量 `593 passed, 1 skipped`。唯一跳过为可选 OR-Tools。该结果关闭
+loader 软件缺口，不是
+正式未见 seed 或物理试验结果。
+
+### 保持开放的 P1
+
+1. 当前冻结 development policy 的正式 A1 结果仍为 `0/20 eligible`。loader 没有生成新
+   候选，也不改变 bundle。
+2. candidate/selection inventory 仍不是计划发布、runtime ACK、physical window 或同键
+   R0。main/D7/D6 仍需提供这些独立实物和跨 episode provenance。
+3. production admission assembler 仍须在真实可辨识策略、20 个未见 seed、实际采用、
+   完整物理窗口和成对非退化审计形成后实现。
+4. A2 非零策略、owner ACK、租约内采用和物理配对等既有 P1 不受本项影响。
+
+`docs/AIRSIM_INTEGRATION_PLAN.md` 已检查。本项不改变 AirSim DTO、settings、episode 或
+控制路径，不修改该文件。D3 M-to-N 调度和相关专项文档也未变化。

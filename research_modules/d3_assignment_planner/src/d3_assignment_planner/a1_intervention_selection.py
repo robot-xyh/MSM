@@ -248,7 +248,7 @@ _RUNTIME_PLAN_PAYLOAD_FIELDS = frozenset(
         "metadata",
     }
 )
-_CANDIDATE_REASON_CODES = frozenset(
+A1_INTERVENTION_CANDIDATE_REASON_CODES = frozenset(
     {
         "selected",
         "registration_scope_mismatch",
@@ -265,6 +265,7 @@ _CANDIDATE_REASON_CODES = frozenset(
         "empty_treatment_assignment",
     }
 )
+_CANDIDATE_REASON_CODES = A1_INTERVENTION_CANDIDATE_REASON_CODES
 
 
 class A1InterventionContractError(ValueError):

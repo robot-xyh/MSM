@@ -376,6 +376,12 @@ from .isolated_intervention_batch import (
     run_isolated_intervention_batch,
     write_anonymous_planning_frame_evidence,
 )
+from .a1_isolated_batch_loader import (
+    A1_ISOLATED_INTERVENTION_BATCH_LOADER_SCHEMA_V1,
+    A1IsolatedInterventionBatchLoadResult,
+    load_a1_isolated_intervention_batch,
+    validate_a1_isolated_intervention_batch,
+)
 from .learning_intervention_eligibility import (
     LEARNING_INTERVENTION_FRAME_EVIDENCE_KIND,
     LEARNING_INTERVENTION_FRAME_EVIDENCE_SCHEMA_V1,
@@ -391,6 +397,7 @@ from .learning_intervention_eligibility import (
 from .a1_intervention_selection import (
     A1_CANDIDATE_KIND,
     A1_INTERVENTION_CANDIDATE_EVIDENCE_SCHEMA_V1,
+    A1_INTERVENTION_CANDIDATE_REASON_CODES,
     A1_INTERVENTION_LIFECYCLE_EVIDENCE_SCHEMA_V1,
     A1_INTERVENTION_PREREGISTRATION_SCHEMA_V1,
     A1_INTERVENTION_SELECTION_DECISION_SCHEMA_V1,
@@ -451,11 +458,13 @@ from .multi_cycle_shadow import (
 __all__ = [
     "A1_ACTION_MARGIN_CALIBRATION_SCHEMA_V1",
     "A1_ACTION_MARGIN_CALIBRATION_SCOPE",
+    "A1_ISOLATED_INTERVENTION_BATCH_LOADER_SCHEMA_V1",
     "A1ActionMarginCalibrationConfig",
     "A1ActionMarginCalibrationReport",
     "A1ActionMarginCandidateResult",
     "A1_CANDIDATE_KIND",
     "A1_INTERVENTION_CANDIDATE_EVIDENCE_SCHEMA_V1",
+    "A1_INTERVENTION_CANDIDATE_REASON_CODES",
     "A1_INTERVENTION_LIFECYCLE_EVIDENCE_SCHEMA_V1",
     "A1_INTERVENTION_PREREGISTRATION_SCHEMA_V1",
     "A1_INTERVENTION_SELECTION_DECISION_SCHEMA_V1",
@@ -473,6 +482,7 @@ __all__ = [
     "A1InterventionPreRegistration",
     "A1InterventionSelectionDecision",
     "A1PlanPublicationEvidence",
+    "A1IsolatedInterventionBatchLoadResult",
     "A1EdgeActionMargin",
     "ASSIGNMENT_CALIBRATION_PROFILE_SCHEMA_V1",
     "ASSIGNMENT_COST_BREAKDOWNS_SCHEMA_V1",
@@ -791,6 +801,7 @@ __all__ = [
     "p1_assignment_fixture_by_id",
     "load_learning_dataset",
     "load_a1_intervention_preregistration_file",
+    "load_a1_isolated_intervention_batch",
     "load_isolated_intervention_batch_manifest",
     "load_paired_intervention_manifest",
     "iter_learning_frame_records",
@@ -821,6 +832,7 @@ __all__ = [
     "validate_a1_intervention_lifecycle_evidence",
     "validate_a1_intervention_preregistration",
     "validate_a1_intervention_selection_decision",
+    "validate_a1_isolated_intervention_batch",
     "validate_a1_plan_publication_evidence",
     "validate_isolated_plan_consumption_evidence",
     "validate_isolated_execution_plan_conversion",

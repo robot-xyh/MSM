@@ -4,6 +4,7 @@ from dataclasses import asdict
 from hashlib import sha256
 import json
 from pathlib import Path
+import shutil
 
 import numpy as np
 import pytest
@@ -14,6 +15,7 @@ from d3_assignment_planner import (
     A1_BATCH_CANDIDATES_FILENAME,
     A1_BATCH_RESULT_FILENAME,
     A1_BATCH_SELECTIONS_FILENAME,
+    A1_ISOLATED_INTERVENTION_BATCH_LOADER_SCHEMA_V1,
     BATCH_CHECKSUMS_FILENAME,
     BATCH_PER_SEED_FILENAME,
     BATCH_REPORT_FILENAME,
@@ -30,12 +32,15 @@ from d3_assignment_planner import (
     SharedEdgeActorCriticPolicy,
     TargetDemand,
     build_a1_intervention_preregistration,
+    canonical_runtime_payload_sha256,
     development_shadow_admission,
     load_a1_intervention_preregistration_file,
+    load_a1_isolated_intervention_batch,
     load_isolated_intervention_batch_manifest,
     run_a1_isolated_intervention_batch,
     run_isolated_intervention_batch,
     save_model_bundle,
+    validate_a1_isolated_intervention_batch,
     write_anonymous_planning_frame_evidence,
 )
 
@@ -343,6 +348,116 @@ def _assert_a1_checksums(output: Path) -> None:
         A1_BATCH_CANDIDATES_FILENAME,
         A1_BATCH_SELECTIONS_FILENAME,
     } == names
+
+
+_A1_CHECKSUMMED_FILENAMES = (
+    BATCH_RESULT_FILENAME,
+    BATCH_PER_SEED_FILENAME,
+    BATCH_REPORT_FILENAME,
+    A1_BATCH_RESULT_FILENAME,
+    A1_BATCH_CANDIDATES_FILENAME,
+    A1_BATCH_SELECTIONS_FILENAME,
+)
+
+
+@pytest.fixture(scope="module")
+def strict_loader_artifact(tmp_path_factory) -> Path:
+    root = tmp_path_factory.mktemp("a1-strict-loader")
+    manifest_path, payload, bundle_dir = _build_manifest(
+        root / "input",
+        frame_timestamps=(1.0, 2.0),
+    )
+    preregistration_path = _write_a1_preregistration(
+        manifest_path.parent,
+        payload,
+        bundle_dir,
+    )
+    output = root / "output"
+    run_a1_isolated_intervention_batch(
+        manifest_path,
+        preregistration_path,
+        output,
+    )
+    return output
+
+
+def _copy_strict_loader_artifact(
+    source: Path,
+    target: Path,
+) -> Path:
+    output = target / "output"
+    shutil.copytree(source, output)
+    return output
+
+
+def _refresh_content_sha256(payload: dict) -> None:
+    payload.pop("content_sha256", None)
+    payload["content_sha256"] = canonical_runtime_payload_sha256(payload)
+
+
+def _rewrite_a1_checksums(output: Path) -> None:
+    text = "".join(
+        f"{_file_digest(output / name)}  {name}\n"
+        for name in _A1_CHECKSUMMED_FILENAMES
+    )
+    (output / BATCH_CHECKSUMS_FILENAME).write_text(
+        text,
+        encoding="ascii",
+    )
+
+
+def _rewrite_a1_result(
+    output: Path,
+    mutation,
+) -> None:
+    path = output / A1_BATCH_RESULT_FILENAME
+    payload = json.loads(path.read_text(encoding="ascii"))
+    mutation(payload)
+    _refresh_content_sha256(payload)
+    _write_json(path, payload)
+    _rewrite_a1_checksums(output)
+
+
+def _rewrite_candidate_inventory(
+    output: Path,
+    mutation,
+) -> None:
+    path = output / A1_BATCH_CANDIDATES_FILENAME
+    payload = json.loads(path.read_text(encoding="ascii"))
+    mutation(payload["records"][0])
+    _refresh_content_sha256(payload["records"][0])
+    _refresh_content_sha256(payload)
+    _write_json(path, payload)
+
+    result_path = output / A1_BATCH_RESULT_FILENAME
+    result = json.loads(result_path.read_text(encoding="ascii"))
+    result["candidate_contract"]["inventory_content_sha256"] = payload[
+        "content_sha256"
+    ]
+    _refresh_content_sha256(result)
+    _write_json(result_path, result)
+    _rewrite_a1_checksums(output)
+
+
+def _rewrite_selection_inventory(
+    output: Path,
+    mutation,
+) -> None:
+    path = output / A1_BATCH_SELECTIONS_FILENAME
+    payload = json.loads(path.read_text(encoding="ascii"))
+    mutation(payload["records"][0])
+    _refresh_content_sha256(payload["records"][0])
+    _refresh_content_sha256(payload)
+    _write_json(path, payload)
+
+    result_path = output / A1_BATCH_RESULT_FILENAME
+    result = json.loads(result_path.read_text(encoding="ascii"))
+    result["selection_contract"]["inventory_content_sha256"] = payload[
+        "content_sha256"
+    ]
+    _refresh_content_sha256(result)
+    _write_json(result_path, result)
+    _rewrite_a1_checksums(output)
 
 
 def test_batch_is_deterministic_and_cli_outputs_are_non_authoritative(
@@ -889,3 +1004,404 @@ def test_a1_batch_preregistration_scope_is_rejected(
 
     assert captured.value.code == expected_code
     assert not (tmp_path / "output").exists()
+
+
+def test_a1_public_strict_loader_revalidates_complete_non_authoritative_batch(
+    strict_loader_artifact: Path,
+) -> None:
+    loaded = load_a1_isolated_intervention_batch(strict_loader_artifact)
+    revalidated = validate_a1_isolated_intervention_batch(
+        strict_loader_artifact
+    )
+
+    assert (
+        loaded.schema_version
+        == A1_ISOLATED_INTERVENTION_BATCH_LOADER_SCHEMA_V1
+    )
+    assert len(loaded.candidates) == 40
+    assert len(loaded.selections) == 20
+    assert loaded.file_sha256s == revalidated.file_sha256s
+    assert loaded.batch_result["content_sha256"] == revalidated.batch_result[
+        "content_sha256"
+    ]
+    assert loaded.plan_published is False
+    assert loaded.runtime_ack is False
+    assert loaded.physical_window_available is False
+    assert loaded.r0_pair_available is False
+    assert loaded.production_admission_granted is False
+    assert loaded.production_assignment_authority is False
+    assert loaded.production_control_authority is False
+
+
+def test_a1_public_strict_loader_accepts_zero_selection_as_unavailable(
+    tmp_path: Path,
+) -> None:
+    manifest_path, payload, bundle_dir = _build_manifest(
+        tmp_path / "input",
+        binding_changing=False,
+    )
+    preregistration_path = _write_a1_preregistration(
+        manifest_path.parent,
+        payload,
+        bundle_dir,
+    )
+    output = tmp_path / "output"
+    run_a1_isolated_intervention_batch(
+        manifest_path,
+        preregistration_path,
+        output,
+    )
+
+    loaded = load_a1_isolated_intervention_batch(output)
+
+    assert len(loaded.candidates) == 20
+    assert len(loaded.selections) == 20
+    assert all(item["selected"] is False for item in loaded.selections)
+    assert loaded.batch_result["selection_contract"][
+        "selected_seed_count"
+    ] == 0
+    assert loaded.production_admission_granted is False
+
+
+def test_a1_public_strict_loader_rejects_byte_tamper(
+    strict_loader_artifact: Path,
+    tmp_path: Path,
+) -> None:
+    output = _copy_strict_loader_artifact(strict_loader_artifact, tmp_path)
+    path = output / A1_BATCH_CANDIDATES_FILENAME
+    path.write_bytes(path.read_bytes() + b"\n")
+
+    with pytest.raises(PairedInterventionContractError) as captured:
+        load_a1_isolated_intervention_batch(output)
+
+    assert captured.value.code == "a1_batch_loader_checksum_mismatch"
+
+
+def test_a1_public_strict_loader_rejects_missing_file(
+    strict_loader_artifact: Path,
+    tmp_path: Path,
+) -> None:
+    output = _copy_strict_loader_artifact(strict_loader_artifact, tmp_path)
+    (output / BATCH_REPORT_FILENAME).unlink()
+
+    with pytest.raises(PairedInterventionContractError) as captured:
+        load_a1_isolated_intervention_batch(output)
+
+    assert captured.value.code == "a1_batch_loader_directory_layout_invalid"
+
+
+def test_a1_public_strict_loader_rejects_checksum_path_escape(
+    strict_loader_artifact: Path,
+    tmp_path: Path,
+) -> None:
+    output = _copy_strict_loader_artifact(strict_loader_artifact, tmp_path)
+    checksum_path = output / BATCH_CHECKSUMS_FILENAME
+    lines = checksum_path.read_text(encoding="ascii").splitlines()
+    digest, _ = lines[0].split("  ", maxsplit=1)
+    lines[0] = f"{digest}  ../{BATCH_RESULT_FILENAME}"
+    checksum_path.write_text("\n".join(lines) + "\n", encoding="ascii")
+
+    with pytest.raises(PairedInterventionContractError) as captured:
+        load_a1_isolated_intervention_batch(output)
+
+    assert captured.value.code == "a1_batch_loader_checksum_path_invalid"
+
+
+def test_a1_public_strict_loader_rejects_output_path_escape(
+    strict_loader_artifact: Path,
+    tmp_path: Path,
+) -> None:
+    output = _copy_strict_loader_artifact(strict_loader_artifact, tmp_path)
+    _rewrite_a1_result(
+        output,
+        lambda payload: payload["output_files"].update(
+            {"a1_candidates": f"../{A1_BATCH_CANDIDATES_FILENAME}"}
+        ),
+    )
+
+    with pytest.raises(PairedInterventionContractError) as captured:
+        load_a1_isolated_intervention_batch(output)
+
+    assert captured.value.code == "a1_batch_loader_output_layout_invalid"
+
+
+@pytest.mark.parametrize(
+    ("mutation", "expected_code"),
+    (
+        (
+            lambda payload: payload.update(
+                {"schema_version": "d3.a1-unsupported.v999"}
+            ),
+            "a1_batch_loader_result_schema_unsupported",
+        ),
+        (
+            lambda payload: payload.update(
+                {"input_manifest_sha256": _digest("different-input-manifest")}
+            ),
+            "a1_batch_loader_legacy_lineage_mismatch",
+        ),
+    ),
+)
+def test_a1_public_strict_loader_rejects_top_schema_and_input_lineage(
+    strict_loader_artifact: Path,
+    tmp_path: Path,
+    mutation,
+    expected_code: str,
+) -> None:
+    output = _copy_strict_loader_artifact(strict_loader_artifact, tmp_path)
+    _rewrite_a1_result(output, mutation)
+
+    with pytest.raises(PairedInterventionContractError) as captured:
+        load_a1_isolated_intervention_batch(output)
+
+    assert captured.value.code == expected_code
+
+
+def test_a1_public_strict_loader_rejects_model_summary_mismatch(
+    strict_loader_artifact: Path,
+    tmp_path: Path,
+) -> None:
+    output = _copy_strict_loader_artifact(strict_loader_artifact, tmp_path)
+    _rewrite_a1_result(
+        output,
+        lambda payload: payload["bundle"].update(
+            {"manifest_sha256": _digest("different-model-manifest")}
+        ),
+    )
+
+    with pytest.raises(PairedInterventionContractError) as captured:
+        load_a1_isolated_intervention_batch(output)
+
+    assert captured.value.code == "a1_batch_loader_bundle_summary_mismatch"
+
+
+def test_a1_public_strict_loader_rejects_unknown_field(
+    strict_loader_artifact: Path,
+    tmp_path: Path,
+) -> None:
+    output = _copy_strict_loader_artifact(strict_loader_artifact, tmp_path)
+    _rewrite_a1_result(
+        output,
+        lambda payload: payload.update({"unknown_loader_claim": False}),
+    )
+
+    with pytest.raises(PairedInterventionContractError) as captured:
+        load_a1_isolated_intervention_batch(output)
+
+    assert captured.value.code == "a1_batch_loader_result_fields_mismatch"
+
+
+def test_a1_public_strict_loader_rejects_unknown_candidate_reason(
+    strict_loader_artifact: Path,
+    tmp_path: Path,
+) -> None:
+    output = _copy_strict_loader_artifact(strict_loader_artifact, tmp_path)
+    _rewrite_candidate_inventory(
+        output,
+        lambda record: record.update(
+            {"reason_codes": ["caller_declared_safe"]}
+        ),
+    )
+
+    with pytest.raises(PairedInterventionContractError) as captured:
+        load_a1_isolated_intervention_batch(output)
+
+    assert (
+        captured.value.code
+        == "a1_batch_loader_candidate_reason_code_unsupported"
+    )
+
+
+def test_a1_public_strict_loader_rejects_nonfinite_candidate(
+    strict_loader_artifact: Path,
+    tmp_path: Path,
+) -> None:
+    output = _copy_strict_loader_artifact(strict_loader_artifact, tmp_path)
+    path = output / A1_BATCH_CANDIDATES_FILENAME
+    payload = json.loads(path.read_text(encoding="ascii"))
+    payload["records"][0]["max_abs_cost_correction"] = float("nan")
+    path.write_text(
+        json.dumps(
+            payload,
+            ensure_ascii=True,
+            indent=2,
+            sort_keys=True,
+            allow_nan=True,
+        )
+        + "\n",
+        encoding="ascii",
+    )
+    _rewrite_a1_checksums(output)
+
+    with pytest.raises(PairedInterventionContractError) as captured:
+        load_a1_isolated_intervention_batch(output)
+
+    assert captured.value.code == "batch_nonfinite_value"
+
+
+@pytest.mark.parametrize(
+    "forbidden_key",
+    (
+        "terminal_truth_id",
+        "camera_actor_name",
+        "detected_object_id",
+    ),
+)
+def test_a1_public_strict_loader_rejects_online_identity_fields(
+    strict_loader_artifact: Path,
+    tmp_path: Path,
+    forbidden_key: str,
+) -> None:
+    output = _copy_strict_loader_artifact(strict_loader_artifact, tmp_path)
+    _rewrite_candidate_inventory(
+        output,
+        lambda record: record.update({forbidden_key: "offline-only"}),
+    )
+
+    with pytest.raises(PairedInterventionContractError) as captured:
+        load_a1_isolated_intervention_batch(output)
+
+    assert captured.value.code == "batch_forbidden_input_key"
+
+
+def test_a1_public_strict_loader_rejects_authority_escalation(
+    strict_loader_artifact: Path,
+    tmp_path: Path,
+) -> None:
+    output = _copy_strict_loader_artifact(strict_loader_artifact, tmp_path)
+    _rewrite_a1_result(
+        output,
+        lambda payload: payload["execution_boundary"].update(
+            {"publish": True}
+        ),
+    )
+
+    with pytest.raises(PairedInterventionContractError) as captured:
+        load_a1_isolated_intervention_batch(output)
+
+    assert captured.value.code == "a1_batch_loader_authority_boundary_invalid"
+
+
+def test_a1_public_strict_loader_rejects_candidate_count_mismatch(
+    strict_loader_artifact: Path,
+    tmp_path: Path,
+) -> None:
+    output = _copy_strict_loader_artifact(strict_loader_artifact, tmp_path)
+    _rewrite_a1_result(
+        output,
+        lambda payload: payload["candidate_contract"].update(
+            {
+                "candidate_count": (
+                    payload["candidate_contract"]["candidate_count"] + 1
+                )
+            }
+        ),
+    )
+
+    with pytest.raises(PairedInterventionContractError) as captured:
+        load_a1_isolated_intervention_batch(output)
+
+    assert captured.value.code == "a1_batch_loader_candidate_contract_mismatch"
+
+
+def test_a1_public_strict_loader_rejects_selection_count_mismatch(
+    strict_loader_artifact: Path,
+    tmp_path: Path,
+) -> None:
+    output = _copy_strict_loader_artifact(strict_loader_artifact, tmp_path)
+    _rewrite_selection_inventory(
+        output,
+        lambda record: record.update(
+            {
+                "policy_evaluated_count": (
+                    record["policy_evaluated_count"] + 1
+                )
+            }
+        ),
+    )
+
+    with pytest.raises(PairedInterventionContractError) as captured:
+        load_a1_isolated_intervention_batch(output)
+
+    assert (
+        captured.value.code
+        == "a1_batch_loader_selection_stage_count_mismatch"
+    )
+
+
+def test_a1_public_strict_loader_rejects_candidate_seed_outside_scope(
+    strict_loader_artifact: Path,
+    tmp_path: Path,
+) -> None:
+    output = _copy_strict_loader_artifact(strict_loader_artifact, tmp_path)
+    _rewrite_candidate_inventory(
+        output,
+        lambda record: record.update({"seed": 999}),
+    )
+
+    with pytest.raises(PairedInterventionContractError) as captured:
+        load_a1_isolated_intervention_batch(output)
+
+    assert captured.value.code == "a1_batch_loader_candidate_seed_outside_scope"
+
+
+def test_a1_public_strict_loader_rejects_candidate_frame_outside_scope(
+    strict_loader_artifact: Path,
+    tmp_path: Path,
+) -> None:
+    output = _copy_strict_loader_artifact(strict_loader_artifact, tmp_path)
+    _rewrite_candidate_inventory(
+        output,
+        lambda record: record.update({"sequence_index": 99}),
+    )
+
+    with pytest.raises(PairedInterventionContractError) as captured:
+        load_a1_isolated_intervention_batch(output)
+
+    assert (
+        captured.value.code
+        == "a1_batch_loader_candidate_outside_preregistration"
+    )
+
+
+def test_a1_public_strict_loader_rejects_plan_version_discontinuity(
+    strict_loader_artifact: Path,
+    tmp_path: Path,
+) -> None:
+    output = _copy_strict_loader_artifact(strict_loader_artifact, tmp_path)
+
+    def mutate(record: dict) -> None:
+        record["treatment_plan_version"] = (
+            record["previous_plan_version"] + 2
+        )
+
+    _rewrite_candidate_inventory(output, mutate)
+
+    with pytest.raises(PairedInterventionContractError) as captured:
+        load_a1_isolated_intervention_batch(output)
+
+    assert (
+        captured.value.code
+        == "a1_batch_loader_candidate_plan_version_lineage_invalid"
+    )
+
+
+def test_a1_public_strict_loader_rejects_frame_digest_summary_mismatch(
+    strict_loader_artifact: Path,
+    tmp_path: Path,
+) -> None:
+    output = _copy_strict_loader_artifact(strict_loader_artifact, tmp_path)
+    _rewrite_candidate_inventory(
+        output,
+        lambda record: record.update(
+            {"input_file_sha256": _digest("different-frame-file")}
+        ),
+    )
+
+    with pytest.raises(PairedInterventionContractError) as captured:
+        load_a1_isolated_intervention_batch(output)
+
+    assert (
+        captured.value.code
+        == "a1_batch_loader_candidate_frame_summary_mismatch"
+    )

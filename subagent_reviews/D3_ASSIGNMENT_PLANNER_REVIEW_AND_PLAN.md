@@ -1724,3 +1724,28 @@ D3 全量 `571 passed, 1 skipped`。当前关闭的是 D3 对“为什么没有�
 
 AirSim 集成计划、实验报告和 M-to-N 专项已检查。本轮没有 AirSim DTO、运行时计划、物理
 窗口或实验结果变化，因此这些文件不更新。
+
+## 63. A1 隔离批次公共读取复核（2026-07-28）
+
+D6 指出的模块级断点成立。现有 writer 能生成稳定 A1 summary、candidate inventory、
+selection inventory 和统一校验和，但消费方没有公共 API 复核整套目录。只读取 JSON 或
+只运行 `sha256sum -c` 都不足以验证跨文件候选谱系。
+
+D3 新增公共严格读取器。它固定七文件目录和六文件校验和覆盖，拒绝缺失、额外、符号链接
+和路径逃逸。四个 JSON 的精确字段、schema、有限值、内容摘要和在线身份隔离重新执行。
+预注册继续由核心 A1 validator 处理，未复制 seed、帧范围、安全外壳和权限规则。
+
+旧批次帧与 candidate 按 seed 和序号一一连接。输入文件、内容、重放和资格摘要必须一致。
+selection 的阶段计数、候选历史和首个安全候选由读取器重算。顶层 candidate/selection
+contract 再与全部记录核对。计划版本关系和 binding change 也重新计算，攻击者同步更新
+文件 SHA 和 JSON 内容 SHA 后仍不能绕过语义检查。
+
+返回对象明确固定 publication、runtime ACK、physical window、R0 pair、production
+admission、assignment authority 和 control authority 为 false。D6 可以把读取成功作为
+“A1 隔离批次软件完整性可用”，不能把 candidate 或 selection 解释为运行采用和物理证据。
+
+合成 20-seed/40-candidate/20-selection 主夹具和 20-seed 零选择夹具专项
+`46 passed`，D3 全量 `593 passed, 1 skipped`。正式 A1 `0/20 eligible` 没有变化，
+后续发布、ACK、完整物理
+窗口、同键 R0 和正式准入仍开放。AirSim 集成计划已检查；本项没有运行时接口变化。实验
+报告仅新增软件合同验证，不改写既有正式 100-frame 结果。M-to-N 专项无变化。

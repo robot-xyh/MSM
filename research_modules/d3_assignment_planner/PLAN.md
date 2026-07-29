@@ -1,5 +1,26 @@
 # D3 集中式 Assignment Planner 计划
 
+## 2026-07-28 A1 公共 strict loader
+
+1. [x] 复核 A1 writer 的七文件原子布局、六文件 `SHA256SUMS` 和四类 JSON schema。
+2. [x] 新增目录级公共 loader/validator；只接受固定普通文件，不跟随输出目录内符号链接，
+   不接受缺文件、额外文件或校验和路径逃逸。
+3. [x] 复用现有预注册、真值隔离、有限值、严格字段和摘要校验；重新绑定 input manifest、
+   bundle manifest、state-dict、逐帧输入/replay/eligibility 及 inventory 摘要。
+4. [x] 逐 seed 复核候选/选择计数守恒、帧范围、首个安全离散候选、候选摘要序列和计划
+   版本连续性。
+5. [x] 固定 publication、runtime ACK、physical window、R0 pair、production admission、
+   assignment authority 和 control authority 为 false。
+6. [x] 增加字节篡改、缺文件、两类路径逃逸、模型/帧摘要错配、未知字段、非有限值、
+   truth/Actor/Object 身份、权限升级、计数错配、seed 越界和计划跳版负例。
+7. [x] 合成 20-seed/40-candidate/20-selection 主夹具和零选择夹具专项
+   `46 passed`；D3 全量 `593 passed, 1 skipped`。
+
+本项关闭 D6 消费 A1 isolated batch 时缺少公共 strict loader 的模块级 P1。正式 A1
+证据仍开放：当前冻结策略在正式 20-seed 输入上仍为 `0/20 eligible`，且没有 main 发布、
+D7 运行确认、完整物理窗口、同键 R0 或 production admission。后续不得从 loader 成功
+推断这些事实。
+
 ## 2026-07-27 提交前复核
 
 1. [x] 复核 A1 预注册、候选选择、发布与生命周期证据的失败关闭边界。

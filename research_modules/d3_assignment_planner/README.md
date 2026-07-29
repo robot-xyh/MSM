@@ -1,5 +1,30 @@
 # D3 Assignment Planner
 
+## 2026-07-28 A1 隔离批次公共严格读取
+
+D3 已公开 `load_a1_isolated_intervention_batch(...)` 和
+`validate_a1_isolated_intervention_batch(...)`。两个入口都从输出目录重新读取文件，不
+接受调用方预填的“已校验”对象。读取顺序为固定七文件布局、`SHA256SUMS` 六文件全覆盖、
+四个 JSON 的精确字段和内容摘要、旧批次逐帧摘要、A1 候选及逐 seed 选择关系。
+
+读取器复用现有真值隔离、有限值、严格映射、SHA-256 和
+`validate_a1_intervention_preregistration(...)`。它重新核对固定 seed `1000-1019`、
+预注册帧范围、输入 manifest、模型 manifest、state-dict、逐帧文件/内容/replay/
+eligibility 摘要、候选与选择计数、首个安全候选及计划版本连续性。目录缺文件、未知文件、
+符号链接、校验和路径逃逸、摘要错配、未知字段、非有限值、复合 truth/Actor/Object 身份
+键和权限升级均失败关闭。
+
+返回对象只表示离线批次工件通过软件合同验证。`plan_published`、`runtime_ack`、
+`physical_window_available`、`r0_pair_available`、production admission、分配权限和控制
+权限属性固定为 false。candidate/selection 不能被解释为发布、运行采用、物理窗口、同键
+规则基线或正式 A1 准入。
+
+2026-07-28 的合成合同主夹具使用 20 个 seed、每 seed 2 帧，共 40 个候选和 20 个选择
+记录；另用 20-seed 零离散变化夹具验证 0 个选择可作为 unavailable 正常读取。隔离批次
+专项 `46 passed`；D3 全量为 `593 passed, 1 skipped`。跳过项仍为可选
+OR-Tools，既有 Matplotlib `Axes3D` 环境告警不影响读取器结论。该测试只关闭公共 strict
+loader 软件缺口，既有正式 A1 `0/20 eligible`、无发布、无运行确认和无物理结果状态不变。
+
 ## 2026-07-27 A1 动作裕量校准
 
 正式保留种子证据仍是 `20/20` 处理矩阵发生变化、`0/20` 最终绑定发生变化。当前冻结

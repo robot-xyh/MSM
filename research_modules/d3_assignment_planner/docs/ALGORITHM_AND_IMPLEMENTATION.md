@@ -3852,3 +3852,86 @@ control_authority_allowed = false
 专项 9 项通过。D3 全量为 `571 passed, 1 skipped`，跳过项为可选 OR-Tools。该夹具不属于
 正式 20-seed、AirSim 或物理实验，不能替代当前 `20/20` 矩阵变化、`0/20` 绑定变化的正式
 证据。
+
+## 68. A1 隔离批次公共严格读取
+
+### 68.1 公共接口
+
+`load_a1_isolated_intervention_batch(output_directory)` 是 D6 和其他只读消费者的公共
+入口。`validate_a1_isolated_intervention_batch(...)` 从同一目录重新读取和验证，不接受
+已解析映射或调用方提供的摘要。返回类型为
+`A1IsolatedInterventionBatchLoadResult`，包含 A1 summary、旧批次 summary、candidate
+inventory、selection inventory 和实际文件摘要。
+
+读取器要求目录只包含 writer 原子生成的七个普通文件：
+
+```text
+isolated_intervention_batch.json
+isolated_intervention_per_seed.csv
+D3_ISOLATED_INTERVENTION_BATCH_REPORT_CN.md
+a1_intervention_batch.json
+a1_intervention_candidates.json
+a1_intervention_selections.json
+SHA256SUMS
+```
+
+前六个文件必须在 `SHA256SUMS` 中各出现一次。绝对路径、子目录、`..`、重复名称、额外
+名称、符号链接、缺文件和摘要错配均拒绝。CSV 与中文报告由文件摘要保护，四个 JSON 继续
+进入语义校验。
+
+### 68.2 JSON 和摘要复核
+
+四个 JSON 先执行整树 truth/Actor/Object 身份键扫描和有限值检查，再检查精确字段集合、
+schema 和去掉 `content_sha256` 后的规范内容摘要。预注册对象交给现有
+`validate_a1_intervention_preregistration(...)`，因此 seed 有序性、模型权重摘要、帧
+范围、规则回退、安全外壳、在线真值和生产权限约束不复制实现。
+
+A1 summary 与旧批次 summary 必须具有相同的 batch id、评估时间、输入 manifest 摘要、
+模型 manifest 摘要、策略版本和 state-dict 摘要。预注册的策略工件摘要必须等于
+state-dict 摘要。旧批次的 20 个 seed 必须严格为 `1000-1019`，逐 seed 帧按序号和时间
+严格递增，并落在预注册范围内。帧计数、eligible 计数、fallback 计数、绑定变化和硬违规
+汇总从逐帧记录重新计算。
+
+### 68.3 候选和选择守恒
+
+每个候选以 `(seed, sequence_index)` 与旧批次帧一对一连接。时间、输入路径、文件摘要、
+内容摘要、重放摘要和资格摘要必须相等。候选内容摘要在 inventory 中唯一，全部旧帧都
+必须有且只能有一个候选。
+
+每个 seed 只有一条 selection。读取器重新计算候选数、策略评估数、代价接受数、绑定变化
+数和近似竞争数，并重新计算候选历史摘要。若存在
+`selected_for_paired_evaluation=true`，selection 必须指向严格序列中的第一个此类候选，
+且序号、时间和处理 binding 摘要一致；否则必须明确记录
+`no_safe_discrete_intervention`。顶层 candidate/selection contract 再与全部记录重算值
+比较。
+
+计划版本按 A1 核心规则复核：
+
+```text
+rule_version      in {previous_version, previous_version + 1}
+treatment_version in {previous_version, previous_version + 1}
+```
+
+当 `version_contract_valid=true` 且绑定改变时，
+`treatment_version=previous_version+1`。binding change 布尔还必须与规则和处理 binding
+摘要是否不同一致。
+
+### 68.4 权限边界
+
+预注册、A1 summary、旧批次、每个 seed、每个 frame、每个 candidate 和每个 selection
+都重新检查执行边界。发布、运行确认、物理结果、物理窗口、R0 pair、production admission、
+生产分配权限和控制权限必须为 false，`global_track_id` 改写计数必须为 0。
+
+返回对象的同名属性固定为 false。公共读取成功仅证明该批次可被离线审计，不生成
+`A1PlanPublicationEvidence`、运行 ACK、物理窗口、同键 R0 或模型准入。
+
+### 68.5 软件验证
+
+2026-07-28 主合成夹具使用 20 seed、每 seed 2 帧，形成 40 个 candidate 和 20 个
+selection；另一个 20-seed 夹具没有安全离散变化，20 条 selection 均保持 unavailable。
+正向读取和重新读取结果一致。负例覆盖字节篡改、缺文件、校验和路径逃逸、
+输出映射路径逃逸、模型/帧摘要错配、未知字段、非有限值、truth/Actor/Object 身份字段、
+权限升级、candidate/selection 计数错配、seed 越界和计划跳版。
+
+隔离批次专项 `46 passed`；D3 全量 `593 passed, 1 skipped`。该结果关闭软件读取缺口。
+正式 A1 输入没有重跑，既有 `0/20 eligible` 和无后续运行证据状态保持不变。
