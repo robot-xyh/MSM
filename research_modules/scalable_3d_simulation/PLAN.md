@@ -1577,3 +1577,36 @@ GAP、算法文档和系统总报告。
    0.05 OOD 余量下重训，不以手工扩边界代替数据覆盖。
 9. [ ] D4 降低验证集置信度误接收。固定 0.60 门限，至少先做到所有过门样本均满足
    已登记动作一致性，再进行下一轮 main 预检。
+
+## 12. D4 规划专用区域转移闭环（2026-07-29）
+
+### 已完成
+
+1. [x] 新增 opt-in 的 20 目标、20 资源、8 区域资源不均衡 probe；普通场景不改变资源
+   可达性。
+2. [x] main 把真实 fault generation 状态写入 D4 区域快照，不再由区域顾问默认推断为
+   false。
+3. [x] 固化 seed 29 正例：D3 source 为 17 条分配、3 个未分配目标；D4 v2 规划建议从
+   `region-000` 向 `region-001` 转移 1 个资源，并保护 2 个已承诺资源和 1 个备用资源。
+4. [x] D3 下一周期发布严格后继：新 plan id、版本 `1 -> 2`、分配 `17 -> 18`、未分配
+   `3 -> 2`，新增一个真实目标覆盖，在线真值使用为 0。
+5. [x] 规划专用消费只允许 `planning_replan_eligible=true`；execution、assignment、
+   coalition、takeover 和 control authority 全部为 false。
+6. [x] 固化中心在 2.0 秒失效的负例：所有区域写入 `fault_generation_fenced=true`，
+   无 transfer、无旧建议消费、无区域提示后继。
+7. [x] D3 用 source、同输入未发布 R0 和 treatment 比较公开执行签名，证明真实 binding
+   变化，不把升版、续租或 metadata 刷新计作干预。
+8. [x] D6 v11 直接审计实际 episode 总线。正例为 `contract_chain_verified`，负例为
+   `fault_generation_fence_verified`，安全违规均为 0。
+9. [x] 当前回归：scalable world/module stack `100 passed`，D3
+   `618 passed, 1 skipped`，D4 `794 passed`，D6 `1202 passed`。
+
+### 保持开放
+
+1. [ ] 从 clean、truth-free、内容寻址数据构建并评审 D4 v4；未注册前不得进入运行加载器。
+2. [ ] 为同一 comparison key 保存独立规则 R0 episode，并由 D6 连接同键输入、运行 ACK、
+   D7 控制和确认后物理窗口。
+3. [ ] 在独立多 seed 配对 episode 中验证非退化和收益。当前单 seed 只形成合同证据与
+   source/successor 描述性非退化，不能声明学习模型收益。
+4. [ ] owner、epoch、lease、reserve、联盟和 D7 控制门保持不变，不以放宽安全门制造
+   正结果。

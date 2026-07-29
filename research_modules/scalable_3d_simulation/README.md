@@ -2097,3 +2097,32 @@ main 预检现可识别裸模型包或带审计清单的候选根目录，并分
 这轮结果说明双源训练视图已让 8 区域原始模型出现非回退执行，但运行覆盖和置信度校准
 都未闭合。下一轮先补采真实 8 区域、部分二级节点未就绪的匿名运行帧，再由 D4 重训和
 校准。OOD 余量、置信度门限和确定性规则回退保持不变；正式 20-seed/900-cell 仍关闭。
+
+## D4 规划专用区域转移合同
+
+2026-07-29，main 将区域资源不均衡接入统一三维 episode。专项场景使用 20 个目标、
+20 个资源和 8 个区域；目标区域库存为 `2/4/2/3/2/3/2/2`，资源区域库存为
+`4/1/2/3/2/3/2/3`。区域局部可达性只在该显式 probe 中启用，普通场景保持原资源
+可达规则。
+
+seed 29 的中心计划先形成 17 条分配和 3 个未分配目标。D4 规则建议器在正式决策约束下
+发布 `d4-region-resource-advisory-v2`，允许 `region-000 -> region-001` 转移 1 个资源。
+来源区域 4 个资源中保护 2 个已承诺资源和 1 个备用资源。目标区域只取得
+`planning_replan_eligible=true`；assignment、coalition、takeover、control 及汇总执行
+权限全部保持 false。D3 在下一规划周期发布新计划标识和版本 2，形成 18 条分配和
+2 个未分配目标。新增目标覆盖为 1，在线真值使用为 0。
+
+中心在 2.0 秒失效的负例把真实 `_fault_generation_changed` 写入每个 D4 区域快照。
+该帧所有区域 `fault_generation_fenced=true`，规划专用资格关闭，不发布转移、不消费旧
+建议，也不形成区域提示后继。D6 对正例输出 `contract_chain_verified`，对负例输出
+`fault_generation_fence_verified`，安全违规均为 0。
+
+D3 另用同一下一周期输入构造 source、未发布规则 R0 和已发布 treatment。三份计划的
+`execution_signature()` 均按业务绑定比较；treatment 相对 source 和 R0 都存在真实绑定
+或目标覆盖变化，机械升版、续租和元数据刷新不计作干预。当前模块回归为 scalable
+world/module stack `100 passed`、D3 `618 passed, 1 skipped`、D4 `794 passed`、D6
+`1202 passed`。skip 为可选 OR-Tools，warning 为既有 Matplotlib 三维后端提示。
+
+该证据使用测试专用规则建议器，只关闭规划建议、D3 严格后继和故障代际围栏的运行合同。
+D4 v4 仍未注册，独立同键 R0、多 seed 配对物理 episode 和模型收益均不可用；assist、
+分配、降级、联盟和控制权限继续关闭。

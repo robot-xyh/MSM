@@ -4,6 +4,47 @@
 **审计目标**：列出共识算法与计划使用的开源代码哪些已经实现，哪些没有实现，为什么没有实现，以及缺少哪些条件。
 **边界**：本文只用于科研仿真、接口补齐和后续工程排期；不涉及真实硬件、实机处置、火控或绕过授权的自动动作。
 
+## 2026-07-29 D4 规划专用区域转移与 D6 证据链
+
+本轮没有新增运行级 P0。区域资源不均衡时，D4 已能在不取得任何执行权限的条件下向
+D3 提供下一周期规划建议；真实故障代际变化会在建议产生和消费两端失败关闭。该结果只
+关闭规则建议合同，不代表 D4 学习模型收益或生产准入。
+
+1. **main 正例已固化。** 20 目标、20 资源、8 区域、seed 29 的 source 计划为
+   17 条分配和 3 个未分配目标。D4 v2 建议执行 `region-000 -> region-001`、数量 1，
+   来源区域保护 2 个已承诺资源和 1 个备用资源。D3 后继使用新 plan id，版本
+   `1 -> 2`，分配 `17 -> 18`，未分配 `3 -> 2`，在线真值使用为 0。
+2. **规划权与执行权已分离。** 目标区域可设
+   `planning_replan_eligible=true`，但 execution、assignment、coalition、takeover 和
+   control authority 全部为 false。建议只能改变 D3 下一周期候选约束，不能直接执行
+   分配、联盟、接管或导引。
+3. **故障代际负例已固化。** 中心在 2.0 秒失效时，main 把真实
+   `fault_generation_fenced=true` 写入区域快照。该帧没有 transfer、没有旧建议消费、
+   没有区域提示后继。D4 正式故障状态机和所有安全门未放宽。
+4. **D3 因果合同已补齐。** D3 使用 source、同输入未发布 R0 和 treatment 比较
+   `execution_signature()`、绑定集合、分配数及未分配集合。treatment 相对 source 和
+   R0 均存在真实绑定或目标覆盖变化；机械升版、续租和 metadata 刷新不算干预。
+5. **D6 已接入实际总线。** D6 v11 输出合同链、真实绑定干预、同键 R0、描述性非退化、
+   模型收益和故障围栏六类独立状态。seed 29 为 `contract_chain_verified`，描述性
+   assignment/unassigned 非退化；故障负例为 `fault_generation_fence_verified`。
+   两项安全违规均为 0。
+6. **权限和模型结论不变。** 本轮建议来源为规则策略。独立同键 R0 不可用，D4 v4
+   未注册，因此 `model_benefit_available=false`。assist、分配、降级、联盟、接管、
+   控制和物理权限继续关闭。
+7. **回归结果。** scalable world/module stack 为 `100 passed`，D3 为
+   `618 passed, 1 skipped`，D4 为 `794 passed`，D6 为 `1202 passed`。skip 是可选
+   OR-Tools；warning 是既有 Matplotlib 三维后端提示。
+
+当前 P1：
+
+1. 生成 clean、truth-free、内容寻址的 D4 v4 数据和候选，完成正负置信校准、不可变
+   review 与注册；注册前不得进入运行加载器。
+2. 保存独立同键规则 R0 episode，并连接 advisory、consumption、D3 successor、运行
+   ACK、D7 控制及确认后物理窗口。
+3. 在独立多 seed 配对场景中验证非退化和收益。当前单 seed 规则正例不能替代模型评估。
+4. 继续保持 owner、epoch、lease、reserve、联盟和控制围栏，不通过降低门限或放宽权限
+   取得正结果。
+
 ## 2026-07-29 D4 readiness v3 隔离双臂最终审计
 
 本轮没有新增运行级 P0。main 已完成 10 组 development control/treatment episode，
