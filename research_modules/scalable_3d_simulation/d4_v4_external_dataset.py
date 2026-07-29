@@ -15,7 +15,7 @@ from pathlib import Path
 import shutil
 import subprocess
 import tempfile
-from typing import Any, Mapping
+from typing import Any, Mapping, Sequence
 
 from research_modules.d4_distributed_fallback.d4_distributed_fallback.region_resource import (
     DeterministicResourceProjector,
@@ -80,7 +80,9 @@ class D4V4ExternalDatasetExportConfig:
     minimum_train_seeds: int = 8
     minimum_validation_seeds: int = 4
     minimum_test_seeds: int = 4
-    positive_frames_per_development_split: int = 1
+    train_positive_frame_count: int = 1
+    validation_positive_frame_count: int = 1
+    source_kind: str = "main_runtime_frames"
     created_at_utc: str = "2026-07-29T00:00:00Z"
     schema: str = D4_V4_EXTERNAL_EXPORT_SCHEMA
 
@@ -94,7 +96,8 @@ class D4V4ExternalDatasetExportConfig:
             "minimum_train_seeds",
             "minimum_validation_seeds",
             "minimum_test_seeds",
-            "positive_frames_per_development_split",
+            "train_positive_frame_count",
+            "validation_positive_frame_count",
         ):
             value = getattr(self, name)
             if type(value) is not int or value <= 0:
@@ -107,13 +110,18 @@ class D4V4ExternalDatasetExportConfig:
             raise ValueError("train and validation fractions must leave a test split")
         if not self.created_at_utc:
             raise ValueError("created_at_utc must not be empty")
+        if self.source_kind not in {
+            "main_runtime_frames",
+            "external_region_learning_dataset",
+        }:
+            raise ValueError("unsupported D4 v4 external source kind")
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
 
 def export_d4_v4_external_runtime_dataset(
-    source_dataset_dir: str | Path,
+    source_dataset_dir: str | Path | Sequence[str | Path],
     output_dir: str | Path,
     *,
     repository_root: str | Path,
@@ -129,10 +137,10 @@ def export_d4_v4_external_runtime_dataset(
     """
 
     resolved = config or D4V4ExternalDatasetExportConfig()
-    source_root = Path(source_dataset_dir).resolve()
+    source_roots = _resolve_source_roots(source_dataset_dir)
     destination = Path(output_dir).resolve()
     repository = Path(repository_root).resolve()
-    if source_root.is_symlink() or destination.is_symlink():
+    if any(path.is_symlink() for path in source_roots) or destination.is_symlink():
         raise D4V4ExternalDatasetExportError(
             "d4_v4_external_dataset_symlink_forbidden"
         )
@@ -141,14 +149,25 @@ def export_d4_v4_external_runtime_dataset(
             "d4_v4_external_output_already_exists"
         )
 
-    source = load_region_learning_dataset(source_root)
-    if source.manifest.availability.dirty_episode_count:
+    sources = tuple(
+        load_region_learning_dataset(source_root)
+        for source_root in source_roots
+    )
+    if any(
+        source.manifest.availability.dirty_episode_count
+        for source in sources
+    ):
         raise D4V4ExternalDatasetExportError(
             "d4_v4_external_source_contains_dirty_episode"
         )
     repository_identity = _clean_repository_identity(repository)
+    episodes = tuple(
+        episode
+        for source in sources
+        for episode in source.episode_records
+    )
     split = split_scenario_seed_groups(
-        [episode.source for episode in source.episode_records],
+        [episode.source for episode in episodes],
         train_fraction=resolved.train_fraction,
         validation_fraction=resolved.validation_fraction,
         split_seed=resolved.split_seed,
@@ -171,9 +190,14 @@ def export_d4_v4_external_runtime_dataset(
         projector=projector,
     )
     selected = _select_positive_frames(
-        source,
+        episodes,
         seed_split=seed_split,
-        positive_count=resolved.positive_frames_per_development_split,
+        positive_counts={
+            RegionLearningSplit.TRAIN: resolved.train_positive_frame_count,
+            RegionLearningSplit.VALIDATION: (
+                resolved.validation_positive_frame_count
+            ),
+        },
         projector=projector,
         rule_policy=rule_policy,
     )
@@ -189,7 +213,7 @@ def export_d4_v4_external_runtime_dataset(
         staging = temporary_root / "staging"
         dataset_root = temporary_root / "dataset"
         positive_records: list[dict[str, Any]] = []
-        for episode in source.episode_records:
+        for episode in episodes:
             frames: list[RegionLearningFrame] = []
             for frame in episode.frames:
                 key = (episode.source.identity_sha256, int(frame.frame_index))
@@ -255,14 +279,31 @@ def export_d4_v4_external_runtime_dataset(
             "created_at_utc": resolved.created_at_utc,
             "purpose": "d4_v4_unregistered_shadow_candidate_external_input",
             "source": {
-                "dataset_id": source.manifest.dataset_id,
-                "dataset_sha256": source.manifest.dataset_sha256,
-                "split_sha256": source.manifest.split.split_sha256,
-                "episode_count": source.manifest.availability.episode_count,
-                "frame_count": source.manifest.availability.frame_count,
-                "dirty_episode_count": (
-                    source.manifest.availability.dirty_episode_count
+                "dataset_count": len(sources),
+                "datasets": [
+                    {
+                        "dataset_id": item.manifest.dataset_id,
+                        "dataset_sha256": item.manifest.dataset_sha256,
+                        "split_sha256": item.manifest.split.split_sha256,
+                        "episode_count": (
+                            item.manifest.availability.episode_count
+                        ),
+                        "frame_count": item.manifest.availability.frame_count,
+                        "dirty_episode_count": (
+                            item.manifest.availability.dirty_episode_count
+                        ),
+                    }
+                    for item in sources
+                ],
+                "episode_count": sum(
+                    item.manifest.availability.episode_count
+                    for item in sources
                 ),
+                "frame_count": sum(
+                    item.manifest.availability.frame_count
+                    for item in sources
+                ),
+                "dirty_episode_count": 0,
             },
             "output": {
                 "dataset_id": manifest.dataset_id,
@@ -305,7 +346,7 @@ def export_d4_v4_external_runtime_dataset(
             dataset_sha256=manifest.dataset_sha256,
             dataset_split_sha256=manifest.split.split_sha256,
             source_artifact_sha256=_sha256_file(derivation_path),
-            source_kind="main_runtime_frames",
+            source_kind=resolved.source_kind,
             truth_free_online_features=True,
             generated_by_v4_builder=False,
             source_worktree_dirty=False,
@@ -346,10 +387,10 @@ def export_d4_v4_external_runtime_dataset(
 
 
 def _select_positive_frames(
-    source: Any,
+    episodes: Sequence[Any],
     *,
     seed_split: Mapping[int, RegionLearningSplit],
-    positive_count: int,
+    positive_counts: Mapping[RegionLearningSplit, int],
     projector: DeterministicResourceProjector,
     rule_policy: RuleRegionResourcePolicy,
 ) -> dict[tuple[str, int], RegionResourceRecommendation]:
@@ -359,7 +400,7 @@ def _select_positive_frames(
         RegionLearningSplit.VALIDATION: 0,
     }
     for episode in sorted(
-        source.episode_records,
+        episodes,
         key=lambda item: (
             int(item.source.seed),
             item.source.scenario_id,
@@ -367,7 +408,10 @@ def _select_positive_frames(
         ),
     ):
         split = seed_split[int(episode.source.seed)]
-        if split not in count_by_split or count_by_split[split] >= positive_count:
+        if (
+            split not in count_by_split
+            or count_by_split[split] >= positive_counts[split]
+        ):
             continue
         for frame in episode.frames:
             candidate = _safe_transfer_alternative(
@@ -385,13 +429,32 @@ def _select_positive_frames(
     missing = [
         split.value
         for split, count in count_by_split.items()
-        if count < positive_count
+        if count < positive_counts[split]
     ]
     if missing:
         raise D4V4ExternalDatasetExportError(
             "d4_v4_safe_positive_unavailable:" + ",".join(missing)
         )
     return selected
+
+
+def _resolve_source_roots(
+    source_dataset_dir: str | Path | Sequence[str | Path],
+) -> tuple[Path, ...]:
+    if isinstance(source_dataset_dir, (str, Path)):
+        values = (source_dataset_dir,)
+    else:
+        values = tuple(source_dataset_dir)
+    if not values:
+        raise D4V4ExternalDatasetExportError(
+            "d4_v4_external_source_dataset_missing"
+        )
+    roots = tuple(Path(value).resolve() for value in values)
+    if len(set(roots)) != len(roots):
+        raise D4V4ExternalDatasetExportError(
+            "d4_v4_external_source_dataset_duplicate"
+        )
+    return roots
 
 
 def _safe_transfer_alternative(

@@ -14,14 +14,32 @@ from .d4_v4_external_dataset import (
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--source-dataset-dir", type=Path, required=True)
+    parser.add_argument(
+        "--source-dataset-dir",
+        type=Path,
+        action="append",
+        required=True,
+    )
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--repository-root", type=Path, required=True)
     parser.add_argument("--split-seed", type=int, default=9)
     parser.add_argument(
-        "--positive-frames-per-development-split",
+        "--train-positive-frame-count",
         type=int,
         default=1,
+    )
+    parser.add_argument(
+        "--validation-positive-frame-count",
+        type=int,
+        default=1,
+    )
+    parser.add_argument(
+        "--source-kind",
+        choices=(
+            "main_runtime_frames",
+            "external_region_learning_dataset",
+        ),
+        default="main_runtime_frames",
     )
     return parser
 
@@ -34,9 +52,11 @@ def main() -> int:
         repository_root=args.repository_root,
         config=D4V4ExternalDatasetExportConfig(
             split_seed=args.split_seed,
-            positive_frames_per_development_split=(
-                args.positive_frames_per_development_split
+            train_positive_frame_count=args.train_positive_frame_count,
+            validation_positive_frame_count=(
+                args.validation_positive_frame_count
             ),
+            source_kind=args.source_kind,
         ),
     )
     print(json.dumps(summary, indent=2, sort_keys=True))

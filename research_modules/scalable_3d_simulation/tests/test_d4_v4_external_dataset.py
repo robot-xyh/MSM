@@ -35,17 +35,22 @@ from research_modules.scalable_3d_simulation.d4_v4_external_dataset import (
 _COMMIT = "a" * 40
 
 
-def _source_dataset(tmp_path: Path, *, seed_count: int = 12) -> Path:
+def _source_dataset(
+    tmp_path: Path,
+    *,
+    seed_count: int = 12,
+    scenario_id: str = "external-runtime-fixture",
+) -> Path:
     staging = tmp_path / "source-staging"
     dataset = tmp_path / "source-dataset"
     policy = RuleRegionResourcePolicy()
     for seed in range(seed_count):
         source = RegionLearningEpisodeSource(
-            scenario_id="external-runtime-fixture",
+            scenario_id=scenario_id,
             scenario_version="v1",
             scenario_scale="R8",
             seed=seed,
-            episode_id=f"external-runtime-fixture-{seed}",
+            episode_id=f"{scenario_id}-{seed}",
             git_commit=_COMMIT,
             git_dirty=False,
             config_sha256=sha256(f"source:{seed}".encode()).hexdigest(),
@@ -98,6 +103,9 @@ def _config() -> D4V4ExternalDatasetExportConfig:
         minimum_train_seeds=1,
         minimum_validation_seeds=1,
         minimum_test_seeds=1,
+        train_positive_frame_count=2,
+        validation_positive_frame_count=1,
+        source_kind="external_region_learning_dataset",
     )
 
 
@@ -136,12 +144,13 @@ def test_external_export_passes_v4_governance(
     )
     assert loaded.manifest.dataset_sha256 == summary["dataset_sha256"]
     assert evidence.source_worktree_dirty is False
+    assert evidence.source_kind == "external_region_learning_dataset"
     assert governance["test_payload_read_count"] == 0
     assert governance["split_action_inventory"]["train"] == {
         "frame_count": 16,
-        "positive_executable_difference_count": 1,
-        "negative_no_executable_difference_count": 15,
-        "transfer_target_count": 1,
+        "positive_executable_difference_count": 2,
+        "negative_no_executable_difference_count": 14,
+        "transfer_target_count": 2,
         "unsafe_difference_count": 0,
     }
     assert governance["split_action_inventory"]["validation"] == {
@@ -190,3 +199,41 @@ def test_external_export_fails_without_safe_validation_positive(
             repository_root=tmp_path,
             config=_config(),
         )
+
+
+def test_external_export_combines_distinct_source_datasets(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    first = _source_dataset(
+        tmp_path / "first",
+        scenario_id="external-runtime-first",
+    )
+    second = _source_dataset(
+        tmp_path / "second",
+        scenario_id="external-runtime-second",
+    )
+    monkeypatch.setattr(
+        d4_v4_external_dataset,
+        "_clean_repository_identity",
+        lambda _root: {
+            "git_commit": _COMMIT,
+            "source_worktree_dirty": False,
+            "exporter_sha256": "b" * 64,
+        },
+    )
+    output = tmp_path / "external-output"
+    export_d4_v4_external_runtime_dataset(
+        (first, second),
+        output,
+        repository_root=tmp_path,
+        config=_config(),
+    )
+    derivation = json.loads(
+        (output / "source_derivation_manifest.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert derivation["source"]["dataset_count"] == 2
+    assert derivation["source"]["episode_count"] == 24
+    assert derivation["output"]["episode_count"] == 24
