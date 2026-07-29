@@ -29,7 +29,9 @@ from d4_distributed_fallback.region_resource_dataset import (
 )
 from d4_distributed_fallback.region_resource_learning import (
     LearnedRegionResourcePolicy,
+    SharedRegionGraphActorCritic,
 )
+import d4_distributed_fallback.region_resource_v4_shadow_candidate as v4_module
 from d4_distributed_fallback.region_resource_v4_shadow_candidate import (
     REGION_RESOURCE_V3_FROZEN_TREE_SHA256,
     REGION_RESOURCE_V4_CANDIDATE_ID,
@@ -49,9 +51,12 @@ from d4_distributed_fallback.region_resource_v4_shadow_candidate import (
     RegionResourceV4ShadowAdvisor,
     _V4_PROJECTION,
     _V4_RULE_CONFIG,
+    _audit_v4_confidence_identifiability,
     _derive_v4_actor_class_balance,
     _derive_v4_confidence_balance,
+    _fit_confidence_head,
     _load_external_dataset_for_v4,
+    _v4_confidence_observable_key,
     _v4_actor_metrics,
     _v4_actor_records,
     _v4_checkpoint_selection_key,
@@ -626,6 +631,183 @@ def test_v4_confidence_balance_rejects_nontrain_weight_source(
         match="v4_confidence_weights_train_split_only",
     ):
         _derive_v4_confidence_balance(records, split=split)
+
+
+def test_v4_confidence_identifiability_detects_exact_train_collision(
+    tmp_path: Path,
+) -> None:
+    torch = pytest.importorskip("torch")
+    dataset, _ = _dataset(tmp_path)
+    _, train_records, _ = _actor_records(dataset)
+    graph = train_records[0].sample.graph
+    identity_metadata_variant = replace(
+        graph,
+        node_ids=tuple(
+            f"renamed-node-{index}"
+            for index, _ in enumerate(graph.node_ids)
+        ),
+        edge_refs=tuple(
+            replace(
+                edge,
+                edge_id=f"renamed-edge-{index}",
+                source_region_id=f"renamed-source-{index}",
+                target_region_id=f"renamed-target-{index}",
+                transferable_resources=edge.transferable_resources + 100,
+                transfer_time_s=edge.transfer_time_s + 100.0,
+            )
+            for index, edge in enumerate(graph.edge_refs)
+        ),
+    )
+    records = (
+        (graph, True, True, True, ()),
+        (
+            identity_metadata_variant,
+            False,
+            False,
+            True,
+            ("actor_target_signature_mismatch",),
+        ),
+        (
+            train_records[1].sample.graph,
+            False,
+            True,
+            False,
+            ("actor_no_executable_difference",),
+        ),
+    )
+
+    audit = _audit_v4_confidence_identifiability(records)
+
+    assert audit["fit_split"] == "train"
+    assert audit["train_record_count"] == 3
+    assert audit["conflicting_key_count"] == 1
+    assert audit["conflicting_record_count"] == 2
+    assert audit["conflicting_positive_count"] == 1
+    assert audit["conflicting_negative_count"] == 1
+    assert audit["accepted"] is False
+    assert audit["validation_label_use_count"] == 0
+    assert audit["test_payload_use_count"] == 0
+    assert (
+        audit["observable_key_uses_target_or_source_identity"] is False
+    )
+    assert (
+        audit["observable_key_uses_node_or_edge_identity_metadata"] is False
+    )
+    assert (
+        audit["observable_key_binds_tensor_shape_dtype_and_architecture"]
+        is True
+    )
+    assert len(audit["content_sha256"]) == 64
+    assert _v4_confidence_observable_key(
+        graph
+    ) == _v4_confidence_observable_key(identity_metadata_variant)
+    dtype_variant = replace(
+        graph,
+        node_features=graph.node_features.to(dtype=torch.float64),
+    )
+    assert _v4_confidence_observable_key(
+        graph
+    ) != _v4_confidence_observable_key(dtype_variant)
+
+    accepted = _audit_v4_confidence_identifiability(
+        (
+            (graph, True, True, True, ()),
+            (
+                train_records[1].sample.graph,
+                False,
+                True,
+                False,
+                ("actor_no_executable_difference",),
+            ),
+        )
+    )
+    assert accepted["conflicting_key_count"] == 0
+    assert accepted["accepted"] is True
+
+
+@pytest.mark.parametrize(
+    "split",
+    (RegionLearningSplit.VALIDATION, RegionLearningSplit.TEST),
+)
+def test_v4_confidence_identifiability_rejects_nontrain_source(
+    tmp_path: Path,
+    split: RegionLearningSplit,
+) -> None:
+    pytest.importorskip("torch")
+    dataset, _ = _dataset(tmp_path)
+    _, train_records, _ = _actor_records(dataset)
+    graph = train_records[0].sample.graph
+    records = (
+        (graph, True, True, True, ()),
+        (graph, False, False, True, ("negative",)),
+    )
+
+    with pytest.raises(
+        RegionResourceV4CandidateError,
+        match="v4_confidence_identifiability_train_split_only",
+    ):
+        _audit_v4_confidence_identifiability(records, split=split)
+
+
+def test_v4_confidence_fit_fails_closed_on_train_observable_collision(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pytest.importorskip("torch")
+    dataset, _ = _dataset(tmp_path)
+    _, train_records, validation_records = _actor_records(dataset)
+    train_graph = train_records[0].sample.graph
+    validation_graph = validation_records[0].sample.graph
+    confidence_records = {
+        RegionLearningSplit.TRAIN: (
+            (train_graph, True, True, True, ()),
+            (
+                train_graph,
+                False,
+                False,
+                True,
+                ("actor_target_signature_mismatch",),
+            ),
+        ),
+        RegionLearningSplit.VALIDATION: (
+            (validation_graph, True, True, True, ()),
+            (
+                validation_graph,
+                False,
+                False,
+                True,
+                ("actor_target_signature_mismatch",),
+            ),
+        ),
+    }
+    monkeypatch.setattr(
+        v4_module,
+        "_confidence_records",
+        lambda _model, _loaded, *, split, projector, rule_policy: (
+            confidence_records[split]
+        ),
+    )
+    config = _small_config()
+    model = SharedRegionGraphActorCritic(
+        hidden_dim=config.hidden_dim,
+        message_passing_steps=config.message_passing_steps,
+    )
+    projector, rule_policy = _policies()
+
+    with pytest.raises(
+        RegionResourceV4CandidateError,
+        match=(
+            "v4_confidence_train_observable_label_conflict:"
+            "keys=1,records=2,positive=1,negative=1"
+        ),
+    ):
+        _fit_confidence_head(
+            model,
+            object(),
+            config=config,
+            projector=projector,
+            rule_policy=rule_policy,
+        )
 
 
 def test_v4_checkpoint_selection_prefers_dual_class_over_noop_loss() -> None:

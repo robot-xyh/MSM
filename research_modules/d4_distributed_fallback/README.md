@@ -21,10 +21,25 @@ positive/negative/inconsistent/executable 通过数为 59/11/11/70，validation 
 14/1/1/15。validation 仍有 1 条负类且不一致样本越门，现有
 `positive>0、negative=0、inconsistent=0、executable>0` 合同未通过，流程正确失败关闭。
 
+逐样本复核确认该假阳性不是投影或安全不变量问题。validation seed 90、frame 2 的完整
+在线图输入与 train seeds 2、46 的两个正例逐值相同，但外部 target 分别要求 no-op 和
+transfer。confidence head 对三条记录必然产生相同输出。对全部 TRAIN confidence 记录
+生成不含 seed、episode、target 和来源身份的在线图指纹后，350 条记录形成 229 个键；
+其中 10 个键同时含正、负标签，共 22 条记录（12 正、10 负）。该数据不存在只依赖在线
+输入的确定性分类函数。
+
+v4 现已增加 TRAIN-only 可辨识性审计。审计只绑定 confidence forward 实际消费的
+`node_features`、`edge_features`、`edge_index`，并同时绑定张量 shape、dtype 和固定
+图网络架构。节点/边身份元数据不进入指纹。审计记录冲突键、记录下标、正负计数和内容
+SHA-256；validation/test 标签使用数固定为 0。存在任一同输入异标签时，即使后续固定
+训练能产生较低 loss，也以
+`v4_confidence_train_observable_label_conflict` 失败关闭，不允许偶然 validation 过门
+形成候选。0.60 门、训练权重、投影器和运行权限均未改变。
+
 本阶段只完成训练机制、单元测试和组合数据只读验证。没有生成 clean candidate，没有写入
 registry，也没有完成不可变 review、D6 独立审计、D3 successor、物理结果或收益评价。
 v4 仍为 unregistered、development/shadow only，全部生产权限为 false；v3 未修改。
-2026-07-29 v4 专项 21/21、D4 全量 804/804 通过。
+2026-07-29 v4 专项 25/25、D4 全量 808/808 通过。
 
 ## 2026-07-29 区域规划资格与执行权限
 

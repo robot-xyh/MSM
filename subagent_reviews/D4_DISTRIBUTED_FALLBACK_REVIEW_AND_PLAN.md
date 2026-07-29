@@ -18,9 +18,20 @@ positive/negative/inconsistent/executable 通过数为 59/11/11/70，validation 
 14/1/1/15。validation 仍有 1 条不合格样本越门，评审结论为 actor 类别平衡有效、
 confidence 未验收、构建失败关闭。
 
+结构复核定位到 target 可辨识性问题。validation seed 90、frame 2 与 train seeds 2、46
+具有完全相同的在线图输入和 actor 输出，validation target 要求 no-op，train target
+要求 transfer。TRAIN 全量审计发现 229 个在线图键中 10 个存在正负冲突，覆盖 22 条
+记录（12 正、10 负）。180 个 confidence epoch 没有产生通过固定门的 checkpoint。
+
+评审决定不提高 hard-negative 权重，也不更换损失强行压低该样本。相同在线输入无法稳定
+映射到两个相反标签。v4 新增 TRAIN-only 在线图指纹门，冲突时输出内容寻址诊断并失败
+关闭。指纹只使用 forward 可见的节点特征、边特征、边索引及其 shape/dtype 和架构；
+节点/边身份、seed、episode、target 或来源身份均不读取，validation/test 不参与审计或
+拟合。后续需要外部数据 owner 统一同键 target，或补充真实在线可获得的决策上下文。
+
 当前证据仅为内存训练和只读数据验证。正式 clean build、候选制品、不可变 review、D6
 审计、D3 successor、物理结果和收益均未完成。v4 未登记，全部生产权限为 false；v3
-身份和 registry 保持不变。专项 21/21、D4 全量 804/804 通过。
+身份和 registry 保持不变。专项 25/25、D4 全量 808/808 通过。
 
 ## 2026-07-29 规划权限解耦评审
 

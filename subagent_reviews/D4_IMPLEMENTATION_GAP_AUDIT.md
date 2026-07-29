@@ -23,10 +23,25 @@
   positive/negative/inconsistent/executable 通过数为 59/11/11/70，validation 为
   14/1/1/15。validation 仍有 1 条负类且不一致样本越门，既有零容忍条件未通过，流程
   正确失败关闭。
+- **已关闭 D4 内 P1：confidence 假阳性原因不可审计。** 新增 TRAIN-only 在线图指纹
+  审计。350 条 TRAIN confidence 记录形成 229 个图键，其中 10 个键同时含正、负标签，
+  覆盖 22 条记录（12 正、10 负）。指纹只绑定三个模型输入张量及 shape、dtype、架构，
+  不含节点/边身份、seed、episode、target、来源身份或未来结果；validation/test 标签
+  使用数为 0。
+- **可复现结构原因。** validation seed 90、frame 2 与 train seeds 2、46 的完整在线
+  图输入相同，但外部 target 分别要求 no-op 和 transfer。180 个固定 confidence epoch
+  均保持 validation 14/1/1/15，未出现可接受 checkpoint。该冲突不能通过类别权重或损失
+  调整稳健解决。
+- **新增失败关闭门。** 任一 TRAIN 同输入异标签冲突都会触发
+  `v4_confidence_train_observable_label_conflict`，错误包含冲突计数、审计 SHA-256 和
+  固定门计数。冲突记录不删除，0.60 门不调整。
 - **开放 P1。** clean candidate build、候选制品、不可变 review、registry、D6 独立
   审计、D3 successor、D7/物理窗口、双臂非退化与收益均未完成。当前只可声明训练机制
   和只读组合数据验证完成。
-- **验证。** 2026-07-29 v4 专项 21/21、D4 全量 804/804 通过；仅有既有 Matplotlib
+- **开放 P1：重新生成可辨识数据。** 同一在线图键必须使用同一确定性 target，或在
+  snapshot 中增加真实在线可用的决策上下文。不得用 seed、episode 或 future outcome
+  区分标签。新数据通过 TRAIN 可辨识性审计前不启动 clean build。
+- **验证。** 2026-07-29 v4 专项 25/25、D4 全量 808/808 通过；仅有既有 Matplotlib
   `Axes3D` 环境警告。
 
 ## 2026-07-29 规划资格与执行权限 GAP

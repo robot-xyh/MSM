@@ -38,6 +38,23 @@ positive/negative/inconsistent/executable 排列，train 为 59/11/11/70，valid
 14/1/1/15。validation 的负类与不一致通过数未达到 0，构建按合同终止。专项 21/21、
 D4 全量 804/804 通过。本阶段没有写候选、registry 或权限字段。
 
+后续结构诊断增加 `_audit_v4_confidence_identifiability()`。实现先把完整在线
+`RegionGraph` 中 forward 实际消费的 `node_features`、`edge_features` 和 `edge_index`
+规范化后计算 SHA-256。每个张量同时绑定 shape、dtype 和数值，载荷还绑定固定图网络架构。
+节点标识和边引用不进入模型计算，因此从指纹排除；seed、episode、snapshot target、来源
+身份和未来结果也不进入指纹。每个冲突组记录 train record index、正负计数和内容摘要；
+validation/test 使用计数固定为 0。
+
+当前组合数据审计结果为：350 条 TRAIN 记录、229 个在线图键、10 个冲突键、22 条冲突
+记录，其中正类 12、负类 10。validation seed 90、frame 2 的图键与 train seeds 2、46
+的正例完全相同，说明假阳性不能由当前在线输入消除。180 个固定训练 epoch 中通过
+confidence 合同的 checkpoint 数为 0。
+
+`_fit_confidence_head()` 保留原训练损失、有界权重和 0.60 门。训练结束后若 TRAIN
+可辨识性审计不通过，错误输出冲突键/记录/正负计数、审计摘要及 train/validation 四类
+越门计数，然后停止构建。该顺序只用于形成可复现诊断，不保存模型或训练摘要。更新后专项
+25/25、D4 全量 808/808 通过。
+
 ## 2026-07-29 规划资格和执行权限实现
 
 `RegionResourceAuthorityCapabilities` 从同一份正式区域裁决生成。对象保存正式动作、

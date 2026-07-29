@@ -19,26 +19,37 @@
 - confidence 阈值通过数在 train 为 59/11/11/70，在 validation 为 14/1/1/15，顺序为
   positive/negative/inconsistent/executable。validation 仍有 1 条负类且不一致样本越过
   0.60，训练链按合同失败关闭。
-- 专项 21/21、D4 全量 804/804 通过；未修改通用行为克隆、v3 registry、v4 注册常量或
+- 已对 TRAIN confidence 输入执行精确可辨识性审计。350 条记录的 229 个在线图键中，
+  10 个键同时具有正、负标签，共 22 条记录（12 正、10 负）。validation 假阳性与 train
+  的两个正例使用完全相同的在线图，差异只存在于外部 target。
+- 新增 TRAIN-only 在线图指纹门。指纹只包含 confidence forward 消费的三个张量及其
+  shape/dtype 和固定架构，不含节点/边身份、seed、episode、target 或来源身份；冲突时
+  输出内容寻址的计数和固定门诊断，并以
+  `v4_confidence_train_observable_label_conflict` 失败关闭。validation/test 标签不参与
+  审计或拟合。
+- 专项 25/25、D4 全量 808/808 通过；未修改通用行为克隆、v3 registry、v4 注册常量或
   生产权限。
 
 ### 当前 P1
 
-1. confidence 必须在不修改 0.60 门和零负类/零不一致越门合同的条件下通过。当前组合数据
-   的 train/validation 仍分别有 11/1 条负类且不一致样本越门。
+1. 当前首要 blocker 是外部组合数据的 TRAIN 标签不可辨识。相同在线输入被同时标为
+   transfer 正例和 no-op 负例；增加权重、替换损失或延长训练不能生成可靠区分。
 2. 需要从 clean commit 独立构建 v4 候选，并保存本次训练摘要、数据身份和全部源码摘要。
-   本阶段只读验证没有候选目录，不能用于登记。
+   当前数据未通过可辨识性门，本阶段只读验证没有候选目录，不能用于登记。
 3. clean 制品仍需 D4 不可变 review、main 准入决策和 D6 独立审计。v4 五项注册摘要保持
    空值，全部生产权限保持 false。
 4. D3 successor、运行 ACK、D7/物理窗口、独立双臂非退化、正收益和扰动场景均未开始。
 
 ### 下一步
 
-1. 先检查越门的 1 条 validation 负例及 train 11 条负例的可观测特征重叠，保持 test
-   封存，不用 validation/test 反推权重或阈值。
-2. 只有 confidence 合同通过后，才由 main 在 clean checkout 下运行正式 builder；失败
-   时不保留候选、不写 registry。
-3. clean build 通过后由 D4 执行只读不可变 review，再交 main/D3/D6 完成后继、配对和
+1. 由外部数据 owner 重新生成 target：同一在线图键必须使用同一确定性 target，或者把
+   真正决定 transfer/no-op 的可在线获得上下文字段加入正式 snapshot schema。seed、
+   episode 或未来结果不能作为补充分辨特征。
+2. 新数据先运行 TRAIN 可辨识性审计，再执行 actor/confidence 只读训练。test 继续封存，
+   validation 只做固定门验收，不能反推训练权重、参数或阈值。
+3. 只有可辨识性和 confidence 合同都通过后，才由 main 在 clean checkout 下运行正式
+   builder；失败时不保留候选、不写 registry。
+4. clean build 通过后由 D4 执行只读不可变 review，再交 main/D3/D6 完成后继、配对和
    收益证据。任一链路不完整时继续使用 v3/确定性规则。
 
 ## 2026-07-29 规划资格解耦计划
@@ -99,8 +110,8 @@
 
 ### 当前 P1
 
-1. main 已提供外部组合数据并完成只读训练机制验证，但该数据尚未形成通过 confidence
-   合同的 clean candidate。正式 runtime 数据代表性和来源链仍需在构建审计中确认。
+1. main 已提供外部组合数据并完成只读训练机制验证，但 TRAIN 存在 10 个同输入异标签
+   冲突键。该数据未通过 confidence 可辨识性门，不能进入 clean candidate build。
 2. 尚未从 clean commit 完成 v4 候选构建、正负置信度验收、不可变 artifact review 和登记。
    注册 SHA 保持空值，不得从失败原型回填。
 3. 只读 actor 已在 train/validation 同时形成区别于同键 R0 的双类命中，但 confidence

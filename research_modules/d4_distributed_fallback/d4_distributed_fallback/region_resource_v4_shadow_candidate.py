@@ -96,6 +96,9 @@ REGION_RESOURCE_V4_CLASS_BALANCE_SCHEMA = (
 REGION_RESOURCE_V4_CONFIDENCE_BALANCE_SCHEMA = (
     "d4-region-resource-v4-train-only-confidence-balance-v1"
 )
+REGION_RESOURCE_V4_CONFIDENCE_IDENTIFIABILITY_SCHEMA = (
+    "d4-region-resource-v4-train-only-confidence-identifiability-v1"
+)
 REGION_RESOURCE_V4_CANDIDATE_FILENAME = "v4_shadow_candidate_manifest.json"
 REGION_RESOURCE_V4_CONFIG_FILENAME = "training_config.json"
 REGION_RESOURCE_V4_TRAINING_FILENAME = "training_summary.json"
@@ -3022,6 +3025,139 @@ def _derive_v4_confidence_balance(
     )
 
 
+def _v4_confidence_observable_key(graph: Any) -> str:
+    """Bind only the graph information available to the online policy."""
+
+    _require_torch()
+    try:
+        node_features = graph.node_features.detach().cpu()
+        edge_features = graph.edge_features.detach().cpu()
+        edge_index = graph.edge_index.detach().cpu()
+    except Exception as exc:
+        raise RegionResourceV4CandidateError(
+            "v4_confidence_observable_graph_invalid"
+        ) from exc
+    if (
+        not bool(torch.isfinite(node_features).all().item())
+        or not bool(torch.isfinite(edge_features).all().item())
+    ):
+        raise RegionResourceV4CandidateError(
+            "v4_confidence_observable_graph_nonfinite"
+        )
+    payload = {
+        "architecture": REGION_GRAPH_ARCHITECTURE,
+        "node_features": {
+            "shape": list(node_features.shape),
+            "dtype": str(node_features.dtype),
+            "values": node_features.tolist(),
+        },
+        "edge_features": {
+            "shape": list(edge_features.shape),
+            "dtype": str(edge_features.dtype),
+            "values": edge_features.tolist(),
+        },
+        "edge_index": {
+            "shape": list(edge_index.shape),
+            "dtype": str(edge_index.dtype),
+            "values": edge_index.tolist(),
+        },
+    }
+    return _canonical_sha256(payload)
+
+
+def _audit_v4_confidence_identifiability(
+    records: Sequence[
+        tuple[Any, bool, bool, bool, tuple[str, ...]]
+    ],
+    *,
+    split: RegionLearningSplit = RegionLearningSplit.TRAIN,
+) -> dict[str, Any]:
+    """Detect contradictory confidence labels on identical online inputs."""
+
+    if split != RegionLearningSplit.TRAIN:
+        raise RegionResourceV4CandidateError(
+            "v4_confidence_identifiability_train_split_only"
+        )
+    if not records:
+        raise RegionResourceV4CandidateError(
+            "v4_confidence_identifiability_records_unavailable"
+        )
+    groups: dict[str, dict[str, Any]] = {}
+    for index, record in enumerate(records):
+        if (
+            len(record) != 5
+            or type(record[1]) is not bool
+            or type(record[2]) is not bool
+            or type(record[3]) is not bool
+        ):
+            raise RegionResourceV4CandidateError(
+                "v4_confidence_identifiability_record_invalid"
+            )
+        observable_key = _v4_confidence_observable_key(record[0])
+        group = groups.setdefault(
+            observable_key,
+            {
+                "observable_key_sha256": observable_key,
+                "positive_count": 0,
+                "negative_count": 0,
+                "record_indices": [],
+            },
+        )
+        group["positive_count"] += int(record[1])
+        group["negative_count"] += int(not record[1])
+        group["record_indices"].append(index)
+    conflicts = tuple(
+        {
+            **group,
+            "record_count": (
+                int(group["positive_count"])
+                + int(group["negative_count"])
+            ),
+        }
+        for _, group in sorted(groups.items())
+        if group["positive_count"] and group["negative_count"]
+    )
+    positive_only_key_count = sum(
+        bool(group["positive_count"]) and not group["negative_count"]
+        for group in groups.values()
+    )
+    negative_only_key_count = sum(
+        bool(group["negative_count"]) and not group["positive_count"]
+        for group in groups.values()
+    )
+    content = {
+        "schema": REGION_RESOURCE_V4_CONFIDENCE_IDENTIFIABILITY_SCHEMA,
+        "fit_split": RegionLearningSplit.TRAIN.value,
+        "train_record_count": len(records),
+        "train_positive_count": sum(record[1] for record in records),
+        "train_negative_count": sum(not record[1] for record in records),
+        "observable_key_count": len(groups),
+        "positive_only_key_count": positive_only_key_count,
+        "negative_only_key_count": negative_only_key_count,
+        "conflicting_key_count": len(conflicts),
+        "conflicting_record_count": sum(
+            int(group["record_count"]) for group in conflicts
+        ),
+        "conflicting_positive_count": sum(
+            int(group["positive_count"]) for group in conflicts
+        ),
+        "conflicting_negative_count": sum(
+            int(group["negative_count"]) for group in conflicts
+        ),
+        "conflict_inventory": list(conflicts),
+        "observable_key_uses_target_or_source_identity": False,
+        "observable_key_uses_node_or_edge_identity_metadata": False,
+        "observable_key_binds_tensor_shape_dtype_and_architecture": True,
+        "validation_label_use_count": 0,
+        "test_payload_use_count": 0,
+        "accepted": not conflicts,
+    }
+    return {
+        **content,
+        "content_sha256": _canonical_sha256(content),
+    }
+
+
 def _fit_confidence_head(
     model: SharedRegionGraphActorCritic,
     loaded: LoadedRegionLearningDataset,
@@ -3054,6 +3190,7 @@ def _fit_confidence_head(
             raise RegionResourceV4CandidateError(
                 f"v4_confidence_{name}_requires_positive_and_negative_samples"
             )
+    identifiability = _audit_v4_confidence_identifiability(train_records)
     balance = _derive_v4_confidence_balance(train_records)
     for parameter in model.parameters():
         parameter.requires_grad_(False)
@@ -3114,6 +3251,34 @@ def _fit_confidence_head(
     model.eval()
     train_metrics = _confidence_metrics(model, train_records)
     validation_metrics = _confidence_metrics(model, validation_records)
+    threshold_counts = (
+        f"train_positive={train_metrics['positive_threshold_pass_count']},"
+        f"train_negative={train_metrics['negative_threshold_pass_count']},"
+        "train_inconsistent="
+        f"{train_metrics['inconsistent_threshold_pass_count']},"
+        "train_executable="
+        f"{train_metrics['executable_threshold_pass_count']},"
+        "validation_positive="
+        f"{validation_metrics['positive_threshold_pass_count']},"
+        "validation_negative="
+        f"{validation_metrics['negative_threshold_pass_count']},"
+        "validation_inconsistent="
+        f"{validation_metrics['inconsistent_threshold_pass_count']},"
+        "validation_executable="
+        f"{validation_metrics['executable_threshold_pass_count']}"
+    )
+    if not identifiability["accepted"]:
+        raise RegionResourceV4CandidateError(
+            "v4_confidence_train_observable_label_conflict:"
+            f"keys={identifiability['conflicting_key_count']},"
+            f"records={identifiability['conflicting_record_count']},"
+            "positive="
+            f"{identifiability['conflicting_positive_count']},"
+            "negative="
+            f"{identifiability['conflicting_negative_count']},"
+            f"audit={identifiability['content_sha256']},"
+            f"{threshold_counts}"
+        )
     if (
         validation_metrics["positive_threshold_pass_count"] <= 0
         or validation_metrics["negative_threshold_pass_count"] > 0
@@ -3122,20 +3287,7 @@ def _fit_confidence_head(
     ):
         raise RegionResourceV4CandidateError(
             "v4_confidence_validation_gate_not_accepted:"
-            f"train_positive={train_metrics['positive_threshold_pass_count']},"
-            f"train_negative={train_metrics['negative_threshold_pass_count']},"
-            "train_inconsistent="
-            f"{train_metrics['inconsistent_threshold_pass_count']},"
-            "train_executable="
-            f"{train_metrics['executable_threshold_pass_count']},"
-            "validation_positive="
-            f"{validation_metrics['positive_threshold_pass_count']},"
-            "validation_negative="
-            f"{validation_metrics['negative_threshold_pass_count']},"
-            "validation_inconsistent="
-            f"{validation_metrics['inconsistent_threshold_pass_count']},"
-            "validation_executable="
-            f"{validation_metrics['executable_threshold_pass_count']}"
+            f"{threshold_counts}"
         )
     return {
         "target_definition": (
@@ -3148,6 +3300,7 @@ def _fit_confidence_head(
         "fit_sample_count": len(train_records),
         "validation_sample_count": len(validation_records),
         "class_balance": balance.to_dict(),
+        "identifiability_audit": identifiability,
         "history": history,
         "train": train_metrics,
         "validation": validation_metrics,

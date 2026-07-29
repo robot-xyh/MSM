@@ -35,6 +35,37 @@ confidence 正/负标签为 59/291；正类权重为 4.932203。13 条动作不�
 正类和可执行差异至少有一条通过，负类和动作不一致样本通过数必须为 0。实际 validation
 通过数为 14/1/1/15，因此 confidence 未验收，整个构建流程失败关闭。
 
+该假阳性对应 validation seed 90、frame 2。它与 train seeds 2、46 的完整在线图输入
+相同，模型的节点表示、边表示和 actor 输出也相同；外部 target 在 validation 要求 no-op，
+在两个 train 样本中要求 transfer。设在线输入为 \(g\)，confidence 标签为 \(y\)，数据
+同时包含
+
+\[
+(g,y=1),\qquad(g,y=0).
+\]
+
+任意确定性在线置信函数 \(c(g)\) 对两条记录输出相同。调整类别权重、损失形式或训练轮数
+不能同时满足两种标签。扫描全部 180 个 confidence epoch 也没有出现满足固定门的
+checkpoint。
+
+为防止模型偶然过门，v4 对 TRAIN 中 confidence forward 实际消费的张量生成内容指纹
+
+\[
+k(g)=H(\mathcal{A},X_V,X_E,A,S,D),
+\]
+
+其中 \(\mathcal{A}\) 是固定图网络架构，\(X_V\) 和 \(X_E\) 是节点与边特征，\(A\) 是
+边索引，\(S\) 和 \(D\) 是三个张量的 shape 与 dtype。节点名称、边名称和 edge reference
+等身份元数据不进入 forward，也不进入指纹。指纹同样不含 seed、episode、target、来源
+身份或未来结果。相同指纹同时出现正、负标签时，数据集在当前模型输入下不可辨识。组合
+数据的 350 条 TRAIN confidence 记录形成
+229 个指纹，其中 10 个冲突指纹覆盖 22 条记录（12 正、10 负）。审计内容摘要为
+`d8a844c6...0825`，validation/test 标签使用数为 0。
+
+该门不会删除冲突样本，也不会把 target 注入模型特征。冲突数据继续完成固定诊断计数后
+失败关闭。后续数据必须统一同键 target，或显式增加真实运行时可获得、能够决定
+transfer/no-op 的上下文；不能使用 seed 或 episode 身份修补标签。
+
 这些结果只证明类别平衡机制可以使 actor 摆脱全 no-op，并证明置信门仍能阻断不合格模型。
 它们不构成 clean candidate、登记、D3 后继、D6 非退化或收益证据。v4 的生产权限继续为
 false，v3 不受影响。
