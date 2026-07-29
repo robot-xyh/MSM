@@ -10,7 +10,9 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from hashlib import sha256
+import importlib
 import json
+from math import isfinite
 from pathlib import Path
 from typing import Any
 
@@ -41,10 +43,24 @@ CANONICAL_SEED_SOURCE_REFERENCE_SCHEMA_VERSION = (
 D5_G1_MODEL_SOURCE_REFERENCE_SCHEMA_VERSION = (
     "d6.learning-run-d5-g1-model-source-reference.v1"
 )
+D4_A2_CURRENT_LINEAGE_MODEL_SOURCE_REFERENCE_SCHEMA_VERSION = (
+    "d6.learning-run-d4-a2-current-lineage-model-source-reference.v1"
+)
+D4_A2_RUNTIME_DISTRIBUTION_SOURCE_REFERENCE_SCHEMA_VERSION = (
+    "d6.learning-run-d4-a2-runtime-distribution-source-reference.v1"
+)
 LEARNING_RUN_SUPPORTED_SOURCE_SCHEMAS = {
-    "model_source": frozenset({D5_G1_MODEL_SOURCE_REFERENCE_SCHEMA_VERSION}),
+    "model_source": frozenset(
+        {
+            D4_A2_CURRENT_LINEAGE_MODEL_SOURCE_REFERENCE_SCHEMA_VERSION,
+            D5_G1_MODEL_SOURCE_REFERENCE_SCHEMA_VERSION,
+        }
+    ),
     "frozen_unseen_seeds": frozenset(
         {CANONICAL_SEED_SOURCE_REFERENCE_SCHEMA_VERSION}
+    ),
+    "runtime_distribution_compatible": frozenset(
+        {D4_A2_RUNTIME_DISTRIBUTION_SOURCE_REFERENCE_SCHEMA_VERSION}
     ),
     "identifiable_adoption": frozenset(),
     "runtime_ack": frozenset(),
@@ -58,6 +74,12 @@ LEARNING_RUN_SUPPORTED_SOURCE_SCHEMAS = {
 
 _MODEL_SOURCE_REFERENCE_FIELDS = frozenset(
     {"schema_version", "variant", "component_references", "content_sha256"}
+)
+_D4_A2_MODEL_SOURCE_REFERENCE_FIELDS = frozenset(
+    {"schema_version", "variant", "candidate_manifest", "content_sha256"}
+)
+_D4_A2_RUNTIME_DISTRIBUTION_REFERENCE_FIELDS = frozenset(
+    {"schema_version", "variant", "shadow_records", "content_sha256"}
 )
 _MODEL_SOURCE_REQUIRED_COMPONENTS = {
     "G1": frozenset({"d5_graph"}),
@@ -134,6 +156,68 @@ _D5_G1_AUTHORITY_FIELDS = frozenset(
         "assignment_authority_granted",
         "failover_authority_granted",
         "control_authority_granted",
+    }
+)
+
+_D4_A2_CANDIDATE_ARTIFACT_SHA256 = {
+    "bundle/manifest.json": (
+        "d9fcdb348b3de8fd139b5052a4e7123a48641975cc7dcc708701a2a72ff7ab00"
+    ),
+    "bundle/state_dict.pt": (
+        "fd1b9c4cf7580083fadc04a70b87aa6439930eba764a970279611ccc57f30047"
+    ),
+    "bundle/training_dataset_manifest.json": (
+        "82819c2470505e61da753d0d24ddf910e154435cd8d2cbd0a979dfb3dd643904"
+    ),
+    "dataset_summary.json": (
+        "2ca394f7673d794cf03627ef4595c3c4c3650687829d760f1305dc8c08d1af26"
+    ),
+    "source_implementation_summary.json": (
+        "d4d678a3f1625e01999dde819641c57a7f29a0055b992cf7c0e8677f268ad9a7"
+    ),
+    "training_config.json": (
+        "a534c9ae4bd4b53613f5618d51d74e66823de31082b71f3c2618069bbc5cd3ce"
+    ),
+    "training_summary.json": (
+        "0fccf4ba2d5323ee6ead0043360c1d902680dc527d0bf2b3ffb24bc45b48402d"
+    ),
+}
+_D4_A2_TRUSTED_MODEL_SOURCE = {
+    "variant": "A2",
+    "candidate_id": "region_resource_a2_current_lineage_development_v1",
+    "model_version": "d4-region-a2-current-lineage-development-v1",
+    "candidate_manifest_file_sha256": (
+        "7cc10ad770bd95fcb813dbf3d16b17040ec5f41f80fe0dc53e3e291a32f4de64"
+    ),
+    "candidate_manifest_content_sha256": (
+        "b51f2ed01d7f8b963166fe1d7e73acd6a481c5359d54ed5c3712371733aa6ba9"
+    ),
+    "model_state_sha256": (
+        "fd1b9c4cf7580083fadc04a70b87aa6439930eba764a970279611ccc57f30047"
+    ),
+    "source_git_commit": "b0d498d9e76e19e9045e127b6dae26ea164b3fa4",
+    "source_git_tree": "8e62257a078d85cc40f62b3f5a8238f9f24079af",
+    "source_identity_sha256": (
+        "b81780cece11c792acb3113af2d4be48a19b51c0337a67c926b388197d09dfdf"
+    ),
+    "source_implementation_sha256": (
+        "bcdc7b3cfaea513afabcfae8ffaeb9af130e80e1e5c0beb3adadc2cce0061c2a"
+    ),
+    "lifecycle_stage": "development",
+    "maximum_advisor_mode": "shadow",
+    "artifact_sha256": _D4_A2_CANDIDATE_ARTIFACT_SHA256,
+}
+_D4_A2_PERMISSION_FIELDS = frozenset(
+    {
+        "a2_admitted",
+        "actual_adoption_claimed",
+        "assignment_enabled",
+        "assist_enabled",
+        "authority_enabled",
+        "benefit_claimed",
+        "coalition_commit_enabled",
+        "control_enabled",
+        "takeover_enabled",
     }
 )
 
@@ -312,13 +396,556 @@ def load_learning_run_source_evidence_bytes(
             artifact_root=Path(artifact_root),
             expected_variant=expected_variant,
         )
+    if schema == D4_A2_CURRENT_LINEAGE_MODEL_SOURCE_REFERENCE_SCHEMA_VERSION:
+        return _load_d4_a2_current_lineage_model_source(
+            data,
+            artifact_root=Path(artifact_root),
+            expected_variant=expected_variant,
+        )
     if schema == CANONICAL_SEED_SOURCE_REFERENCE_SCHEMA_VERSION:
         return _load_canonical_seed_source(
             data,
             artifact_root=Path(artifact_root),
             expected_variant=expected_variant,
         )
+    if schema == D4_A2_RUNTIME_DISTRIBUTION_SOURCE_REFERENCE_SCHEMA_VERSION:
+        return _load_d4_a2_runtime_distribution_source(
+            data,
+            artifact_root=Path(artifact_root),
+            expected_variant=expected_variant,
+        )
     _fail("gate_source_schema_unsupported", schema)
+
+
+def _load_d4_a2_current_lineage_model_source(
+    data: bytes,
+    *,
+    artifact_root: Path,
+    expected_variant: str,
+) -> dict[str, Any]:
+    payload = _json_object(data)
+    _exact(
+        payload,
+        _D4_A2_MODEL_SOURCE_REFERENCE_FIELDS,
+        "d4_a2_model_source_reference",
+    )
+    if (
+        payload["schema_version"]
+        != D4_A2_CURRENT_LINEAGE_MODEL_SOURCE_REFERENCE_SCHEMA_VERSION
+    ):
+        _fail("gate_source_schema_unsupported", payload["schema_version"])
+    variant = _text(payload["variant"], "variant")
+    if variant != expected_variant:
+        _fail("gate_source_variant_mismatch", f"{variant}!={expected_variant}")
+    if variant != "A2":
+        _fail("d4_a2_model_source_variant_unsupported", variant)
+    reference = _normalize_reference(
+        payload["candidate_manifest"],
+        context="candidate_manifest",
+    )
+    body = {
+        "schema_version": payload["schema_version"],
+        "variant": variant,
+        "candidate_manifest": reference,
+    }
+    claimed_content = _sha256_text(
+        payload["content_sha256"],
+        "content_sha256",
+    )
+    if _canonical_sha256(body) != claimed_content:
+        _fail("gate_source_content_sha256_mismatch")
+
+    anchor = _D4_A2_TRUSTED_MODEL_SOURCE
+    if (
+        reference["file_sha256"]
+        != anchor["candidate_manifest_file_sha256"]
+    ):
+        _fail("d4_a2_model_source_trust_anchor_mismatch", "candidate_manifest")
+    root = _resolve_artifact_root(artifact_root)
+    manifest_path = _resolve_and_verify(
+        root,
+        reference,
+        label="candidate_manifest",
+    )
+    candidate_root = manifest_path.parent
+    if candidate_root.name != anchor["candidate_id"]:
+        _fail("d4_a2_candidate_directory_identity_mismatch")
+
+    candidate_module = _import_d4_module(
+        "region_resource_current_lineage_candidate"
+    )
+    learning_module = _import_d4_module("region_resource_learning")
+    try:
+        manifest = (
+            candidate_module
+            .load_region_resource_current_lineage_candidate_manifest(
+                candidate_root,
+                expected_manifest_file_sha256=reference["file_sha256"],
+            )
+        )
+    except (OSError, TypeError, ValueError, RuntimeError) as exc:
+        _fail(
+            "d4_a2_candidate_manifest_rejected",
+            type(exc).__name__,
+        )
+    _validate_d4_a2_manifest(manifest, anchor=anchor)
+
+    source_path = candidate_root / "source_implementation_summary.json"
+    try:
+        source_summary = (
+            candidate_module.RegionResourceCurrentLineageSourceSummary
+            .from_mapping(_json_object(source_path.read_bytes()))
+        )
+    except (OSError, TypeError, ValueError) as exc:
+        _fail("d4_a2_source_summary_rejected", type(exc).__name__)
+    if (
+        source_summary.git_commit != anchor["source_git_commit"]
+        or source_summary.git_tree != anchor["source_git_tree"]
+        or source_summary.source_identity_sha256
+        != anchor["source_identity_sha256"]
+        or source_summary.implementation_sha256
+        != anchor["source_implementation_sha256"]
+        or source_summary.worktree_clean is not True
+        or source_summary.dirty_entry_count != 0
+    ):
+        _fail("d4_a2_source_lineage_mismatch")
+
+    try:
+        bundle = learning_module.load_region_resource_model_bundle(
+            candidate_root / "bundle",
+            expected_model_version=anchor["model_version"],
+            expected_state_dict_sha256=anchor["model_state_sha256"],
+            map_location="cpu",
+            require_training_dataset_manifest=True,
+        )
+    except (OSError, TypeError, ValueError, RuntimeError) as exc:
+        _fail("d4_a2_model_bundle_not_loadable", type(exc).__name__)
+    _validate_d4_a2_loaded_bundle(bundle, manifest=manifest, anchor=anchor)
+    _validate_d4_a2_raw_summaries(candidate_root, manifest=manifest)
+
+    # Re-hash every bound artifact after parser and model-loader execution.
+    _verify_file_sha256(
+        manifest_path,
+        anchor["candidate_manifest_file_sha256"],
+        "candidate_manifest",
+    )
+    for relative, expected_sha in anchor["artifact_sha256"].items():
+        _verify_file_sha256(
+            candidate_root / relative,
+            expected_sha,
+            f"candidate_artifact.{relative}",
+        )
+
+    return {
+        "source_class": "formal_current_lineage_source_audit",
+        "source_schema_version": (
+            D4_A2_CURRENT_LINEAGE_MODEL_SOURCE_REFERENCE_SCHEMA_VERSION
+        ),
+        "source_content_sha256": claimed_content,
+        "formal": True,
+        "facts": {
+            "component_ids": ["d4"],
+            "audit_passed": True,
+            "model_identity": f"sha256:{anchor['model_state_sha256']}",
+        },
+    }
+
+
+def _validate_d4_a2_manifest(
+    manifest: Any,
+    *,
+    anchor: Mapping[str, Any],
+) -> None:
+    if (
+        manifest.candidate_id != anchor["candidate_id"]
+        or manifest.model_version != anchor["model_version"]
+        or manifest.content_sha256
+        != anchor["candidate_manifest_content_sha256"]
+        or manifest.model_state_sha256 != anchor["model_state_sha256"]
+        or manifest.source_identity_sha256
+        != anchor["source_identity_sha256"]
+        or manifest.lifecycle_stage != anchor["lifecycle_stage"]
+        or manifest.maximum_advisor_mode != anchor["maximum_advisor_mode"]
+        or manifest.development_shadow_candidate is not True
+        or manifest.formal_holdout_evaluated is not False
+        or dict(manifest.artifact_files) != anchor["artifact_sha256"]
+    ):
+        _fail("d4_a2_candidate_manifest_trust_anchor_mismatch")
+    split = manifest.split_usage
+    if (
+        split.training_split != "train"
+        or split.selection_split != "validation"
+        or split.train_payload_read_count <= 0
+        or split.validation_payload_read_count <= 0
+        or split.test_payload_read_count != 0
+        or split.calibration_seed_use_count != 0
+        or split.reserved_seed_use_count != 0
+        or not split.train_seeds
+        or not split.validation_seeds
+        or not split.untouched_test_seeds
+        or len(split.reserved_evaluation_seeds) != 20
+    ):
+        _fail("d4_a2_candidate_split_boundary_mismatch")
+    catalogs = (
+        set(split.train_seeds),
+        set(split.validation_seeds),
+        set(split.untouched_test_seeds),
+        set(split.reserved_evaluation_seeds),
+    )
+    if any(
+        catalogs[left] & catalogs[right]
+        for left in range(len(catalogs))
+        for right in range(left + 1, len(catalogs))
+    ):
+        _fail("d4_a2_candidate_split_overlap")
+    permissions = manifest.permissions.to_dict()
+    if (
+        set(permissions) != set(_D4_A2_PERMISSION_FIELDS)
+        or any(value is not False for value in permissions.values())
+    ):
+        _fail("d4_a2_candidate_permission_escalation")
+
+
+def _validate_d4_a2_loaded_bundle(
+    bundle: Any,
+    *,
+    manifest: Any,
+    anchor: Mapping[str, Any],
+) -> None:
+    bundle_manifest = bundle.manifest
+    if (
+        bundle_manifest.model_version != anchor["model_version"]
+        or bundle_manifest.state_dict_sha256 != anchor["model_state_sha256"]
+        or bundle_manifest.lifecycle_stage != anchor["lifecycle_stage"]
+        or bundle_manifest.maximum_advisor_mode
+        != anchor["maximum_advisor_mode"]
+        or bundle_manifest.assist_admitted
+        or bundle_manifest.strategy_capability_claim_allowed
+        or bundle_manifest.reward_evidence_available
+        or bundle_manifest.final_holdout_seed_count != 0
+    ):
+        _fail("d4_a2_model_bundle_boundary_mismatch")
+    embedded = bundle.training_dataset_manifest
+    if (
+        embedded is None
+        or embedded.dataset_sha256 != manifest.dataset_sha256
+        or embedded.split.split_sha256 != manifest.dataset_split_sha256
+    ):
+        _fail("d4_a2_model_bundle_dataset_binding_mismatch")
+    try:
+        parameters = tuple(bundle.model.parameters())
+        finite = all(
+            bool(parameter.detach().isfinite().all().item())
+            for parameter in parameters
+        )
+    except (AttributeError, RuntimeError, TypeError) as exc:
+        _fail("d4_a2_model_parameter_review_failed", type(exc).__name__)
+    if not parameters or not finite:
+        _fail("d4_a2_model_parameters_nonfinite_or_empty")
+
+
+def _validate_d4_a2_raw_summaries(
+    candidate_root: Path,
+    *,
+    manifest: Any,
+) -> None:
+    dataset = _json_object(
+        (candidate_root / "dataset_summary.json").read_bytes()
+    )
+    training = _json_object(
+        (candidate_root / "training_summary.json").read_bytes()
+    )
+    config = _json_object(
+        (candidate_root / "training_config.json").read_bytes()
+    )
+    if (
+        dataset.get("dataset_sha256") != manifest.dataset_sha256
+        or dataset.get("dataset_split_sha256")
+        != manifest.dataset_split_sha256
+        or dataset.get("truth_identifier_use_count") != 0
+        or dataset.get("test_payload_verified_during_build") is not False
+        or dataset.get("formal_holdout_evaluated") is not False
+    ):
+        _fail("d4_a2_dataset_summary_boundary_mismatch")
+    split_usage = _mapping(dataset.get("split_usage"), "dataset.split_usage")
+    if (
+        split_usage.get("test_payload_read_count") != 0
+        or split_usage.get("calibration_seed_use_count") != 0
+        or split_usage.get("reserved_seed_use_count") != 0
+    ):
+        _fail("d4_a2_dataset_split_usage_mismatch")
+    training_permissions = _mapping(
+        training.get("permissions"),
+        "training.permissions",
+    )
+    if (
+        set(training_permissions) != set(_D4_A2_PERMISSION_FIELDS)
+        or any(value is not False for value in training_permissions.values())
+        or training.get("lifecycle_stage") != "development"
+        or training.get("maximum_advisor_mode") != "shadow"
+        or training.get("formal_holdout_evaluated") is not False
+        or training.get("model_parameters_finite") is not True
+        or training.get("test_sample_count") != 0
+        or training.get("reserved_evaluation_sample_count") != 0
+        or training.get("calibration_sample_count") != 0
+    ):
+        _fail("d4_a2_training_summary_boundary_mismatch")
+    validation = _mapping(
+        training.get("validation_output_review"),
+        "training.validation_output_review",
+    )
+    if (
+        validation.get("sample_count") != manifest.validation_sample_count
+        or validation.get("nonfinite_output_count") != 0
+        or not all(
+            isfinite(float(validation[name]))
+            for name in ("confidence_min", "confidence_max")
+        )
+    ):
+        _fail("d4_a2_validation_output_review_mismatch")
+    if (
+        config.get("candidate_id") != manifest.candidate_id
+        or config.get("model_version") != manifest.model_version
+        or config.get("config_sha256") != manifest.config_sha256
+    ):
+        _fail("d4_a2_training_config_binding_mismatch")
+
+
+def _import_d4_module(name: str) -> Any:
+    candidates = (
+        f"d4_distributed_fallback.{name}",
+        (
+            "research_modules.d4_distributed_fallback."
+            f"d4_distributed_fallback.{name}"
+        ),
+    )
+    failures: list[str] = []
+    for module_name in candidates:
+        try:
+            return importlib.import_module(module_name)
+        except ModuleNotFoundError as exc:
+            missing = exc.name or ""
+            if not (
+                missing == module_name
+                or module_name.startswith(f"{missing}.")
+            ):
+                _fail("d4_a2_public_module_import_failed", missing)
+            failures.append(module_name)
+    _fail("d4_a2_public_module_unavailable", ",".join(failures))
+
+
+def _load_d4_a2_runtime_distribution_source(
+    data: bytes,
+    *,
+    artifact_root: Path,
+    expected_variant: str,
+) -> dict[str, Any]:
+    payload = _json_object(data)
+    _exact(
+        payload,
+        _D4_A2_RUNTIME_DISTRIBUTION_REFERENCE_FIELDS,
+        "d4_a2_runtime_distribution_reference",
+    )
+    if (
+        payload["schema_version"]
+        != D4_A2_RUNTIME_DISTRIBUTION_SOURCE_REFERENCE_SCHEMA_VERSION
+    ):
+        _fail("gate_source_schema_unsupported", payload["schema_version"])
+    variant = _text(payload["variant"], "variant")
+    if variant != expected_variant:
+        _fail("gate_source_variant_mismatch", f"{variant}!={expected_variant}")
+    if variant != "A2":
+        _fail("d4_a2_runtime_distribution_variant_unsupported", variant)
+    reference = _normalize_reference(
+        payload["shadow_records"],
+        context="shadow_records",
+    )
+    body = {
+        "schema_version": payload["schema_version"],
+        "variant": variant,
+        "shadow_records": reference,
+    }
+    claimed_content = _sha256_text(
+        payload["content_sha256"],
+        "content_sha256",
+    )
+    if _canonical_sha256(body) != claimed_content:
+        _fail("gate_source_content_sha256_mismatch")
+
+    root = _resolve_artifact_root(artifact_root)
+    records_path = _resolve_and_verify(
+        root,
+        reference,
+        label="shadow_records",
+    )
+    records = _load_d4_a2_shadow_records(records_path)
+    facts = _summarize_d4_a2_runtime_distribution(records)
+    _verify_file_sha256(
+        records_path,
+        reference["file_sha256"],
+        "shadow_records",
+    )
+    return {
+        "source_class": "persisted_current_lineage_runtime_distribution",
+        "source_schema_version": (
+            D4_A2_RUNTIME_DISTRIBUTION_SOURCE_REFERENCE_SCHEMA_VERSION
+        ),
+        "source_content_sha256": claimed_content,
+        "formal": True,
+        "facts": facts,
+    }
+
+
+def _load_d4_a2_shadow_records(path: Path) -> tuple[Any, ...]:
+    shadow_module = _import_d4_module(
+        "region_resource_current_lineage_shadow"
+    )
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeError) as exc:
+        _fail("d4_a2_shadow_records_unavailable", type(exc).__name__)
+    if not lines:
+        _fail("d4_a2_shadow_records_empty")
+    parsed: list[Any] = []
+    for line_number, line in enumerate(lines, start=1):
+        if not line.strip():
+            _fail(
+                "d4_a2_shadow_record_blank_line",
+                str(line_number),
+            )
+        try:
+            value = json.loads(
+                line,
+                parse_constant=_reject_json_constant,
+            )
+            if not isinstance(value, Mapping):
+                _fail(
+                    "d4_a2_shadow_record_mapping_required",
+                    str(line_number),
+                )
+            record = (
+                shadow_module.RegionResourceCurrentLineageShadowRecord
+                .from_mapping(value)
+            )
+        except LearningRunSourceAdapterError:
+            raise
+        except (TypeError, ValueError, json.JSONDecodeError) as exc:
+            _fail(
+                "d4_a2_shadow_record_rejected",
+                f"{line_number}:{type(exc).__name__}",
+            )
+        _validate_d4_a2_shadow_binding(record)
+        parsed.append(record)
+    record_ids = [str(item.record_id) for item in parsed]
+    frame_keys = [
+        (
+            str(item.input_summary.episode_id),
+            int(item.input_summary.frame_index),
+        )
+        for item in parsed
+    ]
+    if len(record_ids) != len(set(record_ids)):
+        _fail("d4_a2_shadow_record_duplicate")
+    if len(frame_keys) != len(set(frame_keys)):
+        _fail("d4_a2_shadow_frame_duplicate")
+    return tuple(parsed)
+
+
+def _validate_d4_a2_shadow_binding(record: Any) -> None:
+    anchor = _D4_A2_TRUSTED_MODEL_SOURCE
+    binding = record.candidate_binding
+    if (
+        binding.candidate_id != anchor["candidate_id"]
+        or binding.model_version != anchor["model_version"]
+        or binding.source_git_commit != anchor["source_git_commit"]
+        or binding.source_identity_sha256
+        != anchor["source_identity_sha256"]
+        or binding.candidate_manifest_file_sha256
+        != anchor["candidate_manifest_file_sha256"]
+        or binding.candidate_manifest_content_sha256
+        != anchor["candidate_manifest_content_sha256"]
+        or binding.bundle_manifest_sha256
+        != anchor["artifact_sha256"]["bundle/manifest.json"]
+        or binding.model_state_sha256 != anchor["model_state_sha256"]
+    ):
+        _fail("d4_a2_shadow_candidate_binding_mismatch")
+    permissions = record.permissions.to_dict()
+    if any(
+        value is not False
+        for name, value in permissions.items()
+        if name != "schema"
+    ):
+        _fail("d4_a2_shadow_permission_escalation")
+    if (
+        record.candidate_executed
+        or record.execution_source != "deterministic_rule_fallback"
+        or record.rule_fallback_required is not True
+    ):
+        _fail("d4_a2_shadow_execution_boundary_crossed")
+
+
+def _summarize_d4_a2_runtime_distribution(
+    records: tuple[Any, ...],
+) -> dict[str, Any]:
+    by_seed: dict[int, list[Any]] = {}
+    for record in records:
+        by_seed.setdefault(int(record.input_summary.seed), []).append(record)
+    aggregate = _summarize_d4_a2_runtime_distribution_group(records)
+    binding_ids = {
+        str(record.candidate_binding.binding_sha256) for record in records
+    }
+    if len(binding_ids) != 1:
+        _fail("d4_a2_shadow_candidate_binding_mixed")
+    aggregate["candidate_binding_sha256"] = next(iter(binding_ids))
+    aggregate["seed_diagnostics"] = {
+        str(seed): _summarize_d4_a2_runtime_distribution_group(tuple(items))
+        for seed, items in sorted(by_seed.items())
+    }
+    return aggregate
+
+
+def _summarize_d4_a2_runtime_distribution_group(
+    records: tuple[Any, ...],
+) -> dict[str, Any]:
+    feature_counts: dict[str, int] = {}
+    feature_ood_count = 0
+    compatible_count = 0
+    model_action_count = 0
+    rule_fallback_count = 0
+    for record in records:
+        diagnostic = record.ood_diagnostic
+        if diagnostic.feature_ood:
+            feature_ood_count += 1
+        else:
+            compatible_count += 1
+        for name, count in diagnostic.feature_violation_counts.items():
+            key = str(name)
+            feature_counts[key] = feature_counts.get(key, 0) + int(count)
+        action_available = bool(
+            not diagnostic.feature_ood
+            and record.candidate_gate.gate_pass
+            and record.projection_structurally_valid
+            and record.identifiable_nonzero
+            and record.intervention_fields
+        )
+        model_action_count += int(action_available)
+        rule_fallback_count += int(
+            record.execution_source == "deterministic_rule_fallback"
+            and record.rule_fallback_required
+            and not record.candidate_executed
+        )
+    sample_count = len(records)
+    return {
+        "audited_snapshot_count": sample_count,
+        "finite_record_count": sample_count,
+        "nonfinite_record_count": 0,
+        "compatible_snapshot_count": compatible_count,
+        "feature_ood_snapshot_count": feature_ood_count,
+        "model_action_count": model_action_count,
+        "missing_model_action_count": sample_count - model_action_count,
+        "rule_fallback_count": rule_fallback_count,
+        "feature_ood_counts": dict(sorted(feature_counts.items())),
+    }
 
 
 def _load_d5_g1_model_source(
@@ -1094,6 +1721,8 @@ def _fail(code: str, detail: str | None = None) -> None:
 
 __all__ = [
     "CANONICAL_SEED_SOURCE_REFERENCE_SCHEMA_VERSION",
+    "D4_A2_CURRENT_LINEAGE_MODEL_SOURCE_REFERENCE_SCHEMA_VERSION",
+    "D4_A2_RUNTIME_DISTRIBUTION_SOURCE_REFERENCE_SCHEMA_VERSION",
     "D5_G1_MODEL_SOURCE_REFERENCE_SCHEMA_VERSION",
     "LEARNING_RUN_SUPPORTED_SOURCE_SCHEMAS",
     "LearningRunSourceAdapterError",

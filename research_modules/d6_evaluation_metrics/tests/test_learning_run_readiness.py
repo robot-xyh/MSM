@@ -36,6 +36,9 @@ _SPLITS = ("train", "validation", "test")
 _UNTRUSTED_WRAPPER_SCHEMAS = {
     "model_source": "d6.learning-run-model-source-evidence.v1",
     "frozen_unseen_seeds": "d6.learning-run-frozen-seed-evidence.v1",
+    "runtime_distribution_compatible": (
+        "d6.learning-run-runtime-distribution-evidence.v1"
+    ),
     "identifiable_adoption": (
         "d6.learning-run-identifiable-adoption-evidence.v1"
     ),

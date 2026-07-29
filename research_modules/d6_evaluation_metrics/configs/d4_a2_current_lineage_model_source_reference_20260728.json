@@ -1,0 +1,9 @@
+{
+  "candidate_manifest": {
+    "file_sha256": "7cc10ad770bd95fcb813dbf3d16b17040ec5f41f80fe0dc53e3e291a32f4de64",
+    "path": "research_modules/d4_distributed_fallback/model_registry/region_resource_a2_current_lineage_development_v1/current_lineage_candidate_manifest.json"
+  },
+  "content_sha256": "525b66156362a8b59f1617d62d8c95634e45d49b7c01b7c2911657bd1ac67a9d",
+  "schema_version": "d6.learning-run-d4-a2-current-lineage-model-source-reference.v1",
+  "variant": "A2"
+}

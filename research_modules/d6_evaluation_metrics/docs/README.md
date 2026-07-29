@@ -1,11 +1,23 @@
 # D6 文档索引
 
+2026-07-28 新增 D4 A2 current-lineage 可信来源、运行分布和严格配对审计。readiness v3
+分别输出模型来源验证与运行分布兼容。分布门只检查受审样本、有限记录、feature OOD 和分母
+一致性；模型动作、no-op 和规则 fallback 作为独立 rollout 诊断，实际 treatment 继续由严格
+采用、ACK、物理窗口和 R0 建立。候选原始字节从受版本控制的 D4 `model_registry` 读取，
+不依赖 ignored `outputs/`。D6 确定性合同 fixture 的 5 资源/5 目标、2 区域、6 帧为
+6/6 OOD，只用于合同回归。main 真实预检另为 5v5/2 区域 seed 2000 的 3/3 OOD 和
+200v200/8 区域 seed 2001 的 2/2 OOD。分布内 no-op 回归通过分布门，但采用和配对收益
+unavailable。算法、结果和 GAP 分别见 `ALGORITHM_AND_IMPLEMENTATION.md`、
+`EXPERIMENT_REPORT.md` 与 `../../../subagent_reviews/D6_IMPLEMENTATION_GAP_AUDIT.md`。
+定向测试 `38 passed`，D6 全量 `1144 passed`，全部权限为 false。
+
 2026-07-28 新增 G1 `model_source` 可信适配器。reference 只列 13 项正式 D5 v5、external
 audit v2、post-assembly audit v2、held-out、paired-shadow、lineage 和校验清单的相对路径
 与 SHA-256；D6 复哈希原制品并重跑两级严格审计。显式外部根
 `/tmp/MSM-d5-g1-formal-evidence-8d5e02e-20260727` 的只读正例通过，仓库根因原制品缺失
-继续 unavailable，且不会自动发现 `/tmp`。当前可信来源 adapter 为 frozen seed 与 G1
-model-source 两类。G1 其余八门和其他变体来源仍不可用，所有权限保持 false。算法、结果和
+继续 unavailable，且不会自动发现 `/tmp`。该段形成 frozen seed 与 G1 model-source 两类
+adapter；本次顶部新增 A2 固定来源 adapter。G1 其余八门和 A1/A3 来源仍不可用，所有权限
+保持 false。算法、结果和
 GAP 分别见 `ALGORITHM_AND_IMPLEMENTATION.md`、`EXPERIMENT_REPORT.md` 与
 `../../../subagent_reviews/D6_IMPLEMENTATION_GAP_AUDIT.md`。D6 全量回归为
 `1138 passed, 1 warning in 126.65s`。

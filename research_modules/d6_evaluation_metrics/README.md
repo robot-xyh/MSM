@@ -1,5 +1,60 @@
 # D6 Evaluation Metrics
 
+## 2026-07-28 D4 A2 来源、分布、动作与采用审计
+
+D6 已为 D4 current-lineage A2 候选增加只读可信来源适配器。当前信任锚固定为 clean
+commit `b0d498d9e76e19e9045e127b6dae26ea164b3fa4`、候选清单文件 SHA-256
+`7cc10ad770bd95fcb813dbf3d16b17040ec5f41f80fe0dc53e3e291a32f4de64` 和权重
+SHA-256 `fd1b9c4cf7580083fadc04a70b87aa6439930eba764a970279611ccc57f30047`。
+reference 和测试只从受版本控制的
+`research_modules/d4_distributed_fallback/model_registry/region_resource_a2_current_lineage_development_v1/`
+读取原始字节，不再依赖被忽略的 `outputs/`。适配器重新解析清单、实现摘要和训练摘要，
+复算七项制品摘要，加载模型包，检查参数有限性、数据划分使用和全部 false 权限。通过时只得到
+`model_source_verified=true`。候选生命周期仍为 `development/shadow`。
+
+readiness 合同升级为 v3，新增独立门
+`runtime_distribution_compatible`。运行分布 reference 只引用原始 D4 shadow JSONL。
+D6 使用 D4 公共数据对象逐条复载，并按总量和 seed 重算：
+
+```text
+audited_snapshot_count
+finite_record_count / nonfinite_record_count
+compatible_snapshot_count / feature_ood_snapshot_count
+model_action_count / missing_model_action_count
+rule_fallback_count
+feature_ood_counts
+candidate_binding_sha256
+```
+
+来源、分布、影子动作和实际采用保持四层分离：
+
+1. `model_source_verified` 只验证来源、权重、实现和训练边界；
+2. `runtime_distribution_compatible` 只检查存在受审样本、记录有限、特征无 OOD 和分母一致；
+3. 模型动作、非零干预和规则回退是独立 rollout 诊断，不改变分布兼容布尔值；
+4. treatment 只由严格采用、D3 后继、ACK、物理窗口和独立 R0 证据建立。
+
+因此，分布内 no-op/hold 或规则回退可以得到
+`runtime_distribution_compatible=true`，但不能形成 treatment。D6 确定性合同 fixture 使用
+5 资源/5 目标、2 区域和 6 帧，结果为 6/6 `feature_ood`；该 fixture 的模型动作 0、规则
+回退 6 作为单独诊断保留。它不是 main 运行证据。
+
+main 实际预检另有两组：5 资源/5 目标、2 区域、seed 2000 的 3 帧为 3/3 OOD；
+200 资源/200 目标、8 区域、seed 2001 的 2 帧为 2/2 OOD。两组均说明当前候选运行分布
+不兼容，但不使用 D6 fixture 的动作和 fallback 计数。
+
+新增 `d4_a2_paired_shadow_audit.py` 和
+`scripts/run_d4_a2_paired_shadow_audit.py`。逐 seed 只有同时具备执行前冻结注册、相同外生
+配置但不同 episode/日志、可辨识非零模型干预、D3 严格后继、runtime/owner/coalition
+ACK、确认后物理窗口、truth-use=0、有限状态和完整相等指标分母，才成为可审计 treatment。
+正式聚合至少需要 20 个预注册未见 seed。规则 fallback、no-op、普通规则重规划和
+development train/validation 诊断均不能进入 treatment 或非退化分母。
+
+新增分布内 no-op/规则回退回归，验证分布门通过而 rollout 前置条件、采用和配对收益仍
+unavailable。定向测试为 `38 passed, 1 warning in 6.10s`，D6 全量为
+`1144 passed, 1 warning in 108.47s`。warning 是既有 Matplotlib `Axes3D` 环境提示。
+当前仍缺至少 20 个真正预注册未见 seed 上的兼容运行记录、非零模型动作、完整采用/ACK/
+物理窗口、独立 R0 和完整指标分母。D6 不产生准入、辅助、权属、分配、接管或控制权限。
+
 ## 2026-07-28 G1 模型来源可信适配器
 
 readiness v2 现有两类可信来源适配器：

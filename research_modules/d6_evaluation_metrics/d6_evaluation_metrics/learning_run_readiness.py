@@ -22,11 +22,11 @@ from .learning_run_source_adapters import (
 )
 
 LEARNING_RUN_READINESS_INPUT_SCHEMA_VERSION = (
-    "d6.learning-run-readiness-input.v2"
+    "d6.learning-run-readiness-input.v3"
 )
-LEARNING_RUN_READINESS_SCHEMA_VERSION = "d6.learning-run-readiness-audit.v2"
+LEARNING_RUN_READINESS_SCHEMA_VERSION = "d6.learning-run-readiness-audit.v3"
 LEARNING_RUN_READINESS_CONSUMER_SCHEMA_VERSION = (
-    "d6.learning-run-readiness-consumer.v2"
+    "d6.learning-run-readiness-consumer.v3"
 )
 LEARNING_RUN_READINESS_SCOPE = "read-only-evaluation-no-runtime-authority"
 FORMAL_RUNTIME_MINIMUM_FREE_BYTES = 20 * 1024**3
@@ -37,6 +37,7 @@ LEARNING_VARIANTS = ("G1", "A1", "A2", "A3", "C1", "F1")
 READINESS_GATES = (
     "model_source",
     "frozen_unseen_seeds",
+    "runtime_distribution_compatible",
     "identifiable_adoption",
     "runtime_ack",
     "physical_window",
@@ -48,6 +49,7 @@ READINESS_GATES = (
 )
 MODEL_GATES = ("model_source", "frozen_unseen_seeds")
 RUNTIME_EVIDENCE_GATES = (
+    "runtime_distribution_compatible",
     "identifiable_adoption",
     "runtime_ack",
     "physical_window",
@@ -71,9 +73,13 @@ _EXPECTED_SOURCE_CLASS = {
             "formal_external_audit",
             "formal_post_assembly_audit",
             "composite_formal_external_audits",
+            "formal_current_lineage_source_audit",
         }
     ),
     "frozen_unseen_seeds": frozenset({"frozen_seed_registry"}),
+    "runtime_distribution_compatible": frozenset(
+        {"persisted_current_lineage_runtime_distribution"}
+    ),
     "identifiable_adoption": frozenset(
         {"persisted_formal_runtime_adoption"}
     ),
@@ -108,6 +114,21 @@ _GATE_FACT_FIELDS = {
     ),
     "frozen_unseen_seeds": frozenset(
         {"evaluation_seed_count", "training_overlap_count", "frozen"}
+    ),
+    "runtime_distribution_compatible": frozenset(
+        {
+            "audited_snapshot_count",
+            "finite_record_count",
+            "nonfinite_record_count",
+            "compatible_snapshot_count",
+            "feature_ood_snapshot_count",
+            "model_action_count",
+            "missing_model_action_count",
+            "rule_fallback_count",
+            "feature_ood_counts",
+            "candidate_binding_sha256",
+            "seed_diagnostics",
+        }
     ),
     "identifiable_adoption": frozenset(
         {
@@ -189,6 +210,8 @@ _OUTPUT_VARIANT_FIELDS = frozenset(
         "variant",
         "required_components",
         "gates",
+        "model_source_verified",
+        "runtime_distribution_compatible",
         "model_readiness",
         "runtime_evidence_readiness",
         "formal_evidence_readiness",
@@ -482,6 +505,16 @@ def validate_learning_run_readiness_output(
                 gate,
                 context=f"readiness_output.{variant}.{gate_name}",
             )
+        for field_name in (
+            "model_source_verified",
+            "runtime_distribution_compatible",
+        ):
+            value = row[field_name]
+            if value is not None and not isinstance(value, bool):
+                _fail(
+                    "readiness_output_explicit_gate_state_invalid",
+                    f"{variant}:{field_name}",
+                )
 
         for summary_name in (
             "model_readiness",
@@ -701,16 +734,23 @@ def render_learning_run_readiness_markdown(
         "",
         "## 变体",
         "",
-        "| 变体 | 模型 | 运行证据 | 正式证据 | 外部权限 | 可启动 | 主要阻断 |",
-        "| --- | --- | --- | --- | --- | --- | --- |",
+        (
+            "| 变体 | 来源验证 | 运行分布 | 模型 | 运行证据 | 正式证据 | "
+            "外部权限 | 可启动 | 主要阻断 |"
+        ),
+        "| --- | --- | --- | --- | --- | --- | --- | --- | --- |",
     ]
     for variant in LEARNING_VARIANTS:
         row = payload["variants"][variant]
         blockers = row["blocker_codes"]
         lines.append(
-            "| {variant} | {model} | {runtime} | {formal} | {permission} | "
-            "{startable} | `{blockers}` |".format(
+            "| {variant} | {source} | {distribution} | {model} | {runtime} | "
+            "{formal} | {permission} | {startable} | `{blockers}` |".format(
                 variant=variant,
+                source=_explicit_state_text(row["model_source_verified"]),
+                distribution=_explicit_state_text(
+                    row["runtime_distribution_compatible"]
+                ),
                 model=_summary_text(row["model_readiness"], "ready"),
                 runtime=_summary_text(
                     row["runtime_evidence_readiness"], "ready"
@@ -748,6 +788,8 @@ def render_learning_run_readiness_markdown(
             "- 20 个开发 seed 只有数量，不构成冻结未见 seed 证据。",
             "- 软件合同夹具只能验证接口，不能替代实际采用、运行确认或物理窗口。",
             "- 零丢包对照只能定位通信损失，不能替代正式成对非退化证据。",
+            "- 模型来源验证不等于运行分布兼容；逐特征 OOD 和模型动作缺失分别阻断运行证据。",
+            "- 规则回退只记录为回退，不能计作模型 treatment 或非退化样本。",
             "- 磁盘不足只阻断执行，不改变模型和算法证据结论。",
             "- 所有缺项均保持 availability=false，并保留稳定原因码。",
             "",
@@ -868,6 +910,55 @@ def _validate_gate_facts(
             ),
             "frozen": _strict_bool(facts["frozen"], f"{context}.frozen"),
         }
+    if gate_name == "runtime_distribution_compatible":
+        count_payload = {
+            name: value
+            for name, value in facts.items()
+            if name != "candidate_binding_sha256"
+        }
+        normalized = _normalize_runtime_distribution_counts(
+            count_payload,
+            context=context,
+            include_seed_diagnostics=True,
+        )
+        normalized["candidate_binding_sha256"] = _sha256_text(
+            facts["candidate_binding_sha256"],
+            f"{context}.candidate_binding_sha256",
+        )
+        seed_diagnostics = normalized["seed_diagnostics"]
+        count_names = (
+            "audited_snapshot_count",
+            "finite_record_count",
+            "nonfinite_record_count",
+            "compatible_snapshot_count",
+            "feature_ood_snapshot_count",
+            "model_action_count",
+            "missing_model_action_count",
+            "rule_fallback_count",
+        )
+        if any(
+            normalized[name]
+            != sum(row[name] for row in seed_diagnostics.values())
+            for name in count_names
+        ):
+            _fail(
+                "readiness_runtime_distribution_seed_count_mismatch",
+                context,
+            )
+        aggregate_features: dict[str, int] = {}
+        for row in seed_diagnostics.values():
+            for name, count in row["feature_ood_counts"].items():
+                aggregate_features[name] = (
+                    aggregate_features.get(name, 0) + count
+                )
+        if normalized["feature_ood_counts"] != dict(
+            sorted(aggregate_features.items())
+        ):
+            _fail(
+                "readiness_runtime_distribution_seed_feature_mismatch",
+                context,
+            )
+        return normalized
     if gate_name == "identifiable_adoption":
         return {
             name: _nonnegative_int(facts[name], f"{context}.{name}")
@@ -1023,6 +1114,108 @@ def _validate_storage_input(value: Any) -> dict[str, Any]:
     }
 
 
+def _normalize_runtime_distribution_counts(
+    value: Mapping[str, Any],
+    *,
+    context: str,
+    include_seed_diagnostics: bool,
+) -> dict[str, Any]:
+    count_names = (
+        "audited_snapshot_count",
+        "finite_record_count",
+        "nonfinite_record_count",
+        "compatible_snapshot_count",
+        "feature_ood_snapshot_count",
+        "model_action_count",
+        "missing_model_action_count",
+        "rule_fallback_count",
+    )
+    expected = set(count_names) | {"feature_ood_counts"}
+    if include_seed_diagnostics:
+        expected.add("seed_diagnostics")
+    _expect_exact_fields(value, frozenset(expected), context)
+    feature_counts = _mapping(
+        value["feature_ood_counts"],
+        f"{context}.feature_ood_counts",
+    )
+    normalized_features = {
+        _text(name, f"{context}.feature_ood_counts.key"): (
+            _nonnegative_int(
+                count,
+                f"{context}.feature_ood_counts.{name}",
+            )
+        )
+        for name, count in sorted(feature_counts.items())
+    }
+    if any(count <= 0 for count in normalized_features.values()):
+        _fail(
+            "readiness_runtime_distribution_feature_count_invalid",
+            context,
+        )
+    result: dict[str, Any] = {
+        name: _nonnegative_int(value[name], f"{context}.{name}")
+        for name in count_names
+    }
+    if (
+        result["model_action_count"]
+        + result["missing_model_action_count"]
+        != result["audited_snapshot_count"]
+    ):
+        _fail(
+            "readiness_runtime_rollout_action_denominator_mismatch",
+            context,
+        )
+    if result["rule_fallback_count"] > result["audited_snapshot_count"]:
+        _fail(
+            "readiness_runtime_rollout_fallback_denominator_mismatch",
+            context,
+        )
+    result["feature_ood_counts"] = normalized_features
+    if include_seed_diagnostics:
+        raw_seeds = _mapping(
+            value["seed_diagnostics"],
+            f"{context}.seed_diagnostics",
+        )
+        if not raw_seeds:
+            _fail(
+                "readiness_runtime_distribution_seed_diagnostics_empty",
+                context,
+            )
+        normalized_seeds: dict[str, Any] = {}
+        for raw_seed, row in sorted(
+            raw_seeds.items(),
+            key=lambda item: str(item[0]),
+        ):
+            seed_text = _text(
+                raw_seed,
+                f"{context}.seed_diagnostics.key",
+            )
+            try:
+                seed = int(seed_text)
+            except ValueError:
+                _fail(
+                    "readiness_runtime_distribution_seed_invalid",
+                    seed_text,
+                )
+            if seed < 0 or str(seed) != seed_text:
+                _fail(
+                    "readiness_runtime_distribution_seed_invalid",
+                    seed_text,
+                )
+            normalized_seeds[seed_text] = (
+                _normalize_runtime_distribution_counts(
+                    _mapping(
+                        row,
+                        f"{context}.seed_diagnostics.{seed_text}",
+                    ),
+                    context=f"{context}.seed_diagnostics.{seed_text}",
+                    include_seed_diagnostics=False,
+                )
+            )
+        result["seed_diagnostics"] = normalized_seeds
+    return result
+
+
 def _audit_variant(
     variant: str,
     row: Mapping[str, Any],
@@ -1062,6 +1255,16 @@ def _audit_variant(
         "variant": variant,
         "required_components": sorted(_REQUIRED_COMPONENTS[variant]),
         "gates": gates,
+        "model_source_verified": (
+            gates["model_source"]["passed"]
+            if gates["model_source"]["availability"]
+            else None
+        ),
+        "runtime_distribution_compatible": (
+            gates["runtime_distribution_compatible"]["passed"]
+            if gates["runtime_distribution_compatible"]["availability"]
+            else None
+        ),
         "model_readiness": model,
         "runtime_evidence_readiness": runtime,
         "formal_evidence_readiness": formal,
@@ -1318,6 +1521,30 @@ def _fact_blockers(
             reasons.append(f"{prefix}_frozen_unseen_seed_count_below_20")
         if facts["training_overlap_count"] != 0:
             reasons.append(f"{prefix}_training_evaluation_seed_overlap")
+    elif gate_name == "runtime_distribution_compatible":
+        audited = facts["audited_snapshot_count"]
+        finite_records = facts["finite_record_count"]
+        nonfinite_records = facts["nonfinite_record_count"]
+        compatible = facts["compatible_snapshot_count"]
+        feature_ood = facts["feature_ood_snapshot_count"]
+        if audited <= 0:
+            reasons.append(f"{prefix}_runtime_distribution_audit_empty")
+        if finite_records + nonfinite_records != audited:
+            reasons.append(
+                f"{prefix}_runtime_finite_record_denominator_mismatch"
+            )
+        if nonfinite_records > 0:
+            reasons.append(f"{prefix}_runtime_nonfinite_record")
+        if compatible + feature_ood != audited:
+            reasons.append(
+                f"{prefix}_runtime_distribution_snapshot_denominator_mismatch"
+            )
+        if feature_ood > 0:
+            reasons.append(f"{prefix}_runtime_feature_ood")
+            reasons.extend(
+                f"{prefix}_runtime_feature_ood.{feature_name}"
+                for feature_name in sorted(facts["feature_ood_counts"])
+            )
     elif gate_name == "identifiable_adoption":
         components = set(facts["adopted_component_ids"])
         if facts["actual_adoption_count"] <= 0:
@@ -1562,6 +1789,12 @@ def _summary_text(summary: Mapping[str, Any], field: str) -> str:
     if not summary.get("availability"):
         return "不可用"
     return "通过" if summary.get(field) is True else "拒绝"
+
+
+def _explicit_state_text(value: bool | None) -> str:
+    if value is None:
+        return "不可用"
+    return "通过" if value else "拒绝"
 
 
 def _gate_text(gate: Mapping[str, Any]) -> str:
@@ -1821,6 +2054,29 @@ def _validate_output_variant_semantics(
         row["gates"],
         f"readiness_output.{variant}.gates",
     )
+    expected_model_source_verified = (
+        gates["model_source"]["passed"]
+        if gates["model_source"]["availability"]
+        else None
+    )
+    expected_runtime_distribution = (
+        gates["runtime_distribution_compatible"]["passed"]
+        if gates["runtime_distribution_compatible"]["availability"]
+        else None
+    )
+    if row["model_source_verified"] is not expected_model_source_verified:
+        _fail(
+            "readiness_output_model_source_state_mismatch",
+            variant,
+        )
+    if (
+        row["runtime_distribution_compatible"]
+        is not expected_runtime_distribution
+    ):
+        _fail(
+            "readiness_output_runtime_distribution_state_mismatch",
+            variant,
+        )
     expected_summaries = {
         "model_readiness": _summarize_gates(gates, MODEL_GATES),
         "runtime_evidence_readiness": _summarize_gates(

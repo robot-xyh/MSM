@@ -1,5 +1,46 @@
 # D6 实现差距审计
 
+## 2026-07-28 D4 A2 current-lineage 来源与配对
+
+### 已关闭的 D6-owned 缺口
+
+1. A2 已有可信 model-source adapter。D6 从固定 current-lineage 候选原始制品重算
+   commit/tree、七项文件摘要、split 使用、模型可加载性、参数有限性和 false 权限。固定
+   权重摘要为
+   `fd1b9c4cf7580083fadc04a70b87aa6439930eba764a970279611ccc57f30047`。
+   reference 与测试现只读取受版本控制的 D4 `model_registry`，不依赖 ignored `outputs/`。
+2. readiness 已升为 v3，分别输出 `model_source_verified` 和
+   `runtime_distribution_compatible`。运行分布事实从原始 D4 shadow JSONL 按总量和 seed
+   重算。
+3. 已修正来源、分布、影子动作、实际采用四层语义。分布兼容只由受审样本、有限记录、
+   feature OOD 和分母一致性决定。动作缺失和规则回退不再改变分布兼容布尔值。
+4. 模型动作、非零干预和 fallback 保留为 rollout 诊断。没有可辨识非零动作时，严格配对
+   仍输出 treatment 0 和 paired readiness unavailable。
+5. A2/R0 配对 consumer 已审计冻结注册、同配置异 episode/日志、D3 successor、runtime/
+   owner/coalition ACK、确认后物理窗口、truth-use=0、有限状态和完整相等分母。
+6. 分布内 no-op/规则回退回归通过：distribution compatible 为 true，rollout 前置条件和
+   treatment 为 false。D6 确定性 5v5/2 区域/6 帧 fixture 的 6/6 OOD 仍按分布不兼容
+   拒绝，且不作为 main 运行证据。
+7. 定向测试 `38 passed, 1 warning in 6.10s`；D6 全量
+   `1144 passed, 1 warning in 108.47s`。全部权限保持 false。
+
+### 当前 P1
+
+1. main 实际预检中，5 资源/5 目标、2 区域、seed 2000 为 3/3 OOD；200 资源/200 目标、
+   8 区域、seed 2001 为 2/2 OOD。来源可信不等于当前运行分布兼容。
+2. 仍缺至少 20 个执行前冻结注册的真正未见 seed。每个 seed 需要 candidate 原始 shadow
+   记录和独立 R0。
+3. 仍缺兼容分布上的可辨识非零模型动作。分布内 no-op 合法，但不能创建 treatment。
+4. 仍缺同一干预链中的 D3 strict successor、runtime/owner/coalition ACK 和确认后物理
+   窗口。
+5. 仍缺 candidate/R0 完整指标分子、分母、方向和容差。分母缺失或不相等时非退化保持
+   unavailable。
+6. 当前 A2 adapter 只接受这一固定候选。更换模型必须显式更新信任锚并重新审计，不能由
+   sidecar 自签替换。
+
+当前无新增 D6-owned P0。A2 来源、分层语义和严格 consumer 软件缺口已关闭；运行分布、
+正式 treatment 和 20-seed 配对收益仍为 P1。D6 不调整模型、不发布计划、不授予权限。
+
 ## 2026-07-28 G1 model-source 与 A1 loader 复核
 
 ### 已关闭的 D6-owned 缺口
@@ -37,8 +78,9 @@ g1_assist_v5_7fb5db8b_d6_cbd6c72b/evidence/d6_external_audit.json
 1. G1 的 `identifiable_adoption`、`runtime_ack`、`physical_window`、`same_key_r0`、
    `paired_non_degradation`、`truth_use`、`finite_state` 和 `external_permission` 八门
    仍 unavailable。当前真实正例验证的是 source adapter，不是完整 readiness manifest。
-2. A1/A2/A3 尚无对应可信 model-source adapter。C1/F1 缺 D3、D4、D5 图关联和 D5 主动
-   视觉四组件完整来源，只有 `d5_graph` 时必须拒绝。
+2. A1/A3 尚无对应可信 model-source adapter。A2 已有固定 current-lineage 来源 adapter，
+   但运行分布和正式 treatment 未闭合。C1/F1 缺 D3、D4、D5 图关联和 D5 主动视觉四组件
+   完整来源，只有单组件时必须拒绝。
 3. D3 已公开
    `load_a1_isolated_intervention_batch()`，可严格验证 candidate/selection inventory。
    该 loader 明确不证明计划发布、实际采用、运行 ACK、物理窗口、同键 R0 或生产授权。

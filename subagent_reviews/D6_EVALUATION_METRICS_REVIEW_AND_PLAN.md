@@ -1,5 +1,32 @@
 # D6 系统评估指标综述及子方案
 
+## 2026-07-28 D4 A2 来源、分布与配对评审
+
+评审接受 A2 current-lineage 固定来源适配器。reference 只登记候选清单路径和摘要，D6 从
+受版本控制的 D4 `model_registry` 重算 commit/tree、制品摘要、数据划分、模型加载、有限
+参数和权限，不再读取 ignored `outputs/`。来源通过只证明模型身份可信；候选仍为
+development/shadow。
+
+readiness v3 已将来源、运行分布、影子动作和实际采用分开。分布兼容只取决于存在受审样本、
+记录有限、feature OOD 为 0 和分母一致。模型动作、动作缺失及规则回退继续作为诊断，不
+改变 distribution-compatible 布尔。分布内 no-op 回归已证明 distribution compatible 可为
+true，而 rollout 前置条件、采用和配对收益保持 unavailable。
+
+D6 确定性合同 fixture 是 5 资源/5 目标、2 区域、6 帧，结果为 6/6 OOD、模型动作 0、
+规则回退 6。它只用于合同回归。main 实际预检分别为 5v5/2 区域 seed 2000 的 3/3 OOD，
+以及 200v200/8 区域 seed 2001 的 2/2 OOD。当前候选保持
+`model_source_verified=true`、`runtime_distribution_compatible=false`。规则回退不能作为
+treatment。
+
+严格 A2/R0 consumer 要求至少 20 个执行前预注册未见 seed，并逐 seed 核对同外生配置、
+不同 episode/事件日志、固定模型的可辨识非零干预、D3 successor、runtime/owner/coalition
+ACK、确认后物理窗口、truth-use=0、有限状态和完整相等分母。缺一项即 unavailable；证据
+完整但指标退化时保留“可评价且退化”。
+
+定向测试 `38 passed`，D6 全量 `1144 passed`。当前没有兼容分布上的正式非零模型动作，也
+没有 20-seed 独立 R0 配对输入。A2 source adapter 和 consumer 软件门关闭，正式收益与准入
+仍开放。admission、assist、authority、assignment、failover 和 control 权限全部为 false。
+
 ## 2026-07-28 G1 模型来源适配评审
 
 评审接受 G1 `model_source` 的最小可信适配器。sidecar 只登记 13 项原制品相对路径和

@@ -1,5 +1,94 @@
 # D6 系统级离线评估：算法原理与实施说明
 
+## D4 A2 来源与严格配对算法（2026-07-28）
+
+### 来源适配
+
+来源 reference schema 为
+`d6.learning-run-d4-a2-current-lineage-model-source-reference.v1`。它只包含 A2 变体、
+候选清单相对路径、文件 SHA-256 和 reference 内容摘要。候选清单必须位于受版本控制的
+D4 `model_registry/region_resource_a2_current_lineage_development_v1/`，不得回退到被
+gitignore 的 `outputs/`。当前 allow-list 固定：
+
+```text
+source commit = b0d498d9e76e19e9045e127b6dae26ea164b3fa4
+candidate manifest file SHA-256 =
+  7cc10ad770bd95fcb813dbf3d16b17040ec5f41f80fe0dc53e3e291a32f4de64
+model state SHA-256 =
+  fd1b9c4cf7580083fadc04a70b87aa6439930eba764a970279611ccc57f30047
+lifecycle = development
+maximum mode = shadow
+```
+
+适配器在显式 `artifact_root` 下调用 D4 公共 loader 重建候选 manifest 和模型包。随后核对
+source commit/tree、source identity、候选内容摘要、七项制品摘要、数据集与 split 摘要。
+训练和验证载荷必须实际读取；测试、校准和保留评估 seed 读取数必须为 0。模型参数非空且
+全部有限。manifest、训练摘要和模型包中的权限必须为 false。审计后再次复算文件摘要。
+
+通过后只派生 `formal_current_lineage_source_audit`、
+`model_source_verified=true` 和固定模型身份。这里的 formal 表示来源审计 schema 受信，
+不改变候选的 development/shadow 生命周期。
+
+### 运行分布适配
+
+readiness v3 增加
+`d6.learning-run-d4-a2-runtime-distribution-source-reference.v1`。reference 只指向原始
+D4 current-lineage shadow JSONL。每行由 D4
+`RegionResourceCurrentLineageShadowRecord.from_mapping()` 严格复载。重复 record ID、
+重复 episode/frame、候选绑定漂移或权限越界均拒绝。
+
+按总量和 seed 重算：
+
+```text
+audited_snapshot_count
+finite_record_count / nonfinite_record_count
+compatible_snapshot_count / feature_ood_snapshot_count
+model_action_count / missing_model_action_count
+rule_fallback_count
+feature_ood_counts
+candidate_binding_sha256
+```
+
+分布兼容只使用受审样本、有限记录、OOD 和对应分母。模型动作分母另行严格校验，但动作缺失
+不产生 distribution blocker。规则回退数同样只作诊断。因此分布内 no-op/hold 可以得到
+`runtime_distribution_compatible=true`。
+
+### 影子动作前置条件
+
+`model_action_count` 表示通过候选门、投影结构有效且存在可辨识干预字段的影子建议数。逐 seed
+若动作数为 0，配对审计增加 `a2_model_action_missing`；若同时全部帧使用规则回退，再增加
+`a2_rule_fallback_only_not_treatment`。这两个原因不改变分布兼容结果，只说明本 seed 没有
+可归因的模型 rollout treatment。
+
+### A2/R0 严格配对
+
+`audit_d4_a2_paired_shadow()` 接收来源 reference、运行分布 reference、冻结 seed 注册表、
+必选指标和逐 seed pair。可用条件为：
+
+1. seed 在执行前完成内容寻址注册，候选 binding 与原始 shadow 记录一致；
+2. candidate 与 R0 的外生配置摘要相同，episode ID 和事件日志摘要不同；
+3. 运行分布兼容，且影子动作前置条件通过；
+4. D4 strict adoption auditor 确认固定模型产生可辨识非零干预；
+5. D3 严格后继、runtime/owner/coalition ACK、确认后物理窗口和同键 R0 闭合；
+6. `online_truth_use_count=0`，有限值分母大于 0，非有限值数为 0；
+7. 每个指标两臂均提供分子、正分母和值，\(v=n/d\) 可重算且分母相等。
+
+低优指标使用 \(v_C\leq v_{R0}+\epsilon\)，高优指标使用
+\(v_C+\epsilon\geq v_{R0}\)。缺证据时 `all_metrics_non_degraded=null`。证据完整但指标
+退化时保留“可评价且退化”，不改写为 unavailable。正式聚合至少要求 20 个预注册未见
+seed，全部 pair 可用。
+
+### 验证
+
+固定来源正例通过，权重篡改被拒绝。D6 确定性合同 fixture 使用 5 资源/5 目标、2 区域和
+6 帧，得到 6/6 OOD，因此 `runtime_distribution_compatible=false`。该 fixture 不是 main
+运行证据。main 真实预检另有 5 资源/5 目标、2 区域、seed 2000 的 3/3 OOD，以及
+200 资源/200 目标、8 区域、seed 2001 的 2/2 OOD。
+
+分布内 no-op/规则回退正例得到 `runtime_distribution_compatible=true`，但 rollout
+前置条件为 false、treatment 为 0、配对非退化 unavailable。定向测试 `38 passed`，D6
+全量 `1144 passed`。全部准入、辅助、权属、分配、接管和控制权限保持 false。
+
 ## G1 模型来源适配算法（2026-07-28）
 
 ### 输入合同

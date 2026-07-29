@@ -1,5 +1,75 @@
 # D6 正式实验矩阵准入预检报告
 
+## D4 A2 来源与运行分布验证（2026-07-28）
+
+### 结论
+
+D4 current-lineage A2 固定候选的来源验证通过。D6 确定性合同 fixture 使用 5 资源/5 目标、
+2 区域和 6 帧，6/6 均触发特征 OOD。该 fixture 没有模型动作，运行链回退到确定性规则。
+规则回退没有计为 treatment，也没有形成成对非退化结论。该 fixture 只验证合同，不是 main
+运行证据。
+
+| 项目 | D6 合同 fixture | 分布内 no-op 回归 |
+| --- | ---: | ---: |
+| `model_source_verified` | true | true |
+| `runtime_distribution_compatible` | false | true |
+| 受审快照 | 6 | 1 |
+| 有限记录 | 6 | 1 |
+| OOD 快照 | 6 | 0 |
+| 模型动作 | 0 | 0 |
+| 动作缺失 | 6 | 1 |
+| 规则回退 | 6 | 1 |
+| rollout 前置条件 | false | false |
+| treatment | 0 | 0 |
+| 成对非退化 | unavailable | unavailable |
+
+“分布内 no-op 回归”列是软件回归，不是新的 AirSim 物理实验。它使用落在冻结特征边界内
+的 D4 原始快照，将模型输出构造成合法 no-op，再由 D4 正式 shadow DTO 落盘和复载。结果
+证明动作缺失与规则回退不会把分布内输入误判为 OOD；实际采用仍因无非零干预而不可用。
+
+main 的真实预检与上述 fixture 分开记录：
+
+| main 预检 | seed | 帧数 | OOD |
+| --- | ---: | ---: | ---: |
+| 5 资源/5 目标、2 区域 | 2000 | 3 | 3/3 |
+| 200 资源/200 目标、8 区域 | 2001 | 2 | 2/2 |
+
+两组 main 预检均不满足运行分布兼容门。其帧数、动作和回退统计不得由 D6 fixture 推断。
+
+### 来源审计
+
+```text
+clean commit:
+b0d498d9e76e19e9045e127b6dae26ea164b3fa4
+
+candidate manifest file SHA-256:
+7cc10ad770bd95fcb813dbf3d16b17040ec5f41f80fe0dc53e3e291a32f4de64
+
+model state SHA-256:
+fd1b9c4cf7580083fadc04a70b87aa6439930eba764a970279611ccc57f30047
+```
+
+D6 从受版本控制的 D4
+`model_registry/region_resource_a2_current_lineage_development_v1/` 复算清单和七项制品
+摘要，检查 clean source、数据划分、模型加载、参数有限性、development/shadow 边界和全部
+false 权限。权重篡改负例失败关闭；clean clone 不依赖被忽略的 `outputs/`。
+
+### 配对边界
+
+严格 A2/R0 consumer 已实现。正式评价仍需至少 20 个执行前预注册未见 seed、兼容运行分布
+上的可辨识非零模型动作、D3 严格后继、runtime/owner/coalition ACK、确认后的物理窗口、
+独立 R0、truth-use=0、有限状态和完整指标分母。当前两类回归均不满足 treatment 条件。
+
+### 软件验证
+
+| 范围 | 结果 |
+| --- | --- |
+| A2 来源、分布、动作和配对定向测试 | `38 passed, 1 warning in 6.10s` |
+| D6 全量测试 | `1144 passed, 1 warning in 108.47s` |
+
+warning 为既有 Matplotlib `Axes3D` 环境提示。本次未启动 AirSim，未生成模型收益数据，也未
+授予 admission、assist、authority、assignment、failover 或 control 权限。
+
 ## G1 模型来源只读验证（2026-07-28）
 
 ### 结论

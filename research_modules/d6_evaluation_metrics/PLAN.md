@@ -1,5 +1,55 @@
 # D6 Evaluation Metrics Plan
 
+## 2026-07-28 D4 A2 可信来源与严格配对
+
+### 已完成
+
+- [x] 增加
+  `d6.learning-run-d4-a2-current-lineage-model-source-reference.v1`。D6 从固定候选的
+  原始制品重算 commit/tree、文件和内容摘要、split 使用、模型加载、参数有限性及 false
+  权限，不接受调用方自报 facts。
+- [x] reference 和专项测试改用受版本控制的
+  `research_modules/d4_distributed_fallback/model_registry/region_resource_a2_current_lineage_development_v1/`。
+  已核对该目录与冻结候选逐文件一致，不再依赖 gitignore 下的 `outputs/`。
+- [x] 固定候选身份：clean commit
+  `b0d498d9e76e19e9045e127b6dae26ea164b3fa4`，候选清单文件 SHA-256
+  `7cc10ad770bd95fcb813dbf3d16b17040ec5f41f80fe0dc53e3e291a32f4de64`，权重
+  SHA-256 `fd1b9c4cf7580083fadc04a70b87aa6439930eba764a970279611ccc57f30047`。
+- [x] readiness 升级为 v3，分别输出 `model_source_verified` 与
+  `runtime_distribution_compatible`。来源通过不改变 `development/shadow` 生命周期。
+- [x] 增加 shadow 原始记录适配器，按总量和 seed 重算受审/有限/OOD 快照、模型动作、
+  动作缺失、规则回退、逐特征原因和候选绑定。
+- [x] 修正四层语义。分布兼容只由样本、有限性、feature OOD 和分母守恒决定。动作、非零
+  干预和 fallback 只作 rollout 诊断；实际 treatment 由 strict adoption 链决定。
+- [x] D6 确定性合同 fixture 的 5 资源/5 目标、2 区域、6 帧保持拒绝：6/6 OOD。模型动作
+  0 和规则回退 6 只属于该 fixture 的独立诊断，不作为 main 运行证据。
+- [x] main 实际预检单独记录：5 资源/5 目标、2 区域、seed 2000 为 3/3 OOD；
+  200 资源/200 目标、8 区域、seed 2001 为 2/2 OOD。
+- [x] 增加 A2/R0 严格配对审计。冻结注册、执行先后、同配置异 episode/日志、固定模型
+  非零干预、D3 严格后继、runtime/owner/coalition ACK、确认后物理窗口、truth-use=0、
+  有限状态和完整分母均为硬门。
+- [x] 增加分布内 no-op/规则回退正例。该例
+  `runtime_distribution_compatible=true`，但 rollout 前置条件、treatment、adoption 和
+  paired readiness 均 unavailable。
+- [x] 定向测试 `38 passed, 1 warning in 6.10s`；D6 全量
+  `1144 passed, 1 warning in 108.47s`。
+
+### 待补输入
+
+- [ ] main/D4 调整运行特征或重新训练候选，使正式预注册快照无 OOD。当前 main 实际预检
+  的 3/3 与 2/2 OOD 均不能进入后续配对；D6 的 6/6 OOD 只作合同回归。
+- [ ] 生成至少 20 个执行前冻结注册的真正未见 seed，并保存完整逐 seed shadow JSONL。
+- [ ] 在兼容分布上产生至少一个可辨识非零模型动作。分布内 no-op 合法，但不满足 rollout
+  treatment 前置条件。
+- [ ] 为每个 seed 保存实际采用记录、D3 strict successor、runtime/owner/coalition ACK 和
+  确认后的物理窗口；fallback 和普通规则重规划继续排除。
+- [ ] 为每个 candidate episode 生成独立 R0。两臂外生配置摘要相同，episode 与事件日志
+  不同。
+- [ ] 提供候选/R0 指标的分子、正分母、值、方向和容差。缺指标或分母不相等时保持
+  unavailable。
+- [ ] 完成 20-seed 聚合后再报告非退化。结果不产生 admission、assist、authority、
+  assignment、failover 或 control 权限。
+
 ## 2026-07-28 G1 模型来源适配器
 
 ### 已完成
