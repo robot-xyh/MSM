@@ -1,6 +1,6 @@
 # D4 实现差距审计：分布式协同与降级接管
 
-## 2026-07-28 readiness v2 构建前 GAP
+## 2026-07-28 readiness v2 登记后 GAP
 
 - **已关闭代码缺口：readiness 运行特征不足。** 候选 builder 已绑定第三个真实补样源：
   clean commit `9a1f6fc97e86a7e0204b5fbb0d92e4fd13e3c763`，manifest 文件 SHA-256
@@ -20,14 +20,25 @@
 - **已关闭 P1 preflight 接口缺口。** `RegionResourceAdvisoryResult` 提供无真值门诊断，
   可区分模型原始推理、门应用、动作一致性、原始/有效置信度、门后许可和门拒绝规则回退。
   该字段不是 assist、assignment、takeover、coalition、control 或 physical 许可。
-- **验证结果。** 运行门专项 12/12、readiness 联合专项 20/20、D4 全量 740/740
-  passed；仅有既有 Matplotlib `Axes3D` 环境警告。
-- **仍开放 P1：clean 候选和运行证据。** readiness v2 尚未 clean-build，原始/有效
-  validation 指标、候选/权重哈希和 threshold-pass coverage 尚不可用；main runtime
-  preflight、正式 holdout 和模型注册均未执行。接受条件仍为非零且至少 5% validation
-  coverage，并且 `confidence>=0.60` 的动作不一致样本为 0。
-- **权限边界。** 当前仅完成代码和测试。read-only shadow 保持，formal evaluation
-  关闭；assist、assignment、takeover、coalition、control 和 physical 权限全部为 false。
+- **已关闭 P1：clean 候选与不可变登记。** main 已在 detached clean worktree commit
+  `891b542...fea9e` 构建候选。D4 独立 review 后将八个文件逐字节登记到新 v2 目录，源与
+  registry 相对路径和逐文件 SHA-256 完全一致。旧 v1/current-lineage 未覆盖。
+- **已关闭 P1：validation 运行门接受。** 344 个样本原始通过 344，其中动作不一致 51；
+  门后通过 293，其中动作不一致 0，通过动作一致率 1.0，Brier
+  0.056837453793788656，规则参考/记录标签 mismatch 0，接受结果 true。非零门后覆盖不是
+  通过全低置信规避所得。
+- **固定身份。** manifest 文件/内容、模型、源码身份、复合数据、split 和运行门配置哈希
+  为 `c3194c90...af72b`、`48148034...3852f`、`ace5df6d...7f52d`、
+  `331b4f29...92ce0`、`996dbd66...493e`、`69ae1b0e...d817` 和
+  `acdcb781...cde`。
+- **验证结果。** registry 3/3、v1/v2/运行门联合专项 37/37、D4 全量 743/743 passed；
+  仅有既有 Matplotlib `Axes3D` 环境警告。隔离副本测试禁止源 loader，证明 clean clone
+  review 不依赖 ignored outputs 或源数据；篡改制品失败关闭。
+- **仍开放 P1：main runtime preflight。** 尚未在真实 8-region episode 上验证 OOD、
+  有限值、时延、运行门应用覆盖、门后许可率和规则回退原因分布。正式 holdout/seed 未启动。
+- **权限边界。** 候选仍为 development/read-only shadow，formal evaluation 关闭；
+  assist、assignment、takeover、coalition、control、physical 和 runtime ACK 权限全部
+  为 false。
 
 ## 2026-07-28 八区域候选 GAP 更新
 

@@ -12,9 +12,12 @@ readiness v2 只修复区域资源 shadow 候选的数据覆盖、置信度门�
 全部 required member ACK、原子 commit、运行回执和确认后的物理窗口。门拒绝时明确记录
 规则回退，现有中心、二级和完全分布式确定性联盟逻辑继续执行。
 
-当前只完成代码和 740/740 D4 测试。readiness v2 尚未 clean-build，main runtime
-preflight 尚未执行。assist、assignment、takeover、coalition、control、physical 和
-formal evaluation 权限全部保持 false。
+readiness v2 已从 clean commit `891b542...fea9e` 构建并逐字节登记。validation 运行门后
+293/344 样本越过 0.60，动作不一致通过数为 0，校准接受；registry 专项 3/3、联合专项
+37/37、D4 全量 743/743 passed。该候选仍只输出区域级 shadow 建议，没有形成 M 对 N
+成员选择、后继计划、联盟确认或物理窗口。main runtime preflight 尚未执行；assist、
+assignment、takeover、coalition、control、physical、runtime ACK 和 formal evaluation
+权限全部保持 false。
 
 ## 2026-07-28 八区域候选与联盟边界
 

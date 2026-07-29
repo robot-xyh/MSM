@@ -1,11 +1,12 @@
 # D4 分布式协同与降级接管综述及子方案
 
-## 2026-07-28 readiness v2 代码评审
+## 2026-07-28 readiness v2 登记评审
 
-本轮没有构建或登记新模型。D4 已将第三个哈希绑定 readiness 补样源接入候选 builder，
-三来源仍按数字 seed 全局原子切分，正式种子 1000-1019 硬排除。补样源固定为
-100 episode/199 frame/100 seed，readiness 零值 1572/1592，在线真值和 dirty episode
-均为 0。
+main 已在 detached clean worktree commit `891b542...fea9e` 完成 readiness v2 构建。
+D4 独立 review 三来源、全局 seed split、bundle 运行门和权限后，将候选八个文件逐字节
+登记到独立 v2 registry。源目录与登记目录的相对路径和逐文件 SHA-256 全部一致，旧候选
+未覆盖。三来源按数字 seed 0-99 全局原子切分，正式种子 1000-1019、test payload 和校准
+seed 使用数均为 0。
 
 main 指出的验证标签泄漏和运行上下文分裂已经修复。新路径定义为运行时确定性一致性门：
 validation 标签只用于统计；Advisor 将自己的 projector、rule policy 和
@@ -17,9 +18,15 @@ validation 标签只用于统计；Advisor 将自己的 projector、rule policy 
 候选许可和门拒绝规则回退。main 可将其用于 runtime preflight 分母，不得将其解释为
 assist、分配、接管、联盟或控制许可。旧 bundle 不声明该门，既有行为和序列化保持兼容。
 
-代码验证为运行门专项 12/12、readiness 联合专项 20/20、D4 全量 740/740 passed。clean
-readiness v2 候选、真实 validation 原始/有效指标和 main runtime preflight 均未形成，
-正式评价继续关闭，全部运行权限为 false。
+validation 共 344 个样本。原始置信度 344/344 越过 0.60，其中动作不一致 51；运行门后
+293/344 越过门限，动作不一致通过 0，通过动作一致率 1.0，Brier
+0.056837453793788656，规则参考/记录标签 mismatch 为 0，接受结果 true。固定候选内容、
+模型、源码身份、复合数据和 split 为 `48148034...3852f`、`ace5df6d...7f52d`、
+`331b4f29...92ce0`、`996dbd66...493e` 和 `69ae1b0e...d817`。
+
+registry 专项 3/3、v1/v2/运行门联合专项 37/37、D4 全量 743/743 passed。main runtime
+preflight 尚未执行，正式评价继续关闭；assist、assignment、takeover、coalition、
+control、physical、runtime ACK 和 formal evaluation 权限全部为 false。
 
 ## 2026-07-28 八区域候选评审
 

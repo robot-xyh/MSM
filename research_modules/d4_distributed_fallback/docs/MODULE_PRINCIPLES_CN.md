@@ -35,9 +35,16 @@ validation 不使用 `target.action_consistent` 修改 confidence。标签只用
 字段不含 truth ID，也不改变正式 D4 裁决。`candidate_permitted_after_gate` 只是一项
 preflight 事实，不表示 assist、分配、接管、联盟、控制或物理许可。
 
-当前完成的是代码与纯 Python 测试，D4 全量 740/740 passed。readiness v2 尚未从 clean
-commit 构建，没有新模型权重、候选 manifest 或真实 validation 指标；main runtime
-preflight 和正式评价均未执行，全部运行权限保持 false。
+readiness v2 已从 detached clean worktree commit `891b542...fea9e` 构建并逐字节登记。
+manifest 内容、模型权重和运行门配置 SHA-256 分别为 `48148034...3852f`、
+`ace5df6d...7f52d` 和 `acdcb781...cde`。validation 共 344 个样本：原始置信度
+344/344 越过 0.60，其中动作不一致 51 个；运行门后 293/344 越过门限，动作不一致通过
+数为 0，通过动作一致率 1.0，Brier 为 0.056837453793788656。规则参考与记录标签
+mismatch 为 0。
+
+登记专项 3/3、v1/v2/运行门联合专项 37/37、D4 全量 743/743 passed。main runtime
+preflight 和正式评价仍未执行。validation 门接受只证明离线运行门合同成立，全部 assist、
+分配、接管、联盟、控制、物理、runtime ACK 和正式评价权限保持 false。
 
 ## 2026-07-28 八区域训练视图与置信度原则
 

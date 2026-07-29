@@ -1,6 +1,6 @@
 # D4 分布式协同与降级接管计划
 
-## 2026-07-28 readiness v2 构建前状态
+## 2026-07-28 readiness v2 登记后状态
 
 ### 已完成
 
@@ -20,30 +20,34 @@
   `formal_decision=None`，validation target 只能审计规则参考，不能控制有效置信度。
 - 已增加稳定诊断 DTO，供 main 区分原始推理、门应用、门后许可和门拒绝规则回退。诊断
   不参与 assist 或控制许可。
-- 专项验证覆盖 formal decision、非默认投影配置、配置不匹配、降低固定门限、bundle
-  配置/哈希篡改、旧 bundle 兼容和 validation/runtime 一致性。D4 全量为
-  **740/740 passed**。
+- main 已在 clean commit `891b542...fea9e` 构建新候选。validation 原始 344/344 越过
+  0.60，其中 51 个动作不一致；运行门后 293/344 越过 0.60，动作不一致通过 0，通过动作
+  一致率 1.0，Brier 为 0.056837453793788656，校准接受。
+- 候选已逐字节登记到独立 v2 registry。manifest 内容、模型、源码身份、复合数据和 split
+  SHA-256 分别为 `48148034...3852f`、`ace5df6d...7f52d`、
+  `331b4f29...92ce0`、`996dbd66...493e` 和 `69ae1b0e...d817`；八个登记文件与
+  clean-build 源目录完全一致。
+- 注册表自包含、固定身份、篡改拒绝和旧候选兼容均已验证。登记专项 3/3、联合专项
+  37/37、D4 全量 **743/743 passed**。
 
-### 构建前阻断
+### 当前阻断
 
-- 新 readiness v2 候选尚未从 clean commit 构建，不能报告真实原始/有效 validation
-  指标、模型权重哈希或候选 manifest 哈希。
-- main runtime preflight 尚未执行。候选是否具有非零 threshold-pass coverage、是否在
-  validation 上保持零动作不一致误接收、是否覆盖 8-region 运行分布均待 clean-build 后
-  检查。
-- 未注册新模型，正式 20-seed/900-cell 评价继续禁止。全部 assist、assignment、
-  takeover、coalition、control、physical 和 formal evaluation 权限保持 false。
+- main runtime preflight 尚未执行。validation 接受不代表真实 8-region episode 的 OOD、
+  时延、有限值、运行门覆盖和规则回退分布已经通过。
+- 候选仍为 development/read-only shadow。正式 20-seed/900-cell 评价禁止，assist、
+  assignment、takeover、coalition、control、physical、runtime ACK 和 formal evaluation
+  权限全部为 false。
 
 ### 后续步骤
 
-1. main 提交 D4 源码后，在独立 clean checkout 运行 readiness v2 builder；构建前后保持
-   worktree clean，不覆盖旧候选。
-2. 复核三来源内容地址、全局 seed split、bundle gate 配置哈希和 validation 审计。接受
-   条件为至少 5% validation 样本通过 0.60 且动作不一致通过数为 0。
-3. 仅在 clean review 通过后，由 main 运行 8-region development runtime preflight，并
-   读取 `runtime_confidence_gate_diagnostic`。preflight 不自动注册模型或开放任何权限。
-4. 若 validation 或 runtime preflight 失败，保留 development/read-only shadow 状态并
+1. 由 main 从登记目录加载 v2 bundle，先核对固定候选、模型、源码身份、复合数据、split
+   和运行门配置哈希。
+2. main 运行 8-region development runtime preflight，逐帧读取
+   `runtime_confidence_gate_diagnostic`，分别统计原始推理、门应用、门后许可和门拒绝
+   规则回退。preflight 不自动开放任何权限。
+3. 若 runtime preflight 失败，保留 development/read-only shadow 状态并
    记录 blocker，不降低 0.05、0.60、0.59 或 0.10 固定值。
+4. 只有后续单独的正式准入计划才能安排保留 seed；当前不得启动正式评价。
 
 ## 2026-07-28 八区域候选预检计划
 

@@ -49,14 +49,21 @@ Advisor 输出稳定诊断结构，包含 `model_raw_inference_executed`、`gate
 
 专项测试覆盖 formal decision 改变投影、自定义配置匹配和拒绝、规则/projector 实例错配、
 固定门限降低、manifest 参数和哈希篡改、validation/runtime 一致性及旧 bundle 兼容。
-2026-07-28 D4 全量 **740/740 passed**。尚未运行 clean-build、训练、模型注册或 main
-runtime preflight。
+main 已在 detached clean worktree commit `891b542...fea9e` 完成构建。候选已逐字节登记
+到独立 v2 registry，八个文件与构建源目录相同。manifest 文件/内容、权重和源码身份为
+`c3194c90...af72b`、`48148034...3852f`、`ace5df6d...7f52d` 和
+`331b4f29...92ce0`。
+
+validation 原始通过为 344/344，其中动作不一致 51；门后通过为 293/344，动作不一致 0，
+通过动作一致率 1.0，Brier 为 0.056837453793788656，接受结果为 true。登记专项
+**3/3**、v1/v2/运行门联合专项 **37/37**、D4 全量 **743/743 passed**。尚未运行 main
+runtime preflight，也未开放正式评价或运行权限。
 
 本阶段评估过将 readiness v2 拆为独立候选模块。v2 当前与 v1 共用来源校验、数字 seed
 原子切分、训练视图、内容寻址 manifest 和 reviewer 的内部合同；立即拆分会复制这些安全
 检查或扩大私有接口。现阶段保留同一候选模块，通过独立 v2 schema、candidate ID 和命令
 入口隔离，不覆盖 v1。旧 v1 manifest/load/build/review 测试与完整 D4 回归均已通过。
-clean-build 和 preflight 完成后，再根据模块稳定性决定是否提取公共构建内核。
+main runtime preflight 完成后，再根据模块稳定性决定是否提取公共构建内核。
 
 ## 2026-07-28 八区域复合候选实现
 

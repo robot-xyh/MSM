@@ -1,9 +1,11 @@
 # D4 分布式降级与接管实验报告
 
-## 2026-07-28 readiness v2 构建前验证
+## 2026-07-28 readiness v2 构建与登记
 
-本轮只完成代码和纯 Python 回归，没有启动 AirSim、候选 clean-build、完整训练、模型注册
-或 main runtime preflight。旧候选结果保留在后续章节，不作为 readiness v2 指标。
+main 在 detached clean worktree commit `891b542337ef065eee8c794d38dfa6ba382fea9e`
+完成候选构建。D4 独立调用 review loader 复核后，将八个候选文件逐字节登记到独立 v2
+registry。源目录和登记目录的相对路径、文件数量及逐文件 SHA-256 完全相同。本轮没有启动
+AirSim、main runtime preflight 或正式 seed。
 
 | 检查项 | 结果 |
 | --- | --- |
@@ -11,28 +13,41 @@
 | readiness 零值 | 1572 / 1592 |
 | readiness 范围 | [0, 1] |
 | 在线真值 / dirty episode | 0 / 0 |
-| 三来源预期复合视图 | 1100 episode / 2297 frame |
+| 三来源复合视图 | 1100 episode / 2297 frame / 8 region |
+| 全局数字 seed 切分 | 70 train / 15 validation / 15 untouched test |
+| test / calibration / reserved 使用 | 0 / 0 / 0 |
 | 固定 OOD / confidence / cap / tolerance | 0.05 / 0.60 / 0.59 / 0.10 |
-| 运行门专项 | 12 / 12 passed |
-| readiness 联合专项 | 20 / 20 passed |
-| D4 全量 | 740 / 740 passed |
-| clean v2 候选 | 未构建 |
+| validation 原始门限通过 | 344 / 344 |
+| 原始动作不一致通过 | 51 |
+| validation 门后通过 | 293 / 344 |
+| 门后动作不一致通过 | 0 |
+| 门后通过动作一致率 | 1.0 |
+| 门后 Brier | 0.056837453793788656 |
+| 规则参考/记录标签 mismatch | 0 |
+| validation 接受 | true |
+| registry 专项 | 3 / 3 passed |
+| v1/v2/运行门联合专项 | 37 / 37 passed |
+| D4 全量 | 743 / 743 passed |
+| clean v2 候选 | 已构建并逐字节登记 |
 | main runtime preflight | 未执行 |
 | 正式评价和运行权限 | 关闭 |
 
-测试证明 Advisor 使用自己的同一 projector、rule policy 和 formal decision 完成门内投影与
-最终建议。formal decision 改变安全投影时，门内候选和 Advisor 输出逐字段一致。匹配的
-非默认 projection config 可运行；配置不匹配、rule/projector 实例不一致、降低 0.60、
-降低 0.05、篡改门参数或内容哈希均失败关闭。旧无门 bundle 保持原始策略输出和序列化。
+候选 manifest 文件/内容、模型、源码身份、复合数据、split 和运行门配置 SHA-256 分别为
+`c3194c90...af72b`、`48148034...3852f`、`ace5df6d...7f52d`、
+`331b4f29...92ce0`、`996dbd66...493e`、`69ae1b0e...d817` 和
+`acdcb781...cde`。运行源、动作课程源和 readiness 补样源内容地址为
+`b06d741b...6158`、`7e17aba7...9e72`、`34244f1f...c56`。
 
-合成专项中，一致样本的原始和有效 confidence 均约为 0.90，门后候选保留；不一致样本的
-原始 confidence 约为 0.90，有效 confidence 为 0.59，Advisor 使用规则回退。这是单元测试
-夹具，不是新候选 validation 结果。真实 readiness v2 原始/有效 validation 指标只能在
-clean-build 后产生，当前不得沿用此前由 validation 标签逐样本封顶形成的统计。
+测试证明 Advisor 使用同一个 projector、rule policy 和 formal decision 完成门内投影与
+最终建议。匹配的非默认配置可运行；上下文或配置不匹配、门限降低、门参数或内容哈希篡改
+均失败关闭。注册表测试在只复制候选八个文件、禁止访问三个源数据 loader 的条件下完成
+加载和 review，篡改 bundle manifest 后按制品哈希拒绝。旧 v1/current-lineage 测试继续
+通过。
 
-新增诊断能区分原始推理、门应用、门后许可和门拒绝规则回退，truth ID 使用数固定为 0。
-诊断只服务 development preflight，不证明 assist、assignment、takeover、coalition、
-control 或 physical 能力。
+validation 接受不等于运行准入。main 尚未在真实 8-region episode 上核对 OOD、时延、
+有限值、门应用覆盖和回退分布。候选仍为 development/read-only shadow；assist、
+assignment、takeover、coalition、control、physical、runtime ACK 和 formal evaluation
+权限全部为 false。
 
 ## 2026-07-28 八区域候选构建与专项测试
 

@@ -21,10 +21,15 @@ owner/version/epoch/lease、ACK、联盟提交或物理窗口检查。即使
 `candidate_permitted_after_gate=true`，development/read-only shadow 也不能发布 D3 计划
 或获得控制权限。
 
-readiness v2 clean 候选尚未构建，main runtime preflight 尚未执行。后续顺序为：D4 源码
-形成 clean commit；独立 clean checkout 构建和 review；main 加载新 bundle；先运行非正式
-8-region development preflight；由 D6 读取逐帧诊断。任何配置不匹配、门未应用、零有效
-coverage 或动作不一致误接收均阻断正式 seed。
+readiness v2 已从 detached clean worktree commit `891b542...fea9e` 构建并登记到独立
+registry。manifest 内容和模型权重为 `48148034...3852f`、`ace5df6d...7f52d`，登记文件
+树与构建源目录逐文件 SHA-256 相同。validation 门后 293/344 越过 0.60，动作不一致通过
+为 0，离线校准接受。
+
+main runtime preflight 尚未执行。后续由 main 从登记目录加载新 bundle，先核对候选、模型、
+源码身份、复合数据、split 和门配置哈希，再运行非正式 8-region development preflight；
+D6 读取逐帧诊断。任何配置不匹配、门未应用、运行分布外、零有效 coverage 或动作不一致
+误接收均阻断正式 seed。
 
 固定值保持 OOD 0.05、confidence 0.60、cap 0.59 和 tolerance 0.10。本计划不授权 AirSim
 正式评价；assist、assignment、takeover、coalition、control 和 physical 权限全部为

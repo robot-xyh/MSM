@@ -4,6 +4,29 @@
 和 development/shadow 影子诊断。登记不表示模型通过运行准入，也不授予默认 runtime、
 assist、assignment、takeover、coalition commit 或 control 权限。
 
+## region_resource_a2_8region_runtime_action_readiness_shadow_v2
+
+该目录是 detached clean worktree commit
+`891b542337ef065eee8c794d38dfa6ba382fea9e` 构建结果的逐字节登记副本。候选 manifest
+文件/内容、模型权重、源码身份、复合数据和全局 split SHA-256 为
+`c3194c900058e85aad57bd52853fea99846a35c1f8d4fd8a81a53832d4daf72b`、
+`481480346f6c7355d3124f7ff3fdc4e9f8208a0209d4319514be25a91793852f`、
+`ace5df6dae62f8a9a80a4cd141d50a93427e609e4caa605b9962494ebfe7f52d`、
+`331b4f296a1c9fa46b61c9dcb7b59c499280817389b3b1b843181e38d4392ce0`、
+`996dbd667deec08451a52c9878b2ad02cf699c69ec0920fe26807fec0f62493e` 和
+`69ae1b0e40c6478ac62d65d89b1634f867d10b8167c523763741827a6f96d817`。
+登记目录的八个文件与 clean-build 源目录具有相同相对路径和逐文件 SHA-256。
+
+三来源数据内容地址为 `b06d741b...6158`、`7e17aba7...9e72` 和
+`34244f1f...c56`。数字 seed 0-99 按 70/15/15 全局原子切分，正式保留 seed
+1000-1019、test payload 和校准 seed 使用数均为 0。validation 共 344 个样本；原始
+置信度通过 344，其中动作不一致 51；运行时一致性门后通过 293，其中动作不一致 0，
+校准接受。
+
+候选只允许 development/read-only shadow。main runtime preflight 和正式评价尚未执行；
+assist、assignment、takeover、coalition commit、control、physical、runtime ACK 与
+formal evaluation 权限全部为 false。目录不得改写；后续产物必须使用新的候选标识。
+
 ## region_resource_a2_8region_runtime_action_shadow_v1
 
 该目录保存从 clean detached checkout
