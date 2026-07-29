@@ -1,5 +1,43 @@
 # D3 Assignment Planner
 
+## 2026-07-27 A1 动作裕量校准
+
+正式保留种子证据仍是 `20/20` 处理矩阵发生变化、`0/20` 最终绑定发生变化。当前冻结
+bundle 清单为 development/shadow，`alpha=0.25`、`min_confidence=0.0`，
+`assist_authorized=false`。该结果此前只能说明残差没有跨过离散分配边界，不能区分代价
+间隔、残差方向、修正幅度和安全门拒绝的各自影响。
+
+模块新增 `calibrate_a1_action_margin(...)`。输入是既有
+`IsolatedLearningInterventionFrameReplay`，不接收真值或仿真实体身份。接口在同一冻结帧
+上执行三步诊断：
+
+1. 对每个目标的硬安全候选边，计算规则最低成本边与其他候选边的局部代价间隔。
+2. 从已记录的 `learning_delta_c` 恢复有界方向优势，计算候选边跨越局部间隔所需的
+   `alpha`，同时给出理论上限 `2*alpha` 是否可能覆盖该间隔。
+3. 对显式候选 `alpha/min_confidence` 网格重新调用原 Hungarian 或需求槽 Hungarian，
+   记录实际代价矩阵变化、绑定变化、规则基准成本差和安全门拒绝原因。
+
+候选修正仍受 `max_abs_cost_correction` 和 `max_binding_change_count` 限制。置信不足、
+源 bundle 未加载、源帧回退、分布外、版本不一致、修正越界、换绑数量越界或既有计划
+安全检查失败时均返回失败关闭。候选不能改变 hard-safe mask，不能跳过身份承诺、计划
+版本、联盟全有或全无及 Hungarian 求解。输出固定
+为 `development_only=true`、`formal_evidence=false`、
+`unseen_seed_evidence=false`，且发布、分配和控制权限全部为 false。
+
+开发单元夹具使用一个三资源、两目标的 M-to-N 冻结帧。源 `alpha=0.02` 时绑定保持不变；
+同一已记录残差在候选 `alpha=0.25` 时产生 3 条绑定差异。零残差始终为 no-op；
+`min_confidence=1.0` 触发低置信回退；修正超过预设上限时不进入求解；换绑数量超过候选
+上限时不具备可辨识候选资格。该结果只验证校准路径可区分 no-op、可辨识干预、安全门
+阻断和未授权状态，不是未见 seed、模型晋级或任务收益证据。
+
+入口会重新计算冻结重放摘要，并检查规则/处理矩阵、清单、非有限值、分解项形状和
+hard-safe mask。空矩阵、无可行动作、源帧已经换绑和构造后篡改均失败关闭。候选结果保存
+规则/处理绑定摘要、求解器和计划版本证据；这些字段只证明执行了版本化主线求解，不授予
+发布权限。
+
+D3 全量收集 572 项，结果为 `571 passed, 1 skipped`。跳过项为可选 OR-Tools；既有
+Matplotlib `Axes3D` 环境警告不影响本接口。
+
 ## 2026-07-27 提交前复核
 
 A1 候选反序列化现重新检查规则计划和处理计划相对前序版本只能保持或递增一次；发生绑定

@@ -3755,3 +3755,100 @@ C 区来源边，形成 `version+1` 严格后继。另一正例选择没有来�
 main 的未落盘探针当前为 15/20 safe/auditable。五个失败 seed 均保留
 `d3_successor_plan_missing`；seed 1000 的两个阶段分别为无可执行后继和 hold 来源边硬
 不可行。该结果说明策略应改选无承诺区域或安全非零 transfer，不能放宽 D3 安全拒绝。
+
+## 67. A1 冻结帧动作裕量校准
+
+### 67.1 输入
+
+校准入口消费一个已经构造完成的
+`IsolatedLearningInterventionFrameReplay`、原规划配置、成本权重和显式候选网格。输入帧
+已经匿名化，不携带实验 seed、真值目标号、AirSim Actor 名称或物理结果。规则组与处理组
+必须共享输入摘要、前序计划、规则矩阵和 hard-safe mask。
+
+当前 development bundle 清单仍为 shadow-only。记录值为 `alpha=0.25`、
+`min_confidence=0.0`，`assist_authorized=false`。校准读取已记录的
+`learning_delta_c`、置信度、分布外结果和安全元数据，不修改 manifest 或 state dict。
+
+### 67.2 局部动作裕量
+
+对每个目标仅扫描 `hard_safe_candidate_mask=true` 的边。规则最低成本边按成本和匿名资源
+标识确定，其他安全候选边分别计算局部间隔。记录残差的方向优势使用
+`tanh(learning_delta_c)` 计算，候选 `alpha` 下的相对成本为：
+
+\[
+\Delta C_{ij}(\alpha)
+=g_{ij}-\alpha\left(u_{ib}-u_{ij}\right)
+\]
+
+当方向优势为正时，局部临界值为：
+
+\[
+\alpha_{req}=\frac{g_{ij}}{u_{ib}-u_{ij}}
+\]
+
+诊断同时给出理论有界判据 \(2\alpha>g_{ij}\)。理论判据只说明幅度上限足够，不说明记录
+残差方向正确。局部临界值也不替代全局求解。
+
+### 67.3 候选重放
+
+每个 `alpha/min_confidence` 组合都使用同一已记录残差向量和同一冻结输入。重放继续调用
+`LearningCostAssistant`、`AssignmentPlanner` 和原 Hungarian 或需求槽 Hungarian。
+规划器仍执行：
+
+- hard-safe candidate mask；
+- 身份承诺准入；
+- 前序计划和版本检查；
+- 未分配成本与资源唯一性；
+- M-to-N 需求槽和联盟全有或全无；
+- 既有迟滞、角色保护和计划可行性检查。
+
+候选最大修正为
+`alpha * max(abs(tanh(delta_C)))`。超过调用方明确给出的
+`max_abs_cost_correction` 时，记录 `cost_correction_bound_exceeded`，不调用求解器。
+候选置信门高于记录置信度时，既有学习外壳返回 `low_confidence` 并逐元素恢复规则成本。
+实际换绑数量超过 `max_binding_change_count` 时保留诊断结果，但候选状态转为
+`safety_gate_blocked`，不能进入后续选择。
+
+候选结果区分三类：
+
+- `no_op`：安全检查通过，但有效代价未越过全局分配边界；
+- `identifiable_development_intervention`：安全处理帧通过，最终绑定发生变化；
+- `safety_gate_blocked`：源帧、置信、修正上限或既有安全合同拒绝。
+
+结果保存实际矩阵变化单元数、binding change 数、局部可跨越间隔数量、规则基准重评分差、
+solver 名称、规则/处理绑定摘要、前序与候选计划版本、fallback 和完整 reason code。
+随机计划号和候选计划载荷不进入报告。规则/处理绑定摘要不同且原关联评估给出非零
+binding change，才可标为开发可辨识干预。
+
+入口在求解前重新核验冻结重放内容摘要，防止冻结对象中的数组在构造后被修改。规则矩阵、
+处理矩阵、未分配成本、分解项、目标/资源清单和 hard-safe mask 必须形状一致且有限。
+配置类型或数值非法、矩阵为空、没有硬安全候选动作、源帧已经发生换绑时，校准失败关闭。
+目标数与资源数可以不等；现有开发夹具为两目标、三资源。
+
+### 67.4 权限边界
+
+报告 schema 为 `d3.a1-action-margin-calibration.v1`，scope 固定为单冻结帧开发校准。报告
+不接收或生成 seed 未见性声明，固定：
+
+```text
+development_only = true
+formal_evidence = false
+unseen_seed_evidence = false
+runtime_publication_allowed = false
+assignment_authority_allowed = false
+control_authority_allowed = false
+```
+
+候选最低可辨识 `alpha` 只是后续冻结模型和预注册实验的输入。代码不会将其写回 bundle，
+不会更新线上 planner 配置，也不会生成 runtime ACK。
+
+### 67.5 验证
+
+开发夹具采用三资源、两目标、一个目标需要两个资源的 M-to-N 帧。源
+`alpha=0.02` 已应用残差但不改变绑定；候选 `alpha=0.25` 在相同帧上产生 3 条绑定差异。
+零残差在 `alpha=0/0.25/1.0` 均保持 no-op。`min_confidence=1.0` 返回低置信回退；
+候选修正超过 `0.3` 上限时不执行求解。可辨识候选仍保持全部权限为 false。
+
+专项 9 项通过。D3 全量为 `571 passed, 1 skipped`，跳过项为可选 OR-Tools。该夹具不属于
+正式 20-seed、AirSim 或物理实验，不能替代当前 `20/20` 矩阵变化、`0/20` 绑定变化的正式
+证据。

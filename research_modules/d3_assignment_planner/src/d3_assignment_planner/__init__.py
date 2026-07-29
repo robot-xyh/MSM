@@ -419,6 +419,15 @@ from .a1_intervention_selection import (
     validate_a1_intervention_selection_decision,
     validate_a1_plan_publication_evidence,
 )
+from .a1_action_margin_calibration import (
+    A1_ACTION_MARGIN_CALIBRATION_SCHEMA_V1,
+    A1_ACTION_MARGIN_CALIBRATION_SCOPE,
+    A1ActionMarginCalibrationConfig,
+    A1ActionMarginCalibrationReport,
+    A1ActionMarginCandidateResult,
+    A1EdgeActionMargin,
+    calibrate_a1_action_margin,
+)
 from .multi_cycle_shadow import (
     MULTI_CYCLE_SHADOW_CYCLE_SCHEMA_V1,
     MULTI_CYCLE_SHADOW_PROFILE_VERSION,
@@ -440,6 +449,11 @@ from .multi_cycle_shadow import (
 )
 
 __all__ = [
+    "A1_ACTION_MARGIN_CALIBRATION_SCHEMA_V1",
+    "A1_ACTION_MARGIN_CALIBRATION_SCOPE",
+    "A1ActionMarginCalibrationConfig",
+    "A1ActionMarginCalibrationReport",
+    "A1ActionMarginCandidateResult",
     "A1_CANDIDATE_KIND",
     "A1_INTERVENTION_CANDIDATE_EVIDENCE_SCHEMA_V1",
     "A1_INTERVENTION_LIFECYCLE_EVIDENCE_SCHEMA_V1",
@@ -459,6 +473,7 @@ __all__ = [
     "A1InterventionPreRegistration",
     "A1InterventionSelectionDecision",
     "A1PlanPublicationEvidence",
+    "A1EdgeActionMargin",
     "ASSIGNMENT_CALIBRATION_PROFILE_SCHEMA_V1",
     "ASSIGNMENT_COST_BREAKDOWNS_SCHEMA_V1",
     "ASSIGNMENT_EVIDENCE_SCHEMA_V1",
@@ -734,6 +749,7 @@ __all__ = [
     "canonical_planning_frame_snapshot_sha256",
     "canonical_reward_evidence_payload_sha256",
     "canonical_rule_cost_matrix_sha256",
+    "calibrate_a1_action_margin",
     "audit_formal_learning_dataset",
     "assign_episode_split",
     "assign_seed_splits",

@@ -2164,3 +2164,51 @@ D3 重规划不能计作 A2 实际采用，且不得为提高采用率机械升�
 
 本项不修改 AirSim DTO、episode、M-to-N 需求槽或控制算法。AirSim 集成计划与实验报告
 已检查，无新运行证据可同步。
+
+## 61. A1 冻结帧动作裕量校准（2026-07-27）
+
+### 本轮计划与完成状态
+
+1. [x] 检查当前 development bundle。清单仍为 shadow-only，
+   `alpha=0.25`、`min_confidence=0.0`、`assist_authorized=false`，未修改模型文件。
+2. [x] 对照单帧 isolated replay、20-seed paired evidence 和 A1 selector，确认正式前置
+   现象是矩阵 `20/20` 改变而最终绑定 `0/20` 改变。
+3. [x] 新增 truth-free 单帧动作裕量接口，量化规则最低成本边到其他硬安全候选边的局部
+   间隔、记录残差的方向优势、跨越所需 `alpha` 和理论有界残差能力。
+4. [x] 对显式候选 `alpha/min_confidence` 网格复用原 Hungarian/需求槽 Hungarian 求解，
+   输出实际 binding change、规则基准成本差、回退和安全拒绝原因。
+5. [x] 将候选修正和 binding change 数量限制在调用方给定的上限内；不改变 hard-safe
+   mask，不放宽身份、版本、联盟、迟滞或前序计划检查。
+6. [x] 固定开发边界：不携带 seed 声明，不生成在线计划，不发布，不产生 runtime ACK，
+   不授予分配或控制权限，也不声称正式、未见 seed 或物理证据。
+7. [x] 增加 no-op、可辨识干预、低置信/修正越界阻断、未授权、全动作硬拒绝、源帧已
+   换绑拒绝和构造后篡改拒绝测试。
+8. [x] 在消费时重算冻结重放摘要，并显式检查矩阵/分解项/动作掩码形状、非有限值、
+   目标资源清单和配置类型；空矩阵及无可行动作失败关闭。
+9. [x] 候选保存规则/处理绑定摘要、求解器和计划版本证据，证明最终变化来自原版本化
+   Hungarian 主线，而非局部裕量推断。
+
+### 开发验收
+
+三资源、两目标 M-to-N 夹具中，源 `alpha=0.02` 保持原绑定；候选
+`alpha=0.25` 产生 3 条绑定差异。零残差在全部候选上保持 no-op。候选
+`min_confidence=1.0` 返回 `low_confidence`，修正超过上限时不调用求解器。所有可辨识
+候选仍为 `not_authorized`。
+
+D3 全量为 `571 passed, 1 skipped`，唯一跳过为可选 OR-Tools。既有 Matplotlib
+`Axes3D` 警告不影响校准。
+
+### 后续 P1
+
+1. main/D6 应在新的 clean commit 上，把实际冻结 A1 帧交给本接口，保存逐帧局部间隔、
+   候选网格和拒绝原因。现有正式制品不能事后改写。
+2. 若开发结果显示当前 `alpha=0.25` 的记录残差方向正确但幅度不足，可提出新的有界候选；
+   该候选必须重新冻结 bundle、预注册修正上限并运行独立 20-seed paired 评估。
+3. 若记录残差方向本身不能跨越间隔，应回到训练目标和场景采样，不通过持续放大
+   `alpha` 代替模型修正。
+4. runtime ACK、D7 命令谱系、物理窗口、同键 R0 非退化和 D6 独立审计全部可用前，
+   A1 assist、authority、promotion 和默认路径保持关闭。
+
+本项没有改变 AirSim DTO、episode、相机、actor、D7 控制或物理指标。
+`docs/AIRSIM_INTEGRATION_PLAN.md`、`docs/EXPERIMENT_REPORT.md` 与 M-to-N 专项已检查，
+无需修改。
