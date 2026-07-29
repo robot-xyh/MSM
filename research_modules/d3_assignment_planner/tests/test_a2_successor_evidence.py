@@ -562,16 +562,35 @@ def test_candidate_plan_cannot_be_reused_as_r0_arm() -> None:
 
 def test_ordinary_replan_is_not_misattributed_when_candidate_matches_r0() -> None:
     source, r0, successor, hint = _plans()
+    authority_keys = (
+        "plan_owner",
+        "active_plan_owner",
+        "owner_node_id",
+        "current_plan_owner",
+        "current_plan_owner_node_id",
+        "authority_epoch",
+        "lease_expires_at_s",
+    )
+    same_authority_r0 = replace(
+        r0,
+        metadata={
+            **dict(r0.metadata),
+            **{
+                key: successor.metadata[key]
+                for key in authority_keys
+            },
+        },
+    )
     indistinguishable = replace(
         successor,
-        assignments=r0.assignments,
-        coalitions=r0.coalitions,
-        unassigned_target_ids=r0.unassigned_target_ids,
-        incomplete_target_ids=r0.incomplete_target_ids,
+        assignments=same_authority_r0.assignments,
+        coalitions=same_authority_r0.coalitions,
+        unassigned_target_ids=same_authority_r0.unassigned_target_ids,
+        incomplete_target_ids=same_authority_r0.incomplete_target_ids,
     )
     assert (
         indistinguishable.execution_signature()
-        == r0.execution_signature()
+        == same_authority_r0.execution_signature()
     )
 
     with pytest.raises(A2SuccessorEvidenceError) as error:
@@ -580,7 +599,7 @@ def test_ordinary_replan_is_not_misattributed_when_candidate_matches_r0() -> Non
             d4_decision_summary=_decision(),
             regional_hint=hint,
             source_plan=source,
-            r0_plan=r0,
+            r0_plan=same_authority_r0,
             successor_plan=indistinguishable,
             r0_input_summary_sha256="5" * 64,
             episode_id="episode-a2-1000",

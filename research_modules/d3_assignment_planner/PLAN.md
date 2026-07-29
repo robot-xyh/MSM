@@ -2286,3 +2286,69 @@ D3 全量为 `571 passed, 1 skipped`，唯一跳过为可选 OR-Tools。既有 M
 `docs/EXPERIMENT_REPORT.md` 已同步软件合同验收和运行兼容性阻断结论。
 `docs/AIRSIM_INTEGRATION_PLAN.md` 已检查；本项不改变 AirSim DTO、settings、episode
 或控制路径，因此不修改。M-to-N 调度专项也未受影响。
+
+## 63. readiness-v3 区域提示增量语义（2026-07-29）
+
+### 已完成
+
+1. [x] 接收 main 的修改前固定基线：seeds 2003-2012、20v20、8-region，10/10
+   raw/gate/projection/isolated adoption 通过，D3 successor 0/10。
+2. [x] 将 7/10
+   `regional_hint_previous_cross_region_commit_exceeds_allowance` 定位为来源计划基线
+   承诺与本轮新增 allowance 混算，而非 stale、owner、TTL 或硬安全门故障。
+3. [x] 将 transfer allowance 收紧为来源计划之外的增量额度。来源跨区边只允许原
+   target-resource edge 继承；它不占新增额度，也不向同区域其他目标开放。
+4. [x] 对全部来源跨区边重新执行硬安全检查。失效边拒绝整份提示并回退规则规划，不因
+   readiness-v3 处理组需要后继而恢复。
+5. [x] 将审计拆分为 source、retained、incremental allowed/actual 和 total actual，
+   同时保留总量兼容字段。
+6. [x] 明确 `reconnaissance_priority` 和仅改变 reserve ratio 的建议不是当前 D3
+   AssignmentPlan 执行动作；微小浮点变化不进入执行签名、不触发版本升级。
+7. [x] 新增来源跨区基线幂等、增量许可叠加、无许可不开放新边、来源边硬失效和侦察字段
+   拒绝测试。
+
+### 验收
+
+区域提示专项 `30 passed`。D3 全量 `614 passed, 1 skipped`；唯一 skip 为可选
+OR-Tools，另有既有 Matplotlib 三维导入警告。`py_compile` 与 D3 范围 diff 检查纳入
+本轮最终验收。
+
+### 后续
+
+1. [ ] main 使用同一外生输入重跑 seeds 2003-2012，保存修改前后拒绝分布。不得把从
+   `previous_cross_region_commit_exceeds_allowance` 转成 `no_executable_successor`
+   解释为实际采用。
+2. [ ] 若 D4 需要侦察优先级产生 D3 后继，先联合定义版本化区域搜索任务、资源资格、
+   离散优先级或死区、有效期、成本映射和 ACK；在此之前保持不支持。
+3. [ ] 若 D4 需要 reserve ratio 单独改变执行计划，先定义具体备用资源 roster、角色和
+   释放条件；不能由比例本身机械撤销绑定。
+4. [ ] 只有出现真实严格后继后，main/D4/D6 才继续连接 runtime/owner ACK、物理窗口和
+   同键 R0 非退化审计。
+
+## 64. 区域后继权限刷新闭环（2026-07-29）
+
+### 已完成
+
+1. [x] 将 `authority_epoch` 和 `lease_expires_at_s` 纳入执行签名。
+2. [x] 在身份定稿前规范化无提示 evaluation refresh，精确继承原计划 owner、epoch、
+   lease、successor lineage 和既有 assignment 权限字段。
+3. [x] 保持 plan id/version、binding、coalition 和 authority 逐项不变时才允许同身份
+   refresh。
+4. [x] 对租约到期、owner 失活、epoch 篡改和 fault generation fence 失败关闭。
+5. [x] 修正 A2/R0 负例，使“不可区分”同时包含相同权属作用域，未删除安全字段。
+6. [x] 接收 main 的 seed 2007 集成证据：4 ACK、77 bindings、1 次合法同身份刷新，
+   online truth=0，完整 episode 已写盘。
+
+### 验收
+
+A2 successor 专项 `16 passed`；区域提示、身份和围栏组合 `51 passed`；D3 全量
+`618 passed, 1 skipped`。`py_compile` 和 D3 范围 `git diff --check` 纳入最终检查。
+
+### 后续
+
+1. [ ] main 在更多 readiness-v3 seed 上复核同身份 refresh 与严格 successor 的比例。
+2. [ ] owner 活性或 fault generation 变化必须继续通过 D4 判决或 D3 generation fence
+   显式输入，不能依靠无提示刷新推断。
+
+`docs/AIRSIM_INTEGRATION_PLAN.md` 已检查。本项不改变 AirSim DTO、settings 或 episode
+接口，因此不修改。M-to-N 调度专项不受影响。

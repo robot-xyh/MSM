@@ -621,3 +621,19 @@ SHA-256 为 `c01b13fb5925d99078a3bb9505dc0f9511ec5ab700a432399d3ebe0fcfb55592`�
 
 该合同和新增真实形态正负例包含在单帧专项 `23 passed`、相关合同组合 `79 passed` 和 D3
 全量 `521 passed, 1 skipped`（522 项）中；它没有关闭真实 M-to-N 物理协同证据缺口。
+
+## 33. M-to-N 增量跨区许可（2026-07-29）
+
+区域 transfer allowance 对需求槽 Hungarian 的语义改为“来源计划之外的新增资源数”。
+来源计划中已有的 primary、reserve 或普通 assignment 若跨区，只能在原 target-resource
+edge 上继续作为基线候选；它不占本轮新增额度，也不能换绑到同一区域的另一个需求槽。
+新增跨区资源仍由全部 role/wave slot 共享同一 route pool，资源列唯一性和 coalition
+all-or-none 规则不变。
+
+专项覆盖一个来源跨区成员加一个新增目标：显式 allowance=1 时，保留来源成员并只增加
+一个跨区成员；allowance=0 时，新目标保持未分配；来源边硬失效时整份提示回退规则路径。
+审计分别记录 baseline、retained、incremental allowed/actual 和 total actual。该行为
+包含在区域提示 `30 passed` 与 D3 全量 `614 passed, 1 skipped` 中。
+
+本项没有形成新的高威胁多成员运行 ACK、联盟提交或物理结果。侦察优先级和区域备用比例
+也没有被解释为 M-to-N 成员动作；缺少具体任务、资源 roster 和角色合同前继续失败关闭。

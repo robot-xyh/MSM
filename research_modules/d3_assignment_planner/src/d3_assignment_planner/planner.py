@@ -143,8 +143,50 @@ _REGIONAL_HINT_AUTHORITY_REFRESH_KEYS = (
     "authority_epoch",
     "lease_expires_at_s",
 )
+_REGIONAL_HINT_SUCCESSOR_BINDING_KEYS = (
+    "regional_hint_successor_schema",
+    "regional_hint_successor_advisory_id",
+    "regional_hint_successor_advisory_version",
+    "regional_hint_successor_source_plan_id",
+    "regional_hint_successor_source_plan_version",
+    "regional_hint_successor_hold_region_ids",
+    "regional_hint_successor_request_replan_region_ids",
+    "regional_hint_successor_owner_layer",
+    "regional_hint_successor_owner_id",
+    "regional_hint_successor_owner_epoch",
+    "regional_hint_successor_lease_expires_at_s",
+    "regional_hint_successor_state",
+    "regional_hint_successor_plan_available",
+    "regional_hint_successor_plan_id",
+    "regional_hint_successor_plan_version",
+    "regional_hint_successor_rejection_reason",
+)
+_REGIONAL_HINT_ASSIGNMENT_AUTHORITY_KEYS = (
+    "plan_owner",
+    "active_plan_owner",
+    "owner_node_id",
+    "secondary_takeover_state",
+    "secondary_plan_executable",
+    "secondary_activated_at_s",
+    "secondary_lease_expires_at_s",
+    "secondary_leader_epoch",
+    "activation_state",
+    "activation_at_s",
+    "executable",
+    "regional_owner_layer",
+    "regional_region_id",
+    "regional_epoch",
+    "regional_lease_expires_at_s",
+    "regional_commit_state",
+    "regional_commit_required",
+    "regional_commit_mode",
+    "regional_commit_evidence_present",
+)
 _REGIONAL_HINT_NO_SUCCESSOR_REASON = (
     "regional_hint_no_executable_successor"
+)
+_REGIONAL_HINT_TRANSFER_ALLOWANCE_SEMANTICS = (
+    "incremental_beyond_source_plan_v1"
 )
 
 
@@ -2159,10 +2201,6 @@ class AssignmentPlanner:
                     "regional_hint_transfer_capacity_unsatisfied"
                 )
 
-        allowance_by_route = {
-            (item.source_region_id, item.target_region_id): item.resource_count
-            for item in hint.transfer_allowances
-        }
         protected_cross: dict[tuple[str, str], list[str]] = {}
         for assignment in previous_plan.assignments:
             target_region = target_region_by_id.get(assignment.target_id)
@@ -2175,11 +2213,6 @@ class AssignmentPlanner:
                 continue
             route = (resource_region, target_region)
             protected_cross.setdefault(route, []).append(assignment.resource_id)
-        for route, protected_ids in protected_cross.items():
-            if len(set(protected_ids)) > allowance_by_route.get(route, 0):
-                raise RegionalPlanningHintError(
-                    "regional_hint_previous_cross_region_commit_exceeds_allowance"
-                )
 
         return _RegionalHintContext(
             hint=hint,
@@ -2284,6 +2317,13 @@ class AssignmentPlanner:
                 transfer.target_region_id,
                 set(),
             ).add(transfer.source_region_id)
+        for source_region_id, target_region_id in (
+            context.protected_cross_resource_ids_by_route
+        ):
+            transfer_sources_by_target_region.setdefault(
+                target_region_id,
+                set(),
+            ).add(source_region_id)
         adjusted: list[TargetTrack] = []
         for track in tracks:
             target_region = str(track.region_id).strip()
@@ -2312,9 +2352,9 @@ class AssignmentPlanner:
         context: _RegionalHintContext,
         preserved_candidate_edges: Mapping[str, tuple[str, ...]],
     ) -> dict[str, tuple[str, ...]]:
-        source_regions_by_target_region: dict[str, set[str]] = {}
+        incremental_sources_by_target_region: dict[str, set[str]] = {}
         for transfer in context.hint.transfer_allowances:
-            source_regions_by_target_region.setdefault(
+            incremental_sources_by_target_region.setdefault(
                 transfer.target_region_id,
                 set(),
             ).add(transfer.source_region_id)
@@ -2326,7 +2366,7 @@ class AssignmentPlanner:
             target_region = str(track.region_id).strip()
             values = output.setdefault(track.track_id, [])
             for source_region in sorted(
-                source_regions_by_target_region.get(target_region, set())
+                incremental_sources_by_target_region.get(target_region, set())
             ):
                 values.extend(
                     resource_id
@@ -2339,6 +2379,14 @@ class AssignmentPlanner:
                         (),
                     )
                 )
+            for (
+                source_region,
+                route_target_region,
+            ), resource_ids in (
+                context.protected_cross_resource_ids_by_route.items()
+            ):
+                if route_target_region == target_region:
+                    values.extend(resource_ids)
         return {
             target_id: tuple(dict.fromkeys(resource_ids))
             for target_id, resource_ids in output.items()
@@ -2398,22 +2446,21 @@ class AssignmentPlanner:
                     "regional_hint_held_assignment_infeasible"
                 )
 
-        selected_ids_by_route: dict[tuple[str, str], tuple[str, ...]] = {}
-        used_transfer_resource_ids: set[str] = set()
-        for transfer in sorted(
-            context.hint.transfer_allowances,
-            key=lambda item: (
-                item.source_region_id,
-                item.target_region_id,
-                item.edge_id,
-            ),
-        ):
-            route = (transfer.source_region_id, transfer.target_region_id)
-            reserved_ids = context.protected_cross_resource_ids_by_route.get(
-                route,
-                (),
+        selected_ids_by_route: dict[tuple[str, str], tuple[str, ...]] = {
+            route: tuple(resource_ids)
+            for route, resource_ids in (
+                context.protected_cross_resource_ids_by_route.items()
             )
-            target_rows = target_rows_by_region.get(transfer.target_region_id, ())
+        }
+        used_transfer_resource_ids: set[str] = {
+            resource_id
+            for resource_ids in selected_ids_by_route.values()
+            for resource_id in resource_ids
+        }
+        for route, reserved_ids in sorted(
+            context.protected_cross_resource_ids_by_route.items()
+        ):
+            target_rows = target_rows_by_region.get(route[1], ())
             for resource_id in reserved_ids:
                 exact_rows = tuple(
                     target_index
@@ -2431,7 +2478,21 @@ class AssignmentPlanner:
                     raise RegionalPlanningHintError(
                         "regional_hint_protected_transfer_edge_infeasible"
                     )
-            needed = transfer.resource_count - len(reserved_ids)
+        for transfer in sorted(
+            context.hint.transfer_allowances,
+            key=lambda item: (
+                item.source_region_id,
+                item.target_region_id,
+                item.edge_id,
+            ),
+        ):
+            route = (transfer.source_region_id, transfer.target_region_id)
+            reserved_ids = context.protected_cross_resource_ids_by_route.get(
+                route,
+                (),
+            )
+            target_rows = target_rows_by_region.get(transfer.target_region_id, ())
+            needed = transfer.resource_count
             candidates: list[tuple[float, str]] = []
             for resource_id in context.resource_ids_by_region[
                 transfer.source_region_id
@@ -2531,7 +2592,45 @@ class AssignmentPlanner:
                 "source_region_id": transfer.source_region_id,
                 "target_region_id": transfer.target_region_id,
                 "edge_id": transfer.edge_id,
-                "allowed_resource_count": transfer.resource_count,
+                "allowed_resource_count": len(
+                    selected_ids_by_route[
+                        (
+                            transfer.source_region_id,
+                            transfer.target_region_id,
+                        )
+                    ]
+                ),
+                "incremental_allowed_resource_count": (
+                    transfer.resource_count
+                ),
+                "baseline_committed_resource_count": len(
+                    context.protected_cross_resource_ids_by_route.get(
+                        (
+                            transfer.source_region_id,
+                            transfer.target_region_id,
+                        ),
+                        (),
+                    )
+                ),
+                "incremental_candidate_resource_count": (
+                    len(
+                        selected_ids_by_route[
+                            (
+                                transfer.source_region_id,
+                                transfer.target_region_id,
+                            )
+                        ]
+                    )
+                    - len(
+                        context.protected_cross_resource_ids_by_route.get(
+                            (
+                                transfer.source_region_id,
+                                transfer.target_region_id,
+                            ),
+                            (),
+                        )
+                    )
+                ),
                 "candidate_resource_pool_count": len(
                     selected_ids_by_route[
                         (transfer.source_region_id, transfer.target_region_id)
@@ -2567,6 +2666,15 @@ class AssignmentPlanner:
                     sorted(held_source_assignment_edges)
                 ),
                 "regional_hint_transfer_candidate_pools": transfer_records,
+                "regional_hint_transfer_allowance_semantics": (
+                    _REGIONAL_HINT_TRANSFER_ALLOWANCE_SEMANTICS
+                ),
+                "regional_hint_source_cross_region_commitment_count": sum(
+                    len(resource_ids)
+                    for resource_ids in (
+                        context.protected_cross_resource_ids_by_route.values()
+                    )
+                ),
                 "candidate_edge_count": candidate_edge_count,
                 "candidate_full_edge_count": full_edge_count,
                 "candidate_density": (
@@ -2608,6 +2716,8 @@ class AssignmentPlanner:
             for resource in resources
         }
         actual_by_route: dict[tuple[str, str], int] = {}
+        retained_baseline_by_route: dict[tuple[str, str], int] = {}
+        incremental_actual_by_route: dict[tuple[str, str], int] = {}
         actual_cross_region_count = 0
         for assignment in plan.assignments:
             target_region = target_region_by_id.get(assignment.target_id)
@@ -2621,6 +2731,18 @@ class AssignmentPlanner:
             actual_cross_region_count += 1
             route = (resource_region, target_region)
             actual_by_route[route] = actual_by_route.get(route, 0) + 1
+            source_edge = (assignment.target_id, assignment.resource_id)
+            if (
+                hint_context is not None
+                and source_edge in hint_context.protected_assignment_edges
+            ):
+                retained_baseline_by_route[route] = (
+                    retained_baseline_by_route.get(route, 0) + 1
+                )
+            else:
+                incremental_actual_by_route[route] = (
+                    incremental_actual_by_route.get(route, 0) + 1
+                )
 
         advisory_id: str | None = None
         advisory_version: int | None = None
@@ -2662,24 +2784,75 @@ class AssignmentPlanner:
                 "source_region_id": source_region,
                 "target_region_id": target_region,
                 "allowed_resource_count": allowance_by_route.get(
-                    (source_region, target_region),
-                    0,
+                    (source_region, target_region), 0
+                )
+                + (
+                    0
+                    if hint_context is None
+                    else len(
+                        hint_context.protected_cross_resource_ids_by_route.get(
+                            (source_region, target_region),
+                            (),
+                        )
+                    )
                 ),
                 "actual_resource_count": actual_by_route.get(
                     (source_region, target_region),
                     0,
                 ),
+                "incremental_allowed_resource_count": (
+                    allowance_by_route.get(
+                        (source_region, target_region),
+                        0,
+                    )
+                ),
+                "incremental_actual_resource_count": (
+                    incremental_actual_by_route.get(
+                        (source_region, target_region),
+                        0,
+                    )
+                ),
+                "baseline_committed_resource_count": (
+                    0
+                    if hint_context is None
+                    else len(
+                        hint_context.protected_cross_resource_ids_by_route.get(
+                            (source_region, target_region),
+                            (),
+                        )
+                    )
+                ),
+                "retained_baseline_resource_count": (
+                    retained_baseline_by_route.get(
+                        (source_region, target_region),
+                        0,
+                    )
+                ),
+                "total_actual_resource_count": actual_by_route.get(
+                    (source_region, target_region),
+                    0,
+                ),
             }
             for source_region, target_region in sorted(
-                set(allowance_by_route) | set(actual_by_route)
+                set(allowance_by_route)
+                | set(actual_by_route)
+                | (
+                    set()
+                    if hint_context is None
+                    else set(
+                        hint_context.protected_cross_resource_ids_by_route
+                    )
+                )
             )
         )
         limit_satisfied = None
         if applied:
             limit_satisfied = all(
-                actual_by_route.get(route, 0) <= allowed
+                incremental_actual_by_route.get(route, 0) <= allowed
                 for route, allowed in allowance_by_route.items()
-            ) and not (set(actual_by_route) - set(allowance_by_route))
+            ) and not (
+                set(incremental_actual_by_route) - set(allowance_by_route)
+            )
 
         authority_metadata: dict[str, object] = {}
         if applied:
@@ -2713,6 +2886,25 @@ class AssignmentPlanner:
             "regional_hint_projected": projected,
             "regional_hint_actual_cross_region_resource_count": (
                 actual_cross_region_count
+            ),
+            "regional_hint_source_cross_region_commitment_count": (
+                0
+                if hint_context is None
+                else sum(
+                    len(resource_ids)
+                    for resource_ids in (
+                        hint_context.protected_cross_resource_ids_by_route.values()
+                    )
+                )
+            ),
+            "regional_hint_retained_cross_region_commitment_count": sum(
+                retained_baseline_by_route.values()
+            ),
+            "regional_hint_incremental_cross_region_resource_count": sum(
+                incremental_actual_by_route.values()
+            ),
+            "regional_hint_transfer_allowance_semantics": (
+                _REGIONAL_HINT_TRANSFER_ALLOWANCE_SEMANTICS
             ),
             "regional_hint_transfer_usage": route_records,
             "regional_hint_cross_region_limit_satisfied": limit_satisfied,
@@ -3094,6 +3286,11 @@ class AssignmentPlanner:
         publish: bool,
         previous_execution_signature: tuple[Any, ...] | None,
     ) -> AssignmentPlan:
+        plan = self._normalize_regional_hint_authority_refresh(
+            plan,
+            previous_plan=previous_plan,
+            timestamp=timestamp,
+        )
         plan_execution_signature = plan.execution_signature()
         result = self._finalize_identity(
             plan,
@@ -3118,6 +3315,254 @@ class AssignmentPlanner:
                 plan_execution_signature=plan_execution_signature,
             )
         return result
+
+    def _normalize_regional_hint_authority_refresh(
+        self,
+        plan: AssignmentPlan,
+        *,
+        previous_plan: AssignmentPlan | None,
+        timestamp: float,
+    ) -> AssignmentPlan:
+        """Keep one live successor binding immutable across evaluation refreshes."""
+
+        if previous_plan is None:
+            return plan
+
+        previous_binding = self._validated_regional_hint_successor_binding(
+            previous_plan,
+            timestamp=timestamp,
+        )
+        hint_applied = bool(
+            plan.metadata.get("regional_hint_available", False)
+            and plan.metadata.get("regional_hint_constraint_applied", False)
+        )
+
+        if previous_binding is not None and hint_applied:
+            current_binding = self._authority_binding_from_metadata(plan.metadata)
+            if current_binding != previous_binding:
+                return plan
+
+        if previous_binding is None and not hint_applied:
+            return plan
+
+        normalized = self._copy_previous_authority_binding(
+            plan,
+            previous_plan=previous_plan,
+            copy_successor_lineage=(
+                previous_binding is not None
+                and not bool(plan.metadata.get("regional_hint_available", False))
+            ),
+        )
+        if normalized.execution_signature() != previous_plan.execution_signature():
+            return plan
+        if previous_binding is None:
+            return normalized
+        return replace(
+            normalized,
+            metadata={
+                **dict(normalized.metadata),
+                "regional_hint_successor_binding_inherited": True,
+                "regional_hint_successor_binding_inherited_from_plan_id": (
+                    previous_plan.plan_id
+                ),
+                "regional_hint_successor_binding_inherited_from_plan_version": (
+                    previous_plan.version
+                ),
+                "regional_hint_successor_binding_validated_at_s": float(timestamp),
+            },
+        )
+
+    def _validated_regional_hint_successor_binding(
+        self,
+        plan: AssignmentPlan,
+        *,
+        timestamp: float,
+    ) -> _RegionalHintAuthorityBinding | None:
+        metadata = plan.metadata
+        if metadata.get("regional_hint_successor_plan_available") is not True:
+            return None
+        if self._declares_authority_generation_fence(plan):
+            self._raise_stale_successor_binding(
+                plan,
+                "regional_hint_successor_generation_fenced",
+            )
+        required = {
+            "regional_hint_successor_schema": (
+                REGIONAL_PLANNING_HINT_SUCCESSOR_SCHEMA_V1
+            ),
+            "regional_hint_successor_state": "successor_published",
+            "regional_hint_successor_plan_id": plan.plan_id,
+            "regional_hint_successor_plan_version": plan.version,
+            "regional_hint_successor_rejection_reason": None,
+        }
+        if any(metadata.get(key) != value for key, value in required.items()):
+            self._raise_stale_successor_binding(
+                plan,
+                "regional_hint_successor_binding_invalid",
+            )
+        for key in (
+            "owner_active",
+            "authority_owner_active",
+            "regional_hint_successor_owner_active",
+        ):
+            if key in metadata and metadata.get(key) is not True:
+                self._raise_stale_successor_binding(
+                    plan,
+                    "regional_hint_successor_owner_inactive",
+                )
+
+        binding = self._authority_binding_from_metadata(metadata, successor=True)
+        if binding is None:
+            self._raise_stale_successor_binding(
+                plan,
+                "regional_hint_successor_binding_invalid",
+            )
+        assert binding is not None
+        if float(timestamp) >= binding.lease_expires_at_s:
+            self._raise_stale_successor_binding(
+                plan,
+                "regional_hint_successor_lease_expired",
+            )
+
+        latest = self._latest_published_plan
+        if (
+            latest is not None
+            and latest.plan_id == plan.plan_id
+            and latest.version == plan.version
+        ):
+            latest_binding = self._authority_binding_from_metadata(
+                latest.metadata,
+                successor=True,
+            )
+            if latest_binding != binding:
+                self._raise_stale_successor_binding(
+                    plan,
+                    "regional_hint_successor_authority_epoch_changed",
+                )
+        return binding
+
+    @staticmethod
+    def _authority_binding_from_metadata(
+        metadata: Mapping[str, Any],
+        *,
+        successor: bool = False,
+    ) -> _RegionalHintAuthorityBinding | None:
+        prefix = "regional_hint_successor_" if successor else ""
+        owner_layer = metadata.get(f"{prefix}owner_layer", metadata.get("plan_owner"))
+        owner_id = metadata.get(f"{prefix}owner_id", metadata.get("owner_node_id"))
+        owner_epoch = metadata.get(
+            f"{prefix}owner_epoch",
+            metadata.get("authority_epoch"),
+        )
+        lease = metadata.get(
+            f"{prefix}lease_expires_at_s",
+            metadata.get("lease_expires_at_s"),
+        )
+        if (
+            not isinstance(owner_layer, str)
+            or not owner_layer.strip()
+            or not isinstance(owner_id, str)
+            or not owner_id.strip()
+            or not isinstance(owner_epoch, int)
+            or isinstance(owner_epoch, bool)
+            or owner_epoch < 0
+        ):
+            return None
+        try:
+            lease_value = float(lease)
+        except (TypeError, ValueError):
+            return None
+        if not np.isfinite(lease_value):
+            return None
+        binding = _RegionalHintAuthorityBinding(
+            owner_layer=owner_layer,
+            owner_id=owner_id,
+            owner_epoch=owner_epoch,
+            lease_expires_at_s=lease_value,
+        )
+        generic = (
+            metadata.get("plan_owner"),
+            metadata.get("active_plan_owner"),
+            metadata.get("current_plan_owner"),
+            metadata.get("owner_node_id"),
+            metadata.get("current_plan_owner_node_id"),
+            metadata.get("authority_epoch"),
+            metadata.get("lease_expires_at_s"),
+        )
+        if successor and generic != (
+            binding.owner_layer,
+            binding.owner_layer,
+            binding.owner_layer,
+            binding.owner_id,
+            binding.owner_id,
+            binding.owner_epoch,
+            binding.lease_expires_at_s,
+        ):
+            return None
+        return binding
+
+    @staticmethod
+    def _copy_previous_authority_binding(
+        plan: AssignmentPlan,
+        *,
+        previous_plan: AssignmentPlan,
+        copy_successor_lineage: bool,
+    ) -> AssignmentPlan:
+        metadata = dict(plan.metadata)
+        for key in _REGIONAL_HINT_AUTHORITY_REFRESH_KEYS:
+            if key in previous_plan.metadata:
+                metadata[key] = previous_plan.metadata[key]
+            else:
+                metadata.pop(key, None)
+        if copy_successor_lineage:
+            for key in _REGIONAL_HINT_SUCCESSOR_BINDING_KEYS:
+                if key in previous_plan.metadata:
+                    metadata[key] = previous_plan.metadata[key]
+                else:
+                    metadata.pop(key, None)
+
+        previous_by_edge = {
+            (item.target_id, item.resource_id): item
+            for item in previous_plan.assignments
+        }
+        assignments = []
+        for assignment in plan.assignments:
+            previous = previous_by_edge.get(
+                (assignment.target_id, assignment.resource_id)
+            )
+            if previous is None:
+                assignments.append(assignment)
+                continue
+            assignment_metadata = dict(assignment.metadata)
+            for key in _REGIONAL_HINT_ASSIGNMENT_AUTHORITY_KEYS:
+                if key in previous.metadata:
+                    assignment_metadata[key] = previous.metadata[key]
+                else:
+                    assignment_metadata.pop(key, None)
+            assignments.append(
+                replace(
+                    assignment,
+                    source_node_id=previous.source_node_id,
+                    target_node_id=previous.target_node_id,
+                    link_type=previous.link_type,
+                    metadata=assignment_metadata,
+                )
+            )
+        return replace(plan, assignments=tuple(assignments), metadata=metadata)
+
+    def _raise_stale_successor_binding(
+        self,
+        plan: AssignmentPlan,
+        reason: str,
+    ) -> None:
+        raise StalePlanError(
+            "regional hint successor authority cannot be refreshed",
+            reason=reason,
+            previous_plan_id=plan.plan_id,
+            previous_version=plan.version,
+            latest_plan_id=self._latest_plan_id,
+            latest_version=self._latest_version or None,
+        )
 
     @staticmethod
     def _finalize_regional_hint_successor_contract(

@@ -1777,3 +1777,58 @@ source identity
 
 `README.md`、`PLAN.md`、原则、算法和实验报告已同步。AirSim 集成计划已检查；没有接口或
 实验变化，无需修改。M-to-N 专项不受本项影响。
+
+## 59. readiness-v3 区域提示合同 GAP 更新（2026-07-29）
+
+### 已关闭的 D3 P1
+
+main 的修改前固定基线为 seeds 2003-2012、20v20、8-region。10/10 seed 的 D4
+raw/gate/projection/isolated adoption 通过，D3 successor 为 0/10；其中 7/10 被
+`regional_hint_previous_cross_region_commit_exceeds_allowance` 拒绝，3/10 为
+`regional_hint_no_executable_successor`。
+
+7/10 拒绝暴露 D3 合同误差。D4 advisory 的 quota 和 transfer 表示相对来源快照的增量，
+D3 却要求已有跨区绑定再次出现在新增 allowance 中。修复后，来源计划精确绑定是基线，
+新增 allowance 只限制新增跨区资源。基线资源只能保持原边，不能借基线身份换绑；全部
+来源跨区边继续通过 hard-safe mask，失效时返回
+`regional_hint_protected_transfer_edge_infeasible`。stale plan、来源身份、统一 owner、
+epoch、TTL/lease、quota 守恒、备用下限和资源唯一性没有放宽。
+
+区域提示专项 `30 passed`，D3 全量 `614 passed, 1 skipped`。该项关闭模块内重复计数
+缺口，没有证明任一 readiness-v3 候选形成严格后继。
+
+### 保持开放的跨模块 P1
+
+1. 修复后 seeds 2003-2012 尚未由 main 重跑。7 个旧跨区拒绝可能转为
+   `no_executable_successor`；这种原因重分类不等于采用率提升。
+2. 当前 D3 不消费 `reconnaissance_priority`。缺少版本化区域搜索任务、侦察资源资格、
+   量化/死区、代价映射、有效期和 ACK。约 `1e-4` 差异继续被排除在执行语义之外。
+3. reserve ratio 当前是新增 transfer 的安全余量，不是具体备用 roster。若候选只有比例
+   变化且没有配额、hold、可执行重规划效果或 transfer，严格后继仍不可用。
+4. runtime ACK、owner/coalition ACK、物理窗口、D7 执行和同键 R0 收益继续 unavailable。
+
+本轮没有新增 P0。AirSim 集成计划已检查；代码未改变 AirSim DTO、settings、episode 或
+控制接口，因此不修改。实验报告已记录模块测试和修改前 main 基线。
+
+## 60. 区域后继同身份刷新 GAP 更新（2026-07-29）
+
+### 已关闭的 D3 P1
+
+严格区域后继在下一无提示周期重新构造中心 metadata，曾丢失 owner epoch、lease 和
+successor binding，却继续声明相同 plan id/version 与 evaluation-only。D6 因此以
+`same_plan_execution_signature_changed` 失败关闭。
+
+D3 现把 epoch/lease 纳入执行签名，并只在原租约有效、owner 未失活、无 fault generation
+fence 且完整执行签名相同时继承权限。租约不延长。A2/R0 不可区分负例也改为同权属比较，
+没有删除安全字段或放宽 stale、身份、跨区和联盟约束。
+
+main 的 seed 2007 完整 episode 已成功写盘。D6 验证 4 ACK、77 bindings 和 1 次合法
+同身份 evaluation refresh，online truth=0。模块全量为 `618 passed, 1 skipped`。
+
+### 保持开放的跨模块 P1
+
+单 seed 运行接线已闭合，更多 readiness-v3 seed 的刷新/升版分布和物理结果仍由 main、
+D4、D6 后续统计。owner 活性和 fault generation 变化必须继续通过显式 D4 判决或 generation
+fence 输入；D3 不从无提示状态自行推断外部节点健康。
+
+AirSim 集成计划已检查；无 DTO、settings 或控制接口变化，不修改。M-to-N 专项不受影响。

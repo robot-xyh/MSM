@@ -654,6 +654,8 @@ _PLAN_EXECUTION_METADATA_KEYS = (
     "owner_node_id",
     "current_plan_owner",
     "current_plan_owner_node_id",
+    "authority_epoch",
+    "lease_expires_at_s",
     "secondary_takeover_state",
     "secondary_plan_executable",
     "secondary_activated_at_s",

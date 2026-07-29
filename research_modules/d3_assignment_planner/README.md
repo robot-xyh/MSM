@@ -2026,3 +2026,52 @@ main 随后执行非正式兼容性预检。只有预检出现非回退模型执
 `609 passed, 1 skipped`；跳过项仍是可选 OR-Tools。以上只证明软件边界和当前候选身份
 可读。运行兼容的新候选、正式 successor 记录、运行确认、owner/coalition ACK、物理
 窗口、D7 执行或收益证据尚未生成，全部相应字段固定为 false。
+
+## 2026-07-29 readiness-v3 增量跨区合同
+
+main 在修改前冻结了 seeds 2003-2012 的 20v20、8-region 隔离基线。10/10 seed 的
+readiness-v3 原始推理、运行门、确定性投影和隔离采用均通过，但 D3 严格后继为 0/10。
+拒绝分布为 `regional_hint_no_executable_successor` 3/10、
+`regional_hint_previous_cross_region_commit_exceeds_allowance` 7/10。后者来自 D3
+把来源计划已有跨区绑定再次计入本轮 transfer allowance，与 D4 的配额/转移增量语义不
+一致。
+
+D3 现将 `RegionalTransferAllowance.resource_count` 定义为来源计划之外的新增跨区资源
+上限。来源计划已有跨区绑定作为基线承诺，只能在原 target-resource edge 上继承，并且
+必须继续通过可用性、身份、友方冲突、三维可达性等硬安全门。它不消耗新增 allowance，
+也不能换绑到同区域的另一个目标。新跨区资源仍从未承诺资源中选择，继续受 quota 守恒、
+备用资源下限、route 容量、资源唯一性和 Hungarian/需求槽 Hungarian 约束。
+
+审计输出同时记录来源基线、保留基线、新增许可、新增实际和总实际跨区资源数。旧的
+allowed/actual 字段保留总量口径，新增 incremental 字段用于验证
+`incremental_actual <= incremental_allowed`。来源边硬失效时仍以
+`regional_hint_protected_transfer_edge_infeasible` 拒绝整份提示并回退规则规划。
+
+`reconnaissance_priority` 没有进入 D3 可执行合同。D3 当前没有区域搜索任务、侦察资源
+资格、离散优先级档位或优先级到分配代价的确定映射；约 `1e-4` 的连续变化不能形成
+`AssignmentPlan` 执行语义。单独改变 reserve ratio 也只改变新增 transfer 的安全余量，
+不会凭空生成区域备用资源名单或机械提升计划版本。未来若需要执行侦察优先级，调用方
+必须先提供版本化搜索任务、合格侦察资源集合、量化/死区规则、有效期和可审计的成本作用。
+
+2026-07-29 的区域提示专项为 `30 passed`。D3 全量结果为
+`614 passed, 1 skipped`；skip 仍是可选 OR-Tools，另有一条既有 Matplotlib 三维导入
+警告。该结果关闭 D3 对既有跨区承诺重复计数的软件缺口，没有生成新的 readiness-v3
+后继、运行 ACK 或物理结果。main 仍需对同一 seeds 2003-2012 重跑；若候选没有新增
+可执行动作，原 7 个跨区拒绝应转为诚实的 `no_executable_successor`，不得直接计为采用。
+
+## 2026-07-29 区域后继同身份刷新
+
+区域提示已经形成严格后继后，后续无新提示周期若绑定、联盟、未分配清单和权限作用域均
+未变化，D3 继续使用原 `plan_id/version`。刷新精确继承原 owner、authority epoch、lease
+及既有 assignment 权限字段；租约不会因评估周期推进而延长。`authority_epoch` 和
+`lease_expires_at_s` 现属于计划执行签名，候选与同输入 R0 的不可区分判断也必须处于相同
+权属作用域。
+
+租约到期、owner 明确失活、同身份 epoch 篡改或 fault generation fence 均失败关闭。绑定
+或联盟发生变化时仍发布严格新计划，不能用 evaluation refresh 隐藏执行变化。main 已用
+seed 2007 完整 episode 验证写盘：D6 runtime join 接受 4 条 ACK、77 条 binding 和 1 次
+合法同身份 evaluation refresh，online truth 计数为 0。
+
+模块验收为 A2 successor 专项 `16 passed`，区域提示/身份/围栏组合 `51 passed`，D3
+全量 `618 passed, 1 skipped`。唯一 skip 仍是可选 OR-Tools；Matplotlib 三维导入警告为
+既有环境提示。

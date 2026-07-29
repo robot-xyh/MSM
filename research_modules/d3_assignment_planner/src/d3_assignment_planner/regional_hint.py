@@ -165,7 +165,12 @@ class RegionalPlanningConstraint:
 
 @dataclass(frozen=True)
 class RegionalTransferAllowance:
-    """A bounded neighboring-region transfer edge, never an assignment."""
+    """A bounded incremental transfer beyond the bound source plan.
+
+    Existing cross-region assignments in ``source_plan_id/version`` are
+    inherited only on their exact target-resource edges.  They do not consume
+    this allowance and this DTO never grants an assignment by itself.
+    """
 
     source_region_id: str
     target_region_id: str

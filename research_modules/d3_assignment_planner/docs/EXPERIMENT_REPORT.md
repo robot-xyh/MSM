@@ -1880,3 +1880,42 @@ development/shadow 候选。D3 完成身份和权限复核后，main 先运行�
 非回退模型执行且安全投影通过，才能冻结新候选并生成正式未见 seed 证据。真正未见 seed
 的非零决策、拒绝分母、运行确认、物理窗口和配对非退化尚未生成，不能据此开放 A2 assist
 或声明收益。
+
+## readiness-v3 区域提示合同试验（2026-07-29）
+
+### 修改前基线
+
+main 固定 seeds 2003-2012，运行 20v20、8-region 隔离双臂。10/10 seed 的 D4 原始推理、
+运行门、确定性投影和隔离采用均通过，D3 successor 为 0/10。拒绝分布为：
+
+- `regional_hint_no_executable_successor`：3/10；
+- `regional_hint_previous_cross_region_commit_exceeds_allowance`：7/10。
+
+该数据是修改前基线，不是修复后结果。
+
+### 模块验证
+
+D3 使用确定性夹具验证一个来源跨区绑定。零新增 allowance 时原边可以保留，新目标不能
+使用同 route 的其他资源；新增 allowance=1 时只能增加一个未承诺资源；原边硬失效时提示
+整体拒绝。另验证 `reconnaissance_priority=0.5001` 不属于 D3 合同，不能触发计划升版。
+
+区域提示专项 `30 passed`。D3 全量 `614 passed, 1 skipped`；skip 为可选 OR-Tools，
+既有 Matplotlib 三维导入警告不影响结果。
+
+### 结果边界
+
+模块测试证明既有跨区承诺不应重复消耗增量 allowance，同时保留了精确边和硬安全约束。
+main 尚未重跑 seeds 2003-2012。旧 7 个拒绝即使不再触发跨区重复计数，也可能因没有实际
+绑定变化而转为 `no_executable_successor`。当前没有新的后继、运行确认或物理收益证据。
+
+## seed 2007 同身份刷新验证（2026-07-29）
+
+main 复跑 seed 2007 后，区域提示在前一周期形成严格后继，下一无提示周期的 19 条
+assignment/coalition 执行关系未变化。修复后的 D3 保留同一 plan id/version，并继承原
+owner、epoch 和 lease。D6 runtime join 接受 4 条 ACK、77 条 binding 和 1 次合法
+same-identity evaluation refresh，完整 episode 成功写盘，online truth 计数为 0。
+
+模块负例覆盖租约到期、owner 失活、epoch 篡改和 fault generation fence。A2 对照夹具
+同步 R0 权属后，仍以 `a2_effect_not_distinct_from_r0` 拒绝普通重规划误归因。A2 专项
+`16 passed`，区域提示/身份/围栏组合 `51 passed`，D3 全量
+`618 passed, 1 skipped`。该结果验证运行合同，不代表物理收益或 A2 策略性能。

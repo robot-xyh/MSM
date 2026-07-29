@@ -4053,3 +4053,44 @@ D4/main 的前置检查进一步确认，当前候选在 5v5、2 区域的 3/3 �
 runtime-compatible 的新 development/shadow 候选；D3 loader 验证其身份和关闭权限；
 main 执行非正式兼容性预检。只有预检出现非回退模型执行且确定性安全投影继续通过，才
 冻结新候选身份并启动至少 20 个真正未见 seed 的正式 A2/R0 successor 证据批次。
+
+## 70. readiness-v3 增量跨区实现（2026-07-29）
+
+`_prepare_regional_hint_context()` 从来源计划提取跨区精确边，并继续把全部来源 assignment
+和 coalition 成员标为 protected。transfer allowance 的 quota 守恒、源区可转移容量和
+备用下限只针对新增资源计算；来源跨区边不再要求由本轮 allowance 重复声明。
+
+矩阵构造先把来源跨区 route 加入对应目标区域的几何候选范围，再由
+`_apply_regional_hint_to_matrix()` 收紧：
+
+1. 来源跨区资源必须在原 target-resource edge 上仍为 hard-safe；
+2. protected 资源不能换到同一区域其他目标；
+3. 每条显式 allowance 只从未承诺、未被其他 route 使用的资源中选取新增池；
+4. 无 allowance 的 route 只保留来源精确边，不开放其他跨区边；
+5. Hungarian 和需求槽 Hungarian 继续执行资源列唯一及联盟完整性。
+
+审计记录 `source_cross_region_commitment_count`、
+`retained_cross_region_commitment_count`、
+`incremental_cross_region_resource_count` 和逐 route 的 baseline、incremental、total
+计数。`cross_region_limit_satisfied` 只比较新增实际数与新增许可数；兼容字段
+allowed/actual 保留总量口径。
+
+严格 parser 继续拒绝约束中的 `reconnaissance_priority`。D3 没有把连续优先级或单独的
+reserve ratio 写入计划执行签名。新增测试覆盖基线幂等、一个新增许可、零许可阻断新边、
+来源边硬失效和侦察字段拒绝。区域提示专项 `30 passed`，全量
+`614 passed, 1 skipped`。
+
+## 71. 区域后继权限刷新实现（2026-07-29）
+
+`_finalize_and_publish()` 在计算执行签名前调用权限刷新规范化。当前计划是有效区域后继、
+本周期没有新提示且租约仍有效时，规范化器按原 target-resource edge 恢复计划 owner、
+authority epoch、lease、successor lineage 及 assignment 权限字段。恢复后的执行签名
+必须与前序计划完全相同；否则回到正常严格升版路径。
+
+计划执行 metadata 签名新增 `authority_epoch` 和 `lease_expires_at_s`。这使 D3 身份规则
+与 D6 runtime join 的规范 authority 一致。租约到期、owner 显式失活、epoch 篡改和
+fault generation fence 直接抛出 stale rejection，不会刷新或延长租约。
+
+A2 普通重规划负例同步 R0 的 owner、epoch 和 lease 后再构造不可区分候选。候选只复制
+assignment 而保留不同 authority 时，不再被错误视为与 R0 相同。专项结果为 A2
+`16 passed`、区域提示/身份/围栏 `51 passed`，D3 全量 `618 passed, 1 skipped`。

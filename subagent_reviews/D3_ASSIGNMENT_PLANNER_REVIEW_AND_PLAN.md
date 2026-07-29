@@ -1782,3 +1782,43 @@ development/shadow 候选。D3 核验身份和关闭权限后，main 先做非�
 模型执行且安全投影通过后，才允许冻结候选并生成正式 successor 证据。20 个未见 seed、
 计划运行确认、owner/coalition ACK、物理窗口、D7 执行和收益仍未生成；所有对应权限和
 可用性字段保持 false。AirSim 集成接口和 M-to-N 调度未变化。
+
+## 65. readiness-v3 跨区来源承诺复核（2026-07-29）
+
+main 提供的修改前固定基线覆盖 seeds 2003-2012、20v20、8-region。D4 候选 10/10
+通过原始推理、运行门、投影和隔离采用，D3 严格后继仍为 0/10。拒绝中 7/10 是
+`regional_hint_previous_cross_region_commit_exceeds_allowance`，3/10 是
+`regional_hint_no_executable_successor`。
+
+D3 复核确认 transfer allowance 应约束来源计划之外的新增跨区动作。来源计划已发布的
+跨区 assignment 已由 plan id/version、owner 和 lease 绑定，不应再次消耗本轮增量额度。
+修复没有把它变成开放 route：受保护资源只可保留原 target-resource edge；其他目标即使
+位于同一区域也不能使用该资源的跨区资格。原边硬不可行时，提示整体拒绝并回退原规则。
+新增资源仍要求显式 allowance、守恒配额、备用余量、硬安全和 Hungarian 唯一性。
+
+侦察优先级没有加入 D3 AssignmentPlan。当前接口无法说明“哪个侦察资源执行哪个区域搜索
+任务”，也没有量化死区和成本作用。约 `1e-4` 的模型输出差异不构成可辨识分配干预。
+reserve ratio 单独变化同样只影响增量转移容量检查，不生成备用成员名单。
+
+新增 5 个专项场景后，区域提示文件 `30 passed`；D3 全量
+`614 passed, 1 skipped`。main 尚未重跑上述 10 个 seed，因此当前结论是合同错误已修复，
+不是 successor 或收益已经形成。下一步必须保留同输入双臂和全部拒绝分母，重新确认
+7 个旧拒绝是形成真实后继，还是转为无执行变化。
+
+## 66. 区域后继权限刷新复核（2026-07-29）
+
+seed 2007 暴露的缺口成立。D3 在 t=1 形成带 owner/epoch/lease 的严格后继，t=2 无提示
+重建候选时丢失权限 metadata，却沿用原身份。D6 将 authority 纳入规范执行签名，因此拒绝
+该伪 evaluation refresh 是正确行为。
+
+D3 修复在身份定稿前恢复原计划权限，要求租约有效且规范化后的完整执行签名与前序逐项
+一致。租约到期、owner 失活、epoch 篡改和 fault generation fence 均失败关闭。A2 负例
+同步同输入 R0 的 authority 后再比较，证明 authority 不同的计划不能称为不可区分。
+
+main 复跑结果为完整 episode 写盘成功，D6 接受 4 ACK、77 bindings 和 1 次合法同身份
+evaluation refresh，online truth=0。A2 专项 `16 passed`，区域提示/身份/围栏组合
+`51 passed`，D3 全量 `618 passed, 1 skipped`。该证据关闭 D3 同身份权限丢失 P1，不
+扩展为策略收益或物理结果。
+
+README、PLAN、原则、算法和实验报告已同步。AirSim 集成计划已检查，无接口变化；M-to-N
+调度文档也已检查，本项没有需求槽、联盟规模或到达调度变化，因此不修改。
