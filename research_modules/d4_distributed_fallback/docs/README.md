@@ -1,5 +1,15 @@
 # D4 文档索引
 
+2026-07-28 新增 A2 当前实现谱系候选构建与复核。新入口要求整个 Git 工作区 clean，只使用
+train 更新参数、validation 早停和选模，test payload、旧 calibration 和 seed 1000-1019
+使用数为 0。manifest 绑定源码、数据、切分、配置、模型 manifest、权重和训练摘要；脏
+worktree、谱系变化、切分重叠、非有限输出、权限字段为 true 和制品篡改均失败关闭。
+
+五 seed 临时 clean Git fixture 已完成真实 CLI 构建和加载，结果为 development/shadow，
+全部权限 false。当前项目工作区为 dirty，因此没有生成当前分支 clean-lineage 实物。新增
+专项 **8/8 passed**，D4 全量 **697/697 passed**。详细审计和提交后 clean rebuild 命令见
+`../reports/D4_A2_CURRENT_LINEAGE_CANDIDATE_DIAGNOSTIC_20260728.md`。
+
 2026-07-27 新增实际区域策略 calibration-only 诊断。实际 development 模型在 20 个互斥
 校准 seed、420 个样本中产生 76 个安全非零区域建议；344 个无操作主要由已承诺资源占满后
 备用比例请求被确定性投影压回基线造成。固定门通过 420/420，保留 seed 和在线真值使用为

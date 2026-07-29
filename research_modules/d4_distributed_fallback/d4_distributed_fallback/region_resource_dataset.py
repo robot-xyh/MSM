@@ -1048,6 +1048,101 @@ def load_region_learning_dataset(
     )
 
 
+def load_region_learning_dataset_splits(
+    dataset_dir: str | Path,
+    *,
+    splits: Iterable[RegionLearningSplit | str],
+) -> LoadedRegionLearningDataset:
+    """Load and verify only explicitly selected dataset payload splits.
+
+    The complete manifest is still parsed so its immutable split assignment and
+    provenance remain bound. Episode payloads outside ``splits`` are not read.
+    This is used by candidate construction paths that must leave test and
+    external holdout observations untouched.
+    """
+
+    selected = tuple(
+        sorted(
+            {
+                item
+                if isinstance(item, RegionLearningSplit)
+                else RegionLearningSplit(str(item))
+                for item in splits
+            },
+            key=lambda item: item.value,
+        )
+    )
+    if not selected:
+        raise ValueError("at least one dataset split must be selected")
+
+    root = Path(dataset_dir)
+    try:
+        payload = json.loads((root / "manifest.json").read_text(encoding="utf-8"))
+        manifest = RegionLearningDatasetManifest.from_dict(payload)
+    except (OSError, ValueError, TypeError, KeyError, json.JSONDecodeError) as exc:
+        raise RegionLearningDatasetValidationError(
+            f"dataset_manifest_invalid:{type(exc).__name__}"
+        ) from exc
+
+    selected_set = set(selected)
+    records: list[LoadedRegionLearningEpisode] = []
+    for entry in manifest.episodes:
+        if entry.split not in selected_set:
+            continue
+        path = (root / entry.relative_path).resolve()
+        try:
+            path.relative_to(root.resolve())
+        except ValueError as exc:
+            raise RegionLearningDatasetValidationError(
+                "episode path escapes dataset"
+            ) from exc
+        try:
+            source, frames, digest, _ = _read_episode_artifact(path)
+        except (OSError, ValueError, TypeError, KeyError, json.JSONDecodeError) as exc:
+            if isinstance(exc, RegionLearningDatasetValidationError):
+                raise
+            raise RegionLearningDatasetValidationError(
+                f"episode_invalid:{entry.source.episode_id}:{type(exc).__name__}"
+            ) from exc
+        if digest != entry.episode_sha256:
+            raise RegionLearningDatasetValidationError(
+                f"episode_sha256_mismatch:{entry.source.episode_id}"
+            )
+        expected_entry = _episode_manifest(
+            relative_path=entry.relative_path,
+            episode_sha256=digest,
+            source=source,
+            frames=frames,
+            split=entry.split,
+        )
+        if _canonical_bytes(expected_entry.to_dict()) != _canonical_bytes(
+            entry.to_dict()
+        ):
+            raise RegionLearningDatasetValidationError(
+                f"episode_manifest_mismatch:{entry.source.episode_id}"
+            )
+        records.append(
+            LoadedRegionLearningEpisode(
+                source=source,
+                frames=frames,
+                split=entry.split,
+                manifest=entry,
+            )
+        )
+
+    observed = {record.split for record in records}
+    if observed != selected_set:
+        missing = sorted(item.value for item in selected_set - observed)
+        raise RegionLearningDatasetValidationError(
+            "selected dataset split has no verified episode:" + ",".join(missing)
+        )
+    return LoadedRegionLearningDataset(
+        root=root,
+        manifest=manifest,
+        episode_records=tuple(records),
+    )
+
+
 def _episode_payload(
     source: RegionLearningEpisodeSource,
     frames: Sequence[RegionLearningFrame],

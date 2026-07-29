@@ -1,5 +1,42 @@
 # D4 分布式协同与降级接管计划
 
+## 2026-07-28 当前谱系候选 P1
+
+### 已完成
+
+- 已审计既有训练、development candidate 和 bundle 流程。旧候选把 test split 用作独立
+  calibration 门，保留为历史 development 证据，不作为当前谱系候选。
+- 已新增 clean-lineage 构建/复核入口。整个工作区必须干净，固定实现文件必须已跟踪且与
+  `HEAD` 内容一致。
+- 已新增 train/validation 选择性 loader。模型训练只读取 train，早停和模型选择只读取
+  validation；test payload、旧 calibration 和 seed 1000-1019 使用数固定为 0。
+- 已将源码实现、数据集、split、配置、模型 manifest、权重和训练摘要闭合到同一严格
+  manifest。权限字段、非有限输出、切分重叠和内容篡改均失败关闭。
+- 已用五 seed 临时 clean Git fixture 完成真实 CLI 构建、磁盘加载和复核。结果只属于
+  development/shadow 软件诊断，不是正式 A2 证据。
+
+### 当前状态
+
+当前项目工作区包含本任务代码改动和三份未跟踪背景资料，clean-lineage 入口返回
+`source_worktree_dirty`。本轮不生成伪 clean 候选。main 完成提交后，应在独立干净 checkout
+按 `reports/D4_A2_CURRENT_LINEAGE_CANDIDATE_DIAGNOSTIC_20260728.md` 的命令执行 rebuild
+和 review。
+
+### 下一步
+
+1. main 在干净源码树生成当前谱系 development/shadow bundle，并记录源码提交、候选
+   manifest 文件摘要和权重摘要。
+2. 冻结该候选后，使用至少 20 个从未进入训练、验证或历史 calibration 的正式 seed。
+3. treatment 必须由实际模型形成可辨识非零区域干预，不能使用规则派生 development
+   adapter 冒充模型动作。
+4. 继续闭合 D3 严格后继计划、runtime ACK、owner/coalition ACK、确认后物理窗口、独立
+   same-key R0 和 D6 非退化审计。
+5. 完成前保持 A2 admission、assist、authority、assignment、takeover、coalition commit
+   和 control 全部为 false。
+
+验证日期为 2026-07-28。新增专项 **8/8 passed**，D4 全量 **697/697 passed**；未运行
+AirSim 或正式多随机种子实验。
+
 ## 2026-07-27 A2 实际模型诊断与后续校准计划
 
 模块内 development-only 实际模型诊断路径已经完成。路径不修改模型和安全状态机，只从

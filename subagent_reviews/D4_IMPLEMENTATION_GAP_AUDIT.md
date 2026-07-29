@@ -1,5 +1,31 @@
 # D4 实现差距审计：分布式协同与降级接管
 
+## 2026-07-28 当前实现谱系候选 GAP 更新
+
+- **已关闭的 D4 模块 P1 子项**：当前谱系 development 候选缺少一个不读取 test/calibration/
+  reserved seed 的严格构建与复核入口。新入口只用 train 更新参数、validation 早停和选模。
+- **谱系绑定**：构建前后要求整个 Git worktree clean；manifest 绑定当前 commit/tree、固定
+  实现文件摘要、数据集 manifest/内容/split、配置、模型 manifest、权重、内嵌训练数据
+  manifest 和训练摘要。无 dirty/lineage bypass。
+- **切分边界**：train、validation、untouched test 和 seed 1000-1019 两两互斥；
+  `test_payload_read_count=0`、`calibration_seed_use_count=0`、
+  `reserved_seed_use_count=0`。
+- **失败关闭**：脏工作区、源码摘要不一致、切分重叠、非有限参数或 validation 输出、制品
+  篡改、额外字段及任何权限字段为 true 均拒绝。
+- **开发 fixture**：五 seed 临时 clean Git 仓库完成真实 CLI 构建/加载，目录为 3 train、
+  1 validation、1 untouched test；validation 非有限输出为 0。该 fixture 不是当前分支
+  clean-lineage 实物，不进入正式分母。
+- **当前实物状态**：当前项目 worktree 存在本任务改动和三份未跟踪背景资料，入口返回
+  `source_worktree_dirty`。没有伪造 clean 结论，也没有生成当前分支模型。
+- **权限**：A2 admission、assist、authority、assignment、takeover、coalition commit、
+  control、actual adoption 和 benefit 全部为 false。
+- **验证**：2026-07-28，新增专项 **8/8 passed**，D4 全量 **697/697 passed**；未运行
+  AirSim、900-cell 或正式多 seed。
+- **仍开放 P1**：main 提交后在独立 clean checkout 执行严格 rebuild；冻结实物后再完成至少
+  20 个正式未见 seed 的非零实际模型干预、D3 严格后继计划、runtime/owner/coalition ACK、
+  确认后物理窗口、独立 same-key R0 和 D6 配对非退化。不得回看结果修改候选。
+- **P0**：无新增 P0；现有确定性降级和全部权限门未改变。
+
 ## 2026-07-27 A2 实际策略干预诊断 GAP 更新
 
 - **已关闭的 D4 模块 P1 子项**：实际 development 模型能否在与训练、验证和保留 seed

@@ -1,5 +1,77 @@
 # D4 分布式协同与降级接管算法及实施方案
 
+## 2026-07-28 当前谱系候选构建与复核
+
+### 数据使用
+
+数据集 manifest 继续保存 train、validation 和 test 三个互斥 seed 目录。新选择性 loader
+只打开 train 和 validation 对应的 episode 文件。完整 manifest 仍参与摘要绑定，但 test
+episode payload 不读取，也不计算 test 指标。
+
+模型参数更新为
+
+\[
+\theta_{e+1}=\theta_e-\eta\nabla_\theta
+\frac{1}{|\mathcal{D}_{train}|}\sum_{i\in\mathcal{D}_{train}}
+\mathcal{L}(f_\theta(G_i),a_i^{rule}).
+\]
+
+每个 epoch 后只计算 validation 损失。最佳参数为
+
+\[
+\theta^\*=\arg\min_{\theta_e}
+\frac{1}{|\mathcal{D}_{val}|}\sum_{i\in\mathcal{D}_{val}}
+\mathcal{L}(f_{\theta_e}(G_i),a_i^{rule}).
+\]
+
+test、旧 calibration 和正式保留 seed 不参与上述两个式子，也不用于修改门限。当前置信头
+仍标记未正式校准；validation 有限值复核不能写成正式性能。
+
+### 源码身份
+
+`inspect_region_resource_current_lineage()` 调用只读 Git 命令检查工作区。状态非空立即返回
+`source_worktree_dirty`。固定文件集合包含区域资源规则和投影、数据集、图策略模型、既有
+训练实现及当前候选构建器。每个文件同时比较工作区字节与 `HEAD:path` 字节。
+
+源码身份为
+
+\[
+H_{source}=SHA256(commit,tree,H_{impl},\{path:SHA256(file)\}).
+\]
+
+候选生成后的 review 再执行一次相同检查。构建期间源码发生变化，或者在另一个干净提交上
+加载旧候选，均返回 lineage mismatch。
+
+### Manifest 绑定
+
+候选目录包含源码摘要、数据摘要、训练配置、训练摘要和 bundle。外层 manifest 固定绑定：
+
+```text
+source commit/tree/file hashes
+  + dataset manifest/dataset/split hashes
+  + train/validation/untouched-test seed catalogs
+  + training config hash
+  + bundle manifest/model weights/training manifest hashes
+  + validation finite-output summary
+  + all-false permission object
+  -> current-lineage candidate identity
+```
+
+split 合同要求四组目录两两互斥：train、validation、untouched test、reserved evaluation。
+读取计数要求 train 和 validation 大于 0，test、calibration 和 reserved 使用数精确为 0。
+模型加载后重新检查全部参数有限，并对 validation episode 再运行一次原始建议推理。出现
+NaN、无穷值、未知文件、哈希变化、额外字段或权限字段为 true 时失败关闭。
+
+### 开发诊断
+
+端到端专项在临时干净 Git 仓库中复制同字节实现文件，使用五 seed 微型数据集调用正式 CLI。
+切分为 3 train、1 validation 和 1 untouched test。两 epoch 模型可从磁盘重新加载，
+validation 非有限输出为 0，所有权限为 false。
+
+该临时仓库只用于证明 builder/loader/reviewer 的行为。当前项目工作区为 dirty，本轮没有
+生成当前分支 clean-lineage 模型。提交后的严格命令见
+`../reports/D4_A2_CURRENT_LINEAGE_CANDIDATE_DIAGNOSTIC_20260728.md`。
+
 ## 2026-07-27 实际策略干预诊断实现
 
 新增 `region_resource_actual_policy_diagnostic.py`，用于检查实际开发模型，不包装

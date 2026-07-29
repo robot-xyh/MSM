@@ -1,5 +1,16 @@
 # D4 M 对 N 分布式联盟形成与降级接管调研
 
+## 2026-07-28 当前谱系 A2 候选与联盟边界
+
+当前谱系候选构建器已经补齐，但当前分支实物尚未生成。五 seed 临时 fixture 只证明模型可
+构建和加载；它没有 D3 后继计划、联盟成员 ACK、原子提交或物理窗口，不能形成 M 对 N 联盟
+证据。
+
+新 manifest 的 takeover、coalition commit、assignment 和 control 权限固定为 false。
+后续即使 clean rebuild 成功，候选也只能进入 shadow。多成员 treatment 仍须每个必要成员
+绑定同一 owner/plan/version/epoch/lease 的实际 ACK，并在确认后形成物理窗口；缺任一成员
+或发生网络分区时继续失败关闭。
+
 ## 2026-07-27 区域策略实际动作边界
 
 实际 development 模型已在独立 calibration split 的 20 seed/420 sample 上产生 76 个安全

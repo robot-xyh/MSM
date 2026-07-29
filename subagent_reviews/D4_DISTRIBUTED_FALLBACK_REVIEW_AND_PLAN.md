@@ -1,5 +1,22 @@
 # D4 分布式协同与降级接管综述及子方案
 
+## 2026-07-28 当前谱系候选复核
+
+D4 已将当前谱系 A2 候选从历史 calibration-only 产物中分离。新构建器只读取 train 和
+validation，test episode payload、旧 calibration 与 seed 1000-1019 均不进入训练、选模
+或诊断。模型包保持 development/shadow，外层 manifest 新增当前源码、数据、split、配置、
+权重和训练摘要的闭合绑定。
+
+纯 Python 临时 clean Git fixture 已证明正式 CLI 能生成可加载候选。八项专项覆盖正向
+构建以及 dirty、lineage mismatch、split overlap、permission escalation、artifact
+tampering 和 nonfinite output。D4 全量为 **697/697 passed**。当前真实工作区为 dirty，
+因此 current-lineage artifact 仍不存在；提交后的 clean rebuild 命令已写入模块专项报告。
+
+后续顺序固定为：main 提交并建立 clean checkout，D4 命令生成并复核候选，main 冻结候选
+身份，随后才安排至少 20 个正式未见 seed。正式试验不得使用历史 calibration 或保留 seed
+调参，也不得用 development rule adapter 代表模型动作。严格后继计划、ACK、物理窗口、
+same-key R0 和 D6 非退化未闭合前，全部学习与运行权限保持 false。
+
 ## 2026-07-27 A2 实际模型诊断评审
 
 D4 已把“受控适配器可产生非零动作”和“实际模型可产生非零动作”拆为两条证据。新路径直接

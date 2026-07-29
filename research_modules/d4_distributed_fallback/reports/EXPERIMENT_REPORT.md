@@ -1,5 +1,19 @@
 # D4 分布式降级与接管实验报告
 
+## 2026-07-28 当前谱系候选软件诊断
+
+本轮没有运行 AirSim 或正式多 seed。验证对象是当前谱系候选 builder、loader 和 reviewer。
+临时 clean Git fixture 使用五个 seed：3 个训练、1 个验证、1 个未触碰测试。训练 2 个
+epoch 后模型包可从磁盘加载，validation 非有限输出为 0；test payload、旧 calibration 和
+seed 1000-1019 使用数均为 0。
+
+负例覆盖 dirty worktree、后续干净源码提交、split overlap、权限改写、配置篡改和非有限
+推理。全部负例失败关闭。新增专项 **8/8 passed**，D4 全量 **697/697 passed**。
+
+当前项目工作区不满足 clean-lineage 条件，因此没有形成当前分支候选实物。上述五 seed 结果
+只证明软件构建和复核路径，不是 A2 准入、实际采用、系统收益、接管、分配或控制证据。正式
+试验仍需提交后 clean rebuild，再冻结候选并运行至少 20 个未见 seed。
+
 ## 2026-07-27 A2 实际模型校准诊断
 
 本轮没有使用受控开发适配器。诊断直接加载

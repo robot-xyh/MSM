@@ -1,5 +1,31 @@
 # D4 分布式协同与降级接管
 
+## 2026-07-28 A2 当前实现谱系候选
+
+D4 新增独立的当前谱系候选构建与复核入口。入口先检查整个 Git 工作区必须干净，再绑定当前
+提交、树对象、区域策略/数据集/模型/训练/候选构建五个实现文件摘要。构建只读取既有
+`train` 和 `validation` episode；训练参数只由 train 更新，早停和模型选择只使用
+validation。数据集 test payload、旧 calibration 和 seed 1000-1019 的读取与使用数固定为
+0。
+
+候选 manifest 同时绑定源码摘要、数据集 manifest/内容/split 摘要、训练配置、训练摘要、
+模型 manifest、模型权重和内嵌训练数据 manifest。严格复核会重新检查 clean worktree、
+当前源码、原数据集、切分目录、模型参数和 validation 推理有限值。工作区脏、源码摘要变化、
+切分重叠、非有限输出、制品篡改或任何权限字段为 true 时均失败关闭。
+
+五 seed 临时开发夹具已通过真实 CLI 构建和加载：3 train、1 validation、1 untouched test，
+验证非有限输出为 0。该夹具只证明软件入口可用，明确标记 development/shadow；A2 准入、
+实际采用、收益、分配、接管、联盟提交和控制权限全部为 false。当前项目工作区存在未提交
+改动和三份未跟踪背景资料，实测按预期返回 `source_worktree_dirty`，因此没有生成当前分支
+clean-lineage 实物。
+
+2026-07-28 新增专项 **8/8 passed**，D4 全量 **697/697 passed**。提交后的严格重建命令和
+边界见
+`reports/D4_A2_CURRENT_LINEAGE_CANDIDATE_DIAGNOSTIC_20260728.md`。当前剩余 P1 是在独立
+干净 checkout 生成实物，并另行完成至少 20 个正式未见 seed 的实际非零干预、严格后继计划、
+ACK、物理窗口、同键 R0 和 D6 非退化审计；不得使用旧 calibration 或正式保留 seed 回调
+候选。
+
 ## 2026-07-27 A2 实际模型干预诊断
 
 D4 新增实际区域策略开发诊断，不再用受控适配器的规则派生动作代表模型能力。诊断器只读取
