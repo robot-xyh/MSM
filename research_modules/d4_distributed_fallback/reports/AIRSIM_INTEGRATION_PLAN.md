@@ -1,5 +1,19 @@
 # D4 AirSim Episode 集成计划
 
+## 2026-07-28 运行分布预检门
+
+正式 AirSim 或三维质点多 seed 之前，main 必须先运行 D4 runtime-distribution preflight。
+当前冻结候选在 5v5/2 区域 3/3 帧和 200v200/8 区域 2/2 帧均为 `feature_ood`，模型执行
+0。正式 20-seed 暂停；运行时继续使用确定性规则策略。
+
+来源审计和离线影子加载应指向受控
+`model_registry/region_resource_a2_current_lineage_development_v1/`，不再依赖本机
+`outputs/`。该路径只解决 clean clone 复现，AirSim 默认 runtime 仍不得启用该候选。
+
+新候选应以 8 区域作为首个声明适用域，并把区域数、距离和转移时间范围写入 episode
+配置摘要。2 区域几何在取得覆盖数据前继续预期 OOD。main 负责 seed registry 和 episode
+选择，D4 不选择正式 seed。1000-1019 不得用于训练、验证、校准或预检调参。
+
 ## 2026-07-27 提交就绪复核
 
 本轮未启动 AirSim。D4 已完成 ACK 和安全采用输入的严格类型加固，并用纯 Python fixture

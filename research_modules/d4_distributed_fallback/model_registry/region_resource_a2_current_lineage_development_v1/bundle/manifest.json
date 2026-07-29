@@ -1,0 +1,360 @@
+{
+  "action_diversity_sufficient": false,
+  "admission_reasons": [
+    "actual_adoption_unavailable",
+    "all_runtime_permissions_disabled",
+    "benefit_evidence_unavailable",
+    "calibration_seed_use_zero",
+    "current_lineage_development_candidate",
+    "formal_holdout_not_evaluated",
+    "reserved_seed_use_zero",
+    "shadow_only",
+    "test_split_untouched",
+    "train_validation_selection_only"
+  ],
+  "architecture": "shared-region-graph-actor-critic-v1",
+  "created_at_utc": "2026-07-28T00:00:00Z",
+  "edge_action_dim": 1,
+  "edge_feature_dim": 7,
+  "feature_bounds": {
+    "edge_max": [
+      0.1764705926179886,
+      6.356107711791992,
+      2.6390573978424072,
+      3.044522523880005,
+      1.0,
+      1.0,
+      1.0
+    ],
+    "edge_min": [
+      0.0,
+      6.216606140136719,
+      2.397895336151123,
+      3.044522523880005,
+      0.0,
+      1.0,
+      0.0
+    ],
+    "node_max": [
+      0.23529411852359772,
+      0.0,
+      0.18232156336307526,
+      0.12221763283014297,
+      0.8999999761581421,
+      0.9200000166893005,
+      0.8235294222831726,
+      0.05882352963089943,
+      0.0,
+      0.8999999761581421,
+      0.8999999761581421,
+      3.931825637817383,
+      0.019802628085017204,
+      0.009999999776482582,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      2.0,
+      1.0,
+      1.0,
+      0.0,
+      0.05882352963089943,
+      1.0
+    ],
+    "node_min": [
+      0.0,
+      0.0,
+      0.09531018137931824,
+      0.07696104049682617,
+      0.8500000238418579,
+      0.8700000047683716,
+      0.05882352963089943,
+      0.05882352963089943,
+      0.0,
+      0.8999999761581421,
+      0.8999999761581421,
+      3.931825637817383,
+      0.019802628085017204,
+      0.009999999776482582,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      2.0,
+      1.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0
+    ]
+  },
+  "feature_schema": "d4-region-resource-features-v1",
+  "final_holdout_seed_count": 0,
+  "hidden_dim": 64,
+  "lifecycle_stage": "development",
+  "maximum_advisor_mode": "shadow",
+  "message_passing_steps": 2,
+  "model_version": "d4-region-a2-current-lineage-development-v1",
+  "node_action_dim": 5,
+  "node_feature_dim": 24,
+  "reward_evidence_available": false,
+  "schema": "d4-region-resource-model-bundle-v2",
+  "state_dict_file": "state_dict.pt",
+  "state_dict_sha256": "fd1b9c4cf7580083fadc04a70b87aa6439930eba764a970279611ccc57f30047",
+  "strategy_capability_claim_allowed": false,
+  "target_action_inventory": {
+    "action_count": 960,
+    "hold_true_count": 80,
+    "request_replan_true_count": 160,
+    "resource_quota_nonzero_count": 160,
+    "transfer_count": 80
+  },
+  "training_dataset_available": true,
+  "training_dataset_schema": "d4-region-learning-dataset-v1",
+  "training_dataset_sha256": "7e17aba7911602c1b9e9f5b917aea97f1eeec478f03963b119fbcfc8de299e72",
+  "training_groups": [
+    {
+      "scenario_id": "d4-region-action-coverage-curriculum",
+      "seed": 0
+    },
+    {
+      "scenario_id": "d4-region-action-coverage-curriculum",
+      "seed": 2
+    },
+    {
+      "scenario_id": "d4-region-action-coverage-curriculum",
+      "seed": 3
+    },
+    {
+      "scenario_id": "d4-region-action-coverage-curriculum",
+      "seed": 6
+    },
+    {
+      "scenario_id": "d4-region-action-coverage-curriculum",
+      "seed": 8
+    },
+    {
+      "scenario_id": "d4-region-action-coverage-curriculum",
+      "seed": 9
+    },
+    {
+      "scenario_id": "d4-region-action-coverage-curriculum",
+      "seed": 12
+    },
+    {
+      "scenario_id": "d4-region-action-coverage-curriculum",
+      "seed": 13
+    },
+    {
+      "scenario_id": "d4-region-action-coverage-curriculum",
+      "seed": 15
+    },
+    {
+      "scenario_id": "d4-region-action-coverage-curriculum",
+      "seed": 18
+    },
+    {
+      "scenario_id": "d4-region-action-coverage-curriculum",
+      "seed": 22
+    },
+    {
+      "scenario_id": "d4-region-action-coverage-curriculum",
+      "seed": 23
+    },
+    {
+      "scenario_id": "d4-region-action-coverage-curriculum",
+      "seed": 24
+    },
+    {
+      "scenario_id": "d4-region-action-coverage-curriculum",
+      "seed": 25
+    },
+    {
+      "scenario_id": "d4-region-action-coverage-curriculum",
+      "seed": 27
+    },
+    {
+      "scenario_id": "d4-region-action-coverage-curriculum",
+      "seed": 28
+    },
+    {
+      "scenario_id": "d4-region-action-coverage-curriculum",
+      "seed": 29
+    },
+    {
+      "scenario_id": "d4-region-action-coverage-curriculum",
+      "seed": 31
+    },
+    {
+      "scenario_id": "d4-region-action-coverage-curriculum",
+      "seed": 35
+    },
+    {
+      "scenario_id": "d4-region-action-coverage-curriculum",
+      "seed": 36
+    },
+    {
+      "scenario_id": "d4-region-action-coverage-curriculum",
+      "seed": 37
+    },
+    {
+      "scenario_id": "d4-region-action-coverage-curriculum",
+      "seed": 41
+    },
+    {
+      "scenario_id": "d4-region-action-coverage-curriculum",
+      "seed": 42
+    },
+    {
+      "scenario_id": "d4-region-action-coverage-curriculum",
+      "seed": 43
+    },
+    {
+      "scenario_id": "d4-region-action-coverage-curriculum",
+      "seed": 44
+    },
+    {
+      "scenario_id": "d4-region-action-coverage-curriculum",
+      "seed": 45
+    },
+    {
+      "scenario_id": "d4-region-action-coverage-curriculum",
+      "seed": 46
+    },
+    {
+      "scenario_id": "d4-region-action-coverage-curriculum",
+      "seed": 47
+    },
+    {
+      "scenario_id": "d4-region-action-coverage-curriculum",
+      "seed": 51
+    },
+    {
+      "scenario_id": "d4-region-action-coverage-curriculum",
+      "seed": 52
+    },
+    {
+      "scenario_id": "d4-region-action-coverage-curriculum",
+      "seed": 53
+    },
+    {
+      "scenario_id": "d4-region-action-coverage-curriculum",
+      "seed": 54
+    },
+    {
+      "scenario_id": "d4-region-action-coverage-curriculum",
+      "seed": 56
+    },
+    {
+      "scenario_id": "d4-region-action-coverage-curriculum",
+      "seed": 58
+    },
+    {
+      "scenario_id": "d4-region-action-coverage-curriculum",
+      "seed": 59
+    },
+    {
+      "scenario_id": "d4-region-action-coverage-curriculum",
+      "seed": 60
+    },
+    {
+      "scenario_id": "d4-region-action-coverage-curriculum",
+      "seed": 62
+    },
+    {
+      "scenario_id": "d4-region-action-coverage-curriculum",
+      "seed": 64
+    },
+    {
+      "scenario_id": "d4-region-action-coverage-curriculum",
+      "seed": 65
+    },
+    {
+      "scenario_id": "d4-region-action-coverage-curriculum",
+      "seed": 66
+    },
+    {
+      "scenario_id": "d4-region-action-coverage-curriculum",
+      "seed": 69
+    },
+    {
+      "scenario_id": "d4-region-action-coverage-curriculum",
+      "seed": 70
+    },
+    {
+      "scenario_id": "d4-region-action-coverage-curriculum",
+      "seed": 71
+    },
+    {
+      "scenario_id": "d4-region-action-coverage-curriculum",
+      "seed": 72
+    },
+    {
+      "scenario_id": "d4-region-action-coverage-curriculum",
+      "seed": 73
+    },
+    {
+      "scenario_id": "d4-region-action-coverage-curriculum",
+      "seed": 76
+    },
+    {
+      "scenario_id": "d4-region-action-coverage-curriculum",
+      "seed": 77
+    },
+    {
+      "scenario_id": "d4-region-action-coverage-curriculum",
+      "seed": 79
+    },
+    {
+      "scenario_id": "d4-region-action-coverage-curriculum",
+      "seed": 80
+    },
+    {
+      "scenario_id": "d4-region-action-coverage-curriculum",
+      "seed": 81
+    },
+    {
+      "scenario_id": "d4-region-action-coverage-curriculum",
+      "seed": 84
+    },
+    {
+      "scenario_id": "d4-region-action-coverage-curriculum",
+      "seed": 85
+    },
+    {
+      "scenario_id": "d4-region-action-coverage-curriculum",
+      "seed": 86
+    },
+    {
+      "scenario_id": "d4-region-action-coverage-curriculum",
+      "seed": 88
+    },
+    {
+      "scenario_id": "d4-region-action-coverage-curriculum",
+      "seed": 89
+    },
+    {
+      "scenario_id": "d4-region-action-coverage-curriculum",
+      "seed": 90
+    },
+    {
+      "scenario_id": "d4-region-action-coverage-curriculum",
+      "seed": 91
+    },
+    {
+      "scenario_id": "d4-region-action-coverage-curriculum",
+      "seed": 94
+    },
+    {
+      "scenario_id": "d4-region-action-coverage-curriculum",
+      "seed": 96
+    },
+    {
+      "scenario_id": "d4-region-action-coverage-curriculum",
+      "seed": 99
+    }
+  ],
+  "training_manifest_file": "training_dataset_manifest.json",
+  "training_manifest_sha256": "82819c2470505e61da753d0d24ddf910e154435cd8d2cbd0a979dfb3dd643904",
+  "training_split_sha256": "b413fa810ae426ad143b713afac2c7a3366fae123e397054dbb9b0449d7b0c16"
+}

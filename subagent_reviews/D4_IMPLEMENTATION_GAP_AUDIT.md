@@ -1,5 +1,30 @@
 # D4 实现差距审计：分布式协同与降级接管
 
+## 2026-07-28 当前谱系运行兼容性 GAP
+
+- **已关闭 P1 子项**：冻结 current-lineage 候选缺少严格只读影子运行边界。现已具备固定
+  身份加载、main-owned seed 注册、逐帧输入/动作/投影记录、逐特征 OOD、非零分类和独立
+  verifier。
+- **已关闭复现子项**：冻结候选原先只位于被 gitignore 的 `outputs/`。8 个原始文件现已
+  逐字节登记到受控 `model_registry`；真实登记路径加载测试通过，固定 SHA-256 和权限均
+  未改变。
+- **运行证据**：5v5/2 区域 3/3 帧、200v200/8 区域 2/2 帧均 `feature_ood`，模型执行
+  0，在线真值 0。OOD gate 与预检一致，5% margin 不调整。
+- **新 P1 blocker**：冻结候选不具运行分布兼容性，正式 20-seed 不得启动。影子动作不能
+  写成 actual adoption，也不能生成 D3 successor、runtime/owner/coalition ACK、物理
+  窗口、R0 或收益。
+- **数据治理**：运行数据 `b06d741b...6158` 为 900 episodes/1798 frames/100 seeds；
+  动作课程 `7e17aba7...2d7f0` 为 100 episodes/300 frames/100 seeds。两者均用 0-99，但
+  原 split 不同。下一视图必须按数字 seed 全局原子重分割，分别记录 source SHA 和动作
+  库存，1000-1019 完全排除。
+- **适用域**：union 可覆盖 200v200/8 区域主要越界。5v5/2 区域边距离仍超出，不能宣称
+  兼容。
+- **下一步**：D4 代码形成 clean commit 后，在独立 clean checkout 用复合视图构建新的
+  development/shadow 候选；先通过非正式 seed 预检并出现真实模型动作，再由 main 注册
+  正式 20-seed。本轮不重训。
+- **验证**：2026-07-28，专项 **17/17**、D4 全量 **706/706** 通过。
+- **P0**：无新增 P0；规则回退和权限门保持不变。
+
 ## 2026-07-28 当前实现谱系候选 GAP 更新
 
 - **已关闭的 D4 模块 P1 子项**：当前谱系 development 候选缺少一个不读取 test/calibration/

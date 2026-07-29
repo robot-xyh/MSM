@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from hashlib import sha256
 import json
 import os
@@ -28,6 +29,16 @@ from d4_distributed_fallback.region_resource_current_lineage_candidate import (
     build_region_resource_current_lineage_candidate,
     load_region_resource_current_lineage_candidate_manifest,
     review_region_resource_current_lineage_candidate,
+)
+import d4_distributed_fallback.region_resource_current_lineage_shadow as current_lineage_shadow
+from d4_distributed_fallback.region_resource_current_lineage_shadow import (
+    RegionResourceCurrentLineageShadowAdapter,
+    RegionResourceCurrentLineageShadowError,
+    RegionResourceCurrentLineageShadowPermissions,
+    RegionResourceCurrentLineageShadowRecord,
+    RegionResourceCurrentLineageShadowSeedRegistration,
+    RegionResourceCurrentLineageShadowVerifier,
+    summarize_region_resource_current_lineage_shadow_records,
 )
 from d4_distributed_fallback.region_resource_dataset import (
     RegionLearningEpisodeSource,
@@ -494,3 +505,419 @@ def test_manifest_permission_field_cannot_be_rewritten(
         match="candidate_manifest_invalid:ValueError",
     ):
         load_region_resource_current_lineage_candidate_manifest(candidate)
+
+
+def _sha256_file(path: Path) -> str:
+    digest = sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _patch_frozen_shadow_binding(
+    monkeypatch: pytest.MonkeyPatch,
+    candidate_root: Path,
+) -> None:
+    manifest_path = (
+        candidate_root / REGION_RESOURCE_CURRENT_LINEAGE_CANDIDATE_FILENAME
+    )
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    source = json.loads(
+        (
+            candidate_root / "source_implementation_summary.json"
+        ).read_text(encoding="utf-8")
+    )
+    monkeypatch.setattr(
+        current_lineage_shadow,
+        "FROZEN_CURRENT_LINEAGE_GIT_COMMIT",
+        source["git_commit"],
+    )
+    monkeypatch.setattr(
+        current_lineage_shadow,
+        "FROZEN_CURRENT_LINEAGE_MANIFEST_FILE_SHA256",
+        _sha256_file(manifest_path),
+    )
+    monkeypatch.setattr(
+        current_lineage_shadow,
+        "FROZEN_CURRENT_LINEAGE_MANIFEST_CONTENT_SHA256",
+        manifest["content_sha256"],
+    )
+    monkeypatch.setattr(
+        current_lineage_shadow,
+        "FROZEN_CURRENT_LINEAGE_MODEL_STATE_SHA256",
+        manifest["model_state_sha256"],
+    )
+    monkeypatch.setattr(
+        current_lineage_shadow,
+        "FROZEN_CURRENT_LINEAGE_SOURCE_IDENTITY_SHA256",
+        manifest["source_identity_sha256"],
+    )
+    monkeypatch.setattr(
+        current_lineage_shadow,
+        "FROZEN_CURRENT_LINEAGE_SOURCE_SUMMARY_FILE_SHA256",
+        manifest["source_summary_file_sha256"],
+    )
+    monkeypatch.setattr(
+        current_lineage_shadow,
+        "FROZEN_CURRENT_LINEAGE_BUNDLE_MANIFEST_SHA256",
+        manifest["bundle_manifest_sha256"],
+    )
+
+
+def _shadow_registration(
+    adapter: RegionResourceCurrentLineageShadowAdapter,
+    *,
+    seed: int,
+    episode_id: str | None = None,
+    registry_version: int = 1,
+    excluded_calibration_seeds: tuple[int, ...] = (5,),
+) -> RegionResourceCurrentLineageShadowSeedRegistration:
+    return RegionResourceCurrentLineageShadowSeedRegistration(
+        registry_id="main-shadow-seed-registry",
+        registry_version=registry_version,
+        episode_id=episode_id or f"main-shadow-episode-{seed}",
+        scenario_id="d4-current-lineage-development-fixture",
+        scenario_version="v1",
+        seed=seed,
+        candidate_binding_sha256=(
+            adapter.candidate_binding.binding_sha256
+        ),
+        excluded_calibration_seeds=excluded_calibration_seeds,
+        calibration_catalog_complete=True,
+    )
+
+
+def _shadow_snapshot(
+    seed: int,
+    *,
+    timestamp_s: float = 0.0,
+    snapshot_suffix: str = "0",
+) -> RegionResourceSnapshot:
+    snapshot = _snapshot(_source(seed))
+    return replace(
+        snapshot,
+        snapshot_id=f"shadow-snapshot-{seed}-{snapshot_suffix}",
+        timestamp_s=timestamp_s,
+        authority_digest="",
+    )
+
+
+def test_frozen_shadow_adapter_records_and_replays_without_permissions(
+    current_lineage_candidate_fixture,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    candidate = current_lineage_candidate_fixture[2]
+    _patch_frozen_shadow_binding(monkeypatch, candidate)
+    adapter = RegionResourceCurrentLineageShadowAdapter(candidate)
+    registration = _shadow_registration(adapter, seed=2000)
+    snapshot = _shadow_snapshot(2000)
+
+    record = adapter.evaluate(registration, snapshot, frame_index=0)
+
+    assert record.candidate_binding == adapter.candidate_binding
+    assert record.seed_registration_sha256 == (
+        registration.registration_sha256
+    )
+    assert record.input_summary.episode_id == registration.episode_id
+    assert record.input_summary.seed == 2000
+    assert record.input_summary.frame_index == 0
+    assert record.raw_model_recommendation.projected is False
+    assert record.deterministic_projected_recommendation.projected is True
+    assert record.projection_completed is True
+    assert record.execution_source == "deterministic_rule_fallback"
+    assert record.candidate_executed is False
+    assert record.rule_fallback_required is True
+    assert record.permissions == (
+        RegionResourceCurrentLineageShadowPermissions()
+    )
+    assert all(
+        token not in json.dumps(record.to_dict(), sort_keys=True)
+        for token in (
+            "global_track_id",
+            "truth_id",
+            "d3_successor_plan_id",
+            "physical_window_id",
+            "r0_episode_id",
+        )
+    )
+
+    verifier = RegionResourceCurrentLineageShadowVerifier(candidate)
+    review = verifier.verify_next(record.to_dict(), registration, snapshot)
+
+    assert review.record_id == record.record_id
+    assert review.permissions_closed is True
+    assert review.deterministic_projection_verified is True
+
+
+def test_source_controlled_frozen_shadow_registry_loads_with_permissions_closed(
+) -> None:
+    registry = (
+        _PROJECT_ROOT
+        / "research_modules/d4_distributed_fallback/model_registry/"
+        "region_resource_a2_current_lineage_development_v1"
+    )
+    adapter = RegionResourceCurrentLineageShadowAdapter(registry)
+    registration = _shadow_registration(adapter, seed=2000)
+    snapshot = _shadow_snapshot(2000)
+
+    record = adapter.evaluate(registration, snapshot, frame_index=0)
+
+    assert record.candidate_binding.source_git_commit == (
+        current_lineage_shadow.FROZEN_CURRENT_LINEAGE_GIT_COMMIT
+    )
+    assert record.candidate_binding.model_state_sha256 == (
+        current_lineage_shadow.FROZEN_CURRENT_LINEAGE_MODEL_STATE_SHA256
+    )
+    assert record.execution_source == "deterministic_rule_fallback"
+    assert record.candidate_executed is False
+    assert record.rule_fallback_required is True
+    assert record.permissions == (
+        RegionResourceCurrentLineageShadowPermissions()
+    )
+    assert all(
+        value is False
+        for name, value in record.permissions.to_dict().items()
+        if name != "schema"
+    )
+
+
+def test_shadow_adapter_rejects_every_seed_overlap_class(
+    current_lineage_candidate_fixture,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    candidate = current_lineage_candidate_fixture[2]
+    _patch_frozen_shadow_binding(monkeypatch, candidate)
+    adapter = RegionResourceCurrentLineageShadowAdapter(candidate)
+    manifest = load_region_resource_current_lineage_candidate_manifest(
+        candidate
+    )
+    cases = (
+        (manifest.split_usage.train_seeds[0], (5,), "train"),
+        (
+            manifest.split_usage.validation_seeds[0],
+            (5,),
+            "validation",
+        ),
+        (manifest.split_usage.untouched_test_seeds[0], (5,), "test"),
+        (1000, (5,), "reserved"),
+        (2000, (2000,), "calibration"),
+    )
+    for seed, excluded, reason in cases:
+        registration = _shadow_registration(
+            adapter,
+            seed=seed,
+            excluded_calibration_seeds=excluded,
+        )
+        with pytest.raises(
+            RegionResourceCurrentLineageShadowError,
+            match=f"shadow_seed_overlap:.*{reason}",
+        ):
+            adapter.evaluate(
+                registration,
+                _shadow_snapshot(seed),
+                frame_index=0,
+            )
+
+
+def test_shadow_adapter_rejects_stale_frame_and_plan_generation(
+    current_lineage_candidate_fixture,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    candidate = current_lineage_candidate_fixture[2]
+    _patch_frozen_shadow_binding(monkeypatch, candidate)
+    adapter = RegionResourceCurrentLineageShadowAdapter(candidate)
+    registration = _shadow_registration(adapter, seed=2000)
+    first = _shadow_snapshot(2000)
+    adapter.evaluate(registration, first, frame_index=2)
+
+    with pytest.raises(
+        RegionResourceCurrentLineageShadowError,
+        match="shadow_frame_version_stale_or_replayed",
+    ):
+        adapter.evaluate(registration, first, frame_index=2)
+
+    stale_nodes = tuple(
+        replace(node, plan_version=1) for node in first.regions
+    )
+    stale_plan = replace(
+        first,
+        snapshot_id="shadow-snapshot-2000-stale-plan",
+        timestamp_s=1.0,
+        regions=stale_nodes,
+        authority_digest="",
+    )
+    with pytest.raises(
+        RegionResourceCurrentLineageShadowError,
+        match="shadow_region_plan_version_stale",
+    ):
+        adapter.evaluate(registration, stale_plan, frame_index=3)
+
+
+def test_shadow_adapter_rejects_old_registry_and_seed_reuse(
+    current_lineage_candidate_fixture,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    candidate = current_lineage_candidate_fixture[2]
+    _patch_frozen_shadow_binding(monkeypatch, candidate)
+    adapter = RegionResourceCurrentLineageShadowAdapter(candidate)
+    first = _shadow_registration(
+        adapter,
+        seed=2000,
+        registry_version=2,
+    )
+    adapter.evaluate(first, _shadow_snapshot(2000), frame_index=0)
+
+    old = _shadow_registration(
+        adapter,
+        seed=2001,
+        registry_version=1,
+    )
+    with pytest.raises(
+        RegionResourceCurrentLineageShadowError,
+        match="shadow_seed_registry_version_stale",
+    ):
+        adapter.evaluate(old, _shadow_snapshot(2001), frame_index=0)
+
+    reused = _shadow_registration(
+        adapter,
+        seed=2000,
+        episode_id="different-main-episode",
+        registry_version=2,
+    )
+    with pytest.raises(
+        RegionResourceCurrentLineageShadowError,
+        match="shadow_seed_reused_by_different_episode",
+    ):
+        adapter.evaluate(reused, _shadow_snapshot(2000), frame_index=0)
+
+
+def test_shadow_adapter_rejects_nonfinite_model_output(
+    current_lineage_candidate_fixture,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    candidate = current_lineage_candidate_fixture[2]
+    _patch_frozen_shadow_binding(monkeypatch, candidate)
+    adapter = RegionResourceCurrentLineageShadowAdapter(candidate)
+    original = adapter._policy.recommend_raw
+
+    def _nonfinite(snapshot):
+        recommendation = original(snapshot)
+        object.__setattr__(recommendation, "confidence", float("nan"))
+        return recommendation
+
+    monkeypatch.setattr(adapter._policy, "recommend_raw", _nonfinite)
+    with pytest.raises(
+        RegionResourceCurrentLineageShadowError,
+        match="shadow_model_output_nonfinite_or_unavailable",
+    ):
+        adapter.evaluate(
+            _shadow_registration(adapter, seed=2000),
+            _shadow_snapshot(2000),
+            frame_index=0,
+        )
+
+
+def test_shadow_record_rejects_permission_tampering(
+    current_lineage_candidate_fixture,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    candidate = current_lineage_candidate_fixture[2]
+    _patch_frozen_shadow_binding(monkeypatch, candidate)
+    adapter = RegionResourceCurrentLineageShadowAdapter(candidate)
+    record = adapter.evaluate(
+        _shadow_registration(adapter, seed=2000),
+        _shadow_snapshot(2000),
+        frame_index=0,
+    )
+    payload = record.to_dict()
+    payload["permissions"]["runtime_ack_available"] = True
+
+    with pytest.raises(ValueError, match="cannot grant evidence or permission"):
+        RegionResourceCurrentLineageShadowRecord.from_mapping(payload)
+
+
+def test_shadow_adapter_rejects_frozen_artifact_tampering(
+    current_lineage_candidate_fixture,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    source = current_lineage_candidate_fixture[2]
+    _patch_frozen_shadow_binding(monkeypatch, source)
+    candidate = tmp_path / REGION_RESOURCE_CURRENT_LINEAGE_CANDIDATE_ID
+    shutil.copytree(source, candidate)
+    state = candidate / "bundle" / "state_dict.pt"
+    state.write_bytes(state.read_bytes() + b"tampered")
+
+    with pytest.raises(
+        RegionResourceCurrentLineageShadowError,
+        match="frozen_candidate_manifest_rejected",
+    ):
+        RegionResourceCurrentLineageShadowAdapter(candidate)
+
+
+def test_shadow_ood_diagnostics_identify_runtime_feature_mismatch(
+    current_lineage_candidate_fixture,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    candidate = current_lineage_candidate_fixture[2]
+    _patch_frozen_shadow_binding(monkeypatch, candidate)
+    adapter = RegionResourceCurrentLineageShadowAdapter(candidate)
+    base = _shadow_snapshot(2000)
+    shifted_nodes = tuple(
+        replace(
+            node,
+            d1_uncertainty=500.0,
+            d2_uncertainty=250.0,
+            secondary_coverage=0.0,
+            secondary_readiness=0.0,
+            committed_resources=min(
+                2, node.available_resources - node.reserve_resources
+            ),
+        )
+        for node in base.regions
+    )
+    shifted = replace(
+        base,
+        snapshot_id="shadow-snapshot-2000-runtime-shift",
+        regions=shifted_nodes,
+        authority_digest="",
+    )
+
+    record = adapter.evaluate(
+        _shadow_registration(adapter, seed=2000),
+        shifted,
+        frame_index=0,
+    )
+    feature_names = {
+        item.feature_name for item in record.ood_diagnostic.violations
+    }
+
+    assert record.ood_diagnostic.feature_ood is True
+    assert record.candidate_gate.candidate_ood_passed is False
+    assert "d1_uncertainty_log" in feature_names
+    assert "d2_uncertainty_log" in feature_names
+    assert all(
+        item.accepted_minimum
+        == pytest.approx(
+            item.training_minimum
+            - 0.05
+            * max(
+                abs(item.training_minimum),
+                abs(item.training_maximum),
+                1.0,
+            )
+        )
+        for item in record.ood_diagnostic.violations
+    )
+    report = summarize_region_resource_current_lineage_shadow_records(
+        (record,)
+    )
+    assert report.feature_ood_count == 1
+    assert report.feature_ood_rate == 1.0
+    assert report.runtime_compatible is False
+    assert report.current_candidate_blocker is True
+    assert report.blocker_reasons == ("all_shadow_frames_feature_ood",)
+    assert report.permissions == (
+        RegionResourceCurrentLineageShadowPermissions()
+    )

@@ -1,5 +1,14 @@
 # D4 文档索引
 
+2026-07-28 新增
+`../reports/D4_A2_CURRENT_LINEAGE_SHADOW_RUNTIME_BOUNDARY_20260728.md`。文档说明冻结候选
+的只读运行适配、逐特征 OOD 诊断和权限边界。main 的 5v5/2 区域 3 帧及
+200v200/8 区域 2 帧均被 OOD 门拒绝，模型执行 0/5。当前候选不具运行分布兼容性，正式
+20-seed 阻断。下一候选需将 900-episode 运行数据与 100-episode 动作课程按全局数字 seed
+原子分割重建，保留 seed 1000-1019，且先限定 8 区域适用域。本轮未重训或修改门限；
+冻结候选原始字节已登记到 `../model_registry/`，clean clone 可直接加载。登记路径加入后
+专项 **17/17**、D4 全量 **706/706** 通过。
+
 2026-07-28 新增 A2 当前实现谱系候选构建与复核。新入口要求整个 Git 工作区 clean，只使用
 train 更新参数、validation 早停和选模，test payload、旧 calibration 和 seed 1000-1019
 使用数为 0。manifest 绑定源码、数据、切分、配置、模型 manifest、权重和训练摘要；脏

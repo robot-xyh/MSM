@@ -1,0 +1,18 @@
+{
+  "batch_size": 32,
+  "candidate_id": "region_resource_a2_current_lineage_development_v1",
+  "config_sha256": "6e13b0e06c59294b40eae64c7b6c98c62528585191c7072a60931413d4969636",
+  "created_at_utc": "2026-07-28T00:00:00Z",
+  "device": "cpu",
+  "early_stopping_patience": 10,
+  "epochs": 60,
+  "hidden_dim": 64,
+  "learning_rate": 0.0008,
+  "max_grad_norm": 1.0,
+  "message_passing_steps": 2,
+  "model_version": "d4-region-a2-current-lineage-development-v1",
+  "random_seed": 20260728,
+  "schema": "d4-region-resource-current-lineage-config-v1",
+  "torch_num_threads": 1,
+  "weight_decay": 1e-05
+}

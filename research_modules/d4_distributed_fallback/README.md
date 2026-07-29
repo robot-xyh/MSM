@@ -1,5 +1,28 @@
 # D4 分布式协同与降级接管
 
+## 2026-07-28 当前谱系影子运行边界
+
+D4 已为冻结的 current-lineage development/shadow 候选增加只读运行适配器和独立
+verifier。候选固定绑定 clean commit `b0d498d9...`、manifest
+`7cc10ad7...de64`、权重 `fd1b9c4c...0047` 和源码身份 `b81780ce...dfdf`。每帧记录
+episode/seed/frame、输入摘要、原始模型动作、确定性安全投影、非零分类、拒绝原因以及逐
+节点/逐边/逐特征 OOD 详情。实际执行源始终为规则回退；D3 后继计划、runtime/owner/
+coalition ACK、物理窗口、R0、收益和全部运行权限不可由该适配器生成。
+
+候选原始字节现已登记到
+`model_registry/region_resource_a2_current_lineage_development_v1/`。manifest、源码/
+数据/训练摘要、配置和 bundle 三个文件与原 `outputs/` 候选逐字节相同。冻结适配器可直接
+从该路径加载，因此 clean clone 不再依赖被 gitignore 的本地输出。登记只解决来源复现，
+不改变候选权限和运行适用性。
+
+main 的 5v5/2 区域 3 帧和 200v200/8 区域 2 帧预检均为 `feature_ood`，模型实际执行
+0/5，在线真值使用 0。当前候选只完成可信加载和影子适配，不具运行分布兼容性，正式
+20-seed 阻断，`ood_margin=0.05` 不变。900-episode 运行数据与 100-episode 动作课程的
+特征 union 可覆盖 200v200/8 区域主要范围，但两个来源的数字 seed 0-99 必须全局原子
+重分割；1000-1019 完全排除。5v5/2 区域的边距离仍未覆盖。新候选需在 clean checkout
+重建，本轮未重训。专项 **17/17**、D4 全量 **706/706** 通过。完整证据见
+`reports/D4_A2_CURRENT_LINEAGE_SHADOW_RUNTIME_BOUNDARY_20260728.md`。
+
 ## 2026-07-28 A2 当前实现谱系实物
 
 D4 新增独立的当前谱系候选构建与复核入口。入口先检查整个 Git 工作区必须干净，再绑定当前
