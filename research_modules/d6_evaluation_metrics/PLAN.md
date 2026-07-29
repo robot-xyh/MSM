@@ -1,5 +1,49 @@
 # D6 Evaluation Metrics Plan
 
+## 2026-07-28 G1 模型来源适配器
+
+### 已完成
+
+- [x] 新增
+  `d6.learning-run-d5-g1-model-source-reference.v1`。reference 只携带 G1、
+  `d5_graph`、13 项原制品相对路径、文件 SHA-256 和自身内容摘要，不接受 facts、formal
+  或权限声明。
+- [x] 固定正式 D5 v5 模型身份、制品布局、external audit v2、post-assembly audit v2、
+  held-out、paired-shadow、lineage 和 clean runtime 实现谱系。完整但未登记的替代模型不能
+  通过自签 sidecar 建立信任。
+- [x] 在显式 `artifact_root` 内解析并复哈希 sidecar 引用，复用
+  `audit_d5_g1_external_evidence()` 和 `audit_d5_g1_post_assembly_bundle()` 重算事实。
+  persisted audit、bundle 内嵌 audit 与重算结果必须一致；审计前后再次复核原制品和实现文件。
+- [x] 使用
+  `/tmp/MSM-d5-g1-formal-evidence-8d5e02e-20260727` 完成一次真实只读正向验证，clean
+  source 为同级 `/tmp/MSM-d5-g1-formal-8d5e02e`。验证结果为正式装配后审计、
+  `component_ids=[d5_graph]`、`audit_passed=true`，模型指纹为
+  `sha256:7fb5db8b6099ca4da5706a3bec53ff7cd634e8bd267c036ce3ee4ee4bf71ca71`。
+  适配器没有扫描或修改 `/tmp`。
+- [x] 仓库根作为 `artifact_root` 时保持失败关闭。reference 约定的 13 项原制品不在仓库
+  根，不使用仓库内 audit JSON 替代原生产链，也不自动回退到外部目录。
+- [x] 专项测试 `14 passed, 1 warning in 3.07s`；与 readiness v2 聚合测试合并为
+  `32 passed, 1 warning in 8.16s`；D6 全量为
+  `1138 passed, 1 warning in 126.65s`。warning 为既有 Matplotlib `Axes3D` 环境提示。
+
+### 当前边界
+
+- [x] G1 `model_source` 软件 adapter 缺口关闭。现有可信来源 adapter 为
+  `frozen_unseen_seeds` 和 G1 `model_source` 两类。
+- [ ] 当前尚未形成把 reference 与完整 readiness manifest 一同置于显式外部根的正式
+  readiness 制品。真实只读验证证明 source adapter 可复算，不等同于六变体正式准备度完成。
+- [ ] G1 的 `identifiable_adoption`、`runtime_ack`、`physical_window`、`same_key_r0`、
+  `paired_non_degradation`、`truth_use`、`finite_state` 和 `external_permission` 八门仍
+  unavailable。模型审计中的零在线真值特征和有限输出不能替代同一运行采用链的受审分母。
+- [ ] C1/F1 仍要求 D3、D4、D5 图关联和 D5 主动视觉四组件完整覆盖。单独的
+  `d5_graph` model-source 证据按组件不足拒绝。
+- [ ] D3 公共
+  `load_a1_isolated_intervention_batch()` 已可严格验证 A1 candidate/selection 清单，但其
+  公共结果明确不证明计划发布、实际采用、运行 ACK、物理窗口或同键 R0。readiness
+  `identifiable_adoption` 要求实际采用、可辨识变化和 binding change，当前没有安全的字段
+  映射。本轮不增加 A1 gate adapter；后续可先定义独立的
+  `candidate_selection_inventory` 前置证据层，再与同一运行谱系的采用记录联接。
+
 ## 2026-07-27 正式学习运行准备度审计
 
 ### 已完成

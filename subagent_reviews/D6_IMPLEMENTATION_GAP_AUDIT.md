@@ -1,5 +1,59 @@
 # D6 实现差距审计
 
+## 2026-07-28 G1 model-source 与 A1 loader 复核
+
+### 已关闭的 D6-owned 缺口
+
+1. G1 `model_source` 已有可信 source adapter。reference schema 为
+   `d6.learning-run-d5-g1-model-source-reference.v1`，只覆盖 `d5_graph`，只列 13 项相对
+   路径和文件 SHA-256。
+2. D6 逐文件复哈希，复用现有 external audit v2 和 post-assembly audit v2 重算事实，并
+   交叉核对 persisted/embedded audit、D5 v5 模型指纹、held-out、paired-shadow、lineage、
+   校验清单和 clean runtime 实现谱系。
+3. `/tmp/MSM-d5-g1-formal-evidence-8d5e02e-20260727` 的真实只读正例通过。clean source
+   位于同级 `/tmp/MSM-d5-g1-formal-8d5e02e`。适配器没有扫描或修改 `/tmp`。
+4. 仓库根失败关闭测试通过。仓库根缺少以下 13 个 reference 目标：
+
+```text
+d6_external_audit_input.json
+d6_external_audit/d5_g1_external_audit.json
+d6_external_audit/SHA256SUMS
+d6_post_assembly_input.json
+d6_post_assembly_audit/d5_g1_post_assembly_audit.json
+d6_post_assembly_audit/SHA256SUMS
+g1_assist_v5_7fb5db8b_d6_cbd6c72b/manifest.json
+g1_assist_v5_7fb5db8b_d6_cbd6c72b/weights.pt
+g1_assist_v5_7fb5db8b_d6_cbd6c72b/SHA256SUMS
+g1_assist_v5_7fb5db8b_d6_cbd6c72b/evidence/heldout_evaluation.json
+g1_assist_v5_7fb5db8b_d6_cbd6c72b/evidence/paired_shadow_report.json
+g1_assist_v5_7fb5db8b_d6_cbd6c72b/evidence/paired_episode_lineage.jsonl
+g1_assist_v5_7fb5db8b_d6_cbd6c72b/evidence/d6_external_audit.json
+```
+
+仓库内同名或相关 audit JSON 不会被当作信任根，也不会触发到 `/tmp` 的回退发现。
+
+### 仍开放的 P1
+
+1. G1 的 `identifiable_adoption`、`runtime_ack`、`physical_window`、`same_key_r0`、
+   `paired_non_degradation`、`truth_use`、`finite_state` 和 `external_permission` 八门
+   仍 unavailable。当前真实正例验证的是 source adapter，不是完整 readiness manifest。
+2. A1/A2/A3 尚无对应可信 model-source adapter。C1/F1 缺 D3、D4、D5 图关联和 D5 主动
+   视觉四组件完整来源，只有 `d5_graph` 时必须拒绝。
+3. D3 已公开
+   `load_a1_isolated_intervention_batch()`，可严格验证 candidate/selection inventory。
+   该 loader 明确不证明计划发布、实际采用、运行 ACK、物理窗口、同键 R0 或生产授权。
+   readiness `identifiable_adoption` 的事实合同要求实际采用数、可辨识变化、binding change
+   和 adopted component。两者当前无法安全映射，因此本轮没有新增 A1 source adapter。
+4. 后续先定义非授权的 A1 `candidate_selection_inventory` 前置证据层，或由同一版本化运行
+   producer 在 batch 后追加 publication/adoption 记录。只有公共 loader 与该运行链可按
+   candidate identity、selection identity 和实现谱系一一联接后，才评估
+   `identifiable_adoption` adapter。
+
+当前无新增 D6-owned P0。专项测试为 `14 passed, 1 warning in 3.07s`，readiness 联合测试
+为 `32 passed, 1 warning in 8.16s`，D6 全量为
+`1138 passed, 1 warning in 126.65s`。全部模型晋级、分配、接管、相机和控制权限保持
+false。
+
 ## 2026-07-27 正式学习运行准备度 GAP
 
 ### D6-owned 已关闭

@@ -1,5 +1,33 @@
 # D6 系统评估指标综述及子方案
 
+## 2026-07-28 G1 模型来源适配评审
+
+评审接受 G1 `model_source` 的最小可信适配器。sidecar 只登记 13 项原制品相对路径和
+SHA-256，不登记通过事实或权限。D6 使用固定模型身份和实现谱系作为 allow-list，重新执行
+external audit v2 与 post-assembly audit v2，并要求持久化结果、v5 内嵌外审和重算结果
+一致。完整但未登记的替代模型不能通过自签 sidecar。
+
+显式外部根
+`/tmp/MSM-d5-g1-formal-evidence-8d5e02e-20260727` 的只读正例通过，clean source 是
+`/tmp/MSM-d5-g1-formal-8d5e02e`。仓库根用例保持原制品缺失，证明 adapter 不会扫描
+`/tmp` 或用仓库内 audit JSON 替代生产链。真实正例只证明 G1 来源可复算；它不是完整
+readiness 审计，也不证明模型已在运行 episode 中采用。
+
+评审不接受把 external/post-assembly 中的零在线真值特征或有限输出直接映射为 readiness
+`truth_use`、`finite_state`。这两门需要同一运行采用谱系和非零受审分母。G1 的采用、ACK、
+物理窗口、同键 R0、成对非退化、truth-use、finite-state 和外部权限八门继续
+unavailable。C1/F1 缺四组件完整覆盖。权限全部保持 false。
+
+D3 公共 A1 batch loader 已具备严格 candidate/selection 校验，但它把发布、运行 ACK、物理
+窗口和同键 R0 明确设为 false。该证据与 readiness `identifiable_adoption` 的实际采用和
+可辨识 binding change 语义不同。评审不建议本轮硬接 A1 gate。下一步先把它作为非授权前置
+inventory 来源，等待同一 candidate identity 下的运行采用 producer 后再接入 readiness。
+
+专项测试 `14 passed, 1 warning in 3.07s`，readiness 联合测试
+`32 passed, 1 warning in 8.16s`，D6 全量
+`1138 passed, 1 warning in 126.65s`。攻击覆盖自签断言、未登记替代模型、嵌套制品篡改、
+路径逃逸、符号链接、摘要/schema/模型身份错配、组合缺组件、权限升级和仓库根自动发现。
+
 ## 2026-07-27 正式学习运行准备度评审
 
 D6 readiness 合同已升级为 v2，覆盖 G1/A1/A2/A3/C1/F1。manifest 不再携带来源类别、

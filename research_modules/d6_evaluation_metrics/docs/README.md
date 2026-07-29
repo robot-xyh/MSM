@@ -1,10 +1,20 @@
 # D6 文档索引
 
+2026-07-28 新增 G1 `model_source` 可信适配器。reference 只列 13 项正式 D5 v5、external
+audit v2、post-assembly audit v2、held-out、paired-shadow、lineage 和校验清单的相对路径
+与 SHA-256；D6 复哈希原制品并重跑两级严格审计。显式外部根
+`/tmp/MSM-d5-g1-formal-evidence-8d5e02e-20260727` 的只读正例通过，仓库根因原制品缺失
+继续 unavailable，且不会自动发现 `/tmp`。当前可信来源 adapter 为 frozen seed 与 G1
+model-source 两类。G1 其余八门和其他变体来源仍不可用，所有权限保持 false。算法、结果和
+GAP 分别见 `ALGORITHM_AND_IMPLEMENTATION.md`、`EXPERIMENT_REPORT.md` 与
+`../../../subagent_reviews/D6_IMPLEMENTATION_GAP_AUDIT.md`。D6 全量回归为
+`1138 passed, 1 warning in 126.65s`。
+
 2026-07-27 正式学习运行准备度聚合器见 `MODULE_PRINCIPLES_CN.md` 和
 `ALGORITHM_AND_IMPLEMENTATION.md`。该入口统一审计 G1/A1/A2/A3/C1/F1 的模型来源、冻结未见
 seed、可辨识采用、运行 ACK、物理窗口、唯一同键 R0、成对非退化、truth-use、有限状态和外部
 权限。v2 manifest 的每个 gate 只引用相对源制品路径和文件 SHA-256；D6 校验路径、实际文件
-摘要后，只把已登记 adapter 的既有 producer schema 送入原严格 auditor。当前仅接入
+摘要后，只把已登记 adapter 的既有 producer schema 送入原严格 auditor。该日仅接入
 canonical seed gate，其余九类 gate unavailable；十类旧通用 wrapper 均不再受信。
 18 个临时 producer/攻击/命令行测试已通过，没有启动正式矩阵或 AirSim。六个变体的 formal
 readiness 当前全部 unavailable。证据和 blocker 见 `EXPERIMENT_REPORT.md`。

@@ -1,5 +1,74 @@
 # D6 Evaluation Metrics
 
+## 2026-07-28 G1 模型来源可信适配器
+
+readiness v2 现有两类可信来源适配器：
+
+1. `frozen_unseen_seeds` 继续通过 canonical seed auditor 重算；
+2. `model_source` 新增
+   `d6.learning-run-d5-g1-model-source-reference.v1`，当前只覆盖 G1 的
+   `d5_graph` 组件。
+
+模型来源 sidecar 只列出正式 external audit v2、正式 post-assembly audit v2、D5 v5
+bundle、两套 `SHA256SUMS`、held-out、paired-shadow 和 paired lineage 的相对路径与文件
+SHA-256。它不携带 `audit_passed`、formal、模型身份或权限断言。适配器在调用方显式指定的
+`artifact_root` 内逐文件解析和复哈希，并执行以下重算：
+
+```text
+reference sidecar
+  -> 固定 G1/d5_graph 组件覆盖
+  -> 固定制品布局与正式候选 SHA-256 信任锚
+  -> audit_d5_g1_external_evidence()
+  -> persisted/embedded external audit 精确一致
+  -> audit_d5_g1_post_assembly_bundle()
+  -> persisted post-assembly audit 精确一致
+  -> v5 模型指纹、运行时实现谱系和两级内容摘要交叉一致
+```
+
+2026-07-28 使用显式外部根
+`/tmp/MSM-d5-g1-formal-evidence-8d5e02e-20260727` 完成一次只读正向验证。clean source
+worktree 位于同级 `/tmp/MSM-d5-g1-formal-8d5e02e`。结果为
+`source_class=formal_post_assembly_audit`、`component_ids=[d5_graph]`、
+`audit_passed=true`，模型身份为
+`sha256:7fb5db8b6099ca4da5706a3bec53ff7cd634e8bd267c036ce3ee4ee4bf71ca71`。
+适配器没有扫描 `/tmp`，也没有修改该证据树；路径由
+`configs/d5_g1_model_source_reference_7fb5db8b_20260728.json` 明确列出。
+
+仓库目录本身只保留审计输出、配置和 reference，不包含上述 182 MiB 原始证据树。若
+`artifact_root` 指向仓库根，13 项原制品引用会保持 unavailable；不会用仓库内 audit JSON
+替代原始生产链。只有显式外部根或完整 fixture 才能形成 model-source 正例。
+
+仓库根缺少的 13 个 reference 目标如下。这里列的是 sidecar 约定位置，不表示同名文件在其他
+目录出现时可以被自动采用。
+
+```text
+d6_external_audit_input.json
+d6_external_audit/d5_g1_external_audit.json
+d6_external_audit/SHA256SUMS
+d6_post_assembly_input.json
+d6_post_assembly_audit/d5_g1_post_assembly_audit.json
+d6_post_assembly_audit/SHA256SUMS
+g1_assist_v5_7fb5db8b_d6_cbd6c72b/manifest.json
+g1_assist_v5_7fb5db8b_d6_cbd6c72b/weights.pt
+g1_assist_v5_7fb5db8b_d6_cbd6c72b/SHA256SUMS
+g1_assist_v5_7fb5db8b_d6_cbd6c72b/evidence/heldout_evaluation.json
+g1_assist_v5_7fb5db8b_d6_cbd6c72b/evidence/paired_shadow_report.json
+g1_assist_v5_7fb5db8b_d6_cbd6c72b/evidence/paired_episode_lineage.jsonl
+g1_assist_v5_7fb5db8b_d6_cbd6c72b/evidence/d6_external_audit.json
+```
+
+G1 模型来源软件门由此关闭。G1 的实际采用、运行确认、物理窗口、唯一同键 R0、运行成对
+非退化、truth-use、有限状态和外部权限仍 unavailable。external/post-assembly 中的
+`online_truth_feature_count=0` 只覆盖该模型证据链，不提供 readiness truth-use 所需的同一
+运行采用谱系与受审记录分母；finite-state 也没有受审值分母。因此两门没有顺带接入。
+C1/F1 需要 D3、D4、D5 图关联和 D5 主动视觉四组件，只有 `d5_graph` 时按组件覆盖不足拒绝。
+
+新增专项 14 项通过；与 readiness v2 原测试合并为 32 项通过。攻击覆盖 sidecar 自签事实/
+权限断言、完整但未登记的替代模型、嵌套原制品篡改、路径逃逸、符号链接、摘要错配、schema
+错配、模型身份错配、组合变体缺组件和重签权限升级。所有 readiness 输出中的模型晋级、
+分配、接管、相机和控制权限继续为 false。仓库根失败关闭用例同时证明适配器不会自动发现
+`/tmp` 外部树。完整 D6 回归为 `1138 passed, 1 warning in 126.65s`。
+
 ## 2026-07-27 正式学习运行准备度审计
 
 D6 新增只读聚合器 `learning_run_readiness.py`，统一检查

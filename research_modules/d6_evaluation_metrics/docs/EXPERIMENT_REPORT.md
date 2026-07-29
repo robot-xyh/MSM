@@ -1,5 +1,57 @@
 # D6 正式实验矩阵准入预检报告
 
+## G1 模型来源只读验证（2026-07-28）
+
+### 结论
+
+G1 `model_source` 的 D6 软件适配缺口已关闭。适配器只接受正式 D5 v5 候选的固定模型身份和
+实现谱系，并从原 external audit v2、post-assembly audit v2、v5 包、held-out、
+paired-shadow、lineage 和校验清单重算来源事实。reference 自身不能声明通过或权限。
+
+当前正式 readiness 仍未就绪。该结论只覆盖 G1 模型来源。实际采用、运行确认、物理窗口、
+唯一同键 R0、成对非退化、同运行真值使用审计、有限状态审计和外部权限八门仍
+unavailable。C1/F1 缺其余三个模型组件来源。全部模型晋级、分配、接管、相机和控制权限为
+false。
+
+### 实物验证
+
+验证显式使用只读外部根：
+
+```text
+/tmp/MSM-d5-g1-formal-evidence-8d5e02e-20260727
+```
+
+clean source worktree 为：
+
+```text
+/tmp/MSM-d5-g1-formal-8d5e02e
+```
+
+单条真实证据链得到
+`source_class=formal_post_assembly_audit`、`formal=true`、
+`component_ids=[d5_graph]` 和 `audit_passed=true`。模型指纹为
+`sha256:7fb5db8b6099ca4da5706a3bec53ff7cd634e8bd267c036ce3ee4ee4bf71ca71`。
+验证未改动外部证据树。
+
+仓库根没有 reference 指向的 13 项原制品。以仓库根作为 `artifact_root` 时专项用例返回
+`gate_source_original_file_missing`，不会搜索 `/tmp`，也不会使用仓库中的 audit JSON
+补足原始链。
+
+### 软件测试
+
+验收门限为全部正例通过、全部攻击例失败关闭、权限始终为 false。结果如下：
+
+| 范围 | 结果 |
+| --- | --- |
+| G1 model-source 专项 | `14 passed, 1 warning in 3.07s` |
+| readiness v2 与 model-source 联合 | `32 passed, 1 warning in 8.16s` |
+| D6 全量 | `1138 passed, 1 warning in 126.65s` |
+
+负例覆盖未登记替代模型、sidecar 自报 facts/权限、嵌套原制品篡改、路径逃逸、符号链接、
+摘要错配、schema 错配、模型身份错配、组合变体缺组件、重签权限升级和仓库根自动发现攻击。
+warning 是既有 Matplotlib `Axes3D` 环境提示。本次没有运行 AirSim，也没有产生性能或物理
+拦截结论。
+
 ## 正式学习运行准备度软件验证（2026-07-27）
 
 ### 结论

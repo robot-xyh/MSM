@@ -1,5 +1,64 @@
 # D6 系统级离线评估：算法原理与实施说明
 
+## G1 模型来源适配算法（2026-07-28）
+
+### 输入合同
+
+`d6.learning-run-d5-g1-model-source-reference.v1` 固定包含
+`schema_version`、`variant`、`component_references` 和 `content_sha256`。当前只接受
+`variant=G1` 且组件集合精确为 `{"d5_graph"}`。组件下必须恰好提供 13 项引用，每项只有相对
+路径和文件 SHA-256。额外 facts、formal、权限字段或缺失组件均在读取原制品前拒绝。
+
+### 解析与重算
+
+`load_learning_run_source_evidence_bytes()` 要求调用方显式传入 `artifact_root`。适配器不搜索
+默认目录。算法按以下顺序执行：
+
+1. 复算 sidecar 内容摘要，拒绝绝对路径、`..`、符号链接、目录和不在根内的文件；
+2. 对 13 项文件逐项计算 SHA-256，并与 sidecar 和正式候选 allow-list 双重核对；
+3. 从 external audit input 读取原 D5 producer、正式候选和 clean source 谱系，调用
+   `audit_d5_g1_external_evidence()`；
+4. 要求重算 external audit 与持久化外审、v5 包内嵌外审完全一致，并核对外审
+   `SHA256SUMS`；
+5. 从 post-assembly input 重建 v5 包输入，调用
+   `audit_d5_g1_post_assembly_bundle()`；
+6. 要求重算装配后审计与持久化结果一致，核对装配后 `SHA256SUMS`；
+7. 交叉检查模型指纹、external/post-assembly 内容摘要、实现文件集合和实现总摘要；
+8. 审计完成后再次复哈希全部引用、嵌套 producer 文件和 clean runtime 文件，检测审计期间
+   的替换。
+
+通过时仅派生：
+
+```text
+source_class = formal_post_assembly_audit
+formal = true
+component_ids = [d5_graph]
+audit_passed = true
+model_identity = sha256:7fb5db8b...1ca71
+```
+
+输出不包含模型晋级或控制权限。所有上游审计中的六类权限还必须为 false；任一重签权限升级
+都会被重算结果或权限字段检查阻断。
+
+### 组合与运行边界
+
+A1、A2、A3、C1 和 F1 的模型来源不能复用该单组件适配器。C1/F1 的 required component
+集合为 D3、D4、D5 图关联和 D5 主动视觉，缺任一组件即返回覆盖不完整。`truth_use` 和
+`finite_state` 需要同一运行采用谱系下的受审记录/数值分母。现有 D5 模型外审只说明模型
+生产链中的在线真值特征计数和数值检查，不能映射到这两个运行 gate。
+
+D3 的 A1 公共 batch loader 只能证明离线 candidate/selection 清单完整。其返回对象明确将
+发布、运行确认、物理窗口和同键 R0 置为 false；因此不能派生 readiness
+`identifiable_adoption` 所需的实际采用、可辨识变化和 binding change。本轮不新增该
+adapter。
+
+### 验证
+
+完整 fixture 和真实外部根均可通过。真实外部根为
+`/tmp/MSM-d5-g1-formal-evidence-8d5e02e-20260727`，验证过程只读。仓库根用例即使外部树
+存在也返回原制品缺失，证明没有 `/tmp` 自动发现。专项测试 14 项，readiness 联合测试
+32 项，D6 全量 1138 项；全部通过。唯一 warning 是既有 Matplotlib 三维投影导入提示。
+
 ## 正式学习运行准备度聚合器（2026-07-27）
 
 ### 输入

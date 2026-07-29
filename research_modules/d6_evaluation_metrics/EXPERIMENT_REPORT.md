@@ -1,5 +1,36 @@
 # D6 系统级评估指标实验报告
 
+## 2.42 G1 模型来源证据复算
+
+### 结论
+
+2026-07-28，D6 为 readiness v2 增加 G1 `model_source` 可信适配器。适配器不接受调用方
+自报 facts、formal 或权限，只接受正式 D5 v5 候选的固定 13 项引用。它逐文件复哈希，并
+重新执行 external audit v2 和 post-assembly audit v2。持久化结果、v5 内嵌外审、模型
+身份和 clean runtime 实现谱系必须一致。
+
+显式外部根
+`/tmp/MSM-d5-g1-formal-evidence-8d5e02e-20260727` 的一次只读实物验证通过。结果为
+`formal_post_assembly_audit`、`component_ids=[d5_graph]`、`audit_passed=true`，模型
+指纹为
+`sha256:7fb5db8b6099ca4da5706a3bec53ff7cd634e8bd267c036ce3ee4ee4bf71ca71`。
+clean source worktree 位于 `/tmp/MSM-d5-g1-formal-8d5e02e`。适配器没有修改这两处内容。
+
+仓库中有 reference 和部分审计记录，但没有 sidecar 约定位置下的 13 项原制品。以仓库根
+调用时保持 unavailable，不自动发现 `/tmp` 外部树。仓库内 audit JSON 不能替代原生产链。
+
+### 验证结果
+
+专项 `14 passed, 1 warning in 3.07s`，readiness v2 联合测试
+`32 passed, 1 warning in 8.16s`，D6 全量
+`1138 passed, 1 warning in 126.65s`。负例覆盖自签替代模型、事实和权限注入、原制品
+篡改、路径逃逸、符号链接、摘要/schema/身份错配、组合缺组件和权限升级。warning 为既有
+Matplotlib 三维投影环境提示。
+
+该结果只关闭 G1 模型来源软件适配缺口。G1 其余八个 readiness gate、A1/A2/A3 模型来源、
+C1/F1 四组件覆盖和外部授权仍不可用。D6 没有授予模型晋级、分配、接管、相机或控制权限，
+本次也没有执行 AirSim 或物理拦截实验。
+
 ## 2.41 正式学习运行准备度审计
 
 ### 结论
