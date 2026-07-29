@@ -1,5 +1,27 @@
 # 200 对 200 三维质点仿真实施计划
 
+## D4 readiness v3 单 seed 预检（2026-07-29）
+
+1. [x] D4 在 clean commit `4ba2c8a...4114` 构建并登记
+   `region_resource_a2_8region_runtime_action_readiness_shadow_v3`。候选固定
+   8 区域适用域、1.5 秒建议有效期和 0.05/0.60/0.59/0.10 运行置信门，全部权限关闭。
+2. [x] main 从 clean commit `83b8869...0226` 运行 5v5/2 区域 seed 2000 负例。
+   3 帧均因适用域和边特征分布外拒绝，原始推理、门应用和许可均为 0；在线真值、
+   非有限状态和正式决策改动均为 0。
+3. [x] main 运行 20v20/8 区域 seed 2001 正例。3/3 帧分布内，原始推理、门应用、
+   动作一致和候选许可均为 3/3，规则回退、真值使用和安全异常均为 0。
+4. [x] main 运行 200v200/8 区域 seed 2002 正例。结果与 20v20 一致，满足分布内比例
+   至少 0.80、模型评价至少 1 帧和所有安全异常为 0 的开发验收条件。
+5. [x] 保持 registry 不可变。外部预检不改写
+   `runtime_preflight_completed=false`，也不开放 assist、assignment、takeover、
+   coalition、control、physical 或 formal evaluation。
+6. [ ] 使用多个非正式 development seed 扩展 20v20/200v200，覆盖通信退化、中心失效、
+   二级节点部分就绪和负载变化，冻结通过率、回退原因和时延分布。
+7. [ ] 运行 v3 与唯一同键规则基线的受控配对，补齐可辨识干预、D3 后继计划、
+   runtime/owner/coalition ACK、物理窗口和 D6 成对非退化。
+8. [ ] 在上述证据完成前保持正式 holdout 和所有运行权限关闭。2 区域需求另建候选或
+   显式适配器，不修改当前 8 区域 registry。
+
 ## 学习诊断与正式运行准备（2026-07-28）
 
 1. [x] D3 新增 A1 冻结帧动作裕量校准，复用规则代价、有界残差和原 Hungarian 求解器，

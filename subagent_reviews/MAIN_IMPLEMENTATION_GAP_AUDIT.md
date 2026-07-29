@@ -4,6 +4,45 @@
 **审计目标**：列出共识算法与计划使用的开源代码哪些已经实现，哪些没有实现，为什么没有实现，以及缺少哪些条件。
 **边界**：本文只用于科研仿真、接口补齐和后续工程排期；不涉及真实硬件、实机处置、火控或绕过授权的自动动作。
 
+## 2026-07-29 D4 readiness v3 运行兼容性
+
+本轮没有新增运行级 P0。D4 readiness v3 已完成干净构建、不可变登记和单随机种子
+development preflight。结论限定为 8 区域影子候选的运行兼容性，不代表区域策略收益、
+实际采用、降级授权或正式评价准入。
+
+1. **候选身份和运行合同已固定。** v3 从 clean commit
+   `4ba2c8a649dab157d55a2dd7817d5a8ded494114` 构建，候选 manifest 内容、模型权重和
+   运行置信门 SHA-256 分别为 `7978aec0...ada2`、`ace5df6d...7f52d` 和
+   `77972834...6872`。投影合同为最小备用比例 0.1、最小备用资源 1、建议有效期
+   1.5 秒；固定 OOD、置信度、不一致封顶和连续动作容差为
+   0.05/0.60/0.59/0.10。重复 clean build 的 8 个文件逐字节一致。
+2. **20v20 和 200v200 单 seed 正例通过。** main 从 clean commit
+   `83b8869b49c4ac26b6a5b6fb336dfe9af6960226` 加载固定 registry。20v20/8 区域
+   seed 2001 和 200v200/8 区域 seed 2002 各产生 3 帧，分布内比例均为 1.0；
+   原始推理、运行门应用、动作一致和候选许可均为 3/3，规则回退为 0。在线真值、
+   运行门真值、非有限状态、上下文不匹配、权限分歧和正式 D4 决策改动均为 0。
+3. **5v5 负例按适用域拒绝。** 5v5/2 区域 seed 2000 的 3 帧均未进入模型推理。
+   `candidate_region_count_out_of_scope` 与边 `distance_log`、`transfer_time_log`
+   分布外同时触发。该结果证明 8 区域候选对 2 区域输入失败关闭，不构成 8 区域
+   正例失败；若后续需要 2 区域学习路径，应另建候选或显式适配器。
+4. **权限边界未变化。** `paired_development_rollout_allowed=true` 只表示可以开始
+   受控开发配对。registry 内 `runtime_preflight_completed=false` 保持不变；
+   assist、assignment、takeover、coalition、control、physical 和 formal evaluation
+   权限全部为 false。
+5. **回归与证据。** D4 builder 阶段全量为 `750 passed`，登记后 D4 owner 全量为
+   `754 passed`；main 的运行兼容性专项为 `8 passed`。三组 preflight 的机器验收通过，
+   中文报告和 JSON 摘要见
+   `research_modules/scalable_3d_simulation/docs/SCALABLE_3D_D4_READINESS_V3_PREFLIGHT_20260729_CN.md`。
+
+仍开放的 P1：
+
+1. 用多个非正式 development seed 扩展 20v20 和 200v200，覆盖名义、通信退化、
+   中心失效、二级节点部分就绪及负载变化，统计运行门通过率、规则回退和时延分布。
+2. 在冻结输入上运行 v3 与唯一同键规则基线，形成可辨识区域干预、D3 严格后继计划、
+   runtime/owner/coalition ACK、确认后物理窗口和 D6 成对非退化证据。
+3. 只有模型来源、未见 seed、实际采用、物理结果、非退化、真值隔离、有限状态和外部
+   权限全部通过后，才准备正式 holdout。当前不得改写 registry 或开放运行权限。
+
 ## 2026-07-28 学习干预诊断与运行准备度
 
 本轮没有新增运行级 P0。D3、D4、D5 已补齐学习候选进入正式运行前的三类前置检查，

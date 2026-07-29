@@ -1,5 +1,34 @@
 # Scalable 3D Simulation
 
+## D4 readiness v3 预检（2026-07-29）
+
+D4 readiness v3 已完成可复现 clean build、不可变登记和 main 单随机种子运行兼容性
+预检。候选只适用于 8 区域，运行投影合同为最小备用比例 0.1、最小备用资源 1、建议
+有效期 1.5 秒；固定 OOD、置信度、不一致封顶和连续动作容差为
+0.05/0.60/0.59/0.10。候选 manifest 内容、模型和运行门 SHA-256 分别为
+`7978aec0...ada2`、`ace5df6d...7f52d` 和 `77972834...6872`。
+
+main 从 clean commit `83b8869b49c4ac26b6a5b6fb336dfe9af6960226` 加载固定
+registry，得到以下结果：
+
+| 场景 | seed | 帧数 | 分布内 | 原始推理 / 门应用 / 动作一致 / 许可 | 规则回退 | 结论 |
+| --- | ---: | ---: | ---: | ---: | ---: | --- |
+| 5v5 / 2 区域 / 2 侦察节点 | 2000 | 3 | 0/3 | 0 / 0 / 0 / 0 | 3 | 8 区域适用域负例，失败关闭 |
+| 20v20 / 8 区域 / 2 侦察节点 | 2001 | 3 | 3/3 | 3 / 3 / 3 / 3 | 0 | 单 seed 运行兼容 |
+| 200v200 / 8 区域 / 8 侦察节点 | 2002 | 3 | 3/3 | 3 / 3 / 3 / 3 | 0 | 单 seed 运行兼容 |
+
+三组在线真值使用、非有限状态和正式 D4 决策改动均为 0。两个 8 区域正例的上下文、
+正式决策摘要和候选许可分歧计数均为 0，blocker 为空。5v5 负例包含
+`candidate_region_count_out_of_scope`，同时由边 `distance_log` 和
+`transfer_time_log` 触发分布外。3 帧均在运行置信门前走规则路径，因此总回退为 3；
+运行置信门自身的回退计数为 0。该结果不作为 v3 的 8 区域 blocker。
+
+这批证据只关闭 20v20/200v200 单 seed 运行兼容性。多 development seed、同键规则
+基线、可辨识区域干预、后继计划、运行确认、物理窗口、时延和成对非退化仍为 P1。
+`paired_development_rollout_allowed=true` 不授予实际采用或控制权限；registry 内
+`runtime_preflight_completed=false` 和全部 false 权限保持不变。详细报告见
+`docs/SCALABLE_3D_D4_READINESS_V3_PREFLIGHT_20260729_CN.md`。
+
 ## 学习诊断与准备度（2026-07-28）
 
 本轮补齐 D3 批次加载、D4 当前谱系候选构建、D5 训练语料治理和 D6 G1 模型来源复核。
