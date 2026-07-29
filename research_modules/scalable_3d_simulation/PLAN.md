@@ -1,5 +1,37 @@
 # 200 对 200 三维质点仿真实施计划
 
+## D4 v4 外部运行与组合数据（2026-07-29）
+
+1. [x] main 新增独立外部导出器，从 D4 runtime frame 数据重建同键规则 R0
+   负样本，并搜索通过确定性投影和 v4 干预约束的单资源跨区正样本。导出器不生成
+   模型、不写 registry、不授予运行权限。
+2. [x] 首版导出固定在 clean commit
+   `92cbded6a92ced37135784218eeb6a20b7d10b28`。100 episode、199 frame 中，
+   train 正/负为 1/139，validation 为 1/29；数据、split、来源和证据 SHA 已冻结，
+   test payload 与在线真值读取均为 0。该输入过于稀疏，通用行为克隆仍为全 no-op。
+3. [x] main 增加多源组合能力，并在 clean commit
+   `71f5910a55b594a708f13d260d15a710535748bc` 上组合 20 对 20、8 区域 runtime
+   与 100-seed、4 区域安全动作课程。组合数据为 200 episode、499 frame；train
+   正/负 60/290，validation 15/60，unsafe difference 为 0。
+4. [x] 组合数据集、split、来源制品和外部证据 SHA-256 分别为
+   `fa5e45ad...e00c6`、`c212fe9b...4619`、`8a9465d9...5b47` 和
+   `343040ca...0360`。train 非零/零边目标为 71/3849，validation 为 16/824；
+   test payload 读取和在线真值使用仍为 0。
+5. [x] D4 在提交 `7646c95295f720a72fddd937a36384373a04c9c6` 中加入 v4
+   专用、仅由 train 计算的有界类别平衡和双类 checkpoint 选择。Actor 的 train
+   正/负命中为 59/60、278/290，validation 为 14/15、58/60。
+6. [ ] 在不降低固定 0.60 门、不使用 validation/test 拟合、不丢弃投影或干预拒绝
+   负例的条件下完成 confidence 校准。当前 validation 仍有 1 条负类且动作不一致样本
+   越门，builder 已失败关闭且未生成候选。
+7. [ ] 由 D4 从冻结组合输入构建未注册 development/shadow 候选，完成不可变 review
+   和全部 SHA/权限核验。失败时保持失败状态，不改变备用资源、区域 transfer、同键
+   R0、确定性投影或权限约束。
+8. [ ] 候选构建后由 D6 独立复核文件树、全部 SHA、数据 split、置信校准、fixture
+   差异和全关闭权限。该阶段不运行正式 holdout，不开放普通 assist。
+9. [ ] 只有未注册候选形成可辨识 treatment 后，main/D3 才运行独立同键
+   control/treatment episode。D3 successor、运行 ACK、完整物理窗口、非退化和收益
+   仍是后续独立 P1，不由数据或模型构建结果替代。
+
 ## D4 区域资源可执行差异探针（2026-07-29）
 
 1. [x] main 新增默认关闭的 `scalable3d-regional-resource-probe-v1`。场景可按区域

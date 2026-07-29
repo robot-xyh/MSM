@@ -1,5 +1,32 @@
 # Scalable 3D Simulation
 
+## D4 v4 外部运行与组合数据（2026-07-29）
+
+main 已增加独立外部数据导出器。它从 D4 区域运行快照重算同键规则 R0，并只保留通过
+确定性投影和 v4 干预约束的单资源跨区正样本；同键 R0 no-op 作为负样本。导出器不训练
+模型、不写 D4 registry，也不产生分配、接管、联盟或控制权限。
+
+首版数据从 clean commit `92cbded6a92ced37135784218eeb6a20b7d10b28` 导出，包含
+100 个 episode、199 帧。train 正/负为 1/139，validation 为 1/29。该数据证明了
+外部数据谱系、正负样本生成和 test 隔离链路，但样本过于稀疏，D4 通用行为克隆最终仍
+输出全 no-op，因此没有形成候选。
+
+第二版在 clean commit `71f5910a55b594a708f13d260d15a710535748bc` 上组合两个来源：
+20 对 20、8 区域真实 runtime 数据和 100-seed、4 区域安全动作课程。组合数据包含
+200 个 episode、499 帧；train 有 60 个正样本和 290 个负样本，validation 有
+15 个正样本和 60 个负样本。unsafe difference、test payload 读取和在线真值使用均为
+0。数据集、分割、来源制品和外部证据 SHA-256 分别为
+`fa5e45ad...e00c6`、`c212fe9b...4619`、`8a9465d9...5b47` 和
+`343040ca...0360`。制品位于
+`outputs/d4_v4_external_composite_20v20_8region_curriculum_seed9_20260729/`。
+
+组合数据仍高度稀疏：train 非零/零边目标为 71/3849，validation 为 16/824。D4 在
+提交 `7646c95295f720a72fddd937a36384373a04c9c6` 中加入仅由 train 计算的有界类别
+平衡后，Actor 的 train 正/负命中为 59/60、278/290，validation 为 14/15、58/60。
+置信头在 validation 中仍有 1 条负类且动作不一致样本越过固定 0.60 门，builder 正确
+失败关闭，未生成候选。后续须在不读取 test、不降低门限、不改变确定性投影和权限的
+条件下完成置信校准，再进入不可变 review、D6 独立审计和 D3 后继计划验证。
+
 ## D4 区域资源可执行差异探针（2026-07-29）
 
 main 已增加默认关闭的 `scalable3d-regional-resource-probe-v1` 场景合同。该合同允许
