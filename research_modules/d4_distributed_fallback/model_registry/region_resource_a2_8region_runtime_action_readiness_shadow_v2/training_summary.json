@@ -1,0 +1,911 @@
+{
+  "base_training_summary": {
+    "best_epoch": 39,
+    "best_validation_loss": 0.20087583363056183,
+    "calibration_sample_count": 0,
+    "config_sha256": "9f021f033ea030b8c630c11a461ce982d86898b4641822caba0c2606ebb53c6f",
+    "epochs_completed": 40,
+    "formal_holdout_evaluated": false,
+    "history": [
+      {
+        "epoch": 1,
+        "train_loss": 29.469616766592758,
+        "validation_loss": 17.199522018432617
+      },
+      {
+        "epoch": 2,
+        "train_loss": 10.404889714065476,
+        "validation_loss": 4.102452278137207
+      },
+      {
+        "epoch": 3,
+        "train_loss": 2.9130306243896484,
+        "validation_loss": 2.4427719116210938
+      },
+      {
+        "epoch": 4,
+        "train_loss": 2.175743985531935,
+        "validation_loss": 2.3390631675720215
+      },
+      {
+        "epoch": 5,
+        "train_loss": 1.9929199936378061,
+        "validation_loss": 2.0242764949798584
+      },
+      {
+        "epoch": 6,
+        "train_loss": 1.8483966274641046,
+        "validation_loss": 1.928255319595337
+      },
+      {
+        "epoch": 7,
+        "train_loss": 1.83238438231435,
+        "validation_loss": 1.9549397230148315
+      },
+      {
+        "epoch": 8,
+        "train_loss": 1.819854389375715,
+        "validation_loss": 1.9681429862976074
+      },
+      {
+        "epoch": 9,
+        "train_loss": 1.8199384420072262,
+        "validation_loss": 1.902677297592163
+      },
+      {
+        "epoch": 10,
+        "train_loss": 1.7882630587810309,
+        "validation_loss": 1.8661491870880127
+      },
+      {
+        "epoch": 11,
+        "train_loss": 1.7715648403808253,
+        "validation_loss": 1.8179854154586792
+      },
+      {
+        "epoch": 12,
+        "train_loss": 1.6862462373515266,
+        "validation_loss": 1.7061768770217896
+      },
+      {
+        "epoch": 13,
+        "train_loss": 1.5173576269576798,
+        "validation_loss": 1.4697872400283813
+      },
+      {
+        "epoch": 14,
+        "train_loss": 1.2871849563584399,
+        "validation_loss": 1.2678364515304565
+      },
+      {
+        "epoch": 15,
+        "train_loss": 1.132542942293841,
+        "validation_loss": 1.16276216506958
+      },
+      {
+        "epoch": 16,
+        "train_loss": 0.9225350268444612,
+        "validation_loss": 1.3999894857406616
+      },
+      {
+        "epoch": 17,
+        "train_loss": 0.8001164272056883,
+        "validation_loss": 0.9542039632797241
+      },
+      {
+        "epoch": 18,
+        "train_loss": 0.7065866708162412,
+        "validation_loss": 0.4995518922805786
+      },
+      {
+        "epoch": 19,
+        "train_loss": 0.5485999885186628,
+        "validation_loss": 0.7985679507255554
+      },
+      {
+        "epoch": 20,
+        "train_loss": 0.631000441401752,
+        "validation_loss": 0.708347737789154
+      },
+      {
+        "epoch": 21,
+        "train_loss": 0.5494831145106264,
+        "validation_loss": 3.366074323654175
+      },
+      {
+        "epoch": 22,
+        "train_loss": 0.9320398948678923,
+        "validation_loss": 0.41164228320121765
+      },
+      {
+        "epoch": 23,
+        "train_loss": 0.6598778479727939,
+        "validation_loss": 0.47727155685424805
+      },
+      {
+        "epoch": 24,
+        "train_loss": 0.8152555354792087,
+        "validation_loss": 0.34111157059669495
+      },
+      {
+        "epoch": 25,
+        "train_loss": 0.41653439951180227,
+        "validation_loss": 0.29110971093177795
+      },
+      {
+        "epoch": 26,
+        "train_loss": 0.4292885154040892,
+        "validation_loss": 0.37652599811553955
+      },
+      {
+        "epoch": 27,
+        "train_loss": 0.3882787458932222,
+        "validation_loss": 0.6563529372215271
+      },
+      {
+        "epoch": 28,
+        "train_loss": 0.47010050521264624,
+        "validation_loss": 0.9220113754272461
+      },
+      {
+        "epoch": 29,
+        "train_loss": 0.7974425069431761,
+        "validation_loss": 0.7388118505477905
+      },
+      {
+        "epoch": 30,
+        "train_loss": 0.7342766701748863,
+        "validation_loss": 0.2563157379627228
+      },
+      {
+        "epoch": 31,
+        "train_loss": 0.35539427058613715,
+        "validation_loss": 0.44853338599205017
+      },
+      {
+        "epoch": 32,
+        "train_loss": 0.9055525128224596,
+        "validation_loss": 0.268609881401062
+      },
+      {
+        "epoch": 33,
+        "train_loss": 0.3349350084416309,
+        "validation_loss": 0.33481624722480774
+      },
+      {
+        "epoch": 34,
+        "train_loss": 0.3264075683717111,
+        "validation_loss": 0.22169263660907745
+      },
+      {
+        "epoch": 35,
+        "train_loss": 0.5306348553047845,
+        "validation_loss": 2.045423984527588
+      },
+      {
+        "epoch": 36,
+        "train_loss": 0.3804723566296089,
+        "validation_loss": 0.3777420222759247
+      },
+      {
+        "epoch": 37,
+        "train_loss": 0.5323918081486403,
+        "validation_loss": 0.42797377705574036
+      },
+      {
+        "epoch": 38,
+        "train_loss": 0.9892776142898484,
+        "validation_loss": 0.3283400535583496
+      },
+      {
+        "epoch": 39,
+        "train_loss": 0.7987874264444285,
+        "validation_loss": 0.20087583363056183
+      },
+      {
+        "epoch": 40,
+        "train_loss": 0.5105264432987764,
+        "validation_loss": 0.29687464237213135
+      }
+    ],
+    "lifecycle_stage": "development",
+    "maximum_advisor_mode": "shadow",
+    "model_parameter_count": 43918,
+    "model_parameters_finite": true,
+    "model_version": "d4-region-a2-8region-runtime-action-readiness-shadow-v2",
+    "permissions": {
+      "a2_admitted": false,
+      "actual_adoption_claimed": false,
+      "assignment_enabled": false,
+      "assist_enabled": false,
+      "authority_enabled": false,
+      "benefit_claimed": false,
+      "coalition_commit_enabled": false,
+      "control_enabled": false,
+      "takeover_enabled": false
+    },
+    "reserved_evaluation_sample_count": 0,
+    "schema": "d4-region-resource-current-lineage-training-v1",
+    "selection_split": "validation",
+    "test_sample_count": 0,
+    "train_sample_count": 1608,
+    "training_split": "train",
+    "validation_sample_count": 344
+  },
+  "confidence_supervision": {
+    "acceptance": {
+      "accepted": true,
+      "action_inconsistent_threshold_pass_count": 0,
+      "blockers": [],
+      "criterion": "at least five percent of validation samples pass fixed confidence 0.60 and every passing sample satisfies the recorded action-consistency condition",
+      "fixed_minimum_confidence": 0.6,
+      "minimum_threshold_pass_count": 18,
+      "minimum_threshold_pass_rate": 0.05,
+      "threshold_pass_count": 293
+    },
+    "action_model_frozen_during_fit": true,
+    "confidence_head_only_parameter_update": true,
+    "definition": {
+      "action_model_frozen_during_fit": true,
+      "audit_split": "validation",
+      "confidence_head_only_parameter_update": true,
+      "definition_sha256": "13a3ea141a8d30eeeeda3f029b85e9acd03d4f665a13e4fef3060d39bd9a7d22",
+      "fit_split": "train",
+      "future_outcome_use_count": 0,
+      "head_fit_definition": {
+        "action_consistency_condition": "quota/reserve/reconnaissance absolute error <= tolerance; hold and request-replan bits exact; decoded transfer counts exact",
+        "action_model_frozen_during_fit": true,
+        "audit_split": "validation",
+        "component_weights": {
+          "hold_replan": 0.2,
+          "quota": 0.2,
+          "reconnaissance": 0.2,
+          "reserve": 0.2,
+          "transfer": 0.2
+        },
+        "consistent_target_formula": "clip(1 - mean(normalized_action_error_components), 0, 1)",
+        "constant_positive_label_use_count": 0,
+        "continuous_tolerance": 0.1,
+        "definition_sha256": "c61d728afa10462dfa84215484aa908dd280427786fe12e2903fa7c78e67f3f8",
+        "fit_batch_size": 32,
+        "fit_epochs": 30,
+        "fit_learning_rate": 0.005,
+        "fit_split": "train",
+        "fixed_minimum_confidence": 0.6,
+        "future_outcome_use_count": 0,
+        "inconsistent_target_ceiling": 0.59,
+        "inconsistent_target_formula": "min(consistent_target_formula, inconsistent_target_ceiling)",
+        "loss": "mean_squared_error_continuous_brier_equivalent",
+        "loss_weight": 1.0,
+        "normalized_error_components": [
+          "quota_fraction_absolute_error",
+          "reserve_ratio_absolute_error",
+          "reconnaissance_priority_absolute_error",
+          "hold_replan_binary_mismatch_rate",
+          "transfer_fraction_absolute_error"
+        ],
+        "reserved_evaluation_seed_use_count": 0,
+        "target_name": "frozen-action-normalized-error-consistency-score-v1",
+        "target_source": "frozen_action_model_error_against_deterministic_rule_and_safety_projected_training_label",
+        "test_split_use_count": 0,
+        "truth_identifier_use_count": 0
+      },
+      "head_fit_definition_sha256": "c61d728afa10462dfa84215484aa908dd280427786fe12e2903fa7c78e67f3f8",
+      "head_fit_loss": "mean_squared_error_continuous_brier_equivalent",
+      "head_fit_split": "train",
+      "minimum_validation_threshold_pass_rate": 0.05,
+      "reserved_evaluation_seed_use_count": 0,
+      "runtime_consistency_recomputation_required": true,
+      "runtime_gate": {
+        "consistency_definition": {
+          "binary_acceptance": "hold and request_replan exact for every region",
+          "candidate_action": "learned recommendation after deterministic safety projection",
+          "confidence_action": "retain raw confidence when consistent; otherwise cap effective confidence at 0.59 before the fixed 0.60 threshold",
+          "content_sha256": "6505b9a4237a108a819d0c93334ce3e0c0ba29f243919af16206ed705f5be679",
+          "continuous_acceptance": "quota, reserve, and reconnaissance maximum error each no greater than 0.10",
+          "future_outcome_use_count": 0,
+          "name": "deterministic-rule-action-consistency-gate-v1",
+          "quota_error": "absolute resource_quota_delta difference divided by max(1, available_resources)",
+          "reconnaissance_error": "absolute reconnaissance_priority difference",
+          "reference_action": "truth-free deterministic rule recommendation after the same safety projection",
+          "region_identity": "exact region_id set",
+          "reserve_error": "absolute reserve_ratio difference",
+          "runtime_context": "the exact RegionResourceAdvisor projector, rule policy, and formal_decision supplied for the final recommendation",
+          "transfer_acceptance": "exact multiset of edge_id, source_region_id, target_region_id, and resource_count",
+          "truth_identifier_use_count": 0
+        },
+        "content_sha256": "acdcb781e9c884ced85544f0f4b7c329d8be23b39fd977dc380bd294b9f44cde",
+        "continuous_tolerance": 0.1,
+        "fixed_minimum_confidence": 0.6,
+        "fixed_ood_margin": 0.05,
+        "inconsistent_confidence_cap": 0.59,
+        "mode": "deterministic-rule-action-consistency-gate-v1",
+        "projection_config": {
+          "advisory_ttl_s": 1.0,
+          "minimum_reserve_ratio": 0.1,
+          "minimum_reserve_resources": 1
+        },
+        "projector_name": "d4-deterministic-resource-projector",
+        "projector_version": "v1",
+        "rule_policy_config": {
+          "high_threat_weight": 2.0,
+          "projection": {
+            "advisory_ttl_s": 1.0,
+            "minimum_reserve_ratio": 0.1,
+            "minimum_reserve_resources": 1
+          },
+          "transfer_pressure_margin": 0.05,
+          "uncertainty_weight": 0.5
+        },
+        "rule_policy_name": "d4-region-resource-rule",
+        "rule_policy_version": "v1",
+        "schema": "d4-region-resource-runtime-confidence-gate-v1"
+      },
+      "runtime_gate_applied_before_threshold": true,
+      "target_name": "frozen-action-normalized-error-consistency-score-v1",
+      "test_split_use_count": 0,
+      "truth_identifier_use_count": 0,
+      "validation_acceptance": "the runtime helper yields threshold-pass coverage at or above the fixed audit floor, no runtime-inconsistent sample reaches effective confidence 0.60, and the recomputed online rule matches every recorded validation rule target",
+      "validation_target_controls_effective_confidence": false
+    },
+    "fixed_minimum_confidence": 0.6,
+    "formal_evaluation_authorized": false,
+    "future_outcome_use_count": 0,
+    "head_fit": {
+      "acceptance": {
+        "accepted": false,
+        "action_inconsistent_threshold_pass_count": 61,
+        "blockers": [
+          "validation_action_inconsistent_threshold_pass:61"
+        ],
+        "criterion": "at least one validation sample passes fixed confidence 0.60 and every passing sample satisfies the recorded action-consistency condition",
+        "fixed_minimum_confidence": 0.6,
+        "threshold_pass_count": 344
+      },
+      "action_model_frozen_during_fit": true,
+      "confidence_head_only_parameter_update": true,
+      "definition": {
+        "action_consistency_condition": "quota/reserve/reconnaissance absolute error <= tolerance; hold and request-replan bits exact; decoded transfer counts exact",
+        "action_model_frozen_during_fit": true,
+        "audit_split": "validation",
+        "component_weights": {
+          "hold_replan": 0.2,
+          "quota": 0.2,
+          "reconnaissance": 0.2,
+          "reserve": 0.2,
+          "transfer": 0.2
+        },
+        "consistent_target_formula": "clip(1 - mean(normalized_action_error_components), 0, 1)",
+        "constant_positive_label_use_count": 0,
+        "continuous_tolerance": 0.1,
+        "definition_sha256": "c61d728afa10462dfa84215484aa908dd280427786fe12e2903fa7c78e67f3f8",
+        "fit_batch_size": 32,
+        "fit_epochs": 30,
+        "fit_learning_rate": 0.005,
+        "fit_split": "train",
+        "fixed_minimum_confidence": 0.6,
+        "future_outcome_use_count": 0,
+        "inconsistent_target_ceiling": 0.59,
+        "inconsistent_target_formula": "min(consistent_target_formula, inconsistent_target_ceiling)",
+        "loss": "mean_squared_error_continuous_brier_equivalent",
+        "loss_weight": 1.0,
+        "normalized_error_components": [
+          "quota_fraction_absolute_error",
+          "reserve_ratio_absolute_error",
+          "reconnaissance_priority_absolute_error",
+          "hold_replan_binary_mismatch_rate",
+          "transfer_fraction_absolute_error"
+        ],
+        "reserved_evaluation_seed_use_count": 0,
+        "target_name": "frozen-action-normalized-error-consistency-score-v1",
+        "target_source": "frozen_action_model_error_against_deterministic_rule_and_safety_projected_training_label",
+        "test_split_use_count": 0,
+        "truth_identifier_use_count": 0
+      },
+      "final_weighted_loss": 0.024257302960723787,
+      "fit_history": [
+        0.039036430047815714,
+        0.026158849113338177,
+        0.02534418769495849,
+        0.025207366423672113,
+        0.02510523701559252,
+        0.0249804579259003,
+        0.024898501636636493,
+        0.024819575991500076,
+        0.024738376142355193,
+        0.02482155842048612,
+        0.02468581655206372,
+        0.024645794915100234,
+        0.02467284949301784,
+        0.024609676919024975,
+        0.02456600544279191,
+        0.024564722747500264,
+        0.024515240096408337,
+        0.02452968819928703,
+        0.024576917114616625,
+        0.024587189083668724,
+        0.024542985938081695,
+        0.024548529929930892,
+        0.024388426553402374,
+        0.024251524298753015,
+        0.02438270999350358,
+        0.024270205299800902,
+        0.0242779182631578,
+        0.024352955608744526,
+        0.024500308567611734,
+        0.024257302960723787
+      ],
+      "fit_sample_count": 1608,
+      "fit_target_inventory_sha256": "305c66b4f145e6b25909fa9f0de90a8ce57d4b5a0cd83c116c9cbd3a3f8e98d9",
+      "fixed_minimum_confidence": 0.6,
+      "formal_evaluation_authorized": false,
+      "future_outcome_use_count": 0,
+      "reserved_evaluation_seed_use_count": 0,
+      "runtime_preflight_completed": false,
+      "test_sample_use_count": 0,
+      "train": {
+        "after_fit": {
+          "action_consistency_rate_among_threshold_pass": 0.8016169154228856,
+          "action_consistent_below_threshold_count": 0,
+          "action_consistent_count": 1289,
+          "action_consistent_rate": 0.8016169154228856,
+          "action_consistent_threshold_pass_count": 1289,
+          "action_inconsistent_threshold_pass_count": 319,
+          "brier_score": 0.02418329095008917,
+          "calibration_bins": [
+            {
+              "lower": 0.7,
+              "mean_confidence": 0.7085472941398621,
+              "mean_target": 0.59,
+              "sample_count": 3,
+              "upper": 0.8
+            },
+            {
+              "lower": 0.8,
+              "mean_confidence": 0.8754820804081053,
+              "mean_target": 0.8242395556010051,
+              "sample_count": 213,
+              "upper": 0.9
+            },
+            {
+              "lower": 0.9,
+              "mean_confidence": 0.9276868328023916,
+              "mean_target": 0.9298938694721299,
+              "sample_count": 1392,
+              "upper": 1.0
+            }
+          ],
+          "confidence_maximum": 0.938666045665741,
+          "confidence_mean": 0.920362808625793,
+          "confidence_minimum": 0.7080780863761902,
+          "expected_calibration_error_10_bin": 0.008919461884706248,
+          "fixed_threshold": 0.6,
+          "mean_absolute_calibration_error": 0.11978129387365818,
+          "normalized_action_error_mean": 0.008906618876476704,
+          "sample_count": 1608,
+          "target_maximum": 0.9999000399317083,
+          "target_mean": 0.9152644848558577,
+          "target_minimum": 0.59,
+          "threshold_pass_count": 1608,
+          "threshold_pass_rate": 1.0
+        },
+        "before_fit": {
+          "action_consistency_rate_among_threshold_pass": 0.8181818181818182,
+          "action_consistent_below_threshold_count": 1055,
+          "action_consistent_count": 1289,
+          "action_consistent_rate": 0.8016169154228856,
+          "action_consistent_threshold_pass_count": 234,
+          "action_inconsistent_threshold_pass_count": 52,
+          "brier_score": 0.20830696415369,
+          "calibration_bins": [
+            {
+              "lower": 0.3,
+              "mean_confidence": 0.37079369644575483,
+              "mean_target": 0.926276024651704,
+              "sample_count": 79,
+              "upper": 0.4
+            },
+            {
+              "lower": 0.4,
+              "mean_confidence": 0.4667954701493806,
+              "mean_target": 0.9202415156561857,
+              "sample_count": 1101,
+              "upper": 0.5
+            },
+            {
+              "lower": 0.5,
+              "mean_confidence": 0.5125301681773763,
+              "mean_target": 0.8652301744500798,
+              "sample_count": 142,
+              "upper": 0.6
+            },
+            {
+              "lower": 0.6,
+              "mean_confidence": 0.622444624875809,
+              "mean_target": 0.9179052174523167,
+              "sample_count": 286,
+              "upper": 0.7
+            }
+          ],
+          "confidence_maximum": 0.689163327217102,
+          "confidence_mean": 0.4938015928167609,
+          "confidence_minimum": 0.3298366069793701,
+          "expected_calibration_error_10_bin": 0.4214628920390967,
+          "fixed_threshold": 0.6,
+          "mean_absolute_calibration_error": 0.4229405114308654,
+          "normalized_action_error_mean": 0.008906618876476704,
+          "sample_count": 1608,
+          "target_maximum": 0.9999000399317083,
+          "target_mean": 0.9152644848558577,
+          "target_minimum": 0.59,
+          "threshold_pass_count": 286,
+          "threshold_pass_rate": 0.17786069651741293
+        }
+      },
+      "truth_identifier_use_count": 0,
+      "validation": {
+        "after_fit": {
+          "action_consistency_rate_among_threshold_pass": 0.8226744186046512,
+          "action_consistent_below_threshold_count": 0,
+          "action_consistent_count": 283,
+          "action_consistent_rate": 0.8226744186046512,
+          "action_consistent_threshold_pass_count": 283,
+          "action_inconsistent_threshold_pass_count": 61,
+          "brier_score": 0.0224599542350548,
+          "calibration_bins": [
+            {
+              "lower": 0.7,
+              "mean_confidence": 0.7133229970932007,
+              "mean_target": 0.59,
+              "sample_count": 2,
+              "upper": 0.8
+            },
+            {
+              "lower": 0.8,
+              "mean_confidence": 0.8695005832179901,
+              "mean_target": 0.8751149315173179,
+              "sample_count": 31,
+              "upper": 0.9
+            },
+            {
+              "lower": 0.9,
+              "mean_confidence": 0.9267300825410334,
+              "mean_target": 0.9308207502256597,
+              "sample_count": 311,
+              "upper": 1.0
+            }
+          ],
+          "confidence_maximum": 0.9386530518531799,
+          "confidence_mean": 0.9203320341401322,
+          "confidence_minimum": 0.7133229970932007,
+          "expected_calibration_error_10_bin": 0.004921187329605643,
+          "fixed_threshold": 0.6,
+          "mean_absolute_calibration_error": 0.11527465892479319,
+          "normalized_action_error_mean": 0.008584800477115625,
+          "sample_count": 344,
+          "target_maximum": 0.9998962727928301,
+          "target_mean": 0.9238192331314449,
+          "target_minimum": 0.59,
+          "threshold_pass_count": 344,
+          "threshold_pass_rate": 1.0
+        },
+        "before_fit": {
+          "action_consistency_rate_among_threshold_pass": 0.8135593220338984,
+          "action_consistent_below_threshold_count": 235,
+          "action_consistent_count": 283,
+          "action_consistent_rate": 0.8226744186046512,
+          "action_consistent_threshold_pass_count": 48,
+          "action_inconsistent_threshold_pass_count": 11,
+          "brier_score": 0.216699367324674,
+          "calibration_bins": [
+            {
+              "lower": 0.3,
+              "mean_confidence": 0.36284081900821014,
+              "mean_target": 0.9206777644329294,
+              "sample_count": 17,
+              "upper": 0.4
+            },
+            {
+              "lower": 0.4,
+              "mean_confidence": 0.46721791066229346,
+              "mean_target": 0.9312842841745304,
+              "sample_count": 240,
+              "upper": 0.5
+            },
+            {
+              "lower": 0.5,
+              "mean_confidence": 0.51064461682524,
+              "mean_target": 0.8778820729044037,
+              "sample_count": 28,
+              "upper": 0.6
+            },
+            {
+              "lower": 0.6,
+              "mean_confidence": 0.6162726353790801,
+              "mean_target": 0.9161587789601124,
+              "sample_count": 59,
+              "upper": 0.7
+            }
+          ],
+          "confidence_maximum": 0.6878296136856079,
+          "confidence_mean": 0.4911590908155885,
+          "confidence_minimum": 0.3418333828449249,
+          "expected_calibration_error_10_bin": 0.43266014231585637,
+          "fixed_threshold": 0.6,
+          "mean_absolute_calibration_error": 0.43401117555710617,
+          "normalized_action_error_mean": 0.008584800477115625,
+          "sample_count": 344,
+          "target_maximum": 0.9998962727928301,
+          "target_mean": 0.9238192331314449,
+          "target_minimum": 0.59,
+          "threshold_pass_count": 59,
+          "threshold_pass_rate": 0.17151162790697674
+        }
+      },
+      "validation_sample_count": 344,
+      "validation_target_inventory_sha256": "07c39462124c4ee6826686df192312c761023eb74f23e67899d20787a8d424ed"
+    },
+    "reserved_evaluation_seed_use_count": 0,
+    "runtime_gate_audit_completed": true,
+    "runtime_preflight_completed": false,
+    "test_sample_use_count": 0,
+    "train": {
+      "effective": {
+        "action_consistency_rate_among_threshold_pass": 1.0,
+        "action_consistent_below_threshold_count": 0,
+        "action_consistent_count": 1380,
+        "action_consistent_rate": 0.8582089552238806,
+        "action_consistent_threshold_pass_count": 1380,
+        "action_inconsistent_threshold_pass_count": 0,
+        "brier_score": 0.05467362875568473,
+        "calibration_bins": [
+          {
+            "lower": 0.5,
+            "mean_confidence": 0.59,
+            "mean_target": 0.0,
+            "sample_count": 228,
+            "upper": 0.6
+          },
+          {
+            "lower": 0.8,
+            "mean_confidence": 0.882500908664755,
+            "mean_target": 1.0,
+            "sample_count": 148,
+            "upper": 0.9
+          },
+          {
+            "lower": 0.9,
+            "mean_confidence": 0.928192601333578,
+            "mean_target": 1.0,
+            "sample_count": 1232,
+            "upper": 1.0
+          }
+        ],
+        "confidence_maximum": 0.938666045665741,
+        "confidence_mean": 0.8760344647545719,
+        "confidence_minimum": 0.59,
+        "expected_calibration_error_10_bin": 0.14948792330512947,
+        "fixed_threshold": 0.6,
+        "mean_absolute_calibration_error": 0.14948792330512953,
+        "normalized_action_error_mean": 0.017356914566374337,
+        "sample_count": 1608,
+        "target_maximum": 1.0,
+        "target_mean": 0.8582089552238806,
+        "target_minimum": 0.0,
+        "threshold_pass_count": 1380,
+        "threshold_pass_rate": 0.8582089552238806
+      },
+      "effective_probability_inventory_sha256": "918d0bd793ae42fb4e6e0d5c37d2c4e7f6dbc4aafdf13a81cfddbe67035bfaac",
+      "formal_decision": null,
+      "formal_decision_semantics": "explicit_none_matching_dataset_generation",
+      "raw": {
+        "action_consistency_rate_among_threshold_pass": 0.8582089552238806,
+        "action_consistent_below_threshold_count": 0,
+        "action_consistent_count": 1380,
+        "action_consistent_rate": 0.8582089552238806,
+        "action_consistent_threshold_pass_count": 1380,
+        "action_inconsistent_threshold_pass_count": 228,
+        "brier_score": 0.12106188786605797,
+        "calibration_bins": [
+          {
+            "lower": 0.7,
+            "mean_confidence": 0.7085472941398621,
+            "mean_target": 0.0,
+            "sample_count": 3,
+            "upper": 0.8
+          },
+          {
+            "lower": 0.8,
+            "mean_confidence": 0.8754820804081053,
+            "mean_target": 0.6948356807511737,
+            "sample_count": 213,
+            "upper": 0.9
+          },
+          {
+            "lower": 0.9,
+            "mean_confidence": 0.9276868328023916,
+            "mean_target": 0.8850574712643678,
+            "sample_count": 1392,
+            "upper": 1.0
+          }
+        ],
+        "confidence_maximum": 0.938666045665741,
+        "confidence_mean": 0.920362808625793,
+        "confidence_minimum": 0.7080780863761902,
+        "expected_calibration_error_10_bin": 0.062153853401912366,
+        "fixed_threshold": 0.6,
+        "mean_absolute_calibration_error": 0.19381626717635056,
+        "normalized_action_error_mean": 0.017356914566374337,
+        "sample_count": 1608,
+        "target_maximum": 1.0,
+        "target_mean": 0.8582089552238806,
+        "target_minimum": 0.0,
+        "threshold_pass_count": 1608,
+        "threshold_pass_rate": 1.0
+      },
+      "raw_probability_inventory_sha256": "4a631a533dbee19bba5cd705af225ccc985c0457c9f343a7a525aafecea500fd",
+      "runtime_helper_used": true,
+      "runtime_reference_target_mismatch_count": 0,
+      "sample_count": 1608,
+      "validation_target_controls_effective_confidence": false
+    },
+    "truth_identifier_use_count": 0,
+    "validation": {
+      "effective": {
+        "action_consistency_rate_among_threshold_pass": 1.0,
+        "action_consistent_below_threshold_count": 0,
+        "action_consistent_count": 293,
+        "action_consistent_rate": 0.8517441860465116,
+        "action_consistent_threshold_pass_count": 293,
+        "action_inconsistent_threshold_pass_count": 0,
+        "brier_score": 0.056837453793788656,
+        "calibration_bins": [
+          {
+            "lower": 0.5,
+            "mean_confidence": 0.59,
+            "mean_target": 0.0,
+            "sample_count": 51,
+            "upper": 0.6
+          },
+          {
+            "lower": 0.8,
+            "mean_confidence": 0.8794154958291487,
+            "mean_target": 1.0,
+            "sample_count": 22,
+            "upper": 0.9
+          },
+          {
+            "lower": 0.9,
+            "mean_confidence": 0.9269894533051776,
+            "mean_target": 1.0,
+            "sample_count": 271,
+            "upper": 1.0
+          }
+        ],
+        "confidence_maximum": 0.9386530518531799,
+        "confidence_mean": 0.8739862870754197,
+        "confidence_minimum": 0.59,
+        "expected_calibration_error_10_bin": 0.15269975943620817,
+        "fixed_threshold": 0.6,
+        "mean_absolute_calibration_error": 0.15269975943620814,
+        "normalized_action_error_mean": 0.015397678310675844,
+        "sample_count": 344,
+        "target_maximum": 1.0,
+        "target_mean": 0.8517441860465116,
+        "target_minimum": 0.0,
+        "threshold_pass_count": 293,
+        "threshold_pass_rate": 0.8517441860465116
+      },
+      "effective_probability_inventory_sha256": "65fb5e649041c2d6d4f79fd00b325a2773d759b4892eaab667d22d91f2c6165d",
+      "formal_decision": null,
+      "formal_decision_semantics": "explicit_none_matching_dataset_generation",
+      "raw": {
+        "action_consistency_rate_among_threshold_pass": 0.8517441860465116,
+        "action_consistent_below_threshold_count": 0,
+        "action_consistent_count": 293,
+        "action_consistent_rate": 0.8517441860465116,
+        "action_consistent_threshold_pass_count": 293,
+        "action_inconsistent_threshold_pass_count": 51,
+        "brier_score": 0.12638203454335403,
+        "calibration_bins": [
+          {
+            "lower": 0.7,
+            "mean_confidence": 0.7133229970932007,
+            "mean_target": 0.0,
+            "sample_count": 2,
+            "upper": 0.8
+          },
+          {
+            "lower": 0.8,
+            "mean_confidence": 0.8695005832179901,
+            "mean_target": 0.7096774193548387,
+            "sample_count": 31,
+            "upper": 0.9
+          },
+          {
+            "lower": 0.9,
+            "mean_confidence": 0.9267300825410334,
+            "mean_target": 0.8713826366559485,
+            "sample_count": 311,
+            "upper": 1.0
+          }
+        ],
+        "confidence_maximum": 0.9386530518531799,
+        "confidence_mean": 0.9203320341401322,
+        "confidence_minimum": 0.7133229970932007,
+        "expected_calibration_error_10_bin": 0.06858784809362062,
+        "fixed_threshold": 0.6,
+        "mean_absolute_calibration_error": 0.1990455065009206,
+        "normalized_action_error_mean": 0.015397678310675844,
+        "sample_count": 344,
+        "target_maximum": 1.0,
+        "target_mean": 0.8517441860465116,
+        "target_minimum": 0.0,
+        "threshold_pass_count": 344,
+        "threshold_pass_rate": 1.0
+      },
+      "raw_probability_inventory_sha256": "eb0091554a4cee2deac2727bc5eeec62cf963c53bc64472d3a64bfad5747ff68",
+      "runtime_helper_used": true,
+      "runtime_reference_target_mismatch_count": 0,
+      "sample_count": 344,
+      "validation_target_controls_effective_confidence": false
+    },
+    "validation_formal_decision": null,
+    "validation_formal_decision_semantics": "dataset labels and snapshots were generated without a formal decision; validation invokes the runtime helper with explicit formal_decision=None",
+    "validation_target_controls_effective_confidence": false
+  },
+  "content_sha256": "03396ea70ba20a3eafa188db88afcbb62e924feecb568dfb6d77b4d9361e5b78",
+  "formal_evaluation_authorized": false,
+  "permissions": {
+    "actual_adoption_claimed": false,
+    "assignment_enabled": false,
+    "assist_enabled": false,
+    "authority_enabled": false,
+    "benefit_claimed": false,
+    "coalition_commit_enabled": false,
+    "control_enabled": false,
+    "formal_evaluation_authorized": false,
+    "physical_permission_available": false,
+    "runtime_ack_available": false,
+    "schema": "d4-region-resource-eight-region-permissions-v1",
+    "takeover_enabled": false
+  },
+  "readiness_source_evidence": {
+    "all_frames_finite": true,
+    "all_frames_rule_labeled": true,
+    "content_sha256": "bcef2046b431cfde3ddb7911404e4a2fbc7bab4087e87c8ba75585c58de0df5c",
+    "dataset_audit_file_sha256": "c7d4f339de46b7c35785b057013f6adf22667d0d7fc94a06fa00ff09783ec63d",
+    "dataset_sha256": "34244f1fe4f15cf82ff144e6c6cb5cabedccf5ba7f7880adcd2b820b681c9c56",
+    "dirty_episode_count": 0,
+    "episode_count": 100,
+    "frame_count": 199,
+    "generation_summary_file_sha256": "48434358e524db55e740bdae18fa909f6eb12c98afa95290c228136656a63870",
+    "manifest_file_sha256": "a1056c721be0c49066912f51e9f1ce0b4eebfac0e832da47a912f9573a22f0c2",
+    "online_truth_use_count": 0,
+    "region_value_count": 1592,
+    "repository_dirty": false,
+    "rule_target_frame_count": 199,
+    "secondary_readiness_maximum": 1.0,
+    "secondary_readiness_minimum": 0.0,
+    "secondary_readiness_zero_value_count": 1572,
+    "seed_count": 100,
+    "source_git_commit": "9a1f6fc97e86a7e0204b5fbb0d92e4fd13e3c763"
+  },
+  "reserved_evaluation_seed_use_count": 0,
+  "runtime_preflight_completed": false,
+  "schema": "d4-region-resource-eight-region-readiness-training-v2",
+  "target_action_inventory_loaded_train_validation": {
+    "action_count": 15616,
+    "hold_true_count": 85,
+    "request_replan_true_count": 210,
+    "resource_quota_nonzero_count": 170,
+    "transfer_count": 85
+  },
+  "test_payload_used_for_training": false,
+  "validation_output_review": {
+    "confidence_max": 0.9386530518531799,
+    "confidence_min": 0.7133229970932007,
+    "nonfinite_output_count": 0,
+    "sample_count": 344
+  }
+}
