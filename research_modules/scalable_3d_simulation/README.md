@@ -2,29 +2,36 @@
 
 ## 学习诊断与准备度（2026-07-28）
 
-本轮补齐 D3、D4、D5 三项开发诊断，并收紧 D6 正式运行准备度的证据信任边界。规则路径、
-版本化计划、`global_track_id` 所有权和确定性安全外壳没有变化，所有学习、分配、降级、
-相机和控制权限继续为 false。
+本轮补齐 D3 批次加载、D4 当前谱系候选构建、D5 训练语料治理和 D6 G1 模型来源复核。
+规则路径、版本化计划、`global_track_id` 所有权和确定性安全外壳没有变化，所有学习、
+分配、降级、相机和控制权限继续为 false。
 
 D3 的 A1 动作裕量校准在一个冻结规划帧内比较规则代价间隔、有界残差修正和 Hungarian
 最终 binding。正式 20-seed 证据仍是 20/20 代价矩阵变化、0/20 binding 变化。三资源、
 两目标开发夹具在候选 `alpha=0.25` 时出现 3 条 binding 差异，只说明冻结残差能够在该
-夹具越过离散求解边界。
+夹具越过离散求解边界。A1 隔离批次现可由公共 strict loader 重算固定文件布局、摘要、
+seed/帧范围、候选选择守恒和版本连续性。加载结果不等同于计划发布或运行采用。
 
 D4 的实际区域策略诊断使用 20 个独立校准 seed、420 个样本。两次复跑均得到 76 个安全
 非零输出和 344 个资源不可行主分类。候选实现谱系与当前代码不一致，因此当前谱系开发
-证据保持不可用。D5 行为克隆增加有界逆平方根意图权重和逐动作、相机角色、校准、分布外
-诊断。99:1 夹具的总体准确率虽为 0.99，少数动作召回为 0，前置检查仍失败关闭。
+证据保持不可用。当前谱系候选构建器现将训练和模型选择限定在 train/validation，并拒绝
+dirty source、split 重叠、摘要篡改和权限升级。当前共享工作区按 dirty source 拒绝生成
+实物。
 
-D6 readiness v2 不再接受 manifest 自报 facts，也不信任十类通用自签 gate 文件。当前
-唯一受信适配器复用既有 canonical seed split auditor，逐文件复核相对路径、外层/原始
-SHA-256、固定布局和内部 schema 后重算冻结种子事实。其余九类门尚无可靠 adapter，统一
-保持 unavailable。因此 G1、A1、A2、A3、C1、F1 的正式准备度均未形成。
+D5 行为克隆在类别权重和逐动作指标之外增加了训练语料结构门。语料按动作、相机角色、
+场景、seed 和 episode 计数；缺 `hold`、少数动作或侦察相机时拒绝训练。旧 v1 缓存可读
+但不可继续训练。补采请求要求新的独立 episode 和训练 seed，不允许复制或过采样替代。
 
-共享工作区验证为：D3 `571 passed, 1 skipped`、D4 `689 passed, 1 warning`、D5
-`744 passed, 2 warnings`、D6 `1124 passed, 1 warning`、本模块
+D6 readiness v2 继续拒绝 manifest 自报 facts 和通用自签 gate 文件。冻结种子适配器之外，
+现已增加 G1 `model_source` 适配器。它固定复核 D5 v5 的 13 项原始制品并重跑既有
+external/post-assembly 审计。对现存正式证据树的只读验证通过，只证明
+`component_ids=[d5_graph]` 的来源可信。G1 其余八门、其他模型来源和全部权限仍不可用。
+
+共享工作区验证为：D3 `593 passed, 1 skipped`、D4 `697 passed, 1 warning`、D5
+`755 passed, 2 warnings`、D6 `1138 passed, 1 warning`、本模块
 `352 passed, 1 warning`、跨模块合同 `8 passed, 1 warning`。当前文件系统可用空间约
 13 GiB，低于 20 GiB 正式运行保护线，本轮没有启动 900-cell 或完整多 seed 写盘。
+本轮集成记录见 `docs/SCALABLE_3D_LEARNING_EVIDENCE_CHAIN_P1_20260728_CN.md`。
 
 ## A3 零检测帧与观测节拍（2026-07-27）
 

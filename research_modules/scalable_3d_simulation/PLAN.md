@@ -5,27 +5,38 @@
 1. [x] D3 新增 A1 冻结帧动作裕量校准，复用规则代价、有界残差和原 Hungarian 求解器，
    同时核验输入摘要、计划版本和最终 binding。正式结论保持 20/20 代价矩阵变化、
    0/20 binding 变化；开发夹具的 3 条差异不计为正式采用。
-2. [x] D4 新增实际区域策略诊断。20 个独立校准 seed、420 个样本的两次复跑均为
+2. [x] D3 新增 A1 隔离批次公共 strict loader，重算七文件布局、校验和、20-seed/
+   帧范围、候选与选择计数、计划版本和 truth 隔离。加载结果不包含发布、ACK、物理
+   窗口、R0 或生产权限。
+3. [x] D4 新增实际区域策略诊断。20 个独立校准 seed、420 个样本的两次复跑均为
    76 个安全非零输出、344 个资源不可行主分类。候选实现谱系不匹配，当前谱系开发证据
    固定为不可用。
-3. [x] D5 增加有上限的逆平方根意图权重、逐动作召回、宏平均、相机角色、校准和
+4. [x] D4 新增当前谱系候选构建器。训练、模型选择分别限定 train/validation，test、
+   calibration 和保留 seed 读取数为 0；dirty source 和任一谱系、摘要或权限异常均
+   失败关闭。当前共享工作区未生成候选实物。
+5. [x] D5 增加有上限的逆平方根意图权重、逐动作召回、宏平均、相机角色、校准和
    分布外诊断。99:1 夹具即使总体准确率为 0.99，少数动作召回为 0 时仍拒绝进入正式
    paired shadow。
-4. [x] D6 readiness 升级为 v2，删除通用 gate wrapper 的正式信任。调用方自签 facts
+6. [x] D5 新增训练语料结构审计和确定性补采计划。动作、相机角色、场景、seed 和
+   episode 覆盖不足时拒绝训练；复制、过采样、重加权和合成夹具不能替代非合成正式
+   语料。
+7. [x] D6 readiness 升级为 v2，删除通用 gate wrapper 的正式信任。调用方自签 facts
    或自签文件不能形成正式准备度。
-5. [x] D6 当前只接入既有 canonical seed split auditor。相对路径、外层文件摘要、
+8. [x] D6 接入既有 canonical seed split auditor。相对路径、外层文件摘要、
    六份原始 producer 文件摘要、固定布局和内部 schema 均经复核后才生成冻结种子事实。
-6. [x] 其余九类 readiness gate 在没有可靠 producer/auditor adapter 时保持
-   unavailable。G1、A1、A2、A3、C1、F1 的正式准备度和所有运行权限均为 false/null。
-7. [x] 共享工作区回归：D3 `571 passed, 1 skipped`、D4
-   `689 passed, 1 warning`、D5 `744 passed, 2 warnings`、D6
-   `1124 passed, 1 warning`、scalable `352 passed, 1 warning`、跨模块合同
-   `8 passed, 1 warning`。
-8. [ ] 为 D3、D4、D5 重新生成与当前实现谱系一致、与调参隔离的实际候选和至少
+9. [x] D6 新增 G1 `model_source` 可信适配器，固定复核 D5 v5 的 13 项原始制品，
+   重跑 external/post-assembly 审计。实际只读证据树通过，只关闭 `d5_graph` 模型
+   来源门；G1 其余八门和全部权限仍关闭。
+10. [x] 共享工作区回归：D3 `593 passed, 1 skipped`、D4
+    `697 passed, 1 warning`、D5 `755 passed, 2 warnings`、D6
+    `1138 passed, 1 warning`、scalable `352 passed, 1 warning`、跨模块合同
+    `8 passed, 1 warning`。
+11. [ ] 为 D3、D4、D5 重新生成与当前实现谱系一致、与调参隔离的实际候选和至少
    20 个未见 seed 证据；补齐实际采用、ACK、物理窗口、唯一同键 R0 和成对非退化。
-9. [ ] 按既有严格 schema 为 D6 增加模型来源、采用、ACK、物理窗口、R0、非退化、
-   真值使用、有限状态和外部权限 adapter，不建立新的自声明信任根。
-10. [ ] 当前约 13 GiB 可用空间低于 20 GiB 保护线。取得外部归档挂载点或扩容后再
+12. [ ] 按既有严格 schema 为 D6 增加 A1/A2/A3 模型来源，以及实际采用、ACK、物理
+    窗口、R0、非退化、真值使用、有限状态和外部权限 adapter，不建立新的自声明信任根。
+13. [ ] 将当前位于 `/tmp` 的 G1 正式原始制品迁入持久只读归档。当前约 13 GiB 可用
+    空间低于 20 GiB 保护线，取得外部挂载点或扩容后再
     启动正式 900-cell/完整多 seed；不降低保护线，不改写既有正式制品。
 
 ## A2/A3 运行证据收口（2026-07-26）
