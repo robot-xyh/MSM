@@ -25,10 +25,29 @@ positive/negative/inconsistent/executable 通过数在 train 为 `12/0/0/12`，v
 `test_payload_fit_count=0`。投影或干预拒绝负例继续保留在
 `negative_reason_inventory`。
 
+原固定 development fixture 与当前 4/8 区域训练域不一致。其
+`d2_uncertainty_log` 最大值为 0.693147，而 TRAIN 最大值为 0.122218；`d5_visibility`
+和 `d5_consistency` 最小值均为 0.20，而 TRAIN 最小值分别为 0.85 和 0.87。固定
+OOD 余量 0.05 下三项均越界。只把三项夹紧后，模型置信度为 0.481511 且没有可执行转移，
+不能作为验收夹具。
+
+当前另设版本化的 4 区域域内代表夹具，不改变既有 attribution fixture。代表只依据
+TRAIN 的模型可见张量域中心距离、固定 0.05 OOD 门、固定 0.60 置信门、安全投影和非零
+可执行差异选取，不使用 target、reward、validation、test、seed 或来源身份。固定图指纹
+为 `5bf1fc1e...e2a3c`。同一数据只读复跑得到置信度 0.602367，原始和投影后均为 1 条
+转移，投影拒绝为 0；结果同时区别于同键 R0 和 source。实际转移端点从投影结果记录，
+不按区域名称写死。
+
+该固定图指纹与 TRAIN 中的模型输入键完全一致。fixture payload 固定写入
+`training_domain_smoke_only=true`、
+`independent_generalization_evidence_available=false` 和
+`formal_validation_claim_allowed=false`。本轮相对 0.60 的置信裕量为 0.002367。
+该薄裕量只支持训练域构建 smoke 检查，不能支持泛化、独立验证或模型准入结论。
+
 本阶段只完成训练机制、测试和新组合数据只读验证。没有生成 clean candidate，没有写入
 registry，也没有完成不可变 review、D6 独立审计、D3 successor、物理结果或收益评价。
 v4 仍为 unregistered、development/shadow only，全部生产权限为 false；v3 未修改。
-2026-07-29 v4 专项 32/32、D4 全量 815/815 通过。
+2026-07-29 v4 专项 42/42、D4 全量 825/825 通过。
 
 ## 2026-07-29 区域规划资格与执行权限
 

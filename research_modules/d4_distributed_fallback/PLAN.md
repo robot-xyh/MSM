@@ -25,21 +25,35 @@
 - 只读完整复跑形成 8 个合格 epoch，最长连续 7 个。最佳 epoch 66 的四类通过数为
   train `12/0/0/12`、validation `4/0/0/4`。validation 权重拟合和 test payload
   读取/拟合均为 0。
-- 专项 32/32、D4 全量 815/815 通过；通用行为克隆、v3、投影器、registry、固定
+- 已定位旧 development fixture 的 OOD 原因：`d2_uncertainty_log`、`d5_visibility`
+  和 `d5_consistency` 超出 TRAIN 在固定 0.05 余量下的范围。简单夹紧后的置信度仅
+  0.481511 且无转移，因此没有采用。
+- 新增专用的 4 区域域内代表夹具。定义绑定模型实际可见张量的固定指纹，不读取
+  validation/test、target、reward、seed 或来源身份；评估从投影结果动态记录实际转移
+  端点，并要求相对同键 R0 和 source 都存在安全非零差异。
+- 同一数据单次只读复跑中，新夹具置信度 0.602367，原始/投影转移为 1/1，投影拒绝为 0，
+  固定 OOD 和 intervention gate 均通过。没有写候选目录或 registry。
+- fixture key 与 TRAIN 模型输入键完全一致。payload 和 manifest 强制
+  `training_domain_smoke_only=true`、独立泛化证据 unavailable、正式验证声明 false，
+  并校验置信裕量等于 `effective_confidence-0.60`。当前裕量约 0.002367，不能支持准入。
+- 专项 42/42、D4 全量 825/825 通过；通用行为克隆、v3、投影器、registry、固定
   0.60 门和全部生产权限未修改。
 
 ### 当前 P1
 
-1. 需要从 clean commit 独立构建 v4 候选，并保存本次训练摘要、数据身份和全部源码摘要。
-   本阶段只读验证没有候选目录，不能用于登记。
+1. development fixture 的 TRAIN 域 smoke 阻塞已在只读完整链中关闭。仍需从 clean
+   commit 独立构建 v4
+   候选，并保存训练摘要、数据身份、源码摘要和版本化夹具审计。本阶段没有候选目录，
+   不能用于登记。
 2. clean 制品仍需 D4 不可变 review、main 准入决策和 D6 独立审计。v4 五项注册摘要保持
    空值，全部生产权限保持 false。
 3. D3 successor、运行 ACK、D7/物理窗口、独立双臂非退化、正收益和扰动场景均未开始。
 
 ### 下一步
 
-1. 由 main 在 clean checkout 下使用同一数据和固定配置运行正式 builder；任何指标不复现
-   时删除暂存输出，保持未登记和规则回退。
+1. 由 main 在 clean checkout 下使用同一数据和固定配置运行正式 builder；要求复现
+   Actor/置信四类计数及夹具置信度、OOD、投影和非零差异审计。任一项不复现时删除暂存
+   输出，保持未登记和规则回退。
 2. clean build 通过后由 D4 执行只读不可变 review，再交 main/D3/D6 完成后继、配对和
    收益证据。任一链路不完整时继续使用 v3/确定性规则。
 

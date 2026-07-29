@@ -20,9 +20,24 @@ checkpoint 必须在 train 和 validation 同时满足正类与可执行通过�
 positive/negative/inconsistent/executable 计数为 train `12/0/0/12`、validation
 `4/0/0/4`。validation 只做 checkpoint 与验收，test payload 不读取或拟合。
 
+旧 development fixture 的 D2 不确定度对数、视觉可见率和一致率超出新训练域。固定
+0.05 OOD 余量正确拒绝该输入。只夹紧越界特征后，置信度为 0.481511 且投影无转移，
+不具备安全差异验收能力。
+
+评审接受专用的 4 区域域内代表夹具。夹具按 TRAIN 模型可见张量域中心排序，并固定为
+版本化常量；选择过程不读 target、reward、validation、test、seed 或来源身份。构建时
+校验模型可见图指纹，随后保持 0.05 OOD、0.60 confidence、确定性投影和同键 R0。只读
+复跑的夹具置信度为 0.602367，投影形成 1 条安全转移，且相对 R0 和 source 均有非零
+可执行差异。端点从投影结果读取，不依赖区域身份名称。
+
+该模型可见图指纹与 TRAIN 输入键完全相同。评审将其限定为 training-domain smoke，
+`independent_generalization_evidence_available=false`，
+`formal_validation_claim_allowed=false`。相对固定门的裕量约 0.002367，不能用于
+准入、泛化或独立验证结论。manifest 对三个治理字段和裕量计算执行失败关闭校验。
+
 当前证据仅为内存训练和只读数据验证。正式 clean build、候选制品、不可变 review、D6
 审计、D3 successor、物理结果和收益均未完成。v4 未登记，全部生产权限为 false；v3
-身份和 registry 保持不变。专项 32/32、D4 全量 815/815 通过。
+身份和 registry 保持不变。专项 42/42、D4 全量 825/825 通过。
 
 ## 2026-07-29 规划权限解耦评审
 

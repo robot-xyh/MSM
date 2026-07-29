@@ -30,11 +30,15 @@ from d4_distributed_fallback.region_resource_dataset import (
 from d4_distributed_fallback.region_resource_learning import (
     LearnedRegionResourcePolicy,
     SharedRegionGraphActorCritic,
+    snapshot_to_region_graph,
 )
 import d4_distributed_fallback.region_resource_v4_shadow_candidate as v4_module
 from d4_distributed_fallback.region_resource_v4_shadow_candidate import (
     REGION_RESOURCE_V3_FROZEN_TREE_SHA256,
     REGION_RESOURCE_V4_CANDIDATE_ID,
+    REGION_RESOURCE_V4_DOMAIN_FIXTURE_OBSERVABLE_KEY_SHA256,
+    REGION_RESOURCE_V4_DOMAIN_FIXTURE_SCHEMA,
+    REGION_RESOURCE_V4_DOMAIN_FIXTURE_VERSION,
     REGION_RESOURCE_V4_INTERVENTION_GATE,
     REGION_RESOURCE_V4_REGISTERED_BUNDLE_MANIFEST_SHA256,
     REGION_RESOURCE_V4_REGISTERED_DATASET_SHA256,
@@ -43,6 +47,7 @@ from d4_distributed_fallback.region_resource_v4_shadow_candidate import (
     REGION_RESOURCE_V4_REGISTERED_MODEL_STATE_SHA256,
     RegionResourceV4BuildConfig,
     RegionResourceV4CandidateError,
+    RegionResourceV4CandidateManifest,
     RegionResourceV4CandidateLoader,
     RegionResourceV4ClassBalance,
     RegionResourceV4ConfidenceBalance,
@@ -67,6 +72,7 @@ from d4_distributed_fallback.region_resource_v4_shadow_candidate import (
     _v4_checkpoint_selection_key,
     build_region_resource_v4_development_candidate,
     build_region_resource_v4_development_fixture,
+    build_region_resource_v4_domain_representative_fixture,
     evaluate_v4_intervention_invariants,
     executable_signature,
 )
@@ -120,22 +126,24 @@ def _transfer_proposal(
     projector, rule_policy = _policies()
     baseline = rule_policy.recommend(snapshot)
     edge = snapshot.edges[0]
+    source_region_id = edge.source_region_id
+    target_region_id = edge.target_region_id
     actions = tuple(
         replace(
             action,
             resource_quota_delta=(
                 -count
-                if action.region_id == "region-000"
+                if action.region_id == source_region_id
                 else count
-                if action.region_id == "region-001"
+                if action.region_id == target_region_id
                 else 0
             ),
         )
         for action in baseline.actions
     )
     transfer = RegionTransferSuggestion(
-        source_region_id="region-000",
-        target_region_id="region-001",
+        source_region_id=source_region_id,
+        target_region_id=target_region_id,
         resource_count=count,
         edge_id=edge.edge_id,
         expected_transfer_time_s=edge.transfer_time_s,
@@ -399,6 +407,298 @@ def test_v4_uses_main_safety_shell_and_same_key_rule() -> None:
     )
     assert not valid
     assert "r0_same_key_baseline_mismatch" in reasons
+
+
+def test_v4_domain_representative_fixture_is_fixed_and_truth_free() -> None:
+    first = build_region_resource_v4_domain_representative_fixture()
+    second = build_region_resource_v4_domain_representative_fixture()
+
+    assert first.to_dict() == second.to_dict()
+    assert first.scenario_version == REGION_RESOURCE_V4_DOMAIN_FIXTURE_VERSION
+    assert first.seed == 0
+    assert first.region_count == 4
+    assert first.total_resources == 17
+    assert [node.available_resources for node in first.regions] == [
+        14,
+        1,
+        1,
+        1,
+    ]
+    assert [edge.transferable_resources for edge in first.edges] == [
+        3,
+        0,
+        0,
+        0,
+    ]
+    assert all(
+        node.lease_expires_at_s - first.timestamp_s == 120.0
+        for node in first.regions
+    )
+    serialized = json.dumps(
+        first.to_dict(),
+        sort_keys=True,
+    ).lower()
+    assert "curriculum" not in serialized
+    assert "global_track_id" not in serialized
+    assert "truth_id" not in serialized
+    assert "reward" not in serialized
+    observable_key = _v4_confidence_observable_key(
+        snapshot_to_region_graph(first)
+    )
+    assert observable_key == (
+        REGION_RESOURCE_V4_DOMAIN_FIXTURE_OBSERVABLE_KEY_SHA256
+    )
+    metadata_variant = replace(
+        first,
+        snapshot_id="metadata-variant",
+        scenario_id="metadata-variant",
+        seed=999999,
+    )
+    assert _v4_confidence_observable_key(
+        snapshot_to_region_graph(metadata_variant)
+    ) == observable_key
+    assert (
+        REGION_RESOURCE_V4_INTERVENTION_GATE.fixed_ood_margin == 0.05
+    )
+    assert (
+        REGION_RESOURCE_V4_INTERVENTION_GATE.fixed_minimum_confidence
+        == 0.60
+    )
+
+
+def test_v4_domain_fixture_evaluation_uses_projected_transfer_endpoints(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    snapshot = build_region_resource_v4_domain_representative_fixture()
+    renamed_ids = {
+        f"region-{index:03d}": f"area-{index:03d}"
+        for index in range(4)
+    }
+    renamed = replace(
+        snapshot,
+        snapshot_id="identity-metadata-variant",
+        regions=tuple(
+            replace(node, region_id=renamed_ids[node.region_id])
+            for node in snapshot.regions
+        ),
+        edges=tuple(
+            replace(
+                edge,
+                source_region_id=renamed_ids[edge.source_region_id],
+                target_region_id=renamed_ids[edge.target_region_id],
+                edge_id=f"renamed-{index:03d}",
+            )
+            for index, edge in enumerate(snapshot.edges)
+        ),
+        authority_digest="",
+    )
+    assert _v4_confidence_observable_key(
+        snapshot_to_region_graph(renamed)
+    ) == REGION_RESOURCE_V4_DOMAIN_FIXTURE_OBSERVABLE_KEY_SHA256
+    recommendation = _transfer_proposal(renamed)
+    policy = _FixedPolicy(recommendation)
+    monkeypatch.setattr(
+        v4_module,
+        "build_region_resource_v4_domain_representative_fixture",
+        lambda: renamed,
+    )
+    monkeypatch.setattr(
+        v4_module,
+        "LearnedRegionResourcePolicy",
+        lambda _model, _manifest: policy,
+    )
+    projector, rule_policy = _policies()
+
+    fixture = v4_module._evaluate_development_fixture(
+        SimpleNamespace(model=object(), manifest=object()),
+        config=_small_config(),
+        projector=projector,
+        rule_policy=rule_policy,
+    )
+
+    assert fixture["fixture_definition_schema"] == (
+        REGION_RESOURCE_V4_DOMAIN_FIXTURE_SCHEMA
+    )
+    assert fixture["fixture_definition_version"] == (
+        REGION_RESOURCE_V4_DOMAIN_FIXTURE_VERSION
+    )
+    assert fixture["source_region_ids"] == ["area-000"]
+    assert fixture["target_region_ids"] == ["area-001"]
+    assert fixture["raw_transfer_count"] == 1
+    assert fixture["projected_transfer_count"] == 1
+    assert fixture["projection_rejection_count"] == 0
+    assert fixture["treatment_differs_source"] is True
+    assert fixture["treatment_differs_r0"] is True
+    assert fixture["intervention_gate_passed"] is True
+    assert fixture["candidate_ood"] is False
+    assert fixture["fixed_ood_margin"] == 0.05
+    assert fixture["fixed_minimum_confidence"] == 0.60
+    assert fixture["confidence_margin_above_threshold"] == pytest.approx(
+        0.35
+    )
+    assert fixture["training_domain_smoke_only"] is True
+    assert (
+        fixture["independent_generalization_evidence_available"] is False
+    )
+    assert fixture["formal_validation_claim_allowed"] is False
+    assert fixture["selection_split"] == "train"
+    assert fixture["selection_target_label_use_count"] == 0
+    assert fixture["selection_reward_use_count"] == 0
+    assert fixture["selection_validation_payload_use_count"] == 0
+    assert fixture["selection_test_payload_use_count"] == 0
+    assert fixture["selection_seed_or_source_identity_use_count"] == 0
+    assert fixture["truth_identifier_use_count"] == 0
+
+
+@pytest.mark.parametrize(
+    ("field_name", "tampered_value"),
+    (
+        ("training_domain_smoke_only", False),
+        ("independent_generalization_evidence_available", True),
+        ("formal_validation_claim_allowed", True),
+        ("confidence_margin_above_threshold", 0.0),
+        ("confidence_margin_above_threshold", 0.25),
+    ),
+)
+def test_v4_manifest_rejects_fixture_governance_tampering(
+    field_name: str,
+    tampered_value: object,
+) -> None:
+    effective_confidence = 0.61
+    fixture = {
+        "schema": v4_module.REGION_RESOURCE_V4_FIXTURE_SCHEMA,
+        "fixture_definition_schema": (
+            REGION_RESOURCE_V4_DOMAIN_FIXTURE_SCHEMA
+        ),
+        "fixture_definition_version": (
+            REGION_RESOURCE_V4_DOMAIN_FIXTURE_VERSION
+        ),
+        "observable_key_sha256": (
+            REGION_RESOURCE_V4_DOMAIN_FIXTURE_OBSERVABLE_KEY_SHA256
+        ),
+        "observable_key_matches_versioned_definition": True,
+        "executable_signature_different": True,
+        "difference_fields": ["transfer_allowances"],
+        "intervention_gate_passed": True,
+        "candidate_ood": False,
+        "fixed_ood_margin": 0.05,
+        "fixed_minimum_confidence": 0.60,
+        "effective_confidence": effective_confidence,
+        "confidence_margin_above_threshold": (
+            effective_confidence - 0.60
+        ),
+        "training_domain_smoke_only": True,
+        "independent_generalization_evidence_available": False,
+        "formal_validation_claim_allowed": False,
+        "projected_transfer_count": 1,
+        "selection_target_label_use_count": 0,
+        "selection_reward_use_count": 0,
+        "selection_validation_payload_use_count": 0,
+        "selection_test_payload_use_count": 0,
+        "selection_seed_or_source_identity_use_count": 0,
+        "truth_identifier_use_count": 0,
+    }
+    manifest_kwargs = {
+        "candidate_id": REGION_RESOURCE_V4_CANDIDATE_ID,
+        "model_version": v4_module.REGION_RESOURCE_V4_MODEL_VERSION,
+        "source_identity_sha256": "a" * 64,
+        "dataset_sha256": "b" * 64,
+        "dataset_split_sha256": "c" * 64,
+        "external_dataset_evidence_sha256": "d" * 64,
+        "config_sha256": "e" * 64,
+        "training_summary_content_sha256": "f" * 64,
+        "bundle_manifest_sha256": "1" * 64,
+        "model_state_sha256": "2" * 64,
+        "runtime_gate_content_sha256": "3" * 64,
+        "artifact_files": {"bundle/state_dict.pt": "4" * 64},
+    }
+
+    valid = RegionResourceV4CandidateManifest(
+        development_fixture=fixture,
+        **manifest_kwargs,
+    )
+    assert valid.development_fixture["training_domain_smoke_only"] is True
+
+    with pytest.raises(
+        ValueError,
+        match="v4 development fixture lacks executable difference",
+    ):
+        RegionResourceV4CandidateManifest(
+            development_fixture={
+                **fixture,
+                field_name: tampered_value,
+            },
+            **manifest_kwargs,
+        )
+
+
+def test_v4_domain_fixture_fails_closed_on_observable_drift(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    snapshot = build_region_resource_v4_domain_representative_fixture()
+    drifted = replace(
+        snapshot,
+        regions=(
+            replace(snapshot.regions[0], d5_visibility=0.88),
+            *snapshot.regions[1:],
+        ),
+        authority_digest="",
+    )
+    monkeypatch.setattr(
+        v4_module,
+        "build_region_resource_v4_domain_representative_fixture",
+        lambda: drifted,
+    )
+    projector, rule_policy = _policies()
+
+    with pytest.raises(
+        RegionResourceV4CandidateError,
+        match="v4_development_fixture_observable_key_mismatch",
+    ):
+        v4_module._evaluate_development_fixture(
+            SimpleNamespace(model=object(), manifest=object()),
+            config=_small_config(),
+            projector=projector,
+            rule_policy=rule_policy,
+        )
+
+
+@pytest.mark.parametrize(
+    ("ood", "confidence", "reason"),
+    (
+        (True, 0.95, "v4_development_fixture_is_ood"),
+        (
+            False,
+            0.59,
+            "v4_development_fixture_executable_difference_unavailable",
+        ),
+    ),
+)
+def test_v4_domain_fixture_keeps_fixed_ood_and_confidence_fail_closed(
+    monkeypatch: pytest.MonkeyPatch,
+    ood: bool,
+    confidence: float,
+    reason: str,
+) -> None:
+    snapshot = build_region_resource_v4_domain_representative_fixture()
+    policy = _FixedPolicy(
+        _transfer_proposal(snapshot, confidence=confidence),
+        ood=ood,
+    )
+    monkeypatch.setattr(
+        v4_module,
+        "LearnedRegionResourcePolicy",
+        lambda _model, _manifest: policy,
+    )
+    projector, rule_policy = _policies()
+
+    with pytest.raises(RegionResourceV4CandidateError, match=reason):
+        v4_module._evaluate_development_fixture(
+            SimpleNamespace(model=object(), manifest=object()),
+            config=_small_config(),
+            projector=projector,
+            rule_policy=rule_policy,
+        )
 
 
 def test_external_dataset_governance_accepts_clean_diverse_train_validation(

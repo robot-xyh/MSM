@@ -87,6 +87,13 @@ REGION_RESOURCE_V4_PERMISSIONS_SCHEMA = (
 REGION_RESOURCE_V4_FIXTURE_SCHEMA = (
     "d4-region-resource-executable-development-fixture-v4"
 )
+REGION_RESOURCE_V4_DOMAIN_FIXTURE_SCHEMA = (
+    "d4-region-resource-v4-domain-representative-fixture-v1"
+)
+REGION_RESOURCE_V4_DOMAIN_FIXTURE_VERSION = "v1"
+REGION_RESOURCE_V4_DOMAIN_FIXTURE_OBSERVABLE_KEY_SHA256 = (
+    "5bf1fc1e09006bef3b8e859b566ce26cc9467da42827a3a723d35cb7133e2a3c"
+)
 REGION_RESOURCE_V4_INTERVENTION_GATE_SCHEMA = (
     "d4-region-resource-executable-intervention-gate-v4"
 )
@@ -927,10 +934,60 @@ class RegionResourceV4CandidateManifest:
             _require_sha256(str(digest), f"v4 artifact {relative_path}")
         object.__setattr__(self, "artifact_files", artifacts)
         fixture = dict(self.development_fixture)
+        margin_value = fixture.get("confidence_margin_above_threshold")
+        effective_confidence = fixture.get("effective_confidence")
+        margin_valid = bool(
+            type(margin_value) in {int, float}
+            and type(effective_confidence) in {int, float}
+            and isfinite(float(margin_value))
+            and float(margin_value) > 0.0
+            and isclose(
+                float(margin_value),
+                float(effective_confidence)
+                - REGION_RESOURCE_RUNTIME_CONFIDENCE_GATE_FIXED_THRESHOLD,
+                rel_tol=0.0,
+                abs_tol=1.0e-12,
+            )
+        )
         if (
             fixture.get("schema") != REGION_RESOURCE_V4_FIXTURE_SCHEMA
+            or fixture.get("fixture_definition_schema")
+            != REGION_RESOURCE_V4_DOMAIN_FIXTURE_SCHEMA
+            or fixture.get("fixture_definition_version")
+            != REGION_RESOURCE_V4_DOMAIN_FIXTURE_VERSION
+            or fixture.get("observable_key_sha256")
+            != REGION_RESOURCE_V4_DOMAIN_FIXTURE_OBSERVABLE_KEY_SHA256
+            or fixture.get(
+                "observable_key_matches_versioned_definition"
+            )
+            is not True
             or fixture.get("executable_signature_different") is not True
             or not fixture.get("difference_fields")
+            or fixture.get("intervention_gate_passed") is not True
+            or fixture.get("candidate_ood") is not False
+            or fixture.get("fixed_ood_margin")
+            != REGION_RESOURCE_RUNTIME_CONFIDENCE_GATE_FIXED_OOD_MARGIN
+            or fixture.get("fixed_minimum_confidence")
+            != REGION_RESOURCE_RUNTIME_CONFIDENCE_GATE_FIXED_THRESHOLD
+            or fixture.get("training_domain_smoke_only") is not True
+            or fixture.get(
+                "independent_generalization_evidence_available"
+            )
+            is not False
+            or fixture.get("formal_validation_claim_allowed") is not False
+            or not margin_valid
+            or int(fixture.get("projected_transfer_count", 0)) <= 0
+            or any(
+                int(fixture.get(name, -1)) != 0
+                for name in (
+                    "selection_target_label_use_count",
+                    "selection_reward_use_count",
+                    "selection_validation_payload_use_count",
+                    "selection_test_payload_use_count",
+                    "selection_seed_or_source_identity_use_count",
+                    "truth_identifier_use_count",
+                )
+            )
         ):
             raise ValueError("v4 development fixture lacks executable difference")
         object.__setattr__(self, "development_fixture", fixture)
@@ -1897,6 +1954,84 @@ def build_region_resource_v4_development_fixture(
         seed=int(seed),
         timestamp_s=float(timestamp_s),
         regions=tuple(regions),
+        edges=edges,
+    )
+
+
+def build_region_resource_v4_domain_representative_fixture(
+) -> RegionResourceSnapshot:
+    """Return the fixed, truth-free v4 in-domain development fixture."""
+
+    timestamp_s = 2.0
+    node_values = (
+        (0.0, 14, 1, 0.12, 0.09, 0.89, 0.91),
+        (3.0, 1, 1, 0.19, 0.125, 0.855, 0.875),
+        (0.0, 1, 1, 0.15, 0.105, 0.875, 0.895),
+        (0.0, 1, 1, 0.11, 0.085, 0.895, 0.915),
+    )
+    regions = tuple(
+        RegionResourceNode(
+            region_id=f"region-{index:03d}",
+            target_demand=demand,
+            high_threat_backlog=0.0,
+            d1_uncertainty=d1_uncertainty,
+            d2_uncertainty=d2_uncertainty,
+            d5_visibility=visibility,
+            d5_consistency=consistency,
+            available_resources=available,
+            reserve_resources=reserve,
+            committed_resources=0,
+            secondary_coverage=0.90,
+            secondary_readiness=0.90,
+            communication_capacity=50.0,
+            communication_latency_s=0.02,
+            packet_loss_rate=0.01,
+            current_owner_id="CENTER",
+            current_owner_layer=RegionalAuthorityLayer.CENTER,
+            plan_id="v4-domain-representative-plan-v1",
+            plan_version=1,
+            epoch=1,
+            lease_expires_at_s=timestamp_s + 120.0,
+            coalition_ack_complete=True,
+            owner_active=True,
+            fault_fenced=False,
+            assignment_conflict_count=0,
+            degradation_failed=False,
+        )
+        for index, (
+            demand,
+            available,
+            reserve,
+            d1_uncertainty,
+            d2_uncertainty,
+            visibility,
+            consistency,
+        ) in enumerate(node_values)
+    )
+    transferable_resources = (3, 0, 0, 0)
+    edges = tuple(
+        RegionResourceEdge(
+            source_region_id=f"region-{index:03d}",
+            target_region_id=f"region-{(index + 1) % 4:03d}",
+            transferable_resources=transferable_resources[index],
+            distance_m=500.0 + 25.0 * index,
+            transfer_time_s=10.0 + float(index),
+            bandwidth_mbps=20.0,
+            communication_available=True,
+            maneuver_available=True,
+            partitioned=False,
+            bidirectional=True,
+            edge_id=f"edge-{index:03d}",
+        )
+        for index in range(4)
+    )
+    return RegionResourceSnapshot(
+        snapshot_id="d4-v4-domain-representative-v1",
+        scenario_id="d4-v4-domain-representative",
+        scenario_version=REGION_RESOURCE_V4_DOMAIN_FIXTURE_VERSION,
+        seed=0,
+        timestamp_s=timestamp_s,
+        regions=regions,
         edges=edges,
     )
 
@@ -3858,7 +3993,17 @@ def _evaluate_development_fixture(
     projector: DeterministicResourceProjector,
     rule_policy: RuleRegionResourcePolicy,
 ) -> dict[str, Any]:
-    snapshot = build_region_resource_v4_development_fixture()
+    snapshot = build_region_resource_v4_domain_representative_fixture()
+    observable_key = _v4_confidence_observable_key(
+        snapshot_to_region_graph(snapshot, device="cpu")
+    )
+    if (
+        observable_key
+        != REGION_RESOURCE_V4_DOMAIN_FIXTURE_OBSERVABLE_KEY_SHA256
+    ):
+        raise RegionResourceV4CandidateError(
+            "v4_development_fixture_observable_key_mismatch"
+        )
     policy = LearnedRegionResourcePolicy(loaded.model, loaded.manifest)
     if policy.is_ood(
         snapshot,
@@ -3904,6 +4049,7 @@ def _evaluate_development_fixture(
         not valid
         or effective_confidence
         < REGION_RESOURCE_RUNTIME_CONFIDENCE_GATE_FIXED_THRESHOLD
+        or not projected.transfers
         or not difference_fields
         or treatment_signature == source_signature
     ):
@@ -3911,6 +4057,12 @@ def _evaluate_development_fixture(
             "v4_development_fixture_executable_difference_unavailable:"
             + ",".join(invariant_reasons)
         )
+    transfer_sources = sorted(
+        {transfer.source_region_id for transfer in projected.transfers}
+    )
+    transfer_targets = sorted(
+        {transfer.target_region_id for transfer in projected.transfers}
+    )
     treatment_delta = {
         item["region_id"]: item["resource_quota_delta"]
         for item in treatment_payload["regions"]
@@ -3927,17 +4079,32 @@ def _evaluate_development_fixture(
     )
     return {
         "schema": REGION_RESOURCE_V4_FIXTURE_SCHEMA,
+        "fixture_definition_schema": (
+            REGION_RESOURCE_V4_DOMAIN_FIXTURE_SCHEMA
+        ),
+        "fixture_definition_version": (
+            REGION_RESOURCE_V4_DOMAIN_FIXTURE_VERSION
+        ),
+        "observable_key_sha256": observable_key,
+        "observable_key_matches_versioned_definition": True,
         "fixture_seed": snapshot.seed,
         "region_count": snapshot.region_count,
         "total_resource_count": snapshot.total_resources,
         "confirmed_source_binding_count": sum(
             node.committed_resources for node in snapshot.regions
         ),
-        "source_region_id": "region-000",
-        "target_region_id": "region-001",
-        "source_free_resource_count": (
-            snapshot.region_by_id["region-000"].available_resources
-            - snapshot.region_by_id["region-000"].committed_resources
+        "source_region_ids": transfer_sources,
+        "target_region_ids": transfer_targets,
+        "source_region_id": (
+            transfer_sources[0] if len(transfer_sources) == 1 else None
+        ),
+        "target_region_id": (
+            transfer_targets[0] if len(transfer_targets) == 1 else None
+        ),
+        "source_free_resource_count": sum(
+            snapshot.region_by_id[region_id].available_resources
+            - snapshot.region_by_id[region_id].committed_resources
+            for region_id in transfer_sources
         ),
         "source_executable_signature_sha256": source_signature,
         "r0_executable_signature_sha256": control_signature,
@@ -3950,6 +4117,9 @@ def _evaluate_development_fixture(
         "difference_fields": list(difference_fields),
         "source_payload_sha256": _canonical_sha256(source_payload),
         "r0_transfer_count": len(control_payload["transfer_allowances"]),
+        "raw_transfer_count": len(raw.transfers),
+        "projected_transfer_count": len(projected.transfers),
+        "projection_rejection_count": len(projected.projection_rejections),
         "treatment_transfer_allowances": treatment_payload[
             "transfer_allowances"
         ],
@@ -3959,6 +4129,29 @@ def _evaluate_development_fixture(
         "intervention_gate_passed": valid,
         "effective_confidence": effective_confidence,
         "candidate_ood": False,
+        "fixed_ood_margin": (
+            REGION_RESOURCE_RUNTIME_CONFIDENCE_GATE_FIXED_OOD_MARGIN
+        ),
+        "fixed_minimum_confidence": (
+            REGION_RESOURCE_RUNTIME_CONFIDENCE_GATE_FIXED_THRESHOLD
+        ),
+        "confidence_margin_above_threshold": (
+            effective_confidence
+            - REGION_RESOURCE_RUNTIME_CONFIDENCE_GATE_FIXED_THRESHOLD
+        ),
+        "training_domain_smoke_only": True,
+        "independent_generalization_evidence_available": False,
+        "formal_validation_claim_allowed": False,
+        "selection_split": RegionLearningSplit.TRAIN.value,
+        "selection_rule": (
+            "fixed_observable_domain_center_rank_then_first_safe_"
+            "nonzero_executable_difference"
+        ),
+        "selection_target_label_use_count": 0,
+        "selection_reward_use_count": 0,
+        "selection_validation_payload_use_count": 0,
+        "selection_test_payload_use_count": 0,
+        "selection_seed_or_source_identity_use_count": 0,
         "d3_successor_binding_required": True,
         "d3_successor_binding_available": False,
         "d3_successor_binding_status": (

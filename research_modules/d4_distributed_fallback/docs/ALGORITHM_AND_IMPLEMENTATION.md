@@ -31,8 +31,29 @@ positive>0、negative=0、inconsistent=0、executable>0；随后按类别命中�
 
 完整只读复跑得到 8 个合格 epoch，最长连续 7 个。最佳 epoch 66 的四类计数为 train
 `12/0/0/12`、validation `4/0/0/4`。`validation_weight_fit_count=0`，
-`test_payload_fit_count=0`。本阶段没有写候选、registry 或权限字段。专项 32/32、
-D4 全量 815/815 通过。
+`test_payload_fit_count=0`。
+
+旧 development fixture 使用 8 区域 attribution 场景，其中
+`d2_uncertainty_log=0.693147`、最低视觉可见率和一致率均为 0.20。当前 TRAIN 对应范围
+分别为 0 至 0.122218、0.85 至 1.0、0.87 至 1.0。固定余量 0.05 不能覆盖这些值。
+简单修正三项后虽然不再 OOD，置信度只有 0.481511，投影后没有转移。
+
+候选构建现使用专用的 4 区域域内代表夹具。夹具是固定常量，不在构建时搜索数据。其定义
+来自 TRAIN 的模型可见张量：先限定存在通信、机动和转移容量的图，再按归一化域中心距离
+排序，选取首个同时通过固定 OOD、固定置信门、安全投影和非零可执行差异的代表。选择不读
+target、reward、validation、test、seed 或来源身份。模型可见张量、shape、dtype 和架构
+形成固定指纹；指纹漂移立即失败关闭。
+
+评估先比较夹具指纹，再执行 OOD、模型推理、确定性投影和同键 R0。实际 source/target
+从投影后的 transfer 读取。输出分别保存 source、R0 和 treatment 的可执行签名，要求
+treatment 同时区别于前两者，配额净和为 0，owner、epoch 和 lease 不变。同一数据只读
+复跑得到置信度 0.602367，原始/投影转移 1/1，投影拒绝 0。
+
+该固定指纹就是 TRAIN 中的模型输入键。payload 将夹具标记为
+`training_domain_smoke_only=true`，并将独立泛化证据和正式验证声明固定为 false。
+manifest 重算 `confidence_margin_above_threshold=effective_confidence-0.60`，要求其
+有限且为正。本轮裕量约 0.002367，属于薄裕量，不能作为准入证据。专项 42/42、D4 全量
+825/825 通过。本阶段没有写候选、registry 或权限字段。
 
 ## 2026-07-29 规划资格和执行权限实现
 
@@ -96,8 +117,9 @@ SHA-256、main runtime 或独立数据生产制品 SHA-256、来源类型、无�
    train 计算且上限为 8；validation 中负例越过 0.60 或不一致样本越过门限时，构建失败。
 7. 保存 development/shadow bundle、数据 manifest、train/validation episode、训练摘要、
    外部来源证据和独立 intervention gate。test episode 不复制。
-8. 用固定受控 fixture 检查模型在完整安全外壳后是否形成区别于 source 和 R0 的可执行
-   签名。没有差异时删除临时目录并失败关闭。
+8. 用版本化域内代表 fixture 检查模型可见图指纹、固定 OOD、固定置信门和安全投影，并
+   要求形成区别于 source 和 R0 的可执行签名。指纹漂移、域外、低置信、无转移或无差异
+   时删除临时目录并失败关闭。
 
 制品 reviewer 重算文件清单、bundle 和数据绑定，重新执行外部数据治理检查，并确认
 `runtime_confidence_gate=None`、`action_diversity_sufficient=true`、正式 holdout 数为

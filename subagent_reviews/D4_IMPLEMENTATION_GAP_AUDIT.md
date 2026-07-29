@@ -34,12 +34,24 @@
 - **新增失败关闭门。** 任一 TRAIN 同输入异标签冲突都会触发
   `v4_confidence_train_observable_label_conflict`，错误包含冲突计数、审计 SHA-256 和
   固定门计数。冲突记录不删除，0.60 门不调整。
+- **已关闭 D4 内 P1：固定 development fixture 域外。** 旧夹具的
+  `d2_uncertainty_log` 最大 0.693147、视觉可见率和一致率最小 0.20，超出 TRAIN 在固定
+  0.05 余量下的范围。简单夹紧后置信度 0.481511 且无转移，未采用。新 4 区域代表绑定
+  模型可见张量指纹 `5bf1fc1e...e2a3c`，不使用 target、reward、validation、test、
+  seed 或来源身份。
+- **夹具只读证据。** 同一数据完整复跑得到 fixture confidence 0.602367，原始/投影
+  transfer 为 1/1，投影拒绝 0，treatment 同时区别于同键 R0 和 source。OOD 0.05、
+  confidence 0.60、投影器和 intervention gate 均未修改；实际端点由投影结果记录。
+- **治理边界已收紧。** fixture key 与 TRAIN 模型输入键完全一致，故只标记为
+  `training_domain_smoke_only=true`。独立泛化证据和正式验证声明固定为 false。
+  manifest 校验置信裕量与 `effective_confidence-0.60` 完全一致；当前约 0.002367 的
+  薄裕量不能支持候选准入。
 - **开放 P1。** clean candidate build、候选制品、不可变 review、registry、D6 独立
   审计、D3 successor、D7/物理窗口、双臂非退化与收益均未完成。当前只可声明训练机制
-  和只读组合数据验证完成。
+  、置信校准和域内 fixture 的只读组合数据验证完成。
 - **泄漏边界。** 所有权重、间隔和梯度仅来自 TRAIN。validation 仅用于 checkpoint
   排序和固定门验收；`validation_weight_fit_count=0`、`test_payload_fit_count=0`。
-- **验证。** 2026-07-29 v4 专项 32/32、D4 全量 815/815 通过；仅有既有 Matplotlib
+- **验证。** 2026-07-29 v4 专项 42/42、D4 全量 825/825 通过；仅有既有 Matplotlib
   `Axes3D` 环境警告。
 
 ## 2026-07-29 规划资格与执行权限 GAP
