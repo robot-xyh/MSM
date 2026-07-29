@@ -49,6 +49,9 @@ from d5_terminal_association.active_vision_contracts import (
     enumerate_safe_action_candidates,
     validate_active_vision_action_v1,
 )
+from d5_terminal_association.active_vision_corpus_audit import (
+    ActiveVisionCorpusCoverageError,
+)
 from d5_terminal_association.active_vision_evaluation import (
     PairedShadowEpisodeResult,
     admission_report_from_manifest,
@@ -797,7 +800,7 @@ class _TinyActiveVisionDataset:
         return iter(self._episodes_by_split[split])
 
 
-def test_cached_behavior_cloning_uses_full_split_and_stratifies_metrics(
+def test_cached_behavior_cloning_fails_closed_before_training_on_legacy_sparse_corpus(
     tmp_path: Path,
 ) -> None:
     base = _research_episodes(7)
@@ -835,36 +838,31 @@ def test_cached_behavior_cloning_uses_full_split_and_stratifies_metrics(
         latency_samples=1,
         latency_warmup=0,
     )
-    model, _, training = train_cached_behavior_cloning(
-        loaded_manifest,
-        caches,
-        config=config,
-    )
-    evaluation = evaluate_behavior_cloning_model(
-        model,
-        loaded_manifest,
-        caches,
-        config=config,
-    )
+    with pytest.raises(
+        ActiveVisionCorpusCoverageError,
+        match="training corpus failed closed",
+    ):
+        train_cached_behavior_cloning(
+            loaded_manifest,
+            caches,
+            config=config,
+        )
 
     assert loaded_sha == manifest_sha
     assert manifest["splits"]["train"]["sample_count"] == 3
     assert audit["sample_count"] == 7
     assert audit["whole_seed_split_atomic"] is True
     assert audit["class_imbalance"]["hold_positive_sample_count"] == 0
-    assert training["samples_seen_per_epoch"] == 3
-    assert training["total_sample_presentations"] == 3
-    assert evaluation["train"]["sample_count"] == 3
-    assert evaluation["train"]["per_scale"]["5v5"]["sample_count"] == 1
-    assert (
-        evaluation["train"]["per_camera_type"]["interceptor"]["sample_count"]
-        == 3
-    )
-    assert evaluation["train"]["per_camera_type"]["recon"]["sample_count"] == 0
-    assert (
-        evaluation["test"]["per_intent"]["hold"]["precision"]["available"]
-        is False
-    )
+    corpus = audit["training_corpus_audit"]
+    assert corpus["training_gate"]["development_training_allowed"] is False
+    assert "hold_demonstration_missing" in corpus["training_gate"]["failure_reasons"]
+    assert "recon_camera_training_data_missing" in corpus["training_gate"][
+        "failure_reasons"
+    ]
+    assert "reserved_seed_evidence_unavailable" in corpus["training_gate"][
+        "failure_reasons"
+    ]
+    assert corpus["collection_plan"]["requests"]
 
 
 def _paired_results(

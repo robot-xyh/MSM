@@ -1,5 +1,39 @@
 # D5 终端视觉配准与身份认证计划
 
+## 2026-07-28 A3 主动视觉训练语料覆盖
+
+- [x] 新增公共 corpus audit/planner，按动作意图、拦截机/高空侦察机角色、场景、seed、
+  意图与角色组合统计唯一样本、episode 和 seed 覆盖。
+- [x] 冻结 development-only 结构阈值：每个意图至少 `4 sample / 2 episode / 2 seed`，
+  每个相机角色至少 `8 / 2 / 2`，每个意图与角色组合至少 `2 / 2 / 2`。调用方可额外声明
+  必须覆盖的场景版本。阈值不构成模型性能或运行准入指标。
+- [x] 缺 `hold`、少数动作不足、侦察相机缺失和未知角色时失败关闭。输出稳定编号的
+  `AV-CORPUS-NNN` 请求，给出需补采的场景、动作、相机角色、唯一样本、episode 和新训练
+  seed 数量。
+- [x] 训练、验证、测试和保留评估 seed 严格隔离。验证/测试样本不进入训练覆盖，显式保留
+  seed 或 canonical seed view 与训练交叉时拒绝。
+- [x] 重复 episode 和同一 episode 内重复策略输入均失败关闭并排除计数。复制、过采样、
+  重加权和合成样本不能把正式 coverage 写成已满足。
+- [x] 候选特征非有限、truth/actor 字段、候选动作不唯一、数据 descriptor 与实际 episode
+  不一致时失败关闭；审计明确记录在线 truth 使用为 0 和中心 `global_track_id` 改写为 0。
+- [x] 行为克隆 cache 升级为 v2，manifest 与 data audit 绑定 corpus audit 和 SHA-256。
+  训练在模型初始化前强制要求审计通过；旧 v1 cache 缺审计时保持可读但禁止训练。
+- [x] 正式行为克隆入口先保存 `training_corpus_audit.json`。审计器固定正式候选、未见
+  非合成证据、运行 ACK/结果和全部运行权限为 unavailable/false，禁止通过重新计算哈希
+  提权。
+- [x] 2026-07-28 小型合成 fixture 覆盖缺类、少数动作不足、同 episode 复制、重复
+  episode、角色缺失、seed split 污染、保留 seed、非有限特征、truth 字段、确定性输出、
+  legacy cache、权限升级和训练前门。专项 `11 passed`；D5 全量
+  `755 passed, 2 warnings in 123.86s`。
+- [ ] 独立 producer 按补采清单生成非合成训练 episode。当前历史正式语料仍为
+  `hold=0`、`observe_target` 召回 0，侦察相机精确动作准确率约 `0.621823`。
+- [ ] 使用绑定的正式 training seed registry 冻结 train/validation/test 与 reserved
+  集合，并在 clean 来源上运行新审计和行为克隆 v2。100 episode、1200 sample 的补充课程
+  是合成软件验证，不能关闭该项。
+- [ ] 在至少 20 个独立未见、非合成 seed 上形成模型指标、A3/R0 成对非退化、运行 ACK 和
+  动作结果谱系。上述证据形成前，正式候选、assist、相机命令、分配、接管和控制权限保持
+  unavailable/false。
+
 ## 2026-07-27 A3 主动视觉模型前置缺口
 
 - [x] 在正式缓存行为克隆链中统计每个 split 的意图、视场、相机角色和动作签名分布，不再以

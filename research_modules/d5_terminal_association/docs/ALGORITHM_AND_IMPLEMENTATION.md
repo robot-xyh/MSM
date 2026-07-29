@@ -1,6 +1,107 @@
 # D5 终端视觉配准与身份认证算法原理与实施文档
 
-**状态日期：2026-07-27**
+**状态日期：2026-07-28**
+
+## 主动视觉训练语料审计与补采规划
+
+### 公共接口
+
+`active_vision_corpus_audit.py` 提供四个公共入口：
+
+1. `audit_active_vision_training_corpus()` 完整扫描 train、validation 和 test 的
+   descriptor 与实际 episode，返回结构审计和补采计划；
+2. `validate_active_vision_corpus_audit()` 校验 schema、内容 SHA-256、失败原因排序、
+   补采请求编号、证据可用性和全部权限字段；
+3. `require_active_vision_training_corpus_ready()` 是行为克隆训练前门，审计缺失、无效或
+   未通过时在模型初始化前抛出失败关闭错误；
+4. `active_vision_camera_role()` 将资源命名解析为 `interceptor` 或 `recon`，无法唯一判断时
+   返回 unknown 并拒绝样本。
+
+审计策略由 `ActiveVisionCorpusCoveragePolicy` 冻结。默认最小值如下：
+
+| 覆盖单元 | 唯一样本 | episode | seed |
+| --- | ---: | ---: | ---: |
+| 每个动作意图 | 4 | 2 | 2 |
+| 每个相机角色 | 8 | 2 | 2 |
+| 每个动作意图与相机角色组合 | 2 | 2 | 2 |
+
+`required_scenarios` 可声明必须覆盖的场景版本。对每个指定场景，审计逐一检查四类动作和两类
+相机角色的组合覆盖。阈值只控制 development 训练入口，不表示统计充分性或正式模型准入。
+
+### 完整性检查
+
+审计先比较 descriptor 与实际物化 episode。episode 身份由
+`scenario_version + seed + episode_id` 组成。重复身份、声明 split 与实际 split 不一致、
+缺失 episode、未登记 episode 和空 episode 均失败关闭。训练、验证、测试 seed 必须互斥；
+显式保留评估 seed 或 canonical seed view 中的保留集合不得进入训练。
+
+每个 transition 依次执行以下检查：
+
+1. 递归检查 truth、actor、object 等在线身份字段；
+2. 解析相机角色，并确认规则动作在有限安全候选集中唯一；
+3. 计算完整候选特征矩阵，拒绝维度错误、空候选和非有限值；
+4. 以相机、快照时间、候选动作集合、候选特征形状和特征字节计算策略输入 SHA-256；
+5. 在同一 episode 内拒绝重复指纹，只把首条计入覆盖。
+
+指纹不包含所选动作标签。相同策略输入即使被赋予不同标签也不能形成两个独立样本。复制项
+进入 `duplicate_sample_count_by_split` 和排除原因计数，并使总体训练门失败。重复 episode
+同样只保留首份内容。审计输出明确声明样本复制、重加权、过采样和合成伪造均未用于 coverage。
+
+### 覆盖统计
+
+通过检查的 train 样本进入六组确定性统计：
+
+- `by_action_intent`；
+- `by_camera_role`；
+- `by_scenario`；
+- `by_seed`；
+- `by_action_intent_and_camera_role`；
+- `by_scenario_action_intent_camera_role`。
+
+每个单元同时记录唯一样本、唯一 episode、唯一 seed 和唯一场景数量。validation/test 只用于
+split 完整性核对，不增加训练覆盖。无 `hold` 样本固定增加
+`hold_demonstration_missing`；侦察相机为零固定增加
+`recon_camera_training_data_missing`。其余不足按样本、episode 和 seed 分别给出稳定原因。
+
+### 补采计划
+
+planner 对每个不足的“场景、动作意图、相机角色”单元计算：
+
+\[
+\Delta n=\max(0,n_{\min}-n),\quad
+\Delta e=\max(0,e_{\min}-e),\quad
+\Delta s=\max(0,s_{\min}-s).
+\]
+
+输出按三元组字典序排序并编号为 `AV-CORPUS-001...NNN`。请求同时携带
+`\Delta n`、`\Delta e` 和 `\Delta s`，并要求从绑定训练 registry 中分配新 seed，排除
+validation、test 和 reserved seed。缺少 seed 证据、数据污染或合同错误进入
+`blocking_remediation_reasons`，不能通过补采数量自动消除。
+
+### 行为克隆接线
+
+`build_behavior_cloning_feature_cache()` 在写 feature cache 前运行审计。cache schema 升级为
+`d5.active-vision-bc-cache.v2`，manifest 和 data audit 均嵌入同一审计。
+`load_behavior_cloning_feature_cache()` 对 v2 重新验证内容摘要；历史 v1 仍可读取已有数组，
+但 `train_cached_behavior_cloning()` 因缺少审计在模型初始化前拒绝训练。
+
+`run_formal_behavior_cloning()` 单独保存 `training_corpus_audit.json` 并将 SHA-256 写入训练
+配置、报告和 bundle 谱系。语料审计只允许结构合格的 development 训练；其
+`formal_candidate`、`non_synthetic_unseen_seed_evidence` 和
+`runtime_applied_action_evidence` 固定 unavailable，全部运行权限固定 false。重新计算内容
+摘要不能绕过权限验证。
+
+### 验证边界
+
+2026-07-28 的正向 fixture 使用 2 个训练 seed、1 个 validation seed 和 1 个 test seed，
+全部为合成课程。专项 `11 passed`，覆盖缺类、少数动作不足、重复 episode、同 episode
+复制、角色缺失、seed split/保留 seed 污染、非有限特征、truth 字段、顺序确定性、旧 cache、
+权限提权和训练前门。D5 全量为 `755 passed, 2 warnings in 123.86s`。
+
+本轮没有运行 900-cell、大写盘训练或 AirSim。现有 100 episode、1200 sample 课程也是合成
+数据，不能作为非合成正式语料。历史模型仍有 `hold=0`、`observe_target` 召回 0 和侦察相机
+约 `0.621823` 的缺口。正式训练 producer、20 个独立未见非合成 seed、运行 ACK/结果和模型
+准入仍为 P1。
 
 ## 主动视觉不平衡训练与诊断
 

@@ -1,5 +1,27 @@
 # D5 实现差距审计
 
+## 2026-07-28 A3 训练语料覆盖 GAP
+
+| 缺口 | 当前状态 | 证据与剩余边界 |
+| --- | --- | --- |
+| 公共语料覆盖审计 | **D5-owned 软件缺口已关闭** | 新增版本化 corpus audit，按动作意图、拦截机/高空侦察机、场景、seed、意图与角色组合统计唯一样本、episode 和 seed。默认门分别为每意图 `4/2/2`、每角色 `8/2/2`、每意图角色 `2/2/2`，可声明必需场景。阈值只用于 development 结构门。 |
+| `hold`、少数动作和侦察角色失败关闭 | **关闭并保持回归** | `hold=0` 增加专用 blocker；任一动作、角色或动作角色单元低于样本/episode/seed 下限均拒绝训练。侦察角色为 0 时，对四类侦察动作生成补采请求。 |
+| 样本与 episode 独立性 | **D5-owned 软件缺口已关闭** | 重复 episode 和同 episode 相同策略输入均排除并使语料失败关闭。同 episode 负例 raw train=25、eligible unique=24、duplicate=1，既有 `hold` 覆盖没有增加。复制、过采样和重加权不计 coverage。 |
+| seed split 治理 | **关闭并保持回归** | train/validation/test seed 交叉、训练使用显式 reserved seed、canonical split 与 descriptor 不一致均失败关闭。validation/test 只接受完整性检查，不进入训练覆盖。 |
+| 输入安全与完整性 | **关闭并保持回归** | 非有限候选特征、truth/actor 字段、未知角色、候选动作不唯一、descriptor/物化 episode 不一致均拒绝。审计固定在线 truth 使用为 0、`global_track_id` 创建/改写为 0。 |
+| 确定性补采清单 | **D5-owned 软件缺口已关闭** | planner 按场景、动作、角色排序，输出 `AV-CORPUS-NNN` 及新增唯一样本、episode、新训练 seed 数量。相同数据不同遍历顺序得到相同内容和 SHA-256。 |
+| 行为克隆训练前门 | **D5-owned 软件缺口已关闭** | cache 升级为 v2 并绑定审计；训练在模型初始化前验证审计。旧 v1 cache 可读但缺审计，训练失败关闭。正式入口先写 `training_corpus_audit.json`。 |
+| 权限升级隔离 | **关闭并保持回归** | 审计固定正式候选、非合成未见 seed、运行 ACK/结果为 unavailable，assist、主动视觉、相机命令、分配、接管、控制和全局编号写权限均为 false；重新计算摘要后篡改权限仍拒绝。 |
+| 非合成正式训练语料 | **P1 开放，unavailable** | 正向软件 fixture 只有 2 个训练 seed 且为 synthetic。已有 100 episode/1200 sample 补充课程也为合成数据。没有通过新审计的非合成正式训练 corpus。 |
+| 少数动作真实 producer | **P1 开放，unavailable** | 历史正式语料仍为 `hold=0`，历史模型 `observe_target` 召回 0。需按补采清单从独立场景、episode 和新训练 seed 采集真实规则示范，不能复制或重采样。 |
+| 侦察相机正式泛化 | **P1 开放** | 历史侦察相机精确动作准确率约 `0.621823`。本轮仅实现角色覆盖门，没有生成非合成侦察语料或新正式模型指标。 |
+| 未见 seed 与运行结果 | **P1 开放，unavailable** | 至少 20 个独立未见非合成 seed、A3/R0 同配置非退化、真实运行 ACK、动作结果和正式权限均未形成。本轮未运行 900-cell、大写盘或 AirSim。 |
+
+验证日期为 2026-07-28。语料专项 `11 passed in 5.03s`，D5 全量
+`755 passed, 2 warnings in 123.86s`。警告来自既有 Matplotlib `Axes3D` 多版本环境和 NVML
+初始化失败。当前没有新增 D5-owned P0。A3 类别不平衡 P1 已从“缺少可执行语料治理和补采
+计划”收敛为“缺非合成正式 producer、独立未见 seed、运行结果和正式准入证据”。
+
 ## 2026-07-27 A3 主动视觉模型前置 GAP
 
 | 缺口 | 当前状态 | 证据与剩余边界 |

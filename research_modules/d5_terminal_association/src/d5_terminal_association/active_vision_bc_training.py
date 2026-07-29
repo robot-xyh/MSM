@@ -42,6 +42,13 @@ from .active_vision_contracts import (
     ActiveVisionIntent,
     ActiveVisionRuntimeMode,
 )
+from .active_vision_corpus_audit import (
+    ActiveVisionCorpusCoveragePolicy,
+    active_vision_camera_role,
+    audit_active_vision_training_corpus,
+    require_active_vision_training_corpus_ready,
+    validate_active_vision_corpus_audit,
+)
 from .canonical_seed_view import (
     canonical_view_binding,
     load_active_vision_canonical_seed_view,
@@ -60,7 +67,8 @@ from .active_vision_learning import (
 )
 
 
-ACTIVE_VISION_BC_CACHE_SCHEMA_VERSION = "d5.active-vision-bc-cache.v1"
+ACTIVE_VISION_BC_CACHE_SCHEMA_VERSION = "d5.active-vision-bc-cache.v2"
+_LEGACY_ACTIVE_VISION_BC_CACHE_SCHEMA_VERSION = "d5.active-vision-bc-cache.v1"
 ACTIVE_VISION_BC_REPORT_SCHEMA_VERSION = "d5.active-vision-bc-formal-report.v2"
 ACTIVE_VISION_BC_SUMMARY_SCHEMA_VERSION = "d5.active-vision-bc-tracked-summary.v2"
 ACTIVE_VISION_BC_MODEL_DIAGNOSTICS_SCHEMA_VERSION = (
@@ -271,6 +279,9 @@ def audit_capacity_probe(
 def build_behavior_cloning_feature_cache(
     dataset: LazyActiveVisionEpisodeDataset,
     cache_dir: str | Path,
+    *,
+    corpus_policy: ActiveVisionCorpusCoveragePolicy | None = None,
+    reserved_evaluation_seeds: Sequence[int] | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any], str]:
     """Stream every split into compact candidate arrays and return the data audit."""
 
@@ -278,6 +289,11 @@ def build_behavior_cloning_feature_cache(
     if root.exists() and any(root.iterdir()):
         raise FileExistsError(f"active-vision BC cache is not empty: {root}")
     root.mkdir(parents=True, exist_ok=True)
+    corpus_audit = audit_active_vision_training_corpus(
+        dataset,
+        policy=corpus_policy,
+        reserved_evaluation_seeds=reserved_evaluation_seeds,
+    )
     descriptors = dataset.episode_descriptors
     scenario_versions = sorted({str(item["scenario_version"]) for item in descriptors})
     scales = sorted(
@@ -358,6 +374,24 @@ def build_behavior_cloning_feature_cache(
         }
 
     audit = _finalize_audit(audit, dataset)
+    corpus_gate = corpus_audit["training_gate"]
+    audit["training_corpus_audit"] = corpus_audit
+    audit["behavior_cloning_readiness"] = {
+        "status": corpus_gate["status"],
+        "rule_demonstration_complete": bool(
+            corpus_gate["development_training_allowed"]
+        ),
+        "full_split_training_allowed": bool(
+            corpus_gate["development_training_allowed"]
+        ),
+        "assist_eligible": False,
+        "ppo_eligible": False,
+    }
+    audit["generalization_risks"] = sorted(
+        set(audit["generalization_risks"])
+        | set(corpus_gate["failure_reasons"])
+        | set(corpus_gate["warnings"])
+    )
     manifest = {
         "schema_version": ACTIVE_VISION_BC_CACHE_SCHEMA_VERSION,
         "dataset": {
@@ -369,6 +403,7 @@ def build_behavior_cloning_feature_cache(
         "feature_schema_version": ACTIVE_VISION_FEATURE_SCHEMA_VERSION,
         "action_space_version": ACTIVE_VISION_ACTION_SPACE_VERSION,
         "feature_names": list(ACTIVE_VISION_FEATURE_NAMES),
+        "training_corpus_audit": corpus_audit,
         "mappings": {
             "intent": intent_codes,
             "fov": fov_codes,
@@ -395,8 +430,14 @@ def load_behavior_cloning_feature_cache(
     root = Path(cache_dir)
     manifest_path = root / "manifest.json"
     manifest = read_json(manifest_path)
-    if manifest.get("schema_version") != ACTIVE_VISION_BC_CACHE_SCHEMA_VERSION:
+    schema_version = manifest.get("schema_version")
+    if schema_version not in {
+        ACTIVE_VISION_BC_CACHE_SCHEMA_VERSION,
+        _LEGACY_ACTIVE_VISION_BC_CACHE_SCHEMA_VERSION,
+    }:
         raise ValueError("active-vision BC cache schema mismatch")
+    if schema_version == ACTIVE_VISION_BC_CACHE_SCHEMA_VERSION:
+        validate_active_vision_corpus_audit(manifest.get("training_corpus_audit"))
     if tuple(manifest.get("feature_names", ())) != ACTIVE_VISION_FEATURE_NAMES:
         raise ValueError("active-vision BC cache feature order mismatch")
     caches = {
@@ -525,6 +566,7 @@ def train_cached_behavior_cloning(
 ) -> tuple[ActiveVisionActorCritic, ActiveVisionFeatureBounds, dict[str, Any]]:
     """Train on every cached train sample using padded candidate batches."""
 
+    corpus_audit = require_active_vision_training_corpus_ready(cache_manifest)
     set_fixed_seed(config.seed)
     device = torch.device(config.device)
     if device.type == "cpu":
@@ -630,6 +672,7 @@ def train_cached_behavior_cloning(
     training_report = {
         "method": "behavior_cloning",
         "ppo_started": False,
+        "training_corpus_audit_sha256": corpus_audit["content_sha256"],
         "config": asdict(config),
         "intent_weighting": intent_weighting,
         "train_sample_count": train_cache.sample_count,
@@ -1288,6 +1331,23 @@ def assess_behavior_cloning_development_readiness(
     warnings: list[str] = []
     unavailable_actions: list[str] = []
     training_support: dict[str, dict[str, Any]] = {}
+    corpus_audit = data_audit.get("training_corpus_audit")
+    if not isinstance(corpus_audit, Mapping):
+        reasons.append("training_corpus_audit_unavailable")
+        corpus_gate: Mapping[str, Any] | None = None
+    else:
+        try:
+            validate_active_vision_corpus_audit(corpus_audit)
+        except ValueError:
+            reasons.append("training_corpus_audit_invalid")
+            corpus_gate = None
+        else:
+            corpus_gate = corpus_audit["training_gate"]
+            if corpus_gate["development_training_allowed"] is not True:
+                reasons.extend(
+                    f"training_corpus:{item}"
+                    for item in corpus_gate["failure_reasons"]
+                )
     split_counts = data_audit.get("intent_counts_by_split")
     train_counts = (
         split_counts.get("train")
@@ -1397,6 +1457,17 @@ def assess_behavior_cloning_development_readiness(
         "warnings": warnings,
         "unavailable_actions": unavailable_actions,
         "training_intent_support": training_support,
+        "training_corpus_gate": (
+            unavailable("strict_training_corpus_audit_unavailable")
+            if corpus_gate is None
+            else {
+                "available": True,
+                "value": bool(corpus_gate["development_training_allowed"]),
+                "reason": None,
+                "status": corpus_gate["status"],
+                "failure_reasons": list(corpus_gate["failure_reasons"]),
+            }
+        ),
         "majority_action_fraction": majority_fraction,
         "test_macro_intent_recall": macro_recall,
         "test_per_action_recall": {
@@ -1634,6 +1705,12 @@ def run_formal_behavior_cloning(
         dataset,
         output_root / "feature_cache",
     )
+    corpus_audit_path = output_root / "training_corpus_audit.json"
+    write_json_atomic(
+        corpus_audit_path,
+        cache_manifest["training_corpus_audit"],
+    )
+    corpus_audit_sha256 = sha256_file(corpus_audit_path)
     cache_manifest_loaded, caches, loaded_cache_sha256 = load_behavior_cloning_feature_cache(
         output_root / "feature_cache"
     )
@@ -1664,6 +1741,7 @@ def run_formal_behavior_cloning(
     training_config = {
         **asdict(config),
         "dataset_audit_sha256": audit_sha256,
+        "training_corpus_audit_sha256": corpus_audit_sha256,
         "feature_cache_manifest_sha256": cache_manifest_sha256,
         "full_train_split_used": True,
         "ppo_enabled": False,
@@ -1734,6 +1812,7 @@ def run_formal_behavior_cloning(
             "training_set_sha256": dataset.manifest["training_set_sha256"],
             "strict_integrity_audit_seconds": integrity_elapsed,
             "canonical_seed_view": canonical_view,
+            "training_corpus_audit_sha256": corpus_audit_sha256,
         },
         "data_audit": data_audit,
         "capacity_probe": capacity,
@@ -1826,6 +1905,9 @@ def tracked_summary(report: Mapping[str, Any], *, command: Sequence[str]) -> dic
 
 def report_markdown(report: Mapping[str, Any]) -> str:
     audit = report["data_audit"]
+    corpus = audit["training_corpus_audit"]
+    corpus_inventory = corpus["training_inventory"]
+    corpus_gate = corpus["training_gate"]
     evaluation = report["evaluation"]
     diagnostics = report["model_diagnostics"]
     bundle = report["bundle"]
@@ -1837,6 +1919,7 @@ def report_markdown(report: Mapping[str, Any]) -> str:
         "## 结论",
         "",
         f"正式数据共 `{audit['sample_count']}` 个样本，完整训练集 `{audit['split_sample_counts']['train']}` 个样本已用于行为克隆。",
+        f"训练语料结构门为 `{corpus_gate['status']}`。该门只证明训练 split 的动作、相机角色、episode 和 seed 基础覆盖，不构成正式模型准入。",
         "模型仅为 development shadow-only，不具备 assist 权限，未启动 PPO，规则策略仍是强制回退。",
         "观测 outcome 没有动作执行归因，reward、counterfactual 和 causal label 均不可用，不能用于强化学习或晋级。",
         "",
@@ -1846,13 +1929,18 @@ def report_markdown(report: Mapping[str, Any]) -> str:
         f"- train/validation/test episode：`{_slash(audit['split_episode_counts'])}`",
         f"- train/validation/test sample：`{_slash(audit['split_sample_counts'])}`",
         f"- 唯一 seed：`{_slash(audit['split_seed_counts'])}`，分割交集为 0",
-        f"- 保留 seed 1000-1019 进入训练：`{len(audit['reserved_evaluation_seed_overlap']['train'])}`",
+        f"- 训练与验证/测试 seed 重叠：`{len(corpus['split_integrity']['training_evaluation_seed_overlap'])}`",
+        f"- 训练与显式保留 seed 重叠：`{len(corpus['split_integrity']['training_reserved_seed_overlap'])}`",
+        f"- 训练结构有效样本：`{corpus_inventory['eligible_sample_count_by_split']['train']}`",
+        f"- 训练 episode：合成 `{corpus_inventory['synthetic_training_episode_count']}`，非合成 `{corpus_inventory['non_synthetic_training_episode_count']}`",
         f"- 意图：`{json.dumps(audit['intent_counts'], ensure_ascii=False, sort_keys=True)}`",
         f"- 动作签名：`{json.dumps(audit['selected_action_signature_counts'], ensure_ascii=False, sort_keys=True)}`",
         f"- 视场模式：`{json.dumps(audit['fov_counts'], ensure_ascii=False, sort_keys=True)}`",
         f"- 相机类型：`{json.dumps(audit['camera_type_counts'], ensure_ascii=False, sort_keys=True)}`",
         "",
-        "`hold` 没有正样本；`observe_target` 占比较低，`reacquire` 占主导。模型对缺失意图和少数类不能宣称泛化。",
+        f"- 补采请求：`{len(corpus['collection_plan']['requests'])}`",
+        "",
+        "逆平方根权重只调整已有样本的损失贡献。语料门按唯一 episode、seed、动作和相机角色计数，复制、过采样和重加权均不能补足覆盖。",
         "",
         "## 训练",
         "",
@@ -1915,7 +2003,7 @@ def report_markdown(report: Mapping[str, Any]) -> str:
             "",
             "## Producer 缺口",
             "",
-            "1. 增加 hold 正样本和更均衡的 observe/search/reacquire 示范，来源必须是独立场景与 seed。",
+            "1. 按语料审计生成的请求清单补充独立 episode 和新训练 seed；合成课程只作软件验证，不能替代非合成正式语料。",
             "2. 在 shadow 模式实际请求动作并记录 runtime ack、执行后 outcome、延迟和安全回退，建立动作到结果的归因。",
             "3. 生成独立的 reward、counterfactual 和 causal label 后再研究 PPO；相邻观测变化不能替代这些标签。",
             "4. D4/D5 分割合同统一前保持联合训练关闭。",
@@ -2188,12 +2276,7 @@ def scenario_scale(scenario_version: str) -> str:
 
 
 def camera_type_from_resource(resource_id: str) -> str:
-    value = str(resource_id).upper()
-    if value.startswith("INT-"):
-        return "interceptor"
-    if value.startswith("RECON-"):
-        return "recon"
-    return "unknown"
+    return active_vision_camera_role(resource_id)
 
 
 def hardware_summary(selected_device: str) -> dict[str, Any]:
