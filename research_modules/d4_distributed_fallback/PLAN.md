@@ -1,5 +1,42 @@
 # D4 分布式协同与降级接管计划
 
+## 2026-07-29 规划资格解耦计划
+
+### 已完成
+
+- 新增独立区域能力合同，将下一周期 planning/replan eligibility 与 assignment、
+  coalition、takeover、control execution authority 分开。规划资格不能转换成当前计划
+  执行权限。
+- planning-only 入口收紧到中心当前 owner/layer、当前 plan/version/epoch/lease、
+  `REQUEST_CENTER_REPLAN`、完整 ACK、无网络分区和无实际故障代际围栏。拒绝原因只接受
+  资源不足或必要成员数量不足。
+- planning-only 接收区输出 `hold=false/request_replan=true`，满足 D3 successor 的区域
+  transfer 约束；当前执行闭锁由独立 capability/consumption 字段保留。该区域禁止作为
+  transfer source。
+- 规划证明绑定区域快照、正式裁决摘要、authority digest、source version 和内容哈希。
+  v2 schema 显式承载新证明；v1 序列化、内容标识和普通 execution-authorized 行为保持
+  兼容，旧载荷不静默获得新权限。
+- 源区最低备用比例 0.10、最低备用资源 1 和 committed resource 保护保持。D5 硬冲突、
+  旧代次、租约过期、网络分区、中心失效、二级或分布式接管及 ACK 不完整负例保持拒绝。
+- 2026-07-29 专项测试 14/14、D4 全量 794/794 通过；v4 注册常量和制品未修改。
+
+### 当前 P1
+
+1. main 仍需在启用 `regional_resource_locality_enforced=true` 的区域探针中，把 v2
+   planning-only advisory 送到 D3 下一周期，并证明形成严格更新的 successor plan。
+2. 集成证据需同时保存 advisory、消费结果、D3 拒绝或接受原因及新计划 lineage，确认
+   `hold=false` 消除了 transfer hold 拒绝，同时当前 assignment/control 权限没有被误开。
+3. 普通场景不保证含未分配 D4 task。后续集成不能把该任务是否存在当作 D4 合同前提。
+
+### 下一步
+
+1. main/D3 运行区域资源短缺正例，核对 successor owner、plan version、epoch 和 lease
+   仍由中心合法更新。
+2. 复跑过期租约、旧 plan/epoch、网络分区、中心失效、D5 hard hold、ACK 不完整和真实
+   fault-generation fence 负例，要求 successor 数和执行授权数均为 0。
+3. 将集成结果交 D6 记录 planning accepted、successor produced 与 execution authority
+   三个独立事件；本阶段不开放 v4 或生产控制权限。
+
 ## 2026-07-29 v4 框架收口计划
 
 ### 已完成

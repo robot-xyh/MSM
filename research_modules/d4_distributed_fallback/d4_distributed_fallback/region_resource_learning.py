@@ -1975,6 +1975,7 @@ class LearnedRegionResourcePolicy:
             transfers=tuple(transfers),
             projected=False,
             model_sha256=self.manifest.state_dict_sha256,
+            planning_authority_digest=snapshot.planning_authority_digest,
         )
 
     def is_ood(self, snapshot: RegionResourceSnapshot, *, margin: float) -> bool:

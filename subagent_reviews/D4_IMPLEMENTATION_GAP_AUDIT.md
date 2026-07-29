@@ -1,5 +1,26 @@
 # D4 实现差距审计：分布式协同与降级接管
 
+## 2026-07-29 规划资格与执行权限 GAP
+
+- **无新增 P0。** D4 的中心、二级、分布式接管和控制围栏仍保持失败关闭。规划资格不能
+  改变 owner、plan、version、epoch 或 lease，也不能授予 assignment、coalition、
+  takeover 或 control execution authority。
+- **已关闭 D4 内 P1：资源短缺建议被执行围栏误拒绝。** 新的 planning-only capability
+  只在中心当前且正式动作是 `REQUEST_CENTER_REPLAN`、拒绝原因仅为资源不足或必要成员
+  数量不足时成立。接收区约束为 `hold=false/request_replan=true`，因此 D3 可以表达下一
+  周期 transfer；当前执行权限仍全部为 false。
+- **已关闭 D4 内 P1：规划证明可跨代复用。** 快照、authority digest、正式裁决摘要、
+  source version 和 capability 内容哈希共同绑定 v2 建议。旧 plan/epoch、过期 lease、
+  网络分区、中心失效/secondary、D5 hard hold、ACK 不完整和 fault-generation fence
+  均有失败关闭回归。
+- **兼容状态。** 正常 execution-authorized 区域继续使用 advisory/snapshot v1。只有带
+  完整规划证明的载荷使用 v2；旧 payload 不会静默升级。v4 仍未登记，注册状态未改。
+- **验证证据。** 2026-07-29 专项 14/14、D4 全量 794/794 通过。专项直接断言 transfer
+  两端 `hold=false`、目标区 `request_replan=true`，同时五类执行权限均为 false。
+- **仍开放的跨模块 P1。** main/D3 尚未用真实区域探针生成严格 successor，并持久化
+  planning accepted、D3 consumption、successor lineage 和 execution denied 的同链
+  证据。该集成缺口不由 D4 单元测试关闭。
+
 ## 2026-07-29 v4 框架修订后 GAP
 
 - **无新增 P0。** v4 已恢复 main/v3 的投影参数 0.10/1/1.5 秒和规则参数

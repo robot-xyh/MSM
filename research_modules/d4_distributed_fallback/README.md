@@ -1,5 +1,36 @@
 # D4 分布式协同与降级接管
 
+## 2026-07-29 区域规划资格与执行权限
+
+D4 已将区域资源建议的“进入下一周期重规划”与“执行当前计划”拆成独立能力。新增
+`RegionResourceAuthorityCapabilities`，分别记录重规划资格以及分配、联盟、接管和控制
+执行权限。规划专用状态固定为 `planning_replan_eligible=true`，四类细分执行权限和汇总
+执行权限均为 false。该状态只允许聚合区域建议进入 D3 的下一次规划输入，不会激活当前
+分配、联盟提交、节点接管或 D7 控制。
+
+规划专用例外只接受中心仍是当前 owner/layer、计划标识、版本、epoch 和 lease 当前有效、
+网络未分区、实际故障代际围栏未生效、联盟确认完整，且正式动作是
+`REQUEST_CENTER_REPLAN` 的输入。正式拒绝原因必须非空，并只能包含
+`d3_resource_infeasible` 或 `d3_required_member_count_unsatisfied`。D5 友方冲突、
+重复锁定、身份冲突、旧版本、过期租约、中心失效、二级或分布式接管、确认不完整和实际
+故障代际围栏继续失败关闭。
+
+面向 D3 的规划约束采用 `hold=false`、`request_replan=true`。这样跨区 transfer 的接收区
+可参与下一周期 successor 求解，同时不会触发 D3 的
+`regional_hint_transfer_touches_hold_region`。当前执行闭锁由独立 capability 和
+consumption 字段表达；接收区不能成为 transfer source。源区转出后仍须保护已承诺资源、
+最低备用比例 0.10 和至少 1 个备用资源。
+
+带规划证明的快照和建议分别使用显式 v2 schema；区域 capability、正式裁决摘要、
+authority digest、source version 和规划摘要共同参与内容绑定。历史 v1 载荷保持原字段
+形状和内容标识，缺少 v2 证明的旧载荷不能获得规划资格。普通 execution-authorized
+区域继续走 v1 行为。合同不依赖普通场景无条件产生未分配任务；main 仅在
+`regional_resource_locality_enforced=true` 的区域探针中提供相应 backlog。
+
+2026-07-29 专项测试 14/14、D4 全量 794/794 通过。真实 main/D3 successor 消费仍需由
+main 做跨模块集成验证。v4 注册状态没有修改，仍为 unregistered、
+development/shadow only。
+
 ## 2026-07-29 v4 外部数据候选框架
 
 D4 已完成新的 v4 development/shadow 候选构建框架，但当前没有可登记的 v4 模型。

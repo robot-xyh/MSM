@@ -7,7 +7,7 @@ elect an owner, form a coalition, create a D3 assignment, or authorize D7.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from enum import Enum
 from hashlib import sha256
 from math import ceil, floor, isfinite
@@ -17,19 +17,43 @@ from typing import Any, Callable, Iterable, Mapping, Sequence
 from .models import to_jsonable
 from .regional_failover import (
     REGIONAL_FAILOVER_SCHEMA,
+    RegionalAction,
     RegionalAuthorityLayer,
     RegionalFailoverDecision,
 )
 
 
 REGION_RESOURCE_SNAPSHOT_SCHEMA = "d4-region-resource-snapshot-v1"
+REGION_RESOURCE_PLANNING_SNAPSHOT_SCHEMA = "d4-region-resource-snapshot-v2"
 REGION_RESOURCE_RECOMMENDATION_SCHEMA = "d4-region-resource-recommendation-v1"
 REGION_RESOURCE_ADVISORY_SCHEMA = "d4-region-resource-advisory-v1"
+REGION_RESOURCE_PLANNING_ADVISORY_SCHEMA = "d4-region-resource-advisory-v2"
 REGION_RESOURCE_CONSUMPTION_SCHEMA = "d4-region-resource-consumption-v1"
 REGION_RESOURCE_SHADOW_REPORT_SCHEMA = "d4-region-resource-shadow-report-v1"
 REGION_RESOURCE_FEATURE_SCHEMA = "d4-region-resource-features-v1"
+REGION_RESOURCE_AUTHORITY_CAPABILITIES_SCHEMA = (
+    "d4-region-resource-authority-capabilities-v1"
+)
 DETERMINISTIC_RESOURCE_PROJECTOR_NAME = "d4-deterministic-resource-projector"
 DETERMINISTIC_RESOURCE_PROJECTOR_VERSION = "v1"
+
+REGION_RESOURCE_PLANNING_REJECTION_ALLOWLIST = frozenset(
+    {
+        "d3_resource_infeasible",
+        "d3_required_member_count_unsatisfied",
+    }
+)
+_PLANNING_HARD_SAFETY_INDICATORS = frozenset(
+    {
+        "d2_duplicate_track_observed",
+        "d2_id_switch_observed",
+        "d5_binding_conflict",
+        "d5_duplicate_terminal_lock",
+        "d5_friend_conflict",
+        "d5_identity_conflict",
+        "network_partition",
+    }
+)
 
 _FORBIDDEN_ID_KEYS = {
     "actor_id",
@@ -51,6 +75,197 @@ class AdvisorMode(str, Enum):
     DISABLED = "disabled"
     SHADOW = "shadow"
     ASSIST = "assist"
+
+
+@dataclass(frozen=True)
+class RegionResourceAuthorityCapabilities:
+    """Formal D4 capabilities without turning planning into execution authority."""
+
+    region_id: str
+    source_action: RegionalAction | str
+    source_reason: str
+    source_rejection_reasons: tuple[str, ...]
+    source_risk_factors: tuple[str, ...]
+    source_decision_sha256: str
+    planning_replan_eligible: bool
+    assignment_execution_authorized: bool
+    coalition_execution_authorized: bool
+    takeover_execution_authorized: bool
+    control_execution_authorized: bool
+    coalition_ack_complete: bool
+    network_partitioned: bool
+    fault_generation_fenced: bool
+    capability_sha256: str = ""
+    schema: str = REGION_RESOURCE_AUTHORITY_CAPABILITIES_SCHEMA
+
+    def __post_init__(self) -> None:
+        if self.schema != REGION_RESOURCE_AUTHORITY_CAPABILITIES_SCHEMA:
+            raise ValueError("unsupported region authority capabilities schema")
+        if not self.region_id or not self.source_reason:
+            raise ValueError("authority capability region and source reason must not be empty")
+        action = (
+            self.source_action
+            if isinstance(self.source_action, RegionalAction)
+            else RegionalAction(str(self.source_action))
+        )
+        object.__setattr__(self, "source_action", action)
+        object.__setattr__(
+            self,
+            "source_rejection_reasons",
+            _unique(self.source_rejection_reasons),
+        )
+        object.__setattr__(
+            self,
+            "source_risk_factors",
+            _unique(self.source_risk_factors),
+        )
+        for name in (
+            "planning_replan_eligible",
+            "assignment_execution_authorized",
+            "coalition_execution_authorized",
+            "takeover_execution_authorized",
+            "control_execution_authorized",
+            "coalition_ack_complete",
+            "network_partitioned",
+            "fault_generation_fenced",
+        ):
+            if type(getattr(self, name)) is not bool:
+                raise ValueError(f"{name} must be a boolean")
+        if not _valid_sha256(self.source_decision_sha256):
+            raise ValueError("source_decision_sha256 must be a SHA-256 digest")
+        if self.coalition_execution_authorized and not self.assignment_execution_authorized:
+            raise ValueError("coalition execution requires assignment execution authority")
+        if self.takeover_execution_authorized and not self.control_execution_authorized:
+            raise ValueError("takeover execution requires control execution authority")
+        if self.control_execution_authorized != self.assignment_execution_authorized:
+            raise ValueError(
+                "formal assignment and control execution authority must agree"
+            )
+        if self.planning_replan_eligible:
+            if action != RegionalAction.REQUEST_CENTER_REPLAN:
+                raise ValueError(
+                    "planning-only eligibility requires request_center_replan"
+                )
+            rejection_set = set(self.source_rejection_reasons)
+            if (
+                not rejection_set
+                or not rejection_set.issubset(
+                    REGION_RESOURCE_PLANNING_REJECTION_ALLOWLIST
+                )
+            ):
+                raise ValueError(
+                    "planning-only eligibility requires only allowlisted D3 shortages"
+                )
+            if any(
+                (
+                    self.assignment_execution_authorized,
+                    self.coalition_execution_authorized,
+                    self.takeover_execution_authorized,
+                    self.control_execution_authorized,
+                )
+            ):
+                raise ValueError(
+                    "planning-only eligibility cannot grant execution authority"
+                )
+            if (
+                not self.coalition_ack_complete
+                or self.network_partitioned
+                or self.fault_generation_fenced
+                or _has_planning_hard_safety_indicator(
+                    (
+                        self.source_reason,
+                        *self.source_rejection_reasons,
+                        *self.source_risk_factors,
+                    )
+                )
+            ):
+                raise ValueError("planning-only eligibility violates a hard safety fence")
+        expected_digest = _authority_capability_digest(self)
+        if self.capability_sha256 and self.capability_sha256 != expected_digest:
+            raise ValueError("authority capability SHA-256 does not match content")
+        object.__setattr__(self, "capability_sha256", expected_digest)
+
+    @classmethod
+    def from_formal_decision(
+        cls,
+        decision: RegionalFailoverDecision,
+        region_decision: Any,
+        *,
+        coalition_ack_complete: bool,
+        fault_generation_fenced: bool,
+    ) -> "RegionResourceAuthorityCapabilities":
+        rejections = _unique(region_decision.rejection_reasons)
+        network_partitioned = bool(
+            region_decision.reason == "network_partition"
+            or "network_partition" in set(rejections)
+        )
+        execution_authorized = bool(region_decision.execution_allowed)
+        commits_complete = bool(
+            coalition_ack_complete
+            and all(
+                (not commit.commit_required) or commit.execution_authorized
+                for commit in region_decision.coalition_commits
+            )
+        )
+        ownership = region_decision.ownership
+        planning_replan_eligible = bool(
+            region_decision.selected_layer == RegionalAuthorityLayer.CENTER
+            and ownership.owner_layer == RegionalAuthorityLayer.CENTER
+            and ownership.owner_role == "center"
+            and bool(ownership.owner_id)
+            and region_decision.action == RegionalAction.REQUEST_CENTER_REPLAN
+            and float(decision.timestamp_s) < float(ownership.lease_expires_at_s)
+            and bool(rejections)
+            and set(rejections).issubset(
+                REGION_RESOURCE_PLANNING_REJECTION_ALLOWLIST
+            )
+            and not execution_authorized
+            and commits_complete
+            and not network_partitioned
+            and not fault_generation_fenced
+            and not _has_planning_hard_safety_indicator(
+                (
+                    region_decision.reason,
+                    *rejections,
+                    *region_decision.risk_factors,
+                )
+            )
+        )
+        return cls(
+            region_id=region_decision.region_id,
+            source_action=region_decision.action,
+            source_reason=region_decision.reason,
+            source_rejection_reasons=rejections,
+            source_risk_factors=_unique(region_decision.risk_factors),
+            source_decision_sha256=str(formal_decision_digest(decision)),
+            planning_replan_eligible=planning_replan_eligible,
+            assignment_execution_authorized=execution_authorized,
+            coalition_execution_authorized=bool(
+                execution_authorized and commits_complete
+            ),
+            takeover_execution_authorized=bool(
+                execution_authorized
+                and region_decision.selected_layer
+                in {
+                    RegionalAuthorityLayer.SECONDARY,
+                    RegionalAuthorityLayer.DISTRIBUTED,
+                }
+            ),
+            control_execution_authorized=execution_authorized,
+            coalition_ack_complete=commits_complete,
+            network_partitioned=network_partitioned,
+            fault_generation_fenced=bool(fault_generation_fenced),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return to_jsonable(self)
+
+    @classmethod
+    def from_dict(
+        cls, value: Mapping[str, Any]
+    ) -> "RegionResourceAuthorityCapabilities":
+        _reject_truth_identifiers(value, path="region.authority_capabilities")
+        return cls(**dict(value))
 
 
 @dataclass(frozen=True)
@@ -88,6 +303,8 @@ class RegionResourceNode:
     fault_fence_epoch: int | None = None
     assignment_conflict_count: int = 0
     degradation_failed: bool = False
+    fault_generation_fenced: bool = False
+    authority_capabilities: RegionResourceAuthorityCapabilities | None = None
 
     def __post_init__(self) -> None:
         if not self.region_id or not self.plan_id:
@@ -146,6 +363,7 @@ class RegionResourceNode:
             "owner_active",
             "fault_fenced",
             "degradation_failed",
+            "fault_generation_fenced",
         ):
             if not isinstance(getattr(self, name), bool):
                 raise ValueError(f"{name} must be a boolean")
@@ -163,6 +381,27 @@ class RegionResourceNode:
                     minimum=0,
                 ),
             )
+        capabilities = self.authority_capabilities
+        if capabilities is not None and not isinstance(
+            capabilities, RegionResourceAuthorityCapabilities
+        ):
+            capabilities = RegionResourceAuthorityCapabilities.from_dict(capabilities)
+            object.__setattr__(self, "authority_capabilities", capabilities)
+        if capabilities is not None:
+            if capabilities.region_id != self.region_id:
+                raise ValueError("authority capability region does not match node")
+            if (
+                capabilities.planning_replan_eligible
+                and layer != RegionalAuthorityLayer.CENTER
+            ):
+                raise ValueError("planning-only eligibility requires a center owner")
+            if (
+                capabilities.fault_generation_fenced
+                != self.fault_generation_fenced
+            ):
+                raise ValueError(
+                    "authority capability fault generation does not match node"
+                )
 
     def to_dict(self) -> dict[str, Any]:
         return to_jsonable(self)
@@ -170,6 +409,7 @@ class RegionResourceNode:
     @classmethod
     def from_dict(cls, value: Mapping[str, Any]) -> "RegionResourceNode":
         _reject_truth_identifiers(value)
+        payload = dict(value)
         required_authority_fields = {
             "current_owner_id",
             "current_owner_layer",
@@ -186,7 +426,13 @@ class RegionResourceNode:
             raise ValueError(
                 "region authority fields missing: " + ",".join(missing)
             )
-        return cls(**dict(value))
+        if payload.get("authority_capabilities") is not None:
+            payload["authority_capabilities"] = (
+                RegionResourceAuthorityCapabilities.from_dict(
+                    payload["authority_capabilities"]
+                )
+            )
+        return cls(**payload)
 
 
 @dataclass(frozen=True)
@@ -269,10 +515,14 @@ class RegionResourceSnapshot:
     source_authority_schema: str = REGIONAL_FAILOVER_SCHEMA
     feature_schema: str = REGION_RESOURCE_FEATURE_SCHEMA
     snapshot_version: int = 1
+    planning_authority_digest: str = ""
     schema: str = REGION_RESOURCE_SNAPSHOT_SCHEMA
 
     def __post_init__(self) -> None:
-        if self.schema != REGION_RESOURCE_SNAPSHOT_SCHEMA:
+        if self.schema not in {
+            REGION_RESOURCE_SNAPSHOT_SCHEMA,
+            REGION_RESOURCE_PLANNING_SNAPSHOT_SCHEMA,
+        }:
             raise ValueError(f"unsupported region resource schema: {self.schema}")
         if self.feature_schema != REGION_RESOURCE_FEATURE_SCHEMA:
             raise ValueError(f"unsupported feature schema: {self.feature_schema}")
@@ -302,10 +552,46 @@ class RegionResourceSnapshot:
             for edge in edges
         ):
             raise ValueError("all region resource edge endpoints must be known")
+        authority_rebuild_requested = not self.authority_digest
         expected_digest = _authority_digest(regions)
         if self.authority_digest and self.authority_digest != expected_digest:
             raise ValueError("authority_digest does not match regional authority fields")
         object.__setattr__(self, "authority_digest", expected_digest)
+        if self.schema == REGION_RESOURCE_SNAPSHOT_SCHEMA:
+            if self.planning_authority_digest or any(
+                node.authority_capabilities is not None
+                or node.fault_generation_fenced
+                for node in regions
+            ):
+                raise ValueError(
+                    "legacy snapshot-v1 cannot carry planning authority capability"
+                )
+            object.__setattr__(self, "planning_authority_digest", "")
+        else:
+            expected_planning_digest = _planning_authority_digest(
+                regions,
+                source_authority_schema=self.source_authority_schema,
+                authority_digest=expected_digest,
+            )
+            if (
+                self.planning_authority_digest
+                and self.planning_authority_digest != expected_planning_digest
+                and not authority_rebuild_requested
+            ):
+                raise ValueError(
+                    "planning_authority_digest does not match planning capabilities"
+                )
+            if not any(
+                node.authority_capabilities is not None for node in regions
+            ):
+                raise ValueError(
+                    "planning snapshot-v2 requires authority capabilities"
+                )
+            object.__setattr__(
+                self,
+                "planning_authority_digest",
+                expected_planning_digest,
+            )
 
     @property
     def region_count(self) -> int:
@@ -324,7 +610,10 @@ class RegionResourceSnapshot:
         return {region.region_id: region for region in self.regions}
 
     def to_dict(self) -> dict[str, Any]:
-        return to_jsonable(self)
+        payload = to_jsonable(self)
+        if self.schema == REGION_RESOURCE_SNAPSHOT_SCHEMA:
+            return _legacy_region_resource_snapshot_payload(payload)
+        return payload
 
     @classmethod
     def from_dict(cls, value: Mapping[str, Any]) -> "RegionResourceSnapshot":
@@ -368,6 +657,20 @@ class RegionResourceSnapshot:
                 (not commit.commit_required) or commit.execution_authorized
                 for commit in region_decision.coalition_commits
             )
+            ack_complete = bool(
+                signal.get("coalition_ack_complete", ack_complete)
+            )
+            fault_generation_fenced = bool(
+                signal.get("fault_generation_fenced", False)
+            )
+            authority_capabilities = (
+                RegionResourceAuthorityCapabilities.from_formal_decision(
+                    decision,
+                    region_decision,
+                    coalition_ack_complete=ack_complete,
+                    fault_generation_fenced=fault_generation_fenced,
+                )
+            )
             nodes.append(
                 RegionResourceNode(
                     region_id=region_id,
@@ -397,9 +700,7 @@ class RegionResourceSnapshot:
                     committed_resources=int(
                         signal.get("committed_resources", len(committed_member_ids))
                     ),
-                    coalition_ack_complete=bool(
-                        signal.get("coalition_ack_complete", ack_complete)
-                    ),
+                    coalition_ack_complete=ack_complete,
                     owner_active=bool(ownership.active),
                     fault_fenced=bool(
                         signal.get(
@@ -419,8 +720,24 @@ class RegionResourceSnapshot:
                     degradation_failed=bool(
                         signal.get("degradation_failed", region_decision.fail_closed)
                     ),
+                    fault_generation_fenced=fault_generation_fenced,
+                    authority_capabilities=authority_capabilities,
                 )
             )
+        planning_contract_required = any(
+            node.authority_capabilities is not None
+            and node.authority_capabilities.planning_replan_eligible
+            for node in nodes
+        ) or any(node.fault_generation_fenced for node in nodes)
+        if not planning_contract_required:
+            nodes = [
+                replace(
+                    node,
+                    fault_generation_fenced=False,
+                    authority_capabilities=None,
+                )
+                for node in nodes
+            ]
         return cls(
             snapshot_id=snapshot_id,
             scenario_id=scenario_id,
@@ -430,6 +747,11 @@ class RegionResourceSnapshot:
             regions=tuple(nodes),
             edges=tuple(edges),
             source_authority_schema=decision.schema,
+            schema=(
+                REGION_RESOURCE_PLANNING_SNAPSHOT_SCHEMA
+                if planning_contract_required
+                else REGION_RESOURCE_SNAPSHOT_SCHEMA
+            ),
         )
 
 
@@ -568,6 +890,7 @@ class RegionResourceRecommendation:
     model_sha256: str | None = None
     projection_rejections: tuple[str, ...] = ()
     schema: str = REGION_RESOURCE_RECOMMENDATION_SCHEMA
+    planning_authority_digest: str = ""
 
     def __post_init__(self) -> None:
         if self.schema != REGION_RESOURCE_RECOMMENDATION_SCHEMA:
@@ -597,13 +920,23 @@ class RegionResourceRecommendation:
         object.__setattr__(
             self, "projection_rejections", _unique(self.projection_rejections)
         )
+        if (
+            self.planning_authority_digest
+            and not _valid_sha256(self.planning_authority_digest)
+        ):
+            raise ValueError(
+                "recommendation planning_authority_digest must be a SHA-256 digest"
+            )
 
     @property
     def total_quota_delta(self) -> int:
         return sum(action.resource_quota_delta for action in self.actions)
 
     def to_dict(self) -> dict[str, Any]:
-        return to_jsonable(self)
+        payload = to_jsonable(self)
+        if not self.planning_authority_digest:
+            payload.pop("planning_authority_digest", None)
+        return payload
 
     @classmethod
     def from_dict(cls, value: Mapping[str, Any]) -> "RegionResourceRecommendation":
@@ -637,6 +970,8 @@ class RegionResourceSourceVersion:
     owner_active: bool
     fault_fenced: bool
     fault_fence_epoch: int | None = None
+    planning_authority_digest: str = ""
+    authority_capabilities: RegionResourceAuthorityCapabilities | None = None
 
     def __post_init__(self) -> None:
         if not self.region_id or not self.snapshot_id or not self.authority_digest:
@@ -662,6 +997,28 @@ class RegionResourceSourceVersion:
             raise ValueError("source lease must be finite and non-negative")
         if self.fault_fence_epoch is not None and int(self.fault_fence_epoch) < 0:
             raise ValueError("source fault_fence_epoch must be non-negative")
+        if (
+            self.planning_authority_digest
+            and not _valid_sha256(self.planning_authority_digest)
+        ):
+            raise ValueError(
+                "source planning_authority_digest must be a SHA-256 digest"
+            )
+        capabilities = self.authority_capabilities
+        if capabilities is not None and not isinstance(
+            capabilities, RegionResourceAuthorityCapabilities
+        ):
+            capabilities = RegionResourceAuthorityCapabilities.from_dict(capabilities)
+            object.__setattr__(self, "authority_capabilities", capabilities)
+        if capabilities is not None:
+            if capabilities.region_id != self.region_id:
+                raise ValueError(
+                    "source authority capabilities do not match source region"
+                )
+            if not self.planning_authority_digest:
+                raise ValueError(
+                    "source authority capabilities require planning authority digest"
+                )
 
     def to_dict(self) -> dict[str, Any]:
         return to_jsonable(self)
@@ -669,7 +1026,14 @@ class RegionResourceSourceVersion:
     @classmethod
     def from_dict(cls, value: Mapping[str, Any]) -> "RegionResourceSourceVersion":
         _reject_truth_identifiers(value, path="advisory.source_version")
-        return cls(**dict(value))
+        payload = dict(value)
+        if payload.get("authority_capabilities") is not None:
+            payload["authority_capabilities"] = (
+                RegionResourceAuthorityCapabilities.from_dict(
+                    payload["authority_capabilities"]
+                )
+            )
+        return cls(**payload)
 
 
 @dataclass(frozen=True)
@@ -687,6 +1051,7 @@ class RegionResourceAdvisoryRegion:
     hold: bool
     request_replan: bool
     reasons: tuple[str, ...] = ()
+    planning_only: bool = False
 
     def __post_init__(self) -> None:
         for name in (
@@ -702,6 +1067,20 @@ class RegionResourceAdvisoryRegion:
             raise ValueError("advisory reserve_ratio must be in [0, 1]")
         if not _unit_interval(self.reconnaissance_priority):
             raise ValueError("advisory reconnaissance_priority must be in [0, 1]")
+        if type(self.planning_only) is not bool:
+            raise ValueError("advisory planning_only must be a boolean")
+        if self.planning_only:
+            capabilities = self.source_version.authority_capabilities
+            if (
+                capabilities is None
+                or not capabilities.planning_replan_eligible
+                or not self.request_replan
+                or self.hold
+                or self.resource_quota_delta < 0
+            ):
+                raise ValueError(
+                    "planning-only region lacks a valid receive/replan capability"
+                )
         object.__setattr__(self, "reasons", _unique(self.reasons))
 
     @property
@@ -739,6 +1118,7 @@ class RegionResourceAdvisoryTransfer:
     partitioned: bool
     bidirectional: bool
     reasons: tuple[str, ...] = ()
+    planning_only_target: bool = False
 
     def __post_init__(self) -> None:
         if not self.edge_id or not self.edge_source_region_id or not self.edge_target_region_id:
@@ -753,6 +1133,17 @@ class RegionResourceAdvisoryTransfer:
             raise ValueError("advisory transfer time must be finite and non-negative")
         if not _finite_non_negative(self.bandwidth_mbps):
             raise ValueError("advisory bandwidth must be finite and non-negative")
+        if type(self.planning_only_target) is not bool:
+            raise ValueError("planning_only_target must be a boolean")
+        if self.planning_only_target:
+            capabilities = self.target_version.authority_capabilities
+            if (
+                capabilities is None
+                or not capabilities.planning_replan_eligible
+            ):
+                raise ValueError(
+                    "planning-only transfer target lacks planning eligibility"
+                )
         object.__setattr__(self, "reasons", _unique(self.reasons))
 
     @property
@@ -817,9 +1208,14 @@ class RegionResourceAdvisoryContract:
     formal_decision_required: bool
     recommendation_schema: str = REGION_RESOURCE_RECOMMENDATION_SCHEMA
     schema: str = REGION_RESOURCE_ADVISORY_SCHEMA
+    planning_authority_digest: str = ""
+    planning_only_region_ids: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
-        if self.schema != REGION_RESOURCE_ADVISORY_SCHEMA:
+        if self.schema not in {
+            REGION_RESOURCE_ADVISORY_SCHEMA,
+            REGION_RESOURCE_PLANNING_ADVISORY_SCHEMA,
+        }:
             raise ValueError(f"unsupported advisory schema: {self.schema}")
         if self.recommendation_schema != REGION_RESOURCE_RECOMMENDATION_SCHEMA:
             raise ValueError(
@@ -881,13 +1277,54 @@ class RegionResourceAdvisoryContract:
         object.__setattr__(
             self, "publication_rejections", _unique(self.publication_rejections)
         )
+        planning_only_region_ids = _unique(self.planning_only_region_ids)
+        if not set(planning_only_region_ids).issubset(
+            {region.region_id for region in regions}
+        ):
+            raise ValueError("planning-only advisory regions must be known")
+        object.__setattr__(
+            self,
+            "planning_only_region_ids",
+            planning_only_region_ids,
+        )
+        if planning_only_region_ids:
+            if self.schema != REGION_RESOURCE_PLANNING_ADVISORY_SCHEMA:
+                raise ValueError(
+                    "planning-only advisory requires advisory-v2 schema"
+                )
+            if not _valid_sha256(self.planning_authority_digest):
+                raise ValueError(
+                    "planning-only advisory requires planning authority digest"
+                )
+            for region in regions:
+                if region.region_id in set(planning_only_region_ids):
+                    if not region.planning_only:
+                        raise ValueError(
+                            "planning-only advisory region marker is inconsistent"
+                        )
+                elif region.planning_only:
+                    raise ValueError(
+                        "unlisted region cannot carry planning-only capability"
+                    )
+        elif any(region.planning_only for region in regions):
+            raise ValueError("planning-only region list is missing")
+        elif (
+            self.schema != REGION_RESOURCE_ADVISORY_SCHEMA
+            or self.planning_authority_digest
+        ):
+            raise ValueError(
+                "legacy advisory-v1 cannot carry planning-only capability"
+            )
         expected_id = _region_resource_advisory_id(self)
         if self.advisory_id and self.advisory_id != expected_id:
             raise ValueError("advisory_id does not match advisory content")
         object.__setattr__(self, "advisory_id", expected_id)
 
     def to_dict(self) -> dict[str, Any]:
-        return to_jsonable(self)
+        payload = to_jsonable(self)
+        if self.schema == REGION_RESOURCE_ADVISORY_SCHEMA:
+            return _legacy_region_resource_advisory_payload(payload)
+        return payload
 
     @classmethod
     def from_dict(cls, value: Mapping[str, Any]) -> "RegionResourceAdvisoryContract":
@@ -920,6 +1357,12 @@ class RegionResourceConsumptionView:
     consumable: bool
     rejection_reasons: tuple[str, ...]
     schema: str = REGION_RESOURCE_CONSUMPTION_SCHEMA
+    planning_replan_eligible: bool = False
+    execution_authorized: bool = False
+    assignment_execution_authorized: bool = False
+    coalition_execution_authorized: bool = False
+    takeover_execution_authorized: bool = False
+    control_execution_authorized: bool = False
 
     def __post_init__(self) -> None:
         if self.schema != REGION_RESOURCE_CONSUMPTION_SCHEMA:
@@ -933,6 +1376,32 @@ class RegionResourceConsumptionView:
         reasons = _unique(self.rejection_reasons)
         if self.consumable and reasons:
             raise ValueError("a consumable advisory must not have rejection reasons")
+        for name in (
+            "planning_replan_eligible",
+            "execution_authorized",
+            "assignment_execution_authorized",
+            "coalition_execution_authorized",
+            "takeover_execution_authorized",
+            "control_execution_authorized",
+        ):
+            if type(getattr(self, name)) is not bool:
+                raise ValueError(f"{name} must be a boolean")
+        if any(
+            (
+                self.execution_authorized,
+                self.assignment_execution_authorized,
+                self.coalition_execution_authorized,
+                self.takeover_execution_authorized,
+                self.control_execution_authorized,
+            )
+        ):
+            raise ValueError(
+                "regional advisory consumption cannot grant execution authority"
+            )
+        if self.planning_replan_eligible and not self.consumable:
+            raise ValueError(
+                "rejected advisory cannot expose planning replan eligibility"
+            )
         object.__setattr__(self, "rejection_reasons", reasons)
 
     @property
@@ -995,13 +1464,25 @@ class DeterministicResourceProjector:
         if formal_region_set_mismatch:
             rejections.append("formal_region_set_mismatch")
         blocked: dict[str, list[str]] = {}
+        planning_only_regions: set[str] = set()
         for region_id, node in nodes.items():
+            planning_only = self._planning_only_eligible(
+                snapshot,
+                node,
+                raw_actions.get(region_id),
+                formal_by_region.get(region_id),
+                formal_decision=formal_decision,
+                bound_planning_authority_digest=(
+                    proposal.planning_authority_digest
+                ),
+            )
             reasons = self._node_block_reasons(
                 snapshot,
                 node,
                 raw_actions.get(region_id),
                 formal_by_region.get(region_id),
                 formal_decision_supplied=formal_decision is not None,
+                allow_planning_only=planning_only,
             )
             if globally_stale:
                 reasons.append("snapshot_or_authority_version_mismatch")
@@ -1009,6 +1490,8 @@ class DeterministicResourceProjector:
                 reasons.append("formal_region_set_mismatch")
             if reasons:
                 blocked[region_id] = list(_unique(reasons))
+            elif planning_only:
+                planning_only_regions.add(region_id)
         for region_id in sorted(blocked):
             rejections.extend(
                 f"region:{region_id}:{reason}" for reason in blocked[region_id]
@@ -1054,6 +1537,9 @@ class DeterministicResourceProjector:
             if transfer.source_region_id in blocked or transfer.target_region_id in blocked:
                 rejections.append(f"{reason_prefix}:authority_fenced")
                 continue
+            if transfer.source_region_id in planning_only_regions:
+                rejections.append(f"{reason_prefix}:planning_only_source_forbidden")
+                continue
             edge = edge_by_id.get(transfer.edge_id)
             if edge is None or not edge.permits(
                 transfer.source_region_id, transfer.target_region_id
@@ -1096,6 +1582,10 @@ class DeterministicResourceProjector:
             reasons.extend(blocked.get(region_id, ()))
             hold = bool(raw.hold) if raw is not None else False
             request_replan = bool(raw.request_replan) if raw is not None else False
+            if region_id in planning_only_regions:
+                reasons.append("planning_only_center_replan")
+                hold = False
+                request_replan = True
             if region_id in blocked:
                 hold = True
                 request_replan = request_replan or any(
@@ -1173,6 +1663,7 @@ class DeterministicResourceProjector:
             fallback_reason=proposal.fallback_reason,
             model_sha256=proposal.model_sha256,
             projection_rejections=_unique(rejections),
+            planning_authority_digest=snapshot.planning_authority_digest,
         )
 
     def build_advisory_contract(
@@ -1212,6 +1703,28 @@ class DeterministicResourceProjector:
             if formal_decision is not None
             else {}
         )
+        planning_only_regions = {
+            region_id
+            for region_id, node in nodes.items()
+            if self._planning_only_eligible(
+                snapshot,
+                node,
+                actions.get(region_id),
+                formal_by_region.get(region_id),
+                formal_decision=formal_decision,
+                bound_planning_authority_digest=(
+                    recommendation.planning_authority_digest
+                ),
+            )
+        }
+        if (
+            planning_only_regions
+            and recommendation.planning_authority_digest
+            != snapshot.planning_authority_digest
+        ):
+            publication_rejections.append(
+                "source_planning_authority_digest_mismatch"
+            )
         publication_rejections.extend(
             self._formal_snapshot_rejections(snapshot, formal_decision)
         )
@@ -1237,6 +1750,7 @@ class DeterministicResourceProjector:
                 action,
                 formal_by_region.get(region_id),
                 formal_decision_supplied=formal_decision is not None,
+                allow_planning_only=region_id in planning_only_regions,
             )
             publication_rejections.extend(
                 f"region:{region_id}:{reason}" for reason in block_reasons
@@ -1297,6 +1811,7 @@ class DeterministicResourceProjector:
                     hold=hold,
                     request_replan=request_replan,
                     reasons=action_reasons,
+                    planning_only=region_id in planning_only_regions,
                 )
             )
 
@@ -1317,6 +1832,11 @@ class DeterministicResourceProjector:
             if edge is None:
                 publication_rejections.append(f"{prefix}:unknown_edge")
                 continue
+            if transfer.source_region_id in planning_only_regions:
+                publication_rejections.append(
+                    f"{prefix}:planning_only_source_forbidden"
+                )
+                continue
             advisory_transfers.append(
                 RegionResourceAdvisoryTransfer(
                     source_version=source_versions[transfer.source_region_id],
@@ -1333,6 +1853,9 @@ class DeterministicResourceProjector:
                     partitioned=bool(edge.partitioned),
                     bidirectional=bool(edge.bidirectional),
                     reasons=transfer.reasons,
+                    planning_only_target=(
+                        transfer.target_region_id in planning_only_regions
+                    ),
                 )
             )
             if not edge.permits(
@@ -1427,6 +1950,17 @@ class DeterministicResourceProjector:
             projection_rejections=recommendation.projection_rejections,
             publication_rejections=_unique(publication_rejections),
             formal_decision_required=formal_decision is not None,
+            planning_authority_digest=(
+                snapshot.planning_authority_digest
+                if planning_only_regions
+                else ""
+            ),
+            planning_only_region_ids=tuple(sorted(planning_only_regions)),
+            schema=(
+                REGION_RESOURCE_PLANNING_ADVISORY_SCHEMA
+                if planning_only_regions
+                else REGION_RESOURCE_ADVISORY_SCHEMA
+            ),
         )
 
     def validate_for_consumption(
@@ -1480,6 +2014,12 @@ class DeterministicResourceProjector:
             reasons.append("source_snapshot_timestamp_stale")
         if advisory.authority_digest != current_snapshot.authority_digest:
             reasons.append("source_authority_digest_stale")
+        if (
+            advisory.planning_authority_digest
+            and advisory.planning_authority_digest
+            != current_snapshot.planning_authority_digest
+        ):
+            reasons.append("source_planning_authority_digest_stale")
 
         current_nodes = current_snapshot.region_by_id
         advisory_regions = {region.region_id: region for region in advisory.regions}
@@ -1497,6 +2037,45 @@ class DeterministicResourceProjector:
             if formal_decision is not None
             else ()
         )
+        planning_valid_regions: set[str] = set()
+        for region_id in advisory.planning_only_region_ids:
+            region = advisory_regions.get(region_id)
+            node = current_nodes.get(region_id)
+            formal_region = formal_by_region.get(region_id)
+            if region is None or node is None:
+                continue
+            planning_action = RegionResourceAction(
+                region_id=region_id,
+                resource_quota_delta=region.resource_quota_delta,
+                reserve_ratio=region.reserve_ratio,
+                reconnaissance_priority=region.reconnaissance_priority,
+                hold=region.hold,
+                request_replan=region.request_replan,
+                expected_owner_id=region.source_version.owner_id,
+                expected_owner_layer=region.source_version.owner_layer,
+                expected_plan_id=region.source_version.plan_id,
+                expected_plan_version=region.source_version.plan_version,
+                expected_epoch=region.source_version.epoch,
+                expected_lease_expires_at_s=(
+                    region.source_version.lease_expires_at_s
+                ),
+                reasons=region.reasons,
+            )
+            if self._planning_only_eligible(
+                current_snapshot,
+                node,
+                planning_action,
+                formal_region,
+                formal_decision=formal_decision,
+                bound_planning_authority_digest=(
+                    advisory.planning_authority_digest
+                ),
+            ):
+                planning_valid_regions.add(region_id)
+            else:
+                reasons.append(
+                    f"region:{region_id}:planning_eligibility_not_current"
+                )
 
         expected_net = {region_id: 0 for region_id in current_nodes}
         edge_usage = {edge.edge_id: 0 for edge in current_snapshot.edges}
@@ -1539,6 +2118,11 @@ class DeterministicResourceProjector:
                     current_nodes[transfer.source_region_id],
                     evaluated_at_s=evaluated_at_s,
                     prefix=f"{prefix}:source",
+                    allow_planning_only=False,
+                    require_planning_binding=(
+                        advisory.schema
+                        == REGION_RESOURCE_PLANNING_ADVISORY_SCHEMA
+                    ),
                 )
             )
             reasons.extend(
@@ -1548,8 +2132,21 @@ class DeterministicResourceProjector:
                     current_nodes[transfer.target_region_id],
                     evaluated_at_s=evaluated_at_s,
                     prefix=f"{prefix}:target",
+                    allow_planning_only=(
+                        transfer.planning_only_target
+                        and transfer.target_region_id in planning_valid_regions
+                    ),
+                    require_planning_binding=(
+                        advisory.schema
+                        == REGION_RESOURCE_PLANNING_ADVISORY_SCHEMA
+                    ),
                 )
             )
+            if transfer.planning_only_target != (
+                transfer.target_region_id
+                in set(advisory.planning_only_region_ids)
+            ):
+                reasons.append(f"{prefix}:planning_only_target_marker_mismatch")
             edge_usage[edge.edge_id] += transfer.resource_count
             source_usage[transfer.source_region_id] += transfer.resource_count
             expected_net[transfer.source_region_id] -= transfer.resource_count
@@ -1575,6 +2172,11 @@ class DeterministicResourceProjector:
                     node,
                     evaluated_at_s=evaluated_at_s,
                     prefix=f"region:{region_id}",
+                    allow_planning_only=region_id in planning_valid_regions,
+                    require_planning_binding=(
+                        advisory.schema
+                        == REGION_RESOURCE_PLANNING_ADVISORY_SCHEMA
+                    ),
                 )
             )
             formal_region = formal_by_region.get(region_id)
@@ -1604,6 +2206,7 @@ class DeterministicResourceProjector:
                         action,
                         formal_region,
                         formal_decision_supplied=True,
+                        allow_planning_only=region_id in planning_valid_regions,
                     )
                 )
             current_committed = max(
@@ -1672,6 +2275,9 @@ class DeterministicResourceProjector:
             current_authority_digest=current_snapshot.authority_digest,
             consumable=not unique_reasons,
             rejection_reasons=unique_reasons,
+            planning_replan_eligible=bool(
+                not unique_reasons and advisory.planning_only_region_ids
+            ),
         )
 
     @staticmethod
@@ -1694,6 +2300,8 @@ class DeterministicResourceProjector:
             owner_active=node.owner_active,
             fault_fenced=node.fault_fenced,
             fault_fence_epoch=node.fault_fence_epoch,
+            planning_authority_digest=snapshot.planning_authority_digest,
+            authority_capabilities=node.authority_capabilities,
         )
 
     @staticmethod
@@ -1726,6 +2334,8 @@ class DeterministicResourceProjector:
         *,
         evaluated_at_s: float,
         prefix: str,
+        allow_planning_only: bool = False,
+        require_planning_binding: bool = False,
     ) -> tuple[str, ...]:
         reasons: list[str] = []
         if source.region_id != node.region_id:
@@ -1736,6 +2346,14 @@ class DeterministicResourceProjector:
             reasons.append(f"{prefix}:snapshot_version_stale")
         if source.authority_digest != snapshot.authority_digest:
             reasons.append(f"{prefix}:authority_digest_stale")
+        if require_planning_binding:
+            if (
+                source.planning_authority_digest
+                != snapshot.planning_authority_digest
+            ):
+                reasons.append(f"{prefix}:planning_authority_digest_stale")
+            if source.authority_capabilities != node.authority_capabilities:
+                reasons.append(f"{prefix}:authority_capabilities_stale")
         if source.owner_id != node.current_owner_id:
             reasons.append(f"{prefix}:owner_id_stale")
         if source.owner_layer != node.current_owner_layer:
@@ -1767,7 +2385,99 @@ class DeterministicResourceProjector:
             or source.fault_fence_epoch != node.fault_fence_epoch
         ):
             reasons.append(f"{prefix}:fault_fence_version_stale")
+        if allow_planning_only:
+            capabilities = node.authority_capabilities
+            planning_valid = bool(
+                capabilities is not None
+                and capabilities.planning_replan_eligible
+                and source.authority_capabilities == capabilities
+                and source.planning_authority_digest
+                == snapshot.planning_authority_digest
+                and not node.fault_generation_fenced
+            )
+            if planning_valid:
+                tolerated = {
+                    f"{prefix}:authority_not_active",
+                    f"{prefix}:fault_fence_active",
+                }
+                reasons = [reason for reason in reasons if reason not in tolerated]
         return _unique(reasons)
+
+    @staticmethod
+    def _planning_only_eligible(
+        snapshot: RegionResourceSnapshot,
+        node: RegionResourceNode,
+        action: RegionResourceAction | None,
+        formal_region: Any | None,
+        *,
+        formal_decision: RegionalFailoverDecision | None,
+        bound_planning_authority_digest: str,
+    ) -> bool:
+        capabilities = node.authority_capabilities
+        if (
+            capabilities is None
+            or not capabilities.planning_replan_eligible
+            or action is None
+            or formal_decision is None
+            or formal_region is None
+            or bound_planning_authority_digest
+            != snapshot.planning_authority_digest
+            or node.current_owner_layer != RegionalAuthorityLayer.CENTER
+            or not node.current_owner_id
+            or snapshot.timestamp_s >= node.lease_expires_at_s
+            or node.fault_generation_fenced
+            or (
+                node.fault_fence_epoch is not None
+                and node.epoch < node.fault_fence_epoch
+            )
+            or not node.coalition_ack_complete
+            or action.resource_quota_delta < 0
+            or not action.request_replan
+        ):
+            return False
+        if (
+            action.expected_owner_id != node.current_owner_id
+            or action.expected_owner_layer != node.current_owner_layer
+            or action.expected_plan_id != node.plan_id
+            or action.expected_plan_version != node.plan_version
+            or action.expected_epoch != node.epoch
+            or action.expected_lease_expires_at_s != node.lease_expires_at_s
+        ):
+            return False
+        ownership = formal_region.ownership
+        if (
+            formal_decision.schema != snapshot.source_authority_schema
+            or formal_decision.timestamp_s != snapshot.timestamp_s
+            or formal_decision.scenario.scenario_name != snapshot.scenario_id
+            or formal_decision.scenario.scenario_version
+            != snapshot.scenario_version
+            or formal_region.region_id != node.region_id
+            or formal_region.selected_layer != RegionalAuthorityLayer.CENTER
+            or formal_region.action != RegionalAction.REQUEST_CENTER_REPLAN
+            or ownership.owner_id != node.current_owner_id
+            or ownership.owner_layer != node.current_owner_layer
+            or ownership.plan_id != node.plan_id
+            or ownership.plan_version != node.plan_version
+            or ownership.epoch != node.epoch
+            or ownership.lease_expires_at_s != node.lease_expires_at_s
+            or ownership.active != node.owner_active
+        ):
+            return False
+        expected = RegionResourceAuthorityCapabilities.from_formal_decision(
+            formal_decision,
+            formal_region,
+            coalition_ack_complete=node.coalition_ack_complete,
+            fault_generation_fenced=node.fault_generation_fenced,
+        )
+        return bool(
+            expected == capabilities
+            and capabilities.source_decision_sha256
+            == formal_decision_digest(formal_decision)
+            and not capabilities.assignment_execution_authorized
+            and not capabilities.coalition_execution_authorized
+            and not capabilities.takeover_execution_authorized
+            and not capabilities.control_execution_authorized
+        )
 
     def _node_block_reasons(
         self,
@@ -1777,6 +2487,7 @@ class DeterministicResourceProjector:
         formal_region: Any | None,
         *,
         formal_decision_supplied: bool,
+        allow_planning_only: bool = False,
     ) -> list[str]:
         reasons: list[str] = []
         if snapshot.timestamp_s >= node.lease_expires_at_s:
@@ -1821,6 +2532,17 @@ class DeterministicResourceProjector:
                 for commit in formal_region.coalition_commits
             ):
                 reasons.append("formal_d4_commit_incomplete")
+        if allow_planning_only:
+            reasons = [
+                reason
+                for reason in reasons
+                if reason
+                not in {
+                    "authority_not_active",
+                    "fault_fence_active",
+                    "formal_d4_execution_fenced",
+                }
+            ]
         return reasons
 
     def _reserve_floor(self, node: RegionResourceNode) -> int:
@@ -2010,6 +2732,7 @@ class RuleRegionResourcePolicy:
             transfers=tuple(transfers),
             projected=False,
             fallback_reason=fallback_reason,
+            planning_authority_digest=snapshot.planning_authority_digest,
         )
         return self.projector.project(
             snapshot, raw, formal_decision=formal_decision
@@ -2426,7 +3149,7 @@ class ShadowPairedEvaluator:
 def _region_resource_advisory_id(
     advisory: RegionResourceAdvisoryContract,
 ) -> str:
-    payload = to_jsonable(advisory)
+    payload = advisory.to_dict()
     payload.pop("advisory_id", None)
     serialized = json.dumps(
         payload,
@@ -2437,12 +3160,79 @@ def _region_resource_advisory_id(
     return f"d4-rr-advisory-{sha256(serialized).hexdigest()}"
 
 
+def _legacy_region_resource_advisory_payload(
+    value: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Return the exact advisory-v1 content shape used before planning proofs."""
+
+    payload = dict(value)
+    payload.pop("planning_authority_digest", None)
+    payload.pop("planning_only_region_ids", None)
+    for region in payload.get("regions", ()):
+        region.pop("planning_only", None)
+        source = region.get("source_version", {})
+        source.pop("planning_authority_digest", None)
+        source.pop("authority_capabilities", None)
+    for transfer in payload.get("transfers", ()):
+        transfer.pop("planning_only_target", None)
+        for key in ("source_version", "target_version"):
+            source = transfer.get(key, {})
+            source.pop("planning_authority_digest", None)
+            source.pop("authority_capabilities", None)
+    return payload
+
+
+def _legacy_region_resource_snapshot_payload(
+    value: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Return the exact snapshot-v1 shape used by frozen learning datasets."""
+
+    payload = dict(value)
+    payload.pop("planning_authority_digest", None)
+    for region in payload.get("regions", ()):
+        region.pop("fault_generation_fenced", None)
+        region.pop("authority_capabilities", None)
+    return payload
+
+
 def _valid_sha256(value: str | None) -> bool:
     return bool(
         value
         and len(value) == 64
         and all(character in "0123456789abcdefABCDEF" for character in value)
     )
+
+
+def _has_planning_hard_safety_indicator(values: Iterable[str]) -> bool:
+    for value in values:
+        normalized = str(value).strip().lower()
+        if normalized in _PLANNING_HARD_SAFETY_INDICATORS:
+            return True
+        if any(
+            token in normalized
+            for token in (
+                "friend_conflict",
+                "duplicate_terminal_lock",
+                "identity_conflict",
+                "network_partition",
+            )
+        ):
+            return True
+    return False
+
+
+def _authority_capability_digest(
+    capabilities: RegionResourceAuthorityCapabilities,
+) -> str:
+    payload = to_jsonable(capabilities)
+    payload.pop("capability_sha256", None)
+    serialized = json.dumps(
+        payload,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=True,
+    ).encode("utf-8")
+    return sha256(serialized).hexdigest()
 
 
 def formal_decision_digest(decision: RegionalFailoverDecision | None) -> str | None:
@@ -2475,6 +3265,37 @@ def _authority_digest(regions: Sequence[RegionResourceNode]) -> str:
     serialized = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode(
         "utf-8"
     )
+    return sha256(serialized).hexdigest()
+
+
+def _planning_authority_digest(
+    regions: Sequence[RegionResourceNode],
+    *,
+    source_authority_schema: str,
+    authority_digest: str,
+) -> str:
+    payload = {
+        "source_authority_schema": str(source_authority_schema),
+        "authority_digest": str(authority_digest),
+        "regions": [
+            {
+                "region_id": node.region_id,
+                "fault_generation_fenced": node.fault_generation_fenced,
+                "authority_capabilities": (
+                    None
+                    if node.authority_capabilities is None
+                    else node.authority_capabilities.to_dict()
+                ),
+            }
+            for node in sorted(regions, key=lambda item: item.region_id)
+        ],
+    }
+    serialized = json.dumps(
+        payload,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=True,
+    ).encode("utf-8")
     return sha256(serialized).hexdigest()
 
 

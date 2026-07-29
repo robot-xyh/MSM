@@ -1,5 +1,26 @@
 # D4 分布式协同与降级接管综述及子方案
 
+## 2026-07-29 规划权限解耦评审
+
+区域资源不足时，正式 D4 裁决会关闭当前执行。此前区域资源投影器把这项闭锁同时解释为
+禁止重规划建议，导致跨区资源候选无法送入 D3 下一周期。评审决定保留当前执行闭锁，
+增加独立 planning-only capability。该 capability 只说明中心可以接收聚合建议并重新
+规划，不表示现有分配可执行。
+
+接收区对 D3 暴露 `hold=false/request_replan=true`。若继续使用 `hold=true`，D3 会以
+`regional_hint_transfer_touches_hold_region` 拒绝任何触及该区的 transfer。执行安全
+由独立的 assignment、coalition、takeover、control authority 字段保持全 false，并由
+正式裁决、版本、租约和 capability 摘要共同复核。实际故障代际围栏、网络分区和身份类
+硬冲突不会进入该例外。
+
+例外范围固定为中心当前 owner/layer 和两个 D3 资源短缺原因。接收区只能接收，不能转出；
+源区继续保护 committed resource、10% 备用比例和至少 1 个备用资源。v1 正常路径保持
+原序列化和内容标识，v2 才携带规划证明。专项 14/14 和 D4 全量 794/794 已通过。
+
+下一项评审由 main/D3 完成：在 locality-enforced 区域探针中验证 v2 advisory 能形成严格
+successor，同时 assignment/control authority 仍为 false。普通场景不要求生成未分配
+D4 task，本合同也不依赖该行为。v4 继续保持未登记。
+
 ## 2026-07-29 v4 框架评审
 
 main 未接受首版 v4 原型。评审确认三项问题：原型把备用下限从 0.10/1 放宽到 0/0，

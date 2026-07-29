@@ -1,5 +1,42 @@
 # D4 分布式协同与降级接管算法及实施方案
 
+## 2026-07-29 规划资格和执行权限实现
+
+`RegionResourceAuthorityCapabilities` 从同一份正式区域裁决生成。对象保存正式动作、
+拒绝原因、风险因素、正式裁决 SHA-256，以及 planning、assignment、coalition、
+takeover、control 五项能力。planning 为 true 时，后四项必须全为 false；内容摘要不
+匹配时对象拒绝构造。
+
+生成流程如下：
+
+1. `RegionResourceSnapshot.from_regional_decision()` 读取中心 owner、plan/version、
+   epoch、lease、ACK、网络和故障代际状态，生成逐区域 capability。
+2. `_planning_only_eligible()` 重验正式动作
+   `REQUEST_CENTER_REPLAN`，并要求拒绝原因非空且仅属于
+   `d3_resource_infeasible`、`d3_required_member_count_unsatisfied`。
+3. 投影器只允许 execution-authorized 源区向 planning-only 目标区转移。目标区不能成为
+   source；源区预算继续扣除 committed resource 和
+   `max(1, ceil(0.10 * available), reserve_resources)`。
+4. 投影结果把目标区写为 `hold=false/request_replan=true/planning_only=true`。transfer
+   同时写入 `planning_only_target=true`。这组字段可被 D3 表达为下一周期区域约束，不会
+   触发 transfer touches hold 拒绝。
+5. advisory-v2 保存 planning authority digest 和逐端 source version。消费时使用当前
+   snapshot 和 formal decision 重新计算 capability；任一 plan、epoch、lease、owner、
+   摘要或故障状态变化均拒绝。
+6. `RegionResourceConsumptionView` 只在全部校验通过后设置
+   `planning_replan_eligible=true`。其 execution、assignment、coalition、takeover 和
+   control 字段始终为 false。
+
+普通执行授权区域继续生成 snapshot/advisory v1。v1 的序列化移除新增证明字段并维持历史
+内容标识；只有完整 v2 payload 可以获得 planning-only 资格。该迁移不会把旧 payload
+静默解释成新合同。
+
+专项测试覆盖中心资源不足正例、D3 transfer 两端无 hold、正常 v1 行为、过期 lease、旧
+plan/epoch、网络分区、中心失效和 secondary、D5 friend/duplicate/identity hard hold、
+ACK 不完整、真实 fault-generation fence、正式裁决变更和 legacy payload。2026-07-29
+结果为 14/14，D4 全量为 794/794。真实 main/D3 successor 尚未执行；本实现只提供 D4
+合同和消费语义。v4 注册状态保持 unregistered、shadow/development only。
+
 ## 2026-07-29 v4 builder 实施
 
 v4 构建入口接收三个必需输入：输出目录、外部 `RegionLearningDataset` 和外部来源证据。

@@ -1,5 +1,23 @@
 # D4 M 对 N 分布式联盟形成与降级接管调研
 
+## 2026-07-29 必要成员不足的规划语义
+
+M 对 N 场景中，`d3_required_member_count_unsatisfied` 表示当前计划缺少必要成员。中心仍
+是合法 owner 且计划代次和租约有效时，D4 现在可以发布 planning-only 区域资源建议，供
+D3 下一周期补充跨区资源。接收区使用 `hold=false/request_replan=true`，因此该 transfer
+可进入 successor 求解。
+
+planning-only 不构成联盟确认。assignment、coalition、takeover 和 control execution
+authority 均为 false，已有计划不能据此继续执行。新 successor 仍需形成严格更新的计划
+版本，并重新满足 required-member ACK、coalition commit、lease 和 D5/D7 门控。缺 ACK、
+中心失效、二级或分布式接管、网络分区、D5 身份类硬冲突和实际故障代际围栏均不适用该
+例外。
+
+源区转移继续保护 committed members、10% 备用比例和至少 1 个备用资源；planning-only
+接收区不得作为 transfer source。2026-07-29 D4 专项 14/14、全量 794/794 通过。main/D3
+真实 successor 和后续 M 对 N 联盟提交仍是跨模块 P1，当前没有新增 coalition execution
+证据。
+
 ## 2026-07-29 v2b 审计后的联盟边界
 
 readiness v3 在 seeds 2003-2012 上完成 10/10 原始推理、运行门、安全投影和隔离采用，
