@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from copy import deepcopy
 from dataclasses import replace
 import json
 from pathlib import Path
@@ -23,6 +24,9 @@ from d4_distributed_fallback.region_resource_eight_region_candidate import (
     REGION_RESOURCE_EIGHT_REGION_READINESS_MODEL_VERSION,
     REGION_RESOURCE_EIGHT_REGION_READINESS_CANDIDATE_ID,
     REGION_RESOURCE_EIGHT_REGION_READINESS_SOURCE_COMMIT,
+    REGION_RESOURCE_EIGHT_REGION_READINESS_V3_ADVISORY_TTL_S,
+    REGION_RESOURCE_EIGHT_REGION_READINESS_V3_VIEW_RECIPE,
+    REGION_RESOURCE_EIGHT_REGION_READINESS_V3_VIEW_SCHEMA,
     REGION_RESOURCE_EIGHT_REGION_READINESS_VALUE_COUNT,
     REGION_RESOURCE_EIGHT_REGION_READINESS_ZERO_VALUE_COUNT,
     REGION_RESOURCE_EIGHT_REGION_RUNTIME_DATASET_SHA256,
@@ -31,11 +35,21 @@ from d4_distributed_fallback.region_resource_eight_region_candidate import (
     REGION_RESOURCE_EIGHT_REGION_TRAINING_SEEDS,
     RegionResourceEightRegionCandidateConfig,
     RegionResourceEightRegionCandidateError,
+    RegionResourceEightRegionReadinessV3CandidateConfig,
+    _build_readiness_training_view_manifest,
     _build_training_view_dataset,
     _load_verified_source,
     _readiness_runtime_confidence_gate_acceptance,
+    _readiness_confidence_supervision_definition_from_base,
+    _readiness_runtime_context,
+    _sha256_json,
+    _split_usage,
     _validate_global_training_seeds,
+    _validate_readiness_training_view_manifest,
     load_verified_eight_region_readiness_source,
+)
+from d4_distributed_fallback.region_resource_dataset import (
+    load_region_learning_dataset_splits,
 )
 
 
@@ -244,6 +258,105 @@ def test_three_source_composite_uses_one_atomic_split_per_numeric_seed(
     assert all(len(splits) == 1 for splits in split_by_seed.values())
     assert all(count >= 3 for count in scenario_count_by_seed.values())
     assert not set(split_by_seed) & set(range(1000, 1020))
+
+
+def test_v3_view_binds_main_runtime_projection_contract(
+    three_sources: tuple[
+        LoadedRegionLearningDataset,
+        LoadedRegionLearningDataset,
+        LoadedRegionLearningDataset,
+    ],
+    tmp_path: Path,
+) -> None:
+    runtime, action, readiness = three_sources
+    config = RegionResourceEightRegionReadinessV3CandidateConfig()
+    composite = _build_training_view_dataset(
+        runtime,
+        action,
+        readiness=readiness,
+        staging_root=tmp_path / "v3_view",
+        config=config,
+        source_git_commit="a" * 40,
+        source_identity_sha256="b" * 64,
+    )
+    loaded = load_region_learning_dataset_splits(
+        composite["dataset"].root,
+        splits=(
+            RegionLearningSplit.TRAIN,
+            RegionLearningSplit.VALIDATION,
+        ),
+    )
+    _, readiness_evidence = load_verified_eight_region_readiness_source(
+        READINESS_DATASET,
+        generation_summary_path=READINESS_SUMMARY,
+        dataset_audit_path=READINESS_AUDIT,
+    )
+    view = _build_readiness_training_view_manifest(
+        runtime,
+        action,
+        readiness,
+        readiness_evidence,
+        composite,
+        split_usage=_split_usage(loaded),
+        source_summary={"source_identity_sha256": "b" * 64},
+        config=config,
+    )
+
+    assert view["schema"] == (
+        REGION_RESOURCE_EIGHT_REGION_READINESS_V3_VIEW_SCHEMA
+    )
+    assert view["view_recipe"] == (
+        REGION_RESOURCE_EIGHT_REGION_READINESS_V3_VIEW_RECIPE
+    )
+    gate = view["confidence_supervision"]["runtime_gate"]
+    assert gate["projection_config"] == {
+        "minimum_reserve_ratio": 0.1,
+        "minimum_reserve_resources": 1,
+        "advisory_ttl_s": (
+            REGION_RESOURCE_EIGHT_REGION_READINESS_V3_ADVISORY_TTL_S
+        ),
+    }
+    assert gate["rule_policy_config"]["projection"] == (
+        gate["projection_config"]
+    )
+    assert gate["fixed_ood_margin"] == 0.05
+    assert gate["fixed_minimum_confidence"] == 0.60
+    assert gate["inconsistent_confidence_cap"] == 0.59
+    assert gate["continuous_tolerance"] == 0.10
+    split_usage = view["global_split"]["split_usage"]
+    assert split_usage["test_payload_read_count"] == 0
+    assert split_usage["calibration_seed_use_count"] == 0
+    assert split_usage["reserved_seed_use_count"] == 0
+    assert not (
+        set(view["global_split"]["train_seeds"])
+        | set(view["global_split"]["validation_seeds"])
+    ) & set(range(1000, 1020))
+
+    v2_config = RegionResourceEightRegionCandidateConfig(
+        candidate_id=REGION_RESOURCE_EIGHT_REGION_READINESS_CANDIDATE_ID,
+        model_version=REGION_RESOURCE_EIGHT_REGION_READINESS_MODEL_VERSION,
+        schema=REGION_RESOURCE_EIGHT_REGION_READINESS_CONFIG_SCHEMA,
+    )
+    _, _, v2_gate = _readiness_runtime_context(v2_config)
+    tampered = deepcopy(view)
+    tampered["confidence_supervision"] = (
+        _readiness_confidence_supervision_definition_from_base(
+            tampered["confidence_supervision"]["head_fit_definition"],
+            runtime_gate=v2_gate,
+        )
+    )
+    tampered["content_sha256"] = _sha256_json(
+        {
+            key: value
+            for key, value in tampered.items()
+            if key != "content_sha256"
+        }
+    )
+    with pytest.raises(
+        RegionResourceEightRegionCandidateError,
+        match="readiness_training_view_confidence_boundary_crossed",
+    ):
+        _validate_readiness_training_view_manifest(tampered)
 
 
 def test_runtime_gate_acceptance_keeps_auditable_pass_coverage() -> None:

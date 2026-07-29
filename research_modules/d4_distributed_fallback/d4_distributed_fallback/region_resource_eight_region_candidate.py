@@ -31,6 +31,7 @@ from .region_resource import (
     REGION_RESOURCE_FEATURE_SCHEMA,
     RegionResourceEdge,
     RegionResourceNode,
+    RegionResourceProjectionConfig,
     RegionResourceSnapshot,
     RuleRegionResourcePolicy,
     RuleRegionResourcePolicyConfig,
@@ -119,6 +120,21 @@ REGION_RESOURCE_EIGHT_REGION_READINESS_TRAINING_SCHEMA = (
 REGION_RESOURCE_EIGHT_REGION_READINESS_CONFIG_SCHEMA = (
     "d4-region-resource-eight-region-readiness-config-v2"
 )
+REGION_RESOURCE_EIGHT_REGION_READINESS_V3_CANDIDATE_SCHEMA = (
+    "d4-region-resource-eight-region-readiness-shadow-candidate-v3"
+)
+REGION_RESOURCE_EIGHT_REGION_READINESS_V3_SOURCE_SCHEMA = (
+    "d4-region-resource-eight-region-readiness-source-v3"
+)
+REGION_RESOURCE_EIGHT_REGION_READINESS_V3_VIEW_SCHEMA = (
+    "d4-region-resource-eight-region-readiness-training-view-v3"
+)
+REGION_RESOURCE_EIGHT_REGION_READINESS_V3_TRAINING_SCHEMA = (
+    "d4-region-resource-eight-region-readiness-training-v3"
+)
+REGION_RESOURCE_EIGHT_REGION_READINESS_V3_CONFIG_SCHEMA = (
+    "d4-region-resource-eight-region-readiness-config-v3"
+)
 
 REGION_RESOURCE_EIGHT_REGION_CANDIDATE_ID = (
     "region_resource_a2_8region_runtime_action_shadow_v1"
@@ -131,6 +147,12 @@ REGION_RESOURCE_EIGHT_REGION_READINESS_CANDIDATE_ID = (
 )
 REGION_RESOURCE_EIGHT_REGION_READINESS_MODEL_VERSION = (
     "d4-region-a2-8region-runtime-action-readiness-shadow-v2"
+)
+REGION_RESOURCE_EIGHT_REGION_READINESS_V3_CANDIDATE_ID = (
+    "region_resource_a2_8region_runtime_action_readiness_shadow_v3"
+)
+REGION_RESOURCE_EIGHT_REGION_READINESS_V3_MODEL_VERSION = (
+    "d4-region-a2-8region-runtime-action-readiness-shadow-v3"
 )
 REGION_RESOURCE_EIGHT_REGION_CANDIDATE_FILENAME = (
     "eight_region_shadow_candidate_manifest.json"
@@ -195,6 +217,10 @@ REGION_RESOURCE_EIGHT_REGION_READINESS_VIEW_RECIPE = (
     "runtime-eight-region-geometry-plus-curriculum-action-plus-authentic-"
     "runtime-readiness-v2"
 )
+REGION_RESOURCE_EIGHT_REGION_READINESS_V3_VIEW_RECIPE = (
+    "runtime-eight-region-geometry-plus-curriculum-action-plus-authentic-"
+    "runtime-readiness-main-projection-contract-v3"
+)
 REGION_RESOURCE_EIGHT_REGION_CONFIDENCE_TARGET = (
     "frozen-action-normalized-error-consistency-score-v1"
 )
@@ -202,6 +228,7 @@ REGION_RESOURCE_EIGHT_REGION_RUNTIME_CONFIDENCE_GATE = (
     REGION_RESOURCE_RUNTIME_CONFIDENCE_GATE_MODE
 )
 REGION_RESOURCE_EIGHT_REGION_MINIMUM_VALIDATION_PASS_RATE = 0.05
+REGION_RESOURCE_EIGHT_REGION_READINESS_V3_ADVISORY_TTL_S = 1.5
 
 _EXPECTED_RUNTIME_ACTION_INVENTORY = {
     "action_count": 14384,
@@ -235,6 +262,12 @@ _READINESS_CANDIDATE_IDENTITY = (
     REGION_RESOURCE_EIGHT_REGION_READINESS_CONFIG_SCHEMA,
     REGION_RESOURCE_EIGHT_REGION_READINESS_CANDIDATE_ID,
     REGION_RESOURCE_EIGHT_REGION_READINESS_MODEL_VERSION,
+)
+_READINESS_V3_CANDIDATE_IDENTITY = (
+    REGION_RESOURCE_EIGHT_REGION_READINESS_V3_CANDIDATE_SCHEMA,
+    REGION_RESOURCE_EIGHT_REGION_READINESS_V3_CONFIG_SCHEMA,
+    REGION_RESOURCE_EIGHT_REGION_READINESS_V3_CANDIDATE_ID,
+    REGION_RESOURCE_EIGHT_REGION_READINESS_V3_MODEL_VERSION,
 )
 _COMMITTED_TRAINING_IMPLEMENTATION_FILES = (
     "research_modules/d4_distributed_fallback/d4_distributed_fallback/"
@@ -432,6 +465,251 @@ class RegionResourceEightRegionCandidateConfig:
             candidate_id=self.candidate_id,
             created_at_utc=self.created_at_utc,
         )
+
+
+@dataclass(frozen=True)
+class RegionResourceEightRegionReadinessV3CandidateConfig(
+    RegionResourceEightRegionCandidateConfig
+):
+    runtime_projection_minimum_reserve_ratio: float = 0.10
+    runtime_projection_minimum_reserve_resources: int = 1
+    runtime_projection_advisory_ttl_s: float = (
+        REGION_RESOURCE_EIGHT_REGION_READINESS_V3_ADVISORY_TTL_S
+    )
+    runtime_rule_high_threat_weight: float = 2.0
+    runtime_rule_uncertainty_weight: float = 0.5
+    runtime_rule_transfer_pressure_margin: float = 0.05
+    runtime_fixed_ood_margin: float = (
+        REGION_RESOURCE_RUNTIME_CONFIDENCE_GATE_FIXED_OOD_MARGIN
+    )
+    candidate_id: str = (
+        REGION_RESOURCE_EIGHT_REGION_READINESS_V3_CANDIDATE_ID
+    )
+    model_version: str = (
+        REGION_RESOURCE_EIGHT_REGION_READINESS_V3_MODEL_VERSION
+    )
+    created_at_utc: str = "2026-07-29T00:00:00Z"
+    schema: str = REGION_RESOURCE_EIGHT_REGION_READINESS_V3_CONFIG_SCHEMA
+
+    def __post_init__(self) -> None:
+        base_values = {
+            name: getattr(self, name)
+            for name in (
+                RegionResourceEightRegionCandidateConfig.__dataclass_fields__
+            )
+        }
+        base_values.update(
+            {
+                "candidate_id": (
+                    REGION_RESOURCE_EIGHT_REGION_READINESS_CANDIDATE_ID
+                ),
+                "model_version": (
+                    REGION_RESOURCE_EIGHT_REGION_READINESS_MODEL_VERSION
+                ),
+                "schema": REGION_RESOURCE_EIGHT_REGION_READINESS_CONFIG_SCHEMA,
+            }
+        )
+        RegionResourceEightRegionCandidateConfig(**base_values)
+        if (
+            self.schema
+            != REGION_RESOURCE_EIGHT_REGION_READINESS_V3_CONFIG_SCHEMA
+            or self.candidate_id
+            != REGION_RESOURCE_EIGHT_REGION_READINESS_V3_CANDIDATE_ID
+            or self.model_version
+            != REGION_RESOURCE_EIGHT_REGION_READINESS_V3_MODEL_VERSION
+        ):
+            raise ValueError("readiness v3 candidate identity changed")
+        if (
+            float(self.runtime_projection_minimum_reserve_ratio) != 0.10
+            or type(self.runtime_projection_minimum_reserve_resources) is not int
+            or self.runtime_projection_minimum_reserve_resources != 1
+            or float(self.runtime_projection_advisory_ttl_s)
+            != REGION_RESOURCE_EIGHT_REGION_READINESS_V3_ADVISORY_TTL_S
+        ):
+            raise ValueError("readiness v3 projection contract changed")
+        if (
+            float(self.runtime_rule_high_threat_weight) != 2.0
+            or float(self.runtime_rule_uncertainty_weight) != 0.5
+            or float(self.runtime_rule_transfer_pressure_margin) != 0.05
+        ):
+            raise ValueError("readiness v3 rule contract changed")
+        if (
+            float(self.runtime_fixed_ood_margin)
+            != REGION_RESOURCE_RUNTIME_CONFIDENCE_GATE_FIXED_OOD_MARGIN
+            or float(self.fixed_minimum_confidence) != 0.60
+            or float(self.confidence_inconsistent_target_ceiling) != 0.59
+            or float(self.confidence_continuous_tolerance) != 0.10
+        ):
+            raise ValueError("readiness v3 safety thresholds changed")
+
+
+@dataclass(frozen=True)
+class _ReadinessCandidateContract:
+    candidate_schema: str
+    source_schema: str
+    view_schema: str
+    training_schema: str
+    config_schema: str
+    candidate_id: str
+    model_version: str
+    view_recipe: str
+    advisory_ttl_s: float
+
+
+_READINESS_V2_CONTRACT = _ReadinessCandidateContract(
+    candidate_schema=REGION_RESOURCE_EIGHT_REGION_READINESS_CANDIDATE_SCHEMA,
+    source_schema=REGION_RESOURCE_EIGHT_REGION_READINESS_SOURCE_SCHEMA,
+    view_schema=REGION_RESOURCE_EIGHT_REGION_READINESS_VIEW_SCHEMA,
+    training_schema=REGION_RESOURCE_EIGHT_REGION_READINESS_TRAINING_SCHEMA,
+    config_schema=REGION_RESOURCE_EIGHT_REGION_READINESS_CONFIG_SCHEMA,
+    candidate_id=REGION_RESOURCE_EIGHT_REGION_READINESS_CANDIDATE_ID,
+    model_version=REGION_RESOURCE_EIGHT_REGION_READINESS_MODEL_VERSION,
+    view_recipe=REGION_RESOURCE_EIGHT_REGION_READINESS_VIEW_RECIPE,
+    advisory_ttl_s=1.0,
+)
+_READINESS_V3_CONTRACT = _ReadinessCandidateContract(
+    candidate_schema=(
+        REGION_RESOURCE_EIGHT_REGION_READINESS_V3_CANDIDATE_SCHEMA
+    ),
+    source_schema=REGION_RESOURCE_EIGHT_REGION_READINESS_V3_SOURCE_SCHEMA,
+    view_schema=REGION_RESOURCE_EIGHT_REGION_READINESS_V3_VIEW_SCHEMA,
+    training_schema=(
+        REGION_RESOURCE_EIGHT_REGION_READINESS_V3_TRAINING_SCHEMA
+    ),
+    config_schema=REGION_RESOURCE_EIGHT_REGION_READINESS_V3_CONFIG_SCHEMA,
+    candidate_id=REGION_RESOURCE_EIGHT_REGION_READINESS_V3_CANDIDATE_ID,
+    model_version=REGION_RESOURCE_EIGHT_REGION_READINESS_V3_MODEL_VERSION,
+    view_recipe=REGION_RESOURCE_EIGHT_REGION_READINESS_V3_VIEW_RECIPE,
+    advisory_ttl_s=(
+        REGION_RESOURCE_EIGHT_REGION_READINESS_V3_ADVISORY_TTL_S
+    ),
+)
+_READINESS_CONTRACTS = (_READINESS_V2_CONTRACT, _READINESS_V3_CONTRACT)
+
+
+def _readiness_contract_from_config(
+    config: RegionResourceEightRegionCandidateConfig,
+) -> _ReadinessCandidateContract:
+    identity = (config.schema, config.candidate_id, config.model_version)
+    for contract in _READINESS_CONTRACTS:
+        if identity == (
+            contract.config_schema,
+            contract.candidate_id,
+            contract.model_version,
+        ):
+            return contract
+    raise RegionResourceEightRegionCandidateError(
+        "readiness_candidate_identity_unsupported"
+    )
+
+
+def _readiness_contract_from_candidate_schema(
+    schema: str,
+) -> _ReadinessCandidateContract:
+    for contract in _READINESS_CONTRACTS:
+        if schema == contract.candidate_schema:
+            return contract
+    raise RegionResourceEightRegionCandidateError(
+        "readiness_candidate_schema_unsupported"
+    )
+
+
+def _readiness_contract_from_source_schema(
+    schema: str,
+) -> _ReadinessCandidateContract:
+    for contract in _READINESS_CONTRACTS:
+        if schema == contract.source_schema:
+            return contract
+    raise RegionResourceEightRegionCandidateError(
+        "readiness_source_schema_unsupported"
+    )
+
+
+def _readiness_contract_from_view_schema(
+    schema: str,
+) -> _ReadinessCandidateContract:
+    for contract in _READINESS_CONTRACTS:
+        if schema == contract.view_schema:
+            return contract
+    raise RegionResourceEightRegionCandidateError(
+        "readiness_view_schema_unsupported"
+    )
+
+
+def _default_readiness_config_for_contract(
+    contract: _ReadinessCandidateContract,
+) -> RegionResourceEightRegionCandidateConfig:
+    if contract == _READINESS_V3_CONTRACT:
+        return RegionResourceEightRegionReadinessV3CandidateConfig()
+    if contract == _READINESS_V2_CONTRACT:
+        return RegionResourceEightRegionCandidateConfig(
+            candidate_id=contract.candidate_id,
+            model_version=contract.model_version,
+            created_at_utc="2026-07-29T00:00:00Z",
+            schema=contract.config_schema,
+        )
+    raise RegionResourceEightRegionCandidateError(
+        "readiness_contract_unsupported"
+    )
+
+
+def _readiness_runtime_context(
+    config: RegionResourceEightRegionCandidateConfig,
+) -> tuple[
+    DeterministicResourceProjector,
+    RuleRegionResourcePolicy,
+    RegionResourceRuntimeConfidenceGateConfig,
+]:
+    contract = _readiness_contract_from_config(config)
+    if isinstance(
+        config,
+        RegionResourceEightRegionReadinessV3CandidateConfig,
+    ):
+        projection = RegionResourceProjectionConfig(
+            minimum_reserve_ratio=(
+                config.runtime_projection_minimum_reserve_ratio
+            ),
+            minimum_reserve_resources=(
+                config.runtime_projection_minimum_reserve_resources
+            ),
+            advisory_ttl_s=config.runtime_projection_advisory_ttl_s,
+        )
+        rule_config = RuleRegionResourcePolicyConfig(
+            projection=projection,
+            high_threat_weight=config.runtime_rule_high_threat_weight,
+            uncertainty_weight=config.runtime_rule_uncertainty_weight,
+            transfer_pressure_margin=(
+                config.runtime_rule_transfer_pressure_margin
+            ),
+        )
+        ood_margin = config.runtime_fixed_ood_margin
+    else:
+        projection = RegionResourceProjectionConfig(
+            minimum_reserve_ratio=0.10,
+            minimum_reserve_resources=1,
+            advisory_ttl_s=contract.advisory_ttl_s,
+        )
+        rule_config = RuleRegionResourcePolicyConfig(
+            projection=projection,
+            high_threat_weight=2.0,
+            uncertainty_weight=0.5,
+            transfer_pressure_margin=0.05,
+        )
+        ood_margin = (
+            REGION_RESOURCE_RUNTIME_CONFIDENCE_GATE_FIXED_OOD_MARGIN
+        )
+    projector = DeterministicResourceProjector(projection)
+    rule_policy = RuleRegionResourcePolicy(
+        rule_config,
+        projector=projector,
+    )
+    gate = RegionResourceRuntimeConfidenceGateConfig.from_runtime_context(
+        projector=projector,
+        rule_policy=rule_policy,
+        fixed_minimum_confidence=config.fixed_minimum_confidence,
+        fixed_ood_margin=ood_margin,
+    )
+    return projector, rule_policy, gate
 
 
 @dataclass(frozen=True)
@@ -714,21 +992,25 @@ def _fit_action_error_confidence_head(
 def _readiness_confidence_supervision_definition(
     config: RegionResourceEightRegionCandidateConfig,
 ) -> dict[str, Any]:
+    _, _, runtime_gate = _readiness_runtime_context(config)
     return _readiness_confidence_supervision_definition_from_base(
-        _confidence_supervision_definition(config)
+        _confidence_supervision_definition(config),
+        runtime_gate=runtime_gate,
     )
 
 
 def _readiness_confidence_supervision_definition_from_base(
     base: Mapping[str, Any],
+    *,
+    runtime_gate: RegionResourceRuntimeConfidenceGateConfig | None = None,
 ) -> dict[str, Any]:
     base = dict(base)
-    runtime_gate = RegionResourceRuntimeConfidenceGateConfig()
+    resolved_gate = runtime_gate or RegionResourceRuntimeConfidenceGateConfig()
     if (
         float(base["continuous_tolerance"])
-        != runtime_gate.continuous_tolerance
+        != resolved_gate.continuous_tolerance
         or float(base["fixed_minimum_confidence"])
-        != runtime_gate.fixed_minimum_confidence
+        != resolved_gate.fixed_minimum_confidence
     ):
         raise RegionResourceEightRegionCandidateError(
             "head_fit_and_runtime_gate_threshold_mismatch"
@@ -739,7 +1021,7 @@ def _readiness_confidence_supervision_definition_from_base(
         "head_fit_definition_sha256": base["definition_sha256"],
         "head_fit_split": RegionLearningSplit.TRAIN.value,
         "head_fit_loss": base["loss"],
-        "runtime_gate": runtime_gate.to_dict(),
+        "runtime_gate": resolved_gate.to_dict(),
         "runtime_gate_applied_before_threshold": True,
         "minimum_validation_threshold_pass_rate": (
             REGION_RESOURCE_EIGHT_REGION_MINIMUM_VALIDATION_PASS_RATE
@@ -1344,6 +1626,7 @@ class RegionResourceEightRegionCandidateManifest:
         if self.schema not in {
             REGION_RESOURCE_EIGHT_REGION_CANDIDATE_SCHEMA,
             REGION_RESOURCE_EIGHT_REGION_READINESS_CANDIDATE_SCHEMA,
+            REGION_RESOURCE_EIGHT_REGION_READINESS_V3_CANDIDATE_SCHEMA,
         }:
             raise ValueError("unsupported eight-region candidate manifest schema")
         identity = (
@@ -1361,9 +1644,21 @@ class RegionResourceEightRegionCandidateManifest:
             REGION_RESOURCE_EIGHT_REGION_READINESS_CANDIDATE_ID,
             REGION_RESOURCE_EIGHT_REGION_READINESS_MODEL_VERSION,
         )
-        if identity not in {legacy_identity, readiness_identity}:
+        readiness_v3_identity = (
+            REGION_RESOURCE_EIGHT_REGION_READINESS_V3_CANDIDATE_SCHEMA,
+            REGION_RESOURCE_EIGHT_REGION_READINESS_V3_CANDIDATE_ID,
+            REGION_RESOURCE_EIGHT_REGION_READINESS_V3_MODEL_VERSION,
+        )
+        if identity not in {
+            legacy_identity,
+            readiness_identity,
+            readiness_v3_identity,
+        }:
             raise ValueError("eight-region candidate identity mismatch")
-        readiness_candidate = identity == readiness_identity
+        readiness_candidate = identity in {
+            readiness_identity,
+            readiness_v3_identity,
+        }
         for name in (
             "source_summary_file_sha256",
             "source_identity_sha256",
@@ -1433,7 +1728,7 @@ class RegionResourceEightRegionCandidateManifest:
                 value = getattr(self, name)
                 if type(value) is not int or value <= 0:
                     raise ValueError(
-                        f"{name} must be a positive integer for readiness v2"
+                        f"{name} must be a positive integer for readiness"
                     )
             if (
                 self.validation_threshold_pass_count
@@ -1607,7 +1902,10 @@ class RegionResourceEightRegionCandidateManifest:
             "runtime_preflight_completed": self.runtime_preflight_completed,
             "formal_holdout_evaluated": self.formal_holdout_evaluated,
         }
-        if self.schema == REGION_RESOURCE_EIGHT_REGION_READINESS_CANDIDATE_SCHEMA:
+        if self.schema in {
+            REGION_RESOURCE_EIGHT_REGION_READINESS_CANDIDATE_SCHEMA,
+            REGION_RESOURCE_EIGHT_REGION_READINESS_V3_CANDIDATE_SCHEMA,
+        }:
             payload.update(
                 {
                     "readiness_dataset_sha256": (
@@ -1937,9 +2235,13 @@ def build_region_resource_eight_region_readiness_candidate(
     readiness_dataset_audit_path: str | Path,
     repository_root: str | Path,
     output_dir: str | Path,
-    config: RegionResourceEightRegionCandidateConfig | None = None,
+    config: (
+        RegionResourceEightRegionCandidateConfig
+        | RegionResourceEightRegionReadinessV3CandidateConfig
+        | None
+    ) = None,
 ) -> dict[str, Any]:
-    """Build a three-source, content-addressed v2 shadow candidate."""
+    """Build a three-source, content-addressed readiness candidate."""
 
     resolved = config or RegionResourceEightRegionCandidateConfig(
         candidate_id=REGION_RESOURCE_EIGHT_REGION_READINESS_CANDIDATE_ID,
@@ -1947,17 +2249,7 @@ def build_region_resource_eight_region_readiness_candidate(
         created_at_utc="2026-07-29T00:00:00Z",
         schema=REGION_RESOURCE_EIGHT_REGION_READINESS_CONFIG_SCHEMA,
     )
-    if (
-        resolved.schema
-        != REGION_RESOURCE_EIGHT_REGION_READINESS_CONFIG_SCHEMA
-        or resolved.candidate_id
-        != REGION_RESOURCE_EIGHT_REGION_READINESS_CANDIDATE_ID
-        or resolved.model_version
-        != REGION_RESOURCE_EIGHT_REGION_READINESS_MODEL_VERSION
-    ):
-        raise RegionResourceEightRegionCandidateError(
-            "readiness_candidate_requires_v2_identity"
-        )
+    contract = _readiness_contract_from_config(resolved)
     destination = Path(output_dir).resolve()
     if destination.name != resolved.candidate_id:
         raise RegionResourceEightRegionCandidateError(
@@ -1994,7 +2286,11 @@ def build_region_resource_eight_region_readiness_candidate(
     )
     _validate_global_training_seeds(runtime, action, readiness)
     source_summary = (
-        inspect_region_resource_eight_region_readiness_source(
+        inspect_region_resource_eight_region_readiness_v3_source(
+            repository_root
+        )
+        if contract == _READINESS_V3_CONTRACT
+        else inspect_region_resource_eight_region_readiness_source(
             repository_root
         )
     )
@@ -2068,24 +2364,14 @@ def build_region_resource_eight_region_readiness_candidate(
             )
         )
         training_action_inventory = _action_inventory(loaded)
-        runtime_projector = DeterministicResourceProjector()
-        runtime_rule_policy = RuleRegionResourcePolicy(
-            RuleRegionResourcePolicyConfig(
-                projection=runtime_projector.config
-            ),
-            projector=runtime_projector,
-        )
-        runtime_confidence_gate = (
-            RegionResourceRuntimeConfidenceGateConfig.from_runtime_context(
-                projector=runtime_projector,
-                rule_policy=runtime_rule_policy,
-                fixed_minimum_confidence=(
-                    resolved.fixed_minimum_confidence
-                ),
-                fixed_ood_margin=(
-                    REGION_RESOURCE_RUNTIME_CONFIDENCE_GATE_FIXED_OOD_MARGIN
-                ),
-            )
+        (
+            runtime_projector,
+            runtime_rule_policy,
+            runtime_confidence_gate,
+        ) = _readiness_runtime_context(resolved)
+        runtime_projection_reason = (
+            "runtime_projection_contract_advisory_ttl_"
+            f"{contract.advisory_ttl_s:g}"
         )
         bundle_manifest = save_region_resource_model_bundle(
             model,
@@ -2117,6 +2403,7 @@ def build_region_resource_eight_region_readiness_candidate(
                 "reserved_evaluation_seeds_excluded",
                 "confidence_head_fit_uses_train_only",
                 "runtime_rule_consistency_gate_bundle_bound",
+                runtime_projection_reason,
                 "runtime_gate_validation_accepted_after_bundle_reload",
                 "confidence_threshold_fixed_at_0_60",
                 "development_read_only_shadow",
@@ -2150,9 +2437,7 @@ def build_region_resource_eight_region_readiness_candidate(
             loaded_bundle.manifest,
         )
         training_summary = {
-            "schema": (
-                REGION_RESOURCE_EIGHT_REGION_READINESS_TRAINING_SCHEMA
-            ),
+            "schema": contract.training_schema,
             "base_training_summary": base_training_summary,
             "validation_output_review": validation,
             "target_action_inventory_loaded_train_validation": (
@@ -2256,9 +2541,7 @@ def build_region_resource_eight_region_readiness_candidate(
                 validation["nonfinite_output_count"]
             ),
             artifact_files=artifact_files,
-            schema=(
-                REGION_RESOURCE_EIGHT_REGION_READINESS_CANDIDATE_SCHEMA
-            ),
+            schema=contract.candidate_schema,
             readiness_dataset_sha256=(
                 REGION_RESOURCE_EIGHT_REGION_READINESS_DATASET_SHA256
             ),
@@ -2302,6 +2585,50 @@ def build_region_resource_eight_region_readiness_candidate(
     except Exception:
         shutil.rmtree(temporary_parent, ignore_errors=True)
         raise
+
+
+def build_region_resource_eight_region_readiness_v3_candidate(
+    runtime_dataset_dir: str | Path,
+    action_dataset_dir: str | Path,
+    readiness_dataset_dir: str | Path,
+    *,
+    readiness_generation_summary_path: str | Path,
+    readiness_dataset_audit_path: str | Path,
+    repository_root: str | Path,
+    output_dir: str | Path,
+    config: (
+        RegionResourceEightRegionReadinessV3CandidateConfig | None
+    ) = None,
+) -> dict[str, Any]:
+    """Build v3 with the explicit 1.5 second runtime projection contract."""
+
+    resolved = (
+        config
+        or RegionResourceEightRegionReadinessV3CandidateConfig()
+    )
+    if (
+        not isinstance(
+            resolved,
+            RegionResourceEightRegionReadinessV3CandidateConfig,
+        )
+        or _readiness_contract_from_config(resolved)
+        != _READINESS_V3_CONTRACT
+    ):
+        raise RegionResourceEightRegionCandidateError(
+            "readiness_v3_builder_requires_v3_identity"
+        )
+    return build_region_resource_eight_region_readiness_candidate(
+        runtime_dataset_dir,
+        action_dataset_dir,
+        readiness_dataset_dir,
+        readiness_generation_summary_path=(
+            readiness_generation_summary_path
+        ),
+        readiness_dataset_audit_path=readiness_dataset_audit_path,
+        repository_root=repository_root,
+        output_dir=output_dir,
+        config=resolved,
+    )
 
 
 def load_region_resource_eight_region_candidate_manifest(
@@ -2364,6 +2691,53 @@ def load_region_resource_eight_region_candidate_manifest(
     return manifest
 
 
+def _load_verified_eight_region_candidate_config(
+    candidate_root: str | Path,
+    *,
+    candidate_schema: str,
+    expected_config_sha256: str,
+) -> RegionResourceEightRegionCandidateConfig:
+    root = Path(candidate_root)
+    config = _read_json_object(
+        root / REGION_RESOURCE_EIGHT_REGION_CONFIG_FILENAME,
+        "training_config",
+    )
+    config_sha = str(config.pop("config_sha256", ""))
+    if (
+        candidate_schema
+        == REGION_RESOURCE_EIGHT_REGION_READINESS_V3_CANDIDATE_SCHEMA
+    ):
+        config_type = RegionResourceEightRegionReadinessV3CandidateConfig
+    elif candidate_schema in {
+        REGION_RESOURCE_EIGHT_REGION_CANDIDATE_SCHEMA,
+        REGION_RESOURCE_EIGHT_REGION_READINESS_CANDIDATE_SCHEMA,
+    }:
+        config_type = RegionResourceEightRegionCandidateConfig
+    else:
+        raise RegionResourceEightRegionCandidateError(
+            "candidate_config_schema_unsupported"
+        )
+    _require_exact_keys(
+        config,
+        config_type.__dataclass_fields__,
+        "training_config",
+    )
+    try:
+        resolved = config_type(**config)
+    except (TypeError, ValueError) as exc:
+        raise RegionResourceEightRegionCandidateError(
+            f"candidate_training_config_invalid:{type(exc).__name__}"
+        ) from exc
+    if (
+        _sha256_json(resolved.to_dict()) != config_sha
+        or config_sha != expected_config_sha256
+    ):
+        raise RegionResourceEightRegionCandidateError(
+            "candidate_training_config_mismatch"
+        )
+    return resolved
+
+
 def review_region_resource_eight_region_candidate(
     candidate_root: str | Path,
 ) -> dict[str, Any]:
@@ -2379,9 +2753,14 @@ def review_region_resource_eight_region_candidate(
         root / REGION_RESOURCE_EIGHT_REGION_VIEW_FILENAME,
         "training_view_manifest",
     )
-    readiness_candidate = (
-        manifest.schema
-        == REGION_RESOURCE_EIGHT_REGION_READINESS_CANDIDATE_SCHEMA
+    readiness_candidate = manifest.schema in {
+        REGION_RESOURCE_EIGHT_REGION_READINESS_CANDIDATE_SCHEMA,
+        REGION_RESOURCE_EIGHT_REGION_READINESS_V3_CANDIDATE_SCHEMA,
+    }
+    readiness_contract = (
+        _readiness_contract_from_candidate_schema(manifest.schema)
+        if readiness_candidate
+        else None
     )
     if readiness_candidate:
         _validate_readiness_source_summary(source)
@@ -2423,24 +2802,11 @@ def review_region_resource_eight_region_candidate(
         raise RegionResourceEightRegionCandidateError(
             "candidate_source_or_view_binding_mismatch"
         )
-    config = _read_json_object(
-        root / REGION_RESOURCE_EIGHT_REGION_CONFIG_FILENAME,
-        "training_config",
+    resolved = _load_verified_eight_region_candidate_config(
+        root,
+        candidate_schema=manifest.schema,
+        expected_config_sha256=manifest.config_sha256,
     )
-    config_sha = str(config.pop("config_sha256", ""))
-    _require_exact_keys(
-        config,
-        RegionResourceEightRegionCandidateConfig.__dataclass_fields__,
-        "training_config",
-    )
-    resolved = RegionResourceEightRegionCandidateConfig(**config)
-    if (
-        _sha256_json(resolved.to_dict()) != config_sha
-        or config_sha != manifest.config_sha256
-    ):
-        raise RegionResourceEightRegionCandidateError(
-            "candidate_training_config_mismatch"
-        )
     training = _read_json_object(
         root / REGION_RESOURCE_EIGHT_REGION_TRAINING_FILENAME,
         "training_summary",
@@ -2511,9 +2877,10 @@ def review_region_resource_eight_region_candidate(
             "candidate_confidence_summary_binding_mismatch"
         )
     if readiness_candidate:
+        assert readiness_contract is not None
         if (
             training.get("schema")
-            != REGION_RESOURCE_EIGHT_REGION_READINESS_TRAINING_SCHEMA
+            != readiness_contract.training_schema
             or confidence.get("runtime_gate_audit_completed")
             is not True
             or confidence.get(
@@ -2685,6 +3052,28 @@ def inspect_region_resource_eight_region_readiness_source(
 ) -> dict[str, Any]:
     """Bind a clean committed v2 builder and all training-core bytes."""
 
+    return _inspect_region_resource_eight_region_readiness_source(
+        repository_root,
+        contract=_READINESS_V2_CONTRACT,
+    )
+
+
+def inspect_region_resource_eight_region_readiness_v3_source(
+    repository_root: str | Path,
+) -> dict[str, Any]:
+    """Bind a clean committed v3 builder and the 1.5 second contract."""
+
+    return _inspect_region_resource_eight_region_readiness_source(
+        repository_root,
+        contract=_READINESS_V3_CONTRACT,
+    )
+
+
+def _inspect_region_resource_eight_region_readiness_source(
+    repository_root: str | Path,
+    *,
+    contract: _ReadinessCandidateContract,
+) -> dict[str, Any]:
     root = Path(repository_root).resolve()
     observed_root = Path(
         _git_text(root, "rev-parse", "--show-toplevel")
@@ -2717,7 +3106,7 @@ def inspect_region_resource_eight_region_readiness_source(
             )
         committed_files[relative_path] = _sha256_bytes(committed_bytes)
     content = {
-        "schema": REGION_RESOURCE_EIGHT_REGION_READINESS_SOURCE_SCHEMA,
+        "schema": contract.source_schema,
         "git_commit": git_commit,
         "git_tree": git_tree,
         "repository_tracked_dirty": False,
@@ -2729,7 +3118,7 @@ def inspect_region_resource_eight_region_readiness_source(
         ),
         "view_builder_file": _VIEW_BUILDER_FILE,
         "view_builder_file_sha256": committed_files[_VIEW_BUILDER_FILE],
-        "view_recipe": REGION_RESOURCE_EIGHT_REGION_READINESS_VIEW_RECIPE,
+        "view_recipe": contract.view_recipe,
         "training_core_matches_commit": True,
         "view_builder_content_addressed": True,
         "readiness_source_contract": {
@@ -3059,7 +3448,7 @@ def _build_training_view_dataset(
 
     overlay_config_payload = {
         "view_recipe": (
-            REGION_RESOURCE_EIGHT_REGION_READINESS_VIEW_RECIPE
+            _readiness_contract_from_config(config).view_recipe
             if readiness is not None
             else REGION_RESOURCE_EIGHT_REGION_VIEW_RECIPE
         ),
@@ -3606,13 +3995,14 @@ def _build_readiness_training_view_manifest(
     config: RegionResourceEightRegionCandidateConfig,
 ) -> dict[str, Any]:
     dataset = composite["dataset"]
+    contract = _readiness_contract_from_config(config)
     action_by_split = {
         split.value: _action_inventory(dataset, split=split)
         for split in RegionLearningSplit
     }
     payload = {
-        "schema": REGION_RESOURCE_EIGHT_REGION_READINESS_VIEW_SCHEMA,
-        "view_recipe": REGION_RESOURCE_EIGHT_REGION_READINESS_VIEW_RECIPE,
+        "schema": contract.view_schema,
+        "view_recipe": contract.view_recipe,
         "created_at_utc": config.created_at_utc,
         "sources": {
             "runtime": _source_dataset_inventory(runtime),
@@ -3828,11 +4218,9 @@ def _validate_readiness_source_summary(value: Mapping[str, Any]) -> None:
         "content_sha256",
     }
     _require_exact_keys(value, expected, "readiness_source_summary")
+    contract = _readiness_contract_from_source_schema(str(value["schema"]))
     if (
-        value["schema"]
-        != REGION_RESOURCE_EIGHT_REGION_READINESS_SOURCE_SCHEMA
-        or value["view_recipe"]
-        != REGION_RESOURCE_EIGHT_REGION_READINESS_VIEW_RECIPE
+        value["view_recipe"] != contract.view_recipe
         or value["repository_tracked_dirty"] is not False
         or value["training_core_matches_commit"] is not True
         or value["view_builder_content_addressed"] is not True
@@ -4106,11 +4494,9 @@ def _validate_readiness_training_view_manifest(
     _require_exact_keys(
         value, expected, "readiness_training_view_manifest"
     )
+    contract = _readiness_contract_from_view_schema(str(value["schema"]))
     if (
-        value["schema"]
-        != REGION_RESOURCE_EIGHT_REGION_READINESS_VIEW_SCHEMA
-        or value["view_recipe"]
-        != REGION_RESOURCE_EIGHT_REGION_READINESS_VIEW_RECIPE
+        value["view_recipe"] != contract.view_recipe
         or value["runtime_preflight_completed"] is not False
         or value["formal_evaluation_authorized"] is not False
     ):
@@ -4289,15 +4675,19 @@ def _validate_readiness_training_view_manifest(
         ),
         fixed_minimum_confidence=float(base["fixed_minimum_confidence"]),
     )
+    _, _, expected_runtime_gate = _readiness_runtime_context(
+        _default_readiness_config_for_contract(contract)
+    )
     expected_definition = (
         _readiness_confidence_supervision_definition_from_base(
-            expected_base
+            expected_base,
+            runtime_gate=expected_runtime_gate,
         )
     )
     if (
         definition != expected_definition
         or definition["runtime_gate"]
-        != RegionResourceRuntimeConfidenceGateConfig().to_dict()
+        != expected_runtime_gate.to_dict()
         or definition["runtime_gate"]["fixed_minimum_confidence"]
         != 0.60
         or definition["runtime_gate"]["inconsistent_confidence_cap"]
