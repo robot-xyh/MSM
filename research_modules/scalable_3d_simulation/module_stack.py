@@ -7175,7 +7175,12 @@ class IntegratedScalableModuleStack:
             coalition.target_id: coalition for coalition in plan.coalitions
         }
         tasks: list[RegionalTaskEvidence] = []
-        for target_id in sorted(d3_track_by_id):
+        task_target_ids = (
+            tuple(sorted(d3_track_by_id))
+            if _regional_resource_locality_enabled(config)
+            else tuple(sorted(assignments_by_target))
+        )
+        for target_id in task_target_ids:
             assignments = assignments_by_target.get(target_id, ())
             track = track_by_id.get(target_id)
             if track is None:

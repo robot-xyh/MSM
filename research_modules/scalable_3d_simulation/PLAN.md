@@ -6,8 +6,9 @@
    指定目标和资源数量，不改变普通课程场景。
 2. [x] main 新增 `regional_resource_locality_enforced`。仅在显式启用时，D3 初始
    候选边限制为本区资源；D4 后续 transfer allowance 才能开放跨区边。
-3. [x] D4 快照已覆盖未分配的当前 D2/D3 航迹，不再只统计已有 assignment 的目标。
-   20 目标、20 资源、8 区域诊断得到 17 条绑定和 3 个未分配目标，在线真值使用为 0。
+3. [x] 区域探针启用时，D4 快照覆盖未分配的当前 D2/D3 航迹；普通场景保持原有只统计
+   已有 assignment 的范围。20 目标、20 资源、8 区域诊断得到 17 条绑定和 3 个未分配
+   目标，在线真值使用为 0。
 4. [x] 诊断确认 `region-000` 在保留 1 个备用资源后最多可转移 1 个资源，
    `region-001` 存在资源缺口；场景和资源守恒条件可表达真实可执行差异。
 5. [ ] D4 分离 planning/replan eligibility 与 assignment、coalition、control
