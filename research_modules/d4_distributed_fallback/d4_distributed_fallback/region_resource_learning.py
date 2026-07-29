@@ -6,7 +6,7 @@ The learned policy is never an authority source.  Every output is projected by
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from hashlib import sha256
 import json
 from math import atanh, isfinite, log
@@ -16,6 +16,8 @@ from typing import Any, Iterable, Mapping, Sequence
 
 from .region_resource import (
     AdvisorMode,
+    DETERMINISTIC_RESOURCE_PROJECTOR_NAME,
+    DETERMINISTIC_RESOURCE_PROJECTOR_VERSION,
     DeterministicResourceProjector,
     REGION_RESOURCE_FEATURE_SCHEMA,
     RecommendationSource,
@@ -53,6 +55,19 @@ except ImportError:  # pragma: no cover - exercised only in minimal deployments.
 
 REGION_RESOURCE_MODEL_BUNDLE_SCHEMA = "d4-region-resource-model-bundle-v2"
 REGION_GRAPH_ARCHITECTURE = "shared-region-graph-actor-critic-v1"
+REGION_RESOURCE_RUNTIME_CONFIDENCE_GATE_SCHEMA = (
+    "d4-region-resource-runtime-confidence-gate-v1"
+)
+REGION_RESOURCE_RUNTIME_CONFIDENCE_GATE_MODE = (
+    "deterministic-rule-action-consistency-gate-v1"
+)
+REGION_RESOURCE_RUNTIME_CONFIDENCE_GATE_FIXED_THRESHOLD = 0.60
+REGION_RESOURCE_RUNTIME_CONFIDENCE_GATE_FIXED_OOD_MARGIN = 0.05
+REGION_RESOURCE_RUNTIME_CONFIDENCE_GATE_INCONSISTENT_CAP = 0.59
+REGION_RESOURCE_RUNTIME_CONFIDENCE_GATE_CONTINUOUS_TOLERANCE = 0.10
+REGION_RESOURCE_RUNTIME_CONFIDENCE_GATE_DIAGNOSTIC_SCHEMA = (
+    "d4-region-resource-runtime-confidence-gate-diagnostic-v1"
+)
 MODEL_LIFECYCLE_DEVELOPMENT = "development"
 MODEL_LIFECYCLE_QUALIFIED = "qualified"
 MODEL_MAXIMUM_MODE_SHADOW = AdvisorMode.SHADOW.value
@@ -97,7 +112,140 @@ NODE_ACTION_DIM = 5
 EDGE_ACTION_DIM = 1
 
 
+def _canonical_sha256(value: Any) -> str:
+    return sha256(
+        json.dumps(
+            value,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=True,
+            allow_nan=False,
+        ).encode("utf-8")
+    ).hexdigest()
+
+
+def region_resource_projection_config_payload(
+    config: RegionResourceProjectionConfig,
+) -> dict[str, Any]:
+    return {
+        "minimum_reserve_ratio": float(config.minimum_reserve_ratio),
+        "minimum_reserve_resources": int(
+            config.minimum_reserve_resources
+        ),
+        "advisory_ttl_s": float(config.advisory_ttl_s),
+    }
+
+
+def region_resource_rule_policy_config_payload(
+    config: RuleRegionResourcePolicyConfig,
+) -> dict[str, Any]:
+    return {
+        "projection": region_resource_projection_config_payload(
+            config.projection
+        ),
+        "high_threat_weight": float(config.high_threat_weight),
+        "uncertainty_weight": float(config.uncertainty_weight),
+        "transfer_pressure_margin": float(
+            config.transfer_pressure_margin
+        ),
+    }
+
+
+def _region_resource_projection_config_from_payload(
+    value: Mapping[str, Any],
+) -> RegionResourceProjectionConfig:
+    expected = {
+        "minimum_reserve_ratio",
+        "minimum_reserve_resources",
+        "advisory_ttl_s",
+    }
+    if set(value) != expected:
+        raise ValueError("runtime gate projection config keys mismatch")
+    minimum_resources = value["minimum_reserve_resources"]
+    if type(minimum_resources) is not int:
+        raise ValueError(
+            "runtime gate minimum reserve resources must be an integer"
+        )
+    return RegionResourceProjectionConfig(
+        minimum_reserve_ratio=float(value["minimum_reserve_ratio"]),
+        minimum_reserve_resources=minimum_resources,
+        advisory_ttl_s=float(value["advisory_ttl_s"]),
+    )
+
+
+def _region_resource_rule_policy_config_from_payload(
+    value: Mapping[str, Any],
+) -> RuleRegionResourcePolicyConfig:
+    expected = {
+        "projection",
+        "high_threat_weight",
+        "uncertainty_weight",
+        "transfer_pressure_margin",
+    }
+    if set(value) != expected or not isinstance(
+        value["projection"], Mapping
+    ):
+        raise ValueError("runtime gate rule config keys mismatch")
+    return RuleRegionResourcePolicyConfig(
+        projection=_region_resource_projection_config_from_payload(
+            value["projection"]
+        ),
+        high_threat_weight=float(value["high_threat_weight"]),
+        uncertainty_weight=float(value["uncertainty_weight"]),
+        transfer_pressure_margin=float(
+            value["transfer_pressure_margin"]
+        ),
+    )
+
+
+def runtime_confidence_gate_consistency_definition() -> dict[str, Any]:
+    definition = {
+        "name": REGION_RESOURCE_RUNTIME_CONFIDENCE_GATE_MODE,
+        "candidate_action": (
+            "learned recommendation after deterministic safety projection"
+        ),
+        "reference_action": (
+            "truth-free deterministic rule recommendation after the same "
+            "safety projection"
+        ),
+        "runtime_context": (
+            "the exact RegionResourceAdvisor projector, rule policy, and "
+            "formal_decision supplied for the final recommendation"
+        ),
+        "region_identity": "exact region_id set",
+        "quota_error": (
+            "absolute resource_quota_delta difference divided by "
+            "max(1, available_resources)"
+        ),
+        "reserve_error": "absolute reserve_ratio difference",
+        "reconnaissance_error": (
+            "absolute reconnaissance_priority difference"
+        ),
+        "continuous_acceptance": (
+            "quota, reserve, and reconnaissance maximum error each no "
+            "greater than 0.10"
+        ),
+        "binary_acceptance": "hold and request_replan exact for every region",
+        "transfer_acceptance": (
+            "exact multiset of edge_id, source_region_id, target_region_id, "
+            "and resource_count"
+        ),
+        "confidence_action": (
+            "retain raw confidence when consistent; otherwise cap effective "
+            "confidence at 0.59 before the fixed 0.60 threshold"
+        ),
+        "truth_identifier_use_count": 0,
+        "future_outcome_use_count": 0,
+    }
+    definition["content_sha256"] = _canonical_sha256(definition)
+    return definition
+
+
 class RegionResourceLearningError(RuntimeError):
+    pass
+
+
+class RuntimeConfidenceGateContextError(RegionResourceLearningError):
     pass
 
 
@@ -865,6 +1013,397 @@ def native_clipped_ppo_update(
 
 
 @dataclass(frozen=True)
+class RegionResourceRuntimeConfidenceGateConfig:
+    mode: str = REGION_RESOURCE_RUNTIME_CONFIDENCE_GATE_MODE
+    inconsistent_confidence_cap: float = (
+        REGION_RESOURCE_RUNTIME_CONFIDENCE_GATE_INCONSISTENT_CAP
+    )
+    fixed_minimum_confidence: float = (
+        REGION_RESOURCE_RUNTIME_CONFIDENCE_GATE_FIXED_THRESHOLD
+    )
+    fixed_ood_margin: float = (
+        REGION_RESOURCE_RUNTIME_CONFIDENCE_GATE_FIXED_OOD_MARGIN
+    )
+    continuous_tolerance: float = (
+        REGION_RESOURCE_RUNTIME_CONFIDENCE_GATE_CONTINUOUS_TOLERANCE
+    )
+    rule_policy_name: str = RuleRegionResourcePolicy.policy_name
+    rule_policy_version: str = RuleRegionResourcePolicy.policy_version
+    projector_name: str = DETERMINISTIC_RESOURCE_PROJECTOR_NAME
+    projector_version: str = DETERMINISTIC_RESOURCE_PROJECTOR_VERSION
+    projection_config: Mapping[str, Any] = field(
+        default_factory=lambda: region_resource_projection_config_payload(
+            RegionResourceProjectionConfig()
+        )
+    )
+    rule_policy_config: Mapping[str, Any] = field(
+        default_factory=lambda: region_resource_rule_policy_config_payload(
+            RuleRegionResourcePolicyConfig()
+        )
+    )
+    consistency_definition: Mapping[str, Any] = field(
+        default_factory=runtime_confidence_gate_consistency_definition
+    )
+    content_sha256: str = ""
+    schema: str = REGION_RESOURCE_RUNTIME_CONFIDENCE_GATE_SCHEMA
+
+    def __post_init__(self) -> None:
+        if (
+            self.schema != REGION_RESOURCE_RUNTIME_CONFIDENCE_GATE_SCHEMA
+            or self.mode != REGION_RESOURCE_RUNTIME_CONFIDENCE_GATE_MODE
+        ):
+            raise ValueError("unsupported runtime confidence gate")
+        if (
+            float(self.inconsistent_confidence_cap)
+            != REGION_RESOURCE_RUNTIME_CONFIDENCE_GATE_INCONSISTENT_CAP
+            or float(self.fixed_minimum_confidence)
+            != REGION_RESOURCE_RUNTIME_CONFIDENCE_GATE_FIXED_THRESHOLD
+            or float(self.fixed_ood_margin)
+            != REGION_RESOURCE_RUNTIME_CONFIDENCE_GATE_FIXED_OOD_MARGIN
+            or float(self.continuous_tolerance)
+            != REGION_RESOURCE_RUNTIME_CONFIDENCE_GATE_CONTINUOUS_TOLERANCE
+            or self.inconsistent_confidence_cap
+            >= self.fixed_minimum_confidence
+        ):
+            raise ValueError("runtime confidence gate thresholds changed")
+        if (
+            self.rule_policy_name != RuleRegionResourcePolicy.policy_name
+            or self.rule_policy_version != RuleRegionResourcePolicy.policy_version
+            or self.projector_name != DETERMINISTIC_RESOURCE_PROJECTOR_NAME
+            or self.projector_version
+            != DETERMINISTIC_RESOURCE_PROJECTOR_VERSION
+        ):
+            raise ValueError("runtime confidence gate dependency changed")
+        projection = _region_resource_projection_config_from_payload(
+            self.projection_config
+        )
+        rule = _region_resource_rule_policy_config_from_payload(
+            self.rule_policy_config
+        )
+        projection_payload = region_resource_projection_config_payload(
+            projection
+        )
+        rule_payload = region_resource_rule_policy_config_payload(rule)
+        if rule_payload["projection"] != projection_payload:
+            raise ValueError(
+                "runtime confidence gate rule/projector config mismatch"
+            )
+        object.__setattr__(
+            self,
+            "projection_config",
+            projection_payload,
+        )
+        object.__setattr__(
+            self,
+            "rule_policy_config",
+            rule_payload,
+        )
+        definition = dict(self.consistency_definition)
+        if definition != runtime_confidence_gate_consistency_definition():
+            raise ValueError(
+                "runtime confidence gate consistency definition changed"
+            )
+        object.__setattr__(self, "consistency_definition", definition)
+        expected = _canonical_sha256(self.content_dict())
+        if self.content_sha256 and self.content_sha256 != expected:
+            raise ValueError("runtime confidence gate content SHA256 mismatch")
+        object.__setattr__(self, "content_sha256", expected)
+
+    def content_dict(self) -> dict[str, Any]:
+        return {
+            "schema": self.schema,
+            "mode": self.mode,
+            "inconsistent_confidence_cap": float(
+                self.inconsistent_confidence_cap
+            ),
+            "fixed_minimum_confidence": float(
+                self.fixed_minimum_confidence
+            ),
+            "fixed_ood_margin": float(self.fixed_ood_margin),
+            "continuous_tolerance": float(self.continuous_tolerance),
+            "rule_policy_name": self.rule_policy_name,
+            "rule_policy_version": self.rule_policy_version,
+            "projector_name": self.projector_name,
+            "projector_version": self.projector_version,
+            "projection_config": dict(self.projection_config),
+            "rule_policy_config": dict(self.rule_policy_config),
+            "consistency_definition": dict(self.consistency_definition),
+        }
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            **self.content_dict(),
+            "content_sha256": self.content_sha256,
+        }
+
+    @classmethod
+    def from_dict(
+        cls, value: Mapping[str, Any]
+    ) -> "RegionResourceRuntimeConfidenceGateConfig":
+        expected = set(cls.__dataclass_fields__)
+        if set(value) != expected:
+            raise ValueError("runtime confidence gate keys mismatch")
+        return cls(**dict(value))
+
+    @classmethod
+    def from_runtime_context(
+        cls,
+        *,
+        projector: DeterministicResourceProjector,
+        rule_policy: RuleRegionResourcePolicy,
+        fixed_minimum_confidence: float = (
+            REGION_RESOURCE_RUNTIME_CONFIDENCE_GATE_FIXED_THRESHOLD
+        ),
+        fixed_ood_margin: float = (
+            REGION_RESOURCE_RUNTIME_CONFIDENCE_GATE_FIXED_OOD_MARGIN
+        ),
+    ) -> "RegionResourceRuntimeConfidenceGateConfig":
+        if rule_policy.projector is not projector:
+            raise RuntimeConfidenceGateContextError(
+                "rule_policy_projector_identity_mismatch"
+            )
+        return cls(
+            fixed_minimum_confidence=fixed_minimum_confidence,
+            fixed_ood_margin=fixed_ood_margin,
+            projection_config=region_resource_projection_config_payload(
+                projector.config
+            ),
+            rule_policy_config=region_resource_rule_policy_config_payload(
+                rule_policy.config
+            ),
+        )
+
+    def validate_runtime_context(
+        self,
+        *,
+        projector: DeterministicResourceProjector,
+        rule_policy: RuleRegionResourcePolicy,
+        minimum_confidence: float,
+        ood_margin: float,
+    ) -> None:
+        mismatches: list[str] = []
+        if rule_policy.projector is not projector:
+            mismatches.append("rule_policy_projector_identity")
+        if (
+            region_resource_projection_config_payload(projector.config)
+            != self.projection_config
+        ):
+            mismatches.append("projection_config")
+        if (
+            region_resource_rule_policy_config_payload(rule_policy.config)
+            != self.rule_policy_config
+        ):
+            mismatches.append("rule_policy_config")
+        if float(minimum_confidence) != self.fixed_minimum_confidence:
+            mismatches.append("minimum_confidence")
+        if float(ood_margin) != self.fixed_ood_margin:
+            mismatches.append("ood_margin")
+        if mismatches:
+            raise RuntimeConfidenceGateContextError(
+                "runtime_confidence_gate_context_mismatch:"
+                + ",".join(mismatches)
+            )
+
+
+@dataclass(frozen=True)
+class RegionResourceActionConsistency:
+    action_consistent: bool
+    region_set_match: bool
+    quota_error_maximum: float
+    reserve_error_maximum: float
+    reconnaissance_error_maximum: float
+    binary_mismatch_count: int
+    transfer_multiset_match: bool
+
+
+@dataclass(frozen=True)
+class RegionResourceRuntimeConfidenceGateEvaluation:
+    gate_applied: bool
+    raw_confidence: float
+    effective_confidence: float
+    formal_decision_digest: str | None
+    action_consistency: RegionResourceActionConsistency
+    raw_recommendation: RegionResourceRecommendation
+    effective_recommendation: RegionResourceRecommendation
+    projected_candidate: RegionResourceRecommendation
+    reference_recommendation: RegionResourceRecommendation
+
+
+def evaluate_region_resource_action_consistency(
+    snapshot: RegionResourceSnapshot,
+    candidate: RegionResourceRecommendation,
+    reference: RegionResourceRecommendation,
+    *,
+    continuous_tolerance: float = (
+        REGION_RESOURCE_RUNTIME_CONFIDENCE_GATE_CONTINUOUS_TOLERANCE
+    ),
+) -> RegionResourceActionConsistency:
+    """Compare two projected regional actions without truth or outcome data."""
+
+    if (
+        float(continuous_tolerance)
+        != REGION_RESOURCE_RUNTIME_CONFIDENCE_GATE_CONTINUOUS_TOLERANCE
+    ):
+        raise ValueError("runtime action-consistency tolerance changed")
+    candidate_actions = {
+        item.region_id: item for item in candidate.actions
+    }
+    reference_actions = {
+        item.region_id: item for item in reference.actions
+    }
+    expected_regions = set(snapshot.region_by_id)
+    region_set_match = bool(
+        set(candidate_actions) == expected_regions
+        and set(reference_actions) == expected_regions
+    )
+    quota_errors: list[float] = []
+    reserve_errors: list[float] = []
+    reconnaissance_errors: list[float] = []
+    binary_mismatch_count = 0
+    if region_set_match:
+        for region_id in sorted(expected_regions):
+            node = snapshot.region_by_id[region_id]
+            observed = candidate_actions[region_id]
+            expected = reference_actions[region_id]
+            quota_errors.append(
+                abs(
+                    observed.resource_quota_delta
+                    - expected.resource_quota_delta
+                )
+                / max(1, node.available_resources)
+            )
+            reserve_errors.append(
+                abs(observed.reserve_ratio - expected.reserve_ratio)
+            )
+            reconnaissance_errors.append(
+                abs(
+                    observed.reconnaissance_priority
+                    - expected.reconnaissance_priority
+                )
+            )
+            binary_mismatch_count += int(observed.hold != expected.hold)
+            binary_mismatch_count += int(
+                observed.request_replan != expected.request_replan
+            )
+    else:
+        quota_errors.append(1.0)
+        reserve_errors.append(1.0)
+        reconnaissance_errors.append(1.0)
+        binary_mismatch_count = max(
+            1,
+            2 * len(expected_regions),
+        )
+    candidate_transfers = sorted(
+        (
+            item.edge_id,
+            item.source_region_id,
+            item.target_region_id,
+            int(item.resource_count),
+        )
+        for item in candidate.transfers
+    )
+    reference_transfers = sorted(
+        (
+            item.edge_id,
+            item.source_region_id,
+            item.target_region_id,
+            int(item.resource_count),
+        )
+        for item in reference.transfers
+    )
+    transfer_multiset_match = candidate_transfers == reference_transfers
+    quota_max = max(quota_errors, default=0.0)
+    reserve_max = max(reserve_errors, default=0.0)
+    reconnaissance_max = max(reconnaissance_errors, default=0.0)
+    consistent = bool(
+        region_set_match
+        and quota_max <= continuous_tolerance
+        and reserve_max <= continuous_tolerance
+        and reconnaissance_max <= continuous_tolerance
+        and binary_mismatch_count == 0
+        and transfer_multiset_match
+    )
+    return RegionResourceActionConsistency(
+        action_consistent=consistent,
+        region_set_match=region_set_match,
+        quota_error_maximum=quota_max,
+        reserve_error_maximum=reserve_max,
+        reconnaissance_error_maximum=reconnaissance_max,
+        binary_mismatch_count=binary_mismatch_count,
+        transfer_multiset_match=transfer_multiset_match,
+    )
+
+
+def apply_region_resource_runtime_confidence_gate(
+    snapshot: RegionResourceSnapshot,
+    recommendation: RegionResourceRecommendation,
+    gate: RegionResourceRuntimeConfidenceGateConfig,
+    *,
+    projector: DeterministicResourceProjector,
+    rule_policy: RuleRegionResourcePolicy,
+    formal_decision: RegionalFailoverDecision | None,
+    minimum_confidence: float,
+    ood_margin: float,
+) -> RegionResourceRuntimeConfidenceGateEvaluation:
+    """Apply the bundle-bound truth-free gate before confidence thresholding."""
+
+    gate.validate_runtime_context(
+        projector=projector,
+        rule_policy=rule_policy,
+        minimum_confidence=minimum_confidence,
+        ood_margin=ood_margin,
+    )
+    if (
+        rule_policy.policy_name != gate.rule_policy_name
+        or rule_policy.policy_version != gate.rule_policy_version
+    ):
+        raise RuntimeConfidenceGateContextError(
+            "runtime_confidence_gate_rule_policy_identity_mismatch"
+        )
+    projected = projector.project(
+        snapshot,
+        recommendation,
+        formal_decision=formal_decision,
+    )
+    reference = rule_policy.recommend(
+        snapshot,
+        formal_decision=formal_decision,
+    )
+    consistency = evaluate_region_resource_action_consistency(
+        snapshot,
+        projected,
+        reference,
+        continuous_tolerance=gate.continuous_tolerance,
+    )
+    raw_confidence = float(recommendation.confidence)
+    effective_confidence = (
+        raw_confidence
+        if consistency.action_consistent
+        else min(raw_confidence, gate.inconsistent_confidence_cap)
+    )
+    effective = replace(
+        projected,
+        confidence=effective_confidence,
+        fallback_reason=(
+            projected.fallback_reason
+            if consistency.action_consistent
+            else "runtime_rule_action_consistency_gate_rejected"
+        ),
+    )
+    return RegionResourceRuntimeConfidenceGateEvaluation(
+        gate_applied=True,
+        raw_confidence=raw_confidence,
+        effective_confidence=effective_confidence,
+        formal_decision_digest=formal_decision_digest(formal_decision),
+        action_consistency=consistency,
+        raw_recommendation=recommendation,
+        effective_recommendation=effective,
+        projected_candidate=projected,
+        reference_recommendation=reference,
+    )
+
+
+@dataclass(frozen=True)
 class RegionResourceModelManifest:
     model_version: str
     hidden_dim: int
@@ -892,6 +1431,9 @@ class RegionResourceModelManifest:
         "reward_evidence_unavailable",
         "final_holdout_not_completed",
     )
+    runtime_confidence_gate: (
+        RegionResourceRuntimeConfidenceGateConfig | None
+    ) = None
     architecture: str = REGION_GRAPH_ARCHITECTURE
     feature_schema: str = REGION_RESOURCE_FEATURE_SCHEMA
     node_feature_dim: int = len(NODE_FEATURE_NAMES)
@@ -980,6 +1522,14 @@ class RegionResourceModelManifest:
         object.__setattr__(self, "target_action_inventory", inventory)
         reasons = tuple(sorted({str(item) for item in self.admission_reasons if str(item)}))
         object.__setattr__(self, "admission_reasons", reasons)
+        runtime_gate = self.runtime_confidence_gate
+        if runtime_gate is not None and not isinstance(
+            runtime_gate, RegionResourceRuntimeConfidenceGateConfig
+        ):
+            runtime_gate = RegionResourceRuntimeConfidenceGateConfig.from_dict(
+                runtime_gate
+            )
+        object.__setattr__(self, "runtime_confidence_gate", runtime_gate)
         groups = tuple(
             sorted({(str(item[0]), int(item[1])) for item in self.training_groups})
         )
@@ -1017,7 +1567,7 @@ class RegionResourceModelManifest:
         return False
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        payload = {
             "schema": self.schema,
             "architecture": self.architecture,
             "model_version": self.model_version,
@@ -1053,6 +1603,11 @@ class RegionResourceModelManifest:
             "admission_reasons": list(self.admission_reasons),
             "created_at_utc": self.created_at_utc,
         }
+        if self.runtime_confidence_gate is not None:
+            payload["runtime_confidence_gate"] = (
+                self.runtime_confidence_gate.to_dict()
+            )
+        return payload
 
     @classmethod
     def from_dict(cls, value: Mapping[str, Any]) -> "RegionResourceModelManifest":
@@ -1065,6 +1620,12 @@ class RegionResourceModelManifest:
             for item in payload.get("training_groups", ())
         )
         payload["admission_reasons"] = tuple(payload.get("admission_reasons", ()))
+        if payload.get("runtime_confidence_gate") is not None:
+            payload["runtime_confidence_gate"] = (
+                RegionResourceRuntimeConfidenceGateConfig.from_dict(
+                    payload["runtime_confidence_gate"]
+                )
+            )
         return cls(**payload)
 
 
@@ -1092,6 +1653,9 @@ def save_region_resource_model_bundle(
     action_diversity_sufficient: bool = False,
     strategy_capability_claim_allowed: bool = False,
     target_action_inventory: Mapping[str, int] | None = None,
+    runtime_confidence_gate: (
+        RegionResourceRuntimeConfidenceGateConfig | None
+    ) = None,
     admission_reasons: Sequence[str] = (
         "development_bundle",
         "reward_evidence_unavailable",
@@ -1191,6 +1755,7 @@ def save_region_resource_model_bundle(
         strategy_capability_claim_allowed=strategy_capability_claim_allowed,
         target_action_inventory=dict(target_action_inventory or {}),
         admission_reasons=tuple(admission_reasons),
+        runtime_confidence_gate=runtime_confidence_gate,
     )
     manifest_path = destination / "manifest.json"
     temporary_manifest_path = destination / "manifest.json.tmp"
@@ -1299,7 +1864,51 @@ class LearnedRegionResourcePolicy:
         self.model = model
         self.manifest = manifest
 
-    def recommend_raw(self, snapshot: RegionResourceSnapshot) -> RegionResourceRecommendation:
+    def recommend_raw(
+        self, snapshot: RegionResourceSnapshot
+    ) -> RegionResourceRecommendation:
+        """Return model output without implying Advisor gate semantics."""
+
+        return self._recommend_uncalibrated(snapshot)
+
+    def recommend_with_runtime_confidence_gate(
+        self,
+        snapshot: RegionResourceSnapshot,
+        *,
+        projector: DeterministicResourceProjector,
+        rule_policy: RuleRegionResourcePolicy,
+        formal_decision: RegionalFailoverDecision | None,
+        minimum_confidence: float,
+        ood_margin: float,
+    ) -> tuple[
+        RegionResourceRecommendation,
+        RegionResourceRuntimeConfidenceGateEvaluation | None,
+    ]:
+        gate = self.manifest.runtime_confidence_gate
+        if gate is None:
+            return self._recommend_uncalibrated(snapshot), None
+        gate.validate_runtime_context(
+            projector=projector,
+            rule_policy=rule_policy,
+            minimum_confidence=minimum_confidence,
+            ood_margin=ood_margin,
+        )
+        raw = self._recommend_uncalibrated(snapshot)
+        evaluation = apply_region_resource_runtime_confidence_gate(
+            snapshot,
+            raw,
+            gate,
+            projector=projector,
+            rule_policy=rule_policy,
+            formal_decision=formal_decision,
+            minimum_confidence=minimum_confidence,
+            ood_margin=ood_margin,
+        )
+        return evaluation.effective_recommendation, evaluation
+
+    def _recommend_uncalibrated(
+        self, snapshot: RegionResourceSnapshot
+    ) -> RegionResourceRecommendation:
         graph = snapshot_to_region_graph(snapshot, device=_model_device(self.model))
         with torch.no_grad():
             output = self.model(graph)
@@ -1398,6 +2007,127 @@ class RegionResourceAdvisorConfig:
 
 
 @dataclass(frozen=True)
+class RegionResourceRuntimeConfidenceGateDiagnostic:
+    model_raw_inference_executed: bool
+    gate_applied: bool
+    action_consistent: bool | None
+    raw_confidence: float | None
+    effective_confidence: float | None
+    candidate_permitted_after_gate: bool
+    rule_fallback_due_to_gate: bool
+    gate_content_sha256: str
+    formal_decision_digest: str | None
+    fallback_reason: str | None
+    truth_identifier_use_count: int = 0
+    schema: str = (
+        REGION_RESOURCE_RUNTIME_CONFIDENCE_GATE_DIAGNOSTIC_SCHEMA
+    )
+
+    def __post_init__(self) -> None:
+        if (
+            self.schema
+            != REGION_RESOURCE_RUNTIME_CONFIDENCE_GATE_DIAGNOSTIC_SCHEMA
+        ):
+            raise ValueError(
+                "unsupported runtime confidence gate diagnostic schema"
+            )
+        for name in (
+            "model_raw_inference_executed",
+            "gate_applied",
+            "candidate_permitted_after_gate",
+            "rule_fallback_due_to_gate",
+        ):
+            if type(getattr(self, name)) is not bool:
+                raise ValueError(f"{name} must be a boolean")
+        if (
+            len(self.gate_content_sha256) != 64
+            or not all(
+                character in "0123456789abcdefABCDEF"
+                for character in self.gate_content_sha256
+            )
+        ):
+            raise ValueError(
+                "gate_content_sha256 must be a SHA256 hex digest"
+            )
+        confidence_values = (
+            self.raw_confidence,
+            self.effective_confidence,
+        )
+        if (confidence_values[0] is None) != (
+            confidence_values[1] is None
+        ):
+            raise ValueError(
+                "runtime gate confidence values must be jointly available"
+            )
+        if any(
+            value is not None
+            and (
+                not isfinite(float(value))
+                or not 0.0 <= float(value) <= 1.0
+            )
+            for value in confidence_values
+        ):
+            raise ValueError(
+                "runtime gate confidence values must be finite probabilities"
+            )
+        if self.gate_applied and (
+            not self.model_raw_inference_executed
+            or self.action_consistent is None
+            or self.raw_confidence is None
+        ):
+            raise ValueError(
+                "applied runtime gate requires raw inference and metrics"
+            )
+        if not self.gate_applied and self.action_consistent is not None:
+            raise ValueError(
+                "unapplied runtime gate cannot assert action consistency"
+            )
+        if self.candidate_permitted_after_gate and (
+            not self.gate_applied
+            or self.action_consistent is not True
+            or self.fallback_reason is not None
+        ):
+            raise ValueError(
+                "permitted runtime gate candidate has inconsistent evidence"
+            )
+        if self.rule_fallback_due_to_gate and (
+            self.candidate_permitted_after_gate
+            or self.fallback_reason is None
+        ):
+            raise ValueError(
+                "runtime gate fallback requires a rejection reason"
+            )
+        if self.truth_identifier_use_count != 0:
+            raise ValueError(
+                "runtime confidence gate diagnostic cannot use truth IDs"
+            )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": self.schema,
+            "model_raw_inference_executed": (
+                self.model_raw_inference_executed
+            ),
+            "gate_applied": self.gate_applied,
+            "action_consistent": self.action_consistent,
+            "raw_confidence": self.raw_confidence,
+            "effective_confidence": self.effective_confidence,
+            "candidate_permitted_after_gate": (
+                self.candidate_permitted_after_gate
+            ),
+            "rule_fallback_due_to_gate": (
+                self.rule_fallback_due_to_gate
+            ),
+            "gate_content_sha256": self.gate_content_sha256,
+            "formal_decision_digest": self.formal_decision_digest,
+            "fallback_reason": self.fallback_reason,
+            "truth_identifier_use_count": (
+                self.truth_identifier_use_count
+            ),
+        }
+
+
+@dataclass(frozen=True)
 class RegionResourceAdvisoryResult:
     requested_mode: AdvisorMode
     effective_mode: AdvisorMode
@@ -1412,9 +2142,12 @@ class RegionResourceAdvisoryResult:
     formal_decision_digest_after: str | None
     formal_decision_unchanged: bool
     advisory_contract: RegionResourceAdvisoryContract | None = None
+    runtime_confidence_gate_diagnostic: (
+        RegionResourceRuntimeConfidenceGateDiagnostic | None
+    ) = None
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        payload = {
             "requested_mode": self.requested_mode.value,
             "effective_mode": self.effective_mode.value,
             "recommendation": (
@@ -1434,6 +2167,11 @@ class RegionResourceAdvisoryResult:
             "formal_decision_digest_after": self.formal_decision_digest_after,
             "formal_decision_unchanged": self.formal_decision_unchanged,
         }
+        if self.runtime_confidence_gate_diagnostic is not None:
+            payload["runtime_confidence_gate_diagnostic"] = (
+                self.runtime_confidence_gate_diagnostic.to_dict()
+            )
+        return payload
 
 
 class RegionResourceAdvisor:
@@ -1488,6 +2226,12 @@ class RegionResourceAdvisor:
         if int(unseen_seed_count) < 0:
             raise ValueError("unseen_seed_count must be non-negative")
         digest_before = formal_decision_digest(formal_decision)
+        manifest = getattr(self.learned_policy, "manifest", None)
+        runtime_gate = (
+            manifest.runtime_confidence_gate
+            if isinstance(manifest, RegionResourceModelManifest)
+            else None
+        )
         if self.config.mode == AdvisorMode.DISABLED:
             return self._result(
                 recommendation=None,
@@ -1499,10 +2243,20 @@ class RegionResourceAdvisor:
                 formal_decision=formal_decision,
                 digest_before=digest_before,
                 advisory_contract=None,
+                runtime_confidence_gate_diagnostic=(
+                    self._runtime_confidence_gate_diagnostic(
+                        runtime_gate,
+                        evaluation=None,
+                        fallback_reason="advisor_disabled",
+                    )
+                ),
             )
 
         fallback_reason: str | None = None
         raw: RegionResourceRecommendation | None = None
+        runtime_gate_evaluation: (
+            RegionResourceRuntimeConfidenceGateEvaluation | None
+        ) = None
         elapsed_s = 0.0
         if self.bundle_error:
             fallback_reason = f"bundle_validation_failed:{self.bundle_error}"
@@ -1510,13 +2264,44 @@ class RegionResourceAdvisor:
             fallback_reason = "model_unavailable"
         else:
             try:
-                if hasattr(self.learned_policy, "is_ood") and self.learned_policy.is_ood(
-                    snapshot, margin=self.config.ood_margin
+                if runtime_gate is not None:
+                    runtime_gate.validate_runtime_context(
+                        projector=self.projector,
+                        rule_policy=self.rule_policy,
+                        minimum_confidence=self.config.minimum_confidence,
+                        ood_margin=self.config.ood_margin,
+                    )
+                if (
+                    hasattr(self.learned_policy, "is_ood")
+                    and self.learned_policy.is_ood(
+                        snapshot,
+                        margin=self.config.ood_margin,
+                    )
                 ):
                     fallback_reason = "feature_ood"
                 else:
                     started = perf_counter()
-                    if bool(
+                    if runtime_gate is not None:
+                        gate_method = getattr(
+                            self.learned_policy,
+                            "recommend_with_runtime_confidence_gate",
+                            None,
+                        )
+                        if not callable(gate_method):
+                            raise RuntimeConfidenceGateContextError(
+                                "runtime_confidence_gate_path_unavailable"
+                            )
+                        raw, runtime_gate_evaluation = gate_method(
+                            snapshot,
+                            projector=self.projector,
+                            rule_policy=self.rule_policy,
+                            formal_decision=formal_decision,
+                            minimum_confidence=(
+                                self.config.minimum_confidence
+                            ),
+                            ood_margin=self.config.ood_margin,
+                        )
+                    elif bool(
                         getattr(
                             self.learned_policy,
                             "formal_decision_aware",
@@ -1534,8 +2319,20 @@ class RegionResourceAdvisor:
                         fallback_reason = "learning_timeout"
                     elif not _recommendation_finite(raw):
                         fallback_reason = "learning_output_non_finite"
+                    elif (
+                        raw.fallback_reason
+                        == "runtime_rule_action_consistency_gate_rejected"
+                    ):
+                        fallback_reason = raw.fallback_reason
                     elif raw.confidence < self.config.minimum_confidence:
-                        fallback_reason = "learning_confidence_below_threshold"
+                        fallback_reason = (
+                            raw.fallback_reason
+                            or "learning_confidence_below_threshold"
+                        )
+            except RuntimeConfidenceGateContextError:
+                fallback_reason = (
+                    "runtime_confidence_gate_context_mismatch"
+                )
             except NonFinitePolicyOutput:
                 fallback_reason = "learning_output_non_finite"
             except Exception as exc:  # A research policy must never escape into D4.
@@ -1550,13 +2347,16 @@ class RegionResourceAdvisor:
             )
         else:
             assert raw is not None
-            recommendation = self.projector.project(
-                snapshot,
-                raw,
-                formal_decision=formal_decision,
+            recommendation = (
+                runtime_gate_evaluation.effective_recommendation
+                if runtime_gate_evaluation is not None
+                else self.projector.project(
+                    snapshot,
+                    raw,
+                    formal_decision=formal_decision,
+                )
             )
 
-        manifest = getattr(self.learned_policy, "manifest", None)
         bundle_allows_assist = bool(
             isinstance(manifest, RegionResourceModelManifest)
             and manifest.assist_admitted
@@ -1602,6 +2402,61 @@ class RegionResourceAdvisor:
             formal_decision=formal_decision,
             digest_before=digest_before,
             advisory_contract=advisory_contract,
+            runtime_confidence_gate_diagnostic=(
+                self._runtime_confidence_gate_diagnostic(
+                    runtime_gate,
+                    evaluation=runtime_gate_evaluation,
+                    fallback_reason=fallback_reason,
+                )
+            ),
+        )
+
+    def _runtime_confidence_gate_diagnostic(
+        self,
+        gate: RegionResourceRuntimeConfidenceGateConfig | None,
+        *,
+        evaluation: (
+            RegionResourceRuntimeConfidenceGateEvaluation | None
+        ),
+        fallback_reason: str | None,
+    ) -> RegionResourceRuntimeConfidenceGateDiagnostic | None:
+        if gate is None:
+            return None
+        gate_rejection_reasons = {
+            "runtime_rule_action_consistency_gate_rejected",
+            "runtime_confidence_gate_context_mismatch",
+        }
+        return RegionResourceRuntimeConfidenceGateDiagnostic(
+            model_raw_inference_executed=evaluation is not None,
+            gate_applied=evaluation is not None,
+            action_consistent=(
+                evaluation.action_consistency.action_consistent
+                if evaluation is not None
+                else None
+            ),
+            raw_confidence=(
+                evaluation.raw_confidence
+                if evaluation is not None
+                else None
+            ),
+            effective_confidence=(
+                evaluation.effective_confidence
+                if evaluation is not None
+                else None
+            ),
+            candidate_permitted_after_gate=bool(
+                evaluation is not None and fallback_reason is None
+            ),
+            rule_fallback_due_to_gate=(
+                fallback_reason in gate_rejection_reasons
+            ),
+            gate_content_sha256=gate.content_sha256,
+            formal_decision_digest=(
+                evaluation.formal_decision_digest
+                if evaluation is not None
+                else None
+            ),
+            fallback_reason=fallback_reason,
         )
 
     def _result(
@@ -1616,6 +2471,9 @@ class RegionResourceAdvisor:
         formal_decision: RegionalFailoverDecision | None,
         digest_before: str | None,
         advisory_contract: RegionResourceAdvisoryContract | None,
+        runtime_confidence_gate_diagnostic: (
+            RegionResourceRuntimeConfidenceGateDiagnostic | None
+        ),
     ) -> RegionResourceAdvisoryResult:
         digest_after = formal_decision_digest(formal_decision)
         unchanged = digest_before == digest_after
@@ -1635,6 +2493,9 @@ class RegionResourceAdvisor:
             formal_decision_digest_after=digest_after,
             formal_decision_unchanged=unchanged,
             advisory_contract=advisory_contract,
+            runtime_confidence_gate_diagnostic=(
+                runtime_confidence_gate_diagnostic
+            ),
         )
 
 

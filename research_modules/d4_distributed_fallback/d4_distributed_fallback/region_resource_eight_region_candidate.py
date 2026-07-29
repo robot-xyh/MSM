@@ -2,8 +2,9 @@
 
 The runtime corpus supplies the feature geometry.  The supplemental curriculum
 supplies only three truth-free action recipes: hold, request-replan, and
-resource transfer.  Each recipe is rebuilt on an eight-region runtime graph and
-labelled by the existing deterministic rule policy and safety projector.
+resource transfer.  The readiness supplement adds authentic zero and transition
+coverage.  Each recipe is rebuilt on an eight-region runtime graph and labelled
+by the existing deterministic rule policy and safety projector.
 
 The resulting candidate is development/shadow only.  This module does not
 publish plans, acknowledge runtime consumption, or grant physical authority.
@@ -15,7 +16,7 @@ from collections import Counter
 from dataclasses import asdict, dataclass, replace
 from hashlib import sha256
 import json
-from math import isfinite
+from math import ceil, isfinite
 from pathlib import Path
 import random
 import shutil
@@ -26,11 +27,13 @@ from typing import Any, Iterable, Mapping, Sequence
 from .region_resource import (
     DETERMINISTIC_RESOURCE_PROJECTOR_NAME,
     DETERMINISTIC_RESOURCE_PROJECTOR_VERSION,
+    DeterministicResourceProjector,
     REGION_RESOURCE_FEATURE_SCHEMA,
     RegionResourceEdge,
     RegionResourceNode,
     RegionResourceSnapshot,
     RuleRegionResourcePolicy,
+    RuleRegionResourcePolicyConfig,
 )
 from .region_resource_current_lineage_candidate import (
     RegionResourceCurrentLineageCandidateConfig,
@@ -60,7 +63,15 @@ from .region_resource_learning import (
     MODEL_LIFECYCLE_DEVELOPMENT,
     MODEL_MAXIMUM_MODE_SHADOW,
     NODE_FEATURE_NAMES,
+    REGION_RESOURCE_RUNTIME_CONFIDENCE_GATE_CONTINUOUS_TOLERANCE,
+    REGION_RESOURCE_RUNTIME_CONFIDENCE_GATE_FIXED_OOD_MARGIN,
+    REGION_RESOURCE_RUNTIME_CONFIDENCE_GATE_FIXED_THRESHOLD,
+    REGION_RESOURCE_RUNTIME_CONFIDENCE_GATE_INCONSISTENT_CAP,
+    REGION_RESOURCE_RUNTIME_CONFIDENCE_GATE_MODE,
     SharedRegionGraphActorCritic,
+    LearnedRegionResourcePolicy,
+    RegionResourceRuntimeConfidenceGateConfig,
+    evaluate_region_resource_action_consistency,
     load_region_behavior_cloning_samples,
     load_region_resource_model_bundle,
     save_region_resource_model_bundle,
@@ -93,12 +104,33 @@ REGION_RESOURCE_EIGHT_REGION_CONFIG_SCHEMA = (
 REGION_RESOURCE_EIGHT_REGION_PERMISSIONS_SCHEMA = (
     "d4-region-resource-eight-region-permissions-v1"
 )
+REGION_RESOURCE_EIGHT_REGION_READINESS_CANDIDATE_SCHEMA = (
+    "d4-region-resource-eight-region-readiness-shadow-candidate-v2"
+)
+REGION_RESOURCE_EIGHT_REGION_READINESS_SOURCE_SCHEMA = (
+    "d4-region-resource-eight-region-readiness-source-v2"
+)
+REGION_RESOURCE_EIGHT_REGION_READINESS_VIEW_SCHEMA = (
+    "d4-region-resource-eight-region-readiness-training-view-v2"
+)
+REGION_RESOURCE_EIGHT_REGION_READINESS_TRAINING_SCHEMA = (
+    "d4-region-resource-eight-region-readiness-training-v2"
+)
+REGION_RESOURCE_EIGHT_REGION_READINESS_CONFIG_SCHEMA = (
+    "d4-region-resource-eight-region-readiness-config-v2"
+)
 
 REGION_RESOURCE_EIGHT_REGION_CANDIDATE_ID = (
     "region_resource_a2_8region_runtime_action_shadow_v1"
 )
 REGION_RESOURCE_EIGHT_REGION_MODEL_VERSION = (
     "d4-region-a2-8region-runtime-action-shadow-v1"
+)
+REGION_RESOURCE_EIGHT_REGION_READINESS_CANDIDATE_ID = (
+    "region_resource_a2_8region_runtime_action_readiness_shadow_v2"
+)
+REGION_RESOURCE_EIGHT_REGION_READINESS_MODEL_VERSION = (
+    "d4-region-a2-8region-runtime-action-readiness-shadow-v2"
 )
 REGION_RESOURCE_EIGHT_REGION_CANDIDATE_FILENAME = (
     "eight_region_shadow_candidate_manifest.json"
@@ -121,10 +153,29 @@ REGION_RESOURCE_EIGHT_REGION_RUNTIME_DATASET_SHA256 = (
 REGION_RESOURCE_EIGHT_REGION_ACTION_DATASET_SHA256 = (
     "7e17aba7911602c1b9e9f5b917aea97f1eeec478f03963b119fbcfc8de299e72"
 )
+REGION_RESOURCE_EIGHT_REGION_READINESS_DATASET_SHA256 = (
+    "34244f1fe4f15cf82ff144e6c6cb5cabedccf5ba7f7880adcd2b820b681c9c56"
+)
+REGION_RESOURCE_EIGHT_REGION_READINESS_MANIFEST_FILE_SHA256 = (
+    "a1056c721be0c49066912f51e9f1ce0b4eebfac0e832da47a912f9573a22f0c2"
+)
+REGION_RESOURCE_EIGHT_REGION_READINESS_GENERATION_SUMMARY_FILE_SHA256 = (
+    "48434358e524db55e740bdae18fa909f6eb12c98afa95290c228136656a63870"
+)
+REGION_RESOURCE_EIGHT_REGION_READINESS_DATASET_AUDIT_FILE_SHA256 = (
+    "c7d4f339de46b7c35785b057013f6adf22667d0d7fc94a06fa00ff09783ec63d"
+)
+REGION_RESOURCE_EIGHT_REGION_READINESS_SOURCE_COMMIT = (
+    "9a1f6fc97e86a7e0204b5fbb0d92e4fd13e3c763"
+)
 REGION_RESOURCE_EIGHT_REGION_RUNTIME_EPISODE_COUNT = 900
 REGION_RESOURCE_EIGHT_REGION_RUNTIME_FRAME_COUNT = 1798
 REGION_RESOURCE_EIGHT_REGION_ACTION_EPISODE_COUNT = 100
 REGION_RESOURCE_EIGHT_REGION_ACTION_FRAME_COUNT = 300
+REGION_RESOURCE_EIGHT_REGION_READINESS_EPISODE_COUNT = 100
+REGION_RESOURCE_EIGHT_REGION_READINESS_FRAME_COUNT = 199
+REGION_RESOURCE_EIGHT_REGION_READINESS_VALUE_COUNT = 1592
+REGION_RESOURCE_EIGHT_REGION_READINESS_ZERO_VALUE_COUNT = 1572
 REGION_RESOURCE_EIGHT_REGION_OVERLAY_FRAME_KINDS = (
     "hold",
     "request_replan",
@@ -140,9 +191,17 @@ REGION_RESOURCE_EIGHT_REGION_OVERLAY_REWARD_REASON = (
 REGION_RESOURCE_EIGHT_REGION_VIEW_RECIPE = (
     "runtime-eight-region-geometry-plus-curriculum-action-recipe-v1"
 )
+REGION_RESOURCE_EIGHT_REGION_READINESS_VIEW_RECIPE = (
+    "runtime-eight-region-geometry-plus-curriculum-action-plus-authentic-"
+    "runtime-readiness-v2"
+)
 REGION_RESOURCE_EIGHT_REGION_CONFIDENCE_TARGET = (
     "frozen-action-normalized-error-consistency-score-v1"
 )
+REGION_RESOURCE_EIGHT_REGION_RUNTIME_CONFIDENCE_GATE = (
+    REGION_RESOURCE_RUNTIME_CONFIDENCE_GATE_MODE
+)
+REGION_RESOURCE_EIGHT_REGION_MINIMUM_VALIDATION_PASS_RATE = 0.05
 
 _EXPECTED_RUNTIME_ACTION_INVENTORY = {
     "action_count": 14384,
@@ -158,6 +217,25 @@ _EXPECTED_CURRICULUM_ACTION_INVENTORY = {
     "hold_true_count": 100,
     "request_replan_true_count": 200,
 }
+_EXPECTED_READINESS_ACTION_INVENTORY = {
+    "action_count": 1592,
+    "resource_quota_nonzero_count": 0,
+    "transfer_count": 0,
+    "hold_true_count": 0,
+    "request_replan_true_count": 0,
+}
+_LEGACY_CANDIDATE_IDENTITY = (
+    REGION_RESOURCE_EIGHT_REGION_CANDIDATE_SCHEMA,
+    REGION_RESOURCE_EIGHT_REGION_CONFIG_SCHEMA,
+    REGION_RESOURCE_EIGHT_REGION_CANDIDATE_ID,
+    REGION_RESOURCE_EIGHT_REGION_MODEL_VERSION,
+)
+_READINESS_CANDIDATE_IDENTITY = (
+    REGION_RESOURCE_EIGHT_REGION_READINESS_CANDIDATE_SCHEMA,
+    REGION_RESOURCE_EIGHT_REGION_READINESS_CONFIG_SCHEMA,
+    REGION_RESOURCE_EIGHT_REGION_READINESS_CANDIDATE_ID,
+    REGION_RESOURCE_EIGHT_REGION_READINESS_MODEL_VERSION,
+)
 _COMMITTED_TRAINING_IMPLEMENTATION_FILES = (
     "research_modules/d4_distributed_fallback/d4_distributed_fallback/"
     "region_resource.py",
@@ -171,6 +249,10 @@ _COMMITTED_TRAINING_IMPLEMENTATION_FILES = (
 _VIEW_BUILDER_FILE = (
     "research_modules/d4_distributed_fallback/d4_distributed_fallback/"
     "region_resource_eight_region_candidate.py"
+)
+_READINESS_COMMITTED_IMPLEMENTATION_FILES = (
+    *_COMMITTED_TRAINING_IMPLEMENTATION_FILES,
+    _VIEW_BUILDER_FILE,
 )
 _ARTIFACT_FILES = {
     REGION_RESOURCE_EIGHT_REGION_SOURCE_FILENAME,
@@ -248,7 +330,10 @@ class RegionResourceEightRegionCandidateConfig:
     schema: str = REGION_RESOURCE_EIGHT_REGION_CONFIG_SCHEMA
 
     def __post_init__(self) -> None:
-        if self.schema != REGION_RESOURCE_EIGHT_REGION_CONFIG_SCHEMA:
+        if self.schema not in {
+            REGION_RESOURCE_EIGHT_REGION_CONFIG_SCHEMA,
+            REGION_RESOURCE_EIGHT_REGION_READINESS_CONFIG_SCHEMA,
+        }:
             raise ValueError("unsupported eight-region candidate config schema")
         for name in (
             "random_seed",
@@ -303,10 +388,24 @@ class RegionResourceEightRegionCandidateConfig:
             or self.validation_fraction != 0.15
         ):
             raise ValueError("global split fractions changed")
-        if (
-            self.candidate_id != REGION_RESOURCE_EIGHT_REGION_CANDIDATE_ID
-            or self.model_version != REGION_RESOURCE_EIGHT_REGION_MODEL_VERSION
-        ):
+        identity = (
+            self.schema,
+            self.candidate_id,
+            self.model_version,
+        )
+        expected_identities = {
+            (
+                REGION_RESOURCE_EIGHT_REGION_CONFIG_SCHEMA,
+                REGION_RESOURCE_EIGHT_REGION_CANDIDATE_ID,
+                REGION_RESOURCE_EIGHT_REGION_MODEL_VERSION,
+            ),
+            (
+                REGION_RESOURCE_EIGHT_REGION_READINESS_CONFIG_SCHEMA,
+                REGION_RESOURCE_EIGHT_REGION_READINESS_CANDIDATE_ID,
+                REGION_RESOURCE_EIGHT_REGION_READINESS_MODEL_VERSION,
+            ),
+        }
+        if identity not in expected_identities:
             raise ValueError("eight-region candidate identity changed")
         if not self.created_at_utc:
             raise ValueError("created_at_utc must not be empty")
@@ -612,6 +711,269 @@ def _fit_action_error_confidence_head(
     return summary
 
 
+def _readiness_confidence_supervision_definition(
+    config: RegionResourceEightRegionCandidateConfig,
+) -> dict[str, Any]:
+    return _readiness_confidence_supervision_definition_from_base(
+        _confidence_supervision_definition(config)
+    )
+
+
+def _readiness_confidence_supervision_definition_from_base(
+    base: Mapping[str, Any],
+) -> dict[str, Any]:
+    base = dict(base)
+    runtime_gate = RegionResourceRuntimeConfidenceGateConfig()
+    if (
+        float(base["continuous_tolerance"])
+        != runtime_gate.continuous_tolerance
+        or float(base["fixed_minimum_confidence"])
+        != runtime_gate.fixed_minimum_confidence
+    ):
+        raise RegionResourceEightRegionCandidateError(
+            "head_fit_and_runtime_gate_threshold_mismatch"
+        )
+    payload = {
+        "target_name": REGION_RESOURCE_EIGHT_REGION_CONFIDENCE_TARGET,
+        "head_fit_definition": base,
+        "head_fit_definition_sha256": base["definition_sha256"],
+        "head_fit_split": RegionLearningSplit.TRAIN.value,
+        "head_fit_loss": base["loss"],
+        "runtime_gate": runtime_gate.to_dict(),
+        "runtime_gate_applied_before_threshold": True,
+        "minimum_validation_threshold_pass_rate": (
+            REGION_RESOURCE_EIGHT_REGION_MINIMUM_VALIDATION_PASS_RATE
+        ),
+        "validation_acceptance": (
+            "the runtime helper yields threshold-pass coverage at or above "
+            "the fixed audit floor, no runtime-inconsistent sample reaches "
+            "effective confidence 0.60, and the recomputed online rule "
+            "matches every recorded validation rule target"
+        ),
+        "fit_split": RegionLearningSplit.TRAIN.value,
+        "audit_split": RegionLearningSplit.VALIDATION.value,
+        "test_split_use_count": 0,
+        "reserved_evaluation_seed_use_count": 0,
+        "truth_identifier_use_count": 0,
+        "future_outcome_use_count": 0,
+        "action_model_frozen_during_fit": True,
+        "confidence_head_only_parameter_update": True,
+        "runtime_consistency_recomputation_required": True,
+        "validation_target_controls_effective_confidence": False,
+    }
+    payload["definition_sha256"] = _sha256_json(payload)
+    return payload
+
+
+def _fit_readiness_action_error_confidence_head(
+    model: SharedRegionGraphActorCritic,
+    loaded: LoadedRegionLearningDataset,
+    *,
+    config: RegionResourceEightRegionCandidateConfig,
+) -> dict[str, Any]:
+    """Fit only the head; runtime-gate audit occurs after bundle reload."""
+
+    raw = _fit_action_error_confidence_head(model, loaded, config=config)
+    return {
+        "definition": _readiness_confidence_supervision_definition(config),
+        "head_fit": raw,
+        "action_model_frozen_during_fit": True,
+        "confidence_head_only_parameter_update": True,
+        "runtime_gate_audit_completed": False,
+        "test_sample_use_count": 0,
+        "reserved_evaluation_seed_use_count": 0,
+        "truth_identifier_use_count": 0,
+        "future_outcome_use_count": 0,
+        "fixed_minimum_confidence": config.fixed_minimum_confidence,
+        "runtime_preflight_completed": False,
+        "formal_evaluation_authorized": False,
+    }
+
+
+def _audit_readiness_runtime_confidence_gate(
+    policy: LearnedRegionResourcePolicy,
+    loaded: LoadedRegionLearningDataset,
+    head_fit_summary: Mapping[str, Any],
+    *,
+    config: RegionResourceEightRegionCandidateConfig,
+    projector: DeterministicResourceProjector,
+    rule_policy: RuleRegionResourcePolicy,
+    formal_decision: None,
+) -> dict[str, Any]:
+    train = _runtime_confidence_gate_metrics(
+        policy,
+        loaded,
+        split=RegionLearningSplit.TRAIN,
+        threshold=config.fixed_minimum_confidence,
+        ood_margin=(
+            REGION_RESOURCE_RUNTIME_CONFIDENCE_GATE_FIXED_OOD_MARGIN
+        ),
+        projector=projector,
+        rule_policy=rule_policy,
+        formal_decision=formal_decision,
+    )
+    validation = _runtime_confidence_gate_metrics(
+        policy,
+        loaded,
+        split=RegionLearningSplit.VALIDATION,
+        threshold=config.fixed_minimum_confidence,
+        ood_margin=(
+            REGION_RESOURCE_RUNTIME_CONFIDENCE_GATE_FIXED_OOD_MARGIN
+        ),
+        projector=projector,
+        rule_policy=rule_policy,
+        formal_decision=formal_decision,
+    )
+    acceptance = _readiness_runtime_confidence_gate_acceptance(
+        validation["effective"]
+    )
+    if validation["runtime_reference_target_mismatch_count"]:
+        acceptance = {
+            **acceptance,
+            "accepted": False,
+            "blockers": [
+                *acceptance["blockers"],
+                "validation_runtime_rule_target_mismatch:"
+                f"{validation['runtime_reference_target_mismatch_count']}",
+            ],
+        }
+    summary = {
+        **dict(head_fit_summary),
+        "train": train,
+        "validation": validation,
+        "acceptance": acceptance,
+        "runtime_gate_audit_completed": True,
+        "validation_target_controls_effective_confidence": False,
+        "validation_formal_decision": None,
+        "validation_formal_decision_semantics": (
+            "dataset labels and snapshots were generated without a formal "
+            "decision; validation invokes the runtime helper with explicit "
+            "formal_decision=None"
+        ),
+    }
+    if not _all_finite_json(summary):
+        raise RegionResourceEightRegionCandidateError(
+            "readiness_runtime_gate_summary_contains_nonfinite_value"
+        )
+    if not acceptance["accepted"]:
+        raise RegionResourceEightRegionCandidateError(
+            "readiness_runtime_confidence_gate_not_accepted:"
+            + ",".join(acceptance["blockers"])
+        )
+    return summary
+
+
+def _runtime_confidence_gate_metrics(
+    policy: LearnedRegionResourcePolicy,
+    loaded: LoadedRegionLearningDataset,
+    *,
+    split: RegionLearningSplit,
+    threshold: float,
+    ood_margin: float,
+    projector: DeterministicResourceProjector,
+    rule_policy: RuleRegionResourcePolicy,
+    formal_decision: None,
+) -> dict[str, Any]:
+    raw_probabilities: list[float] = []
+    effective_probabilities: list[float] = []
+    records: list[_ConfidenceTargetRecord] = []
+    runtime_reference_target_mismatch_count = 0
+    for episode in loaded.episodes(split):
+        for frame in episode.frames:
+            _, evaluation = (
+                policy.recommend_with_runtime_confidence_gate(
+                    frame.snapshot,
+                    projector=projector,
+                    rule_policy=rule_policy,
+                    formal_decision=formal_decision,
+                    minimum_confidence=threshold,
+                    ood_margin=ood_margin,
+                )
+            )
+            if evaluation is None:
+                raise RegionResourceEightRegionCandidateError(
+                    "runtime_confidence_gate_missing_after_bundle_reload"
+                )
+            consistency = evaluation.action_consistency
+            raw_probabilities.append(evaluation.raw_confidence)
+            effective_probabilities.append(
+                evaluation.effective_confidence
+            )
+            component_mean = (
+                consistency.quota_error_maximum
+                + consistency.reserve_error_maximum
+                + consistency.reconnaissance_error_maximum
+                + (
+                    consistency.binary_mismatch_count
+                    / max(1, 2 * frame.snapshot.region_count)
+                )
+                + float(not consistency.transfer_multiset_match)
+            ) / 5.0
+            records.append(
+                _ConfidenceTargetRecord(
+                    target_score=(
+                        1.0 if consistency.action_consistent else 0.0
+                    ),
+                    normalized_action_error=component_mean,
+                    action_consistent=consistency.action_consistent,
+                    quota_error=consistency.quota_error_maximum,
+                    reserve_error=consistency.reserve_error_maximum,
+                    reconnaissance_error=(
+                        consistency.reconnaissance_error_maximum
+                    ),
+                    binary_mismatch_rate=(
+                        consistency.binary_mismatch_count
+                        / max(1, 2 * frame.snapshot.region_count)
+                    ),
+                    transfer_error=float(
+                        not consistency.transfer_multiset_match
+                    ),
+                )
+            )
+            target = frame.target.recommendation
+            if target is None:
+                raise RegionResourceEightRegionCandidateError(
+                    "runtime_gate_audit_target_unavailable"
+                )
+            target_match = evaluate_region_resource_action_consistency(
+                frame.snapshot,
+                evaluation.reference_recommendation,
+                target,
+            )
+            runtime_reference_target_mismatch_count += int(
+                not target_match.action_consistent
+            )
+    targets = tuple(records)
+    return {
+        "sample_count": len(records),
+        "raw": _confidence_metrics_from_probabilities(
+            raw_probabilities,
+            targets,
+            threshold=threshold,
+        ),
+        "effective": _confidence_metrics_from_probabilities(
+            effective_probabilities,
+            targets,
+            threshold=threshold,
+        ),
+        "runtime_reference_target_mismatch_count": (
+            runtime_reference_target_mismatch_count
+        ),
+        "raw_probability_inventory_sha256": _sha256_json(
+            raw_probabilities
+        ),
+        "effective_probability_inventory_sha256": _sha256_json(
+            effective_probabilities
+        ),
+        "runtime_helper_used": True,
+        "validation_target_controls_effective_confidence": False,
+        "formal_decision": None,
+        "formal_decision_semantics": (
+            "explicit_none_matching_dataset_generation"
+        ),
+    }
+
+
 def _confidence_target_record(
     model: SharedRegionGraphActorCritic,
     sample: BehaviorCloningSample,
@@ -722,6 +1084,32 @@ def _confidence_metrics(
             float(model(sample.graph).confidence.detach().cpu())
             for sample in samples
         ]
+    return _confidence_metrics_from_probabilities(
+        probabilities,
+        targets,
+        threshold=threshold,
+    )
+
+
+def _confidence_metrics_from_probabilities(
+    probabilities: Sequence[float],
+    targets: Sequence[_ConfidenceTargetRecord],
+    *,
+    threshold: float,
+) -> dict[str, Any]:
+    if len(probabilities) != len(targets) or not probabilities:
+        raise RegionResourceEightRegionCandidateError(
+            "confidence_probability_target_mismatch"
+        )
+    if any(
+        not isfinite(float(probability))
+        or not 0.0 <= float(probability) <= 1.0
+        for probability in probabilities
+    ):
+        raise RegionResourceEightRegionCandidateError(
+            "confidence_probability_nonfinite_or_out_of_range"
+        )
+    probabilities = [float(item) for item in probabilities]
     target_scores = [item.target_score for item in targets]
     squared_errors = [
         (probability - target) ** 2
@@ -767,7 +1155,7 @@ def _confidence_metrics(
         )
         calibration_error += (
             len(indices)
-            / len(samples)
+            / len(probabilities)
             * abs(mean_probability - mean_target)
         )
         bins.append(
@@ -780,7 +1168,7 @@ def _confidence_metrics(
             }
         )
     return {
-        "sample_count": len(samples),
+        "sample_count": len(probabilities),
         "target_minimum": min(target_scores),
         "target_mean": sum(target_scores) / len(target_scores),
         "target_maximum": max(target_scores),
@@ -801,7 +1189,7 @@ def _confidence_metrics(
         "calibration_bins": bins,
         "fixed_threshold": threshold,
         "threshold_pass_count": pass_count,
-        "threshold_pass_rate": pass_count / len(samples),
+        "threshold_pass_rate": pass_count / len(probabilities),
         "action_consistent_threshold_pass_count": consistent_pass_count,
         "action_inconsistent_threshold_pass_count": (
             pass_count - consistent_pass_count
@@ -840,6 +1228,52 @@ def _confidence_calibration_acceptance(
             "condition"
         ),
         "fixed_minimum_confidence": 0.60,
+        "threshold_pass_count": threshold_pass_count,
+        "action_inconsistent_threshold_pass_count": inconsistent_pass_count,
+        "accepted": not blockers,
+        "blockers": blockers,
+    }
+
+
+def _readiness_runtime_confidence_gate_acceptance(
+    validation_metrics: Mapping[str, Any],
+) -> dict[str, Any]:
+    sample_count = int(validation_metrics["sample_count"])
+    threshold_pass_count = int(validation_metrics["threshold_pass_count"])
+    inconsistent_pass_count = int(
+        validation_metrics["action_inconsistent_threshold_pass_count"]
+    )
+    minimum_pass_count = max(
+        1,
+        int(
+            ceil(
+                sample_count
+                * REGION_RESOURCE_EIGHT_REGION_MINIMUM_VALIDATION_PASS_RATE
+            )
+        ),
+    )
+    blockers: list[str] = []
+    if threshold_pass_count < minimum_pass_count:
+        blockers.append(
+            "validation_threshold_pass_coverage_below_audit_floor:"
+            f"{threshold_pass_count}<{minimum_pass_count}"
+        )
+    if inconsistent_pass_count:
+        blockers.append(
+            "validation_action_inconsistent_threshold_pass:"
+            f"{inconsistent_pass_count}"
+        )
+    return {
+        "criterion": (
+            "at least five percent of validation samples pass fixed "
+            "confidence 0.60 and every passing sample satisfies the recorded "
+            "action-consistency condition"
+        ),
+        "fixed_minimum_confidence": 0.60,
+        "minimum_threshold_pass_rate": (
+            REGION_RESOURCE_EIGHT_REGION_MINIMUM_VALIDATION_PASS_RATE
+        ),
+        "minimum_threshold_pass_count": minimum_pass_count,
         "threshold_pass_count": threshold_pass_count,
         "action_inconsistent_threshold_pass_count": inconsistent_pass_count,
         "accepted": not blockers,
@@ -898,15 +1332,38 @@ class RegionResourceEightRegionCandidateManifest:
     formal_holdout_evaluated: bool = False
     content_sha256: str = ""
     schema: str = REGION_RESOURCE_EIGHT_REGION_CANDIDATE_SCHEMA
+    readiness_dataset_sha256: str | None = None
+    readiness_manifest_file_sha256: str | None = None
+    readiness_generation_summary_file_sha256: str | None = None
+    readiness_dataset_audit_file_sha256: str | None = None
+    runtime_confidence_gate_mode: str | None = None
+    validation_threshold_pass_count: int | None = None
+    validation_minimum_threshold_pass_count: int | None = None
 
     def __post_init__(self) -> None:
-        if self.schema != REGION_RESOURCE_EIGHT_REGION_CANDIDATE_SCHEMA:
+        if self.schema not in {
+            REGION_RESOURCE_EIGHT_REGION_CANDIDATE_SCHEMA,
+            REGION_RESOURCE_EIGHT_REGION_READINESS_CANDIDATE_SCHEMA,
+        }:
             raise ValueError("unsupported eight-region candidate manifest schema")
-        if (
-            self.candidate_id != REGION_RESOURCE_EIGHT_REGION_CANDIDATE_ID
-            or self.model_version != REGION_RESOURCE_EIGHT_REGION_MODEL_VERSION
-        ):
+        identity = (
+            self.schema,
+            self.candidate_id,
+            self.model_version,
+        )
+        legacy_identity = (
+            REGION_RESOURCE_EIGHT_REGION_CANDIDATE_SCHEMA,
+            REGION_RESOURCE_EIGHT_REGION_CANDIDATE_ID,
+            REGION_RESOURCE_EIGHT_REGION_MODEL_VERSION,
+        )
+        readiness_identity = (
+            REGION_RESOURCE_EIGHT_REGION_READINESS_CANDIDATE_SCHEMA,
+            REGION_RESOURCE_EIGHT_REGION_READINESS_CANDIDATE_ID,
+            REGION_RESOURCE_EIGHT_REGION_READINESS_MODEL_VERSION,
+        )
+        if identity not in {legacy_identity, readiness_identity}:
             raise ValueError("eight-region candidate identity mismatch")
+        readiness_candidate = identity == readiness_identity
         for name in (
             "source_summary_file_sha256",
             "source_identity_sha256",
@@ -933,6 +1390,65 @@ class RegionResourceEightRegionCandidateManifest:
             != REGION_RESOURCE_EIGHT_REGION_ACTION_DATASET_SHA256
         ):
             raise ValueError("eight-region source dataset binding changed")
+        readiness_fields = {
+            "readiness_dataset_sha256": self.readiness_dataset_sha256,
+            "readiness_manifest_file_sha256": (
+                self.readiness_manifest_file_sha256
+            ),
+            "readiness_generation_summary_file_sha256": (
+                self.readiness_generation_summary_file_sha256
+            ),
+            "readiness_dataset_audit_file_sha256": (
+                self.readiness_dataset_audit_file_sha256
+            ),
+        }
+        if readiness_candidate:
+            expected_readiness = {
+                "readiness_dataset_sha256": (
+                    REGION_RESOURCE_EIGHT_REGION_READINESS_DATASET_SHA256
+                ),
+                "readiness_manifest_file_sha256": (
+                    REGION_RESOURCE_EIGHT_REGION_READINESS_MANIFEST_FILE_SHA256
+                ),
+                "readiness_generation_summary_file_sha256": (
+                    REGION_RESOURCE_EIGHT_REGION_READINESS_GENERATION_SUMMARY_FILE_SHA256
+                ),
+                "readiness_dataset_audit_file_sha256": (
+                    REGION_RESOURCE_EIGHT_REGION_READINESS_DATASET_AUDIT_FILE_SHA256
+                ),
+            }
+            if readiness_fields != expected_readiness:
+                raise ValueError("readiness source evidence binding changed")
+            if (
+                self.runtime_confidence_gate_mode
+                != REGION_RESOURCE_EIGHT_REGION_RUNTIME_CONFIDENCE_GATE
+            ):
+                raise ValueError(
+                    "readiness runtime confidence gate mode changed"
+                )
+            for name in (
+                "validation_threshold_pass_count",
+                "validation_minimum_threshold_pass_count",
+            ):
+                value = getattr(self, name)
+                if type(value) is not int or value <= 0:
+                    raise ValueError(
+                        f"{name} must be a positive integer for readiness v2"
+                    )
+            if (
+                self.validation_threshold_pass_count
+                < self.validation_minimum_threshold_pass_count
+            ):
+                raise ValueError(
+                    "readiness validation threshold coverage is insufficient"
+                )
+        elif (
+            any(value is not None for value in readiness_fields.values())
+            or self.runtime_confidence_gate_mode is not None
+            or self.validation_threshold_pass_count is not None
+            or self.validation_minimum_threshold_pass_count is not None
+        ):
+            raise ValueError("legacy candidate cannot carry readiness evidence")
         if self.applicable_region_count != REGION_RESOURCE_EIGHT_REGION_COUNT:
             raise ValueError("candidate applicability must remain eight regions")
         if (
@@ -964,7 +1480,12 @@ class RegionResourceEightRegionCandidateManifest:
         ):
             raise ValueError("candidate confidence acceptance evidence is invalid")
         expected_calibration_acceptance = bool(
-            self.validation_threshold_pass_rate > 0.0
+            (
+                self.validation_threshold_pass_count
+                >= self.validation_minimum_threshold_pass_count
+                if readiness_candidate
+                else self.validation_threshold_pass_rate > 0.0
+            )
             and self.validation_action_inconsistent_threshold_pass_count == 0
         )
         if self.confidence_calibration_accepted != expected_calibration_acceptance:
@@ -1028,7 +1549,7 @@ class RegionResourceEightRegionCandidateManifest:
         object.__setattr__(self, "content_sha256", expected_content)
 
     def content_dict(self) -> dict[str, Any]:
-        return {
+        payload = {
             "schema": self.schema,
             "candidate_id": self.candidate_id,
             "model_version": self.model_version,
@@ -1086,6 +1607,33 @@ class RegionResourceEightRegionCandidateManifest:
             "runtime_preflight_completed": self.runtime_preflight_completed,
             "formal_holdout_evaluated": self.formal_holdout_evaluated,
         }
+        if self.schema == REGION_RESOURCE_EIGHT_REGION_READINESS_CANDIDATE_SCHEMA:
+            payload.update(
+                {
+                    "readiness_dataset_sha256": (
+                        self.readiness_dataset_sha256
+                    ),
+                    "readiness_manifest_file_sha256": (
+                        self.readiness_manifest_file_sha256
+                    ),
+                    "readiness_generation_summary_file_sha256": (
+                        self.readiness_generation_summary_file_sha256
+                    ),
+                    "readiness_dataset_audit_file_sha256": (
+                        self.readiness_dataset_audit_file_sha256
+                    ),
+                    "runtime_confidence_gate_mode": (
+                        self.runtime_confidence_gate_mode
+                    ),
+                    "validation_threshold_pass_count": (
+                        self.validation_threshold_pass_count
+                    ),
+                    "validation_minimum_threshold_pass_count": (
+                        self.validation_minimum_threshold_pass_count
+                    ),
+                }
+            )
+        return payload
 
     def to_dict(self) -> dict[str, Any]:
         return {**self.content_dict(), "content_sha256": self.content_sha256}
@@ -1094,8 +1642,23 @@ class RegionResourceEightRegionCandidateManifest:
     def from_mapping(
         cls, value: Mapping[str, Any]
     ) -> "RegionResourceEightRegionCandidateManifest":
-        _require_exact_keys(value, cls.__dataclass_fields__, "candidate_manifest")
+        readiness_only = {
+            "readiness_dataset_sha256",
+            "readiness_manifest_file_sha256",
+            "readiness_generation_summary_file_sha256",
+            "readiness_dataset_audit_file_sha256",
+            "runtime_confidence_gate_mode",
+            "validation_threshold_pass_count",
+            "validation_minimum_threshold_pass_count",
+        }
+        expected = set(cls.__dataclass_fields__)
+        schema = value.get("schema")
+        if schema == REGION_RESOURCE_EIGHT_REGION_CANDIDATE_SCHEMA:
+            expected -= readiness_only
+        _require_exact_keys(value, expected, "candidate_manifest")
         payload = dict(value)
+        for name in readiness_only:
+            payload.setdefault(name, None)
         payload["split_usage"] = (
             RegionResourceCurrentLineageSplitUsage.from_mapping(
                 payload["split_usage"]
@@ -1365,6 +1928,382 @@ def build_region_resource_eight_region_candidate(
         raise
 
 
+def build_region_resource_eight_region_readiness_candidate(
+    runtime_dataset_dir: str | Path,
+    action_dataset_dir: str | Path,
+    readiness_dataset_dir: str | Path,
+    *,
+    readiness_generation_summary_path: str | Path,
+    readiness_dataset_audit_path: str | Path,
+    repository_root: str | Path,
+    output_dir: str | Path,
+    config: RegionResourceEightRegionCandidateConfig | None = None,
+) -> dict[str, Any]:
+    """Build a three-source, content-addressed v2 shadow candidate."""
+
+    resolved = config or RegionResourceEightRegionCandidateConfig(
+        candidate_id=REGION_RESOURCE_EIGHT_REGION_READINESS_CANDIDATE_ID,
+        model_version=REGION_RESOURCE_EIGHT_REGION_READINESS_MODEL_VERSION,
+        created_at_utc="2026-07-29T00:00:00Z",
+        schema=REGION_RESOURCE_EIGHT_REGION_READINESS_CONFIG_SCHEMA,
+    )
+    if (
+        resolved.schema
+        != REGION_RESOURCE_EIGHT_REGION_READINESS_CONFIG_SCHEMA
+        or resolved.candidate_id
+        != REGION_RESOURCE_EIGHT_REGION_READINESS_CANDIDATE_ID
+        or resolved.model_version
+        != REGION_RESOURCE_EIGHT_REGION_READINESS_MODEL_VERSION
+    ):
+        raise RegionResourceEightRegionCandidateError(
+            "readiness_candidate_requires_v2_identity"
+        )
+    destination = Path(output_dir).resolve()
+    if destination.name != resolved.candidate_id:
+        raise RegionResourceEightRegionCandidateError(
+            "readiness_output_directory_name_must_equal_candidate_id"
+        )
+    if destination.exists() or destination.is_symlink():
+        raise RegionResourceEightRegionCandidateError(
+            "readiness_candidate_output_must_not_exist"
+        )
+    runtime = _load_verified_source(
+        runtime_dataset_dir,
+        expected_sha256=REGION_RESOURCE_EIGHT_REGION_RUNTIME_DATASET_SHA256,
+        expected_episode_count=REGION_RESOURCE_EIGHT_REGION_RUNTIME_EPISODE_COUNT,
+        expected_frame_count=REGION_RESOURCE_EIGHT_REGION_RUNTIME_FRAME_COUNT,
+        expected_region_count=REGION_RESOURCE_EIGHT_REGION_COUNT,
+        expected_action_inventory=_EXPECTED_RUNTIME_ACTION_INVENTORY,
+        source_name="runtime",
+    )
+    action = _load_verified_source(
+        action_dataset_dir,
+        expected_sha256=REGION_RESOURCE_EIGHT_REGION_ACTION_DATASET_SHA256,
+        expected_episode_count=REGION_RESOURCE_EIGHT_REGION_ACTION_EPISODE_COUNT,
+        expected_frame_count=REGION_RESOURCE_EIGHT_REGION_ACTION_FRAME_COUNT,
+        expected_region_count=4,
+        expected_action_inventory=_EXPECTED_CURRICULUM_ACTION_INVENTORY,
+        source_name="action_curriculum",
+    )
+    readiness, readiness_evidence = (
+        load_verified_eight_region_readiness_source(
+            readiness_dataset_dir,
+            generation_summary_path=readiness_generation_summary_path,
+            dataset_audit_path=readiness_dataset_audit_path,
+        )
+    )
+    _validate_global_training_seeds(runtime, action, readiness)
+    source_summary = (
+        inspect_region_resource_eight_region_readiness_source(
+            repository_root
+        )
+    )
+    config_payload = resolved.to_dict()
+    config_sha256 = _sha256_json(config_payload)
+    stored_config = {**config_payload, "config_sha256": config_sha256}
+
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    temporary_parent = Path(
+        tempfile.mkdtemp(
+            prefix=f".{destination.name}.staging-",
+            dir=destination.parent,
+        )
+    )
+    staging = temporary_parent / destination.name
+    staging.mkdir()
+    try:
+        composite = _build_training_view_dataset(
+            runtime,
+            action,
+            readiness=readiness,
+            staging_root=temporary_parent / "view_build",
+            config=resolved,
+            source_git_commit=source_summary["git_commit"],
+            source_identity_sha256=source_summary[
+                "source_identity_sha256"
+            ],
+        )
+        loaded = load_region_learning_dataset_splits(
+            composite["dataset"].root,
+            splits=(
+                RegionLearningSplit.TRAIN,
+                RegionLearningSplit.VALIDATION,
+            ),
+        )
+        split_usage = _split_usage(loaded)
+        view_manifest = _build_readiness_training_view_manifest(
+            runtime,
+            action,
+            readiness,
+            readiness_evidence,
+            composite,
+            split_usage=split_usage,
+            source_summary=source_summary,
+            config=resolved,
+        )
+        _write_json(
+            staging / REGION_RESOURCE_EIGHT_REGION_SOURCE_FILENAME,
+            source_summary,
+        )
+        _write_json(
+            staging / REGION_RESOURCE_EIGHT_REGION_VIEW_FILENAME,
+            view_manifest,
+        )
+        _write_json(
+            staging / REGION_RESOURCE_EIGHT_REGION_CONFIG_FILENAME,
+            stored_config,
+        )
+
+        training_config = resolved.as_training_config()
+        model, base_training_summary = _train_candidate(
+            loaded,
+            training_config,
+            config_sha256=config_sha256,
+        )
+        confidence_head_fit = (
+            _fit_readiness_action_error_confidence_head(
+                model,
+                loaded,
+                config=resolved,
+            )
+        )
+        training_action_inventory = _action_inventory(loaded)
+        runtime_projector = DeterministicResourceProjector()
+        runtime_rule_policy = RuleRegionResourcePolicy(
+            RuleRegionResourcePolicyConfig(
+                projection=runtime_projector.config
+            ),
+            projector=runtime_projector,
+        )
+        runtime_confidence_gate = (
+            RegionResourceRuntimeConfidenceGateConfig.from_runtime_context(
+                projector=runtime_projector,
+                rule_policy=runtime_rule_policy,
+                fixed_minimum_confidence=(
+                    resolved.fixed_minimum_confidence
+                ),
+                fixed_ood_margin=(
+                    REGION_RESOURCE_RUNTIME_CONFIDENCE_GATE_FIXED_OOD_MARGIN
+                ),
+            )
+        )
+        bundle_manifest = save_region_resource_model_bundle(
+            model,
+            staging / "bundle",
+            model_version=resolved.model_version,
+            training_graphs=tuple(
+                sample.graph
+                for sample in load_region_behavior_cloning_samples(
+                    loaded,
+                    split=RegionLearningSplit.TRAIN,
+                    device=resolved.device,
+                )
+            ),
+            created_at_utc=resolved.created_at_utc,
+            training_dataset_manifest=composite["dataset"].manifest,
+            lifecycle_stage=MODEL_LIFECYCLE_DEVELOPMENT,
+            maximum_advisor_mode=MODEL_MAXIMUM_MODE_SHADOW,
+            reward_evidence_available=False,
+            final_holdout_seed_count=0,
+            action_diversity_sufficient=True,
+            strategy_capability_claim_allowed=False,
+            target_action_inventory=training_action_inventory,
+            runtime_confidence_gate=runtime_confidence_gate,
+            admission_reasons=(
+                "eight_region_runtime_feature_geometry",
+                "authentic_current_runtime_readiness_supplement",
+                "truth_free_action_curriculum_recipe",
+                "global_numeric_seed_atomic_split_across_three_sources",
+                "reserved_evaluation_seeds_excluded",
+                "confidence_head_fit_uses_train_only",
+                "runtime_rule_consistency_gate_bundle_bound",
+                "runtime_gate_validation_accepted_after_bundle_reload",
+                "confidence_threshold_fixed_at_0_60",
+                "development_read_only_shadow",
+                "main_runtime_preflight_pending",
+                "formal_evaluation_forbidden",
+                "all_runtime_permissions_disabled",
+            ),
+        )
+        loaded_bundle = load_region_resource_model_bundle(
+            staging / "bundle",
+            expected_model_version=resolved.model_version,
+            expected_state_dict_sha256=bundle_manifest.state_dict_sha256,
+            map_location=resolved.device,
+            require_training_dataset_manifest=True,
+        )
+        confidence_summary = _audit_readiness_runtime_confidence_gate(
+            LearnedRegionResourcePolicy(
+                loaded_bundle.model,
+                loaded_bundle.manifest,
+            ),
+            loaded,
+            confidence_head_fit,
+            config=resolved,
+            projector=runtime_projector,
+            rule_policy=runtime_rule_policy,
+            formal_decision=None,
+        )
+        validation = _review_validation_outputs(
+            loaded,
+            loaded_bundle.model,
+            loaded_bundle.manifest,
+        )
+        training_summary = {
+            "schema": (
+                REGION_RESOURCE_EIGHT_REGION_READINESS_TRAINING_SCHEMA
+            ),
+            "base_training_summary": base_training_summary,
+            "validation_output_review": validation,
+            "target_action_inventory_loaded_train_validation": (
+                training_action_inventory
+            ),
+            "confidence_supervision": confidence_summary,
+            "readiness_source_evidence": readiness_evidence,
+            "test_payload_used_for_training": False,
+            "reserved_evaluation_seed_use_count": 0,
+            "runtime_preflight_completed": False,
+            "formal_evaluation_authorized": False,
+            "permissions": RegionResourceEightRegionPermissions().to_dict(),
+        }
+        training_summary["content_sha256"] = _sha256_json(
+            training_summary
+        )
+        _write_json(
+            staging / REGION_RESOURCE_EIGHT_REGION_TRAINING_FILENAME,
+            training_summary,
+        )
+
+        artifact_files = {
+            relative_path: _sha256_file(staging / relative_path)
+            for relative_path in sorted(_ARTIFACT_FILES)
+        }
+        validation_confidence = confidence_summary["validation"][
+            "effective"
+        ]
+        acceptance = confidence_summary["acceptance"]
+        manifest = RegionResourceEightRegionCandidateManifest(
+            candidate_id=resolved.candidate_id,
+            model_version=resolved.model_version,
+            source_summary_file_sha256=artifact_files[
+                REGION_RESOURCE_EIGHT_REGION_SOURCE_FILENAME
+            ],
+            source_identity_sha256=source_summary[
+                "source_identity_sha256"
+            ],
+            training_view_manifest_file_sha256=artifact_files[
+                REGION_RESOURCE_EIGHT_REGION_VIEW_FILENAME
+            ],
+            training_view_content_sha256=view_manifest["content_sha256"],
+            runtime_dataset_sha256=(
+                REGION_RESOURCE_EIGHT_REGION_RUNTIME_DATASET_SHA256
+            ),
+            action_dataset_sha256=(
+                REGION_RESOURCE_EIGHT_REGION_ACTION_DATASET_SHA256
+            ),
+            composite_dataset_sha256=(
+                composite["dataset"].manifest.dataset_sha256
+            ),
+            composite_split_sha256=(
+                composite["dataset"].manifest.split.split_sha256
+            ),
+            config_file_sha256=artifact_files[
+                REGION_RESOURCE_EIGHT_REGION_CONFIG_FILENAME
+            ],
+            config_sha256=config_sha256,
+            confidence_target_definition_sha256=(
+                view_manifest["confidence_supervision"][
+                    "definition_sha256"
+                ]
+            ),
+            fixed_minimum_confidence=resolved.fixed_minimum_confidence,
+            validation_confidence_brier=validation_confidence[
+                "brier_score"
+            ],
+            validation_threshold_pass_rate=validation_confidence[
+                "threshold_pass_rate"
+            ],
+            validation_action_consistency_rate_among_pass=(
+                validation_confidence[
+                    "action_consistency_rate_among_threshold_pass"
+                ]
+            ),
+            validation_action_inconsistent_threshold_pass_count=int(
+                validation_confidence[
+                    "action_inconsistent_threshold_pass_count"
+                ]
+            ),
+            confidence_calibration_accepted=bool(
+                acceptance["accepted"]
+            ),
+            training_summary_file_sha256=artifact_files[
+                REGION_RESOURCE_EIGHT_REGION_TRAINING_FILENAME
+            ],
+            training_summary_content_sha256=training_summary[
+                "content_sha256"
+            ],
+            bundle_manifest_sha256=artifact_files[
+                "bundle/manifest.json"
+            ],
+            model_state_sha256=artifact_files["bundle/state_dict.pt"],
+            bundle_training_manifest_sha256=artifact_files[
+                "bundle/training_dataset_manifest.json"
+            ],
+            split_usage=split_usage,
+            applicable_region_count=REGION_RESOURCE_EIGHT_REGION_COUNT,
+            validation_sample_count=int(validation["sample_count"]),
+            validation_nonfinite_output_count=int(
+                validation["nonfinite_output_count"]
+            ),
+            artifact_files=artifact_files,
+            schema=(
+                REGION_RESOURCE_EIGHT_REGION_READINESS_CANDIDATE_SCHEMA
+            ),
+            readiness_dataset_sha256=(
+                REGION_RESOURCE_EIGHT_REGION_READINESS_DATASET_SHA256
+            ),
+            readiness_manifest_file_sha256=(
+                REGION_RESOURCE_EIGHT_REGION_READINESS_MANIFEST_FILE_SHA256
+            ),
+            readiness_generation_summary_file_sha256=(
+                REGION_RESOURCE_EIGHT_REGION_READINESS_GENERATION_SUMMARY_FILE_SHA256
+            ),
+            readiness_dataset_audit_file_sha256=(
+                REGION_RESOURCE_EIGHT_REGION_READINESS_DATASET_AUDIT_FILE_SHA256
+            ),
+            runtime_confidence_gate_mode=(
+                REGION_RESOURCE_EIGHT_REGION_RUNTIME_CONFIDENCE_GATE
+            ),
+            validation_threshold_pass_count=int(
+                acceptance["threshold_pass_count"]
+            ),
+            validation_minimum_threshold_pass_count=int(
+                acceptance["minimum_threshold_pass_count"]
+            ),
+        )
+        _write_json(
+            staging / REGION_RESOURCE_EIGHT_REGION_CANDIDATE_FILENAME,
+            manifest.to_dict(),
+        )
+        review_region_resource_eight_region_candidate(staging)
+        shutil.rmtree(
+            temporary_parent / "view_build", ignore_errors=True
+        )
+        shutil.rmtree(composite["dataset"].root, ignore_errors=True)
+        staging.replace(destination)
+        temporary_parent.rmdir()
+        return {
+            "candidate_manifest": manifest.to_dict(),
+            "source_summary": source_summary,
+            "training_view_manifest": view_manifest,
+            "training_summary": training_summary,
+            "output_dir": str(destination),
+        }
+    except Exception:
+        shutil.rmtree(temporary_parent, ignore_errors=True)
+        raise
+
+
 def load_region_resource_eight_region_candidate_manifest(
     candidate_root: str | Path,
     *,
@@ -1440,9 +2379,17 @@ def review_region_resource_eight_region_candidate(
         root / REGION_RESOURCE_EIGHT_REGION_VIEW_FILENAME,
         "training_view_manifest",
     )
-    _validate_source_summary(source)
-    _validate_training_view_manifest(view)
-    if (
+    readiness_candidate = (
+        manifest.schema
+        == REGION_RESOURCE_EIGHT_REGION_READINESS_CANDIDATE_SCHEMA
+    )
+    if readiness_candidate:
+        _validate_readiness_source_summary(source)
+        _validate_readiness_training_view_manifest(view)
+    else:
+        _validate_source_summary(source)
+        _validate_training_view_manifest(view)
+    source_or_view_mismatch = bool(
         source["source_identity_sha256"] != manifest.source_identity_sha256
         or view["content_sha256"] != manifest.training_view_content_sha256
         or view["sources"]["runtime"]["dataset_sha256"]
@@ -1453,7 +2400,26 @@ def review_region_resource_eight_region_candidate(
         != manifest.composite_dataset_sha256
         or view["global_split"]["split_sha256"]
         != manifest.composite_split_sha256
-    ):
+    )
+    if readiness_candidate:
+        source_or_view_mismatch = bool(
+            source_or_view_mismatch
+            or view["sources"]["readiness_supplement"]["dataset_sha256"]
+            != manifest.readiness_dataset_sha256
+            or view["sources"]["readiness_supplement"]["evidence"][
+                "manifest_file_sha256"
+            ]
+            != manifest.readiness_manifest_file_sha256
+            or view["sources"]["readiness_supplement"]["evidence"][
+                "generation_summary_file_sha256"
+            ]
+            != manifest.readiness_generation_summary_file_sha256
+            or view["sources"]["readiness_supplement"]["evidence"][
+                "dataset_audit_file_sha256"
+            ]
+            != manifest.readiness_dataset_audit_file_sha256
+        )
+    if source_or_view_mismatch:
         raise RegionResourceEightRegionCandidateError(
             "candidate_source_or_view_binding_mismatch"
         )
@@ -1499,8 +2465,19 @@ def review_region_resource_eight_region_candidate(
         raise RegionResourceEightRegionCandidateError(
             "candidate_confidence_summary_unavailable"
         )
-    validation_confidence = confidence["validation"]["after_fit"]
+    validation_confidence = (
+        confidence["validation"]["effective"]
+        if readiness_candidate
+        else confidence["validation"]["after_fit"]
+    )
     confidence_acceptance = confidence.get("acceptance")
+    expected_confidence_acceptance = (
+        _readiness_runtime_confidence_gate_acceptance(
+            validation_confidence
+        )
+        if readiness_candidate
+        else _confidence_calibration_acceptance(validation_confidence)
+    )
     if (
         not isinstance(confidence_acceptance, Mapping)
         or confidence["definition"] != view["confidence_supervision"]
@@ -1528,12 +2505,54 @@ def review_region_resource_eight_region_candidate(
         != manifest.validation_action_inconsistent_threshold_pass_count
         or confidence_acceptance["accepted"]
         is not manifest.confidence_calibration_accepted
-        or confidence_acceptance
-        != _confidence_calibration_acceptance(validation_confidence)
+        or confidence_acceptance != expected_confidence_acceptance
     ):
         raise RegionResourceEightRegionCandidateError(
             "candidate_confidence_summary_binding_mismatch"
         )
+    if readiness_candidate:
+        if (
+            training.get("schema")
+            != REGION_RESOURCE_EIGHT_REGION_READINESS_TRAINING_SCHEMA
+            or confidence.get("runtime_gate_audit_completed")
+            is not True
+            or confidence.get(
+                "validation_target_controls_effective_confidence"
+            )
+            is not False
+            or "validation_formal_decision" not in confidence
+            or confidence["validation_formal_decision"] is not None
+            or confidence.get("validation_formal_decision_semantics")
+            != (
+                "dataset labels and snapshots were generated without a "
+                "formal decision; validation invokes the runtime helper "
+                "with explicit formal_decision=None"
+            )
+            or confidence["train"].get("formal_decision") is not None
+            or confidence["validation"].get("formal_decision") is not None
+            or confidence["train"].get("formal_decision_semantics")
+            != "explicit_none_matching_dataset_generation"
+            or confidence["validation"].get(
+                "formal_decision_semantics"
+            )
+            != "explicit_none_matching_dataset_generation"
+            or confidence["validation"][
+                "runtime_reference_target_mismatch_count"
+            ]
+            != 0
+            or confidence_acceptance["threshold_pass_count"]
+            != manifest.validation_threshold_pass_count
+            or confidence_acceptance["minimum_threshold_pass_count"]
+            != manifest.validation_minimum_threshold_pass_count
+            or confidence_acceptance["action_inconsistent_threshold_pass_count"]
+            != 0
+            or confidence_acceptance["accepted"] is not True
+            or training.get("readiness_source_evidence")
+            != view["sources"]["readiness_supplement"]["evidence"]
+        ):
+            raise RegionResourceEightRegionCandidateError(
+                "readiness_candidate_runtime_gate_or_evidence_mismatch"
+            )
     RegionResourceEightRegionPermissions.from_mapping(training["permissions"])
     bundle = load_region_resource_model_bundle(
         root / "bundle",
@@ -1543,6 +2562,20 @@ def review_region_resource_eight_region_candidate(
         require_training_dataset_manifest=True,
     )
     embedded = bundle.training_dataset_manifest
+    if readiness_candidate:
+        runtime_gate = bundle.manifest.runtime_confidence_gate
+        if (
+            runtime_gate is None
+            or runtime_gate.to_dict()
+            != view["confidence_supervision"]["runtime_gate"]
+            or runtime_gate.mode
+            != manifest.runtime_confidence_gate_mode
+            or runtime_gate.fixed_minimum_confidence
+            != manifest.fixed_minimum_confidence
+        ):
+            raise RegionResourceEightRegionCandidateError(
+                "readiness_bundle_runtime_confidence_gate_mismatch"
+            )
     if (
         embedded is None
         or embedded.dataset_sha256 != manifest.composite_dataset_sha256
@@ -1571,6 +2604,7 @@ def review_region_resource_eight_region_candidate(
         "source_identity_sha256": manifest.source_identity_sha256,
         "runtime_dataset_sha256": manifest.runtime_dataset_sha256,
         "action_dataset_sha256": manifest.action_dataset_sha256,
+        "readiness_dataset_sha256": manifest.readiness_dataset_sha256,
         "composite_dataset_sha256": manifest.composite_dataset_sha256,
         "composite_split_sha256": manifest.composite_split_sha256,
         "model_state_sha256": manifest.model_state_sha256,
@@ -1646,6 +2680,82 @@ def inspect_region_resource_eight_region_source(
     return content
 
 
+def inspect_region_resource_eight_region_readiness_source(
+    repository_root: str | Path,
+) -> dict[str, Any]:
+    """Bind a clean committed v2 builder and all training-core bytes."""
+
+    root = Path(repository_root).resolve()
+    observed_root = Path(
+        _git_text(root, "rev-parse", "--show-toplevel")
+    ).resolve()
+    if observed_root != root:
+        raise RegionResourceEightRegionCandidateError(
+            "readiness_source_repository_root_mismatch"
+        )
+    tracked_status = _git_text(
+        root, "status", "--porcelain", "--untracked-files=no"
+    )
+    if tracked_status:
+        raise RegionResourceEightRegionCandidateError(
+            "readiness_source_repository_tracked_dirty"
+        )
+    git_commit = _git_text(root, "rev-parse", "--verify", "HEAD")
+    git_tree = _git_text(root, "rev-parse", "--verify", "HEAD^{tree}")
+    committed_files: dict[str, str] = {}
+    for relative_path in _READINESS_COMMITTED_IMPLEMENTATION_FILES:
+        working_path = root / relative_path
+        if working_path.is_symlink() or not working_path.is_file():
+            raise RegionResourceEightRegionCandidateError(
+                f"readiness_committed_file_unavailable:{relative_path}"
+            )
+        committed_bytes = _git_bytes(root, "show", f"HEAD:{relative_path}")
+        working_bytes = working_path.read_bytes()
+        if committed_bytes != working_bytes:
+            raise RegionResourceEightRegionCandidateError(
+                f"readiness_committed_file_modified:{relative_path}"
+            )
+        committed_files[relative_path] = _sha256_bytes(committed_bytes)
+    content = {
+        "schema": REGION_RESOURCE_EIGHT_REGION_READINESS_SOURCE_SCHEMA,
+        "git_commit": git_commit,
+        "git_tree": git_tree,
+        "repository_tracked_dirty": False,
+        "committed_training_implementation_files": dict(
+            sorted(committed_files.items())
+        ),
+        "committed_training_implementation_sha256": _sha256_json(
+            committed_files
+        ),
+        "view_builder_file": _VIEW_BUILDER_FILE,
+        "view_builder_file_sha256": committed_files[_VIEW_BUILDER_FILE],
+        "view_recipe": REGION_RESOURCE_EIGHT_REGION_READINESS_VIEW_RECIPE,
+        "training_core_matches_commit": True,
+        "view_builder_content_addressed": True,
+        "readiness_source_contract": {
+            "source_git_commit": (
+                REGION_RESOURCE_EIGHT_REGION_READINESS_SOURCE_COMMIT
+            ),
+            "dataset_sha256": (
+                REGION_RESOURCE_EIGHT_REGION_READINESS_DATASET_SHA256
+            ),
+            "manifest_file_sha256": (
+                REGION_RESOURCE_EIGHT_REGION_READINESS_MANIFEST_FILE_SHA256
+            ),
+            "generation_summary_file_sha256": (
+                REGION_RESOURCE_EIGHT_REGION_READINESS_GENERATION_SUMMARY_FILE_SHA256
+            ),
+            "dataset_audit_file_sha256": (
+                REGION_RESOURCE_EIGHT_REGION_READINESS_DATASET_AUDIT_FILE_SHA256
+            ),
+        },
+    }
+    content["source_identity_sha256"] = _sha256_json(content)
+    content["content_sha256"] = _sha256_json(content)
+    _validate_readiness_source_summary(content)
+    return content
+
+
 def _load_verified_source(
     dataset_dir: str | Path,
     *,
@@ -1690,9 +2800,205 @@ def _load_verified_source(
     return loaded
 
 
+def load_verified_eight_region_readiness_source(
+    dataset_dir: str | Path,
+    *,
+    generation_summary_path: str | Path,
+    dataset_audit_path: str | Path,
+) -> tuple[LoadedRegionLearningDataset, dict[str, Any]]:
+    """Load and bind the authentic current-runtime readiness supplement."""
+
+    loaded = _load_verified_source(
+        dataset_dir,
+        expected_sha256=(
+            REGION_RESOURCE_EIGHT_REGION_READINESS_DATASET_SHA256
+        ),
+        expected_episode_count=(
+            REGION_RESOURCE_EIGHT_REGION_READINESS_EPISODE_COUNT
+        ),
+        expected_frame_count=(
+            REGION_RESOURCE_EIGHT_REGION_READINESS_FRAME_COUNT
+        ),
+        expected_region_count=REGION_RESOURCE_EIGHT_REGION_COUNT,
+        expected_action_inventory=_EXPECTED_READINESS_ACTION_INVENTORY,
+        source_name="readiness_supplement",
+    )
+    manifest_path = loaded.root / "manifest.json"
+    summary_path = Path(generation_summary_path)
+    audit_path = Path(dataset_audit_path)
+    for path, name in (
+        (manifest_path, "readiness_manifest"),
+        (summary_path, "readiness_generation_summary"),
+        (audit_path, "readiness_dataset_audit"),
+    ):
+        if path.is_symlink() or not path.is_file():
+            raise RegionResourceEightRegionCandidateError(
+                f"{name}_file_unavailable_or_symlink"
+            )
+    observed_hashes = {
+        "manifest_file_sha256": _sha256_file(manifest_path),
+        "generation_summary_file_sha256": _sha256_file(summary_path),
+        "dataset_audit_file_sha256": _sha256_file(audit_path),
+    }
+    expected_hashes = {
+        "manifest_file_sha256": (
+            REGION_RESOURCE_EIGHT_REGION_READINESS_MANIFEST_FILE_SHA256
+        ),
+        "generation_summary_file_sha256": (
+            REGION_RESOURCE_EIGHT_REGION_READINESS_GENERATION_SUMMARY_FILE_SHA256
+        ),
+        "dataset_audit_file_sha256": (
+            REGION_RESOURCE_EIGHT_REGION_READINESS_DATASET_AUDIT_FILE_SHA256
+        ),
+    }
+    if observed_hashes != expected_hashes:
+        raise RegionResourceEightRegionCandidateError(
+            "readiness_evidence_file_sha256_mismatch"
+        )
+    summary = _read_json_object(
+        summary_path, "readiness_generation_summary"
+    )
+    audit = _read_json_object(audit_path, "readiness_dataset_audit")
+    if (
+        summary.get("schema_version")
+        != "scalable3d-d4-readiness-supplement-v1"
+        or summary.get("episode_count")
+        != REGION_RESOURCE_EIGHT_REGION_READINESS_EPISODE_COUNT
+        or summary.get("frame_count")
+        != REGION_RESOURCE_EIGHT_REGION_READINESS_FRAME_COUNT
+        or summary.get("seed_count") != len(
+            REGION_RESOURCE_EIGHT_REGION_TRAINING_SEEDS
+        )
+        or summary.get("region_value_count")
+        != REGION_RESOURCE_EIGHT_REGION_READINESS_VALUE_COUNT
+        or summary.get("secondary_readiness_zero_value_count")
+        != REGION_RESOURCE_EIGHT_REGION_READINESS_ZERO_VALUE_COUNT
+        or summary.get("secondary_readiness_min") != 0.0
+        or summary.get("secondary_readiness_max") != 1.0
+        or summary.get("online_truth_use_count") != 0
+        or summary.get("repository_dirty_episode_count") != 0
+        or summary.get("rule_target_frame_count")
+        != REGION_RESOURCE_EIGHT_REGION_READINESS_FRAME_COUNT
+        or summary.get("all_episodes_finite") is not True
+        or summary.get("all_frames_rule_labeled") is not True
+        or summary.get("d4_manifest_sha256")
+        != REGION_RESOURCE_EIGHT_REGION_READINESS_MANIFEST_FILE_SHA256
+    ):
+        raise RegionResourceEightRegionCandidateError(
+            "readiness_generation_summary_boundary_invalid"
+        )
+    summary_source = summary.get("source")
+    if (
+        not isinstance(summary_source, Mapping)
+        or summary_source.get("git_commit")
+        != REGION_RESOURCE_EIGHT_REGION_READINESS_SOURCE_COMMIT
+        or summary_source.get("repository_dirty") is not False
+    ):
+        raise RegionResourceEightRegionCandidateError(
+            "readiness_generation_source_identity_invalid"
+        )
+    audit_inventory = audit.get("inventory")
+    audit_verification = audit.get("verification")
+    audit_source = audit.get("source_identity")
+    if (
+        audit.get("dataset_sha256")
+        != REGION_RESOURCE_EIGHT_REGION_READINESS_DATASET_SHA256
+        or audit.get("manifest_file_sha256")
+        != REGION_RESOURCE_EIGHT_REGION_READINESS_MANIFEST_FILE_SHA256
+        or not isinstance(audit_inventory, Mapping)
+        or audit_inventory.get("episode_count")
+        != REGION_RESOURCE_EIGHT_REGION_READINESS_EPISODE_COUNT
+        or audit_inventory.get("frame_count")
+        != REGION_RESOURCE_EIGHT_REGION_READINESS_FRAME_COUNT
+        or audit_inventory.get("target_available_count")
+        != REGION_RESOURCE_EIGHT_REGION_READINESS_FRAME_COUNT
+        or audit_inventory.get("target_unavailable_count") != 0
+        or not isinstance(audit_source, Mapping)
+        or audit_source.get("git_dirty_episode_count") != 0
+        or not isinstance(audit_verification, Mapping)
+        or audit_verification.get("dataset_content_sha256_verified")
+        is not True
+        or audit_verification.get("dirty_source_absent") is not True
+        or audit_verification.get("numeric_seed_atomic") is not True
+        or audit_verification.get("train_validation_test_leakage_absent")
+        is not True
+        or audit_verification.get("external_holdout_absent_from_dataset")
+        is not True
+    ):
+        raise RegionResourceEightRegionCandidateError(
+            "readiness_dataset_audit_boundary_invalid"
+        )
+
+    readiness_values: list[float] = []
+    for episode in loaded.episode_records:
+        if (
+            episode.source.git_commit
+            != REGION_RESOURCE_EIGHT_REGION_READINESS_SOURCE_COMMIT
+            or episode.source.git_dirty
+        ):
+            raise RegionResourceEightRegionCandidateError(
+                "readiness_episode_source_identity_invalid"
+            )
+        for frame in episode.frames:
+            if (
+                frame.target.kind != RegionLearningTargetKind.RULE
+                or frame.target.recommendation is None
+            ):
+                raise RegionResourceEightRegionCandidateError(
+                    "readiness_frame_rule_label_unavailable"
+                )
+            if not _all_finite_json(frame.to_dict()):
+                raise RegionResourceEightRegionCandidateError(
+                    "readiness_frame_nonfinite"
+                )
+            readiness_values.extend(
+                float(node.secondary_readiness)
+                for node in frame.snapshot.regions
+            )
+    zero_count = sum(value == 0.0 for value in readiness_values)
+    if (
+        len(readiness_values)
+        != REGION_RESOURCE_EIGHT_REGION_READINESS_VALUE_COUNT
+        or zero_count
+        != REGION_RESOURCE_EIGHT_REGION_READINESS_ZERO_VALUE_COUNT
+        or min(readiness_values) != 0.0
+        or max(readiness_values) != 1.0
+    ):
+        raise RegionResourceEightRegionCandidateError(
+            "readiness_feature_coverage_mismatch"
+        )
+    evidence = {
+        "dataset_sha256": loaded.manifest.dataset_sha256,
+        **observed_hashes,
+        "source_git_commit": (
+            REGION_RESOURCE_EIGHT_REGION_READINESS_SOURCE_COMMIT
+        ),
+        "repository_dirty": False,
+        "episode_count": (
+            REGION_RESOURCE_EIGHT_REGION_READINESS_EPISODE_COUNT
+        ),
+        "frame_count": REGION_RESOURCE_EIGHT_REGION_READINESS_FRAME_COUNT,
+        "seed_count": len(REGION_RESOURCE_EIGHT_REGION_TRAINING_SEEDS),
+        "region_value_count": len(readiness_values),
+        "secondary_readiness_zero_value_count": zero_count,
+        "secondary_readiness_minimum": min(readiness_values),
+        "secondary_readiness_maximum": max(readiness_values),
+        "online_truth_use_count": 0,
+        "dirty_episode_count": 0,
+        "rule_target_frame_count": (
+            REGION_RESOURCE_EIGHT_REGION_READINESS_FRAME_COUNT
+        ),
+        "all_frames_finite": True,
+        "all_frames_rule_labeled": True,
+    }
+    evidence["content_sha256"] = _sha256_json(evidence)
+    return loaded, evidence
+
+
 def _validate_global_training_seeds(
     runtime: LoadedRegionLearningDataset,
     action: LoadedRegionLearningDataset,
+    readiness: LoadedRegionLearningDataset | None = None,
 ) -> None:
     expected = set(REGION_RESOURCE_EIGHT_REGION_TRAINING_SEEDS)
     reserved = set(REGION_RESOURCE_EIGHT_REGION_RESERVED_SEEDS)
@@ -1702,6 +3008,10 @@ def _validate_global_training_seeds(
             int(item.source.seed) for item in action.episode_records
         },
     }
+    if readiness is not None:
+        catalogs["readiness_supplement"] = {
+            int(item.source.seed) for item in readiness.episode_records
+        }
     for source_name, seeds in catalogs.items():
         if seeds & reserved:
             raise RegionResourceEightRegionCandidateError(
@@ -1717,6 +3027,7 @@ def _build_training_view_dataset(
     runtime: LoadedRegionLearningDataset,
     action: LoadedRegionLearningDataset,
     *,
+    readiness: LoadedRegionLearningDataset | None = None,
     staging_root: Path,
     config: RegionResourceEightRegionCandidateConfig,
     source_git_commit: str,
@@ -1729,6 +3040,11 @@ def _build_training_view_dataset(
         stage_region_learning_episode(
             episode_staging, episode.source, episode.frames
         )
+    if readiness is not None:
+        for episode in readiness.episode_records:
+            stage_region_learning_episode(
+                episode_staging, episode.source, episode.frames
+            )
     runtime_by_seed: dict[int, list[LoadedRegionLearningEpisode]] = {}
     action_by_seed: dict[int, LoadedRegionLearningEpisode] = {}
     for episode in runtime.episode_records:
@@ -1741,18 +3057,25 @@ def _build_training_view_dataset(
             )
         action_by_seed[seed] = episode
 
-    overlay_config_sha = _sha256_json(
-        {
-            "view_recipe": REGION_RESOURCE_EIGHT_REGION_VIEW_RECIPE,
-            "runtime_dataset_sha256": runtime.manifest.dataset_sha256,
-            "action_dataset_sha256": action.manifest.dataset_sha256,
-            "source_identity_sha256": source_identity_sha256,
-            "region_count": REGION_RESOURCE_EIGHT_REGION_COUNT,
-            "frame_kinds": list(
-                REGION_RESOURCE_EIGHT_REGION_OVERLAY_FRAME_KINDS
-            ),
-        }
-    )
+    overlay_config_payload = {
+        "view_recipe": (
+            REGION_RESOURCE_EIGHT_REGION_READINESS_VIEW_RECIPE
+            if readiness is not None
+            else REGION_RESOURCE_EIGHT_REGION_VIEW_RECIPE
+        ),
+        "runtime_dataset_sha256": runtime.manifest.dataset_sha256,
+        "action_dataset_sha256": action.manifest.dataset_sha256,
+        "source_identity_sha256": source_identity_sha256,
+        "region_count": REGION_RESOURCE_EIGHT_REGION_COUNT,
+        "frame_kinds": list(
+            REGION_RESOURCE_EIGHT_REGION_OVERLAY_FRAME_KINDS
+        ),
+    }
+    if readiness is not None:
+        overlay_config_payload["readiness_dataset_sha256"] = (
+            readiness.manifest.dataset_sha256
+        )
+    overlay_config_sha = _sha256_json(overlay_config_payload)
     for seed in REGION_RESOURCE_EIGHT_REGION_TRAINING_SEEDS:
         donor = _select_runtime_donor(runtime_by_seed[seed], seed=seed)
         curriculum = action_by_seed[seed]
@@ -1798,7 +3121,9 @@ def _build_training_view_dataset(
     )
     shutil.rmtree(episode_staging)
     dataset = load_region_learning_dataset(dataset_dir)
-    _validate_composite_dataset(dataset)
+    _validate_composite_dataset(
+        dataset, readiness_supplement_included=readiness is not None
+    )
     return {
         "dataset": dataset,
         "overlay_provenance": overlay_provenance,
@@ -2052,18 +3377,32 @@ def _validate_overlay_target(kind: str, recommendation: Any) -> None:
 
 def _validate_composite_dataset(
     dataset: LoadedRegionLearningDataset,
+    *,
+    readiness_supplement_included: bool = False,
 ) -> None:
     manifest = dataset.manifest
+    readiness_episode_count = (
+        REGION_RESOURCE_EIGHT_REGION_READINESS_EPISODE_COUNT
+        if readiness_supplement_included
+        else 0
+    )
+    readiness_frame_count = (
+        REGION_RESOURCE_EIGHT_REGION_READINESS_FRAME_COUNT
+        if readiness_supplement_included
+        else 0
+    )
     if (
         manifest.availability.episode_count
         != (
             REGION_RESOURCE_EIGHT_REGION_RUNTIME_EPISODE_COUNT
             + REGION_RESOURCE_EIGHT_REGION_ACTION_EPISODE_COUNT
+            + readiness_episode_count
         )
         or manifest.availability.frame_count
         != (
             REGION_RESOURCE_EIGHT_REGION_RUNTIME_FRAME_COUNT
             + REGION_RESOURCE_EIGHT_REGION_ACTION_FRAME_COUNT
+            + readiness_frame_count
         )
         or manifest.availability.dirty_episode_count != 0
         or not manifest.availability.behavior_cloning_available
@@ -2255,6 +3594,124 @@ def _build_training_view_manifest(
     return payload
 
 
+def _build_readiness_training_view_manifest(
+    runtime: LoadedRegionLearningDataset,
+    action: LoadedRegionLearningDataset,
+    readiness: LoadedRegionLearningDataset,
+    readiness_evidence: Mapping[str, Any],
+    composite: Mapping[str, Any],
+    *,
+    split_usage: RegionResourceCurrentLineageSplitUsage,
+    source_summary: Mapping[str, Any],
+    config: RegionResourceEightRegionCandidateConfig,
+) -> dict[str, Any]:
+    dataset = composite["dataset"]
+    action_by_split = {
+        split.value: _action_inventory(dataset, split=split)
+        for split in RegionLearningSplit
+    }
+    payload = {
+        "schema": REGION_RESOURCE_EIGHT_REGION_READINESS_VIEW_SCHEMA,
+        "view_recipe": REGION_RESOURCE_EIGHT_REGION_READINESS_VIEW_RECIPE,
+        "created_at_utc": config.created_at_utc,
+        "sources": {
+            "runtime": _source_dataset_inventory(runtime),
+            "action_curriculum": _source_dataset_inventory(action),
+            "readiness_supplement": {
+                **_source_dataset_inventory(readiness),
+                "evidence": dict(readiness_evidence),
+            },
+        },
+        "composite": {
+            "dataset_sha256": dataset.manifest.dataset_sha256,
+            "dataset_manifest_file_sha256": _sha256_file(
+                dataset.root / "manifest.json"
+            ),
+            "episode_count": dataset.manifest.availability.episode_count,
+            "frame_count": dataset.manifest.availability.frame_count,
+            "region_count": REGION_RESOURCE_EIGHT_REGION_COUNT,
+            "runtime_frame_count": (
+                REGION_RESOURCE_EIGHT_REGION_RUNTIME_FRAME_COUNT
+            ),
+            "readiness_frame_count": (
+                REGION_RESOURCE_EIGHT_REGION_READINESS_FRAME_COUNT
+            ),
+            "overlay_frame_count": (
+                REGION_RESOURCE_EIGHT_REGION_ACTION_FRAME_COUNT
+            ),
+            "overlay_config_sha256": composite["overlay_config_sha256"],
+            "episode_inventory_sha256": _episode_inventory_sha256(
+                dataset
+            ),
+            "frame_inventory_sha256": _frame_inventory_sha256(dataset),
+        },
+        "global_split": {
+            **dataset.manifest.split.to_dict(),
+            "split_usage": split_usage.to_dict(),
+            "seed_atomic_across_all_sources": True,
+            "cross_source_seed_inventory": list(
+                REGION_RESOURCE_EIGHT_REGION_TRAINING_SEEDS
+            ),
+            "seed_overlap_count": 0,
+            "reserved_evaluation_seeds": list(
+                REGION_RESOURCE_EIGHT_REGION_RESERVED_SEEDS
+            ),
+            "reserved_seed_presence_count": 0,
+        },
+        "feature_schema": {
+            "schema": REGION_RESOURCE_FEATURE_SCHEMA,
+            "node_feature_names": list(NODE_FEATURE_NAMES),
+            "edge_feature_names": list(EDGE_FEATURE_NAMES),
+            "feature_semantics_sha256": _sha256_json(
+                REGION_LEARNING_FEATURE_SEMANTICS
+            ),
+            "applicable_region_count": REGION_RESOURCE_EIGHT_REGION_COUNT,
+            "runtime_geometry_sources": [
+                "runtime",
+                "readiness_supplement",
+            ],
+            "secondary_readiness_zero_value_count": (
+                REGION_RESOURCE_EIGHT_REGION_READINESS_ZERO_VALUE_COUNT
+            ),
+            "secondary_readiness_value_count": (
+                REGION_RESOURCE_EIGHT_REGION_READINESS_VALUE_COUNT
+            ),
+        },
+        "label_source": {
+            "source": "truth_free_deterministic_rule_and_safety_projection",
+            "policy_name": RuleRegionResourcePolicy.policy_name,
+            "policy_version": RuleRegionResourcePolicy.policy_version,
+            "projector_name": DETERMINISTIC_RESOURCE_PROJECTOR_NAME,
+            "projector_version": DETERMINISTIC_RESOURCE_PROJECTOR_VERSION,
+            "curriculum_role": "action_recipe_only",
+            "readiness_role": "authentic_runtime_feature_supplement",
+            "frame_kinds": list(
+                REGION_RESOURCE_EIGHT_REGION_OVERLAY_FRAME_KINDS
+            ),
+            "truth_identifier_use_count": 0,
+            "evaluation_label_use_count": 0,
+        },
+        "confidence_supervision": (
+            _readiness_confidence_supervision_definition(config)
+        ),
+        "action_inventory": {
+            "runtime_source": _action_inventory(runtime),
+            "action_curriculum_source": _action_inventory(action),
+            "readiness_supplement_source": _action_inventory(readiness),
+            "composite_total": _action_inventory(dataset),
+            "composite_by_split": action_by_split,
+        },
+        "overlay_provenance": composite["overlay_provenance"],
+        "source_identity_sha256": source_summary["source_identity_sha256"],
+        "runtime_preflight_completed": False,
+        "formal_evaluation_authorized": False,
+        "permissions": RegionResourceEightRegionPermissions().to_dict(),
+    }
+    payload["content_sha256"] = _sha256_json(payload)
+    _validate_readiness_training_view_manifest(payload)
+    return payload
+
+
 def _source_dataset_inventory(
     dataset: LoadedRegionLearningDataset,
 ) -> dict[str, Any]:
@@ -2350,6 +3807,92 @@ def _validate_source_summary(value: Mapping[str, Any]) -> None:
     if _sha256_json(content) != observed_content_sha:
         raise RegionResourceEightRegionCandidateError(
             "source_summary_content_mismatch"
+        )
+
+
+def _validate_readiness_source_summary(value: Mapping[str, Any]) -> None:
+    expected = {
+        "schema",
+        "git_commit",
+        "git_tree",
+        "repository_tracked_dirty",
+        "committed_training_implementation_files",
+        "committed_training_implementation_sha256",
+        "view_builder_file",
+        "view_builder_file_sha256",
+        "view_recipe",
+        "training_core_matches_commit",
+        "view_builder_content_addressed",
+        "readiness_source_contract",
+        "source_identity_sha256",
+        "content_sha256",
+    }
+    _require_exact_keys(value, expected, "readiness_source_summary")
+    if (
+        value["schema"]
+        != REGION_RESOURCE_EIGHT_REGION_READINESS_SOURCE_SCHEMA
+        or value["view_recipe"]
+        != REGION_RESOURCE_EIGHT_REGION_READINESS_VIEW_RECIPE
+        or value["repository_tracked_dirty"] is not False
+        or value["training_core_matches_commit"] is not True
+        or value["view_builder_content_addressed"] is not True
+        or value["view_builder_file"] != _VIEW_BUILDER_FILE
+    ):
+        raise RegionResourceEightRegionCandidateError(
+            "readiness_source_summary_boundary_invalid"
+        )
+    for name in (
+        "committed_training_implementation_sha256",
+        "view_builder_file_sha256",
+        "source_identity_sha256",
+        "content_sha256",
+    ):
+        _require_sha256(str(value[name]), f"readiness_source_summary.{name}")
+    files = value["committed_training_implementation_files"]
+    if set(files) != set(_READINESS_COMMITTED_IMPLEMENTATION_FILES):
+        raise RegionResourceEightRegionCandidateError(
+            "readiness_source_summary_implementation_inventory_incomplete"
+        )
+    if (
+        _sha256_json(files)
+        != value["committed_training_implementation_sha256"]
+        or files[_VIEW_BUILDER_FILE] != value["view_builder_file_sha256"]
+    ):
+        raise RegionResourceEightRegionCandidateError(
+            "readiness_source_summary_implementation_hash_mismatch"
+        )
+    expected_contract = {
+        "source_git_commit": (
+            REGION_RESOURCE_EIGHT_REGION_READINESS_SOURCE_COMMIT
+        ),
+        "dataset_sha256": (
+            REGION_RESOURCE_EIGHT_REGION_READINESS_DATASET_SHA256
+        ),
+        "manifest_file_sha256": (
+            REGION_RESOURCE_EIGHT_REGION_READINESS_MANIFEST_FILE_SHA256
+        ),
+        "generation_summary_file_sha256": (
+            REGION_RESOURCE_EIGHT_REGION_READINESS_GENERATION_SUMMARY_FILE_SHA256
+        ),
+        "dataset_audit_file_sha256": (
+            REGION_RESOURCE_EIGHT_REGION_READINESS_DATASET_AUDIT_FILE_SHA256
+        ),
+    }
+    if value["readiness_source_contract"] != expected_contract:
+        raise RegionResourceEightRegionCandidateError(
+            "readiness_source_summary_dataset_contract_mismatch"
+        )
+    content = dict(value)
+    observed_content_sha = content.pop("content_sha256")
+    observed_identity = content.pop("source_identity_sha256")
+    if _sha256_json(content) != observed_identity:
+        raise RegionResourceEightRegionCandidateError(
+            "readiness_source_summary_identity_mismatch"
+        )
+    content["source_identity_sha256"] = observed_identity
+    if _sha256_json(content) != observed_content_sha:
+        raise RegionResourceEightRegionCandidateError(
+            "readiness_source_summary_content_mismatch"
         )
 
 
@@ -2539,6 +4082,274 @@ def _validate_training_view_manifest(value: Mapping[str, Any]) -> None:
         )
 
 
+def _validate_readiness_training_view_manifest(
+    value: Mapping[str, Any],
+) -> None:
+    expected = {
+        "schema",
+        "view_recipe",
+        "created_at_utc",
+        "sources",
+        "composite",
+        "global_split",
+        "feature_schema",
+        "label_source",
+        "confidence_supervision",
+        "action_inventory",
+        "overlay_provenance",
+        "source_identity_sha256",
+        "runtime_preflight_completed",
+        "formal_evaluation_authorized",
+        "permissions",
+        "content_sha256",
+    }
+    _require_exact_keys(
+        value, expected, "readiness_training_view_manifest"
+    )
+    if (
+        value["schema"]
+        != REGION_RESOURCE_EIGHT_REGION_READINESS_VIEW_SCHEMA
+        or value["view_recipe"]
+        != REGION_RESOURCE_EIGHT_REGION_READINESS_VIEW_RECIPE
+        or value["runtime_preflight_completed"] is not False
+        or value["formal_evaluation_authorized"] is not False
+    ):
+        raise RegionResourceEightRegionCandidateError(
+            "readiness_training_view_boundary_invalid"
+        )
+    _require_sha256(
+        str(value["source_identity_sha256"]),
+        "readiness_training_view.source_identity_sha256",
+    )
+    sources = value["sources"]
+    if set(sources) != {
+        "runtime",
+        "action_curriculum",
+        "readiness_supplement",
+    }:
+        raise RegionResourceEightRegionCandidateError(
+            "readiness_training_view_source_inventory_invalid"
+        )
+    expected_sources = {
+        "runtime": (
+            REGION_RESOURCE_EIGHT_REGION_RUNTIME_DATASET_SHA256,
+            REGION_RESOURCE_EIGHT_REGION_RUNTIME_EPISODE_COUNT,
+            REGION_RESOURCE_EIGHT_REGION_RUNTIME_FRAME_COUNT,
+        ),
+        "action_curriculum": (
+            REGION_RESOURCE_EIGHT_REGION_ACTION_DATASET_SHA256,
+            REGION_RESOURCE_EIGHT_REGION_ACTION_EPISODE_COUNT,
+            REGION_RESOURCE_EIGHT_REGION_ACTION_FRAME_COUNT,
+        ),
+        "readiness_supplement": (
+            REGION_RESOURCE_EIGHT_REGION_READINESS_DATASET_SHA256,
+            REGION_RESOURCE_EIGHT_REGION_READINESS_EPISODE_COUNT,
+            REGION_RESOURCE_EIGHT_REGION_READINESS_FRAME_COUNT,
+        ),
+    }
+    for source_name, (
+        dataset_sha,
+        episode_count,
+        frame_count,
+    ) in expected_sources.items():
+        source = sources[source_name]
+        if (
+            source["dataset_sha256"] != dataset_sha
+            or source["episode_count"] != episode_count
+            or source["frame_count"] != frame_count
+            or source["seed_inventory"]
+            != list(REGION_RESOURCE_EIGHT_REGION_TRAINING_SEEDS)
+            or set(source["seed_inventory"])
+            & set(REGION_RESOURCE_EIGHT_REGION_RESERVED_SEEDS)
+            or _sha256_json(source["file_inventory"])
+            != source["file_inventory_sha256"]
+        ):
+            raise RegionResourceEightRegionCandidateError(
+                "readiness_training_view_source_binding_mismatch:"
+                f"{source_name}"
+            )
+    readiness_evidence = dict(sources["readiness_supplement"]["evidence"])
+    observed_evidence_sha = readiness_evidence.pop("content_sha256", "")
+    if (
+        _sha256_json(readiness_evidence) != observed_evidence_sha
+        or readiness_evidence["dataset_sha256"]
+        != REGION_RESOURCE_EIGHT_REGION_READINESS_DATASET_SHA256
+        or readiness_evidence["manifest_file_sha256"]
+        != REGION_RESOURCE_EIGHT_REGION_READINESS_MANIFEST_FILE_SHA256
+        or readiness_evidence["generation_summary_file_sha256"]
+        != REGION_RESOURCE_EIGHT_REGION_READINESS_GENERATION_SUMMARY_FILE_SHA256
+        or readiness_evidence["dataset_audit_file_sha256"]
+        != REGION_RESOURCE_EIGHT_REGION_READINESS_DATASET_AUDIT_FILE_SHA256
+        or readiness_evidence["source_git_commit"]
+        != REGION_RESOURCE_EIGHT_REGION_READINESS_SOURCE_COMMIT
+        or readiness_evidence["repository_dirty"] is not False
+        or readiness_evidence["online_truth_use_count"] != 0
+        or readiness_evidence["dirty_episode_count"] != 0
+        or readiness_evidence["all_frames_finite"] is not True
+        or readiness_evidence["all_frames_rule_labeled"] is not True
+        or readiness_evidence["secondary_readiness_zero_value_count"]
+        != REGION_RESOURCE_EIGHT_REGION_READINESS_ZERO_VALUE_COUNT
+        or readiness_evidence["region_value_count"]
+        != REGION_RESOURCE_EIGHT_REGION_READINESS_VALUE_COUNT
+    ):
+        raise RegionResourceEightRegionCandidateError(
+            "readiness_training_view_evidence_mismatch"
+        )
+    composite = value["composite"]
+    if (
+        composite["episode_count"]
+        != (
+            REGION_RESOURCE_EIGHT_REGION_RUNTIME_EPISODE_COUNT
+            + REGION_RESOURCE_EIGHT_REGION_ACTION_EPISODE_COUNT
+            + REGION_RESOURCE_EIGHT_REGION_READINESS_EPISODE_COUNT
+        )
+        or composite["frame_count"]
+        != (
+            REGION_RESOURCE_EIGHT_REGION_RUNTIME_FRAME_COUNT
+            + REGION_RESOURCE_EIGHT_REGION_ACTION_FRAME_COUNT
+            + REGION_RESOURCE_EIGHT_REGION_READINESS_FRAME_COUNT
+        )
+        or composite["region_count"]
+        != REGION_RESOURCE_EIGHT_REGION_COUNT
+        or composite["runtime_frame_count"]
+        != REGION_RESOURCE_EIGHT_REGION_RUNTIME_FRAME_COUNT
+        or composite["readiness_frame_count"]
+        != REGION_RESOURCE_EIGHT_REGION_READINESS_FRAME_COUNT
+        or composite["overlay_frame_count"]
+        != REGION_RESOURCE_EIGHT_REGION_ACTION_FRAME_COUNT
+    ):
+        raise RegionResourceEightRegionCandidateError(
+            "readiness_training_view_composite_count_mismatch"
+        )
+    split = value["global_split"]
+    train = set(split["train_seeds"])
+    validation = set(split["validation_seeds"])
+    test = set(split["test_seeds"])
+    all_seeds = train | validation | test
+    if (
+        all_seeds != set(REGION_RESOURCE_EIGHT_REGION_TRAINING_SEEDS)
+        or train & validation
+        or train & test
+        or validation & test
+        or all_seeds & set(REGION_RESOURCE_EIGHT_REGION_RESERVED_SEEDS)
+        or split["cross_source_seed_inventory"]
+        != list(REGION_RESOURCE_EIGHT_REGION_TRAINING_SEEDS)
+        or split["reserved_evaluation_seeds"]
+        != list(REGION_RESOURCE_EIGHT_REGION_RESERVED_SEEDS)
+        or split["seed_atomic_across_all_sources"] is not True
+        or split["seed_overlap_count"] != 0
+        or split["reserved_seed_presence_count"] != 0
+    ):
+        raise RegionResourceEightRegionCandidateError(
+            "readiness_training_view_global_split_invalid"
+        )
+    if value["feature_schema"] != {
+        "schema": REGION_RESOURCE_FEATURE_SCHEMA,
+        "node_feature_names": list(NODE_FEATURE_NAMES),
+        "edge_feature_names": list(EDGE_FEATURE_NAMES),
+        "feature_semantics_sha256": _sha256_json(
+            REGION_LEARNING_FEATURE_SEMANTICS
+        ),
+        "applicable_region_count": REGION_RESOURCE_EIGHT_REGION_COUNT,
+        "runtime_geometry_sources": [
+            "runtime",
+            "readiness_supplement",
+        ],
+        "secondary_readiness_zero_value_count": (
+            REGION_RESOURCE_EIGHT_REGION_READINESS_ZERO_VALUE_COUNT
+        ),
+        "secondary_readiness_value_count": (
+            REGION_RESOURCE_EIGHT_REGION_READINESS_VALUE_COUNT
+        ),
+    }:
+        raise RegionResourceEightRegionCandidateError(
+            "readiness_training_view_feature_schema_mismatch"
+        )
+    label_source = value["label_source"]
+    if (
+        label_source["truth_identifier_use_count"] != 0
+        or label_source["evaluation_label_use_count"] != 0
+        or label_source["curriculum_role"] != "action_recipe_only"
+        or label_source["readiness_role"]
+        != "authentic_runtime_feature_supplement"
+    ):
+        raise RegionResourceEightRegionCandidateError(
+            "readiness_training_view_label_source_invalid"
+        )
+    definition = value["confidence_supervision"]
+    base = definition["head_fit_definition"]
+    expected_base = _confidence_supervision_definition_from_values(
+        confidence_epochs=int(base["fit_epochs"]),
+        confidence_batch_size=int(base["fit_batch_size"]),
+        confidence_learning_rate=float(base["fit_learning_rate"]),
+        confidence_loss_weight=float(base["loss_weight"]),
+        continuous_tolerance=float(base["continuous_tolerance"]),
+        inconsistent_target_ceiling=float(
+            base["inconsistent_target_ceiling"]
+        ),
+        fixed_minimum_confidence=float(base["fixed_minimum_confidence"]),
+    )
+    expected_definition = (
+        _readiness_confidence_supervision_definition_from_base(
+            expected_base
+        )
+    )
+    if (
+        definition != expected_definition
+        or definition["runtime_gate"]
+        != RegionResourceRuntimeConfidenceGateConfig().to_dict()
+        or definition["runtime_gate"]["fixed_minimum_confidence"]
+        != 0.60
+        or definition["runtime_gate"]["inconsistent_confidence_cap"]
+        != 0.59
+        or definition["runtime_gate_applied_before_threshold"] is not True
+        or definition["test_split_use_count"] != 0
+        or definition["reserved_evaluation_seed_use_count"] != 0
+        or definition["truth_identifier_use_count"] != 0
+        or definition["future_outcome_use_count"] != 0
+        or definition["action_model_frozen_during_fit"] is not True
+        or definition["runtime_consistency_recomputation_required"]
+        is not True
+        or definition["validation_target_controls_effective_confidence"]
+        is not False
+    ):
+        raise RegionResourceEightRegionCandidateError(
+            "readiness_training_view_confidence_boundary_crossed"
+        )
+    inventory = value["action_inventory"]["composite_total"]
+    for key in (
+        "resource_quota_nonzero_count",
+        "transfer_count",
+        "hold_true_count",
+        "request_replan_true_count",
+    ):
+        if int(inventory[key]) <= 0:
+            raise RegionResourceEightRegionCandidateError(
+                f"readiness_training_view_action_support_missing:{key}"
+            )
+    if (
+        len(value["overlay_provenance"])
+        != REGION_RESOURCE_EIGHT_REGION_ACTION_EPISODE_COUNT
+        or {item["seed"] for item in value["overlay_provenance"]}
+        != set(REGION_RESOURCE_EIGHT_REGION_TRAINING_SEEDS)
+    ):
+        raise RegionResourceEightRegionCandidateError(
+            "readiness_training_view_overlay_provenance_incomplete"
+        )
+    _reject_truth_identifiers(value, path="readiness_training_view")
+    RegionResourceEightRegionPermissions.from_mapping(value["permissions"])
+    content = dict(value)
+    observed_content_sha = str(content.pop("content_sha256", ""))
+    _require_sha256(
+        observed_content_sha,
+        "readiness_training_view_manifest.content_sha256",
+    )
+    if _sha256_json(content) != observed_content_sha:
+        raise RegionResourceEightRegionCandidateError(
+            "readiness_training_view_content_sha256_mismatch"
+        )
+
+
 def _action_inventory(
     dataset: LoadedRegionLearningDataset,
     *,
@@ -2615,7 +4426,12 @@ def _reject_truth_identifiers(value: Any, *, path: str) -> None:
             normalized = str(key).strip().lower()
             current = f"{path}.{key}"
             if normalized in _FORBIDDEN_TRUTH_KEYS or (
-                "truth" in normalized and normalized not in {"truth_identifier_use_count"}
+                "truth" in normalized
+                and normalized
+                not in {
+                    "truth_identifier_use_count",
+                    "online_truth_use_count",
+                }
             ):
                 raise RegionResourceEightRegionCandidateError(
                     f"forbidden_truth_identifier:{current}"
