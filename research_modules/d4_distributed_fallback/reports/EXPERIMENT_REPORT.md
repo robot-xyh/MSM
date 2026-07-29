@@ -1,5 +1,74 @@
 # D4 分布式降级与接管实验报告
 
+## 2026-07-28 八区域候选构建与专项测试
+
+本轮完成离线候选构建和 D4 专项测试，没有启动 AirSim、正式 20-seed 或 900-cell。两个源
+数据保持只读，seed 1000-1019 未进入训练、验证、测试或阈值选择。
+
+| 项目 | 结果 |
+| --- | --- |
+| 运行特征源 | 900 episode / 1798 frame / 8 region |
+| 动作课程源 | 100 episode / 300 frame / 4 region |
+| 复合视图 | 1000 episode / 2098 frame / 8 region |
+| 全局数字 seed 切分 | 70 train / 15 validation / 15 untouched test |
+| 置信度拟合/审计样本 | 1468 train / 315 validation |
+| 固定最低置信度 | 0.60 |
+| validation Brier | 0.258170 -> 0.021107 |
+| validation 十箱期望校准误差 | 0.028258 |
+| validation 门限通过 | 315/315 |
+| 门后动作一致 | 264/315，83.81% |
+| 动作不一致但越过门限 | 51 |
+| 校准接受 | false |
+| test/reserved/truth/future 使用 | 0/0/0/0 |
+| runtime preflight / 正式评价 | 已执行但未通过 / 禁止 |
+
+置信度目标不是常量标签。validation 目标范围为 0.59 至 0.998032；动作不一致样本被限制在
+0.59 以下。训练后的置信度头仍将 51 个不一致样本推到 0.60 以上，说明当前图级表示和回归
+损失没有形成足够的门限分离。候选未因 Brier 改善而获得准入。
+
+代表帧来自八区域运行数据，并用独立 seed 2000 注册为只读审计输入。结果为
+`feature_ood=false`、特征违规 0、confidence 0.909641、
+`candidate_failure_gate_passed=false`、`gate_pass=false`、
+`identifiable_nonzero=false`、`candidate_executed=false`。唯一拒绝原因为
+`candidate_confidence_calibration_not_accepted`。
+
+候选身份如下：
+
+| 制品 | SHA-256 |
+| --- | --- |
+| clean source commit | `923f3f6e91af0f85aed446c66420c834d2de63fb` |
+| 候选 manifest 文件 | `ad5846b13652298a0b7b9428d1a21bcc3cbadb9cd605398ffcfde7fa5739f5e5` |
+| 候选 manifest 内容 | `52866167cdb34200119c54af3fe6d6e1537fb81dd26e0596b9ca872011d05e2f` |
+| 模型权重 | `43157f4ea6cee18fe575615b03661ab806a4217c9914c351b75638ccb082b0ee` |
+| 源码身份 | `f9c527155ce38ee0190787784e4033ff0f5dbef1b476edad0d944111e5bd53ed` |
+| 源码摘要文件 | `195c81cd49ac67a8ebfb1928536a46ad2c039d4a5abfd23ee14f533f400f4e1e` |
+| bundle manifest | `824aecf1f6cfb1572693401f3789190ea3c7d5e41f870cfccad8204d8748cb8f` |
+| 运行特征数据 | `b06d741bd22a0cd84ef1e47a48a0b8cd81ceb7e4ea294eeeb38b892e69d36158` |
+| 动作课程数据 | `7e17aba7911602c1b9e9f5b917aea97f1eeec478f03963b119fbcfc8de299e72` |
+| 复合数据 | `ee6bd2029f8754e77b731643e24acde5eb5451df154cf34644c067e756cdcfd4` |
+| 全局 split | `69ae1b0e40c6478ac62d65d89b1634f867d10b8167c523763741827a6f96d817` |
+
+2026-07-28 最终 registry 专项 14/14、D4 全量 720/720 通过。一个既有 Matplotlib
+`Axes3D` 导入警告不影响本轮二维测试。main 已完成 2-region/8-region development
+preflight，但结果未通过；正式评价继续阻断。
+
+### 八区域候选开发预检
+
+| 场景 | 帧数 | 分布内 | raw model execution | candidate-permitted execution |
+| --- | ---: | ---: | ---: | ---: |
+| 5v5/2 区域，seed 2000 | 3 | 0 | 0 | 0 |
+| 200v200/8 区域，seed 2001 | 3 | 1 | 1 | 0 |
+
+2 区域场景同时触发运行特征不匹配、无非回退模型评价、区域数超出候选适用域和置信度校准
+未接受。8 区域场景的运行阻断为特征分布不匹配，候选阻断为置信度校准未接受。两组均为
+有限状态，在线真值使用数为 0。
+
+8 区域的 2 个 OOD 帧只有 `secondary_readiness` 越界。该特征训练范围为 [1.0, 1.0]，
+运行范围为 [0.0, 1.0]；3 帧共 24 个节点值，16 个低于训练下界。双源重切分将 raw
+execution 从 0 提高到 1，但运行分布仍未闭合。后续需补采真实 8-region、
+`secondary_readiness=0` 运行帧，并修复 315 个验证样本中 51 个动作不一致却过 0.60 的
+校准误接收。正式 20-seed/900-cell 继续禁止。
+
 ## 2026-07-28 当前谱系运行分布预检
 
 main 使用冻结候选执行两组 development preflight。D4 只读核对输出，没有启动 AirSim、

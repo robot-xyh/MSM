@@ -1,5 +1,56 @@
 # D4 分布式协同与降级接管计划
 
+## 2026-07-28 八区域候选预检计划
+
+### 已完成
+
+- 已将运行特征数据和动作覆盖课程组合为 8 区域复合训练视图。两个源数据哈希、文件/
+  episode/frame/action inventory、全局 seed 切分、标签来源、特征 schema、源码身份和
+  适用域均写入候选清单。
+- 数字 seed 0-99 按 70/15/15 原子切分；train、validation、test 无交叉，
+  1000-1019 硬排除。复合视图为 1000 episode/2098 frame。
+- 已训练动作模型，并在冻结动作参数后单独监督置信度头。目标来自动作相对规则加安全投影
+  标签的归一化误差和一致性，不使用真值标识、未来结果或常量全 1 标签。
+- 新候选只保存在独立 registry 目录，旧候选保留。assist、authority、assignment、
+  takeover、coalition commit、control、运行 ACK、物理许可和正式评价权限全部为 false。
+- 已增加来源哈希、全局切分、保留 seed、动作覆盖、clean-clone 加载、8 区域范围、制品
+  篡改、replay 和校准失败关闭测试。clean detached checkout
+  `923f3f6e91af0f85aed446c66420c834d2de63fb` 生成的最终候选已通过专项 14/14。
+- 最终 manifest 文件/内容、模型、源码身份、bundle manifest、复合数据和 split SHA-256
+  分别为 `ad5846b1...f5e5`、`52866167...e2f`、`43157f4e...b0ee`、
+  `f9c52715...53ed`、`824aecf1...b8f`、`ee6bd202...cfd4` 和
+  `69ae1b0e...d817`。
+- 2026-07-28 最终 registry 专项 14/14、D4 全量 720/720 通过；仅有既有 Matplotlib
+  `Axes3D` 环境警告。
+- main 已完成 5v5/2 区域 seed 2000 和 200v200/8 区域 seed 2001 的 development
+  preflight。两组输入均有限且在线真值使用数为 0。
+- 2 区域 0/3 帧分布内、raw execution 0；8 区域 1/3 帧分布内、raw execution 1，
+  candidate-permitted execution 0。8 区域的 2 个 OOD 帧只违反
+  `secondary_readiness` 范围。
+
+### 当前阻断
+
+固定 0.60 门限未调整。validation 315 个样本全部越过门限，其中 51 个动作不一致；
+门后动作一致率 83.81%。Brier 分数改善不能抵消该门限冲突。候选清单将校准结论固定为
+未接受，8 区域 shadow 记录强制规则回退。
+
+运行分布同样未闭合。训练数据中的 `secondary_readiness` 固定为 1.0，8 区域预检实际范围
+为 [0.0, 1.0]；3 帧共 24 个节点值中有 16 个低于训练下界，导致 2/3 帧 OOD。
+
+### 后续步骤
+
+1. 补采真实 8-region、`secondary_readiness=0` 的运行帧，覆盖二级节点未就绪、部分就绪和
+   就绪转换；继续保留双时间戳、来源身份和 truth-free 在线特征。
+2. 仅使用重新冻结的 train/validation 修复置信度分离，使固定 0.60 上通过的验证样本全部
+   满足既定动作一致性条件。不得降低 0.60、人工抬高 confidence 或使用 test/reserved
+   seed。
+3. 新候选重新执行 2-region/8-region development preflight。运行分布、校准接受门和全部
+   权限门未同时通过前，不注册正式 20-seed/900-cell。
+
+验证日期为 2026-07-28。当前状态为“已构建、已专项测试、main development preflight
+未通过、正式评价禁止”。双源重切分将 raw execution 从 0 提高到 1，但不构成候选许可或
+运行采用。
+
 ## 2026-07-28 影子运行兼容性 P1
 
 ### 已完成

@@ -1,5 +1,42 @@
 # D4 AirSim Episode 集成计划
 
+## 2026-07-28 八区域候选运行预检
+
+main 已从受控 registry 加载
+`region_resource_a2_8region_runtime_action_shadow_v1`，完成两组 development preflight。
+episode 使用 main 分配的非训练、非验证、非 test、非 1000-1019 seed，并绑定候选
+manifest、模型权重、场景版本和输入快照摘要。D4 未选择 seed、未修改仿真状态，也未发布
+分配计划或接管 ACK。
+
+1. 5v5/2-region seed 2000：3 帧，分布内 0/3，raw model execution 0；
+   runtime blockers 为 `runtime_feature_distribution_mismatch` 和
+   `no_nonfallback_model_evaluation`，candidate blockers 为
+   `candidate_region_count_out_of_scope` 和
+   `candidate_confidence_calibration_not_accepted`。
+2. 200v200/8-region seed 2001：3 帧，分布内 1/3，raw model execution 1，
+   candidate-permitted execution 0；runtime blocker 为
+   `runtime_feature_distribution_mismatch`，candidate blocker 为
+   `candidate_confidence_calibration_not_accepted`。
+
+每帧保存 feature OOD、逐特征违规、原始 confidence、固定 0.60、failure gate、聚合
+gate、确定性投影后的非零字段、执行源和全部权限。任何 candidate execution、runtime ACK、
+assignment、takeover、coalition commit 或 physical permission 为 true 都应中止预检。
+
+两组状态均有限，在线真值使用数为 0。八区域的 2 个 OOD 帧只违反
+`secondary_readiness`：训练范围 [1.0, 1.0]、运行范围 [0.0, 1.0]，24 个节点值中 16 个
+低于训练下界。双源重切分将 raw execution 从 0 提高到 1，但运行分布仍未闭合。
+
+后续先补采真实 8-region、`secondary_readiness=0` 运行帧，再使用 train/validation 修复
+315 个验证样本中 51 个动作不一致却越过 0.60 的校准误接收。不得降低门限或使用
+test/reserved seed。上述两项闭合并重新通过 development preflight 前，正式
+20-seed/900-cell 继续禁止。
+
+预检必须绑定 clean source commit
+`923f3f6e91af0f85aed446c66420c834d2de63fb`，以及 manifest 文件/内容、模型、源码身份、
+bundle manifest、复合数据和 split SHA-256：`ad5846b1...f5e5`、
+`52866167...e2f`、`43157f4e...b0ee`、`f9c52715...53ed`、
+`824aecf1...b8f`、`ee6bd202...cfd4`、`69ae1b0e...d817`。任一身份不一致时不得加载。
+
 ## 2026-07-28 运行分布预检门
 
 正式 AirSim 或三维质点多 seed 之前，main 必须先运行 D4 runtime-distribution preflight。

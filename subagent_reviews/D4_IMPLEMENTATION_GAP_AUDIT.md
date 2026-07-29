@@ -1,5 +1,44 @@
 # D4 实现差距审计：分布式协同与降级接管
 
+## 2026-07-28 八区域候选 GAP 更新
+
+- **已关闭 P1 子项**：缺少绑定运行特征几何和动作多样性目标的 8-region 可复现训练视图。
+  新视图绑定双源 SHA、文件/episode/frame/action inventory、源码身份、特征 schema 和
+  8-region 适用域。
+- **已关闭 P1 子项**：0-99 跨源 split 泄漏风险。现按数字 seed 全局原子切为 70/15/15，
+  无交叉；1000-1019 硬排除，test payload 使用数为 0。
+- **已关闭 P1 子项**：新候选 `confidence_head` 无监督。候选专用第二阶段冻结动作模型，
+  用动作误差与一致性目标训练置信度头；目标非全 1，不使用 truth ID 或未来结果。
+- **专项证据**：validation Brier 0.258170 -> 0.021107，但 315/315 越过 0.60，51 个动作
+  不一致样本被误放行。门后动作一致率 83.81%。
+- **新 P1 blocker**：固定门限下的置信度分离不足。manifest 已绑定
+  `confidence_calibration_accepted=false`；shadow failure gate 强制规则回退。不得把低
+  Brier 写成准入通过。
+- **运行状态**：8-region 代表帧 `feature_ood=false`、confidence 0.909641、
+  `gate_pass=false`、非零 false、candidate executed false。2-region 继续由区域数/OOD 门
+  拒绝。
+- **权限**：assist、authority、assignment、takeover、coalition commit、control、
+  runtime ACK、physical permission、formal evaluation 全部 false。
+- **可复现身份**：clean commit
+  `923f3f6e91af0f85aed446c66420c834d2de63fb`；manifest 文件/内容、模型、源码身份、
+  bundle manifest、复合数据和 split SHA-256 为 `ad5846b1...f5e5`、
+  `52866167...e2f`、`43157f4e...b0ee`、`f9c52715...53ed`、
+  `824aecf1...b8f`、`ee6bd202...cfd4`、`69ae1b0e...d817`。
+- **验证**：2026-07-28，最终 registry 专项 14/14、D4 全量 720/720；仅有既有
+  Matplotlib `Axes3D` 环境警告。
+- **main 开发预检**：5v5/2 区域 seed 2000 为 0/3 分布内、raw execution 0；
+  200v200/8 区域 seed 2001 为 1/3 分布内、raw execution 1、candidate-permitted
+  execution 0。两组有限值正常，在线真值使用数为 0。
+- **运行分布 P1 blocker**：8 区域 2 个 OOD 帧的唯一越界特征为
+  `secondary_readiness`。训练范围 [1.0, 1.0]，运行范围 [0.0, 1.0]，16/24 个节点值
+  低于训练下界。需补采真实 8-region、`secondary_readiness=0` 运行帧。
+- **校准 P1 blocker**：315 个 validation 样本中仍有 51 个动作不一致却越过固定 0.60。
+  需在 train/validation 上修复校准误接收，不得降低门限、人工抬高置信度或读取
+  test/reserved seed。
+- **结论**：双源重切分将 raw execution 从 0 提高到 1，但运行分布和校准接受门均未
+  闭合。正式 20-seed/900-cell 禁止。
+- **P0**：无新增 P0。固定 0.60、版本/sequence/replay/tamper/OOD 门和旧候选语义未降低。
+
 ## 2026-07-28 当前谱系运行兼容性 GAP
 
 - **已关闭 P1 子项**：冻结 current-lineage 候选缺少严格只读影子运行边界。现已具备固定

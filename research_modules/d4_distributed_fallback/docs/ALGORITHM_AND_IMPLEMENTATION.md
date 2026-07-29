@@ -1,5 +1,67 @@
 # D4 分布式协同与降级接管算法及实施方案
 
+## 2026-07-28 八区域复合候选实现
+
+构建器先对两个只读源执行固定哈希、episode/frame 数量、区域数和动作库存检查。运行源为
+900 episode/1798 frame/8 区域；动作课程为 100 episode/300 frame/4 区域。两个来源都必须
+精确包含数字 seed 0-99，任一来源出现 1000-1019 或缺失 seed 时构建终止。课程的三个动作
+帧在八区域运行 donor 上重新生成，标签再次通过 `RuleRegionResourcePolicy` 和
+`DeterministicResourceProjector`，因此四区域张量不会直接进入八区域模型。
+
+全局切分使用固定 seed `20260728`，按数字 seed 形成 70 train、15 validation 和 15 test。
+复合数据为 1000 episode/2098 frame；训练实际读取 1468 个样本，validation 读取 315 个
+样本，test payload 读取数为 0。train 的 hold/request-replan/nonzero-quota/transfer
+库存为 70/171/140/70，validation 为 15/39/30/15，未触碰 test 为 15/34/30/15。
+
+置信度使用候选专用两阶段训练：
+
+```text
+训练动作模型
+  -> 冻结全部动作模型参数
+  -> 根据动作输出与规则加安全投影标签计算误差和一致性
+  -> 只更新 confidence_head
+  -> validation 独立审计
+```
+
+五项误差等权。连续动作一致阈值为 0.10；hold/replan 位与解码转移数量要求精确一致。一致
+样本目标为 `clip(1 - mean(errors), 0, 1)`，不一致样本目标为该值与 0.59 的较小值。
+损失为连续 Brier 等价均方误差，权重 1.0，训练 30 epoch。动作模型参数在该阶段不更新。
+
+validation Brier 从 0.258170 降至 0.021107，十箱期望校准误差为 0.028258。校准后的
+confidence 范围为 0.699148 至 0.921956，315/315 越过固定 0.60；其中 264 个满足动作
+一致性，51 个不满足。接受条件要求至少一个样本越过门限，且所有越过门限的样本满足动作
+一致性。因此 `confidence_calibration_accepted=false`，blocker 为
+`validation_action_inconsistent_threshold_pass:51`。
+
+外层 manifest 同时绑定两个源数据 SHA-256、复合数据与 split、源码、配置、置信度目标
+定义、训练摘要、模型包和全部权限。shadow 加载器先执行原置信度/OOD/时延/有限值/安全投影
+门，再叠加 8 区域范围和校准接受门。校准未接受时将
+`candidate_failure_gate_passed=false`，保持聚合门诊断自洽。旧候选加载分支默认沿用原
+语义，不读取该新字段。
+
+当前候选从 clean detached checkout
+`923f3f6e91af0f85aed446c66420c834d2de63fb` 构建。manifest 文件/内容、权重、源码身份、
+bundle manifest、复合数据和 split SHA-256 分别为
+`ad5846b1...f5e5`、`52866167...e2f`、`43157f4e...b0ee`、
+`f9c52715...53ed`、`824aecf1...b8f`、`ee6bd202...cfd4` 和
+`69ae1b0e...d817`。一个八区域代表帧没有 feature OOD，原始 confidence 为
+0.909641；校准门拒绝后 `gate_pass=false`、非零干预为 false、执行源为规则回退。该结果
+是专项软件审计，不是 main runtime preflight 或正式性能证据。2026-07-28 最终 registry
+专项 14/14、D4 全量 720/720 通过。
+
+main 随后使用固定候选运行 development preflight。5v5/2 区域 seed 2000 的 3 帧均被
+区域数和特征分布门拒绝，分布内 0/3、raw model execution 0。200v200/8 区域 seed 2001
+的 3 帧中，1 帧进入 raw 模型，2 帧因 `secondary_readiness` OOD 回退；raw model
+execution 为 1，candidate-permitted execution 为 0。该特征训练范围为 [1.0, 1.0]，
+运行范围为 [0.0, 1.0]，24 个节点值中 16 个低于边界。两组 `finite=true`，在线真值使用
+数为 0。
+
+该结果说明双源重切分修复了“八区域没有任何 raw 推理”的一部分问题，没有形成运行分布
+兼容性。下一训练视图需纳入真实八区域二级节点未就绪帧，并保持 seed 原子切分和评价 seed
+隔离。置信度训练还需在 train/validation 上修复 51/315 个动作不一致样本跨过 0.60 的
+误接收。新候选在运行分布和校准接受门同时通过前，模型输出只能留在只读 shadow，正式
+20-seed/900-cell 不得启动。
+
 ## 2026-07-28 当前谱系影子运行
 
 影子适配器把每个 `RegionResourceSnapshot` 转为区域图，按模型清单逐特征检查

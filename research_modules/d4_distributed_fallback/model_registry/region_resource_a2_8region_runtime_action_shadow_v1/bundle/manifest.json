@@ -1,0 +1,2920 @@
+{
+  "action_diversity_sufficient": true,
+  "admission_reasons": [
+    "all_runtime_permissions_disabled",
+    "confidence_from_frozen_action_error",
+    "confidence_threshold_fixed_at_0_60",
+    "development_read_only_shadow",
+    "eight_region_runtime_feature_geometry",
+    "formal_evaluation_forbidden",
+    "global_numeric_seed_atomic_split",
+    "main_runtime_preflight_pending",
+    "reserved_evaluation_seeds_excluded",
+    "truth_free_action_curriculum_recipe"
+  ],
+  "architecture": "shared-region-graph-actor-critic-v1",
+  "created_at_utc": "2026-07-28T00:00:00Z",
+  "edge_action_dim": 1,
+  "edge_feature_dim": 7,
+  "feature_bounds": {
+    "edge_max": [
+      0.3333333432674408,
+      6.667463302612305,
+      4.044801712036133,
+      3.7135720252990723,
+      1.0,
+      1.0,
+      0.0
+    ],
+    "edge_min": [
+      0.0,
+      6.667463302612305,
+      4.044801712036133,
+      3.7135720252990723,
+      1.0,
+      1.0,
+      0.0
+    ],
+    "node_max": [
+      0.6000000238418579,
+      0.0,
+      8.321349143981934,
+      0.023418664932250977,
+      1.0,
+      1.0,
+      0.6000000238418579,
+      0.20000000298023224,
+      0.6000000238418579,
+      0.0,
+      1.0,
+      3.7135720252990723,
+      0.16551443934440613,
+      0.20000000298023224,
+      1.0,
+      1.0,
+      0.0,
+      0.0,
+      0.10083333402872086,
+      1.0,
+      1.0,
+      0.0,
+      0.20000000298023224,
+      1.0
+    ],
+    "node_min": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      3.7135720252990723,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.05416666716337204,
+      1.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0
+    ]
+  },
+  "feature_schema": "d4-region-resource-features-v1",
+  "final_holdout_seed_count": 0,
+  "hidden_dim": 64,
+  "lifecycle_stage": "development",
+  "maximum_advisor_mode": "shadow",
+  "message_passing_steps": 2,
+  "model_version": "d4-region-a2-8region-runtime-action-shadow-v1",
+  "node_action_dim": 5,
+  "node_feature_dim": 24,
+  "reward_evidence_available": false,
+  "schema": "d4-region-resource-model-bundle-v2",
+  "state_dict_file": "state_dict.pt",
+  "state_dict_sha256": "43157f4ea6cee18fe575615b03661ab806a4217c9914c351b75638ccb082b0ee",
+  "strategy_capability_claim_allowed": false,
+  "target_action_inventory": {
+    "action_count": 14264,
+    "hold_true_count": 85,
+    "request_replan_true_count": 210,
+    "resource_quota_nonzero_count": 170,
+    "transfer_count": 85
+  },
+  "training_dataset_available": true,
+  "training_dataset_schema": "d4-region-learning-dataset-v1",
+  "training_dataset_sha256": "ee6bd2029f8754e77b731643e24acde5eb5451df154cf34644c067e756cdcfd4",
+  "training_groups": [
+    {
+      "scenario_id": "center_failure_100v100",
+      "seed": 40
+    },
+    {
+      "scenario_id": "center_failure_100v100",
+      "seed": 41
+    },
+    {
+      "scenario_id": "center_failure_100v100",
+      "seed": 42
+    },
+    {
+      "scenario_id": "center_failure_100v100",
+      "seed": 43
+    },
+    {
+      "scenario_id": "center_failure_100v100",
+      "seed": 45
+    },
+    {
+      "scenario_id": "center_failure_100v100",
+      "seed": 46
+    },
+    {
+      "scenario_id": "center_failure_100v100",
+      "seed": 47
+    },
+    {
+      "scenario_id": "center_failure_100v100",
+      "seed": 48
+    },
+    {
+      "scenario_id": "center_failure_100v100",
+      "seed": 49
+    },
+    {
+      "scenario_id": "center_failure_100v100",
+      "seed": 51
+    },
+    {
+      "scenario_id": "center_failure_100v100",
+      "seed": 52
+    },
+    {
+      "scenario_id": "center_failure_100v100",
+      "seed": 53
+    },
+    {
+      "scenario_id": "center_failure_100v100",
+      "seed": 56
+    },
+    {
+      "scenario_id": "center_failure_100v100",
+      "seed": 58
+    },
+    {
+      "scenario_id": "center_failure_100v100",
+      "seed": 59
+    },
+    {
+      "scenario_id": "center_failure_200v200",
+      "seed": 80
+    },
+    {
+      "scenario_id": "center_failure_200v200",
+      "seed": 82
+    },
+    {
+      "scenario_id": "center_failure_200v200",
+      "seed": 83
+    },
+    {
+      "scenario_id": "center_failure_200v200",
+      "seed": 84
+    },
+    {
+      "scenario_id": "center_failure_200v200",
+      "seed": 85
+    },
+    {
+      "scenario_id": "center_failure_200v200",
+      "seed": 86
+    },
+    {
+      "scenario_id": "center_failure_200v200",
+      "seed": 87
+    },
+    {
+      "scenario_id": "center_failure_200v200",
+      "seed": 89
+    },
+    {
+      "scenario_id": "center_failure_200v200",
+      "seed": 90
+    },
+    {
+      "scenario_id": "center_failure_200v200",
+      "seed": 91
+    },
+    {
+      "scenario_id": "center_failure_200v200",
+      "seed": 95
+    },
+    {
+      "scenario_id": "center_failure_200v200",
+      "seed": 98
+    },
+    {
+      "scenario_id": "center_failure_200v200",
+      "seed": 99
+    },
+    {
+      "scenario_id": "center_failure_20v20",
+      "seed": 60
+    },
+    {
+      "scenario_id": "center_failure_20v20",
+      "seed": 62
+    },
+    {
+      "scenario_id": "center_failure_20v20",
+      "seed": 63
+    },
+    {
+      "scenario_id": "center_failure_20v20",
+      "seed": 65
+    },
+    {
+      "scenario_id": "center_failure_20v20",
+      "seed": 66
+    },
+    {
+      "scenario_id": "center_failure_20v20",
+      "seed": 68
+    },
+    {
+      "scenario_id": "center_failure_20v20",
+      "seed": 69
+    },
+    {
+      "scenario_id": "center_failure_20v20",
+      "seed": 70
+    },
+    {
+      "scenario_id": "center_failure_20v20",
+      "seed": 71
+    },
+    {
+      "scenario_id": "center_failure_20v20",
+      "seed": 72
+    },
+    {
+      "scenario_id": "center_failure_20v20",
+      "seed": 73
+    },
+    {
+      "scenario_id": "center_failure_20v20",
+      "seed": 74
+    },
+    {
+      "scenario_id": "center_failure_20v20",
+      "seed": 76
+    },
+    {
+      "scenario_id": "center_failure_20v20",
+      "seed": 77
+    },
+    {
+      "scenario_id": "center_failure_20v20",
+      "seed": 78
+    },
+    {
+      "scenario_id": "center_failure_20v20",
+      "seed": 79
+    },
+    {
+      "scenario_id": "center_failure_50v50",
+      "seed": 0
+    },
+    {
+      "scenario_id": "center_failure_50v50",
+      "seed": 2
+    },
+    {
+      "scenario_id": "center_failure_50v50",
+      "seed": 3
+    },
+    {
+      "scenario_id": "center_failure_50v50",
+      "seed": 5
+    },
+    {
+      "scenario_id": "center_failure_50v50",
+      "seed": 6
+    },
+    {
+      "scenario_id": "center_failure_50v50",
+      "seed": 7
+    },
+    {
+      "scenario_id": "center_failure_50v50",
+      "seed": 8
+    },
+    {
+      "scenario_id": "center_failure_50v50",
+      "seed": 10
+    },
+    {
+      "scenario_id": "center_failure_50v50",
+      "seed": 12
+    },
+    {
+      "scenario_id": "center_failure_50v50",
+      "seed": 14
+    },
+    {
+      "scenario_id": "center_failure_50v50",
+      "seed": 15
+    },
+    {
+      "scenario_id": "center_failure_50v50",
+      "seed": 16
+    },
+    {
+      "scenario_id": "center_failure_50v50",
+      "seed": 18
+    },
+    {
+      "scenario_id": "center_failure_50v50",
+      "seed": 19
+    },
+    {
+      "scenario_id": "center_failure_5v5",
+      "seed": 21
+    },
+    {
+      "scenario_id": "center_failure_5v5",
+      "seed": 22
+    },
+    {
+      "scenario_id": "center_failure_5v5",
+      "seed": 23
+    },
+    {
+      "scenario_id": "center_failure_5v5",
+      "seed": 25
+    },
+    {
+      "scenario_id": "center_failure_5v5",
+      "seed": 27
+    },
+    {
+      "scenario_id": "center_failure_5v5",
+      "seed": 31
+    },
+    {
+      "scenario_id": "center_failure_5v5",
+      "seed": 32
+    },
+    {
+      "scenario_id": "center_failure_5v5",
+      "seed": 34
+    },
+    {
+      "scenario_id": "center_failure_5v5",
+      "seed": 36
+    },
+    {
+      "scenario_id": "center_failure_5v5",
+      "seed": 37
+    },
+    {
+      "scenario_id": "center_failure_5v5",
+      "seed": 38
+    },
+    {
+      "scenario_id": "center_failure_5v5",
+      "seed": 39
+    },
+    {
+      "scenario_id": "communication_degraded_100v100",
+      "seed": 21
+    },
+    {
+      "scenario_id": "communication_degraded_100v100",
+      "seed": 22
+    },
+    {
+      "scenario_id": "communication_degraded_100v100",
+      "seed": 23
+    },
+    {
+      "scenario_id": "communication_degraded_100v100",
+      "seed": 25
+    },
+    {
+      "scenario_id": "communication_degraded_100v100",
+      "seed": 27
+    },
+    {
+      "scenario_id": "communication_degraded_100v100",
+      "seed": 31
+    },
+    {
+      "scenario_id": "communication_degraded_100v100",
+      "seed": 32
+    },
+    {
+      "scenario_id": "communication_degraded_100v100",
+      "seed": 34
+    },
+    {
+      "scenario_id": "communication_degraded_100v100",
+      "seed": 36
+    },
+    {
+      "scenario_id": "communication_degraded_100v100",
+      "seed": 37
+    },
+    {
+      "scenario_id": "communication_degraded_100v100",
+      "seed": 38
+    },
+    {
+      "scenario_id": "communication_degraded_100v100",
+      "seed": 39
+    },
+    {
+      "scenario_id": "communication_degraded_200v200",
+      "seed": 60
+    },
+    {
+      "scenario_id": "communication_degraded_200v200",
+      "seed": 62
+    },
+    {
+      "scenario_id": "communication_degraded_200v200",
+      "seed": 63
+    },
+    {
+      "scenario_id": "communication_degraded_200v200",
+      "seed": 65
+    },
+    {
+      "scenario_id": "communication_degraded_200v200",
+      "seed": 66
+    },
+    {
+      "scenario_id": "communication_degraded_200v200",
+      "seed": 68
+    },
+    {
+      "scenario_id": "communication_degraded_200v200",
+      "seed": 69
+    },
+    {
+      "scenario_id": "communication_degraded_200v200",
+      "seed": 70
+    },
+    {
+      "scenario_id": "communication_degraded_200v200",
+      "seed": 71
+    },
+    {
+      "scenario_id": "communication_degraded_200v200",
+      "seed": 72
+    },
+    {
+      "scenario_id": "communication_degraded_200v200",
+      "seed": 73
+    },
+    {
+      "scenario_id": "communication_degraded_200v200",
+      "seed": 74
+    },
+    {
+      "scenario_id": "communication_degraded_200v200",
+      "seed": 76
+    },
+    {
+      "scenario_id": "communication_degraded_200v200",
+      "seed": 77
+    },
+    {
+      "scenario_id": "communication_degraded_200v200",
+      "seed": 78
+    },
+    {
+      "scenario_id": "communication_degraded_200v200",
+      "seed": 79
+    },
+    {
+      "scenario_id": "communication_degraded_20v20",
+      "seed": 40
+    },
+    {
+      "scenario_id": "communication_degraded_20v20",
+      "seed": 41
+    },
+    {
+      "scenario_id": "communication_degraded_20v20",
+      "seed": 42
+    },
+    {
+      "scenario_id": "communication_degraded_20v20",
+      "seed": 43
+    },
+    {
+      "scenario_id": "communication_degraded_20v20",
+      "seed": 45
+    },
+    {
+      "scenario_id": "communication_degraded_20v20",
+      "seed": 46
+    },
+    {
+      "scenario_id": "communication_degraded_20v20",
+      "seed": 47
+    },
+    {
+      "scenario_id": "communication_degraded_20v20",
+      "seed": 48
+    },
+    {
+      "scenario_id": "communication_degraded_20v20",
+      "seed": 49
+    },
+    {
+      "scenario_id": "communication_degraded_20v20",
+      "seed": 51
+    },
+    {
+      "scenario_id": "communication_degraded_20v20",
+      "seed": 52
+    },
+    {
+      "scenario_id": "communication_degraded_20v20",
+      "seed": 53
+    },
+    {
+      "scenario_id": "communication_degraded_20v20",
+      "seed": 56
+    },
+    {
+      "scenario_id": "communication_degraded_20v20",
+      "seed": 58
+    },
+    {
+      "scenario_id": "communication_degraded_20v20",
+      "seed": 59
+    },
+    {
+      "scenario_id": "communication_degraded_50v50",
+      "seed": 80
+    },
+    {
+      "scenario_id": "communication_degraded_50v50",
+      "seed": 82
+    },
+    {
+      "scenario_id": "communication_degraded_50v50",
+      "seed": 83
+    },
+    {
+      "scenario_id": "communication_degraded_50v50",
+      "seed": 84
+    },
+    {
+      "scenario_id": "communication_degraded_50v50",
+      "seed": 85
+    },
+    {
+      "scenario_id": "communication_degraded_50v50",
+      "seed": 86
+    },
+    {
+      "scenario_id": "communication_degraded_50v50",
+      "seed": 87
+    },
+    {
+      "scenario_id": "communication_degraded_50v50",
+      "seed": 89
+    },
+    {
+      "scenario_id": "communication_degraded_50v50",
+      "seed": 90
+    },
+    {
+      "scenario_id": "communication_degraded_50v50",
+      "seed": 91
+    },
+    {
+      "scenario_id": "communication_degraded_50v50",
+      "seed": 95
+    },
+    {
+      "scenario_id": "communication_degraded_50v50",
+      "seed": 98
+    },
+    {
+      "scenario_id": "communication_degraded_50v50",
+      "seed": 99
+    },
+    {
+      "scenario_id": "communication_degraded_5v5",
+      "seed": 0
+    },
+    {
+      "scenario_id": "communication_degraded_5v5",
+      "seed": 2
+    },
+    {
+      "scenario_id": "communication_degraded_5v5",
+      "seed": 3
+    },
+    {
+      "scenario_id": "communication_degraded_5v5",
+      "seed": 5
+    },
+    {
+      "scenario_id": "communication_degraded_5v5",
+      "seed": 6
+    },
+    {
+      "scenario_id": "communication_degraded_5v5",
+      "seed": 7
+    },
+    {
+      "scenario_id": "communication_degraded_5v5",
+      "seed": 8
+    },
+    {
+      "scenario_id": "communication_degraded_5v5",
+      "seed": 10
+    },
+    {
+      "scenario_id": "communication_degraded_5v5",
+      "seed": 12
+    },
+    {
+      "scenario_id": "communication_degraded_5v5",
+      "seed": 14
+    },
+    {
+      "scenario_id": "communication_degraded_5v5",
+      "seed": 15
+    },
+    {
+      "scenario_id": "communication_degraded_5v5",
+      "seed": 16
+    },
+    {
+      "scenario_id": "communication_degraded_5v5",
+      "seed": 18
+    },
+    {
+      "scenario_id": "communication_degraded_5v5",
+      "seed": 19
+    },
+    {
+      "scenario_id": "d4-eight-region-runtime-action-overlay",
+      "seed": 0
+    },
+    {
+      "scenario_id": "d4-eight-region-runtime-action-overlay",
+      "seed": 2
+    },
+    {
+      "scenario_id": "d4-eight-region-runtime-action-overlay",
+      "seed": 3
+    },
+    {
+      "scenario_id": "d4-eight-region-runtime-action-overlay",
+      "seed": 5
+    },
+    {
+      "scenario_id": "d4-eight-region-runtime-action-overlay",
+      "seed": 6
+    },
+    {
+      "scenario_id": "d4-eight-region-runtime-action-overlay",
+      "seed": 7
+    },
+    {
+      "scenario_id": "d4-eight-region-runtime-action-overlay",
+      "seed": 8
+    },
+    {
+      "scenario_id": "d4-eight-region-runtime-action-overlay",
+      "seed": 10
+    },
+    {
+      "scenario_id": "d4-eight-region-runtime-action-overlay",
+      "seed": 12
+    },
+    {
+      "scenario_id": "d4-eight-region-runtime-action-overlay",
+      "seed": 14
+    },
+    {
+      "scenario_id": "d4-eight-region-runtime-action-overlay",
+      "seed": 15
+    },
+    {
+      "scenario_id": "d4-eight-region-runtime-action-overlay",
+      "seed": 16
+    },
+    {
+      "scenario_id": "d4-eight-region-runtime-action-overlay",
+      "seed": 18
+    },
+    {
+      "scenario_id": "d4-eight-region-runtime-action-overlay",
+      "seed": 19
+    },
+    {
+      "scenario_id": "d4-eight-region-runtime-action-overlay",
+      "seed": 21
+    },
+    {
+      "scenario_id": "d4-eight-region-runtime-action-overlay",
+      "seed": 22
+    },
+    {
+      "scenario_id": "d4-eight-region-runtime-action-overlay",
+      "seed": 23
+    },
+    {
+      "scenario_id": "d4-eight-region-runtime-action-overlay",
+      "seed": 25
+    },
+    {
+      "scenario_id": "d4-eight-region-runtime-action-overlay",
+      "seed": 27
+    },
+    {
+      "scenario_id": "d4-eight-region-runtime-action-overlay",
+      "seed": 31
+    },
+    {
+      "scenario_id": "d4-eight-region-runtime-action-overlay",
+      "seed": 32
+    },
+    {
+      "scenario_id": "d4-eight-region-runtime-action-overlay",
+      "seed": 34
+    },
+    {
+      "scenario_id": "d4-eight-region-runtime-action-overlay",
+      "seed": 36
+    },
+    {
+      "scenario_id": "d4-eight-region-runtime-action-overlay",
+      "seed": 37
+    },
+    {
+      "scenario_id": "d4-eight-region-runtime-action-overlay",
+      "seed": 38
+    },
+    {
+      "scenario_id": "d4-eight-region-runtime-action-overlay",
+      "seed": 39
+    },
+    {
+      "scenario_id": "d4-eight-region-runtime-action-overlay",
+      "seed": 40
+    },
+    {
+      "scenario_id": "d4-eight-region-runtime-action-overlay",
+      "seed": 41
+    },
+    {
+      "scenario_id": "d4-eight-region-runtime-action-overlay",
+      "seed": 42
+    },
+    {
+      "scenario_id": "d4-eight-region-runtime-action-overlay",
+      "seed": 43
+    },
+    {
+      "scenario_id": "d4-eight-region-runtime-action-overlay",
+      "seed": 45
+    },
+    {
+      "scenario_id": "d4-eight-region-runtime-action-overlay",
+      "seed": 46
+    },
+    {
+      "scenario_id": "d4-eight-region-runtime-action-overlay",
+      "seed": 47
+    },
+    {
+      "scenario_id": "d4-eight-region-runtime-action-overlay",
+      "seed": 48
+    },
+    {
+      "scenario_id": "d4-eight-region-runtime-action-overlay",
+      "seed": 49
+    },
+    {
+      "scenario_id": "d4-eight-region-runtime-action-overlay",
+      "seed": 51
+    },
+    {
+      "scenario_id": "d4-eight-region-runtime-action-overlay",
+      "seed": 52
+    },
+    {
+      "scenario_id": "d4-eight-region-runtime-action-overlay",
+      "seed": 53
+    },
+    {
+      "scenario_id": "d4-eight-region-runtime-action-overlay",
+      "seed": 56
+    },
+    {
+      "scenario_id": "d4-eight-region-runtime-action-overlay",
+      "seed": 58
+    },
+    {
+      "scenario_id": "d4-eight-region-runtime-action-overlay",
+      "seed": 59
+    },
+    {
+      "scenario_id": "d4-eight-region-runtime-action-overlay",
+      "seed": 60
+    },
+    {
+      "scenario_id": "d4-eight-region-runtime-action-overlay",
+      "seed": 62
+    },
+    {
+      "scenario_id": "d4-eight-region-runtime-action-overlay",
+      "seed": 63
+    },
+    {
+      "scenario_id": "d4-eight-region-runtime-action-overlay",
+      "seed": 65
+    },
+    {
+      "scenario_id": "d4-eight-region-runtime-action-overlay",
+      "seed": 66
+    },
+    {
+      "scenario_id": "d4-eight-region-runtime-action-overlay",
+      "seed": 68
+    },
+    {
+      "scenario_id": "d4-eight-region-runtime-action-overlay",
+      "seed": 69
+    },
+    {
+      "scenario_id": "d4-eight-region-runtime-action-overlay",
+      "seed": 70
+    },
+    {
+      "scenario_id": "d4-eight-region-runtime-action-overlay",
+      "seed": 71
+    },
+    {
+      "scenario_id": "d4-eight-region-runtime-action-overlay",
+      "seed": 72
+    },
+    {
+      "scenario_id": "d4-eight-region-runtime-action-overlay",
+      "seed": 73
+    },
+    {
+      "scenario_id": "d4-eight-region-runtime-action-overlay",
+      "seed": 74
+    },
+    {
+      "scenario_id": "d4-eight-region-runtime-action-overlay",
+      "seed": 76
+    },
+    {
+      "scenario_id": "d4-eight-region-runtime-action-overlay",
+      "seed": 77
+    },
+    {
+      "scenario_id": "d4-eight-region-runtime-action-overlay",
+      "seed": 78
+    },
+    {
+      "scenario_id": "d4-eight-region-runtime-action-overlay",
+      "seed": 79
+    },
+    {
+      "scenario_id": "d4-eight-region-runtime-action-overlay",
+      "seed": 80
+    },
+    {
+      "scenario_id": "d4-eight-region-runtime-action-overlay",
+      "seed": 82
+    },
+    {
+      "scenario_id": "d4-eight-region-runtime-action-overlay",
+      "seed": 83
+    },
+    {
+      "scenario_id": "d4-eight-region-runtime-action-overlay",
+      "seed": 84
+    },
+    {
+      "scenario_id": "d4-eight-region-runtime-action-overlay",
+      "seed": 85
+    },
+    {
+      "scenario_id": "d4-eight-region-runtime-action-overlay",
+      "seed": 86
+    },
+    {
+      "scenario_id": "d4-eight-region-runtime-action-overlay",
+      "seed": 87
+    },
+    {
+      "scenario_id": "d4-eight-region-runtime-action-overlay",
+      "seed": 89
+    },
+    {
+      "scenario_id": "d4-eight-region-runtime-action-overlay",
+      "seed": 90
+    },
+    {
+      "scenario_id": "d4-eight-region-runtime-action-overlay",
+      "seed": 91
+    },
+    {
+      "scenario_id": "d4-eight-region-runtime-action-overlay",
+      "seed": 95
+    },
+    {
+      "scenario_id": "d4-eight-region-runtime-action-overlay",
+      "seed": 98
+    },
+    {
+      "scenario_id": "d4-eight-region-runtime-action-overlay",
+      "seed": 99
+    },
+    {
+      "scenario_id": "delayed_noisy_100v100",
+      "seed": 0
+    },
+    {
+      "scenario_id": "delayed_noisy_100v100",
+      "seed": 2
+    },
+    {
+      "scenario_id": "delayed_noisy_100v100",
+      "seed": 3
+    },
+    {
+      "scenario_id": "delayed_noisy_100v100",
+      "seed": 5
+    },
+    {
+      "scenario_id": "delayed_noisy_100v100",
+      "seed": 6
+    },
+    {
+      "scenario_id": "delayed_noisy_100v100",
+      "seed": 7
+    },
+    {
+      "scenario_id": "delayed_noisy_100v100",
+      "seed": 8
+    },
+    {
+      "scenario_id": "delayed_noisy_100v100",
+      "seed": 10
+    },
+    {
+      "scenario_id": "delayed_noisy_100v100",
+      "seed": 12
+    },
+    {
+      "scenario_id": "delayed_noisy_100v100",
+      "seed": 14
+    },
+    {
+      "scenario_id": "delayed_noisy_100v100",
+      "seed": 15
+    },
+    {
+      "scenario_id": "delayed_noisy_100v100",
+      "seed": 16
+    },
+    {
+      "scenario_id": "delayed_noisy_100v100",
+      "seed": 18
+    },
+    {
+      "scenario_id": "delayed_noisy_100v100",
+      "seed": 19
+    },
+    {
+      "scenario_id": "delayed_noisy_200v200",
+      "seed": 40
+    },
+    {
+      "scenario_id": "delayed_noisy_200v200",
+      "seed": 41
+    },
+    {
+      "scenario_id": "delayed_noisy_200v200",
+      "seed": 42
+    },
+    {
+      "scenario_id": "delayed_noisy_200v200",
+      "seed": 43
+    },
+    {
+      "scenario_id": "delayed_noisy_200v200",
+      "seed": 45
+    },
+    {
+      "scenario_id": "delayed_noisy_200v200",
+      "seed": 46
+    },
+    {
+      "scenario_id": "delayed_noisy_200v200",
+      "seed": 47
+    },
+    {
+      "scenario_id": "delayed_noisy_200v200",
+      "seed": 48
+    },
+    {
+      "scenario_id": "delayed_noisy_200v200",
+      "seed": 49
+    },
+    {
+      "scenario_id": "delayed_noisy_200v200",
+      "seed": 51
+    },
+    {
+      "scenario_id": "delayed_noisy_200v200",
+      "seed": 52
+    },
+    {
+      "scenario_id": "delayed_noisy_200v200",
+      "seed": 53
+    },
+    {
+      "scenario_id": "delayed_noisy_200v200",
+      "seed": 56
+    },
+    {
+      "scenario_id": "delayed_noisy_200v200",
+      "seed": 58
+    },
+    {
+      "scenario_id": "delayed_noisy_200v200",
+      "seed": 59
+    },
+    {
+      "scenario_id": "delayed_noisy_20v20",
+      "seed": 21
+    },
+    {
+      "scenario_id": "delayed_noisy_20v20",
+      "seed": 22
+    },
+    {
+      "scenario_id": "delayed_noisy_20v20",
+      "seed": 23
+    },
+    {
+      "scenario_id": "delayed_noisy_20v20",
+      "seed": 25
+    },
+    {
+      "scenario_id": "delayed_noisy_20v20",
+      "seed": 27
+    },
+    {
+      "scenario_id": "delayed_noisy_20v20",
+      "seed": 31
+    },
+    {
+      "scenario_id": "delayed_noisy_20v20",
+      "seed": 32
+    },
+    {
+      "scenario_id": "delayed_noisy_20v20",
+      "seed": 34
+    },
+    {
+      "scenario_id": "delayed_noisy_20v20",
+      "seed": 36
+    },
+    {
+      "scenario_id": "delayed_noisy_20v20",
+      "seed": 37
+    },
+    {
+      "scenario_id": "delayed_noisy_20v20",
+      "seed": 38
+    },
+    {
+      "scenario_id": "delayed_noisy_20v20",
+      "seed": 39
+    },
+    {
+      "scenario_id": "delayed_noisy_50v50",
+      "seed": 60
+    },
+    {
+      "scenario_id": "delayed_noisy_50v50",
+      "seed": 62
+    },
+    {
+      "scenario_id": "delayed_noisy_50v50",
+      "seed": 63
+    },
+    {
+      "scenario_id": "delayed_noisy_50v50",
+      "seed": 65
+    },
+    {
+      "scenario_id": "delayed_noisy_50v50",
+      "seed": 66
+    },
+    {
+      "scenario_id": "delayed_noisy_50v50",
+      "seed": 68
+    },
+    {
+      "scenario_id": "delayed_noisy_50v50",
+      "seed": 69
+    },
+    {
+      "scenario_id": "delayed_noisy_50v50",
+      "seed": 70
+    },
+    {
+      "scenario_id": "delayed_noisy_50v50",
+      "seed": 71
+    },
+    {
+      "scenario_id": "delayed_noisy_50v50",
+      "seed": 72
+    },
+    {
+      "scenario_id": "delayed_noisy_50v50",
+      "seed": 73
+    },
+    {
+      "scenario_id": "delayed_noisy_50v50",
+      "seed": 74
+    },
+    {
+      "scenario_id": "delayed_noisy_50v50",
+      "seed": 76
+    },
+    {
+      "scenario_id": "delayed_noisy_50v50",
+      "seed": 77
+    },
+    {
+      "scenario_id": "delayed_noisy_50v50",
+      "seed": 78
+    },
+    {
+      "scenario_id": "delayed_noisy_50v50",
+      "seed": 79
+    },
+    {
+      "scenario_id": "delayed_noisy_5v5",
+      "seed": 80
+    },
+    {
+      "scenario_id": "delayed_noisy_5v5",
+      "seed": 82
+    },
+    {
+      "scenario_id": "delayed_noisy_5v5",
+      "seed": 83
+    },
+    {
+      "scenario_id": "delayed_noisy_5v5",
+      "seed": 84
+    },
+    {
+      "scenario_id": "delayed_noisy_5v5",
+      "seed": 85
+    },
+    {
+      "scenario_id": "delayed_noisy_5v5",
+      "seed": 86
+    },
+    {
+      "scenario_id": "delayed_noisy_5v5",
+      "seed": 87
+    },
+    {
+      "scenario_id": "delayed_noisy_5v5",
+      "seed": 89
+    },
+    {
+      "scenario_id": "delayed_noisy_5v5",
+      "seed": 90
+    },
+    {
+      "scenario_id": "delayed_noisy_5v5",
+      "seed": 91
+    },
+    {
+      "scenario_id": "delayed_noisy_5v5",
+      "seed": 95
+    },
+    {
+      "scenario_id": "delayed_noisy_5v5",
+      "seed": 98
+    },
+    {
+      "scenario_id": "delayed_noisy_5v5",
+      "seed": 99
+    },
+    {
+      "scenario_id": "dense_crossing_100v100",
+      "seed": 40
+    },
+    {
+      "scenario_id": "dense_crossing_100v100",
+      "seed": 41
+    },
+    {
+      "scenario_id": "dense_crossing_100v100",
+      "seed": 42
+    },
+    {
+      "scenario_id": "dense_crossing_100v100",
+      "seed": 43
+    },
+    {
+      "scenario_id": "dense_crossing_100v100",
+      "seed": 45
+    },
+    {
+      "scenario_id": "dense_crossing_100v100",
+      "seed": 46
+    },
+    {
+      "scenario_id": "dense_crossing_100v100",
+      "seed": 47
+    },
+    {
+      "scenario_id": "dense_crossing_100v100",
+      "seed": 48
+    },
+    {
+      "scenario_id": "dense_crossing_100v100",
+      "seed": 49
+    },
+    {
+      "scenario_id": "dense_crossing_100v100",
+      "seed": 51
+    },
+    {
+      "scenario_id": "dense_crossing_100v100",
+      "seed": 52
+    },
+    {
+      "scenario_id": "dense_crossing_100v100",
+      "seed": 53
+    },
+    {
+      "scenario_id": "dense_crossing_100v100",
+      "seed": 56
+    },
+    {
+      "scenario_id": "dense_crossing_100v100",
+      "seed": 58
+    },
+    {
+      "scenario_id": "dense_crossing_100v100",
+      "seed": 59
+    },
+    {
+      "scenario_id": "dense_crossing_200v200",
+      "seed": 80
+    },
+    {
+      "scenario_id": "dense_crossing_200v200",
+      "seed": 82
+    },
+    {
+      "scenario_id": "dense_crossing_200v200",
+      "seed": 83
+    },
+    {
+      "scenario_id": "dense_crossing_200v200",
+      "seed": 84
+    },
+    {
+      "scenario_id": "dense_crossing_200v200",
+      "seed": 85
+    },
+    {
+      "scenario_id": "dense_crossing_200v200",
+      "seed": 86
+    },
+    {
+      "scenario_id": "dense_crossing_200v200",
+      "seed": 87
+    },
+    {
+      "scenario_id": "dense_crossing_200v200",
+      "seed": 89
+    },
+    {
+      "scenario_id": "dense_crossing_200v200",
+      "seed": 90
+    },
+    {
+      "scenario_id": "dense_crossing_200v200",
+      "seed": 91
+    },
+    {
+      "scenario_id": "dense_crossing_200v200",
+      "seed": 95
+    },
+    {
+      "scenario_id": "dense_crossing_200v200",
+      "seed": 98
+    },
+    {
+      "scenario_id": "dense_crossing_200v200",
+      "seed": 99
+    },
+    {
+      "scenario_id": "dense_crossing_20v20",
+      "seed": 60
+    },
+    {
+      "scenario_id": "dense_crossing_20v20",
+      "seed": 62
+    },
+    {
+      "scenario_id": "dense_crossing_20v20",
+      "seed": 63
+    },
+    {
+      "scenario_id": "dense_crossing_20v20",
+      "seed": 65
+    },
+    {
+      "scenario_id": "dense_crossing_20v20",
+      "seed": 66
+    },
+    {
+      "scenario_id": "dense_crossing_20v20",
+      "seed": 68
+    },
+    {
+      "scenario_id": "dense_crossing_20v20",
+      "seed": 69
+    },
+    {
+      "scenario_id": "dense_crossing_20v20",
+      "seed": 70
+    },
+    {
+      "scenario_id": "dense_crossing_20v20",
+      "seed": 71
+    },
+    {
+      "scenario_id": "dense_crossing_20v20",
+      "seed": 72
+    },
+    {
+      "scenario_id": "dense_crossing_20v20",
+      "seed": 73
+    },
+    {
+      "scenario_id": "dense_crossing_20v20",
+      "seed": 74
+    },
+    {
+      "scenario_id": "dense_crossing_20v20",
+      "seed": 76
+    },
+    {
+      "scenario_id": "dense_crossing_20v20",
+      "seed": 77
+    },
+    {
+      "scenario_id": "dense_crossing_20v20",
+      "seed": 78
+    },
+    {
+      "scenario_id": "dense_crossing_20v20",
+      "seed": 79
+    },
+    {
+      "scenario_id": "dense_crossing_50v50",
+      "seed": 0
+    },
+    {
+      "scenario_id": "dense_crossing_50v50",
+      "seed": 2
+    },
+    {
+      "scenario_id": "dense_crossing_50v50",
+      "seed": 3
+    },
+    {
+      "scenario_id": "dense_crossing_50v50",
+      "seed": 5
+    },
+    {
+      "scenario_id": "dense_crossing_50v50",
+      "seed": 6
+    },
+    {
+      "scenario_id": "dense_crossing_50v50",
+      "seed": 7
+    },
+    {
+      "scenario_id": "dense_crossing_50v50",
+      "seed": 8
+    },
+    {
+      "scenario_id": "dense_crossing_50v50",
+      "seed": 10
+    },
+    {
+      "scenario_id": "dense_crossing_50v50",
+      "seed": 12
+    },
+    {
+      "scenario_id": "dense_crossing_50v50",
+      "seed": 14
+    },
+    {
+      "scenario_id": "dense_crossing_50v50",
+      "seed": 15
+    },
+    {
+      "scenario_id": "dense_crossing_50v50",
+      "seed": 16
+    },
+    {
+      "scenario_id": "dense_crossing_50v50",
+      "seed": 18
+    },
+    {
+      "scenario_id": "dense_crossing_50v50",
+      "seed": 19
+    },
+    {
+      "scenario_id": "dense_crossing_5v5",
+      "seed": 21
+    },
+    {
+      "scenario_id": "dense_crossing_5v5",
+      "seed": 22
+    },
+    {
+      "scenario_id": "dense_crossing_5v5",
+      "seed": 23
+    },
+    {
+      "scenario_id": "dense_crossing_5v5",
+      "seed": 25
+    },
+    {
+      "scenario_id": "dense_crossing_5v5",
+      "seed": 27
+    },
+    {
+      "scenario_id": "dense_crossing_5v5",
+      "seed": 31
+    },
+    {
+      "scenario_id": "dense_crossing_5v5",
+      "seed": 32
+    },
+    {
+      "scenario_id": "dense_crossing_5v5",
+      "seed": 34
+    },
+    {
+      "scenario_id": "dense_crossing_5v5",
+      "seed": 36
+    },
+    {
+      "scenario_id": "dense_crossing_5v5",
+      "seed": 37
+    },
+    {
+      "scenario_id": "dense_crossing_5v5",
+      "seed": 38
+    },
+    {
+      "scenario_id": "dense_crossing_5v5",
+      "seed": 39
+    },
+    {
+      "scenario_id": "evasive_multilevel_100v100",
+      "seed": 80
+    },
+    {
+      "scenario_id": "evasive_multilevel_100v100",
+      "seed": 82
+    },
+    {
+      "scenario_id": "evasive_multilevel_100v100",
+      "seed": 83
+    },
+    {
+      "scenario_id": "evasive_multilevel_100v100",
+      "seed": 84
+    },
+    {
+      "scenario_id": "evasive_multilevel_100v100",
+      "seed": 85
+    },
+    {
+      "scenario_id": "evasive_multilevel_100v100",
+      "seed": 86
+    },
+    {
+      "scenario_id": "evasive_multilevel_100v100",
+      "seed": 87
+    },
+    {
+      "scenario_id": "evasive_multilevel_100v100",
+      "seed": 89
+    },
+    {
+      "scenario_id": "evasive_multilevel_100v100",
+      "seed": 90
+    },
+    {
+      "scenario_id": "evasive_multilevel_100v100",
+      "seed": 91
+    },
+    {
+      "scenario_id": "evasive_multilevel_100v100",
+      "seed": 95
+    },
+    {
+      "scenario_id": "evasive_multilevel_100v100",
+      "seed": 98
+    },
+    {
+      "scenario_id": "evasive_multilevel_100v100",
+      "seed": 99
+    },
+    {
+      "scenario_id": "evasive_multilevel_200v200",
+      "seed": 21
+    },
+    {
+      "scenario_id": "evasive_multilevel_200v200",
+      "seed": 22
+    },
+    {
+      "scenario_id": "evasive_multilevel_200v200",
+      "seed": 23
+    },
+    {
+      "scenario_id": "evasive_multilevel_200v200",
+      "seed": 25
+    },
+    {
+      "scenario_id": "evasive_multilevel_200v200",
+      "seed": 27
+    },
+    {
+      "scenario_id": "evasive_multilevel_200v200",
+      "seed": 31
+    },
+    {
+      "scenario_id": "evasive_multilevel_200v200",
+      "seed": 32
+    },
+    {
+      "scenario_id": "evasive_multilevel_200v200",
+      "seed": 34
+    },
+    {
+      "scenario_id": "evasive_multilevel_200v200",
+      "seed": 36
+    },
+    {
+      "scenario_id": "evasive_multilevel_200v200",
+      "seed": 37
+    },
+    {
+      "scenario_id": "evasive_multilevel_200v200",
+      "seed": 38
+    },
+    {
+      "scenario_id": "evasive_multilevel_200v200",
+      "seed": 39
+    },
+    {
+      "scenario_id": "evasive_multilevel_20v20",
+      "seed": 0
+    },
+    {
+      "scenario_id": "evasive_multilevel_20v20",
+      "seed": 2
+    },
+    {
+      "scenario_id": "evasive_multilevel_20v20",
+      "seed": 3
+    },
+    {
+      "scenario_id": "evasive_multilevel_20v20",
+      "seed": 5
+    },
+    {
+      "scenario_id": "evasive_multilevel_20v20",
+      "seed": 6
+    },
+    {
+      "scenario_id": "evasive_multilevel_20v20",
+      "seed": 7
+    },
+    {
+      "scenario_id": "evasive_multilevel_20v20",
+      "seed": 8
+    },
+    {
+      "scenario_id": "evasive_multilevel_20v20",
+      "seed": 10
+    },
+    {
+      "scenario_id": "evasive_multilevel_20v20",
+      "seed": 12
+    },
+    {
+      "scenario_id": "evasive_multilevel_20v20",
+      "seed": 14
+    },
+    {
+      "scenario_id": "evasive_multilevel_20v20",
+      "seed": 15
+    },
+    {
+      "scenario_id": "evasive_multilevel_20v20",
+      "seed": 16
+    },
+    {
+      "scenario_id": "evasive_multilevel_20v20",
+      "seed": 18
+    },
+    {
+      "scenario_id": "evasive_multilevel_20v20",
+      "seed": 19
+    },
+    {
+      "scenario_id": "evasive_multilevel_50v50",
+      "seed": 40
+    },
+    {
+      "scenario_id": "evasive_multilevel_50v50",
+      "seed": 41
+    },
+    {
+      "scenario_id": "evasive_multilevel_50v50",
+      "seed": 42
+    },
+    {
+      "scenario_id": "evasive_multilevel_50v50",
+      "seed": 43
+    },
+    {
+      "scenario_id": "evasive_multilevel_50v50",
+      "seed": 45
+    },
+    {
+      "scenario_id": "evasive_multilevel_50v50",
+      "seed": 46
+    },
+    {
+      "scenario_id": "evasive_multilevel_50v50",
+      "seed": 47
+    },
+    {
+      "scenario_id": "evasive_multilevel_50v50",
+      "seed": 48
+    },
+    {
+      "scenario_id": "evasive_multilevel_50v50",
+      "seed": 49
+    },
+    {
+      "scenario_id": "evasive_multilevel_50v50",
+      "seed": 51
+    },
+    {
+      "scenario_id": "evasive_multilevel_50v50",
+      "seed": 52
+    },
+    {
+      "scenario_id": "evasive_multilevel_50v50",
+      "seed": 53
+    },
+    {
+      "scenario_id": "evasive_multilevel_50v50",
+      "seed": 56
+    },
+    {
+      "scenario_id": "evasive_multilevel_50v50",
+      "seed": 58
+    },
+    {
+      "scenario_id": "evasive_multilevel_50v50",
+      "seed": 59
+    },
+    {
+      "scenario_id": "evasive_multilevel_5v5",
+      "seed": 60
+    },
+    {
+      "scenario_id": "evasive_multilevel_5v5",
+      "seed": 62
+    },
+    {
+      "scenario_id": "evasive_multilevel_5v5",
+      "seed": 63
+    },
+    {
+      "scenario_id": "evasive_multilevel_5v5",
+      "seed": 65
+    },
+    {
+      "scenario_id": "evasive_multilevel_5v5",
+      "seed": 66
+    },
+    {
+      "scenario_id": "evasive_multilevel_5v5",
+      "seed": 68
+    },
+    {
+      "scenario_id": "evasive_multilevel_5v5",
+      "seed": 69
+    },
+    {
+      "scenario_id": "evasive_multilevel_5v5",
+      "seed": 70
+    },
+    {
+      "scenario_id": "evasive_multilevel_5v5",
+      "seed": 71
+    },
+    {
+      "scenario_id": "evasive_multilevel_5v5",
+      "seed": 72
+    },
+    {
+      "scenario_id": "evasive_multilevel_5v5",
+      "seed": 73
+    },
+    {
+      "scenario_id": "evasive_multilevel_5v5",
+      "seed": 74
+    },
+    {
+      "scenario_id": "evasive_multilevel_5v5",
+      "seed": 76
+    },
+    {
+      "scenario_id": "evasive_multilevel_5v5",
+      "seed": 77
+    },
+    {
+      "scenario_id": "evasive_multilevel_5v5",
+      "seed": 78
+    },
+    {
+      "scenario_id": "evasive_multilevel_5v5",
+      "seed": 79
+    },
+    {
+      "scenario_id": "formation_split_100v100",
+      "seed": 60
+    },
+    {
+      "scenario_id": "formation_split_100v100",
+      "seed": 62
+    },
+    {
+      "scenario_id": "formation_split_100v100",
+      "seed": 63
+    },
+    {
+      "scenario_id": "formation_split_100v100",
+      "seed": 65
+    },
+    {
+      "scenario_id": "formation_split_100v100",
+      "seed": 66
+    },
+    {
+      "scenario_id": "formation_split_100v100",
+      "seed": 68
+    },
+    {
+      "scenario_id": "formation_split_100v100",
+      "seed": 69
+    },
+    {
+      "scenario_id": "formation_split_100v100",
+      "seed": 70
+    },
+    {
+      "scenario_id": "formation_split_100v100",
+      "seed": 71
+    },
+    {
+      "scenario_id": "formation_split_100v100",
+      "seed": 72
+    },
+    {
+      "scenario_id": "formation_split_100v100",
+      "seed": 73
+    },
+    {
+      "scenario_id": "formation_split_100v100",
+      "seed": 74
+    },
+    {
+      "scenario_id": "formation_split_100v100",
+      "seed": 76
+    },
+    {
+      "scenario_id": "formation_split_100v100",
+      "seed": 77
+    },
+    {
+      "scenario_id": "formation_split_100v100",
+      "seed": 78
+    },
+    {
+      "scenario_id": "formation_split_100v100",
+      "seed": 79
+    },
+    {
+      "scenario_id": "formation_split_200v200",
+      "seed": 0
+    },
+    {
+      "scenario_id": "formation_split_200v200",
+      "seed": 2
+    },
+    {
+      "scenario_id": "formation_split_200v200",
+      "seed": 3
+    },
+    {
+      "scenario_id": "formation_split_200v200",
+      "seed": 5
+    },
+    {
+      "scenario_id": "formation_split_200v200",
+      "seed": 6
+    },
+    {
+      "scenario_id": "formation_split_200v200",
+      "seed": 7
+    },
+    {
+      "scenario_id": "formation_split_200v200",
+      "seed": 8
+    },
+    {
+      "scenario_id": "formation_split_200v200",
+      "seed": 10
+    },
+    {
+      "scenario_id": "formation_split_200v200",
+      "seed": 12
+    },
+    {
+      "scenario_id": "formation_split_200v200",
+      "seed": 14
+    },
+    {
+      "scenario_id": "formation_split_200v200",
+      "seed": 15
+    },
+    {
+      "scenario_id": "formation_split_200v200",
+      "seed": 16
+    },
+    {
+      "scenario_id": "formation_split_200v200",
+      "seed": 18
+    },
+    {
+      "scenario_id": "formation_split_200v200",
+      "seed": 19
+    },
+    {
+      "scenario_id": "formation_split_20v20",
+      "seed": 80
+    },
+    {
+      "scenario_id": "formation_split_20v20",
+      "seed": 82
+    },
+    {
+      "scenario_id": "formation_split_20v20",
+      "seed": 83
+    },
+    {
+      "scenario_id": "formation_split_20v20",
+      "seed": 84
+    },
+    {
+      "scenario_id": "formation_split_20v20",
+      "seed": 85
+    },
+    {
+      "scenario_id": "formation_split_20v20",
+      "seed": 86
+    },
+    {
+      "scenario_id": "formation_split_20v20",
+      "seed": 87
+    },
+    {
+      "scenario_id": "formation_split_20v20",
+      "seed": 89
+    },
+    {
+      "scenario_id": "formation_split_20v20",
+      "seed": 90
+    },
+    {
+      "scenario_id": "formation_split_20v20",
+      "seed": 91
+    },
+    {
+      "scenario_id": "formation_split_20v20",
+      "seed": 95
+    },
+    {
+      "scenario_id": "formation_split_20v20",
+      "seed": 98
+    },
+    {
+      "scenario_id": "formation_split_20v20",
+      "seed": 99
+    },
+    {
+      "scenario_id": "formation_split_50v50",
+      "seed": 21
+    },
+    {
+      "scenario_id": "formation_split_50v50",
+      "seed": 22
+    },
+    {
+      "scenario_id": "formation_split_50v50",
+      "seed": 23
+    },
+    {
+      "scenario_id": "formation_split_50v50",
+      "seed": 25
+    },
+    {
+      "scenario_id": "formation_split_50v50",
+      "seed": 27
+    },
+    {
+      "scenario_id": "formation_split_50v50",
+      "seed": 31
+    },
+    {
+      "scenario_id": "formation_split_50v50",
+      "seed": 32
+    },
+    {
+      "scenario_id": "formation_split_50v50",
+      "seed": 34
+    },
+    {
+      "scenario_id": "formation_split_50v50",
+      "seed": 36
+    },
+    {
+      "scenario_id": "formation_split_50v50",
+      "seed": 37
+    },
+    {
+      "scenario_id": "formation_split_50v50",
+      "seed": 38
+    },
+    {
+      "scenario_id": "formation_split_50v50",
+      "seed": 39
+    },
+    {
+      "scenario_id": "formation_split_5v5",
+      "seed": 40
+    },
+    {
+      "scenario_id": "formation_split_5v5",
+      "seed": 41
+    },
+    {
+      "scenario_id": "formation_split_5v5",
+      "seed": 42
+    },
+    {
+      "scenario_id": "formation_split_5v5",
+      "seed": 43
+    },
+    {
+      "scenario_id": "formation_split_5v5",
+      "seed": 45
+    },
+    {
+      "scenario_id": "formation_split_5v5",
+      "seed": 46
+    },
+    {
+      "scenario_id": "formation_split_5v5",
+      "seed": 47
+    },
+    {
+      "scenario_id": "formation_split_5v5",
+      "seed": 48
+    },
+    {
+      "scenario_id": "formation_split_5v5",
+      "seed": 49
+    },
+    {
+      "scenario_id": "formation_split_5v5",
+      "seed": 51
+    },
+    {
+      "scenario_id": "formation_split_5v5",
+      "seed": 52
+    },
+    {
+      "scenario_id": "formation_split_5v5",
+      "seed": 53
+    },
+    {
+      "scenario_id": "formation_split_5v5",
+      "seed": 56
+    },
+    {
+      "scenario_id": "formation_split_5v5",
+      "seed": 58
+    },
+    {
+      "scenario_id": "formation_split_5v5",
+      "seed": 59
+    },
+    {
+      "scenario_id": "high_threat_m_to_n_100v100",
+      "seed": 80
+    },
+    {
+      "scenario_id": "high_threat_m_to_n_100v100",
+      "seed": 82
+    },
+    {
+      "scenario_id": "high_threat_m_to_n_100v100",
+      "seed": 83
+    },
+    {
+      "scenario_id": "high_threat_m_to_n_100v100",
+      "seed": 84
+    },
+    {
+      "scenario_id": "high_threat_m_to_n_100v100",
+      "seed": 85
+    },
+    {
+      "scenario_id": "high_threat_m_to_n_100v100",
+      "seed": 86
+    },
+    {
+      "scenario_id": "high_threat_m_to_n_100v100",
+      "seed": 87
+    },
+    {
+      "scenario_id": "high_threat_m_to_n_100v100",
+      "seed": 89
+    },
+    {
+      "scenario_id": "high_threat_m_to_n_100v100",
+      "seed": 90
+    },
+    {
+      "scenario_id": "high_threat_m_to_n_100v100",
+      "seed": 91
+    },
+    {
+      "scenario_id": "high_threat_m_to_n_100v100",
+      "seed": 95
+    },
+    {
+      "scenario_id": "high_threat_m_to_n_100v100",
+      "seed": 98
+    },
+    {
+      "scenario_id": "high_threat_m_to_n_100v100",
+      "seed": 99
+    },
+    {
+      "scenario_id": "high_threat_m_to_n_200v200",
+      "seed": 21
+    },
+    {
+      "scenario_id": "high_threat_m_to_n_200v200",
+      "seed": 22
+    },
+    {
+      "scenario_id": "high_threat_m_to_n_200v200",
+      "seed": 23
+    },
+    {
+      "scenario_id": "high_threat_m_to_n_200v200",
+      "seed": 25
+    },
+    {
+      "scenario_id": "high_threat_m_to_n_200v200",
+      "seed": 27
+    },
+    {
+      "scenario_id": "high_threat_m_to_n_200v200",
+      "seed": 31
+    },
+    {
+      "scenario_id": "high_threat_m_to_n_200v200",
+      "seed": 32
+    },
+    {
+      "scenario_id": "high_threat_m_to_n_200v200",
+      "seed": 34
+    },
+    {
+      "scenario_id": "high_threat_m_to_n_200v200",
+      "seed": 36
+    },
+    {
+      "scenario_id": "high_threat_m_to_n_200v200",
+      "seed": 37
+    },
+    {
+      "scenario_id": "high_threat_m_to_n_200v200",
+      "seed": 38
+    },
+    {
+      "scenario_id": "high_threat_m_to_n_200v200",
+      "seed": 39
+    },
+    {
+      "scenario_id": "high_threat_m_to_n_20v20",
+      "seed": 0
+    },
+    {
+      "scenario_id": "high_threat_m_to_n_20v20",
+      "seed": 2
+    },
+    {
+      "scenario_id": "high_threat_m_to_n_20v20",
+      "seed": 3
+    },
+    {
+      "scenario_id": "high_threat_m_to_n_20v20",
+      "seed": 5
+    },
+    {
+      "scenario_id": "high_threat_m_to_n_20v20",
+      "seed": 6
+    },
+    {
+      "scenario_id": "high_threat_m_to_n_20v20",
+      "seed": 7
+    },
+    {
+      "scenario_id": "high_threat_m_to_n_20v20",
+      "seed": 8
+    },
+    {
+      "scenario_id": "high_threat_m_to_n_20v20",
+      "seed": 10
+    },
+    {
+      "scenario_id": "high_threat_m_to_n_20v20",
+      "seed": 12
+    },
+    {
+      "scenario_id": "high_threat_m_to_n_20v20",
+      "seed": 14
+    },
+    {
+      "scenario_id": "high_threat_m_to_n_20v20",
+      "seed": 15
+    },
+    {
+      "scenario_id": "high_threat_m_to_n_20v20",
+      "seed": 16
+    },
+    {
+      "scenario_id": "high_threat_m_to_n_20v20",
+      "seed": 18
+    },
+    {
+      "scenario_id": "high_threat_m_to_n_20v20",
+      "seed": 19
+    },
+    {
+      "scenario_id": "high_threat_m_to_n_50v50",
+      "seed": 40
+    },
+    {
+      "scenario_id": "high_threat_m_to_n_50v50",
+      "seed": 41
+    },
+    {
+      "scenario_id": "high_threat_m_to_n_50v50",
+      "seed": 42
+    },
+    {
+      "scenario_id": "high_threat_m_to_n_50v50",
+      "seed": 43
+    },
+    {
+      "scenario_id": "high_threat_m_to_n_50v50",
+      "seed": 45
+    },
+    {
+      "scenario_id": "high_threat_m_to_n_50v50",
+      "seed": 46
+    },
+    {
+      "scenario_id": "high_threat_m_to_n_50v50",
+      "seed": 47
+    },
+    {
+      "scenario_id": "high_threat_m_to_n_50v50",
+      "seed": 48
+    },
+    {
+      "scenario_id": "high_threat_m_to_n_50v50",
+      "seed": 49
+    },
+    {
+      "scenario_id": "high_threat_m_to_n_50v50",
+      "seed": 51
+    },
+    {
+      "scenario_id": "high_threat_m_to_n_50v50",
+      "seed": 52
+    },
+    {
+      "scenario_id": "high_threat_m_to_n_50v50",
+      "seed": 53
+    },
+    {
+      "scenario_id": "high_threat_m_to_n_50v50",
+      "seed": 56
+    },
+    {
+      "scenario_id": "high_threat_m_to_n_50v50",
+      "seed": 58
+    },
+    {
+      "scenario_id": "high_threat_m_to_n_50v50",
+      "seed": 59
+    },
+    {
+      "scenario_id": "high_threat_m_to_n_5v5",
+      "seed": 60
+    },
+    {
+      "scenario_id": "high_threat_m_to_n_5v5",
+      "seed": 62
+    },
+    {
+      "scenario_id": "high_threat_m_to_n_5v5",
+      "seed": 63
+    },
+    {
+      "scenario_id": "high_threat_m_to_n_5v5",
+      "seed": 65
+    },
+    {
+      "scenario_id": "high_threat_m_to_n_5v5",
+      "seed": 66
+    },
+    {
+      "scenario_id": "high_threat_m_to_n_5v5",
+      "seed": 68
+    },
+    {
+      "scenario_id": "high_threat_m_to_n_5v5",
+      "seed": 69
+    },
+    {
+      "scenario_id": "high_threat_m_to_n_5v5",
+      "seed": 70
+    },
+    {
+      "scenario_id": "high_threat_m_to_n_5v5",
+      "seed": 71
+    },
+    {
+      "scenario_id": "high_threat_m_to_n_5v5",
+      "seed": 72
+    },
+    {
+      "scenario_id": "high_threat_m_to_n_5v5",
+      "seed": 73
+    },
+    {
+      "scenario_id": "high_threat_m_to_n_5v5",
+      "seed": 74
+    },
+    {
+      "scenario_id": "high_threat_m_to_n_5v5",
+      "seed": 76
+    },
+    {
+      "scenario_id": "high_threat_m_to_n_5v5",
+      "seed": 77
+    },
+    {
+      "scenario_id": "high_threat_m_to_n_5v5",
+      "seed": 78
+    },
+    {
+      "scenario_id": "high_threat_m_to_n_5v5",
+      "seed": 79
+    },
+    {
+      "scenario_id": "nominal_100v100",
+      "seed": 21
+    },
+    {
+      "scenario_id": "nominal_100v100",
+      "seed": 22
+    },
+    {
+      "scenario_id": "nominal_100v100",
+      "seed": 23
+    },
+    {
+      "scenario_id": "nominal_100v100",
+      "seed": 25
+    },
+    {
+      "scenario_id": "nominal_100v100",
+      "seed": 27
+    },
+    {
+      "scenario_id": "nominal_100v100",
+      "seed": 31
+    },
+    {
+      "scenario_id": "nominal_100v100",
+      "seed": 32
+    },
+    {
+      "scenario_id": "nominal_100v100",
+      "seed": 34
+    },
+    {
+      "scenario_id": "nominal_100v100",
+      "seed": 36
+    },
+    {
+      "scenario_id": "nominal_100v100",
+      "seed": 37
+    },
+    {
+      "scenario_id": "nominal_100v100",
+      "seed": 38
+    },
+    {
+      "scenario_id": "nominal_100v100",
+      "seed": 39
+    },
+    {
+      "scenario_id": "nominal_200v200",
+      "seed": 60
+    },
+    {
+      "scenario_id": "nominal_200v200",
+      "seed": 62
+    },
+    {
+      "scenario_id": "nominal_200v200",
+      "seed": 63
+    },
+    {
+      "scenario_id": "nominal_200v200",
+      "seed": 65
+    },
+    {
+      "scenario_id": "nominal_200v200",
+      "seed": 66
+    },
+    {
+      "scenario_id": "nominal_200v200",
+      "seed": 68
+    },
+    {
+      "scenario_id": "nominal_200v200",
+      "seed": 69
+    },
+    {
+      "scenario_id": "nominal_200v200",
+      "seed": 70
+    },
+    {
+      "scenario_id": "nominal_200v200",
+      "seed": 71
+    },
+    {
+      "scenario_id": "nominal_200v200",
+      "seed": 72
+    },
+    {
+      "scenario_id": "nominal_200v200",
+      "seed": 73
+    },
+    {
+      "scenario_id": "nominal_200v200",
+      "seed": 74
+    },
+    {
+      "scenario_id": "nominal_200v200",
+      "seed": 76
+    },
+    {
+      "scenario_id": "nominal_200v200",
+      "seed": 77
+    },
+    {
+      "scenario_id": "nominal_200v200",
+      "seed": 78
+    },
+    {
+      "scenario_id": "nominal_200v200",
+      "seed": 79
+    },
+    {
+      "scenario_id": "nominal_20v20",
+      "seed": 40
+    },
+    {
+      "scenario_id": "nominal_20v20",
+      "seed": 41
+    },
+    {
+      "scenario_id": "nominal_20v20",
+      "seed": 42
+    },
+    {
+      "scenario_id": "nominal_20v20",
+      "seed": 43
+    },
+    {
+      "scenario_id": "nominal_20v20",
+      "seed": 45
+    },
+    {
+      "scenario_id": "nominal_20v20",
+      "seed": 46
+    },
+    {
+      "scenario_id": "nominal_20v20",
+      "seed": 47
+    },
+    {
+      "scenario_id": "nominal_20v20",
+      "seed": 48
+    },
+    {
+      "scenario_id": "nominal_20v20",
+      "seed": 49
+    },
+    {
+      "scenario_id": "nominal_20v20",
+      "seed": 51
+    },
+    {
+      "scenario_id": "nominal_20v20",
+      "seed": 52
+    },
+    {
+      "scenario_id": "nominal_20v20",
+      "seed": 53
+    },
+    {
+      "scenario_id": "nominal_20v20",
+      "seed": 56
+    },
+    {
+      "scenario_id": "nominal_20v20",
+      "seed": 58
+    },
+    {
+      "scenario_id": "nominal_20v20",
+      "seed": 59
+    },
+    {
+      "scenario_id": "nominal_50v50",
+      "seed": 80
+    },
+    {
+      "scenario_id": "nominal_50v50",
+      "seed": 82
+    },
+    {
+      "scenario_id": "nominal_50v50",
+      "seed": 83
+    },
+    {
+      "scenario_id": "nominal_50v50",
+      "seed": 84
+    },
+    {
+      "scenario_id": "nominal_50v50",
+      "seed": 85
+    },
+    {
+      "scenario_id": "nominal_50v50",
+      "seed": 86
+    },
+    {
+      "scenario_id": "nominal_50v50",
+      "seed": 87
+    },
+    {
+      "scenario_id": "nominal_50v50",
+      "seed": 89
+    },
+    {
+      "scenario_id": "nominal_50v50",
+      "seed": 90
+    },
+    {
+      "scenario_id": "nominal_50v50",
+      "seed": 91
+    },
+    {
+      "scenario_id": "nominal_50v50",
+      "seed": 95
+    },
+    {
+      "scenario_id": "nominal_50v50",
+      "seed": 98
+    },
+    {
+      "scenario_id": "nominal_50v50",
+      "seed": 99
+    },
+    {
+      "scenario_id": "nominal_5v5",
+      "seed": 0
+    },
+    {
+      "scenario_id": "nominal_5v5",
+      "seed": 2
+    },
+    {
+      "scenario_id": "nominal_5v5",
+      "seed": 3
+    },
+    {
+      "scenario_id": "nominal_5v5",
+      "seed": 5
+    },
+    {
+      "scenario_id": "nominal_5v5",
+      "seed": 6
+    },
+    {
+      "scenario_id": "nominal_5v5",
+      "seed": 7
+    },
+    {
+      "scenario_id": "nominal_5v5",
+      "seed": 8
+    },
+    {
+      "scenario_id": "nominal_5v5",
+      "seed": 10
+    },
+    {
+      "scenario_id": "nominal_5v5",
+      "seed": 12
+    },
+    {
+      "scenario_id": "nominal_5v5",
+      "seed": 14
+    },
+    {
+      "scenario_id": "nominal_5v5",
+      "seed": 15
+    },
+    {
+      "scenario_id": "nominal_5v5",
+      "seed": 16
+    },
+    {
+      "scenario_id": "nominal_5v5",
+      "seed": 18
+    },
+    {
+      "scenario_id": "nominal_5v5",
+      "seed": 19
+    },
+    {
+      "scenario_id": "secondary_failure_100v100",
+      "seed": 60
+    },
+    {
+      "scenario_id": "secondary_failure_100v100",
+      "seed": 62
+    },
+    {
+      "scenario_id": "secondary_failure_100v100",
+      "seed": 63
+    },
+    {
+      "scenario_id": "secondary_failure_100v100",
+      "seed": 65
+    },
+    {
+      "scenario_id": "secondary_failure_100v100",
+      "seed": 66
+    },
+    {
+      "scenario_id": "secondary_failure_100v100",
+      "seed": 68
+    },
+    {
+      "scenario_id": "secondary_failure_100v100",
+      "seed": 69
+    },
+    {
+      "scenario_id": "secondary_failure_100v100",
+      "seed": 70
+    },
+    {
+      "scenario_id": "secondary_failure_100v100",
+      "seed": 71
+    },
+    {
+      "scenario_id": "secondary_failure_100v100",
+      "seed": 72
+    },
+    {
+      "scenario_id": "secondary_failure_100v100",
+      "seed": 73
+    },
+    {
+      "scenario_id": "secondary_failure_100v100",
+      "seed": 74
+    },
+    {
+      "scenario_id": "secondary_failure_100v100",
+      "seed": 76
+    },
+    {
+      "scenario_id": "secondary_failure_100v100",
+      "seed": 77
+    },
+    {
+      "scenario_id": "secondary_failure_100v100",
+      "seed": 78
+    },
+    {
+      "scenario_id": "secondary_failure_100v100",
+      "seed": 79
+    },
+    {
+      "scenario_id": "secondary_failure_200v200",
+      "seed": 0
+    },
+    {
+      "scenario_id": "secondary_failure_200v200",
+      "seed": 2
+    },
+    {
+      "scenario_id": "secondary_failure_200v200",
+      "seed": 3
+    },
+    {
+      "scenario_id": "secondary_failure_200v200",
+      "seed": 5
+    },
+    {
+      "scenario_id": "secondary_failure_200v200",
+      "seed": 6
+    },
+    {
+      "scenario_id": "secondary_failure_200v200",
+      "seed": 7
+    },
+    {
+      "scenario_id": "secondary_failure_200v200",
+      "seed": 8
+    },
+    {
+      "scenario_id": "secondary_failure_200v200",
+      "seed": 10
+    },
+    {
+      "scenario_id": "secondary_failure_200v200",
+      "seed": 12
+    },
+    {
+      "scenario_id": "secondary_failure_200v200",
+      "seed": 14
+    },
+    {
+      "scenario_id": "secondary_failure_200v200",
+      "seed": 15
+    },
+    {
+      "scenario_id": "secondary_failure_200v200",
+      "seed": 16
+    },
+    {
+      "scenario_id": "secondary_failure_200v200",
+      "seed": 18
+    },
+    {
+      "scenario_id": "secondary_failure_200v200",
+      "seed": 19
+    },
+    {
+      "scenario_id": "secondary_failure_20v20",
+      "seed": 80
+    },
+    {
+      "scenario_id": "secondary_failure_20v20",
+      "seed": 82
+    },
+    {
+      "scenario_id": "secondary_failure_20v20",
+      "seed": 83
+    },
+    {
+      "scenario_id": "secondary_failure_20v20",
+      "seed": 84
+    },
+    {
+      "scenario_id": "secondary_failure_20v20",
+      "seed": 85
+    },
+    {
+      "scenario_id": "secondary_failure_20v20",
+      "seed": 86
+    },
+    {
+      "scenario_id": "secondary_failure_20v20",
+      "seed": 87
+    },
+    {
+      "scenario_id": "secondary_failure_20v20",
+      "seed": 89
+    },
+    {
+      "scenario_id": "secondary_failure_20v20",
+      "seed": 90
+    },
+    {
+      "scenario_id": "secondary_failure_20v20",
+      "seed": 91
+    },
+    {
+      "scenario_id": "secondary_failure_20v20",
+      "seed": 95
+    },
+    {
+      "scenario_id": "secondary_failure_20v20",
+      "seed": 98
+    },
+    {
+      "scenario_id": "secondary_failure_20v20",
+      "seed": 99
+    },
+    {
+      "scenario_id": "secondary_failure_50v50",
+      "seed": 21
+    },
+    {
+      "scenario_id": "secondary_failure_50v50",
+      "seed": 22
+    },
+    {
+      "scenario_id": "secondary_failure_50v50",
+      "seed": 23
+    },
+    {
+      "scenario_id": "secondary_failure_50v50",
+      "seed": 25
+    },
+    {
+      "scenario_id": "secondary_failure_50v50",
+      "seed": 27
+    },
+    {
+      "scenario_id": "secondary_failure_50v50",
+      "seed": 31
+    },
+    {
+      "scenario_id": "secondary_failure_50v50",
+      "seed": 32
+    },
+    {
+      "scenario_id": "secondary_failure_50v50",
+      "seed": 34
+    },
+    {
+      "scenario_id": "secondary_failure_50v50",
+      "seed": 36
+    },
+    {
+      "scenario_id": "secondary_failure_50v50",
+      "seed": 37
+    },
+    {
+      "scenario_id": "secondary_failure_50v50",
+      "seed": 38
+    },
+    {
+      "scenario_id": "secondary_failure_50v50",
+      "seed": 39
+    },
+    {
+      "scenario_id": "secondary_failure_5v5",
+      "seed": 40
+    },
+    {
+      "scenario_id": "secondary_failure_5v5",
+      "seed": 41
+    },
+    {
+      "scenario_id": "secondary_failure_5v5",
+      "seed": 42
+    },
+    {
+      "scenario_id": "secondary_failure_5v5",
+      "seed": 43
+    },
+    {
+      "scenario_id": "secondary_failure_5v5",
+      "seed": 45
+    },
+    {
+      "scenario_id": "secondary_failure_5v5",
+      "seed": 46
+    },
+    {
+      "scenario_id": "secondary_failure_5v5",
+      "seed": 47
+    },
+    {
+      "scenario_id": "secondary_failure_5v5",
+      "seed": 48
+    },
+    {
+      "scenario_id": "secondary_failure_5v5",
+      "seed": 49
+    },
+    {
+      "scenario_id": "secondary_failure_5v5",
+      "seed": 51
+    },
+    {
+      "scenario_id": "secondary_failure_5v5",
+      "seed": 52
+    },
+    {
+      "scenario_id": "secondary_failure_5v5",
+      "seed": 53
+    },
+    {
+      "scenario_id": "secondary_failure_5v5",
+      "seed": 56
+    },
+    {
+      "scenario_id": "secondary_failure_5v5",
+      "seed": 58
+    },
+    {
+      "scenario_id": "secondary_failure_5v5",
+      "seed": 59
+    }
+  ],
+  "training_manifest_file": "training_dataset_manifest.json",
+  "training_manifest_sha256": "d6f0e67a2899e09401662ecbdaff4ad6def9076c30b25eebc7a9114764643b7f",
+  "training_split_sha256": "69ae1b0e40c6478ac62d65d89b1634f867d10b8167c523763741827a6f96d817"
+}

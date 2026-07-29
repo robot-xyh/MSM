@@ -4,6 +4,21 @@
 和 development/shadow 影子诊断。登记不表示模型通过运行准入，也不授予默认 runtime、
 assist、assignment、takeover、coalition commit 或 control 权限。
 
+## region_resource_a2_8region_runtime_action_shadow_v1
+
+该目录保存从 clean detached checkout
+`923f3f6e91af0f85aed446c66420c834d2de63fb` 构建的 8-region 复合训练候选。运行特征源
+和动作课程源分别为 `b06d741b...6158`、`7e17aba7...e72`；候选 manifest 文件/内容、
+权重、源码身份、bundle manifest、复合数据和 split SHA-256 分别为
+`ad5846b1...f5e5`、`52866167...e2f`、`43157f4e...b0ee`、
+`f9c52715...53ed`、`824aecf1...b8f`、`ee6bd202...cfd4` 和
+`69ae1b0e...d817`。
+
+候选只允许 read-only shadow。validation 中 51 个动作不一致样本越过固定 0.60，
+`confidence_calibration_accepted=false`；适配器强制规则回退。main runtime preflight
+尚未执行，正式 20-seed/900-cell 禁止。该目录不得改写；后续重新训练必须使用新的候选
+标识和目录。2026-07-28 最终 registry 专项 14/14、D4 全量 720/720 通过。
+
 ## region_resource_a2_current_lineage_development_v1
 
 该目录是冻结 current-lineage 候选的逐字节登记副本。原始候选由 clean commit

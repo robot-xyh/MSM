@@ -1,5 +1,18 @@
 # D4 文档索引
 
+2026-07-28 已新增 8-region 复合候选。候选用运行数据提供特征几何、动作课程提供动作配方，
+按数字 seed 0-99 做 70/15/15 全局原子切分，1000-1019 使用数为 0。候选专用置信度头已
+训练，但 validation 中 51 个动作不一致样本仍越过固定 0.60，因此清单与 shadow failure
+gate 保持失败关闭。最终 registry 专项 14/14；main runtime preflight 待执行，正式
+20-seed/900-cell 禁止。原理、实现和结果分别见 `MODULE_PRINCIPLES_CN.md`、
+`ALGORITHM_AND_IMPLEMENTATION.md` 与 `../reports/EXPERIMENT_REPORT.md`。
+
+最终候选由 clean commit `923f3f6e91af0f85aed446c66420c834d2de63fb` 构建；manifest
+文件/内容、模型、源码身份、bundle manifest、复合数据和 split SHA-256 为
+`ad5846b1...f5e5`、`52866167...e2f`、`43157f4e...b0ee`、
+`f9c52715...53ed`、`824aecf1...b8f`、`ee6bd202...cfd4` 和
+`69ae1b0e...d817`。2026-07-28 最终专项 14/14、D4 全量 720/720 通过。
+
 2026-07-28 新增
 `../reports/D4_A2_CURRENT_LINEAGE_SHADOW_RUNTIME_BOUNDARY_20260728.md`。文档说明冻结候选
 的只读运行适配、逐特征 OOD 诊断和权限边界。main 的 5v5/2 区域 3 帧及

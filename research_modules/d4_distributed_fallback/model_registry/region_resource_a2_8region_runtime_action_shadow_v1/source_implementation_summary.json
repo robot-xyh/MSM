@@ -1,0 +1,19 @@
+{
+  "committed_training_implementation_files": {
+    "research_modules/d4_distributed_fallback/d4_distributed_fallback/region_resource.py": "15eb26f8ac7323347d63df244212f0469783454bf7ac01384628d3a8ea5a0a5e",
+    "research_modules/d4_distributed_fallback/d4_distributed_fallback/region_resource_current_lineage_candidate.py": "956ce5ccfee586329b8c2638e82cd2862ca661f24107b0cb253c80b4d724eceb",
+    "research_modules/d4_distributed_fallback/d4_distributed_fallback/region_resource_dataset.py": "171a462da4f288e53812572e55ee3c52aaba66730634c6d129e26b1d235a281e",
+    "research_modules/d4_distributed_fallback/d4_distributed_fallback/region_resource_learning.py": "0760c67f634a1201af7006f4b4d54ddbb36d9bf96f39bd771e281ff2b34884fa"
+  },
+  "committed_training_implementation_sha256": "28e10c9c5a6a6b5585fe6a4ea4620a5c65a121f76b06b952d8ee92aef2935de7",
+  "content_sha256": "cb234c8d9710db7d5f76804bf15b38b92671b2f4855ba7b1992eea9e7b304890",
+  "git_commit": "923f3f6e91af0f85aed446c66420c834d2de63fb",
+  "git_tree": "fd1db2ee931c75d280a1bef459ef668fcb7e11a2",
+  "schema": "d4-region-resource-eight-region-source-v1",
+  "source_identity_sha256": "f9c527155ce38ee0190787784e4033ff0f5dbef1b476edad0d944111e5bd53ed",
+  "training_core_matches_commit": true,
+  "view_builder_content_addressed": true,
+  "view_builder_file": "research_modules/d4_distributed_fallback/d4_distributed_fallback/region_resource_eight_region_candidate.py",
+  "view_builder_file_sha256": "5270f0491f4ab1f7c89fc7f9c89158bf5efe27cbce5f638758608c2a480aa290",
+  "view_recipe": "runtime-eight-region-geometry-plus-curriculum-action-recipe-v1"
+}

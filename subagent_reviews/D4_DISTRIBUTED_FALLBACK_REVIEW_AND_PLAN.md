@@ -1,5 +1,34 @@
 # D4 分布式协同与降级接管综述及子方案
 
+## 2026-07-28 八区域候选评审
+
+D4 已完成 8-region 复合候选的构建、内容寻址登记和专项测试。运行源与动作课程分别绑定
+`b06d741b...6158` 和 `7e17aba7...e72`；0-99 按 70/15/15 全局原子切分，
+1000-1019 使用数为 0。课程动作在八区域运行几何上由规则策略和安全投影重新标注，没有
+直接混用四区域张量，也没有在线真值或未来结果。
+
+候选专用置信度头已获得监督，但 validation 中 51 个动作不一致样本仍越过固定 0.60。
+清单因此记录 `confidence_calibration_accepted=false`，shadow failure gate 强制失败。
+八区域代表帧无 feature OOD、confidence 0.909641，但 aggregate gate 与实际执行均为
+false。该结果支持“训练和审计链可复现”，不支持“候选可运行”。
+
+候选由 clean commit `923f3f6e91af0f85aed446c66420c834d2de63fb` 构建。manifest
+文件/内容、模型、源码身份、bundle manifest、复合数据和 split SHA-256 为
+`ad5846b1...f5e5`、`52866167...e2f`、`43157f4e...b0ee`、
+`f9c52715...53ed`、`824aecf1...b8f`、`ee6bd202...cfd4` 和
+`69ae1b0e...d817`。2026-07-28 最终 registry 专项 14/14、D4 全量 720/720 通过。
+
+main development preflight 已完成。5v5/2 区域 3 帧分布内 0/3、raw execution 0；
+200v200/8 区域 3 帧分布内 1/3、raw execution 1、candidate-permitted execution 0。
+八区域剩余 OOD 只来自 `secondary_readiness`，训练范围 [1.0, 1.0] 未覆盖运行范围
+[0.0, 1.0]，24 个节点值中 16 个低于训练下界。两组有限值正常，在线真值使用数为 0。
+
+双源重切分将 raw execution 从 0 提高到 1，但运行分布仍未闭合。需补采真实 8-region、
+`secondary_readiness=0` 帧，并修复验证集中 51/315 个动作不一致样本跨过 0.60 的校准
+误接收。当前状态为已构建、main preflight 未通过。正式 20-seed/900-cell 禁止，
+assist/assignment/takeover/coalition/control 和物理权限全为 false；不得降低 0.60 或
+使用 test/reserved seed。
+
 ## 2026-07-28 当前谱系影子运行评审
 
 D4 已把候选可信加载、运行分布兼容和正式采用拆成三层证据。只读适配器固定候选身份并记录

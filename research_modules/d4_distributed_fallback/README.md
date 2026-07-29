@@ -1,5 +1,50 @@
 # D4 分布式协同与降级接管
 
+## 2026-07-28 八区域复合候选与置信度校准
+
+D4 已构建新的 8-region 专用候选
+`region_resource_a2_8region_runtime_action_shadow_v1`。运行数据
+`b06d741b...6158` 提供 900 episode/1798 frame 的八区域特征几何；动作课程
+`7e17aba7...e72` 只提供 hold、request-replan、非零配额和转移配方。课程动作在运行快照
+上重新生成，并由现有规则策略和确定性安全投影形成标签。复合视图为 1000 episode/2098
+frame，数字 seed 0-99 按 70/15/15 全局原子切分，seed 1000-1019 使用数为 0。候选适用域
+严格限定为 8 区域，2 区域输入按图级 OOD 失败关闭。
+
+该候选采用独立的置信度训练阶段。动作模型训练结束后冻结，只更新
+`confidence_head`。置信度目标来自模型动作与规则加安全投影标签之间的配额、备用、
+侦察优先级、hold/replan 和转移误差；动作不一致样本的目标上限固定为 0.59，运行门限仍为
+0.60。训练只使用 train，validation 只做审计，test、保留 seed、真值标识和未来结果使用
+数均为 0。
+
+验证集 315 个样本的 Brier 分数由 0.258170 降至 0.021107，但校准后 315/315 均越过
+0.60，其中 51 个不满足动作一致性条件，门后动作一致率为 83.81%。该证据不足以接入运行
+链。manifest 固化 `confidence_calibration_accepted=false`，shadow 适配器将
+`candidate_failure_gate_passed` 置为 false，并记录
+`candidate_confidence_calibration_not_accepted`。一个八区域代表帧的
+`feature_ood=false`、置信度 0.909641、`gate_pass=false`、
+`identifiable_nonzero=false`，实际执行继续使用规则回退。
+
+候选由 clean detached checkout
+`923f3f6e91af0f85aed446c66420c834d2de63fb` 构建。manifest 文件/内容、模型权重、
+源码身份、bundle manifest、复合数据和全局 split SHA-256 依次为
+`ad5846b1...f5e5`、`52866167...e2f`、`43157f4e...b0ee`、
+`f9c52715...53ed`、`824aecf1...b8f`、`ee6bd202...cfd4` 和
+`69ae1b0e...d817`。2026-07-28 最终 registry 专项 **14/14**、D4 全量
+**720/720** 通过；仅有既有 Matplotlib `Axes3D` 环境警告。模块测试不授予正式评价权限。
+
+main 随后完成两组 development preflight。5v5/2 区域 seed 2000 共 3 帧，分布内
+0/3，raw model execution 0；阻断项为 `runtime_feature_distribution_mismatch`、
+`no_nonfallback_model_evaluation`、`candidate_region_count_out_of_scope` 和
+`candidate_confidence_calibration_not_accepted`。200v200/8 区域 seed 2001 共 3 帧，
+分布内 1/3，raw model execution 1，candidate-permitted execution 0。后者 2 帧 OOD 的
+唯一越界特征是 `secondary_readiness`：训练范围为 [1.0, 1.0]，运行范围为 [0.0, 1.0]，
+24 个节点值中 16 个低于训练下界。两组有限值检查均通过，在线真值使用数均为 0。
+
+双源重切分已将 raw execution 从 0 提高到 1，但运行分布仍未闭合。下一候选需补采真实
+8-region、`secondary_readiness=0` 的运行帧，并修复 315 个验证样本中 51 个动作不一致
+却越过固定 0.60 的校准误接收。候选许可、assist、分配、接管、联盟、控制和物理权限保持
+false；正式 20-seed/900-cell 继续禁止。
+
 ## 2026-07-28 当前谱系影子运行边界
 
 D4 已为冻结的 current-lineage development/shadow 候选增加只读运行适配器和独立

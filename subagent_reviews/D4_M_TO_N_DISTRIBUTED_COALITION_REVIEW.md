@@ -1,5 +1,29 @@
 # D4 M 对 N 分布式联盟形成与降级接管调研
 
+## 2026-07-28 八区域候选与联盟边界
+
+新 8-region 候选只输出区域级 shadow 建议，不选择 M 对 N 联盟成员，不发布 D3 后继计划，
+也不生成成员 ACK。其置信度校准未接受，所有八区域输入在进入联盟证据前由 failure gate
+失败关闭；2-region 输入另由区域数/OOD 门拒绝。
+
+即使后续新候选通过运行预检，区域建议仍需独立形成严格更高版本的 D3 计划，并满足同一
+owner/version/epoch/lease 下的 required-member ACK、原子 commit 和确认后物理窗口。
+本轮没有运行这些步骤。现有 M 对 N 确定性规则、二级接管和分布式联盟门保持不变。
+
+本轮只读候选绑定 clean commit
+`923f3f6e91af0f85aed446c66420c834d2de63fb`；manifest 文件/内容、模型、源码身份、
+bundle manifest、复合数据和 split SHA-256 为 `ad5846b1...f5e5`、
+`52866167...e2f`、`43157f4e...b0ee`、`f9c52715...53ed`、
+`824aecf1...b8f`、`ee6bd202...cfd4` 和 `69ae1b0e...d817`。该身份没有联盟权限。
+2026-07-28 最终 registry 专项 14/14、D4 全量 720/720 通过。
+
+main development preflight 中，2 区域 raw execution 为 0；8 区域 raw execution 从
+0 提高到 1，但 candidate-permitted execution 仍为 0。其余 2 个八区域帧因
+`secondary_readiness` 未覆盖而 OOD，且置信度校准仍误接收 51/315 个动作不一致验证样本。
+该结果没有产生 D3 后继计划、成员 ACK、原子联盟或物理窗口。补采
+`secondary_readiness=0` 运行帧并修复固定 0.60 校准前，正式 20-seed/900-cell 和全部
+联盟权限继续禁止。
+
 ## 2026-07-28 影子候选与联盟权限
 
 当前谱系候选已具备严格影子运行记录，但 5v5/2 区域和 200v200/8 区域共 5 个快照全部
